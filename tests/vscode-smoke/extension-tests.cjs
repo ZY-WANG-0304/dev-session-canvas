@@ -79,7 +79,8 @@ const COMMAND_IDS = {
   testStartExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
   testSetQuickPickSelections: 'devSessionCanvas.__test.setQuickPickSelections',
   testCreateNode: 'devSessionCanvas.__test.createNode',
-  testResetState: 'devSessionCanvas.__test.resetState'
+  testResetState: 'devSessionCanvas.__test.resetState',
+  testHandleWorkspaceFoldersChanged: 'devSessionCanvas.__test.handleWorkspaceFoldersChanged'
 };
 const artifactDir = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const smokeScenario = process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO || 'trusted';
@@ -800,6 +801,7 @@ async function runTrustedSmoke() {
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
   await verifyExplorerResourceCreateExecutionNodes();
   await verifyInteractiveCreateCwdDefaultsToWorkspaceRoot();
+  await verifyWorkspaceFolderExpansionKeepsCurrentCanvas();
   await verifyPersistedStateFiltersLegacyTaskNodes();
   await clearHostMessages();
   await clearDiagnosticEvents();
@@ -2002,6 +2004,106 @@ async function verifyInteractiveCreateCwdDefaultsToWorkspaceRoot() {
       ),
     20000
   );
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.length === 0 && currentSnapshot.sidebar.runningExecutionCount === 0,
+    20000
+  );
+}
+
+async function verifyWorkspaceFolderExpansionKeepsCurrentCanvas() {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'Smoke workspace is missing a workspace folder.');
+  const addedRoot = path.join(workspaceFolder.uri.fsPath, '.debug', 'vscode-smoke', 'workspace-expanded-root');
+  await fs.mkdir(addedRoot, { recursive: true });
+
+  await clearDiagnosticEvents();
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.length === 0 && currentSnapshot.sidebar.runningExecutionCount === 0,
+    20000
+  );
+
+  await dispatchWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      kind: 'note',
+      preferredPosition: { x: 260, y: 180 }
+    }
+  });
+  let snapshot = await waitForSnapshot(
+    (currentSnapshot) => currentSnapshot.state.nodes.some((node) => node.kind === 'note'),
+    20000
+  );
+  const noteNode = findNodeByKind(snapshot, 'note');
+  await dispatchWebviewMessage({
+    type: 'webview/updateNodeTitle',
+    payload: {
+      nodeId: noteNode.id,
+      title: 'Workspace Expansion Current Canvas'
+    }
+  });
+  await dispatchWebviewMessage({
+    type: 'webview/updateNoteNode',
+    payload: {
+      nodeId: noteNode.id,
+      content: 'CURRENT_CANVAS_SURVIVES_WORKSPACE_EXPANSION'
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.some(
+        (node) =>
+          node.id === noteNode.id &&
+          node.title === 'Workspace Expansion Current Canvas' &&
+          node.metadata?.note?.content === 'CURRENT_CANVAS_SURVIVES_WORKSPACE_EXPANSION'
+      ),
+    20000
+  );
+
+  const beforeFlush = await vscode.commands.executeCommand(COMMAND_IDS.testFlushPersistedState);
+  assert.ok(beforeFlush?.snapshot?.state, 'Expected baseline state to be flushed before simulating root expansion.');
+  const beforeStoragePath = path.dirname(beforeFlush.snapshotPath);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testHandleWorkspaceFoldersChanged, {
+    added: [{ path: addedRoot, name: 'workspace-expanded-root' }],
+    removed: []
+  });
+
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.some(
+        (node) =>
+          node.id === noteNode.id &&
+          node.title === 'Workspace Expansion Current Canvas' &&
+          node.metadata?.note?.content === 'CURRENT_CANVAS_SURVIVES_WORKSPACE_EXPANSION'
+      ),
+    20000
+  );
+  assert.strictEqual(snapshot.state.nodes.length, 1);
+
+  const expansionEvents = await waitForDiagnosticEvents(
+    (events) =>
+      events.filter((event) => event.kind === 'state/workspaceFoldersExpandedCurrentCanvasPreserved').length === 1,
+    20000
+  );
+  const expansionEvent = expansionEvents.find(
+    (event) => event.kind === 'state/workspaceFoldersExpandedCurrentCanvasPreserved'
+  );
+  assert.strictEqual(expansionEvent.detail?.nodeCount, 1);
+  assert.ok(
+    expansionEvent.detail?.added?.some((folder) => folder.path === addedRoot),
+    'Expected workspace expansion diagnostics to include the added root.'
+  );
+
+  const afterFlush = await vscode.commands.executeCommand(COMMAND_IDS.testFlushPersistedState);
+  assert.strictEqual(path.dirname(afterFlush.snapshotPath), beforeStoragePath);
+  const persistedNote = afterFlush.snapshot.state.nodes.find((node) => node.id === noteNode.id);
+  assert.strictEqual(persistedNote?.title, 'Workspace Expansion Current Canvas');
+  assert.strictEqual(persistedNote?.metadata?.note?.content, 'CURRENT_CANVAS_SURVIVES_WORKSPACE_EXPANSION');
 
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await waitForSnapshot(

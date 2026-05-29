@@ -813,13 +813,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     context.subscriptions.push(
-      vscode.workspace.onDidChangeWorkspaceFolders(() => {
-        this.invalidateResolvedShellEnvironmentPatch();
-        this.clearAgentCliResolutionCache();
-        if (this.refreshConfiguredTerminalShellMetadata()) {
-          this.postState('host/stateUpdated');
-        }
-        this.notifySidebarStateChanged();
+      vscode.workspace.onDidChangeWorkspaceFolders((event) => {
+        this.handleWorkspaceFoldersChanged(event);
       })
     );
 
@@ -1442,6 +1437,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       surfaceMode: cloneJsonValue(this.surfaceMode),
       surfaceReady: cloneJsonValue(this.surfaceReady)
     };
+  }
+
+  public handleWorkspaceFoldersChangedForTest(event: vscode.WorkspaceFoldersChangeEvent): CanvasDebugSnapshot {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
+      throw new Error('handleWorkspaceFoldersChangedForTest 仅在测试模式下可用。');
+    }
+
+    this.handleWorkspaceFoldersChanged(event);
+    return this.getDebugSnapshot();
   }
 
   public getRuntimeSupervisorStateForTest(): RuntimeSupervisorDebugStateForTest {
@@ -3963,6 +3967,49 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private notifySidebarStateChanged(): void {
     this.sidebarStateEmitter.fire(this.getSidebarState());
+  }
+
+  private handleWorkspaceFoldersChanged(event: vscode.WorkspaceFoldersChangeEvent): void {
+    this.invalidateResolvedShellEnvironmentPatch();
+    this.clearAgentCliResolutionCache();
+
+    const didWorkspaceFoldersChange = event.added.length > 0 || event.removed.length > 0;
+    const wasExpansion = event.added.length > 0 && event.removed.length === 0;
+    if (wasExpansion) {
+      this.persistCurrentCanvasAcrossWorkspaceFolderExpansion(event);
+    }
+
+    const terminalShellMetadataChanged = this.refreshConfiguredTerminalShellMetadata();
+    if (terminalShellMetadataChanged || didWorkspaceFoldersChange) {
+      this.postState('host/stateUpdated');
+    }
+    this.notifySidebarStateChanged();
+  }
+
+  private persistCurrentCanvasAcrossWorkspaceFolderExpansion(event: vscode.WorkspaceFoldersChangeEvent): void {
+    const currentState = this.state;
+    const currentActiveSurface = this.activeSurface;
+    const currentCanvasTemplateInitialized = this.canvasTemplateInitialized;
+    const preExpansionSummary = summarizeCanvasStateForDiagnostics(currentState);
+
+    this.refreshStorageRecoverySelection();
+    this.fileFilterState = normalizeCanvasFileFilterState(this.fileFilterState);
+    this.state = currentState;
+    this.activeSurface = currentActiveSurface;
+    this.canvasTemplateInitialized = currentCanvasTemplateInitialized;
+    this.persistState();
+
+    this.recordDiagnosticEvent('state/workspaceFoldersExpandedCurrentCanvasPreserved', {
+      added: event.added.map((folder) => ({ name: folder.name, path: folder.uri.fsPath })),
+      removed: event.removed.map((folder) => ({ name: folder.name, path: folder.uri.fsPath })),
+      storagePath: this.getExtensionStoragePath(),
+      writePath: this.storageRecoverySelection.writePath,
+      recoverySourcePath:
+        this.storageRecoverySelection.sourcePath === this.storageRecoverySelection.writePath
+          ? undefined
+          : this.storageRecoverySelection.sourcePath,
+      ...preExpansionSummary
+    });
   }
 
   private getRuntimeContext(webview: vscode.Webview | undefined = this.getActiveWebview()): CanvasRuntimeContext {

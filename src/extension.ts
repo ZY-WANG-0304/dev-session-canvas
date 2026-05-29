@@ -2449,10 +2449,63 @@ function registerTestCommands(
         clearAgentCliResolutionCache: true
       });
       return panelManager.getDebugSnapshot();
+    }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.handleWorkspaceFoldersChanged, (rawEvent?: unknown) => {
+      const event = normalizeWorkspaceFoldersChangeEventForTest(rawEvent);
+      return panelManager.handleWorkspaceFoldersChangedForTest(event);
     })
   );
 }
 
 function parseCanvasSurfaceLocation(value: unknown): CanvasSurfaceLocation | undefined {
   return value === 'editor' || value === 'panel' ? value : undefined;
+}
+
+function normalizeWorkspaceFoldersChangeEventForTest(rawEvent: unknown): vscode.WorkspaceFoldersChangeEvent {
+  const record = typeof rawEvent === 'object' && rawEvent !== null ? rawEvent as Record<string, unknown> : {};
+  return {
+    added: normalizeWorkspaceFolderInputsForTest(record.added),
+    removed: normalizeWorkspaceFolderInputsForTest(record.removed)
+  };
+}
+
+function normalizeWorkspaceFolderInputsForTest(value: unknown): vscode.WorkspaceFolder[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => {
+    if (entry instanceof vscode.Uri) {
+      return createWorkspaceFolderForTest(entry, path.basename(entry.fsPath) || `workspace-${index}`, index);
+    }
+    if (typeof entry === 'string') {
+      const uri = vscode.Uri.file(entry);
+      return createWorkspaceFolderForTest(uri, path.basename(uri.fsPath) || `workspace-${index}`, index);
+    }
+    if (typeof entry === 'object' && entry !== null) {
+      const record = entry as Record<string, unknown>;
+      const uri = record.uri instanceof vscode.Uri
+        ? record.uri
+        : typeof record.path === 'string'
+          ? vscode.Uri.file(record.path)
+          : undefined;
+      if (uri) {
+        return createWorkspaceFolderForTest(
+          uri,
+          typeof record.name === 'string' && record.name.trim() ? record.name.trim() : path.basename(uri.fsPath) || `workspace-${index}`,
+          typeof record.index === 'number' ? record.index : index
+        );
+      }
+    }
+
+    throw new Error('测试命令 devSessionCanvas.__test.handleWorkspaceFoldersChanged 需要有效的 workspace folder 事件。');
+  });
+}
+
+function createWorkspaceFolderForTest(uri: vscode.Uri, name: string, index: number): vscode.WorkspaceFolder {
+  return {
+    uri,
+    name,
+    index
+  };
 }

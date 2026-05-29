@@ -160,6 +160,35 @@ try {
   assert.equal(fallbackToNearestRecoverableStateResult.sourcePath, indexedPathOne);
   assert.equal(fallbackToNearestRecoverableStateResult.selectionBasis, 'recoverable-state-fallback');
 
+  const untitledSingleRootPath =
+    '/home/users/example/.config/Code/User/workspaceStorage/' +
+    'abc123/devsessioncanvas.dev-session-canvas';
+  const untitledExpandedWorkspacePath =
+    '/home/users/example/.config/Code/User/workspaceStorage/' +
+    'def456/devsessioncanvas.dev-session-canvas';
+  const untitledExpandedResult = selectPreferredExtensionStorageRecoverySource(untitledExpandedWorkspacePath, {
+    ...buildSnapshotFixture([
+      [storagePath.join(untitledSingleRootPath, 'canvas-state.json'), createSnapshotText({
+        title: 'SINGLE-ROOT-SNAPSHOT',
+        writtenAt: '2026-05-29T08:00:00.000Z',
+        updatedAt: '2026-05-29T07:59:00.000Z'
+      })],
+      [storagePath.join(untitledExpandedWorkspacePath, 'canvas-state.json'), createSnapshotText({
+        title: 'UNTITLED-EXPANDED-SNAPSHOT',
+        writtenAt: '2026-05-29T08:30:00.000Z',
+        updatedAt: '2026-05-29T08:29:00.000Z'
+      })]
+    ]),
+    listDirectoryEntries: () => ['abc123', 'def456']
+  });
+  assert.equal(
+    untitledExpandedResult.sourcePath,
+    untitledExpandedWorkspacePath,
+    'Unrelated VS Code Untitled workspace hashes must not recover from single-root snapshots by freshness.'
+  );
+  assert.equal(untitledExpandedResult.selectionBasis, 'current-slot');
+  assert.equal(untitledExpandedResult.recoveryReason, undefined);
+
   const unrelatedPath = '/home/users/example/.config/dev-session-canvas';
   const unrelatedResult = selectPreferredExtensionStorageRecoverySource(unrelatedPath, {
     pathExists: () => true

@@ -83,7 +83,8 @@ export const TEST_COMMAND_IDS = {
   startExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
   setQuickPickSelections: 'devSessionCanvas.__test.setQuickPickSelections',
   createNode: 'devSessionCanvas.__test.createNode',
-  resetState: 'devSessionCanvas.__test.resetState'
+  resetState: 'devSessionCanvas.__test.resetState',
+  handleWorkspaceFoldersChanged: 'devSessionCanvas.__test.handleWorkspaceFoldersChanged'
 } as const;
 
 export const VIEW_IDS = {

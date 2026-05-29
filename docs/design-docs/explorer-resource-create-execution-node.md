@@ -230,8 +230,9 @@ Explorer 资源右键入口不使用该 root 选择器：资源 URI 已经明确
 3. 原 `A` 单根 workspace 的 `canvas-state.json` / `workspaceState` 保留，不删除、不迁移；之后单独打开 `A` 和打开 `A + B` 会自然分叉。
 4. 不自动读取或合并 `B` 单独打开时可能存在的 Canvas，也不把 `B` 的历史节点导入当前画布。新增 root 只有在用户从该 root 的 Explorer 资源创建节点后，才开始贡献新的 cwd 绑定节点。
 5. 如果 `A + B` 的目标持久化 scope 已经存在旧快照，当前窗口状态优先；实现不得在扩容瞬间用旧 `A + B` 快照替换用户当前画布，也不得自动 merge。覆盖目标旧快照前应保留可恢复备份或至少记录明确诊断事件，避免不可追溯的静默覆盖。
-6. 已有 live-runtime 会话不因 workspace 扩容自动重启；仍以会话自己的 `runtimeStoragePath` 和节点 metadata cwd 继续运行。workspace folders 变化时需要失效 shell env patch、Agent CLI resolver 等 cwd / workspace 敏感缓存，后续新启动按节点 cwd 重新解析。
-7. `cwdLabel` 是投影值，不进入持久化。扩容前单根下显示为 `src` 的 cwd，扩容后如果仍落在 `A` 下，应按多根规则显示为 `A/src`；Terminal 标题副标题仍不额外显示 cwdLabel。
+6. 运行期收到 `onDidChangeWorkspaceFolders` 且事件是纯新增 root 时，宿主必须把当前内存 Canvas 视为权威源：刷新 storage recovery 选择和 cwd-sensitive cache 后，立即把当前内存态写入当前 storage scope，并向 Webview 重新推送当前状态。这个路径不得调用 `loadReconciledState()` 从新 scope 读取历史快照，否则未保存的 `Untitled (Workspace)` 多根容器可能在扩容瞬间用目标 scope 的空状态或旧状态覆盖当前画布。
+7. 已有 live-runtime 会话不因 workspace 扩容自动重启；仍以会话自己的 `runtimeStoragePath` 和节点 metadata cwd 继续运行。workspace folders 变化时需要失效 shell env patch、Agent CLI resolver 等 cwd / workspace 敏感缓存，后续新启动按节点 cwd 重新解析。
+8. `cwdLabel` 是投影值，不进入持久化。扩容前单根下显示为 `src` 的 cwd，扩容后如果仍落在 `A` 下，应按多根规则显示为 `A/src`；Terminal 标题副标题仍不额外显示 cwdLabel。
 
 这条规则只处理“增加 root”的扩容场景。移除 root、重排 root 或显式打开已有 `.code-workspace` 文件是否应恢复旧多根快照，属于后续多根 workspace 语义讨论，不在本轮结论中扩大。
 
