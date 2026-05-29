@@ -517,6 +517,7 @@ body {
 .canvas-node-handle {
   width: 10px;
   height: 10px;
+  z-index: 40;
   border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 78%, var(--vscode-editor-background) 22%);
   background: color-mix(in srgb, var(--vscode-editor-background) 82%, var(--vscode-focusBorder) 18%);
   opacity: 0;
