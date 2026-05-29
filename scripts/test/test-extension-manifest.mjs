@@ -21,8 +21,16 @@ assert.equal(
 );
 
 assert.ok(
-  !manifest.activationEvents.includes('onStartupFinished'),
-  'Panel placement bootstrap should not activate the extension or reveal the canvas on every VS Code startup.'
+  manifest.activationEvents.includes('onView:devSessionCanvas.canvasPanel'),
+  'Expected the native Panel WebviewView to activate the extension when VS Code resolves the visible canvas view.'
+);
+assert.ok(
+  manifest.activationEvents.includes('onStartupFinished'),
+  'Expected startup activation to register the Panel view provider and run Untitled multi-root storage fork after VS Code reloads the window.'
+);
+assert.ok(
+  !manifest.activationEvents.includes('*'),
+  'Startup activation should stay scoped to onStartupFinished and view/command events, not eager wildcard activation.'
 );
 
 const viewTitleMenus = manifest.contributes.menus['view/title'];

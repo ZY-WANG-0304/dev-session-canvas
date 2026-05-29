@@ -28,6 +28,11 @@
 - [x] (2026-05-29 10:15 +0800) 更新产品规格、设计文档与本计划，区分运行期纯新增 root 和 VSCode reload 两条扩容路径。
 - [x] (2026-05-29 10:15 +0800) 增加存储选择单元测试，验证普通 unrelated hash 不被 freshness 恢复，同时 Untitled 多根显式扩容路径可按第一个 root 名称选择单根快照，且空当前快照可覆盖、有节点当前快照不可覆盖。
 - [x] (2026-05-29 10:15 +0800) 运行 `npm run test:extension-storage-paths`、`npm run typecheck`、`git diff --check`，三项均通过；本轮未补跑 VSCode smoke，因为核心新增逻辑已抽成无 VSCode 依赖的 storage helper，并用单元测试覆盖选择边界。
+- [x] (2026-05-29 18:35 +0800) 回应用户新的实测前复查：上一版没有跑真实 `Add Folder to Workspace...` UI reload 路径；只验证了 storage helper、typecheck、以及 CLI `code rootA rootB` 式 Untitled 多根启动时手动激活后可 fork。
+- [x] (2026-05-29 18:38 +0800) 补跑启动激活实验：在 Untitled 多根窗口中不主动打开 Canvas 时，扩展 20 秒内保持 `active:false`，测试命令未注册；因此启动期 fork 没有机会运行，符合“Panel 卡加载 / 画布打不开”的用户现象。
+- [x] (2026-05-29 18:42 +0800) 试验只增加 `onView:devSessionCanvas.canvasPanel` 后，Untitled 多根启动仍保持 inactive；说明 VSCode 只有在 WebviewView 真正被解析/展开时才触发 view activation，无法覆盖 reload 后仅有 Panel 入口或 loading 占位的情况。
+- [x] (2026-05-29 18:44 +0800) 增加 `onStartupFinished` 后补跑同一启动实验：扩展在启动完成后 active，诊断出现 `storage/untitledMultiRootForkApplied`，Untitled 多根 slot 成功加载单根源节点；同时未自动 reveal Webview，`surfaceReady.panel` 仍为 false。
+- [x] (2026-05-29 18:51 +0800) 更新产品规格、Explorer 创建执行节点设计、Canvas surface placement 设计和 manifest 测试，正式记录 `onStartupFinished` 仅用于 provider 注册与 Untitled 多根 fork，不使用 `*`，不自动抢焦点。
 
 ## 意外与发现
 
@@ -57,6 +62,12 @@
 
 - 观察：启动期 fork 如果只写 `canvas-state.json`，仍需要防止旧 `workspaceState` 作为兜底参与后续加载；虽然正常 VSCode 新 storage slot 的 `workspaceState` 应为空，但测试和历史异常状态可能留下节点。
   证据：`CanvasPanelManager.loadState()` 的读取顺序是 `snapshot?.state ?? workspaceState`；本轮实现只在当前 `workspaceState` 没有节点时允许 fork，并在 fork 成功后清理 `canvasState`、`canvasLastSurface` 和 `canvasTemplateInitialized` 兜底键。
+
+- 观察：真实 `Add Folder to Workspace...` 触发的是扩展宿主重启 / Untitled 多根 startup 路径，不等价于运行期 `vscode.workspace.updateWorkspaceFolders(...)`，也不等价于测试里先 `activateVisibleExtension()` 再执行恢复命令。
+  证据：`.debug/add-folder-repro/run-add-folder-repro.mjs` 的运行期新增 root 能保留节点，但用户截图和 VSCode API 注释说明“第一个 workspace folder 被添加/移除/改变”会终止并重启扩展宿主；启动后如果扩展未激活，恢复逻辑不会执行。
+
+- 观察：只依赖 Panel view 的 `onView` 激活不足以覆盖 reload 后的用户路径。
+  证据：`.debug/multiroot-auto-activation/run.mjs` 在未主动打开 Canvas 的 Untitled 多根窗口中，旧 manifest 和“仅加 `onView:devSessionCanvas.canvasPanel`”两种情况下，20 个 tick 后扩展仍为 `active:false`，`devSessionCanvas.__test.getDebugState` 不存在；加 `onStartupFinished` 后 tick 1 变为 `active:true` 并出现 `storage/untitledMultiRootForkApplied`。
 
 ## 决策记录
 
@@ -97,11 +108,17 @@
   理由：有节点的 `workspaceState` 代表当前多根 scope 已有可加载状态，继续 fork 会覆盖用户当前多根画布；空或缺失的 `workspaceState` 才符合“没有有意义 Canvas”的补救条件。
   日期/作者：2026-05-29 / Codex。
 
+- 决策：manifest 增加 `onStartupFinished`，并保留 `onView:devSessionCanvas.canvasPanel` 与 `onWebviewPanel:devSessionCanvas.canvas`。
+  理由：`onStartupFinished` 可在 VSCode 启动主链路完成后激活扩展，注册 Panel `WebviewViewProvider` 并执行 Untitled 多根 fork；`onView` 只在 view 被解析/展开时触发，不能覆盖 reload 后扩展保持 inactive 的情况。该决策不使用 `*`，不在启动时调用 `revealPanelView()`，因此不会自动把画布拉到前台或抢焦点。
+  日期/作者：2026-05-29 / Codex。
+
 ## 结果与复盘
 
 上一轮实现已完成并通过验证：命令 ID 与 manifest 增加 Explorer 资源菜单，`src/extension.ts` 可把目录或普通文件父目录解析为 cwd；普通创建入口在多根 workspace 下会确认 root；共享协议带 `cwd`；`CanvasPanelManager` 会把 cwdOverride 写入 Agent / Terminal metadata，并在启动、CLI resolver、shell env patch 与 diagnostic 中优先使用节点 cwd；Webview Agent subtitle 与侧栏 Agent 第二行已接入 cwdLabel。测试覆盖已补齐到 manifest、协议、cwdLabel、Webview 展示和 trusted VSCode smoke 的 Explorer 创建主路径。
 
 用户实测暴露一个新增缺口：`Add Folder to Workspace...` 在单根变多根时通常要求 reload，扩展重启后没有内存 Canvas 可保留，也不会执行运行期 workspace folder event 分支。本轮已补充启动恢复：在空的 Untitled 多根 storage scope 中，从当前第一个 root 名称匹配的原单根 slot fork `canvas-state.json`，只复制主快照，不复制 runtime 或草稿目录；如果当前多根 slot 或 `workspaceState` 已经有节点则跳过，避免覆盖现有多根画布。
+
+用户随后继续实测发现当前版本仍会在 `Add Folder to Workspace...` 后卡在加载中。复查确认上一版没有测真实 VSCode UI reload，只测了存储 helper、typecheck，以及 CLI 打开 `rootA rootB` 后再手动激活扩展的近似路径。新增启动实验表明：Untitled 多根窗口启动后，如果扩展没有被激活，`CanvasPanelManager` 构造函数不会运行，Panel provider 不会注册，`recoverUntitledMultiRootWorkspaceStorageForkIfNeeded()` 也不会执行；这正是 fork 逻辑存在但用户看不到恢复节点的原因。最终采用 `onStartupFinished` 让扩展在启动完成后注册 provider 并运行 fork，同时明确不使用 `*`、不自动 reveal 画布内容。
 
 复盘上，主要风险来自测试同步而不是产品路径：`webview/resetDemoState` 没有完成回执，容易与仍在启动或停止的执行 session 竞争。本轮已把相关 smoke 前置清理改为宿主 test reset 并等待 `runningExecutionCount === 0`，后续新增会启动执行节点的 smoke 测试也应沿用这个模式。
 
@@ -234,6 +251,21 @@
     exit code 0
 
 这些测试覆盖：普通 unrelated workspaceStorage hash 不通过 freshness 恢复；Untitled 多根显式 fork 只选择匹配第一个 root 名称的单根快照；当前多根空快照可被 fork 覆盖；当前多根已有节点快照不可被覆盖。
+
+针对用户复测的卡加载问题已补充验证：
+
+    .debug/multiroot-auto-activation/run.mjs
+    旧 manifest / 仅增加 onView:devSessionCanvas.canvasPanel：
+    [verify-auto] tick 20 {"active":false}
+    [verify-auto] has debug command false
+
+    增加 onStartupFinished 后：
+    [verify-auto] tick 1 {"active":true}
+    [verify-auto] has debug command true
+    [verify-auto] snapshot {"nodes":1,"titles":["Auto Activation Fork Source"],"active":"panel","ready":{"editor":false,"panel":false},"mode":{}}
+    [verify-auto] events tail ... "storage/untitledMultiRootForkApplied" ...
+
+`surfaceReady.panel: false` 是预期结果：startup activation 只注册 provider 和恢复存储，不自动 reveal 或解析 Webview；用户打开 Panel view 后才会真正加载画布内容。
 
 ## 接口与依赖
 

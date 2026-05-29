@@ -49,6 +49,8 @@
   ],
   "activationEvents": [
     "onCommand:devSessionCanvas.__internal.centerAttentionNode",
+    "onView:devSessionCanvas.canvasPanel",
+    "onStartupFinished",
     "onWebviewPanel:devSessionCanvas.canvas"
   ],
   "capabilities": {

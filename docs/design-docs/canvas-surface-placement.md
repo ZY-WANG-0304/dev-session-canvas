@@ -202,6 +202,7 @@ updated_at: 2026-05-18
 - 本轮实现已改为同时持久化 `activeSurface` 与当时已应用的 `defaultSurface`；如果下一次启动发现两次 `defaultSurface` 不一致，就不再恢复旧 opposite surface，而是按当前 `defaultSurface` 收口启动 surface。
 - 当 `runtimePersistence.enabled` 在两次启动之间发生切换时，旧的 surface 恢复元数据同样视为宿主状态的一部分被整体丢弃；新窗口直接回到当前 `defaultSurface`，不再恢复上次实际工作的 opposite surface。
 - 2026-05-16 补充：Panel view 的 `when` 条件已加入 `config.devSessionCanvas.canvas.defaultSurface == 'panel' && !devSessionCanvas.canvas.panelVisibilityManaged` 启动前兜底，因此默认 `panel` 时 VS Code 打开后即可在原生 Panel 区域发现 `Dev Session Canvas` view；扩展激活后仍由 `panelViewVisible` 接管当前 window 的 reload 语义，且不使用 `onStartupFinished` 自动激活，也不在启动时自动 reveal Webview 内容。
+- 2026-05-29 补充：单根 workspace 通过 `Add Folder to Workspace...` reload 成 Untitled 多根 workspace 后，Panel view 入口可见不等于 `WebviewView` 已被解析；实测只依赖 `onView` 时扩展可能保持 inactive，导致 provider 未注册和多根持久化 fork 不运行。因此 manifest 改为增加 `onStartupFinished`，用于启动完成后注册 Panel provider 与执行必要的 workspace storage 恢复；这不改变“不自动 reveal 画布内容、不抢焦点、不使用 `*` eager activation”的 UI 契约。
 - 用户已于 2026-04-18 完成手动复验，确认 `panel -> editor` 与 `editor -> panel` 两条 restart 路径都已按新的 `defaultSurface` 收口，不再恢复旧 opposite surface。
 - `npm run build` 已通过。
 - `npm run typecheck` 已通过；`src/webview/main.tsx` 里原有的 `isComposing` 类型报错已在当前 head 收口。

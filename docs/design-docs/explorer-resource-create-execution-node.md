@@ -1,7 +1,7 @@
 ---
 title: File Explorer 资源右键创建执行节点设计
 decision_status: 已选定
-validation_status: 未验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -114,6 +114,7 @@ updated_at: 2026-05-29
 - 风险：用户右键资源或文件父目录不在当前 workspace folder 内。当前缓解：第一版要求解析后的 cwd 必须落在某个 `vscode.workspace.workspaceFolders` 下；否则显示 warning，不创建执行节点。这样避免执行会话逃逸到工作区之外，并让 workspace trust、持久化槽和文件活动继续有明确 workspace 绑定。
 - 风险：多根 workspace 下 root 确认会增加普通创建入口的一步操作。当前缓解：只在 `Terminal` / `Agent` 且 workspace folders 多于一个时触发，单根 workspace、Explorer 资源入口和模板应用不受影响；Quick Pick 默认可把第一个 root 放在首位，但必须让用户显式确认。
 - 风险：单根 workspace 扩容成多根 workspace 时，VSCode 的 workspace 持久化 scope 可能变化，并且目标多根 scope 可能已有旧快照。当前缓解：把该动作定义为“当前窗口 workspace 扩容”，当前 Canvas 优先进入新的多根 scope；原单根快照保留，新增 root 的历史 Canvas 不自动导入，目标旧快照不自动 merge，并要求实现保留可恢复备份或诊断记录。
+- 风险：VSCode `Add Folder to Workspace...` 的 reload 路径可能在用户看到 Panel view 入口之前并未解析 `WebviewView`，从而不会触发 `onView` 激活；如果扩展没有被激活，Panel provider 不会注册，Untitled 多根 fork 也不会运行，用户会看到画布长期停留在加载占位或空状态。当前缓解：保留具体 `onView:devSessionCanvas.canvasPanel` 和 `onWebviewPanel:devSessionCanvas.canvas` 激活，同时增加 `onStartupFinished`，让扩展在 VS Code 启动主链路后注册 provider 并执行存储 fork；不使用 `*`，也不在 startup 自动 reveal 画布。
 - 风险：Terminal shell、Agent CLI resolver 和 shell env probe 当前部分缓存以 workspace cwd 为 key。当前缓解：本轮需要把启动路径相关 resolver 调用改为读取节点 cwd；Agent CLI cache key、相对 shellPath probe、shell env patch 至少要按目标 cwd 区分，不能复用默认 workspace 根目录结果。
 - 风险：目录在创建后被删除或变成不可访问。当前缓解：启动前校验 cwd 仍存在且是目录；失败时节点进入 `error`，摘要说明目录不可用，不回退到 workspace 根目录偷偷启动。
 
@@ -234,8 +235,10 @@ Explorer 资源右键入口不使用该 root 选择器：资源 URI 已经明确
 7. VSCode 官方 API 说明：当第一个 workspace folder 被添加、移除或改变时，`onDidChangeWorkspaceFolders` 不会触发，因为扩展宿主会被终止并重启；Untitled workspace 的 `workspace.workspaceFile` 使用 `untitled:` scheme。用户通过 `Add Folder to Workspace...` 从单根扩容到多根时可能正走这条 reload 路径。
 8. reload 路径没有可用的内存 Canvas，因此启动时需要做受限补救：如果 `workspace.workspaceFile?.scheme === 'untitled'`、当前 workspace folders 多于一个，且当前 `context.storageUri` 下没有有意义 `canvas-state.json`、当前 `workspaceState` 也没有节点，宿主扫描同一个 VSCode `User/workspaceStorage` 下其他 slot 的 `meta.json` 和本扩展 `canvas-state.json`，优先选择与当前第一个 workspace root 名称匹配的单根 slot；若同名候选有多个，选择最新快照。选中后只把源 `canvas-state.json` 复制到当前 Untitled 多根 slot，作为 `A + B` 的初始 fork，并清理旧 `workspaceState` 的 Canvas 兜底字段。
 9. reload 补救不得导入新增 root `B` 的历史 Canvas，不得读取或 merge 已有有意义 `A + B` 快照，也不得复制旧单根 `agent-runtime`、`runtime-supervisor` 或 Note 草稿目录。若当前多根 slot 已有空快照，可先保留 `.bak` 或记录诊断后复制，避免旧版本已经写入的空快照遮蔽原单根画布；若当前多根 slot 已有节点，则视为有意义快照并跳过 fork。
-10. 已有 live-runtime 会话不因运行期 workspace 扩容自动重启；仍以会话自己的 `runtimeStoragePath` 和节点 metadata cwd 继续运行。reload 路径下扩容前的本地进程已经随扩展宿主边界结束，不承诺保留 live runtime，只恢复持久化 Canvas 快照。workspace folders 变化时需要失效 shell env patch、Agent CLI resolver 等 cwd / workspace 敏感缓存，后续新启动按节点 cwd 重新解析。
-11. `cwdLabel` 是投影值，不进入持久化。扩容前单根下显示为 `src` 的 cwd，扩容后如果仍落在 `A` 下，应按多根规则显示为 `A/src`；Terminal 标题副标题仍不额外显示 cwdLabel。
+10. reload 补救不能只依赖 `onView`。VSCode 的 WebviewView provider 需要扩展激活后才能注册，而实测 Untitled 多根窗口启动后如果用户没有显式打开 Panel view，`onView:devSessionCanvas.canvasPanel` 不一定触发；此时扩展保持 inactive，fork 也不会运行。因此 manifest 应包含 `onStartupFinished`：在 VSCode 启动主链路完成后激活扩展、注册 `registerWebviewViewProvider(...)` 和执行 `recoverUntitledMultiRootWorkspaceStorageForkIfNeeded()`。这不是 `*` eager activation，也不调用 `revealPanelView()` 或自动抢焦点。
+11. `onView:devSessionCanvas.canvasPanel` 仍保留为显式 view 激活契约：当用户主动展开或 VSCode 恢复该 view 时，即使 startup activation 尚未触发，也能尽快注册 provider 并解析 Webview。`onWebviewPanel:devSessionCanvas.canvas` 继续负责编辑区 `WebviewPanel` 跨重启恢复。
+12. 已有 live-runtime 会话不因运行期 workspace 扩容自动重启；仍以会话自己的 `runtimeStoragePath` 和节点 metadata cwd 继续运行。reload 路径下扩容前的本地进程已经随扩展宿主边界结束，不承诺保留 live runtime，只恢复持久化 Canvas 快照。workspace folders 变化时需要失效 shell env patch、Agent CLI resolver 等 cwd / workspace 敏感缓存，后续新启动按节点 cwd 重新解析。
+13. `cwdLabel` 是投影值，不进入持久化。扩容前单根下显示为 `src` 的 cwd，扩容后如果仍落在 `A` 下，应按多根规则显示为 `A/src`；Terminal 标题副标题仍不额外显示 cwdLabel。
 
 这条规则只处理“增加 root”的扩容场景。移除 root、重排 root 或显式打开已有 `.code-workspace` 文件是否应恢复旧多根快照，属于后续多根 workspace 语义讨论，不在本轮结论中扩大。
 
@@ -263,11 +266,12 @@ Explorer 资源右键入口不使用该 root 选择器：资源 URI 已经明确
 - Playwright Webview：构造带不同 cwd 的 Agent / Terminal 节点，断言 Agent subtitle 使用 `cwdLabel · 启动命令`，Terminal subtitle 不显示 cwdLabel 且仍只展示 shell path。
 - 侧栏节点列表 smoke / DOM 验证：构造带不同 cwd 的 Agent 节点，断言第二行使用 `cwdLabel · provider · 状态`；Terminal / Note 仍只显示状态。
 - VSCode smoke 或宿主级单元验证：从单根 workspace 状态模拟增加第二个 root 后，断言当前 Canvas 未被目标多根旧快照替换，已有节点 cwd 不变，持久化写入对齐新的多根 scope，并且原单根快照仍可恢复。
+- VSCode startup smoke：先在单根 root `A` 写入一张包含节点的快照，再以 `A B` 启动 Untitled 多根 workspace。验证不主动打开 Canvas 时，旧 manifest 下扩展会保持 inactive；加入 `onStartupFinished` 后扩展在启动完成后 active，诊断出现 `storage/untitledMultiRootForkApplied`，新多根 slot 能加载到 `A` 的节点。另行验证只加 `onView:devSessionCanvas.canvasPanel` 不能覆盖未解析 view 的 startup 情况。
 - 单元测试：如果把 cwd 校验、相对标签生成或 cwd-sensitive cache key 抽成纯函数，应覆盖单根、多根、Windows path 大小写和路径越界。
 
 ## 8. 验证方法
 
-本设计文档当前状态为“未验证”。进入实现后至少需要运行：
+本设计文档当前状态为“验证中”。进入实现后至少需要运行：
 
 1. `npm run typecheck`
 2. 新增或相关的 VSCode smoke 测试，覆盖 Explorer 目录创建 Terminal 与 Agent 的 cwd 传递。
