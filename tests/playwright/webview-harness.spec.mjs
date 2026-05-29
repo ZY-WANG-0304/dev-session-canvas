@@ -8373,6 +8373,54 @@ test('canvas groups do not create document scrollbars when zoomed in', async ({ 
   expect(overflowSnapshot.frameSharesRendererWithPane).toBe(true);
 });
 
+test('canvas group drag follows the pointer without panning the canvas', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1.8 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Drag Group',
+      position: { x: 120, y: 120 },
+      size: { width: 320, height: 220 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const beforeBox = await groupFrame.boundingBox();
+  expect(beforeBox).not.toBeNull();
+  const beforeTransform = await readCanvasViewportTransform(page);
+  const dragDelta = { x: 90, y: 54 };
+  const startPoint = {
+    x: beforeBox.x + beforeBox.width - 36,
+    y: beforeBox.y + 18
+  };
+
+  await clearPostedMessages(page);
+  await page.mouse.move(startPoint.x, startPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(startPoint.x + dragDelta.x, startPoint.y + dragDelta.y, { steps: 4 });
+  await settleWebview(page, 2);
+
+  const draftBox = await groupFrame.boundingBox();
+  expect(draftBox).not.toBeNull();
+  expect(Math.abs(draftBox.x - beforeBox.x - dragDelta.x)).toBeLessThanOrEqual(5);
+  expect(Math.abs(draftBox.y - beforeBox.y - dragDelta.y)).toBeLessThanOrEqual(5);
+  expect(await readCanvasViewportTransform(page)).toBe(beforeTransform);
+
+  await page.mouse.up();
+  const message = await waitForPostedMessageByType(page, 'webview/moveGroup');
+  expect(message.payload.groupId).toBe('group-1');
+  expect(message.payload.position).toEqual({ x: 170, y: 150 });
+  expect(await readCanvasViewportTransform(page)).toBe(beforeTransform);
+});
+
 test('canvas context menu can create an empty group', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createEmptyCanvasState());

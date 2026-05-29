@@ -9725,7 +9725,7 @@ function CanvasGroupFrame(props: {
 
   return (
     <div
-      className={`canvas-group-frame${props.selected ? ' is-selected' : ''}`}
+      className={`canvas-group-frame nodrag nopan${props.selected ? ' is-selected' : ''}`}
       data-group-id={props.group.id}
       style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
       onPointerDownCapture={handleModifierSelectionPointerDownCapture}
