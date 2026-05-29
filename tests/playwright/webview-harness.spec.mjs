@@ -8196,6 +8196,8 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
       backgroundBoxShadow: backgroundStyles.boxShadow,
       backgroundLayerZIndex: backgroundLayerStyles.zIndex,
       backgroundSharesViewportWithNodes: background.closest('.react-flow__viewport') === nodeWrapper.closest('.react-flow__viewport'),
+      frameSharesRendererWithPane:
+        frame.closest('.react-flow__renderer') === document.querySelector('.react-flow__pane')?.closest('.react-flow__renderer'),
       nodeWrapperZIndex: nodeWrapperStyles.zIndex,
       backgroundLeft: Math.round(backgroundRect.left - frameRect.left),
       backgroundTop: Math.round(backgroundRect.top - frameRect.top),
@@ -8236,6 +8238,7 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   expect(groupPanelStyles.backgroundBoxShadow).toBe('none');
   expect(groupPanelStyles.backgroundLayerZIndex).toBe('-1');
   expect(groupPanelStyles.backgroundSharesViewportWithNodes).toBe(true);
+  expect(groupPanelStyles.frameSharesRendererWithPane).toBe(true);
   expect(Number.parseInt(groupPanelStyles.nodeWrapperZIndex, 10)).toBeGreaterThanOrEqual(0);
   expect(groupPanelStyles.backgroundLeft).toBe(0);
   expect(groupPanelStyles.backgroundTop).toBe(0);
@@ -8306,6 +8309,68 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   await groupFrame.locator('.canvas-group-split-primary').click();
   const ungroupMessage = await waitForPostedMessageByType(page, 'webview/ungroup');
   expect(ungroupMessage.payload).toEqual({ groupId: 'group-1' });
+});
+
+test('canvas groups do not create document scrollbars when zoomed in', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 520 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1.8 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Zoomed Group',
+      position: { x: 120, y: 120 },
+      size: { width: 520, height: 420 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const overflowSnapshot = await page.locator('[data-group-id="group-1"]').evaluate((frame) => {
+    const shell = document.querySelector('.canvas-shell');
+    const reactFlow = document.querySelector('.react-flow');
+    const renderer = document.querySelector('.react-flow__renderer');
+    const pane = document.querySelector('.react-flow__pane');
+    if (
+      !(shell instanceof HTMLElement) ||
+      !(reactFlow instanceof HTMLElement) ||
+      !(renderer instanceof HTMLElement) ||
+      !(pane instanceof HTMLElement)
+    ) {
+      throw new Error('Canvas shell or React Flow layers not found.');
+    }
+    const documentElement = document.documentElement;
+    const reactFlowStyles = getComputedStyle(reactFlow);
+    const rendererStyles = getComputedStyle(renderer);
+    const paneStyles = getComputedStyle(pane);
+    return {
+      documentScrollWidth: documentElement.scrollWidth,
+      documentScrollHeight: documentElement.scrollHeight,
+      documentClientWidth: documentElement.clientWidth,
+      documentClientHeight: documentElement.clientHeight,
+      shellScrollWidth: shell.scrollWidth,
+      shellScrollHeight: shell.scrollHeight,
+      shellClientWidth: shell.clientWidth,
+      shellClientHeight: shell.clientHeight,
+      reactFlowOverflow: reactFlowStyles.overflow,
+      rendererOverflow: rendererStyles.overflow,
+      paneOverflow: paneStyles.overflow,
+      frameSharesRendererWithPane: frame.closest('.react-flow__renderer') === pane.closest('.react-flow__renderer')
+    };
+  });
+
+  expect(overflowSnapshot.documentScrollWidth).toBe(overflowSnapshot.documentClientWidth);
+  expect(overflowSnapshot.documentScrollHeight).toBe(overflowSnapshot.documentClientHeight);
+  expect(overflowSnapshot.shellScrollWidth).toBe(overflowSnapshot.shellClientWidth);
+  expect(overflowSnapshot.shellScrollHeight).toBe(overflowSnapshot.shellClientHeight);
+  expect(overflowSnapshot.reactFlowOverflow).toBe('hidden');
+  expect(overflowSnapshot.rendererOverflow).toBe('hidden');
+  expect(overflowSnapshot.paneOverflow).toBe('hidden');
+  expect(overflowSnapshot.frameSharesRendererWithPane).toBe(true);
 });
 
 test('canvas context menu can create an empty group', async ({ page }) => {
