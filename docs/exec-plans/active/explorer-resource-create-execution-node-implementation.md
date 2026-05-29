@@ -33,6 +33,7 @@
 - [x] (2026-05-29 18:42 +0800) 试验只增加 `onView:devSessionCanvas.canvasPanel` 后，Untitled 多根启动仍保持 inactive；说明 VSCode 只有在 WebviewView 真正被解析/展开时才触发 view activation，无法覆盖 reload 后仅有 Panel 入口或 loading 占位的情况。
 - [x] (2026-05-29 18:44 +0800) 增加 `onStartupFinished` 后补跑同一启动实验：扩展在启动完成后 active，诊断出现 `storage/untitledMultiRootForkApplied`，Untitled 多根 slot 成功加载单根源节点；同时未自动 reveal Webview，`surfaceReady.panel` 仍为 false。
 - [x] (2026-05-29 18:51 +0800) 更新产品规格、Explorer 创建执行节点设计、Canvas surface placement 设计和 manifest 测试，正式记录 `onStartupFinished` 仅用于 provider 注册与 Untitled 多根 fork，不使用 `*`，不自动抢焦点。
+- [x] (2026-05-29 20:18 +0800) 针对“点击 Canvas 后仍卡住”的路径补跑验证：Untitled 多根 startup 后先等待 `onStartupFinished` 激活和 fork，再执行 VSCode contributed view 命令 `devSessionCanvas.canvasPanel.open`，Panel Webview 成功 attached / rendered / ready，并能看到 fork 后的节点。
 
 ## 意外与发现
 
@@ -68,6 +69,9 @@
 
 - 观察：只依赖 Panel view 的 `onView` 激活不足以覆盖 reload 后的用户路径。
   证据：`.debug/multiroot-auto-activation/run.mjs` 在未主动打开 Canvas 的 Untitled 多根窗口中，旧 manifest 和“仅加 `onView:devSessionCanvas.canvasPanel`”两种情况下，20 个 tick 后扩展仍为 `active:false`，`devSessionCanvas.__test.getDebugState` 不存在；加 `onStartupFinished` 后 tick 1 变为 `active:true` 并出现 `storage/untitledMultiRootForkApplied`。
+
+- 观察：在补充 `onStartupFinished` 后，Panel view 的打开 / 解析路径本身可以完成，不再停留在 loading。
+  证据：`.debug/multiroot-auto-activation/run-open.mjs` 先用单根窗口写入源节点，再以两个 folder 启动 Untitled 多根窗口；测试执行 `devSessionCanvas.canvasPanel.open` 后，`devSessionCanvas.__test.waitForCanvasReady('panel', 30000)` 成功返回，诊断事件尾部包含 `surface/attached`、`surface/rendered` 和 `surface/ready`。该验证覆盖 VSCode contributed view 命令层级的“打开 Canvas”，但仍不是用鼠标操作原生 `Add Folder to Workspace...` 菜单的端到端 UI 录制。
 
 ## 决策记录
 
@@ -266,6 +270,16 @@
     [verify-auto] events tail ... "storage/untitledMultiRootForkApplied" ...
 
 `surfaceReady.panel: false` 是预期结果：startup activation 只注册 provider 和恢复存储，不自动 reveal 或解析 Webview；用户打开 Panel view 后才会真正加载画布内容。
+
+针对用户进一步澄清的“点击 Canvas 后仍卡住”，已补跑打开路径验证：
+
+    .debug/multiroot-auto-activation/run-open.mjs
+    [verify-open] before open {"nodes":1,"titles":["Auto Activation Fork Source"],"ready":{"editor":false,"panel":false},"activeSurface":"panel"}
+    [verify-open] after open {"nodes":1,"titles":["Auto Activation Fork Source"],"ready":{"editor":false,"panel":true},"activeSurface":"panel","mode":{"panel":"active"}}
+    [verify-open] events tail ... "surface/attached" ... "surface/rendered" ... "surface/ready" ...
+    exit code 0
+
+这次验证说明：在当前实现下，Untitled 多根 startup fork 完成后，再打开 Panel Canvas 可以让 WebviewView 正常 resolve 并 ready。该验证仍是自动化命令级验证，不是手工点击 VSCode `Add Folder to Workspace...` 菜单后的完整 GUI 录制；如果用户本地仍复现，需要继续采集 Extension Host log、manifest 版本和 Canvas diagnostic events。
 
 ## 接口与依赖
 
