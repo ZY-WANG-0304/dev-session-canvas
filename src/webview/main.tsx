@@ -3122,7 +3122,6 @@ function App(): JSX.Element {
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
           <CanvasGroupsViewportLayer
             groups={groups}
-            portalElement={canvasShellRef.current}
             selectedGroupIds={resolveSelectedGroupIds(localUiState)}
             onSelectGroupBody={selectGroup}
             onGroupBodyContextMenu={handlePaneContextMenu}
@@ -9096,7 +9095,6 @@ function NoteMarkdownMetadataTrigger(props: {
 
 function CanvasGroupsViewportLayer(props: {
   groups: CanvasGroupSummary[];
-  portalElement: HTMLElement | null;
   selectedGroupIds?: readonly string[];
   onSelectGroupBody: (
     groupId: string,
@@ -9125,11 +9123,12 @@ function CanvasGroupsViewportLayer(props: {
   onResizeEnd: () => void;
 }): JSX.Element {
   const viewport = useViewport();
-  const viewportElement = useStore(selectCanvasGroupBackgroundViewportElement);
+  const backgroundPortalElement = useStore(selectCanvasGroupBackgroundViewportElement);
+  const foregroundPortalElement = useStore(selectCanvasGroupForegroundPortalElement);
 
   return (
     <>
-      {viewportElement
+      {backgroundPortalElement
         ? createPortal(
             <CanvasGroupBackgroundLayer
               groups={props.groups}
@@ -9138,11 +9137,11 @@ function CanvasGroupsViewportLayer(props: {
               onSelectGroupBody={props.onSelectGroupBody}
               onGroupBodyContextMenu={props.onGroupBodyContextMenu}
             />,
-            viewportElement
+            backgroundPortalElement
           )
         : null}
-      {props.portalElement
-        ? createPortal(<CanvasGroupLayer {...props} viewport={viewport} />, props.portalElement)
+      {foregroundPortalElement
+        ? createPortal(<CanvasGroupLayer {...props} viewport={viewport} />, foregroundPortalElement)
         : null}
     </>
   );
@@ -9151,6 +9150,11 @@ function CanvasGroupsViewportLayer(props: {
 function selectCanvasGroupBackgroundViewportElement(state: ReactFlowState): HTMLDivElement | null {
   const viewportElement = state.domNode?.querySelector('.react-flow__viewport');
   return viewportElement instanceof HTMLDivElement ? viewportElement : null;
+}
+
+function selectCanvasGroupForegroundPortalElement(state: ReactFlowState): HTMLDivElement | null {
+  const rendererElement = state.domNode?.querySelector('.react-flow__renderer');
+  return rendererElement instanceof HTMLDivElement ? rendererElement : null;
 }
 
 function CanvasGroupBackgroundLayer(props: {
