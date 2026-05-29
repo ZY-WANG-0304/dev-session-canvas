@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-05-18
+updated_at: 2026-05-29
 ---
 
 # Agent 启动方式与重启交互设计
@@ -181,11 +181,13 @@ updated_at: 2026-05-18
 
 - 根层不再保留单独的泛化 `Agent` 项；provider 选择直接并入根层，默认 provider 排在第一位，仅通过 `（默认）` 文案标识。
 - provider 行继续采用 split button：主按钮直接创建该 provider 的默认 Agent，次按钮进入启动方式层。
+- 即使当前 workspace 未受信任，根层与启动方式层也继续保持可见；受限时不隐藏 provider / preset，而是在用户点击创建时改走宿主 modal 解释原因。
 - 自定义启动输入框是菜单旁的就地浮层，不进入新的全屏对话框。
 - `Escape` 优先从启动方式层返回根层；只有在根层时才关闭整个菜单。
 - 自定义启动输入打开后，第一次 `Escape` 必须优先收起输入区；这条规则独立于当前焦点是否还停留在输入框里。
 - 启动方式层每条说明文案都应被限制在固定可读高度内；超长内容改为省略号截断，并在 hover 时通过原生 title 暴露完整指令。
 - 创建动作统一发 `webview/createDemoNode`，并把 provider、launchPreset、customLaunchCommand 一次性带回宿主；不允许先创建默认 Agent 再补一次 metadata 更新。
+- 但当当前 workspace 未受信任且点击的是 `Agent` / `Terminal` 这类 execution node 创建入口时，Webview 不再发 `webview/createDemoNode`，而是发一个专门的“解释当前不可创建原因”消息；宿主在该路径上弹 modal，并且不产生新节点。
 
 ### 7.4 VSCode Quick Input
 
@@ -202,6 +204,7 @@ updated_at: 2026-05-18
 - 如果用户显式点击了某个预设，而最终输入框内容在语义上仍等价于该预设生成的完整命令，则节点 metadata 里的 `launchPreset` 保留这次显式选择，而不是仅靠字符串反推后回落成 `default`。
 - 第二层允许通过 Back 返回第一层。
 - 第二层继续使用 `QuickPick`；首项承载自定义命令创建，预设项承载当前模式选择。原因是 VSCode `QuickPick` 会在输入过滤时自动激活可选项，显式维护“当前输入对应的模式 / 自定义命令”能避免默认高亮第一个预设造成误创建，同时避免标题栏 icon-only 按钮难以理解。
+- 如果当前 workspace 未受信任，则第一层和第二层仍保持完整可见；只有当用户最终确认 `Agent` / `Terminal` 创建时，扩展才在宿主侧弹 modal 解释原因，并停止创建。
 - 测试环境保留可脚本化 override，避免 smoke 依赖真实 Quick Input 自动化。
 
 ### 7.5 宿主执行路径
@@ -219,6 +222,7 @@ updated_at: 2026-05-18
 - 当用户点击 `新建` 时，才走上面的 fresh-start 路径。
 - 若节点 `launchPreset = resume`，fresh-start 路径始终执行 provider 的“进入 resume 选择入口”预设命令，而不是偷偷替用户选择最近一条会话。
 - 若 fresh-start 期间 `resolveAgentCliCommand()` 抛出命令解析失败，或最终 `node-pty` / runtime supervisor 启动阶段返回 `ENOENT`，宿主在把节点更新为明确错误态之后，还要触发与侧栏概览 `Codex 命令` / `Claude Code 命令` 行相同的 CLI 选择命令（`devSessionCanvas.selectCodexCli` / `devSessionCanvas.selectClaudeCli`）。这条补救入口只针对真实用户会话启用，测试模式不自动打开 Quick Input，以免 smoke 中的失败路径被交互弹窗阻塞。CLI 选择命令继续复用 `src/extension.ts` 中的安装分流：未解析到候选 CLI 时先展示安装入口，再让用户选择命令行安装或 VS Code 插件安装。
+- 对 untrusted workspace 的创建限制，宿主同时暴露一条单独的“解释当前不可创建原因”路径，供 Quick Input 与 Webview 点击时复用；`applyCreateNode()` 本身仍保留 host error 兜底，专门拦 forged `webview/createDemoNode` 或其他绕过正常 UI 的请求。
 - 对 `Claude Code` 的 fresh-start，会在启动时继续传入候选 `--session-id`，并主动检查 `~/.claude/projects/.../<session-id>.jsonl` 是否已经出现；一旦文件存在，就把该 id 升级为可恢复上下文。停止时若再读到 `claude --resume <session-id>`，宿主会把它当作后续校验/更正信号；若两者都没有，才回退成不可恢复。停止按钮当前对 Claude 已回滚到更早的 provider-specific stop signal：不再发送 `Ctrl-C`，而是直接沿用此前的终止信号路径；Codex 才继续保留单次 `Ctrl-C` + 5 秒兜底的 graceful-stop 语义。
 - 若 Claude 的 fresh-start 命令里已经显式给出 `--session-id=<id>`、`--resume=<id>`、`--continue=<id>` 或等价的空格分隔写法，宿主与 runtime supervisor 都要把这条显式 session id 当作后续文件确认的候选值，而不是继续沿用自动生成的随机 UUID。只有显式 flag 不带 session id 时，才保留“等待 stop-time hint 再确认”的语义。
 - 对 `Claude Code` 的 fresh-start，只要自定义命令已经显式包含 `--session-id` / `--resume` / `--continue`，宿主就不再补写候选 session 参数；这里既覆盖 `--flag value`，也覆盖 `--flag=value`。

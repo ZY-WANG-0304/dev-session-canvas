@@ -486,6 +486,8 @@ export interface CanvasSidebarState {
   fileFilters: CanvasFileFilterState;
 }
 
+type CreateNodeBlockReason = 'workspace-untrusted';
+
 export interface CanvasSidebarNodeListSnapshot {
   nodes: CanvasNodeSummary[];
   groups: CanvasGroupSummary[];
@@ -1011,9 +1013,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,
-      creatableKinds: vscode.workspace.isTrusted ? ['agent', 'terminal', 'note'] : ['note'],
+      creatableKinds: ['agent', 'terminal', 'note'],
       fileFilters: cloneJsonValue(this.fileFilterState)
     };
+  }
+
+  public getCreateNodeBlockedReason(kind: CanvasCreatableNodeKind): string | undefined {
+    const blockReason = this.getCreateNodeBlockReasonCode(kind);
+    return blockReason ? describeCreateNodeBlockReason(kind, blockReason) : undefined;
+  }
+
+  public async showCreateNodeBlockedReasonModal(kind: CanvasCreatableNodeKind): Promise<boolean> {
+    const message = this.getCreateNodeBlockedReason(kind);
+    if (!message) {
+      return false;
+    }
+
+    await vscode.window.showWarningMessage(message, { modal: true });
+    return true;
   }
 
   public isFilesFeatureEnabled(): boolean {
@@ -7631,6 +7648,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: parsedMessage.payload.targetGroupId
         });
         return;
+      case 'webview/showCreateNodeBlockedReason':
+        void this.showCreateNodeBlockedReasonModal(parsedMessage.payload.kind);
+        return;
       case 'webview/createEmptyGroup':
         this.state = createEmptyCanvasGroup(
           this.state,
@@ -11799,6 +11819,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.persistState();
     this.postState('host/stateUpdated');
     return createdNode;
+  }
+
+  private getCreateNodeBlockReasonCode(kind: CanvasCreatableNodeKind): CreateNodeBlockReason | undefined {
+    if (isExecutionNodeKind(kind) && !vscode.workspace.isTrusted) {
+      return 'workspace-untrusted';
+    }
+
+    return undefined;
   }
 
   private recordHostMessage(
@@ -17762,6 +17790,18 @@ function defaultAgentCommand(provider: AgentProviderKind): string {
 
 function agentProviderDisplayLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+function describeCreateNodeBlockReason(
+  kind: CanvasCreatableNodeKind,
+  blockReason: CreateNodeBlockReason
+): string {
+  if (blockReason === 'workspace-untrusted') {
+    const kindLabel = kind === 'agent' ? 'Agent' : kind === 'terminal' ? 'Terminal' : 'Note';
+    return `当前 workspace 未受信任，暂时不能创建 ${kindLabel} 节点。请先信任当前工作区，再创建执行型节点。`;
+  }
+
+  return '当前无法创建该节点。';
 }
 
 function normalizeExecutionExitSignal(signal: string | undefined): string | undefined {

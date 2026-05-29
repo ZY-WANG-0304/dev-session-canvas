@@ -555,6 +555,12 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/showCreateNodeBlockedReason';
+      payload: {
+        kind: CanvasCreatableNodeKind;
+      };
+    }
+  | {
       type: 'webview/createEmptyGroup';
       payload: {
         position: CanvasNodePosition;
@@ -2017,6 +2023,20 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         agentLaunchPreset: isAgentLaunchPresetKind(payload.agentLaunchPreset) ? payload.agentLaunchPreset : undefined,
         agentCustomLaunchCommand:
           typeof payload.agentCustomLaunchCommand === 'string' ? payload.agentCustomLaunchCommand : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/showCreateNodeBlockedReason') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || !isCanvasCreatableNodeKind(payload.kind)) {
+      return null;
+    }
+
+    return {
+      type: 'webview/showCreateNodeBlockedReason',
+      payload: {
+        kind: payload.kind
       }
     };
   }
