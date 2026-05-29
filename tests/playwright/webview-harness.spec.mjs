@@ -7927,6 +7927,57 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
   });
 });
 
+test('right-click create menu still shows execution entries in untrusted mode and asks host for reason', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState(), createRuntimeContext({ workspaceTrusted: false }));
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1100,
+      y: 560
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-kind="terminal"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
+
+  await menu.locator('[data-context-menu-kind="terminal"]').click();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => window.__devSessionCanvasHarness.getPostedMessages());
+    })
+    .toContainEqual({
+      type: 'webview/showCreateNodeBlockedReason',
+      payload: {
+        kind: 'terminal'
+      }
+    });
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .some((entry) => entry.type === 'webview/createDemoNode')
+      );
+    })
+    .toBe(false);
+});
+
 test('manually created nodes recenter without zooming when they already fully fit in view', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
