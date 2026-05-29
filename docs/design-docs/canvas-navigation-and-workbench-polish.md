@@ -1,7 +1,7 @@
 ---
 title: 画布导航与工作台原生收口设计
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -16,7 +16,8 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-navigation-and-native-polish.md
   - docs/exec-plans/completed/canvas-dynamic-overview-zoom.md
-updated_at: 2026-05-29
+  - docs/exec-plans/active/create-node-entry-availability-and-block-reasons.md
+updated_at: 2026-05-30
 ---
 
 # 画布导航与工作台原生收口设计
@@ -218,6 +219,7 @@ updated_at: 2026-05-29
 ## 9. 验证结果
 
 - 2026-04-13 运行 `npm run typecheck`，通过。
+- 2026-05-29 已为“untrusted 下右键菜单仍显示 execution entries，并在点击时解释原因”补齐 Playwright / restricted smoke 用例与实现；但当前只拿到了 `npm run typecheck` 通过证据，新增 UI 回归仍受本机 Playwright Chromium `bootstrap_check_in ... Permission denied (1100)` 与 restricted smoke 宿主 `SIGABRT` 阻塞，尚未拿到完整跑通记录。因此本文当前验证状态回调为 `验证中`，待在可用环境中补齐自动化绿灯后再恢复为 `已验证`。
 - 2026-04-13 运行 `npm run test:webview`，23 个 Playwright 用例全部通过；其中新增覆盖 `body` 级 theme vars、同类主题切换、稀疏 `terminal.*` token 与当前 surface 背景 fallback，确认 `Agent` / `Terminal` 内嵌 `xterm` 不再只在少数主题下正确跟随。
 - 2026-04-13 追加运行 `node scripts/test/run-playwright-webview.mjs --update-snapshots`，23 个 Playwright 用例全部通过；刷新主画布截图与 dark / light 两张 minimap 专用截图基线，确认“加深框外遮罩 + 适度压低 minimap 节点色块对抗性”的方案在浅色和深色 workbench token 下都能拉开视口内外区分，同时 `xterm` 主题跟随改动后的整体画布视觉基线已同步收口。
 - 2026-04-13 运行 `npm run test:smoke`，通过；覆盖 trusted / restricted、real reopen、fake systemd-user / fallback 与 remote-ssh real reopen，确认默认 `Dev Session Canvas: 打开画布` 走 `panel` route。
