@@ -23,6 +23,11 @@
 - [x] (2026-05-29 01:10 +0800) 实现 Agent cwdLabel 展示和侧栏 Agent 第二行 `cwdLabel · provider · 状态`。
 - [x] (2026-05-29 01:35 +0800) 补充自动化验证，覆盖 cwdLabel 纯函数、协议 cwd 字段、manifest Explorer 菜单、Webview Agent/Terminal 展示，以及 VSCode smoke 中 Explorer 目录/普通文件创建和普通创建默认 root。
 - [x] (2026-05-29 01:56 +0800) 运行定向测试、类型检查、diff 检查和 trusted smoke，记录证据；未发现需要登记的新增技术债。
+- [x] (2026-05-29 09:29 +0800) 根据用户实测确认：VSCode `Add Folder to Workspace...` 从单根扩容到多根时会提示 reload，扩展宿主重启后不会触发运行期 `onDidChangeWorkspaceFolders` 分支，上一版只保留内存 Canvas 的实现覆盖不足。
+- [x] (2026-05-29 10:15 +0800) 补充 startup / reload 路径：Untitled 多根 workspace 的当前持久化槽为空时，从原单根 root 的最新持久化快照 fork `canvas-state.json` 到当前槽；fork 后清理旧 `workspaceState` Canvas 兜底字段，避免兜底状态覆盖新快照。
+- [x] (2026-05-29 10:15 +0800) 更新产品规格、设计文档与本计划，区分运行期纯新增 root 和 VSCode reload 两条扩容路径。
+- [x] (2026-05-29 10:15 +0800) 增加存储选择单元测试，验证普通 unrelated hash 不被 freshness 恢复，同时 Untitled 多根显式扩容路径可按第一个 root 名称选择单根快照，且空当前快照可覆盖、有节点当前快照不可覆盖。
+- [x] (2026-05-29 10:15 +0800) 运行 `npm run test:extension-storage-paths`、`npm run typecheck`、`git diff --check`，三项均通过；本轮未补跑 VSCode smoke，因为核心新增逻辑已抽成无 VSCode 依赖的 storage helper，并用单元测试覆盖选择边界。
 
 ## 意外与发现
 
@@ -46,6 +51,12 @@
 
 - 观察：`webview/resetDemoState` 是 fire-and-forget，不能保证后续断言开始前已有执行 session 完全终止；带执行节点的 smoke 测试若紧接着断言空状态，可能看到 `state.nodes` 已清空但 `runningExecutionCount` 仍未归零。
   证据：`CanvasPanelManager.handleActiveWebviewMessage(...)` 中 `webview/resetDemoState` 分支使用 `void this.resetState().catch(...)`；本轮 smoke 改用 `COMMAND_IDS.testResetState`，并等待 `state.nodes.length === 0 && sidebar.runningExecutionCount === 0`。
+
+- 观察：VSCode 官方 API 注释明确说明，当第一个 workspace folder 被添加、移除或改变时，`onDidChangeWorkspaceFolders` 不会触发，因为当前扩展会被终止并重启；用户实测 `Add Folder to Workspace...` 正落在这个路径上，出现 `Cannot reconnect. Please reload the window.` 后，新的 Untitled 多根 workspace 获得新的 `context.storageUri`。
+  证据：`docs/references/vscode-official-extension-docs/api/references/generated/vscode.d.ts` 中 `workspaceFile` 说明 Untitled workspace 使用 `untitled:` scheme，`onDidChangeWorkspaceFolders` 注释说明第一 folder 变化会导致扩展重启；用户截图显示窗口标题为 `Untitled (Workspace)` 且扩展宿主提示 reload。
+
+- 观察：启动期 fork 如果只写 `canvas-state.json`，仍需要防止旧 `workspaceState` 作为兜底参与后续加载；虽然正常 VSCode 新 storage slot 的 `workspaceState` 应为空，但测试和历史异常状态可能留下节点。
+  证据：`CanvasPanelManager.loadState()` 的读取顺序是 `snapshot?.state ?? workspaceState`；本轮实现只在当前 `workspaceState` 没有节点时允许 fork，并在 fork 成功后清理 `canvasState`、`canvasLastSurface` 和 `canvasTemplateInitialized` 兜底键。
 
 ## 决策记录
 
@@ -74,9 +85,23 @@
   理由：Webview reset 消息本身异步且不回传完成信号，容易与 Terminal/Agent 启动清理竞争；宿主 test reset 更适合 smoke 中建立确定性前置状态。
   日期/作者：2026-05-29 / Codex。
 
+- 决策：单根扩容到 Untitled 多根 workspace 的 reload 路径只在“当前多根槽没有 `canvas-state.json`”时，从当前 workspace 第一个 root 名称匹配到的单根 slot fork `canvas-state.json`，不复制 `agent-runtime`、`runtime-supervisor` 或 note draft 目录。
+  理由：reload 后内存 Canvas 已丢失，只能用原单根最近已写入快照近似“当前 Canvas”；只复制主快照可避免把旧单根 live runtime 或草稿存储误绑定到新的多根 scope，后续当前槽会自然写入自己的状态。
+  日期/作者：2026-05-29 / Codex。
+
+- 决策：Untitled 多根 fork 源选择是一个显式、受限的启动恢复路径，不放宽既有 sibling slot recovery 的 hash / freshness 规则。
+  理由：上一版已用测试锁定 unrelated workspaceStorage hash 不能仅按新鲜度恢复；新路径必须要求 `workspaceFile.scheme === 'untitled'`、workspace folders 多于一个、当前 slot 为空，并按 root 名称 / VSCode `meta.json` 匹配候选，避免误导入任意旧 workspace。
+  日期/作者：2026-05-29 / Codex。
+
+- 决策：如果当前 Untitled 多根 slot 的 `workspaceState.canvasState` 已经有节点，即使 `canvas-state.json` 缺失或为空，也不执行启动期 fork。
+  理由：有节点的 `workspaceState` 代表当前多根 scope 已有可加载状态，继续 fork 会覆盖用户当前多根画布；空或缺失的 `workspaceState` 才符合“没有有意义 Canvas”的补救条件。
+  日期/作者：2026-05-29 / Codex。
+
 ## 结果与复盘
 
-本轮实现已完成并通过验证：命令 ID 与 manifest 增加 Explorer 资源菜单，`src/extension.ts` 可把目录或普通文件父目录解析为 cwd；普通创建入口在多根 workspace 下会确认 root；共享协议带 `cwd`；`CanvasPanelManager` 会把 cwdOverride 写入 Agent / Terminal metadata，并在启动、CLI resolver、shell env patch 与 diagnostic 中优先使用节点 cwd；Webview Agent subtitle 与侧栏 Agent 第二行已接入 cwdLabel。测试覆盖已补齐到 manifest、协议、cwdLabel、Webview 展示和 trusted VSCode smoke 的 Explorer 创建主路径。
+上一轮实现已完成并通过验证：命令 ID 与 manifest 增加 Explorer 资源菜单，`src/extension.ts` 可把目录或普通文件父目录解析为 cwd；普通创建入口在多根 workspace 下会确认 root；共享协议带 `cwd`；`CanvasPanelManager` 会把 cwdOverride 写入 Agent / Terminal metadata，并在启动、CLI resolver、shell env patch 与 diagnostic 中优先使用节点 cwd；Webview Agent subtitle 与侧栏 Agent 第二行已接入 cwdLabel。测试覆盖已补齐到 manifest、协议、cwdLabel、Webview 展示和 trusted VSCode smoke 的 Explorer 创建主路径。
+
+用户实测暴露一个新增缺口：`Add Folder to Workspace...` 在单根变多根时通常要求 reload，扩展重启后没有内存 Canvas 可保留，也不会执行运行期 workspace folder event 分支。本轮已补充启动恢复：在空的 Untitled 多根 storage scope 中，从当前第一个 root 名称匹配的原单根 slot fork `canvas-state.json`，只复制主快照，不复制 runtime 或草稿目录；如果当前多根 slot 或 `workspaceState` 已经有节点则跳过，避免覆盖现有多根画布。
 
 复盘上，主要风险来自测试同步而不是产品路径：`webview/resetDemoState` 没有完成回执，容易与仍在启动或停止的执行 session 竞争。本轮已把相关 smoke 前置清理改为宿主 test reset 并等待 `runningExecutionCount === 0`，后续新增会启动执行节点的 smoke 测试也应沿用这个模式。
 
@@ -151,7 +176,7 @@
 
 本计划的代码修改应保持可重复执行。新增命令 ID、协议字段和 helper 应该是向后兼容的：旧快照中没有 cwd 的节点仍按旧默认 cwd 回退；新节点一旦写入 cwd，就以后续 metadata 为准。Explorer 命令失败时只显示 warning，不创建半成品节点。普通创建 root Quick Pick 取消时不改变状态。
 
-不要删除或迁移用户的现有 `canvas-state.json`。单根扩容到多根 workspace 的持久化行为在本轮只按既有持久化模型工作；如果实现过程中发现需要更复杂的 storage scope 迁移，应暂停编码，在 `意外与发现` 和 `决策记录` 中写清楚，并同步正式设计文档后再继续。
+不要删除或迁移用户的现有 `canvas-state.json`。单根扩容到多根 workspace 的 reload 补救只能在当前 Untitled 多根槽还没有主快照时复制一份单根 `canvas-state.json` 到当前槽；原单根快照必须保留，新增 root 的历史 Canvas 不导入，旧多根快照不自动 merge。
 
 当前工作树中存在与本任务无关的未跟踪 `image*.png` 文件；不要暂存、修改或删除它们。
 
@@ -195,6 +220,21 @@
 
 本轮 smoke 曾暴露一个测试同步问题：`webview/resetDemoState` 异步清理时，执行 session 的 running count 可能晚于节点列表归零；最终实现改用宿主 test reset 并等待 `runningExecutionCount === 0` 后，trusted smoke 通过。
 
+针对 Untitled 多根 reload 补救已补充并通过定向验证：
+
+    npm run test:extension-storage-paths
+    extensionStoragePaths tests passed
+    exit code 0
+
+    npm run typecheck
+    > tsc --noEmit
+    exit code 0
+
+    git diff --check
+    exit code 0
+
+这些测试覆盖：普通 unrelated workspaceStorage hash 不通过 freshness 恢复；Untitled 多根显式 fork 只选择匹配第一个 root 名称的单根快照；当前多根空快照可被 fork 覆盖；当前多根已有节点快照不可被覆盖。
+
 ## 接口与依赖
 
 在 `src/common/extensionIdentity.ts` 中应存在以下命令 ID：
@@ -226,3 +266,5 @@
 本次更新说明：2026-05-29 新建实现阶段 ExecPlan，把已提交的产品/设计结论转化为可执行实现步骤，并记录多根 workspace 普通创建入口 root 确认的实现路径。
 
 本次更新说明：2026-05-29 01:57 +0800 完成验证和复盘记录；Explorer 创建、多根普通创建 cwd、Agent/Sidebar cwdLabel 展示和 trusted smoke 均已覆盖。
+
+本次更新说明：2026-05-29 10:15 +0800 根据用户实测补充 Untitled 多根 reload 恢复路径，实现按第一个 root 名称 fork 单根 `canvas-state.json`，同步产品/设计文档，并记录定向验证证据。

@@ -65,8 +65,10 @@
   - 多根 workspace 复用现有 workspace 级持久化设计：一组 workspace folders 对应一张 Canvas 状态，不按 root 拆分持久化。
   - 当用户从单根 workspace `A` 通过拖入或 Add Folder 增加 `B`，把当前窗口视为 workspace 扩容；当前 Canvas 原样进入新的 `A + B` 多根 workspace 持久化范围。
   - 原 `A` 单根 workspace 的 Canvas 快照保留，不删除、不迁移；后续单独打开 `A` 与打开 `A + B` 会形成两份可自然分叉的状态。
+  - 如果 VSCode 在单根扩容成 Untitled 多根 workspace 时要求 reload，扩展重启后应在当前多根持久化范围还没有有意义 Canvas 时，从第一个 root `A` 的单根 `canvas-state.json` fork 主快照到当前多根范围；这是对“当前 Canvas 原样进入 A+B”的启动期补救。
+  - 启动期 fork 只复制主 Canvas 快照，不复制旧单根 `agent-runtime`、`runtime-supervisor` 或 Note 草稿目录；运行中的会话因 reload 已结束，后续恢复按当前多根范围重新持久化。fork 后不再沿用旧单根 `workspaceState` 兜底，避免旧兜底状态覆盖新多根快照。
   - 不自动导入 `B` 单独打开时可能存在的 Canvas，也不自动 merge 旧的 `A + B` 历史快照。
-  - 如果 `A + B` 持久化范围已有旧快照，当前窗口状态优先；实现应先保留可恢复备份或诊断记录，再把当前 Canvas 写入新的多根范围，避免不可追溯的静默覆盖。
+  - 如果 `A + B` 持久化范围已有有意义旧快照，优先使用该快照；如果只有空快照且能识别出 `A` 的单根快照，可以保留可恢复备份或诊断记录后执行一次启动期 fork，避免上一版空状态把扩容前 Canvas 永久遮蔽。
 - 已有节点的 cwd 不因增加 root 被改写；运行中的 Agent / Terminal 不因 workspace 扩容自动重启。`cwdLabel` 在多根下重新按 workspace folder 前缀展示。
 
 ## 5. 不在范围内
@@ -143,8 +145,9 @@
 - 在单根 workspace 下通过普通“创建节点”入口创建 Terminal / Agent 时，不出现 root 选择打断，节点 cwd 继续使用唯一 workspace root。
 - Explorer 资源右键创建节点时不重复要求选择 root；目录资源和普通文件父目录仍是 cwd 来源。
 - 从单根 workspace `A` 增加 root `B` 后，当前 Canvas 原样保留并写入 `A + B` 的持久化范围；重新单独打开 `A` 时仍能看到 `A` 自己的原状态。
-- 单根扩容时不会自动导入 `B` 的历史 Canvas，也不会把已有 `A + B` 快照自动 merge 到当前窗口。
-- 单根扩容后，已有 Agent 节点在多根下按 `workspaceFolder/cwd` 规则显示 `cwdLabel`；已有 Terminal / Agent 的运行状态和 cwd 不因扩容被重启或改写。
+- 如果 VSCode 因 `Add Folder to Workspace...` 要求 reload 并打开 Untitled 多根 workspace，扩展重启后在当前多根范围没有有意义 Canvas 时，会从第一个 root `A` 的单根快照 fork 节点、连线和布局；用户不会看到空画布替代原单根画布。
+- 单根扩容时不会自动导入 `B` 的历史 Canvas，也不会把已有有意义 `A + B` 快照自动 merge 到当前窗口。
+- 单根扩容后，已有 Agent 节点在多根下按 `workspaceFolder/cwd` 规则显示 `cwdLabel`；已有 Terminal / Agent 的 cwd 不因扩容被改写；reload 路径不承诺保留扩容前 live runtime 进程。
 
 ## 8. 开放问题
 

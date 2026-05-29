@@ -24,7 +24,8 @@ try {
   const require = createRequire(import.meta.url);
   const {
     resolvePreferredExtensionStoragePath,
-    selectPreferredExtensionStorageRecoverySource
+    selectPreferredExtensionStorageRecoverySource,
+    selectUntitledMultiRootWorkspaceStorageForkSource
   } = require(outfile);
 
   const stablePath =
@@ -189,6 +190,164 @@ try {
   assert.equal(untitledExpandedResult.selectionBasis, 'current-slot');
   assert.equal(untitledExpandedResult.recoveryReason, undefined);
 
+  const untitledWorkspaceStorageRoot = '/home/users/example/.config/Code/User/workspaceStorage';
+  const untitledMultiRootCurrentPath = storagePath.join(
+    untitledWorkspaceStorageRoot,
+    'untitled-multiroot-hash',
+    'devsessioncanvas.dev-session-canvas'
+  );
+  const rootASingleRootPath = storagePath.join(
+    untitledWorkspaceStorageRoot,
+    'root-a-single-hash',
+    'devsessioncanvas.dev-session-canvas'
+  );
+  const rootAOlderSingleRootPath = storagePath.join(
+    untitledWorkspaceStorageRoot,
+    'root-a-older-single-hash',
+    'devsessioncanvas.dev-session-canvas'
+  );
+  const rootBSingleRootPath = storagePath.join(
+    untitledWorkspaceStorageRoot,
+    'root-b-single-hash',
+    'devsessioncanvas.dev-session-canvas'
+  );
+  const untitledForkEntries = [
+    'untitled-multiroot-hash',
+    'root-a-single-hash',
+    'root-a-older-single-hash',
+    'root-b-single-hash'
+  ];
+  const untitledForkFixture = buildSnapshotFixture([
+    [
+      storagePath.join(untitledWorkspaceStorageRoot, 'untitled-multiroot-hash', 'meta.json'),
+      createWorkspaceMetaText({
+        id: 'untitled-multiroot-hash',
+        name: 'Untitled (Workspace)'
+      })
+    ],
+    [
+      storagePath.join(untitledWorkspaceStorageRoot, 'root-a-single-hash', 'meta.json'),
+      createWorkspaceMetaText({
+        id: 'root-a-single-hash',
+        name: 'root-a'
+      })
+    ],
+    [storagePath.join(rootASingleRootPath, 'canvas-state.json'), createSnapshotText({
+      title: 'ROOT-A-NEW',
+      writtenAt: '2026-05-29T08:00:00.000Z',
+      updatedAt: '2026-05-29T07:59:00.000Z'
+    })],
+    [
+      storagePath.join(untitledWorkspaceStorageRoot, 'root-a-older-single-hash', 'meta.json'),
+      createWorkspaceMetaText({
+        id: 'root-a-older-single-hash',
+        name: 'root-a'
+      })
+    ],
+    [storagePath.join(rootAOlderSingleRootPath, 'canvas-state.json'), createSnapshotText({
+      title: 'ROOT-A-OLD',
+      writtenAt: '2026-05-28T08:00:00.000Z',
+      updatedAt: '2026-05-28T07:59:00.000Z'
+    })],
+    [
+      storagePath.join(untitledWorkspaceStorageRoot, 'root-b-single-hash', 'meta.json'),
+      createWorkspaceMetaText({
+        id: 'root-b-single-hash',
+        name: 'root-b'
+      })
+    ],
+    [storagePath.join(rootBSingleRootPath, 'canvas-state.json'), createSnapshotText({
+      title: 'ROOT-B-NEWER-BUT-NOT-FIRST-ROOT',
+      writtenAt: '2026-05-29T09:00:00.000Z',
+      updatedAt: '2026-05-29T08:59:00.000Z'
+    })]
+  ]);
+  const untitledForkResult = selectUntitledMultiRootWorkspaceStorageForkSource(untitledMultiRootCurrentPath, {
+    ...untitledForkFixture,
+    listDirectoryEntries: () => untitledForkEntries,
+    workspaceFolders: [{ name: 'root-a' }, { name: 'root-b' }]
+  });
+  assert.ok(untitledForkResult, 'Expected Untitled multi-root fork to find the first-root source snapshot.');
+  assert.equal(untitledForkResult.sourcePath, rootASingleRootPath);
+  assert.equal(untitledForkResult.selectionBasis, 'first-root-name-match');
+  assert.equal(untitledForkResult.sourceCandidate.workspaceName, 'root-a');
+  assert.equal(
+    untitledForkResult.sourceCandidate.snapshot.stateHash,
+    hashStateTitleWithUpdatedAt('ROOT-A-NEW', '2026-05-29T07:59:00.000Z')
+  );
+  assert.equal(untitledForkResult.sourceCandidate.snapshot.nodeCount, 1);
+  assert.equal(untitledForkResult.currentCandidate.snapshot.exists, false);
+
+  const currentEmptySnapshotForkFixture = buildSnapshotFixture([
+    [
+      storagePath.join(untitledWorkspaceStorageRoot, 'untitled-multiroot-hash', 'meta.json'),
+      createWorkspaceMetaText({
+        id: 'untitled-multiroot-hash',
+        name: 'Untitled (Workspace)'
+      })
+    ],
+    [storagePath.join(untitledMultiRootCurrentPath, 'canvas-state.json'), createEmptySnapshotText({
+      writtenAt: '2026-05-29T09:30:00.000Z',
+      updatedAt: '2026-05-29T09:29:00.000Z'
+    })],
+    [
+      storagePath.join(untitledWorkspaceStorageRoot, 'root-a-single-hash', 'meta.json'),
+      createWorkspaceMetaText({
+        id: 'root-a-single-hash',
+        name: 'root-a'
+      })
+    ],
+    [storagePath.join(rootASingleRootPath, 'canvas-state.json'), createSnapshotText({
+      title: 'ROOT-A-FORK-OVER-EMPTY',
+      writtenAt: '2026-05-29T08:00:00.000Z',
+      updatedAt: '2026-05-29T07:59:00.000Z'
+    })]
+  ]);
+  const currentEmptySnapshotForkResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...currentEmptySnapshotForkFixture,
+      listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-single-hash'],
+      workspaceFolders: [{ name: 'root-a' }, { name: 'root-b' }]
+    }
+  );
+  assert.ok(currentEmptySnapshotForkResult, 'Expected empty current snapshot to still allow startup fork.');
+  assert.equal(currentEmptySnapshotForkResult.sourcePath, rootASingleRootPath);
+  assert.equal(currentEmptySnapshotForkResult.currentCandidate.snapshot.nodeCount, 0);
+
+  const currentNonEmptySnapshotForkResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...buildSnapshotFixture([
+        [storagePath.join(untitledWorkspaceStorageRoot, 'untitled-multiroot-hash', 'meta.json'), createWorkspaceMetaText({
+          id: 'untitled-multiroot-hash',
+          name: 'Untitled (Workspace)'
+        })],
+        [storagePath.join(untitledMultiRootCurrentPath, 'canvas-state.json'), createSnapshotText({
+          title: 'CURRENT-MULTIROOT-HAS-NODES',
+          writtenAt: '2026-05-29T09:30:00.000Z',
+          updatedAt: '2026-05-29T09:29:00.000Z'
+        })],
+        [storagePath.join(untitledWorkspaceStorageRoot, 'root-a-single-hash', 'meta.json'), createWorkspaceMetaText({
+          id: 'root-a-single-hash',
+          name: 'root-a'
+        })],
+        [storagePath.join(rootASingleRootPath, 'canvas-state.json'), createSnapshotText({
+          title: 'ROOT-A-SHOULD-NOT-OVERRIDE-CURRENT',
+          writtenAt: '2026-05-29T08:00:00.000Z',
+          updatedAt: '2026-05-29T07:59:00.000Z'
+        })]
+      ]),
+      listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-single-hash'],
+      workspaceFolders: [{ name: 'root-a' }, { name: 'root-b' }]
+    }
+  );
+  assert.equal(
+    currentNonEmptySnapshotForkResult,
+    undefined,
+    'Current Untitled multi-root snapshots with nodes must never be overwritten by startup fork.'
+  );
+
   const unrelatedPath = '/home/users/example/.config/dev-session-canvas';
   const unrelatedResult = selectPreferredExtensionStorageRecoverySource(unrelatedPath, {
     pathExists: () => true
@@ -258,10 +417,30 @@ function createSnapshotText({ title, writtenAt, updatedAt }) {
   })}\n`;
 }
 
-function hashStateTitle(title) {
+function createEmptySnapshotText({ writtenAt, updatedAt }) {
   const state = {
     version: 1,
-    updatedAt: '2026-04-16T08:59:00.000Z',
+    updatedAt,
+    nodes: []
+  };
+
+  return `${JSON.stringify({
+    version: 1,
+    writtenAt,
+    stateHash: createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 12),
+    state,
+    activeSurface: 'panel'
+  })}\n`;
+}
+
+function hashStateTitle(title) {
+  return hashStateTitleWithUpdatedAt(title, '2026-04-16T08:59:00.000Z');
+}
+
+function hashStateTitleWithUpdatedAt(title, updatedAt) {
+  const state = {
+    version: 1,
+    updatedAt,
     nodes: [
       {
         id: 'note-1',
@@ -280,4 +459,8 @@ function hashStateTitle(title) {
     ]
   };
   return createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 12);
+}
+
+function createWorkspaceMetaText(meta) {
+  return `${JSON.stringify(meta)}\n`;
 }

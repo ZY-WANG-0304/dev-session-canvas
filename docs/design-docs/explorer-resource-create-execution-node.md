@@ -231,8 +231,11 @@ Explorer 资源右键入口不使用该 root 选择器：资源 URI 已经明确
 4. 不自动读取或合并 `B` 单独打开时可能存在的 Canvas，也不把 `B` 的历史节点导入当前画布。新增 root 只有在用户从该 root 的 Explorer 资源创建节点后，才开始贡献新的 cwd 绑定节点。
 5. 如果 `A + B` 的目标持久化 scope 已经存在旧快照，当前窗口状态优先；实现不得在扩容瞬间用旧 `A + B` 快照替换用户当前画布，也不得自动 merge。覆盖目标旧快照前应保留可恢复备份或至少记录明确诊断事件，避免不可追溯的静默覆盖。
 6. 运行期收到 `onDidChangeWorkspaceFolders` 且事件是纯新增 root 时，宿主必须把当前内存 Canvas 视为权威源：刷新 storage recovery 选择和 cwd-sensitive cache 后，立即把当前内存态写入当前 storage scope，并向 Webview 重新推送当前状态。这个路径不得调用 `loadReconciledState()` 从新 scope 读取历史快照，否则未保存的 `Untitled (Workspace)` 多根容器可能在扩容瞬间用目标 scope 的空状态或旧状态覆盖当前画布。
-7. 已有 live-runtime 会话不因 workspace 扩容自动重启；仍以会话自己的 `runtimeStoragePath` 和节点 metadata cwd 继续运行。workspace folders 变化时需要失效 shell env patch、Agent CLI resolver 等 cwd / workspace 敏感缓存，后续新启动按节点 cwd 重新解析。
-8. `cwdLabel` 是投影值，不进入持久化。扩容前单根下显示为 `src` 的 cwd，扩容后如果仍落在 `A` 下，应按多根规则显示为 `A/src`；Terminal 标题副标题仍不额外显示 cwdLabel。
+7. VSCode 官方 API 说明：当第一个 workspace folder 被添加、移除或改变时，`onDidChangeWorkspaceFolders` 不会触发，因为扩展宿主会被终止并重启；Untitled workspace 的 `workspace.workspaceFile` 使用 `untitled:` scheme。用户通过 `Add Folder to Workspace...` 从单根扩容到多根时可能正走这条 reload 路径。
+8. reload 路径没有可用的内存 Canvas，因此启动时需要做受限补救：如果 `workspace.workspaceFile?.scheme === 'untitled'`、当前 workspace folders 多于一个，且当前 `context.storageUri` 下没有有意义 `canvas-state.json`、当前 `workspaceState` 也没有节点，宿主扫描同一个 VSCode `User/workspaceStorage` 下其他 slot 的 `meta.json` 和本扩展 `canvas-state.json`，优先选择与当前第一个 workspace root 名称匹配的单根 slot；若同名候选有多个，选择最新快照。选中后只把源 `canvas-state.json` 复制到当前 Untitled 多根 slot，作为 `A + B` 的初始 fork，并清理旧 `workspaceState` 的 Canvas 兜底字段。
+9. reload 补救不得导入新增 root `B` 的历史 Canvas，不得读取或 merge 已有有意义 `A + B` 快照，也不得复制旧单根 `agent-runtime`、`runtime-supervisor` 或 Note 草稿目录。若当前多根 slot 已有空快照，可先保留 `.bak` 或记录诊断后复制，避免旧版本已经写入的空快照遮蔽原单根画布；若当前多根 slot 已有节点，则视为有意义快照并跳过 fork。
+10. 已有 live-runtime 会话不因运行期 workspace 扩容自动重启；仍以会话自己的 `runtimeStoragePath` 和节点 metadata cwd 继续运行。reload 路径下扩容前的本地进程已经随扩展宿主边界结束，不承诺保留 live runtime，只恢复持久化 Canvas 快照。workspace folders 变化时需要失效 shell env patch、Agent CLI resolver 等 cwd / workspace 敏感缓存，后续新启动按节点 cwd 重新解析。
+11. `cwdLabel` 是投影值，不进入持久化。扩容前单根下显示为 `src` 的 cwd，扩容后如果仍落在 `A` 下，应按多根规则显示为 `A/src`；Terminal 标题副标题仍不额外显示 cwdLabel。
 
 这条规则只处理“增加 root”的扩容场景。移除 root、重排 root 或显式打开已有 `.code-workspace` 文件是否应恢复旧多根快照，属于后续多根 workspace 语义讨论，不在本轮结论中扩大。
 
@@ -255,6 +258,7 @@ Explorer 资源右键入口不使用该 root 选择器：资源 URI 已经明确
 - VSCode smoke：同样覆盖 Agent Explorer 命令，使用测试 fake provider，断言 `metadata.agent.cwd` 与 `execution/startRequested` / `execution/started` diagnostic cwd 都等于子目录。
 - VSCode smoke：对 workspace 内普通文件 URI 调用命令，断言新节点 cwd 等于父目录；对 workspace 外目录 / 文件、非普通文件资源调用命令，断言不会创建节点，并尽可能断言 warning 或 diagnostic reason。
 - VSCode smoke：在多根 workspace 下通过普通创建入口创建 Terminal / Agent，断言会出现 root 选择，确认第二个 root 后节点 metadata cwd 和执行 diagnostic cwd 均等于所选 root；取消选择时不创建节点。
+- 存储 helper 单元测试：构造一个 Untitled 多根当前 slot、一个匹配第一个 root 名称的单根 slot、一个匹配新增 root 名称的单根 slot，断言启动期 fork 选择第一个 root 的快照；同时保留 unrelated workspaceStorage hash 不通过普通 freshness 规则恢复的断言。
 - VSCode smoke：在单根 workspace 下通过普通创建入口创建 Terminal / Agent，断言不出现 root 选择，节点 cwd 继续使用唯一 workspace root。
 - Playwright Webview：构造带不同 cwd 的 Agent / Terminal 节点，断言 Agent subtitle 使用 `cwdLabel · 启动命令`，Terminal subtitle 不显示 cwdLabel 且仍只展示 shell path。
 - 侧栏节点列表 smoke / DOM 验证：构造带不同 cwd 的 Agent 节点，断言第二行使用 `cwdLabel · provider · 状态`；Terminal / Note 仍只显示状态。

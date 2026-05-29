@@ -2355,6 +2355,9 @@ function registerTestCommands(
     vscode.commands.registerCommand(TEST_COMMAND_IDS.simulateRuntimeReload, () =>
       panelManager.simulateRuntimeReloadForTest()
     ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.recoverUntitledMultiRootWorkspaceStorageFork, () =>
+      panelManager.recoverUntitledMultiRootWorkspaceStorageForkForTest()
+    ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.dispatchWebviewMessage,
       (message?: unknown, surface?: unknown) =>

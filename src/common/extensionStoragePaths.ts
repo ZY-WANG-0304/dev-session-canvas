@@ -25,6 +25,10 @@ interface PersistedCanvasSnapshotLike {
   activeSurface?: unknown;
 }
 
+interface WorkspaceStorageMetaLike {
+  name?: unknown;
+}
+
 export interface ExtensionStoragePathResolution {
   currentPath: string;
   resolvedPath: string;
@@ -33,6 +37,7 @@ export interface ExtensionStoragePathResolution {
 
 export interface ExtensionStorageSnapshotMetadata {
   exists: boolean;
+  nodeCount?: number;
   writtenAt?: string;
   stateUpdatedAt?: string;
   effectiveTimestamp?: string;
@@ -48,6 +53,31 @@ export interface ExtensionStorageSlotCandidate {
   isCurrent: boolean;
   hasRecoverableState: boolean;
   snapshot: ExtensionStorageSnapshotMetadata;
+}
+
+export interface UntitledMultiRootWorkspaceStorageForkRoot {
+  name: string;
+}
+
+export interface UntitledMultiRootWorkspaceStorageForkCandidate {
+  path: string;
+  slotName: string;
+  workspaceName?: string;
+  rootMatchIndex: number;
+  rootMatchName: string;
+  isCurrent: boolean;
+  hasRecoverableState: boolean;
+  snapshot: ExtensionStorageSnapshotMetadata;
+}
+
+export interface UntitledMultiRootWorkspaceStorageForkSelection {
+  currentPath: string;
+  sourcePath: string;
+  selectionBasis: 'first-root-name-match';
+  migrationRequired: boolean;
+  sourceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+  currentCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+  candidates: UntitledMultiRootWorkspaceStorageForkCandidate[];
 }
 
 export interface ExtensionStorageRecoverySourceSelection {
@@ -66,6 +96,10 @@ interface ExtensionStoragePathResolutionOptions {
   pathExists?: (candidatePath: string) => boolean;
   listDirectoryEntries?: (directoryPath: string) => readonly string[];
   readTextFile?: (filePath: string) => string;
+}
+
+export interface UntitledMultiRootWorkspaceStorageForkOptions extends ExtensionStoragePathResolutionOptions {
+  workspaceFolders: readonly UntitledMultiRootWorkspaceStorageForkRoot[];
 }
 
 type PathModuleLike = typeof path.posix | typeof path.win32;
@@ -145,6 +179,63 @@ export function selectPreferredExtensionStorageRecoverySource(
   };
 }
 
+export function selectUntitledMultiRootWorkspaceStorageForkSource(
+  currentPath: string,
+  options: UntitledMultiRootWorkspaceStorageForkOptions
+): UntitledMultiRootWorkspaceStorageForkSelection | undefined {
+  const pathModule = resolveExtensionStoragePathModule(currentPath);
+  const normalizedCurrentPath = normalizeExtensionStoragePath(currentPath, pathModule);
+  const workspaceFolders = options.workspaceFolders
+    .map((folder) => ({
+      name: normalizeWorkspaceRootName(folder.name)
+    }))
+    .filter((folder) => folder.name);
+  if (workspaceFolders.length < 2) {
+    return undefined;
+  }
+
+  const workspaceSlotDir = pathModule.dirname(normalizedCurrentPath);
+  const workspaceStorageDir = pathModule.dirname(workspaceSlotDir);
+  if (pathModule.basename(workspaceStorageDir) !== WORKSPACE_STORAGE_DIRNAME) {
+    return undefined;
+  }
+
+  const candidates = collectUntitledMultiRootWorkspaceStorageForkCandidates(
+    normalizedCurrentPath,
+    workspaceFolders,
+    options,
+    pathModule
+  );
+  const currentCandidate = candidates.find((candidate) => candidate.isCurrent);
+  if (!currentCandidate || (currentCandidate.snapshot.exists && currentCandidate.snapshot.nodeCount !== 0)) {
+    return undefined;
+  }
+
+  const sourceCandidate = candidates
+    .filter(
+      (candidate) =>
+        !candidate.isCurrent &&
+        candidate.snapshot.exists &&
+        candidate.snapshot.nodeCount !== undefined &&
+        candidate.snapshot.nodeCount > 0 &&
+        candidate.rootMatchIndex === 0
+    )
+    .sort(compareUntitledMultiRootForkCandidates)[0];
+  if (!sourceCandidate) {
+    return undefined;
+  }
+
+  return {
+    currentPath: normalizedCurrentPath,
+    sourcePath: sourceCandidate.path,
+    selectionBasis: 'first-root-name-match',
+    migrationRequired: sourceCandidate.path !== currentCandidate.path,
+    sourceCandidate,
+    currentCandidate,
+    candidates
+  };
+}
+
 export function collectExtensionStorageSlotCandidates(
   currentPath: string,
   options: ExtensionStoragePathResolutionOptions = {}
@@ -198,6 +289,139 @@ export function collectExtensionStorageSlotCandidates(
       });
     })
     .sort((left, right) => compareCandidatesByEnumerationOrder(left, right, currentWorkspaceSlot.slotIndex));
+}
+
+function collectUntitledMultiRootWorkspaceStorageForkCandidates(
+  currentPath: string,
+  workspaceFolders: readonly { name: string }[],
+  options: ExtensionStoragePathResolutionOptions,
+  pathModule: PathModuleLike
+): UntitledMultiRootWorkspaceStorageForkCandidate[] {
+  const normalizedCurrentPath = normalizeExtensionStoragePath(currentPath, pathModule);
+  const workspaceSlotDir = pathModule.dirname(normalizedCurrentPath);
+  const currentSlotName = pathModule.basename(workspaceSlotDir);
+  const workspaceStorageDir = pathModule.dirname(workspaceSlotDir);
+  const extensionStorageDirName = pathModule.basename(normalizedCurrentPath);
+  const pathExists = options.pathExists ?? fs.existsSync;
+  const listDirectoryEntries = options.listDirectoryEntries ?? listDirectoryNames;
+  const readTextFile = options.readTextFile ?? readTextFileSync;
+  const candidates: UntitledMultiRootWorkspaceStorageForkCandidate[] = [];
+
+  for (const entryName of safelyListDirectoryEntries(workspaceStorageDir, listDirectoryEntries)) {
+    const slotName = entryName.trim();
+    if (!slotName) {
+      continue;
+    }
+
+    const slotStoragePath = pathModule.join(workspaceStorageDir, slotName);
+    const candidatePath = pathModule.join(slotStoragePath, extensionStorageDirName);
+    const meta = readWorkspaceStorageMeta(slotStoragePath, {
+      pathModule,
+      pathExists,
+      readTextFile
+    });
+    const workspaceName = normalizeWorkspaceRootName(meta?.name);
+    const rootMatchIndex = workspaceName ? workspaceFolders.findIndex((folder) => folder.name === workspaceName) : -1;
+    candidates.push({
+      path: normalizeExtensionStoragePath(candidatePath, pathModule),
+      slotName,
+      workspaceName: workspaceName || undefined,
+      rootMatchIndex,
+      rootMatchName: rootMatchIndex >= 0 ? workspaceFolders[rootMatchIndex]?.name ?? '' : '',
+      isCurrent: slotName === currentSlotName,
+      hasRecoverableState: hasRecoverableState(candidatePath, pathModule, pathExists),
+      snapshot: readPersistedCanvasSnapshotMetadata(candidatePath, {
+        pathModule,
+        pathExists,
+        readTextFile
+      })
+    });
+  }
+
+  if (!candidates.some((candidate) => candidate.isCurrent)) {
+    candidates.push({
+      path: normalizedCurrentPath,
+      slotName: currentSlotName,
+      workspaceName: undefined,
+      rootMatchIndex: -1,
+      rootMatchName: '',
+      isCurrent: true,
+      hasRecoverableState: hasRecoverableState(normalizedCurrentPath, pathModule, pathExists),
+      snapshot: readPersistedCanvasSnapshotMetadata(normalizedCurrentPath, {
+        pathModule,
+        pathExists,
+        readTextFile
+      })
+    });
+  }
+
+  return candidates.sort(compareUntitledMultiRootForkCandidatesForDiagnostics);
+}
+
+function readWorkspaceStorageMeta(
+  slotStoragePath: string,
+  options: {
+    pathModule: PathModuleLike;
+    pathExists: (candidatePath: string) => boolean;
+    readTextFile: (filePath: string) => string;
+  }
+): { name?: string } | undefined {
+  const metaPath = options.pathModule.join(slotStoragePath, 'meta.json');
+  if (!options.pathExists(metaPath)) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(options.readTextFile(metaPath)) as WorkspaceStorageMetaLike;
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+
+    return {
+      name: normalizeWorkspaceRootName(parsed.name) || undefined
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeWorkspaceRootName(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function compareUntitledMultiRootForkCandidates(
+  left: UntitledMultiRootWorkspaceStorageForkCandidate,
+  right: UntitledMultiRootWorkspaceStorageForkCandidate
+): number {
+  const rootMatchDifference = left.rootMatchIndex - right.rootMatchIndex;
+  if (rootMatchDifference !== 0) {
+    return rootMatchDifference;
+  }
+
+  const rightTimestamp = right.snapshot.effectiveTimestampMs ?? Number.NEGATIVE_INFINITY;
+  const leftTimestamp = left.snapshot.effectiveTimestampMs ?? Number.NEGATIVE_INFINITY;
+  if (rightTimestamp !== leftTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+
+  return left.slotName.localeCompare(right.slotName);
+}
+
+function compareUntitledMultiRootForkCandidatesForDiagnostics(
+  left: UntitledMultiRootWorkspaceStorageForkCandidate,
+  right: UntitledMultiRootWorkspaceStorageForkCandidate
+): number {
+  if (left.isCurrent !== right.isCurrent) {
+    return left.isCurrent ? -1 : 1;
+  }
+
+  const leftRootMatchIndex = left.rootMatchIndex >= 0 ? left.rootMatchIndex : Number.MAX_SAFE_INTEGER;
+  const rightRootMatchIndex = right.rootMatchIndex >= 0 ? right.rootMatchIndex : Number.MAX_SAFE_INTEGER;
+  if (leftRootMatchIndex !== rightRootMatchIndex) {
+    return leftRootMatchIndex - rightRootMatchIndex;
+  }
+
+  return left.slotName.localeCompare(right.slotName);
 }
 
 function createStandaloneCurrentCandidate(
@@ -268,6 +492,10 @@ function readPersistedCanvasSnapshotMetadata(
     }
 
     const writtenAt = normalizeTimestamp(parsedSnapshot.writtenAt);
+    const stateNodeCount =
+      isRecord(parsedSnapshot.state) && Array.isArray(parsedSnapshot.state.nodes)
+        ? parsedSnapshot.state.nodes.length
+        : undefined;
     const stateUpdatedAt =
       isRecord(parsedSnapshot.state) && typeof parsedSnapshot.state.updatedAt === 'string'
         ? normalizeTimestamp(parsedSnapshot.state.updatedAt)
@@ -275,6 +503,7 @@ function readPersistedCanvasSnapshotMetadata(
     const effectiveTimestamp = writtenAt ?? stateUpdatedAt;
     return {
       exists: true,
+      nodeCount: stateNodeCount,
       writtenAt,
       stateUpdatedAt,
       effectiveTimestamp,

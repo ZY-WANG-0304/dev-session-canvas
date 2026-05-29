@@ -79,6 +79,7 @@ export const TEST_COMMAND_IDS = {
   reloadPersistedState: 'devSessionCanvas.__test.reloadPersistedState',
   flushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
   simulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
+  recoverUntitledMultiRootWorkspaceStorageFork: 'devSessionCanvas.__test.recoverUntitledMultiRootWorkspaceStorageFork',
   dispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   startExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
   setQuickPickSelections: 'devSessionCanvas.__test.setQuickPickSelections',
