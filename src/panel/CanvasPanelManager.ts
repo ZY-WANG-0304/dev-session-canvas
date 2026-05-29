@@ -37,6 +37,7 @@ import {
   VIEW_IDS
 } from '../common/extensionIdentity';
 import {
+  isBuiltinGettingStartedOnlyCanvasState,
   selectPreferredExtensionStorageRecoverySource,
   selectUntitledMultiRootWorkspaceStorageForkSource,
   type ExtensionStorageRecoverySourceSelection,
@@ -3400,13 +3401,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return undefined;
     }
 
-    const workspaceStateNodeCount = this.getWorkspaceStateCanvasNodeCount();
-    if (workspaceStateNodeCount !== undefined && workspaceStateNodeCount > 0) {
+    const workspaceStateSnapshot = this.getWorkspaceStateCanvasForkSnapshot();
+    if (workspaceStateSnapshot.meaningful) {
       this.recordDiagnosticEvent('storage/untitledMultiRootForkSkipped', {
         reason: 'current-workspace-state-has-nodes',
         currentPath: this.getExtensionStoragePath(),
         targetPath: this.getPersistedCanvasSnapshotPath(),
-        currentWorkspaceStateNodeCount: workspaceStateNodeCount,
+        currentWorkspaceStateNodeCount: workspaceStateSnapshot.nodeCount,
         forced: options.force === true,
         workspaceFileScheme: vscode.workspace.workspaceFile?.scheme,
         workspaceFolderCount: vscode.workspace.workspaceFolders?.length ?? 0
@@ -3449,18 +3450,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private getWorkspaceStateCanvasNodeCount(): number | undefined {
+  private getWorkspaceStateCanvasForkSnapshot(): {
+    nodeCount?: number;
+    meaningful: boolean;
+  } {
     const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
     if (!isRecord(workspaceState) || !Array.isArray(workspaceState.nodes)) {
-      return undefined;
+      return {
+        meaningful: false
+      };
     }
 
-    return workspaceState.nodes.length;
+    const nodeCount = workspaceState.nodes.length;
+    const builtinGettingStartedOnly = isBuiltinGettingStartedOnlyCanvasState(workspaceState);
+    return {
+      nodeCount,
+      meaningful: nodeCount > 0 && !builtinGettingStartedOnly
+    };
   }
 
-  private getWorkspaceStorageForkRoots(): { name: string }[] {
+  private getWorkspaceStorageForkRoots(): { name: string; path: string }[] {
     return (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
-      name: folder.name
+      name: folder.name,
+      path: folder.uri.fsPath
     }));
   }
 
@@ -3488,6 +3500,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         sourceWorkspaceName: selection.sourceCandidate.workspaceName,
         sourceRootMatchIndex: selection.sourceCandidate.rootMatchIndex,
         sourceRootMatchName: selection.sourceCandidate.rootMatchName,
+        sourceRootPathHintIndex: selection.sourceCandidate.rootPathHintIndex,
+        sourceRootPathHintName: selection.sourceCandidate.rootPathHintName,
+        sourceRootPathHintCount: selection.sourceCandidate.rootPathHintCount,
+        sourceRootPathHintMatchedRootIndexes: selection.sourceCandidate.rootPathHintMatchedRootIndexes,
         sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
         sourceNodeCount: selection.sourceCandidate.snapshot.nodeCount,
         sourceTimestamp: selection.sourceCandidate.snapshot.effectiveTimestamp
@@ -3513,6 +3529,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         selectionBasis: selection.selectionBasis,
         sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
         sourceNodeCount: selection.sourceCandidate.snapshot.nodeCount,
+        sourceRootPathHintIndex: selection.sourceCandidate.rootPathHintIndex,
+        sourceRootPathHintName: selection.sourceCandidate.rootPathHintName,
+        sourceRootPathHintCount: selection.sourceCandidate.rootPathHintCount,
+        sourceRootPathHintMatchedRootIndexes: selection.sourceCandidate.rootPathHintMatchedRootIndexes,
         message
       });
       return {

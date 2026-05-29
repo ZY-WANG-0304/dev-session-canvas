@@ -34,6 +34,9 @@
 - [x] (2026-05-29 18:44 +0800) 增加 `onStartupFinished` 后补跑同一启动实验：扩展在启动完成后 active，诊断出现 `storage/untitledMultiRootForkApplied`，Untitled 多根 slot 成功加载单根源节点；同时未自动 reveal Webview，`surfaceReady.panel` 仍为 false。
 - [x] (2026-05-29 18:51 +0800) 更新产品规格、Explorer 创建执行节点设计、Canvas surface placement 设计和 manifest 测试，正式记录 `onStartupFinished` 仅用于 provider 注册与 Untitled 多根 fork，不使用 `*`，不自动抢焦点。
 - [x] (2026-05-29 20:18 +0800) 针对“点击 Canvas 后仍卡住”的路径补跑验证：Untitled 多根 startup 后先等待 `onStartupFinished` 激活和 fork，再执行 VSCode contributed view 命令 `devSessionCanvas.canvasPanel.open`，Panel Webview 成功 attached / rendered / ready，并能看到 fork 后的节点。
+- [x] (2026-05-29 23:58 +0800) 根据用户最新实测确认：Canvas 已能打开，但 fork 没拿到第一目录的旧画布，而是应用内置使用说明模板。复查本机真实 `~/.vscode-server/data/User/workspaceStorage` 发现多个有画布快照的 slot 没有 `meta.json`，现有源选择只看 `meta.name === workspaceFolders[0].name`，因此会返回 `no-source`。
+- [x] (2026-05-30 00:08 +0800) 实现受限 fallback：`selectUntitledMultiRootWorkspaceStorageForkSource(...)` 在没有第一个 root 名称匹配时，会从候选快照的 Agent / Terminal `cwd`、`runtimeStoragePath`、`resumeStoragePath` 提取路径线索，选择唯一命中第一个 root 的非内置模板快照；同时让当前 Untitled 多根槽里的内置使用说明模板不阻止 fork。
+- [x] (2026-05-30 00:12 +0800) 补跑真实 VSCode 启动 smoke 的缺失 `meta.json` 场景：先写入第一 root 的 Agent cwd 快照，再删除所有相关 `meta.json`，以 Untitled 多根启动并打开 Panel Canvas；验证 fork event 使用 `first-root-path-hint`，打开前后节点标题均为 `Path Hint Fork Source`。
 
 ## 意外与发现
 
@@ -62,7 +65,7 @@
   证据：`docs/references/vscode-official-extension-docs/api/references/generated/vscode.d.ts` 中 `workspaceFile` 说明 Untitled workspace 使用 `untitled:` scheme，`onDidChangeWorkspaceFolders` 注释说明第一 folder 变化会导致扩展重启；用户截图显示窗口标题为 `Untitled (Workspace)` 且扩展宿主提示 reload。
 
 - 观察：启动期 fork 如果只写 `canvas-state.json`，仍需要防止旧 `workspaceState` 作为兜底参与后续加载；虽然正常 VSCode 新 storage slot 的 `workspaceState` 应为空，但测试和历史异常状态可能留下节点。
-  证据：`CanvasPanelManager.loadState()` 的读取顺序是 `snapshot?.state ?? workspaceState`；本轮实现只在当前 `workspaceState` 没有节点时允许 fork，并在 fork 成功后清理 `canvasState`、`canvasLastSurface` 和 `canvasTemplateInitialized` 兜底键。
+  证据：`CanvasPanelManager.loadState()` 的读取顺序是 `snapshot?.state ?? workspaceState`；本轮实现只在当前 `workspaceState` 没有有意义节点时允许 fork，并在 fork 成功后清理 `canvasState`、`canvasLastSurface` 和 `canvasTemplateInitialized` 兜底键。
 
 - 观察：真实 `Add Folder to Workspace...` 触发的是扩展宿主重启 / Untitled 多根 startup 路径，不等价于运行期 `vscode.workspace.updateWorkspaceFolders(...)`，也不等价于测试里先 `activateVisibleExtension()` 再执行恢复命令。
   证据：`.debug/add-folder-repro/run-add-folder-repro.mjs` 的运行期新增 root 能保留节点，但用户截图和 VSCode API 注释说明“第一个 workspace folder 被添加/移除/改变”会终止并重启扩展宿主；启动后如果扩展未激活，恢复逻辑不会执行。
@@ -72,6 +75,12 @@
 
 - 观察：在补充 `onStartupFinished` 后，Panel view 的打开 / 解析路径本身可以完成，不再停留在 loading。
   证据：`.debug/multiroot-auto-activation/run-open.mjs` 先用单根窗口写入源节点，再以两个 folder 启动 Untitled 多根窗口；测试执行 `devSessionCanvas.canvasPanel.open` 后，`devSessionCanvas.__test.waitForCanvasReady('panel', 30000)` 成功返回，诊断事件尾部包含 `surface/attached`、`surface/rendered` 和 `surface/ready`。该验证覆盖 VSCode contributed view 命令层级的“打开 Canvas”，但仍不是用鼠标操作原生 `Add Folder to Workspace...` 菜单的端到端 UI 录制。
+
+- 观察：真实 Remote SSH / 历史 storage slot 不能假设一定存在 VSCode `meta.json`。当前用户路径中，打开的 Canvas 变成内置使用说明模板，说明 startup 已激活但 `selectUntitledMultiRootWorkspaceStorageForkSource(...)` 没有找到源；本机真实 `~/.vscode-server/data/User/workspaceStorage` 中多个 `devsessioncanvas.dev-session-canvas/canvas-state.json` 周围没有 `meta.json`，这会让现有 `workspaceName` 为空、`rootMatchIndex` 为 -1。
+  证据：本地检查显示 `991aab3873a2779dc34835c600fb9d76` 和 `991aab3873a2779dc34835c600fb9d76-1` 均有 3 个 cwd 为 `.../dev-session-canvas2` 的 Agent 节点，但目录下只有 `devsessioncanvas.dev-session-canvas/canvas-state.json`、`ms-python.python/pythonrc.py` 和锁文件，没有 `meta.json`。
+
+- 观察：受限 cwd fallback 在真实 VSCode Untitled 多根启动路径中可生效，不需要用户先保存 `.code-workspace`，也不需要 `meta.json`。
+  证据：`.debug/multiroot-auto-activation/run-path-hint-open.mjs` 先写入第一 root 的 `Path Hint Fork Source` Agent，再删除相关 `meta.json`；Untitled 多根窗口启动后 `before open` 已加载该节点，执行 `devSessionCanvas.canvasPanel.open` 后 `ready.panel` 为 `true`，诊断事件 `storage/untitledMultiRootForkApplied` 的 `selectionBasis` 为 `first-root-path-hint`，`sourceRootPathHintMatchedRootIndexes` 为 `[0]`。
 
 ## 决策记录
 
@@ -108,8 +117,12 @@
   理由：上一版已用测试锁定 unrelated workspaceStorage hash 不能仅按新鲜度恢复；新路径必须要求 `workspaceFile.scheme === 'untitled'`、workspace folders 多于一个、当前 slot 为空，并按 root 名称 / VSCode `meta.json` 匹配候选，避免误导入任意旧 workspace。
   日期/作者：2026-05-29 / Codex。
 
-- 决策：如果当前 Untitled 多根 slot 的 `workspaceState.canvasState` 已经有节点，即使 `canvas-state.json` 缺失或为空，也不执行启动期 fork。
-  理由：有节点的 `workspaceState` 代表当前多根 scope 已有可加载状态，继续 fork 会覆盖用户当前多根画布；空或缺失的 `workspaceState` 才符合“没有有意义 Canvas”的补救条件。
+- 决策：当 Untitled 多根 fork 找不到 `meta.name` 精确匹配源时，允许使用快照内容中的第一 root 路径线索作为受限 fallback。
+  理由：真实 Remote SSH / 历史 VSCode storage slot 可能缺失 `meta.json`，但单根画布中的执行节点通常会在 `metadata.agent.cwd`、`metadata.terminal.cwd`、`runtimeStoragePath` 或 `resumeStoragePath` 中留下 root 路径。fallback 只在当前多根槽及其 workspaceState 都无有意义节点且没有任何精确 root 名称匹配时启用；只选择非当前、非内置使用说明模板、节点目录线索明确落在第一个 root 下的非空快照，并按最新快照决胜，避免退化成任意新鲜度恢复。
+  日期/作者：2026-05-29 / Codex。
+
+- 决策：如果当前 Untitled 多根 slot 的 `workspaceState.canvasState` 已经有非内置使用说明模板节点，即使 `canvas-state.json` 缺失或为空，也不执行启动期 fork。
+  理由：有非内置使用说明模板节点的 `workspaceState` 代表当前多根 scope 已有可加载状态，继续 fork 会覆盖用户当前多根画布；空、缺失或只有内置使用说明模板的 `workspaceState` 才符合“没有有意义 Canvas”的补救条件。
   日期/作者：2026-05-29 / Codex。
 
 - 决策：manifest 增加 `onStartupFinished`，并保留 `onView:devSessionCanvas.canvasPanel` 与 `onWebviewPanel:devSessionCanvas.canvas`。
@@ -120,9 +133,11 @@
 
 上一轮实现已完成并通过验证：命令 ID 与 manifest 增加 Explorer 资源菜单，`src/extension.ts` 可把目录或普通文件父目录解析为 cwd；普通创建入口在多根 workspace 下会确认 root；共享协议带 `cwd`；`CanvasPanelManager` 会把 cwdOverride 写入 Agent / Terminal metadata，并在启动、CLI resolver、shell env patch 与 diagnostic 中优先使用节点 cwd；Webview Agent subtitle 与侧栏 Agent 第二行已接入 cwdLabel。测试覆盖已补齐到 manifest、协议、cwdLabel、Webview 展示和 trusted VSCode smoke 的 Explorer 创建主路径。
 
-用户实测暴露一个新增缺口：`Add Folder to Workspace...` 在单根变多根时通常要求 reload，扩展重启后没有内存 Canvas 可保留，也不会执行运行期 workspace folder event 分支。本轮已补充启动恢复：在空的 Untitled 多根 storage scope 中，从当前第一个 root 名称匹配的原单根 slot fork `canvas-state.json`，只复制主快照，不复制 runtime 或草稿目录；如果当前多根 slot 或 `workspaceState` 已经有节点则跳过，避免覆盖现有多根画布。
+用户实测暴露一个新增缺口：`Add Folder to Workspace...` 在单根变多根时通常要求 reload，扩展重启后没有内存 Canvas 可保留，也不会执行运行期 workspace folder event 分支。本轮已补充启动恢复：在空的 Untitled 多根 storage scope 中，从当前第一个 root 名称匹配的原单根 slot fork `canvas-state.json`，只复制主快照，不复制 runtime 或草稿目录；如果当前多根 slot 或 `workspaceState` 已经有有意义节点则跳过，避免覆盖现有多根画布。
 
 用户随后继续实测发现当前版本仍会在 `Add Folder to Workspace...` 后卡在加载中。复查确认上一版没有测真实 VSCode UI reload，只测了存储 helper、typecheck，以及 CLI 打开 `rootA rootB` 后再手动激活扩展的近似路径。新增启动实验表明：Untitled 多根窗口启动后，如果扩展没有被激活，`CanvasPanelManager` 构造函数不会运行，Panel provider 不会注册，`recoverUntitledMultiRootWorkspaceStorageForkIfNeeded()` 也不会执行；这正是 fork 逻辑存在但用户看不到恢复节点的原因。最终采用 `onStartupFinished` 让扩展在启动完成后注册 provider 并运行 fork，同时明确不使用 `*`、不自动 reveal 画布内容。
+
+用户最新实测又暴露源识别缺口：Canvas 已经能打开，但因为历史 / Remote SSH storage slot 缺失 `meta.json`，启动期 fork 没能识别第一 root 的旧单根快照，随后首次打开应用了内置使用说明模板。本轮已把源选择扩展为两层：先用 `meta.name` 精确匹配第一个 root；没有精确匹配时，再读取候选快照中的 Agent / Terminal cwd 与 runtime 路径线索，选择明确落在第一个 root 下的非内置模板快照。定向单元测试和真实 VSCode Untitled 多根 smoke 均已覆盖这条 `first-root-path-hint` 路径。
 
 复盘上，主要风险来自测试同步而不是产品路径：`webview/resetDemoState` 没有完成回执，容易与仍在启动或停止的执行 session 竞争。本轮已把相关 smoke 前置清理改为宿主 test reset 并等待 `runningExecutionCount === 0`，后续新增会启动执行节点的 smoke 测试也应沿用这个模式。
 
@@ -281,6 +296,26 @@
 
 这次验证说明：在当前实现下，Untitled 多根 startup fork 完成后，再打开 Panel Canvas 可以让 WebviewView 正常 resolve 并 ready。该验证仍是自动化命令级验证，不是手工点击 VSCode `Add Folder to Workspace...` 菜单后的完整 GUI 录制；如果用户本地仍复现，需要继续采集 Extension Host log、manifest 版本和 Canvas diagnostic events。
 
+用户随后实测确认 Canvas 已能正常打开，但没有 fork 第一目录的旧画布，而是初始化出内置使用说明模板。新的修复方向是让 `src/common/extensionStoragePaths.ts` 的 Untitled 多根源选择在 `meta.json` 缺失时读取候选快照内容：如果 Agent / Terminal 的 cwd 或 runtime 相关路径能明确指向第一个 workspace root，则可作为 `first-root-path-hint` 源。这个 fallback 不使用单纯最新快照，不导入新增 root 历史画布，也不把只有内置使用说明模板的空白初始画布当成源。
+
+受限 fallback 已实现并通过定向验证；同时补跑真实 VSCode 启动 smoke，证明缺失 `meta.json` 时也能从第一 root 的 cwd 线索 fork，而不是落到内置使用说明模板：
+
+    npm run test:extension-storage-paths
+    extensionStoragePaths tests passed
+    exit code 0
+
+    npm run typecheck
+    > tsc --noEmit
+    exit code 0
+
+新增测试覆盖：缺失 `meta.json` 时按第一个 root 的 cwd 路径线索 fork；已有精确 `meta.name` 匹配时仍优先使用名称匹配；当前多根槽只有内置使用说明模板时允许 fork 覆盖；只有内置使用说明模板的候选不能成为源；候选同时出现多个 root 的路径线索时拒绝 fallback。
+
+    .debug/multiroot-auto-activation/run-path-hint-open.mjs
+    [verify-path-hint-open] before open {"nodes":1,"titles":["Path Hint Fork Source"],"ready":{"editor":false,"panel":false},"activeSurface":"panel"}
+    [verify-path-hint-open] after open {"nodes":1,"titles":["Path Hint Fork Source"],"ready":{"editor":false,"panel":true},"activeSurface":"panel","mode":{"panel":"active"}}
+    [verify-path-hint-open] fork events ... "selectionBasis":"first-root-path-hint" ... "sourceRootPathHintMatchedRootIndexes":[0] ...
+    exit code 0
+
 ## 接口与依赖
 
 在 `src/common/extensionIdentity.ts` 中应存在以下命令 ID：
@@ -314,3 +349,6 @@
 本次更新说明：2026-05-29 01:57 +0800 完成验证和复盘记录；Explorer 创建、多根普通创建 cwd、Agent/Sidebar cwdLabel 展示和 trusted smoke 均已覆盖。
 
 本次更新说明：2026-05-29 10:15 +0800 根据用户实测补充 Untitled 多根 reload 恢复路径，实现按第一个 root 名称 fork 单根 `canvas-state.json`，同步产品/设计文档，并记录定向验证证据。
+本次更新说明：2026-05-29 23:58 +0800 根据用户实测“Canvas 能打开但未 fork 第一目录画布”补充根因与修复决策：`meta.json` 可能缺失，后续实现需要增加基于快照 cwd 路径线索的受限 fallback，并同步补测试。
+本次更新说明：2026-05-30 00:08 +0800 完成 `first-root-path-hint` fallback 实现与定向验证，补充缺失 `meta.json`、内置使用说明模板、精确匹配优先级和多 root 路径歧义测试。
+本次更新说明：2026-05-30 00:12 +0800 补充真实 VSCode 启动 smoke 证据，确认缺失 `meta.json` 时能通过第一 root 的 cwd 路径线索完成 fork，并在打开 Panel Canvas 后正常 ready。

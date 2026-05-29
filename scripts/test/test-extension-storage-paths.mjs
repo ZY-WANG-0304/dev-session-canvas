@@ -23,6 +23,7 @@ try {
 
   const require = createRequire(import.meta.url);
   const {
+    isBuiltinGettingStartedOnlyCanvasState,
     resolvePreferredExtensionStoragePath,
     selectPreferredExtensionStorageRecoverySource,
     selectUntitledMultiRootWorkspaceStorageForkSource
@@ -265,7 +266,10 @@ try {
   const untitledForkResult = selectUntitledMultiRootWorkspaceStorageForkSource(untitledMultiRootCurrentPath, {
     ...untitledForkFixture,
     listDirectoryEntries: () => untitledForkEntries,
-    workspaceFolders: [{ name: 'root-a' }, { name: 'root-b' }]
+    workspaceFolders: [
+      { name: 'root-a', path: '/workspace/root-a' },
+      { name: 'root-b', path: '/workspace/root-b' }
+    ]
   });
   assert.ok(untitledForkResult, 'Expected Untitled multi-root fork to find the first-root source snapshot.');
   assert.equal(untitledForkResult.sourcePath, rootASingleRootPath);
@@ -308,7 +312,10 @@ try {
     {
       ...currentEmptySnapshotForkFixture,
       listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-single-hash'],
-      workspaceFolders: [{ name: 'root-a' }, { name: 'root-b' }]
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
     }
   );
   assert.ok(currentEmptySnapshotForkResult, 'Expected empty current snapshot to still allow startup fork.');
@@ -339,13 +346,178 @@ try {
         })]
       ]),
       listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-single-hash'],
-      workspaceFolders: [{ name: 'root-a' }, { name: 'root-b' }]
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
     }
   );
   assert.equal(
     currentNonEmptySnapshotForkResult,
     undefined,
     'Current Untitled multi-root snapshots with nodes must never be overwritten by startup fork.'
+  );
+
+  const missingMetaFirstRootPathHintResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...buildSnapshotFixture([
+        [storagePath.join(untitledWorkspaceStorageRoot, 'untitled-multiroot-hash', 'meta.json'), createWorkspaceMetaText({
+          id: 'untitled-multiroot-hash',
+          name: 'Untitled (Workspace)'
+        })],
+        [storagePath.join(rootASingleRootPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-PATH-HINT',
+          cwd: '/workspace/root-a/packages/api',
+          writtenAt: '2026-05-29T10:00:00.000Z',
+          updatedAt: '2026-05-29T09:59:00.000Z'
+        })],
+        [storagePath.join(rootBSingleRootPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-B-NEWER-BUT-PATH-HINT-NOT-FIRST',
+          cwd: '/workspace/root-b',
+          writtenAt: '2026-05-29T11:00:00.000Z',
+          updatedAt: '2026-05-29T10:59:00.000Z'
+        })]
+      ]),
+      listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-single-hash', 'root-b-single-hash'],
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
+    }
+  );
+  assert.ok(
+    missingMetaFirstRootPathHintResult,
+    'Expected missing-meta source to fall back to first-root cwd path hints.'
+  );
+  assert.equal(missingMetaFirstRootPathHintResult.sourcePath, rootASingleRootPath);
+  assert.equal(missingMetaFirstRootPathHintResult.selectionBasis, 'first-root-path-hint');
+  assert.equal(missingMetaFirstRootPathHintResult.sourceCandidate.rootPathHintIndex, 0);
+  assert.equal(missingMetaFirstRootPathHintResult.sourceCandidate.rootPathHintName, 'root-a');
+  assert.deepEqual(missingMetaFirstRootPathHintResult.sourceCandidate.rootPathHintMatchedRootIndexes, [0]);
+  assert.equal(missingMetaFirstRootPathHintResult.sourceCandidate.snapshot.builtinGettingStartedOnly, false);
+
+  const exactMetaBeatsPathHintFallbackResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...buildSnapshotFixture([
+        [storagePath.join(untitledWorkspaceStorageRoot, 'root-a-older-single-hash', 'meta.json'), createWorkspaceMetaText({
+          id: 'root-a-older-single-hash',
+          name: 'root-a'
+        })],
+        [storagePath.join(rootAOlderSingleRootPath, 'canvas-state.json'), createSnapshotText({
+          title: 'ROOT-A-META-MATCH-OLDER',
+          writtenAt: '2026-05-29T08:00:00.000Z',
+          updatedAt: '2026-05-29T07:59:00.000Z'
+        })],
+        [storagePath.join(rootASingleRootPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-PATH-HINT-NEWER',
+          cwd: '/workspace/root-a',
+          writtenAt: '2026-05-29T10:00:00.000Z',
+          updatedAt: '2026-05-29T09:59:00.000Z'
+        })]
+      ]),
+      listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-older-single-hash', 'root-a-single-hash'],
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
+    }
+  );
+  assert.ok(exactMetaBeatsPathHintFallbackResult);
+  assert.equal(exactMetaBeatsPathHintFallbackResult.sourcePath, rootAOlderSingleRootPath);
+  assert.equal(exactMetaBeatsPathHintFallbackResult.selectionBasis, 'first-root-name-match');
+
+  const builtinGettingStartedCurrentSnapshotResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...buildSnapshotFixture([
+        [storagePath.join(untitledMultiRootCurrentPath, 'canvas-state.json'), createBuiltinGettingStartedSnapshotText({
+          writtenAt: '2026-05-29T10:30:00.000Z',
+          updatedAt: '2026-05-29T10:29:00.000Z'
+        })],
+        [storagePath.join(rootASingleRootPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-FORK-OVER-BUILTIN',
+          cwd: '/workspace/root-a',
+          writtenAt: '2026-05-29T10:00:00.000Z',
+          updatedAt: '2026-05-29T09:59:00.000Z'
+        })]
+      ]),
+      listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-single-hash'],
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
+    }
+  );
+  assert.ok(
+    builtinGettingStartedCurrentSnapshotResult,
+    'Expected the builtin getting-started current snapshot to be treated as non-meaningful for fork recovery.'
+  );
+  assert.equal(builtinGettingStartedCurrentSnapshotResult.sourcePath, rootASingleRootPath);
+  assert.equal(builtinGettingStartedCurrentSnapshotResult.selectionBasis, 'first-root-path-hint');
+  assert.equal(builtinGettingStartedCurrentSnapshotResult.currentCandidate.snapshot.builtinGettingStartedOnly, true);
+  assert.equal(
+    isBuiltinGettingStartedOnlyCanvasState(createBuiltinGettingStartedSnapshot({
+      updatedAt: '2026-05-29T10:29:00.000Z'
+    })),
+    true,
+    'Expected builtin getting-started state to be reusable by host-level workspaceState fork guards.'
+  );
+  assert.equal(
+    isBuiltinGettingStartedOnlyCanvasState({
+      version: 1,
+      updatedAt: '2026-05-29T10:29:00.000Z',
+      nodes: []
+    }),
+    false
+  );
+
+  const builtinGettingStartedSourceIgnoredResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...buildSnapshotFixture([
+        [storagePath.join(rootASingleRootPath, 'canvas-state.json'), createBuiltinGettingStartedSnapshotText({
+          writtenAt: '2026-05-29T10:00:00.000Z',
+          updatedAt: '2026-05-29T09:59:00.000Z'
+        })]
+      ]),
+      listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-single-hash'],
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
+    }
+  );
+  assert.equal(
+    builtinGettingStartedSourceIgnoredResult,
+    undefined,
+    'Builtin getting-started snapshots should not become fork sources.'
+  );
+
+  const ambiguousPathHintResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...buildSnapshotFixture([
+        [storagePath.join(rootASingleRootPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'AMBIGUOUS-ROOTS',
+          cwd: '/workspace/root-a',
+          extraCwd: '/workspace/root-b',
+          writtenAt: '2026-05-29T10:00:00.000Z',
+          updatedAt: '2026-05-29T09:59:00.000Z'
+        })]
+      ]),
+      listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-single-hash'],
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
+    }
+  );
+  assert.equal(
+    ambiguousPathHintResult,
+    undefined,
+    'Snapshots with execution hints under multiple roots should not be used as path-hint fallback sources.'
   );
 
   const unrelatedPath = '/home/users/example/.config/dev-session-canvas';
@@ -431,6 +603,93 @@ function createEmptySnapshotText({ writtenAt, updatedAt }) {
     state,
     activeSurface: 'panel'
   })}\n`;
+}
+
+function createExecutionSnapshotText({ title, cwd, extraCwd, writtenAt, updatedAt }) {
+  const nodes = [
+    {
+      id: 'agent-1',
+      kind: 'agent',
+      title,
+      status: 'idle',
+      summary: 'fixture',
+      position: { x: 40, y: 40 },
+      size: { width: 560, height: 430 },
+      metadata: {
+        agent: {
+          cwd,
+          runtimeStoragePath: storagePath.join(cwd, '.runtime-storage'),
+          resumeStoragePath: storagePath.join(cwd, '.resume-storage')
+        }
+      }
+    }
+  ];
+  if (extraCwd) {
+    nodes.push({
+      id: 'terminal-2',
+      kind: 'terminal',
+      title: `${title}-terminal`,
+      status: 'idle',
+      summary: 'fixture',
+      position: { x: 640, y: 40 },
+      size: { width: 540, height: 430 },
+      metadata: {
+        terminal: {
+          cwd: extraCwd
+        }
+      }
+    });
+  }
+
+  const state = {
+    version: 1,
+    updatedAt,
+    nodes
+  };
+
+  return `${JSON.stringify({
+    version: 1,
+    writtenAt,
+    stateHash: createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 12),
+    state,
+    activeSurface: 'panel'
+  })}\n`;
+}
+
+function createBuiltinGettingStartedSnapshotText({ writtenAt, updatedAt }) {
+  const state = createBuiltinGettingStartedSnapshot({ updatedAt });
+
+  return `${JSON.stringify({
+    version: 1,
+    writtenAt,
+    stateHash: createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 12),
+    state,
+    activeSurface: 'panel'
+  })}\n`;
+}
+
+function createBuiltinGettingStartedSnapshot({ updatedAt }) {
+  return {
+    version: 1,
+    updatedAt,
+    nodes: [
+      {
+        id: 'note-1',
+        kind: 'note',
+        title: 'Dev Session Canvas \u4f7f\u7528\u6307\u5357',
+        status: 'ready',
+        summary: 'fixture',
+        position: { x: 0, y: 0 },
+        size: { width: 900, height: 1150 },
+        metadata: {
+          note: {
+            content:
+              '# Dev Session Canvas \u4f7f\u7528\u6307\u5357\n\n**\u63d0\u793a**\uff1a\u8fd9\u4e2a\u6a21\u677f\u4e0d\u4f1a\u81ea\u52a8\u521b\u5efa Agent \u6216 Terminal\uff0c\u4f60\u53ef\u4ee5\u81ea\u5df1\u5c1d\u8bd5\u521b\u5efa\u8282\u70b9\u6765\u719f\u6089\u753b\u5e03\u64cd\u4f5c\uff01'
+          }
+        }
+      }
+    ]
+  };
 }
 
 function hashStateTitle(title) {

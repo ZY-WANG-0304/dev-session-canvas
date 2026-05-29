@@ -10,6 +10,11 @@ const RECOVERABLE_STATE_RELATIVE_PATHS = [
   path.join('runtime-supervisor', 'registry.json'),
   'agent-runtime'
 ] as const;
+const BUILTIN_GETTING_STARTED_TITLE = 'Dev Session Canvas \u4f7f\u7528\u6307\u5357';
+const BUILTIN_GETTING_STARTED_CONTENT_MARKER =
+  '\u8fd9\u4e2a\u6a21\u677f\u4e0d\u4f1a\u81ea\u52a8\u521b\u5efa Agent \u6216 Terminal';
+const UNTITLED_WORKSPACE_META_NAME = 'Untitled (Workspace)';
+const SNAPSHOT_EXECUTION_PATH_HINT_KEYS = ['cwd', 'runtimeStoragePath', 'resumeStoragePath'] as const;
 
 interface WorkspaceStorageSlotIdentity {
   name: string;
@@ -43,6 +48,8 @@ export interface ExtensionStorageSnapshotMetadata {
   effectiveTimestamp?: string;
   effectiveTimestampMs?: number;
   stateHash?: string;
+  executionPathHints?: string[];
+  builtinGettingStartedOnly?: boolean;
 }
 
 export interface ExtensionStorageSlotCandidate {
@@ -57,6 +64,7 @@ export interface ExtensionStorageSlotCandidate {
 
 export interface UntitledMultiRootWorkspaceStorageForkRoot {
   name: string;
+  path?: string;
 }
 
 export interface UntitledMultiRootWorkspaceStorageForkCandidate {
@@ -65,6 +73,10 @@ export interface UntitledMultiRootWorkspaceStorageForkCandidate {
   workspaceName?: string;
   rootMatchIndex: number;
   rootMatchName: string;
+  rootPathHintIndex: number;
+  rootPathHintName: string;
+  rootPathHintCount: number;
+  rootPathHintMatchedRootIndexes: number[];
   isCurrent: boolean;
   hasRecoverableState: boolean;
   snapshot: ExtensionStorageSnapshotMetadata;
@@ -73,7 +85,7 @@ export interface UntitledMultiRootWorkspaceStorageForkCandidate {
 export interface UntitledMultiRootWorkspaceStorageForkSelection {
   currentPath: string;
   sourcePath: string;
-  selectionBasis: 'first-root-name-match';
+  selectionBasis: 'first-root-name-match' | 'first-root-path-hint';
   migrationRequired: boolean;
   sourceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
   currentCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
@@ -187,9 +199,10 @@ export function selectUntitledMultiRootWorkspaceStorageForkSource(
   const normalizedCurrentPath = normalizeExtensionStoragePath(currentPath, pathModule);
   const workspaceFolders = options.workspaceFolders
     .map((folder) => ({
-      name: normalizeWorkspaceRootName(folder.name)
+      name: normalizeWorkspaceRootName(folder.name),
+      path: normalizeWorkspaceRootPath(folder.path, pathModule)
     }))
-    .filter((folder) => folder.name);
+    .filter((folder) => folder.name || folder.path);
   if (workspaceFolders.length < 2) {
     return undefined;
   }
@@ -207,20 +220,23 @@ export function selectUntitledMultiRootWorkspaceStorageForkSource(
     pathModule
   );
   const currentCandidate = candidates.find((candidate) => candidate.isCurrent);
-  if (!currentCandidate || (currentCandidate.snapshot.exists && currentCandidate.snapshot.nodeCount !== 0)) {
+  if (!currentCandidate || isMeaningfulUntitledMultiRootForkSnapshot(currentCandidate.snapshot)) {
     return undefined;
   }
 
-  const sourceCandidate = candidates
-    .filter(
-      (candidate) =>
-        !candidate.isCurrent &&
-        candidate.snapshot.exists &&
-        candidate.snapshot.nodeCount !== undefined &&
-        candidate.snapshot.nodeCount > 0 &&
-        candidate.rootMatchIndex === 0
-    )
+  const recoverableSourceCandidates = candidates.filter(isRecoverableUntitledMultiRootForkSourceCandidate);
+  let selectionBasis: UntitledMultiRootWorkspaceStorageForkSelection['selectionBasis'] = 'first-root-name-match';
+  let sourceCandidate = recoverableSourceCandidates
+    .filter((candidate) => candidate.rootMatchIndex === 0)
     .sort(compareUntitledMultiRootForkCandidates)[0];
+
+  if (!sourceCandidate) {
+    selectionBasis = 'first-root-path-hint';
+    sourceCandidate = recoverableSourceCandidates
+      .filter(isFirstRootPathHintForkSourceCandidate)
+      .sort(compareUntitledMultiRootForkCandidates)[0];
+  }
+
   if (!sourceCandidate) {
     return undefined;
   }
@@ -228,7 +244,7 @@ export function selectUntitledMultiRootWorkspaceStorageForkSource(
   return {
     currentPath: normalizedCurrentPath,
     sourcePath: sourceCandidate.path,
-    selectionBasis: 'first-root-name-match',
+    selectionBasis,
     migrationRequired: sourceCandidate.path !== currentCandidate.path,
     sourceCandidate,
     currentCandidate,
@@ -293,7 +309,7 @@ export function collectExtensionStorageSlotCandidates(
 
 function collectUntitledMultiRootWorkspaceStorageForkCandidates(
   currentPath: string,
-  workspaceFolders: readonly { name: string }[],
+  workspaceFolders: readonly { name: string; path?: string }[],
   options: ExtensionStoragePathResolutionOptions,
   pathModule: PathModuleLike
 ): UntitledMultiRootWorkspaceStorageForkCandidate[] {
@@ -322,36 +338,48 @@ function collectUntitledMultiRootWorkspaceStorageForkCandidates(
     });
     const workspaceName = normalizeWorkspaceRootName(meta?.name);
     const rootMatchIndex = workspaceName ? workspaceFolders.findIndex((folder) => folder.name === workspaceName) : -1;
+    const snapshot = readPersistedCanvasSnapshotMetadata(candidatePath, {
+      pathModule,
+      pathExists,
+      readTextFile
+    });
+    const rootPathHint = matchWorkspaceRootPathHints(snapshot.executionPathHints, workspaceFolders, pathModule);
     candidates.push({
       path: normalizeExtensionStoragePath(candidatePath, pathModule),
       slotName,
       workspaceName: workspaceName || undefined,
       rootMatchIndex,
       rootMatchName: rootMatchIndex >= 0 ? workspaceFolders[rootMatchIndex]?.name ?? '' : '',
+      rootPathHintIndex: rootPathHint.index,
+      rootPathHintName: rootPathHint.name,
+      rootPathHintCount: rootPathHint.count,
+      rootPathHintMatchedRootIndexes: rootPathHint.matchedRootIndexes,
       isCurrent: slotName === currentSlotName,
       hasRecoverableState: hasRecoverableState(candidatePath, pathModule, pathExists),
-      snapshot: readPersistedCanvasSnapshotMetadata(candidatePath, {
-        pathModule,
-        pathExists,
-        readTextFile
-      })
+      snapshot
     });
   }
 
   if (!candidates.some((candidate) => candidate.isCurrent)) {
+    const snapshot = readPersistedCanvasSnapshotMetadata(normalizedCurrentPath, {
+      pathModule,
+      pathExists,
+      readTextFile
+    });
+    const rootPathHint = matchWorkspaceRootPathHints(snapshot.executionPathHints, workspaceFolders, pathModule);
     candidates.push({
       path: normalizedCurrentPath,
       slotName: currentSlotName,
       workspaceName: undefined,
       rootMatchIndex: -1,
       rootMatchName: '',
+      rootPathHintIndex: rootPathHint.index,
+      rootPathHintName: rootPathHint.name,
+      rootPathHintCount: rootPathHint.count,
+      rootPathHintMatchedRootIndexes: rootPathHint.matchedRootIndexes,
       isCurrent: true,
       hasRecoverableState: hasRecoverableState(normalizedCurrentPath, pathModule, pathExists),
-      snapshot: readPersistedCanvasSnapshotMetadata(normalizedCurrentPath, {
-        pathModule,
-        pathExists,
-        readTextFile
-      })
+      snapshot
     });
   }
 
@@ -387,6 +415,54 @@ function readWorkspaceStorageMeta(
 
 function normalizeWorkspaceRootName(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeWorkspaceRootPath(value: unknown, pathModule: PathModuleLike): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return undefined;
+  }
+
+  return stripTrailingPathSeparators(pathModule.normalize(trimmedValue), pathModule);
+}
+
+function isMeaningfulUntitledMultiRootForkSnapshot(snapshot: ExtensionStorageSnapshotMetadata): boolean {
+  if (!snapshot.exists || snapshot.nodeCount === 0) {
+    return false;
+  }
+
+  if (snapshot.builtinGettingStartedOnly === true) {
+    return false;
+  }
+
+  return true;
+}
+
+function isRecoverableUntitledMultiRootForkSourceCandidate(
+  candidate: UntitledMultiRootWorkspaceStorageForkCandidate
+): boolean {
+  return (
+    !candidate.isCurrent &&
+    candidate.snapshot.exists &&
+    candidate.snapshot.nodeCount !== undefined &&
+    candidate.snapshot.nodeCount > 0 &&
+    candidate.snapshot.builtinGettingStartedOnly !== true
+  );
+}
+
+function isFirstRootPathHintForkSourceCandidate(
+  candidate: UntitledMultiRootWorkspaceStorageForkCandidate
+): boolean {
+  return (
+    (candidate.rootMatchIndex <= 0 && candidate.workspaceName !== UNTITLED_WORKSPACE_META_NAME) &&
+    candidate.rootPathHintIndex === 0 &&
+    candidate.rootPathHintMatchedRootIndexes.length === 1 &&
+    candidate.rootPathHintMatchedRootIndexes[0] === 0
+  );
 }
 
 function compareUntitledMultiRootForkCandidates(
@@ -501,6 +577,7 @@ function readPersistedCanvasSnapshotMetadata(
         ? normalizeTimestamp(parsedSnapshot.state.updatedAt)
         : undefined;
     const effectiveTimestamp = writtenAt ?? stateUpdatedAt;
+    const executionPathHints = collectSnapshotExecutionPathHints(parsedSnapshot.state, options.pathModule);
     return {
       exists: true,
       nodeCount: stateNodeCount,
@@ -511,13 +588,145 @@ function readPersistedCanvasSnapshotMetadata(
       stateHash:
         typeof parsedSnapshot.stateHash === 'string' && parsedSnapshot.stateHash.trim()
           ? parsedSnapshot.stateHash.trim()
-          : buildStateHash(parsedSnapshot.state)
+          : buildStateHash(parsedSnapshot.state),
+      executionPathHints,
+      builtinGettingStartedOnly: isBuiltinGettingStartedOnlyCanvasState(parsedSnapshot.state)
     };
   } catch {
     return {
       exists: true
     };
   }
+}
+
+function collectSnapshotExecutionPathHints(state: unknown, pathModule: PathModuleLike): string[] {
+  if (!isRecord(state) || !Array.isArray(state.nodes)) {
+    return [];
+  }
+
+  const pathHints = new Set<string>();
+  for (const node of state.nodes) {
+    if (!isRecord(node) || !isRecord(node.metadata)) {
+      continue;
+    }
+
+    collectExecutionMetadataPathHints(node.metadata.agent, pathHints, pathModule);
+    collectExecutionMetadataPathHints(node.metadata.terminal, pathHints, pathModule);
+  }
+
+  return Array.from(pathHints).sort();
+}
+
+function collectExecutionMetadataPathHints(
+  metadata: unknown,
+  pathHints: Set<string>,
+  pathModule: PathModuleLike
+): void {
+  if (!isRecord(metadata)) {
+    return;
+  }
+
+  for (const key of SNAPSHOT_EXECUTION_PATH_HINT_KEYS) {
+    addExecutionPathHint(metadata[key], pathHints, pathModule);
+  }
+}
+
+function addExecutionPathHint(value: unknown, pathHints: Set<string>, pathModule: PathModuleLike): void {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  const normalizedPath = normalizeWorkspaceRootPath(value, pathModule);
+  if (!normalizedPath || !pathModule.isAbsolute(normalizedPath)) {
+    return;
+  }
+
+  pathHints.add(normalizedPath);
+}
+
+function matchWorkspaceRootPathHints(
+  pathHints: readonly string[] | undefined,
+  workspaceFolders: readonly { name: string; path?: string }[],
+  pathModule: PathModuleLike
+): { index: number; name: string; count: number; matchedRootIndexes: number[] } {
+  const rootMatchCounts = new Map<number, number>();
+  for (const pathHint of pathHints ?? []) {
+    const matchedRootIndex = findContainingWorkspaceRootIndex(pathHint, workspaceFolders, pathModule);
+    if (matchedRootIndex < 0) {
+      continue;
+    }
+
+    rootMatchCounts.set(matchedRootIndex, (rootMatchCounts.get(matchedRootIndex) ?? 0) + 1);
+  }
+
+  const matchedRootIndexes = Array.from(rootMatchCounts.keys()).sort((left, right) => left - right);
+  if (matchedRootIndexes.length === 0) {
+    return {
+      index: -1,
+      name: '',
+      count: 0,
+      matchedRootIndexes
+    };
+  }
+
+  const firstMatchedRootIndex = matchedRootIndexes[0] ?? -1;
+  return {
+    index: firstMatchedRootIndex,
+    name: firstMatchedRootIndex >= 0 ? workspaceFolders[firstMatchedRootIndex]?.name ?? '' : '',
+    count: Array.from(rootMatchCounts.values()).reduce((total, count) => total + count, 0),
+    matchedRootIndexes
+  };
+}
+
+function findContainingWorkspaceRootIndex(
+  candidatePath: string,
+  workspaceFolders: readonly { path?: string }[],
+  pathModule: PathModuleLike
+): number {
+  const containingRoots = workspaceFolders
+    .map((folder, index) => ({
+      index,
+      path: folder.path
+    }))
+    .filter((folder): folder is { index: number; path: string } => Boolean(folder.path))
+    .filter((folder) => isPathEqualOrInside(candidatePath, folder.path, pathModule))
+    .sort((left, right) => right.path.length - left.path.length);
+
+  return containingRoots[0]?.index ?? -1;
+}
+
+function isPathEqualOrInside(candidatePath: string, rootPath: string, pathModule: PathModuleLike): boolean {
+  const normalizedCandidatePath = stripTrailingPathSeparators(pathModule.normalize(candidatePath), pathModule);
+  const normalizedRootPath = stripTrailingPathSeparators(pathModule.normalize(rootPath), pathModule);
+  if (normalizedCandidatePath === normalizedRootPath) {
+    return true;
+  }
+
+  const relativePath = pathModule.relative(normalizedRootPath, normalizedCandidatePath);
+  return Boolean(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${pathModule.sep}`);
+}
+
+function stripTrailingPathSeparators(candidatePath: string, pathModule: PathModuleLike): string {
+  let normalizedPath = candidatePath;
+  while (normalizedPath.length > 1 && normalizedPath.endsWith(pathModule.sep)) {
+    normalizedPath = normalizedPath.slice(0, -1);
+  }
+  return normalizedPath;
+}
+
+export function isBuiltinGettingStartedOnlyCanvasState(state: unknown): boolean {
+  if (!isRecord(state) || !Array.isArray(state.nodes) || state.nodes.length !== 1) {
+    return false;
+  }
+
+  const node = state.nodes[0];
+  if (!isRecord(node) || node.kind !== 'note' || node.title !== BUILTIN_GETTING_STARTED_TITLE) {
+    return false;
+  }
+
+  const noteMetadata = isRecord(node.metadata) && isRecord(node.metadata.note) ? node.metadata.note : undefined;
+  const content = typeof noteMetadata?.content === 'string' ? noteMetadata.content : '';
+  return content.includes(BUILTIN_GETTING_STARTED_CONTENT_MARKER);
 }
 
 function parseWorkspaceStorageSlotName(slotName: string): WorkspaceStorageSlotIdentity | undefined {
