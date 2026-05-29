@@ -527,6 +527,38 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(0);
 });
 
+test('selected node midpoint handles can start connections while resize affordance is visible', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+
+  await performTestDomAction(page, {
+    kind: 'selectNode',
+    nodeId: 'agent-1'
+  });
+  await expect(nodeById(page, 'agent-1').locator('[data-node-resize-direction]')).toHaveCount(8);
+
+  for (const sourceAnchor of ['top', 'right', 'bottom', 'left']) {
+    await clearPostedMessages(page);
+    await dragConnectionBetweenAnchors(page, {
+      sourceNodeId: 'agent-1',
+      sourceAnchor,
+      targetNodeId: 'terminal-1',
+      targetAnchor: 'left'
+    });
+
+    const message = await waitForPostedMessageByType(page, 'webview/createEdge');
+    expect(message.payload).toEqual({
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'terminal-1',
+      sourceAnchor,
+      targetAnchor: 'left'
+    });
+  }
+});
+
 test('edge label IME confirmation does not submit before explicit commit', async ({ page }) => {
   const state = createCanvasScreenshotState();
   state.edges = [
