@@ -212,6 +212,16 @@ try {
     'root-b-single-hash',
     'devsessioncanvas.dev-session-canvas'
   );
+  const rootACanonicalPath = storagePath.join(
+    untitledWorkspaceStorageRoot,
+    'root-a-canonical-hash',
+    'devsessioncanvas.dev-session-canvas'
+  );
+  const rootAStaleIndexedPath = storagePath.join(
+    untitledWorkspaceStorageRoot,
+    'root-a-canonical-hash-2',
+    'devsessioncanvas.dev-session-canvas'
+  );
   const untitledForkEntries = [
     'untitled-multiroot-hash',
     'root-a-single-hash',
@@ -396,6 +406,119 @@ try {
   assert.equal(missingMetaFirstRootPathHintResult.sourceCandidate.rootPathHintName, 'root-a');
   assert.deepEqual(missingMetaFirstRootPathHintResult.sourceCandidate.rootPathHintMatchedRootIndexes, [0]);
   assert.equal(missingMetaFirstRootPathHintResult.sourceCandidate.snapshot.builtinGettingStartedOnly, false);
+
+  const canonicalFamilyBeatsStaleIndexedPathHintResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...buildSnapshotFixture([
+        [storagePath.join(rootACanonicalPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-CANONICAL-CURRENT',
+          cwd: '/home/users/example',
+          writtenAt: '2026-05-29T16:39:33.951Z',
+          updatedAt: '2026-05-29T16:39:33.951Z'
+        })],
+        [storagePath.join(rootAStaleIndexedPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-STALE-INDEXED-PATH-HINT',
+          cwd: '/workspace/root-a',
+          runtimeStoragePath: storagePath.join(rootACanonicalPath, 'agent-runtime'),
+          writtenAt: '2026-05-26T16:49:45.286Z',
+          updatedAt: '2026-05-26T16:49:45.286Z'
+        })]
+      ]),
+      listDirectoryEntries: () => [
+        'untitled-multiroot-hash',
+        'root-a-canonical-hash',
+        'root-a-canonical-hash-2'
+      ],
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
+    }
+  );
+  assert.ok(
+    canonicalFamilyBeatsStaleIndexedPathHintResult,
+    'Expected indexed path-hint evidence to recover the canonical root slot in the same slot family.'
+  );
+  assert.equal(canonicalFamilyBeatsStaleIndexedPathHintResult.sourcePath, rootACanonicalPath);
+  assert.equal(
+    canonicalFamilyBeatsStaleIndexedPathHintResult.selectionBasis,
+    'first-root-canonical-slot-family'
+  );
+  assert.equal(canonicalFamilyBeatsStaleIndexedPathHintResult.sourceCandidate.slotName, 'root-a-canonical-hash');
+  assert.equal(canonicalFamilyBeatsStaleIndexedPathHintResult.sourceCandidate.slotIndex, 0);
+  assert.equal(
+    canonicalFamilyBeatsStaleIndexedPathHintResult.evidenceCandidate.slotName,
+    'root-a-canonical-hash-2'
+  );
+  assert.deepEqual(
+    canonicalFamilyBeatsStaleIndexedPathHintResult.evidenceCandidate.snapshot.executionStorageSlotHints,
+    ['root-a-canonical-hash']
+  );
+  assert.equal(canonicalFamilyBeatsStaleIndexedPathHintResult.evidenceCandidate.rootPathHintIndex, 0);
+  assert.deepEqual(canonicalFamilyBeatsStaleIndexedPathHintResult.evidenceCandidate.rootPathHintMatchedRootIndexes, [0]);
+
+  const runtimeStorageHintBeatsCopiedCurrentPathHintResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...buildSnapshotFixture([
+        [storagePath.join(rootACanonicalPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-CANONICAL-CURRENT-BY-RUNTIME-HINT',
+          cwd: '/home/users/example',
+          writtenAt: '2026-05-29T16:39:33.951Z',
+          updatedAt: '2026-05-29T16:39:33.951Z'
+        })],
+        [storagePath.join(rootAStaleIndexedPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-STALE-COPIED-INTO-CURRENT',
+          cwd: '/workspace/root-a',
+          runtimeStoragePath: storagePath.join(rootACanonicalPath, 'agent-runtime'),
+          writtenAt: '2026-05-29T16:44:15.871Z',
+          updatedAt: '2026-05-29T16:44:15.871Z'
+        })]
+      ]),
+      listDirectoryEntries: () => [
+        'untitled-multiroot-hash',
+        'root-a-canonical-hash',
+        'root-a-canonical-hash-2'
+      ],
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
+    }
+  );
+  assert.ok(
+    runtimeStorageHintBeatsCopiedCurrentPathHintResult,
+    'Expected runtime storage slot hints to choose the canonical source even if copied evidence is newer.'
+  );
+  assert.equal(runtimeStorageHintBeatsCopiedCurrentPathHintResult.sourcePath, rootACanonicalPath);
+  assert.equal(runtimeStorageHintBeatsCopiedCurrentPathHintResult.selectionBasis, 'first-root-canonical-slot-family');
+  assert.equal(runtimeStorageHintBeatsCopiedCurrentPathHintResult.evidenceCandidate.slotName, 'root-a-canonical-hash-2');
+
+  const indexedPathHintStillWorksWhenCanonicalMissingResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    untitledMultiRootCurrentPath,
+    {
+      ...buildSnapshotFixture([
+        [storagePath.join(rootAStaleIndexedPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-INDEXED-ONLY-PATH-HINT',
+          cwd: '/workspace/root-a',
+          writtenAt: '2026-05-29T10:00:00.000Z',
+          updatedAt: '2026-05-29T09:59:00.000Z'
+        })]
+      ]),
+      listDirectoryEntries: () => ['untitled-multiroot-hash', 'root-a-canonical-hash-2'],
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
+    }
+  );
+  assert.ok(
+    indexedPathHintStillWorksWhenCanonicalMissingResult,
+    'Expected indexed path-hint fallback to remain usable when the canonical slot has no recoverable snapshot.'
+  );
+  assert.equal(indexedPathHintStillWorksWhenCanonicalMissingResult.sourcePath, rootAStaleIndexedPath);
+  assert.equal(indexedPathHintStillWorksWhenCanonicalMissingResult.selectionBasis, 'first-root-path-hint');
 
   const exactMetaBeatsPathHintFallbackResult = selectUntitledMultiRootWorkspaceStorageForkSource(
     untitledMultiRootCurrentPath,
@@ -605,7 +728,7 @@ function createEmptySnapshotText({ writtenAt, updatedAt }) {
   })}\n`;
 }
 
-function createExecutionSnapshotText({ title, cwd, extraCwd, writtenAt, updatedAt }) {
+function createExecutionSnapshotText({ title, cwd, runtimeStoragePath, resumeStoragePath, extraCwd, writtenAt, updatedAt }) {
   const nodes = [
     {
       id: 'agent-1',
@@ -618,8 +741,8 @@ function createExecutionSnapshotText({ title, cwd, extraCwd, writtenAt, updatedA
       metadata: {
         agent: {
           cwd,
-          runtimeStoragePath: storagePath.join(cwd, '.runtime-storage'),
-          resumeStoragePath: storagePath.join(cwd, '.resume-storage')
+          runtimeStoragePath: runtimeStoragePath ?? storagePath.join(cwd, '.runtime-storage'),
+          resumeStoragePath: resumeStoragePath ?? storagePath.join(cwd, '.resume-storage')
         }
       }
     }

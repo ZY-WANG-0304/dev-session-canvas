@@ -569,6 +569,9 @@ interface UntitledMultiRootWorkspaceStorageForkRecoveryResult {
   sourceWorkspaceName?: string;
   sourceStateHash?: string;
   sourceNodeCount?: number;
+  evidenceSlotName?: string;
+  evidenceStateHash?: string;
+  evidenceNodeCount?: number;
 }
 
 interface StartExecutionSessionForTestParams {
@@ -3497,6 +3500,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         backupPath,
         selectionBasis: selection.selectionBasis,
         sourceSlotName: selection.sourceCandidate.slotName,
+        sourceCanonicalSlotName: selection.sourceCandidate.canonicalSlotName,
+        sourceSlotIndex: selection.sourceCandidate.slotIndex,
         sourceWorkspaceName: selection.sourceCandidate.workspaceName,
         sourceRootMatchIndex: selection.sourceCandidate.rootMatchIndex,
         sourceRootMatchName: selection.sourceCandidate.rootMatchName,
@@ -3506,7 +3511,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         sourceRootPathHintMatchedRootIndexes: selection.sourceCandidate.rootPathHintMatchedRootIndexes,
         sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
         sourceNodeCount: selection.sourceCandidate.snapshot.nodeCount,
-        sourceTimestamp: selection.sourceCandidate.snapshot.effectiveTimestamp
+        sourceTimestamp: selection.sourceCandidate.snapshot.effectiveTimestamp,
+        evidenceSlotName: selection.evidenceCandidate.slotName,
+        evidenceCanonicalSlotName: selection.evidenceCandidate.canonicalSlotName,
+        evidenceSlotIndex: selection.evidenceCandidate.slotIndex,
+        evidenceWorkspaceName: selection.evidenceCandidate.workspaceName,
+        evidenceRootMatchIndex: selection.evidenceCandidate.rootMatchIndex,
+        evidenceRootMatchName: selection.evidenceCandidate.rootMatchName,
+        evidenceRootPathHintIndex: selection.evidenceCandidate.rootPathHintIndex,
+        evidenceRootPathHintName: selection.evidenceCandidate.rootPathHintName,
+        evidenceRootPathHintCount: selection.evidenceCandidate.rootPathHintCount,
+        evidenceRootPathHintMatchedRootIndexes: selection.evidenceCandidate.rootPathHintMatchedRootIndexes,
+        evidenceStateHash: selection.evidenceCandidate.snapshot.stateHash,
+        evidenceNodeCount: selection.evidenceCandidate.snapshot.nodeCount,
+        evidenceTimestamp: selection.evidenceCandidate.snapshot.effectiveTimestamp
       });
       return {
         recovered: true,
@@ -3516,7 +3534,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         sourceSlotName: selection.sourceCandidate.slotName,
         sourceWorkspaceName: selection.sourceCandidate.workspaceName,
         sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
-        sourceNodeCount: selection.sourceCandidate.snapshot.nodeCount
+        sourceNodeCount: selection.sourceCandidate.snapshot.nodeCount,
+        evidenceSlotName: selection.evidenceCandidate.slotName,
+        evidenceStateHash: selection.evidenceCandidate.snapshot.stateHash,
+        evidenceNodeCount: selection.evidenceCandidate.snapshot.nodeCount
       };
     } catch (error) {
       const message = formatUnknownError(error);
@@ -3527,12 +3548,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         targetSnapshotPath,
         backupPath,
         selectionBasis: selection.selectionBasis,
+        sourceSlotName: selection.sourceCandidate.slotName,
+        sourceCanonicalSlotName: selection.sourceCandidate.canonicalSlotName,
+        sourceSlotIndex: selection.sourceCandidate.slotIndex,
         sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
         sourceNodeCount: selection.sourceCandidate.snapshot.nodeCount,
         sourceRootPathHintIndex: selection.sourceCandidate.rootPathHintIndex,
         sourceRootPathHintName: selection.sourceCandidate.rootPathHintName,
         sourceRootPathHintCount: selection.sourceCandidate.rootPathHintCount,
         sourceRootPathHintMatchedRootIndexes: selection.sourceCandidate.rootPathHintMatchedRootIndexes,
+        evidenceSlotName: selection.evidenceCandidate.slotName,
+        evidenceCanonicalSlotName: selection.evidenceCandidate.canonicalSlotName,
+        evidenceSlotIndex: selection.evidenceCandidate.slotIndex,
+        evidenceStateHash: selection.evidenceCandidate.snapshot.stateHash,
+        evidenceNodeCount: selection.evidenceCandidate.snapshot.nodeCount,
+        evidenceRootPathHintIndex: selection.evidenceCandidate.rootPathHintIndex,
+        evidenceRootPathHintName: selection.evidenceCandidate.rootPathHintName,
+        evidenceRootPathHintCount: selection.evidenceCandidate.rootPathHintCount,
+        evidenceRootPathHintMatchedRootIndexes: selection.evidenceCandidate.rootPathHintMatchedRootIndexes,
         message
       });
       return {
@@ -3544,7 +3577,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         sourceSlotName: selection.sourceCandidate.slotName,
         sourceWorkspaceName: selection.sourceCandidate.workspaceName,
         sourceStateHash: selection.sourceCandidate.snapshot.stateHash,
-        sourceNodeCount: selection.sourceCandidate.snapshot.nodeCount
+        sourceNodeCount: selection.sourceCandidate.snapshot.nodeCount,
+        evidenceSlotName: selection.evidenceCandidate.slotName,
+        evidenceStateHash: selection.evidenceCandidate.snapshot.stateHash,
+        evidenceNodeCount: selection.evidenceCandidate.snapshot.nodeCount
       };
     }
   }

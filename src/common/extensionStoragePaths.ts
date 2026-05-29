@@ -49,6 +49,7 @@ export interface ExtensionStorageSnapshotMetadata {
   effectiveTimestampMs?: number;
   stateHash?: string;
   executionPathHints?: string[];
+  executionStorageSlotHints?: string[];
   builtinGettingStartedOnly?: boolean;
 }
 
@@ -70,6 +71,8 @@ export interface UntitledMultiRootWorkspaceStorageForkRoot {
 export interface UntitledMultiRootWorkspaceStorageForkCandidate {
   path: string;
   slotName: string;
+  canonicalSlotName: string;
+  slotIndex: number;
   workspaceName?: string;
   rootMatchIndex: number;
   rootMatchName: string;
@@ -85,9 +88,10 @@ export interface UntitledMultiRootWorkspaceStorageForkCandidate {
 export interface UntitledMultiRootWorkspaceStorageForkSelection {
   currentPath: string;
   sourcePath: string;
-  selectionBasis: 'first-root-name-match' | 'first-root-path-hint';
+  selectionBasis: 'first-root-name-match' | 'first-root-path-hint' | 'first-root-canonical-slot-family';
   migrationRequired: boolean;
   sourceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+  evidenceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
   currentCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
   candidates: UntitledMultiRootWorkspaceStorageForkCandidate[];
 }
@@ -225,28 +229,32 @@ export function selectUntitledMultiRootWorkspaceStorageForkSource(
   }
 
   const recoverableSourceCandidates = candidates.filter(isRecoverableUntitledMultiRootForkSourceCandidate);
-  let selectionBasis: UntitledMultiRootWorkspaceStorageForkSelection['selectionBasis'] = 'first-root-name-match';
-  let sourceCandidate = recoverableSourceCandidates
-    .filter((candidate) => candidate.rootMatchIndex === 0)
-    .sort(compareUntitledMultiRootForkCandidates)[0];
+  let sourceSelection = selectUntitledMultiRootForkSourceFromEvidenceCandidates(
+    recoverableSourceCandidates.filter((candidate) => candidate.rootMatchIndex === 0),
+    recoverableSourceCandidates,
+    'first-root-name-match'
+  );
 
-  if (!sourceCandidate) {
-    selectionBasis = 'first-root-path-hint';
-    sourceCandidate = recoverableSourceCandidates
-      .filter(isFirstRootPathHintForkSourceCandidate)
-      .sort(compareUntitledMultiRootForkCandidates)[0];
+  if (!sourceSelection) {
+    sourceSelection = selectUntitledMultiRootForkSourceFromEvidenceCandidates(
+      recoverableSourceCandidates.filter(isFirstRootPathHintForkSourceCandidate),
+      recoverableSourceCandidates,
+      'first-root-path-hint'
+    );
   }
 
-  if (!sourceCandidate) {
+  if (!sourceSelection) {
     return undefined;
   }
 
+  const { sourceCandidate, evidenceCandidate, selectionBasis } = sourceSelection;
   return {
     currentPath: normalizedCurrentPath,
     sourcePath: sourceCandidate.path,
     selectionBasis,
     migrationRequired: sourceCandidate.path !== currentCandidate.path,
     sourceCandidate,
+    evidenceCandidate,
     currentCandidate,
     candidates
   };
@@ -316,6 +324,11 @@ function collectUntitledMultiRootWorkspaceStorageForkCandidates(
   const normalizedCurrentPath = normalizeExtensionStoragePath(currentPath, pathModule);
   const workspaceSlotDir = pathModule.dirname(normalizedCurrentPath);
   const currentSlotName = pathModule.basename(workspaceSlotDir);
+  const currentSlotIdentity = parseWorkspaceStorageSlotName(currentSlotName) ?? {
+    name: currentSlotName,
+    canonicalName: currentSlotName,
+    slotIndex: 0
+  };
   const workspaceStorageDir = pathModule.dirname(workspaceSlotDir);
   const extensionStorageDirName = pathModule.basename(normalizedCurrentPath);
   const pathExists = options.pathExists ?? fs.existsSync;
@@ -330,6 +343,11 @@ function collectUntitledMultiRootWorkspaceStorageForkCandidates(
     }
 
     const slotStoragePath = pathModule.join(workspaceStorageDir, slotName);
+    const slotIdentity = parseWorkspaceStorageSlotName(slotName) ?? {
+      name: slotName,
+      canonicalName: slotName,
+      slotIndex: 0
+    };
     const candidatePath = pathModule.join(slotStoragePath, extensionStorageDirName);
     const meta = readWorkspaceStorageMeta(slotStoragePath, {
       pathModule,
@@ -346,7 +364,9 @@ function collectUntitledMultiRootWorkspaceStorageForkCandidates(
     const rootPathHint = matchWorkspaceRootPathHints(snapshot.executionPathHints, workspaceFolders, pathModule);
     candidates.push({
       path: normalizeExtensionStoragePath(candidatePath, pathModule),
-      slotName,
+      slotName: slotIdentity.name,
+      canonicalSlotName: slotIdentity.canonicalName,
+      slotIndex: slotIdentity.slotIndex,
       workspaceName: workspaceName || undefined,
       rootMatchIndex,
       rootMatchName: rootMatchIndex >= 0 ? workspaceFolders[rootMatchIndex]?.name ?? '' : '',
@@ -354,7 +374,9 @@ function collectUntitledMultiRootWorkspaceStorageForkCandidates(
       rootPathHintName: rootPathHint.name,
       rootPathHintCount: rootPathHint.count,
       rootPathHintMatchedRootIndexes: rootPathHint.matchedRootIndexes,
-      isCurrent: slotName === currentSlotName,
+      isCurrent:
+        slotIdentity.name === currentSlotIdentity.name &&
+        slotIdentity.slotIndex === currentSlotIdentity.slotIndex,
       hasRecoverableState: hasRecoverableState(candidatePath, pathModule, pathExists),
       snapshot
     });
@@ -369,7 +391,9 @@ function collectUntitledMultiRootWorkspaceStorageForkCandidates(
     const rootPathHint = matchWorkspaceRootPathHints(snapshot.executionPathHints, workspaceFolders, pathModule);
     candidates.push({
       path: normalizedCurrentPath,
-      slotName: currentSlotName,
+      slotName: currentSlotIdentity.name,
+      canonicalSlotName: currentSlotIdentity.canonicalName,
+      slotIndex: currentSlotIdentity.slotIndex,
       workspaceName: undefined,
       rootMatchIndex: -1,
       rootMatchName: '',
@@ -384,6 +408,82 @@ function collectUntitledMultiRootWorkspaceStorageForkCandidates(
   }
 
   return candidates.sort(compareUntitledMultiRootForkCandidatesForDiagnostics);
+}
+
+function selectUntitledMultiRootForkSourceFromEvidenceCandidates(
+  evidenceCandidates: UntitledMultiRootWorkspaceStorageForkCandidate[],
+  recoverableSourceCandidates: UntitledMultiRootWorkspaceStorageForkCandidate[],
+  evidenceSelectionBasis: Exclude<
+    UntitledMultiRootWorkspaceStorageForkSelection['selectionBasis'],
+    'first-root-canonical-slot-family'
+  >
+): {
+  sourceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+  evidenceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+  selectionBasis: UntitledMultiRootWorkspaceStorageForkSelection['selectionBasis'];
+} | undefined {
+  const selectedByFamily = new Map<
+    string,
+    {
+      sourceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+      evidenceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+    }
+  >();
+
+  for (const evidenceCandidate of evidenceCandidates.sort(compareUntitledMultiRootForkCandidates)) {
+    const sourceCandidate = selectPreferredUntitledMultiRootForkFamilyCandidate(
+      evidenceCandidate,
+      recoverableSourceCandidates
+    );
+    const familyKey = evidenceCandidate.canonicalSlotName;
+    const existingSelection = selectedByFamily.get(familyKey);
+    const nextSelection = {
+      sourceCandidate,
+      evidenceCandidate
+    };
+    if (
+      !existingSelection ||
+      compareUntitledMultiRootForkSourceSelections(nextSelection, existingSelection) < 0
+    ) {
+      selectedByFamily.set(familyKey, nextSelection);
+    }
+  }
+
+  const selected = Array.from(selectedByFamily.values()).sort(compareUntitledMultiRootForkSourceSelections)[0];
+  if (!selected) {
+    return undefined;
+  }
+
+  return {
+    ...selected,
+    selectionBasis:
+      selected.sourceCandidate.path === selected.evidenceCandidate.path
+        ? evidenceSelectionBasis
+        : 'first-root-canonical-slot-family'
+  };
+}
+
+function selectPreferredUntitledMultiRootForkFamilyCandidate(
+  evidenceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate,
+  recoverableSourceCandidates: UntitledMultiRootWorkspaceStorageForkCandidate[]
+): UntitledMultiRootWorkspaceStorageForkCandidate {
+  // Indexed/copy snapshots can be stale; runtime path hints identify the canonical source slot.
+  const familyCandidates = recoverableSourceCandidates
+    .filter((candidate) => isUntitledMultiRootForkFamilyCandidate(candidate, evidenceCandidate))
+    .sort((left, right) => compareUntitledMultiRootForkFamilyCandidates(left, right, evidenceCandidate));
+  return familyCandidates[0] ?? evidenceCandidate;
+}
+
+function isUntitledMultiRootForkFamilyCandidate(
+  candidate: UntitledMultiRootWorkspaceStorageForkCandidate,
+  evidenceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate
+): boolean {
+  if (candidate.canonicalSlotName === evidenceCandidate.canonicalSlotName) {
+    return true;
+  }
+
+  const evidenceStorageSlotHints = evidenceCandidate.snapshot.executionStorageSlotHints ?? [];
+  return evidenceStorageSlotHints.includes(candidate.canonicalSlotName);
 }
 
 function readWorkspaceStorageMeta(
@@ -483,6 +583,44 @@ function compareUntitledMultiRootForkCandidates(
   return left.slotName.localeCompare(right.slotName);
 }
 
+function compareUntitledMultiRootForkFamilyCandidates(
+  left: UntitledMultiRootWorkspaceStorageForkCandidate,
+  right: UntitledMultiRootWorkspaceStorageForkCandidate,
+  evidenceCandidate?: UntitledMultiRootWorkspaceStorageForkCandidate
+): number {
+  const evidenceStorageSlotHints = evidenceCandidate?.snapshot.executionStorageSlotHints ?? [];
+  const leftIsReferencedByEvidence = evidenceStorageSlotHints.includes(left.canonicalSlotName);
+  const rightIsReferencedByEvidence = evidenceStorageSlotHints.includes(right.canonicalSlotName);
+  if (leftIsReferencedByEvidence !== rightIsReferencedByEvidence) {
+    return leftIsReferencedByEvidence ? -1 : 1;
+  }
+
+  const slotIndexDifference = left.slotIndex - right.slotIndex;
+  if (slotIndexDifference !== 0) {
+    return slotIndexDifference;
+  }
+
+  return compareUntitledMultiRootForkCandidates(left, right);
+}
+
+function compareUntitledMultiRootForkSourceSelections(
+  left: {
+    sourceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+    evidenceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+  },
+  right: {
+    sourceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+    evidenceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+  }
+): number {
+  const evidenceDifference = compareUntitledMultiRootForkCandidates(left.evidenceCandidate, right.evidenceCandidate);
+  if (evidenceDifference !== 0) {
+    return evidenceDifference;
+  }
+
+  return compareUntitledMultiRootForkCandidates(left.sourceCandidate, right.sourceCandidate);
+}
+
 function compareUntitledMultiRootForkCandidatesForDiagnostics(
   left: UntitledMultiRootWorkspaceStorageForkCandidate,
   right: UntitledMultiRootWorkspaceStorageForkCandidate
@@ -577,7 +715,7 @@ function readPersistedCanvasSnapshotMetadata(
         ? normalizeTimestamp(parsedSnapshot.state.updatedAt)
         : undefined;
     const effectiveTimestamp = writtenAt ?? stateUpdatedAt;
-    const executionPathHints = collectSnapshotExecutionPathHints(parsedSnapshot.state, options.pathModule);
+    const executionHints = collectSnapshotExecutionHints(parsedSnapshot.state, options.pathModule);
     return {
       exists: true,
       nodeCount: stateNodeCount,
@@ -589,7 +727,8 @@ function readPersistedCanvasSnapshotMetadata(
         typeof parsedSnapshot.stateHash === 'string' && parsedSnapshot.stateHash.trim()
           ? parsedSnapshot.stateHash.trim()
           : buildStateHash(parsedSnapshot.state),
-      executionPathHints,
+      executionPathHints: executionHints.pathHints,
+      executionStorageSlotHints: executionHints.storageSlotHints,
       builtinGettingStartedOnly: isBuiltinGettingStartedOnlyCanvasState(parsedSnapshot.state)
     };
   } catch {
@@ -599,27 +738,41 @@ function readPersistedCanvasSnapshotMetadata(
   }
 }
 
-function collectSnapshotExecutionPathHints(state: unknown, pathModule: PathModuleLike): string[] {
+function collectSnapshotExecutionHints(
+  state: unknown,
+  pathModule: PathModuleLike
+): {
+  pathHints: string[];
+  storageSlotHints: string[];
+} {
   if (!isRecord(state) || !Array.isArray(state.nodes)) {
-    return [];
+    return {
+      pathHints: [],
+      storageSlotHints: []
+    };
   }
 
   const pathHints = new Set<string>();
+  const storageSlotHints = new Set<string>();
   for (const node of state.nodes) {
     if (!isRecord(node) || !isRecord(node.metadata)) {
       continue;
     }
 
-    collectExecutionMetadataPathHints(node.metadata.agent, pathHints, pathModule);
-    collectExecutionMetadataPathHints(node.metadata.terminal, pathHints, pathModule);
+    collectExecutionMetadataHints(node.metadata.agent, pathHints, storageSlotHints, pathModule);
+    collectExecutionMetadataHints(node.metadata.terminal, pathHints, storageSlotHints, pathModule);
   }
 
-  return Array.from(pathHints).sort();
+  return {
+    pathHints: Array.from(pathHints).sort(),
+    storageSlotHints: Array.from(storageSlotHints).sort()
+  };
 }
 
-function collectExecutionMetadataPathHints(
+function collectExecutionMetadataHints(
   metadata: unknown,
   pathHints: Set<string>,
+  storageSlotHints: Set<string>,
   pathModule: PathModuleLike
 ): void {
   if (!isRecord(metadata)) {
@@ -628,6 +781,9 @@ function collectExecutionMetadataPathHints(
 
   for (const key of SNAPSHOT_EXECUTION_PATH_HINT_KEYS) {
     addExecutionPathHint(metadata[key], pathHints, pathModule);
+    if (key !== 'cwd') {
+      addExecutionStorageSlotHint(metadata[key], storageSlotHints, pathModule);
+    }
   }
 }
 
@@ -642,6 +798,31 @@ function addExecutionPathHint(value: unknown, pathHints: Set<string>, pathModule
   }
 
   pathHints.add(normalizedPath);
+}
+
+function addExecutionStorageSlotHint(
+  value: unknown,
+  storageSlotHints: Set<string>,
+  pathModule: PathModuleLike
+): void {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  const normalizedPath = normalizeWorkspaceRootPath(value, pathModule);
+  if (!normalizedPath) {
+    return;
+  }
+
+  const segments = normalizedPath.split(pathModule.sep).filter(Boolean);
+  const workspaceStorageIndex = segments.lastIndexOf(WORKSPACE_STORAGE_DIRNAME);
+  const slotName = workspaceStorageIndex >= 0 ? segments[workspaceStorageIndex + 1] : undefined;
+  const slotIdentity = slotName ? parseWorkspaceStorageSlotName(slotName) : undefined;
+  if (!slotIdentity) {
+    return;
+  }
+
+  storageSlotHints.add(slotIdentity.canonicalName);
 }
 
 function matchWorkspaceRootPathHints(

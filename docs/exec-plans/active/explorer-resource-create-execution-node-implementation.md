@@ -37,6 +37,9 @@
 - [x] (2026-05-29 23:58 +0800) 根据用户最新实测确认：Canvas 已能打开，但 fork 没拿到第一目录的旧画布，而是应用内置使用说明模板。复查本机真实 `~/.vscode-server/data/User/workspaceStorage` 发现多个有画布快照的 slot 没有 `meta.json`，现有源选择只看 `meta.name === workspaceFolders[0].name`，因此会返回 `no-source`。
 - [x] (2026-05-30 00:08 +0800) 实现受限 fallback：`selectUntitledMultiRootWorkspaceStorageForkSource(...)` 在没有第一个 root 名称匹配时，会从候选快照的 Agent / Terminal `cwd`、`runtimeStoragePath`、`resumeStoragePath` 提取路径线索，选择唯一命中第一个 root 的非内置模板快照；同时让当前 Untitled 多根槽里的内置使用说明模板不阻止 fork。
 - [x] (2026-05-30 00:12 +0800) 补跑真实 VSCode 启动 smoke 的缺失 `meta.json` 场景：先写入第一 root 的 Agent cwd 快照，再删除所有相关 `meta.json`，以 Untitled 多根启动并打开 Panel Canvas；验证 fork event 使用 `first-root-path-hint`，打开前后节点标题均为 `Path Hint Fork Source`。
+- [x] (2026-05-30 01:16 +0800) 复查用户最新诊断目录 `/home/users/ziyang01.wang-al/projects/dsc-test-02/.debug/current-host-diagnostics/2026-05-29T16-42-47-093Z`，确认上一版确实 fork 了旧状态：`storage/untitledMultiRootForkApplied` 选中 `21dd04231c926988e6dcf73d7f627c40-2`，而同 family 的 canonical slot `21dd04231c926988e6dcf73d7f627c40` 有更新的 3 节点快照。
+- [x] (2026-05-30 01:16 +0800) 更新 Untitled 多根 fork 源选择：路径线索只作为证据；若证据来自 `<slot>-N` indexed sibling，或证据快照里的 `runtimeStoragePath` / `resumeStoragePath` 指向某个 canonical workspaceStorage slot，则实际 fork 源优先使用该 canonical slot 的可恢复快照，避免陈旧 indexed sibling 或已复制到当前 Untitled 槽的旧快照继续覆盖第一 root 当前画布。
+- [x] (2026-05-30 01:16 +0800) 补充存储 helper 测试，覆盖 canonical slot 优先于陈旧 indexed path-hint sibling、runtime storage slot hint 优先于较新的复制证据、canonical 缺失时仍允许 indexed sibling fallback；并同步产品规格、设计文档和本计划。
 
 ## 意外与发现
 
@@ -81,6 +84,12 @@
 
 - 观察：受限 cwd fallback 在真实 VSCode Untitled 多根启动路径中可生效，不需要用户先保存 `.code-workspace`，也不需要 `meta.json`。
   证据：`.debug/multiroot-auto-activation/run-path-hint-open.mjs` 先写入第一 root 的 `Path Hint Fork Source` Agent，再删除相关 `meta.json`；Untitled 多根窗口启动后 `before open` 已加载该节点，执行 `devSessionCanvas.canvasPanel.open` 后 `ready.panel` 为 `true`，诊断事件 `storage/untitledMultiRootForkApplied` 的 `selectionBasis` 为 `first-root-path-hint`，`sourceRootPathHintMatchedRootIndexes` 为 `[0]`。
+
+- 观察：用户最新诊断里的错误 fork 不是随机源，而是 Remote SSH 第一个 root 的 canonical storage slot 的陈旧 indexed sibling。`md5("vscode-remote://ssh-remote%2Bdev_labs/home/users/ziyang01.wang-al/projects/dsc-test-02")` 对应 `21dd04231c926988e6dcf73d7f627c40`；上一版选中了 `21dd04231c926988e6dcf73d7f627c40-2`，因为它的旧节点 cwd 命中了第一 root。canonical slot 本身有 `2026-05-29T16:39:33.951Z` 写入的 3 节点快照，而 `-2` 是 `2026-05-26T16:49:45.286Z` 的 27 节点旧快照。
+  证据：诊断事件 `storage/untitledMultiRootForkApplied` 记录 `sourceSlotName: "21dd04231c926988e6dcf73d7f627c40-2"`、`selectionBasis: "first-root-path-hint"`、`sourceTimestamp: "2026-05-26T16:49:45.286Z"`；本地扫描 `~/.vscode-server/data/User/workspaceStorage/21dd04231c926988e6dcf73d7f627c40/devsessioncanvas.dev-session-canvas/canvas-state.json` 显示 `writtenAt: "2026-05-29T16:39:33.951Z"`、`nodeCount: 3`。
+
+- 观察：一旦错误 fork 已经复制到当前 Untitled 多根 slot，当前槽本身也会携带第一 root cwd 线索，单靠“最新 path hint”会再次选择当前复制快照而不是原单根 canonical slot。旧快照中的 `runtimeStoragePath` / `resumeStoragePath` 仍指向原 canonical slot，这可以作为“这个复制快照源自哪个单根 slot”的更强线索。
+  证据：当前 `3198a6262b0fba686f4c1d9d15774682` 快照已经包含 27 个节点和第一 root cwd 线索，但其 Agent runtime 路径仍包含 `workspaceStorage/21dd04231c926988e6dcf73d7f627c40/devsessioncanvas.dev-session-canvas`；新增 helper 检查用同一诊断目录模拟空当前槽时，选择结果从 copied path-hint 改为 `selectionBasis: "first-root-canonical-slot-family"`、`sourceSlotName: "21dd04231c926988e6dcf73d7f627c40"`。
 
 ## 决策记录
 
@@ -129,6 +138,10 @@
   理由：`onStartupFinished` 可在 VSCode 启动主链路完成后激活扩展，注册 Panel `WebviewViewProvider` 并执行 Untitled 多根 fork；`onView` 只在 view 被解析/展开时触发，不能覆盖 reload 后扩展保持 inactive 的情况。该决策不使用 `*`，不在启动时调用 `revealPanelView()`，因此不会自动把画布拉到前台或抢焦点。
   日期/作者：2026-05-29 / Codex。
 
+- 决策：Untitled 多根 path-hint fallback 中，cwd 命中第一 root 的候选只是“证据候选”，实际 fork 源优先使用同 canonical slot family 的 base slot；如果证据快照来自复制后的当前 Untitled 槽，则通过 `runtimeStoragePath` / `resumeStoragePath` 中的 `workspaceStorage/<slot>` 反向定位 canonical slot。
+  理由：VSCode Remote SSH 单根 storage slot 可能有 `slot`、`slot-1`、`slot-2` 等 indexed sibling；indexed sibling 可以保留陈旧历史节点，但仍包含第一 root cwd，导致“按 path-hint 最新/命中”选择旧画布。canonical base slot 才更接近当前单根 workspace storage；runtime 路径在复制后仍指回原 slot，可修复已经误 fork 后再次恢复的情况。canonical 缺失或无可恢复快照时仍回退证据候选，避免破坏只有 indexed 快照可用的历史恢复能力。
+  日期/作者：2026-05-30 / Codex。
+
 ## 结果与复盘
 
 上一轮实现已完成并通过验证：命令 ID 与 manifest 增加 Explorer 资源菜单，`src/extension.ts` 可把目录或普通文件父目录解析为 cwd；普通创建入口在多根 workspace 下会确认 root；共享协议带 `cwd`；`CanvasPanelManager` 会把 cwdOverride 写入 Agent / Terminal metadata，并在启动、CLI resolver、shell env patch 与 diagnostic 中优先使用节点 cwd；Webview Agent subtitle 与侧栏 Agent 第二行已接入 cwdLabel。测试覆盖已补齐到 manifest、协议、cwdLabel、Webview 展示和 trusted VSCode smoke 的 Explorer 创建主路径。
@@ -138,6 +151,8 @@
 用户随后继续实测发现当前版本仍会在 `Add Folder to Workspace...` 后卡在加载中。复查确认上一版没有测真实 VSCode UI reload，只测了存储 helper、typecheck，以及 CLI 打开 `rootA rootB` 后再手动激活扩展的近似路径。新增启动实验表明：Untitled 多根窗口启动后，如果扩展没有被激活，`CanvasPanelManager` 构造函数不会运行，Panel provider 不会注册，`recoverUntitledMultiRootWorkspaceStorageForkIfNeeded()` 也不会执行；这正是 fork 逻辑存在但用户看不到恢复节点的原因。最终采用 `onStartupFinished` 让扩展在启动完成后注册 provider 并运行 fork，同时明确不使用 `*`、不自动 reveal 画布内容。
 
 用户最新实测又暴露源识别缺口：Canvas 已经能打开，但因为历史 / Remote SSH storage slot 缺失 `meta.json`，启动期 fork 没能识别第一 root 的旧单根快照，随后首次打开应用了内置使用说明模板。本轮已把源选择扩展为两层：先用 `meta.name` 精确匹配第一个 root；没有精确匹配时，再读取候选快照中的 Agent / Terminal cwd 与 runtime 路径线索，选择明确落在第一个 root 下的非内置模板快照。定向单元测试和真实 VSCode Untitled 多根 smoke 均已覆盖这条 `first-root-path-hint` 路径。
+
+用户随后提供的宿主诊断显示 path-hint fallback 还能选到同一 Remote SSH 单根 slot family 下的陈旧 indexed sibling，从而 fork 了 2026-05-26 的 27 节点历史状态，而不是 canonical 单根 slot 中 2026-05-29 的 3 节点当前状态。本轮修复把 path-hint 候选拆成“证据”和“实际源”：证据可来自 indexed sibling 或复制后的当前 Untitled 槽，但实际源会优先切到同 family / runtime 路径指向的 canonical slot。这样既保留缺失 `meta.json` 时的恢复能力，又避免陈旧 indexed sibling 凭 cwd 命中盖过当前单根画布。
 
 复盘上，主要风险来自测试同步而不是产品路径：`webview/resetDemoState` 没有完成回执，容易与仍在启动或停止的执行 session 竞争。本轮已把相关 smoke 前置清理改为宿主 test reset 并等待 `runningExecutionCount === 0`，后续新增会启动执行节点的 smoke 测试也应沿用这个模式。
 
@@ -316,6 +331,14 @@
     [verify-path-hint-open] fork events ... "selectionBasis":"first-root-path-hint" ... "sourceRootPathHintMatchedRootIndexes":[0] ...
     exit code 0
 
+针对用户最新诊断中的“fork 到旧画布状态”，已补充 canonical slot family 选择测试：
+
+    npm run test:extension-storage-paths
+    extensionStoragePaths tests passed
+    exit code 0
+
+新增断言覆盖：第一 root 路径线索只出现在 `workspaceStorage/<slot>-2` 这类 indexed sibling 时，实际 fork 源优先使用 `<slot>` canonical 快照；如果错误复制后的快照更新、但 `runtimeStoragePath` 仍指向 canonical slot，也优先使用 canonical 快照；只有 canonical slot 缺失或没有可恢复快照时，才继续使用 indexed sibling 作为 fallback。
+
 ## 接口与依赖
 
 在 `src/common/extensionIdentity.ts` 中应存在以下命令 ID：
@@ -352,3 +375,4 @@
 本次更新说明：2026-05-29 23:58 +0800 根据用户实测“Canvas 能打开但未 fork 第一目录画布”补充根因与修复决策：`meta.json` 可能缺失，后续实现需要增加基于快照 cwd 路径线索的受限 fallback，并同步补测试。
 本次更新说明：2026-05-30 00:08 +0800 完成 `first-root-path-hint` fallback 实现与定向验证，补充缺失 `meta.json`、内置使用说明模板、精确匹配优先级和多 root 路径歧义测试。
 本次更新说明：2026-05-30 00:12 +0800 补充真实 VSCode 启动 smoke 证据，确认缺失 `meta.json` 时能通过第一 root 的 cwd 路径线索完成 fork，并在打开 Panel Canvas 后正常 ready。
+本次更新说明：2026-05-30 01:16 +0800 根据用户诊断修正 path-hint fallback：indexed sibling 或复制快照只能作为证据，实际源优先回到 canonical storage slot；同步产品规格、设计文档与单元测试。
