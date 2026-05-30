@@ -157,3 +157,21 @@ export async function publishMarketplaceTemplate(
   }
   return body as MarketplacePublishTemplateResponse;
 }
+
+export async function publishMarketplaceTemplatePackage(file: File): Promise<MarketplacePublishTemplateResponse> {
+  const formData = new FormData();
+  formData.set('package', file);
+  const response = await fetch('/api/v1/templates/package', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json'
+    },
+    body: formData
+  });
+  const body = (await response.json()) as MarketplacePublishTemplateResponse | { error?: { message?: string } };
+  if (!response.ok) {
+    const message = 'error' in body && body.error?.message ? body.error.message : `API returned ${response.status}`;
+    throw new Error(message);
+  }
+  return body as MarketplacePublishTemplateResponse;
+}

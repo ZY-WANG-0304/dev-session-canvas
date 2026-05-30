@@ -18,12 +18,14 @@ import {
   getMarketplaceAuthenticatedUser,
   type MarketplaceAuthEnv
 } from './auth';
-import { buildR2TemplateDownloadResponse, buildR2TemplateThumbnailResponse } from './download';
+import { buildR2TemplateDownloadResponse, buildR2TemplatePackageDownloadResponse, buildR2TemplateThumbnailResponse } from './download';
 import { MarketplaceRepositoryWriteError, buildMarketplaceUserId, createTemplateRepository } from './repository';
 import {
   MarketplacePublishValidationError,
   prepareMarketplacePublishTemplate,
+  prepareMarketplacePublishTemplatePackage,
   prepareMarketplacePublishTemplateVersion,
+  resolveMarketplaceMaxPackageBytes,
   resolveMarketplaceMaxTemplateBytes,
   writeMarketplaceTemplateObjects
 } from './publish';
@@ -34,6 +36,7 @@ const PUBLIC_READ_CORS_ROUTES = [
   '/api/v1/templates/slug-availability',
   '/api/v1/templates/:id',
   '/api/v1/templates/:id/download',
+  '/api/v1/templates/:id/package',
   '/api/v1/templates/:id/thumbnail'
 ] as const;
 
@@ -42,6 +45,7 @@ export interface MarketplaceWorkerEnv extends MarketplaceAuthEnv {
   MARKETPLACE_DB?: D1Database;
   TEMPLATE_BUCKET?: R2Bucket;
   MARKETPLACE_MAX_TEMPLATE_BYTES?: string;
+  MARKETPLACE_MAX_PACKAGE_BYTES?: string;
   MARKETPLACE_ADMIN_GITHUB_LOGINS?: string;
 }
 
@@ -202,6 +206,23 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     return context.json(response);
   });
 
+  app.get('/api/v1/templates/:id/package', async (context) => {
+    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const response = await repository.buildPackageDownloadResponse(context.req.param('id'), context.req.query('version'));
+    if (!response) {
+      return context.json(makeMarketplaceApiError('template_or_version_not_found', 'Template version was not found.'), 404);
+    }
+    if (context.env?.TEMPLATE_BUCKET) {
+      const objectResponse = await buildR2TemplatePackageDownloadResponse(context.env.TEMPLATE_BUCKET, response);
+      if (!objectResponse) {
+        return context.json(makeMarketplaceApiError('template_package_object_not_found', 'Template package was not found in R2.'), 404);
+      }
+      await repository.recordDownload(response.templateId, response.versionId);
+      return objectResponse;
+    }
+    return context.json(response);
+  });
+
   app.get('/api/v1/templates/:id/thumbnail', async (context) => {
     const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
     const detail = await repository.getTemplateDetail(context.req.param('id'));
@@ -245,6 +266,40 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     try {
       const prepared = await prepareMarketplacePublishTemplate(body, user, {
         maxTemplateBytes: resolveMarketplaceMaxTemplateBytes(context.env.MARKETPLACE_MAX_TEMPLATE_BYTES)
+      });
+      if (!(await repository.isTemplateSlugAvailable(prepared.record.slug))) {
+        return context.json(makeMarketplaceApiError('template_slug_conflict', 'A template with this slug already exists.'), 409);
+      }
+      await writeMarketplaceTemplateObjects(context.env.TEMPLATE_BUCKET, prepared);
+      const result = await repository.publishTemplate(prepared.record, parseAdminGithubLogins(context.env.MARKETPLACE_ADMIN_GITHUB_LOGINS));
+      return context.json(result, 201);
+    } catch (error) {
+      if (error instanceof MarketplacePublishValidationError || error instanceof MarketplaceRepositoryWriteError) {
+        return context.json(makeMarketplaceApiError(error.code, error.message), error.status as 400 | 401 | 409 | 413 | 503);
+      }
+      throw error;
+    }
+  });
+
+  app.post('/api/v1/templates/package', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to publish templates.'), 401);
+    }
+    if (!context.env?.MARKETPLACE_DB || !context.env?.TEMPLATE_BUCKET) {
+      return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
+    }
+
+    const packageUpload = await readPackageZipUpload(context.req.raw);
+    if (packageUpload.response) {
+      return packageUpload.response;
+    }
+
+    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    try {
+      const prepared = await prepareMarketplacePublishTemplatePackage(packageUpload.bytes, user, {
+        maxTemplateBytes: resolveMarketplaceMaxTemplateBytes(context.env.MARKETPLACE_MAX_TEMPLATE_BYTES),
+        maxPackageBytes: resolveMarketplaceMaxPackageBytes(context.env.MARKETPLACE_MAX_PACKAGE_BYTES)
       });
       if (!(await repository.isTemplateSlugAvailable(prepared.record.slug))) {
         return context.json(makeMarketplaceApiError('template_slug_conflict', 'A template with this slug already exists.'), 409);
@@ -380,4 +435,45 @@ function parseAdminGithubLogins(value: string | undefined): string[] {
     ?.split(',')
     .map((entry) => entry.trim())
     .filter(Boolean) ?? [];
+}
+
+async function readPackageZipUpload(request: Request): Promise<{ bytes: Uint8Array; response?: never } | { bytes?: never; response: Response }> {
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('multipart/form-data')) {
+    return {
+      response: Response.json(makeMarketplaceApiError('package_upload_invalid', 'Package upload must use multipart/form-data.'), { status: 400 })
+    };
+  }
+
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    return {
+      response: Response.json(makeMarketplaceApiError('package_upload_invalid', 'Package upload form data could not be parsed.'), { status: 400 })
+    };
+  }
+  const file = formData.get('package') ?? formData.get('file');
+  if (!isUploadedFile(file)) {
+    return {
+      response: Response.json(makeMarketplaceApiError('package_upload_missing', 'Upload package.zip in the package form field.'), { status: 400 })
+    };
+  }
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    return {
+      response: Response.json(makeMarketplaceApiError('package_upload_invalid', 'Template package file must use the .zip extension.'), { status: 400 })
+    };
+  }
+  return { bytes: new Uint8Array(await file.arrayBuffer()) };
+}
+
+function isUploadedFile(value: unknown): value is File {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      'name' in value &&
+      typeof value.name === 'string' &&
+      'arrayBuffer' in value &&
+      typeof value.arrayBuffer === 'function'
+  );
 }

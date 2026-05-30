@@ -40,6 +40,8 @@
 - [x] (2026-05-24 11:43 +0800) 按手动截图反馈修复 VSCode 发布表单 Name / Slug 行错位：字段 grid 预留校验提示行高，input 基线保持对齐；同时移除画板右键“发布到模板市场”入口，发布只从保存后的模板侧栏、市场 header 或命令面板进入。
 - [x] (2026-05-24 22:20 +0800) 处理 PR94 review：发布新模板和新版本的 R2 object key 改为包含唯一 `versionId`，避免并发版本发布覆盖同一 `versionNumber` key；Worker CORS 改为仅对公开 GET/OPTIONS 读取路由返回匿名 `*`，写接口不继承公开读取 CORS，并补 API 回归测试。
 - [x] (2026-05-27 01:06 +0800) 按模板包落地顺序完成第一步用户教育：浏览器发布页侧栏展示 canonical 模板包结构、package checks、50MB 包 / 5MB 模板主体限制；README 区域提示包内媒体规则，并用 E2E 与 web 单测覆盖 README 媒体 lint。
+- [x] (2026-05-28 22:25 +0800) 实现真实 `package.zip` 上传/下载 UI：新增完整包下载端点和浏览器详情页链接，发布页高级 zip 上传可解析包并提交 Worker；Worker 解压校验 canonical 包，写入 R2 `package.zip` / `template.json` / `thumbnail.png` / `manifest.json` 和 D1 派生索引。
+- [x] (2026-05-29 10:20 +0800) 明确并实现浏览器发布页 `package.zip` / `template.json` 互斥入口：Package 模式下表单编辑会在发布前重新生成 canonical `package.zip`，再提交 Worker；JSON 模式继续走兼容 JSON API 并由 Worker 组包。
 
 ## 意外与发现
 
@@ -79,6 +81,12 @@
 - 观察：模板包用户教育可以先作为发布表单的非阻塞预览和 lint 落地，不需要等待 zip 上传、schema 或 Worker 组包重构。
   证据：`apps/template-marketplace/src/web/components/TemplatePublishView.tsx` 只新增 package structure / package checks / README media lint UI，不改变 `publishMarketplaceTemplate()` 的 JSON 请求体；`npm run test:marketplace-web`、`npm run typecheck:marketplace`、`npm run test:canvas-templates` 和 `npm run test:marketplace-browser-e2e` 均通过。
 
+- 观察：当前 D1 schema 尚未保存 canonical `package.zip` object key；但已发布版本的 `objectKey` 均采用 `templates/{templateId}/versions/{versionId}/template.json`，可以在不迁移 D1 的前提下从同目录推导 `package.zip` key。
+  证据：`apps/template-marketplace/src/worker/repository.ts` 的 `MarketplaceTemplateVersion.objectKey` 只包含兼容 `template.json`；调试环境手动 seed 的包对象也位于同一版本目录下的 `package.zip`。
+
+- 观察：`fflate.zipSync()` 会在嵌套目录中生成目录 entry，例如 `media/`；如果把目录 entry 当普通文件走包路径校验，会被误判为空 path。
+  证据：Worker 包上传测试最初返回 `package_path_invalid`，修复为在 unzip filter 和 normalized entries 中跳过 `entryPath.endsWith('/')` 后，`npm run -w @dev-session-canvas/template-marketplace test:api` 的 package upload 用例通过。
+
 ## 决策记录
 
 - 决策：真实 GitHub OAuth client secret、session secret 和管理员 allowlist 只放在 `apps/template-marketplace/.dev.vars` 或 Cloudflare Worker secrets 中；仓库跟踪 `.dev.vars.example` 作为空值模板。
@@ -105,6 +113,14 @@
   理由：产品已拍板普通发布者不应先理解完整包格式；先让现有发布页解释“背后将生成什么包”可以降低学习成本，同时为后续 starter package、schema、zip 上传和 CLI 校验预留一致语言。
   日期/作者：2026-05-27 / Codex。
 
+- 决策：本轮真实包下载先新增公开 `GET /api/v1/templates/:id/package?version=`，继续保留 `GET /download` 作为兼容 `template.json` 下载；包 key 暂从版本 `objectKey` 推导，不新增 D1 migration。
+  理由：用户需要立刻用临时模板包调试完整包下载 UI；D1 migration 与 listing revision 字段属于后续数据模型收口，不应阻塞已有 R2 `package.zip` 的读取和浏览器入口验证。
+  日期/作者：2026-05-28 / Codex。
+
+- 决策：本轮真实包上传使用 `POST /api/v1/templates/package` 的 `multipart/form-data` zip 文件字段，Worker 用 `fflate` 解压并校验 canonical 结构，再复用现有 D1 派生字段与 R2 `template.json` / `thumbnail.png` 兼容对象写入。
+  理由：浏览器没有内建 zip 解析，前端只上传原始 `package.zip` 才能覆盖 README 媒体和归档保真；`fflate` 是 MIT 许可的小型纯 JS 压缩库，适合 Workers runtime，且避免引入 Node-only zip 依赖。
+  日期/作者：2026-05-28 / Codex。
+
 ## 结果与复盘
 
 当前已完成 Phase 2 发布能力的本地代码闭环：共享发布 schema、浏览器 GitHub OAuth/session helper、测试专用 fake auth、OAuth 发起页回跳、市场 session 退出登录、`POST /api/v1/templates`、`POST /api/v1/templates/:id/versions`、`GET /api/v1/me/templates`、D1/R2 写入 helper、浏览器 `/templates/publish` 与 `/templates/me` 页面、浏览器 Templates 列表上传入口、VSCode 命令面板 / 市场面板 header / 侧边栏发布入口、共享自动缩略图生成、内容安全最小检查、文件大小超限错误和结构化失败提示均已接入。
@@ -126,6 +142,12 @@
 23:51 继续优化发布页错误反馈位置和 slug 唯一性提示：模板 JSON 相关错误现在绑定在 Step 1 上传控件附近；slug 字段在编辑时通过公开 availability API 检查 D1 / seed 中是否已有同名模板，并把检查中、可用、冲突、格式错误都显示在字段下方。提交时仍保留 Worker 侧唯一索引和 `POST /api/v1/templates` 409 作为最终保护。
 
 2026-05-27 按模板包设计落地第一阶段用户教育：浏览器发布页在侧栏新增 `Template package structure` 和 `Package checks`，明确当前表单会被组织成 canonical 模板包，并把包体限制更新为 `50MB package / 5MB template JSON`。README 区域新增包内媒体提示，lint 会区分 `./media/...` / `./assets/...` 包内媒体、外部 HTTPS 媒体链接、不允许的相对路径和 raw HTML 媒体 embed。当前只影响发布前解释和提示，不改变 Worker 写入对象仍为兼容 `template.json` / `thumbnail.png` 的事实；后续 schema、package upload、CLI 校验仍按模板包设计文档继续推进。
+
+2026-05-28 进入真实包上传/下载实现。阶段目标是让浏览器详情页能下载 R2 中同版本 `package.zip`，发布页能选择 `package.zip` 并提交到 Worker，Worker 解压出 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md` 和缩略图后写入 D1/R2。为降低迁移风险，本轮不修改 D1 schema；canonical package key 先由 `template.json` object key 所在目录推导，后续 listing revision / package key 字段再单独迁移。
+
+22:25 已完成上述阶段目标。浏览器详情页新增 `Download full package`，`GET /api/v1/templates/:id/package?version=` 会读取 R2 `package.zip` 并在成功返回后记录下载计数；发布页新增 `Upload package.zip` 高级入口，前端可解析 zip 并填充表单预览，提交时走 `POST /api/v1/templates/package`。JSON 发布路径也会生成 canonical `package.zip`，因此新发布内容具备完整包归档；D1 schema 仍保持现状，package key 由版本目录推导。
+
+2026-05-29 进一步收口 Package 模式产品语义：上传 `package.zip` 后页面仍允许编辑，但这些编辑必须成为最终发布事实；上传 `template.json` 和上传 `package.zip` 必须互斥，避免“后选 JSON 但发布旧 zip”或“slug 检查的是编辑值但服务端用包内旧值”。实现上前端保留原包 `media/` / `assets/` 资源，发布前用当前表单重新生成 zip，再交给 Worker 的同一包校验路径。
 
 ## 上下文与定向
 
@@ -180,6 +202,15 @@
     npm run test:marketplace-browser-e2e
     git diff --check
 
+真实 `package.zip` 上传/下载 UI 与 Package 模式重新组包的最小验证命令是：
+
+    npm run test:marketplace-shared
+    npm run test:marketplace-api
+    npm run test:marketplace-web
+    npm run typecheck:marketplace
+    npm run test:marketplace-browser-e2e
+    git diff --check
+
 ## 验证与验收
 
 发布 API 的最小验收是：在测试环境中使用 fake auth 调用 `POST /api/v1/templates`，响应 201，返回新模板 slug、版本号、sha256 和 `storageMode: "d1"`；随后调用 `GET /api/v1/templates/:slug` 能读到该模板，调用 `GET /api/v1/templates/:slug/download` 能从 fake R2 读取刚写入的模板 JSON。未经认证调用发布接口应返回 401；没有 D1 或 R2 binding 时应返回结构化 503；超出大小限制、非法模板 JSON、重复 slug 或非法缩略图应返回结构化 400/409。
@@ -190,11 +221,15 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 
 调试验证环境 E2E 的验收是：`npm run test:marketplace-vscode-preview-e2e` 不启动本地 fixture，直接使用 `https://dscanvas-template-marketplace.wzy0304.workers.dev/templates` 或 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_SOURCE_URL` 指定的 `/templates` 来源；它必须能打开 VSCode 内市场列表、读取真实模板详情、打开并关闭版本菜单、安装真实模板，并在 sidecar 中保留 preview `sourceUrl`。
 
+真实模板包上传/下载 UI 的验收是：浏览器模板详情页在 `Download JSON` 旁提供 `Download full package`，该链接指向 `GET /api/v1/templates/:slug/package?version=<latestVersionId>`；有 R2 binding 且同版本目录存在 `package.zip` 时，Worker 以 `application/zip` 和 `Content-Disposition: attachment` 返回真实 zip，并在对象存在后才记录下载计数。发布页提供高级 `Upload package.zip` 入口，选择合法包后自动填充名称、slug、描述、tags、README、CHANGELOG、Template JSON Preview 和缩略图预览；`package.zip` 与 `template.json` 上传入口互斥，后选择的入口清空前一个入口的文件状态，避免表单显示与提交来源不一致。Package 模式下允许继续编辑公开字段、README、CHANGELOG、Template JSON Preview 和缩略图；点击发布时前端基于原包资源重新生成 canonical `package.zip`，把修改写回 manifest / README / CHANGELOG / template JSON / thumbnail 后使用 `multipart/form-data` 提交，Worker 校验包路径、大小、文件数量、manifest、模板 JSON、README 媒体规则和缩略图，并写入 R2 `package.zip`、兼容 `template.json`、`thumbnail.png`、`manifest.json` 与 D1 派生索引。现有 JSON 表单发布仍可用，并应同时生成 canonical `package.zip`。
+
 ## 幂等性与恢复
 
 `.dev.vars.example` 可以安全重复复制为 `.dev.vars`，真实 `.dev.vars` 已被 Git 忽略。发布 API 测试使用 fake D1 / fake R2，不写远端 Cloudflare 资源。VSCode preview E2E 只读取真实 preview API 并把公开模板安装到隔离 VSCode runtime，不发布新模板；真实 preview OAuth 和 R2/D1 写入只应在用户明确要求部署或 smoke 时执行，并通过 Wrangler secret 配置敏感值。
 
 如果发布 API 写入 R2 成功但 D1 写入失败，当前最小实现可能留下不可见的 R2 orphan object；后续需要在 Worker 支持 delete 或改为更严格的预检查 / 批处理后收口。此风险如果在本轮未解决，必须登记到 `docs/exec-plans/tech-debt-tracker.md`。
+
+`POST /api/v1/templates/package` 使用同一发布前 slug 可用性检查与 D1 唯一约束，可以安全重复上传不同 slug 的包；若上传同一 slug，会返回 409 而不会覆盖已有 D1 记录。由于本轮仍不具备 R2 delete 回滚，R2 写入成功但 D1 写入失败时仍可能留下 orphan object，完成时若未解决需继续保留技术债。
 
 ## 证据与备注
 
@@ -257,6 +292,31 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 
     git diff --check
     <passed>
+
+2026-05-28 真实 `package.zip` 上传/下载 UI 阶段验证输出：
+
+    npm run -w @dev-session-canvas/marketplace-shared test -- --run
+    Test Files  2 passed (2)
+    Tests  23 passed (23)
+
+    npm run -w @dev-session-canvas/template-marketplace test:api
+    Test Files  5 passed (5)
+    Tests  59 passed (59)
+
+    npm run -w @dev-session-canvas/template-marketplace test:web
+    Test Files  6 passed (6)
+    Tests  28 passed (28)
+
+    npm run -w @dev-session-canvas/template-marketplace typecheck
+    <passed>
+
+    npm run test:marketplace-browser-e2e
+    marketplace browser page e2e passed
+
+    npm run test:canvas-templates
+    <passed>
+
+2026-05-28 / Codex：更新计划以覆盖真实 `package.zip` 上传/下载 UI，原因是当前任务已从用户教育进入可运行上传/下载实现，需要把新增端点、Worker 解压、R2 canonical 对象和验证命令纳入可追踪范围。
 
     npm run typecheck
     <passed>

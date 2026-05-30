@@ -16,14 +16,20 @@ export const MARKETPLACE_TEMPLATE_NOTE_CONTENT_MODES = [
   'workspace-file-with-content'
 ] as const;
 export const MARKETPLACE_DEFAULT_MAX_TEMPLATE_BYTES = 5 * 1024 * 1024;
+export const MARKETPLACE_DEFAULT_MAX_PACKAGE_BYTES = 50 * 1024 * 1024;
+export const MARKETPLACE_DEFAULT_MAX_PACKAGE_UNZIPPED_BYTES = 100 * 1024 * 1024;
+export const MARKETPLACE_MAX_PACKAGE_FILES = 100;
+export const MARKETPLACE_MAX_PACKAGE_MANIFEST_BYTES = 64 * 1024;
 export const MARKETPLACE_MAX_THUMBNAIL_BYTES = 1024 * 1024;
 export const MARKETPLACE_MAX_TEMPLATE_NAME_LENGTH = 80;
 export const MARKETPLACE_MAX_TEMPLATE_DESCRIPTION_LENGTH = 240;
-export const MARKETPLACE_MAX_TEMPLATE_README_LENGTH = 50_000;
-export const MARKETPLACE_MAX_TEMPLATE_CHANGELOG_LENGTH = 2_000;
+export const MARKETPLACE_MAX_TEMPLATE_README_LENGTH = 1024 * 1024;
+export const MARKETPLACE_TEMPLATE_README_WARNING_BYTES = 512 * 1024;
+export const MARKETPLACE_MAX_TEMPLATE_CHANGELOG_LENGTH = 256 * 1024;
 export const MARKETPLACE_MAX_TAGS_PER_TEMPLATE = 10;
 export const MARKETPLACE_MAX_TAG_LENGTH = 32;
 export const MARKETPLACE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const MARKETPLACE_PACKAGE_MEDIA_TYPES = ['image', 'video'] as const;
 
 export type MarketplaceSort = (typeof MARKETPLACE_SORT_VALUES)[number];
 export type MarketplaceTemplateStatus = (typeof MARKETPLACE_TEMPLATE_STATUS_VALUES)[number];
@@ -32,6 +38,7 @@ export type MarketplaceStorageMode = (typeof MARKETPLACE_STORAGE_MODES)[number];
 export type MarketplaceTemplateNodeKind = (typeof MARKETPLACE_TEMPLATE_NODE_KINDS)[number];
 export type MarketplaceTemplateAgentProviderKind = (typeof MARKETPLACE_TEMPLATE_AGENT_PROVIDERS)[number];
 export type MarketplaceTemplateNoteContentMode = (typeof MARKETPLACE_TEMPLATE_NOTE_CONTENT_MODES)[number];
+export type MarketplaceTemplatePackageMediaType = (typeof MARKETPLACE_PACKAGE_MEDIA_TYPES)[number];
 
 export interface MarketplacePublisherSummary {
   id: string;
@@ -111,6 +118,44 @@ export interface MarketplaceDownloadResponse {
   sizeBytes: number;
   storageMode: MarketplaceStorageMode;
   downloadUrl: string;
+}
+
+export interface MarketplacePackageDownloadResponse extends MarketplaceDownloadResponse {
+  packageObjectKey: string;
+  packageDownloadUrl: string;
+}
+
+export interface MarketplaceTemplatePackageManifest {
+  schemaVersion: 1;
+  slug: string;
+  name: string;
+  description: string;
+  tags: string[];
+  template: string;
+  readme: string;
+  changelog: string;
+  thumbnail: string;
+  version?: string;
+  minExtensionVersion?: string;
+  providers?: MarketplaceTemplateAgentProviderKind[];
+  media?: {
+    thumbnail?: string;
+    gallery?: MarketplaceTemplatePackageMediaItem[];
+  };
+  license?: string;
+  homepage?: string;
+  repository?: string;
+  checksums?: {
+    templateSha256?: string;
+  };
+}
+
+export interface MarketplaceTemplatePackageMediaItem {
+  type: MarketplaceTemplatePackageMediaType;
+  path: string;
+  alt?: string;
+  title?: string;
+  poster?: string;
 }
 
 export interface MarketplaceTemplateDocument {
@@ -338,6 +383,78 @@ export const marketplacePublishTemplateVersionRequestSchema = z.object({
   thumbnailPngBase64: z.string().trim().min(1).optional()
 });
 
+const marketplaceTemplatePackagePathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .transform((value) => normalizeMarketplacePackagePath(value))
+  .refine((value): value is string => Boolean(value), 'Package paths must be safe package-relative paths.');
+
+const marketplaceTemplatePackageMediaPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .transform((value) => normalizeMarketplacePackagePath(value))
+  .refine((value): value is string => Boolean(value), 'Package media paths must be safe package-relative paths.')
+  .refine((value) => Boolean(value) && (value.startsWith('media/') || value.startsWith('assets/')), 'Package media must live under media/ or assets/.');
+
+const marketplaceTemplatePackageMediaItemSchema = z.object({
+  type: z.enum(MARKETPLACE_PACKAGE_MEDIA_TYPES),
+  path: marketplaceTemplatePackageMediaPathSchema,
+  alt: z.string().trim().max(240).optional(),
+  title: z.string().trim().max(240).optional(),
+  poster: marketplaceTemplatePackageMediaPathSchema.optional()
+});
+
+export const marketplaceTemplatePackageManifestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    slug: z
+      .string()
+      .trim()
+      .max(80)
+      .transform((value) => normalizeMarketplaceSlug(value))
+      .refine((value) => MARKETPLACE_SLUG_PATTERN.test(value), 'Slug must use lowercase words separated by hyphens.'),
+    name: z.string().trim().min(1).max(MARKETPLACE_MAX_TEMPLATE_NAME_LENGTH),
+    description: z.string().trim().min(1).max(MARKETPLACE_MAX_TEMPLATE_DESCRIPTION_LENGTH),
+    tags: marketplaceTagsSchema,
+    template: marketplaceTemplatePackagePathSchema.default('template.json'),
+    readme: marketplaceTemplatePackagePathSchema.default('README.md'),
+    changelog: marketplaceTemplatePackagePathSchema.default('CHANGELOG.md'),
+    thumbnail: marketplaceTemplatePackageMediaPathSchema.optional(),
+    version: z.string().trim().max(80).optional(),
+    minExtensionVersion: z.string().trim().max(80).optional(),
+    providers: z.array(z.enum(MARKETPLACE_TEMPLATE_AGENT_PROVIDERS)).max(16).optional(),
+    media: z
+      .object({
+        thumbnail: marketplaceTemplatePackageMediaPathSchema.optional(),
+        gallery: z.array(marketplaceTemplatePackageMediaItemSchema).max(20).optional()
+      })
+      .optional(),
+    license: z.string().trim().max(120).optional(),
+    homepage: z.string().trim().url().max(500).optional(),
+    repository: z.string().trim().max(500).optional(),
+    checksums: z
+      .object({
+        templateSha256: z.string().trim().regex(/^[0-9a-f]{64}$/i).optional()
+      })
+      .optional()
+  })
+  .transform((manifest) => ({
+    ...manifest,
+    thumbnail: manifest.thumbnail ?? manifest.media?.thumbnail ?? 'media/thumbnail.png',
+    media: manifest.media
+      ? {
+          ...manifest.media,
+          thumbnail: manifest.media.thumbnail ?? manifest.thumbnail
+        }
+      : manifest.thumbnail
+      ? { thumbnail: manifest.thumbnail }
+      : undefined
+  }));
+
 const seedPublisher: MarketplacePublisherSummary = {
   id: 'github-8197085',
   githubLogin: 'ZY-WANG-0304',
@@ -529,6 +646,19 @@ export function buildSeedDownloadResponse(templateIdOrSlug: string, versionId?: 
   };
 }
 
+export function buildSeedPackageDownloadResponse(templateIdOrSlug: string, versionId?: string): MarketplacePackageDownloadResponse | undefined {
+  const response = buildSeedDownloadResponse(templateIdOrSlug, versionId);
+  if (!response) {
+    return undefined;
+  }
+  const packageObjectKey = buildMarketplacePackageObjectKey(response.objectKey);
+  return {
+    ...response,
+    packageObjectKey,
+    packageDownloadUrl: `/api/v1/templates/${response.templateId}/package?version=${encodeURIComponent(response.versionId)}`
+  };
+}
+
 export function calculateHotScore(downloadCount: number, likeCount: number, updatedAt: string, now: Date = new Date('2026-05-10T00:00:00.000Z')): number {
   const updatedTime = Date.parse(updatedAt);
   const ageDays = Number.isFinite(updatedTime) ? Math.max(0, (now.getTime() - updatedTime) / 86_400_000) : 30;
@@ -580,6 +710,32 @@ export function normalizeMarketplaceTemplateWorkspaceRelativePath(value: string)
   }
 
   return parts.join('/');
+}
+
+export function normalizeMarketplacePackagePath(value: string): string | undefined {
+  const normalized = value.trim().replace(/\\/g, '/').replace(/^\.\/+/u, '');
+  if (
+    normalized.length === 0 ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:/u.test(normalized) ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(normalized) ||
+    normalized.includes('\0')
+  ) {
+    return undefined;
+  }
+
+  const parts = normalized.split('/');
+  if (parts.some((part) => part.length === 0 || part === '.' || part === '..')) {
+    return undefined;
+  }
+
+  return parts.join('/');
+}
+
+export function buildMarketplacePackageObjectKey(objectKey: string): string {
+  const normalized = normalizeMarketplacePackagePath(objectKey) ?? objectKey.replace(/\\/g, '/').replace(/^\/+/, '');
+  const directory = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : '';
+  return directory ? `${directory}/package.zip` : 'package.zip';
 }
 
 export {

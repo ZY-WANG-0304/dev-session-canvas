@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import { unzipSync, zipSync } from 'fflate';
 
 const projectRoot = process.cwd();
 const appRoot = path.join(projectRoot, 'apps', 'template-marketplace');
@@ -133,6 +134,8 @@ async function verifyDetailPage(page, localUrl) {
 
   const downloadHref = await page.getByRole('link', { name: /Download Review Loop v2 as JSON/u }).getAttribute('href');
   assert.equal(downloadHref, '/api/v1/templates/review-loop/download?version=ver-review-loop-2');
+  const packageDownloadHref = await page.getByRole('link', { name: /Download Review Loop v2 as full package/u }).getAttribute('href');
+  assert.equal(packageDownloadHref, '/api/v1/templates/review-loop/package?version=ver-review-loop-2');
 
   await page.getByRole('link', { name: 'Back to all templates' }).click();
   await page.waitForLoadState('networkidle');
@@ -165,20 +168,60 @@ async function verifyPublishPage(page, localUrl) {
   await page.getByRole('heading', { name: 'Package checks' }).waitFor();
   await assertVisibleText(page, 'template-package.json');
   await assertVisibleText(page, '50MB package / 5MB template JSON');
+  await assertVisibleText(page, 'Upload package.zip');
 
   const templateFileSection = page.locator('section').filter({ hasText: 'Template file' }).first();
   await page.getByRole('button', { name: 'Publish template' }).click();
   await templateFileSection.getByRole('alert').filter({ hasText: 'Choose a template JSON before publishing.' }).waitFor();
 
-  await page.locator('input[type="file"]').first().setInputFiles({
+  await page.locator('input[accept="application/json,.json"]').setInputFiles({
     name: 'invalid-template.json',
     mimeType: 'application/json',
     buffer: Buffer.from('{not valid json', 'utf8')
   });
   await templateFileSection.getByRole('alert').filter({ hasText: 'invalid-template.json: Template JSON is not valid JSON.' }).waitFor();
 
-  await page.locator('input[type="file"]').first().setInputFiles(templateFile);
+  await page.locator('input[accept="application/zip,.zip"]').setInputFiles({
+    name: 'codex-package-template.zip',
+    mimeType: 'application/zip',
+    buffer: buildTemplatePackageZip()
+  });
+  await assertVisibleText(page, 'Package mode active.');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).waitFor();
+  assert.equal(await page.getByRole('textbox', { name: 'Name', exact: true }).inputValue(), 'Codex Package Template');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Codex Edited Package');
+  await page.getByRole('textbox', { name: 'Slug', exact: true }).fill('codex-edited-package');
+  await page.getByRole('textbox', { name: 'Description', exact: true }).fill('An edited package upload smoke test.');
+  await page.getByText('Optional README, changelog, and JSON preview').click();
+  await page.getByRole('textbox', { name: 'README', exact: true }).fill('# Codex Edited Package\n\n![Shot](./media/screenshot.png)');
+  await page.getByRole('textbox', { name: 'Changelog', exact: true }).fill('Edited package smoke.');
+  await page.getByRole('status').filter({ hasText: 'Slug is available.' }).waitFor();
+  await page.getByRole('button', { name: 'Publish template' }).click();
+  await page.getByRole('status').filter({ hasText: 'Template published successfully' }).waitFor();
+  assert.ok(requests.some((request) => request.method === 'POST' && request.url.endsWith('/api/v1/templates/package')));
+
+  await page.goto(`${localUrl}publish`, { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Publish a template' }).waitFor();
+  await page.locator('input[accept="application/zip,.zip"]').setInputFiles({
+    name: 'codex-package-template.zip',
+    mimeType: 'application/zip',
+    buffer: buildTemplatePackageZip()
+  });
+  await assertVisibleText(page, 'Package mode active.');
+
+  await page.locator('input[accept="application/json,.json"]').setInputFiles(templateFile);
   await page.waitForFunction(() => document.body.textContent?.includes('01-getting-started.json'));
+  await assertVisibleText(page, 'Generated on publish');
+  await page.locator('input[accept="application/zip,.zip"]').setInputFiles({
+    name: 'codex-package-template.zip',
+    mimeType: 'application/zip',
+    buffer: buildTemplatePackageZip()
+  });
+  await assertVisibleText(page, 'Package mode active.');
+  assert.equal(await page.getByRole('textbox', { name: 'Name', exact: true }).inputValue(), 'Codex Package Template');
+  await page.locator('input[accept="application/json,.json"]').setInputFiles(templateFile);
+  await page.waitForFunction(() => document.body.textContent?.includes('01-getting-started.json'));
+  await assertVisibleText(page, 'Generated on publish');
   await page.getByText('Optional README, changelog, and JSON preview').click();
   await assertVisibleText(page, 'README images can use package-relative paths such as');
   await assertVisibleText(page, 'external media links stay as plain links');
@@ -255,6 +298,39 @@ async function installApiRoutes(page) {
     const slug = new URL(route.request().url()).searchParams.get('slug') ?? '';
     return fulfillJson(route, { slug, available: !fixtures.details.has(slug), storageMode: 'd1' });
   });
+  await page.route(/\/api\/v1\/templates\/package$/u, async (route) => {
+    if (route.request().method() !== 'POST') {
+      return route.continue();
+    }
+    const formData = await route.request().postDataBuffer();
+    assert.ok(formData?.includes(Buffer.from('codex-package-template.zip')));
+    const uploadedPackage = extractPackageZipFromMultipart(formData);
+    const uploadedEntries = unzipSync(uploadedPackage);
+    const uploadedManifest = JSON.parse(new TextDecoder().decode(uploadedEntries['template-package.json']));
+    assert.equal(uploadedManifest.slug, 'codex-edited-package');
+    assert.equal(uploadedManifest.name, 'Codex Edited Package');
+    assert.equal(uploadedManifest.description, 'An edited package upload smoke test.');
+    assert.deepEqual(uploadedManifest.tags, ['package', 'smoke']);
+    assert.equal(new TextDecoder().decode(uploadedEntries['README.md']), '# Codex Edited Package\n\n![Shot](./media/screenshot.png)\n');
+    assert.equal(new TextDecoder().decode(uploadedEntries['CHANGELOG.md']), 'Edited package smoke.\n');
+    assert.ok(uploadedEntries['media/screenshot.png'], 'Rebuilt package should preserve original package media.');
+    const published = createTemplateDetail({
+      id: 'tmpl-codex-package',
+      slug: 'codex-edited-package',
+      name: 'Codex Edited Package',
+      description: 'An edited package upload smoke test.',
+      tags: ['package', 'smoke'],
+      readme: '# Codex Edited Package\n\n![Shot](./media/screenshot.png)',
+      versionId: 'ver-codex-package-1',
+      versionNumber: 1,
+      document: releaseTemplateDocument
+    });
+    fixtures.templates.push(toSummary(published));
+    fixtures.details.set(published.slug, published);
+    fixtures.documents.set(published.slug, releaseTemplateDocument);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return fulfillJson(route, { template: published, storageMode: 'd1' }, 201);
+  });
   await page.route('**/api/v1/templates/*/thumbnail?*', (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#22c55e"/></svg>' }));
   await page.route('**/api/v1/templates/*/download?*', (route) => {
     const slug = readSlugFromRoute(route.request().url(), '/download');
@@ -265,7 +341,15 @@ async function installApiRoutes(page) {
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(document) });
   });
-  await page.route(/\/api\/v1\/templates\/(?!slug-availability(?:\?|$))[^/]+(?:\?.*)?$/u, (route) => {
+  await page.route('**/api/v1/templates/*/package?*', (route) => {
+    const slug = readSlugFromRoute(route.request().url(), '/package');
+    const detail = fixtures.details.get(slug);
+    if (!detail) {
+      return fulfillJson(route, { error: { code: 'template_not_found', message: 'Template was not found.' } }, 404);
+    }
+    return route.fulfill({ status: 200, contentType: 'application/zip', body: Buffer.from('fixture package') });
+  });
+  await page.route(/\/api\/v1\/templates\/(?!(?:slug-availability|package)(?:\?|$))[^/]+(?:\?.*)?$/u, (route) => {
     if (route.request().method() !== 'GET') {
       return route.continue();
     }
@@ -398,6 +482,38 @@ function createVersion({ id, templateId, versionNumber, changelog, document }) {
   };
 }
 
+function buildTemplatePackageZip() {
+  const encoder = new TextEncoder();
+  const manifest = {
+    schemaVersion: 1,
+    slug: 'codex-package-template',
+    name: 'Codex Package Template',
+    description: 'A full package upload smoke test.',
+    tags: ['package', 'smoke'],
+    template: 'template.json',
+    readme: 'README.md',
+    changelog: 'CHANGELOG.md',
+    media: {
+      thumbnail: 'media/thumbnail.png',
+      gallery: [{ type: 'image', path: 'media/screenshot.png', alt: 'Package screenshot' }]
+    }
+  };
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFeAKB0nKcJwAAAABJRU5ErkJggg==',
+    'base64'
+  );
+  return Buffer.from(zipSync({
+    'template-package.json': encoder.encode(JSON.stringify(manifest, null, 2)),
+    'template.json': encoder.encode(JSON.stringify(releaseTemplateDocument, null, 2)),
+    'README.md': encoder.encode('# Codex Package Template\n\n![Shot](./media/screenshot.png)\n'),
+    'CHANGELOG.md': encoder.encode('Initial package smoke.\n'),
+    media: {
+      'thumbnail.png': png,
+      'screenshot.png': png
+    }
+  }));
+}
+
 function toSummary(detail) {
   const { versions, readme, providerWarnings, ...summary } = detail;
   return summary;
@@ -432,6 +548,17 @@ function fulfillJson(route, body, status = 200) {
     contentType: 'application/json',
     body: JSON.stringify(body)
   });
+}
+
+function extractPackageZipFromMultipart(body) {
+  assert.ok(body, 'Expected package upload to include a multipart body.');
+  const header = Buffer.from('PK\x03\x04');
+  const start = body.indexOf(header);
+  assert.ok(start >= 0, 'Expected multipart body to include zip local file header.');
+  const endMarker = Buffer.from('\r\n------');
+  const end = body.indexOf(endMarker, start);
+  assert.ok(end > start, 'Expected multipart body to end after zip payload.');
+  return body.subarray(start, end);
 }
 
 function collectPageDiagnostics(page) {

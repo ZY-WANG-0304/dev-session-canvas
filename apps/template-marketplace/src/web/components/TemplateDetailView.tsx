@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { MarketplaceTemplateDetail } from '@dev-session-canvas/marketplace-shared';
 
 import { InstallInVSCodeLink } from './InstallInVSCodeLink';
-import { buildTemplateDownloadHref } from '../lib/download';
+import { buildTemplateDownloadHref, buildTemplatePackageDownloadHref } from '../lib/download';
 import { getMarketplaceHomeHref } from '../lib/routing';
 import { buildTemplateThumbnailHref } from '../lib/thumbnail';
 
@@ -22,6 +22,7 @@ const inactiveTabClassName =
 export function TemplateDetailView({ template, storageMode, source }: TemplateDetailViewProps): JSX.Element {
   const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>('readme');
   const downloadHref = buildTemplateDownloadHref(template);
+  const packageDownloadHref = buildTemplatePackageDownloadHref(template);
   const thumbnailHref = buildTemplateThumbnailHref(template);
   const readme = template.readme.trim() || 'This template does not have a README yet.';
   const versions = [...template.versions].sort((left, right) => right.versionNumber - left.versionNumber);
@@ -151,6 +152,14 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
             aria-label={`Download ${template.name} v${template.latestVersion.versionNumber} as JSON`}
           >
             Download JSON
+          </a>
+          <a
+            className="mt-3 inline-flex w-full justify-center border border-canvas-line bg-canvas-mist px-4 py-3 text-xs font-semibold text-canvas-ink transition hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
+            href={packageDownloadHref}
+            download
+            aria-label={`Download ${template.name} v${template.latestVersion.versionNumber} as full package`}
+          >
+            Download full package
           </a>
 
           <dl className="mt-6 divide-y divide-canvas-line border-y border-canvas-line">

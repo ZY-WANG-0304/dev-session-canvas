@@ -21,7 +21,7 @@
 2. 市场首页展示卡片式模板列表，每张卡片包含：缩略图、名称、描述、标签、下载量、点赞数
 3. 用户可通过关键词搜索（匹配名称 + 描述 + 标签）或点击标签筛选
 4. 用户可按下载量 / 点赞数 / 最新发布 / 最近更新排序
-5. 点击卡片进入模板详情页，查看 README、CHANGELOG、完整描述、版本历史、发布者信息；插件内市场列表行可以预选安装位置，并提供安装 / 更新 / 已安装 split button 和版本菜单；浏览器端可以下载 JSON，VSCode 插件内不提供下载 JSON 控件
+5. 点击卡片进入模板详情页，查看 README、CHANGELOG、完整描述、版本历史、发布者信息；插件内市场列表行可以预选安装位置，并提供安装 / 更新 / 已安装 split button 和版本菜单；浏览器端可以下载 JSON，也可以下载完整 `package.zip`；VSCode 插件内不提供下载 JSON 控件
 6. 在详情页点击"安装/更新"将目标版本下载到本地用户模板目录；安装按钮使用 split button，主按钮安装/更新当前详情页选中的版本，右侧下拉可选择安装某个历史版本
 7. 如只想下载 JSON 文件，可在浏览器市场详情页下载当前版本 JSON；插件内市场以安装到本地模板库为主路径
 8. 安装完成后，模板出现在侧边栏模板列表中，第二行以 `市场 · 本地` 或 `市场 · 工作区` 标记来源与保存位置
@@ -34,6 +34,7 @@
 3. 发布前用户在专门表单中确认公开内容，点击确认发布后才触发 GitHub OAuth 认证流程；浏览器端登录完成后回到发起登录的发布或个人模板页面，VSCode 端复用 VSCode 已有认证能力
 4. 发布表单包含：
    - 本地模板选择（VSCode 插件内）
+   - 完整 `package.zip` 上传（浏览器端高级作者入口）
    - 名称（必填）
    - Slug（可编辑并即时检查唯一性）
    - 描述（必填）
@@ -196,6 +197,8 @@
 - [x] 确认发布时触发 GitHub OAuth 登录，浏览器端登录完成后回到发起登录的发布 / 个人模板页面
 - [x] 浏览器端可退出当前市场登录态，便于切换发布账号或重新执行 OAuth smoke
 - [x] 发布表单包含本地模板选择、名称、Slug、描述、标签、README、CHANGELOG、Template JSON Preview、缩略图
+- [x] 浏览器发布页支持高级作者上传完整 `package.zip`，并从包内 manifest、README、CHANGELOG、template JSON 和缩略图填充发布表单
+- [x] 浏览器发布页的 `package.zip` 与 `template.json` 上传入口互斥；上传包后编辑公开字段、README、CHANGELOG、Template JSON Preview 或缩略图，发布时会重新生成 canonical package，而不是提交旧 zip
 - [x] 缩略图可自动生成（基于节点布局，节点类型颜色对齐插件画布节点主题色）
 - [x] 缩略图可自定义上传
 - [x] 自动化检查通过后即上架
@@ -269,6 +272,7 @@
 | Web 前端 | React + TypeScript + Vite + Tailwind + shadcn/ui，浏览器端部署到 Cloudflare Workers Static Assets，VSCode Webview 端本地打包 |
 | 浏览器正式入口 | `https://dscanvas.dev/templates`，浏览器构建需支持 `/templates/` base path；预览环境仍使用 `*.workers.dev` |
 | 模板包 | R2 canonical 对象为 `package.zip`，同时保留兼容 `template.json`、`thumbnail.png` 和 D1 派生索引；安装默认轻量化，不下载 README 视频等展示媒体 |
+| 包上传/下载 | 浏览器详情页提供 `Download full package`；浏览器发布页提供 `Upload package.zip` 高级入口，Worker 校验完整包后写入 canonical R2 package 与兼容对象 |
 | OAuth App 环境 | GitHub OAuth App 只有单一 callback URL，预览 `*.workers.dev` 与生产 `dscanvas.dev` 建议分别创建 OAuth App，共用同一套登录实现 |
 | 测试 | Vitest + miniflare + Playwright |
 | Phase 4 承载 | D1 管理 `template_versions`、`listing_revisions`、`reports`、`admin_roles`、`admin_audit_logs`、`template_daily_stats`，R2 保存不可变版本对象，Worker 强制执行作者/管理员权限 |
