@@ -1,4 +1,4 @@
-import { Hono, type MiddlewareHandler } from 'hono';
+import { Hono, type Context, type MiddlewareHandler } from 'hono';
 
 import {
   makeMarketplaceApiError,
@@ -37,6 +37,7 @@ const PUBLIC_READ_CORS_ROUTES = [
   '/api/v1/templates/:id',
   '/api/v1/templates/:id/download',
   '/api/v1/templates/:id/package',
+  '/api/v1/templates/:id/template.json',
   '/api/v1/templates/:id/thumbnail'
 ] as const;
 
@@ -189,7 +190,11 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     return context.json(detail);
   });
 
-  app.get('/api/v1/templates/:id/download', async (context) => {
+  app.get('/api/v1/templates/:id/download', async (context) => handleTemplatePackageDownload(context));
+
+  app.get('/api/v1/templates/:id/package', async (context) => handleTemplatePackageDownload(context));
+
+  app.get('/api/v1/templates/:id/template.json', async (context) => {
     const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
     const response = await repository.buildDownloadResponse(context.req.param('id'), context.req.query('version'));
     if (!response) {
@@ -199,23 +204,6 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       const objectResponse = await buildR2TemplateDownloadResponse(context.env.TEMPLATE_BUCKET, response);
       if (!objectResponse) {
         return context.json(makeMarketplaceApiError('template_object_not_found', 'Template object was not found in R2.'), 404);
-      }
-      await repository.recordDownload(response.templateId, response.versionId);
-      return objectResponse;
-    }
-    return context.json(response);
-  });
-
-  app.get('/api/v1/templates/:id/package', async (context) => {
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
-    const response = await repository.buildPackageDownloadResponse(context.req.param('id'), context.req.query('version'));
-    if (!response) {
-      return context.json(makeMarketplaceApiError('template_or_version_not_found', 'Template version was not found.'), 404);
-    }
-    if (context.env?.TEMPLATE_BUCKET) {
-      const objectResponse = await buildR2TemplatePackageDownloadResponse(context.env.TEMPLATE_BUCKET, response);
-      if (!objectResponse) {
-        return context.json(makeMarketplaceApiError('template_package_object_not_found', 'Template package was not found in R2.'), 404);
       }
       await repository.recordDownload(response.templateId, response.versionId);
       return objectResponse;
@@ -408,6 +396,24 @@ function escapeSvgText(value: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+
+async function handleTemplatePackageDownload(context: Context<{ Bindings: MarketplaceWorkerEnv }>): Promise<Response> {
+  const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+  const response = await repository.buildPackageDownloadResponse(context.req.param('id') ?? '', context.req.query('version'));
+  if (!response) {
+    return context.json(makeMarketplaceApiError('template_or_version_not_found', 'Template version was not found.'), 404);
+  }
+  if (context.env?.TEMPLATE_BUCKET) {
+    const objectResponse = await buildR2TemplatePackageDownloadResponse(context.env.TEMPLATE_BUCKET, response);
+    if (!objectResponse) {
+      return context.json(makeMarketplaceApiError('template_package_object_not_found', 'Template package was not found in R2.'), 404);
+    }
+    await repository.recordDownload(response.templateId, response.versionId);
+    return objectResponse;
+  }
+  return context.json(response);
 }
 
 function parseListTemplatesQuery(url: URL): MarketplaceListTemplatesRequest {

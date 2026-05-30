@@ -105,7 +105,7 @@ describe('D1TemplateRepository', () => {
     expect(response?.storageMode).toBe('d1');
     expect(response?.versionNumber).toBe(1);
     expect(response?.packageObjectKey).toBe('templates/tmpl-d1-review/versions/1/package.zip');
-    expect(response?.packageDownloadUrl).toBe('/api/v1/templates/tmpl-d1-review/package?version=ver-d1-review-1');
+    expect(response?.packageDownloadUrl).toBe('/api/v1/templates/tmpl-d1-review/download?version=ver-d1-review-1');
   });
 
   it('records downloads into cumulative and daily counters', async () => {

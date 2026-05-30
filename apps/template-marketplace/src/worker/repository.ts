@@ -200,7 +200,7 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
       sha256: version.sha256,
       sizeBytes: version.sizeBytes,
       storageMode: this.storageMode,
-      downloadUrl: `/api/v1/templates/${detail.template.id}/download?version=${encodeURIComponent(version.id)}`
+      downloadUrl: `/api/v1/templates/${detail.template.id}/template.json?version=${encodeURIComponent(version.id)}`
     };
   }
 
@@ -213,7 +213,7 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
     return {
       ...response,
       packageObjectKey,
-      packageDownloadUrl: `/api/v1/templates/${response.templateId}/package?version=${encodeURIComponent(response.versionId)}`
+      packageDownloadUrl: `/api/v1/templates/${response.templateId}/download?version=${encodeURIComponent(response.versionId)}`
     };
   }
 

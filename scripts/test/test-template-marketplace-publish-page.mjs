@@ -132,10 +132,10 @@ async function verifyDetailPage(page, localUrl) {
   assert.ok(installHref?.startsWith('vscode://devsessioncanvas.dev-session-canvas/install-template?'));
   assert.ok(installHref?.includes('source='));
 
-  const downloadHref = await page.getByRole('link', { name: /Download Review Loop v2 as JSON/u }).getAttribute('href');
-  assert.equal(downloadHref, '/api/v1/templates/review-loop/download?version=ver-review-loop-2');
   const packageDownloadHref = await page.getByRole('link', { name: /Download Review Loop v2 as full package/u }).getAttribute('href');
-  assert.equal(packageDownloadHref, '/api/v1/templates/review-loop/package?version=ver-review-loop-2');
+  assert.equal(packageDownloadHref, '/api/v1/templates/review-loop/download?version=ver-review-loop-2');
+  const templateJsonHref = await page.getByRole('link', { name: /Export Review Loop v2 as template\.json/u }).getAttribute('href');
+  assert.equal(templateJsonHref, '/api/v1/templates/review-loop/template.json?version=ver-review-loop-2');
 
   await page.getByRole('link', { name: 'Back to all templates' }).click();
   await page.waitForLoadState('networkidle');
@@ -335,19 +335,19 @@ async function installApiRoutes(page) {
   await page.route('**/api/v1/templates/*/download?*', (route) => {
     const slug = readSlugFromRoute(route.request().url(), '/download');
     const detail = fixtures.details.get(slug);
+    if (!detail) {
+      return fulfillJson(route, { error: { code: 'template_not_found', message: 'Template was not found.' } }, 404);
+    }
+    return route.fulfill({ status: 200, contentType: 'application/zip', body: Buffer.from('fixture package') });
+  });
+  await page.route('**/api/v1/templates/*/template.json?*', (route) => {
+    const slug = readSlugFromRoute(route.request().url(), '/template.json');
+    const detail = fixtures.details.get(slug);
     const document = fixtures.documents.get(slug) ?? reviewTemplateDocument;
     if (!detail) {
       return fulfillJson(route, { error: { code: 'template_not_found', message: 'Template was not found.' } }, 404);
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(document) });
-  });
-  await page.route('**/api/v1/templates/*/package?*', (route) => {
-    const slug = readSlugFromRoute(route.request().url(), '/package');
-    const detail = fixtures.details.get(slug);
-    if (!detail) {
-      return fulfillJson(route, { error: { code: 'template_not_found', message: 'Template was not found.' } }, 404);
-    }
-    return route.fulfill({ status: 200, contentType: 'application/zip', body: Buffer.from('fixture package') });
   });
   await page.route(/\/api\/v1\/templates\/(?!(?:slug-availability|package)(?:\?|$))[^/]+(?:\?.*)?$/u, (route) => {
     if (route.request().method() !== 'GET') {

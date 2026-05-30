@@ -100,21 +100,32 @@ describe('template marketplace worker api', () => {
     expect(body.template.versions).toHaveLength(1);
   });
 
-  it('builds seed download metadata', async () => {
+  it('builds seed full package download metadata', async () => {
     const response = await app.request('http://localhost/api/v1/templates/review-loop/download');
-    const body = await response.json<{ storageMode: string; objectKey: string }>();
+    const body = await response.json<{ storageMode: string; packageObjectKey: string; packageDownloadUrl: string }>();
+
+    expect(response.status).toBe(200);
+    expect(body.storageMode).toBe('seed');
+    expect(body.packageObjectKey).toContain('/versions/2/package.zip');
+    expect(body.packageDownloadUrl).toBe('/api/v1/templates/tmpl-review-loop/download?version=ver-review-loop-2');
+  });
+
+  it('builds seed lightweight template JSON export metadata', async () => {
+    const response = await app.request('http://localhost/api/v1/templates/review-loop/template.json');
+    const body = await response.json<{ storageMode: string; objectKey: string; downloadUrl: string }>();
 
     expect(response.status).toBe(200);
     expect(body.storageMode).toBe('seed');
     expect(body.objectKey).toContain('/versions/2/template.json');
+    expect(body.downloadUrl).toBe('/api/v1/templates/tmpl-review-loop/template.json?version=ver-review-loop-2');
   });
 
-  it('streams template JSON from R2 when the bucket binding is present', async () => {
+  it('streams lightweight template JSON exports from R2 when the bucket binding is present', async () => {
     const objectKey = 'templates/tmpl-d1-review/versions/2/template.json';
     const runLog: Array<{ sql: string; boundValues: unknown[] }> = [];
     const expectedDay = new Date().toISOString().slice(0, 10);
     const response = await app.request(
-      'http://localhost/api/v1/templates/d1-review-loop/download',
+      'http://localhost/api/v1/templates/d1-review-loop/template.json',
       {},
       {
         MARKETPLACE_DB: createFakeD1Database(runLog),
@@ -151,12 +162,12 @@ describe('template marketplace worker api', () => {
     expect(runLog[1]?.boundValues).toEqual(['tmpl-d1-review', expectedDay]);
   });
 
-  it('streams full template packages from R2 when the bucket binding is present', async () => {
+  it('streams full template packages from R2 through the primary download endpoint when the bucket binding is present', async () => {
     const packageKey = 'templates/tmpl-d1-review/versions/2/package.zip';
     const runLog: Array<{ sql: string; boundValues: unknown[] }> = [];
     const expectedDay = new Date().toISOString().slice(0, 10);
     const response = await app.request(
-      'http://localhost/api/v1/templates/d1-review-loop/package',
+      'http://localhost/api/v1/templates/d1-review-loop/download',
       {},
       {
         MARKETPLACE_DB: createFakeD1Database(runLog),
@@ -183,6 +194,28 @@ describe('template marketplace worker api', () => {
     expect(runLog[0]?.boundValues).toEqual(['tmpl-d1-review']);
     expect(runLog[1]?.sql).toContain('INSERT INTO template_daily_stats');
     expect(runLog[1]?.boundValues).toEqual(['tmpl-d1-review', expectedDay]);
+  });
+
+  it('keeps the transitional package endpoint as a full template package alias', async () => {
+    const packageKey = 'templates/tmpl-d1-review/versions/2/package.zip';
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/package',
+      {},
+      {
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({
+          [packageKey]: {
+            content: new Uint8Array([0x50, 0x4b]),
+            contentType: 'application/zip'
+          }
+        })
+      }
+    );
+    const body = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="tmpl-d1-review-v2.zip"');
+    expect(Array.from(body)).toEqual([0x50, 0x4b]);
   });
 
   it('streams thumbnails from R2 without recording a download', async () => {
@@ -221,9 +254,9 @@ describe('template marketplace worker api', () => {
     expect(body).toContain('Review Loop');
   });
 
-  it('returns a structured 404 when D1 metadata points to a missing R2 object', async () => {
+  it('returns a structured 404 when D1 metadata points to a missing template JSON object', async () => {
     const response = await app.request(
-      'http://localhost/api/v1/templates/d1-review-loop/download',
+      'http://localhost/api/v1/templates/d1-review-loop/template.json',
       {},
       {
         MARKETPLACE_DB: createFakeD1Database(),
@@ -236,9 +269,9 @@ describe('template marketplace worker api', () => {
     expect(body.error.code).toBe('template_object_not_found');
   });
 
-  it('returns a structured 404 when a package object is missing', async () => {
+  it('returns a structured 404 when a package object is missing from the primary download endpoint', async () => {
     const response = await app.request(
-      'http://localhost/api/v1/templates/d1-review-loop/package',
+      'http://localhost/api/v1/templates/d1-review-loop/download',
       {},
       {
         MARKETPLACE_DB: createFakeD1Database(),
