@@ -1,7 +1,7 @@
 ---
 title: 画布导航与工作台原生收口设计
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -16,7 +16,8 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-navigation-and-native-polish.md
   - docs/exec-plans/completed/canvas-dynamic-overview-zoom.md
-updated_at: 2026-05-15
+  - docs/exec-plans/active/create-node-entry-availability-and-block-reasons.md
+updated_at: 2026-05-30
 ---
 
 # 画布导航与工作台原生收口设计
@@ -173,8 +174,9 @@ updated_at: 2026-05-15
 ### 7.5 空白区右键菜单只做快捷创建
 
 - 菜单只在空白 pane 弹出。
-- 第一版仅提供 `Agent`、`Terminal`、`Note` 三项创建动作。
+- 第一版仅提供 `Agent`、`Terminal`、`Note` 三项创建动作，并且这三类入口在 trusted / untrusted 下都保持可见。
 - 选中菜单项后，新节点以右键点对应的 flow 坐标为锚点创建，再复用宿主已有避碰逻辑。
+- 若当前 workspace 未受信任，点击 `Agent` 或 `Terminal` 不再尝试静默创建，也不把入口隐藏；Webview 改为向宿主发送“解释当前不可创建原因”的消息，由宿主弹出 modal 说明受限原因。真正的 `webview/createDemoNode` 只保留给实际可创建路径与 forged-message 兜底测试。
 - 菜单在点击外部、完成创建、按 `Escape` 或切换视图后关闭。
 
 ### 7.6 内嵌 `xterm` 跟随 VSCode 主题热更新
@@ -204,18 +206,20 @@ updated_at: 2026-05-15
 
 1. 在浏览器 harness 中验证标题栏双击能改变 viewport，且双击输入框不会触发聚焦。
 2. 在浏览器 harness 中验证空白区右键菜单出现、选择后会发出 `webview/createDemoNode` 并带上靠近右键点的坐标。
-3. 在真实 VSCode smoke 中验证默认 `openCanvas` 走 `panel` route。
-4. 手动验证当用户把 `panel` view 移到 Secondary Sidebar 后，显式 `panel` 打开命令仍能正确 reveal 该 view。
-5. 运行 `npm run typecheck`、`npm run test:webview`、`npm run test:smoke`。
-6. 浏览器 harness 截图基线应能直接体现节点外轮廓与 minimap 的小圆角 widget 化收口。
-7. 在浏览器 harness 中验证 `Agent` 与 `Terminal` 节点里的 `xterm` 会在不重建实例的前提下，随 VSCode 深浅主题切换一起刷新背景、前景与 ANSI 调色板。
-8. 在浏览器 harness 中验证远距离节点点击 fit view 后 zoom 可低于 `0.4`，全部节点仍进入视口，且默认 `title` 配置和默认 `overviewZoomThreshold = 0.2` 下 `zoom < 0.2` 时概览模式标记、正文弱化样式、内容区标题与执行型节点内容区状态标记都生效。
-9. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewMode = none` 时，即使 fit view 把 zoom 降到概览触发倍率以下，也不会进入概览模式，节点正文继续按普通表面显示。
-10. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewZoomThreshold` 运行时变更会立即改变概览模式判定，例如当前 zoom 位于默认 `0.2` 与自定义 `0.5` 之间时，提高阈值会进入 `title` 概览，降回默认值会退出概览。
+3. 在浏览器 harness 中验证 `workspaceTrusted = false` 时，右键菜单仍显示 `Agent` / `Terminal` / `Note`，且点击 `Agent` / `Terminal` 会改为请求宿主解释原因，而不是发出 `webview/createDemoNode`。
+4. 在真实 VSCode smoke 中验证默认 `openCanvas` 走 `panel` route。
+5. 手动验证当用户把 `panel` view 移到 Secondary Sidebar 后，显式 `panel` 打开命令仍能正确 reveal 该 view。
+6. 运行 `npm run typecheck`、`npm run test:webview`、`npm run test:smoke`。
+7. 浏览器 harness 截图基线应能直接体现节点外轮廓与 minimap 的小圆角 widget 化收口。
+8. 在浏览器 harness 中验证 `Agent` 与 `Terminal` 节点里的 `xterm` 会在不重建实例的前提下，随 VSCode 深浅主题切换一起刷新背景、前景与 ANSI 调色板。
+9. 在浏览器 harness 中验证远距离节点点击 fit view 后 zoom 可低于 `0.4`，全部节点仍进入视口，且默认 `title` 配置和默认 `overviewZoomThreshold = 0.2` 下 `zoom < 0.2` 时概览模式标记、正文弱化样式、内容区标题与执行型节点内容区状态标记都生效。
+10. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewMode = none` 时，即使 fit view 把 zoom 降到概览触发倍率以下，也不会进入概览模式，节点正文继续按普通表面显示。
+11. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewZoomThreshold` 运行时变更会立即改变概览模式判定，例如当前 zoom 位于默认 `0.2` 与自定义 `0.5` 之间时，提高阈值会进入 `title` 概览，降回默认值会退出概览。
 
 ## 9. 验证结果
 
 - 2026-04-13 运行 `npm run typecheck`，通过。
+- 2026-05-29 已为“untrusted 下右键菜单仍显示 execution entries，并在点击时解释原因”补齐 Playwright / restricted smoke 用例与实现；但当前只拿到了 `npm run typecheck` 通过证据，新增 UI 回归仍受本机 Playwright Chromium `bootstrap_check_in ... Permission denied (1100)` 与 restricted smoke 宿主 `SIGABRT` 阻塞，尚未拿到完整跑通记录。因此本文当前验证状态回调为 `验证中`，待在可用环境中补齐自动化绿灯后再恢复为 `已验证`。
 - 2026-04-13 运行 `npm run test:webview`，23 个 Playwright 用例全部通过；其中新增覆盖 `body` 级 theme vars、同类主题切换、稀疏 `terminal.*` token 与当前 surface 背景 fallback，确认 `Agent` / `Terminal` 内嵌 `xterm` 不再只在少数主题下正确跟随。
 - 2026-04-13 追加运行 `node scripts/test/run-playwright-webview.mjs --update-snapshots`，23 个 Playwright 用例全部通过；刷新主画布截图与 dark / light 两张 minimap 专用截图基线，确认“加深框外遮罩 + 适度压低 minimap 节点色块对抗性”的方案在浅色和深色 workbench token 下都能拉开视口内外区分，同时 `xterm` 主题跟随改动后的整体画布视觉基线已同步收口。
 - 2026-04-13 运行 `npm run test:smoke`，通过；覆盖 trusted / restricted、real reopen、fake systemd-user / fallback 与 remote-ssh real reopen，确认默认 `Dev Session Canvas: 打开画布` 走 `panel` route。
