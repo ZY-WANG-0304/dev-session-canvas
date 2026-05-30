@@ -31,6 +31,12 @@ body {
   --execution-attention-flash-easing: ease-in-out;
 }
 
+.canvas-shell .react-flow,
+.canvas-shell .react-flow__renderer,
+.canvas-shell .react-flow__pane {
+  overflow: hidden;
+}
+
 .canvas-corner-panel {
   border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 82%, var(--vscode-focusBorder) 18%);
   background: color-mix(in srgb, var(--vscode-editor-background) 90%, var(--vscode-sideBar-background) 10%);
