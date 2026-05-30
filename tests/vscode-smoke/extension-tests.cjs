@@ -3286,7 +3286,7 @@ async function runRestrictedSmoke() {
   assert.strictEqual(snapshot.activeSurface, 'editor');
   assert.strictEqual(snapshot.sidebar.canvasSurface, 'visible');
   assert.strictEqual(snapshot.sidebar.workspaceTrusted, false);
-  assert.deepStrictEqual(snapshot.sidebar.creatableKinds, ['note']);
+  assert.deepStrictEqual(snapshot.sidebar.creatableKinds, ['agent', 'terminal', 'note']);
   assert.strictEqual(snapshot.surfaceReady.editor, true);
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
@@ -3329,6 +3329,42 @@ async function runRestrictedSmoke() {
         message.type === 'host/error' &&
         message.payload.message === '当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。'
     )
+  );
+
+  await withInterceptedWarningMessages(async (warningCalls) => {
+    await setQuickPickSelections(['create-terminal']);
+    await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+
+    assert.strictEqual(warningCalls.length, 1, 'Expected restricted Quick Input terminal create to show one modal.');
+    assert.strictEqual(
+      warningCalls[0].message,
+      '当前 workspace 未受信任，暂时不能创建 Terminal 节点。请先信任当前工作区，再创建执行型节点。'
+    );
+    assert.strictEqual(warningCalls[0].options?.modal, true);
+  });
+
+  snapshot = await getDebugSnapshot();
+  assert.deepStrictEqual(
+    snapshot.state.nodes.map((node) => node.kind).sort(),
+    ['note']
+  );
+
+  await withInterceptedWarningMessages(async (warningCalls) => {
+    await setQuickPickSelections(['create-agent-default', 'agent-launch-accept-current']);
+    await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+
+    assert.strictEqual(warningCalls.length, 1, 'Expected restricted Quick Input agent create to show one modal.');
+    assert.strictEqual(
+      warningCalls[0].message,
+      '当前 workspace 未受信任，暂时不能创建 Agent 节点。请先信任当前工作区，再创建执行型节点。'
+    );
+    assert.strictEqual(warningCalls[0].options?.modal, true);
+  });
+
+  snapshot = await getDebugSnapshot();
+  assert.deepStrictEqual(
+    snapshot.state.nodes.map((node) => node.kind).sort(),
+    ['note']
   );
 
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');

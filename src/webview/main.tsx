@@ -1553,7 +1553,7 @@ function App(): JSX.Element {
   }, [hostState]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
-  const creatableKinds: CanvasCreatableNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
+  const creatableKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 
   const closePaneContextMenu = (): void => {
     setContextMenu(null);
@@ -3290,6 +3290,16 @@ function App(): JSX.Element {
     agentLaunchPreset?: AgentLaunchPresetKind,
     agentCustomLaunchCommand?: string
   ): void {
+    if (!workspaceTrusted && (kind === 'agent' || kind === 'terminal')) {
+      postMessage({
+        type: 'webview/showCreateNodeBlockedReason',
+        payload: {
+          kind
+        }
+      });
+      return;
+    }
+
     const requestId = createManualNodeCreateRequestId();
     const resolvedPreferredPosition =
       preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current);

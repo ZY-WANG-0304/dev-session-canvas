@@ -299,6 +299,12 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
+    const blockedReason = panelManager.getCreateNodeBlockedReason(createRequest.kind);
+    if (blockedReason) {
+      await panelManager.showCreateNodeBlockedReasonModal(createRequest.kind);
+      return;
+    }
+
     await panelManager.revealOrCreate();
     panelManager.createNode(createRequest.kind, {
       agentProvider: createRequest.agentProvider,
