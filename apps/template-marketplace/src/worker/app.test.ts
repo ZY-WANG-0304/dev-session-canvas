@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { zipSync } from 'fflate';
 
+import { buildMarketplacePackageObjectKey } from '@dev-session-canvas/marketplace-shared';
 import { createMarketplaceWorkerApp } from './app';
 import { createFakeD1Database, type FakeD1Run } from './testD1Database';
 import { createFakeR2Bucket } from './testR2Bucket';
@@ -149,6 +151,40 @@ describe('template marketplace worker api', () => {
     expect(runLog[1]?.boundValues).toEqual(['tmpl-d1-review', expectedDay]);
   });
 
+  it('streams full template packages from R2 when the bucket binding is present', async () => {
+    const packageKey = 'templates/tmpl-d1-review/versions/2/package.zip';
+    const runLog: Array<{ sql: string; boundValues: unknown[] }> = [];
+    const expectedDay = new Date().toISOString().slice(0, 10);
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/package',
+      {},
+      {
+        MARKETPLACE_DB: createFakeD1Database(runLog),
+        TEMPLATE_BUCKET: createFakeR2Bucket({
+          [packageKey]: {
+            content: new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
+            contentType: 'application/zip'
+          }
+        })
+      }
+    );
+    const body = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="tmpl-d1-review-v2.zip"');
+    expect(response.headers.get('content-type')).toBe('application/zip');
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('x-marketplace-storage-mode')).toBe('r2');
+    expect(response.headers.get('x-marketplace-catalog-storage-mode')).toBe('d1');
+    expect(response.headers.get('x-marketplace-template-id')).toBe('tmpl-d1-review');
+    expect(Array.from(body)).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    expect(runLog).toHaveLength(2);
+    expect(runLog[0]?.sql).toContain('UPDATE templates SET download_count = download_count + 1');
+    expect(runLog[0]?.boundValues).toEqual(['tmpl-d1-review']);
+    expect(runLog[1]?.sql).toContain('INSERT INTO template_daily_stats');
+    expect(runLog[1]?.boundValues).toEqual(['tmpl-d1-review', expectedDay]);
+  });
+
   it('streams thumbnails from R2 without recording a download', async () => {
     const thumbnailKey = 'templates/tmpl-d1-review/versions/2/thumbnail.png';
     const runLog: Array<{ sql: string; boundValues: unknown[] }> = [];
@@ -198,6 +234,21 @@ describe('template marketplace worker api', () => {
 
     expect(response.status).toBe(404);
     expect(body.error.code).toBe('template_object_not_found');
+  });
+
+  it('returns a structured 404 when a package object is missing', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/package',
+      {},
+      {
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({})
+      }
+    );
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe('template_package_object_not_found');
   });
 
   it('returns a structured 404 when a thumbnail object is missing', async () => {
@@ -390,6 +441,7 @@ describe('template marketplace worker api', () => {
 
   it('publishes a template into D1 metadata and R2 objects with test auth enabled', async () => {
     const runLog: FakeD1Run[] = [];
+    const bucket = createFakeR2Bucket({});
     const response = await app.request(
       'http://localhost/api/v1/templates',
       {
@@ -403,11 +455,11 @@ describe('template marketplace worker api', () => {
       {
         MARKETPLACE_ALLOW_TEST_AUTH: 'true',
         MARKETPLACE_DB: createFakeD1Database(runLog),
-        TEMPLATE_BUCKET: createFakeR2Bucket({}),
+        TEMPLATE_BUCKET: bucket,
         MARKETPLACE_ADMIN_GITHUB_LOGINS: 'publisher'
       }
     );
-    const body = await response.json<{ template: { slug: string; latestVersion: { versionNumber: number; sha256: string } }; storageMode: string }>();
+    const body = await response.json<{ template: { slug: string; latestVersion: { versionNumber: number; sha256: string; objectKey: string } }; storageMode: string }>();
 
     expect(response.status).toBe(201);
     expect(body.storageMode).toBe('d1');
@@ -419,6 +471,71 @@ describe('template marketplace worker api', () => {
     expect(runLog.some((entry) => entry.sql.includes('INSERT INTO templates'))).toBe(true);
     expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_versions'))).toBe(true);
     expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_daily_stats'))).toBe(true);
+    await expect(bucket.get(buildMarketplacePackageObjectKey(body.template.latestVersion.objectKey))).resolves.not.toBeNull();
+  });
+
+  it('publishes a template package zip into D1 metadata and canonical R2 objects', async () => {
+    const runLog: FakeD1Run[] = [];
+    const bucket = createFakeR2Bucket({});
+    const formData = new FormData();
+    const packageBytes = buildPackageZipFixture();
+    formData.set('package', new File([packageBytes], 'template-package.zip', { type: 'application/zip' }));
+
+    const response = await app.request(
+      'http://localhost/api/v1/templates/package',
+      {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'x-marketplace-test-github-login': 'publisher'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(runLog),
+        TEMPLATE_BUCKET: bucket
+      }
+    );
+    const body = await response.json<{
+      template: { slug: string; readme: string; latestVersion: { objectKey: string; thumbnailKey: string; sha256: string } };
+      storageMode: string;
+    }>();
+
+    expect(response.status).toBe(201);
+    expect(body.storageMode).toBe('d1');
+    expect(body.template.slug).toBe('package-upload-smoke');
+    expect(body.template.readme).toContain('![Screenshot](./media/screenshot.png)');
+    await expect(bucket.get(body.template.latestVersion.objectKey)).resolves.not.toBeNull();
+    await expect(bucket.get(body.template.latestVersion.thumbnailKey)).resolves.not.toBeNull();
+    await expect(bucket.get(buildMarketplacePackageObjectKey(body.template.latestVersion.objectKey))).resolves.not.toBeNull();
+    await expect(bucket.get(body.template.latestVersion.objectKey.replace(/template\.json$/u, 'manifest.json'))).resolves.not.toBeNull();
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO templates'))).toBe(true);
+  });
+
+  it('rejects package uploads with missing README media', async () => {
+    const formData = new FormData();
+    formData.set('package', new File([buildPackageZipFixture({ readme: '# Broken\n\n![Missing](./media/missing.png)\n' })], 'broken.zip', { type: 'application/zip' }));
+
+    const response = await app.request(
+      'http://localhost/api/v1/templates/package',
+      {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'x-marketplace-test-github-login': 'publisher'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({})
+      }
+    );
+    const body = await response.json<{ error: { code: string; message: string } }>();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe('package_readme_media_missing');
+    expect(body.error.message).toContain('missing.png');
   });
 
   it('rejects invalid publish payloads with structured errors', async () => {
@@ -806,6 +923,43 @@ function buildPublishRequest(): {
       }
     }
   };
+}
+
+function buildPackageZipFixture(options: { readme?: string } = {}): Uint8Array {
+  const templateDocument = buildPublishRequest().templateDocument;
+  const manifest = {
+    schemaVersion: 1,
+    slug: 'package-upload-smoke',
+    name: 'Package Upload Smoke',
+    description: 'A package zip uploaded by the API test.',
+    tags: ['package', 'smoke'],
+    template: 'template.json',
+    readme: 'README.md',
+    changelog: 'CHANGELOG.md',
+    media: {
+      thumbnail: 'media/thumbnail.png',
+      gallery: [{ type: 'image', path: 'media/screenshot.png', alt: 'Screenshot' }]
+    }
+  };
+  return zipSync({
+    'template-package.json': new TextEncoder().encode(JSON.stringify(manifest, null, 2)),
+    'template.json': new TextEncoder().encode(JSON.stringify(templateDocument, null, 2)),
+    'README.md': new TextEncoder().encode(options.readme ?? '# Package Upload Smoke\n\n![Screenshot](./media/screenshot.png)\n'),
+    'CHANGELOG.md': new TextEncoder().encode('Initial package upload.\n'),
+    media: {
+      'thumbnail.png': decodeBase64Png(),
+      'screenshot.png': decodeBase64Png()
+    }
+  });
+}
+
+function decodeBase64Png(): Uint8Array {
+  const binary = atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFeAKB0nKcJwAAAABJRU5ErkJggg==');
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 function buildPublishVersionRequest(): {

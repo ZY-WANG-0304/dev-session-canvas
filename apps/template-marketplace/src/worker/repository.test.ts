@@ -97,6 +97,17 @@ describe('D1TemplateRepository', () => {
     expect(response?.objectKey).toContain('/versions/1/template.json');
   });
 
+  it('builds D1 package download metadata from the requested version directory', async () => {
+    const repository = new D1TemplateRepository(createFakeD1Database());
+
+    const response = await repository.buildPackageDownloadResponse('d1-review-loop', 'ver-d1-review-1');
+
+    expect(response?.storageMode).toBe('d1');
+    expect(response?.versionNumber).toBe(1);
+    expect(response?.packageObjectKey).toBe('templates/tmpl-d1-review/versions/1/package.zip');
+    expect(response?.packageDownloadUrl).toBe('/api/v1/templates/tmpl-d1-review/package?version=ver-d1-review-1');
+  });
+
   it('records downloads into cumulative and daily counters', async () => {
     const runLog: FakeD1Run[] = [];
     const repository = new D1TemplateRepository(createFakeD1Database(runLog));

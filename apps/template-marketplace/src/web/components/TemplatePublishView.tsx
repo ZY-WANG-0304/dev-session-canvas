@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
+import type { Zippable } from 'fflate';
 
 import {
   generateMarketplaceTemplateThumbnailPngBase64,
   MARKETPLACE_SLUG_PATTERN,
   marketplaceTemplateDocumentSchema,
-  type MarketplaceTemplateDocument
+  marketplaceTemplatePackageManifestSchema,
+  type MarketplaceTemplateDocument,
+  type MarketplaceTemplatePackageManifest
 } from '@dev-session-canvas/marketplace-shared';
 
 import {
@@ -17,7 +20,7 @@ import {
   getMarketplacePublishHref,
   isMarketplacePublishSuccessPath
 } from '../lib/routing';
-import { checkMarketplaceSlugAvailability, loadCurrentMarketplaceUser, publishMarketplaceTemplate, type MarketplaceCurrentUser } from '../lib/api';
+import { checkMarketplaceSlugAvailability, loadCurrentMarketplaceUser, publishMarketplaceTemplate, publishMarketplaceTemplatePackage, type MarketplaceCurrentUser } from '../lib/api';
 
 interface PublishFormState {
   name: string;
@@ -31,6 +34,9 @@ interface PublishFormState {
   thumbnailSource: 'none' | 'generated' | 'custom';
   templateFileName: string;
   thumbnailFileName: string;
+  packageFileName: string;
+  packageWorktree?: ParsedTemplatePackageFile;
+  packageSource: 'none' | 'zip';
 }
 
 interface PublishStatus {
@@ -46,6 +52,7 @@ interface PublishedTemplateState {
 
 interface PublishFieldErrors {
   templateJson?: string;
+  packageZip?: string;
 }
 
 interface SlugCheckState {
@@ -80,7 +87,9 @@ export function TemplatePublishView(): JSX.Element {
     thumbnailPngBase64: '',
     thumbnailSource: 'none',
     templateFileName: '',
-    thumbnailFileName: ''
+    thumbnailFileName: '',
+    packageFileName: '',
+    packageSource: 'none'
   });
 
   useEffect(() => {
@@ -163,9 +172,15 @@ export function TemplatePublishView(): JSX.Element {
     if (!parsed.document) {
       setForm((current) => ({
         ...current,
+        ...(current.packageSource === 'zip' ? { name: '', slug: '', description: '', tags: '', readme: '', changelog: '' } : {}),
         templateJson: text,
         templateFileName: file.name,
-        ...(current.thumbnailSource === 'custom' ? {} : { thumbnailPngBase64: '', thumbnailSource: 'none' as const })
+        packageFileName: '',
+        packageWorktree: undefined,
+        packageSource: 'none',
+        ...(current.thumbnailSource === 'custom' && current.packageSource !== 'zip'
+          ? {}
+          : { thumbnailPngBase64: '', thumbnailSource: 'none' as const, thumbnailFileName: '' })
       }));
       setFieldErrors((current) => ({ ...current, templateJson: `${file.name}: ${parsed.error}` }));
       setStatus({ kind: 'idle' });
@@ -173,18 +188,104 @@ export function TemplatePublishView(): JSX.Element {
     }
 
     setForm((current) => {
-      const next = { ...current, templateJson: text, templateFileName: file.name };
+      const next = {
+        ...current,
+        templateJson: text,
+        templateFileName: file.name,
+        packageFileName: '',
+        packageWorktree: undefined,
+        packageSource: 'none' as const
+      };
       const document = parsed.document;
-      next.name = current.name || document.template.name || '';
-      next.slug = current.slug || slugify(document.template.name || document.template.id || '');
-      next.description = current.description || `Template for ${document.template.name || 'Dev Session Canvas'}.`;
-      if (current.thumbnailSource !== 'custom') {
+      const switchingFromPackage = current.packageSource === 'zip';
+      next.name = switchingFromPackage ? document.template.name || '' : current.name || document.template.name || '';
+      next.slug = switchingFromPackage ? slugify(document.template.name || document.template.id || '') : current.slug || slugify(document.template.name || document.template.id || '');
+      next.description = switchingFromPackage ? `Template for ${document.template.name || 'Dev Session Canvas'}.` : current.description || `Template for ${document.template.name || 'Dev Session Canvas'}.`;
+      if (switchingFromPackage) {
+        next.tags = '';
+        next.readme = '';
+        next.changelog = '';
+      }
+      if (switchingFromPackage || current.thumbnailSource !== 'custom') {
         next.thumbnailPngBase64 = generateMarketplaceTemplateThumbnailPngBase64(document);
         next.thumbnailSource = 'generated';
+        next.thumbnailFileName = '';
       }
       return next;
     });
     setFieldErrors((current) => ({ ...current, templateJson: undefined }));
+    setStatus({ kind: 'idle' });
+  }
+
+  async function handlePackageFile(file: File | undefined): Promise<void> {
+    if (!file) {
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      setForm((current) => ({
+        ...current,
+        name: '',
+        slug: '',
+        description: '',
+        tags: '',
+        readme: '',
+        changelog: '',
+        templateJson: '',
+        templateFileName: '',
+        thumbnailPngBase64: '',
+        thumbnailSource: 'none',
+        thumbnailFileName: '',
+        packageFileName: file.name,
+        packageWorktree: undefined,
+        packageSource: 'none'
+      }));
+      setFieldErrors((current) => ({ ...current, packageZip: 'Template package must be a .zip file.' }));
+      setStatus({ kind: 'idle' });
+      return;
+    }
+
+    const parsed = await parseTemplatePackageFile(file);
+    if (!parsed.package) {
+      setForm((current) => ({
+        ...current,
+        name: '',
+        slug: '',
+        description: '',
+        tags: '',
+        readme: '',
+        changelog: '',
+        templateJson: '',
+        templateFileName: '',
+        thumbnailPngBase64: '',
+        thumbnailSource: 'none',
+        thumbnailFileName: '',
+        packageFileName: file.name,
+        packageWorktree: undefined,
+        packageSource: 'none'
+      }));
+      setFieldErrors((current) => ({ ...current, packageZip: `${file.name}: ${parsed.error}` }));
+      setStatus({ kind: 'idle' });
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      name: parsed.package.manifest.name,
+      slug: parsed.package.manifest.slug,
+      description: parsed.package.manifest.description,
+      tags: parsed.package.manifest.tags.join(', '),
+      readme: parsed.package.readme,
+      changelog: parsed.package.changelog,
+      templateJson: parsed.package.templateJson,
+      templateFileName: parsed.package.manifest.template,
+      thumbnailPngBase64: parsed.package.thumbnailDataUrl,
+      thumbnailSource: 'custom',
+      thumbnailFileName: parsed.package.manifest.thumbnail,
+      packageFileName: file.name,
+      packageWorktree: parsed.package,
+      packageSource: 'zip'
+    }));
+    setFieldErrors(() => ({ packageZip: undefined, templateJson: undefined }));
     setStatus({ kind: 'idle' });
   }
 
@@ -230,6 +331,29 @@ export function TemplatePublishView(): JSX.Element {
     }
 
     setStatus({ kind: 'loading', message: 'Publishing template...' });
+
+    if (form.packageSource === 'zip' && form.packageWorktree) {
+      const parsed = parseTemplateDocumentFromJson(templateJson);
+      if (!parsed.document) {
+        setFieldErrors((current) => ({ ...current, templateJson: parsed.error }));
+        setStatus({ kind: 'idle' });
+        return;
+      }
+      try {
+        const packageFile = await buildTemplatePackageFileFromForm(form, parsed.document);
+        const result = await publishMarketplaceTemplatePackage(packageFile);
+        window.history.pushState({}, '', buildMarketplacePublishSuccessHref(result.template.slug));
+        setPublishedTemplate({ slug: result.template.slug, name: result.template.name });
+        setStatus({
+          kind: 'success',
+          message: `${result.template.name} package was published.`,
+          slug: result.template.slug
+        });
+      } catch (error) {
+        setStatus({ kind: 'error', message: error instanceof Error ? error.message : 'Template package publishing failed.' });
+      }
+      return;
+    }
 
     const parsed = parseTemplateDocumentFromJson(templateJson);
     if (!parsed.document) {
@@ -333,13 +457,40 @@ export function TemplatePublishView(): JSX.Element {
           <form className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_20rem]" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} noValidate>
             <div className="grid gap-7 px-6 py-6 sm:px-8 sm:py-8">
               <section>
-                <StepHeading eyebrow="Step 1" title="Template file" description="Upload the local template JSON exported by Dev Session Canvas." />
+                <StepHeading eyebrow="Step 1" title="Template file" description="Upload a package.zip, or use a local template JSON exported by Dev Session Canvas." />
+                <label className="mt-4 block cursor-pointer border border-canvas-line bg-canvas-paper px-4 py-4 text-sm text-canvas-muted transition hover:border-canvas-moss">
+                  <input
+                    className="sr-only"
+                    type="file"
+                    accept="application/zip,.zip"
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      event.currentTarget.value = '';
+                      void handlePackageFile(file);
+                    }}
+                  />
+                  <span className="mr-3 inline-flex bg-canvas-ink px-3 py-2 text-xs font-semibold text-canvas-paper">Upload package.zip</span>
+                  <span>{form.packageFileName || 'Advanced: publish a full template package with README media'}</span>
+                </label>
+                {fieldErrors.packageZip ? (
+                  <p className="mt-3 border border-canvas-errorLine bg-canvas-errorBg px-4 py-3 text-sm leading-6 text-canvas-error" role="alert">
+                    {fieldErrors.packageZip}
+                  </p>
+                ) : form.packageSource === 'zip' ? (
+                  <p className="mt-3 border border-canvas-moss bg-canvas-paper px-4 py-3 text-sm leading-6 text-canvas-moss" role="status">
+                    Package mode active. Fields below were filled from the zip; edits will be written into a rebuilt package when you publish.
+                  </p>
+                ) : null}
                 <label className="mt-4 block cursor-pointer border border-canvas-line bg-canvas-mist px-4 py-4 text-sm text-canvas-muted transition hover:border-canvas-moss">
                   <input
                     className="sr-only"
                     type="file"
                     accept="application/json,.json"
-                    onChange={(event) => void handleTemplateFile(event.currentTarget.files?.[0])}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      event.currentTarget.value = '';
+                      void handleTemplateFile(file);
+                    }}
                   />
                   <span className="mr-3 inline-flex bg-canvas-accent px-3 py-2 text-xs font-semibold text-canvas-accentText">Choose JSON</span>
                   <span>{form.templateFileName || 'No template JSON selected'}</span>
@@ -349,6 +500,9 @@ export function TemplatePublishView(): JSX.Element {
                     {fieldErrors.templateJson}
                   </p>
                 ) : null}
+                <p className="mt-3 border border-canvas-line bg-canvas-mist px-4 py-3 text-sm leading-6 text-canvas-muted">
+                  Uploads are mutually exclusive. Choosing JSON clears the package source; choosing package.zip switches back to Package mode.
+                </p>
               </section>
 
               <section className="border-t border-canvas-line pt-7">
@@ -445,7 +599,11 @@ export function TemplatePublishView(): JSX.Element {
                     className="sr-only"
                     type="file"
                     accept="image/png"
-                    onChange={(event) => void handleThumbnailFile(event.currentTarget.files?.[0])}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      event.currentTarget.value = '';
+                      void handleThumbnailFile(file);
+                    }}
                   />
                   <span className="font-semibold text-canvas-moss">Replace with PNG</span>
                   <span className="mt-1 block text-xs leading-5">
@@ -465,6 +623,7 @@ export function TemplatePublishView(): JSX.Element {
               <dl className="mt-5 divide-y divide-canvas-line border-y border-canvas-line text-sm">
                 <StatusRow label="Template" value={form.templateFileName || 'Not selected'} />
                 <StatusRow label="Thumbnail" value={form.thumbnailSource === 'custom' ? 'Custom PNG' : form.thumbnailSource === 'generated' ? 'Generated' : 'Pending'} />
+                <StatusRow label="Package" value={form.packageSource === 'zip' ? form.packageFileName || 'package.zip ready' : 'Generated on publish'} />
                 <StatusRow label="Package limit" value="50MB package / 5MB template JSON" />
               </dl>
 
@@ -649,6 +808,12 @@ export function buildTemplatePackagePreview(
       : { kind: 'warning', label: 'README', message: 'Optional, but a README helps users understand when to install this template.' }
   );
 
+  if (form.packageSource === 'zip') {
+    lintItems.push({ kind: 'ok', label: 'Package mode', message: 'Form edits rebuild package.zip before upload, while preserving existing media/assets files.' });
+  } else {
+    lintItems.push({ kind: 'info', label: 'JSON mode', message: 'The Worker generates a minimal canonical package from this form.' });
+  }
+
   const readmeMedia = collectReadmeMediaReferences(form.readme);
   if (readmeMedia.packageRelative.length > 0) {
     lintItems.push({ kind: 'info', label: 'README media', message: `${readmeMedia.packageRelative.length} package-relative media reference(s) will resolve from media/ or assets/.` });
@@ -697,6 +862,255 @@ export function collectReadmeMediaReferences(readme: string): { packageRelative:
     }
   }
   return { packageRelative, external, blocked, htmlEmbeds };
+}
+
+interface ParsedTemplatePackageFile {
+  manifest: MarketplaceTemplatePackageManifest;
+  templateJson: string;
+  readme: string;
+  changelog: string;
+  thumbnailDataUrl: string;
+  entries: Map<string, Uint8Array>;
+}
+
+async function parseTemplatePackageFile(file: File): Promise<{ package: ParsedTemplatePackageFile; error?: never } | { package?: never; error: string }> {
+  const { unzipSync } = await import('fflate');
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
+  } catch {
+    return { error: 'Package zip could not be opened.' };
+  }
+
+  const normalizedEntries = new Map<string, Uint8Array>();
+  for (const [entryPath, bytes] of Object.entries(entries)) {
+    if (entryPath.endsWith('/')) {
+      continue;
+    }
+    const normalizedPath = normalizePackagePath(entryPath);
+    if (!normalizedPath) {
+      return { error: `Package path ${entryPath} is not safe.` };
+    }
+    normalizedEntries.set(normalizedPath, bytes);
+  }
+
+  const manifestText = decodePackageText(normalizedEntries.get('template-package.json'));
+  if (!manifestText) {
+    return { error: 'template-package.json is missing or not valid UTF-8.' };
+  }
+  let rawManifest: unknown;
+  try {
+    rawManifest = JSON.parse(manifestText);
+  } catch {
+    return { error: 'template-package.json is not valid JSON.' };
+  }
+  const manifestResult = marketplaceTemplatePackageManifestSchema.safeParse(rawManifest);
+  if (!manifestResult.success) {
+    return { error: `template-package.json is invalid. ${manifestResult.error.issues[0]?.message ?? 'Check the manifest.'}` };
+  }
+  const manifest = manifestResult.data;
+
+  const templateBytes = normalizedEntries.get(manifest.template);
+  const readmeBytes = normalizedEntries.get(manifest.readme);
+  const changelogBytes = normalizedEntries.get(manifest.changelog);
+  const thumbnailBytes = normalizedEntries.get(manifest.thumbnail);
+  if (!templateBytes || !readmeBytes || !changelogBytes || !thumbnailBytes) {
+    return { error: 'Package must include template.json, README.md, CHANGELOG.md, and media/thumbnail.png.' };
+  }
+
+  const templateJson = decodePackageText(templateBytes);
+  const readme = decodePackageText(readmeBytes);
+  const changelog = decodePackageText(changelogBytes);
+  if (!templateJson || readme === undefined || changelog === undefined) {
+    return { error: 'Package text files must be valid UTF-8.' };
+  }
+  const parsedTemplate = parseTemplateDocumentFromJson(templateJson);
+  if (!parsedTemplate.document) {
+    return { error: parsedTemplate.error };
+  }
+  if (!isPngBytes(thumbnailBytes)) {
+    return { error: 'media/thumbnail.png must be a PNG image.' };
+  }
+
+  const media = collectReadmeMediaReferences(readme);
+  if (media.blocked.length > 0 || media.htmlEmbeds > 0) {
+    return { error: 'README media must use ./media/... or ./assets/... Markdown paths, without raw HTML embeds.' };
+  }
+  for (const target of media.packageRelative) {
+    const normalizedTarget = normalizePackagePath(normalizeReadmeMediaTarget(target).replace(/^\.\//u, ''));
+    if (!normalizedTarget || !normalizedEntries.has(normalizedTarget)) {
+      return { error: `README references missing media ${target}.` };
+    }
+  }
+
+  return {
+    package: {
+      manifest,
+      templateJson,
+      readme,
+      changelog,
+      thumbnailDataUrl: `data:image/png;base64,${bytesToBase64(thumbnailBytes)}`,
+      entries: normalizedEntries
+    }
+  };
+}
+
+export async function buildTemplatePackageFileFromForm(form: PublishFormState, templateDocument: MarketplaceTemplateDocument): Promise<File> {
+  if (!form.packageWorktree) {
+    throw new Error('Choose a package.zip before publishing in Package mode.');
+  }
+  const { zipSync } = await import('fflate');
+  const encoder = new TextEncoder();
+  const normalizedTemplateDocument = normalizeTemplateDocumentForPackageForm(form, templateDocument);
+  const templateJsonBytes = encoder.encode(`${JSON.stringify(normalizedTemplateDocument, null, 2)}\n`);
+  const manifest = await buildEditedPackageManifest(form, normalizedTemplateDocument, templateJsonBytes);
+  const entries = new Map(form.packageWorktree.entries);
+  const templatePath = manifest.template;
+  const readmePath = manifest.readme;
+  const changelogPath = manifest.changelog;
+  const thumbnailPath = manifest.thumbnail;
+
+  entries.set('template-package.json', encoder.encode(JSON.stringify(manifest, null, 2)));
+  entries.set(templatePath, templateJsonBytes);
+  entries.set(readmePath, encoder.encode(`${form.readme.trimEnd()}\n`));
+  entries.set(changelogPath, encoder.encode(`${(form.changelog.trim() || 'Initial marketplace version.').trimEnd()}\n`));
+  entries.set(thumbnailPath, thumbnailDataUrlToBytes(form.thumbnailPngBase64));
+
+  const zippable: Zippable = {};
+  for (const [entryPath, bytes] of [...entries.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    zippable[entryPath] = bytes;
+  }
+  const packageBytes = zipSync(zippable, { level: 6, mtime: new Date('2026-01-01T00:00:00.000Z') });
+  return new File([packageBytes], form.packageFileName || 'template-package.zip', { type: 'application/zip' });
+}
+
+function normalizeTemplateDocumentForPackageForm(form: PublishFormState, templateDocument: MarketplaceTemplateDocument): MarketplaceTemplateDocument {
+  return {
+    ...templateDocument,
+    template: {
+      ...templateDocument.template,
+      name: form.name.trim() || templateDocument.template.name,
+      category: 'user'
+    }
+  };
+}
+
+async function buildEditedPackageManifest(
+  form: PublishFormState,
+  templateDocument: MarketplaceTemplateDocument,
+  templateJsonBytes: Uint8Array
+): Promise<MarketplaceTemplatePackageManifest> {
+  const base = form.packageWorktree?.manifest;
+  const templatePath = base?.template ?? 'template.json';
+  const readmePath = base?.readme ?? 'README.md';
+  const changelogPath = base?.changelog ?? 'CHANGELOG.md';
+  const thumbnailPath = base?.thumbnail ?? base?.media?.thumbnail ?? 'media/thumbnail.png';
+  const media = {
+    ...(base?.media ?? {}),
+    thumbnail: thumbnailPath
+  };
+  const checksums = {
+    ...(base?.checksums ?? {}),
+    templateSha256: await sha256Hex(templateJsonBytes)
+  };
+  const candidate: MarketplaceTemplatePackageManifest = {
+    ...(base ?? {}),
+    schemaVersion: 1,
+    slug: form.slug.trim() || slugify(form.name || templateDocument.template.name || templateDocument.template.id || 'template'),
+    name: form.name.trim(),
+    description: form.description.trim(),
+    tags: parseTags(form.tags),
+    template: templatePath,
+    readme: readmePath,
+    changelog: changelogPath,
+    thumbnail: thumbnailPath,
+    media,
+    checksums
+  };
+  const parsed = marketplaceTemplatePackageManifestSchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new Error(`Package metadata is invalid. ${parsed.error.issues[0]?.message ?? 'Check the edited fields.'}`);
+  }
+  return parsed.data;
+}
+
+function normalizePackagePath(value: string): string | undefined {
+  const normalized = value.trim().replace(/\\/g, '/').replace(/^\.\/+/u, '');
+  if (
+    !normalized ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:/u.test(normalized) ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(normalized) ||
+    normalized.includes('\0')
+  ) {
+    return undefined;
+  }
+  const parts = normalized.split('/');
+  if (parts.some((part) => !part || part === '.' || part === '..')) {
+    return undefined;
+  }
+  return parts.join('/');
+}
+
+function decodePackageText(bytes: Uint8Array | undefined): string | undefined {
+  if (!bytes) {
+    return undefined;
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    return undefined;
+  }
+}
+
+function thumbnailDataUrlToBytes(value: string): Uint8Array {
+  const cleaned = value.includes(',') ? value.slice(value.indexOf(',') + 1) : value;
+  if (!cleaned.trim()) {
+    throw new Error('Choose or generate a PNG thumbnail before publishing.');
+  }
+  try {
+    const binary = atob(cleaned);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    if (!isPngBytes(bytes)) {
+      throw new Error('Thumbnail must be a PNG image.');
+    }
+    return bytes;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Thumbnail must be valid base64 encoded PNG data.');
+  }
+}
+
+function isPngBytes(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  );
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function normalizeReadmeMediaTarget(target: string): string {

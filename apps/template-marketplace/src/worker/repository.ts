@@ -1,5 +1,7 @@
 import {
+  buildMarketplacePackageObjectKey,
   buildSeedDownloadResponse,
+  buildSeedPackageDownloadResponse,
   calculateHotScore,
   getSeedTemplateDetail,
   listMarketplaceTemplatesFromCatalog,
@@ -7,6 +9,7 @@ import {
   type MarketplaceDownloadResponse,
   type MarketplaceListTemplatesRequest,
   type MarketplaceListTemplatesResponse,
+  type MarketplacePackageDownloadResponse,
   type MarketplacePublisherSummary,
   type MarketplaceStorageMode,
   type MarketplaceTemplateDetail,
@@ -73,6 +76,7 @@ export interface MarketplaceTemplateRepository {
   listTemplatesByPublisher(user: MarketplaceRepositoryUserInput): Promise<MarketplaceListTemplatesResponse>;
   getTemplateDetail(templateIdOrSlug: string): Promise<TemplateDetailResponse | undefined>;
   buildDownloadResponse(templateIdOrSlug: string, versionId?: string): Promise<MarketplaceDownloadResponse | undefined>;
+  buildPackageDownloadResponse(templateIdOrSlug: string, versionId?: string): Promise<MarketplacePackageDownloadResponse | undefined>;
   recordDownload(templateId: string, versionId: string, at?: Date): Promise<void>;
   isTemplateSlugAvailable(slug: string): Promise<boolean>;
   upsertUser(
@@ -114,6 +118,10 @@ export class SeedTemplateRepository implements MarketplaceTemplateRepository {
 
   public async buildDownloadResponse(templateIdOrSlug: string, versionId?: string): Promise<MarketplaceDownloadResponse | undefined> {
     return buildSeedDownloadResponse(templateIdOrSlug, versionId);
+  }
+
+  public async buildPackageDownloadResponse(templateIdOrSlug: string, versionId?: string): Promise<MarketplacePackageDownloadResponse | undefined> {
+    return buildSeedPackageDownloadResponse(templateIdOrSlug, versionId);
   }
 
   public async recordDownload(): Promise<void> {
@@ -193,6 +201,19 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
       sizeBytes: version.sizeBytes,
       storageMode: this.storageMode,
       downloadUrl: `/api/v1/templates/${detail.template.id}/download?version=${encodeURIComponent(version.id)}`
+    };
+  }
+
+  public async buildPackageDownloadResponse(templateIdOrSlug: string, versionId?: string): Promise<MarketplacePackageDownloadResponse | undefined> {
+    const response = await this.buildDownloadResponse(templateIdOrSlug, versionId);
+    if (!response) {
+      return undefined;
+    }
+    const packageObjectKey = buildMarketplacePackageObjectKey(response.objectKey);
+    return {
+      ...response,
+      packageObjectKey,
+      packageDownloadUrl: `/api/v1/templates/${response.templateId}/package?version=${encodeURIComponent(response.versionId)}`
     };
   }
 
