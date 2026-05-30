@@ -73,6 +73,8 @@ async function run() {
   );
   assert.ok(installedEntry.storageLocation?.id, 'Expected preview install to record a storage location.');
   assert.ok(installedEntry.marketplace.marketVersionId, 'Expected preview install to record a market version id.');
+  assert.strictEqual(installedEntry.marketplace.templatePath, 'template.json');
+  assert.ok(installedEntry.marketplace.packageSha256, 'Expected preview install to record package checksum.');
   assert.ok(
     Number.isInteger(installedEntry.marketplace.installedVersionNumber) &&
       installedEntry.marketplace.installedVersionNumber > 0,

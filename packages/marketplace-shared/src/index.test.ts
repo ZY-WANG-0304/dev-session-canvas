@@ -59,7 +59,7 @@ describe('marketplace shared seed repository', () => {
 
     expect(response?.storageMode).toBe('seed');
     expect(response?.packageObjectKey).toBe('templates/tmpl-review-loop/versions/2/package.zip');
-    expect(response?.packageDownloadUrl).toBe('/api/v1/templates/tmpl-review-loop/package?version=ver-review-loop-2');
+    expect(response?.packageDownloadUrl).toBe('/api/v1/templates/tmpl-review-loop/download?version=ver-review-loop-2');
     expect(buildMarketplacePackageObjectKey('templates/custom/version/template.json')).toBe('templates/custom/version/package.zip');
   });
 

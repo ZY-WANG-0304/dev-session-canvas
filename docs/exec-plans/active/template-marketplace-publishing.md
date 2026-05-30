@@ -45,6 +45,8 @@
 - [x] (2026-05-30 00:00 +0800) 更新产品方案定义：确认“轻量模板”仅指单个 `template.json` 兼容形态，“完整模板”指 `package.zip` 或解压目录；模板市场只管理完整模板，JSON + 表单上传也必须由服务端组包。
 - [x] (2026-05-30 00:20 +0800) 修正下载 API 方案：`/download` 应改为下载完整模板包，轻量模板导出另设 `/template.json` 之类的兼容接口；当前 `/package` 只作为过渡接口。
 - [x] (2026-05-30 00:35 +0800) 更新 VSCode 安装后的本地管理方案：市场模板不再保存为孤立 JSON，而是保存为 `marketplace/{slug}/` 完整模板目录，目录内保留原始包、解压内容和 `.market.json` sidecar。
+- [x] (2026-05-31 00:45 +0800) 开始完整模板主下载 / 安装实现：`/download` 返回完整 `package.zip`，新增 `/template.json` 作为轻量模板导出；浏览器详情页主下载动作切到 `/download`，JSON 导出切到 `/template.json`；VSCode 安装路径下载完整 zip、解压校验并写入 `marketplace/{slug}/` 完整模板目录。
+- [x] (2026-05-31 01:30 +0800) 修复完整模板安装回归：VSCode fixture 的版本 hash 改为与包内 `template.json` 字节一致，本地完整模板目录写入后会重写解压出的 `template.json` 为本地模板 id，并通过 canvas templates 与 VSCode fixture E2E 验证。
 
 ## 意外与发现
 
@@ -90,6 +92,16 @@
 - 观察：`fflate.zipSync()` 会在嵌套目录中生成目录 entry，例如 `media/`；如果把目录 entry 当普通文件走包路径校验，会被误判为空 path。
   证据：Worker 包上传测试最初返回 `package_path_invalid`，修复为在 unzip filter 和 normalized entries 中跳过 `entryPath.endsWith('/')` 后，`npm run -w @dev-session-canvas/template-marketplace test:api` 的 package upload 用例通过。
 
+
+- 观察：VSCode 安装完整模板包时，校验用的 hash 仍应对包内 `template.json` 计算，而不是对整个 zip 计算。
+  证据：市场版本元数据中的 `sha256` 和 `sizeBytes` 当前来自 D1 `template_versions.object_key` 指向的兼容 `template.json`；`src/panel/TemplateMarketplaceClient.ts` 下载 `/download` 后用 `fflate.unzipSync()` 读取包内 `template.json`，以该文件 hash 与版本 `sha256` 比对，同时把完整 zip 的 `packageSha256` 另写入 `.market.json`。
+
+- 观察：本地模板扫描必须把完整模板目录视为一个市场模板，否则 `template-package.json`、`template.json` 和旧 sidecar 相邻 JSON 会被递归扫描成多个用户模板或错误 issue。
+  证据：`src/panel/CanvasTemplateStore.ts` 先扫描 `marketplace/*/.market.json`，再从 sidecar 的 `templatePath` 读取包内 `template.json`；普通 JSON 扫描会跳过这些 package 目录。`npm run test:canvas-templates` 新增包目录 fixture 后通过。
+
+- 观察：VSCode fixture E2E 安装失败的直接原因是测试 fixture 的版本 `sha256` 来自紧凑 JSON，而 `/download` 返回的包内 `template.json` 是 pretty JSON，导致宿主校验失败后不写入本地模板目录。
+  证据：日志中能看到 `/api/v1/templates/panel-review-loop/download?version=ver-panel-review-2` 请求，但模板 catalog 始终没有 `panel-review-loop`；将 fixture 的 hash 和 zip 共同使用 `JSON.stringify(document, null, 2) + "\n"` 后，`npm run test:marketplace-vscode-fixture-e2e` 通过。
+
 ## 决策记录
 
 - 决策：真实 GitHub OAuth client secret、session secret 和管理员 allowlist 只放在 `apps/template-marketplace/.dev.vars` 或 Cloudflare Worker secrets 中；仓库跟踪 `.dev.vars.example` 作为空值模板。
@@ -132,6 +144,19 @@
   理由：`download` 对用户和客户端都表示“下载这个市场模板”，而市场模板的正式内容形态已经是完整模板；继续让 `/download` 返回孤立 JSON 会把轻量模板放在主路径上，和产品定义冲突。
   日期/作者：2026-05-30 / Codex。
 
+
+- 决策：VSCode 从市场安装模板时不再让 Webview 先 fetch JSON；Webview 只把 template slug、version、source 和安装目标发给宿主，宿主调用 `/download` 下载完整 `package.zip`、解压校验 manifest 和 `template.json`，再写入本地完整模板目录。
+  理由：完整模板包含 README、CHANGELOG、缩略图、media 和 assets，必须由宿主以二进制包管理才能保真；让 Webview 传递 JSON 或 base64 zip 都会继续把轻量模板放在安装主路径上，也会放大 Webview 内存和状态复杂度。
+  日期/作者：2026-05-31 / Codex。
+
+- 决策：VSCode 本地完整模板目录的 `.market.json` 记录两层校验信息：`checksum` 保留兼容 `template.json` hash，与当前市场版本元数据一致；`packageSha256` / `packageSizeBytes` 记录实际下载的完整 zip，供后续包完整性和 listing revision 判断使用。
+  理由：当前 D1 schema 尚未保存 package hash，直接把版本 `sha256` 改成 zip hash 会破坏现有发布和列表接口；双记录可以在不迁移数据库的前提下支持完整包安装，并为后续显式 package key/hash migration 留出位置。
+  日期/作者：2026-05-31 / Codex。
+
+- 决策：VSCode 安装完整模板时，保留原始 `package.zip` 不改，但解压目录中的 `template.json` 会重写为本地模板 id、user category 和本地 createdAt。
+  理由：侧栏和应用模板读取的是解压目录里的 `template.json`；如果不重写，首次安装返回的是本地 `market-template-*` id，但重启或重新扫描后会退回包内原始 id，导致目录扫描和更新判断不稳定。保留原始 zip 可继续满足完整包审计和重新导出需要。
+  日期/作者：2026-05-31 / Codex。
+
 ## 结果与复盘
 
 当前已完成 Phase 2 发布能力的本地代码闭环：共享发布 schema、浏览器 GitHub OAuth/session helper、测试专用 fake auth、OAuth 发起页回跳、市场 session 退出登录、`POST /api/v1/templates`、`POST /api/v1/templates/:id/versions`、`GET /api/v1/me/templates`、D1/R2 写入 helper、浏览器 `/templates/publish` 与 `/templates/me` 页面、浏览器 Templates 列表上传入口、VSCode 命令面板 / 市场面板 header / 侧边栏发布入口、共享自动缩略图生成、内容安全最小检查、文件大小超限错误和结构化失败提示均已接入。
@@ -161,6 +186,9 @@
 2026-05-29 进一步收口 Package 模式产品语义：上传 `package.zip` 后页面仍允许编辑，但这些编辑必须成为最终发布事实；上传 `template.json` 和上传 `package.zip` 必须互斥，避免“后选 JSON 但发布旧 zip”或“slug 检查的是编辑值但服务端用包内旧值”。实现上前端保留原包 `media/` / `assets/` 资源，发布前用当前表单重新生成 zip，再交给 Worker 的同一包校验路径。
 
 2026-05-30 根据产品方案讨论继续收口术语和管理边界：单个 `template.json` 定义为“轻量模板”，只用于兼容导入 / 导出、旧客户端和调试；`package.zip` 或解压后的模板包目录定义为“完整模板”。模板市场只管理完整模板，用户上传 `template.json` 并手动填写表单时，Worker 也必须负责组装完整 `package.zip`；完整模板下载后应直接以 `package.zip` 或解压目录管理，而不是抽出孤立 `template.json` 管理。`Download template.json` 只保留为兼容入口，允许用户下载为轻量模板使用。同日继续修正 API 语义：`/download` 应成为完整模板下载接口，轻量模板导出另设 `/template.json` 之类接口，已实现的 `/package` 仅作为过渡。VSCode 安装后的本地管理也同步收口为完整模板目录：目标模板库下写入 `marketplace/{slug}/package.zip`、解压内容和 `.market.json`，扫描市场模板时从 sidecar 定位包内 `template.json`，而不是扫描孤立 JSON 文件。
+
+
+2026-05-31 继续收口完整模板主路径：Worker 的 `/download` 已成为完整包下载接口，`/template.json` 成为轻量导出接口，`/package` 仅作为迁移期别名保留；浏览器详情页主按钮下载完整包，列表卡片下载动作也改为 Package。VSCode 插件内安装改为宿主下载完整 zip，并在目标模板库写入 `marketplace/{slug}/package.zip`、解压文件和 `.market.json`。模板侧栏仍展示一个市场模板并从包内 `template.json` 应用到 Canvas；旧的单文件市场安装路径仍保留为兼容方法，供历史安装和潜在内联测试入口读取。
 
 ## 上下文与定向
 
@@ -342,6 +370,42 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
     ✓ built in 1.78s
 
     npm run build
+    <passed>
+
+    git diff --check
+    <no output>
+
+
+2026-05-31 完整模板主下载 / VSCode 包安装阶段当前验证输出：
+
+    npm run test:marketplace-api -- --runInBand
+    Test Files  5 passed (5)
+    Tests  61 passed (61)
+
+    npm run test:marketplace-shared
+    Test Files  2 passed (2)
+    Tests  23 passed (23)
+
+    npm run test:marketplace-web
+    Test Files  6 passed (6)
+    Tests  30 passed (30)
+
+    npm run test:canvas-templates
+    <passed>
+
+    npm run test:marketplace-browser-e2e
+    marketplace browser page e2e passed
+
+    npm run test:marketplace-vscode-fixture-e2e
+    Template marketplace VS Code UI E2E passed.
+
+    npm run typecheck:marketplace
+    <passed>
+
+    npm run build
+    <passed>
+
+    npx tsc -p tsconfig.json --noEmit --pretty false
     <passed>
 
     git diff --check
@@ -686,3 +750,7 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 需要在 `apps/template-marketplace/src/worker/auth.ts` 提供认证 helper：从 request/env 解析当前用户、创建 GitHub OAuth URL、处理 callback、签发和校验 session cookie。需要在 `apps/template-marketplace/src/worker/publish.ts` 或 repository 中提供发布 helper：校验请求、生成 object key、计算 sha256、写 R2、写 D1。
 
 本计划当前修订记录：2026-05-15 / Codex 更新，原因是 Phase 2 发布能力已完成本地代码闭环，并补齐浏览器与 VSCode 插件内完整 UI 操作 E2E 验证证据；同日晚追加发布页手动验收反馈修复、slug 即时唯一性检查与验证证据。
+
+2026-05-31 / Codex：更新计划以记录本轮实现进展，原因是任务已从方案记录进入完整模板主下载和 VSCode 本地包安装落地；计划同步了新的 `/download` / `/template.json` API 事实、Webview 不再下载 JSON 的宿主安装方案，以及当前已执行的验证命令。
+
+2026-05-31 / Codex：补充完整模板安装回归修复记录，原因是 VSCode fixture 发现包内 `template.json` hash 与版本元数据不一致会阻止安装；计划同步了 fixture hash 对齐、本地解压 `template.json` 重写策略和最终验证证据。

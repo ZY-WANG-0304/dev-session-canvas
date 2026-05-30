@@ -172,7 +172,7 @@ export function App(): JSX.Element {
                 DevSessionCanvas Templates
               </h1>
               <p className="mx-auto mt-4 max-w-3xl text-center text-base leading-7 text-canvas-muted">
-                Discover workflow templates for Dev Session Canvas. One-click install or download as JSON.
+                Discover workflow templates for Dev Session Canvas. One-click install or download the complete package.
               </p>
 
               <div className="mx-auto mt-9 flex max-w-4xl shadow-search">

@@ -390,7 +390,7 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
         parseTrustedMarketplaceSourceUrl(payload.sourceUrl),
         this.defaultMarketplaceSourceUrl
       );
-      const result = await this.marketplaceClient.installTemplateFromInlinePayload(payload);
+      const result = await this.marketplaceClient.installTemplateFromUri(buildMarketplaceInstallUri(payload));
       const installedTemplates = await this.marketplaceClient.listInstalledTemplates();
       const installTargets = this.marketplaceClient.listInstallTargets();
       await this.panel?.webview.postMessage({
@@ -531,6 +531,45 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
       await vscode.window.showErrorMessage(`发布模板到市场失败：${message}`);
     }
   }
+}
+
+
+function buildMarketplaceInstallUri(payload: TemplateMarketplaceInlineInstallParams): vscode.Uri {
+  const params = new URLSearchParams({
+    template: payload.templateIdOrSlug,
+    source: payload.sourceUrl
+  });
+  if (payload.versionId) {
+    params.set('version', payload.versionId);
+  }
+  if (payload.targetStorageLocationId) {
+    params.set('targetStorageLocationId', payload.targetStorageLocationId);
+  }
+  if (payload.marketTemplateId) {
+    params.set('marketTemplateId', payload.marketTemplateId);
+  }
+  if (typeof payload.installedVersionNumber === 'number') {
+    params.set('versionNumber', String(payload.installedVersionNumber));
+  }
+  if (payload.sha256) {
+    params.set('sha256', payload.sha256);
+  }
+  if (typeof payload.sizeBytes === 'number') {
+    params.set('sizeBytes', String(payload.sizeBytes));
+  }
+  if (payload.publisher?.id) {
+    params.set('publisherId', payload.publisher.id);
+  }
+  if (payload.publisher?.githubLogin) {
+    params.set('publisherLogin', payload.publisher.githubLogin);
+  }
+  if (payload.publisher?.displayName) {
+    params.set('publisherName', payload.publisher.displayName);
+  }
+  if (payload.publisher?.avatarUrl) {
+    params.set('publisherAvatarUrl', payload.publisher.avatarUrl);
+  }
+  return vscode.Uri.parse(`vscode://devsessioncanvas.dev-session-canvas/install-template?${params.toString()}`);
 }
 
 function resolveDefaultMarketplaceSourceUrl(extensionMode: vscode.ExtensionMode): URL {
@@ -684,8 +723,7 @@ function parseMarketplacePanelMessage(message: unknown): MarketplacePanelInbound
     if (
       !payload ||
       typeof payload.templateIdOrSlug !== 'string' ||
-      typeof payload.sourceUrl !== 'string' ||
-      typeof payload.templateJson !== 'string'
+      typeof payload.sourceUrl !== 'string'
     ) {
       return null;
     }
@@ -697,8 +735,6 @@ function parseMarketplacePanelMessage(message: unknown): MarketplacePanelInbound
         versionId: readOptionalString(payload.versionId),
         targetStorageLocationId: readOptionalString(payload.targetStorageLocationId),
         sourceUrl: payload.sourceUrl,
-        templateJson: payload.templateJson,
-        payloadSha256: readOptionalString(payload.payloadSha256),
         marketTemplateId: readOptionalString(payload.marketTemplateId),
         installedVersionNumber: readOptionalNumber(payload.installedVersionNumber),
         sha256: readOptionalString(payload.sha256),
@@ -3535,13 +3571,6 @@ function buildTemplateMarketplaceHtml(
         statusElement.textContent = '正在下载并安装 ' + template.name + ' v' + version.versionNumber + (target ? ' 到 ' + formatInstallTargetLabel(target) : '') + '...';
         renderTemplates();
         try {
-          const response = await fetch(apiOrigin + '/api/v1/templates/' + encodeURIComponent(template.slug) + '/download?version=' + encodeURIComponent(version.id), {
-            headers: { accept: 'application/json' }
-          });
-          if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-          }
-          const templateJson = await response.text();
           vscode.postMessage({
             type: 'marketplace/installTemplate',
             payload: {
@@ -3549,8 +3578,6 @@ function buildTemplateMarketplaceHtml(
               versionId: version.id,
               targetStorageLocationId: targetId,
               sourceUrl: buildTemplateSourceUrl(template.slug),
-              templateJson,
-              payloadSha256: version.sha256,
               marketTemplateId: template.id,
               installedVersionNumber: version.versionNumber,
               sha256: version.sha256,
@@ -3560,7 +3587,7 @@ function buildTemplateMarketplaceHtml(
           });
         } catch (error) {
           state.installingSlug = undefined;
-          statusElement.textContent = '安装失败：无法下载模板 JSON（' + formatErrorMessage(error) + '）。请检查网络和当前安装位置后重试。';
+          statusElement.textContent = '安装失败：无法开始下载完整模板包（' + formatErrorMessage(error) + '）。请检查网络和当前安装位置后重试。';
           renderTemplates();
         }
       }

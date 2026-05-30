@@ -642,7 +642,7 @@ export function buildSeedDownloadResponse(templateIdOrSlug: string, versionId?: 
     sha256: version.sha256,
     sizeBytes: version.sizeBytes,
     storageMode: 'seed',
-    downloadUrl: `/api/v1/templates/${template.id}/download?version=${encodeURIComponent(version.id)}`
+    downloadUrl: `/api/v1/templates/${template.id}/template.json?version=${encodeURIComponent(version.id)}`
   };
 }
 
@@ -655,7 +655,7 @@ export function buildSeedPackageDownloadResponse(templateIdOrSlug: string, versi
   return {
     ...response,
     packageObjectKey,
-    packageDownloadUrl: `/api/v1/templates/${response.templateId}/package?version=${encodeURIComponent(response.versionId)}`
+    packageDownloadUrl: `/api/v1/templates/${response.templateId}/download?version=${encodeURIComponent(response.versionId)}`
   };
 }
 
