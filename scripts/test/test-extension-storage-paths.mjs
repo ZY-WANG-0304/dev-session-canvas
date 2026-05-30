@@ -222,6 +222,11 @@ try {
     'root-a-canonical-hash-2',
     'devsessioncanvas.dev-session-canvas'
   );
+  const currentCopiedUntitledPath = storagePath.join(
+    untitledWorkspaceStorageRoot,
+    'copied-untitled-multiroot-hash',
+    'devsessioncanvas.dev-session-canvas'
+  );
   const untitledForkEntries = [
     'untitled-multiroot-hash',
     'root-a-single-hash',
@@ -494,6 +499,61 @@ try {
   assert.equal(runtimeStorageHintBeatsCopiedCurrentPathHintResult.sourcePath, rootACanonicalPath);
   assert.equal(runtimeStorageHintBeatsCopiedCurrentPathHintResult.selectionBasis, 'first-root-canonical-slot-family');
   assert.equal(runtimeStorageHintBeatsCopiedCurrentPathHintResult.evidenceCandidate.slotName, 'root-a-canonical-hash-2');
+
+  const currentCopiedEvidenceCanRecoverCanonicalResult = selectUntitledMultiRootWorkspaceStorageForkSource(
+    currentCopiedUntitledPath,
+    {
+      ...buildSnapshotFixture([
+        [
+          storagePath.join(untitledWorkspaceStorageRoot, 'copied-untitled-multiroot-hash', 'meta.json'),
+          createWorkspaceMetaText({
+            id: 'copied-untitled-multiroot-hash',
+            name: 'Untitled (Workspace)'
+          })
+        ],
+        [storagePath.join(currentCopiedUntitledPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-STALE-COPIED-CURRENT-SLOT',
+          cwd: '/workspace/root-a',
+          runtimeStoragePath: storagePath.join(rootACanonicalPath, 'agent-runtime'),
+          writtenAt: '2026-05-29T16:44:15.871Z',
+          updatedAt: '2026-05-29T16:44:15.871Z'
+        })],
+        [storagePath.join(rootACanonicalPath, 'canvas-state.json'), createExecutionSnapshotText({
+          title: 'ROOT-A-CANONICAL-CURRENT-FROM-COPIED-SLOT',
+          cwd: '/home/users/example',
+          writtenAt: '2026-05-29T16:39:33.951Z',
+          updatedAt: '2026-05-29T16:39:33.951Z'
+        })]
+      ]),
+      listDirectoryEntries: () => [
+        'copied-untitled-multiroot-hash',
+        'root-a-canonical-hash'
+      ],
+      workspaceFolders: [
+        { name: 'root-a', path: '/workspace/root-a' },
+        { name: 'root-b', path: '/workspace/root-b' }
+      ]
+    }
+  );
+  assert.ok(
+    currentCopiedEvidenceCanRecoverCanonicalResult,
+    'Expected a copied current Untitled snapshot to recover the canonical root slot it references.'
+  );
+  assert.equal(currentCopiedEvidenceCanRecoverCanonicalResult.sourcePath, rootACanonicalPath);
+  assert.equal(
+    currentCopiedEvidenceCanRecoverCanonicalResult.selectionBasis,
+    'first-root-canonical-slot-family'
+  );
+  assert.equal(
+    currentCopiedEvidenceCanRecoverCanonicalResult.evidenceCandidate.slotName,
+    'copied-untitled-multiroot-hash'
+  );
+  assert.equal(currentCopiedEvidenceCanRecoverCanonicalResult.evidenceCandidate.isCurrent, true);
+  assert.equal(currentCopiedEvidenceCanRecoverCanonicalResult.currentCandidate.snapshot.nodeCount, 1);
+  assert.deepEqual(
+    currentCopiedEvidenceCanRecoverCanonicalResult.currentCandidate.snapshot.executionStorageSlotHints,
+    ['root-a-canonical-hash']
+  );
 
   const indexedPathHintStillWorksWhenCanonicalMissingResult = selectUntitledMultiRootWorkspaceStorageForkSource(
     untitledMultiRootCurrentPath,

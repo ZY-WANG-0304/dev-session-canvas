@@ -224,11 +224,33 @@ export function selectUntitledMultiRootWorkspaceStorageForkSource(
     pathModule
   );
   const currentCandidate = candidates.find((candidate) => candidate.isCurrent);
-  if (!currentCandidate || isMeaningfulUntitledMultiRootForkSnapshot(currentCandidate.snapshot)) {
+  if (!currentCandidate) {
     return undefined;
   }
 
   const recoverableSourceCandidates = candidates.filter(isRecoverableUntitledMultiRootForkSourceCandidate);
+  if (isMeaningfulUntitledMultiRootForkSnapshot(currentCandidate.snapshot)) {
+    const currentCopiedEvidenceSelection = selectCurrentCopiedUntitledMultiRootForkSource(
+      currentCandidate,
+      recoverableSourceCandidates
+    );
+    if (!currentCopiedEvidenceSelection) {
+      return undefined;
+    }
+
+    const { sourceCandidate, evidenceCandidate, selectionBasis } = currentCopiedEvidenceSelection;
+    return {
+      currentPath: normalizedCurrentPath,
+      sourcePath: sourceCandidate.path,
+      selectionBasis,
+      migrationRequired: sourceCandidate.path !== currentCandidate.path,
+      sourceCandidate,
+      evidenceCandidate,
+      currentCandidate,
+      candidates
+    };
+  }
+
   let sourceSelection = selectUntitledMultiRootForkSourceFromEvidenceCandidates(
     recoverableSourceCandidates.filter((candidate) => candidate.rootMatchIndex === 0),
     recoverableSourceCandidates,
@@ -410,6 +432,35 @@ function collectUntitledMultiRootWorkspaceStorageForkCandidates(
   return candidates.sort(compareUntitledMultiRootForkCandidatesForDiagnostics);
 }
 
+function selectCurrentCopiedUntitledMultiRootForkSource(
+  currentCandidate: UntitledMultiRootWorkspaceStorageForkCandidate,
+  recoverableSourceCandidates: UntitledMultiRootWorkspaceStorageForkCandidate[]
+):
+  | {
+      sourceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+      evidenceCandidate: UntitledMultiRootWorkspaceStorageForkCandidate;
+      selectionBasis: UntitledMultiRootWorkspaceStorageForkSelection['selectionBasis'];
+    }
+  | undefined {
+  if (!isCurrentCopiedUntitledMultiRootForkEvidenceCandidate(currentCandidate, recoverableSourceCandidates)) {
+    return undefined;
+  }
+
+  const storageSlotHints = new Set(currentCandidate.snapshot.executionStorageSlotHints ?? []);
+  const hintedCanonicalSourceCandidates = recoverableSourceCandidates.filter(
+    (candidate) => candidate.slotIndex === 0 && storageSlotHints.has(candidate.canonicalSlotName)
+  );
+  if (hintedCanonicalSourceCandidates.length !== 1) {
+    return undefined;
+  }
+
+  return selectUntitledMultiRootForkSourceFromEvidenceCandidates(
+    [currentCandidate],
+    hintedCanonicalSourceCandidates,
+    'first-root-path-hint'
+  );
+}
+
 function selectUntitledMultiRootForkSourceFromEvidenceCandidates(
   evidenceCandidates: UntitledMultiRootWorkspaceStorageForkCandidate[],
   recoverableSourceCandidates: UntitledMultiRootWorkspaceStorageForkCandidate[],
@@ -551,6 +602,32 @@ function isRecoverableUntitledMultiRootForkSourceCandidate(
     candidate.snapshot.nodeCount !== undefined &&
     candidate.snapshot.nodeCount > 0 &&
     candidate.snapshot.builtinGettingStartedOnly !== true
+  );
+}
+
+function isCurrentCopiedUntitledMultiRootForkEvidenceCandidate(
+  candidate: UntitledMultiRootWorkspaceStorageForkCandidate,
+  recoverableSourceCandidates: UntitledMultiRootWorkspaceStorageForkCandidate[]
+): boolean {
+  if (!candidate.isCurrent) {
+    return false;
+  }
+
+  if (
+    candidate.rootPathHintIndex !== 0 ||
+    candidate.rootPathHintMatchedRootIndexes.length !== 1 ||
+    candidate.rootPathHintMatchedRootIndexes[0] !== 0
+  ) {
+    return false;
+  }
+
+  const storageSlotHints = candidate.snapshot.executionStorageSlotHints ?? [];
+  return storageSlotHints.some(
+    (slotHint) =>
+      slotHint !== candidate.canonicalSlotName &&
+      recoverableSourceCandidates.some(
+        (sourceCandidate) => sourceCandidate.slotIndex === 0 && sourceCandidate.canonicalSlotName === slotHint
+      )
   );
 }
 
