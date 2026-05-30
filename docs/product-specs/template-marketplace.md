@@ -21,9 +21,9 @@
 2. 市场首页展示卡片式模板列表，每张卡片包含：缩略图、名称、描述、标签、下载量、点赞数
 3. 用户可通过关键词搜索（匹配名称 + 描述 + 标签）或点击标签筛选
 4. 用户可按下载量 / 点赞数 / 最新发布 / 最近更新排序
-5. 点击卡片进入模板详情页，查看 README、CHANGELOG、完整描述、版本历史、发布者信息；插件内市场列表行可以预选安装位置，并提供安装 / 更新 / 已安装 split button 和版本菜单；浏览器端可以下载 JSON，也可以下载完整 `package.zip`；VSCode 插件内不提供下载 JSON 控件
-6. 在详情页点击"安装/更新"将目标版本下载到本地用户模板目录；安装按钮使用 split button，主按钮安装/更新当前详情页选中的版本，右侧下拉可选择安装某个历史版本
-7. 如只想下载 JSON 文件，可在浏览器市场详情页下载当前版本 JSON；插件内市场以安装到本地模板库为主路径
+5. 点击卡片进入模板详情页，查看 README、CHANGELOG、完整描述、版本历史、发布者信息；插件内市场列表行可以预选安装位置，并提供安装 / 更新 / 已安装 split button 和版本菜单；浏览器端主下载入口提供完整 `package.zip`，并保留 `Download template.json` 作为兼容轻量模板导出；VSCode 插件内不提供下载 JSON 控件
+6. 在详情页点击"安装/更新"将目标版本的完整模板包下载到本地用户模板目录；安装按钮使用 split button，主按钮安装/更新当前详情页选中的版本，右侧下拉可选择安装某个历史版本
+7. 完整模板下载后以 `package.zip` 或解压后的模板包目录管理；`template.json` 只作为包内模板主体和兼容轻量模板导出，不作为市场模板的本地管理事实
 8. 安装完成后，模板出现在侧边栏模板列表中，第二行以 `市场 · 本地` 或 `市场 · 工作区` 标记来源与保存位置
 9. 浏览和下载无需登录
 
@@ -34,7 +34,7 @@
 3. 发布前用户在专门表单中确认公开内容，点击确认发布后才触发 GitHub OAuth 认证流程；浏览器端登录完成后回到发起登录的发布或个人模板页面，VSCode 端复用 VSCode 已有认证能力
 4. 发布表单包含：
    - 本地模板选择（VSCode 插件内）
-   - 完整 `package.zip` 上传（浏览器端高级作者入口）
+   - 模板内容来源：上传 `template.json` 后手动填写公开字段，或上传完整 `package.zip`（二者互斥）
    - 名称（必填）
    - Slug（可编辑并即时检查唯一性）
    - 描述（必填）
@@ -145,10 +145,12 @@
 ├── 用户模板（user）            — 本地创建/保存的
 │   ├── 工作区模板              — .dev-session-canvas/templates/
 │   └── 全局模板                — ~/.vscode/globalStorage/.../templates/
-└── 市场模板（market）          — 从市场下载的 ← 新增
-    ├── 工作区模板              — .dev-session-canvas/templates/marketplace/
-    └── 全局模板                — ~/.vscode/globalStorage/.../templates/marketplace/
+└── 市场模板（market）          — 从市场下载的完整模板 ← 新增
+    ├── 工作区模板              — .dev-session-canvas/templates/marketplace/{slug}/
+    └── 全局模板                — ~/.vscode/globalStorage/.../templates/marketplace/{slug}/
 ```
+
+VSCode 中安装的市场模板以完整模板目录为本地管理单元，而不是单个 `*.json` 文件。每个市场模板目录保存原始 `package.zip`、解压后的 `template-package.json` / `template.json` / `README.md` / `CHANGELOG.md` / `media/` / `assets/`、必要缩略图缓存，以及 `.market.json` sidecar。侧栏和“应用到 Canvas”仍从包内 `template.json` 读取模板主体，但安装、更新、回滚、删除、离线查看 README 和后续 listing revision 判断都以完整模板目录和 sidecar 为准。
 
 ### 6.2 模板状态流转
 
@@ -162,10 +164,19 @@
 [已上架] → 发布者更新 → [新版本待检查] → 通过 → [已上架（新版本）]
 ```
 
+### 6.3 模板内容形态
+
+模板市场对用户解释两种内容形态，但市场自身只管理完整模板：
+
+- **轻量模板**：单个 `template.json` 文件，只包含可应用到画布的模板主体。它适合快速导入、兼容旧流程或调试导出，不承载 README、CHANGELOG、缩略图、截图、视频或附加资源。轻量模板不是市场的最终管理对象。
+- **完整模板**：`package.zip` 或解压后的模板包目录，包含 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md`、`media/thumbnail.png` 以及可选 `media/` / `assets/` 资源。完整模板是市场发布、下载、安装、回滚、审计和长期维护的标准内容形态。
+- **上传语义**：用户上传 `template.json` 并手动填写表单时，服务端负责把这些输入组装成完整模板包；高级作者上传 `package.zip` 时，服务端校验并规范化完整包。两条路径最终都生成同一种完整模板。
+- **下载语义**：`Download full package` 是正式下载入口，对应 `GET /api/v1/templates/:id/download` 并返回完整 `package.zip`；`Download template.json` 只是兼容入口，通过单独轻量模板导出接口返回包内模板主体。
+
 ## 7. 验收标准
 
 ### Phase 1：浏览与安装
-当前状态：preview 环境已验证通过；生产域名与生产 D1/R2 资源分离仍按后续发布收口处理。
+当前状态：preview 环境已验证通过的是既有兼容安装路径；完整模板包作为安装和本地管理事实的收口仍按后续包安装改造处理。生产域名与生产 D1/R2 资源分离仍按后续发布收口处理。
 
 - [x] 插件内可打开独立 Webview 市场页面
 - [x] Web 端可通过浏览器访问市场，模板有独立 URL
@@ -175,6 +186,7 @@
 - [x] 可查看模板详情页；插件内市场列表和外部安装链接都先进入 VSCode 内详情页
 - [x] 模板详情页以 README 为主内容，不展示首页搜索、筛选、Featured 列表或模板网格，辅助信息收敛到紧凑侧栏和折叠区
 - [x] 可下载安装模板到本地（无需登录）
+- [ ] VSCode 安装路径改为下载完整 `package.zip`，并在目标模板库中保存为完整模板目录：目录内保留原始包、解压内容和 `.market.json` sidecar，侧栏应用模板时读取包内 `template.json`
 - [x] 插件内列表行允许安装位置预选，并在右侧提供安装 / 更新 / 已安装 split button；查看详情作为标题附近的文本动作，VSCode 插件内不提供下载 JSON 控件
 - [x] 插件内详情页安装按钮采用 split button：主按钮安装/更新当前详情页选中的版本，下拉可安装特定版本
 - [x] 浏览器详情页保留 JSON 下载入口；VSCode 插件内详情页不提供下载 JSON 控件
@@ -197,7 +209,8 @@
 - [x] 确认发布时触发 GitHub OAuth 登录，浏览器端登录完成后回到发起登录的发布 / 个人模板页面
 - [x] 浏览器端可退出当前市场登录态，便于切换发布账号或重新执行 OAuth smoke
 - [x] 发布表单包含本地模板选择、名称、Slug、描述、标签、README、CHANGELOG、Template JSON Preview、缩略图
-- [x] 浏览器发布页支持高级作者上传完整 `package.zip`，并从包内 manifest、README、CHANGELOG、template JSON 和缩略图填充发布表单
+- [x] 浏览器发布页支持两种互斥内容来源：上传 `template.json` 后手动填写字段，或上传完整 `package.zip` 并从包内 manifest、README、CHANGELOG、template JSON 和缩略图填充发布表单
+- [x] 浏览器发布页把 `template.json` 上传视为轻量输入而不是市场最终形态；提交后 Worker 组装 canonical `package.zip`
 - [x] 浏览器发布页的 `package.zip` 与 `template.json` 上传入口互斥；上传包后编辑公开字段、README、CHANGELOG、Template JSON Preview 或缩略图，发布时会重新生成 canonical package，而不是提交旧 zip
 - [x] 缩略图可自动生成（基于节点布局，节点类型颜色对齐插件画布节点主题色）
 - [x] 缩略图可自定义上传
@@ -249,7 +262,10 @@
 - ✅ 技术选型目标口径：以 Phase 4 完整目标为边界，版本管理、治理后台、审计日志和统计面板不另起自建后端
 - ✅ 主域名与浏览器入口计划：`https://dscanvas.dev/templates`，预览仍先使用 `*.workers.dev`
 - ✅ GitHub OAuth App 归属：先用个人 GitHub 账号创建，不要求先建 GitHub Organization；后续如需团队交接再转移到组织
-- ✅ 模板发布单元：后续按“模板包”管理，包内包含 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md` 和 `media/thumbnail.png`；README 可引用包内图片 / 视频媒体，当前表单字段作为兼容输入，由 Worker 组装成同一包模型
+- ✅ 模板内容命名：单个 `template.json` 定义为“轻量模板”，只作为兼容导入 / 导出格式；`package.zip` 或模板包目录定义为“完整模板”，是市场标准内容形态
+- ✅ 模板市场管理口径：市场只管理完整模板；用户通过 `template.json` + 表单上传时，由 Worker 负责组装完整模板包；用户上传 `package.zip` 时，Worker 校验并规范化完整包
+- ✅ 完整模板下载与安装：正式下载 / 安装 / 回滚应以 `package.zip` 或解压后的模板包目录为管理事实；VSCode 本地市场模板目录保留原始包、解压内容和 sidecar，只在应用到 Canvas 时读取包内 `template.json`；`Download template.json` 只作为兼容轻量模板入口
+- ✅ 模板发布单元：后续按“完整模板包”管理，包内包含 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md` 和 `media/thumbnail.png`；README 可引用包内图片 / 视频媒体，当前表单字段作为兼容输入，由 Worker 组装成同一包模型
 - ✅ README 媒体策略：只内嵌渲染包内相对资源；外部图片 / 视频默认作为普通链接；视频不 autoplay 并延迟加载；浏览器和 VSCode Webview 使用同一 sanitizer
 - ✅ 版本语义：区分 `template version` 与 `listing revision`；模板主体或行为变化才触发安装更新，README / 描述 / 标签 / 截图 / 视频等展示变更不触发已安装模板更新
 - ✅ 模板包用户教育：普通发布者不需要先理解包格式，发布页通过包结构预览、lint 结果和媒体规则提示渐进解释；高级作者再使用 starter package、schema、包上传、校验和作者文档
@@ -264,15 +280,15 @@
 | 组件 | 方案 |
 |---|---|
 | API 层 | Cloudflare Workers + Hono |
-| 存储 | Cloudflare R2 存模板 JSON + 缩略图 |
+| 存储 | Cloudflare R2 存完整 `package.zip`，并保留派生 `template.json`、缩略图和 manifest 便于兼容读取 |
 | 元数据 | Cloudflare D1 + Drizzle ORM 存索引、统计、版本历史 |
 | 认证 | GitHub OAuth（仅发布和点赞需要）；VSCode 端复用 VSCode 认证能力；OAuth App 初期归属个人 GitHub 账号 |
 | CDN | Cloudflare 全球边缘分发 |
 | 验证 | 上传时 Zod schema 校验 + 危险链接 / 控制字符过滤 |
 | Web 前端 | React + TypeScript + Vite + Tailwind + shadcn/ui，浏览器端部署到 Cloudflare Workers Static Assets，VSCode Webview 端本地打包 |
 | 浏览器正式入口 | `https://dscanvas.dev/templates`，浏览器构建需支持 `/templates/` base path；预览环境仍使用 `*.workers.dev` |
-| 模板包 | R2 canonical 对象为 `package.zip`，同时保留兼容 `template.json`、`thumbnail.png` 和 D1 派生索引；安装默认轻量化，不下载 README 视频等展示媒体 |
-| 包上传/下载 | 浏览器详情页提供 `Download full package`；浏览器发布页提供 `Upload package.zip` 高级入口，Worker 校验完整包后写入 canonical R2 package 与兼容对象 |
+| 模板包 | R2 canonical 对象为 `package.zip`，同时保留兼容 `template.json`、`thumbnail.png` 和 D1 派生索引；市场管理、安装、回滚和审计以完整包或解压目录为准 |
+| 包上传/下载 | 浏览器详情页以 `Download full package` 作为完整模板下载入口，背后调用 `/download` 返回 `package.zip`，并保留 `Download template.json` 兼容入口；浏览器发布页提供 `template.json` 轻量输入和 `package.zip` 完整包输入，Worker 最终都写入 canonical R2 package |
 | OAuth App 环境 | GitHub OAuth App 只有单一 callback URL，预览 `*.workers.dev` 与生产 `dscanvas.dev` 建议分别创建 OAuth App，共用同一套登录实现 |
 | 测试 | Vitest + miniflare + Playwright |
 | Phase 4 承载 | D1 管理 `template_versions`、`listing_revisions`、`reports`、`admin_roles`、`admin_audit_logs`、`template_daily_stats`，R2 保存不可变版本对象，Worker 强制执行作者/管理员权限 |
@@ -282,7 +298,8 @@
 **API 端点概要：**
 - `GET /api/v1/templates` — 列表/搜索/筛选
 - `GET /api/v1/templates/:id` — 模板详情 + 版本列表
-- `GET /api/v1/templates/:id/download` — 下载模板文件（计数）
+- `GET /api/v1/templates/:id/download` — 下载完整 `package.zip`，支撑“下载完整模板”主动作（计数）
+- `GET /api/v1/templates/:id/template.json` — 兼容导出包内 `template.json`，作为轻量模板下载使用
 - `GET /api/v1/templates/:id/thumbnail` — 读取指定版本缩略图
 - `POST /api/v1/templates` — 发布新模板（需认证）
 - `POST /api/v1/templates/:id/versions` — 发布新版本（需认证，仅作者）

@@ -42,6 +42,9 @@
 - [x] (2026-05-27 01:06 +0800) 按模板包落地顺序完成第一步用户教育：浏览器发布页侧栏展示 canonical 模板包结构、package checks、50MB 包 / 5MB 模板主体限制；README 区域提示包内媒体规则，并用 E2E 与 web 单测覆盖 README 媒体 lint。
 - [x] (2026-05-28 22:25 +0800) 实现真实 `package.zip` 上传/下载 UI：新增完整包下载端点和浏览器详情页链接，发布页高级 zip 上传可解析包并提交 Worker；Worker 解压校验 canonical 包，写入 R2 `package.zip` / `template.json` / `thumbnail.png` / `manifest.json` 和 D1 派生索引。
 - [x] (2026-05-29 10:20 +0800) 明确并实现浏览器发布页 `package.zip` / `template.json` 互斥入口：Package 模式下表单编辑会在发布前重新生成 canonical `package.zip`，再提交 Worker；JSON 模式继续走兼容 JSON API 并由 Worker 组包。
+- [x] (2026-05-30 00:00 +0800) 更新产品方案定义：确认“轻量模板”仅指单个 `template.json` 兼容形态，“完整模板”指 `package.zip` 或解压目录；模板市场只管理完整模板，JSON + 表单上传也必须由服务端组包。
+- [x] (2026-05-30 00:20 +0800) 修正下载 API 方案：`/download` 应改为下载完整模板包，轻量模板导出另设 `/template.json` 之类的兼容接口；当前 `/package` 只作为过渡接口。
+- [x] (2026-05-30 00:35 +0800) 更新 VSCode 安装后的本地管理方案：市场模板不再保存为孤立 JSON，而是保存为 `marketplace/{slug}/` 完整模板目录，目录内保留原始包、解压内容和 `.market.json` sidecar。
 
 ## 意外与发现
 
@@ -113,13 +116,21 @@
   理由：产品已拍板普通发布者不应先理解完整包格式；先让现有发布页解释“背后将生成什么包”可以降低学习成本，同时为后续 starter package、schema、zip 上传和 CLI 校验预留一致语言。
   日期/作者：2026-05-27 / Codex。
 
-- 决策：本轮真实包下载先新增公开 `GET /api/v1/templates/:id/package?version=`，继续保留 `GET /download` 作为兼容 `template.json` 下载；包 key 暂从版本 `objectKey` 推导，不新增 D1 migration。
-  理由：用户需要立刻用临时模板包调试完整包下载 UI；D1 migration 与 listing revision 字段属于后续数据模型收口，不应阻塞已有 R2 `package.zip` 的读取和浏览器入口验证。
-  日期/作者：2026-05-28 / Codex。
+- 决策：本轮真实包下载先新增公开 `GET /api/v1/templates/:id/package?version=`，继续保留旧 `GET /download` 兼容 JSON；后续正式 API 语义需反转为 `/download` 返回完整 `package.zip`，轻量模板导出另设 `GET /api/v1/templates/:id/template.json?version=`。包 key 暂从版本 `objectKey` 推导，不新增 D1 migration。
+  理由：用户需要立刻用临时模板包调试完整包下载 UI；D1 migration 与 listing revision 字段属于后续数据模型收口，不应阻塞已有 R2 `package.zip` 的读取和浏览器入口验证。后续产品方案确认市场只管理完整模板后，`/download` 这个稳定下载语义应服务完整模板，不能长期被轻量 JSON 占用。
+  日期/作者：2026-05-28，2026-05-30 修订 / Codex。
 
 - 决策：本轮真实包上传使用 `POST /api/v1/templates/package` 的 `multipart/form-data` zip 文件字段，Worker 用 `fflate` 解压并校验 canonical 结构，再复用现有 D1 派生字段与 R2 `template.json` / `thumbnail.png` 兼容对象写入。
   理由：浏览器没有内建 zip 解析，前端只上传原始 `package.zip` 才能覆盖 README 媒体和归档保真；`fflate` 是 MIT 许可的小型纯 JS 压缩库，适合 Workers runtime，且避免引入 Node-only zip 依赖。
   日期/作者：2026-05-28 / Codex。
+
+- 决策：产品命名固定为“轻量模板”和“完整模板”。轻量模板只表示单个 `template.json` 的兼容导入 / 导出形态；完整模板表示 `package.zip` 或解压后的模板包目录，是模板市场发布、下载、安装、回滚、审计和长期维护的唯一管理形态。
+  理由：用户仍需要通过 `template.json` 快速上传或兼容旧流程，但市场若同时管理两套事实会让 README、CHANGELOG、媒体和包内资源继续退化为二等内容。统一以完整模板为市场事实，可以让 JSON + 表单上传、Package 上传、浏览器下载和 VSCode 安装最终收敛到同一种包语义。
+  日期/作者：2026-05-30 / Codex。
+
+- 决策：正式下载 API 语义改为 `GET /api/v1/templates/:id/download?version=` 下载完整模板包；轻量模板导出使用单独接口，例如 `GET /api/v1/templates/:id/template.json?version=`。当前已实现的 `/package` 只作为迁移期兼容别名或隐藏接口，不作为正式 contract。
+  理由：`download` 对用户和客户端都表示“下载这个市场模板”，而市场模板的正式内容形态已经是完整模板；继续让 `/download` 返回孤立 JSON 会把轻量模板放在主路径上，和产品定义冲突。
+  日期/作者：2026-05-30 / Codex。
 
 ## 结果与复盘
 
@@ -149,11 +160,15 @@
 
 2026-05-29 进一步收口 Package 模式产品语义：上传 `package.zip` 后页面仍允许编辑，但这些编辑必须成为最终发布事实；上传 `template.json` 和上传 `package.zip` 必须互斥，避免“后选 JSON 但发布旧 zip”或“slug 检查的是编辑值但服务端用包内旧值”。实现上前端保留原包 `media/` / `assets/` 资源，发布前用当前表单重新生成 zip，再交给 Worker 的同一包校验路径。
 
+2026-05-30 根据产品方案讨论继续收口术语和管理边界：单个 `template.json` 定义为“轻量模板”，只用于兼容导入 / 导出、旧客户端和调试；`package.zip` 或解压后的模板包目录定义为“完整模板”。模板市场只管理完整模板，用户上传 `template.json` 并手动填写表单时，Worker 也必须负责组装完整 `package.zip`；完整模板下载后应直接以 `package.zip` 或解压目录管理，而不是抽出孤立 `template.json` 管理。`Download template.json` 只保留为兼容入口，允许用户下载为轻量模板使用。同日继续修正 API 语义：`/download` 应成为完整模板下载接口，轻量模板导出另设 `/template.json` 之类接口，已实现的 `/package` 仅作为过渡。VSCode 安装后的本地管理也同步收口为完整模板目录：目标模板库下写入 `marketplace/{slug}/package.zip`、解压内容和 `.market.json`，扫描市场模板时从 sidecar 定位包内 `template.json`，而不是扫描孤立 JSON 文件。
+
 ## 上下文与定向
 
 模板市场浏览与安装能力已经在 `apps/template-marketplace/` 和 `packages/marketplace-shared/` 中落地。`packages/marketplace-shared/src/index.ts` 定义浏览列表、详情、下载响应和 seed 数据；`packages/marketplace-shared/src/schema.ts` 定义 D1/Drizzle 表，包括 `users`、`templates`、`template_versions`、`template_tags`、`template_daily_stats`、`reports`、`admin_roles` 和 `admin_audit_logs`。`apps/template-marketplace/src/worker/app.ts` 暴露 Hono Worker API，目前只有公开读取接口：健康检查、列表、详情、下载和缩略图。`apps/template-marketplace/src/worker/repository.ts` 通过 `SeedTemplateRepository` 与 `D1TemplateRepository` 封装读取 D1 / seed 的逻辑，后续发布写入也应进入这个边界，不要把 SQL 散落在路由里。
 
-“模板 JSON”指 `src/common/canvasTemplates.ts` 中 `CanvasTemplateDocument` 的序列化结果，格式是 `{ version: 1, template: { id, name, category, nodes, edges, createdAt, updatedAt } }`。市场发布不能定义另一套不兼容格式；发布 API 必须校验这个结构，并把真正下载的 `template.json` 继续保存为同一格式。
+“模板 JSON”指 `src/common/canvasTemplates.ts` 中 `CanvasTemplateDocument` 的序列化结果，格式是 `{ version: 1, template: { id, name, category, nodes, edges, createdAt, updatedAt } }`。产品上它是“轻量模板”的文件形态，只描述可应用到画布的主体内容。市场发布不能定义另一套不兼容模板主体格式，但也不能把单个 `template.json` 当作市场模板管理事实；JSON 上传路径必须由 Worker 组装成完整模板包。
+
+“完整模板”指 R2 中的 `package.zip` 或用户下载后解压出的模板包目录，包内包含 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md`、`media/thumbnail.png` 以及可选 `media/` / `assets/`。市场浏览、下载、安装、回滚和审计都应以完整模板为准；`GET /api/v1/templates/:id/download` 应返回完整包，`Download template.json` 只作为兼容轻量模板导出。VSCode 中安装的市场模板也必须落成完整模板目录 `marketplace/{slug}/`，目录内保留 `package.zip`、解压内容和 `.market.json` sidecar；侧栏应用模板时读取包内 `template.json`。
 
 主线节点模型自 2026-05 下旬起包含 file / file-list 节点，并把运行时节点 id 调整为带对象身份后缀的格式。模板市场仍以本地模板语义为准：模板节点只允许 Agent / Terminal / Note，保存时忽略 file / file-list，边继续用 `sourceNodeIndex` / `targetNodeIndex` 而不是运行时 node id。关联 Markdown Note 的 `templateContentMode` 和 `relativePath` 属于 `CanvasTemplateDocument` 的正式字段，市场发布 schema、浏览器发布页、VSCode 发布入口和 Worker 内容安全检查都必须接受并校验这些字段。
 
@@ -213,7 +228,7 @@
 
 ## 验证与验收
 
-发布 API 的最小验收是：在测试环境中使用 fake auth 调用 `POST /api/v1/templates`，响应 201，返回新模板 slug、版本号、sha256 和 `storageMode: "d1"`；随后调用 `GET /api/v1/templates/:slug` 能读到该模板，调用 `GET /api/v1/templates/:slug/download` 能从 fake R2 读取刚写入的模板 JSON。未经认证调用发布接口应返回 401；没有 D1 或 R2 binding 时应返回结构化 503；超出大小限制、非法模板 JSON、重复 slug 或非法缩略图应返回结构化 400/409。
+发布 API 的最小验收是：在测试环境中使用 fake auth 调用 `POST /api/v1/templates`，响应 201，返回新模板 slug、版本号、sha256 和 `storageMode: "d1"`；随后调用 `GET /api/v1/templates/:slug` 能读到该模板，调用 `GET /api/v1/templates/:slug/download` 能从 fake R2 读取刚写入的完整 `package.zip`，调用 `GET /api/v1/templates/:slug/template.json` 能导出包内模板 JSON。未经认证调用发布接口应返回 401；没有 D1 或 R2 binding 时应返回结构化 503；超出大小限制、非法模板 JSON、重复 slug 或非法缩略图应返回结构化 400/409。
 
 浏览器发布表单的验收是：本地打开市场 Web 页面，登录态可见时显示发布入口，选择模板 JSON 并提交后进入发布成功状态；如果模板不合法，应在表单中显示 Worker 返回的错误信息。VSCode 发布入口的验收是：从插件内选择一个用户模板，触发 GitHub 登录后能把该模板发布到同一市场 API。
 
@@ -221,7 +236,7 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 
 调试验证环境 E2E 的验收是：`npm run test:marketplace-vscode-preview-e2e` 不启动本地 fixture，直接使用 `https://dscanvas-template-marketplace.wzy0304.workers.dev/templates` 或 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_SOURCE_URL` 指定的 `/templates` 来源；它必须能打开 VSCode 内市场列表、读取真实模板详情、打开并关闭版本菜单、安装真实模板，并在 sidecar 中保留 preview `sourceUrl`。
 
-真实模板包上传/下载 UI 的验收是：浏览器模板详情页在 `Download JSON` 旁提供 `Download full package`，该链接指向 `GET /api/v1/templates/:slug/package?version=<latestVersionId>`；有 R2 binding 且同版本目录存在 `package.zip` 时，Worker 以 `application/zip` 和 `Content-Disposition: attachment` 返回真实 zip，并在对象存在后才记录下载计数。发布页提供高级 `Upload package.zip` 入口，选择合法包后自动填充名称、slug、描述、tags、README、CHANGELOG、Template JSON Preview 和缩略图预览；`package.zip` 与 `template.json` 上传入口互斥，后选择的入口清空前一个入口的文件状态，避免表单显示与提交来源不一致。Package 模式下允许继续编辑公开字段、README、CHANGELOG、Template JSON Preview 和缩略图；点击发布时前端基于原包资源重新生成 canonical `package.zip`，把修改写回 manifest / README / CHANGELOG / template JSON / thumbnail 后使用 `multipart/form-data` 提交，Worker 校验包路径、大小、文件数量、manifest、模板 JSON、README 媒体规则和缩略图，并写入 R2 `package.zip`、兼容 `template.json`、`thumbnail.png`、`manifest.json` 与 D1 派生索引。现有 JSON 表单发布仍可用，并应同时生成 canonical `package.zip`。
+真实模板包上传/下载 UI 的验收是：浏览器模板详情页以 `Download full package` / “下载完整模板” 提供主下载动作，该动作应调用 `GET /api/v1/templates/:slug/download?version=<latestVersionId>` 并返回完整 `package.zip`；迁移期已存在的 `GET /api/v1/templates/:slug/package?version=<latestVersionId>` 可作为隐藏兼容别名。有 R2 binding 且同版本目录存在 `package.zip` 时，Worker 以 `application/zip` 和 `Content-Disposition: attachment` 返回真实 zip，并在对象存在后才记录下载计数。浏览器详情页可继续提供 `Download template.json`，但它应调用单独轻量导出接口，例如 `GET /api/v1/templates/:slug/template.json?version=<latestVersionId>`，只用于把包内模板主体导出为轻量模板，不能作为市场模板主下载或安装路径。VSCode 安装同一版本时必须下载完整包，校验后写入目标模板库的 `marketplace/{slug}/` 目录，目录中保留原始 `package.zip`、解压后的包内容和 `.market.json` sidecar；`listInstalledTemplates` / 侧栏模板扫描通过 sidecar 找到包内 `template.json` 并展示为一个市场模板。发布页提供 `template.json` 轻量输入和高级 `Upload package.zip` 完整输入；选择合法包后自动填充名称、slug、描述、tags、README、CHANGELOG、Template JSON Preview 和缩略图预览；`package.zip` 与 `template.json` 上传入口互斥，后选择的入口清空前一个入口的文件状态，避免表单显示与提交来源不一致。Package 模式下允许继续编辑公开字段、README、CHANGELOG、Template JSON Preview 和缩略图；点击发布时前端基于原包资源重新生成 canonical `package.zip`，把修改写回 manifest / README / CHANGELOG / template JSON / thumbnail 后使用 `multipart/form-data` 提交，Worker 校验包路径、大小、文件数量、manifest、模板 JSON、README 媒体规则和缩略图，并写入 R2 `package.zip`、兼容 `template.json`、`thumbnail.png`、`manifest.json` 与 D1 派生索引。现有 JSON 表单发布仍可用，但提交后必须同时生成 canonical `package.zip`，使市场最终只管理完整模板。
 
 ## 幂等性与恢复
 
@@ -317,6 +332,8 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
     <passed>
 
 2026-05-28 / Codex：更新计划以覆盖真实 `package.zip` 上传/下载 UI，原因是当前任务已从用户教育进入可运行上传/下载实现，需要把新增端点、Worker 解压、R2 canonical 对象和验证命令纳入可追踪范围。
+
+2026-05-30 / Codex：更新计划以记录轻量模板 / 完整模板的产品定义，原因是模板市场管理边界从“兼容 JSON 与包下载并存”进一步收口为“市场只管理完整模板，JSON 仅为轻量兼容形态”。随后按产品反馈修正 API 语义：`/download` 应成为完整模板下载接口，轻量模板导出另设接口，当前 `/package` 只作为过渡兼容。
 
     npm run typecheck
     <passed>
