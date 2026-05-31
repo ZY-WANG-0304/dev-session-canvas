@@ -808,6 +808,69 @@ test('card file nodes do not fall back to owner counts when no secondary path la
   await expect(fileNode).not.toContainText('1 个 Agent 引用');
 });
 
+test('canvas node body padding follows unified spacing tokens', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+  state.nodes.push({
+    id: 'file-list-1',
+    kind: 'file-list',
+    title: 'Changed files',
+    status: 'ready',
+    summary: '1 file',
+    position: { x: 1040, y: 60 },
+    size: sizeFor('file-list'),
+    metadata: {
+      fileList: {
+        entries: [
+          {
+            fileId: 'src-main',
+            filePath: '/workspace/src/main.ts',
+            relativePath: 'src/main.ts',
+            accessMode: 'read-write',
+            icon: { kind: 'codicon', codicon: 'symbol-file' },
+            ownerNodeIds: ['agent-1']
+          }
+        ]
+      }
+    }
+  });
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state, createRuntimeContext({ fileNodeDisplayStyle: 'card' }));
+
+  const padding = await page.evaluate(() => {
+    const readPadding = (selector) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) {
+        throw new Error(`Missing element for ${selector}`);
+      }
+      const styles = getComputedStyle(element);
+      return {
+        top: styles.paddingTop,
+        right: styles.paddingRight,
+        bottom: styles.paddingBottom,
+        left: styles.paddingLeft,
+        radius: styles.borderTopLeftRadius
+      };
+    };
+
+    return {
+      agentBody: readPadding('[data-node-id="agent-1"] .session-body'),
+      terminalBody: readPadding('[data-node-id="terminal-1"] .session-body'),
+      terminalFrame: readPadding('[data-node-id="terminal-1"] .terminal-frame'),
+      notePreview: readPadding('[data-node-id="note-1"] .note-markdown-preview'),
+      fileListBody: readPadding('[data-node-id="file-list-1"] .file-list-body')
+    };
+  });
+
+  expect(padding.agentBody).toMatchObject({ top: '12px', right: '12px', bottom: '12px', left: '12px' });
+  expect(padding.terminalBody).toMatchObject({ top: '12px', right: '12px', bottom: '12px', left: '12px' });
+  expect(padding.terminalFrame).toMatchObject({ top: '8px', right: '8px', bottom: '8px', left: '8px' });
+  expect(padding.terminalFrame.radius).toBe('8px');
+  expect(padding.notePreview).toMatchObject({ top: '16px', right: '18px', bottom: '16px', left: '18px' });
+  expect(padding.fileListBody).toMatchObject({ top: '12px', right: '12px', bottom: '12px', left: '12px' });
+});
+
 test('minimal file nodes keep a compact, tight border around the rendered content', async ({ page }) => {
   const state = createFileNodeState();
   state.nodes = state.nodes.map((node) =>
@@ -8256,7 +8319,7 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   expect(Number.parseFloat(groupPanelStyles.titlebarBorderBottomRightRadius)).toBe(0);
   expect(groupPanelStyles.titlebarBoxShadow).toBe('none');
   expect(groupPanelStyles.subpixelTitlebarWidth).toBeLessThanOrEqual(groupPanelStyles.subpixelFrameWidth);
-  expect(groupPanelStyles.nodeBodyTopInset).toBeGreaterThanOrEqual(28);
+  expect(groupPanelStyles.nodeBodyTopInset).toBeGreaterThanOrEqual(24);
 
   await groupFrame.locator('.canvas-group-titlebar').click();
   const selectedTitlebarStyles = await groupFrame.locator('.canvas-group-titlebar').evaluate((titlebar) => {

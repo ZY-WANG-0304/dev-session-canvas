@@ -21,6 +21,13 @@ body {
   --canvas-widget-radius: 8px;
   --canvas-widget-radius-sm: 6px;
   --canvas-edge-stroke-default: var(--vscode-descriptionForeground);
+  --canvas-node-body-padding: 12px;
+  --canvas-node-body-gap: 12px;
+  --canvas-runtime-frame-padding: 8px;
+  --canvas-document-padding-block: 16px;
+  --canvas-document-padding-inline: 18px;
+  --canvas-note-line-number-gutter-width: 46px;
+  --canvas-note-document-input-padding-left: 62px;
   --canvas-edge-color-1: #d16969;
   --canvas-edge-color-2: #d19a66;
   --canvas-edge-color-3: #cca700;
@@ -806,7 +813,7 @@ body {
 .compact-node {
   position: relative;
   justify-content: space-between;
-  padding: 14px 14px 12px;
+  padding: var(--canvas-node-body-padding);
 }
 
 .session-node {
@@ -1367,8 +1374,8 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--canvas-node-body-gap);
+  padding: var(--canvas-node-body-padding);
 }
 
 .session-banner {
@@ -1514,7 +1521,6 @@ body {
   flex: 1;
   min-height: 0;
   gap: 0;
-  padding: 0;
 }
 
 .file-node {
@@ -1549,7 +1555,7 @@ body {
 .file-node-action-card {
   grid-template-columns: auto minmax(0, 1fr);
   height: 100%;
-  padding: 14px 16px;
+  padding: var(--canvas-node-body-padding);
 }
 
 .file-node-action-minimal {
@@ -1721,7 +1727,7 @@ body {
   display: flex;
   flex: 1;
   min-height: 0;
-  padding: 10px;
+  padding: var(--canvas-node-body-padding);
 }
 
 .file-list-body.minimal {
@@ -1982,8 +1988,8 @@ body {
   flex: 1;
   min-height: 0;
   border: 0;
-  border-radius: 0 0 var(--canvas-node-radius) var(--canvas-node-radius);
-  padding: 6px;
+  border-radius: var(--canvas-node-radius-inner);
+  padding: var(--canvas-runtime-frame-padding);
   background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
   overflow: hidden;
 }
@@ -2092,8 +2098,8 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--canvas-node-body-gap);
+  padding: var(--canvas-node-body-padding);
 }
 
 .node-text-input,
@@ -2169,9 +2175,9 @@ body {
   top: 0;
   bottom: 0;
   left: 0;
-  width: 46px;
+  width: var(--canvas-note-line-number-gutter-width);
   box-sizing: border-box;
-  padding: 16px 8px 16px 6px;
+  padding: var(--canvas-document-padding-block) 8px var(--canvas-document-padding-block) 6px;
   overflow: hidden;
   border-right: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent 30%);
   background: color-mix(in srgb, var(--vscode-editor-background) 86%, var(--vscode-sideBar-background) 14%);
@@ -2202,7 +2208,8 @@ body {
   top: 0;
   left: 0;
   box-sizing: border-box;
-  padding: 16px 18px 16px 62px;
+  padding: var(--canvas-document-padding-block) var(--canvas-document-padding-inline) var(--canvas-document-padding-block)
+    var(--canvas-note-document-input-padding-left);
   overflow: hidden;
   color: transparent;
   font: inherit;
@@ -2222,7 +2229,8 @@ body {
 .note-document-input {
   min-height: 100%;
   height: 100%;
-  padding: 16px 18px 16px 62px;
+  padding: var(--canvas-document-padding-block) var(--canvas-document-padding-inline) var(--canvas-document-padding-block)
+    var(--canvas-note-document-input-padding-left);
   resize: none;
   tab-size: 2;
 }
@@ -2303,7 +2311,7 @@ body {
   min-height: 0;
   width: 100%;
   box-sizing: border-box;
-  padding: 16px 18px;
+  padding: var(--canvas-document-padding-block) var(--canvas-document-padding-inline);
   overflow: auto;
   color: var(--vscode-editor-foreground);
   cursor: text;
