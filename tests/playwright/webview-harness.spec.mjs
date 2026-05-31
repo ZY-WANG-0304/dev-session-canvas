@@ -2464,7 +2464,7 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 
   if (executionKind === 'agent') {
-    test('agent subtitle shows the launch command and exposes the full command when truncated', async ({
+    test('agent subtitle shows cwd label with the launch command and exposes both when truncated', async ({
       page
     }) => {
       const state = createLiveExecutionNodeState('agent');
@@ -2474,14 +2474,23 @@ for (const executionKind of ['agent', 'terminal']) {
 
       agentNode.size = { width: 280, height: agentNode.size.height };
       agentNode.metadata.agent.lastLaunchCommandLine = longLaunchCommand;
+      agentNode.metadata.agent.cwd = '/workspace/packages/app';
 
       await openHarness(page);
-      await bootstrap(page, state);
+      await bootstrap(
+        page,
+        state,
+        createRuntimeContext({
+          workspaceFolders: [{ name: 'workspace', path: '/workspace' }]
+        })
+      );
       await waitForExecutionTerminalReady(page, 'agent-zoom');
 
       const subtitle = nodeById(page, 'agent-zoom').locator('.window-title-subtitle');
-      await expect(subtitle).toHaveAttribute('title', longLaunchCommand);
-      await expect(subtitle).toContainText('codex --model gpt-5.2');
+      await expect
+        .poll(async () => subtitle.getAttribute('title'))
+        .toBe(`/workspace/packages/app · ${longLaunchCommand}`);
+      await expect(subtitle).toContainText('packages/app · codex --model gpt-5.2');
     });
 
     test('agent title chrome keeps a bounded width even when the node grows wider', async ({ page }) => {
@@ -9494,6 +9503,45 @@ test('host-triggered agent creation bypasses stale webview workspace trust gate'
     })
   );
   expect(await readPostedMessagesByType(page, 'webview/showCreateNodeBlockedReason')).toEqual([]);
+});
+
+test('host-triggered execution node creation echoes cwd into the create request', async ({ page }) => {
+  await openHarness(page);
+  const runtime = createRuntimeContext({ workspaceTrusted: true });
+
+  await page.evaluate(
+    ({ nextRuntime }) => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/bootstrap',
+        payload: {
+          state: {
+            version: 1,
+            updatedAt: '2026-05-31T00:00:00.000Z',
+            nodes: []
+          },
+          runtime: nextRuntime
+        }
+      });
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/requestCreateNode',
+        payload: {
+          kind: 'terminal',
+          cwd: '/workspace/packages/app'
+        }
+      });
+    },
+    {
+      nextRuntime: runtime
+    }
+  );
+
+  await expect(waitForCreateDemoNodePayload(page)).resolves.toEqual(
+    expect.objectContaining({
+      kind: 'terminal',
+      cwd: '/workspace/packages/app'
+    })
+  );
 });
 
 test('unrelated host errors do not cancel pending manual node centering', async ({ page }) => {

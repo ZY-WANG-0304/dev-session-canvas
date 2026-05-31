@@ -80,6 +80,10 @@ const commandPaletteMenus = manifest.contributes.menus.commandPalette;
 assert.ok(Array.isArray(commandPaletteMenus), 'Expected commandPalette menu contributions.');
 const groupCommandIds = ['devSessionCanvas.createEmptyGroup', 'devSessionCanvas.createGroupFromSelection'];
 const contributedCommandIds = manifest.contributes.commands.map((entry) => entry.command);
+const explorerExecutionCommandIds = [
+  'devSessionCanvas.createTerminalFromExplorerResource',
+  'devSessionCanvas.createAgentFromExplorerResource'
+];
 for (const commandId of groupCommandIds) {
   assert.ok(contributedCommandIds.includes(commandId), `Expected ${commandId} to be contributed as a command.`);
   assert.ok(
@@ -107,6 +111,43 @@ assert.ok(
   !Array.isArray(manifest.contributes.keybindings) ||
     !manifest.contributes.keybindings.some((item) => groupCommandIds.includes(item.command)),
   'Expected group commands to avoid default keybindings in the first version.'
+);
+for (const commandId of explorerExecutionCommandIds) {
+  assert.ok(contributedCommandIds.includes(commandId), `Expected ${commandId} to be contributed as a command.`);
+}
+assert.deepEqual(
+  manifest.contributes.commands
+    .filter((entry) => explorerExecutionCommandIds.includes(entry.command))
+    .map((entry) => ({ command: entry.command, icon: entry.icon })),
+  [
+    {
+      command: 'devSessionCanvas.createTerminalFromExplorerResource',
+      icon: '$(terminal)'
+    },
+    {
+      command: 'devSessionCanvas.createAgentFromExplorerResource',
+      icon: '$(hubot)'
+    }
+  ],
+  'Expected Explorer resource execution commands to use the confirmed Codicon entry points.'
+);
+assert.deepEqual(
+  manifest.contributes.menus['explorer/context']?.filter((item) =>
+    explorerExecutionCommandIds.includes(item.command)
+  ),
+  [
+    {
+      command: 'devSessionCanvas.createTerminalFromExplorerResource',
+      when: 'resourceScheme == file',
+      group: 'devSessionCanvas@1'
+    },
+    {
+      command: 'devSessionCanvas.createAgentFromExplorerResource',
+      when: 'resourceScheme == file',
+      group: 'devSessionCanvas@2'
+    }
+  ],
+  'Expected Explorer context menu to expose cwd-scoped Terminal and Agent creation for file resources.'
 );
 assert.deepEqual(
   commandPaletteMenus.filter((item) => item.command.startsWith('devSessionCanvas.setSidebarNodeList')),
