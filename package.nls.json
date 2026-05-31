@@ -22,6 +22,8 @@
   "command.openCodexAuthFile.title": "Dev Session Canvas: 打开 Codex auth.json",
   "command.openClaudeSettingsFile.title": "Dev Session Canvas: 打开 Claude Code settings.json",
   "command.createNode.title": "Dev Session Canvas: 创建节点",
+  "command.createTerminalFromExplorerResource.title": "Dev Session Canvas: 在 Canvas 中创建 Terminal",
+  "command.createAgentFromExplorerResource.title": "Dev Session Canvas: 在 Canvas 中创建 Agent",
   "command.createEmptyGroup.title": "Dev Session Canvas: 创建空分组",
   "command.createGroupFromSelection.title": "Dev Session Canvas: 从选中项创建分组",
   "command.saveNoteAsMarkdownFile.title": "Dev Session Canvas: 保存为关联 Markdown 文件",

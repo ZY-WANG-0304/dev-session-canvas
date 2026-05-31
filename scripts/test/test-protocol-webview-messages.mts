@@ -55,15 +55,28 @@ const createDemoNodeInGroupMessage = {
   type: 'webview/createDemoNode',
   payload: {
     requestId: 'create-in-group',
-    kind: 'note',
+    kind: 'agent',
     preferredPosition: { x: 180, y: 220 },
+    cwd: '/workspace/src',
     targetGroupId: 'group-parent',
-    agentProvider: undefined,
-    agentLaunchPreset: undefined,
+    agentProvider: 'codex',
+    agentLaunchPreset: 'default',
     agentCustomLaunchCommand: undefined
   }
 };
 assert.deepEqual(parseWebviewMessage(createDemoNodeInGroupMessage), createDemoNodeInGroupMessage);
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      requestId: 'invalid-cwd',
+      kind: 'terminal',
+      cwd: 42
+    }
+  }),
+  null,
+  'webview/createDemoNode.cwd 必须是字符串。'
+);
 
 const createEmptyGroupMessage = {
   type: 'webview/createEmptyGroup',
@@ -90,6 +103,11 @@ assert.match(
   protocolSource,
   /type: 'host\/requestCreateGroupFromSelection'/u,
   'Expected the host-to-webview protocol to expose command-palette group creation from the current selection.'
+);
+assert.match(
+  protocolSource,
+  /type: 'host\/requestCreateNode'[\s\S]*cwd\?: string/u,
+  'Expected host/requestCreateNode to carry an optional cwd for Explorer-created execution nodes.'
 );
 
 const applyTemplateInGroupMessage = {

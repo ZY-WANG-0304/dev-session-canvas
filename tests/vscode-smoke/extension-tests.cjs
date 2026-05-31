@@ -33,6 +33,8 @@ const COMMAND_IDS = {
   openCodexAuthFile: 'devSessionCanvas.openCodexAuthFile',
   openClaudeSettingsFile: 'devSessionCanvas.openClaudeSettingsFile',
   createNode: 'devSessionCanvas.createNode',
+  createTerminalFromExplorerResource: 'devSessionCanvas.createTerminalFromExplorerResource',
+  createAgentFromExplorerResource: 'devSessionCanvas.createAgentFromExplorerResource',
   showNodeList: 'devSessionCanvas.showNodeList',
   setSidebarNodeListFlatView: 'devSessionCanvas.setSidebarNodeListFlatView',
   setSidebarNodeListGroupedView: 'devSessionCanvas.setSidebarNodeListGroupedView',
@@ -794,6 +796,7 @@ async function runTrustedSmoke() {
   await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
+  await verifyExplorerResourceExecutionNodeCreation();
   await verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
   await verifyPersistedStateFiltersLegacyTaskNodes();
@@ -950,8 +953,8 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   );
   assert.match(
     nodeItems.find((item) => item.nodeId === agentNodeId)?.status ?? '',
-    /^(Codex|Claude Code) · /,
-    'Expected Agent sidebar rows to prefix the second line with provider information.'
+    / · (Codex|Claude Code) · /,
+    'Expected Agent sidebar rows to include cwd, provider and status in the second line.'
   );
 
   await clearHostMessages();
@@ -1003,8 +1006,8 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   );
   assert.match(
     sanitizedAgentItem.status,
-    /^(Codex|Claude Code) · 等待输入$/,
-    'Expected sanitized Agent sidebar rows to keep provider and status in the second line.'
+    / · (Codex|Claude Code) · 等待输入$/,
+    'Expected sanitized Agent sidebar rows to keep cwd, provider and status in the second line.'
   );
   assert.ok(
     !sanitizedAgentItem.tooltip.includes('[?2026|'),
@@ -1680,6 +1683,179 @@ async function verifyCreateNodeCommandQuickPick() {
 
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+}
+
+async function verifyExplorerResourceExecutionNodeCreation() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  assert.ok(workspaceRoot, 'Expected trusted smoke to run inside a workspace.');
+  const targetDirectory = path.join(workspaceRoot, '.debug', 'vscode-smoke', 'explorer-cwd');
+  const targetFile = path.join(targetDirectory, 'entry.ts');
+  const defaultProvider =
+    vscode.workspace
+      .getConfiguration()
+      .get('devSessionCanvas.agent.defaultProvider', 'codex') === 'claude'
+      ? 'claude'
+      : 'codex';
+  const expectedProviderLabel = defaultProvider === 'claude' ? 'Claude Code' : 'Codex';
+  await fs.mkdir(targetDirectory, { recursive: true });
+  await fs.writeFile(targetFile, 'export const explorerCwdSmoke = true;\n', 'utf8');
+
+  let snapshot = await getDebugSnapshot();
+  const baselineNodeIds = new Set(snapshot.state.nodes.map((node) => node.id));
+
+  await vscode.commands.executeCommand(
+    COMMAND_IDS.createTerminalFromExplorerResource,
+    vscode.Uri.file(targetDirectory)
+  );
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.some(
+        (node) =>
+          !baselineNodeIds.has(node.id) &&
+          node.kind === 'terminal' &&
+          node.metadata?.terminal?.cwd === targetDirectory
+      ),
+    20000
+  );
+  const terminalNode = snapshot.state.nodes.find(
+    (node) =>
+      !baselineNodeIds.has(node.id) &&
+      node.kind === 'terminal' &&
+      node.metadata?.terminal?.cwd === targetDirectory
+  );
+  assert.ok(terminalNode, 'Expected Explorer directory command to create a cwd-scoped Terminal.');
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/startRequested' &&
+          event.detail?.kind === 'terminal' &&
+          event.detail?.nodeId === terminalNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await waitForTerminalLive(terminalNode.id);
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'terminal' &&
+          event.detail?.nodeId === terminalNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await ensureTerminalStopped(terminalNode.id);
+
+  baselineNodeIds.add(terminalNode.id);
+  await clearDiagnosticEvents();
+  await setQuickPickSelections(['create-agent-default', 'agent-launch-accept-current']);
+  await vscode.commands.executeCommand(
+    COMMAND_IDS.createAgentFromExplorerResource,
+    vscode.Uri.file(targetFile)
+  );
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.some(
+        (node) =>
+          !baselineNodeIds.has(node.id) &&
+          node.kind === 'agent' &&
+          node.metadata?.agent?.cwd === targetDirectory
+      ),
+    20000
+  );
+  const agentNode = snapshot.state.nodes.find(
+    (node) =>
+      !baselineNodeIds.has(node.id) &&
+      node.kind === 'agent' &&
+      node.metadata?.agent?.cwd === targetDirectory
+  );
+  assert.ok(agentNode, 'Expected Explorer file command to create an Agent bound to the file parent directory.');
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/startRequested' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === agentNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+
+  const sidebarItems = await getSidebarNodeListItems();
+  const agentItem = sidebarItems.find((item) => item.nodeId === agentNode.id);
+  assert.ok(agentItem, 'Expected cwd-scoped Agent to appear in the sidebar node list.');
+  assert.strictEqual(
+    agentItem.status.startsWith(`.debug/vscode-smoke/explorer-cwd · ${expectedProviderLabel} · `),
+    true,
+    'Expected Agent sidebar row to include cwd label before provider and status.'
+  );
+
+  const explorerSnapshot = await getDebugSnapshot();
+  const activeSurface = explorerSnapshot.activeSurface ?? 'editor';
+  await waitForWebviewProbeOnSurface(
+    activeSurface,
+    (probe) => {
+      const probedAgent = probe.nodes.find((node) => node.nodeId === agentNode.id);
+      return Boolean(probedAgent?.chromeSubtitle?.includes('.debug/vscode-smoke/explorer-cwd · '));
+    },
+    20000
+  );
+
+  await waitForAgentLive(agentNode.id);
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === agentNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await ensureAgentStopped(agentNode.id);
+  await clearDiagnosticEvents();
+  await startExecutionSessionForTest({
+    kind: 'terminal',
+    nodeId: terminalNode.id,
+    cols: 90,
+    rows: 26
+  });
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/startRequested' &&
+          event.detail?.kind === 'terminal' &&
+          event.detail?.nodeId === terminalNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await waitForTerminalLive(terminalNode.id);
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'terminal' &&
+          event.detail?.nodeId === terminalNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await ensureTerminalStopped(terminalNode.id);
+
+  await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
+  snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
+  assert.strictEqual(snapshot.state.nodes.length, 0);
 }
 
 async function verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits() {
@@ -3937,7 +4113,7 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
   const expectedAgentNode = findNodeById(editorReadySnapshot, agentNodeId);
   const expectedTerminalNode = findNodeById(editorReadySnapshot, terminalNodeId);
   const expectedNoteNode = findNodeById(editorReadySnapshot, noteNodeId);
-  const expectedAgentSubtitle = expectedAgentNode.metadata?.agent?.lastLaunchCommandLine ?? null;
+  const expectedAgentLaunchCommand = expectedAgentNode.metadata?.agent?.lastLaunchCommandLine ?? null;
   const expectedNodeCount = editorReadySnapshot.state.nodes.length;
 
   const probe = await waitForWebviewProbeOnSurface(
@@ -3954,7 +4130,7 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
           agentNode &&
           agentNode.kind === 'agent' &&
           agentNode.titleInputValue === expectedAgentNode.title &&
-          (expectedAgentSubtitle === null || agentNode.chromeSubtitle === expectedAgentSubtitle) &&
+          (expectedAgentLaunchCommand === null || agentNode.chromeSubtitle?.endsWith(` · ${expectedAgentLaunchCommand}`)) &&
           agentNode.minimapVisible === true &&
           terminalNode &&
           terminalNode.kind === 'terminal' &&
@@ -3981,8 +4157,11 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(probe.hasReactFlow, true);
   assert.strictEqual(probe.nodeCount, expectedNodeCount);
   assert.strictEqual(probe.toastMessage, null);
-  if (expectedAgentSubtitle !== null) {
-    assert.strictEqual(agentProbeNode.chromeSubtitle, expectedAgentSubtitle);
+  if (expectedAgentLaunchCommand !== null) {
+    assert.ok(
+      agentProbeNode.chromeSubtitle?.endsWith(` · ${expectedAgentLaunchCommand}`),
+      'Expected Agent subtitle to keep the launch command after the cwd label.'
+    );
   }
   assert.strictEqual(noteProbeNode.bodyValue, expectedNoteNode.metadata.note.content);
 }
@@ -9991,7 +10170,8 @@ async function startExecutionSessionForTest({
   provider,
   resumeRequested = false,
   injectAgentOutputChunk,
-  injectAgentExistingOutput
+  injectAgentExistingOutput,
+  cwdOverride
 }) {
   return vscode.commands.executeCommand(
     COMMAND_IDS.testStartExecutionSession,
@@ -10002,7 +10182,9 @@ async function startExecutionSessionForTest({
     provider,
     resumeRequested,
     injectAgentOutputChunk || injectAgentExistingOutput
-      ? { injectAgentOutputChunk, injectAgentExistingOutput }
+      ? { injectAgentOutputChunk, injectAgentExistingOutput, cwdOverride }
+      : cwdOverride
+        ? { cwdOverride }
       : undefined
   );
 }

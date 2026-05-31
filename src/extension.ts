@@ -114,6 +114,13 @@ interface CanvasTemplateQuickPickItem extends vscode.QuickPickItem {
   templateId: string;
 }
 
+interface ExplorerExecutionResource {
+  cwd: string;
+  cwdUri: vscode.Uri;
+  resourceKind: 'directory' | 'file-parent';
+  workspaceFolder: vscode.WorkspaceFolder;
+}
+
 function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
   return vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0
     ? vscode.ConfigurationTarget.Workspace
@@ -310,6 +317,50 @@ export function activate(context: vscode.ExtensionContext): void {
       agentProvider: createRequest.agentProvider,
       agentLaunchPreset: createRequest.agentLaunchPreset,
       agentCustomLaunchCommand: createRequest.agentCustomLaunchCommand
+    });
+  });
+
+  registerCommand(context, COMMAND_IDS.createTerminalFromExplorerResource, async (resource?: unknown) => {
+    const resolvedResource = await resolveExplorerExecutionResource(resource);
+    if (!resolvedResource) {
+      return;
+    }
+
+    const blockedReason = panelManager.getCreateNodeBlockedReason('terminal');
+    if (blockedReason) {
+      await panelManager.showCreateNodeBlockedReasonModal('terminal');
+      return;
+    }
+
+    await panelManager.revealOrCreate();
+    panelManager.createNode('terminal', {
+      cwdOverride: resolvedResource.cwd
+    });
+  });
+
+  registerCommand(context, COMMAND_IDS.createAgentFromExplorerResource, async (resource?: unknown) => {
+    const resolvedResource = await resolveExplorerExecutionResource(resource);
+    if (!resolvedResource) {
+      return;
+    }
+
+    const blockedReason = panelManager.getCreateNodeBlockedReason('agent');
+    if (blockedReason) {
+      await panelManager.showCreateNodeBlockedReasonModal('agent');
+      return;
+    }
+
+    const agentRequest = await promptCreateNodeRequest(['agent']);
+    if (!agentRequest || agentRequest.kind !== 'agent') {
+      return;
+    }
+
+    await panelManager.revealOrCreate();
+    panelManager.createNode('agent', {
+      agentProvider: agentRequest.agentProvider,
+      agentLaunchPreset: agentRequest.agentLaunchPreset,
+      agentCustomLaunchCommand: agentRequest.agentCustomLaunchCommand,
+      cwdOverride: resolvedResource.cwd
     });
   });
 
@@ -906,6 +957,94 @@ async function promptCreateNodeRequest(
   }
 }
 
+async function resolveExplorerExecutionResource(resource: unknown): Promise<ExplorerExecutionResource | undefined> {
+  const inputUri = resource instanceof vscode.Uri ? resource : undefined;
+  if (!inputUri || inputUri.scheme !== 'file') {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  let stat: vscode.FileStat;
+  try {
+    stat = await vscode.workspace.fs.stat(inputUri);
+  } catch {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  let cwdUri: vscode.Uri;
+  let resourceKind: ExplorerExecutionResource['resourceKind'];
+  if ((stat.type & vscode.FileType.Directory) !== 0) {
+    cwdUri = inputUri;
+    resourceKind = 'directory';
+  } else if ((stat.type & vscode.FileType.File) !== 0) {
+    cwdUri = vscode.Uri.file(path.dirname(inputUri.fsPath));
+    resourceKind = 'file-parent';
+  } else {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  let cwdStat: vscode.FileStat;
+  try {
+    cwdStat = await vscode.workspace.fs.stat(cwdUri);
+  } catch {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  if ((cwdStat.type & vscode.FileType.Directory) === 0) {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  const workspaceFolder = resolveExplorerExecutionWorkspaceFolder(cwdUri);
+  if (!workspaceFolder) {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  return {
+    cwd: cwdUri.fsPath,
+    cwdUri,
+    resourceKind,
+    workspaceFolder
+  };
+}
+
+async function showExplorerExecutionResourceWarning(): Promise<void> {
+  await vscode.window.showWarningMessage('请选择当前 workspace 内的文件夹或普通文件来创建画布 Terminal / Agent。');
+}
+
+function resolveExplorerExecutionWorkspaceFolder(cwdUri: vscode.Uri): vscode.WorkspaceFolder | undefined {
+  const directWorkspaceFolder = vscode.workspace.getWorkspaceFolder(cwdUri);
+  if (directWorkspaceFolder) {
+    return directWorkspaceFolder;
+  }
+
+  return vscode.workspace.workspaceFolders?.find((workspaceFolder) =>
+    isSameOrDescendantFileSystemPath(cwdUri.fsPath, workspaceFolder.uri.fsPath)
+  );
+}
+
+function isSameOrDescendantFileSystemPath(candidatePath: string, ancestorPath: string): boolean {
+  const normalizedCandidate = normalizeComparableFileSystemPath(candidatePath);
+  const normalizedAncestor = normalizeComparableFileSystemPath(ancestorPath);
+  if (normalizedCandidate === normalizedAncestor) {
+    return true;
+  }
+
+  const ancestorWithSeparator = normalizedAncestor.endsWith(path.sep)
+    ? normalizedAncestor
+    : `${normalizedAncestor}${path.sep}`;
+  return normalizedCandidate.startsWith(ancestorWithSeparator);
+}
+
+function normalizeComparableFileSystemPath(filePath: string): string {
+  const resolvedPath = path.resolve(filePath);
+  return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
 interface SidebarNodeQuickPickItem extends vscode.QuickPickItem {
   nodeId: string;
 }
@@ -919,7 +1058,10 @@ interface SidebarSessionQuickPickItem extends vscode.QuickPickItem {
 async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): Promise<void> {
   const nodes = panelManager.getCanvasNodes();
   const nodesById = new Map(nodes.map((node) => [node.id, node] as const));
-  const items = getCanvasSidebarNodeListItems(panelManager.getCanvasSidebarNodeListSnapshot());
+  const items = getCanvasSidebarNodeListItems(
+    panelManager.getCanvasSidebarNodeListSnapshot(),
+    panelManager.getWorkspaceFoldersForDisplay()
+  );
   if (items.length === 0) {
     await vscode.window.showInformationMessage('当前画布还没有可定位的非文件节点。');
     return;
@@ -1866,7 +2008,10 @@ function registerTestCommands(
       getCanvasSidebarSummaryItems(panelManager.getSidebarState())
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarNodeListItems, () =>
-      getCanvasSidebarNodeListItems(panelManager.getCanvasSidebarNodeListSnapshot())
+      getCanvasSidebarNodeListItems(
+        panelManager.getCanvasSidebarNodeListSnapshot(),
+        panelManager.getWorkspaceFoldersForDisplay()
+      )
     ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.getSidebarSessionHistoryItems,
@@ -2153,6 +2298,8 @@ function registerTestCommands(
           rows: typeof rows === 'number' ? rows : undefined,
           provider: provider === 'codex' || provider === 'claude' ? provider : undefined,
           resumeRequested: resumeRequested === true,
+          cwdOverride:
+            typeof options.cwdOverride === 'string' ? options.cwdOverride : undefined,
           injectAgentOutputChunk:
             typeof options.injectAgentOutputChunk === 'string' ? options.injectAgentOutputChunk : undefined,
           injectAgentExistingOutput:
@@ -2198,6 +2345,7 @@ function registerTestCommands(
             : undefined,
           agentCustomLaunchCommand:
             typeof options.agentCustomLaunchCommand === 'string' ? options.agentCustomLaunchCommand : undefined,
+          cwdOverride: typeof options.cwdOverride === 'string' ? options.cwdOverride : undefined,
           titleOverride: typeof options.titleOverride === 'string' ? options.titleOverride : undefined
         });
         return panelManager.getDebugSnapshot();
