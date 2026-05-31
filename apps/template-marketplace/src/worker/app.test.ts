@@ -6,6 +6,8 @@ import { createMarketplaceWorkerApp } from './app';
 import { createFakeD1Database, type FakeD1Run } from './testD1Database';
 import { createFakeR2Bucket } from './testR2Bucket';
 
+const ZIP_SIGNATURE = [0x50, 0x4b, 0x03, 0x04] as const;
+
 describe('template marketplace worker api', () => {
   const app = createMarketplaceWorkerApp();
 
@@ -196,6 +198,34 @@ describe('template marketplace worker api', () => {
     expect(runLog[1]?.boundValues).toEqual(['tmpl-d1-review', expectedDay]);
   });
 
+  it('generates a full template package download when legacy R2 versions only have template.json', async () => {
+    const objectKey = 'templates/tmpl-d1-review/versions/2/template.json';
+    const thumbnailKey = 'templates/tmpl-d1-review/versions/2/thumbnail.png';
+    const runLog: Array<{ sql: string; boundValues: unknown[] }> = [];
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/download',
+      {},
+      {
+        MARKETPLACE_DB: createFakeD1Database(runLog),
+        TEMPLATE_BUCKET: createFakeR2Bucket({
+          [objectKey]: JSON.stringify(buildPublishRequest().templateDocument),
+          [thumbnailKey]: {
+            content: decodeBase64Png(),
+            contentType: 'image/png'
+          }
+        })
+      }
+    );
+    const body = new Uint8Array(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="tmpl-d1-review-v2.zip"');
+    expect(response.headers.get('content-type')).toBe('application/zip');
+    expect(response.headers.get('x-marketplace-package-source')).toBe('generated-from-template-json');
+    expect(Array.from(body.slice(0, 4))).toEqual(ZIP_SIGNATURE);
+    expect(runLog[0]?.sql).toContain('UPDATE templates SET download_count = download_count + 1');
+  });
+
   it('keeps the transitional package endpoint as a full template package alias', async () => {
     const packageKey = 'templates/tmpl-d1-review/versions/2/package.zip';
     const response = await app.request(
@@ -216,6 +246,27 @@ describe('template marketplace worker api', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-disposition')).toBe('attachment; filename="tmpl-d1-review-v2.zip"');
     expect(Array.from(body)).toEqual([0x50, 0x4b]);
+  });
+
+  it('forces application/zip for package downloads even if R2 kept stale JSON metadata', async () => {
+    const packageKey = 'templates/tmpl-d1-review/versions/2/package.zip';
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/download',
+      {},
+      {
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({
+          [packageKey]: {
+            content: new Uint8Array(ZIP_SIGNATURE),
+            contentType: 'application/json'
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toBe('attachment; filename="tmpl-d1-review-v2.zip"');
+    expect(response.headers.get('content-type')).toBe('application/zip');
   });
 
   it('streams thumbnails from R2 without recording a download', async () => {

@@ -18,7 +18,12 @@ import {
   getMarketplaceAuthenticatedUser,
   type MarketplaceAuthEnv
 } from './auth';
-import { buildR2TemplateDownloadResponse, buildR2TemplatePackageDownloadResponse, buildR2TemplateThumbnailResponse } from './download';
+import {
+  buildR2TemplateDownloadResponse,
+  buildR2TemplatePackageDownloadResponse,
+  buildR2TemplatePackageFromJsonResponse,
+  buildR2TemplateThumbnailResponse
+} from './download';
 import { MarketplaceRepositoryWriteError, buildMarketplaceUserId, createTemplateRepository } from './repository';
 import {
   MarketplacePublishValidationError,
@@ -401,17 +406,27 @@ function escapeSvgText(value: string): string {
 
 async function handleTemplatePackageDownload(context: Context<{ Bindings: MarketplaceWorkerEnv }>): Promise<Response> {
   const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
-  const response = await repository.buildPackageDownloadResponse(context.req.param('id') ?? '', context.req.query('version'));
+  const templateIdOrSlug = context.req.param('id') ?? '';
+  const versionId = context.req.query('version');
+  const response = await repository.buildPackageDownloadResponse(templateIdOrSlug, versionId);
   if (!response) {
     return context.json(makeMarketplaceApiError('template_or_version_not_found', 'Template version was not found.'), 404);
   }
   if (context.env?.TEMPLATE_BUCKET) {
     const objectResponse = await buildR2TemplatePackageDownloadResponse(context.env.TEMPLATE_BUCKET, response);
-    if (!objectResponse) {
-      return context.json(makeMarketplaceApiError('template_package_object_not_found', 'Template package was not found in R2.'), 404);
+    if (objectResponse) {
+      await repository.recordDownload(response.templateId, response.versionId);
+      return objectResponse;
     }
-    await repository.recordDownload(response.templateId, response.versionId);
-    return objectResponse;
+    const detail = await repository.getTemplateDetail(templateIdOrSlug);
+    const version = detail ? selectTemplateVersion(detail.template, versionId) : undefined;
+    const generatedResponse =
+      detail && version ? await buildR2TemplatePackageFromJsonResponse(context.env.TEMPLATE_BUCKET, response, detail.template, version) : undefined;
+    if (generatedResponse) {
+      await repository.recordDownload(response.templateId, response.versionId);
+      return generatedResponse;
+    }
+    return context.json(makeMarketplaceApiError('template_package_object_not_found', 'Template package was not found in R2.'), 404);
   }
   return context.json(response);
 }
