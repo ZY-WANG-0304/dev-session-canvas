@@ -1,4 +1,4 @@
-import { unzipSync, zipSync } from 'fflate';
+import { unzipSync, zipSync, type Zippable } from 'fflate';
 
 import {
   buildMarketplacePackageObjectKey,
@@ -66,10 +66,10 @@ export interface PreparePublishTemplateOptions {
 
 interface PreparedPackagePayload {
   request: MarketplacePublishTemplateRequest;
+  manifest: MarketplaceTemplatePackageManifest;
+  entries: Map<string, PackageZipEntry>;
   templateJsonBytes: Uint8Array;
   thumbnailBytes: Uint8Array;
-  packageZipBytes: Uint8Array;
-  manifestJsonBytes: Uint8Array;
 }
 
 interface PackageZipEntry {
@@ -120,7 +120,15 @@ export async function prepareMarketplacePublishTemplate(
   const changelog = request.changelog?.trim() || 'Initial marketplace version.';
   const manifest = buildTemplatePackageManifestFromRequest({ ...request, readme, changelog }, sha256);
   const manifestJsonBytes = encodePrettyJson(manifest);
-  const packageZipBytes = buildTemplatePackageZip({ manifest, templateJsonBytes, readme, changelog, thumbnailBytes });
+  const packageZipBytes = buildTemplatePackageZip(
+    buildCanonicalPackageEntries({
+      manifest,
+      templateJsonBytes,
+      readme,
+      changelog,
+      thumbnailBytes
+    })
+  );
   assertPackageZipByteLimit(packageZipBytes, options.maxPackageBytes);
 
   return {
@@ -158,7 +166,9 @@ export async function prepareMarketplacePublishTemplatePackage(
   const createdAt = now.toISOString();
   const packagePayload = await parseMarketplaceTemplatePackage(packageZipBytes, options);
   const request = packagePayload.request;
-  assertSafePublishContent(collectPublishTemplateTextFields(request));
+  const readme = request.readme?.trim() || buildDefaultReadme(request.name, request.description);
+  const changelog = request.changelog?.trim() || 'Initial marketplace version.';
+  assertSafePublishContent(collectPublishTemplateTextFields({ ...request, readme, changelog }));
 
   const slug = request.slug?.trim() || buildMarketplaceSlugFromName(request.name);
   const templateId = `tmpl-${slug}-${createShortId()}`;
@@ -170,8 +180,20 @@ export async function prepareMarketplacePublishTemplatePackage(
   const objectKey = `templates/${templateId}/versions/${versionId}/template.json`;
   const thumbnailKey = `templates/${templateId}/versions/${versionId}/thumbnail.png`;
   const sha256 = await sha256Hex(templateJsonBytes);
-  const manifest = buildTemplatePackageManifestFromRequest(request, sha256);
+  const manifest = buildTemplatePackageManifestFromUploadedPackage(packagePayload.manifest, { ...request, readme, changelog }, sha256);
   const manifestJsonBytes = encodePrettyJson(manifest);
+  const canonicalPackageEntries = buildCanonicalPackageEntries({
+    baseEntries: packagePayload.entries,
+    manifest,
+    templateJsonBytes,
+    readme,
+    changelog,
+    thumbnailBytes: packagePayload.thumbnailBytes
+  });
+  assertPackageReadmeMediaReferences(readme, canonicalPackageEntries);
+  assertManifestMediaEntries(manifest, canonicalPackageEntries);
+  const canonicalPackageZipBytes = buildTemplatePackageZip(canonicalPackageEntries);
+  assertPackageZipByteLimit(canonicalPackageZipBytes, options.maxPackageBytes);
 
   return {
     record: {
@@ -180,11 +202,11 @@ export async function prepareMarketplacePublishTemplatePackage(
       slug,
       name: request.name,
       description: request.description,
-      readme: request.readme?.trim() || buildDefaultReadme(request.name, request.description),
+      readme,
       tags: request.tags,
       providerWarnings: extractProviderWarnings(templateDocument),
       publisher,
-      changelog: request.changelog?.trim() || 'Initial marketplace version.',
+      changelog,
       objectKey,
       thumbnailKey,
       sha256,
@@ -194,7 +216,7 @@ export async function prepareMarketplacePublishTemplatePackage(
     },
     templateJsonBytes,
     thumbnailBytes: packagePayload.thumbnailBytes,
-    packageZipBytes,
+    packageZipBytes: canonicalPackageZipBytes,
     manifestJsonBytes
   };
 }
@@ -389,10 +411,10 @@ async function parseMarketplaceTemplatePackage(
       templateDocument,
       thumbnailPngBase64: bytesToBase64(thumbnailBytes)
     },
+    manifest,
+    entries,
     templateJsonBytes,
-    thumbnailBytes,
-    packageZipBytes,
-    manifestJsonBytes: encodePrettyJson(manifest)
+    thumbnailBytes
   };
 }
 
@@ -534,32 +556,77 @@ function buildTemplatePackageManifestFromRequest(request: MarketplacePublishTemp
   };
 }
 
-function buildTemplatePackageZip({
+function buildTemplatePackageManifestFromUploadedPackage(
+  base: MarketplaceTemplatePackageManifest,
+  request: MarketplacePublishTemplateRequest,
+  templateSha256: string
+): MarketplaceTemplatePackageManifest {
+  const candidate: MarketplaceTemplatePackageManifest = {
+    ...base,
+    schemaVersion: 1,
+    slug: request.slug?.trim() || buildMarketplaceSlugFromName(request.name),
+    name: request.name,
+    description: request.description,
+    tags: request.tags,
+    template: base.template,
+    readme: base.readme,
+    changelog: base.changelog,
+    thumbnail: base.thumbnail,
+    media: {
+      ...(base.media ?? {}),
+      thumbnail: base.thumbnail
+    },
+    checksums: {
+      ...(base.checksums ?? {}),
+      templateSha256
+    }
+  };
+  const parsed = marketplaceTemplatePackageManifestSchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new MarketplacePublishValidationError('package_manifest_invalid', parsed.error.issues[0]?.message ?? 'template-package.json is invalid.');
+  }
+  return parsed.data;
+}
+
+function buildCanonicalPackageEntries({
+  baseEntries,
   manifest,
   templateJsonBytes,
   readme,
   changelog,
   thumbnailBytes
 }: {
+  baseEntries?: Map<string, PackageZipEntry>;
   manifest: MarketplaceTemplatePackageManifest;
   templateJsonBytes: Uint8Array;
   readme: string;
   changelog: string;
   thumbnailBytes: Uint8Array;
-}): Uint8Array {
+}): Map<string, PackageZipEntry> {
   const encoder = new TextEncoder();
-  return zipSync(
-    {
-      'template-package.json': encodePrettyJson(manifest),
-      'template.json': templateJsonBytes,
-      'README.md': encoder.encode(`${readme.trimEnd()}\n`),
-      'CHANGELOG.md': encoder.encode(`${changelog.trimEnd()}\n`),
-      media: {
-        'thumbnail.png': thumbnailBytes
-      }
-    },
-    { level: 6, mtime: new Date('2026-01-01T00:00:00.000Z') }
-  );
+  const entries = new Map<string, PackageZipEntry>(baseEntries);
+  setPackageEntry(entries, 'template-package.json', encodePrettyJson(manifest));
+  setPackageEntry(entries, manifest.template, templateJsonBytes);
+  setPackageEntry(entries, manifest.readme, encoder.encode(`${readme.trimEnd()}\n`));
+  setPackageEntry(entries, manifest.changelog, encoder.encode(`${changelog.trimEnd()}\n`));
+  setPackageEntry(entries, manifest.thumbnail, thumbnailBytes);
+  return entries;
+}
+
+function setPackageEntry(entries: Map<string, PackageZipEntry>, path: string, bytes: Uint8Array): void {
+  const normalized = normalizeMarketplacePackagePath(path);
+  if (!normalized) {
+    throw new MarketplacePublishValidationError('package_path_invalid', `Package path ${path} is not safe.`);
+  }
+  entries.set(normalized, { path: normalized, bytes });
+}
+
+function buildTemplatePackageZip(entries: Map<string, PackageZipEntry>): Uint8Array {
+  const zippable: Zippable = {};
+  for (const [entryPath, entry] of [...entries.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    zippable[entryPath] = entry.bytes;
+  }
+  return zipSync(zippable, { level: 6, mtime: new Date('2026-01-01T00:00:00.000Z') });
 }
 
 function buildMarketplaceManifestObjectKey(objectKey: string): string {

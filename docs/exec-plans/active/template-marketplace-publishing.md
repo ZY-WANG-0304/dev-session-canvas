@@ -49,6 +49,7 @@
 - [x] (2026-05-31 01:30 +0800) 修复完整模板安装回归：VSCode fixture 的版本 hash 改为与包内 `template.json` 字节一致，本地完整模板目录写入后会重写解压出的 `template.json` 为本地模板 id，并通过 canvas templates 与 VSCode fixture E2E 验证。
 - [x] (2026-05-31 10:45 +0800) 更新 workers.dev 调试环境：为 4 个 preview seed 版本补传完整 `package.zip` 到 R2，重新部署 Worker / Static Assets 到版本 `d4717aef-7fa9-4067-bb6f-753b939e87da`，随后运行 VSCode preview E2E；当前执行主机访问 workers.dev 超时，E2E 停留在加载态，已记录为环境网络阻塞而非通过。
 - [x] (2026-05-31 11:45 +0800) 修复 preview 中历史发布模板点击 `Download full package` 下载成 `download.json` 的问题：Worker 在 `/download` 找不到历史 `package.zip` 时，会基于同版本 `template.json`、D1 README / CHANGELOG 和缩略图即时生成最小完整 zip；同时强制 package 响应 `content-type: application/zip`，避免 R2 旧 metadata 让浏览器按 JSON 处理。
+- [x] (2026-05-31 19:20 +0800) 处理 PR107 review：Package 上传路径不再把原始上传 zip 原样保存到 R2；Worker 会在解析后用服务端规范化后的 `template.json`、manifest/checksum、README、CHANGELOG、缩略图和保留下来的 `media/` / `assets/` 资源重新生成 canonical `package.zip`，确保包内 `template.json` hash 与版本 `sha256` 一致。
 
 ## 意外与发现
 
@@ -104,6 +105,9 @@
 - 观察：VSCode fixture E2E 安装失败的直接原因是测试 fixture 的版本 `sha256` 来自紧凑 JSON，而 `/download` 返回的包内 `template.json` 是 pretty JSON，导致宿主校验失败后不写入本地模板目录。
   证据：日志中能看到 `/api/v1/templates/panel-review-loop/download?version=ver-panel-review-2` 请求，但模板 catalog 始终没有 `panel-review-loop`；将 fixture 的 hash 和 zip 共同使用 `JSON.stringify(document, null, 2) + "\n"` 后，`npm run test:marketplace-vscode-fixture-e2e` 通过。
 
+- 观察：Package 上传即使前端已经按表单编辑重建 zip，Worker 仍会规范化 `template.name`、`template.category`、`updatedAt` 和 JSON 序列化；如果 R2 保存原始上传 zip，包内 `template.json` hash 会与 D1 `template_versions.sha256` 不一致。
+  证据：PR107 review 指出 VSCode 安装会用 `/download` 包内 `template.json` 计算 hash 并与版本 `sha256` 比对；新增 API 回归测试会解压发布后 R2 中的 `package.zip`，断言包内 `template.json` hash 等于响应中的 `latestVersion.sha256`，并确认原包媒体资源仍保留。
+
 - 观察：preview R2 seed 脚本当前仍只管理 `template.json` 和 `thumbnail.png`，不管理完整 `package.zip`，因此完整模板主下载上线到调试环境时需要单独补传 package 对象。
   证据：`apps/template-marketplace/scripts/preview-r2-objects.mjs` 的 `previewTemplateObjects` 未列出 `package.zip`；本轮手动补传并用 `wrangler r2 object get` 校验 4 个对象：getting-started v1 `48920 / 9b1be6ed470396e1e92a042ecc8e5409b1b2f819d074e88f508c5f514bc2d4dd`，review-loop v1 `42409 / 8746bdcd7a08fb96ad1ac231b87c4f811335aa0cb3c18abf118eab1644b235d4`，review-loop v2 `52973 / 47809dd7ec4f3880f0cc6e24f37c495cd1edc11cfc494f4fbc5fac0275e62b0a`，release-readiness v1 `42971 / ffae7ae5af6275f12a0487c318311d67cd8c2eb6055ad5ef36f68bffd77f8fa4`。
 
@@ -146,6 +150,10 @@
 - 决策：本轮真实包上传使用 `POST /api/v1/templates/package` 的 `multipart/form-data` zip 文件字段，Worker 用 `fflate` 解压并校验 canonical 结构，再复用现有 D1 派生字段与 R2 `template.json` / `thumbnail.png` 兼容对象写入。
   理由：浏览器没有内建 zip 解析，前端只上传原始 `package.zip` 才能覆盖 README 媒体和归档保真；`fflate` 是 MIT 许可的小型纯 JS 压缩库，适合 Workers runtime，且避免引入 Node-only zip 依赖。
   日期/作者：2026-05-28 / Codex。
+
+- 决策：Package 上传路径的最终 R2 `package.zip` 必须由 Worker 重新生成，而不是保存上传的原始 zip bytes。
+  理由：上传包后允许编辑的字段就是用户确认后的发布事实；同时 Worker 会规范化 `template.json` 和 manifest checksum，只有服务端重建包才能让 R2 `package.zip`、兼容 `template.json`、`manifest.json`、D1 `sha256` 与 VSCode 安装校验使用同一份内容。重建时保留原包未被覆盖的 `media/` / `assets/` 资源，避免破坏 README 媒体和高级作者维护的素材。
+  日期/作者：2026-05-31 / Codex。
 
 - 决策：产品命名固定为“轻量模板”和“完整模板”。轻量模板只表示单个 `template.json` 的兼容导入 / 导出形态；完整模板表示 `package.zip` 或解压后的模板包目录，是模板市场发布、下载、安装、回滚、审计和长期维护的唯一管理形态。
   理由：用户仍需要通过 `template.json` 快速上传或兼容旧流程，但市场若同时管理两套事实会让 README、CHANGELOG、媒体和包内资源继续退化为二等内容。统一以完整模板为市场事实，可以让 JSON + 表单上传、Package 上传、浏览器下载和 VSCode 安装最终收敛到同一种包语义。
@@ -806,6 +814,23 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
     wrangler r2 object get template-marketplace-preview/templates/tmpl-release-readiness-jijiji-de382d71/versions/1/package.zip --remote
     <not found as expected before fallback: 远端历史模板仍缺少真实包对象，修复依赖 Worker 即时生成 fallback zip。>
 
+本轮 Package 上传服务端 canonical 重建修复验证输出（2026-05-31 19:20 +0800）：
+
+    npm run -w @dev-session-canvas/template-marketplace test:api -- --run src/worker/app.test.ts
+    Test Files  1 passed (1)
+    Tests  43 passed (43)
+
+    npm run -w @dev-session-canvas/template-marketplace test:api -- --run
+    Test Files  5 passed (5)
+    Tests  63 passed (63)
+
+    npm run -w @dev-session-canvas/template-marketplace test:web -- --run
+    Test Files  6 passed (6)
+    Tests  30 passed (30)
+
+    npm run -w @dev-session-canvas/template-marketplace typecheck -- --pretty false
+    <passed>
+
 ## 接口与依赖
 
 需要在 `packages/marketplace-shared/src/index.ts` 导出以下跨端 contract：发布请求 schema、发布新版本请求 schema、发布响应类型、模板包大小默认上限、缩略图大小上限和 canvas template document schema。Worker、Web 和 VSCode 只能依赖这些 contract，而不是复制校验规则。
@@ -821,3 +846,5 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 2026-05-31 / Codex：补充调试环境更新与 VSCode preview E2E 结果，原因是完整模板主下载已部署到 workers.dev 并补齐 preview R2 package 对象，但当前执行主机无法访问 workers.dev，preview E2E 只能记录网络阻塞证据，不能作为通过结论。
 
 2026-05-31 / Codex：补充历史 JSON-only 版本下载 fallback，原因是 preview 中旧发布模板没有 `package.zip` 导致浏览器点击完整下载时保存 JSON 错误；计划同步了临时生成完整 zip 的兼容策略、验证命令和新的 preview 版本号。
+
+2026-05-31 / Codex：补充 Package 上传 canonical 重建修复记录，原因是 PR review 发现 Worker 原样保存上传 zip 会让包内 `template.json` hash 与 D1 版本 `sha256` 不一致；计划同步了服务端重建包、保留媒体资源和 API 回归测试证据。

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { zipSync } from 'fflate';
+import { unzipSync, zipSync } from 'fflate';
 
 import { buildMarketplacePackageObjectKey } from '@dev-session-canvas/marketplace-shared';
 import { createMarketplaceWorkerApp } from './app';
@@ -562,7 +562,16 @@ describe('template marketplace worker api', () => {
     const runLog: FakeD1Run[] = [];
     const bucket = createFakeR2Bucket({});
     const formData = new FormData();
-    const packageBytes = buildPackageZipFixture();
+    const packageBytes = buildPackageZipFixture({
+      templateDocument: {
+        ...buildPublishRequest().templateDocument,
+        template: {
+          ...buildPublishRequest().templateDocument.template,
+          name: 'Package Upload Original',
+          updatedAt: '2026-05-01T00:00:00.000Z'
+        }
+      }
+    });
     formData.set('package', new File([packageBytes], 'template-package.zip', { type: 'application/zip' }));
 
     const response = await app.request(
@@ -591,8 +600,19 @@ describe('template marketplace worker api', () => {
     expect(body.template.readme).toContain('![Screenshot](./media/screenshot.png)');
     await expect(bucket.get(body.template.latestVersion.objectKey)).resolves.not.toBeNull();
     await expect(bucket.get(body.template.latestVersion.thumbnailKey)).resolves.not.toBeNull();
-    await expect(bucket.get(buildMarketplacePackageObjectKey(body.template.latestVersion.objectKey))).resolves.not.toBeNull();
-    await expect(bucket.get(body.template.latestVersion.objectKey.replace(/template\.json$/u, 'manifest.json'))).resolves.not.toBeNull();
+    const storedPackage = await bucket.get(buildMarketplacePackageObjectKey(body.template.latestVersion.objectKey));
+    const storedManifest = await bucket.get(body.template.latestVersion.objectKey.replace(/template\.json$/u, 'manifest.json'));
+    expect(storedPackage).not.toBeNull();
+    expect(storedManifest).not.toBeNull();
+    const storedPackageEntries = unzipSync(await storedPackage!.bytes());
+    const storedTemplateJsonBytes = storedPackageEntries['template.json'];
+    const storedManifestJson = JSON.parse(new TextDecoder().decode(storedPackageEntries['template-package.json'])) as { checksums?: { templateSha256?: string } };
+    const storedTemplateDocument = JSON.parse(new TextDecoder().decode(storedTemplateJsonBytes)) as { template: { name: string; updatedAt: string } };
+    expect(await sha256Hex(storedTemplateJsonBytes)).toBe(body.template.latestVersion.sha256);
+    expect(storedManifestJson.checksums?.templateSha256).toBe(body.template.latestVersion.sha256);
+    expect(storedTemplateDocument.template.name).toBe('Package Upload Smoke');
+    expect(storedTemplateDocument.template.updatedAt).not.toBe('2026-05-01T00:00:00.000Z');
+    expect(storedPackageEntries['media/screenshot.png']).toBeDefined();
     expect(runLog.some((entry) => entry.sql.includes('INSERT INTO templates'))).toBe(true);
   });
 
@@ -1009,8 +1029,8 @@ function buildPublishRequest(): {
   };
 }
 
-function buildPackageZipFixture(options: { readme?: string } = {}): Uint8Array {
-  const templateDocument = buildPublishRequest().templateDocument;
+function buildPackageZipFixture(options: { readme?: string; templateDocument?: ReturnType<typeof buildPublishRequest>['templateDocument'] } = {}): Uint8Array {
+  const templateDocument = options.templateDocument ?? buildPublishRequest().templateDocument;
   const manifest = {
     schemaVersion: 1,
     slug: 'package-upload-smoke',
@@ -1044,6 +1064,11 @@ function decodeBase64Png(): Uint8Array {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function buildPublishVersionRequest(): {
