@@ -12,6 +12,7 @@ import {
   type SidebarNodeListViewMode
 } from '../common/extensionIdentity';
 import type { CanvasGroupSummary, CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
+import { formatExecutionCwdLabel } from '../common/executionCwdLabel';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import { CanvasPanelManager, type CanvasSidebarNodeListSnapshot } from '../panel/CanvasPanelManager';
 
@@ -254,7 +255,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   public async refresh(): Promise<CanvasSidebarNodeItemSnapshot[]> {
     const snapshot = this.panelManager.getCanvasSidebarNodeListSnapshot();
     this.groups = snapshot.groups;
-    this.items = getCanvasSidebarNodeListItems(snapshot);
+    this.items = getCanvasSidebarNodeListItems(snapshot, this.panelManager.getWorkspaceFoldersForDisplay());
     await this.postState();
     return this.items;
   }
@@ -391,7 +392,8 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
 }
 
 export function getCanvasSidebarNodeListItems(
-  source: CanvasNodeSummary[] | CanvasSidebarNodeListSnapshot
+  source: CanvasNodeSummary[] | CanvasSidebarNodeListSnapshot,
+  workspaceFolders: Parameters<typeof formatExecutionCwdLabel>[1] = []
 ): CanvasSidebarNodeItemSnapshot[] {
   const nodes = Array.isArray(source) ? source : source.nodes;
   const groups = Array.isArray(source) ? [] : source.groups;
@@ -402,7 +404,7 @@ export function getCanvasSidebarNodeListItems(
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
       const statusLabel = humanizeCanvasNodeStatus(node);
       const groupPath = resolveSidebarNodeGroupPath(node.groupId, groupsById);
-      const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node);
+      const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node, workspaceFolders);
       const secondLine = buildSidebarNodeSecondaryText(subtitlePrefix, statusLabel);
       const summary = sanitizeSidebarNodeSummary(node.summary);
       const attentionPending = canvasNodeAttentionPending(node.metadata);
@@ -459,12 +461,18 @@ function buildSidebarNodeSecondaryText(subtitlePrefix: string | undefined, statu
   return subtitlePrefix ? `${subtitlePrefix} · ${statusLabel}` : statusLabel;
 }
 
-function buildSidebarNodeSubtitlePrefix(node: CanvasNodeSummary): string | undefined {
+function buildSidebarNodeSubtitlePrefix(
+  node: CanvasNodeSummary,
+  workspaceFolders: Parameters<typeof formatExecutionCwdLabel>[1]
+): string | undefined {
   if (node.kind !== 'agent') {
     return undefined;
   }
 
-  return humanizeAgentProvider(node.metadata?.agent?.provider);
+  const agentMetadata = node.metadata?.agent;
+  const providerLabel = humanizeAgentProvider(agentMetadata?.provider);
+  const cwdLabel = formatExecutionCwdLabel(agentMetadata?.cwd, workspaceFolders);
+  return `${cwdLabel} · ${providerLabel}`;
 }
 
 function humanizeNodeKind(kind: CanvasNodeKind): string {
