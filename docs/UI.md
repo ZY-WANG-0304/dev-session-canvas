@@ -203,12 +203,13 @@ components:
 - `2px`：标题与副标题之间的最小间隔。
 - `4px`：widget 内部微间距、空间概览控件 padding。
 - `6px`：标题栏按钮组、状态 cluster。
-- `8px`：菜单、资源列表、连线工具条内部节奏。
+- `8px`：菜单、资源列表、连线工具条内部节奏；执行型节点的内嵌运行时 frame padding。
 - `10px`：标题栏横向 gap、紧凑内容 padding。
-- `12px`：节点正文 padding、普通内容卡片 padding。
+- `12px`：节点正文外壳 padding、普通内容卡片 padding；卡片态 `Agent` / `Terminal` / `File` / `File List` / fallback 节点默认共享这一档。
 - `14px`：画布角落控件到边缘距离。
-- `16px`：侧栏内容 section 内较大间隔。
-- `24px`：文档级或大 section 间隔，不应频繁出现在 Webview 节点内部。
+- `16px`：侧栏内容 section 内较大间隔；文档型正文的纵向阅读 padding。
+- `18px`：文档型正文的横向阅读 padding，仅用于 Note Markdown 预览和编辑面。
+- `24px`：大 section 或空间组织对象的内部预留；分组成员到 group body 四边的视觉预留使用这一档。
 
 ### Container Rules
 
@@ -286,6 +287,9 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 节点类型颜色是产品识别色，可用于 marker、minimap 和弱边框；它们不是状态色，也不是主题 token 选择错误。
 - 标题栏承载对象身份、可选副标题和右侧动作区。
 - 正文区按对象类型承载内容，但不应引入多层 card-in-card。
+- 节点正文 padding 以 `12px` 为默认外壳；执行型节点在正文外壳内再用 `8px` 的运行时 frame 包住 xterm，使 `Agent` 与 `Terminal` 的终端内容拥有一致留白。
+- Note 是文档 surface：节点 body 可贴边，Markdown 预览和编辑态文本区使用 `16px 18px` 的文档页边距；行号 gutter 只占用编辑态左侧文档留白，不改变预览态节奏。
+- File 和 File List 的卡片态使用默认 `12px` 正文 padding；minimal 文件活动仍可使用更小的 badge / list row padding，因为它们表达的是文件标签密度而非完整节点正文。
 - 选中态使用 `focusBorder` 外描边表达，不重绘整块背景。
 
 具体对象行为和字段边界由 `docs/design-docs/` 中对应对象或节点设计文档定义，并从 `docs/design-docs/index.md` 查找。
@@ -297,7 +301,7 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 外框、body、标题 tab 和分组 toolbar 的背景统一使用 `--vscode-panel-background`，不使用混色或其他 surface fallback；普通态也要让用户能识别区域边界。body 背景应绘制在普通节点下方，避免 Panel 面层压住成员节点内容。
 - 边框使用 `--vscode-panel-border`，tab 和 body 都采用直角边界，body 上边界也必须有边框，且画布缩放时保持屏幕可见线宽不变；标题贴在分组左上角，采用类似 Panel 顶部 active tab 的标题区域；标题 tab 之外的顶部横向区域应保持挖空透明，不绘制 header 背景条，不使用外浮胶囊、强阴影或高饱和标签。
 - 选中态通过与节点 resize 一致的四边选中线、四角圆形控制点、标题文字前景和贴在 tab 右侧的轻量双段按钮表达；标题 tab 与双段按钮只在画板缩小时做反向缩放以保持可读；画板放大时不反向缩小，视觉上跟随画板一起放大；默认按内容自然宽度显示，只有自然宽度达到分组宽度上限时才停止继续变宽，整体不得超出分组框；tab 区域不额外显示 active 下划线，也不通过自定义分组颜色表达。
-- 分组 body 不应遮挡内部节点、连线或运行时内容的主交互；成员对象距离 body 左、上、右、下边界的视觉预留应保持一致；标题、不可见 header 拖动区、边框、resize 控制点和未被节点覆盖的 body 空白区都可用于选中分组，其中 body 空白区右键仍打开画布上下文菜单，菜单内新增 / 创建类操作归属于该 body 所在分组。
+- 分组 body 不应遮挡内部节点、连线或运行时内容的主交互；成员对象距离 body 左、上、右、下边界的视觉预留应保持一致，并使用 `24px` 的空间组织预留；因为标题 tab 占据顶部，宿主几何中的 top inset 应为 `24px + title height`。标题、不可见 header 拖动区、边框、resize 控制点和未被节点覆盖的 body 空白区都可用于选中分组，其中 body 空白区右键仍打开画布上下文菜单，菜单内新增 / 创建类操作归属于该 body 所在分组。
 
 ### Node Title And Subtitle
 

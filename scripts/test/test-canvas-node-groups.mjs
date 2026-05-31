@@ -404,7 +404,7 @@ try {
     { x: 100, y: 80 }
   );
   assert.strictEqual(groupedByPointer.nodes[0].groupId, 'group-target');
-  assert.ok(groupedByPointer.groups[0].size.width >= 240 + 120 + 28);
+  assert.ok(groupedByPointer.groups[0].size.width >= 240 + 120 + 24);
 
   const ungroupedByPointer = moveNode(groupedByPointer, 'note-1', { x: 500, y: 20 }, { x: 500, y: 20 });
   assert.strictEqual(ungroupedByPointer.nodes[0].groupId, undefined);
@@ -424,7 +424,7 @@ try {
   );
   assert.strictEqual(multiMovedByPrimaryPointer.nodes.find((candidate) => candidate.id === 'moved-1').groupId, 'group-target');
   assert.strictEqual(multiMovedByPrimaryPointer.nodes.find((candidate) => candidate.id === 'moved-2').groupId, 'group-target');
-  assert.ok(multiMovedByPrimaryPointer.groups[0].size.width >= 370 + 120 + 28);
+  assert.ok(multiMovedByPrimaryPointer.groups[0].size.width >= 370 + 120 + 24);
 
   const movedIntoOccupiedGroup = moveNode(
     state({
@@ -572,8 +572,8 @@ try {
   const containedNoteAfterResize = resizedWithContainmentAndCollision.nodes.find((candidate) => candidate.id === 'note-contained');
   const crossingNoteAfterResize = resizedWithContainmentAndCollision.nodes.find((candidate) => candidate.id === 'note-crossing');
   const containedFileAfterResize = resizedWithContainmentAndCollision.nodes.find((candidate) => candidate.id === 'file-contained');
-  assert.deepStrictEqual(resizedPinnedGroup.position, { x: 0, y: -6 });
-  assert.deepStrictEqual(resizedPinnedGroup.size, { width: 430, height: 186 });
+  assert.deepStrictEqual(resizedPinnedGroup.position, { x: 0, y: -2 });
+  assert.deepStrictEqual(resizedPinnedGroup.size, { width: 430, height: 182 });
   assert.strictEqual(containedAfterResize.parentGroupId, 'group-parent');
   assert.strictEqual(crossingAfterResize.parentGroupId, undefined);
   assert.strictEqual(containedNoteAfterResize.groupId, 'group-parent');
@@ -750,8 +750,8 @@ function assertMemberInsetsForTest(group, members) {
     rectForTestNode(members[0])
   );
   const groupRect = rectForTestGroup(group);
-  assert.ok(memberRect.left - groupRect.left >= 28);
-  assert.ok(memberRect.top - groupRect.top >= 56);
-  assert.ok(groupRect.right - memberRect.right >= 28);
-  assert.ok(groupRect.bottom - memberRect.bottom >= 28);
+  assert.ok(memberRect.left - groupRect.left >= 24);
+  assert.ok(memberRect.top - groupRect.top >= 52);
+  assert.ok(groupRect.right - memberRect.right >= 24);
+  assert.ok(groupRect.bottom - memberRect.bottom >= 24);
 }
