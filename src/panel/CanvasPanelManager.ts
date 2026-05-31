@@ -820,9 +820,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         this.invalidateResolvedShellEnvironmentPatch();
         this.clearAgentCliResolutionCache();
-        if (this.refreshConfiguredTerminalShellMetadata()) {
-          this.postState('host/stateUpdated');
+        const executionMetadataChanged = this.reconcileDefaultExecutionMetadataCwd();
+        const terminalShellMetadataChanged = this.refreshConfiguredTerminalShellMetadata();
+        const metadataChanged = executionMetadataChanged || terminalShellMetadataChanged;
+        if (metadataChanged) {
+          this.persistState();
         }
+        this.postState('host/stateUpdated');
         this.notifySidebarStateChanged();
       })
     );
@@ -1010,7 +1014,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
       filePathDisplayMode: fileConfiguration.pathDisplayMode,
       terminalShellConfiguredValue: terminalShell.configuredPath || terminalShell.configuredShell,
-      terminalShellPath: terminalShell.resolvedPath,
+      terminalShellPath: this.resolveTerminalShellPathForConfigurationCwd(terminalShell.resolvedPath),
       agentCodexCommand: agentCliConfig.codexCommand,
       agentClaudeCommand: agentCliConfig.claudeCommand,
       nodeCount: this.state.nodes.length,
@@ -4430,6 +4434,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     ) {
       this.postState('host/stateUpdated');
     }
+  }
+
+  private reconcileDefaultExecutionMetadataCwd(): boolean {
+    const nextState = reconcileDefaultExecutionMetadataCwd(this.state);
+    if (nextState === this.state) {
+      return false;
+    }
+
+    this.state = nextState;
+    return true;
   }
 
   private refreshConfiguredTerminalShellMetadata(): boolean {
@@ -10023,7 +10037,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getAgentCliResolutionAuthority(): string {
-    return getConfiguredTerminalShell().resolvedPath;
+    return this.getTerminalShellPath();
   }
 
   private getAgentCliResolutionCacheKey(
@@ -10148,7 +10162,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getTerminalShellPath(): string {
-    return getConfiguredTerminalShell().resolvedPath;
+    return this.resolveTerminalShellPathForConfigurationCwd(getConfiguredTerminalShell().resolvedPath);
+  }
+
+  private resolveTerminalShellPathForConfigurationCwd(shellPath: string): string {
+    return resolveTerminalShellPathForConfigurationCwd(shellPath, this.getTerminalWorkingDirectory());
   }
 
   private getTerminalInheritEnv(): boolean {
@@ -10166,7 +10184,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): CanvasDebugConfigurationSnapshot {
     const configuredTerminalShell = getConfiguredTerminalShell();
     return {
-      terminalShellPath: configuredTerminalShell.resolvedPath,
+      terminalShellPath: this.resolveTerminalShellPathForConfigurationCwd(configuredTerminalShell.resolvedPath),
       terminalShellPathOverride: configuredTerminalShell.configuredPath || undefined,
       terminalShellResolutionSource: configuredTerminalShell.resolutionSource,
       terminalInheritEnv: this.getTerminalInheritEnv(),
@@ -16265,7 +16283,7 @@ function createAgentMetadata(
     resumeSupported: false,
     resumeStrategy: 'none',
     shellPath: defaultAgentCommand(provider),
-    cwd: defaultTerminalWorkingDirectory(),
+    cwd: defaultExecutionWorkingDirectory(),
     persistenceMode: 'snapshot-only',
     attachmentState: 'history-restored',
     runtimeBackend: undefined,
@@ -16284,8 +16302,8 @@ function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
   return {
     backend: 'node-pty',
     lifecycle: 'idle',
-    shellPath: getConfiguredTerminalShell().resolvedPath,
-    cwd: defaultTerminalWorkingDirectory(),
+    shellPath: resolveDefaultExecutionTerminalShellPath(),
+    cwd: defaultExecutionWorkingDirectory(),
     persistenceMode: 'snapshot-only',
     attachmentState: 'history-restored',
     runtimeBackend: undefined,
@@ -16555,10 +16573,11 @@ function normalizeMetadata(
           typeof agent.shellPath === 'string'
             ? agent.shellPath
             : fallback.shellPath,
-        cwd:
+        cwd: normalizeDefaultExecutionMetadataCwd(
           typeof agent.cwd === 'string'
             ? agent.cwd
-            : fallback.cwd,
+            : fallback.cwd
+        ),
         persistenceMode,
         attachmentState: normalizeRuntimeAttachmentState(
           persistenceMode,
@@ -16656,10 +16675,11 @@ function normalizeMetadata(
           typeof terminal.shellPath === 'string'
             ? terminal.shellPath
             : fallback.shellPath,
-        cwd:
+        cwd: normalizeDefaultExecutionMetadataCwd(
           typeof terminal.cwd === 'string'
             ? terminal.cwd
-            : fallback.cwd,
+            : fallback.cwd
+        ),
         persistenceMode,
         attachmentState: normalizeRuntimeAttachmentState(
           persistenceMode,
@@ -18128,6 +18148,123 @@ function shouldResetIdleTerminalNode(
 
 function createExecutionSessionId(nodeId: string, kind: ExecutionNodeKind): string {
   return `${nodeId}-${kind}-${Date.now().toString(36)}`;
+}
+
+function defaultExecutionWorkingDirectory(): string {
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? defaultTerminalWorkingDirectory();
+}
+
+function normalizeDefaultExecutionMetadataCwd(cwd: string): string {
+  const normalizedCwd = normalizeExecutionCwd(cwd);
+  if (!normalizedCwd || !isLegacyDefaultExecutionCwd(normalizedCwd)) {
+    return cwd;
+  }
+
+  return defaultExecutionWorkingDirectory();
+}
+
+function resolveDefaultExecutionTerminalShellPath(): string {
+  return resolveTerminalShellPathForConfigurationCwd(
+    getConfiguredTerminalShell().resolvedPath,
+    defaultExecutionWorkingDirectory()
+  );
+}
+
+function resolveTerminalShellPathForConfigurationCwd(shellPath: string, cwd: string): string {
+  const trimmedShellPath = shellPath.trim();
+  if (!trimmedShellPath || path.isAbsolute(trimmedShellPath) || !isExplicitRelativePath(trimmedShellPath)) {
+    return trimmedShellPath;
+  }
+
+  return path.resolve(cwd, trimmedShellPath);
+}
+
+function isLegacyDefaultExecutionCwd(cwd: string): boolean {
+  const legacyDefaultCwd = normalizeExecutionCwd(defaultTerminalWorkingDirectory());
+  return Boolean(
+    legacyDefaultCwd &&
+      areSameExecutionPath(cwd, legacyDefaultCwd) &&
+      !(vscode.workspace.workspaceFolders ?? []).some((workspaceFolder) =>
+        isSameOrDescendantExecutionPath(cwd, workspaceFolder.uri.fsPath)
+      )
+  );
+}
+
+function reconcileDefaultExecutionMetadataCwd(state: CanvasPrototypeState): CanvasPrototypeState {
+  let changed = false;
+  const nodes = state.nodes.map((node) => {
+    if (node.kind === 'agent') {
+      const metadata = ensureAgentMetadata(node);
+      if (shouldSkipExecutionMetadataDefaultReconciliation(metadata)) {
+        return node;
+      }
+
+      const normalizedCwd = normalizeDefaultExecutionMetadataCwd(metadata.cwd);
+      if (normalizedCwd === metadata.cwd) {
+        return node;
+      }
+
+      changed = true;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          agent: {
+            ...metadata,
+            cwd: normalizedCwd
+          }
+        }
+      };
+    }
+
+    if (node.kind === 'terminal') {
+      const metadata = ensureTerminalMetadata(node);
+      if (shouldSkipExecutionMetadataDefaultReconciliation(metadata)) {
+        return node;
+      }
+
+      const normalizedCwd = normalizeDefaultExecutionMetadataCwd(metadata.cwd);
+      const normalizedShellPath = resolveTerminalShellPathForConfigurationCwd(
+        metadata.shellPath,
+        defaultExecutionWorkingDirectory()
+      );
+      if (normalizedCwd === metadata.cwd && normalizedShellPath === metadata.shellPath) {
+        return node;
+      }
+
+      changed = true;
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          terminal: {
+            ...metadata,
+            cwd: normalizedCwd,
+            shellPath: normalizedShellPath
+          }
+        }
+      };
+    }
+
+    return node;
+  });
+
+  return changed
+    ? {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        nodes
+      }
+    : state;
+}
+
+function shouldSkipExecutionMetadataDefaultReconciliation(metadata: ExecutionSessionMetadata): boolean {
+  return Boolean(
+    metadata.liveSession ||
+      metadata.runtimeSessionId ||
+      metadata.pendingLaunch ||
+      metadata.attachmentState === 'reattaching'
+  );
 }
 
 function defaultTerminalWorkingDirectory(): string {

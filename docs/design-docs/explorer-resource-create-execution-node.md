@@ -145,6 +145,9 @@ Explorer 命令的主流程为：
 - `resolveAgentCli(...)`、`resolveExecutionEnvironment(...)`、`getResolvedShellEnvironmentPatch(...)` 等 cwd-sensitive helper 需要接收目标 cwd 参数；缓存 key 必须包含目标 cwd。
 - live-runtime supervisor 的 createSession request 同样使用节点 cwd；reattach snapshot 继续以 supervisor snapshot 的 cwd 为准。
 - 节点停止后点击 `Terminal` 的“重启”、Agent 的“新建”或“重启恢复原会话”都继续使用该节点 metadata 中的 cwd。不要在后续启动时回退到当前 workspace 根目录。
+- Terminal 的进程 cwd 与 shell 可执行文件解析使用不同基准：进程 cwd 始终使用节点 metadata cwd；`devSessionCanvas.terminal.shellPath` 中显式相对路径先按当前 workspace/configuration cwd 解析成绝对 shell path，再传入 shell env probe、local PTY 与 runtime supervisor，避免 Explorer cwd 改变 repo-local shell wrapper 的解析位置。
+- 新建 Agent / Terminal metadata 的默认 cwd 使用同一 canonical 执行 cwd：优先当前第一个 workspace folder，否则回退宿主 HOME。旧持久化节点中历史 HOME 默认 cwd 仅在它不属于当前 workspace 时迁移到 canonical cwd，以保持预启动 `cwdLabel` 与启动时 cwd 一致。
+- workspace folders 变化时，宿主必须重新发布 `host/stateUpdated` 和侧栏状态，即使 terminal shell metadata 没有变化；Webview 的 `runtime.workspaceFolders` 是 cwdLabel 的显示上下文，不能依赖 shell metadata 变化间接刷新。
 
 如果 cwd 在后续启动时不可用：
 
@@ -167,6 +170,7 @@ Explorer 命令的主流程为：
 - 风险：Webview ready 之前创建节点丢失 cwd。缓解：cwd 在宿主 `CreateNodeOptions` 中传递，fallback 直接创建也写 metadata。
 - 风险：启动时目录已被删除。缓解：启动前再次校验 metadata.cwd，失败时进入错误态，不回退默认 root。
 - 风险：Agent CLI 和 shell env patch 误复用默认 root 缓存。缓解：cwd-sensitive helper 显式接收 cwd，缓存 key 包含 cwd。
+- 风险：Explorer cwd 影响 workspace-relative `terminal.shellPath`，让 repo-local shell wrapper 被错误解析到目标子目录。缓解：shell executable 以 workspace/configuration cwd 解析，执行进程 cwd 独立保持节点 cwd。
 - 风险：Agent 副标题过长。缓解：只显示短 `cwdLabel`，完整 cwd 放到 hover title。
 
 ## 8. 验证计划
@@ -174,9 +178,10 @@ Explorer 命令的主流程为：
 - `npm run typecheck` 验证跨边界类型。
 - `npm run test:protocol-webview-messages` 覆盖新增 `cwd` 协议字段解析。
 - `npm run test:workspace-relative-paths` 覆盖 cwdLabel 派生 helper。
+- `npm run test:canvas-execution-context` 覆盖默认执行 metadata cwd、workspace-relative terminal shell path 解析基准、旧 HOME metadata 迁移，以及 workspace folder 变化时强制发布 state 的宿主源码契约。
 - `npm run test:extension-manifest` 覆盖 Explorer 菜单和命令注册。
 - VSCode smoke 覆盖目录 / 文件右键创建 Terminal 和 Agent 后 metadata.cwd、diagnostic cwd、Agent 副标题与侧栏第二行。
 
 ## 9. 当前验证状态
 
-截至 2026-05-31，本设计已完成实现并通过自动化验证。已运行 `npm run typecheck`、协议 / 路径 / manifest 测试、Playwright 定向测试、`npm run build` 与 trusted VSCode smoke；普通创建入口多根 root 选择和 storage fork 不纳入本次收口。
+截至 2026-05-31，本设计已完成实现并通过自动化验证。PR review 后已补齐相对 Terminal shell path 解析基准、默认 metadata cwd 规范化和 workspace folder 变更刷新；已运行 `npm run typecheck`、协议 / 路径 / manifest / execution context 测试、Playwright 定向测试、`npm run build` 与 trusted VSCode smoke。普通创建入口多根 root 选择和 storage fork 不纳入本次收口。
