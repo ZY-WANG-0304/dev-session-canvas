@@ -1263,6 +1263,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       overwriteFilePath?: string;
       preserveTemplateId?: string;
       preserveCreatedAt?: string;
+      legacyTemplateFilePath?: string;
     }
   ): Promise<CanvasStoredTemplate> {
     const parsedDocument = parseCanvasTemplateDocument(document, {
@@ -1280,6 +1281,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       targetRootPath: options?.targetRootPath,
       relativeDirectory: 'marketplace',
       marketMetadata: metadata
+    });
+    this.notifyTemplateCatalogChanged();
+    return savedTemplate;
+  }
+
+  public async installMarketplaceTemplatePackage(
+    packageBytes: Uint8Array,
+    extractedFiles: ReadonlyMap<string, Uint8Array>,
+    metadata: CanvasTemplateMarketMetadata,
+    options?: {
+      targetRootPath?: string;
+      packageDirectoryName: string;
+      preserveTemplateId?: string;
+      preserveCreatedAt?: string;
+      legacyTemplateFilePath?: string;
+    }
+  ): Promise<CanvasStoredTemplate> {
+    const savedTemplate = await this.canvasTemplateStore.writeMarketplaceTemplatePackage({
+      targetRootPath: options?.targetRootPath,
+      packageDirectoryName: options?.packageDirectoryName ?? metadata.marketTemplateSlug ?? metadata.marketTemplateId,
+      packageBytes,
+      extractedFiles,
+      marketMetadata: metadata,
+      preserveTemplateId: options?.preserveTemplateId,
+      preserveCreatedAt: options?.preserveCreatedAt,
+      legacyTemplateFilePath: options?.legacyTemplateFilePath
     });
     this.notifyTemplateCatalogChanged();
     return savedTemplate;

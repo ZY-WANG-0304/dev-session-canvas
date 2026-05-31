@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { zipSync } from 'fflate';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -32,6 +33,7 @@ try {
     CanvasTemplateStore,
     buildCanvasTemplateDocument,
     buildCanvasTemplateMarketMetadataPath,
+    buildCanvasTemplatePackageMarketMetadataPath,
     captureCanvasTemplateFromState,
     encodeCanvasTemplateDocument,
     formatCanvasTemplateStats,
@@ -276,6 +278,88 @@ try {
   assert.strictEqual(
     catalogAfterMarketRewrite.templates.find((entry) => entry.template.id === 'market-review-loop')?.marketplace,
     undefined
+  );
+
+
+  const packageTemplate = {
+    ...marketTemplate,
+    id: 'market-package-original',
+    name: 'Package Installed Template'
+  };
+  const templatePackageManifest = {
+    schemaVersion: 1,
+    slug: 'package-template',
+    name: 'Package Installed Template',
+    description: 'A package install fixture.',
+    tags: ['package'],
+    template: 'template.json',
+    readme: 'README.md',
+    changelog: 'CHANGELOG.md',
+    thumbnail: 'media/thumbnail.png'
+  };
+  const encoder = new TextEncoder();
+  const packageEntries = new Map([
+    ['template-package.json', encoder.encode(JSON.stringify(templatePackageManifest, null, 2))],
+    ['template.json', encoder.encode(JSON.stringify(buildCanvasTemplateDocument(packageTemplate), null, 2))],
+    ['README.md', encoder.encode('# Package Installed Template\n')],
+    ['CHANGELOG.md', encoder.encode('Initial package version.\n')],
+    ['media/thumbnail.png', new Uint8Array([137, 80, 78, 71])],
+    ['assets/example.txt', encoder.encode('asset')]
+  ]);
+  const packageBytes = zipSync(Object.fromEntries(packageEntries), { level: 0 });
+  const savedPackageMarketTemplate = await store.writeMarketplaceTemplatePackage({
+    packageDirectoryName: 'package-template',
+    packageBytes,
+    extractedFiles: packageEntries,
+    marketMetadata: {
+      marketTemplateId: 'tmpl-package-template',
+      marketTemplateSlug: 'package-template',
+      marketVersionId: 'ver-package-template-1',
+      installedVersionNumber: 1,
+      installedAt: '2026-05-10T17:00:00.000Z',
+      sourceUrl: 'https://dscanvas-template-marketplace.wzy0304.workers.dev/templates/package-template',
+      packageSha256: 'package-sha',
+      packageSizeBytes: packageBytes.byteLength,
+      manifestPath: 'template-package.json',
+      templatePath: 'template.json',
+      readmePath: 'README.md',
+      changelogPath: 'CHANGELOG.md',
+      thumbnailPath: 'media/thumbnail.png'
+    }
+  });
+  assert.strictEqual(savedPackageMarketTemplate.relativeDirectory, path.join('marketplace', 'package-template'));
+  assert.strictEqual(savedPackageMarketTemplate.template.id.startsWith('market-template-'), true);
+  assert.strictEqual(savedPackageMarketTemplate.marketplace?.localTemplateId, savedPackageMarketTemplate.template.id);
+  assert.strictEqual(savedPackageMarketTemplate.marketplace?.templatePath, 'template.json');
+  assert.deepStrictEqual((await readdir(path.join(globalUserDir, 'marketplace', 'package-template'))).sort(), [
+    '.market.json',
+    'CHANGELOG.md',
+    'README.md',
+    'assets',
+    'media',
+    'package.zip',
+    'template-package.json',
+    'template.json'
+  ]);
+  assert.strictEqual(
+    JSON.parse(await readFile(buildCanvasTemplatePackageMarketMetadataPath(path.join(globalUserDir, 'marketplace', 'package-template')), 'utf8')).marketTemplateSlug,
+    'package-template'
+  );
+  const catalogWithPackageMarket = await store.listTemplates();
+  assert.strictEqual(
+    catalogWithPackageMarket.templates.filter((entry) => entry.marketplace?.marketTemplateSlug === 'package-template').length,
+    1
+  );
+  const listedPackageMarketTemplate = catalogWithPackageMarket.templates.find(
+    (entry) => entry.marketplace?.marketTemplateSlug === 'package-template'
+  );
+  assert.ok(listedPackageMarketTemplate);
+  assert.strictEqual(listedPackageMarketTemplate.template.id, savedPackageMarketTemplate.template.id);
+  assert.strictEqual(listedPackageMarketTemplate.marketplace?.localTemplateId, savedPackageMarketTemplate.template.id);
+  assert.match(listedPackageMarketTemplate.filePath, /marketplace[\\/]package-template[\\/]template\.json$/u);
+  assert.strictEqual(
+    parseCanvasTemplateDocument(JSON.parse(await readFile(path.join(globalUserDir, 'marketplace', 'package-template', 'template.json'), 'utf8'))).document.template.id,
+    savedPackageMarketTemplate.template.id
   );
 
   const exportPath = path.join(tempDir, 'exports', 'template-export.json');
@@ -882,21 +966,22 @@ try {
   const marketplaceVscodePreviewE2eRunnerSource = await readFile('scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs', 'utf8');
   const marketplaceVscodePreviewE2eTestSource = await readFile('tests/vscode-smoke/template-marketplace-preview-tests.cjs', 'utf8');
   const marketplaceDesignDocSource = await readFile('docs/design-docs/template-marketplace.md', 'utf8');
-  assert.match(panelManagerSource, /installMarketplaceTemplateDocument\([\s\S]*targetRootPath\?: string/u);
-  assert.match(panelManagerSource, /overwriteFilePath\?: string/u);
+  assert.match(panelManagerSource, /installMarketplaceTemplatePackage/u);
+  assert.match(panelManagerSource, /packageDirectoryName/u);
+  assert.match(panelManagerSource, /legacyTemplateFilePath/u);
   assert.match(panelManagerSource, /preserveTemplateId\?: string/u);
   assert.match(panelManagerSource, /preserveCreatedAt\?: string/u);
-  assert.match(panelManagerSource, /template\.id = options\?\.preserveTemplateId \?\? `market-template-\$\{randomUUID\(\)\}`;/u);
-  assert.match(panelManagerSource, /filePath: options\?\.overwriteFilePath/u);
   assert.match(marketplaceClientSource, /listInstalledTemplates/u);
   assert.match(marketplaceClientSource, /listInstallTargets/u);
   assert.match(marketplaceClientSource, /targetStorageLocationId/u);
   assert.match(marketplaceClientSource, /TemplateMarketplaceInstallOperation = 'installed' \| 'updated' \| 'reinstalled'/u);
   assert.match(marketplaceClientSource, /export function parseTrustedMarketplaceSourceUrl/u);
-  assert.match(marketplaceClientSource, /saveMarketplaceTemplateDocument/u);
+  assert.match(marketplaceClientSource, /saveMarketplaceTemplatePackage/u);
+  assert.match(marketplaceClientSource, /parseMarketplaceTemplatePackageForInstall/u);
+  assert.match(marketplaceClientSource, /requestBuffer\(downloadUrl, \{ accept: 'application\/zip' \}\)/u);
   assert.match(marketplaceClientSource, /findInstalledMarketplaceTemplate/u);
   assert.match(marketplaceClientSource, /resolveInstallTarget/u);
-  assert.match(marketplaceClientSource, /overwriteFilePath: existingTemplate\?\.filePath/u);
+  assert.match(marketplaceClientSource, /legacyTemplateFilePath: existingTemplate\?\.filePath/u);
   assert.match(marketplaceClientSource, /preserveTemplateId: existingTemplate\?\.template\.id/u);
   assert.match(marketplaceClientSource, /resolveMarketplaceInstallOperation/u);
   assert.match(marketplaceClientSource, /getCanvasTemplateCatalog/u);
@@ -929,6 +1014,13 @@ try {
   assert.match(marketplacePublishViewSource, /type PublishTextField = 'name' \| 'slug' \| 'description' \| 'tags' \| 'readme' \| 'changelog' \| 'templateJson';/u);
   assert.match(marketplacePublishViewSource, /function updateFormField\(field: PublishTextField, value: string\): void/u);
   assert.doesNotMatch(marketplacePublishViewSource, /setForm\(\(current\)\s*=>[\s\S]{0,200}event\.(?:currentTarget|target)\.value/u);
+  assert.match(marketplacePublishViewSource, /Template package structure/u);
+  assert.match(marketplacePublishViewSource, /Package checks/u);
+  assert.match(marketplacePublishViewSource, /template-package\.json/u);
+  assert.match(marketplacePublishViewSource, /50MB package \/ 5MB template JSON/u);
+  assert.match(marketplacePublishViewSource, /collectReadmeMediaReferences/u);
+  assert.match(marketplacePublishViewSource, /README media must use \.\/media\/\.\.\. or \.\/assets\/\.\.\. paths\./u);
+  assert.match(marketplacePublishViewSource, /Publishing template\.json creates a template version; future README or media-only edits should become listing revisions\./u);
   assert.match(marketplaceDetailViewSource, /type DetailTab = 'readme' \| 'changelog';/u);
   assert.match(marketplaceDetailViewSource, /role="tablist"[\s\S]*README[\s\S]*CHANGELOG/u);
   assert.match(marketplaceDetailViewSource, /template-detail-changelog-panel/u);
@@ -1058,7 +1150,8 @@ try {
   assert.match(marketplacePanelSource, /setMarketplaceSourceUrl\(message\.payload && message\.payload\.sourceUrl\);[\s\S]*showTemplateList\(\);/u);
   assert.doesNotMatch(marketplacePanelSource, /openExternal\(vscode\.Uri\.parse\(`\$\{MARKETPLACE_DEBUG_ORIGIN\}\/templates`\)\)/u);
   assert.doesNotMatch(marketplacePanelSource, /sourceUrl: apiOrigin \+ '\/templates\//u);
-  assert.match(marketplacePanelSource, /installTemplateFromInlinePayload/u);
+  assert.match(marketplacePanelSource, /buildMarketplaceInstallUri/u);
+  assert.doesNotMatch(marketplacePanelSource, /installTemplateFromInlinePayload/u);
   assert.doesNotMatch(marketplacePanelSource, /<iframe/u);
   assert.match(
     marketplaceVscodePreviewE2eRunnerSource,

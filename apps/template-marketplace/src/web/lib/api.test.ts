@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { unzipSync, zipSync } from 'fflate';
 
 import {
   checkMarketplaceSlugAvailability,
@@ -7,7 +8,8 @@ import {
   loadMarketplaceTemplates,
   loadMyMarketplaceTemplates,
   normalizeTemplateSearchQuery,
-  publishMarketplaceTemplate
+  publishMarketplaceTemplate,
+  publishMarketplaceTemplatePackage
 } from './api';
 
 describe('marketplace web api client', () => {
@@ -315,6 +317,115 @@ describe('marketplace web api client', () => {
     expect(result.template.slug).toBe('published-template');
     expect(requests[0]?.input).toBe('/api/v1/templates');
     expect(requests[0]?.init?.method).toBe('POST');
+  });
+
+  it('posts package zip publish requests to the Worker API', async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            template: {
+              id: 'tmpl-package',
+              slug: 'package-template',
+              name: 'Package Template',
+              description: 'Published from a package.',
+              tags: ['package'],
+              publisher: { id: 'publisher', githubLogin: 'publisher', displayName: 'Publisher', avatarUrl: '' },
+              latestVersion: {
+                id: 'ver-package-1',
+                templateId: 'tmpl-package',
+                versionNumber: 1,
+                changelog: 'Initial version.',
+                objectKey: 'templates/tmpl-package/versions/ver-package-1/template.json',
+                thumbnailKey: 'templates/tmpl-package/versions/ver-package-1/thumbnail.png',
+                sha256: 'sha',
+                sizeBytes: 1,
+                schemaVersion: 1,
+                status: 'published',
+                createdAt: '2026-05-28T00:00:00.000Z'
+              },
+              versions: [],
+              status: 'published',
+              downloadCount: 0,
+              likeCount: 0,
+              hotScore: 0,
+              createdAt: '2026-05-28T00:00:00.000Z',
+              updatedAt: '2026-05-28T00:00:00.000Z',
+              readme: 'Readme',
+              providerWarnings: []
+            },
+            storageMode: 'd1'
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const result = await publishMarketplaceTemplatePackage(new File([new Uint8Array([0x50, 0x4b])], 'package.zip', { type: 'application/zip' }));
+
+    expect(result.template.slug).toBe('package-template');
+    expect(requests[0]?.input).toBe('/api/v1/templates/package');
+    expect(requests[0]?.init?.method).toBe('POST');
+    expect(requests[0]?.init?.body).toBeInstanceOf(FormData);
+    expect((requests[0]?.init?.headers as Record<string, string>)['content-type']).toBeUndefined();
+  });
+
+  it('sends the provided rebuilt package zip bytes', async () => {
+    let uploadedFile: File | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        uploadedFile = (init?.body as FormData).get('package') as File;
+        return new Response(
+          JSON.stringify({
+            template: {
+              id: 'tmpl-package',
+              slug: 'edited-package',
+              name: 'Edited Package',
+              description: 'Published from a rebuilt package.',
+              tags: ['package'],
+              publisher: { id: 'publisher', githubLogin: 'publisher', displayName: 'Publisher', avatarUrl: '' },
+              latestVersion: {
+                id: 'ver-package-1',
+                templateId: 'tmpl-package',
+                versionNumber: 1,
+                changelog: 'Initial version.',
+                objectKey: 'templates/tmpl-package/versions/ver-package-1/template.json',
+                thumbnailKey: 'templates/tmpl-package/versions/ver-package-1/thumbnail.png',
+                sha256: 'sha',
+                sizeBytes: 1,
+                schemaVersion: 1,
+                status: 'published',
+                createdAt: '2026-05-28T00:00:00.000Z'
+              },
+              versions: [],
+              status: 'published',
+              downloadCount: 0,
+              likeCount: 0,
+              hotScore: 0,
+              createdAt: '2026-05-28T00:00:00.000Z',
+              updatedAt: '2026-05-28T00:00:00.000Z',
+              readme: 'Readme',
+              providerWarnings: []
+            },
+            storageMode: 'd1'
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const zipBytes = zipSync({
+      'template-package.json': new TextEncoder().encode(JSON.stringify({ schemaVersion: 1, slug: 'edited-package', name: 'Edited Package' }))
+    });
+    await publishMarketplaceTemplatePackage(new File([zipBytes], 'rebuilt-package.zip', { type: 'application/zip' }));
+
+    expect(uploadedFile?.name).toBe('rebuilt-package.zip');
+    const entries = unzipSync(new Uint8Array(await uploadedFile!.arrayBuffer()));
+    expect(JSON.parse(new TextDecoder().decode(entries['template-package.json']))).toEqual(expect.objectContaining({ slug: 'edited-package' }));
   });
 
   it('surfaces publish API errors', async () => {

@@ -5,9 +5,14 @@ type FakeR2ObjectInput =
       contentType?: string;
     };
 
-export function createFakeR2Bucket(objects: Record<string, FakeR2ObjectInput>): R2Bucket {
+export interface FakeR2Bucket extends R2Bucket {
+  __entries: Record<string, FakeR2ObjectInput>;
+}
+
+export function createFakeR2Bucket(objects: Record<string, FakeR2ObjectInput>): FakeR2Bucket {
   const entries = { ...objects };
   return {
+    __entries: entries,
     async get(key: string) {
       const input = entries[key];
       if (input === undefined) {
@@ -34,7 +39,7 @@ export function createFakeR2Bucket(objects: Record<string, FakeR2ObjectInput>): 
         storageClass: 'Standard'
       } as unknown as R2Object;
     }
-  } as unknown as R2Bucket;
+  } as unknown as FakeR2Bucket;
 }
 
 function createFakeR2Object(key: string, input: FakeR2ObjectInput): R2ObjectBody {
