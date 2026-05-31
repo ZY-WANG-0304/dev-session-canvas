@@ -4,7 +4,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是准备 `0.10.7` Preview 热修复，并围绕后续 `0.10.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是准备 `0.11.0` Preview 里程碑发布，并围绕后续 `0.11.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](images/marketplace/canvas-overview.gif)
 
@@ -24,6 +24,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 支持 Markdown 语法的 `Note` 节点
 - `Note` 节点可关联 workspace 中的 `.md` / `.markdown` 文件，并支持 YAML metadata 浮层和安全 Markdown 图片预览
 - 画布模板能力：内置默认模板、自定义模板保存 / 导入 / 导出、模板侧栏、重置入口，以及关联 Markdown Note 的显式保存策略
+- 画布分组能力：可对相关 `Agent` / `Terminal` / `Note` 节点命名、嵌套、移动、调整尺寸，并在侧栏按分组浏览
 - `Agent` 与嵌入式 `Terminal` 的跨平台 shell 环境继承与可诊断启动路径
 - 执行终端复制粘贴快捷键，按本机平台保留复制、粘贴与 `Ctrl+C` 打断语义
 - 执行终端链接识别覆盖原生风格 URL、文件路径、多行行号输出、高置信 TUI 硬换行 URL / 带样式文件片段，以及运行中输出的文件链接缓存刷新
@@ -54,7 +55,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前 `0.10.7` 发布准备重点是修复生产构建下 Terminal TUI 输入卡死，同时保留 `0.10.6` 的 Agent 异常中断提醒、`0.10.5` 已验证的 Note Markdown 源码定位与可恢复草稿修复、`0.10.4` 的执行终端链接刷新性能修复、Marketplace 元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前 `0.11.0` 发布准备重点是发布画布分组，用来组织更大的多会话工作区，同时保留 `0.10.7` 的生产 Webview Terminal TUI 输入热修复、`0.10.6` 的 Agent 异常中断提醒、`0.10.5` 已验证的 Note Markdown 源码定位与可恢复草稿修复、Marketplace 元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -62,7 +63,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
 - 公开发布主渠道仍以 `Visual Studio Marketplace` 为主；`Open VSX` namespace 已认领，后续发布按同版本补充同步。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.10.7` 的 repo-local 验证重点收口版本 / 打包一致性、生产 Webview xterm 入口回归、vi 风格 alternate screen 输入回归、扩展 manifest 检查、VSIX payload 检查与发布 dry-run 一致性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.11.0` 的 repo-local 验证重点收口版本 / 打包一致性、画布分组协议 / 几何 / 模板回归、侧栏分组树行为、创建入口可用性解释、扩展 manifest 检查、VSIX payload 检查与发布 dry-run 一致性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
@@ -76,7 +77,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 对外分发目标是通过公开扩展市场发布；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。`.vsix` 不再作为面向普通用户的公开分发方式，仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过当前宿主配置的扩展市场安装，而非手动分发 `.vsix`
-- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.10.x` 更新仍需按发布手册锁定最终 git ref、同步发布到 `Visual Studio Marketplace` 与 `Open VSX`，并完成发布后验证
+- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.11.x` 更新仍需按发布手册锁定最终 git ref、同步发布到 `Visual Studio Marketplace` 与 `Open VSX`，并完成发布后验证
 - `Open VSX` 不改变当前 VS Code 官方市场主路径，也不额外承诺所有兼容宿主的完整支持矩阵
 
 ## 桌面通知 companion（自动安装）
