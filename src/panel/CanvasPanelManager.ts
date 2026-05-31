@@ -251,7 +251,7 @@ const NODE_PLACEMENT_STEP_Y = 96;
 const NODE_PLACEMENT_SEARCH_RADIUS = 8;
 const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
 const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
-const CANVAS_GROUP_PADDING = 28;
+const CANVAS_GROUP_PADDING = 24;
 const CANVAS_GROUP_TITLE_HEIGHT = 28;
 const CANVAS_GROUP_MEMBER_INSETS = {
   left: CANVAS_GROUP_PADDING,
