@@ -20,6 +20,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Write contextual notes with Markdown syntax inside `Note` nodes
 - Associate `Note` nodes with `.md` / `.markdown` files in the workspace, including YAML metadata popovers and safe Markdown image previews
 - Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces, including explicit save modes for associated Markdown Notes
+- Organize related `Agent`, `Terminal`, and `Note` nodes with named canvas groups, nested group frames, group resize, and grouped sidebar browsing
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
 - View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore a new `Agent` node from history
@@ -48,22 +49,22 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.10.7 Highlights
+## 0.11.0 Highlights
 
-The public `0.10.7` release is a focused `0.10.x` Preview hotfix for Terminal TUI input in production builds. It keeps the `0.10.6` Agent abnormal interruption notification patch, the `0.10.5` Note Markdown source-position and recoverable-draft fixes, the `0.10.4` execution-terminal link refresh performance fix, Marketplace metadata, Open VSX mirroring strategy, and support matrix.
+The public `0.11.0` release is a new `0.x` Preview milestone focused on canvas groups for organizing larger multi-session workspaces. It keeps the `0.10.7` production Webview Terminal TUI input hotfix, the `0.10.6` Agent abnormal interruption notification patch, the `0.10.5` Note Markdown source-position and recoverable-draft fixes, Marketplace metadata, Open VSX mirroring strategy, and support matrix.
 
-- Production Webview builds now resolve the bare `@xterm/xterm` import to the browser CommonJS entry `@xterm/xterm/lib/xterm.js`
-- This avoids the xterm ESM entry regression under esbuild production minification where DECRQM / `requestMode` parsing could throw and interrupt TUI control-sequence handling
-- Installed `Terminal` nodes can continue accepting input inside vi-style alternate screens and interactive TUI flows such as Vim or `glab auth login`
-- The release adds a minified-bundle xterm probe through `test:webview-build-xterm-entry` so a debug-only pass cannot hide this production failure mode again
-- Playwright regression coverage now verifies that `Agent` / `Terminal` nodes still accept input after entering a vi-style alternate screen, and that node controls remain usable
+- Create named group frames from the canvas context menu, the Command Palette, or a Ctrl / Cmd multi-selection of peer nodes and groups
+- Move, rename, ungroup, delete, nest, drag into / out of, and resize groups from all eight directions while preserving grouped node interactions
+- Group frames use a VS Code Panel-style surface: the body sits below regular nodes, while title, border, toolbar, and resize chrome stay interactive without causing Webview document scrollbars when zoomed in
+- The sidebar `Nodes` list now defaults to a grouped tree and offers native view-title `...` actions to switch between grouped and flat views
+- Templates preserve compatible group structures when saved or applied, while invalid external group references are rejected or safely sanitized
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.10.6` to `0.10.7` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.10.7` preserves that explicit choice
+- First-time installs and upgrades from `0.10.7` to `0.11.0` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.11.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.11.0` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -99,7 +100,7 @@ The public `0.10.7` release is a focused `0.10.x` Preview hotfix for Terminal TU
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.10.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.11.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 

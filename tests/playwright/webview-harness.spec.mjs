@@ -9041,7 +9041,8 @@ test('canvas group resize auto-pans at the canvas edge and keeps member drafts s
   const state = createEmptyCanvasState();
   state.nodes = [
     {
-      ...createManualNoteNode('note-1', { x: 280, y: 120 }),
+      ...createManualNoteNode('note-1', { x: 170, y: 120 }),
+      size: { width: 280, height: 260 },
       groupId: 'group-1'
     }
   ];
@@ -9049,8 +9050,8 @@ test('canvas group resize auto-pans at the canvas edge and keeps member drafts s
     {
       id: 'group-1',
       title: 'Group 1',
-      position: { x: 240, y: 80 },
-      size: { width: 340, height: 360 }
+      position: { x: 150, y: 80 },
+      size: { width: 200, height: 220 }
     }
   ];
   await bootstrap(page, state, createRuntimeContext());
@@ -9081,7 +9082,7 @@ test('canvas group resize auto-pans at the canvas edge and keeps member drafts s
 
   const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
   expect(message.payload.groupId).toBe('group-1');
-  expect(message.payload.position).toEqual({ x: 240, y: 80 });
+  expect(message.payload.position).toEqual({ x: 150, y: 80 });
   expect(message.payload.size.width).toBeGreaterThan(400);
   expect(message.payload.size.height).toBeGreaterThan(420);
 
@@ -9115,9 +9116,9 @@ test('selected nodes move together and share the primary release intent', async 
   await clearPostedMessages(page);
   const firstBox = await nodeById(page, 'note-1').boundingBox();
   expect(firstBox).not.toBeNull();
-  await page.mouse.move(firstBox.x + 6, firstBox.y + 6);
+  await page.mouse.move(firstBox.x + 30, firstBox.y + 10);
   await page.mouse.down();
-  await page.mouse.move(firstBox.x + 106, firstBox.y + 56, { steps: 8 });
+  await page.mouse.move(firstBox.x + 130, firstBox.y + 66, { steps: 8 });
   await page.mouse.up();
 
   const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');

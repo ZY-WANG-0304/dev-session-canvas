@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.11.0 - Preview Canvas Groups Update
+
+相对 `0.10.7`，`0.11.0` 是一轮新的公开 `Preview` 里程碑更新，重点把画布从单纯摆放 `Agent` / `Terminal` / `Note` 节点，推进到可用分组组织多会话工作区。它保留 `0.10.7` 的生产 Webview Terminal TUI 输入热修复、`0.10.6` 的 Agent 异常提醒、`0.10.5` 的 Note Markdown 源码定位 / 可恢复草稿修复、`0.10.4` 的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.7` bump 到 `0.11.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增画布分组对象，可通过空白区右键或命令面板创建空分组，也可按住 Ctrl / Cmd 多选同一父级下的节点或分组后从选中项创建分组
+- 分组支持命名、移动、取消分组、删除空分组、删除非空分组确认、嵌套分组、成员随组移动、拖入 / 拖出、8 向 resize 和靠近画布边缘时的自动平移
+- 分组采用 VS Code Panel 风格视觉，body 背景位于普通节点下方，foreground 交互 chrome 保持在 React Flow renderer 内，避免放大画布时触发外层 Webview 滚动条
+- 侧栏 `Nodes` 列表默认按分组树展示，并通过原生 view title `...` 菜单在分组视图和平铺视图之间切换
+- 右键创建入口在受限状态下保持可见，并通过宿主返回具体不可用原因，避免用户误以为 `Terminal` / `Agent` 类型丢失
+- 模板保存与应用会保留兼容节点的分组结构，并在应用时重新映射节点与分组身份；外部模板的越界或循环分组引用会被拒绝或兜底切断
+- 补充分组协议、宿主几何收口、模板、manifest、VS Code smoke 和 Playwright Webview 回归，覆盖分组创建、选择、嵌套、resize、拖动、侧栏视图和创建入口受限解释
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.7` 升级到 `0.11.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.11.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.11.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.11.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.11.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.10.7 - Preview Terminal TUI Input Hotfix
 
 相对 `0.10.6`，`0.10.7` 是同一 `0.10.x` 公开 `Preview` 线内的 Terminal TUI 输入热修复。它保留 `0.10.6` 已验证的 Agent 异常提醒、`0.10.5` 的 Note Markdown 预览源码定位与可恢复草稿模型、`0.10.4` 的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点修复正常安装后的生产 Webview bundle 中，画布 `Terminal` 节点进入 Vim / `glab auth login` 等 TUI 后输入卡死的问题。

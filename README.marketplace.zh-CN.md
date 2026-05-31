@@ -20,6 +20,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 在 `Note` 节点中使用 Markdown 语法记录上下文
 - 将 `Note` 节点关联到 workspace 中的 `.md` / `.markdown` 文件，并支持 YAML metadata 浮层和安全 Markdown 图片预览
 - 使用内置模板和自定义模板快速恢复一组 `Agent` / `Terminal` / `Note` 工作面，并为关联 Markdown Note 提供显式保存策略
+- 使用可命名画布分组组织相关 `Agent` / `Terminal` / `Note` 节点，支持嵌套分组、分组 resize 和侧栏分组树浏览
 - `Restricted Mode` 下保留画布浏览，执行入口自动禁用
 - 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
 - 在侧栏查看 `节点` 与 `会话历史` 列表，支持快速定位当前画布节点并从历史恢复新 `Agent` 节点
@@ -48,22 +49,22 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.10.7 版本亮点
+## 0.11.0 版本亮点
 
-当前公开的 `0.10.7` 版本是 `0.10.x` Preview 线内一次聚焦生产构建 Terminal TUI 输入的热修复。它保留 `0.10.6` 的 Agent 异常中断提醒、`0.10.5` 已验证的 Note Markdown 源码定位与可恢复草稿修复、`0.10.4` 的执行终端链接刷新性能修复、Marketplace 元数据、Open VSX 同版本同步策略和支持矩阵。
+当前公开的 `0.11.0` 版本是一轮新的 `0.x` Preview 里程碑，重点增加画布分组，帮助用户组织更大的多会话工作区。它保留 `0.10.7` 的生产 Webview Terminal TUI 输入热修复、`0.10.6` 的 Agent 异常中断提醒、`0.10.5` 已验证的 Note Markdown 源码定位与可恢复草稿修复、Marketplace 元数据、Open VSX 同版本同步策略和支持矩阵。
 
-- 生产 Webview 构建现在会把裸导入 `@xterm/xterm` 指向浏览器 CommonJS 入口 `@xterm/xterm/lib/xterm.js`
-- 该入口选择避开 xterm ESM 入口在 esbuild production minify 下的 DECRQM / `requestMode` 解析运行时错误，避免 TUI 控制序列处理中断
-- 正常安装后的 `Terminal` 节点进入 vi 风格 alternate screen、Vim 或 `glab auth login` 等交互式 TUI 后，仍可继续接收用户输入
-- 新增 `test:webview-build-xterm-entry`，在 minified bundle 上直接探测 xterm 模式响应，避免调试构建可用但生产构建损坏的回归再次漏过
-- Playwright 回归现在覆盖 `Agent` / `Terminal` 节点进入 vi 风格 alternate screen 后仍能输入，并确认节点控制按钮不被 TUI 状态阻塞
+- 可从画布右键菜单、命令面板，或按住 Ctrl / Cmd 多选同级节点与分组后创建可命名分组
+- 分组支持移动、重命名、取消分组、删除、嵌套、拖入 / 拖出和 8 向 resize，同时保留内部节点原有交互能力
+- 分组采用 VS Code Panel 风格：body 位于普通节点下方，标题、边框、工具条与 resize chrome 保持可交互，放大画布时不会触发 Webview 文档滚动条
+- 侧栏 `节点` 列表默认按分组树展示，并通过原生 view title `...` 菜单在分组视图和平铺视图之间切换
+- 模板保存与应用会保留兼容节点的分组结构；外部模板中的非法分组引用会被拒绝或安全清理
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.10.6` 升级到 `0.10.7` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.10.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.10.7` 后会继续沿用该明确选择
+- 首次安装与从 `0.10.7` 升级到 `0.11.0` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.11.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.11.0` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
@@ -97,7 +98,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 优先等待后续更高的 `0.11.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 
