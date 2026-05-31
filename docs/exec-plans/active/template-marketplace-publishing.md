@@ -47,6 +47,8 @@
 - [x] (2026-05-30 00:35 +0800) 更新 VSCode 安装后的本地管理方案：市场模板不再保存为孤立 JSON，而是保存为 `marketplace/{slug}/` 完整模板目录，目录内保留原始包、解压内容和 `.market.json` sidecar。
 - [x] (2026-05-31 00:45 +0800) 开始完整模板主下载 / 安装实现：`/download` 返回完整 `package.zip`，新增 `/template.json` 作为轻量模板导出；浏览器详情页主下载动作切到 `/download`，JSON 导出切到 `/template.json`；VSCode 安装路径下载完整 zip、解压校验并写入 `marketplace/{slug}/` 完整模板目录。
 - [x] (2026-05-31 01:30 +0800) 修复完整模板安装回归：VSCode fixture 的版本 hash 改为与包内 `template.json` 字节一致，本地完整模板目录写入后会重写解压出的 `template.json` 为本地模板 id，并通过 canvas templates 与 VSCode fixture E2E 验证。
+- [x] (2026-05-31 10:45 +0800) 更新 workers.dev 调试环境：为 4 个 preview seed 版本补传完整 `package.zip` 到 R2，重新部署 Worker / Static Assets 到版本 `d4717aef-7fa9-4067-bb6f-753b939e87da`，随后运行 VSCode preview E2E；当前执行主机访问 workers.dev 超时，E2E 停留在加载态，已记录为环境网络阻塞而非通过。
+- [x] (2026-05-31 11:45 +0800) 修复 preview 中历史发布模板点击 `Download full package` 下载成 `download.json` 的问题：Worker 在 `/download` 找不到历史 `package.zip` 时，会基于同版本 `template.json`、D1 README / CHANGELOG 和缩略图即时生成最小完整 zip；同时强制 package 响应 `content-type: application/zip`，避免 R2 旧 metadata 让浏览器按 JSON 处理。
 
 ## 意外与发现
 
@@ -101,6 +103,15 @@
 
 - 观察：VSCode fixture E2E 安装失败的直接原因是测试 fixture 的版本 `sha256` 来自紧凑 JSON，而 `/download` 返回的包内 `template.json` 是 pretty JSON，导致宿主校验失败后不写入本地模板目录。
   证据：日志中能看到 `/api/v1/templates/panel-review-loop/download?version=ver-panel-review-2` 请求，但模板 catalog 始终没有 `panel-review-loop`；将 fixture 的 hash 和 zip 共同使用 `JSON.stringify(document, null, 2) + "\n"` 后，`npm run test:marketplace-vscode-fixture-e2e` 通过。
+
+- 观察：preview R2 seed 脚本当前仍只管理 `template.json` 和 `thumbnail.png`，不管理完整 `package.zip`，因此完整模板主下载上线到调试环境时需要单独补传 package 对象。
+  证据：`apps/template-marketplace/scripts/preview-r2-objects.mjs` 的 `previewTemplateObjects` 未列出 `package.zip`；本轮手动补传并用 `wrangler r2 object get` 校验 4 个对象：getting-started v1 `48920 / 9b1be6ed470396e1e92a042ecc8e5409b1b2f819d074e88f508c5f514bc2d4dd`，review-loop v1 `42409 / 8746bdcd7a08fb96ad1ac231b87c4f811335aa0cb3c18abf118eab1644b235d4`，review-loop v2 `52973 / 47809dd7ec4f3880f0cc6e24f37c495cd1edc11cfc494f4fbc5fac0275e62b0a`，release-readiness v1 `42971 / ffae7ae5af6275f12a0487c318311d67cd8c2eb6055ad5ef36f68bffd77f8fa4`。
+
+- 观察：2026-05-31 的 VSCode preview E2E 失败仍由当前 Remote SSH 主机无法访问 workers.dev 引起，不能据此判定完整包下载或 VSCode 安装逻辑失败。
+  证据：`npm run test:marketplace-vscode-preview-e2e` 的 Node preflight 报 `ETIMEDOUT 74.86.12.172:443` 和 IPv6 `ENETUNREACH`；VSCode Webview probe 最终仍为 `statusText: "正在加载..."`、`templateCount: 0`；同一主机 `curl -I --max-time 20` 通过代理 20 秒 0 字节超时，`curl --noproxy '*'` 直连 443 约 10 秒后连接超时。失败 artifact 位于 `.debug/template-marketplace-vscode-preview-e2e/artifacts`。
+
+- 观察：用户截图里的 `download.json` 失败是历史调试模板版本缺少 `package.zip` 导致完整下载路径无法得到真实 zip；浏览器收到 JSON 错误响应后按默认文件名保存为 `download.json`。
+  证据：远端 D1 中 `release-readiness-jijiji` 和 `release-readiness-jijijij` 的版本 object key 仍是 `versions/1/template.json`，对应 R2 `package.zip` key 不存在；而较新的 `release-readiness-v3` 已存在 `versions/ver-release-readiness-v3-1-0da2d8a5/package.zip`。本轮改为 `/download` 在缺失包但存在同版本 `template.json` 时生成最小 zip，并新增 API 回归测试覆盖历史 JSON-only 版本与 stale content-type。
 
 ## 决策记录
 
@@ -189,6 +200,10 @@
 
 
 2026-05-31 继续收口完整模板主路径：Worker 的 `/download` 已成为完整包下载接口，`/template.json` 成为轻量导出接口，`/package` 仅作为迁移期别名保留；浏览器详情页主按钮下载完整包，列表卡片下载动作也改为 Package。VSCode 插件内安装改为宿主下载完整 zip，并在目标模板库写入 `marketplace/{slug}/package.zip`、解压文件和 `.market.json`。模板侧栏仍展示一个市场模板并从包内 `template.json` 应用到 Canvas；旧的单文件市场安装路径仍保留为兼容方法，供历史安装和潜在内联测试入口读取。
+
+同日上午更新 workers.dev 调试环境以匹配完整模板主路径：preview R2 中 4 个 seed 版本均已补齐 `package.zip`，Worker / Static Assets 已重新部署，最新 deployment 100% 指向版本 `d4717aef-7fa9-4067-bb6f-753b939e87da`。VSCode preview E2E 已执行一次，但当前 Remote SSH 主机无法连通 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，Webview 只能停留在加载态；后续需要从能访问 workers.dev 的网络环境复跑同一命令，或由用户本地手动打开 preview URL 做安装验证。
+
+随后根据用户截图修复历史 preview 模板完整包下载：对于此前通过旧 JSON 路径发布、R2 中没有 `package.zip` 的版本，`/download` 不再返回 JSON 错误，而是用同目录 `template.json` 和 D1 中已有的 README / CHANGELOG / 缩略图生成一个包含 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md` 和 `media/thumbnail.png` 的最小完整 zip。真实 `package.zip` 存在时仍优先返回 R2 原包；该 fallback 通过 `x-marketplace-package-source: generated-from-template-json` 标记，方便后续数据迁移时清理。
 
 ## 上下文与定向
 
@@ -743,6 +758,54 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
     curl -I -L https://dscanvas-template-marketplace.wzy0304.workers.dev/templates
     <not passed on this host: 本机代理返回 Squid `ERR_CONNECT_FAIL 110`；Wrangler Cloudflare API 与远端 D1 验证已通过。>
 
+本轮完整模板 preview 调试环境更新输出（2026-05-31 10:45 +0800）：
+
+    npm run -w @dev-session-canvas/template-marketplace deploy:preview
+    <passed>
+    https://dscanvas-template-marketplace.wzy0304.workers.dev
+    Current Version ID: d4717aef-7fa9-4067-bb6f-753b939e87da
+
+    npx wrangler deployments list --json
+    <passed>
+    最新 deployment 为 2026-05-31T02:29:36.367Z，100% 指向版本 `d4717aef-7fa9-4067-bb6f-753b939e87da`。
+
+    npm run -w @dev-session-canvas/template-marketplace r2:verify:preview
+    <passed>
+    远端 R2 中既有 `template.json` / `thumbnail.png` seed 对象均与仓库期望 digest 一致。
+
+    wrangler r2 object get template-marketplace-preview/<package-key> --remote
+    <passed>
+    4 个手动补传的完整模板包对象均已校验：`templates/tmpl-getting-started/versions/1/package.zip`、`templates/tmpl-review-loop/versions/1/package.zip`、`templates/tmpl-review-loop/versions/2/package.zip`、`templates/tmpl-release-readiness/versions/1/package.zip`。
+
+    npm run test:marketplace-vscode-preview-e2e
+    <not passed on this host: Node preflight 访问 preview API 报 `ETIMEDOUT` / `ENETUNREACH`，VSCode Webview probe 最终停留在 `statusText: "正在加载..."` 且 `templateCount: 0`；artifact 保存在 `.debug/template-marketplace-vscode-preview-e2e/artifacts`。>
+
+    curl -I --max-time 20 https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates?sort=newest
+    <not passed on this host: 20 秒 0 字节超时>
+
+    curl --noproxy '*' -I --max-time 20 https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates?sort=newest
+    <not passed on this host: 直连 443 连接超时>
+
+本轮历史 preview 模板完整包下载修复验证输出（2026-05-31 11:45 +0800）：
+
+    npm run -w @dev-session-canvas/template-marketplace test:api -- --run
+    Test Files  5 passed (5)
+    Tests  63 passed (63)
+
+    npm run -w @dev-session-canvas/template-marketplace typecheck
+    <passed>
+
+    git diff --check
+    <no output>
+
+    npm run -w @dev-session-canvas/template-marketplace deploy:preview
+    <passed>
+    https://dscanvas-template-marketplace.wzy0304.workers.dev
+    Current Version ID: 941efeed-6f13-4310-967a-ab6ac64d82b2
+
+    wrangler r2 object get template-marketplace-preview/templates/tmpl-release-readiness-jijiji-de382d71/versions/1/package.zip --remote
+    <not found as expected before fallback: 远端历史模板仍缺少真实包对象，修复依赖 Worker 即时生成 fallback zip。>
+
 ## 接口与依赖
 
 需要在 `packages/marketplace-shared/src/index.ts` 导出以下跨端 contract：发布请求 schema、发布新版本请求 schema、发布响应类型、模板包大小默认上限、缩略图大小上限和 canvas template document schema。Worker、Web 和 VSCode 只能依赖这些 contract，而不是复制校验规则。
@@ -754,3 +817,7 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 2026-05-31 / Codex：更新计划以记录本轮实现进展，原因是任务已从方案记录进入完整模板主下载和 VSCode 本地包安装落地；计划同步了新的 `/download` / `/template.json` API 事实、Webview 不再下载 JSON 的宿主安装方案，以及当前已执行的验证命令。
 
 2026-05-31 / Codex：补充完整模板安装回归修复记录，原因是 VSCode fixture 发现包内 `template.json` hash 与版本元数据不一致会阻止安装；计划同步了 fixture hash 对齐、本地解压 `template.json` 重写策略和最终验证证据。
+
+2026-05-31 / Codex：补充调试环境更新与 VSCode preview E2E 结果，原因是完整模板主下载已部署到 workers.dev 并补齐 preview R2 package 对象，但当前执行主机无法访问 workers.dev，preview E2E 只能记录网络阻塞证据，不能作为通过结论。
+
+2026-05-31 / Codex：补充历史 JSON-only 版本下载 fallback，原因是 preview 中旧发布模板没有 `package.zip` 导致浏览器点击完整下载时保存 JSON 错误；计划同步了临时生成完整 zip 的兼容策略、验证命令和新的 preview 版本号。
