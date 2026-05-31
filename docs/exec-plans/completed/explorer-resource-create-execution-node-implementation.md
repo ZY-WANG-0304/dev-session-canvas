@@ -18,6 +18,7 @@
 - [x] (2026-05-31 13:35 +0800) 增加 cwdLabel 派生 helper，并同步 Agent 画布副标题与侧栏第二行展示。
 - [x] (2026-05-31 13:45 +0800) 补充协议、manifest、路径 helper、Playwright 与 VSCode smoke 覆盖。
 - [x] (2026-05-31 13:55 +0800) 运行验证命令并记录结果。
+- [x] (2026-06-01 00:11 +0800) 处理 PR review：相对 `terminal.shellPath` 改按 workspace/configuration cwd 解析，默认执行 metadata cwd 改为 canonical workspace cwd，workspace folder 变化强制刷新 Webview/侧栏上下文，并补 execution context 与 smoke 回归。
 
 ## 意外与发现
 
@@ -31,6 +32,10 @@
   证据：Agent / Terminal supervisor start 成功后现在显式记录 `execution/started`，内容包含 `cwd`、runtime backend 与 guarantee。
 - 观察：Webview 的 `OverflowAwareText` 会在布局后异步设置 `title`，Playwright 不能立即断言副标题 title。
   证据：新增的 Agent 副标题测试使用 `expect.poll(() => subtitle.getAttribute('title'))` 等待包含完整 cwd 与启动命令的 title。
+- 观察：Explorer 创建 Terminal 后，进程 cwd 和 shell executable 的解析基准不能共用同一个 cwd。
+  证据：review 指出 `devSessionCanvas.terminal.shellPath=./tooling/dev-shell` 这类 workspace-relative wrapper 会在 Explorer cwd 为 `packages/app` 时错误寻找 `packages/app/tooling/dev-shell`；本轮新增 `scripts/test/test-canvas-execution-context.mjs` 与 VSCode smoke 断言 shell path 为 `<workspace>/.debug/vscode-smoke/relative-shell/dev-shell`，而 `execution/started.cwd` 仍为 Explorer 目标目录。
+- 观察：默认 metadata cwd 与启动时 legacy fallback 不一致会先污染显示，再在启动时被纠偏。
+  证据：review 指出 `createAgentMetadata()` / `createTerminalMetadata()` 仍写 HOME；本轮将默认 metadata cwd 改为 workspace root，并在 `normalizeState()` / workspace folder 变化时迁移旧 HOME 默认 cwd。
 
 ## 决策记录
 
@@ -54,11 +59,19 @@
   理由：执行 cwd 标签需要同时覆盖单根、多根、workspace root、workspace 外 fallback、Windows drive / backslash 与 tooltip 完整路径展示，语义与文件节点路径展示不完全相同。
   日期/作者：2026-05-31 / Codex
 
+- 决策：Terminal shell executable 使用 workspace/configuration cwd 解析，执行进程 cwd 使用节点 metadata cwd。
+  理由：`terminal.shellPath` 是用户配置项，显式相对路径代表 repo-local wrapper；Explorer cwd 只应影响启动进程所在目录，不应改变 shell wrapper 本身的查找位置。shell env probe、local PTY 和 runtime supervisor 必须接收同一个已解析 shell path。
+  日期/作者：2026-06-01 / Codex
+
+- 决策：默认执行 metadata cwd 的 canonical source 是第一个 workspace folder；历史 HOME 默认 cwd 仅在不属于当前 workspace 时迁移。
+  理由：新节点和预启动 cwdLabel 应与后续启动路径一致；但若用户的 workspace 本身就是 HOME，不能把合法 HOME cwd 误判成遗留值。
+  日期/作者：2026-06-01 / Codex
+
 ## 结果与复盘
 
-已完成从 `origin/main` 重新实现 Explorer 资源右键创建执行节点的最小闭环。新分支只包含资源入口、cwd 持久化、启动 / supervisor / 诊断 cwd 传递、Agent 可见标签和测试覆盖；未搬运旧分支里的多根 workspace storage fork / canonical slot 纠偏路线。
+已完成从 `origin/main` 重新实现 Explorer 资源右键创建执行节点的最小闭环。新分支只包含资源入口、cwd 持久化、启动 / supervisor / 诊断 cwd 传递、Agent 可见标签和测试覆盖；未搬运旧分支里的多根 workspace storage fork / canonical slot 纠偏路线。PR review 后又补齐执行 cwd、shell executable 解析、metadata 默认值和 workspace folder runtime context 刷新的同源约束。
 
-复盘要点：本轮把资源解析、workspace containment、cwd 校验和启动拒绝都留在 Extension Host，避免 Webview 成为执行上下文权威；Webview 只负责当前视口落点并原样回传 cwd。实现中额外发现 `FileType` bitmask、`getWorkspaceFolder` 保守匹配和 supervisor started diagnostics 三个边界，均已补齐。剩余风险是非 `file` scheme、workspace 外路径和普通创建入口 root 选择仍刻意不支持，需要后续单独立项。
+复盘要点：本轮把资源解析、workspace containment、cwd 校验和启动拒绝都留在 Extension Host，避免 Webview 成为执行上下文权威；Webview 只负责当前视口落点并原样回传 cwd。实现中额外发现 `FileType` bitmask、`getWorkspaceFolder` 保守匹配、supervisor started diagnostics、相对 shell path 基准和旧默认 cwd 显示五个边界，均已补齐。剩余风险是非 `file` scheme、workspace 外路径和普通创建入口 root 选择仍刻意不支持，需要后续单独立项。
 
 ## 上下文与定向
 
@@ -99,12 +112,25 @@
 - `npm run typecheck`：通过。
 - `npm run test:protocol-webview-messages`：通过。
 - `npm run test:workspace-relative-paths`：通过。
+- `npm run test:canvas-execution-context`：通过。
 - `npm run test:extension-manifest`：通过。
 - `node --check tests/vscode-smoke/extension-tests.cjs && node --check tests/playwright/webview-harness.spec.mjs`：通过。
 - `npm run build`：通过。
 - `node scripts/test/run-playwright-webview.mjs -g "agent subtitle shows cwd label|host-triggered execution node creation echoes cwd"`：2 项通过。
 - `npm run build:notifier && DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`：通过，输出 `Trusted workspace smoke passed.` / `VS Code smoke test passed.`。
 - `git diff --check`：通过。
+
+Review 修复后重新运行：
+
+- `npm run typecheck`：通过。
+- `npm run test:canvas-execution-context`：通过。
+- `npm run test:workspace-relative-paths`：通过。
+- `npm run test:protocol-webview-messages`：通过。
+- `npm run test:extension-manifest`：通过。
+- `npm run build`：通过。
+- `node --check tests/vscode-smoke/extension-tests.cjs`：通过。
+- `git diff --check`：通过。
+- `npm run build:notifier && DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`：通过，输出 `Trusted workspace smoke passed.` / `VS Code smoke test passed.`。
 
 ## 幂等性与恢复
 
@@ -138,4 +164,4 @@
     startAgentSessionWithSupervisor(..., cwd)
     startTerminalSessionWithSupervisor(..., cwd)
 
-本次修订说明：2026-05-31 从旧分支差异中剥离出 Explorer 资源创建执行节点的最小功能范围，并创建实现计划以替代旧分支中混入的多根 storage fork 路线。2026-05-31 完成实现、测试覆盖与验证记录，保留后续非 `file` scheme / 普通创建 root picker / storage fork 为独立议题。
+本次修订说明：2026-05-31 从旧分支差异中剥离出 Explorer 资源创建执行节点的最小功能范围，并创建实现计划以替代旧分支中混入的多根 storage fork 路线。2026-05-31 完成实现、测试覆盖与验证记录，保留后续非 `file` scheme / 普通创建 root picker / storage fork 为独立议题。2026-06-01 按 PR review 收口 execution cwd、shell path 和 workspace runtime context 同源问题。

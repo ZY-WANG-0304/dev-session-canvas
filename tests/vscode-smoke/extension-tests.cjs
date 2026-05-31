@@ -796,6 +796,8 @@ async function runTrustedSmoke() {
   await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
+  await verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot();
+  await verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot();
   await verifyExplorerResourceExecutionNodeCreation();
   await verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
@@ -1683,6 +1685,121 @@ async function verifyCreateNodeCommandQuickPick() {
 
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+}
+
+async function verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  assert.ok(workspaceRoot, 'Expected trusted smoke to run inside a workspace.');
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+
+  const snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.some(
+        (node) => node.kind === 'agent' && node.metadata?.agent?.cwd === workspaceRoot
+      ) &&
+      currentSnapshot.state.nodes.some(
+        (node) => node.kind === 'terminal' && node.metadata?.terminal?.cwd === workspaceRoot
+      ),
+    20000
+  );
+  const agentNode = findNodeByKind(snapshot, 'agent');
+  const terminalNode = findNodeByKind(snapshot, 'terminal');
+  assert.strictEqual(agentNode.metadata.agent.cwd, workspaceRoot);
+  assert.strictEqual(terminalNode.metadata.terminal.cwd, workspaceRoot);
+  await ensureAgentStopped(agentNode.id).catch(() => {});
+  await ensureTerminalStopped(terminalNode.id).catch(() => {});
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+}
+
+async function verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  assert.ok(workspaceRoot, 'Expected trusted smoke to run inside a workspace.');
+
+  const configuration = vscode.workspace.getConfiguration();
+  const originalShellSetting = configuration.inspect('devSessionCanvas.terminal.shell');
+  const originalShellPathSetting = configuration.inspect('devSessionCanvas.terminal.shellPath');
+  const configurationTarget = resolvePreferredTerminalShellSettingsTarget();
+  const originalRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
+  const shellRelativePath = './.debug/vscode-smoke/relative-shell/dev-shell';
+  const expectedShellPath = path.join(workspaceRoot, '.debug', 'vscode-smoke', 'relative-shell', 'dev-shell');
+  const targetDirectory = path.join(workspaceRoot, '.debug', 'vscode-smoke', 'relative-shell', 'packages', 'app');
+  let terminalNodeId;
+
+  try {
+    await fs.mkdir(path.dirname(expectedShellPath), { recursive: true });
+    await fs.mkdir(targetDirectory, { recursive: true });
+    await fs.writeFile(
+      expectedShellPath,
+      process.platform === 'win32'
+        ? '@echo off\r\necho relative-shell:%CD%\r\nping -n 3 127.0.0.1 > nul\r\n'
+        : '#!/bin/sh\nprintf "relative-shell:%s\\n" "$PWD"\nsleep 2\n',
+      'utf8'
+    );
+    if (process.platform !== 'win32') {
+      await fs.chmod(expectedShellPath, 0o755);
+    }
+
+    await setTerminalShell('default', configurationTarget);
+    await setTerminalShellPath(shellRelativePath, configurationTarget);
+    await setRuntimePersistenceEnabled(false);
+    await simulateRuntimeReload();
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal', undefined, {
+      cwdOverride: targetDirectory
+    });
+
+    let snapshot = await waitForSnapshot(
+      (currentSnapshot) =>
+        currentSnapshot.state.nodes.some(
+          (node) =>
+            node.kind === 'terminal' &&
+            node.metadata?.terminal?.cwd === targetDirectory &&
+            normalizeShellPath(node.metadata?.terminal?.shellPath) === normalizeShellPath(expectedShellPath)
+        ),
+      20000
+    );
+    const terminalNode = snapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'terminal' &&
+        node.metadata?.terminal?.cwd === targetDirectory &&
+        normalizeShellPath(node.metadata?.terminal?.shellPath) === normalizeShellPath(expectedShellPath)
+    );
+    assert.ok(terminalNode, 'Expected cwd-scoped Terminal to store workspace-resolved relative shell path.');
+    terminalNodeId = terminalNode.id;
+
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/started' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNode.id &&
+            event.detail?.cwd === targetDirectory &&
+            normalizeShellPath(event.detail?.shellPath) === normalizeShellPath(expectedShellPath)
+        ),
+      20000
+    );
+    snapshot = await waitForTerminalLive(terminalNode.id);
+    assert.strictEqual(findNodeById(snapshot, terminalNode.id).metadata.terminal.cwd, targetDirectory);
+  } finally {
+    if (terminalNodeId) {
+      await ensureTerminalStopped(terminalNodeId).catch(() => {});
+    }
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shell', originalShellSetting);
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shellPath', originalShellPathSetting);
+    await setRuntimePersistenceEnabled(originalRuntimePersistenceEnabled);
+    await simulateRuntimeReload();
+  }
 }
 
 async function verifyExplorerResourceExecutionNodeCreation() {
