@@ -9391,6 +9391,48 @@ test('host-triggered manual node creation snapshots existing nodes before resolv
   expect(afterState.selectedNodeId).toBe('note-2');
 });
 
+test('host-triggered agent creation bypasses stale webview workspace trust gate', async ({ page }) => {
+  await openHarness(page);
+  const runtime = createRuntimeContext({ workspaceTrusted: true });
+
+  await page.evaluate(
+    ({ nextRuntime }) => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/bootstrap',
+        payload: {
+          state: {
+            version: 1,
+            updatedAt: '2026-04-06T00:00:00.000Z',
+            nodes: []
+          },
+          runtime: nextRuntime
+        }
+      });
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/requestCreateNode',
+        payload: {
+          kind: 'agent',
+          agentProvider: 'claude',
+          agentLaunchPreset: 'yolo'
+        }
+      });
+    },
+    {
+      nextRuntime: runtime
+    }
+  );
+
+  await expect(waitForCreateDemoNodePayload(page)).resolves.toEqual(
+    expect.objectContaining({
+      kind: 'agent',
+      agentProvider: 'claude',
+      agentLaunchPreset: 'yolo'
+    })
+  );
+  expect(await readPostedMessagesByType(page, 'webview/showCreateNodeBlockedReason')).toEqual([]);
+});
+
 test('unrelated host errors do not cancel pending manual node centering', async ({ page }) => {
   await openHarness(page, {
     persistedState: {

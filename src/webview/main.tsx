@@ -1203,13 +1203,17 @@ function App(): JSX.Element {
           showTransientCanvasError(message.payload.message);
           break;
         case 'host/requestCreateNode':
+          // Host commands have already passed workspace-trust validation; the host still rejects if trust changes.
           createNode(
             message.payload.kind,
             undefined,
             undefined,
             message.payload.agentProvider,
             message.payload.agentLaunchPreset,
-            message.payload.agentCustomLaunchCommand
+            message.payload.agentCustomLaunchCommand,
+            {
+              skipWorkspaceTrustCheck: true
+            }
           );
           break;
         case 'host/requestCreateGroupFromSelection':
@@ -3287,9 +3291,12 @@ function App(): JSX.Element {
     targetGroupId?: string,
     agentProvider?: AgentProviderKind,
     agentLaunchPreset?: AgentLaunchPresetKind,
-    agentCustomLaunchCommand?: string
+    agentCustomLaunchCommand?: string,
+    options?: {
+      skipWorkspaceTrustCheck?: boolean;
+    }
   ): void {
-    if (!workspaceTrusted && (kind === 'agent' || kind === 'terminal')) {
+    if (!options?.skipWorkspaceTrustCheck && !workspaceTrusted && (kind === 'agent' || kind === 'terminal')) {
       postMessage({
         type: 'webview/showCreateNodeBlockedReason',
         payload: {
