@@ -41,6 +41,7 @@
 - [x] (2026-05-30 01:16 +0800) 更新 Untitled 多根 fork 源选择：路径线索只作为证据；若证据来自 `<slot>-N` indexed sibling，或证据快照里的 `runtimeStoragePath` / `resumeStoragePath` 指向某个 canonical workspaceStorage slot，则实际 fork 源优先使用该 canonical slot 的可恢复快照，避免陈旧 indexed sibling 或已复制到当前 Untitled 槽的旧快照继续覆盖第一 root 当前画布。
 - [x] (2026-05-30 01:16 +0800) 补充存储 helper 测试，覆盖 canonical slot 优先于陈旧 indexed path-hint sibling、runtime storage slot hint 优先于较新的复制证据、canonical 缺失时仍允许 indexed sibling fallback；并同步产品规格、设计文档和本计划。
 - [x] (2026-05-30 22:05 +0800) 根据 PR review 修正“当前 Untitled 多根槽已有错误 fork 快照”路径：有意义的当前槽不再一律短路；若其 cwd 命中第一 root 且 runtime/resume 指向可恢复 canonical 单根 slot，则当前槽只作为证据，实际源切回 canonical slot。同步补充 current-slot copied evidence 单元测试和文档边界。
+- [x] (2026-05-31 08:18 +0800) 根据第二轮 PR review 修正宿主层 `workspaceState` guard：先计算 storage fork selection，再判断 workspaceState 是否阻断；当 selection 证明当前槽是 copied evidence 且可切回 canonical slot 时，`workspaceState.canvasState` 中的同一错误复制状态不再预先阻断纠偏。补充 host guard 单元测试覆盖。
 
 ## 意外与发现
 
@@ -147,6 +148,10 @@
   理由：上一条决策要求“复制后的当前 Untitled 槽”能通过 runtime/resume 反向定位 canonical，但实现里当前槽有节点时提前返回，导致纠偏逻辑无法运行。新增限制确保只有能证明来源 canonical slot 的复制快照会覆盖当前槽；没有 canonical 指向时继续保留当前多根槽，避免误覆盖用户已在多根 workspace 中形成的真实画布。
   日期/作者：2026-05-30 / Codex。
 
+- 决策：宿主恢复入口必须先计算 Untitled 多根 storage fork selection，再用 `workspaceState` guard 判断是否阻断；`workspaceState.canvasState` 有节点时默认仍阻断，但当 selection 证明当前槽是 copied evidence 且实际源会切回 canonical slot 时，不阻断。
+  理由：上一版错误 fork 后，宿主会把同一份错误复制状态写入 `workspaceState`；如果 `workspaceState` guard 在 selection 前执行，storage helper 的 current-slot copied evidence 纠偏永远不会运行。先 selection 后 guard 可以保留“真实多根 workspaceState 不被覆盖”的保护，同时让已知错误复制状态进入 canonical 纠偏路径。
+  日期/作者：2026-05-31 / Codex。
+
 ## 结果与复盘
 
 上一轮实现已完成并通过验证：命令 ID 与 manifest 增加 Explorer 资源菜单，`src/extension.ts` 可把目录或普通文件父目录解析为 cwd；普通创建入口在多根 workspace 下会确认 root；共享协议带 `cwd`；`CanvasPanelManager` 会把 cwdOverride 写入 Agent / Terminal metadata，并在启动、CLI resolver、shell env patch 与 diagnostic 中优先使用节点 cwd；Webview Agent subtitle 与侧栏 Agent 第二行已接入 cwdLabel。测试覆盖已补齐到 manifest、协议、cwdLabel、Webview 展示和 trusted VSCode smoke 的 Explorer 创建主路径。
@@ -160,6 +165,8 @@
 用户随后提供的宿主诊断显示 path-hint fallback 还能选到同一 Remote SSH 单根 slot family 下的陈旧 indexed sibling，从而 fork 了 2026-05-26 的 27 节点历史状态，而不是 canonical 单根 slot 中 2026-05-29 的 3 节点当前状态。本轮修复把 path-hint 候选拆成“证据”和“实际源”：证据可来自 indexed sibling 或复制后的当前 Untitled 槽，但实际源会优先切到同 family / runtime 路径指向的 canonical slot。这样既保留缺失 `meta.json` 时的恢复能力，又避免陈旧 indexed sibling 凭 cwd 命中盖过当前单根画布。
 
 PR review 发现上一段“复制后的当前 Untitled 槽”只写入了文档与候选选择函数，但 `selectUntitledMultiRootWorkspaceStorageForkSource(...)` 在当前槽已有非内置节点时仍会提前返回，导致已经错误 fork 过一次的用户无法被纠偏。本轮修复后，有意义当前槽只有在自身路径线索唯一命中第一 root、且 runtime/resume 指向另一个可恢复 canonical 单根 slot 时，才作为 evidence 触发 `first-root-canonical-slot-family` 选择；否则仍保留当前多根槽，避免覆盖真实多根画布。
+
+第二轮 PR review 继续指出：错误 fork 完成一次正常激活后，`persistState()` 会把同一份陈旧复制状态写入 `workspaceState.canvasState`，而宿主入口原本在调用 storage selection 前就被 `workspaceState` guard 短路。最新修复把 selection 前移，并抽出 host guard：只有 selection 表明当前槽是 copied evidence 且实际 source 是 canonical slot 时，允许绕过有节点的 workspaceState；普通有意义 workspaceState 仍阻断 fork。
 
 复盘上，主要风险来自测试同步而不是产品路径：`webview/resetDemoState` 没有完成回执，容易与仍在启动或停止的执行 session 竞争。本轮已把相关 smoke 前置清理改为宿主 test reset 并等待 `runningExecutionCount === 0`，后续新增会启动执行节点的 smoke 测试也应沿用这个模式。
 
@@ -352,7 +359,7 @@ PR review 发现上一段“复制后的当前 Untitled 槽”只写入了文档
     extensionStoragePaths tests passed
     exit code 0
 
-新增断言覆盖：当前 Untitled 多根槽已有一份错误复制进来的非空快照时，只要该快照 cwd 唯一命中第一 root 且 runtime storage hint 指向可恢复 canonical 单根 slot，选择结果会以当前槽为 evidence、以 canonical slot 为 source，并返回 `first-root-canonical-slot-family`。
+新增断言覆盖：当前 Untitled 多根槽已有一份错误复制进来的非空快照时，只要该快照 cwd 唯一命中第一 root 且 runtime storage hint 指向可恢复 canonical 单根 slot，选择结果会以当前槽为 evidence、以 canonical slot 为 source，并返回 `first-root-canonical-slot-family`。同一测试还覆盖宿主 `workspaceState` guard：有节点 workspaceState 默认阻断普通 fork，但不会阻断 current-slot copied evidence 切回 canonical source 的纠偏路径。
 
 ## 接口与依赖
 
@@ -392,3 +399,4 @@ PR review 发现上一段“复制后的当前 Untitled 槽”只写入了文档
 本次更新说明：2026-05-30 00:12 +0800 补充真实 VSCode 启动 smoke 证据，确认缺失 `meta.json` 时能通过第一 root 的 cwd 路径线索完成 fork，并在打开 Panel Canvas 后正常 ready。
 本次更新说明：2026-05-30 01:16 +0800 根据用户诊断修正 path-hint fallback：indexed sibling 或复制快照只能作为证据，实际源优先回到 canonical storage slot；同步产品规格、设计文档与单元测试。
 本次更新说明：2026-05-30 22:05 +0800 根据 PR review 修复 current-slot copied evidence 短路问题：当前 Untitled 多根槽已有错误复制快照时可凭 runtime/resume hint 切回 canonical slot；同步补测试与文档。
+本次更新说明：2026-05-31 08:18 +0800 根据第二轮 PR review 修复宿主 `workspaceState` guard 预先短路问题：先计算 selection，再允许 current-slot copied evidence 绕过 workspaceState 阻断并切回 canonical source；同步补 host guard 单元测试和文档。

@@ -574,6 +574,17 @@ interface UntitledMultiRootWorkspaceStorageForkRecoveryResult {
   evidenceNodeCount?: number;
 }
 
+export interface UntitledMultiRootWorkspaceStorageForkHostSelectionGuardInput {
+  workspaceState: unknown;
+  selection: UntitledMultiRootWorkspaceStorageForkSelection | undefined;
+}
+
+export interface UntitledMultiRootWorkspaceStorageForkHostSelectionGuardResult {
+  blocked: boolean;
+  reason?: 'current-workspace-state-has-nodes';
+  workspaceStateNodeCount?: number;
+}
+
 interface StartExecutionSessionForTestParams {
   kind: ExecutionNodeKind;
   nodeId: string;
@@ -3404,13 +3415,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return undefined;
     }
 
-    const workspaceStateSnapshot = this.getWorkspaceStateCanvasForkSnapshot();
-    if (workspaceStateSnapshot.meaningful) {
+    const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
+    const selection = selectUntitledMultiRootWorkspaceStorageForkSource(this.getExtensionStoragePath(), {
+      workspaceFolders: this.getWorkspaceStorageForkRoots(),
+      pathExists: (candidatePath) => fs.existsSync(candidatePath)
+    });
+    const workspaceStateGuard = shouldBlockUntitledMultiRootWorkspaceStorageForkByWorkspaceState({
+      workspaceState,
+      selection
+    });
+    if (workspaceStateGuard.blocked) {
       this.recordDiagnosticEvent('storage/untitledMultiRootForkSkipped', {
-        reason: 'current-workspace-state-has-nodes',
+        reason: workspaceStateGuard.reason,
         currentPath: this.getExtensionStoragePath(),
         targetPath: this.getPersistedCanvasSnapshotPath(),
-        currentWorkspaceStateNodeCount: workspaceStateSnapshot.nodeCount,
+        currentWorkspaceStateNodeCount: workspaceStateGuard.workspaceStateNodeCount,
         forced: options.force === true,
         workspaceFileScheme: vscode.workspace.workspaceFile?.scheme,
         workspaceFolderCount: vscode.workspace.workspaceFolders?.length ?? 0
@@ -3418,10 +3437,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return undefined;
     }
 
-    const selection = selectUntitledMultiRootWorkspaceStorageForkSource(this.getExtensionStoragePath(), {
-      workspaceFolders: this.getWorkspaceStorageForkRoots(),
-      pathExists: (candidatePath) => fs.existsSync(candidatePath)
-    });
     if (!selection) {
       this.recordDiagnosticEvent('storage/untitledMultiRootForkSkipped', {
         reason: 'no-source',
@@ -3451,25 +3466,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       () => undefined,
       () => undefined
     );
-  }
-
-  private getWorkspaceStateCanvasForkSnapshot(): {
-    nodeCount?: number;
-    meaningful: boolean;
-  } {
-    const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
-    if (!isRecord(workspaceState) || !Array.isArray(workspaceState.nodes)) {
-      return {
-        meaningful: false
-      };
-    }
-
-    const nodeCount = workspaceState.nodes.length;
-    const builtinGettingStartedOnly = isBuiltinGettingStartedOnlyCanvasState(workspaceState);
-    return {
-      nodeCount,
-      meaningful: nodeCount > 0 && !builtinGettingStartedOnly
-    };
   }
 
   private getWorkspaceStorageForkRoots(): { name: string; path: string }[] {
@@ -12641,6 +12637,49 @@ function resolveEffectiveCanvasTemplateId(
     findCanvasTemplateById(templates, preferredTemplateId)?.template.id ??
     findCanvasTemplateById(templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID)?.template.id ??
     templates[0]?.template.id
+  );
+}
+
+export function shouldBlockUntitledMultiRootWorkspaceStorageForkByWorkspaceState({
+  workspaceState,
+  selection
+}: UntitledMultiRootWorkspaceStorageForkHostSelectionGuardInput): UntitledMultiRootWorkspaceStorageForkHostSelectionGuardResult {
+  if (!isMeaningfulWorkspaceStateCanvasForkSnapshot(workspaceState)) {
+    return {
+      blocked: false
+    };
+  }
+
+  if (selection && isCurrentCopiedEvidenceUntitledMultiRootForkSelection(selection)) {
+    return {
+      blocked: false,
+      workspaceStateNodeCount: getCanvasStateNodeCount(workspaceState)
+    };
+  }
+
+  return {
+    blocked: true,
+    reason: 'current-workspace-state-has-nodes',
+    workspaceStateNodeCount: getCanvasStateNodeCount(workspaceState)
+  };
+}
+
+function isMeaningfulWorkspaceStateCanvasForkSnapshot(workspaceState: unknown): boolean {
+  const nodeCount = getCanvasStateNodeCount(workspaceState);
+  return nodeCount !== undefined && nodeCount > 0 && !isBuiltinGettingStartedOnlyCanvasState(workspaceState);
+}
+
+function getCanvasStateNodeCount(workspaceState: unknown): number | undefined {
+  return isRecord(workspaceState) && Array.isArray(workspaceState.nodes) ? workspaceState.nodes.length : undefined;
+}
+
+function isCurrentCopiedEvidenceUntitledMultiRootForkSelection(
+  selection: UntitledMultiRootWorkspaceStorageForkSelection
+): boolean {
+  return (
+    selection.selectionBasis === 'first-root-canonical-slot-family' &&
+    selection.evidenceCandidate.isCurrent &&
+    selection.sourceCandidate.path !== selection.currentCandidate.path
   );
 }
 

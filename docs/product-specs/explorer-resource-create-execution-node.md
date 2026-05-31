@@ -65,7 +65,7 @@
   - 多根 workspace 复用现有 workspace 级持久化设计：一组 workspace folders 对应一张 Canvas 状态，不按 root 拆分持久化。
   - 当用户从单根 workspace `A` 通过拖入或 Add Folder 增加 `B`，把当前窗口视为 workspace 扩容；当前 Canvas 原样进入新的 `A + B` 多根 workspace 持久化范围。
   - 原 `A` 单根 workspace 的 Canvas 快照保留，不删除、不迁移；后续单独打开 `A` 与打开 `A + B` 会形成两份可自然分叉的状态。
-  - 如果 VSCode 在单根扩容成 Untitled 多根 workspace 时要求 reload，扩展重启后应在当前多根持久化范围还没有有意义 Canvas 时，从第一个 root `A` 的单根 `canvas-state.json` fork 主快照到当前多根范围；这是对“当前 Canvas 原样进入 A+B”的启动期补救。源识别优先使用 VSCode `meta.json` 中的 root 名称；当历史或 Remote SSH storage slot 缺失 `meta.json` 时，可退回到候选快照中 Agent / Terminal cwd 明确落在第一个 root 下的非空快照。若这些路径线索来自某个 `workspaceStorage/<slot>-N` indexed sibling，并且快照里的 `runtimeStoragePath` / `resumeStoragePath` 指回同一单根 canonical storage slot，则应优先 fork canonical slot 的主快照；只有 canonical slot 缺失或没有可恢复快照时，才使用 indexed sibling 本身。若当前 Untitled 多根槽已经有上一次错误 fork 复制进来的有意义快照，也允许把当前槽仅作为证据读取 `runtimeStoragePath` / `resumeStoragePath` 并切回对应 canonical slot；没有这种 canonical 指向时，当前多根槽已有有意义快照仍应保留，不能被其他候选覆盖。
+  - 如果 VSCode 在单根扩容成 Untitled 多根 workspace 时要求 reload，扩展重启后应在当前多根持久化范围还没有有意义 Canvas 时，从第一个 root `A` 的单根 `canvas-state.json` fork 主快照到当前多根范围；这是对“当前 Canvas 原样进入 A+B”的启动期补救。源识别优先使用 VSCode `meta.json` 中的 root 名称；当历史或 Remote SSH storage slot 缺失 `meta.json` 时，可退回到候选快照中 Agent / Terminal cwd 明确落在第一个 root 下的非空快照。若这些路径线索来自某个 `workspaceStorage/<slot>-N` indexed sibling，并且快照里的 `runtimeStoragePath` / `resumeStoragePath` 指回同一单根 canonical storage slot，则应优先 fork canonical slot 的主快照；只有 canonical slot 缺失或没有可恢复快照时，才使用 indexed sibling 本身。若当前 Untitled 多根槽或其 `workspaceState` 已经有上一次错误 fork 复制进来的有意义快照，也允许先完成 canonical source selection：只要当前槽可作为证据读取 `runtimeStoragePath` / `resumeStoragePath` 并切回对应 canonical slot，`workspaceState` 不能预先阻断这次纠偏；没有这种 canonical 指向时，当前多根槽已有有意义快照仍应保留，不能被其他候选覆盖。
   - 启动期补救不能依赖用户先手动打开 Canvas view；reload 后扩展需要在 VS Code 启动主链路完成后完成必要激活，注册 Panel view provider 并执行 Untitled 多根 fork。这个激活只用于恢复持久化与 provider 注册，不自动把画布 reveal 到前台。
   - 启动期 fork 只复制主 Canvas 快照，不复制旧单根 `agent-runtime`、`runtime-supervisor` 或 Note 草稿目录；运行中的会话因 reload 已结束，后续恢复按当前多根范围重新持久化。fork 后不再沿用旧单根 `workspaceState` 兜底，避免旧兜底状态覆盖新多根快照。
   - 不自动导入 `B` 单独打开时可能存在的 Canvas，也不自动 merge 旧的 `A + B` 历史快照。
@@ -146,7 +146,7 @@
 - 在单根 workspace 下通过普通“创建节点”入口创建 Terminal / Agent 时，不出现 root 选择打断，节点 cwd 继续使用唯一 workspace root。
 - Explorer 资源右键创建节点时不重复要求选择 root；目录资源和普通文件父目录仍是 cwd 来源。
 - 从单根 workspace `A` 增加 root `B` 后，当前 Canvas 原样保留并写入 `A + B` 的持久化范围；重新单独打开 `A` 时仍能看到 `A` 自己的原状态。
-- 如果 VSCode 因 `Add Folder to Workspace...` 要求 reload 并打开 Untitled 多根 workspace，扩展重启后在当前多根范围没有有意义 Canvas 时，会从第一个 root `A` 的单根快照 fork 节点、连线和布局；即使历史或 Remote SSH storage slot 缺少 VSCode `meta.json`，只要候选快照里 Agent / Terminal cwd 能明确指向第一个 root，也应能完成 fork；当路径线索来自陈旧 indexed sibling 或已复制到当前 Untitled 多根槽的快照时，应优先使用它指向的单根 canonical storage slot，而不是再次选择陈旧复制源；用户不会看到空画布、内置使用说明模板，或明显早于当前单根画布的历史状态替代原单根画布。
+- 如果 VSCode 因 `Add Folder to Workspace...` 要求 reload 并打开 Untitled 多根 workspace，扩展重启后在当前多根范围没有有意义 Canvas 时，会从第一个 root `A` 的单根快照 fork 节点、连线和布局；即使历史或 Remote SSH storage slot 缺少 VSCode `meta.json`，只要候选快照里 Agent / Terminal cwd 能明确指向第一个 root，也应能完成 fork；当路径线索来自陈旧 indexed sibling、已复制到当前 Untitled 多根槽的快照，或同一错误快照已经进入 `workspaceState` 时，应优先使用它指向的单根 canonical storage slot，而不是再次选择陈旧复制源；用户不会看到空画布、内置使用说明模板，或明显早于当前单根画布的历史状态替代原单根画布。
 - reload 后即使用户还没有再次执行打开画布命令，扩展也会在启动完成后注册 Panel view provider 并完成上述 fork；如果 Panel view 已在工作台中可见，不应长期停留在原生 Webview “加载中”占位。
 - 单根扩容时不会自动导入 `B` 的历史 Canvas，也不会把已有有意义 `A + B` 快照自动 merge 到当前窗口。
 - 单根扩容后，已有 Agent 节点在多根下按 `workspaceFolder/cwd` 规则显示 `cwdLabel`；已有 Terminal / Agent 的 cwd 不因扩容被改写；reload 路径不承诺保留扩容前 live runtime 进程。

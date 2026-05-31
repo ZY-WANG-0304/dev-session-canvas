@@ -13,12 +13,20 @@ const storagePath = path.posix;
 try {
   const outfile = path.join(tempDir, 'extensionStoragePaths.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/common/extensionStoragePaths.ts')],
+    stdin: {
+      contents:
+        "export { isBuiltinGettingStartedOnlyCanvasState, resolvePreferredExtensionStoragePath, selectPreferredExtensionStorageRecoverySource, selectUntitledMultiRootWorkspaceStorageForkSource } from './src/common/extensionStoragePaths';\n" +
+        "export { shouldBlockUntitledMultiRootWorkspaceStorageForkByWorkspaceState } from './src/panel/CanvasPanelManager';",
+      resolveDir: process.cwd(),
+      sourcefile: 'extension-storage-paths-entry.ts'
+    },
     bundle: true,
     format: 'cjs',
     outfile,
     platform: 'node',
-    target: 'node18'
+    target: 'node18',
+    external: ['node-pty'],
+    plugins: [createMockVscodePlugin()]
   });
 
   const require = createRequire(import.meta.url);
@@ -26,7 +34,8 @@ try {
     isBuiltinGettingStartedOnlyCanvasState,
     resolvePreferredExtensionStoragePath,
     selectPreferredExtensionStorageRecoverySource,
-    selectUntitledMultiRootWorkspaceStorageForkSource
+    selectUntitledMultiRootWorkspaceStorageForkSource,
+    shouldBlockUntitledMultiRootWorkspaceStorageForkByWorkspaceState
   } = require(outfile);
 
   const stablePath =
@@ -555,6 +564,45 @@ try {
     ['root-a-canonical-hash']
   );
 
+  const currentCopiedWorkspaceState = JSON.parse(
+    createExecutionSnapshotText({
+      title: 'ROOT-A-STALE-COPIED-CURRENT-SLOT',
+      cwd: '/workspace/root-a',
+      runtimeStoragePath: storagePath.join(rootACanonicalPath, 'agent-runtime'),
+      writtenAt: '2026-05-29T16:44:15.871Z',
+      updatedAt: '2026-05-29T16:44:15.871Z'
+    })
+  ).state;
+  const currentCopiedWorkspaceStateGuard = shouldBlockUntitledMultiRootWorkspaceStorageForkByWorkspaceState({
+    workspaceState: currentCopiedWorkspaceState,
+    selection: currentCopiedEvidenceCanRecoverCanonicalResult
+  });
+  assert.deepEqual(
+    currentCopiedWorkspaceStateGuard,
+    { blocked: false, workspaceStateNodeCount: 1 },
+    'Expected workspaceState copied from the stale current slot not to block canonical recovery.'
+  );
+
+  const currentCopiedWorkspaceStateGuardWithoutSelection = shouldBlockUntitledMultiRootWorkspaceStorageForkByWorkspaceState({
+    workspaceState: currentCopiedWorkspaceState,
+    selection: undefined
+  });
+  assert.deepEqual(
+    currentCopiedWorkspaceStateGuardWithoutSelection,
+    { blocked: true, reason: 'current-workspace-state-has-nodes', workspaceStateNodeCount: 1 },
+    'Expected meaningful workspaceState to keep blocking ordinary Untitled multi-root fork attempts.'
+  );
+
+  const currentCopiedWorkspaceStateGuardWithNonCurrentEvidence = shouldBlockUntitledMultiRootWorkspaceStorageForkByWorkspaceState({
+    workspaceState: currentCopiedWorkspaceState,
+    selection: runtimeStorageHintBeatsCopiedCurrentPathHintResult
+  });
+  assert.deepEqual(
+    currentCopiedWorkspaceStateGuardWithNonCurrentEvidence,
+    { blocked: true, reason: 'current-workspace-state-has-nodes', workspaceStateNodeCount: 1 },
+    'Expected workspaceState to allow only current-slot copied evidence, not every canonical source selection.'
+  );
+
   const indexedPathHintStillWorksWhenCanonicalMissingResult = selectUntitledMultiRootWorkspaceStorageForkSource(
     untitledMultiRootCurrentPath,
     {
@@ -713,6 +761,80 @@ try {
   console.log('extensionStoragePaths tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+
+function createMockVscodePlugin() {
+  return {
+    name: 'mock-vscode',
+    setup(build) {
+      build.onResolve({ filter: /^vscode$/ }, () => ({ path: 'vscode', namespace: 'mock-vscode' }));
+      build.onLoad({ filter: /.*/, namespace: 'mock-vscode' }, () => ({
+        loader: 'js',
+        contents: `
+          class Disposable { dispose() {} }
+          class EventEmitter { constructor() { this.event = () => new Disposable(); } fire() {} dispose() {} }
+          class ThemeIcon { constructor(id) { this.id = id; } }
+          class TreeItem { constructor(label, collapsibleState) { this.label = label; this.collapsibleState = collapsibleState; } }
+          class Position { constructor(line, character) { this.line = line; this.character = character; } }
+          class Range { constructor(start, end) { this.start = start; this.end = end; } }
+          class MarkdownString { constructor(value) { this.value = value; } appendMarkdown(value) { this.value = (this.value || '') + value; return this; } }
+          const Uri = {
+            file: (fsPath) => ({ fsPath, path: fsPath, scheme: 'file', toString: () => fsPath, with(change) { return { ...this, ...change }; } }),
+            joinPath: (base, ...segments) => ({ fsPath: [base?.fsPath, ...segments].filter(Boolean).join('/'), path: [base?.path, ...segments].filter(Boolean).join('/'), scheme: base?.scheme ?? 'file', toString() { return this.path; }, with(change) { return { ...this, ...change }; } }),
+            parse: (value) => ({ fsPath: value, path: value, scheme: String(value).split(':', 1)[0], toString: () => value, with(change) { return { ...this, ...change }; } })
+          };
+          module.exports = {
+            Disposable,
+            EventEmitter,
+            ThemeIcon,
+            TreeItem,
+            Position,
+            Range,
+            MarkdownString,
+            TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+            Uri,
+            ViewColumn: { One: 1, Beside: -2 },
+            ExtensionMode: { Production: 1, Development: 2, Test: 3 },
+            OverviewRulerLane: { Right: 4 },
+            DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
+            FileType: { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 },
+            commands: {
+              executeCommand: async () => undefined,
+              registerCommand: () => new Disposable()
+            },
+            env: { appName: 'VS Code Test', remoteName: undefined, shell: '/bin/bash', clipboard: { writeText: async () => undefined } },
+            window: {
+              activeTextEditor: undefined,
+              showInformationMessage: async () => undefined,
+              showWarningMessage: async () => undefined,
+              showErrorMessage: async () => undefined,
+              showQuickPick: async () => undefined,
+              registerTreeDataProvider: () => new Disposable(),
+              registerWebviewViewProvider: () => new Disposable(),
+              registerWebviewPanelSerializer: () => new Disposable(),
+              createOutputChannel: () => ({ appendLine() {}, show() {}, dispose() {} }),
+              createWebviewPanel: () => ({ webview: { postMessage: async () => true, onDidReceiveMessage: () => new Disposable(), asWebviewUri: (uri) => uri }, onDidDispose: () => new Disposable(), onDidChangeViewState: () => new Disposable(), reveal() {}, dispose() {} })
+            },
+            workspace: {
+              isTrusted: true,
+              workspaceFolders: [],
+              workspaceFile: undefined,
+              getConfiguration: () => ({ get: () => undefined, update: async () => undefined, inspect: () => undefined }),
+              onDidChangeConfiguration: () => new Disposable(),
+              onDidGrantWorkspaceTrust: () => new Disposable(),
+              onDidChangeWorkspaceFolders: () => new Disposable(),
+              createFileSystemWatcher: () => ({ onDidChange: () => new Disposable(), onDidCreate: () => new Disposable(), onDidDelete: () => new Disposable(), dispose() {} }),
+              getWorkspaceFolder: () => undefined,
+              asRelativePath: (value) => value?.fsPath || String(value),
+              fs: { stat: async () => ({ type: 1 }), writeFile: async () => undefined, readFile: async () => new Uint8Array(), createDirectory: async () => undefined }
+            },
+            languages: { createDiagnosticCollection: () => ({ set() {}, delete() {}, clear() {}, dispose() {} }) }
+          };
+        `
+      }));
+    }
+  };
 }
 
 function buildSnapshotFixture(entries) {
