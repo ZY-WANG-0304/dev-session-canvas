@@ -3,9 +3,12 @@ import * as http from 'node:http';
 import * as https from 'node:https';
 
 import * as vscode from 'vscode';
+import { unzipSync } from 'fflate';
 
 import {
   buildMarketplaceSlugFromName,
+  marketplaceTemplatePackageManifestSchema,
+  normalizeMarketplacePackagePath,
   generateMarketplaceTemplateThumbnailPngBase64,
   marketplaceTemplateDocumentSchema,
   type MarketplaceTemplateDocument
@@ -21,6 +24,9 @@ const MARKETPLACE_OFFICIAL_SOURCE_URL = `${DEFAULT_MARKETPLACE_SOURCE_ORIGIN}/te
 const MARKETPLACE_DEBUG_SOURCE_URL = 'https://dscanvas-template-marketplace.wzy0304.workers.dev/templates';
 const MARKETPLACE_SOURCE_URL_ENV_KEY = 'DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_SOURCE_URL';
 const MAX_TEMPLATE_DOWNLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_TEMPLATE_PACKAGE_DOWNLOAD_BYTES = 50 * 1024 * 1024;
+const MAX_TEMPLATE_PACKAGE_UNZIPPED_BYTES = 100 * 1024 * 1024;
+const MAX_TEMPLATE_PACKAGE_FILES = 100;
 const MAX_REDIRECTS = 3;
 const MARKETPLACE_TOKEN_SECRET_KEY = 'devSessionCanvas.templateMarketplace.token';
 
@@ -45,7 +51,7 @@ export interface TemplateMarketplaceInlineInstallParams {
   versionId?: string;
   targetStorageLocationId?: string;
   sourceUrl: string;
-  templateJson: string;
+  templateJson?: string;
   payloadSha256?: string;
   marketTemplateId?: string;
   installedVersionNumber?: number;
@@ -155,6 +161,22 @@ interface HttpTextResponse {
   text: string;
 }
 
+interface HttpBufferResponse {
+  statusCode: number;
+  body: Buffer;
+}
+
+interface MarketplaceTemplatePackageInstallPayload {
+  packageBytes: Uint8Array;
+  extractedFiles: Map<string, Uint8Array>;
+  manifestPath: string;
+  templatePath: string;
+  readmePath: string;
+  changelogPath: string;
+  thumbnailPath: string;
+  templateDocument: unknown;
+}
+
 interface MarketplaceVSCodeTokenResponseShape {
   token: string;
   expiresAt: string;
@@ -250,17 +272,18 @@ export class TemplateMarketplaceClient {
     const detail = parseTemplateDetailResponse(JSON.parse(detailResponse.text)).template;
     const version = resolveTemplateVersion(detail, request.versionId);
     const downloadUrl = buildTemplateDownloadApiUrl(request, version.id);
-    const downloadResponse = await requestText(downloadUrl);
+    const downloadResponse = await requestBuffer(downloadUrl, { accept: 'application/zip' });
     if (downloadResponse.statusCode < 200 || downloadResponse.statusCode >= 300) {
-      throw new Error(`下载模板失败：HTTP ${downloadResponse.statusCode}。`);
+      throw new Error(`下载完整模板包失败：HTTP ${downloadResponse.statusCode}。`);
     }
 
-    const actualSha256 = createHash('sha256').update(downloadResponse.text).digest('hex');
-    if (version.sha256 && actualSha256 !== version.sha256) {
-      throw new Error('模板文件校验失败（SHA-256 不匹配），已中止安装。');
+    const packagePayload = parseMarketplaceTemplatePackageForInstall(downloadResponse.body);
+    const packageSha256 = createHash('sha256').update(downloadResponse.body).digest('hex');
+    const templateSha256 = createHash('sha256').update(packagePayload.extractedFiles.get(packagePayload.templatePath) ?? new Uint8Array()).digest('hex');
+    if (version.sha256 && templateSha256 !== version.sha256) {
+      throw new Error('模板包校验失败（template.json SHA-256 不匹配），已中止安装。');
     }
 
-    const document = JSON.parse(downloadResponse.text) as unknown;
     const metadata: CanvasTemplateMarketMetadata = {
       marketTemplateId: detail.id,
       marketTemplateSlug: detail.slug,
@@ -271,12 +294,19 @@ export class TemplateMarketplaceClient {
       publisher: { ...detail.publisher },
       thumbnailKey: version.thumbnailKey,
       checksum: {
-        sha256: actualSha256,
+        sha256: templateSha256,
         sizeBytes: version.sizeBytes
-      }
+      },
+      packageSha256,
+      packageSizeBytes: downloadResponse.body.byteLength,
+      manifestPath: packagePayload.manifestPath,
+      templatePath: packagePayload.templatePath,
+      readmePath: packagePayload.readmePath,
+      changelogPath: packagePayload.changelogPath,
+      thumbnailPath: packagePayload.thumbnailPath
     };
-    const { savedTemplate, operation } = await this.saveMarketplaceTemplateDocument(
-      document,
+    const { savedTemplate, operation } = await this.saveMarketplaceTemplatePackage(
+      packagePayload,
       metadata,
       request.targetStorageLocationId
     );
@@ -418,6 +448,36 @@ export class TemplateMarketplaceClient {
       preserveTemplateId: existingTemplate?.template.id,
       preserveCreatedAt: existingTemplate?.template.createdAt
     });
+    return {
+      savedTemplate,
+      operation
+    };
+  }
+
+
+  private async saveMarketplaceTemplatePackage(
+    packagePayload: MarketplaceTemplatePackageInstallPayload,
+    metadata: CanvasTemplateMarketMetadata,
+    targetStorageLocationId: string | undefined
+  ): Promise<{
+    savedTemplate: CanvasStoredTemplate;
+    operation: TemplateMarketplaceInstallOperation;
+  }> {
+    const targetLocation = this.resolveInstallTarget(targetStorageLocationId);
+    const existingTemplate = await this.findInstalledMarketplaceTemplate(metadata, targetLocation);
+    const operation = resolveMarketplaceInstallOperation(existingTemplate, metadata);
+    const savedTemplate = await this.panelManager.installMarketplaceTemplatePackage(
+      packagePayload.packageBytes,
+      packagePayload.extractedFiles,
+      metadata,
+      {
+        targetRootPath: targetLocation?.rootPath,
+        packageDirectoryName: sanitizeMarketplacePackageDirectoryName(metadata.marketTemplateSlug ?? metadata.marketTemplateId),
+        preserveTemplateId: existingTemplate?.template.id,
+        preserveCreatedAt: existingTemplate?.template.createdAt,
+        legacyTemplateFilePath: existingTemplate?.filePath
+      }
+    );
     return {
       savedTemplate,
       operation
@@ -699,6 +759,120 @@ function buildTemplateDownloadApiUrl(request: TemplateMarketplaceInstallRequest,
   return url;
 }
 
+
+function parseMarketplaceTemplatePackageForInstall(packageBytes: Buffer): MarketplaceTemplatePackageInstallPayload {
+  if (packageBytes.byteLength > MAX_TEMPLATE_PACKAGE_DOWNLOAD_BYTES) {
+    throw new Error('完整模板包超过大小限制。');
+  }
+
+  let totalUnzippedBytes = 0;
+  let rawEntries: Record<string, Uint8Array>;
+  try {
+    rawEntries = unzipSync(packageBytes, {
+      filter: (file) => {
+        if (file.name.endsWith('/')) {
+          return true;
+        }
+        if (!normalizeMarketplacePackagePath(file.name)) {
+          throw new Error(`完整模板包路径不安全：${file.name}`);
+        }
+        totalUnzippedBytes += file.originalSize;
+        if (totalUnzippedBytes > MAX_TEMPLATE_PACKAGE_UNZIPPED_BYTES) {
+          throw new Error('完整模板包解压后超过大小限制。');
+        }
+        return true;
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('完整模板包')) {
+      throw error;
+    }
+    throw new Error('完整模板包不是有效的 zip 文件。');
+  }
+
+  const extractedFiles = new Map<string, Uint8Array>();
+  for (const [entryPath, bytes] of Object.entries(rawEntries)) {
+    if (entryPath.endsWith('/')) {
+      continue;
+    }
+    const normalizedPath = normalizeMarketplacePackagePath(entryPath);
+    if (!normalizedPath) {
+      throw new Error(`完整模板包路径不安全：${entryPath}`);
+    }
+    extractedFiles.set(normalizedPath, bytes);
+  }
+
+  if (extractedFiles.size > MAX_TEMPLATE_PACKAGE_FILES) {
+    throw new Error('完整模板包文件数量超过限制。');
+  }
+
+  const manifestPath = 'template-package.json';
+  const manifestBytes = extractedFiles.get(manifestPath);
+  if (!manifestBytes) {
+    throw new Error('完整模板包缺少 template-package.json。');
+  }
+
+  let manifest: ReturnType<typeof marketplaceTemplatePackageManifestSchema.parse>;
+  try {
+    manifest = marketplaceTemplatePackageManifestSchema.parse(JSON.parse(decodeUtf8(manifestBytes, manifestPath)));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`完整模板包 manifest 无效：${message}`);
+  }
+
+  const templateBytes = requirePackageEntryForInstall(extractedFiles, manifest.template);
+  requirePackageEntryForInstall(extractedFiles, manifest.readme);
+  requirePackageEntryForInstall(extractedFiles, manifest.changelog);
+  requirePackageEntryForInstall(extractedFiles, manifest.thumbnail);
+  let templateDocument: unknown;
+  try {
+    templateDocument = JSON.parse(decodeUtf8(templateBytes, manifest.template));
+    marketplaceTemplateDocumentSchema.parse(templateDocument);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`完整模板包 template.json 无效：${message}`);
+  }
+
+  return {
+    packageBytes: new Uint8Array(packageBytes),
+    extractedFiles,
+    manifestPath,
+    templatePath: manifest.template,
+    readmePath: manifest.readme,
+    changelogPath: manifest.changelog,
+    thumbnailPath: manifest.thumbnail,
+    templateDocument
+  };
+}
+
+function requirePackageEntryForInstall(entries: ReadonlyMap<string, Uint8Array>, entryPath: string): Uint8Array {
+  const normalizedPath = normalizeMarketplacePackagePath(entryPath);
+  if (!normalizedPath) {
+    throw new Error(`完整模板包路径不安全：${entryPath}`);
+  }
+  const bytes = entries.get(normalizedPath);
+  if (!bytes) {
+    throw new Error(`完整模板包缺少 ${normalizedPath}。`);
+  }
+  return bytes;
+}
+
+function decodeUtf8(bytes: Uint8Array, fileName: string): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    throw new Error(`${fileName} 不是有效 UTF-8 文本。`);
+  }
+}
+
+function sanitizeMarketplacePackageDirectoryName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'template';
+}
+
 function parseTemplateDetailResponse(value: unknown): MarketplaceTemplateDetailResponseShape {
   if (!isRecord(value) || !isRecord(value.template)) {
     throw new Error('详情接口返回了无法识别的数据格式。');
@@ -822,6 +996,66 @@ async function requestText(url: URL, redirectCount = 0): Promise<HttpTextRespons
           resolve({
             statusCode,
             text: Buffer.concat(chunks).toString('utf8')
+          });
+        });
+      }
+    );
+
+    request.setTimeout(30_000, () => {
+      request.destroy(new Error('市场请求超时。'));
+    });
+    request.on('error', reject);
+  });
+}
+
+
+async function requestBuffer(
+  url: URL,
+  options: { accept: string; maxBytes?: number } = { accept: 'application/octet-stream' },
+  redirectCount = 0
+): Promise<HttpBufferResponse> {
+  return new Promise<HttpBufferResponse>((resolve, reject) => {
+    const request = (url.protocol === 'http:' ? http : https).get(
+      url,
+      {
+        headers: {
+          accept: options.accept,
+          'user-agent': 'dev-session-canvas-template-marketplace'
+        }
+      },
+      (response) => {
+        const statusCode = response.statusCode ?? 0;
+        const location = response.headers.location;
+        if (location && isRedirectStatus(statusCode)) {
+          response.resume();
+          if (redirectCount >= MAX_REDIRECTS) {
+            reject(new Error('请求重定向次数过多。'));
+            return;
+          }
+          const nextUrl = new URL(location, url);
+          if (!isTrustedMarketplaceUrl(nextUrl) && !isTrustedApiUrl(nextUrl, url)) {
+            reject(new Error('请求被重定向到不受信任的地址。'));
+            return;
+          }
+          void requestBuffer(nextUrl, options, redirectCount + 1).then(resolve, reject);
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        let byteLength = 0;
+        const maxBytes = options.maxBytes ?? MAX_TEMPLATE_PACKAGE_DOWNLOAD_BYTES;
+        response.on('data', (chunk: Buffer) => {
+          byteLength += chunk.length;
+          if (byteLength > maxBytes) {
+            request.destroy(new Error('完整模板包超过大小限制。'));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on('end', () => {
+          resolve({
+            statusCode,
+            body: Buffer.concat(chunks)
           });
         });
       }

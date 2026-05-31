@@ -18,7 +18,9 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/template-marketplace-tech-selection.md
   - docs/exec-plans/active/template-marketplace-foundation.md
-updated_at: 2026-05-24
+  - docs/exec-plans/active/template-marketplace-publishing.md
+  - docs/exec-plans/active/template-package-repository-research.md
+updated_at: 2026-05-30
 ---
 
 # 模板市场技术选型
@@ -163,10 +165,13 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 
 - `GET /api/v1/templates`：列表、关键词、标签、排序和分页。
 - `GET /api/v1/templates/:id`：模板详情、版本列表、发布者摘要和当前用户互动状态。
-- `GET /api/v1/templates/:id/download?version=`：记录下载并返回模板包内容或短期下载地址。
+- `GET /api/v1/templates/:id/download?version=`：记录下载并返回同版本 canonical `package.zip`，作为“下载完整模板”主动作背后的 API；当前 D1 schema 尚未存 package key，Worker 先从版本 `objectKey` 所在目录推导 `package.zip`，后续 listing revision / package key 字段迁移时再改为显式字段。
+- `GET /api/v1/templates/:id/template.json?version=`：返回包内 `template.json`，保留给浏览器 `Download template.json`、旧客户端和调试场景作为轻量模板导出；它不是市场模板的主下载 / 安装语义。
+- `GET /api/v1/templates/:id/package?version=`：当前已实现的完整包下载临时接口；迁移后应作为 `/download` 的隐藏兼容别名或下线，不再作为正式 API contract 推广。
 - `GET /api/v1/templates/:id/thumbnail?version=`：返回指定版本缩略图；preview / production 有 R2 binding 时读取 R2 PNG，本地无 R2 时返回显式 seed SVG 降级图。
 - `GET /api/v1/auth/github/start`、`GET /api/v1/auth/github/callback`、`GET /api/v1/auth/me`、`POST /api/v1/auth/logout`：浏览器 GitHub OAuth 登录、callback、当前用户读取和退出登录；callback 使用 `state` 与 PKCE，Worker 只把市场 session 写入 HttpOnly cookie，不持久化 GitHub access token。`start` / `logout` 可接收 `return_to`，但只允许回到 `/templates` 下的同源路径，避免开放重定向。
-- `POST /api/v1/templates`：发布新模板，需要认证；当前 Worker contract 使用 JSON 请求体，包含市场元数据、`CanvasTemplateDocument` 和可选 PNG 缩略图 base64，Web 表单和 VSCode 宿主发布入口都应转换到这一个 contract。`CanvasTemplateDocument` 继续只允许 Agent / Terminal / Note 模板节点；主线新增的 file / file-list 画布节点不进入模板市场包。关联 Markdown Note 使用本地模板模型中的 `metadata.note.templateContentMode` 与 `metadata.note.relativePath`，市场 schema 必须接受 `embedded-snapshot`、`workspace-file-path-only` 和 `workspace-file-with-content`，并拒绝绝对路径、URI scheme、空段和 `..` 越界路径。没有自定义截图时，浏览器和 VSCode 端都使用共享布局 renderer 生成 PNG 缩略图；renderer 的 Agent / Terminal / Note accent 色分别对齐插件画布节点主题色 #22c55e、#38bdf8、#a78bfa。
+- `POST /api/v1/templates`：发布新模板，需要认证；当前 Worker contract 继续兼容 JSON 请求体，包含市场元数据、`CanvasTemplateDocument` 和可选 PNG 缩略图 base64，Web 表单和 VSCode 宿主发布入口都可转换到这一个 contract。Worker 会把 JSON 请求组装成 canonical `package.zip`，同时写入兼容 `template.json`、`thumbnail.png` 和 `manifest.json`。`CanvasTemplateDocument` 继续只允许 Agent / Terminal / Note 模板节点；主线新增的 file / file-list 画布节点不进入模板市场包。关联 Markdown Note 使用本地模板模型中的 `metadata.note.templateContentMode` 与 `metadata.note.relativePath`，市场 schema 必须接受 `embedded-snapshot`、`workspace-file-path-only` 和 `workspace-file-with-content`，并拒绝绝对路径、URI scheme、空段和 `..` 越界路径。没有自定义截图时，浏览器和 VSCode 端都使用共享布局 renderer 生成 PNG 缩略图；renderer 的 Agent / Terminal / Note accent 色分别对齐插件画布节点主题色 #22c55e、#38bdf8、#a78bfa。
+- `POST /api/v1/templates/package`：发布完整 `package.zip`，需要认证；浏览器发布页高级入口用 `multipart/form-data` 的 `package` 字段提交 zip。若用户上传包后在表单中继续编辑公开字段、README、CHANGELOG、Template JSON Preview 或缩略图，前端会提交已重建的 zip，Worker 仍必须以服务端规范化结果作为最终事实：保留原包未覆盖的 `media/` / `assets/` 资源，但用服务端校验后的 manifest、README、CHANGELOG、`template.json`、缩略图和 `template.json` hash 重新生成并写入 R2 `package.zip`、兼容 `template.json`、`thumbnail.png`、`manifest.json` 与 D1 派生字段，不能保存上传瞬间的旧 zip。
 - `POST /api/v1/templates/:id/versions`：发布新版本，需要作者权限。
 - `POST /api/v1/templates/:id/like`：点赞或取消点赞，需要认证。
 - `POST /api/v1/templates/:id/report`：举报，需要认证。
@@ -175,13 +180,13 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 
 匿名公开读取端点需要同时服务浏览器页面、workers.dev preview、自定义域名和 VSCode Webview。本方案允许 `/api/v1/*` 中的 GET / OPTIONS 公开 CORS 访问，并暴露下载响应所需的 `content-disposition`、`x-marketplace-storage-mode`、`x-marketplace-catalog-storage-mode`、`x-marketplace-template-id`、`x-marketplace-version-id` 和 `x-marketplace-sha256` 响应头。该策略只适用于不携带 cookie/token 的公开读取与下载；GitHub OAuth、发布、点赞、举报和治理后台写接口需要在实现时单独收紧 origin、credentials 与权限校验，不能默认继承匿名读取 CORS 策略。
 
-下载端点的响应语义分两层固定：正式 Worker 在存在 `TEMPLATE_BUCKET` R2 binding 时，先用 D1 / seed repository 解析模板版本元数据，再从 R2 读取 `template.json` 并以 `Content-Disposition: attachment` 返回真实文件，响应头携带 `x-marketplace-storage-mode: r2`、模板 id、版本 id 和 D1 中记录的 sha256；当本地开发或测试环境没有 R2 binding 时，端点仍返回包含 `objectKey`、`sha256`、`sizeBytes` 和 `downloadUrl` 的显式元数据 JSON，作为 seed / D1 降级路径，不冒充真实对象下载。缩略图端点同样先通过 D1 / seed repository 解析版本，再读取该版本的 `thumbnailKey`；R2 对象存在时返回 `image/png` 和公开缓存头，不记录下载计数；无 R2 binding 时返回 seed SVG，前端仍保留渐变占位防止图片加载失败导致卡片空白。
+下载端点的响应语义分两层固定：正式 Worker 在存在 `TEMPLATE_BUCKET` R2 binding 时，先用 D1 / seed repository 解析模板版本元数据；`/download` 从 R2 读取 `package.zip` 并以 `Content-Disposition: attachment` 返回真实完整包，轻量导出接口从同一包派生的兼容 `template.json` 对象返回 JSON 文件。响应头携带 `x-marketplace-storage-mode: r2`、模板 id、版本 id 和 D1 中记录的 sha256；如果迁移期旧版本目录缺少 `package.zip` 但仍存在兼容 `template.json`，Worker 可用 D1 中的 README / CHANGELOG / 版本描述 / 缩略图即时生成一个最小完整包并返回 zip，响应以 `x-marketplace-package-source: generated-from-template-json` 标记，但仍不让浏览器主下载退回 JSON。该 fallback 只用于兼容历史调试数据和早期发布数据，后续 D1 显式 package key / hash 迁移完成后应收敛为真实 package 对象优先。当本地开发或测试环境没有 R2 binding 时，端点仍返回包含 `objectKey`、`sha256`、`sizeBytes` 和 `downloadUrl` 的显式元数据 JSON，完整包下载额外返回 `packageObjectKey` 和 `packageDownloadUrl`，作为 seed / D1 降级路径，不冒充真实对象下载。缩略图端点同样先通过 D1 / seed repository 解析版本，再读取该版本的 `thumbnailKey`；R2 对象存在时返回 `image/png` 和公开缓存头，不记录下载计数；无 R2 binding 时返回 seed SVG，前端仍保留渐变占位防止图片加载失败导致卡片空白。
 
 D1 在 Phase 1-4 范围内的核心表（通过 Drizzle ORM 定义在 `packages/marketplace-shared/src/schema.ts`）包括：
 
 - `users`：GitHub user id、login、display name、avatar、创建时间、最后登录时间和封禁状态。
 - `templates`：模板 id、slug、当前最新版本、名称、描述、发布者、状态、累计下载、累计点赞、创建和更新时间。
-- `template_versions`：版本 id、模板 id、递增版本号、更新说明、R2 object key、缩略图 key、sha256、文件大小、schema version、发布状态。
+- `template_versions`：版本 id、模板 id、递增版本号、更新说明、R2 canonical package object key、兼容 `template.json` object key、缩略图 key、sha256、文件大小、schema version、发布状态。
 - `template_tags`：模板与自由标签的多对多关系，标签使用规范化小写存储，显示文本保留原始输入。
 - `template_likes` / `template_collections`：用户互动关系，使用唯一约束保证每人每模板一次。
 - `template_daily_stats`：按天聚合下载、点赞和发布指标，服务趋势图与排行榜。
@@ -194,22 +199,85 @@ R2 对象按不可变版本组织，示例 key：
 - `templates/{templateId}/versions/{versionId}/thumbnail.png`
 - `templates/{templateId}/versions/{versionId}/package.zip`
 
-模板 JSON 上传后先通过 Zod schema 和业务规则校验，再写入 R2；D1 中保存对象 key、大小、hash 和版本状态。发布接口生成的对象 key 使用不可复用的 `versionId`，而不是只用递增 `versionNumber`，避免并发发布新版本时两个请求先写入同一个 R2 key 再由 D1 唯一约束拒绝其中一个，导致成功版本的对象内容被失败请求覆盖。发布 API 的默认模板 JSON 大小上限为 5MB，并可通过 Worker 环境变量 `MARKETPLACE_MAX_TEMPLATE_BYTES` 调整；产品最终阈值调整时必须同步产品规格和测试。版本一旦上架，不原地覆盖对象；发布新版本只创建新的 `template_versions` 记录并更新 `templates.latest_version_id`。
+模板包上传后先通过 Zod schema 和业务规则校验，再写入 R2；D1 中保存对象 key、大小、hash 和版本状态。发布接口生成的对象 key 使用不可复用的 `versionId`，而不是只用递增 `versionNumber`，避免并发发布新版本时两个请求先写入同一个 R2 key 再由 D1 唯一约束拒绝其中一个，导致成功版本的对象内容被失败请求覆盖。发布 API 的默认包大小上限不再沿用早期 `template.json` 的 5MB；模板主体仍保持 5MB hard limit，但完整模板包按下文媒体配额提升到 50MB 压缩包 hard limit。Worker 环境变量后续应从 `MARKETPLACE_MAX_TEMPLATE_BYTES` 拆成包、模板主体、README、媒体等分项上限；产品阈值调整时必须同步产品规格和测试。版本一旦上架，不原地覆盖对象；发布新版本只创建新的 `template_versions` 记录并更新 `templates.latest_version_id`。
 
-### 7.5 市场模板包与本地安装元数据
+### 7.5 外部插件仓库的包形态调研结论
 
-市场 canonical package 包含三层内容：
+模板市场发布单元不能长期停留在“一个 `template.json` 加若干表单字段”。外部成熟生态普遍把可安装内容、机器可读 manifest、面向人的说明、变更记录和媒体资源组合成一个稳定包，再由中心索引或市场数据库抽取其中的少量字段用于搜索、列表和下载。
 
-1. `template.json`：仍然是当前本地模板的 `CanvasTemplateDocument`，只描述节点、边和静态配置。
-2. `manifest.json`：市场包 manifest，记录市场模板 id、版本 id、版本号、发布者、标签、描述、对象 hash、最小扩展版本、provider 标注和缩略图引用。
-3. `thumbnail.png`：卡片和详情页缩略图。
+调研到的代表模式如下：
 
-插件安装市场模板时，让用户为目标模板选择“本地（当前设备）”或可用 workspace 模板目录作为安装目标。插件内列表行可以展示同一安装位置下拉作为默认目标预选；安装快捷动作打开详情页并进入安装确认上下文，用户在详情页点击安装 split button 后，本地目标写入 `globalStorageUri/templates/marketplace/`，workspace 目标写入当前 workspace 下 `.dev-session-canvas/templates/marketplace/`，并在相邻位置写入 sidecar，例如 `Review-Loop.market.json`。sidecar 记录 `marketTemplateId`、`marketTemplateSlug`、`marketVersionId`、`installedVersionNumber`、`installedAt`、`sourceUrl`、`publisher`、`thumbnailKey` 和 `checksum`。这样模板即使离线也可以作为普通用户模板应用；当市场 API 可用时，宿主再用 sidecar 检查更新、显示市场来源和执行回滚。模板目录扫描会忽略 `*.market.json`，避免 sidecar 被误解析成模板文件；用户手动保存或导入覆盖同一路径时会移除 sidecar，防止普通本地模板继续被标记为市场来源。市场模板首次安装到某个目标位置时会生成本地唯一模板 id；同一目标位置内更新或重装时保留原本地 id 和创建时间，避免默认模板引用、侧栏选择态与行级操作在版本更新后失效，同时允许同一市场模板在本地和 workspace 各有独立可操作副本。侧栏市场模板标签显示为 `市场 · 本地` 或 `市场 · 工作区`。
+- VS Code 扩展以根目录 `package.json` 作为 manifest，`README.md` 作为 Marketplace 详情正文，`description` / `displayName` / icon / repository 等字段用于搜索和展示；`vsce` 负责打包、版本递增、`.vscodeignore` 过滤和发布前脚本。
+- Obsidian 插件要求仓库根目录包含 `README.md`、`LICENSE` 和 `manifest.json`；发布后，社区目录的 `community-plugins.json` 只记录 `id`、`name`、`author`、`description`、`repo` 这类索引字段，真实安装资产从 GitHub release 下载 `main.js`、`manifest.json` 和可选 `styles.css`。
+- Terraform Registry 推荐标准模块目录，根 README、`examples/` 和模块源码共同组成可复用包；工具可理解该目录并生成文档与索引。
+- Helm Chart 使用 `Chart.yaml`、`README.md`、`values.yaml`、`templates/` 等目录结构作为 chart 包，发布时生成 `.tgz`，仓库的 `index.yaml` 只保存名称、版本、描述、下载 URL 和 digest 等索引信息。
+- GitHub Actions 固定使用根目录 `action.yml` / `action.yaml` 作为动作元数据，并明确 metadata 文件名在已发布 Marketplace 版本之间不能随意切换。
+- WordPress 插件目录把 `readme.txt` 和 `assets/` 作为 listing 的一等输入，`Stable Tag` 指向具体版本目录，截图和图标也通过约定文件名进入展示页。
+- Figma、Chrome、Home Assistant、JetBrains 插件也都用根 manifest 描述名称、版本、兼容性、入口和权限，再把 README / listing 文案 / icon / screenshot 作为包或市场展示层的独立资产。
+
+这些案例的共同点是：manifest 只放机器可读、会影响安装或索引的字段；README / CHANGELOG 不塞进 manifest，而是作为人可编辑文件；媒体资源有固定位置；市场数据库或索引是从包内容派生出的查询视图，不应成为作者唯一编辑源；每个发布版本都应是不可变对象，并带有 digest 或等价校验信息。
+
+### 7.6 市场模板包与本地安装元数据
+
+Dev Session Canvas 把模板内容形态分成“轻量模板”和“完整模板”。轻量模板是单个 `template.json`，只表达可应用到画布的 `CanvasTemplateDocument`，用于旧流程兼容、快速导入 / 导出和调试。完整模板是 `package.zip` 或解压后的模板包目录，承载模板主体、机器可读 manifest、README、CHANGELOG、缩略图和媒体 / 附件资源。模板市场只管理完整模板：即使用户通过 `template.json` + 表单字段提交，服务端也必须组装出同一份完整模板包；高级作者上传 `package.zip` 时，服务端校验并规范化后保存完整包。不能把轻量模板作为市场记录、安装记录或回滚记录的最终事实。
+
+Dev Session Canvas 后续应把市场模板的 canonical 发布单元升级为“完整模板包目录 / 完整模板包归档”，而不是直接把发布表单字段写成最终事实。推荐包目录如下：
+
+```
+template-package/
+  template-package.json
+  template.json
+  README.md
+  CHANGELOG.md
+  media/
+    thumbnail.png
+    preview.png
+  assets/
+```
+
+`template-package.json` 是包 manifest，使用专用文件名而不是泛化的 `manifest.json`，避免和浏览器扩展、Obsidian、Home Assistant 等生态的 manifest 语义混淆。首版字段建议包括：
+
+- `schemaVersion`：模板包 schema 版本，首版为 `1`。
+- `slug`、`name`、`description`、`tags`：用于市场索引和详情页标题的一等字段，其中 `description` 是一句话描述。
+- `template`、`readme`、`changelog`、`thumbnail`：指向包内 `template.json`、`README.md`、`CHANGELOG.md` 和缩略图文件的相对路径，默认值就是上方约定路径。
+- `minExtensionVersion`：声明模板包需要的最低 Dev Session Canvas 版本；安装端遇到不兼容版本时提示并阻止或降级。
+- `providers`：从 `template.json` 中 Agent 节点自动提取，也允许发布前显式确认；用于市场详情标注 provider 依赖。
+- `media.gallery`：声明 README 和详情页可展示的图片 / 视频资源，条目包含 `type`、`path`、`alt` / `title` 和可选 `poster`。
+- `license`、`homepage`、`repository`：可选，用于后续治理、归属和资源链接。
+
+包大小采用分层限制，而不是把早期 5MB 模板 JSON 限制整体放大。正式口径为：`template.json` 继续保持 5MB hard limit；`template-package.json` 64KB hard limit；`README.md` 512KB soft warning、1MB hard limit；`CHANGELOG.md` 256KB hard limit；`media/thumbnail.png` 1MB hard limit；单张图片 5MB hard limit；单个视频 30MB hard limit、最多 2 个；包内媒体总量 45MB hard limit；压缩包 50MB hard limit；解压后 100MB hard limit；文件总数 100 个 hard limit，媒体文件建议最多 20 个。官方精选模板若确实需要更大视频，后续通过管理员 override 单独设计，不作为普通发布默认能力。
+
+包内 `template.json` 仍然是当前本地模板的 `CanvasTemplateDocument`，只描述节点、边和静态配置；远端下载量、点赞、举报、发布者、安装来源和市场版本号都不写进它。`README.md` 是详情页主内容，`CHANGELOG.md` 是版本变更记录，`media/thumbnail.png` 是卡片和详情页缩略图。后续若要支持多张预览图、示例配置或附件，只能放入 `media/` 或 `assets/`，并通过 `template-package.json` 引用，不能临时新增散落字段。
+
+README 媒体只支持受控 Markdown 和包内相对资源。图片引用使用 `![说明](./media/screenshot.png)`；视频不允许作者写任意 HTML embed，先通过 `media.gallery` 声明，渲染时由市场前端生成受控 video card。相对路径只能指向包内 `media/` 或 `assets/`，禁止 `..`、绝对路径、`file:`、`data:`、`javascript:`、iframe、事件属性、脚本和不受控 style。外部 `https://` 图片或视频默认只显示为普通链接，不内嵌渲染，避免第三方追踪、CSP 例外和内容治理外溢。视频默认不 autoplay，使用 `preload="metadata"`，由用户点击后加载。浏览器端和 VSCode Webview 必须使用同一套 Markdown sanitizer 与资源 URL 映射规则。
+
+市场数据库继续保存从包中抽取的索引视图：`templates.slug`、`templates.name`、`templates.description`、`templates.readme`、`template_tags` 和 `template_versions.changelog` 等字段可以保留，但它们是包内容的派生缓存，用于列表、搜索、详情和统计，而不是作者维护模板的唯一来源。发布新版本时，Worker 应先校验完整包，再把派生字段写入 D1，并把包归档写入 R2 不可变路径。
+
+R2 对象也应从“只存 `template.json`”演进为“存完整 canonical 包，并保留兼容派生物”：
+
+- `templates/{templateId}/versions/{versionId}/package.zip`：canonical 完整模板包归档，安装、回滚、审计和导出优先使用它。
+- `templates/{templateId}/versions/{versionId}/template.json`：从包中抽出的兼容轻量模板文件，保留给轻量模板导出接口、旧客户端和调试场景。
+- `templates/{templateId}/versions/{versionId}/thumbnail.png`：从包中抽出的缩略图，继续服务卡片和详情页缓存。
+- `templates/{templateId}/versions/{versionId}/manifest.json`：可选的包 manifest 派生副本，便于调试和无 zip 环境读取；字段来源仍是 `template-package.json`。
+
+API 迁移采用兼容优先策略。当前 `POST /api/v1/templates` 的 JSON request body 继续接受 `name`、`slug`、`description`、`readme`、`changelog`、`templateDocument` 和 `thumbnailPngBase64`，这条路径在产品上称为“轻量模板输入”：用户上传 `template.json` 并手动填写公开字段，但 Worker 必须把这些输入组装成完整模板包后再写入 R2。高级作者可使用 `POST /api/v1/templates/package` 以 multipart / zip 上传完整包。浏览器发布页必须把 `template.json` 上传和 `package.zip` 上传视为两个互斥入口：选择 `template.json` 后进入 JSON 模式并清空原包状态，选择 `package.zip` 后进入 Package 模式并把包内 manifest、README、CHANGELOG、template JSON、缩略图和媒体资源作为当前待发布包的来源。Package 模式下页面允许继续编辑名称、slug、描述、tags、README、CHANGELOG、Template JSON Preview 和缩略图；点击发布时，前端必须基于原包资源重新生成 canonical `package.zip`，把表单修改写回 `template-package.json`、`README.md`、`CHANGELOG.md`、`template.json` 和 `media/thumbnail.png`，并保留原包 `media/` / `assets/` 中未被覆盖的资源，再提交给 `POST /api/v1/templates/package`。这样市场最终保存的 R2 `package.zip`、兼容 `template.json`、`thumbnail.png`、`manifest.json` 与 D1 派生字段都来自用户确认后的同一份包，避免“页面显示已编辑但服务端发布旧 zip”的分裂。
+
+两条路径最终都生成同一份 R2 package 和同一套 D1 派生字段。产品下载语义区分“下载完整模板”和“导出轻量模板”：浏览器以 `Download full package` / “下载完整模板” 获取完整 `package.zip` 作为主路径，该动作对应 `/download`；浏览器保留 `Download template.json` 作为兼容动作，通过 `/template.json` 这类单独接口把包内模板主体导出为轻量模板使用。`/package` 只是当前已实现过渡接口，后续应迁移为 `/download` 的别名或移除。VSCode 安装默认后续应读取完整包并校验 manifest，安装后的本地管理对象应是 `package.zip` 或解压后的模板包目录加 market sidecar，而不是从包里抽出孤立 `template.json` 作为市场模板事实。应用到画布时仍读取包内 `template.json`，但 README、CHANGELOG、缩略图、媒体和 manifest 继续作为完整模板内容保留，必要时可按媒体懒加载策略避免安装阶段下载或加载大视频。
+
+模板市场还需要区分 `template version` 和 `listing revision`。`template version` 只在 `template.json`、Provider 要求或模板行为变化时递增，并触发已安装用户的更新提示、版本历史和回滚能力；`listing revision` 用于 README、描述、标签、缩略图、截图和视频等展示内容变更，不触发已安装模板更新。早期实现如需简化，可以先把所有包变更当作新版本，但正式方案必须在数据模型中预留 listing revision，避免发布者修 README typo 或替换截图时打扰所有安装用户。
+
+模板包设计需要配套用户教育与作者工具，避免把包格式本身变成发布前置门槛。普通用户主路径仍是“保存本地模板 -> 发布到市场”：发布页以基础信息、模板内容、README、CHANGELOG 和媒体上传区组织表单，背后自动生成模板包；页面侧栏展示“将发布为模板包”的结构预览和 package lint 结果，让用户逐步理解 `template-package/`、`template.json`、`README.md`、`CHANGELOG.md` 与 `media/` 的对应关系。高级作者路径提供 `Download starter package`、`Export current template as package`、`Upload package.zip`、`Validate package` 和 `Preview marketplace page`，支持用 Git 维护完整模板包。后续还应提供 `template-package.schema.json`、官方示例包（minimal、with-readme-media、with-video-demo、listing-only-update-example）和作者文档 `docs/templates/authoring-template-packages.md`、`docs/templates/package-format.md`、`docs/templates/package-size-and-media-rules.md`、`docs/templates/publishing-workflow.md`。落地顺序为：先在发布页加入包结构预览、lint 结果和 README 媒体规则提示；再补官方示例包和作者文档；再做 schema / `$schema` / package upload；最后再做 CLI 或命令面板里的“创建模板包 / 校验模板包”。
+
+插件安装市场模板时，让用户为目标模板选择“本地（当前设备）”或可用 workspace 模板目录作为安装目标。插件内列表行可以展示同一安装位置下拉作为默认目标预选；安装快捷动作打开详情页并进入安装确认上下文，用户在详情页点击安装 split button 后，宿主调用 `GET /api/v1/templates/:id/download?version=` 下载完整 `package.zip`，校验 zip、manifest、sha256、大小和安全路径，然后写入完整模板目录。本地目标路径为 `globalStorageUri/templates/marketplace/{slug}/`，workspace 目标路径为当前 workspace 下 `.dev-session-canvas/templates/marketplace/{slug}/`；若同一目标位置存在同 slug 模板，更新或重装在同一目录内原子替换包内容。
+
+每个 VSCode 市场模板目录至少包含 `package.zip`、解压后的 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md`、`media/`、`assets/` 和 `.market.json` sidecar。sidecar 记录 `marketTemplateId`、`marketTemplateSlug`、`marketVersionId`、`installedVersionNumber`、`installedAt`、`sourceUrl`、`publisher`、`packageSha256`、`packageSizeBytes`、`manifestPath`、`templatePath`、`readmePath`、`changelogPath`、`thumbnailPath`、`localTemplateId`、`templateVersion` 和后续 `listingRevision`。这样模板即使离线也可以查看 README / CHANGELOG 并作为普通用户模板应用；当市场 API 可用时，宿主再用 sidecar 检查更新、显示市场来源和执行回滚。
+
+模板目录扫描对市场模板使用专门分支：普通用户模板仍扫描 `*.json` 文件；市场模板扫描 `marketplace/{slug}/.market.json`，再按 sidecar 指向的包内 `template.json` 解析模板主体。扫描器必须忽略 `marketplace/{slug}/template.json`、`manifest.json`、`*.market.json` 和包内其他 JSON，避免把完整包拆成多个普通模板。用户手动保存或导入到普通模板目录不会覆盖市场模板；如果用户在市场模板目录内手工改写包内 `template.json`，宿主应把该目录标记为本地修改或要求另存为普通用户模板，不能继续把它当作干净的市场安装。市场模板首次安装到某个目标位置时会生成本地唯一 `localTemplateId` 并写入 sidecar；同一目标位置内更新或重装时保留 `localTemplateId` 和包内模板的本地创建时间映射，避免默认模板引用、侧栏选择态与行级操作在版本更新后失效，同时允许同一市场模板在本地和 workspace 各有独立可操作副本。侧栏市场模板标签显示为 `市场 · 本地` 或 `市场 · 工作区`。
 
 
 本地模板格式不新增 `market` category。UI 可以把“市场来源”作为存储层派生标签展示，但 `CanvasTemplateDocument` 中的 `category` 仍只表达模板主体在本地模板系统中的兼容分类。
 
-### 7.6 认证与权限
+### 7.7 认证与权限
 
 浏览器端登录使用 GitHub OAuth web application flow，并启用 `state` 与 PKCE。OAuth App 初期可以归属个人 GitHub 账号，不要求先创建 GitHub Organization；后续如需要团队交接，再把 OAuth App 转移到组织或重新创建生产 OAuth App。Worker 完成 code exchange 后调用 GitHub API 校验用户身份，然后创建或更新 `users` 记录，并写入 HttpOnly、Secure、SameSite 的市场 session cookie。浏览器发布页和个人模板页发起登录时把当前 `/templates/...` 路径写入签名 state，callback 完成后回到发起页面；退出登录只清理市场 session cookie，不撤销 GitHub OAuth grant；外部 URL、协议相对 URL、反斜杠和控制字符都会回退到 `/templates`。
 
@@ -225,15 +293,15 @@ GitHub OAuth App 只有单一 callback URL；因为预览环境使用 `*.workers
 - 管理员由 `admin_roles` 判定，初始管理员通过 Worker secret 中的 GitHub login / id allowlist bootstrap；所有管理动作写入 `admin_audit_logs`。
 - 被封禁用户不能发布、点赞或举报；已上架模板是否下架由治理动作单独决定。
 
-### 7.7 上传校验、治理与安全边界
+### 7.8 上传校验、治理与安全边界
 
-上传入口按顺序执行：请求大小限制、MIME / 扩展名检查、JSON parse、`CanvasTemplateDocument` / 市场 manifest Zod schema 校验、节点/边业务规则校验、Provider 标注提取、关联 Markdown Note 内容模式与 workspace 相对路径校验、缩略图类型和尺寸检查、文本字段长度限制、危险 URL / 控制字符检查、hash 计算、写入 R2、写入 D1。任一步失败都返回结构化错误码。自动化测试可以通过 `MARKETPLACE_ALLOW_TEST_AUTH=true` 启用 fake auth header，但 preview / production 不能开启该开关。
+上传入口按顺序执行：请求大小限制、MIME / 扩展名检查、压缩包文件数量 / 路径穿越 / 解压后大小检查、包归档解压或 JSON body 组包、`template-package.json` parse、`CanvasTemplateDocument` / 模板包 manifest Zod schema 校验、节点/边业务规则校验、Provider 标注提取、关联 Markdown Note 内容模式与 workspace 相对路径校验、README / CHANGELOG / 描述 / 标签长度检查、缩略图和媒体类型 / 尺寸 / 数量检查、README 媒体引用解析和 sanitizer 检查、危险 URL / 控制字符检查、hash 计算、写入 R2、写入 D1。任一步失败都返回结构化错误码。自动化测试可以通过 `MARKETPLACE_ALLOW_TEST_AUTH=true` 启用 fake auth header，但 preview / production 不能开启该开关。
 
 内容安全在 Phase 1-4 范围内只做确定性检查和举报治理，不把外部 AI 审核服务列为硬依赖。若后续需要接入第三方审核，应新增设计文档说明数据出境、误杀处理和人工复核流程。
 
 治理后台与普通 Web 端共享 React 组件和 API client，但路由、权限判断和审计日志必须由 Worker 强制执行；前端隐藏按钮不能作为权限边界。
 
-### 7.8 排序、统计和缓存
+### 7.9 排序、统计和缓存
 
 排序需求在 Phase 1-4 范围内支持四类：下载量、点赞数、最新发布、最近更新。综合热度的候选公式为：
 
@@ -243,13 +311,13 @@ GitHub OAuth App 只有单一 callback URL；因为预览环境使用 `*.workers
 
 下载接口先确认 R2 对象存在，再记录计数并返回对象或重定向到短期对象 URL。当前 D1 实现会在真实 R2 文件响应前把 `templates.download_count` 累加 1，并对 `template_daily_stats(template_id, day)` 做 upsert 日下载计数；如果 R2 对象缺失并返回 404，不写下载计数。缩略图接口只读取 R2 对象并设置 `public, max-age=3600, s-maxage=86400`，不写下载统计。模板详情、列表和缩略图使用 HTTP cache headers；登录用户互动状态单独请求或短缓存，避免因为全页缓存泄漏个性化状态。
 
-### 7.9 Phase 4 承载边界与退出条件
+### 7.10 Phase 4 承载边界与退出条件
 
 这次后端选型以 Phase 4 为目标，而不是只服务 Phase 1。Phase 4 的核心工作是版本化内容分发、更新检查、举报队列、管理员治理和可审计状态变更；这些能力仍然是短请求 JSON API、关系型状态、不可变对象和聚合统计的组合，不需要常驻自建应用进程。
 
 Phase 4 在本方案中的承载方式如下：
 
-- 版本历史、发布新版本、手动更新和回滚由 `template_versions`、`templates.latest_version_id`、安装 sidecar 与 R2 不可变版本对象共同承载。
+- 版本历史、发布新版本、手动更新和回滚由 `template_versions`、`templates.latest_version_id`、安装 sidecar 与 R2 不可变模板包版本对象共同承载。
 - 举报队列、模板下架/恢复、用户封禁和管理员权限由 `reports`、`users.banned_at`、`admin_roles` 和 Worker 端权限中间件承载。
 - 治理审计由 `admin_audit_logs` 记录操作者、动作、目标对象、前后状态摘要和时间戳，前端管理后台只能展示这些 API 结果，不能成为权限边界。
 - 数据统计面板优先读取 `template_daily_stats` 与累计字段，避免把 D1 设计成原始事件仓库。
@@ -286,6 +354,16 @@ Phase 4 在本方案中的承载方式如下：
 - miniflare 文档：<https://miniflare.dev/>
 - VSCode Authentication API：<https://code.visualstudio.com/api/references/vscode-api>
 - VSCode Remote / Webview / URI Handler 指南：<https://code.visualstudio.com/api/advanced-topics/remote-extensions>
+- VSCode Extension Manifest 与发布文档：<https://code.visualstudio.com/api/references/extension-manifest>、<https://code.visualstudio.com/api/working-with-extensions/publishing-extension>
+- Obsidian community plugins releases 仓库说明：<https://github.com/obsidianmd/obsidian-releases>
+- Terraform standard module structure：<https://developer.hashicorp.com/terraform/language/modules/develop/structure>
+- Helm chart 与 chart repository 文档：<https://helm.sh/docs/topics/charts/>、<https://helm.sh/docs/topics/chart_repository/>
+- GitHub Actions metadata syntax：<https://docs.github.com/en/actions/reference/workflows-and-actions/metadata-syntax>
+- WordPress plugin readme 文档：<https://developer.wordpress.org/plugins/wordpress-org/how-your-readme-txt-works/>
+- Figma plugin manifest：<https://developers.figma.com/docs/plugins/manifest/>
+- Chrome extension manifest：<https://developer.chrome.com/docs/extensions/reference/manifest>
+- Home Assistant integration manifest：<https://developers.home-assistant.io/docs/creating_integration_manifest/>
+- JetBrains plugin configuration file：<https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html>
 - GitHub OAuth Apps 创建文档：<https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app>
 - GitHub OAuth Apps 授权文档：<https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps>
 - GitHub OAuth App 转移所有权文档：<https://docs.github.com/en/apps/oauth-apps/maintaining-oauth-apps/transferring-ownership-of-an-oauth-app>

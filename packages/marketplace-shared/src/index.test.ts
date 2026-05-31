@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildMarketplaceSlugFromName,
+  buildMarketplacePackageObjectKey,
   buildSeedDownloadResponse,
+  buildSeedPackageDownloadResponse,
   calculateHotScore,
   getSeedTemplateDetail,
   listSeedTemplates,
   marketplacePublishTemplateRequestSchema,
-  marketplaceSeedTemplates
+  marketplaceSeedTemplates,
+  marketplaceTemplatePackageManifestSchema
 } from './index';
 import { marketplaceSchema } from './schema';
 
@@ -49,6 +52,15 @@ describe('marketplace shared seed repository', () => {
     expect(response?.storageMode).toBe('seed');
     expect(response?.versionNumber).toBe(2);
     expect(response?.objectKey).toContain('/versions/2/template.json');
+  });
+
+  it('builds package download metadata from the version object directory', () => {
+    const response = buildSeedPackageDownloadResponse('review-loop');
+
+    expect(response?.storageMode).toBe('seed');
+    expect(response?.packageObjectKey).toBe('templates/tmpl-review-loop/versions/2/package.zip');
+    expect(response?.packageDownloadUrl).toBe('/api/v1/templates/tmpl-review-loop/download?version=ver-review-loop-2');
+    expect(buildMarketplacePackageObjectKey('templates/custom/version/template.json')).toBe('templates/custom/version/package.zip');
   });
 
   it('keeps previous review-loop versions downloadable by explicit version id', () => {
@@ -109,6 +121,54 @@ describe('marketplace shared seed repository', () => {
     });
 
     expect(parsed.tags).toEqual(['Review', 'Quality']);
+  });
+
+  it('validates template package manifests and normalizes package paths', () => {
+    const parsed = marketplaceTemplatePackageManifestSchema.parse({
+      schemaVersion: 1,
+      slug: 'Package Smoke',
+      name: 'Package Smoke',
+      description: 'A package-format smoke fixture.',
+      tags: ['Package', 'package', 'Smoke'],
+      template: './template.json',
+      readme: './README.md',
+      changelog: './CHANGELOG.md',
+      media: {
+        thumbnail: './media/thumbnail.png',
+        gallery: [
+          {
+            type: 'video',
+            path: './media/demo.mp4',
+            poster: './media/screenshot.png',
+            title: 'Demo'
+          }
+        ]
+      }
+    });
+
+    expect(parsed.slug).toBe('package-smoke');
+    expect(parsed.tags).toEqual(['Package', 'Smoke']);
+    expect(parsed.template).toBe('template.json');
+    expect(parsed.thumbnail).toBe('media/thumbnail.png');
+    expect(parsed.media?.gallery?.[0]?.path).toBe('media/demo.mp4');
+  });
+
+  it('rejects template package manifests with media outside media or assets', () => {
+    expect(() =>
+      marketplaceTemplatePackageManifestSchema.parse({
+        schemaVersion: 1,
+        slug: 'unsafe-package',
+        name: 'Unsafe Package',
+        description: 'Attempts to reference an unsafe media path.',
+        tags: ['unsafe'],
+        template: 'template.json',
+        readme: 'README.md',
+        changelog: 'CHANGELOG.md',
+        media: {
+          thumbnail: '../thumbnail.png'
+        }
+      })
+    ).toThrow(/Package media/);
   });
 
   it('accepts associated Markdown note modes from canvas template documents', () => {

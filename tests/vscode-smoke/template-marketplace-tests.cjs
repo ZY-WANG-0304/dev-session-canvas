@@ -1,6 +1,7 @@
 const assert = require('assert');
 const crypto = require('crypto');
 const http = require('http');
+const { zipSync } = require('fflate');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 
@@ -110,6 +111,9 @@ async function verifyMarketplacePanelOperations(fixture) {
   assert.strictEqual(installedEntry.marketplace.installedVersionNumber, 2);
   assert.strictEqual(installedEntry.marketplace.sourceUrl, `${fixture.sourceUrl}/panel-review-loop`);
   assert.ok(installedEntry.storageLocation?.id, 'Expected installed marketplace template to record its storage location.');
+  assert.strictEqual(installedEntry.marketplace.templatePath, 'template.json');
+  assert.ok(installedEntry.marketplace.packageSha256, 'Expected installed marketplace template to record package checksum.');
+  assert.match(installedEntry.filePath, /marketplace[\\/]panel-review-loop[\\/]template\.json$/u);
 }
 
 async function verifyMarketplacePanelPublish(fixture) {
@@ -363,6 +367,11 @@ function createMarketplaceFixture(port) {
       ['ver-panel-review-2', reviewDocumentV2],
       ['ver-panel-review-1', reviewDocumentV1],
       ['ver-panel-release-1', releaseDocument]
+    ]),
+    packagesByVersionId: new Map([
+      ['ver-panel-review-2', createTemplatePackageZip(review, review.latestVersion, reviewDocumentV2)],
+      ['ver-panel-review-1', createTemplatePackageZip(review, review.versions[1], reviewDocumentV1)],
+      ['ver-panel-release-1', createTemplatePackageZip(release, release.latestVersion, releaseDocument)]
     ])
   };
 }
@@ -396,7 +405,7 @@ function createTemplateDetail({ id, slug, name, description, tags, readme, versi
 }
 
 function createVersion({ id, templateId, versionNumber, changelog, document }) {
-  const text = JSON.stringify(document);
+  const text = encodeTemplateDocumentForPackage(document);
   return {
     id,
     templateId,
@@ -437,6 +446,39 @@ function createTemplateDocument(id, name) {
       edges: []
     }
   };
+}
+
+function encodeTemplateDocumentForPackage(document) {
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
+
+
+function createTemplatePackageZip(template, version, document) {
+  const encoder = new TextEncoder();
+  return zipSync(
+    {
+      'template-package.json': encoder.encode(JSON.stringify({
+        schemaVersion: 1,
+        slug: template.slug,
+        name: template.name,
+        description: template.description,
+        tags: template.tags,
+        template: 'template.json',
+        readme: 'README.md',
+        changelog: 'CHANGELOG.md',
+        thumbnail: 'media/thumbnail.png'
+      }, null, 2)),
+      'template.json': encoder.encode(encodeTemplateDocumentForPackage(document)),
+      'README.md': encoder.encode(`${template.readme}
+`),
+      'CHANGELOG.md': encoder.encode(`${version.changelog}
+`),
+      media: {
+        'thumbnail.png': new Uint8Array([137, 80, 78, 71])
+      }
+    },
+    { level: 0 }
+  );
 }
 
 async function startMarketplaceFixtureServer(port, fixture) {
@@ -544,6 +586,19 @@ async function handleMarketplaceRequest(request, response, fixture) {
     const downloadMatch = url.pathname.match(/^\/api\/v1\/templates\/([^/]+)\/download$/);
     if (request.method === 'GET' && downloadMatch) {
       const template = findTemplate(fixture, downloadMatch[1]);
+      const versionId = url.searchParams.get('version') || template?.latestVersion.id;
+      const packageBytes = versionId ? fixture.packagesByVersionId.get(versionId) : undefined;
+      if (!template || !packageBytes) {
+        writeJson(response, 404, { error: { code: 'template_not_found', message: 'Template was not found.' } });
+        return;
+      }
+      writeResponse(response, 200, 'application/zip', Buffer.from(packageBytes));
+      return;
+    }
+
+    const templateJsonMatch = url.pathname.match(/^\/api\/v1\/templates\/([^/]+)\/template\.json$/);
+    if (request.method === 'GET' && templateJsonMatch) {
+      const template = findTemplate(fixture, templateJsonMatch[1]);
       const versionId = url.searchParams.get('version') || template?.latestVersion.id;
       const document = versionId ? fixture.documentsByVersionId.get(versionId) : undefined;
       if (!template || !document) {
