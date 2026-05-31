@@ -319,11 +319,16 @@ interface AgentResumeContext {
   storagePath?: string;
 }
 
-interface CreateAgentNodeOptions {
+interface ExecutionCwdValidationOptions {
+  allowLegacyDefaultCwd?: boolean;
+}
+
+interface CreateNodeOptions {
   requestId?: string;
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
+  cwdOverride?: string;
   targetGroupId?: string;
   titleOverride?: string;
 }
@@ -561,6 +566,7 @@ interface StartExecutionSessionForTestParams {
   rows?: number;
   provider?: AgentProviderKind;
   resumeRequested?: boolean;
+  cwdOverride?: string;
   injectAgentOutputChunk?: string;
   injectAgentExistingOutput?: string;
 }
@@ -737,11 +743,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly activeAssociatedNoteMarkdownEdits = new Map<string, ActiveAssociatedNoteMarkdownEdit>();
   private readonly noteMarkdownDropResourceKeysInProgress = new Set<string>();
   private lastUnavailableConfiguredTerminalShellWarningKey: string | undefined;
-  private readonly resolvedShellEnvironmentPatchPromises = new Map<
-    ShellEnvironmentProbeMode,
-    Promise<ResolvedShellEnvironmentPatch>
-  >();
-  private readonly resolvedShellEnvironmentPatches = new Map<ShellEnvironmentProbeMode, ResolvedShellEnvironmentPatch>();
+  private readonly resolvedShellEnvironmentPatchPromises = new Map<string, Promise<ResolvedShellEnvironmentPatch>>();
+  private readonly resolvedShellEnvironmentPatches = new Map<string, ResolvedShellEnvironmentPatch>();
 
   public readonly onDidChangeSidebarState = this.sidebarStateEmitter.event;
   public readonly onDidChangeTemplateCatalog = this.templateCatalogEmitter.event;
@@ -1046,6 +1049,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodes: this.state.nodes,
       groups: this.state.groups ?? []
     });
+  }
+
+  public getWorkspaceFoldersForDisplay(): CanvasRuntimeContext['workspaceFolders'] {
+    return (vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => ({
+      name: workspaceFolder.name,
+      path: workspaceFolder.uri.fsPath
+    }));
   }
 
   public getCanvasTemplateAssociatedNoteSaveItems(): CanvasTemplateAssociatedNoteSaveFormItem[] {
@@ -1514,7 +1524,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const diagnosticHostMessages = cloneJsonValue(this.diagnosticHostMessages);
     const executionFileLinkResolveDiagnostics = this.collectExecutionFileLinkResolveDiagnostics();
     const agentCliConfig = this.getAgentCliConfig();
-    const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(this.buildBaseExecutionEnvironment());
+    const defaultCwd = this.getTerminalWorkingDirectory();
+    const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(
+      this.buildBaseExecutionEnvironment(defaultCwd),
+      'interactive-login',
+      defaultCwd
+    );
     const persistedSnapshotPath = this.getPersistedCanvasSnapshotPath();
     const persistedSnapshot = this.loadPersistedCanvasSnapshot();
     const noteMarkdownDiagnostics = this.collectNoteMarkdownHostDiagnostics();
@@ -1706,12 +1721,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  public createNode(kind: CanvasCreatableNodeKind, options?: CreateAgentNodeOptions): void {
+  public createNode(kind: CanvasCreatableNodeKind, options?: CreateNodeOptions): void {
     if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
         type: 'host/requestCreateNode',
         payload: {
           kind,
+          cwd: options?.cwdOverride,
           agentProvider: options?.agentProvider,
           agentLaunchPreset: options?.agentLaunchPreset,
           agentCustomLaunchCommand: options?.agentCustomLaunchCommand
@@ -1724,6 +1740,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: options?.agentProvider,
       agentLaunchPreset: options?.agentLaunchPreset,
       agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
+      cwdOverride: options?.cwdOverride,
       titleOverride: options?.titleOverride
     });
   }
@@ -1825,7 +1842,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public createNodeForTest(
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
-    options?: CreateAgentNodeOptions
+    options?: CreateNodeOptions
   ): void {
     if (!isTestHarnessMode(this.context.extensionMode)) {
       throw new Error('createNodeForTest 仅在测试模式下可用。');
@@ -1836,6 +1853,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: options?.agentProvider,
       agentLaunchPreset: options?.agentLaunchPreset,
       agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
+      cwdOverride: options?.cwdOverride,
       titleOverride: options?.titleOverride
     });
   }
@@ -1851,6 +1869,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const provider = params.provider ?? metadata.provider;
     const cols = normalizeTerminalCols(params.cols ?? DEFAULT_TERMINAL_COLS);
     const rows = normalizeTerminalRows(params.rows ?? DEFAULT_TERMINAL_ROWS);
+    const cwd = params.cwdOverride ?? this.getExecutionNodeCwd(node, 'agent');
     const noopSubscription: DisposableLike = { dispose: () => {} };
     return {
       sessionId: createExecutionSessionId(params.nodeId, 'agent'),
@@ -1867,7 +1886,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         onExit: () => noopSubscription
       },
       shellPath: provider,
-      cwd: this.getTerminalWorkingDirectory(),
+      cwd,
       cols,
       rows,
       buffer: '',
@@ -1878,7 +1897,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         cols,
         rows,
         provider,
-        this.getTerminalWorkingDirectory(),
+        cwd,
         this.getTerminalScrollback()
       ),
       stopRequested: false,
@@ -2076,6 +2095,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('startExecutionSessionForTest 仅在测试模式下可用。');
     }
 
+    if (params.cwdOverride) {
+      const validation = this.validateExecutionCwd(params.cwdOverride);
+      if (!validation.valid) {
+        throw new Error(validation.message);
+      }
+      params.cwdOverride = validation.cwd;
+      this.state = this.applyExecutionCwdOverrideForTest(params.nodeId, params.kind, validation.cwd);
+      this.persistState();
+      this.postState('host/stateUpdated');
+    }
+
     if (params.kind === 'agent' && params.injectAgentOutputChunk) {
       const syntheticSession = this.createAgentNotificationSessionForTest(params);
       try {
@@ -2118,6 +2148,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return this.getDebugSnapshot();
+  }
+
+  private applyExecutionCwdOverrideForTest(
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    cwd: string
+  ): CanvasPrototypeState {
+    const targetNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === kind);
+    if (!targetNode) {
+      throw new Error('测试命令 devSessionCanvas.__test.startExecutionSession 需要有效的执行节点。');
+    }
+
+    return {
+      ...this.state,
+      updatedAt: new Date().toISOString(),
+      nodes: this.state.nodes.map((node) => {
+        if (node.id !== nodeId || node.kind !== kind) {
+          return node;
+        }
+
+        return applyExecutionCwdOverrideToCreatedNode(node, cwd);
+      })
+    };
   }
 
   public dispatchWebviewMessageForTest(
@@ -3959,6 +4012,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return {
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
+      workspaceFolders: this.getWorkspaceFoldersForDisplay(),
       defaultAgentProvider: this.getAgentCliConfig().defaultProvider,
       agentLaunchDefaults: this.getAgentLaunchDefaultsByProvider(),
       strongTerminalAttentionReminderMode: this.strongTerminalAttentionReminderMode,
@@ -7645,6 +7699,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           agentProvider: parsedMessage.payload.agentProvider,
           agentLaunchPreset: parsedMessage.payload.agentLaunchPreset,
           agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand,
+          cwdOverride: parsedMessage.payload.cwd,
           targetGroupId: parsedMessage.payload.targetGroupId
         });
         return;
@@ -8973,8 +9028,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const operationToken = this.beginExecutionSessionOperation('agent', nodeId);
     const existingNode = this.requireNode(nodeId, 'agent');
     const existingMetadata = ensureAgentMetadata(existingNode);
-    const cwd = this.getTerminalWorkingDirectory();
-    const executionEnv = await this.resolveExecutionEnvironment('agent');
+    const cwd = this.getExecutionNodeCwd(existingNode, 'agent');
+    const executionEnv = await this.resolveExecutionEnvironment('agent', cwd);
     await this.disposeAgentFileActivitySession(nodeId);
     const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
@@ -9088,6 +9143,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.bindRuntimeSession(nodeId, 'agent', snapshot.sessionId, runtimeStoragePath);
     this.bindAgentFileActivitySession(nodeId, fileActivitySession);
+    this.recordDiagnosticEvent('execution/started', {
+      kind: 'agent',
+      nodeId,
+      sessionId: snapshot.sessionId,
+      provider,
+      launchMode,
+      launchCommandLine: displayLaunchCommandLine,
+      requestedCommand: cliSpec.requestedCommand,
+      launchArgs,
+      cols: normalizedCols,
+      rows: normalizedRows,
+      shellPath: cliSpec.command,
+      cwd,
+      resumeStrategy: resumeContext.strategy,
+      resumeSessionId: resumeContext.sessionId ?? null,
+      resumeStoragePath: resumeContext.storagePath ?? null,
+      runtimeBackend: backend.kind,
+      runtimeGuarantee: backend.guarantee
+    });
     this.applyRuntimeSupervisorSnapshot(nodeId, 'agent', snapshot, {
       postSnapshot: true,
       historyOnUnavailable: true
@@ -9103,8 +9177,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingNode = this.requireNode(nodeId, 'terminal');
     const existingMetadata = ensureTerminalMetadata(existingNode);
     const shellPath = this.getTerminalShellPath();
-    const cwd = this.getTerminalWorkingDirectory();
-    const executionEnv = await this.resolveExecutionEnvironment('terminal');
+    const cwd = this.getExecutionNodeCwd(existingNode, 'terminal');
+    const executionEnv = await this.resolveExecutionEnvironment('terminal', cwd);
     const { client, backend, runtimeStoragePath, fallbackReason } =
       await this.getPreferredRuntimeSupervisorClient();
     if (fallbackReason) {
@@ -9185,6 +9259,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.bindRuntimeSession(nodeId, 'terminal', snapshot.sessionId, runtimeStoragePath);
+    this.recordDiagnosticEvent('execution/started', {
+      kind: 'terminal',
+      nodeId,
+      sessionId: snapshot.sessionId,
+      cols: normalizedCols,
+      rows: normalizedRows,
+      shellPath,
+      cwd,
+      runtimeBackend: backend.kind,
+      runtimeGuarantee: backend.guarantee
+    });
     this.applyRuntimeSupervisorSnapshot(nodeId, 'terminal', snapshot, {
       postSnapshot: true,
       historyOnUnavailable: true
@@ -9259,6 +9344,37 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const currentMetadata = ensureAgentMetadata(agentNode);
+    const cwd = this.getExecutionNodeCwd(agentNode, 'agent');
+    const cwdUnavailableMessage = this.describeUnavailableExecutionCwd(cwd);
+    if (cwdUnavailableMessage) {
+      this.recordDiagnosticEvent('execution/startRejected', {
+        kind: 'agent',
+        nodeId,
+        reason: 'cwd-unavailable',
+        cwd,
+        message: cwdUnavailableMessage
+      });
+      this.state = updateAgentNode(this.state, nodeId, {
+        status: 'error',
+        summary: cwdUnavailableMessage,
+        metadata: buildAgentMetadataPatch(this.state, nodeId, {
+          lifecycle: 'error',
+          liveSession: false,
+          pendingLaunch: undefined,
+          lastExitMessage: cwdUnavailableMessage,
+          lastRuntimeError: cwdUnavailableMessage
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: cwdUnavailableMessage
+        }
+      });
+      return;
+    }
     const provider = requestedProvider ?? currentMetadata.provider;
     const launchMode: PendingExecutionLaunch = resumeRequested ? 'resume' : 'start';
     let freshLaunch:
@@ -9333,12 +9449,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       launchArgs: freshLaunch?.launchArgs ?? [],
       cols: normalizedCols,
       rows: normalizedRows,
+      cwd,
       workspaceTrusted: vscode.workspace.isTrusted
     });
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     if (this.isRuntimePersistenceEnabled()) {
       try {
-        cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand);
+        cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand, cwd);
         await this.startAgentSessionWithSupervisor(
           nodeId,
           normalizedCols,
@@ -9362,6 +9479,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           launchMode,
           cols: normalizedCols,
           rows: normalizedRows,
+          cwd,
           message
         });
         this.state = updateAgentNode(this.state, nodeId, {
@@ -9384,7 +9502,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             liveSession: false,
             runtimeSessionId: undefined,
             shellPath: cliSpec.command,
-            cwd: this.getTerminalWorkingDirectory(),
+            cwd,
             lastExitMessage: message,
             lastCols: normalizedCols,
             lastRows: normalizedRows,
@@ -9406,13 +9524,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       return;
     }
-    const cwd = this.getTerminalWorkingDirectory();
     const sessionId = createExecutionSessionId(nodeId, 'agent');
-    const executionEnv = await this.resolveExecutionEnvironment('agent');
+    const executionEnv = await this.resolveExecutionEnvironment('agent', cwd);
     await this.disposeAgentFileActivitySession(nodeId);
 
     try {
-      cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand);
+      cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand, cwd);
       const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
       const process = createExecutionSessionProcess(
         this.buildAgentLaunchSpec(
@@ -9691,6 +9808,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         launchMode,
         cols: normalizedCols,
         rows: normalizedRows,
+        cwd,
         message
       });
       this.state = updateAgentNode(this.state, nodeId, {
@@ -9965,13 +10083,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private async resolveAgentCli(provider: AgentProviderKind, requestedCommand?: string): Promise<AgentCliSpec> {
-    const executionEnv = await this.resolveExecutionEnvironment('agent');
+  private async resolveAgentCli(
+    provider: AgentProviderKind,
+    requestedCommand?: string,
+    cwd: string = this.getTerminalWorkingDirectory()
+  ): Promise<AgentCliSpec> {
+    const executionEnv = await this.resolveExecutionEnvironment('agent', cwd);
     const configuredSpec = this.getRequestedAgentCliSpec(
       provider,
       requestedCommand?.trim() || this.getAgentLaunchDefaults(provider).command
     );
-    const workspaceCwd = this.getTerminalWorkingDirectory();
+    const workspaceCwd = cwd;
 
     try {
       const resolution = await resolveAgentCliCommand({
@@ -9996,6 +10118,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         provider,
         requestedCommand: resolution.requestedCommand,
         resolvedCommand: resolution.resolvedCommand,
+        cwd: workspaceCwd,
         source: resolution.source
       });
 
@@ -10012,6 +10135,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.recordDiagnosticEvent('agentCli/commandResolutionFailed', {
           provider,
           requestedCommand: configuredSpec.requestedCommand,
+          cwd: workspaceCwd,
           attempts: error.attempts
         });
       }
@@ -10036,7 +10160,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private buildDebugConfigurationSnapshot(
-    shellEnvironmentPatch = this.resolvedShellEnvironmentPatches.get('interactive-login')
+    shellEnvironmentPatch = this.resolvedShellEnvironmentPatches.get(
+      this.getShellEnvironmentPatchCacheKey('interactive-login', this.getTerminalWorkingDirectory())
+    )
   ): CanvasDebugConfigurationSnapshot {
     const configuredTerminalShell = getConfiguredTerminalShell();
     return {
@@ -10061,7 +10187,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.getWorkspaceRoot() ?? defaultTerminalWorkingDirectory();
   }
 
-  private getPrioritizedBaseExecutionPathEntries(): string[] {
+  private getExecutionNodeCwd(node: CanvasNodeSummary, kind: ExecutionNodeKind): string {
+    const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+    const metadataCwd = normalizeExecutionCwd(metadata.cwd);
+    if (metadataCwd) {
+      const validation = this.validateExecutionCwd(metadataCwd, { allowLegacyDefaultCwd: true });
+      if (validation.valid) {
+        return validation.cwd;
+      }
+    }
+
+    return metadataCwd ?? this.getTerminalWorkingDirectory();
+  }
+
+  private isLegacyDefaultExecutionCwd(cwd: string): boolean {
+    const legacyDefaultCwd = normalizeExecutionCwd(defaultTerminalWorkingDirectory());
+    return Boolean(
+      legacyDefaultCwd &&
+        areSameExecutionPath(cwd, legacyDefaultCwd) &&
+        !this.resolveExecutionWorkspaceFolder(cwd)
+    );
+  }
+
+  private getPrioritizedBaseExecutionPathEntries(cwd: string = this.getTerminalWorkingDirectory()): string[] {
     if (!isTestHarnessMode(this.context.extensionMode)) {
       return [];
     }
@@ -10082,21 +10230,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
 
       if (isExplicitRelativePath(trimmedCommand)) {
-        commandDirectories.add(path.dirname(path.resolve(this.getTerminalWorkingDirectory(), trimmedCommand)));
+        commandDirectories.add(path.dirname(path.resolve(cwd, trimmedCommand)));
       }
     }
 
     return Array.from(commandDirectories);
   }
 
-  private buildBaseExecutionEnvironment(): NodeJS.ProcessEnv {
+  private buildBaseExecutionEnvironment(cwd: string = this.getTerminalWorkingDirectory()): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       TERM: process.env.TERM?.trim() || (process.platform === 'win32' ? 'xterm-color' : 'xterm-256color'),
       COLORTERM: process.env.COLORTERM?.trim() || 'truecolor'
     };
 
-    const prioritizedPathEntries = this.getPrioritizedBaseExecutionPathEntries();
+    const prioritizedPathEntries = this.getPrioritizedBaseExecutionPathEntries(cwd);
     if (prioritizedPathEntries.length > 0) {
       const existingPathEntries = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
       env.PATH = Array.from(new Set([...prioritizedPathEntries, ...existingPathEntries])).join(path.delimiter);
@@ -10109,8 +10257,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return env;
   }
 
-  private async resolveExecutionEnvironment(target: 'agent' | 'terminal'): Promise<NodeJS.ProcessEnv> {
-    const baseEnv = this.buildBaseExecutionEnvironment();
+  private async resolveExecutionEnvironment(
+    target: 'agent' | 'terminal',
+    cwd: string = this.getTerminalWorkingDirectory()
+  ): Promise<NodeJS.ProcessEnv> {
+    const baseEnv = this.buildBaseExecutionEnvironment(cwd);
     if (
       !shouldResolveShellEnvironmentPatchForExecutionTarget(target, process.platform, {
         terminalInheritEnv: this.getTerminalInheritEnv()
@@ -10121,10 +10272,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(
       baseEnv,
-      this.getShellEnvironmentProbeMode(target)
+      this.getShellEnvironmentProbeMode(target),
+      cwd
     );
     return applyShellEnvironmentPatch(baseEnv, shellEnvironmentPatch.envPatch, process.platform, {
-      prioritizedBasePathEntries: this.getPrioritizedBaseExecutionPathEntries()
+      prioritizedBasePathEntries: this.getPrioritizedBaseExecutionPathEntries(cwd)
     });
   }
 
@@ -10146,25 +10298,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getResolvedShellEnvironmentPatch(
     baseEnv: NodeJS.ProcessEnv,
-    probeMode: ShellEnvironmentProbeMode = 'interactive-login'
+    probeMode: ShellEnvironmentProbeMode = 'interactive-login',
+    cwd: string = this.getTerminalWorkingDirectory()
   ): Promise<ResolvedShellEnvironmentPatch> {
-    const existingPromise = this.resolvedShellEnvironmentPatchPromises.get(probeMode);
+    const cacheKey = this.getShellEnvironmentPatchCacheKey(probeMode, cwd);
+    const existingPromise = this.resolvedShellEnvironmentPatchPromises.get(cacheKey);
     if (!existingPromise) {
       const shellPath = this.getTerminalShellPath();
-      const cwd = this.getTerminalWorkingDirectory();
       const nextPromise = resolveShellEnvironmentPatch({
         env: baseEnv,
         shellPath,
         cwd,
         probeMode
       }).then((result) => {
-        this.resolvedShellEnvironmentPatches.set(probeMode, result);
+        this.resolvedShellEnvironmentPatches.set(cacheKey, result);
         if (result.source !== 'none') {
           this.recordDiagnosticEvent('executionEnvironment/shellEnvPatchResolved', {
             source: result.source,
             shellFamily: result.shellFamily,
             probeMode: result.probeMode,
             shellPath: result.shellPath,
+            cwd,
             appliedKeys: result.appliedKeys
           });
         } else if (result.skippedReason === 'shell-resolution-failed') {
@@ -10174,6 +10328,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             probeMode: result.probeMode,
             skippedReason: result.skippedReason,
             shellPath: result.shellPath,
+            cwd,
             error: result.error
           });
         } else {
@@ -10182,16 +10337,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             shellFamily: result.shellFamily,
             probeMode: result.probeMode,
             skippedReason: result.skippedReason,
-            shellPath: result.shellPath
+            shellPath: result.shellPath,
+            cwd
           });
         }
         return result;
       });
-      this.resolvedShellEnvironmentPatchPromises.set(probeMode, nextPromise);
+      this.resolvedShellEnvironmentPatchPromises.set(cacheKey, nextPromise);
       return nextPromise;
     }
 
     return existingPromise;
+  }
+
+  private getShellEnvironmentPatchCacheKey(probeMode: ShellEnvironmentProbeMode, cwd: string): string {
+    const normalizedCwd = process.platform === 'win32' ? path.resolve(cwd).toLowerCase() : path.resolve(cwd);
+    return `${probeMode}\u0000${normalizedCwd}`;
   }
 
   private buildTerminalLaunchSpec(
@@ -10278,14 +10439,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
-    this.recordDiagnosticEvent('execution/startRequested', {
-      kind: 'terminal',
-      nodeId,
-      cols: normalizedCols,
-      rows: normalizedRows,
-      workspaceTrusted: vscode.workspace.isTrusted
-    });
-
     if (!options.bypassTrust && !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
       const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
       if (blockedNode) {
@@ -10345,8 +10498,47 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const shellPath = this.getTerminalShellPath();
-    const cwd = this.getTerminalWorkingDirectory();
     const currentMetadata = ensureTerminalMetadata(terminalNode);
+    const cwd = this.getExecutionNodeCwd(terminalNode, 'terminal');
+    const cwdUnavailableMessage = this.describeUnavailableExecutionCwd(cwd);
+    if (cwdUnavailableMessage) {
+      this.recordDiagnosticEvent('execution/startRejected', {
+        kind: 'terminal',
+        nodeId,
+        reason: 'cwd-unavailable',
+        cwd,
+        message: cwdUnavailableMessage
+      });
+      this.state = updateTerminalNode(this.state, nodeId, {
+        status: 'error',
+        summary: cwdUnavailableMessage,
+        metadata: buildTerminalMetadataPatch(this.state, nodeId, {
+          lifecycle: 'error',
+          liveSession: false,
+          pendingLaunch: undefined,
+          lastExitMessage: cwdUnavailableMessage,
+          lastRuntimeError: cwdUnavailableMessage
+        })
+      });
+      this.persistState();
+      this.postState('host/stateUpdated');
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: cwdUnavailableMessage
+        }
+      });
+      this.dropPendingTerminalInitialInput(nodeId, cwdUnavailableMessage);
+      return;
+    }
+    this.recordDiagnosticEvent('execution/startRequested', {
+      kind: 'terminal',
+      nodeId,
+      cols: normalizedCols,
+      rows: normalizedRows,
+      cwd,
+      workspaceTrusted: vscode.workspace.isTrusted
+    });
     if (this.isRuntimePersistenceEnabled()) {
       try {
         await this.startTerminalSessionWithSupervisor(nodeId, normalizedCols, normalizedRows);
@@ -10358,6 +10550,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           nodeId,
           cols: normalizedCols,
           rows: normalizedRows,
+          cwd,
           message
         });
         this.state = updateTerminalNode(this.state, nodeId, {
@@ -10394,7 +10587,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
     const sessionId = createExecutionSessionId(nodeId, 'terminal');
-    const executionEnv = await this.resolveExecutionEnvironment('terminal');
+    const executionEnv = await this.resolveExecutionEnvironment('terminal', cwd);
 
     try {
       const process = createExecutionSessionProcess(
@@ -10610,6 +10803,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         cols: normalizedCols,
         rows: normalizedRows,
+        cwd,
         message
       });
       this.state = updateTerminalNode(this.state, nodeId, {
@@ -11704,7 +11898,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private applyCreateNode(
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
-    options?: CreateAgentNodeOptions & { bypassTrust?: boolean }
+    options?: CreateNodeOptions & { bypassTrust?: boolean }
   ): CanvasNodeSummary | undefined {
     if (
       isExecutionNodeKind(kind) &&
@@ -11725,6 +11919,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const agentLaunchPreset = options?.agentLaunchPreset ?? 'default';
     const agentCustomLaunchCommand =
       agentLaunchPreset === 'custom' ? options?.agentCustomLaunchCommand : undefined;
+    const cwdOverride = isExecutionNodeKind(kind) && options?.cwdOverride
+      ? this.validateExecutionCwdForCreate(kind, options.cwdOverride, options?.requestId)
+      : undefined;
+    if (isExecutionNodeKind(kind) && options?.cwdOverride && !cwdOverride) {
+      return undefined;
+    }
 
     if (kind === 'agent') {
       try {
@@ -11761,7 +11961,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentLaunchPreset,
       agentCustomLaunchCommand,
       preferredPosition,
-      options?.targetGroupId
+      options?.targetGroupId,
+      cwdOverride
     );
     const createdNodeCandidate = nextState.nodes[nextState.nodes.length - 1];
     const createdNode =
@@ -11787,6 +11988,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lifecycle: 'starting',
           pendingLaunch: 'start',
           liveSession: false,
+          cwd: cwdOverride ?? ensureAgentMetadata(createdNode).cwd,
           launchPreset: agentLaunchPreset,
           customLaunchCommand:
             agentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined,
@@ -11805,6 +12007,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lifecycle: 'launching',
           pendingLaunch: 'start',
           liveSession: false,
+          cwd: cwdOverride ?? ensureTerminalMetadata(createdNode).cwd,
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
@@ -11827,6 +12030,90 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return undefined;
+  }
+
+  private validateExecutionCwdForCreate(
+    kind: ExecutionNodeKind,
+    cwd: string,
+    createRequestId?: string
+  ): string | undefined {
+    const validation = this.validateExecutionCwd(cwd);
+    if (validation.valid) {
+      return validation.cwd;
+    }
+
+    this.recordDiagnosticEvent('node/createRejected', {
+      kind,
+      reason: 'invalid-cwd',
+      cwd,
+      message: validation.message
+    });
+    this.postMessage({
+      type: 'host/error',
+      payload: {
+        message: validation.message,
+        createRequestId
+      }
+    });
+    return undefined;
+  }
+
+  private validateExecutionCwd(
+    cwd: string,
+    options: ExecutionCwdValidationOptions = {}
+  ): { valid: true; cwd: string } | { valid: false; message: string } {
+    const normalizedCwd = normalizeExecutionCwd(cwd);
+    if (!normalizedCwd) {
+      return { valid: false, message: '执行目录不能为空。' };
+    }
+
+    if (!path.isAbsolute(normalizedCwd)) {
+      return { valid: false, message: `执行目录必须是绝对路径：${normalizedCwd}` };
+    }
+
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(normalizedCwd);
+    } catch {
+      return { valid: false, message: `执行目录不存在或不可访问：${normalizedCwd}` };
+    }
+
+    if (!stat.isDirectory()) {
+      return { valid: false, message: `执行目录不是文件夹：${normalizedCwd}` };
+    }
+
+    const workspaceFolder = this.resolveExecutionWorkspaceFolder(normalizedCwd);
+    if (!workspaceFolder) {
+      if (
+        options.allowLegacyDefaultCwd &&
+        this.isLegacyDefaultExecutionCwd(normalizedCwd)
+      ) {
+        const workspaceRoot = this.getWorkspaceRoot();
+        if (workspaceRoot) {
+          return { valid: true, cwd: workspaceRoot };
+        }
+      }
+      return { valid: false, message: `执行目录必须位于当前 workspace 内：${normalizedCwd}` };
+    }
+
+    return { valid: true, cwd: normalizedCwd };
+  }
+
+  private resolveExecutionWorkspaceFolder(cwd: string): vscode.WorkspaceFolder | undefined {
+    const cwdUri = vscode.Uri.file(cwd);
+    const directWorkspaceFolder = vscode.workspace.getWorkspaceFolder(cwdUri);
+    if (directWorkspaceFolder) {
+      return directWorkspaceFolder;
+    }
+
+    return vscode.workspace.workspaceFolders?.find((workspaceFolder) =>
+      isSameOrDescendantExecutionPath(cwd, workspaceFolder.uri.fsPath)
+    );
+  }
+
+  private describeUnavailableExecutionCwd(cwd: string): string | undefined {
+    const validation = this.validateExecutionCwd(cwd, { allowLegacyDefaultCwd: true });
+    return validation.valid ? undefined : `启动执行节点失败：${validation.message}`;
   }
 
   private recordHostMessage(
@@ -12150,7 +12437,8 @@ function createNextState(
   agentLaunchPreset: AgentLaunchPresetKind = 'default',
   agentCustomLaunchCommand?: string,
   preferredPosition?: CanvasNodePosition,
-  targetGroupId?: string
+  targetGroupId?: string,
+  cwdOverride?: string
 ): CanvasPrototypeState {
   const nextIndex = readNextNodeSequence(previousState.nodes);
   const nextNode = createNode(kind, nextIndex, agentProvider, agentLaunchPreset, agentCustomLaunchCommand);
@@ -12160,11 +12448,12 @@ function createNextState(
     preferredPosition ?? nextNode.position
   );
   const validTargetGroupId = resolveValidTargetGroupId(previousState.groups ?? [], targetGroupId);
-  const createdNode = {
+  const createdNodeBase = {
     ...nextNode,
     position: resolvedPosition,
     groupId: validTargetGroupId && isStableCanvasGroupMemberKind(kind) ? validTargetGroupId : undefined
   };
+  const createdNode = applyExecutionCwdOverrideToCreatedNode(createdNodeBase, cwdOverride);
 
   const nextState = {
     ...previousState,
@@ -12231,6 +12520,43 @@ function createNode(
     size: estimatedCanvasNodeFootprint(kind),
     metadata: createNodeMetadata(kind, id, agentProvider, agentLaunchPreset, agentCustomLaunchCommand)
   };
+}
+
+function applyExecutionCwdOverrideToCreatedNode(
+  node: CanvasNodeSummary,
+  cwdOverride: string | undefined
+): CanvasNodeSummary {
+  if (!cwdOverride) {
+    return node;
+  }
+
+  if (node.kind === 'agent') {
+    return {
+      ...node,
+      metadata: {
+        ...node.metadata,
+        agent: {
+          ...ensureAgentMetadata(node),
+          cwd: cwdOverride
+        }
+      }
+    };
+  }
+
+  if (node.kind === 'terminal') {
+    return {
+      ...node,
+      metadata: {
+        ...node.metadata,
+        terminal: {
+          ...ensureTerminalMetadata(node),
+          cwd: cwdOverride
+        }
+      }
+    };
+  }
+
+  return node;
 }
 
 function createCanvasNodeObjectId(kind: CanvasNodeKind, sequence: number): string {
@@ -15361,6 +15687,37 @@ function normalizeTrackedFilePath(filePath: string): string | undefined {
   return path.normalize(trimmed);
 }
 
+function normalizeExecutionCwd(cwd: string): string | undefined {
+  const trimmed = cwd.trim();
+  return trimmed ? path.normalize(trimmed) : undefined;
+}
+
+function areSameExecutionPath(left: string, right: string): boolean {
+  const resolvedLeft = path.resolve(left);
+  const resolvedRight = path.resolve(right);
+  return process.platform === 'win32'
+    ? resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+    : resolvedLeft === resolvedRight;
+}
+
+function isSameOrDescendantExecutionPath(candidatePath: string, ancestorPath: string): boolean {
+  const normalizedCandidate = normalizeComparableExecutionPath(candidatePath);
+  const normalizedAncestor = normalizeComparableExecutionPath(ancestorPath);
+  if (normalizedCandidate === normalizedAncestor) {
+    return true;
+  }
+
+  const ancestorWithSeparator = normalizedAncestor.endsWith(path.sep)
+    ? normalizedAncestor
+    : `${normalizedAncestor}${path.sep}`;
+  return normalizedCandidate.startsWith(ancestorWithSeparator);
+}
+
+function normalizeComparableExecutionPath(filePath: string): string {
+  const resolvedPath = path.resolve(filePath);
+  return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
 function toNoteMarkdownDocumentSelection(
   document: vscode.TextDocument,
   selection: NoteMarkdownFileSelection | undefined
@@ -15721,6 +16078,7 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
     case 'host/requestCreateNode':
       return {
         kind: message.payload.kind,
+        cwd: message.payload.cwd,
         agentProvider: message.payload.agentProvider
       };
     case 'host/requestCreateGroupFromSelection':

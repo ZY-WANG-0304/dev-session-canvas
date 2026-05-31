@@ -335,9 +335,15 @@ export interface NoteMarkdownImageWorkspaceRoot {
   webviewResourceBaseUri: string;
 }
 
+export interface CanvasRuntimeWorkspaceFolder {
+  name: string;
+  path: string;
+}
+
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: 'editor' | 'panel';
+  workspaceFolders: CanvasRuntimeWorkspaceFolder[];
   defaultAgentProvider: AgentProviderKind;
   agentLaunchDefaults: AgentLaunchDefaultsByProvider;
   strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
@@ -549,6 +555,7 @@ export type WebviewToHostMessage =
         kind: CanvasCreatableNodeKind;
         preferredPosition?: CanvasNodePosition;
         targetGroupId?: string;
+        cwd?: string;
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
@@ -1032,6 +1039,7 @@ export type HostToWebviewMessage =
       type: 'host/requestCreateNode';
       payload: {
         kind: CanvasCreatableNodeKind;
+        cwd?: string;
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
@@ -2003,6 +2011,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       !isCanvasCreatableNodeKind(payload.kind) ||
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
       (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
+      (payload.cwd !== undefined && typeof payload.cwd !== 'string') ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
       (payload.agentLaunchPreset !== undefined && !isAgentLaunchPresetKind(payload.agentLaunchPreset)) ||
       (payload.agentCustomLaunchCommand !== undefined && typeof payload.agentCustomLaunchCommand !== 'string')
@@ -2019,6 +2028,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
           ? payload.preferredPosition
           : undefined,
         targetGroupId: typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined,
+        cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
         agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined,
         agentLaunchPreset: isAgentLaunchPresetKind(payload.agentLaunchPreset) ? payload.agentLaunchPreset : undefined,
         agentCustomLaunchCommand:

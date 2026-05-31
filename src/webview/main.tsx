@@ -127,6 +127,7 @@ import {
 } from '../common/executionTerminalLinks';
 import { toggleNoteMarkdownChecklistAtLine } from '../common/noteMarkdownChecklist';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
+import { formatExecutionCwdLabel, formatExecutionCwdTooltip } from '../common/executionCwdLabel';
 import {
   estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
@@ -267,6 +268,7 @@ interface CanvasNodeData {
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   noteMarkdownImageWorkspaceRoots: NoteMarkdownImageWorkspaceRoot[];
+  workspaceFolders: CanvasRuntimeContext['workspaceFolders'];
   fileListViewMode: FileListViewMode;
   selectedFileListEntryPath?: string;
   collapsedFileListTreeBranchKeys?: string[];
@@ -491,6 +493,7 @@ interface PendingManualNodeCreateRequest {
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
+  cwd?: string;
 }
 interface ExecutionNodeHelpContent {
   title: string;
@@ -882,6 +885,7 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   fileNodeDisplayMode: 'icon-path',
   filePathDisplayMode: 'basename',
   fileIconFontFaces: [],
+  workspaceFolders: [],
   noteMarkdownImageWorkspaceRoots: []
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
@@ -904,6 +908,13 @@ function normalizeRuntimeContext(
       ? runtimeContext.noteMarkdownImageWorkspaceRoots.filter(
           (root): root is NoteMarkdownImageWorkspaceRoot =>
             typeof root?.name === 'string' && typeof root.webviewResourceBaseUri === 'string'
+        )
+      : [];
+  const workspaceFolders =
+    runtimeContext && Array.isArray(runtimeContext.workspaceFolders)
+      ? runtimeContext.workspaceFolders.filter(
+          (folder): folder is CanvasRuntimeContext['workspaceFolders'][number] =>
+            typeof folder?.name === 'string' && typeof folder.path === 'string'
         )
       : [];
   const legacyStrongTerminalAttentionReminderEnabled = runtimeContext
@@ -941,6 +952,7 @@ function normalizeRuntimeContext(
         : 'icon-path',
     filePathDisplayMode: runtimeContext?.filePathDisplayMode === 'relative-path' ? 'relative-path' : 'basename',
     fileIconFontFaces,
+    workspaceFolders,
     noteMarkdownImageWorkspaceRoots
   };
 }
@@ -1010,6 +1022,7 @@ function App(): JSX.Element {
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
     filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
     fileIconFontFaces: latestRuntimeContext.fileIconFontFaces,
+    workspaceFolders: latestRuntimeContext.workspaceFolders,
     noteMarkdownImageWorkspaceRoots: latestRuntimeContext.noteMarkdownImageWorkspaceRoots
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
@@ -1212,7 +1225,8 @@ function App(): JSX.Element {
             message.payload.agentLaunchPreset,
             message.payload.agentCustomLaunchCommand,
             {
-              skipWorkspaceTrustCheck: true
+              skipWorkspaceTrustCheck: true,
+              cwd: message.payload.cwd
             }
           );
           break;
@@ -2072,6 +2086,7 @@ function App(): JSX.Element {
     fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
     noteMarkdownImageWorkspaceRoots: runtimeContext.noteMarkdownImageWorkspaceRoots ?? [],
+    workspaceFolders: runtimeContext.workspaceFolders ?? [],
     fileListViewModes: localUiState.fileListViewModes,
     selectedFileListEntries: localUiState.selectedFileListEntries,
     collapsedFileListTreeBranches: localUiState.collapsedFileListTreeBranches,
@@ -3294,6 +3309,7 @@ function App(): JSX.Element {
     agentCustomLaunchCommand?: string,
     options?: {
       skipWorkspaceTrustCheck?: boolean;
+      cwd?: string;
     }
   ): void {
     if (!options?.skipWorkspaceTrustCheck && !workspaceTrusted && (kind === 'agent' || kind === 'terminal')) {
@@ -3320,7 +3336,8 @@ function App(): JSX.Element {
       agentProvider: resolvedAgentProvider,
       agentLaunchPreset: resolvedAgentLaunchPreset,
       agentCustomLaunchCommand:
-        resolvedAgentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined
+        resolvedAgentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined,
+      cwd: options?.cwd
     };
     postMessage({
       type: 'webview/createDemoNode',
@@ -3329,6 +3346,7 @@ function App(): JSX.Element {
         kind,
         preferredPosition: resolvedPreferredPosition,
         targetGroupId,
+        cwd: options?.cwd,
         agentProvider,
         agentLaunchPreset,
         agentCustomLaunchCommand
@@ -3430,6 +3448,9 @@ function doesNodeMatchPendingManualCreateRequest(
   }
 
   if (node.kind !== 'agent') {
+    if (request.cwd && node.kind === 'terminal' && node.metadata?.terminal?.cwd !== request.cwd) {
+      return false;
+    }
     return true;
   }
 
@@ -3439,6 +3460,10 @@ function doesNodeMatchPendingManualCreateRequest(
   }
 
   if (request.agentProvider && agentMetadata.provider !== request.agentProvider) {
+    return false;
+  }
+
+  if (request.cwd && agentMetadata.cwd !== request.cwd) {
     return false;
   }
 
@@ -3650,6 +3675,10 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
   ]
     .filter(Boolean)
     .join(' ');
+  const launchCommandSubtitle = resolveAgentLaunchCommandLineForSubtitle(agentMetadata);
+  const cwdLabel = formatExecutionCwdLabel(agentMetadata.cwd, data.workspaceFolders);
+  const agentSubtitle = `${cwdLabel} · ${launchCommandSubtitle}`;
+  const agentSubtitleTooltip = `${formatExecutionCwdTooltip(agentMetadata.cwd, cwdLabel)} · ${launchCommandSubtitle}`;
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
@@ -3993,7 +4022,8 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
       >
         <ChromeTitleEditor
           value={data.title}
-          subtitle={resolveAgentLaunchCommandLineForSubtitle(agentMetadata)}
+          subtitle={agentSubtitle}
+          subtitleTooltip={agentSubtitleTooltip}
           subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
           placeholder="Agent 标题"
           className="agent-window-title"
@@ -10021,6 +10051,7 @@ function toFlowNodes(params: {
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   noteMarkdownImageWorkspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[];
+  workspaceFolders: CanvasRuntimeContext['workspaceFolders'];
   fileListViewModes: Record<string, FileListViewMode> | undefined;
   selectedFileListEntries: Record<string, string> | undefined;
   collapsedFileListTreeBranches: Record<string, string[]> | undefined;
@@ -10141,6 +10172,7 @@ function toFlowNodes(params: {
         fileNodeDisplayMode: params.fileNodeDisplayMode,
         filePathDisplayMode: params.filePathDisplayMode,
         noteMarkdownImageWorkspaceRoots: [...params.noteMarkdownImageWorkspaceRoots],
+        workspaceFolders: [...params.workspaceFolders],
         fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
         collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],
