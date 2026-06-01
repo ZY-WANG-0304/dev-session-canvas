@@ -12,6 +12,7 @@ import {
   isAgentLaunchPresetKind,
   isAgentProviderKind,
   isCanvasCreatableNodeKind,
+  isExecutionNodeKind,
   isWebviewDomAction,
   type AgentLaunchPresetKind,
   type AgentProviderKind,
@@ -54,6 +55,7 @@ import {
 } from './panel/agentSettingsFiles';
 import { buildPersistedTerminalShellSelection, detectAvailableTerminalShells } from './panel/terminalShellConfiguration';
 import { CanvasSidebarActionsView } from './sidebar/CanvasSidebarActionsView';
+import { formatExecutionCwdLabel } from './common/executionCwdLabel';
 import {
   CanvasSidebarNodeListView,
   getCanvasSidebarNodeListItems,
@@ -312,11 +314,20 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
+    const workspaceFolder =
+      isExecutionNodeKind(createRequest.kind) && (vscode.workspace.workspaceFolders?.length ?? 0) > 1
+        ? await panelManager.pickExecutionWorkspaceFolder(createRequest.kind)
+        : undefined;
+    if (isExecutionNodeKind(createRequest.kind) && !workspaceFolder && (vscode.workspace.workspaceFolders?.length ?? 0) > 1) {
+      return;
+    }
+
     await panelManager.revealOrCreate();
     panelManager.createNode(createRequest.kind, {
       agentProvider: createRequest.agentProvider,
       agentLaunchPreset: createRequest.agentLaunchPreset,
-      agentCustomLaunchCommand: createRequest.agentCustomLaunchCommand
+      agentCustomLaunchCommand: createRequest.agentCustomLaunchCommand,
+      cwdOverride: workspaceFolder?.uri.fsPath
     });
   });
 
@@ -458,7 +469,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(COMMAND_IDS.focusSidebarNode, focusNodeFromCommand),
     vscode.commands.registerCommand(
       COMMAND_IDS.restoreSidebarSessionHistoryEntry,
-      async (provider?: unknown, sessionId?: unknown, title?: unknown) => {
+      async (provider?: unknown, sessionId?: unknown, title?: unknown, cwd?: unknown) => {
         if (!isAgentProviderKind(provider) || typeof sessionId !== 'string' || sessionId.trim().length === 0) {
           return;
         }
@@ -466,7 +477,8 @@ export function activate(context: vscode.ExtensionContext): void {
         const result = await panelManager.restoreAgentSessionFromHistory({
           provider,
           sessionId,
-          title: typeof title === 'string' ? title : undefined
+          title: typeof title === 'string' ? title : undefined,
+          cwd: typeof cwd === 'string' ? cwd : undefined
         });
         if (!result.restored && result.errorMessage) {
           await vscode.window.showWarningMessage(result.errorMessage);
@@ -1053,6 +1065,8 @@ interface SidebarSessionQuickPickItem extends vscode.QuickPickItem {
   provider: AgentProviderKind;
   sessionId: string;
   titleOverride?: string;
+  cwd?: string;
+  cwdLabel?: string;
 }
 
 async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): Promise<void> {
@@ -1071,7 +1085,7 @@ async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): P
     items.map((item) => ({
       label: item.label,
       description: item.attentionPending ? `${item.description} · 有提醒` : item.description,
-      detail: buildSidebarNodeQuickPickDetail(nodesById.get(item.nodeId)),
+      detail: buildSidebarNodeQuickPickDetail(nodesById.get(item.nodeId), panelManager.getWorkspaceFoldersForDisplay()),
       nodeId: item.nodeId
     })),
     {
@@ -1104,10 +1118,12 @@ async function showSessionHistoryQuickPick(
   const picked = await vscode.window.showQuickPick<SidebarSessionQuickPickItem>(
     items.map((item) => ({
       label: item.title,
-      detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
+      detail: buildSidebarSessionQuickPickDetail(item.timestampLabel, item.cwdLabel),
       provider: item.provider,
       sessionId: item.sessionId,
-      titleOverride: item.title
+      titleOverride: item.title,
+      cwd: item.cwd,
+      cwdLabel: item.cwdLabel
     })),
     {
       title: restoreBlockReason,
@@ -1124,14 +1140,18 @@ async function showSessionHistoryQuickPick(
   const result = await panelManager.restoreAgentSessionFromHistory({
     provider: picked.provider,
     sessionId: picked.sessionId,
-    title: picked.titleOverride
+    title: picked.titleOverride,
+    cwd: picked.cwd
   });
   if (!result.restored && result.errorMessage) {
     await vscode.window.showWarningMessage(result.errorMessage);
   }
 }
 
-function buildSidebarNodeQuickPickDetail(node: CanvasNodeSummary | undefined): string | undefined {
+function buildSidebarNodeQuickPickDetail(
+  node: CanvasNodeSummary | undefined,
+  workspaceFolders: Parameters<typeof formatExecutionCwdLabel>[1] = []
+): string | undefined {
   if (!node || !isCanvasCreatableNodeKind(node.kind)) {
     return undefined;
   }
@@ -1140,19 +1160,22 @@ function buildSidebarNodeQuickPickDetail(node: CanvasNodeSummary | undefined): s
   if (node.kind === 'agent') {
     const provider = node.metadata?.agent?.provider;
     const resumeSessionId = node.metadata?.agent?.resumeSessionId?.trim();
+    parts.push(formatExecutionCwdLabel(node.metadata?.agent?.cwd, workspaceFolders));
     if (provider) {
       parts.push(providerLabel(provider));
     }
     if (resumeSessionId) {
       parts.push(resumeSessionId);
     }
+  } else if (node.kind === 'terminal') {
+    parts.push(formatExecutionCwdLabel(node.metadata?.terminal?.cwd, workspaceFolders));
   }
 
   return parts.join(' · ');
 }
 
-function buildSidebarSessionQuickPickDetail(timestampLabel: string): string {
-  return timestampLabel;
+function buildSidebarSessionQuickPickDetail(timestampLabel: string, cwdLabel?: string): string {
+  return cwdLabel ? `${timestampLabel} · ${cwdLabel}` : timestampLabel;
 }
 
 function buildCreateNodeQuickPickItems(

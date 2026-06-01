@@ -28,7 +28,8 @@ export interface WorkspaceAgentSessionHistoryEntry {
 }
 
 export interface ListWorkspaceAgentSessionHistoryOptions {
-  workspaceRoot: string;
+  workspaceRoot?: string;
+  workspaceRoots?: readonly string[];
   env?: NodeJS.ProcessEnv;
   maxEntries?: number;
 }
@@ -374,6 +375,34 @@ function isPathInsideWorkspace(candidatePath: string, workspaceRoot: string): bo
   return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
 }
 
+function isPathInsideAnyWorkspace(candidatePath: string, workspaceRoots: readonly string[]): boolean {
+  return workspaceRoots.some((workspaceRoot) => isPathInsideWorkspace(candidatePath, workspaceRoot));
+}
+
+function normalizeWorkspaceRoots(options: ListWorkspaceAgentSessionHistoryOptions): string[] {
+  const rawRoots = options.workspaceRoots && options.workspaceRoots.length > 0
+    ? options.workspaceRoots
+    : options.workspaceRoot
+      ? [options.workspaceRoot]
+      : [];
+  const seen = new Set<string>();
+  const roots: string[] = [];
+  for (const rawRoot of rawRoots) {
+    const trimmedRoot = rawRoot.trim();
+    if (!trimmedRoot) {
+      continue;
+    }
+    const resolvedRoot = path.resolve(trimmedRoot);
+    const key = process.platform === 'win32' ? resolvedRoot.toLowerCase() : resolvedRoot;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    roots.push(resolvedRoot);
+  }
+  return roots;
+}
+
 function resolveCreatedAtMs(stat: Stats): number {
   if (Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0) {
     return Math.round(stat.birthtimeMs);
@@ -406,7 +435,7 @@ function mergeSessionEntry(
 }
 
 async function collectCodexSessionHistory(
-  workspaceRoot: string,
+  workspaceRoots: readonly string[],
   env: NodeJS.ProcessEnv,
   entries: Map<string, WorkspaceAgentSessionHistoryEntry>
 ): Promise<void> {
@@ -429,7 +458,7 @@ async function collectCodexSessionHistory(
           // eslint-disable-next-line no-await-in-loop
           const firstLine = await readFirstLine(filePath);
           const meta = firstLine ? parseCodexSessionMeta(firstLine) : null;
-          if (!meta || !isPathInsideWorkspace(meta.cwd, workspaceRoot)) {
+          if (!meta || !isPathInsideAnyWorkspace(meta.cwd, workspaceRoots)) {
             continue;
           }
 
@@ -458,7 +487,7 @@ async function collectCodexSessionHistory(
 }
 
 async function collectClaudeSessionHistory(
-  workspaceRoot: string,
+  workspaceRoots: readonly string[],
   env: NodeJS.ProcessEnv,
   entries: Map<string, WorkspaceAgentSessionHistoryEntry>
 ): Promise<void> {
@@ -476,7 +505,7 @@ async function collectClaudeSessionHistory(
 
       // eslint-disable-next-line no-await-in-loop
       const cwd = await readClaudeSessionCwd(filePath);
-      if (!cwd || !isPathInsideWorkspace(cwd, workspaceRoot)) {
+      if (!cwd || !isPathInsideAnyWorkspace(cwd, workspaceRoots)) {
         continue;
       }
 
@@ -506,11 +535,14 @@ export async function listWorkspaceAgentSessionHistory(
   options: ListWorkspaceAgentSessionHistoryOptions
 ): Promise<WorkspaceAgentSessionHistoryEntry[]> {
   const env = options.env ?? process.env;
-  const workspaceRoot = path.resolve(options.workspaceRoot);
+  const workspaceRoots = normalizeWorkspaceRoots(options);
+  if (workspaceRoots.length === 0) {
+    return [];
+  }
   const dedupedEntries = new Map<string, WorkspaceAgentSessionHistoryEntry>();
 
-  await collectCodexSessionHistory(workspaceRoot, env, dedupedEntries);
-  await collectClaudeSessionHistory(workspaceRoot, env, dedupedEntries);
+  await collectCodexSessionHistory(workspaceRoots, env, dedupedEntries);
+  await collectClaudeSessionHistory(workspaceRoots, env, dedupedEntries);
 
   const sortedEntries = Array.from(dedupedEntries.values()).sort((left, right) => {
     if (left.updatedAtMs !== right.updatedAtMs) {

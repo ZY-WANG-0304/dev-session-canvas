@@ -161,8 +161,8 @@ function resolveWorkspaceRootForMarkdownPath(
   }
 
   const candidateRootName = normalizeWorkspaceRootName(normalizedSegments[0]);
-  const matchingRoot = workspaceRoots.find((root) => root.name === candidateRootName);
-  if (!matchingRoot) {
+  const matchingRoots = workspaceRoots.filter((root) => root.name === candidateRootName);
+  if (matchingRoots.length !== 1) {
     return {
       rootPath: null,
       relativePath: null
@@ -170,7 +170,7 @@ function resolveWorkspaceRootForMarkdownPath(
   }
 
   return {
-    rootPath: matchingRoot.path,
+    rootPath: matchingRoots[0].path,
     relativePath: normalizedSegments.slice(1).join('/')
   };
 }

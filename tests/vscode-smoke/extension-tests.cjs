@@ -954,6 +954,11 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
     'Expected sidebar node descriptions to stay aligned with the rendered second-line text.'
   );
   assert.match(
+    nodeItems.find((item) => item.nodeId === terminalNodeId)?.status ?? '',
+    / · /,
+    'Expected Terminal sidebar rows to include cwd and status in the second line.'
+  );
+  assert.match(
     nodeItems.find((item) => item.nodeId === agentNodeId)?.status ?? '',
     / · (Codex|Claude Code) · /,
     'Expected Agent sidebar rows to include cwd, provider and status in the second line.'
@@ -1069,9 +1074,14 @@ async function verifySidebarNodeListQuickPick(
 
     assert.strictEqual(
       agentPickItem.detail,
-      buildExpectedSidebarNodeQuickPickDetail(agentNode, { expectSessionId: expectAgentSessionId })
+      buildExpectedSidebarNodeQuickPickDetail(agentNode, sidebarItemsByNodeId.get(agentNodeId), {
+        expectSessionId: expectAgentSessionId
+      })
     );
-    assert.strictEqual(terminalPickItem.detail, buildExpectedSidebarNodeQuickPickDetail(terminalNode));
+    assert.strictEqual(
+      terminalPickItem.detail,
+      buildExpectedSidebarNodeQuickPickDetail(terminalNode, sidebarItemsByNodeId.get(terminalNodeId))
+    );
     assert.strictEqual(notePickItem.detail, buildExpectedSidebarNodeQuickPickDetail(noteNode));
   });
 }
@@ -11119,18 +11129,22 @@ function formatExpectedSidebarNodeQuickPickDescription(sidebarItem) {
   return sidebarItem.attentionPending ? `${sidebarItem.description} · 有提醒` : sidebarItem.description;
 }
 
-function buildExpectedSidebarNodeQuickPickDetail(node, options = {}) {
+function buildExpectedSidebarNodeQuickPickDetail(node, sidebarItem, options = {}) {
   if (node.kind === 'agent') {
     const provider = node.metadata?.agent?.provider === 'claude' ? 'Claude Code' : 'Codex';
     const sessionId = node.metadata?.agent?.resumeSessionId;
     if (options.expectSessionId) {
       assert.ok(sessionId, 'Expected the Agent node QuickPick detail to include a provider session id.');
     }
-    return [ 'Agent', provider, sessionId ].filter(Boolean).join(' · ');
+    const cwdLabel = sidebarItem?.subtitlePrefix?.split(' · ')[0];
+    assert.ok(cwdLabel, 'Expected the Agent node QuickPick detail to include a cwd label.');
+    return [ 'Agent', cwdLabel, provider, sessionId ].filter(Boolean).join(' · ');
   }
 
   if (node.kind === 'terminal') {
-    return 'Terminal';
+    const cwdLabel = sidebarItem?.subtitlePrefix;
+    assert.ok(cwdLabel, 'Expected the Terminal node QuickPick detail to include a cwd label.');
+    return `Terminal · ${cwdLabel}`;
   }
 
   if (node.kind === 'note') {

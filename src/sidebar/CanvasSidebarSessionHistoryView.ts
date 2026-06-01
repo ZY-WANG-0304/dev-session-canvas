@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { listWorkspaceAgentSessionHistory, type WorkspaceAgentSessionHistoryEntry } from '../common/agentSessionHistory';
+import { formatExecutionCwdLabel } from '../common/executionCwdLabel';
 import type { AgentProviderKind } from '../common/protocol';
 import { isAgentProviderKind } from '../common/protocol';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
@@ -25,6 +26,8 @@ export interface CanvasSidebarSessionHistoryItemSnapshot {
   sessionId: string;
   title: string;
   timestampLabel: string;
+  cwd: string;
+  cwdLabel: string;
   tooltip: string;
   searchText: string;
 }
@@ -59,6 +62,7 @@ type SidebarSessionHistoryInboundMessage =
         provider: AgentProviderKind;
         sessionId: string;
         title?: string;
+        cwd?: string;
       };
     }
   | {
@@ -279,8 +283,9 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
   }
 
   private async loadSessionHistoryItems(options?: { homeDir?: string }): Promise<CanvasSidebarSessionHistoryItemSnapshot[]> {
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceRoot) {
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    const workspaceRoots = workspaceFolders.map((folder) => folder.uri.fsPath);
+    if (workspaceRoots.length === 0) {
       return [];
     }
 
@@ -294,11 +299,14 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
         : process.env;
 
     const sessionHistory = await listWorkspaceAgentSessionHistory({
-      workspaceRoot,
+      workspaceRoots,
       env,
       maxEntries: 200
     });
-    return buildCanvasSidebarSessionHistoryItems(sessionHistory, workspaceRoot);
+    return buildCanvasSidebarSessionHistoryItems(
+      sessionHistory,
+      workspaceFolders.map((folder) => ({ name: folder.name, path: folder.uri.fsPath }))
+    );
   }
 
   private async postState(): Promise<void> {
@@ -334,7 +342,8 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
         const result = await this.panelManager.restoreAgentSessionFromHistory({
           provider: parsed.payload.provider,
           sessionId: parsed.payload.sessionId,
-          title: parsed.payload.title
+          title: parsed.payload.title,
+          cwd: parsed.payload.cwd
         });
         if (!result.restored && result.errorMessage) {
           this.actionErrorMessage = result.errorMessage;
@@ -401,10 +410,13 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
 
 export function buildCanvasSidebarSessionHistoryItems(
   entries: WorkspaceAgentSessionHistoryEntry[],
-  workspaceRoot: string
+  workspaceRoots: string | readonly { name: string; path: string }[]
 ): CanvasSidebarSessionHistoryItemSnapshot[] {
+  const workspaceFolders = typeof workspaceRoots === 'string'
+    ? [{ name: path.basename(workspaceRoots) || 'workspace', path: workspaceRoots }]
+    : workspaceRoots;
   return entries.map((entry) => {
-    const relativeCwd = resolveWorkspaceRelativeCwd(entry.cwd, workspaceRoot);
+    const relativeCwd = resolveWorkspaceRelativeCwd(entry.cwd, workspaceFolders);
     const title = formatSessionHistoryTitle(entry);
     const timestampLabel = [
       providerLabel(entry.provider),
@@ -419,6 +431,8 @@ export function buildCanvasSidebarSessionHistoryItems(
       sessionId: entry.sessionId,
       title,
       timestampLabel,
+      cwd: entry.cwd,
+      cwdLabel: relativeCwd,
       tooltip: [
         title,
         `${providerLabel(entry.provider)} · ${entry.sessionId}`,
@@ -443,13 +457,12 @@ export function buildCanvasSidebarSessionHistoryItems(
   });
 }
 
-function resolveWorkspaceRelativeCwd(cwd: string, workspaceRoot: string): string {
-  const relativePath = path.relative(path.resolve(workspaceRoot), path.resolve(cwd));
-  if (!relativePath || relativePath === '.') {
-    return '工作区根目录';
-  }
-
-  return relativePath.startsWith('..') || path.isAbsolute(relativePath) ? cwd : relativePath.replace(/\\/g, '/');
+function resolveWorkspaceRelativeCwd(
+  cwd: string,
+  workspaceFolders: readonly { name: string; path: string }[]
+): string {
+  const label = formatExecutionCwdLabel(cwd, workspaceFolders);
+  return label === 'cwd 未知' ? cwd : label;
 }
 
 const MAX_SESSION_HISTORY_TITLE_CHARS = 256;
@@ -542,7 +555,8 @@ function parseSidebarSessionHistoryMessage(message: unknown): SidebarSessionHist
         payload: {
           provider: payload.provider,
           sessionId: payload.sessionId,
-          title: 'title' in payload && typeof payload.title === 'string' ? payload.title : undefined
+          title: 'title' in payload && typeof payload.title === 'string' ? payload.title : undefined,
+          cwd: 'cwd' in payload && typeof payload.cwd === 'string' ? payload.cwd : undefined
         }
       };
     }
@@ -939,7 +953,8 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
           payload: {
             provider: item.provider,
             sessionId: item.sessionId,
-            title: item.title
+            title: item.title,
+            cwd: item.cwd
           }
         });
       }

@@ -161,6 +161,7 @@ import {
   type NoteMarkdownFileStatus
 } from '../common/noteMarkdownFileAssociation';
 import { resolveContainedWorkspaceRelativePath } from '../common/workspaceRelativePath';
+import { getWorkspaceFolderDisplayLabel } from '../common/workspaceFolderLabels';
 import {
   createExecutionSessionProcess,
   type DisposableLike,
@@ -1778,7 +1779,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public async createTerminalAndRunCommand(
     commandLine: string,
-    options: { titleOverride?: string } = {}
+    options: { titleOverride?: string; cwdOverride?: string } = {}
   ): Promise<CreateTerminalCommandResult> {
     const trimmedCommandLine = commandLine.trim();
     if (!trimmedCommandLine) {
@@ -1805,8 +1806,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
     }
 
+    let cwdOverride = options.cwdOverride;
+    if (!cwdOverride && (vscode.workspace.workspaceFolders?.length ?? 0) > 1) {
+      const workspaceFolder = await this.pickExecutionWorkspaceFolder('terminal');
+      if (!workspaceFolder) {
+        return {
+          created: false,
+          errorMessage: '已取消选择 workspace folder，未创建用于执行命令的 Terminal 节点。'
+        };
+      }
+      cwdOverride = workspaceFolder.uri.fsPath;
+    }
+
     const createdNode = this.applyCreateNode('terminal', undefined, {
-      titleOverride: options.titleOverride
+      titleOverride: options.titleOverride,
+      cwdOverride
     });
     if (!createdNode) {
       return {
@@ -2039,6 +2053,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     provider: AgentProviderKind;
     sessionId: string;
     title?: string;
+    cwd?: string;
   }): Promise<{ restored: boolean; errorMessage?: string }> {
     const restoreBlockReason = this.getSessionHistoryRestoreBlockReason();
     if (restoreBlockReason) {
@@ -2052,6 +2067,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!sessionId) {
       return {
         restored: false
+      };
+    }
+
+    let cwdOverride = params.cwd;
+    if (cwdOverride) {
+      const validation = this.validateExecutionCwd(cwdOverride);
+      if (!validation.valid) {
+        return {
+          restored: false,
+          errorMessage: validation.message
+        };
+      }
+      cwdOverride = validation.cwd;
+    } else if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1) {
+      return {
+        restored: false,
+        errorMessage: '多根 workspace 下恢复历史会话需要历史 cwd。'
       };
     }
 
@@ -2069,7 +2101,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: params.provider,
       agentLaunchPreset: 'custom',
       agentCustomLaunchCommand: historyResumeCommandLine,
-      titleOverride: params.title
+      titleOverride: params.title,
+      cwdOverride
     });
     if (!createdNode) {
       return {
@@ -5677,7 +5710,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         uri,
         workspaceFolder,
         workspaceFolders.length > 1,
-        currentRemoteAuthority
+        currentRemoteAuthority,
+        workspaceFolders
       );
       if (relativePath) {
         return relativePath;
@@ -6044,7 +6078,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       filePath: normalizedPath,
       workspaceFolderPath: workspaceFolder.uri.fsPath,
       workspaceFolderName: workspaceFolder.name,
-      includeWorkspaceFolderPrefix: (vscode.workspace.workspaceFolders?.length ?? 0) > 1
+      includeWorkspaceFolderPrefix: (vscode.workspace.workspaceFolders?.length ?? 0) > 1,
+      workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+        name: folder.name,
+        path: folder.uri.fsPath
+      }))
     });
   }
 
@@ -7708,6 +7746,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.acknowledgeExecutionAttentionForNode(parsedMessage.payload.nodeId);
         return;
       case 'webview/createDemoNode':
+        if (parsedMessage.payload.requiresWorkspaceFolderSelection && isExecutionNodeKind(parsedMessage.payload.kind)) {
+          void this.applyCreateNodeAfterWorkspaceFolderSelection(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
+            requestId: parsedMessage.payload.requestId,
+            agentProvider: parsedMessage.payload.agentProvider,
+            agentLaunchPreset: parsedMessage.payload.agentLaunchPreset,
+            agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand,
+            targetGroupId: parsedMessage.payload.targetGroupId
+          });
+          return;
+        }
+
         this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
           requestId: parsedMessage.payload.requestId,
           agentProvider: parsedMessage.payload.agentProvider,
@@ -11937,10 +11986,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const agentLaunchPreset = options?.agentLaunchPreset ?? 'default';
     const agentCustomLaunchCommand =
       agentLaunchPreset === 'custom' ? options?.agentCustomLaunchCommand : undefined;
-    const cwdOverride = isExecutionNodeKind(kind) && options?.cwdOverride
-      ? this.validateExecutionCwdForCreate(kind, options.cwdOverride, options?.requestId)
+    const executionWorkspaceFolders = isExecutionNodeKind(kind) ? vscode.workspace.workspaceFolders ?? [] : [];
+    const defaultExecutionCwd = isExecutionNodeKind(kind) ? this.resolveCreateNodeDefaultExecutionCwd() : undefined;
+    if (
+      isExecutionNodeKind(kind) &&
+      !options?.cwdOverride &&
+      !defaultExecutionCwd &&
+      executionWorkspaceFolders.length > 1
+    ) {
+      const message = '多根 workspace 下创建执行节点前需要选择 workspace folder。';
+      this.recordDiagnosticEvent('node/createRejected', {
+        kind,
+        reason: 'workspace-folder-required',
+        message
+      });
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message,
+          createRequestId: options?.requestId
+        }
+      });
+      return undefined;
+    }
+    const cwdOverride = isExecutionNodeKind(kind)
+      ? this.validateExecutionCwdForCreate(kind, options?.cwdOverride ?? defaultExecutionCwd, options?.requestId)
       : undefined;
-    if (isExecutionNodeKind(kind) && options?.cwdOverride && !cwdOverride) {
+    if (isExecutionNodeKind(kind) && (options?.cwdOverride || defaultExecutionCwd) && !cwdOverride) {
       return undefined;
     }
 
@@ -12042,6 +12114,69 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return createdNode;
   }
 
+  private async applyCreateNodeAfterWorkspaceFolderSelection(
+    kind: ExecutionNodeKind,
+    preferredPosition: CanvasNodePosition | undefined,
+    options: CreateNodeOptions
+  ): Promise<void> {
+    const workspaceFolder = await this.pickExecutionWorkspaceFolder(kind);
+    if (!workspaceFolder) {
+      if (options.requestId) {
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message: '已取消选择 workspace folder，未创建执行节点。',
+            createRequestId: options.requestId
+          }
+        });
+      }
+      return;
+    }
+
+    this.applyCreateNode(kind, preferredPosition, {
+      ...options,
+      cwdOverride: workspaceFolder.uri.fsPath
+    });
+  }
+
+  public async pickExecutionWorkspaceFolder(kind: ExecutionNodeKind): Promise<vscode.WorkspaceFolder | undefined> {
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    if (workspaceFolders.length === 0) {
+      return undefined;
+    }
+
+    if (workspaceFolders.length === 1) {
+      return workspaceFolders[0];
+    }
+
+    const folderLabels = this.getWorkspaceFoldersForDisplay();
+    const items = workspaceFolders.map((workspaceFolder) => {
+      const label = getWorkspaceFolderDisplayLabel(
+        { name: workspaceFolder.name, path: workspaceFolder.uri.fsPath },
+        folderLabels
+      );
+      return {
+        label,
+        description: workspaceFolder.name === label ? undefined : workspaceFolder.name,
+        detail: workspaceFolder.uri.fsPath,
+        workspaceFolder
+      } satisfies vscode.QuickPickItem & { workspaceFolder: vscode.WorkspaceFolder };
+    });
+
+    const picked = await vscode.window.showQuickPick(items, {
+      title: kind === 'agent' ? '选择 Agent 的 workspace folder' : '选择 Terminal 的 workspace folder',
+      placeHolder: '多根 workspace 下需要先选择执行节点的启动目录',
+      matchOnDescription: true,
+      matchOnDetail: true
+    });
+    return picked?.workspaceFolder;
+  }
+
+  private resolveCreateNodeDefaultExecutionCwd(): string | undefined {
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    return workspaceFolders.length === 1 ? workspaceFolders[0]?.uri.fsPath : undefined;
+  }
+
   private getCreateNodeBlockReasonCode(kind: CanvasCreatableNodeKind): CreateNodeBlockReason | undefined {
     if (isExecutionNodeKind(kind) && !vscode.workspace.isTrusted) {
       return 'workspace-untrusted';
@@ -12052,9 +12187,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private validateExecutionCwdForCreate(
     kind: ExecutionNodeKind,
-    cwd: string,
+    cwd: string | undefined,
     createRequestId?: string
   ): string | undefined {
+    if (!cwd) {
+      return undefined;
+    }
     const validation = this.validateExecutionCwd(cwd);
     if (validation.valid) {
       return validation.cwd;
@@ -17807,14 +17945,19 @@ function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
   uri: vscode.Uri,
   workspaceFolder: vscode.WorkspaceFolder,
   includeWorkspaceFolderPrefix: boolean,
-  currentRemoteAuthority?: string
+  currentRemoteAuthority?: string,
+  workspaceFolders: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? []
 ): string | undefined {
   if (uri.scheme === 'file' && workspaceFolder.uri.scheme === 'file') {
     return resolveContainedWorkspaceRelativePath({
       filePath: uri.fsPath,
       workspaceFolderPath: workspaceFolder.uri.fsPath,
       workspaceFolderName: workspaceFolder.name,
-      includeWorkspaceFolderPrefix
+      includeWorkspaceFolderPrefix,
+      workspaceFolders: workspaceFolders.map((folder) => ({
+        name: folder.name,
+        path: folder.uri.fsPath
+      }))
     });
   }
 
@@ -17835,7 +17978,13 @@ function resolveWorkspaceRelativeDisplayPathForNoteMarkdownUri(
     return relativePath;
   }
 
-  const normalizedWorkspaceFolderName = workspaceFolder.name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const normalizedWorkspaceFolderName = getWorkspaceFolderDisplayLabel(
+    { name: workspaceFolder.name, path: workspaceFolder.uri.scheme === 'file' ? workspaceFolder.uri.fsPath : workspaceFolder.uri.path },
+    workspaceFolders.map((folder) => ({
+      name: folder.name,
+      path: folder.uri.scheme === 'file' ? folder.uri.fsPath : folder.uri.path
+    }))
+  ).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
   return normalizedWorkspaceFolderName ? `${normalizedWorkspaceFolderName}/${relativePath}` : relativePath;
 }
 

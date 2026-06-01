@@ -1,7 +1,6 @@
-export interface ExecutionWorkspaceFolderLabelSource {
-  name: string;
-  path: string;
-}
+import { resolveWorkspaceFolderLabels, type WorkspaceFolderLabelSource } from './workspaceFolderLabels';
+
+export type ExecutionWorkspaceFolderLabelSource = WorkspaceFolderLabelSource;
 
 interface NormalizedExecutionPath {
   raw: string;
@@ -19,12 +18,13 @@ export function formatExecutionCwdLabel(
     return 'cwd 未知';
   }
 
-  const normalizedFolders = (workspaceFolders ?? [])
+  const labeledFolders = resolveWorkspaceFolderLabels(workspaceFolders);
+  const normalizedFolders = labeledFolders
     .map((folder) => ({
       folder,
       normalizedPath: normalizeExecutionPath(folder.path)
     }))
-    .filter((entry): entry is { folder: ExecutionWorkspaceFolderLabelSource; normalizedPath: NormalizedExecutionPath } =>
+    .filter((entry): entry is { folder: typeof labeledFolders[number]; normalizedPath: NormalizedExecutionPath } =>
       Boolean(entry.normalizedPath)
     )
     .sort((left, right) => right.normalizedPath.normalized.length - left.normalizedPath.normalized.length);
@@ -35,7 +35,7 @@ export function formatExecutionCwdLabel(
       continue;
     }
 
-    const workspaceLabel = sanitizeWorkspaceFolderName(entry.folder.name) || basenameOfNormalizedPath(entry.normalizedPath.normalized);
+    const workspaceLabel = entry.folder.label || basenameOfNormalizedPath(entry.normalizedPath.normalized);
     if (!relativePath) {
       return workspaceLabel || entry.normalizedPath.normalized;
     }
@@ -100,10 +100,6 @@ function resolveRelativeExecutionPath(
   }
 
   return cwd.normalized.slice(workspaceFolderPath.normalized.length).replace(/^\/+/, '');
-}
-
-function sanitizeWorkspaceFolderName(name: string): string {
-  return name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim();
 }
 
 function basenameOfNormalizedPath(value: string): string {

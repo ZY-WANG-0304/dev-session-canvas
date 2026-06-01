@@ -58,6 +58,7 @@ const createDemoNodeInGroupMessage = {
     kind: 'agent',
     preferredPosition: { x: 180, y: 220 },
     cwd: '/workspace/src',
+    requiresWorkspaceFolderSelection: true,
     targetGroupId: 'group-parent',
     agentProvider: 'codex',
     agentLaunchPreset: 'default',
@@ -76,6 +77,19 @@ assert.equal(
   }),
   null,
   'webview/createDemoNode.cwd 必须是字符串。'
+);
+
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      requestId: 'invalid-root-picker-flag',
+      kind: 'terminal',
+      requiresWorkspaceFolderSelection: 'yes'
+    }
+  }),
+  null,
+  'webview/createDemoNode.requiresWorkspaceFolderSelection 必须是 boolean。'
 );
 
 const createEmptyGroupMessage = {
@@ -108,6 +122,11 @@ assert.match(
   protocolSource,
   /type: 'host\/requestCreateNode'[\s\S]*cwd\?: string/u,
   'Expected host/requestCreateNode to carry an optional cwd for Explorer-created execution nodes.'
+);
+assert.match(
+  protocolSource,
+  /type: 'webview\/createDemoNode'[\s\S]*requiresWorkspaceFolderSelection\?: boolean/u,
+  'Expected webview/createDemoNode to request host-side workspace folder selection for multi-root execution nodes.'
 );
 
 const applyTemplateInGroupMessage = {

@@ -3192,6 +3192,7 @@ function App(): JSX.Element {
           templateEntries={templateMenuEntries}
           defaultAgentProvider={runtimeContext.defaultAgentProvider}
           agentLaunchDefaults={runtimeContext.agentLaunchDefaults}
+          workspaceFolderCount={runtimeContext.workspaceFolders.length}
           canSaveCurrentCanvas={hostState?.nodes.some((node) => isTemplateCompatibleNodeKind(node.kind)) ?? false}
           canCreateGroupFromSelection={contextMenu.canCreateGroupFromSelection === true}
           onCreateEmptyGroup={() => {
@@ -3327,6 +3328,8 @@ function App(): JSX.Element {
       preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
     const resolvedAgentProvider = kind === 'agent' ? agentProvider ?? runtimeContext.defaultAgentProvider : undefined;
     const resolvedAgentLaunchPreset = kind === 'agent' ? agentLaunchPreset ?? 'default' : undefined;
+    const requiresWorkspaceFolderSelection =
+      !options?.cwd && (kind === 'agent' || kind === 'terminal') && runtimeContext.workspaceFolders.length > 1;
     pendingManualCreateRequestRef.current = {
       requestId,
       knownNodeIdsSnapshot: new Set(latestHostNodeIdsRef.current),
@@ -3347,6 +3350,7 @@ function App(): JSX.Element {
         preferredPosition: resolvedPreferredPosition,
         targetGroupId,
         cwd: options?.cwd,
+        requiresWorkspaceFolderSelection: requiresWorkspaceFolderSelection ? true : undefined,
         agentProvider,
         agentLaunchPreset,
         agentCustomLaunchCommand
@@ -7242,6 +7246,7 @@ const CanvasContextMenu = React.forwardRef<
     templateEntries: CanvasTemplateMenuEntry[];
     defaultAgentProvider: AgentProviderKind;
     agentLaunchDefaults: AgentLaunchDefaultsByProvider;
+    workspaceFolderCount: number;
     canSaveCurrentCanvas: boolean;
     canCreateGroupFromSelection: boolean;
     onCreate: (
@@ -7404,7 +7409,7 @@ const CanvasContextMenu = React.forwardRef<
                 />
                 <span className="canvas-context-menu-copy">
                   <strong>{humanizeNodeKind(kind)}</strong>
-                  <span>{describeContextMenuKind(kind)}</span>
+                  <span>{describeContextMenuCreateKind(kind, props.workspaceFolderCount)}</span>
                 </span>
               </button>
             ))}
@@ -7435,7 +7440,7 @@ const CanvasContextMenu = React.forwardRef<
                             ? `${providerLabel(provider)}（默认）`
                             : providerLabel(provider)}
                         </strong>
-                        <span>{describeAgentProviderContextMenu(provider)}</span>
+                        <span>{describeAgentProviderCreateContextMenu(provider, props.workspaceFolderCount)}</span>
                       </span>
                     </button>
                     <button
@@ -10724,8 +10729,24 @@ function describeContextMenuKind(kind: CanvasNodeKind): string {
   }
 }
 
+function describeContextMenuCreateKind(kind: CanvasNodeKind, workspaceFolderCount: number): string {
+  if (workspaceFolderCount > 1 && (kind === 'agent' || kind === 'terminal')) {
+    return `${describeContextMenuKind(kind)}，下一步选择 workspace folder`;
+  }
+
+  return describeContextMenuKind(kind);
+}
+
 function describeAgentProviderContextMenu(provider: AgentProviderKind): string {
   return `创建一个 ${providerLabel(provider)} Agent 会话窗口`;
+}
+
+function describeAgentProviderCreateContextMenu(
+  provider: AgentProviderKind,
+  workspaceFolderCount: number
+): string {
+  const description = describeAgentProviderContextMenu(provider);
+  return workspaceFolderCount > 1 ? `${description}，下一步选择 workspace folder` : description;
 }
 
 function labelForAgentLaunchPreset(preset: AgentLaunchPresetKind): string {

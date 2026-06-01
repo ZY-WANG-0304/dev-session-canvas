@@ -9539,9 +9539,135 @@ test('host-triggered execution node creation echoes cwd into the create request'
   await expect(waitForCreateDemoNodePayload(page)).resolves.toEqual(
     expect.objectContaining({
       kind: 'terminal',
-      cwd: '/workspace/packages/app'
+      cwd: '/workspace/packages/app',
+      requiresWorkspaceFolderSelection: undefined
     })
   );
+});
+
+test('host-triggered execution creation in multi-root workspaces preserves selected cwd without repicking', async ({ page }) => {
+  await openHarness(page);
+  const runtime = createRuntimeContext({
+    workspaceTrusted: true,
+    workspaceFolders: [
+      { name: 'workspace-a', path: '/workspace-a' },
+      { name: 'workspace-b', path: '/workspace-b' }
+    ]
+  });
+
+  await page.evaluate(
+    ({ nextRuntime }) => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/bootstrap',
+        payload: {
+          state: {
+            version: 1,
+            updatedAt: '2026-06-01T00:00:00.000Z',
+            nodes: []
+          },
+          runtime: nextRuntime
+        }
+      });
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/requestCreateNode',
+        payload: {
+          kind: 'agent',
+          cwd: '/workspace-b',
+          agentProvider: 'codex'
+        }
+      });
+    },
+    {
+      nextRuntime: runtime
+    }
+  );
+
+  await expect(waitForCreateDemoNodePayload(page)).resolves.toEqual(
+    expect.objectContaining({
+      kind: 'agent',
+      cwd: '/workspace-b',
+      requiresWorkspaceFolderSelection: undefined
+    })
+  );
+});
+
+test('multi-root canvas execution creation asks host to pick a workspace folder', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(
+    page,
+    createEmptyCanvasState(),
+    createRuntimeContext({
+      workspaceFolders: [
+        { name: 'workspace-a', path: '/workspace-a' },
+        { name: 'workspace-b', path: '/workspace-b' }
+      ]
+    })
+  );
+  await clearPostedMessages(page);
+
+  await page.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 880,
+      y: 520
+    }
+  });
+  await page.locator('[data-context-menu="true"] [data-context-menu-kind="terminal"]').click();
+
+  expect(await waitForCreateDemoNodePayload(page)).toMatchObject({
+    kind: 'terminal',
+    preferredPosition: {
+      x: 610,
+      y: 310
+    },
+    requiresWorkspaceFolderSelection: true
+  });
+});
+
+test('multi-root canvas note creation does not ask for a workspace folder', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(
+    page,
+    createEmptyCanvasState(),
+    createRuntimeContext({
+      workspaceFolders: [
+        { name: 'workspace-a', path: '/workspace-a' },
+        { name: 'workspace-b', path: '/workspace-b' }
+      ]
+    })
+  );
+  await clearPostedMessages(page);
+
+  await page.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 880,
+      y: 520
+    }
+  });
+  await page.locator('[data-context-menu="true"] [data-context-menu-kind="note"]').click();
+
+  expect(await waitForCreateDemoNodePayload(page)).toMatchObject({
+    kind: 'note',
+    requiresWorkspaceFolderSelection: undefined
+  });
 });
 
 test('unrelated host errors do not cancel pending manual node centering', async ({ page }) => {

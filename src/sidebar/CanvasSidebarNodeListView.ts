@@ -465,14 +465,18 @@ function buildSidebarNodeSubtitlePrefix(
   node: CanvasNodeSummary,
   workspaceFolders: Parameters<typeof formatExecutionCwdLabel>[1]
 ): string | undefined {
-  if (node.kind !== 'agent') {
-    return undefined;
+  if (node.kind === 'agent') {
+    const agentMetadata = node.metadata?.agent;
+    const providerLabel = humanizeAgentProvider(agentMetadata?.provider);
+    const cwdLabel = formatExecutionCwdLabel(agentMetadata?.cwd, workspaceFolders);
+    return `${cwdLabel} · ${providerLabel}`;
   }
 
-  const agentMetadata = node.metadata?.agent;
-  const providerLabel = humanizeAgentProvider(agentMetadata?.provider);
-  const cwdLabel = formatExecutionCwdLabel(agentMetadata?.cwd, workspaceFolders);
-  return `${cwdLabel} · ${providerLabel}`;
+  if (node.kind === 'terminal') {
+    return formatExecutionCwdLabel(node.metadata?.terminal?.cwd, workspaceFolders);
+  }
+
+  return undefined;
 }
 
 function humanizeNodeKind(kind: CanvasNodeKind): string {

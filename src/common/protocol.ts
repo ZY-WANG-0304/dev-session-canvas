@@ -556,6 +556,7 @@ export type WebviewToHostMessage =
         preferredPosition?: CanvasNodePosition;
         targetGroupId?: string;
         cwd?: string;
+        requiresWorkspaceFolderSelection?: boolean;
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
@@ -2012,6 +2013,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
       (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
       (payload.cwd !== undefined && typeof payload.cwd !== 'string') ||
+      (payload.requiresWorkspaceFolderSelection !== undefined &&
+        typeof payload.requiresWorkspaceFolderSelection !== 'boolean') ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
       (payload.agentLaunchPreset !== undefined && !isAgentLaunchPresetKind(payload.agentLaunchPreset)) ||
       (payload.agentCustomLaunchCommand !== undefined && typeof payload.agentCustomLaunchCommand !== 'string')
@@ -2029,6 +2032,10 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
           : undefined,
         targetGroupId: typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined,
         cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
+        requiresWorkspaceFolderSelection:
+          typeof payload.requiresWorkspaceFolderSelection === 'boolean'
+            ? payload.requiresWorkspaceFolderSelection
+            : undefined,
         agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined,
         agentLaunchPreset: isAgentLaunchPresetKind(payload.agentLaunchPreset) ? payload.agentLaunchPreset : undefined,
         agentCustomLaunchCommand:

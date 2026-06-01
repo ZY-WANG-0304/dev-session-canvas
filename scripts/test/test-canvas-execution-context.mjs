@@ -226,6 +226,26 @@ try {
     /this\.notifySidebarStateChanged\(\);/u,
     'workspace folder 变化必须刷新侧栏上下文。'
   );
+  assert.match(
+    managerSource,
+    /requiresWorkspaceFolderSelection[\s\S]*applyCreateNodeAfterWorkspaceFolderSelection/u,
+    'Webview 多根 execution node 创建请求必须回到 Host 侧选择 workspace folder。'
+  );
+  assert.match(
+    managerSource,
+    /public async pickExecutionWorkspaceFolder\(kind: ExecutionNodeKind\)/u,
+    'Host 侧必须提供执行节点 workspace folder picker，供命令与 Webview 请求复用。'
+  );
+  assert.match(
+    managerSource,
+    /createTerminalAndRunCommand[\s\S]*workspaceFolders\?\.length[\s\S]*pickExecutionWorkspaceFolder\('terminal'\)/u,
+    '自动创建安装 Terminal 的入口在多根 workspace 下也必须选择 workspace folder，不能静默使用第一个 root。'
+  );
+  assert.match(
+    managerSource,
+    /restoreAgentSessionFromHistory[\s\S]*validateExecutionCwd\(cwdOverride\)[\s\S]*多根 workspace 下恢复历史会话需要历史 cwd/u,
+    '恢复历史会话必须校验并传递历史 cwd，缺少 cwd 的 multi-root restore 应 fail closed。'
+  );
 
   console.log('canvas execution context tests passed');
 } finally {

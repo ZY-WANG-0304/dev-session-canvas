@@ -84,6 +84,18 @@ function run(): void {
 
   assert.equal(
     resolveNoteMarkdownLinkTarget({
+      href: 'app/src/index.ts',
+      workspaceRoots: [
+        { name: 'app', path: path.join(path.sep, 'workspace-a', 'app') },
+        { name: 'app', path: path.join(path.sep, 'workspace-b', 'app') }
+      ]
+    }),
+    null,
+    '多根 workspace 下重复 workspace folder name 的链接应 fail closed，避免随机打开错误 root。'
+  );
+
+  assert.equal(
+    resolveNoteMarkdownLinkTarget({
       href: '../outside.txt',
       workspaceRoots: singleRoot
     }),

@@ -28,10 +28,12 @@ try {
   const nestedWorkspace = path.join(workspaceRoot, 'packages', 'feature-a');
   const collidingWorkspaceRoot = path.join(tempDir, 'workspace-collision', 'foo', 'bar');
   const collidingWorkspaceShadow = path.join(tempDir, 'workspace-collision', 'foo-bar');
+  const secondaryWorkspaceRoot = path.join(tempDir, 'secondary', 'workspace');
   const outsideWorkspace = path.join(tempDir, 'outside');
   await mkdir(nestedWorkspace, { recursive: true });
   await mkdir(collidingWorkspaceRoot, { recursive: true });
   await mkdir(collidingWorkspaceShadow, { recursive: true });
+  await mkdir(secondaryWorkspaceRoot, { recursive: true });
   await mkdir(outsideWorkspace, { recursive: true });
 
   const codexTimestamp = Date.parse('2026-04-27T10:00:00.000Z');
@@ -73,6 +75,15 @@ try {
     timestampMs: Date.parse('2026-04-27T11:00:00.000Z'),
     fileSuffix: 'outside',
     userMessages: ['这个工作区外的会话不应被读取']
+  });
+
+  await writeCodexSessionFile({
+    homeDir,
+    sessionId: 'codex-session-secondary-root',
+    cwd: secondaryWorkspaceRoot,
+    timestampMs: Date.parse('2026-04-27T10:50:00.000Z'),
+    fileSuffix: 'secondary',
+    userMessages: ['这个第二 workspace root 的 Codex 会话应被读取']
   });
 
   const claudeRootSessionPath = await writeClaudeSessionFile({
@@ -271,6 +282,36 @@ try {
   assert.ok(
     veryLongInstructionSidebarItem?.title.endsWith('…'),
     'Expected extremely long session history titles to stay bounded with an ellipsis.'
+  );
+
+  const multiRootEntries = await listWorkspaceAgentSessionHistory({
+    workspaceRoots: [workspaceRoot, secondaryWorkspaceRoot],
+    env: {
+      ...process.env,
+      HOME: homeDir,
+      USERPROFILE: homeDir
+    }
+  });
+  assert.ok(
+    multiRootEntries.some((entry) => entry.sessionId === 'codex-session-secondary-root'),
+    'Expected session history to include entries from the second workspace root.'
+  );
+
+  const multiRootSidebarItems = buildCanvasSidebarSessionHistoryItems(multiRootEntries, [
+    { name: 'workspace', path: workspaceRoot },
+    { name: 'workspace', path: secondaryWorkspaceRoot }
+  ]);
+  const secondaryRootSidebarItem = multiRootSidebarItems.find((entry) => entry.sessionId === 'codex-session-secondary-root');
+  assert.ok(secondaryRootSidebarItem, 'Expected the second root sidebar item to be present.');
+  assert.equal(secondaryRootSidebarItem.cwd, secondaryWorkspaceRoot);
+  assert.notEqual(
+    secondaryRootSidebarItem.cwdLabel,
+    'workspace',
+    'Expected duplicate workspace folder names to be disambiguated in session history labels.'
+  );
+  assert.ok(
+    secondaryRootSidebarItem.searchText.includes(secondaryRootSidebarItem.cwdLabel.toLowerCase()),
+    'Expected session history search text to include the root-aware cwd label.'
   );
 
   const limitedEntries = await listWorkspaceAgentSessionHistory({
