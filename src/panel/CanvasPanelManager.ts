@@ -37,8 +37,11 @@ import {
   VIEW_IDS
 } from '../common/extensionIdentity';
 import {
+  createRegisteredSingleFolderStorageSlot,
   selectPreferredExtensionStorageRecoverySource,
-  type ExtensionStorageRecoverySourceSelection
+  selectSingleFolderForkSourceForWorkspace,
+  type ExtensionStorageRecoverySourceSelection,
+  type RegisteredSingleFolderStorageSlot
 } from '../common/extensionStoragePaths';
 import {
   type AgentNodeStatus,
@@ -276,6 +279,8 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
 const CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY = 'devSessionCanvas.canvas.defaultTemplateId';
+const SINGLE_FOLDER_STORAGE_SLOTS_GLOBAL_STATE_KEY = 'devSessionCanvas.canvas.singleFolderStorageSlots';
+const MAX_SINGLE_FOLDER_STORAGE_SLOT_RECORDS = 20;
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
 const FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STOP_HINT_STYLE';
 const RELOAD_WINDOW_ACTION_LABEL = '重新加载窗口';
@@ -389,6 +394,12 @@ interface SupervisorExecutionSession extends ManagedExecutionSessionBase {
 }
 
 type ManagedExecutionSession = LocalExecutionSession | SupervisorExecutionSession;
+
+interface PersistedSingleFolderStorageSlotRecord {
+  folderPath: string;
+  storagePath: string;
+  recordedAt?: string;
+}
 
 interface PendingWebviewProbeRequest {
   surface: CanvasSurfaceLocation;
@@ -736,6 +747,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly runtimeSupervisorClients = new Map<string, RuntimeSupervisorClient>();
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
+  private singleFolderStorageForkSourcePath: string | undefined;
   // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
   private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
@@ -767,6 +779,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
+    void this.recordCurrentSingleFolderStorageSlot();
     this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/initialized', {
       activeSurface: this.activeSurface,
@@ -818,9 +831,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     context.subscriptions.push(
-      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      vscode.workspace.onDidChangeWorkspaceFolders((event) => {
         this.invalidateResolvedShellEnvironmentPatch();
         this.clearAgentCliResolutionCache();
+        this.tryForkSingleFolderStorageForWorkspaceChange(event);
+        void this.recordCurrentSingleFolderStorageSlot();
         const executionMetadataChanged = this.reconcileDefaultExecutionMetadataCwd();
         const terminalShellMetadataChanged = this.refreshConfiguredTerminalShellMetadata();
         const metadataChanged = executionMetadataChanged || terminalShellMetadataChanged;
@@ -2272,6 +2287,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.scheduleRestoreLiveRuntimeSessions();
+    await this.recordCurrentSingleFolderStorageSlot();
 
     return snapshot;
   }
@@ -2333,6 +2349,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const snapshotPath = this.getPersistedCanvasSnapshotPath();
     const snapshot = this.loadPersistedCanvasSnapshot();
+    await this.recordCurrentSingleFolderStorageSlot();
     return {
       snapshotPath,
       exists: fs.existsSync(snapshotPath),
@@ -2362,6 +2379,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.waitForPendingRuntimeSupervisorOperations();
     await this.flushAllExecutionSessionStatesForHostBoundary();
     await this.waitForPendingWorkspaceStateUpdates();
+    await this.recordCurrentSingleFolderStorageSlot();
 
     const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions();
 
@@ -3371,11 +3389,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private refreshStorageRecoverySelection(): void {
+    this.singleFolderStorageForkSourcePath = undefined;
     this.storageRecoverySelection = selectPreferredExtensionStorageRecoverySource(this.rawExtensionStoragePath, {
       pathExists: (candidatePath) => fs.existsSync(candidatePath)
     });
     this.recordStorageRecoverySelection(this.storageRecoverySelection);
     this.initializeRecoveredStorageState(this.storageRecoverySelection);
+    this.tryForkSingleFolderStorageForCurrentWorkspace('startup');
   }
 
   private recordStorageRecoverySelection(selection: ExtensionStorageRecoverySourceSelection): void {
@@ -3421,6 +3441,139 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         message: formatUnknownError(error)
       });
     }
+  }
+
+  private tryForkSingleFolderStorageForWorkspaceChange(event: vscode.WorkspaceFoldersChangeEvent): void {
+    const workspaceFolderCount = vscode.workspace.workspaceFolders?.length ?? 0;
+    if (workspaceFolderCount <= 1 || event.added.length === 0) {
+      return;
+    }
+
+    this.tryForkSingleFolderStorageForCurrentWorkspace('workspace-folders-changed');
+  }
+
+  private tryForkSingleFolderStorageForCurrentWorkspace(reason: 'startup' | 'workspace-folders-changed'): void {
+    const registeredSlots = this.readRegisteredSingleFolderStorageSlots();
+    const forkSource = selectSingleFolderForkSourceForWorkspace({
+      workspaceFolderPaths: (vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => workspaceFolder.uri.fsPath),
+      currentStorage: this.storageRecoverySelection,
+      currentWorkspaceStateAvailable: this.getStoredValue<unknown>(STORAGE_KEYS.canvasState) !== undefined,
+      registeredSlots
+    });
+    if (!forkSource) {
+      return;
+    }
+
+    try {
+      const copiedPaths = this.migrateRecoverableStateToCurrentSlot(forkSource.storagePath, this.storageRecoverySelection.writePath);
+      this.singleFolderStorageForkSourcePath = forkSource.storagePath;
+      this.recordDiagnosticEvent('storage/singleFolderForkedToMultiRoot', {
+        reason,
+        sourceFolderPath: forkSource.folderPath,
+        sourceStoragePath: forkSource.storagePath,
+        targetPath: this.storageRecoverySelection.writePath,
+        copiedPaths,
+        sourceStateHash: forkSource.snapshot.stateHash,
+        sourceTimestamp: forkSource.snapshot.effectiveTimestamp
+      });
+      this.storageRecoverySelection = selectPreferredExtensionStorageRecoverySource(this.rawExtensionStoragePath, {
+        pathExists: (candidatePath) => fs.existsSync(candidatePath)
+      });
+      this.recordStorageRecoverySelection(this.storageRecoverySelection);
+    } catch (error) {
+      this.singleFolderStorageForkSourcePath = undefined;
+      this.recordDiagnosticEvent('storage/singleFolderForkFailed', {
+        reason,
+        sourceFolderPath: forkSource.folderPath,
+        sourceStoragePath: forkSource.storagePath,
+        targetPath: this.storageRecoverySelection.writePath,
+        sourceStateHash: forkSource.snapshot.stateHash,
+        message: formatUnknownError(error)
+      });
+    }
+  }
+
+  private async recordCurrentSingleFolderStorageSlot(): Promise<void> {
+    const currentWorkspaceFolder = this.getCurrentSingleFileWorkspaceFolder();
+    if (!currentWorkspaceFolder || !this.context.storageUri) {
+      return;
+    }
+
+    const slot = createRegisteredSingleFolderStorageSlot(
+      currentWorkspaceFolder.uri.fsPath,
+      this.rawExtensionStoragePath,
+      {
+        pathExists: (candidatePath) => fs.existsSync(candidatePath),
+        readTextFile: (filePath) => fs.readFileSync(filePath, 'utf8')
+      }
+    );
+    if (!slot) {
+      return;
+    }
+
+    const nextRecords = this.upsertRegisteredSingleFolderStorageSlotRecord({
+      folderPath: slot.folderPath,
+      storagePath: slot.storagePath,
+      recordedAt: slot.recordedAt
+    });
+    try {
+      await this.context.globalState.update(SINGLE_FOLDER_STORAGE_SLOTS_GLOBAL_STATE_KEY, nextRecords);
+      this.recordDiagnosticEvent('storage/singleFolderSlotRegistered', {
+        folderPath: slot.folderPath,
+        storagePath: slot.storagePath,
+        recordedAt: slot.recordedAt,
+        snapshotExists: slot.snapshot.exists,
+        snapshotStateHash: slot.snapshot.stateHash,
+        snapshotTimestamp: slot.snapshot.effectiveTimestamp
+      });
+    } catch (error) {
+      this.recordDiagnosticEvent('storage/singleFolderSlotRegistrationFailed', {
+        folderPath: slot.folderPath,
+        storagePath: slot.storagePath,
+        message: formatUnknownError(error)
+      });
+    }
+  }
+
+  private getCurrentSingleFileWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    const workspaceFolder = workspaceFolders.length === 1 ? workspaceFolders[0] : undefined;
+    return workspaceFolder?.uri.scheme === 'file' ? workspaceFolder : undefined;
+  }
+
+  private readRegisteredSingleFolderStorageSlots(): RegisteredSingleFolderStorageSlot[] {
+    return this.readPersistedSingleFolderStorageSlotRecords()
+      .map((record) => createRegisteredSingleFolderStorageSlot(record.folderPath, record.storagePath, {
+        pathExists: (candidatePath) => fs.existsSync(candidatePath),
+        readTextFile: (filePath) => fs.readFileSync(filePath, 'utf8'),
+        recordedAt: record.recordedAt
+      }))
+      .filter((slot): slot is RegisteredSingleFolderStorageSlot => Boolean(slot));
+  }
+
+  private readPersistedSingleFolderStorageSlotRecords(): PersistedSingleFolderStorageSlotRecord[] {
+    const rawRecords = this.context.globalState.get<unknown>(SINGLE_FOLDER_STORAGE_SLOTS_GLOBAL_STATE_KEY);
+    if (!Array.isArray(rawRecords)) {
+      return [];
+    }
+
+    return rawRecords
+      .map((record) => normalizePersistedSingleFolderStorageSlotRecord(record))
+      .filter((record): record is PersistedSingleFolderStorageSlotRecord => Boolean(record));
+  }
+
+  private upsertRegisteredSingleFolderStorageSlotRecord(
+    nextRecord: PersistedSingleFolderStorageSlotRecord
+  ): PersistedSingleFolderStorageSlotRecord[] {
+    const recordsByFolder = new Map<string, PersistedSingleFolderStorageSlotRecord>();
+    for (const record of this.readPersistedSingleFolderStorageSlotRecords()) {
+      recordsByFolder.set(record.folderPath, record);
+    }
+    recordsByFolder.set(nextRecord.folderPath, nextRecord);
+
+    return Array.from(recordsByFolder.values())
+      .sort((left, right) => comparePersistedSingleFolderStorageSlotRecordsByRecency(left, right))
+      .slice(0, MAX_SINGLE_FOLDER_STORAGE_SLOT_RECORDS);
   }
 
   private migrateRecoverableStateToCurrentSlot(sourcePath: string, targetPath: string): string[] {
@@ -3956,8 +4109,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.appliedStartupConfiguration.filesFeatureEnabled && !resetDueToFilesFeatureModeChange
         ? normalizedState
         : clearFileDomainState(normalizedState);
+    const materializedState = this.materializeNoteMarkdownRecoverableDraftFiles(sanitizedState);
+    if (this.singleFolderStorageForkSourcePath) {
+      return sanitizeForkedSingleFolderStorageRuntimeState(materializedState);
+    }
+
     return hydrateRuntimeStoragePaths(
-      this.materializeNoteMarkdownRecoverableDraftFiles(sanitizedState),
+      materializedState,
       this.storageRecoverySelection.sourcePath
     );
   }
@@ -12447,6 +12605,41 @@ function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function normalizePersistedSingleFolderStorageSlotRecord(
+  value: unknown
+): PersistedSingleFolderStorageSlotRecord | undefined {
+  if (!isRecord(value) || typeof value.folderPath !== 'string' || typeof value.storagePath !== 'string') {
+    return undefined;
+  }
+
+  const folderPath = normalizeExecutionCwd(value.folderPath);
+  const storagePath = normalizeExecutionCwd(value.storagePath);
+  if (!folderPath || !storagePath) {
+    return undefined;
+  }
+
+  return {
+    folderPath,
+    storagePath,
+    recordedAt: typeof value.recordedAt === 'string' && value.recordedAt.trim() ? value.recordedAt.trim() : undefined
+  };
+}
+
+function comparePersistedSingleFolderStorageSlotRecordsByRecency(
+  left: PersistedSingleFolderStorageSlotRecord,
+  right: PersistedSingleFolderStorageSlotRecord
+): number {
+  const rightRecordedAt = Date.parse(right.recordedAt ?? '');
+  const leftRecordedAt = Date.parse(left.recordedAt ?? '');
+  const rightTime = Number.isFinite(rightRecordedAt) ? rightRecordedAt : Number.NEGATIVE_INFINITY;
+  const leftTime = Number.isFinite(leftRecordedAt) ? leftRecordedAt : Number.NEGATIVE_INFINITY;
+  if (rightTime !== leftTime) {
+    return rightTime - leftTime;
+  }
+
+  return left.folderPath.localeCompare(right.folderPath);
+}
+
 function buildExecutionFileLinkResolveDiagnostics(
   candidates: readonly ExecutionTerminalFileLinkCandidate[],
   resolvedCount: number,
@@ -15966,6 +16159,106 @@ function readRuntimeSupervisorRegistrySessionsForTest(value: unknown): unknown[]
   }
 
   return Array.isArray(value.sessions) ? value.sessions : [];
+}
+
+function sanitizeForkedSingleFolderStorageRuntimeState(state: CanvasPrototypeState): CanvasPrototypeState {
+  let didMutate = false;
+  const nodes = state.nodes.map((node) => {
+    if (node.kind === 'agent') {
+      const metadata = ensureAgentMetadata(node);
+      if (!shouldSanitizeForkedExecutionMetadata(metadata)) {
+        return node;
+      }
+
+      didMutate = true;
+      return {
+        ...node,
+        status: canResumeAgentFromMetadata(metadata) ? 'resume-ready' : 'interrupted',
+        summary: canResumeAgentFromMetadata(metadata)
+          ? '已从单根 folder fork 画布，可手动恢复原 Agent 会话。'
+          : '已从单根 folder fork 画布，原 Agent live runtime 未跨 workspace 复用，可重新启动。',
+        metadata: {
+          ...node.metadata,
+          agent: sanitizeForkedAgentMetadata(metadata)
+        }
+      };
+    }
+
+    if (node.kind === 'terminal') {
+      const metadata = ensureTerminalMetadata(node);
+      if (!shouldSanitizeForkedExecutionMetadata(metadata)) {
+        return node;
+      }
+
+      didMutate = true;
+      return {
+        ...node,
+        status: 'interrupted',
+        summary: '已从单根 folder fork 画布，原终端 live runtime 未跨 workspace 复用，可重新启动。',
+        metadata: {
+          ...node.metadata,
+          terminal: sanitizeForkedTerminalMetadata(metadata)
+        }
+      };
+    }
+
+    return node;
+  });
+
+  return didMutate
+    ? {
+        ...state,
+        nodes
+      }
+    : state;
+}
+
+function shouldSanitizeForkedExecutionMetadata(metadata: ExecutionSessionMetadata): boolean {
+  return Boolean(
+    metadata.liveSession ||
+      metadata.runtimeSessionId ||
+      metadata.pendingLaunch ||
+      metadata.persistenceMode === 'live-runtime' ||
+      metadata.runtimeStoragePath
+  );
+}
+
+function sanitizeForkedAgentMetadata(metadata: AgentNodeMetadata): AgentNodeMetadata {
+  const canResume = canResumeAgentFromMetadata(metadata);
+  return {
+    ...metadata,
+    lifecycle: canResume ? 'resume-ready' : 'interrupted',
+    persistenceMode: 'snapshot-only',
+    attachmentState: 'history-restored',
+    runtimeBackend: undefined,
+    runtimeGuarantee: undefined,
+    runtimeStoragePath: undefined,
+    liveSession: false,
+    runtimeSessionId: undefined,
+    pendingLaunch: undefined,
+    lastRuntimeError: undefined,
+    serializedTerminalState: metadata.serializedTerminalState,
+    lastExitMessage: metadata.lastExitMessage ?? (canResume ? undefined : '原 Agent live runtime 未跨 workspace 复用。'),
+    attentionPending: false
+  };
+}
+
+function sanitizeForkedTerminalMetadata(metadata: TerminalNodeMetadata): TerminalNodeMetadata {
+  return {
+    ...metadata,
+    lifecycle: 'interrupted',
+    persistenceMode: 'snapshot-only',
+    attachmentState: 'history-restored',
+    runtimeBackend: undefined,
+    runtimeGuarantee: undefined,
+    runtimeStoragePath: undefined,
+    liveSession: false,
+    runtimeSessionId: undefined,
+    pendingLaunch: undefined,
+    lastRuntimeError: undefined,
+    lastExitMessage: metadata.lastExitMessage ?? '原终端 live runtime 未跨 workspace 复用。',
+    attentionPending: false
+  };
 }
 
 function hydrateRuntimeStoragePaths(

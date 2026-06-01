@@ -62,10 +62,25 @@ export interface ExtensionStorageRecoverySourceSelection {
   candidates: ExtensionStorageSlotCandidate[];
 }
 
+export interface RegisteredSingleFolderStorageSlot {
+  folderPath: string;
+  storagePath: string;
+  recordedAt?: string;
+  snapshot: ExtensionStorageSnapshotMetadata;
+}
+
+export interface SelectSingleFolderForkSourceOptions {
+  workspaceFolderPaths: readonly string[];
+  currentStorage: ExtensionStorageRecoverySourceSelection;
+  currentWorkspaceStateAvailable?: boolean;
+  registeredSlots: readonly RegisteredSingleFolderStorageSlot[];
+}
+
 interface ExtensionStoragePathResolutionOptions {
   pathExists?: (candidatePath: string) => boolean;
   listDirectoryEntries?: (directoryPath: string) => readonly string[];
   readTextFile?: (filePath: string) => string;
+  recordedAt?: string;
 }
 
 type PathModuleLike = typeof path.posix | typeof path.win32;
@@ -143,6 +158,103 @@ export function selectPreferredExtensionStorageRecoverySource(
     sourceCandidate: selectedCandidate,
     candidates
   };
+}
+
+export function createRegisteredSingleFolderStorageSlot(
+  folderPath: string,
+  storagePath: string,
+  options: ExtensionStoragePathResolutionOptions = {}
+): RegisteredSingleFolderStorageSlot | undefined {
+  const pathModule = resolveExtensionStoragePathModule(storagePath);
+  const normalizedFolderPath = normalizeWorkspaceFolderPathForStorageFork(folderPath);
+  const normalizedStoragePath = normalizeExtensionStoragePath(storagePath, pathModule);
+  if (!normalizedFolderPath || !normalizedStoragePath) {
+    return undefined;
+  }
+
+  const hasRecordedAtOption = Object.prototype.hasOwnProperty.call(options, 'recordedAt');
+  const recordedAt = hasRecordedAtOption
+    ? normalizeTimestamp(options.recordedAt)
+    : new Date().toISOString();
+
+  return {
+    folderPath: normalizedFolderPath,
+    storagePath: normalizedStoragePath,
+    ...(recordedAt ? { recordedAt } : {}),
+    snapshot: readPersistedCanvasSnapshotMetadata(normalizedStoragePath, {
+      pathModule,
+      pathExists: options.pathExists ?? fs.existsSync,
+      readTextFile: options.readTextFile ?? readTextFileSync
+    })
+  };
+}
+
+export function selectSingleFolderForkSourceForWorkspace(
+  options: SelectSingleFolderForkSourceOptions
+): RegisteredSingleFolderStorageSlot | undefined {
+  if (
+    options.workspaceFolderPaths.length <= 1 ||
+    options.currentWorkspaceStateAvailable === true ||
+    currentStorageHasRecoverableState(options.currentStorage)
+  ) {
+    return undefined;
+  }
+
+  const currentStoragePath = normalizeStoragePathForForkComparison(options.currentStorage.writePath);
+  const workspaceFolderKeys = new Set(
+    options.workspaceFolderPaths
+      .map((folderPath) => normalizeWorkspaceFolderPathForStorageFork(folderPath))
+      .filter((folderPath): folderPath is string => Boolean(folderPath))
+  );
+  const candidates = options.registeredSlots.filter((slot) => {
+    const folderKey = normalizeWorkspaceFolderPathForStorageFork(slot.folderPath);
+    const storageKey = normalizeStoragePathForForkComparison(slot.storagePath);
+    return (
+      folderKey !== undefined &&
+      storageKey !== '' &&
+      workspaceFolderKeys.has(folderKey) &&
+      storageKey !== currentStoragePath &&
+      slot.snapshot.exists
+    );
+  });
+  if (candidates.length === 0) {
+    return undefined;
+  }
+
+  const candidatesWithComparableRecordedAt = candidates.filter((candidate) =>
+    parseTimestampMs(candidate.recordedAt) !== undefined
+  );
+  if (candidatesWithComparableRecordedAt.length !== candidates.length) {
+    return undefined;
+  }
+
+  const sortedCandidates = candidatesWithComparableRecordedAt.slice().sort((left, right) => {
+    const rightRecordedAt = parseTimestampMs(right.recordedAt) ?? Number.NEGATIVE_INFINITY;
+    const leftRecordedAt = parseTimestampMs(left.recordedAt) ?? Number.NEGATIVE_INFINITY;
+    if (rightRecordedAt !== leftRecordedAt) {
+      return rightRecordedAt - leftRecordedAt;
+    }
+
+    return normalizeStoragePathForForkComparison(left.storagePath).localeCompare(
+      normalizeStoragePathForForkComparison(right.storagePath)
+    );
+  });
+
+  const first = sortedCandidates[0];
+  const second = sortedCandidates[1];
+  if (
+    first &&
+    second &&
+    parseTimestampMs(first.recordedAt) === parseTimestampMs(second.recordedAt)
+  ) {
+    return undefined;
+  }
+
+  if (first?.snapshot.effectiveTimestampMs === undefined) {
+    return undefined;
+  }
+
+  return first;
 }
 
 export function collectExtensionStorageSlotCandidates(
@@ -406,6 +518,27 @@ function hasRecoverableState(
   pathExists: (candidatePath: string) => boolean
 ): boolean {
   return RECOVERABLE_STATE_RELATIVE_PATHS.some((relativePath) => pathExists(pathModule.join(basePath, relativePath)));
+}
+
+function currentStorageHasRecoverableState(selection: ExtensionStorageRecoverySourceSelection): boolean {
+  return selection.currentCandidate.hasRecoverableState || selection.sourceCandidate.hasRecoverableState;
+}
+
+function normalizeWorkspaceFolderPathForStorageFork(folderPath: string): string | undefined {
+  const trimmedPath = folderPath.trim();
+  if (!trimmedPath) {
+    return undefined;
+  }
+
+  const pathModule = resolveExtensionStoragePathModule(trimmedPath);
+  const normalizedPath = pathModule.resolve(trimmedPath);
+  return pathModule === path.win32 ? normalizedPath.toLowerCase() : normalizedPath;
+}
+
+function normalizeStoragePathForForkComparison(storagePath: string): string {
+  const pathModule = resolveExtensionStoragePathModule(storagePath);
+  const normalizedPath = normalizeExtensionStoragePath(storagePath, pathModule);
+  return pathModule === path.win32 ? normalizedPath.toLowerCase() : normalizedPath;
 }
 
 function resolveExtensionStoragePathModule(candidatePath: string): PathModuleLike {

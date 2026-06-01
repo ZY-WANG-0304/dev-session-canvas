@@ -23,8 +23,10 @@ try {
 
   const require = createRequire(import.meta.url);
   const {
+    createRegisteredSingleFolderStorageSlot,
     resolvePreferredExtensionStoragePath,
-    selectPreferredExtensionStorageRecoverySource
+    selectPreferredExtensionStorageRecoverySource,
+    selectSingleFolderForkSourceForWorkspace
   } = require(outfile);
 
   const stablePath =
@@ -159,6 +161,135 @@ try {
   });
   assert.equal(fallbackToNearestRecoverableStateResult.sourcePath, indexedPathOne);
   assert.equal(fallbackToNearestRecoverableStateResult.selectionBasis, 'recoverable-state-fallback');
+
+  const emptyMultiRootSelection = selectPreferredExtensionStorageRecoverySource(indexedPathTwo, {
+    pathExists: () => false,
+    listDirectoryEntries: () => workspaceStorageEntries
+  });
+  const singleFolderSource = createRegisteredSingleFolderStorageSlot('/workspaces/app', stablePath, {
+    ...buildSnapshotFixture([
+      [storagePath.join(stablePath, 'canvas-state.json'), createSnapshotText({
+        title: 'SINGLE-FOLDER-SOURCE',
+        writtenAt: '2026-06-01T08:00:00.000Z',
+        updatedAt: '2026-06-01T07:59:00.000Z'
+      })]
+    ]),
+    recordedAt: '2026-06-01T08:05:00.000Z'
+  });
+  assert.ok(singleFolderSource, 'Expected registered single-folder storage slot fixture.');
+  const forkSourceResult = selectSingleFolderForkSourceForWorkspace({
+    workspaceFolderPaths: ['/workspaces/app', '/workspaces/peer'],
+    currentStorage: emptyMultiRootSelection,
+    registeredSlots: [singleFolderSource]
+  });
+  assert.equal(forkSourceResult?.storagePath, stablePath);
+
+  const currentMultiRootHasSnapshot = selectPreferredExtensionStorageRecoverySource(indexedPathTwo, {
+    ...buildSnapshotFixture([
+      [storagePath.join(indexedPathTwo, 'canvas-state.json'), createSnapshotText({
+        title: 'MULTI-ROOT-CURRENT',
+        writtenAt: '2026-06-01T09:00:00.000Z',
+        updatedAt: '2026-06-01T08:59:00.000Z'
+      })]
+    ]),
+    listDirectoryEntries: () => workspaceStorageEntries
+  });
+  assert.equal(
+    selectSingleFolderForkSourceForWorkspace({
+      workspaceFolderPaths: ['/workspaces/app', '/workspaces/peer'],
+      currentStorage: currentMultiRootHasSnapshot,
+      registeredSlots: [singleFolderSource]
+    }),
+    undefined,
+    'Existing multi-root recoverable state must block single-folder storage fork.'
+  );
+
+  assert.equal(
+    selectSingleFolderForkSourceForWorkspace({
+      workspaceFolderPaths: ['/workspaces/app', '/workspaces/peer'],
+      currentStorage: emptyMultiRootSelection,
+      currentWorkspaceStateAvailable: true,
+      registeredSlots: [singleFolderSource]
+    }),
+    undefined,
+    'Existing multi-root workspaceState must block single-folder storage fork.'
+  );
+
+  assert.equal(
+    selectSingleFolderForkSourceForWorkspace({
+      workspaceFolderPaths: ['/workspaces/app', '/workspaces/peer'],
+      currentStorage: emptyMultiRootSelection,
+      registeredSlots: [{ ...singleFolderSource, storagePath: emptyMultiRootSelection.writePath }]
+    }),
+    undefined,
+    'The active multi-root storage path must never be selected as its own fork source.'
+  );
+
+  const olderRegisteredSource = createRegisteredSingleFolderStorageSlot('/workspaces/peer', indexedPathOne, {
+    ...buildSnapshotFixture([
+      [storagePath.join(indexedPathOne, 'canvas-state.json'), createSnapshotText({
+        title: 'OLDER-RECORDED-REGISTERED-SOURCE',
+        writtenAt: '2026-06-01T09:00:00.000Z',
+        updatedAt: '2026-06-01T08:59:00.000Z'
+      })]
+    ]),
+    recordedAt: '2026-06-01T07:05:00.000Z'
+  });
+  assert.ok(olderRegisteredSource, 'Expected older registered single-folder storage slot fixture.');
+  assert.equal(
+    selectSingleFolderForkSourceForWorkspace({
+      workspaceFolderPaths: ['/workspaces/app', '/workspaces/peer'],
+      currentStorage: emptyMultiRootSelection,
+      registeredSlots: [olderRegisteredSource, singleFolderSource]
+    })?.storagePath,
+    stablePath,
+    'Multiple registered single-folder sources should choose the freshest actively recorded slot.'
+  );
+
+  const tiedRegisteredSource = {
+    ...singleFolderSource,
+    folderPath: '/workspaces/peer',
+    storagePath: indexedPathOne
+  };
+  assert.equal(
+    selectSingleFolderForkSourceForWorkspace({
+      workspaceFolderPaths: ['/workspaces/app', '/workspaces/peer'],
+      currentStorage: emptyMultiRootSelection,
+      registeredSlots: [singleFolderSource, tiedRegisteredSource]
+    }),
+    undefined,
+    'Equal-timestamp single-folder fork candidates must fail closed.'
+  );
+
+  const missingRecordedAtSource = {
+    ...singleFolderSource,
+    recordedAt: undefined
+  };
+  assert.equal(
+    selectSingleFolderForkSourceForWorkspace({
+      workspaceFolderPaths: ['/workspaces/app', '/workspaces/peer'],
+      currentStorage: emptyMultiRootSelection,
+      registeredSlots: [missingRecordedAtSource]
+    }),
+    undefined,
+    'Single-folder fork candidates without actively recorded slot timestamps must fail closed.'
+  );
+
+  const missingTimestampSource = {
+    ...singleFolderSource,
+    snapshot: {
+      exists: true
+    }
+  };
+  assert.equal(
+    selectSingleFolderForkSourceForWorkspace({
+      workspaceFolderPaths: ['/workspaces/app', '/workspaces/peer'],
+      currentStorage: emptyMultiRootSelection,
+      registeredSlots: [missingTimestampSource]
+    }),
+    undefined,
+    'Single-folder fork candidates without comparable timestamps must fail closed.'
+  );
 
   const unrelatedPath = '/home/users/example/.config/dev-session-canvas';
   const unrelatedResult = selectPreferredExtensionStorageRecoverySource(unrelatedPath, {

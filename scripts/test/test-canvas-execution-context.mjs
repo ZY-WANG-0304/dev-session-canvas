@@ -214,7 +214,7 @@ try {
 
   const managerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
   const workspaceFoldersListener = managerSource.match(
-    /vscode\.workspace\.onDidChangeWorkspaceFolders\(\(\) => \{[\s\S]*?\n      \}\)\n    \);/u
+    /vscode\.workspace\.onDidChangeWorkspaceFolders\(\(event\) => \{[\s\S]*?\n      \}\)\n    \);/u
   )?.[0] ?? '';
   assert.match(
     workspaceFoldersListener,
@@ -245,6 +245,27 @@ try {
     managerSource,
     /restoreAgentSessionFromHistory[\s\S]*validateExecutionCwd\(cwdOverride\)[\s\S]*多根 workspace 下恢复历史会话需要历史 cwd/u,
     '恢复历史会话必须校验并传递历史 cwd，缺少 cwd 的 multi-root restore 应 fail closed。'
+  );
+
+  assert.match(
+    workspaceFoldersListener,
+    /tryForkSingleFolderStorageForWorkspaceChange\(event\)/u,
+    'workspace folder 变化必须把当前事件传给单根到多根 storage fork 逻辑，避免后台猜测 slot。'
+  );
+  assert.match(
+    managerSource,
+    /SINGLE_FOLDER_STORAGE_SLOTS_GLOBAL_STATE_KEY[\s\S]*globalState\.update\(SINGLE_FOLDER_STORAGE_SLOTS_GLOBAL_STATE_KEY/u,
+    '单根 folder storage slot 必须由当前环境主动登记到 globalState。'
+  );
+  assert.match(
+    managerSource,
+    /selectSingleFolderForkSourceForWorkspace[\s\S]*registeredSlots/u,
+    'multi-root storage fork 必须只从主动登记的 single-folder slot candidates 中选择 source。'
+  );
+  assert.match(
+    managerSource,
+    /sanitizeForkedSingleFolderStorageRuntimeState/u,
+    '单根到多根 fork 后必须清理 live runtime 绑定，避免两个分支复用同一 runtime。'
   );
 
   console.log('canvas execution context tests passed');
