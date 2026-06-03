@@ -17,6 +17,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Drive `Agent` nodes through the `codex` or `claude` CLI
 - Run `Terminal` nodes through the embedded terminal surface
 - Let `Agent` and embedded `Terminal` nodes inherit a controlled shell environment, with diagnostics showing the current resolution path
+- Create cwd-scoped `Terminal` or `Agent` nodes from workspace folders and files through File Explorer context menus
 - Write contextual notes with Markdown syntax inside `Note` nodes
 - Associate `Note` nodes with `.md` / `.markdown` files in the workspace, including YAML metadata popovers and safe Markdown image previews
 - Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces, including explicit save modes for associated Markdown Notes
@@ -49,22 +50,22 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.11.0 Highlights
+## 0.12.0 Highlights
 
-The public `0.11.0` release is a new `0.x` Preview milestone focused on canvas groups for organizing larger multi-session workspaces. It keeps the `0.10.7` production Webview Terminal TUI input hotfix, the `0.10.6` Agent abnormal interruption notification patch, the `0.10.5` Note Markdown source-position and recoverable-draft fixes, Marketplace metadata, Open VSX mirroring strategy, and support matrix.
+The public `0.12.0` release is a new `0.x` Preview milestone focused on carrying File Explorer resource context into canvas execution nodes and hardening Panel Webview recovery. It keeps the `0.11.0` canvas groups milestone, Marketplace metadata, Open VSX mirroring strategy, notifier companion relationship, and support matrix.
 
-- Create named group frames from the canvas context menu, the Command Palette, or a Ctrl / Cmd multi-selection of peer nodes and groups
-- Move, rename, ungroup, delete, nest, drag into / out of, and resize groups from all eight directions while preserving grouped node interactions
-- Group frames use a VS Code Panel-style surface: the body sits below regular nodes, while title, border, toolbar, and resize chrome stay interactive without causing Webview document scrollbars when zoomed in
-- The sidebar `Nodes` list now defaults to a grouped tree and offers native view-title `...` actions to switch between grouped and flat views
-- Templates preserve compatible group structures when saved or applied, while invalid external group references are rejected or safely sanitized
+- Create `Terminal` or `Agent` nodes from File Explorer context menus on workspace folders or files; files use their parent folder as the execution cwd
+- Preserve the selected cwd in node metadata so initial launch, restart, new Agent sessions, resume, runtime supervisor, diagnostics, and terminal link context use the same directory
+- Show cwd labels on Agent node subtitles and the sidebar `Nodes` second line, with full cwd and launch command available in hover text; Terminal subtitles continue to focus on the shell path
+- Add Webview lifecycle identity, frame IDs, and bootstrap acknowledgements so Panel restore double-attach cases do not leave a visible but empty canvas
+- Tighten node body padding and group member inset rules so execution nodes, cards, and canvas groups feel visually consistent
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.10.7` to `0.11.0` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.11.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.11.0` preserves that explicit choice
+- First-time installs and upgrades from `0.11.0` to `0.12.0` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.12.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.12.0` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -100,7 +101,7 @@ The public `0.11.0` release is a new `0.x` Preview milestone focused on canvas g
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.11.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.12.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 

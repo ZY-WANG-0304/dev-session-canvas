@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.0
+
+- 与主扩展 `0.12.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 File Explorer 资源右键创建绑定 cwd 的 `Terminal` / `Agent` 节点、Panel Webview lifecycle 串线修复、执行目录可见反馈和画布节点 padding 收口；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.11.0
 
 - 与主扩展 `0.11.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦画布节点分组、分组树侧栏、分组模板保存 / 应用和受限创建入口解释；notifier companion 不引入新的通知投递行为变更。
