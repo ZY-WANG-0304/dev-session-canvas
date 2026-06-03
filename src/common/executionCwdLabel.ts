@@ -37,15 +37,17 @@ export function formatExecutionCwdLabel(
 
     const workspaceLabel = sanitizeWorkspaceFolderName(entry.folder.name) || basenameOfNormalizedPath(entry.normalizedPath.normalized);
     if (!relativePath) {
-      return workspaceLabel || entry.normalizedPath.normalized;
+      return appendDirectoryIndicator(workspaceLabel || entry.normalizedPath.normalized);
     }
 
-    return normalizedFolders.length > 1 && workspaceLabel
-      ? `${workspaceLabel}/${relativePath}`
-      : relativePath;
+    return appendDirectoryIndicator(
+      normalizedFolders.length > 1 && workspaceLabel
+        ? `${workspaceLabel}/${relativePath}`
+        : relativePath
+    );
   }
 
-  return basenameOfNormalizedPath(normalizedCwd.normalized) || normalizedCwd.raw;
+  return appendDirectoryIndicator(basenameOfNormalizedPath(normalizedCwd.normalized) || normalizedCwd.raw);
 }
 
 export function formatExecutionCwdTooltip(cwd: string | undefined, fallbackLabel?: string): string {
@@ -54,7 +56,16 @@ export function formatExecutionCwdTooltip(cwd: string | undefined, fallbackLabel
     return fallbackLabel?.trim() || 'cwd 未知';
   }
 
-  return normalizedCwd.normalized;
+  return appendDirectoryIndicator(normalizedCwd.normalized);
+}
+
+function appendDirectoryIndicator(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.endsWith('/') || trimmed.endsWith('\\')) {
+    return trimmed;
+  }
+
+  return `${trimmed}/`;
 }
 
 function normalizeExecutionPath(value: string | undefined): NormalizedExecutionPath | undefined {
