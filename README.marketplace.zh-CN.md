@@ -17,6 +17,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 通过 `codex` 或 `claude` CLI 驱动 `Agent` 节点执行
 - 通过嵌入式终端运行 `Terminal` 节点
 - 让 `Agent` 与嵌入式 `Terminal` 继承受控 shell 环境，并在诊断信息中暴露当前解析路径
+- 通过 File Explorer 右键菜单，从 workspace 内目录或文件创建绑定 cwd 的 `Terminal` 或 `Agent` 节点
 - 在 `Note` 节点中使用 Markdown 语法记录上下文
 - 将 `Note` 节点关联到 workspace 中的 `.md` / `.markdown` 文件，并支持 YAML metadata 浮层和安全 Markdown 图片预览
 - 使用内置模板和自定义模板快速恢复一组 `Agent` / `Terminal` / `Note` 工作面，并为关联 Markdown Note 提供显式保存策略
@@ -49,22 +50,22 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.11.0 版本亮点
+## 0.12.0 版本亮点
 
-当前公开的 `0.11.0` 版本是一轮新的 `0.x` Preview 里程碑，重点增加画布分组，帮助用户组织更大的多会话工作区。它保留 `0.10.7` 的生产 Webview Terminal TUI 输入热修复、`0.10.6` 的 Agent 异常中断提醒、`0.10.5` 已验证的 Note Markdown 源码定位与可恢复草稿修复、Marketplace 元数据、Open VSX 同版本同步策略和支持矩阵。
+当前公开的 `0.12.0` 版本是一轮新的 `0.x` Preview 里程碑，重点把 File Explorer 资源上下文带入画布执行节点，并强化 Panel Webview 恢复。它保留 `0.11.0` 的画布分组里程碑、Marketplace 元数据、Open VSX 同版本同步策略、notifier companion 安装关系和支持矩阵。
 
-- 可从画布右键菜单、命令面板，或按住 Ctrl / Cmd 多选同级节点与分组后创建可命名分组
-- 分组支持移动、重命名、取消分组、删除、嵌套、拖入 / 拖出和 8 向 resize，同时保留内部节点原有交互能力
-- 分组采用 VS Code Panel 风格：body 位于普通节点下方，标题、边框、工具条与 resize chrome 保持可交互，放大画布时不会触发 Webview 文档滚动条
-- 侧栏 `节点` 列表默认按分组树展示，并通过原生 view title `...` 菜单在分组视图和平铺视图之间切换
-- 模板保存与应用会保留兼容节点的分组结构；外部模板中的非法分组引用会被拒绝或安全清理
+- 可从 File Explorer 中的 workspace 内目录或文件右键创建 `Terminal` 或 `Agent` 节点；普通文件会使用其父目录作为执行 cwd
+- 目标 cwd 会写入节点 metadata，首次启动、重启、新建 Agent 会话、resume、runtime supervisor、诊断和终端链接上下文都会继续使用同一目录
+- Agent 节点副标题与侧栏 `节点` 第二行会显示 cwd 标签，hover 中保留完整 cwd 与启动命令；Terminal 副标题继续聚焦 shell path
+- 新增 Webview lifecycle identity、frameId 与 bootstrap ack，避免 Panel restore 双 attach 后出现画布背景可见但节点不显示
+- 收口节点正文 padding 与分组成员 inset，让执行节点、卡片态节点和画布分组保持一致的视觉节奏
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.10.7` 升级到 `0.11.0` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.11.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.11.0` 后会继续沿用该明确选择
+- 首次安装与从 `0.11.0` 升级到 `0.12.0` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.12.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.12.0` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
@@ -98,7 +99,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续更高的 `0.11.x` 修复版本，而非尝试手动降级
+- 优先等待后续更高的 `0.12.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 
