@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-import { isWebviewDomAction, parseWebviewMessage } from '../../src/common/protocol.ts';
+import {
+  extractWebviewMessageLifecycle,
+  isWebviewDomAction,
+  parseWebviewMessage
+} from '../../src/common/protocol.ts';
 
 const hardwrapLinkText = 'src/webview/executionTerminalNativeInteractions.ts:1600:12';
 const hardwrapPath = 'src/webview/executionTerminalNativeInteractions.ts';
@@ -29,6 +33,60 @@ const hardwrapResolveMessage = {
 };
 
 assert.deepEqual(parseWebviewMessage(hardwrapResolveMessage), hardwrapResolveMessage);
+
+const lifecycleMessage = {
+  type: 'webview/bootstrapAck',
+  lifecycle: {
+    surface: 'panel',
+    mode: 'active',
+    generation: 42,
+    frameId: 'frame-panel-42'
+  }
+};
+assert.deepEqual(parseWebviewMessage(lifecycleMessage), {
+  type: 'webview/bootstrapAck'
+});
+assert.deepEqual(extractWebviewMessageLifecycle(lifecycleMessage), lifecycleMessage.lifecycle);
+assert.equal(extractWebviewMessageLifecycle({ type: 'webview/ready' }), undefined);
+assert.equal(
+  extractWebviewMessageLifecycle({
+    type: 'webview/ready',
+    lifecycle: {
+      surface: 'sidebar',
+      mode: 'active',
+      generation: 1,
+      frameId: 'frame-valid-shape'
+    }
+  }),
+  undefined,
+  'lifecycle.surface 必须限定为 editor 或 panel。'
+);
+assert.equal(
+  extractWebviewMessageLifecycle({
+    type: 'webview/ready',
+    lifecycle: {
+      surface: 'panel',
+      mode: 'active',
+      generation: Number.NaN,
+      frameId: 'frame-valid-shape'
+    }
+  }),
+  undefined,
+  'lifecycle.generation 必须是安全的非负整数。'
+);
+assert.equal(
+  extractWebviewMessageLifecycle({
+    type: 'webview/ready',
+    lifecycle: {
+      surface: 'panel',
+      mode: 'active',
+      generation: 1,
+      frameId: 'frame with spaces'
+    }
+  }),
+  undefined,
+  'lifecycle.frameId 必须使用稳定可记录的短字符串。'
+);
 
 const hardwrapOpenMessage = {
   type: 'webview/openExecutionLink',
@@ -108,6 +166,53 @@ assert.match(
   protocolSource,
   /type: 'host\/requestCreateNode'[\s\S]*cwd\?: string/u,
   'Expected host/requestCreateNode to carry an optional cwd for Explorer-created execution nodes.'
+);
+assert.match(
+  protocolSource,
+  /export interface WebviewLifecycleIdentity/u,
+  'Expected shared protocol to expose Webview lifecycle identity.'
+);
+assert.match(
+  protocolSource,
+  /export function extractWebviewMessageLifecycle/u,
+  'Expected shared protocol parser to safely extract optional lifecycle identity.'
+);
+
+const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
+assert.match(
+  panelManagerSource,
+  /isCurrentWebviewMessage\(sourceSurface, sourceWebview, lifecycle, parsedMessage\.type/u,
+  'Expected host Webview message handling to validate lifecycle before active mutations.'
+);
+assert.match(
+  panelManagerSource,
+  /webview\/staleMessageIgnored/u,
+  'Expected host Webview message handling to record stale lifecycle messages.'
+);
+assert.match(
+  panelManagerSource,
+  /private readonly surfaceMessageWebview/u,
+  'Expected host to track the Webview frame that should receive lifecycle-bound messages.'
+);
+assert.match(
+  panelManagerSource,
+  /promoteReadyWebviewMessageIfNeeded\(sourceSurface, sourceWebview, lifecycle\);[\s\S]*isCurrentWebviewMessage\(sourceSurface, sourceWebview, lifecycle, parsedMessage\.type/u,
+  'Expected host to allow a rendered ready frame to become the current message target before stale checks.'
+);
+assert.match(
+  panelManagerSource,
+  /parsedMessage\.type === 'webview\/bootstrapAck'/u,
+  'Expected host to track bootstrap acknowledgements from the active Webview frame.'
+);
+assert.match(
+  panelManagerSource,
+  /this\.postState\('host\/bootstrap', \{/u,
+  'Expected host bootstrap messages to be bound to the ready frame lifecycle.'
+);
+assert.match(
+  panelManagerSource,
+  /withSurfaceLifecycle/u,
+  'Expected host-to-webview messages to carry the current surface lifecycle.'
 );
 
 const applyTemplateInGroupMessage = {
