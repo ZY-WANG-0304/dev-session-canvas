@@ -77,14 +77,31 @@ function run(): void {
 
   assert.equal(
     formatExecutionCwdLabel('C:\\workspace\\src', [{ name: 'workspace', path: 'c:/workspace' }]),
-    'src/',
-    'Windows 盘符路径的执行 cwd 标签应按不区分大小写的 workspace 包含关系计算，并保留目录尾缀。'
+    'src\\',
+    'Windows 盘符路径的执行 cwd 标签应按不区分大小写的 workspace 包含关系计算，并使用原生目录尾缀。'
+  );
+
+  assert.equal(
+    formatExecutionCwdLabel('C:\\workspace-b\\src', [
+      { name: 'workspace-a', path: 'C:\\workspace-a' },
+      { name: 'workspace-b', path: 'C:\\workspace-b' }
+    ]),
+    'workspace-b\\src\\',
+    'Windows 多根 workspace 下执行 cwd 标签应保留 workspace folder 前缀，并使用原生分隔符。'
   );
 
   assert.equal(
     formatExecutionCwdTooltip('C:\\workspace\\src'),
-    'C:/workspace/src/',
-    '执行 cwd tooltip 应展示 slash-normalized 的完整路径，并保留目录尾缀。'
+    'C:\\workspace\\src\\',
+    'Windows 执行 cwd tooltip 应展示原生分隔符的完整路径，并保留目录尾缀。'
+  );
+
+  assert.equal(
+    formatExecutionCwdLabel('\\\\server\\share\\workspace\\src', [
+      { name: 'workspace', path: '\\\\server\\share\\workspace' }
+    ]),
+    'src\\',
+    'Windows UNC cwd 标签应使用原生分隔符。'
   );
 }
 

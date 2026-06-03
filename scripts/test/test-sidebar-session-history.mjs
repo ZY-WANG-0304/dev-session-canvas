@@ -231,8 +231,35 @@ try {
   const claudeRootSidebarItem = sidebarItems.find((entry) => entry.sessionId === 'claude-session-root');
   assert.ok(claudeRootSidebarItem, 'Expected the sidebar session history builder to include the Claude root entry.');
   assert.ok(
+    claudeRootSidebarItem.tooltip.includes('目录：工作区根目录/'),
+    'Expected root session history tooltip cwd to include a POSIX directory suffix.'
+  );
+  assert.ok(
     claudeRootSidebarItem.searchText.includes('写一首打油诗'),
     'Expected sidebar session history search text to include the displayed session title.'
+  );
+  const claudeNestedSidebarItem = sidebarItems.find((entry) => entry.sessionId === 'claude-session-nested');
+  assert.ok(claudeNestedSidebarItem, 'Expected the sidebar session history builder to include the nested Claude entry.');
+  assert.ok(
+    claudeNestedSidebarItem.tooltip.includes('目录：packages/feature-a/'),
+    'Expected nested session history tooltip cwd to use POSIX separators and a directory suffix.'
+  );
+  const windowsSidebarItem = buildCanvasSidebarSessionHistoryItems(
+    [
+      {
+        provider: 'codex',
+        sessionId: 'codex-session-windows-cwd',
+        cwd: 'C:\\workspace\\packages\\feature-a',
+        createdAtMs: codexTimestamp,
+        updatedAtMs: codexTimestamp,
+        firstUserInstruction: '检查 Windows 原生 cwd 展示'
+      }
+    ],
+    'C:\\workspace'
+  )[0];
+  assert.ok(
+    windowsSidebarItem?.tooltip.includes('目录：packages\\feature-a\\'),
+    'Expected Windows session history tooltip cwd to use native separators and a directory suffix.'
   );
   const longerInstructionWithinLimit = 'long-session-title-segment-'.repeat(5);
   const longerInstructionSidebarItem = buildCanvasSidebarSessionHistoryItems(
