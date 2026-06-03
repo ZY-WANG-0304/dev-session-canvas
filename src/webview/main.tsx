@@ -3033,6 +3033,9 @@ function App(): JSX.Element {
     if (!connection.source || !connection.target || !sourceAnchor || !targetAnchor) {
       return;
     }
+    if (!canConnectCanvasEdgeEndpoints(hostState, connection.source, connection.target)) {
+      return;
+    }
 
     closeFloatingMenus();
     setSelectedEdgeId(undefined);
@@ -3051,6 +3054,9 @@ function App(): JSX.Element {
     const sourceAnchor = parseHandleAnchor(connection.sourceHandle);
     const targetAnchor = parseHandleAnchor(connection.targetHandle);
     if (!connection.source || !connection.target || !sourceAnchor || !targetAnchor) {
+      return;
+    }
+    if (!canConnectCanvasEdgeEndpoints(hostState, connection.source, connection.target)) {
       return;
     }
 
@@ -7914,6 +7920,48 @@ function isCanvasGroupInsideTargetRoot(
     current = current.parentGroupId ? groups.find((group) => group.id === current?.parentGroupId) : undefined;
   }
   return false;
+}
+
+function canConnectCanvasEdgeEndpoints(
+  state: CanvasPrototypeState | null,
+  sourceNodeId: string,
+  targetNodeId: string
+): boolean {
+  if (!state) {
+    return false;
+  }
+
+  const sourceNode = state.nodes.find((node) => node.id === sourceNodeId);
+  const targetNode = state.nodes.find((node) => node.id === targetNodeId);
+  if (!sourceNode || !targetNode) {
+    return false;
+  }
+
+  const groups = state.groups ?? [];
+  if (!groups.some((group) => isWorkspaceRootCanvasGroupRole(group.role))) {
+    return true;
+  }
+
+  const sourceRootGroupId = resolveContainingWorkspaceRootGroupIdForWebview(groups, sourceNode.groupId);
+  const targetRootGroupId = resolveContainingWorkspaceRootGroupIdForWebview(groups, targetNode.groupId);
+  return Boolean(sourceRootGroupId && sourceRootGroupId === targetRootGroupId);
+}
+
+function resolveContainingWorkspaceRootGroupIdForWebview(
+  groups: readonly CanvasGroupSummary[],
+  groupId?: string
+): string | undefined {
+  let current = groupId ? groups.find((group) => group.id === groupId) : undefined;
+  const visited = new Set<string>();
+  while (current && !visited.has(current.id)) {
+    if (isWorkspaceRootCanvasGroupRole(current.role)) {
+      return current.id;
+    }
+
+    visited.add(current.id);
+    current = current.parentGroupId ? groups.find((group) => group.id === current?.parentGroupId) : undefined;
+  }
+  return undefined;
 }
 
 function resolveCanvasEdgeStrokeColor(color: CanvasEdgeColor | undefined): string {

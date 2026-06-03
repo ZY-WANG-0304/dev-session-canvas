@@ -740,6 +740,88 @@ test('self loop edges can be created and rendered', async ({ page }) => {
   await expect(page.locator('.canvas-edge-label')).toContainText('自环');
 });
 
+test('workspace root groups reject cross-root edge creation and reconnect', async ({ page }) => {
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('frontend-note', { x: 180, y: 160 }),
+      groupId: 'workspace-root-frontend'
+    },
+    {
+      ...createManualNoteNode('backend-note', { x: 980, y: 160 }),
+      groupId: 'workspace-root-backend'
+    },
+    {
+      ...createManualNoteNode('frontend-peer', { x: 380, y: 160 }),
+      groupId: 'workspace-root-frontend'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-frontend',
+      title: 'frontend',
+      position: { x: 80, y: 80 },
+      size: { width: 640, height: 360 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'workspace-root-backend',
+      title: 'backend',
+      position: { x: 880, y: 80 },
+      size: { width: 640, height: 360 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/backend'
+    }
+  ];
+
+  await openHarness(page);
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  await dragConnectionBetweenAnchors(page, {
+    sourceNodeId: 'frontend-note',
+    sourceAnchor: 'right',
+    targetNodeId: 'backend-note',
+    targetAnchor: 'left'
+  });
+
+  await expect
+    .poll(async () => (await readPostedMessagesByType(page, 'webview/createEdge')).length)
+    .toBe(0);
+
+  state.edges = [
+    {
+      id: 'edge-frontend',
+      sourceNodeId: 'frontend-note',
+      targetNodeId: 'frontend-peer',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-frontend', 20))?.targetNodeId ?? null).toBe('frontend-peer');
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'frontend-note',
+    edgeId: 'edge-frontend'
+  });
+  await clearPostedMessages(page);
+  await reconnectEdgeEndpointToAnchor(page, {
+    edgeId: 'edge-frontend',
+    handleType: 'target',
+    targetNodeId: 'backend-note',
+    targetAnchor: 'left'
+  });
+
+  await expect
+    .poll(async () => (await readPostedMessagesByType(page, 'webview/updateEdge')).length)
+    .toBe(0);
+});
+
 test('file activity edges expose the same toolbar actions as manual edges', async ({ page }) => {
   const state = createFileNodeState();
 

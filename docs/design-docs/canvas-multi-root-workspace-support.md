@@ -69,7 +69,7 @@ root-local 状态使用扩展 global storage 按 root 绝对路径稳定分桶�
 
 ### 6.4 组合与拆分规则
 
-组合时，宿主按 root 顺序读取每个 root-local state。节点、用户分组、连线和文件活动 owner node id 都加上 root 命名空间前缀；root-local 顶层用户分组和稳定节点成为 root section 的直接成员；root-local 坐标加上 root section 的内容偏移；root section 的位置、尺寸和父分组来自 overlay，没有 overlay 时按 root 顺序自动铺开。
+组合时，宿主按 root 顺序读取每个 root-local state。节点、用户分组、连线和文件活动 owner node id 都加上 root 命名空间前缀；root-local 顶层用户分组和稳定节点成为 root section 的直接成员；root-local 坐标加上 root section 的内容偏移；root section 的位置、尺寸和父分组来自 overlay，没有 overlay 时按 root 顺序自动铺开。root 内连线只允许连接同一个 root section 内的节点；Webview 与 Host 都拒绝跨 root 创建或重连连线，避免生成无法拆回 root-local、且 overlay 不持久化的临时边。
 
 拆分持久化时，宿主按命名空间把 composed view 拆回各 root-local state。对象 ID 去掉 root 命名空间前缀，坐标减去 root section 内容偏移；root section 位置、尺寸和父分组写入 overlay；包含 root section 的 workspace-level 普通分组写入 overlay，不写入任何 root-local state。
 
