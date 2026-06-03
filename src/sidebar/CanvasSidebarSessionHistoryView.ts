@@ -444,23 +444,33 @@ export function buildCanvasSidebarSessionHistoryItems(
 }
 
 function resolveWorkspaceRelativeCwd(cwd: string, workspaceRoot: string): string {
-  const relativePath = path.relative(path.resolve(workspaceRoot), path.resolve(cwd));
+  const pathApi = inferCwdPathModule(cwd, workspaceRoot);
+  const relativePath = pathApi.relative(pathApi.resolve(workspaceRoot), pathApi.resolve(cwd));
   if (!relativePath || relativePath === '.') {
-    return '工作区根目录/';
+    return appendDirectoryIndicator('工作区根目录', pathApi.sep as '/' | '\\');
   }
 
   return appendDirectoryIndicator(
-    relativePath.startsWith('..') || path.isAbsolute(relativePath) ? cwd : relativePath.replace(/\\/g, '/')
+    relativePath.startsWith('..') || pathApi.isAbsolute(relativePath) ? cwd : relativePath,
+    pathApi.sep as '/' | '\\'
   );
 }
 
-function appendDirectoryIndicator(value: string): string {
+function appendDirectoryIndicator(value: string, separator: '/' | '\\'): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed.endsWith('/') || trimmed.endsWith('\\')) {
     return trimmed;
   }
 
-  return `${trimmed}/`;
+  return `${trimmed}${separator}`;
+}
+
+function inferCwdPathModule(cwd: string, workspaceRoot: string): typeof path.posix | typeof path.win32 {
+  return isWindowsLikePath(cwd) || isWindowsLikePath(workspaceRoot) ? path.win32 : path.posix;
+}
+
+function isWindowsLikePath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/u.test(value.trim()) || value.includes('\\');
 }
 
 const MAX_SESSION_HISTORY_TITLE_CHARS = 256;

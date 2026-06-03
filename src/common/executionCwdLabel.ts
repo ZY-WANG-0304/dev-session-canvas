@@ -8,6 +8,7 @@ interface NormalizedExecutionPath {
   normalized: string;
   comparable: string;
   caseInsensitive: boolean;
+  displaySeparator: '/' | '\\';
 }
 
 export function formatExecutionCwdLabel(
@@ -35,19 +36,32 @@ export function formatExecutionCwdLabel(
       continue;
     }
 
-    const workspaceLabel = sanitizeWorkspaceFolderName(entry.folder.name) || basenameOfNormalizedPath(entry.normalizedPath.normalized);
+    const workspaceLabel =
+      sanitizeWorkspaceFolderName(entry.folder.name, normalizedCwd.displaySeparator) ||
+      basenameOfNormalizedPath(entry.normalizedPath.normalized);
     if (!relativePath) {
-      return appendDirectoryIndicator(workspaceLabel || entry.normalizedPath.normalized);
+      return appendDirectoryIndicator(
+        formatExecutionDisplayPath(workspaceLabel || entry.normalizedPath.normalized, normalizedCwd.displaySeparator),
+        normalizedCwd.displaySeparator
+      );
     }
 
     return appendDirectoryIndicator(
-      normalizedFolders.length > 1 && workspaceLabel
-        ? `${workspaceLabel}/${relativePath}`
-        : relativePath
+      formatExecutionDisplayPath(
+        normalizedFolders.length > 1 && workspaceLabel ? `${workspaceLabel}/${relativePath}` : relativePath,
+        normalizedCwd.displaySeparator
+      ),
+      normalizedCwd.displaySeparator
     );
   }
 
-  return appendDirectoryIndicator(basenameOfNormalizedPath(normalizedCwd.normalized) || normalizedCwd.raw);
+  return appendDirectoryIndicator(
+    formatExecutionDisplayPath(
+      basenameOfNormalizedPath(normalizedCwd.normalized) || normalizedCwd.raw,
+      normalizedCwd.displaySeparator
+    ),
+    normalizedCwd.displaySeparator
+  );
 }
 
 export function formatExecutionCwdTooltip(cwd: string | undefined, fallbackLabel?: string): string {
@@ -56,16 +70,23 @@ export function formatExecutionCwdTooltip(cwd: string | undefined, fallbackLabel
     return fallbackLabel?.trim() || 'cwd 未知';
   }
 
-  return appendDirectoryIndicator(normalizedCwd.normalized);
+  return appendDirectoryIndicator(
+    formatExecutionDisplayPath(normalizedCwd.normalized, normalizedCwd.displaySeparator),
+    normalizedCwd.displaySeparator
+  );
 }
 
-function appendDirectoryIndicator(value: string): string {
+function appendDirectoryIndicator(value: string, separator: '/' | '\\'): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed.endsWith('/') || trimmed.endsWith('\\')) {
     return trimmed;
   }
 
-  return `${trimmed}/`;
+  return `${trimmed}${separator}`;
+}
+
+function formatExecutionDisplayPath(value: string, separator: '/' | '\\'): string {
+  return value.replace(/[\\/]/g, separator);
 }
 
 function normalizeExecutionPath(value: string | undefined): NormalizedExecutionPath | undefined {
@@ -74,15 +95,21 @@ function normalizeExecutionPath(value: string | undefined): NormalizedExecutionP
     return undefined;
   }
 
-  const caseInsensitive = /^[A-Za-z]:[\\/]/u.test(raw) || raw.includes('\\');
+  const displaySeparator = inferExecutionDisplaySeparator(raw);
+  const caseInsensitive = displaySeparator === '\\';
   const slashNormalized = raw.replace(/\\/g, '/');
   const normalized = trimTrailingSeparators(slashNormalized);
   return {
     raw,
     normalized,
     comparable: caseInsensitive ? normalized.toLowerCase() : normalized,
-    caseInsensitive
+    caseInsensitive,
+    displaySeparator
   };
+}
+
+function inferExecutionDisplaySeparator(raw: string): '/' | '\\' {
+  return /^[A-Za-z]:[\\/]/u.test(raw) || raw.includes('\\') || raw.startsWith('//') ? '\\' : '/';
 }
 
 function trimTrailingSeparators(value: string): string {
@@ -113,8 +140,8 @@ function resolveRelativeExecutionPath(
   return cwd.normalized.slice(workspaceFolderPath.normalized.length).replace(/^\/+/, '');
 }
 
-function sanitizeWorkspaceFolderName(name: string): string {
-  return name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim();
+function sanitizeWorkspaceFolderName(name: string, separator: '/' | '\\'): string {
+  return name.replace(/[\\/]/g, separator).replace(/^[\\/]+|[\\/]+$/g, '').trim();
 }
 
 function basenameOfNormalizedPath(value: string): string {
