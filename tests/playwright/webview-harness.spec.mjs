@@ -291,6 +291,50 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
   });
 });
 
+test('lifecycle identity acks bootstrap and ignores stale bootstrap frames', async ({ page }) => {
+  await openHarness(page);
+  const readyMessage = await waitForPostedMessageByType(page, 'webview/ready');
+  expect(readyMessage.lifecycle).toMatchObject({
+    surface: 'panel',
+    mode: 'active',
+    generation: 1
+  });
+  expect(readyMessage.lifecycle.frameId).toMatch(/^frame-/);
+
+  const staleState = createEmptyCanvasState();
+  const currentState = createCanvasScreenshotState();
+
+  await page.evaluate(({ nextState, nextRuntime }) => {
+    window.__devSessionCanvasHarness.clearPostedMessages();
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/bootstrap',
+      lifecycle: {
+        surface: 'panel',
+        mode: 'active',
+        generation: 0,
+        frameId: 'frame-stale'
+      },
+      payload: {
+        state: nextState,
+        runtime: nextRuntime
+      }
+    });
+  }, { nextState: staleState, nextRuntime: createRuntimeContext() });
+  await settleWebview(page, 3);
+
+  expect(await page.locator('.react-flow__node').count()).toBe(0);
+  expect(await readPostedMessagesByType(page, 'webview/bootstrapAck')).toHaveLength(0);
+
+  await bootstrap(page, currentState);
+  const bootstrapAck = await waitForPostedMessageByType(page, 'webview/bootstrapAck');
+  expect(bootstrapAck.lifecycle).toMatchObject({
+    surface: 'panel',
+    mode: 'active',
+    generation: 1
+  });
+  await expect(nodeById(page, 'agent-1')).toBeVisible();
+});
+
 test('manual edges can be created, selected, edited, and deleted', async ({ page }) => {
   const state = createCanvasScreenshotState();
 

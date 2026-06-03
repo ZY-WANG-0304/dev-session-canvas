@@ -330,6 +330,20 @@ export interface AgentLaunchDefaultsByProvider {
   claude: AgentProviderLaunchDefaults;
 }
 
+export type CanvasSurfaceLocation = 'editor' | 'panel';
+export type CanvasSurfaceMode = 'active' | 'standby';
+
+export interface WebviewLifecycleIdentity {
+  surface: CanvasSurfaceLocation;
+  mode: CanvasSurfaceMode;
+  generation: number;
+  frameId?: string;
+}
+
+interface WebviewLifecycleEnvelope {
+  lifecycle?: WebviewLifecycleIdentity;
+}
+
 export interface NoteMarkdownImageWorkspaceRoot {
   name: string;
   webviewResourceBaseUri: string;
@@ -342,7 +356,7 @@ export interface CanvasRuntimeWorkspaceFolder {
 
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
-  surfaceLocation: 'editor' | 'panel';
+  surfaceLocation: CanvasSurfaceLocation;
   workspaceFolders: CanvasRuntimeWorkspaceFolder[];
   defaultAgentProvider: AgentProviderKind;
   agentLaunchDefaults: AgentLaunchDefaultsByProvider;
@@ -532,9 +546,12 @@ export type WebviewDomAction =
       delayMs?: number;
     };
 
-export type WebviewToHostMessage =
+export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'webview/ready';
+    }
+  | {
+      type: 'webview/bootstrapAck';
     }
   | {
       type: 'webview/updateViewportCenter';
@@ -924,9 +941,10 @@ export type WebviewToHostMessage =
         ok: boolean;
         errorMessage?: string;
       };
-    };
+    }
+);
 
-export type HostToWebviewMessage =
+export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'host/bootstrap';
       payload: {
@@ -1061,8 +1079,11 @@ export type HostToWebviewMessage =
         requestId: string;
         action: WebviewDomAction;
       };
-    };
+    }
+);
 
+const canvasSurfaceLocations: CanvasSurfaceLocation[] = ['editor', 'panel'];
+const canvasSurfaceModes: CanvasSurfaceMode[] = ['active', 'standby'];
 const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note', 'file', 'file-list'];
 const canvasCreatableNodeKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
@@ -1071,6 +1092,56 @@ const webviewClipboardTextSources: WebviewClipboardTextSource[] = [
   'note-markdown-subtitle',
   'note-markdown-metadata'
 ];
+const WEBVIEW_LIFECYCLE_FRAME_ID_MAX_LENGTH = 128;
+const WEBVIEW_LIFECYCLE_FRAME_ID_PATTERN = /^[A-Za-z0-9._:-]+$/u;
+
+export function isCanvasSurfaceLocation(value: unknown): value is CanvasSurfaceLocation {
+  return typeof value === 'string' && canvasSurfaceLocations.includes(value as CanvasSurfaceLocation);
+}
+
+export function isCanvasSurfaceMode(value: unknown): value is CanvasSurfaceMode {
+  return typeof value === 'string' && canvasSurfaceModes.includes(value as CanvasSurfaceMode);
+}
+
+export function extractWebviewMessageLifecycle(value: unknown): WebviewLifecycleIdentity | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const lifecycle = value.lifecycle;
+  if (!isRecord(lifecycle)) {
+    return undefined;
+  }
+
+  if (
+    !isCanvasSurfaceLocation(lifecycle.surface) ||
+    !isCanvasSurfaceMode(lifecycle.mode) ||
+    !isWebviewLifecycleGeneration(lifecycle.generation) ||
+    (lifecycle.frameId !== undefined && !isWebviewLifecycleFrameId(lifecycle.frameId))
+  ) {
+    return undefined;
+  }
+
+  return {
+    surface: lifecycle.surface,
+    mode: lifecycle.mode,
+    generation: lifecycle.generation,
+    frameId: typeof lifecycle.frameId === 'string' ? lifecycle.frameId : undefined
+  };
+}
+
+function isWebviewLifecycleGeneration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isWebviewLifecycleFrameId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= WEBVIEW_LIFECYCLE_FRAME_ID_MAX_LENGTH &&
+    WEBVIEW_LIFECYCLE_FRAME_ID_PATTERN.test(value)
+  );
+}
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
@@ -1109,6 +1180,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (
     value.type === 'webview/ready' ||
+    value.type === 'webview/bootstrapAck' ||
     value.type === 'webview/resetDemoState' ||
     value.type === 'webview/saveCanvasAsTemplate'
   ) {
