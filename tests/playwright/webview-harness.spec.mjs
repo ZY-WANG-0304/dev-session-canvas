@@ -8309,6 +8309,12 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
       backgroundTopRightCornerColor: document.elementFromPoint(Math.floor(backgroundRect.right - 2), Math.floor(backgroundRect.top + 2)) === background
         ? backgroundStyles.backgroundColor
         : 'transparent',
+      backgroundBodyTopCss: Math.round(
+        Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-body-top'))
+      ),
+      backgroundBodyTop: Math.round(
+        Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-body-top')) * (frameRect.height / frame.offsetHeight)
+      ),
       backgroundBoxShadow: backgroundStyles.boxShadow,
       backgroundLayerZIndex: backgroundLayerStyles.zIndex,
       backgroundSharesViewportWithNodes: background.closest('.react-flow__viewport') === nodeWrapper.closest('.react-flow__viewport'),
@@ -8334,7 +8340,9 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
       titlebarBoxShadow: titlebarStyles.boxShadow,
       subpixelTitlebarWidth: probeTitlebarRect.width,
       subpixelFrameWidth: probeFrameRect.width,
-      nodeBodyTopInset: Math.round(nodeRect.top - frameRect.top - Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-title-height')))
+      nodeBodyTopInset: Math.round(
+        nodeRect.top - frameRect.top - Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-body-top')) * (frameRect.height / frame.offsetHeight)
+      )
     };
   });
   expect(groupPanelStyles.frameBackgroundColor).toBe('rgba(0, 0, 0, 0)');
@@ -8363,9 +8371,9 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   expect(groupPanelStyles.titlebarBorderRightColor).toBe('rgb(69, 69, 69)');
   expect(groupPanelStyles.titlebarColor).toBe('rgb(157, 157, 157)');
   expect(Number.parseFloat(groupPanelStyles.frameBorderTopLeftRadius)).toBe(0);
-  expect(groupPanelStyles.titlebarTop).toBeGreaterThanOrEqual(0);
+  expect(groupPanelStyles.backgroundBodyTopCss).toBe(28);
   expect(groupPanelStyles.titlebarTop).toBeLessThanOrEqual(2);
-  expect(groupPanelStyles.titlebarBottom).toBeGreaterThan(24);
+  expect(groupPanelStyles.titlebarBottom).toBeCloseTo(groupPanelStyles.backgroundBodyTop, -1);
   expect(groupPanelStyles.titlebarBorderBottomWidth).toBe('1px');
   expect(Number.parseFloat(groupPanelStyles.titlebarBorderTopLeftRadius)).toBe(0);
   expect(Number.parseFloat(groupPanelStyles.titlebarBorderTopRightRadius)).toBe(0);
@@ -8425,6 +8433,255 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   await groupFrame.locator('.canvas-group-split-primary').click();
   const ungroupMessage = await waitForPostedMessageByType(page, 'webview/ungroup');
   expect(ungroupMessage.payload).toEqual({ groupId: 'group-1' });
+});
+
+test('workspace root group title reuses regular group title chrome without rename actions', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.5 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-06-03T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'workspace-root-a',
+        title: 'Frontend',
+        position: { x: 120, y: 120 },
+        size: { width: 900, height: 520 },
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/frontend'
+      },
+      {
+        id: 'group-regular',
+        title: 'Frontend',
+        position: { x: 1200, y: 120 },
+        size: { width: 900, height: 520 }
+      }
+    ],
+    edges: []
+  });
+  await settleWebview(page, 2);
+
+  const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
+  const regularFrame = page.locator('[data-group-id="group-regular"]');
+  const rootTitle = rootFrame.locator('[data-probe-field="title"]');
+  const regularTitle = regularFrame.locator('[data-probe-field="title"]');
+  await expect(rootTitle).toHaveValue('Frontend');
+  await expect(rootTitle).toHaveAttribute('readonly', '');
+  await expect(rootTitle).toHaveAttribute('title', '/repo/frontend');
+  await expect(regularTitle).not.toHaveAttribute('readonly', '');
+
+  const titleChrome = await rootFrame.evaluate((frame) => {
+    const regularFrame = document.querySelector('[data-group-id="group-regular"]');
+    const rootInput = frame.querySelector('[data-probe-field="title"]');
+    const regularInput = regularFrame?.querySelector('[data-probe-field="title"]');
+    const rootTitlebar = frame.querySelector('.canvas-group-titlebar');
+    const regularTitlebar = regularFrame?.querySelector('.canvas-group-titlebar');
+    if (
+      !(rootInput instanceof HTMLInputElement) ||
+      !(regularInput instanceof HTMLInputElement) ||
+      !(rootTitlebar instanceof HTMLElement) ||
+      !(regularTitlebar instanceof HTMLElement)
+    ) {
+      throw new Error('Group title chrome not found.');
+    }
+    const rootInputStyles = getComputedStyle(rootInput);
+    const regularInputStyles = getComputedStyle(regularInput);
+    return {
+      rootTagName: rootInput.tagName,
+      regularTagName: regularInput.tagName,
+      rootDataInteractive: rootInput.dataset.nodeInteractive,
+      regularDataInteractive: regularInput.dataset.nodeInteractive,
+      rootFontSize: Number.parseFloat(rootInputStyles.fontSize),
+      regularFontSize: Number.parseFloat(regularInputStyles.fontSize),
+      rootFontWeight: rootInputStyles.fontWeight,
+      regularFontWeight: regularInputStyles.fontWeight,
+      rootHeight: rootTitlebar.getBoundingClientRect().height,
+      regularHeight: regularTitlebar.getBoundingClientRect().height
+    };
+  });
+  expect(titleChrome.rootTagName).toBe(titleChrome.regularTagName);
+  expect(titleChrome.rootDataInteractive).toBe(titleChrome.regularDataInteractive);
+  expect(titleChrome.rootFontSize).toBeCloseTo(titleChrome.regularFontSize, 1);
+  expect(titleChrome.rootFontWeight).toBe(titleChrome.regularFontWeight);
+  expect(titleChrome.rootHeight).toBeCloseTo(titleChrome.regularHeight, 1);
+  expect(titleChrome.rootFontSize * 0.5).toBeCloseTo(12, 1);
+
+  await rootTitle.click();
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
+    .toBe('workspace-root-a');
+  await expect(rootFrame.locator('.canvas-group-split-primary')).toHaveCount(0);
+  await expect(rootFrame.locator('.canvas-group-split-danger')).toHaveCount(0);
+
+  await clearPostedMessages(page);
+  await rootTitle.press(`${PRIMARY_ACCELERATOR_KEY}+KeyA`);
+  await rootTitle.pressSequentially('Renamed Root');
+  await rootTitle.press('Enter');
+  await settleWebview(page, 1);
+  await expect(rootTitle).toHaveValue('Frontend');
+  await expect
+    .poll(async () => (await readPostedMessagesByType(page, 'webview/updateGroupTitle')).length)
+    .toBe(0);
+
+  const rootTitleBox = await rootTitle.boundingBox();
+  const rootFrameBox = await rootFrame.boundingBox();
+  expect(rootTitleBox).not.toBeNull();
+  expect(rootFrameBox).not.toBeNull();
+  await page.mouse.move(rootTitleBox.x + 8, rootTitleBox.y + rootTitleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rootTitleBox.x + 88, rootTitleBox.y + rootTitleBox.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await settleWebview(page, 1);
+  await expect
+    .poll(async () => (await readPostedMessagesByType(page, 'webview/moveGroup')).length)
+    .toBe(0);
+  const rootFrameBoxAfterTitleDrag = await rootFrame.boundingBox();
+  expect(rootFrameBoxAfterTitleDrag).not.toBeNull();
+  expectBoxEdgesClose(rootFrameBoxAfterTitleDrag, rootFrameBox);
+});
+
+test('workspace root group selected title chrome keeps nodes inside body while zoomed out', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'workspace-root-a',
+      selectedGroupIds: ['workspace-root-a', 'group-regular'],
+      viewport: { x: 0, y: 0, zoom: 0.25 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note', { x: 200, y: 200 }),
+      groupId: 'workspace-root-a'
+    },
+    createManualNoteNode('distant-note', { x: 9000, y: 200 })
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-a',
+      title: 'Frontend Root',
+      position: { x: 120, y: 120 },
+      size: { width: 760, height: 560 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'group-regular',
+      title: 'Frontend Root',
+      position: { x: 1120, y: 120 },
+      size: { width: 760, height: 560 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
+  const regularFrame = page.locator('[data-group-id="group-regular"]');
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds ?? [])
+    .toEqual(['workspace-root-a', 'group-regular']);
+  await expect(rootFrame.locator('.canvas-group-resize-control')).toHaveCount(8);
+  await expect(rootFrame.locator('.canvas-group-toolbar')).toHaveCount(0);
+
+  const layout = await rootFrame.evaluate((frame) => {
+    const regularFrame = document.querySelector('[data-group-id="group-regular"]');
+    const rootNode = document.querySelector('[data-node-id="root-note"]');
+    const rootBackground = document.querySelector('[data-group-background-id="workspace-root-a"]');
+    const rootTitlebar = frame.querySelector('.canvas-group-titlebar');
+    const regularTitlebar = regularFrame?.querySelector('.canvas-group-titlebar');
+    if (
+      !(rootNode instanceof HTMLElement) ||
+      !(rootBackground instanceof HTMLElement) ||
+      !(rootTitlebar instanceof HTMLElement) ||
+      !(regularTitlebar instanceof HTMLElement)
+    ) {
+      throw new Error('Workspace root selected chrome not found.');
+    }
+
+    const frameRect = frame.getBoundingClientRect();
+    const nodeRect = rootNode.getBoundingClientRect();
+    const titlebarRect = rootTitlebar.getBoundingClientRect();
+    const regularTitlebarRect = regularTitlebar.getBoundingClientRect();
+    const frameScale = frameRect.height / frame.offsetHeight;
+    const bodyTopOffset = Number.parseFloat(getComputedStyle(rootBackground).getPropertyValue('--canvas-group-body-top')) * frameScale;
+    return {
+      nodeTopOffsetFromFrame: Math.round(nodeRect.top - frameRect.top),
+      bodyTopOffsetFromFrame: bodyTopOffset,
+      titlebarTopOffsetFromFrame: titlebarRect.top - frameRect.top,
+      titlebarBottomOffsetFromFrame: titlebarRect.bottom - frameRect.top,
+      rootTitlebarHeight: titlebarRect.height,
+      regularTitlebarHeight: regularTitlebarRect.height
+    };
+  });
+  expect(layout.nodeTopOffsetFromFrame).toBeGreaterThanOrEqual(layout.bodyTopOffsetFromFrame - 1);
+  expect(layout.bodyTopOffsetFromFrame).toBeCloseTo(11.2, 1);
+  expect(Math.abs(layout.titlebarBottomOffsetFromFrame - layout.bodyTopOffsetFromFrame)).toBeLessThanOrEqual(2);
+  expect(layout.titlebarTopOffsetFromFrame).toBeLessThan(0);
+  expect(layout.rootTitlebarHeight).toBeCloseTo(layout.regularTitlebarHeight, 1);
+
+  await clearPostedMessages(page);
+  const handle = rootFrame.locator('[data-group-resize-direction="top-left"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 60, handleBox.y + handleBox.height / 2 + 60, { steps: 4 });
+  await page.mouse.up();
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload.groupId).toBe('workspace-root-a');
+  const resizedRootMember = state.nodes[0];
+  const repairedRootPosition = {
+    x: Math.min(message.payload.position.x, resizedRootMember.position.x - 80),
+    y: Math.min(message.payload.position.y, resizedRootMember.position.y - 80)
+  };
+  const repairedRootRight = Math.max(
+    message.payload.position.x + message.payload.size.width,
+    resizedRootMember.position.x + resizedRootMember.size.width + 80
+  );
+  const repairedRootBottom = Math.max(
+    message.payload.position.y + message.payload.size.height,
+    resizedRootMember.position.y + resizedRootMember.size.height + 80
+  );
+  state.groups[0] = {
+    ...state.groups[0],
+    position: repairedRootPosition,
+    size: {
+      width: repairedRootRight - repairedRootPosition.x,
+      height: repairedRootBottom - repairedRootPosition.y
+    }
+  };
+  await updateHostState(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const afterResize = await rootFrame.evaluate((frame) => {
+    const rootNode = document.querySelector('[data-node-id="root-note"]');
+    const rootBackground = document.querySelector('[data-group-background-id="workspace-root-a"]');
+    if (!(rootNode instanceof HTMLElement) || !(rootBackground instanceof HTMLElement)) {
+      throw new Error('Workspace root selected chrome not found after resize.');
+    }
+    const frameRect = frame.getBoundingClientRect();
+    const nodeRect = rootNode.getBoundingClientRect();
+    const titlebar = frame.querySelector('.canvas-group-titlebar');
+    if (!(titlebar instanceof HTMLElement)) {
+      throw new Error('Workspace root titlebar not found after resize.');
+    }
+    const titlebarRect = titlebar.getBoundingClientRect();
+    const frameScale = frameRect.height / frame.offsetHeight;
+    const bodyTopOffset = Number.parseFloat(getComputedStyle(rootBackground).getPropertyValue('--canvas-group-body-top')) * frameScale;
+    return {
+      nodeTopOffsetFromFrame: Math.round(nodeRect.top - frameRect.top),
+      bodyTopOffsetFromFrame: bodyTopOffset,
+      titlebarBottomOffsetFromFrame: titlebarRect.bottom - frameRect.top
+    };
+  });
+  expect(afterResize.nodeTopOffsetFromFrame).toBeGreaterThanOrEqual(afterResize.bodyTopOffsetFromFrame - 1);
+  expect(Math.abs(afterResize.titlebarBottomOffsetFromFrame - afterResize.bodyTopOffsetFromFrame)).toBeLessThanOrEqual(2);
 });
 
 test('canvas groups do not create document scrollbars when zoomed in', async ({ page }) => {
@@ -8881,6 +9138,88 @@ test('canvas groups resize from all eight directions', async ({ page }) => {
   });
 });
 
+test('canvas zoom keeps group title chrome outside the body boundary', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'group-1',
+      selectedGroupIds: ['group-1'],
+      // Keep the top-left resize handle away from the viewport edge so this isolates resize from auto-pan.
+      viewport: { x: 120, y: 120, zoom: 0.25 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 148, y: 148 }),
+      size: { width: 220, height: 180 },
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Readable Planning Group',
+      position: { x: 120, y: 120 },
+      size: { width: 520, height: 360 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const noteNode = nodeById(page, 'note-1');
+  const layout = await groupFrame.evaluate((frame) => {
+    const titlebar = frame.querySelector('.canvas-group-titlebar');
+    const background = document.querySelector('[data-group-background-id="group-1"]');
+    const note = document.querySelector('[data-node-id="note-1"]');
+    if (!(titlebar instanceof HTMLElement) || !(background instanceof HTMLElement) || !(note instanceof HTMLElement)) {
+      throw new Error('Group body boundary chrome not found.');
+    }
+
+    const frameRect = frame.getBoundingClientRect();
+    const titlebarRect = titlebar.getBoundingClientRect();
+    const noteRect = note.getBoundingClientRect();
+    const bodyTop = Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-body-top')) * (frameRect.height / frame.offsetHeight);
+    return {
+      bodyTop,
+      titlebarTop: titlebarRect.top - frameRect.top,
+      titlebarBottom: titlebarRect.bottom - frameRect.top,
+      titlebarHeight: titlebarRect.height,
+      noteTop: noteRect.top - frameRect.top
+    };
+  });
+  expect(layout.bodyTop).toBeCloseTo(11.2, 1);
+  expect(layout.titlebarHeight).toBeGreaterThan(layout.bodyTop);
+  expect(layout.titlebarTop).toBeLessThan(0);
+  expect(layout.titlebarBottom).toBeCloseTo(layout.bodyTop, -1);
+  expect(layout.noteTop).toBeGreaterThanOrEqual(layout.bodyTop - 1);
+  const viewportScale = await readCanvasViewportScale(page);
+  expect(viewportScale).not.toBeNull();
+
+  const initialNoteBox = await noteNode.boundingBox();
+  expect(initialNoteBox).not.toBeNull();
+  await clearPostedMessages(page);
+  const handle = groupFrame.locator('[data-group-resize-direction="top-left"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 - 40, handleBox.y + handleBox.height / 2 - 40, { steps: 4 });
+  await settleWebview(page, 2);
+  const draftNoteBox = await noteNode.boundingBox();
+  expect(draftNoteBox).not.toBeNull();
+  expectBoxEdgesClose(draftNoteBox, initialNoteBox);
+  await page.mouse.up();
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  const expectedResizeDelta = Math.round(40 / viewportScale);
+  expect(message.payload).toMatchObject({
+    groupId: 'group-1',
+    position: { x: 120 - expectedResizeDelta, y: 120 - expectedResizeDelta },
+    size: { width: 520 + expectedResizeDelta, height: 360 + expectedResizeDelta }
+  });
+});
+
 test('canvas group border stroke stays screen-stable across zoom levels', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -8996,6 +9335,8 @@ test('canvas group title and action buttons only counter-scale while zooming out
       const buttonStyles = getComputedStyle(primaryButton);
       return {
         frameWidth: frameRect.width,
+        bodyTopOffset: Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-body-top')) * (frameRect.height / frame.offsetHeight),
+        titlebarTop: titlebarRect.top - frameRect.top,
         titlebarWidth: titlebarRect.width,
         titleInputWidth: titleInputRect.width,
         toolbarWidth: toolbarRect.width,
@@ -9017,6 +9358,7 @@ test('canvas group title and action buttons only counter-scale while zooming out
   const narrowLayout = await readGroupChromeLayout('group-1');
   expect(narrowLayout.titlebarHeight).toBeGreaterThan(14);
   expect(narrowLayout.titlebarHeight).toBeLessThan(28);
+  expect(narrowLayout.titlebarTop + narrowLayout.titlebarHeight).toBeCloseTo(narrowLayout.bodyTopOffset, -1);
   expect(narrowLayout.toolbarHeight).toBeLessThanOrEqual(narrowLayout.titlebarHeight + 2);
   expect(narrowLayout.titlebarRight).toBeCloseTo(narrowLayout.toolbarLeft, 1);
   expect(narrowLayout.toolbarRight).toBeLessThanOrEqual(narrowLayout.frameWidth + 1);
@@ -9026,6 +9368,8 @@ test('canvas group title and action buttons only counter-scale while zooming out
 
   const wideLayout = await readGroupChromeLayout('group-2');
   expect(wideLayout.titlebarHeight).toBeCloseTo(28, 1);
+  expect(wideLayout.titlebarTop).toBeLessThan(0);
+  expect(wideLayout.titlebarTop + wideLayout.titlebarHeight).toBeCloseTo(wideLayout.bodyTopOffset, -1);
   expect(wideLayout.titleFontSize * 0.5).toBeCloseTo(12, 1);
   expect(wideLayout.buttonFontSize * 0.5).toBeCloseTo(11, 1);
   expect(wideLayout.titlePaddingLeft * 0.5).toBeCloseTo(12, 1);

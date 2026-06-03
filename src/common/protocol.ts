@@ -127,12 +127,16 @@ export interface CanvasNodeFootprint {
   height: number;
 }
 
+export type CanvasGroupRole = 'user' | 'workspace-root';
+
 export interface CanvasGroupSummary {
   id: string;
   title: string;
   position: CanvasNodePosition;
   size: CanvasNodeFootprint;
   parentGroupId?: string;
+  role?: CanvasGroupRole;
+  workspaceRootPath?: string;
 }
 
 export type TerminalBackendKind = 'node-pty';
@@ -871,6 +875,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       payload: {
         resources: ExecutionTerminalDroppedResource[];
         position: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -1058,6 +1063,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
       payload: {
         kind: CanvasCreatableNodeKind;
         cwd?: string;
+        targetGroupId?: string;
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
@@ -1804,6 +1810,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       !payload ||
       !Array.isArray(payload.resources) ||
       !payload.resources.every((resource) => isExecutionTerminalDroppedResource(resource)) ||
+      (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
       !position ||
       typeof position.x !== 'number' ||
       typeof position.y !== 'number' ||
@@ -1820,7 +1827,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         position: {
           x: Math.round(position.x),
           y: Math.round(position.y)
-        }
+        },
+        targetGroupId: typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined
       }
     };
   }
