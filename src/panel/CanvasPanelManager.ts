@@ -58,6 +58,8 @@ import {
   type CanvasFileActivityAccessMode,
   type CanvasAttentionNotificationBridgeMode,
   type CanvasAgentAbnormalOutputTextNotificationMode,
+  type CanvasSurfaceLocation,
+  type CanvasSurfaceMode,
   type CanvasFileNodeDisplayStyle,
   type CanvasFileNodeDisplayMode,
   type CanvasFilePathDisplayMode,
@@ -92,6 +94,7 @@ import {
   type TerminalNodeStatus,
   type TerminalNodeMetadata,
   type WebviewDomAction,
+  type WebviewLifecycleIdentity,
   type WebviewProbeSnapshot,
   type WebviewToHostMessage,
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
@@ -100,6 +103,7 @@ import {
   estimatedCanvasNodeFootprint,
   isCanvasCreatableNodeKind,
   isCanvasNodeKind,
+  extractWebviewMessageLifecycle,
   isExecutionNodeKind,
   normalizeCanvasAttentionNotificationBridgeMode,
   normalizeCanvasAgentAbnormalOutputTextNotificationMode,
@@ -242,6 +246,8 @@ import type {
   InspectedConfiguredTerminalShell,
   TerminalShellResolutionSource
 } from './terminalShellConfiguration';
+
+export type { CanvasSurfaceLocation };
 
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
@@ -391,6 +397,7 @@ type ManagedExecutionSession = LocalExecutionSession | SupervisorExecutionSessio
 
 interface PendingWebviewProbeRequest {
   surface: CanvasSurfaceLocation;
+  lifecycle?: WebviewLifecycleIdentity;
   resolve: (snapshot: WebviewProbeSnapshot) => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
@@ -398,9 +405,18 @@ interface PendingWebviewProbeRequest {
 
 interface PendingWebviewDomActionRequest {
   surface: CanvasSurfaceLocation;
+  lifecycle?: WebviewLifecycleIdentity;
   resolve: () => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
+}
+
+interface CanvasSurfaceLifecycleState {
+  generation: number;
+  mode?: CanvasSurfaceMode;
+  ready: boolean;
+  frameId?: string;
+  bootstrapAck: boolean;
 }
 
 interface CanvasTestDiagnosticEvent {
@@ -433,8 +449,6 @@ interface CanvasHostDiagnosticsDumpResult {
   summaryPath: string;
 }
 
-export type CanvasSurfaceLocation = 'editor' | 'panel';
-type CanvasSurfaceMode = 'active' | 'standby';
 type NodePlacementPreference = 'left-up' | 'right-down';
 
 interface CanvasFileFilterState {
@@ -505,6 +519,7 @@ export interface CanvasDebugSnapshot {
   state: CanvasPrototypeState;
   surfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>>;
   surfaceReady: Record<CanvasSurfaceLocation, boolean>;
+  surfaceLifecycle: Record<CanvasSurfaceLocation, CanvasSurfaceLifecycleState>;
 }
 
 interface CanvasDebugConfigurationSnapshot {
@@ -701,6 +716,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     editor: false,
     panel: false
   };
+  private readonly surfaceLifecycle: Record<CanvasSurfaceLocation, CanvasSurfaceLifecycleState> = {
+    editor: {
+      generation: 0,
+      ready: false,
+      bootstrapAck: false
+    },
+    panel: {
+      generation: 0,
+      ready: false,
+      bootstrapAck: false
+    }
+  };
   private readonly pendingVisibilityRestore: Record<CanvasSurfaceLocation, boolean> = {
     editor: false,
     panel: false
@@ -724,6 +751,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly executionFileLinkResolveDiagnostics: ExecutionFileLinkResolveDiagnosticSample[] = [];
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
+  private readonly surfaceMessageWebview: Partial<Record<CanvasSurfaceLocation, vscode.Webview>> = {};
+  private readonly renderedWebviewLifecycle = new WeakMap<vscode.Webview, WebviewLifecycleIdentity>();
   private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
   private readonly pendingWebviewDomActionRequests = new Map<string, PendingWebviewDomActionRequest>();
   private readonly resolvedExecutionFileLinks = new Map<string, { nodeId: string; kind: ExecutionNodeKind }>();
@@ -1455,7 +1484,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       sidebar: cloneJsonValue(this.getSidebarState()),
       state: cloneJsonValue(stripNoteMarkdownRecoverableDraftContentFromCanvasState(this.state)),
       surfaceMode: cloneJsonValue(this.surfaceMode),
-      surfaceReady: cloneJsonValue(this.surfaceReady)
+      surfaceReady: cloneJsonValue(this.surfaceReady),
+      surfaceLifecycle: cloneJsonValue(this.surfaceLifecycle)
     };
   }
 
@@ -1579,6 +1609,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         activeSurface: this.activeSurface,
         surfaceMode: cloneJsonValue(this.surfaceMode),
         surfaceReady: cloneJsonValue(this.surfaceReady),
+        surfaceLifecycle: cloneJsonValue(this.surfaceLifecycle),
         defaultSurface: this.getConfiguredSurface(),
         agentDefaultProvider: agentCliConfig.defaultProvider,
         agentCodexCommand: agentCliConfig.codexCommand,
@@ -2185,8 +2216,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('测试命令 devSessionCanvas.__test.dispatchWebviewMessage 需要一个有效的画布承载面。');
     }
 
-    this.handleWebviewMessage(surface, message);
+    this.handleWebviewMessage(
+      surface,
+      this.withSyntheticLifecycleForTest(surface, message),
+      this.getSurfaceMessageWebview(surface)
+    );
     return this.getDebugSnapshot();
+  }
+
+  private withSyntheticLifecycleForTest(surface: CanvasSurfaceLocation, message: unknown): unknown {
+    if (!isTestHarnessMode(this.context.extensionMode) || !isRecord(message) || message.lifecycle !== undefined) {
+      return message;
+    }
+
+    const lifecycle = this.getSurfaceLifecycleIdentity(surface);
+    return lifecycle
+      ? {
+          ...message,
+          lifecycle
+        }
+      : message;
   }
 
   public async reloadPersistedStateForTest(): Promise<CanvasDebugSnapshot> {
@@ -2423,6 +2472,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const requestId = `probe-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const lifecycle = this.getSurfaceLifecycleIdentity(surface);
 
     return new Promise<WebviewProbeSnapshot>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -2432,6 +2482,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       this.pendingWebviewProbeRequests.set(requestId, {
         surface,
+        lifecycle,
         resolve,
         reject,
         timeout
@@ -2453,6 +2504,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     delayMs = 0
   ): Promise<WebviewProbeSnapshot> {
     const requestId = `probe-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const lifecycle = this.getSurfaceLifecycleIdentity(surface);
 
     return new Promise<WebviewProbeSnapshot>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -2462,6 +2514,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       this.pendingWebviewProbeRequests.set(requestId, {
         surface,
+        lifecycle,
         resolve,
         reject,
         timeout
@@ -2583,6 +2636,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const requestId = `dom-action-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const lifecycle = this.getSurfaceLifecycleIdentity(surface);
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -2592,6 +2646,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       this.pendingWebviewDomActionRequests.set(requestId, {
         surface,
+        lifecycle,
         resolve,
         reject,
         timeout
@@ -2687,8 +2742,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private attachEditorPanel(panel: vscode.WebviewPanel): void {
     this.editorPanel = panel;
-    this.surfaceMode.editor = undefined;
-    this.surfaceReady.editor = false;
+    this.invalidateSurfaceLifecycle('editor');
     this.claimSurfaceIfNeeded('editor');
     this.recordDiagnosticEvent('surface/attached', {
       surface: 'editor'
@@ -2697,20 +2751,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     panel.onDidDispose(
       () => {
+        const wasMessageWebview = this.surfaceMessageWebview.editor === panel.webview;
+        if (wasMessageWebview) {
+          this.bindSurfaceMessageWebview('editor', undefined, 'dispose');
+          this.rejectPendingWebviewProbeRequests('editor', '编辑区 Webview 已被关闭。');
+          this.rejectPendingWebviewDomActionRequests('editor', '编辑区 Webview 已被关闭。');
+          if (this.editorPanel !== panel) {
+            this.recoverSurfaceAfterMessageWebviewDisposed('editor');
+          }
+        }
+        this.renderedWebviewLifecycle.delete(panel.webview);
+
         if (this.editorPanel === panel) {
           this.editorPanel = undefined;
           if (this.activeSurface === 'editor') {
             this.activeSurface = undefined;
             this.applyWorkbenchContextKeys();
           }
-          this.surfaceMode.editor = undefined;
-          this.surfaceReady.editor = false;
+          this.invalidateSurfaceLifecycle('editor');
           this.pendingVisibilityRestore.editor = false;
           this.recordDiagnosticEvent('surface/disposed', {
             surface: 'editor'
           });
-          this.rejectPendingWebviewProbeRequests('editor', '编辑区 Webview 已被关闭。');
-          this.rejectPendingWebviewDomActionRequests('editor', '编辑区 Webview 已被关闭。');
           this.notifySidebarStateChanged();
         }
       },
@@ -2735,7 +2797,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
 
     panel.webview.onDidReceiveMessage(
-      (message) => this.handleWebviewMessage('editor', message),
+      (message) => this.handleWebviewMessage('editor', message, panel.webview),
       null,
       this.context.subscriptions
     );
@@ -2751,8 +2813,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private attachPanelView(webviewView: vscode.WebviewView): void {
     this.panelView = webviewView;
-    this.surfaceMode.panel = undefined;
-    this.surfaceReady.panel = false;
+    this.invalidateSurfaceLifecycle('panel');
     this.claimSurfaceIfNeeded('panel');
     this.recordDiagnosticEvent('surface/attached', {
       surface: 'panel'
@@ -2761,20 +2822,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     webviewView.onDidDispose(
       () => {
+        const wasMessageWebview = this.surfaceMessageWebview.panel === webviewView.webview;
+        if (wasMessageWebview) {
+          this.bindSurfaceMessageWebview('panel', undefined, 'dispose');
+          this.rejectPendingWebviewProbeRequests('panel', '面板 Webview 已被关闭。');
+          this.rejectPendingWebviewDomActionRequests('panel', '面板 Webview 已被关闭。');
+          if (this.panelView !== webviewView) {
+            this.recoverSurfaceAfterMessageWebviewDisposed('panel');
+          }
+        }
+        this.renderedWebviewLifecycle.delete(webviewView.webview);
+
         if (this.panelView === webviewView) {
           this.panelView = undefined;
           if (this.activeSurface === 'panel') {
             this.activeSurface = undefined;
             this.applyWorkbenchContextKeys();
           }
-          this.surfaceMode.panel = undefined;
-          this.surfaceReady.panel = false;
+          this.invalidateSurfaceLifecycle('panel');
           this.pendingVisibilityRestore.panel = false;
           this.recordDiagnosticEvent('surface/disposed', {
             surface: 'panel'
           });
-          this.rejectPendingWebviewProbeRequests('panel', '面板 Webview 已被关闭。');
-          this.rejectPendingWebviewDomActionRequests('panel', '面板 Webview 已被关闭。');
           this.notifySidebarStateChanged();
         }
       },
@@ -2799,7 +2868,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
 
     webviewView.webview.onDidReceiveMessage(
-      (message) => this.handleWebviewMessage('panel', message),
+      (message) => this.handleWebviewMessage('panel', message, webviewView.webview),
       null,
       this.context.subscriptions
     );
@@ -2954,7 +3023,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async postCanvasTemplateCatalogToActiveWebview(): Promise<void> {
-    if (!this.activeSurface || !this.surfaceReady[this.activeSurface] || !this.isInteractiveSurface(this.activeSurface)) {
+    if (
+      !this.activeSurface ||
+      !this.surfaceReady[this.activeSurface] ||
+      !this.isInteractiveSurface(this.activeSurface) ||
+      !this.surfaceLifecycle[this.activeSurface].bootstrapAck
+    ) {
       return;
     }
 
@@ -3976,18 +4050,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private postState(type: 'host/bootstrap' | 'host/stateUpdated'): void {
-    const activeWebview = this.getActiveWebview();
+  private postState(
+    type: 'host/bootstrap' | 'host/stateUpdated',
+    options?: { surface?: CanvasSurfaceLocation; lifecycle?: WebviewLifecycleIdentity }
+  ): void {
+    const targetSurface = options?.surface ?? this.activeSurface;
+    const activeWebview =
+      targetSurface && this.isInteractiveSurface(targetSurface)
+        ? this.getSurfaceMessageWebview(targetSurface)
+        : undefined;
     if (activeWebview) {
       activeWebview.options = this.getWebviewOptions();
     }
+    const lifecycle = options?.lifecycle ?? (targetSurface ? this.getSurfaceLifecycleIdentity(targetSurface) : undefined);
     this.postMessage({
       type,
+      lifecycle,
       payload: {
         state: this.prepareCanvasStateForWebview(activeWebview),
         runtime: this.getRuntimeContext(activeWebview)
       }
-    });
+    }, targetSurface);
     this.notifySidebarStateChanged();
   }
 
@@ -3997,14 +4080,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return stripSerializedTerminalStateFromCanvasState(stateWithImageResources);
   }
 
-  private postMessage(message: HostToWebviewMessage): void {
-    const activeWebview = this.getActiveWebview();
-    this.recordHostMessage('active', message, Boolean(activeWebview));
-    if (!activeWebview) {
+  private postMessage(message: HostToWebviewMessage, surface?: CanvasSurfaceLocation): void {
+    const targetSurface = surface ?? this.activeSurface;
+    const targetWebview =
+      targetSurface && this.isInteractiveSurface(targetSurface)
+        ? this.getSurfaceMessageWebview(targetSurface)
+        : undefined;
+    const preparedMessage = targetSurface ? this.withSurfaceLifecycle(targetSurface, message) : message;
+    this.recordHostMessage(targetSurface ?? 'active', preparedMessage, Boolean(targetWebview));
+    if (!targetWebview) {
       return;
     }
 
-    void activeWebview.postMessage(message);
+    void targetWebview.postMessage(preparedMessage);
+  }
+
+  private withSurfaceLifecycle(
+    surface: CanvasSurfaceLocation,
+    message: HostToWebviewMessage
+  ): HostToWebviewMessage {
+    const lifecycle = message.lifecycle ?? this.getSurfaceLifecycleIdentity(surface);
+    return lifecycle
+      ? {
+          ...message,
+          lifecycle
+        }
+      : message;
   }
 
   private notifySidebarStateChanged(): void {
@@ -7460,6 +7561,167 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  private invalidateSurfaceLifecycle(surface: CanvasSurfaceLocation, mode?: CanvasSurfaceMode): void {
+    this.surfaceMode[surface] = mode;
+    this.surfaceReady[surface] = false;
+    this.surfaceLifecycle[surface] = {
+      generation: this.surfaceLifecycle[surface].generation + 1,
+      mode,
+      ready: false,
+      bootstrapAck: false
+    };
+  }
+
+  private beginSurfaceRender(
+    surface: CanvasSurfaceLocation,
+    mode: CanvasSurfaceMode
+  ): WebviewLifecycleIdentity {
+    const generation = this.surfaceLifecycle[surface].generation + 1;
+    this.surfaceMode[surface] = mode;
+    this.surfaceReady[surface] = false;
+    this.surfaceLifecycle[surface] = {
+      generation,
+      mode,
+      ready: false,
+      bootstrapAck: false
+    };
+    return {
+      surface,
+      mode,
+      generation
+    };
+  }
+
+  private getSurfaceLifecycleIdentity(surface: CanvasSurfaceLocation): WebviewLifecycleIdentity | undefined {
+    const lifecycle = this.surfaceLifecycle[surface];
+    if (!lifecycle.mode) {
+      return undefined;
+    }
+
+    return {
+      surface,
+      mode: lifecycle.mode,
+      generation: lifecycle.generation,
+      frameId: lifecycle.frameId
+    };
+  }
+
+  private getSurfaceMessageWebview(surface: CanvasSurfaceLocation): vscode.Webview | undefined {
+    return this.surfaceMessageWebview[surface] ?? this.getSurfaceWebview(surface);
+  }
+
+  private markSurfaceReady(surface: CanvasSurfaceLocation, lifecycle?: WebviewLifecycleIdentity): void {
+    this.surfaceReady[surface] = true;
+    this.surfaceLifecycle[surface] = {
+      ...this.surfaceLifecycle[surface],
+      ready: true,
+      frameId: lifecycle?.frameId,
+      bootstrapAck: false
+    };
+  }
+
+  private bindSurfaceMessageWebview(
+    surface: CanvasSurfaceLocation,
+    sourceWebview: vscode.Webview | undefined,
+    reason: 'render' | 'ready' | 'dispose'
+  ): void {
+    if (!sourceWebview) {
+      const previousWebview = this.surfaceMessageWebview[surface];
+      if (previousWebview) {
+        this.recordDiagnosticEvent('surface/messageWebviewBound', {
+          surface,
+          reason,
+          lifecycle: summarizeWebviewLifecycleIdentity(this.renderedWebviewLifecycle.get(previousWebview))
+        });
+      }
+      delete this.surfaceMessageWebview[surface];
+      return;
+    }
+
+    if (this.surfaceMessageWebview[surface] === sourceWebview) {
+      return;
+    }
+
+    this.surfaceMessageWebview[surface] = sourceWebview;
+    this.recordDiagnosticEvent('surface/messageWebviewBound', {
+      surface,
+      reason,
+      lifecycle: summarizeWebviewLifecycleIdentity(this.renderedWebviewLifecycle.get(sourceWebview))
+    });
+  }
+
+  private isCurrentWebviewMessage(
+    sourceSurface: CanvasSurfaceLocation,
+    sourceWebview: vscode.Webview | undefined,
+    lifecycle: WebviewLifecycleIdentity | undefined,
+    messageType: string,
+    options: { recordIgnored?: boolean } = {}
+  ): boolean {
+    const currentWebview = this.getSurfaceMessageWebview(sourceSurface);
+    const recordIgnored = options.recordIgnored !== false;
+    if (sourceWebview && currentWebview && sourceWebview !== currentWebview) {
+      if (recordIgnored) {
+        this.recordDiagnosticEvent('webview/staleMessageIgnored', {
+          surface: sourceSurface,
+          type: messageType,
+          reason: 'source-webview-mismatch',
+          lifecycle: summarizeWebviewLifecycleIdentity(lifecycle),
+          currentLifecycle: summarizeWebviewLifecycleIdentity(this.getSurfaceLifecycleIdentity(sourceSurface))
+        });
+      }
+      return false;
+    }
+
+    if (!lifecycle) {
+      if (sourceWebview) {
+        if (recordIgnored) {
+          this.recordDiagnosticEvent('webview/staleMessageIgnored', {
+            surface: sourceSurface,
+            type: messageType,
+            reason: 'missing-lifecycle',
+            currentLifecycle: summarizeWebviewLifecycleIdentity(this.getSurfaceLifecycleIdentity(sourceSurface))
+          });
+        }
+        return false;
+      }
+      return true;
+    }
+
+    if (this.isCurrentSurfaceLifecycle(sourceSurface, lifecycle, messageType, { recordIgnored })) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private isCurrentSurfaceLifecycle(
+    sourceSurface: CanvasSurfaceLocation,
+    lifecycle: WebviewLifecycleIdentity,
+    messageType: string,
+    options: { recordIgnored?: boolean } = {}
+  ): boolean {
+    const currentLifecycle = this.surfaceLifecycle[sourceSurface];
+    const matches =
+      lifecycle.surface === sourceSurface &&
+      lifecycle.mode === currentLifecycle.mode &&
+      lifecycle.generation === currentLifecycle.generation &&
+      (currentLifecycle.frameId === undefined ||
+        lifecycle.frameId === undefined ||
+        lifecycle.frameId === currentLifecycle.frameId);
+
+    if (!matches && options.recordIgnored !== false) {
+      this.recordDiagnosticEvent('webview/staleMessageIgnored', {
+        surface: sourceSurface,
+        type: messageType,
+        reason: 'lifecycle-mismatch',
+        lifecycle: summarizeWebviewLifecycleIdentity(lifecycle),
+        currentLifecycle: summarizeWebviewLifecycleIdentity(this.getSurfaceLifecycleIdentity(sourceSurface))
+      });
+    }
+
+    return matches;
+  }
+
   private getSurfaceWebview(surface: CanvasSurfaceLocation): vscode.Webview | undefined {
     return surface === 'editor' ? this.editorPanel?.webview : this.panelView?.webview;
   }
@@ -7478,6 +7740,69 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return this.panelView.visible ? 'visible' : 'hidden';
+  }
+
+  private canPromoteReadyWebviewMessage(
+    sourceSurface: CanvasSurfaceLocation,
+    sourceWebview: vscode.Webview | undefined,
+    lifecycle: WebviewLifecycleIdentity | undefined
+  ): boolean {
+    if (!sourceWebview || !lifecycle || !this.isInteractiveSurface(sourceSurface)) {
+      return false;
+    }
+
+    const renderedLifecycle = this.renderedWebviewLifecycle.get(sourceWebview);
+    const currentLifecycle = this.surfaceLifecycle[sourceSurface];
+    return (
+      renderedLifecycle !== undefined &&
+      lifecycle.surface === sourceSurface &&
+      lifecycle.mode === 'active' &&
+      lifecycle.surface === renderedLifecycle.surface &&
+      lifecycle.mode === renderedLifecycle.mode &&
+      lifecycle.generation === renderedLifecycle.generation &&
+      (!currentLifecycle.ready || lifecycle.generation >= currentLifecycle.generation)
+    );
+  }
+
+  private promoteReadyWebviewMessageIfNeeded(
+    sourceSurface: CanvasSurfaceLocation,
+    sourceWebview: vscode.Webview | undefined,
+    lifecycle: WebviewLifecycleIdentity | undefined
+  ): void {
+    if (!this.canPromoteReadyWebviewMessage(sourceSurface, sourceWebview, lifecycle)) {
+      return;
+    }
+
+    const currentLifecycle = this.surfaceLifecycle[sourceSurface];
+    if (
+      currentLifecycle.mode === lifecycle!.mode &&
+      currentLifecycle.generation === lifecycle!.generation &&
+      this.getSurfaceMessageWebview(sourceSurface) === sourceWebview
+    ) {
+      return;
+    }
+
+    this.surfaceMode[sourceSurface] = lifecycle!.mode;
+    this.surfaceReady[sourceSurface] = false;
+    this.surfaceLifecycle[sourceSurface] = {
+      generation: lifecycle!.generation,
+      mode: lifecycle!.mode,
+      ready: false,
+      bootstrapAck: false
+    };
+    this.bindSurfaceMessageWebview(sourceSurface, sourceWebview, 'ready');
+    this.recordDiagnosticEvent('surface/readyWebviewPromoted', {
+      surface: sourceSurface,
+      lifecycle: summarizeWebviewLifecycleIdentity(lifecycle)
+    });
+  }
+
+  private recoverSurfaceAfterMessageWebviewDisposed(surface: CanvasSurfaceLocation): void {
+    this.surfaceReady[surface] = false;
+    if (this.activeSurface === surface && this.getSurfaceWebview(surface)) {
+      this.invalidateSurfaceLifecycle(surface);
+      this.ensureActiveSurfaceRendered(surface);
+    }
   }
 
   private maybePostVisibilityRestored(
@@ -7521,17 +7846,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.surfaceMode[surface] = 'active';
-    this.surfaceReady[surface] = false;
+    const lifecycle = this.beginSurfaceRender(surface, 'active');
     this.recordDiagnosticEvent('surface/rendered', {
       surface,
-      mode: 'active'
+      mode: 'active',
+      lifecycle: summarizeWebviewLifecycleIdentity(lifecycle)
     });
     webview.options = this.getWebviewOptions();
     webview.html = getWebviewHtml(webview, this.context.extensionUri, {
       mode: 'active',
-      surface
+      surface,
+      lifecycle
     });
+    this.renderedWebviewLifecycle.set(webview, lifecycle);
+    this.bindSurfaceMessageWebview(surface, webview, 'render');
   }
 
   private renderStandbySurface(surface: CanvasSurfaceLocation): void {
@@ -7544,12 +7872,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.surfaceMode[surface] = 'standby';
-    this.surfaceReady[surface] = false;
+    const lifecycle = this.beginSurfaceRender(surface, 'standby');
     this.recordDiagnosticEvent('surface/rendered', {
       surface,
       mode: 'standby',
-      activeSurface: this.activeSurface
+      activeSurface: this.activeSurface,
+      lifecycle: summarizeWebviewLifecycleIdentity(lifecycle)
     });
     webview.options = this.getWebviewOptions();
     webview.html = getWebviewHtml(webview, this.context.extensionUri, {
@@ -7557,6 +7885,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       surface,
       activeSurface: this.activeSurface
     });
+    this.renderedWebviewLifecycle.set(webview, lifecycle);
+    this.bindSurfaceMessageWebview(surface, webview, 'render');
   }
 
   private isInteractiveSurface(surface: CanvasSurfaceLocation): boolean {
@@ -7580,7 +7910,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return undefined;
     }
 
-    return this.getSurfaceWebview(this.activeSurface);
+    return this.getSurfaceMessageWebview(this.activeSurface);
   }
 
   private async revealPanelView(): Promise<void> {
@@ -7613,10 +7943,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     void vscode.window.showInformationMessage(`请从 Panel 中打开 ${EXTENSION_DISPLAY_NAME} 视图。`);
   }
 
-  private handleWebviewMessage(sourceSurface: CanvasSurfaceLocation, message: unknown): void {
+  private handleWebviewMessage(
+    sourceSurface: CanvasSurfaceLocation,
+    message: unknown,
+    sourceWebview?: vscode.Webview
+  ): void {
+    const lifecycle = extractWebviewMessageLifecycle(message);
+    if (hasInvalidWebviewLifecycle(message, lifecycle)) {
+      this.recordDiagnosticEvent('webview/invalidLifecycleIgnored', {
+        surface: sourceSurface,
+        lifecycle: summarizeUnknownWebviewLifecycle(message)
+      });
+      return;
+    }
+
     const parsedMessage = parseWebviewMessage(message);
     if (!parsedMessage) {
-      if (this.isInteractiveSurface(sourceSurface)) {
+      if (this.isInteractiveSurface(sourceSurface) && this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, 'unknown')) {
         this.postMessageToSurface(sourceSurface, {
           type: 'host/error',
           payload: {
@@ -7631,7 +7974,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.resolvePendingWebviewProbeRequest(
         sourceSurface,
         parsedMessage.payload.requestId,
-        parsedMessage.payload.snapshot
+        parsedMessage.payload.snapshot,
+        lifecycle
       );
       return;
     }
@@ -7641,29 +7985,55 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         sourceSurface,
         parsedMessage.payload.requestId,
         parsedMessage.payload.ok,
-        parsedMessage.payload.errorMessage
+        parsedMessage.payload.errorMessage,
+        lifecycle
       );
       return;
     }
 
     if (parsedMessage.type === 'webview/runtimeDiagnostic') {
+      const current = this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type, {
+        recordIgnored: false
+      });
       this.recordDiagnosticEvent('webview/runtimeDiagnostic', {
         surface: sourceSurface,
+        current,
+        lifecycle: summarizeWebviewLifecycleIdentity(lifecycle),
         ...parsedMessage.payload
       });
       return;
     }
 
     if (parsedMessage.type === 'webview/ready') {
-      this.surfaceReady[sourceSurface] = true;
+      this.promoteReadyWebviewMessageIfNeeded(sourceSurface, sourceWebview, lifecycle);
+      if (!this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type)) {
+        return;
+      }
+
+      this.bindSurfaceMessageWebview(sourceSurface, sourceWebview, 'ready');
+      this.markSurfaceReady(sourceSurface, lifecycle);
       this.recordDiagnosticEvent('surface/ready', {
         surface: sourceSurface,
         mode: this.surfaceMode[sourceSurface],
-        activeSurface: this.activeSurface
+        activeSurface: this.activeSurface,
+        lifecycle: summarizeWebviewLifecycleIdentity(this.getSurfaceLifecycleIdentity(sourceSurface))
       });
       if (this.isInteractiveSurface(sourceSurface)) {
-        void this.bootstrapInteractiveSurface(sourceSurface);
+        void this.bootstrapInteractiveSurface(sourceSurface, this.getSurfaceLifecycleIdentity(sourceSurface));
       }
+      return;
+    }
+
+    if (parsedMessage.type === 'webview/bootstrapAck') {
+      if (!this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type)) {
+        return;
+      }
+      this.surfaceLifecycle[sourceSurface].bootstrapAck = true;
+      this.recordDiagnosticEvent('surface/bootstrapAck', {
+        surface: sourceSurface,
+        lifecycle: summarizeWebviewLifecycleIdentity(this.getSurfaceLifecycleIdentity(sourceSurface))
+      });
+      void this.postCanvasTemplateCatalogToActiveWebview();
       return;
     }
 
@@ -7671,10 +8041,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    if (!this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type)) {
+      return;
+    }
+
     this.handleActiveWebviewMessage(sourceSurface, parsedMessage);
   }
 
-  private async bootstrapInteractiveSurface(sourceSurface: CanvasSurfaceLocation): Promise<void> {
+  private async bootstrapInteractiveSurface(
+    sourceSurface: CanvasSurfaceLocation,
+    lifecycle?: WebviewLifecycleIdentity
+  ): Promise<void> {
     try {
       await this.ensureDefaultTemplateAppliedIfNeeded();
     } catch (error) {
@@ -7683,11 +8060,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     }
 
-    if (!this.isInteractiveSurface(sourceSurface) || !this.surfaceReady[sourceSurface]) {
+    const targetLifecycle = lifecycle ?? this.getSurfaceLifecycleIdentity(sourceSurface);
+    if (
+      !this.isInteractiveSurface(sourceSurface) ||
+      !this.surfaceReady[sourceSurface] ||
+      (targetLifecycle && !this.isCurrentSurfaceLifecycle(sourceSurface, targetLifecycle, 'host/bootstrap'))
+    ) {
       return;
     }
 
-    this.postState('host/bootstrap');
+    this.postState('host/bootstrap', {
+      surface: sourceSurface,
+      lifecycle: targetLifecycle
+    });
     void this.postCanvasTemplateCatalogToActiveWebview();
     this.maybePostVisibilityRestored(sourceSurface, {
       force: true
@@ -8055,13 +8440,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postMessageToSurface(surface: CanvasSurfaceLocation, message: HostToWebviewMessage): void {
-    const webview = this.getSurfaceWebview(surface);
-    this.recordHostMessage(surface, message, Boolean(webview));
+    const webview = this.getSurfaceMessageWebview(surface);
+    const preparedMessage = this.withSurfaceLifecycle(surface, message);
+    this.recordHostMessage(surface, preparedMessage, Boolean(webview));
     if (!webview) {
       return;
     }
 
-    void webview.postMessage(message);
+    void webview.postMessage(preparedMessage);
   }
 
   private assertExecutionAllowed(errorMessage: string): boolean {
@@ -12148,12 +12534,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     message: HostToWebviewMessage,
     delivered: boolean
   ): void {
+    const messageDetail = summarizeHostMessageDetail(message);
+    const lifecycle = summarizeWebviewLifecycleIdentity(message.lifecycle);
     this.diagnosticHostMessages.push({
       timestamp: new Date().toISOString(),
       surface,
       delivered,
       type: message.type,
-      detail: summarizeHostMessageDetail(message)
+      detail:
+        lifecycle || messageDetail
+          ? {
+              ...(messageDetail ?? {}),
+              ...(lifecycle
+                ? {
+                    lifecycle
+                  }
+                : {})
+            }
+          : undefined
     });
     if (this.diagnosticHostMessages.length > 400) {
       this.diagnosticHostMessages.splice(0, this.diagnosticHostMessages.length - 400);
@@ -12197,21 +12595,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private resolvePendingWebviewProbeRequest(
     surface: CanvasSurfaceLocation,
     requestId: string,
-    snapshot: WebviewProbeSnapshot
+    snapshot: WebviewProbeSnapshot,
+    lifecycle?: WebviewLifecycleIdentity
   ): void {
     const pendingRequest = this.pendingWebviewProbeRequests.get(requestId);
     if (!pendingRequest) {
       return;
     }
 
-    clearTimeout(pendingRequest.timeout);
-    this.pendingWebviewProbeRequests.delete(requestId);
+    if (!this.matchesPendingWebviewRequestLifecycle(pendingRequest, lifecycle)) {
+      this.recordDiagnosticEvent('webview/staleProbeResultIgnored', {
+        surface,
+        requestId,
+        lifecycle: summarizeWebviewLifecycleIdentity(lifecycle),
+        pendingLifecycle: summarizeWebviewLifecycleIdentity(pendingRequest.lifecycle)
+      });
+      return;
+    }
 
     if (pendingRequest.surface !== surface) {
+      clearTimeout(pendingRequest.timeout);
+      this.pendingWebviewProbeRequests.delete(requestId);
       pendingRequest.reject(new Error(`收到来自 ${surface} 的 probe 结果，但请求原本发往 ${pendingRequest.surface}。`));
       return;
     }
 
+    clearTimeout(pendingRequest.timeout);
+    this.pendingWebviewProbeRequests.delete(requestId);
     pendingRequest.resolve(cloneJsonValue(snapshot));
   }
 
@@ -12231,23 +12641,35 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     surface: CanvasSurfaceLocation,
     requestId: string,
     ok: boolean,
-    errorMessage: string | undefined
+    errorMessage: string | undefined,
+    lifecycle?: WebviewLifecycleIdentity
   ): void {
     const pendingRequest = this.pendingWebviewDomActionRequests.get(requestId);
     if (!pendingRequest) {
       return;
     }
 
-    clearTimeout(pendingRequest.timeout);
-    this.pendingWebviewDomActionRequests.delete(requestId);
+    if (!this.matchesPendingWebviewRequestLifecycle(pendingRequest, lifecycle)) {
+      this.recordDiagnosticEvent('webview/staleDomActionResultIgnored', {
+        surface,
+        requestId,
+        lifecycle: summarizeWebviewLifecycleIdentity(lifecycle),
+        pendingLifecycle: summarizeWebviewLifecycleIdentity(pendingRequest.lifecycle)
+      });
+      return;
+    }
 
     if (pendingRequest.surface !== surface) {
+      clearTimeout(pendingRequest.timeout);
+      this.pendingWebviewDomActionRequests.delete(requestId);
       pendingRequest.reject(
         new Error(`收到来自 ${surface} 的 DOM 动作结果，但请求原本发往 ${pendingRequest.surface}。`)
       );
       return;
     }
 
+    clearTimeout(pendingRequest.timeout);
+    this.pendingWebviewDomActionRequests.delete(requestId);
     if (!ok) {
       pendingRequest.reject(new Error(errorMessage || '真实 Webview DOM 动作执行失败。'));
       return;
@@ -12266,6 +12688,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.pendingWebviewDomActionRequests.delete(requestId);
       pendingRequest.reject(new Error(message));
     }
+  }
+
+  private matchesPendingWebviewRequestLifecycle(
+    pendingRequest: { lifecycle?: WebviewLifecycleIdentity },
+    lifecycle: WebviewLifecycleIdentity | undefined
+  ): boolean {
+    if (!pendingRequest.lifecycle) {
+      return true;
+    }
+
+    if (!lifecycle) {
+      return false;
+    }
+
+    return (
+      pendingRequest.lifecycle.surface === lifecycle.surface &&
+      pendingRequest.lifecycle.mode === lifecycle.mode &&
+      pendingRequest.lifecycle.generation === lifecycle.generation &&
+      (pendingRequest.lifecycle.frameId === undefined ||
+        lifecycle.frameId === pendingRequest.lifecycle.frameId)
+    );
   }
 }
 
@@ -16120,6 +16563,41 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
           }
         : undefined;
   }
+}
+
+function hasInvalidWebviewLifecycle(
+  message: unknown,
+  lifecycle: WebviewLifecycleIdentity | undefined
+): boolean {
+  return isRecord(message) && message.lifecycle !== undefined && lifecycle === undefined;
+}
+
+function summarizeUnknownWebviewLifecycle(message: unknown): Record<string, unknown> | null {
+  if (!isRecord(message) || !isRecord(message.lifecycle)) {
+    return null;
+  }
+
+  return {
+    surface: message.lifecycle.surface,
+    mode: message.lifecycle.mode,
+    generation: message.lifecycle.generation,
+    frameId: message.lifecycle.frameId
+  };
+}
+
+function summarizeWebviewLifecycleIdentity(
+  lifecycle: WebviewLifecycleIdentity | undefined
+): Record<string, unknown> | undefined {
+  if (!lifecycle) {
+    return undefined;
+  }
+
+  return {
+    surface: lifecycle.surface,
+    mode: lifecycle.mode,
+    generation: lifecycle.generation,
+    frameId: lifecycle.frameId
+  };
 }
 
 function summarizeDiagnosticHostMessages(

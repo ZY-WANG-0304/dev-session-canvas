@@ -84,6 +84,7 @@ import type {
   HostToWebviewMessage,
   WebviewDomAction,
   WebviewClipboardTextSource,
+  WebviewLifecycleIdentity,
   WebviewProbeEdgeSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
@@ -93,6 +94,7 @@ import {
   canvasEdgePresetColors,
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
   NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
+  extractWebviewMessageLifecycle,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -153,6 +155,12 @@ declare function acquireVsCodeApi<T>(): {
   setState(state: T): void;
   postMessage(message: unknown): void;
 };
+
+declare global {
+  interface Window {
+    __DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__?: WebviewLifecycleIdentity;
+  }
+}
 
 interface LocalUiState {
   selectedNodeId?: string;
@@ -586,6 +594,7 @@ interface XtermCoreWithMouseInternals {
 const vscode = acquireVsCodeApi<LocalUiState>();
 const reportedRuntimeDiagnostics = new Set<string>();
 const initialPersistedState = vscode.getState() ?? {};
+const webviewLifecycleIdentity = createWebviewLifecycleIdentity();
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionTerminalRegistry = new Map<
   string,
@@ -661,7 +670,7 @@ function emitRuntimeDiagnostic(payload: WebviewRuntimeDiagnosticPayload): void {
   reportedRuntimeDiagnostics.add(diagnosticKey);
 
   try {
-    vscode.postMessage({
+    postMessage({
       type: 'webview/runtimeDiagnostic',
       payload
     });
@@ -1107,6 +1116,10 @@ function App(): JSX.Element {
   useEffect(() => {
     const listener = (event: MessageEvent<HostToWebviewMessage>) => {
       const message = event.data;
+      const messageLifecycle = extractWebviewMessageLifecycle(message);
+      if (messageLifecycle && !isCurrentWebviewLifecycleIdentity(messageLifecycle)) {
+        return;
+      }
 
       switch (message.type) {
         case 'host/bootstrap':
@@ -1136,6 +1149,9 @@ function App(): JSX.Element {
             setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
             activeNodeResizeDraftsRef.current = {};
             applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
+            if (message.type === 'host/bootstrap') {
+              postMessage({ type: 'webview/bootstrapAck' });
+            }
           }
           scheduleEmbeddedTerminalAppearanceRefresh();
           break;
@@ -13892,7 +13908,46 @@ function clearPendingExecutionPasteRequests(): void {
 }
 
 function postMessage(message: WebviewToHostMessage): void {
-  vscode.postMessage(message);
+  vscode.postMessage({
+    ...message,
+    lifecycle: webviewLifecycleIdentity
+  });
+}
+
+function isCurrentWebviewLifecycleIdentity(lifecycle: WebviewLifecycleIdentity): boolean {
+  return (
+    lifecycle.surface === webviewLifecycleIdentity.surface &&
+    lifecycle.mode === webviewLifecycleIdentity.mode &&
+    lifecycle.generation === webviewLifecycleIdentity.generation &&
+    (lifecycle.frameId === undefined || lifecycle.frameId === webviewLifecycleIdentity.frameId)
+  );
+}
+
+function createWebviewLifecycleIdentity(): WebviewLifecycleIdentity {
+  const hostLifecycle = extractWebviewMessageLifecycle({
+    lifecycle: window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__
+  });
+  return {
+    ...(hostLifecycle ?? {
+      surface: 'panel',
+      mode: 'active',
+      generation: 0
+    }),
+    frameId: createWebviewFrameId()
+  };
+}
+
+function createWebviewFrameId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return `frame-${cryptoApi.randomUUID()}`;
+  }
+
+  const randomParts =
+    cryptoApi && typeof cryptoApi.getRandomValues === 'function'
+      ? Array.from(cryptoApi.getRandomValues(new Uint32Array(2)), (value) => value.toString(36))
+      : [Math.random().toString(36).slice(2), Math.random().toString(36).slice(2)];
+  return `frame-${Date.now().toString(36)}-${randomParts.join('-')}`;
 }
 
 root.render(<App />);
