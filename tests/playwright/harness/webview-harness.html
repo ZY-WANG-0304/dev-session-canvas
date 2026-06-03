@@ -10,6 +10,12 @@
     <div id="app"></div>
     <script>
       (() => {
+        window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__ =
+          window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__ ?? {
+            surface: 'panel',
+            mode: 'active',
+            generation: 1
+          };
         const postedMessages = [];
         let persistedState = window.__devSessionCanvasHarnessInitialPersistedState ?? {};
         let resolvedExecutionFileLinkTexts = null;
