@@ -16564,12 +16564,36 @@ function createUserCanvasEdge(
   if (previousState.edges.some((existingEdge) => existingEdge.id === edge.id)) {
     return previousState;
   }
+  if (!canConnectCanvasEdgeEndpoints(previousState, edge.sourceNodeId, edge.targetNodeId)) {
+    return previousState;
+  }
 
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
     edges: [...previousState.edges, edge]
   };
+}
+
+function canConnectCanvasEdgeEndpoints(
+  state: CanvasPrototypeState,
+  sourceNodeId: string,
+  targetNodeId: string
+): boolean {
+  const sourceNode = state.nodes.find((node) => node.id === sourceNodeId);
+  const targetNode = state.nodes.find((node) => node.id === targetNodeId);
+  if (!sourceNode || !targetNode) {
+    return false;
+  }
+
+  const groups = state.groups ?? [];
+  if (!groups.some(isWorkspaceRootGroup)) {
+    return true;
+  }
+
+  const sourceRootGroupId = resolveContainingWorkspaceRootGroupId(groups, sourceNode.groupId);
+  const targetRootGroupId = resolveContainingWorkspaceRootGroupId(groups, targetNode.groupId);
+  return Boolean(sourceRootGroupId && sourceRootGroupId === targetRootGroupId);
 }
 
 function updateCanvasEdge(
@@ -16591,8 +16615,7 @@ function updateCanvasEdge(
   }
 
   const patchedEdge = applyCanvasEdgePatch(edge, patch);
-  const nodeIds = new Set(previousState.nodes.map((node) => node.id));
-  if (!nodeIds.has(patchedEdge.sourceNodeId) || !nodeIds.has(patchedEdge.targetNodeId)) {
+  if (!canConnectCanvasEdgeEndpoints(previousState, patchedEdge.sourceNodeId, patchedEdge.targetNodeId)) {
     return previousState;
   }
   if (areCanvasEdgesEquivalent(edge, patchedEdge)) {

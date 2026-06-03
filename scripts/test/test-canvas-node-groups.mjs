@@ -25,7 +25,9 @@ try {
     'finalizeCanvasGroupState',
     'applyCanvasTemplateToState',
     'createNextState',
-    'normalizeState'
+    'normalizeState',
+    'createUserCanvasEdge',
+    'updateCanvasEdge'
   ];
 
   await esbuild.build({
@@ -119,7 +121,9 @@ try {
     finalizeCanvasGroupState,
     applyCanvasTemplateToState,
     createNextState,
-    normalizeState
+    normalizeState,
+    createUserCanvasEdge,
+    updateCanvasEdge
   } = require(outfile);
 
   const note = (id, position, extra = {}) => ({
@@ -623,6 +627,65 @@ try {
       group('other-root-child', { x: 940, y: 120 }, { width: 220, height: 180 }, { parentGroupId: 'workspace-root-def' })
     ]
   });
+  const sameRootEdgeState = createUserCanvasEdge(workspaceRootState, {
+    id: 'edge-same-root',
+    sourceNodeId: 'root-note',
+    targetNodeId: 'regular-note',
+    sourceAnchor: 'right',
+    targetAnchor: 'left',
+    arrowMode: 'forward',
+    owner: 'user'
+  });
+  assert.ok(
+    sameRootEdgeState.edges.some((candidate) => candidate.id === 'edge-same-root'),
+    'Edges between nodes inside the same workspace root should still be accepted.'
+  );
+  const workspaceRootEdgeState = {
+    ...workspaceRootState,
+    nodes: [
+      ...workspaceRootState.nodes,
+      note('backend-note', { x: 980, y: 160 }, { groupId: 'workspace-root-def' })
+    ]
+  };
+  const rejectedCrossRootEdgeState = createUserCanvasEdge(workspaceRootEdgeState, {
+    id: 'edge-cross-root',
+    sourceNodeId: 'root-note',
+    targetNodeId: 'backend-note',
+    sourceAnchor: 'right',
+    targetAnchor: 'left',
+    arrowMode: 'forward',
+    owner: 'user'
+  });
+  assert.strictEqual(
+    rejectedCrossRootEdgeState,
+    workspaceRootEdgeState,
+    'Cross-root edges must be rejected because multi-root overlay does not persist edge content.'
+  );
+  const rejectedCrossRootReconnectState = updateCanvasEdge(
+    {
+      ...workspaceRootEdgeState,
+      edges: [
+        {
+          id: 'edge-same-root',
+          sourceNodeId: 'root-note',
+          targetNodeId: 'regular-note',
+          sourceAnchor: 'right',
+          targetAnchor: 'left',
+          arrowMode: 'forward',
+          owner: 'user'
+        }
+      ]
+    },
+    'edge-same-root',
+    {
+      targetNodeId: 'backend-note'
+    }
+  );
+  assert.strictEqual(
+    rejectedCrossRootReconnectState.edges[0].targetNodeId,
+    'regular-note',
+    'Reconnect must not turn an existing root-local edge into a cross-root edge.'
+  );
   const renamedWorkspaceRoot = updateGroupTitle(workspaceRootState, 'workspace-root-abc', 'Renamed Root');
   assert.strictEqual(
     renamedWorkspaceRoot.groups.find((candidate) => candidate.id === 'workspace-root-abc').title,

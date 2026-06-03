@@ -18,6 +18,7 @@
 - [x] (2026-06-04 01:35 +0800) 接入创建目标解析：命令、右键、模板、Markdown 拖入和 Explorer cwd 创建能定位目标 root。
 - [x] (2026-06-04 01:50 +0800) 接入 root section 分组策略与 Webview 呈现：系统 root section 只读、不可删除/取消分组/重命名，但能移动、resize、被外层分组包含。
 - [x] (2026-06-04 02:10 +0800) 补充并运行自动化验证：composition、group policy、protocol、execution context、template、Markdown drop、typecheck、build。
+- [x] (2026-06-04 03:45 +0800) 处理 PR review blocker：Webview 与 Host 双侧拒绝跨 root create/reconnect edge，并补充 group helper 与 Playwright 回归测试。
 
 ## 意外与发现
 
@@ -26,6 +27,9 @@
 
 - 观察：全量 `npm run test:webview` 当前失败 29 项，其中新增的 2 个 workspace root group Playwright 用例通过；失败主要来自现有截图/环境敏感断言，以及 Webview lifecycle identity 被加入消息后部分旧用例仍使用整对象相等断言。
   证据：`npm run test:webview` 结果为 224 passed / 29 failed；失败包含 `canvas-shell-baseline.png` 视觉差异、`minimal file nodes keep a content-fitting minimum size`、`agent subtitle shows cwd label...` 和多项 Note Markdown 消息整对象断言多出 `lifecycle` 字段。
+
+- 观察：PR review 发现跨 root 连线可以在当前会话内创建，但拆分持久化时不会写入任一 root-local state，也不属于 overlay，重载后会消失。
+  证据：`docs/product-specs/canvas-multi-root-workspace-support.md` 明确非目标包含“不实现跨 root 连线”；修复前 `webview/createEdge` 直接进入 `createUserCanvasEdge`，Webview `handleConnect` / `handleEdgeReconnect` 未校验端点所属 root。
 
 ## 决策记录
 
@@ -45,9 +49,13 @@
   理由：复用已有分组框可以保留用户熟悉的视觉和几何行为；显式 role 可以让删除、取消分组、重命名、overlay 拆分与 root-local 拆分有稳定判定依据。
   日期/作者：2026-06-04 / Codex
 
+- 决策：跨 root 连线按非目标处理，Webview 在连接和重连时提前拒绝，Host 在 create/update edge 时再次校验；不把跨 root edge 扩展进 overlay。
+  理由：当前 overlay 只承载 root section 布局和 workspace-level 分组，不承载内容边；允许跨 root edge 会产生“会话内可见、重载丢失”的不可追踪状态。双侧校验既避免无效交互消息，也保证 Host 对异常消息保持权威拒绝。
+  日期/作者：2026-06-04 / Codex
+
 ## 结果与复盘
 
-本轮重新实现已完成主路径代码接入与目标自动化验证。保留风险是尚未在真实 VSCode multi-root workspace 中完成手动 smoke，且全量 Webview Playwright 存在与本功能无直接关系或 lifecycle 断言口径相关的既有失败，需要后续单独收口。
+本轮重新实现已完成主路径代码接入与目标自动化验证，并已按 PR review 修复跨 root edge 临时可见但不可持久化的问题。保留风险是尚未在真实 VSCode multi-root workspace 中完成手动 smoke，且全量 Webview Playwright 存在与本功能无直接关系或 lifecycle 断言口径相关的既有失败，需要后续单独收口。
 
 ## 上下文与定向
 
@@ -85,6 +93,7 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是�
 ## 验证与验收
 
 自动化验收必须证明：两个 root 的同名节点 ID 在 composed view 中不冲突；移动整个 root section 后拆分不会改写 root-local 节点坐标；在 root section 内新增 Note、Agent、Terminal 或模板节点会写回对应 root-local state；包含多个 root section 的外层普通分组只保存到 overlay；系统 root section 不能被删除、取消分组或重命名；Markdown 文件在 multi-root 中只有拖到目标 root section 内才创建关联 Note；`Agent` / `Terminal` 的默认 cwd 等于目标 root 路径。
+Review 修复后的补充验收必须证明：跨 root 创建连线不会发出 Webview createEdge 消息，跨 root 重连不会发出 updateEdge 消息；Host 侧 helper 同样拒绝跨 root create/update edge，防止异常消息直接写入不可持久化边。
 
 人工验收建议在真实 VSCode 中创建两个临时 folder。先分别单独打开每个 folder 创建 Note，再打开包含二者的 `.code-workspace`，应看到两个 root section。把第一个 root 内 Note 拖到 root 边界外，root section 应扩张；重新单独打开第一个 root，应看到 Note 的 root-local 位置已更新。选中两个 root section 创建外层分组，重载 multi-root 后外层分组仍存在；单独打开任一 root 时不显示这个外层分组。
 
@@ -143,6 +152,14 @@ root-local snapshot 写入使用稳定 root path 派生的目录和原子临时�
 
     npm run test:webview
     224 passed, 29 failed；新增 workspace root group 用例通过，失败详情见“意外与发现”。
+
+Review 修复后新增验证记录如下：
+
+    npm run test:canvas-node-groups
+    退出码 0；覆盖 Host 侧跨 root create/update edge 拒绝。
+
+    npm run test:webview -- --grep "workspace root group|cross-root edge"
+    3 passed；覆盖 Webview workspace root group 与跨 root edge create/reconnect 拒绝。
 
 ## 接口与依赖
 
