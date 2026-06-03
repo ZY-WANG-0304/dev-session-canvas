@@ -2533,8 +2533,8 @@ for (const executionKind of ['agent', 'terminal']) {
       const subtitle = nodeById(page, 'agent-zoom').locator('.window-title-subtitle');
       await expect
         .poll(async () => subtitle.getAttribute('title'))
-        .toBe(`/workspace/packages/app · ${longLaunchCommand}`);
-      await expect(subtitle).toContainText('packages/app · codex --model gpt-5.2');
+        .toBe(`/workspace/packages/app/ · ${longLaunchCommand}`);
+      await expect(subtitle).toContainText('packages/app/ · codex --model gpt-5.2');
     });
 
     test('agent title chrome keeps a bounded width even when the node grows wider', async ({ page }) => {

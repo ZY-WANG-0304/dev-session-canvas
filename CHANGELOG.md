@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.12.0 - Preview Explorer Execution Context Update
+
+相对 `0.11.0`，`0.12.0` 是一轮新的公开 `Preview` 里程碑更新，重点把 VS Code File Explorer 中已经选定的目录或文件上下文带入画布执行节点，并修复 Panel Webview 恢复时可能出现的空画布串线问题。它保留 `0.11.0` 的画布分组、分组树侧栏、分组模板保存 / 应用、受限创建入口解释，以及既有生产 Webview Terminal TUI 输入热修复、Agent 异常提醒、Note Markdown 源码定位 / 可恢复草稿、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.11.0` bump 到 `0.12.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增 File Explorer 资源右键入口：workspace 内目录可直接在 Canvas 中创建 `Terminal` 或 `Agent`，普通文件会使用其父目录作为执行 cwd；非 `file` scheme、workspace 外资源或不可用目录会被拒绝并给出明确反馈
+- Explorer 创建的执行节点会把目标 cwd 写入节点 metadata；首次启动、停止后重启 / 新建 / resume、runtime supervisor、Agent CLI resolver、shell 环境探测、执行诊断和终端链接上下文都使用节点 cwd，不静默回退到 workspace 根目录
+- Agent 节点标题副标题与侧栏 `Nodes` 第二行会显示执行目录短标签；hover 保留完整 cwd 与启动命令；目录标签追加尾缀并保留 cwd 来源分隔符风格，Terminal 标题仍只展示 shell path
+- Panel Webview 引入 lifecycle identity、frameId 与 bootstrap ack，Host 侧把 ready、bootstrap、probe 和 DOM action 绑定到实际完成启动的 Webview frame，避免 VS Code Panel restore 双 attach 后旧 frame ready 串到新 frame、导致画布背景可见但节点不显示
+- 统一画布节点正文 padding、执行 runtime frame padding 与分组成员 inset，让 `Agent`、`Terminal`、`File`、`File List`、fallback card 和分组 body 的视觉节奏保持一致
+- 补充 Explorer cwd、执行上下文、workspace-relative path、协议、manifest、侧栏、Panel lifecycle、VS Code smoke 和 Playwright Webview 回归，覆盖 cwd 创建、cwd 可见投影、启动诊断、shell path 基准、Webview lifecycle stale 防护和分组 / padding 兼容路径
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.11.0` 升级到 `0.12.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.12.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.12.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.12.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.12.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.11.0 - Preview Canvas Groups Update
 
 相对 `0.10.7`，`0.11.0` 是一轮新的公开 `Preview` 里程碑更新，重点把画布从单纯摆放 `Agent` / `Terminal` / `Note` 节点，推进到可用分组组织多会话工作区。它保留 `0.10.7` 的生产 Webview Terminal TUI 输入热修复、`0.10.6` 的 Agent 异常提醒、`0.10.5` 的 Note Markdown 源码定位 / 可恢复草稿修复、`0.10.4` 的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和 Preview 支持边界。
