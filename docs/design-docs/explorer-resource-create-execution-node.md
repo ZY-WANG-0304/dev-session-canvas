@@ -18,7 +18,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/completed/explorer-resource-create-execution-node-implementation.md
-updated_at: 2026-05-31
+updated_at: 2026-06-03
 ---
 
 # File Explorer 资源右键创建执行节点设计
@@ -162,6 +162,7 @@ Explorer 命令的主流程为：
 - `Terminal` 标题副标题继续只显示 shell path，不额外拼接 `cwdLabel`。
 - `Agent` 标题副标题改为 `cwdLabel · 启动命令`；启动命令仍来自 `resolveAgentLaunchCommandLineForSubtitle(...)`，`cwdLabel` 由 `metadata.agent.cwd` 和 runtime context 中的 workspace folder 列表派生。完整 cwd 和完整启动命令进入 hover title，避免窄节点下被截断后丢失上下文。
 - `src/sidebar/CanvasSidebarNodeListView.ts` 投影 Agent 节点时，第二行从 `provider · 状态` 改为 `cwdLabel · provider · 状态`；`cwdLabel` 同样由 `metadata.agent.cwd` 派生，并按单根 / 多根 workspace 规则缩短。Terminal / Note 节点列表项保持只显示状态。
+- `cwdLabel` 与完整 cwd tooltip 都追加目录尾缀，用最小字符区分“执行目录”和普通文件路径。显示分隔符保留 cwd 来源风格：来源路径含反斜杠时使用 `\`；否则使用 `/`。因此 `\\server\share\repo\src` 展示为 `src\`，`//server/share/repo/src` 继续展示为 `src/`，不会因 network path 形态被强制改写成反斜杠。
 - `terminal-overlay` / `agent overlay` 在未运行或启动失败时继续使用 `data.summary` / `lastExitMessage`，其中 cwd 不可用错误需要可读。
 
 ## 7. 风险与缓解
@@ -185,3 +186,5 @@ Explorer 命令的主流程为：
 ## 9. 当前验证状态
 
 截至 2026-05-31，本设计已完成实现并通过自动化验证。PR review 后已补齐相对 Terminal shell path 解析基准、默认 metadata cwd 规范化和 workspace folder 变更刷新；已运行 `npm run typecheck`、协议 / 路径 / manifest / execution context 测试、Playwright 定向测试、`npm run build` 与 trusted VSCode smoke。普通创建入口多根 root 选择和 storage fork 不纳入本次收口。
+
+2026-06-03：执行目录可见反馈追加目录尾缀，并把 Windows / network path 展示规则收口为“保留 cwd 来源分隔符”，避免把 `//server/share/...` 这类 slash-style network path 改写成 `\\server\share\...`。本轮验证通过 `npm run test:workspace-relative-paths`、`npm run test:sidebar-session-history` 与 `npm run typecheck`。
