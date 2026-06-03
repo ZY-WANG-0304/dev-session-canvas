@@ -150,6 +150,8 @@ import {
 import { createNoteBodyIndentEdit, createNoteBodyOutdentEdit } from './noteBodyIndent';
 import { parseNoteMarkdownFrontMatter, type NoteMarkdownFrontMatter } from './noteMarkdownFrontMatter';
 
+type CanvasGroupRole = CanvasGroupSummary['role'];
+
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
   setState(state: T): void;
@@ -1236,13 +1238,14 @@ function App(): JSX.Element {
           createNode(
             message.payload.kind,
             undefined,
-            undefined,
+            message.payload.targetGroupId,
             message.payload.agentProvider,
             message.payload.agentLaunchPreset,
             message.payload.agentCustomLaunchCommand,
             {
               skipWorkspaceTrustCheck: true,
-              cwd: message.payload.cwd
+              cwd: message.payload.cwd,
+              useDefaultPlacement: Boolean(message.payload.targetGroupId || message.payload.cwd)
             }
           );
           break;
@@ -1575,6 +1578,7 @@ function App(): JSX.Element {
     const pendingManualCreateRequest = pendingManualCreateRequestRef.current;
     if (pendingManualCreateRequest) {
       const createdNode = resolvePendingManualNodeCreateTarget(
+        hostState,
         hostState.nodes,
         pendingManualCreateRequest.knownNodeIdsSnapshot,
         pendingManualCreateRequest
@@ -2670,17 +2674,17 @@ function App(): JSX.Element {
       (change) => change?.type === 'select' && typeof change.id === 'string' && typeof change.selected === 'boolean'
     );
     setNodeLayoutDrafts((current) => {
-      const currentNodes = applyCanvasNodeLayoutDrafts(baseNodes, current);
+      const currentNodes = applyCanvasNodeLayoutDrafts(groupDraftLayout.nodes, current);
       const nextNodes = applyNodeChanges(changes, currentNodes);
       const nextDrafts = {
-        ...collectCanvasNodeLayoutDrafts(baseNodes, nextNodes),
+        ...collectCanvasNodeLayoutDrafts(groupDraftLayout.nodes, nextNodes),
         ...activeNodeResizeDraftsRef.current
       };
       if (selectionChanges.length > 0 || !changes.some((change) => change?.type === 'position')) {
         return nextDrafts;
       }
 
-      return extendCanvasNodeLayoutDraftsForSelectedDrag(baseNodes, nextNodes, nextDrafts);
+      return extendCanvasNodeLayoutDraftsForSelectedDrag(groupDraftLayout.nodes, nextNodes, nextDrafts);
     });
 
     if (selectionChanges.length > 0) {
@@ -2812,24 +2816,26 @@ function App(): JSX.Element {
       localUiState.selectedNodeIds ?? (localUiState.selectedNodeId ? [localUiState.selectedNodeId] : []);
     const currentSelectedGroupIds =
       resolveSelectedGroupIds(localUiState);
+    const bodyHitGroupForSelection = bodyHitGroup;
+    const targetGroupId = bodyHitGroup?.id;
     const preserveSelectionForBodyAction =
-      bodyHitGroup &&
-      canCreateCanvasGroupFromSelection(hostState, currentSelectedNodeIds, currentSelectedGroupIds, bodyHitGroup.id);
+      bodyHitGroupForSelection &&
+      canCreateCanvasGroupFromSelection(hostState, currentSelectedNodeIds, currentSelectedGroupIds, bodyHitGroupForSelection.id);
     const selectedNodeIds = preserveSelectionForBodyAction
       ? currentSelectedNodeIds
-      : bodyHitGroup
+      : bodyHitGroupForSelection
         ? []
         : currentSelectedNodeIds;
     const selectedGroupIds = preserveSelectionForBodyAction
       ? currentSelectedGroupIds
-      : bodyHitGroup
-        ? [bodyHitGroup.id]
+      : bodyHitGroupForSelection
+        ? [bodyHitGroupForSelection.id]
         : currentSelectedGroupIds;
     const canCreateGroupFromSelection = canCreateCanvasGroupFromSelection(
       hostState,
       selectedNodeIds,
       selectedGroupIds,
-      bodyHitGroup?.id
+      targetGroupId
     );
     setLocalUiState((current) => ({
       ...current,
@@ -2846,7 +2852,7 @@ function App(): JSX.Element {
         y: Math.round(flowAnchor.y)
       },
       view: 'root',
-      targetGroupId: bodyHitGroup?.id,
+      targetGroupId,
       selectedNodeIds,
       selectedGroupIds,
       canCreateGroupFromSelection
@@ -2890,6 +2896,7 @@ function App(): JSX.Element {
       x: event.clientX,
       y: event.clientY
     });
+    const targetGroupId = resolveGroupBodyHitAtPointer(event)?.id;
     postMessage({
       type: 'webview/dropNoteMarkdownFiles',
       payload: {
@@ -2897,7 +2904,8 @@ function App(): JSX.Element {
         position: {
           x: Math.round(flowPosition.x),
           y: Math.round(flowPosition.y)
-        }
+        },
+        targetGroupId
       }
     });
   };
@@ -3326,6 +3334,7 @@ function App(): JSX.Element {
     options?: {
       skipWorkspaceTrustCheck?: boolean;
       cwd?: string;
+      useDefaultPlacement?: boolean;
     }
   ): void {
     if (!options?.skipWorkspaceTrustCheck && !workspaceTrusted && (kind === 'agent' || kind === 'terminal')) {
@@ -3340,7 +3349,9 @@ function App(): JSX.Element {
 
     const requestId = createManualNodeCreateRequestId();
     const resolvedPreferredPosition =
-      preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
+      options?.useDefaultPlacement === true
+        ? undefined
+        : preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
     const resolvedAgentProvider = kind === 'agent' ? agentProvider ?? runtimeContext.defaultAgentProvider : undefined;
     const resolvedAgentLaunchPreset = kind === 'agent' ? agentLaunchPreset ?? 'default' : undefined;
     pendingManualCreateRequestRef.current = {
@@ -3423,12 +3434,13 @@ function isCanvasNodeFullyVisible(
 }
 
 function resolvePendingManualNodeCreateTarget(
+  state: CanvasPrototypeState,
   nodes: CanvasNodeSummary[],
   knownNodeIds: ReadonlySet<string>,
   request: PendingManualNodeCreateRequest
 ): CanvasNodeSummary | undefined {
   const createdNodes = nodes.filter(
-    (node) => !knownNodeIds.has(node.id) && doesNodeMatchPendingManualCreateRequest(node, request)
+    (node) => !knownNodeIds.has(node.id) && doesNodeMatchPendingManualCreateRequest(state, node, request)
   );
   if (createdNodes.length === 0) {
     return undefined;
@@ -3452,6 +3464,7 @@ function resolvePendingManualNodeCreateTarget(
 }
 
 function doesNodeMatchPendingManualCreateRequest(
+  state: CanvasPrototypeState,
   node: CanvasNodeSummary,
   request: PendingManualNodeCreateRequest
 ): boolean {
@@ -3460,7 +3473,13 @@ function doesNodeMatchPendingManualCreateRequest(
   }
 
   if (request.targetGroupId && node.groupId !== request.targetGroupId) {
-    return false;
+    const targetGroup = state.groups.find((group) => group.id === request.targetGroupId);
+    if (targetGroup?.role !== 'workspace-root') {
+      return false;
+    }
+    if (!node.groupId || !isCanvasGroupInsideTargetRoot(state.groups, node.groupId, targetGroup.id)) {
+      return false;
+    }
   }
 
   if (node.kind !== 'agent') {
@@ -7879,6 +7898,24 @@ function resolveSelectedObjectParentGroupId(
   return selectedParents.size === 1 ? selectedParents.values().next().value : undefined;
 }
 
+function isCanvasGroupInsideTargetRoot(
+  groups: readonly CanvasGroupSummary[],
+  groupId: string,
+  targetRootGroupId: string
+): boolean {
+  let current = groups.find((group) => group.id === groupId);
+  const visited = new Set<string>();
+  while (current && !visited.has(current.id)) {
+    if (current.id === targetRootGroupId) {
+      return true;
+    }
+
+    visited.add(current.id);
+    current = current.parentGroupId ? groups.find((group) => group.id === current?.parentGroupId) : undefined;
+  }
+  return false;
+}
+
 function resolveCanvasEdgeStrokeColor(color: CanvasEdgeColor | undefined): string {
   if (!color) {
     return 'var(--canvas-edge-stroke-default)';
@@ -9376,7 +9413,7 @@ function findInnermostCanvasGroupBodyAtFlowPoint(
 
   return [...groups]
     .filter((group) =>
-      isCanvasPointInsideGroupBody(flowPoint, group, readCanvasGroupTitleHeight(backgroundLayer, group.id))
+      isCanvasPointInsideGroupBody(flowPoint, group, readCanvasGroupBodyTopOffset(backgroundLayer, group.id))
     )
     .sort((left, right) => {
       const depthDelta = groupDepthForWebview(groups, right.id) - groupDepthForWebview(groups, left.id);
@@ -9410,23 +9447,23 @@ function readCanvasViewportTransform(viewportElement: HTMLElement): Viewport {
   return { x: 0, y: 0, zoom: 1 };
 }
 
-function readCanvasGroupTitleHeight(backgroundLayer: HTMLElement, groupId: string): number {
+function readCanvasGroupBodyTopOffset(backgroundLayer: HTMLElement, groupId: string): number {
   const background = backgroundLayer.querySelector<HTMLElement>(`[data-group-background-id="${CSS.escape(groupId)}"]`);
   if (!background) {
-    return CANVAS_GROUP_TITLE_BASE_HEIGHT;
+    return CANVAS_GROUP_BODY_TOP_OFFSET;
   }
 
-  const titleHeight = Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-title-height'));
-  return Number.isFinite(titleHeight) && titleHeight >= 0 ? titleHeight : CANVAS_GROUP_TITLE_BASE_HEIGHT;
+  const bodyTopOffset = Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-body-top'));
+  return Number.isFinite(bodyTopOffset) && bodyTopOffset >= 0 ? bodyTopOffset : CANVAS_GROUP_BODY_TOP_OFFSET;
 }
 
 function isCanvasPointInsideGroupBody(
   point: CanvasPoint,
   group: CanvasGroupSummary,
-  titleHeight: number
+  bodyTopOffset: number
 ): boolean {
   const left = group.position.x;
-  const top = group.position.y + titleHeight;
+  const top = group.position.y + bodyTopOffset;
   const right = group.position.x + group.size.width;
   const bottom = group.position.y + group.size.height;
   return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
@@ -9505,12 +9542,19 @@ const CANVAS_GROUP_RESIZE_DIRECTIONS: CanvasGroupResizeDirection[] = [
 
 const CANVAS_GROUP_RESIZE_LINE_DIRECTIONS: CanvasGroupResizeDirection[] = ['top', 'right', 'bottom', 'left'];
 const CANVAS_GROUP_TITLE_BASE_HEIGHT = 28;
+const CANVAS_GROUP_BODY_TOP_OFFSET = CANVAS_GROUP_TITLE_BASE_HEIGHT;
 const CANVAS_GROUP_TITLE_BASE_MIN_WIDTH = 112;
 const CANVAS_GROUP_TITLE_HORIZONTAL_PADDING = 32;
 const CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR = 7;
 const CANVAS_GROUP_ACTION_PRIMARY_WIDTH = 76;
 const CANVAS_GROUP_ACTION_DANGER_WIDTH = 62;
 const CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP = 0;
+// Must stay aligned with the multi-root composition content inset.
+const CANVAS_WORKSPACE_ROOT_CONTENT_INSET = 80;
+
+function isWorkspaceRootCanvasGroupRole(role: CanvasGroupRole | undefined): boolean {
+  return role === 'workspace-root';
+}
 
 function cssPixelForCanvasZoom(value: number, zoom: number): string {
   const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
@@ -9528,6 +9572,7 @@ function createCanvasGroupChromeStyle(zoom: number, readableScale: number): CSSP
     '--canvas-group-border-width': cssPixelForCanvasZoom(1, zoom),
     '--canvas-group-readable-scale': String(readableScale),
     '--canvas-group-title-height': `${CANVAS_GROUP_TITLE_BASE_HEIGHT * readableScale}px`,
+    '--canvas-group-body-top': `${CANVAS_GROUP_BODY_TOP_OFFSET}px`,
     '--canvas-group-title-font-size': `${12 * readableScale}px`,
     '--canvas-group-title-padding-left': `${12 * readableScale}px`,
     '--canvas-group-title-padding-right': `${10 * readableScale}px`,
@@ -9545,7 +9590,7 @@ function createCanvasGroupChromeStyle(zoom: number, readableScale: number): CSSP
 }
 
 function createCanvasGroupFrameStyle(
-  group: Pick<CanvasGroupSummary, 'position' | 'size' | 'title'>,
+  group: Pick<CanvasGroupSummary, 'position' | 'size' | 'title' | 'role'>,
   zoom: number,
   selected = false
 ): CSSProperties {
@@ -9553,17 +9598,24 @@ function createCanvasGroupFrameStyle(
     CANVAS_GROUP_TITLE_BASE_MIN_WIDTH,
     group.title.length * CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR + CANVAS_GROUP_TITLE_HORIZONTAL_PADDING
   );
-  const toolbarBaseWidth = selected
+  const toolbarScaleBaseWidth = selected
     ? CANVAS_GROUP_ACTION_PRIMARY_WIDTH + CANVAS_GROUP_ACTION_DANGER_WIDTH
     : 0;
-  const widthBase = Math.max(1, titleBaseWidth + toolbarBaseWidth + (selected ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0));
-  const readableScale = groupReadableChromeScaleForZoom(zoom, group.size.width / widthBase);
+  const toolbarRenderBaseWidth = selected && !isWorkspaceRootCanvasGroupRole(group.role) ? toolbarScaleBaseWidth : 0;
+  const widthBase = Math.max(1, titleBaseWidth + toolbarScaleBaseWidth + (selected ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0));
+  const readableScale = Math.min(
+    groupReadableChromeScaleForZoom(zoom, group.size.width / widthBase),
+    isWorkspaceRootCanvasGroupRole(group.role)
+      ? CANVAS_WORKSPACE_ROOT_CONTENT_INSET / CANVAS_GROUP_TITLE_BASE_HEIGHT
+      : Number.POSITIVE_INFINITY
+  );
   const desiredTitleTabWidth = titleBaseWidth * readableScale;
-  const desiredToolbarWidth = toolbarBaseWidth * readableScale;
+  const desiredToolbarWidth = toolbarRenderBaseWidth * readableScale;
   const titleTabWidth = Math.min(desiredTitleTabWidth, group.size.width);
   const bodyAlignedTitleTabWidth = `min(${titleTabWidth}px, 100%)`;
-  const availableToolbarWidth = Math.max(0, group.size.width - titleTabWidth - CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP);
-  const toolbarWidth = selected && availableToolbarWidth >= 1
+  const toolbarGap = toolbarRenderBaseWidth > 0 ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0;
+  const availableToolbarWidth = Math.max(0, group.size.width - titleTabWidth - toolbarGap);
+  const toolbarWidth = selected && toolbarRenderBaseWidth > 0 && availableToolbarWidth >= 1
     ? Math.max(1, Math.min(desiredToolbarWidth, availableToolbarWidth))
     : 0;
   return {
@@ -9602,6 +9654,7 @@ function CanvasGroupFrame(props: {
   ) => void;
   onResizeEnd: () => void;
 }): JSX.Element {
+  const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(props.group.role);
   const dragStartRef = useRef<{
     pointerId: number;
     clientX: number;
@@ -9822,7 +9875,9 @@ function CanvasGroupFrame(props: {
           value={props.group.title}
           placeholder="分组标题"
           className="canvas-group-title"
-          onSubmit={(title) => props.onUpdateGroupTitle(props.group.id, title)}
+          tooltip={isWorkspaceRootGroup ? props.group.workspaceRootPath ?? props.group.title : undefined}
+          readOnly={isWorkspaceRootGroup}
+          onSubmit={isWorkspaceRootGroup ? undefined : (title) => props.onUpdateGroupTitle(props.group.id, title)}
           onSelectNode={() => selectGroup()}
         />
       </div>
@@ -9853,7 +9908,7 @@ function CanvasGroupFrame(props: {
           ))}
         </>
       ) : null}
-      {props.selected ? (
+      {props.selected && !isWorkspaceRootGroup ? (
         <div
           ref={toolbarRef}
           className="canvas-group-toolbar"
@@ -9896,8 +9951,10 @@ function ChromeTitleEditor(props: {
   subtitleTooltip?: string;
   subtitleAccessory?: React.ReactNode;
   className?: string;
+  tooltip?: string;
+  readOnly?: boolean;
   onSelectNode?: () => void;
-  onSubmit: (title: string) => void;
+  onSubmit?: (title: string) => void;
 }): JSX.Element {
   const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
   const [draft, setDraft] = useState(props.value);
@@ -9935,11 +9992,19 @@ function ChromeTitleEditor(props: {
     }
   }, [overviewInteractionsDisabled]);
 
+  const titleReadOnly = props.readOnly === true;
+  const editingDisabled = overviewInteractionsDisabled || titleReadOnly;
+
   const commitTitle = (rawValue: string): void => {
     const baselineTitle = committedTitleRef.current;
+    if (titleReadOnly) {
+      setDraft(baselineTitle);
+      return;
+    }
+
     const nextTitle = rawValue.trim() || baselineTitle;
     setDraft(nextTitle);
-    if (nextTitle !== baselineTitle) {
+    if (props.onSubmit && nextTitle !== baselineTitle) {
       pendingTitleRef.current = nextTitle;
       committedTitleRef.current = nextTitle;
       props.onSubmit(nextTitle);
@@ -9955,34 +10020,67 @@ function ChromeTitleEditor(props: {
           data-node-interactive="true"
           data-probe-field="title"
           value={draft}
-          readOnly={overviewInteractionsDisabled}
+          title={props.tooltip}
+          readOnly={editingDisabled}
           tabIndex={overviewInteractionsDisabled ? -1 : undefined}
           onFocus={() => {
             if (overviewInteractionsDisabled) {
+              setIsEditing(false);
               inputRef.current?.blur();
               return;
             }
-            setIsEditing(true);
             props.onSelectNode?.();
+            if (titleReadOnly) {
+              setIsEditing(false);
+              return;
+            }
+            setIsEditing(true);
           }}
           onMouseDown={stopCanvasEvent}
           onClick={stopCanvasEvent}
-          onCompositionStart={() => setIsComposing(true)}
+          onCompositionStart={() => {
+            if (!editingDisabled) {
+              setIsComposing(true);
+            }
+          }}
           onCompositionEnd={(event) => {
             setIsComposing(false);
-            setDraft(event.currentTarget.value);
+            if (!editingDisabled) {
+              setDraft(event.currentTarget.value);
+            }
           }}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            if (!editingDisabled) {
+              setDraft(event.target.value);
+            }
+          }}
           onBlur={(event) => {
             setIsComposing(false);
             setIsEditing(false);
             commitTitle(event.currentTarget.value);
           }}
-          onKeyDown={(event) =>
+          onKeyDown={(event) => {
+            if (titleReadOnly) {
+              if (shouldHandleReadonlySelectAllShortcut(event)) {
+                event.preventDefault();
+                stopCanvasEvent(event);
+                event.currentTarget.select();
+                return;
+              }
+              if (shouldAllowReadonlyTextShortcutToBubble(event)) {
+                return;
+              }
+              stopCanvasEvent(event);
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+              return;
+            }
             handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value), {
               isComposing
-            })
-          }
+            });
+          }}
           placeholder={props.placeholder}
         />
         {props.subtitle || props.subtitleAccessory ? (

@@ -20,6 +20,7 @@ try {
     'deleteCanvasNode',
     'deleteCanvasGroupKeepMembers',
     'isEmptyCanvasGroup',
+    'updateGroupTitle',
     'preserveRepairTargetClusterWhileAvoidingSiblings',
     'finalizeCanvasGroupState',
     'applyCanvasTemplateToState',
@@ -113,6 +114,7 @@ try {
     deleteCanvasNode,
     deleteCanvasGroupKeepMembers,
     isEmptyCanvasGroup,
+    updateGroupTitle,
     preserveRepairTargetClusterWhileAvoidingSiblings,
     finalizeCanvasGroupState,
     applyCanvasTemplateToState,
@@ -601,6 +603,206 @@ try {
   assert.strictEqual(releasedChildAfterResize.parentGroupId, undefined);
   assert.strictEqual(releasedNoteAfterResize.groupId, undefined);
   assert.ok(!rectsOverlapForTest(rectForTestGroup(resizedInsideParent), rectForTestGroup(releasedChildAfterResize)));
+
+  const workspaceRootGroup = group('workspace-root-abc', { x: 20, y: 30 }, { width: 720, height: 520 }, {
+    role: 'workspace-root',
+    workspaceRootPath: '/repo/frontend'
+  });
+  const workspaceRootState = state({
+    nodes: [
+      note('root-note', { x: 100, y: 140 }, { groupId: 'workspace-root-abc' }),
+      note('regular-note', { x: 420, y: 180 }, { groupId: 'regular-child' })
+    ],
+    groups: [
+      workspaceRootGroup,
+      group('regular-child', { x: 360, y: 120 }, { width: 220, height: 180 }, { parentGroupId: 'workspace-root-abc' }),
+      group('workspace-root-def', { x: 840, y: 30 }, { width: 720, height: 520 }, {
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/backend'
+      }),
+      group('other-root-child', { x: 940, y: 120 }, { width: 220, height: 180 }, { parentGroupId: 'workspace-root-def' })
+    ]
+  });
+  const renamedWorkspaceRoot = updateGroupTitle(workspaceRootState, 'workspace-root-abc', 'Renamed Root');
+  assert.strictEqual(
+    renamedWorkspaceRoot.groups.find((candidate) => candidate.id === 'workspace-root-abc').title,
+    'workspace-root-abc',
+    'Workspace root sections must not be renamed like regular user groups.'
+  );
+  const ungroupedWorkspaceRoot = ungroupCanvasGroup(workspaceRootState, 'workspace-root-abc');
+  assert.strictEqual(ungroupedWorkspaceRoot, workspaceRootState, 'Workspace root sections must not be ungrouped.');
+  const resizedWorkspaceRoot = resizeGroup(
+    workspaceRootState,
+    'workspace-root-abc',
+    { x: 40, y: 50 },
+    { width: 760, height: 540 }
+  );
+  const resizedWorkspaceRootGroup = resizedWorkspaceRoot.groups.find((candidate) => candidate.id === 'workspace-root-abc');
+  assert.deepStrictEqual(
+    resizedWorkspaceRoot.nodes.find((candidate) => candidate.id === 'root-note').position,
+    { x: 100, y: 140 },
+    'Resizing a workspace root section must keep root-local content in place and expand the root boundary when needed.'
+  );
+  assert.ok(
+    resizedWorkspaceRoot.groups.find((candidate) => candidate.id === 'regular-child').position.y <= 120,
+    'Regular child groups may still expand to contain their own direct members.'
+  );
+  assert.ok(rectContainsRectForTest(rectForTestGroup(resizedWorkspaceRootGroup), rectForTestNode(resizedWorkspaceRoot.nodes.find((candidate) => candidate.id === 'root-note'))));
+  assert.ok(rectContainsRectForTest(rectForTestGroup(resizedWorkspaceRootGroup), rectForTestGroup(resizedWorkspaceRoot.groups.find((candidate) => candidate.id === 'regular-child'))));
+  const resizedWorkspaceRootAgainstMembers = resizeGroup(
+    workspaceRootState,
+    'workspace-root-abc',
+    { x: 120, y: 120 },
+    { width: 180, height: 96 }
+  );
+  const resizedWorkspaceRootAgainstMembersGroup = resizedWorkspaceRootAgainstMembers.groups.find((candidate) => candidate.id === 'workspace-root-abc');
+  const resizedWorkspaceRootAgainstMembersRect = rectForTestGroup(resizedWorkspaceRootAgainstMembersGroup);
+  const resizedWorkspaceRootAgainstMembersNodeRect = rectForTestNode(resizedWorkspaceRootAgainstMembers.nodes.find((candidate) => candidate.id === 'root-note'));
+  assert.ok(
+    resizedWorkspaceRootAgainstMembersNodeRect.top - resizedWorkspaceRootAgainstMembersRect.top >= 80,
+    'Workspace root resize must keep direct nodes below the root section body chrome.'
+  );
+  assert.ok(
+    resizedWorkspaceRootAgainstMembersNodeRect.left - resizedWorkspaceRootAgainstMembersRect.left >= 80,
+    'Workspace root resize must keep direct nodes inside the root section content inset.'
+  );
+  const movedWithinOwnRoot = moveNode(
+    workspaceRootState,
+    'root-note',
+    { x: 940, y: 140 },
+    { x: 970, y: 170 }
+  );
+  assert.notStrictEqual(
+    movedWithinOwnRoot.nodes.find((candidate) => candidate.id === 'root-note').groupId,
+    'other-root-child',
+    'Nodes must not be reparented from a root section into a regular group while crossing root boundaries.'
+  );
+  assert.strictEqual(movedWithinOwnRoot.nodes.find((candidate) => candidate.id === 'root-note').groupId, 'workspace-root-abc');
+  assert.ok(rectContainsRectForTest(
+    rectForTestGroup(movedWithinOwnRoot.groups.find((candidate) => candidate.id === 'workspace-root-abc')),
+    rectForTestNode(movedWithinOwnRoot.nodes.find((candidate) => candidate.id === 'root-note'))
+  ));
+  const movedRootLocalGroupBeyondBoundary = moveGroup(
+    workspaceRootState,
+    'regular-child',
+    { x: 900, y: 120 },
+    { x: 930, y: 150 }
+  );
+  assert.strictEqual(
+    movedRootLocalGroupBeyondBoundary.groups.find((candidate) => candidate.id === 'regular-child').parentGroupId,
+    'workspace-root-abc',
+    'Root-local groups must stay inside their original workspace root when moved beyond the current root boundary.'
+  );
+  assert.ok(rectContainsRectForTest(
+    rectForTestGroup(movedRootLocalGroupBeyondBoundary.groups.find((candidate) => candidate.id === 'workspace-root-abc')),
+    rectForTestGroup(movedRootLocalGroupBeyondBoundary.groups.find((candidate) => candidate.id === 'regular-child'))
+  ));
+  assert.ok(!rectsOverlapForTest(
+    rectForTestGroup(movedRootLocalGroupBeyondBoundary.groups.find((candidate) => candidate.id === 'workspace-root-abc')),
+    rectForTestGroup(movedRootLocalGroupBeyondBoundary.groups.find((candidate) => candidate.id === 'workspace-root-def'))
+  ));
+
+  const repairedWorkspaceRoots = finalizeCanvasGroupState(state({
+    groups: [
+      group('workspace-root-left', { x: 0, y: 0 }, { width: 720, height: 520 }, {
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/left'
+      }),
+      group('workspace-root-right', { x: 320, y: 0 }, { width: 720, height: 520 }, {
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/right'
+      })
+    ]
+  }));
+  assert.ok(!rectsOverlapForTest(
+    rectForTestGroup(repairedWorkspaceRoots.groups.find((candidate) => candidate.id === 'workspace-root-left')),
+    rectForTestGroup(repairedWorkspaceRoots.groups.find((candidate) => candidate.id === 'workspace-root-right'))
+  ));
+
+  const repairedVisuallyNestedWorkspaceRoots = finalizeCanvasGroupState(state({
+    groups: [
+      group('workspace-root-outer', { x: 0, y: 0 }, { width: 720, height: 520 }, {
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/outer'
+      }),
+      group('workspace-root-inner', { x: 120, y: 120 }, { width: 360, height: 240 }, {
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/inner'
+      })
+    ]
+  }));
+  assert.ok(!rectsOverlapForTest(
+    rectForTestGroup(repairedVisuallyNestedWorkspaceRoots.groups.find((candidate) => candidate.id === 'workspace-root-outer')),
+    rectForTestGroup(repairedVisuallyNestedWorkspaceRoots.groups.find((candidate) => candidate.id === 'workspace-root-inner'))
+  ), 'Workspace root siblings must not stay visually nested unless an actual parentGroupId relationship exists.');
+
+  const repairedWorkspaceRootAndPlainGroup = finalizeCanvasGroupState(state({
+    groups: [
+      group('workspace-root-a', { x: 0, y: 0 }, { width: 720, height: 520 }, {
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/a'
+      }),
+      group('plain-group', { x: 120, y: 120 }, { width: 360, height: 240 })
+    ]
+  }));
+  assert.ok(!rectsOverlapForTest(
+    rectForTestGroup(repairedWorkspaceRootAndPlainGroup.groups.find((candidate) => candidate.id === 'workspace-root-a')),
+    rectForTestGroup(repairedWorkspaceRootAndPlainGroup.groups.find((candidate) => candidate.id === 'plain-group'))
+  ), 'Workspace root sections must not visually contain unrelated regular groups at the same parent level.');
+
+  const movedWorkspaceRootAsWhole = moveGroup(
+    workspaceRootState,
+    'workspace-root-abc',
+    { x: 840, y: 30 },
+    { x: 900, y: 90 }
+  );
+  assert.deepStrictEqual(
+    movedWorkspaceRootAsWhole.groups.find((candidate) => candidate.id === 'workspace-root-abc').position,
+    { x: 840, y: 30 },
+    'Dragging a workspace root section should preserve the root section as the pinned user intent.'
+  );
+  assert.ok(rectContainsRectForTest(
+    rectForTestGroup(movedWorkspaceRootAsWhole.groups.find((candidate) => candidate.id === 'workspace-root-abc')),
+    rectForTestNode(movedWorkspaceRootAsWhole.nodes.find((candidate) => candidate.id === 'root-note'))
+  ));
+  assert.ok(!rectsOverlapForTest(
+    rectForTestGroup(movedWorkspaceRootAsWhole.groups.find((candidate) => candidate.id === 'workspace-root-abc')),
+    rectForTestGroup(movedWorkspaceRootAsWhole.groups.find((candidate) => candidate.id === 'workspace-root-def'))
+  ));
+
+  const groupedWorkspaceRoots = createGroupFromSelection(
+    state({
+      groups: [
+        group('workspace-root-a', { x: 0, y: 0 }, { width: 720, height: 520 }, {
+          role: 'workspace-root',
+          workspaceRootPath: '/repo/a'
+        }),
+        group('workspace-root-b', { x: 900, y: 0 }, { width: 720, height: 520 }, {
+          role: 'workspace-root',
+          workspaceRootPath: '/repo/b'
+        })
+      ]
+    }),
+    [],
+    ['workspace-root-a', 'workspace-root-b']
+  );
+  const workspaceRootParentGroup = groupedWorkspaceRoots.groups.find((candidate) => candidate.title === 'Group 1');
+  assert.ok(workspaceRootParentGroup, 'Expected selected root sections to create a workspace-level parent group.');
+  assert.strictEqual(groupedWorkspaceRoots.groups.find((candidate) => candidate.id === 'workspace-root-a').parentGroupId, workspaceRootParentGroup.id);
+  assert.strictEqual(groupedWorkspaceRoots.groups.find((candidate) => candidate.id === 'workspace-root-b').parentGroupId, workspaceRootParentGroup.id);
+  assert.ok(rectContainsRectForTest(rectForTestGroup(workspaceRootParentGroup), rectForTestGroup(groupedWorkspaceRoots.groups.find((candidate) => candidate.id === 'workspace-root-a'))));
+  assert.ok(rectContainsRectForTest(rectForTestGroup(workspaceRootParentGroup), rectForTestGroup(groupedWorkspaceRoots.groups.find((candidate) => candidate.id === 'workspace-root-b'))));
+
+  const rejectedRootAndDescendantSelection = createGroupFromSelection(
+    workspaceRootState,
+    [],
+    ['workspace-root-abc', 'regular-child']
+  );
+  assert.strictEqual(
+    rejectedRootAndDescendantSelection.groups.length,
+    workspaceRootState.groups.length,
+    'A workspace root section must not be grouped together with one of its descendants.'
+  );
 
   const spreadInsertedGroupBetweenSiblings = createEmptyCanvasGroup(
     state({

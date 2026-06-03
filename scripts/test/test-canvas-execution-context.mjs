@@ -226,6 +226,36 @@ try {
     /this\.notifySidebarStateChanged\(\);/u,
     'workspace folder 变化必须刷新侧栏上下文。'
   );
+  assert.match(
+    workspaceFoldersListener,
+    /this\.state = this\.loadReconciledState\(\);/u,
+    'workspace folder 变化必须重新加载 root-local / multi-root 组合状态。'
+  );
+  assert.match(
+    managerSource,
+    /composeMultiRootCanvasState/u,
+    'CanvasPanelManager 必须使用 root-local multi-root composition，而不是 fork 画布状态。'
+  );
+  assert.match(
+    managerSource,
+    /decomposeMultiRootCanvasState/u,
+    'CanvasPanelManager 必须在持久化时把 multi-root 组合视图拆回 root-local 状态。'
+  );
+  assert.match(
+    managerSource,
+    /if \(workspaceFolders\.length === 1 && !resetDueToRuntimePersistenceModeChange\) \{[\s\S]*?if \(rootLocalSnapshot\?\.state !== undefined\) \{/u,
+    '单根 workspace 必须优先读取当前 root-local state，避免从 multi-root 移除 root 后继续显示 workspace 级组合快照里的旧 root section。'
+  );
+  assert.doesNotMatch(
+    managerSource,
+    /rootLocalTimestamp|workspaceTimestamp/u,
+    '单根 workspace 不应再用时间戳决定是否读取 workspace 级快照；否则 multi-root 移除 root 后可能残留被移除 root 的视图内容。'
+  );
+  assert.doesNotMatch(
+    managerSource,
+    /(?:^|[^A-Za-z])fork(?:[^A-Za-z]|$)/i,
+    'origin/main 新实现不应保留 multi-root fork 语义。'
+  );
 
   console.log('canvas execution context tests passed');
 } finally {
