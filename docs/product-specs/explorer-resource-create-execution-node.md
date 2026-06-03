@@ -112,6 +112,7 @@
 - 确认 Agent 创建后，画布中出现 Agent 节点；若右键目标是目录，`metadata.agent.cwd` 等于目标目录；若右键目标是普通文件，`metadata.agent.cwd` 等于该文件父目录。
 - 该 Agent 首次自动启动时，`execution/startRequested.cwd` 和 `execution/started.cwd` 等于目标目录。
 - Agent 标题副标题按 `cwdLabel · 启动命令` 展示；当内容被截断时，hover 能看到完整 cwd 和完整启动命令。
+- Agent 标题副标题和 hover 中的执行目录都追加目录尾缀；显示分隔符保留 cwd 来源风格，含反斜杠来源使用 `\`，slash-style 来源使用 `/`。
 - 侧栏节点列表中，Agent 节点第二行按 `cwdLabel · provider · 状态` 展示；Terminal / Note 等其他节点仍只显示状态。
 - 停止后再次启动 Terminal 或 Agent 时，仍使用节点 metadata 中的 cwd，不回退到 workspace 根目录。
 - 如果右键资源不是目录或普通文件、解析后的 cwd 不属于当前 workspace、cwd 不存在或 workspace 未受信任，系统不会创建可运行执行节点，并给出明确反馈。
