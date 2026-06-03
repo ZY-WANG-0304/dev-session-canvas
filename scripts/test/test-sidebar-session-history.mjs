@@ -261,6 +261,40 @@ try {
     windowsSidebarItem?.tooltip.includes('目录：packages\\feature-a\\'),
     'Expected Windows session history tooltip cwd to use native separators and a directory suffix.'
   );
+  const slashStyleNetworkSidebarItem = buildCanvasSidebarSessionHistoryItems(
+    [
+      {
+        provider: 'claude',
+        sessionId: 'claude-session-slash-style-network-cwd',
+        cwd: '//server/share/workspace/packages/feature-a',
+        createdAtMs: codexTimestamp,
+        updatedAtMs: codexTimestamp,
+        firstUserInstruction: '检查 slash-style network cwd 展示'
+      }
+    ],
+    '//server/share/workspace'
+  )[0];
+  assert.ok(
+    slashStyleNetworkSidebarItem?.tooltip.includes('目录：packages/feature-a/'),
+    'Expected slash-style network session history tooltip cwd to preserve slash separators and a directory suffix.'
+  );
+  const backslashUncSidebarItem = buildCanvasSidebarSessionHistoryItems(
+    [
+      {
+        provider: 'codex',
+        sessionId: 'codex-session-backslash-unc-cwd',
+        cwd: '\\\\server\\share\\workspace\\packages\\feature-a',
+        createdAtMs: codexTimestamp,
+        updatedAtMs: codexTimestamp,
+        firstUserInstruction: '检查反斜杠 UNC cwd 展示'
+      }
+    ],
+    '\\\\server\\share\\workspace'
+  )[0];
+  assert.ok(
+    backslashUncSidebarItem?.tooltip.includes('目录：packages\\feature-a\\'),
+    'Expected backslash UNC session history tooltip cwd to preserve backslash separators and a directory suffix.'
+  );
   const longerInstructionWithinLimit = 'long-session-title-segment-'.repeat(5);
   const longerInstructionSidebarItem = buildCanvasSidebarSessionHistoryItems(
     [

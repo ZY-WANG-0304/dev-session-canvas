@@ -445,14 +445,15 @@ export function buildCanvasSidebarSessionHistoryItems(
 
 function resolveWorkspaceRelativeCwd(cwd: string, workspaceRoot: string): string {
   const pathApi = inferCwdPathModule(cwd, workspaceRoot);
+  const displaySeparator = inferCwdDisplaySeparator(cwd);
   const relativePath = pathApi.relative(pathApi.resolve(workspaceRoot), pathApi.resolve(cwd));
   if (!relativePath || relativePath === '.') {
-    return appendDirectoryIndicator('工作区根目录', pathApi.sep as '/' | '\\');
+    return appendDirectoryIndicator('工作区根目录', displaySeparator);
   }
 
   return appendDirectoryIndicator(
-    relativePath.startsWith('..') || pathApi.isAbsolute(relativePath) ? cwd : relativePath,
-    pathApi.sep as '/' | '\\'
+    formatCwdDisplayPath(relativePath.startsWith('..') || pathApi.isAbsolute(relativePath) ? cwd : relativePath, displaySeparator),
+    displaySeparator
   );
 }
 
@@ -471,6 +472,14 @@ function inferCwdPathModule(cwd: string, workspaceRoot: string): typeof path.pos
 
 function isWindowsLikePath(value: string): boolean {
   return /^[A-Za-z]:[\\/]/u.test(value.trim()) || value.includes('\\');
+}
+
+function inferCwdDisplaySeparator(cwd: string): '/' | '\\' {
+  return cwd.includes('\\') ? '\\' : '/';
+}
+
+function formatCwdDisplayPath(value: string, separator: '/' | '\\'): string {
+  return value.replace(/[\\/]/g, separator);
 }
 
 const MAX_SESSION_HISTORY_TITLE_CHARS = 256;

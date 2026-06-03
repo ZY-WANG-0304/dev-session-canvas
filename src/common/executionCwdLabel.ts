@@ -96,7 +96,7 @@ function normalizeExecutionPath(value: string | undefined): NormalizedExecutionP
   }
 
   const displaySeparator = inferExecutionDisplaySeparator(raw);
-  const caseInsensitive = displaySeparator === '\\';
+  const caseInsensitive = /^[A-Za-z]:[\\/]/u.test(raw) || raw.includes('\\');
   const slashNormalized = raw.replace(/\\/g, '/');
   const normalized = trimTrailingSeparators(slashNormalized);
   return {
@@ -109,7 +109,7 @@ function normalizeExecutionPath(value: string | undefined): NormalizedExecutionP
 }
 
 function inferExecutionDisplaySeparator(raw: string): '/' | '\\' {
-  return /^[A-Za-z]:[\\/]/u.test(raw) || raw.includes('\\') || raw.startsWith('//') ? '\\' : '/';
+  return raw.includes('\\') ? '\\' : '/';
 }
 
 function trimTrailingSeparators(value: string): string {
