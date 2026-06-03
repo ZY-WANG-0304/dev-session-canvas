@@ -446,10 +446,21 @@ export function buildCanvasSidebarSessionHistoryItems(
 function resolveWorkspaceRelativeCwd(cwd: string, workspaceRoot: string): string {
   const relativePath = path.relative(path.resolve(workspaceRoot), path.resolve(cwd));
   if (!relativePath || relativePath === '.') {
-    return '工作区根目录';
+    return '工作区根目录/';
   }
 
-  return relativePath.startsWith('..') || path.isAbsolute(relativePath) ? cwd : relativePath.replace(/\\/g, '/');
+  return appendDirectoryIndicator(
+    relativePath.startsWith('..') || path.isAbsolute(relativePath) ? cwd : relativePath.replace(/\\/g, '/')
+  );
+}
+
+function appendDirectoryIndicator(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.endsWith('/') || trimmed.endsWith('\\')) {
+    return trimmed;
+  }
+
+  return `${trimmed}/`;
 }
 
 const MAX_SESSION_HISTORY_TITLE_CHARS = 256;
