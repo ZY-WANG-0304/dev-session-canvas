@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
-updated_at: 2026-05-26
+updated_at: 2026-06-03
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -110,7 +110,7 @@ updated_at: 2026-05-26
 - 每个节点项显示：
   - 节点对应颜色的图标形圆点标记
   - 节点标题
-  - 人类可读的第二行状态文案；其中 `Agent` 固定显示 `provider · 状态`，其余节点继续只显示状态
+  - 人类可读的第二行状态文案；其中 `Agent` 固定显示 `cwdLabel · provider · 状态`，其余节点继续只显示状态
   - 当节点正处于 notification 提醒中时，在该项最右侧显示通知图标
 - 节点列表的图标与提醒都直接使用 Webview 内的 codicon 资源：左侧是带运行时颜色的 `circle-filled`，右侧提醒位是与画布节点一致的 `bell`。
 - 节点列表 Webview 的 codicon 资源采用与主画布一致的 bundled asset 路线：构建阶段把 `@vscode/codicons/dist/codicon.css` 打成 `dist/sidebar-codicon.css` 并连同字体资产一起发版，运行时只从扩展自己的 `dist/` 目录读取，不再直连 `node_modules/`。
@@ -131,6 +131,7 @@ updated_at: 2026-05-26
 - 每条结果项采用两行紧凑结构：首行显示 provider 图标和“会话中的第一条用户指令”标题，次行显示“相对更新时间 + sessionId”；工作目录和绝对时间收口到 tooltip。
 - 搜索文本覆盖会话标题、provider、sessionId 与工作目录等信息；仍不匹配当前画布节点副标题。
 - tooltip 只展示 provider 历史已知的会话元信息，不再注入当前画布节点标题或副标题。
+- tooltip 中的工作目录追加目录尾缀，并保留 provider session 记录中 cwd 的来源分隔符风格：含反斜杠来源显示为 `\`，slash-style 来源显示为 `/`；`//server/share/...` 不被改写成 `\\server\share\...`。
 
 ### 6.3 会话历史的数据来源是 provider 当前的 session 落地文件
 
@@ -212,6 +213,8 @@ updated_at: 2026-05-26
 ## 9. 当前验证状态
 
 - 2026-05-11：`节点` view section 新增专属单色 SVG 图标，manifest 改为引用 `images/dev-session-canvas-nodes-activitybar.svg`；已通过 `npm run typecheck`、`npm run build` 与本地 manifest 图标路径检查验证。
+- 2026-06-03：会话历史 tooltip 的工作目录追加目录尾缀，并按 cwd 来源分隔符显示 POSIX、Windows drive、反斜杠 UNC 与 slash-style network path；已通过 `npm run test:sidebar-session-history`、`npm run test:workspace-relative-paths` 与 `npm run typecheck`。
+- 2026-06-03：节点列表中的 Agent 第二行跟随 Explorer cwd 可见反馈，显示 `cwdLabel · provider · 状态`；`cwdLabel` 追加目录尾缀并保留 cwd 来源分隔符。本轮已通过 `npm run test:workspace-relative-paths` 与 `npm run typecheck`。
 - 2026-05-26：`节点` view 默认按分组树展示；显示模式切换从 Webview 内容区自绘更多按钮收口到 VSCode 原生 view title `...` 菜单，并把按分组展示改为可折叠的侧栏分组树；该折叠状态只属于侧栏呈现，不改变画布分组事实。已通过 manifest、类型检查、侧栏颜色 token、build 和 diff 检查；`trusted` VSCode smoke 已执行到侧栏分组树路径，随后在既有 Note Markdown 文件关联用例中超时，需后续单独收口该非本轮 blocker。
 - 2026-04-29 已修复三条 review blocker：节点列表 Webview 的 codicon 资源现改为与主画布一致的 bundled asset，构建产物与 VSIX 都从 `dist/sidebar-codicon.css` 读取；Claude 会话历史只接受 transcript 内显式 `cwd`，冲突 project 目录下缺少 `cwd` 的会话会 fail closed；历史恢复节点会把当前 provider 默认启动参数并入显式 resume 命令。对应自动化验证已通过 `node scripts/test/test-sidebar-codicon-bundle.mjs`、`node scripts/test/test-sidebar-session-history.mjs` 与 `node scripts/test/test-agent-launch-presets.mjs`。
 - 2026-04-28 已完成上一版节点列表与会话历史实现，并通过 `node scripts/test/test-sidebar-session-history.mjs` 与 `npm run test:smoke`，证明 provider session 扫描、workspace 过滤、节点聚焦与历史恢复主路径成立。
