@@ -20,6 +20,7 @@
 - [x] (2026-06-04 02:10 +0800) 补充并运行自动化验证：composition、group policy、protocol、execution context、template、Markdown drop、typecheck、build。
 - [x] (2026-06-04 03:45 +0800) 处理 PR review blocker：Webview 与 Host 双侧拒绝跨 root create/reconnect edge，并补充 group helper 与 Playwright 回归测试。
 - [x] (2026-06-04 22:44 +0800) 处理 review follow-up：补齐多根文件活动自动 artifact 的 root 命名空间重建、suppression 剪枝和 workspace folder 变化后的 live runtime 恢复口径。
+- [x] (2026-06-05 01:00 +0800) 处理最新 review blocker：live 文件活动按 owner root namespace 写入 file reference，旧 unnamespaced reference 按 root scope 迁移，并保护 multi-root runtime skip 不覆盖 root-local 重连信号。
 
 ## 意外与发现
 
@@ -37,6 +38,12 @@
 
 - 观察：workspace folder 变化后已重新 `loadReconciledState()` 并发布 UI，但需要明确 live runtime restore 的 multi-root 行为。
   证据：`vscode.workspace.onDidChangeWorkspaceFolders()` 已重新加载状态；`scheduleRestoreLiveRuntimeSessions()` 原先没有单独记录 multi-root skip 口径。
+
+- 观察：live 文件活动入口即使在多根组合视图中收到 namespaced owner node id，也仍用裸文件路径 hash 写入 unnamespaced `fileReferences.id`，会让自动 file 节点和 suppression id 退回 `file-*` 形式。
+  证据：最新 review 指出 `recordAgentFileActivity()` 只调用 `buildFileReferenceId(normalizedPath)`；新增 `scripts/test/test-canvas-node-groups.mjs` 回归在修复后覆盖 namespaced owner 产生 `${root}:<hash>` reference，并重建 `${root}:file-<hash>`。
+
+- 观察：multi-root restore skip 如果直接把 composed state 拆回 root-local snapshot，会把原本可重连的 root-local `live-runtime` metadata 持久化降级为 `history-restored`，单根重开时无法再走 reattach 主路径。
+  证据：review inline 指出 `reconcileRuntimeNodes(... allowLiveRuntimeReconnect:false ...)` 后立即 `persistState()` 的风险；新增 `scripts/test/test-canvas-execution-context.mjs` 覆盖 previous root-local Agent `liveSession:true` 和 Terminal `attachmentState:'reattaching'` 在多根 skip 持久化后仍保留重连字段。
 
 ## 决策记录
 
@@ -68,9 +75,17 @@
   理由：live runtime session 的恢复和 runtime storage 仍以 root-local 节点 ID 为稳定锚点；multi-root composed id 会被命名空间化，本 PR 不扩展 runtime 映射层，先把该行为显式为非目标并避免误连。
   日期/作者：2026-06-04 / Codex
 
+- 决策：live 文件活动在记录阶段就按 owner node 的 workspace-root namespace 生成 `fileReferences.id`；旧 unnamespaced reference 只迁移同一 namespace owner，重建 artifact 时也对当前 root scope 的 unnamespaced reference 补 namespace。
+  理由：文件活动的长期事实源是 `fileReferences`，必须和自动节点、file-activity edge、suppression id 使用同一 root 命名空间；只在自动 artifact 层补救不足以保证删除 suppression 能拆回 root-local。
+  日期/作者：2026-06-05 / Codex
+
+- 决策：multi-root live runtime skip 是 composed view 的展示降级，不写坏 root-local snapshot 的重连资格；持久化 root-local state 时只从上一份 root-local snapshot 恢复必要 runtime reattach 字段，不回滚 `cwd`、provider、shell 等非 runtime metadata。
+  理由：用户在 multi-root 中需要看见“当前没有重新连接”的历史态，但单独打开所属 root 时仍应按 root-local id 尝试真实 live runtime reattach；只恢复必要 runtime 字段可以避免把 root-local 其他最新变更误覆盖成旧 metadata。
+  日期/作者：2026-06-05 / Codex
+
 ## 结果与复盘
 
-本轮重新实现已完成主路径代码接入与目标自动化验证，并已按 PR review 修复跨 root edge 临时可见但不可持久化的问题；review follow-up 已补齐多根文件活动自动 artifact 的命名空间与 suppression 规则，并明确 multi-root live runtime restore 非目标。保留风险是尚未在真实 VSCode multi-root workspace 中完成手动 smoke，且全量 Webview Playwright 存在与本功能无直接关系或 lifecycle 断言口径相关的既有失败，需要后续单独收口。
+本轮重新实现已完成主路径代码接入与目标自动化验证，并已按 PR review 修复跨 root edge 临时可见但不可持久化的问题；review follow-up 已补齐多根文件活动自动 artifact 的命名空间与 suppression 规则，并明确 multi-root live runtime restore 非目标。最新 review blocker 已进一步修复 live 文件活动入口的 unnamespaced reference 问题，以及 multi-root skip 持久化覆盖 root-local reattach 信号的问题。保留风险是尚未在真实 VSCode multi-root workspace 中完成手动 smoke，且全量 Webview Playwright 存在与本功能无直接关系或 lifecycle 断言口径相关的既有失败，需要后续单独收口。
 
 ## 上下文与定向
 
@@ -109,7 +124,7 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是�
 
 自动化验收必须证明：两个 root 的同名节点 ID 在 composed view 中不冲突；移动整个 root section 后拆分不会改写 root-local 节点坐标；在 root section 内新增 Note、Agent、Terminal 或模板节点会写回对应 root-local state；包含多个 root section 的外层普通分组只保存到 overlay；系统 root section 不能被删除、取消分组或重命名；Markdown 文件在 multi-root 中只有拖到目标 root section 内才创建关联 Note；`Agent` / `Terminal` 的默认 cwd 等于目标 root 路径。
 Review 修复后的补充验收必须证明：跨 root 创建连线不会发出 Webview createEdge 消息，跨 root 重连不会发出 updateEdge 消息；Host 侧 helper 同样拒绝跨 root create/update edge，防止异常消息直接写入不可持久化边。
-Review follow-up 后的补充验收必须证明：多根文件活动自动 `file` / `file-list` 节点与 file-activity edge 使用 root 命名空间生成，不跨 root 冲突；suppression id 在 composed 与 root-local 往返时按命名空间保留或剪枝；multi-root 下 live runtime restore 明确跳过而不是尝试用 composed id 误连。
+Review follow-up 后的补充验收必须证明：多根文件活动自动 `file` / `file-list` 节点与 file-activity edge 使用 root 命名空间生成，不跨 root 冲突；suppression id 在 composed 与 root-local 往返时按命名空间保留或剪枝；multi-root 下 live runtime restore 明确跳过而不是尝试用 composed id 误连；live 文件活动从 namespaced owner 进入时写入 root-namespaced file reference；旧 unnamespaced reference 在 root scope 内迁移后不会让 deletion suppression 重载失效；multi-root skip 不会把 root-local live runtime reattach 信号永久降级成 `history-restored`。
 
 人工验收建议在真实 VSCode 中创建两个临时 folder。先分别单独打开每个 folder 创建 Note，再打开包含二者的 `.code-workspace`，应看到两个 root section。把第一个 root 内 Note 拖到 root 边界外，root section 应扩张；重新单独打开第一个 root，应看到 Note 的 root-local 位置已更新。选中两个 root section 创建外层分组，重载 multi-root 后外层分组仍存在；单独打开任一 root 时不显示这个外层分组。
 
@@ -192,6 +207,21 @@ Review follow-up 验证记录如下：
     git diff --check
     退出码 0。
 
+最新 review blocker 修复验证记录如下：
+
+    npm run test:canvas-node-groups
+    退出码 0；覆盖 live 文件活动从 namespaced owner 产生 root-namespaced file reference、旧 unnamespaced reference 迁移，以及 namespaced suppression 保留。
+    npm run test:canvas-execution-context
+    退出码 0；覆盖 multi-root restore skip 持久化时保留 root-local live runtime reattach 信号，且不覆盖 cwd/provider 等非 runtime metadata。
+    npm run test:canvas-multi-root-composition
+    退出码 0；确认 compose/decompose 既有多根回归仍通过。
+    npm run typecheck
+    退出码 0。
+    npm run test:webview -- --grep "workspace root group|cross-root edge"
+    3 passed；同时执行 build。
+    git diff --check
+    退出码 0。
+
 ## 接口与依赖
 
 在 `src/common/protocol.ts` 中扩展：
@@ -214,4 +244,4 @@ Review follow-up 验证记录如下：
     export function composeMultiRootCanvasState(...): CanvasPrototypeState;
     export function decomposeMultiRootCanvasState(...): { rootStates: CanvasRootLocalStateSnapshot[]; overlay: CanvasMultiRootOverlay };
 
-本次更新说明：2026-06-04 创建计划，原因是用户要求从 `origin/main` 重新实现当前分支功能，并要求按仓库工作流先记录复杂功能计划、正式设计和验证口径。
+本次更新说明：2026-06-04 创建计划，原因是用户要求从 `origin/main` 重新实现当前分支功能，并要求按仓库工作流先记录复杂功能计划、正式设计和验证口径。2026-06-05 追加 latest review blocker 修复记录，原因是 live 文件活动 reference 命名空间和 multi-root skip 的 root-local reattach 信号保护都属于本功能的正式边界。

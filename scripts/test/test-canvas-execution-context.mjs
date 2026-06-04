@@ -20,6 +20,7 @@ try {
   const exportedHelpers = [
     'createNextState',
     'normalizeState',
+    'preserveRootLocalLiveRuntimeReconnectState',
     'reconcileDefaultExecutionMetadataCwd',
     'resolveTerminalShellPathForConfigurationCwd'
   ];
@@ -120,6 +121,7 @@ try {
   const {
     createNextState,
     normalizeState,
+    preserveRootLocalLiveRuntimeReconnectState,
     reconcileDefaultExecutionMetadataCwd,
     resolveTerminalShellPathForConfigurationCwd
   } = require(outfile);
@@ -211,6 +213,134 @@ try {
   assert.equal(reconciledState.nodes[0].metadata.agent.cwd, workspaceRoot);
   assert.equal(reconciledState.nodes[1].metadata.terminal.cwd, workspaceRoot);
   assert.equal(reconciledState.nodes[1].metadata.terminal.shellPath, path.join(workspaceRoot, 'tooling', 'dev-shell'));
+
+  const preservedRootStates = preserveRootLocalLiveRuntimeReconnectState(
+    [
+      {
+        rootPath: workspaceRoot,
+        state: {
+          ...emptyState,
+          nodes: [
+            {
+              id: 'agent-live',
+              kind: 'agent',
+              title: 'Agent Live',
+              status: 'live',
+              summary: '',
+              position: { x: 0, y: 0 },
+              size: { width: 160, height: 120 },
+              metadata: {
+                agent: {
+                  provider: 'claude',
+                  lifecycle: 'live',
+                  shellPath: 'claude',
+                  cwd: path.join(workspaceRoot, 'old-agent-cwd'),
+                  persistenceMode: 'live-runtime',
+                  runtimeSessionId: 'agent-runtime-1',
+                  attachmentState: 'attached-live',
+                  liveSession: true
+                }
+              }
+            },
+            {
+              id: 'terminal-live',
+              kind: 'terminal',
+              title: 'Terminal Live',
+              status: 'live',
+              summary: '',
+              position: { x: 240, y: 0 },
+              size: { width: 160, height: 120 },
+              metadata: {
+                terminal: {
+                  lifecycle: 'live',
+                  cwd: path.join(workspaceRoot, 'old-terminal-cwd'),
+                  persistenceMode: 'live-runtime',
+                  runtimeSessionId: 'terminal-runtime-1',
+                  attachmentState: 'reattaching',
+                  liveSession: false
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    [
+      {
+        rootPath: workspaceRoot,
+        state: {
+          ...emptyState,
+          nodes: [
+            {
+              id: 'agent-live',
+              kind: 'agent',
+              title: 'Agent Live',
+              status: 'history-restored',
+              summary: '',
+              position: { x: 0, y: 0 },
+              size: { width: 160, height: 120 },
+              metadata: {
+                agent: {
+                  provider: 'codex',
+                  lifecycle: 'live',
+                  shellPath: 'codex',
+                  cwd: path.join(workspaceRoot, 'new-agent-cwd'),
+                  persistenceMode: 'live-runtime',
+                  runtimeSessionId: 'agent-runtime-1',
+                  attachmentState: 'history-restored',
+                  liveSession: false
+                }
+              }
+            },
+            {
+              id: 'terminal-live',
+              kind: 'terminal',
+              title: 'Terminal Live',
+              status: 'history-restored',
+              summary: '',
+              position: { x: 240, y: 0 },
+              size: { width: 160, height: 120 },
+              metadata: {
+                terminal: {
+                  lifecycle: 'live',
+                  cwd: path.join(workspaceRoot, 'new-terminal-cwd'),
+                  persistenceMode: 'live-runtime',
+                  runtimeSessionId: 'terminal-runtime-1',
+                  attachmentState: 'history-restored',
+                  liveSession: false
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  );
+  assert.equal(
+    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'agent-live').metadata.agent.liveSession,
+    true,
+    'multi-root restore skip 不应把 root-local Agent live runtime 恢复信号持久化改成 history-restored。'
+  );
+  assert.equal(
+    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'terminal-live').metadata.terminal.attachmentState,
+    'reattaching',
+    'multi-root restore skip 不应覆盖 root-local Terminal 的 reattach 信号。'
+  );
+  assert.equal(
+    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'agent-live').metadata.agent.cwd,
+    path.join(workspaceRoot, 'new-agent-cwd'),
+    'multi-root restore skip 只应恢复 reattach 信号，不应覆盖 root-local Agent 的非 runtime 字段。'
+  );
+  assert.equal(
+    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'agent-live').metadata.agent.provider,
+    'codex',
+    'multi-root restore skip 不应把旧 root-local Agent provider 覆盖回去。'
+  );
+  assert.equal(
+    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'terminal-live').metadata.terminal.cwd,
+    path.join(workspaceRoot, 'new-terminal-cwd'),
+    'multi-root restore skip 只应恢复 Terminal reattach 信号，不应覆盖 cwd 等非 runtime 字段。'
+  );
 
   const managerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
   const workspaceFoldersListener = managerSource.match(

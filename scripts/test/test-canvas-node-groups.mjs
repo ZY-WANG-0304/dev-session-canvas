@@ -29,6 +29,7 @@ try {
     'normalizeState',
     'createUserCanvasEdge',
     'updateCanvasEdge',
+    'recordAgentFileActivity',
     'rebuildCanvasFileArtifacts'
   ];
 
@@ -126,6 +127,7 @@ try {
     normalizeState,
     createUserCanvasEdge,
     updateCanvasEdge,
+    recordAgentFileActivity,
     rebuildCanvasFileArtifacts
   } = require(outfile);
 
@@ -951,6 +953,94 @@ try {
     [],
     'Root-local suppression ids that do not match rebuilt artifact ids should be pruned in composed state.'
   );
+  const liveFilePath = '/repo/frontend/src/live.ts';
+  const liveFileReferenceId = fileReferenceId(liveFilePath);
+  const liveFileActivityState = recordAgentFileActivity(
+    state({
+      nodes: [
+        agent(frontendAgentOneId, { x: 100, y: 140 }, { groupId: namespacedFrontendRootId })
+      ],
+      groups: [
+        group(namespacedFrontendRootId, { x: 20, y: 30 }, { width: 720, height: 520 }, {
+          role: 'workspace-root',
+          workspaceRootPath: frontendRootPath
+        })
+      ]
+    }),
+    {
+      nodeId: frontendAgentOneId,
+      path: liveFilePath,
+      relativePath: 'src/live.ts',
+      accessMode: 'write',
+      timestamp: '2026-06-04T00:00:00.000Z'
+    }
+  );
+  assert.ok(
+    liveFileActivityState.fileReferences.some((reference) => reference.id === `${namespacedFrontendRootId}:${liveFileReferenceId}`),
+    'Live file activity from a namespaced owner must create a namespaced file reference.'
+  );
+  const reconciledLiveFileArtifacts = rebuildCanvasFileArtifacts(liveFileActivityState, {
+    view: { enabled: true, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
+    preserveAutomaticFileNodeSizes: true
+  });
+  assert.ok(
+    reconciledLiveFileArtifacts.nodes.some((candidate) => candidate.id === `${namespacedFrontendRootId}:file-${liveFileReferenceId}`),
+    'Live file activity must rebuild automatic file nodes with the owner root namespace.'
+  );
+  assert.ok(
+    !reconciledLiveFileArtifacts.nodes.some((candidate) => candidate.id === `file-${liveFileReferenceId}`),
+    'Live file activity must not leave unnamespaced automatic file nodes in multi-root state.'
+  );
+
+  const migratedLiveFileActivityState = recordAgentFileActivity(
+    state({
+      nodes: [
+        agent(frontendAgentOneId, { x: 100, y: 140 }, { groupId: namespacedFrontendRootId })
+      ],
+      groups: [
+        group(namespacedFrontendRootId, { x: 20, y: 30 }, { width: 720, height: 520 }, {
+          role: 'workspace-root',
+          workspaceRootPath: frontendRootPath
+        })
+      ],
+      fileReferences: [
+        {
+          id: liveFileReferenceId,
+          filePath: liveFilePath,
+          relativePath: 'src/live.ts',
+          updatedAt: '2026-06-04T00:00:00.000Z',
+          owners: [
+            { nodeId: frontendAgentOneId, accessMode: 'read', updatedAt: '2026-06-04T00:00:00.000Z' }
+          ]
+        }
+      ],
+      suppressedAutomaticFileArtifactNodeIds: [`${namespacedFrontendRootId}:file-${liveFileReferenceId}`]
+    }),
+    {
+      nodeId: frontendAgentOneId,
+      path: liveFilePath,
+      relativePath: 'src/live.ts',
+      accessMode: 'write',
+      timestamp: '2026-06-04T00:10:00.000Z'
+    }
+  );
+  assert.ok(
+    migratedLiveFileActivityState.fileReferences.some((reference) => reference.id === `${namespacedFrontendRootId}:${liveFileReferenceId}`),
+    'Legacy unnamespaced file references with a namespaced owner should migrate into the owner root namespace.'
+  );
+  assert.ok(
+    !migratedLiveFileActivityState.fileReferences.some((reference) => reference.id === liveFileReferenceId),
+    'Migrated live file activity should not retain the stale unnamespaced file reference for the same root.'
+  );
+  const reconciledMigratedLiveFileArtifacts = rebuildCanvasFileArtifacts(migratedLiveFileActivityState, {
+    view: { enabled: true, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
+    preserveAutomaticFileNodeSizes: true
+  });
+  assert.deepStrictEqual(
+    reconciledMigratedLiveFileArtifacts.suppressedAutomaticFileArtifactNodeIds,
+    [`${namespacedFrontendRootId}:file-${liveFileReferenceId}`],
+    'Namespaced suppression ids for live file activity should survive root-scoped artifact rebuild.'
+  );
 
   const spreadInsertedGroupBetweenSiblings = createEmptyCanvasGroup(
     state({
@@ -1084,6 +1174,10 @@ function rectForTestGroup(group) {
 function rootSectionId(rootPath) {
   const normalizedPath = path.resolve(rootPath);
   return `workspace-root-${createHash('sha256').update(normalizedPath).digest('hex').slice(0, 16)}`;
+}
+
+function fileReferenceId(filePath) {
+  return createHash('sha256').update(path.normalize(filePath)).digest('hex').slice(0, 16);
 }
 
 function rectsOverlapForTest(left, right) {

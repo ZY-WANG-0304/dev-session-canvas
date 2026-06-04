@@ -4357,21 +4357,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private persistState(): void {
+  private persistState(options?: {
+    preserveRootLocalLiveRuntimeReconnect?: boolean;
+  }): void {
     this.syncNoteMarkdownFileWatchers();
     this.cleanupUnreferencedNoteMarkdownRecoverableDraftFiles();
     const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
     let overlayToPersist: CanvasMultiRootOverlay | undefined;
     if (workspaceFolders.length > 1) {
+      const previousRootStates = this.lastLoadedRootLocalStates;
       const decomposed = decomposeMultiRootCanvasState({
         composedState: this.state,
         workspaceFolders,
-        previousRootStates: this.lastLoadedRootLocalStates
+        previousRootStates
       });
-      this.lastLoadedRootLocalStates = cloneJsonValue(decomposed.rootStates);
+      const rootStatesToPersist = options?.preserveRootLocalLiveRuntimeReconnect
+        || this.getLiveRuntimeReconnectBlockReason() === 'multi-root-workspace'
+        ? preserveRootLocalLiveRuntimeReconnectState(previousRootStates, decomposed.rootStates)
+        : decomposed.rootStates;
+      this.lastLoadedRootLocalStates = cloneJsonValue(rootStatesToPersist);
       this.multiRootOverlay = decomposed.overlay;
       overlayToPersist = decomposed.overlay;
-      for (const rootState of decomposed.rootStates) {
+      for (const rootState of rootStatesToPersist) {
         try {
           this.writeRootLocalCanvasSnapshot(rootState.rootPath, rootState.state);
         } catch (error) {
@@ -6725,11 +6732,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           reason: 'multiRootWorkspace',
           reattachableCount
         });
-        this.state = reconcileRuntimeNodes(this.state, this.agentSessions, this.terminalSessions, {
+        const nextState = reconcileRuntimeNodes(this.state, this.agentSessions, this.terminalSessions, {
           allowLiveRuntimeReconnect: false,
           liveRuntimeReconnectBlockReason: 'multi-root-workspace'
         });
-        this.persistState();
+        this.state = nextState;
+        this.persistState({
+          preserveRootLocalLiveRuntimeReconnect: true
+        });
         this.postState('host/stateUpdated');
       }
       return;
@@ -13287,6 +13297,116 @@ function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function preserveRootLocalLiveRuntimeReconnectState(
+  previousRootStates: readonly CanvasRootLocalStateSnapshot[],
+  nextRootStates: readonly CanvasRootLocalStateSnapshot[]
+): CanvasRootLocalStateSnapshot[] {
+  if (previousRootStates.length === 0) {
+    return [...nextRootStates];
+  }
+
+  const previousRuntimeMetadataByComposedNodeId = new Map<
+    string,
+    { agent?: AgentNodeMetadata; terminal?: TerminalNodeMetadata }
+  >();
+  for (const rootState of previousRootStates) {
+    for (const node of rootState.state.nodes) {
+      if (node.kind === 'agent') {
+        previousRuntimeMetadataByComposedNodeId.set(
+          namespaceCanvasObjectId(rootState.rootPath, node.id),
+          { agent: ensureAgentMetadata(node) }
+        );
+      } else if (node.kind === 'terminal') {
+        previousRuntimeMetadataByComposedNodeId.set(
+          namespaceCanvasObjectId(rootState.rootPath, node.id),
+          { terminal: ensureTerminalMetadata(node) }
+        );
+      }
+    }
+  }
+
+  return nextRootStates.map((rootState) => ({
+    rootPath: rootState.rootPath,
+    state: {
+      ...rootState.state,
+      nodes: rootState.state.nodes.map((node) => {
+        if (node.kind === 'agent') {
+          const previousMetadata = previousRuntimeMetadataByComposedNodeId.get(
+            namespaceCanvasObjectId(rootState.rootPath, node.id)
+          )?.agent;
+          const nextMetadata = ensureAgentMetadata(node);
+          return previousMetadata && shouldPreserveRootLocalRuntimeReconnectMetadata(previousMetadata, nextMetadata)
+            ? {
+                ...node,
+                metadata: {
+                  ...node.metadata,
+                  agent: preserveRuntimeReconnectMetadataFields(nextMetadata, previousMetadata)
+                }
+              }
+            : node;
+        }
+
+        if (node.kind === 'terminal') {
+          const previousMetadata = previousRuntimeMetadataByComposedNodeId.get(
+            namespaceCanvasObjectId(rootState.rootPath, node.id)
+          )?.terminal;
+          const nextMetadata = ensureTerminalMetadata(node);
+          return previousMetadata && shouldPreserveRootLocalRuntimeReconnectMetadata(previousMetadata, nextMetadata)
+            ? {
+                ...node,
+                metadata: {
+                  ...node.metadata,
+                  terminal: preserveRuntimeReconnectMetadataFields(nextMetadata, previousMetadata)
+                }
+              }
+            : node;
+        }
+
+        return node;
+      })
+    }
+  }));
+}
+
+function shouldPreserveRootLocalRuntimeReconnectMetadata(
+  previousMetadata: Pick<
+    AgentNodeMetadata | TerminalNodeMetadata,
+    'persistenceMode' | 'runtimeSessionId' | 'runtimeBackend' | 'runtimeStoragePath' | 'liveSession' | 'attachmentState'
+  >,
+  nextMetadata: Pick<
+    AgentNodeMetadata | TerminalNodeMetadata,
+    'persistenceMode' | 'runtimeSessionId' | 'runtimeBackend' | 'runtimeStoragePath' | 'liveSession' | 'attachmentState'
+  >
+): boolean {
+  return Boolean(
+    previousMetadata.persistenceMode === 'live-runtime' &&
+    previousMetadata.runtimeSessionId &&
+    (previousMetadata.liveSession || previousMetadata.attachmentState === 'reattaching') &&
+    nextMetadata.persistenceMode === 'live-runtime' &&
+    nextMetadata.runtimeSessionId === previousMetadata.runtimeSessionId &&
+    nextMetadata.runtimeBackend === previousMetadata.runtimeBackend &&
+    nextMetadata.runtimeStoragePath === previousMetadata.runtimeStoragePath &&
+    nextMetadata.attachmentState === 'history-restored' &&
+    nextMetadata.liveSession === false
+  );
+}
+
+function preserveRuntimeReconnectMetadataFields<T extends AgentNodeMetadata | TerminalNodeMetadata>(
+  nextMetadata: T,
+  previousMetadata: T
+): T {
+  return {
+    ...nextMetadata,
+    persistenceMode: previousMetadata.persistenceMode,
+    attachmentState: previousMetadata.attachmentState,
+    runtimeBackend: previousMetadata.runtimeBackend,
+    runtimeGuarantee: previousMetadata.runtimeGuarantee,
+    runtimeStoragePath: previousMetadata.runtimeStoragePath,
+    liveSession: previousMetadata.liveSession,
+    runtimeSessionId: previousMetadata.runtimeSessionId
+  };
+}
+
 function buildExecutionFileLinkResolveDiagnostics(
   candidates: readonly ExecutionTerminalFileLinkCandidate[],
   resolvedCount: number,
@@ -15944,7 +16064,9 @@ function rebuildCanvasFileArtifactsForNodeScope(
       ...reference,
       owners: reference.owners.filter((owner) => manualNodeIds.has(owner.nodeId))
     }))
-    .filter((reference) => reference.owners.length > 0);
+    .filter((reference) => reference.owners.length > 0)
+    .map((reference) => namespaceFileReferenceForScope(reference, scope.namespaceId));
+  const scopedAuthoritativeFileReferences = mergeCanvasFileReferences(authoritativeFileReferences);
   const scopedAutomaticNodeIds = new Set(
     state.nodes
       .filter((node) =>
@@ -15978,9 +16100,7 @@ function rebuildCanvasFileArtifactsForNodeScope(
       ...state,
       nodes: [...retainedNodes, ...manualNodes],
       edges: [...retainedEdges, ...userEdges],
-      fileReferences: state.fileReferences.filter((reference) =>
-        !reference.owners.some((owner) => manualNodeIds.has(owner.nodeId))
-      ),
+      fileReferences: removeFileReferenceOwnersForNodeIds(state.fileReferences, manualNodeIds),
       suppressedFileActivityEdgeIds: filterSuppressedFileActivityEdgeIdsForScope(
         state.suppressedFileActivityEdgeIds,
         new Set(),
@@ -15994,15 +16114,15 @@ function rebuildCanvasFileArtifactsForNodeScope(
       )
     };
   }
-  const projectedFileReferences = authoritativeFileReferences.filter((reference) =>
+  const projectedFileReferences = scopedAuthoritativeFileReferences.filter((reference) =>
     shouldIncludeFileReference(reference, options.view.includeGlobs, options.view.excludeGlobs)
   );
-  const automaticArtifactNodeIds = collectAutomaticFileArtifactNodeIds(authoritativeFileReferences);
+  const automaticArtifactNodeIds = collectAutomaticFileArtifactNodeIds(scopedAuthoritativeFileReferences);
   const allAutomaticArtifacts =
     options.view.presentationMode === 'lists'
-      ? buildAutomaticFileListArtifacts(authoritativeFileReferences, manualNodes, agentNodesById, existingAutoNodes)
+      ? buildAutomaticFileListArtifacts(scopedAuthoritativeFileReferences, manualNodes, agentNodesById, existingAutoNodes)
       : buildAutomaticFileNodeArtifacts(
-          authoritativeFileReferences,
+          scopedAuthoritativeFileReferences,
           manualNodes,
           agentNodesById,
           existingAutoNodes,
@@ -16066,15 +16186,13 @@ function rebuildCanvasFileArtifactsForNodeScope(
       retainedNodeIds.has(edge.sourceNodeId) &&
       retainedNodeIds.has(edge.targetNodeId)
   );
-  const retainedFileReferences = state.fileReferences.filter((reference) =>
-    !reference.owners.some((owner) => manualNodeIds.has(owner.nodeId))
-  );
+  const retainedFileReferences = removeFileReferenceOwnersForNodeIds(state.fileReferences, manualNodeIds);
 
   return {
     ...state,
     nodes: [...retainedNodes, ...projectedNodes],
     edges: [...retainedEdges, ...userEdges, ...automaticEdges],
-    fileReferences: [...retainedFileReferences, ...authoritativeFileReferences],
+    fileReferences: [...retainedFileReferences, ...scopedAuthoritativeFileReferences],
     suppressedFileActivityEdgeIds: filterSuppressedFileActivityEdgeIdsForScope(
       state.suppressedFileActivityEdgeIds,
       automaticEdgeIds,
@@ -16087,6 +16205,74 @@ function rebuildCanvasFileArtifactsForNodeScope(
       scope.namespaceId
     )
   };
+}
+
+function namespaceFileReferenceForScope(
+  reference: CanvasFileReferenceSummary,
+  namespaceId: string | undefined
+): CanvasFileReferenceSummary {
+  if (!namespaceId || splitNamespacedCanvasObjectId(reference.id)) {
+    return reference;
+  }
+
+  return {
+    ...reference,
+    id: `${namespaceId}:${reference.id}`
+  };
+}
+
+function mergeCanvasFileReferences(
+  fileReferences: readonly CanvasFileReferenceSummary[]
+): CanvasFileReferenceSummary[] {
+  const referencesById = new Map<string, CanvasFileReferenceSummary>();
+  for (const reference of fileReferences) {
+    const existingReference = referencesById.get(reference.id);
+    if (!existingReference) {
+      referencesById.set(reference.id, reference);
+      continue;
+    }
+
+    referencesById.set(reference.id, {
+      ...existingReference,
+      filePath: reference.filePath || existingReference.filePath,
+      relativePath: reference.relativePath ?? existingReference.relativePath,
+      updatedAt: compareTimestamp(reference.updatedAt, existingReference.updatedAt) >= 0
+        ? reference.updatedAt
+        : existingReference.updatedAt,
+      owners: reference.owners.reduce(
+        (owners, owner) => mergeFileReferenceOwners(owners, owner),
+        existingReference.owners
+      )
+    });
+  }
+  return Array.from(referencesById.values());
+}
+
+function compareTimestamp(left: string | undefined, right: string | undefined): number {
+  const leftTime = left ? Date.parse(left) : Number.NaN;
+  const rightTime = right ? Date.parse(right) : Number.NaN;
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) {
+    return leftTime - rightTime;
+  }
+  if (Number.isFinite(leftTime)) {
+    return 1;
+  }
+  if (Number.isFinite(rightTime)) {
+    return -1;
+  }
+  return 0;
+}
+
+function removeFileReferenceOwnersForNodeIds(
+  fileReferences: readonly CanvasFileReferenceSummary[],
+  nodeIds: ReadonlySet<string>
+): CanvasFileReferenceSummary[] {
+  return fileReferences
+    .map((reference) => ({
+      ...reference,
+      owners: reference.owners.filter((owner) => !nodeIds.has(owner.nodeId))
+    }))
+    .filter((reference) => reference.owners.length > 0);
 }
 
 function withCanvasNodeGroupId(
@@ -17075,40 +17261,54 @@ function recordAgentFileActivity(
     return previousState;
   }
 
-  const referenceId = buildFileReferenceId(normalizedPath);
+  const localReferenceId = buildFileReferenceId(normalizedPath);
+  const referenceId = buildFileReferenceIdForOwner(normalizedPath, event.nodeId);
+  const ownerNamespaceId = splitNamespacedCanvasObjectId(event.nodeId)?.namespaceId;
   const existingReference = previousState.fileReferences.find((reference) => reference.id === referenceId);
+  const migratedOwners = ownerNamespaceId
+    ? previousState.fileReferences
+        .filter((reference) => reference.id === localReferenceId)
+        .flatMap((reference) => reference.owners.filter((owner) =>
+          splitNamespacedCanvasObjectId(owner.nodeId)?.namespaceId === ownerNamespaceId
+        ))
+    : [];
   const nextOwner: CanvasFileReferenceOwnerSummary = {
     nodeId: event.nodeId,
     accessMode: event.accessMode,
     updatedAt: event.timestamp
   };
-
-  const nextFileReferences = existingReference
-    ? previousState.fileReferences.map((reference) =>
-        reference.id === referenceId
-          ? {
-              ...reference,
-              relativePath: event.relativePath ?? reference.relativePath,
-              updatedAt: event.timestamp,
-              owners: mergeFileReferenceOwners(reference.owners, nextOwner)
-            }
-          : reference
-      )
-    : [
-        ...previousState.fileReferences,
-        {
-          id: referenceId,
-          filePath: normalizedPath,
-          relativePath: event.relativePath,
-          updatedAt: event.timestamp,
-          owners: [nextOwner]
-        }
-      ];
+  const targetOwners = [...migratedOwners, nextOwner].reduce(
+    (owners, owner) => mergeFileReferenceOwners(owners, owner),
+    existingReference?.owners ?? []
+  );
+  const targetReference: CanvasFileReferenceSummary = {
+    ...(existingReference ?? {
+      id: referenceId,
+      filePath: normalizedPath
+    }),
+    id: referenceId,
+    filePath: normalizedPath,
+    relativePath: event.relativePath ?? existingReference?.relativePath,
+    updatedAt: event.timestamp,
+    owners: targetOwners
+  };
+  const retainedFileReferences = previousState.fileReferences.flatMap((reference): CanvasFileReferenceSummary[] => {
+    if (reference.id === referenceId) {
+      return [];
+    }
+    if (ownerNamespaceId && reference.id === localReferenceId) {
+      const remainingOwners = reference.owners.filter((owner) =>
+        splitNamespacedCanvasObjectId(owner.nodeId)?.namespaceId !== ownerNamespaceId
+      );
+      return remainingOwners.length > 0 ? [{ ...reference, owners: remainingOwners }] : [];
+    }
+    return [reference];
+  });
 
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
-    fileReferences: nextFileReferences
+    fileReferences: [...retainedFileReferences, targetReference]
   };
 }
 
@@ -17159,6 +17359,12 @@ function mergeFileReferenceOwners(
 
 function buildFileReferenceId(filePath: string): string {
   return createHash('sha256').update(filePath).digest('hex').slice(0, 16);
+}
+
+function buildFileReferenceIdForOwner(filePath: string, ownerNodeId: string): string {
+  const localReferenceId = buildFileReferenceId(filePath);
+  const ownerNamespaceId = splitNamespacedCanvasObjectId(ownerNodeId)?.namespaceId;
+  return ownerNamespaceId ? `${ownerNamespaceId}:${localReferenceId}` : localReferenceId;
 }
 
 function normalizeTrackedFilePath(filePath: string): string | undefined {

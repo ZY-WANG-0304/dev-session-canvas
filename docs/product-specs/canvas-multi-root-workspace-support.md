@@ -1,7 +1,7 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-06-04
+updated_at: 2026-06-05
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
 related_plans:
@@ -38,6 +38,8 @@ related_plans:
 11. 多根组合视图内部使用命名空间避免不同 root 下的节点 ID、分组 ID 或连线 ID 冲突。
 12. 多根组合视图中，用户创建或重连连线时，两个端点必须属于同一个 root section；跨 root 连线被拒绝。
 13. 文件活动自动节点、file-activity edge 和 suppression id 在多根组合视图中按 root 命名空间重建，不跨 root 共享。
+14. 多根组合视图中的 live 文件活动记录按 owner 节点所属 root 生成 root-namespaced `fileReferences.id`；旧的未命名空间化引用在重建时按 root scope 迁移或补 namespace。
+15. 多根组合视图跳过 live runtime 重新连接时，只影响组合视图展示，不永久消耗 root-local snapshot 中用于单根重连的 live runtime 信号。
 
 ## 非目标
 
@@ -48,6 +50,7 @@ related_plans:
 - 不支持把 multi-root 组合视图整体保存为模板。
 - 不承诺跨窗口共享 live runtime。
 - 不在 multi-root 组合视图中重新连接 live runtime；需要恢复 live runtime 时单独打开所属 root。
+- 不把 multi-root 组合视图的 live runtime skip 当成 root-local 的不可恢复结论。
 - 不在拖拽时自动把执行节点迁移到另一个 root 或改写 cwd。
 
 ## 验收标准
@@ -61,8 +64,10 @@ related_plans:
 - 两个 root 中都存在 `note-1` 或 `agent-1` 时，多根组合视图不会发生节点 ID 冲突。
 - 在 multi-root workspace 中，跨 root 画线或把既有连线重连到另一个 root 的节点不会创建或更新连线。
 - 两个 root 都有文件活动时，自动 `file` / `file-list` 节点和 file-activity edge 均保留在各自 root section 内，且 ID 不冲突。
+- 在 multi-root workspace 中运行 Agent 产生新的文件活动时，新写入的 `fileReferences.id` 带所属 root namespace；删除该自动文件节点后的 suppression 在重载后仍生效。
+- 一个 root-local live runtime 节点在 multi-root 中显示为历史结果后，单独打开所属 root 仍保留 `liveSession` 或 `reattaching` 等重连资格。
 - 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
 
 ## 验证状态
 
-截至 2026-06-04，本规格已完成主路径自动化验证：`npm run test:canvas-multi-root-composition`、`npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:note-markdown-file-association`、`npm run test:extension-storage-paths`、`npm run typecheck`、`npm run build`、`git diff --check` 和 `npm run test:webview -- --grep "workspace root group|cross-root edge"` 均通过。review follow-up 追加覆盖 Host 侧多根文件活动自动 artifact 命名空间与 suppression 剪枝。全量 `npm run test:webview` 当前为 224 passed / 29 failed，失败项不来自新增 workspace root group 用例，但需要后续按 Webview lifecycle/截图基线测试口径单独收口；真实 VSCode multi-root 手动 smoke 尚未完成。
+截至 2026-06-05，本规格已完成主路径自动化验证：`npm run test:canvas-multi-root-composition`、`npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:note-markdown-file-association`、`npm run test:extension-storage-paths`、`npm run typecheck`、`npm run build`、`git diff --check` 和 `npm run test:webview -- --grep "workspace root group|cross-root edge"` 均通过。review follow-up 追加覆盖 Host 侧多根文件活动自动 artifact 命名空间、live 文件活动 root-namespaced reference、suppression 剪枝，以及 multi-root skip 不覆盖 root-local live runtime 重连信号。全量 `npm run test:webview` 当前为 224 passed / 29 failed，失败项不来自新增 workspace root group 用例，但需要后续按 Webview lifecycle/截图基线测试口径单独收口；真实 VSCode multi-root 手动 smoke 尚未完成。

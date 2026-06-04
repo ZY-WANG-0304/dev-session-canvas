@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
   - docs/exec-plans/active/canvas-multi-root-composed-canvas-rewrite.md
-updated_at: 2026-06-04
+updated_at: 2026-06-05
 ---
 
 # 画布多根 workspace 组合视图设计
@@ -71,6 +71,8 @@ root-local 状态使用扩展 global storage 按 root 绝对路径稳定分桶�
 
 组合时，宿主按 root 顺序读取每个 root-local state。节点、用户分组、连线和文件活动 owner node id 都加上 root 命名空间前缀；root-local 顶层用户分组和稳定节点成为 root section 的直接成员；root-local 坐标加上 root section 的内容偏移；root section 的位置、尺寸和父分组来自 overlay，没有 overlay 时按 root 顺序自动铺开。root 内连线只允许连接同一个 root section 内的节点；Webview 与 Host 都拒绝跨 root 创建或重连连线，避免生成无法拆回 root-local、且 overlay 不持久化的临时边。文件活动自动节点和 file-activity edge 使用同一 root 命名空间重建，并作为 root section 成员参与组合，避免不同 root 的 `file-*`、`file-list-*` 或 suppression id 冲突。
 
+live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点所在 workspace-root namespace 生成 `fileReferences.id`。如果多根组合视图中仍存在旧的未命名空间化 file reference，重建文件活动 artifact 时也会按当前 root scope 补 namespace，并只迁移或移除属于当前 root 的 owner，避免把另一个 root 的 owner 一起丢掉。这样用户删除自动文件节点后，suppression id 能在 compose/decompose 往返中继续落到同一个 root-local file artifact，而不会在重载后复活。
+
 拆分持久化时，宿主按命名空间把 composed view 拆回各 root-local state。对象 ID 去掉 root 命名空间前缀，坐标减去 root section 内容偏移；root section 位置、尺寸和父分组写入 overlay；包含 root section 的 workspace-level 普通分组写入 overlay，不写入任何 root-local state。
 
 ### 6.5 创建与拖拽语义
@@ -79,7 +81,7 @@ root-local 状态使用扩展 global storage 按 root 绝对路径稳定分桶�
 
 ## 7. 风险与取舍
 
-root-local global storage 与旧 workspace storage 并存，用户可能有迁移期看不到旧历史；缓解方式是单根打开时自动镜像当前 workspace storage。组合视图中节点 ID 命名空间化会影响 live runtime attach；第一版在 multi-root 中不重新连接 live runtime，仅展示历史结果，单根打开所属 root 后仍可按 root-local id 恢复。用户把执行节点拖到其他 root section 后可能期待 cwd 改变；第一版不静默改写，以避免错误执行目录。
+root-local global storage 与旧 workspace storage 并存，用户可能有迁移期看不到旧历史；缓解方式是单根打开时自动镜像当前 workspace storage。组合视图中节点 ID 命名空间化会影响 live runtime attach；第一版在 multi-root 中不重新连接 live runtime，仅展示历史结果，单根打开所属 root 后仍可按 root-local id 恢复。multi-root skip 是组合视图层面的展示降级，不应把 root-local snapshot 中的 `live-runtime` 重新附着信号永久写成 `history-restored`；持久化 root-local state 时只保留必要的 runtime reattach 字段，其他 `cwd`、provider 或 shell 等 metadata 仍以本次拆分结果为准。用户把执行节点拖到其他 root section 后可能期待 cwd 改变；第一版不静默改写，以避免错误执行目录。
 
 ## 8. 验证方法
 
@@ -87,4 +89,4 @@ root-local global storage 与旧 workspace storage 并存，用户可能有迁�
 
 ## 9. 当前验证状态
 
-截至 2026-06-04，本设计已完成主路径自动化验证：composition、protocol、group policy、execution context、template、Markdown drop、typecheck、build 与针对 workspace root group 的 Playwright 用例均通过。真实 VSCode multi-root 手动 smoke 尚未完成；全量 Webview Playwright 仍有与本功能无直接关系或 lifecycle 断言口径相关的失败，需要后续单独收口。
+截至 2026-06-05，本设计已完成主路径自动化验证：composition、protocol、group policy、execution context、template、Markdown drop、typecheck、build 与针对 workspace root group 的 Playwright 用例均通过。review 修复已追加覆盖 live 文件活动按 owner root namespace 记录 file reference、旧 unnamespaced reference 在 root scope 内迁移、suppression 往返保留，以及 multi-root live runtime skip 不覆盖 root-local reattach 信号。真实 VSCode multi-root 手动 smoke 尚未完成；全量 Webview Playwright 仍有与本功能无直接关系或 lifecycle 断言口径相关的失败，需要后续单独收口。
