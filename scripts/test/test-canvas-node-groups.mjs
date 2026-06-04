@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -27,7 +28,8 @@ try {
     'createNextState',
     'normalizeState',
     'createUserCanvasEdge',
-    'updateCanvasEdge'
+    'updateCanvasEdge',
+    'rebuildCanvasFileArtifacts'
   ];
 
   await esbuild.build({
@@ -123,7 +125,8 @@ try {
     createNextState,
     normalizeState,
     createUserCanvasEdge,
-    updateCanvasEdge
+    updateCanvasEdge,
+    rebuildCanvasFileArtifacts
   } = require(outfile);
 
   const note = (id, position, extra = {}) => ({
@@ -866,6 +869,88 @@ try {
     workspaceRootState.groups.length,
     'A workspace root section must not be grouped together with one of its descendants.'
   );
+  const frontendRootPath = '/repo/frontend';
+  const backendRootPath = '/repo/backend';
+  const namespacedFrontendRootId = rootSectionId(frontendRootPath);
+  const namespacedBackendRootId = rootSectionId(backendRootPath);
+  const frontendAgentOneId = `${namespacedFrontendRootId}:agent-1`;
+  const frontendAgentTwoId = `${namespacedFrontendRootId}:agent-2`;
+  const backendAgentOneId = `${namespacedBackendRootId}:agent-1`;
+  const fileActivityRootState = state({
+    nodes: [
+      agent(frontendAgentOneId, { x: 100, y: 140 }, { groupId: namespacedFrontendRootId }),
+      agent(frontendAgentTwoId, { x: 300, y: 140 }, { groupId: namespacedFrontendRootId }),
+      agent(backendAgentOneId, { x: 900, y: 140 }, { groupId: namespacedBackendRootId })
+    ],
+    groups: [
+      group(namespacedFrontendRootId, { x: 20, y: 30 }, { width: 720, height: 520 }, {
+        role: 'workspace-root',
+        workspaceRootPath: frontendRootPath
+      }),
+      group(namespacedBackendRootId, { x: 840, y: 30 }, { width: 720, height: 520 }, {
+        role: 'workspace-root',
+        workspaceRootPath: backendRootPath
+      })
+    ],
+    fileReferences: [
+      {
+        id: `${namespacedFrontendRootId}:file-ref-1`,
+        filePath: '/repo/frontend/src/a.ts',
+        relativePath: 'src/a.ts',
+        updatedAt: '2026-06-04T00:00:00.000Z',
+        owners: [
+          { nodeId: frontendAgentOneId, accessMode: 'write', updatedAt: '2026-06-04T00:00:00.000Z' }
+        ]
+      },
+      {
+        id: `${namespacedFrontendRootId}:file-ref-shared`,
+        filePath: '/repo/frontend/src/shared.ts',
+        relativePath: 'src/shared.ts',
+        updatedAt: '2026-06-04T00:00:00.000Z',
+        owners: [
+          { nodeId: frontendAgentOneId, accessMode: 'write', updatedAt: '2026-06-04T00:00:00.000Z' },
+          { nodeId: frontendAgentTwoId, accessMode: 'read', updatedAt: '2026-06-04T00:00:00.000Z' }
+        ]
+      },
+      {
+        id: `${namespacedBackendRootId}:file-ref-1`,
+        filePath: '/repo/backend/src/a.ts',
+        relativePath: 'src/a.ts',
+        updatedAt: '2026-06-04T00:00:00.000Z',
+        owners: [
+          { nodeId: backendAgentOneId, accessMode: 'write', updatedAt: '2026-06-04T00:00:00.000Z' }
+        ]
+      }
+    ],
+    suppressedAutomaticFileArtifactNodeIds: [`${namespacedFrontendRootId}:file-ref-suppressed`]
+  });
+  const reconciledFileNodeArtifacts = rebuildCanvasFileArtifacts(fileActivityRootState, {
+    view: { enabled: true, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
+    preserveAutomaticFileNodeSizes: true
+  });
+  const frontendFileNode = reconciledFileNodeArtifacts.nodes.find((candidate) => candidate.id === `${namespacedFrontendRootId}:file-file-ref-1`);
+  const backendFileNode = reconciledFileNodeArtifacts.nodes.find((candidate) => candidate.id === `${namespacedBackendRootId}:file-file-ref-1`);
+  assert.ok(frontendFileNode, 'Namespaced file references should rebuild as root-local automatic file nodes.');
+  assert.ok(backendFileNode, 'Each root should rebuild its own automatic file nodes.');
+  assert.strictEqual(frontendFileNode.groupId, namespacedFrontendRootId);
+  assert.strictEqual(backendFileNode.groupId, namespacedBackendRootId);
+  assert.ok(reconciledFileNodeArtifacts.edges.some((candidate) =>
+    candidate.id === `${namespacedFrontendRootId}:agent-1::file-file-ref-1`
+  ));
+  const reconciledFileListArtifacts = rebuildCanvasFileArtifacts(fileActivityRootState, {
+    view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
+    preserveAutomaticFileNodeSizes: true
+  });
+  assert.ok(
+    reconciledFileListArtifacts.nodes.some((candidate) => candidate.id === `${namespacedFrontendRootId}:file-list-shared` && candidate.groupId === namespacedFrontendRootId),
+    'Shared file-list artifacts must use the root namespace so different roots never collide.'
+  );
+  assert.ok(!reconciledFileListArtifacts.nodes.some((candidate) => candidate.id === 'file-list-shared'));
+  assert.deepStrictEqual(
+    reconciledFileListArtifacts.suppressedAutomaticFileArtifactNodeIds,
+    [],
+    'Root-local suppression ids that do not match rebuilt artifact ids should be pruned in composed state.'
+  );
 
   const spreadInsertedGroupBetweenSiblings = createEmptyCanvasGroup(
     state({
@@ -994,6 +1079,11 @@ function rectForTestGroup(group) {
     right: group.position.x + group.size.width,
     bottom: group.position.y + group.size.height
   };
+}
+
+function rootSectionId(rootPath) {
+  const normalizedPath = path.resolve(rootPath);
+  return `workspace-root-${createHash('sha256').update(normalizedPath).digest('hex').slice(0, 16)}`;
 }
 
 function rectsOverlapForTest(left, right) {

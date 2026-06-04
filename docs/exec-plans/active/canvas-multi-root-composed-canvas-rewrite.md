@@ -19,6 +19,7 @@
 - [x] (2026-06-04 01:50 +0800) 接入 root section 分组策略与 Webview 呈现：系统 root section 只读、不可删除/取消分组/重命名，但能移动、resize、被外层分组包含。
 - [x] (2026-06-04 02:10 +0800) 补充并运行自动化验证：composition、group policy、protocol、execution context、template、Markdown drop、typecheck、build。
 - [x] (2026-06-04 03:45 +0800) 处理 PR review blocker：Webview 与 Host 双侧拒绝跨 root create/reconnect edge，并补充 group helper 与 Playwright 回归测试。
+- [x] (2026-06-04 22:44 +0800) 处理 review follow-up：补齐多根文件活动自动 artifact 的 root 命名空间重建、suppression 剪枝和 workspace folder 变化后的 live runtime 恢复口径。
 
 ## 意外与发现
 
@@ -30,6 +31,12 @@
 
 - 观察：PR review 发现跨 root 连线可以在当前会话内创建，但拆分持久化时不会写入任一 root-local state，也不属于 overlay，重载后会消失。
   证据：`docs/product-specs/canvas-multi-root-workspace-support.md` 明确非目标包含“不实现跨 root 连线”；修复前 `webview/createEdge` 直接进入 `createUserCanvasEdge`，Webview `handleConnect` / `handleEdgeReconnect` 未校验端点所属 root。
+
+- 观察：多根 composed state 在 `reconcileCanvasFileArtifacts()` 中重建文件活动自动节点时，原先沿用单画布 `file-*`、`file-list-*` ID，会让不同 root 的自动 artifact 有冲突风险，且替换 root-local 子图时仅按已有节点归属删除，可能漏删由 fileReferences 派生出的旧自动 artifact。
+  证据：review inline 指出 `composeRootLocalCanvasStateIntoComposed()` 的 `currentRootNodeIds` 只来自当前节点归属；`buildFileNodeId()` / `buildAgentFileListNodeId()` / `file-list-shared` 原实现没有解析 root 命名空间。
+
+- 观察：workspace folder 变化后已重新 `loadReconciledState()` 并发布 UI，但需要明确 live runtime restore 的 multi-root 行为。
+  证据：`vscode.workspace.onDidChangeWorkspaceFolders()` 已重新加载状态；`scheduleRestoreLiveRuntimeSessions()` 原先没有单独记录 multi-root skip 口径。
 
 ## 决策记录
 
@@ -53,9 +60,17 @@
   理由：当前 overlay 只承载 root section 布局和 workspace-level 分组，不承载内容边；允许跨 root edge 会产生“会话内可见、重载丢失”的不可追踪状态。双侧校验既避免无效交互消息，也保证 Host 对异常消息保持权威拒绝。
   日期/作者：2026-06-04 / Codex
 
+- 决策：文件活动自动 artifact 在 composed state 中使用 root 命名空间 ID，例如 `workspace-root-*:file-*`、`workspace-root-*:file-list-*` 和 `workspace-root-*:agent::file-*`，并作为对应 root section 的成员重建；suppression id 也按命名空间剪枝。
+  理由：文件活动来自 root-local fileReferences，属于 root 内内容而不是 overlay；复用 root 命名空间可以防止不同 root 的自动 file/list 节点、file-activity edge 和 suppression id 冲突，并使拆分回 root-local 时可以去掉命名空间。
+  日期/作者：2026-06-04 / Codex
+
+- 决策：multi-root 组合视图中不重新连接 live runtime，只展示历史结果并记录 skip；用户需要恢复 live runtime 时单独打开所属 root。
+  理由：live runtime session 的恢复和 runtime storage 仍以 root-local 节点 ID 为稳定锚点；multi-root composed id 会被命名空间化，本 PR 不扩展 runtime 映射层，先把该行为显式为非目标并避免误连。
+  日期/作者：2026-06-04 / Codex
+
 ## 结果与复盘
 
-本轮重新实现已完成主路径代码接入与目标自动化验证，并已按 PR review 修复跨 root edge 临时可见但不可持久化的问题。保留风险是尚未在真实 VSCode multi-root workspace 中完成手动 smoke，且全量 Webview Playwright 存在与本功能无直接关系或 lifecycle 断言口径相关的既有失败，需要后续单独收口。
+本轮重新实现已完成主路径代码接入与目标自动化验证，并已按 PR review 修复跨 root edge 临时可见但不可持久化的问题；review follow-up 已补齐多根文件活动自动 artifact 的命名空间与 suppression 规则，并明确 multi-root live runtime restore 非目标。保留风险是尚未在真实 VSCode multi-root workspace 中完成手动 smoke，且全量 Webview Playwright 存在与本功能无直接关系或 lifecycle 断言口径相关的既有失败，需要后续单独收口。
 
 ## 上下文与定向
 
@@ -94,6 +109,7 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是�
 
 自动化验收必须证明：两个 root 的同名节点 ID 在 composed view 中不冲突；移动整个 root section 后拆分不会改写 root-local 节点坐标；在 root section 内新增 Note、Agent、Terminal 或模板节点会写回对应 root-local state；包含多个 root section 的外层普通分组只保存到 overlay；系统 root section 不能被删除、取消分组或重命名；Markdown 文件在 multi-root 中只有拖到目标 root section 内才创建关联 Note；`Agent` / `Terminal` 的默认 cwd 等于目标 root 路径。
 Review 修复后的补充验收必须证明：跨 root 创建连线不会发出 Webview createEdge 消息，跨 root 重连不会发出 updateEdge 消息；Host 侧 helper 同样拒绝跨 root create/update edge，防止异常消息直接写入不可持久化边。
+Review follow-up 后的补充验收必须证明：多根文件活动自动 `file` / `file-list` 节点与 file-activity edge 使用 root 命名空间生成，不跨 root 冲突；suppression id 在 composed 与 root-local 往返时按命名空间保留或剪枝；multi-root 下 live runtime restore 明确跳过而不是尝试用 composed id 误连。
 
 人工验收建议在真实 VSCode 中创建两个临时 folder。先分别单独打开每个 folder 创建 Note，再打开包含二者的 `.code-workspace`，应看到两个 root section。把第一个 root 内 Note 拖到 root 边界外，root section 应扩张；重新单独打开第一个 root，应看到 Note 的 root-local 位置已更新。选中两个 root section 创建外层分组，重载 multi-root 后外层分组仍存在；单独打开任一 root 时不显示这个外层分组。
 
@@ -160,6 +176,21 @@ Review 修复后新增验证记录如下：
 
     npm run test:webview -- --grep "workspace root group|cross-root edge"
     3 passed；覆盖 Webview workspace root group 与跨 root edge create/reconnect 拒绝。
+
+Review follow-up 验证记录如下：
+
+    npm run test:canvas-node-groups
+    退出码 0；覆盖多根文件活动自动 artifact root 命名空间、file-list-shared 命名空间和 suppression 剪枝。
+    npm run test:canvas-multi-root-composition
+    退出码 0；覆盖 compose/decompose 中 file-activity suppression 命名空间往返，以及替换 root-local 子图时清理旧 fileReferences 派生的自动 artifact。
+    npm run test:canvas-execution-context
+    退出码 0；覆盖 workspace folder 变化后重新调度 live runtime restore，并确认 multi-root restore skip 有显式 block reason 与诊断事件。
+    npm run typecheck
+    退出码 0。
+    npm run test:webview -- --grep "workspace root group|cross-root edge"
+    3 passed；同时执行 build。
+    git diff --check
+    退出码 0。
 
 ## 接口与依赖
 

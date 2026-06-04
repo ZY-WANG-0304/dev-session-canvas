@@ -130,6 +130,7 @@ import {
   namespaceCanvasObjectId,
   resolveWorkspaceRootPathForGroup,
   sanitizeRootLocalCanvasState,
+  splitNamespacedCanvasObjectId,
   translateComposedCanvasPositionToRootLocal,
   translateRootLocalCanvasPositionToComposed,
   type CanvasMultiRootOverlay,
@@ -366,7 +367,7 @@ interface CreateNodeOptions {
   titleOverride?: string;
 }
 
-type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled';
+type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled' | 'multi-root-workspace';
 
 interface ManagedExecutionSessionBase {
   sessionId: string;
@@ -886,6 +887,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.persistState();
         this.postState('host/stateUpdated');
         this.notifySidebarStateChanged();
+        this.scheduleRestoreLiveRuntimeSessions();
       })
     );
 
@@ -6672,6 +6674,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return 'workspace-untrusted';
     }
 
+    if (this.getMultiRootWorkspaceFoldersForComposition().length > 1) {
+      return 'multi-root-workspace';
+    }
+
     return undefined;
   }
 
@@ -6702,6 +6708,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private scheduleRestoreLiveRuntimeSessions(): void {
+    if (this.getLiveRuntimeReconnectBlockReason() === 'multi-root-workspace') {
+      const reattachableCount = this.state.nodes.filter((node) => {
+        if (node.kind === 'agent') {
+          const metadata = ensureAgentMetadata(node);
+          return Boolean(metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId);
+        }
+        if (node.kind === 'terminal') {
+          const metadata = ensureTerminalMetadata(node);
+          return Boolean(metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId);
+        }
+        return false;
+      }).length;
+      if (reattachableCount > 0) {
+        this.recordDiagnosticEvent('runtime/restoreSkipped', {
+          reason: 'multiRootWorkspace',
+          reattachableCount
+        });
+        this.state = reconcileRuntimeNodes(this.state, this.agentSessions, this.terminalSessions, {
+          allowLiveRuntimeReconnect: false,
+          liveRuntimeReconnectBlockReason: 'multi-root-workspace'
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+      }
+      return;
+    }
+
     const operation = this.restoreLiveRuntimeSessions().catch((error) => {
       this.recordDiagnosticEvent('runtime/restoreFailed', {
         message: formatUnknownError(error)
@@ -7099,6 +7132,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async restoreLiveRuntimeSessions(): Promise<void> {
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
     if (liveRuntimeReconnectBlockReason === 'workspace-untrusted') {
+      return;
+    }
+
+    if (liveRuntimeReconnectBlockReason === 'multi-root-workspace') {
       return;
     }
 
@@ -15817,7 +15854,82 @@ function rebuildCanvasFileArtifacts(
     preserveAutomaticFileNodeSizes: boolean;
   }
 ): CanvasPrototypeState {
+  const workspaceRootGroups = state.groups.filter(isWorkspaceRootGroup);
+  if (workspaceRootGroups.length > 0) {
+    return rebuildMultiRootCanvasFileArtifacts(state, options, workspaceRootGroups);
+  }
+
   const manualNodes = state.nodes.filter((node) => node.kind !== 'file' && node.kind !== 'file-list');
+  return rebuildCanvasFileArtifactsForNodeScope(state, options, manualNodes, {
+    allowedGroupId: undefined,
+    namespaceId: undefined
+  });
+}
+
+function rebuildMultiRootCanvasFileArtifacts(
+  state: CanvasPrototypeState,
+  options: {
+    view: CanvasFileViewConfiguration;
+    preserveAutomaticFileNodeSizes: boolean;
+  },
+  workspaceRootGroups: CanvasGroupSummary[]
+): CanvasPrototypeState {
+  let nextState = state;
+  for (const rootGroup of workspaceRootGroups) {
+    const rootPath = resolveWorkspaceRootPathForGroup(rootGroup);
+    if (!rootPath) {
+      continue;
+    }
+
+    const rootManualNodes = state.nodes.filter(
+      (node) =>
+        node.kind !== 'file' &&
+        node.kind !== 'file-list' &&
+        isCanvasNodeInWorkspaceRootScope(state.groups ?? [], node, rootGroup.id)
+    );
+    nextState = rebuildCanvasFileArtifactsForNodeScope(nextState, options, rootManualNodes, {
+      allowedGroupId: rootGroup.id,
+      namespaceId: rootGroup.id
+    });
+  }
+
+  const rootScopedNodeIds = new Set(nextState.nodes.flatMap((node) =>
+    isCanvasNodeInAnyWorkspaceRootScope(nextState.groups ?? [], node) ? [node.id] : []
+  ));
+  const workspaceLevelAutomaticNodes = nextState.nodes.filter(
+    (node) =>
+      (node.kind === 'file' || node.kind === 'file-list') &&
+      splitNamespacedCanvasObjectId(node.id) === undefined &&
+      !rootScopedNodeIds.has(node.id)
+  );
+  if (workspaceLevelAutomaticNodes.length === 0) {
+    return nextState;
+  }
+
+  const workspaceLevelAutomaticNodeIds = new Set(workspaceLevelAutomaticNodes.map((node) => node.id));
+  return {
+    ...nextState,
+    nodes: nextState.nodes.filter((node) => !workspaceLevelAutomaticNodeIds.has(node.id)),
+    edges: nextState.edges.filter(
+      (edge) =>
+        !workspaceLevelAutomaticNodeIds.has(edge.sourceNodeId) &&
+        !workspaceLevelAutomaticNodeIds.has(edge.targetNodeId)
+    )
+  };
+}
+
+function rebuildCanvasFileArtifactsForNodeScope(
+  state: CanvasPrototypeState,
+  options: {
+    view: CanvasFileViewConfiguration;
+    preserveAutomaticFileNodeSizes: boolean;
+  },
+  manualNodes: CanvasNodeSummary[],
+  scope: {
+    allowedGroupId: string | undefined;
+    namespaceId: string | undefined;
+  }
+): CanvasPrototypeState {
   const existingAutoNodes = new Map(
     state.nodes
       .filter((node) => node.kind === 'file' || node.kind === 'file-list')
@@ -15833,6 +15945,14 @@ function rebuildCanvasFileArtifacts(
       owners: reference.owners.filter((owner) => manualNodeIds.has(owner.nodeId))
     }))
     .filter((reference) => reference.owners.length > 0);
+  const scopedAutomaticNodeIds = new Set(
+    state.nodes
+      .filter((node) =>
+        (node.kind === 'file' || node.kind === 'file-list') &&
+        isAutomaticFileArtifactNodeInScope(node, scope)
+      )
+      .map((node) => node.id)
+  );
   if (!options.view.enabled) {
     const userEdges = state.edges.filter(
       (edge) =>
@@ -15840,14 +15960,38 @@ function rebuildCanvasFileArtifacts(
         manualNodeIds.has(edge.sourceNodeId) &&
         manualNodeIds.has(edge.targetNodeId)
     );
+    const retainedNodes = state.nodes.filter(
+      (node) => !manualNodeIds.has(node.id) && !scopedAutomaticNodeIds.has(node.id)
+    );
+    const retainedNodeIds = new Set(retainedNodes.map((node) => node.id));
+    const retainedEdges = state.edges.filter(
+      (edge) =>
+        !manualNodeIds.has(edge.sourceNodeId) &&
+        !manualNodeIds.has(edge.targetNodeId) &&
+        !scopedAutomaticNodeIds.has(edge.sourceNodeId) &&
+        !scopedAutomaticNodeIds.has(edge.targetNodeId) &&
+        retainedNodeIds.has(edge.sourceNodeId) &&
+        retainedNodeIds.has(edge.targetNodeId)
+    );
 
     return {
       ...state,
-      nodes: manualNodes,
-      edges: userEdges,
-      fileReferences: [],
-      suppressedFileActivityEdgeIds: [],
-      suppressedAutomaticFileArtifactNodeIds: []
+      nodes: [...retainedNodes, ...manualNodes],
+      edges: [...retainedEdges, ...userEdges],
+      fileReferences: state.fileReferences.filter((reference) =>
+        !reference.owners.some((owner) => manualNodeIds.has(owner.nodeId))
+      ),
+      suppressedFileActivityEdgeIds: filterSuppressedFileActivityEdgeIdsForScope(
+        state.suppressedFileActivityEdgeIds,
+        new Set(),
+        userEdges,
+        scope.namespaceId
+      ),
+      suppressedAutomaticFileArtifactNodeIds: filterSuppressedAutomaticFileArtifactNodeIdsForScope(
+        state.suppressedAutomaticFileArtifactNodeIds,
+        new Set(),
+        scope.namespaceId
+      )
     };
   }
   const projectedFileReferences = authoritativeFileReferences.filter((reference) =>
@@ -15884,10 +16028,14 @@ function rebuildCanvasFileArtifacts(
             pathDisplayMode: options.view.pathDisplayMode
           }
         );
+  const scopedAutomaticArtifacts = {
+    nodes: automaticArtifacts.nodes.map((node) => withCanvasNodeGroupId(node, scope.allowedGroupId)),
+    edges: automaticArtifacts.edges
+  };
   const suppressedAutomaticFileArtifactNodeIds = new Set(state.suppressedAutomaticFileArtifactNodeIds);
   const projectedNodes = [
     ...manualNodes,
-    ...automaticArtifacts.nodes.filter((node) => !suppressedAutomaticFileArtifactNodeIds.has(node.id))
+    ...scopedAutomaticArtifacts.nodes.filter((node) => !suppressedAutomaticFileArtifactNodeIds.has(node.id))
   ];
   const projectedNodeIds = new Set(projectedNodes.map((node) => node.id));
   const automaticEdgeIds = new Set(allAutomaticArtifacts.edges.map((edge) => edge.id));
@@ -15904,19 +16052,168 @@ function rebuildCanvasFileArtifacts(
       projectedNodeIds.has(edge.sourceNodeId) &&
       projectedNodeIds.has(edge.targetNodeId)
   );
+  const replacedNodeIds = new Set<string>([
+    ...manualNodeIds,
+    ...scopedAutomaticNodeIds
+  ]);
+  const retainedNodes = state.nodes.filter((node) => !replacedNodeIds.has(node.id));
+  const retainedNodeIds = new Set(retainedNodes.map((node) => node.id));
+  const retainedEdges = state.edges.filter(
+    (edge) =>
+      !manualNodeIds.has(edge.sourceNodeId) &&
+      !manualNodeIds.has(edge.targetNodeId) &&
+      !automaticEdgeIds.has(edge.id) &&
+      retainedNodeIds.has(edge.sourceNodeId) &&
+      retainedNodeIds.has(edge.targetNodeId)
+  );
+  const retainedFileReferences = state.fileReferences.filter((reference) =>
+    !reference.owners.some((owner) => manualNodeIds.has(owner.nodeId))
+  );
 
   return {
     ...state,
-    nodes: projectedNodes,
-    edges: [...userEdges, ...automaticEdges],
-    fileReferences: authoritativeFileReferences,
-    suppressedFileActivityEdgeIds: Array.from(suppressedFileActivityEdgeIds).filter(
-      (edgeId) => automaticEdgeIds.has(edgeId) || userEdges.some((edge) => edge.id === edgeId)
+    nodes: [...retainedNodes, ...projectedNodes],
+    edges: [...retainedEdges, ...userEdges, ...automaticEdges],
+    fileReferences: [...retainedFileReferences, ...authoritativeFileReferences],
+    suppressedFileActivityEdgeIds: filterSuppressedFileActivityEdgeIdsForScope(
+      state.suppressedFileActivityEdgeIds,
+      automaticEdgeIds,
+      userEdges,
+      scope.namespaceId
     ),
-    suppressedAutomaticFileArtifactNodeIds: Array.from(suppressedAutomaticFileArtifactNodeIds).filter(
-      (nodeId) => automaticArtifactNodeIds.has(nodeId)
+    suppressedAutomaticFileArtifactNodeIds: filterSuppressedAutomaticFileArtifactNodeIdsForScope(
+      state.suppressedAutomaticFileArtifactNodeIds,
+      automaticArtifactNodeIds,
+      scope.namespaceId
     )
   };
+}
+
+function withCanvasNodeGroupId(
+  node: CanvasNodeSummary,
+  groupId: string | undefined
+): CanvasNodeSummary {
+  return groupId
+    ? {
+        ...node,
+        groupId
+      }
+    : {
+        ...node,
+        groupId: undefined
+      };
+}
+
+function isAutomaticFileArtifactNodeInScope(
+  node: CanvasNodeSummary,
+  scope: {
+    allowedGroupId: string | undefined;
+    namespaceId: string | undefined;
+  }
+): boolean {
+  if (!scope.allowedGroupId) {
+    return true;
+  }
+
+  if (node.groupId === scope.allowedGroupId) {
+    return true;
+  }
+
+  const namespacedId = splitNamespacedCanvasObjectId(node.id);
+  if (namespacedId) {
+    return namespacedId.namespaceId === scope.namespaceId;
+  }
+
+  const legacyArtifactNamespaceId = resolveLegacyAutomaticFileArtifactNamespaceId(node.id);
+  if (legacyArtifactNamespaceId) {
+    return legacyArtifactNamespaceId === scope.namespaceId;
+  }
+
+  return node.groupId === undefined;
+}
+
+function filterSuppressedFileActivityEdgeIdsForScope(
+  existingEdgeIds: readonly string[],
+  automaticEdgeIds: ReadonlySet<string>,
+  userEdges: readonly CanvasEdgeSummary[],
+  namespaceId: string | undefined
+): string[] {
+  const userEdgeIds = new Set(userEdges.map((edge) => edge.id));
+  return uniqueCanvasStrings(existingEdgeIds.filter((edgeId) => {
+    if (isCanvasObjectIdOutsideWorkspaceRootNamespace(edgeId, namespaceId)) {
+      return true;
+    }
+    return automaticEdgeIds.has(edgeId) || userEdgeIds.has(edgeId);
+  }));
+}
+
+function filterSuppressedAutomaticFileArtifactNodeIdsForScope(
+  existingNodeIds: readonly string[],
+  automaticArtifactNodeIds: ReadonlySet<string>,
+  namespaceId: string | undefined
+): string[] {
+  return uniqueCanvasStrings(existingNodeIds.filter((nodeId) => {
+    if (isCanvasObjectIdOutsideWorkspaceRootNamespace(nodeId, namespaceId)) {
+      return true;
+    }
+    return automaticArtifactNodeIds.has(nodeId);
+  }));
+}
+
+function uniqueCanvasStrings(values: readonly string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function isCanvasObjectIdOutsideWorkspaceRootNamespace(
+  objectId: string,
+  namespaceId: string | undefined
+): boolean {
+  if (!namespaceId) {
+    return false;
+  }
+  const namespacedId = splitNamespacedCanvasObjectId(objectId);
+  if (namespacedId) {
+    return namespacedId.namespaceId !== namespaceId;
+  }
+
+  const legacyArtifactNamespaceId = resolveLegacyAutomaticFileArtifactNamespaceId(objectId);
+  return legacyArtifactNamespaceId !== undefined && legacyArtifactNamespaceId !== namespaceId;
+}
+
+function resolveLegacyAutomaticFileArtifactNamespaceId(objectId: string): string | undefined {
+  for (const prefix of ['file-', 'file-list-agent-']) {
+    if (!objectId.startsWith(prefix)) {
+      continue;
+    }
+    const remainder = objectId.slice(prefix.length);
+    const separatorIndex = remainder.indexOf(':');
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const namespaceId = remainder.slice(0, separatorIndex);
+    if (namespaceId.startsWith('workspace-root-')) {
+      return namespaceId;
+    }
+  }
+  return undefined;
+}
+
+function isCanvasNodeInWorkspaceRootScope(
+  groups: readonly CanvasGroupSummary[],
+  node: CanvasNodeSummary,
+  rootGroupId: string
+): boolean {
+  if (node.groupId === rootGroupId) {
+    return true;
+  }
+  return Boolean(node.groupId && resolveContainingWorkspaceRootGroupId(groups, node.groupId) === rootGroupId);
+}
+
+function isCanvasNodeInAnyWorkspaceRootScope(
+  groups: readonly CanvasGroupSummary[],
+  node: CanvasNodeSummary
+): boolean {
+  return Boolean(node.groupId && resolveContainingWorkspaceRootGroupId(groups, node.groupId));
 }
 
 function buildAutomaticFileNodeArtifacts(
@@ -15982,7 +16279,7 @@ function buildAutomaticFileNodeArtifacts(
 
       edges.push(
         createAutomaticFileEdge({
-          edgeId: `${owner.nodeId}::${nodeId}`,
+          edgeId: buildAutomaticFileEdgeId(owner.nodeId, nodeId),
           referenceNode: fileNode,
           agentNode,
           accessMode: owner.accessMode
@@ -16186,7 +16483,7 @@ function buildAutomaticFileListArtifacts(
     nodes.push(fileListNode);
     edges.push(
       createAutomaticFileEdge({
-        edgeId: `${agentNodeId}::${nodeId}`,
+        edgeId: buildAutomaticFileEdgeId(agentNodeId, nodeId),
         referenceNode: fileListNode,
         agentNode,
         accessMode: mergeAccessModes(entries.map((entry) => entry.accessMode))
@@ -16195,7 +16492,7 @@ function buildAutomaticFileListArtifacts(
   }
 
   if (sharedEntries.length > 0) {
-    const sharedNodeId = 'file-list-shared';
+    const sharedNodeId = buildSharedFileListNodeId(sharedEntries);
     const existingNode = existingAutoNodes.get(sharedNodeId);
     const position = existingNode?.position
       ? existingNode.position
@@ -16237,7 +16534,7 @@ function buildAutomaticFileListArtifacts(
       }
       edges.push(
         createAutomaticFileEdge({
-          edgeId: `${agentNodeId}::${sharedNodeId}`,
+          edgeId: buildAutomaticFileEdgeId(agentNodeId, sharedNodeId),
           referenceNode: sharedNode,
           agentNode,
           accessMode: mergeAccessModes(accessModes)
@@ -16250,11 +16547,54 @@ function buildAutomaticFileListArtifacts(
 }
 
 function buildFileNodeId(fileReferenceId: string): string {
-  return `file-${fileReferenceId}`;
+  const namespacedId = splitNamespacedCanvasObjectId(fileReferenceId);
+  return namespacedId
+    ? `${namespacedId.namespaceId}:file-${namespacedId.localId}`
+    : `file-${fileReferenceId}`;
 }
 
 function buildAgentFileListNodeId(agentNodeId: string): string {
-  return `file-list-agent-${agentNodeId}`;
+  const namespacedId = splitNamespacedCanvasObjectId(agentNodeId);
+  return namespacedId
+    ? `${namespacedId.namespaceId}:file-list-agent-${namespacedId.localId}`
+    : `file-list-agent-${agentNodeId}`;
+}
+
+function buildAutomaticFileEdgeId(ownerNodeId: string, artifactNodeId: string): string {
+  const ownerNamespacedId = splitNamespacedCanvasObjectId(ownerNodeId);
+  const artifactNamespacedId = splitNamespacedCanvasObjectId(artifactNodeId);
+  if (
+    ownerNamespacedId &&
+    artifactNamespacedId &&
+    ownerNamespacedId.namespaceId === artifactNamespacedId.namespaceId
+  ) {
+    return `${ownerNamespacedId.namespaceId}:${ownerNamespacedId.localId}::${artifactNamespacedId.localId}`;
+  }
+
+  return `${ownerNodeId}::${artifactNodeId}`;
+}
+
+function buildSharedFileListNodeId(entries: readonly FileListNodeEntrySummary[]): string {
+  const namespaceId = resolveSingleCanvasNamespaceId(entries.flatMap((entry) => entry.ownerNodeIds));
+  return namespaceId ? `${namespaceId}:file-list-shared` : 'file-list-shared';
+}
+
+function resolveSingleCanvasNamespaceId(objectIds: readonly string[]): string | undefined {
+  let namespaceId: string | undefined;
+  for (const objectId of objectIds) {
+    const parts = splitNamespacedCanvasObjectId(objectId);
+    if (!parts) {
+      return undefined;
+    }
+    if (!namespaceId) {
+      namespaceId = parts.namespaceId;
+      continue;
+    }
+    if (namespaceId !== parts.namespaceId) {
+      return undefined;
+    }
+  }
+  return namespaceId;
 }
 
 function collectAutomaticFileArtifactNodeIds(
@@ -16262,12 +16602,12 @@ function collectAutomaticFileArtifactNodeIds(
 ): Set<string> {
   const nodeIds = new Set<string>();
   const uniqueAgentFileListOwnerIds = new Set<string>();
-  let hasSharedFileList = false;
+  const sharedOwnerNodeIds: string[][] = [];
 
   for (const reference of fileReferences) {
     nodeIds.add(buildFileNodeId(reference.id));
     if (reference.owners.length > 1) {
-      hasSharedFileList = true;
+      sharedOwnerNodeIds.push(reference.owners.map((owner) => owner.nodeId));
       continue;
     }
 
@@ -16281,8 +16621,9 @@ function collectAutomaticFileArtifactNodeIds(
     nodeIds.add(buildAgentFileListNodeId(ownerNodeId));
   }
 
-  if (hasSharedFileList) {
-    nodeIds.add('file-list-shared');
+  for (const ownerNodeIds of sharedOwnerNodeIds) {
+    const namespaceId = resolveSingleCanvasNamespaceId(ownerNodeIds);
+    nodeIds.add(namespaceId ? `${namespaceId}:file-list-shared` : 'file-list-shared');
   }
 
   return nodeIds;
@@ -19675,6 +20016,9 @@ function describeBlockedAgentLiveRuntimeSummary(blockReason: LiveRuntimeReconnec
   if (blockReason === 'workspace-untrusted') {
     return '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。';
   }
+  if (blockReason === 'multi-root-workspace') {
+    return '多根 workspace 暂不重新连接原 Agent live runtime，仅展示历史结果；请单独打开所属 root 后恢复。';
+  }
 
   return '运行时持久化已关闭，原 Agent live runtime 已恢复为历史结果。';
 }
@@ -19682,6 +20026,9 @@ function describeBlockedAgentLiveRuntimeSummary(blockReason: LiveRuntimeReconnec
 function describeBlockedTerminalLiveRuntimeSummary(blockReason: LiveRuntimeReconnectBlockReason): string {
   if (blockReason === 'workspace-untrusted') {
     return '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。';
+  }
+  if (blockReason === 'multi-root-workspace') {
+    return '多根 workspace 暂不重新连接原终端 live runtime，仅展示历史结果；请单独打开所属 root 后恢复。';
   }
 
   return '运行时持久化已关闭，原终端 live runtime 已恢复为历史结果。';

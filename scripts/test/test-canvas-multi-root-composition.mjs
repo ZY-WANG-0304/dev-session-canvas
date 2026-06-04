@@ -195,6 +195,30 @@ try {
     '包含多个 root 的外层普通分组必须只保存在 multi-root overlay 中。'
   );
 
+  const frontendAutomaticFileNodeId = namespaceCanvasObjectId(frontendRoot, 'file-ref-1');
+  const frontendAutomaticFileEdgeId = namespaceCanvasObjectId(frontendRoot, 'note-1::file-ref-1');
+  const backendAutomaticFileNodeId = namespaceCanvasObjectId(backendRoot, 'file-ref-1');
+  const backendAutomaticFileEdgeId = namespaceCanvasObjectId(backendRoot, 'note-1::file-ref-1');
+  const decomposedFileActivitySuppressions = decomposeMultiRootCanvasState({
+    composedState: {
+      ...composed,
+      suppressedFileActivityEdgeIds: [frontendAutomaticFileEdgeId, backendAutomaticFileEdgeId],
+      suppressedAutomaticFileArtifactNodeIds: [frontendAutomaticFileNodeId, backendAutomaticFileNodeId]
+    },
+    workspaceFolders: folders,
+    previousRootStates: [
+      { rootPath: frontendRoot, state: frontendState },
+      { rootPath: backendRoot, state: backendState }
+    ],
+    now: '2026-06-04T02:00:00.000Z'
+  });
+  const frontendSuppressionsAfterRoundTrip = decomposedFileActivitySuppressions.rootStates.find((entry) => entry.rootPath === path.resolve(frontendRoot)).state;
+  const backendSuppressionsAfterRoundTrip = decomposedFileActivitySuppressions.rootStates.find((entry) => entry.rootPath === path.resolve(backendRoot)).state;
+  assert.deepEqual(frontendSuppressionsAfterRoundTrip.suppressedFileActivityEdgeIds, ['note-1::file-ref-1']);
+  assert.deepEqual(frontendSuppressionsAfterRoundTrip.suppressedAutomaticFileArtifactNodeIds, ['file-ref-1']);
+  assert.deepEqual(backendSuppressionsAfterRoundTrip.suppressedFileActivityEdgeIds, ['note-1::file-ref-1']);
+  assert.deepEqual(backendSuppressionsAfterRoundTrip.suppressedAutomaticFileArtifactNodeIds, ['file-ref-1']);
+
   const createdLocalNode = note('note-created', { x: 300, y: 420 }, { groupId: frontendRootGroupId });
   const decomposedAfterCreate = decomposeMultiRootCanvasState({
     composedState: {
@@ -212,9 +236,36 @@ try {
   assert.ok(frontendAfterCreate.nodes.some((candidate) => candidate.id === 'note-created'));
   assert.deepEqual(frontendAfterCreate.nodes.find((candidate) => candidate.id === 'note-created').position, { x: 120, y: 140 });
 
+  const frontendComposedFileReference = {
+    id: namespaceCanvasObjectId(frontendRoot, 'ref-1'),
+    filePath: path.join(frontendRoot, 'src/a.ts'),
+    relativePath: 'src/a.ts',
+    updatedAt: '2026-06-04T00:00:00.000Z',
+    owners: [
+      {
+        nodeId: namespaceCanvasObjectId(frontendRoot, 'note-1'),
+        accessMode: 'write',
+        updatedAt: '2026-06-04T00:00:00.000Z'
+      }
+    ]
+  };
+  const backendComposedFileReference = {
+    id: namespaceCanvasObjectId(backendRoot, 'ref-1'),
+    filePath: path.join(backendRoot, 'src/a.ts'),
+    relativePath: 'src/a.ts',
+    updatedAt: '2026-06-04T00:00:00.000Z',
+    owners: [
+      {
+        nodeId: namespaceCanvasObjectId(backendRoot, 'note-1'),
+        accessMode: 'write',
+        updatedAt: '2026-06-04T00:00:00.000Z'
+      }
+    ]
+  };
   const composedAfterRootLocalReplacement = composeRootLocalCanvasStateIntoComposed(
     {
       ...composed,
+      fileReferences: [frontendComposedFileReference, backendComposedFileReference],
       edges: [
         ...composed.edges,
         {
@@ -225,8 +276,28 @@ try {
           targetAnchor: 'left',
           arrowMode: 'forward',
           owner: 'user'
+        },
+        {
+          id: frontendAutomaticFileEdgeId,
+          sourceNodeId: namespaceCanvasObjectId(frontendRoot, 'note-1'),
+          targetNodeId: frontendAutomaticFileNodeId,
+          sourceAnchor: 'right',
+          targetAnchor: 'left',
+          arrowMode: 'forward',
+          owner: 'file-activity'
+        },
+        {
+          id: backendAutomaticFileEdgeId,
+          sourceNodeId: namespaceCanvasObjectId(backendRoot, 'note-1'),
+          targetNodeId: backendAutomaticFileNodeId,
+          sourceAnchor: 'right',
+          targetAnchor: 'left',
+          arrowMode: 'forward',
+          owner: 'file-activity'
         }
-      ]
+      ],
+      suppressedFileActivityEdgeIds: [frontendAutomaticFileEdgeId, backendAutomaticFileEdgeId],
+      suppressedAutomaticFileArtifactNodeIds: [frontendAutomaticFileNodeId, backendAutomaticFileNodeId]
     },
     state({
       nodes: [note('note-created-via-helper', { x: 16, y: 24 })],
@@ -241,6 +312,16 @@ try {
     !composedAfterRootLocalReplacement.edges.some((candidate) => candidate.id === 'edge-cross-root'),
     '替换 root-local 子图时，连接到旧 root-local 节点的跨 root 边不能残留。'
   );
+  assert.ok(
+    !composedAfterRootLocalReplacement.edges.some((candidate) => candidate.id === frontendAutomaticFileEdgeId),
+    '替换 root-local 子图时，必须移除由该 root fileReferences 派生的旧 file-activity edge。'
+  );
+  assert.ok(
+    !composedAfterRootLocalReplacement.fileReferences.some((candidate) => candidate.id === frontendComposedFileReference.id),
+    '替换 root-local 子图时，必须移除该 root 的旧 fileReferences，避免下次重建出 stale 自动 artifact。'
+  );
+  assert.deepEqual(composedAfterRootLocalReplacement.suppressedFileActivityEdgeIds, [backendAutomaticFileEdgeId]);
+  assert.deepEqual(composedAfterRootLocalReplacement.suppressedAutomaticFileArtifactNodeIds, [backendAutomaticFileNodeId]);
 
   console.log('canvas multi-root composition tests passed');
 } finally {
