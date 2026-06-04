@@ -6,10 +6,13 @@ import {
   loadCurrentMarketplaceUser,
   loadMarketplaceTemplateDetail,
   loadMarketplaceTemplates,
+  loadMyMarketplaceLikes,
+  loadMyMarketplaceStats,
   loadMyMarketplaceTemplates,
   normalizeTemplateSearchQuery,
   publishMarketplaceTemplate,
-  publishMarketplaceTemplatePackage
+  publishMarketplaceTemplatePackage,
+  setMarketplaceTemplateLike
 } from './api';
 
 describe('marketplace web api client', () => {
@@ -230,6 +233,103 @@ describe('marketplace web api client', () => {
 
     expect(requests[0]).toBe('/api/v1/me/templates');
     expect(result.items.map((template) => template.slug)).toEqual(['mine']);
+  });
+
+  it('loads templates liked by the current user', async () => {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        requests.push(String(input));
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'liked',
+                slug: 'liked-template',
+                name: 'Liked Template',
+                description: 'Liked by me.',
+                tags: ['liked'],
+                publisher: { id: 'publisher', githubLogin: 'publisher', displayName: 'Publisher', avatarUrl: '' },
+                latestVersion: {
+                  id: 'version',
+                  templateId: 'liked',
+                  versionNumber: 1,
+                  changelog: '',
+                  objectKey: 'templates/liked/versions/1/template.json',
+                  thumbnailKey: 'templates/liked/versions/1/thumbnail.png',
+                  sha256: 'sha',
+                  sizeBytes: 1,
+                  schemaVersion: 1,
+                  status: 'published',
+                  createdAt: '2026-05-14T00:00:00.000Z'
+                },
+                status: 'published',
+                downloadCount: 1,
+                likeCount: 1,
+                hotScore: 1,
+                createdAt: '2026-05-14T00:00:00.000Z',
+                updatedAt: '2026-05-14T00:00:00.000Z'
+              }
+            ],
+            pagination: { page: 1, pageSize: 50, total: 1, hasMore: false },
+            storageMode: 'd1'
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const result = await loadMyMarketplaceLikes();
+
+    expect(requests[0]).toBe('/api/v1/me/likes');
+    expect(result.items.map((template) => template.slug)).toEqual(['liked-template']);
+  });
+
+  it('loads publisher dashboard stats', async () => {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        requests.push(String(input));
+        return new Response(
+          JSON.stringify({
+            totals: { templateCount: 1, downloadCount: 44, likeCount: 9, publishCount: 2 },
+            daily: [{ day: '2026-05-10', downloadCount: 3, likeCount: 2, publishCount: 1 }],
+            templates: [],
+            storageMode: 'd1'
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const result = await loadMyMarketplaceStats();
+
+    expect(requests[0]).toBe('/api/v1/me/stats');
+    expect(result.totals.downloadCount).toBe(44);
+    expect(result.daily[0]?.likeCount).toBe(2);
+  });
+
+  it('posts template like target states to the Worker API', async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ input, init });
+        return new Response(JSON.stringify({ templateId: 'tmpl-liked', liked: true, likeCount: 10, storageMode: 'd1' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      })
+    );
+
+    const result = await setMarketplaceTemplateLike('review-loop', true);
+
+    expect(result.liked).toBe(true);
+    expect(requests[0]?.input).toBe('/api/v1/templates/review-loop/like');
+    expect(requests[0]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ liked: true });
   });
 
   it('checks slug availability through the Worker API', async () => {

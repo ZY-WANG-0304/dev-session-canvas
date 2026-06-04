@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import type { MarketplaceTemplateDetail } from '@dev-session-canvas/marketplace-shared';
 
 import { InstallInVSCodeLink } from './InstallInVSCodeLink';
+import { loadCurrentMarketplaceUser, loadMyMarketplaceLikes, setMarketplaceTemplateLike, type MarketplaceCurrentUser } from '../lib/api';
 import { buildTemplateDownloadHref, buildTemplateJsonExportHref } from '../lib/download';
-import { getMarketplaceHomeHref } from '../lib/routing';
+import { buildGithubSignInHref, getMarketplaceHomeHref } from '../lib/routing';
 import { buildTemplateThumbnailHref } from '../lib/thumbnail';
 
 interface TemplateDetailViewProps {
@@ -14,6 +15,14 @@ interface TemplateDetailViewProps {
 
 type DetailTab = 'readme' | 'changelog';
 
+interface LikeState {
+  loading: boolean;
+  liked: boolean;
+  likeCount: number;
+  user?: MarketplaceCurrentUser;
+  errorMessage?: string;
+}
+
 const activeTabClassName =
   'border-b-2 border-canvas-accent px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-canvas-ink outline-none transition focus:ring-4 focus:ring-canvas-accent/25';
 const inactiveTabClassName =
@@ -21,6 +30,11 @@ const inactiveTabClassName =
 
 export function TemplateDetailView({ template, storageMode, source }: TemplateDetailViewProps): JSX.Element {
   const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>('readme');
+  const [likeState, setLikeState] = useState<LikeState>({
+    loading: true,
+    liked: false,
+    likeCount: template.likeCount
+  });
   const downloadHref = buildTemplateDownloadHref(template);
   const templateJsonExportHref = buildTemplateJsonExportHref(template);
   const thumbnailHref = buildTemplateThumbnailHref(template);
@@ -31,6 +45,82 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
   useEffect(() => {
     setActiveDetailTab('readme');
   }, [template.slug]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLikeState({
+      loading: true,
+      liked: false,
+      likeCount: template.likeCount
+    });
+    async function loadLikeState(): Promise<void> {
+      try {
+        const currentUser = await loadCurrentMarketplaceUser();
+        if (!currentUser.user) {
+          if (!cancelled) {
+            setLikeState({
+              loading: false,
+              liked: false,
+              likeCount: template.likeCount
+            });
+          }
+          return;
+        }
+        const likes = await loadMyMarketplaceLikes();
+        if (!cancelled) {
+          setLikeState({
+            loading: false,
+            liked: likes.items.some((entry) => entry.id === template.id || entry.slug === template.slug),
+            likeCount: template.likeCount,
+            user: currentUser.user
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLikeState({
+            loading: false,
+            liked: false,
+            likeCount: template.likeCount,
+            errorMessage: error instanceof Error ? error.message : 'Unable to load like state.'
+          });
+        }
+      }
+    }
+    void loadLikeState();
+    return () => {
+      cancelled = true;
+    };
+  }, [template.id, template.slug, template.likeCount]);
+
+  async function toggleLike(): Promise<void> {
+    if (!likeState.user || likeState.loading) {
+      return;
+    }
+    const nextLiked = !likeState.liked;
+    const previous = likeState;
+    setLikeState({
+      ...likeState,
+      loading: true,
+      liked: nextLiked,
+      likeCount: Math.max(0, likeState.likeCount + (nextLiked ? 1 : -1)),
+      errorMessage: undefined
+    });
+    try {
+      const result = await setMarketplaceTemplateLike(template.slug, nextLiked);
+      setLikeState({
+        loading: false,
+        liked: result.liked,
+        likeCount: result.likeCount,
+        user: previous.user
+      });
+    } catch (error) {
+      setLikeState({
+        ...previous,
+        loading: false,
+        errorMessage: error instanceof Error ? error.message : 'Unable to update like.'
+      });
+    }
+  }
 
   return (
     <section className="border border-canvas-line bg-canvas-paper shadow-card">
@@ -164,10 +254,38 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
 
           <dl className="mt-6 divide-y divide-canvas-line border-y border-canvas-line">
             <MetaItem label="Downloads" value={template.downloadCount.toLocaleString()} />
-            <MetaItem label="Likes" value={template.likeCount.toLocaleString()} />
+            <MetaItem label="Likes" value={likeState.likeCount.toLocaleString()} />
             <MetaItem label="Latest" value={`v${template.latestVersion.versionNumber}`} />
             <MetaItem label="Publisher" value={template.publisher.displayName || template.publisher.githubLogin} />
           </dl>
+
+          <div className="mt-5 border-t border-canvas-line pt-4">
+            {likeState.user ? (
+              <button
+                className={`inline-flex w-full justify-center px-4 py-3 text-xs font-semibold transition focus:outline-none focus:ring-4 focus:ring-canvas-accent/25 ${
+                  likeState.liked
+                    ? 'border border-canvas-moss bg-canvas-mist text-canvas-moss hover:border-canvas-line hover:text-canvas-ink'
+                    : 'bg-canvas-moss text-canvas-accentText hover:brightness-110'
+                }`}
+                type="button"
+                disabled={likeState.loading}
+                onClick={() => {
+                  void toggleLike();
+                }}
+                aria-pressed={likeState.liked}
+              >
+                {likeState.loading ? 'Saving...' : likeState.liked ? 'Liked' : 'Like this template'}
+              </button>
+            ) : (
+              <a
+                className="inline-flex w-full justify-center border border-canvas-line bg-canvas-mist px-4 py-3 text-xs font-semibold text-canvas-ink transition hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
+                href={buildGithubSignInHref(window.location.pathname)}
+              >
+                Sign in to like
+              </a>
+            )}
+            {likeState.errorMessage ? <p className="mt-2 text-xs leading-5 text-canvas-error">{likeState.errorMessage}</p> : null}
+          </div>
 
           <details className="mt-5 border-t border-canvas-line pt-4">
             <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-canvas-muted focus:outline-none focus:ring-4 focus:ring-canvas-accent/25">

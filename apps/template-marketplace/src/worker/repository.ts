@@ -11,9 +11,12 @@ import {
   type MarketplaceListTemplatesResponse,
   type MarketplacePackageDownloadResponse,
   type MarketplacePublisherSummary,
+  type MarketplacePublisherStatsResponse,
   type MarketplaceStorageMode,
+  type MarketplaceTemplateLikeResponse,
   type MarketplaceTemplateDetail,
   type MarketplaceTemplateDetailResponse,
+  type MarketplaceTemplateSummary,
   type MarketplaceTemplateVersion
 } from '@dev-session-canvas/marketplace-shared';
 
@@ -78,6 +81,14 @@ export interface MarketplaceTemplateRepository {
   buildDownloadResponse(templateIdOrSlug: string, versionId?: string): Promise<MarketplaceDownloadResponse | undefined>;
   buildPackageDownloadResponse(templateIdOrSlug: string, versionId?: string): Promise<MarketplacePackageDownloadResponse | undefined>;
   recordDownload(templateId: string, versionId: string, at?: Date): Promise<void>;
+  setTemplateLike(
+    templateIdOrSlug: string,
+    user: MarketplaceRepositoryUserInput,
+    liked?: boolean,
+    at?: Date
+  ): Promise<MarketplaceTemplateLikeResponse | undefined>;
+  listLikedTemplates(user: MarketplaceRepositoryUserInput): Promise<MarketplaceListTemplatesResponse>;
+  getPublisherStats(user: MarketplaceRepositoryUserInput): Promise<MarketplacePublisherStatsResponse>;
   isTemplateSlugAvailable(slug: string): Promise<boolean>;
   upsertUser(
     user: MarketplaceRepositoryUserInput,
@@ -126,6 +137,37 @@ export class SeedTemplateRepository implements MarketplaceTemplateRepository {
 
   public async recordDownload(): Promise<void> {
     // Seed data is immutable; the no-op keeps local fallback behavior explicit.
+  }
+
+  public async setTemplateLike(): Promise<MarketplaceTemplateLikeResponse | undefined> {
+    throw new MarketplaceRepositoryWriteError('marketplace_writes_unavailable', 'Template likes require D1 storage.', 503);
+  }
+
+  public async listLikedTemplates(): Promise<MarketplaceListTemplatesResponse> {
+    return {
+      items: [],
+      pagination: {
+        page: 1,
+        pageSize: 0,
+        total: 0,
+        hasMore: false
+      },
+      storageMode: this.storageMode
+    };
+  }
+
+  public async getPublisherStats(): Promise<MarketplacePublisherStatsResponse> {
+    return {
+      totals: {
+        templateCount: 0,
+        downloadCount: 0,
+        likeCount: 0,
+        publishCount: 0
+      },
+      daily: [],
+      templates: [],
+      storageMode: this.storageMode
+    };
   }
 
   public async isTemplateSlugAvailable(slug: string): Promise<boolean> {
@@ -229,6 +271,138 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
       )
       .bind(templateId, day)
       .run();
+  }
+
+  public async setTemplateLike(
+    templateIdOrSlug: string,
+    user: MarketplaceRepositoryUserInput,
+    liked?: boolean,
+    at: Date = new Date()
+  ): Promise<MarketplaceTemplateLikeResponse | undefined> {
+    const detail = await this.getTemplateDetail(templateIdOrSlug);
+    if (!detail) {
+      return undefined;
+    }
+
+    const now = at.toISOString();
+    const day = formatUtcDay(at);
+    const publisher = await this.upsertUser(user, now);
+    const existing = await this.database
+      .prepare('SELECT created_at FROM template_likes WHERE template_id = ?1 AND user_id = ?2 LIMIT 1')
+      .bind(detail.template.id, publisher.id)
+      .first<{ created_at: string }>();
+    const nextLiked = liked ?? !existing;
+
+    if (nextLiked && !existing) {
+      await this.database
+        .prepare('INSERT INTO template_likes (template_id, user_id, created_at) VALUES (?1, ?2, ?3)')
+        .bind(detail.template.id, publisher.id, now)
+        .run();
+      await this.database
+        .prepare('UPDATE templates SET like_count = like_count + 1 WHERE id = ?1')
+        .bind(detail.template.id)
+        .run();
+      await this.database
+        .prepare(
+          `INSERT INTO template_daily_stats (template_id, day, download_count, like_count, publish_count)
+           VALUES (?1, ?2, 0, 1, 0)
+           ON CONFLICT(template_id, day) DO UPDATE SET
+             like_count = like_count + 1`
+        )
+        .bind(detail.template.id, day)
+        .run();
+    } else if (!nextLiked && existing) {
+      await this.database
+        .prepare('DELETE FROM template_likes WHERE template_id = ?1 AND user_id = ?2')
+        .bind(detail.template.id, publisher.id)
+        .run();
+      await this.database
+        .prepare('UPDATE templates SET like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0 END WHERE id = ?1')
+        .bind(detail.template.id)
+        .run();
+    }
+
+    const row = await this.database.prepare('SELECT like_count FROM templates WHERE id = ?1 LIMIT 1').bind(detail.template.id).first<{ like_count: number }>();
+    return {
+      templateId: detail.template.id,
+      liked: nextLiked,
+      likeCount: row?.like_count ?? Math.max(0, detail.template.likeCount + (nextLiked && !existing ? 1 : !nextLiked && existing ? -1 : 0)),
+      storageMode: this.storageMode
+    };
+  }
+
+  public async listLikedTemplates(user: MarketplaceRepositoryUserInput): Promise<MarketplaceListTemplatesResponse> {
+    const result = await this.database
+      .prepare(
+        `${templateSelectSqlWithJoins('JOIN template_likes tl ON tl.template_id = t.id')}
+         WHERE t.status = 'published' AND tl.user_id = ?1
+         GROUP BY t.id
+         ORDER BY tl.created_at DESC`
+      )
+      .bind(buildMarketplaceUserId(user.githubUserId))
+      .all<TemplateRow>();
+    return listMarketplaceTemplatesFromCatalog(result.results?.map((row) => mapTemplateRow(row)) ?? [], {
+      sort: 'updated',
+      pageSize: 50
+    }, this.storageMode);
+  }
+
+  public async getPublisherStats(user: MarketplaceRepositoryUserInput): Promise<MarketplacePublisherStatsResponse> {
+    const publisherId = buildMarketplaceUserId(user.githubUserId);
+    const templateResult = await this.database
+      .prepare(`${templateSelectSql} WHERE t.status = 'published' AND t.publisher_id = ?1 GROUP BY t.id ORDER BY t.updated_at DESC`)
+      .bind(publisherId)
+      .all<TemplateRow>();
+    const templates = templateResult.results?.map((row) => mapTemplateRow(row)) ?? [];
+
+    if (templates.length === 0) {
+      return {
+        totals: {
+          templateCount: 0,
+          downloadCount: 0,
+          likeCount: 0,
+          publishCount: 0
+        },
+        daily: [],
+        templates: [],
+        storageMode: this.storageMode
+      };
+    }
+
+    const dailyResult = await this.database
+      .prepare(
+        `SELECT s.day AS day,
+                SUM(s.download_count) AS download_count,
+                SUM(s.like_count) AS like_count,
+                SUM(s.publish_count) AS publish_count
+         FROM template_daily_stats s
+         JOIN templates t ON t.id = s.template_id
+         WHERE t.publisher_id = ?1 AND t.status = 'published'
+         GROUP BY s.day
+         ORDER BY s.day ASC`
+      )
+      .bind(publisherId)
+      .all<DailyStatsRow>();
+    const daily = (dailyResult.results ?? []).map(mapDailyStatsRow);
+    const publishCount = daily.reduce((total, point) => total + point.publishCount, 0);
+    const templateStats = templates.map((template) => ({
+      template: toStatsTemplateSummary(template),
+      downloadCount: template.downloadCount,
+      likeCount: template.likeCount,
+      publishCount: Math.max(1, template.versions.length)
+    }));
+
+    return {
+      totals: {
+        templateCount: templates.length,
+        downloadCount: templates.reduce((total, template) => total + template.downloadCount, 0),
+        likeCount: templates.reduce((total, template) => total + template.likeCount, 0),
+        publishCount: publishCount || templateStats.reduce((total, template) => total + template.publishCount, 0)
+      },
+      daily,
+      templates: templateStats,
+      storageMode: this.storageMode
+    };
   }
 
   public async isTemplateSlugAvailable(slug: string): Promise<boolean> {
@@ -471,6 +645,10 @@ JOIN template_versions v
   AND v.status = 'published'
 LEFT JOIN template_tags tt ON tt.template_id = t.id`;
 
+function templateSelectSqlWithJoins(extraJoins: string): string {
+  return templateSelectSql.replace('LEFT JOIN template_tags tt ON tt.template_id = t.id', `${extraJoins}\nLEFT JOIN template_tags tt ON tt.template_id = t.id`);
+}
+
 interface TemplateRow {
   template_id: string;
   slug: string;
@@ -512,6 +690,13 @@ interface VersionRow {
   schema_version: number;
   status: 'published' | 'rejected';
   created_at: string;
+}
+
+interface DailyStatsRow {
+  day: string;
+  download_count: number | null;
+  like_count: number | null;
+  publish_count: number | null;
 }
 
 function mapTemplateRow(row: TemplateRow, versions: MarketplaceTemplateVersion[] = [mapLatestVersion(row)]): MarketplaceTemplateDetail {
@@ -574,6 +759,20 @@ function mapVersionRow(row: VersionRow): MarketplaceTemplateVersion {
     status: row.status,
     createdAt: row.created_at
   };
+}
+
+function mapDailyStatsRow(row: DailyStatsRow) {
+  return {
+    day: row.day,
+    downloadCount: row.download_count ?? 0,
+    likeCount: row.like_count ?? 0,
+    publishCount: row.publish_count ?? 0
+  };
+}
+
+function toStatsTemplateSummary(template: MarketplaceTemplateDetail): MarketplaceTemplateSummary {
+  const { versions: _versions, readme: _readme, providerWarnings: _providerWarnings, ...summary } = template;
+  return summary;
 }
 
 function parseJsonStringArray(value: string): string[] {
