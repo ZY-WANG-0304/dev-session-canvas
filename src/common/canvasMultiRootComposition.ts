@@ -52,6 +52,11 @@ export interface CanvasRootLocalStateSnapshot {
   state: CanvasPrototypeState;
 }
 
+export interface CanvasNamespacedObjectIdParts {
+  namespaceId: string;
+  localId: string;
+}
+
 export interface ComposeMultiRootCanvasStateOptions {
   workspaceFolders: readonly CanvasMultiRootWorkspaceFolder[];
   rootStates: readonly CanvasRootLocalStateSnapshot[];
@@ -98,6 +103,21 @@ export function namespaceCanvasObjectId(rootPath: string, objectId: string): str
 export function denamespaceCanvasObjectId(rootPath: string, objectId: string): string | undefined {
   const prefix = `${createWorkspaceRootSectionId(rootPath)}:`;
   return objectId.startsWith(prefix) ? objectId.slice(prefix.length) : undefined;
+}
+
+export function splitNamespacedCanvasObjectId(objectId: string): CanvasNamespacedObjectIdParts | undefined {
+  const separatorIndex = objectId.indexOf(':');
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+
+  const namespaceId = objectId.slice(0, separatorIndex);
+  const localId = objectId.slice(separatorIndex + 1);
+  if (!namespaceId.startsWith(`${ROOT_NAMESPACE_PREFIX}-`) || !localId) {
+    return undefined;
+  }
+
+  return { namespaceId, localId };
 }
 
 export function isWorkspaceRootGroup(group: Pick<CanvasGroupSummary, 'role'> | undefined): boolean {
@@ -174,10 +194,10 @@ export function composeRootLocalCanvasStateIntoComposed(
     }))
     .filter((reference) => reference.owners.length > 0);
 
-  const currentRootNodeIds = new Set(
-    composedState.nodes
-      .filter((node) => isNodeOwnedByWorkspaceRoot(node, composedState.groups ?? [], rootPath, rootGroup.id))
-      .map((node) => node.id)
+  const currentRootNodeIds = collectWorkspaceRootOwnedNodeIds(
+    composedState,
+    rootPath,
+    rootGroup.id
   );
 
   return {
@@ -209,11 +229,15 @@ export function composeRootLocalCanvasStateIntoComposed(
       ...namespacedFileReferences
     ],
     suppressedFileActivityEdgeIds: uniqueStrings([
-      ...(composedState.suppressedFileActivityEdgeIds ?? []).filter((edgeId) => denamespaceCanvasObjectId(rootPath, edgeId) === undefined),
+      ...(composedState.suppressedFileActivityEdgeIds ?? []).filter(
+        (edgeId) => !isFileActivityArtifactObjectOwnedByWorkspaceRoot(rootPath, rootGroup.id, edgeId)
+      ),
       ...(safeRootLocalState.suppressedFileActivityEdgeIds ?? []).map((edgeId) => namespaceCanvasObjectId(rootPath, edgeId))
     ]),
     suppressedAutomaticFileArtifactNodeIds: uniqueStrings([
-      ...(composedState.suppressedAutomaticFileArtifactNodeIds ?? []).filter((nodeId) => denamespaceCanvasObjectId(rootPath, nodeId) === undefined),
+      ...(composedState.suppressedAutomaticFileArtifactNodeIds ?? []).filter(
+        (nodeId) => !isFileActivityArtifactObjectOwnedByWorkspaceRoot(rootPath, rootGroup.id, nodeId)
+      ),
       ...(safeRootLocalState.suppressedAutomaticFileArtifactNodeIds ?? []).map((nodeId) => namespaceCanvasObjectId(rootPath, nodeId))
     ])
   };
@@ -705,6 +729,125 @@ function isNodeOwnedByWorkspaceRoot(
     node.groupId === rootGroupId ||
     Boolean(node.groupId && resolveContainingWorkspaceRootGroupId(groups, node.groupId) === rootGroupId)
   );
+}
+
+function collectWorkspaceRootOwnedNodeIds(
+  state: CanvasPrototypeState,
+  rootPath: string,
+  rootGroupId: string
+): Set<string> {
+  const groups = state.groups ?? [];
+  const nodeIds = new Set(
+    state.nodes
+      .filter((node) => isNodeOwnedByWorkspaceRoot(node, groups, rootPath, rootGroupId))
+      .map((node) => node.id)
+  );
+  for (const node of state.nodes) {
+    if (
+      (node.kind === 'file' || node.kind === 'file-list') &&
+      isFileActivityArtifactObjectOwnedByWorkspaceRoot(rootPath, rootGroupId, node.id)
+    ) {
+      nodeIds.add(node.id);
+    }
+  }
+  for (const reference of state.fileReferences ?? []) {
+    const rootOwnerNodeIds = reference.owners
+      .map((owner) => owner.nodeId)
+      .filter((nodeId) => nodeIds.has(nodeId));
+    if (rootOwnerNodeIds.length === 0) {
+      continue;
+    }
+
+    nodeIds.add(buildAutomaticFileNodeIdForReferenceId(reference.id));
+    nodeIds.add(buildLegacyAutomaticFileNodeIdForReferenceId(reference.id));
+    if (rootOwnerNodeIds.length > 1) {
+      nodeIds.add(buildSharedFileListNodeIdForReferenceOwnerIds(rootOwnerNodeIds));
+      nodeIds.add('file-list-shared');
+      continue;
+    }
+
+    const [ownerNodeId] = rootOwnerNodeIds;
+    if (ownerNodeId) {
+      nodeIds.add(buildAgentFileListNodeIdForOwnerId(ownerNodeId));
+      nodeIds.add(buildLegacyAgentFileListNodeIdForOwnerId(ownerNodeId));
+    }
+  }
+  return nodeIds;
+}
+
+function buildAutomaticFileNodeIdForReferenceId(referenceId: string): string {
+  const namespacedId = splitNamespacedCanvasObjectId(referenceId);
+  return namespacedId
+    ? `${namespacedId.namespaceId}:file-${namespacedId.localId}`
+    : `file-${referenceId}`;
+}
+
+function buildLegacyAutomaticFileNodeIdForReferenceId(referenceId: string): string {
+  return `file-${referenceId}`;
+}
+
+function buildAgentFileListNodeIdForOwnerId(ownerNodeId: string): string {
+  const namespacedId = splitNamespacedCanvasObjectId(ownerNodeId);
+  return namespacedId
+    ? `${namespacedId.namespaceId}:file-list-agent-${namespacedId.localId}`
+    : `file-list-agent-${ownerNodeId}`;
+}
+
+function buildLegacyAgentFileListNodeIdForOwnerId(ownerNodeId: string): string {
+  return `file-list-agent-${ownerNodeId}`;
+}
+
+function buildSharedFileListNodeIdForReferenceOwnerIds(ownerNodeIds: readonly string[]): string {
+  const namespaceId = resolveSingleCanvasNamespaceId(ownerNodeIds);
+  return namespaceId ? `${namespaceId}:file-list-shared` : 'file-list-shared';
+}
+
+function isFileActivityArtifactObjectOwnedByWorkspaceRoot(
+  rootPath: string,
+  rootGroupId: string,
+  objectId: string
+): boolean {
+  return (
+    denamespaceCanvasObjectId(rootPath, objectId) !== undefined ||
+    resolveLegacyAutomaticFileArtifactNamespaceId(objectId) === rootGroupId ||
+    objectId === 'file-list-shared'
+  );
+}
+
+function resolveLegacyAutomaticFileArtifactNamespaceId(objectId: string): string | undefined {
+  for (const prefix of ['file-', 'file-list-agent-']) {
+    if (!objectId.startsWith(prefix)) {
+      continue;
+    }
+    const remainder = objectId.slice(prefix.length);
+    const separatorIndex = remainder.indexOf(':');
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const namespaceId = remainder.slice(0, separatorIndex);
+    if (namespaceId.startsWith(`${ROOT_NAMESPACE_PREFIX}-`)) {
+      return namespaceId;
+    }
+  }
+  return undefined;
+}
+
+function resolveSingleCanvasNamespaceId(objectIds: readonly string[]): string | undefined {
+  let namespaceId: string | undefined;
+  for (const objectId of objectIds) {
+    const parts = splitNamespacedCanvasObjectId(objectId);
+    if (!parts) {
+      return undefined;
+    }
+    if (!namespaceId) {
+      namespaceId = parts.namespaceId;
+      continue;
+    }
+    if (namespaceId !== parts.namespaceId) {
+      return undefined;
+    }
+  }
+  return namespaceId;
 }
 
 function isGroupOwnedByWorkspaceRoot(

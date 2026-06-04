@@ -232,6 +232,21 @@ try {
     'workspace folder 变化必须重新加载 root-local / multi-root 组合状态。'
   );
   assert.match(
+    workspaceFoldersListener,
+    /this\.scheduleRestoreLiveRuntimeSessions\(\);/u,
+    'workspace folder 变化后必须重新执行 live runtime restore 调度；multi-root 会按显式策略跳过。'
+  );
+  assert.match(
+    managerSource,
+    /'multi-root-workspace'/u,
+    'multi-root live runtime restore 必须有显式 block reason，而不是复用单根恢复路径。'
+  );
+  assert.match(
+    managerSource,
+    /runtime\/restoreSkipped[\s\S]*multiRootWorkspace/u,
+    'multi-root live runtime restore skip 必须记录诊断事件，便于追踪。'
+  );
+  assert.match(
     managerSource,
     /composeMultiRootCanvasState/u,
     'CanvasPanelManager 必须使用 root-local multi-root composition，而不是 fork 画布状态。'
