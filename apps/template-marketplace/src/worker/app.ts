@@ -153,6 +153,24 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     return context.json(await repository.listTemplatesByPublisher(user));
   });
 
+  app.get('/api/v1/me/likes', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required.'), 401);
+    }
+    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    return context.json(await repository.listLikedTemplates(user));
+  });
+
+  app.get('/api/v1/me/stats', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required.'), 401);
+    }
+    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    return context.json(await repository.getPublisherStats(user));
+  });
+
   app.post('/api/v1/auth/vscode/exchange', async (context) => {
     const result = await exchangeVSCodeGithubToken(context.req.raw, context.env);
     if (result instanceof Response) {
@@ -193,6 +211,35 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
     }
     return context.json(detail);
+  });
+
+  app.post('/api/v1/templates/:id/like', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to like templates.'), 401);
+    }
+    if (!context.env?.MARKETPLACE_DB) {
+      return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template likes require D1 storage.'), 503);
+    }
+
+    const requestedLike = await readOptionalLikeTarget(context.req.raw);
+    if (requestedLike.response) {
+      return requestedLike.response;
+    }
+
+    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    try {
+      const result = await repository.setTemplateLike(context.req.param('id'), user, requestedLike.liked);
+      if (!result) {
+        return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
+      }
+      return context.json(result);
+    } catch (error) {
+      if (error instanceof MarketplaceRepositoryWriteError) {
+        return context.json(makeMarketplaceApiError(error.code, error.message), error.status as 400 | 401 | 409 | 413 | 503);
+      }
+      throw error;
+    }
   });
 
   app.get('/api/v1/templates/:id/download', async (context) => handleTemplatePackageDownload(context));
@@ -352,6 +399,32 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   app.notFound((context) => context.json(makeMarketplaceApiError('not_found', 'Route was not found.'), 404));
 
   return app;
+}
+
+async function readOptionalLikeTarget(request: Request): Promise<{ liked?: boolean; response?: never } | { liked?: never; response: Response }> {
+  const contentType = request.headers.get('content-type') ?? '';
+  const hasBody = contentType.toLowerCase().includes('application/json');
+  if (!hasBody) {
+    return {};
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return {
+      response: Response.json(makeMarketplaceApiError('like_request_invalid', 'Like request must be valid JSON.'), { status: 400 })
+    };
+  }
+  if (body === null || (typeof body === 'object' && !Array.isArray(body) && !('liked' in body))) {
+    return {};
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body) || typeof (body as { liked?: unknown }).liked !== 'boolean') {
+    return {
+      response: Response.json(makeMarketplaceApiError('like_request_invalid', 'Like request liked field must be a boolean.'), { status: 400 })
+    };
+  }
+  return { liked: (body as { liked: boolean }).liked };
 }
 
 function selectTemplateVersion(template: MarketplaceTemplateDetail, versionId?: string): MarketplaceTemplateVersion | undefined {

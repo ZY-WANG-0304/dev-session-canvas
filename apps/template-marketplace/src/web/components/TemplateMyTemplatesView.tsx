@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 
-import type { MarketplaceTemplateSummary } from '@dev-session-canvas/marketplace-shared';
+import type { MarketplacePublisherStatsResponse, MarketplaceTemplateSummary } from '@dev-session-canvas/marketplace-shared';
 
-import { loadCurrentMarketplaceUser, loadMyMarketplaceTemplates, type MarketplaceCurrentUser } from '../lib/api';
+import { loadCurrentMarketplaceUser, loadMyMarketplaceStats, loadMyMarketplaceTemplates, type MarketplaceCurrentUser } from '../lib/api';
 import { buildGithubSignInHref, buildSignOutHref, getMarketplaceHomeHref, getMarketplaceMeHref, getMarketplacePublishHref } from '../lib/routing';
 import { TemplateCard } from './TemplateCard';
 
 interface MyTemplatesState {
   user?: MarketplaceCurrentUser;
   templates: MarketplaceTemplateSummary[];
+  stats?: MarketplacePublisherStatsResponse;
   loading: boolean;
   errorMessage?: string;
 }
@@ -30,11 +31,12 @@ export function TemplateMyTemplatesView(): JSX.Element {
           }
           return;
         }
-        const templates = await loadMyMarketplaceTemplates();
+        const [templates, stats] = await Promise.all([loadMyMarketplaceTemplates(), loadMyMarketplaceStats()]);
         if (!cancelled) {
           setState({
             user: currentUser.user,
             templates: templates.items,
+            stats,
             loading: false
           });
         }
@@ -112,11 +114,14 @@ export function TemplateMyTemplatesView(): JSX.Element {
             </div>
 
             {state.templates.length > 0 ? (
-              <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {state.templates.map((template) => (
-                  <TemplateCard key={template.id} template={template} />
-                ))}
-              </div>
+              <>
+                <PublisherStatsPanel stats={state.stats} />
+                <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {state.templates.map((template) => (
+                    <TemplateCard key={template.id} template={template} />
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="mt-8 border border-dashed border-canvas-line bg-canvas-mist p-10 text-center text-sm text-canvas-muted">
                 You have not published any templates yet.
@@ -127,4 +132,80 @@ export function TemplateMyTemplatesView(): JSX.Element {
       </div>
     </div>
   );
+}
+
+function PublisherStatsPanel({ stats }: { stats?: MarketplacePublisherStatsResponse }): JSX.Element | null {
+  if (!stats) {
+    return null;
+  }
+  const recentDaily = stats.daily.slice(-7);
+
+  return (
+    <section className="mt-8 border border-canvas-line bg-canvas-paper">
+      <div className="border-b border-canvas-line px-5 py-4">
+        <p className="text-sm font-semibold uppercase tracking-wide text-canvas-moss">Dashboard</p>
+        <h2 className="mt-1 text-2xl font-semibold text-canvas-ink">Community signal</h2>
+      </div>
+      <div className="grid gap-px bg-canvas-line sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Templates" value={stats.totals.templateCount} />
+        <StatCard label="Downloads" value={stats.totals.downloadCount} />
+        <StatCard label="Likes" value={stats.totals.likeCount} />
+        <StatCard label="Publishes" value={stats.totals.publishCount} />
+      </div>
+      <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-canvas-muted">Recent trend</h3>
+          {recentDaily.length > 0 ? (
+            <ol className="mt-4 divide-y divide-canvas-line border-y border-canvas-line">
+              {recentDaily.map((point) => (
+                <li key={point.day} className="grid grid-cols-[1fr_auto_auto] gap-4 py-3 text-sm">
+                  <span className="font-semibold text-canvas-ink">{point.day}</span>
+                  <span className="text-canvas-muted">{formatNumber(point.downloadCount)} downloads</span>
+                  <span className="text-canvas-muted">{formatNumber(point.likeCount)} likes</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-4 border border-dashed border-canvas-line bg-canvas-mist p-4 text-sm text-canvas-muted">
+              No daily activity has been recorded yet.
+            </p>
+          )}
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-canvas-muted">Top templates</h3>
+          {stats.templates.length > 0 ? (
+            <ol className="mt-4 space-y-3">
+              {stats.templates.slice(0, 5).map((entry) => (
+                <li key={entry.template.id} className="border border-canvas-line bg-canvas-mist p-3">
+                  <div className="font-semibold text-canvas-ink">{entry.template.name}</div>
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-canvas-muted">
+                    <span>{formatNumber(entry.downloadCount)} downloads</span>
+                    <span>{formatNumber(entry.likeCount)} likes</span>
+                    <span>{formatNumber(entry.publishCount)} publishes</span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-4 border border-dashed border-canvas-line bg-canvas-mist p-4 text-sm text-canvas-muted">
+              Publish a template to see per-template performance.
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: number }): JSX.Element {
+  return (
+    <div className="bg-canvas-paper p-5">
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-canvas-muted">{label}</div>
+      <div className="mt-2 text-3xl font-light text-canvas-ink">{formatNumber(value)}</div>
+    </div>
+  );
+}
+
+function formatNumber(value: number): string {
+  return value.toLocaleString();
 }

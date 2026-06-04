@@ -19,8 +19,9 @@ related_plans:
   - docs/exec-plans/active/template-marketplace-tech-selection.md
   - docs/exec-plans/active/template-marketplace-foundation.md
   - docs/exec-plans/active/template-marketplace-publishing.md
+  - docs/exec-plans/active/template-marketplace-phase3.md
   - docs/exec-plans/active/template-package-repository-research.md
-updated_at: 2026-05-30
+updated_at: 2026-06-01
 ---
 
 # 模板市场技术选型
@@ -326,7 +327,7 @@ Phase 4 在本方案中的承载方式如下：
 
 ## 8. 验证方法
 
-技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析。真实 GitHub OAuth、共享 React Webview bundle、完整生产资源分离、点赞/举报写接口和治理后台尚未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
+技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析；2026-06-01 Phase 3 又完成点赞/取消点赞、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`、发布者 Dashboard 和本地 API/Web/typecheck 验证。真实 GitHub OAuth preview smoke、共享 React Webview bundle、完整生产资源分离、举报写接口和治理后台尚未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
 
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。
