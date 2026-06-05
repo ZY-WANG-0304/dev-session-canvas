@@ -235,6 +235,46 @@ assert.match(
   /withSurfaceLifecycle/u,
   'Expected host-to-webview messages to carry the current surface lifecycle.'
 );
+assert.match(
+  panelManagerSource,
+  /setPersistedStateForTest[\s\S]*const multiRootOverlay = this\.writeRootLocalCanvasSnapshotsForState\(this\.state\)[\s\S]*state: this\.state[\s\S]*multiRootOverlay[\s\S]*waitForPendingWorkspaceStateUpdates/u,
+  'Expected seeded test state to update all persisted backends before later reloads choose root-local snapshots.'
+);
+assert.match(
+  panelManagerSource,
+  /const rootLocalSnapshotSummary = summarizeCanvasStateForDiagnostics\(rootLocalSnapshot\.state\)[\s\S]*const rootLocalLoadedStateSummary = summarizeCanvasStateForDiagnostics\(sanitizedRootState\)[\s\S]*source: 'rootLocalSnapshot'[\s\S]*snapshotWrittenAt: rootLocalSnapshot\.writtenAt[\s\S]*snapshotStateHash: rootLocalSnapshot\.stateHash \?\? rootLocalSnapshotSummary\.stateHash[\s\S]*loadedStateHash: rootLocalLoadedStateSummary\.stateHash[\s\S]*\.\.\.rootLocalSnapshotSummary/u,
+  'Expected root-local snapshot loads to report the selected snapshot hash while keeping the loaded-state hash separately.'
+);
+assert.match(
+  panelManagerSource,
+  /currentLifecycle\.mode === lifecycle!\.mode[\s\S]*currentLifecycle\.generation === lifecycle!\.generation[\s\S]*areSurfaceLifecycleFrameIdsCompatible\(currentLifecycle\.frameId, lifecycle!\.frameId\)[\s\S]*this\.surfaceLifecycle\[sourceSurface\]/u,
+  'Expected same-generation Webview ready messages with a new frameId to promote the active frame.'
+);
+assert.match(
+  panelManagerSource,
+  /matchesPendingWebviewRequestLifecycle[\s\S]*areSurfaceLifecycleFrameIdsCompatible\(pendingRequest\.lifecycle\.frameId, lifecycle\.frameId\)/u,
+  'Expected pending Webview test requests to accept results from the promoted frameId-compatible lifecycle.'
+);
+assert.match(
+  panelManagerSource,
+  /const editorWebview = panel\.webview;[\s\S]*panel\.onDidDispose\([\s\S]*surfaceMessageWebview\.editor === editorWebview[\s\S]*renderedWebviewLifecycle\.delete\(editorWebview\)/u,
+  'Expected editor dispose cleanup to use the captured Webview instead of reading panel.webview after disposal.'
+);
+assert.doesNotMatch(
+  panelManagerSource,
+  /panel\.onDidDispose\([\s\S]*panel\.webview[\s\S]*panel\.onDidChangeViewState/u,
+  'Editor dispose cleanup must not read panel.webview because VS Code throws after the panel is disposed.'
+);
+assert.match(
+  panelManagerSource,
+  /const panelWebview = webviewView\.webview;[\s\S]*webviewView\.onDidDispose\([\s\S]*surfaceMessageWebview\.panel === panelWebview[\s\S]*renderedWebviewLifecycle\.delete\(panelWebview\)/u,
+  'Expected panel view dispose cleanup to use the captured Webview instead of reading webviewView.webview after disposal.'
+);
+assert.doesNotMatch(
+  panelManagerSource,
+  /webviewView\.onDidDispose\([\s\S]*webviewView\.webview[\s\S]*webviewView\.onDidChangeVisibility/u,
+  'Panel view dispose cleanup must not read webviewView.webview because VS Code throws after the view is disposed.'
+);
 
 const applyTemplateInGroupMessage = {
   type: 'webview/applyTemplate',
