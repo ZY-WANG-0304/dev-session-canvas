@@ -375,6 +375,16 @@ assert.match(
   /resourceUri: uri\.toString\(\)/u,
   'Refreshing a current-host associated Markdown Note should persist the canonical resourceUri.'
 );
+const readNoteMarkdownFileSource = sliceBetween(
+  panelManagerSource,
+  'private async readNoteMarkdownFile',
+  'private async writeNoteMarkdownFile'
+);
+assert.match(
+  readNoteMarkdownFileSource,
+  /latestStatResult\.contentRevision === contentRevision[\s\S]*Buffer\.from\(await vscode\.workspace\.fs\.readFile\(uri\)\)/u,
+  'Reading associated Markdown files should re-stat after read and retry when size/revision changes during the read.'
+);
 const normalizeContentSource = sliceBetween(
   panelManagerSource,
   'function normalizeStoredNoteContentSource',
