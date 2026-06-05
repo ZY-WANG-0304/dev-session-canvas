@@ -36,6 +36,8 @@ try {
 
   const frontendRoot = path.join(tempDir, 'frontend');
   const backendRoot = path.join(tempDir, 'backend');
+  const normalizedFrontendRoot = normalizeRootPathForTest(frontendRoot);
+  const normalizedBackendRoot = normalizeRootPathForTest(backendRoot);
   const folders = [
     { name: 'frontend', path: frontendRoot },
     { name: 'backend', path: backendRoot }
@@ -148,9 +150,9 @@ try {
     ],
     now: '2026-06-04T01:00:00.000Z'
   });
-  const frontendAfterRootMove = decomposedAfterRootMove.rootStates.find((entry) => entry.rootPath === path.resolve(frontendRoot)).state;
+  const frontendAfterRootMove = decomposedAfterRootMove.rootStates.find((entry) => entry.rootPath === normalizedFrontendRoot).state;
   assert.deepEqual(frontendAfterRootMove.nodes[0].position, { x: 20, y: 30 }, '移动 root section 及其子树只改变 multi-root overlay，不改写 root-local 节点坐标。');
-  assert.deepEqual(decomposedAfterRootMove.overlay.roots.find((root) => root.rootPath === path.resolve(frontendRoot)).position, { x: 400, y: 500 });
+  assert.deepEqual(decomposedAfterRootMove.overlay.roots.find((root) => root.rootPath === normalizedFrontendRoot).position, { x: 400, y: 500 });
 
   const composedWithWorkspaceGroup = composeMultiRootCanvasState({
     workspaceFolders: folders,
@@ -187,7 +189,7 @@ try {
   });
   assert.equal(decomposedWithWorkspaceGroup.overlay.groups.length, 1);
   assert.equal(decomposedWithWorkspaceGroup.overlay.groups[0].id, 'group-workspace-roots');
-  assert.equal(decomposedWithWorkspaceGroup.overlay.roots.find((root) => root.rootPath === path.resolve(frontendRoot)).parentGroupId, 'group-workspace-roots');
+  assert.equal(decomposedWithWorkspaceGroup.overlay.roots.find((root) => root.rootPath === normalizedFrontendRoot).parentGroupId, 'group-workspace-roots');
   assert.ok(
     !decomposedWithWorkspaceGroup.rootStates
       .flatMap((entry) => entry.state.groups)
@@ -212,8 +214,8 @@ try {
     ],
     now: '2026-06-04T02:00:00.000Z'
   });
-  const frontendSuppressionsAfterRoundTrip = decomposedFileActivitySuppressions.rootStates.find((entry) => entry.rootPath === path.resolve(frontendRoot)).state;
-  const backendSuppressionsAfterRoundTrip = decomposedFileActivitySuppressions.rootStates.find((entry) => entry.rootPath === path.resolve(backendRoot)).state;
+  const frontendSuppressionsAfterRoundTrip = decomposedFileActivitySuppressions.rootStates.find((entry) => entry.rootPath === normalizedFrontendRoot).state;
+  const backendSuppressionsAfterRoundTrip = decomposedFileActivitySuppressions.rootStates.find((entry) => entry.rootPath === normalizedBackendRoot).state;
   assert.deepEqual(frontendSuppressionsAfterRoundTrip.suppressedFileActivityEdgeIds, ['note-1::file-ref-1']);
   assert.deepEqual(frontendSuppressionsAfterRoundTrip.suppressedAutomaticFileArtifactNodeIds, ['file-ref-1']);
   assert.deepEqual(backendSuppressionsAfterRoundTrip.suppressedFileActivityEdgeIds, ['note-1::file-ref-1']);
@@ -232,7 +234,7 @@ try {
     ],
     now: '2026-06-04T03:00:00.000Z'
   });
-  const frontendAfterCreate = decomposedAfterCreate.rootStates.find((entry) => entry.rootPath === path.resolve(frontendRoot)).state;
+  const frontendAfterCreate = decomposedAfterCreate.rootStates.find((entry) => entry.rootPath === normalizedFrontendRoot).state;
   assert.ok(frontendAfterCreate.nodes.some((candidate) => candidate.id === 'note-created'));
   assert.deepEqual(frontendAfterCreate.nodes.find((candidate) => candidate.id === 'note-created').position, { x: 120, y: 140 });
 
@@ -326,6 +328,11 @@ try {
   console.log('canvas multi-root composition tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+function normalizeRootPathForTest(rootPath) {
+  const resolved = path.resolve(rootPath);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 function state(overrides = {}) {
