@@ -664,7 +664,8 @@ try {
   assert.match(applyTemplateMethodSource, /focusAppliedNodes\?: boolean/u);
   assert.match(applyTemplateMethodSource, /resolveCanvasTemplateNoteMaterializations/u);
   assert.match(applyTemplateMethodSource, /noteMaterializations/u);
-  assert.match(applyTemplateMethodSource, /requestTemplateNodeGroupFocus\(applyResult\.nodeIds\)/u);
+  assert.match(applyTemplateMethodSource, /requestTemplateNodeGroupFocus\(appliedNodeIds\)/u);
+  assert.match(applyTemplateMethodSource, /多根 workspace 中暂不支持重置模板/u);
   const pathOnlyNoteMaterializationSource = sliceBetween(
     panelManagerSource,
     'private async resolvePathOnlyCanvasTemplateNoteMaterialization',
@@ -694,6 +695,16 @@ try {
   );
   assert.match(createNodeSource, /createCanvasNodeObjectId\(kind, sequence\)/u);
   assert.match(createNodeSource, /randomUUID\(\)/u);
+  const saveCurrentCanvasTemplateSource = sliceBetween(
+    panelManagerSource,
+    'public async saveCurrentCanvasAsTemplate',
+    'private buildStateForCanvasTemplateCapture'
+  );
+  assert.match(
+    saveCurrentCanvasTemplateSource,
+    /多根 workspace 中暂不支持保存整个组合视图为模板/u,
+    '多根组合视图不能直接保存为跨 root 模板。'
+  );
   const nodeSequenceSource = sliceBetween(
     panelManagerSource,
     'function readCanvasNodeDisplaySequence',
