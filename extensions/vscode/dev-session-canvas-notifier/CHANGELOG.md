@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.0
+
+- 与主扩展 `0.13.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 VS Code multi-root workspace 组合画布、系统 root section、root-local 状态共享、跨 root 连线拒绝和多根文件活动命名空间；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.12.0
 
 - 与主扩展 `0.12.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 File Explorer 资源右键创建绑定 cwd 的 `Terminal` / `Agent` 节点、Panel Webview lifecycle 串线修复、执行目录可见反馈和画布节点 padding 收口；notifier companion 不引入新的通知投递行为变更。
