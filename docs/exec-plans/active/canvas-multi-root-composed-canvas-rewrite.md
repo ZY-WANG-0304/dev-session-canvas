@@ -21,6 +21,7 @@
 - [x] (2026-06-04 03:45 +0800) 处理 PR review blocker：Webview 与 Host 双侧拒绝跨 root create/reconnect edge，并补充 group helper 与 Playwright 回归测试。
 - [x] (2026-06-04 22:44 +0800) 处理 review follow-up：补齐多根文件活动自动 artifact 的 root 命名空间重建、suppression 剪枝和 workspace folder 变化后的 live runtime 恢复口径。
 - [x] (2026-06-05 01:00 +0800) 处理最新 review blocker：live 文件活动按 owner root namespace 写入 file reference，旧 unnamespaced reference 按 root scope 迁移，并保护 multi-root runtime skip 不覆盖 root-local 重连信号。
+- [x] (2026-06-05 08:22 +0800) 处理 Windows 复核 blocker：`test:canvas-multi-root-composition` 的 rootPath 断言改用与 production `normalizeRootPath()` 一致的大小写规则，避免 Windows 上期望值仍用 `path.resolve()` 保留大小写导致假失败。
 
 ## 意外与发现
 
@@ -44,6 +45,9 @@
 
 - 观察：multi-root restore skip 如果直接把 composed state 拆回 root-local snapshot，会把原本可重连的 root-local `live-runtime` metadata 持久化降级为 `history-restored`，单根重开时无法再走 reattach 主路径。
   证据：review inline 指出 `reconcileRuntimeNodes(... allowLiveRuntimeReconnect:false ...)` 后立即 `persistState()` 的风险；新增 `scripts/test/test-canvas-execution-context.mjs` 覆盖 previous root-local Agent `liveSession:true` 和 Terminal `attachmentState:'reattaching'` 在多根 skip 持久化后仍保留重连字段。
+
+- 观察：`scripts/test/test-canvas-multi-root-composition.mjs` 用 `path.resolve(frontendRoot)` 作为期望 rootPath，但 production `normalizeRootPath()` 在 Windows 下会把 root path 转成小写；因此 Windows 上 `.find((entry) => entry.rootPath === path.resolve(frontendRoot))` 会找不到 root state。
+  证据：最新 review 在 Windows 复核中指出 `npm run test:canvas-multi-root-composition` 会因 `.state` / `.position` 读取 `undefined` 失败；修复后测试中的期望 root path 改为 `normalizeRootPathForTest()`，与 production 的 Windows lower-case 规则一致。
 
 ## 决策记录
 
@@ -207,7 +211,7 @@ Review follow-up 验证记录如下：
     git diff --check
     退出码 0。
 
-最新 review blocker 修复验证记录如下：
+live 文件活动与 runtime blocker 修复验证记录如下：
 
     npm run test:canvas-node-groups
     退出码 0；覆盖 live 文件活动从 namespaced owner 产生 root-namespaced file reference、旧 unnamespaced reference 迁移，以及 namespaced suppression 保留。
@@ -219,6 +223,15 @@ Review follow-up 验证记录如下：
     退出码 0。
     npm run test:webview -- --grep "workspace root group|cross-root edge"
     3 passed；同时执行 build。
+    git diff --check
+    退出码 0。
+
+Windows 复核 blocker 修复验证记录如下：
+
+    npm run test:canvas-multi-root-composition
+    退出码 0；rootPath 断言改用测试侧 normalize helper，避免 Windows 上 `path.resolve()` 与 production lower-case 规则不一致。
+    npm run typecheck
+    退出码 0。
     git diff --check
     退出码 0。
 
@@ -244,4 +257,4 @@ Review follow-up 验证记录如下：
     export function composeMultiRootCanvasState(...): CanvasPrototypeState;
     export function decomposeMultiRootCanvasState(...): { rootStates: CanvasRootLocalStateSnapshot[]; overlay: CanvasMultiRootOverlay };
 
-本次更新说明：2026-06-04 创建计划，原因是用户要求从 `origin/main` 重新实现当前分支功能，并要求按仓库工作流先记录复杂功能计划、正式设计和验证口径。2026-06-05 追加 latest review blocker 修复记录，原因是 live 文件活动 reference 命名空间和 multi-root skip 的 root-local reattach 信号保护都属于本功能的正式边界。
+本次更新说明：2026-06-04 创建计划，原因是用户要求从 `origin/main` 重新实现当前分支功能，并要求按仓库工作流先记录复杂功能计划、正式设计和验证口径。2026-06-05 追加 latest review blocker 修复记录，原因是 live 文件活动 reference 命名空间和 multi-root skip 的 root-local reattach 信号保护都属于本功能的正式边界。2026-06-05 追加 Windows 复核 blocker 修复记录，原因是跨平台测试期望也属于本 PR 可验证性边界。
