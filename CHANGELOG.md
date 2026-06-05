@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.13.0 - Preview Multi-Root Workspace Canvas Update
+
+相对 `0.12.0`，`0.13.0` 是一轮新的公开 `Preview` 里程碑更新，重点把 VS Code multi-root workspace 中的多个 workspace folder 组合到同一张画布中，并让单根与多根打开方式共享同一份 root-local 画布内容。它保留 `0.12.0` 的 File Explorer 绑定 cwd 创建执行节点、Panel Webview lifecycle 串线修复、执行目录可见反馈、画布节点 padding 收口，以及 `0.11.0` 的画布分组、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.12.0` bump 到 `0.13.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 在 VS Code multi-root workspace 中为每个 workspace folder 生成系统级 root section，并把各 root 的 root-local 画布状态组合成同一张画布；单独打开某个 root 时仍只显示该 root 自己的画布
+- root section 可以移动、resize，并可作为整体被外层普通分组包含；系统 root section 不允许删除、取消分组或重命名，移动 root section 只写入 multi-root overlay，不改写单根 root-local 节点坐标
+- 在 multi-root 组合视图中移动 root 内对象、创建 `Note` / `Agent` / `Terminal`、应用模板或拖入关联 Markdown Note，会按目标 root 写回对应 root-local 状态；执行节点真实 cwd 仍由 `metadata.cwd` 决定，不因拖到其他 root section 而静默改写
+- 节点、用户分组、连线、文件活动自动节点、file-activity edge 和 suppression id 在组合视图中按 root 命名空间隔离，避免不同 root 下同名对象或自动 file artifact 冲突
+- Webview 与 Host 双侧拒绝跨 root 创建或重连连线，避免生成只能在当前会话临时可见、无法拆回 root-local 或 overlay 的状态
+- multi-root 组合视图不重新连接 live runtime，只展示历史态；持久化时保留 root-local snapshot 中的 reattach 信号，用户单独打开所属 root 后仍可走 root-local live runtime 恢复路径
+- 补充 multi-root composition、root section 分组策略、跨 root edge 拒绝、文件活动命名空间、suppression 往返、runtime skip 保守持久化、模板、Markdown drop、执行上下文、协议和 Webview 回归
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.12.0` 升级到 `0.13.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.13.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.13.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.13.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.13.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.12.0 - Preview Explorer Execution Context Update
 
 相对 `0.11.0`，`0.12.0` 是一轮新的公开 `Preview` 里程碑更新，重点把 VS Code File Explorer 中已经选定的目录或文件上下文带入画布执行节点，并修复 Panel Webview 恢复时可能出现的空画布串线问题。它保留 `0.11.0` 的画布分组、分组树侧栏、分组模板保存 / 应用、受限创建入口解释，以及既有生产 Webview Terminal TUI 输入热修复、Agent 异常提醒、Note Markdown 源码定位 / 可恢复草稿、双市场发布元数据、安装拓扑和 Preview 支持边界。

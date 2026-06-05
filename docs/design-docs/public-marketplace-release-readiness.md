@@ -11,10 +11,12 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
-updated_at: 2026-05-15
+updated_at: 2026-06-05
 ---
 
 # 公开平台发布准备
+
+> 2026-06-05 补充：本文主体保留公开 Marketplace Preview 首发准备与后续双市场同步机制的历史决策背景；当前新版本发布准备目标为 `0.13.0`，发布输入、release notes、安装/升级、回退、验证记录与 tag 命令以 `docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 为准。`0.13.0` 不改变本文已选定的渠道策略、Preview 定位、README 打包入口、双市场同版本同步和最终 `main` ref 发布 / tag 约束。
 
 ## 1. 背景
 

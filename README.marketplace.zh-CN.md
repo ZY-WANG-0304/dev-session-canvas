@@ -22,6 +22,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 将 `Note` 节点关联到 workspace 中的 `.md` / `.markdown` 文件，并支持 YAML metadata 浮层和安全 Markdown 图片预览
 - 使用内置模板和自定义模板快速恢复一组 `Agent` / `Terminal` / `Note` 工作面，并为关联 Markdown Note 提供显式保存策略
 - 使用可命名画布分组组织相关 `Agent` / `Terminal` / `Note` 节点，支持嵌套分组、分组 resize 和侧栏分组树浏览
+- 将 VS Code multi-root workspace 组合到同一张画布中，并用系统 workspace-root section 保留每个 root 自己的画布状态
 - `Restricted Mode` 下保留画布浏览，执行入口自动禁用
 - 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
 - 在侧栏查看 `节点` 与 `会话历史` 列表，支持快速定位当前画布节点并从历史恢复新 `Agent` 节点
@@ -50,22 +51,24 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.12.0 版本亮点
+## 0.13.0 版本亮点
 
-当前公开的 `0.12.0` 版本是一轮新的 `0.x` Preview 里程碑，重点把 File Explorer 资源上下文带入画布执行节点，并强化 Panel Webview 恢复。它保留 `0.11.0` 的画布分组里程碑、Marketplace 元数据、Open VSX 同版本同步策略、notifier companion 安装关系和支持矩阵。
+当前公开的 `0.13.0` 版本是一轮新的 `0.x` Preview 里程碑，重点发布 VS Code multi-root workspace 组合画布。multi-root 窗口会把每个 workspace folder 显示为同一张画布里的系统 root section，同时保留用户单独打开某个 folder 时看到的 root-local 画布状态。它保留 `0.12.0` 的 File Explorer 绑定 cwd 创建里程碑、`0.11.0` 的画布分组、Marketplace 元数据、Open VSX 同版本同步策略、notifier companion 安装关系和支持矩阵。
 
-- 可从 File Explorer 中的 workspace 内目录或文件右键创建 `Terminal` 或 `Agent` 节点；普通文件会使用其父目录作为执行 cwd
-- 目标 cwd 会写入节点 metadata，首次启动、重启、新建 Agent 会话、resume、runtime supervisor、诊断和终端链接上下文都会继续使用同一目录
-- Agent 节点副标题与侧栏 `节点` 第二行会显示 cwd 标签，hover 中保留完整 cwd 与启动命令；Terminal 副标题继续聚焦 shell path
-- 新增 Webview lifecycle identity、frameId 与 bootstrap ack，避免 Panel restore 双 attach 后出现画布背景可见但节点不显示
-- 收口节点正文 padding 与分组成员 inset，让执行节点、卡片态节点和画布分组保持一致的视觉节奏
+- multi-root 窗口中的每个 workspace folder 都会显示为系统 workspace-root section，并承载该 root 自己的画布内容
+- 保留单根打开行为：单独打开某个 root 时只显示该 root 自己的画布，打开 multi-root workspace 时再把当前 roots 组合到同一张画布
+- root section 可以移动、resize，并作为整体被普通外层分组包含；系统 root section 本身不能删除、取消分组或重命名
+- 在 root section 内移动对象、创建 `Note` / `Agent` / `Terminal`、应用模板或拖入 Markdown Note，都会写回对应 root-local 状态
+- 节点、分组、连线、文件活动自动对象和 suppression id 按 workspace root 命名空间隔离，避免不同 root 下的同名对象冲突
+- Webview 与 Host 双侧拒绝跨 root 创建或重连连线，避免生成无法持久化的临时画布状态
+- multi-root 视图对 live runtime 恢复保持保守：组合视图展示历史态，同时保留 root-local reattach 信号供单根重新打开时使用
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.11.0` 升级到 `0.12.0` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.12.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.12.0` 后会继续沿用该明确选择
+- 首次安装与从 `0.12.0` 升级到 `0.13.0` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.13.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.13.0` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
@@ -99,7 +102,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续更高的 `0.12.x` 修复版本，而非尝试手动降级
+- 优先等待后续更高的 `0.13.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 
