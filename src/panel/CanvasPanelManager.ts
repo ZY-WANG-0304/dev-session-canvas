@@ -49,6 +49,7 @@ import {
   type AgentProviderLaunchDefaults,
   type AgentResumeStrategy,
   type CanvasCreatableNodeKind,
+  type CanvasGroupRole,
   type CanvasGroupDeleteMode,
   type CanvasGroupSummary,
   type CanvasEdgeAnchor,
@@ -116,6 +117,26 @@ import {
   strongTerminalAttentionReminderPulsesMinimap,
   strongTerminalAttentionReminderShowsTitleBar
 } from '../common/protocol';
+import {
+  composeRootLocalCanvasStateIntoComposed,
+  composeMultiRootCanvasState,
+  createEmptyCanvasState,
+  denamespaceCanvasObjectId,
+  decomposeComposedCanvasStateForWorkspaceRoot,
+  decomposeMultiRootCanvasState,
+  getWorkspaceRootSectionContentInset,
+  isWorkspaceRootGroup,
+  normalizeCanvasMultiRootOverlay,
+  namespaceCanvasObjectId,
+  resolveWorkspaceRootPathForGroup,
+  sanitizeRootLocalCanvasState,
+  splitNamespacedCanvasObjectId,
+  translateComposedCanvasPositionToRootLocal,
+  translateRootLocalCanvasPositionToComposed,
+  type CanvasMultiRootOverlay,
+  type CanvasMultiRootWorkspaceFolder,
+  type CanvasRootLocalStateSnapshot
+} from '../common/canvasMultiRootComposition';
 import {
   buildFreshAgentCommandLine,
   buildAgentHistoryResumeCommandLine,
@@ -265,6 +286,12 @@ const CANVAS_GROUP_MEMBER_INSETS = {
   right: CANVAS_GROUP_PADDING,
   bottom: CANVAS_GROUP_PADDING
 } as const;
+const CANVAS_WORKSPACE_ROOT_GROUP_MEMBER_INSETS = {
+  left: getWorkspaceRootSectionContentInset(),
+  top: getWorkspaceRootSectionContentInset(),
+  right: getWorkspaceRootSectionContentInset(),
+  bottom: getWorkspaceRootSectionContentInset()
+} as const;
 const CANVAS_GROUP_COLLISION_PADDING = 24;
 const CANVAS_NODE_COLLISION_PADDING = 24;
 const EXECUTION_OUTPUT_FLUSH_INTERVAL_MS = 32;
@@ -281,6 +308,7 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
 const CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY = 'devSessionCanvas.canvas.defaultTemplateId';
+const ROOT_LOCAL_CANVAS_STORAGE_DIRECTORY = 'root-local-canvas';
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
 const FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STOP_HINT_STYLE';
 const RELOAD_WINDOW_ACTION_LABEL = '重新加载窗口';
@@ -339,7 +367,7 @@ interface CreateNodeOptions {
   titleOverride?: string;
 }
 
-type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled';
+type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled' | 'multi-root-workspace';
 
 interface ManagedExecutionSessionBase {
   sessionId: string;
@@ -543,6 +571,7 @@ interface PersistedCanvasSnapshot {
   writtenAt?: string;
   stateHash?: string;
   state?: unknown;
+  multiRootOverlay?: unknown;
   fileFilterState?: unknown;
   activeSurface?: CanvasSurfaceLocation;
   defaultSurface?: CanvasSurfaceLocation;
@@ -761,6 +790,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private pendingWorkspaceStateUpdate: Promise<void> = Promise.resolve();
   private lastPersistedCanvasSnapshotError: string | undefined;
   private lastPersistedCanvasSnapshotWrittenAt: string | undefined;
+  private multiRootOverlay: CanvasMultiRootOverlay | undefined;
+  private lastLoadedRootLocalStates: CanvasRootLocalStateSnapshot[] = [];
   private readonly runtimeSupervisorClients = new Map<string, RuntimeSupervisorClient>();
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
@@ -849,14 +880,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         this.invalidateResolvedShellEnvironmentPatch();
         this.clearAgentCliResolutionCache();
+        this.state = this.loadReconciledState();
         const executionMetadataChanged = this.reconcileDefaultExecutionMetadataCwd();
         const terminalShellMetadataChanged = this.refreshConfiguredTerminalShellMetadata();
         const metadataChanged = executionMetadataChanged || terminalShellMetadataChanged;
-        if (metadataChanged) {
-          this.persistState();
-        }
+        this.persistState();
         this.postState('host/stateUpdated');
         this.notifySidebarStateChanged();
+        this.scheduleRestoreLiveRuntimeSessions();
       })
     );
 
@@ -1091,6 +1122,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }));
   }
 
+  private getMultiRootWorkspaceFoldersForComposition(): CanvasMultiRootWorkspaceFolder[] {
+    return (vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => ({
+      name: workspaceFolder.name,
+      path: path.resolve(workspaceFolder.uri.fsPath)
+    }));
+  }
+
   public getCanvasTemplateAssociatedNoteSaveItems(): CanvasTemplateAssociatedNoteSaveFormItem[] {
     return this.state.nodes.flatMap((node) => {
       if (node.kind !== 'note') {
@@ -1155,6 +1193,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       associatedNoteSaveModes?: Readonly<Record<string, CanvasTemplateAssociatedNoteSaveMode>>;
     }
   ): Promise<CanvasStoredTemplate> {
+    if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1) {
+      throw new Error('多根 workspace 中暂不支持保存整个组合视图为模板；请单独打开目标 root 后保存模板。');
+    }
+
     const catalog = await this.getCanvasTemplateCatalog();
     const overwriteTemplate = options?.overwriteTemplateId
       ? findCanvasTemplateById(catalog.templates, options.overwriteTemplateId)
@@ -1757,12 +1799,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public createNode(kind: CanvasCreatableNodeKind, options?: CreateNodeOptions): void {
+    if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1 && !options?.targetGroupId && !options?.cwdOverride) {
+      void this.createNodeAfterWorkspaceRootSelection(kind, options);
+      return;
+    }
+
     if (this.isInteractiveSurfaceReady()) {
       this.postMessage({
         type: 'host/requestCreateNode',
         payload: {
           kind,
           cwd: options?.cwdOverride,
+          targetGroupId: options?.targetGroupId,
           agentProvider: options?.agentProvider,
           agentLaunchPreset: options?.agentLaunchPreset,
           agentCustomLaunchCommand: options?.agentCustomLaunchCommand
@@ -1776,11 +1824,75 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentLaunchPreset: options?.agentLaunchPreset,
       agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
       cwdOverride: options?.cwdOverride,
+      targetGroupId: options?.targetGroupId,
       titleOverride: options?.titleOverride
     });
   }
 
+  private async createNodeAfterWorkspaceRootSelection(
+    kind: CanvasCreatableNodeKind,
+    options?: CreateNodeOptions
+  ): Promise<void> {
+    const targetGroupId = await this.pickWorkspaceRootGroupIdForCreate(kind);
+    if (!targetGroupId) {
+      return;
+    }
+
+    if (this.isInteractiveSurfaceReady()) {
+      this.postMessage({
+        type: 'host/requestCreateNode',
+        payload: {
+          kind,
+          targetGroupId,
+          agentProvider: options?.agentProvider,
+          agentLaunchPreset: options?.agentLaunchPreset,
+          agentCustomLaunchCommand: options?.agentCustomLaunchCommand
+        }
+      });
+      return;
+    }
+
+    this.applyCreateNode(kind, undefined, {
+      agentProvider: options?.agentProvider,
+      agentLaunchPreset: options?.agentLaunchPreset,
+      agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
+      targetGroupId,
+      titleOverride: options?.titleOverride
+    });
+  }
+
+  private async pickWorkspaceRootGroupIdForCreate(kind: CanvasCreatableNodeKind): Promise<string | undefined> {
+    return this.pickWorkspaceRootGroupId(
+      `${kind === 'agent' ? 'Agent' : kind === 'terminal' ? 'Terminal' : 'Note'} 所属 root`
+    );
+  }
+
+  private async pickWorkspaceRootGroupId(title: string): Promise<string | undefined> {
+    const rootGroups = (this.state.groups ?? []).filter(isWorkspaceRootGroup);
+    if (rootGroups.length === 0) {
+      return undefined;
+    }
+
+    const selected = await vscode.window.showQuickPick(
+      rootGroups.map((group) => ({
+        label: group.title,
+        description: group.workspaceRootPath,
+        group
+      })),
+      {
+        title: `选择 ${title}`,
+        placeHolder: '选择新节点要放入的 workspace folder'
+      }
+    );
+    return selected?.group.id;
+  }
+
   public createEmptyGroupFromCommand(): void {
+    if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1) {
+      void this.createEmptyGroupAfterWorkspaceRootSelection();
+      return;
+    }
+
     const preferredCenter = this.resolvePreferredCanvasCenter() ?? { x: 0, y: 0 };
     const groupSize = DEFAULT_CANVAS_GROUP_SIZE;
     this.state = createEmptyCanvasGroup(
@@ -1790,6 +1902,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         y: preferredCenter.y - Math.round(groupSize.height / 2)
       }),
       groupSize
+    );
+    this.canvasTemplateInitialized = true;
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private async createEmptyGroupAfterWorkspaceRootSelection(): Promise<void> {
+    const targetGroupId = await this.pickWorkspaceRootGroupId('分组所属 root');
+    if (!targetGroupId) {
+      return;
+    }
+
+    const targetRootGroup = (this.state.groups ?? []).find(
+      (group) => group.id === targetGroupId && isWorkspaceRootGroup(group)
+    );
+    if (!targetRootGroup) {
+      return;
+    }
+
+    const groupSize = DEFAULT_CANVAS_GROUP_SIZE;
+    this.state = createEmptyCanvasGroup(
+      this.state,
+      translateRootLocalCanvasPositionToComposed({ x: 0, y: 0 }, targetRootGroup),
+      groupSize,
+      targetRootGroup.id
     );
     this.canvasTemplateInitialized = true;
     this.persistState();
@@ -1836,8 +1973,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
     }
 
+    const targetGroupId = (vscode.workspace.workspaceFolders?.length ?? 0) > 1
+      ? await this.pickWorkspaceRootGroupId('Terminal 所属 root')
+      : undefined;
+    if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1 && !targetGroupId) {
+      return {
+        created: false,
+        errorMessage: '已取消选择 Terminal 所属 root。'
+      };
+    }
+
     const createdNode = this.applyCreateNode('terminal', undefined, {
-      titleOverride: options.titleOverride
+      titleOverride: options.titleOverride,
+      targetGroupId
     });
     if (!createdNode) {
       return {
@@ -3066,7 +3214,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async ensureDefaultTemplateAppliedIfNeeded(): Promise<void> {
-    if (this.canvasTemplateInitialized || this.state.nodes.length > 0) {
+    if (
+      this.canvasTemplateInitialized ||
+      this.state.nodes.length > 0 ||
+      (this.state.groups ?? []).some(isWorkspaceRootGroup)
+    ) {
       return;
     }
 
@@ -3128,17 +3280,72 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       quietOnFailure?: boolean;
     }
   ): Promise<string[]> {
+    const isMultiRootWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 1;
+    if (isMultiRootWorkspace && options?.reset) {
+      throw new Error('多根 workspace 中暂不支持重置模板；请单独打开目标 root 后重置，或在 root section 内追加模板。');
+    }
+
     const resolvedAgentProviders = await this.validateCanvasTemplateForApply(storedTemplate.template);
     const noteMaterializations = await this.resolveCanvasTemplateNoteMaterializations(storedTemplate.template, {
       quiet: options?.quietOnFailure === true
     });
-    const preferredCenter = this.resolvePreferredTemplatePlacementCenter(options?.visibleCenter);
     const nextBaseState = options?.reset
       ? createDefaultState(this.getAgentCliConfig().defaultProvider)
       : this.state;
-    const targetGroupId = options?.reset
+    let targetGroupId = options?.reset
       ? undefined
       : resolveValidTargetGroupId(nextBaseState.groups ?? [], options?.targetGroupId);
+    if (isMultiRootWorkspace && !targetGroupId) {
+      targetGroupId = await this.pickWorkspaceRootGroupId('模板所属 root');
+      if (!targetGroupId) {
+        throw new Error('多根 workspace 中应用模板需要选择目标 root。');
+      }
+    }
+    let targetGroup = targetGroupId
+      ? (nextBaseState.groups ?? []).find((group) => group.id === targetGroupId)
+      : undefined;
+    let targetRootGroupId = targetGroup
+      ? isWorkspaceRootGroup(targetGroup)
+        ? targetGroup.id
+        : resolveContainingWorkspaceRootGroupId(nextBaseState.groups ?? [], targetGroup.id)
+      : undefined;
+    let targetRootGroup = targetRootGroupId
+      ? (nextBaseState.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
+      : undefined;
+    if (isMultiRootWorkspace && !targetRootGroup) {
+      targetGroupId = await this.pickWorkspaceRootGroupId('模板所属 root');
+      if (!targetGroupId) {
+        throw new Error('多根 workspace 中应用模板需要选择目标 root。');
+      }
+      targetGroup = (nextBaseState.groups ?? []).find((group) => group.id === targetGroupId);
+      targetRootGroupId = targetGroup
+        ? isWorkspaceRootGroup(targetGroup)
+          ? targetGroup.id
+          : resolveContainingWorkspaceRootGroupId(nextBaseState.groups ?? [], targetGroup.id)
+        : undefined;
+      targetRootGroup = targetRootGroupId
+        ? (nextBaseState.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
+        : undefined;
+      if (!targetRootGroup) {
+        throw new Error('多根 workspace 中应用模板需要选择目标 root。');
+      }
+    }
+    const targetWorkspaceRootPath = targetRootGroup ? resolveWorkspaceRootPathForGroup(targetRootGroup) : undefined;
+    const rawPreferredCenter = this.resolvePreferredTemplatePlacementCenter(options?.visibleCenter);
+    const preferredCenterInComposedState = targetGroup && isWorkspaceRootGroup(targetGroup)
+      ? resolveTemplatePlacementCenterInWorkspaceRoot(targetGroup, storedTemplate.template, rawPreferredCenter)
+      : rawPreferredCenter;
+    const applyBaseState = targetRootGroup
+      ? this.prepareStateForWorkspaceRootLocalCreate(targetRootGroup)
+      : nextBaseState;
+    const preferredCenter = preferredCenterInComposedState && targetRootGroup
+      ? translateComposedCanvasPositionToRootLocal(preferredCenterInComposedState, targetRootGroup)
+      : preferredCenterInComposedState;
+    const targetGroupIdForApply = targetRootGroup
+      ? targetGroup && !isWorkspaceRootGroup(targetGroup)
+        ? denamespaceCanvasObjectId(targetWorkspaceRootPath ?? '', targetGroup.id) ?? targetGroup.id
+        : undefined
+      : targetGroupId;
 
     if (options?.reset) {
       await this.prepareForHostBoundary({
@@ -3148,13 +3355,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     }
 
-    const applyResult = applyCanvasTemplateToState(nextBaseState, storedTemplate.template, {
+    const applyResult = applyCanvasTemplateToState(applyBaseState, storedTemplate.template, {
       preferredCenter,
-      targetGroupId,
+      targetGroupId: targetGroupIdForApply,
       resolvedAgentProviders,
-      noteMaterializations
+      noteMaterializations,
+      executionCwdOverride: targetWorkspaceRootPath
     });
-    this.state = this.reconcileCanvasFileArtifacts(applyResult.state);
+    const appliedState = targetRootGroup
+      ? this.namespaceWorkspaceRootLocalCreateState(applyResult.state, targetRootGroup)
+      : applyResult.state;
+    const appliedNodeIds = targetWorkspaceRootPath && targetRootGroup
+      ? applyResult.nodeIds.map((nodeId) => namespaceCanvasObjectId(targetWorkspaceRootPath, nodeId))
+      : applyResult.nodeIds;
+    this.state = this.reconcileCanvasFileArtifacts(appliedState);
     this.canvasTemplateInitialized = true;
     this.persistState();
     this.recordDiagnosticEvent('template/applied', {
@@ -3166,9 +3380,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     this.postState('host/stateUpdated');
     if (options?.focusAppliedNodes === true) {
-      this.requestTemplateNodeGroupFocus(applyResult.nodeIds);
+      this.requestTemplateNodeGroupFocus(appliedNodeIds);
     }
-    return applyResult.nodeIds;
+    return appliedNodeIds;
   }
 
   private async confirmCanvasTemplateReset(targetLabel: string): Promise<boolean> {
@@ -3506,6 +3720,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.rawExtensionStoragePath;
   }
 
+  private getRootLocalCanvasStorageDirectory(): string {
+    return path.join(this.context.globalStorageUri.fsPath, ROOT_LOCAL_CANVAS_STORAGE_DIRECTORY);
+  }
+
+  private getRootLocalCanvasStoragePath(rootPath: string): string {
+    return path.join(this.getRootLocalCanvasStorageDirectory(), createRootLocalCanvasStorageKey(rootPath));
+  }
+
+  private getRootLocalCanvasSnapshotPath(rootPath: string): string {
+    return path.join(this.getRootLocalCanvasStoragePath(rootPath), 'canvas-state.json');
+  }
+
   private getNoteMarkdownRecoverableDraftsStoragePath(): string {
     return path.join(this.getExtensionStoragePath(), NOTE_MARKDOWN_RECOVERABLE_DRAFTS_STORAGE_DIRECTORY);
   }
@@ -3784,6 +4010,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.loadPersistedCanvasSnapshotFromPath(this.getPersistedCanvasSnapshotPath());
   }
 
+  private loadPersistedRootLocalCanvasSnapshot(rootPath: string): PersistedCanvasSnapshot | undefined {
+    return this.loadPersistedCanvasSnapshotFromPath(this.getRootLocalCanvasSnapshotPath(rootPath));
+  }
+
+  private writeRootLocalCanvasSnapshot(rootPath: string, state: CanvasPrototypeState): void {
+    const snapshotPath = this.getRootLocalCanvasSnapshotPath(rootPath);
+    const rootLocalState = sanitizeRootLocalCanvasState(rootPath, state);
+    this.writePersistedCanvasSnapshotToDisk(snapshotPath, this.buildPersistedCanvasSnapshot({
+      version: 1,
+      state: rootLocalState,
+      activeSurface: this.activeSurface
+    }));
+  }
+
   private queuePersistedCanvasSnapshotWrite(snapshot: PersistedCanvasSnapshot): Promise<void> {
     const snapshotPath = this.getPersistedCanvasSnapshotPath();
     const snapshotWithMetadata = this.buildPersistedCanvasSnapshot(snapshot);
@@ -3893,6 +4133,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return {
       ...snapshot,
       state,
+      multiRootOverlay: normalizeCanvasMultiRootOverlay(snapshot.multiRootOverlay),
       fileFilterState: persistedFileFilterState,
       defaultSurface: this.appliedStartupConfiguration.defaultSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
@@ -3944,11 +4185,67 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const fileView = this.getCanvasFileViewConfiguration();
     const snapshot = this.loadPersistedCanvasSnapshot();
     const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
+    const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    const isMultiRootWorkspace = workspaceFolders.length > 1;
     const storedRuntimePersistenceEnabled = this.loadStoredRuntimePersistenceEnabled(snapshot);
     const storedFilesFeatureEnabled = this.loadStoredFilesFeatureEnabled(snapshot);
     const resetDueToRuntimePersistenceModeChange =
       this.shouldResetStateDueToRuntimePersistenceModeChange(snapshot);
     const resetDueToFilesFeatureModeChange = this.shouldResetFileDomainDueToFilesFeatureModeChange(snapshot);
+    if (workspaceFolders.length === 1 && !resetDueToRuntimePersistenceModeChange) {
+      const rootLocalSnapshot = this.loadPersistedRootLocalCanvasSnapshot(workspaceFolders[0].path);
+      if (rootLocalSnapshot?.state !== undefined) {
+        const rootState = this.loadRootLocalState(workspaceFolders[0].path, fileView);
+        const sanitizedRootState = resetDueToFilesFeatureModeChange ? clearFileDomainState(rootState) : rootState;
+        this.lastLoadedRootLocalStates = [{ rootPath: workspaceFolders[0].path, state: cloneJsonValue(sanitizedRootState) }];
+        this.multiRootOverlay = undefined;
+        this.recordDiagnosticEvent('state/loadSelected', {
+          source: 'rootLocalSnapshot',
+          rootPath: workspaceFolders[0].path,
+          snapshotPath: this.getRootLocalCanvasSnapshotPath(workspaceFolders[0].path),
+          storagePath: this.getExtensionStoragePath(),
+          snapshotAvailable: true,
+          workspaceStateAvailable: workspaceState !== undefined,
+          resetDueToFilesFeatureModeChange,
+          fileDomainDisabled: !this.appliedStartupConfiguration.filesFeatureEnabled,
+          ...summarizeCanvasStateForDiagnostics(sanitizedRootState)
+        });
+        return hydrateRuntimeStoragePaths(
+          this.materializeNoteMarkdownRecoverableDraftFiles(sanitizedRootState),
+          this.storageRecoverySelection.sourcePath
+        );
+      }
+    }
+    if (isMultiRootWorkspace && !resetDueToRuntimePersistenceModeChange) {
+      const rootStates = workspaceFolders.map((folder) => ({
+        rootPath: folder.path,
+        state: this.loadRootLocalState(folder.path, fileView)
+      }));
+      this.lastLoadedRootLocalStates = cloneJsonValue(rootStates);
+      this.multiRootOverlay = normalizeCanvasMultiRootOverlay(snapshot?.multiRootOverlay);
+      const composedState = composeMultiRootCanvasState({
+        workspaceFolders,
+        rootStates,
+        overlay: this.multiRootOverlay
+      });
+      this.recordDiagnosticEvent('state/loadSelected', {
+        source: 'multiRootComposition',
+        rootCount: workspaceFolders.length,
+        snapshotPath: this.getPersistedCanvasSnapshotPath(),
+        storagePath: this.getExtensionStoragePath(),
+        snapshotAvailable: snapshot !== undefined,
+        workspaceStateAvailable: workspaceState !== undefined,
+        resetDueToFilesFeatureModeChange,
+        fileDomainDisabled: !this.appliedStartupConfiguration.filesFeatureEnabled,
+        ...summarizeCanvasStateForDiagnostics(composedState)
+      });
+      return this.materializeNoteMarkdownRecoverableDraftFiles(
+        this.appliedStartupConfiguration.filesFeatureEnabled && !resetDueToFilesFeatureModeChange
+          ? composedState
+          : clearFileDomainState(composedState)
+      );
+    }
+
     const rawState = resetDueToRuntimePersistenceModeChange ? undefined : snapshot?.state ?? workspaceState;
     const source = resetDueToRuntimePersistenceModeChange
       ? 'runtimePersistenceReset'
@@ -3993,14 +4290,41 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
     }
     const normalizedState = normalizeState(rawState, this.getAgentCliConfig().defaultProvider, fileView);
+    const singleRootFolder = workspaceFolders[0];
+    const rootScopedState = singleRootFolder
+      ? sanitizeRootLocalCanvasState(singleRootFolder.path, normalizedState)
+      : normalizedState;
     const sanitizedState =
       this.appliedStartupConfiguration.filesFeatureEnabled && !resetDueToFilesFeatureModeChange
-        ? normalizedState
-        : clearFileDomainState(normalizedState);
+        ? rootScopedState
+        : clearFileDomainState(rootScopedState);
+    if (singleRootFolder) {
+      this.lastLoadedRootLocalStates = [{
+        rootPath: singleRootFolder.path,
+        state: cloneJsonValue(sanitizedState)
+      }];
+    } else {
+      this.lastLoadedRootLocalStates = [];
+    }
+    this.multiRootOverlay = undefined;
     return hydrateRuntimeStoragePaths(
       this.materializeNoteMarkdownRecoverableDraftFiles(sanitizedState),
       this.storageRecoverySelection.sourcePath
     );
+  }
+
+  private loadRootLocalState(
+    rootPath: string,
+    fileView?: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
+  ): CanvasPrototypeState {
+    const rootLocalSnapshot = this.loadPersistedRootLocalCanvasSnapshot(rootPath);
+    const normalizedState = sanitizeRootLocalCanvasState(
+      rootPath,
+      normalizeState(rootLocalSnapshot?.state, this.getAgentCliConfig().defaultProvider, fileView)
+    );
+    return this.appliedStartupConfiguration.filesFeatureEnabled
+      ? normalizedState
+      : clearFileDomainState(normalizedState);
   }
 
   private loadReconciledState(): CanvasPrototypeState {
@@ -4033,12 +4357,53 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private persistState(): void {
+  private persistState(options?: {
+    preserveRootLocalLiveRuntimeReconnect?: boolean;
+  }): void {
     this.syncNoteMarkdownFileWatchers();
     this.cleanupUnreferencedNoteMarkdownRecoverableDraftFiles();
+    const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    let overlayToPersist: CanvasMultiRootOverlay | undefined;
+    if (workspaceFolders.length > 1) {
+      const previousRootStates = this.lastLoadedRootLocalStates;
+      const decomposed = decomposeMultiRootCanvasState({
+        composedState: this.state,
+        workspaceFolders,
+        previousRootStates
+      });
+      const rootStatesToPersist = options?.preserveRootLocalLiveRuntimeReconnect
+        || this.getLiveRuntimeReconnectBlockReason() === 'multi-root-workspace'
+        ? preserveRootLocalLiveRuntimeReconnectState(previousRootStates, decomposed.rootStates)
+        : decomposed.rootStates;
+      this.lastLoadedRootLocalStates = cloneJsonValue(rootStatesToPersist);
+      this.multiRootOverlay = decomposed.overlay;
+      overlayToPersist = decomposed.overlay;
+      for (const rootState of rootStatesToPersist) {
+        try {
+          this.writeRootLocalCanvasSnapshot(rootState.rootPath, rootState.state);
+        } catch (error) {
+          this.recordDiagnosticEvent('state/rootLocalPersistFailed', {
+            rootPath: rootState.rootPath,
+            message: formatUnknownError(error)
+          });
+        }
+      }
+    } else if (workspaceFolders.length === 1) {
+      const rootPath = workspaceFolders[0].path;
+      this.lastLoadedRootLocalStates = [{ rootPath, state: cloneJsonValue(this.state) }];
+      try {
+        this.writeRootLocalCanvasSnapshot(rootPath, this.state);
+      } catch (error) {
+        this.recordDiagnosticEvent('state/rootLocalPersistFailed', {
+          rootPath,
+          message: formatUnknownError(error)
+        });
+      }
+    }
     void this.queuePersistedCanvasSnapshotWrite({
       version: 1,
       state: this.state,
+      multiRootOverlay: overlayToPersist,
       activeSurface: this.activeSurface
     }).catch(() => undefined);
   }
@@ -4627,7 +4992,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async handleDroppedNoteMarkdownFiles(
     resources: ExecutionTerminalDroppedResource[],
     position: CanvasNodePosition,
-    sourceSurface?: CanvasSurfaceLocation
+    sourceSurface?: CanvasSurfaceLocation,
+    targetGroupId?: string
   ): Promise<void> {
     const droppedResourceKeys = new Set<string>();
     const createdNodeIds: string[] = [];
@@ -4729,11 +5095,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             x: position.x + offsetIndex * 28,
             y: position.y + offsetIndex * 28
           },
-          readResult.contentRevision
+          readResult.contentRevision,
+          targetGroupId
         );
         if (createdNode) {
           createdNodeIds.push(createdNode.id);
           offsetIndex += 1;
+        } else if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1 && !targetGroupId) {
+          rejectedReasons.push('多根 workspace 中请把 Markdown 文件拖到目标 root section 内。');
         }
       } finally {
         this.noteMarkdownDropResourceKeysInProgress.delete(resourceKey);
@@ -4781,10 +5150,49 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     uri: vscode.Uri,
     content: string,
     preferredPosition: CanvasNodePosition,
-    contentRevision?: string
+    contentRevision?: string,
+    targetGroupId?: string
   ): CanvasNodeSummary | undefined {
-    const nextState = createNextState(this.state, 'note', 'codex', 'default', undefined, preferredPosition);
-    const createdNode = nextState.nodes[nextState.nodes.length - 1];
+    const targetGroup = targetGroupId
+      ? (this.state.groups ?? []).find((group) => group.id === targetGroupId)
+      : undefined;
+    const targetRootGroupId = targetGroup
+      ? isWorkspaceRootGroup(targetGroup)
+        ? targetGroup.id
+        : resolveContainingWorkspaceRootGroupId(this.state.groups ?? [], targetGroup.id)
+      : undefined;
+    const targetRootGroup = targetRootGroupId
+      ? (this.state.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
+      : undefined;
+    if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1 && !targetRootGroup) {
+      return undefined;
+    }
+
+    const targetRootPath = targetRootGroup ? resolveWorkspaceRootPathForGroup(targetRootGroup) : undefined;
+    const preferredPositionInTargetRoot = preferredPosition && targetRootGroup
+      ? translateComposedCanvasPositionToRootLocal(preferredPosition, targetRootGroup)
+      : preferredPosition;
+    const createState = targetRootGroup
+      ? this.prepareStateForWorkspaceRootLocalCreate(targetRootGroup)
+      : this.state;
+    const targetGroupIdForCreate = targetRootGroup
+      ? targetGroup && !isWorkspaceRootGroup(targetGroup)
+        ? denamespaceCanvasObjectId(targetRootPath ?? '', targetGroup.id) ?? targetGroup.id
+        : undefined
+      : targetGroupId;
+    const nextState = createNextState(
+      createState,
+      'note',
+      'codex',
+      'default',
+      undefined,
+      preferredPositionInTargetRoot,
+      targetGroupIdForCreate
+    );
+    const composedNextState = targetRootGroup
+      ? this.namespaceWorkspaceRootLocalCreateState(nextState, targetRootGroup)
+      : nextState;
+    const createdNode = composedNextState.nodes[composedNextState.nodes.length - 1];
     if (!createdNode) {
       return undefined;
     }
@@ -4815,8 +5223,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
 
     this.state = {
-      ...nextState,
-      nodes: [...nextState.nodes.slice(0, -1), associatedNode]
+      ...composedNextState,
+      nodes: [...composedNextState.nodes.slice(0, -1), associatedNode]
     };
     return associatedNode;
   }
@@ -6273,6 +6681,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return 'workspace-untrusted';
     }
 
+    if (this.getMultiRootWorkspaceFoldersForComposition().length > 1) {
+      return 'multi-root-workspace';
+    }
+
     return undefined;
   }
 
@@ -6303,6 +6715,36 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private scheduleRestoreLiveRuntimeSessions(): void {
+    if (this.getLiveRuntimeReconnectBlockReason() === 'multi-root-workspace') {
+      const reattachableCount = this.state.nodes.filter((node) => {
+        if (node.kind === 'agent') {
+          const metadata = ensureAgentMetadata(node);
+          return Boolean(metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId);
+        }
+        if (node.kind === 'terminal') {
+          const metadata = ensureTerminalMetadata(node);
+          return Boolean(metadata.persistenceMode === 'live-runtime' && metadata.runtimeSessionId);
+        }
+        return false;
+      }).length;
+      if (reattachableCount > 0) {
+        this.recordDiagnosticEvent('runtime/restoreSkipped', {
+          reason: 'multiRootWorkspace',
+          reattachableCount
+        });
+        const nextState = reconcileRuntimeNodes(this.state, this.agentSessions, this.terminalSessions, {
+          allowLiveRuntimeReconnect: false,
+          liveRuntimeReconnectBlockReason: 'multi-root-workspace'
+        });
+        this.state = nextState;
+        this.persistState({
+          preserveRootLocalLiveRuntimeReconnect: true
+        });
+        this.postState('host/stateUpdated');
+      }
+      return;
+    }
+
     const operation = this.restoreLiveRuntimeSessions().catch((error) => {
       this.recordDiagnosticEvent('runtime/restoreFailed', {
         message: formatUnknownError(error)
@@ -6700,6 +7142,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async restoreLiveRuntimeSessions(): Promise<void> {
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
     if (liveRuntimeReconnectBlockReason === 'workspace-untrusted') {
+      return;
+    }
+
+    if (liveRuntimeReconnectBlockReason === 'multi-root-workspace') {
       return;
     }
 
@@ -8327,7 +8773,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         void this.handleDroppedNoteMarkdownFiles(
           parsedMessage.payload.resources,
           parsedMessage.payload.position,
-          sourceSurface
+          sourceSurface,
+          parsedMessage.payload.targetGroupId
         );
         return;
       case 'webview/createEdge':
@@ -11806,6 +12253,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       return;
     }
+    if (isWorkspaceRootGroup(group)) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '系统 root section 不能删除；如需移除 root，请使用 VSCode workspace folder 管理。'
+        }
+      });
+      return;
+    }
 
     if (isEmptyCanvasGroup(this.state, groupId)) {
       this.state = deleteCanvasGroupKeepMembers(this.state, groupId);
@@ -11815,6 +12271,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const deleteImpact = collectCanvasGroupDeleteImpact(this.state, groupId);
+    const groupsById = new Map((this.state.groups ?? []).map((currentGroup) => [currentGroup.id, currentGroup] as const));
+    const containsWorkspaceRootGroup = [...deleteImpact.groupIds].some((impactGroupId) =>
+      isWorkspaceRootGroup(groupsById.get(impactGroupId))
+    );
+    if (containsWorkspaceRootGroup) {
+      const keepRootSectionsAction = { title: '仅删除外层分组并保留 root section' };
+      const selection = await vscode.window.showWarningMessage(
+        `删除分组「${group.title}」？`,
+        {
+          modal: true,
+          detail: '该分组包含系统 root section。root section 不能被删除；删除操作只会移除当前外层分组并保留内部 root。'
+        },
+        keepRootSectionsAction
+      );
+
+      if (!selection) {
+        return;
+      }
+
+      this.state = deleteCanvasGroupKeepMembers(this.state, groupId);
+      this.persistState();
+      this.postState('host/stateUpdated');
+      return;
+    }
+
     const deleteMembersAction = {
       title: `一并删除内部所有节点与子分组（${deleteImpact.nodeIds.length} 个节点，${Math.max(0, deleteImpact.groupIds.size - 1)} 个子分组）`
     };
@@ -12329,6 +12810,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (isExecutionNodeKind(kind) && options?.cwdOverride && !cwdOverride) {
       return undefined;
     }
+    const targetGroup = options?.targetGroupId
+      ? (this.state.groups ?? []).find((group) => group.id === options.targetGroupId)
+      : undefined;
+    const targetRootGroupId = targetGroup
+      ? isWorkspaceRootGroup(targetGroup)
+        ? targetGroup.id
+        : resolveContainingWorkspaceRootGroupId(this.state.groups ?? [], targetGroup.id)
+      : undefined;
+    const targetRootGroupFromGroup = targetRootGroupId
+      ? (this.state.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
+      : undefined;
+    const targetRootGroup = targetRootGroupFromGroup ??
+      (cwdOverride ? this.resolveWorkspaceRootGroupForExecutionCwd(cwdOverride) : undefined);
+    const targetRootPath = targetRootGroup ? resolveWorkspaceRootPathForGroup(targetRootGroup) : undefined;
+    const resolvedCwdOverride = cwdOverride ?? (isExecutionNodeKind(kind) ? targetRootPath : undefined);
+    if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1 && !targetRootGroup) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '多根 workspace 中请在目标 root section 内创建节点，或从 Explorer 资源入口创建执行节点。',
+          createRequestId: options?.requestId
+        }
+      });
+      return undefined;
+    }
 
     if (kind === 'agent') {
       try {
@@ -12358,17 +12864,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     }
 
+    const preferredPositionInTargetRoot = preferredPosition && targetRootGroupFromGroup
+      ? translateComposedCanvasPositionToRootLocal(preferredPosition, targetRootGroupFromGroup)
+      : targetRootGroup
+        ? undefined
+        : preferredPosition;
+    const createState = targetRootGroup
+      ? this.prepareStateForWorkspaceRootLocalCreate(targetRootGroup)
+      : this.state;
+    const targetGroupIdForCreate = targetRootGroup
+      ? targetGroup && !isWorkspaceRootGroup(targetGroup)
+        ? denamespaceCanvasObjectId(targetRootPath ?? '', targetGroup.id) ?? targetGroup.id
+        : undefined
+      : options?.targetGroupId;
     const nextState = createNextState(
-      this.state,
+      createState,
       kind,
       agentProvider,
       agentLaunchPreset,
       agentCustomLaunchCommand,
-      preferredPosition,
-      options?.targetGroupId,
-      cwdOverride
+      preferredPositionInTargetRoot,
+      targetGroupIdForCreate,
+      resolvedCwdOverride
     );
-    const createdNodeCandidate = nextState.nodes[nextState.nodes.length - 1];
+    const composedNextState = targetRootGroup
+      ? this.namespaceWorkspaceRootLocalCreateState(nextState, targetRootGroup)
+      : nextState;
+    const createdNodeCandidate = composedNextState.nodes[composedNextState.nodes.length - 1];
     const createdNode =
       createdNodeCandidate && options?.titleOverride?.trim()
         ? {
@@ -12379,20 +12901,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const nextStateWithOverrides =
       createdNode && createdNode !== createdNodeCandidate
         ? {
-            ...nextState,
-            nodes: [...nextState.nodes.slice(0, -1), createdNode]
+            ...composedNextState,
+            nodes: [...composedNextState.nodes.slice(0, -1), createdNode]
           }
-        : nextState;
+        : composedNextState;
 
     if (createdNode && createdNode.kind === 'agent') {
       this.state = updateAgentNode(nextStateWithOverrides, createdNode.id, {
         status: 'starting',
         summary: '正在等待节点尺寸就绪后启动 Agent 会话。',
-        metadata: buildAgentMetadataPatch(nextState, createdNode.id, {
+        metadata: buildAgentMetadataPatch(composedNextState, createdNode.id, {
           lifecycle: 'starting',
           pendingLaunch: 'start',
           liveSession: false,
-          cwd: cwdOverride ?? ensureAgentMetadata(createdNode).cwd,
+          cwd: resolvedCwdOverride ?? ensureAgentMetadata(createdNode).cwd,
           launchPreset: agentLaunchPreset,
           customLaunchCommand:
             agentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined,
@@ -12407,11 +12929,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state = updateTerminalNode(nextStateWithOverrides, createdNode.id, {
         status: 'launching',
         summary: '正在等待节点尺寸就绪后启动嵌入式终端。',
-        metadata: buildTerminalMetadataPatch(nextState, createdNode.id, {
+        metadata: buildTerminalMetadataPatch(composedNextState, createdNode.id, {
           lifecycle: 'launching',
           pendingLaunch: 'start',
           liveSession: false,
-          cwd: cwdOverride ?? ensureTerminalMetadata(createdNode).cwd,
+          cwd: resolvedCwdOverride ?? ensureTerminalMetadata(createdNode).cwd,
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
@@ -12434,6 +12956,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return undefined;
+  }
+
+  private resolveWorkspaceRootGroupForExecutionCwd(cwd: string): CanvasGroupSummary | undefined {
+    return (this.state.groups ?? [])
+      .flatMap((group) => {
+        const rootPath = resolveWorkspaceRootPathForGroup(group);
+        return rootPath !== undefined && isSameOrDescendantExecutionPath(cwd, rootPath)
+          ? [{ group, rootPath }]
+          : [];
+      })
+      .sort((left, right) => right.rootPath.length - left.rootPath.length)
+      .at(0)?.group;
+  }
+
+  private prepareStateForWorkspaceRootLocalCreate(rootGroup: CanvasGroupSummary): CanvasPrototypeState {
+    return decomposeComposedCanvasStateForWorkspaceRoot(this.state, rootGroup);
+  }
+
+  private namespaceWorkspaceRootLocalCreateState(
+    localState: CanvasPrototypeState,
+    rootGroup: CanvasGroupSummary
+  ): CanvasPrototypeState {
+    return finalizeCanvasGroupState(composeRootLocalCanvasStateIntoComposed(this.state, localState, rootGroup));
   }
 
   private validateExecutionCwdForCreate(
@@ -12750,6 +13295,116 @@ function clearFileDomainState(state: CanvasPrototypeState): CanvasPrototypeState
 
 function cloneJsonValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function preserveRootLocalLiveRuntimeReconnectState(
+  previousRootStates: readonly CanvasRootLocalStateSnapshot[],
+  nextRootStates: readonly CanvasRootLocalStateSnapshot[]
+): CanvasRootLocalStateSnapshot[] {
+  if (previousRootStates.length === 0) {
+    return [...nextRootStates];
+  }
+
+  const previousRuntimeMetadataByComposedNodeId = new Map<
+    string,
+    { agent?: AgentNodeMetadata; terminal?: TerminalNodeMetadata }
+  >();
+  for (const rootState of previousRootStates) {
+    for (const node of rootState.state.nodes) {
+      if (node.kind === 'agent') {
+        previousRuntimeMetadataByComposedNodeId.set(
+          namespaceCanvasObjectId(rootState.rootPath, node.id),
+          { agent: ensureAgentMetadata(node) }
+        );
+      } else if (node.kind === 'terminal') {
+        previousRuntimeMetadataByComposedNodeId.set(
+          namespaceCanvasObjectId(rootState.rootPath, node.id),
+          { terminal: ensureTerminalMetadata(node) }
+        );
+      }
+    }
+  }
+
+  return nextRootStates.map((rootState) => ({
+    rootPath: rootState.rootPath,
+    state: {
+      ...rootState.state,
+      nodes: rootState.state.nodes.map((node) => {
+        if (node.kind === 'agent') {
+          const previousMetadata = previousRuntimeMetadataByComposedNodeId.get(
+            namespaceCanvasObjectId(rootState.rootPath, node.id)
+          )?.agent;
+          const nextMetadata = ensureAgentMetadata(node);
+          return previousMetadata && shouldPreserveRootLocalRuntimeReconnectMetadata(previousMetadata, nextMetadata)
+            ? {
+                ...node,
+                metadata: {
+                  ...node.metadata,
+                  agent: preserveRuntimeReconnectMetadataFields(nextMetadata, previousMetadata)
+                }
+              }
+            : node;
+        }
+
+        if (node.kind === 'terminal') {
+          const previousMetadata = previousRuntimeMetadataByComposedNodeId.get(
+            namespaceCanvasObjectId(rootState.rootPath, node.id)
+          )?.terminal;
+          const nextMetadata = ensureTerminalMetadata(node);
+          return previousMetadata && shouldPreserveRootLocalRuntimeReconnectMetadata(previousMetadata, nextMetadata)
+            ? {
+                ...node,
+                metadata: {
+                  ...node.metadata,
+                  terminal: preserveRuntimeReconnectMetadataFields(nextMetadata, previousMetadata)
+                }
+              }
+            : node;
+        }
+
+        return node;
+      })
+    }
+  }));
+}
+
+function shouldPreserveRootLocalRuntimeReconnectMetadata(
+  previousMetadata: Pick<
+    AgentNodeMetadata | TerminalNodeMetadata,
+    'persistenceMode' | 'runtimeSessionId' | 'runtimeBackend' | 'runtimeStoragePath' | 'liveSession' | 'attachmentState'
+  >,
+  nextMetadata: Pick<
+    AgentNodeMetadata | TerminalNodeMetadata,
+    'persistenceMode' | 'runtimeSessionId' | 'runtimeBackend' | 'runtimeStoragePath' | 'liveSession' | 'attachmentState'
+  >
+): boolean {
+  return Boolean(
+    previousMetadata.persistenceMode === 'live-runtime' &&
+    previousMetadata.runtimeSessionId &&
+    (previousMetadata.liveSession || previousMetadata.attachmentState === 'reattaching') &&
+    nextMetadata.persistenceMode === 'live-runtime' &&
+    nextMetadata.runtimeSessionId === previousMetadata.runtimeSessionId &&
+    nextMetadata.runtimeBackend === previousMetadata.runtimeBackend &&
+    nextMetadata.runtimeStoragePath === previousMetadata.runtimeStoragePath &&
+    nextMetadata.attachmentState === 'history-restored' &&
+    nextMetadata.liveSession === false
+  );
+}
+
+function preserveRuntimeReconnectMetadataFields<T extends AgentNodeMetadata | TerminalNodeMetadata>(
+  nextMetadata: T,
+  previousMetadata: T
+): T {
+  return {
+    ...nextMetadata,
+    persistenceMode: previousMetadata.persistenceMode,
+    attachmentState: previousMetadata.attachmentState,
+    runtimeBackend: previousMetadata.runtimeBackend,
+    runtimeGuarantee: previousMetadata.runtimeGuarantee,
+    runtimeStoragePath: previousMetadata.runtimeStoragePath,
+    liveSession: previousMetadata.liveSession,
+    runtimeSessionId: previousMetadata.runtimeSessionId
+  };
 }
 
 function buildExecutionFileLinkResolveDiagnostics(
@@ -13205,6 +13860,7 @@ function applyCanvasTemplateToState(
     targetGroupId?: string;
     resolvedAgentProviders: Map<number, AgentProviderKind>;
     noteMaterializations?: ReadonlyMap<number, CanvasTemplateNoteMaterialization>;
+    executionCwdOverride?: string;
   }
 ): CanvasTemplateApplyStateResult {
   const bounds = measureCanvasTemplateBounds(template.nodes);
@@ -13262,7 +13918,8 @@ function applyCanvasTemplateToState(
       bounds.origin,
       resolvedTopLeft,
       resolvedAgentProvider,
-      templateNode.kind === 'note' ? options.noteMaterializations?.get(index) : undefined
+      templateNode.kind === 'note' ? options.noteMaterializations?.get(index) : undefined,
+      options.executionCwdOverride
     );
   });
   const materializedNodesWithGroups = materializedNodes.map((node, index) => {
@@ -13311,6 +13968,22 @@ function applyCanvasTemplateToState(
     state: nextState,
     nodeIds: materializedNodes.map((node) => node.id)
   };
+}
+
+function resolveTemplatePlacementCenterInWorkspaceRoot(
+  rootGroup: CanvasGroupSummary,
+  template: CanvasTemplate,
+  preferredCenter?: CanvasNodePosition
+): CanvasNodePosition {
+  if (preferredCenter && rectContainsPoint(rectForGroup(rootGroup), preferredCenter)) {
+    return preferredCenter;
+  }
+
+  const templateBounds = measureCanvasTemplateBounds(template.nodes);
+  return translateRootLocalCanvasPositionToComposed({
+    x: Math.round(templateBounds.width / 2),
+    y: Math.round(templateBounds.height / 2)
+  }, rootGroup);
 }
 
 function materializeTemplateGroup(
@@ -13388,7 +14061,8 @@ function materializeTemplateNode(
   templateOrigin: CanvasNodePosition,
   placedTopLeft: CanvasNodePosition,
   resolvedAgentProvider?: AgentProviderKind,
-  noteMaterialization?: CanvasTemplateNoteMaterialization
+  noteMaterialization?: CanvasTemplateNoteMaterialization,
+  executionCwdOverride?: string
 ): CanvasNodeSummary {
   const position = snapCanvasPosition({
     x: placedTopLeft.x + (templateNode.position.x - templateOrigin.x),
@@ -13434,6 +14108,7 @@ function materializeTemplateNode(
   if (templateNode.kind === 'agent') {
     const provider = resolvedAgentProvider ?? 'codex';
     const templateArgv = templateNode.metadata?.agent?.argv;
+    const agentMetadata = createAgentMetadata(provider);
     return {
       ...baseNode,
       title: templateNode.title,
@@ -13443,13 +14118,15 @@ function materializeTemplateNode(
       summary: defaultSummaryForKind('agent'),
       metadata: {
         agent: {
-          ...createAgentMetadata(provider),
+          ...agentMetadata,
+          cwd: executionCwdOverride ?? agentMetadata.cwd,
           templateArgv: Array.isArray(templateArgv) ? normalizeStoredAgentTemplateArgv(templateArgv) : undefined
         }
       }
     };
   }
 
+  const terminalMetadata = createTerminalMetadata(baseNode.id);
   return {
     ...baseNode,
     title: templateNode.title,
@@ -13458,7 +14135,10 @@ function materializeTemplateNode(
     status: 'idle',
     summary: defaultSummaryForKind('terminal'),
     metadata: {
-      terminal: createTerminalMetadata(baseNode.id)
+      terminal: {
+        ...terminalMetadata,
+        cwd: executionCwdOverride ?? terminalMetadata.cwd
+      }
     }
   };
 }
@@ -13657,8 +14337,18 @@ function moveNode(
     },
     movedNodeIds
   );
+  const movedWorkspaceRootGroupIds = new Set(
+    movedState.nodes
+      .filter((node) => movedNodeIds.has(node.id) && node.groupId)
+      .flatMap((node) => {
+        const rootGroupId = resolveContainingWorkspaceRootGroupId(movedState.groups ?? [], node.groupId);
+        return rootGroupId ? [rootGroupId] : [];
+      })
+  );
 
-  return finalizeCanvasGroupState(movedState);
+  return finalizeCanvasGroupState(movedState, {
+    pinnedGroupId: movedWorkspaceRootGroupIds.size === 1 ? [...movedWorkspaceRootGroupIds][0] : undefined
+  });
 }
 
 function normalizeCanvasNodeMoveIntents(intents: readonly CanvasNodeMoveIntent[]): CanvasNodeMoveIntent[] {
@@ -13710,7 +14400,7 @@ function adjustMovedNodesAfterGroupDrop(
 
   for (const targetGroupId of targetGroupIds) {
     const targetGroup = groupsById.get(targetGroupId);
-    if (!targetGroup) {
+    if (!targetGroup || isWorkspaceRootGroup(targetGroup)) {
       continue;
     }
 
@@ -13911,11 +14601,12 @@ function createEmptyCanvasGroup(
   parentGroupId?: string
 ): CanvasPrototypeState {
   const sequence = readNextGroupSequence(previousState);
+  const resolvedParentGroupId = resolveValidTargetGroupId(previousState.groups ?? [], parentGroupId);
   const group = createCanvasGroupWithSequence(
     sequence,
     position,
     size ?? DEFAULT_CANVAS_GROUP_SIZE,
-    resolveValidTargetGroupId(previousState.groups ?? [], parentGroupId)
+    resolvedParentGroupId
   );
 
   return finalizeCanvasGroupState({
@@ -13972,6 +14663,19 @@ function createGroupFromSelection(
 
   const selectedParentGroupId = parentIds.values().next().value as string | undefined;
   const requestedParentGroupId = resolveValidTargetGroupId(previousState.groups ?? [], parentGroupId);
+  if (selectedGroups.some(isWorkspaceRootGroup) && requestedParentGroupId) {
+    const requestedParentGroup = (previousState.groups ?? []).find((group) => group.id === requestedParentGroupId);
+    if (
+      !requestedParentGroup ||
+      isWorkspaceRootGroup(requestedParentGroup) ||
+      resolveContainingWorkspaceRootGroupId(previousState.groups ?? [], requestedParentGroup.id)
+    ) {
+      return previousState;
+    }
+  }
+  if (selectedGroups.some(isWorkspaceRootGroup) && selectedNodes.length > 0) {
+    return previousState;
+  }
   if (requestedParentGroupId !== selectedParentGroupId) {
     return previousState;
   }
@@ -14022,7 +14726,7 @@ function createGroupFromSelection(
 
 function updateGroupTitle(state: CanvasPrototypeState, groupId: string, title: string): CanvasPrototypeState {
   const currentGroup = (state.groups ?? []).find((group) => group.id === groupId);
-  if (!currentGroup) {
+  if (!currentGroup || isWorkspaceRootGroup(currentGroup)) {
     return state;
   }
 
@@ -14065,6 +14769,9 @@ function moveGroup(
     y: normalizedPosition.y - targetGroup.position.y
   };
   const subtreeGroupIds = collectGroupSubtreeIds(previousState.groups ?? [], groupId);
+  const containingWorkspaceRootGroupId = isWorkspaceRootGroup(targetGroup)
+    ? undefined
+    : resolveContainingWorkspaceRootGroupId(previousState.groups ?? [], targetGroup.parentGroupId);
   const nextParentGroupId = resolveDroppedObjectGroupId(
     previousState,
     groupId,
@@ -14101,7 +14808,7 @@ function moveGroup(
           }
         : group
     )
-  }, { pinnedGroupId: groupId });
+  }, { pinnedGroupIds: [groupId, containingWorkspaceRootGroupId].filter((id): id is string => Boolean(id)) });
 }
 
 function resizeGroup(
@@ -14130,6 +14837,10 @@ function resizeGroup(
       return resizedGroup;
     }
 
+    if (isWorkspaceRootGroup(targetGroup)) {
+      return group;
+    }
+
     if (group.parentGroupId === groupId && !rectContainsRect(resizedRect, rectForGroup(group))) {
       return {
         ...group,
@@ -14151,6 +14862,10 @@ function resizeGroup(
     return group;
   });
   const nodesAfterBoundaryIntent = previousState.nodes.map((node) => {
+    if (isWorkspaceRootGroup(targetGroup)) {
+      return node;
+    }
+
     if (node.groupId === groupId && !rectContainsRect(resizedRect, rectForNode(node))) {
       return {
         ...node,
@@ -14182,7 +14897,7 @@ function resizeGroup(
 
 function ungroupCanvasGroup(previousState: CanvasPrototypeState, groupId: string): CanvasPrototypeState {
   const targetGroup = (previousState.groups ?? []).find((group) => group.id === groupId);
-  if (!targetGroup) {
+  if (!targetGroup || isWorkspaceRootGroup(targetGroup)) {
     return previousState;
   }
 
@@ -14296,11 +15011,36 @@ function resolveDroppedObjectGroupId(
 ): string | undefined {
   const excludedGroupIds =
     objectKind === 'group' ? collectGroupSubtreeIds(state.groups ?? [], objectId) : new Set<string>();
+  const currentObject = objectKind === 'group'
+    ? (state.groups ?? []).find((group) => group.id === objectId)
+    : state.nodes.find((node) => node.id === objectId);
+  const currentRootGroupId = currentObject
+    ? resolveContainingWorkspaceRootGroupId(state.groups ?? [], objectKind === 'group'
+      ? (currentObject as CanvasGroupSummary).parentGroupId
+      : (currentObject as CanvasNodeSummary).groupId)
+    : undefined;
+  const hasWorkspaceRootGroups = (state.groups ?? []).some(isWorkspaceRootGroup);
+  const isWorkspaceLevelGroupMove =
+    objectKind === 'group' &&
+    currentObject !== undefined &&
+    (isWorkspaceRootGroup(currentObject as CanvasGroupSummary) ||
+      (hasWorkspaceRootGroups && !currentRootGroupId));
   const candidates = (state.groups ?? [])
-    .filter((group) => !excludedGroupIds.has(group.id) && pointInRect(pointerPosition, rectForGroup(group)))
+    .filter((group) => {
+      if (excludedGroupIds.has(group.id) || !pointInRect(pointerPosition, rectForGroup(group))) {
+        return false;
+      }
+      if (isWorkspaceLevelGroupMove) {
+        return !isWorkspaceRootGroup(group) && !resolveContainingWorkspaceRootGroupId(state.groups ?? [], group.id);
+      }
+      const candidateRootGroupId = isWorkspaceRootGroup(group)
+        ? group.id
+        : resolveContainingWorkspaceRootGroupId(state.groups ?? [], group.parentGroupId);
+      return currentRootGroupId ? candidateRootGroupId === currentRootGroupId : true;
+    })
     .sort((left, right) => groupDepth(state.groups ?? [], right.id) - groupDepth(state.groups ?? [], left.id));
 
-  return candidates[0]?.id;
+  return candidates[0]?.id ?? currentRootGroupId;
 }
 
 function resolveValidTargetGroupId(
@@ -14310,9 +15050,27 @@ function resolveValidTargetGroupId(
   return targetGroupId && groups.some((group) => group.id === targetGroupId) ? targetGroupId : undefined;
 }
 
+function resolveContainingWorkspaceRootGroupId(
+  groups: readonly CanvasGroupSummary[],
+  groupId?: string
+): string | undefined {
+  let currentGroup = groupId ? groups.find((group) => group.id === groupId) : undefined;
+  const visited = new Set<string>();
+  while (currentGroup && !visited.has(currentGroup.id)) {
+    if (isWorkspaceRootGroup(currentGroup)) {
+      return currentGroup.id;
+    }
+    visited.add(currentGroup.id);
+    currentGroup = currentGroup.parentGroupId
+      ? groups.find((group) => group.id === currentGroup?.parentGroupId)
+      : undefined;
+  }
+  return undefined;
+}
+
 function finalizeCanvasGroupState(
   state: CanvasPrototypeState,
-  options: { pinnedGroupId?: string } = {}
+  options: CanvasGroupGeometryRepairOptions = {}
 ): CanvasPrototypeState {
   const groups = removeMissingGroupNodeMemberships(state.groups ?? [], state.nodes);
   const nodes = normalizeCanvasNodeGroupMemberships(state.nodes, groups);
@@ -14348,7 +15106,7 @@ function expandGroupsToContainDirectMembers(
         return group;
       }
 
-      const containedRect = expandRectToContainRects(rectForGroup(group), memberRects, CANVAS_GROUP_MEMBER_INSETS);
+      const containedRect = expandRectToContainRects(rectForGroup(group), memberRects, memberInsetsForCanvasGroup(group));
       const nextGroup = groupFromRect(group, containedRect);
       if (!groupsEqualGeometry(group, nextGroup)) {
         didChange = true;
@@ -14364,6 +15122,10 @@ function expandGroupsToContainDirectMembers(
   return nextGroups;
 }
 
+function memberInsetsForCanvasGroup(group: Pick<CanvasGroupSummary, 'role'>): CanvasRectInsets {
+  return isWorkspaceRootGroup(group) ? CANVAS_WORKSPACE_ROOT_GROUP_MEMBER_INSETS : CANVAS_GROUP_MEMBER_INSETS;
+}
+
 function displaceOverlappingSiblingGroups(groups: readonly CanvasGroupSummary[]): CanvasGroupSummary[] {
   return repairCanvasGroupGeometry(groups, [], {}).groups;
 }
@@ -14371,7 +15133,7 @@ function displaceOverlappingSiblingGroups(groups: readonly CanvasGroupSummary[])
 function repairCanvasGroupGeometry(
   groups: readonly CanvasGroupSummary[],
   nodes: readonly CanvasNodeSummary[],
-  options: { pinnedGroupId?: string } = {}
+  options: CanvasGroupGeometryRepairOptions = {}
 ): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[] } {
   let nextGroups = expandGroupsToContainDirectMembers(groups, nodes);
   let nextNodes = nodes.map((node) => ({ ...node }));
@@ -14393,7 +15155,7 @@ function repairCanvasGroupGeometry(
 function repairOneIllegalSiblingGeometry(
   groups: readonly CanvasGroupSummary[],
   nodes: readonly CanvasNodeSummary[],
-  options: { pinnedGroupId?: string } = {}
+  options: CanvasGroupGeometryRepairOptions = {}
 ): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[]; didRepair: boolean } {
   const siblingCollections = collectSiblingGeometryCollections(groups, nodes);
   for (const collection of siblingCollections) {
@@ -14411,7 +15173,9 @@ function repairOneIllegalSiblingGeometry(
     const nodeGroupOverlap = findFirstNodeGroupOverlap(collection.items);
     if (nodeGroupOverlap) {
       const preferredRepairIds =
-        nodeGroupOverlap.secondId === options.pinnedGroupId ? [nodeGroupOverlap.firstId] : [nodeGroupOverlap.secondId];
+        isPinnedCanvasGroupRepairTarget(options, nodeGroupOverlap.secondId)
+          ? [nodeGroupOverlap.firstId]
+          : [nodeGroupOverlap.secondId];
       return {
         ...applySpreadRepair(groups, nodes, collection.items, preferredRepairIds, nodeGroupOverlap, options),
         didRepair: true
@@ -14426,11 +15190,25 @@ interface SiblingGeometryItem {
   kind: 'group' | 'node';
   id: string;
   rect: CanvasRect;
+  role?: CanvasGroupSummary['role'];
 }
 
 interface IllegalGeometryOverlap {
   firstId: string;
   secondId: string;
+}
+
+interface CanvasGroupGeometryRepairOptions {
+  pinnedGroupId?: string;
+  pinnedGroupIds?: readonly string[];
+}
+
+function collectPinnedCanvasGroupRepairTargetIds(options: CanvasGroupGeometryRepairOptions): Set<string> {
+  return new Set([options.pinnedGroupId, ...(options.pinnedGroupIds ?? [])].filter((id): id is string => Boolean(id)));
+}
+
+function isPinnedCanvasGroupRepairTarget(options: CanvasGroupGeometryRepairOptions, groupId: string): boolean {
+  return collectPinnedCanvasGroupRepairTargetIds(options).has(groupId);
 }
 
 function collectSiblingGeometryCollections(
@@ -14450,7 +15228,7 @@ function collectSiblingGeometryCollections(
     items: [
       ...groups
         .filter((group) => group.parentGroupId === parentGroupId)
-        .map((group) => ({ kind: 'group' as const, id: group.id, rect: rectForGroup(group) })),
+        .map((group) => ({ kind: 'group' as const, id: group.id, rect: rectForGroup(group), role: group.role })),
       ...nodes
         .filter((node) => node.groupId === parentGroupId)
         .map((node) => ({ kind: 'node' as const, id: node.id, rect: rectForNode(node) }))
@@ -14464,11 +15242,7 @@ function findFirstOverlappingSiblingGroups(items: readonly SiblingGeometryItem[]
     for (let rightIndex = leftIndex + 1; rightIndex < groupItems.length; rightIndex += 1) {
       const left = groupItems[leftIndex];
       const right = groupItems[rightIndex];
-      if (
-        rectsIntersect(left.rect, right.rect) &&
-        !rectContainsRect(left.rect, right.rect) &&
-        !rectContainsRect(right.rect, left.rect)
-      ) {
+      if (shouldTreatSiblingGeometryAsConflict(left, right, false)) {
         return { firstId: left.id, secondId: right.id };
       }
     }
@@ -14496,7 +15270,7 @@ function applySpreadRepair(
   siblingItems: readonly SiblingGeometryItem[],
   preferredRepairIds: readonly string[],
   overlap: IllegalGeometryOverlap,
-  options: { pinnedGroupId?: string } = {}
+  options: CanvasGroupGeometryRepairOptions = {}
 ): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[] } {
   const candidates = buildSpreadRepairCandidates(siblingItems, preferredRepairIds, overlap, options);
   const bestCandidate = candidates
@@ -14532,7 +15306,7 @@ function buildSpreadRepairCandidates(
   items: readonly SiblingGeometryItem[],
   preferredRepairIds: readonly string[],
   overlap: IllegalGeometryOverlap,
-  options: { pinnedGroupId?: string }
+  options: CanvasGroupGeometryRepairOptions
 ): string[][] {
   const movableIds = items.map((item) => item.id);
   const preferredIds = preferredRepairIds.filter((id) => movableIds.includes(id));
@@ -14541,7 +15315,8 @@ function buildSpreadRepairCandidates(
   const candidates: string[][] = [];
 
   const addCandidate = (ids: readonly string[]) => {
-    const uniqueIds = [...new Set(ids)].filter((id) => !options.pinnedGroupId || id !== options.pinnedGroupId);
+    const pinnedIds = collectPinnedCanvasGroupRepairTargetIds(options);
+    const uniqueIds = [...new Set(ids)].filter((id) => !pinnedIds.has(id));
     if (uniqueIds.length === 0) {
       return;
     }
@@ -14572,8 +15347,9 @@ function buildSpreadRepairCandidates(
 function resolveSpreadRepairPlan(
   items: readonly SiblingGeometryItem[],
   repairTargetIds: readonly string[],
-  options: { pinnedGroupId?: string }
+  options: CanvasGroupGeometryRepairOptions
 ): SpreadRepairPlan | undefined {
+  const pinnedIds = collectPinnedCanvasGroupRepairTargetIds(options);
   const repairTargetIdSet = new Set(repairTargetIds);
   const targets = items
     .map((item, index) => ({ item, index, rect: item.rect }))
@@ -14582,15 +15358,17 @@ function resolveSpreadRepairPlan(
     return undefined;
   }
 
-  const fixedItems = items.filter((item) => !repairTargetIdSet.has(item.id) || item.id === options.pinnedGroupId);
+  const fixedItems = items.filter((item) => !repairTargetIdSet.has(item.id) || pinnedIds.has(item.id));
   const repairedTargets = targets.map((target) => ({ ...target }));
   const deltasById = new Map<string, CanvasNodePosition>();
   for (const target of repairedTargets) {
     deltasById.set(target.item.id, { x: 0, y: 0 });
   }
 
-  const pinnedItem = options.pinnedGroupId ? items.find((item) => item.id === options.pinnedGroupId) : undefined;
-  const originPoint = pinnedItem ? rectCenterPoint(pinnedItem.rect) : averageRectCenter(items.map((item) => item.rect));
+  const pinnedItems = items.filter((item) => pinnedIds.has(item.id));
+  const originPoint = pinnedItems.length > 0
+    ? averageRectCenter(pinnedItems.map((item) => item.rect))
+    : averageRectCenter(items.map((item) => item.rect));
   for (let pass = 0; pass < Math.max(1, repairedTargets.length + fixedItems.length + 2); pass += 1) {
     let didMove = false;
     const allItems = [
@@ -14607,7 +15385,7 @@ function resolveSpreadRepairPlan(
       }
 
       const blockingCenter =
-        overlaps.some((candidate) => candidate.item.id === options.pinnedGroupId) && pinnedItem
+        overlaps.some((candidate) => pinnedIds.has(candidate.item.id)) && pinnedItems.length > 0
           ? originPoint
           : averageRectCenter(overlaps.map((candidate) => candidate.rect));
       const delta = chooseSpreadDelta(target.rect, blockingCenter, overlaps.map((candidate) => candidate.rect));
@@ -14757,8 +15535,8 @@ function applySpreadRepairPlan(
 }
 
 function shouldTreatSiblingGeometryAsConflict(
-  left: Pick<SiblingGeometryItem, 'kind' | 'rect'>,
-  right: Pick<SiblingGeometryItem, 'kind' | 'rect'>,
+  left: Pick<SiblingGeometryItem, 'kind' | 'rect' | 'role'>,
+  right: Pick<SiblingGeometryItem, 'kind' | 'rect' | 'role'>,
   includeNodeNode: boolean
 ): boolean {
   if (!rectsIntersect(left.rect, right.rect)) {
@@ -14770,7 +15548,12 @@ function shouldTreatSiblingGeometryAsConflict(
   }
 
   if (left.kind === 'group' && right.kind === 'group') {
-    return !rectContainsRect(left.rect, right.rect) && !rectContainsRect(right.rect, left.rect);
+    if (left.role === 'workspace-root' || right.role === 'workspace-root') {
+      return true;
+    }
+    const leftContainsRight = rectContainsRect(left.rect, right.rect);
+    const rightContainsLeft = rectContainsRect(right.rect, left.rect);
+    return (!leftContainsRight && !rightContainsLeft) || (leftContainsRight && rightContainsLeft);
   }
 
   return true;
@@ -14842,17 +15625,36 @@ function normalizeCanvasGroups(value: unknown): CanvasGroupSummary[] {
   const groups = value
     .map((group, index) => normalizeCanvasGroup(group, index))
     .filter((group): group is CanvasGroupSummary => group !== null);
+  const normalizedGroups = normalizeCanvasGroupParentIds(groups);
+
+  return displaceOverlappingSiblingGroups(normalizedGroups);
+}
+
+function normalizeCanvasGroupParentIds(groups: readonly CanvasGroupSummary[]): CanvasGroupSummary[] {
   const groupIds = new Set(groups.map((group) => group.id));
-  const normalizedGroups = groups.map((group) =>
-    group.parentGroupId && groupIds.has(group.parentGroupId) && !wouldCreateGroupCycle(groups, group.id, group.parentGroupId)
+  return groups.map((group) =>
+    group.parentGroupId &&
+      groupIds.has(group.parentGroupId) &&
+      !wouldCreateGroupCycle(groups, group.id, group.parentGroupId) &&
+      isAllowedCanvasGroupParent(groups, group, group.parentGroupId)
       ? group
       : {
           ...group,
           parentGroupId: undefined
         }
   );
+}
 
-  return displaceOverlappingSiblingGroups(normalizedGroups);
+function isAllowedCanvasGroupParent(
+  groups: readonly CanvasGroupSummary[],
+  group: CanvasGroupSummary,
+  parentGroupId: string
+): boolean {
+  if (!isWorkspaceRootGroup(group)) {
+    return true;
+  }
+  const parent = groups.find((candidate) => candidate.id === parentGroupId);
+  return Boolean(parent && !isWorkspaceRootGroup(parent) && !resolveContainingWorkspaceRootGroupId(groups, parent.id));
 }
 
 function normalizeCanvasGroup(value: unknown, index: number): CanvasGroupSummary | null {
@@ -14860,12 +15662,19 @@ function normalizeCanvasGroup(value: unknown, index: number): CanvasGroupSummary
     return null;
   }
 
+  const role: CanvasGroupRole | undefined = value.role === 'workspace-root' ? 'workspace-root' : undefined;
+  const workspaceRootPath =
+    role === 'workspace-root' && typeof value.workspaceRootPath === 'string'
+      ? path.resolve(value.workspaceRootPath)
+      : undefined;
   return {
     id: value.id,
     title: typeof value.title === 'string' && value.title.trim() ? trimStoredNodeText(value.title).trim() : `Group ${index + 1}`,
     position: normalizeRawPosition(value.position),
     size: normalizeCanvasGroupFootprint(value.size),
-    parentGroupId: typeof value.parentGroupId === 'string' ? value.parentGroupId : undefined
+    parentGroupId: typeof value.parentGroupId === 'string' ? value.parentGroupId : undefined,
+    role,
+    workspaceRootPath
   };
 }
 
@@ -14915,13 +15724,15 @@ function removeMissingGroupNodeMemberships(
   nodes: readonly CanvasNodeSummary[]
 ): CanvasGroupSummary[] {
   const groupIds = new Set(groups.map((group) => group.id));
-  return groups.map((group) =>
-    group.parentGroupId && !groupIds.has(group.parentGroupId)
-      ? {
-          ...group,
-          parentGroupId: undefined
-        }
-      : group
+  return normalizeCanvasGroupParentIds(
+    groups.map((group) =>
+      group.parentGroupId && !groupIds.has(group.parentGroupId)
+        ? {
+            ...group,
+            parentGroupId: undefined
+          }
+        : group
+    )
   );
 }
 
@@ -15088,6 +15899,10 @@ function pointInRect(point: CanvasNodePosition, rect: CanvasRect): boolean {
   return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
 }
 
+function rectContainsPoint(rect: CanvasRect, point: CanvasNodePosition): boolean {
+  return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+}
+
 function groupDepth(groups: readonly CanvasGroupSummary[], groupId: string): number {
   let depth = 0;
   let currentGroup = groups.find((group) => group.id === groupId);
@@ -15159,7 +15974,82 @@ function rebuildCanvasFileArtifacts(
     preserveAutomaticFileNodeSizes: boolean;
   }
 ): CanvasPrototypeState {
+  const workspaceRootGroups = state.groups.filter(isWorkspaceRootGroup);
+  if (workspaceRootGroups.length > 0) {
+    return rebuildMultiRootCanvasFileArtifacts(state, options, workspaceRootGroups);
+  }
+
   const manualNodes = state.nodes.filter((node) => node.kind !== 'file' && node.kind !== 'file-list');
+  return rebuildCanvasFileArtifactsForNodeScope(state, options, manualNodes, {
+    allowedGroupId: undefined,
+    namespaceId: undefined
+  });
+}
+
+function rebuildMultiRootCanvasFileArtifacts(
+  state: CanvasPrototypeState,
+  options: {
+    view: CanvasFileViewConfiguration;
+    preserveAutomaticFileNodeSizes: boolean;
+  },
+  workspaceRootGroups: CanvasGroupSummary[]
+): CanvasPrototypeState {
+  let nextState = state;
+  for (const rootGroup of workspaceRootGroups) {
+    const rootPath = resolveWorkspaceRootPathForGroup(rootGroup);
+    if (!rootPath) {
+      continue;
+    }
+
+    const rootManualNodes = state.nodes.filter(
+      (node) =>
+        node.kind !== 'file' &&
+        node.kind !== 'file-list' &&
+        isCanvasNodeInWorkspaceRootScope(state.groups ?? [], node, rootGroup.id)
+    );
+    nextState = rebuildCanvasFileArtifactsForNodeScope(nextState, options, rootManualNodes, {
+      allowedGroupId: rootGroup.id,
+      namespaceId: rootGroup.id
+    });
+  }
+
+  const rootScopedNodeIds = new Set(nextState.nodes.flatMap((node) =>
+    isCanvasNodeInAnyWorkspaceRootScope(nextState.groups ?? [], node) ? [node.id] : []
+  ));
+  const workspaceLevelAutomaticNodes = nextState.nodes.filter(
+    (node) =>
+      (node.kind === 'file' || node.kind === 'file-list') &&
+      splitNamespacedCanvasObjectId(node.id) === undefined &&
+      !rootScopedNodeIds.has(node.id)
+  );
+  if (workspaceLevelAutomaticNodes.length === 0) {
+    return nextState;
+  }
+
+  const workspaceLevelAutomaticNodeIds = new Set(workspaceLevelAutomaticNodes.map((node) => node.id));
+  return {
+    ...nextState,
+    nodes: nextState.nodes.filter((node) => !workspaceLevelAutomaticNodeIds.has(node.id)),
+    edges: nextState.edges.filter(
+      (edge) =>
+        !workspaceLevelAutomaticNodeIds.has(edge.sourceNodeId) &&
+        !workspaceLevelAutomaticNodeIds.has(edge.targetNodeId)
+    )
+  };
+}
+
+function rebuildCanvasFileArtifactsForNodeScope(
+  state: CanvasPrototypeState,
+  options: {
+    view: CanvasFileViewConfiguration;
+    preserveAutomaticFileNodeSizes: boolean;
+  },
+  manualNodes: CanvasNodeSummary[],
+  scope: {
+    allowedGroupId: string | undefined;
+    namespaceId: string | undefined;
+  }
+): CanvasPrototypeState {
   const existingAutoNodes = new Map(
     state.nodes
       .filter((node) => node.kind === 'file' || node.kind === 'file-list')
@@ -15174,7 +16064,17 @@ function rebuildCanvasFileArtifacts(
       ...reference,
       owners: reference.owners.filter((owner) => manualNodeIds.has(owner.nodeId))
     }))
-    .filter((reference) => reference.owners.length > 0);
+    .filter((reference) => reference.owners.length > 0)
+    .map((reference) => namespaceFileReferenceForScope(reference, scope.namespaceId));
+  const scopedAuthoritativeFileReferences = mergeCanvasFileReferences(authoritativeFileReferences);
+  const scopedAutomaticNodeIds = new Set(
+    state.nodes
+      .filter((node) =>
+        (node.kind === 'file' || node.kind === 'file-list') &&
+        isAutomaticFileArtifactNodeInScope(node, scope)
+      )
+      .map((node) => node.id)
+  );
   if (!options.view.enabled) {
     const userEdges = state.edges.filter(
       (edge) =>
@@ -15182,25 +16082,47 @@ function rebuildCanvasFileArtifacts(
         manualNodeIds.has(edge.sourceNodeId) &&
         manualNodeIds.has(edge.targetNodeId)
     );
+    const retainedNodes = state.nodes.filter(
+      (node) => !manualNodeIds.has(node.id) && !scopedAutomaticNodeIds.has(node.id)
+    );
+    const retainedNodeIds = new Set(retainedNodes.map((node) => node.id));
+    const retainedEdges = state.edges.filter(
+      (edge) =>
+        !manualNodeIds.has(edge.sourceNodeId) &&
+        !manualNodeIds.has(edge.targetNodeId) &&
+        !scopedAutomaticNodeIds.has(edge.sourceNodeId) &&
+        !scopedAutomaticNodeIds.has(edge.targetNodeId) &&
+        retainedNodeIds.has(edge.sourceNodeId) &&
+        retainedNodeIds.has(edge.targetNodeId)
+    );
 
     return {
       ...state,
-      nodes: manualNodes,
-      edges: userEdges,
-      fileReferences: [],
-      suppressedFileActivityEdgeIds: [],
-      suppressedAutomaticFileArtifactNodeIds: []
+      nodes: [...retainedNodes, ...manualNodes],
+      edges: [...retainedEdges, ...userEdges],
+      fileReferences: removeFileReferenceOwnersForNodeIds(state.fileReferences, manualNodeIds),
+      suppressedFileActivityEdgeIds: filterSuppressedFileActivityEdgeIdsForScope(
+        state.suppressedFileActivityEdgeIds,
+        new Set(),
+        userEdges,
+        scope.namespaceId
+      ),
+      suppressedAutomaticFileArtifactNodeIds: filterSuppressedAutomaticFileArtifactNodeIdsForScope(
+        state.suppressedAutomaticFileArtifactNodeIds,
+        new Set(),
+        scope.namespaceId
+      )
     };
   }
-  const projectedFileReferences = authoritativeFileReferences.filter((reference) =>
+  const projectedFileReferences = scopedAuthoritativeFileReferences.filter((reference) =>
     shouldIncludeFileReference(reference, options.view.includeGlobs, options.view.excludeGlobs)
   );
-  const automaticArtifactNodeIds = collectAutomaticFileArtifactNodeIds(authoritativeFileReferences);
+  const automaticArtifactNodeIds = collectAutomaticFileArtifactNodeIds(scopedAuthoritativeFileReferences);
   const allAutomaticArtifacts =
     options.view.presentationMode === 'lists'
-      ? buildAutomaticFileListArtifacts(authoritativeFileReferences, manualNodes, agentNodesById, existingAutoNodes)
+      ? buildAutomaticFileListArtifacts(scopedAuthoritativeFileReferences, manualNodes, agentNodesById, existingAutoNodes)
       : buildAutomaticFileNodeArtifacts(
-          authoritativeFileReferences,
+          scopedAuthoritativeFileReferences,
           manualNodes,
           agentNodesById,
           existingAutoNodes,
@@ -15226,10 +16148,14 @@ function rebuildCanvasFileArtifacts(
             pathDisplayMode: options.view.pathDisplayMode
           }
         );
+  const scopedAutomaticArtifacts = {
+    nodes: automaticArtifacts.nodes.map((node) => withCanvasNodeGroupId(node, scope.allowedGroupId)),
+    edges: automaticArtifacts.edges
+  };
   const suppressedAutomaticFileArtifactNodeIds = new Set(state.suppressedAutomaticFileArtifactNodeIds);
   const projectedNodes = [
     ...manualNodes,
-    ...automaticArtifacts.nodes.filter((node) => !suppressedAutomaticFileArtifactNodeIds.has(node.id))
+    ...scopedAutomaticArtifacts.nodes.filter((node) => !suppressedAutomaticFileArtifactNodeIds.has(node.id))
   ];
   const projectedNodeIds = new Set(projectedNodes.map((node) => node.id));
   const automaticEdgeIds = new Set(allAutomaticArtifacts.edges.map((edge) => edge.id));
@@ -15246,19 +16172,234 @@ function rebuildCanvasFileArtifacts(
       projectedNodeIds.has(edge.sourceNodeId) &&
       projectedNodeIds.has(edge.targetNodeId)
   );
+  const replacedNodeIds = new Set<string>([
+    ...manualNodeIds,
+    ...scopedAutomaticNodeIds
+  ]);
+  const retainedNodes = state.nodes.filter((node) => !replacedNodeIds.has(node.id));
+  const retainedNodeIds = new Set(retainedNodes.map((node) => node.id));
+  const retainedEdges = state.edges.filter(
+    (edge) =>
+      !manualNodeIds.has(edge.sourceNodeId) &&
+      !manualNodeIds.has(edge.targetNodeId) &&
+      !automaticEdgeIds.has(edge.id) &&
+      retainedNodeIds.has(edge.sourceNodeId) &&
+      retainedNodeIds.has(edge.targetNodeId)
+  );
+  const retainedFileReferences = removeFileReferenceOwnersForNodeIds(state.fileReferences, manualNodeIds);
 
   return {
     ...state,
-    nodes: projectedNodes,
-    edges: [...userEdges, ...automaticEdges],
-    fileReferences: authoritativeFileReferences,
-    suppressedFileActivityEdgeIds: Array.from(suppressedFileActivityEdgeIds).filter(
-      (edgeId) => automaticEdgeIds.has(edgeId) || userEdges.some((edge) => edge.id === edgeId)
+    nodes: [...retainedNodes, ...projectedNodes],
+    edges: [...retainedEdges, ...userEdges, ...automaticEdges],
+    fileReferences: [...retainedFileReferences, ...scopedAuthoritativeFileReferences],
+    suppressedFileActivityEdgeIds: filterSuppressedFileActivityEdgeIdsForScope(
+      state.suppressedFileActivityEdgeIds,
+      automaticEdgeIds,
+      userEdges,
+      scope.namespaceId
     ),
-    suppressedAutomaticFileArtifactNodeIds: Array.from(suppressedAutomaticFileArtifactNodeIds).filter(
-      (nodeId) => automaticArtifactNodeIds.has(nodeId)
+    suppressedAutomaticFileArtifactNodeIds: filterSuppressedAutomaticFileArtifactNodeIdsForScope(
+      state.suppressedAutomaticFileArtifactNodeIds,
+      automaticArtifactNodeIds,
+      scope.namespaceId
     )
   };
+}
+
+function namespaceFileReferenceForScope(
+  reference: CanvasFileReferenceSummary,
+  namespaceId: string | undefined
+): CanvasFileReferenceSummary {
+  if (!namespaceId || splitNamespacedCanvasObjectId(reference.id)) {
+    return reference;
+  }
+
+  return {
+    ...reference,
+    id: `${namespaceId}:${reference.id}`
+  };
+}
+
+function mergeCanvasFileReferences(
+  fileReferences: readonly CanvasFileReferenceSummary[]
+): CanvasFileReferenceSummary[] {
+  const referencesById = new Map<string, CanvasFileReferenceSummary>();
+  for (const reference of fileReferences) {
+    const existingReference = referencesById.get(reference.id);
+    if (!existingReference) {
+      referencesById.set(reference.id, reference);
+      continue;
+    }
+
+    referencesById.set(reference.id, {
+      ...existingReference,
+      filePath: reference.filePath || existingReference.filePath,
+      relativePath: reference.relativePath ?? existingReference.relativePath,
+      updatedAt: compareTimestamp(reference.updatedAt, existingReference.updatedAt) >= 0
+        ? reference.updatedAt
+        : existingReference.updatedAt,
+      owners: reference.owners.reduce(
+        (owners, owner) => mergeFileReferenceOwners(owners, owner),
+        existingReference.owners
+      )
+    });
+  }
+  return Array.from(referencesById.values());
+}
+
+function compareTimestamp(left: string | undefined, right: string | undefined): number {
+  const leftTime = left ? Date.parse(left) : Number.NaN;
+  const rightTime = right ? Date.parse(right) : Number.NaN;
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) {
+    return leftTime - rightTime;
+  }
+  if (Number.isFinite(leftTime)) {
+    return 1;
+  }
+  if (Number.isFinite(rightTime)) {
+    return -1;
+  }
+  return 0;
+}
+
+function removeFileReferenceOwnersForNodeIds(
+  fileReferences: readonly CanvasFileReferenceSummary[],
+  nodeIds: ReadonlySet<string>
+): CanvasFileReferenceSummary[] {
+  return fileReferences
+    .map((reference) => ({
+      ...reference,
+      owners: reference.owners.filter((owner) => !nodeIds.has(owner.nodeId))
+    }))
+    .filter((reference) => reference.owners.length > 0);
+}
+
+function withCanvasNodeGroupId(
+  node: CanvasNodeSummary,
+  groupId: string | undefined
+): CanvasNodeSummary {
+  return groupId
+    ? {
+        ...node,
+        groupId
+      }
+    : {
+        ...node,
+        groupId: undefined
+      };
+}
+
+function isAutomaticFileArtifactNodeInScope(
+  node: CanvasNodeSummary,
+  scope: {
+    allowedGroupId: string | undefined;
+    namespaceId: string | undefined;
+  }
+): boolean {
+  if (!scope.allowedGroupId) {
+    return true;
+  }
+
+  if (node.groupId === scope.allowedGroupId) {
+    return true;
+  }
+
+  const namespacedId = splitNamespacedCanvasObjectId(node.id);
+  if (namespacedId) {
+    return namespacedId.namespaceId === scope.namespaceId;
+  }
+
+  const legacyArtifactNamespaceId = resolveLegacyAutomaticFileArtifactNamespaceId(node.id);
+  if (legacyArtifactNamespaceId) {
+    return legacyArtifactNamespaceId === scope.namespaceId;
+  }
+
+  return node.groupId === undefined;
+}
+
+function filterSuppressedFileActivityEdgeIdsForScope(
+  existingEdgeIds: readonly string[],
+  automaticEdgeIds: ReadonlySet<string>,
+  userEdges: readonly CanvasEdgeSummary[],
+  namespaceId: string | undefined
+): string[] {
+  const userEdgeIds = new Set(userEdges.map((edge) => edge.id));
+  return uniqueCanvasStrings(existingEdgeIds.filter((edgeId) => {
+    if (isCanvasObjectIdOutsideWorkspaceRootNamespace(edgeId, namespaceId)) {
+      return true;
+    }
+    return automaticEdgeIds.has(edgeId) || userEdgeIds.has(edgeId);
+  }));
+}
+
+function filterSuppressedAutomaticFileArtifactNodeIdsForScope(
+  existingNodeIds: readonly string[],
+  automaticArtifactNodeIds: ReadonlySet<string>,
+  namespaceId: string | undefined
+): string[] {
+  return uniqueCanvasStrings(existingNodeIds.filter((nodeId) => {
+    if (isCanvasObjectIdOutsideWorkspaceRootNamespace(nodeId, namespaceId)) {
+      return true;
+    }
+    return automaticArtifactNodeIds.has(nodeId);
+  }));
+}
+
+function uniqueCanvasStrings(values: readonly string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function isCanvasObjectIdOutsideWorkspaceRootNamespace(
+  objectId: string,
+  namespaceId: string | undefined
+): boolean {
+  if (!namespaceId) {
+    return false;
+  }
+  const namespacedId = splitNamespacedCanvasObjectId(objectId);
+  if (namespacedId) {
+    return namespacedId.namespaceId !== namespaceId;
+  }
+
+  const legacyArtifactNamespaceId = resolveLegacyAutomaticFileArtifactNamespaceId(objectId);
+  return legacyArtifactNamespaceId !== undefined && legacyArtifactNamespaceId !== namespaceId;
+}
+
+function resolveLegacyAutomaticFileArtifactNamespaceId(objectId: string): string | undefined {
+  for (const prefix of ['file-', 'file-list-agent-']) {
+    if (!objectId.startsWith(prefix)) {
+      continue;
+    }
+    const remainder = objectId.slice(prefix.length);
+    const separatorIndex = remainder.indexOf(':');
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const namespaceId = remainder.slice(0, separatorIndex);
+    if (namespaceId.startsWith('workspace-root-')) {
+      return namespaceId;
+    }
+  }
+  return undefined;
+}
+
+function isCanvasNodeInWorkspaceRootScope(
+  groups: readonly CanvasGroupSummary[],
+  node: CanvasNodeSummary,
+  rootGroupId: string
+): boolean {
+  if (node.groupId === rootGroupId) {
+    return true;
+  }
+  return Boolean(node.groupId && resolveContainingWorkspaceRootGroupId(groups, node.groupId) === rootGroupId);
+}
+
+function isCanvasNodeInAnyWorkspaceRootScope(
+  groups: readonly CanvasGroupSummary[],
+  node: CanvasNodeSummary
+): boolean {
+  return Boolean(node.groupId && resolveContainingWorkspaceRootGroupId(groups, node.groupId));
 }
 
 function buildAutomaticFileNodeArtifacts(
@@ -15324,7 +16465,7 @@ function buildAutomaticFileNodeArtifacts(
 
       edges.push(
         createAutomaticFileEdge({
-          edgeId: `${owner.nodeId}::${nodeId}`,
+          edgeId: buildAutomaticFileEdgeId(owner.nodeId, nodeId),
           referenceNode: fileNode,
           agentNode,
           accessMode: owner.accessMode
@@ -15528,7 +16669,7 @@ function buildAutomaticFileListArtifacts(
     nodes.push(fileListNode);
     edges.push(
       createAutomaticFileEdge({
-        edgeId: `${agentNodeId}::${nodeId}`,
+        edgeId: buildAutomaticFileEdgeId(agentNodeId, nodeId),
         referenceNode: fileListNode,
         agentNode,
         accessMode: mergeAccessModes(entries.map((entry) => entry.accessMode))
@@ -15537,7 +16678,7 @@ function buildAutomaticFileListArtifacts(
   }
 
   if (sharedEntries.length > 0) {
-    const sharedNodeId = 'file-list-shared';
+    const sharedNodeId = buildSharedFileListNodeId(sharedEntries);
     const existingNode = existingAutoNodes.get(sharedNodeId);
     const position = existingNode?.position
       ? existingNode.position
@@ -15579,7 +16720,7 @@ function buildAutomaticFileListArtifacts(
       }
       edges.push(
         createAutomaticFileEdge({
-          edgeId: `${agentNodeId}::${sharedNodeId}`,
+          edgeId: buildAutomaticFileEdgeId(agentNodeId, sharedNodeId),
           referenceNode: sharedNode,
           agentNode,
           accessMode: mergeAccessModes(accessModes)
@@ -15592,11 +16733,54 @@ function buildAutomaticFileListArtifacts(
 }
 
 function buildFileNodeId(fileReferenceId: string): string {
-  return `file-${fileReferenceId}`;
+  const namespacedId = splitNamespacedCanvasObjectId(fileReferenceId);
+  return namespacedId
+    ? `${namespacedId.namespaceId}:file-${namespacedId.localId}`
+    : `file-${fileReferenceId}`;
 }
 
 function buildAgentFileListNodeId(agentNodeId: string): string {
-  return `file-list-agent-${agentNodeId}`;
+  const namespacedId = splitNamespacedCanvasObjectId(agentNodeId);
+  return namespacedId
+    ? `${namespacedId.namespaceId}:file-list-agent-${namespacedId.localId}`
+    : `file-list-agent-${agentNodeId}`;
+}
+
+function buildAutomaticFileEdgeId(ownerNodeId: string, artifactNodeId: string): string {
+  const ownerNamespacedId = splitNamespacedCanvasObjectId(ownerNodeId);
+  const artifactNamespacedId = splitNamespacedCanvasObjectId(artifactNodeId);
+  if (
+    ownerNamespacedId &&
+    artifactNamespacedId &&
+    ownerNamespacedId.namespaceId === artifactNamespacedId.namespaceId
+  ) {
+    return `${ownerNamespacedId.namespaceId}:${ownerNamespacedId.localId}::${artifactNamespacedId.localId}`;
+  }
+
+  return `${ownerNodeId}::${artifactNodeId}`;
+}
+
+function buildSharedFileListNodeId(entries: readonly FileListNodeEntrySummary[]): string {
+  const namespaceId = resolveSingleCanvasNamespaceId(entries.flatMap((entry) => entry.ownerNodeIds));
+  return namespaceId ? `${namespaceId}:file-list-shared` : 'file-list-shared';
+}
+
+function resolveSingleCanvasNamespaceId(objectIds: readonly string[]): string | undefined {
+  let namespaceId: string | undefined;
+  for (const objectId of objectIds) {
+    const parts = splitNamespacedCanvasObjectId(objectId);
+    if (!parts) {
+      return undefined;
+    }
+    if (!namespaceId) {
+      namespaceId = parts.namespaceId;
+      continue;
+    }
+    if (namespaceId !== parts.namespaceId) {
+      return undefined;
+    }
+  }
+  return namespaceId;
 }
 
 function collectAutomaticFileArtifactNodeIds(
@@ -15604,12 +16788,12 @@ function collectAutomaticFileArtifactNodeIds(
 ): Set<string> {
   const nodeIds = new Set<string>();
   const uniqueAgentFileListOwnerIds = new Set<string>();
-  let hasSharedFileList = false;
+  const sharedOwnerNodeIds: string[][] = [];
 
   for (const reference of fileReferences) {
     nodeIds.add(buildFileNodeId(reference.id));
     if (reference.owners.length > 1) {
-      hasSharedFileList = true;
+      sharedOwnerNodeIds.push(reference.owners.map((owner) => owner.nodeId));
       continue;
     }
 
@@ -15623,8 +16807,9 @@ function collectAutomaticFileArtifactNodeIds(
     nodeIds.add(buildAgentFileListNodeId(ownerNodeId));
   }
 
-  if (hasSharedFileList) {
-    nodeIds.add('file-list-shared');
+  for (const ownerNodeIds of sharedOwnerNodeIds) {
+    const namespaceId = resolveSingleCanvasNamespaceId(ownerNodeIds);
+    nodeIds.add(namespaceId ? `${namespaceId}:file-list-shared` : 'file-list-shared');
   }
 
   return nodeIds;
@@ -15906,12 +17091,36 @@ function createUserCanvasEdge(
   if (previousState.edges.some((existingEdge) => existingEdge.id === edge.id)) {
     return previousState;
   }
+  if (!canConnectCanvasEdgeEndpoints(previousState, edge.sourceNodeId, edge.targetNodeId)) {
+    return previousState;
+  }
 
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
     edges: [...previousState.edges, edge]
   };
+}
+
+function canConnectCanvasEdgeEndpoints(
+  state: CanvasPrototypeState,
+  sourceNodeId: string,
+  targetNodeId: string
+): boolean {
+  const sourceNode = state.nodes.find((node) => node.id === sourceNodeId);
+  const targetNode = state.nodes.find((node) => node.id === targetNodeId);
+  if (!sourceNode || !targetNode) {
+    return false;
+  }
+
+  const groups = state.groups ?? [];
+  if (!groups.some(isWorkspaceRootGroup)) {
+    return true;
+  }
+
+  const sourceRootGroupId = resolveContainingWorkspaceRootGroupId(groups, sourceNode.groupId);
+  const targetRootGroupId = resolveContainingWorkspaceRootGroupId(groups, targetNode.groupId);
+  return Boolean(sourceRootGroupId && sourceRootGroupId === targetRootGroupId);
 }
 
 function updateCanvasEdge(
@@ -15933,8 +17142,7 @@ function updateCanvasEdge(
   }
 
   const patchedEdge = applyCanvasEdgePatch(edge, patch);
-  const nodeIds = new Set(previousState.nodes.map((node) => node.id));
-  if (!nodeIds.has(patchedEdge.sourceNodeId) || !nodeIds.has(patchedEdge.targetNodeId)) {
+  if (!canConnectCanvasEdgeEndpoints(previousState, patchedEdge.sourceNodeId, patchedEdge.targetNodeId)) {
     return previousState;
   }
   if (areCanvasEdgesEquivalent(edge, patchedEdge)) {
@@ -16053,40 +17261,54 @@ function recordAgentFileActivity(
     return previousState;
   }
 
-  const referenceId = buildFileReferenceId(normalizedPath);
+  const localReferenceId = buildFileReferenceId(normalizedPath);
+  const referenceId = buildFileReferenceIdForOwner(normalizedPath, event.nodeId);
+  const ownerNamespaceId = splitNamespacedCanvasObjectId(event.nodeId)?.namespaceId;
   const existingReference = previousState.fileReferences.find((reference) => reference.id === referenceId);
+  const migratedOwners = ownerNamespaceId
+    ? previousState.fileReferences
+        .filter((reference) => reference.id === localReferenceId)
+        .flatMap((reference) => reference.owners.filter((owner) =>
+          splitNamespacedCanvasObjectId(owner.nodeId)?.namespaceId === ownerNamespaceId
+        ))
+    : [];
   const nextOwner: CanvasFileReferenceOwnerSummary = {
     nodeId: event.nodeId,
     accessMode: event.accessMode,
     updatedAt: event.timestamp
   };
-
-  const nextFileReferences = existingReference
-    ? previousState.fileReferences.map((reference) =>
-        reference.id === referenceId
-          ? {
-              ...reference,
-              relativePath: event.relativePath ?? reference.relativePath,
-              updatedAt: event.timestamp,
-              owners: mergeFileReferenceOwners(reference.owners, nextOwner)
-            }
-          : reference
-      )
-    : [
-        ...previousState.fileReferences,
-        {
-          id: referenceId,
-          filePath: normalizedPath,
-          relativePath: event.relativePath,
-          updatedAt: event.timestamp,
-          owners: [nextOwner]
-        }
-      ];
+  const targetOwners = [...migratedOwners, nextOwner].reduce(
+    (owners, owner) => mergeFileReferenceOwners(owners, owner),
+    existingReference?.owners ?? []
+  );
+  const targetReference: CanvasFileReferenceSummary = {
+    ...(existingReference ?? {
+      id: referenceId,
+      filePath: normalizedPath
+    }),
+    id: referenceId,
+    filePath: normalizedPath,
+    relativePath: event.relativePath ?? existingReference?.relativePath,
+    updatedAt: event.timestamp,
+    owners: targetOwners
+  };
+  const retainedFileReferences = previousState.fileReferences.flatMap((reference): CanvasFileReferenceSummary[] => {
+    if (reference.id === referenceId) {
+      return [];
+    }
+    if (ownerNamespaceId && reference.id === localReferenceId) {
+      const remainingOwners = reference.owners.filter((owner) =>
+        splitNamespacedCanvasObjectId(owner.nodeId)?.namespaceId !== ownerNamespaceId
+      );
+      return remainingOwners.length > 0 ? [{ ...reference, owners: remainingOwners }] : [];
+    }
+    return [reference];
+  });
 
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
-    fileReferences: nextFileReferences
+    fileReferences: [...retainedFileReferences, targetReference]
   };
 }
 
@@ -16137,6 +17359,12 @@ function mergeFileReferenceOwners(
 
 function buildFileReferenceId(filePath: string): string {
   return createHash('sha256').update(filePath).digest('hex').slice(0, 16);
+}
+
+function buildFileReferenceIdForOwner(filePath: string, ownerNodeId: string): string {
+  const localReferenceId = buildFileReferenceId(filePath);
+  const ownerNamespaceId = splitNamespacedCanvasObjectId(ownerNodeId)?.namespaceId;
+  return ownerNamespaceId ? `${ownerNamespaceId}:${localReferenceId}` : localReferenceId;
 }
 
 function normalizeTrackedFilePath(filePath: string): string | undefined {
@@ -16540,6 +17768,7 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
       return {
         kind: message.payload.kind,
         cwd: message.payload.cwd,
+        targetGroupId: message.payload.targetGroupId,
         agentProvider: message.payload.agentProvider
       };
     case 'host/requestCreateGroupFromSelection':
@@ -18993,6 +20222,9 @@ function describeBlockedAgentLiveRuntimeSummary(blockReason: LiveRuntimeReconnec
   if (blockReason === 'workspace-untrusted') {
     return '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。';
   }
+  if (blockReason === 'multi-root-workspace') {
+    return '多根 workspace 暂不重新连接原 Agent live runtime，仅展示历史结果；请单独打开所属 root 后恢复。';
+  }
 
   return '运行时持久化已关闭，原 Agent live runtime 已恢复为历史结果。';
 }
@@ -19000,6 +20232,9 @@ function describeBlockedAgentLiveRuntimeSummary(blockReason: LiveRuntimeReconnec
 function describeBlockedTerminalLiveRuntimeSummary(blockReason: LiveRuntimeReconnectBlockReason): string {
   if (blockReason === 'workspace-untrusted') {
     return '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。';
+  }
+  if (blockReason === 'multi-root-workspace') {
+    return '多根 workspace 暂不重新连接原终端 live runtime，仅展示历史结果；请单独打开所属 root 后恢复。';
   }
 
   return '运行时持久化已关闭，原终端 live runtime 已恢复为历史结果。';
@@ -19104,4 +20339,12 @@ function buildCanvasTemplateStorageLocations(context: vscode.ExtensionContext): 
   };
 
   return [...workspaceLocations, globalLocation];
+}
+
+function createRootLocalCanvasStorageKey(rootPath: string): string {
+  const resolvedRootPath = path.resolve(rootPath);
+  return createHash('sha256')
+    .update(process.platform === 'win32' ? resolvedRootPath.toLowerCase() : resolvedRootPath)
+    .digest('hex')
+    .slice(0, 24);
 }

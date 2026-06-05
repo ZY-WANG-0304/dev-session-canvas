@@ -156,6 +156,22 @@ const createGroupFromSelectionMessage = {
 };
 assert.deepEqual(parseWebviewMessage(createGroupFromSelectionMessage), createGroupFromSelectionMessage);
 
+const dropNoteMarkdownFilesInRootMessage = {
+  type: 'webview/dropNoteMarkdownFiles',
+  payload: {
+    resources: [
+      {
+        source: 'files',
+        valueKind: 'path',
+        value: '/workspace/frontend/notes.md'
+      }
+    ],
+    position: { x: 320, y: 360 },
+    targetGroupId: 'workspace-root-frontend'
+  }
+};
+assert.deepEqual(parseWebviewMessage(dropNoteMarkdownFilesInRootMessage), dropNoteMarkdownFilesInRootMessage);
+
 const protocolSource = await readFile('src/common/protocol.ts', 'utf8');
 assert.match(
   protocolSource,
@@ -176,6 +192,11 @@ assert.match(
   protocolSource,
   /export function extractWebviewMessageLifecycle/u,
   'Expected shared protocol parser to safely extract optional lifecycle identity.'
+);
+assert.match(
+  protocolSource,
+  /type: 'host\/requestCreateNode'[\s\S]*targetGroupId\?: string/u,
+  'Expected host/requestCreateNode to carry an optional target group for multi-root root selection.'
 );
 
 const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
