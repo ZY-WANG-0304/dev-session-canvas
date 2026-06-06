@@ -140,6 +140,7 @@ import {
 import {
   buildFreshAgentCommandLine,
   buildAgentHistoryResumeCommandLine,
+  buildClaudeBranchCommandLine,
   extractClaudeCommandSessionFlag,
   formatCommandLine,
   validateAgentCommandLine
@@ -2401,6 +2402,69 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         restored: true
       };
     }
+  }
+
+  private async branchAgentSession(nodeId: string): Promise<{ branched: boolean; errorMessage?: string }> {
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Branch Agent 会话。')) {
+      return {
+        branched: false,
+        errorMessage: '当前 workspace 未受信任，不能 Branch Agent 会话。'
+      };
+    }
+
+    const sourceNode = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
+    if (!sourceNode) {
+      const message = '未找到可 Branch 的 Agent 节点。';
+      this.postMessage({ type: 'host/error', payload: { message } });
+      return { branched: false, errorMessage: message };
+    }
+
+    const metadata = ensureAgentMetadata(sourceNode);
+    if (metadata.provider !== 'claude' || metadata.resumeStrategy !== 'claude-session-id') {
+      const message = '只有持有可信会话的 Claude Code Agent 才能 Branch。';
+      this.postMessage({ type: 'host/error', payload: { message } });
+      return { branched: false, errorMessage: message };
+    }
+
+    const sessionId = metadata.resumeSessionId?.trim();
+    if (!sessionId) {
+      const message = '当前 Claude Code Agent 尚未确认可 Branch 的会话标识。';
+      this.postMessage({ type: 'host/error', payload: { message } });
+      return { branched: false, errorMessage: message };
+    }
+
+    let branchCommandLine: string;
+    try {
+      branchCommandLine = this.buildClaudeBranchCommandLine(sessionId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '无法解析 Claude Code Branch 启动命令。';
+      this.postMessage({ type: 'host/error', payload: { message } });
+      return { branched: false, errorMessage: message };
+    }
+
+    const sourceSize = sourceNode.size ?? estimatedCanvasNodeFootprint('agent');
+    const preferredPosition = {
+      x: sourceNode.position.x + sourceSize.width + 48,
+      y: sourceNode.position.y
+    };
+    const createdNode = this.applyCreateNode('agent', preferredPosition, {
+      agentProvider: 'claude',
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: branchCommandLine,
+      titleOverride: `${sourceNode.title} Branch`,
+      cwdOverride: metadata.cwd
+    });
+    if (!createdNode) {
+      return { branched: false };
+    }
+
+    try {
+      await this.focusNodeInCanvas(createdNode.id);
+    } catch {
+      void vscode.window.showWarningMessage(`Branch 节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+    }
+
+    return { branched: true };
   }
 
   public getSessionHistoryRestoreBlockReason(): string | undefined {
@@ -8908,6 +8972,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.trackRuntimeSupervisorOperation(operation);
         }
         return;
+      case 'webview/branchAgentSession':
+        void this.branchAgentSession(parsedMessage.payload.nodeId);
+        return;
       case 'webview/attachExecutionSession':
         this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
         return;
@@ -11121,6 +11188,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       provider,
       sessionId,
       this.getAgentLaunchDefaults(provider)
+    );
+  }
+
+  private buildClaudeBranchCommandLine(sessionId: string): string {
+    return buildClaudeBranchCommandLine(
+      sessionId,
+      this.getAgentLaunchDefaults('claude')
     );
   }
 

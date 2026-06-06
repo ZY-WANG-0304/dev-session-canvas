@@ -925,6 +925,8 @@ async function runTrustedSmoke() {
   await verifyReadExitFileActivityDrain();
   await verifyRuntimePersistenceRequiresReloadAndClearsState();
   await verifySidebarSessionHistoryRestore();
+  await verifyClaudeAgentBranchFromCurrentNode();
+  await verifyAgentBranchRejectsUnsupportedSources();
   await verifySidebarSessionHistorySearchByTitleUi();
   await verifySidebarSessionHistoryDoubleClickUi();
 
@@ -1352,6 +1354,139 @@ async function verifySidebarSessionHistoryRestore() {
     assert.ok(restoredAgentNode, 'Expected the restored sidebar history entry to materialize as a new Codex agent node.');
   } finally {
     await fs.rm(fakeHomeDir, { recursive: true, force: true });
+  }
+}
+
+async function verifyClaudeAgentBranchFromCurrentNode() {
+  const baselineSnapshot = await getDebugSnapshot();
+  const sourceTitle = 'Claude Branch Source';
+  const sourceSessionId = 'claude-branch-source-session-123';
+
+  try {
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'claude', {
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: `claude --resume ${sourceSessionId}`,
+      titleOverride: sourceTitle
+    });
+
+    const withSourceSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.nodes.some(
+        (node) => node.kind === 'agent' && node.title === sourceTitle
+      );
+    }, 10000);
+    const sourceNode = withSourceSnapshot.state.nodes.find(
+      (node) => node.kind === 'agent' && node.title === sourceTitle
+    );
+    assert.ok(sourceNode, 'Expected test-created Claude source node to exist.');
+
+    await setPersistedState({
+      ...withSourceSnapshot.state,
+      nodes: withSourceSnapshot.state.nodes.map((node) => {
+        if (node.id !== sourceNode.id || node.kind !== 'agent') {
+          return node;
+        }
+
+        return {
+          ...node,
+          status: 'stopped',
+          summary: '检测到可 Branch 的 Claude Code 会话。',
+          metadata: {
+            ...node.metadata,
+            agent: {
+              ...node.metadata.agent,
+              lifecycle: 'stopped',
+              provider: 'claude',
+              resumeSupported: true,
+              resumeStrategy: 'claude-session-id',
+              resumeSessionId: sourceSessionId,
+              liveSession: false,
+              pendingLaunch: undefined
+            }
+          }
+        };
+      })
+    });
+
+    const beforeBranchSnapshot = await getDebugSnapshot();
+    await dispatchWebviewMessage({
+      type: 'webview/branchAgentSession',
+      payload: {
+        nodeId: sourceNode.id
+      }
+    });
+
+    const branchedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const branchNodes = currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'agent' &&
+          node.id !== sourceNode.id &&
+          node.title.includes('Branch') &&
+          node.metadata?.agent?.provider === 'claude' &&
+          node.metadata.agent.launchPreset === 'custom' &&
+          typeof node.metadata.agent.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(`--resume ${sourceSessionId}`) &&
+          node.metadata.agent.customLaunchCommand.includes('--fork-session')
+      );
+      return branchNodes.length === 1;
+    }, 10000);
+
+    assert.strictEqual(
+      branchedSnapshot.state.nodes.length,
+      beforeBranchSnapshot.state.nodes.length + 1,
+      'Expected Branch to create exactly one additional Agent node.'
+    );
+
+    const originalAfterBranch = branchedSnapshot.state.nodes.find((node) => node.id === sourceNode.id);
+    assert.strictEqual(
+      originalAfterBranch.metadata.agent.resumeSessionId,
+      sourceSessionId,
+      'Expected Branch to leave the source node resume session id unchanged.'
+    );
+
+    const branchNode = branchedSnapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.id !== sourceNode.id &&
+        node.metadata?.agent?.customLaunchCommand?.includes('--fork-session')
+    );
+    assert.ok(branchNode, 'Expected Branch to create a Claude Agent node with fork-session command.');
+    assert.strictEqual(branchNode.metadata.agent.pendingLaunch, 'start');
+  } finally {
+    await setPersistedState(baselineSnapshot.state);
+  }
+}
+
+async function verifyAgentBranchRejectsUnsupportedSources() {
+  const baselineSnapshot = await getDebugSnapshot();
+
+  try {
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'codex', {
+      titleOverride: 'Codex Branch Rejection Source'
+    });
+    const codexSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.nodes.some(
+        (node) => node.kind === 'agent' && node.title === 'Codex Branch Rejection Source'
+      );
+    }, 10000);
+    const codexNode = codexSnapshot.state.nodes.find(
+      (node) => node.kind === 'agent' && node.title === 'Codex Branch Rejection Source'
+    );
+    assert.ok(codexNode, 'Expected Codex rejection source node to exist.');
+
+    await dispatchWebviewMessage({
+      type: 'webview/branchAgentSession',
+      payload: { nodeId: codexNode.id }
+    });
+    await sleep(200);
+
+    const afterRejectedBranch = await getDebugSnapshot();
+    assert.strictEqual(
+      afterRejectedBranch.state.nodes.length,
+      codexSnapshot.state.nodes.length,
+      'Expected Codex Branch request to be rejected without creating a node.'
+    );
+  } finally {
+    await setPersistedState(baselineSnapshot.state);
   }
 }
 
