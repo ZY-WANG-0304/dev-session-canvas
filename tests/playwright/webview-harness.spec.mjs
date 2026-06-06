@@ -2158,7 +2158,9 @@ test('minimap remains pannable with the viewport outline overlay', async ({ page
   });
   await bootstrap(page, createMinimapContrastState());
   await settleWebview(page, 4);
+  await clearPostedMessages(page);
 
+  const beforeState = await readPersistedUiState(page);
   const beforeDragTransform = await readCanvasViewportTransform(page);
   const minimapBox = await page.locator('.canvas-minimap svg').boundingBox();
   expect(minimapBox).not.toBeNull();
@@ -2176,6 +2178,85 @@ test('minimap remains pannable with the viewport outline overlay', async ({ page
       return transform && transform !== beforeDragTransform ? transform : null;
     })
     .not.toBeNull();
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.viewport.x).not.toBe(beforeState.viewport.x);
+  expect(afterState.viewport.zoom).toBe(beforeState.viewport.zoom);
+
+  const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+  expect(centerMessages.length).toBeGreaterThan(0);
+  expect(centerMessages.at(-1).payload.visibleCenter.x).not.toBe(0);
+});
+
+test('minimap shows workspace root sections, user groups, and attention nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.85
+      }
+    }
+  });
+  const state = createMinimapContrastState();
+  state.groups = [
+    {
+      id: 'workspace-root-minimap',
+      title: 'Frontend Root',
+      position: { x: -240, y: -80 },
+      size: { width: 780, height: 520 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'group-user-minimap',
+      title: 'Attention Follow-up',
+      position: { x: 1120, y: 420 },
+      size: { width: 460, height: 340 }
+    }
+  ];
+  state.nodes.find((node) => node.id === 'terminal-minimap-right').metadata.terminal.attentionPending = true;
+  await bootstrap(page, state, createRuntimeContext({ strongTerminalAttentionReminderMode: 'both' }));
+  await settleWebview(page, 4);
+
+  const rootGroup = page.locator('[data-minimap-group-id="workspace-root-minimap"]');
+  const userGroup = page.locator('[data-minimap-group-id="group-user-minimap"]');
+  await expect(rootGroup).toHaveAttribute('data-minimap-group-role', 'workspace-root');
+  await expect(userGroup).toHaveAttribute('data-minimap-group-role', 'user');
+
+  const minimapLayout = await page.locator('.canvas-minimap svg').evaluate((svg) => {
+    const rectFor = (selector) => {
+      const element = svg.querySelector(selector);
+      if (!(element instanceof SVGGraphicsElement)) {
+        throw new Error(`MiniMap element not found: ${selector}`);
+      }
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height
+      };
+    };
+
+    return {
+      root: rectFor('[data-minimap-group-id="workspace-root-minimap"]'),
+      userGroup: rectFor('[data-minimap-group-id="group-user-minimap"]'),
+      attentionNode: rectFor('[data-minimap-node-id="terminal-minimap-right"]')
+    };
+  });
+  expect(minimapLayout.root.width).toBeGreaterThan(0);
+  expect(minimapLayout.root.height).toBeGreaterThan(0);
+  expect(minimapLayout.userGroup.width).toBeGreaterThan(0);
+  expect(minimapLayout.userGroup.height).toBeGreaterThan(0);
+  expect(minimapLayout.userGroup.left).toBeGreaterThan(minimapLayout.root.left);
+  expect(minimapLayout.attentionNode.width).toBeGreaterThan(0);
+  expect(minimapLayout.attentionNode.height).toBeGreaterThan(0);
+
+  const attentionNode = page.locator('[data-minimap-node-id="terminal-minimap-right"]');
+  await expect(attentionNode).toHaveAttribute('data-minimap-attention-pending', 'true');
+  await expect(attentionNode).toHaveAttribute('data-minimap-attention-flashing', 'true');
+  await expect(attentionNode).toHaveAttribute('data-minimap-attention-size-pulsing', 'true');
 });
 
 test('agent start button posts a startExecutionSession message', async ({ page }) => {
@@ -5400,6 +5481,202 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
   await expect
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
     .toBe('1');
+});
+
+test('minimap wheel honors the dynamic fit view min zoom', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.8
+      }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-huge',
+      title: 'Huge Root',
+      position: { x: -2400, y: -1800 },
+      size: { width: 22000, height: 16000 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/huge'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.1);
+  await expect.poll(async () => (await readPersistedUiState(page)).viewport?.zoom ?? null).toBeLessThan(0.1);
+  await clearPostedMessages(page);
+
+  const beforeWheelState = await readPersistedUiState(page);
+  const minimapBox = await page.locator('.canvas-minimap svg').boundingBox();
+  expect(minimapBox).not.toBeNull();
+
+  await page.mouse.move(minimapBox.x + minimapBox.width / 2, minimapBox.y + minimapBox.height / 2);
+  await page.mouse.wheel(0, 120);
+  await settleWebview(page, 4);
+
+  const afterWheelState = await readPersistedUiState(page);
+  expect(afterWheelState.viewport.zoom).toBeLessThanOrEqual(beforeWheelState.viewport.zoom);
+  expect(afterWheelState.viewport.zoom).toBeLessThan(0.1);
+
+  const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+  expect(centerMessages.length).toBeGreaterThan(0);
+});
+
+test('fit view includes empty workspace root sections in multi-root canvases', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-frontend',
+      title: 'Frontend',
+      position: { x: 120, y: 120 },
+      size: { width: 760, height: 460 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'workspace-root-backend',
+      title: 'Backend',
+      position: { x: 5200, y: 2800 },
+      size: { width: 920, height: 540 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/backend'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect
+    .poll(async () => {
+      const rootBox = await page.locator('[data-group-id="workspace-root-backend"]').boundingBox();
+      return rootBox && rootBox.x < page.viewportSize().width ? rootBox : null;
+    })
+    .not.toBeNull();
+
+  const viewportSize = page.viewportSize();
+  expect(viewportSize).not.toBeNull();
+  for (const group of state.groups) {
+    const box = await page.locator(`[data-group-id="${group.id}"]`).boundingBox();
+    expect(box, `${group.id} should be rendered in the viewport after fit view`).not.toBeNull();
+    expect(box.x + box.width).toBeGreaterThanOrEqual(-2);
+    expect(box.y + box.height).toBeGreaterThanOrEqual(-2);
+    expect(box.x).toBeLessThanOrEqual(viewportSize.width + 2);
+    expect(box.y).toBeLessThanOrEqual(viewportSize.height + 2);
+  }
+
+  const fitZoom = await readCanvasViewportScale(page);
+  expect(fitZoom).toBeGreaterThan(0);
+  expect(fitZoom).toBeLessThan(0.4);
+});
+
+test('fit view includes empty user groups alongside nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [createManualNoteNode('nearby-note', { x: 160, y: 140 })];
+  state.groups = [
+    {
+      id: 'group-empty-distant',
+      title: 'Later Investigation',
+      position: { x: 4200, y: 2600 },
+      size: { width: 820, height: 520 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect
+    .poll(async () => {
+      const groupBox = await page.locator('[data-group-id="group-empty-distant"]').boundingBox();
+      return groupBox && groupBox.x < page.viewportSize().width ? groupBox : null;
+    })
+    .not.toBeNull();
+
+  const viewportSize = page.viewportSize();
+  expect(viewportSize).not.toBeNull();
+  const nodeBox = await nodeById(page, 'nearby-note').boundingBox();
+  const groupBox = await page.locator('[data-group-id="group-empty-distant"]').boundingBox();
+  expect(nodeBox).not.toBeNull();
+  expect(groupBox).not.toBeNull();
+  for (const box of [nodeBox, groupBox]) {
+    expect(box.x + box.width).toBeGreaterThanOrEqual(-2);
+    expect(box.y + box.height).toBeGreaterThanOrEqual(-2);
+    expect(box.x).toBeLessThanOrEqual(viewportSize.width + 2);
+    expect(box.y).toBeLessThanOrEqual(viewportSize.height + 2);
+  }
+});
+
+test('fit view keeps a workspace root section visible when it is larger than its nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.8
+      }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note-small', { x: 360, y: 340 }),
+      groupId: 'workspace-root-large'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-large',
+      title: 'Large Root',
+      position: { x: 80, y: 80 },
+      size: { width: 5200, height: 3200 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/large'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.4);
+  const viewportSize = page.viewportSize();
+  expect(viewportSize).not.toBeNull();
+
+  const rootBox = await page.locator('[data-group-id="workspace-root-large"]').boundingBox();
+  const nodeBox = await nodeById(page, 'root-note-small').boundingBox();
+  expect(rootBox).not.toBeNull();
+  expect(nodeBox).not.toBeNull();
+  expect(rootBox.x).toBeGreaterThanOrEqual(-2);
+  expect(rootBox.y).toBeGreaterThanOrEqual(-2);
+  expect(rootBox.x + rootBox.width).toBeLessThanOrEqual(viewportSize.width + 2);
+  expect(rootBox.y + rootBox.height).toBeLessThanOrEqual(viewportSize.height + 2);
+  expect(rootBox.width).toBeGreaterThan(nodeBox.width * 2);
+  expect(rootBox.height).toBeGreaterThan(nodeBox.height * 2);
 });
 
 test('overview mode none keeps regular node rendering when fit view zooms below the overview threshold', async ({ page }) => {
@@ -9116,7 +9393,11 @@ test('canvas context menu can create a group from selected peer groups', async (
 });
 
 test('canvas groups resize from all eight directions', async ({ page }) => {
-  await openHarness(page);
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
   await applyWorkbenchTheme(page, 'dark');
   await bootstrap(page, {
     version: 1,
@@ -9163,14 +9444,14 @@ test('canvas groups resize from all eight directions', async ({ page }) => {
     };
   });
   expect(resizeAffordanceStyles.topLineBorderTopWidth).toBe('2px');
-  expect(resizeAffordanceStyles.topLineBorderTopColor).toBe('rgb(0, 120, 212)');
+  expect(resizeAffordanceStyles.topLineBorderTopColor).toBe('rgb(69, 69, 69)');
   expect(resizeAffordanceStyles.topControlBackground).toBe('rgba(0, 0, 0, 0)');
   expect(resizeAffordanceStyles.topControlAfterDisplay).toBe('none');
   expect(resizeAffordanceStyles.cornerControlBorderTopWidth).toBe('0px');
   expect(resizeAffordanceStyles.cornerControlBackground).toBe('rgba(0, 0, 0, 0)');
   expect(resizeAffordanceStyles.cornerControlAfterDisplay).not.toBe('none');
   expect(Number.parseFloat(resizeAffordanceStyles.cornerControlAfterBorderRadius)).toBeGreaterThanOrEqual(999);
-  expect(resizeAffordanceStyles.cornerControlAfterBackground).toBe('rgb(0, 120, 212)');
+  expect(resizeAffordanceStyles.cornerControlAfterBackground).toBe('rgb(69, 69, 69)');
 
   const dragResizeHandle = async (direction, deltaX, deltaY) => {
     await clearPostedMessages(page);

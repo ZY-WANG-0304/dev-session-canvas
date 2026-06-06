@@ -14,19 +14,17 @@ import ReactFlow, {
   ConnectionMode,
   Controls,
   EdgeLabelRenderer,
-  getBoundsOfRects,
-  getNodesBounds,
+  getViewportForBounds,
   Handle,
   MarkerType,
-  MiniMap,
   Position,
+  useReactFlow,
   useStore,
   useViewport,
   type Connection,
   type Edge,
   type EdgeMouseHandler,
   type EdgeProps,
-  type MiniMapNodeProps,
   type ReactFlowInstance,
   type ReactFlowState,
   type Node,
@@ -192,9 +190,14 @@ interface CanvasMiniMapRect {
   height: number;
 }
 
-interface CanvasMiniMapViewportOutlineState {
-  viewBB: CanvasMiniMapRect;
-  boundingRect: CanvasMiniMapRect;
+interface CanvasSpatialRect extends CanvasMiniMapRect {
+  id: string;
+  kind: 'node' | 'group' | 'workspace-root';
+}
+
+interface CanvasSpatialBounds {
+  rects: CanvasSpatialRect[];
+  bounds?: CanvasMiniMapRect;
 }
 
 const CanvasOverviewInteractionContext = React.createContext(false);
@@ -1102,6 +1105,7 @@ function App(): JSX.Element {
   const nodeResizeAutoPanRef = useRef<AutoPanController | null>(null);
   const activeNodeResizeDraftsRef = useRef<Record<string, CanvasNodeLayoutDraft>>({});
   const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
+  const didApplyInitialCanvasFitRef = useRef(Boolean(initialPersistedState.viewport));
   const [canvasViewportSize, setCanvasViewportSize] = useState<CanvasViewportSize>(() => ({
     width: Math.max(1, window.innerWidth),
     height: Math.max(1, window.innerHeight)
@@ -2282,18 +2286,48 @@ function App(): JSX.Element {
   });
   const nodes = applyCanvasNodeLayoutDrafts(groupDraftLayout.nodes, nodeLayoutDrafts);
   const groups = groupDraftLayout.groups;
+  const canvasSpatialBounds = useMemo(
+    () => resolveCanvasSpatialBounds(nodes, groups),
+    [groups, nodes]
+  );
   const dynamicCanvasMinZoom = useMemo(
-    () => resolveDynamicCanvasMinZoom(nodes, canvasViewportSize),
-    [canvasViewportSize, nodes]
+    () => resolveDynamicCanvasMinZoom(canvasSpatialBounds, canvasViewportSize),
+    [canvasSpatialBounds, canvasViewportSize]
   );
-  const canvasFitViewOptions = useMemo(
-    () => ({
-      padding: CANVAS_FIT_VIEW_PADDING,
-      minZoom: dynamicCanvasMinZoom,
-      maxZoom: CANVAS_MAX_ZOOM
-    }),
-    [dynamicCanvasMinZoom]
-  );
+  const fitCanvasView = useCallback((duration = 0): boolean => {
+    const reactFlowInstance = reactFlowRef.current;
+    const bounds = canvasSpatialBounds.bounds;
+    if (!reactFlowInstance?.viewportInitialized || !bounds) {
+      return false;
+    }
+
+    const viewport = getViewportForBounds(
+      bounds,
+      canvasViewportSize.width,
+      canvasViewportSize.height,
+      dynamicCanvasMinZoom,
+      CANVAS_MAX_ZOOM,
+      CANVAS_FIT_VIEW_PADDING
+    );
+    reactFlowInstance.setViewport(viewport, { duration });
+    if (duration <= 0) {
+      setLocalUiState((current) => ({
+        ...current,
+        viewport
+      }));
+    } else {
+      clearPendingViewportPersistenceTimeout();
+      pendingViewportSyncTimeoutRef.current = window.setTimeout(() => {
+        pendingViewportSyncTimeoutRef.current = undefined;
+        const latestViewport = reactFlowRef.current?.getViewport() ?? viewport;
+        setLocalUiState((current) => ({
+          ...current,
+          viewport: latestViewport
+        }));
+      }, duration + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
+    }
+    return true;
+  }, [canvasSpatialBounds, canvasViewportSize.height, canvasViewportSize.width, dynamicCanvasMinZoom]);
   const edges = toFlowEdges({
     edges: hostState?.edges ?? [],
     selectedEdgeId,
@@ -2327,6 +2361,16 @@ function App(): JSX.Element {
     onSetColor: setEdgeColor,
     onDeleteEdge: deleteEdge
   });
+
+  useEffect(() => {
+    if (didApplyInitialCanvasFitRef.current || !reactFlowReadyVersion || !canvasSpatialBounds.bounds) {
+      return;
+    }
+
+    if (fitCanvasView(0)) {
+      didApplyInitialCanvasFitRef.current = true;
+    }
+  }, [canvasSpatialBounds, fitCanvasView, reactFlowReadyVersion]);
 
   useEffect(() => {
     setNodeLayoutDrafts((current) => pruneCanvasNodeLayoutDrafts(baseNodes, current));
@@ -2747,12 +2791,16 @@ function App(): JSX.Element {
   };
 
   const handleMoveEnd = (_event: MouseEvent | TouchEvent | null, viewport: Viewport): void => {
+    persistCanvasViewport(viewport);
+  };
+
+  const persistCanvasViewport = (viewport: Viewport): void => {
     clearPendingViewportPersistenceTimeout();
     setLocalUiState((current) => ({
       ...current,
       viewport
     }));
-    const visibleCenter = resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current);
+    const visibleCenter = resolveVisibleCanvasCenterFromViewport(viewport, canvasShellRef.current);
     if (visibleCenter) {
       postMessage({
         type: 'webview/updateViewportCenter',
@@ -3134,8 +3182,6 @@ function App(): JSX.Element {
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
-          fitView={!localUiState.viewport}
-          fitViewOptions={canvasFitViewOptions}
           defaultViewport={localUiState.viewport}
           minZoom={dynamicCanvasMinZoom}
           maxZoom={CANVAS_MAX_ZOOM}
@@ -3186,28 +3232,32 @@ function App(): JSX.Element {
             onResizePointerMove={handleGroupResizePointerMove}
             onResizeEnd={handleGroupResizeEnd}
           />
-          <MiniMap
-            className="canvas-corner-panel canvas-minimap"
-            position="bottom-right"
-            style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
-            pannable
-            zoomable
-            nodeClassName={(node) => minimapClassNameForNode(node as Node<CanvasNodeData>)}
-            nodeColor={(node) => minimapFillColorForKind((node.data as CanvasNodeData).kind)}
-            nodeStrokeColor={(node) => minimapStrokeColorForKind((node.data as CanvasNodeData).kind)}
-            nodeComponent={CanvasMiniMapNode}
-            nodeBorderRadius={4}
-            nodeStrokeWidth={1.2}
-            maskColor="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
-            maskStrokeColor="none"
-            maskStrokeWidth={0}
+          <CanvasMiniMap
+            nodes={nodes}
+            groups={groups}
+            spatialBounds={canvasSpatialBounds}
+            viewportSize={canvasViewportSize}
+            onViewportCommit={persistCanvasViewport}
           />
-          <CanvasMiniMapViewportOutline />
           <Controls
             className="canvas-corner-panel canvas-controls"
             showInteractive={false}
-            fitViewOptions={canvasFitViewOptions}
-          />
+            showFitView={false}
+          >
+            <button
+              type="button"
+              className="react-flow__controls-button react-flow__controls-fitview"
+              title="fit view"
+              aria-label="fit view"
+              onClick={() => {
+                fitCanvasView(NODE_FOCUS_ANIMATION_DURATION_MS);
+              }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 32" aria-hidden="true" focusable="false">
+                <path d="M3.692 4.63c0-.53.4-.938.939-.938h5.215V0H4.708C2.13 0 0 2.054 0 4.63v5.216h3.692V4.631zM20.292 0h-5.2v3.692h5.17c.53 0 .984.4.984.939v5.215h3.692V4.631A4.624 4.624 0 0020.292 0zm.954 24.83c0 .532-.4.94-.939.94h-5.215v3.768h5.215c2.577 0 4.631-2.13 4.631-4.707v-5.139h-3.692v5.139zm-16.615.94c-.531 0-.939-.4-.939-.94v-5.138H0v5.139c0 2.577 2.13 4.707 4.708 4.707h5.138V25.77H4.631z" />
+              </svg>
+            </button>
+          </Controls>
         </ReactFlow>
       </CanvasOverviewInteractionContext.Provider>
 
@@ -3543,6 +3593,25 @@ function resolveVisibleCanvasCenter(
   };
 }
 
+function resolveVisibleCanvasCenterFromViewport(
+  viewport: Viewport,
+  canvasShellElement: HTMLDivElement | null
+): CanvasNodePosition | undefined {
+  if (!canvasShellElement || viewport.zoom <= 0) {
+    return undefined;
+  }
+
+  const bounds = canvasShellElement.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    return undefined;
+  }
+
+  return {
+    x: Math.round((bounds.width / 2 - viewport.x) / viewport.zoom),
+    y: Math.round((bounds.height / 2 - viewport.y) / viewport.zoom)
+  };
+}
+
 function canvasPositionDistance(left: CanvasNodePosition, right: CanvasNodePosition): number {
   return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
 }
@@ -3640,15 +3709,11 @@ function createManualNodeCreateRequestId(): string {
 }
 
 function resolveDynamicCanvasMinZoom(
-  nodes: readonly CanvasFlowNode[],
+  spatialBounds: CanvasSpatialBounds,
   viewportSize: CanvasViewportSize
 ): number {
-  if (nodes.length === 0 || viewportSize.width <= 0 || viewportSize.height <= 0) {
-    return CANVAS_COMFORT_MIN_ZOOM;
-  }
-
-  const bounds = getNodesBounds(nodes as CanvasFlowNode[]);
-  if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) {
+  const bounds = spatialBounds.bounds;
+  if (!bounds || viewportSize.width <= 0 || viewportSize.height <= 0) {
     return CANVAS_COMFORT_MIN_ZOOM;
   }
 
@@ -3659,6 +3724,78 @@ function resolveDynamicCanvasMinZoom(
   return Number.isFinite(fitAllZoom)
     ? Math.min(CANVAS_COMFORT_MIN_ZOOM, fitAllZoom)
     : CANVAS_COMFORT_MIN_ZOOM;
+}
+
+function resolveCanvasSpatialBounds(
+  nodes: readonly CanvasFlowNode[],
+  groups: readonly CanvasGroupSummary[]
+): CanvasSpatialBounds {
+  const nodeRects = nodes.flatMap((node): CanvasSpatialRect[] => {
+    const width = numberOrUndefined(node.width) ?? numberOrUndefined(node.style?.width) ?? node.data.size.width;
+    const height = numberOrUndefined(node.height) ?? numberOrUndefined(node.style?.height) ?? node.data.size.height;
+    if (!isPositiveFiniteNumber(width) || !isPositiveFiniteNumber(height)) {
+      return [];
+    }
+
+    return [{
+      id: node.id,
+      kind: 'node',
+      x: node.position.x,
+      y: node.position.y,
+      width,
+      height
+    }];
+  });
+  const groupRects = groups.flatMap((group): CanvasSpatialRect[] => {
+    if (!isPositiveFiniteNumber(group.size.width) || !isPositiveFiniteNumber(group.size.height)) {
+      return [];
+    }
+
+    return [{
+      id: group.id,
+      kind: isWorkspaceRootCanvasGroupRole(group.role) ? 'workspace-root' : 'group',
+      x: group.position.x,
+      y: group.position.y,
+      width: group.size.width,
+      height: group.size.height
+    }];
+  });
+  const rects = [...groupRects, ...nodeRects];
+  return {
+    rects,
+    bounds: mergeCanvasMiniMapRects(rects)
+  };
+}
+
+function isPositiveFiniteNumber(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function mergeCanvasMiniMapRects(rects: readonly CanvasMiniMapRect[]): CanvasMiniMapRect | undefined {
+  if (rects.length === 0) {
+    return undefined;
+  }
+
+  const left = Math.min(...rects.map((rect) => rect.x));
+  const top = Math.min(...rects.map((rect) => rect.y));
+  const right = Math.max(...rects.map((rect) => rect.x + rect.width));
+  const bottom = Math.max(...rects.map((rect) => rect.y + rect.height));
+  const width = right - left;
+  const height = bottom - top;
+  if (!isPositiveFiniteNumber(width) || !isPositiveFiniteNumber(height)) {
+    return undefined;
+  }
+
+  return {
+    x: left,
+    y: top,
+    width,
+    height
+  };
 }
 
 function resolveCanvasOverviewTitleScale(zoom: number): number {
@@ -4658,61 +4795,202 @@ function ExecutionAttentionStatus(props: {
   );
 }
 
-function CanvasMiniMapNode(props: MiniMapNodeProps): JSX.Element {
-  const classNames = props.className.split(/\s+/).filter(Boolean);
+function CanvasMiniMap(props: {
+  nodes: readonly CanvasFlowNode[];
+  groups: readonly CanvasGroupSummary[];
+  spatialBounds: CanvasSpatialBounds;
+  viewportSize: CanvasViewportSize;
+  onViewportCommit: (viewport: Viewport) => void;
+}): JSX.Element {
+  const { x, y, zoom } = useViewport();
+  const reactFlowInstance = useReactFlow<CanvasNodeData>();
+  const minZoom = useStore((state) => state.minZoom);
+  const viewBB = resolveCanvasViewportBoundsForMiniMap(x, y, zoom, props.viewportSize);
+  const boundingRect = mergeCanvasMiniMapRects([props.spatialBounds.bounds, viewBB].filter(isCanvasMiniMapRect)) ?? viewBB;
+  const viewBox = resolveCanvasMiniMapViewBox(boundingRect);
+  const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>): void => {
+    if (event.button !== 0 || !reactFlowInstance.viewportInitialized) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    stopCanvasEvent(event);
+    const start = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      viewport: reactFlowInstance.getViewport(),
+      viewScale: viewBox.width / CANVAS_MINIMAP_WIDTH
+    };
+    let latestViewport: Viewport | undefined;
+
+    const handlePointerMove = (moveEvent: PointerEvent): void => {
+      if (!reactFlowInstance.viewportInitialized) {
+        return;
+      }
+
+      const multiplier = start.viewScale * Math.max(1, start.viewport.zoom);
+      const nextViewport = {
+        ...start.viewport,
+        x: start.viewport.x - (moveEvent.clientX - start.clientX) * multiplier,
+        y: start.viewport.y - (moveEvent.clientY - start.clientY) * multiplier
+      };
+      latestViewport = nextViewport;
+      reactFlowInstance.setViewport(nextViewport);
+    };
+    const stop = (): void => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      if (latestViewport) {
+        props.onViewportCommit(latestViewport);
+      }
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stop, { once: true });
+    window.addEventListener('pointercancel', stop, { once: true });
+  };
+  const handleWheel = (event: React.WheelEvent<SVGSVGElement>): void => {
+    if (!reactFlowInstance.viewportInitialized) {
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    const currentViewport = reactFlowInstance.getViewport();
+    const delta = -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002) * 10;
+    const nextZoom = Math.min(CANVAS_MAX_ZOOM, Math.max(minZoom, currentViewport.zoom * Math.pow(2, delta)));
+    const rect = event.currentTarget.getBoundingClientRect();
+    const flowPoint = {
+      x: viewBox.x + ((event.clientX - rect.left) / Math.max(1, rect.width)) * viewBox.width,
+      y: viewBox.y + ((event.clientY - rect.top) / Math.max(1, rect.height)) * viewBox.height
+    };
+    const nextViewport = {
+      x: event.clientX - flowPoint.x * nextZoom,
+      y: event.clientY - flowPoint.y * nextZoom,
+      zoom: nextZoom
+    };
+    reactFlowInstance.setViewport(nextViewport);
+    props.onViewportCommit(nextViewport);
+  };
+
+  return (
+    <div
+      className="canvas-corner-panel canvas-minimap react-flow__minimap"
+      data-testid="rf__minimap"
+      style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
+    >
+      <svg
+        width={CANVAS_MINIMAP_WIDTH}
+        height={CANVAS_MINIMAP_HEIGHT}
+        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
+        role="img"
+        aria-label="Canvas minimap"
+        onPointerDown={handlePointerDown}
+        onWheel={handleWheel}
+      >
+        <title>Canvas minimap</title>
+        <g className="canvas-minimap-groups" aria-hidden="true">
+          {props.groups.map((group) => (
+            <rect
+              key={group.id}
+              className={`canvas-minimap-group${isWorkspaceRootCanvasGroupRole(group.role) ? ' is-workspace-root' : ''}`}
+              data-minimap-group-id={group.id}
+              data-minimap-group-role={isWorkspaceRootCanvasGroupRole(group.role) ? 'workspace-root' : 'user'}
+              x={group.position.x}
+              y={group.position.y}
+              width={group.size.width}
+              height={group.size.height}
+              rx={isWorkspaceRootCanvasGroupRole(group.role) ? 0 : 2}
+              ry={isWorkspaceRootCanvasGroupRole(group.role) ? 0 : 2}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </g>
+        <g className="canvas-minimap-nodes">
+          {props.nodes.map((node) => (
+            <CanvasMiniMapNode key={node.id} node={node} />
+          ))}
+        </g>
+        <path
+          className="react-flow__minimap-mask"
+          d={`M${viewBox.x},${viewBox.y}h${viewBox.width}v${viewBox.height}h${-viewBox.width}z M${viewBB.x},${viewBB.y}h${viewBB.width}v${viewBB.height}h${-viewBB.width}z`}
+          fill="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
+          fillRule="evenodd"
+          stroke="none"
+          strokeWidth={0}
+          pointerEvents="none"
+        />
+        <rect
+          className="canvas-minimap-viewport-outline-rect"
+          x={viewBB.x}
+          y={viewBB.y}
+          width={viewBB.width}
+          height={viewBB.height}
+          fill="none"
+          strokeWidth={CANVAS_MINIMAP_VIEWPORT_STROKE_WIDTH}
+          pointerEvents="none"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function CanvasMiniMapNode(props: { node: CanvasFlowNode }): JSX.Element {
+  const node = props.node;
+  const className = minimapClassNameForNode(node as Node<CanvasNodeData>);
+  const classNames = className.split(/\s+/).filter(Boolean);
   const attentionPending = classNames.includes('has-attention');
   const attentionFlashing = classNames.includes('is-attention-flashing');
   const attentionSizePulsing = classNames.includes('has-strong-attention-reminder');
+  const color = minimapFillColorForKind(node.data.kind);
+  const strokeColor = minimapStrokeColorForKind(node.data.kind);
   const style = {
-    ...(props.style ?? {}),
-    '--minimap-node-attention-color': props.color,
-    '--minimap-node-attention-stroke-color': props.strokeColor || props.color,
+    '--minimap-node-attention-color': color,
+    '--minimap-node-attention-stroke-color': strokeColor,
     '--minimap-node-attention-scale-peak': attentionSizePulsing ? '1.16' : '1'
   } as CSSProperties;
 
   return (
     <rect
-      className={['react-flow__minimap-node', props.selected ? 'selected' : '', props.className]
+      className={['react-flow__minimap-node', node.selected ? 'selected' : '', className]
         .filter(Boolean)
         .join(' ')}
-      data-minimap-node-id={props.id}
+      data-minimap-node-id={node.id}
       data-minimap-attention-pending={attentionPending ? 'true' : 'false'}
       data-minimap-attention-flashing={attentionFlashing ? 'true' : 'false'}
       data-minimap-attention-size-pulsing={attentionSizePulsing ? 'true' : 'false'}
-      x={props.x}
-      y={props.y}
-      rx={props.borderRadius}
-      ry={props.borderRadius}
-      width={props.width}
-      height={props.height}
-      fill={props.color}
-      stroke={props.strokeColor}
-      strokeWidth={props.strokeWidth}
-      shapeRendering={props.shapeRendering}
+      x={node.position.x}
+      y={node.position.y}
+      rx={4}
+      ry={4}
+      width={node.width ?? node.data.size.width}
+      height={node.height ?? node.data.size.height}
+      fill={color}
+      stroke={strokeColor}
+      strokeWidth={1.2}
+      shapeRendering={typeof window === 'undefined' || Boolean((window as unknown as { chrome?: unknown }).chrome) ? 'crispEdges' : 'geometricPrecision'}
       style={style}
-      onClick={props.onClick ? (event) => props.onClick?.(event, props.id) : undefined}
     />
   );
 }
 
-function selectCanvasMiniMapViewportOutlineState(
-  state: ReactFlowState
-): CanvasMiniMapViewportOutlineState {
-  const zoom = state.transform[2];
-  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-  const viewBB = {
-    x: -state.transform[0] / safeZoom,
-    y: -state.transform[1] / safeZoom,
-    width: state.width / safeZoom,
-    height: state.height / safeZoom
-  };
-  const nodes = state.getNodes();
-  const boundingRect =
-    nodes.length > 0 ? getBoundsOfRects(getNodesBounds(nodes, state.nodeOrigin), viewBB) : viewBB;
+function isCanvasMiniMapRect(value: CanvasMiniMapRect | undefined): value is CanvasMiniMapRect {
+  return Boolean(value && isPositiveFiniteNumber(value.width) && isPositiveFiniteNumber(value.height));
+}
 
+function resolveCanvasViewportBoundsForMiniMap(
+  x: number,
+  y: number,
+  zoom: number,
+  viewportSize: CanvasViewportSize
+): CanvasMiniMapRect {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   return {
-    viewBB,
-    boundingRect
+    x: -x / safeZoom,
+    y: -y / safeZoom,
+    width: Math.max(1, viewportSize.width) / safeZoom,
+    height: Math.max(1, viewportSize.height) / safeZoom
   };
 }
 
@@ -4733,36 +5011,6 @@ function resolveCanvasMiniMapViewBox(
     width: viewWidth + offset * 2,
     height: viewHeight + offset * 2
   };
-}
-
-function CanvasMiniMapViewportOutline(): JSX.Element {
-  const { boundingRect, viewBB } = useStore(selectCanvasMiniMapViewportOutlineState);
-  const viewBox = resolveCanvasMiniMapViewBox(boundingRect);
-
-  return (
-    <div
-      className="canvas-minimap-viewport-outline"
-      style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
-      aria-hidden="true"
-    >
-      <svg
-        width={CANVAS_MINIMAP_WIDTH}
-        height={CANVAS_MINIMAP_HEIGHT}
-        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
-        focusable="false"
-      >
-        <rect
-          className="canvas-minimap-viewport-outline-rect"
-          x={viewBB.x}
-          y={viewBB.y}
-          width={viewBB.width}
-          height={viewBB.height}
-          fill="none"
-          strokeWidth={CANVAS_MINIMAP_VIEWPORT_STROKE_WIDTH}
-        />
-      </svg>
-    </div>
-  );
 }
 
 function RestrictedBanner(props: { title: string; description: string }): JSX.Element {
@@ -10824,7 +11072,7 @@ function colorForKind(kind: CanvasNodeKind): string {
 }
 
 function minimapFillColorForKind(kind: CanvasNodeKind): string {
-  return `color-mix(in srgb, ${colorForKind(kind)} 70%, var(--vscode-editor-background) 30%)`;
+  return minimapStrokeColorForKind(kind);
 }
 
 function minimapStrokeColorForKind(kind: CanvasNodeKind): string {
