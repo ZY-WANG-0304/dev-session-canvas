@@ -25,6 +25,7 @@ try {
     buildAgentPresetCommandLine,
     buildFreshAgentCommandLine,
     buildAgentHistoryResumeCommandLine,
+    buildClaudeBranchCommandLine,
     classifyAgentLaunchPreset,
     extractClaudeCommandSessionFlag,
     formatCommandLine,
@@ -38,6 +39,32 @@ try {
     command: '/tmp/providers/claude-custom',
     defaultArgs: ''
   };
+
+  assert.equal(
+    buildClaudeBranchCommandLine('claude-branch-session-123', claudeDefaults),
+    '/tmp/providers/claude-custom --resume claude-branch-session-123 --fork-session'
+  );
+
+  assert.equal(
+    buildClaudeBranchCommandLine(' claude-branch-session-456 ', {
+      command: 'claude',
+      defaultArgs: '--model opus --resume old-session --permission-mode plan'
+    }),
+    'claude --resume claude-branch-session-456 --fork-session --model opus --permission-mode plan'
+  );
+
+  assert.equal(
+    buildClaudeBranchCommandLine('claude-branch-session-789', {
+      command: 'claude',
+      defaultArgs: '--session-id old-session --continue older-session --dangerously-skip-permissions'
+    }),
+    'claude --resume claude-branch-session-789 --fork-session --dangerously-skip-permissions'
+  );
+
+  assert.throws(
+    () => buildClaudeBranchCommandLine('   ', claudeDefaults),
+    /Branch 会话标识不能为空。/
+  );
 
   const aliasValidation = validateAgentCommandLine(
     'claude --resume=session-123',

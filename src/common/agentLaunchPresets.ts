@@ -65,6 +65,23 @@ export function buildAgentHistoryResumeCommandLine(
   ]);
 }
 
+export function buildClaudeBranchCommandLine(
+  sessionId: string,
+  defaults: AgentProviderLaunchDefaults
+): string {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    throw new Error('Branch 会话标识不能为空。');
+  }
+
+  const command = defaults.command.trim() || 'claude';
+  const baseArgs = assertAgentDefaultArgsParsable('claude', defaults);
+  return formatCommandLine([
+    command,
+    ...buildClaudeBranchArgv(baseArgs, normalizedSessionId)
+  ]);
+}
+
 export function validateAgentCommandLine(
   commandLine: string,
   provider: AgentProviderKind,
@@ -480,6 +497,11 @@ function buildAgentResumeArgv(
   }
 
   return buildCodexResumeArgv(baseArgs, explicitSessionId);
+}
+
+function buildClaudeBranchArgv(baseArgs: readonly string[], explicitSessionId: string): string[] {
+  const normalizedArgs = stripClaudeResumeTargetArgs(baseArgs);
+  return ['--resume', explicitSessionId, '--fork-session', ...normalizedArgs];
 }
 
 function stripCodexExecutionModeArgs(baseArgs: readonly string[]): string[] {
