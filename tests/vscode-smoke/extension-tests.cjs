@@ -1408,6 +1408,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
     });
 
     const beforeBranchSnapshot = await getDebugSnapshot();
+    const diagnosticStartIndex = (await getDiagnosticEvents()).length;
     await dispatchWebviewMessage({
       type: 'webview/branchAgentSession',
       payload: {
@@ -1451,6 +1452,44 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
     );
     assert.ok(branchNode, 'Expected Branch to create a Claude Agent node with fork-session command.');
     assert.strictEqual(branchNode.metadata.agent.pendingLaunch, 'start');
+
+    await startExecutionSessionForTest({
+      kind: 'agent',
+      nodeId: branchNode.id,
+      provider: 'claude',
+      cols: 96,
+      rows: 28
+    });
+
+    const branchStartEvents = (await getDiagnosticEvents())
+      .slice(diagnosticStartIndex)
+      .filter(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === branchNode.id &&
+          event.detail?.provider === 'claude'
+      );
+    assert.strictEqual(branchStartEvents.length, 1, 'Expected Branch node to enter the Agent start path once.');
+    const branchLaunchArgs = branchStartEvents[0].detail?.launchArgs ?? [];
+    assert.ok(Array.isArray(branchLaunchArgs), 'Expected Branch start diagnostic to expose launch args.');
+    assert.ok(branchLaunchArgs.includes('--resume'), 'Expected Branch launch args to include the source resume flag.');
+    assert.ok(branchLaunchArgs.includes(sourceSessionId), 'Expected Branch launch args to include the source session id.');
+    assert.ok(branchLaunchArgs.includes('--fork-session'), 'Expected Branch launch args to include --fork-session.');
+
+    const sessionIdFlagIndex = branchLaunchArgs.indexOf('--session-id');
+    assert.notStrictEqual(sessionIdFlagIndex, -1, 'Expected Branch launch args to include a new session id candidate.');
+    const branchSessionId = branchLaunchArgs[sessionIdFlagIndex + 1];
+    assert.ok(branchSessionId, 'Expected Branch session id candidate to have a value.');
+    assert.notStrictEqual(
+      branchSessionId,
+      sourceSessionId,
+      'Expected Branch session id candidate to differ from the source session id.'
+    );
+
+    const startedSnapshot = await getDebugSnapshot();
+    const startedBranchNode = findNodeById(startedSnapshot, branchNode.id);
+    assert.strictEqual(startedBranchNode.metadata.agent.resumeSessionId, branchSessionId);
   } finally {
     await setPersistedState(baselineSnapshot.state);
   }

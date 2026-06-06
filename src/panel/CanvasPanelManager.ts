@@ -9260,6 +9260,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
 
       const explicitClaudeSessionFlag = extractClaudeCommandSessionFlag(launchArgs);
+      if (isClaudeForkSessionLaunch(launchArgs)) {
+        const explicitSessionId = extractClaudeCommandSessionId(launchArgs, '--session-id');
+        return {
+          supported: false,
+          strategy: 'none',
+          sessionId: explicitSessionId ?? randomUUID()
+        };
+      }
+
       if (explicitClaudeSessionFlag?.sessionId) {
         return {
           supported: false,
@@ -10269,6 +10278,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
     }
 
+    const launchSpec = this.buildAgentLaunchSpec(
+      cliSpec,
+      launchArgs,
+      cwd,
+      normalizedCols,
+      normalizedRows,
+      executionEnv,
+      launchMode,
+      resumeContext,
+      fileActivitySession
+    );
     let snapshot: RuntimeSupervisorSessionSnapshot;
     try {
       snapshot = await client.createSession({
@@ -10280,19 +10300,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resumeStrategy: resumeContext.strategy,
         resumeSessionId: resumeContext.sessionId,
         resumeStoragePath: resumeContext.storagePath,
-        launchSpec: serializeExecutionSessionLaunchSpec(
-          this.buildAgentLaunchSpec(
-            cliSpec,
-            launchArgs,
-            cwd,
-            normalizedCols,
-            normalizedRows,
-            executionEnv,
-            launchMode,
-            resumeContext,
-            fileActivitySession
-          )
-        )
+        launchSpec: serializeExecutionSessionLaunchSpec(launchSpec)
       });
     } catch (error) {
       await fileActivitySession.dispose();
@@ -10315,7 +10323,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       launchMode,
       launchCommandLine: displayLaunchCommandLine,
       requestedCommand: cliSpec.requestedCommand,
-      launchArgs,
+      launchArgs: launchSpec.args,
       cols: normalizedCols,
       rows: normalizedRows,
       shellPath: cliSpec.command,
@@ -10700,19 +10708,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     try {
       cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand, cwd);
       const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
-      const process = createExecutionSessionProcess(
-        this.buildAgentLaunchSpec(
-          cliSpec,
-          freshLaunch?.launchArgs ?? [],
-          cwd,
-          normalizedCols,
-          normalizedRows,
-          executionEnv,
-          launchMode,
-          resumeContext,
-          fileActivitySession
-        )
+      const launchSpec = this.buildAgentLaunchSpec(
+        cliSpec,
+        freshLaunch?.launchArgs ?? [],
+        cwd,
+        normalizedCols,
+        normalizedRows,
+        executionEnv,
+        launchMode,
+        resumeContext,
+        fileActivitySession
       );
+      const process = createExecutionSessionProcess(launchSpec);
 
       const session: LocalExecutionSession = {
         sessionId,
@@ -10917,7 +10924,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
         launchCommandLine: displayLaunchCommandLine,
         requestedCommand: freshLaunch?.requestedCommand ?? null,
-        launchArgs: freshLaunch?.launchArgs ?? [],
+        launchArgs: launchSpec.args,
         cols: normalizedCols,
         rows: normalizedRows,
         shellPath: cliSpec.command,
@@ -11586,6 +11593,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const hasExplicitClaudeSessionFlag = Boolean(extractClaudeCommandSessionFlag(launchArgs));
       if (launchMode === 'resume' && resumeContext.sessionId) {
         args.push('--resume', resumeContext.sessionId);
+      } else if (resumeContext.sessionId && isClaudeForkSessionLaunch(launchArgs) && !extractClaudeCommandSessionId(launchArgs, '--session-id')) {
+        args.push('--session-id', resumeContext.sessionId);
       } else if (resumeContext.sessionId && !hasExplicitClaudeSessionFlag) {
         args.push('--session-id', resumeContext.sessionId);
       }
@@ -20315,6 +20324,35 @@ function canResumeAgentFromMetadata(metadata: Pick<AgentNodeMetadata, 'resumeStr
   }
 
   return false;
+}
+
+function isClaudeForkSessionLaunch(launchArgs: readonly string[]): boolean {
+  return launchArgs.some((token) => token === '--fork-session' || token.startsWith('--fork-session='));
+}
+
+function extractClaudeCommandSessionId(
+  launchArgs: readonly string[],
+  targetFlag: '--session-id' | '--resume' | '--continue'
+): string | undefined {
+  for (let index = 0; index < launchArgs.length; index += 1) {
+    const token = launchArgs[index]?.trim();
+    if (!token) {
+      continue;
+    }
+
+    if (token.startsWith(`${targetFlag}=`)) {
+      return token.slice(targetFlag.length + 1).trim() || undefined;
+    }
+
+    if (token !== targetFlag) {
+      continue;
+    }
+
+    const nextToken = launchArgs[index + 1]?.trim();
+    return nextToken && !nextToken.startsWith('-') ? nextToken : undefined;
+  }
+
+  return undefined;
 }
 
 function normalizeAgentCliCacheWorkspaceCwd(workspaceCwd: string | undefined): string {
