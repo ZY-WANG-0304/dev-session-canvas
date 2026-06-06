@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.13.0`。当前版本范围收口为“发布 VS Code multi-root workspace 组合画布、系统 workspace-root section、root-local 状态共享、跨 root 连线拒绝、文件活动命名空间与 multi-root live runtime 保守恢复口径，并保留 `0.12.0` 的 File Explorer 绑定 cwd 创建执行节点、Panel Webview lifecycle 串线修复、既有双市场发布边界、安装拓扑和 Preview 支持边界”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.13.0`。当前版本范围收口为“发布 VS Code multi-root workspace 组合画布、系统 workspace-root section、root-local 状态共享、跨 root 连线拒绝、文件活动命名空间与 multi-root live runtime 保守恢复口径，并纳入发布前修复的 Panel / Editor Webview dispose smoke 回归与关联 Markdown Note 读取 re-stat / retry 保护；同时保留 `0.12.0` 的 File Explorer 绑定 cwd 创建执行节点、Panel Webview lifecycle 串线修复、既有双市场发布边界、安装拓扑和 Preview 支持边界”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -37,7 +37,7 @@
 
 - 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.13.0 - Preview Multi-Root Workspace Canvas Update`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：`0.13.0` 发布 VS Code multi-root workspace 组合画布、系统 workspace-root section、root-local 状态共享、跨 root 连线拒绝、文件活动命名空间与 multi-root live runtime 保守恢复口径，保留 `0.12.0` 的 File Explorer 绑定 cwd 创建里程碑、双市场同版本同步策略，以及 `Dev Session Canvas Notifier` companion 版本对齐
+- release notes 应覆盖以下当前已确认范围：`0.13.0` 发布 VS Code multi-root workspace 组合画布、系统 workspace-root section、root-local 状态共享、跨 root 连线拒绝、文件活动命名空间与 multi-root live runtime 保守恢复口径，纳入 Panel / Editor Webview dispose smoke 回归修复与关联 Markdown Note 读取 re-stat / retry 保护，保留 `0.12.0` 的 File Explorer 绑定 cwd 创建里程碑、双市场同版本同步策略，以及 `Dev Session Canvas Notifier` companion 版本对齐
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -116,11 +116,11 @@
 
 ## 当前验证备注
 
-截至 `2026-06-05`，当前 `0.13.0` 发布准备分支从最新 `main`（`6cd2755bc92cb978bc3290a709ad0aa9ef3e2b94`）切出，功能输入为已合入 `main` 的多根 workspace 组合画布变更；版本号、主扩展 / notifier manifest、`package-lock.json`、`CHANGELOG.md`、Marketplace listing、发布手册与发布判断文档已在本分支同步到 `0.13.0`。
+截至 `2026-06-06`，`0.13.0` 尚未对外 publish，远端仍没有 `v0.13.0` tag；上一轮 `0.13.0` 发布准备已合入 `main`，但发布前发现 Panel / Editor surface 切换路径存在 `Webview is disposed` smoke 回归，因此没有执行最终发布。本轮重新从最新 `main`（`f0465339347451c4487e9c9c76d4e5e9daf73d9c`）切出发布准备分支，继续沿用同一个 `0.13.0` 版本号，并把已合入 `main` 的修复 PR #117 纳入最终发布输入。
 
-当前功能输入已有 repo-local 证据：`docs/product-specs/canvas-multi-root-workspace-support.md` 与 `docs/design-docs/canvas-multi-root-workspace-support.md` 记录了 multi-root composition、workspace-root section、root-local 状态共享、跨 root edge 拒绝、文件活动命名空间、suppression 往返和 runtime skip 保守持久化的验证状态。
+当前功能输入已有 repo-local 证据：`docs/product-specs/canvas-multi-root-workspace-support.md` 与 `docs/design-docs/canvas-multi-root-workspace-support.md` 记录了 multi-root composition、workspace-root section、root-local 状态共享、跨 root edge 拒绝、文件活动命名空间、suppression 往返和 runtime skip 保守持久化的验证状态。PR #117 进一步修复了发布前发现的 Webview dispose cleanup 与同 generation 新 frameId ready 提升路径，并补充关联 Markdown Note 读取期间内容 revision 变化的 re-stat / retry 保护。
 
-本轮发布准备分支已重新通过以下验证：
+本轮重新发布准备分支已刷新并通过以下验证：
 
 - 版本一致性检查：`package.json`、notifier manifest、`package-lock.json` 根版本、root package entry 与 notifier package entry 均为 `0.13.0`
 - `git diff --check`
@@ -138,21 +138,24 @@
 - `npm run build:notifier`
 - `npm run test:notifier-source`
 - `npm run build`
-- `npm run test:webview -- --grep "workspace root group|cross-root edge"`（3 passed）
-- `npm run publish:marketplaces -- --dry-run`，确认统一入口解析 `0.13.0` 的主扩展与 notifier VSIX 文件名，并按 notifier 优先、主扩展随后顺序覆盖 Visual Studio Marketplace 与 Open VSX
+- `npm run test:webview -- --grep "workspace root group|cross-root edge"`（3 个用例通过）
+- `npm run publish:marketplaces -- --dry-run`
+- `npm run package:vsix`
+- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`
+- `npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke`
+- `npm run test:vsix-smoke`
+- `npm audit --omit=dev`（0 vulnerabilities）
+- `npm audit`（仍报告 5 个 dev/tooling transitive vulnerabilities：4 moderate、1 high；当前生产依赖审计为 0）
 
-本轮打包结果：
+本轮打包产物与 smoke 结果如下：
 
-- `npm run package:vsix` 已生成 `dev-session-canvas-0.13.0.vsix`（114 个文件，约 3.41 MB）；打包日志打印 `VSCE README doc ref: 6cd2755bc92cb978bc3290a709ad0aa9ef3e2b94`，并校验 `README.marketplace.md` 中 3 个会被重写的相对链接
-- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 已生成 `dev-session-canvas-notifier-0.13.0.vsix`（10 个文件，约 143.83 KB）；打包日志打印同一 `VSCE README doc ref`，且 notifier README 当前没有需要重写的相对链接
-- `npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke` 已通过，隔离 working-tree 快照可生成 `dev-session-canvas-0.13.0.vsix`（114 个文件，约 3.41 MB）；本次 clean checkout 显式跳过 VSIX smoke，因此不替代最终 release ref 的完整 packaged-payload 验证
+- 主扩展 VSIX：`dev-session-canvas-0.13.0.vsix`，114 files，约 3.41 MB（本地文件大小 3,574,307 bytes）
+- Notifier VSIX：`extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.13.0.vsix`，10 files，约 143.83 KB（本地文件大小 147,287 bytes）
+- 两个 VSIX 的 `VSCE README doc ref` 均为 `f0465339347451c4487e9c9c76d4e5e9daf73d9c`
+- `npm run publish:marketplaces -- --dry-run` 已通过，未执行真实 publish
+- `npm run test:vsix-smoke` 已通过；上一轮阻断发布的 `Webview is disposed` smoke 回归在当前 packaged-payload smoke 环境中未复现
 
-附加检查与保留风险：
-
-- `npm audit --omit=dev` 当前为 `0 vulnerabilities`
-- 完整 `npm audit` 仍报告 5 个 dev / tooling transitive vulnerabilities（4 moderate、1 high），涉及 `@vscode/vsce` / 发布工具链相关依赖或开发依赖；当前未发现生产依赖漏洞，但后续可在独立依赖治理分支评估 `npm audit fix` 对 lockfile 与打包结果的影响
-- `npm run test:vsix-smoke` 本轮未通过：主扩展打包阶段已成功生成 `dev-session-canvas-0.13.0.vsix`，但当前共享主机在 VS Code 启动期间出现 `EMFILE: too many open files` watcher 错误，随后 smoke 在 panel/editor surface 切换时命中 `Error: Webview is disposed`；本次 packaged-payload smoke 未能在该环境中给出通过结论，需要在文件句柄资源正常的环境和最终 `main` ref 上复跑
-- 上述打包使用的是当前工作树内容，但 README doc ref 仍是发布准备分支创建时的 `HEAD`；发布准备 MR 合并后必须在最终 `main` release commit 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，确认 README 相对链接改写、VSIX 文件数 / 大小、`VSCE README doc ref` 和 packaged-payload smoke 均与最终发布 ref 一致。
+残余风险：发布准备 MR 合并后，仍必须在最终 `main` release commit 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 与 `npm run test:vsix-smoke`，确认 README 相对链接改写、VSIX 文件数 / 大小、`VSCE README doc ref` 和 packaged-payload smoke 均与最终发布 ref 一致；真实 publish 与 `v0.13.0` tag 仍只能在该最终 `main` ref 上执行。
 
 ## 发布命令
 
