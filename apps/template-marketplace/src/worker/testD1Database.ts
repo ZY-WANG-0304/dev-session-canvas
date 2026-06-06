@@ -12,6 +12,9 @@ export interface FakeD1DatabaseOptions {
   publisherGithubLogin?: string;
   publisherDisplayName?: string;
   publisherAvatarUrl?: string;
+  viewerUserId?: string;
+  viewerLiked?: boolean;
+  publishedVersionCount?: number;
 }
 
 function createTemplateRows(options: FakeD1DatabaseOptions = {}) {
@@ -91,6 +94,10 @@ export interface FakeD1Run {
 export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1DatabaseOptions = {}): D1Database {
   const templateRows = createTemplateRows(options);
   const publisherGithubUserId = options.publisherGithubUserId ?? defaultPublisher.githubUserId;
+  const viewerUserId = options.viewerUserId ?? defaultPublisher.id;
+  const publishedVersionCount = options.publishedVersionCount ?? versionRows.length;
+  let viewerLiked = options.viewerLiked ?? false;
+  let currentLikeCount: number = templateRows[0]?.like_count ?? 0;
   return {
     prepare(sql: string) {
       let boundValues: unknown[] = [];
@@ -100,8 +107,42 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
           return this;
         },
         async all() {
+          if (sql.includes('FROM template_daily_stats s')) {
+            return {
+              results: [
+                {
+                  day: '2026-05-10',
+                  download_count: 3,
+                  like_count: 2,
+                  publish_count: 1
+                },
+                {
+                  day: '2026-05-11',
+                  download_count: 5,
+                  like_count: 1,
+                  publish_count: Math.max(0, publishedVersionCount - 1)
+                }
+              ],
+              success: true,
+              meta: {}
+            };
+          }
           if (sql.includes("template_id = ?1 AND status = 'published'")) {
             return { results: versionRows.slice(), success: true, meta: {} };
+          }
+          if (sql.includes('COUNT(*) AS publish_count') && sql.includes('FROM template_versions v')) {
+            return {
+              results: [{ template_id: 'tmpl-d1-review', publish_count: publishedVersionCount }],
+              success: true,
+              meta: {}
+            };
+          }
+          if (sql.includes('JOIN template_likes tl')) {
+            return {
+              results: viewerLiked && boundValues[0] === viewerUserId ? templateRows.slice() : [],
+              success: true,
+              meta: {}
+            };
           }
           if (sql.includes('u.github_user_id = ?1')) {
             return {
@@ -117,12 +158,30 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
             const row = templateRows.find((entry) => entry.slug === boundValues[0]);
             return row ? { id: row.template_id } : null;
           }
+          if (sql.includes('SELECT created_at FROM template_likes')) {
+            return viewerLiked && boundValues[1] === viewerUserId ? { created_at: '2026-05-10T00:00:00.000Z' } : null;
+          }
+          if (sql.includes('SELECT like_count FROM templates')) {
+            return { like_count: currentLikeCount };
+          }
           if (sql.includes('WHERE (t.id = ?1 OR t.slug = ?1)')) {
             return templateRows.find((row) => row.template_id === boundValues[0] || row.slug === boundValues[0]) ?? null;
           }
           return null;
         },
         async run() {
+          if (sql.includes('INSERT INTO template_likes')) {
+            viewerLiked = true;
+          }
+          if (sql.includes('DELETE FROM template_likes')) {
+            viewerLiked = false;
+          }
+          if (sql.includes('UPDATE templates SET like_count = like_count + 1')) {
+            currentLikeCount += 1;
+          }
+          if (sql.includes('UPDATE templates SET like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0 END')) {
+            currentLikeCount = Math.max(0, currentLikeCount - 1);
+          }
           runLog.push({ sql, boundValues: boundValues.slice() });
           return { results: [], success: true, meta: {} };
         },

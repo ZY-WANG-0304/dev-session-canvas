@@ -233,6 +233,41 @@ export interface MarketplaceSlugAvailabilityResponse {
   storageMode: MarketplaceStorageMode;
 }
 
+export interface MarketplaceTemplateLikeResponse {
+  templateId: string;
+  liked: boolean;
+  likeCount: number;
+  storageMode: MarketplaceStorageMode;
+}
+
+export interface MarketplacePublisherStatsTotals {
+  templateCount: number;
+  downloadCount: number;
+  likeCount: number;
+  publishCount: number;
+}
+
+export interface MarketplacePublisherStatsPoint {
+  day: string;
+  downloadCount: number;
+  likeCount: number;
+  publishCount: number;
+}
+
+export interface MarketplacePublisherStatsTemplate {
+  template: MarketplaceTemplateSummary;
+  downloadCount: number;
+  likeCount: number;
+  publishCount: number;
+}
+
+export interface MarketplacePublisherStatsResponse {
+  totals: MarketplacePublisherStatsTotals;
+  daily: MarketplacePublisherStatsPoint[];
+  templates: MarketplacePublisherStatsTemplate[];
+  storageMode: MarketplaceStorageMode;
+}
+
 export interface MarketplaceApiError {
   error: {
     code: string;
