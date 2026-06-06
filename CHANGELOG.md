@@ -13,7 +13,9 @@
 - 节点、用户分组、连线、文件活动自动节点、file-activity edge 和 suppression id 在组合视图中按 root 命名空间隔离，避免不同 root 下同名对象或自动 file artifact 冲突
 - Webview 与 Host 双侧拒绝跨 root 创建或重连连线，避免生成只能在当前会话临时可见、无法拆回 root-local 或 overlay 的状态
 - multi-root 组合视图不重新连接 live runtime，只展示历史态；持久化时保留 root-local snapshot 中的 reattach 信号，用户单独打开所属 root 后仍可走 root-local live runtime 恢复路径
-- 补充 multi-root composition、root section 分组策略、跨 root edge 拒绝、文件活动命名空间、suppression 往返、runtime skip 保守持久化、模板、Markdown drop、执行上下文、协议和 Webview 回归
+- 修复发布前发现的 Panel / Editor Webview dispose 后仍读取已释放 `webview` 对象的问题，surface dispose cleanup 改用 attach 时捕获的 Webview 引用，并允许同 generation 的新 frameId ready 消息提升当前活跃 frame，避免 VS Code smoke 在 surface 切换时命中 `Webview is disposed`
+- 补齐关联 Markdown Note 读取期间文件内容变化的 re-stat / retry 保护，降低读取中途内容 revision 改变造成的 stale content 风险
+- 补充 multi-root composition、root section 分组策略、跨 root edge 拒绝、文件活动命名空间、suppression 往返、runtime skip 保守持久化、模板、Markdown drop、执行上下文、协议、Panel lifecycle 和 Webview 回归
 - 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
 
 ### 安装与升级
