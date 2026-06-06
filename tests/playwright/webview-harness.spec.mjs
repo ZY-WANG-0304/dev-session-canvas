@@ -2158,7 +2158,9 @@ test('minimap remains pannable with the viewport outline overlay', async ({ page
   });
   await bootstrap(page, createMinimapContrastState());
   await settleWebview(page, 4);
+  await clearPostedMessages(page);
 
+  const beforeState = await readPersistedUiState(page);
   const beforeDragTransform = await readCanvasViewportTransform(page);
   const minimapBox = await page.locator('.canvas-minimap svg').boundingBox();
   expect(minimapBox).not.toBeNull();
@@ -2176,6 +2178,14 @@ test('minimap remains pannable with the viewport outline overlay', async ({ page
       return transform && transform !== beforeDragTransform ? transform : null;
     })
     .not.toBeNull();
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.viewport.x).not.toBe(beforeState.viewport.x);
+  expect(afterState.viewport.zoom).toBe(beforeState.viewport.zoom);
+
+  const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+  expect(centerMessages.length).toBeGreaterThan(0);
+  expect(centerMessages.at(-1).payload.visibleCenter.x).not.toBe(0);
 });
 
 test('minimap shows workspace root sections, user groups, and attention nodes', async ({ page }) => {
@@ -5471,6 +5481,51 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
   await expect
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
     .toBe('1');
+});
+
+test('minimap wheel honors the dynamic fit view min zoom', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.8
+      }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-huge',
+      title: 'Huge Root',
+      position: { x: -2400, y: -1800 },
+      size: { width: 22000, height: 16000 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/huge'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.1);
+  await expect.poll(async () => (await readPersistedUiState(page)).viewport?.zoom ?? null).toBeLessThan(0.1);
+  await clearPostedMessages(page);
+
+  const beforeWheelState = await readPersistedUiState(page);
+  const minimapBox = await page.locator('.canvas-minimap svg').boundingBox();
+  expect(minimapBox).not.toBeNull();
+
+  await page.mouse.move(minimapBox.x + minimapBox.width / 2, minimapBox.y + minimapBox.height / 2);
+  await page.mouse.wheel(0, 120);
+  await settleWebview(page, 4);
+
+  const afterWheelState = await readPersistedUiState(page);
+  expect(afterWheelState.viewport.zoom).toBeLessThanOrEqual(beforeWheelState.viewport.zoom);
+  expect(afterWheelState.viewport.zoom).toBeLessThan(0.1);
+
+  const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+  expect(centerMessages.length).toBeGreaterThan(0);
 });
 
 test('fit view includes empty workspace root sections in multi-root canvases', async ({ page }) => {
