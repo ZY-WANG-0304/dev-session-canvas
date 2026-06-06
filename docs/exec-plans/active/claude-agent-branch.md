@@ -44,10 +44,11 @@
 
 - [x] (2026-06-06) 完成设计规格并提交 `b3ef9cf docs(canvas): define Claude Code Agent Branch semantics`。
 - [x] (2026-06-06) 起草本实现计划，覆盖命令层、协议、Host、Webview、测试与验证。
-- [ ] 实现命令层 Branch builder 与 Node 脚本测试。
-- [ ] 实现共享协议消息与协议解析测试。
-- [ ] 实现 Webview Branch 按钮与 Playwright 测试。
-- [ ] 实现 Host Branch 创建/启动路径与 smoke 测试。
+- [x] (2026-06-07) 实现命令层 Branch builder 与 Node 脚本测试，提交 `8b39342`。
+- [x] (2026-06-07) 实现共享协议消息与协议解析测试，提交 `ab243c6`。
+- [x] (2026-06-07) 实现 Webview Branch 按钮与 Playwright 测试，提交 `ee15afc`。
+- [x] (2026-06-07) 实现 Host Branch 创建/启动路径与 smoke 测试，提交 `13a7977`。
+- [x] (2026-06-07) 根据质量审查补齐 Claude Branch fork-session 的新 session 候选处理：Host 会在 `--resume <source> --fork-session` 启动时追加独立 `--session-id <candidate>`，并用 smoke 覆盖最终启动参数。
 - [ ] 运行 targeted 验证、更新文档验证状态、提交实现。
 - [ ] 在本地 Development Host 手动验证 Claude Code Branch 主路径。
 
@@ -58,6 +59,9 @@
 
 - 观察：Webview 侧的可恢复判断已经允许 Claude 只凭 `resumeStrategy === 'claude-session-id'` 与非空 `resumeSessionId` 显示恢复动作，不要求 `resumeStoragePath`。
   证据：`src/webview/main.tsx:11238-11257` 中 `canResumeAgentFromMetadataForWebview()` 对 Claude/Codex 返回 `Boolean(metadata.resumeSessionId?.trim())`。
+
+- 观察：Claude Branch 的启动命令同时包含“源 session”的 `--resume <source>` 和“新 fork”的会话身份需求；如果 Host 只把 `--resume <source>` 当成显式 session flag，新节点会缺少自己的候选 session id。
+  证据：质量审查指出 `resolveAgentResumeContext()` 对任意显式 Claude session flag 返回旧 session id；修复后 smoke 会检查最终 `execution/started` launch args 同时包含 `--resume <source>`、`--fork-session` 和一个不同于 source 的 `--session-id <candidate>`。
 
 ## 决策记录
 
@@ -72,6 +76,10 @@
 - 决策：新节点只做标题弱提示，不新增 graph edge 或 branch lineage metadata。
   理由：用户确认第一版不需要正式分支关系；Branch 之后旧节点和新节点都只是可继续对话的普通 Agent。
   日期/作者：2026-06-06 / Claude
+
+- 决策：`--fork-session` 启动时即使命令已经包含源 session 的 `--resume <source>`，Host 仍要生成或保留一个独立的 `--session-id <candidate>` 作为新 fork 节点自己的 Claude session 候选。
+  理由：Claude Code 的 Branch 语义是用源 session 作为上下文，同时创建新的 provider session id；源 session id 不能成为新节点的恢复身份。
+  日期/作者：2026-06-07 / Claude
 
 ## 结果与复盘
 
