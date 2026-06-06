@@ -4224,7 +4224,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               onFocus={() => data.onSelectNode?.(id)}
             />
           ) : showRestartActions ? (
-            <div className="action-button-group nodrag nopan" data-node-interactive="true">
+            <div className="action-button-group agent-restart-action-group nodrag nopan" data-node-interactive="true">
               <ActionButton
                 label="新建"
                 tone="primary"

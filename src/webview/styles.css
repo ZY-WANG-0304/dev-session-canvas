@@ -314,6 +314,19 @@ body {
   border-bottom-left-radius: 0;
 }
 
+.agent-restart-action-group {
+  flex: 0 1 auto;
+  min-width: min-content;
+}
+
+.agent-restart-action-group .action-button {
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: min-content;
+  white-space: normal;
+}
+
 .canvas-node {
   --canvas-node-color: var(--vscode-focusBorder);
   --execution-node-attention-color: var(--vscode-focusBorder);
