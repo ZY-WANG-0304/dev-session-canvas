@@ -2423,11 +2423,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     this.notifySidebarStateChanged();
 
+    const multiRootOverlay = this.writeRootLocalCanvasSnapshotsForState(this.state);
     await this.queuePersistedCanvasSnapshotWrite({
       version: 1,
-      state: rawState,
+      state: this.state,
+      multiRootOverlay,
       activeSurface: this.activeSurface
     });
+    await this.waitForPendingWorkspaceStateUpdates();
 
     const snapshot = this.getDebugSnapshot();
 
@@ -2890,16 +2893,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private attachEditorPanel(panel: vscode.WebviewPanel): void {
     this.editorPanel = panel;
+    const editorWebview = panel.webview;
     this.invalidateSurfaceLifecycle('editor');
     this.claimSurfaceIfNeeded('editor');
     this.recordDiagnosticEvent('surface/attached', {
       surface: 'editor'
     });
-    panel.webview.options = this.getWebviewOptions();
+    editorWebview.options = this.getWebviewOptions();
 
     panel.onDidDispose(
       () => {
-        const wasMessageWebview = this.surfaceMessageWebview.editor === panel.webview;
+        const wasMessageWebview = this.surfaceMessageWebview.editor === editorWebview;
         if (wasMessageWebview) {
           this.bindSurfaceMessageWebview('editor', undefined, 'dispose');
           this.rejectPendingWebviewProbeRequests('editor', '编辑区 Webview 已被关闭。');
@@ -2908,7 +2912,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             this.recoverSurfaceAfterMessageWebviewDisposed('editor');
           }
         }
-        this.renderedWebviewLifecycle.delete(panel.webview);
+        this.renderedWebviewLifecycle.delete(editorWebview);
 
         if (this.editorPanel === panel) {
           this.editorPanel = undefined;
@@ -2944,8 +2948,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.context.subscriptions
     );
 
-    panel.webview.onDidReceiveMessage(
-      (message) => this.handleWebviewMessage('editor', message, panel.webview),
+    editorWebview.onDidReceiveMessage(
+      (message) => this.handleWebviewMessage('editor', message, editorWebview),
       null,
       this.context.subscriptions
     );
@@ -2961,16 +2965,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private attachPanelView(webviewView: vscode.WebviewView): void {
     this.panelView = webviewView;
+    const panelWebview = webviewView.webview;
     this.invalidateSurfaceLifecycle('panel');
     this.claimSurfaceIfNeeded('panel');
     this.recordDiagnosticEvent('surface/attached', {
       surface: 'panel'
     });
-    webviewView.webview.options = this.getWebviewOptions();
+    panelWebview.options = this.getWebviewOptions();
 
     webviewView.onDidDispose(
       () => {
-        const wasMessageWebview = this.surfaceMessageWebview.panel === webviewView.webview;
+        const wasMessageWebview = this.surfaceMessageWebview.panel === panelWebview;
         if (wasMessageWebview) {
           this.bindSurfaceMessageWebview('panel', undefined, 'dispose');
           this.rejectPendingWebviewProbeRequests('panel', '面板 Webview 已被关闭。');
@@ -2979,7 +2984,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             this.recoverSurfaceAfterMessageWebviewDisposed('panel');
           }
         }
-        this.renderedWebviewLifecycle.delete(webviewView.webview);
+        this.renderedWebviewLifecycle.delete(panelWebview);
 
         if (this.panelView === webviewView) {
           this.panelView = undefined;
@@ -3015,8 +3020,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.context.subscriptions
     );
 
-    webviewView.webview.onDidReceiveMessage(
-      (message) => this.handleWebviewMessage('panel', message, webviewView.webview),
+    panelWebview.onDidReceiveMessage(
+      (message) => this.handleWebviewMessage('panel', message, panelWebview),
       null,
       this.context.subscriptions
     );
@@ -4024,6 +4029,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }));
   }
 
+  private writeRootLocalCanvasSnapshotsForState(state: CanvasPrototypeState): CanvasMultiRootOverlay | undefined {
+    const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    if (workspaceFolders.length > 1) {
+      const decomposed = decomposeMultiRootCanvasState({
+        composedState: state,
+        workspaceFolders,
+        previousRootStates: this.lastLoadedRootLocalStates
+      });
+      this.lastLoadedRootLocalStates = cloneJsonValue(decomposed.rootStates);
+      this.multiRootOverlay = decomposed.overlay;
+      for (const rootState of decomposed.rootStates) {
+        this.writeRootLocalCanvasSnapshot(rootState.rootPath, rootState.state);
+      }
+      return decomposed.overlay;
+    }
+
+    if (workspaceFolders.length === 1) {
+      const rootPath = workspaceFolders[0].path;
+      this.lastLoadedRootLocalStates = [{ rootPath, state: cloneJsonValue(state) }];
+      this.multiRootOverlay = undefined;
+      this.writeRootLocalCanvasSnapshot(rootPath, state);
+    }
+    return undefined;
+  }
+
   private queuePersistedCanvasSnapshotWrite(snapshot: PersistedCanvasSnapshot): Promise<void> {
     const snapshotPath = this.getPersistedCanvasSnapshotPath();
     const snapshotWithMetadata = this.buildPersistedCanvasSnapshot(snapshot);
@@ -4195,20 +4225,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (workspaceFolders.length === 1 && !resetDueToRuntimePersistenceModeChange) {
       const rootLocalSnapshot = this.loadPersistedRootLocalCanvasSnapshot(workspaceFolders[0].path);
       if (rootLocalSnapshot?.state !== undefined) {
+        const rootLocalSnapshotPath = this.getRootLocalCanvasSnapshotPath(workspaceFolders[0].path);
         const rootState = this.loadRootLocalState(workspaceFolders[0].path, fileView);
         const sanitizedRootState = resetDueToFilesFeatureModeChange ? clearFileDomainState(rootState) : rootState;
+        const rootLocalSnapshotSummary = summarizeCanvasStateForDiagnostics(rootLocalSnapshot.state);
+        const rootLocalLoadedStateSummary = summarizeCanvasStateForDiagnostics(sanitizedRootState);
         this.lastLoadedRootLocalStates = [{ rootPath: workspaceFolders[0].path, state: cloneJsonValue(sanitizedRootState) }];
         this.multiRootOverlay = undefined;
         this.recordDiagnosticEvent('state/loadSelected', {
           source: 'rootLocalSnapshot',
           rootPath: workspaceFolders[0].path,
-          snapshotPath: this.getRootLocalCanvasSnapshotPath(workspaceFolders[0].path),
+          snapshotPath: rootLocalSnapshotPath,
           storagePath: this.getExtensionStoragePath(),
           snapshotAvailable: true,
           workspaceStateAvailable: workspaceState !== undefined,
           resetDueToFilesFeatureModeChange,
           fileDomainDisabled: !this.appliedStartupConfiguration.filesFeatureEnabled,
-          ...summarizeCanvasStateForDiagnostics(sanitizedRootState)
+          snapshotWrittenAt: rootLocalSnapshot.writtenAt,
+          snapshotStateHash: rootLocalSnapshot.stateHash ?? rootLocalSnapshotSummary.stateHash,
+          loadedStateHash: rootLocalLoadedStateSummary.stateHash,
+          ...rootLocalSnapshotSummary
         });
         return hydrateRuntimeStoragePaths(
           this.materializeNoteMarkdownRecoverableDraftFiles(sanitizedRootState),
@@ -6037,11 +6073,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     try {
-      const bytes = await vscode.workspace.fs.readFile(uri);
+      let content = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+      let contentRevision = statResult.contentRevision;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const latestStatResult = await this.statNoteMarkdownFile(uri);
+        if (latestStatResult.status !== 'ok') {
+          return {
+            ...latestStatResult,
+            content: ''
+          };
+        }
+
+        if (!contentRevision || latestStatResult.contentRevision === contentRevision) {
+          return {
+            status: 'ok',
+            content,
+            contentRevision: latestStatResult.contentRevision
+          };
+        }
+
+        contentRevision = latestStatResult.contentRevision;
+        content = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+      }
+
       return {
         status: 'ok',
-        content: Buffer.from(bytes).toString('utf8'),
-        contentRevision: statResult.contentRevision
+        content,
+        contentRevision
       };
     } catch (error) {
       return {
@@ -8151,9 +8209,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       lifecycle.surface === sourceSurface &&
       lifecycle.mode === currentLifecycle.mode &&
       lifecycle.generation === currentLifecycle.generation &&
-      (currentLifecycle.frameId === undefined ||
-        lifecycle.frameId === undefined ||
-        lifecycle.frameId === currentLifecycle.frameId);
+      areSurfaceLifecycleFrameIdsCompatible(currentLifecycle.frameId, lifecycle.frameId);
 
     if (!matches && options.recordIgnored !== false) {
       this.recordDiagnosticEvent('webview/staleMessageIgnored', {
@@ -8223,7 +8279,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (
       currentLifecycle.mode === lifecycle!.mode &&
       currentLifecycle.generation === lifecycle!.generation &&
-      this.getSurfaceMessageWebview(sourceSurface) === sourceWebview
+      this.getSurfaceMessageWebview(sourceSurface) === sourceWebview &&
+      areSurfaceLifecycleFrameIdsCompatible(currentLifecycle.frameId, lifecycle!.frameId)
     ) {
       return;
     }
@@ -13251,8 +13308,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       pendingRequest.lifecycle.surface === lifecycle.surface &&
       pendingRequest.lifecycle.mode === lifecycle.mode &&
       pendingRequest.lifecycle.generation === lifecycle.generation &&
-      (pendingRequest.lifecycle.frameId === undefined ||
-        lifecycle.frameId === pendingRequest.lifecycle.frameId)
+      areSurfaceLifecycleFrameIdsCompatible(pendingRequest.lifecycle.frameId, lifecycle.frameId)
     );
   }
 }
@@ -17827,6 +17883,10 @@ function summarizeWebviewLifecycleIdentity(
     generation: lifecycle.generation,
     frameId: lifecycle.frameId
   };
+}
+
+function areSurfaceLifecycleFrameIdsCompatible(left: string | undefined, right: string | undefined): boolean {
+  return left === undefined || right === undefined || left === right;
 }
 
 function summarizeDiagnosticHostMessages(
