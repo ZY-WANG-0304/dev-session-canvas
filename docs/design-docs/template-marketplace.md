@@ -174,6 +174,7 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 - `POST /api/v1/templates`：发布新模板，需要认证；当前 Worker contract 继续兼容 JSON 请求体，包含市场元数据、`CanvasTemplateDocument` 和可选 PNG 缩略图 base64，Web 表单和 VSCode 宿主发布入口都可转换到这一个 contract。Worker 会把 JSON 请求组装成 canonical `package.zip`，同时写入兼容 `template.json`、`thumbnail.png` 和 `manifest.json`。`CanvasTemplateDocument` 继续只允许 Agent / Terminal / Note 模板节点；主线新增的 file / file-list 画布节点不进入模板市场包。关联 Markdown Note 使用本地模板模型中的 `metadata.note.templateContentMode` 与 `metadata.note.relativePath`，市场 schema 必须接受 `embedded-snapshot`、`workspace-file-path-only` 和 `workspace-file-with-content`，并拒绝绝对路径、URI scheme、空段和 `..` 越界路径。没有自定义截图时，浏览器和 VSCode 端都使用共享布局 renderer 生成 PNG 缩略图；renderer 的 Agent / Terminal / Note accent 色分别对齐插件画布节点主题色 #22c55e、#38bdf8、#a78bfa。
 - `POST /api/v1/templates/package`：发布完整 `package.zip`，需要认证；浏览器发布页高级入口用 `multipart/form-data` 的 `package` 字段提交 zip。若用户上传包后在表单中继续编辑公开字段、README、CHANGELOG、Template JSON Preview 或缩略图，前端会提交已重建的 zip，Worker 仍必须以服务端规范化结果作为最终事实：保留原包未覆盖的 `media/` / `assets/` 资源，但用服务端校验后的 manifest、README、CHANGELOG、`template.json`、缩略图和 `template.json` hash 重新生成并写入 R2 `package.zip`、兼容 `template.json`、`thumbnail.png`、`manifest.json` 与 D1 派生字段，不能保存上传瞬间的旧 zip。
 - `POST /api/v1/templates/:id/versions`：发布新版本，需要作者权限。
+- `GET /api/v1/templates/:id/like`：读取当前登录用户对单个模板的点赞状态，需要认证；详情页必须用它读取当前模板状态，不能依赖 `GET /api/v1/me/likes` 的列表第一页推断。
 - `POST /api/v1/templates/:id/like`：点赞或取消点赞，需要认证。
 - `POST /api/v1/templates/:id/report`：举报，需要认证。
 - `GET /api/v1/me/templates`、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`：个人页面与 Dashboard。

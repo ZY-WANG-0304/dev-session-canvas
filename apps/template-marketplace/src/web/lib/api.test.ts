@@ -5,6 +5,7 @@ import {
   checkMarketplaceSlugAvailability,
   loadCurrentMarketplaceUser,
   loadMarketplaceTemplateDetail,
+  loadMarketplaceTemplateLikeState,
   loadMarketplaceTemplates,
   loadMyMarketplaceLikes,
   loadMyMarketplaceStats,
@@ -309,6 +310,25 @@ describe('marketplace web api client', () => {
     expect(requests[0]).toBe('/api/v1/me/stats');
     expect(result.totals.downloadCount).toBe(44);
     expect(result.daily[0]?.likeCount).toBe(2);
+  });
+
+  it('loads a single template like state without reading the likes list', async () => {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        requests.push(String(input));
+        return new Response(JSON.stringify({ templateId: 'tmpl-liked', liked: true, likeCount: 10, storageMode: 'd1' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      })
+    );
+
+    const result = await loadMarketplaceTemplateLikeState('review-loop');
+
+    expect(result).toEqual({ templateId: 'tmpl-liked', liked: true, likeCount: 10, storageMode: 'd1' });
+    expect(requests[0]).toBe('/api/v1/templates/review-loop/like');
   });
 
   it('posts template like target states to the Worker API', async () => {

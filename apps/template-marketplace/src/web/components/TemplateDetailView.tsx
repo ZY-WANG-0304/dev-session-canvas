@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { MarketplaceTemplateDetail } from '@dev-session-canvas/marketplace-shared';
 
 import { InstallInVSCodeLink } from './InstallInVSCodeLink';
-import { loadCurrentMarketplaceUser, loadMyMarketplaceLikes, setMarketplaceTemplateLike, type MarketplaceCurrentUser } from '../lib/api';
+import { loadCurrentMarketplaceUser, loadMarketplaceTemplateLikeState, setMarketplaceTemplateLike, type MarketplaceCurrentUser } from '../lib/api';
 import { buildTemplateDownloadHref, buildTemplateJsonExportHref } from '../lib/download';
 import { buildGithubSignInHref, getMarketplaceHomeHref } from '../lib/routing';
 import { buildTemplateThumbnailHref } from '../lib/thumbnail';
@@ -66,12 +66,12 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
           }
           return;
         }
-        const likes = await loadMyMarketplaceLikes();
+        const like = await loadMarketplaceTemplateLikeState(template.slug);
         if (!cancelled) {
           setLikeState({
             loading: false,
-            liked: likes.items.some((entry) => entry.id === template.id || entry.slug === template.slug),
-            likeCount: template.likeCount,
+            liked: like.liked,
+            likeCount: like.likeCount,
             user: currentUser.user
           });
         }

@@ -151,6 +151,18 @@ export async function loadMyMarketplaceStats(): Promise<MarketplacePublisherStat
   return body as MarketplacePublisherStatsResponse;
 }
 
+export async function loadMarketplaceTemplateLikeState(templateIdOrSlug: string): Promise<MarketplaceTemplateLikeResponse> {
+  const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/like`, {
+    headers: { accept: 'application/json' }
+  });
+  const body = (await response.json()) as MarketplaceTemplateLikeResponse | { error?: { message?: string } };
+  if (!response.ok) {
+    const message = 'error' in body && body.error?.message ? body.error.message : `API returned ${response.status}`;
+    throw new Error(message);
+  }
+  return body as MarketplaceTemplateLikeResponse;
+}
+
 export async function setMarketplaceTemplateLike(templateIdOrSlug: string, liked: boolean): Promise<MarketplaceTemplateLikeResponse> {
   const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/like`, {
     method: 'POST',

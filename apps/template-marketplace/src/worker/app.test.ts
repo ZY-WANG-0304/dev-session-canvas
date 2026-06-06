@@ -553,6 +553,31 @@ describe('template marketplace worker api', () => {
     expect(body.items.map((template) => template.slug)).toEqual(['d1-review-loop']);
   });
 
+  it('returns the authenticated user like state for one template', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/like',
+      {
+        headers: {
+          'x-marketplace-test-github-login': 'community-user',
+          'x-marketplace-test-github-user-id': 'test-community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database([], { viewerUserId: 'github-test-community-user', viewerLiked: true })
+      }
+    );
+    const body = await response.json<{ templateId: string; liked: boolean; likeCount: number; storageMode: string }>();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      templateId: 'tmpl-d1-review',
+      liked: true,
+      likeCount: 9,
+      storageMode: 'd1'
+    });
+  });
+
   it('returns publisher dashboard stats for the authenticated user', async () => {
     const response = await app.request(
       'http://localhost/api/v1/me/stats',
@@ -575,9 +600,9 @@ describe('template marketplace worker api', () => {
 
     expect(response.status).toBe(200);
     expect(body.storageMode).toBe('d1');
-    expect(body.totals).toEqual({ templateCount: 1, downloadCount: 44, likeCount: 9, publishCount: 1 });
+    expect(body.totals).toEqual({ templateCount: 1, downloadCount: 44, likeCount: 9, publishCount: 2 });
     expect(body.daily[0]).toEqual({ day: '2026-05-10', downloadCount: 3, likeCount: 2, publishCount: 1 });
-    expect(body.templates[0]).toEqual(expect.objectContaining({ downloadCount: 44, likeCount: 9 }));
+    expect(body.templates[0]).toEqual(expect.objectContaining({ downloadCount: 44, likeCount: 9, publishCount: 2 }));
     expect(body.templates[0]?.template.slug).toBe('d1-review-loop');
   });
 

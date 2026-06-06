@@ -171,6 +171,20 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     return context.json(await repository.getPublisherStats(user));
   });
 
+  app.get('/api/v1/templates/:id/like', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to read template like state.'), 401);
+    }
+
+    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const result = await repository.getTemplateLikeState(context.req.param('id'), user);
+    if (!result) {
+      return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
+    }
+    return context.json(result);
+  });
+
   app.post('/api/v1/auth/vscode/exchange', async (context) => {
     const result = await exchangeVSCodeGithubToken(context.req.raw, context.env);
     if (result instanceof Response) {

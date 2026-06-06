@@ -22,6 +22,7 @@ Phase 3 不进入治理后台和版本回滚的 Phase 4 范围。举报、下架
 - [x] (2026-06-01 11:45 +0800) 运行最终验证命令并记录证据：`npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web`、`npm run typecheck:marketplace`、`git diff --check` 均通过。
 - [x] (2026-06-01 22:45 +0800) 首次尝试更新 workers.dev 调试环境；本地 marketplace build 已通过，但当时 `wrangler deploy` 被 Cloudflare 认证错误 `Authentication error [code: 10000]` 阻断。
 - [x] (2026-06-04 19:35 +0800) 重新更新 workers.dev 调试环境成功；当前 URL 为 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，Wrangler 当前版本 ID 为 `550b893a-3097-4d84-b848-152761ba84a3`。
+- [x] (2026-06-06 23:08 +0800) 处理 PR review blocker：详情页改用单模板点赞状态接口，避免用户点赞超过 50 个模板后被 `/me/likes` 首页截断误判；发布者 Dashboard 的 per-template publishCount 改为从 `template_versions` 真实聚合，避免只映射 latest version 导致恒为 1。
 
 ## 意外与发现
 
@@ -42,6 +43,12 @@ Phase 3 不进入治理后台和版本回滚的 Phase 4 范围。举报、下架
 
 - 观察：本机对 workers.dev URL 的直接 HTTP smoke 当前不可用，但 Cloudflare API 侧 D1 预览库验证可用。
   证据：`npm run -w @dev-session-canvas/template-marketplace db:verify:preview` 成功返回 7 条模板版本记录；`curl -I --max-time 20 https://dscanvas-template-marketplace.wzy0304.workers.dev/templates` 和带 `--noproxy '*'` 的重试都在本机连接阶段超时。
+
+- 观察：详情页不能用 `GET /api/v1/me/likes` 的第一页判断当前模板点赞状态。
+  证据：`listLikedTemplates()` 固定 `pageSize: 50`，用户点赞超过 50 个模板后，第一页之外的已点赞模板会显示为未点赞；已改为 `GET /api/v1/templates/:id/like` 查询单模板状态。
+
+- 观察：发布者 Dashboard 的 per-template publishCount 不能使用 `template.versions.length`。
+  证据：`templateSelectSql` 的列表映射只包含 latest version，导致每个模板的 per-template publishCount 恒为 1；已改为按发布者从 `template_versions` 聚合每个模板的 published version 数。
 
 ## 决策记录
 
@@ -77,7 +84,7 @@ Phase 3 不进入治理后台和版本回滚的 Phase 4 范围。举报、下架
 
 第三步扩展 Worker API。`POST /api/v1/templates/:id/like` 需要认证，没有 D1 时返回 503；body 可选，若包含 `liked` 必须是 boolean。`GET /api/v1/me/likes` 和 `GET /api/v1/me/stats` 需要认证，读取 repository 并返回 JSON。写接口不套用 public read CORS。
 
-第四步扩展浏览器 UI。`lib/api.ts` 增加 `loadMyMarketplaceStats()`、`loadMyMarketplaceLikes()` 和 `setMarketplaceTemplateLike()`。详情页加载当前用户的 likes，若已登录则显示可点击 Like / Liked 按钮，未登录则显示 Sign in to like。点击后发目标状态并更新本地数字。`TemplateMyTemplatesView` 并行加载 `me/templates` 和 `me/stats`，展示总下载、总点赞、发布模板数、近日日趋势和每模板表现。
+第四步扩展浏览器 UI。`lib/api.ts` 增加 `loadMyMarketplaceStats()`、`loadMyMarketplaceLikes()`、`loadMarketplaceTemplateLikeState()` 和 `setMarketplaceTemplateLike()`。详情页加载当前用户和当前模板的单模板 like state，若已登录则显示可点击 Like / Liked 按钮，未登录则显示 Sign in to like。点击后发目标状态并更新本地数字。`TemplateMyTemplatesView` 并行加载 `me/templates` 和 `me/stats`，展示总下载、总点赞、发布模板数、近日日趋势和每模板表现。
 
 第五步补测试和文档。Worker API 测试覆盖认证失败、like/unlike SQL、`me/likes`、`me/stats`。Web API client 测试覆盖新增端点。若 Phase 3 验收项完成，同步 `docs/product-specs/template-marketplace.md` 的 Phase 3 当前状态和本 ExecPlan 的结果。
 
@@ -107,7 +114,7 @@ Phase 3 不进入治理后台和版本回滚的 Phase 4 范围。举报、下架
 
 ## 验证与验收
 
-Phase 3 完成时应满足以下可观察行为。未登录用户打开模板详情页能看到登录后点赞的提示；登录用户打开模板详情页能看到当前点赞状态，点击后按钮文案和 like 数字更新，再点一次可以取消。调用 `POST /api/v1/templates/:id/like` 会返回最终 `liked` 和 `likeCount`，并且 D1 写入 `template_likes`、`templates.like_count` 与当日 `template_daily_stats.like_count`。调用 `GET /api/v1/me/likes` 会返回当前用户点赞过的模板列表。调用 `GET /api/v1/me/stats` 会返回当前发布者的 totals、daily trend 和 per-template stats。打开 `/templates/me` 时，登录发布者能看到统计总览、趋势和模板卡片。
+Phase 3 完成时应满足以下可观察行为。未登录用户打开模板详情页能看到登录后点赞的提示；登录用户打开模板详情页能看到当前点赞状态，点击后按钮文案和 like 数字更新，再点一次可以取消。调用 `GET /api/v1/templates/:id/like` 会返回当前登录用户对单个模板的 `liked` 和 `likeCount`，不受 `/me/likes` 列表分页影响。调用 `POST /api/v1/templates/:id/like` 会返回最终 `liked` 和 `likeCount`，并且 D1 写入 `template_likes`、`templates.like_count` 与当日 `template_daily_stats.like_count`。调用 `GET /api/v1/me/likes` 会返回当前用户点赞过的模板列表。调用 `GET /api/v1/me/stats` 会返回当前发布者的 totals、daily trend 和 per-template stats，其中每个模板的 publishCount 来自 published version 数。打开 `/templates/me` 时，登录发布者能看到统计总览、趋势和模板卡片。
 
 自动化验收至少包括 `npm run test:marketplace-api`、`npm run test:marketplace-web`、`npm run typecheck:marketplace` 和 `git diff --check` 通过。若共享类型或排序逻辑变化，还必须运行 `npm run test:marketplace-shared`。
 
@@ -158,13 +165,19 @@ Phase 3 完成时应满足以下可观察行为。未登录用户打开模板详
     curl --noproxy '*' --connect-timeout 5 --max-time 20 -I https://dscanvas-template-marketplace.wzy0304.workers.dev/templates
     # both HTTP smoke attempts timed out from this machine before receiving response; not recorded as application failure
 
+    npm run test:marketplace-api
+    # Test Files 5 passed (5); Tests 75 passed (75)
+
+    npm run test:marketplace-web && npm run typecheck:marketplace && git diff --check
+    # web: 34 passed; marketplace typecheck passed; git diff --check passed
+
 ## 接口与依赖
 
 必须在 `packages/marketplace-shared/src/index.ts` 中导出以下类型：`MarketplaceTemplateLikeResponse`、`MarketplacePublisherStatsPoint`、`MarketplacePublisherStatsTemplate`、`MarketplacePublisherStatsResponse`。命名可以在实现时小幅调整，但语义必须覆盖最终点赞状态、like 数、发布者 totals、每日趋势和 per-template 指标。
 
 必须在 `apps/template-marketplace/src/worker/repository.ts` 的 `MarketplaceTemplateRepository` 接口上增加 Phase 3 方法，并由 `D1TemplateRepository` 实现。`SeedTemplateRepository` 可以返回空列表或抛出写入不可用错误，但不能把 seed 数据误写成真实持久化结果。
 
-必须在 `apps/template-marketplace/src/worker/app.ts` 暴露 `POST /api/v1/templates/:id/like`、`GET /api/v1/me/likes` 和 `GET /api/v1/me/stats`。这些端点都需要认证；点赞写接口需要 D1，不能使用 public read CORS。
+必须在 `apps/template-marketplace/src/worker/app.ts` 暴露 `GET /api/v1/templates/:id/like`、`POST /api/v1/templates/:id/like`、`GET /api/v1/me/likes` 和 `GET /api/v1/me/stats`。这些端点都需要认证；点赞写接口需要 D1，不能使用 public read CORS。
 
 必须在 `apps/template-marketplace/src/web/lib/api.ts` 增加对应 client helper，并在 `TemplateDetailView.tsx` 和 `TemplateMyTemplatesView.tsx` 中使用。UI 需要保持现有 Marketplace browser 风格，不引入新的全局设计语言。
 
@@ -177,3 +190,4 @@ Phase 3 完成时应满足以下可观察行为。未登录用户打开模板详
 2026-06-01 / Codex：补充 build 验证结果，原因是 Phase 3 触及浏览器 UI，除 test/typecheck 外还需要确认 marketplace production bundle 可构建。
 2026-06-01 / Codex：补充调试环境部署尝试结果，原因是用户要求更新调试环境，但当前 Wrangler 登录态或 token 权限已失效，部署被 Cloudflare 认证阻断。
 2026-06-04 / Codex：补充调试环境更新结果，原因是用户已更新 Cloudflare 认证配置后重新部署成功，同时记录本机 workers.dev HTTP smoke 因连接超时未完成。
+2026-06-06 / Codex：补充 PR review blocker 修复结果，原因是详情页点赞状态和 per-template publishCount 需要避免分页截断与 latest-only 映射造成确定性漂移。

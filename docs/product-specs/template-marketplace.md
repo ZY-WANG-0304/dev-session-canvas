@@ -305,6 +305,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - `GET /api/v1/templates/:id/thumbnail` — 读取指定版本缩略图
 - `POST /api/v1/templates` — 发布新模板（需认证）
 - `POST /api/v1/templates/:id/versions` — 发布新版本（需认证，仅作者）
+- `GET /api/v1/templates/:id/like` — 读取当前登录用户对单个模板的点赞状态（需认证）
 - `POST /api/v1/templates/:id/like` — 点赞/取消点赞（需认证）
 - `POST /api/v1/templates/:id/report` — 举报（需认证）
 - `GET /api/v1/me/templates` — 我发布的模板
