@@ -2374,6 +2374,49 @@ test('agent restart actions render inline without a dropdown', async ({ page }) 
   expect(actionLabels).toEqual(['新建', '重启']);
 });
 
+test('Claude Agent Branch action posts a branchAgentSession message', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ provider: 'claude', resumable: true }));
+  await clearPostedMessages(page);
+
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('[data-agent-branch-action="true"]')).toBeVisible();
+  await agentNode.locator('[data-agent-branch-action="true"]').click();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/branchAgentSession');
+
+        return message
+          ? JSON.stringify({
+              type: message.type,
+              payload: message.payload
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        type: 'webview/branchAgentSession',
+        payload: {
+          nodeId: 'agent-1'
+        }
+      })
+    );
+});
+
+test('Agent Branch action is hidden outside resumable Claude sessions', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ provider: 'codex', resumable: true }));
+  await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+
+  await bootstrap(page, createStoppedAgentNodeState({ provider: 'claude', resumable: false }));
+  await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+});
+
 test('agent restart actions wrap before pushing delete outside compact chrome', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
@@ -2441,8 +2484,7 @@ test('agent restart actions wrap before pushing delete outside compact chrome', 
   expect(layout.resumeButtonPaddingInlineStart).toBe(layout.deleteButtonPaddingInlineStart);
   expect(layout.resumeButtonPaddingInlineEnd).toBe(layout.deleteButtonPaddingInlineEnd);
   expect(layout.newSessionButtonWhiteSpace).toBe('normal');
-  expect(layout.resumeButtonWhiteSpace).toBe('normal');
-});
+  expect(layout.resumeButtonWhiteSpace).toBe('normal');});
 
 test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
   await openHarness(page);
