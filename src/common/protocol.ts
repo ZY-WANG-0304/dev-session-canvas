@@ -714,6 +714,12 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'webview/branchAgentSession';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
       type: 'webview/attachExecutionSession';
       payload: {
         nodeId: string;
@@ -1440,6 +1446,20 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         rows: payload.rows,
         resume: payload.resume === true,
         provider: payload.kind === 'agent' && isAgentProviderKind(payload.provider) ? payload.provider : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/branchAgentSession') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/branchAgentSession',
+      payload: {
+        nodeId: payload.nodeId
       }
     };
   }
