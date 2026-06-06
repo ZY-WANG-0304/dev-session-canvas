@@ -120,6 +120,115 @@ describe('D1TemplateRepository', () => {
     expect(runLog[1]?.sql).toContain('ON CONFLICT(template_id, day)');
     expect(runLog[1]?.boundValues).toEqual(['tmpl-d1-review', '2026-05-10']);
   });
+
+  it('records template likes into relationship, cumulative, and daily counters', async () => {
+    const runLog: FakeD1Run[] = [];
+    const repository = new D1TemplateRepository(createFakeD1Database(runLog, { viewerUserId: 'github-test-community-user' }));
+
+    const response = await repository.setTemplateLike(
+      'd1-review-loop',
+      {
+        githubUserId: 'test-community-user',
+        githubLogin: 'community-user',
+        displayName: 'Community User',
+        avatarUrl: ''
+      },
+      true,
+      new Date('2026-05-12T12:00:00.000Z')
+    );
+
+    expect(response).toEqual({
+      templateId: 'tmpl-d1-review',
+      liked: true,
+      likeCount: 10,
+      storageMode: 'd1'
+    });
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO users'))).toBe(true);
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_likes'))).toBe(true);
+    expect(runLog.some((entry) => entry.sql.includes('UPDATE templates SET like_count = like_count + 1'))).toBe(true);
+    expect(runLog.some((entry) => entry.sql.includes('ON CONFLICT(template_id, day)'))).toBe(true);
+  });
+
+  it('removes template likes without decrementing daily historical stats', async () => {
+    const runLog: FakeD1Run[] = [];
+    const repository = new D1TemplateRepository(createFakeD1Database(runLog, { viewerUserId: 'github-test-community-user', viewerLiked: true }));
+
+    const response = await repository.setTemplateLike(
+      'd1-review-loop',
+      {
+        githubUserId: 'test-community-user',
+        githubLogin: 'community-user',
+        displayName: 'Community User',
+        avatarUrl: ''
+      },
+      false,
+      new Date('2026-05-12T12:00:00.000Z')
+    );
+
+    expect(response?.liked).toBe(false);
+    expect(response?.likeCount).toBe(8);
+    expect(runLog.some((entry) => entry.sql.includes('DELETE FROM template_likes'))).toBe(true);
+    expect(runLog.some((entry) => entry.sql.includes('like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0'))).toBe(true);
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_daily_stats'))).toBe(false);
+  });
+
+  it('lists templates liked by the current user', async () => {
+    const repository = new D1TemplateRepository(createFakeD1Database([], { viewerLiked: true }));
+
+    const response = await repository.listLikedTemplates({
+      githubUserId: 'test-dscanvas-admin',
+      githubLogin: 'dscanvas-admin',
+      displayName: 'DS Canvas Admin',
+      avatarUrl: ''
+    });
+
+    expect(response.storageMode).toBe('d1');
+    expect(response.items.map((template) => template.slug)).toEqual(['d1-review-loop']);
+  });
+
+  it('loads current like state for one template without relying on the likes list page', async () => {
+    const repository = new D1TemplateRepository(createFakeD1Database([], { viewerUserId: 'github-test-community-user', viewerLiked: true }));
+
+    const response = await repository.getTemplateLikeState('d1-review-loop', {
+      githubUserId: 'test-community-user',
+      githubLogin: 'community-user',
+      displayName: 'Community User',
+      avatarUrl: ''
+    });
+
+    expect(response).toEqual({
+      templateId: 'tmpl-d1-review',
+      liked: true,
+      likeCount: 9,
+      storageMode: 'd1'
+    });
+  });
+
+  it('returns publisher dashboard stats from cumulative and daily counters', async () => {
+    const repository = new D1TemplateRepository(createFakeD1Database());
+
+    const response = await repository.getPublisherStats({
+      githubUserId: 'test-dscanvas-admin',
+      githubLogin: 'dscanvas-admin',
+      displayName: 'DS Canvas Admin',
+      avatarUrl: ''
+    });
+
+    expect(response.storageMode).toBe('d1');
+    expect(response.totals).toEqual({
+      templateCount: 1,
+      downloadCount: 44,
+      likeCount: 9,
+      publishCount: 2
+    });
+    expect(response.daily).toEqual([
+      { day: '2026-05-10', downloadCount: 3, likeCount: 2, publishCount: 1 },
+      { day: '2026-05-11', downloadCount: 5, likeCount: 1, publishCount: 1 }
+    ]);
+    expect(response.templates[0]?.template.slug).toBe('d1-review-loop');
+    expect(response.templates[0]?.downloadCount).toBe(44);
+    expect(response.templates[0]?.publishCount).toBe(2);
+  });
 });
 
 function createFallbackAwareD1Database(): D1Database {

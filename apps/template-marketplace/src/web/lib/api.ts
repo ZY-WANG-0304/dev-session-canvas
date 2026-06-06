@@ -4,10 +4,12 @@ import {
   getSeedTemplateDetail,
   listSeedTemplates,
   type MarketplaceListTemplatesResponse,
+  type MarketplacePublisherStatsResponse,
   type MarketplacePublishTemplateRequest,
   type MarketplacePublishTemplateResponse,
   type MarketplaceSort,
   type MarketplaceSlugAvailabilityResponse,
+  type MarketplaceTemplateLikeResponse,
   type MarketplaceTemplateDetail,
   type MarketplaceTemplateDetailResponse,
   type MarketplaceTemplateSummary
@@ -123,6 +125,59 @@ export async function loadMyMarketplaceTemplates(): Promise<MarketplaceListTempl
     throw new Error(message);
   }
   return body as MarketplaceListTemplatesResponse;
+}
+
+export async function loadMyMarketplaceLikes(): Promise<MarketplaceListTemplatesResponse> {
+  const response = await fetch('/api/v1/me/likes', {
+    headers: { accept: 'application/json' }
+  });
+  const body = (await response.json()) as MarketplaceListTemplatesResponse | { error?: { message?: string } };
+  if (!response.ok) {
+    const message = 'error' in body && body.error?.message ? body.error.message : `API returned ${response.status}`;
+    throw new Error(message);
+  }
+  return body as MarketplaceListTemplatesResponse;
+}
+
+export async function loadMyMarketplaceStats(): Promise<MarketplacePublisherStatsResponse> {
+  const response = await fetch('/api/v1/me/stats', {
+    headers: { accept: 'application/json' }
+  });
+  const body = (await response.json()) as MarketplacePublisherStatsResponse | { error?: { message?: string } };
+  if (!response.ok) {
+    const message = 'error' in body && body.error?.message ? body.error.message : `API returned ${response.status}`;
+    throw new Error(message);
+  }
+  return body as MarketplacePublisherStatsResponse;
+}
+
+export async function loadMarketplaceTemplateLikeState(templateIdOrSlug: string): Promise<MarketplaceTemplateLikeResponse> {
+  const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/like`, {
+    headers: { accept: 'application/json' }
+  });
+  const body = (await response.json()) as MarketplaceTemplateLikeResponse | { error?: { message?: string } };
+  if (!response.ok) {
+    const message = 'error' in body && body.error?.message ? body.error.message : `API returned ${response.status}`;
+    throw new Error(message);
+  }
+  return body as MarketplaceTemplateLikeResponse;
+}
+
+export async function setMarketplaceTemplateLike(templateIdOrSlug: string, liked: boolean): Promise<MarketplaceTemplateLikeResponse> {
+  const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/like`, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({ liked })
+  });
+  const body = (await response.json()) as MarketplaceTemplateLikeResponse | { error?: { message?: string } };
+  if (!response.ok) {
+    const message = 'error' in body && body.error?.message ? body.error.message : `API returned ${response.status}`;
+    throw new Error(message);
+  }
+  return body as MarketplaceTemplateLikeResponse;
 }
 
 export async function checkMarketplaceSlugAvailability(slug: string): Promise<MarketplaceSlugAvailabilityResponse> {

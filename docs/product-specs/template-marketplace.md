@@ -220,11 +220,13 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - [x] 文件大小超限时拒绝上传并提示
 
 ### Phase 3：社区互动与统计
-- [ ] 登录用户可点赞/取消点赞
-- [ ] 下载量正确统计
-- [ ] 排行榜按综合热度排序
-- [ ] 发布者可查看下载和点赞趋势
-- [ ] Web 端 Dashboard 展示发布者统计
+当前状态：Phase 3 已完成代码实现和本地自动化验证；真实 preview OAuth 登录后的点赞与 Dashboard smoke 仍作为后续发布前验证项继续执行。
+
+- [x] 登录用户可点赞/取消点赞
+- [x] 下载量正确统计
+- [x] 排行榜按综合热度排序
+- [x] 发布者可查看下载和点赞趋势
+- [x] Web 端 Dashboard 展示发布者统计
 
 ### Phase 4：版本管理与治理
 - [ ] 发布者可发布新版本并附更新说明
@@ -303,6 +305,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - `GET /api/v1/templates/:id/thumbnail` — 读取指定版本缩略图
 - `POST /api/v1/templates` — 发布新模板（需认证）
 - `POST /api/v1/templates/:id/versions` — 发布新版本（需认证，仅作者）
+- `GET /api/v1/templates/:id/like` — 读取当前登录用户对单个模板的点赞状态（需认证）
 - `POST /api/v1/templates/:id/like` — 点赞/取消点赞（需认证）
 - `POST /api/v1/templates/:id/report` — 举报（需认证）
 - `GET /api/v1/me/templates` — 我发布的模板

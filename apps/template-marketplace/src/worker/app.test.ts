@@ -449,6 +449,163 @@ describe('template marketplace worker api', () => {
     expect(body.error.code).toBe('auth_required');
   });
 
+  it('likes templates for authenticated users', async () => {
+    const runLog: FakeD1Run[] = [];
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/like',
+      {
+        method: 'POST',
+        body: JSON.stringify({ liked: true }),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'community-user',
+          'x-marketplace-test-github-user-id': 'test-community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(runLog, { viewerUserId: 'github-test-community-user' })
+      }
+    );
+    const body = await response.json<{ liked: boolean; likeCount: number; storageMode: string }>();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ templateId: 'tmpl-d1-review', liked: true, likeCount: 10, storageMode: 'd1' });
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_likes'))).toBe(true);
+    expect(runLog.some((entry) => entry.sql.includes('UPDATE templates SET like_count = like_count + 1'))).toBe(true);
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_daily_stats'))).toBe(true);
+  });
+
+  it('unlikes templates for authenticated users', async () => {
+    const runLog: FakeD1Run[] = [];
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/like',
+      {
+        method: 'POST',
+        body: JSON.stringify({ liked: false }),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'community-user',
+          'x-marketplace-test-github-user-id': 'test-community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(runLog, { viewerUserId: 'github-test-community-user', viewerLiked: true })
+      }
+    );
+    const body = await response.json<{ liked: boolean; likeCount: number }>();
+
+    expect(response.status).toBe(200);
+    expect(body.liked).toBe(false);
+    expect(body.likeCount).toBe(8);
+    expect(runLog.some((entry) => entry.sql.includes('DELETE FROM template_likes'))).toBe(true);
+    expect(runLog.some((entry) => entry.sql.includes('like_count = CASE WHEN like_count > 0 THEN like_count - 1 ELSE 0'))).toBe(true);
+  });
+
+  it('requires authentication before liking templates', async () => {
+    const response = await app.request('http://localhost/api/v1/templates/d1-review-loop/like', { method: 'POST' });
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(401);
+    expect(body.error.code).toBe('auth_required');
+  });
+
+  it('rejects invalid like request bodies', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/like',
+      {
+        method: 'POST',
+        body: JSON.stringify({ liked: 'yes' }),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database()
+      }
+    );
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe('like_request_invalid');
+  });
+
+  it('lists templates liked by the authenticated user', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/me/likes',
+      {
+        headers: {
+          'x-marketplace-test-github-login': 'dscanvas-admin'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database([], { viewerLiked: true })
+      }
+    );
+    const body = await response.json<{ items: Array<{ slug: string }>; storageMode: string }>();
+
+    expect(response.status).toBe(200);
+    expect(body.storageMode).toBe('d1');
+    expect(body.items.map((template) => template.slug)).toEqual(['d1-review-loop']);
+  });
+
+  it('returns the authenticated user like state for one template', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/like',
+      {
+        headers: {
+          'x-marketplace-test-github-login': 'community-user',
+          'x-marketplace-test-github-user-id': 'test-community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database([], { viewerUserId: 'github-test-community-user', viewerLiked: true })
+      }
+    );
+    const body = await response.json<{ templateId: string; liked: boolean; likeCount: number; storageMode: string }>();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      templateId: 'tmpl-d1-review',
+      liked: true,
+      likeCount: 9,
+      storageMode: 'd1'
+    });
+  });
+
+  it('returns publisher dashboard stats for the authenticated user', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/me/stats',
+      {
+        headers: {
+          'x-marketplace-test-github-login': 'dscanvas-admin'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database()
+      }
+    );
+    const body = await response.json<{
+      totals: { templateCount: number; downloadCount: number; likeCount: number; publishCount: number };
+      daily: Array<{ day: string; downloadCount: number; likeCount: number; publishCount: number }>;
+      templates: Array<{ template: { slug: string }; downloadCount: number; likeCount: number }>;
+      storageMode: string;
+    }>();
+
+    expect(response.status).toBe(200);
+    expect(body.storageMode).toBe('d1');
+    expect(body.totals).toEqual({ templateCount: 1, downloadCount: 44, likeCount: 9, publishCount: 2 });
+    expect(body.daily[0]).toEqual({ day: '2026-05-10', downloadCount: 3, likeCount: 2, publishCount: 1 });
+    expect(body.templates[0]).toEqual(expect.objectContaining({ downloadCount: 44, likeCount: 9, publishCount: 2 }));
+    expect(body.templates[0]?.template.slug).toBe('d1-review-loop');
+  });
+
   it('exchanges VSCode GitHub identity for a marketplace bearer token in test auth mode', async () => {
     const response = await app.request(
       'http://localhost/api/v1/auth/vscode/exchange',

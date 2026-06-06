@@ -19,8 +19,9 @@ related_plans:
   - docs/exec-plans/active/template-marketplace-tech-selection.md
   - docs/exec-plans/active/template-marketplace-foundation.md
   - docs/exec-plans/active/template-marketplace-publishing.md
+  - docs/exec-plans/active/template-marketplace-phase3.md
   - docs/exec-plans/active/template-package-repository-research.md
-updated_at: 2026-05-30
+updated_at: 2026-06-01
 ---
 
 # 模板市场技术选型
@@ -173,6 +174,7 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 - `POST /api/v1/templates`：发布新模板，需要认证；当前 Worker contract 继续兼容 JSON 请求体，包含市场元数据、`CanvasTemplateDocument` 和可选 PNG 缩略图 base64，Web 表单和 VSCode 宿主发布入口都可转换到这一个 contract。Worker 会把 JSON 请求组装成 canonical `package.zip`，同时写入兼容 `template.json`、`thumbnail.png` 和 `manifest.json`。`CanvasTemplateDocument` 继续只允许 Agent / Terminal / Note 模板节点；主线新增的 file / file-list 画布节点不进入模板市场包。关联 Markdown Note 使用本地模板模型中的 `metadata.note.templateContentMode` 与 `metadata.note.relativePath`，市场 schema 必须接受 `embedded-snapshot`、`workspace-file-path-only` 和 `workspace-file-with-content`，并拒绝绝对路径、URI scheme、空段和 `..` 越界路径。没有自定义截图时，浏览器和 VSCode 端都使用共享布局 renderer 生成 PNG 缩略图；renderer 的 Agent / Terminal / Note accent 色分别对齐插件画布节点主题色 #22c55e、#38bdf8、#a78bfa。
 - `POST /api/v1/templates/package`：发布完整 `package.zip`，需要认证；浏览器发布页高级入口用 `multipart/form-data` 的 `package` 字段提交 zip。若用户上传包后在表单中继续编辑公开字段、README、CHANGELOG、Template JSON Preview 或缩略图，前端会提交已重建的 zip，Worker 仍必须以服务端规范化结果作为最终事实：保留原包未覆盖的 `media/` / `assets/` 资源，但用服务端校验后的 manifest、README、CHANGELOG、`template.json`、缩略图和 `template.json` hash 重新生成并写入 R2 `package.zip`、兼容 `template.json`、`thumbnail.png`、`manifest.json` 与 D1 派生字段，不能保存上传瞬间的旧 zip。
 - `POST /api/v1/templates/:id/versions`：发布新版本，需要作者权限。
+- `GET /api/v1/templates/:id/like`：读取当前登录用户对单个模板的点赞状态，需要认证；详情页必须用它读取当前模板状态，不能依赖 `GET /api/v1/me/likes` 的列表第一页推断。
 - `POST /api/v1/templates/:id/like`：点赞或取消点赞，需要认证。
 - `POST /api/v1/templates/:id/report`：举报，需要认证。
 - `GET /api/v1/me/templates`、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`：个人页面与 Dashboard。
@@ -326,7 +328,7 @@ Phase 4 在本方案中的承载方式如下：
 
 ## 8. 验证方法
 
-技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析。真实 GitHub OAuth、共享 React Webview bundle、完整生产资源分离、点赞/举报写接口和治理后台尚未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
+技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析；2026-06-01 Phase 3 又完成点赞/取消点赞、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`、发布者 Dashboard 和本地 API/Web/typecheck 验证。真实 GitHub OAuth preview smoke、共享 React Webview bundle、完整生产资源分离、举报写接口和治理后台尚未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
 
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。
