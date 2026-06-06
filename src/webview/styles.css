@@ -314,6 +314,16 @@ body {
   border-bottom-left-radius: 0;
 }
 
+.agent-session-node .window-chrome-actions.is-compact .action-button {
+  box-sizing: border-box;
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 0;
+  padding: 0 5px;
+  line-height: 1;
+  white-space: normal;
+}
+
 .canvas-node {
   --canvas-node-color: var(--vscode-focusBorder);
   --execution-node-attention-color: var(--vscode-focusBorder);
@@ -1147,6 +1157,7 @@ body {
 
 .window-chrome-actions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
 }

@@ -4172,6 +4172,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
 
   const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession;
   const actionDisabled = executionBlocked || reattaching;
+  const useCompactAgentActions = data.size.width <= 460;
 
   return (
     <CanvasNodeInteractionBoundary
@@ -4208,7 +4209,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
-        <div className="window-chrome-actions">
+        <div className={`window-chrome-actions${useCompactAgentActions ? ' is-compact' : ''}`}>
           <ExecutionAttentionStatus
             status={displayStatus}
             attentionPending={attentionPending}
@@ -4224,7 +4225,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               onFocus={() => data.onSelectNode?.(id)}
             />
           ) : showRestartActions ? (
-            <div className="action-button-group nodrag nopan" data-node-interactive="true">
+            <div className="action-button-group agent-restart-action-group nodrag nopan" data-node-interactive="true">
               <ActionButton
                 label="新建"
                 tone="primary"

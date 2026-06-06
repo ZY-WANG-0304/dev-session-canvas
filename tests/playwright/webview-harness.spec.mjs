@@ -2374,6 +2374,145 @@ test('agent restart actions render inline without a dropdown', async ({ page }) 
   expect(actionLabels).toEqual(['新建', '重启']);
 });
 
+test('agent actions use compact buttons within the minimum titlebar width when restart is available', async ({ page }) => {
+  const state = createStoppedAgentNodeState({ resumable: true });
+  state.nodes[0].title = 'Agent 4';
+  state.nodes[0].size = {
+    width: 420,
+    height: state.nodes[0].size.height
+  };
+  state.nodes[0].metadata.agent.cwd = '/workspace/dev-session-canvas2';
+  state.nodes[0].metadata.agent.launchPreset = 'sandbox';
+
+  await openHarness(page);
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({
+      workspaceFolders: [{ name: 'workspace', path: '/workspace' }],
+      agentLaunchDefaults: {
+        codex: {
+          command: 'codex',
+          defaultArgs: '--sandbox workspace-write'
+        },
+        claude: {
+          command: 'claude',
+          defaultArgs: '--model sonnet'
+        }
+      }
+    })
+  );
+
+  const metrics = await nodeById(page, 'agent-1').evaluate((node) => {
+    const restartGroup = node.querySelector('.agent-restart-action-group');
+    const newButton = node.querySelector('[data-agent-restart-action="new-session"]');
+    const resumeButton = node.querySelector('[data-agent-restart-action="resume"]');
+    const deleteButton = node.querySelector('.window-chrome-actions > .action-button.danger');
+
+    if (!restartGroup || !newButton || !resumeButton || !deleteButton) {
+      throw new Error('Expected stopped resumable agent actions to be rendered.');
+    }
+
+    const countTextLines = (element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const tops = new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top)));
+      range.detach();
+      return tops.size;
+    };
+
+    const nodeRect = node.getBoundingClientRect();
+    const deleteRect = deleteButton.getBoundingClientRect();
+    const newButtonStyles = getComputedStyle(newButton);
+    const resumeButtonStyles = getComputedStyle(resumeButton);
+    const deleteButtonStyles = getComputedStyle(deleteButton);
+
+    return {
+      actionsCompact: node.querySelector('.window-chrome-actions')?.classList.contains('is-compact') === true,
+      newButtonWidth: newButtonStyles.width,
+      resumeButtonWidth: resumeButtonStyles.width,
+      deleteButtonWidth: deleteButtonStyles.width,
+      newButtonTextLineCount: countTextLines(newButton),
+      resumeButtonTextLineCount: countTextLines(resumeButton),
+      deleteButtonTextLineCount: countTextLines(deleteButton),
+      deleteRight: deleteRect.right,
+      nodeRight: nodeRect.right
+    };
+  });
+
+  expect(metrics.actionsCompact).toBe(true);
+  expect(metrics.newButtonWidth).toBe('24px');
+  expect(metrics.resumeButtonWidth).toBe('24px');
+  expect(metrics.deleteButtonWidth).toBe('24px');
+  expect(metrics.newButtonTextLineCount).toBeGreaterThanOrEqual(2);
+  expect(metrics.resumeButtonTextLineCount).toBeGreaterThanOrEqual(2);
+  expect(metrics.deleteButtonTextLineCount).toBeGreaterThanOrEqual(2);
+  expect(metrics.deleteRight).toBeLessThanOrEqual(metrics.nodeRight + 1);
+});
+
+test('agent compact action styles keep live stop and delete actions fully visible', async ({ page }) => {
+  const state = createAgentNodeState('codex');
+  state.nodes[0].title = 'Agent 2';
+  state.nodes[0].status = 'waiting-input';
+  state.nodes[0].summary = 'Codex 已就绪，等待输入。';
+  state.nodes[0].size = {
+    width: 420,
+    height: state.nodes[0].size.height
+  };
+  state.nodes[0].metadata.agent = {
+    ...state.nodes[0].metadata.agent,
+    liveSession: true,
+    lifecycle: 'waiting-input'
+  };
+
+  await openHarness(page);
+  await bootstrap(page, state);
+
+  const metrics = await nodeById(page, 'agent-1').evaluate((node) => {
+    const stopButton = Array.from(node.querySelectorAll('.window-chrome-actions > .action-button')).find(
+      (button) => button.textContent?.trim() === '停止'
+    );
+    const deleteButton = node.querySelector('.window-chrome-actions > .action-button.danger');
+
+    if (!stopButton || !deleteButton) {
+      throw new Error('Expected live agent stop and delete actions to be rendered.');
+    }
+
+    const countTextLines = (element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const tops = new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top)));
+      range.detach();
+      return tops.size;
+    };
+
+    const nodeRect = node.getBoundingClientRect();
+    const stopRect = stopButton.getBoundingClientRect();
+    const deleteRect = deleteButton.getBoundingClientRect();
+    const stopButtonStyles = getComputedStyle(stopButton);
+    const deleteButtonStyles = getComputedStyle(deleteButton);
+
+    return {
+      restartGroupCount: node.querySelectorAll('.agent-restart-action-group').length,
+      stopButtonWidth: stopButtonStyles.width,
+      deleteButtonWidth: deleteButtonStyles.width,
+      stopButtonTextLineCount: countTextLines(stopButton),
+      deleteButtonTextLineCount: countTextLines(deleteButton),
+      stopRight: stopRect.right,
+      deleteRight: deleteRect.right,
+      nodeRight: nodeRect.right
+    };
+  });
+
+  expect(metrics.restartGroupCount).toBe(0);
+  expect(metrics.stopButtonWidth).toBe('24px');
+  expect(metrics.deleteButtonWidth).toBe('24px');
+  expect(metrics.stopButtonTextLineCount).toBeGreaterThanOrEqual(2);
+  expect(metrics.deleteButtonTextLineCount).toBeGreaterThanOrEqual(2);
+  expect(metrics.stopRight).toBeLessThanOrEqual(metrics.nodeRight + 1);
+  expect(metrics.deleteRight).toBeLessThanOrEqual(metrics.nodeRight + 1);
+});
+
 test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: false }));
