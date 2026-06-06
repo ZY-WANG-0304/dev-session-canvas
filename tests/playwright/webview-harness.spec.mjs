@@ -2378,7 +2378,7 @@ test('agent actions use compact buttons within the minimum titlebar width when r
   const state = createStoppedAgentNodeState({ resumable: true });
   state.nodes[0].title = 'Agent 4';
   state.nodes[0].size = {
-    width: 420,
+    width: 320,
     height: state.nodes[0].size.height
   };
   state.nodes[0].metadata.agent.cwd = '/workspace/dev-session-canvas2';
@@ -2441,9 +2441,9 @@ test('agent actions use compact buttons within the minimum titlebar width when r
   });
 
   expect(metrics.actionsCompact).toBe(true);
-  expect(metrics.newButtonWidth).toBe('24px');
-  expect(metrics.resumeButtonWidth).toBe('24px');
-  expect(metrics.deleteButtonWidth).toBe('24px');
+  expect(Number.parseFloat(metrics.newButtonWidth)).toBeGreaterThan(28);
+  expect(Number.parseFloat(metrics.resumeButtonWidth)).toBeGreaterThan(28);
+  expect(Number.parseFloat(metrics.deleteButtonWidth)).toBeGreaterThan(28);
   expect(metrics.newButtonTextLineCount).toBeGreaterThanOrEqual(2);
   expect(metrics.resumeButtonTextLineCount).toBeGreaterThanOrEqual(2);
   expect(metrics.deleteButtonTextLineCount).toBeGreaterThanOrEqual(2);
@@ -2505,10 +2505,10 @@ test('agent compact action styles keep live stop and delete actions fully visibl
   });
 
   expect(metrics.restartGroupCount).toBe(0);
-  expect(metrics.stopButtonWidth).toBe('24px');
-  expect(metrics.deleteButtonWidth).toBe('24px');
-  expect(metrics.stopButtonTextLineCount).toBeGreaterThanOrEqual(2);
-  expect(metrics.deleteButtonTextLineCount).toBeGreaterThanOrEqual(2);
+  expect(Number.parseFloat(metrics.stopButtonWidth)).toBeGreaterThan(24);
+  expect(Number.parseFloat(metrics.deleteButtonWidth)).toBeGreaterThan(28);
+  expect(metrics.stopButtonTextLineCount).toBeLessThanOrEqual(2);
+  expect(metrics.deleteButtonTextLineCount).toBeLessThanOrEqual(2);
   expect(metrics.stopRight).toBeLessThanOrEqual(metrics.nodeRight + 1);
   expect(metrics.deleteRight).toBeLessThanOrEqual(metrics.nodeRight + 1);
 });

@@ -314,12 +314,22 @@ body {
   border-bottom-left-radius: 0;
 }
 
+.agent-session-node .window-chrome-actions.is-compact {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.agent-session-node .window-chrome-actions.is-compact .action-button-group {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .agent-session-node .window-chrome-actions.is-compact .action-button {
   box-sizing: border-box;
-  flex: 0 0 24px;
-  width: 24px;
+  flex: 0 1 auto;
+  width: auto;
   min-width: 0;
-  padding: 0 5px;
+  padding: 0 8px;
   line-height: 1;
   white-space: normal;
 }
