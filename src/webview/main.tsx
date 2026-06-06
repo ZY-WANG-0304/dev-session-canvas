@@ -2791,12 +2791,16 @@ function App(): JSX.Element {
   };
 
   const handleMoveEnd = (_event: MouseEvent | TouchEvent | null, viewport: Viewport): void => {
+    persistCanvasViewport(viewport);
+  };
+
+  const persistCanvasViewport = (viewport: Viewport): void => {
     clearPendingViewportPersistenceTimeout();
     setLocalUiState((current) => ({
       ...current,
       viewport
     }));
-    const visibleCenter = resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current);
+    const visibleCenter = resolveVisibleCanvasCenterFromViewport(viewport, canvasShellRef.current);
     if (visibleCenter) {
       postMessage({
         type: 'webview/updateViewportCenter',
@@ -3233,6 +3237,7 @@ function App(): JSX.Element {
             groups={groups}
             spatialBounds={canvasSpatialBounds}
             viewportSize={canvasViewportSize}
+            onViewportCommit={persistCanvasViewport}
           />
           <Controls
             className="canvas-corner-panel canvas-controls"
@@ -3585,6 +3590,25 @@ function resolveVisibleCanvasCenter(
   return {
     x: Math.round(flowCenter.x),
     y: Math.round(flowCenter.y)
+  };
+}
+
+function resolveVisibleCanvasCenterFromViewport(
+  viewport: Viewport,
+  canvasShellElement: HTMLDivElement | null
+): CanvasNodePosition | undefined {
+  if (!canvasShellElement || viewport.zoom <= 0) {
+    return undefined;
+  }
+
+  const bounds = canvasShellElement.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    return undefined;
+  }
+
+  return {
+    x: Math.round((bounds.width / 2 - viewport.x) / viewport.zoom),
+    y: Math.round((bounds.height / 2 - viewport.y) / viewport.zoom)
   };
 }
 
@@ -4776,9 +4800,11 @@ function CanvasMiniMap(props: {
   groups: readonly CanvasGroupSummary[];
   spatialBounds: CanvasSpatialBounds;
   viewportSize: CanvasViewportSize;
+  onViewportCommit: (viewport: Viewport) => void;
 }): JSX.Element {
   const { x, y, zoom } = useViewport();
   const reactFlowInstance = useReactFlow<CanvasNodeData>();
+  const minZoom = useStore((state) => state.minZoom);
   const viewBB = resolveCanvasViewportBoundsForMiniMap(x, y, zoom, props.viewportSize);
   const boundingRect = mergeCanvasMiniMapRects([props.spatialBounds.bounds, viewBB].filter(isCanvasMiniMapRect)) ?? viewBB;
   const viewBox = resolveCanvasMiniMapViewBox(boundingRect);
@@ -4796,6 +4822,7 @@ function CanvasMiniMap(props: {
       viewport: reactFlowInstance.getViewport(),
       viewScale: viewBox.width / CANVAS_MINIMAP_WIDTH
     };
+    let latestViewport: Viewport | undefined;
 
     const handlePointerMove = (moveEvent: PointerEvent): void => {
       if (!reactFlowInstance.viewportInitialized) {
@@ -4803,16 +4830,21 @@ function CanvasMiniMap(props: {
       }
 
       const multiplier = start.viewScale * Math.max(1, start.viewport.zoom);
-      reactFlowInstance.setViewport({
+      const nextViewport = {
         ...start.viewport,
         x: start.viewport.x - (moveEvent.clientX - start.clientX) * multiplier,
         y: start.viewport.y - (moveEvent.clientY - start.clientY) * multiplier
-      });
+      };
+      latestViewport = nextViewport;
+      reactFlowInstance.setViewport(nextViewport);
     };
     const stop = (): void => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', stop);
       window.removeEventListener('pointercancel', stop);
+      if (latestViewport) {
+        props.onViewportCommit(latestViewport);
+      }
     };
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', stop, { once: true });
@@ -4827,17 +4859,19 @@ function CanvasMiniMap(props: {
     stopCanvasEvent(event);
     const currentViewport = reactFlowInstance.getViewport();
     const delta = -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002) * 10;
-    const nextZoom = Math.min(CANVAS_MAX_ZOOM, Math.max(CANVAS_COMFORT_MIN_ZOOM / 4, currentViewport.zoom * Math.pow(2, delta)));
+    const nextZoom = Math.min(CANVAS_MAX_ZOOM, Math.max(minZoom, currentViewport.zoom * Math.pow(2, delta)));
     const rect = event.currentTarget.getBoundingClientRect();
     const flowPoint = {
       x: viewBox.x + ((event.clientX - rect.left) / Math.max(1, rect.width)) * viewBox.width,
       y: viewBox.y + ((event.clientY - rect.top) / Math.max(1, rect.height)) * viewBox.height
     };
-    reactFlowInstance.setViewport({
+    const nextViewport = {
       x: event.clientX - flowPoint.x * nextZoom,
       y: event.clientY - flowPoint.y * nextZoom,
       zoom: nextZoom
-    });
+    };
+    reactFlowInstance.setViewport(nextViewport);
+    props.onViewportCommit(nextViewport);
   };
 
   return (
