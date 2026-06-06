@@ -16,7 +16,8 @@ related_specs:
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
   - docs/exec-plans/active/canvas-multi-root-composed-canvas-rewrite.md
-updated_at: 2026-06-05
+  - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
+updated_at: 2026-06-06
 ---
 
 # 画布多根 workspace 组合视图设计
@@ -34,6 +35,7 @@ Dev Session Canvas 的核心价值是让用户在 VSCode 内通过同一张空�
 - 单根 workspace 只显示当前 root 的 root-local 画布状态。
 - 多根 workspace 显示当前所有 workspace folder 对应的 root-local 画布状态。
 - 多根组合视图中每个 root 有一个系统级 root section。
+- 全局 fit view 与 MiniMap 默认把所有系统 root section 作为一等空间对象纳入，让用户能看到完整组合画布布局。
 - root section 对内部是硬容器，对外部是整体分组对象。
 - 多根组合视图中的 root section 位置、尺寸和跨 root 外层普通分组保存为 multi-root overlay。
 - 多根组合视图中对某个 root 内节点、用户分组和 Note 的编辑写回该 root 的 root-local 状态。
@@ -65,7 +67,7 @@ root-local 状态使用扩展 global storage 按 root 绝对路径稳定分桶�
 
 ### 6.3 系统 root section
 
-多根组合视图中，每个 workspace folder 生成一个 `CanvasGroupSummary`，其 `role` 为 `workspace-root`，`workspaceRootPath` 是 root 绝对路径，`id` 使用 root path 的稳定哈希生成。root section 可以移动、resize、参与同级避让，并可以作为整体被 overlay 普通分组包含；它不允许删除、取消分组或重命名。root section 不是执行上下文本身，执行节点 `metadata.cwd` 仍是权威。
+多根组合视图中，每个 workspace folder 生成一个 `CanvasGroupSummary`，其 `role` 为 `workspace-root`，`workspaceRootPath` 是 root 绝对路径，`id` 使用 root path 的稳定哈希生成。root section 可以移动、resize、参与同级避让，并可以作为整体被 overlay 普通分组包含；它不允许删除、取消分组或重命名。root section 不是执行上下文本身，执行节点 `metadata.cwd` 仍是权威。导航层把 root section 视为一等空间对象：multi-root 下全局 fit view 默认包含所有 root section，MiniMap 也要显示 root section 的相对布局；这只影响可视导航，不改变 root-local / overlay 的状态分层。
 
 ### 6.4 组合与拆分规则
 
@@ -85,8 +87,8 @@ root-local global storage 与旧 workspace storage 并存，用户可能有迁�
 
 ## 8. 验证方法
 
-新增 root composition 纯函数测试，覆盖 ID 命名空间、root section overlay、组合/拆分、root 内新增对象归属和 overlay 外层分组重组。扩展分组测试，覆盖系统 root section 不可删除/取消分组/重命名、root 内扩边、root-root 避让和 root 被外层分组包含。扩展协议、模板、Markdown 拖入和执行 cwd 测试。最终运行 `npm run typecheck`、`npm run build` 和 `git diff --check`。
+新增 root composition 纯函数测试，覆盖 ID 命名空间、root section overlay、组合/拆分、root 内新增对象归属和 overlay 外层分组重组。扩展分组测试，覆盖系统 root section 不可删除/取消分组/重命名、root 内扩边、root-root 避让和 root 被外层分组包含。扩展协议、模板、Markdown 拖入和执行 cwd 测试。导航与 MiniMap 需要追加 Webview Playwright：空 root section 没有节点时仍被全局 fit view 纳入；多个 root section 在 MiniMap 中可见且与普通用户分组可区分。最终运行 `npm run typecheck`、`npm run build` 和 `git diff --check`。
 
 ## 9. 当前验证状态
 
-截至 2026-06-05，本设计已完成主路径自动化验证：composition、protocol、group policy、execution context、template、Markdown drop、typecheck、build 与针对 workspace root group 的 Playwright 用例均通过。review 修复已追加覆盖 live 文件活动按 owner root namespace 记录 file reference、旧 unnamespaced reference 在 root scope 内迁移、suppression 往返保留，以及 multi-root live runtime skip 不覆盖 root-local reattach 信号。真实 VSCode multi-root 手动 smoke 尚未完成；全量 Webview Playwright 仍有与本功能无直接关系或 lifecycle 断言口径相关的失败，需要后续单独收口。
+截至 2026-06-05，本设计已完成主路径自动化验证：composition、protocol、group policy、execution context、template、Markdown drop、typecheck、build 与针对 workspace root group 的 Playwright 用例均通过。review 修复已追加覆盖 live 文件活动按 owner root namespace 记录 file reference、旧 unnamespaced reference 在 root scope 内迁移、suppression 往返保留，以及 multi-root live runtime skip 不覆盖 root-local reattach 信号。root section 参与全局 fit view 与 MiniMap 的导航增强已在 `docs/exec-plans/completed/canvas-spatial-fit-minimap.md` 中完成并记录定向验证。真实 VSCode multi-root 手动 smoke 尚未完成；全量 Webview Playwright 仍有与本功能无直接关系或 lifecycle 断言口径相关的失败，需要后续单独收口。
