@@ -14,7 +14,8 @@ related_specs:
   - docs/product-specs/canvas-node-groups.md
 related_plans:
   - docs/exec-plans/completed/canvas-node-groups-design.md
-updated_at: 2026-05-31
+  - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
+updated_at: 2026-06-06
 ---
 
 # 画布节点分组设计
@@ -45,6 +46,7 @@ updated_at: 2026-05-31
 - 分组移动可以批量移动直接成员节点和内部子分组，并在拖到画布边缘时像节点拖动一样带动画布平移；它不会改变节点本身的执行会话、Note 内容或连线事实。
 - 分组视觉语言跟随 VSCode 主题和 Panel 原生语境，让画板上的组织边界更容易识别。
 - 首版支持嵌套分组，但不引入折叠、交叉分组、组级连线或自动布局。
+- 让普通用户分组作为画布空间组织对象参与全局 fit view 与 MiniMap，而不是只在主画布层可见。
 
 ## 4. 非目标
 
@@ -210,7 +212,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 ## 8. 正式方案
 
-当前采用方案 B：`CanvasGroupSummary + CanvasNodeSummary.groupId`，并把分组表现为可见、可命名、可移动的 group frame。2026-05-22 的实现阶段已经通过 Webview harness 验证了 group frame 标题栏、工具栏与 React Flow pane 的基本命中层级，且用宿主状态测试覆盖了核心拖动 / resize 收口；因此方案本身从“比较中”收口为“已选定”。本轮验证已经通过 `npm run typecheck`、协议消息测试、模板测试、`npm run test:canvas-node-groups`、`npm run build` 和 4 条 Webview 分组 Playwright 用例。验证状态仍是“验证中”，因为侧栏分组树、从选择创建分组、删除对话框和更完整的几何合法状态仍只覆盖了首版基础路径，尚未完成真实 VSCode reload smoke 与完整场景矩阵。
+当前采用方案 B：`CanvasGroupSummary + CanvasNodeSummary.groupId`，并把分组表现为可见、可命名、可移动的 group frame。分组同时是画布导航层的空间对象：全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 都应把普通用户分组的矩形纳入统一空间边界，即使该分组为空或比分组内节点更大也不能被忽略。2026-05-22 的实现阶段已经通过 Webview harness 验证了 group frame 标题栏、工具栏与 React Flow pane 的基本命中层级，且用宿主状态测试覆盖了核心拖动 / resize 收口；因此方案本身从“比较中”收口为“已选定”。本轮验证已经通过 `npm run typecheck`、协议消息测试、模板测试、`npm run test:canvas-node-groups`、`npm run build` 和 4 条 Webview 分组 Playwright 用例。验证状态仍是“验证中”，因为侧栏分组树、从选择创建分组、删除对话框和更完整的几何合法状态仍只覆盖了首版基础路径，尚未完成真实 VSCode reload smoke 与完整场景矩阵。
 
 根据 2026-05-26 的 UI 收口，分组外观从外浮胶囊标题调整为 VSCode Panel 风格：分组框 body、标题 tab 和分组 toolbar 背景统一使用 `--vscode-panel-background`，不做混色也不在这些背景上使用其他 surface fallback；边界使用 `--vscode-panel-border`，tab 与 body 都采用直角边界，body 上边界也必须显示边框，且在画布缩放时保持屏幕可见线宽不变；选中态使用与节点 resize 对齐的四边选中线、四角圆形控制点、标题文字前景以及贴在 tab 右侧的轻量双段按钮强化当前分组，tab 区域不额外显示 active 下划线；标题贴在左上角并表现为类似 Panel 顶部 active tab 的标题区域，标题 tab 与双段按钮只在画板缩小时做反向缩放以保持可读；画板放大时不反向缩小，视觉上跟随画板一起放大；默认按内容自然宽度显示，只有自然宽度达到分组宽度上限时才停止继续变宽，二者总宽度不得超出分组框；标题 tab 之外的顶部横向区域保持挖空透明，不再绘制独立横向 header 背景条；不提供用户自定义分组颜色，也不把标题做成胶囊或营销标签。Panel body 的实心背景必须位于普通节点之下，只作为区域底色，标题、边框、toolbar 和 resize 控制点才位于节点之上承担命中与选中反馈，避免分组背景盖住成员节点内容；成员对象距离 body 左、上、右、下边界的视觉预留应保持一致，并统一使用 `24px` 的空间组织预留；由于标题 tab 占据顶部，宿主成员容纳 top inset 继续额外计入标题高度。
 
@@ -327,6 +329,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 - 默认标题使用与现有手工节点一致的创建序号递增逻辑，如 `Group 1`、`Group 2`，但分组使用独立于节点的分组序号队列；编号由分组创建序列决定，不按标题文本查找最小可用编号，删除分组后不主动复用旧编号，用户重命名不影响后续默认编号；创建时不强制弹窗命名，鼓励用户后续单击标题区域改成任务名；标题编辑控件先复用现有手工节点标题栏编辑方式和提交 / 取消行为；分组标题编辑清洗逻辑与现有手工节点标题一致，不设置分组专用最大长度限制，仅保留现有通用文本保护；分组标题不允许为空字符串，清空标题并确认时恢复为原标题，新建分组保持默认 `Group N`；手动重命名允许重名，不强制唯一。
 - 首版不提供分组颜色配置；所有分组使用统一弱边界和弱底色，避免把分组功能扩展成视觉标注系统。选中态通过与节点 resize 一致的四边选中线、四角圆形控制点、标题文字前景和贴在 tab 右侧的轻量双段按钮强化，不改写分组背景为高饱和色。
 - 低倍率概览中，group title 可以保留为区域导航线索；不展示 group 内部统计面板。
+- MiniMap 中普通用户分组以可辨认的弱边界显示，用于表达区域布局；不显示分组标题或统计信息，避免压过节点状态与 attention 提示。普通 group 与 user group 在产品语义上是同一类对象，MiniMap 不为二者拆分颜色 token；非 workspace-root 分组的缩略区域统一使用主画布分组边框 token `--vscode-panel-border` 作为 fill 与 stroke 的同色基础。
 
 ## 9. 需要验证的事项
 
@@ -338,6 +341,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 4. 在 VSCode smoke 中覆盖 reload 后 group 和成员关系恢复。
 5. 在模板测试中覆盖保存 / 应用包含 group 的模板，并确认重新物化后节点 ID 与 group ID 都更新。
 6. 手动验证浅色、高对比主题和低倍率概览下，group 框不会压过节点或关系线可读性。
+7. 在 Webview Playwright 中验证空分组和大于成员节点的分组都会进入全局 fit view 与 MiniMap 空间边界。
 
 ## 10. 已确认口径
 

@@ -1,6 +1,6 @@
 # 画布导航与工作台原生收口规格
 
-当前状态：已确认。2026-04-13 已按本文规格完成实现，并通过自动化验证覆盖默认 `panel` 主路径、标题栏双击聚焦、空白区右键快捷创建、`Agent` / `Terminal` 内嵌 `xterm` 跟随 VSCode 主题切换，以及相关 smoke 场景。2026-05-11 继续补齐全局动态概览缩放与概览模式配置：fit view 可在节点分散时缩到 `0.4` 以下；概览模式仅提供 `none` 与 `title` 两个选项，默认 `title` 会在节点内容区域显示节点标题，`none` 则无论缩放多小都不进入概览；概览触发倍率由 `devSessionCanvas.canvas.overviewZoomThreshold` 配置，默认 `0.2`。2026-05-15 补齐低倍率概览中的状态可读性：默认 `title` 概览在内容区域显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点追加状态标记。`panel` route 的实际工作台位置仍由 VSCode 原生维护。
+当前状态：已确认。2026-04-13 已按本文规格完成实现，并通过自动化验证覆盖默认 `panel` 主路径、标题栏双击聚焦、空白区右键快捷创建、`Agent` / `Terminal` 内嵌 `xterm` 跟随 VSCode 主题切换，以及相关 smoke 场景。2026-05-11 继续补齐全局动态概览缩放与概览模式配置：fit view 可在节点分散时缩到 `0.4` 以下；概览模式仅提供 `none` 与 `title` 两个选项，默认 `title` 会在节点内容区域显示节点标题，`none` 则无论缩放多小都不进入概览；概览触发倍率由 `devSessionCanvas.canvas.overviewZoomThreshold` 配置，默认 `0.2`。2026-05-15 补齐低倍率概览中的状态可读性：默认 `title` 概览在内容区域显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点追加状态标记。`panel` route 的实际工作台位置仍由 VSCode 原生维护。2026-06-04 补齐空间边界导航口径：全局 fit view、初始自动 fit、动态最小缩放和右下角 MiniMap 默认基于节点、普通用户分组和 multi-root workspace root section 的合并空间边界；multi-root 下全局 fit view 默认包含所有 root section。2026-06-06 明确 MiniMap 中普通 group 与 user group 不拆分颜色 token，分组区域 fill 与 stroke 使用相同的主画布分组边框 token `--vscode-panel-border`。
 
 ## 1. 用户问题
 
@@ -26,7 +26,7 @@
 5. 用户在 VSCode 深浅主题之间切换时，`Agent` 和 `Terminal` 节点里的 `xterm` 内容区颜色、光标、选区与 ANSI 调色板会一起切换；即使主题没有显式声明 `terminal.background` 或完整 ANSI 颜色，也不会停留在旧主题或退回固定深色。
 6. 用户在画布空白区右键，看到一个轻量快捷菜单，并可直接新建 `Agent`、`Terminal` 或 `Note`。
 7. 如果用户把 `panel` route 的 view 移到了底部 Panel 或右侧 Secondary Sidebar，VSCode 会继续记住这一工作台位置；扩展不应把它强行拉回某个绝对位置。
-8. 当节点分散到很远时，用户点击 fit view 仍能看到全部节点；如果概览配置为默认 `title`，低于可配置概览触发倍率时每个节点内容区域会显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点追加状态标记；如果配置为 `none`，画布不会切换到概览显示。
+8. 当节点、普通用户分组或 workspace root section 分散到很远时，用户点击 fit view 仍能看到全部画布空间对象；如果概览配置为默认 `title`，低于可配置概览触发倍率时每个节点内容区域会显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点追加状态标记；如果配置为 `none`，画布不会切换到概览显示。
 
 ## 4. 在范围内
 
@@ -46,6 +46,7 @@
   - 标题栏按钮、Agent provider 的只读副标题和状态标签统一收口为更接近 VSCode workbench 的低强调样式。
   - 节点外轮廓从偏白板的大圆角卡片收口到更接近 VSCode editor widget / panel 的小圆角边界。
   - 右下角 minimap 收口为更接近 VSCode workbench widget 的小圆角地图面板，而不是高圆角浮层。
+  - 右下角 minimap 应显示 workspace root section、普通用户分组和节点的空间布局；root section 与用户分组使用弱边界表达区域，节点 attention 提示仍保持最高视觉优先级；普通 group 与 user group 不拆分颜色 token，非 workspace-root 分组区域的 fill 与 stroke 使用相同的主画布分组边框 token `--vscode-panel-border`；workspace root section 在同 token 上比普通分组更强，以突出工程级区域。
   - `Agent` 与 `Terminal` 的内嵌 `xterm` 主题需跟随 VSCode 当前主题实时刷新，至少覆盖背景、前景、光标、选区与 ANSI 16 色，不要求重建现有会话实例。
   - 主题 token 以 VSCode Webview 实际注入到当前页面的 CSS vars 为准；当 `terminal.background` 缺失时，背景需按当前 surface 回退到 `panel.background` 或 `editor.background`。
   - 当 ANSI 颜色 token 缺失时，需回退到 VSCode 官方终端默认调色板，而不是仓库私有颜色。
@@ -55,10 +56,11 @@
   - 第一版仅提供创建 `Agent`、`Terminal`、`Note` 的快捷入口。
   - 节点默认创建在右键发生位置附近，而不是固定落在视口中心。
 - 全局动态概览缩放与概览模式配置：
-  - 全局 fit view 和手动缩小不再被固定 `0.4` 下限阻挡；`0.4` 只代表日常编辑舒适下限，完整容纳全部节点所需倍率可以更低。
+  - 全局 fit view 和手动缩小不再被固定 `0.4` 下限阻挡；`0.4` 只代表日常编辑舒适下限，完整容纳全部节点、普通用户分组和 workspace root section 所需倍率可以更低。
   - 不设置额外绝对硬下限，避免未来在更大画布上再次无法看全节点。
   - 概览模式设置只提供 `none` 和 `title` 两个选项。
   - 概览触发倍率通过 `devSessionCanvas.canvas.overviewZoomThreshold` 配置，默认 `0.2`，可在 `0` 到 `1` 范围内调整；该配置不改变动态最小缩放或 fit view 能力。
+  - multi-root 下全局 fit view 默认包含所有 workspace root section；如果未来需要局部视角，应新增独立的 focus root / fit selected 动作，而不是改变全局 fit view 语义。
   - `none` 表示无概览：无论缩放多小都保持普通节点渲染。
   - `title` 表示低倍率进入概览后，在节点内容区域显示节点标题；对于 `Agent` / `Terminal` 等本身有运行状态的节点，同时显示状态标记，帮助用户确认节点身份与当前状态。
 
@@ -123,10 +125,11 @@
 - 在空白画布右键后，用户可以直接看到新建 `Agent`、`Terminal`、`Note` 的快捷菜单；点选后节点出现在右键点附近。
 - 当 workspace 未受信任时，空白区右键菜单仍显示 `Agent`、`Terminal`、`Note` 三类入口；点击受限的 `Agent` / `Terminal` 时，会弹出说明当前不可用原因的宿主 modal，而不是把入口隐藏掉。
 - 右键菜单在点击外部、按 `Escape`、切换节点或完成创建后会关闭。
-- 当节点分布很宽时，点击 fit view 后缩放可以低于 `0.4`，且所有节点仍进入当前视口。
+- 当节点、普通用户分组或 workspace root section 分布很宽时，点击 fit view 后缩放可以低于 `0.4`，且所有空间对象仍进入当前视口；空 root section 没有节点时也必须被全局 fit view 纳入。
 - 当概览模式为默认 `title`，且缩放低于概览触发倍率时，节点内容区域显示节点标题；`Agent` / `Terminal` 等本身有运行状态的节点额外显示状态标记，用户能在低倍率下辨认节点并区分状态。
 - 当用户调整 `devSessionCanvas.canvas.overviewZoomThreshold` 后，当前画布会按新的触发倍率进入或退出概览显示，无需重新加载窗口。
 - 当概览模式为 `none`，即使缩放低于概览触发倍率，画布也不进入概览模式，节点正文和内容区域继续按普通表面渲染。
+- 右下角 MiniMap 可以看出 workspace root section 与普通用户分组的相对布局，且节点 attention flash / size pulse 不被分组区域视觉淹没。
 
 ## 8. 开放问题
 
