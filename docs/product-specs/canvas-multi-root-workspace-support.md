@@ -6,6 +6,7 @@ related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
 related_plans:
   - docs/exec-plans/active/canvas-multi-root-composed-canvas-rewrite.md
+  - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
 ---
 
 # 画布多根 workspace 组合视图规格
@@ -19,6 +20,7 @@ related_plans:
 - 单独打开一个 workspace folder 时，只看到这个 root 自己的画布内容。
 - 打开 multi-root workspace 时，看到所有当前 workspace folders 的画布内容。
 - 每个 root 都有清晰的系统分组区域，避免不同工程的节点混在一起。
+- 点击全局 fit view 或查看右下角 MiniMap 时，可以看到所有 root section 的组合布局，即使某个 root 暂时没有节点。
 - 在多根画布中整理某个 root 内的节点后，单独打开该 root 仍能看到这些整理结果。
 - 移动 multi-root 中的 root 区域只影响多根布局，不改写单根 root-local 节点坐标。
 - root 内对象移动到边界外时，root 区域自动扩张，内容不会静默移出所属 root。
@@ -40,6 +42,7 @@ related_plans:
 13. 文件活动自动节点、file-activity edge 和 suppression id 在多根组合视图中按 root 命名空间重建，不跨 root 共享。
 14. 多根组合视图中的 live 文件活动记录按 owner 节点所属 root 生成 root-namespaced `fileReferences.id`；旧的未命名空间化引用在重建时按 root scope 迁移或补 namespace。
 15. 多根组合视图跳过 live runtime 重新连接时，只影响组合视图展示，不永久消耗 root-local snapshot 中用于单根重连的 live runtime 信号。
+16. 全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 把所有系统 root section 作为一等空间对象纳入；multi-root 下全局 fit view 默认包含所有 root section。
 
 ## 非目标
 
@@ -66,8 +69,9 @@ related_plans:
 - 两个 root 都有文件活动时，自动 `file` / `file-list` 节点和 file-activity edge 均保留在各自 root section 内，且 ID 不冲突。
 - 在 multi-root workspace 中运行 Agent 产生新的文件活动时，新写入的 `fileReferences.id` 带所属 root namespace；删除该自动文件节点后的 suppression 在重载后仍生效。
 - 一个 root-local live runtime 节点在 multi-root 中显示为历史结果后，单独打开所属 root 仍保留 `liveSession` 或 `reattaching` 等重连资格。
+- 在 multi-root workspace 中，空 root section 没有节点时也会被全局 fit view 纳入；右下角 MiniMap 能看出多个 root section 的相对布局。
 - 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
 
 ## 验证状态
 
-截至 2026-06-05，本规格已完成主路径自动化验证：`npm run test:canvas-multi-root-composition`、`npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:note-markdown-file-association`、`npm run test:extension-storage-paths`、`npm run typecheck`、`npm run build`、`git diff --check` 和 `npm run test:webview -- --grep "workspace root group|cross-root edge"` 均通过。review follow-up 追加覆盖 Host 侧多根文件活动自动 artifact 命名空间、live 文件活动 root-namespaced reference、suppression 剪枝，以及 multi-root skip 不覆盖 root-local live runtime 重连信号。全量 `npm run test:webview` 当前为 224 passed / 29 failed，失败项不来自新增 workspace root group 用例，但需要后续按 Webview lifecycle/截图基线测试口径单独收口；真实 VSCode multi-root 手动 smoke 尚未完成。
+截至 2026-06-05，本规格已完成主路径自动化验证：`npm run test:canvas-multi-root-composition`、`npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:note-markdown-file-association`、`npm run test:extension-storage-paths`、`npm run typecheck`、`npm run build`、`git diff --check` 和 `npm run test:webview -- --grep "workspace root group|cross-root edge"` 均通过。review follow-up 追加覆盖 Host 侧多根文件活动自动 artifact 命名空间、live 文件活动 root-namespaced reference、suppression 剪枝，以及 multi-root skip 不覆盖 root-local live runtime 重连信号。root section 参与全局 fit view 与 MiniMap 的导航增强已在 `docs/exec-plans/completed/canvas-spatial-fit-minimap.md` 中完成并记录定向验证。全量 `npm run test:webview` 当前为 224 passed / 29 failed，失败项不来自新增 workspace root group 用例，但需要后续按 Webview lifecycle/截图基线测试口径单独收口；真实 VSCode multi-root 手动 smoke 尚未完成。

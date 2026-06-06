@@ -116,8 +116,10 @@ body {
 }
 
 .canvas-shell .canvas-minimap {
+  position: absolute;
   right: 14px;
   bottom: 14px;
+  z-index: 6;
   padding: 4px;
   overflow: hidden;
   border-radius: var(--canvas-widget-radius);
@@ -125,6 +127,7 @@ body {
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
   backdrop-filter: none;
+  pointer-events: auto;
 }
 
 .canvas-shell .canvas-minimap svg {
@@ -133,32 +136,32 @@ body {
   height: 100%;
   border-radius: calc(var(--canvas-widget-radius) - 2px);
   background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-sideBar-background) 6%);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.canvas-shell .canvas-minimap svg:active {
+  cursor: grabbing;
 }
 
 .canvas-shell .canvas-minimap .react-flow__minimap-mask {
   filter: none;
 }
 
-.canvas-shell .canvas-minimap-viewport-outline,
-.canvas-shell .canvas-minimap-viewport-outline * {
-  pointer-events: none;
+.canvas-shell .canvas-minimap-group {
+  fill: var(--vscode-panel-border);
+  fill-opacity: 0.85;
+  stroke: var(--vscode-panel-border);
+  stroke-opacity: 0.85;
+  stroke-width: 1.1;
 }
 
-.canvas-shell .canvas-minimap-viewport-outline {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 6;
-  margin: 15px;
-  padding: 4px;
-  border: 1px solid transparent;
-  background: transparent;
-}
-
-.canvas-shell .canvas-minimap-viewport-outline svg {
-  display: block;
-  width: 100%;
-  height: 100%;
+.canvas-shell .canvas-minimap-group.is-workspace-root {
+  fill-opacity: 1;
+  stroke-opacity: 1;
+  stroke-width: 1.35;
+  stroke-dasharray: 5 3;
 }
 
 .canvas-shell .canvas-minimap-viewport-outline-rect {
@@ -3089,7 +3092,7 @@ body {
   --canvas-group-panel-surface: var(--vscode-panel-background);
   --canvas-group-header-surface: var(--vscode-panel-background);
   --canvas-group-tab-surface: var(--vscode-panel-background);
-  --canvas-group-selection-color: var(--vscode-focusBorder);
+  --canvas-group-selection-color: var(--canvas-group-panel-border);
   --canvas-group-header-height: 29px;
   --canvas-group-title-height: 28px;
   --canvas-group-body-top: 28px;
