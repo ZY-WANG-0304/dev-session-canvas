@@ -14,6 +14,7 @@ export interface FakeD1DatabaseOptions {
   publisherAvatarUrl?: string;
   viewerUserId?: string;
   viewerLiked?: boolean;
+  publishedVersionCount?: number;
 }
 
 function createTemplateRows(options: FakeD1DatabaseOptions = {}) {
@@ -94,6 +95,7 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
   const templateRows = createTemplateRows(options);
   const publisherGithubUserId = options.publisherGithubUserId ?? defaultPublisher.githubUserId;
   const viewerUserId = options.viewerUserId ?? defaultPublisher.id;
+  const publishedVersionCount = options.publishedVersionCount ?? versionRows.length;
   let viewerLiked = options.viewerLiked ?? false;
   let currentLikeCount: number = templateRows[0]?.like_count ?? 0;
   return {
@@ -118,7 +120,7 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
                   day: '2026-05-11',
                   download_count: 5,
                   like_count: 1,
-                  publish_count: 0
+                  publish_count: Math.max(0, publishedVersionCount - 1)
                 }
               ],
               success: true,
@@ -127,6 +129,13 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
           }
           if (sql.includes("template_id = ?1 AND status = 'published'")) {
             return { results: versionRows.slice(), success: true, meta: {} };
+          }
+          if (sql.includes('COUNT(*) AS publish_count') && sql.includes('FROM template_versions v')) {
+            return {
+              results: [{ template_id: 'tmpl-d1-review', publish_count: publishedVersionCount }],
+              success: true,
+              meta: {}
+            };
           }
           if (sql.includes('JOIN template_likes tl')) {
             return {

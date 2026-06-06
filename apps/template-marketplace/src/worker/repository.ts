@@ -87,6 +87,7 @@ export interface MarketplaceTemplateRepository {
     liked?: boolean,
     at?: Date
   ): Promise<MarketplaceTemplateLikeResponse | undefined>;
+  getTemplateLikeState(templateIdOrSlug: string, user: MarketplaceRepositoryUserInput): Promise<MarketplaceTemplateLikeResponse | undefined>;
   listLikedTemplates(user: MarketplaceRepositoryUserInput): Promise<MarketplaceListTemplatesResponse>;
   getPublisherStats(user: MarketplaceRepositoryUserInput): Promise<MarketplacePublisherStatsResponse>;
   isTemplateSlugAvailable(slug: string): Promise<boolean>;
@@ -141,6 +142,19 @@ export class SeedTemplateRepository implements MarketplaceTemplateRepository {
 
   public async setTemplateLike(): Promise<MarketplaceTemplateLikeResponse | undefined> {
     throw new MarketplaceRepositoryWriteError('marketplace_writes_unavailable', 'Template likes require D1 storage.', 503);
+  }
+
+  public async getTemplateLikeState(templateIdOrSlug: string): Promise<MarketplaceTemplateLikeResponse | undefined> {
+    const template = getSeedTemplateDetail(templateIdOrSlug);
+    if (!template) {
+      return undefined;
+    }
+    return {
+      templateId: template.id,
+      liked: false,
+      likeCount: template.likeCount,
+      storageMode: this.storageMode
+    };
   }
 
   public async listLikedTemplates(): Promise<MarketplaceListTemplatesResponse> {
@@ -331,6 +345,24 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
     };
   }
 
+  public async getTemplateLikeState(templateIdOrSlug: string, user: MarketplaceRepositoryUserInput): Promise<MarketplaceTemplateLikeResponse | undefined> {
+    const detail = await this.getTemplateDetail(templateIdOrSlug);
+    if (!detail) {
+      return undefined;
+    }
+
+    const liked = await this.database
+      .prepare('SELECT created_at FROM template_likes WHERE template_id = ?1 AND user_id = ?2 LIMIT 1')
+      .bind(detail.template.id, buildMarketplaceUserId(user.githubUserId))
+      .first<{ created_at: string }>();
+    return {
+      templateId: detail.template.id,
+      liked: Boolean(liked),
+      likeCount: detail.template.likeCount,
+      storageMode: this.storageMode
+    };
+  }
+
   public async listLikedTemplates(user: MarketplaceRepositoryUserInput): Promise<MarketplaceListTemplatesResponse> {
     const result = await this.database
       .prepare(
@@ -384,20 +416,21 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
       .bind(publisherId)
       .all<DailyStatsRow>();
     const daily = (dailyResult.results ?? []).map(mapDailyStatsRow);
-    const publishCount = daily.reduce((total, point) => total + point.publishCount, 0);
+    const versionCounts = await this.fetchPublisherVersionCounts(publisherId);
     const templateStats = templates.map((template) => ({
       template: toStatsTemplateSummary(template),
       downloadCount: template.downloadCount,
       likeCount: template.likeCount,
-      publishCount: Math.max(1, template.versions.length)
+      publishCount: versionCounts.get(template.id) ?? Math.max(1, template.versions.length)
     }));
+    const publishCount = templateStats.reduce((total, template) => total + template.publishCount, 0);
 
     return {
       totals: {
         templateCount: templates.length,
         downloadCount: templates.reduce((total, template) => total + template.downloadCount, 0),
         likeCount: templates.reduce((total, template) => total + template.likeCount, 0),
-        publishCount: publishCount || templateStats.reduce((total, template) => total + template.publishCount, 0)
+        publishCount
       },
       daily,
       templates: templateStats,
@@ -547,6 +580,20 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
       .bind(templateId)
       .all<VersionRow>();
     return (result.results ?? []).map(mapVersionRow);
+  }
+
+  private async fetchPublisherVersionCounts(publisherId: string): Promise<Map<string, number>> {
+    const result = await this.database
+      .prepare(
+        `SELECT v.template_id AS template_id, COUNT(*) AS publish_count
+         FROM template_versions v
+         JOIN templates t ON t.id = v.template_id
+         WHERE t.publisher_id = ?1 AND t.status = 'published' AND v.status = 'published'
+         GROUP BY v.template_id`
+      )
+      .bind(publisherId)
+      .all<{ template_id: string; publish_count: number }>();
+    return new Map((result.results ?? []).map((row) => [row.template_id, row.publish_count]));
   }
 
   public async upsertUser(

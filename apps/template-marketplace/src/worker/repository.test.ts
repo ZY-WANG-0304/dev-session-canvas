@@ -186,6 +186,24 @@ describe('D1TemplateRepository', () => {
     expect(response.items.map((template) => template.slug)).toEqual(['d1-review-loop']);
   });
 
+  it('loads current like state for one template without relying on the likes list page', async () => {
+    const repository = new D1TemplateRepository(createFakeD1Database([], { viewerUserId: 'github-test-community-user', viewerLiked: true }));
+
+    const response = await repository.getTemplateLikeState('d1-review-loop', {
+      githubUserId: 'test-community-user',
+      githubLogin: 'community-user',
+      displayName: 'Community User',
+      avatarUrl: ''
+    });
+
+    expect(response).toEqual({
+      templateId: 'tmpl-d1-review',
+      liked: true,
+      likeCount: 9,
+      storageMode: 'd1'
+    });
+  });
+
   it('returns publisher dashboard stats from cumulative and daily counters', async () => {
     const repository = new D1TemplateRepository(createFakeD1Database());
 
@@ -201,14 +219,15 @@ describe('D1TemplateRepository', () => {
       templateCount: 1,
       downloadCount: 44,
       likeCount: 9,
-      publishCount: 1
+      publishCount: 2
     });
     expect(response.daily).toEqual([
       { day: '2026-05-10', downloadCount: 3, likeCount: 2, publishCount: 1 },
-      { day: '2026-05-11', downloadCount: 5, likeCount: 1, publishCount: 0 }
+      { day: '2026-05-11', downloadCount: 5, likeCount: 1, publishCount: 1 }
     ]);
     expect(response.templates[0]?.template.slug).toBe('d1-review-loop');
     expect(response.templates[0]?.downloadCount).toBe(44);
+    expect(response.templates[0]?.publishCount).toBe(2);
   });
 });
 
