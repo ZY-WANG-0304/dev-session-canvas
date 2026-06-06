@@ -2374,6 +2374,76 @@ test('agent restart actions render inline without a dropdown', async ({ page }) 
   expect(actionLabels).toEqual(['新建', '重启']);
 });
 
+test('agent restart actions wrap before pushing delete outside compact chrome', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+
+  const state = createStoppedAgentNodeState({ resumable: true });
+  state.nodes[0].title = 'Agent 4';
+  state.nodes[0].size = { width: 420, height: state.nodes[0].size.height };
+  state.nodes[0].metadata.agent.cwd =
+    '/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2';
+  state.nodes[0].metadata.agent.lastLaunchCommandLine =
+    'codex --sandbox workspace-write --config compact-restart-action-overflow';
+
+  await bootstrap(page, state);
+
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toBeVisible();
+  await expect(agentNode.getByRole('button', { name: '删除' })).toBeVisible();
+
+  const layout = await agentNode.evaluate((root) => {
+    const chrome = root.querySelector('.window-chrome');
+    const restartGroup = root.querySelector('.agent-restart-action-group');
+    const newSessionButton = root.querySelector('[data-agent-restart-action="new-session"]');
+    const resumeButton = root.querySelector('[data-agent-restart-action="resume"]');
+    const deleteButton = Array.from(root.querySelectorAll('.window-chrome-actions > button')).find(
+      (button) => button.textContent?.trim() === '删除'
+    );
+    if (!chrome || !restartGroup || !newSessionButton || !resumeButton || !deleteButton) {
+      throw new Error('Expected compact agent restart actions to be rendered.');
+    }
+
+    const chromeRect = chrome.getBoundingClientRect();
+    const restartGroupRect = restartGroup.getBoundingClientRect();
+    const newSessionButtonRect = newSessionButton.getBoundingClientRect();
+    const resumeButtonRect = resumeButton.getBoundingClientRect();
+    const deleteButtonRect = deleteButton.getBoundingClientRect();
+    const newSessionButtonStyle = getComputedStyle(newSessionButton);
+    const resumeButtonStyle = getComputedStyle(resumeButton);
+    const deleteButtonStyle = getComputedStyle(deleteButton);
+
+    return {
+      chromeRight: chromeRect.right,
+      restartGroupRight: restartGroupRect.right,
+      newSessionButtonHeight: newSessionButtonRect.height,
+      resumeButtonHeight: resumeButtonRect.height,
+      deleteButtonLeft: deleteButtonRect.left,
+      deleteButtonRight: deleteButtonRect.right,
+      deleteButtonHeight: deleteButtonRect.height,
+      newSessionButtonPaddingInlineStart: newSessionButtonStyle.paddingInlineStart,
+      newSessionButtonPaddingInlineEnd: newSessionButtonStyle.paddingInlineEnd,
+      resumeButtonPaddingInlineStart: resumeButtonStyle.paddingInlineStart,
+      resumeButtonPaddingInlineEnd: resumeButtonStyle.paddingInlineEnd,
+      deleteButtonPaddingInlineStart: deleteButtonStyle.paddingInlineStart,
+      deleteButtonPaddingInlineEnd: deleteButtonStyle.paddingInlineEnd,
+      newSessionButtonWhiteSpace: newSessionButtonStyle.whiteSpace,
+      resumeButtonWhiteSpace: resumeButtonStyle.whiteSpace
+    };
+  });
+
+  expect(layout.deleteButtonRight).toBeLessThanOrEqual(layout.chromeRight - 8);
+  expect(layout.restartGroupRight).toBeLessThanOrEqual(layout.deleteButtonLeft - 4);
+  expect(layout.newSessionButtonHeight).toBeGreaterThanOrEqual(layout.deleteButtonHeight);
+  expect(layout.resumeButtonHeight).toBeGreaterThanOrEqual(layout.deleteButtonHeight);
+  expect(layout.newSessionButtonPaddingInlineStart).toBe(layout.deleteButtonPaddingInlineStart);
+  expect(layout.newSessionButtonPaddingInlineEnd).toBe(layout.deleteButtonPaddingInlineEnd);
+  expect(layout.resumeButtonPaddingInlineStart).toBe(layout.deleteButtonPaddingInlineStart);
+  expect(layout.resumeButtonPaddingInlineEnd).toBe(layout.deleteButtonPaddingInlineEnd);
+  expect(layout.newSessionButtonWhiteSpace).toBe('normal');
+  expect(layout.resumeButtonWhiteSpace).toBe('normal');
+});
+
 test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: false }));
