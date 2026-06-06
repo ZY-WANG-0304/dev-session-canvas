@@ -306,6 +306,7 @@ interface CanvasNodeData {
     provider?: AgentProviderKind,
     resume?: boolean
   ) => void;
+  onBranchAgentSession?: (nodeId: string) => void;
   onAttachExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput?: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
   onDropExecutionResource?: (
@@ -2184,6 +2185,11 @@ function App(): JSX.Element {
           provider,
           resume: resume === true
         }
+      }),
+    onBranchAgentSession: (nodeId) =>
+      postMessage({
+        type: 'webview/branchAgentSession',
+        payload: { nodeId }
       }),
     onAttachExecution: (nodeId, kind) =>
       postMessage({
@@ -4153,6 +4159,11 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     data.onDeleteNode?.(id);
   };
 
+  const branchAgent = (): void => {
+    data.onSelectNode?.(id);
+    data.onBranchAgentSession?.(id);
+  };
+
   useEffect(() => {
     if (!agentMetadata.pendingLaunch) {
       autoLaunchRef.current = null;
@@ -4171,6 +4182,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
   }, [agentMetadata.liveSession, agentMetadata.pendingLaunch, executionBlocked, id, provider]);
 
   const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession;
+  const showBranchAction = provider === 'claude' && canResumeOriginalSession;
   const actionDisabled = executionBlocked || reattaching;
 
   return (
@@ -4269,6 +4281,21 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               onFocus={() => data.onSelectNode?.(id)}
             />
           )}
+          {showBranchAction ? (
+            <ActionButton
+              label="Branch"
+              disabled={actionDisabled}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+              onClick={branchAgent}
+              buttonProps={{
+                title: '从当前 Claude Code 会话创建新分支',
+                'aria-label': 'Branch 当前 Claude Code 会话',
+                'data-agent-branch-action': 'true'
+              }}
+            />
+          ) : null}
           <ActionButton
             label="删除"
             tone="danger"
@@ -10483,6 +10510,7 @@ function toFlowNodes(params: {
     provider?: AgentProviderKind,
     resume?: boolean
   ) => void;
+  onBranchAgentSession: (nodeId: string) => void;
   onAttachExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
   onDropExecutionResource: (
@@ -10597,6 +10625,7 @@ function toFlowNodes(params: {
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
+        onBranchAgentSession: params.onBranchAgentSession,
         onAttachExecution: params.onAttachExecution,
         onExecutionInput: params.onExecutionInput,
         onDropExecutionResource: params.onDropExecutionResource,
