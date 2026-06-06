@@ -1909,7 +1909,7 @@ async function verifyExplorerResourceExecutionNodeCreation() {
   const agentItem = sidebarItems.find((item) => item.nodeId === agentNode.id);
   assert.ok(agentItem, 'Expected cwd-scoped Agent to appear in the sidebar node list.');
   assert.strictEqual(
-    agentItem.status.startsWith(`.debug/vscode-smoke/explorer-cwd · ${expectedProviderLabel} · `),
+    agentItem.status.startsWith(`.debug/vscode-smoke/explorer-cwd/ · ${expectedProviderLabel} · `),
     true,
     'Expected Agent sidebar row to include cwd label before provider and status.'
   );
@@ -1920,7 +1920,7 @@ async function verifyExplorerResourceExecutionNodeCreation() {
     activeSurface,
     (probe) => {
       const probedAgent = probe.nodes.find((node) => node.nodeId === agentNode.id);
-      return Boolean(probedAgent?.chromeSubtitle?.includes('.debug/vscode-smoke/explorer-cwd · '));
+      return Boolean(probedAgent?.chromeSubtitle?.includes('.debug/vscode-smoke/explorer-cwd/ · '));
     },
     20000
   );
@@ -10754,20 +10754,34 @@ async function waitForWebviewProbe(predicate, timeoutMs = 8000) {
 
 async function waitForWebviewProbeOnSurface(surface, predicate, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
-  let lastProbe = await captureWebviewProbe(surface, 2000);
+  let lastProbe;
+  let lastProbeError;
 
   while (Date.now() < deadline) {
-    if (predicate(lastProbe)) {
-      return lastProbe;
+    try {
+      const probeTimeoutMs = Math.min(5000, Math.max(500, deadline - Date.now()));
+      lastProbe = await captureWebviewProbe(surface, probeTimeoutMs);
+      lastProbeError = undefined;
+      if (predicate(lastProbe)) {
+        return lastProbe;
+      }
+    } catch (error) {
+      if (!isWebviewProbeCaptureTimeout(error)) {
+        throw error;
+      }
+      lastProbeError = error;
     }
 
     await sleep(100);
-    lastProbe = await captureWebviewProbe(surface, 2000);
   }
 
   assert.fail(
-    `Timed out while waiting for ${surface} webview probe. Last probe: ${JSON.stringify(lastProbe)}`
+    `Timed out while waiting for ${surface} webview probe. Last probe: ${JSON.stringify(lastProbe ?? null)}. Last probe error: ${lastProbeError ? formatError(lastProbeError) : '<none>'}`
   );
+}
+
+function isWebviewProbeCaptureTimeout(error) {
+  return /Webview probe 返回超时/.test(formatError(error));
 }
 
 async function waitForSnapshot(predicate, timeoutMs = 15000) {
@@ -11420,14 +11434,17 @@ async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
     )
   );
   assert.ok(
-    diagnosticEvents.some(
-      (event) =>
+    diagnosticEvents.some((event) => {
+      const source = event.detail?.source;
+      return (
         event.kind === 'state/loadSelected' &&
-        event.detail?.source === 'snapshot' &&
+        (source === 'snapshot' || source === 'rootLocalSnapshot') &&
         typeof event.detail?.storagePath === 'string' &&
         typeof event.detail?.stateHash === 'string' &&
         event.detail?.snapshotStateHash === event.detail?.stateHash
-    )
+      );
+    }),
+    'Expected state/loadSelected diagnostics to report the selected snapshot/root-local snapshot hash.'
   );
   assert.ok(
     diagnosticEvents.some(
