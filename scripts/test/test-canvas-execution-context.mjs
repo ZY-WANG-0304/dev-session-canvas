@@ -19,8 +19,8 @@ try {
   const outfile = path.join(tempDir, 'canvas-execution-context.cjs');
   const exportedHelpers = [
     'createNextState',
+    'downgradeLiveRuntimeNodesMissingRuntimeStoragePath',
     'normalizeState',
-    'preserveRootLocalLiveRuntimeReconnectState',
     'reconcileDefaultExecutionMetadataCwd',
     'resolveTerminalShellPathForConfigurationCwd'
   ];
@@ -120,8 +120,8 @@ try {
   const require = createRequire(import.meta.url);
   const {
     createNextState,
+    downgradeLiveRuntimeNodesMissingRuntimeStoragePath,
     normalizeState,
-    preserveRootLocalLiveRuntimeReconnectState,
     reconcileDefaultExecutionMetadataCwd,
     resolveTerminalShellPathForConfigurationCwd
   } = require(outfile);
@@ -214,135 +214,113 @@ try {
   assert.equal(reconciledState.nodes[1].metadata.terminal.cwd, workspaceRoot);
   assert.equal(reconciledState.nodes[1].metadata.terminal.shellPath, path.join(workspaceRoot, 'tooling', 'dev-shell'));
 
-  const preservedRootStates = preserveRootLocalLiveRuntimeReconnectState(
-    [
-      {
-        rootPath: workspaceRoot,
-        state: {
-          ...emptyState,
-          nodes: [
-            {
-              id: 'agent-live',
-              kind: 'agent',
-              title: 'Agent Live',
-              status: 'live',
-              summary: '',
-              position: { x: 0, y: 0 },
-              size: { width: 160, height: 120 },
-              metadata: {
-                agent: {
-                  provider: 'claude',
-                  lifecycle: 'live',
-                  shellPath: 'claude',
-                  cwd: path.join(workspaceRoot, 'old-agent-cwd'),
-                  persistenceMode: 'live-runtime',
-                  runtimeSessionId: 'agent-runtime-1',
-                  attachmentState: 'attached-live',
-                  liveSession: true
-                }
-              }
-            },
-            {
-              id: 'terminal-live',
-              kind: 'terminal',
-              title: 'Terminal Live',
-              status: 'live',
-              summary: '',
-              position: { x: 240, y: 0 },
-              size: { width: 160, height: 120 },
-              metadata: {
-                terminal: {
-                  lifecycle: 'live',
-                  cwd: path.join(workspaceRoot, 'old-terminal-cwd'),
-                  persistenceMode: 'live-runtime',
-                  runtimeSessionId: 'terminal-runtime-1',
-                  attachmentState: 'reattaching',
-                  liveSession: false
-                }
-              }
+  const missingRuntimeStoragePathReason = 'missing runtime storage path';
+  const downgradedRuntimeState = downgradeLiveRuntimeNodesMissingRuntimeStoragePath(
+    {
+      ...emptyState,
+      nodes: [
+        {
+          id: 'agent-live-missing-storage',
+          kind: 'agent',
+          title: 'Agent Live Missing Storage',
+          status: 'running',
+          summary: '',
+          position: { x: 0, y: 0 },
+          size: { width: 160, height: 120 },
+          metadata: {
+            agent: {
+              provider: 'codex',
+              lifecycle: 'running',
+              persistenceMode: 'live-runtime',
+              runtimeSessionId: 'agent-runtime-missing-storage',
+              attachmentState: 'reattaching',
+              liveSession: false
             }
-          ]
-        }
-      }
-    ],
-    [
-      {
-        rootPath: workspaceRoot,
-        state: {
-          ...emptyState,
-          nodes: [
-            {
-              id: 'agent-live',
-              kind: 'agent',
-              title: 'Agent Live',
-              status: 'history-restored',
-              summary: '',
-              position: { x: 0, y: 0 },
-              size: { width: 160, height: 120 },
-              metadata: {
-                agent: {
-                  provider: 'codex',
-                  lifecycle: 'live',
-                  shellPath: 'codex',
-                  cwd: path.join(workspaceRoot, 'new-agent-cwd'),
-                  persistenceMode: 'live-runtime',
-                  runtimeSessionId: 'agent-runtime-1',
-                  attachmentState: 'history-restored',
-                  liveSession: false
-                }
-              }
-            },
-            {
-              id: 'terminal-live',
-              kind: 'terminal',
-              title: 'Terminal Live',
-              status: 'history-restored',
-              summary: '',
-              position: { x: 240, y: 0 },
-              size: { width: 160, height: 120 },
-              metadata: {
-                terminal: {
-                  lifecycle: 'live',
-                  cwd: path.join(workspaceRoot, 'new-terminal-cwd'),
-                  persistenceMode: 'live-runtime',
-                  runtimeSessionId: 'terminal-runtime-1',
-                  attachmentState: 'history-restored',
-                  liveSession: false
-                }
-              }
+          }
+        },
+        {
+          id: 'agent-live-with-storage',
+          kind: 'agent',
+          title: 'Agent Live With Storage',
+          status: 'running',
+          summary: '',
+          position: { x: 240, y: 0 },
+          size: { width: 160, height: 120 },
+          metadata: {
+            agent: {
+              provider: 'codex',
+              lifecycle: 'running',
+              persistenceMode: 'live-runtime',
+              runtimeBackend: 'legacy-detached',
+              runtimeStoragePath: path.join(workspaceRoot, '.runtime-storage'),
+              runtimeSessionId: 'agent-runtime-with-storage',
+              attachmentState: 'reattaching',
+              liveSession: false
             }
-          ]
+          }
+        },
+        {
+          id: 'terminal-live-missing-storage',
+          kind: 'terminal',
+          title: 'Terminal Live Missing Storage',
+          status: 'live',
+          summary: '',
+          position: { x: 480, y: 0 },
+          size: { width: 160, height: 120 },
+          metadata: {
+            terminal: {
+              lifecycle: 'live',
+              persistenceMode: 'live-runtime',
+              runtimeSessionId: 'terminal-runtime-missing-storage',
+              attachmentState: 'reattaching',
+              liveSession: false
+            }
+          }
         }
-      }
-    ]
+      ]
+    },
+    missingRuntimeStoragePathReason
+  );
+  assert.equal(downgradedRuntimeState.downgradedCount, 2);
+  assert.equal(
+    downgradedRuntimeState.state.nodes.find((candidate) => candidate.id === 'agent-live-missing-storage').metadata.agent.attachmentState,
+    'history-restored',
+    'multi-root 恢复不能把缺少 runtimeStoragePath 的 Agent 隐式连到当前 workspace storage。'
   );
   assert.equal(
-    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'agent-live').metadata.agent.liveSession,
-    true,
-    'multi-root restore skip 不应把 root-local Agent live runtime 恢复信号持久化改成 history-restored。'
+    downgradedRuntimeState.state.nodes.find((candidate) => candidate.id === 'agent-live-missing-storage').metadata.agent.liveSession,
+    false
   );
   assert.equal(
-    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'terminal-live').metadata.terminal.attachmentState,
+    downgradedRuntimeState.state.nodes.find((candidate) => candidate.id === 'agent-live-missing-storage').metadata.agent.runtimeSessionId,
+    undefined,
+    '缺少 runtimeStoragePath 的 Agent 降级后不应继续参与 runtime cleanup 或后续 attach。'
+  );
+  assert.equal(
+    downgradedRuntimeState.state.nodes.find((candidate) => candidate.id === 'agent-live-missing-storage').metadata.agent.lastRuntimeError,
+    missingRuntimeStoragePathReason
+  );
+  assert.equal(
+    downgradedRuntimeState.state.nodes.find((candidate) => candidate.id === 'agent-live-with-storage').metadata.agent.attachmentState,
     'reattaching',
-    'multi-root restore skip 不应覆盖 root-local Terminal 的 reattach 信号。'
+    '带有 root-local runtimeStoragePath 的 Agent 应继续保留 multi-root reattach 资格。'
   );
   assert.equal(
-    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'agent-live').metadata.agent.cwd,
-    path.join(workspaceRoot, 'new-agent-cwd'),
-    'multi-root restore skip 只应恢复 reattach 信号，不应覆盖 root-local Agent 的非 runtime 字段。'
+    downgradedRuntimeState.state.nodes.find((candidate) => candidate.id === 'terminal-live-missing-storage').metadata.terminal.attachmentState,
+    'history-restored',
+    'multi-root 恢复不能把缺少 runtimeStoragePath 的 Terminal 隐式连到当前 workspace storage。'
   );
   assert.equal(
-    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'agent-live').metadata.agent.provider,
-    'codex',
-    'multi-root restore skip 不应把旧 root-local Agent provider 覆盖回去。'
-  );
-  assert.equal(
-    preservedRootStates[0].state.nodes.find((candidate) => candidate.id === 'terminal-live').metadata.terminal.cwd,
-    path.join(workspaceRoot, 'new-terminal-cwd'),
-    'multi-root restore skip 只应恢复 Terminal reattach 信号，不应覆盖 cwd 等非 runtime 字段。'
+    downgradedRuntimeState.state.nodes.find((candidate) => candidate.id === 'terminal-live-missing-storage').metadata.terminal.runtimeSessionId,
+    undefined,
+    '缺少 runtimeStoragePath 的 Terminal 降级后不应继续参与 runtime cleanup 或后续 attach。'
   );
 
   const managerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
+  const runtimeBindingKeyFunction = managerSource.match(
+    /private buildRuntimeSessionBindingKey\([\s\S]*?\n  \}/u
+  )?.[0] ?? '';
+  assert.ok(runtimeBindingKeyFunction, '必须能定位 runtime binding key 构造函数。');
   const workspaceFoldersListener = managerSource.match(
     /vscode\.workspace\.onDidChangeWorkspaceFolders\(\(\) => \{[\s\S]*?\n      \}\)\n    \);/u
   )?.[0] ?? '';
@@ -364,17 +342,52 @@ try {
   assert.match(
     workspaceFoldersListener,
     /this\.scheduleRestoreLiveRuntimeSessions\(\);/u,
-    'workspace folder 变化后必须重新执行 live runtime restore 调度；multi-root 会按显式策略跳过。'
+    'workspace folder 变化后必须重新执行 live runtime restore 调度；multi-root 也会按 root-local runtime metadata 恢复。'
   );
-  assert.match(
+  assert.doesNotMatch(
     managerSource,
     /'multi-root-workspace'/u,
-    'multi-root live runtime restore 必须有显式 block reason，而不是复用单根恢复路径。'
+    'multi-root live runtime restore 不应再被整体 block。'
+  );
+  assert.doesNotMatch(
+    managerSource,
+    /runtime\/restoreSkipped[\s\S]*multiRootWorkspace/u,
+    'multi-root live runtime restore 不应再记录整体 skip 诊断。'
+  );
+  assert.match(
+    runtimeBindingKeyFunction,
+    /buildRuntimeSessionBindingKey\([\s\S]*kind:[\s\S]*runtimeSessionId:[\s\S]*runtimeStoragePath:[\s\S]*runtimeBackend/u,
+    'runtime binding key 必须包含 execution kind、runtimeStoragePath、runtimeSessionId 和 backend，不能只按 root 或 display node 绑定。'
+  );
+  assert.doesNotMatch(
+    runtimeBindingKeyFunction,
+    /workspaceRoot|rootPath/u,
+    'runtime binding key 不能使用 workspace root 作为身份；同一个 root 的不同 VS Code storage slot 必须是不同 runtime。'
   );
   assert.match(
     managerSource,
-    /runtime\/restoreSkipped[\s\S]*multiRootWorkspace/u,
-    'multi-root live runtime restore skip 必须记录诊断事件，便于追踪。'
+    /collectRuntimeSupervisorStoragePathsForTest[\s\S]*this\.getExtensionStoragePath\(\)[\s\S]*this\.getPersistedRuntimeStoragePath\(metadata\)/u,
+    'runtime supervisor diagnostics 必须枚举当前 slot 和 persisted runtimeStoragePath，覆盖同 root 多 slot 的 registry。'
+  );
+  assert.match(
+    managerSource,
+    /workspaceFolders\.length === 1[\s\S]*downgradeRootLocalLiveRuntimeNodesMissingRuntimeStoragePath/u,
+    '单根 root-local snapshot 缺少 runtimeStoragePath 时也必须降级，不能用当前同 root 但不同 slot 的 storage path 回填。'
+  );
+  assert.match(
+    managerSource,
+    /downgradeRootLocalLiveRuntimeNodesMissingRuntimeStoragePath/u,
+    '加载 root-local state 时必须显式处理缺失 runtimeStoragePath 的旧 live-runtime snapshot。'
+  );
+  assert.match(
+    managerSource,
+    /handleRuntimeSupervisorOutput\(backend\.kind, runtimeStoragePath, event\.kind, event\.sessionId, event\.chunk\)/u,
+    'supervisor output 绑定必须使用事件里的 execution kind，避免同 session id 不同 kind 串线。'
+  );
+  assert.match(
+    managerSource,
+    /snapshot\.kind !== kind[\s\S]*runtime\/sessionKindMismatch/u,
+    'attach 原 live runtime 时必须校验 supervisor snapshot kind，避免错误 sessionId 绑定到不同 execution kind。'
   );
   assert.match(
     managerSource,

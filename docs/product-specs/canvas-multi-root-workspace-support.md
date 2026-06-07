@@ -1,7 +1,7 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-06-05
+updated_at: 2026-06-07
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
 related_plans:
@@ -24,6 +24,7 @@ related_plans:
 - 在多根画布中整理某个 root 内的节点后，单独打开该 root 仍能看到这些整理结果。
 - 移动 multi-root 中的 root 区域只影响多根布局，不改写单根 root-local 节点坐标。
 - root 内对象移动到边界外时，root 区域自动扩张，内容不会静默移出所属 root。
+- 多根窗口重启后，已有 `Agent` / `Terminal` live runtime 可以按 root-local runtime 身份重新附着；单根窗口与多根窗口同时打开时共享同一个后端 session。
 
 ## 功能范围
 
@@ -41,8 +42,9 @@ related_plans:
 12. 多根组合视图中，用户创建或重连连线时，两个端点必须属于同一个 root section；跨 root 连线被拒绝。
 13. 文件活动自动节点、file-activity edge 和 suppression id 在多根组合视图中按 root 命名空间重建，不跨 root 共享。
 14. 多根组合视图中的 live 文件活动记录按 owner 节点所属 root 生成 root-namespaced `fileReferences.id`；旧的未命名空间化引用在重建时按 root scope 迁移或补 namespace。
-15. 多根组合视图跳过 live runtime 重新连接时，只影响组合视图展示，不永久消耗 root-local snapshot 中用于单根重连的 live runtime 信号。
-16. 全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 把所有系统 root section 作为一等空间对象纳入；multi-root 下全局 fit view 默认包含所有 root section。
+15. 多根组合视图中的 `Agent` / `Terminal` 恢复时，display node id 只服务渲染、选择、连线、布局和拆回 root-local；runtime binding id 以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威，其中 `runtimeStoragePath` 必须保留具体 VS Code `workspaceStorage` slot。
+16. 多根窗口不能用当前 multi-root workspace storage path 猜 runtime；同一个 root 的多个 storage slot 也不能互相替代，必须使用 root-local metadata 中保存的完整 `runtimeStoragePath`。旧 snapshot 缺少 `runtimeStoragePath` 时必须迁移或显式降级为历史恢复，并记录诊断。
+17. 全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 把所有系统 root section 作为一等空间对象纳入；multi-root 下全局 fit view 默认包含所有 root section。
 
 ## 非目标
 
@@ -51,9 +53,8 @@ related_plans:
 - 不实现跨 root Note、跨 root 连线或跨 root 模板捕获。
 - 不把包含多个 root 的 multi-root overlay 普通分组写入任一单根 root-local 状态。
 - 不支持把 multi-root 组合视图整体保存为模板。
-- 不承诺跨窗口共享 live runtime。
-- 不在 multi-root 组合视图中重新连接 live runtime；需要恢复 live runtime 时单独打开所属 root。
-- 不把 multi-root 组合视图的 live runtime skip 当成 root-local 的不可恢复结论。
+- 不承诺同一个 Host 内多个 display node 同时呈现同一个 runtime；当前绑定仍是一条 runtime key 对应一个 display node，未来如需支持需升级为 subscribers/list。
+- 不把 display node id 当成 runtime session 身份；multi-root namespaced id 不能直接替代 root-local runtime metadata。
 - 不在拖拽时自动把执行节点迁移到另一个 root 或改写 cwd。
 
 ## 验收标准
@@ -68,10 +69,13 @@ related_plans:
 - 在 multi-root workspace 中，跨 root 画线或把既有连线重连到另一个 root 的节点不会创建或更新连线。
 - 两个 root 都有文件活动时，自动 `file` / `file-list` 节点和 file-activity edge 均保留在各自 root section 内，且 ID 不冲突。
 - 在 multi-root workspace 中运行 Agent 产生新的文件活动时，新写入的 `fileReferences.id` 带所属 root namespace；删除该自动文件节点后的 suppression 在重载后仍生效。
-- 一个 root-local live runtime 节点在 multi-root 中显示为历史结果后，单独打开所属 root 仍保留 `liveSession` 或 `reattaching` 等重连资格。
+- 一个 root-local live runtime 节点在 multi-root 重启后按原 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 重新附着，离线期间输出可见。
+- 同一个 root 被多个 VS Code slot 打开时，runtime 仍按完整 `runtimeStoragePath` 区分；没有 `runtimeStoragePath` 的旧 live-runtime root-local snapshot 不会被同 root 当前 slot 隐式接管。
+- 单根窗口与 multi-root 窗口同时打开同一 root-local live runtime 时，output 在两个窗口可见；input、stop、delete 作用于同一 backend session；resize 第一版按 last-writer-wins 处理。
+- 旧 snapshot 缺少 `runtimeStoragePath` 时，不会隐式 attach 到当前 multi-root workspace storage；系统必须迁移或明确降级为历史恢复。
 - 在 multi-root workspace 中，空 root section 没有节点时也会被全局 fit view 纳入；右下角 MiniMap 能看出多个 root section 的相对布局。
 - 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
 
 ## 验证状态
 
-截至 2026-06-05，本规格已完成主路径自动化验证：`npm run test:canvas-multi-root-composition`、`npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:note-markdown-file-association`、`npm run test:extension-storage-paths`、`npm run typecheck`、`npm run build`、`git diff --check` 和 `npm run test:webview -- --grep "workspace root group|cross-root edge"` 均通过。review follow-up 追加覆盖 Host 侧多根文件活动自动 artifact 命名空间、live 文件活动 root-namespaced reference、suppression 剪枝，以及 multi-root skip 不覆盖 root-local live runtime 重连信号。root section 参与全局 fit view 与 MiniMap 的导航增强已在 `docs/exec-plans/completed/canvas-spatial-fit-minimap.md` 中完成并记录定向验证。全量 `npm run test:webview` 当前为 224 passed / 29 failed，失败项不来自新增 workspace root group 用例，但需要后续按 Webview lifecycle/截图基线测试口径单独收口；真实 VSCode multi-root 手动 smoke 尚未完成。
+截至 2026-06-07，本规格已完成主路径自动化验证：`npm run test:canvas-multi-root-composition`、`npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:note-markdown-file-association`、`npm run test:extension-storage-paths`、`npm run typecheck`、`npm run build`、`git diff --check` 和 `npm run test:webview -- --grep "workspace root group|cross-root edge"` 均通过。review follow-up 追加覆盖 Host 侧多根文件活动自动 artifact 命名空间、live 文件活动 root-namespaced reference、suppression 剪枝，以及旧 multi-root skip 不覆盖 root-local live runtime 重连信号。2026-06-06 已实现 live runtime 验收口径修订：multi-root 按 root-local runtime metadata 共享恢复，不再整体 skip；自动化已覆盖取消 multi-root block、runtime binding key 包含 backend/storage/session/kind、缺失 `runtimeStoragePath` 的显式降级、supervisor output/state 多播与 delete 终态广播。2026-06-07 补充同 root 多 VS Code slot 验证：`node scripts/smoke/run-vscode-storage-slot-smoke.mjs` 已通过，覆盖 root-local snapshot 优先、旧 sibling slot 恢复、root-local live runtime 缺少 `runtimeStoragePath` 时不会被当前同 root slot 隐式接管；`single-to-multi-root-real-reopen` 真实 smoke 在最新 attach kind guard 与降级逻辑后复跑通过，并校验 setup 与 verify 阶段的 workspaceStorage slot name 一致。真实 VSCode smoke 已新增并通过 `multi-root-real-reopen`、`single-to-multi-root-real-reopen` 与 `two-window-shared-runtime`，覆盖 multi-root 窗口重启恢复、单根创建后 multi-root 重启恢复、离线输出可见、重连后输入继续作用同一 session、使用 root-local `runtimeStoragePath` 而不是当前 multi-root workspace storage，以及两个独立 VS Code 窗口同时 attach 同一 Agent/Terminal runtime 的双向 output 多播、双向 input、Terminal resize last-writer-wins、第二窗口 stop Terminal 和 delete Agent 后第一窗口收到非 live 终态。root section 参与全局 fit view 与 MiniMap 的导航增强已在 `docs/exec-plans/completed/canvas-spatial-fit-minimap.md` 中完成并记录定向验证。全量 `npm run test:webview` 当前为 224 passed / 29 failed，失败项不来自新增 workspace root group 用例，但需要后续按 Webview lifecycle/截图基线测试口径单独收口。
