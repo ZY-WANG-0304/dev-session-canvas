@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.14.0 - Preview Spatial Navigation and MiniMap Update
+
+相对 `0.13.0`，`0.14.0` 是一轮新的公开 `Preview` 里程碑更新，重点把画布全局导航从“只理解节点”升级为“理解完整空间对象”：普通用户分组、空分组和 multi-root workspace 的系统 root section 都会参与全局 fit view、初始自动 fit、动态最小缩放与右下角 MiniMap。它保留 `0.13.0` 的 VS Code multi-root workspace 组合画布、root-local 状态共享、跨 root 连线拒绝、文件活动命名空间、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.13.0` bump 到 `0.14.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 全局 fit view、初始自动 fit、动态最小缩放和右下角 MiniMap 统一使用画布空间边界，默认纳入节点、普通用户分组和系统 workspace root section
+- 在 multi-root workspace 中，即使某个 root section 为空，或 root section 明显大于内部节点，点击 fit view 也会把所有 root section 纳入视口
+- 右下角 MiniMap 改为自有 SVG MiniMap，显示 workspace root section、普通用户分组与节点的相对布局；workspace root section 使用更强的虚线系统边界，普通用户分组沿用主画布 panel border token，节点 attention 仍保持最高视觉优先级
+- MiniMap 拖拽与滚轮导航会持久化 viewport 和 visible center；滚轮缩放遵循动态 fit view 最小倍率，不再被旧的舒适编辑下限卡住
+- 修复停止后的 Agent 节点在紧凑标题栏里显示 `新建` / `恢复` 重启动作时可能挤出 `删除` 按钮的问题；重启动作现在会在紧凑 chrome 内先换行收缩
+- 补充空间边界 fit view、MiniMap 分组 / root section 可见性、MiniMap 视口持久化和 Agent 重启动作紧凑布局的 Playwright 回归
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.13.0` 升级到 `0.14.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.14.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.14.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.14.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.14.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.13.0 - Preview Multi-Root Workspace Canvas Update
 
 相对 `0.12.0`，`0.13.0` 是一轮新的公开 `Preview` 里程碑更新，重点把 VS Code multi-root workspace 中的多个 workspace folder 组合到同一张画布中，并让单根与多根打开方式共享同一份 root-local 画布内容。它保留 `0.12.0` 的 File Explorer 绑定 cwd 创建执行节点、Panel Webview lifecycle 串线修复、执行目录可见反馈、画布节点 padding 收口，以及 `0.11.0` 的画布分组、双市场发布元数据、安装拓扑和 Preview 支持边界。

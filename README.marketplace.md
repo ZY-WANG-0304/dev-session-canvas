@@ -23,6 +23,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces, including explicit save modes for associated Markdown Notes
 - Organize related `Agent`, `Terminal`, and `Note` nodes with named canvas groups, nested group frames, group resize, and grouped sidebar browsing
 - Compose VS Code multi-root workspaces into one canvas with system workspace-root sections while preserving each root's own canvas state
+- Use fit view and the MiniMap across the full canvas space, including nodes, user groups, and workspace-root sections
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
 - View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore a new `Agent` node from history
@@ -51,24 +52,23 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.13.0 Highlights
+## 0.14.0 Highlights
 
-The public `0.13.0` release is a new `0.x` Preview milestone focused on VS Code multi-root workspace composition. It lets a multi-root window show each workspace folder as a system root section in one shared canvas, while preserving the root-local canvas state users see when they open a folder by itself. It keeps the `0.12.0` File Explorer cwd-scoped creation milestone, `0.11.0` canvas groups, Marketplace metadata, Open VSX mirroring strategy, notifier companion relationship, and support matrix.
+The public `0.14.0` release is a new `0.x` Preview milestone focused on spatial canvas navigation. Fit view, initial auto-fit, dynamic minimum zoom, and the MiniMap now share the same canvas-space boundary, so navigation understands not only nodes but also user groups and multi-root workspace-root sections. It keeps the `0.13.0` multi-root workspace composition milestone, Marketplace metadata, Open VSX mirroring strategy, notifier companion relationship, and support matrix.
 
-- Show every workspace folder in a multi-root window as a system workspace-root section with its own root-local canvas content
-- Preserve single-folder behavior: opening one root shows only that root's own canvas, while opening a multi-root workspace composes the current roots together
-- Keep root sections movable, resizable, and groupable as whole sections without allowing users to delete, ungroup, or rename the system root section itself
-- Write edits made inside a root section back to that root-local state, including moved objects, created `Note` / `Agent` / `Terminal` nodes, applied templates, and dropped Markdown Notes
-- Namespace nodes, groups, edges, file-activity artifacts, and suppression IDs by workspace root so same-named objects from different roots do not collide
-- Reject cross-root edge creation or reconnection in both the Webview and Host, avoiding temporary canvas state that cannot be persisted
-- Keep live-runtime reconnect conservative in multi-root views: composed views show historical state, while root-local reattach signals are preserved for single-root reopen
+- Fit view now includes nodes, user groups, empty groups, and system workspace-root sections instead of only React Flow nodes
+- Multi-root workspaces fit all root sections by default, even when a root is empty or much larger than the nodes inside it
+- The MiniMap shows workspace-root sections, user groups, and nodes together so users can read the spatial structure of the whole canvas
+- Workspace-root sections use a stronger dashed system boundary in the MiniMap, while user groups reuse the main canvas panel-border token for a quieter region layer
+- MiniMap drag and wheel navigation now persist the viewport and visible center, and wheel zoom respects the dynamic fit-view minimum zoom
+- Stopped Agent nodes keep the `New` / `Resume` restart actions visible in compact chrome without pushing the `Delete` button out of the title bar
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.12.0` to `0.13.0` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.13.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.13.0` preserves that explicit choice
+- First-time installs and upgrades from `0.13.0` to `0.14.0` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.14.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.14.0` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -104,7 +104,7 @@ The public `0.13.0` release is a new `0.x` Preview milestone focused on VS Code 
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.13.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.14.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
