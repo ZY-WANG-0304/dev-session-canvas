@@ -18,7 +18,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/completed/explorer-resource-create-execution-node-implementation.md
-updated_at: 2026-06-03
+updated_at: 2026-06-08
 ---
 
 # File Explorer 资源右键创建执行节点设计
@@ -129,10 +129,12 @@ updated_at: 2026-06-03
 Explorer 命令的主流程为：
 
 1. 解析右键资源并得到 `{ cwd, sourceKind }`；目录直接作为 cwd，普通文件使用父目录作为 cwd。
-2. 对 `Terminal`：调用 `panelManager.revealOrCreate()`，然后调用 `panelManager.createNode('terminal', { cwdOverride: cwd })`。
-3. 对 `Agent`：先复用现有 Agent 创建 Quick Input，得到 provider / launchPreset / custom command；然后调用 `panelManager.revealOrCreate()` 和 `panelManager.createNode('agent', { cwdOverride: cwd, ...agentOptions })`。
+2. 对 `Terminal`：调用 `panelManager.revealOrCreateCurrentCanvasSurface()`，然后调用 `panelManager.createNode('terminal', { cwdOverride: cwd })`。
+3. 对 `Agent`：先复用现有 Agent 创建 Quick Input，得到 provider / launchPreset / custom command；然后调用 `panelManager.revealOrCreateCurrentCanvasSurface()` 和 `panelManager.createNode('agent', { cwdOverride: cwd, ...agentOptions })`。
 4. 如果当前可交互 Webview 已 ready，`CanvasPanelManager.createNode(...)` 继续发 `host/requestCreateNode`，由 Webview 在当前视口附近计算 `preferredPosition`，并把 `cwd` 原样带回 `webview/createDemoNode`。
 5. 如果 Webview 未 ready 或消息无法投递，宿主直接 `applyCreateNode(...)`，使用已有默认锚点与避碰搜索。
+
+`revealOrCreateCurrentCanvasSurface()` 的语义是：如果当前窗口已经有打开的主画布 surface，复用该 surface；只有画布未打开时才按默认承载面创建。这保证 Explorer 右键创建执行节点和普通创建节点一样，都是“在当前画板中创建对象”，而不是每次按默认配置强行切换承载面。
 
 本轮不改变默认标题。Agent 的 cwd 上下文通过副标题和 tooltip 呈现；Terminal 保持原副标题。
 
@@ -188,3 +190,5 @@ Explorer 命令的主流程为：
 截至 2026-05-31，本设计已完成实现并通过自动化验证。PR review 后已补齐相对 Terminal shell path 解析基准、默认 metadata cwd 规范化和 workspace folder 变更刷新；已运行 `npm run typecheck`、协议 / 路径 / manifest / execution context 测试、Playwright 定向测试、`npm run build` 与 trusted VSCode smoke。普通创建入口多根 root 选择和 storage fork 不纳入本次收口。
 
 2026-06-03：执行目录可见反馈追加目录尾缀，并把 Windows / network path 展示规则收口为“保留 cwd 来源分隔符”，避免把 `//server/share/...` 这类 slash-style network path 改写成 `\\server\share\...`。本轮验证通过 `npm run test:workspace-relative-paths`、`npm run test:sidebar-session-history` 与 `npm run typecheck`。
+
+2026-06-08：Explorer 创建 Terminal / Agent 的打开逻辑改为复用已打开的主画布 surface；只有画布未打开时才使用默认承载面。本轮新增真实宿主 smoke 断言覆盖已打开 panel surface 时执行 Explorer Terminal / Agent 创建仍停留在 panel，并通过 `node --check tests/vscode-smoke/extension-tests.cjs`、`npm run typecheck`、`npm run test:extension-manifest` 与 `git diff --check`。`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 已执行到后续 serialized terminal scrollback 既有断言失败，Explorer Terminal / Agent surface 复用断言已先行通过。

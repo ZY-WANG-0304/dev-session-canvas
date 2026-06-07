@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/note-markdown-file-association.md
   - docs/exec-plans/active/canvas-template-associated-note-modes.md
-updated_at: 2026-06-07
+updated_at: 2026-06-08
 ---
 
 # Note 与 Markdown 文件关联
@@ -294,7 +294,7 @@ VSCode File Explorer 需要为 Markdown 文件提供低成本创建入口：
 - 该入口对应 GitHub Issue #127 中“打开当前项目中已存在的 Markdown 文档”的需求；第一版用 Explorer 文件上下文收口，只负责从已选 Markdown 文件创建关联 `Note`。
 - `package.json` 在 `contributes.commands` 中登记 `devSessionCanvas.createNoteFromExplorerMarkdown`，标题为 `Dev Session Canvas: 在 Canvas 中创建关联 Note`，图标使用 `$(markdown)`。
 - `contributes.menus["explorer/context"]` 仅在 `resourceScheme == file && resourceExtname =~ /^\.(md|markdown)$/i` 时显示该入口；命令层仍必须二次校验 URI scheme、扩展名、资源存在性和普通文件类型。
-- `src/extension.ts` 的命令处理只负责解析 Explorer `vscode.Uri` 并打开/定位画布；实际 Note 创建交给 `CanvasPanelManager.createNoteFromMarkdownResource(...)`，避免在扩展入口复制关联 Markdown Note 的状态规则。
+- `src/extension.ts` 的命令处理只负责解析 Explorer `vscode.Uri` 并打开/定位画布；打开/定位使用 `panelManager.revealOrCreateCurrentCanvasSurface()`，即优先复用当前窗口已经打开的主画布 surface，只有没有打开画布时才按默认承载面创建；实际 Note 创建交给 `CanvasPanelManager.createNoteFromMarkdownResource(...)`，避免在扩展入口复制关联 Markdown Note 的状态规则。
 - `CanvasPanelManager.createNoteFromMarkdownResource(...)` 复用现有 `readNoteMarkdownFile(...)`、`createAssociatedNoteMarkdownNode(...)`、`getAssociatedNoteMarkdownNodeIdsForResourceKey(...)` 和 `confirmExistingDroppedNoteMarkdownFile(...)`。因此右键创建与拖拽创建共享 title 规则、content revision、display path、watcher、已有 Note 定位/添加确认，以及删除节点不删除文件的语义。
 - 多根 workspace 下，如果画布已有 workspace root section，右键创建优先按文件所属 workspace folder 归入对应 root section；若当前可见视口已经在某个 root section 内，则优先保留视口附近落点和该 root 归属。
 - 该入口不是目录扫描器，也不扩大文件类型范围；目录、非 Markdown 文件、缺失或不可读文件均不创建节点，并给出明确提示。
@@ -412,5 +412,7 @@ Workspace Trust：
 - `node --check tests/vscode-smoke/extension-tests.cjs` 通过，新增真实宿主 smoke 断言覆盖 Explorer Markdown 命令复用已有 Note 定位/添加确认、读取文件内容和 title 规则。
 - `git diff --check` 通过。
 - 真实 VSCode smoke 尚未在本轮重跑；Explorer 右键创建关联 Note 的端到端行为已补测试断言但仍待真实宿主执行复核。
-- 2026-06-08 review 复核发现 Explorer 命令执行后会按默认 panel 承载面 reveal 画布，污染后续默认 editor probe；smoke 已在本用例结尾恢复 editor surface，并在默认 `waitForWebviewProbe` 前加入 editor surface 前置断言，避免后续新增场景再次隐式依赖错误 active surface。
-- 2026-06-08 修复后尝试运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`；本轮未复现 Explorer Markdown surface 污染导致的 resize probe 失败，不同复跑分别命中既有 serialized terminal scrollback 断言和启动期 editor ready 超时，需作为独立 smoke 稳定性问题另行收口。
+- 2026-06-08 review 复核发现 Explorer 命令执行后会按默认 panel 承载面 reveal 画布，污染后续默认 editor probe；第一轮修复只在本用例结尾恢复 editor surface，并在默认 `waitForWebviewProbe` 前加入 editor surface 前置断言，避免后续新增场景再次隐式依赖错误 active surface。
+- 2026-06-08 进一步确认产品语义应为“在已打开的 Canvas surface 中创建对象”，而不是“按默认承载面创建对象”。本轮把 Explorer Markdown Note 命令改为复用已打开 surface，并补真实宿主 smoke 断言覆盖已打开 panel surface 时定位已有 Note / 添加关联 Note 都不切回默认 surface；`node --check tests/vscode-smoke/extension-tests.cjs`、`npm run typecheck`、`npm run test:extension-manifest`、`npm run test:note-markdown-file-association` 与 `git diff --check` 已通过。
+- 2026-06-08 本轮再次执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`；Explorer Markdown 已打开 panel surface 复用断言已通过，测试继续推进到后续 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory` 后命中既有 serialized terminal scrollback 断言，未发现本轮 surface 变更导致的新失败。
+- 2026-06-08 修复后尝试运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`；第一轮未复现 Explorer Markdown surface 污染导致的 resize probe 失败，不同复跑分别命中既有 serialized terminal scrollback 断言和启动期 editor ready 超时，需作为独立 smoke 稳定性问题另行收口。

@@ -800,6 +800,7 @@ async function runTrustedSmoke() {
   await verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot();
   await verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot();
   await verifyExplorerResourceExecutionNodeCreation();
+  await verifyCreateNodeCommandUsesOpenCanvasSurface();
   await verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
   await verifyPersistedStateFiltersLegacyTaskNodes();
@@ -1821,7 +1822,10 @@ async function verifyExplorerResourceExecutionNodeCreation() {
   await fs.mkdir(targetDirectory, { recursive: true });
   await fs.writeFile(targetFile, 'export const explorerCwdSmoke = true;\n', 'utf8');
 
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
   let snapshot = await getDebugSnapshot();
+  assert.strictEqual(snapshot.activeSurface, 'panel');
   const baselineNodeIds = new Set(snapshot.state.nodes.map((node) => node.id));
 
   await vscode.commands.executeCommand(
@@ -1843,6 +1847,11 @@ async function verifyExplorerResourceExecutionNodeCreation() {
       !baselineNodeIds.has(node.id) &&
       node.kind === 'terminal' &&
       node.metadata?.terminal?.cwd === targetDirectory
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Terminal creation to use the already-open Canvas surface instead of the default surface.'
   );
   assert.ok(terminalNode, 'Expected Explorer directory command to create a cwd-scoped Terminal.');
   await waitForDiagnosticEvents(
@@ -1892,6 +1901,11 @@ async function verifyExplorerResourceExecutionNodeCreation() {
       !baselineNodeIds.has(node.id) &&
       node.kind === 'agent' &&
       node.metadata?.agent?.cwd === targetDirectory
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Agent creation to stay on the already-open Canvas surface.'
   );
   assert.ok(agentNode, 'Expected Explorer file command to create an Agent bound to the file parent directory.');
   await waitForDiagnosticEvents(
@@ -1974,6 +1988,37 @@ async function verifyExplorerResourceExecutionNodeCreation() {
   await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
   snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
   assert.strictEqual(snapshot.state.nodes.length, 0);
+  await ensureEditorCanvasReady();
+}
+
+async function verifyCreateNodeCommandUsesOpenCanvasSurface() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  let snapshot = await getDebugSnapshot();
+  assert.strictEqual(snapshot.activeSurface, 'panel');
+
+  await setQuickPickSelections(['create-note']);
+  await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.activeSurface === 'panel' &&
+      currentSnapshot.state.nodes.some((node) => node.kind === 'note'),
+    20000
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected generic node creation to reuse the already-open Canvas surface.'
+  );
+
+  await dispatchWebviewMessage({ type: 'webview/resetDemoState' }, 'panel');
+  snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
+  assert.strictEqual(snapshot.state.nodes.length, 0);
+  await ensureEditorCanvasReady();
 }
 
 async function verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits() {
@@ -4922,6 +4967,8 @@ async function verifyNoteMarkdownFileAssociation() {
   );
 
   await clearHostMessages();
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
   await withInterceptedWarningMessages(
     async (warningCalls) => {
       await vscode.commands.executeCommand(COMMAND_IDS.createNoteFromExplorerMarkdown, associatedFileUri);
@@ -4948,6 +4995,11 @@ async function verifyNoteMarkdownFileAssociation() {
     ({ items }) => items.find((item) => item === '定位已有 Note')
   );
   snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Markdown Note creation to locate existing Notes on the already-open Canvas surface.'
+  );
   assert.strictEqual(
     snapshot.state.nodes.filter(
       (node) =>
@@ -4981,6 +5033,11 @@ async function verifyNoteMarkdownFileAssociation() {
       );
     },
     ({ items }) => items.find((item) => item === '添加新 Note')
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Markdown Note creation to add duplicate Notes on the already-open Canvas surface.'
   );
   const explorerDuplicateAssociatedNote = snapshot.state.nodes.find(
     (node) =>

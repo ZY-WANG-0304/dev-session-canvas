@@ -14,7 +14,7 @@
 
 1. 用户在 VSCode File Explorer 中右键点击 `.md` 或 `.markdown` 文件。
 2. 用户选择“Dev Session Canvas: 在 Canvas 中创建关联 Note”。
-3. 扩展打开或定位画布，读取该 Markdown 文件内容。
+3. 扩展打开或定位画布，读取该 Markdown 文件内容；如果当前窗口已经有打开的主画布 surface，则复用这个 surface，不因为默认承载面配置切到另一个 surface。
 4. 若该文件尚未关联到已有 Note，画布创建一个 `Note` 节点；节点标题默认来自文件名，正文来自文件内容，`metadata.note.contentSource.kind` 为 `markdown-file`。
 5. 若该文件已有关联 Note，系统复用现有确认流程，让用户选择定位已有 Note 或添加新的关联 Note。
 6. 新建 Note 会被聚焦；关联后的文件刷新、打开文件、缺失状态与冲突处理继续沿用现有关联 Markdown Note 行为。
@@ -29,6 +29,10 @@
   - 不强制文件位于当前 workspace；workspace 外 `file` 资源如果由用户显式触发命令，继续沿用关联 Markdown Note 的路径显示与可访问性规则。
   - 文件内容读取、content revision、display path、watcher、dirty-conflict、missing 状态和删除节点不删除文件等规则，沿用 `docs/design-docs/note-markdown-file-association.md`。
   - 创建后的 Note 标题默认与拖拽 Markdown 文件创建一致，受 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle` 配置影响。
+- 画布承载面：
+  - 该命令与 Explorer 创建 Terminal / Agent、普通创建节点等“在画板中创建对象”的入口共享承载面语义。
+  - 如果当前窗口已经打开 `editor` 或 `panel` 主画布，命令必须定位并复用该已打开 surface。
+  - 只有当前没有打开的主画布 surface 时，命令才按 `devSessionCanvas.canvas.defaultSurface` 打开默认承载面。
 - 已有关联文件：
   - 如果同一 Markdown 资源已经被 Note 关联，系统不静默创建重复节点；先让用户确认“定位已有 Note”或“添加新 Note”。
 - 多根 workspace：
@@ -58,6 +62,7 @@
 
 - Markdown 文件右键菜单中出现“Dev Session Canvas: 在 Canvas 中创建关联 Note”，非 Markdown 文件不出现该入口。
 - 对 `.md` / `.markdown` 文件执行命令后，画布创建 `Note` 节点；其 `metadata.note.contentSource.kind` 等于 `markdown-file`，`resourceUri` 指向该文件，正文等于文件内容。
+- 当主画布已经在 `editor` 或 `panel` 打开时，执行命令后仍停留并创建 / 定位在该已打开 surface；不会仅因为默认承载面是另一种配置而切换 surface。
 - 新 Note 标题与拖拽 Markdown 文件创建规则一致，并遵循 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle`。
 - 同一 Markdown 文件已有对应 Note 时，再次执行命令会弹出现有确认流程；选择定位时不创建重复 Note，选择添加时创建第二个关联 Note。
 - 多根 workspace 中，对某个 root 内 Markdown 文件执行命令后，新 Note 归属于该 root section；单独打开该 root 时能看到对应 root-local Note。
