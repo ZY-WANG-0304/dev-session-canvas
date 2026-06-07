@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 
-import type { MarketplaceReportStatus, MarketplaceTemplateReportSummary } from '@dev-session-canvas/marketplace-shared';
+import type { MarketplaceAdminStatsResponse, MarketplaceReportStatus, MarketplaceTemplateReportSummary } from '@dev-session-canvas/marketplace-shared';
 
 import {
   loadCurrentMarketplaceUser,
   loadMarketplaceAdminReports,
+  loadMarketplaceAdminStats,
   resolveMarketplaceAdminReport,
   setMarketplaceAdminTemplateStatus,
   setMarketplaceAdminUserBan,
@@ -15,6 +16,7 @@ import { buildGithubSignInHref, buildSignOutHref, buildTemplateDetailHref, getMa
 interface AdminState {
   user?: MarketplaceCurrentUser;
   reports: MarketplaceTemplateReportSummary[];
+  stats?: MarketplaceAdminStatsResponse;
   status: MarketplaceReportStatus;
   loading: boolean;
   actionId?: string;
@@ -43,12 +45,13 @@ export function TemplateAdminView(): JSX.Element {
           }
           return;
         }
-        const reports = await loadMarketplaceAdminReports(state.status);
+        const [reports, stats] = await Promise.all([loadMarketplaceAdminReports(state.status), loadMarketplaceAdminStats()]);
         if (!cancelled) {
           setState((current) => ({
             ...current,
             user: currentUser.user,
             reports: reports.items,
+            stats,
             loading: false
           }));
         }
@@ -72,10 +75,11 @@ export function TemplateAdminView(): JSX.Element {
 
   async function reload(status = state.status, message?: string): Promise<void> {
     try {
-      const reports = await loadMarketplaceAdminReports(status);
+      const [reports, stats] = await Promise.all([loadMarketplaceAdminReports(status), loadMarketplaceAdminStats()]);
       setState((current) => ({
         ...current,
         reports: reports.items,
+        stats,
         loading: false,
         actionId: undefined,
         message,
@@ -175,6 +179,8 @@ export function TemplateAdminView(): JSX.Element {
             {state.errorMessage ? <AdminErrorPanel message={state.errorMessage} /> : null}
             {state.message ? <div className="mt-5 border border-canvas-line bg-canvas-mist p-4 text-sm text-canvas-ink">{state.message}</div> : null}
 
+            {state.stats ? <AdminStatsPanel stats={state.stats} /> : null}
+
             {state.reports.length > 0 ? (
               <ol className="mt-8 space-y-5">
                 {state.reports.map((report) => (
@@ -230,6 +236,81 @@ export function TemplateAdminView(): JSX.Element {
           </>
         )}
       </section>
+    </div>
+  );
+}
+
+function AdminStatsPanel({ stats }: { stats: MarketplaceAdminStatsResponse }): JSX.Element {
+  const reportTotal = Math.max(1, stats.totals.reportCount);
+  const openShare = Math.round((stats.totals.openReportCount / reportTotal) * 100);
+  return (
+    <section className="mt-8 space-y-5" aria-labelledby="admin-stats-heading">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-canvas-moss">Marketplace health</p>
+        <h2 id="admin-stats-heading" className="mt-1 text-2xl font-semibold text-canvas-ink">
+          Global stats
+        </h2>
+      </div>
+      <dl className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Published templates" value={formatNumber(stats.totals.publishedTemplateCount)} detail={`${formatNumber(stats.totals.delistedTemplateCount)} delisted`} />
+        <MetricCard label="Downloads" value={formatNumber(stats.totals.downloadCount)} detail={`${formatNumber(stats.totals.likeCount)} likes`} />
+        <MetricCard label="Reports" value={formatNumber(stats.totals.reportCount)} detail={`${formatNumber(stats.totals.openReportCount)} open · ${openShare}%`} />
+        <MetricCard label="Users" value={formatNumber(stats.totals.userCount)} detail={`${formatNumber(stats.totals.bannedUserCount)} banned · ${formatNumber(stats.totals.publisherCount)} publishers`} />
+      </dl>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="border border-canvas-line bg-canvas-mist p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <h3 className="text-lg font-semibold text-canvas-ink">Top templates</h3>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-canvas-muted">By downloads</p>
+          </div>
+          {stats.topTemplates.length > 0 ? (
+            <ol className="mt-4 divide-y divide-canvas-line">
+              {stats.topTemplates.map((item) => (
+                <li key={item.template.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                  <a className="font-semibold text-canvas-ink hover:text-canvas-moss hover:underline" href={buildTemplateDetailHref(item.template.slug)}>
+                    {item.template.name}
+                  </a>
+                  <span className="text-canvas-muted">
+                    {formatNumber(item.downloadCount)} downloads · {formatNumber(item.likeCount)} likes · {formatNumber(item.publishCount)} publishes
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-4 text-sm text-canvas-muted">No published templates yet.</p>
+          )}
+        </div>
+        <div className="border border-canvas-line bg-canvas-mist p-5">
+          <h3 className="text-lg font-semibold text-canvas-ink">Recent daily activity</h3>
+          {stats.daily.length > 0 ? (
+            <dl className="mt-4 space-y-3">
+              {stats.daily.slice(-5).map((point) => (
+                <div key={point.day} className="grid grid-cols-[6.5rem_1fr] gap-3 text-sm">
+                  <dt className="font-semibold text-canvas-ink">{point.day}</dt>
+                  <dd className="text-canvas-muted">
+                    {formatNumber(point.downloadCount)} downloads · {formatNumber(point.likeCount)} likes · {formatNumber(point.publishCount)} publishes
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="mt-4 text-sm text-canvas-muted">No daily stats have been recorded yet.</p>
+          )}
+        </div>
+      </div>
+      <div className="border border-canvas-line bg-canvas-mist p-4 text-sm text-canvas-muted">
+        {formatNumber(stats.totals.adminActionCount)} admin audit log entries recorded. Stats source: {stats.storageMode}.
+      </div>
+    </section>
+  );
+}
+
+function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }): JSX.Element {
+  return (
+    <div className="border border-canvas-line bg-canvas-paper p-4">
+      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-canvas-muted">{label}</dt>
+      <dd className="mt-2 text-3xl font-semibold text-canvas-ink">{value}</dd>
+      <p className="mt-1 text-sm text-canvas-muted">{detail}</p>
     </div>
   );
 }
@@ -352,4 +433,8 @@ function AdminErrorPanel({ message }: { message: string }): JSX.Element {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString();
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat('en-US').format(value);
 }

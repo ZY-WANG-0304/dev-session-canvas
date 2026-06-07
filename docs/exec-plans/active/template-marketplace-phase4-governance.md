@@ -20,8 +20,9 @@ Phase 4 不进入付费模板、评论区、私有市场、推荐算法或外部
 - [x] (2026-06-07 01:37 +0800) 同步产品规格、设计文档、索引和本计划，记录 Phase 4 第一切片的本地实现范围与剩余缺口。
 - [x] (2026-06-07 01:40 +0800) 更新 workers.dev 调试服务成功，当前 URL 为 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，Wrangler 当前版本 ID 为 `822333bb-8c0e-43c2-a180-e72593cc4fd0`。
 - [x] (2026-06-07 11:05 +0800) 修复详情页举报原因下拉切换时 React 合成事件被异步 updater 读取导致的空白页，并重新部署 workers.dev，Wrangler 当前版本 ID 为 `62cfd459-054b-478c-9d81-beacf5c04a94`。
+- [x] (2026-06-07 19:29 +0800) 从最新 `origin/feature/templates-marketplace` 切出 `feat-template-marketplace-phase4-admin-stats`，实现管理员全站统计面板的共享类型、Worker API、D1 聚合查询、Fake D1、Web API helper、`/templates/admin` 统计区和本地单元测试。
 - [ ] 实现 VSCode 安装侧 Phase 4：已安装模板更新提醒、手动更新到最新版本、安装历史版本和回滚。
-- [ ] 实现插件内举报入口和管理员全站数据统计面板。
+- [ ] 实现插件内举报入口。
 - [ ] 执行真实 GitHub OAuth smoke：普通用户举报、管理员处理、下架后公开隐藏、封禁后写接口拒绝。
 
 ## 意外与发现
@@ -43,6 +44,9 @@ Phase 4 不进入付费模板、评论区、私有市场、推荐算法或外部
 - 观察：`POST /api/v1/templates/package` 需要在读取 multipart zip 前完成封禁检查。
   证据：PR review 指出旧顺序会让 banned user 触发大包读取/解析；本轮把 repository 初始化和 `isUserBanned()` 前移到 `readPackageZipUpload()` 之前，并补充 banned package publisher 测试，断言 403 返回时不会调用 `request.formData()`。
 
+- 观察：管理员全站统计中的单模板发布次数不能复用 `templateSelectSql` 映射出的 `template.versions.length`。
+  证据：`templateSelectSql` 只选择当前可公开的 latest published version；本轮为全站统计新增 `fetchAllPublishedVersionCounts()`，直接从 `template_versions` 按 `template_id` 聚合 `COUNT(*)`，并用测试断言 `d1-review-loop` 的 `publishCount` 为 2。
+
 ## 决策记录
 
 - 决策：Phase 4 第一切片先交付治理后端闭环，再做 Web 管理后台和 VSCode 更新/回滚 UI。
@@ -61,9 +65,13 @@ Phase 4 不进入付费模板、评论区、私有市场、推荐算法或外部
   理由：举报队列的常见治理对象是被举报模板和发布者；误把举报人作为默认封禁对象会鼓励错误操作。若后续需要处理恶意举报，应在管理员用户管理或举报滥用专题中补单独入口和证据展示。
   日期/作者：2026-06-07 / Codex
 
+- 决策：管理员全站统计面板只读取 D1 的累计字段、按天聚合表和治理状态表，不新增原始事件表。
+  理由：Phase 4 的目标是让管理员看到市场健康度、举报压力和治理动作数量；当前 `templates.download_count` / `like_count`、`template_daily_stats`、`template_versions`、`reports`、`users` 和 `admin_audit_logs` 已能支撑该面板。把 D1 扩展成原始事件仓库会增加写入压力和运维复杂度，超出本阶段边界。
+  日期/作者：2026-06-07 / Codex
+
 ## 结果与复盘
 
-Phase 4 已完成第一切片的本地代码闭环：共享类型、D1 repository、Worker 路由、Fake D1、API/Web 测试、详情页举报表单和 `/templates/admin` 最小后台已落地。第一切片证明治理权限和审计可以由 Worker 强制执行，而不是靠前端隐藏按钮。剩余缺口是 VSCode 安装侧更新提醒/手动更新/回滚、插件内举报入口、管理员全站统计面板，以及真实 preview OAuth smoke。
+Phase 4 已完成第一切片的本地代码闭环：共享类型、D1 repository、Worker 路由、Fake D1、API/Web 测试、详情页举报表单和 `/templates/admin` 最小后台已落地。第一切片证明治理权限和审计可以由 Worker 强制执行，而不是靠前端隐藏按钮。管理员全站统计面板也已在本地补齐，管理员打开 `/templates/admin` 时可看到模板、下载、点赞、举报、用户、发布者、版本发布数、Top templates、近期日聚合和审计日志计数。剩余缺口是 VSCode 安装侧更新提醒/手动更新/回滚、插件内举报入口，以及真实 preview OAuth smoke。
 
 ## 上下文与定向
 
@@ -79,9 +87,11 @@ Phase 4 已完成第一切片的本地代码闭环：共享类型、D1 repositor
 
 第二里程碑是浏览器 UI，已完成最小切片。`apps/template-marketplace/src/web/lib/api.ts` 增加举报和管理员 API helper；`TemplateDetailView.tsx` 增加登录后举报入口；新增 `TemplateAdminView.tsx` 展示举报队列、处理举报、下架/恢复模板和封禁发布者。`App.tsx` 增加 `/templates/admin` 路由和 Admin 导航入口。前端只负责发请求和显示结果，不作为权限边界；非管理员访问由 Worker 返回 403。
 
-第三里程碑是 VSCode 更新与回滚。检查 `src/panel/TemplateMarketplaceClient.ts`、`src/panel/CanvasTemplateStore.ts` 和 `src/panel/CanvasTemplateMarketplacePanel.ts` 已有版本菜单与安装 sidecar 行为，补齐“已安装版本低于 latest 时显示更新徽章”“主按钮更新到 latest”“版本菜单选择历史版本回滚”的宿主测试。安装包仍以完整 `package.zip` 和 `.market.json` sidecar 为事实，不能把包内 `template.json` 当成市场管理对象。
+第三里程碑是管理员全站统计面板，已完成本地实现。共享包在 `packages/marketplace-shared/src/index.ts` 导出 `MarketplaceAdminStatsResponse`、`MarketplaceAdminStatsTotals` 和 `MarketplaceAdminStatsTemplate`。Repository 增加 `getAdminStats()`：D1 实现读取 `templates` 累计计数、`users` 总量和封禁数、`reports` 状态分布、`admin_audit_logs` 计数、`template_versions` 发布版本数、`template_daily_stats` 日聚合和 Top templates；seed 实现使用内置 seed catalog 作为只读降级。Worker 暴露 `GET /api/v1/admin/stats`，复用 `requireMarketplaceAdmin()`。Web API helper 和 `TemplateAdminView.tsx` 在加载举报队列时并行加载统计，并展示全站指标、Top templates 和最近 5 天日聚合。
 
-第四里程碑是文档和真实环境验证。同步产品规格 Phase 4 状态、设计文档 API 列表和验证状态、设计索引和产品索引。部署 preview 后做浏览器真实 OAuth smoke：普通用户举报，管理员查看队列并下架，普通用户确认公开列表隐藏，被封禁用户写接口返回 403。
+第四里程碑是 VSCode 更新与回滚。检查 `src/panel/TemplateMarketplaceClient.ts`、`src/panel/CanvasTemplateStore.ts` 和 `src/panel/CanvasTemplateMarketplacePanel.ts` 已有版本菜单与安装 sidecar 行为，补齐“已安装版本低于 latest 时显示更新徽章”“主按钮更新到 latest”“版本菜单选择历史版本回滚”的宿主测试。安装包仍以完整 `package.zip` 和 `.market.json` sidecar 为事实，不能把包内 `template.json` 当成市场管理对象。
+
+第五里程碑是文档和真实环境验证。同步产品规格 Phase 4 状态、设计文档 API 列表和验证状态、设计索引和产品索引。部署 preview 后做浏览器真实 OAuth smoke：普通用户举报，管理员查看队列和统计并下架，普通用户确认公开列表隐藏，被封禁用户写接口返回 403。
 
 ## 具体步骤
 
@@ -92,7 +102,7 @@ Phase 4 已完成第一切片的本地代码闭环：共享类型、D1 repositor
     git status --short --branch
     git log --oneline --decorate --max-count=8
 
-预期分支为 `feat-template-marketplace-phase4-governance`，基线包含 `adb6660 feat(marketplace): 完成模板市场 Phase3 互动统计 (#115)`。当前工作树存在用户未跟踪文件，包括 `image copy*.png`、`tmp.md` 和若干 package fixture；本计划不删除这些文件。
+预期短生命周期分支为 `feat-template-marketplace-phase4-admin-stats`，目标基线为 `origin/feature/templates-marketplace`。当前工作树存在用户未跟踪文件，包括 `image.png` 和若干 `apps/template-marketplace/fixtures/r2/**/package.zip` fixture；本计划不删除这些文件。
 
 第一里程碑和第二里程碑实现后运行：
 
@@ -108,7 +118,7 @@ Phase 4 已完成第一切片的本地代码闭环：共享类型、D1 repositor
 
 如果 preview 部署因 Cloudflare token 或本机网络失败，必须记录失败原因，不能把未执行的真实 smoke 写成通过。
 
-第三里程碑实现时应优先运行：
+VSCode 更新与回滚里程碑实现时应优先运行：
 
     npm run build
     npm run test:marketplace-vscode-fixture-e2e
@@ -118,6 +128,8 @@ Phase 4 已完成第一切片的本地代码闭环：共享类型、D1 repositor
 治理后端完成时应满足以下行为。未登录用户调用 `POST /api/v1/templates/:id/report` 返回 401；登录用户举报公开模板返回 201 和 `open` report；被封禁用户举报、点赞、发布和发布新版本返回 403。非管理员调用 `GET /api/v1/admin/reports` 返回 403；管理员调用同一接口能看到 open 举报。管理员处理举报为 resolved 且要求下架模板后，`templates.status` 变为 `delisted`，公开 `GET /api/v1/templates/:id` 返回 404；管理员恢复模板后公开详情恢复可见。管理员封禁用户后，该用户后续写接口被拒绝。每个管理员动作都写入 `admin_audit_logs`。
 
 Web 管理后台完成时应满足：管理员打开 `/templates/admin` 能看到举报队列、模板、发布者和举报人摘要；点击驳回或解决后列表状态更新；点击下架/恢复模板后公开列表反映状态；点击封禁发布者后该发布者写接口被拒绝。非管理员打开页面应看到权限错误，不应出现可操作按钮。
+
+管理员全站统计完成时应满足：管理员调用 `GET /api/v1/admin/stats` 返回模板总量、published/delisted 数量、用户与封禁数、发布者数、下载与点赞累计数、已发布版本总数、举报状态分布、管理员审计动作数、Top templates 和按天聚合趋势；非管理员沿用管理员权限检查返回 403。Web 管理后台加载举报队列时应同时显示这些统计，Top templates 中的单模板 `publishCount` 必须来自 `template_versions` 聚合而不是 latest version 映射长度。
 
 VSCode 更新与回滚完成时应满足：安装旧版本市场模板后，如果远端 latest version 更高，侧栏显示更新徽章；点击更新安装 latest；通过版本菜单选择历史版本后，本地 sidecar 的 `marketVersionId` 和 `installedVersionNumber` 改为目标历史版本；应用模板仍读取包内 `template.json`，README、CHANGELOG 和缩略图继续保留。
 
@@ -134,6 +146,9 @@ VSCode 更新与回滚完成时应满足：安装旧版本市场模板后，如�
 
     git checkout -B feat-template-marketplace-phase4-governance origin/feature/templates-marketplace
     # Switched to a new branch 'feat-template-marketplace-phase4-governance'
+
+    git checkout -B feat-template-marketplace-phase4-admin-stats origin/feature/templates-marketplace
+    # 2026-06-07 19:29 +0800；从最新集成分支切出管理员全站统计子主题分支
 
     rg "reports|admin_roles|admin_audit_logs|banned_at|delisted" apps/template-marketplace/migrations/0001_marketplace_core.sql packages/marketplace-shared/src/schema.ts
     # 首版 schema 已包含 Phase 4 最小治理闭环所需字段和表。
@@ -183,14 +198,34 @@ VSCode 更新与回滚完成时应满足：安装旧版本市场模板后，如�
     git diff --check
     # 2026-06-07 15:20 +0800；通过，无 whitespace error
 
+    npm run test:marketplace-shared
+    # 2026-06-07 19:32 +0800；Test Files 2 passed; Tests 23 passed
+
+    npm run test:marketplace-api
+    # 2026-06-07 19:34 +0800；Test Files 5 passed; Tests 89 passed
+
+    npm run test:marketplace-web
+    # 2026-06-07 19:32 +0800；Test Files 6 passed; Tests 41 passed
+
+    npm run typecheck:marketplace
+    # 2026-06-07 19:34 +0800；marketplace-shared 与 template-marketplace typecheck 通过
+
+    npm run build:marketplace
+    # 2026-06-07 19:32 +0800；Vite production build completed
+
+    git diff --check
+    # 2026-06-07 19:34 +0800；通过，无 whitespace error
+
 ## 接口与依赖
 
 必须继续使用 Cloudflare Workers + Hono + D1 + R2 的既有模板市场栈。治理 API 不引入新的外部服务，不依赖前端隐藏按钮作为权限边界。
 
-必须在 `packages/marketplace-shared/src/index.ts` 导出举报原因、举报状态和治理 API response 类型。必须在 `apps/template-marketplace/src/worker/repository.ts` 的 `MarketplaceTemplateRepository` 接口和 `D1TemplateRepository` 实现中增加治理方法。必须在 `apps/template-marketplace/src/worker/app.ts` 暴露治理路由，并统一使用 `makeMarketplaceApiError()` 返回结构化错误。必须补充 `apps/template-marketplace/src/worker/app.test.ts` 和 `repository.test.ts`，覆盖认证失败、封禁失败、非管理员失败、管理员成功和审计写入。Web API helper 位于 `apps/template-marketplace/src/web/lib/api.ts`，浏览器管理后台位于 `apps/template-marketplace/src/web/components/TemplateAdminView.tsx`，详情页举报入口位于 `apps/template-marketplace/src/web/components/TemplateDetailView.tsx`。
+必须在 `packages/marketplace-shared/src/index.ts` 导出举报原因、举报状态、治理 API response 类型和管理员统计 response 类型。必须在 `apps/template-marketplace/src/worker/repository.ts` 的 `MarketplaceTemplateRepository` 接口和 `D1TemplateRepository` 实现中增加治理方法与 `getAdminStats()`。必须在 `apps/template-marketplace/src/worker/app.ts` 暴露治理路由和 `GET /api/v1/admin/stats`，并统一使用 `makeMarketplaceApiError()` 返回结构化错误。必须补充 `apps/template-marketplace/src/worker/app.test.ts` 和 `repository.test.ts`，覆盖认证失败、封禁失败、非管理员失败、管理员成功、审计写入和全站统计聚合。Web API helper 位于 `apps/template-marketplace/src/web/lib/api.ts`，浏览器管理后台位于 `apps/template-marketplace/src/web/components/TemplateAdminView.tsx`，详情页举报入口位于 `apps/template-marketplace/src/web/components/TemplateDetailView.tsx`。
 
 2026-06-07 / Codex：创建 Phase 4 ExecPlan，原因是用户要求 compact 后进入 Phase 4，且版本管理与治理涉及权限、审计、Web UI 和 VSCode 安装侧多模块实现。
 
 2026-06-07 / Codex：更新 Phase 4 ExecPlan，原因是第一切片已完成治理后端与浏览器最小治理入口，需要记录本地验证证据和剩余 VSCode / preview 缺口。
 
 2026-06-07 / Codex：处理 PR review 中的两个 Medium 问题：完整包上传先查封禁再读取 multipart body；管理员 bootstrap 新增 `MARKETPLACE_ADMIN_GITHUB_IDS` 并保留 login 兼容。已同步设计/产品/计划文档和 `.dev.vars.example`。
+
+2026-06-07 / Codex：更新 Phase 4 ExecPlan，原因是本轮切到 `feat-template-marketplace-phase4-admin-stats` 后实现管理员全站统计面板，需要记录 API、聚合口径、验证标准和剩余 Phase 4 缺口。
