@@ -25,6 +25,7 @@ export const COMMAND_IDS = {
   createNode: 'devSessionCanvas.createNode',
   createTerminalFromExplorerResource: 'devSessionCanvas.createTerminalFromExplorerResource',
   createAgentFromExplorerResource: 'devSessionCanvas.createAgentFromExplorerResource',
+  createNoteFromExplorerMarkdown: 'devSessionCanvas.createNoteFromExplorerMarkdown',
   createEmptyGroup: 'devSessionCanvas.createEmptyGroup',
   createGroupFromSelection: 'devSessionCanvas.createGroupFromSelection',
   saveNoteAsMarkdownFile: 'devSessionCanvas.saveNoteAsMarkdownFile',

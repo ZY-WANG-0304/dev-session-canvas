@@ -1051,6 +1051,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.revealSurface(surface);
   }
 
+  public async revealOrCreateCurrentCanvasSurface(): Promise<void> {
+    await this.revealSurface(this.getCurrentOpenCanvasSurface() ?? this.getConfiguredSurface());
+  }
+
   public async revealInEditor(): Promise<void> {
     await this.revealSurface('editor');
   }
@@ -1972,7 +1976,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     try {
-      await this.revealOrCreate();
+      await this.revealOrCreateCurrentCanvasSurface();
       await this.waitForCanvasReady(undefined, TERMINAL_INITIAL_INPUT_DISPATCH_TIMEOUT_MS);
     } catch (error) {
       return {
@@ -2192,6 +2196,128 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     this.persistState();
     this.postState('host/stateUpdated');
+  }
+
+  public async createNoteFromMarkdownResource(
+    uri: vscode.Uri,
+    options: { preferredPosition?: CanvasNodePosition; targetGroupId?: string } = {}
+  ): Promise<CanvasNodeSummary | undefined> {
+    const resourceUri = this.canonicalizeCurrentHostNoteMarkdownUri(uri);
+    const admission = resolveExplorerNoteMarkdownAdmission(
+      resourceUri,
+      vscode.workspace.workspaceFolders ?? []
+    );
+    if (!admission.uri) {
+      await vscode.window.showWarningMessage(
+        admission.rejectionReason ?? '请选择 Markdown 文件（.md / .markdown）来创建关联 Note。'
+      );
+      return undefined;
+    }
+
+    const noteUri = admission.uri;
+    if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(noteUri))) {
+      await vscode.window.showWarningMessage('只能关联 Markdown 文件（.md / .markdown）。');
+      return undefined;
+    }
+
+    const readResult = await this.readNoteMarkdownFile(noteUri);
+    if (readResult.status !== 'ok') {
+      await vscode.window.showWarningMessage(
+        readResult.lastError ?? `无法读取 ${this.formatNoteMarkdownUriForMessage(noteUri)}。`
+      );
+      return undefined;
+    }
+
+    const resourceKey = normalizeNoteMarkdownResourceKey(noteUri);
+    const existingNodeIds = this.getAssociatedNoteMarkdownNodeIdsForResourceKey(resourceKey);
+    if (existingNodeIds.length > 0) {
+      const choice = await this.confirmExistingDroppedNoteMarkdownFile(noteUri, existingNodeIds.length);
+      if (choice === 'locate') {
+        this.focusCanvasTemplateNodeGroup(existingNodeIds);
+        return undefined;
+      }
+      if (choice !== 'create') {
+        return undefined;
+      }
+    }
+
+    const preferredPosition = this.resolveExplorerMarkdownNotePosition(options.preferredPosition);
+    const placement = this.resolveExplorerMarkdownNotePlacement(preferredPosition, noteUri, options.targetGroupId);
+    const createdNode = this.createAssociatedNoteMarkdownNode(
+      noteUri,
+      readResult.content,
+      placement.preferredPosition,
+      readResult.contentRevision,
+      placement.targetGroupId
+    );
+    if (!createdNode) {
+      await vscode.window.showWarningMessage('多根 workspace 中请从目标 root section 内创建关联 Note。');
+      return undefined;
+    }
+
+    this.persistState();
+    this.postState('host/stateUpdated');
+    this.focusCanvasTemplateNodeGroup([createdNode.id]);
+    return createdNode;
+  }
+
+  private resolveExplorerMarkdownNotePosition(
+    preferredPosition?: CanvasNodePosition
+  ): CanvasNodePosition {
+    const preferredCenter = this.resolvePreferredCanvasCenter();
+    const footprint = estimatedCanvasNodeFootprint('note');
+    return snapCanvasPosition(preferredPosition ?? {
+      x: (preferredCenter?.x ?? 0) - Math.round(footprint.width / 2),
+      y: (preferredCenter?.y ?? 0) - Math.round(footprint.height / 2)
+    });
+  }
+
+  private resolveExplorerMarkdownNotePlacement(
+    preferredPosition: CanvasNodePosition,
+    uri: vscode.Uri,
+    explicitTargetGroupId?: string
+  ): { preferredPosition?: CanvasNodePosition; targetGroupId?: string } {
+    if (explicitTargetGroupId) {
+      return {
+        preferredPosition,
+        targetGroupId: explicitTargetGroupId
+      };
+    }
+
+    const workspaceRootGroups = (this.state.groups ?? []).filter(isWorkspaceRootGroup);
+    if (workspaceRootGroups.length === 0) {
+      return {
+        preferredPosition
+      };
+    }
+
+    const workspaceFolder = findContainingNoteMarkdownWorkspaceFolder(uri, vscode.workspace.workspaceFolders ?? []);
+    const targetRootGroup = workspaceFolder
+      ? workspaceRootGroups
+          .flatMap((group) => {
+            const rootPath = resolveWorkspaceRootPathForGroup(group);
+            return rootPath !== undefined && isSameOrDescendantExecutionPath(workspaceFolder.uri.fsPath, rootPath)
+              ? [{ group, rootPath }]
+              : [];
+          })
+          .sort((left, right) => right.rootPath.length - left.rootPath.length)
+          .at(0)?.group
+      : undefined;
+
+    if (targetRootGroup) {
+      return {
+        preferredPosition: rectContainsPoint(rectForGroup(targetRootGroup), preferredPosition)
+          ? preferredPosition
+          : undefined,
+        targetGroupId: targetRootGroup.id
+      };
+    }
+
+    const containingGroup = workspaceRootGroups.find((group) => rectContainsPoint(rectForGroup(group), preferredPosition));
+    return {
+      preferredPosition: containingGroup ? preferredPosition : undefined,
+      targetGroupId: containingGroup?.id
+    };
   }
 
   public async focusNodeById(nodeId: string): Promise<boolean> {
@@ -5210,7 +5336,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private createAssociatedNoteMarkdownNode(
     uri: vscode.Uri,
     content: string,
-    preferredPosition: CanvasNodePosition,
+    preferredPosition: CanvasNodePosition | undefined,
     contentRevision?: string,
     targetGroupId?: string
   ): CanvasNodeSummary | undefined {
@@ -8054,6 +8180,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getConfiguredSurface(): CanvasSurfaceLocation {
     return this.appliedStartupConfiguration.defaultSurface;
+  }
+
+  private getCurrentOpenCanvasSurface(): CanvasSurfaceLocation | undefined {
+    if (!this.activeSurface) {
+      return undefined;
+    }
+
+    return this.getSurfaceVisibility(this.activeSurface) === 'closed' ? undefined : this.activeSurface;
   }
 
   private normalizeStoredSurface(value: unknown): CanvasSurfaceLocation | undefined {
@@ -19524,6 +19658,30 @@ function resolveDroppedNoteMarkdownAdmission(
     : {
         kind: 'same-host-outside-workspace',
         uri: currentHostUri.uri
+      };
+}
+
+function resolveExplorerNoteMarkdownAdmission(
+  uri: vscode.Uri,
+  workspaceFolders: readonly vscode.WorkspaceFolder[]
+): NoteMarkdownDropAdmission {
+  if (uri.scheme !== 'file') {
+    return {
+      kind: 'unsupported-scheme',
+      rejectionReason: `不支持关联 ${uri.scheme}: Markdown 资源。`
+    };
+  }
+
+  const workspaceFolder = findContainingNoteMarkdownWorkspaceFolder(uri, workspaceFolders);
+  return workspaceFolder
+    ? {
+        kind: 'same-workspace',
+        uri,
+        workspaceFolder
+      }
+    : {
+        kind: 'same-host-outside-workspace',
+        uri
       };
 }
 
