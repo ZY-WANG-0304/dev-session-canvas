@@ -121,6 +121,7 @@ async function run() {
       state: fresherSiblingState,
       activeSurface: 'panel'
     });
+    await removeRootLocalCanvasSnapshot(currentStoragePath);
 
     await clearDiagnosticEvents();
     snapshot = await reloadPersistedState();
@@ -152,7 +153,7 @@ async function run() {
     assert.strictEqual(loadSelectedEvent.detail?.stateHash, fresherSiblingStateHash);
 
     const migratedCurrentSnapshot = JSON.parse(await fs.readFile(currentSnapshotPath, 'utf8'));
-    assert.strictEqual(migratedCurrentSnapshot.stateHash, fresherSiblingStateHash);
+    assert.strictEqual(migratedCurrentSnapshot.stateHash, hashJsonValue(migratedCurrentSnapshot.state));
     assert.strictEqual(
       findNodeById({ state: migratedCurrentSnapshot.state }, noteNode.id).metadata.note.content,
       'SIBLING_SLOT_FRESHER_SNAPSHOT'
@@ -209,6 +210,7 @@ async function run() {
   }
 
   await runLiveRuntimeStorageRecoveryScenario(extension);
+  await runRootLocalMissingRuntimeStoragePathDowngradeScenario();
 }
 
 async function runLiveRuntimeStorageRecoveryScenario(extension) {
@@ -326,6 +328,7 @@ async function runLiveRuntimeStorageRecoveryScenario(extension) {
       state: siblingState,
       activeSurface: 'panel'
     });
+    await removeRootLocalCanvasSnapshot(currentStoragePath);
 
     await clearDiagnosticEvents();
     let snapshot = await reloadPersistedState();
@@ -404,6 +407,123 @@ async function runLiveRuntimeStorageRecoveryScenario(extension) {
     if (siblingStoragePath) {
       await fs.rm(siblingStoragePath, { recursive: true, force: true }).catch(() => undefined);
     }
+    await setRuntimePersistenceEnabled(previousRuntimePersistenceEnabled);
+  }
+}
+
+async function runRootLocalMissingRuntimeStoragePathDowngradeScenario() {
+  const configuration = vscode.workspace.getConfiguration();
+  const previousRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
+
+  try {
+    await setRuntimePersistenceEnabled(true);
+    await simulateRuntimeReload();
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+
+    const baselineFlush = await flushPersistedState();
+    assert.strictEqual(baselineFlush.lastError, undefined);
+    assert.ok(baselineFlush.snapshotPath, 'Expected a current-slot snapshot path for root-local downgrade smoke.');
+
+    const currentStoragePath = path.dirname(baselineFlush.snapshotPath);
+    const rootPath = getWorkspaceRoot();
+    const rootLocalSnapshotPath = getRootLocalCanvasSnapshotPath(currentStoragePath, rootPath);
+    const rootLocalState = {
+      version: 1,
+      updatedAt: '2026-04-17T08:00:00.000Z',
+      nodes: [
+        {
+          id: 'root-local-missing-agent-storage',
+          kind: 'agent',
+          title: 'Root-local Missing Agent Storage',
+          status: 'running',
+          summary: 'missing runtimeStoragePath',
+          position: { x: 160, y: 140 },
+          size: { width: 560, height: 360 },
+          metadata: {
+            agent: {
+              provider: 'codex',
+              lifecycle: 'running',
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              liveSession: false,
+              runtimeSessionId: 'root-local-agent-runtime-missing-storage',
+              recentOutput: 'ROOT_LOCAL_AGENT_MISSING_STORAGE',
+              lastCols: 92,
+              lastRows: 28
+            }
+          }
+        },
+        {
+          id: 'root-local-missing-terminal-storage',
+          kind: 'terminal',
+          title: 'Root-local Missing Terminal Storage',
+          status: 'live',
+          summary: 'missing runtimeStoragePath',
+          position: { x: 760, y: 140 },
+          size: { width: 560, height: 360 },
+          metadata: {
+            terminal: {
+              backend: 'node-pty',
+              lifecycle: 'live',
+              shellPath: resolveShellPath(),
+              cwd: rootPath,
+              persistenceMode: 'live-runtime',
+              attachmentState: 'reattaching',
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              liveSession: false,
+              runtimeSessionId: 'root-local-terminal-runtime-missing-storage',
+              recentOutput: 'ROOT_LOCAL_TERMINAL_MISSING_STORAGE',
+              lastCols: 92,
+              lastRows: 28
+            }
+          }
+        }
+      ]
+    };
+
+    await writePersistedSnapshotFixture(rootLocalSnapshotPath, {
+      version: 1,
+      writtenAt: '2026-04-17T08:01:00.000Z',
+      stateHash: hashJsonValue(rootLocalState),
+      state: rootLocalState,
+      activeSurface: 'panel',
+      runtimePersistenceEnabled: true
+    });
+
+    await clearDiagnosticEvents();
+    const snapshot = await reloadPersistedState();
+    const agentNode = findNodeById(snapshot, 'root-local-missing-agent-storage');
+    const terminalNode = findNodeById(snapshot, 'root-local-missing-terminal-storage');
+
+    assert.strictEqual(agentNode.status, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.attachmentState, 'history-restored');
+    assert.strictEqual(agentNode.metadata.agent.runtimeSessionId, undefined);
+    assert.strictEqual(agentNode.metadata.agent.runtimeStoragePath, undefined);
+    assert.match(
+      agentNode.metadata.agent.lastRuntimeError,
+      /root-local live runtime 缺少 runtimeStoragePath/u
+    );
+    assert.strictEqual(terminalNode.status, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'history-restored');
+    assert.strictEqual(terminalNode.metadata.terminal.runtimeSessionId, undefined);
+    assert.strictEqual(terminalNode.metadata.terminal.runtimeStoragePath, undefined);
+    assert.match(
+      terminalNode.metadata.terminal.lastRuntimeError,
+      /root-local live runtime 缺少 runtimeStoragePath/u
+    );
+
+    const diagnostics = await getDiagnosticEvents();
+    const downgradeEvent = diagnostics.find((event) => event.kind === 'runtime/missingRuntimeStoragePathDowngraded');
+    assert.ok(downgradeEvent, 'Expected missing runtimeStoragePath downgrade diagnostic for root-local snapshot.');
+    assert.strictEqual(downgradeEvent.detail?.rootPath, path.resolve(rootPath));
+    assert.strictEqual(downgradeEvent.detail?.downgradedCount, 2);
+  } finally {
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState).catch(() => undefined);
     await setRuntimePersistenceEnabled(previousRuntimePersistenceEnabled);
   }
 }
@@ -814,6 +934,39 @@ function deriveSiblingStoragePath(currentStoragePath) {
   const match = currentSlotName.match(/^(.*)-([1-9]\d*)$/);
   const siblingSlotName = match ? match[1] : `${currentSlotName}-1`;
   return path.join(path.dirname(currentSlotDir), siblingSlotName, extensionDirName);
+}
+
+function deriveGlobalStoragePathFromExtensionStoragePath(extensionStoragePath) {
+  const extensionDirName = path.basename(extensionStoragePath);
+  const slotDir = path.dirname(extensionStoragePath);
+  const workspaceStorageDir = path.dirname(slotDir);
+  assert.strictEqual(
+    path.basename(workspaceStorageDir),
+    'workspaceStorage',
+    `Cannot derive globalStorage from non-workspaceStorage path: ${extensionStoragePath}`
+  );
+  return path.join(path.dirname(workspaceStorageDir), 'globalStorage', extensionDirName);
+}
+
+function getRootLocalCanvasSnapshotPath(extensionStoragePath, rootPath = getWorkspaceRoot()) {
+  return path.join(
+    deriveGlobalStoragePathFromExtensionStoragePath(extensionStoragePath),
+    'root-local-canvas',
+    createRootLocalCanvasStorageKey(rootPath),
+    'canvas-state.json'
+  );
+}
+
+async function removeRootLocalCanvasSnapshot(extensionStoragePath) {
+  await fs.rm(getRootLocalCanvasSnapshotPath(extensionStoragePath), { force: true });
+}
+
+function createRootLocalCanvasStorageKey(rootPath) {
+  const resolvedRootPath = path.resolve(rootPath);
+  return createHash('sha256')
+    .update(process.platform === 'win32' ? resolvedRootPath.toLowerCase() : resolvedRootPath)
+    .digest('hex')
+    .slice(0, 24);
 }
 
 function cloneJsonValue(value) {

@@ -30,6 +30,9 @@ const expectedRuntimeGuarantee =
 let artifactDir;
 let phase = 'verify';
 let stateFile;
+let expectedWorkspaceMode;
+let expectedWorkspaceRoot;
+let expectedWorkspaceFolderCount;
 
 module.exports = {
   run
@@ -59,6 +62,7 @@ async function run() {
 }
 
 async function runSetupPhase() {
+  assertExpectedWorkspaceShape();
   await activateExtension();
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await waitForRuntimeSupervisorSettled(0, 20000);
@@ -67,6 +71,11 @@ async function runSetupPhase() {
   await configureAgentCommandOverrides();
   await setRuntimePersistenceEnabled(true);
   let snapshot = await simulateRuntimeReload();
+  if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1) {
+    // The first reload applies the runtime-persistence config change; the second reload materializes
+    // the multi-root composed view from the now-current root-local snapshots.
+    snapshot = await simulateRuntimeReload();
+  }
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   await openCanvasEditor();
@@ -147,7 +156,11 @@ async function runSetupPhase() {
         agentSessionId: liveAgentNode.metadata.agent.runtimeSessionId,
         terminalSessionId: liveTerminalNode.metadata.terminal.runtimeSessionId,
         agentRuntimeStoragePath: liveAgentNode.metadata.agent.runtimeStoragePath,
-        terminalRuntimeStoragePath: liveTerminalNode.metadata.terminal.runtimeStoragePath
+        terminalRuntimeStoragePath: liveTerminalNode.metadata.terminal.runtimeStoragePath,
+        agentRuntimeStorageSlotName: readWorkspaceStorageSlotName(liveAgentNode.metadata.agent.runtimeStoragePath),
+        terminalRuntimeStorageSlotName: readWorkspaceStorageSlotName(liveTerminalNode.metadata.terminal.runtimeStoragePath),
+        workspaceRootPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+        workspaceFolderCount: vscode.workspace.workspaceFolders?.length ?? 0
       },
       null,
       2
@@ -157,19 +170,24 @@ async function runSetupPhase() {
 }
 
 async function runVerifyPhase() {
+  assertExpectedWorkspaceShape();
   await activateExtension();
   await openCanvasEditor();
 
   const expected = JSON.parse(await fs.readFile(stateFile, 'utf8'));
 
   let snapshot = await waitForSnapshot((currentSnapshot) => {
-    const agentNode = currentSnapshot.state.nodes.find((node) => node.id === expected.agentNodeId);
-    const terminalNode = currentSnapshot.state.nodes.find((node) => node.id === expected.terminalNodeId);
+    const agentNode = findExpectedExecutionNode(currentSnapshot, 'agent', expected);
+    const terminalNode = findExpectedExecutionNode(currentSnapshot, 'terminal', expected);
     return Boolean(agentNode && terminalNode);
   }, 20000);
 
-  let agentNode = findNodeById(snapshot, expected.agentNodeId);
-  let terminalNode = findNodeById(snapshot, expected.terminalNodeId);
+  let agentNode = findExpectedExecutionNode(snapshot, 'agent', expected);
+  let terminalNode = findExpectedExecutionNode(snapshot, 'terminal', expected);
+  assert.ok(agentNode, 'Missing expected Agent node after reopen.');
+  assert.ok(terminalNode, 'Missing expected Terminal node after reopen.');
+  const agentDisplayNodeId = agentNode.id;
+  const terminalDisplayNodeId = terminalNode.id;
   assert.strictEqual(agentNode.metadata.agent.persistenceMode, 'live-runtime');
   assert.strictEqual(terminalNode.metadata.terminal.persistenceMode, 'live-runtime');
   assert.notStrictEqual(agentNode.status, 'history-restored');
@@ -178,8 +196,8 @@ async function runVerifyPhase() {
   assertExecutionRuntimeMetadata(terminalNode, 'terminal');
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === expected.agentNodeId);
-    const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === expected.terminalNodeId);
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentDisplayNodeId);
+    const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalDisplayNodeId);
     return Boolean(
         currentAgent?.metadata?.agent?.liveSession &&
         currentAgent.metadata.agent.attachmentState === 'attached-live' &&
@@ -194,26 +212,32 @@ async function runVerifyPhase() {
     );
   }, 35000);
 
-  agentNode = findNodeById(snapshot, expected.agentNodeId);
-  terminalNode = findNodeById(snapshot, expected.terminalNodeId);
+  agentNode = findNodeById(snapshot, agentDisplayNodeId);
+  terminalNode = findNodeById(snapshot, terminalDisplayNodeId);
   const reopenedRuntimeState = await waitForRuntimeSupervisorSettled(2, 20000);
   assertRuntimeSupervisorSessions(reopenedRuntimeState, [
     {
       sessionId: expected.agentSessionId,
-      nodeId: expected.agentNodeId,
+      nodeId: agentDisplayNodeId,
       kind: 'agent',
       runtimeStoragePath: expected.agentRuntimeStoragePath
     },
     {
       sessionId: expected.terminalSessionId,
-      nodeId: expected.terminalNodeId,
+      nodeId: terminalDisplayNodeId,
       kind: 'terminal',
       runtimeStoragePath: expected.terminalRuntimeStoragePath
     }
   ]);
+  assertMultiRootReopenUsesRootLocalRuntimeStorage(reopenedRuntimeState, expected);
 
   assert.strictEqual(agentNode.metadata.agent.runtimeSessionId, expected.agentSessionId);
   assert.strictEqual(agentNode.metadata.agent.runtimeStoragePath, expected.agentRuntimeStoragePath);
+  assert.strictEqual(
+    readWorkspaceStorageSlotName(agentNode.metadata.agent.runtimeStoragePath),
+    expected.agentRuntimeStorageSlotName,
+    'Agent reconnect must keep the exact original workspaceStorage slot for the same root.'
+  );
   assert.strictEqual(agentNode.metadata.agent.liveSession, true);
   assert.strictEqual(agentNode.metadata.agent.attachmentState, 'attached-live');
   assert.ok(agentNode.metadata.agent.recentOutput.includes(AGENT_REOPEN_OUTPUT));
@@ -224,25 +248,30 @@ async function runVerifyPhase() {
     terminalNode.metadata.terminal.runtimeStoragePath,
     expected.terminalRuntimeStoragePath
   );
+  assert.strictEqual(
+    readWorkspaceStorageSlotName(terminalNode.metadata.terminal.runtimeStoragePath),
+    expected.terminalRuntimeStorageSlotName,
+    'Terminal reconnect must keep the exact original workspaceStorage slot for the same root.'
+  );
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
   assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'attached-live');
   assert.ok(terminalNode.metadata.terminal.recentOutput.includes(TERMINAL_REOPEN_OUTPUT));
   assertExecutionRuntimeMetadata(terminalNode, 'terminal');
 
-  await sendExecutionInput(expected.agentNodeId, 'agent', 'AFTER_REOPEN_AGENT\r');
-  await sendExecutionInput(expected.terminalNodeId, 'terminal', `echo ${TERMINAL_POST_REOPEN_OUTPUT}\r`);
+  await sendExecutionInput(agentDisplayNodeId, 'agent', 'AFTER_REOPEN_AGENT\r');
+  await sendExecutionInput(terminalDisplayNodeId, 'terminal', `echo ${TERMINAL_POST_REOPEN_OUTPUT}\r`);
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === expected.agentNodeId);
-    const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === expected.terminalNodeId);
+    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentDisplayNodeId);
+    const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalDisplayNodeId);
     return Boolean(
       currentAgent?.metadata?.agent?.recentOutput?.includes(AGENT_POST_REOPEN_OUTPUT) &&
         currentTerminal?.metadata?.terminal?.recentOutput?.includes(TERMINAL_POST_REOPEN_OUTPUT)
     );
   }, 15000);
 
-  agentNode = findNodeById(snapshot, expected.agentNodeId);
-  terminalNode = findNodeById(snapshot, expected.terminalNodeId);
+  agentNode = findNodeById(snapshot, agentDisplayNodeId);
+  terminalNode = findNodeById(snapshot, terminalDisplayNodeId);
   assert.ok(agentNode.metadata.agent.recentOutput.includes(AGENT_POST_REOPEN_OUTPUT));
   assert.ok(terminalNode.metadata.terminal.recentOutput.includes(TERMINAL_POST_REOPEN_OUTPUT));
 
@@ -266,20 +295,46 @@ async function openCanvasEditor() {
 }
 
 async function createExecutionNodes() {
+  const targetGroupId = await resolveCreateExecutionNodeTargetGroupId();
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
       kind: 'agent',
-      preferredPosition: { x: 40, y: 40 }
+      preferredPosition: { x: 40, y: 40 },
+      targetGroupId
     }
   });
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
       kind: 'terminal',
-      preferredPosition: { x: 420, y: 40 }
+      preferredPosition: { x: 420, y: 40 },
+      targetGroupId
     }
   });
+}
+
+async function resolveCreateExecutionNodeTargetGroupId() {
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  if (workspaceFolders.length <= 1) {
+    return undefined;
+  }
+
+  const targetRootPath = normalizeFsPathForCompare(
+    expectedWorkspaceRoot || workspaceFolders[0].uri.fsPath
+  );
+  const snapshot = await getDebugSnapshot();
+  const rootGroup = (snapshot.state.groups ?? []).find(
+    (group) =>
+      group.role === 'workspace-root' &&
+      typeof group.workspaceRootPath === 'string' &&
+      normalizeFsPathForCompare(group.workspaceRootPath) === targetRootPath
+  );
+  assert.ok(
+    rootGroup,
+    `Missing workspace-root group for ${targetRootPath} in multi-root smoke setup.`
+  );
+  return rootGroup.id;
 }
 
 async function startExecution(nodeId, kind, payload) {
@@ -430,6 +485,102 @@ function findNodeById(snapshot, nodeId) {
   return node;
 }
 
+function findExpectedExecutionNode(snapshot, kind, expected) {
+  const metadataKey = kind === 'agent' ? 'agent' : 'terminal';
+  const expectedLocalNodeId = kind === 'agent' ? expected.agentNodeId : expected.terminalNodeId;
+  const expectedSessionId = kind === 'agent' ? expected.agentSessionId : expected.terminalSessionId;
+  const expectedRuntimeStoragePath =
+    kind === 'agent' ? expected.agentRuntimeStoragePath : expected.terminalRuntimeStoragePath;
+
+  return snapshot.state.nodes.find((node) => {
+    const metadata = node.kind === kind ? node.metadata?.[metadataKey] : undefined;
+    return Boolean(
+      node.kind === kind &&
+        (node.id === expectedLocalNodeId ||
+          (
+            metadata?.runtimeSessionId === expectedSessionId &&
+            metadata?.runtimeStoragePath === expectedRuntimeStoragePath
+          ))
+    );
+  });
+}
+
+function assertExpectedWorkspaceShape() {
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  const actualWorkspaceRoots = workspaceFolders.map((folder) => folder.uri.fsPath);
+
+  if (expectedWorkspaceFolderCount !== undefined) {
+    assert.strictEqual(
+      workspaceFolders.length,
+      expectedWorkspaceFolderCount,
+      `Expected ${expectedWorkspaceFolderCount} workspace folders, got ${workspaceFolders.length}: ${actualWorkspaceRoots.join(', ')}`
+    );
+  }
+
+  if (expectedWorkspaceMode === 'single-root') {
+    assert.strictEqual(
+      workspaceFolders.length,
+      1,
+      `Expected a single-root workspace, got ${workspaceFolders.length}: ${actualWorkspaceRoots.join(', ')}`
+    );
+  } else if (expectedWorkspaceMode === 'multi-root') {
+    assert.ok(
+      workspaceFolders.length > 1,
+      `Expected a multi-root workspace, got ${workspaceFolders.length}: ${actualWorkspaceRoots.join(', ')}`
+    );
+  }
+
+  if (expectedWorkspaceRoot) {
+    const expectedRoot = normalizeFsPathForCompare(expectedWorkspaceRoot);
+    const hasExpectedRoot = actualWorkspaceRoots.some(
+      (workspaceRoot) => normalizeFsPathForCompare(workspaceRoot) === expectedRoot
+    );
+    assert.ok(
+      hasExpectedRoot,
+      `Expected workspace roots to include ${expectedWorkspaceRoot}, got ${actualWorkspaceRoots.join(', ')}`
+    );
+  }
+}
+
+function assertMultiRootReopenUsesRootLocalRuntimeStorage(runtimeSupervisorState, expected) {
+  if (expectedWorkspaceMode !== 'multi-root') {
+    return;
+  }
+
+  const currentWorkspaceRootCount = vscode.workspace.workspaceFolders?.length ?? 0;
+  assert.ok(currentWorkspaceRootCount > 1, 'Multi-root runtime smoke must verify inside a multi-root VS Code window.');
+  assert.notStrictEqual(
+    expected.agentRuntimeStoragePath,
+    undefined,
+    'Missing expected Agent root-local runtime storage path.'
+  );
+  assert.notStrictEqual(
+    expected.terminalRuntimeStoragePath,
+    undefined,
+    'Missing expected Terminal root-local runtime storage path.'
+  );
+
+  const registryState = runtimeSupervisorState?.registries?.[expectedRuntimeBackend];
+  const entries = Array.isArray(registryState?.entries) ? registryState.entries : [];
+  const rootLocalRegistryEntry = entries.find(
+    (entry) => entry.runtimeStoragePath === expected.agentRuntimeStoragePath
+  );
+  assert.ok(
+    rootLocalRegistryEntry,
+    `Expected multi-root restore to inspect root-local runtime storage ${expected.agentRuntimeStoragePath}.`
+  );
+
+  const rootLocalSessions = readRuntimeSupervisorRegistrySessions(rootLocalRegistryEntry.registry);
+  assert.ok(
+    rootLocalSessions.some((session) => session.sessionId === expected.agentSessionId),
+    'Expected Agent session to remain in the root-local runtime supervisor registry.'
+  );
+  assert.ok(
+    rootLocalSessions.some((session) => session.sessionId === expected.terminalSessionId),
+    'Expected Terminal session to remain in the root-local runtime supervisor registry.'
+  );
+}
+
 function assertExecutionRuntimeMetadata(node, kind) {
   const metadata = kind === 'agent' ? node.metadata.agent : node.metadata.terminal;
   assert.strictEqual(
@@ -443,6 +594,14 @@ function assertExecutionRuntimeMetadata(node, kind) {
     `${kind} runtime guarantee mismatch`
   );
   assert.ok(metadata.runtimeStoragePath, `${kind} runtime storage path mismatch`);
+}
+
+function readWorkspaceStorageSlotName(runtimeStoragePath) {
+  if (typeof runtimeStoragePath !== 'string' || !runtimeStoragePath.trim()) {
+    return undefined;
+  }
+
+  return path.basename(path.dirname(path.normalize(runtimeStoragePath)));
 }
 
 function getExpectedRuntimeRegistrySessions(runtimeSupervisorState) {
@@ -461,12 +620,7 @@ function getExpectedRuntimeRegistrySessions(runtimeSupervisorState) {
       : [registryState];
 
   for (const entry of registryEntries) {
-    const sessions = entry?.registry?.sessions;
-    if (!Array.isArray(sessions)) {
-      continue;
-    }
-
-    for (const session of sessions) {
+    for (const session of readRuntimeSupervisorRegistrySessions(entry?.registry)) {
       if (session?.sessionId) {
         dedupedSessions.set(session.sessionId, session);
       }
@@ -474,6 +628,10 @@ function getExpectedRuntimeRegistrySessions(runtimeSupervisorState) {
   }
 
   return Array.from(dedupedSessions.values());
+}
+
+function readRuntimeSupervisorRegistrySessions(registry) {
+  return Array.isArray(registry?.sessions) ? registry.sessions : [];
 }
 
 function assertRuntimeSupervisorSessions(runtimeSupervisorState, expectedSessions) {
@@ -500,6 +658,7 @@ function assertRuntimeSupervisorSessions(runtimeSupervisorState, expectedSession
     assert.ok(binding, `Missing runtime supervisor binding for session ${expectedSession.sessionId}.`);
     assert.strictEqual(binding.nodeId, expectedSession.nodeId);
     assert.strictEqual(binding.kind, expectedSession.kind);
+    assert.strictEqual(binding.runtimeBackend, expectedRuntimeBackend);
     if (expectedSession.runtimeStoragePath) {
       assert.strictEqual(binding.runtimeStoragePath, expectedSession.runtimeStoragePath);
     }
@@ -573,4 +732,23 @@ async function resolveRuntimeInputs() {
   artifactDir = controlPayload?.artifactDir || defaultArtifactDir;
   phase = controlPayload?.phase || process.env.DEV_SESSION_CANVAS_REAL_REOPEN_PHASE || 'verify';
   stateFile = controlPayload?.stateFile || defaultStateFile;
+  expectedWorkspaceMode = controlPayload?.expectedWorkspaceMode || process.env.DEV_SESSION_CANVAS_EXPECTED_WORKSPACE_MODE;
+  expectedWorkspaceRoot = controlPayload?.expectedWorkspaceRoot || process.env.DEV_SESSION_CANVAS_EXPECTED_WORKSPACE_ROOT;
+  expectedWorkspaceFolderCount =
+    typeof controlPayload?.expectedWorkspaceFolderCount === 'number'
+      ? controlPayload.expectedWorkspaceFolderCount
+      : parseOptionalPositiveInteger(process.env.DEV_SESSION_CANVAS_EXPECTED_WORKSPACE_FOLDER_COUNT);
+}
+
+function parseOptionalPositiveInteger(rawValue) {
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseInt(rawValue, 10);
+  return Number.isInteger(parsedValue) && parsedValue >= 0 ? parsedValue : undefined;
+}
+
+function normalizeFsPathForCompare(value) {
+  return path.resolve(value);
 }

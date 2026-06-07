@@ -416,8 +416,16 @@ class RuntimeSupervisorServer {
 
   private deleteSession(params: RuntimeSupervisorDeleteSessionParams): void {
     const session = this.requireSession(params.sessionId);
+    const wasLive = session.live;
+    if (wasLive) {
+      session.stopRequested = true;
+      session.lifecycle = session.kind === 'agent' ? 'stopped' : 'closed';
+      session.lastExitMessage = session.kind === 'agent' ? 'Agent 会话已删除。' : '终端会话已删除。';
+    }
+    session.live = false;
+    this.emitSessionState(session);
     this.disposeSession(session, {
-      terminateProcess: session.live
+      terminateProcess: wasLive
     });
     this.sessions.delete(params.sessionId);
     this.schedulePersist();
