@@ -20,6 +20,7 @@ import {
   type CanvasNodeKind,
   type CanvasNodeSummary
 } from './common/protocol';
+import { isSupportedNoteMarkdownFilePath } from './common/noteMarkdownFileAssociation';
 import {
   buildAgentPresetCommandLine,
   classifyAgentLaunchPreset,
@@ -119,6 +120,10 @@ interface ExplorerExecutionResource {
   cwdUri: vscode.Uri;
   resourceKind: 'directory' | 'file-parent';
   workspaceFolder: vscode.WorkspaceFolder;
+}
+
+interface ExplorerMarkdownNoteResource {
+  uri: vscode.Uri;
 }
 
 function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
@@ -362,6 +367,16 @@ export function activate(context: vscode.ExtensionContext): void {
       agentCustomLaunchCommand: agentRequest.agentCustomLaunchCommand,
       cwdOverride: resolvedResource.cwd
     });
+  });
+
+  registerCommand(context, COMMAND_IDS.createNoteFromExplorerMarkdown, async (resource?: unknown) => {
+    const resolvedResource = await resolveExplorerMarkdownNoteResource(resource);
+    if (!resolvedResource) {
+      return;
+    }
+
+    await panelManager.revealOrCreate();
+    await panelManager.createNoteFromMarkdownResource(resolvedResource.uri);
   });
 
   registerCommand(context, COMMAND_IDS.createEmptyGroup, async () => {
@@ -955,6 +970,42 @@ async function promptCreateNodeRequest(
     }
     return launchRequest;
   }
+}
+
+async function resolveExplorerMarkdownNoteResource(
+  resource: unknown
+): Promise<ExplorerMarkdownNoteResource | undefined> {
+  const inputUri = resource instanceof vscode.Uri ? resource : undefined;
+  if (!inputUri || inputUri.scheme !== 'file') {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  if (!isSupportedNoteMarkdownFilePath(inputUri.fsPath)) {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  let stat: vscode.FileStat;
+  try {
+    stat = await vscode.workspace.fs.stat(inputUri);
+  } catch {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  if ((stat.type & vscode.FileType.File) === 0) {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  return {
+    uri: inputUri
+  };
+}
+
+async function showExplorerMarkdownNoteResourceWarning(): Promise<void> {
+  await vscode.window.showWarningMessage('请选择 Markdown 文件（.md / .markdown）来创建关联 Note。');
 }
 
 async function resolveExplorerExecutionResource(resource: unknown): Promise<ExplorerExecutionResource | undefined> {

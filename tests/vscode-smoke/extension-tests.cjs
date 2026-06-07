@@ -35,6 +35,7 @@ const COMMAND_IDS = {
   createNode: 'devSessionCanvas.createNode',
   createTerminalFromExplorerResource: 'devSessionCanvas.createTerminalFromExplorerResource',
   createAgentFromExplorerResource: 'devSessionCanvas.createAgentFromExplorerResource',
+  createNoteFromExplorerMarkdown: 'devSessionCanvas.createNoteFromExplorerMarkdown',
   showNodeList: 'devSessionCanvas.showNodeList',
   setSidebarNodeListFlatView: 'devSessionCanvas.setSidebarNodeListFlatView',
   setSidebarNodeListGroupedView: 'devSessionCanvas.setSidebarNodeListGroupedView',
@@ -4908,6 +4909,103 @@ async function verifyNoteMarkdownFileAssociation() {
     type: 'webview/deleteNode',
     payload: {
       nodeId: duplicateAssociatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'note' &&
+          node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+      ).length === 1,
+    10000
+  );
+
+  await clearHostMessages();
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await vscode.commands.executeCommand(COMMAND_IDS.createNoteFromExplorerMarkdown, associatedFileUri);
+      await waitForHostMessages(
+        (messages) =>
+          messages.some(
+            (message) =>
+              message.type === 'host/focusNodes' &&
+              Array.isArray(message.payload?.nodeIds) &&
+              message.payload.nodeIds.includes(associatedNote.id)
+          ),
+        10000
+      );
+      assert.strictEqual(
+        warningCalls.length,
+        1,
+        'Expected Explorer Markdown command to confirm before locating an existing associated Note.'
+      );
+      assert.ok(
+        warningCalls[0].items.includes('定位已有 Note'),
+        'Expected Explorer Markdown command to offer locating the associated Note.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '定位已有 Note')
+  );
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.state.nodes.filter(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+    ).length,
+    1,
+    'Expected Explorer Markdown command locate flow not to create another Note for an existing association.'
+  );
+
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await vscode.commands.executeCommand(COMMAND_IDS.createNoteFromExplorerMarkdown, associatedFileUri);
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.filter(
+            (node) =>
+              node.kind === 'note' &&
+              node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+          ).length === 2,
+        10000
+      );
+      assert.strictEqual(
+        warningCalls.length,
+        1,
+        'Expected Explorer Markdown command to confirm before adding a duplicate associated Note.'
+      );
+      assert.ok(
+        warningCalls[0].items.includes('添加新 Note'),
+        'Expected Explorer Markdown command to offer adding another associated Note.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '添加新 Note')
+  );
+  const explorerDuplicateAssociatedNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.id !== associatedNote.id &&
+      node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+  );
+  assert.ok(
+    explorerDuplicateAssociatedNote,
+    'Expected Explorer Markdown command add flow to create a second associated Note when confirmed.'
+  );
+  assert.strictEqual(
+    explorerDuplicateAssociatedNote.title,
+    'associated-note.md',
+    'Expected Explorer Markdown command to reuse the Markdown association title rule.'
+  );
+  assert.strictEqual(
+    explorerDuplicateAssociatedNote.metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected Explorer Markdown command to read the associated file content into the Note buffer.'
+  );
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: explorerDuplicateAssociatedNote.id
     }
   });
   snapshot = await waitForSnapshot(

@@ -198,6 +198,11 @@
         "icon": "$(hubot)"
       },
       {
+        "command": "devSessionCanvas.createNoteFromExplorerMarkdown",
+        "title": "%command.createNoteFromExplorerMarkdown.title%",
+        "icon": "$(markdown)"
+      },
+      {
         "command": "devSessionCanvas.createEmptyGroup",
         "title": "%command.createEmptyGroup.title%",
         "icon": "$(symbol-array)"
@@ -330,6 +335,11 @@
           "command": "devSessionCanvas.createAgentFromExplorerResource",
           "when": "resourceScheme == file",
           "group": "devSessionCanvas@2"
+        },
+        {
+          "command": "devSessionCanvas.createNoteFromExplorerMarkdown",
+          "when": "resourceScheme == file && resourceExtname =~ /^\\.(md|markdown)$/i",
+          "group": "devSessionCanvas@3"
         }
       ],
       "view/title": [
