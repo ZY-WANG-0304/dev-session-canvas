@@ -118,7 +118,7 @@
 
 截至 `2026-06-07`，上一轮 `0.13.0` 已完成双市场发布；本地 `v0.13.0` tag 指向 `7878fb8`，Open VSX API 显示主扩展与 notifier 的 latest 均为 `0.13.0`，Visual Studio Marketplace extension query 也返回主扩展 latest `0.13.0`。当前 `main` 已包含 `v0.13.0` 之后合入的 #119 和 #121，因此本轮从最新 `main`（`af066bae2f006a450578309059ffd7792efab7ae`）切出 `release-0-14-0-prep`，目标版本升级为 `0.14.0`。
 
-当前功能输入已有 repo-local 证据：`docs/exec-plans/completed/canvas-spatial-fit-minimap.md`、`docs/product-specs/canvas-navigation-and-workbench-polish.md`、`docs/design-docs/canvas-navigation-and-workbench-polish.md`、`docs/product-specs/canvas-multi-root-workspace-support.md` 与 `docs/design-docs/canvas-multi-root-workspace-support.md` 记录了空间边界 fit view / MiniMap、workspace-root section、普通用户分组、MiniMap 分组 token、MiniMap 视口导航持久化和 multi-root root section 全局 fit 语义。PR #121 进一步修复了 Agent 停止后 `新建` / `恢复` 重启动作在紧凑标题栏中挤出 `删除` 按钮的问题。
+当前功能输入已有 repo-local 证据：`docs/exec-plans/completed/canvas-spatial-fit-minimap.md`、`docs/product-specs/canvas-navigation-and-workbench-polish.md`、`docs/design-docs/canvas-navigation-and-workbench-polish.md`、`docs/product-specs/canvas-multi-root-workspace-support.md` 与 `docs/design-docs/canvas-multi-root-workspace-support.md` 记录了空间边界 fit view / MiniMap、workspace-root section、普通用户分组、MiniMap 分组 token、MiniMap 视口导航持久化和 multi-root root section 全局 fit 语义；multi-root 规格和设计文档也记录了 shared runtime 恢复、缺失 runtimeStoragePath 显式降级，以及双 VS Code 窗口同时 attach 同一 runtime 的验证状态。PR #121 进一步修复了 Agent 停止后 `新建` / `恢复` 重启动作在紧凑标题栏中挤出 `删除` 按钮的问题。
 
 本轮发布准备分支已刷新并通过以下验证：
 
@@ -202,4 +202,4 @@
 4. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
 5. 在干净 profile 中从官方 VS Code Marketplace 安装刚发布的版本，验证扩展可成功激活并能打开主画布。
 6. 在 Open VSX 兼容宿主或 Open VSX 页面中复核两个扩展版本一致，且主扩展 / notifier 的安装关系没有因缺失补充渠道产物而断裂。
-7. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace`、本地 CLI 依赖、multi-root live runtime 保守恢复边界与 Open VSX 兼容宿主边界仍被正确表达，没有被商店页误读成稳定版承诺或全宿主支持承诺。
+7. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace`、本地 CLI 依赖、multi-root shared live runtime 恢复边界与 Open VSX 兼容宿主边界仍被正确表达，没有被商店页误读成稳定版承诺或全宿主支持承诺。

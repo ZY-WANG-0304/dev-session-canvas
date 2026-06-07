@@ -11,6 +11,7 @@ import {
   resolveStagedSmokeTestPath,
   runInsideXvfb,
   shouldReRunInsideXvfb,
+  spawnPreparedVSCodeScenario,
   writeUserSettings
 } from './vscode-smoke-runner.mjs';
 import { createRemoteSSHFixture } from './vscode-remote-ssh-fixture.mjs';
@@ -98,6 +99,15 @@ async function main() {
   if (shouldRunScenario('real-reopen')) {
     await runRealWindowReopenScenario();
   }
+  if (shouldRunScenario('multi-root-real-reopen')) {
+    await runMultiRootRealWindowReopenScenario();
+  }
+  if (shouldRunScenario('single-to-multi-root-real-reopen')) {
+    await runSingleToMultiRootRealWindowReopenScenario();
+  }
+  if (shouldRunScenario('two-window-shared-runtime')) {
+    await runTwoWindowSharedRuntimeScenario();
+  }
   if (shouldRunScenario('systemd-user-real-reopen')) {
     await runSystemdUserRealWindowReopenScenario();
   }
@@ -118,6 +128,185 @@ async function runRealWindowReopenScenario() {
     expectedRuntimeBackend: 'legacy-detached',
     expectedRuntimeGuarantee: 'best-effort'
   });
+}
+
+async function runMultiRootRealWindowReopenScenario() {
+  const scenarioName = 'multi-root-real-reopen';
+  const runtime = await prepareLocalRealReopenRuntime({
+    scenarioName,
+    runtimeDirName: 'dsc-vscode-smoke-runtime-multi-root-real-reopen'
+  });
+  const siblingRoot = path.join(runtime.runtimeDir, 'multi-root-sibling');
+  await fs.mkdir(siblingRoot, { recursive: true });
+  await fs.writeFile(
+    path.join(siblingRoot, 'README.md'),
+    '# Dev Session Canvas multi-root smoke sibling\n',
+    'utf8'
+  );
+  const workspacePath = path.join(runtime.debugRoot, 'multi-root-real-reopen.code-workspace');
+  await writeCodeWorkspaceFile(workspacePath, [
+    { name: path.basename(projectRoot), path: projectRoot },
+    { name: 'multi-root-sibling', path: siblingRoot }
+  ]);
+
+  await runPreparedLocalRealWindowReopenScenario({
+    scenarioName,
+    description: 'Multi-root real window reopen smoke',
+    runtime,
+    setupWorkspacePath: workspacePath,
+    verifyWorkspacePath: workspacePath,
+    expectedRuntimeBackend: 'legacy-detached',
+    expectedRuntimeGuarantee: 'best-effort',
+    setupControl: {
+      expectedWorkspaceMode: 'multi-root',
+      expectedWorkspaceRoot: projectRoot,
+      expectedWorkspaceFolderCount: 2
+    },
+    verifyControl: {
+      expectedWorkspaceMode: 'multi-root',
+      expectedWorkspaceRoot: projectRoot,
+      expectedWorkspaceFolderCount: 2
+    }
+  });
+}
+
+async function runSingleToMultiRootRealWindowReopenScenario() {
+  const scenarioName = 'single-to-multi-root-real-reopen';
+  const runtime = await prepareLocalRealReopenRuntime({
+    scenarioName,
+    runtimeDirName: 'dsc-vscode-smoke-runtime-single-to-multi-root-real-reopen'
+  });
+  const siblingRoot = path.join(runtime.runtimeDir, 'multi-root-sibling');
+  await fs.mkdir(siblingRoot, { recursive: true });
+  await fs.writeFile(
+    path.join(siblingRoot, 'README.md'),
+    '# Dev Session Canvas single-to-multi-root smoke sibling\n',
+    'utf8'
+  );
+  const workspacePath = path.join(runtime.debugRoot, 'single-to-multi-root-real-reopen.code-workspace');
+  await writeCodeWorkspaceFile(workspacePath, [
+    { name: path.basename(projectRoot), path: projectRoot },
+    { name: 'multi-root-sibling', path: siblingRoot }
+  ]);
+
+  await runPreparedLocalRealWindowReopenScenario({
+    scenarioName,
+    description: 'Single-root to multi-root real window reopen smoke',
+    runtime,
+    setupWorkspacePath: projectRoot,
+    verifyWorkspacePath: workspacePath,
+    expectedRuntimeBackend: 'legacy-detached',
+    expectedRuntimeGuarantee: 'best-effort',
+    setupControl: {
+      expectedWorkspaceMode: 'single-root',
+      expectedWorkspaceRoot: projectRoot,
+      expectedWorkspaceFolderCount: 1
+    },
+    verifyControl: {
+      expectedWorkspaceMode: 'multi-root',
+      expectedWorkspaceRoot: projectRoot,
+      expectedWorkspaceFolderCount: 2
+    }
+  });
+}
+
+async function runTwoWindowSharedRuntimeScenario() {
+  const scenarioName = 'two-window-shared-runtime';
+  const scenarioDebugRoot = path.join(projectRoot, '.debug', 'vscode-smoke', scenarioName);
+  const sharedDir = path.join(scenarioDebugRoot, 'shared');
+  const runtimeDirName = 'dsc-vscode-smoke-runtime-two-window-shared-runtime';
+  await fs.rm(scenarioDebugRoot, { recursive: true, force: true });
+  const ownerRuntime = await prepareRuntime({
+    debugRoot: path.join(scenarioDebugRoot, 'owner'),
+    runtimeDirName,
+    userSettings: {
+      'security.workspace.trust.enabled': false
+    }
+  });
+  const attacherRuntime = await prepareRuntime({
+    debugRoot: path.join(scenarioDebugRoot, 'attacher'),
+    runtimeDirName,
+    userSettings: {
+      'security.workspace.trust.enabled': false
+    }
+  });
+  const smokeHostRoot = await prepareMainSmokeHostExtension({
+    projectRoot,
+    targetRoot: path.join(scenarioDebugRoot, 'smoke-host')
+  });
+  const ownerControlFilePath = path.join(sharedDir, 'owner-control.json');
+  const attacherControlFilePath = path.join(sharedDir, 'attacher-control.json');
+  const ownerReadyPath = path.join(sharedDir, 'owner-ready.json');
+  await writeRealReopenControlFile(ownerControlFilePath, {
+    role: 'owner',
+    artifactDir: ownerRuntime.artifactsDir,
+    sharedDir
+  });
+  await writeRealReopenControlFile(attacherControlFilePath, {
+    role: 'attacher',
+    artifactDir: attacherRuntime.artifactsDir,
+    sharedDir
+  });
+
+  const sharedOptions = {
+    projectRoot,
+    workspacePath: projectRoot,
+    extensionDevelopmentPath: smokeHostRoot,
+    extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'two-window-shared-runtime-tests.cjs'),
+    disableExtensions: false,
+    disableWorkspaceTrust: true,
+    extraLaunchArgs: ['--new-window']
+  };
+  const sharedEnv = {
+    DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+    DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
+    DEV_SESSION_CANVAS_EXPECTED_RUNTIME_BACKEND: 'legacy-detached',
+    DEV_SESSION_CANVAS_EXPECTED_RUNTIME_GUARANTEE: 'best-effort',
+    PATH: smokeFixturesPath
+  };
+
+  let ownerHandle;
+  let attacherHandle;
+  try {
+    ownerHandle = await spawnPreparedVSCodeScenario({
+      ...sharedOptions,
+      runtime: ownerRuntime,
+      extensionTestsEnv: {
+        ...sharedEnv,
+        DEV_SESSION_CANVAS_TWO_WINDOW_ROLE: 'owner',
+        DEV_SESSION_CANVAS_TWO_WINDOW_CONTROL_FILE: ownerControlFilePath
+      }
+    });
+
+    await Promise.race([
+      waitForJsonFile(ownerReadyPath, 90000),
+      ownerHandle.completed.then(() => {
+        throw new Error('Owner VS Code window exited before publishing owner-ready.json.');
+      })
+    ]);
+
+    attacherHandle = await spawnPreparedVSCodeScenario({
+      ...sharedOptions,
+      runtime: attacherRuntime,
+      extensionTestsEnv: {
+        ...sharedEnv,
+        DEV_SESSION_CANVAS_TWO_WINDOW_ROLE: 'attacher',
+        DEV_SESSION_CANVAS_TWO_WINDOW_CONTROL_FILE: attacherControlFilePath
+      }
+    });
+
+    await Promise.all([ownerHandle.completed, attacherHandle.completed]);
+  } catch (error) {
+    ownerHandle?.kill();
+    attacherHandle?.kill();
+    await Promise.allSettled([
+      ownerHandle?.completed,
+      attacherHandle?.completed
+    ].filter(Boolean));
+    throw error;
+  }
+
+  console.log('Two-window shared runtime smoke passed.');
 }
 
 async function runSystemdUserRealWindowReopenScenario() {
@@ -151,6 +340,16 @@ async function runSystemdFallbackRealWindowReopenScenario() {
 }
 
 async function runLocalRealWindowReopenScenario(options) {
+  const runtime = await prepareLocalRealReopenRuntime(options);
+  await runPreparedLocalRealWindowReopenScenario({
+    ...options,
+    runtime,
+    setupWorkspacePath: projectRoot,
+    verifyWorkspacePath: projectRoot
+  });
+}
+
+async function prepareLocalRealReopenRuntime(options) {
   const runtime = await prepareRuntime({
     debugRoot: path.join(projectRoot, '.debug', 'vscode-smoke', options.scenarioName),
     runtimeDirName: options.runtimeDirName,
@@ -158,6 +357,11 @@ async function runLocalRealWindowReopenScenario(options) {
       'security.workspace.trust.enabled': false
     }
   });
+  return runtime;
+}
+
+async function runPreparedLocalRealWindowReopenScenario(options) {
+  const runtime = options.runtime;
   const smokeHostRoot = await prepareMainSmokeHostExtension({
     projectRoot,
     targetRoot: path.join(runtime.debugRoot, 'smoke-host')
@@ -166,7 +370,6 @@ async function runLocalRealWindowReopenScenario(options) {
   const sharedOptions = {
     projectRoot,
     runtime,
-    workspacePath: projectRoot,
     extensionDevelopmentPath: smokeHostRoot,
     extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'real-reopen-tests.cjs'),
     disableExtensions: false,
@@ -199,10 +402,12 @@ async function runLocalRealWindowReopenScenario(options) {
   await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
     phase: 'setup',
     artifactDir: runtime.artifactsDir,
-    stateFile: stateFilePath
+    stateFile: stateFilePath,
+    ...(options.setupControl ?? {})
   });
   await launchPreparedVSCodeScenario({
     ...sharedOptions,
+    workspacePath: options.setupWorkspacePath,
     extensionTestsEnv: {
       ...sharedEnv,
     }
@@ -211,10 +416,12 @@ async function runLocalRealWindowReopenScenario(options) {
   await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
     phase: 'verify',
     artifactDir: runtime.artifactsDir,
-    stateFile: stateFilePath
+    stateFile: stateFilePath,
+    ...(options.verifyControl ?? {})
   });
   await launchPreparedVSCodeScenario({
     ...sharedOptions,
+    workspacePath: options.verifyWorkspacePath,
     extensionTestsEnv: {
       ...sharedEnv
     }
@@ -325,10 +532,39 @@ async function writeRealReopenControlFile(controlFilePath, payload) {
   await fs.writeFile(controlFilePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
+async function writeCodeWorkspaceFile(workspacePath, folders) {
+  await fs.mkdir(path.dirname(workspacePath), { recursive: true });
+  await fs.writeFile(
+    workspacePath,
+    `${JSON.stringify({
+      folders: folders.map((folder) => ({
+        name: folder.name,
+        path: folder.path
+      }))
+    }, null, 2)}\n`,
+    'utf8'
+  );
+}
+
 async function writeRealReopenControlFiles(controlFilePaths, payload) {
   for (const controlFilePath of controlFilePaths) {
     await writeRealReopenControlFile(controlFilePath, payload);
   }
+}
+
+async function waitForJsonFile(filePath, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      return JSON.parse(await fs.readFile(filePath, 'utf8'));
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  throw new Error(`Timed out waiting for ${filePath}: ${lastError?.message ?? 'not found'}`);
 }
 
 async function findInstalledExtensionPaths(extensionsDir, extensionIds) {
