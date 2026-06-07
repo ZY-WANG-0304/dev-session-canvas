@@ -1361,51 +1361,44 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
   const baselineSnapshot = await getDebugSnapshot();
   const sourceTitle = 'Claude Branch Source';
   const sourceSessionId = 'claude-branch-source-session-123';
+  const sourceNodeId = 'claude-branch-source-node';
+  let branchNodeId;
 
   try {
-    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'claude', {
-      agentLaunchPreset: 'custom',
-      agentCustomLaunchCommand: `claude --resume ${sourceSessionId}`,
-      titleOverride: sourceTitle
-    });
-
-    const withSourceSnapshot = await waitForSnapshot((currentSnapshot) => {
-      return currentSnapshot.state.nodes.some(
-        (node) => node.kind === 'agent' && node.title === sourceTitle
-      );
-    }, 10000);
-    const sourceNode = withSourceSnapshot.state.nodes.find(
-      (node) => node.kind === 'agent' && node.title === sourceTitle
-    );
-    assert.ok(sourceNode, 'Expected test-created Claude source node to exist.');
-
-    await setPersistedState({
-      ...withSourceSnapshot.state,
-      nodes: withSourceSnapshot.state.nodes.map((node) => {
-        if (node.id !== sourceNode.id || node.kind !== 'agent') {
-          return node;
-        }
-
-        return {
-          ...node,
+    const withSourceSnapshot = await setPersistedState({
+      ...baselineSnapshot.state,
+      nodes: [
+        ...baselineSnapshot.state.nodes,
+        {
+          id: sourceNodeId,
+          kind: 'agent',
+          title: sourceTitle,
           status: 'stopped',
           summary: '检测到可 Branch 的 Claude Code 会话。',
+          position: { x: 120, y: 120 },
+          size: { width: 560, height: 420 },
           metadata: {
-            ...node.metadata,
             agent: {
-              ...node.metadata.agent,
-              lifecycle: 'stopped',
               provider: 'claude',
+              lifecycle: 'stopped',
+              launchPreset: 'custom',
+              customLaunchCommand: `claude --resume ${sourceSessionId}`,
+              lastLaunchCommandLine: `claude --resume ${sourceSessionId}`,
               resumeSupported: true,
               resumeStrategy: 'claude-session-id',
               resumeSessionId: sourceSessionId,
+              persistenceMode: 'snapshot-only',
+              attachmentState: 'history-restored',
               liveSession: false,
-              pendingLaunch: undefined
+              pendingLaunch: undefined,
+              lastBackendLabel: 'Claude Code'
             }
           }
-        };
-      })
+        }
+      ]
     });
+    const sourceNode = findNodeById(withSourceSnapshot, sourceNodeId);
+    await ensureEditorCanvasReady();
 
     const beforeBranchSnapshot = await getDebugSnapshot();
     const diagnosticStartIndex = (await getDiagnosticEvents()).length;
@@ -1451,25 +1444,26 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
         node.metadata?.agent?.customLaunchCommand?.includes('--fork-session')
     );
     assert.ok(branchNode, 'Expected Branch to create a Claude Agent node with fork-session command.');
-    assert.strictEqual(branchNode.metadata.agent.pendingLaunch, 'start');
+    branchNodeId = branchNode.id;
 
-    await startExecutionSessionForTest({
-      kind: 'agent',
-      nodeId: branchNode.id,
-      provider: 'claude',
-      cols: 96,
-      rows: 28
-    });
-
-    const branchStartEvents = (await getDiagnosticEvents())
-      .slice(diagnosticStartIndex)
-      .filter(
+    const startedEvents = await waitForDiagnosticEvents((events) => {
+      const branchStartEvents = events.slice(diagnosticStartIndex).filter(
         (event) =>
           event.kind === 'execution/started' &&
           event.detail?.kind === 'agent' &&
           event.detail?.nodeId === branchNode.id &&
           event.detail?.provider === 'claude'
       );
+      return branchStartEvents.length === 1;
+    }, 20000);
+
+    const branchStartEvents = startedEvents.slice(diagnosticStartIndex).filter(
+      (event) =>
+        event.kind === 'execution/started' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === branchNode.id &&
+        event.detail?.provider === 'claude'
+    );
     assert.strictEqual(branchStartEvents.length, 1, 'Expected Branch node to enter the Agent start path once.');
     const branchLaunchArgs = branchStartEvents[0].detail?.launchArgs ?? [];
     assert.ok(Array.isArray(branchLaunchArgs), 'Expected Branch start diagnostic to expose launch args.');
@@ -1487,10 +1481,33 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
       'Expected Branch session id candidate to differ from the source session id.'
     );
 
-    const startedSnapshot = await getDebugSnapshot();
+    const startedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const startedBranchNode = currentSnapshot.state.nodes.find((node) => node.id === branchNode.id);
+      return Boolean(
+        startedBranchNode?.metadata?.agent?.liveSession &&
+          startedBranchNode.metadata.agent.resumeSessionId === branchSessionId &&
+          startedBranchNode.metadata.agent.pendingLaunch === undefined
+      );
+    }, 20000);
     const startedBranchNode = findNodeById(startedSnapshot, branchNode.id);
     assert.strictEqual(startedBranchNode.metadata.agent.resumeSessionId, branchSessionId);
+    const duplicateBranchStartRejections = (await getDiagnosticEvents()).slice(diagnosticStartIndex).filter(
+      (event) =>
+        event.kind === 'execution/startRejected' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === branchNode.id &&
+        event.detail?.reason === 'already-running'
+    );
+    assert.strictEqual(
+      duplicateBranchStartRejections.length,
+      0,
+      'Expected Branch auto-start to avoid racing a second start request.'
+    );
   } finally {
+    if (branchNodeId) {
+      await maybeEnsureAgentStopped(branchNodeId).catch(() => {});
+    }
+    await maybeEnsureAgentStopped(sourceNodeId).catch(() => {});
     await setPersistedState(baselineSnapshot.state);
   }
 }
@@ -4033,6 +4050,15 @@ async function ensureAgentStopped(agentNodeId) {
     const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
     return Boolean(currentNode && !currentNode.metadata?.agent?.liveSession);
   });
+}
+
+async function maybeEnsureAgentStopped(agentNodeId) {
+  const snapshot = await getDebugSnapshot();
+  if (!snapshot.state.nodes.some((node) => node.id === agentNodeId && node.kind === 'agent')) {
+    return snapshot;
+  }
+
+  return ensureAgentStopped(agentNodeId);
 }
 
 async function ensureTerminalStopped(terminalNodeId) {
