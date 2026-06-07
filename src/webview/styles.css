@@ -3103,10 +3103,8 @@ body {
 .canvas-group-background-frame {
   --canvas-group-panel-border: var(--vscode-panel-border);
   --canvas-group-panel-surface: var(--vscode-panel-background);
-  --canvas-group-header-surface: var(--vscode-panel-background);
   --canvas-group-tab-surface: var(--vscode-panel-background);
   --canvas-group-selection-color: var(--canvas-group-panel-border);
-  --canvas-group-header-height: 29px;
   --canvas-group-title-height: 28px;
   --canvas-group-body-top: 28px;
   /* Readable title chrome grows outward while body geometry stays stable. */
@@ -3177,20 +3175,6 @@ body {
 .canvas-group-frame.is-selected {
   border-color: transparent;
   box-shadow: none;
-}
-
-.canvas-group-header {
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  height: var(--canvas-group-header-height);
-  cursor: grab;
-  pointer-events: auto;
-}
-
-.canvas-group-header:active {
-  cursor: grabbing;
 }
 
 .canvas-group-body {

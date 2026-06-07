@@ -9588,7 +9588,7 @@ function CanvasGroupBackgroundFrame(props: {
       style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
     >
       <div
-        className="canvas-group-background-body-hit-area nopan"
+        className="canvas-group-background-body-hit-area"
         data-group-background-body-hit-area="true"
         onClick={(event) => {
           stopCanvasEvent(event);
@@ -10164,7 +10164,6 @@ function CanvasGroupFrame(props: {
         stopCanvasEvent(event);
       }}
     >
-      <div className="canvas-group-header" aria-hidden="true" onPointerDown={beginDrag} />
       <div className="canvas-group-body" aria-hidden="true" />
       <div className="canvas-group-titlebar" onPointerDown={beginDrag}>
         <ChromeTitleEditor
