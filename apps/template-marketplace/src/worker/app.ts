@@ -476,6 +476,14 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     return context.json(await admin.repository.listAdminReports(status.status));
   });
 
+  app.get('/api/v1/admin/stats', async (context) => {
+    const admin = await requireMarketplaceAdmin(context);
+    if (admin.response) {
+      return admin.response;
+    }
+    return context.json(await admin.repository.getAdminStats());
+  });
+
   app.patch('/api/v1/admin/reports/:id', async (context) => {
     const admin = await requireMarketplaceAdmin(context);
     if (admin.response) {

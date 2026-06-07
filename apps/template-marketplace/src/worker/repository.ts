@@ -5,10 +5,12 @@ import {
   calculateHotScore,
   getSeedTemplateDetail,
   listMarketplaceTemplatesFromCatalog,
+  marketplaceSeedTemplates,
   listSeedTemplates,
   type MarketplaceDownloadResponse,
   type MarketplaceAdminReportsResponse,
   type MarketplaceAdminReportActionRequest,
+  type MarketplaceAdminStatsResponse,
   type MarketplaceAdminTemplateStatusRequest,
   type MarketplaceAdminTemplateStatusResponse,
   type MarketplaceAdminUserBanRequest,
@@ -130,6 +132,7 @@ export interface MarketplaceTemplateRepository {
     request: MarketplaceAdminUserBanRequest,
     at?: Date
   ): Promise<MarketplaceAdminUserBanResponse | undefined>;
+  getAdminStats(): Promise<MarketplaceAdminStatsResponse>;
   isTemplateSlugAvailable(slug: string): Promise<boolean>;
   upsertUser(
     user: MarketplaceRepositoryUserInput,
@@ -250,6 +253,41 @@ export class SeedTemplateRepository implements MarketplaceTemplateRepository {
 
   public async setAdminUserBan(): Promise<MarketplaceAdminUserBanResponse | undefined> {
     throw new MarketplaceRepositoryWriteError('marketplace_writes_unavailable', 'User moderation requires D1 storage.', 503);
+  }
+
+  public async getAdminStats(): Promise<MarketplaceAdminStatsResponse> {
+    const templates = marketplaceSeedTemplates;
+    const publishedTemplates = templates.filter((template) => template.status === 'published');
+    const topTemplates = publishedTemplates
+      .slice()
+      .sort((left, right) => right.downloadCount - left.downloadCount || right.likeCount - left.likeCount || right.updatedAt.localeCompare(left.updatedAt))
+      .slice(0, 5);
+    return {
+      totals: {
+        templateCount: templates.length,
+        publishedTemplateCount: publishedTemplates.length,
+        delistedTemplateCount: templates.filter((template) => template.status === 'delisted').length,
+        userCount: 0,
+        bannedUserCount: 0,
+        publisherCount: new Set(templates.map((template) => template.publisher.id)).size,
+        downloadCount: templates.reduce((total, template) => total + template.downloadCount, 0),
+        likeCount: templates.reduce((total, template) => total + template.likeCount, 0),
+        publishCount: templates.reduce((total, template) => total + Math.max(1, template.latestVersion.versionNumber), 0),
+        reportCount: 0,
+        openReportCount: 0,
+        resolvedReportCount: 0,
+        rejectedReportCount: 0,
+        adminActionCount: 0
+      },
+      daily: [],
+      topTemplates: topTemplates.map((template) => ({
+        template: toStatsTemplateSummary(template),
+        downloadCount: template.downloadCount,
+        likeCount: template.likeCount,
+        publishCount: Math.max(1, template.latestVersion.versionNumber)
+      })),
+      storageMode: this.storageMode
+    };
   }
 
   public async isTemplateSlugAvailable(slug: string): Promise<boolean> {
@@ -662,6 +700,87 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
     return { user: after, storageMode: this.storageMode };
   }
 
+  public async getAdminStats(): Promise<MarketplaceAdminStatsResponse> {
+    const [templateTotals, userTotals, reportTotals, adminTotals, templateResult, dailyResult, versionCounts, publisherCount] = await Promise.all([
+      this.database
+        .prepare(
+          `SELECT
+             COUNT(*) AS template_count,
+             SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS published_template_count,
+             SUM(CASE WHEN status = 'delisted' THEN 1 ELSE 0 END) AS delisted_template_count,
+             COALESCE(SUM(download_count), 0) AS download_count,
+             COALESCE(SUM(like_count), 0) AS like_count
+           FROM templates`
+        )
+        .first<AdminTemplateTotalsRow>(),
+      this.database
+        .prepare(
+          `SELECT
+             COUNT(*) AS user_count,
+             SUM(CASE WHEN banned_at IS NOT NULL THEN 1 ELSE 0 END) AS banned_user_count
+           FROM users`
+        )
+        .first<AdminUserTotalsRow>(),
+      this.database
+        .prepare(
+          `SELECT
+             COUNT(*) AS report_count,
+             SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_report_count,
+             SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved_report_count,
+             SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected_report_count
+           FROM reports`
+        )
+        .first<AdminReportTotalsRow>(),
+      this.database.prepare('SELECT COUNT(*) AS admin_action_count FROM admin_audit_logs').first<AdminAuditTotalsRow>(),
+      this.database.prepare(`${templateSelectSql} WHERE t.status = 'published' GROUP BY t.id ORDER BY t.download_count DESC, t.like_count DESC, t.updated_at DESC LIMIT 5`).all<TemplateRow>(),
+      this.database
+        .prepare(
+          `SELECT day,
+                  SUM(download_count) AS download_count,
+                  SUM(like_count) AS like_count,
+                  SUM(publish_count) AS publish_count
+           FROM template_daily_stats
+           GROUP BY day
+           ORDER BY day ASC`
+        )
+        .all<DailyStatsRow>(),
+      this.fetchAllPublishedVersionCounts(),
+      this.countPublishers()
+    ]);
+    const topTemplates = (templateResult.results ?? []).map((row) => {
+      const template = mapTemplateRow(row);
+      return {
+        template: toStatsTemplateSummary(template),
+        downloadCount: template.downloadCount,
+        likeCount: template.likeCount,
+        publishCount: versionCounts.get(template.id) ?? Math.max(1, template.versions.length)
+      };
+    });
+    const publishCount = Array.from(versionCounts.values()).reduce((total, count) => total + count, 0);
+
+    return {
+      totals: {
+        templateCount: templateTotals?.template_count ?? 0,
+        publishedTemplateCount: templateTotals?.published_template_count ?? 0,
+        delistedTemplateCount: templateTotals?.delisted_template_count ?? 0,
+        userCount: userTotals?.user_count ?? 0,
+        bannedUserCount: userTotals?.banned_user_count ?? 0,
+        publisherCount,
+        downloadCount: templateTotals?.download_count ?? 0,
+        likeCount: templateTotals?.like_count ?? 0,
+        publishCount,
+        reportCount: reportTotals?.report_count ?? 0,
+        openReportCount: reportTotals?.open_report_count ?? 0,
+        resolvedReportCount: reportTotals?.resolved_report_count ?? 0,
+        rejectedReportCount: reportTotals?.rejected_report_count ?? 0,
+        adminActionCount: adminTotals?.admin_action_count ?? 0
+      },
+      daily: (dailyResult.results ?? []).map(mapDailyStatsRow),
+      topTemplates,
+      storageMode: this.storageMode
+    };
+  }
+
   public async isTemplateSlugAvailable(slug: string): Promise<boolean> {
     const existingTemplate = await this.database.prepare('SELECT id FROM templates WHERE slug = ?1 LIMIT 1').bind(slug).first<{ id: string }>();
     return !existingTemplate;
@@ -818,6 +937,23 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
       .bind(publisherId)
       .all<{ template_id: string; publish_count: number }>();
     return new Map((result.results ?? []).map((row) => [row.template_id, row.publish_count]));
+  }
+
+  private async fetchAllPublishedVersionCounts(): Promise<Map<string, number>> {
+    const result = await this.database
+      .prepare(
+        `SELECT template_id, COUNT(*) AS publish_count
+         FROM template_versions
+         WHERE status = 'published'
+         GROUP BY template_id`
+      )
+      .all<{ template_id: string; publish_count: number }>();
+    return new Map((result.results ?? []).map((row) => [row.template_id, row.publish_count]));
+  }
+
+  private async countPublishers(): Promise<number> {
+    const row = await this.database.prepare('SELECT COUNT(DISTINCT publisher_id) AS publisher_count FROM templates').first<{ publisher_count: number }>();
+    return row?.publisher_count ?? 0;
   }
 
   private async fetchAdminReport(reportId: string) {
@@ -1039,6 +1175,30 @@ interface DailyStatsRow {
   download_count: number | null;
   like_count: number | null;
   publish_count: number | null;
+}
+
+interface AdminTemplateTotalsRow {
+  template_count: number | null;
+  published_template_count: number | null;
+  delisted_template_count: number | null;
+  download_count: number | null;
+  like_count: number | null;
+}
+
+interface AdminUserTotalsRow {
+  user_count: number | null;
+  banned_user_count: number | null;
+}
+
+interface AdminReportTotalsRow {
+  report_count: number | null;
+  open_report_count: number | null;
+  resolved_report_count: number | null;
+  rejected_report_count: number | null;
+}
+
+interface AdminAuditTotalsRow {
+  admin_action_count: number | null;
 }
 
 interface AdminTemplateRow {
