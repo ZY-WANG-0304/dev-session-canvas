@@ -5265,6 +5265,8 @@ async function verifyNoteMarkdownFileAssociation() {
   await waitForSnapshot((currentSnapshot) =>
     currentSnapshot.state.nodes.every((node) => node.id !== missingNote.id)
   );
+  await ensureEditorCanvasReady();
+  await assertInteractiveEditorSurface('verifyNoteMarkdownFileAssociation');
 }
 
 async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNodeId) {
@@ -10847,7 +10849,22 @@ function createSerializedTerminalStateFixture(marker) {
 }
 
 async function waitForWebviewProbe(predicate, timeoutMs = 8000) {
+  await assertInteractiveEditorSurface('waitForWebviewProbe');
   return waitForWebviewProbeOnSurface('editor', predicate, timeoutMs);
+}
+
+async function assertInteractiveEditorSurface(caller) {
+  const snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'editor',
+    `${caller} requires the editor surface to stay interactive; restore it with ensureEditorCanvasReady() after commands that reveal another surface.`
+  );
+  assert.strictEqual(
+    snapshot.surfaceReady.editor,
+    true,
+    `${caller} requires the editor surface to be ready before probing the real Webview.`
+  );
 }
 
 async function waitForWebviewProbeOnSurface(surface, predicate, timeoutMs = 8000) {
