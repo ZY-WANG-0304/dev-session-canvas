@@ -18,7 +18,7 @@
 
 1. 用户在 VSCode File Explorer 中右键点击当前 workspace 内的某个目录或普通文件。
 2. 用户在右键菜单中选择“在 Canvas 中创建 Terminal”或“在 Canvas 中创建 Agent”。如果右键目标是文件，系统自动使用该文件的父目录作为 cwd。
-3. 若选择 `Terminal`，画布打开或定位后创建一个 Terminal 节点；该节点首次自动启动时就在解析后的目标目录 cwd 中运行。
+3. 若选择 `Terminal`，画布打开或定位后创建一个 Terminal 节点；如果当前窗口已经有打开的主画布 surface，则复用该 surface；该节点首次自动启动时就在解析后的目标目录 cwd 中运行。
 4. 若选择 `Agent`，扩展复用现有 Agent 创建 Quick Input，让用户选择 provider、启动方式或自定义启动命令；确认后创建 Agent 节点，并在解析后的目标目录 cwd 中启动。
 5. 新节点优先出现在当前画布视口附近；若画布尚未 ready，则使用宿主已有默认落点与避碰规则。
 6. Terminal 节点标题栏不额外显示 cwd 标签；用户通过终端 prompt / `pwd` 等终端内容理解当前路径。
@@ -49,7 +49,8 @@
   - Agent 标题副标题显示 `cwdLabel · 启动命令`；完整 cwd 与完整启动命令在 hover title 中可见。
   - 侧栏节点列表中的 Agent 第二行显示 `cwdLabel · provider · 状态`；Terminal / Note 等其他节点不增加 cwdLabel。
 - 落点与画布打开：
-  - 如果已有可交互画布，节点仍优先落在当前视口附近。
+  - 如果已有可交互画布，节点仍优先落在当前视口附近，并复用当前已打开的 `editor` 或 `panel` surface。
+  - 如果当前没有打开的主画布 surface，才按当前 window 已应用的默认承载面打开画布。
   - 如果画布尚未 ready，不因等待 Webview 坐标而丢失 cwd；宿主直接使用已有避碰逻辑创建。
 - 后续启动语义：
   - 节点绑定 cwd 是节点级执行上下文，停止后仍保留。
@@ -117,6 +118,7 @@
 - 停止后再次启动 Terminal 或 Agent 时，仍使用节点 metadata 中的 cwd，不回退到 workspace 根目录。
 - 如果右键资源不是目录或普通文件、解析后的 cwd 不属于当前 workspace、cwd 不存在或 workspace 未受信任，系统不会创建可运行执行节点，并给出明确反馈。
 - 当画布已打开时，新节点优先落在当前视口附近；当画布未 ready 时，节点仍能创建并保留正确 cwd。
+- 当画布已在 `editor` 或 `panel` 打开时，Explorer 创建 Terminal / Agent 不应切换到另一种默认承载面。
 
 ## 8. 开放问题
 

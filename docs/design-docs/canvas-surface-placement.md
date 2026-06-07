@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/completed/canvas-surface-configurable-host.md
   - docs/exec-plans/active/canvas-config-reload-semantics.md
   - docs/exec-plans/active/canvas-panel-webview-lifecycle-identity.md
-updated_at: 2026-06-03
+updated_at: 2026-06-08
 ---
 
 # 画布宿主承载面设计
@@ -156,6 +156,8 @@ updated_at: 2026-06-03
 - Settings 描述必须明确注明两段式语义：扩展/画布尚未激活前，原生 Panel 入口可先按 Settings 当前值显示或隐藏；画布激活后，本窗口实际承载面按已应用配置运行，默认承载面变更需要重新加载窗口后才完整生效。
 - 如果上次持久化时记录的 `defaultSurface` 与当前 window 启动配置不同，则 restart / reload 时不恢复旧 opposite surface；启动 surface 直接收口到当前 `defaultSurface`，避免旧 panel / editor 容器在恢复链路里继续占住主画布。
 - 同时保留显式命令，使用户可以直接在编辑区或 Panel 中打开主画布，而不必每次先改设置。
+- 创建类入口采用“已打开 surface 优先”：普通创建节点、Explorer 创建 Terminal / Agent、Explorer Markdown 创建关联 Note、创建分组、应用 / 重置模板以及内部安装命令 Terminal 都先复用当前窗口已经打开的主画布 surface；只有当前没有打开的主画布 surface 时，才按 `defaultSurface` 创建默认承载面。
+- 该规则只影响“把对象创建到画板中”的入口，不改变 `Dev Session Canvas: 打开画布` 的默认打开语义，也不改变“在编辑区打开画布 / 在面板打开画布”两个显式切换命令。
 
 ### 7.3 Panel tab 的可见性跟随已应用的承载面
 
@@ -208,6 +210,7 @@ updated_at: 2026-06-03
 8. 运行 `npm run build`；如果 `npm run typecheck` 失败，必须明确区分是否是本任务新引入问题。
 9. trusted smoke 至少要覆盖“修改 `defaultSurface` 后 reload 不应恢复旧 surface”这一回归路径；如果整套 smoke 被后续无关断言阻塞，也要明确记录阻塞点。
 10. 真实 Panel restore 诊断中如果出现连续两次 `surface/attached` / `surface/rendered`，随后应能看到 `surface/ready`、`host/bootstrap` 和 `surface/bootstrapAck`；若较早 render 的 frame 先 ready，可接受出现 `surface/readyWebviewPromoted`，但不应停留在 `surfaceReady.panel = false`。
+11. 当主画布已在 `panel` 打开且默认承载面仍为 `editor` 或相反时，普通创建节点、Explorer 创建 Terminal / Agent 和 Explorer Markdown 创建关联 Note 都应继续复用已打开 surface，不应因为 `defaultSurface` 切换到另一种 surface。
 
 ## 9. 当前验证状态
 
@@ -223,3 +226,4 @@ updated_at: 2026-06-03
 - 真实 VS Code Panel 布局恢复场景的 2026-06-03 lifecycle 修复仍待人工复验；因此本文验证状态从“已验证”暂时回退为“验证中”，避免把未确认的 Panel restore 行为写成已完成结论。
 - trusted smoke 已新增“reload 后旧 surface 不应恢复”的自动化断言；在当前 head 上整套 trusted smoke 仍被无关的 `verifyLegacyTaskFiltering` 阻塞。
 - restricted smoke 已补跑；当前仍被无关的 `verifyRestrictedLiveRuntimeReconnectBlocked` 断言阻塞。
+- 2026-06-08 补充：创建类入口已收口为“已打开 surface 优先，未打开时才使用默认承载面”。本轮通过 `node --check tests/vscode-smoke/extension-tests.cjs`、`npm run typecheck`、`npm run test:extension-manifest`、`npm run test:note-markdown-file-association` 和 `git diff --check`；`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 已执行到后续 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory` 后命中既有 serialized terminal scrollback 断言，说明本轮新增的普通创建节点、Explorer Terminal / Agent 与 Explorer Markdown Note 已打开 panel surface 复用断言均已通过。

@@ -1051,6 +1051,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.revealSurface(surface);
   }
 
+  public async revealOrCreateCurrentCanvasSurface(): Promise<void> {
+    await this.revealSurface(this.getCurrentOpenCanvasSurface() ?? this.getConfiguredSurface());
+  }
+
   public async revealInEditor(): Promise<void> {
     await this.revealSurface('editor');
   }
@@ -1972,7 +1976,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     try {
-      await this.revealOrCreate();
+      await this.revealOrCreateCurrentCanvasSurface();
       await this.waitForCanvasReady(undefined, TERMINAL_INITIAL_INPUT_DISPATCH_TIMEOUT_MS);
     } catch (error) {
       return {
@@ -8176,6 +8180,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getConfiguredSurface(): CanvasSurfaceLocation {
     return this.appliedStartupConfiguration.defaultSurface;
+  }
+
+  private getCurrentOpenCanvasSurface(): CanvasSurfaceLocation | undefined {
+    if (!this.activeSurface) {
+      return undefined;
+    }
+
+    return this.getSurfaceVisibility(this.activeSurface) === 'closed' ? undefined : this.activeSurface;
   }
 
   private normalizeStoredSurface(value: unknown): CanvasSurfaceLocation | undefined {

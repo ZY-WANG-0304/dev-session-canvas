@@ -216,7 +216,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(COMMAND_IDS.applyDefaultTemplate, async () => {
       try {
         const appliedNodeIds = await panelManager.applyDefaultCanvasTemplate();
-        await panelManager.revealOrCreate();
+        await panelManager.revealOrCreateCurrentCanvasSurface();
         panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
       } catch (error) {
         await showCanvasTemplateError('应用默认模板失败', error);
@@ -233,7 +233,7 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         const appliedNodeIds = await panelManager.resetDefaultCanvasTemplateWithConfirmation();
         if (appliedNodeIds) {
-          await panelManager.revealOrCreate();
+          await panelManager.revealOrCreateCurrentCanvasSurface();
           panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
         }
       } catch (error) {
@@ -317,7 +317,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.createNode(createRequest.kind, {
       agentProvider: createRequest.agentProvider,
       agentLaunchPreset: createRequest.agentLaunchPreset,
@@ -337,7 +337,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.createNode('terminal', {
       cwdOverride: resolvedResource.cwd
     });
@@ -360,7 +360,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.createNode('agent', {
       agentProvider: agentRequest.agentProvider,
       agentLaunchPreset: agentRequest.agentLaunchPreset,
@@ -375,17 +375,17 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     await panelManager.createNoteFromMarkdownResource(resolvedResource.uri);
   });
 
   registerCommand(context, COMMAND_IDS.createEmptyGroup, async () => {
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.createEmptyGroupFromCommand();
   });
 
   registerCommand(context, COMMAND_IDS.createGroupFromSelection, async () => {
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     try {
       await panelManager.waitForCanvasReady(undefined, 15000);
     } catch {
@@ -1725,7 +1725,7 @@ async function applyTemplateFromCommand(
   }
 
   const appliedNodeIds = await panelManager.applyCanvasTemplateById(selectedTemplate.template.id);
-  await panelManager.revealOrCreate();
+  await panelManager.revealOrCreateCurrentCanvasSurface();
   panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
 }
 
@@ -1744,7 +1744,7 @@ async function resetToTemplateFromCommand(
 
   const appliedNodeIds = await panelManager.resetCanvasTemplateByIdWithConfirmation(selectedTemplate.template.id);
   if (appliedNodeIds) {
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
   }
 }
