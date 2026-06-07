@@ -277,6 +277,31 @@ describe('D1TemplateRepository', () => {
     expect(runLog.filter((entry) => entry.sql.includes('INSERT INTO admin_audit_logs'))).toHaveLength(2);
   });
 
+  it('returns global admin stats from cumulative counters and daily aggregates', async () => {
+    const repository = new D1TemplateRepository(createFakeD1Database());
+
+    const response = await repository.getAdminStats();
+
+    expect(response.storageMode).toBe('d1');
+    expect(response.totals).toMatchObject({
+      templateCount: 1,
+      publishedTemplateCount: 1,
+      userCount: 2,
+      publisherCount: 1,
+      downloadCount: 44,
+      likeCount: 9,
+      publishCount: 2,
+      reportCount: 1,
+      openReportCount: 1
+    });
+    expect(response.daily).toEqual([
+      { day: '2026-05-10', downloadCount: 3, likeCount: 2, publishCount: 1 },
+      { day: '2026-05-11', downloadCount: 5, likeCount: 1, publishCount: 1 }
+    ]);
+    expect(response.topTemplates[0]?.template.slug).toBe('d1-review-loop');
+    expect(response.topTemplates[0]?.publishCount).toBe(2);
+  });
+
   it('updates template moderation status and user ban state with audit logs', async () => {
     const runLog: FakeD1Run[] = [];
     const repository = new D1TemplateRepository(createFakeD1Database(runLog));

@@ -5,6 +5,7 @@ import {
   listSeedTemplates,
   type MarketplaceAdminReportActionRequest,
   type MarketplaceAdminReportsResponse,
+  type MarketplaceAdminStatsResponse,
   type MarketplaceAdminTemplateStatusRequest,
   type MarketplaceAdminTemplateStatusResponse,
   type MarketplaceAdminUserBanRequest,
@@ -234,6 +235,13 @@ export async function loadMarketplaceAdminReports(status?: 'open' | 'resolved' |
     headers: { accept: 'application/json' }
   });
   return readMarketplaceJsonResponse<MarketplaceAdminReportsResponse>(response);
+}
+
+export async function loadMarketplaceAdminStats(): Promise<MarketplaceAdminStatsResponse> {
+  const response = await fetch('/api/v1/admin/stats', {
+    headers: { accept: 'application/json' }
+  });
+  return readMarketplaceJsonResponse<MarketplaceAdminStatsResponse>(response);
 }
 
 export async function resolveMarketplaceAdminReport(
