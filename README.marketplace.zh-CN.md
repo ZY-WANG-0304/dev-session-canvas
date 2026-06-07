@@ -111,6 +111,13 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - Preview 支持边界：<https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/docs/support.md>
 - 问题与功能反馈：<https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
 - 安全问题：`wzy0304@outlook.com`
+- 飞书交流群：
+
+  <img src="images/lark-group-qr.png" alt="Dev Session Canvas 飞书交流群" width="240" />
+
+- 微信交流群：
+
+  <img src="images/wechat-group-qr.png" alt="Dev Session Canvas 微信交流群" width="240" />
 
 ## 开源信息
 
