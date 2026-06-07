@@ -106,6 +106,7 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
   let reportStatus: 'open' | 'resolved' | 'rejected' = 'open';
   let reportResolution = '';
   let reportResolvedAt: string | null = null;
+  let adminActionCount = 0;
   return {
     prepare(sql: string) {
       let boundValues: unknown[] = [];
@@ -130,7 +131,7 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
               meta: {}
             };
           }
-          if (sql.includes('FROM template_daily_stats s')) {
+          if (sql.includes('FROM template_daily_stats')) {
             return {
               results: [
                 {
@@ -153,7 +154,7 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
           if (sql.includes("template_id = ?1 AND status = 'published'")) {
             return { results: versionRows.slice(), success: true, meta: {} };
           }
-          if (sql.includes('COUNT(*) AS publish_count') && sql.includes('FROM template_versions v')) {
+          if (sql.includes('COUNT(*) AS publish_count') && sql.includes('FROM template_versions')) {
             return {
               results: [{ template_id: 'tmpl-d1-review', publish_count: publishedVersionCount }],
               success: true,
@@ -188,6 +189,35 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
           }
           if (sql.includes('SELECT role FROM admin_roles')) {
             return adminUserIds.has(String(boundValues[0])) ? { role: 'admin' } : null;
+          }
+          if (sql.includes('COUNT(DISTINCT publisher_id) AS publisher_count')) {
+            return { publisher_count: 1 };
+          }
+          if (sql.includes('COUNT(*) AS template_count')) {
+            return {
+              template_count: templateRows.length,
+              published_template_count: currentTemplateStatus === 'published' ? templateRows.length : 0,
+              delisted_template_count: currentTemplateStatus === 'delisted' ? templateRows.length : 0,
+              download_count: currentTemplateStatus === 'published' ? 44 : 44,
+              like_count: currentLikeCount
+            };
+          }
+          if (sql.includes('COUNT(*) AS user_count')) {
+            return {
+              user_count: 2,
+              banned_user_count: viewerBanned ? 1 : 0
+            };
+          }
+          if (sql.includes('COUNT(*) AS report_count')) {
+            return {
+              report_count: 1,
+              open_report_count: reportStatus === 'open' ? 1 : 0,
+              resolved_report_count: reportStatus === 'resolved' ? 1 : 0,
+              rejected_report_count: reportStatus === 'rejected' ? 1 : 0
+            };
+          }
+          if (sql.includes('COUNT(*) AS admin_action_count')) {
+            return { admin_action_count: adminActionCount };
           }
           if (sql.includes('SELECT banned_at FROM users WHERE github_user_id = ?1 LIMIT 1')) {
             return viewerBanned ? { banned_at: '2026-06-07T00:00:00.000Z' } : { banned_at: null };
@@ -250,6 +280,9 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
           }
           if (sql.includes('INSERT INTO admin_roles')) {
             adminUserIds.add(String(boundValues[0]));
+          }
+          if (sql.includes('INSERT INTO admin_audit_logs')) {
+            adminActionCount += 1;
           }
           if (sql.includes('INSERT INTO template_likes')) {
             viewerLiked = true;

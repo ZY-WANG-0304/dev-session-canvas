@@ -7,6 +7,7 @@ import {
   loadMarketplaceTemplateDetail,
   loadMarketplaceTemplateLikeState,
   loadMarketplaceAdminReports,
+  loadMarketplaceAdminStats,
   loadMarketplaceTemplates,
   loadMyMarketplaceLikes,
   loadMyMarketplaceStats,
@@ -441,6 +442,47 @@ describe('marketplace web api client', () => {
 
     expect(requests[0]).toBe('/api/v1/admin/reports?status=open');
     expect(result.items[0]?.id).toBe('report-1');
+  });
+
+  it('loads global admin stats from the Worker API', async () => {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        requests.push(String(input));
+        return new Response(
+          JSON.stringify({
+            totals: {
+              templateCount: 3,
+              publishedTemplateCount: 2,
+              delistedTemplateCount: 1,
+              userCount: 4,
+              bannedUserCount: 1,
+              publisherCount: 2,
+              downloadCount: 120,
+              likeCount: 15,
+              publishCount: 5,
+              reportCount: 6,
+              openReportCount: 2,
+              resolvedReportCount: 3,
+              rejectedReportCount: 1,
+              adminActionCount: 7
+            },
+            daily: [{ day: '2026-06-07', downloadCount: 10, likeCount: 2, publishCount: 1 }],
+            topTemplates: [],
+            storageMode: 'd1'
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const result = await loadMarketplaceAdminStats();
+
+    expect(requests[0]).toBe('/api/v1/admin/stats');
+    expect(result.totals.templateCount).toBe(3);
+    expect(result.totals.openReportCount).toBe(2);
+    expect(result.daily[0]?.downloadCount).toBe(10);
   });
 
   it('posts admin moderation actions to the Worker API', async () => {

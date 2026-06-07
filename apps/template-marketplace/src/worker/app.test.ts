@@ -1177,6 +1177,26 @@ describe('template marketplace worker api', () => {
     expect(body.error.code).toBe('admin_required');
   });
 
+  it('requires admin permission for global marketplace stats', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/admin/stats',
+      {
+        headers: {
+          'x-marketplace-test-github-login': 'community-user',
+          'x-marketplace-test-github-user-id': 'test-community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database()
+      }
+    );
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe('admin_required');
+  });
+
   it('bootstraps admins by stable GitHub user id before checking admin roles', async () => {
     const runLog: FakeD1Run[] = [];
     const env = {
@@ -1239,6 +1259,35 @@ describe('template marketplace worker api', () => {
     expect(resolveBody.report.template.status).toBe('delisted');
     expect(runLog.some((entry) => entry.sql.includes('UPDATE reports SET status = ?1'))).toBe(true);
     expect(runLog.filter((entry) => entry.sql.includes('INSERT INTO admin_audit_logs'))).toHaveLength(2);
+  });
+
+  it('lets admins load global marketplace stats', async () => {
+    const env = {
+      MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+      MARKETPLACE_ADMIN_GITHUB_LOGINS: 'dscanvas-admin',
+      MARKETPLACE_DB: createFakeD1Database([], { adminUserIds: ['github-test-dscanvas-admin'] })
+    };
+    const response = await app.request(
+      'http://localhost/api/v1/admin/stats',
+      {
+        headers: {
+          'x-marketplace-test-github-login': 'dscanvas-admin'
+        }
+      },
+      env
+    );
+    const body = await response.json<{
+      totals: { templateCount: number; downloadCount: number; publishCount: number; openReportCount: number };
+      topTemplates: Array<{ template: { slug: string }; publishCount: number }>;
+    }>();
+
+    expect(response.status).toBe(200);
+    expect(body.totals.templateCount).toBe(1);
+    expect(body.totals.downloadCount).toBe(44);
+    expect(body.totals.publishCount).toBe(2);
+    expect(body.totals.openReportCount).toBe(1);
+    expect(body.topTemplates[0]?.template.slug).toBe('d1-review-loop');
+    expect(body.topTemplates[0]?.publishCount).toBe(2);
   });
 
   it('lets admins change template status and user ban state', async () => {

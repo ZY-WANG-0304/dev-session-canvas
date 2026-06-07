@@ -272,6 +272,37 @@ export interface MarketplacePublisherStatsResponse {
   storageMode: MarketplaceStorageMode;
 }
 
+export interface MarketplaceAdminStatsTotals {
+  templateCount: number;
+  publishedTemplateCount: number;
+  delistedTemplateCount: number;
+  userCount: number;
+  bannedUserCount: number;
+  publisherCount: number;
+  downloadCount: number;
+  likeCount: number;
+  publishCount: number;
+  reportCount: number;
+  openReportCount: number;
+  resolvedReportCount: number;
+  rejectedReportCount: number;
+  adminActionCount: number;
+}
+
+export interface MarketplaceAdminStatsTemplate {
+  template: MarketplaceTemplateSummary;
+  downloadCount: number;
+  likeCount: number;
+  publishCount: number;
+}
+
+export interface MarketplaceAdminStatsResponse {
+  totals: MarketplaceAdminStatsTotals;
+  daily: MarketplacePublisherStatsPoint[];
+  topTemplates: MarketplaceAdminStatsTemplate[];
+  storageMode: MarketplaceStorageMode;
+}
+
 export interface MarketplaceTemplateReportRequest {
   reason: MarketplaceReportReason;
 }
