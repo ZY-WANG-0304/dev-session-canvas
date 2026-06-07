@@ -151,6 +151,10 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 
   <img src="images/lark-group-qr.png" alt="Dev Session Canvas Feishu Group" width="240" />
 
+- WeChat discussion group:
+
+  <img src="images/wechat-group-qr.png" alt="Dev Session Canvas WeChat Group" width="240" />
+
 ## Development And Contribution
 
 Development setup, local debugging, main-path verification, and commit conventions are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
