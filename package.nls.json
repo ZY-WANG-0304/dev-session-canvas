@@ -24,6 +24,7 @@
   "command.createNode.title": "Dev Session Canvas: 创建节点",
   "command.createTerminalFromExplorerResource.title": "Dev Session Canvas: 在 Canvas 中创建 Terminal",
   "command.createAgentFromExplorerResource.title": "Dev Session Canvas: 在 Canvas 中创建 Agent",
+  "command.createNoteFromExplorerMarkdown.title": "Dev Session Canvas: 在 Canvas 中创建关联 Note",
   "command.createEmptyGroup.title": "Dev Session Canvas: 创建空分组",
   "command.createGroupFromSelection.title": "Dev Session Canvas: 从选中项创建分组",
   "command.saveNoteAsMarkdownFile.title": "Dev Session Canvas: 保存为关联 Markdown 文件",

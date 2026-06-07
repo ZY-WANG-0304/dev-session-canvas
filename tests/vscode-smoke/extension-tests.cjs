@@ -35,6 +35,7 @@ const COMMAND_IDS = {
   createNode: 'devSessionCanvas.createNode',
   createTerminalFromExplorerResource: 'devSessionCanvas.createTerminalFromExplorerResource',
   createAgentFromExplorerResource: 'devSessionCanvas.createAgentFromExplorerResource',
+  createNoteFromExplorerMarkdown: 'devSessionCanvas.createNoteFromExplorerMarkdown',
   showNodeList: 'devSessionCanvas.showNodeList',
   setSidebarNodeListFlatView: 'devSessionCanvas.setSidebarNodeListFlatView',
   setSidebarNodeListGroupedView: 'devSessionCanvas.setSidebarNodeListGroupedView',
@@ -799,6 +800,7 @@ async function runTrustedSmoke() {
   await verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot();
   await verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot();
   await verifyExplorerResourceExecutionNodeCreation();
+  await verifyCreateNodeCommandUsesOpenCanvasSurface();
   await verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
   await verifyPersistedStateFiltersLegacyTaskNodes();
@@ -1820,7 +1822,10 @@ async function verifyExplorerResourceExecutionNodeCreation() {
   await fs.mkdir(targetDirectory, { recursive: true });
   await fs.writeFile(targetFile, 'export const explorerCwdSmoke = true;\n', 'utf8');
 
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
   let snapshot = await getDebugSnapshot();
+  assert.strictEqual(snapshot.activeSurface, 'panel');
   const baselineNodeIds = new Set(snapshot.state.nodes.map((node) => node.id));
 
   await vscode.commands.executeCommand(
@@ -1842,6 +1847,11 @@ async function verifyExplorerResourceExecutionNodeCreation() {
       !baselineNodeIds.has(node.id) &&
       node.kind === 'terminal' &&
       node.metadata?.terminal?.cwd === targetDirectory
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Terminal creation to use the already-open Canvas surface instead of the default surface.'
   );
   assert.ok(terminalNode, 'Expected Explorer directory command to create a cwd-scoped Terminal.');
   await waitForDiagnosticEvents(
@@ -1891,6 +1901,11 @@ async function verifyExplorerResourceExecutionNodeCreation() {
       !baselineNodeIds.has(node.id) &&
       node.kind === 'agent' &&
       node.metadata?.agent?.cwd === targetDirectory
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Agent creation to stay on the already-open Canvas surface.'
   );
   assert.ok(agentNode, 'Expected Explorer file command to create an Agent bound to the file parent directory.');
   await waitForDiagnosticEvents(
@@ -1973,6 +1988,37 @@ async function verifyExplorerResourceExecutionNodeCreation() {
   await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
   snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
   assert.strictEqual(snapshot.state.nodes.length, 0);
+  await ensureEditorCanvasReady();
+}
+
+async function verifyCreateNodeCommandUsesOpenCanvasSurface() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  let snapshot = await getDebugSnapshot();
+  assert.strictEqual(snapshot.activeSurface, 'panel');
+
+  await setQuickPickSelections(['create-note']);
+  await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.activeSurface === 'panel' &&
+      currentSnapshot.state.nodes.some((node) => node.kind === 'note'),
+    20000
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected generic node creation to reuse the already-open Canvas surface.'
+  );
+
+  await dispatchWebviewMessage({ type: 'webview/resetDemoState' }, 'panel');
+  snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
+  assert.strictEqual(snapshot.state.nodes.length, 0);
+  await ensureEditorCanvasReady();
 }
 
 async function verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits() {
@@ -4920,6 +4966,115 @@ async function verifyNoteMarkdownFileAssociation() {
     10000
   );
 
+  await clearHostMessages();
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await vscode.commands.executeCommand(COMMAND_IDS.createNoteFromExplorerMarkdown, associatedFileUri);
+      await waitForHostMessages(
+        (messages) =>
+          messages.some(
+            (message) =>
+              message.type === 'host/focusNodes' &&
+              Array.isArray(message.payload?.nodeIds) &&
+              message.payload.nodeIds.includes(associatedNote.id)
+          ),
+        10000
+      );
+      assert.strictEqual(
+        warningCalls.length,
+        1,
+        'Expected Explorer Markdown command to confirm before locating an existing associated Note.'
+      );
+      assert.ok(
+        warningCalls[0].items.includes('定位已有 Note'),
+        'Expected Explorer Markdown command to offer locating the associated Note.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '定位已有 Note')
+  );
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Markdown Note creation to locate existing Notes on the already-open Canvas surface.'
+  );
+  assert.strictEqual(
+    snapshot.state.nodes.filter(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+    ).length,
+    1,
+    'Expected Explorer Markdown command locate flow not to create another Note for an existing association.'
+  );
+
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await vscode.commands.executeCommand(COMMAND_IDS.createNoteFromExplorerMarkdown, associatedFileUri);
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.filter(
+            (node) =>
+              node.kind === 'note' &&
+              node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+          ).length === 2,
+        10000
+      );
+      assert.strictEqual(
+        warningCalls.length,
+        1,
+        'Expected Explorer Markdown command to confirm before adding a duplicate associated Note.'
+      );
+      assert.ok(
+        warningCalls[0].items.includes('添加新 Note'),
+        'Expected Explorer Markdown command to offer adding another associated Note.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '添加新 Note')
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Markdown Note creation to add duplicate Notes on the already-open Canvas surface.'
+  );
+  const explorerDuplicateAssociatedNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.id !== associatedNote.id &&
+      node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+  );
+  assert.ok(
+    explorerDuplicateAssociatedNote,
+    'Expected Explorer Markdown command add flow to create a second associated Note when confirmed.'
+  );
+  assert.strictEqual(
+    explorerDuplicateAssociatedNote.title,
+    'associated-note.md',
+    'Expected Explorer Markdown command to reuse the Markdown association title rule.'
+  );
+  assert.strictEqual(
+    explorerDuplicateAssociatedNote.metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected Explorer Markdown command to read the associated file content into the Note buffer.'
+  );
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: explorerDuplicateAssociatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'note' &&
+          node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+      ).length === 1,
+    10000
+  );
+
   await dispatchWebviewMessage({
     type: 'webview/updateNoteNode',
     payload: {
@@ -5167,6 +5322,8 @@ async function verifyNoteMarkdownFileAssociation() {
   await waitForSnapshot((currentSnapshot) =>
     currentSnapshot.state.nodes.every((node) => node.id !== missingNote.id)
   );
+  await ensureEditorCanvasReady();
+  await assertInteractiveEditorSurface('verifyNoteMarkdownFileAssociation');
 }
 
 async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNodeId) {
@@ -10749,7 +10906,22 @@ function createSerializedTerminalStateFixture(marker) {
 }
 
 async function waitForWebviewProbe(predicate, timeoutMs = 8000) {
+  await assertInteractiveEditorSurface('waitForWebviewProbe');
   return waitForWebviewProbeOnSurface('editor', predicate, timeoutMs);
+}
+
+async function assertInteractiveEditorSurface(caller) {
+  const snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'editor',
+    `${caller} requires the editor surface to stay interactive; restore it with ensureEditorCanvasReady() after commands that reveal another surface.`
+  );
+  assert.strictEqual(
+    snapshot.surfaceReady.editor,
+    true,
+    `${caller} requires the editor surface to be ready before probing the real Webview.`
+  );
 }
 
 async function waitForWebviewProbeOnSurface(surface, predicate, timeoutMs = 8000) {

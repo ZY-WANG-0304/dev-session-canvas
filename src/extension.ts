@@ -20,6 +20,7 @@ import {
   type CanvasNodeKind,
   type CanvasNodeSummary
 } from './common/protocol';
+import { isSupportedNoteMarkdownFilePath } from './common/noteMarkdownFileAssociation';
 import {
   buildAgentPresetCommandLine,
   classifyAgentLaunchPreset,
@@ -121,6 +122,10 @@ interface ExplorerExecutionResource {
   workspaceFolder: vscode.WorkspaceFolder;
 }
 
+interface ExplorerMarkdownNoteResource {
+  uri: vscode.Uri;
+}
+
 function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
   return vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0
     ? vscode.ConfigurationTarget.Workspace
@@ -211,7 +216,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(COMMAND_IDS.applyDefaultTemplate, async () => {
       try {
         const appliedNodeIds = await panelManager.applyDefaultCanvasTemplate();
-        await panelManager.revealOrCreate();
+        await panelManager.revealOrCreateCurrentCanvasSurface();
         panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
       } catch (error) {
         await showCanvasTemplateError('应用默认模板失败', error);
@@ -228,7 +233,7 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         const appliedNodeIds = await panelManager.resetDefaultCanvasTemplateWithConfirmation();
         if (appliedNodeIds) {
-          await panelManager.revealOrCreate();
+          await panelManager.revealOrCreateCurrentCanvasSurface();
           panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
         }
       } catch (error) {
@@ -312,7 +317,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.createNode(createRequest.kind, {
       agentProvider: createRequest.agentProvider,
       agentLaunchPreset: createRequest.agentLaunchPreset,
@@ -332,7 +337,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.createNode('terminal', {
       cwdOverride: resolvedResource.cwd
     });
@@ -355,7 +360,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.createNode('agent', {
       agentProvider: agentRequest.agentProvider,
       agentLaunchPreset: agentRequest.agentLaunchPreset,
@@ -364,13 +369,23 @@ export function activate(context: vscode.ExtensionContext): void {
     });
   });
 
+  registerCommand(context, COMMAND_IDS.createNoteFromExplorerMarkdown, async (resource?: unknown) => {
+    const resolvedResource = await resolveExplorerMarkdownNoteResource(resource);
+    if (!resolvedResource) {
+      return;
+    }
+
+    await panelManager.revealOrCreateCurrentCanvasSurface();
+    await panelManager.createNoteFromMarkdownResource(resolvedResource.uri);
+  });
+
   registerCommand(context, COMMAND_IDS.createEmptyGroup, async () => {
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.createEmptyGroupFromCommand();
   });
 
   registerCommand(context, COMMAND_IDS.createGroupFromSelection, async () => {
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     try {
       await panelManager.waitForCanvasReady(undefined, 15000);
     } catch {
@@ -955,6 +970,42 @@ async function promptCreateNodeRequest(
     }
     return launchRequest;
   }
+}
+
+async function resolveExplorerMarkdownNoteResource(
+  resource: unknown
+): Promise<ExplorerMarkdownNoteResource | undefined> {
+  const inputUri = resource instanceof vscode.Uri ? resource : undefined;
+  if (!inputUri || inputUri.scheme !== 'file') {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  if (!isSupportedNoteMarkdownFilePath(inputUri.fsPath)) {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  let stat: vscode.FileStat;
+  try {
+    stat = await vscode.workspace.fs.stat(inputUri);
+  } catch {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  if ((stat.type & vscode.FileType.File) === 0) {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  return {
+    uri: inputUri
+  };
+}
+
+async function showExplorerMarkdownNoteResourceWarning(): Promise<void> {
+  await vscode.window.showWarningMessage('请选择 Markdown 文件（.md / .markdown）来创建关联 Note。');
 }
 
 async function resolveExplorerExecutionResource(resource: unknown): Promise<ExplorerExecutionResource | undefined> {
@@ -1674,7 +1725,7 @@ async function applyTemplateFromCommand(
   }
 
   const appliedNodeIds = await panelManager.applyCanvasTemplateById(selectedTemplate.template.id);
-  await panelManager.revealOrCreate();
+  await panelManager.revealOrCreateCurrentCanvasSurface();
   panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
 }
 
@@ -1693,7 +1744,7 @@ async function resetToTemplateFromCommand(
 
   const appliedNodeIds = await panelManager.resetCanvasTemplateByIdWithConfirmation(selectedTemplate.template.id);
   if (appliedNodeIds) {
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
   }
 }
