@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0
+
+- 与主扩展 `0.14.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦画布空间边界导航、普通用户分组与 multi-root workspace root section 的全局 fit view / MiniMap 可见性，以及 Agent 重启动作紧凑布局修复；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.13.0
 
 - 与主扩展 `0.13.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 VS Code multi-root workspace 组合画布、系统 root section、root-local 状态共享、跨 root 连线拒绝和多根文件活动命名空间；notifier companion 不引入新的通知投递行为变更。
