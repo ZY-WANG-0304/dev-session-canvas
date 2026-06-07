@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
-import type { MarketplaceTemplateDetail } from '@dev-session-canvas/marketplace-shared';
+import { MARKETPLACE_REPORT_REASON_VALUES, type MarketplaceReportReason, type MarketplaceTemplateDetail } from '@dev-session-canvas/marketplace-shared';
 
 import { InstallInVSCodeLink } from './InstallInVSCodeLink';
-import { loadCurrentMarketplaceUser, loadMarketplaceTemplateLikeState, setMarketplaceTemplateLike, type MarketplaceCurrentUser } from '../lib/api';
+import {
+  loadCurrentMarketplaceUser,
+  loadMarketplaceTemplateLikeState,
+  reportMarketplaceTemplate,
+  setMarketplaceTemplateLike,
+  type MarketplaceCurrentUser
+} from '../lib/api';
 import { buildTemplateDownloadHref, buildTemplateJsonExportHref } from '../lib/download';
 import { buildGithubSignInHref, getMarketplaceHomeHref } from '../lib/routing';
 import { buildTemplateThumbnailHref } from '../lib/thumbnail';
@@ -23,6 +29,13 @@ interface LikeState {
   errorMessage?: string;
 }
 
+interface ReportState {
+  reason: MarketplaceReportReason;
+  loading: boolean;
+  submitted: boolean;
+  errorMessage?: string;
+}
+
 const activeTabClassName =
   'border-b-2 border-canvas-accent px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-canvas-ink outline-none transition focus:ring-4 focus:ring-canvas-accent/25';
 const inactiveTabClassName =
@@ -35,6 +48,11 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
     liked: false,
     likeCount: template.likeCount
   });
+  const [reportState, setReportState] = useState<ReportState>({
+    reason: 'spam',
+    loading: false,
+    submitted: false
+  });
   const downloadHref = buildTemplateDownloadHref(template);
   const templateJsonExportHref = buildTemplateJsonExportHref(template);
   const thumbnailHref = buildTemplateThumbnailHref(template);
@@ -44,6 +62,11 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
 
   useEffect(() => {
     setActiveDetailTab('readme');
+    setReportState({
+      reason: 'spam',
+      loading: false,
+      submitted: false
+    });
   }, [template.slug]);
 
   useEffect(() => {
@@ -119,6 +142,23 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
         loading: false,
         errorMessage: error instanceof Error ? error.message : 'Unable to update like.'
       });
+    }
+  }
+
+  async function submitReport(): Promise<void> {
+    if (!likeState.user || reportState.loading || reportState.submitted) {
+      return;
+    }
+    setReportState((current) => ({ ...current, loading: true, errorMessage: undefined }));
+    try {
+      await reportMarketplaceTemplate(template.slug, { reason: reportState.reason });
+      setReportState((current) => ({ ...current, loading: false, submitted: true }));
+    } catch (error) {
+      setReportState((current) => ({
+        ...current,
+        loading: false,
+        errorMessage: error instanceof Error ? error.message : 'Unable to report template.'
+      }));
     }
   }
 
@@ -287,6 +327,57 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
             {likeState.errorMessage ? <p className="mt-2 text-xs leading-5 text-canvas-error">{likeState.errorMessage}</p> : null}
           </div>
 
+          <div className="mt-5 border-t border-canvas-line pt-4">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-canvas-muted">Report</h3>
+            {likeState.user ? (
+              reportState.submitted ? (
+                <p className="mt-3 border border-canvas-line bg-canvas-mist p-3 text-xs leading-5 text-canvas-ink">
+                  Thanks. This report is now in the admin queue.
+                </p>
+              ) : (
+                <>
+                  <label className="mt-3 block text-xs font-semibold text-canvas-muted" htmlFor="template-report-reason">
+                    Reason
+                  </label>
+                  <select
+                    id="template-report-reason"
+                    className="mt-2 h-10 w-full border border-canvas-line bg-canvas-paper px-3 text-sm text-canvas-ink outline-none ring-canvas-accent/25 transition focus:ring-4"
+                    value={reportState.reason}
+                    onChange={(event) => {
+                      const reason = event.currentTarget.value as MarketplaceReportReason;
+                      setReportState((current) => ({ ...current, reason }));
+                    }}
+                    disabled={reportState.loading}
+                  >
+                    {MARKETPLACE_REPORT_REASON_VALUES.map((reason) => (
+                      <option key={reason} value={reason}>
+                        {formatReportReason(reason)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="mt-3 inline-flex w-full justify-center border border-canvas-line bg-canvas-mist px-4 py-3 text-xs font-semibold text-canvas-ink transition hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-accent/25 disabled:cursor-not-allowed disabled:opacity-60"
+                    type="button"
+                    disabled={reportState.loading}
+                    onClick={() => {
+                      void submitReport();
+                    }}
+                  >
+                    {reportState.loading ? 'Reporting...' : 'Report this template'}
+                  </button>
+                </>
+              )
+            ) : (
+              <a
+                className="mt-3 inline-flex w-full justify-center border border-canvas-line bg-canvas-mist px-4 py-3 text-xs font-semibold text-canvas-ink transition hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
+                href={buildGithubSignInHref(window.location.pathname)}
+              >
+                Sign in to report
+              </a>
+            )}
+            {reportState.errorMessage ? <p className="mt-2 text-xs leading-5 text-canvas-error">{reportState.errorMessage}</p> : null}
+          </div>
+
           <details className="mt-5 border-t border-canvas-line pt-4">
             <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-canvas-muted focus:outline-none focus:ring-4 focus:ring-canvas-accent/25">
               Version history
@@ -334,4 +425,17 @@ function MetaItem({ label, value }: { label: string; value: string }): JSX.Eleme
       <dd className="mt-1 text-xl font-light text-canvas-ink">{value}</dd>
     </div>
   );
+}
+
+function formatReportReason(reason: MarketplaceReportReason): string {
+  switch (reason) {
+    case 'spam':
+      return 'Spam';
+    case 'malicious':
+      return 'Malicious content';
+    case 'copyright':
+      return 'Copyright issue';
+    case 'other':
+      return 'Other';
+  }
 }

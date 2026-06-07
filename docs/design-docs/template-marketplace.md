@@ -19,9 +19,10 @@ related_plans:
   - docs/exec-plans/active/template-marketplace-tech-selection.md
   - docs/exec-plans/active/template-marketplace-foundation.md
   - docs/exec-plans/active/template-marketplace-publishing.md
-  - docs/exec-plans/active/template-marketplace-phase3.md
+  - docs/exec-plans/completed/template-marketplace-phase3.md
+  - docs/exec-plans/active/template-marketplace-phase4-governance.md
   - docs/exec-plans/active/template-package-repository-research.md
-updated_at: 2026-06-01
+updated_at: 2026-06-07
 ---
 
 # 模板市场技术选型
@@ -285,19 +286,19 @@ API 迁移采用兼容优先策略。当前 `POST /api/v1/templates` 的 JSON re
 
 VSCode 端发布、点赞和管理动作不自己实现 OAuth 回调主流程，而是优先调用 VSCode 内置 GitHub authentication provider。宿主拿到 GitHub access token 后调用 `POST /api/v1/auth/vscode/exchange`；Worker 只临时用该 token 调 GitHub API 获取用户身份，然后返回短期 marketplace token。宿主把 marketplace token 放入 `context.secrets`，并在失效后重新通过 VSCode authentication session 换取。插件端“发布模板到市场”入口只对自建本地模板开放：命令面板和市场面板 header 打开插件内发布表单，模板侧栏只在 `自建` 行显示发布 icon action 并直接打开该模板的发布表单；画板右键菜单只保留“保存为模板”，不再直接提供发布入口。发布表单必须允许用户在提交前确认或编辑名称、Slug、描述、标签、README、CHANGELOG 和 Template JSON 预览；最终点击确认发布时才换取 marketplace token 并调用 `POST /api/v1/templates`。发布成功后，表单显示成功页和模板详情入口，同时刷新列表缓存并切到最近更新排序，避免用户以为发布静默失败。内置模板和从市场安装的模板不直接再次发布，后续若支持 fork，应作为单独产品能力进入设计文档。
 
-GitHub OAuth App 只有单一 callback URL；因为预览环境使用 `*.workers.dev`，生产浏览器入口计划为 `https://dscanvas.dev/templates`，预览和生产建议分别创建 OAuth App，并在 Worker 环境变量中分别配置 `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`MARKETPLACE_SESSION_SECRET`、`MARKETPLACE_TOKEN_SECRET` 和管理员 allowlist。真实本地开发值写入被 Git 忽略的 `apps/template-marketplace/.dev.vars`；仓库只跟踪不含 secret 的 `apps/template-marketplace/.dev.vars.example`。
+GitHub OAuth App 只有单一 callback URL；因为预览环境使用 `*.workers.dev`，生产浏览器入口计划为 `https://dscanvas.dev/templates`，预览和生产建议分别创建 OAuth App，并在 Worker 环境变量中分别配置 `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`MARKETPLACE_SESSION_SECRET`、`MARKETPLACE_TOKEN_SECRET` 和管理员 bootstrap allowlist。管理员 bootstrap 推荐用稳定的 GitHub 数字 user id 配置 `MARKETPLACE_ADMIN_GITHUB_IDS`；`MARKETPLACE_ADMIN_GITHUB_LOGINS` 只作为本地开发和临时配置的兼容入口。真实本地开发值写入被 Git 忽略的 `apps/template-marketplace/.dev.vars`；仓库只跟踪不含 secret 的 `apps/template-marketplace/.dev.vars.example`。
 
 权限规则：
 
 - 匿名用户只能浏览、搜索、查看详情和下载。
 - 登录用户可以发布、点赞、收藏、举报和管理自己的模板。
 - 模板作者可以发布新版本、编辑描述和下架自己的模板，但不能删除审计记录。
-- 管理员由 `admin_roles` 判定，初始管理员通过 Worker secret 中的 GitHub login / id allowlist bootstrap；所有管理动作写入 `admin_audit_logs`。
+- 管理员由 `admin_roles` 判定，初始管理员通过 Worker secret 中的 GitHub 数字 id / login allowlist bootstrap，其中数字 id 优先；已落库的管理员权限不在每次请求时动态依赖 allowlist；所有管理动作写入 `admin_audit_logs`。
 - 被封禁用户不能发布、点赞或举报；已上架模板是否下架由治理动作单独决定。
 
 ### 7.8 上传校验、治理与安全边界
 
-上传入口按顺序执行：请求大小限制、MIME / 扩展名检查、压缩包文件数量 / 路径穿越 / 解压后大小检查、包归档解压或 JSON body 组包、`template-package.json` parse、`CanvasTemplateDocument` / 模板包 manifest Zod schema 校验、节点/边业务规则校验、Provider 标注提取、关联 Markdown Note 内容模式与 workspace 相对路径校验、README / CHANGELOG / 描述 / 标签长度检查、缩略图和媒体类型 / 尺寸 / 数量检查、README 媒体引用解析和 sanitizer 检查、危险 URL / 控制字符检查、hash 计算、写入 R2、写入 D1。任一步失败都返回结构化错误码。自动化测试可以通过 `MARKETPLACE_ALLOW_TEST_AUTH=true` 启用 fake auth header，但 preview / production 不能开启该开关。
+上传入口按顺序执行：认证、D1/R2 binding 可用性检查、用户封禁检查、请求大小限制、MIME / 扩展名检查、压缩包文件数量 / 路径穿越 / 解压后大小检查、包归档解压或 JSON body 组包、`template-package.json` parse、`CanvasTemplateDocument` / 模板包 manifest Zod schema 校验、节点/边业务规则校验、Provider 标注提取、关联 Markdown Note 内容模式与 workspace 相对路径校验、README / CHANGELOG / 描述 / 标签长度检查、缩略图和媒体类型 / 尺寸 / 数量检查、README 媒体引用解析和 sanitizer 检查、危险 URL / 控制字符检查、hash 计算、写入 R2、写入 D1。完整包上传必须先完成封禁检查再读取 multipart body，避免被封禁用户触发大包读取或解压。任一步失败都返回结构化错误码。自动化测试可以通过 `MARKETPLACE_ALLOW_TEST_AUTH=true` 启用 fake auth header，但 preview / production 不能开启该开关。
 
 内容安全在 Phase 1-4 范围内只做确定性检查和举报治理，不把外部 AI 审核服务列为硬依赖。若后续需要接入第三方审核，应新增设计文档说明数据出境、误杀处理和人工复核流程。
 
@@ -328,7 +329,7 @@ Phase 4 在本方案中的承载方式如下：
 
 ## 8. 验证方法
 
-技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析；2026-06-01 Phase 3 又完成点赞/取消点赞、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`、发布者 Dashboard 和本地 API/Web/typecheck 验证。真实 GitHub OAuth preview smoke、共享 React Webview bundle、完整生产资源分离、举报写接口和治理后台尚未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
+技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析；2026-06-01 Phase 3 又完成点赞/取消点赞、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`、发布者 Dashboard 和本地 API/Web/typecheck 验证；2026-06-07 Phase 4 第一切片完成举报写接口、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写拒绝、管理员审计日志、Web 详情页举报表单和 `/templates/admin` 最小治理后台的本地 API/Web/typecheck 验证。真实 GitHub OAuth preview smoke、共享 React Webview bundle、完整生产资源分离、插件内举报入口、VSCode 更新提醒与回滚、管理员数据统计面板仍未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
 
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。

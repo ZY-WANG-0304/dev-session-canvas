@@ -23,6 +23,7 @@ Phase 3 不进入治理后台和版本回滚的 Phase 4 范围。举报、下架
 - [x] (2026-06-01 22:45 +0800) 首次尝试更新 workers.dev 调试环境；本地 marketplace build 已通过，但当时 `wrangler deploy` 被 Cloudflare 认证错误 `Authentication error [code: 10000]` 阻断。
 - [x] (2026-06-04 19:35 +0800) 重新更新 workers.dev 调试环境成功；当前 URL 为 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，Wrangler 当前版本 ID 为 `550b893a-3097-4d84-b848-152761ba84a3`。
 - [x] (2026-06-06 23:08 +0800) 处理 PR review blocker：详情页改用单模板点赞状态接口，避免用户点赞超过 50 个模板后被 `/me/likes` 首页截断误判；发布者 Dashboard 的 per-template publishCount 改为从 `template_versions` 真实聚合，避免只映射 latest version 导致恒为 1。
+- [x] (2026-06-07 00:15 +0800) PR #115 已合入 `feature/templates-marketplace`，用户确认调试环境已验证；Phase 3 ExecPlan 移入 `docs/exec-plans/completed/`，Phase 4 从最新集成分支继续。
 
 ## 意外与发现
 
@@ -66,7 +67,7 @@ Phase 3 不进入治理后台和版本回滚的 Phase 4 范围。举报、下架
 
 ## 结果与复盘
 
-当前已完成 Phase 3 的本地代码闭环并已更新 workers.dev 调试环境：共享 API contract、repository 方法、Worker 路由、Web API client、详情页点赞控件、My Templates Dashboard 和对应测试均已落地。实现复用既有 `template_likes` 和 `template_daily_stats` 表，不需要新增 migration。真实 preview OAuth 登录后的点赞与 Dashboard smoke 尚未执行，因此产品规格将 Phase 3 标记为本地实现完成，但仍保留发布前真实环境验证要求。
+当前已完成 Phase 3 的代码闭环、调试环境更新和用户确认的 preview 验证：共享 API contract、repository 方法、Worker 路由、Web API client、详情页点赞控件、My Templates Dashboard 和对应测试均已落地。实现复用既有 `template_likes` 和 `template_daily_stats` 表，不需要新增 migration。用户已在 2026-06-07 确认调试环境验证完成；本计划作为 Phase 3 收口记录移入 completed。具体浏览器操作日志未在仓库内自动采集，后续发布前如需审计级证据可再补一次记录化 smoke。
 
 ## 上下文与定向
 
@@ -191,3 +192,6 @@ Phase 3 完成时应满足以下可观察行为。未登录用户打开模板详
 2026-06-01 / Codex：补充调试环境部署尝试结果，原因是用户要求更新调试环境，但当前 Wrangler 登录态或 token 权限已失效，部署被 Cloudflare 认证阻断。
 2026-06-04 / Codex：补充调试环境更新结果，原因是用户已更新 Cloudflare 认证配置后重新部署成功，同时记录本机 workers.dev HTTP smoke 因连接超时未完成。
 2026-06-06 / Codex：补充 PR review blocker 修复结果，原因是详情页点赞状态和 per-template publishCount 需要避免分页截断与 latest-only 映射造成确定性漂移。
+
+
+2026-06-07 / Codex：Phase 3 closeout，原因是 PR #115 已合并且用户确认调试环境已验证；后续治理能力进入 Phase 4 ExecPlan。

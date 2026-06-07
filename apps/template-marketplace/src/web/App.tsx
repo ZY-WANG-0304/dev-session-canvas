@@ -9,14 +9,17 @@ import {
 } from '@dev-session-canvas/marketplace-shared';
 
 import { TemplateDetailView } from './components/TemplateDetailView';
+import { TemplateAdminView } from './components/TemplateAdminView';
 import { TemplateCard } from './components/TemplateCard';
 import { TemplateMyTemplatesView } from './components/TemplateMyTemplatesView';
 import { TemplatePublishView } from './components/TemplatePublishView';
 import { loadMarketplaceTemplateDetail, loadMarketplaceTemplates } from './lib/api';
 import {
+  getMarketplaceAdminHref,
   getMarketplaceHomeHref,
   getMarketplaceMeHref,
   getMarketplacePublishHref,
+  isMarketplaceAdminPath,
   isMarketplaceMePath,
   isMarketplacePublishPath,
   readTemplateSlugFromPath
@@ -43,6 +46,7 @@ export function App(): JSX.Element {
   const [detailSlug, setDetailSlug] = useState(() => readTemplateSlugFromPath(window.location.pathname));
   const [isPublishPage, setIsPublishPage] = useState(() => isMarketplacePublishPath(window.location.pathname));
   const [isMyTemplatesPage, setIsMyTemplatesPage] = useState(() => isMarketplaceMePath(window.location.pathname));
+  const [isAdminPage, setIsAdminPage] = useState(() => isMarketplaceAdminPath(window.location.pathname));
   const [state, setState] = useState<LoadState>({
     templates: [],
     source: 'seed-fallback',
@@ -60,13 +64,14 @@ export function App(): JSX.Element {
       setDetailSlug(readTemplateSlugFromPath(window.location.pathname));
       setIsPublishPage(isMarketplacePublishPath(window.location.pathname));
       setIsMyTemplatesPage(isMarketplaceMePath(window.location.pathname));
+      setIsAdminPage(isMarketplaceAdminPath(window.location.pathname));
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   useEffect(() => {
-    if (detailSlug || isPublishPage || isMyTemplatesPage) {
+    if (detailSlug || isPublishPage || isMyTemplatesPage || isAdminPage) {
       setState((current) => (current.loading ? { ...current, loading: false } : current));
       return;
     }
@@ -87,12 +92,12 @@ export function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [query, sort, selectedTags, detailSlug, isPublishPage, isMyTemplatesPage]);
+  }, [query, sort, selectedTags, detailSlug, isPublishPage, isMyTemplatesPage, isAdminPage]);
 
   const availableTags = useMemo(() => collectVisibleTags(state.templates, selectedTags), [state.templates, selectedTags]);
 
   useEffect(() => {
-    if (!detailSlug || isPublishPage || isMyTemplatesPage) {
+    if (!detailSlug || isPublishPage || isMyTemplatesPage || isAdminPage) {
       setDetailState((current) => ({ ...current, loading: false }));
       return;
     }
@@ -112,11 +117,11 @@ export function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [detailSlug, isPublishPage, isMyTemplatesPage]);
+  }, [detailSlug, isPublishPage, isMyTemplatesPage, isAdminPage]);
 
   const isDetailPage = Boolean(detailSlug);
-  const isSecondaryPage = isDetailPage || isPublishPage || isMyTemplatesPage;
-  const activeNavItem = isPublishPage ? 'publish' : isMyTemplatesPage ? 'mine' : 'templates';
+  const isSecondaryPage = isDetailPage || isPublishPage || isMyTemplatesPage || isAdminPage;
+  const activeNavItem = isPublishPage ? 'publish' : isMyTemplatesPage ? 'mine' : isAdminPage ? 'admin' : 'templates';
   const statusLabel = `${state.source === 'api' ? 'Worker API' : 'Seed fallback'} · Storage: ${state.storageMode}`;
 
   return (
@@ -144,6 +149,9 @@ export function App(): JSX.Element {
           <a className={navItemClassName(activeNavItem === 'mine')} href={getMarketplaceMeHref()} aria-current={activeNavItem === 'mine' ? 'page' : undefined}>
             My Templates
           </a>
+          <a className={navItemClassName(activeNavItem === 'admin')} href={getMarketplaceAdminHref()} aria-current={activeNavItem === 'admin' ? 'page' : undefined}>
+            Admin
+          </a>
         </div>
       </nav>
 
@@ -153,6 +161,8 @@ export function App(): JSX.Element {
             <TemplatePublishView />
           ) : isMyTemplatesPage ? (
             <TemplateMyTemplatesView />
+          ) : isAdminPage ? (
+            <TemplateAdminView />
           ) : isDetailPage ? (
             detailState.loading ? (
               <div className="border border-canvas-line bg-canvas-paper p-10 text-canvas-muted shadow-card">Loading template details...</div>

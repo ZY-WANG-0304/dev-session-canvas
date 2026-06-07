@@ -229,15 +229,19 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - [x] Web 端 Dashboard 展示发布者统计
 
 ### Phase 4：版本管理与治理
+当前状态：Phase 4 已启动，第一切片完成本地实现的是治理后端与浏览器治理入口：登录用户举报、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写接口拒绝和管理员审计日志均已有 Worker API 与本地自动化测试；Web 详情页举报表单与 `/templates/admin` 最小管理后台已接入。VSCode 安装侧更新提醒、手动更新、历史版本回滚、插件内举报入口、管理员全站数据统计和真实 preview OAuth smoke 仍待完成。
+
 - [ ] 发布者可发布新版本并附更新说明
 - [ ] 已安装模板有新版本时侧边栏显示更新徽章
 - [ ] 用户可手动更新到最新版本
 - [ ] 用户可回滚到历史版本
-- [ ] 用户可举报模板（选择原因）
-- [ ] 管理后台可查看举报队列
-- [ ] 管理后台可下架/恢复模板
-- [ ] 管理后台可封禁用户
+- [ ] 用户可举报模板（选择原因；Web 详情页与 Worker API 已本地验证，插件内入口待补）
+- [ ] 管理后台可查看举报队列（Web 最小后台与 Worker API 已本地验证，preview OAuth smoke 待补）
+- [ ] 管理后台可下架/恢复模板（Worker API、Web 操作与审计日志已本地验证，preview smoke 待补）
+- [ ] 管理后台可封禁用户（Worker API、Web 操作与封禁写拒绝已本地验证，preview smoke 待补）
 - [ ] 管理后台可查看数据统计
+
+管理员定义：正式权限边界是 D1 `admin_roles` 表；部署时可通过 Worker secret bootstrap 首个管理员。生产环境推荐配置稳定的 GitHub 数字 user id 到 `MARKETPLACE_ADMIN_GITHUB_IDS`，`MARKETPLACE_ADMIN_GITHUB_LOGINS` 只作为本地开发和临时配置的兼容入口。allowlist 只负责 bootstrap 已登录用户写入 `admin_roles`，已落库的管理员权限不应在每次请求时动态依赖 allowlist。
 
 ## 8. 开放问题
 
@@ -312,6 +316,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - `GET /api/v1/me/likes` — 我点赞的模板
 - `GET /api/v1/me/stats` — 我的统计数据
 - `GET /api/v1/admin/reports` — 举报队列（管理员）
+- `PATCH /api/v1/admin/reports/:id` — 处理举报并可选择下架模板（管理员）
 - `PATCH /api/v1/admin/templates/:id` — 下架/恢复（管理员）
 - `PATCH /api/v1/admin/users/:id` — 封禁/解封（管理员）
 
@@ -336,4 +341,4 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - **架构约束**：`ARCHITECTURE.md` — 协议边界、宿主集成方式
 - **设计文档**：`docs/design-docs/template-marketplace.md` — 模板市场技术选型正式方案与 Phase 4 承载边界
 - **UI 文档**：`docs/marketplace/UI.md` — 模板市场浏览器网站与 VSCode 插件内市场面板专用 UI 定义
-- **执行计划**：`docs/exec-plans/active/template-marketplace-tech-selection.md`、`docs/exec-plans/active/template-marketplace-foundation.md`
+- **执行计划**：`docs/exec-plans/active/template-marketplace-tech-selection.md`、`docs/exec-plans/active/template-marketplace-foundation.md`、`docs/exec-plans/active/template-marketplace-phase4-governance.md`

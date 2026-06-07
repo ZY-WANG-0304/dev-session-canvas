@@ -5,9 +5,11 @@ import {
   buildGithubSignInHref,
   buildSignOutHref,
   buildTemplateDetailHref,
+  getMarketplaceAdminHref,
   getMarketplaceHomeHref,
   getMarketplaceMeHref,
   getMarketplacePublishHref,
+  isMarketplaceAdminPath,
   isMarketplaceMePath,
   isMarketplacePublishPath,
   isMarketplacePublishSuccessPath,
@@ -38,11 +40,17 @@ describe('marketplace web routing', () => {
     expect(isMarketplaceMePath('/templates/me')).toBe(true);
   });
 
+  it('keeps the admin path out of template detail slug routing', () => {
+    expect(readTemplateSlugFromPath('/templates/admin')).toBeUndefined();
+    expect(isMarketplaceAdminPath('/templates/admin')).toBe(true);
+  });
+
   it('builds canonical marketplace hrefs', () => {
     expect(getMarketplaceHomeHref()).toBe('/templates/');
     expect(getMarketplacePublishHref()).toBe('/templates/publish');
     expect(buildMarketplacePublishSuccessHref('review-loop')).toBe('/templates/publish/success?template=review-loop');
     expect(getMarketplaceMeHref()).toBe('/templates/me');
+    expect(getMarketplaceAdminHref()).toBe('/templates/admin');
     expect(buildTemplateDetailHref('review-loop')).toBe('/templates/review-loop');
     expect(buildGithubSignInHref('/templates/publish')).toBe('/api/v1/auth/github/start?return_to=%2Ftemplates%2Fpublish');
     expect(buildSignOutHref('/templates/me')).toBe('/api/v1/auth/logout?return_to=%2Ftemplates%2Fme');

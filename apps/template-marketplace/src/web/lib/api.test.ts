@@ -6,6 +6,7 @@ import {
   loadCurrentMarketplaceUser,
   loadMarketplaceTemplateDetail,
   loadMarketplaceTemplateLikeState,
+  loadMarketplaceAdminReports,
   loadMarketplaceTemplates,
   loadMyMarketplaceLikes,
   loadMyMarketplaceStats,
@@ -13,6 +14,10 @@ import {
   normalizeTemplateSearchQuery,
   publishMarketplaceTemplate,
   publishMarketplaceTemplatePackage,
+  reportMarketplaceTemplate,
+  resolveMarketplaceAdminReport,
+  setMarketplaceAdminTemplateStatus,
+  setMarketplaceAdminUserBan,
   setMarketplaceTemplateLike
 } from './api';
 
@@ -350,6 +355,170 @@ describe('marketplace web api client', () => {
     expect(requests[0]?.input).toBe('/api/v1/templates/review-loop/like');
     expect(requests[0]?.init?.method).toBe('POST');
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ liked: true });
+  });
+
+  it('posts template reports to the Worker API', async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            report: {
+              id: 'report-1',
+              template: {
+                id: 'tmpl-review',
+                slug: 'review-loop',
+                name: 'Review Loop',
+                status: 'published',
+                publisher: { id: 'publisher', githubLogin: 'publisher', displayName: 'Publisher', avatarUrl: '' }
+              },
+              reporter: { id: 'reporter', githubLogin: 'reporter', displayName: 'Reporter', avatarUrl: '' },
+              reason: 'malicious',
+              status: 'open',
+              createdAt: '2026-06-07T00:00:00.000Z'
+            },
+            storageMode: 'd1'
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const result = await reportMarketplaceTemplate('review-loop', { reason: 'malicious' });
+
+    expect(result.report.reason).toBe('malicious');
+    expect(requests[0]?.input).toBe('/api/v1/templates/review-loop/report');
+    expect(requests[0]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ reason: 'malicious' });
+  });
+
+  it('loads admin reports with an optional status filter', async () => {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        requests.push(String(input));
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'report-1',
+                template: {
+                  id: 'tmpl-review',
+                  slug: 'review-loop',
+                  name: 'Review Loop',
+                  status: 'published',
+                  publisher: { id: 'publisher', githubLogin: 'publisher', displayName: 'Publisher', avatarUrl: '' }
+                },
+                reporter: { id: 'reporter', githubLogin: 'reporter', displayName: 'Reporter', avatarUrl: '' },
+                reason: 'spam',
+                status: 'open',
+                createdAt: '2026-06-07T00:00:00.000Z'
+              }
+            ],
+            storageMode: 'd1'
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const result = await loadMarketplaceAdminReports('open');
+
+    expect(requests[0]).toBe('/api/v1/admin/reports?status=open');
+    expect(result.items[0]?.id).toBe('report-1');
+  });
+
+  it('posts admin moderation actions to the Worker API', async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            report: {
+              id: 'report-1',
+              template: {
+                id: 'tmpl-review',
+                slug: 'review-loop',
+                name: 'Review Loop',
+                status: 'delisted',
+                publisher: { id: 'publisher', githubLogin: 'publisher', displayName: 'Publisher', avatarUrl: '' }
+              },
+              reporter: { id: 'reporter', githubLogin: 'reporter', displayName: 'Reporter', avatarUrl: '' },
+              reason: 'malicious',
+              status: 'resolved',
+              resolution: 'Removed by admin.',
+              createdAt: '2026-06-07T00:00:00.000Z',
+              resolvedAt: '2026-06-07T00:10:00.000Z'
+            },
+            storageMode: 'd1'
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const result = await resolveMarketplaceAdminReport('report-1', {
+      status: 'resolved',
+      resolution: 'Removed by admin.',
+      delistTemplate: true
+    });
+
+    expect(result.report.status).toBe('resolved');
+    expect(requests[0]?.input).toBe('/api/v1/admin/reports/report-1');
+    expect(requests[0]?.init?.method).toBe('PATCH');
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      status: 'resolved',
+      resolution: 'Removed by admin.',
+      delistTemplate: true
+    });
+  });
+
+  it('updates template status and user ban state through admin API helpers', async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ input, init });
+        const inputText = String(input);
+        if (inputText.includes('/templates/')) {
+          return new Response(
+            JSON.stringify({
+              template: {
+                id: 'tmpl-review',
+                slug: 'review-loop',
+                name: 'Review Loop',
+                status: 'delisted',
+                publisher: { id: 'publisher', githubLogin: 'publisher', displayName: 'Publisher', avatarUrl: '' }
+              },
+              storageMode: 'd1'
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            user: { id: 'reporter', githubLogin: 'reporter', displayName: 'Reporter', avatarUrl: '', bannedAt: '2026-06-07T00:00:00.000Z' },
+            storageMode: 'd1'
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const templateResult = await setMarketplaceAdminTemplateStatus('tmpl-review', { status: 'delisted' });
+    const userResult = await setMarketplaceAdminUserBan('reporter', { banned: true });
+
+    expect(templateResult.template.status).toBe('delisted');
+    expect(userResult.user.bannedAt).toBe('2026-06-07T00:00:00.000Z');
+    expect(requests[0]?.input).toBe('/api/v1/admin/templates/tmpl-review');
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ status: 'delisted' });
+    expect(requests[1]?.input).toBe('/api/v1/admin/users/reporter');
+    expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({ banned: true });
   });
 
   it('checks slug availability through the Worker API', async () => {

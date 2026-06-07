@@ -2,6 +2,7 @@ const TEMPLATE_BASE_PATH = '/templates';
 const TEMPLATE_PUBLISH_PATH = `${TEMPLATE_BASE_PATH}/publish`;
 const TEMPLATE_PUBLISH_SUCCESS_PATH = `${TEMPLATE_PUBLISH_PATH}/success`;
 const TEMPLATE_ME_PATH = `${TEMPLATE_BASE_PATH}/me`;
+const TEMPLATE_ADMIN_PATH = `${TEMPLATE_BASE_PATH}/admin`;
 
 export function readTemplateSlugFromPath(pathname: string): string | undefined {
   if (pathname === TEMPLATE_BASE_PATH || pathname === `${TEMPLATE_BASE_PATH}/`) {
@@ -11,6 +12,9 @@ export function readTemplateSlugFromPath(pathname: string): string | undefined {
     return undefined;
   }
   if (isMarketplaceMePath(pathname)) {
+    return undefined;
+  }
+  if (isMarketplaceAdminPath(pathname)) {
     return undefined;
   }
   if (!pathname.startsWith(`${TEMPLATE_BASE_PATH}/`)) {
@@ -42,6 +46,10 @@ export function getMarketplaceMeHref(): string {
   return TEMPLATE_ME_PATH;
 }
 
+export function getMarketplaceAdminHref(): string {
+  return TEMPLATE_ADMIN_PATH;
+}
+
 export function buildGithubSignInHref(returnTo: string): string {
   const params = new URLSearchParams();
   params.set('return_to', returnTo);
@@ -64,4 +72,8 @@ export function isMarketplacePublishSuccessPath(pathname: string): boolean {
 
 export function isMarketplaceMePath(pathname: string): boolean {
   return pathname === TEMPLATE_ME_PATH || pathname === `${TEMPLATE_ME_PATH}/`;
+}
+
+export function isMarketplaceAdminPath(pathname: string): boolean {
+  return pathname === TEMPLATE_ADMIN_PATH || pathname === `${TEMPLATE_ADMIN_PATH}/`;
 }
