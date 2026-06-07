@@ -27,6 +27,7 @@ try {
     buildAgentHistoryResumeCommandLine,
     buildClaudeBranchCommandLine,
     classifyAgentLaunchPreset,
+    extractClaudeCommandRuntimeSessionFlag,
     extractClaudeCommandSessionFlag,
     formatCommandLine,
     hasAnyCommandLineFlag,
@@ -64,6 +65,50 @@ try {
   assert.throws(
     () => buildClaudeBranchCommandLine('   ', claudeDefaults),
     /Branch 会话标识不能为空。/
+  );
+
+  assert.deepEqual(
+    extractClaudeCommandRuntimeSessionFlag(['--resume', 'source-session', '--fork-session', '--session-id', 'branch-session']),
+    {
+      flag: '--session-id',
+      sessionId: 'branch-session'
+    }
+  );
+  assert.equal(
+    extractClaudeCommandRuntimeSessionFlag(['--resume', 'source-session', '--fork-session']),
+    null
+  );
+  assert.equal(
+    extractClaudeCommandRuntimeSessionFlag(['--resume', 'source-session', '--fork-session', '--session-id=']),
+    null
+  );
+  assert.deepEqual(
+    extractClaudeCommandRuntimeSessionFlag([
+      '--resume',
+      'source-session',
+      '--fork-session',
+      '--session-id=',
+      '--session-id',
+      'branch-session'
+    ]),
+    {
+      flag: '--session-id',
+      sessionId: 'branch-session'
+    }
+  );
+  assert.deepEqual(
+    extractClaudeCommandRuntimeSessionFlag(['--resume', 'regular-session']),
+    {
+      flag: '--resume',
+      sessionId: 'regular-session'
+    }
+  );
+  assert.deepEqual(
+    extractClaudeCommandSessionFlag(['--resume', 'source-session', '--fork-session', '--session-id', 'branch-session']),
+    {
+      flag: '--resume',
+      sessionId: 'source-session'
+    }
   );
 
   const aliasValidation = validateAgentCommandLine(

@@ -141,7 +141,7 @@ import {
   buildFreshAgentCommandLine,
   buildAgentHistoryResumeCommandLine,
   buildClaudeBranchCommandLine,
-  extractClaudeCommandSessionFlag,
+  extractClaudeCommandRuntimeSessionFlag,
   formatCommandLine,
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
@@ -9259,13 +9259,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         };
       }
 
-      const explicitClaudeSessionFlag = extractClaudeCommandSessionFlag(launchArgs);
+      const explicitClaudeSessionFlag = extractClaudeCommandRuntimeSessionFlag(launchArgs);
       if (isClaudeForkSessionLaunch(launchArgs)) {
-        const explicitSessionId = extractClaudeCommandSessionId(launchArgs, '--session-id');
         return {
           supported: false,
           strategy: 'none',
-          sessionId: explicitSessionId ?? randomUUID()
+          sessionId: explicitClaudeSessionFlag?.sessionId ?? randomUUID()
         };
       }
 
@@ -11590,10 +11589,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       }
     } else if (spec.provider === 'claude') {
-      const hasExplicitClaudeSessionFlag = Boolean(extractClaudeCommandSessionFlag(launchArgs));
+      const hasExplicitClaudeSessionFlag = Boolean(extractClaudeCommandRuntimeSessionFlag(launchArgs));
       if (launchMode === 'resume' && resumeContext.sessionId) {
         args.push('--resume', resumeContext.sessionId);
-      } else if (resumeContext.sessionId && isClaudeForkSessionLaunch(launchArgs) && !extractClaudeCommandSessionId(launchArgs, '--session-id')) {
+      } else if (resumeContext.sessionId && isClaudeForkSessionLaunch(launchArgs) && !hasExplicitClaudeSessionFlag) {
         args.push('--session-id', resumeContext.sessionId);
       } else if (resumeContext.sessionId && !hasExplicitClaudeSessionFlag) {
         args.push('--session-id', resumeContext.sessionId);
@@ -20328,31 +20327,6 @@ function canResumeAgentFromMetadata(metadata: Pick<AgentNodeMetadata, 'resumeStr
 
 function isClaudeForkSessionLaunch(launchArgs: readonly string[]): boolean {
   return launchArgs.some((token) => token === '--fork-session' || token.startsWith('--fork-session='));
-}
-
-function extractClaudeCommandSessionId(
-  launchArgs: readonly string[],
-  targetFlag: '--session-id' | '--resume' | '--continue'
-): string | undefined {
-  for (let index = 0; index < launchArgs.length; index += 1) {
-    const token = launchArgs[index]?.trim();
-    if (!token) {
-      continue;
-    }
-
-    if (token.startsWith(`${targetFlag}=`)) {
-      return token.slice(targetFlag.length + 1).trim() || undefined;
-    }
-
-    if (token !== targetFlag) {
-      continue;
-    }
-
-    const nextToken = launchArgs[index + 1]?.trim();
-    return nextToken && !nextToken.startsWith('-') ? nextToken : undefined;
-  }
-
-  return undefined;
 }
 
 function normalizeAgentCliCacheWorkspaceCwd(workspaceCwd: string | undefined): string {

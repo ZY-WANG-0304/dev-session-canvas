@@ -52,7 +52,7 @@ import {
   locateClaudeSessionId,
   locateCodexSessionId
 } from '../common/codexSessionIdLocator';
-import { extractClaudeCommandSessionFlag } from '../common/agentLaunchPresets';
+import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPresets';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
 const TERMINAL_LIVE_DELAY_MS = 160;
@@ -262,7 +262,7 @@ class RuntimeSupervisorServer {
     const launchSpec = deserializeExecutionSessionLaunchSpec(params.launchSpec);
     const explicitClaudeSessionFlag =
       params.kind === 'agent' && params.provider === 'claude' && params.launchMode === 'start'
-        ? extractClaudeCommandSessionFlag(launchSpec.args ?? [])
+        ? extractClaudeCommandRuntimeSessionFlag(launchSpec.args ?? [])
         : null;
     const initialResumeSessionId = explicitClaudeSessionFlag
       ? explicitClaudeSessionFlag.sessionId
