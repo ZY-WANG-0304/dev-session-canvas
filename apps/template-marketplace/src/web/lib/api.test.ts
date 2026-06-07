@@ -168,6 +168,18 @@ describe('marketplace web api client', () => {
     expect(result.template?.slug).toBe('review-loop');
   });
 
+  it('does not fall back to seed detail when the Worker returns template_not_found', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: { code: 'template_not_found', message: 'Template was not found.' } }), { status: 404, headers: { 'content-type': 'application/json' } }))
+    );
+
+    const result = await loadMarketplaceTemplateDetail('review-loop');
+
+    expect(result.source).toBe('api');
+    expect(result.template).toBeUndefined();
+  });
+
   it('loads the current marketplace user when authenticated', async () => {
     vi.stubGlobal(
       'fetch',

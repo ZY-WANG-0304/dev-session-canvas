@@ -92,6 +92,14 @@ export async function loadMarketplaceTemplateDetail(templateIdOrSlug: string): P
   try {
     const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}`);
     if (!response.ok) {
+      const errorCode = await readMarketplaceErrorCode(response);
+      if (response.status === 404 && errorCode === 'template_not_found') {
+        return {
+          template: undefined,
+          storageMode: 'api',
+          source: 'api'
+        };
+      }
       throw new Error(`API returned ${response.status}`);
     }
     const body = (await response.json()) as MarketplaceTemplateDetailResponse;
@@ -107,6 +115,19 @@ export async function loadMarketplaceTemplateDetail(templateIdOrSlug: string): P
       storageMode: 'seed',
       source: 'seed-fallback'
     };
+  }
+}
+
+async function readMarketplaceErrorCode(response: Response): Promise<string | undefined> {
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (!contentType.includes('application/json')) {
+    return undefined;
+  }
+  try {
+    const body = (await response.clone().json()) as { error?: { code?: string } };
+    return body.error?.code;
+  } catch {
+    return undefined;
   }
 }
 
