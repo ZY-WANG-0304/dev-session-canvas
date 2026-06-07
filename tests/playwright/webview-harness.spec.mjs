@@ -9200,8 +9200,8 @@ test('canvas group drag follows the pointer without panning the canvas', async (
   const beforeTransform = await readCanvasViewportTransform(page);
   const dragDelta = { x: 90, y: 54 };
   const startPoint = {
-    x: beforeBox.x + beforeBox.width - 36,
-    y: beforeBox.y + 18
+    x: beforeBox.x + 4,
+    y: beforeBox.y + beforeBox.height / 2
   };
 
   await clearPostedMessages(page);
@@ -9221,6 +9221,56 @@ test('canvas group drag follows the pointer without panning the canvas', async (
   expect(message.payload.groupId).toBe('group-1');
   expect(message.payload.position).toEqual({ x: 170, y: 150 });
   expect(await readCanvasViewportTransform(page)).toBe(beforeTransform);
+});
+
+test('canvas group body drag pans the canvas instead of moving the group', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'group-1',
+      selectedGroupIds: ['group-1'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Pan Body Group',
+      position: { x: 120, y: 120 },
+      size: { width: 620, height: 500 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const beforeBox = await groupFrame.boundingBox();
+  expect(beforeBox).not.toBeNull();
+  const beforeViewport = await readCanvasViewport(page);
+  expect(beforeViewport).toEqual({ x: 0, y: 0, zoom: 1 });
+  const startPoint = {
+    x: beforeBox.x + beforeBox.width - 48,
+    y: beforeBox.y + beforeBox.height - 44
+  };
+
+  await clearPostedMessages(page);
+  await page.mouse.move(startPoint.x, startPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(startPoint.x + 96, startPoint.y + 72, { steps: 6 });
+  await settleWebview(page, 2);
+  await page.mouse.up();
+  await settleWebview(page, 2);
+
+  const afterViewport = await readCanvasViewport(page);
+  expect(afterViewport.zoom).toBe(beforeViewport.zoom);
+  expect(afterViewport.x).toBeLessThan(beforeViewport.x - 40);
+  expect(afterViewport.y).toBeLessThan(beforeViewport.y - 30);
+  const afterBox = await groupFrame.boundingBox();
+  expect(afterBox).not.toBeNull();
+  expect(Math.abs(afterBox.x - beforeBox.x - (afterViewport.x - beforeViewport.x))).toBeLessThanOrEqual(6);
+  expect(Math.abs(afterBox.y - beforeBox.y - (afterViewport.y - beforeViewport.y))).toBeLessThanOrEqual(6);
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
 });
 
 test('canvas context menu can create an empty group', async ({ page }) => {
@@ -11535,6 +11585,20 @@ async function readCanvasViewportTransform(page) {
     const viewport = document.querySelector('.react-flow__viewport');
     return viewport instanceof HTMLElement ? viewport.style.transform : null;
   });
+}
+
+async function readCanvasViewport(page) {
+  const transform = await readCanvasViewportTransform(page);
+  const match = transform?.match(
+    /translate\((-?\d+(?:\.\d+)?)px,\s*(-?\d+(?:\.\d+)?)px\)\s+scale\((-?\d+(?:\.\d+)?)\)/
+  );
+  return match
+    ? {
+        x: Number.parseFloat(match[1]),
+        y: Number.parseFloat(match[2]),
+        zoom: Number.parseFloat(match[3])
+      }
+    : null;
 }
 
 async function readCanvasViewportScale(page) {
