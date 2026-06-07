@@ -4,7 +4,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是准备 `0.14.0` Preview 里程碑发布，并围绕后续 `0.14.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是准备 `0.14.1` Preview 补丁发布，并围绕后续 `0.14.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](images/marketplace/canvas-overview.gif)
 
@@ -58,7 +58,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前 `0.14.0` 发布准备重点是发布画布空间导航：全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 会纳入节点、用户分组和 multi-root workspace-root section。它保留 `0.13.0` 的 multi-root workspace 组合画布里程碑、Marketplace 元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前 `0.14.1` 发布准备重点是发布 `0.14.x` 补丁：Explorer Markdown 文件右键创建关联 Note、创建入口复用已打开 Canvas surface、分组 body 空白区拖动画板，以及 shared live runtime 恢复路径硬化。它保留 `0.14.0` 的空间导航里程碑、Marketplace 元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -66,7 +66,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
 - 公开发布主渠道仍以 `Visual Studio Marketplace` 为主；`Open VSX` namespace 已认领，后续发布按同版本补充同步。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.14.0` 的 repo-local 验证重点收口版本 / 打包一致性、空间级 fit view 与 MiniMap 行为、workspace-root section 与用户分组在导航中的可见性、Agent 重启动作紧凑标题栏、扩展 manifest 检查、VSIX payload 检查与发布 dry-run 一致性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.14.1` 的 repo-local 验证重点收口版本 / 打包一致性、Explorer Markdown Note 创建、创建入口 surface 复用、分组 body 拖动画板、multi-root / shared runtime 恢复检查、扩展 manifest 检查、VSIX payload 检查与发布 dry-run 一致性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.1
+
+- 与主扩展 `0.14.1` 对齐：本轮主扩展是 `0.14.x` Preview 线内的能力与可靠性补丁，聚焦 Explorer Markdown 文件右键创建关联 Note、创建类入口复用已打开 Canvas surface、分组 body 空白区拖动画板，以及 multi-root / 双窗口 shared live runtime 恢复验证与硬化；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.14.0
 
 - 与主扩展 `0.14.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦画布空间边界导航、普通用户分组与 multi-root workspace root section 的全局 fit view / MiniMap 可见性，以及 Agent 重启动作紧凑布局修复；notifier companion 不引入新的通知投递行为变更。
