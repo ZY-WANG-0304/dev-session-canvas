@@ -7,12 +7,20 @@ import {
   listMarketplaceTemplatesFromCatalog,
   listSeedTemplates,
   type MarketplaceDownloadResponse,
+  type MarketplaceAdminReportsResponse,
+  type MarketplaceAdminReportActionRequest,
+  type MarketplaceAdminTemplateStatusRequest,
+  type MarketplaceAdminTemplateStatusResponse,
+  type MarketplaceAdminUserBanRequest,
+  type MarketplaceAdminUserBanResponse,
   type MarketplaceListTemplatesRequest,
   type MarketplaceListTemplatesResponse,
   type MarketplacePackageDownloadResponse,
   type MarketplacePublisherSummary,
   type MarketplacePublisherStatsResponse,
+  type MarketplaceReportReason,
   type MarketplaceStorageMode,
+  type MarketplaceTemplateReportResponse,
   type MarketplaceTemplateLikeResponse,
   type MarketplaceTemplateDetail,
   type MarketplaceTemplateDetailResponse,
@@ -27,6 +35,11 @@ export interface MarketplaceRepositoryUserInput {
   githubLogin: string;
   displayName: string;
   avatarUrl: string;
+}
+
+export interface MarketplaceAdminBootstrapAllowlist {
+  githubUserIds?: readonly string[];
+  githubLogins?: readonly string[];
 }
 
 export interface MarketplacePublishTemplateRecord {
@@ -90,13 +103,40 @@ export interface MarketplaceTemplateRepository {
   getTemplateLikeState(templateIdOrSlug: string, user: MarketplaceRepositoryUserInput): Promise<MarketplaceTemplateLikeResponse | undefined>;
   listLikedTemplates(user: MarketplaceRepositoryUserInput): Promise<MarketplaceListTemplatesResponse>;
   getPublisherStats(user: MarketplaceRepositoryUserInput): Promise<MarketplacePublisherStatsResponse>;
+  isUserBanned(user: MarketplaceRepositoryUserInput): Promise<boolean>;
+  isAdminUser(user: MarketplaceRepositoryUserInput, adminBootstrapAllowlist?: MarketplaceAdminBootstrapAllowlist, at?: Date): Promise<boolean>;
+  createTemplateReport(
+    templateIdOrSlug: string,
+    user: MarketplaceRepositoryUserInput,
+    reason: MarketplaceReportReason,
+    at?: Date
+  ): Promise<MarketplaceTemplateReportResponse | undefined>;
+  listAdminReports(status?: 'open' | 'resolved' | 'rejected'): Promise<MarketplaceAdminReportsResponse>;
+  resolveAdminReport(
+    reportId: string,
+    actor: MarketplaceRepositoryUserInput,
+    request: MarketplaceAdminReportActionRequest,
+    at?: Date
+  ): Promise<MarketplaceTemplateReportResponse | undefined>;
+  setAdminTemplateStatus(
+    templateIdOrSlug: string,
+    actor: MarketplaceRepositoryUserInput,
+    request: MarketplaceAdminTemplateStatusRequest,
+    at?: Date
+  ): Promise<MarketplaceAdminTemplateStatusResponse | undefined>;
+  setAdminUserBan(
+    userId: string,
+    actor: MarketplaceRepositoryUserInput,
+    request: MarketplaceAdminUserBanRequest,
+    at?: Date
+  ): Promise<MarketplaceAdminUserBanResponse | undefined>;
   isTemplateSlugAvailable(slug: string): Promise<boolean>;
   upsertUser(
     user: MarketplaceRepositoryUserInput,
     at: string,
-    adminGithubLogins?: readonly string[]
+    adminBootstrapAllowlist?: MarketplaceAdminBootstrapAllowlist
   ): Promise<MarketplacePublisherSummary>;
-  publishTemplate(record: MarketplacePublishTemplateRecord, adminGithubLogins?: readonly string[]): Promise<TemplateDetailResponse>;
+  publishTemplate(record: MarketplacePublishTemplateRecord, adminBootstrapAllowlist?: MarketplaceAdminBootstrapAllowlist): Promise<TemplateDetailResponse>;
   publishTemplateVersion(
     template: MarketplaceTemplateDetail,
     record: MarketplacePublishTemplateVersionRecord
@@ -182,6 +222,34 @@ export class SeedTemplateRepository implements MarketplaceTemplateRepository {
       templates: [],
       storageMode: this.storageMode
     };
+  }
+
+  public async isUserBanned(): Promise<boolean> {
+    return false;
+  }
+
+  public async isAdminUser(): Promise<boolean> {
+    return false;
+  }
+
+  public async createTemplateReport(): Promise<MarketplaceTemplateReportResponse | undefined> {
+    throw new MarketplaceRepositoryWriteError('marketplace_writes_unavailable', 'Template reports require D1 storage.', 503);
+  }
+
+  public async listAdminReports(): Promise<MarketplaceAdminReportsResponse> {
+    return { items: [], storageMode: this.storageMode };
+  }
+
+  public async resolveAdminReport(): Promise<MarketplaceTemplateReportResponse | undefined> {
+    throw new MarketplaceRepositoryWriteError('marketplace_writes_unavailable', 'Report moderation requires D1 storage.', 503);
+  }
+
+  public async setAdminTemplateStatus(): Promise<MarketplaceAdminTemplateStatusResponse | undefined> {
+    throw new MarketplaceRepositoryWriteError('marketplace_writes_unavailable', 'Template moderation requires D1 storage.', 503);
+  }
+
+  public async setAdminUserBan(): Promise<MarketplaceAdminUserBanResponse | undefined> {
+    throw new MarketplaceRepositoryWriteError('marketplace_writes_unavailable', 'User moderation requires D1 storage.', 503);
   }
 
   public async isTemplateSlugAvailable(slug: string): Promise<boolean> {
@@ -438,6 +506,162 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
     };
   }
 
+  public async isUserBanned(user: MarketplaceRepositoryUserInput): Promise<boolean> {
+    const row = await this.database
+      .prepare('SELECT banned_at FROM users WHERE github_user_id = ?1 LIMIT 1')
+      .bind(user.githubUserId)
+      .first<{ banned_at: string | null }>();
+    return Boolean(row?.banned_at);
+  }
+
+  public async isAdminUser(
+    user: MarketplaceRepositoryUserInput,
+    adminBootstrapAllowlist: MarketplaceAdminBootstrapAllowlist = {},
+    at: Date = new Date()
+  ): Promise<boolean> {
+    const publisher = await this.upsertUser(user, at.toISOString(), adminBootstrapAllowlist);
+    const row = await this.database
+      .prepare('SELECT role FROM admin_roles WHERE user_id = ?1 LIMIT 1')
+      .bind(publisher.id)
+      .first<{ role: 'admin' }>();
+    return row?.role === 'admin';
+  }
+
+  public async createTemplateReport(
+    templateIdOrSlug: string,
+    user: MarketplaceRepositoryUserInput,
+    reason: MarketplaceReportReason,
+    at: Date = new Date()
+  ): Promise<MarketplaceTemplateReportResponse | undefined> {
+    const detail = await this.getTemplateDetail(templateIdOrSlug);
+    if (!detail) {
+      return undefined;
+    }
+
+    const now = at.toISOString();
+    const reporter = await this.upsertUser(user, now);
+    const reportId = `report-${crypto.randomUUID()}`;
+    await this.database
+      .prepare(
+        `INSERT INTO reports (id, template_id, version_id, reporter_user_id, reason, status, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'open', ?6)`
+      )
+      .bind(reportId, detail.template.id, detail.template.latestVersion.id, reporter.id, reason, now)
+      .run();
+
+    const report = await this.fetchAdminReport(reportId);
+    return report ? { report, storageMode: this.storageMode } : undefined;
+  }
+
+  public async listAdminReports(status?: 'open' | 'resolved' | 'rejected'): Promise<MarketplaceAdminReportsResponse> {
+    const whereClause = status ? 'WHERE r.status = ?1' : '';
+    const result = await this.database
+      .prepare(`${adminReportSelectSql} ${whereClause} ORDER BY r.created_at DESC`)
+      .bind(...(status ? [status] : []))
+      .all<AdminReportRow>();
+    return {
+      items: (result.results ?? []).map(mapAdminReportRow),
+      storageMode: this.storageMode
+    };
+  }
+
+  public async resolveAdminReport(
+    reportId: string,
+    actor: MarketplaceRepositoryUserInput,
+    request: MarketplaceAdminReportActionRequest,
+    at: Date = new Date()
+  ): Promise<MarketplaceTemplateReportResponse | undefined> {
+    const before = await this.fetchAdminReport(reportId);
+    if (!before) {
+      return undefined;
+    }
+
+    const now = at.toISOString();
+    const actorId = buildMarketplaceUserId(actor.githubUserId);
+    const resolution = sanitizeOptionalText(request.resolution, 500);
+    await this.database
+      .prepare('UPDATE reports SET status = ?1, resolution = ?2, resolved_at = ?3 WHERE id = ?4')
+      .bind(request.status, resolution, now, reportId)
+      .run();
+
+    if (request.status === 'resolved' && request.delistTemplate) {
+      await this.database
+        .prepare('UPDATE templates SET status = ?1, updated_at = ?2 WHERE id = ?3')
+        .bind('delisted', now, before.template.id)
+        .run();
+      await this.insertAdminAuditLog(actorId, 'template.delist', 'template', before.template.id, before.template, { ...before.template, status: 'delisted' }, now);
+    }
+
+    const after = await this.fetchAdminReport(reportId);
+    if (!after) {
+      return undefined;
+    }
+    await this.insertAdminAuditLog(actorId, request.status === 'resolved' ? 'report.resolve' : 'report.reject', 'report', reportId, before, after, now);
+    return { report: after, storageMode: this.storageMode };
+  }
+
+  public async setAdminTemplateStatus(
+    templateIdOrSlug: string,
+    actor: MarketplaceRepositoryUserInput,
+    request: MarketplaceAdminTemplateStatusRequest,
+    at: Date = new Date()
+  ): Promise<MarketplaceAdminTemplateStatusResponse | undefined> {
+    const before = await this.fetchAdminTemplate(templateIdOrSlug);
+    if (!before) {
+      return undefined;
+    }
+
+    const now = at.toISOString();
+    await this.database
+      .prepare('UPDATE templates SET status = ?1, updated_at = ?2 WHERE id = ?3')
+      .bind(request.status, now, before.id)
+      .run();
+    const after = await this.fetchAdminTemplate(before.id);
+    if (!after) {
+      return undefined;
+    }
+    await this.insertAdminAuditLog(
+      buildMarketplaceUserId(actor.githubUserId),
+      request.status === 'published' ? 'template.restore' : 'template.delist',
+      'template',
+      before.id,
+      before,
+      after,
+      now
+    );
+    return { template: after, storageMode: this.storageMode };
+  }
+
+  public async setAdminUserBan(
+    userId: string,
+    actor: MarketplaceRepositoryUserInput,
+    request: MarketplaceAdminUserBanRequest,
+    at: Date = new Date()
+  ): Promise<MarketplaceAdminUserBanResponse | undefined> {
+    const before = await this.fetchAdminUser(userId);
+    if (!before) {
+      return undefined;
+    }
+
+    const now = at.toISOString();
+    const bannedAt = request.banned ? now : null;
+    await this.database.prepare('UPDATE users SET banned_at = ?1 WHERE id = ?2').bind(bannedAt, before.id).run();
+    const after = await this.fetchAdminUser(before.id);
+    if (!after) {
+      return undefined;
+    }
+    await this.insertAdminAuditLog(
+      buildMarketplaceUserId(actor.githubUserId),
+      request.banned ? 'user.ban' : 'user.unban',
+      'user',
+      before.id,
+      before,
+      after,
+      now
+    );
+    return { user: after, storageMode: this.storageMode };
+  }
+
   public async isTemplateSlugAvailable(slug: string): Promise<boolean> {
     const existingTemplate = await this.database.prepare('SELECT id FROM templates WHERE slug = ?1 LIMIT 1').bind(slug).first<{ id: string }>();
     return !existingTemplate;
@@ -445,13 +669,13 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
 
   public async publishTemplate(
     record: MarketplacePublishTemplateRecord,
-    adminGithubLogins: readonly string[] = []
+    adminBootstrapAllowlist: MarketplaceAdminBootstrapAllowlist = {}
   ): Promise<TemplateDetailResponse> {
     if (!(await this.isTemplateSlugAvailable(record.slug))) {
       throw new MarketplaceRepositoryWriteError('template_slug_conflict', 'A template with this slug already exists.', 409);
     }
 
-    const publisher = await this.upsertUser(record.publisher, record.createdAt, adminGithubLogins);
+    const publisher = await this.upsertUser(record.publisher, record.createdAt, adminBootstrapAllowlist);
     const providerWarningsJson = JSON.stringify(record.providerWarnings);
     const searchText = buildTemplateSearchText(record.name, record.description, record.tags, publisher.displayName);
     const day = record.createdAt.slice(0, 10);
@@ -596,10 +820,71 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
     return new Map((result.results ?? []).map((row) => [row.template_id, row.publish_count]));
   }
 
+  private async fetchAdminReport(reportId: string) {
+    const row = await this.database
+      .prepare(`${adminReportSelectSql} WHERE r.id = ?1 LIMIT 1`)
+      .bind(reportId)
+      .first<AdminReportRow>();
+    return row ? mapAdminReportRow(row) : undefined;
+  }
+
+  private async fetchAdminTemplate(templateIdOrSlug: string) {
+    const row = await this.database
+      .prepare(
+        `SELECT
+           t.id AS template_id,
+           t.slug AS template_slug,
+           t.name AS template_name,
+           t.status AS template_status,
+           u.id AS publisher_id,
+           u.github_login AS publisher_github_login,
+           u.display_name AS publisher_display_name,
+           u.avatar_url AS publisher_avatar_url
+         FROM templates t
+         JOIN users u ON u.id = t.publisher_id
+         WHERE t.id = ?1 OR t.slug = ?1
+         LIMIT 1`
+      )
+      .bind(templateIdOrSlug)
+      .first<AdminTemplateRow>();
+    return row ? mapAdminTemplateRow(row) : undefined;
+  }
+
+  private async fetchAdminUser(userId: string) {
+    const row = await this.database
+      .prepare(
+        `SELECT id, github_login, display_name, avatar_url, banned_at
+         FROM users
+         WHERE id = ?1
+         LIMIT 1`
+      )
+      .bind(userId)
+      .first<AdminUserRow>();
+    return row ? mapAdminUserRow(row) : undefined;
+  }
+
+  private async insertAdminAuditLog(
+    actorUserId: string,
+    action: string,
+    targetType: string,
+    targetId: string,
+    before: unknown,
+    after: unknown,
+    at: string
+  ): Promise<void> {
+    await this.database
+      .prepare(
+        `INSERT INTO admin_audit_logs (id, actor_user_id, action, target_type, target_id, before_json, after_json, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      )
+      .bind(`audit-${crypto.randomUUID()}`, actorUserId, action, targetType, targetId, JSON.stringify(before), JSON.stringify(after), at)
+      .run();
+  }
+
   public async upsertUser(
     user: MarketplaceRepositoryUserInput,
     at: string,
-    adminGithubLogins: readonly string[] = []
+    adminBootstrapAllowlist: MarketplaceAdminBootstrapAllowlist = {}
   ): Promise<MarketplacePublisherSummary> {
     const userId = buildMarketplaceUserId(user.githubUserId);
     await this.database
@@ -615,7 +900,7 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
       .bind(userId, user.githubUserId, user.githubLogin, user.displayName, user.avatarUrl, at)
       .run();
 
-    if (adminGithubLogins.map((login) => login.toLowerCase()).includes(user.githubLogin.toLowerCase())) {
+    if (isAdminBootstrapUser(user, adminBootstrapAllowlist)) {
       await this.database
         .prepare(
           `INSERT INTO admin_roles (user_id, role, created_at)
@@ -633,6 +918,16 @@ export class D1TemplateRepository implements MarketplaceTemplateRepository {
       avatarUrl: user.avatarUrl
     };
   }
+}
+
+function isAdminBootstrapUser(user: MarketplaceRepositoryUserInput, allowlist: MarketplaceAdminBootstrapAllowlist): boolean {
+  const allowedIds = new Set((allowlist.githubUserIds ?? []).map((id) => id.trim()).filter(Boolean));
+  if (allowedIds.has(user.githubUserId)) {
+    return true;
+  }
+
+  const normalizedLogin = user.githubLogin.toLowerCase();
+  return (allowlist.githubLogins ?? []).some((login) => login.trim().toLowerCase() === normalizedLogin);
 }
 
 export function createTemplateRepository(database?: D1Database): MarketplaceTemplateRepository {
@@ -746,6 +1041,39 @@ interface DailyStatsRow {
   publish_count: number | null;
 }
 
+interface AdminTemplateRow {
+  template_id: string;
+  template_slug: string;
+  template_name: string;
+  template_status: 'published' | 'delisted';
+  publisher_id: string;
+  publisher_github_login: string;
+  publisher_display_name: string;
+  publisher_avatar_url: string;
+}
+
+interface AdminReportRow extends AdminTemplateRow {
+  report_id: string;
+  report_version_id: string | null;
+  report_reason: MarketplaceReportReason;
+  report_status: 'open' | 'resolved' | 'rejected';
+  report_resolution: string | null;
+  report_created_at: string;
+  report_resolved_at: string | null;
+  reporter_id: string;
+  reporter_github_login: string;
+  reporter_display_name: string;
+  reporter_avatar_url: string;
+}
+
+interface AdminUserRow {
+  id: string;
+  github_login: string;
+  display_name: string;
+  avatar_url: string;
+  banned_at: string | null;
+}
+
 function mapTemplateRow(row: TemplateRow, versions: MarketplaceTemplateVersion[] = [mapLatestVersion(row)]): MarketplaceTemplateDetail {
   const publisher: MarketplacePublisherSummary = {
     id: row.publisher_id,
@@ -817,6 +1145,75 @@ function mapDailyStatsRow(row: DailyStatsRow) {
   };
 }
 
+const adminReportSelectSql = `SELECT
+  r.id AS report_id,
+  r.version_id AS report_version_id,
+  r.reason AS report_reason,
+  r.status AS report_status,
+  r.resolution AS report_resolution,
+  r.created_at AS report_created_at,
+  r.resolved_at AS report_resolved_at,
+  t.id AS template_id,
+  t.slug AS template_slug,
+  t.name AS template_name,
+  t.status AS template_status,
+  publisher.id AS publisher_id,
+  publisher.github_login AS publisher_github_login,
+  publisher.display_name AS publisher_display_name,
+  publisher.avatar_url AS publisher_avatar_url,
+  reporter.id AS reporter_id,
+  reporter.github_login AS reporter_github_login,
+  reporter.display_name AS reporter_display_name,
+  reporter.avatar_url AS reporter_avatar_url
+FROM reports r
+JOIN templates t ON t.id = r.template_id
+JOIN users publisher ON publisher.id = t.publisher_id
+JOIN users reporter ON reporter.id = r.reporter_user_id`;
+
+function mapAdminTemplateRow(row: AdminTemplateRow) {
+  return {
+    id: row.template_id,
+    slug: row.template_slug,
+    name: row.template_name,
+    status: row.template_status,
+    publisher: {
+      id: row.publisher_id,
+      githubLogin: row.publisher_github_login,
+      displayName: row.publisher_display_name,
+      avatarUrl: row.publisher_avatar_url
+    }
+  };
+}
+
+function mapAdminReportRow(row: AdminReportRow) {
+  return {
+    id: row.report_id,
+    template: mapAdminTemplateRow(row),
+    versionId: row.report_version_id ?? undefined,
+    reporter: {
+      id: row.reporter_id,
+      githubLogin: row.reporter_github_login,
+      displayName: row.reporter_display_name,
+      avatarUrl: row.reporter_avatar_url
+    },
+    reason: row.report_reason,
+    status: row.report_status,
+    resolution: row.report_resolution ?? undefined,
+    createdAt: row.report_created_at,
+    resolvedAt: row.report_resolved_at ?? undefined
+  };
+}
+
+function mapAdminUserRow(row: AdminUserRow) {
+  return {
+    id: row.id,
+    githubLogin: row.github_login,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    bannedAt: row.banned_at ?? undefined
+  };
+}
+
 function toStatsTemplateSummary(template: MarketplaceTemplateDetail): MarketplaceTemplateSummary {
   const { versions: _versions, readme: _readme, providerWarnings: _providerWarnings, ...summary } = template;
   return summary;
@@ -845,6 +1242,10 @@ function buildTemplateSearchText(name: string, description: string, tags: readon
 
 function normalizeTagForStorage(tag: string): string {
   return tag.trim().toLowerCase();
+}
+
+function sanitizeOptionalText(value: string | undefined, maxLength: number): string {
+  return (value ?? '').trim().slice(0, maxLength);
 }
 
 function buildTemplateDetailFromPublishRecord(

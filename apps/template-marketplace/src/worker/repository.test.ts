@@ -229,6 +229,86 @@ describe('D1TemplateRepository', () => {
     expect(response.templates[0]?.downloadCount).toBe(44);
     expect(response.templates[0]?.publishCount).toBe(2);
   });
+
+  it('creates template reports for moderation', async () => {
+    const runLog: FakeD1Run[] = [];
+    const repository = new D1TemplateRepository(createFakeD1Database(runLog));
+
+    const response = await repository.createTemplateReport(
+      'd1-review-loop',
+      {
+        githubUserId: 'test-community-user',
+        githubLogin: 'community-user',
+        displayName: 'Community User',
+        avatarUrl: ''
+      },
+      'malicious',
+      new Date('2026-06-07T00:00:00.000Z')
+    );
+
+    expect(response?.report.status).toBe('open');
+    expect(response?.report.reason).toBe('malicious');
+    expect(response?.report.template.slug).toBe('d1-review-loop');
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO reports'))).toBe(true);
+  });
+
+  it('lists and resolves admin reports with audit logs', async () => {
+    const runLog: FakeD1Run[] = [];
+    const repository = new D1TemplateRepository(createFakeD1Database(runLog));
+
+    const reports = await repository.listAdminReports('open');
+    const resolved = await repository.resolveAdminReport(
+      'report-d1-review',
+      {
+        githubUserId: 'test-dscanvas-admin',
+        githubLogin: 'dscanvas-admin',
+        displayName: 'DS Canvas Admin',
+        avatarUrl: ''
+      },
+      { status: 'resolved', resolution: 'Confirmed malicious content.', delistTemplate: true },
+      new Date('2026-06-07T00:10:00.000Z')
+    );
+
+    expect(reports.items[0]?.status).toBe('open');
+    expect(resolved?.report.status).toBe('resolved');
+    expect(resolved?.report.template.status).toBe('delisted');
+    expect(runLog.some((entry) => entry.sql.includes('UPDATE reports SET status = ?1'))).toBe(true);
+    expect(runLog.some((entry) => entry.sql.includes('UPDATE templates SET status = ?1'))).toBe(true);
+    expect(runLog.filter((entry) => entry.sql.includes('INSERT INTO admin_audit_logs'))).toHaveLength(2);
+  });
+
+  it('updates template moderation status and user ban state with audit logs', async () => {
+    const runLog: FakeD1Run[] = [];
+    const repository = new D1TemplateRepository(createFakeD1Database(runLog));
+
+    const template = await repository.setAdminTemplateStatus(
+      'd1-review-loop',
+      {
+        githubUserId: 'test-dscanvas-admin',
+        githubLogin: 'dscanvas-admin',
+        displayName: 'DS Canvas Admin',
+        avatarUrl: ''
+      },
+      { status: 'delisted' },
+      new Date('2026-06-07T00:20:00.000Z')
+    );
+    const user = await repository.setAdminUserBan(
+      'github-test-community-user',
+      {
+        githubUserId: 'test-dscanvas-admin',
+        githubLogin: 'dscanvas-admin',
+        displayName: 'DS Canvas Admin',
+        avatarUrl: ''
+      },
+      { banned: true },
+      new Date('2026-06-07T00:21:00.000Z')
+    );
+
+    expect(template?.template.status).toBe('delisted');
+    expect(user?.user.bannedAt).toBeTruthy();
+    expect(runLog.some((entry) => entry.sql.includes('UPDATE users SET banned_at = ?1'))).toBe(true);
+    expect(runLog.filter((entry) => entry.sql.includes('INSERT INTO admin_audit_logs'))).toHaveLength(2);
+  });
 });
 
 function createFallbackAwareD1Database(): D1Database {
