@@ -16,7 +16,7 @@ related_plans:
   - docs/exec-plans/completed/test-automation-hardening.md
   - docs/exec-plans/completed/debug-automation-next-six.md
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
-updated_at: 2026-05-05
+updated_at: 2026-06-08
 ---
 
 # 开发调试与自动化验证
@@ -152,6 +152,7 @@ updated_at: 2026-05-05
 - 真实宿主 smoke 与 Playwright harness 分工固定：前者负责集成闭环与运行时语义，后者负责 Webview UI / 截图回归；两者互补，不能互相宣称覆盖对方的验证范围。
 - 宿主侧 test-only 能力只在 `ExtensionMode.Test` 或约定测试 harness 下暴露，用于读取状态、等待 ready、派发消息和采集 probe；发布态与日常 F5 不应把这些命令当成产品接口。
 - smoke / Playwright 失败时必须留下可追溯调试产物，包括真实 Webview probe、宿主消息、宿主诊断时间线、VS Code logs、截图与 trace；Remote-SSH real-reopen 产物需继续独立落到 `.debug/vscode-smoke/remote-ssh-real-reopen/artifacts/`，避免与本地场景混淆。
+- trusted / restricted smoke 中的子流程如果显式打开、切换或销毁主画布 surface，必须在返回前恢复调用方期望的 surface，或让后续 probe / DOM action 显式传入当前 surface；不能依赖测试顺序里的隐式 active surface。默认无参的真实 Webview probe 只表示 editor surface，因此新增场景若可能把主画布切到 panel，必须调用 `ensureEditorCanvasReady()` 复位或改用 `waitForWebviewProbeOnSurface(surface, ...)`。
 
 ## 8. 验证方法
 

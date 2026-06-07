@@ -412,3 +412,5 @@ Workspace Trust：
 - `node --check tests/vscode-smoke/extension-tests.cjs` 通过，新增真实宿主 smoke 断言覆盖 Explorer Markdown 命令复用已有 Note 定位/添加确认、读取文件内容和 title 规则。
 - `git diff --check` 通过。
 - 真实 VSCode smoke 尚未在本轮重跑；Explorer 右键创建关联 Note 的端到端行为已补测试断言但仍待真实宿主执行复核。
+- 2026-06-08 review 复核发现 Explorer 命令执行后会按默认 panel 承载面 reveal 画布，污染后续默认 editor probe；smoke 已在本用例结尾恢复 editor surface，并在默认 `waitForWebviewProbe` 前加入 editor surface 前置断言，避免后续新增场景再次隐式依赖错误 active surface。
+- 2026-06-08 修复后尝试运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`；本轮未复现 Explorer Markdown surface 污染导致的 resize probe 失败，不同复跑分别命中既有 serialized terminal scrollback 断言和启动期 editor ready 超时，需作为独立 smoke 稳定性问题另行收口。
