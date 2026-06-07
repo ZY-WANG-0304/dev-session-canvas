@@ -151,6 +151,10 @@ npm run build
 
   <img src="images/lark-group-qr.png" alt="Dev Session Canvas 飞书交流群" width="240" />
 
+- 微信交流群：
+
+  <img src="images/wechat-group-qr.png" alt="Dev Session Canvas 微信交流群" width="240" />
+
 ## 开发与贡献
 
 开发环境准备、本地调试、主路径验证和提交约定，统一见 [CONTRIBUTING.md](CONTRIBUTING.md)。
