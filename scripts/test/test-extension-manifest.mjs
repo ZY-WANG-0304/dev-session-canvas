@@ -84,6 +84,7 @@ const explorerExecutionCommandIds = [
   'devSessionCanvas.createTerminalFromExplorerResource',
   'devSessionCanvas.createAgentFromExplorerResource'
 ];
+const explorerMarkdownNoteCommandId = 'devSessionCanvas.createNoteFromExplorerMarkdown';
 for (const commandId of groupCommandIds) {
   assert.ok(contributedCommandIds.includes(commandId), `Expected ${commandId} to be contributed as a command.`);
   assert.ok(
@@ -115,9 +116,13 @@ assert.ok(
 for (const commandId of explorerExecutionCommandIds) {
   assert.ok(contributedCommandIds.includes(commandId), `Expected ${commandId} to be contributed as a command.`);
 }
+assert.ok(
+  contributedCommandIds.includes(explorerMarkdownNoteCommandId),
+  `Expected ${explorerMarkdownNoteCommandId} to be contributed as a command.`
+);
 assert.deepEqual(
   manifest.contributes.commands
-    .filter((entry) => explorerExecutionCommandIds.includes(entry.command))
+    .filter((entry) => [...explorerExecutionCommandIds, explorerMarkdownNoteCommandId].includes(entry.command))
     .map((entry) => ({ command: entry.command, icon: entry.icon })),
   [
     {
@@ -127,13 +132,17 @@ assert.deepEqual(
     {
       command: 'devSessionCanvas.createAgentFromExplorerResource',
       icon: '$(hubot)'
+    },
+    {
+      command: 'devSessionCanvas.createNoteFromExplorerMarkdown',
+      icon: '$(markdown)'
     }
   ],
-  'Expected Explorer resource execution commands to use the confirmed Codicon entry points.'
+  'Expected Explorer resource commands to use the confirmed Codicon entry points.'
 );
 assert.deepEqual(
   manifest.contributes.menus['explorer/context']?.filter((item) =>
-    explorerExecutionCommandIds.includes(item.command)
+    [...explorerExecutionCommandIds, explorerMarkdownNoteCommandId].includes(item.command)
   ),
   [
     {
@@ -145,9 +154,14 @@ assert.deepEqual(
       command: 'devSessionCanvas.createAgentFromExplorerResource',
       when: 'resourceScheme == file',
       group: 'devSessionCanvas@2'
+    },
+    {
+      command: 'devSessionCanvas.createNoteFromExplorerMarkdown',
+      when: 'resourceScheme == file && resourceExtname =~ /^\\.(md|markdown)$/i',
+      group: 'devSessionCanvas@3'
     }
   ],
-  'Expected Explorer context menu to expose cwd-scoped Terminal and Agent creation for file resources.'
+  'Expected Explorer context menu to expose cwd-scoped execution nodes and Markdown Note creation for file resources.'
 );
 assert.deepEqual(
   commandPaletteMenus.filter((item) => item.command.startsWith('devSessionCanvas.setSidebarNodeList')),
