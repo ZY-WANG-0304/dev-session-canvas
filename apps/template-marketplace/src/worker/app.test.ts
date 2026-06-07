@@ -799,6 +799,32 @@ describe('template marketplace worker api', () => {
     expect(body.error.message).toContain('missing.png');
   });
 
+  it('rejects banned package publishers before reading multipart body', async () => {
+    let bodyRead = false;
+    const request = new Request('http://localhost/api/v1/templates/package', {
+      method: 'POST',
+      headers: {
+        'content-type': 'multipart/form-data; boundary=marketplace-test',
+        'x-marketplace-test-github-login': 'publisher'
+      }
+    });
+    vi.spyOn(request, 'formData').mockImplementation(async () => {
+      bodyRead = true;
+      throw new Error('banned package upload body was read');
+    });
+
+    const response = await app.fetch(request, {
+      MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+      MARKETPLACE_DB: createFakeD1Database([], { viewerBanned: true }),
+      TEMPLATE_BUCKET: createFakeR2Bucket({})
+    });
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe('user_banned');
+    expect(bodyRead).toBe(false);
+  });
+
   it('rejects invalid publish payloads with structured errors', async () => {
     const request = buildPublishRequest();
     request.templateDocument.template.edges = [
@@ -1067,6 +1093,193 @@ describe('template marketplace worker api', () => {
 
     expect(response.status).toBe(403);
     expect(body.error.code).toBe('template_author_required');
+  });
+
+  it('creates template reports for authenticated users', async () => {
+    const runLog: FakeD1Run[] = [];
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/report',
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'malicious' }),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'community-user',
+          'x-marketplace-test-github-user-id': 'test-community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(runLog)
+      }
+    );
+    const body = await response.json<{ report: { status: string; reason: string; template: { slug: string } } }>();
+
+    expect(response.status).toBe(201);
+    expect(body.report.status).toBe('open');
+    expect(body.report.reason).toBe('malicious');
+    expect(body.report.template.slug).toBe('d1-review-loop');
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO reports'))).toBe(true);
+  });
+
+  it('requires authentication before reporting templates', async () => {
+    const response = await app.request('http://localhost/api/v1/templates/d1-review-loop/report', {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'spam' }),
+      headers: { 'content-type': 'application/json' }
+    });
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(401);
+    expect(body.error.code).toBe('auth_required');
+  });
+
+  it('rejects banned users from write APIs', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/report',
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'spam' }),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'community-user',
+          'x-marketplace-test-github-user-id': 'test-community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database([], { viewerBanned: true })
+      }
+    );
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe('user_banned');
+  });
+
+  it('requires admin permission for the moderation queue', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/admin/reports',
+      {
+        headers: {
+          'x-marketplace-test-github-login': 'community-user',
+          'x-marketplace-test-github-user-id': 'test-community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database()
+      }
+    );
+    const body = await response.json<{ error: { code: string } }>();
+
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe('admin_required');
+  });
+
+  it('bootstraps admins by stable GitHub user id before checking admin roles', async () => {
+    const runLog: FakeD1Run[] = [];
+    const env = {
+      MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+      MARKETPLACE_ADMIN_GITHUB_IDS: '8197085',
+      MARKETPLACE_DB: createFakeD1Database(runLog)
+    };
+    const response = await app.request(
+      'http://localhost/api/v1/admin/reports?status=open',
+      {
+        headers: {
+          'x-marketplace-test-github-login': 'reclaimed-login',
+          'x-marketplace-test-github-user-id': '8197085'
+        }
+      },
+      env
+    );
+    const body = await response.json<{ items: Array<{ id: string }> }>();
+
+    expect(response.status).toBe(200);
+    expect(body.items[0]?.id).toBe('report-d1-review');
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO admin_roles') && entry.boundValues[0] === 'github-8197085')).toBe(true);
+  });
+
+  it('lets admins list and resolve reports with optional template delisting', async () => {
+    const runLog: FakeD1Run[] = [];
+    const env = {
+      MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+      MARKETPLACE_ADMIN_GITHUB_LOGINS: 'dscanvas-admin',
+      MARKETPLACE_DB: createFakeD1Database(runLog, { adminUserIds: ['github-test-dscanvas-admin'] })
+    };
+    const listResponse = await app.request(
+      'http://localhost/api/v1/admin/reports?status=open',
+      {
+        headers: {
+          'x-marketplace-test-github-login': 'dscanvas-admin'
+        }
+      },
+      env
+    );
+    const listBody = await listResponse.json<{ items: Array<{ id: string; status: string }> }>();
+    const resolveResponse = await app.request(
+      'http://localhost/api/v1/admin/reports/report-d1-review',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'resolved', resolution: 'Confirmed.', delistTemplate: true }),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'dscanvas-admin'
+        }
+      },
+      env
+    );
+    const resolveBody = await resolveResponse.json<{ report: { status: string; template: { status: string } } }>();
+
+    expect(listResponse.status).toBe(200);
+    expect(listBody.items[0]?.status).toBe('open');
+    expect(resolveResponse.status).toBe(200);
+    expect(resolveBody.report.status).toBe('resolved');
+    expect(resolveBody.report.template.status).toBe('delisted');
+    expect(runLog.some((entry) => entry.sql.includes('UPDATE reports SET status = ?1'))).toBe(true);
+    expect(runLog.filter((entry) => entry.sql.includes('INSERT INTO admin_audit_logs'))).toHaveLength(2);
+  });
+
+  it('lets admins change template status and user ban state', async () => {
+    const runLog: FakeD1Run[] = [];
+    const env = {
+      MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+      MARKETPLACE_ADMIN_GITHUB_LOGINS: 'dscanvas-admin',
+      MARKETPLACE_DB: createFakeD1Database(runLog, { adminUserIds: ['github-test-dscanvas-admin'] })
+    };
+    const templateResponse = await app.request(
+      'http://localhost/api/v1/admin/templates/d1-review-loop',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'delisted' }),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'dscanvas-admin'
+        }
+      },
+      env
+    );
+    const userResponse = await app.request(
+      'http://localhost/api/v1/admin/users/github-test-community-user',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ banned: true }),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'dscanvas-admin'
+        }
+      },
+      env
+    );
+    const templateBody = await templateResponse.json<{ template: { status: string } }>();
+    const userBody = await userResponse.json<{ user: { bannedAt?: string } }>();
+
+    expect(templateResponse.status).toBe(200);
+    expect(templateBody.template.status).toBe('delisted');
+    expect(userResponse.status).toBe(200);
+    expect(userBody.user.bannedAt).toBeTruthy();
+    expect(runLog.some((entry) => entry.sql.includes('UPDATE users SET banned_at = ?1'))).toBe(true);
   });
 });
 

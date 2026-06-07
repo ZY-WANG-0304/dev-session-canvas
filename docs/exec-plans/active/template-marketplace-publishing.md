@@ -119,7 +119,7 @@
 
 ## 决策记录
 
-- 决策：真实 GitHub OAuth client secret、session secret 和管理员 allowlist 只放在 `apps/template-marketplace/.dev.vars` 或 Cloudflare Worker secrets 中；仓库跟踪 `.dev.vars.example` 作为空值模板。
+- 决策：真实 GitHub OAuth client secret、session secret 和管理员 allowlist 只放在 `apps/template-marketplace/.dev.vars` 或 Cloudflare Worker secrets 中；生产管理员 bootstrap 优先使用 `MARKETPLACE_ADMIN_GITHUB_IDS`，`MARKETPLACE_ADMIN_GITHUB_LOGINS` 只作为本地和临时配置兼容；仓库跟踪 `.dev.vars.example` 作为空值模板。
   理由：发布能力需要真实 OAuth 配置才能做浏览器登录 smoke，但 secret 不能进入 Git、文档或 VSIX 打包产物。示例文件能告诉协作者需要哪些 key，同时避免泄漏真实值。
   日期/作者：2026-05-14 / Codex。
 
@@ -305,7 +305,7 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
     .gitignore:23:apps/template-marketplace/.dev.vars apps/template-marketplace/.dev.vars
     GITHUB_CLIENT_ID: set
     GITHUB_CLIENT_SECRET: set
-    MARKETPLACE_ADMIN_GITHUB_LOGINS: set
+    MARKETPLACE_ADMIN_GITHUB_IDS or MARKETPLACE_ADMIN_GITHUB_LOGINS: set
     MARKETPLACE_SESSION_SECRET: set
     MARKETPLACE_TOKEN_SECRET: set
 

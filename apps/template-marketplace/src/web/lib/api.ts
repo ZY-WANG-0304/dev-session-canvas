@@ -3,6 +3,12 @@ import {
   normalizeMarketplaceSlug,
   getSeedTemplateDetail,
   listSeedTemplates,
+  type MarketplaceAdminReportActionRequest,
+  type MarketplaceAdminReportsResponse,
+  type MarketplaceAdminTemplateStatusRequest,
+  type MarketplaceAdminTemplateStatusResponse,
+  type MarketplaceAdminUserBanRequest,
+  type MarketplaceAdminUserBanResponse,
   type MarketplaceListTemplatesResponse,
   type MarketplacePublisherStatsResponse,
   type MarketplacePublishTemplateRequest,
@@ -10,6 +16,8 @@ import {
   type MarketplaceSort,
   type MarketplaceSlugAvailabilityResponse,
   type MarketplaceTemplateLikeResponse,
+  type MarketplaceTemplateReportRequest,
+  type MarketplaceTemplateReportResponse,
   type MarketplaceTemplateDetail,
   type MarketplaceTemplateDetailResponse,
   type MarketplaceTemplateSummary
@@ -84,6 +92,14 @@ export async function loadMarketplaceTemplateDetail(templateIdOrSlug: string): P
   try {
     const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}`);
     if (!response.ok) {
+      const errorCode = await readMarketplaceErrorCode(response);
+      if (response.status === 404 && errorCode === 'template_not_found') {
+        return {
+          template: undefined,
+          storageMode: 'api',
+          source: 'api'
+        };
+      }
       throw new Error(`API returned ${response.status}`);
     }
     const body = (await response.json()) as MarketplaceTemplateDetailResponse;
@@ -99,6 +115,19 @@ export async function loadMarketplaceTemplateDetail(templateIdOrSlug: string): P
       storageMode: 'seed',
       source: 'seed-fallback'
     };
+  }
+}
+
+async function readMarketplaceErrorCode(response: Response): Promise<string | undefined> {
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (!contentType.includes('application/json')) {
+    return undefined;
+  }
+  try {
+    const body = (await response.clone().json()) as { error?: { code?: string } };
+    return body.error?.code;
+  } catch {
+    return undefined;
   }
 }
 
@@ -180,6 +209,75 @@ export async function setMarketplaceTemplateLike(templateIdOrSlug: string, liked
   return body as MarketplaceTemplateLikeResponse;
 }
 
+export async function reportMarketplaceTemplate(
+  templateIdOrSlug: string,
+  request: MarketplaceTemplateReportRequest
+): Promise<MarketplaceTemplateReportResponse> {
+  const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/report`, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(request)
+  });
+  return readMarketplaceJsonResponse<MarketplaceTemplateReportResponse>(response);
+}
+
+export async function loadMarketplaceAdminReports(status?: 'open' | 'resolved' | 'rejected'): Promise<MarketplaceAdminReportsResponse> {
+  const params = new URLSearchParams();
+  if (status) {
+    params.set('status', status);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const response = await fetch(`/api/v1/admin/reports${suffix}`, {
+    headers: { accept: 'application/json' }
+  });
+  return readMarketplaceJsonResponse<MarketplaceAdminReportsResponse>(response);
+}
+
+export async function resolveMarketplaceAdminReport(
+  reportId: string,
+  request: MarketplaceAdminReportActionRequest
+): Promise<MarketplaceTemplateReportResponse> {
+  const response = await fetch(`/api/v1/admin/reports/${encodeURIComponent(reportId)}`, {
+    method: 'PATCH',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(request)
+  });
+  return readMarketplaceJsonResponse<MarketplaceTemplateReportResponse>(response);
+}
+
+export async function setMarketplaceAdminTemplateStatus(
+  templateId: string,
+  request: MarketplaceAdminTemplateStatusRequest
+): Promise<MarketplaceAdminTemplateStatusResponse> {
+  const response = await fetch(`/api/v1/admin/templates/${encodeURIComponent(templateId)}`, {
+    method: 'PATCH',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(request)
+  });
+  return readMarketplaceJsonResponse<MarketplaceAdminTemplateStatusResponse>(response);
+}
+
+export async function setMarketplaceAdminUserBan(userId: string, request: MarketplaceAdminUserBanRequest): Promise<MarketplaceAdminUserBanResponse> {
+  const response = await fetch(`/api/v1/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(request)
+  });
+  return readMarketplaceJsonResponse<MarketplaceAdminUserBanResponse>(response);
+}
+
 export async function checkMarketplaceSlugAvailability(slug: string): Promise<MarketplaceSlugAvailabilityResponse> {
   const params = new URLSearchParams();
   params.set('slug', normalizeMarketplaceSlug(slug));
@@ -211,6 +309,15 @@ export async function publishMarketplaceTemplate(
     throw new Error(message);
   }
   return body as MarketplacePublishTemplateResponse;
+}
+
+async function readMarketplaceJsonResponse<T extends object>(response: Response): Promise<T> {
+  const body = (await response.json()) as T | { error?: { message?: string } };
+  if (!response.ok) {
+    const message = 'error' in body && body.error?.message ? body.error.message : `API returned ${response.status}`;
+    throw new Error(message);
+  }
+  return body as T;
 }
 
 export async function publishMarketplaceTemplatePackage(file: File): Promise<MarketplacePublishTemplateResponse> {
