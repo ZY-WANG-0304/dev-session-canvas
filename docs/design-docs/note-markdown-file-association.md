@@ -291,6 +291,7 @@ Webview 需要在画布空白区域支持文件拖放创建关联 `Note`：
 
 VSCode File Explorer 需要为 Markdown 文件提供低成本创建入口：
 
+- 该入口对应 GitHub Issue #127 中“打开当前项目中已存在的 Markdown 文档”的需求；第一版用 Explorer 文件上下文收口，只负责从已选 Markdown 文件创建关联 `Note`。
 - `package.json` 在 `contributes.commands` 中登记 `devSessionCanvas.createNoteFromExplorerMarkdown`，标题为 `Dev Session Canvas: 在 Canvas 中创建关联 Note`，图标使用 `$(markdown)`。
 - `contributes.menus["explorer/context"]` 仅在 `resourceScheme == file && resourceExtname =~ /^\.(md|markdown)$/i` 时显示该入口；命令层仍必须二次校验 URI scheme、扩展名、资源存在性和普通文件类型。
 - `src/extension.ts` 的命令处理只负责解析 Explorer `vscode.Uri` 并打开/定位画布；实际 Note 创建交给 `CanvasPanelManager.createNoteFromMarkdownResource(...)`，避免在扩展入口复制关联 Markdown Note 的状态规则。

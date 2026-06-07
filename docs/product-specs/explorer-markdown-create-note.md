@@ -1,6 +1,6 @@
 # File Explorer Markdown 右键创建 Note 规格
 
-当前状态：已确认，验证中。本文收口从 VSCode File Explorer 的 Markdown 文件右键，在 Dev Session Canvas 中创建关联 Markdown 文件的 `Note` 节点的产品范围与验收口径。关联文件的内容权威、状态刷新、冲突处理和拖拽创建规则继续以 `docs/design-docs/note-markdown-file-association.md` 为准；本规格只补齐 Explorer 快捷入口。
+当前状态：已确认，验证中。本文收口从 VSCode File Explorer 的 Markdown 文件右键，在 Dev Session Canvas 中创建关联 Markdown 文件的 `Note` 节点的产品范围与验收口径。需求来源为 GitHub Issue #127「添加打开当前项目中已存在的Markdown文档功能」；本轮把“打开已存在 Markdown 文档”收口为 Explorer 文件上下文里的关联 `Note` 创建入口，而不是新增通用文件管理器。关联文件的内容权威、状态刷新、冲突处理和拖拽创建规则继续以 `docs/design-docs/note-markdown-file-association.md` 为准；本规格只补齐 Explorer 快捷入口。
 
 ## 1. 用户问题
 
