@@ -7,6 +7,8 @@ export const MARKETPLACE_QUERY_MAX_LENGTH = 80;
 export const MARKETPLACE_SORT_VALUES = ['hot', 'downloads', 'likes', 'newest', 'updated'] as const;
 export const MARKETPLACE_TEMPLATE_STATUS_VALUES = ['published', 'delisted'] as const;
 export const MARKETPLACE_VERSION_STATUS_VALUES = ['published', 'rejected'] as const;
+export const MARKETPLACE_REPORT_REASON_VALUES = ['spam', 'malicious', 'copyright', 'other'] as const;
+export const MARKETPLACE_REPORT_STATUS_VALUES = ['open', 'resolved', 'rejected'] as const;
 export const MARKETPLACE_STORAGE_MODES = ['seed', 'd1', 'r2'] as const;
 export const MARKETPLACE_TEMPLATE_NODE_KINDS = ['agent', 'terminal', 'note'] as const;
 export const MARKETPLACE_TEMPLATE_AGENT_PROVIDERS = ['default', 'codex', 'claude'] as const;
@@ -34,6 +36,8 @@ export const MARKETPLACE_PACKAGE_MEDIA_TYPES = ['image', 'video'] as const;
 export type MarketplaceSort = (typeof MARKETPLACE_SORT_VALUES)[number];
 export type MarketplaceTemplateStatus = (typeof MARKETPLACE_TEMPLATE_STATUS_VALUES)[number];
 export type MarketplaceVersionStatus = (typeof MARKETPLACE_VERSION_STATUS_VALUES)[number];
+export type MarketplaceReportReason = (typeof MARKETPLACE_REPORT_REASON_VALUES)[number];
+export type MarketplaceReportStatus = (typeof MARKETPLACE_REPORT_STATUS_VALUES)[number];
 export type MarketplaceStorageMode = (typeof MARKETPLACE_STORAGE_MODES)[number];
 export type MarketplaceTemplateNodeKind = (typeof MARKETPLACE_TEMPLATE_NODE_KINDS)[number];
 export type MarketplaceTemplateAgentProviderKind = (typeof MARKETPLACE_TEMPLATE_AGENT_PROVIDERS)[number];
@@ -265,6 +269,64 @@ export interface MarketplacePublisherStatsResponse {
   totals: MarketplacePublisherStatsTotals;
   daily: MarketplacePublisherStatsPoint[];
   templates: MarketplacePublisherStatsTemplate[];
+  storageMode: MarketplaceStorageMode;
+}
+
+export interface MarketplaceTemplateReportRequest {
+  reason: MarketplaceReportReason;
+}
+
+export interface MarketplaceAdminReportActionRequest {
+  status: 'resolved' | 'rejected';
+  resolution?: string;
+  delistTemplate?: boolean;
+}
+
+export interface MarketplaceAdminTemplateStatusRequest {
+  status: MarketplaceTemplateStatus;
+}
+
+export interface MarketplaceAdminUserBanRequest {
+  banned: boolean;
+}
+
+export interface MarketplaceAdminReportTemplateSummary {
+  id: string;
+  slug: string;
+  name: string;
+  status: MarketplaceTemplateStatus;
+  publisher: MarketplacePublisherSummary;
+}
+
+export interface MarketplaceTemplateReportSummary {
+  id: string;
+  template: MarketplaceAdminReportTemplateSummary;
+  versionId?: string;
+  reporter: MarketplacePublisherSummary;
+  reason: MarketplaceReportReason;
+  status: MarketplaceReportStatus;
+  resolution?: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export interface MarketplaceTemplateReportResponse {
+  report: MarketplaceTemplateReportSummary;
+  storageMode: MarketplaceStorageMode;
+}
+
+export interface MarketplaceAdminReportsResponse {
+  items: MarketplaceTemplateReportSummary[];
+  storageMode: MarketplaceStorageMode;
+}
+
+export interface MarketplaceAdminTemplateStatusResponse {
+  template: MarketplaceAdminReportTemplateSummary;
+  storageMode: MarketplaceStorageMode;
+}
+
+export interface MarketplaceAdminUserBanResponse {
+  user: MarketplacePublisherSummary & { bannedAt?: string };
   storageMode: MarketplaceStorageMode;
 }
 

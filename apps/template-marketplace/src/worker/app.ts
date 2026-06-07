@@ -2,10 +2,16 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 
 import {
   makeMarketplaceApiError,
+  MARKETPLACE_REPORT_REASON_VALUES,
   MARKETPLACE_SLUG_PATTERN,
   MARKETPLACE_SORT_VALUES,
+  MARKETPLACE_TEMPLATE_STATUS_VALUES,
   normalizeMarketplaceSlug,
+  type MarketplaceAdminReportActionRequest,
+  type MarketplaceAdminTemplateStatusRequest,
+  type MarketplaceAdminUserBanRequest,
   type MarketplaceListTemplatesRequest,
+  type MarketplaceReportReason,
   type MarketplaceTemplateDetail,
   type MarketplaceTemplateVersion
 } from '@dev-session-canvas/marketplace-shared';
@@ -52,6 +58,7 @@ export interface MarketplaceWorkerEnv extends MarketplaceAuthEnv {
   TEMPLATE_BUCKET?: R2Bucket;
   MARKETPLACE_MAX_TEMPLATE_BYTES?: string;
   MARKETPLACE_MAX_PACKAGE_BYTES?: string;
+  MARKETPLACE_ADMIN_GITHUB_IDS?: string;
   MARKETPLACE_ADMIN_GITHUB_LOGINS?: string;
 }
 
@@ -122,7 +129,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     }
     const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
     try {
-      await repository.upsertUser(result.user, new Date().toISOString(), parseAdminGithubLogins(context.env?.MARKETPLACE_ADMIN_GITHUB_LOGINS));
+      await repository.upsertUser(result.user, new Date().toISOString(), parseAdminBootstrapAllowlist(context.env));
     } catch {
       // Session creation already verified GitHub identity; persistence failures surface in write APIs.
     }
@@ -192,7 +199,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     }
     const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
     try {
-      await repository.upsertUser(result.user, new Date().toISOString(), parseAdminGithubLogins(context.env?.MARKETPLACE_ADMIN_GITHUB_LOGINS));
+      await repository.upsertUser(result.user, new Date().toISOString(), parseAdminBootstrapAllowlist(context.env));
     } catch {
       // The token remains valid for write attempts; persistence failures surface in write APIs.
     }
@@ -235,13 +242,16 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     if (!context.env?.MARKETPLACE_DB) {
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template likes require D1 storage.'), 503);
     }
+    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    if (await repository.isUserBanned(user)) {
+      return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot like templates.'), 403);
+    }
 
     const requestedLike = await readOptionalLikeTarget(context.req.raw);
     if (requestedLike.response) {
       return requestedLike.response;
     }
 
-    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
     try {
       const result = await repository.setTemplateLike(context.req.param('id'), user, requestedLike.liked);
       if (!result) {
@@ -251,6 +261,39 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     } catch (error) {
       if (error instanceof MarketplaceRepositoryWriteError) {
         return context.json(makeMarketplaceApiError(error.code, error.message), error.status as 400 | 401 | 409 | 413 | 503);
+      }
+      throw error;
+    }
+  });
+
+  app.post('/api/v1/templates/:id/report', async (context) => {
+    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+    if (!user) {
+      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to report templates.'), 401);
+    }
+    if (!context.env?.MARKETPLACE_DB) {
+      return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template reports require D1 storage.'), 503);
+    }
+
+    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    if (await repository.isUserBanned(user)) {
+      return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot report templates.'), 403);
+    }
+
+    const reportRequest = await readTemplateReportRequest(context.req.raw);
+    if (reportRequest.response) {
+      return reportRequest.response;
+    }
+
+    try {
+      const result = await repository.createTemplateReport(context.req.param('id'), user, reportRequest.reason);
+      if (!result) {
+        return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
+      }
+      return context.json(result, 201);
+    } catch (error) {
+      if (error instanceof MarketplaceRepositoryWriteError) {
+        return context.json(makeMarketplaceApiError(error.code, error.message), error.status as 400 | 401 | 403 | 409 | 413 | 503);
       }
       throw error;
     }
@@ -309,6 +352,11 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
     }
 
+    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    if (await repository.isUserBanned(user)) {
+      return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot publish templates.'), 403);
+    }
+
     let body: unknown;
     try {
       body = await context.req.json();
@@ -316,7 +364,6 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       return context.json(makeMarketplaceApiError('publish_request_invalid', 'Publish request must be valid JSON.'), 400);
     }
 
-    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
     try {
       const prepared = await prepareMarketplacePublishTemplate(body, user, {
         maxTemplateBytes: resolveMarketplaceMaxTemplateBytes(context.env.MARKETPLACE_MAX_TEMPLATE_BYTES)
@@ -325,7 +372,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
         return context.json(makeMarketplaceApiError('template_slug_conflict', 'A template with this slug already exists.'), 409);
       }
       await writeMarketplaceTemplateObjects(context.env.TEMPLATE_BUCKET, prepared);
-      const result = await repository.publishTemplate(prepared.record, parseAdminGithubLogins(context.env.MARKETPLACE_ADMIN_GITHUB_LOGINS));
+      const result = await repository.publishTemplate(prepared.record, parseAdminBootstrapAllowlist(context.env));
       return context.json(result, 201);
     } catch (error) {
       if (error instanceof MarketplacePublishValidationError || error instanceof MarketplaceRepositoryWriteError) {
@@ -344,12 +391,16 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
     }
 
+    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    if (await repository.isUserBanned(user)) {
+      return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot publish templates.'), 403);
+    }
+
     const packageUpload = await readPackageZipUpload(context.req.raw);
     if (packageUpload.response) {
       return packageUpload.response;
     }
 
-    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
     try {
       const prepared = await prepareMarketplacePublishTemplatePackage(packageUpload.bytes, user, {
         maxTemplateBytes: resolveMarketplaceMaxTemplateBytes(context.env.MARKETPLACE_MAX_TEMPLATE_BYTES),
@@ -359,7 +410,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
         return context.json(makeMarketplaceApiError('template_slug_conflict', 'A template with this slug already exists.'), 409);
       }
       await writeMarketplaceTemplateObjects(context.env.TEMPLATE_BUCKET, prepared);
-      const result = await repository.publishTemplate(prepared.record, parseAdminGithubLogins(context.env.MARKETPLACE_ADMIN_GITHUB_LOGINS));
+      const result = await repository.publishTemplate(prepared.record, parseAdminBootstrapAllowlist(context.env));
       return context.json(result, 201);
     } catch (error) {
       if (error instanceof MarketplacePublishValidationError || error instanceof MarketplaceRepositoryWriteError) {
@@ -379,6 +430,9 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     }
 
     const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    if (await repository.isUserBanned(user)) {
+      return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot publish template versions.'), 403);
+    }
     const detail = await repository.getTemplateDetail(context.req.param('id'));
     if (!detail) {
       return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
@@ -410,9 +464,85 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     }
   });
 
+  app.get('/api/v1/admin/reports', async (context) => {
+    const admin = await requireMarketplaceAdmin(context);
+    if (admin.response) {
+      return admin.response;
+    }
+    const status = readOptionalReportStatus(context.req.query('status'));
+    if (status.response) {
+      return status.response;
+    }
+    return context.json(await admin.repository.listAdminReports(status.status));
+  });
+
+  app.patch('/api/v1/admin/reports/:id', async (context) => {
+    const admin = await requireMarketplaceAdmin(context);
+    if (admin.response) {
+      return admin.response;
+    }
+    const action = await readAdminReportActionRequest(context.req.raw);
+    if (action.response) {
+      return action.response;
+    }
+    const result = await admin.repository.resolveAdminReport(context.req.param('id'), admin.user, action.request);
+    if (!result) {
+      return context.json(makeMarketplaceApiError('report_not_found', 'Report was not found.'), 404);
+    }
+    return context.json(result);
+  });
+
+  app.patch('/api/v1/admin/templates/:id', async (context) => {
+    const admin = await requireMarketplaceAdmin(context);
+    if (admin.response) {
+      return admin.response;
+    }
+    const request = await readAdminTemplateStatusRequest(context.req.raw);
+    if (request.response) {
+      return request.response;
+    }
+    const result = await admin.repository.setAdminTemplateStatus(context.req.param('id'), admin.user, request.request);
+    if (!result) {
+      return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
+    }
+    return context.json(result);
+  });
+
+  app.patch('/api/v1/admin/users/:id', async (context) => {
+    const admin = await requireMarketplaceAdmin(context);
+    if (admin.response) {
+      return admin.response;
+    }
+    const request = await readAdminUserBanRequest(context.req.raw);
+    if (request.response) {
+      return request.response;
+    }
+    const result = await admin.repository.setAdminUserBan(context.req.param('id'), admin.user, request.request);
+    if (!result) {
+      return context.json(makeMarketplaceApiError('user_not_found', 'User was not found.'), 404);
+    }
+    return context.json(result);
+  });
+
   app.notFound((context) => context.json(makeMarketplaceApiError('not_found', 'Route was not found.'), 404));
 
   return app;
+}
+
+async function requireMarketplaceAdmin(context: Context<{ Bindings: MarketplaceWorkerEnv }>) {
+  const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+  if (!user) {
+    return { response: context.json(makeMarketplaceApiError('auth_required', 'Authentication is required for marketplace admin.'), 401) };
+  }
+  if (!context.env?.MARKETPLACE_DB) {
+    return { response: context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Marketplace admin requires D1 storage.'), 503) };
+  }
+  const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+  const isAdmin = await repository.isAdminUser(user, parseAdminBootstrapAllowlist(context.env));
+  if (!isAdmin) {
+    return { response: context.json(makeMarketplaceApiError('admin_required', 'Marketplace admin permission is required.'), 403) };
+  }
+  return { user, repository };
 }
 
 async function readOptionalLikeTarget(request: Request): Promise<{ liked?: boolean; response?: never } | { liked?: never; response: Response }> {
@@ -439,6 +569,117 @@ async function readOptionalLikeTarget(request: Request): Promise<{ liked?: boole
     };
   }
   return { liked: (body as { liked: boolean }).liked };
+}
+
+async function readTemplateReportRequest(request: Request): Promise<{ reason: MarketplaceReportReason; response?: never } | { reason?: never; response: Response }> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return {
+      response: Response.json(makeMarketplaceApiError('report_request_invalid', 'Report request must be valid JSON.'), { status: 400 })
+    };
+  }
+  const reason = body && typeof body === 'object' && !Array.isArray(body) ? (body as { reason?: unknown }).reason : undefined;
+  if (typeof reason !== 'string' || !MARKETPLACE_REPORT_REASON_VALUES.includes(reason as MarketplaceReportReason)) {
+    return {
+      response: Response.json(makeMarketplaceApiError('report_reason_invalid', 'Report reason is invalid.'), { status: 400 })
+    };
+  }
+  return { reason: reason as MarketplaceReportReason };
+}
+
+function readOptionalReportStatus(value: string | undefined): { status?: 'open' | 'resolved' | 'rejected'; response?: never } | { status?: never; response: Response } {
+  if (!value) {
+    return {};
+  }
+  if (value === 'open' || value === 'resolved' || value === 'rejected') {
+    return { status: value };
+  }
+  return {
+    response: Response.json(makeMarketplaceApiError('report_status_invalid', 'Report status filter is invalid.'), { status: 400 })
+  };
+}
+
+async function readAdminReportActionRequest(
+  request: Request
+): Promise<{ request: MarketplaceAdminReportActionRequest; response?: never } | { request?: never; response: Response }> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return {
+      response: Response.json(makeMarketplaceApiError('admin_report_action_invalid', 'Report action request must be valid JSON.'), { status: 400 })
+    };
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return {
+      response: Response.json(makeMarketplaceApiError('admin_report_action_invalid', 'Report action request must be an object.'), { status: 400 })
+    };
+  }
+  const candidate = body as { status?: unknown; resolution?: unknown; delistTemplate?: unknown };
+  if (candidate.status !== 'resolved' && candidate.status !== 'rejected') {
+    return {
+      response: Response.json(makeMarketplaceApiError('admin_report_status_invalid', 'Report action status must be resolved or rejected.'), { status: 400 })
+    };
+  }
+  if (candidate.resolution !== undefined && typeof candidate.resolution !== 'string') {
+    return {
+      response: Response.json(makeMarketplaceApiError('admin_report_resolution_invalid', 'Report resolution must be a string.'), { status: 400 })
+    };
+  }
+  if (candidate.delistTemplate !== undefined && typeof candidate.delistTemplate !== 'boolean') {
+    return {
+      response: Response.json(makeMarketplaceApiError('admin_report_delist_invalid', 'Report delistTemplate must be a boolean.'), { status: 400 })
+    };
+  }
+  return {
+    request: {
+      status: candidate.status,
+      resolution: candidate.resolution,
+      delistTemplate: candidate.delistTemplate
+    }
+  };
+}
+
+async function readAdminTemplateStatusRequest(
+  request: Request
+): Promise<{ request: MarketplaceAdminTemplateStatusRequest; response?: never } | { request?: never; response: Response }> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return {
+      response: Response.json(makeMarketplaceApiError('admin_template_status_invalid', 'Template status request must be valid JSON.'), { status: 400 })
+    };
+  }
+  const status = body && typeof body === 'object' && !Array.isArray(body) ? (body as { status?: unknown }).status : undefined;
+  if (typeof status !== 'string' || !MARKETPLACE_TEMPLATE_STATUS_VALUES.includes(status as MarketplaceAdminTemplateStatusRequest['status'])) {
+    return {
+      response: Response.json(makeMarketplaceApiError('admin_template_status_invalid', 'Template status is invalid.'), { status: 400 })
+    };
+  }
+  return { request: { status: status as MarketplaceAdminTemplateStatusRequest['status'] } };
+}
+
+async function readAdminUserBanRequest(
+  request: Request
+): Promise<{ request: MarketplaceAdminUserBanRequest; response?: never } | { request?: never; response: Response }> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return {
+      response: Response.json(makeMarketplaceApiError('admin_user_ban_invalid', 'User ban request must be valid JSON.'), { status: 400 })
+    };
+  }
+  const banned = body && typeof body === 'object' && !Array.isArray(body) ? (body as { banned?: unknown }).banned : undefined;
+  if (typeof banned !== 'boolean') {
+    return {
+      response: Response.json(makeMarketplaceApiError('admin_user_ban_invalid', 'User ban request banned field must be a boolean.'), { status: 400 })
+    };
+  }
+  return { request: { banned } };
 }
 
 function selectTemplateVersion(template: MarketplaceTemplateDetail, versionId?: string): MarketplaceTemplateVersion | undefined {
@@ -538,7 +779,14 @@ function parseListTemplatesQuery(url: URL): MarketplaceListTemplatesRequest {
   };
 }
 
-function parseAdminGithubLogins(value: string | undefined): string[] {
+function parseAdminBootstrapAllowlist(env: Pick<MarketplaceWorkerEnv, 'MARKETPLACE_ADMIN_GITHUB_IDS' | 'MARKETPLACE_ADMIN_GITHUB_LOGINS'> | undefined) {
+  return {
+    githubUserIds: parseCsvEnv(env?.MARKETPLACE_ADMIN_GITHUB_IDS),
+    githubLogins: parseCsvEnv(env?.MARKETPLACE_ADMIN_GITHUB_LOGINS)
+  };
+}
+
+function parseCsvEnv(value: string | undefined): string[] {
   return value
     ?.split(',')
     .map((entry) => entry.trim())

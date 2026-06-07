@@ -15,6 +15,8 @@ export interface FakeD1DatabaseOptions {
   viewerUserId?: string;
   viewerLiked?: boolean;
   publishedVersionCount?: number;
+  viewerBanned?: boolean;
+  adminUserIds?: string[];
 }
 
 function createTemplateRows(options: FakeD1DatabaseOptions = {}) {
@@ -96,8 +98,14 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
   const publisherGithubUserId = options.publisherGithubUserId ?? defaultPublisher.githubUserId;
   const viewerUserId = options.viewerUserId ?? defaultPublisher.id;
   const publishedVersionCount = options.publishedVersionCount ?? versionRows.length;
+  const adminUserIds = new Set(options.adminUserIds ?? []);
   let viewerLiked = options.viewerLiked ?? false;
+  let viewerBanned = options.viewerBanned ?? false;
   let currentLikeCount: number = templateRows[0]?.like_count ?? 0;
+  let currentTemplateStatus: 'published' | 'delisted' = templateRows[0]?.template_status ?? 'published';
+  let reportStatus: 'open' | 'resolved' | 'rejected' = 'open';
+  let reportResolution = '';
+  let reportResolvedAt: string | null = null;
   return {
     prepare(sql: string) {
       let boundValues: unknown[] = [];
@@ -107,6 +115,21 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
           return this;
         },
         async all() {
+          if (sql.includes('FROM reports r')) {
+            return {
+              results: [
+                createReportRow({
+                  templateRows,
+                  templateStatus: currentTemplateStatus,
+                  reportStatus,
+                  reportResolution,
+                  reportResolvedAt
+                })
+              ],
+              success: true,
+              meta: {}
+            };
+          }
           if (sql.includes('FROM template_daily_stats s')) {
             return {
               results: [
@@ -154,6 +177,45 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
           return { results: templateRows.slice(), success: true, meta: {} };
         },
         async first() {
+          if (sql.includes('FROM reports r')) {
+            return createReportRow({
+              templateRows,
+              templateStatus: currentTemplateStatus,
+              reportStatus,
+              reportResolution,
+              reportResolvedAt
+            });
+          }
+          if (sql.includes('SELECT role FROM admin_roles')) {
+            return adminUserIds.has(String(boundValues[0])) ? { role: 'admin' } : null;
+          }
+          if (sql.includes('SELECT banned_at FROM users WHERE github_user_id = ?1 LIMIT 1')) {
+            return viewerBanned ? { banned_at: '2026-06-07T00:00:00.000Z' } : { banned_at: null };
+          }
+          if (sql.includes('FROM templates t') && sql.includes('JOIN users u') && sql.includes('template_slug')) {
+            const row = templateRows[0];
+            return row
+              ? {
+                  template_id: row.template_id,
+                  template_slug: row.slug,
+                  template_name: row.name,
+                  template_status: currentTemplateStatus,
+                  publisher_id: row.publisher_id,
+                  publisher_github_login: row.publisher_github_login,
+                  publisher_display_name: row.publisher_display_name,
+                  publisher_avatar_url: row.publisher_avatar_url
+                }
+              : null;
+          }
+          if (sql.includes('SELECT id, github_login, display_name, avatar_url, banned_at')) {
+            return {
+              id: String(boundValues[0]),
+              github_login: 'community-user',
+              display_name: 'Community User',
+              avatar_url: 'https://example.test/community.png',
+              banned_at: viewerBanned ? '2026-06-07T00:00:00.000Z' : null
+            };
+          }
           if (sql.includes('SELECT id FROM templates WHERE slug = ?1 LIMIT 1')) {
             const row = templateRows.find((entry) => entry.slug === boundValues[0]);
             return row ? { id: row.template_id } : null;
@@ -170,6 +232,25 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
           return null;
         },
         async run() {
+          if (sql.includes('INSERT INTO reports')) {
+            reportStatus = 'open';
+            reportResolution = '';
+            reportResolvedAt = null;
+          }
+          if (sql.includes('UPDATE reports SET status = ?1')) {
+            reportStatus = boundValues[0] as 'open' | 'resolved' | 'rejected';
+            reportResolution = String(boundValues[1] ?? '');
+            reportResolvedAt = String(boundValues[2] ?? '');
+          }
+          if (sql.includes('UPDATE templates SET status = ?1')) {
+            currentTemplateStatus = boundValues[0] as 'published' | 'delisted';
+          }
+          if (sql.includes('UPDATE users SET banned_at = ?1')) {
+            viewerBanned = Boolean(boundValues[0]);
+          }
+          if (sql.includes('INSERT INTO admin_roles')) {
+            adminUserIds.add(String(boundValues[0]));
+          }
           if (sql.includes('INSERT INTO template_likes')) {
             viewerLiked = true;
           }
@@ -193,4 +274,41 @@ export function createFakeD1Database(runLog: FakeD1Run[] = [], options: FakeD1Da
     batch: async () => [],
     exec: async () => ({ count: 0, duration: 0 })
   } as unknown as D1Database;
+}
+
+function createReportRow({
+  templateRows,
+  templateStatus,
+  reportStatus,
+  reportResolution,
+  reportResolvedAt
+}: {
+  templateRows: ReturnType<typeof createTemplateRows>;
+  templateStatus: 'published' | 'delisted';
+  reportStatus: 'open' | 'resolved' | 'rejected';
+  reportResolution: string;
+  reportResolvedAt: string | null;
+}) {
+  const row = templateRows[0];
+  return {
+    report_id: 'report-d1-review',
+    report_version_id: row?.version_id ?? 'ver-d1-review-2',
+    report_reason: 'malicious',
+    report_status: reportStatus,
+    report_resolution: reportResolution || null,
+    report_created_at: '2026-06-07T00:00:00.000Z',
+    report_resolved_at: reportResolvedAt,
+    template_id: row?.template_id ?? 'tmpl-d1-review',
+    template_slug: row?.slug ?? 'd1-review-loop',
+    template_name: row?.name ?? 'D1 Review Loop',
+    template_status: templateStatus,
+    publisher_id: row?.publisher_id ?? defaultPublisher.id,
+    publisher_github_login: row?.publisher_github_login ?? defaultPublisher.githubLogin,
+    publisher_display_name: row?.publisher_display_name ?? defaultPublisher.displayName,
+    publisher_avatar_url: row?.publisher_avatar_url ?? defaultPublisher.avatarUrl,
+    reporter_id: 'github-test-community-user',
+    reporter_github_login: 'community-user',
+    reporter_display_name: 'Community User',
+    reporter_avatar_url: 'https://example.test/community.png'
+  };
 }
