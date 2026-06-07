@@ -291,7 +291,7 @@ Webview 需要在画布空白区域支持文件拖放创建关联 `Note`：
 
 VSCode File Explorer 需要为 Markdown 文件提供低成本创建入口：
 
-- `package.json` 在 `contributes.commands` 中登记 `devSessionCanvas.createNoteFromExplorerMarkdown`，标题为 `Dev Session Canvas: 从 Markdown 创建 Note`，图标使用 `$(markdown)`。
+- `package.json` 在 `contributes.commands` 中登记 `devSessionCanvas.createNoteFromExplorerMarkdown`，标题为 `Dev Session Canvas: 在 Canvas 中创建关联 Note`，图标使用 `$(markdown)`。
 - `contributes.menus["explorer/context"]` 仅在 `resourceScheme == file && resourceExtname =~ /^\.(md|markdown)$/i` 时显示该入口；命令层仍必须二次校验 URI scheme、扩展名、资源存在性和普通文件类型。
 - `src/extension.ts` 的命令处理只负责解析 Explorer `vscode.Uri` 并打开/定位画布；实际 Note 创建交给 `CanvasPanelManager.createNoteFromMarkdownResource(...)`，避免在扩展入口复制关联 Markdown Note 的状态规则。
 - `CanvasPanelManager.createNoteFromMarkdownResource(...)` 复用现有 `readNoteMarkdownFile(...)`、`createAssociatedNoteMarkdownNode(...)`、`getAssociatedNoteMarkdownNodeIdsForResourceKey(...)` 和 `confirmExistingDroppedNoteMarkdownFile(...)`。因此右键创建与拖拽创建共享 title 规则、content revision、display path、watcher、已有 Note 定位/添加确认，以及删除节点不删除文件的语义。
@@ -352,7 +352,7 @@ Workspace Trust：
 18. 已有关联 `Note` 的 Markdown 文件再次拖到画布空白区时，modal 可选择添加新的关联 `Note`，也可选择定位已有 Note。
 19. 拖拽多个 Markdown 文件会创建多个轻微错位节点；拖拽非 Markdown 文件或目录不会创建节点，并有可解释提示。
 20. Remote 场景下，拖拽资源必须先通过 current-host 准入：同 workspace 或同设备 workspace 外 Markdown 可以关联；不同设备或无法确认完整 current Remote authority 时直接拒绝创建，即使底层 `vscode.workspace.fs` 可能可读也不能用“可访问”替代“属于当前设备”的产品规则。
-21. Explorer 中 `.md` / `.markdown` 文件右键菜单会显示 `Dev Session Canvas: 从 Markdown 创建 Note`；执行后创建与拖拽路径同模型的关联 Note，已有同资源关联时先确认定位或添加，非 Markdown 文件、目录、缺失或不可读文件不会创建节点。
+21. Explorer 中 `.md` / `.markdown` 文件右键菜单会显示 `Dev Session Canvas: 在 Canvas 中创建关联 Note`；执行后创建与拖拽路径同模型的关联 Note，已有同资源关联时先确认定位或添加，非 Markdown 文件、目录、缺失或不可读文件不会创建节点。
 22. `npm run typecheck` 通过。
 23. 覆盖 Note 转换流程、目标文件冲突选择、文件缺失警告、拖拽创建、Explorer Markdown 右键创建和 YAML metadata popover 的 Playwright / smoke 或纯函数测试通过。
 

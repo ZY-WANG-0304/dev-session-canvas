@@ -13,7 +13,7 @@
 ## 3. 核心用户流程
 
 1. 用户在 VSCode File Explorer 中右键点击 `.md` 或 `.markdown` 文件。
-2. 用户选择“Dev Session Canvas: 从 Markdown 创建 Note”。
+2. 用户选择“Dev Session Canvas: 在 Canvas 中创建关联 Note”。
 3. 扩展打开或定位画布，读取该 Markdown 文件内容。
 4. 若该文件尚未关联到已有 Note，画布创建一个 `Note` 节点；节点标题默认来自文件名，正文来自文件内容，`metadata.note.contentSource.kind` 为 `markdown-file`。
 5. 若该文件已有关联 Note，系统复用现有确认流程，让用户选择定位已有 Note 或添加新的关联 Note。
@@ -56,7 +56,7 @@
 
 ## 7. 验收标准
 
-- Markdown 文件右键菜单中出现“Dev Session Canvas: 从 Markdown 创建 Note”，非 Markdown 文件不出现该入口。
+- Markdown 文件右键菜单中出现“Dev Session Canvas: 在 Canvas 中创建关联 Note”，非 Markdown 文件不出现该入口。
 - 对 `.md` / `.markdown` 文件执行命令后，画布创建 `Note` 节点；其 `metadata.note.contentSource.kind` 等于 `markdown-file`，`resourceUri` 指向该文件，正文等于文件内容。
 - 新 Note 标题与拖拽 Markdown 文件创建规则一致，并遵循 `devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle`。
 - 同一 Markdown 文件已有对应 Note 时，再次执行命令会弹出现有确认流程；选择定位时不创建重复 Note，选择添加时创建第二个关联 Note。
