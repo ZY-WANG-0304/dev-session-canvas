@@ -11,7 +11,7 @@
 - release notes：`CHANGELOG.md`
 - 主扩展图标资产：`images/icon.png`
 - 圆形头像安全区图：`images/avatar.png`
-- 仓库 README 交流二维码资产：`images/lark-group-qr.png`、`images/wechat-group-qr.png`（仅用于仓库 README，继续排除出 VSIX）
+- README 与 Marketplace listing 交流二维码资产：`images/lark-group-qr.png`、`images/wechat-group-qr.png`（通过 README 资源改写引用，继续排除出 VSIX）
 - Preview 支持边界：`docs/support.md`
 - 安全口径：`docs/SECURITY.md`
 - 发布判断与背景：`docs/design-docs/public-marketplace-release-readiness.md`
