@@ -64,7 +64,7 @@ try {
 
   assert.throws(
     () => buildClaudeBranchCommandLine('   ', claudeDefaults),
-    /Branch 会话标识不能为空。/
+    /Fork 会话标识不能为空。/
   );
 
   assert.deepEqual(

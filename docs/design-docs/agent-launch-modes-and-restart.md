@@ -16,19 +16,19 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-06-06
+updated_at: 2026-06-08
 ---
 
 # Agent 启动方式与重启交互设计
 
 ## 1. 背景
 
-当前仓库已经支持创建前选择 provider、停止后继续从节点内重新启动 Agent，以及从侧栏会话历史恢复为新的 Agent 节点。但 `tmp_feature_uiux.md` 与后续 Branch 需求引出的真实问题不是“再多几个按钮”这么简单，而是四条边界还没有正式写清：
+当前仓库已经支持创建前选择 provider、停止后继续从节点内重新启动 Agent，以及从侧栏会话历史恢复为新的 Agent 节点。但 `tmp_feature_uiux.md` 与后续 Fork 需求引出的真实问题不是“再多几个按钮”这么简单，而是四条边界还没有正式写清：
 
 1. 创建 Agent 时，如何同时保留“最快的默认创建”和“显式确认完整启动命令”两条路径。
 2. 默认启动参数应当落在设置、节点 metadata 和真实执行命令的哪一层，才能既可配置，又不把运行时元数据和用户意图区混在一起。
 3. 停止后的主动作到底应该优先恢复原会话，还是优先启动新会话；如果两者都需要，UI 与执行语义怎样分流才不含糊。
-4. 当 Claude Code 原生已经提供 `--fork-session` 时，画布如何从当前 Agent 节点一键 Branch 出新节点，而不是让用户退回侧栏历史恢复或错误地把普通 resume 当成 Branch。
+4. 当 Claude Code 原生已经提供 `--fork-session` 时，画布如何从当前 Agent 节点一键 Fork 出新节点，而不是让用户退回侧栏历史恢复或错误地把普通 resume 当成 Fork。
 
 ## 2. 问题定义
 
@@ -39,7 +39,7 @@ updated_at: 2026-06-06
 3. 自定义启动输入该存什么：完整命令、仅参数片段，还是已经解析后的 token 列表。
 4. `Resume` 作为创建预设时，怎样和“停止后恢复原会话”的节点内主按钮区分语义。
 5. 节点 metadata 应怎样建模，才能让后续“新会话”仍然知道这个节点偏好的启动方式。
-6. Claude Code Branch 如何复用现有可信 session id 与节点创建路径，同时保证新节点启动的是 `--fork-session` 而不是同一个原 session。
+6. Claude Code Fork 如何复用现有可信 session id 与节点创建路径，同时保证新节点启动的是 `--fork-session` 而不是同一个原 session。
 
 ## 3. 目标
 
@@ -49,15 +49,15 @@ updated_at: 2026-06-06
 - 让节点 metadata 能持久化“以后启动新会话时应使用哪种预设/命令”。
 - Agent 节点标题下方的副标题应直接显示当前节点最近一次实际启动指令；若尚未真正启动，则显示按当前 metadata + 设置推导出的下一次 fresh-start 指令。
 - 让停止后的标题栏按钮明确区分“新建新会话”和“重启恢复原会话”。
-- 让持有可信 Claude Code session id 的当前 Agent 节点能一键 Branch 出新节点，并通过 Claude Code 原生 `--fork-session` 获得新的 provider session id。
+- 让持有可信 Claude Code session id 的当前 Agent 节点能一键 Fork 出新节点，并通过 Claude Code 原生 `--fork-session` 获得新的 provider session id。
 - 保持现有 provider resolver、自动启动与节点恢复边界不被破坏。
 
 ## 4. 非目标
 
 - 不在本轮引入 provider 会话列表浏览器或 session picker。
 - 不在本轮改变“自动恢复必须建立在可信显式 session identity 上”的正式恢复规则。
-- 不在本轮为 `Codex` 或其他 provider 伪造 Branch；没有 provider 原生 fork 语义时，普通 resume 不能冒充 Branch。
-- 不在本轮维护正式分支树、父子边、branch lineage 或跨节点合并语义。
+- 不在本轮为 `Codex` 或其他 provider 伪造 Fork；没有 provider 原生 fork 语义时，普通 resume 不能冒充 Fork。
+- 不在本轮维护正式分支树、机器可读 branch lineage 或跨节点合并语义；Fork 后自动生成的连接边只作为普通可编辑画布边。
 - 不在本轮把 Agent 执行从 `node-pty` / runtime supervisor 迁到新的 backend。
 - 不在本轮改写 Terminal 节点的启动配置模型。
 
@@ -103,7 +103,7 @@ updated_at: 2026-06-06
 - 创建前的 `Resume` 与节点停止后的“恢复原会话”语义被明确拆开，不会互相污染。
 - 宿主、Webview 与测试都可以共享同一套纯函数：构造预设命令、校验输入、从输入反推预设/自定义。
 
-### 5.4 用普通显式 resume 复制当前 Agent 节点作为 Branch
+### 5.4 用普通显式 resume 复制当前 Agent 节点作为 Fork
 
 优点：
 
@@ -112,38 +112,40 @@ updated_at: 2026-06-06
 
 不选原因：
 
-- `claude --resume <session-id>` 会继续原 session，不会创建新的 provider session id；它不是用户预期的 Branch。
-- 如果把普通 resume 叫作 Branch，会让旧节点和新节点在 provider 层争用同一个会话身份，后续行为难以解释。
+- `claude --resume <session-id>` 会继续原 session，不会创建新的 provider session id；它不是用户预期的 Fork。
+- 如果把普通 resume 叫作 Fork，会让旧节点和新节点在 provider 层争用同一个会话身份，后续行为难以解释。
 
-### 5.5 用 Claude Code 原生 `--fork-session` 创建 Branch 新节点
+### 5.5 用 Claude Code 原生 `--fork-session` 创建 Fork 新节点
 
-这是当前选择，用于当前节点标题栏的 `Branch` 动作。
+这是当前选择，用于当前节点标题栏的 `Fork` 动作。
 
 核心思路：
 
-- 仅当当前 Agent 是 `Claude Code` provider，且节点持有可信 `claude-session-id` 时，才允许 Branch。
-- Webview 只发出“从这个节点 Branch”的用户意图；宿主在 `src/panel/CanvasPanelManager.ts` 中读取当前节点 metadata 并重新校验 session id。
+- 仅当当前 Agent 是 `Claude Code` provider，且节点持有可信 `claude-session-id` 时，才允许 Fork。
+- Webview 只发出“从这个节点 Fork”的用户意图；宿主在 `src/panel/CanvasPanelManager.ts` 中读取当前节点 metadata 并重新校验 session id。
 - 宿主创建一个新的 Agent 节点，启动预设为 `custom`，完整命令使用当前 Claude 命令路径加 `--resume <session-id> --fork-session`。
 - 新节点立即启动；旧节点不停止、不改 metadata、不改变用户对“哪个是主分支”的自由理解。
-- 新节点标题只做弱提示，例如从原标题派生 `Branch` 后缀；画布不新增父子边或分支树。
+- 新节点标题只做弱提示，例如从原标题派生 `Fork` 后缀；画布不新增正式分支树。
+- 宿主在 Fork 新节点创建成功后，自动从原 Agent 节点创建一条指向新 Agent 节点的普通 `user` 边，锚点复用现有水平连边规则，箭头方向为原节点到新节点；这条边只是可编辑/可删除的视觉连接，不作为机器可读 branch lineage。
+- 新节点右上角标题栏优先保留用户动作，不常驻显示状态胶囊；状态事实仍由正文 overlay、终端内容和后续运行态反馈表达，避免 `--fork-session` 长命令、派生标题与动作区互相挤压。
 
 选择原因：
 
 - `claude --resume <session-id> --fork-session` 是 Claude Code CLI 帮助中明确描述的 fork 语义：恢复上下文，但创建新的 session id。
 - 它复用现有可信 session id、CLI resolver、节点创建和启动路径，不需要解析或复制 Claude 历史 JSONL。
-- 第一版只覆盖有 provider 原生能力的 Claude Code，避免把其他 provider 的普通 resume 包装成不真实的 Branch。
+- 第一版只覆盖有 provider 原生能力的 Claude Code，避免把其他 provider 的普通 resume 包装成不真实的 Fork。
 
 ### 5.6 深复制 provider 历史并注入新会话
 
 优点：
 
-- 理论上可以为没有原生 fork 参数的 provider 做出更强的跨 provider Branch。
+- 理论上可以为没有原生 fork 参数的 provider 做出更强的跨 provider Fork。
 
 不选原因：
 
 - 需要理解并复制 Claude / Codex 的私有历史文件格式，还要处理摘要、工具调用、文件引用和权限状态。
 - 这会绕开 provider 自己的会话生命周期，风险远高于当前需求。
-- 第一版需求只要求 Claude Code 当前会话 Branch，不需要泛化成会话历史迁移器。
+- 第一版需求只要求 Claude Code 当前会话 Fork，不需要泛化成会话历史迁移器。
 
 ## 6. 风险与取舍
 
@@ -165,11 +167,11 @@ updated_at: 2026-06-06
 - 风险：Claude Code fresh-start 时即使扩展主动传入 `--session-id <id>`，如果用户启动后没有真正交互，这个 session id 也可能并未生效；仅凭启动时生成的 id 会把“候选 id”误当成“可信可恢复会话”。
   当前缓解：Claude fresh-start 仍会在启动时注入候选 `--session-id`；宿主会主动检查 `~/.claude/projects/.../<session-id>.jsonl` 是否已经落盘，把“文件已存在”视为该 session id 已被 provider 接受的早期确认信号。停止时若又读到 `claude --resume <session-id>`，则把它当作后续校验/更正；只有文件确认与 stop-time 提示都缺失时，才清空恢复上下文。
 
-- 取舍：Branch 第一版只支持 Claude Code，不为 Codex 暴露同名动作。
-  原因：Claude Code CLI 明确支持 `--fork-session`，可以基于 `--resume <session-id>` 创建新的 provider session id；Codex 当前没有在本仓库中确认等价语义。普通 resume 只能恢复同一个 session，不符合 Branch 心智。
+- 取舍：Fork 第一版只支持 Claude Code，不为 Codex 暴露同名动作。
+  原因：Claude Code CLI 明确支持 `--fork-session`，可以基于 `--resume <session-id>` 创建新的 provider session id；Codex 当前没有在本仓库中确认等价语义。普通 resume 只能恢复同一个 session，不符合 Fork 心智。
 
 - 风险：不同用户本机安装的 Claude Code 版本可能还不支持 `--fork-session`。
-  当前缓解：Branch 启动命令只在点击时生成并通过现有启动错误路径反馈；实现时应尽量把 `--fork-session` 命令构造集中在宿主侧，后续若需要版本能力检测，可以在同一入口上补充 `claude --help` 检测或更明确的错误提示。
+  当前缓解：Fork 启动命令只在点击时生成并通过现有启动错误路径反馈；实现时应尽量把 `--fork-session` 命令构造集中在宿主侧，后续若需要版本能力检测，可以在同一入口上补充 `claude --help` 检测或更明确的错误提示。
 
 ## 7. 正式方案
 
@@ -282,15 +284,15 @@ updated_at: 2026-06-06
 - 对 `Codex` 的 fresh-start，启动后仍先扫 `~/.codex/sessions/.../rollout-*.jsonl`；如果节点后来从 `running` 再次回到 `waiting-input` 且仍未拿到 session id，宿主会再触发一轮扫描，以覆盖首轮 discovery 的时序 miss。
 - 标题栏停止按钮按 provider 走不同语义：Codex 先发单次 `Ctrl-C`，若 CLI 未正常退出，再走 5 秒 graceful-stop force-kill；Claude 则沿用更早的直接终止信号路径，不等待 stop-time `Ctrl-C` 收尾。
 
-### 7.6 当前 Claude Code Agent 的 `Branch` 动作
+### 7.6 当前 Claude Code Agent 的 `Fork` 动作
 
-在 `src/common/protocol.ts` 中新增一条 Webview 到宿主的用户意图消息，用于表达“从当前 Agent 节点 Branch”。消息 payload 只需要携带当前节点 id；provider、session id、是否可信都必须由宿主在 `src/panel/CanvasPanelManager.ts` 中重新读取当前权威状态来判断，不能信任 Webview 传入的 session id。
+在 `src/common/protocol.ts` 中新增一条 Webview 到宿主的用户意图消息，用于表达“从当前 Agent 节点 Fork”。消息 payload 只需要携带当前节点 id；provider、session id、是否可信都必须由宿主在 `src/panel/CanvasPanelManager.ts` 中重新读取当前权威状态来判断，不能信任 Webview 传入的 session id。
 
-`src/webview/main.tsx` 的 Agent 节点标题栏新增 `Branch` 操作。该操作只对 provider 为 `claude` 且 metadata 已显示当前节点具备可信 Claude session id 的节点可见或可用；如果 UI 侧暂时无法完全判断，也必须让宿主拒绝非 Claude、无 session id 或 workspace 未受信任场景，并给出明确提示。`Branch` 不取代 `新建 | 重启`：`新建` 是当前节点 fresh-start，`重启` 是当前节点恢复原会话，`Branch` 是创建另一个节点并用 Claude Code 原生 fork 语义启动。
+`src/webview/main.tsx` 的 Agent 节点标题栏新增 `Fork` 操作。该操作只对 provider 为 `claude` 且 metadata 已显示当前节点具备可信 Claude session id 的节点可见或可用；如果 UI 侧暂时无法完全判断，也必须让宿主拒绝非 Claude、无 session id 或 workspace 未受信任场景，并给出明确提示。`Fork` 不取代 `新建 | 重启`：`新建` 是当前节点 fresh-start，`重启` 是当前节点恢复原会话，`Fork` 是创建另一个节点并用 Claude Code 原生 fork 语义启动。
 
-宿主侧新增一个类似 `restoreAgentSessionFromHistory()` 的方法，但语义更窄：它从当前节点读取可信 `claude-session-id`，调用新的 Claude Code Branch 命令构造逻辑生成完整命令，然后通过 `applyCreateNode('agent', ..., { agentProvider: 'claude', agentLaunchPreset: 'custom', agentCustomLaunchCommand, titleOverride })` 创建新节点。新节点标题从原节点标题派生弱提示，例如追加 `Branch`；它不新增 graph edge，不写入父子分支树，也不改变原节点状态。
+宿主侧新增一个类似 `restoreAgentSessionFromHistory()` 的方法，但语义更窄：它从当前节点读取可信 `claude-session-id`，调用新的 Claude Code Fork 命令构造逻辑生成完整命令，然后通过 `applyCreateNode('agent', ..., { agentProvider: 'claude', agentLaunchPreset: 'custom', agentCustomLaunchCommand, titleOverride })` 创建新节点。新节点标题从原节点标题派生弱提示，例如追加 `Fork`；它会创建一条从原 Agent 指向新 Agent 的普通可编辑 `user` 边，但不写入正式父子分支树或机器可读 branch lineage，也不改变原节点状态。
 
-Branch 命令构造必须使用当前 Claude Code provider 命令路径与显式 session id，目标命令语义是：
+Fork 命令构造必须使用当前 Claude Code provider 命令路径与显式 session id，目标命令语义是：
 
     claude --resume <session-id> --fork-session
 
@@ -319,10 +321,10 @@ Branch 命令构造必须使用当前 Claude Code provider 命令路径与显式
 2. Playwright harness 覆盖停止后 `新建 | 重启` 双按钮的新会话与原会话恢复分流，并确认不再渲染下拉入口。
 3. VSCode smoke 覆盖命令面板 / 侧栏“创建节点”的两层 Quick Input，确认 Agent 选择后会进入完整命令编辑，并能用预设创建出持久化了正确 launchPreset 的节点。
 4. 自动化验证 fresh-start 路径会把 `launchPreset/customLaunchCommand` 带入宿主执行，而不是丢失为默认命令。
-5. 自动化覆盖 Claude Code Branch：持有可信 `claude-session-id` 的当前节点点击 `Branch` 后，宿主创建新的 Agent 节点并立即启动，启动命令包含 `--resume <session-id> --fork-session`；原节点状态不变。
-6. 自动化覆盖 Branch 拒绝场景：非 Claude provider、缺少可信 Claude session id、untrusted workspace 不会启动 Branch。
+5. 自动化覆盖 Claude Code Fork：持有可信 `claude-session-id` 的当前节点点击 `Fork` 后，宿主创建新的 Agent 节点并立即启动，启动命令包含 `--resume <session-id> --fork-session`；原节点状态不变。
+6. 自动化覆盖 Fork 拒绝场景：非 Claude provider、缺少可信 Claude session id、untrusted workspace 不会启动 Fork。
 7. `npm run typecheck`、`npm run test:webview` 至少通过；若 smoke 未跑全，要在结果中显式写明原因。
-8. 手动验证真实 Extension Development Host 中，右键创建缺失 CLI 的 `Codex` / `Claude Code` Agent 会先显示节点错误态，再自动弹出和侧栏概览命令行相同的 CLI 选择/安装 Quick Input；Claude Code Branch 需要在安装了支持 `--fork-session` 的 Claude CLI 环境中手动确认新节点会生成新的 session id。
+8. 手动验证真实 Extension Development Host 中，右键创建缺失 CLI 的 `Codex` / `Claude Code` Agent 会先显示节点错误态，再自动弹出和侧栏概览命令行相同的 CLI 选择/安装 Quick Input；Claude Code Fork 需要在安装了支持 `--fork-session` 的 Claude CLI 环境中手动确认新节点会生成新的 session id。
 
 ## 9. 当前验证状态
 
@@ -349,4 +351,5 @@ Branch 命令构造必须使用当前 Claude Code provider 命令路径与显式
 - 2026-04-24：`npm run test:smoke` 需要在沙箱外运行；补跑时 trusted 场景长时间停留在 VS Code 宿主空转状态，尚未完成，因此当前文档状态仍保持 `验证中`。
 
 - 2026-05-18：停止后的 Agent 标题栏动作从 `重启 | ▼` 下拉式 split restart 改为 `新建 | 重启` 并列按钮；`新建` 复用原“新会话”功能，`重启` 保持恢复当前节点原会话。已运行 `npm run test:webview -- --grep "agent restart"`（3 passed）与 `npm run typecheck`，均通过。
-- 2026-06-06：补充 Claude Code Agent `Branch` 正式方案：从当前节点可信 `claude-session-id` 创建新 Agent 节点，并立即用 `claude --resume <session-id> --fork-session` 启动；当前仍处于设计收口，自动化与手动验证待实现后补充。
+- 2026-06-06：补充 Claude Code Agent `Fork` 正式方案：从当前节点可信 `claude-session-id` 创建新 Agent 节点，并立即用 `claude --resume <session-id> --fork-session` 启动；实现与验证状态以后续记录为准。
+- 2026-06-07：已补充 Fork 可见时 Agent 标题栏动作区的布局回归，确认 `停止`、`Fork`、`删除` 不再被 flex 收缩挤占；已运行 targeted `npm run test:webview -- --grep "agent restart actions render inline without a dropdown|Claude Agent Fork action posts a branchAgentSession message|Claude Agent Fork action keeps live title actions readable|Agent Fork action is hidden outside resumable Claude sessions|agent restart action falls back to start button when no resumable session exists"`（5 passed）与 `npm run typecheck`，均通过。随后补齐 Webview posted-message `lifecycle` 测试兼容、smoke 短 debug root 与 macOS `--password-store=basic` 启动参数，并修复真实 PTY 行号漂移导致 multiline 执行链接误回退到 Quick Open 的 smoke 阻塞；相关验证 `npm run test:vscode-smoke-runner-env`、`node scripts/test/test-execution-terminal-line-context-tracker.mjs`、`node scripts/test/test-execution-terminal-native-helpers.mjs`、multiline execution-link targeted Webview 测试均通过。当前 `DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT=/tmp/dsc-smoke DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 已越过 VS Code socket/keychain 与执行链接阶段，新的剩余阻塞为后续侧栏节点列表测试动作超时；整体验证状态继续保持 `验证中`。

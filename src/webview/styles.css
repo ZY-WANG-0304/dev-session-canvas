@@ -898,12 +898,15 @@ body {
   box-sizing: border-box;
   border: 0;
   padding: 0;
+  overflow: hidden;
   background: transparent;
   color: var(--vscode-editor-foreground);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .window-title-subtitle-row {
@@ -1162,6 +1165,19 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.agent-window-chrome-actions {
+  flex: 0 0 auto;
+}
+
+.agent-window-chrome-actions .action-button {
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.agent-window-chrome-actions .agent-restart-action-group .action-button {
+  white-space: normal;
 }
 
 .execution-status-cluster {

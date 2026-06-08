@@ -71,7 +71,7 @@ export function buildClaudeBranchCommandLine(
 ): string {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
-    throw new Error('Branch 会话标识不能为空。');
+    throw new Error('Fork 会话标识不能为空。');
   }
 
   const command = defaults.command.trim() || 'claude';
@@ -217,11 +217,14 @@ export function extractClaudeCommandSessionFlag(
   return extractClaudeCommandSessionFlagByTarget(argv, ['--session-id', '--resume', '--continue']);
 }
 
+export function hasClaudeForkSessionFlag(argv: readonly string[]): boolean {
+  return argv.some((token) => token === '--fork-session' || token.startsWith('--fork-session='));
+}
+
 export function extractClaudeCommandRuntimeSessionFlag(
   argv: readonly string[]
 ): ClaudeCommandSessionFlag | null {
-  const forkSessionFlag = argv.some((token) => token === '--fork-session' || token.startsWith('--fork-session='));
-  return forkSessionFlag
+  return hasClaudeForkSessionFlag(argv)
     ? extractClaudeCommandSessionFlagByTarget(argv, ['--session-id'], { requireSessionId: true })
     : extractClaudeCommandSessionFlag(argv);
 }

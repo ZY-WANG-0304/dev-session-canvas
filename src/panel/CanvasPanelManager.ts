@@ -485,11 +485,21 @@ interface CanvasFileFilterState {
   excludeGlobs: string[];
 }
 
+interface ExecutionFileLinkResolveCandidateDiagnostic {
+  text: string;
+  path: string;
+  source: ExecutionTerminalFileLinkSource;
+  bufferStartLine: number;
+  line?: number;
+  column?: number;
+}
+
 interface ExecutionFileLinkResolveDiagnostics {
   candidateCount: number;
   resolvedCount: number;
   durationMs: number;
   sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  candidates: ExecutionFileLinkResolveCandidateDiagnostic[];
 }
 
 interface ExecutionFileLinkResolveDiagnosticSample extends ExecutionFileLinkResolveDiagnostics {
@@ -2405,30 +2415,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async branchAgentSession(nodeId: string): Promise<{ branched: boolean; errorMessage?: string }> {
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Branch Agent 会话。')) {
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Fork Agent 会话。')) {
       return {
         branched: false,
-        errorMessage: '当前 workspace 未受信任，不能 Branch Agent 会话。'
+        errorMessage: '当前 workspace 未受信任，不能 Fork Agent 会话。'
       };
     }
 
     const sourceNode = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
     if (!sourceNode) {
-      const message = '未找到可 Branch 的 Agent 节点。';
+      const message = '未找到可 Fork 的 Agent 节点。';
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
 
     const metadata = ensureAgentMetadata(sourceNode);
     if (metadata.provider !== 'claude' || metadata.resumeStrategy !== 'claude-session-id') {
-      const message = '只有持有可信会话的 Claude Code Agent 才能 Branch。';
+      const message = '只有持有可信会话的 Claude Code Agent 才能 Fork。';
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
 
     const sessionId = metadata.resumeSessionId?.trim();
     if (!sessionId) {
-      const message = '当前 Claude Code Agent 尚未确认可 Branch 的会话标识。';
+      const message = '当前 Claude Code Agent 尚未确认可 Fork 的会话标识。';
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
@@ -2437,7 +2447,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     try {
       branchCommandLine = this.buildClaudeBranchCommandLine(sessionId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : '无法解析 Claude Code Branch 启动命令。';
+      const message = error instanceof Error ? error.message : '无法解析 Claude Code Fork 启动命令。';
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
@@ -2451,17 +2461,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: 'claude',
       agentLaunchPreset: 'custom',
       agentCustomLaunchCommand: branchCommandLine,
-      titleOverride: `${sourceNode.title} Branch`,
+      titleOverride: `${sourceNode.title} Fork`,
       cwdOverride: metadata.cwd
     });
     if (!createdNode) {
       return { branched: false };
     }
 
+    this.state = createBranchAgentUserEdge(this.state, sourceNode, createdNode);
+    this.persistState();
+    this.postState('host/stateUpdated');
+
     try {
       await this.focusNodeInCanvas(createdNode.id);
     } catch {
-      void vscode.window.showWarningMessage(`Branch 节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+      void vscode.window.showWarningMessage(`Fork 节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
     }
 
     return { branched: true };
@@ -13649,7 +13663,15 @@ function buildExecutionFileLinkResolveDiagnostics(
     candidateCount: candidates.length,
     resolvedCount,
     durationMs,
-    sourceCounts
+    sourceCounts,
+    candidates: candidates.map((candidate) => ({
+      text: candidate.text,
+      path: candidate.path,
+      source: candidate.source,
+      bufferStartLine: candidate.bufferStartLine,
+      line: candidate.line,
+      column: candidate.column
+    }))
   };
 }
 
@@ -17505,6 +17527,23 @@ function createUserCanvasEdge(
     updatedAt: new Date().toISOString(),
     edges: [...previousState.edges, edge]
   };
+}
+
+function createBranchAgentUserEdge(
+  previousState: CanvasPrototypeState,
+  sourceNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>,
+  targetNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>
+): CanvasPrototypeState {
+  const anchors = resolveHorizontalCanvasEdgeAnchors(sourceNode, targetNode);
+  return createUserCanvasEdge(previousState, {
+    id: `edge-${randomUUID()}`,
+    sourceNodeId: sourceNode.id,
+    targetNodeId: targetNode.id,
+    sourceAnchor: anchors.sourceAnchor,
+    targetAnchor: anchors.targetAnchor,
+    arrowMode: 'forward',
+    owner: 'user'
+  });
 }
 
 function canConnectCanvasEdgeEndpoints(

@@ -105,6 +105,8 @@ import {
   classifyAgentLaunchPreset,
   createDefaultAgentLaunchDefaults,
   formatCommandLine,
+  hasClaudeForkSessionFlag,
+  parseFullAgentCommandLine,
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
 import { CANVAS_ATTENTION_INDICATOR_ICON_ID } from '../common/canvasAttentionVisuals';
@@ -4183,6 +4185,8 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
 
   const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession;
   const showBranchAction = provider === 'claude' && canResumeOriginalSession;
+  const isForkedClaudeAgentNode = isClaudeForkAgentLaunch(agentMetadata);
+  const showTitleStatus = !isForkedClaudeAgentNode;
   const actionDisabled = executionBlocked || reattaching;
 
   return (
@@ -4220,11 +4224,16 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
-        <div className="window-chrome-actions">
-          <ExecutionAttentionStatus
-            status={displayStatus}
-            attentionPending={attentionPending}
-          />
+        <div
+          className="window-chrome-actions agent-window-chrome-actions"
+          data-agent-branch-visible={showBranchAction ? 'true' : 'false'}
+        >
+          {showTitleStatus ? (
+            <ExecutionAttentionStatus
+              status={displayStatus}
+              attentionPending={attentionPending}
+            />
+          ) : null}
           {agentMetadata.liveSession ? (
             <ActionButton
               label="停止"
@@ -4283,7 +4292,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           )}
           {showBranchAction ? (
             <ActionButton
-              label="Branch"
+              label="Fork"
               disabled={actionDisabled}
               className="nodrag nopan compact"
               interactive
@@ -4291,7 +4300,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               onClick={branchAgent}
               buttonProps={{
                 title: '从当前 Claude Code 会话创建新分支',
-                'aria-label': 'Branch 当前 Claude Code 会话',
+                'aria-label': 'Fork 当前 Claude Code 会话',
                 'data-agent-branch-action': 'true'
               }}
             />
@@ -11208,6 +11217,23 @@ function providerLabel(provider: AgentProviderKind): string {
 function orderedAgentProviders(defaultProvider: AgentProviderKind): AgentProviderKind[] {
   const secondaryProvider: AgentProviderKind = defaultProvider === 'codex' ? 'claude' : 'codex';
   return [defaultProvider, secondaryProvider];
+}
+
+function isClaudeForkAgentLaunch(metadata: AgentNodeMetadata): boolean {
+  if (metadata.provider !== 'claude') {
+    return false;
+  }
+
+  const commandLine = metadata.lastLaunchCommandLine?.trim() || metadata.customLaunchCommand?.trim();
+  if (!commandLine) {
+    return false;
+  }
+
+  try {
+    return hasClaudeForkSessionFlag(parseFullAgentCommandLine(commandLine).args);
+  } catch {
+    return commandLine.includes('--fork-session');
+  }
 }
 
 function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): string {
