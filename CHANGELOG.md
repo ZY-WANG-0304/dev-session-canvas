@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.14.1 - Preview Markdown Note Shortcut and Shared Runtime Patch
+
+相对 `0.14.0`，`0.14.1` 是同一 `0.14.x` 公开 `Preview` 线内的能力与可靠性补丁，重点补齐 File Explorer Markdown 文件右键创建关联 `Note`、创建类入口复用已打开 Canvas surface、分组 body 空白区拖动画板，以及 multi-root / 双窗口 shared live runtime 恢复验证与硬化。它保留 `0.14.0` 的空间级 fit view、初始自动 fit、动态最小缩放、右下角 MiniMap、workspace-root section 可见性、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.14.0` bump 到 `0.14.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增 File Explorer Markdown 文件右键入口：对 `.md` / `.markdown` 文件显示 `Dev Session Canvas: 在 Canvas 中创建关联 Note`，并复用现有关联 Markdown Note 的读取、去重确认、创建、聚焦、多根归属和持久化模型
+- Host 侧会二次校验 Explorer 资源的 `file` scheme、Markdown 扩展名、文件存在性和普通文件类型；非 Markdown、目录、缺失文件或非本地文件不会被静默创建为关联 Note
+- 创建类入口优先复用当前窗口已打开的 Canvas surface：普通创建节点、Explorer 创建 `Terminal` / `Agent`、Explorer Markdown 创建关联 Note、创建分组，以及模板应用 / 重置不再因为 `defaultSurface` 配置而意外打开另一个承载面
+- 修复分组 body 空白区左键拖动会移动分组的问题；现在 body 空白区与画布空白区一致用于平移画板，分组移动继续通过标题 tab 与可命中边框完成
+- 强化 multi-root 与多 VS Code 窗口共享 live runtime 的恢复路径：runtime binding 继续以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威，双窗口 output 多播、双向 input、Terminal resize last-writer-wins、第二窗口 stop / delete 后第一窗口收到非 live 终态已有真实 VS Code smoke 覆盖
+- Marketplace / README 支持入口补充微信交流群二维码；二维码通过 README 资源改写引用，继续排除出 VSIX payload
+- 补充 Explorer Markdown Note、surface 复用、分组 body 拖动画板、multi-root / storage slot / two-window shared runtime 的产品规格、设计记录和自动化验证
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.14.0` 升级到 `0.14.1` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.14.1`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.14.1` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.14.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.14.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.14.0 - Preview Spatial Navigation and MiniMap Update
 
 相对 `0.13.0`，`0.14.0` 是一轮新的公开 `Preview` 里程碑更新，重点把画布全局导航从“只理解节点”升级为“理解完整空间对象”：普通用户分组、空分组和 multi-root workspace 的系统 root section 都会参与全局 fit view、初始自动 fit、动态最小缩放与右下角 MiniMap。它保留 `0.13.0` 的 VS Code multi-root workspace 组合画布、root-local 状态共享、跨 root 连线拒绝、文件活动命名空间、双市场发布元数据、安装拓扑和 Preview 支持边界。

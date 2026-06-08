@@ -1,8 +1,8 @@
 # Notifier 公开 Preview 发布执行手册
 
-本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.14.0`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
+本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.14.1`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
 
-当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。当前这轮 `0.14.0` 发布准备已经把两侧 manifest / changelog / 产物名同步到同一版本号；后续若再改目标版本，必须一起改回正式文档与验证记录。
+当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。当前这轮 `0.14.1` 发布准备已经把两侧 manifest / changelog / 产物名同步到同一版本号；后续若再改目标版本，必须一起改回正式文档与验证记录。
 
 ## 当前发布素材
 
@@ -93,5 +93,5 @@
 
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
-- 截至 `2026-06-07`，上一轮 `0.13.0` 已完成双市场发布；当前 `0.14.0` 发布准备从最新 `main`（`af066bae2f006a450578309059ffd7792efab7ae`）切出，继续保持 notifier manifest 与 changelog 的 `0.14.0` 版本事实。本轮主扩展聚焦画布空间边界导航、普通用户分组与 multi-root workspace root section 的全局 fit view / MiniMap 可见性，以及 Agent 重启动作紧凑布局修复；notifier companion 不引入新的通知投递行为变更。本轮已通过 `npm run build:notifier`、`npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；notifier VSIX 为 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.14.0.vsix`，10 files，约 143.9 KB（本地文件大小 147,356 bytes），`VSCE README doc ref` 为 `af066bae2f006a450578309059ffd7792efab7ae`。发布准备 MR 合并后还需在最终 `main` ref 上复跑 notifier 打包，确认 VSIX 文件名、README doc ref、文件数与大小都来自最终发布 ref。
+- 截至 `2026-06-08`，上一轮 `0.14.0` 已完成双市场发布；当前 `0.14.1` 发布准备从最新 `main`（`0a7dc0587be8`）切出，继续保持 notifier manifest 与 changelog 的 `0.14.1` 版本事实。本轮主扩展聚焦 Explorer Markdown 文件右键创建关联 Note、创建类入口复用已打开 Canvas surface、分组 body 空白区拖动画板，以及 multi-root / 双窗口 shared live runtime 恢复验证与硬化；notifier companion 不引入新的通知投递行为变更。本轮已通过 `npm run build:notifier`、`npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；notifier VSIX 为 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.14.1.vsix`，10 files，约 144.04 KB（本地文件大小 147,501 bytes），`VSCE README doc ref` 为 `0a7dc0587be868a5c32eab860e61eef79ae79668`。发布准备 MR 合并后还需在最终 `main` ref 上复跑 notifier 打包，确认 VSIX 文件名、README doc ref、文件数与大小都来自最终发布 ref。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。

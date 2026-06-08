@@ -11,7 +11,7 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
-updated_at: 2026-06-07
+updated_at: 2026-06-08
 ---
 
 # 公开平台发布准备
@@ -19,6 +19,8 @@ updated_at: 2026-06-07
 > 2026-06-07 补充：本文主体保留公开 Marketplace Preview 首发准备与后续双市场同步机制的历史决策背景；上一轮 `0.13.0` 已完成双市场发布并在 `main` 上打 `v0.13.0` tag。当前新版本发布准备目标为 `0.14.0`，发布输入、release notes、安装/升级、回退、验证记录与 tag 命令以 `docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 为准。`0.14.0` 不改变本文已选定的渠道策略、Preview 定位、README 打包入口、双市场同版本同步和最终 `main` ref 发布 / tag 约束。
 
 > 2026-06-07 验证补充：`release-0-14-0-prep` 已完成版本一致性、manifest / publish / VSIX 脚本测试、目标 Webview 回归、构建、双市场 dry-run、主扩展与 notifier 打包、clean checkout 打包、Open VSX token 复核、生产依赖审计和 VSIX smoke 重跑验证。当前主扩展 VSIX 为 `dev-session-canvas-0.14.0.vsix`（114 files，约 3.41 MB），notifier VSIX 为 `dev-session-canvas-notifier-0.14.0.vsix`（10 files，约 143.9 KB），两者 `VSCE README doc ref` 均为 `af066bae2f006a450578309059ffd7792efab7ae`；最终 publish / tag 前仍需在合并后的最终 `main` ref 上复跑同一组 release gate。
+
+> 2026-06-08 补充：上一轮 `0.14.0` 已完成双市场发布并在 `main` 上打 `v0.14.0` tag。当前发布准备目标为 `0.14.1`，输入范围是 `v0.14.0` 之后合入 `main` 的 shared runtime 验证硬化、分组 body 空白区拖动画板、微信群二维码物料，以及 Explorer Markdown 文件右键创建关联 Note / 创建入口 surface 复用。`0.14.1` 不改变本文已选定的渠道策略、Preview 定位、README 打包入口、双市场同版本同步和最终 `main` ref 发布 / tag 约束；发布输入、release notes、安装/升级、回退、验证记录与 tag 命令以 `docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 为准。
 
 ## 1. 背景
 

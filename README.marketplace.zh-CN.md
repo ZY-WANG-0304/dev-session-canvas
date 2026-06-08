@@ -52,23 +52,23 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.14.0 版本亮点
+## 0.14.1 版本亮点
 
-当前公开的 `0.14.0` 版本是一轮新的 `0.x` Preview 里程碑，重点收口画布空间导航。全局 fit view、初始自动 fit、动态最小缩放和右下角 MiniMap 现在共用同一套画布空间边界，因此导航不只理解节点，也会纳入普通用户分组和 multi-root workspace-root section。它保留 `0.13.0` 的 multi-root workspace 组合画布、Marketplace 元数据、Open VSX 同版本同步策略、notifier companion 安装关系和支持矩阵。
+当前公开的 `0.14.1` 版本是 `0.14.x` Preview 线内的能力与可靠性补丁，重点补齐 Explorer Markdown 文件右键创建关联 Note 与 shared runtime 可靠性。它保留 `0.14.0` 的画布空间导航里程碑：全局 fit view、初始自动 fit、动态最小缩放和右下角 MiniMap 仍会纳入节点、普通用户分组和 multi-root workspace-root section。
 
-- 全局 fit view 会纳入节点、普通用户分组、空分组和系统 workspace-root section，而不再只 fit React Flow 节点
-- multi-root workspace 默认 fit 所有 root section；即使某个 root 为空，或 root section 明显大于内部节点，也会进入全局视口
-- 右下角 MiniMap 会同时显示 workspace-root section、用户分组和节点，帮助用户理解整张画布的空间结构
-- workspace-root section 在 MiniMap 中使用更强的虚线系统边界，普通用户分组沿用主画布 panel border token 作为更克制的区域层
-- MiniMap 拖拽与滚轮导航会持久化 viewport 和 visible center；滚轮缩放遵循动态 fit view 最小倍率
-- 停止后的 Agent 节点在紧凑标题栏里显示 `新建` / `恢复` 重启动作时，不再把 `删除` 按钮挤出标题栏
+- Explorer 现在会对 `.md` / `.markdown` 文件显示 `Dev Session Canvas: 在 Canvas 中创建关联 Note`
+- 从 Explorer 创建的关联 Note 会复用现有关联 Markdown 文件模型，包括文件校验、重复关联处理、多根归属、聚焦和持久化
+- 创建类入口会优先复用当前窗口已打开的 Canvas surface，不再因为 `defaultSurface` 配置意外打开另一个 `editor` / `panel` 承载面
+- 分组 body 空白区现在像画布空白区一样用于平移画板；移动分组仍通过标题 tab 或可命中边框完成
+- multi-root 与双窗口 shared live runtime 恢复已补真实 VS Code smoke，覆盖 output 多播、双向 input、Terminal resize last-writer-wins，以及跨窗口 stop / delete 后的终态同步
+- Marketplace 与仓库 README 支持入口新增微信群二维码资产，并继续保留飞书交流群二维码
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.13.0` 升级到 `0.14.0` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.14.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.14.0` 后会继续沿用该明确选择
+- 首次安装与从 `0.14.0` 升级到 `0.14.1` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.14.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.14.1` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 

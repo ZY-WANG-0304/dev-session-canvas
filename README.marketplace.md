@@ -52,23 +52,23 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.14.0 Highlights
+## 0.14.1 Highlights
 
-The public `0.14.0` release is a new `0.x` Preview milestone focused on spatial canvas navigation. Fit view, initial auto-fit, dynamic minimum zoom, and the MiniMap now share the same canvas-space boundary, so navigation understands not only nodes but also user groups and multi-root workspace-root sections. It keeps the `0.13.0` multi-root workspace composition milestone, Marketplace metadata, Open VSX mirroring strategy, notifier companion relationship, and support matrix.
+The public `0.14.1` release is a `0.14.x` Preview patch focused on Explorer Markdown-file Note creation and shared-runtime reliability. It keeps the `0.14.0` spatial canvas navigation milestone: fit view, initial auto-fit, dynamic minimum zoom, and the MiniMap still include nodes, user groups, and multi-root workspace-root sections.
 
-- Fit view now includes nodes, user groups, empty groups, and system workspace-root sections instead of only React Flow nodes
-- Multi-root workspaces fit all root sections by default, even when a root is empty or much larger than the nodes inside it
-- The MiniMap shows workspace-root sections, user groups, and nodes together so users can read the spatial structure of the whole canvas
-- Workspace-root sections use a stronger dashed system boundary in the MiniMap, while user groups reuse the main canvas panel-border token for a quieter region layer
-- MiniMap drag and wheel navigation now persist the viewport and visible center, and wheel zoom respects the dynamic fit-view minimum zoom
-- Stopped Agent nodes keep the `New` / `Resume` restart actions visible in compact chrome without pushing the `Delete` button out of the title bar
+- Explorer now exposes a `Dev Session Canvas` action for creating a linked Note from `.md` / `.markdown` files
+- Linked Notes created from Explorer reuse the existing Markdown-file association model, including file validation, duplicate handling, multi-root ownership, focus, and persistence
+- Create-style actions now prefer the Canvas surface already open in the current window instead of unexpectedly opening the other `editor` / `panel` surface because of `defaultSurface`
+- Group body empty space now pans the canvas like normal canvas empty space; moving a group still uses the title tab or hittable border
+- Multi-root and two-window shared live-runtime recovery are covered by real VS Code smoke tests for output fan-out, bidirectional input, terminal resize last-writer-wins, and stop/delete terminal states across windows
+- Marketplace and repository READMEs now include the WeChat discussion-group QR asset alongside the Feishu group QR asset
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.13.0` to `0.14.0` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.14.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.14.0` preserves that explicit choice
+- First-time installs and upgrades from `0.14.0` to `0.14.1` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.14.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.14.1` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
