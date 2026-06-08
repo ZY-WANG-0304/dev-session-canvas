@@ -40,7 +40,7 @@ related_plans:
 10. 执行节点的 `metadata.cwd` 继续作为执行目录权威；拖拽到其他 root section 不静默改写 cwd。
 11. 多根组合视图内部使用命名空间避免不同 root 下的节点 ID、分组 ID 或连线 ID 冲突。
 12. 多根组合视图中，用户创建或重连连线时，两个端点必须属于同一个 root section；跨 root 连线被拒绝。
-13. 文件活动自动节点、file-activity edge 和 suppression id 在多根组合视图中按 root 命名空间重建，不跨 root 共享。
+13. 文件活动自动节点、file-activity edge 和 suppression id 在多根组合视图中按 root 命名空间重建，不跨 root 共享；`file` / `file-list` 在各自 root 内按 owner Agent 最近公共父分组归属，没有公共用户分组时归属对应 `workspace-root`。
 14. 多根组合视图中的 live 文件活动记录按 owner 节点所属 root 生成 root-namespaced `fileReferences.id`；旧的未命名空间化引用在重建时按 root scope 迁移或补 namespace。
 15. 多根组合视图中的 `Agent` / `Terminal` 恢复时，display node id 只服务渲染、选择、连线、布局和拆回 root-local；runtime binding id 以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威，其中 `runtimeStoragePath` 必须保留具体 VS Code `workspaceStorage` slot。
 16. 多根窗口不能用当前 multi-root workspace storage path 猜 runtime；同一个 root 的多个 storage slot 也不能互相替代，必须使用 root-local metadata 中保存的完整 `runtimeStoragePath`。旧 snapshot 缺少 `runtimeStoragePath` 时必须迁移或显式降级为历史恢复，并记录诊断。
@@ -67,7 +67,7 @@ related_plans:
 - 在 multi-root workspace 的某个 root section 内创建 Note / Agent / Terminal / 模板内容 / 关联 Markdown Note 后，单独打开该 root 可以看到对应对象。
 - 两个 root 中都存在 `note-1` 或 `agent-1` 时，多根组合视图不会发生节点 ID 冲突。
 - 在 multi-root workspace 中，跨 root 画线或把既有连线重连到另一个 root 的节点不会创建或更新连线。
-- 两个 root 都有文件活动时，自动 `file` / `file-list` 节点和 file-activity edge 均保留在各自 root section 内，且 ID 不冲突。
+- 两个 root 都有文件活动时，自动 `file` / `file-list` 节点和 file-activity edge 均保留在各自 root section 内，按各自 root 内 owner Agent 最近公共父分组归属，且 ID 不冲突；当前版本不把跨 root owner 合并成同一个自动文件 artifact。
 - 在 multi-root workspace 中运行 Agent 产生新的文件活动时，新写入的 `fileReferences.id` 带所属 root namespace；删除该自动文件节点后的 suppression 在重载后仍生效。
 - 一个 root-local live runtime 节点在 multi-root 重启后按原 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 重新附着，离线期间输出可见。
 - 同一个 root 被多个 VS Code slot 打开时，runtime 仍按完整 `runtimeStoragePath` 区分；没有 `runtimeStoragePath` 的旧 live-runtime root-local snapshot 不会被同 root 当前 slot 隐式接管。

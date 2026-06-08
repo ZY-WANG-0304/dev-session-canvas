@@ -6,7 +6,7 @@
 
 本次实现让用户可以在 DevSessionCanvas 无限画布上创建可见分组框，把 `Agent`、`Terminal`、`Note` 或子分组归入同一组，拖动或 resize 分组，并在宿主状态里持久化分组标题、位置、尺寸和成员关系。分组是空间组织对象，不是执行节点；它不启动进程、不承载连线，也不改变成员节点原有能力。
 
-当前里程碑交付的是“首版基础路径”：空白区右键创建空分组、从多选对象创建分组、分组标题编辑、分组拖动 / resize 草稿、拖动节点或分组后按鼠标释放位置重新归属、取消分组、删除分组确认、模板保存 / 应用基础映射，以及侧栏节点列表默认按分组树展示、VSCode 原生更多菜单与可折叠分组树。用户可以通过 Webview harness 看到分组框、重命名标题、右键创建和多选创建分组；通过宿主测试可以验证分组移动子树、resize 纳入 / 移出、空分组保留和 `file` / `file-list` 不持久入组。
+当前里程碑交付的是“首版基础路径”：空白区右键创建空分组、从多选对象创建分组、分组标题编辑、分组拖动 / resize 草稿、拖动节点或分组后按鼠标释放位置重新归属、取消分组、删除分组确认、模板保存 / 应用基础映射，以及侧栏节点列表默认按分组树展示、VSCode 原生更多菜单与可折叠分组树。用户可以通过 Webview harness 看到分组框、重命名标题、右键创建和多选创建分组；通过宿主测试可以验证分组移动子树、resize 纳入 / 移出、空分组保留，以及 `file` / `file-list` 按 owner Agent 自动归属但不保存为模板成员。
 
 ## 进度
 
@@ -35,7 +35,7 @@
 - [x] (2026-05-23 07:30Z) 将同父级非法几何收口从逐个向右挤开改为四向 spread repair：在上、下、左、右候选方向中选择能恢复合法状态且代价较小的方案，保留 pinned 用户结果，并补充左右与上下插入分组测试。
 - [x] (2026-05-23 07:30Z) 完成本次四向挤开验证：`npm run typecheck` 和 `npm run test:canvas-node-groups` 均通过。
 - [x] (2026-05-23 07:45Z) 复核 resize 释放边界语义：补充“释放边界内完整包含的同父分组纳入、释放边界交叉分组挤走但不纳入”和“resize 边界压入子分组后子分组移出”的宿主回归测试。
-- [x] (2026-05-23 08:00Z) 修正 resize 对节点的边界意图：释放边界完整包含的同父稳定节点会加入被 resize 分组；不稳定的 `file` / `file-list` 节点仍不建立稳定成员关系；直接成员节点不再被释放边界完整包含时提升到父级。
+- [x] (2026-05-23 08:00Z) 修正 resize 对节点的边界意图：释放边界完整包含的同父稳定节点会加入被 resize 分组；当时的 `file` / `file-list` 暂不建立稳定成员关系；直接成员节点不再被释放边界完整包含时提升到父级。2026-06-08 起该旧口径已被 owner Agent 自动归属取代。
 - [x] (2026-05-23 08:00Z) 完成本次 resize 节点归属验证：`npm run test:canvas-node-groups` 通过。
 - [x] (2026-05-23 10:20Z) 完成分组八向 resize：Webview 分组框提供上、下、左、右和四个角 resize 手柄，左 / 上方向 resize 会同步提交新的 `position` 与 `size`。
 - [x] (2026-05-23 10:20Z) 完成本次八向 resize 定向验证：`npm run typecheck`、`npm run build`、`node scripts/test/run-playwright-webview.mjs -g "canvas groups resize from all eight directions"` 均通过。
@@ -54,6 +54,9 @@
 - [x] (2026-05-27 17:40 +0800) 处理第二轮 PR review：模板解析拒绝越界和循环 `parentGroupIndex`，模板应用兜底切断循环父链；删除非空分组确认文案改为明确递归删除内部所有节点与子分组，并补充嵌套删除确认 smoke 覆盖。
 - [x] (2026-05-28 11:20 +0800) 处理第三轮 review：Webview 支持 Ctrl / Cmd 多选同级分组并从选中分组创建外层分组；模板解析补齐节点 `groupIndex` 越界拒绝和分组 self-parent 拒绝。
 - [x] (2026-05-30 07:40 +0800) 处理分组缩放滚动条与拖动回归：分组 foreground 从 canvas shell portal 改为 `.react-flow__renderer` portal，React Flow wrapper / renderer / pane 明确裁切溢出，并给 foreground frame 增加 `nodrag nopan` 防止分组拖动被 pane 同时解释为画布 pan。
+- [x] (2026-06-08 10:38Z) 确认新的文件活动分组语义：`file` / `file-list` 是由 owner Agent 推导归属的自动成员，归属到 owner Agent 的最近公共父分组；用户拖动只改位置，不改到与 owner 不一致的分组；multi-root 下跨 root 文件活动不合并；模板不保存 `file` / `file-list`。
+- [x] (2026-06-08 12:05 +0800) 实现自动文件活动节点按 owner Agent 最近公共父分组重建；拖动 file/list 保留 owner-derived group 并扩张所属 group，Agent 移动、group resize / move / ungroup / keep-members 删除后触发重建，multi-root root scope 只替换本 root 自动 artifact，跨 root owner 不合并。
+- [x] (2026-06-08 12:10 +0800) 完成本轮验证：`npm run test:canvas-node-groups`、`npm run test:canvas-multi-root-composition`、`npm run test:canvas-templates`、`npm run test:protocol-webview-messages`、`npm run typecheck`、`npm run build`、`git diff --check` 均通过。
 - [ ] 继续完善删除分组对话框保留成员分支的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -128,6 +131,15 @@
 - 观察：外部模板节点 `groupIndex` 和分组 `parentGroupIndex` 都属于结构引用，不能静默降级。
   证据：第三轮 PR review 指出越界节点 `groupIndex` 会在应用时静默变成未分组，self-parent 会在解析时静默变根分组；本轮解析阶段直接拒绝这两类坏模板，并补充模板测试。
 
+- 观察：把 `file` / `file-list` 改为 owner-derived group 后，文件活动重建必须在最后再次执行 group 几何收口，否则自动节点尺寸或用户拖动位置会越过 group 边界并在下次点击 / 重建时继续触发边界漂移。
+  证据：`rebuildCanvasFileArtifacts()` 现在统一返回 `finalizeCanvasGroupState(rebuiltState)`；`scripts/test/test-canvas-node-groups.mjs` 覆盖拖动 file-list 后第二次 rebuild 不再继续改变 group geometry。
+
+- 观察：multi-root root-scoped rebuild 不能只按 `node.groupId === workspace-root` 识别旧自动节点；当 file/list 已被 owner Agent 推导到 root 内嵌套用户分组时，下一次 root scope rebuild 仍必须替换它，否则 Agent 改组后会留下 stale 自动节点。
+  证据：`isAutomaticFileArtifactNodeInScope()` 现在接受 `groups` 并通过 `resolveContainingWorkspaceRootGroupId()` 识别 root 内嵌套 group；测试覆盖 namespaced `file-list-agent-*` 从 `group-agent-one` 重新归属到 `group-agent-two`。
+
+- 观察：两个源码字符串型测试已经落后于当前实现命名，导致它们不能稳定参与本轮回归验证。
+  证据：`test:canvas-templates` 原先期望 `await panelManager.revealOrCreate()`，但当前 `src/extension.ts` 使用 `await panelManager.revealOrCreateCurrentCanvasSurface()`；`test:protocol-webview-messages` 原先期望 `summarizeCanvasStateForDiagnostics(sanitizedRootState)`，但当前 `src/panel/CanvasPanelManager.ts` 使用 `runtimeSafeRootState` 作为 loaded-state summary。本轮已同步测试断言，随后两条测试均通过。
+
 ## 决策记录
 
 - 决策：实现阶段以宿主为分组权威状态中心，Webview 只展示 draft 并回传用户意图。
@@ -178,6 +190,10 @@
   理由：挤开应表达“从冲突中心散开”，而不是固定单方向平移；当新对象位于左右或上下兄弟之间时，分别向两侧或上下挤开更符合最小合法修复和用户结果优先。
   日期/作者：2026-05-23 / Codex
 
+- 决策：`file` / `file-list` 改为自动分组成员，但归属权威来自 owner Agent，而不是拖拽落点或历史 `groupId`。
+  理由：文件活动节点的产品目的，是辅助用户判断 Agent 之间的信息处理关系；因此它们应跟随产生这些文件活动的 Agent 所在分组。多个 owner Agent 共享同一自动 artifact 时，归属到这些 owner 的最近公共父分组；multi-root 下跨 root owner 不合并。用户拖动这类节点只改变位置，不改变到与 owner Agent 不一致的分组；Agent 移动后未被抑制的自动 artifact 重新归属。模板仍只保存 Agent / Terminal / Note 及其用户连线和分组，不保存 `file` / `file-list`。
+  日期/作者：2026-06-08 / Codex
+
 ## 结果与复盘
 
 当前工作已经从文档设计推进到首版基础实现。代码层新增了共享 group 协议、宿主持久化与几何收口、Webview group frame 与上下文入口、命令面板补充入口、模板 group capture / materialize、侧栏原生更多菜单和可折叠分组树，以及对应的协议、宿主、模板和 Playwright 测试。设计文档已经把方案 B 从“比较中”收口为“已选定”，验证状态保持“验证中”。
@@ -187,6 +203,8 @@
 剩余缺口包括：删除分组 modal 的保留成员分支还缺自动化断言；真实 VSCode reload 后 group 恢复还没有本轮 smoke 证据；几何收口覆盖的是基础路径而非完整证明。后续协作者应优先补这些缺口，再把验证状态推进到“已验证”。
 
 2026-05-30 PR #102 修正分组 foreground 挂载层级后，当前正式口径是：背景 body 在 `.react-flow__viewport` 的节点下方，foreground 交互 chrome 在 `.react-flow__renderer` 内并带 `nodrag nopan`，React Flow wrapper / renderer / pane 负责裁切溢出；不要再按旧记录把 foreground 改回 canvas shell portal。
+
+2026-06-08 本轮把 `file` / `file-list` 从“不建立稳定成员关系”的旧口径改为“owner Agent 推导的自动成员”。代码已让自动文件节点 / 文件列表节点在文件活动重建时按 owner Agent 最近公共父 group 写入 `groupId`，拖动这类节点只改变位置，所属 group 会像 resize-like repair 一样扩张容纳；Agent 移动、group move / resize / ungroup / keep-members 删除后会触发文件活动重建，避免 stale 自动成员继续影响旧边界。multi-root 下 root-local artifact 仍按 root namespace 分别重建，跨 root owner 不合并为共享 artifact。模板保存逻辑继续只捕获 `Agent`、`Terminal`、`Note` 与用户边 / 用户分组，`file` / `file-list` 不作为模板成员保存。
 
 ## 上下文与定向
 

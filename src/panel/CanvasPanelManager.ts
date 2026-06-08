@@ -8802,11 +8802,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/createGroupFromSelection':
-        this.state = createGroupFromSelection(
-          this.state,
-          parsedMessage.payload.nodeIds,
-          parsedMessage.payload.groupIds,
-          parsedMessage.payload.parentGroupId
+        this.state = this.reconcileCanvasFileArtifacts(
+          createGroupFromSelection(
+            this.state,
+            parsedMessage.payload.nodeIds,
+            parsedMessage.payload.groupIds,
+            parsedMessage.payload.parentGroupId
+          )
         );
         this.canvasTemplateInitialized = true;
         this.persistState();
@@ -8822,27 +8824,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/moveGroup':
-        this.state = moveGroup(
-          this.state,
-          parsedMessage.payload.groupId,
-          parsedMessage.payload.position,
-          parsedMessage.payload.pointerPosition
+        this.state = this.reconcileCanvasFileArtifacts(
+          moveGroup(
+            this.state,
+            parsedMessage.payload.groupId,
+            parsedMessage.payload.position,
+            parsedMessage.payload.pointerPosition
+          )
         );
         this.persistState();
         this.postState('host/stateUpdated');
         return;
       case 'webview/resizeGroup':
-        this.state = resizeGroup(
-          this.state,
-          parsedMessage.payload.groupId,
-          parsedMessage.payload.position,
-          parsedMessage.payload.size
+        this.state = this.reconcileCanvasFileArtifacts(
+          resizeGroup(
+            this.state,
+            parsedMessage.payload.groupId,
+            parsedMessage.payload.position,
+            parsedMessage.payload.size
+          )
         );
         this.persistState();
         this.postState('host/stateUpdated');
         return;
       case 'webview/ungroup':
-        this.state = ungroupCanvasGroup(this.state, parsedMessage.payload.groupId);
+        this.state = this.reconcileCanvasFileArtifacts(ungroupCanvasGroup(this.state, parsedMessage.payload.groupId));
         this.persistState();
         this.postState('host/stateUpdated');
         return;
@@ -12515,7 +12521,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (isEmptyCanvasGroup(this.state, groupId)) {
-      this.state = deleteCanvasGroupKeepMembers(this.state, groupId);
+      this.state = this.reconcileCanvasFileArtifacts(deleteCanvasGroupKeepMembers(this.state, groupId));
       this.persistState();
       this.postState('host/stateUpdated');
       return;
@@ -12541,7 +12547,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
 
-      this.state = deleteCanvasGroupKeepMembers(this.state, groupId);
+      this.state = this.reconcileCanvasFileArtifacts(deleteCanvasGroupKeepMembers(this.state, groupId));
       this.persistState();
       this.postState('host/stateUpdated');
       return;
@@ -12567,7 +12573,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const mode: CanvasGroupDeleteMode = selection.title === keepMembersAction.title ? 'keep-members' : 'delete-members';
     if (mode === 'keep-members') {
-      this.state = deleteCanvasGroupKeepMembers(this.state, groupId);
+      this.state = this.reconcileCanvasFileArtifacts(deleteCanvasGroupKeepMembers(this.state, groupId));
       this.persistState();
       this.postState('host/stateUpdated');
       return;
@@ -14464,7 +14470,9 @@ function moveNode(
       position: normalizedPosition,
       groupId: isStableCanvasGroupMemberKind(node.kind)
         ? resolveDroppedObjectGroupId(previousState, node.id, 'node', resolvedPointerPosition)
-        : undefined
+        : isAutomaticFileArtifactNodeKind(node.kind)
+          ? node.groupId
+          : undefined
     };
   });
 
@@ -14485,9 +14493,17 @@ function moveNode(
         return rootGroupId ? [rootGroupId] : [];
       })
   );
+  const movedAutomaticFileArtifactGroupIds = new Set(
+    movedState.nodes
+      .filter((node) => movedNodeIds.has(node.id) && isAutomaticFileArtifactNodeKind(node.kind) && node.groupId)
+      .map((node) => node.groupId as string)
+  );
 
   return finalizeCanvasGroupState(movedState, {
-    pinnedGroupId: movedWorkspaceRootGroupIds.size === 1 ? [...movedWorkspaceRootGroupIds][0] : undefined
+    pinnedGroupIds: [
+      ...movedAutomaticFileArtifactGroupIds,
+      ...(movedWorkspaceRootGroupIds.size === 1 ? [...movedWorkspaceRootGroupIds] : [])
+    ]
   });
 }
 
@@ -15006,7 +15022,11 @@ function resizeGroup(
       return node;
     }
 
-    if (node.groupId === groupId && !rectContainsRect(resizedRect, rectForNode(node))) {
+    if (
+      node.groupId === groupId &&
+      isStableCanvasGroupMemberKind(node.kind) &&
+      !rectContainsRect(resizedRect, rectForNode(node))
+    ) {
       return {
         ...node,
         groupId: targetParentId
@@ -15026,11 +15046,25 @@ function resizeGroup(
 
     return node;
   });
+  const boundaryIntentNodesById = new Map(nodesAfterBoundaryIntent.map((node) => [node.id, node] as const));
+  const nodesAfterAutomaticGroupIntent = nodesAfterBoundaryIntent.map((node) =>
+    isAutomaticFileArtifactNodeKind(node.kind)
+      ? withCanvasNodeGroupId(
+          node,
+          resolveAutomaticFileArtifactGroupId(
+            node,
+            boundaryIntentNodesById,
+            groupsAfterBoundaryIntent,
+            resolveContainingWorkspaceRootGroupId(groupsAfterBoundaryIntent, node.groupId)
+          )
+        )
+      : node
+  );
 
   return finalizeCanvasGroupState({
     ...previousState,
     updatedAt: new Date().toISOString(),
-    nodes: nodesAfterBoundaryIntent,
+    nodes: nodesAfterAutomaticGroupIntent,
     groups: groupsAfterBoundaryIntent
   }, { pinnedGroupId: groupId });
 }
@@ -15850,7 +15884,7 @@ function normalizeCanvasNodeGroupMemberships(
 ): CanvasNodeSummary[] {
   const groupIds = new Set(groups.map((group) => group.id));
   return nodes.map((node) =>
-    node.groupId && (!groupIds.has(node.groupId) || !isStableCanvasGroupMemberKind(node.kind))
+    node.groupId && (!groupIds.has(node.groupId) || !isAllowedCanvasGroupMemberKind(node.kind))
       ? {
           ...node,
           groupId: undefined
@@ -15878,6 +15912,14 @@ function removeMissingGroupNodeMemberships(
 
 function isStableCanvasGroupMemberKind(kind: CanvasNodeKind): boolean {
   return kind === 'agent' || kind === 'terminal' || kind === 'note';
+}
+
+function isAutomaticFileArtifactNodeKind(kind: CanvasNodeKind): boolean {
+  return kind === 'file' || kind === 'file-list';
+}
+
+function isAllowedCanvasGroupMemberKind(kind: CanvasNodeKind): boolean {
+  return isStableCanvasGroupMemberKind(kind) || isAutomaticFileArtifactNodeKind(kind);
 }
 
 function wouldCreateGroupCycle(groups: readonly CanvasGroupSummary[], groupId: string, parentGroupId: string): boolean {
@@ -16115,15 +16157,18 @@ function rebuildCanvasFileArtifacts(
   }
 ): CanvasPrototypeState {
   const workspaceRootGroups = state.groups.filter(isWorkspaceRootGroup);
-  if (workspaceRootGroups.length > 0) {
-    return rebuildMultiRootCanvasFileArtifacts(state, options, workspaceRootGroups);
-  }
-
-  const manualNodes = state.nodes.filter((node) => node.kind !== 'file' && node.kind !== 'file-list');
-  return rebuildCanvasFileArtifactsForNodeScope(state, options, manualNodes, {
-    allowedGroupId: undefined,
-    namespaceId: undefined
-  });
+  const rebuiltState = workspaceRootGroups.length > 0
+    ? rebuildMultiRootCanvasFileArtifacts(state, options, workspaceRootGroups)
+    : rebuildCanvasFileArtifactsForNodeScope(
+        state,
+        options,
+        state.nodes.filter((node) => !isAutomaticFileArtifactNodeKind(node.kind)),
+        {
+          allowedGroupId: undefined,
+          namespaceId: undefined
+        }
+      );
+  return finalizeCanvasGroupState(rebuiltState);
 }
 
 function rebuildMultiRootCanvasFileArtifacts(
@@ -16143,8 +16188,7 @@ function rebuildMultiRootCanvasFileArtifacts(
 
     const rootManualNodes = state.nodes.filter(
       (node) =>
-        node.kind !== 'file' &&
-        node.kind !== 'file-list' &&
+        !isAutomaticFileArtifactNodeKind(node.kind) &&
         isCanvasNodeInWorkspaceRootScope(state.groups ?? [], node, rootGroup.id)
     );
     nextState = rebuildCanvasFileArtifactsForNodeScope(nextState, options, rootManualNodes, {
@@ -16158,7 +16202,7 @@ function rebuildMultiRootCanvasFileArtifacts(
   ));
   const workspaceLevelAutomaticNodes = nextState.nodes.filter(
     (node) =>
-      (node.kind === 'file' || node.kind === 'file-list') &&
+      isAutomaticFileArtifactNodeKind(node.kind) &&
       splitNamespacedCanvasObjectId(node.id) === undefined &&
       !rootScopedNodeIds.has(node.id)
   );
@@ -16192,14 +16236,16 @@ function rebuildCanvasFileArtifactsForNodeScope(
 ): CanvasPrototypeState {
   const existingAutoNodes = new Map(
     state.nodes
-      .filter((node) => node.kind === 'file' || node.kind === 'file-list')
+      .filter((node) => isAutomaticFileArtifactNodeKind(node.kind))
       .map((node) => [node.id, node] as const)
   );
   const manualNodeIds = new Set(manualNodes.map((node) => node.id));
+  const manualNodesById = new Map(manualNodes.map((node) => [node.id, node] as const));
   const agentNodesById = new Map(
     manualNodes.filter((node) => node.kind === 'agent').map((node) => [node.id, node] as const)
   );
   const authoritativeFileReferences = state.fileReferences
+    .filter((reference) => !isCanvasObjectIdOutsideWorkspaceRootNamespace(reference.id, scope.namespaceId))
     .map((reference) => ({
       ...reference,
       owners: reference.owners.filter((owner) => manualNodeIds.has(owner.nodeId))
@@ -16210,8 +16256,8 @@ function rebuildCanvasFileArtifactsForNodeScope(
   const scopedAutomaticNodeIds = new Set(
     state.nodes
       .filter((node) =>
-        (node.kind === 'file' || node.kind === 'file-list') &&
-        isAutomaticFileArtifactNodeInScope(node, scope)
+        isAutomaticFileArtifactNodeKind(node.kind) &&
+        isAutomaticFileArtifactNodeInScope(node, scope, state.groups ?? [])
       )
       .map((node) => node.id)
   );
@@ -16289,7 +16335,17 @@ function rebuildCanvasFileArtifactsForNodeScope(
           }
         );
   const scopedAutomaticArtifacts = {
-    nodes: automaticArtifacts.nodes.map((node) => withCanvasNodeGroupId(node, scope.allowedGroupId)),
+    nodes: automaticArtifacts.nodes.map((node) =>
+      withCanvasNodeGroupId(
+        node,
+        resolveAutomaticFileArtifactGroupId(
+          node,
+          manualNodesById,
+          state.groups ?? [],
+          scope.allowedGroupId
+        )
+      )
+    ),
     edges: automaticArtifacts.edges
   };
   const suppressedAutomaticFileArtifactNodeIds = new Set(state.suppressedAutomaticFileArtifactNodeIds);
@@ -16430,18 +16486,107 @@ function withCanvasNodeGroupId(
       };
 }
 
+function resolveAutomaticFileArtifactGroupId(
+  node: CanvasNodeSummary,
+  ownerNodesById: ReadonlyMap<string, CanvasNodeSummary>,
+  groups: readonly CanvasGroupSummary[],
+  fallbackGroupId: string | undefined
+): string | undefined {
+  const ownerNodes = resolveAutomaticFileArtifactOwnerNodeIds(node)
+    .map((ownerNodeId) => ownerNodesById.get(ownerNodeId))
+    .filter((ownerNode): ownerNode is CanvasNodeSummary => Boolean(ownerNode));
+  if (ownerNodes.length === 0) {
+    return resolveValidTargetGroupId(groups, fallbackGroupId);
+  }
+
+  return resolveCommonOwnerGroupId(ownerNodes, groups, fallbackGroupId);
+}
+
+function resolveAutomaticFileArtifactOwnerNodeIds(node: CanvasNodeSummary): string[] {
+  const ownerNodeIds = new Set<string>();
+  if (node.kind === 'file') {
+    for (const ownerNodeId of node.metadata?.file?.ownerNodeIds ?? []) {
+      ownerNodeIds.add(ownerNodeId);
+    }
+  }
+
+  if (node.kind === 'file-list') {
+    const fileListMetadata = node.metadata?.fileList;
+    if (fileListMetadata?.ownerNodeId) {
+      ownerNodeIds.add(fileListMetadata.ownerNodeId);
+    }
+    for (const entry of fileListMetadata?.entries ?? []) {
+      for (const ownerNodeId of entry.ownerNodeIds) {
+        ownerNodeIds.add(ownerNodeId);
+      }
+    }
+  }
+
+  return [...ownerNodeIds];
+}
+
+function resolveCommonOwnerGroupId(
+  ownerNodes: readonly CanvasNodeSummary[],
+  groups: readonly CanvasGroupSummary[],
+  fallbackGroupId: string | undefined
+): string | undefined {
+  const resolvedFallbackGroupId = resolveValidTargetGroupId(groups, fallbackGroupId);
+  const ownerGroupChains = ownerNodes.map((node) =>
+    resolveGroupAncestorChain(groups, node.groupId, resolvedFallbackGroupId)
+  );
+  if (ownerGroupChains.length === 0) {
+    return resolvedFallbackGroupId;
+  }
+
+  const [firstChain] = ownerGroupChains;
+  for (const groupId of firstChain) {
+    if (ownerGroupChains.every((chain) => chain.includes(groupId))) {
+      return groupId;
+    }
+  }
+
+  return resolvedFallbackGroupId;
+}
+
+function resolveGroupAncestorChain(
+  groups: readonly CanvasGroupSummary[],
+  groupId: string | undefined,
+  fallbackGroupId: string | undefined
+): string[] {
+  const groupIds = new Set(groups.map((group) => group.id));
+  const chain: string[] = [];
+  const visited = new Set<string>();
+  let currentGroupId = groupId && groupIds.has(groupId) ? groupId : undefined;
+  while (currentGroupId && !visited.has(currentGroupId)) {
+    chain.push(currentGroupId);
+    visited.add(currentGroupId);
+    currentGroupId = groups.find((group) => group.id === currentGroupId)?.parentGroupId;
+  }
+
+  if (fallbackGroupId && groupIds.has(fallbackGroupId) && !chain.includes(fallbackGroupId)) {
+    chain.push(fallbackGroupId);
+  }
+
+  return chain;
+}
+
 function isAutomaticFileArtifactNodeInScope(
   node: CanvasNodeSummary,
   scope: {
     allowedGroupId: string | undefined;
     namespaceId: string | undefined;
-  }
+  },
+  groups: readonly CanvasGroupSummary[]
 ): boolean {
   if (!scope.allowedGroupId) {
     return true;
   }
 
   if (node.groupId === scope.allowedGroupId) {
+    return true;
+  }
+
+  if (node.groupId && resolveContainingWorkspaceRootGroupId(groups, node.groupId) === scope.allowedGroupId) {
     return true;
   }
 
@@ -17832,7 +17977,7 @@ function normalizeNode(
       fileView
     ),
     groupId:
-      typeof value.groupId === 'string' && isStableCanvasGroupMemberKind(value.kind)
+      typeof value.groupId === 'string' && isAllowedCanvasGroupMemberKind(value.kind)
         ? value.groupId
         : undefined,
     metadata: normalizedMetadata
