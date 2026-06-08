@@ -5,6 +5,7 @@ import type {
   CanvasEdgeSummary,
   CanvasFileReferenceSummary,
   CanvasGroupSummary,
+  CanvasNodeKind,
   CanvasNodeFootprint,
   CanvasNodePosition,
   CanvasNodeSummary,
@@ -161,7 +162,11 @@ export function composeRootLocalCanvasStateIntoComposed(
     ...node,
     id: namespaceCanvasObjectId(rootPath, node.id),
     position: translateRootLocalCanvasPositionToComposed(node.position, rootGroup),
-    groupId: node.groupId ? namespaceCanvasObjectId(rootPath, node.groupId) : rootGroup.id,
+    groupId: node.groupId
+      ? namespaceCanvasObjectId(rootPath, node.groupId)
+      : isStableRootSectionMemberNodeKind(node.kind)
+        ? rootGroup.id
+        : undefined,
     metadata: cloneJsonValue(node.metadata)
   }));
   const namespacedGroups = (safeRootLocalState.groups ?? []).map((group) => ({
@@ -511,7 +516,9 @@ function composeRootNodes(context: RootCompositionContext): CanvasNodeSummary[] 
     position: translatePosition(node.position, context.position, ROOT_SECTION_CONTENT_INSET),
     groupId: node.groupId
       ? namespaceCanvasObjectId(context.folder.path, node.groupId)
-      : context.groupId,
+      : isStableRootSectionMemberNodeKind(node.kind)
+        ? context.groupId
+        : undefined,
     metadata: cloneJsonValue(node.metadata)
   }));
 }
@@ -958,7 +965,9 @@ function wouldCreateOverlayGroupCycle(
 
 function measureRootSectionSize(state: CanvasPrototypeState): CanvasNodeFootprint {
   const rects = [
-    ...state.nodes.map((node) => rectFromPositionAndSize(node.position, node.size)),
+    ...state.nodes
+      .filter((node) => isStableRootSectionMemberNodeKind(node.kind))
+      .map((node) => rectFromPositionAndSize(node.position, node.size)),
     ...state.groups.map((group) => rectFromPositionAndSize(group.position, group.size))
   ];
   if (rects.length === 0) {
@@ -974,6 +983,10 @@ function measureRootSectionSize(state: CanvasPrototypeState): CanvasNodeFootprin
     width: bounds.right - Math.min(0, bounds.left) + ROOT_SECTION_CONTENT_INSET * 2,
     height: bounds.bottom - Math.min(0, bounds.top) + ROOT_SECTION_CONTENT_INSET * 2
   });
+}
+
+function isStableRootSectionMemberNodeKind(kind: CanvasNodeKind): boolean {
+  return kind === 'agent' || kind === 'terminal' || kind === 'note';
 }
 
 function normalizeRootSectionSize(size: CanvasNodeFootprint): CanvasNodeFootprint {

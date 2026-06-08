@@ -72,7 +72,7 @@ root-local 状态使用扩展 global storage 按 root 绝对路径稳定分桶�
 
 ### 6.4 组合与拆分规则
 
-组合时，宿主按 root 顺序读取每个 root-local state。节点、用户分组、连线和文件活动 owner node id 都加上 root 命名空间前缀；root-local 顶层用户分组和稳定节点成为 root section 的直接成员；root-local 坐标加上 root section 的内容偏移；root section 的位置、尺寸和父分组来自 overlay，没有 overlay 时按 root 顺序自动铺开。root 内连线只允许连接同一个 root section 内的节点；Webview 与 Host 都拒绝跨 root 创建或重连连线，避免生成无法拆回 root-local、且 overlay 不持久化的临时边。文件活动自动节点和 file-activity edge 使用同一 root 命名空间重建，并作为 root section 成员参与组合，避免不同 root 的 `file-*`、`file-list-*` 或 suppression id 冲突。
+组合时，宿主按 root 顺序读取每个 root-local state。节点、用户分组、连线和文件活动 owner node id 都加上 root 命名空间前缀；root-local 顶层用户分组和稳定节点成为 root section 的直接成员；root-local 坐标加上 root section 的内容偏移；root section 的位置、尺寸和父分组来自 overlay，没有 overlay 时按 root 顺序自动铺开。root 内连线只允许连接同一个 root section 内的节点；Webview 与 Host 都拒绝跨 root 创建或重连连线，避免生成无法拆回 root-local、且 overlay 不持久化的临时边。文件活动自动节点和 file-activity edge 使用同一 root 命名空间重建，按 namespace 归属 root 并参与组合、拆分和 root 整体拖动，但不写入 root section 的直接 `groupId`，也不参与 root section 自然尺寸测量，避免 `file-*` / `file-list-*` 自动 artifact 因重建或点击触发 root 边界漂移；root 内连线判断仍把同 namespace 自动文件节点视作同 root 节点。不同 root 的 `file-*`、`file-list-*` 或 suppression id 仍通过 root namespace 避免冲突。
 
 live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点所在 workspace-root namespace 生成 `fileReferences.id`。如果多根组合视图中仍存在旧的未命名空间化 file reference，重建文件活动 artifact 时也会按当前 root scope 补 namespace，并只迁移或移除属于当前 root 的 owner，避免把另一个 root 的 owner 一起丢掉。这样用户删除自动文件节点后，suppression id 能在 compose/decompose 往返中继续落到同一个 root-local file artifact，而不会在重载后复活。
 

@@ -125,6 +125,64 @@ try {
     '没有 overlay 时，默认 root 铺排必须按本轮最大 root section 尺寸计算，避免不同自然尺寸的 root section 重叠。'
   );
 
+  const composedWithFarFileList = composeMultiRootCanvasState({
+    workspaceFolders: folders,
+    rootStates: [
+      {
+        rootPath: frontendRoot,
+        state: state({
+          nodes: [
+            note('note-root-member', { x: 20, y: 30 }),
+            fileList('file-list-far', { x: 2400, y: 180 })
+          ]
+        })
+      },
+      { rootPath: backendRoot, state: backendState }
+    ],
+    overlay: {
+      version: 1,
+      roots: [
+        { rootPath: frontendRoot, position: { x: 100, y: 200 }, size: { width: 900, height: 700 } }
+      ]
+    },
+    now: '2026-06-04T00:45:00.000Z'
+  });
+  const frontendRootWithFarFileList = composedWithFarFileList.groups.find((candidate) => candidate.id === frontendRootGroupId);
+  const composedFarFileList = composedWithFarFileList.nodes.find((candidate) => candidate.id === namespaceCanvasObjectId(frontendRoot, 'file-list-far'));
+  assert.deepEqual(
+    frontendRootWithFarFileList.size,
+    { width: 900, height: 700 },
+    '自动 file-list 只按 namespace 归属 root，不应把 overlay 中的 root section 边界撑大。'
+  );
+  assert.equal(composedFarFileList.groupId, undefined);
+
+  const composedWithFarStableNode = composeMultiRootCanvasState({
+    workspaceFolders: folders,
+    rootStates: [
+      {
+        rootPath: frontendRoot,
+        state: state({
+          nodes: [
+            note('note-root-member', { x: 20, y: 30 }),
+            note('note-far', { x: 1200, y: 180 })
+          ]
+        })
+      },
+      { rootPath: backendRoot, state: backendState }
+    ],
+    overlay: {
+      version: 1,
+      roots: [
+        { rootPath: frontendRoot, position: { x: 100, y: 200 }, size: { width: 900, height: 700 } }
+      ]
+    },
+    now: '2026-06-04T00:50:00.000Z'
+  });
+  assert.ok(
+    composedWithFarStableNode.groups.find((candidate) => candidate.id === frontendRootGroupId).size.width > 900,
+    '稳定 root-local 节点仍应按自然尺寸扩展 root section。'
+  );
+
   const movedRootDelta = { x: 300, y: 300 };
   const movedRootState = {
     ...composed,
@@ -361,6 +419,20 @@ function note(id, position, options = {}) {
     size: options.size ?? { width: 320, height: 220 },
     groupId: options.groupId,
     metadata: { note: { content: '' } }
+  };
+}
+
+function fileList(id, position, options = {}) {
+  return {
+    id,
+    kind: 'file-list',
+    title: id,
+    status: 'linked',
+    summary: '',
+    position,
+    size: options.size ?? { width: 320, height: 220 },
+    groupId: options.groupId,
+    metadata: { fileList: { scope: 'agent', entries: [] } }
   };
 }
 

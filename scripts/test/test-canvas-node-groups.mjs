@@ -164,6 +164,17 @@ try {
     metadata: { file: { fileId: id, filePath: `src/${id}.ts`, ownerNodeIds: [], accessMode: 'read' } },
     ...extra
   });
+  const fileListNode = (id, position, extra = {}) => ({
+    id,
+    kind: 'file-list',
+    title: id,
+    status: 'linked',
+    summary: '',
+    position,
+    size: { width: 320, height: 220 },
+    metadata: { fileList: { scope: 'agent', entries: [] } },
+    ...extra
+  });
   const group = (id, position, size, extra = {}) => ({
     id,
     title: id,
@@ -934,8 +945,8 @@ try {
   const backendFileNode = reconciledFileNodeArtifacts.nodes.find((candidate) => candidate.id === `${namespacedBackendRootId}:file-file-ref-1`);
   assert.ok(frontendFileNode, 'Namespaced file references should rebuild as root-local automatic file nodes.');
   assert.ok(backendFileNode, 'Each root should rebuild its own automatic file nodes.');
-  assert.strictEqual(frontendFileNode.groupId, namespacedFrontendRootId);
-  assert.strictEqual(backendFileNode.groupId, namespacedBackendRootId);
+  assert.strictEqual(frontendFileNode.groupId, undefined);
+  assert.strictEqual(backendFileNode.groupId, undefined);
   assert.ok(reconciledFileNodeArtifacts.edges.some((candidate) =>
     candidate.id === `${namespacedFrontendRootId}:agent-1::file-file-ref-1`
   ));
@@ -943,15 +954,72 @@ try {
     view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
     preserveAutomaticFileNodeSizes: true
   });
+  const frontendSharedFileList = reconciledFileListArtifacts.nodes.find((candidate) => candidate.id === `${namespacedFrontendRootId}:file-list-shared`);
   assert.ok(
-    reconciledFileListArtifacts.nodes.some((candidate) => candidate.id === `${namespacedFrontendRootId}:file-list-shared` && candidate.groupId === namespacedFrontendRootId),
+    frontendSharedFileList,
     'Shared file-list artifacts must use the root namespace so different roots never collide.'
   );
+  assert.strictEqual(frontendSharedFileList.groupId, undefined);
   assert.ok(!reconciledFileListArtifacts.nodes.some((candidate) => candidate.id === 'file-list-shared'));
   assert.deepStrictEqual(
     reconciledFileListArtifacts.suppressedAutomaticFileArtifactNodeIds,
     [],
     'Root-local suppression ids that do not match rebuilt artifact ids should be pruned in composed state.'
+  );
+  const frontendFarFileListId = `${namespacedFrontendRootId}:file-list-agent-agent-1`;
+  const rootStateWithFarFileList = state({
+    ...fileActivityRootState,
+    nodes: [
+      ...fileActivityRootState.nodes,
+      fileListNode(frontendFarFileListId, { x: 2400, y: 160 }, { groupId: namespacedFrontendRootId })
+    ]
+  });
+  const reconciledFarFileListArtifacts = rebuildCanvasFileArtifacts(rootStateWithFarFileList, {
+    view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
+    preserveAutomaticFileNodeSizes: true
+  });
+  const reconciledFarFileList = reconciledFarFileListArtifacts.nodes.find((candidate) => candidate.id === frontendFarFileListId);
+  assert.deepStrictEqual(reconciledFarFileList.position, { x: 2400, y: 160 });
+  assert.strictEqual(
+    reconciledFarFileList.groupId,
+    undefined,
+    'Automatic file-list artifacts are root-scoped by namespace but must not become stable root group members.'
+  );
+  const movedRootWithFarFileList = moveGroup(
+    reconciledFarFileListArtifacts,
+    namespacedFrontendRootId,
+    { x: 60, y: 30 },
+    { x: 160, y: 120 }
+  );
+  assert.deepStrictEqual(
+    movedRootWithFarFileList.nodes.find((candidate) => candidate.id === frontendFarFileListId).position,
+    { x: 2440, y: 160 },
+    'Moving a workspace root section must still move namespace-scoped automatic file-list artifacts as part of that root.'
+  );
+  const resizedRootWithFarFileList = resizeGroup(
+    reconciledFarFileListArtifacts,
+    namespacedFrontendRootId,
+    { x: 20, y: 30 },
+    { width: 760, height: 540 }
+  );
+  assert.deepStrictEqual(
+    resizedRootWithFarFileList.groups.find((candidate) => candidate.id === namespacedFrontendRootId).size,
+    { width: 760, height: 540 },
+    'Workspace root resize must keep the user boundary when only automatic file-list artifacts sit outside it.'
+  );
+  const clickedRootWithFarFileList = moveGroup(
+    rebuildCanvasFileArtifacts(resizedRootWithFarFileList, {
+      view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
+      preserveAutomaticFileNodeSizes: true
+    }),
+    namespacedFrontendRootId,
+    { x: 20, y: 30 },
+    { x: 120, y: 120 }
+  );
+  assert.deepStrictEqual(
+    clickedRootWithFarFileList.groups.find((candidate) => candidate.id === namespacedFrontendRootId).size,
+    { width: 760, height: 540 },
+    'A click-like zero-delta root group update must not let automatic file-list artifacts expand the root boundary.'
   );
   const liveFilePath = '/repo/frontend/src/live.ts';
   const liveFileReferenceId = fileReferenceId(liveFilePath);

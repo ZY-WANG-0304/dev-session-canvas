@@ -8190,9 +8190,41 @@ function canConnectCanvasEdgeEndpoints(
     return true;
   }
 
-  const sourceRootGroupId = resolveContainingWorkspaceRootGroupIdForWebview(groups, sourceNode.groupId);
-  const targetRootGroupId = resolveContainingWorkspaceRootGroupIdForWebview(groups, targetNode.groupId);
+  const sourceRootGroupId = resolveCanvasNodeWorkspaceRootScopeIdForWebview(groups, sourceNode);
+  const targetRootGroupId = resolveCanvasNodeWorkspaceRootScopeIdForWebview(groups, targetNode);
   return Boolean(sourceRootGroupId && sourceRootGroupId === targetRootGroupId);
+}
+
+function resolveCanvasNodeWorkspaceRootScopeIdForWebview(
+  groups: readonly CanvasGroupSummary[],
+  node: CanvasNodeSummary
+): string | undefined {
+  if (node.groupId) {
+    const groupRootId = resolveContainingWorkspaceRootGroupIdForWebview(groups, node.groupId);
+    if (groupRootId) {
+      return groupRootId;
+    }
+  }
+
+  return splitWorkspaceRootNamespaceIdForWebview(node.id);
+}
+
+function splitWorkspaceRootNamespaceIdForWebview(objectId: string): string | undefined {
+  const separatorIndex = objectId.indexOf(':');
+  if (separatorIndex <= 0 || separatorIndex === objectId.length - 1) {
+    return undefined;
+  }
+
+  const namespaceId = objectId.slice(0, separatorIndex);
+  return namespaceId.startsWith('workspace-root-') ? namespaceId : undefined;
+}
+
+function isCanvasObjectIdInAnyWorkspaceRootNamespaceForWebview(
+  objectId: string,
+  namespaceIds: ReadonlySet<string>
+): boolean {
+  const namespaceId = splitWorkspaceRootNamespaceIdForWebview(objectId);
+  return namespaceId !== undefined && namespaceIds.has(namespaceId);
 }
 
 function resolveContainingWorkspaceRootGroupIdForWebview(
@@ -10762,9 +10794,17 @@ function applyCanvasGroupDrafts(params: {
       }
     ];
   });
+  const movingDraftsWithRootIds = movingDrafts.map((movingDraft) => ({
+    ...movingDraft,
+    workspaceRootGroupIds: new Set(
+      params.groups
+        .filter((group) => movingDraft.subtreeGroupIds.has(group.id) && isWorkspaceRootCanvasGroupRole(group.role))
+        .map((group) => group.id)
+    )
+  }));
 
   const groups = params.groups.map((group) => {
-    const translatedPosition = movingDrafts.reduce(
+    const translatedPosition = movingDraftsWithRootIds.reduce(
       (position, movingDraft) =>
         movingDraft.subtreeGroupIds.has(group.id)
           ? {
@@ -10789,13 +10829,14 @@ function applyCanvasGroupDrafts(params: {
   const hostNodesById = new Map(params.hostNodes.map((node) => [node.id, node] as const));
   const nodes = params.flowNodes.map((node) => {
     const hostNode = hostNodesById.get(node.id);
-    if (!hostNode?.groupId) {
+    if (!hostNode) {
       return node;
     }
 
-    const delta = movingDrafts.reduce(
+    const delta = movingDraftsWithRootIds.reduce(
       (currentDelta, movingDraft) =>
-        movingDraft.subtreeGroupIds.has(hostNode.groupId ?? '')
+        movingDraft.subtreeGroupIds.has(hostNode.groupId ?? '') ||
+        isCanvasObjectIdInAnyWorkspaceRootNamespaceForWebview(hostNode.id, movingDraft.workspaceRootGroupIds)
           ? {
               x: currentDelta.x + movingDraft.delta.x,
               y: currentDelta.y + movingDraft.delta.y

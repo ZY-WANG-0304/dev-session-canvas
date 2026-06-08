@@ -14909,6 +14909,11 @@ function moveGroup(
     y: normalizedPosition.y - targetGroup.position.y
   };
   const subtreeGroupIds = collectGroupSubtreeIds(previousState.groups ?? [], groupId);
+  const movingWorkspaceRootGroupIds = new Set(
+    (previousState.groups ?? [])
+      .filter((group) => subtreeGroupIds.has(group.id) && isWorkspaceRootGroup(group))
+      .map((group) => group.id)
+  );
   const containingWorkspaceRootGroupId = isWorkspaceRootGroup(targetGroup)
     ? undefined
     : resolveContainingWorkspaceRootGroupId(previousState.groups ?? [], targetGroup.parentGroupId);
@@ -14926,7 +14931,7 @@ function moveGroup(
     ...previousState,
     updatedAt: new Date().toISOString(),
     nodes: previousState.nodes.map((node) =>
-      node.groupId && subtreeGroupIds.has(node.groupId)
+      isNodeMovedWithGroupSubtree(node, subtreeGroupIds, movingWorkspaceRootGroupIds)
         ? {
             ...node,
             position: {
@@ -14949,6 +14954,18 @@ function moveGroup(
         : group
     )
   }, { pinnedGroupIds: [groupId, containingWorkspaceRootGroupId].filter((id): id is string => Boolean(id)) });
+}
+
+function isNodeMovedWithGroupSubtree(
+  node: CanvasNodeSummary,
+  subtreeGroupIds: ReadonlySet<string>,
+  movingWorkspaceRootGroupIds: ReadonlySet<string>
+): boolean {
+  if (node.groupId && subtreeGroupIds.has(node.groupId)) {
+    return true;
+  }
+
+  return isCanvasObjectIdInAnyWorkspaceRootNamespace(node.id, movingWorkspaceRootGroupIds);
 }
 
 function resizeGroup(
@@ -15360,7 +15377,9 @@ function collectSiblingGeometryCollections(
     parentGroupIds.add(group.parentGroupId);
   }
   for (const node of nodes) {
-    parentGroupIds.add(node.groupId);
+    if (isStableCanvasGroupMemberKind(node.kind)) {
+      parentGroupIds.add(node.groupId);
+    }
   }
 
   return [...parentGroupIds].map((parentGroupId) => ({
@@ -15370,7 +15389,7 @@ function collectSiblingGeometryCollections(
         .filter((group) => group.parentGroupId === parentGroupId)
         .map((group) => ({ kind: 'group' as const, id: group.id, rect: rectForGroup(group), role: group.role })),
       ...nodes
-        .filter((node) => node.groupId === parentGroupId)
+        .filter((node) => isStableCanvasGroupMemberKind(node.kind) && node.groupId === parentGroupId)
         .map((node) => ({ kind: 'node' as const, id: node.id, rect: rectForNode(node) }))
     ]
   }));
@@ -16289,7 +16308,10 @@ function rebuildCanvasFileArtifactsForNodeScope(
           }
         );
   const scopedAutomaticArtifacts = {
-    nodes: automaticArtifacts.nodes.map((node) => withCanvasNodeGroupId(node, scope.allowedGroupId)),
+    nodes: automaticArtifacts.nodes.map((node) => ({
+      ...node,
+      groupId: undefined
+    })),
     edges: automaticArtifacts.edges
   };
   const suppressedAutomaticFileArtifactNodeIds = new Set(state.suppressedAutomaticFileArtifactNodeIds);
@@ -16415,21 +16437,6 @@ function removeFileReferenceOwnersForNodeIds(
     .filter((reference) => reference.owners.length > 0);
 }
 
-function withCanvasNodeGroupId(
-  node: CanvasNodeSummary,
-  groupId: string | undefined
-): CanvasNodeSummary {
-  return groupId
-    ? {
-        ...node,
-        groupId
-      }
-    : {
-        ...node,
-        groupId: undefined
-      };
-}
-
 function isAutomaticFileArtifactNodeInScope(
   node: CanvasNodeSummary,
   scope: {
@@ -16504,6 +16511,23 @@ function isCanvasObjectIdOutsideWorkspaceRootNamespace(
 
   const legacyArtifactNamespaceId = resolveLegacyAutomaticFileArtifactNamespaceId(objectId);
   return legacyArtifactNamespaceId !== undefined && legacyArtifactNamespaceId !== namespaceId;
+}
+
+function isCanvasObjectIdInAnyWorkspaceRootNamespace(
+  objectId: string,
+  namespaceIds: ReadonlySet<string>
+): boolean {
+  if (namespaceIds.size === 0) {
+    return false;
+  }
+
+  const namespacedId = splitNamespacedCanvasObjectId(objectId);
+  if (namespacedId) {
+    return namespaceIds.has(namespacedId.namespaceId);
+  }
+
+  const legacyNamespaceId = resolveLegacyAutomaticFileArtifactNamespaceId(objectId);
+  return legacyNamespaceId !== undefined && namespaceIds.has(legacyNamespaceId);
 }
 
 function resolveLegacyAutomaticFileArtifactNamespaceId(objectId: string): string | undefined {
@@ -17258,9 +17282,23 @@ function canConnectCanvasEdgeEndpoints(
     return true;
   }
 
-  const sourceRootGroupId = resolveContainingWorkspaceRootGroupId(groups, sourceNode.groupId);
-  const targetRootGroupId = resolveContainingWorkspaceRootGroupId(groups, targetNode.groupId);
+  const sourceRootGroupId = resolveCanvasNodeWorkspaceRootScopeId(groups, sourceNode);
+  const targetRootGroupId = resolveCanvasNodeWorkspaceRootScopeId(groups, targetNode);
   return Boolean(sourceRootGroupId && sourceRootGroupId === targetRootGroupId);
+}
+
+function resolveCanvasNodeWorkspaceRootScopeId(
+  groups: readonly CanvasGroupSummary[],
+  node: CanvasNodeSummary
+): string | undefined {
+  if (node.groupId) {
+    const groupRootId = resolveContainingWorkspaceRootGroupId(groups, node.groupId);
+    if (groupRootId) {
+      return groupRootId;
+    }
+  }
+
+  return splitNamespacedCanvasObjectId(node.id)?.namespaceId;
 }
 
 function updateCanvasEdge(
