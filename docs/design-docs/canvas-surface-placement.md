@@ -1,7 +1,7 @@
 ---
 title: 画布宿主承载面设计
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -16,8 +16,8 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-surface-configurable-host.md
   - docs/exec-plans/active/canvas-config-reload-semantics.md
-  - docs/exec-plans/active/canvas-panel-webview-lifecycle-identity.md
-updated_at: 2026-06-08
+  - docs/exec-plans/completed/canvas-panel-webview-lifecycle-identity.md
+updated_at: 2026-06-09
 ---
 
 # 画布宿主承载面设计
@@ -226,13 +226,14 @@ updated_at: 2026-06-08
 - 2026-05-16 补充：Panel view 的 `when` 条件已加入 `config.devSessionCanvas.canvas.defaultSurface == 'panel' && !devSessionCanvas.canvas.panelVisibilityManaged` 启动前兜底，因此默认 `panel` 时 VS Code 打开后即可在原生 Panel 区域发现 `Dev Session Canvas` view；扩展激活后仍由 `panelViewVisible` 接管当前 window 的 reload 语义，且不使用 `onStartupFinished` 自动激活，也不在启动时自动 reveal Webview 内容。
 - 2026-06-03 补充：Panel Webview 生命周期身份方案已经完成代码与自动化验证的第一轮收口。`npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates` 与 `npm run test:webview -- -g "lifecycle identity"` 已通过。
 - 2026-06-03 补充：用户调试诊断 `current-host-diagnostics/2026-06-03T11-16-15-601Z` 证明 Debug Host 已运行新 lifecycle 代码；剩余问题不是调试方式错误，而是 Panel restore 双 attach 下 generation 2 的 ready 被 `source-webview-mismatch` 误判为 stale，generation 4 当前对象一直未 ready。Host 侧已补 `surfaceMessageWebview` / `renderedWebviewLifecycle`，允许未 ready surface 的已渲染 active frame 在 stale 检查前提升为消息目标。
-- 2026-06-03 补充：补充修复后已重新通过 `npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates` 和 `npm run test:webview -- -g "lifecycle identity"`。真实 Panel restore 仍需用户按原布局再采一份诊断确认出现 ready/bootstrap/ack。
+- 2026-06-03 补充：补充修复后已重新通过 `npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates` 和 `npm run test:webview -- -g "lifecycle identity"`。该补充修复当时仍需用户按原布局再采一份诊断确认出现 ready/bootstrap/ack；该人工复验已在 2026-06-09 的记录中收口。
 - 2026-06-03 补充：`npm run test:webview -- -g "webview bundle emits ready|lifecycle identity"` 中 lifecycle 用例通过，但既有 baseline screenshot 用例仍因当前 Linux 快照差异失败；该失败展示为 Agent subtitle 多出 cwd label、终端 resize handle 形态差异，并非 lifecycle stale 防护的断言结果。
 - 2026-06-08 补充：第二批 lifecycle debt hardening 已把 Panel 双 render / ready 竞争收口为 Host 级自动化。`devSessionCanvas.__test.runWebviewLifecycleRaceDiagnostics` 会构造两个 fake Webview 验证 ready promotion、bootstrap ack gating、竞争 frame mutation 忽略，以及 probe / DOM action 结果来源绑定；已通过 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`。
 - 2026-06-08 补充：第三批 lifecycle debt hardening 已把真实 Panel restore 人工复验入口收口到现有宿主诊断命令。`dumpCurrentHostDiagnostics()` 会写出 `webview-lifecycle-summary.json`，并在用户提示里直接显示 lifecycle 状态和 Panel restore 风险；本批已通过 `npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "lifecycle identity"`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`、`node --check tests/vscode-smoke/extension-tests.cjs` 和 `git diff --check`。
 - 2026-06-08 补充：第四批 lifecycle debt hardening 已新增离线诊断入口 `npm run diagnose:webview-lifecycle -- <dump-dir>`，用于在不启动 VS Code 的情况下分析第三批 dump 摘要；本批已通过 `npm run typecheck`、`npm run test:webview-lifecycle-diagnostics`、`npm run test:protocol-webview-messages`、`node --check scripts/diagnostics/analyze-webview-lifecycle-dump.mjs`、`node --check scripts/test/test-webview-lifecycle-diagnostics.mjs` 和 `git diff --check`。
 - 用户已于 2026-04-18 完成手动复验，确认 `panel -> editor` 与 `editor -> panel` 两条 restart 路径都已按新的 `defaultSurface` 收口，不再恢复旧 opposite surface。
-- 真实 VS Code Panel 布局恢复场景的 2026-06-03 lifecycle 修复仍待人工复验；因此本文验证状态从“已验证”暂时回退为“验证中”，避免把未确认的 Panel restore 行为写成已完成结论。
+- 2026-06-09 补充：真实 VS Code Panel 布局恢复人工复验已通过。用户在原风险布局中采集 `/home/users/ziyang01.wang-al/projects/dsc-test-01/.debug/current-host-diagnostics/2026-06-08T16-15-01-976Z`，离线诊断退出码为 `0`，整体状态为 `attention`、`Panel restore 风险：否`，且 `panel` 为 `attached=true`、`ready=true`、`bootstrapAck=true`、`probe=OK(nodeCount=16)`；诊断同时出现 29ms 内 4 次 attach/render 与 `surface/readyWebviewPromoted`，证明高风险双 attach/render 路径已进入 ready/bootstrap/ack 闭环而非白屏阻塞。
+- 2026-06-09 补充：维护者又用真实 VS Code 录制 / Playwright CDP 工具启动 `Extension Development Host`，通过原生按键执行 Panel 打开、`Developer: Reload Window` 和宿主诊断命令；生成的 `.debug/current-host-diagnostics/2026-06-08T16-31-24-283Z` 离线诊断为 `healthy`、`Panel restore 风险：否`、退出码 `0`，`panel` 为 `attached=true`、`ready=true`、`bootstrapAck=true`、`probe=OK(nodeCount=1)`。
 - trusted smoke 已新增“reload 后旧 surface 不应恢复”的自动化断言；在当前 head 上整套 trusted smoke 仍被无关的 `verifyLegacyTaskFiltering` 阻塞。
 - restricted smoke 已补跑；当前仍被无关的 `verifyRestrictedLiveRuntimeReconnectBlocked` 断言阻塞。
 - 2026-06-08 补充：创建类入口已收口为“已打开 surface 优先，未打开时才使用默认承载面”。本轮通过 `node --check tests/vscode-smoke/extension-tests.cjs`、`npm run typecheck`、`npm run test:extension-manifest`、`npm run test:note-markdown-file-association` 和 `git diff --check`；`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 已执行到后续 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory` 后命中既有 serialized terminal scrollback 断言，说明本轮新增的普通创建节点、Explorer Terminal / Agent 与 Explorer Markdown Note 已打开 panel surface 复用断言均已通过。
