@@ -57,6 +57,8 @@
 - [x] (2026-06-08 10:38Z) 确认新的文件活动分组语义：`file` / `file-list` 是由 owner Agent 推导归属的自动成员，归属到 owner Agent 的最近公共父分组；用户拖动只改位置，不改到与 owner 不一致的分组；multi-root 下跨 root 文件活动不合并；模板不保存 `file` / `file-list`。
 - [x] (2026-06-08 12:05 +0800) 实现自动文件活动节点按 owner Agent 最近公共父分组重建；拖动 file/list 保留 owner-derived group 并扩张所属 group，Agent 移动、group resize / move / ungroup / keep-members 删除后触发重建，multi-root root scope 只替换本 root 自动 artifact，跨 root owner 不合并。
 - [x] (2026-06-08 12:10 +0800) 完成本轮验证：`npm run test:canvas-node-groups`、`npm run test:canvas-multi-root-composition`、`npm run test:canvas-templates`、`npm run test:protocol-webview-messages`、`npm run typecheck`、`npm run build`、`git diff --check` 均通过。
+- [x] (2026-06-08 22:29 +0800) 处理 PR #138 review blocker：多选同时拖动 owner Agent 与其自动 `file-list` 时，`moveNode()` 在几何收口前先按移动后的 owner Agent 重新计算自动文件节点 group，避免旧 owner group 被同批移动里的 stale file-list 位置扩张。
+- [x] (2026-06-08 22:29 +0800) 完成本次 review 修复验证：`npm run test:canvas-node-groups`、`npm run test:canvas-multi-root-composition`、`npm run typecheck`、`npm run build`、`git diff --check` 均通过。
 - [ ] 继续完善删除分组对话框保留成员分支的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -136,6 +138,9 @@
 
 - 观察：multi-root root-scoped rebuild 不能只按 `node.groupId === workspace-root` 识别旧自动节点；当 file/list 已被 owner Agent 推导到 root 内嵌套用户分组时，下一次 root scope rebuild 仍必须替换它，否则 Agent 改组后会留下 stale 自动节点。
   证据：`isAutomaticFileArtifactNodeInScope()` 现在接受 `groups` 并通过 `resolveContainingWorkspaceRootGroupId()` 识别 root 内嵌套 group；测试覆盖 namespaced `file-list-agent-*` 从 `group-agent-one` 重新归属到 `group-agent-two`。
+
+- 观察：`moveNode()` 不能等到宿主消息外层的 `reconcileCanvasFileArtifacts()` 才修正自动文件节点归属；否则多选同批拖动 owner Agent 与其 file/list 时，`finalizeCanvasGroupState()` 会先按旧 `groupId` repair 旧 owner group，再由后续重建把 file/list 改到新 group，旧 group 的错误边界已经持久化。
+  证据：PR #138 review 复现了 `group A` 内 owner Agent 与其 file-list 一起拖到 `group B` 后，旧 `group A` 被扩张 / 挤走；本轮新增宿主回归测试断言旧 owner group 的 position / size 不因 stale file-list repair 改变。
 
 - 观察：两个源码字符串型测试已经落后于当前实现命名，导致它们不能稳定参与本轮回归验证。
   证据：`test:canvas-templates` 原先期望 `await panelManager.revealOrCreate()`，但当前 `src/extension.ts` 使用 `await panelManager.revealOrCreateCurrentCanvasSurface()`；`test:protocol-webview-messages` 原先期望 `summarizeCanvasStateForDiagnostics(sanitizedRootState)`，但当前 `src/panel/CanvasPanelManager.ts` 使用 `runtimeSafeRootState` 作为 loaded-state summary。本轮已同步测试断言，随后两条测试均通过。
