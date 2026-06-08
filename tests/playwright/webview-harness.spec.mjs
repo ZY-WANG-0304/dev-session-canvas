@@ -335,6 +335,31 @@ test('lifecycle identity acks bootstrap and ignores stale bootstrap frames', asy
   await expect(nodeById(page, 'agent-1')).toBeVisible();
 });
 
+test('lifecycle identity rejects missing lifecycle host bootstrap', async ({ page }) => {
+  await openHarness(page);
+  const currentState = createCanvasScreenshotState();
+
+  await page.evaluate(({ nextState, nextRuntime }) => {
+    window.__devSessionCanvasHarness.clearPostedMessages();
+    window.__devSessionCanvasHarness.dispatchRawHostMessage({
+      type: 'host/bootstrap',
+      payload: {
+        state: nextState,
+        runtime: nextRuntime
+      }
+    });
+  }, { nextState: currentState, nextRuntime: createRuntimeContext() });
+  await settleWebview(page, 3);
+
+  expect(await page.locator('.react-flow__node').count()).toBe(0);
+  expect(await readPostedMessagesByType(page, 'webview/bootstrapAck')).toHaveLength(0);
+  const diagnostic = await waitForPostedMessageByType(page, 'webview/runtimeDiagnostic');
+  expect(diagnostic.payload).toMatchObject({
+    source: 'webview.lifecycle',
+    message: 'ignore host message without lifecycle: host/bootstrap'
+  });
+});
+
 test('manual edges can be created, selected, edited, and deleted', async ({ page }) => {
   const state = createCanvasScreenshotState();
 

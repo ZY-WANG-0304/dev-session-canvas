@@ -42,6 +42,7 @@ const COMMAND_IDS = {
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
   focusNode: 'devSessionCanvas.__internal.focusNode',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
+  dumpHostDiagnostics: 'devSessionCanvas.dumpHostDiagnostics',
   focusSidebarNode: 'devSessionCanvas.__internal.focusSidebarNode',
   restoreSidebarSessionHistoryEntry: 'devSessionCanvas.__internal.restoreSidebarSessionHistoryEntry',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
@@ -64,6 +65,7 @@ const COMMAND_IDS = {
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
+  testRunWebviewLifecycleRaceDiagnostics: 'devSessionCanvas.__test.runWebviewLifecycleRaceDiagnostics',
   testPerformSidebarNodeListAction: 'devSessionCanvas.__test.performSidebarNodeListAction',
   testPerformSidebarSessionHistoryAction: 'devSessionCanvas.__test.performSidebarSessionHistoryAction',
   testGetCanvasTemplateItems: 'devSessionCanvas.__test.getCanvasTemplateItems',
@@ -180,6 +182,7 @@ async function runSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
   await clearDiagnosticEvents();
+  await verifyWebviewLifecycleRaceDiagnostics();
 
   if (smokeScenario === 'restricted') {
     await runRestrictedSmoke();
@@ -237,6 +240,90 @@ async function verifyFirstOpenDefaultTemplate() {
     .sort();
   assert.deepStrictEqual(builtinTemplateIds, ['builtin-basic-workflow', 'builtin-getting-started']);
   assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
+}
+
+async function verifyWebviewLifecycleRaceDiagnostics() {
+  const result = await vscode.commands.executeCommand(COMMAND_IDS.testRunWebviewLifecycleRaceDiagnostics);
+
+  assert.strictEqual(result.surface, 'panel');
+  assert.strictEqual(result.promoted, true, 'Expected older rendered panel frame to be promoted before stale checks.');
+  assert.strictEqual(result.ready, true, 'Expected promoted frame to mark the panel surface ready.');
+  assert.strictEqual(result.bootstrapAck, true, 'Expected bootstrap ack to belong to the promoted frame.');
+  assert.strictEqual(
+    result.bootstrapDeliveredToPromotedWebview,
+    true,
+    'Expected host/bootstrap to be delivered to the frame that sent ready.'
+  );
+  assert.strictEqual(
+    result.secondReadyPromotionIgnored,
+    true,
+    'Expected a competing frame ready after bootstrap ack not to trigger a second promotion.'
+  );
+  assert.strictEqual(
+    result.secondReadyBootstrapSuppressed,
+    true,
+    'Expected a competing frame ready after bootstrap ack not to trigger a second bootstrap.'
+  );
+  assert.strictEqual(
+    result.messageTargetStayedOnPromotedWebview,
+    true,
+    'Expected the promoted frame to keep the message target after a competing frame ready.'
+  );
+  assert.strictEqual(
+    result.sameWebviewFrameReadyPromoted,
+    true,
+    'Expected the current Webview object to accept a same-generation ready with a refreshed frame id.'
+  );
+  assert.strictEqual(
+    result.sameWebviewFrameBootstrapDelivered,
+    true,
+    'Expected a same-Webview refreshed frame to receive a replacement bootstrap.'
+  );
+  assert.strictEqual(
+    result.sameWebviewFrameLifecycleRebound,
+    true,
+    'Expected the current lifecycle frame id to rebind to the same-Webview refreshed frame.'
+  );
+  assert.strictEqual(
+    result.gatedMessageQueuedBeforeAck,
+    true,
+    'Expected non-bootstrap host messages to queue until bootstrap ack.'
+  );
+  assert.strictEqual(
+    result.gatedMessageDeliveredBeforeAck,
+    false,
+    'Expected queued host messages not to reach the frame before bootstrap ack.'
+  );
+  assert.strictEqual(
+    result.gatedMessageDeliveredAfterAck,
+    true,
+    'Expected queued host messages to flush after bootstrap ack.'
+  );
+  assert.strictEqual(result.staleMutationIgnored, true);
+  assert.strictEqual(result.staleProbeResultIgnored, true);
+  assert.strictEqual(result.pendingProbeResolvedFromCurrent, true);
+  assert.strictEqual(result.staleDomActionResultIgnored, true);
+  assert.strictEqual(result.pendingDomActionResolvedFromCurrent, true);
+  assert.strictEqual(
+    result.templateCatalogPostSettled,
+    true,
+    'Expected async template catalog posting after bootstrap ack to settle inside diagnostics.'
+  );
+  assert.deepStrictEqual(
+    result.oldWebviewPostedTypes.slice(0, 2),
+    ['host/bootstrap', 'host/visibilityRestored']
+  );
+  assert.ok(
+    result.oldWebviewPostedTypes.includes('host/templateCatalogUpdated') ||
+      result.diagnosticKinds.includes('template/catalogPostFailed'),
+    'Expected bootstrap ack follow-up to either post template catalog or record a catalog failure.'
+  );
+  assert.deepStrictEqual(result.competingWebviewPostedTypes, []);
+  assert.ok(result.diagnosticKinds.includes('surface/readyWebviewPromoted'));
+  assert.ok(result.diagnosticKinds.includes('surface/hostMessageQueuedUntilBootstrapAck'));
+  assert.ok(result.diagnosticKinds.includes('webview/staleMessageIgnored'));
+  assert.ok(result.diagnosticKinds.includes('webview/staleProbeResultIgnored'));
+  assert.ok(result.diagnosticKinds.includes('webview/staleDomActionResultIgnored'));
 }
 
 async function getCanvasTemplateCatalog() {
