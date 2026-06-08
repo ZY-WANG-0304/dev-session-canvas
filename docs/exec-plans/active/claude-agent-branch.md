@@ -419,7 +419,7 @@
           onFocus={() => data.onSelectNode?.(id)}
           onClick={branchAgent}
           buttonProps={{
-            title: '从当前 Claude Code 会话创建新分支',
+            title: 'Fork 当前 Claude Code 会话',
             'aria-label': 'Fork 当前 Claude Code 会话',
             'data-agent-branch-action': 'true'
           }}
