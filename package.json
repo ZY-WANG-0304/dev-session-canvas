@@ -724,7 +724,9 @@
     "typecheck": "tsc --noEmit",
     "typecheck:notifier": "npm run -w extensions/vscode/dev-session-canvas-notifier typecheck",
     "publish:marketplaces": "node scripts/release/publish-marketplaces.mjs",
+    "release:publish-tag": "node scripts/release/publish-tag-release.mjs",
     "test:publish-marketplaces": "node scripts/test/test-publish-marketplaces.mjs",
+    "test:publish-tag-release": "node scripts/test/test-publish-tag-release.mjs",
     "test:canvas-execution-context": "node scripts/test/test-canvas-execution-context.mjs",
     "diagnose:webview-lifecycle": "node scripts/diagnostics/analyze-webview-lifecycle-dump.mjs"
   },
@@ -765,6 +767,7 @@
     "@vscode/vsce": "^3.9.1",
     "cheerio": "1.0.0-rc.12",
     "esbuild": "^0.25.12",
+    "jszip": "^3.10.1",
     "typescript": "5.0.4"
   },
   "api": "none",
