@@ -270,6 +270,11 @@ assert.match(
 );
 assert.match(
   panelManagerSource,
+  /canPromoteReadyWebviewMessage[\s\S]*!this\.surfaceReady\[sourceSurface\][\s\S]*!currentLifecycle\.ready[\s\S]*lifecycle\.generation === renderedLifecycle\.generation/u,
+  'Expected ready promotion to be limited to surfaces that are not ready yet.'
+);
+assert.match(
+  panelManagerSource,
   /matchesPendingWebviewRequestLifecycle[\s\S]*areSurfaceLifecycleFrameIdsCompatible\(pendingRequest\.lifecycle\.frameId, lifecycle\.frameId\)/u,
   'Expected pending Webview test requests to accept results from the promoted frameId-compatible lifecycle.'
 );
@@ -297,6 +302,11 @@ assert.match(
   panelManagerSource,
   /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*gatedMessageQueuedBeforeAck[\s\S]*webview\/bootstrapAck[\s\S]*gatedMessageDeliveredAfterAck/u,
   'Expected test diagnostics to assert host-message queueing until bootstrap ack.'
+);
+assert.match(
+  panelManagerSource,
+  /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*secondReadyPromotionIgnored[\s\S]*secondReadyBootstrapSuppressed[\s\S]*messageTargetStayedOnPromotedWebview/u,
+  'Expected test diagnostics to prove a competing ready after bootstrap ack cannot promote or steal the message target.'
 );
 assert.match(
   panelManagerSource,
@@ -385,6 +395,11 @@ assert.match(
   smokeSource,
   /verifyWebviewLifecycleRaceDiagnostics[\s\S]*testRunWebviewLifecycleRaceDiagnostics[\s\S]*readyWebviewPromoted/u,
   'Expected VS Code smoke tests to execute the host lifecycle race diagnostic command.'
+);
+assert.match(
+  smokeSource,
+  /verifyWebviewLifecycleRaceDiagnostics[\s\S]*secondReadyPromotionIgnored[\s\S]*secondReadyBootstrapSuppressed[\s\S]*messageTargetStayedOnPromotedWebview/u,
+  'Expected VS Code smoke tests to assert the competing ready after ack regression.'
 );
 assert.match(
   smokeSource,

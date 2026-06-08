@@ -470,6 +470,9 @@ interface CanvasWebviewLifecycleRaceDiagnostics {
   ready: boolean;
   bootstrapAck: boolean;
   bootstrapDeliveredToPromotedWebview: boolean;
+  secondReadyPromotionIgnored: boolean;
+  secondReadyBootstrapSuppressed: boolean;
+  messageTargetStayedOnPromotedWebview: boolean;
   gatedMessageQueuedBeforeAck: boolean;
   gatedMessageDeliveredBeforeAck: boolean;
   gatedMessageDeliveredAfterAck: boolean;
@@ -3346,6 +3349,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     let staleDomActionResultIgnored = false;
     let pendingDomActionResolvedFromCurrent = false;
     let templateCatalogPostSettled = false;
+    let secondReadyPromotionIgnored = false;
+    let secondReadyBootstrapSuppressed = false;
+    let messageTargetStayedOnPromotedWebview = false;
 
     try {
       this.activeSurface = surface;
@@ -3401,6 +3407,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         (message) => message.type === 'host/visibilityRestored'
       );
       templateCatalogPostSettled = await this.waitForLifecycleRaceTemplateCatalogPost(oldFrame);
+
+      const promotionCountBeforeSecondReady = this.testDiagnosticEvents.filter(
+        (event) => event.kind === 'surface/readyWebviewPromoted'
+      ).length;
+      const oldBootstrapCountBeforeSecondReady = oldFrame.postedMessages.filter(
+        (message) => message.type === 'host/bootstrap'
+      ).length;
+      this.handleWebviewMessage(
+        surface,
+        {
+          type: 'webview/ready',
+          lifecycle: competingReadyLifecycle
+        },
+        competingFrame.webview
+      );
+      secondReadyPromotionIgnored =
+        this.testDiagnosticEvents.filter((event) => event.kind === 'surface/readyWebviewPromoted').length ===
+        promotionCountBeforeSecondReady;
+      secondReadyBootstrapSuppressed =
+        competingFrame.postedMessages.every((message) => message.type !== 'host/bootstrap') &&
+        oldFrame.postedMessages.filter((message) => message.type === 'host/bootstrap').length ===
+          oldBootstrapCountBeforeSecondReady;
+      const promotedLifecycleAfterSecondReady = this.getSurfaceLifecycleIdentity(surface);
+      messageTargetStayedOnPromotedWebview =
+        this.getSurfaceMessageWebview(surface) === oldFrame.webview &&
+        promotedLifecycleAfterSecondReady?.generation === oldReadyLifecycle.generation &&
+        promotedLifecycleAfterSecondReady.frameId === oldReadyLifecycle.frameId;
 
       this.lastVisibleCanvasCenterBySurface.panel = { x: -1, y: -1 };
       this.handleWebviewMessage(
@@ -3518,6 +3551,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         bootstrapDeliveredToPromotedWebview: oldFrame.postedMessages.some(
           (message) => message.type === 'host/bootstrap'
         ),
+        secondReadyPromotionIgnored,
+        secondReadyBootstrapSuppressed,
+        messageTargetStayedOnPromotedWebview,
         gatedMessageQueuedBeforeAck,
         gatedMessageDeliveredBeforeAck,
         gatedMessageDeliveredAfterAck,
@@ -9213,12 +9249,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const currentLifecycle = this.surfaceLifecycle[sourceSurface];
     return (
       renderedLifecycle !== undefined &&
+      !this.surfaceReady[sourceSurface] &&
+      !currentLifecycle.ready &&
       lifecycle.surface === sourceSurface &&
       lifecycle.mode === 'active' &&
       lifecycle.surface === renderedLifecycle.surface &&
       lifecycle.mode === renderedLifecycle.mode &&
-      lifecycle.generation === renderedLifecycle.generation &&
-      (!currentLifecycle.ready || lifecycle.generation >= currentLifecycle.generation)
+      lifecycle.generation === renderedLifecycle.generation
     );
   }
 

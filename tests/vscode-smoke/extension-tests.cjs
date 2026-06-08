@@ -255,6 +255,21 @@ async function verifyWebviewLifecycleRaceDiagnostics() {
     'Expected host/bootstrap to be delivered to the frame that sent ready.'
   );
   assert.strictEqual(
+    result.secondReadyPromotionIgnored,
+    true,
+    'Expected a competing frame ready after bootstrap ack not to trigger a second promotion.'
+  );
+  assert.strictEqual(
+    result.secondReadyBootstrapSuppressed,
+    true,
+    'Expected a competing frame ready after bootstrap ack not to trigger a second bootstrap.'
+  );
+  assert.strictEqual(
+    result.messageTargetStayedOnPromotedWebview,
+    true,
+    'Expected the promoted frame to keep the message target after a competing frame ready.'
+  );
+  assert.strictEqual(
     result.gatedMessageQueuedBeforeAck,
     true,
     'Expected non-bootstrap host messages to queue until bootstrap ack.'
