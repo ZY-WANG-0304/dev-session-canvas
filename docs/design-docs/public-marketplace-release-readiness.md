@@ -11,6 +11,7 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
+  - docs/exec-plans/active/publish-tag-release-flow.md
 updated_at: 2026-06-08
 ---
 
@@ -21,6 +22,9 @@ updated_at: 2026-06-08
 > 2026-06-07 验证补充：`release-0-14-0-prep` 已完成版本一致性、manifest / publish / VSIX 脚本测试、目标 Webview 回归、构建、双市场 dry-run、主扩展与 notifier 打包、clean checkout 打包、Open VSX token 复核、生产依赖审计和 VSIX smoke 重跑验证。当前主扩展 VSIX 为 `dev-session-canvas-0.14.0.vsix`（114 files，约 3.41 MB），notifier VSIX 为 `dev-session-canvas-notifier-0.14.0.vsix`（10 files，约 143.9 KB），两者 `VSCE README doc ref` 均为 `af066bae2f006a450578309059ffd7792efab7ae`；最终 publish / tag 前仍需在合并后的最终 `main` ref 上复跑同一组 release gate。
 
 > 2026-06-08 补充：上一轮 `0.14.0` 已完成双市场发布并在 `main` 上打 `v0.14.0` tag。当前发布准备目标为 `0.14.1`，输入范围是 `v0.14.0` 之后合入 `main` 的 shared runtime 验证硬化、分组 body 空白区拖动画板、微信群二维码物料，以及 Explorer Markdown 文件右键创建关联 Note / 创建入口 surface 复用。`0.14.1` 不改变本文已选定的渠道策略、Preview 定位、README 打包入口、双市场同版本同步和最终 `main` ref 发布 / tag 约束；发布输入、release notes、安装/升级、回退、验证记录与 tag 命令以 `docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 为准。
+
+
+> 2026-06-08 流程更新：后续发布输入改为由临时 tag `publish/vX.Y.Z` 固定。该 tag 只表示 publish intent，发布成功并验证双市场主扩展 / notifier 四个目标后，由发布脚本创建正式 `vX.Y.Z` tag 并删除临时 `publish/` tag。release manifest 记录 VSIX sha256、README doc ref、marketplace 验证结果和 tag 状态，但不写回代码库，只作为 GitHub Actions artifact / GitHub Release asset 保存。
 
 ## 1. 背景
 
@@ -168,17 +172,17 @@ updated_at: 2026-06-08
 
 补充说明：截至 `2026-04-28`，`Remote SSH` 主路径与 Linux、macOS、Windows 本地路径的当前轮功能可用性验证都已补齐；其中 `Remote SSH` 仍是当前最强验证证据所在路径。仍需显式保留的剩余限制是 Windows 下 `Codex` 历史无法向上翻页，以及三平台自动化矩阵尚未完全补齐。
 
-### 7.5 发布流水线继续后移，不作为当前 blocker
+### 7.5 发布流水线最小 CI 化
 
-当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口，但当前决策是不在本轮建设正式发布流水线。当前优先级是先把发布包、支持边界和首发验证收口，再决定是否把这条链路迁入 CI。
+当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag`、上传 release manifest / VSIX artifact。发布校验、打包、marketplace 发布、正式 tag 创建与临时 tag 删除仍由仓库脚本负责，避免把核心 release 逻辑散落在 CI yaml 中。
 
 当前轮次仍需保留的最小手工 gate 是：
 
-- 在干净环境中执行 `npm ci`、按最终 git ref 锁定 README 改写目标后的 `npm run package:vsix`、VSIX 内容校验和 Marketplace 发布前 smoke。
+- 在干净环境中执行 `npm ci`、按最终 git ref 锁定 README 改写目标后的 `npm run package:vsix`、VSIX 内容校验和 Marketplace 发布前 smoke；GitHub Actions 发布路径会重新打包，但不替代发布准备 MR 阶段的人工 gate。
 - 让 `@vscode/vsce` 成为唯一受支持的打包入口，并把当前脚本 fallback 行为纳入发布前检查。
-- 在真正点击发布前，使用 `npm run publish:marketplaces -- --dry-run` 预览统一发布入口将执行的打包与双市场发布命令，避免临场操作漂移。
+- 在真正触发发布前，使用 `npm run release:publish-tag -- --trigger-tag publish/vX.Y.Z --dry-run --package-only` 预览 release ref、VSIX 计划与 manifest，避免临场操作漂移。
 
-若后续要继续降低人为发布风险，再把版本号、预发布标记、release note、发布 tag 与发布动作迁入 CI。
+当前不在本轮把完整 PR 测试矩阵或 VSIX smoke 全量迁入 CI；若后续要继续降低人为发布风险，再把版本号、预发布标记、release note 检查和 GitHub Release asset 上传继续自动化。
 
 ## 8. 风险与取舍
 
@@ -208,6 +212,18 @@ updated_at: 2026-06-08
 - 正式安装真相必须继续保持为“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，且两侧都保持 `"api": "none"`；这样才能继续兼顾主扩展安装时自动带上 companion、notifier 单独安装时自动补齐主扩展，以及跨 host 场景下只靠 commands 完成协作。
 - `.debug/`、`.playwright-browsers/`、`.github/`、`node-pty` 的源码/脚本/PDB/重复依赖等冗余内容必须继续留在 VSIX 之外，避免包体回涨或引入不可追溯内容；相关内容守卫继续由 `scripts/smoke/run-vscode-vsix-smoke.mjs` 负责。
 - 发布账号、PAT、Marketplace listing 草案、release notes 口径与支持入口只要发生变化，都必须回写到仓库正式文档，而不是只停留在外部聊天或 MR 评论。
+
+### 9.4 Publish tag 发布输入固定规则
+
+自 2026-06-08 起，后续公开 Preview 发布的正式流程从“在最终 `main` ref 上手工 publish 后补 tag”升级为“临时 publish tag 固定输入，脚本发布成功后创建正式 tag”。维护者仍必须先完成 release prep MR 并合入 `main`，但真正触发发布时不再从当前 shell 的 `HEAD` 推断 release ref，而是在最终 release commit 上创建 `publish/vX.Y.Z`。这个 tag 的 peeled commit 是本次 release input，`scripts/release/publish-tag-release.mjs` 和 `.github/workflows/publish-marketplace-release.yml` 都必须围绕该 commit 进行校验、打包、发布和 tag 收口。
+
+核心不变量如下：
+
+- `publish/vX.Y.Z` 只表示发布意图和固定输入，可以在发布失败时保留并重跑；它不是正式 release tag。
+- `vX.Y.Z` 只在 Visual Studio Marketplace 与 Open VSX 上主扩展 / notifier 均发布并通过 metadata 验证后创建，继续表示“该版本已经完整公开发布”。
+- `release-artifacts/release-manifest-X.Y.Z.json` 由发布脚本生成，记录 `version`、`releaseRef`、`triggerTag`、`finalTag`、VSIX sha256、README doc ref 和 marketplace 状态；它必须作为 CI artifact 或 GitHub Release asset 保存，不提交回仓库。
+- 打包时必须显式把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` 和 `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 绑定到 `publish/vX.Y.Z` 指向的 commit；`--skip-package` 恢复发布必须验证已有 manifest 与 VSIX sha256 匹配，避免复用旧包。
+- 发布成功后，脚本可以删除远端和本地 `publish/vX.Y.Z`，前提是正式 `vX.Y.Z` 已存在且指向同一 release ref。
 
 ## 10. 验证方法
 

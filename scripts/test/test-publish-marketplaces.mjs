@@ -28,6 +28,7 @@ try {
   const commandLogPath = path.join(tempDir, 'commands.log');
   await writeFakeCommand(binDir, 'npm', 'npm', 7);
   await writeFakeCommand(binDir, 'python3', 'python3', 0);
+  await writeFakeCommand(binDir, 'git', 'git', 0, { stdout: 'actual-head' });
 
   const result = spawnSync(
     process.execPath,
@@ -58,6 +59,55 @@ try {
   assert.match(commandLog, /^npm /u, commandLog);
   assert.doesNotMatch(commandLog, /^python3 /mu, commandLog);
 
+
+
+  const expectedRefMismatch = spawnSync(
+    process.execPath,
+    [scriptPath, '--dry-run', '--target', 'open-vsx', '--extension', 'main'],
+    {
+      cwd: tempDir,
+      env: {
+        ...process.env,
+        DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF: 'expected-head',
+        PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`
+      },
+      encoding: 'utf8'
+    }
+  );
+
+  assert.equal(expectedRefMismatch.status, 1, expectedRefMismatch.stderr || expectedRefMismatch.stdout);
+  assert.match(expectedRefMismatch.stderr, /expected-head/u);
+  assert.match(expectedRefMismatch.stderr, /actual-head/u);
+
+  const dryRunWithTimeout = spawnSync(
+    process.execPath,
+    [
+      scriptPath,
+      '--dry-run',
+      '--skip-package',
+      '--target',
+      'open-vsx',
+      '--extension',
+      'main',
+      '--open-vsx-timeout',
+      '600'
+    ],
+    {
+      cwd: tempDir,
+      env: {
+        ...process.env,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`
+      },
+      encoding: 'utf8'
+    }
+  );
+
+  assert.equal(dryRunWithTimeout.status, 0, dryRunWithTimeout.stderr || dryRunWithTimeout.stdout);
+  assert.match(
+    dryRunWithTimeout.stdout,
+    /python3 scripts\/release\/openvsx-api\.py --prefer-ipv4 --timeout 600 publish/u
+  );
+
   console.log('publish-marketplaces tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
@@ -68,12 +118,13 @@ async function writePackageJson(filePath, contents) {
   await writeFile(filePath, `${JSON.stringify(contents, null, 2)}\n`, 'utf8');
 }
 
-async function writeFakeCommand(binDir, commandName, logLabel, exitCode) {
+async function writeFakeCommand(binDir, commandName, logLabel, exitCode, options = {}) {
+  const stdout = options.stdout ? `echo ${options.stdout}\n` : '';
   if (process.platform === 'win32') {
     const commandPath = path.join(binDir, `${commandName}.cmd`);
     await writeFile(
       commandPath,
-      `@echo off\r\necho ${logLabel} %*>> "%PUBLISH_MARKETPLACES_TEST_LOG%"\r\nexit /b ${exitCode}\r\n`,
+      `@echo off\r\necho ${logLabel} %*>> "%PUBLISH_MARKETPLACES_TEST_LOG%"\r\n${stdout.replace(/\n/g, '\r\n')}exit /b ${exitCode}\r\n`,
       'utf8'
     );
     return;
@@ -82,7 +133,7 @@ async function writeFakeCommand(binDir, commandName, logLabel, exitCode) {
   const commandPath = path.join(binDir, commandName);
   await writeFile(
     commandPath,
-    `#!/usr/bin/env sh\necho "${logLabel} $*" >> "$PUBLISH_MARKETPLACES_TEST_LOG"\nexit ${exitCode}\n`,
+    `#!/usr/bin/env sh\necho "${logLabel} $*" >> "$PUBLISH_MARKETPLACES_TEST_LOG"\n${stdout}exit ${exitCode}\n`,
     {
       encoding: 'utf8',
       mode: 0o755

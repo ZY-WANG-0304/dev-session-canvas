@@ -115,6 +115,8 @@
 
        python3 scripts/release/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas
 
+9. 若通过 GitHub Actions 执行发布，确认 repository secrets `VSCE_PAT` / `OVSX_PAT` 已配置，且 release workflow 具备创建正式 tag、删除临时 tag 和上传 Actions artifact 所需权限；本地人工发布仍按第 7、8 步复核本机 token。
+
 ## 当前验证备注
 
 截至 `2026-06-08`，上一轮 `0.14.0` 已完成双市场发布；本地 `v0.14.0` tag 指向 `4cbdf918fedb`，Open VSX API 显示主扩展与 notifier 的 latest 均为 `0.14.0`，Visual Studio Marketplace extension query 返回主扩展 latest `0.14.0`。当前 `main` 已包含 `v0.14.0` 之后合入的 #123、#131、#132 和 #134，因此本轮从最新 `main`（`0a7dc0587be8`）切出 `release-0-14-1-prep`，目标版本升级为 `0.14.1`。
@@ -156,41 +158,52 @@
 
 ## 发布命令
 
-在版本号、最终 git ref 与 VSIX 产物都已锁定后，从仓库根目录执行统一发布入口；这里的最终 git ref 默认应是已经位于 `main` 上的发布 commit：
+后续发布默认使用临时 `publish/vX.Y.Z` tag 固定发布输入，而不是在本地 shell 中把“当前 `HEAD`”临时认定为 release ref。前提仍然不变：发布准备 MR 必须已经 review 并合入 `main`，且 `publish/vX.Y.Z` 必须指向本次 release commit。
 
-    npm run publish:marketplaces -- --yes
+发布者先在最终 release commit 上创建并推送临时 tag；若当前 shell 已 checkout 到最终 release commit，可执行：
 
-该入口会按顺序重新打包主扩展与 notifier，然后先发布 notifier、再发布主扩展；每个扩展都会发布到 `Visual Studio Marketplace` 与 `Open VSX`。默认的 `Open VSX` 路径使用 `scripts/release/openvsx-api.py` 读取 `OVSX_PAT` 或 `~/.ovsx`，避免 headless Linux 环境中 `npx ovsx` 访问系统钥匙串或出现 TLS reset 时阻断发布。
+    git fetch origin main --tags
+    git tag publish/v0.14.1
+    git push origin publish/v0.14.1
 
-发布前可先预览命令：
+若当前 shell 不在最终 release commit 上，应显式指定最终 commit：
 
-    npm run publish:marketplaces -- --dry-run
+    git tag publish/v0.14.1 <final-ref-or-sha>
+    git push origin publish/v0.14.1
 
-若某个市场已经成功、需要补发另一个市场，可复用当前 VSIX 并限定目标：
+推送 `publish/v0.14.1` 会触发 `.github/workflows/publish-marketplace-release.yml`。该 workflow checkout 临时 tag 指向的 commit，执行：
 
-    npm run publish:marketplaces -- --yes --skip-package --target open-vsx
+    npm ci
+    npm run release:publish-tag -- --trigger-tag publish/v0.14.1 --delete-trigger-tag
 
-    npm run publish:marketplaces -- --yes --skip-package --target visual-studio
+本地人工执行同一路径时，也应使用同一入口；发布前可先 dry-run：
 
-注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新处理 `README` 或 `CHANGELOG`。因此发布前必须确保统一入口重新执行过打包，或在使用 `--skip-package` 时已经手工确认当前 VSIX 已由打包阶段写入 `README.marketplace.md`，且 README 相对媒体 URL 已按最终 git ref 校验通过。
+    npm run release:publish-tag -- --trigger-tag publish/v0.14.1 --dry-run --package-only
 
-若最终版本号不是 `0.14.1`，统一入口会根据 `package.json` 与 notifier manifest 自动解析 VSIX 文件名；但 release notes、发布后 tag 与验证记录仍需同步替换目标版本。
+`release:publish-tag` 会校验 tag 名称、版本号、`CHANGELOG.md`、notifier 版本、当前 `HEAD`、`origin/main` 祖先关系和 clean working tree，并把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` / `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 都绑定到 `publish/v0.14.1` 指向的 commit。它会先打包两个 VSIX，生成 `release-artifacts/release-manifest-0.14.1.json`，再发布到 Visual Studio Marketplace 与 Open VSX，验证四个目标版本与关键 metadata，最后创建正式 `v0.14.1` tag 并删除临时 `publish/v0.14.1`。
 
-## publish 后补 tag
+release manifest 不提交回代码库。它记录 publish 后事实，包括 release ref、VSIX sha256、README doc ref、marketplace 验证结果和 tag 状态，应作为 GitHub Actions artifact 或 GitHub Release asset 保存。
 
-`publish` 成功后，应立即给这次实际发布所对应、且已经位于 `main` 上的 commit 打上 `vX.Y.Z` 形式的 lightweight tag，并把该 tag 推送到远端仓库；只在本地打 tag 不算完成。不要等到后续 hotfix、README 修订或其他提交出现后再补打，避免 tag 漂移到错误提交。
+若某个市场已经成功、需要补发另一个市场，保留或重新创建同一个 `publish/v0.14.1` tag，并复用同一份 manifest / VSIX：
 
-若当前 shell 所在的就是本次发布对应 commit，可直接执行：
+    npm run release:publish-tag -- --trigger-tag publish/v0.14.1 --skip-package --target open-vsx --no-create-final-tag
 
-    git tag v0.14.1
-    git push origin v0.14.1
+    npm run release:publish-tag -- --trigger-tag publish/v0.14.1 --skip-package --target visual-studio --no-create-final-tag
 
-若当前 shell 不在最终发布 commit 上，则应显式指定本次发布的最终 git ref 或 commit SHA：
+注意：`--skip-package` 不再只检查 VSIX 文件存在；它要求已有 `release-artifacts/release-manifest-0.14.1.json`，并校验当前 VSIX sha256 与 manifest 一致，避免复用不属于本次 release ref 的旧包。
 
-    git tag v0.14.1 <final-ref-or-sha>
-    git push origin v0.14.1
+若最终版本号不是 `0.14.1`，统一替换 tag、manifest 文件名、release notes 与验证记录中的版本号。
 
-若最终版本号不是 `0.14.1`，应同步替换命令中的 tag 名称。当前约定是使用 lightweight tag，不额外创建 annotated tag；发布后验证也以远端 tag 已成功存在为准。
+## 正式 tag 与临时 tag
+
+`publish/vX.Y.Z` 是临时发布意图 tag，只用于固定 release input 和触发 / 重跑发布。它不是正式 release tag；发布中途失败时应保留，便于重跑同一输入。
+
+`vX.Y.Z` 是正式 lightweight release tag，只在主扩展与 notifier 已经发布到 Visual Studio Marketplace 和 Open VSX、且发布后验证通过后由 `release:publish-tag` 创建并推送。正式 tag 创建成功后，脚本可以删除远端和本地 `publish/vX.Y.Z`。如果需要人工删除，可在确认两个 tag 指向同一 commit 后执行：
+
+    git push origin :refs/tags/publish/v0.14.1
+    git tag -d publish/v0.14.1
+
+不要在发布未完成或正式 `vX.Y.Z` 尚未指向同一 release ref 时删除临时 tag。
 
 ## 发布后验证
 

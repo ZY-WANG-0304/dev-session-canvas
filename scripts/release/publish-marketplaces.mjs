@@ -25,6 +25,10 @@ process.exit(main());
 function main() {
   const mainPackageJson = readJson(path.join(projectRoot, 'package.json'));
   const notifierPackageJson = readJson(path.join(notifierRoot, 'package.json'));
+  const releaseRefStatus = validateExpectedReleaseRef();
+  if (releaseRefStatus !== 0) {
+    return releaseRefStatus;
+  }
 
   if (mainPackageJson.version !== notifierPackageJson.version) {
     console.error(
@@ -213,6 +217,9 @@ function resolveOpenVsxPublishCommand(vsixPath) {
     if (options.openVsxPreferIpv4) {
       args.push('--prefer-ipv4');
     }
+    if (options.openVsxTimeoutSeconds) {
+      args.push('--timeout', String(options.openVsxTimeoutSeconds));
+    }
     args.push('publish', vsixPath);
     return {
       command: 'python3',
@@ -299,6 +306,7 @@ function parseArgs(args) {
     help: false,
     openVsxClient: 'api',
     openVsxPreferIpv4: true,
+    openVsxTimeoutSeconds: undefined,
     packageOnly: false,
     skipPackage: false,
     target: 'all',
@@ -326,6 +334,9 @@ function parseArgs(args) {
         break;
       case '--open-vsx-no-prefer-ipv4':
         parsed.openVsxPreferIpv4 = false;
+        break;
+      case '--open-vsx-timeout':
+        parsed.openVsxTimeoutSeconds = readPositiveNumber(readValue(args, ++index, arg));
         break;
       case '--package-only':
         parsed.packageOnly = true;
@@ -364,8 +375,47 @@ function readValue(args, index, optionName, allowedValues) {
   return value;
 }
 
+function readPositiveNumber(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error('数值参数必须是正数。');
+  }
+  return parsed;
+}
+
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'));
+}
+
+function validateExpectedReleaseRef() {
+  const expectedRef = process.env.DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF?.trim();
+  if (!expectedRef) {
+    return 0;
+  }
+
+  const head = resolveGitRevision('HEAD');
+  if (!head) {
+    console.error('无法解析当前 HEAD，不能校验 DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF。');
+    return 1;
+  }
+
+  if (head !== expectedRef) {
+    console.error(`当前 HEAD ${head} 不等于 DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF ${expectedRef}，停止发布。`);
+    return 1;
+  }
+
+  return 0;
+}
+
+function resolveGitRevision(revision) {
+  const result = spawnSync('git', ['rev-parse', revision], {
+    cwd: projectRoot,
+    encoding: 'utf8'
+  });
+  if (result.status !== 0) {
+    return undefined;
+  }
+  return result.stdout.trim();
 }
 
 function formatCommand(command, args) {
@@ -411,6 +461,7 @@ Options:
   --extension all|main|notifier     选择发布扩展，默认 all
   --open-vsx-client api|ovsx        Open VSX 发布客户端，默认 api
   --open-vsx-no-prefer-ipv4         Python API helper 不强制 IPv4 优先
+  --open-vsx-timeout <seconds>      Python API helper 的 Open VSX HTTP timeout
   --continue-on-error               打包成功后，单个发布步骤失败仍继续执行后续发布步骤
   --help, -h                        显示帮助
 

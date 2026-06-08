@@ -62,21 +62,27 @@
 
 ## 发布命令
 
-在最终 git ref、版本号与 VSIX 产物都锁定后，默认从仓库根目录使用统一发布入口同时发布主扩展与 notifier；这里的最终 git ref 默认应是已经位于 `main` 上的发布 commit：
+在最终 git ref、版本号与 VSIX 产物都锁定后，默认从仓库根目录使用 `publish/vX.Y.Z` 临时 tag 触发统一发布入口；这里的临时 tag 必须指向已经位于 `main` 上的 release commit。主扩展与 notifier 仍由同一个发布脚本同步处理：
 
-    npm run publish:marketplaces -- --yes
+    git tag publish/v0.14.1 <final-ref-or-sha>
+    git push origin publish/v0.14.1
 
-若只需要补发 notifier，可限定扩展与市场：
+推送临时 tag 后，`.github/workflows/publish-marketplace-release.yml` 会执行：
 
-    npm run publish:marketplaces -- --yes --skip-package --extension notifier --target visual-studio
+    npm run release:publish-tag -- --trigger-tag publish/v0.14.1 --delete-trigger-tag
 
-    npm run publish:marketplaces -- --yes --skip-package --extension notifier --target open-vsx
+若只需要补发 notifier，可保留或重新创建同一个 `publish/v0.14.1`，并限定扩展与市场：
 
-注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 `package:vsix`，或在使用 `--skip-package` 时手工确认它针对最终发布 ref 完成过 README 重写目标校验。
+    npm run release:publish-tag -- --trigger-tag publish/v0.14.1 --skip-package --extension notifier --target visual-studio --no-create-final-tag
+
+    npm run release:publish-tag -- --trigger-tag publish/v0.14.1 --skip-package --extension notifier --target open-vsx --no-create-final-tag
+
+注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 package，或在使用 `--skip-package` 时让 `release:publish-tag` 校验已有 release manifest 与 notifier VSIX sha256，证明它针对同一个 release ref 完成过打包。
 
 ## Tag 与版本对齐约束
 
-- 如果 notifier 与主扩展共用同一个、已经位于 `main` 上的 release commit，继续复用主扩展的 `v<release-version>` 仓库 tag 即可，不单独再发一个 notifier 专属 tag。
+- 如果 notifier 与主扩展共用同一个、已经位于 `main` 上的 release commit，继续复用主扩展的正式 `v<release-version>` 仓库 tag，不单独再发 notifier 专属 tag。
+- `publish/v<release-version>` 只是临时发布触发 tag；发布失败时保留用于重跑，发布成功且正式 `v<release-version>` 已推送后可以删除。
 - 如果 notifier 准备从另一个 commit 单独发布，但版本号仍想保持 `v<release-version>` 对应的同一组数字，这会让“同一个版本号对应哪个发布输入”变得不清晰；此时必须先决定是一起 bump 版本，还是显式放弃“版本对齐”策略，再继续发布。
 
 ## 发布后验证
