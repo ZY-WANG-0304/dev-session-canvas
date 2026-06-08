@@ -90,6 +90,14 @@ type CreateNodeQuickPickSelectionId =
   | 'agent-launch-apply-yolo'
   | 'agent-launch-apply-sandbox';
 
+type WebviewLifecycleDumpStatus =
+  | 'healthy'
+  | 'standby'
+  | 'initializing'
+  | 'attention'
+  | 'blocked'
+  | 'not-attached';
+
 interface CreateNodeQuickPickItem extends vscode.QuickPickItem {
   selectionId?: CreateNodeQuickPickSelectionId;
   request?: CreateNodeRequest;
@@ -148,11 +156,19 @@ export function activate(context: vscode.ExtensionContext): void {
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
     const dumpResult = await panelManager.dumpCurrentHostDiagnostics();
     const revealAction = '在资源管理器中显示';
+    const openLifecycleSummaryAction = '打开 lifecycle 摘要';
+    const lifecycleStatus = formatWebviewLifecycleDumpStatus(dumpResult.webviewLifecycleStatus);
+    const panelRestoreHint = dumpResult.webviewLifecyclePanelRestoreLikelyAffected
+      ? '；Panel restore 可能仍受 lifecycle 阻塞'
+      : '';
     const selection = await vscode.window.showInformationMessage(
-      `当前宿主诊断已写入 ${dumpResult.outputDir}`,
+      `当前宿主诊断已写入 ${dumpResult.outputDir}。Webview lifecycle：${lifecycleStatus}${panelRestoreHint}`,
+      openLifecycleSummaryAction,
       revealAction
     );
-    if (selection === revealAction) {
+    if (selection === openLifecycleSummaryAction) {
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(dumpResult.webviewLifecycleSummaryPath));
+    } else if (selection === revealAction) {
       await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dumpResult.summaryPath));
     }
   });
@@ -2198,6 +2214,9 @@ function registerTestCommands(
         );
       }
     ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.runWebviewLifecycleRaceDiagnostics, () =>
+      panelManager.runWebviewLifecycleRaceDiagnosticsForTest()
+    ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.performSidebarNodeListAction,
       async (action?: unknown, timeoutMs?: unknown) => {
@@ -2414,4 +2433,21 @@ function registerTestCommands(
 
 function parseCanvasSurfaceLocation(value: unknown): CanvasSurfaceLocation | undefined {
   return value === 'editor' || value === 'panel' ? value : undefined;
+}
+
+function formatWebviewLifecycleDumpStatus(status: WebviewLifecycleDumpStatus): string {
+  switch (status) {
+    case 'healthy':
+      return '健康';
+    case 'standby':
+      return '非活动承载面';
+    case 'initializing':
+      return '初始化中';
+    case 'attention':
+      return '有可追踪线索';
+    case 'blocked':
+      return '可能阻塞';
+    case 'not-attached':
+      return '未 attached';
+  }
 }

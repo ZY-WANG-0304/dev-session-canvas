@@ -260,7 +260,7 @@ assert.match(
 );
 assert.match(
   panelManagerSource,
-  /const rootLocalSnapshotSummary = summarizeCanvasStateForDiagnostics\(rootLocalSnapshot\.state\)[\s\S]*const rootLocalLoadedStateSummary = summarizeCanvasStateForDiagnostics\(runtimeSafeRootState\)[\s\S]*source: 'rootLocalSnapshot'[\s\S]*snapshotWrittenAt: rootLocalSnapshot\.writtenAt[\s\S]*snapshotStateHash: rootLocalSnapshot\.stateHash \?\? rootLocalSnapshotSummary\.stateHash[\s\S]*loadedStateHash: rootLocalLoadedStateSummary\.stateHash[\s\S]*\.\.\.rootLocalSnapshotSummary/u,
+  /const rootLocalSnapshotSummary = summarizeCanvasStateForDiagnostics\(rootLocalSnapshot\.state\)[\s\S]*const rootLocalLoadedStateSummary = summarizeCanvasStateForDiagnostics\((?:sanitizedRootState|runtimeSafeRootState)\)[\s\S]*source: 'rootLocalSnapshot'[\s\S]*snapshotWrittenAt: rootLocalSnapshot\.writtenAt[\s\S]*snapshotStateHash: rootLocalSnapshot\.stateHash \?\? rootLocalSnapshotSummary\.stateHash[\s\S]*loadedStateHash: rootLocalLoadedStateSummary\.stateHash[\s\S]*\.\.\.rootLocalSnapshotSummary/u,
   'Expected root-local snapshot loads to report the selected snapshot hash while keeping the loaded-state hash separately.'
 );
 assert.match(
@@ -272,6 +272,61 @@ assert.match(
   panelManagerSource,
   /matchesPendingWebviewRequestLifecycle[\s\S]*areSurfaceLifecycleFrameIdsCompatible\(pendingRequest\.lifecycle\.frameId, lifecycle\.frameId\)/u,
   'Expected pending Webview test requests to accept results from the promoted frameId-compatible lifecycle.'
+);
+assert.match(
+  panelManagerSource,
+  /PendingWebviewProbeRequest[\s\S]*webview\?: vscode\.Webview[\s\S]*matchesPendingWebviewRequestSource/u,
+  'Expected pending Webview probe requests to bind the responding Webview instance.'
+);
+assert.match(
+  panelManagerSource,
+  /invalidateSurfaceLifecycle[\s\S]*rejectPendingWebviewProbeRequests[\s\S]*rejectPendingWebviewDomActionRequests[\s\S]*clearPendingBootstrapHostMessages/u,
+  'Expected lifecycle invalidation to reject stale pending Webview requests and clear queued host messages.'
+);
+assert.match(
+  panelManagerSource,
+  /shouldQueueUntilBootstrapAck[\s\S]*isBootstrapAckGatedHostMessage[\s\S]*flushPendingBootstrapHostMessages/u,
+  'Expected non-bootstrap host messages to wait until the active frame acknowledges bootstrap.'
+);
+assert.match(
+  panelManagerSource,
+  /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*beginSurfaceRender\(surface, 'active'\)[\s\S]*beginSurfaceRender\(surface, 'active'\)[\s\S]*webview\/ready[\s\S]*oldFrame\.webview/u,
+  'Expected test diagnostics to simulate the panel double-render ready race against distinct Webview instances.'
+);
+assert.match(
+  panelManagerSource,
+  /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*gatedMessageQueuedBeforeAck[\s\S]*webview\/bootstrapAck[\s\S]*gatedMessageDeliveredAfterAck/u,
+  'Expected test diagnostics to assert host-message queueing until bootstrap ack.'
+);
+assert.match(
+  panelManagerSource,
+  /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*staleProbeResultIgnored[\s\S]*pendingProbeResolvedFromCurrent[\s\S]*staleDomActionResultIgnored[\s\S]*pendingDomActionResolvedFromCurrent/u,
+  'Expected test diagnostics to prove pending Webview requests ignore stale source instances but resolve from the bound frame.'
+);
+assert.match(
+  panelManagerSource,
+  /buildWebviewLifecycleDiagnosticsSummary[\s\S]*webview-lifecycle-summary\.json[\s\S]*webviewLifecyclePanelRestoreLikelyAffected/u,
+  'Expected host diagnostics dump to write a focused Webview lifecycle summary and expose Panel restore health.'
+);
+assert.match(
+  panelManagerSource,
+  /summarizeWebviewLifecycleAttachRenderBurst[\s\S]*surface\/attached[\s\S]*surface\/rendered[\s\S]*250/u,
+  'Expected lifecycle diagnostics to summarize consecutive attach/render bursts for real Panel restore dumps.'
+);
+assert.match(
+  panelManagerSource,
+  /classifyWebviewLifecycleSurfaceStatus[\s\S]*!args\.ready[\s\S]*!args\.bootstrapAck[\s\S]*args\.probeError/u,
+  'Expected lifecycle diagnostics to flag missing ready, missing bootstrap ack, and failed probes.'
+);
+assert.match(
+  await readFile('scripts/diagnostics/analyze-webview-lifecycle-dump.mjs', 'utf8'),
+  /EXIT_CODE_FINDING[\s\S]*loadWebviewLifecycleSummary[\s\S]*webview-lifecycle-summary\.json[\s\S]*summary\.json[\s\S]*webviewLifecycle/u,
+  'Expected the offline Webview lifecycle diagnostics CLI to read dump summaries and return a distinct finding exit code.'
+);
+assert.match(
+  await readFile('scripts/test/test-webview-lifecycle-diagnostics.mjs', 'utf8'),
+  /createLifecycleSummary[\s\S]*Panel restore 风险[\s\S]*summary\.json\.webviewLifecycle[\s\S]*defaultAnalysis/u,
+  'Expected offline Webview lifecycle diagnostics tests to cover blocked, fallback, and latest-dump analysis.'
 );
 assert.match(
   panelManagerSource,
@@ -292,6 +347,49 @@ assert.doesNotMatch(
   panelManagerSource,
   /webviewView\.onDidDispose\([\s\S]*webviewView\.webview[\s\S]*webviewView\.onDidChangeVisibility/u,
   'Panel view dispose cleanup must not read webviewView.webview because VS Code throws after the view is disposed.'
+);
+
+const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
+assert.match(
+  webviewSource,
+  /requiresHostMessageLifecycle\(message\.type\) && !messageLifecycle[\s\S]*ignore host message without lifecycle/u,
+  'Expected the Webview to reject lifecycle-bound host messages that omit lifecycle identity.'
+);
+assert.match(
+  webviewSource,
+  /messageLifecycle && !isCurrentWebviewLifecycleIdentity\(messageLifecycle\)[\s\S]*ignore host message with mismatched lifecycle/u,
+  'Expected the Webview to reject host messages for stale lifecycle identities.'
+);
+
+const extensionIdentitySource = await readFile('src/common/extensionIdentity.ts', 'utf8');
+assert.match(
+  extensionIdentitySource,
+  /runWebviewLifecycleRaceDiagnostics: 'devSessionCanvas\.__test\.runWebviewLifecycleRaceDiagnostics'/u,
+  'Expected the host lifecycle race diagnostic command id to be registered for smoke coverage.'
+);
+
+const extensionSource = await readFile('src/extension.ts', 'utf8');
+assert.match(
+  extensionSource,
+  /TEST_COMMAND_IDS\.runWebviewLifecycleRaceDiagnostics[\s\S]*runWebviewLifecycleRaceDiagnosticsForTest/u,
+  'Expected the host lifecycle race diagnostics to be exposed through a test-only command.'
+);
+assert.match(
+  extensionSource,
+  /COMMAND_IDS\.dumpHostDiagnostics[\s\S]*webviewLifecycleStatus[\s\S]*webviewLifecycleSummaryPath/u,
+  'Expected the user-facing host diagnostics command to surface the Webview lifecycle summary path and status.'
+);
+
+const smokeSource = await readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
+assert.match(
+  smokeSource,
+  /verifyWebviewLifecycleRaceDiagnostics[\s\S]*testRunWebviewLifecycleRaceDiagnostics[\s\S]*readyWebviewPromoted/u,
+  'Expected VS Code smoke tests to execute the host lifecycle race diagnostic command.'
+);
+assert.match(
+  smokeSource,
+  /dumpHostDiagnostics: 'devSessionCanvas\.dumpHostDiagnostics'/u,
+  'Expected VS Code smoke command registration coverage to include the user-facing host diagnostics command.'
 );
 
 const applyTemplateInGroupMessage = {

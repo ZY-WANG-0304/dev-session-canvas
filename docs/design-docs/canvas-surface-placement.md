@@ -194,6 +194,9 @@ updated_at: 2026-06-08
 - Host 会把 VS Code 当前 surface 对象与当前消息目标 frame 分开维护。`surfaceMessageWebview` 负责 Host->Webview 投递和来源校验；如果 Panel restore 双 attach 后较早 render 的 active frame 先发 ready，且当前 surface 尚未 ready，Host 可以把该已渲染 frame 提升为当前消息目标，再对它发送 bootstrap。
 - Host->Webview 消息会携带当前 surface lifecycle；Webview 收到带 lifecycle 的 host 消息时，如果 `surface`、`mode`、`generation` 或 `frameId` 与自身不一致，就忽略这条消息。
 - 过期或非法 lifecycle 消息不改变 `surfaceReady`，也不能 resolve 当前 probe / DOM action；宿主通过 `webview/staleMessageIgnored`、`webview/staleProbeResultIgnored`、`webview/staleDomActionResultIgnored` 等诊断事件保留证据。
+- 用户可见的 `Dev Session Canvas: 落盘当前宿主诊断` 会额外输出 `webview-lifecycle-summary.json`，并在 `summary.json.webviewLifecycle` 中内嵌同一摘要。摘要按 surface 汇总 attached、ready、bootstrapAck、message target、pending bootstrap 队列、host message 投递、attach/render burst、stale lifecycle 事件和 probe 结果，用于判断真实 Panel restore 现场是否仍像 lifecycle 阻塞。
+- 协作者可在仓库根目录运行 `npm run diagnose:webview-lifecycle -- <dump-dir>` 离线分析上述 dump；该脚本优先读取 `webview-lifecycle-summary.json`，再 fallback 到 `summary.json.webviewLifecycle`，输出中文结论，并用退出码 `0` / `2` / `1` 表示健康、阻塞或 Panel restore 高风险、输入或解析错误。
+- 测试模式暴露 `devSessionCanvas.__test.runWebviewLifecycleRaceDiagnostics`，用两个 fake `vscode.Webview` 对象稳定复现 Panel 双 render / ready 竞争：较早 render 的 frame 先 ready 时应被提升，bootstrap 发回同一 frame；非 bootstrap host 消息必须等 `webview/bootstrapAck` 后 flush；来自竞争 frame 的 active mutation、probe result 和 DOM action result 必须被忽略。
 - 该机制不改变对象图权威边界：节点、执行会话和持久化仍由 Extension Host 持有；Webview 仍是可丢弃投影，不依赖 `retainContextWhenHidden` 证明状态已被前端消费。
 
 ## 8. 验证方法
@@ -211,6 +214,9 @@ updated_at: 2026-06-08
 9. trusted smoke 至少要覆盖“修改 `defaultSurface` 后 reload 不应恢复旧 surface”这一回归路径；如果整套 smoke 被后续无关断言阻塞，也要明确记录阻塞点。
 10. 真实 Panel restore 诊断中如果出现连续两次 `surface/attached` / `surface/rendered`，随后应能看到 `surface/ready`、`host/bootstrap` 和 `surface/bootstrapAck`；若较早 render 的 frame 先 ready，可接受出现 `surface/readyWebviewPromoted`，但不应停留在 `surfaceReady.panel = false`。
 11. 当主画布已在 `panel` 打开且默认承载面仍为 `editor` 或相反时，普通创建节点、Explorer 创建 Terminal / Agent 和 Explorer Markdown 创建关联 Note 都应继续复用已打开 surface，不应因为 `defaultSurface` 切换到另一种 surface。
+12. Host 侧 lifecycle fault injection 必须通过 `devSessionCanvas.__test.runWebviewLifecycleRaceDiagnostics` 自动覆盖双 render / ready 竞争、bootstrap ack gating、stale mutation、stale probe result 和 stale DOM action result。
+13. 用户执行 `Dev Session Canvas: 落盘当前宿主诊断` 后，应能在 dump 目录看到 `webview-lifecycle-summary.json`；若真实 Panel restore 现场仍有连续 attach/render、ready 缺失、bootstrapAck 缺失、ready 后 probe 失败或 stale lifecycle 消息，摘要必须把对应 surface 标成 `blocked` / `attention`，并在 `panelRestore` 中暴露可追踪判断。
+14. 协作者拿到 dump 目录后，应能运行 `npm run diagnose:webview-lifecycle -- <dump-dir>` 离线获得整体状态、Panel restore 风险、surface 摘要、最新事件和建议下一步；健康 dump 退出码为 `0`，blocked / initializing 或 Panel restore 高风险 dump 退出码为 `2`，缺失或非法 JSON 退出码为 `1`。
 
 ## 9. 当前验证状态
 
@@ -222,6 +228,9 @@ updated_at: 2026-06-08
 - 2026-06-03 补充：用户调试诊断 `current-host-diagnostics/2026-06-03T11-16-15-601Z` 证明 Debug Host 已运行新 lifecycle 代码；剩余问题不是调试方式错误，而是 Panel restore 双 attach 下 generation 2 的 ready 被 `source-webview-mismatch` 误判为 stale，generation 4 当前对象一直未 ready。Host 侧已补 `surfaceMessageWebview` / `renderedWebviewLifecycle`，允许未 ready surface 的已渲染 active frame 在 stale 检查前提升为消息目标。
 - 2026-06-03 补充：补充修复后已重新通过 `npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates` 和 `npm run test:webview -- -g "lifecycle identity"`。真实 Panel restore 仍需用户按原布局再采一份诊断确认出现 ready/bootstrap/ack。
 - 2026-06-03 补充：`npm run test:webview -- -g "webview bundle emits ready|lifecycle identity"` 中 lifecycle 用例通过，但既有 baseline screenshot 用例仍因当前 Linux 快照差异失败；该失败展示为 Agent subtitle 多出 cwd label、终端 resize handle 形态差异，并非 lifecycle stale 防护的断言结果。
+- 2026-06-08 补充：第二批 lifecycle debt hardening 已把 Panel 双 render / ready 竞争收口为 Host 级自动化。`devSessionCanvas.__test.runWebviewLifecycleRaceDiagnostics` 会构造两个 fake Webview 验证 ready promotion、bootstrap ack gating、竞争 frame mutation 忽略，以及 probe / DOM action 结果来源绑定；已通过 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`。
+- 2026-06-08 补充：第三批 lifecycle debt hardening 已把真实 Panel restore 人工复验入口收口到现有宿主诊断命令。`dumpCurrentHostDiagnostics()` 会写出 `webview-lifecycle-summary.json`，并在用户提示里直接显示 lifecycle 状态和 Panel restore 风险；本批已通过 `npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "lifecycle identity"`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`、`node --check tests/vscode-smoke/extension-tests.cjs` 和 `git diff --check`。
+- 2026-06-08 补充：第四批 lifecycle debt hardening 已新增离线诊断入口 `npm run diagnose:webview-lifecycle -- <dump-dir>`，用于在不启动 VS Code 的情况下分析第三批 dump 摘要；本批已通过 `npm run typecheck`、`npm run test:webview-lifecycle-diagnostics`、`npm run test:protocol-webview-messages`、`node --check scripts/diagnostics/analyze-webview-lifecycle-dump.mjs`、`node --check scripts/test/test-webview-lifecycle-diagnostics.mjs` 和 `git diff --check`。
 - 用户已于 2026-04-18 完成手动复验，确认 `panel -> editor` 与 `editor -> panel` 两条 restart 路径都已按新的 `defaultSurface` 收口，不再恢复旧 opposite surface。
 - 真实 VS Code Panel 布局恢复场景的 2026-06-03 lifecycle 修复仍待人工复验；因此本文验证状态从“已验证”暂时回退为“验证中”，避免把未确认的 Panel restore 行为写成已完成结论。
 - trusted smoke 已新增“reload 后旧 surface 不应恢复”的自动化断言；在当前 head 上整套 trusted smoke 仍被无关的 `verifyLegacyTaskFiltering` 阻塞。

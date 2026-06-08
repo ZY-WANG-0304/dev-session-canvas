@@ -929,7 +929,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'webview/runtimeDiagnostic';
       payload: {
-        source: 'window.error' | 'window.unhandledrejection';
+        source: 'window.error' | 'window.unhandledrejection' | 'webview.lifecycle';
         message: string;
         stack?: string;
         filename?: string;
@@ -1955,7 +1955,11 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
       !payload ||
-      (payload.source !== 'window.error' && payload.source !== 'window.unhandledrejection') ||
+      (
+        payload.source !== 'window.error' &&
+        payload.source !== 'window.unhandledrejection' &&
+        payload.source !== 'webview.lifecycle'
+      ) ||
       typeof payload.message !== 'string' ||
       (payload.stack !== undefined && typeof payload.stack !== 'string') ||
       (payload.filename !== undefined && typeof payload.filename !== 'string') ||

@@ -68,6 +68,7 @@ export const TEST_COMMAND_IDS = {
   waitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   captureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   performWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
+  runWebviewLifecycleRaceDiagnostics: 'devSessionCanvas.__test.runWebviewLifecycleRaceDiagnostics',
   performSidebarNodeListAction: 'devSessionCanvas.__test.performSidebarNodeListAction',
   performSidebarSessionHistoryAction: 'devSessionCanvas.__test.performSidebarSessionHistoryAction',
   getCanvasTemplateItems: 'devSessionCanvas.__test.getCanvasTemplateItems',
