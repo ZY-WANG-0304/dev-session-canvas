@@ -105,6 +105,8 @@ import {
   classifyAgentLaunchPreset,
   createDefaultAgentLaunchDefaults,
   formatCommandLine,
+  hasClaudeForkSessionFlag,
+  parseFullAgentCommandLine,
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
 import { CANVAS_ATTENTION_INDICATOR_ICON_ID } from '../common/canvasAttentionVisuals';
@@ -306,6 +308,7 @@ interface CanvasNodeData {
     provider?: AgentProviderKind,
     resume?: boolean
   ) => void;
+  onBranchAgentSession?: (nodeId: string) => void;
   onAttachExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput?: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
   onDropExecutionResource?: (
@@ -2184,6 +2187,11 @@ function App(): JSX.Element {
           provider,
           resume: resume === true
         }
+      }),
+    onBranchAgentSession: (nodeId) =>
+      postMessage({
+        type: 'webview/branchAgentSession',
+        payload: { nodeId }
       }),
     onAttachExecution: (nodeId, kind) =>
       postMessage({
@@ -4153,6 +4161,11 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     data.onDeleteNode?.(id);
   };
 
+  const branchAgent = (): void => {
+    data.onSelectNode?.(id);
+    data.onBranchAgentSession?.(id);
+  };
+
   useEffect(() => {
     if (!agentMetadata.pendingLaunch) {
       autoLaunchRef.current = null;
@@ -4171,6 +4184,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
   }, [agentMetadata.liveSession, agentMetadata.pendingLaunch, executionBlocked, id, provider]);
 
   const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession;
+  const showBranchAction = provider === 'claude' && canResumeOriginalSession;
+  const isForkedClaudeAgentNode = isClaudeForkAgentLaunch(agentMetadata);
+  const showTitleStatus = !isForkedClaudeAgentNode;
   const actionDisabled = executionBlocked || reattaching;
 
   return (
@@ -4208,11 +4224,16 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
-        <div className="window-chrome-actions">
-          <ExecutionAttentionStatus
-            status={displayStatus}
-            attentionPending={attentionPending}
-          />
+        <div
+          className="window-chrome-actions agent-window-chrome-actions"
+          data-agent-branch-visible={showBranchAction ? 'true' : 'false'}
+        >
+          {showTitleStatus ? (
+            <ExecutionAttentionStatus
+              status={displayStatus}
+              attentionPending={attentionPending}
+            />
+          ) : null}
           {agentMetadata.liveSession ? (
             <ActionButton
               label="停止"
@@ -4269,6 +4290,21 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               onFocus={() => data.onSelectNode?.(id)}
             />
           )}
+          {showBranchAction ? (
+            <ActionButton
+              label="Fork"
+              disabled={actionDisabled}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+              onClick={branchAgent}
+              buttonProps={{
+                title: '从当前 Claude Code 会话创建新分支',
+                'aria-label': 'Fork 当前 Claude Code 会话',
+                'data-agent-branch-action': 'true'
+              }}
+            />
+          ) : null}
           <ActionButton
             label="删除"
             tone="danger"
@@ -10483,6 +10519,7 @@ function toFlowNodes(params: {
     provider?: AgentProviderKind,
     resume?: boolean
   ) => void;
+  onBranchAgentSession: (nodeId: string) => void;
   onAttachExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
   onDropExecutionResource: (
@@ -10597,6 +10634,7 @@ function toFlowNodes(params: {
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
+        onBranchAgentSession: params.onBranchAgentSession,
         onAttachExecution: params.onAttachExecution,
         onExecutionInput: params.onExecutionInput,
         onDropExecutionResource: params.onDropExecutionResource,
@@ -11179,6 +11217,23 @@ function providerLabel(provider: AgentProviderKind): string {
 function orderedAgentProviders(defaultProvider: AgentProviderKind): AgentProviderKind[] {
   const secondaryProvider: AgentProviderKind = defaultProvider === 'codex' ? 'claude' : 'codex';
   return [defaultProvider, secondaryProvider];
+}
+
+function isClaudeForkAgentLaunch(metadata: AgentNodeMetadata): boolean {
+  if (metadata.provider !== 'claude') {
+    return false;
+  }
+
+  const commandLine = metadata.lastLaunchCommandLine?.trim() || metadata.customLaunchCommand?.trim();
+  if (!commandLine) {
+    return false;
+  }
+
+  try {
+    return hasClaudeForkSessionFlag(parseFullAgentCommandLine(commandLine).args);
+  } catch {
+    return commandLine.includes('--fork-session');
+  }
 }
 
 function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): string {

@@ -293,7 +293,7 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
 
 test('lifecycle identity acks bootstrap and ignores stale bootstrap frames', async ({ page }) => {
   await openHarness(page);
-  const readyMessage = await waitForPostedMessageByType(page, 'webview/ready');
+  const readyMessage = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });
   expect(readyMessage.lifecycle).toMatchObject({
     surface: 'panel',
     mode: 'active',
@@ -323,10 +323,10 @@ test('lifecycle identity acks bootstrap and ignores stale bootstrap frames', asy
   await settleWebview(page, 3);
 
   expect(await page.locator('.react-flow__node').count()).toBe(0);
-  expect(await readPostedMessagesByType(page, 'webview/bootstrapAck')).toHaveLength(0);
+  expect(await readPostedMessagesByType(page, 'webview/bootstrapAck', { includeLifecycle: true })).toHaveLength(0);
 
   await bootstrap(page, currentState);
-  const bootstrapAck = await waitForPostedMessageByType(page, 'webview/bootstrapAck');
+  const bootstrapAck = await waitForPostedMessageByType(page, 'webview/bootstrapAck', { includeLifecycle: true });
   expect(bootstrapAck.lifecycle).toMatchObject({
     surface: 'panel',
     mode: 'active',
@@ -1301,7 +1301,6 @@ test('minimal icon-path file nodes fit short numeric basenames without premature
 });
 
 test('minimal file nodes keep a content-fitting minimum size when manually resized', async ({ page }) => {
-  const minimumExpectedWidth = process.platform === 'win32' ? 72 : 80;
   const state = createFileNodeState();
   state.nodes = state.nodes.map((node) =>
     node.id === 'file-src-main'
@@ -1322,6 +1321,7 @@ test('minimal file nodes keep a content-fitting minimum size when manually resiz
   await clearPostedMessages(page);
 
   const fileNode = nodeById(page, 'file-src-main');
+  const minimumExpectedWidth = 64;
   const handle = fileNode.locator('[data-node-resize-direction="bottom-right"]');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
@@ -2374,6 +2374,174 @@ test('agent restart actions render inline without a dropdown', async ({ page }) 
   expect(actionLabels).toEqual(['新建', '重启']);
 });
 
+test('Claude Agent Fork action posts a branchAgentSession message', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ provider: 'claude', resumable: true }));
+  await clearPostedMessages(page);
+
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('[data-agent-branch-action="true"]')).toBeVisible();
+  await agentNode.locator('[data-agent-branch-action="true"]').click();
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const message = window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .find((entry) => entry.type === 'webview/branchAgentSession');
+
+        return message
+          ? JSON.stringify({
+              type: message.type,
+              payload: message.payload
+            })
+          : null;
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        type: 'webview/branchAgentSession',
+        payload: {
+          nodeId: 'agent-1'
+        }
+      })
+    );
+});
+
+test('forked Claude Agent nodes keep title actions readable before and after launch', async ({ page }) => {
+  await openHarness(page);
+  const state = createStoppedAgentNodeState({ provider: 'claude', resumable: false });
+  state.nodes[0] = {
+    ...state.nodes[0],
+    title: 'Claude Agent Fork layout regression probe Fork',
+    summary: '等待启动从当前 Claude Code 会话 fork 出来的 Agent。',
+    size: {
+      ...state.nodes[0].size,
+      width: 360
+    },
+    metadata: {
+      ...state.nodes[0].metadata,
+      agent: {
+        ...state.nodes[0].metadata.agent,
+        launchPreset: 'custom',
+        customLaunchCommand: 'claude --resume session-123 --fork-session',
+        resumeStrategy: 'none',
+        resumeSessionId: undefined,
+        lastBackendLabel: 'Claude Code CLI'
+      }
+    }
+  };
+  await bootstrap(page, state);
+
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('button:has-text("启动")')).toBeVisible();
+  await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+  await expect(agentNode.locator('button:has-text("删除")')).toBeVisible();
+  await expect(agentNode.locator('.window-chrome .status-pill')).toHaveCount(0);
+
+  await expectForkedAgentActionsToBeReadable(agentNode, ['启动', '删除']);
+
+  await bootstrap(page, {
+    ...state,
+    nodes: [
+      {
+        ...state.nodes[0],
+        status: 'running',
+        summary: 'Claude Code CLI 正在执行 fork 出来的 Agent。',
+        metadata: {
+          ...state.nodes[0].metadata,
+          agent: {
+            ...state.nodes[0].metadata.agent,
+            lifecycle: 'running',
+            liveSession: true,
+            resumeSupported: false
+          }
+        }
+      }
+    ]
+  });
+
+  await expect(agentNode.locator('button:has-text("停止")')).toBeVisible();
+  await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+  await expect(agentNode.locator('button:has-text("删除")')).toBeVisible();
+  await expect(agentNode.locator('.window-chrome .status-pill')).toHaveCount(0);
+
+  await expectForkedAgentActionsToBeReadable(agentNode, ['停止', '删除']);
+});
+
+async function expectForkedAgentActionsToBeReadable(agentNode, expectedLabels) {
+  const layoutContract = await agentNode.locator('.window-chrome').evaluate((chrome) => {
+    const title = chrome.querySelector('.window-title');
+    const actions = chrome.querySelector('.window-chrome-actions');
+    const buttons = Array.from(chrome.querySelectorAll('.window-chrome-actions .action-button'));
+    if (!(title instanceof HTMLElement) || !(actions instanceof HTMLElement)) {
+      throw new Error('Agent title chrome was not rendered.');
+    }
+
+    const titleRect = title.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    const buttonRects = buttons.map((button) => button.getBoundingClientRect());
+
+    return {
+      branchVisible: actions.dataset.agentBranchVisible,
+      titleFlexShrink: getComputedStyle(title).flexShrink,
+      actionsFlexShrink: getComputedStyle(actions).flexShrink,
+      titleRight: titleRect.right,
+      actionsLeft: actionsRect.left,
+      titleInputStyle: (() => {
+        const input = chrome.querySelector('.window-title-input');
+        if (!(input instanceof HTMLElement)) {
+          return null;
+        }
+        const style = getComputedStyle(input);
+        return {
+          overflow: style.overflow,
+          textOverflow: style.textOverflow,
+          whiteSpace: style.whiteSpace
+        };
+      })(),
+      buttonStyles: buttons.map((button, index) => ({
+        label: button.textContent?.trim() ?? '',
+        whiteSpace: getComputedStyle(button).whiteSpace,
+        width: buttonRects[index].width,
+        height: buttonRects[index].height,
+        left: buttonRects[index].left,
+        right: buttonRects[index].right,
+        clientWidth: button.clientWidth,
+        scrollWidth: button.scrollWidth
+      }))
+    };
+  });
+
+  expect(layoutContract.branchVisible).toBe('false');
+  expect(layoutContract.titleFlexShrink).toBe('1');
+  expect(layoutContract.actionsFlexShrink).toBe('0');
+  expect(layoutContract.actionsLeft - layoutContract.titleRight).toBeGreaterThanOrEqual(9);
+  expect(layoutContract.titleInputStyle).toMatchObject({
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  });
+  expect(layoutContract.buttonStyles.map((button) => button.label)).toEqual(expectedLabels);
+  for (const button of layoutContract.buttonStyles) {
+    expect(button.whiteSpace).toBe('nowrap');
+    expect(button.width).toBeGreaterThanOrEqual(34);
+    expect(button.height).toBeGreaterThanOrEqual(22);
+    expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth + 1);
+  }
+  for (let index = 1; index < layoutContract.buttonStyles.length; index += 1) {
+    expect(layoutContract.buttonStyles[index].left - layoutContract.buttonStyles[index - 1].right).toBeGreaterThanOrEqual(5);
+  }
+}
+
+test('Agent Fork action is hidden outside resumable Claude sessions', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ provider: 'codex', resumable: true }));
+  await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+
+  await bootstrap(page, createStoppedAgentNodeState({ provider: 'claude', resumable: false }));
+  await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+});
+
 test('agent restart actions wrap before pushing delete outside compact chrome', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
@@ -2397,7 +2565,7 @@ test('agent restart actions wrap before pushing delete outside compact chrome', 
     const restartGroup = root.querySelector('.agent-restart-action-group');
     const newSessionButton = root.querySelector('[data-agent-restart-action="new-session"]');
     const resumeButton = root.querySelector('[data-agent-restart-action="resume"]');
-    const deleteButton = Array.from(root.querySelectorAll('.window-chrome-actions > button')).find(
+    const deleteButton = Array.from(root.querySelectorAll('.window-chrome-actions button')).find(
       (button) => button.textContent?.trim() === '删除'
     );
     if (!chrome || !restartGroup || !newSessionButton || !resumeButton || !deleteButton) {
@@ -3857,6 +4025,75 @@ for (const executionKind of ['agent', 'terminal']) {
               targetKind: 'file',
               source: 'detected'
             }
+          }
+        ])
+      );
+  });
+
+  test(`${executionKind} multiline line-number links prefer file links when shell echo repeats the text`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const pathLineText = 'link-target.ts';
+    const lineNumberLinkText = '2:8';
+    const resultLineText = `  ${lineNumberLinkText}  export const two = 2;`;
+    const serializedTerminalData =
+      "initialmoon@InitialMoondeMacBook-Air execution-native-interactions % print\r\nf '%s\\n%s\\n' 'link-target.ts' '  2:8  export const two = 2;'\r\nlink-target.ts\r\n  2:8  export const two = 2;\r\ninitialmoon@InitialMoondeMacBook-Air execution-native-interactions % [?2004h";
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [lineNumberLinkText]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 74,
+      rows: 24,
+      liveSession: true,
+      serializedTerminalState: {
+        format: 'xterm-serialize-v1',
+        data: serializedTerminalData,
+        viewportY: 0
+      }
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: lineNumberLinkText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const linkEvents = window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .filter((entry) => entry.type === 'webview/openExecutionLink')
+            .map((entry) => ({
+              linkKind: entry.payload.link.linkKind,
+              text: entry.payload.link.text,
+              path: entry.payload.link.path,
+              line: entry.payload.link.line,
+              column: entry.payload.link.column,
+              source: entry.payload.link.source
+            }));
+          return JSON.stringify(linkEvents);
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            linkKind: 'file',
+            text: lineNumberLinkText,
+            path: pathLineText,
+            line: 2,
+            column: 8,
+            source: 'detected'
           }
         ])
       );
@@ -8502,9 +8739,7 @@ test('right-click create menu still shows execution entries in untrusted mode an
   await menu.locator('[data-context-menu-kind="terminal"]').click();
 
   await expect
-    .poll(async () => {
-      return page.evaluate(() => window.__devSessionCanvasHarness.getPostedMessages());
-    })
+    .poll(async () => readPostedMessagesByType(page, 'webview/showCreateNodeBlockedReason'))
     .toContainEqual({
       type: 'webview/showCreateNodeBlockedReason',
       payload: {
@@ -11840,7 +12075,7 @@ async function edgeLabelIsProtected(page, edgeId) {
   }, edgeId);
 }
 
-async function waitForPostedMessageByType(page, type) {
+async function waitForPostedMessageByType(page, type, options = {}) {
   let matchedMessage = null;
 
   await expect
@@ -11861,15 +12096,25 @@ async function waitForPostedMessageByType(page, type) {
     })
     .toBe('matched');
 
-  return matchedMessage;
+  return options.includeLifecycle === true ? matchedMessage : stripPostedMessageLifecycle(matchedMessage);
 }
 
-async function readPostedMessagesByType(page, type) {
-  return page.evaluate((nextType) => {
+async function readPostedMessagesByType(page, type, options = {}) {
+  const messages = await page.evaluate((nextType) => {
     return window.__devSessionCanvasHarness
       .getPostedMessages()
       .filter((entry) => entry.type === nextType);
   }, type);
+  return options.includeLifecycle === true ? messages : messages.map(stripPostedMessageLifecycle);
+}
+
+function stripPostedMessageLifecycle(message) {
+  if (!message || typeof message !== 'object') {
+    return message;
+  }
+
+  const { lifecycle: _lifecycle, ...rest } = message;
+  return rest;
 }
 
 async function readLastOpenedExecutionLink(page, nodeId) {

@@ -108,6 +108,24 @@ const hardwrapOpenMessage = {
 
 assert.deepEqual(parseWebviewMessage(hardwrapOpenMessage), hardwrapOpenMessage);
 
+const branchAgentSessionMessage = {
+  type: 'webview/branchAgentSession',
+  payload: {
+    nodeId: 'agent-branch-source'
+  }
+};
+
+assert.deepEqual(parseWebviewMessage(branchAgentSessionMessage), branchAgentSessionMessage);
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/branchAgentSession',
+    payload: {
+      nodeId: 42
+    }
+  }),
+  null,
+  'webview/branchAgentSession.nodeId 必须是字符串。'
+);
 
 const createDemoNodeInGroupMessage = {
   type: 'webview/createDemoNode',

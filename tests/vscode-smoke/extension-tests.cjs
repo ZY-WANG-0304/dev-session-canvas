@@ -55,6 +55,7 @@ const COMMAND_IDS = {
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
+  testDumpHostDiagnostics: 'devSessionCanvas.__test.dumpHostDiagnostics',
   testLocateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
   testLocateClaudeSessionId: 'devSessionCanvas.__test.locateClaudeSessionId',
   testExtractCodexResumeSessionId: 'devSessionCanvas.__test.extractCodexResumeSessionId',
@@ -925,6 +926,8 @@ async function runTrustedSmoke() {
   await verifyReadExitFileActivityDrain();
   await verifyRuntimePersistenceRequiresReloadAndClearsState();
   await verifySidebarSessionHistoryRestore();
+  await verifyClaudeAgentBranchFromCurrentNode();
+  await verifyAgentBranchRejectsUnsupportedSources();
   await verifySidebarSessionHistorySearchByTitleUi();
   await verifySidebarSessionHistoryDoubleClickUi();
 
@@ -1352,6 +1355,217 @@ async function verifySidebarSessionHistoryRestore() {
     assert.ok(restoredAgentNode, 'Expected the restored sidebar history entry to materialize as a new Codex agent node.');
   } finally {
     await fs.rm(fakeHomeDir, { recursive: true, force: true });
+  }
+}
+
+async function verifyClaudeAgentBranchFromCurrentNode() {
+  const baselineSnapshot = await getDebugSnapshot();
+  const sourceTitle = 'Claude Fork Source';
+  const sourceSessionId = 'claude-branch-source-session-123';
+  const sourceNodeId = 'claude-branch-source-node';
+  let branchNodeId;
+
+  try {
+    const withSourceSnapshot = await setPersistedState({
+      ...baselineSnapshot.state,
+      nodes: [
+        ...baselineSnapshot.state.nodes,
+        {
+          id: sourceNodeId,
+          kind: 'agent',
+          title: sourceTitle,
+          status: 'stopped',
+          summary: '检测到可 Fork 的 Claude Code 会话。',
+          position: { x: 120, y: 120 },
+          size: { width: 560, height: 420 },
+          metadata: {
+            agent: {
+              provider: 'claude',
+              lifecycle: 'stopped',
+              launchPreset: 'custom',
+              customLaunchCommand: `claude --resume ${sourceSessionId}`,
+              lastLaunchCommandLine: `claude --resume ${sourceSessionId}`,
+              resumeSupported: true,
+              resumeStrategy: 'claude-session-id',
+              resumeSessionId: sourceSessionId,
+              persistenceMode: 'snapshot-only',
+              attachmentState: 'history-restored',
+              liveSession: false,
+              pendingLaunch: undefined,
+              lastBackendLabel: 'Claude Code'
+            }
+          }
+        }
+      ]
+    });
+    const sourceNode = findNodeById(withSourceSnapshot, sourceNodeId);
+    await ensureEditorCanvasReady();
+
+    const beforeBranchSnapshot = await getDebugSnapshot();
+    const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+    await dispatchWebviewMessage({
+      type: 'webview/branchAgentSession',
+      payload: {
+        nodeId: sourceNode.id
+      }
+    });
+
+    const branchedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const branchNodes = currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'agent' &&
+          node.id !== sourceNode.id &&
+          node.title.includes('Fork') &&
+          node.metadata?.agent?.provider === 'claude' &&
+          node.metadata.agent.launchPreset === 'custom' &&
+          typeof node.metadata.agent.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(`--resume ${sourceSessionId}`) &&
+          node.metadata.agent.customLaunchCommand.includes('--fork-session')
+      );
+      return branchNodes.length === 1;
+    }, 10000);
+
+    assert.strictEqual(
+      branchedSnapshot.state.nodes.length,
+      beforeBranchSnapshot.state.nodes.length + 1,
+      'Expected Fork to create exactly one additional Agent node.'
+    );
+
+    const originalAfterBranch = branchedSnapshot.state.nodes.find((node) => node.id === sourceNode.id);
+    assert.strictEqual(
+      originalAfterBranch.metadata.agent.resumeSessionId,
+      sourceSessionId,
+      'Expected Fork to leave the source node resume session id unchanged.'
+    );
+
+    const branchNode = branchedSnapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.id !== sourceNode.id &&
+        node.metadata?.agent?.customLaunchCommand?.includes('--fork-session')
+    );
+    assert.ok(branchNode, 'Expected Fork to create a Claude Agent node with fork-session command.');
+    branchNodeId = branchNode.id;
+
+    const branchEdgeSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.edges.some(
+        (edge) =>
+          edge.owner === 'user' &&
+          edge.sourceNodeId === sourceNode.id &&
+          edge.targetNodeId === branchNode.id &&
+          edge.arrowMode === 'forward'
+      );
+    }, 10000);
+
+    const branchEdge = branchEdgeSnapshot.state.edges.find(
+      (edge) =>
+        edge.owner === 'user' &&
+        edge.sourceNodeId === sourceNode.id &&
+        edge.targetNodeId === branchNode.id
+    );
+    assert.ok(branchEdge, 'Expected Fork to create a user edge from source Agent to Forked Agent.');
+    assert.strictEqual(branchEdge.arrowMode, 'forward');
+    assert.strictEqual(branchEdge.sourceAnchor, 'right');
+    assert.strictEqual(branchEdge.targetAnchor, 'left');
+    assert.strictEqual(branchEdge.label, undefined);
+
+    const startedEvents = await waitForDiagnosticEvents((events) => {
+      const branchStartEvents = events.slice(diagnosticStartIndex).filter(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === branchNode.id &&
+          event.detail?.provider === 'claude'
+      );
+      return branchStartEvents.length === 1;
+    }, 20000);
+
+    const branchStartEvents = startedEvents.slice(diagnosticStartIndex).filter(
+      (event) =>
+        event.kind === 'execution/started' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === branchNode.id &&
+        event.detail?.provider === 'claude'
+    );
+    assert.strictEqual(branchStartEvents.length, 1, 'Expected Fork node to enter the Agent start path once.');
+    const branchLaunchArgs = branchStartEvents[0].detail?.launchArgs ?? [];
+    assert.ok(Array.isArray(branchLaunchArgs), 'Expected Fork start diagnostic to expose launch args.');
+    assert.ok(branchLaunchArgs.includes('--resume'), 'Expected Fork launch args to include the source resume flag.');
+    assert.ok(branchLaunchArgs.includes(sourceSessionId), 'Expected Fork launch args to include the source session id.');
+    assert.ok(branchLaunchArgs.includes('--fork-session'), 'Expected Fork launch args to include --fork-session.');
+
+    const sessionIdFlagIndex = branchLaunchArgs.indexOf('--session-id');
+    assert.notStrictEqual(sessionIdFlagIndex, -1, 'Expected Fork launch args to include a new session id candidate.');
+    const branchSessionId = branchLaunchArgs[sessionIdFlagIndex + 1];
+    assert.ok(branchSessionId, 'Expected Fork session id candidate to have a value.');
+    assert.notStrictEqual(
+      branchSessionId,
+      sourceSessionId,
+      'Expected Fork session id candidate to differ from the source session id.'
+    );
+
+    const startedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const startedBranchNode = currentSnapshot.state.nodes.find((node) => node.id === branchNode.id);
+      return Boolean(
+        startedBranchNode?.metadata?.agent?.liveSession &&
+          startedBranchNode.metadata.agent.resumeSessionId === branchSessionId &&
+          startedBranchNode.metadata.agent.pendingLaunch === undefined
+      );
+    }, 20000);
+    const startedBranchNode = findNodeById(startedSnapshot, branchNode.id);
+    assert.strictEqual(startedBranchNode.metadata.agent.resumeSessionId, branchSessionId);
+    const duplicateBranchStartRejections = (await getDiagnosticEvents()).slice(diagnosticStartIndex).filter(
+      (event) =>
+        event.kind === 'execution/startRejected' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === branchNode.id &&
+        event.detail?.reason === 'already-running'
+    );
+    assert.strictEqual(
+      duplicateBranchStartRejections.length,
+      0,
+      'Expected Fork auto-start to avoid racing a second start request.'
+    );
+  } finally {
+    if (branchNodeId) {
+      await maybeEnsureAgentStopped(branchNodeId).catch(() => {});
+    }
+    await maybeEnsureAgentStopped(sourceNodeId).catch(() => {});
+    await setPersistedState(baselineSnapshot.state);
+  }
+}
+
+async function verifyAgentBranchRejectsUnsupportedSources() {
+  const baselineSnapshot = await getDebugSnapshot();
+
+  try {
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'codex', {
+      titleOverride: 'Codex Fork Rejection Source'
+    });
+    const codexSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.nodes.some(
+        (node) => node.kind === 'agent' && node.title === 'Codex Fork Rejection Source'
+      );
+    }, 10000);
+    const codexNode = codexSnapshot.state.nodes.find(
+      (node) => node.kind === 'agent' && node.title === 'Codex Fork Rejection Source'
+    );
+    assert.ok(codexNode, 'Expected Codex rejection source node to exist.');
+
+    await dispatchWebviewMessage({
+      type: 'webview/branchAgentSession',
+      payload: { nodeId: codexNode.id }
+    });
+    await sleep(200);
+
+    const afterRejectedBranch = await getDebugSnapshot();
+    assert.strictEqual(
+      afterRejectedBranch.state.nodes.length,
+      codexSnapshot.state.nodes.length,
+      'Expected Codex Fork request to be rejected without creating a node.'
+    );
+  } finally {
+    await setPersistedState(baselineSnapshot.state);
   }
 }
 
@@ -3859,6 +4073,15 @@ async function ensureAgentStopped(agentNodeId) {
     const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
     return Boolean(currentNode && !currentNode.metadata?.agent?.liveSession);
   });
+}
+
+async function maybeEnsureAgentStopped(agentNodeId) {
+  const snapshot = await getDebugSnapshot();
+  if (!snapshot.state.nodes.some((node) => node.id === agentNodeId && node.kind === 'agent')) {
+    return snapshot;
+  }
+
+  return ensureAgentStopped(agentNodeId);
 }
 
 async function ensureTerminalStopped(terminalNodeId) {
@@ -11756,6 +11979,17 @@ async function writeFailureArtifacts(error) {
     await fs.writeFile(
       path.join(artifactDir, 'failure-webview-probe.json'),
       `${JSON.stringify(lastWebviewProbe, null, 2)}\n`,
+      'utf8'
+    );
+  }
+
+  const hostDiagnosticsDump = await safeGet(() =>
+    vscode.commands.executeCommand(COMMAND_IDS.testDumpHostDiagnostics)
+  );
+  if (hostDiagnosticsDump !== undefined) {
+    await fs.writeFile(
+      path.join(artifactDir, 'failure-host-diagnostics-dump.json'),
+      `${JSON.stringify(hostDiagnosticsDump, null, 2)}\n`,
       'utf8'
     );
   }
