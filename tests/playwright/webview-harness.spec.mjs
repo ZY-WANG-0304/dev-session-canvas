@@ -2609,7 +2609,8 @@ test('agent restart actions wrap before pushing delete outside compact chrome', 
   expect(layout.resumeButtonPaddingInlineStart).toBe(layout.deleteButtonPaddingInlineStart);
   expect(layout.resumeButtonPaddingInlineEnd).toBe(layout.deleteButtonPaddingInlineEnd);
   expect(layout.newSessionButtonWhiteSpace).toBe('normal');
-  expect(layout.resumeButtonWhiteSpace).toBe('normal');});
+  expect(layout.resumeButtonWhiteSpace).toBe('normal');
+});
 
 test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
   await openHarness(page);
