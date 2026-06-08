@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/canvas-multi-root-composed-canvas-rewrite.md
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
-updated_at: 2026-06-07
+updated_at: 2026-06-08
 ---
 
 # 画布多根 workspace 组合视图设计
@@ -68,7 +68,7 @@ root-local 状态使用扩展 global storage 按 root 绝对路径稳定分桶�
 
 ### 6.3 系统 root section
 
-多根组合视图中，每个 workspace folder 生成一个 `CanvasGroupSummary`，其 `role` 为 `workspace-root`，`workspaceRootPath` 是 root 绝对路径，`id` 使用 root path 的稳定哈希生成。root section 可以移动、resize、参与同级避让，并可以作为整体被 overlay 普通分组包含；它不允许删除、取消分组或重命名。root section 不是执行上下文本身，执行节点 `metadata.cwd` 仍是权威。导航层把 root section 视为一等空间对象：multi-root 下全局 fit view 默认包含所有 root section，MiniMap 也要显示 root section 的相对布局；这只影响可视导航，不改变 root-local / overlay 的状态分层。
+多根组合视图中，每个 workspace folder 生成一个 `CanvasGroupSummary`，其 `role` 为 `workspace-root`，`workspaceRootPath` 是 root 绝对路径，`id` 使用 root path 的稳定哈希生成。root section 可以移动、resize、参与同级避让，并可以作为整体被 overlay 普通分组包含；它不允许删除、取消分组或重命名。root section 的标题复用普通分组的反向缩放和宽度压缩规则，确保全局 fit view / 低倍率概览时仍能作为工程区域线索；root section 只读且不显示普通分组的取消分组/删除分组按钮。root section 不是执行上下文本身，执行节点 `metadata.cwd` 仍是权威。导航层把 root section 视为一等空间对象：multi-root 下全局 fit view 默认包含所有 root section，MiniMap 也要显示 root section 的相对布局；这只影响可视导航，不改变 root-local / overlay 的状态分层。
 
 ### 6.4 组合与拆分规则
 
