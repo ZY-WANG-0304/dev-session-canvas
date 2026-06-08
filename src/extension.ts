@@ -2082,6 +2082,7 @@ function registerTestCommands(
     vscode.commands.registerCommand(TEST_COMMAND_IDS.clearDiagnosticEvents, () => {
       panelManager.clearDiagnosticEventsForTest();
     }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.dumpHostDiagnostics, () => panelManager.dumpCurrentHostDiagnostics()),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.locateCodexSessionId,
       async (cwd?: unknown, startedAtMs?: unknown, homeDir?: unknown, timeoutMs?: unknown) => {

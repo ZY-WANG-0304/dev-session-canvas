@@ -55,6 +55,7 @@ const COMMAND_IDS = {
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
+  testDumpHostDiagnostics: 'devSessionCanvas.__test.dumpHostDiagnostics',
   testLocateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
   testLocateClaudeSessionId: 'devSessionCanvas.__test.locateClaudeSessionId',
   testExtractCodexResumeSessionId: 'devSessionCanvas.__test.extractCodexResumeSessionId',
@@ -1359,7 +1360,7 @@ async function verifySidebarSessionHistoryRestore() {
 
 async function verifyClaudeAgentBranchFromCurrentNode() {
   const baselineSnapshot = await getDebugSnapshot();
-  const sourceTitle = 'Claude Branch Source';
+  const sourceTitle = 'Claude Fork Source';
   const sourceSessionId = 'claude-branch-source-session-123';
   const sourceNodeId = 'claude-branch-source-node';
   let branchNodeId;
@@ -1374,7 +1375,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
           kind: 'agent',
           title: sourceTitle,
           status: 'stopped',
-          summary: '检测到可 Branch 的 Claude Code 会话。',
+          summary: '检测到可 Fork 的 Claude Code 会话。',
           position: { x: 120, y: 120 },
           size: { width: 560, height: 420 },
           metadata: {
@@ -1414,7 +1415,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
         (node) =>
           node.kind === 'agent' &&
           node.id !== sourceNode.id &&
-          node.title.includes('Branch') &&
+          node.title.includes('Fork') &&
           node.metadata?.agent?.provider === 'claude' &&
           node.metadata.agent.launchPreset === 'custom' &&
           typeof node.metadata.agent.customLaunchCommand === 'string' &&
@@ -1427,14 +1428,14 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
     assert.strictEqual(
       branchedSnapshot.state.nodes.length,
       beforeBranchSnapshot.state.nodes.length + 1,
-      'Expected Branch to create exactly one additional Agent node.'
+      'Expected Fork to create exactly one additional Agent node.'
     );
 
     const originalAfterBranch = branchedSnapshot.state.nodes.find((node) => node.id === sourceNode.id);
     assert.strictEqual(
       originalAfterBranch.metadata.agent.resumeSessionId,
       sourceSessionId,
-      'Expected Branch to leave the source node resume session id unchanged.'
+      'Expected Fork to leave the source node resume session id unchanged.'
     );
 
     const branchNode = branchedSnapshot.state.nodes.find(
@@ -1443,8 +1444,30 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
         node.id !== sourceNode.id &&
         node.metadata?.agent?.customLaunchCommand?.includes('--fork-session')
     );
-    assert.ok(branchNode, 'Expected Branch to create a Claude Agent node with fork-session command.');
+    assert.ok(branchNode, 'Expected Fork to create a Claude Agent node with fork-session command.');
     branchNodeId = branchNode.id;
+
+    const branchEdgeSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.edges.some(
+        (edge) =>
+          edge.owner === 'user' &&
+          edge.sourceNodeId === sourceNode.id &&
+          edge.targetNodeId === branchNode.id &&
+          edge.arrowMode === 'forward'
+      );
+    }, 10000);
+
+    const branchEdge = branchEdgeSnapshot.state.edges.find(
+      (edge) =>
+        edge.owner === 'user' &&
+        edge.sourceNodeId === sourceNode.id &&
+        edge.targetNodeId === branchNode.id
+    );
+    assert.ok(branchEdge, 'Expected Fork to create a user edge from source Agent to Forked Agent.');
+    assert.strictEqual(branchEdge.arrowMode, 'forward');
+    assert.strictEqual(branchEdge.sourceAnchor, 'right');
+    assert.strictEqual(branchEdge.targetAnchor, 'left');
+    assert.strictEqual(branchEdge.label, undefined);
 
     const startedEvents = await waitForDiagnosticEvents((events) => {
       const branchStartEvents = events.slice(diagnosticStartIndex).filter(
@@ -1464,21 +1487,21 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
         event.detail?.nodeId === branchNode.id &&
         event.detail?.provider === 'claude'
     );
-    assert.strictEqual(branchStartEvents.length, 1, 'Expected Branch node to enter the Agent start path once.');
+    assert.strictEqual(branchStartEvents.length, 1, 'Expected Fork node to enter the Agent start path once.');
     const branchLaunchArgs = branchStartEvents[0].detail?.launchArgs ?? [];
-    assert.ok(Array.isArray(branchLaunchArgs), 'Expected Branch start diagnostic to expose launch args.');
-    assert.ok(branchLaunchArgs.includes('--resume'), 'Expected Branch launch args to include the source resume flag.');
-    assert.ok(branchLaunchArgs.includes(sourceSessionId), 'Expected Branch launch args to include the source session id.');
-    assert.ok(branchLaunchArgs.includes('--fork-session'), 'Expected Branch launch args to include --fork-session.');
+    assert.ok(Array.isArray(branchLaunchArgs), 'Expected Fork start diagnostic to expose launch args.');
+    assert.ok(branchLaunchArgs.includes('--resume'), 'Expected Fork launch args to include the source resume flag.');
+    assert.ok(branchLaunchArgs.includes(sourceSessionId), 'Expected Fork launch args to include the source session id.');
+    assert.ok(branchLaunchArgs.includes('--fork-session'), 'Expected Fork launch args to include --fork-session.');
 
     const sessionIdFlagIndex = branchLaunchArgs.indexOf('--session-id');
-    assert.notStrictEqual(sessionIdFlagIndex, -1, 'Expected Branch launch args to include a new session id candidate.');
+    assert.notStrictEqual(sessionIdFlagIndex, -1, 'Expected Fork launch args to include a new session id candidate.');
     const branchSessionId = branchLaunchArgs[sessionIdFlagIndex + 1];
-    assert.ok(branchSessionId, 'Expected Branch session id candidate to have a value.');
+    assert.ok(branchSessionId, 'Expected Fork session id candidate to have a value.');
     assert.notStrictEqual(
       branchSessionId,
       sourceSessionId,
-      'Expected Branch session id candidate to differ from the source session id.'
+      'Expected Fork session id candidate to differ from the source session id.'
     );
 
     const startedSnapshot = await waitForSnapshot((currentSnapshot) => {
@@ -1501,7 +1524,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
     assert.strictEqual(
       duplicateBranchStartRejections.length,
       0,
-      'Expected Branch auto-start to avoid racing a second start request.'
+      'Expected Fork auto-start to avoid racing a second start request.'
     );
   } finally {
     if (branchNodeId) {
@@ -1517,15 +1540,15 @@ async function verifyAgentBranchRejectsUnsupportedSources() {
 
   try {
     await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'codex', {
-      titleOverride: 'Codex Branch Rejection Source'
+      titleOverride: 'Codex Fork Rejection Source'
     });
     const codexSnapshot = await waitForSnapshot((currentSnapshot) => {
       return currentSnapshot.state.nodes.some(
-        (node) => node.kind === 'agent' && node.title === 'Codex Branch Rejection Source'
+        (node) => node.kind === 'agent' && node.title === 'Codex Fork Rejection Source'
       );
     }, 10000);
     const codexNode = codexSnapshot.state.nodes.find(
-      (node) => node.kind === 'agent' && node.title === 'Codex Branch Rejection Source'
+      (node) => node.kind === 'agent' && node.title === 'Codex Fork Rejection Source'
     );
     assert.ok(codexNode, 'Expected Codex rejection source node to exist.');
 
@@ -1539,7 +1562,7 @@ async function verifyAgentBranchRejectsUnsupportedSources() {
     assert.strictEqual(
       afterRejectedBranch.state.nodes.length,
       codexSnapshot.state.nodes.length,
-      'Expected Codex Branch request to be rejected without creating a node.'
+      'Expected Codex Fork request to be rejected without creating a node.'
     );
   } finally {
     await setPersistedState(baselineSnapshot.state);
@@ -11956,6 +11979,17 @@ async function writeFailureArtifacts(error) {
     await fs.writeFile(
       path.join(artifactDir, 'failure-webview-probe.json'),
       `${JSON.stringify(lastWebviewProbe, null, 2)}\n`,
+      'utf8'
+    );
+  }
+
+  const hostDiagnosticsDump = await safeGet(() =>
+    vscode.commands.executeCommand(COMMAND_IDS.testDumpHostDiagnostics)
+  );
+  if (hostDiagnosticsDump !== undefined) {
+    await fs.writeFile(
+      path.join(artifactDir, 'failure-host-diagnostics-dump.json'),
+      `${JSON.stringify(hostDiagnosticsDump, null, 2)}\n`,
       'utf8'
     );
   }
