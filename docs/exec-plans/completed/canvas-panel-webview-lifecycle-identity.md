@@ -1,6 +1,6 @@
 # 修复 Panel Webview 生命周期串线导致画布空白
 
-本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
+本 `ExecPlan` 已完成并归档到 `docs/exec-plans/completed/canvas-panel-webview-lifecycle-identity.md`。执行期间已按 `docs/PLANS.md` 持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘`。
 
 本计划遵循 `docs/PLANS.md`。当前仓库中的 `Webview` 指 VS Code 扩展宿主暴露给前端的隔离页面；`surface` 指画布所在的宿主承载面，目前只有编辑区 `editor` 和底部面板 `panel`；`lifecycle identity` 指宿主为一次 HTML 渲染分配的身份信息，用来区分同一个 surface 上先后出现的 Webview 文档。
 
@@ -8,7 +8,7 @@
 
 用户在 VS Code Panel 区域拖动画布 view、与另一个 panel 组件拼到同一个页面后，重新加载窗口或关闭再打开 VS Code，会稳定看到画布页面存在但节点不显示。宿主诊断显示对象图仍有节点，因此目标不是修复持久化，而是让宿主只把 ready、bootstrap、probe 和 DOM 动作结果绑定到发出消息的那一个 Webview 文档，避免把一个旧 frame 的 ready 当成另一个 frame 的 ready。
 
-完成后，用户重新进入同样的 Panel 布局恢复场景时，实际可见的画布 Webview 会收到宿主权威状态并渲染节点；诊断里可以看到每个 ready/bootstrap/probe 都携带 surface、generation 和 frameId，过期消息被记录为 stale 并忽略。自动验证至少要覆盖共享协议解析、类型检查和 Webview harness；真实 VS Code 场景如果无法完整自动复现，需要保留手动验证步骤。
+完成后，用户重新进入同样的 Panel 布局恢复场景时，实际可见的画布 Webview 会收到宿主权威状态并渲染节点；诊断里可以看到每个 ready/bootstrap/probe 都携带 surface、generation 和 frameId，过期消息被记录为 stale 并忽略。自动验证至少要覆盖共享协议解析、类型检查和 Webview harness；真实 VS Code 场景已经通过用户原风险布局人工复验，并补充了真实宿主原生操作复验。
 
 ## 进度
 
@@ -30,6 +30,9 @@
 - [x] (2026-06-08 20:02+08:00) 第三批已通过 `npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "lifecycle identity"`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke`、`node --check tests/vscode-smoke/extension-tests.cjs` 和 `git diff --check`。
 - [x] (2026-06-08 21:14+08:00) 第四批 debt hardening 已新增 repo-local 离线诊断入口：`npm run diagnose:webview-lifecycle -- [dump-dir]` 可直接解析已有宿主 dump，并用退出码区分健康、阻塞线索和输入错误。
 - [x] (2026-06-08 21:20+08:00) 第四批已通过 `npm run typecheck`、`npm run test:webview-lifecycle-diagnostics`、`npm run test:protocol-webview-messages`、`node --check scripts/diagnostics/analyze-webview-lifecycle-dump.mjs`、`node --check scripts/test/test-webview-lifecycle-diagnostics.mjs` 和 `git diff --check`。
+- [x] (2026-06-09 00:20+08:00) 用户按原 Panel restore 风险布局完成真实人工复验，dump `/home/users/ziyang01.wang-al/projects/dsc-test-01/.debug/current-host-diagnostics/2026-06-08T16-15-01-976Z` 诊断为退出码 `0`、`attention`、`Panel restore 风险：否`，且 `probe=OK(nodeCount=16)`。
+- [x] (2026-06-09 00:35+08:00) 维护者用真实 VS Code 录制 / Playwright CDP 工具补跑原生操作复验，Panel 打开、`Developer: Reload Window`、再次打开 Panel 与宿主诊断均可用，dump `.debug/current-host-diagnostics/2026-06-08T16-31-24-283Z` 诊断为 `healthy`、退出码 `0`。
+- [x] (2026-06-09 00:45+08:00) 已将设计文档验证状态更新为“已验证”，并把本 ExecPlan 归档到 `docs/exec-plans/completed/`。
 
 ## 意外与发现
 
@@ -49,6 +52,8 @@
   证据：已有 `dumpCurrentHostDiagnostics()` 会写出 `summary.json`、`host-messages.json`、`diagnostic-events.json`、`panel-probe.json`，但没有一个面向 lifecycle 的聚合判断字段；第三批新增的 `webview-lifecycle-summary.json` 将这些线索按 surface 汇总为 `status`、`panelRestore.likelyAffected`、attach/render burst、ready promotion、bootstrap ack、queued message 和 probe 状态。
 - 观察：第三批诊断摘要解决了 VS Code 内采集问题，但当用户只把 dump 目录发给协作者时，仍缺少一个不用启动 Extension Development Host 的 repo-local 判断入口。
   证据：第四批新增的 `scripts/diagnostics/analyze-webview-lifecycle-dump.mjs` 可以读取 `webview-lifecycle-summary.json`，也能 fallback 到 `summary.json.webviewLifecycle`；`scripts/test/test-webview-lifecycle-diagnostics.mjs` 覆盖 healthy、blocked、fallback 和自动选择最新 dump。
+- 观察：用户原风险布局人工复验已经覆盖到真实 Panel restore 的双 attach/render burst，而补充的真实宿主原生操作复验覆盖了可重复的 Panel 打开、窗口 reload 与诊断采集路径。
+  证据：用户 dump `/home/users/ziyang01.wang-al/projects/dsc-test-01/.debug/current-host-diagnostics/2026-06-08T16-15-01-976Z` 显示 29ms 内 4 次 attach/render、`surface/readyWebviewPromoted`、`surface/ready`、`host/bootstrap`、`surface/bootstrapAck` 和 `probe=OK(nodeCount=16)`，离线诊断退出码为 `0`；维护者补跑 dump `.debug/current-host-diagnostics/2026-06-08T16-31-24-283Z` 为 `healthy`、退出码 `0`。
 
 ## 决策记录
 
@@ -84,11 +89,13 @@
 
 2026-06-03 19:42+08:00 复核用户新诊断后确认，调试方式本身没有问题，且 Debug Host 已运行新 lifecycle 代码。问题是第一轮 Host 侧 lifecycle 防护把“最后 attach 的 Webview 对象”等同于“当前可用 frame”，在 Panel restore 双 attach 中误杀了 generation 2 的 ready，导致 generation 4 当前对象一直没有 ready、没有 bootstrap。现在 Host 额外维护 `surfaceMessageWebview` 与 `renderedWebviewLifecycle`，并允许未 ready surface 的已渲染 active ready frame 提升为当前消息目标；这样 bootstrap 会发回真正完成启动的 frame，而不是继续等待一个没有 ready 的对象。补充验证已通过 `npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates` 和 `npm run test:webview -- -g "lifecycle identity"`。
 
-2026-06-08 第二批 debt hardening 把此前依赖人工诊断的 Host 双 attach/ready 竞态收口成可重复自动化。`CanvasPanelManager.runWebviewLifecycleRaceDiagnosticsForTest()` 在测试模式中构造两个 fake Webview：先 render 的旧 frame 和后 render 的竞争 frame。旧 frame 先发 ready 后必须被提升为当前消息目标，bootstrap 必须发给旧 frame；非 bootstrap 消息在 `webview/bootstrapAck` 前必须排队，ack 后再 flush；竞争 frame 发来的 active mutation、probe result 和 DOM action result 必须被识别为 stale 并不改变状态或 resolve 当前请求。该测试已接入 trusted VS Code smoke，真实用户 Panel restore 场景仍保留为人工复验项。
+2026-06-08 第二批 debt hardening 把此前依赖人工诊断的 Host 双 attach/ready 竞态收口成可重复自动化。`CanvasPanelManager.runWebviewLifecycleRaceDiagnosticsForTest()` 在测试模式中构造两个 fake Webview：先 render 的旧 frame 和后 render 的竞争 frame。旧 frame 先发 ready 后必须被提升为当前消息目标，bootstrap 必须发给旧 frame；非 bootstrap 消息在 `webview/bootstrapAck` 前必须排队，ack 后再 flush；竞争 frame 发来的 active mutation、probe result 和 DOM action result 必须被识别为 stale 并不改变状态或 resolve 当前请求。该测试已接入 trusted VS Code smoke；真实用户 Panel restore 场景当时仍保留为人工复验项，并已在 2026-06-09 的最终复验中收口。
 
 2026-06-08 第三批 debt hardening 把真实用户复验入口从“人工拼多份诊断 JSON”收口为面向 lifecycle 的聚合摘要。`CanvasPanelManager.dumpCurrentHostDiagnostics()` 现在在原有 dump 目录中额外写出 `webview-lifecycle-summary.json`，并把同一结构嵌入 `summary.json.webviewLifecycle`。该摘要按 `panel` / `editor` 分别记录 attached、visibility、interactive、ready、lifecycle、bootstrapAck、message target、pending bootstrap 队列、host message 投递计数、attach/render burst、ready promotion、stale/invalid lifecycle 事件、probe 结果、状态分类和建议下一步。用户执行 `Dev Session Canvas: 落盘当前宿主诊断` 后，提示会直接展示 lifecycle 状态；如果 `panelRestore.likelyAffected=true`，说明这份现场仍像 Panel restore lifecycle 阻塞，应优先分享整个 dump 目录继续分析。自动守护已覆盖摘要写出、attach/render burst 判断和 dump 命令提示链路。
 
 2026-06-08 第四批 debt hardening 把第三批生成的摘要变成可离线消费的排障入口。`scripts/diagnostics/analyze-webview-lifecycle-dump.mjs` 可直接分析一个 dump 目录；如果未传目录，则自动选择 `.debug/current-host-diagnostics/` 下最新目录。脚本优先读取 `webview-lifecycle-summary.json`，缺失时 fallback 到 `summary.json.webviewLifecycle`，并关联可选的 `diagnostic-events.json`、`host-messages.json` 和 `panel-probe.json`。输出包含整体状态、Panel restore 风险、关键 flag、surface 摘要、最新事件、结论和建议下一步；退出码 `0` 表示未发现阻塞性 lifecycle 线索，`2` 表示 blocked / initializing 或 Panel restore 高风险，`1` 表示输入或解析错误。新增测试覆盖 healthy、blocked、fallback、缺失摘要和自动选择最新 dump。
+
+2026-06-09 最终复验已收口。用户按原 Panel restore 风险布局采集的真实 dump 覆盖了连续 attach/render 与 ready promotion：`npm run diagnose:webview-lifecycle -- /home/users/ziyang01.wang-al/projects/dsc-test-01/.debug/current-host-diagnostics/2026-06-08T16-15-01-976Z` 输出退出码 `0`、整体状态 `attention`、`Panel restore 风险：否`，Panel surface 已 `attached=true`、`ready=true`、`bootstrapAck=true`，probe 为 `OK(nodeCount=16)`。维护者随后用真实 VS Code 录制 / Playwright CDP 工具启动 Extension Development Host，通过原生键盘路径打开 Panel 画布、执行 `Developer: Reload Window`、再次打开 Panel 并落盘诊断；`.debug/current-host-diagnostics/2026-06-08T16-31-24-283Z` 离线诊断为 `healthy`、`Panel restore 风险：否`、退出码 `0`。因此本计划目标已经完成，正式设计文档可恢复为“已验证”。保留的非阻塞风险是普通浏览器 Playwright baseline screenshot 仍可能因 UI 快照漂移失败，这不是 lifecycle blocker，后续应由截图基线维护单独收口。
 
 ## 上下文与定向
 
@@ -310,3 +317,4 @@
 - 2026-06-08：记录第二批 Host lifecycle race 自动化、test-only 诊断命令、trusted smoke 验证结果，以及真实 Panel restore 仍需人工复验的边界。
 - 2026-06-08：记录第三批真实 Panel restore 诊断摘要、用户可见 dump 提示和新增验收标准七。
 - 2026-06-08：记录第四批离线诊断 CLI、退出码约定、测试入口和验收标准八。
+- 2026-06-09：记录用户原风险布局人工复验、维护者真实宿主原生操作复验、设计文档验证状态恢复为“已验证”，并将本计划归档到 `completed/`。
