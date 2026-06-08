@@ -242,7 +242,7 @@ assert.match(
 );
 assert.match(
   panelManagerSource,
-  /const rootLocalSnapshotSummary = summarizeCanvasStateForDiagnostics\(rootLocalSnapshot\.state\)[\s\S]*const rootLocalLoadedStateSummary = summarizeCanvasStateForDiagnostics\(sanitizedRootState\)[\s\S]*source: 'rootLocalSnapshot'[\s\S]*snapshotWrittenAt: rootLocalSnapshot\.writtenAt[\s\S]*snapshotStateHash: rootLocalSnapshot\.stateHash \?\? rootLocalSnapshotSummary\.stateHash[\s\S]*loadedStateHash: rootLocalLoadedStateSummary\.stateHash[\s\S]*\.\.\.rootLocalSnapshotSummary/u,
+  /const rootLocalSnapshotSummary = summarizeCanvasStateForDiagnostics\(rootLocalSnapshot\.state\)[\s\S]*const rootLocalLoadedStateSummary = summarizeCanvasStateForDiagnostics\(runtimeSafeRootState\)[\s\S]*source: 'rootLocalSnapshot'[\s\S]*snapshotWrittenAt: rootLocalSnapshot\.writtenAt[\s\S]*snapshotStateHash: rootLocalSnapshot\.stateHash \?\? rootLocalSnapshotSummary\.stateHash[\s\S]*loadedStateHash: rootLocalLoadedStateSummary\.stateHash[\s\S]*\.\.\.rootLocalSnapshotSummary/u,
   'Expected root-local snapshot loads to report the selected snapshot hash while keeping the loaded-state hash separately.'
 );
 assert.match(

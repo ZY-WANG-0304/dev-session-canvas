@@ -17,7 +17,7 @@ related_specs:
   - docs/product-specs/canvas-graph-links-and-file-activity.md
 related_plans:
   - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
-updated_at: 2026-04-21
+updated_at: 2026-06-08
 ---
 
 # 画布文件活动视图设计
@@ -127,6 +127,7 @@ updated_at: 2026-04-21
 
 - 默认配置 `files.presentationMode = lists` 时，宿主为每个 Agent 生成一个 `file-list` 节点；若有共享文件，则额外生成一个共享 `file-list` 节点。
 - 配置切到 `nodes` 时，宿主把每个文件引用投影成一个 `file` 节点，并自动生成 `Agent -> 文件` 关系线。
+- 自动 `file` / `file-list` 的分组归属由 owner Agent 决定：单 owner 跟随该 Agent 的最内层 group，多 owner 使用这些 Agent 的最近公共父 group；multi-root 下只在各自 root 内重建，当前版本不合并跨 root owner。
 - `include` / `exclude` 过滤从 settings 页面迁到 sidebar 的 `常用操作` section；过滤状态单独持久化为视图状态，不写回 `fileReferences`。
 - 由于 VSCode 扩展 API 不支持在 TreeView 中局部嵌入输入框，当前实现把 `包含文件` / `排除文件` 收口为该 section 中的最小 `WebviewView` 输入框，并保持其余状态摘要继续留在原生 TreeView。
 - 这些自动节点与自动连线在每次文件引用更新、Agent 删除、sidebar 过滤变化或展示模式变化后统一重建。
@@ -229,4 +230,4 @@ Webview 仍然不直接访问 VSCode 文件系统或编辑器 API；所有“打
   - 修改 `devSessionCanvas.files.enabled` 后，当前窗口必须在 reload 后才切换文件功能状态；禁用后的下一次加载会清空 `fileReferences`、文件节点 / 文件列表节点、自动文件边、对应过滤入口与 `include` / `exclude` 状态，重新开启后也不会恢复已清空的旧文件活动与过滤状态。
   - 切换 `devSessionCanvas.fileNode.displayStyle` 后，自动文件节点 / 文件列表节点的 ID、位置和自动边关系保持稳定。
 
-截至 2026-04-21，本方案本轮增量已通过 `npm run typecheck`、`npm run test:workspace-relative-paths` 与 `npm run test:webview`。其中新增脚本测试覆盖“单根保持纯相对路径、多根补 workspace folder 前缀”的宿主规则，Playwright 也补了多根同名路径在文件列表树形视图下保持分根展示的回归断言。与此同时，`tests/vscode-smoke/extension-tests.cjs` 现已把 `devSessionCanvas.files.enabled` 收口为 startup-applied 语义：改配置后当前窗口保持不变，只有在 `simulateRuntimeReload()` 后才清空文件活动与过滤状态并切换文件功能可用性；重新开启后也不会恢复已清空的旧 `fileReferences` 与 `include` / `exclude` 状态。最近一次 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 复跑里，这条文件功能链路断言已通过，但整套 trusted smoke 仍卡在既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` 的 `waitForRuntimeSupervisorState()` 超时。
+截至 2026-04-21，本方案本轮增量已通过 `npm run typecheck`、`npm run test:workspace-relative-paths` 与 `npm run test:webview`。其中新增脚本测试覆盖“单根保持纯相对路径、多根补 workspace folder 前缀”的宿主规则，Playwright 也补了多根同名路径在文件列表树形视图下保持分根展示的回归断言。与此同时，`tests/vscode-smoke/extension-tests.cjs` 现已把 `devSessionCanvas.files.enabled` 收口为 startup-applied 语义：改配置后当前窗口保持不变，只有在 `simulateRuntimeReload()` 后才清空文件活动与过滤状态并切换文件功能可用性；重新开启后也不会恢复已清空的旧 `fileReferences` 与 `include` / `exclude` 状态。最近一次 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 复跑里，这条文件功能链路断言已通过，但整套 trusted smoke 仍卡在既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` 的 `waitForRuntimeSupervisorState()` 超时。2026-06-08 已补充宿主脚本测试覆盖 `file` / `file-list` 按 owner Agent 最近公共父分组归属、Agent 移动后自动重新归属、拖动 file-list 不改变 owner-derived group，以及 multi-root 下跨 root owner 不合并。

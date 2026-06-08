@@ -548,7 +548,7 @@ try {
   assert.match(applyDefaultCommandSource, /const appliedNodeIds = await panelManager\.applyDefaultCanvasTemplate\(\)/u);
   assert.match(
     applyDefaultCommandSource,
-    /await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+    /await panelManager\.revealOrCreateCurrentCanvasSurface\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
   );
   assert.doesNotMatch(applyDefaultCommandSource, /focusAppliedNodes: true/u);
   const resetDefaultCommandSource = sliceBetween(
@@ -559,7 +559,7 @@ try {
   assert.match(resetDefaultCommandSource, /const appliedNodeIds = await panelManager\.resetDefaultCanvasTemplateWithConfirmation\(\)/u);
   assert.match(
     resetDefaultCommandSource,
-    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreateCurrentCanvasSurface\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
   );
   assert.doesNotMatch(resetDefaultCommandSource, /focusAppliedNodes: true/u);
   const applyTemplateCommandSource = sliceBetween(
@@ -570,7 +570,7 @@ try {
   assert.match(applyTemplateCommandSource, /const appliedNodeIds = await panelManager\.applyCanvasTemplateById/u);
   assert.match(
     applyTemplateCommandSource,
-    /await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+    /await panelManager\.revealOrCreateCurrentCanvasSurface\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
   );
   assert.doesNotMatch(applyTemplateCommandSource, /focusAppliedNodes: true/u);
   const resetTemplateCommandSource = sliceBetween(
@@ -581,7 +581,7 @@ try {
   assert.match(resetTemplateCommandSource, /const appliedNodeIds = await panelManager\.resetCanvasTemplateByIdWithConfirmation/u);
   assert.match(
     resetTemplateCommandSource,
-    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreateCurrentCanvasSurface\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
   );
   assert.doesNotMatch(resetTemplateCommandSource, /focusAppliedNodes: true/u);
 
