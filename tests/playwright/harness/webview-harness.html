@@ -62,7 +62,7 @@
                   : [];
                 const respond = () => {
                   window.postMessage(
-                    {
+                    attachHarnessLifecycle({
                       type: 'host/executionFileLinksResolved',
                       payload: {
                         requestId: message.payload?.requestId,
@@ -70,7 +70,7 @@
                         kind: message.payload?.kind,
                         resolvedLinks
                       }
-                    },
+                    }),
                     '*'
                   );
                 };
@@ -91,8 +91,22 @@
           };
         };
 
+        function attachHarnessLifecycle(message) {
+          if (!message || typeof message !== 'object' || message.lifecycle !== undefined) {
+            return message;
+          }
+
+          return {
+            ...message,
+            lifecycle: window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__
+          };
+        }
+
         window.__devSessionCanvasHarness = {
           dispatchHostMessage(message) {
+            window.postMessage(attachHarnessLifecycle(message), '*');
+          },
+          dispatchRawHostMessage(message) {
             window.postMessage(message, '*');
           },
           bootstrap(
