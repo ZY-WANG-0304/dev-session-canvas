@@ -1,6 +1,6 @@
 # 画布关系连线与文件活动视图规格
 
-当前状态：已确认。2026-04-21 已按本文规格完成通用连线、provider 文件活动投影、文件节点 / 文件列表节点的 `card` / `minimal` 双风格收口，以及文件对象投影总开关。当前实现以正式开发质量推进，而不是一次性原型；其中 Agent 文件活动事件必须来自 provider 原生结构化事件，不能依赖 PTY 输出解析。第一轮自动文件活动覆盖 `Claude Code` 与仓库内 `fake-agent-provider` 验证路径；`Codex` 因缺少已确认的 provider 原生文件事件接口，当前只保留 no-op 适配，不把未确认能力写成已支持。本轮已通过 `npm run typecheck`、`npm run test:workspace-relative-paths` 与 `npm run test:webview`；最近一次 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 复跑中，文件功能相关断言已经通过，但整套 run 仍受既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` / `waitForRuntimeSupervisorState()` 超时阻塞。
+当前状态：已确认。2026-04-21 已按本文规格完成通用连线、provider 文件活动投影、文件节点 / 文件列表节点的 `card` / `minimal` 双风格收口，以及文件对象投影总开关。当前实现以正式开发质量推进，而不是一次性原型；其中 Agent 文件活动事件必须来自 provider 原生结构化事件，不能依赖 PTY 输出解析。第一轮自动文件活动覆盖 `Claude Code` 与仓库内 `fake-agent-provider` 验证路径；`Codex` 因缺少已确认的 provider 原生文件事件接口，当前只保留 no-op 适配，不把未确认能力写成已支持。本轮已通过 `npm run typecheck`、`npm run test:workspace-relative-paths` 与 `npm run test:webview`；最近一次 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 复跑中，文件功能相关断言已经通过，但整套 run 仍受既有 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` / `waitForRuntimeSupervisorState()` 超时阻塞。2026-06-08 已确认并实现自动文件对象的分组口径：`file` / `file-list` 按 owner Agent 最近公共父分组归属，multi-root 下不合并跨 root owner，模板不保存自动文件对象。
 
 ## 1. 用户问题
 
@@ -80,6 +80,7 @@
   - 用户可通过配置切换到文件列表节点模式。
   - 每个 Agent 会获得自己的文件列表节点，用图标和尾部读写标识标明每个文件是读、写还是读写。
   - 若文件被多个 Agent 共享，则系统会额外生成共享文件列表节点，并从相关 Agent 自动连线过去。
+  - 文件节点 / 文件列表节点的 group 归属由 owner Agent 决定：单 owner 跟随该 Agent 的最内层 group，多 owner 使用这些 Agent 的最近公共父 group；multi-root 下当前版本不合并跨 root owner。
   - 点击文件列表中的文件条目，会在 VSCode 编辑区打开文件；若画布当前在编辑区承载面，打开动作必须落到独立 editor group。
   - 文件列表节点同样受 `devSessionCanvas.fileNode.displayStyle` 控制：
     - `card`：保留当前卡片式文件列表节点。
