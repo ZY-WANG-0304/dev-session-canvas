@@ -270,8 +270,8 @@ assert.match(
 );
 assert.match(
   panelManagerSource,
-  /canPromoteReadyWebviewMessage[\s\S]*!this\.surfaceReady\[sourceSurface\][\s\S]*!currentLifecycle\.ready[\s\S]*lifecycle\.generation === renderedLifecycle\.generation/u,
-  'Expected ready promotion to be limited to surfaces that are not ready yet.'
+  /canPromoteReadyWebviewMessage[\s\S]*!this\.surfaceReady\[sourceSurface\] && !currentLifecycle\.ready[\s\S]*this\.getSurfaceMessageWebview\(sourceSurface\) === sourceWebview[\s\S]*!areSurfaceLifecycleFrameIdsCompatible\(currentLifecycle\.frameId, lifecycle\.frameId\)/u,
+  'Expected ready promotion to reject competing ready after ready while allowing same-Webview frame refresh.'
 );
 assert.match(
   panelManagerSource,
@@ -307,6 +307,11 @@ assert.match(
   panelManagerSource,
   /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*secondReadyPromotionIgnored[\s\S]*secondReadyBootstrapSuppressed[\s\S]*messageTargetStayedOnPromotedWebview/u,
   'Expected test diagnostics to prove a competing ready after bootstrap ack cannot promote or steal the message target.'
+);
+assert.match(
+  panelManagerSource,
+  /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*sameWebviewFrameReadyPromoted[\s\S]*sameWebviewFrameBootstrapDelivered[\s\S]*sameWebviewFrameLifecycleRebound/u,
+  'Expected test diagnostics to prove a same-Webview refreshed frame can rebind lifecycle and receive bootstrap.'
 );
 assert.match(
   panelManagerSource,
@@ -400,6 +405,11 @@ assert.match(
   smokeSource,
   /verifyWebviewLifecycleRaceDiagnostics[\s\S]*secondReadyPromotionIgnored[\s\S]*secondReadyBootstrapSuppressed[\s\S]*messageTargetStayedOnPromotedWebview/u,
   'Expected VS Code smoke tests to assert the competing ready after ack regression.'
+);
+assert.match(
+  smokeSource,
+  /verifyWebviewLifecycleRaceDiagnostics[\s\S]*sameWebviewFrameReadyPromoted[\s\S]*sameWebviewFrameBootstrapDelivered[\s\S]*sameWebviewFrameLifecycleRebound/u,
+  'Expected VS Code smoke tests to assert same-Webview refreshed frame lifecycle rebinding.'
 );
 assert.match(
   smokeSource,

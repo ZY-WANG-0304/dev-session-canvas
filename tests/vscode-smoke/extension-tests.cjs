@@ -270,6 +270,21 @@ async function verifyWebviewLifecycleRaceDiagnostics() {
     'Expected the promoted frame to keep the message target after a competing frame ready.'
   );
   assert.strictEqual(
+    result.sameWebviewFrameReadyPromoted,
+    true,
+    'Expected the current Webview object to accept a same-generation ready with a refreshed frame id.'
+  );
+  assert.strictEqual(
+    result.sameWebviewFrameBootstrapDelivered,
+    true,
+    'Expected a same-Webview refreshed frame to receive a replacement bootstrap.'
+  );
+  assert.strictEqual(
+    result.sameWebviewFrameLifecycleRebound,
+    true,
+    'Expected the current lifecycle frame id to rebind to the same-Webview refreshed frame.'
+  );
+  assert.strictEqual(
     result.gatedMessageQueuedBeforeAck,
     true,
     'Expected non-bootstrap host messages to queue until bootstrap ack.'
