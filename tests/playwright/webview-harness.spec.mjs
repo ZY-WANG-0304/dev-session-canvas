@@ -8974,6 +8974,86 @@ test('workspace root group title reuses regular group title chrome without renam
   expectBoxEdgesClose(rootFrameBoxAfterTitleDrag, rootFrameBox);
 });
 
+test('workspace root group title counter-scales like regular group titles below the content inset cap', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 520 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.4 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-06-08T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'workspace-root-a',
+        title: 'Frontend',
+        position: { x: 120, y: 120 },
+        size: { width: 2800, height: 1400 },
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/frontend'
+      },
+      {
+        id: 'group-regular',
+        title: 'Frontend',
+        position: { x: 3600, y: 120 },
+        size: { width: 2800, height: 1400 }
+      }
+    ],
+    edges: []
+  });
+  await settleWebview(page, 2);
+
+  await page.locator('.react-flow__controls-fitview').click();
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.25);
+
+  const titleChrome = await page.locator('[data-group-id="workspace-root-a"]').evaluate((frame) => {
+    const regularFrame = document.querySelector('[data-group-id="group-regular"]');
+    const rootTitlebar = frame.querySelector('.canvas-group-titlebar');
+    const regularTitlebar = regularFrame?.querySelector('.canvas-group-titlebar');
+    const rootInput = frame.querySelector('.canvas-group-title .window-title-input');
+    const regularInput = regularFrame?.querySelector('.canvas-group-title .window-title-input');
+    const viewport = document.querySelector('.react-flow__viewport');
+    if (
+      !(regularFrame instanceof HTMLElement) ||
+      !(rootTitlebar instanceof HTMLElement) ||
+      !(regularTitlebar instanceof HTMLElement) ||
+      !(rootInput instanceof HTMLInputElement) ||
+      !(regularInput instanceof HTMLInputElement) ||
+      !(viewport instanceof HTMLElement)
+    ) {
+      throw new Error('Workspace root title chrome not found.');
+    }
+    const zoom = Number(viewport.style.transform.match(/scale\(([-\d.]+)\)/)?.[1] ?? NaN);
+    const rootStyles = getComputedStyle(frame);
+    const regularStyles = getComputedStyle(regularFrame);
+    const rootInputStyles = getComputedStyle(rootInput);
+    const regularInputStyles = getComputedStyle(regularInput);
+    return {
+      zoom,
+      rootReadableScale: Number.parseFloat(rootStyles.getPropertyValue('--canvas-group-readable-scale')),
+      regularReadableScale: Number.parseFloat(regularStyles.getPropertyValue('--canvas-group-readable-scale')),
+      rootTitlebarHeight: rootTitlebar.getBoundingClientRect().height,
+      regularTitlebarHeight: regularTitlebar.getBoundingClientRect().height,
+      rootFontSize: Number.parseFloat(rootInputStyles.fontSize),
+      regularFontSize: Number.parseFloat(regularInputStyles.fontSize),
+      rootTitlebarWidth: rootTitlebar.getBoundingClientRect().width,
+      regularTitlebarWidth: regularTitlebar.getBoundingClientRect().width
+    };
+  });
+
+  expect(titleChrome.zoom).toBeLessThan(0.25);
+  expect(titleChrome.rootReadableScale).toBeCloseTo(1 / titleChrome.zoom, 1);
+  expect(titleChrome.rootReadableScale).toBeCloseTo(titleChrome.regularReadableScale, 1);
+  expect(titleChrome.rootTitlebarHeight).toBeCloseTo(titleChrome.regularTitlebarHeight, 1);
+  expect(titleChrome.rootTitlebarHeight).toBeGreaterThanOrEqual(24);
+  expect(titleChrome.rootFontSize * titleChrome.zoom).toBeCloseTo(12, 1);
+  expect(titleChrome.regularFontSize * titleChrome.zoom).toBeCloseTo(12, 1);
+  expect(titleChrome.rootTitlebarWidth).toBeCloseTo(titleChrome.regularTitlebarWidth, 1);
+});
+
 test('workspace root group selected title chrome keeps nodes inside body while zoomed out', async ({ page }) => {
   await openHarness(page, {
     persistedState: {

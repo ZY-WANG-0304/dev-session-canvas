@@ -9845,8 +9845,6 @@ const CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR = 7;
 const CANVAS_GROUP_ACTION_PRIMARY_WIDTH = 76;
 const CANVAS_GROUP_ACTION_DANGER_WIDTH = 62;
 const CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP = 0;
-// Must stay aligned with the multi-root composition content inset.
-const CANVAS_WORKSPACE_ROOT_CONTENT_INSET = 80;
 
 function isWorkspaceRootCanvasGroupRole(role: CanvasGroupRole | undefined): boolean {
   return role === 'workspace-root';
@@ -9890,6 +9888,7 @@ function createCanvasGroupFrameStyle(
   zoom: number,
   selected = false
 ): CSSProperties {
+  const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(group.role);
   const titleBaseWidth = Math.max(
     CANVAS_GROUP_TITLE_BASE_MIN_WIDTH,
     group.title.length * CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR + CANVAS_GROUP_TITLE_HORIZONTAL_PADDING
@@ -9897,19 +9896,17 @@ function createCanvasGroupFrameStyle(
   const toolbarScaleBaseWidth = selected
     ? CANVAS_GROUP_ACTION_PRIMARY_WIDTH + CANVAS_GROUP_ACTION_DANGER_WIDTH
     : 0;
-  const toolbarRenderBaseWidth = selected && !isWorkspaceRootCanvasGroupRole(group.role) ? toolbarScaleBaseWidth : 0;
-  const widthBase = Math.max(1, titleBaseWidth + toolbarScaleBaseWidth + (selected ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0));
-  const readableScale = Math.min(
-    groupReadableChromeScaleForZoom(zoom, group.size.width / widthBase),
-    isWorkspaceRootCanvasGroupRole(group.role)
-      ? CANVAS_WORKSPACE_ROOT_CONTENT_INSET / CANVAS_GROUP_TITLE_BASE_HEIGHT
-      : Number.POSITIVE_INFINITY
+  const toolbarRenderBaseWidth = selected && !isWorkspaceRootGroup ? toolbarScaleBaseWidth : 0;
+  const toolbarGap = toolbarRenderBaseWidth > 0 ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0;
+  const widthBase = Math.max(
+    1,
+    titleBaseWidth + toolbarScaleBaseWidth + (toolbarScaleBaseWidth > 0 ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0)
   );
+  const readableScale = groupReadableChromeScaleForZoom(zoom, group.size.width / widthBase);
   const desiredTitleTabWidth = titleBaseWidth * readableScale;
   const desiredToolbarWidth = toolbarRenderBaseWidth * readableScale;
   const titleTabWidth = Math.min(desiredTitleTabWidth, group.size.width);
   const bodyAlignedTitleTabWidth = `min(${titleTabWidth}px, 100%)`;
-  const toolbarGap = toolbarRenderBaseWidth > 0 ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0;
   const availableToolbarWidth = Math.max(0, group.size.width - titleTabWidth - toolbarGap);
   const toolbarWidth = selected && toolbarRenderBaseWidth > 0 && availableToolbarWidth >= 1
     ? Math.max(1, Math.min(desiredToolbarWidth, availableToolbarWidth))
