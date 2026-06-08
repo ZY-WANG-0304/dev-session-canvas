@@ -114,7 +114,15 @@ export class ExecutionTerminalLineContextTracker {
 
   public async getCwdForBufferLine(bufferStartLine: number): Promise<string | undefined> {
     await this.awaitPendingOperations();
-    return this.lineCwds[bufferStartLine] ?? this.currentCwd;
+    const startLine = Math.min(bufferStartLine, this.lineCwds.length - 1);
+    for (let lineIndex = startLine; lineIndex >= 0; lineIndex -= 1) {
+      const cwd = this.lineCwds[lineIndex];
+      const line = this.terminal.buffer.active.getLine(lineIndex)?.translateToString(true) ?? '';
+      if (cwd && line.trim().length > 0) {
+        return cwd;
+      }
+    }
+    return this.currentCwd;
   }
 
   public dispose(): void {

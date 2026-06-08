@@ -75,6 +75,39 @@ try {
   assert.equal(await multilineTracker.getCwdForBufferLine(resultLineIndex), '/repo/subdir');
   multilineTracker.dispose();
 
+  const smokeTracker = new ExecutionTerminalLineContextTracker(74, 24, {
+    cwd: '/repo',
+    pathStyle: 'posix'
+  });
+  smokeTracker.write('initialmoon@host dev-session-canvas % ');
+  smokeTracker.recordInput('cd "/repo/.debug/vscode-smoke/execution-native-interactions"\r');
+  smokeTracker.recordInput("printf '%s\\n%s\\n' 'link-target.ts' '  2:8  export const two = 2;'\r");
+  smokeTracker.write(
+    'c\bcd "/repo/.debug/vscode-smoke/execution-native-interactions"[?2004l\r\r\n' +
+      '[1m[7m%[27m[1m[0m                                                                         \r \r\r' +
+      '[0m[27m[24m[Jinitialmoon@host execution-native-interactions % [K[?2004h'
+  );
+  smokeTracker.write(
+    "p\bprint \r[Kf\rf '%s\\n%s\\n' 'link-target.ts' '  2:8  export const two = 2;'[?2004l\r\r\n" +
+      'link-target.ts\r\n  2:8  export const two = 2;\r\n' +
+      '[1m[7m%[27m[1m[0m                                                                         \r \r\r' +
+      '[0m[27m[24m[Jinitialmoon@host execution-native-interactions % [K[?2004h'
+  );
+
+  await smokeTracker.getCwdForBufferLine(0);
+  const smokeBufferLines = readTrackerBufferLines(smokeTracker);
+  const smokeResultLineIndex = findLastBufferLineIndex(smokeBufferLines, (line) => line.startsWith('  2:8'));
+  assert.ok(smokeResultLineIndex >= 0, 'expected smoke multiline result line to be present in the buffer');
+  assert.equal(
+    await smokeTracker.getCwdForBufferLine(smokeResultLineIndex),
+    '/repo/.debug/vscode-smoke/execution-native-interactions'
+  );
+  assert.equal(
+    await smokeTracker.getCwdForBufferLine(smokeResultLineIndex + 2),
+    '/repo/.debug/vscode-smoke/execution-native-interactions'
+  );
+  smokeTracker.dispose();
+
   console.log('executionTerminalLineContextTracker tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });

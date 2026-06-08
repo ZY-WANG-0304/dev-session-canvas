@@ -10,7 +10,7 @@
 
 | 文档 | 主题 | 状态 | 依据 | 最后更新 |
 | --- | --- | --- | --- | --- |
-| `docs/product-specs/agent-launch-modes-and-restart.md` | Agent 创建前启动方式、默认启动参数与停止后重启/新会话分流 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/agent-launch-modes-and-restart.md`、`docs/design-docs/execution-lifecycle-and-recovery.md` | 2026-05-18 |
+| `docs/product-specs/agent-launch-modes-and-restart.md` | Agent 创建前启动方式、默认启动参数、停止后重启/新会话分流与 Claude Code Fork | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/agent-launch-modes-and-restart.md`、`docs/design-docs/execution-lifecycle-and-recovery.md` | 2026-06-08 |
 | `docs/product-specs/agent-terminal-clipboard-shortcuts.md` | Agent / Terminal 执行节点的复制、粘贴与 `Ctrl+C` 打断冲突处理 | 已确认 | `ARCHITECTURE.md`、`docs/design-docs/execution-terminal-clipboard-shortcuts.md`、VSCode 原生 Terminal upstream 调研 | 2026-05-09 |
 | `docs/product-specs/canvas-graph-links-and-file-activity.md` | 画布通用关系连线、Agent 文件活动投影、文件节点与文件列表节点 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-graph-links.md`、`docs/design-docs/canvas-file-activity-view.md` | 2026-06-08 |
 | `docs/product-specs/canvas-node-groups.md` | 画布节点分组：把多个不同稳定节点与 owner Agent 推导的自动文件活动节点组织到同一个可命名分组框中，并支持批量移动、恢复、模板保留和空间导航 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-node-groups.md`、行业成熟画布分组方案调研 | 2026-06-08 |

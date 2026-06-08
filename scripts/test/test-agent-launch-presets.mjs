@@ -25,7 +25,9 @@ try {
     buildAgentPresetCommandLine,
     buildFreshAgentCommandLine,
     buildAgentHistoryResumeCommandLine,
+    buildClaudeBranchCommandLine,
     classifyAgentLaunchPreset,
+    extractClaudeCommandRuntimeSessionFlag,
     extractClaudeCommandSessionFlag,
     formatCommandLine,
     hasAnyCommandLineFlag,
@@ -38,6 +40,76 @@ try {
     command: '/tmp/providers/claude-custom',
     defaultArgs: ''
   };
+
+  assert.equal(
+    buildClaudeBranchCommandLine('claude-branch-session-123', claudeDefaults),
+    '/tmp/providers/claude-custom --resume claude-branch-session-123 --fork-session'
+  );
+
+  assert.equal(
+    buildClaudeBranchCommandLine(' claude-branch-session-456 ', {
+      command: 'claude',
+      defaultArgs: '--model opus --resume old-session --permission-mode plan'
+    }),
+    'claude --resume claude-branch-session-456 --fork-session --model opus --permission-mode plan'
+  );
+
+  assert.equal(
+    buildClaudeBranchCommandLine('claude-branch-session-789', {
+      command: 'claude',
+      defaultArgs: '--session-id old-session --continue older-session --dangerously-skip-permissions'
+    }),
+    'claude --resume claude-branch-session-789 --fork-session --dangerously-skip-permissions'
+  );
+
+  assert.throws(
+    () => buildClaudeBranchCommandLine('   ', claudeDefaults),
+    /Fork 会话标识不能为空。/
+  );
+
+  assert.deepEqual(
+    extractClaudeCommandRuntimeSessionFlag(['--resume', 'source-session', '--fork-session', '--session-id', 'branch-session']),
+    {
+      flag: '--session-id',
+      sessionId: 'branch-session'
+    }
+  );
+  assert.equal(
+    extractClaudeCommandRuntimeSessionFlag(['--resume', 'source-session', '--fork-session']),
+    null
+  );
+  assert.equal(
+    extractClaudeCommandRuntimeSessionFlag(['--resume', 'source-session', '--fork-session', '--session-id=']),
+    null
+  );
+  assert.deepEqual(
+    extractClaudeCommandRuntimeSessionFlag([
+      '--resume',
+      'source-session',
+      '--fork-session',
+      '--session-id=',
+      '--session-id',
+      'branch-session'
+    ]),
+    {
+      flag: '--session-id',
+      sessionId: 'branch-session'
+    }
+  );
+  assert.deepEqual(
+    extractClaudeCommandRuntimeSessionFlag(['--resume', 'regular-session']),
+    {
+      flag: '--resume',
+      sessionId: 'regular-session'
+    }
+  );
+  assert.deepEqual(
+    extractClaudeCommandSessionFlag(['--resume', 'source-session', '--fork-session', '--session-id', 'branch-session']),
+    {
+      flag: '--resume',
+      sessionId: 'source-session'
+    }
+  );
 
   const aliasValidation = validateAgentCommandLine(
     'claude --resume=session-123',

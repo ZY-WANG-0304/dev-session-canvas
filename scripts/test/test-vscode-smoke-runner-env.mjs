@@ -3,15 +3,22 @@ import os from 'os';
 import path from 'path';
 import { promises as fs } from 'fs';
 
-import { buildVSCodeChildEnv, prepareRuntime } from '../smoke/vscode-smoke-runner.mjs';
+import {
+  buildVSCodeArgs,
+  buildVSCodeChildEnv,
+  prepareRuntime,
+  resolveVSCodeSmokeDebugRoot
+} from '../smoke/vscode-smoke-runner.mjs';
 
 const originalElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
 const originalVscodeIpcHookCli = process.env.VSCODE_IPC_HOOK_CLI;
+const originalSmokeDebugRoot = process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT;
 const originalPath = process.env.PATH;
 
 try {
   process.env.ELECTRON_RUN_AS_NODE = '1';
   process.env.VSCODE_IPC_HOOK_CLI = '/tmp/parent-hook.sock';
+  process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT = path.join(os.tmpdir(), 'dsc-smoke-debug-root');
   process.env.PATH = originalPath ?? '';
 
   const env = buildVSCodeChildEnv({
@@ -22,6 +29,21 @@ try {
   assert.strictEqual(env.VSCODE_IPC_HOOK_CLI, undefined);
   assert.strictEqual(env.DEV_SESSION_CANVAS_SMOKE_SCENARIO, 'real-reopen');
   assert.strictEqual(env.PATH, process.env.PATH);
+
+  assert.strictEqual(
+    resolveVSCodeSmokeDebugRoot('/workspace/project'),
+    path.join(os.tmpdir(), 'dsc-smoke-debug-root')
+  );
+
+  const args = buildVSCodeArgs({
+    workspacePath: '/workspace/project',
+    userDataDir: '/tmp/dsc-smoke/trusted/user-data',
+    extensionsDir: '/tmp/dsc-smoke/trusted/extensions',
+    extensionTestsPath: '/workspace/project/tests/vscode-smoke/extension-tests.cjs',
+    extensionDevelopmentPath: '/workspace/project',
+    extraLaunchArgs: []
+  });
+  assert.ok(args.includes('--password-store=basic'));
 
   const debugRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-smoke-runner-env-'));
   try {
@@ -51,6 +73,12 @@ try {
     delete process.env.VSCODE_IPC_HOOK_CLI;
   } else {
     process.env.VSCODE_IPC_HOOK_CLI = originalVscodeIpcHookCli;
+  }
+
+  if (originalSmokeDebugRoot === undefined) {
+    delete process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT;
+  } else {
+    process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT = originalSmokeDebugRoot;
   }
 
   if (originalPath === undefined) {

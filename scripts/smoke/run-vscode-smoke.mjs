@@ -9,6 +9,7 @@ import {
   prepareMainSmokeHostExtension,
   prepareRuntime,
   resolveStagedSmokeTestPath,
+  resolveVSCodeSmokeDebugRoot,
   runInsideXvfb,
   shouldReRunInsideXvfb,
   spawnPreparedVSCodeScenario,
@@ -18,6 +19,7 @@ import { createRemoteSSHFixture } from './vscode-remote-ssh-fixture.mjs';
 
 const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
+const smokeDebugRoot = resolveVSCodeSmokeDebugRoot(projectRoot);
 const smokeFixturesDir = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures');
 const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'fake-agent-provider');
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
@@ -63,7 +65,7 @@ async function main() {
 
     const runtime = await prepareRuntime({
       projectRoot,
-      debugRoot: path.join(projectRoot, '.debug', 'vscode-smoke', scenario.name),
+      debugRoot: path.join(smokeDebugRoot, scenario.name),
       runtimeDirName: `dsc-vscode-smoke-runtime-${scenario.name}`,
       userSettings: scenario.userSettings,
       extensionTestsEnv: {
@@ -351,7 +353,7 @@ async function runLocalRealWindowReopenScenario(options) {
 
 async function prepareLocalRealReopenRuntime(options) {
   const runtime = await prepareRuntime({
-    debugRoot: path.join(projectRoot, '.debug', 'vscode-smoke', options.scenarioName),
+    debugRoot: path.join(smokeDebugRoot, options.scenarioName),
     runtimeDirName: options.runtimeDirName,
     userSettings: {
       'security.workspace.trust.enabled': false
@@ -436,7 +438,7 @@ async function runRemoteSSHRealReopenScenario() {
     return;
   }
 
-  const debugRoot = path.join(projectRoot, '.debug', 'vscode-smoke', 'remote-ssh-real-reopen');
+  const debugRoot = path.join(smokeDebugRoot, 'remote-ssh-real-reopen');
   const runtime = await prepareRuntime({
     debugRoot,
     runtimeDirName: 'dsc-vscode-smoke-runtime-remote-ssh-real-reopen'

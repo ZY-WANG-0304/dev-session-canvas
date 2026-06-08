@@ -140,7 +140,8 @@ import {
 import {
   buildFreshAgentCommandLine,
   buildAgentHistoryResumeCommandLine,
-  extractClaudeCommandSessionFlag,
+  buildClaudeBranchCommandLine,
+  extractClaudeCommandRuntimeSessionFlag,
   formatCommandLine,
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
@@ -484,11 +485,21 @@ interface CanvasFileFilterState {
   excludeGlobs: string[];
 }
 
+interface ExecutionFileLinkResolveCandidateDiagnostic {
+  text: string;
+  path: string;
+  source: ExecutionTerminalFileLinkSource;
+  bufferStartLine: number;
+  line?: number;
+  column?: number;
+}
+
 interface ExecutionFileLinkResolveDiagnostics {
   candidateCount: number;
   resolvedCount: number;
   durationMs: number;
   sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  candidates: ExecutionFileLinkResolveCandidateDiagnostic[];
 }
 
 interface ExecutionFileLinkResolveDiagnosticSample extends ExecutionFileLinkResolveDiagnostics {
@@ -2401,6 +2412,73 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         restored: true
       };
     }
+  }
+
+  private async branchAgentSession(nodeId: string): Promise<{ branched: boolean; errorMessage?: string }> {
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Fork Agent 会话。')) {
+      return {
+        branched: false,
+        errorMessage: '当前 workspace 未受信任，不能 Fork Agent 会话。'
+      };
+    }
+
+    const sourceNode = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
+    if (!sourceNode) {
+      const message = '未找到可 Fork 的 Agent 节点。';
+      this.postMessage({ type: 'host/error', payload: { message } });
+      return { branched: false, errorMessage: message };
+    }
+
+    const metadata = ensureAgentMetadata(sourceNode);
+    if (metadata.provider !== 'claude' || metadata.resumeStrategy !== 'claude-session-id') {
+      const message = '只有持有可信会话的 Claude Code Agent 才能 Fork。';
+      this.postMessage({ type: 'host/error', payload: { message } });
+      return { branched: false, errorMessage: message };
+    }
+
+    const sessionId = metadata.resumeSessionId?.trim();
+    if (!sessionId) {
+      const message = '当前 Claude Code Agent 尚未确认可 Fork 的会话标识。';
+      this.postMessage({ type: 'host/error', payload: { message } });
+      return { branched: false, errorMessage: message };
+    }
+
+    let branchCommandLine: string;
+    try {
+      branchCommandLine = this.buildClaudeBranchCommandLine(sessionId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '无法解析 Claude Code Fork 启动命令。';
+      this.postMessage({ type: 'host/error', payload: { message } });
+      return { branched: false, errorMessage: message };
+    }
+
+    const sourceSize = sourceNode.size ?? estimatedCanvasNodeFootprint('agent');
+    const preferredPosition = {
+      x: sourceNode.position.x + sourceSize.width + 48,
+      y: sourceNode.position.y
+    };
+    const createdNode = this.applyCreateNode('agent', preferredPosition, {
+      agentProvider: 'claude',
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: branchCommandLine,
+      titleOverride: `${sourceNode.title} Fork`,
+      cwdOverride: metadata.cwd
+    });
+    if (!createdNode) {
+      return { branched: false };
+    }
+
+    this.state = createBranchAgentUserEdge(this.state, sourceNode, createdNode);
+    this.persistState();
+    this.postState('host/stateUpdated');
+
+    try {
+      await this.focusNodeInCanvas(createdNode.id);
+    } catch {
+      void vscode.window.showWarningMessage(`Fork 节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+    }
+
+    return { branched: true };
   }
 
   public getSessionHistoryRestoreBlockReason(): string | undefined {
@@ -8908,6 +8986,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.trackRuntimeSupervisorOperation(operation);
         }
         return;
+      case 'webview/branchAgentSession':
+        void this.branchAgentSession(parsedMessage.payload.nodeId);
+        return;
       case 'webview/attachExecutionSession':
         this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
         return;
@@ -9192,7 +9273,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         };
       }
 
-      const explicitClaudeSessionFlag = extractClaudeCommandSessionFlag(launchArgs);
+      const explicitClaudeSessionFlag = extractClaudeCommandRuntimeSessionFlag(launchArgs);
+      if (isClaudeForkSessionLaunch(launchArgs)) {
+        return {
+          supported: false,
+          strategy: 'none',
+          sessionId: explicitClaudeSessionFlag?.sessionId ?? randomUUID()
+        };
+      }
+
       if (explicitClaudeSessionFlag?.sessionId) {
         return {
           supported: false,
@@ -10202,6 +10291,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
     }
 
+    const launchSpec = this.buildAgentLaunchSpec(
+      cliSpec,
+      launchArgs,
+      cwd,
+      normalizedCols,
+      normalizedRows,
+      executionEnv,
+      launchMode,
+      resumeContext,
+      fileActivitySession
+    );
     let snapshot: RuntimeSupervisorSessionSnapshot;
     try {
       snapshot = await client.createSession({
@@ -10213,19 +10313,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resumeStrategy: resumeContext.strategy,
         resumeSessionId: resumeContext.sessionId,
         resumeStoragePath: resumeContext.storagePath,
-        launchSpec: serializeExecutionSessionLaunchSpec(
-          this.buildAgentLaunchSpec(
-            cliSpec,
-            launchArgs,
-            cwd,
-            normalizedCols,
-            normalizedRows,
-            executionEnv,
-            launchMode,
-            resumeContext,
-            fileActivitySession
-          )
-        )
+        launchSpec: serializeExecutionSessionLaunchSpec(launchSpec)
       });
     } catch (error) {
       await fileActivitySession.dispose();
@@ -10248,7 +10336,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       launchMode,
       launchCommandLine: displayLaunchCommandLine,
       requestedCommand: cliSpec.requestedCommand,
-      launchArgs,
+      launchArgs: launchSpec.args,
       cols: normalizedCols,
       rows: normalizedRows,
       shellPath: cliSpec.command,
@@ -10633,19 +10721,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     try {
       cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand, cwd);
       const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
-      const process = createExecutionSessionProcess(
-        this.buildAgentLaunchSpec(
-          cliSpec,
-          freshLaunch?.launchArgs ?? [],
-          cwd,
-          normalizedCols,
-          normalizedRows,
-          executionEnv,
-          launchMode,
-          resumeContext,
-          fileActivitySession
-        )
+      const launchSpec = this.buildAgentLaunchSpec(
+        cliSpec,
+        freshLaunch?.launchArgs ?? [],
+        cwd,
+        normalizedCols,
+        normalizedRows,
+        executionEnv,
+        launchMode,
+        resumeContext,
+        fileActivitySession
       );
+      const process = createExecutionSessionProcess(launchSpec);
 
       const session: LocalExecutionSession = {
         sessionId,
@@ -10850,7 +10937,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         launchPreset: freshLaunch?.launchPreset ?? currentMetadata.launchPreset,
         launchCommandLine: displayLaunchCommandLine,
         requestedCommand: freshLaunch?.requestedCommand ?? null,
-        launchArgs: freshLaunch?.launchArgs ?? [],
+        launchArgs: launchSpec.args,
         cols: normalizedCols,
         rows: normalizedRows,
         shellPath: cliSpec.command,
@@ -11121,6 +11208,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       provider,
       sessionId,
       this.getAgentLaunchDefaults(provider)
+    );
+  }
+
+  private buildClaudeBranchCommandLine(sessionId: string): string {
+    return buildClaudeBranchCommandLine(
+      sessionId,
+      this.getAgentLaunchDefaults('claude')
     );
   }
 
@@ -11509,9 +11603,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       }
     } else if (spec.provider === 'claude') {
-      const hasExplicitClaudeSessionFlag = Boolean(extractClaudeCommandSessionFlag(launchArgs));
+      const hasExplicitClaudeSessionFlag = Boolean(extractClaudeCommandRuntimeSessionFlag(launchArgs));
       if (launchMode === 'resume' && resumeContext.sessionId) {
         args.push('--resume', resumeContext.sessionId);
+      } else if (resumeContext.sessionId && isClaudeForkSessionLaunch(launchArgs) && !hasExplicitClaudeSessionFlag) {
+        args.push('--session-id', resumeContext.sessionId);
       } else if (resumeContext.sessionId && !hasExplicitClaudeSessionFlag) {
         args.push('--session-id', resumeContext.sessionId);
       }
@@ -13567,7 +13663,15 @@ function buildExecutionFileLinkResolveDiagnostics(
     candidateCount: candidates.length,
     resolvedCount,
     durationMs,
-    sourceCounts
+    sourceCounts,
+    candidates: candidates.map((candidate) => ({
+      text: candidate.text,
+      path: candidate.path,
+      source: candidate.source,
+      bufferStartLine: candidate.bufferStartLine,
+      line: candidate.line,
+      column: candidate.column
+    }))
   };
 }
 
@@ -17425,6 +17529,23 @@ function createUserCanvasEdge(
   };
 }
 
+function createBranchAgentUserEdge(
+  previousState: CanvasPrototypeState,
+  sourceNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>,
+  targetNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>
+): CanvasPrototypeState {
+  const anchors = resolveHorizontalCanvasEdgeAnchors(sourceNode, targetNode);
+  return createUserCanvasEdge(previousState, {
+    id: `edge-${randomUUID()}`,
+    sourceNodeId: sourceNode.id,
+    targetNodeId: targetNode.id,
+    sourceAnchor: anchors.sourceAnchor,
+    targetAnchor: anchors.targetAnchor,
+    arrowMode: 'forward',
+    owner: 'user'
+  });
+}
+
 function canConnectCanvasEdgeEndpoints(
   state: CanvasPrototypeState,
   sourceNodeId: string,
@@ -20241,6 +20362,10 @@ function canResumeAgentFromMetadata(metadata: Pick<AgentNodeMetadata, 'resumeStr
   }
 
   return false;
+}
+
+function isClaudeForkSessionLaunch(launchArgs: readonly string[]): boolean {
+  return launchArgs.some((token) => token === '--fork-session' || token.startsWith('--fork-session='));
 }
 
 function normalizeAgentCliCacheWorkspaceCwd(workspaceCwd: string | undefined): string {

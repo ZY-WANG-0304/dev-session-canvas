@@ -59,6 +59,7 @@ export const TEST_COMMAND_IDS = {
   clearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   getDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   clearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
+  dumpHostDiagnostics: 'devSessionCanvas.__test.dumpHostDiagnostics',
   locateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
   locateClaudeSessionId: 'devSessionCanvas.__test.locateClaudeSessionId',
   extractCodexResumeSessionId: 'devSessionCanvas.__test.extractCodexResumeSessionId',

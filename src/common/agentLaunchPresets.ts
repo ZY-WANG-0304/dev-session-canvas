@@ -65,6 +65,23 @@ export function buildAgentHistoryResumeCommandLine(
   ]);
 }
 
+export function buildClaudeBranchCommandLine(
+  sessionId: string,
+  defaults: AgentProviderLaunchDefaults
+): string {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    throw new Error('Fork 会话标识不能为空。');
+  }
+
+  const command = defaults.command.trim() || 'claude';
+  const baseArgs = assertAgentDefaultArgsParsable('claude', defaults);
+  return formatCommandLine([
+    command,
+    ...buildClaudeBranchArgv(baseArgs, normalizedSessionId)
+  ]);
+}
+
 export function validateAgentCommandLine(
   commandLine: string,
   provider: AgentProviderKind,
@@ -197,6 +214,26 @@ export function hasAnyCommandLineFlag(argv: readonly string[], flags: readonly s
 export function extractClaudeCommandSessionFlag(
   argv: readonly string[]
 ): ClaudeCommandSessionFlag | null {
+  return extractClaudeCommandSessionFlagByTarget(argv, ['--session-id', '--resume', '--continue']);
+}
+
+export function hasClaudeForkSessionFlag(argv: readonly string[]): boolean {
+  return argv.some((token) => token === '--fork-session' || token.startsWith('--fork-session='));
+}
+
+export function extractClaudeCommandRuntimeSessionFlag(
+  argv: readonly string[]
+): ClaudeCommandSessionFlag | null {
+  return hasClaudeForkSessionFlag(argv)
+    ? extractClaudeCommandSessionFlagByTarget(argv, ['--session-id'], { requireSessionId: true })
+    : extractClaudeCommandSessionFlag(argv);
+}
+
+function extractClaudeCommandSessionFlagByTarget(
+  argv: readonly string[],
+  targetFlags: readonly ClaudeCommandSessionFlag['flag'][],
+  options: { requireSessionId?: boolean } = {}
+): ClaudeCommandSessionFlag | null {
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]?.trim();
     if (!token) {
@@ -204,11 +241,14 @@ export function extractClaudeCommandSessionFlag(
     }
 
     const matchedFlag = matchClaudeCommandSessionFlag(token);
-    if (!matchedFlag) {
+    if (!matchedFlag || !targetFlags.includes(matchedFlag.flag)) {
       continue;
     }
 
     if (matchedFlag.sessionId !== undefined) {
+      if (options.requireSessionId && !matchedFlag.sessionId) {
+        continue;
+      }
       return {
         flag: matchedFlag.flag,
         sessionId: matchedFlag.sessionId
@@ -216,9 +256,13 @@ export function extractClaudeCommandSessionFlag(
     }
 
     const nextToken = argv[index + 1]?.trim();
+    const sessionId = nextToken && !nextToken.startsWith('-') ? nextToken : undefined;
+    if (options.requireSessionId && !sessionId) {
+      continue;
+    }
     return {
       flag: matchedFlag.flag,
-      sessionId: nextToken && !nextToken.startsWith('-') ? nextToken : undefined
+      sessionId
     };
   }
 
@@ -480,6 +524,11 @@ function buildAgentResumeArgv(
   }
 
   return buildCodexResumeArgv(baseArgs, explicitSessionId);
+}
+
+function buildClaudeBranchArgv(baseArgs: readonly string[], explicitSessionId: string): string[] {
+  const normalizedArgs = stripClaudeResumeTargetArgs(baseArgs);
+  return ['--resume', explicitSessionId, '--fork-session', ...normalizedArgs];
 }
 
 function stripCodexExecutionModeArgs(baseArgs: readonly string[]): string[] {

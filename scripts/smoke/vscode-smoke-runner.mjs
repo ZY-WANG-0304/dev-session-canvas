@@ -105,6 +105,15 @@ export async function spawnPreparedVSCodeScenario(options) {
   };
 }
 
+export function resolveVSCodeSmokeDebugRoot(projectRoot) {
+  const override = process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT?.trim();
+  if (override) {
+    return override;
+  }
+
+  return path.join(projectRoot, '.debug', 'vscode-smoke');
+}
+
 export async function prepareRuntime(options) {
   const debugRoot = options.debugRoot;
   const userDataDir = path.join(debugRoot, 'user-data');
@@ -311,6 +320,7 @@ export function buildVSCodeArgs(options) {
     `--extensions-dir=${options.extensionsDir}`,
     '--no-sandbox',
     '--disable-gpu-sandbox',
+    '--password-store=basic',
     '--disable-updates',
     '--skip-welcome',
     '--skip-release-notes'
