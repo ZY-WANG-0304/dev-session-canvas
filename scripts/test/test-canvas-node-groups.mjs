@@ -715,6 +715,49 @@ try {
     'When an Agent moves to a new group, its automatic file-list should follow the owner-derived group.'
   );
 
+  const multiSelectedAgentAndFileListMoveState = rebuildCanvasFileArtifacts(
+    moveNode(
+      ownerGroupedFileLists,
+      'agent-owned',
+      { x: 1660, y: 260 },
+      { x: 1680, y: 280 },
+      [
+        {
+          id: 'file-list-agent-agent-owned',
+          position: { x: 1880, y: 260 }
+        }
+      ]
+    ),
+    {
+      view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
+      preserveAutomaticFileNodeSizes: true
+    }
+  );
+  const oldOwnerGroupAfterMultiMove = multiSelectedAgentAndFileListMoveState.groups.find((candidate) => candidate.id === 'group-owner-a');
+  const newOwnerGroupAfterMultiMove = multiSelectedAgentAndFileListMoveState.groups.find((candidate) => candidate.id === 'group-owner-b');
+  const multiMovedAgent = multiSelectedAgentAndFileListMoveState.nodes.find((candidate) => candidate.id === 'agent-owned');
+  const multiMovedFileList = multiSelectedAgentAndFileListMoveState.nodes.find((candidate) => candidate.id === 'file-list-agent-agent-owned');
+  assert.strictEqual(multiMovedAgent.groupId, 'group-owner-b');
+  assert.strictEqual(
+    multiMovedFileList.groupId,
+    'group-owner-b',
+    'Multi-select moving an owner Agent with its file-list should regroup the file-list before group repair.'
+  );
+  assert.deepStrictEqual(
+    oldOwnerGroupAfterMultiMove.position,
+    ownerGroupedFileLists.groups.find((candidate) => candidate.id === 'group-owner-a').position,
+    'The old owner group should not move while repairing a file-list that followed its owner.'
+  );
+  assert.deepStrictEqual(
+    oldOwnerGroupAfterMultiMove.size,
+    ownerGroupedFileLists.groups.find((candidate) => candidate.id === 'group-owner-a').size,
+    'The old owner group should not expand to contain the stale file-list position from the same drag batch.'
+  );
+  assert.ok(
+    rectContainsRectForTest(rectForTestGroup(newOwnerGroupAfterMultiMove), rectForTestNode(multiMovedFileList)),
+    'The new owner group should expand to contain the moved owner-derived file-list.'
+  );
+
   const draggedFileListState = rebuildCanvasFileArtifacts(
     moveNode(
       ownerGroupedFileLists,

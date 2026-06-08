@@ -14476,15 +14476,12 @@ function moveNode(
     };
   });
 
-  const movedState = adjustMovedNodesAfterGroupDrop(
-    previousState,
-    {
-      ...previousState,
-      updatedAt: new Date().toISOString(),
-      nodes
-    },
-    movedNodeIds
-  );
+  const stateWithMovedNodes = applyOwnerDerivedAutomaticFileArtifactGroupIds({
+    ...previousState,
+    updatedAt: new Date().toISOString(),
+    nodes
+  });
+  const movedState = adjustMovedNodesAfterGroupDrop(previousState, stateWithMovedNodes, movedNodeIds);
   const movedWorkspaceRootGroupIds = new Set(
     movedState.nodes
       .filter((node) => movedNodeIds.has(node.id) && node.groupId)
@@ -14505,6 +14502,47 @@ function moveNode(
       ...(movedWorkspaceRootGroupIds.size === 1 ? [...movedWorkspaceRootGroupIds] : [])
     ]
   });
+}
+
+function applyOwnerDerivedAutomaticFileArtifactGroupIds(
+  state: CanvasPrototypeState
+): CanvasPrototypeState {
+  if (!state.nodes.some((node) => isAutomaticFileArtifactNodeKind(node.kind))) {
+    return state;
+  }
+
+  const groups = state.groups ?? [];
+  const ownerNodesById = new Map(
+    state.nodes
+      .filter((node) => !isAutomaticFileArtifactNodeKind(node.kind))
+      .map((node) => [node.id, node] as const)
+  );
+  let didChange = false;
+  const nodes = state.nodes.map((node) => {
+    if (!isAutomaticFileArtifactNodeKind(node.kind)) {
+      return node;
+    }
+
+    const nextGroupId = resolveAutomaticFileArtifactGroupId(
+      node,
+      ownerNodesById,
+      groups,
+      resolveContainingWorkspaceRootGroupId(groups, node.groupId)
+    );
+    if (nextGroupId === node.groupId) {
+      return node;
+    }
+
+    didChange = true;
+    return withCanvasNodeGroupId(node, nextGroupId);
+  });
+
+  return didChange
+    ? {
+        ...state,
+        nodes
+      }
+    : state;
 }
 
 function normalizeCanvasNodeMoveIntents(intents: readonly CanvasNodeMoveIntent[]): CanvasNodeMoveIntent[] {
