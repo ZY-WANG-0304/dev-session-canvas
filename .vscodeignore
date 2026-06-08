@@ -16,6 +16,7 @@
 docs/**
 scripts/README.md
 scripts/build/**
+scripts/diagnostics/**
 scripts/media/**
 scripts/release/**
 scripts/shared/**

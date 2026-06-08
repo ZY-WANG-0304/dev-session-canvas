@@ -602,7 +602,15 @@ interface XtermCoreWithMouseInternals {
 const vscode = acquireVsCodeApi<LocalUiState>();
 const reportedRuntimeDiagnostics = new Set<string>();
 const initialPersistedState = vscode.getState() ?? {};
-const webviewLifecycleIdentity = createWebviewLifecycleIdentity();
+const injectedWebviewLifecycleIdentity = extractWebviewMessageLifecycle({
+  lifecycle: window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__
+});
+const webviewLifecycleIdentity = createWebviewLifecycleIdentity(injectedWebviewLifecycleIdentity);
+if (!injectedWebviewLifecycleIdentity) {
+  window.setTimeout(() => {
+    emitWebviewLifecycleDiagnostic('Active Webview HTML is missing a valid lifecycle identity; using the test fallback identity.');
+  }, 0);
+}
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionTerminalRegistry = new Map<
   string,
@@ -1126,7 +1134,13 @@ function App(): JSX.Element {
     const listener = (event: MessageEvent<HostToWebviewMessage>) => {
       const message = event.data;
       const messageLifecycle = extractWebviewMessageLifecycle(message);
+      if (requiresHostMessageLifecycle(message.type) && !messageLifecycle) {
+        emitWebviewLifecycleDiagnostic(`ignore host message without lifecycle: ${message.type}`);
+        return;
+      }
+
       if (messageLifecycle && !isCurrentWebviewLifecycleIdentity(messageLifecycle)) {
+        emitWebviewLifecycleDiagnostic(`ignore host message with mismatched lifecycle: ${message.type}`);
         return;
       }
 
@@ -14368,10 +14382,19 @@ function isCurrentWebviewLifecycleIdentity(lifecycle: WebviewLifecycleIdentity):
   );
 }
 
-function createWebviewLifecycleIdentity(): WebviewLifecycleIdentity {
-  const hostLifecycle = extractWebviewMessageLifecycle({
-    lifecycle: window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__
+function requiresHostMessageLifecycle(type: HostToWebviewMessage['type']): boolean {
+  return type !== 'host/error';
+}
+
+function emitWebviewLifecycleDiagnostic(message: string): void {
+  emitRuntimeDiagnostic({
+    source: 'webview.lifecycle',
+    message,
+    readyState: document.readyState
   });
+}
+
+function createWebviewLifecycleIdentity(hostLifecycle: WebviewLifecycleIdentity | undefined): WebviewLifecycleIdentity {
   return {
     ...(hostLifecycle ?? {
       surface: 'panel',
