@@ -157,6 +157,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const dumpResult = await panelManager.dumpCurrentHostDiagnostics();
     const revealAction = '在资源管理器中显示';
     const openLifecycleSummaryAction = '打开 lifecycle 摘要';
+    const openPerformanceDiagnosticsAction = '打开性能诊断';
     const lifecycleStatus = formatWebviewLifecycleDumpStatus(dumpResult.webviewLifecycleStatus);
     const panelRestoreHint = dumpResult.webviewLifecyclePanelRestoreLikelyAffected
       ? '；Panel restore 可能仍受 lifecycle 阻塞'
@@ -164,10 +165,13 @@ export function activate(context: vscode.ExtensionContext): void {
     const selection = await vscode.window.showInformationMessage(
       `当前宿主诊断已写入 ${dumpResult.outputDir}。Webview lifecycle：${lifecycleStatus}${panelRestoreHint}`,
       openLifecycleSummaryAction,
+      openPerformanceDiagnosticsAction,
       revealAction
     );
     if (selection === openLifecycleSummaryAction) {
       await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(dumpResult.webviewLifecycleSummaryPath));
+    } else if (selection === openPerformanceDiagnosticsAction) {
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(dumpResult.executionPerformanceDiagnosticsPath));
     } else if (selection === revealAction) {
       await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dumpResult.summaryPath));
     }
