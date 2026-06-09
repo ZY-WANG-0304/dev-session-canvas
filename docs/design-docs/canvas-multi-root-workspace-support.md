@@ -17,7 +17,8 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/canvas-multi-root-composed-canvas-rewrite.md
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
-updated_at: 2026-06-08
+  - docs/exec-plans/completed/canvas-add-folder-root-placement.md
+updated_at: 2026-06-10
 ---
 
 # 画布多根 workspace 组合视图设计
@@ -38,6 +39,7 @@ Dev Session Canvas 的核心价值是让用户在 VSCode 内通过同一张空�
 - 全局 fit view 与 MiniMap 默认把所有系统 root section 作为一等空间对象纳入，让用户能看到完整组合画布布局。
 - root section 对内部是硬容器，对外部是整体分组对象。
 - 多根组合视图中的 root section 位置、尺寸和跨 root 外层普通分组保存为 multi-root overlay。
+- `Add Folder to Workspace` 新增 root section 时，应优先出现在用户当前可见中心附近的最近可用位置，并通过视口动画进入视野。
 - 多根组合视图中对某个 root 内节点、用户分组和 Note 的编辑写回该 root 的 root-local 状态。
 - 执行节点真实执行 root 继续由 `metadata.cwd` 决定，不因拖到另一个 root section 而静默改写。
 - 多根组合视图应支持按 root-local runtime metadata 重新附着 `Agent` / `Terminal` live runtime；canvas surface 只负责显示，不拥有后端进程。
@@ -53,6 +55,8 @@ Dev Session Canvas 的核心价值是让用户在 VSCode 内通过同一张空�
 方案 B 是 multi-root 维护一张独立共享画布，节点用 `cwd` 标识 root。它接近现有单状态模型，但单根与多根仍是互相看不见的分支。本轮不采用。
 
 方案 C 是 root-local 状态 + multi-root 组合视图 + overlay。每个 root 维护自己的 root-local 状态；单根直接读取它；多根读取所有 root-local 状态并生成系统 root section；root section 布局属于 overlay。本轮采用。
+
+新增 root section 的空间落点比较过几类成熟算法。ELK / Graphviz 这类全图布局适合层次图、力导向图或大型图重排，但它们会把已有 root section 一并重算，不符合 overlay 是用户手工整理结果的约束。D3 force collision 一类碰撞约束适合持续模拟节点云，容易带来迭代收敛和抖动问题。矩形 packing / overlap removal 更贴近本需求：新增对象有明确矩形尺寸，已有 root section 是不可移动障碍物，只需要找离当前视口中心最近且不重叠的槽位。因此本轮采用局部确定性矩形候选槽位搜索，不新增布局库依赖。
 
 ## 6. 正式方案
 
@@ -72,7 +76,7 @@ root-local 状态使用扩展 global storage 按 root 绝对路径稳定分桶�
 
 ### 6.4 组合与拆分规则
 
-组合时，宿主按 root 顺序读取每个 root-local state。节点、用户分组、连线和文件活动 owner node id 都加上 root 命名空间前缀；root-local 顶层用户分组和稳定节点成为 root section 的直接成员；root-local 坐标加上 root section 的内容偏移；root section 的位置、尺寸和父分组来自 overlay，没有 overlay 时按 root 顺序自动铺开。root 内连线只允许连接同一个 root section 内的节点；Webview 与 Host 都拒绝跨 root 创建或重连连线，避免生成无法拆回 root-local、且 overlay 不持久化的临时边。文件活动自动节点和 file-activity edge 使用同一 root 命名空间重建，且 `file` / `file-list` 按 owner Agent 的最近公共父分组推导为 root 内自动成员；没有公共用户分组时直接归属该 root section。当前版本不合并跨 root 的 `file` / `file-list`，避免产生无法拆回 root-local state 的跨 root 自动 artifact，并避免不同 root 的 `file-*`、`file-list-*` 或 suppression id 冲突。
+组合时，宿主按 root 顺序读取每个 root-local state。节点、用户分组、连线和文件活动 owner node id 都加上 root 命名空间前缀；root-local 顶层用户分组和稳定节点成为 root section 的直接成员；root-local 坐标加上 root section 的内容偏移；root section 的位置、尺寸和父分组来自 overlay，没有 overlay 时按 root 顺序自动铺开。`src/common/canvasMultiRootComposition.ts` 的 `ComposeMultiRootCanvasStateOptions.newRootPlacement` 只服务 workspace folder 变化时新增且 overlay 尚无位置的 root：Host 把当前可见中心传入后，组合模块以该中心作为锚点，生成 anchor、已有 root 四周贴边和环形扩张候选，按候选中心到可见中心的距离选择第一个不与已有 root section 扩张阻挡矩形相交的位置，并在下一次 decompose / persist 时写入 multi-root overlay。已有 overlay root section 不因新增 root 重新排布；没有可见中心时仍回退到默认网格。root 内连线只允许连接同一个 root section 内的节点；Webview 与 Host 都拒绝跨 root 创建或重连连线，避免生成无法拆回 root-local、且 overlay 不持久化的临时边。文件活动自动节点和 file-activity edge 使用同一 root 命名空间重建，且 `file` / `file-list` 按 owner Agent 的最近公共父分组推导为 root 内自动成员；没有公共用户分组时直接归属该 root section。当前版本不合并跨 root 的 `file` / `file-list`，避免产生无法拆回 root-local state 的跨 root 自动 artifact，并避免不同 root 的 `file-*`、`file-list-*` 或 suppression id 冲突。
 
 live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点所在 workspace-root namespace 生成 `fileReferences.id`。如果多根组合视图中仍存在旧的未命名空间化 file reference，重建文件活动 artifact 时也会按当前 root scope 补 namespace，并只迁移或移除属于当前 root 的 owner，避免把另一个 root 的 owner 一起丢掉。这样用户删除自动文件节点后，suppression id 能在 compose/decompose 往返中继续落到同一个 root-local file artifact，而不会在重载后复活。
 
@@ -80,7 +84,7 @@ live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点�
 
 ### 6.5 创建与拖拽语义
 
-单根 workspace 创建行为保持现状。多根 workspace 中，从 root section 内右键创建节点或分组时，新对象归入该 root。命令面板或侧栏创建节点时，如果不能从位置或 cwd 推断 root，宿主让用户选择目标 root。创建 `Agent` / `Terminal` 时，若没有显式 `cwdOverride`，宿主使用目标 root 的路径作为 `metadata.cwd`。拖入 Markdown 文件创建关联 Note 时，只有落点在某个 root section 内才创建。拖动执行节点到其他 root section 不会静默改写 `cwd`。
+单根 workspace 创建行为保持现状。多根 workspace 中，从 root section 内右键创建节点或分组时，新对象归入该 root。命令面板或侧栏创建节点时，如果不能从位置或 cwd 推断 root，宿主让用户选择目标 root。创建 `Agent` / `Terminal` 时，若没有显式 `cwdOverride`，宿主使用目标 root 的路径作为 `metadata.cwd`。拖入 Markdown 文件创建关联 Note 时，只有落点在某个 root section 内才创建。拖动执行节点到其他 root section 不会静默改写 `cwd`。当 VSCode `onDidChangeWorkspaceFolders` 发现新增 root 后，`src/panel/CanvasPanelManager.ts` 在完成 state reload、persist 和 `host/stateUpdated` 后发送 `host/focusGroup`；`src/webview/main.tsx` 根据该 root section 的 group bounds 调用 React Flow `getViewportForBounds()` 和 `setViewport(..., { duration })`，用缩放平移动画把新增 root section 移入视野并选中该系统分组。程序化 focus 动画结束后，Webview 必须像用户平移/缩放一样继续发送 `webview/updateViewportCenter`，让 Host 的当前可见中心随动画后的 viewport 更新；否则连续 Add Folder 时，后一个 root 会继续锚定到聚焦前的旧视口中心。2026-06-09 的实测诊断显示，`Add Folder to Workspace` 后 Panel Webview 可能在同一个 generation 内刷新 frameId，导致旧 frameId 上的首条 `host/focusGroup` 被新 frame 按 lifecycle mismatch 忽略；因此 Host 会在短窗口内保留 workspace-root focus 意图，并在同 generation frame refresh / bootstrapAck 后用当前 lifecycle 再投递一次聚焦请求。
 
 ### 6.6 Multi-root live runtime 恢复语义
 
@@ -96,8 +100,8 @@ root-local global storage 与旧 workspace storage 并存，用户可能有迁�
 
 ## 8. 验证方法
 
-新增 root composition 纯函数测试，覆盖 ID 命名空间、root section overlay、组合/拆分、root 内新增对象归属和 overlay 外层分组重组。扩展分组测试，覆盖系统 root section 不可删除/取消分组/重命名、root 内扩边、root-root 避让和 root 被外层分组包含。扩展协议、模板、Markdown 拖入和执行 cwd 测试。导航与 MiniMap 需要追加 Webview Playwright：空 root section 没有节点时仍被全局 fit view 纳入；多个 root section 在 MiniMap 中可见且与普通用户分组可区分。live runtime 恢复需要补 multi-root reload 后 Agent / Terminal 真实 reattach、离线输出可见、单根窗口与 multi-root 窗口同时 attach 同一 session、resize last-writer-wins，以及缺失 `runtimeStoragePath` 的迁移或显式降级回归。最终运行 `npm run typecheck`、`npm run build` 和 `git diff --check`。
+新增 root composition 纯函数测试，覆盖 ID 命名空间、root section overlay、组合/拆分、root 内新增对象归属、overlay 外层分组重组，以及 Add Folder 新增 root 按可见中心就近避让并写回 overlay。扩展分组测试，覆盖系统 root section 不可删除/取消分组/重命名、root 内扩边、root-root 避让和 root 被外层分组包含。扩展协议、模板、Markdown 拖入和执行 cwd 测试。导航与 MiniMap 需要追加 Webview Playwright：空 root section 没有节点时仍被全局 fit view 纳入；多个 root section 在 MiniMap 中可见且与普通用户分组可区分；`host/focusGroup` 能用缩放平移动画把新增 root section 居中。live runtime 恢复需要补 multi-root reload 后 Agent / Terminal 真实 reattach、离线输出可见、单根窗口与 multi-root 窗口同时 attach 同一 session、resize last-writer-wins，以及缺失 `runtimeStoragePath` 的迁移或显式降级回归。最终运行 `npm run typecheck`、`npm run build` 和 `git diff --check`。
 
 ## 9. 当前验证状态
 
-截至 2026-06-07，本设计已完成主路径自动化验证：composition、protocol、group policy、execution context、template、Markdown drop、typecheck、build 与针对 workspace root group 的 Playwright 用例均通过。review 修复已追加覆盖 live 文件活动按 owner root namespace 记录 file reference、旧 unnamespaced reference 在 root scope 内迁移、suppression 往返保留，以及旧 multi-root live runtime skip 不覆盖 root-local reattach 信号。root section 参与全局 fit view 与 MiniMap 的导航增强已在 `docs/exec-plans/completed/canvas-spatial-fit-minimap.md` 中完成并记录定向验证。2026-06-06 已把 multi-root live runtime 从“整体跳过”修订并实现为“按 root-local runtime metadata 共享恢复”：Host 不再以 `multi-root-workspace` 整体 block，runtime binding key 纳入 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind`，对缺失 `runtimeStoragePath` 的旧 root-local live-runtime snapshot 显式降级，并让 supervisor delete 先向订阅者广播非 live 终态，避免误连当前 multi-root workspace storage 或让其他窗口停留在假 live。2026-06-07 针对同一个 root 可能存在多个 VS Code `workspaceStorage` slot 的风险补充验证：单根 root-local snapshot 缺少 `runtimeStoragePath` 也降级，不再由当前同 root slot 回填；`test:smoke-storage-slot` 覆盖 root-local snapshot 优先、旧 sibling slot 恢复和缺字段降级；real reopen smoke 记录并校验 Agent / Terminal 重连前后的 slot name 不变。`npm run test:canvas-execution-context`、`npm run test:canvas-multi-root-composition`、`npm run test:runtime-supervisor-protocol`、`npm run test:extension-storage-paths`、`npm run test:canvas-node-groups`、`npm run typecheck`、`npm run build`、`node -c tests/vscode-smoke/real-reopen-tests.cjs`、`node -c tests/vscode-smoke/storage-slot-recovery-tests.cjs`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=single-to-multi-root-real-reopen node scripts/smoke/run-vscode-smoke.mjs`、`node scripts/smoke/run-vscode-storage-slot-smoke.mjs` 和 `git diff --check` 已通过。真实 VSCode smoke 已补充 `multi-root-real-reopen`、`single-to-multi-root-real-reopen` 与 `two-window-shared-runtime` 三条路径，覆盖 multi-root 窗口重启恢复、单根创建后 multi-root 重启恢复、离线输出可见、重连后输入继续作用同一 session、不使用当前 multi-root workspace storage 误连，以及两个独立 VS Code 窗口同时 attach 同一 Agent/Terminal runtime 后的双向 output 多播、双向 input、resize last-writer-wins、stop/delete 共享 session 终态同步。全量 Webview Playwright 仍有与本功能无直接关系或 lifecycle 断言口径相关的失败，需要后续单独收口。
+截至 2026-06-09，本设计已完成主路径自动化验证：composition、protocol、group policy、execution context、template、Markdown drop、typecheck、build 与针对 workspace root group 的 Playwright 用例均通过。Add Folder root placement 本轮新增 `test:canvas-multi-root-composition` 覆盖新增 root 使用当前可见中心就近放置、避让已有 root 并写回 overlay，新增 Playwright 用例覆盖 `host/focusGroup` 通过缩放平移动画把 workspace root section 居中并选中。review 修复已追加覆盖 live 文件活动按 owner root namespace 记录 file reference、旧 unnamespaced reference 在 root scope 内迁移、suppression 往返保留，以及旧 multi-root live runtime skip 不覆盖 root-local reattach 信号。root section 参与全局 fit view 与 MiniMap 的导航增强已在 `docs/exec-plans/completed/canvas-spatial-fit-minimap.md` 中完成并记录定向验证。2026-06-06 已把 multi-root live runtime 从“整体跳过”修订并实现为“按 root-local runtime metadata 共享恢复”：Host 不再以 `multi-root-workspace` 整体 block，runtime binding key 纳入 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind`，对缺失 `runtimeStoragePath` 的旧 root-local live-runtime snapshot 显式降级，并让 supervisor delete 先向订阅者广播非 live 终态，避免误连当前 multi-root workspace storage 或让其他窗口停留在假 live。2026-06-07 针对同一个 root 可能存在多个 VS Code `workspaceStorage` slot 的风险补充验证：单根 root-local snapshot 缺少 `runtimeStoragePath` 也降级，不再由当前同 root slot 回填；`test:smoke-storage-slot` 覆盖 root-local snapshot 优先、旧 sibling slot 恢复和缺字段降级；real reopen smoke 记录并校验 Agent / Terminal 重连前后的 slot name 不变。真实 VSCode smoke 已补充 `multi-root-real-reopen`、`single-to-multi-root-real-reopen` 与 `two-window-shared-runtime` 三条路径，覆盖 multi-root 窗口重启恢复、单根创建后 multi-root 重启恢复、离线输出可见、重连后输入继续作用同一 session、不使用当前 multi-root workspace storage 误连，以及两个独立 VS Code 窗口同时 attach 同一 Agent/Terminal runtime 后的双向 output 多播、双向 input、resize last-writer-wins、stop/delete 共享 session 终态同步。全量 Webview Playwright 仍有与本功能无直接关系或 lifecycle 断言口径相关的失败，需要后续单独收口。
