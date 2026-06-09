@@ -320,6 +320,16 @@ assert.match(
 );
 assert.match(
   panelManagerSource,
+  /postWorkspaceRootFocusGroupMessage[\s\S]*pendingWorkspaceRootFocusReplay[\s\S]*WORKSPACE_ROOT_FOCUS_REPLAY_WINDOW_MS[\s\S]*postWorkspaceRootFocusGroupMessageForCurrentLifecycle/u,
+  'Expected Add Folder workspace-root focus to replay across same-generation frame refreshes.'
+);
+assert.match(
+  panelManagerSource,
+  /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*focusMessageRetriedAfterFrameRefresh[\s\S]*focusMessageReachedRefreshedFrame/u,
+  'Expected lifecycle diagnostics to cover retried workspace-root focus after a frame refresh.'
+);
+assert.match(
+  panelManagerSource,
   /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*staleProbeResultIgnored[\s\S]*pendingProbeResolvedFromCurrent[\s\S]*staleDomActionResultIgnored[\s\S]*pendingDomActionResolvedFromCurrent/u,
   'Expected test diagnostics to prove pending Webview requests ignore stale source instances but resolve from the bound frame.'
 );

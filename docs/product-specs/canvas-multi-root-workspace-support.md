@@ -80,6 +80,7 @@ related_plans:
 - 在 multi-root workspace 中，空 root section 没有节点时也会被全局 fit view 纳入；右下角 MiniMap 能看出多个 root section 的相对布局。
 - 在 multi-root workspace 中添加第三个 folder 后，新 root section 不使用远离当前视口的默认 index 网格位置，而是落在当前可见中心附近的最近可用空位，且不与已有 root section 重叠；重载后该位置保持。
 - 添加 folder 后当前画布通过短暂缩放平移动画移动到新增 root section，新增 root section 可见并被选中。
+- 如果添加 folder 后 Panel Webview 发生同 generation frame refresh，新增 root section 的聚焦请求仍会在当前 frame 上 replay 并完成动画。
 - 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
 
 ## 验证状态

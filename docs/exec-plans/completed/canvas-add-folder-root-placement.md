@@ -109,13 +109,13 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是 
 
 ## 验证与验收
 
-自动化验收至少包括四点。第一，`test:canvas-multi-root-composition` 中新增 root 使用 `newRootPlacement.preferredCenter` 后不再落在默认 index 网格位置，且不与已有 root section 重叠。第二，decompose 后新增 root position 写入 overlay，重载后能保持。第三，`test:protocol-webview-messages` 通过，证明协议类型仍可被共享源码检查覆盖。第四，Playwright `host focus group request animates to a workspace root section` 证明 Webview 收到 `host/focusGroup` 后会通过动画把 root section 放到视口中心并选中该 group。
+自动化验收至少包括五点。第一，`test:canvas-multi-root-composition` 中新增 root 使用 `newRootPlacement.preferredCenter` 后不再落在默认 index 网格位置，且不与已有 root section 重叠。第二，decompose 后新增 root position 写入 overlay，重载后能保持。第三，`test:protocol-webview-messages` 通过，证明协议类型仍可被共享源码检查覆盖。第四，Playwright `host focus group request animates to a workspace root section` 证明 Webview 收到 `host/focusGroup` 后会通过动画把 root section 放到视口中心并选中该 group。第五，2026-06-09 用户提供的 host diagnostics 显示 `host/focusGroup` 已投递但被同 generation frame refresh 后的新 frame 以 lifecycle mismatch 忽略；本计划补充 Host focus replay 与 Webview 用例，覆盖旧 frameId 的 focus 被忽略后，当前 frameId 的 replay focus 仍能触发动效。
 
 人工验收路径：打开 multi-root 画布，平移到一个已有 root 附近；通过 VSCode `Add Folder to Workspace...` 添加第三个 folder；预期新 root section 出现在当前视口附近的空位，随后画布通过短动画缩放平移到该 root，右下角 MiniMap 也能看到新 root 的相对位置。重载窗口后，新 root section 保持该位置。
 
 ## 幂等性与恢复
 
-实现只改变新增 root 的 overlay 位置推导和 Webview focus 协议。重复执行 compose 时，如果 overlay 已有 root position，则不会再次应用 pending placement。若 workspace folder 变化期间没有可见中心，compose 回退到旧的默认 root 网格。若 Webview 未 ready，`focusWorkspaceRootInCanvas()` 会等待 active surface ready；失败只记录诊断，不影响 root-local / overlay 持久化。若需要撤回本轮改动，可删除新增 `newRootPlacement` / `host/focusGroup` 路径，旧默认网格与手动 fit view 行为仍可工作。
+实现只改变新增 root 的 overlay 位置推导和 Webview focus 协议。重复执行 compose 时，如果 overlay 已有 root position，则不会再次应用 pending placement。若 workspace folder 变化期间没有可见中心，compose 回退到旧的默认 root 网格。若 Webview 未 ready，`focusWorkspaceRootInCanvas()` 会等待 active surface ready；失败只记录诊断，不影响 root-local / overlay 持久化。由于 VSCode Panel Webview 在 reveal 后可能用同一个 generation 生成新 frameId，workspace-root focus 会在短窗口内随当前 lifecycle replay；replay 只重复无副作用的 `host/focusGroup` 视口请求，若 surface 不再 active / ready 或窗口过期则停止。若需要撤回本轮改动，可删除新增 `newRootPlacement` / `host/focusGroup` 路径，旧默认网格与手动 fit view 行为仍可工作。
 
 ## 证据与备注
 

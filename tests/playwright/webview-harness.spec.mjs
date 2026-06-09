@@ -6225,6 +6225,71 @@ test('host focus group request animates to a workspace root section', async ({ p
   expect(Math.abs(rootBox.y + rootBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
 });
 
+test('host focus group request survives a same-generation frame refresh', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-06-09T00:00:00.000Z',
+    nodes: [],
+    edges: [],
+    groups: [
+      {
+        id: 'workspace-root-refresh',
+        title: 'refresh',
+        position: { x: 2400, y: 720 },
+        size: { width: 720, height: 520 },
+        role: 'workspace-root',
+        workspaceRootPath: '/workspace/refresh'
+      }
+    ],
+    nextGroupSequence: 1,
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: []
+  });
+  await settleWebview(page, 4);
+
+  const beforeTransform = await readCanvasViewportTransform(page);
+  await page.evaluate(() => {
+    const lifecycle = window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__;
+    window.__devSessionCanvasHarness.dispatchRawHostMessage({
+      type: 'host/focusGroup',
+      lifecycle: {
+        ...lifecycle,
+        frameId: 'frame-before-refresh'
+      },
+      payload: {
+        groupId: 'workspace-root-refresh'
+      }
+    });
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/focusGroup',
+      payload: {
+        groupId: 'workspace-root-refresh'
+      }
+    });
+  });
+
+  await expect
+    .poll(async () => {
+      const transform = await readCanvasViewportTransform(page);
+      return transform && transform !== beforeTransform ? transform : null;
+    })
+    .not.toBeNull();
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedGroupId).toBe('workspace-root-refresh');
+});
+
 test('double-clicking the title input keeps the current viewport unchanged', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
