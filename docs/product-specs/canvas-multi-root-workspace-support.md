@@ -1,7 +1,7 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-06-09
+updated_at: 2026-06-10
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
 related_plans:
@@ -48,7 +48,7 @@ related_plans:
 16. 多根窗口不能用当前 multi-root workspace storage path 猜 runtime；同一个 root 的多个 storage slot 也不能互相替代，必须使用 root-local metadata 中保存的完整 `runtimeStoragePath`。旧 snapshot 缺少 `runtimeStoragePath` 时必须迁移或显式降级为历史恢复，并记录诊断。
 17. 全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 把所有系统 root section 作为一等空间对象纳入；multi-root 下全局 fit view 默认包含所有 root section。
 18. 当 VSCode workspace folder 变化新增 root 时，如果该 root 在 multi-root overlay 中还没有位置，系统应以当前画布可见中心为锚点，选择离该中心最近且不与已有 root section 重叠的可用位置；已有 overlay root 位置不被重新计算。
-19. 新增 root section 进入 composed view 后，Host 应请求当前 Webview 聚焦该 workspace-root group；Webview 通过平移与缩放动画把该 root section 移入视野，并在动画结束后持久化 viewport。
+19. 新增 root section 进入 composed view 后，Host 应请求当前 Webview 聚焦该 workspace-root group；Webview 通过平移与缩放动画把该 root section 移入视野，并在动画结束后持久化 viewport，同时向 Host 上报动画后的 `webview/updateViewportCenter`。
 
 ## 非目标
 
@@ -80,6 +80,7 @@ related_plans:
 - 在 multi-root workspace 中，空 root section 没有节点时也会被全局 fit view 纳入；右下角 MiniMap 能看出多个 root section 的相对布局。
 - 在 multi-root workspace 中添加第三个 folder 后，新 root section 不使用远离当前视口的默认 index 网格位置，而是落在当前可见中心附近的最近可用空位，且不与已有 root section 重叠；重载后该位置保持。
 - 添加 folder 后当前画布通过短暂缩放平移动画移动到新增 root section，新增 root section 可见并被选中。
+- 连续添加 folder 且用户不手动平移时，第二个新增 root 的落点应锚定在上一次程序化聚焦后的可见中心附近，而不是聚焦前的旧视口中心。
 - 如果添加 folder 后 Panel Webview 发生同 generation frame refresh，新增 root section 的聚焦请求仍会在当前 frame 上 replay 并完成动画。
 - 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
 

@@ -1944,6 +1944,7 @@ function App(): JSX.Element {
       viewport: targetViewport
     }));
     scheduleFocusedViewportPersistence();
+    postCanvasViewportCenter(targetViewport);
     return true;
   };
 
@@ -3057,21 +3058,31 @@ function App(): JSX.Element {
     persistCanvasViewport(viewport);
   };
 
-  const persistCanvasViewport = (viewport: Viewport): void => {
-    clearPendingViewportPersistenceTimeout();
+  const postCanvasViewportCenter = (viewport: Viewport): void => {
+    const visibleCenter = resolveVisibleCanvasCenterFromViewport(viewport, canvasShellRef.current);
+    if (!visibleCenter) {
+      return;
+    }
+
+    postMessage({
+      type: 'webview/updateViewportCenter',
+      payload: {
+        visibleCenter
+      }
+    });
+  };
+
+  const commitCanvasViewport = (viewport: Viewport): void => {
     setLocalUiState((current) => ({
       ...current,
       viewport
     }));
-    const visibleCenter = resolveVisibleCanvasCenterFromViewport(viewport, canvasShellRef.current);
-    if (visibleCenter) {
-      postMessage({
-        type: 'webview/updateViewportCenter',
-        payload: {
-          visibleCenter
-        }
-      });
-    }
+    postCanvasViewportCenter(viewport);
+  };
+
+  const persistCanvasViewport = (viewport: Viewport): void => {
+    clearPendingViewportPersistenceTimeout();
+    commitCanvasViewport(viewport);
   };
 
   const handleMoveStart = (): void => {
@@ -3096,10 +3107,7 @@ function App(): JSX.Element {
         return;
       }
 
-      setLocalUiState((current) => ({
-        ...current,
-        viewport
-      }));
+      commitCanvasViewport(viewport);
     }, NODE_FOCUS_ANIMATION_DURATION_MS + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
   };
 

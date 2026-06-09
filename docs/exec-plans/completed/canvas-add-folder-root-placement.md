@@ -64,7 +64,7 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是 
 
 第三步在 `CanvasPanelManager` 的 `vscode.workspace.onDidChangeWorkspaceFolders()` 中记录变化前后的 normalized root path，计算新增 root 列表，读取当前可见中心，作为本次 `loadReconciledState()` 的 pending placement 输入。加载完成后找出新增 root 的 workspace-root group，持久化并发布 `host/stateUpdated`，随后发送 `host/focusGroup`。
 
-第四步在 `src/common/protocol.ts` 增加 `host/focusGroup`，在 `src/webview/main.tsx` 接收后根据 group rect 和当前 viewport size 调用 `getViewportForBounds()`，再用 `ReactFlowInstance.setViewport(..., { duration })` 平移缩放到 root section，同时更新 selected group 本地状态。
+第四步在 `src/common/protocol.ts` 增加 `host/focusGroup`，在 `src/webview/main.tsx` 接收后根据 group rect 和当前 viewport size 调用 `getViewportForBounds()`，再用 `ReactFlowInstance.setViewport(..., { duration })` 平移缩放到 root section，同时更新 selected group 本地状态。focus 动画结束后的 viewport 持久化必须复用与用户拖拽相同的可见中心上报路径，向 Host 发送 `webview/updateViewportCenter`，确保连续 Add Folder 时下一个 root 使用动画后的可见中心作为 placement 锚点。
 
 ## 具体步骤
 
@@ -109,7 +109,7 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是 
 
 ## 验证与验收
 
-自动化验收至少包括五点。第一，`test:canvas-multi-root-composition` 中新增 root 使用 `newRootPlacement.preferredCenter` 后不再落在默认 index 网格位置，且不与已有 root section 重叠。第二，decompose 后新增 root position 写入 overlay，重载后能保持。第三，`test:protocol-webview-messages` 通过，证明协议类型仍可被共享源码检查覆盖。第四，Playwright `host focus group request animates to a workspace root section` 证明 Webview 收到 `host/focusGroup` 后会通过动画把 root section 放到视口中心并选中该 group。第五，2026-06-09 用户提供的 host diagnostics 显示 `host/focusGroup` 已投递但被同 generation frame refresh 后的新 frame 以 lifecycle mismatch 忽略；本计划补充 Host focus replay 与 Webview 用例，覆盖旧 frameId 的 focus 被忽略后，当前 frameId 的 replay focus 仍能触发动效。
+自动化验收至少包括五点。第一，`test:canvas-multi-root-composition` 中新增 root 使用 `newRootPlacement.preferredCenter` 后不再落在默认 index 网格位置，且不与已有 root section 重叠。第二，decompose 后新增 root position 写入 overlay，重载后能保持。第三，`test:protocol-webview-messages` 通过，证明协议类型仍可被共享源码检查覆盖。第四，Playwright `host focus group request animates to a workspace root section` 证明 Webview 收到 `host/focusGroup` 后会通过动画把 root section 放到视口中心、选中该 group，并向 Host 上报动画后的 `webview/updateViewportCenter`，避免连续 Add Folder 使用旧中心。第五，2026-06-09 用户提供的 host diagnostics 显示 `host/focusGroup` 已投递但被同 generation frame refresh 后的新 frame 以 lifecycle mismatch 忽略；本计划补充 Host focus replay 与 Webview 用例，覆盖旧 frameId 的 focus 被忽略后，当前 frameId 的 replay focus 仍能触发动效。
 
 人工验收路径：打开 multi-root 画布，平移到一个已有 root 附近；通过 VSCode `Add Folder to Workspace...` 添加第三个 folder；预期新 root section 出现在当前视口附近的空位，随后画布通过短动画缩放平移到该 root，右下角 MiniMap 也能看到新 root 的相对位置。重载窗口后，新 root section 保持该位置。
 

@@ -18,7 +18,7 @@ related_plans:
   - docs/exec-plans/active/canvas-multi-root-composed-canvas-rewrite.md
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
   - docs/exec-plans/completed/canvas-add-folder-root-placement.md
-updated_at: 2026-06-09
+updated_at: 2026-06-10
 ---
 
 # 画布多根 workspace 组合视图设计
@@ -84,7 +84,7 @@ live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点�
 
 ### 6.5 创建与拖拽语义
 
-单根 workspace 创建行为保持现状。多根 workspace 中，从 root section 内右键创建节点或分组时，新对象归入该 root。命令面板或侧栏创建节点时，如果不能从位置或 cwd 推断 root，宿主让用户选择目标 root。创建 `Agent` / `Terminal` 时，若没有显式 `cwdOverride`，宿主使用目标 root 的路径作为 `metadata.cwd`。拖入 Markdown 文件创建关联 Note 时，只有落点在某个 root section 内才创建。拖动执行节点到其他 root section 不会静默改写 `cwd`。当 VSCode `onDidChangeWorkspaceFolders` 发现新增 root 后，`src/panel/CanvasPanelManager.ts` 在完成 state reload、persist 和 `host/stateUpdated` 后发送 `host/focusGroup`；`src/webview/main.tsx` 根据该 root section 的 group bounds 调用 React Flow `getViewportForBounds()` 和 `setViewport(..., { duration })`，用缩放平移动画把新增 root section 移入视野并选中该系统分组。2026-06-09 的实测诊断显示，`Add Folder to Workspace` 后 Panel Webview 可能在同一个 generation 内刷新 frameId，导致旧 frameId 上的首条 `host/focusGroup` 被新 frame 按 lifecycle mismatch 忽略；因此 Host 会在短窗口内保留 workspace-root focus 意图，并在同 generation frame refresh / bootstrapAck 后用当前 lifecycle 再投递一次聚焦请求。
+单根 workspace 创建行为保持现状。多根 workspace 中，从 root section 内右键创建节点或分组时，新对象归入该 root。命令面板或侧栏创建节点时，如果不能从位置或 cwd 推断 root，宿主让用户选择目标 root。创建 `Agent` / `Terminal` 时，若没有显式 `cwdOverride`，宿主使用目标 root 的路径作为 `metadata.cwd`。拖入 Markdown 文件创建关联 Note 时，只有落点在某个 root section 内才创建。拖动执行节点到其他 root section 不会静默改写 `cwd`。当 VSCode `onDidChangeWorkspaceFolders` 发现新增 root 后，`src/panel/CanvasPanelManager.ts` 在完成 state reload、persist 和 `host/stateUpdated` 后发送 `host/focusGroup`；`src/webview/main.tsx` 根据该 root section 的 group bounds 调用 React Flow `getViewportForBounds()` 和 `setViewport(..., { duration })`，用缩放平移动画把新增 root section 移入视野并选中该系统分组。程序化 focus 动画结束后，Webview 必须像用户平移/缩放一样继续发送 `webview/updateViewportCenter`，让 Host 的当前可见中心随动画后的 viewport 更新；否则连续 Add Folder 时，后一个 root 会继续锚定到聚焦前的旧视口中心。2026-06-09 的实测诊断显示，`Add Folder to Workspace` 后 Panel Webview 可能在同一个 generation 内刷新 frameId，导致旧 frameId 上的首条 `host/focusGroup` 被新 frame 按 lifecycle mismatch 忽略；因此 Host 会在短窗口内保留 workspace-root focus 意图，并在同 generation frame refresh / bootstrapAck 后用当前 lifecycle 再投递一次聚焦请求。
 
 ### 6.6 Multi-root live runtime 恢复语义
 
