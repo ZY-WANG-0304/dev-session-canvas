@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on preparing the `0.14.1` Preview patch release and tightening follow-up `0.14.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on preparing the `0.15.0` Preview release and tightening follow-up `0.15.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](images/marketplace/canvas-overview.gif)
 
@@ -32,6 +32,7 @@ The product has entered the public `Preview` phase and already completed its fir
 - Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics
 - Execution-terminal link detection for native-style URLs, file paths, multiline line-number output, high-confidence TUI hard-wrapped URL / styled-file fragments, and live-output file-link cache refresh
 - Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands, opening their config files, and separating stopped-node `New` versus `Restart` actions
+- Claude Code Agent `Fork` from a trusted session id into a new Agent node that starts with provider-native fork semantics
 - Automatic CLI selection / installation recovery when an `Agent` launch cannot resolve the requested CLI
 - Multi-section desktop-notification companion sidebar with platform onboarding and `Codex` / `Claude Code` notification-configuration guidance
 - Limited capability handling under `Restricted Mode`
@@ -58,7 +59,7 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current `0.14.1` release-prep focus is to ship a `0.14.x` patch for Explorer Markdown-file Note creation, create-entry surface reuse, group-body canvas panning, and shared live-runtime recovery hardening. It preserves the `0.14.0` spatial navigation milestone, Marketplace metadata, installation topology, support boundaries, and Marketplace `Preview` positioning. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current `0.15.0` release-prep focus is to ship a new Preview milestone for Claude Code Agent Fork, owner-derived grouping for file-activity artifacts, Panel Webview lifecycle diagnostics, and publish-tag release automation. It preserves the `0.14.1` Markdown Note shortcut, surface reuse, group-body panning, shared-runtime recovery hardening, Marketplace metadata, installation topology, support boundaries, and Marketplace `Preview` positioning. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -66,7 +67,7 @@ Explicit conclusions:
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
 - The primary public distribution channel remains `Visual Studio Marketplace`; the `Open VSX` namespace is now claimed and later releases should mirror the same version there as a supplemental channel.
-- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.14.1` repo-local validation focuses on version/package consistency, Explorer Markdown Note creation, create-entry surface reuse, group-body canvas panning, multi-root/shared-runtime recovery checks, extension manifest checks, VSIX payload checks, and publish dry-run consistency; Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.15.0` repo-local validation focuses on version/package consistency, Claude Agent Fork command/protocol/UI/Host coverage, owner-derived file-activity grouping, Panel Webview lifecycle diagnostics, publish-tag release automation, extension manifest checks, VSIX payload checks, and publish dry-run consistency; Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
@@ -80,7 +81,7 @@ Related entry points:
 Public distribution is intended to happen through public extension registries. Official VS Code continues to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. `.vsix` files are no longer treated as a public distribution format for ordinary users and are kept only as build artifacts and release-verification inputs.
 
 - Public `Preview` users should install through the extension registry configured by their host rather than by manually distributing a `.vsix`
-- `Visual Studio Marketplace` is already the primary public installation path; later `0.14.x` updates still need the final git ref to be locked, the same version published to both `Visual Studio Marketplace` and `Open VSX`, and post-release verification completed
+- `Visual Studio Marketplace` is already the primary public installation path; later `0.15.x` updates still need the final git ref to be locked, the same version published to both `Visual Studio Marketplace` and `Open VSX`, and post-release verification completed
 - `Open VSX` does not change the official VS Code Marketplace path and does not expand the compatibility-support matrix by itself
 
 ## Desktop Notification Companion (Auto-Installed)
