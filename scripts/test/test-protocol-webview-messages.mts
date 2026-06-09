@@ -216,6 +216,11 @@ assert.match(
   /type: 'host\/requestCreateNode'[\s\S]*targetGroupId\?: string/u,
   'Expected host/requestCreateNode to carry an optional target group for multi-root root selection.'
 );
+assert.match(
+  protocolSource,
+  /type: 'host\/focusGroup'[\s\S]*groupId: string/u,
+  'Expected host/focusGroup to carry a workspace root group target for Add Folder viewport focus.'
+);
 
 const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
 assert.match(
