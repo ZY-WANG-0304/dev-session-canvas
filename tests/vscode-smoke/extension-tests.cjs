@@ -103,6 +103,13 @@ const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY =
   `# Associated Note\n\n- updated from canvas\n\n${REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL}\nupdated tail`;
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
+const DEFAULT_ATTENTION_SIGNALS = [
+  'bel',
+  'osc9',
+  'osc777',
+  'agentAbnormalExit',
+  'codexAbnormalOutputText'
+];
 const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
@@ -855,7 +862,14 @@ async function runTrustedSmoke() {
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
   const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
-  assert.strictEqual(notificationModeSummaryItem.description, '系统通知 · 标题栏+Minimap 增强 · 文本异常关闭');
+  assert.strictEqual(
+    notificationModeSummaryItem.description,
+    '系统通知 · 全部 attention · 标题栏+Minimap 增强 · 文本异常关闭'
+  );
+  assert.match(
+    notificationModeSummaryItem.tooltip,
+    /启用的 attention signal：BEL、OSC 9、OSC 777、Agent 异常退出、Codex 文本异常。/
+  );
 
   await verifyCanvasTemplatesTrusted();
   await ensureEditorCanvasReady();
@@ -5808,6 +5822,9 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
   const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
     configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
   );
+  const originalEnabledAttentionSignals = normalizeEnabledAttentionSignals(
+    configuration.get('devSessionCanvas.notifications.enabledAttentionSignals', DEFAULT_ATTENTION_SIGNALS)
+  );
   const originalStrongReminderMode = normalizeStrongTerminalAttentionReminderMode(
     configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', 'both')
   );
@@ -5815,6 +5832,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
   const strongReminderNoneMessage = 'strong-reminder-none-smoke';
   const strongReminderTitleBarMessage = 'strong-reminder-titlebar-smoke';
   const strongReminderMinimapMessage = 'strong-reminder-minimap-smoke';
+  const disabledSignalMessage = 'terminal-signal-disabled-smoke';
+  const allowedSignalMessage = 'terminal-signal-enabled-smoke';
   const bridgeEnabledMessage = 'bridge-enabled-smoke';
   const bridgeViewMessage = 'bridge-focus-smoke';
   const bridgeDuplicateMessage = 'bridge-duplicate-smoke';
@@ -5827,6 +5846,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
   try {
+    await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
     await ensureStrongTerminalAttentionReminderMode('both');
     await ensureAttentionNotificationBridgeMode('none');
 
@@ -5976,6 +5996,114 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
           'both mode should add minimap size pulsing when bridge is disabled.'
         );
         await clearAttentionByClick();
+
+        const expectedBelMessage = `Agent「${agentLabel}」发出终端提醒。`;
+        await ensureAttentionNotificationBridgeMode('workbench');
+        await ensureEnabledAttentionSignals(['osc9', 'osc777']);
+        calls.length = 0;
+        await clearDiagnosticEvents();
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `bell ${disabledSignalMessage}\r`
+          }
+        });
+        await waitForSnapshot((currentSnapshot) => {
+          const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+          return Boolean(
+            currentNode?.metadata?.agent?.recentOutput?.includes(`[fake-agent] belled ${disabledSignalMessage}`) &&
+              currentNode.status === 'waiting-input' &&
+              currentNode?.metadata?.agent?.attentionPending !== true
+          );
+        }, 20000);
+        const disabledProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === false &&
+                currentNode.attentionIndicatorFlashing === false &&
+                currentNode.minimapAttentionFlashing === false &&
+                currentNode.minimapAttentionSizePulsing === false
+            );
+          },
+          20000
+        );
+        const disabledDiagnostics = await waitForDiagnosticEvents(
+          (events) =>
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationSuppressed' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.reason === 'signal-disabled' &&
+                Array.isArray(event.detail?.signals) &&
+                event.detail.signals.includes('bel')
+            ),
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), []);
+        assert.strictEqual(
+          disabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          false,
+          'A disabled terminal BEL signal should not create node attention.'
+        );
+        assert.ok(
+          disabledDiagnostics.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationSuppressed' &&
+              event.detail?.nodeId === agentNodeId &&
+              event.detail?.reason === 'signal-disabled'
+          ),
+          'Expected disabled terminal signal to emit a diagnostic suppression event.'
+        );
+
+        await ensureEnabledAttentionSignals(['bel', 'osc9', 'osc777']);
+        calls.length = 0;
+        await clearDiagnosticEvents();
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `bell ${allowedSignalMessage}\r`
+          }
+        });
+        await waitForDiagnosticEvents(
+          (events) =>
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationPosted' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.signal === 'bel' &&
+                event.detail?.message === expectedBelMessage
+            ),
+          20000
+        );
+        const allowedProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === true &&
+                currentNode.attentionIndicatorFlashing === true &&
+                currentNode.minimapAttentionFlashing === true &&
+                currentNode.minimapAttentionSizePulsing === true
+            );
+          },
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), [expectedBelMessage]);
+        assert.strictEqual(
+          allowedProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          true,
+          'Re-enabling BEL should allow the terminal signal to create node attention again.'
+        );
+        await clearAttentionByClick();
+        await ensureAttentionNotificationBridgeMode('none');
 
         await assertAttentionSurfaceForMode({
           mode: 'none',
@@ -6237,6 +6365,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
   } finally {
     await ensureAgentStopped(agentNodeId);
     await ensureAttentionNotificationBridgeMode(originalBridgeMode);
+    await ensureEnabledAttentionSignals(originalEnabledAttentionSignals);
     await ensureStrongTerminalAttentionReminderMode(originalStrongReminderMode);
     await clearHostMessages();
     await clearDiagnosticEvents();
@@ -6251,6 +6380,9 @@ async function verifyAgentAbnormalInterruptionNotifications() {
   const originalTextNotificationMode = normalizeAgentAbnormalOutputTextNotificationMode(
     configuration.get('devSessionCanvas.notifications.agentAbnormalOutputTextNotifications', 'off')
   );
+  const originalEnabledAttentionSignals = normalizeEnabledAttentionSignals(
+    configuration.get('devSessionCanvas.notifications.enabledAttentionSignals', DEFAULT_ATTENTION_SIGNALS)
+  );
   const originalRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
 
   await clearHostMessages();
@@ -6260,6 +6392,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
     await setRuntimePersistenceEnabled(false);
     await ensureAttentionNotificationBridgeMode('workbench');
     await ensureAgentAbnormalOutputTextNotificationMode('off');
+    await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
 
     await withInterceptedInformationMessages(async (calls) => {
       let snapshot = await getDebugSnapshot();
@@ -6336,6 +6469,60 @@ async function verifyAgentAbnormalInterruptionNotifications() {
 
       await clearDiagnosticEvents();
       calls.length = 0;
+      await ensureEnabledAttentionSignals(['bel', 'osc9', 'osc777', 'codexAbnormalOutputText']);
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex'
+      });
+      await waitForAgentLive(codexAgent.id);
+      await dispatchWebviewMessage({
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: codexAgent.id,
+          kind: 'agent',
+          data: 'exit 29\r'
+        }
+      });
+      const disabledAbnormalExitDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationSuppressed' &&
+              event.detail?.trigger === 'agent-abnormal-interruption' &&
+              event.detail?.reason === 'signal-disabled' &&
+              event.detail?.signal === 'agentAbnormalExit' &&
+              event.detail?.nodeId === codexAgent.id
+          ),
+        20000
+      );
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return Boolean(
+          currentAgent?.status === 'error' &&
+            currentAgent?.metadata?.agent?.lastExitCode === 29 &&
+            currentAgent?.metadata?.agent?.attentionPending !== true
+        );
+      }, 20000);
+      assert.ok(
+        disabledAbnormalExitDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationSuppressed' &&
+            event.detail?.signal === 'agentAbnormalExit'
+        ),
+        'Expected disabling agentAbnormalExit to suppress Agent abnormal-exit attention.'
+      );
+      assert.ok(
+        !calls.some((call) => /异常中断/.test(call.message)),
+        'Expected disabled agentAbnormalExit not to surface a workbench notification.'
+      );
+
+      await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
       await startExecutionSessionForTest({
         kind: 'agent',
         nodeId: codexAgent.id,
@@ -6363,6 +6550,51 @@ async function verifyAgentAbnormalInterruptionNotifications() {
 
       await ensureAgentAbnormalOutputTextNotificationMode('codex');
 
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await ensureEnabledAttentionSignals(['bel', 'osc9', 'osc777', 'agentAbnormalExit']);
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunk:
+          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+      });
+      const disabledStreamDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationSuppressed' &&
+              event.detail?.trigger === 'agent-abnormal-stream-interruption' &&
+              event.detail?.reason === 'signal-disabled' &&
+              event.detail?.signal === 'codexAbnormalOutputText' &&
+              event.detail?.nodeId === codexAgent.id
+          ),
+        20000
+      );
+      await sleep(300);
+      snapshot = await getDebugSnapshot();
+      assert.notStrictEqual(
+        findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending,
+        true,
+        'Disabling codexAbnormalOutputText should avoid setting node attention for Codex stream text.'
+      );
+      assert.ok(
+        disabledStreamDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationSuppressed' &&
+            event.detail?.signal === 'codexAbnormalOutputText'
+        ),
+        'Expected disabling codexAbnormalOutputText to suppress Codex abnormal text attention.'
+      );
+      assert.ok(
+        !calls.some((call) => /输出流异常/.test(call.message)),
+        'Expected disabled codexAbnormalOutputText not to surface a workbench notification.'
+      );
+
+      await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
       await clearDiagnosticEvents();
       calls.length = 0;
       await startExecutionSessionForTest({
@@ -6679,6 +6911,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
   } finally {
     await setRuntimePersistenceEnabled(originalRuntimePersistenceEnabled);
     await ensureAgentAbnormalOutputTextNotificationMode(originalTextNotificationMode);
+    await ensureEnabledAttentionSignals(originalEnabledAttentionSignals);
     await ensureAttentionNotificationBridgeMode(originalBridgeMode);
     await clearHostMessages();
     await clearDiagnosticEvents();
@@ -11075,6 +11308,49 @@ function normalizeAttentionNotificationBridgeMode(value) {
   }
 
   return 'system';
+}
+
+function normalizeEnabledAttentionSignals(value) {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_ATTENTION_SIGNALS];
+  }
+
+  const configuredSignals = new Set();
+  for (const item of value) {
+    if (DEFAULT_ATTENTION_SIGNALS.includes(item)) {
+      configuredSignals.add(item);
+    }
+  }
+
+  return DEFAULT_ATTENTION_SIGNALS.filter((signal) => configuredSignals.has(signal));
+}
+
+async function ensureEnabledAttentionSignals(signals) {
+  const configuration = vscode.workspace.getConfiguration();
+  const normalizedSignals = normalizeEnabledAttentionSignals(signals);
+  const currentSignals = normalizeEnabledAttentionSignals(
+    configuration.get('devSessionCanvas.notifications.enabledAttentionSignals', DEFAULT_ATTENTION_SIGNALS)
+  );
+
+  if (JSON.stringify(currentSignals) === JSON.stringify(normalizedSignals)) {
+    return;
+  }
+
+  await clearDiagnosticEvents();
+  await configuration.update(
+    'devSessionCanvas.notifications.enabledAttentionSignals',
+    normalizedSignals,
+    vscode.ConfigurationTarget.Global
+  );
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/enabledAttentionSignalsConfigChanged' &&
+          JSON.stringify(event.detail?.enabledSignals) === JSON.stringify(normalizedSignals)
+      ),
+    20000
+  );
 }
 
 function normalizeAgentAbnormalOutputTextNotificationMode(value) {
