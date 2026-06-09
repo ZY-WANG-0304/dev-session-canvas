@@ -299,6 +299,16 @@ async function verifyWebviewLifecycleRaceDiagnostics() {
     true,
     'Expected queued host messages to flush after bootstrap ack.'
   );
+  assert.strictEqual(
+    result.focusMessageRetriedAfterFrameRefresh,
+    true,
+    'Expected workspace-root focus to retry after a same-Webview frame refresh.'
+  );
+  assert.strictEqual(
+    result.focusMessageReachedRefreshedFrame,
+    true,
+    'Expected the retried workspace-root focus message to use the refreshed frame id.'
+  );
   assert.strictEqual(result.staleMutationIgnored, true);
   assert.strictEqual(result.staleProbeResultIgnored, true);
   assert.strictEqual(result.pendingProbeResolvedFromCurrent, true);

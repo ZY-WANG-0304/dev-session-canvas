@@ -61,7 +61,13 @@ export interface ComposeMultiRootCanvasStateOptions {
   workspaceFolders: readonly CanvasMultiRootWorkspaceFolder[];
   rootStates: readonly CanvasRootLocalStateSnapshot[];
   overlay?: CanvasMultiRootOverlay;
+  newRootPlacement?: CanvasMultiRootNewRootPlacement;
   now?: string;
+}
+
+export interface CanvasMultiRootNewRootPlacement {
+  rootPaths: readonly string[];
+  preferredCenter?: CanvasNodePosition;
 }
 
 export interface DecomposeMultiRootCanvasStateOptions {
@@ -90,6 +96,15 @@ interface CanvasRect {
   top: number;
   right: number;
   bottom: number;
+}
+
+interface RootSectionMeasurement {
+  folder: CanvasMultiRootWorkspaceFolder;
+  rootId: string;
+  groupId: string;
+  size: CanvasNodeFootprint;
+  state: CanvasPrototypeState;
+  overlayRoot?: CanvasMultiRootOverlayRoot;
 }
 
 export function createWorkspaceRootSectionId(rootPath: string): string {
@@ -306,14 +321,11 @@ export function composeMultiRootCanvasState(options: ComposeMultiRootCanvasState
     }),
     { width: ROOT_SECTION_MIN_WIDTH, height: ROOT_SECTION_MIN_HEIGHT }
   );
-  const contexts = displaceOverlappingRootSections(rootMeasurements.map((measurement, index) => ({
-    folder: measurement.folder,
-    rootId: measurement.rootId,
-    groupId: measurement.groupId,
-    position: roundPosition(measurement.overlayRoot?.position ?? defaultRootSectionPosition(index, defaultGridSize)),
-    size: measurement.size,
-    state: measurement.state
-  })));
+  const contexts = displaceOverlappingRootSections(resolveRootSectionPlacements(
+    rootMeasurements,
+    defaultGridSize,
+    options.newRootPlacement
+  ));
 
   const overlayGroups = normalizeOverlayGroups(options.overlay?.groups ?? []).filter((group) =>
     !contexts.some((context) => group.id === context.rootId || group.id.startsWith(`${context.rootId}:`))
@@ -990,6 +1002,208 @@ function normalizeOverlayGroupSize(size: CanvasNodeFootprint): CanvasNodeFootpri
   };
 }
 
+function resolveRootSectionPlacements(
+  measurements: readonly RootSectionMeasurement[],
+  defaultGridSize: CanvasNodeFootprint,
+  newRootPlacement?: CanvasMultiRootNewRootPlacement
+): RootCompositionContext[] {
+  const newRootPaths = normalizeNewRootPlacementRootPaths(newRootPlacement?.rootPaths ?? []);
+  const initialContexts = measurements.map((measurement, index) => ({
+    folder: measurement.folder,
+    rootId: measurement.rootId,
+    groupId: measurement.groupId,
+    position: roundPosition(measurement.overlayRoot?.position ?? defaultRootSectionPosition(index, defaultGridSize)),
+    size: measurement.size,
+    state: measurement.state
+  }));
+  const preferredCenter = newRootPlacement?.preferredCenter;
+  if (!preferredCenter || newRootPaths.size === 0) {
+    return initialContexts;
+  }
+
+  const resolvedContexts = new Map<string, RootCompositionContext>();
+  const occupiedRects: CanvasRect[] = [];
+  for (let index = 0; index < measurements.length; index += 1) {
+    const measurement = measurements[index];
+    const context = initialContexts[index];
+    if (!measurement || !context) {
+      continue;
+    }
+    const isNewRoot = !measurement.overlayRoot && newRootPaths.has(measurement.folder.path);
+    if (isNewRoot) {
+      continue;
+    }
+
+    resolvedContexts.set(measurement.folder.path, context);
+    occupiedRects.push(rectFromPositionAndSize(context.position, context.size));
+  }
+
+  for (let index = 0; index < measurements.length; index += 1) {
+    const measurement = measurements[index];
+    const context = initialContexts[index];
+    if (!measurement || !context || resolvedContexts.has(measurement.folder.path)) {
+      continue;
+    }
+
+    const nextContext = {
+      ...context,
+      position: resolveClosestFreeRootSectionPosition(
+        context.size,
+        preferredCenter,
+        occupiedRects,
+        context.position
+      )
+    };
+    resolvedContexts.set(measurement.folder.path, nextContext);
+    occupiedRects.push(rectFromPositionAndSize(nextContext.position, nextContext.size));
+  }
+
+  return initialContexts.map((context) => resolvedContexts.get(context.folder.path) ?? context);
+}
+
+function normalizeNewRootPlacementRootPaths(rootPaths: readonly string[]): Set<string> {
+  return new Set(rootPaths.flatMap((rootPath) => {
+    const normalizedRootPath = normalizeRootPath(rootPath);
+    return normalizedRootPath ? [normalizedRootPath] : [];
+  }));
+}
+
+function resolveClosestFreeRootSectionPosition(
+  size: CanvasNodeFootprint,
+  preferredCenter: CanvasNodePosition,
+  occupiedRects: readonly CanvasRect[],
+  fallbackPosition: CanvasNodePosition
+): CanvasNodePosition {
+  if (occupiedRects.length === 0) {
+    return roundPosition({
+      x: preferredCenter.x - Math.round(size.width / 2),
+      y: preferredCenter.y - Math.round(size.height / 2)
+    });
+  }
+
+  const anchorPosition = roundPosition({
+    x: preferredCenter.x - Math.round(size.width / 2),
+    y: preferredCenter.y - Math.round(size.height / 2)
+  });
+  const candidates = buildRootSectionPlacementCandidates(anchorPosition, size, occupiedRects)
+    .sort((left, right) => compareRootSectionPlacementCandidates(left, right, size, preferredCenter));
+  for (const candidate of candidates) {
+    if (!rootSectionPlacementCollides(size, candidate, occupiedRects)) {
+      return candidate;
+    }
+  }
+
+  return resolveFallbackRootSectionPlacement(size, preferredCenter, occupiedRects, fallbackPosition);
+}
+
+function buildRootSectionPlacementCandidates(
+  anchorPosition: CanvasNodePosition,
+  size: CanvasNodeFootprint,
+  occupiedRects: readonly CanvasRect[]
+): CanvasNodePosition[] {
+  const candidates: CanvasNodePosition[] = [anchorPosition];
+  const horizontalStep = Math.max(1, size.width + ROOT_SECTION_HORIZONTAL_GAP);
+  const verticalStep = Math.max(1, size.height + ROOT_SECTION_VERTICAL_GAP);
+  const maxRing = Math.max(6, occupiedRects.length + 4);
+
+  for (const rect of occupiedRects) {
+    candidates.push(
+      { x: rect.right + ROOT_SECTION_HORIZONTAL_GAP, y: anchorPosition.y },
+      { x: rect.left - ROOT_SECTION_HORIZONTAL_GAP - size.width, y: anchorPosition.y },
+      { x: anchorPosition.x, y: rect.bottom + ROOT_SECTION_VERTICAL_GAP },
+      { x: anchorPosition.x, y: rect.top - ROOT_SECTION_VERTICAL_GAP - size.height },
+      { x: rect.right + ROOT_SECTION_HORIZONTAL_GAP, y: rect.top },
+      { x: rect.right + ROOT_SECTION_HORIZONTAL_GAP, y: rect.bottom - size.height },
+      { x: rect.left - ROOT_SECTION_HORIZONTAL_GAP - size.width, y: rect.top },
+      { x: rect.left - ROOT_SECTION_HORIZONTAL_GAP - size.width, y: rect.bottom - size.height },
+      { x: rect.left, y: rect.bottom + ROOT_SECTION_VERTICAL_GAP },
+      { x: rect.right - size.width, y: rect.bottom + ROOT_SECTION_VERTICAL_GAP },
+      { x: rect.left, y: rect.top - ROOT_SECTION_VERTICAL_GAP - size.height },
+      { x: rect.right - size.width, y: rect.top - ROOT_SECTION_VERTICAL_GAP - size.height }
+    );
+  }
+
+  for (let ring = 1; ring <= maxRing; ring += 1) {
+    for (let dx = -ring; dx <= ring; dx += 1) {
+      candidates.push(
+        { x: anchorPosition.x + dx * horizontalStep, y: anchorPosition.y - ring * verticalStep },
+        { x: anchorPosition.x + dx * horizontalStep, y: anchorPosition.y + ring * verticalStep }
+      );
+    }
+    for (let dy = -ring + 1; dy <= ring - 1; dy += 1) {
+      candidates.push(
+        { x: anchorPosition.x - ring * horizontalStep, y: anchorPosition.y + dy * verticalStep },
+        { x: anchorPosition.x + ring * horizontalStep, y: anchorPosition.y + dy * verticalStep }
+      );
+    }
+  }
+
+  const seen = new Set<string>();
+  return candidates.flatMap((candidate) => {
+    const rounded = roundPosition(candidate);
+    const key = `${rounded.x}:${rounded.y}`;
+    if (seen.has(key)) {
+      return [];
+    }
+    seen.add(key);
+    return [rounded];
+  });
+}
+
+function compareRootSectionPlacementCandidates(
+  left: CanvasNodePosition,
+  right: CanvasNodePosition,
+  size: CanvasNodeFootprint,
+  preferredCenter: CanvasNodePosition
+): number {
+  const leftDistance = squaredDistance(rectCenterPoint(rectFromPositionAndSize(left, size)), preferredCenter);
+  const rightDistance = squaredDistance(rectCenterPoint(rectFromPositionAndSize(right, size)), preferredCenter);
+  return leftDistance - rightDistance || left.y - right.y || left.x - right.x;
+}
+
+function squaredDistance(left: CanvasNodePosition, right: CanvasNodePosition): number {
+  const dx = left.x - right.x;
+  const dy = left.y - right.y;
+  return dx * dx + dy * dy;
+}
+
+function rootSectionPlacementCollides(
+  size: CanvasNodeFootprint,
+  position: CanvasNodePosition,
+  occupiedRects: readonly CanvasRect[]
+): boolean {
+  const rect = rectFromPositionAndSize(position, size);
+  return occupiedRects.some((occupiedRect) =>
+    rectsIntersect(rect, expandRootSectionPlacementBlockingRect(occupiedRect))
+  );
+}
+
+function expandRootSectionPlacementBlockingRect(rect: CanvasRect): CanvasRect {
+  return {
+    left: rect.left - ROOT_SECTION_HORIZONTAL_GAP,
+    top: rect.top - ROOT_SECTION_VERTICAL_GAP,
+    right: rect.right + ROOT_SECTION_HORIZONTAL_GAP,
+    bottom: rect.bottom + ROOT_SECTION_VERTICAL_GAP
+  };
+}
+
+function resolveFallbackRootSectionPlacement(
+  size: CanvasNodeFootprint,
+  preferredCenter: CanvasNodePosition,
+  occupiedRects: readonly CanvasRect[],
+  fallbackPosition: CanvasNodePosition
+): CanvasNodePosition {
+  const bounds = boundingRectForRects(occupiedRects);
+  if (!bounds) {
+    return roundPosition(fallbackPosition);
+  }
+
+  return roundPosition({
+    x: bounds.right + ROOT_SECTION_HORIZONTAL_GAP,
+    y: preferredCenter.y - Math.round(size.height / 2)
+  });
+}
+
 function displaceOverlappingRootSections(contexts: readonly RootCompositionContext[]): RootCompositionContext[] {
   const placed: RootCompositionContext[] = [];
   for (const context of contexts) {
@@ -1065,6 +1279,27 @@ function rectFromPositionAndSize(position: CanvasNodePosition, size: CanvasNodeF
     top: position.y,
     right: position.x + size.width,
     bottom: position.y + size.height
+  };
+}
+
+function boundingRectForRects(rects: readonly CanvasRect[]): CanvasRect | undefined {
+  const [firstRect, ...restRects] = rects;
+  if (!firstRect) {
+    return undefined;
+  }
+
+  return restRects.reduce((current, rect) => ({
+    left: Math.min(current.left, rect.left),
+    top: Math.min(current.top, rect.top),
+    right: Math.max(current.right, rect.right),
+    bottom: Math.max(current.bottom, rect.bottom)
+  }), firstRect);
+}
+
+function rectCenterPoint(rect: CanvasRect): CanvasNodePosition {
+  return {
+    x: Math.round((rect.left + rect.right) / 2),
+    y: Math.round((rect.top + rect.bottom) / 2)
   };
 }
 

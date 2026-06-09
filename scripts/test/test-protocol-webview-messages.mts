@@ -216,6 +216,11 @@ assert.match(
   /type: 'host\/requestCreateNode'[\s\S]*targetGroupId\?: string/u,
   'Expected host/requestCreateNode to carry an optional target group for multi-root root selection.'
 );
+assert.match(
+  protocolSource,
+  /type: 'host\/focusGroup'[\s\S]*groupId: string/u,
+  'Expected host/focusGroup to carry a workspace root group target for Add Folder viewport focus.'
+);
 
 const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
 assert.match(
@@ -312,6 +317,16 @@ assert.match(
   panelManagerSource,
   /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*sameWebviewFrameReadyPromoted[\s\S]*sameWebviewFrameBootstrapDelivered[\s\S]*sameWebviewFrameLifecycleRebound/u,
   'Expected test diagnostics to prove a same-Webview refreshed frame can rebind lifecycle and receive bootstrap.'
+);
+assert.match(
+  panelManagerSource,
+  /postWorkspaceRootFocusGroupMessage[\s\S]*pendingWorkspaceRootFocusReplay[\s\S]*WORKSPACE_ROOT_FOCUS_REPLAY_WINDOW_MS[\s\S]*postWorkspaceRootFocusGroupMessageForCurrentLifecycle/u,
+  'Expected Add Folder workspace-root focus to replay across same-generation frame refreshes.'
+);
+assert.match(
+  panelManagerSource,
+  /runWebviewLifecycleRaceDiagnosticsForTest[\s\S]*focusMessageRetriedAfterFrameRefresh[\s\S]*focusMessageReachedRefreshedFrame/u,
+  'Expected lifecycle diagnostics to cover retried workspace-root focus after a frame refresh.'
 );
 assert.match(
   panelManagerSource,
