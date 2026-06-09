@@ -1450,9 +1450,16 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
   const sourceTitle = 'Claude Fork Source';
   const sourceSessionId = 'claude-branch-source-session-123';
   const sourceNodeId = 'claude-branch-source-node';
+  const previousClaudeCommandEnv = process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
   let branchNodeId;
 
   try {
+    process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND = path.join(
+      __dirname,
+      'fixtures',
+      'fake-claude-provider'
+    );
+
     const withSourceSnapshot = await setPersistedState({
       ...baselineSnapshot.state,
       nodes: [
@@ -1614,6 +1621,12 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
       'Expected Fork auto-start to avoid racing a second start request.'
     );
   } finally {
+    if (previousClaudeCommandEnv === undefined) {
+      delete process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
+    } else {
+      process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND = previousClaudeCommandEnv;
+    }
+
     if (branchNodeId) {
       await maybeEnsureAgentStopped(branchNodeId).catch(() => {});
     }
@@ -7289,9 +7302,11 @@ async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(t
         payload: {
           nodeId: terminalNodeId,
           kind: 'terminal',
+          // Keep each line shorter than the embedded terminal width used by
+          // the smoke harness so scrollback assertions do not become wrap-dependent.
           data:
             'i=1; while [ $i -le 220 ]; do printf \'' +
-            `${TERMINAL_SCROLLBACK_PERSIST_MARKER}-%03d persisted scrollback verification\\r\\n` +
+            `${TERMINAL_SCROLLBACK_PERSIST_MARKER}-%03d\\r\\n` +
             '\' "$i"; i=$((i+1)); done\r'
         }
       },

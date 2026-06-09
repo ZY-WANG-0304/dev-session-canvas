@@ -22,6 +22,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Associate `Note` nodes with `.md` / `.markdown` files in the workspace, including YAML metadata popovers and safe Markdown image previews
 - Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces, including explicit save modes for associated Markdown Notes
 - Organize related `Agent`, `Terminal`, and `Note` nodes with named canvas groups, nested group frames, group resize, and grouped sidebar browsing
+- Fork a Claude Code Agent with a trusted session id into a new Agent node using provider-native fork semantics
 - Compose VS Code multi-root workspaces into one canvas with system workspace-root sections while preserving each root's own canvas state
 - Use fit view and the MiniMap across the full canvas space, including nodes, user groups, and workspace-root sections
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
@@ -52,23 +53,24 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.14.1 Highlights
+## 0.15.0 Highlights
 
-The public `0.14.1` release is a `0.14.x` Preview patch focused on Explorer Markdown-file Note creation and shared-runtime reliability. It keeps the `0.14.0` spatial canvas navigation milestone: fit view, initial auto-fit, dynamic minimum zoom, and the MiniMap still include nodes, user groups, and multi-root workspace-root sections.
+The public `0.15.0` release is a new Preview milestone focused on Claude Code Agent Fork, owner-derived grouping for file-activity artifacts, Panel Webview lifecycle diagnostics, and publish-tag release automation. It keeps the `0.14.1` Markdown Note shortcut, surface reuse, group-body canvas panning, shared-runtime reliability, spatial navigation, dual-market distribution, and Preview support boundaries.
 
-- Explorer now exposes a `Dev Session Canvas` action for creating a linked Note from `.md` / `.markdown` files
-- Linked Notes created from Explorer reuse the existing Markdown-file association model, including file validation, duplicate handling, multi-root ownership, focus, and persistence
-- Create-style actions now prefer the Canvas surface already open in the current window instead of unexpectedly opening the other `editor` / `panel` surface because of `defaultSurface`
-- Group body empty space now pans the canvas like normal canvas empty space; moving a group still uses the title tab or hittable border
-- Multi-root and two-window shared live-runtime recovery are covered by real VS Code smoke tests for output fan-out, bidirectional input, terminal resize last-writer-wins, and stop/delete terminal states across windows
-- Marketplace and repository READMEs now include the WeChat discussion-group QR asset alongside the Feishu group QR asset
+- Claude Code Agent nodes with a trusted session id now expose `Fork`, creating a new Agent node and launching it with `claude --resume <session-id> --fork-session` while keeping the source node unchanged
+- The first Fork release is Claude-only: Codex, non-Claude providers, missing trusted Claude session ids, and untrusted workspaces do not trigger fork launches
+- File-activity `file` / `file-list` artifacts now derive their group from the owning Agent: single-owner artifacts follow that Agent's innermost group, multi-owner artifacts use the nearest common parent, and multi-root workspaces stay root-isolated
+- Multi-select drag cleanup now preserves owner-derived grouping for automatic file-activity artifacts instead of letting drag results move them into inconsistent groups
+- Workspace-root section titles now follow the same zoom readability and width-compression rules as normal canvas groups
+- Panel Webview lifecycle diagnostics now include a host-side lifecycle summary and the `npm run diagnose:webview-lifecycle` offline analyzer for troubleshooting restore/race reports
+- Release-day publishing now uses temporary `publish/vX.Y.Z` tags to pin the release input before the script creates the final `vX.Y.Z` tag after marketplace verification
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.14.0` to `0.14.1` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.14.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.14.1` preserves that explicit choice
+- First-time installs and upgrades from `0.14.1` to `0.15.0` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.15.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.15.0` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -104,7 +106,7 @@ The public `0.14.1` release is a `0.14.x` Preview patch focused on Explorer Mark
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.14.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.15.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
