@@ -10334,7 +10334,7 @@ function ChromeTitleEditor(props: {
     }
   }, [overviewInteractionsDisabled]);
 
-  const overflowTitle = useOverflowAwareElementTitle(inputRef, draft);
+  const overflowTitle = useOverflowAwareElementTitle(inputRef, draft, props.tooltip);
   const titleReadOnly = props.readOnly === true;
   const editingDisabled = overviewInteractionsDisabled || titleReadOnly;
 
