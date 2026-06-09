@@ -82,6 +82,7 @@ import {
   type CanvasTemplateMenuEntry,
   type CanvasNodeSummary,
   type CanvasPrototypeState,
+  type ExecutionPerformanceDiagnosticPayload,
   type ExecutionNodeKind,
   type ExecutionSessionMetadata,
   type HostToWebviewMessage,
@@ -298,6 +299,10 @@ const CANVAS_NODE_COLLISION_PADDING = 24;
 const EXECUTION_OUTPUT_FLUSH_INTERVAL_MS = 32;
 const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 1000;
 const EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS = 160;
+const EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES = 500;
+const EXECUTION_PERFORMANCE_HOST_INPUT_WRITE_MIN_DURATION_MS = 8;
+const EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_DURATION_MS = 16;
+const EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_CHARACTERS = 32 * 1024;
 const EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT = 140;
 const EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS = 4000;
 const EXECUTION_ATTENTION_BELL_NOTIFICATION_COOLDOWN_MS = 8000;
@@ -541,6 +546,7 @@ interface CanvasWebviewLifecycleSurfaceEventCounts {
   staleDomActionResultIgnored: number;
   invalidLifecycleIgnored: number;
   runtimeDiagnostic: number;
+  executionPerformanceDiagnostic: number;
 }
 
 interface CanvasWebviewLifecycleAttachRenderBurstSummary {
@@ -605,6 +611,7 @@ interface CanvasHostDiagnosticsDumpResult {
   outputDir: string;
   summaryPath: string;
   webviewLifecycleSummaryPath: string;
+  executionPerformanceDiagnosticsPath: string;
   webviewLifecycleStatus: CanvasWebviewLifecycleHealthStatus;
   webviewLifecyclePanelRestoreLikelyAffected: boolean;
 }
@@ -649,6 +656,23 @@ interface ExecutionFileLinkResolveDiagnosticsSummary {
   slowRequestCount: number;
   sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
   latestRequests: ExecutionFileLinkResolveDiagnosticSample[];
+}
+
+interface ExecutionPerformanceDiagnosticSample extends ExecutionPerformanceDiagnosticPayload {
+  timestamp: string;
+  surface?: CanvasSurfaceLocation;
+  current?: boolean;
+}
+
+interface ExecutionPerformanceDiagnosticsSummary {
+  sampleCount: number;
+  sourceCounts: Partial<Record<ExecutionPerformanceDiagnosticPayload['source'], number>>;
+  totalDurationMs: number;
+  maxDurationMs: number;
+  slowSampleCount: number;
+  totalCharacters: number;
+  totalBytes: number;
+  latestSamples: ExecutionPerformanceDiagnosticSample[];
 }
 
 export interface CanvasSidebarState {
@@ -927,6 +951,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly templateCatalogEmitter = new vscode.EventEmitter<void>();
   private readonly diagnosticHostMessages: CanvasHostMessageDiagnosticRecord[] = [];
   private readonly executionFileLinkResolveDiagnostics: ExecutionFileLinkResolveDiagnosticSample[] = [];
+  private readonly executionPerformanceDiagnostics: ExecutionPerformanceDiagnosticSample[] = [];
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
   private readonly surfaceMessageWebview: Partial<Record<CanvasSurfaceLocation, vscode.Webview>> = {};
@@ -1735,6 +1760,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  public collectExecutionPerformanceDiagnostics(): {
+    samples: ExecutionPerformanceDiagnosticSample[];
+    summary: ExecutionPerformanceDiagnosticsSummary;
+  } {
+    const samples = cloneJsonValue(this.executionPerformanceDiagnostics);
+    return {
+      samples,
+      summary: summarizeExecutionPerformanceDiagnostics(samples)
+    };
+  }
+
   public async dumpCurrentHostDiagnostics(): Promise<CanvasHostDiagnosticsDumpResult> {
     await this.waitForPendingWorkspaceStateUpdates();
 
@@ -1754,6 +1790,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const debugSnapshot = this.getDebugSnapshot();
     const diagnosticHostMessages = cloneJsonValue(this.diagnosticHostMessages);
     const executionFileLinkResolveDiagnostics = this.collectExecutionFileLinkResolveDiagnostics();
+    const executionPerformanceDiagnostics = this.collectExecutionPerformanceDiagnostics();
     const agentCliConfig = this.getAgentCliConfig();
     const defaultCwd = this.getTerminalWorkingDirectory();
     const shellEnvironmentPatch = await this.getResolvedShellEnvironmentPatch(
@@ -1774,6 +1811,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       probeResults
     );
     const webviewLifecycleSummaryPath = path.join(outputDir, 'webview-lifecycle-summary.json');
+    const executionPerformanceDiagnosticsPath = path.join(outputDir, 'execution-performance-diagnostics.json');
 
     const summary = {
       capturedAt,
@@ -1829,6 +1867,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         hostMessageCount: diagnosticHostMessages.length,
         hostMessageSummary: summarizeDiagnosticHostMessages(diagnosticHostMessages),
         executionFileLinkResolveSummary: executionFileLinkResolveDiagnostics.summary,
+        executionPerformanceSummary: executionPerformanceDiagnostics.summary,
         diagnosticEventCount: diagnosticEvents.length,
         latestDiagnosticKinds: diagnosticEvents.slice(-20).map((event) => event.kind),
         webviewLifecycleStatus: webviewLifecycleSummary.status,
@@ -1864,6 +1903,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         path.join(outputDir, 'execution-file-link-resolve-diagnostics.json'),
         executionFileLinkResolveDiagnostics
       ),
+      writeJsonFile(
+        executionPerformanceDiagnosticsPath,
+        executionPerformanceDiagnostics
+      ),
       writeJsonFile(path.join(outputDir, 'diagnostic-events.json'), diagnosticEvents),
       writeJsonFile(path.join(outputDir, 'note-markdown-diagnostics.json'), noteMarkdownDiagnostics),
       writeJsonFile(
@@ -1881,6 +1924,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       outputDir,
       summaryPath,
       webviewLifecycleSummaryPath,
+      executionPerformanceDiagnosticsPath,
       webviewLifecycleStatus: webviewLifecycleSummary.status,
       webviewLifecyclePanelRestoreLikelyAffected: webviewLifecycleSummary.panelRestore.likelyAffected
     };
@@ -8652,6 +8696,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     runtimeSessionId: string,
     chunk: string
   ): void {
+    const startedAt = Date.now();
     const binding = this.runtimeSessionBindings.get(
       this.buildRuntimeSessionBindingKey(kind, runtimeSessionId, runtimeStoragePath, runtimeBackend)
     );
@@ -8677,6 +8722,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     this.queueExecutionStateSync(binding.kind, binding.nodeId);
     this.queueExecutionOutput(binding.kind, binding.nodeId, chunk);
+    this.recordExecutionPerformanceDiagnostics({
+      timestamp: new Date().toISOString(),
+      source: 'host-output-chunk',
+      nodeId: binding.nodeId,
+      kind: binding.kind,
+      owner: session.owner,
+      lifecycleStatus: session.lifecycleStatus,
+      durationMs: Date.now() - startedAt,
+      characters: chunk.length,
+      bytes: Buffer.byteLength(chunk, 'utf8'),
+      bufferLength: session.buffer.length,
+      pendingOutputLength: session.pendingOutput.length
+    });
   }
 
   private async handleRuntimeSupervisorState(
@@ -9589,6 +9647,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         current,
         lifecycle: summarizeWebviewLifecycleIdentity(lifecycle),
         ...parsedMessage.payload
+      });
+      return;
+    }
+
+    if (parsedMessage.type === 'webview/executionPerformanceDiagnostic') {
+      const current = this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type, {
+        recordIgnored: false
+      });
+      const diagnosticDetail = {
+        surface: sourceSurface,
+        current,
+        lifecycle: summarizeWebviewLifecycleIdentity(lifecycle),
+        ...parsedMessage.payload
+      };
+      this.recordDiagnosticEvent('webview/executionPerformanceDiagnostic', diagnosticDetail);
+      this.recordExecutionPerformanceDiagnostics({
+        timestamp: new Date().toISOString(),
+        ...diagnosticDetail
       });
       return;
     }
@@ -11622,6 +11698,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.bindAgentFileActivitySession(nodeId, fileActivitySession);
 
       const handleSessionChunk = (text: string): void => {
+        const startedAt = Date.now();
         const sessionMap = this.getExecutionSessions('agent');
         const activeSession = sessionMap.get(nodeId);
         if (!activeSession) {
@@ -11645,6 +11722,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
         this.queueExecutionStateSync('agent', nodeId);
         this.queueExecutionOutput('agent', nodeId, text);
+        this.recordExecutionPerformanceDiagnostics({
+          timestamp: new Date().toISOString(),
+          source: 'host-output-chunk',
+          nodeId,
+          kind: 'agent',
+          owner: activeSession.owner,
+          lifecycleStatus: activeSession.lifecycleStatus,
+          durationMs: Date.now() - startedAt,
+          characters: text.length,
+          bytes: Buffer.byteLength(text, 'utf8'),
+          bufferLength: activeSession.buffer.length,
+          pendingOutputLength: activeSession.pendingOutput.length
+        });
       };
 
       const finalize = async (
@@ -12679,6 +12769,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.terminalSessions.set(nodeId, session);
 
       const handleTerminalChunk = (text: string): void => {
+        const startedAt = Date.now();
         const activeSession = this.terminalSessions.get(nodeId);
         if (!activeSession) {
           return;
@@ -12697,6 +12788,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
         this.queueExecutionStateSync('terminal', nodeId);
         this.queueExecutionOutput('terminal', nodeId, text);
+        this.recordExecutionPerformanceDiagnostics({
+          timestamp: new Date().toISOString(),
+          source: 'host-output-chunk',
+          nodeId,
+          kind: 'terminal',
+          owner: activeSession.owner,
+          lifecycleStatus: activeSession.lifecycleStatus,
+          durationMs: Date.now() - startedAt,
+          characters: text.length,
+          bytes: Buffer.byteLength(text, 'utf8'),
+          bufferLength: activeSession.buffer.length,
+          pendingOutputLength: activeSession.pendingOutput.length
+        });
       };
 
       const finalize = async (
@@ -13069,6 +13173,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (kind === 'terminal') {
       session.lineContextTracker.recordInput(data);
     }
+    const writeStartedAt = Date.now();
+    let inputWriteSucceeded = false;
     try {
       if (session.owner === 'local') {
         session.process.write(data);
@@ -13087,8 +13193,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.trackRuntimeSupervisorOperation(operation.catch(() => undefined));
         await operation;
       }
+      inputWriteSucceeded = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : '向 live runtime 写入输入失败。';
+      this.recordExecutionPerformanceDiagnostics({
+        timestamp: new Date().toISOString(),
+        source: 'host-input-write',
+        nodeId,
+        kind,
+        owner: session.owner,
+        lifecycleStatus: session.lifecycleStatus,
+        durationMs: Date.now() - writeStartedAt,
+        characters: data.length,
+        bytes: inputDetail.bytes,
+        success: false,
+        reason: message
+      });
       this.recordDiagnosticEvent('execution/inputRejected', {
         ...inputDetail,
         reason: 'write-failed',
@@ -13101,6 +13221,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       });
       return false;
+    } finally {
+      if (inputWriteSucceeded) {
+        this.recordExecutionPerformanceDiagnostics({
+          timestamp: new Date().toISOString(),
+          source: 'host-input-write',
+          nodeId,
+          kind,
+          owner: session.owner,
+          lifecycleStatus: session.lifecycleStatus,
+          durationMs: Date.now() - writeStartedAt,
+          characters: data.length,
+          bytes: inputDetail.bytes,
+          success: true
+        });
+      }
     }
 
     this.recordDiagnosticEvent('execution/inputWritten', {
@@ -13788,6 +13923,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postExecutionOutput(kind: ExecutionNodeKind, nodeId: string, chunk: string): void {
+    const startedAt = Date.now();
     this.postMessage({
       type: 'host/executionOutput',
       payload: {
@@ -13795,6 +13931,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         kind,
         chunk
       }
+    });
+    this.recordExecutionPerformanceDiagnostics({
+      timestamp: new Date().toISOString(),
+      source: 'host-output-post',
+      nodeId,
+      kind,
+      durationMs: Date.now() - startedAt,
+      characters: chunk.length,
+      bytes: Buffer.byteLength(chunk, 'utf8'),
+      success: true
     });
   }
 
@@ -14326,6 +14472,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
+  private recordExecutionPerformanceDiagnostics(sample: ExecutionPerformanceDiagnosticSample): void {
+    if (!shouldRetainExecutionPerformanceDiagnosticSample(sample)) {
+      return;
+    }
+
+    this.executionPerformanceDiagnostics.push(cloneJsonValue(sample));
+    if (this.executionPerformanceDiagnostics.length > EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES) {
+      this.executionPerformanceDiagnostics.splice(
+        0,
+        this.executionPerformanceDiagnostics.length - EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES
+      );
+    }
+  }
+
   private recordDiagnosticEvent(kind: string, detail?: Record<string, unknown>): void {
     this.testDiagnosticEvents.push({
       timestamp: new Date().toISOString(),
@@ -14583,6 +14743,58 @@ function summarizeExecutionFileLinkResolveDiagnostics(
     }
   }
 
+  return summary;
+}
+
+function shouldRetainExecutionPerformanceDiagnosticSample(
+  sample: ExecutionPerformanceDiagnosticSample
+): boolean {
+  if (sample.success === false) {
+    return true;
+  }
+
+  if (sample.source === 'host-input-write') {
+    return (sample.durationMs ?? 0) >= EXECUTION_PERFORMANCE_HOST_INPUT_WRITE_MIN_DURATION_MS;
+  }
+
+  if (sample.source === 'host-output-chunk' || sample.source === 'host-output-post') {
+    return (
+      (sample.durationMs ?? 0) >= EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_DURATION_MS ||
+      (sample.characters ?? 0) >= EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_CHARACTERS
+    );
+  }
+
+  return true;
+}
+
+function summarizeExecutionPerformanceDiagnostics(
+  samples: readonly ExecutionPerformanceDiagnosticSample[]
+): ExecutionPerformanceDiagnosticsSummary {
+  const summary: ExecutionPerformanceDiagnosticsSummary = {
+    sampleCount: samples.length,
+    sourceCounts: {},
+    totalDurationMs: 0,
+    maxDurationMs: 0,
+    slowSampleCount: 0,
+    totalCharacters: 0,
+    totalBytes: 0,
+    latestSamples: samples.slice(-50).map((sample) => cloneJsonValue(sample))
+  };
+
+  for (const sample of samples) {
+    summary.sourceCounts[sample.source] = (summary.sourceCounts[sample.source] ?? 0) + 1;
+    const durationMs = sample.durationMs ?? 0;
+    summary.totalDurationMs += durationMs;
+    summary.maxDurationMs = Math.max(summary.maxDurationMs, durationMs);
+    if (durationMs >= 24) {
+      summary.slowSampleCount += 1;
+    }
+    summary.totalCharacters += sample.characters ?? 0;
+    summary.totalBytes += sample.bytes ?? 0;
+  }
+
+  summary.totalDurationMs = Math.round(summary.totalDurationMs * 100) / 100;
+  summary.maxDurationMs = Math.round(summary.maxDurationMs * 100) / 100;
   return summary;
 }
 
@@ -19361,7 +19573,8 @@ function summarizeWebviewLifecycleSurfaceEventCounts(
     staleProbeResultIgnored: countDiagnosticEvents(events, 'webview/staleProbeResultIgnored'),
     staleDomActionResultIgnored: countDiagnosticEvents(events, 'webview/staleDomActionResultIgnored'),
     invalidLifecycleIgnored: countDiagnosticEvents(events, 'webview/invalidLifecycleIgnored'),
-    runtimeDiagnostic: countDiagnosticEvents(events, 'webview/runtimeDiagnostic')
+    runtimeDiagnostic: countDiagnosticEvents(events, 'webview/runtimeDiagnostic'),
+    executionPerformanceDiagnostic: countDiagnosticEvents(events, 'webview/executionPerformanceDiagnostic')
   };
 }
 

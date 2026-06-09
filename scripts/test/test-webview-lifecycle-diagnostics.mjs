@@ -170,7 +170,8 @@ function createLifecycleSummary(options = {}) {
           staleProbeResultIgnored: 0,
           staleDomActionResultIgnored: 0,
           invalidLifecycleIgnored: 0,
-          runtimeDiagnostic: 0
+          runtimeDiagnostic: 0,
+          executionPerformanceDiagnostic: 0
         },
         attachRenderBurst: {
           detected: consecutiveAttachRender,
@@ -233,7 +234,8 @@ function createLifecycleSummary(options = {}) {
           staleProbeResultIgnored: 0,
           staleDomActionResultIgnored: 0,
           invalidLifecycleIgnored: 0,
-          runtimeDiagnostic: 0
+          runtimeDiagnostic: 0,
+          executionPerformanceDiagnostic: 0
         },
         attachRenderBurst: {
           detected: false,

@@ -391,8 +391,8 @@ assert.match(
 );
 assert.match(
   extensionSource,
-  /COMMAND_IDS\.dumpHostDiagnostics[\s\S]*webviewLifecycleStatus[\s\S]*webviewLifecycleSummaryPath/u,
-  'Expected the user-facing host diagnostics command to surface the Webview lifecycle summary path and status.'
+  /COMMAND_IDS\.dumpHostDiagnostics[\s\S]*webviewLifecycleStatus[\s\S]*webviewLifecycleSummaryPath[\s\S]*executionPerformanceDiagnosticsPath/u,
+  'Expected the user-facing host diagnostics command to surface lifecycle and execution performance diagnostics paths.'
 );
 
 const smokeSource = await readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
@@ -482,6 +482,159 @@ const unsupportedSourceMessage = JSON.parse(JSON.stringify(hardwrapResolveMessag
 unsupportedSourceMessage.payload.candidates[0].source = 'future-source';
 assert.equal(parseWebviewMessage(unsupportedSourceMessage), null);
 
+const executionPerformanceDiagnosticMessage = {
+  type: 'webview/executionPerformanceDiagnostic',
+  payload: {
+    source: 'webview-terminal-write',
+    nodeId: 'agent-1',
+    kind: 'agent',
+    reason: 'output',
+    durationMs: 42.5,
+    characters: 4096,
+    bytes: 4096,
+    queuedWriteCount: 2,
+    bufferLength: 1000,
+    owner: 'supervisor',
+    lifecycleStatus: 'running',
+    success: true
+  }
+};
+assert.deepEqual(parseWebviewMessage(executionPerformanceDiagnosticMessage), {
+  type: 'webview/executionPerformanceDiagnostic',
+  payload: {
+    ...executionPerformanceDiagnosticMessage.payload,
+    controllerCount: undefined,
+    flushedControllerCount: undefined,
+    pendingControllerCount: undefined,
+    pendingOutputLength: undefined
+  }
+});
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-output-enqueue',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      durationMs: 3,
+      characters: 4096,
+      pendingOutputLength: 8192,
+      success: true
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-output-enqueue',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      reason: undefined,
+      durationMs: 3,
+      characters: 4096,
+      bytes: undefined,
+      controllerCount: undefined,
+      flushedControllerCount: undefined,
+      pendingControllerCount: undefined,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: 8192,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      success: true
+    }
+  }
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-output-post',
+      nodeId: 'terminal-1',
+      kind: 'terminal',
+      durationMs: 19,
+      characters: 32768,
+      bytes: 32768,
+      success: true
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-output-post',
+      nodeId: 'terminal-1',
+      kind: 'terminal',
+      reason: undefined,
+      durationMs: 19,
+      characters: 32768,
+      bytes: 32768,
+      controllerCount: undefined,
+      flushedControllerCount: undefined,
+      pendingControllerCount: undefined,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: undefined,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      success: true
+    }
+  }
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-terminal-drain',
+      durationMs: 18,
+      controllerCount: 3,
+      flushedControllerCount: 2,
+      pendingControllerCount: 1
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-terminal-drain',
+      nodeId: undefined,
+      kind: undefined,
+      reason: undefined,
+      durationMs: 18,
+      characters: undefined,
+      bytes: undefined,
+      controllerCount: 3,
+      flushedControllerCount: 2,
+      pendingControllerCount: 1,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: undefined,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      success: undefined
+    }
+  }
+);
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'unknown',
+      durationMs: 1
+    }
+  }),
+  null,
+  'execution performance diagnostic source 必须限定为已知来源。'
+);
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-input-write',
+      kind: 'note',
+      durationMs: 1
+    }
+  }),
+  null,
+  'execution performance diagnostic kind 必须是执行节点类型。'
+);
 
 assert.equal(
   isWebviewDomAction({

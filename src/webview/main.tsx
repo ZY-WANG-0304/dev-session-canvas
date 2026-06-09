@@ -83,6 +83,7 @@ import type {
   WebviewDomAction,
   WebviewClipboardTextSource,
   WebviewLifecycleIdentity,
+  ExecutionPerformanceDiagnosticPayload,
   WebviewProbeEdgeSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
@@ -560,11 +561,14 @@ type ExecutionHostEvent =
     };
 
 interface ExecutionTerminalController {
+  nodeId: string;
+  kind: ExecutionNodeKind;
   applySnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void;
   enqueueOutput(chunk: string): void;
   showExit(message: string): void;
   refreshVisibleRows(): void;
-  flushPendingOutput(): void;
+  flushPendingOutput(): boolean;
+  getPendingOutputLength(): number;
   dispose(): void;
 }
 
@@ -636,6 +640,12 @@ const pendingExecutionPasteRequests = new Map<
     kind: ExecutionNodeKind;
   }
 >();
+
+const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS = 24;
+const EXECUTION_PERFORMANCE_DIAGNOSTIC_DRAIN_MIN_DURATION_MS = 16;
+const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS = 32 * 1024;
+const EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES = 500;
+const executionPerformanceDiagnosticSamples: ExecutionPerformanceDiagnosticPayload[] = [];
 
 type WebviewRuntimeDiagnosticPayload = Extract<
   WebviewToHostMessage,
@@ -740,6 +750,131 @@ function normalizeRuntimeDiagnosticCoordinate(value: number | undefined): number
   }
 
   return Math.round(value);
+}
+
+function reportExecutionInputDispatch(
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  input: string,
+  dispatch: () => void
+): void {
+  const startedAt = readPerformanceNow();
+  try {
+    dispatch();
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-input-dispatch',
+        nodeId,
+        kind,
+        durationMs: readPerformanceNow() - startedAt,
+        characters: input.length,
+        bytes: estimateUtf8ByteLength(input),
+        success: true
+      },
+      {
+        minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS
+      }
+    );
+  } catch (error) {
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-input-dispatch',
+        nodeId,
+        kind,
+        durationMs: readPerformanceNow() - startedAt,
+        characters: input.length,
+        bytes: estimateUtf8ByteLength(input),
+        success: false,
+        reason: error instanceof Error ? error.message : String(error)
+      },
+      {
+        force: true
+      }
+    );
+    throw error;
+  }
+}
+
+function reportExecutionPerformanceDiagnostic(
+  payload: ExecutionPerformanceDiagnosticPayload,
+  options: {
+    force?: boolean;
+    minDurationMs?: number;
+    minCharacters?: number;
+  } = {}
+): void {
+  const normalizedPayload = normalizeExecutionPerformanceDiagnosticForWebview(payload);
+  const minDurationMs = options.minDurationMs ?? EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS;
+  const minCharacters = options.minCharacters ?? Number.POSITIVE_INFINITY;
+  const shouldReport =
+    options.force === true ||
+    normalizedPayload.success === false ||
+    (typeof normalizedPayload.durationMs === 'number' && normalizedPayload.durationMs >= minDurationMs) ||
+    (typeof normalizedPayload.characters === 'number' && normalizedPayload.characters >= minCharacters);
+
+  if (!shouldReport) {
+    return;
+  }
+
+  executionPerformanceDiagnosticSamples.push(normalizedPayload);
+  if (executionPerformanceDiagnosticSamples.length > EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES) {
+    executionPerformanceDiagnosticSamples.splice(
+      0,
+      executionPerformanceDiagnosticSamples.length - EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES
+    );
+  }
+
+  try {
+    postMessage({
+      type: 'webview/executionPerformanceDiagnostic',
+      payload: normalizedPayload
+    });
+  } catch {
+    // Ignore telemetry failures; performance diagnostics must not affect input/output.
+  }
+}
+
+function normalizeExecutionPerformanceDiagnosticForWebview(
+  payload: ExecutionPerformanceDiagnosticPayload
+): ExecutionPerformanceDiagnosticPayload {
+  return {
+    source: payload.source,
+    nodeId: payload.nodeId,
+    kind: payload.kind,
+    reason: payload.reason,
+    durationMs: roundDiagnosticNumber(payload.durationMs),
+    characters: normalizeDiagnosticInteger(payload.characters),
+    bytes: normalizeDiagnosticInteger(payload.bytes),
+    controllerCount: normalizeDiagnosticInteger(payload.controllerCount),
+    flushedControllerCount: normalizeDiagnosticInteger(payload.flushedControllerCount),
+    pendingControllerCount: normalizeDiagnosticInteger(payload.pendingControllerCount),
+    queuedWriteCount: normalizeDiagnosticInteger(payload.queuedWriteCount),
+    bufferLength: normalizeDiagnosticInteger(payload.bufferLength),
+    pendingOutputLength: normalizeDiagnosticInteger(payload.pendingOutputLength),
+    owner: payload.owner,
+    lifecycleStatus: payload.lifecycleStatus,
+    success: payload.success
+  };
+}
+
+function roundDiagnosticNumber(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : undefined;
+}
+
+function normalizeDiagnosticInteger(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.round(value) : undefined;
+}
+
+function estimateUtf8ByteLength(value: string): number {
+  try {
+    return new TextEncoder().encode(value).length;
+  } catch {
+    return value.length;
+  }
+}
+
+function readPerformanceNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
 }
 
 registerRuntimeDiagnosticListeners();
@@ -4006,7 +4141,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
-    const controller = createExecutionTerminalController(terminal, {
+    const controller = createExecutionTerminalController(id, 'agent', terminal, {
       onContentWillChange: (reason) => {
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
@@ -4162,7 +4297,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     });
     resizeObserver.observe(container);
 
-    const dataDisposable = terminal.onData((input) => data.onExecutionInput?.(id, 'agent', input));
+    const dataDisposable = terminal.onData((input) =>
+      reportExecutionInputDispatch(id, 'agent', input, () => data.onExecutionInput?.(id, 'agent', input))
+    );
     const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
       terminalSizeRef.current = {
@@ -4530,7 +4667,7 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
-    const controller = createExecutionTerminalController(terminal, {
+    const controller = createExecutionTerminalController(id, 'terminal', terminal, {
       onContentWillChange: (reason) => {
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
@@ -4686,7 +4823,9 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
     });
     resizeObserver.observe(container);
 
-    const dataDisposable = terminal.onData((input) => data.onExecutionInput?.(id, 'terminal', input));
+    const dataDisposable = terminal.onData((input) =>
+      reportExecutionInputDispatch(id, 'terminal', input, () => data.onExecutionInput?.(id, 'terminal', input))
+    );
     const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
       terminalSizeRef.current = {
@@ -12331,7 +12470,43 @@ function routeExecutionTerminalSnapshot(detail: Extract<ExecutionHostEvent, { ty
 }
 
 function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type: 'output' }>): void {
-  executionTerminalRegistry.get(detail.nodeId)?.controller.enqueueOutput(detail.chunk);
+  const startedAt = readPerformanceNow();
+  const controller = executionTerminalRegistry.get(detail.nodeId)?.controller;
+  try {
+    controller?.enqueueOutput(detail.chunk);
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-output-enqueue',
+        nodeId: detail.nodeId,
+        kind: detail.kind,
+        durationMs: readPerformanceNow() - startedAt,
+        characters: detail.chunk.length,
+        pendingOutputLength: controller?.getPendingOutputLength() ?? 0,
+        success: controller !== undefined
+      },
+      {
+        minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_DRAIN_MIN_DURATION_MS,
+        minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+      }
+    );
+  } catch (error) {
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-output-enqueue',
+        nodeId: detail.nodeId,
+        kind: detail.kind,
+        durationMs: readPerformanceNow() - startedAt,
+        characters: detail.chunk.length,
+        pendingOutputLength: controller?.getPendingOutputLength() ?? 0,
+        success: false,
+        reason: error instanceof Error ? error.message : String(error)
+      },
+      {
+        force: true
+      }
+    );
+    throw error;
+  }
 }
 
 function routeExecutionTerminalExit(detail: Extract<ExecutionHostEvent, { type: 'exit' }>): void {
@@ -12345,11 +12520,17 @@ function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController)
   }
 
   executionTerminalDrainFrame = window.requestAnimationFrame(() => {
+    const startedAt = readPerformanceNow();
     executionTerminalDrainFrame = undefined;
     const controllers = Array.from(pendingExecutionTerminalDrains);
     pendingExecutionTerminalDrains.clear();
+    let flushedControllerCount = 0;
+    let characters = 0;
     for (const currentController of controllers) {
-      currentController.flushPendingOutput();
+      characters += currentController.getPendingOutputLength();
+      if (currentController.flushPendingOutput()) {
+        flushedControllerCount += 1;
+      }
     }
     if (pendingExecutionTerminalDrains.size > 0) {
       const remainingControllers = Array.from(pendingExecutionTerminalDrains);
@@ -12358,10 +12539,26 @@ function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController)
         scheduleExecutionTerminalDrain(currentController);
       }
     }
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-terminal-drain',
+        durationMs: readPerformanceNow() - startedAt,
+        controllerCount: controllers.length,
+        flushedControllerCount,
+        pendingControllerCount: pendingExecutionTerminalDrains.size,
+        characters
+      },
+      {
+        minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_DRAIN_MIN_DURATION_MS,
+        minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+      }
+    );
   });
 }
 
 function createExecutionTerminalController(
+  nodeId: string,
+  kind: ExecutionNodeKind,
   terminal: Terminal,
   options?: {
     onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
@@ -12371,26 +12568,57 @@ function createExecutionTerminalController(
   let pendingOutput = '';
   let disposed = false;
   let writeGeneration = 0;
+  let queuedWriteCount = 0;
   let writeChain: Promise<void> = Promise.resolve();
 
-  const queueTerminalWrite = (writer: (done: () => void) => void): void => {
+  const queueTerminalWrite = (
+    writer: (done: () => void) => void,
+    detail?: {
+      reason: string;
+      characters?: number;
+    }
+  ): void => {
     const generation = writeGeneration;
+    queuedWriteCount += 1;
     writeChain = writeChain
       .catch(() => undefined)
       .then(
         () =>
           new Promise<void>((resolve) => {
             if (disposed || generation !== writeGeneration) {
+              queuedWriteCount = Math.max(0, queuedWriteCount - 1);
               resolve();
               return;
             }
 
-            writer(() => resolve());
+            const startedAt = readPerformanceNow();
+            writer(() => {
+              queuedWriteCount = Math.max(0, queuedWriteCount - 1);
+              reportExecutionPerformanceDiagnostic(
+                {
+                  source: 'webview-terminal-write',
+                  nodeId,
+                  kind,
+                  reason: detail?.reason,
+                  durationMs: readPerformanceNow() - startedAt,
+                  characters: detail?.characters,
+                  queuedWriteCount,
+                  bufferLength: terminal.buffer.active.length
+                },
+                {
+                  minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS,
+                  minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+                }
+              );
+              resolve();
+            });
           })
       );
   };
 
   const controller: ExecutionTerminalController = {
+    nodeId,
+    kind,
     applySnapshot(detail) {
       if (disposed) {
         return;
@@ -12403,6 +12631,9 @@ function createExecutionTerminalController(
       options?.onSnapshotApplied?.(detail);
       queueTerminalWrite((done) => {
         restoreExecutionTerminalSnapshot(terminal, detail, done);
+      }, {
+        reason: 'snapshot',
+        characters: detail.serializedTerminalState?.data.length ?? detail.output.length
       });
     },
     enqueueOutput(chunk) {
@@ -12423,6 +12654,9 @@ function createExecutionTerminalController(
       options?.onContentWillChange?.('exit');
       queueTerminalWrite((done) => {
         terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
+      }, {
+        reason: 'exit',
+        characters: message.length
       });
     },
     refreshVisibleRows() {
@@ -12437,7 +12671,7 @@ function createExecutionTerminalController(
     },
     flushPendingOutput() {
       if (disposed || pendingOutput.length === 0) {
-        return;
+        return false;
       }
 
       const chunk = pendingOutput;
@@ -12446,12 +12680,20 @@ function createExecutionTerminalController(
       // to a batched drain step. xterm will continue to apply its own async parser queue.
       queueTerminalWrite((done) => {
         terminal.write(chunk, done);
+      }, {
+        reason: 'output',
+        characters: chunk.length
       });
+      return true;
+    },
+    getPendingOutputLength() {
+      return pendingOutput.length;
     },
     dispose() {
       disposed = true;
       pendingOutput = '';
       writeGeneration += 1;
+      queuedWriteCount = 0;
       writeChain = Promise.resolve();
       pendingExecutionTerminalDrains.delete(controller);
     }
