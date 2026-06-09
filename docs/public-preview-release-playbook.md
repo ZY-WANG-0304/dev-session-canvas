@@ -119,7 +119,7 @@
 
 ## 当前验证备注
 
-截至 `2026-06-09`，上一轮 `0.14.1` 已完成双市场发布；本地 `v0.14.1` tag 指向 `0330588c4874`，Open VSX API 显示主扩展与 notifier 的 latest 均为 `0.14.1`，Visual Studio Marketplace extension query 返回主扩展与 notifier latest 均为 `0.14.1`。当前 `main` 已包含 `v0.14.1` 之后合入的 #136、#138、#124、#139、#140、#141 和 #142，因此本轮从最新 `main`（`aeb9b6ce59c7`）切出 `release-0-15-0-prep`，目标版本升级为 `0.15.0`。
+截至 `2026-06-09`，上一轮 `0.14.1` 已完成双市场发布；本地 `v0.14.1` tag 指向 `0330588c4874`，Open VSX API 显示主扩展与 notifier 的 latest 均为 `0.14.1`，Visual Studio Marketplace extension query 返回主扩展与 notifier latest 均为 `0.14.1`。当前 `main` 已包含 `v0.14.1` 之后合入的 #136、#138、#124、#139、#140、#141 和 #142；已用 `git fetch origin main` 与 `git merge-base origin/main HEAD` 重新确认本轮发布准备基线为 `aeb9b6cccd5aaec4854f7639d0b92d40982deff6`（短 SHA `aeb9b6cccd5a`），因此本轮从该最新 `main` 切出 `release-0-15-0-prep`，目标版本升级为 `0.15.0`。
 
 当前功能输入已有 repo-local 证据：`docs/product-specs/agent-launch-modes-and-restart.md` 与 `docs/design-docs/agent-launch-modes-and-restart.md` 记录了 Claude Code Agent Fork 的产品语义与实现边界；`docs/product-specs/canvas-node-groups.md`、`docs/design-docs/canvas-node-groups.md` 和 `docs/design-docs/canvas-file-activity-view.md` 记录了文件活动自动对象按 owner Agent 推导分组的边界；`docs/design-docs/canvas-surface-placement.md` 与 `docs/exec-plans/completed/canvas-panel-webview-lifecycle-identity.md` 记录了 Panel Webview lifecycle 诊断闭环；`docs/design-docs/public-marketplace-release-readiness.md` 与 `docs/exec-plans/active/publish-tag-release-flow.md` 记录了 publish tag 发布输入固定流程。
 
