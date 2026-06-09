@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0
+
+- 与主扩展 `0.15.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 Claude Code Agent `Fork`、文件活动自动对象分组归属、Panel Webview lifecycle 诊断闭环，以及基于临时 `publish/vX.Y.Z` tag 的发布输入固定流程；notifier companion 不引入新的通知投递行为变更。
+
 ## 0.14.1
 
 - 与主扩展 `0.14.1` 对齐：本轮主扩展是 `0.14.x` Preview 线内的能力与可靠性补丁，聚焦 Explorer Markdown 文件右键创建关联 Note、创建类入口复用已打开 Canvas surface、分组 body 空白区拖动画板，以及 multi-root / 双窗口 shared live runtime 恢复验证与硬化；notifier companion 不引入新的通知投递行为变更。
