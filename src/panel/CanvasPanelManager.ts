@@ -408,6 +408,17 @@ interface ExecutionAttentionNotificationState extends ExecutionAttentionSignalSt
   lastAbnormalStreamNotificationAtMs?: number;
 }
 
+interface ExecutionAttentionNotificationWorkspaceFolderContext {
+  name: string;
+  path: string;
+}
+
+interface ExecutionAttentionNotificationWorkspaceContext {
+  workspaceName?: string;
+  workspaceFolders?: readonly ExecutionAttentionNotificationWorkspaceFolderContext[];
+  cwd?: string;
+}
+
 interface LocalExecutionSession extends ManagedExecutionSessionBase {
   owner: 'local';
   process: ExecutionSessionProcess;
@@ -10734,7 +10745,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return {
       version: ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
       kind: 'execution-attention',
-      title: this.buildExecutionAttentionNotificationTitle(kind),
+      title: this.buildExecutionAttentionNotificationTitle(
+        kind,
+        this.resolveExecutionAttentionNotificationCwd(kind, nodeId)
+      ),
       message,
       dedupeKey: `${nodeId}:${notificationKey}`,
       focusAction: {
@@ -10744,25 +10758,36 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private buildExecutionAttentionNotificationTitle(kind: ExecutionNodeKind): string {
-    const titlePrefix = 'DSCanvas';
-    const targetLabel = kind === 'agent' ? 'Agent' : 'Terminal';
-    const workspaceLabel = this.resolveExecutionAttentionNotificationWorkspaceLabel();
-    if (!workspaceLabel) {
-      return `${titlePrefix} · ${targetLabel}`;
-    }
-
-    return `${titlePrefix} · ${workspaceLabel} · ${targetLabel}`;
+  private buildExecutionAttentionNotificationTitle(
+    kind: ExecutionNodeKind,
+    cwd: string | undefined
+  ): string {
+    return buildExecutionAttentionNotificationTitleForWorkspace(kind, {
+      workspaceName: vscode.workspace.name,
+      workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+        name: folder.name,
+        path: folder.uri.fsPath
+      })),
+      cwd
+    });
   }
 
-  private resolveExecutionAttentionNotificationWorkspaceLabel(): string | undefined {
-    const configuredWorkspaceName = trimStoredTerminalText(vscode.workspace.name ?? '').trim();
-    if (configuredWorkspaceName) {
-      return configuredWorkspaceName;
+  private resolveExecutionAttentionNotificationCwd(
+    kind: ExecutionNodeKind,
+    nodeId: string
+  ): string | undefined {
+    const liveSessionCwd = normalizeExecutionCwd(this.getExecutionSessions(kind).get(nodeId)?.cwd ?? '');
+    if (liveSessionCwd) {
+      return liveSessionCwd;
     }
 
-    const firstWorkspaceFolderName = trimStoredTerminalText(vscode.workspace.workspaceFolders?.[0]?.name ?? '').trim();
-    return firstWorkspaceFolderName || undefined;
+    const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === kind);
+    if (!node) {
+      return undefined;
+    }
+
+    const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+    return normalizeExecutionCwd(metadata.cwd);
   }
 
   private async postExecutionAttentionNotificationToCompanion(
@@ -18702,6 +18727,57 @@ function isSameOrDescendantExecutionPath(candidatePath: string, ancestorPath: st
 function normalizeComparableExecutionPath(filePath: string): string {
   const resolvedPath = path.resolve(filePath);
   return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
+function buildExecutionAttentionNotificationTitleForWorkspace(
+  kind: ExecutionNodeKind,
+  context: ExecutionAttentionNotificationWorkspaceContext
+): string {
+  const workspaceLabel = resolveExecutionAttentionNotificationWorkspaceLabel(context);
+  const rootLabel = resolveExecutionAttentionNotificationRootLabel(context);
+  const targetLabel = kind === 'agent' ? 'Agent' : 'Terminal';
+  return ['DSCanvas', workspaceLabel, rootLabel, targetLabel].filter(isNonEmptyString).join(' · ');
+}
+
+function resolveExecutionAttentionNotificationWorkspaceLabel(
+  context: ExecutionAttentionNotificationWorkspaceContext
+): string | undefined {
+  const configuredWorkspaceName = trimStoredTerminalText(context.workspaceName ?? '').trim();
+  if (configuredWorkspaceName) {
+    return configuredWorkspaceName;
+  }
+
+  const firstWorkspaceFolderName = trimStoredTerminalText(context.workspaceFolders?.[0]?.name ?? '').trim();
+  return firstWorkspaceFolderName || undefined;
+}
+
+function resolveExecutionAttentionNotificationRootLabel(
+  context: ExecutionAttentionNotificationWorkspaceContext
+): string | undefined {
+  const workspaceFolders = context.workspaceFolders ?? [];
+  if (workspaceFolders.length <= 1) {
+    return undefined;
+  }
+
+  const cwd = normalizeExecutionCwd(context.cwd ?? '');
+  if (!cwd) {
+    return undefined;
+  }
+
+  return workspaceFolders
+    .flatMap((folder) => {
+      const folderPath = normalizeExecutionCwd(folder.path);
+      const folderName = trimStoredTerminalText(folder.name).trim();
+      return folderPath && folderName && isSameOrDescendantExecutionPath(cwd, folderPath)
+        ? [{ name: folderName, path: folderPath }]
+        : [];
+    })
+    .sort((left, right) => right.path.length - left.path.length)
+    .at(0)?.name;
+}
+
+function isNonEmptyString(value: string | undefined): value is string {
+  return typeof value === 'string' && value.length > 0;
 }
 
 function toNoteMarkdownDocumentSelection(

@@ -18,6 +18,7 @@ try {
 
   const outfile = path.join(tempDir, 'canvas-execution-context.cjs');
   const exportedHelpers = [
+    'buildExecutionAttentionNotificationTitleForWorkspace',
     'createNextState',
     'downgradeLiveRuntimeNodesMissingRuntimeStoragePath',
     'normalizeState',
@@ -119,6 +120,7 @@ try {
 
   const require = createRequire(import.meta.url);
   const {
+    buildExecutionAttentionNotificationTitleForWorkspace,
     createNextState,
     downgradeLiveRuntimeNodesMissingRuntimeStoragePath,
     normalizeState,
@@ -163,6 +165,40 @@ try {
   );
   assert.equal(resolveTerminalShellPathForConfigurationCwd('bash', workspaceRoot), 'bash');
   assert.equal(resolveTerminalShellPathForConfigurationCwd('/bin/bash', workspaceRoot), '/bin/bash');
+
+  assert.equal(
+    buildExecutionAttentionNotificationTitleForWorkspace('agent', {
+      workspaceName: 'workspace',
+      workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
+      cwd: path.join(workspaceRoot, 'src')
+    }),
+    'DSCanvas · workspace · Agent',
+    '单根 workspace 的系统通知标题应保持 workspace 和节点类型。'
+  );
+  assert.equal(
+    buildExecutionAttentionNotificationTitleForWorkspace('agent', {
+      workspaceName: 'workspace',
+      workspaceFolders: [
+        { name: 'web', path: workspaceRoot },
+        { name: 'api', path: path.join(tempDir, 'api') }
+      ],
+      cwd: path.join(tempDir, 'api', 'src')
+    }),
+    'DSCanvas · workspace · api · Agent',
+    '多根 workspace 的系统通知标题应在 workspace 和节点类型之间加入 root。'
+  );
+  assert.equal(
+    buildExecutionAttentionNotificationTitleForWorkspace('terminal', {
+      workspaceName: '',
+      workspaceFolders: [
+        { name: 'web', path: workspaceRoot },
+        { name: 'api', path: path.join(tempDir, 'api') }
+      ],
+      cwd: path.join(workspaceRoot, 'tools')
+    }),
+    'DSCanvas · web · web · Terminal',
+    '没有 workspace name 时仍应使用首个 root 作为 workspace 标签，并在多根下补当前 root。'
+  );
 
   const normalizedLegacyState = normalizeState(
     {
@@ -411,8 +447,8 @@ try {
   );
   assert.doesNotMatch(
     managerSource,
-    /(?:^|[^A-Za-z])fork(?:[^A-Za-z]|$)/i,
-    'origin/main 新实现不应保留 multi-root fork 语义。'
+    /multi-root\s+fork|fork\s+(?:canvas|画布)|fork(?:ed)?(?:Canvas|MultiRoot)/i,
+    'origin/main 新实现不应保留 multi-root fork 语义，同时允许 Agent 会话 Fork 功能独立存在。'
   );
 
   console.log('canvas execution context tests passed');
