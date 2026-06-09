@@ -447,6 +447,36 @@ export interface WebviewProbeEdgeSnapshot {
   selected: boolean;
 }
 
+export type ExecutionPerformanceDiagnosticSource =
+  | 'webview-output-enqueue'
+  | 'webview-terminal-drain'
+  | 'webview-terminal-write'
+  | 'webview-input-dispatch'
+  | 'host-input-write'
+  | 'host-output-chunk'
+  | 'host-output-post';
+
+export type ExecutionPerformanceDiagnosticOwner = 'local' | 'supervisor';
+
+export interface ExecutionPerformanceDiagnosticPayload {
+  source: ExecutionPerformanceDiagnosticSource;
+  nodeId?: string;
+  kind?: ExecutionNodeKind;
+  reason?: string;
+  durationMs?: number;
+  characters?: number;
+  bytes?: number;
+  controllerCount?: number;
+  flushedControllerCount?: number;
+  pendingControllerCount?: number;
+  queuedWriteCount?: number;
+  bufferLength?: number;
+  pendingOutputLength?: number;
+  owner?: ExecutionPerformanceDiagnosticOwner;
+  lifecycleStatus?: string;
+  success?: boolean;
+}
+
 export type WebviewDomAction =
   | {
       kind: 'selectNode';
@@ -937,6 +967,10 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         column?: number;
         readyState?: 'loading' | 'interactive' | 'complete';
       };
+    }
+  | {
+      type: 'webview/executionPerformanceDiagnostic';
+      payload: ExecutionPerformanceDiagnosticPayload;
     }
   | {
       type: 'webview/testProbeResult';
@@ -1995,6 +2029,19 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/executionPerformanceDiagnostic') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const normalizedPayload = normalizeExecutionPerformanceDiagnosticPayload(payload);
+    if (!normalizedPayload) {
+      return null;
+    }
+
+    return {
+      type: 'webview/executionPerformanceDiagnostic',
+      payload: normalizedPayload
+    };
+  }
+
   if (value.type === 'webview/testProbeResult') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
@@ -2160,6 +2207,68 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function normalizeExecutionPerformanceDiagnosticPayload(
+  value: unknown
+): ExecutionPerformanceDiagnosticPayload | undefined {
+  if (!isRecord(value) || !isExecutionPerformanceDiagnosticSource(value.source)) {
+    return undefined;
+  }
+
+  if (value.kind !== undefined && !isExecutionNodeKind(value.kind)) {
+    return undefined;
+  }
+  if (value.owner !== undefined && !isExecutionPerformanceDiagnosticOwner(value.owner)) {
+    return undefined;
+  }
+
+  return {
+    source: value.source,
+    nodeId: typeof value.nodeId === 'string' ? value.nodeId : undefined,
+    kind: isExecutionNodeKind(value.kind) ? value.kind : undefined,
+    reason: typeof value.reason === 'string' ? value.reason : undefined,
+    durationMs: normalizeNonNegativeFiniteNumber(value.durationMs),
+    characters: normalizeNonNegativeInteger(value.characters),
+    bytes: normalizeNonNegativeInteger(value.bytes),
+    controllerCount: normalizeNonNegativeInteger(value.controllerCount),
+    flushedControllerCount: normalizeNonNegativeInteger(value.flushedControllerCount),
+    pendingControllerCount: normalizeNonNegativeInteger(value.pendingControllerCount),
+    queuedWriteCount: normalizeNonNegativeInteger(value.queuedWriteCount),
+    bufferLength: normalizeNonNegativeInteger(value.bufferLength),
+    pendingOutputLength: normalizeNonNegativeInteger(value.pendingOutputLength),
+    owner: isExecutionPerformanceDiagnosticOwner(value.owner) ? value.owner : undefined,
+    lifecycleStatus: typeof value.lifecycleStatus === 'string' ? value.lifecycleStatus : undefined,
+    success: typeof value.success === 'boolean' ? value.success : undefined
+  };
+}
+
+function isExecutionPerformanceDiagnosticSource(
+  value: unknown
+): value is ExecutionPerformanceDiagnosticSource {
+  return (
+    value === 'webview-output-enqueue' ||
+    value === 'webview-terminal-drain' ||
+    value === 'webview-terminal-write' ||
+    value === 'webview-input-dispatch' ||
+    value === 'host-input-write' ||
+    value === 'host-output-chunk' ||
+    value === 'host-output-post'
+  );
+}
+
+function isExecutionPerformanceDiagnosticOwner(
+  value: unknown
+): value is ExecutionPerformanceDiagnosticOwner {
+  return value === 'local' || value === 'supervisor';
+}
+
+function normalizeNonNegativeFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function normalizeNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 function isNullableString(value: unknown): value is string | null {
