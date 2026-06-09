@@ -10334,6 +10334,7 @@ function ChromeTitleEditor(props: {
     }
   }, [overviewInteractionsDisabled]);
 
+  const overflowTitle = useOverflowAwareElementTitle(inputRef, draft);
   const titleReadOnly = props.readOnly === true;
   const editingDisabled = overviewInteractionsDisabled || titleReadOnly;
 
@@ -10362,7 +10363,7 @@ function ChromeTitleEditor(props: {
           data-node-interactive="true"
           data-probe-field="title"
           value={draft}
-          title={props.tooltip}
+          title={overflowTitle ?? props.tooltip}
           readOnly={editingDisabled}
           tabIndex={overviewInteractionsDisabled ? -1 : undefined}
           onFocus={() => {
@@ -10444,10 +10445,24 @@ function ChromeTitleEditor(props: {
 
 function OverflowAwareText(props: { className: string; text: string; tooltipText?: string }): JSX.Element {
   const textRef = useRef<HTMLSpanElement | null>(null);
+  const title = useOverflowAwareElementTitle(textRef, props.text, props.tooltipText);
+
+  return (
+    <span ref={textRef} className={props.className} title={title}>
+      {props.text}
+    </span>
+  );
+}
+
+function useOverflowAwareElementTitle<TElement extends HTMLElement>(
+  elementRef: React.RefObject<TElement>,
+  text: string,
+  tooltipText?: string
+): string | undefined {
   const [title, setTitle] = useState<string | undefined>(undefined);
 
   useLayoutEffect(() => {
-    const element = textRef.current;
+    const element = elementRef.current;
     if (!element) {
       setTitle(undefined);
       return;
@@ -10455,10 +10470,7 @@ function OverflowAwareText(props: { className: string; text: string; tooltipText
 
     let frameId: number | undefined;
     const updateTitle = (): void => {
-      const nextTitle =
-        element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1
-          ? props.tooltipText ?? props.text
-          : undefined;
+      const nextTitle = isElementVisuallyOverflowing(element) ? tooltipText ?? text : undefined;
       setTitle((currentTitle) => (currentTitle === nextTitle ? currentTitle : nextTitle));
     };
     const scheduleUpdate = (): void => {
@@ -10486,13 +10498,13 @@ function OverflowAwareText(props: { className: string; text: string; tooltipText
       resizeObserver?.disconnect();
       window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [props.text, props.tooltipText]);
+  }, [elementRef, text, tooltipText]);
 
-  return (
-    <span ref={textRef} className={props.className} title={title}>
-      {props.text}
-    </span>
-  );
+  return title;
+}
+
+function isElementVisuallyOverflowing(element: HTMLElement): boolean {
+  return element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1;
 }
 
 function toFlowNodes(params: {
