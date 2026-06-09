@@ -9124,6 +9124,50 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   expect(ungroupMessage.payload).toEqual({ groupId: 'group-1' });
 });
 
+test('canvas group title exposes the full title when truncated like node titles', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const longTitle = '非常长的规划分组标题用于验证标题区域被截断时悬浮可以看到完整内容';
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-long-title', { x: 360, y: 168 }),
+      title: longTitle,
+      size: { width: 180, height: 220 }
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-long-title',
+      title: longTitle,
+      position: { x: 120, y: 140 },
+      size: { width: 150, height: 220 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const groupTitle = page.locator('[data-group-id="group-long-title"] [data-probe-field="title"]');
+  const nodeTitle = nodeById(page, 'note-long-title').locator('[data-probe-field="title"]');
+  await expect(groupTitle).toHaveValue(longTitle);
+  await expect(nodeTitle).toHaveValue(longTitle);
+  await expect
+    .poll(async () =>
+      groupTitle.evaluate((title) => title.scrollWidth > title.clientWidth + 1)
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      nodeTitle.evaluate((title) => title.scrollWidth > title.clientWidth + 1)
+    )
+    .toBe(true);
+  await expect(groupTitle).toHaveAttribute('title', longTitle);
+  await expect(nodeTitle).toHaveAttribute('title', longTitle);
+});
+
 test('workspace root group title reuses regular group title chrome without rename actions', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
