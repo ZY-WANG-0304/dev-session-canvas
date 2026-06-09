@@ -522,6 +522,29 @@
             "%configuration.notifications.attentionSignalBridge.system.description%"
           ]
         },
+        "devSessionCanvas.notifications.enabledAttentionSignals": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "bel",
+              "osc9",
+              "osc777",
+              "agentAbnormalExit",
+              "codexAbnormalOutputText"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "bel",
+            "osc9",
+            "osc777",
+            "agentAbnormalExit",
+            "codexAbnormalOutputText"
+          ],
+          "scope": "window",
+          "markdownDescription": "%configuration.notifications.enabledAttentionSignals.description%"
+        },
         "devSessionCanvas.notifications.strongTerminalAttentionReminder": {
           "type": "string",
           "enum": [
