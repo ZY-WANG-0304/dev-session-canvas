@@ -492,8 +492,10 @@ interface AutoPanController {
   stop(): void;
 }
 type NodeViewportFocusMode = 'fit' | 'center-no-extra-zoom-if-visible';
+type CanvasViewportObjectKind = 'node' | 'group';
 interface PendingNodeViewportRequest {
-  nodeId: string;
+  objectId: string;
+  objectKind: CanvasViewportObjectKind;
   mode: NodeViewportFocusMode;
   selectNode: boolean;
 }
@@ -1334,6 +1336,9 @@ function App(): JSX.Element {
         case 'host/focusNodes':
           requestNodeGroupFocus(message.payload.nodeIds);
           break;
+        case 'host/focusGroup':
+          requestGroupFocus(message.payload.groupId);
+          break;
         case 'host/executionSnapshot':
           routeExecutionTerminalSnapshot({
             type: 'snapshot',
@@ -1690,13 +1695,15 @@ function App(): JSX.Element {
 
   useEffect(() => {
     const pendingViewportRequest = pendingViewportRequestRef.current;
-    if (!pendingViewportRequest || !hostState?.nodes.some((node) => node.id === pendingViewportRequest.nodeId)) {
+    if (!pendingViewportRequest || !isPendingViewportTargetAvailable(hostState, pendingViewportRequest)) {
       return;
     }
 
     const didApply = pendingViewportRequest.selectNode
-      ? focusNodeInViewport(pendingViewportRequest.nodeId, pendingViewportRequest.mode)
-      : centerNodeInViewport(pendingViewportRequest.nodeId, pendingViewportRequest.mode);
+      ? focusNodeInViewport(pendingViewportRequest.objectId, pendingViewportRequest.mode)
+      : pendingViewportRequest.objectKind === 'group'
+        ? centerGroupInViewport(pendingViewportRequest.objectId)
+        : centerNodeInViewport(pendingViewportRequest.objectId, pendingViewportRequest.mode);
     if (didApply) {
       pendingViewportRequestRef.current = undefined;
       if (pendingViewportRequest.selectNode) {
@@ -1909,6 +1916,37 @@ function App(): JSX.Element {
     return true;
   };
 
+  const centerGroupInViewport = (groupId: string): boolean => {
+    const reactFlowInstance = reactFlowRef.current;
+    const group = (hostStateRef.current?.groups ?? []).find((candidate) => candidate.id === groupId);
+    if (!reactFlowInstance?.viewportInitialized || !group) {
+      return false;
+    }
+
+    const targetViewport = resolveViewportForCanvasRect(
+      rectForGroupLike(group),
+      canvasViewportSize,
+      dynamicCanvasMinZoom
+    );
+    if (!targetViewport) {
+      return false;
+    }
+
+    reactFlowInstance.setViewport(targetViewport, { duration: NODE_FOCUS_ANIMATION_DURATION_MS });
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: undefined,
+      selectedNodeIds: undefined,
+      selectedGroupId: groupId,
+      selectedGroupIds: [groupId],
+      viewport: targetViewport
+    }));
+    scheduleFocusedViewportPersistence();
+    return true;
+  };
+
   const normalizeNodeGroupFocusIds = (nodeIds: readonly string[]): string[] => {
     return Array.from(
       new Set(nodeIds.filter((nodeId) => typeof nodeId === 'string' && nodeId.trim().length > 0))
@@ -1991,7 +2029,8 @@ function App(): JSX.Element {
     }
 
     pendingViewportRequestRef.current = {
-      nodeId,
+      objectId: nodeId,
+      objectKind: 'node',
       mode,
       selectNode: true
     };
@@ -2004,8 +2043,23 @@ function App(): JSX.Element {
     }
 
     pendingViewportRequestRef.current = {
-      nodeId,
+      objectId: nodeId,
+      objectKind: 'node',
       mode,
+      selectNode: false
+    };
+  };
+
+  const requestGroupFocus = (groupId: string): void => {
+    if (centerGroupInViewport(groupId)) {
+      pendingViewportRequestRef.current = undefined;
+      return;
+    }
+
+    pendingViewportRequestRef.current = {
+      objectId: groupId,
+      objectKind: 'group',
+      mode: 'fit',
       selectNode: false
     };
   };
@@ -3697,6 +3751,52 @@ function isCanvasNodeFullyVisible(
   const bottom = (node.position.y + footprint.height) * viewport.zoom + viewport.y;
 
   return left >= 0 && top >= 0 && right <= viewportWidth && bottom <= viewportHeight;
+}
+
+function isPendingViewportTargetAvailable(
+  state: CanvasPrototypeState | null,
+  request: PendingNodeViewportRequest
+): boolean {
+  if (!state) {
+    return false;
+  }
+
+  return request.objectKind === 'group'
+    ? (state.groups ?? []).some((group) => group.id === request.objectId)
+    : state.nodes.some((node) => node.id === request.objectId);
+}
+
+function resolveViewportForCanvasRect(
+  rect: CanvasMiniMapRect,
+  viewportSize: CanvasViewportSize,
+  minZoom: number
+): Viewport | undefined {
+  if (
+    !isPositiveFiniteNumber(rect.width) ||
+    !isPositiveFiniteNumber(rect.height) ||
+    viewportSize.width <= 0 ||
+    viewportSize.height <= 0
+  ) {
+    return undefined;
+  }
+
+  return getViewportForBounds(
+    rect,
+    viewportSize.width,
+    viewportSize.height,
+    minZoom,
+    CANVAS_MAX_ZOOM,
+    NODE_FOCUS_VIEW_PADDING
+  );
+}
+
+function rectForGroupLike(group: CanvasGroupSummary): CanvasMiniMapRect {
+  return {
+    x: group.position.x,
+    y: group.position.y,
+    width: group.size.width,
+    height: group.size.height
+  };
 }
 
 function resolvePendingManualNodeCreateTarget(

@@ -36,8 +36,10 @@ try {
 
   const frontendRoot = path.join(tempDir, 'frontend');
   const backendRoot = path.join(tempDir, 'backend');
+  const utilityRoot = path.join(tempDir, 'utility');
   const normalizedFrontendRoot = normalizeRootPathForTest(frontendRoot);
   const normalizedBackendRoot = normalizeRootPathForTest(backendRoot);
+  const normalizedUtilityRoot = normalizeRootPathForTest(utilityRoot);
   const folders = [
     { name: 'frontend', path: frontendRoot },
     { name: 'backend', path: backendRoot }
@@ -123,6 +125,66 @@ try {
       rectForGroup(composedWithoutOverlay.groups.find((candidate) => candidate.id === backendRootGroupId))
     ),
     '没有 overlay 时，默认 root 铺排必须按本轮最大 root section 尺寸计算，避免不同自然尺寸的 root section 重叠。'
+  );
+
+  const composedAfterAddingFolder = composeMultiRootCanvasState({
+    workspaceFolders: [
+      ...folders,
+      { name: 'utility', path: utilityRoot }
+    ],
+    rootStates: [
+      { rootPath: frontendRoot, state: frontendState },
+      { rootPath: backendRoot, state: backendState },
+      { rootPath: utilityRoot, state: state() }
+    ],
+    overlay: {
+      version: 1,
+      roots: [
+        { rootPath: frontendRoot, position: { x: 100, y: 200 }, size: { width: 900, height: 700 } },
+        { rootPath: backendRoot, position: { x: 1200, y: 200 } }
+      ]
+    },
+    newRootPlacement: {
+      rootPaths: [utilityRoot],
+      preferredCenter: { x: 1540, y: 460 }
+    },
+    now: '2026-06-04T00:45:00.000Z'
+  });
+  const utilityRootGroupId = createWorkspaceRootSectionId(utilityRoot);
+  const addedUtilityRootGroup = composedAfterAddingFolder.groups.find((candidate) => candidate.id === utilityRootGroupId);
+  assert.ok(addedUtilityRootGroup, 'Add Folder to Workspace 后新增 root 必须出现在 composed canvas 中。');
+  assert.notDeepEqual(
+    addedUtilityRootGroup.position,
+    { x: 1880, y: 0 },
+    '新增 root 不应继续使用远离当前视口的默认 index 网格位置。'
+  );
+  assert.ok(
+    Math.abs(rectCenterX(rectForGroup(addedUtilityRootGroup)) - 1540) <= 900,
+    '新增 root 应放在接近用户当前可见中心的最近可用槽位。'
+  );
+  for (const existingRootGroupId of [frontendRootGroupId, backendRootGroupId]) {
+    assert.ok(
+      !rectsOverlap(rectForGroup(addedUtilityRootGroup), rectForGroup(composedAfterAddingFolder.groups.find((candidate) => candidate.id === existingRootGroupId))),
+      '新增 root 的视口附近落点仍必须避开已有 root section。'
+    );
+  }
+  const decomposedAfterAddingFolder = decomposeMultiRootCanvasState({
+    composedState: composedAfterAddingFolder,
+    workspaceFolders: [
+      ...folders,
+      { name: 'utility', path: utilityRoot }
+    ],
+    previousRootStates: [
+      { rootPath: frontendRoot, state: frontendState },
+      { rootPath: backendRoot, state: backendState },
+      { rootPath: utilityRoot, state: state() }
+    ],
+    now: '2026-06-04T00:50:00.000Z'
+  });
+  assert.deepEqual(
+    decomposedAfterAddingFolder.overlay.roots.find((root) => root.rootPath === normalizedUtilityRoot).position,
+    addedUtilityRootGroup.position,
+    '新增 root 的自动落点必须进入 multi-root overlay，重载后保持同一位置。'
   );
 
   const movedRootDelta = { x: 300, y: 300 };
@@ -387,4 +449,8 @@ function rectForGroup(group) {
 
 function rectsOverlap(left, right) {
   return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+}
+
+function rectCenterX(rect) {
+  return (rect.left + rect.right) / 2;
 }

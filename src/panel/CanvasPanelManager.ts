@@ -967,6 +967,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private lastPersistedCanvasSnapshotWrittenAt: string | undefined;
   private multiRootOverlay: CanvasMultiRootOverlay | undefined;
   private lastLoadedRootLocalStates: CanvasRootLocalStateSnapshot[] = [];
+  private lastComposedWorkspaceRootPaths: string[] = [];
+  private pendingWorkspaceRootPlacement:
+    | {
+        rootPaths: string[];
+        preferredCenter?: CanvasNodePosition;
+      }
+    | undefined;
   private readonly runtimeSupervisorClients = new Map<string, RuntimeSupervisorClient>();
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
@@ -998,6 +1005,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
+    this.lastComposedWorkspaceRootPaths = this.getMultiRootWorkspaceFoldersForComposition().map((folder) => folder.path);
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
     this.persistState();
@@ -1055,12 +1063,36 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         this.invalidateResolvedShellEnvironmentPatch();
         this.clearAgentCliResolutionCache();
-        this.state = this.loadReconciledState();
-        const executionMetadataChanged = this.reconcileDefaultExecutionMetadataCwd();
-        const terminalShellMetadataChanged = this.refreshConfiguredTerminalShellMetadata();
-        const metadataChanged = executionMetadataChanged || terminalShellMetadataChanged;
+        const previousWorkspaceRootPaths = this.lastComposedWorkspaceRootPaths;
+        const nextWorkspaceRootPaths = this.getMultiRootWorkspaceFoldersForComposition().map((folder) => folder.path);
+        const addedWorkspaceRootPaths = nextWorkspaceRootPaths.filter(
+          (rootPath) => !previousWorkspaceRootPaths.includes(rootPath)
+        );
+        const preferredCenter = this.resolvePreferredCanvasCenter();
+        this.pendingWorkspaceRootPlacement = addedWorkspaceRootPaths.length > 0
+          ? {
+              rootPaths: addedWorkspaceRootPaths,
+              preferredCenter
+            }
+          : undefined;
+        try {
+          this.state = this.loadReconciledState();
+        } finally {
+          this.pendingWorkspaceRootPlacement = undefined;
+        }
+        this.lastComposedWorkspaceRootPaths = nextWorkspaceRootPaths;
+        const focusedRootGroup = this.resolveWorkspaceRootGroupForAddedFolder(addedWorkspaceRootPaths);
+        this.reconcileDefaultExecutionMetadataCwd();
+        this.refreshConfiguredTerminalShellMetadata();
         this.persistState();
         this.postState('host/stateUpdated');
+        if (focusedRootGroup) {
+          this.recordDiagnosticEvent('workspaceRoot/focusAddedRoot', {
+            rootPath: focusedRootGroup.workspaceRootPath,
+            groupId: focusedRootGroup.groupId
+          });
+          this.focusWorkspaceRootInCanvas(focusedRootGroup.groupId);
+        }
         this.notifySidebarStateChanged();
         this.scheduleRestoreLiveRuntimeSessions();
       })
@@ -1304,7 +1336,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private getMultiRootWorkspaceFoldersForComposition(): CanvasMultiRootWorkspaceFolder[] {
     return (vscode.workspace.workspaceFolders ?? []).map((workspaceFolder) => ({
       name: workspaceFolder.name,
-      path: path.resolve(workspaceFolder.uri.fsPath)
+      path: normalizeWorkspaceRootPathForComposition(workspaceFolder.uri.fsPath)
     }));
   }
 
@@ -5274,7 +5306,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const composedState = composeMultiRootCanvasState({
         workspaceFolders,
         rootStates,
-        overlay: this.multiRootOverlay
+        overlay: this.multiRootOverlay,
+        newRootPlacement: this.pendingWorkspaceRootPlacement
       });
       this.recordDiagnosticEvent('state/loadSelected', {
         source: 'multiRootComposition',
@@ -5285,6 +5318,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         workspaceStateAvailable: workspaceState !== undefined,
         resetDueToFilesFeatureModeChange,
         fileDomainDisabled: !this.appliedStartupConfiguration.filesFeatureEnabled,
+        newRootPlacementCount: this.pendingWorkspaceRootPlacement?.rootPaths.length,
         ...summarizeCanvasStateForDiagnostics(composedState)
       });
       return this.materializeNoteMarkdownRecoverableDraftFiles(
@@ -10974,6 +11008,50 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       payload: {
         nodeId
       }
+    });
+  }
+
+  private resolveWorkspaceRootGroupForAddedFolder(
+    rootPaths: readonly string[]
+  ): { workspaceRootPath: string; groupId: string } | undefined {
+    const targetRootPaths = new Set(rootPaths.map(normalizeWorkspaceRootPathForComposition));
+    if (targetRootPaths.size === 0) {
+      return undefined;
+    }
+
+    for (const group of this.state.groups ?? []) {
+      if (!isWorkspaceRootGroup(group)) {
+        continue;
+      }
+
+      const workspaceRootPath = resolveWorkspaceRootPathForGroup(group);
+      if (workspaceRootPath && targetRootPaths.has(workspaceRootPath)) {
+        return {
+          workspaceRootPath,
+          groupId: group.id
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  private focusWorkspaceRootInCanvas(groupId: string): void {
+    const targetSurface = this.activeSurface ?? this.getConfiguredSurface();
+    void (async () => {
+      await this.revealSurface(targetSurface, { restoreWebviewFocus: false });
+      await this.waitForCanvasReady(targetSurface, EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS);
+      this.postMessageToSurface(targetSurface, {
+        type: 'host/focusGroup',
+        payload: {
+          groupId
+        }
+      });
+    })().catch((error) => {
+      this.recordDiagnosticEvent('workspaceRoot/focusFailed', {
+        groupId,
+        message: formatUnknownError(error)
+      });
     });
   }
 
@@ -19388,6 +19466,10 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
       return {
         nodeIds: message.payload.nodeIds
       };
+    case 'host/focusGroup':
+      return {
+        groupId: message.payload.groupId
+      };
     case 'host/error':
       return {
         message: message.payload.message
@@ -22308,9 +22390,13 @@ function buildCanvasTemplateStorageLocations(context: vscode.ExtensionContext): 
 }
 
 function createRootLocalCanvasStorageKey(rootPath: string): string {
-  const resolvedRootPath = path.resolve(rootPath);
   return createHash('sha256')
-    .update(process.platform === 'win32' ? resolvedRootPath.toLowerCase() : resolvedRootPath)
+    .update(normalizeWorkspaceRootPathForComposition(rootPath))
     .digest('hex')
     .slice(0, 24);
+}
+
+function normalizeWorkspaceRootPathForComposition(rootPath: string): string {
+  const resolvedRootPath = path.resolve(rootPath);
+  return process.platform === 'win32' ? resolvedRootPath.toLowerCase() : resolvedRootPath;
 }

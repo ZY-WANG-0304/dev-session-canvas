@@ -1038,6 +1038,12 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'host/focusGroup';
+      payload: {
+        groupId: string;
+      };
+    }
+  | {
       type: 'host/error';
       payload: {
         message: string;

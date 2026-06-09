@@ -353,6 +353,12 @@ try {
   );
 
   const managerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
+  const managerSourceWithoutProviderNativeSessionBranching = managerSource
+    .replace(
+      /  private async branchAgentSession\([\s\S]*?\n  public getSessionHistoryRestoreBlockReason\(\)/u,
+      '\n  public getSessionHistoryRestoreBlockReason()'
+    )
+    .replace(/\nfunction isClaudeForkSessionLaunch\([\s\S]*?\n\}/u, '\n');
   const runtimeBindingKeyFunction = managerSource.match(
     /private buildRuntimeSessionBindingKey\([\s\S]*?\n  \}/u
   )?.[0] ?? '';
@@ -449,6 +455,11 @@ try {
     managerSource,
     /multi-root\s+fork|fork\s+(?:canvas|画布)|fork(?:ed)?(?:Canvas|MultiRoot)/i,
     'origin/main 新实现不应保留 multi-root fork 语义，同时允许 Agent 会话 Fork 功能独立存在。'
+  );
+  assert.doesNotMatch(
+    managerSourceWithoutProviderNativeSessionBranching,
+    /(?:^|[^A-Za-z])fork(?:[^A-Za-z]|$)/i,
+    'origin/main 新实现不应保留 multi-root fork 语义；Claude Code 原生 session fork 路径不属于 multi-root canvas fork。'
   );
 
   console.log('canvas execution context tests passed');
