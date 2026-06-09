@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.15.0 - Preview Agent Fork and Release Automation Update
+
+相对 `0.14.1`，`0.15.0` 是一轮新的公开 `Preview` 里程碑更新，重点补齐 Claude Code Agent `Fork`、文件活动自动对象分组归属、Panel Webview lifecycle 诊断闭环，以及基于临时 `publish/vX.Y.Z` tag 的发布输入固定流程。它保留 `0.14.1` 的 Explorer Markdown 关联 Note、创建入口 surface 复用、分组 body 拖动画板、multi-root / 双窗口 shared live runtime 恢复验证、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.14.1` bump 到 `0.15.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 对持有可信 Claude Code session id 的 Agent 节点新增 `Fork` 动作：点击后创建新的 Claude Code Agent 节点，并用 `claude --resume <session-id> --fork-session` 立即启动；来源节点保持不变，新节点通过标题弱提示来源，并自动创建一条普通可编辑 `user` 边
+- `Fork` 第一版只面向 Claude Code；`Codex`、非 Claude provider、未持有可信 Claude session id 或未受信任 workspace 不会误触发 fork 启动
+- 文件活动自动 `file` / `file-list` 节点现在按 owner Agent 推导分组归属：单 owner 跟随该 Agent 的最内层分组，多 owner 使用最近公共父分组，multi-root 下保持 root 内隔离；用户拖动自动文件对象只改变位置，不改写 owner-derived 分组事实
+- 修正文件活动自动对象在多选拖拽后的宿主收口，避免拖拽结果把自动文件对象落到与 owner Agent 不一致的分组
+- 对齐 multi-root workspace-root section 与普通分组标题在缩放下的宽度压缩和可读尺寸规则，低倍率概览和放大场景都不再把 root 分组标题异常挤出边界
+- 加固 Panel Webview lifecycle 诊断闭环：Host 侧区分当前 surface 对象和实际可用 message target frame，支持同 Webview frame ready 重新绑定；`Dev Session Canvas: 落盘当前宿主诊断` 会写出 lifecycle 聚合摘要，并新增 `npm run diagnose:webview-lifecycle` 离线分析入口
+- 发布流程升级为临时 `publish/vX.Y.Z` tag 固定 release input，发布脚本在双市场主扩展 / notifier 验证通过后再创建正式 `vX.Y.Z` tag，并输出 release manifest 作为 Actions artifact / 发布证据
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.14.1` 升级到 `0.15.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.15.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.15.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.15.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.14.1 - Preview Markdown Note Shortcut and Shared Runtime Patch
 
 相对 `0.14.0`，`0.14.1` 是同一 `0.14.x` 公开 `Preview` 线内的能力与可靠性补丁，重点补齐 File Explorer Markdown 文件右键创建关联 `Note`、创建类入口复用已打开 Canvas surface、分组 body 空白区拖动画板，以及 multi-root / 双窗口 shared live runtime 恢复验证与硬化。它保留 `0.14.0` 的空间级 fit view、初始自动 fit、动态最小缩放、右下角 MiniMap、workspace-root section 可见性、双市场发布元数据、安装拓扑和 Preview 支持边界。
