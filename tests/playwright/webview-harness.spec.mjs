@@ -9168,6 +9168,39 @@ test('canvas group title exposes the full title when truncated like node titles'
   await expect(nodeTitle).toHaveAttribute('title', longTitle);
 });
 
+test('workspace root group keeps the root path tooltip when its display title is truncated', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const displayTitle = '非常长的工作区根目录标题用于验证截断时仍然展示完整路径';
+  const workspaceRootPath = '/repo/frontend-app-with-a-very-long-folder-display-title';
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-long-title',
+      title: displayTitle,
+      position: { x: 120, y: 140 },
+      size: { width: 150, height: 220 },
+      role: 'workspace-root',
+      workspaceRootPath
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootTitle = page.locator('[data-group-id="workspace-root-long-title"] [data-probe-field="title"]');
+  await expect(rootTitle).toHaveValue(displayTitle);
+  await expect(rootTitle).toHaveAttribute('readonly', '');
+  await expect
+    .poll(async () =>
+      rootTitle.evaluate((title) => title.scrollWidth > title.clientWidth + 1)
+    )
+    .toBe(true);
+  await expect(rootTitle).toHaveAttribute('title', workspaceRootPath);
+});
+
 test('workspace root group title reuses regular group title chrome without rename actions', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
