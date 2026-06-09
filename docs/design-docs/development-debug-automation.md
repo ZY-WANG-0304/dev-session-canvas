@@ -16,7 +16,7 @@ related_plans:
   - docs/exec-plans/completed/test-automation-hardening.md
   - docs/exec-plans/completed/debug-automation-next-six.md
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
-updated_at: 2026-06-08
+updated_at: 2026-06-09
 ---
 
 # 开发调试与自动化验证
@@ -89,7 +89,7 @@ updated_at: 2026-06-08
 
 ### 5.4 三层方案
 
-第一层：隔离式 `Run and Debug` 改为走 VS Code 官方推荐的命名 profile。`Run Dev Session Canvas (Main Only)` 固定使用 `Dev Session Canvas Extension Debug` profile，并在启动前生成一份去掉 `extensionDependencies` / `extensionPack` 的 debug-only 临时主扩展目录，再把这份目录作为唯一 `--extensionDevelopmentPath` 加载。这样可以在保留正式安装真相“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”不变的前提下，继续在 local / remote 环境单独调主扩展，而不是为了 F5 改写正式 manifest 或把 notifier 的安装期语义混入开发宿主。若要联调真实 notifier，则改用 `Run Dev Session Canvas + Notifier (Local Window)` 或 `Run Dev Session Canvas + Notifier (Remote Window)`；Remote-SSH 等远程能力则由对应 debug profile 预先安装的 `Remote Development` 扩展提供，而不是继续手工改写 `user-data-dir`、`extensions-dir` 或远端工作区身份。
+第一层：隔离式 `Run and Debug` 改为走 VS Code 官方推荐的命名 profile。`Run Dev Session Canvas (Main Only)` 固定使用 `Dev Session Canvas Extension Debug` profile，并在启动前生成一份去掉 `extensionDependencies` / `extensionPack` 的 debug-only 临时主扩展目录，再把这份目录作为唯一 `--extensionDevelopmentPath` 加载。调试前置 build task 先执行轻量依赖预检：新 worktree 没有 `node_modules/esbuild` 时自动跑一次 `npm ci`，避免 F5 或 VS Code build task 在全新 worktree 中因缺少 `node_modules` 直接失败。这样可以在保留正式安装真相“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”不变的前提下，继续在 local / remote 环境单独调主扩展，而不是为了 F5 改写正式 manifest 或把 notifier 的安装期语义混入开发宿主。若要联调真实 notifier，则改用 `Run Dev Session Canvas + Notifier (Local Window)` 或 `Run Dev Session Canvas + Notifier (Remote Window)`；Remote-SSH 等远程能力则由对应 debug profile 预先安装的 `Remote Development` 扩展提供，而不是继续手工改写 `user-data-dir`、`extensions-dir` 或远端工作区身份。
 
 第二层：继续复用 `@vscode/test-electron` 提供的 VS Code 下载与可执行文件解析能力，但 smoke 启动改为自建 launcher，直接启动 VS Code，而不是调用默认 `runTests()`。这样才能真正控制 `--disable-workspace-trust` 参数，覆盖可信 workspace 与真实 Restricted Mode 两种场景。第二层继续承担宿主主路径、`webview -> host` 消息桥接、`Agent` 假 provider / `Terminal` 执行生命周期、状态持久化恢复、关键失败路径、切面 / reload 竞态和非激活 surface 语义，并额外通过 test-only probe 与 test-only DOM action 桥读取真实 Webview 容器里的 DOM 摘要和一条真实交互。当前第二层还新增了一条 `Remote-SSH + Extension Development Host + real-reopen` smoke：runner 会在 Linux 上启动临时用户态 `sshd`，让 `Remote-SSH` 扩展通过真实 SSH 协议连接同机远端，从而把 runtime persistence 的远端重连链路纳入自动化。
 
@@ -133,6 +133,7 @@ updated_at: 2026-06-08
 当前正式调试与验证方案分成三层，并分别落在固定入口上：
 
 - `.vscode/launch.json` 与 `.vscode/tasks.json`：只保留三条默认调试路径，即 `Run Dev Session Canvas (Main Only)`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`；其中主扩展单调与 notifier 联调不再共用模糊入口。
+- `scripts/shared/ensure-node-dependencies.mjs`：作为 VS Code build task 的第一步，检测当前 worktree 是否具备构建所需的根 `node_modules`；若缺失则在仓库根执行 `npm ci`，让新建 worktree 的 F5 / build task 能自举依赖。
 - `scripts/shared/prepare-debug-main-only-extension.mjs`：在 `Run Dev Session Canvas (Main Only)` 启动前生成 `.debug/vscode-extension-main-only/`，把仓库根主扩展复制成一份 debug-only 临时目录，保留运行时需要的 `scripts/runtime/claude-file-event-hook.cjs`，并仅在这份临时 manifest 里移除 `extensionDependencies` / `extensionPack`，从而在保留正式安装真相不变的前提下维持主扩展单调能力。
 - `scripts/smoke/run-vscode-smoke.mjs` 与 `tests/vscode-smoke/extension-tests.cjs`：承担真实 VS Code 宿主级自动化，覆盖扩展激活、Webview ready、`webview/*` 消息桥接、执行会话、runtime persistence、Restricted Mode、真实 Webview probe 与 test-only DOM action。
 - `scripts/smoke/run-vscode-vsix-smoke.mjs`：先打包 `.vsix`，再解包并用打包产物跑 trusted smoke，用来验证 VSIX 运行时文件集和最小集成链路。
@@ -149,6 +150,7 @@ updated_at: 2026-06-08
 
 - 正式 `package.json` 继续作为发布态单一真相；任何去掉 `extensionDependencies` / `extensionPack` 的动作都只能发生在 `.debug/vscode-extension-main-only/` 或 staged 测试副本，不能反向污染仓库根 manifest。
 - 默认调试入口固定收口为三条 launch 配置；其中 `Run Dev Session Canvas (Main Only)` 必须保持零 notifier 输入，`Run Dev Session Canvas + Notifier (Remote Window)` 必须只额外要求 `localRepoRoot` 这一项输入。
+- VS Code build task 可以在缺少根 `node_modules` 时自举执行 `npm ci`，但不改变发布态 package manifest；CI、发布与命令行验证仍应把 `npm ci` 当作显式环境准备步骤。
 - 真实宿主 smoke 与 Playwright harness 分工固定：前者负责集成闭环与运行时语义，后者负责 Webview UI / 截图回归；两者互补，不能互相宣称覆盖对方的验证范围。
 - 宿主侧 test-only 能力只在 `ExtensionMode.Test` 或约定测试 harness 下暴露，用于读取状态、等待 ready、派发消息和采集 probe；发布态与日常 F5 不应把这些命令当成产品接口。
 - smoke / Playwright 失败时必须留下可追溯调试产物，包括真实 Webview probe、宿主消息、宿主诊断时间线、VS Code logs、截图与 trace；Remote-SSH real-reopen 产物需继续独立落到 `.debug/vscode-smoke/remote-ssh-real-reopen/artifacts/`，避免与本地场景混淆。
@@ -163,7 +165,8 @@ updated_at: 2026-06-08
 2. `npm run test:smoke`
 3. `npm run test:webview`
 4. `npm run test:vsix-smoke`
-5. 在本机预先准备好 `Dev Session Canvas Extension Debug` profile，并在 `Remote - SSH` 打开的仓库窗口中按 `F5` 启动 `Run Dev Session Canvas (Main Only)`，确认 Development Host 能正常打开远程窗口并打开画布
+5. 在缺少根 `node_modules` 的新 worktree 中触发 VS Code `build extension` task，确认依赖预检会先执行 `npm ci`，随后 `npm run build` 不再因缺少 `esbuild` 失败。
+6. 在本机预先准备好 `Dev Session Canvas Extension Debug` profile，并在 `Remote - SSH` 打开的仓库窗口中按 `F5` 启动 `Run Dev Session Canvas (Main Only)`，确认 Development Host 能正常打开远程窗口并打开画布
 
 验收口径：
 
