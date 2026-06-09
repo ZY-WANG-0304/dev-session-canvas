@@ -127,6 +127,7 @@
 
 - 版本一致性检查：`package.json`、notifier manifest、`package-lock.json` 根版本、root package entry 与 notifier package entry 均为 `0.15.0`
 - `git diff --check`
+- `node --check tests/vscode-smoke/extension-tests.cjs`
 - `npm run test:extension-manifest`
 - `npm run test:package-vsix-command`
 - `npm run test:publish-marketplaces`
@@ -144,6 +145,7 @@
 - `npm run release:publish-tag -- --trigger-tag publish/v0.15.0 --dry-run --package-only --skip-origin-main-check`（使用本地临时 tag 预演发布准备分支，未执行真实 publish / tag 变更）
 - `npm run package:vsix`
 - `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`
+- `npm run test:vsix-smoke`
 - `npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke`
 - `npm audit --omit=dev`（0 vulnerabilities）
 - `npm audit`（仍报告 5 个 dev/tooling transitive vulnerabilities：4 moderate、1 high；当前生产依赖审计为 0）
@@ -153,7 +155,7 @@
 - 主扩展 VSIX：`dev-session-canvas-0.15.0.vsix`，114 files，约 3.42 MB（本地文件大小 3,585,444 bytes）
 - Notifier VSIX：`extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.15.0.vsix`，10 files，约 144.14 KB（本地文件大小 147,595 bytes）
 - 两个 VSIX 的 `VSCE README doc ref` 均已在本轮发布准备分支打包日志中打印并指向当时的 release-prep `HEAD`；发布准备 MR 合并后还需在最终 `main` release commit 上重新锁定
-- 本轮发布准备尚未复跑 `npm run test:vsix-smoke`；若发布前需要 packaged-payload smoke，应继续按既有 smoke flaky 口径区分 serialized terminal scrollback / editor ready 偶发失败与本轮改动范围
+- 本轮已补跑 `npm run test:vsix-smoke` 并通过；补跑过程中先暴露两处 smoke harness 口径问题：serialized terminal scrollback 用例输出行过长导致换行后误裁剪最早 marker，以及 Claude Fork 成功路径继承 packaged smoke 的缺失 Claude 命令环境。两者已收口到 `tests/vscode-smoke/extension-tests.cjs`，避免把测试构造问题误判为 `0.15.0` packaged payload blocker。
 
 残余风险：发布准备 MR 合并后，仍必须在最终 `main` release commit 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 与必要的 packaged-payload smoke，确认 README 相对链接改写、VSIX 文件数 / 大小、`VSCE README doc ref` 和 packaged-payload smoke 均与最终发布 ref 一致。真实 publish 与 `v0.15.0` tag 仍只能在发布准备 MR 合并后的最终 `main` ref 上执行。
 
