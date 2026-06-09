@@ -6216,6 +6216,17 @@ test('host focus group request animates to a workspace root section', async ({ p
   const afterState = await readPersistedUiState(page);
   expect(afterState.selectedGroupId).toBe('workspace-root-tools');
   expect(afterState.selectedGroupIds).toEqual(['workspace-root-tools']);
+  await expect
+    .poll(async () => {
+      const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+      const latestCenter = centerMessages.at(-1)?.payload.visibleCenter;
+      return latestCenter ? `${latestCenter.x},${latestCenter.y}` : null;
+    })
+    .not.toBeNull();
+  const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+  const latestCenter = centerMessages.at(-1).payload.visibleCenter;
+  expect(Math.abs(latestCenter.x - (2400 + 720 / 2))).toBeLessThanOrEqual(18);
+  expect(Math.abs(latestCenter.y - (720 + 520 / 2))).toBeLessThanOrEqual(18);
 
   const viewportSize = page.viewportSize();
   const rootBox = await page.locator('[data-group-id="workspace-root-tools"]').boundingBox();
