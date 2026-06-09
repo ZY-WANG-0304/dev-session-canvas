@@ -59,6 +59,9 @@
 - [x] (2026-06-08 12:10 +0800) 完成本轮验证：`npm run test:canvas-node-groups`、`npm run test:canvas-multi-root-composition`、`npm run test:canvas-templates`、`npm run test:protocol-webview-messages`、`npm run typecheck`、`npm run build`、`git diff --check` 均通过。
 - [x] (2026-06-08 22:29 +0800) 处理 PR #138 review blocker：多选同时拖动 owner Agent 与其自动 `file-list` 时，`moveNode()` 在几何收口前先按移动后的 owner Agent 重新计算自动文件节点 group，避免旧 owner group 被同批移动里的 stale file-list 位置扩张。
 - [x] (2026-06-08 22:29 +0800) 完成本次 review 修复验证：`npm run test:canvas-node-groups`、`npm run test:canvas-multi-root-composition`、`npm run typecheck`、`npm run build`、`git diff --check` 均通过。
+- [x] (2026-06-09 18:55 +0800) 修正分组双击导航语义：双击普通分组或 workspace root section 标题 tab 的非交互空白处、或未被节点覆盖的 body 空白区，会选中并把已有分组居中 / 聚焦到当前视口；不会创建新分组，也不会改变分组几何或成员关系；标题输入框、toolbar 按钮和 resize 控制点不触发聚焦。
+- [x] (2026-06-09 18:55 +0800) 完成本次分组双击聚焦验证：`npx tsc --noEmit --pretty false`、`npm run build`、4 条 Webview 分组双击 Playwright 用例均通过；随后补跑 `npm run typecheck`、定向 Playwright、`git diff --check`。
+- [x] (2026-06-09 21:40 +0800) 处理 PR #145 review blocker：真实 pointer 双击标题 tab 空白处时，未超过提交阈值的分组 drag / resize 只清理本地草稿和自动平移状态，不再向宿主发送 `webview/moveGroup` / `webview/resizeGroup`；双击聚焦路径也会清理残留 drag / resize state。回归测试改用 `page.mouse.dblclick(titlebarBox.x + 4, ...)` 覆盖真实 pointer down / up 序列，并断言不产生 move / resize / createEmptyGroup 消息。
 - [ ] 继续完善删除分组对话框保留成员分支的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -199,6 +202,10 @@
   理由：文件活动节点的产品目的，是辅助用户判断 Agent 之间的信息处理关系；因此它们应跟随产生这些文件活动的 Agent 所在分组。多个 owner Agent 共享同一自动 artifact 时，归属到这些 owner 的最近公共父分组；multi-root 下跨 root owner 不合并。用户拖动这类节点只改变位置，不改变到与 owner Agent 不一致的分组；Agent 移动后未被抑制的自动 artifact 重新归属。模板仍只保存 Agent / Terminal / Note 及其用户连线和分组，不保存 `file` / `file-list`。
   日期/作者：2026-06-08 / Codex
 
+- 决策：分组标题 tab 非交互空白处和 body 空白区的双击是视口导航动作，不是几何自适应或创建动作。
+  理由：用户明确“自适应调整分组大小”指把分组居中 / 聚焦到视口，类似双击节点顶部标题栏空白区域；因此 Webview 只通过 `getViewportForBounds` 调整 viewport 并持久化本地视口，保持分组 `position`、`size`、父子关系和成员关系不变。标题输入框、toolbar 按钮和 resize 控制点继续保留自身交互语义。
+  日期/作者：2026-06-09 / Codex
+
 ## 结果与复盘
 
 当前工作已经从文档设计推进到首版基础实现。代码层新增了共享 group 协议、宿主持久化与几何收口、Webview group frame 与上下文入口、命令面板补充入口、模板 group capture / materialize、侧栏原生更多菜单和可折叠分组树，以及对应的协议、宿主、模板和 Playwright 测试。设计文档已经把方案 B 从“比较中”收口为“已选定”，验证状态保持“验证中”。
@@ -210,6 +217,8 @@
 2026-05-30 PR #102 修正分组 foreground 挂载层级后，当前正式口径是：背景 body 在 `.react-flow__viewport` 的节点下方，foreground 交互 chrome 在 `.react-flow__renderer` 内并带 `nodrag nopan`，React Flow wrapper / renderer / pane 负责裁切溢出；不要再按旧记录把 foreground 改回 canvas shell portal。
 
 2026-06-08 本轮把 `file` / `file-list` 从“不建立稳定成员关系”的旧口径改为“owner Agent 推导的自动成员”。代码已让自动文件节点 / 文件列表节点在文件活动重建时按 owner Agent 最近公共父 group 写入 `groupId`，拖动这类节点只改变位置，所属 group 会像 resize-like repair 一样扩张容纳；Agent 移动、group move / resize / ungroup / keep-members 删除后会触发文件活动重建，避免 stale 自动成员继续影响旧边界。multi-root 下 root-local artifact 仍按 root namespace 分别重建，跨 root owner 不合并为共享 artifact。模板保存逻辑继续只捕获 `Agent`、`Terminal`、`Note` 与用户边 / 用户分组，`file` / `file-list` 不作为模板成员保存。
+
+2026-06-09 本轮舍弃了此前把双击理解为“调整分组几何”的错误方向，改为纯 Webview 视口聚焦：`src/webview/main.tsx` 对普通分组和 workspace root section 的标题 tab 非交互空白处、body 空白区处理双击，选中目标分组并调用 React Flow viewport 动画让现有分组居中；不会发送宿主分组创建 / resize / move 消息，也不会改变宿主权威几何。`tests/playwright/webview-harness.spec.mjs` 覆盖普通分组标题空白处、workspace root 标题空白处、body 空白区三条聚焦路径，以及标题输入框双击不改视口的保护路径。
 
 ## 上下文与定向
 
@@ -281,6 +290,18 @@ Webview 验收：Playwright harness 中，空白区可创建空 group；group fr
     "test:canvas-node-groups": "node scripts/test/test-canvas-node-groups.mjs"
 
 Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面加载 `dist/webview.js`。
+
+2026-06-09 分组双击聚焦验证记录：
+
+    $ npx tsc --noEmit --pretty false
+    通过。
+
+    $ npm run build
+    > dev-session-canvas@0.15.0 build
+    > node scripts/build/build.mjs
+
+    $ node scripts/test/run-playwright-webview.mjs -g "double-clicking (regular|workspace root) group titlebar blank area focuses the existing group|double-clicking group body blank area focuses the existing group|double-clicking group title input keeps the current viewport unchanged"
+    4 passed。
 
 2026-05-30 PR #102 review 修复验证记录：
 
@@ -565,3 +586,7 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 本次修订说明：2026-05-26 优化分组标题 tab 与双段按钮的缩放表现：两者只在画板缩小时反向放大以保持用户可读尺寸；画板放大时不反向缩小，视觉上跟随画板一起放大；默认按内容自然宽度显示，只有达到分组宽度上限时才停止继续变宽，避免操作区溢出分组框或影响周边内容。新增 Webview 回归覆盖低倍率下的可读尺寸、放大时跟随画板缩放、自然宽度和不越界约束。
 
 本次修订说明：2026-05-30 处理 PR #102 review，更新 active ExecPlan 中已过期的 canvas shell portal 口径：分组 foreground 改挂 `.react-flow__renderer`，用 React Flow wrapper / renderer / pane 裁切溢出避免无限画布外层滚动条，同时通过 `nodrag nopan` 避免拖动分组时 pane 同步平移。同步记录验证证据与正式设计索引日期。
+
+本次修订说明：2026-06-09 按用户澄清舍弃“几何自适应”方向，记录分组双击标题空白处 / body 空白区仅执行视口居中聚焦的正式口径、实现落点和 Webview 验证。
+
+本次修订说明：2026-06-09 处理 PR #145 review，补充真实 pointer 双击标题 tab 空白处的回归口径：双击导航前置点击不应提交无意义分组移动或 resize，Webview 需要在 no-op pointer 结束时清理草稿 / 自动平移状态并保持宿主状态不变。

@@ -2316,6 +2316,58 @@ function App(): JSX.Element {
     () => resolveDynamicCanvasMinZoom(canvasSpatialBounds, canvasViewportSize),
     [canvasSpatialBounds, canvasViewportSize]
   );
+
+  const moveGroupIntoViewport = (groupId: string): boolean => {
+    const reactFlowInstance = reactFlowRef.current;
+    const targetGroup = groups.find((group) => group.id === groupId);
+    if (
+      !reactFlowInstance?.viewportInitialized ||
+      !targetGroup ||
+      !isPositiveFiniteNumber(targetGroup.size.width) ||
+      !isPositiveFiniteNumber(targetGroup.size.height)
+    ) {
+      return false;
+    }
+
+    const viewport = getViewportForBounds(
+      {
+        x: targetGroup.position.x,
+        y: targetGroup.position.y,
+        width: targetGroup.size.width,
+        height: targetGroup.size.height
+      },
+      canvasViewportSize.width,
+      canvasViewportSize.height,
+      Math.min(NODE_FOCUS_MIN_ZOOM, dynamicCanvasMinZoom),
+      NODE_FOCUS_MAX_ZOOM,
+      NODE_FOCUS_VIEW_PADDING
+    );
+    reactFlowInstance.setViewport(viewport, { duration: NODE_FOCUS_ANIMATION_DURATION_MS });
+    return true;
+  };
+
+  const focusGroupInViewport = (groupId: string): boolean => {
+    if (!moveGroupIntoViewport(groupId)) {
+      return false;
+    }
+
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) => {
+      const nextState = {
+        ...current,
+        selectedNodeId: undefined,
+        selectedNodeIds: undefined,
+        selectedGroupId: groupId,
+        selectedGroupIds: [groupId]
+      };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
+    scheduleFocusedViewportPersistence();
+    return true;
+  };
+
   const fitCanvasView = useCallback((duration = 0): boolean => {
     const reactFlowInstance = reactFlowRef.current;
     const bounds = canvasSpatialBounds.bounds;
@@ -3241,6 +3293,7 @@ function App(): JSX.Element {
             groups={groups}
             selectedGroupIds={resolveSelectedGroupIds(localUiState)}
             onSelectGroupBody={selectGroup}
+            onFocusGroupInViewport={focusGroupInViewport}
             onGroupBodyContextMenu={handlePaneContextMenu}
             onSelectGroup={selectGroup}
             onDraftGroup={updateGroupDraft}
@@ -9536,6 +9589,7 @@ function CanvasGroupsViewportLayer(props: {
     groupId: string,
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
   onSelectGroup: (
     groupId: string,
@@ -9571,6 +9625,7 @@ function CanvasGroupsViewportLayer(props: {
               selectedGroupIds={props.selectedGroupIds}
               zoom={viewport.zoom}
               onSelectGroupBody={props.onSelectGroupBody}
+              onFocusGroupInViewport={props.onFocusGroupInViewport}
               onGroupBodyContextMenu={props.onGroupBodyContextMenu}
             />,
             backgroundPortalElement
@@ -9601,6 +9656,7 @@ function CanvasGroupBackgroundLayer(props: {
     groupId: string,
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }): JSX.Element {
   const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
@@ -9614,6 +9670,7 @@ function CanvasGroupBackgroundLayer(props: {
           selected={selectedGroupIds.has(group.id)}
           zoom={props.zoom}
           onSelectGroupBody={props.onSelectGroupBody}
+          onFocusGroupInViewport={props.onFocusGroupInViewport}
           onGroupBodyContextMenu={props.onGroupBodyContextMenu}
         />
       ))}
@@ -9629,6 +9686,7 @@ function CanvasGroupBackgroundFrame(props: {
     groupId: string,
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }): JSX.Element {
   return (
@@ -9644,6 +9702,7 @@ function CanvasGroupBackgroundFrame(props: {
           stopCanvasEvent(event);
           props.onSelectGroupBody(props.group.id, event);
         }}
+        onDoubleClick={(event) => handleGroupChromeDoubleClick(event, props.group.id, props.onFocusGroupInViewport)}
         onContextMenu={(event) => {
           props.onGroupBodyContextMenu(event, props.group.id);
         }}
@@ -9660,6 +9719,7 @@ function CanvasGroupLayer(props: {
     groupId: string,
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
@@ -9693,6 +9753,7 @@ function CanvasGroupLayer(props: {
           selected={selectedGroupIds.has(group.id)}
           zoom={props.viewport.zoom}
           onSelectGroup={props.onSelectGroup}
+          onFocusGroupInViewport={props.onFocusGroupInViewport}
           onDraftGroup={props.onDraftGroup}
           onMoveGroup={props.onMoveGroup}
           onResizeGroup={props.onResizeGroup}
@@ -9875,6 +9936,24 @@ function resolveGroupResizeGeometry(
   };
 }
 
+function hasGroupPointerCommitMovement(
+  pointerStart: { clientX: number; clientY: number; autoPanOffset: CanvasNodePosition },
+  event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+  zoom: number
+): boolean {
+  const pointerDelta = Math.hypot(event.clientX - pointerStart.clientX, event.clientY - pointerStart.clientY);
+  if (pointerDelta > CANVAS_GROUP_POINTER_COMMIT_THRESHOLD_PX) {
+    return true;
+  }
+
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const autoPanScreenDelta = Math.hypot(
+    pointerStart.autoPanOffset.x * safeZoom,
+    pointerStart.autoPanOffset.y * safeZoom
+  );
+  return autoPanScreenDelta > CANVAS_GROUP_POINTER_COMMIT_THRESHOLD_PX;
+}
+
 const CANVAS_GROUP_RESIZE_DIRECTIONS: CanvasGroupResizeDirection[] = [
   'top',
   'right',
@@ -9887,6 +9966,9 @@ const CANVAS_GROUP_RESIZE_DIRECTIONS: CanvasGroupResizeDirection[] = [
 ];
 
 const CANVAS_GROUP_RESIZE_LINE_DIRECTIONS: CanvasGroupResizeDirection[] = ['top', 'right', 'bottom', 'left'];
+const CANVAS_GROUP_POINTER_COMMIT_THRESHOLD_PX = 3;
+const CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_MAX_INTERVAL_MS = 700;
+const CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_POSITION_TOLERANCE_PX = 8;
 const CANVAS_GROUP_TITLE_BASE_HEIGHT = 28;
 const CANVAS_GROUP_BODY_TOP_OFFSET = CANVAS_GROUP_TITLE_BASE_HEIGHT;
 const CANVAS_GROUP_TITLE_BASE_MIN_WIDTH = 112;
@@ -9980,6 +10062,7 @@ function CanvasGroupFrame(props: {
     groupId: string,
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
@@ -10000,6 +10083,7 @@ function CanvasGroupFrame(props: {
   const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(props.group.role);
   const dragStartRef = useRef<{
     pointerId: number;
+    source: 'titlebar' | 'border';
     clientX: number;
     clientY: number;
     position: CanvasNodePosition;
@@ -10014,6 +10098,11 @@ function CanvasGroupFrame(props: {
     size: CanvasNodeFootprint;
     direction: CanvasGroupResizeDirection;
     autoPanOffset: CanvasNodePosition;
+  } | null>(null);
+  const lastTitlebarPointerClickRef = useRef<{
+    clientX: number;
+    clientY: number;
+    timestamp: number;
   } | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const ignoreNextClickSelectionRef = useRef(false);
@@ -10055,7 +10144,39 @@ function CanvasGroupFrame(props: {
     };
   };
 
-  const beginDrag = (event: React.PointerEvent): void => {
+  const takeTitlebarDoubleClickPointerIntent = (event: React.PointerEvent): boolean => {
+    const lastClick = lastTitlebarPointerClickRef.current;
+    if (!lastClick) {
+      return false;
+    }
+
+    const elapsed = event.timeStamp - lastClick.timestamp;
+    const distance = Math.hypot(event.clientX - lastClick.clientX, event.clientY - lastClick.clientY);
+    if (
+      elapsed < 0 ||
+      elapsed > CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_MAX_INTERVAL_MS ||
+      distance > CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_POSITION_TOLERANCE_PX
+    ) {
+      return false;
+    }
+
+    lastTitlebarPointerClickRef.current = null;
+    return true;
+  };
+
+  const rememberTitlebarPointerClick = (event: React.PointerEvent): void => {
+    lastTitlebarPointerClickRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      timestamp: event.timeStamp
+    };
+  };
+
+  const clearTitlebarPointerClickMemory = (): void => {
+    lastTitlebarPointerClickRef.current = null;
+  };
+
+  const beginDrag = (event: React.PointerEvent, source: 'titlebar' | 'border'): void => {
     if (event.button !== 0 || isInteractiveTarget(event.target)) {
       return;
     }
@@ -10072,6 +10193,7 @@ function CanvasGroupFrame(props: {
     props.onSelectGroup(props.group.id);
     dragStartRef.current = {
       pointerId: event.pointerId,
+      source,
       clientX: event.clientX,
       clientY: event.clientY,
       position: props.group.position,
@@ -10113,6 +10235,17 @@ function CanvasGroupFrame(props: {
     dragStartRef.current = null;
     const position = resolveGroupDragPosition(dragStart, event, props.zoom);
     props.onDragEnd();
+    if (!hasGroupPointerCommitMovement(dragStart, event, props.zoom) || positionsEqual(position, dragStart.position)) {
+      props.onDraftGroup(props.group.id, null);
+      if (dragStart.source === 'titlebar') {
+        rememberTitlebarPointerClick(event);
+      } else {
+        clearTitlebarPointerClickMemory();
+      }
+      return;
+    }
+
+    clearTitlebarPointerClickMemory();
     props.onMoveGroup(props.group.id, position, {
       x: Math.round(position.x + dragStart.pointerOffset.x),
       y: Math.round(position.y + dragStart.pointerOffset.y)
@@ -10123,10 +10256,18 @@ function CanvasGroupFrame(props: {
     if (event.button !== 0) {
       return;
     }
+    if (takeTitlebarDoubleClickPointerIntent(event)) {
+      event.preventDefault();
+      stopCanvasEvent(event);
+      props.onSelectGroup(props.group.id);
+      props.onFocusGroupInViewport(props.group.id);
+      return;
+    }
 
     event.currentTarget.setPointerCapture(event.pointerId);
     stopCanvasEvent(event);
     props.onSelectGroup(props.group.id);
+    clearTitlebarPointerClickMemory();
     resizeStartRef.current = {
       pointerId: event.pointerId,
       clientX: event.clientX,
@@ -10169,7 +10310,31 @@ function CanvasGroupFrame(props: {
     resizeStartRef.current = null;
     const resizedGeometry = resolveGroupResizeGeometry(resizeStart, event, props.zoom);
     props.onResizeEnd();
+    if (
+      !hasGroupPointerCommitMovement(resizeStart, event, props.zoom) ||
+      (positionsEqual(resizedGeometry.position, resizeStart.position) &&
+        footprintsEqual(resizedGeometry.size, resizeStart.size))
+    ) {
+      props.onDraftGroup(props.group.id, null);
+      return;
+    }
+
+    clearTitlebarPointerClickMemory();
     props.onResizeGroup(props.group.id, resizedGeometry.position, resizedGeometry.size);
+  };
+
+  const handleFocusDoubleClick = (event: React.MouseEvent<HTMLElement>): void => {
+    if (isGroupChromeFocusBlockedTarget(event.target)) {
+      return;
+    }
+
+    dragStartRef.current = null;
+    resizeStartRef.current = null;
+    clearTitlebarPointerClickMemory();
+    props.onDraftGroup(props.group.id, null);
+    props.onDragEnd();
+    props.onResizeEnd();
+    handleGroupChromeDoubleClick(event, props.group.id, props.onFocusGroupInViewport);
   };
 
   return (
@@ -10205,6 +10370,7 @@ function CanvasGroupFrame(props: {
         dragStartRef.current = null;
         resizeStartRef.current = null;
         ignoreNextClickSelectionRef.current = false;
+        clearTitlebarPointerClickMemory();
         props.onDraftGroup(props.group.id, null);
         props.onDragEnd();
         props.onResizeEnd();
@@ -10212,7 +10378,11 @@ function CanvasGroupFrame(props: {
       }}
     >
       <div className="canvas-group-body" aria-hidden="true" />
-      <div className="canvas-group-titlebar" onPointerDown={beginDrag}>
+      <div
+        className="canvas-group-titlebar"
+        onPointerDown={(event) => beginDrag(event, 'titlebar')}
+        onDoubleClick={handleFocusDoubleClick}
+      >
         <ChromeTitleEditor
           value={props.group.title}
           placeholder="分组标题"
@@ -10223,10 +10393,10 @@ function CanvasGroupFrame(props: {
           onSelectNode={() => selectGroup()}
         />
       </div>
-      <div className="canvas-group-border canvas-group-border-top" onPointerDown={beginDrag} />
-      <div className="canvas-group-border canvas-group-border-right" onPointerDown={beginDrag} />
-      <div className="canvas-group-border canvas-group-border-bottom" onPointerDown={beginDrag} />
-      <div className="canvas-group-border canvas-group-border-left" onPointerDown={beginDrag} />
+      <div className="canvas-group-border canvas-group-border-top" onPointerDown={(event) => beginDrag(event, 'border')} />
+      <div className="canvas-group-border canvas-group-border-right" onPointerDown={(event) => beginDrag(event, 'border')} />
+      <div className="canvas-group-border canvas-group-border-bottom" onPointerDown={(event) => beginDrag(event, 'border')} />
+      <div className="canvas-group-border canvas-group-border-left" onPointerDown={(event) => beginDrag(event, 'border')} />
       {props.selected ? (
         <>
           {CANVAS_GROUP_RESIZE_LINE_DIRECTIONS.map((direction) => (
@@ -12093,6 +12263,42 @@ function handleNodeChromeDoubleClick(
 
 function isNodeChromeFocusBlockedTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && isDeleteShortcutBlockedTarget(target);
+}
+
+function handleGroupChromeDoubleClick(
+  event: React.MouseEvent<HTMLElement>,
+  groupId: string,
+  onFocusGroupInViewport: (groupId: string) => void
+): void {
+  if (isGroupChromeFocusBlockedTarget(event.target)) {
+    return;
+  }
+
+  event.preventDefault();
+  stopCanvasEvent(event);
+  onFocusGroupInViewport(groupId);
+}
+
+function isGroupChromeFocusBlockedTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(
+    target.closest(
+      [
+        'input',
+        'textarea',
+        'select',
+        'button',
+        'a',
+        '[contenteditable="true"]',
+        '[data-node-interactive="true"]',
+        '.canvas-group-resize-control',
+        '.canvas-group-toolbar'
+      ].join(', ')
+    )
+  );
 }
 
 function resolveContextMenuScreenPosition(screenX: number, screenY: number): { x: number; y: number } {
