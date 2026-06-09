@@ -9320,7 +9320,7 @@ for (const groupFixture of [
       position: { x: 700, y: 420 },
       size: { width: 820, height: 520 }
     },
-    viewport: { x: -520, y: -360, zoom: 0.5 }
+    viewport: { x: -230, y: -100, zoom: 0.5 }
   },
   {
     label: 'workspace root',
@@ -9332,7 +9332,7 @@ for (const groupFixture of [
       role: 'workspace-root',
       workspaceRootPath: '/repo/frontend'
     },
-    viewport: { x: -600, y: -500, zoom: 0.42 }
+    viewport: { x: -340, y: -241, zoom: 0.42 }
   }
 ]) {
   test(`double-clicking ${groupFixture.label} group titlebar blank area focuses the existing group`, async ({ page }) => {
@@ -9350,10 +9350,11 @@ for (const groupFixture of [
     const beforeGeometry = await readGroupCanvasGeometry(page, groupFixture.group.id);
     const beforeState = await readPersistedUiState(page);
     expect(beforeState.viewport).toEqual(groupFixture.viewport);
+    await clearPostedMessages(page);
 
-    await groupFrame
-      .locator('.canvas-group-titlebar')
-      .dispatchEvent('dblclick', { bubbles: true, cancelable: true, composed: true });
+    const titlebarBox = await groupFrame.locator('.canvas-group-titlebar').boundingBox();
+    expect(titlebarBox).not.toBeNull();
+    await page.mouse.dblclick(titlebarBox.x + 4, titlebarBox.y + titlebarBox.height / 2);
 
     await expect
       .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
@@ -9368,6 +9369,9 @@ for (const groupFixture of [
     expect(afterState.viewport).not.toEqual(beforeState.viewport);
     expect(afterState.viewport.zoom).toBeLessThanOrEqual(1.15);
     expect(await readGroupCanvasGeometry(page, groupFixture.group.id)).toEqual(beforeGeometry);
+    expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+    expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+    expect(await readPostedMessagesByType(page, 'webview/createEmptyGroup')).toEqual([]);
     await expectGroupCenteredInViewport(page, groupFixture.group.id);
   });
 }
@@ -9393,6 +9397,7 @@ test('double-clicking group body blank area focuses the existing group', async (
   const beforeState = await readPersistedUiState(page);
   const beforeBox = await groupFrame.boundingBox();
   expect(beforeBox).not.toBeNull();
+  await clearPostedMessages(page);
 
   await page.mouse.dblclick(beforeBox.x + beforeBox.width - 70, beforeBox.y + beforeBox.height - 70);
 
@@ -9408,6 +9413,9 @@ test('double-clicking group body blank area focuses the existing group', async (
   expect(afterState.viewport).not.toEqual(beforeState.viewport);
   expect(afterState.viewport.zoom).toBeLessThanOrEqual(1.15);
   expect(await readGroupCanvasGeometry(page, group.id)).toEqual(beforeGeometry);
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/createEmptyGroup')).toEqual([]);
   await expectGroupCenteredInViewport(page, group.id);
 });
 
@@ -9436,6 +9444,8 @@ test('double-clicking group title input keeps the current viewport unchanged', a
   const afterState = await readPersistedUiState(page);
   expect(afterState.viewport).toEqual(beforeState.viewport);
   expect(await readPostedMessagesByType(page, 'webview/updateGroupTitle')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
 });
 
 test('workspace root group title counter-scales like regular group titles below the content inset cap', async ({ page }) => {

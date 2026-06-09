@@ -61,6 +61,7 @@
 - [x] (2026-06-08 22:29 +0800) 完成本次 review 修复验证：`npm run test:canvas-node-groups`、`npm run test:canvas-multi-root-composition`、`npm run typecheck`、`npm run build`、`git diff --check` 均通过。
 - [x] (2026-06-09 18:55 +0800) 修正分组双击导航语义：双击普通分组或 workspace root section 标题 tab 的非交互空白处、或未被节点覆盖的 body 空白区，会选中并把已有分组居中 / 聚焦到当前视口；不会创建新分组，也不会改变分组几何或成员关系；标题输入框、toolbar 按钮和 resize 控制点不触发聚焦。
 - [x] (2026-06-09 18:55 +0800) 完成本次分组双击聚焦验证：`npx tsc --noEmit --pretty false`、`npm run build`、4 条 Webview 分组双击 Playwright 用例均通过；随后补跑 `npm run typecheck`、定向 Playwright、`git diff --check`。
+- [x] (2026-06-09 21:40 +0800) 处理 PR #145 review blocker：真实 pointer 双击标题 tab 空白处时，未超过提交阈值的分组 drag / resize 只清理本地草稿和自动平移状态，不再向宿主发送 `webview/moveGroup` / `webview/resizeGroup`；双击聚焦路径也会清理残留 drag / resize state。回归测试改用 `page.mouse.dblclick(titlebarBox.x + 4, ...)` 覆盖真实 pointer down / up 序列，并断言不产生 move / resize / createEmptyGroup 消息。
 - [ ] 继续完善删除分组对话框保留成员分支的自动化覆盖、真实 VSCode reload smoke、侧栏分组树 UI smoke，以及更完整的几何合法状态证明。
 - [ ] 按 `docs/workflows/COMMIT.md` 提交本次分组实现。
 
@@ -587,3 +588,5 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 本次修订说明：2026-05-30 处理 PR #102 review，更新 active ExecPlan 中已过期的 canvas shell portal 口径：分组 foreground 改挂 `.react-flow__renderer`，用 React Flow wrapper / renderer / pane 裁切溢出避免无限画布外层滚动条，同时通过 `nodrag nopan` 避免拖动分组时 pane 同步平移。同步记录验证证据与正式设计索引日期。
 
 本次修订说明：2026-06-09 按用户澄清舍弃“几何自适应”方向，记录分组双击标题空白处 / body 空白区仅执行视口居中聚焦的正式口径、实现落点和 Webview 验证。
+
+本次修订说明：2026-06-09 处理 PR #145 review，补充真实 pointer 双击标题 tab 空白处的回归口径：双击导航前置点击不应提交无意义分组移动或 resize，Webview 需要在 no-op pointer 结束时清理草稿 / 自动平移状态并保持宿主状态不变。
