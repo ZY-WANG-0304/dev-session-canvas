@@ -15,7 +15,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-node-groups-design.md
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
-updated_at: 2026-06-08
+updated_at: 2026-06-09
 ---
 
 # 画布节点分组设计
@@ -304,7 +304,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 `src/webview/main.tsx` 负责分组呈现和局部选中态，但不拥有最终成员关系：
 
-- 分组背景 body 挂载到 React Flow viewport 内，保持在普通节点下方；可交互标题、边框、toolbar 和 resize 控制点挂载到 React Flow renderer 内，并跟随同一 viewport transform。分组 foreground 不挂载到 `.canvas-shell` 根层，避免画布放大后组框尺寸扩大 document / Webview scroll area，导致无限画布外层出现横向或纵向滚动条；React Flow wrapper / renderer / pane 必须裁切溢出，整体导航只通过画布 pan / zoom 表达。标题栏和边框可命中，body 不应挡住成员节点。
+- 分组背景 body 挂载到 React Flow viewport 内，保持在普通节点下方；可交互标题、边框、toolbar 和 resize 控制点挂载到 React Flow renderer 内，并跟随同一 viewport transform。分组 foreground 不挂载到 `.canvas-shell` 根层，避免画布放大后组框尺寸扩大 document / Webview scroll area，导致无限画布外层出现横向或纵向滚动条；React Flow wrapper / renderer / pane 必须裁切溢出，整体导航只通过画布 pan / zoom 表达。标题栏和边框可命中，body 不应挡住成员节点。双击分组标题 tab 的非交互空白处或未被节点覆盖的 body 空白区时，Webview 只选中并把这个已有分组居中 / 聚焦到当前视口，使用与节点标题栏双击聚焦一致的动画、padding 和视口持久化语义；该动作不创建新分组、不改变分组位置或尺寸，也不改变成员关系。标题输入框、toolbar 按钮、resize 控制点和其他交互控件继续保留自身语义，双击它们不触发分组聚焦。
 - 分组选中态与节点 / 边选中态互斥，选中 group 后在标题 tab 右侧显示双段按钮：左段执行取消分组，右段执行删除分组；重命名先复用现有手工节点标题栏编辑方式，用户单击 group 标题区域即可进入编辑，不单独要求双击或打开命名弹窗。未被节点覆盖的分组 body 空白区也可单击选中该分组；若存在嵌套分组，body 空白区命中按鼠标位置所在的最内层分组处理。body 空白区右键保留画布上下文菜单，并先把该分组作为当前选中分组；该菜单中的新增节点、创建空分组、从选择创建分组和应用模板等新增 / 创建类操作都以该分组作为目标父分组或成员分组。body 空白区左键拖动不作为 group 移动把手，而是沿用画布空白区的 pan 行为；group 移动只由标题 tab 和可命中边框触发。
 - 在画布空白区域可以通过右键上下文菜单创建默认 `360 x 240` 的空分组；命令面板可作为补充入口，其中创建空分组使用当前可视中心定位，从选中项创建分组由宿主请求活动 Webview 读取本地选择后提交；节点菜单不提供创建空分组入口。多选至少两个同一父级下的稳定对象后，通过上下文菜单或命令面板创建带成员分组；单个节点或单个分组不提供“创建分组”入口；若选中对象分属不同父分组，或同时包含某个分组及其后代对象，入口不可用或宿主拒绝提交；若选中对象包含已有子树的分组但未同时选中它的后代对象，入口可用，宿主把该分组连同内部子树整体纳入新分组。首版不提供默认分组快捷键，因此不绑定 `Ctrl/Cmd+G`、`Shift+Ctrl/Cmd+G` 或其他快捷键；取消分组通过选中 group 后的双段按钮左段、上下文菜单或命令面板触发；删除分组通过双段按钮右段或其他删除入口触发。若创建出的新分组与同父级已有分组交叉，宿主保留新分组并按四向挤开策略消解同父兄弟分组交叉。
 - 拖动 group 标题栏或边框时，Webview 使用 draft 同步显示 group 与成员节点的移动结果；拖拽结束后发送一次 `webview/moveGroup`，并以宿主返回的统一收口结果为准同步位置、尺寸和归属变化。

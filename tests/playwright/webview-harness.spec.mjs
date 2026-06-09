@@ -9311,6 +9311,133 @@ test('workspace root group title reuses regular group title chrome without renam
   expectBoxEdgesClose(rootFrameBoxAfterTitleDrag, rootFrameBox);
 });
 
+for (const groupFixture of [
+  {
+    label: 'regular',
+    group: {
+      id: 'group-focus',
+      title: 'Focus Group',
+      position: { x: 700, y: 420 },
+      size: { width: 820, height: 520 }
+    },
+    viewport: { x: -520, y: -360, zoom: 0.5 }
+  },
+  {
+    label: 'workspace root',
+    group: {
+      id: 'workspace-root-focus',
+      title: 'Frontend Root',
+      position: { x: 1000, y: 740 },
+      size: { width: 1180, height: 760 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    viewport: { x: -600, y: -500, zoom: 0.42 }
+  }
+]) {
+  test(`double-clicking ${groupFixture.label} group titlebar blank area focuses the existing group`, async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 620 });
+    await openHarness(page, {
+      persistedState: {
+        selectedNodeId: 'stale-node-selection',
+        viewport: groupFixture.viewport
+      }
+    });
+    await bootstrap(page, createGroupFocusCanvasState(groupFixture.group));
+    await settleWebview(page, 4);
+
+    const groupFrame = page.locator(`[data-group-id="${groupFixture.group.id}"]`);
+    const beforeGeometry = await readGroupCanvasGeometry(page, groupFixture.group.id);
+    const beforeState = await readPersistedUiState(page);
+    expect(beforeState.viewport).toEqual(groupFixture.viewport);
+
+    await groupFrame
+      .locator('.canvas-group-titlebar')
+      .dispatchEvent('dblclick', { bubbles: true, cancelable: true, composed: true });
+
+    await expect
+      .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
+      .toBe(groupFixture.group.id);
+
+    await waitForNodeFocusAnimation(page);
+
+    const afterState = await readPersistedUiState(page);
+    expect(afterState.selectedNodeId ?? null).toBeNull();
+    expect(afterState.selectedGroupId).toBe(groupFixture.group.id);
+    expect(afterState.selectedGroupIds).toEqual([groupFixture.group.id]);
+    expect(afterState.viewport).not.toEqual(beforeState.viewport);
+    expect(afterState.viewport.zoom).toBeLessThanOrEqual(1.15);
+    expect(await readGroupCanvasGeometry(page, groupFixture.group.id)).toEqual(beforeGeometry);
+    await expectGroupCenteredInViewport(page, groupFixture.group.id);
+  });
+}
+
+test('double-clicking group body blank area focuses the existing group', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 620 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.65 }
+    }
+  });
+  const group = {
+    id: 'group-body-focus',
+    title: 'Body Focus Group',
+    position: { x: 120, y: 120 },
+    size: { width: 620, height: 500 }
+  };
+  await bootstrap(page, createGroupFocusCanvasState(group));
+  await settleWebview(page, 4);
+
+  const groupFrame = page.locator(`[data-group-id="${group.id}"]`);
+  const beforeGeometry = await readGroupCanvasGeometry(page, group.id);
+  const beforeState = await readPersistedUiState(page);
+  const beforeBox = await groupFrame.boundingBox();
+  expect(beforeBox).not.toBeNull();
+
+  await page.mouse.dblclick(beforeBox.x + beforeBox.width - 70, beforeBox.y + beforeBox.height - 70);
+
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
+    .toBe(group.id);
+
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedGroupId).toBe(group.id);
+  expect(afterState.selectedGroupIds).toEqual([group.id]);
+  expect(afterState.viewport).not.toEqual(beforeState.viewport);
+  expect(afterState.viewport.zoom).toBeLessThanOrEqual(1.15);
+  expect(await readGroupCanvasGeometry(page, group.id)).toEqual(beforeGeometry);
+  await expectGroupCenteredInViewport(page, group.id);
+});
+
+test('double-clicking group title input keeps the current viewport unchanged', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 620 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: -180, y: -120, zoom: 0.8 }
+    }
+  });
+  const group = {
+    id: 'group-title-input',
+    title: 'Editable Group',
+    position: { x: 260, y: 220 },
+    size: { width: 620, height: 420 }
+  };
+  await bootstrap(page, createGroupFocusCanvasState(group));
+  await settleWebview(page, 4);
+  await clearPostedMessages(page);
+
+  const beforeState = await readPersistedUiState(page);
+
+  await page.locator(`[data-group-id="${group.id}"] [data-probe-field="title"]`).dblclick();
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.viewport).toEqual(beforeState.viewport);
+  expect(await readPostedMessagesByType(page, 'webview/updateGroupTitle')).toEqual([]);
+});
+
 test('workspace root group title counter-scales like regular group titles below the content inset cap', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 520 });
   await openHarness(page, {
@@ -12024,6 +12151,30 @@ async function readCanvasViewportScale(page) {
   return scaleMatch ? Number(scaleMatch[1]) : null;
 }
 
+async function readGroupCanvasGeometry(page, groupId) {
+  return page.locator(`[data-group-id="${groupId}"]`).evaluate((frame) => {
+    const left = Number.parseFloat(frame.style.left);
+    const top = Number.parseFloat(frame.style.top);
+    const width = Number.parseFloat(frame.style.width);
+    const height = Number.parseFloat(frame.style.height);
+    return {
+      x: Math.round(left),
+      y: Math.round(top),
+      width: Math.round(width),
+      height: Math.round(height)
+    };
+  });
+}
+
+async function expectGroupCenteredInViewport(page, groupId, tolerance = 20) {
+  const viewportSize = page.viewportSize();
+  const groupBox = await page.locator(`[data-group-id="${groupId}"]`).boundingBox();
+  expect(viewportSize).not.toBeNull();
+  expect(groupBox).not.toBeNull();
+  expect(Math.abs(groupBox.x + groupBox.width / 2 - viewportSize.width / 2)).toBeLessThanOrEqual(tolerance);
+  expect(Math.abs(groupBox.y + groupBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(tolerance);
+}
+
 async function readComputedOpacity(page, selector) {
   return page.evaluate((targetSelector) => {
     const target = document.querySelector(targetSelector);
@@ -12839,6 +12990,16 @@ function createManualTerminalNode(nodeId, position) {
         lastRows: 28
       }
     }
+  };
+}
+
+function createGroupFocusCanvasState(group) {
+  return {
+    version: 1,
+    updatedAt: '2026-06-09T00:00:00.000Z',
+    nodes: [],
+    groups: [group],
+    edges: []
   };
 }
 
