@@ -102,7 +102,7 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是 
     node scripts/build/build.mjs
 
     node scripts/test/run-playwright-webview.mjs -g "host focus group request"
-    1 passed；Playwright webview tests passed.
+    2 passed；Playwright webview tests passed.
 
     git diff --check
     退出码 0
