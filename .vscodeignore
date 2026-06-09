@@ -56,6 +56,7 @@ core
 core.*
 playwright.config.mjs
 test-results/**
+release-artifacts/**
 image.png
 image copy*.png
 img_v3_*.jpg
