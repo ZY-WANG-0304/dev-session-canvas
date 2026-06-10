@@ -13,6 +13,7 @@ import {
   detectExecutionTerminalPathLinks,
   inferExecutionTerminalPathStyle,
   getExecutionTerminalLinkSuffix,
+  shouldAllowExecutionTerminalDetectedPathLink,
   normalizeExecutionTerminalWordSeparators,
   removeExecutionTerminalLinkQueryString,
   removeExecutionTerminalLinkSuffix
@@ -124,6 +125,22 @@ export async function resolveExecutionFileLink(
   ) {
     return undefined;
   }
+  if (
+    (link.source === 'detected' || link.source === 'styled') &&
+    !shouldAllowExecutionTerminalDetectedPathLink(
+      {
+        text: link.text,
+        path: sanitizedPath,
+        line: link.line,
+        column: link.column,
+        lineEnd: link.lineEnd,
+        columnEnd: link.columnEnd
+      },
+      context.pathStyle
+    )
+  ) {
+    return undefined;
+  }
 
   const resolvedCwd = await resolveExecutionLinkCwd(link, context);
   const directCandidates = new Map<string, vscode.Uri>();
@@ -188,11 +205,17 @@ export function filterResolvableExecutionTerminalFileLinkCandidates(
   candidates: ExecutionTerminalFileLinkCandidate[],
   context: ExecutionTerminalPathContext
 ): ExecutionTerminalFileLinkCandidate[] {
-  return candidates.filter(
-    (candidate) =>
-      candidate.source !== 'fallback' ||
-      shouldResolveFallbackExecutionTerminalFileLinkCandidate(candidate, context)
-  );
+  return candidates.filter((candidate) => {
+    if (candidate.source === 'fallback') {
+      return shouldResolveFallbackExecutionTerminalFileLinkCandidate(candidate, context);
+    }
+
+    if (candidate.source === 'detected' || candidate.source === 'styled') {
+      return shouldAllowExecutionTerminalDetectedPathLink(candidate, context.pathStyle);
+    }
+
+    return true;
+  });
 }
 
 async function resolveExecutionTerminalFileLinkCandidateGroup(

@@ -478,11 +478,29 @@ try {
         {
           ...createFallbackCandidate('detected', '• Working   6'),
           source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('detected-path', 'docs/readme.md'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('styled-low', '2m'),
+          text: '2m 45',
+          line: 45,
+          source: 'styled'
+        },
+        {
+          ...createFallbackCandidate('styled-path', 'docs/readme.md'),
+          source: 'styled'
+        },
+        {
+          ...createFallbackCandidate('styled-basename', 'event.ts'),
+          source: 'styled'
         }
       ],
       fallbackFilterContext
     ).map((candidate) => candidate.candidateId),
-    ['basename', 'relative-path', 'detected']
+    ['basename', 'relative-path', 'detected-path', 'styled-path', 'styled-basename']
   );
 
   vscodeStub.__reset();

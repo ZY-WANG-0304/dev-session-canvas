@@ -7,6 +7,7 @@ export type ExecutionTerminalUrlLinkSource = 'implicit' | 'explicit';
 export type ExecutionTerminalFileLinkSource =
   | 'detected'
   | 'refined'
+  | 'styled'
   | 'fallback'
   | 'hardwrap'
   | 'explicit-uri';
@@ -280,6 +281,8 @@ export interface DetectedExecutionTerminalPathLink {
   columnEnd: number | undefined;
 }
 
+export interface ExecutionTerminalStyledPathLink extends DetectedExecutionTerminalPathLink {}
+
 export function detectExecutionTerminalPathLinks(
   line: string,
   style: ExecutionTerminalPathStyle
@@ -304,6 +307,319 @@ export function detectExecutionTerminalPathLinks(
       };
     })
     .filter((candidate) => candidate.text.trim().length > 0 && candidate.path.trim().length > 0);
+}
+
+export function detectExecutionTerminalStyledPathLink(
+  value: string,
+  style: ExecutionTerminalPathStyle
+): ExecutionTerminalStyledPathLink | undefined {
+  const trimmedValue = value.trim();
+  if (!trimmedValue || isObviousLowConfidenceExecutionTerminalStyledPathText(trimmedValue)) {
+    return undefined;
+  }
+
+  const trimStartIndex = value.indexOf(trimmedValue);
+  const detectedLink = detectExecutionTerminalPathLinks(trimmedValue, style).find(
+    (candidate) =>
+      !isObviousLowConfidenceExecutionTerminalStyledPathText(candidate.text.trim()) &&
+      isPlausibleExecutionTerminalStyledFilePath(candidate.path, style)
+  );
+  if (detectedLink) {
+    const normalizedLink = normalizeExecutionTerminalStyledDetectedPathLink(detectedLink);
+    return normalizedLink
+      ? offsetExecutionTerminalStyledPathLink(normalizedLink, trimStartIndex)
+      : undefined;
+  }
+
+  const basenameLink = detectExecutionTerminalStyledBasenamePathLink(trimmedValue, style);
+  return basenameLink ? offsetExecutionTerminalStyledPathLink(basenameLink, trimStartIndex) : undefined;
+}
+
+export function isPlausibleExecutionTerminalStyledFilePath(
+  value: string,
+  style: ExecutionTerminalPathStyle
+): boolean {
+  const trimmedToken = trimExecutionTerminalStyledPathToken(value.trim()).text;
+  if (
+    !trimmedToken ||
+    isObviousLowConfidenceExecutionTerminalStyledPathText(trimmedToken) ||
+    hasProsePrefixedRelativePath(trimmedToken, style)
+  ) {
+    return false;
+  }
+
+  if (/[\r\n\s{}<>"'`,;|]/u.test(trimmedToken)) {
+    return false;
+  }
+
+  if (hasExecutionTerminalStyledFileExtension(trimmedToken)) {
+    return true;
+  }
+
+  if (hasExplicitExecutionTerminalPathPrefix(trimmedToken, style)) {
+    return isPlausibleExplicitExecutionTerminalStyledPath(trimmedToken, style);
+  }
+
+  if (!hasExecutionTerminalStyledPathSeparator(trimmedToken)) {
+    return false;
+  }
+
+  return isPlausibleSeparatedExecutionTerminalStyledPath(trimmedToken);
+}
+
+export function shouldAllowExecutionTerminalDetectedPathLink(
+  link: {
+    text: string;
+    path: string;
+    line?: number;
+    column?: number;
+    lineEnd?: number;
+    columnEnd?: number;
+  },
+  style: ExecutionTerminalPathStyle
+): boolean {
+  if (isPlausibleExecutionTerminalStyledFilePath(link.path, style)) {
+    return true;
+  }
+
+  if (link.line === undefined) {
+    return false;
+  }
+
+  return isPlausibleExecutionTerminalBareLineLocationLink(link);
+}
+
+function isPlausibleExecutionTerminalBareLineLocationLink(
+  link: {
+    text: string;
+    path: string;
+    line?: number;
+    column?: number;
+    lineEnd?: number;
+    columnEnd?: number;
+  }
+): boolean {
+  const trimmedPath = trimExecutionTerminalStyledPathToken(link.path.trim()).text;
+  const trimmedText = link.text.trim();
+  if (
+    !trimmedPath ||
+    trimmedPath !== link.path.trim() ||
+    isObviousLowConfidenceExecutionTerminalStyledPathText(trimmedPath) ||
+    /[\\/()[\]{}<>"'`,;:|\s]/u.test(trimmedPath) ||
+    !/^[._A-Za-z\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u.test(trimmedPath)
+  ) {
+    return false;
+  }
+
+  if (trimmedText.startsWith(`${trimmedPath}:`)) {
+    return true;
+  }
+
+  if (/^['"`].+['"`],?\s+lines?\s+\d+/iu.test(trimmedText)) {
+    return true;
+  }
+
+  if (new RegExp(`^File ['"]${escapeRegExp(trimmedPath)}['"],? line \\d+`, 'iu').test(trimmedText)) {
+    return true;
+  }
+
+  return /\blines?\s+\d+/iu.test(trimmedText) && /['"`]/u.test(trimmedText);
+}
+
+function normalizeExecutionTerminalStyledDetectedPathLink(
+  link: ExecutionTerminalStyledPathLink
+): ExecutionTerminalStyledPathLink | undefined {
+  const trimmedPath = trimExecutionTerminalStyledPathToken(link.path);
+  if (!trimmedPath.text) {
+    return undefined;
+  }
+
+  if (trimmedPath.text === link.path) {
+    return link;
+  }
+
+  const pathTextIndex = link.text.indexOf(link.path);
+  if (pathTextIndex < 0) {
+    return undefined;
+  }
+
+  const startIndex = link.startIndex + pathTextIndex + trimmedPath.startIndex;
+  const endIndexExclusive = link.startIndex + pathTextIndex + trimmedPath.endIndexExclusive;
+  return {
+    ...link,
+    text: link.text.slice(
+      pathTextIndex + trimmedPath.startIndex,
+      pathTextIndex + trimmedPath.endIndexExclusive
+    ),
+    path: trimmedPath.text,
+    startIndex,
+    endIndexExclusive
+  };
+}
+
+function detectExecutionTerminalStyledBasenamePathLink(
+  value: string,
+  style: ExecutionTerminalPathStyle
+): ExecutionTerminalStyledPathLink | undefined {
+  const token = trimExecutionTerminalStyledPathToken(value);
+  if (!isPlausibleExecutionTerminalStyledFilePath(token.text, style)) {
+    return undefined;
+  }
+
+  if (hasExecutionTerminalStyledPathSeparator(token.text)) {
+    return undefined;
+  }
+
+  return {
+    text: token.text,
+    path: token.text,
+    startIndex: token.startIndex,
+    endIndexExclusive: token.endIndexExclusive,
+    line: undefined,
+    column: undefined,
+    lineEnd: undefined,
+    columnEnd: undefined
+  };
+}
+
+function offsetExecutionTerminalStyledPathLink(
+  link: ExecutionTerminalStyledPathLink,
+  offset: number
+): ExecutionTerminalStyledPathLink {
+  if (offset <= 0) {
+    return link;
+  }
+
+  return {
+    ...link,
+    startIndex: link.startIndex + offset,
+    endIndexExclusive: link.endIndexExclusive + offset
+  };
+}
+
+function trimExecutionTerminalStyledPathToken(value: string): {
+  text: string;
+  startIndex: number;
+  endIndexExclusive: number;
+} {
+  let startIndex = 0;
+  let endIndexExclusive = value.length;
+
+  while (startIndex < endIndexExclusive && /\s/u.test(value[startIndex])) {
+    startIndex += 1;
+  }
+  while (endIndexExclusive > startIndex && /\s/u.test(value[endIndexExclusive - 1])) {
+    endIndexExclusive -= 1;
+  }
+
+  let text = value.slice(startIndex, endIndexExclusive);
+  const unwrapPair = (open: string, close: string): boolean => {
+    if (text.length >= 2 && text.startsWith(open) && text.endsWith(close)) {
+      startIndex += open.length;
+      endIndexExclusive -= close.length;
+      text = value.slice(startIndex, endIndexExclusive);
+      return true;
+    }
+    return false;
+  };
+
+  let changed = true;
+  while (changed) {
+    changed =
+      unwrapPair('"', '"') ||
+      unwrapPair("'", "'") ||
+      unwrapPair('`', '`') ||
+      unwrapPair('(', ')') ||
+      unwrapPair('[', ']') ||
+      unwrapPair('{', '}');
+  }
+
+  while (endIndexExclusive > startIndex && /[.,;]/u.test(value[endIndexExclusive - 1])) {
+    endIndexExclusive -= 1;
+  }
+
+  return {
+    text: value.slice(startIndex, endIndexExclusive),
+    startIndex,
+    endIndexExclusive
+  };
+}
+
+function isObviousLowConfidenceExecutionTerminalStyledPathText(value: string): boolean {
+  const trimmedValue = value.trim();
+  return (
+    trimmedValue.length === 0 ||
+    /^[,.;:]+$/u.test(trimmedValue) ||
+    /^(?:[•·›]|[│┃┆┊╎╏└├┌┐┘┤┬┴┼╭╰╮╯]|…|\.\.\.)/u.test(trimmedValue) ||
+    /[•·›│┃┆┊╎╏└├┌┐┘┤┬┴┼╭╰╮╯…]/u.test(trimmedValue) ||
+    /^(?:\d+[smhd]?|\d+:\d+|\d{4}-\d{2}-\d{2})\b/iu.test(trimmedValue) ||
+    /\b(?:context left|tab to queue message|esc to interrupt|yolo mode)\b/iu.test(trimmedValue) ||
+    /^(?:working|explored|searching the web|searched the web|ran|new)$/iu.test(trimmedValue) ||
+    /^improve documentation in @filename$/iu.test(trimmedValue)
+  );
+}
+
+function hasExecutionTerminalStyledPathSeparator(value: string): boolean {
+  return /[\\/]/u.test(value);
+}
+
+function hasExecutionTerminalStyledFileExtension(value: string): boolean {
+  return (
+    !/[\\/][\\/]/u.test(value) &&
+    !/[()[\]]/u.test(value) &&
+    /(?:^|[\\/])[^\\/]+\.[a-zA-Z\d]{1,16}$/u.test(value)
+  );
+}
+
+function isPlausibleExplicitExecutionTerminalStyledPath(
+  value: string,
+  style: ExecutionTerminalPathStyle
+): boolean {
+  if (value.startsWith('/') && !value.startsWith('//')) {
+    const withoutRoot = value.slice(1);
+    return hasExecutionTerminalStyledFileExtension(value) || withoutRoot.includes('/');
+  }
+
+  if (value.startsWith('file://')) {
+    return isPlausibleSeparatedExecutionTerminalStyledPath(value.replace(/^file:\/\/\/?/, ''));
+  }
+
+  if (value.startsWith('./') || value.startsWith('../') || value.startsWith('~/')) {
+    return value.replace(/^(?:\.{1,2}|~)[\\/]/u, '').length > 0;
+  }
+
+  if (style === 'windows' && (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\'))) {
+    return true;
+  }
+
+  return isPlausibleSeparatedExecutionTerminalStyledPath(value);
+}
+
+function isPlausibleSeparatedExecutionTerminalStyledPath(value: string): boolean {
+  if (
+    value.startsWith('//') ||
+    value.startsWith('@') ||
+    /[()[\]]/u.test(value) ||
+    /[•·›│┃┆┊╎╏└├┌┐┘┤┬┴┼╭╰╮╯…]/u.test(value)
+  ) {
+    return false;
+  }
+
+  const normalizedValue = value
+    .replace(/^file:\/\/\/?/u, '')
+    .replace(/^[a-zA-Z]:/u, '')
+    .replace(/^\\\\/u, '')
+    .replace(/^(?:\.{1,2}|~)[\\/]/u, '');
+  const parts = normalizedValue.split(/[\\/]+/u).filter((part) => part.length > 0);
+  if (parts.length === 0 || parts.every((part) => /^\d+$/u.test(part))) {
+    return false;
+  }
+
+  return parts.some((part) => /[a-zA-Z_\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u.test(part));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function detectParsedExecutionTerminalLinks(
