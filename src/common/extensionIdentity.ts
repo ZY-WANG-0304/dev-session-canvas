@@ -110,6 +110,7 @@ export const CONFIG_KEYS = {
   agentCodexDefaultArgs: 'devSessionCanvas.agent.codexDefaultArgs',
   agentClaudeDefaultArgs: 'devSessionCanvas.agent.claudeDefaultArgs',
   notificationAttentionSignalBridge: 'devSessionCanvas.notifications.attentionSignalBridge',
+  enabledAttentionSignals: 'devSessionCanvas.notifications.enabledAttentionSignals',
   legacyNotificationBridgeTerminalAttentionSignals: 'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
   legacyNotificationPreferNotifierCompanion: 'devSessionCanvas.notifications.preferNotifierCompanion',
   notificationStrongTerminalAttentionReminder: 'devSessionCanvas.notifications.strongTerminalAttentionReminder',

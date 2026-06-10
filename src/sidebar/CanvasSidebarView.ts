@@ -220,12 +220,13 @@ function buildSurfaceLocationLine(
 
 function formatNotificationModeSummary(state: CanvasSidebarState): string {
   const bridgeStatus = formatNotificationBridgeStatus(state);
-  return `${bridgeStatus} · ${formatStrongReminderModeLabel(state)} · ${formatAgentAbnormalOutputTextModeLabel(state)}`;
+  return `${bridgeStatus} · ${formatAttentionSignalsLabel(state)} · ${formatStrongReminderModeLabel(state)} · ${formatAgentAbnormalOutputTextModeLabel(state)}`;
 }
 
 function buildNotificationModeTooltip(state: CanvasSidebarState): string {
   return [
-    '执行节点收到 BEL、OSC 9 或 OSC 777 时，节点提醒 icon 与 minimap 闪烁会始终保留。',
+    '执行节点只有收到已启用的 attention signal 时，才会进入节点提醒 icon 与 minimap 闪烁。',
+    `启用的 attention signal：${formatAttentionSignalsTooltip(state)}。`,
     formatNotificationBridgeTooltip(state),
     `增强提醒模式：${formatStrongReminderModeLabel(state)}。`,
     `异常文本提醒：${formatAgentAbnormalOutputTextModeLabel(state)}。`,
@@ -255,6 +256,49 @@ function formatNotificationBridgeTooltip(state: CanvasSidebarState): string {
       return '当前会把 attention signal 桥接为 VS Code 工作台消息。';
     case 'system':
       return '当前优先通过本机 Notifier companion 发送系统通知；若 companion 不可用或投递失败，则回退到 VS Code 工作台消息。';
+  }
+}
+
+function formatAttentionSignalsLabel(state: CanvasSidebarState): string {
+  const enabledSignals = state.enabledAttentionSignals;
+  if (enabledSignals.length === 0) {
+    return 'attention 关闭';
+  }
+
+  if (enabledSignals.length === 5) {
+    return '全部 attention';
+  }
+
+  if (
+    enabledSignals.length === 3 &&
+    enabledSignals.includes('bel') &&
+    enabledSignals.includes('osc9') &&
+    enabledSignals.includes('osc777')
+  ) {
+    return '全部终端信号';
+  }
+
+  return enabledSignals.map(formatAttentionSignalName).join('+');
+}
+
+function formatAttentionSignalsTooltip(state: CanvasSidebarState): string {
+  return state.enabledAttentionSignals.length === 0
+    ? '无'
+    : state.enabledAttentionSignals.map(formatAttentionSignalName).join('、');
+}
+
+function formatAttentionSignalName(signal: CanvasSidebarState['enabledAttentionSignals'][number]): string {
+  switch (signal) {
+    case 'bel':
+      return 'BEL';
+    case 'osc9':
+      return 'OSC 9';
+    case 'osc777':
+      return 'OSC 777';
+    case 'agentAbnormalExit':
+      return 'Agent 异常退出';
+    case 'codexAbnormalOutputText':
+      return 'Codex 文本异常';
   }
 }
 

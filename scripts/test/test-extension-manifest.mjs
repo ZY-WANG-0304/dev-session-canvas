@@ -9,6 +9,20 @@ const manifest = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 
 const defaultSurface = manifest.contributes.configuration.properties['devSessionCanvas.canvas.defaultSurface'];
 assert.equal(defaultSurface.default, 'panel');
 
+const enabledAttentionSignals =
+  manifest.contributes.configuration.properties['devSessionCanvas.notifications.enabledAttentionSignals'];
+assert.ok(enabledAttentionSignals, 'Expected enabledAttentionSignals to be contributed as a configuration property.');
+assert.deepEqual(
+  enabledAttentionSignals.items.enum,
+  ['bel', 'osc9', 'osc777', 'agentAbnormalExit', 'codexAbnormalOutputText'],
+  'Expected the attention allow-list to cover terminal signals, Agent abnormal exit, and Codex abnormal text.'
+);
+assert.deepEqual(
+  enabledAttentionSignals.default,
+  ['bel', 'osc9', 'osc777', 'agentAbnormalExit', 'codexAbnormalOutputText'],
+  'Expected all current attention signals to stay enabled by default.'
+);
+
 const panelViews = manifest.contributes.views.devSessionCanvasPanel;
 assert.ok(Array.isArray(panelViews), 'Expected devSessionCanvasPanel views contribution.');
 const canvasPanelView = panelViews.find((view) => view.id === 'devSessionCanvas.canvasPanel');
