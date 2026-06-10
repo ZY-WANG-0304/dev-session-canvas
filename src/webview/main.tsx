@@ -4583,7 +4583,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
                 <ActionButton
                   label="停止"
                   onClick={stopAgent}
-                  tone="secondary"
+                  tone="primary"
                   disabled={actionDisabled}
                   className="compact nodrag nopan"
                   interactive
