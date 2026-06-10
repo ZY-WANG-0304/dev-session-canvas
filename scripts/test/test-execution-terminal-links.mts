@@ -24,7 +24,7 @@ assert.deepEqual(
     }
   ]
 );
-assert.equal(detectExecutionTerminalFallbackPathLink(cjkProsePathLine)?.path, cjkProsePathLine);
+assert.equal(detectExecutionTerminalFallbackPathLink(cjkProsePathLine), undefined);
 assert.equal(shouldSuppressExecutionTerminalWordLink(cjkProsePathLine), true);
 assert.equal(shouldSuppressExecutionTerminalWordLink('docs/foo.md'), false);
 assert.equal(shouldSuppressExecutionTerminalWordLink('foo.md'), false);
@@ -33,7 +33,7 @@ const attachedPath =
   'demo/web_demo/WebRTC_Demo/omni_backend_code/code/voice_chat/omni_stream.py:159';
 const attachedCjkProseLine = `这里要么在${attachedPath}`;
 assert.deepEqual(detectExecutionTerminalPathLinks(attachedCjkProseLine, 'posix'), []);
-assert.equal(detectExecutionTerminalFallbackPathLink(attachedCjkProseLine)?.path, attachedCjkProseLine);
+assert.equal(detectExecutionTerminalFallbackPathLink(attachedCjkProseLine), undefined);
 assert.equal(shouldSuppressExecutionTerminalWordLink(attachedCjkProseLine), true);
 
 const cjkPunctuationLine = '开放问题： 仓库里同时有两套目录： src/webview 和 src/panel。';
@@ -52,6 +52,12 @@ assert.deepEqual(
   ['文档/设计.md']
 );
 assert.equal(detectExecutionTerminalFallbackPathLink('文档/设计.md')?.path, '文档/设计.md');
+assert.equal(detectExecutionTerminalFallbackPathLink('• Working   6'), undefined);
+assert.equal(detectExecutionTerminalFallbackPathLink('• Ran gh --version'), undefined);
+assert.equal(detectExecutionTerminalFallbackPathLink('… +24 lines (ctrl + t to view transcript)'), undefined);
+assert.equal(detectExecutionTerminalFallbackPathLink('│ … +2 lines'), undefined);
+assert.equal(detectExecutionTerminalFallbackPathLink('Implement {feature}'), undefined);
+assert.equal(detectExecutionTerminalFallbackPathLink('test-canvas-execution-context.mjs')?.path, 'test-canvas-execution-context.mjs');
 assert.equal(shouldSuppressExecutionTerminalWordLink('文档/设计.md'), false);
 assert.equal(shouldSuppressExecutionTerminalWordLink('设计.md'), false);
 assert.deepEqual(

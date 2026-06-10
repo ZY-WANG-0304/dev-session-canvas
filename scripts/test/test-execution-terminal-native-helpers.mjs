@@ -38,6 +38,7 @@ try {
       '  openExternalCalls: [],',
       '  asExternalUriCalls: [],',
       '  externalUriResolutions: new Map(),',
+      '  findFilesCalls: [],',
       '  allowedLinkSchemes: []',
       '};',
       'function createUri(fsPath, rawValue) {',
@@ -93,6 +94,7 @@ try {
       '  state.openExternalCalls = [];',
       '  state.asExternalUriCalls = [];',
       '  state.externalUriResolutions = new Map();',
+      '  state.findFilesCalls = [];',
       '  state.allowedLinkSchemes = [];',
       '}',
       'exports.__reset = resetState;',
@@ -123,6 +125,9 @@ try {
       'exports.__setExternalUriResolution = function setExternalUriResolution(source, target) {',
       '  state.externalUriResolutions.set(source, target);',
       '};',
+      'exports.__getFindFilesCalls = function getFindFilesCalls() {',
+      '  return state.findFilesCalls.slice();',
+      '};',
       'exports.Range = Range;',
       'exports.RelativePattern = RelativePattern;',
       'exports.FileType = FileType;',
@@ -152,6 +157,11 @@ try {
       '    return { uri };',
       '  },',
       '  async findFiles(relativePattern, _exclude, maxResults) {',
+      '    state.findFilesCalls.push({',
+      '      base: relativePattern.baseUri.fsPath,',
+      '      pattern: relativePattern.pattern,',
+      '      maxResults',
+      '    });',
       '    const workspaceFolderPath = relativePattern.baseUri.fsPath;',
       '    const matcher = globPatternToRegExp(relativePattern.pattern);',
       '    const results = [];',
@@ -229,7 +239,12 @@ try {
   const require = createRequire(import.meta.url);
   const helperModule = require(outfile);
   const vscodeStub = createRequire(outfile)('vscode');
-  const { openExecutionTerminalLink, prepareExecutionTerminalDroppedPath, resolveExecutionFileLink } = helperModule;
+  const {
+    filterResolvableExecutionTerminalFileLinkCandidates,
+    openExecutionTerminalLink,
+    prepareExecutionTerminalDroppedPath,
+    resolveExecutionFileLink
+  } = helperModule;
 
   assert.equal(
     prepareExecutionTerminalDroppedPath(
@@ -415,6 +430,60 @@ try {
     createContext('/bin/bash', '/workspace', 'posix')
   );
   assert.equal(fallbackFileResult, undefined);
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), []);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/nested/test-canvas-execution-context.mjs', type: 'file' }]);
+  const fallbackBasenameResult = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: 'test-canvas-execution-context.mjs',
+      path: 'test-canvas-execution-context.mjs',
+      bufferStartLine: 9,
+      source: 'fallback'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.equal(fallbackBasenameResult, undefined);
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), []);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/packages/app/docs/readme.md', type: 'file' }]);
+  const fallbackPathResult = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: 'docs/readme.md',
+      path: 'docs/readme.md',
+      bufferStartLine: 10,
+      source: 'fallback'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.equal(fallbackPathResult?.uri.fsPath, '/workspace/packages/app/docs/readme.md');
+  assert.deepEqual(vscodeStub.__getFindFilesCalls().map((call) => call.pattern), ['**/docs/readme.md']);
+
+  const fallbackFilterContext = createContext('/bin/bash', '/workspace', 'posix');
+  assert.deepEqual(
+    filterResolvableExecutionTerminalFileLinkCandidates(
+      [
+        createFallbackCandidate('low-bullet', '• Working   6'),
+        createFallbackCandidate('low-transcript', '… +24 lines (ctrl + t to view transcript)'),
+        createFallbackCandidate('low-box', '│ … +2 lines'),
+        createFallbackCandidate('low-template', 'Implement {feature}'),
+        createFallbackCandidate('low-prose', '这里要么在demo/web_demo/omni_stream.py:159'),
+        createFallbackCandidate('basename', 'test-canvas-execution-context.mjs'),
+        createFallbackCandidate('relative-path', 'docs/readme.md'),
+        {
+          ...createFallbackCandidate('detected', '• Working   6'),
+          source: 'detected'
+        }
+      ],
+      fallbackFilterContext
+    ).map((candidate) => candidate.candidateId),
+    ['basename', 'relative-path', 'detected']
+  );
 
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
@@ -633,5 +702,17 @@ function createContext(shellPath, cwd, pathStyle, extra = {}) {
     cwd,
     pathStyle,
     ...extra
+  };
+}
+
+function createFallbackCandidate(candidateId, pathText) {
+  return {
+    candidateId,
+    text: pathText,
+    path: pathText,
+    startIndex: 0,
+    endIndexExclusive: pathText.length,
+    bufferStartLine: 0,
+    source: 'fallback'
   };
 }

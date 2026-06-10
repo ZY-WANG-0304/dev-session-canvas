@@ -15,7 +15,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/active/execution-terminal-native-link-parity.md
-updated_at: 2026-05-22
+updated_at: 2026-06-10
 ---
 
 # 执行节点 TUI 硬换行链接支持分析
@@ -148,6 +148,13 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 同日继续补充两层低风险保护：若当前 cache 里没有任何可刷新的高置信负缓存，live output 不再推进 negative invalidation generation，也不再安排空刷新 timer；Host 侧为每次 `webview/resolveExecutionFileLinks` 记录候选总数、resolved 数、按 source 分类的候选数和耗时，并在 host diagnostics dump 中输出 `execution-file-link-resolve-diagnostics.json` 与 summary，便于真实环境对比 hotfix 前后的请求量和慢请求。
 
+2026-06-10 追加 fallback 降载规则：真实宿主诊断显示多个运行中 Agent 同时输出时，低置信 terminal file link fallback 会把 `• Working   6`、`• Ran gh --version`、`… +24 lines (ctrl + t to view transcript)`、`│ … +2 lines`、`Implement {feature}` 等普通 TUI 文本送到 Host 侧做 workspace fallback resolve，形成慢请求堆积。因此本阶段不引入强负缓存，而是先落地 A + B-lite + C 低风险部分：
+
+1. Webview / shared detector 的 `src/common/executionTerminalLinks.ts` 只保留路径形态足够明确的 fallback candidate：显式路径前缀、包含路径分隔符，或不含空白 / wrapper 文本的文件扩展名；明显 TUI 状态行、transcript 折叠提示、box drawing gutter、模板占位文本和中文 prose 前缀相对路径不再进入 fallback。
+2. Host 侧 `src/panel/executionTerminalNativeHelpers.ts` 对 `source: fallback` 再做同口径防线：明显低置信候选直接过滤；只有带 `./` / `../` 或路径分隔符的 fallback 才允许 workspace exact fallback；裸 basename 只尝试当前 cwd direct stat，不再触发 `workspace.findFiles('**/basename')`。
+3. Host 编排入口 `src/panel/CanvasPanelManager.ts` 对同一执行节点的 fallback-only resolve 增加低风险并发上限，避免同一节点在 hover / link provider 重入时堆积多个低置信 workspace resolve；诊断样本新增 `retainedCandidateCount`、`filteredCandidateCount`、`retainedSourceCounts`、`filteredSourceCounts` 与 `skippedReasonCounts`，用于确认 hotfix 后过滤量和并发跳过量。
+4. 强负缓存仍暂缓：它可能让“刚生成的文件随后变成可点击”的路径短时间 stale，本次真实证据优先指向候选过宽与 Host fallback 过重，先通过候选准入和 host backstop 收口。
+
 ## 验证方法
 
 若进入实现，至少需要完成：
@@ -160,6 +167,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 6. 性能样例：普通 fallback-only 负缓存不应在 live output 后台刷新中再次发起文件解析请求；高置信 negative file link 仍应在 live output 后刷新。
 7. `npm run typecheck` 与 targeted `npm run test:webview -- -g "link activation"` 通过；最终合并前再跑完整 `npm run test:webview`。
 8. 手动验证：在真实 Codex / Claude TUI 输出中确认长链接点击目标正确，并记录具体终端宽度、节点宽度、ANSI 样式和样例输出形态。
+9. fallback 性能回归：普通 TUI 状态行、transcript 折叠提示和模板占位文本不应生成 fallback file link candidate；Host 侧低置信 fallback 不应触发 workspace fallback 搜索；可接受的裸 basename fallback 只允许 cwd direct stat。
 
 ### 当前验证记录
 
@@ -182,3 +190,12 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 - 定向验证通过：`npm run build && node scripts/test/run-playwright-webview.mjs --grep "does not refresh fallback-only negative file links during live output|refreshes negative file link cache while live output continues|delays coalesced negative file link refreshes after live output|schedules delayed refresh after stale negative refresh is invalidated|hard-wrapped URL fragments open as one link|styled hard-wrapped file fragments resolve as one link"`，共 12 条 Playwright 用例通过。
 - 静态与协议回归通过：`npm run typecheck && npm run test:execution-terminal-links && npm run test:protocol-webview-messages && git diff --check`。
 - PR review 发现 1s output throttle 内第二次 live output 若才对应文件创建，会丢失高置信负缓存刷新；新增 `refreshes detected negative file link after second live output inside throttle window` 覆盖 agent / terminal，并改为在 throttle window 内安排 trailing refresh。
+
+2026-06-10 补充 fallback 降载回归：
+
+- `npm run typecheck`
+- `npm run test:execution-terminal-links`
+- `npm run test:execution-terminal-native-helpers`
+- `npm run build`
+- `test-execution-terminal-links` 覆盖真实诊断中出现的低置信误判行：`• Working   6`、`• Ran gh --version`、`… +24 lines (ctrl + t to view transcript)`、`│ … +2 lines`、`Implement {feature}` 不再成为 fallback path；裸 basename `test-canvas-execution-context.mjs` 仍允许进入低成本候选。
+- `test-execution-terminal-native-helpers` 覆盖 Host backstop：裸 basename fallback 不触发 workspace `findFiles`，带目录的 `docs/readme.md` 才允许 workspace exact fallback；过滤器会剔除 bullet / transcript / box drawing / 模板占位 / 中文 prose 前缀候选。
