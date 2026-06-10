@@ -19,7 +19,7 @@ related_plans:
   - docs/exec-plans/completed/agent-cli-launch-context-and-resume.md
   - docs/exec-plans/completed/agent-running-state-detection.md
   - docs/exec-plans/completed/execution-lifecycle-recovery-and-autostart.md
-updated_at: 2026-04-14
+updated_at: 2026-06-10
 ---
 
 # 执行节点生命周期、恢复与自动启动设计
@@ -128,6 +128,7 @@ updated_at: 2026-04-14
 - `resuming`：正在恢复之前的 provider 会话。
 - `resume-ready`：扩展重载后存在可恢复上下文，但尚未完成恢复。
 - `resume-failed`：恢复尝试失败，节点保留失败原因与恢复上下文。
+- `suspended`：同一个 live Claude Code 进程仍存在，但 Claude Code 交互 UI 已被用户按 `Ctrl-Z` 挂起；这不是退出，也不是 provider session `resume`。
 - `stopping`：用户已请求停止。
 - `stopped`：Agent 会话已正常结束或被用户停止。
 - `error`：启动失败或异常退出。
@@ -157,6 +158,7 @@ updated_at: 2026-04-14
 - `resume-ready` 只应建立在 provider 原生显式 session identity 之上；`resume --last`、交互式 picker 或“最近会话推断”都不能作为正式自动恢复语义。
 - 如果某个 provider 还没有被验证出可可靠持久化并恢复显式 session identity，或拿到的 identity 仅来自启发式反查，节点应退化为 `interrupted` 或历史态，而不是继续伪装成可恢复。
 - `Agent` 的内部生命周期与节点主状态都保留 `running / waiting-input` 区分；节点处于可继续输入的阶段时，应稳定显示 `waiting-input`，而不是被粗暴收口成 `running`。
+- `suspended` 当前只对 Claude Code Agent 的明确 `Ctrl-Z` 挂起输出生效；UI 中文按钮使用“恢复”，但协议和代码使用 `reactivate`，避免和 provider session `resume` 混淆。恢复动作只把同一个 live 进程重新带回可交互态，不创建新 provider 会话，也不消费 `resumeSessionId`。
 - `Agent` 的 `running / waiting-input` 仍然是正式用户语义，但“这些状态如何被判定出来”需要单独按 [docs/design-docs/agent-running-state-detection.md](./agent-running-state-detection.md) 的优先级收口：优先使用 provider 原生结构化事件，其次才是结构化输出、shell integration 和 PTY 启发式。
 
 这部分详细边界以 [docs/design-docs/agent-cli-launch-context-and-resume.md](./agent-cli-launch-context-and-resume.md) 为准。
@@ -184,7 +186,8 @@ updated_at: 2026-04-14
 3. 扩展重载后，live 的 `Terminal` 节点被标记为 `interrupted`。
 4. 扩展重载后，live 的 `Agent` 节点只有在具备可信恢复上下文时，才会自动进入 `resuming` 并尽量恢复。
 5. 恢复失败时，`Agent` 节点进入 `resume-failed` 并显示明确失败原因。
-6. `npm run typecheck`、`npm run build`、`npm run test:smoke` 与 `npm run test:webview` 通过。
+6. Claude Code Agent 在同一 live 会话中按 `Ctrl-Z` 后进入 `suspended`，节点仍保留 `liveSession: true`；点击中文“恢复”后通过 `reactivate` 离开 `suspended` 并继续接受输入；点击“停止”仍结束同一个 live 进程。
+7. `npm run typecheck`、`npm run build`、`npm run test:smoke` 与 `npm run test:webview` 通过。
 
 ## 9. 当前验证状态
 
@@ -192,4 +195,5 @@ updated_at: 2026-04-14
 - smoke test 已覆盖：差异化状态集、创建即自动启动、`Agent` 恢复、`Terminal` 在扩展重载后的 `interrupted`、surface cutover、停止竞态和失败路径。
 - `Claude Code` 的 session id / resume CLI 能力已在本机 `--help` 输出层面确认。
 - 2026-04-12 已重新收口 `Agent` 的启动上下文与恢复身份：自动恢复必须建立在 provider 原生显式 session identity 上，不能再以隔离 provider home 或 `resume --last` 作为正式口径。
-- 当前文档仍保持“验证中”，因为新的显式 session identity 约束尚未完成代码落地与真实 provider 验证，而 `Codex` 的标准 session identity 获取接口也尚未确认；这项缺口由 [docs/design-docs/agent-cli-launch-context-and-resume.md](./agent-cli-launch-context-and-resume.md) 继续跟踪。
+- 2026-06-10 已登记 Claude Code `Ctrl-Z` 挂起态：`suspended` 表示同一个 live process 仍存在但交互 UI 被挂起；代码协议使用 `reactivate`，中文 UI 使用“恢复”。该路径已有真实 `node-pty` + Claude Code 实验证明 `SIGCONT` 可恢复，`fg` 在 Canvas 直接 spawn 模型下不可用。
+- 当前文档仍保持“验证中”，因为新的显式 session identity 约束尚未完成代码落地与真实 provider 验证，而 `Codex` 的标准 session identity 获取接口也尚未确认；Claude Code 挂起恢复已完成局部自动化与本机行为验证，但仍缺少跨平台真实 Claude Code 回归。
