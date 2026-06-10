@@ -288,7 +288,7 @@ updated_at: 2026-06-10
 - `agentAbnormalExit`
 - `codexAbnormalOutputText`
 
-这里的“signal 生成 attention”指的是：执行节点的 PTY 输出中出现终端信号，或宿主观察到 Agent 异常退出 / Codex 高置信异常文本候选后，只有该 signal 在 `devSessionCanvas.notifications.enabledAttentionSignals` allow-list 中时，扩展宿主才会把它提升为节点 `attentionPending`、节点内提醒 icon、minimap attention 与可选外部桥接。未启用的终端信号仍可被底层解析器识别用于诊断和现有启发式输入，但不得生成产品 attention；未启用的 Agent 异常候选也不得生成产品 attention。
+这里的“signal 生成 attention”指的是：执行节点的 PTY 输出中出现终端信号，或宿主观察到 Agent 异常退出 / Codex 高置信最终失败文本候选后，只有该 signal 在 `devSessionCanvas.notifications.enabledAttentionSignals` allow-list 中时，扩展宿主才会把它提升为节点 `attentionPending`、节点内提醒 icon、minimap attention 与可选外部桥接。未启用的终端信号仍可被底层解析器识别用于诊断和现有启发式输入，但不得生成产品 attention；未启用的 Agent 异常候选也不得生成产品 attention。
 
 当前版本明确不覆盖：
 
@@ -343,7 +343,7 @@ updated_at: 2026-06-10
   - 不负责用户通知 UI
 
 - `src/panel/CanvasPanelManager.ts`
-  - 负责读取 `enabledAttentionSignals` 并在终端信号、Agent 异常退出和 Codex 异常文本候选进入产品 attention 前执行 allow-list 过滤
+  - 负责读取 `enabledAttentionSignals` 并在终端信号、Agent 异常退出和 Codex 最终失败文本候选进入产品 attention 前执行 allow-list 过滤
   - 负责把启用且可通知的 signal 落成 execution node 的宿主权威 attention pending 状态
   - 负责在 bridge 打开时把同一条 signal 额外桥接成 VSCode 工作台通知
   - 统一覆盖本地 PTY 与 runtime supervisor 输出
@@ -415,7 +415,7 @@ updated_at: 2026-06-10
 
 当前正式方案要求每个 execution node 都维护一个“待确认 attention”状态：
 
-- 当 `BEL`、`OSC 9` 或 `OSC 777` 命中可显示的 notify signal，或 Agent 异常退出 / Codex 异常文本候选命中，且该 signal kind 被 `enabledAttentionSignals` 启用时：
+- 当 `BEL`、`OSC 9` 或 `OSC 777` 命中可显示的 notify signal，或 Agent 异常退出 / Codex 最终失败文本候选命中，且该 signal kind 被 `enabledAttentionSignals` 启用时：
   - 节点标题栏状态控件左侧出现 attention icon
   - 若 `strongTerminalAttentionReminder` 为 `titleBar` 或 `both`，标题栏区域进入闪烁态
   - 若 `strongTerminalAttentionReminder` 为 `minimap` 或 `both`，minimap 在同色明暗闪烁之外额外加入尺寸 pulse
@@ -514,16 +514,16 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
 - 适用范围只覆盖 `Agent` 节点，且 provider 限定为 `codex` 与 `claude`。
 - 本地 PTY 与 live-runtime supervisor 两条路径都适用；终态判定点分别在本地 `onExit` finalize、以及 supervisor `sessionState` 从 live 变成非 live 的处理里；输出流判定点在两条路径的 Agent stdout/stderr chunk 处理里。
 - 只有 `agentAbnormalExit` 启用，且 Agent 已经跑起来（`running` 或 `waiting-input`）之后，进程在非用户主动停止的情况下以非 `0` 退出码结束并进入 `error`，才会触发异常中断通知。
-- 运行中的输出流文本匹配默认关闭；只有当 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 设置为 `codex` 且 `codexAbnormalOutputText` 启用时，Codex 输出中出现高置信流断开失败完整文案才会立即触发补充提醒，即使进程尚未退出。当前明确的高置信模式是 Codex / OpenAI Responses 体系里的 `stream disconnected before completion: stream closed before response.completed`；这里的 `response.completed` 是 Codex 一次 turn 完成的权威事件，不是 Claude Code 的标准事件。
+- 运行中的输出流文本匹配默认关闭；只有当 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 设置为 `codex` 且 `codexAbnormalOutputText` 启用时，Codex 输出中出现高置信最终失败文案才会触发补充提醒。当前模式包括 Codex TUI 方块标记的最终错误行 `■ {"error":{"message":"Internal server error"}}`，以及同样以 `■` 标记、出现在输出尾部的 `stream disconnected before completion: stream closed before response.completed`。其中 `response.completed` 是 Codex 一次 turn 完成的权威事件，不是 Claude Code 的标准事件；尾部紧随的输入提示行（如 `› Write tests for @filename`）不影响判定。`Reconnecting... n/m` 与树形缩进的 `└ Stream disconnected ...` 表示 Codex 仍可能自动 retry / reconnect，不作为最终失败文本触发提醒，即使同类文本重复出现也不触发。
 - Claude / Anthropic API 的流式完成事件是 `message_stop`，Claude Code 的公开 hook 语义里 API error 会进入 `StopFailure` 而不是 `Stop`。因此在没有 Claude Code 真实输出样本或结构化 `StopFailure` 证据前，不把 Codex 的 `response.completed` 文案写成 Claude-specific 规则，也不对 Claude 启用输出文本匹配；Claude 侧仍主要依赖“已运行后非用户主动非 `0` 退出”的终态兜底，或未来接入更结构化的 Claude 信号。
-- 宿主不尝试自动重放 prompt、自动 resume 或替 provider 做流恢复。流断开后的 retry / reconnect / continuation 属于 provider 自身拥有 turn state 的层级；画布只做补充提醒，避免重复 tool call、重复写文件或破坏 provider 会话状态。
+- 宿主不尝试自动重放 prompt、自动 resume 或替 provider 做流恢复。流断开后的 retry / reconnect / continuation 属于 provider 自身拥有 turn state 的层级；画布只做补充提醒，避免重复 tool call、重复写文件或破坏 provider 会话状态。`Reconnecting... n/m` 与树形缩进的 stream-disconnected 文案属于仍在运行中的 retry / reconnect 暂态输出，重复出现也不进入异常通知候选；对方块标记且位于输出尾部的 `Internal server error` / stream-disconnected 最终错误样式，可直接提醒。
 - 启动前校验失败、启动命令解析或 spawn 失败、resume 启动失败（`resume-failed`）、用户点击停止按钮、删除节点清理、退出码为 `0` 的正常结束，以及 `Terminal` 节点退出都不触发这条额外通知。
 - 这条通知沿用 `devSessionCanvas.notifications.attentionSignalBridge`：`none` 只保留节点内 `attentionPending`，不弹工作台或系统通知；`workbench` 走 VS Code 工作台消息；`system` 优先交给 UI-side notifier companion，失败再回退工作台消息。异常退出和异常输出文本是否能生成 attention 由 `devSessionCanvas.notifications.enabledAttentionSignals` 统一控制；异常输出文本匹配还需 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 显式开启，默认 `off`，当前唯一开启值是 `codex`。
 - Codex / Claude 自己输出的 `BEL`、`OSC 9`、`OSC 777` 仍按 7.7.4 的终端 attention signal 解析路径处理；异常中断通知与可选文本匹配不会修改、吞掉或替代这些输出。
 - 异常终态或异常输出流会把同一节点的 `attentionPending` 置为 `true`，因此节点标题栏 icon、minimap 闪烁和点击节点后确认清除的语义与终端 attention signal 完全一致。
-- 通知标题仍使用 `DSCanvas · <workspace> · Agent`，通知正文使用 provider 与节点标题组合，例如 `Codex Agent「Agent 1」异常中断：...`、`Claude Code Agent「Agent 2」异常中断：...` 或在用户启用 Codex 文本匹配时使用 `Codex Agent「Agent 3」输出流异常：stream disconnected before completion...`；正文会裁剪长错误摘要，避免把完整终端输出推到系统通知。
+- 通知标题仍使用 `DSCanvas · <workspace> · Agent`，通知正文使用 provider 与节点标题组合，例如 `Codex Agent「Agent 1」异常中断：...`、`Claude Code Agent「Agent 2」异常中断：...` 或在用户启用 Codex 文本匹配时使用 `Codex Agent「Agent 3」输出流异常：Internal server error...` / `stream disconnected before completion...`；正文会裁剪长错误摘要，避免把完整终端输出推到系统通知。
 
-这条规则的关键取舍是：Codex / Claude 的原生通知输出仍是正常提醒主路径，宿主异常检测只做兜底补充。它不要求 provider 在已运行会话崩溃前一定能输出 `BEL` / `OSC 9`，因此可覆盖“会话跑起来后崩溃、进程异常退出但没有来得及发终端通知”的场景；同时用户可以通过 `enabledAttentionSignals` 把这类兜底信号彻底排除出产品 attention。Codex 输出流断开文本属于用户显式 opt-in 的 fallback，只在开启 `agentAbnormalOutputTextNotifications=codex` 且 `codexAbnormalOutputText` 启用后扫描新增输出并要求完整高置信文案，避免旧 buffer 在下一轮输入、配置切换或 live-runtime attach 后重复触发 stale 通知。live-runtime supervisor attach 时，`snapshot.output` 中已有的历史输出会被标记为已扫描，后续第一段新 chunk 只匹配新增部分；`enabledAttentionSignals` 变更时也会把当前 buffer 标为已扫描，避免重新启用后把历史异常文本补弹成新提醒。同时不把正常完成、启动失败或 resume 启动失败当成额外提醒，因为这些阶段用户大概率仍在画板页面，额外外部通知只会增加噪音。如果后续接入 Codex app-server / protocol，应优先消费结构化 `StreamError` / `Error`，并区分“正在 retry / reconnect”的暂态和“最终失败”的终态，外部通知默认只在最终失败时触发。Claude 侧如果后续接入 `StopFailure`、hook 或其他结构化输出，也应按同样原则优先使用结构化信号，而不是继续扩大通用正则。
+这条规则的关键取舍是：Codex / Claude 的原生通知输出仍是正常提醒主路径，宿主异常检测只做兜底补充。它不要求 provider 在已运行会话崩溃前一定能输出 `BEL` / `OSC 9`，因此可覆盖“会话跑起来后崩溃、进程异常退出但没有来得及发终端通知”的场景；同时用户可以通过 `enabledAttentionSignals` 把这类兜底信号彻底排除出产品 attention。Codex 异常输出文本属于用户显式 opt-in 的 fallback，只在开启 `agentAbnormalOutputTextNotifications=codex` 且 `codexAbnormalOutputText` 启用后扫描新增输出并要求完整高置信文案；其中方块标记且位于输出尾部的 `Internal server error` / stream-disconnected 文案会生成通知；`Reconnecting... n/m` 与树形缩进的 stream-disconnected 文案被视为仍在运行中的 retry / reconnect 暂态输出，即使重复出现也不会生成通知，避免 Codex 自动 retry 期间连续打扰用户；扫描只面向新增输出，也避免旧 buffer 在下一轮输入、配置切换或 live-runtime attach 后重复触发 stale 通知。live-runtime supervisor attach 时，`snapshot.output` 中已有的历史输出会被标记为已扫描，后续第一段新 chunk 只匹配新增部分；`enabledAttentionSignals` 变更时也会把当前 buffer 标为已扫描，避免重新启用后把历史异常文本补弹成新提醒。同时不把正常完成、启动失败或 resume 启动失败当成额外提醒，因为这些阶段用户大概率仍在画板页面，额外外部通知只会增加噪音。如果后续接入 Codex app-server / protocol，应优先消费结构化 `StreamError` / `Error`，并区分“正在 retry / reconnect”的暂态和“最终失败”的终态，外部通知默认只在最终失败时触发。Claude 侧如果后续接入 `StopFailure`、hook 或其他结构化输出，也应按同样原则优先使用结构化信号，而不是继续扩大通用正则。
 
 ## 8. 验证方法
 
@@ -532,7 +532,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
 1. 在真实 VSCode 宿主内验证 `show*Message` 与 `withProgress(Notification)` 的使用场景，确认不会和节点状态或状态栏反馈重复。
 2. 在 Ghostty、kitty、iTerm2 至少三种终端里人工验证 `BEL`、`OSC 9` 与当前焦点门槛的实际表现。
 3. 在经过 `tmux` 的场景下验证通知序列是否透传，以及需要哪些配置。
-4. 对 `Claude Code` / `Codex` 的“审批请求”“用户输入请求”“任务完成”“异常退出”和“输出流断开”事件分别验证最终提醒链路。
+4. 对 `Claude Code` / `Codex` 的“审批请求”“用户输入请求”“任务完成”“异常退出”“Codex 最终失败文本”和“Codex retry / reconnect 暂态输出不提醒”事件分别验证最终提醒链路。
 5. 在仓库实现阶段补自动化或人工验证，证明 `Agent` 状态机不会因为收到通知协议就错误地把 attention signal 误判为权威 turn 边界。
 6. 如果后续开始实现 7.7.11 的 notifier companion，还需要额外验证本地桌面、Remote SSH / Dev Container、缺少 companion 时的 fallback，以及“点击系统通知后回到画布并居中节点，但不自动选中或清除 attention”的完整链路。
 
@@ -551,9 +551,10 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
   - `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`
 - 2026-04-29 已补记未来 OS 系统通知的 UI-side / local-side notifier companion 方向；本次仅更新设计文档，不涉及代码与运行时行为变更。
 - 2026-05-21 已补充 Agent 异常中断通知设计：非用户主动的 `Codex` / `Claude Code` Agent 已运行后非 `0` 退出 `error` 终态，会在 provider 原生终端通知之外，补充复用同一条 attention bridge 与节点确认语义；启动失败和 `resume-failed` 不触发额外通知。
-- 2026-05-22 已补充 provider 边界：`stream closed before response.completed` 是 Codex / OpenAI Responses 的高置信流断开模式；Claude Code 不共享 `response.completed` 这个标准完成事件，后续 Claude 流失败扩展应优先基于 `StopFailure` 或真实输出样本。
+- 2026-05-22 已补充 provider 边界：`stream closed before response.completed` 是 Codex / OpenAI Responses 的未完成标记；Claude Code 不共享 `response.completed` 这个标准完成事件，后续 Claude 流失败扩展应优先基于 `StopFailure` 或真实输出样本。当前 Codex TUI `Reconnecting... n/m` 场景把树形缩进的该文案视为 retry / reconnect 暂态，不作为最终失败通知；方块标记且位于输出尾部的同类文案才作为最终失败。
 - 2026-05-24 根据 review 收口异常输出文本匹配：新增 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，默认 `off`，仅 `codex` 开启 Codex 高置信完整文案匹配；Claude 不启用文本匹配，用户输入 reset、配置切换与 live-runtime attach 会把当前 buffer 标为已扫描，避免 stale stream notification 重复触发。
 - 2026-06-10 新增 `devSessionCanvas.notifications.enabledAttentionSignals`，把候选 signal 是否生成画布 attention 从外部 bridge 目标中拆出；已通过单元测试覆盖 normalization / allow-list 过滤，并通过 VS Code smoke 扩展 attention 场景覆盖禁用 BEL 不生成节点 attention、重新启用 BEL 后恢复节点 attention 与工作台桥接，同时覆盖禁用 `agentAbnormalExit` / `codexAbnormalOutputText` 后不生成节点 attention 或外部通知。
+- 2026-06-10 修正 Codex 异常输出通知抑制规则：方块标记且位于输出尾部的 `Internal server error` / stream-disconnected 样式作为可直接提醒的 Codex 最终错误文本；`Reconnecting... n/m` 与树形缩进的 stream-disconnected 属于 retry / reconnect 暂态输出，即使重复出现也不提醒。
 - 当前文档继续保持 `验证中`，因为本轮尚未在真实 Ghostty / kitty / iTerm2 / tmux 场景里做手工协议验证；但仓库内已完成 VS Code 宿主级自动化验证，覆盖配置开关、冷却抑制、attention signal allow-list、节点内提醒、显式点击确认，以及工作台通知后居中节点但不确认提醒。
 
 ## 10. 外部依据
