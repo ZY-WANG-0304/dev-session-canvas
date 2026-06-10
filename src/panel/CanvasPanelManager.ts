@@ -799,6 +799,7 @@ interface StartExecutionSessionForTestParams {
   cwdOverride?: string;
   injectAgentOutputChunk?: string;
   injectAgentExistingOutput?: string;
+  injectAgentOutputChunks?: string[];
 }
 
 interface RuntimeSupervisorRegistryForTest {
@@ -2898,7 +2899,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postState('host/stateUpdated');
     }
 
-    if (params.kind === 'agent' && params.injectAgentOutputChunk) {
+    if (
+      params.kind === 'agent' &&
+      (params.injectAgentOutputChunk || (params.injectAgentOutputChunks && params.injectAgentOutputChunks.length > 0))
+    ) {
       const syntheticSession = this.createAgentNotificationSessionForTest(params);
       try {
         if (params.injectAgentExistingOutput) {
@@ -2908,12 +2912,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             syntheticSession.buffer
           );
         }
-        syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, params.injectAgentOutputChunk);
-        this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(
-          params.nodeId,
-          syntheticSession,
-          params.injectAgentOutputChunk
-        );
+        const injectedChunks: string[] =
+          params.injectAgentOutputChunks && params.injectAgentOutputChunks.length > 0
+            ? params.injectAgentOutputChunks
+            : params.injectAgentOutputChunk
+              ? [params.injectAgentOutputChunk]
+              : [];
+        for (const injectedChunk of injectedChunks) {
+          syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, injectedChunk);
+          this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(
+            params.nodeId,
+            syntheticSession,
+            injectedChunk
+          );
+        }
         await new Promise((resolve) => setTimeout(resolve, 0));
       } finally {
         this.disposeManagedExecutionSession(syntheticSession);
@@ -11427,6 +11439,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         snapshot.abnormalStreamInterruptionMessage
       );
     }
+    this.syncAgentExecutionStateForInjectedOutput(nodeId, session);
+  }
+
+  private syncAgentExecutionStateForInjectedOutput(
+    nodeId: string,
+    session: ManagedExecutionSession
+  ): void {
+    if (session.owner !== 'local' || session.process.processName !== 'test-agent-output-injection') {
+      return;
+    }
+
+    this.state = updateAgentNode(this.state, nodeId, {
+      status: session.lifecycleStatus as AgentNodeStatus,
+      summary: summarizeAgentSessionOutput(
+        session.buffer,
+        session.lifecycleStatus as AgentNodeStatus,
+        agentProviderDisplayLabel(session.agentProvider ?? 'codex')
+      ),
+      metadata: buildAgentMetadataPatch(this.state, nodeId, {
+        provider: session.agentProvider ?? 'codex',
+        lifecycle: session.lifecycleStatus as AgentNodeStatus,
+        recentOutput: extractRecentTerminalOutput(session.buffer) || undefined,
+        liveSession: false,
+        pendingLaunch: undefined
+      })
+    });
+    this.persistState();
+    this.postState('host/stateUpdated');
   }
 
   private recordAgentOutputActivity(
