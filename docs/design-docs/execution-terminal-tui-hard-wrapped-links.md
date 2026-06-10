@@ -155,6 +155,8 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 3. Host 编排入口 `src/panel/CanvasPanelManager.ts` 对同一执行节点的 fallback-only resolve 增加低风险并发上限，避免同一节点在 hover / link provider 重入时堆积多个低置信 workspace resolve；诊断样本新增 `retainedCandidateCount`、`filteredCandidateCount`、`retainedSourceCounts`、`filteredSourceCounts` 与 `skippedReasonCounts`，用于确认 hotfix 后过滤量和并发跳过量。
 4. 强负缓存仍暂缓：它可能让“刚生成的文件随后变成可点击”的路径短时间 stale，本次真实证据优先指向候选过宽与 Host fallback 过重，先通过候选准入和 host backstop 收口。
 
+同日追加 styled / detected 降载规则：二次宿主诊断显示新版本仍把 `›`、`· 1`、`tab to queue message`、`Improve documentation in @filename`、`2m 45`、`2026-06-10 04:05`、`time.sleep(max(0, 30` 等 ANSI styled TUI 片段以 `source: detected` 发送到 Host，且 400 条采样中 `resolvedCount = 0`。因此普通 styled span 不再直接升级为 `detected` 文件候选；Webview 必须先用共享 path plausibility gate 确认片段是明确文件形态，才以新的 `source: styled` 发送。保留的 styled 文件形态包括带路径分隔符的相对 / 绝对路径、带可信文件扩展名的 basename，以及 `foo.ts:10` / `File "foo.ts", line 3` 这类明确行号位置；明显 prompt glyph、bullet、TUI 状态文案、时间/日期、包名、纯数字比例和代码表达式不进入 Host resolve。Host 侧对 `source: detected` 与 `source: styled` 也执行同一准入防线，避免旧 Webview 或其他入口绕过 Webview 过滤；协议 validator 增加 `styled` source，以便后续诊断能区分来自 styled span 的候选，而不是全部混入 `detected`。
+
 ## 验证方法
 
 若进入实现，至少需要完成：
@@ -168,6 +170,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 7. `npm run typecheck` 与 targeted `npm run test:webview -- -g "link activation"` 通过；最终合并前再跑完整 `npm run test:webview`。
 8. 手动验证：在真实 Codex / Claude TUI 输出中确认长链接点击目标正确，并记录具体终端宽度、节点宽度、ANSI 样式和样例输出形态。
 9. fallback 性能回归：普通 TUI 状态行、transcript 折叠提示和模板占位文本不应生成 fallback file link candidate；Host 侧低置信 fallback 不应触发 workspace fallback 搜索；可接受的裸 basename fallback 只允许 cwd direct stat。
+10. styled / detected 性能回归：真实诊断中出现的 prompt glyph、bullet、状态文案、时间/日期、包名、纯数字比例和代码表达式不应进入 Host file resolve；保留 `event.ts`、`docs/readme.md`、`src/foo.ts:10` 与 `"foo", line 10` 等明确文件形态。
 
 ### 当前验证记录
 
@@ -199,3 +202,12 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 - `npm run build`
 - `test-execution-terminal-links` 覆盖真实诊断中出现的低置信误判行：`• Working   6`、`• Ran gh --version`、`… +24 lines (ctrl + t to view transcript)`、`│ … +2 lines`、`Implement {feature}` 不再成为 fallback path；裸 basename `test-canvas-execution-context.mjs` 仍允许进入低成本候选。
 - `test-execution-terminal-native-helpers` 覆盖 Host backstop：裸 basename fallback 不触发 workspace `findFiles`，带目录的 `docs/readme.md` 才允许 workspace exact fallback；过滤器会剔除 bullet / transcript / box drawing / 模板占位 / 中文 prose 前缀候选。
+
+同日继续补充 styled / detected 降载回归：
+
+- `npm run typecheck`
+- `npm run test:execution-terminal-links`
+- `npm run test:execution-terminal-native-helpers`
+- `npm run test:protocol-webview-messages`
+- `test-execution-terminal-links` 覆盖真实诊断中的 styled / detected 误判：`›`、`· 1`、`tab to queue message`、`Improve documentation in @filename`、`2m 45`、`2026-06-10 04:05`、`time.sleep(max(0, 30`、`20/60`、`@openai/codex` 和 `/model` 不再通过 styled path gate；`event.ts`、`sql.ts`、`docs/readme.md`、`src/foo.ts:10`、`File "foo.ts", line 3` 仍保留。
+- `test-execution-terminal-native-helpers` 覆盖 Host backstop：`source: detected` / `source: styled` 的低置信 TUI 文本会被过滤，明确路径或 basename 才保留；`test-protocol-webview-messages` 覆盖 `styled` source 的 resolve / open 协议解析。

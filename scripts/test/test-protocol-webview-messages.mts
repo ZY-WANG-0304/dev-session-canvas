@@ -34,6 +34,14 @@ const hardwrapResolveMessage = {
 
 assert.deepEqual(parseWebviewMessage(hardwrapResolveMessage), hardwrapResolveMessage);
 
+const styledResolveMessage = JSON.parse(JSON.stringify(hardwrapResolveMessage));
+styledResolveMessage.payload.candidates[0].candidateId = 'styled:1:2:1:8:foo.ts';
+styledResolveMessage.payload.candidates[0].text = 'foo.ts';
+styledResolveMessage.payload.candidates[0].path = 'foo.ts';
+styledResolveMessage.payload.candidates[0].endIndexExclusive = 'foo.ts'.length;
+styledResolveMessage.payload.candidates[0].source = 'styled';
+assert.deepEqual(parseWebviewMessage(styledResolveMessage), styledResolveMessage);
+
 const lifecycleMessage = {
   type: 'webview/bootstrapAck',
   lifecycle: {
@@ -107,6 +115,12 @@ const hardwrapOpenMessage = {
 };
 
 assert.deepEqual(parseWebviewMessage(hardwrapOpenMessage), hardwrapOpenMessage);
+
+const styledOpenMessage = JSON.parse(JSON.stringify(hardwrapOpenMessage));
+styledOpenMessage.payload.link.text = 'foo.ts';
+styledOpenMessage.payload.link.path = 'foo.ts';
+styledOpenMessage.payload.link.source = 'styled';
+assert.deepEqual(parseWebviewMessage(styledOpenMessage), styledOpenMessage);
 
 const branchAgentSessionMessage = {
   type: 'webview/branchAgentSession',

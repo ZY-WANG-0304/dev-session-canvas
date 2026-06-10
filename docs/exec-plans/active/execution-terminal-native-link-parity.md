@@ -31,6 +31,7 @@
 - [x] (2026-05-19 14:49 +0800) 收口 PR review 两个 blocker：diff header 剥离 `a/` / `b/` 后保留合法起点信息；styled hard-wrap file collector 改为只接受明确 continuation 链，并补充纯函数与 Playwright 负例回归。
 - [x] (2026-05-19 15:21 +0800) 调整 continuation 边界：续行 link 片段从允许缩进后行首开始时，允许后面跟默认样式说明文字；继续拒绝首片段后混入 prose 或续片段不在缩进后行首的误拼接。
 - [x] (2026-05-22 17:30 +0800) 按 hotfix 要求先补性能回归并记录修复前基线：fallback-only 负缓存测试在修复前 agent / terminal 都产生 36 次 live-output 后台 resolve request；随后限制 live output 只刷新高置信负缓存，并增加输出 invalidation 最小间隔。
+- [x] (2026-06-10 18:40 +0800) 根据二次宿主诊断继续降载：styled span 不再直接伪装成 `detected`，而是必须通过共享 path plausibility gate 后以 `styled` source 发送；`detected` / `styled` 在 Webview 与 Host 双侧都执行同一准入防线，并补协议、纯函数与 Host helper 回归。
 
 ## 意外与发现
 
@@ -85,6 +86,9 @@
 - 观察：0.10.2 的 live output 负缓存刷新会反复刷新 fallback-only 普通文本。新增性能回归在修复前失败，agent 与 terminal 都收到 36 次 `webview/resolveExecutionFileLinks` fallback 请求，来源是 12 条普通文本负缓存乘以 3 次 live output。
   证据：2026-05-22 运行 `npm run build && node scripts/test/run-playwright-webview.mjs --grep "does not refresh fallback-only negative file links during live output"`，新增用例在 agent / terminal 均失败，收到值为 `36`，期望为 `0`。
 
+- 观察：2026-06-10 的二次宿主诊断显示 fallback 降载没有命中当前主因；400 条 file-link resolve 采样中全部仍是 `source: detected`，`filteredCandidateCount = 0`，但候选文本大量是 `›`、`· 1`、`tab to queue message`、`Improve documentation in @filename`、`2m 45`、日期时间、代码表达式和 box drawing 文本，最终 `resolvedCount = 0`。
+  证据：用户提供的 `/home/users/ziyang01.wang-al/projects/dsc-test-03/.debug/current-host-diagnostics/2026-06-10T10-08-29-170Z/execution-file-link-resolve-diagnostics.json`；对比旧诊断后，file-link resolve p50 从 29ms 升到 116ms，p90 从 71ms 升到 450ms，而 input write p50 从 86ms 降到 14ms。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -135,6 +139,10 @@
   理由：fallback-only 已退出后台刷新后，继续为纯 fallback 缓存推进 generation 和 timer 只会制造无效主线程调度；Host 侧诊断能让真实环境继续验证请求量是否从 0.10.2 的放大行为回落，而不是只能依赖 Playwright mock 计数。
   日期/作者：2026-05-22 / Codex
 
+- 决策：styled span 不能直接作为高置信 `detected` 文件候选；只有明确 file-like、path-like 或 line-location 形态通过共享 gate 后，才以新的 `styled` source 进入 Host。`detected` 与 `styled` 都要在 Webview 和 Host 双侧执行同一准入防线。
+  理由：真实 TUI 会把 prompt glyph、状态文案、时间、包名、代码表达式等都染成非默认样式；把这些文本直接标成 `detected` 会绕过 fallback 降载和 source 诊断，造成大量 `resolvedCount = 0` 的 Host 解析请求。新增 `styled` source 让后续诊断能区分 styled span 来源，同时 Host backstop 可保护旧 Webview 或其他入口。
+  日期/作者：2026-06-10 / Codex
+
 ## 结果与复盘
 
 当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。
@@ -144,6 +152,8 @@
 2026-05-22 hotfix 先用失败测试记录了修复前性能状况：fallback-only 普通文本负缓存会被每次 live output 批量刷新，12 条普通文本缓存和 3 次输出即可产生 36 次文件解析请求。实现收口后，同一回归里的 fallback-only live-output 后台解析请求降为 0 次；这里的 0 只表示普通 fallback-only 低置信负缓存退出 live output 后台刷新，不表示全局 negative cache refresh 失效。高置信 detected / hardwrap 负缓存仍可在文件创建后刷新。随后补充空刷新保护，避免纯 fallback cache 在 live output 后继续推进无效 generation / timer；Host 侧新增 file link resolve 诊断，后续真实 dump 会包含按 source 分类的请求量与慢请求摘要。定向验证已覆盖新增性能回归、既有 negative refresh、coalesced refresh 与 stale refresh 场景。
 
 PR review 后补齐 output throttle trailing refresh：当第二次 live output 在 1s 最小间隔内才让高置信 `detected` 负缓存变为可解析时，不再直接丢弃 invalidation，而是在 remaining interval 后触发 trailing refresh。新增 `refreshes detected negative file link after second live output inside throttle window` 覆盖 agent / terminal。
+
+2026-06-10 二次降载继续把 styled span 与一般 detected 候选收窄到明确路径形态。对用户提供的新诊断样本做离线回放时，582 个候选中只有 28 个会通过新 gate，其余 554 个 prompt glyph、状态文案、时间/日期、包名、纯数字比例和代码表达式会被过滤；保留的主要是 `input.ts`、`event.ts`、`sql.ts`、`session.ts` 和 `.dev-session-canvas/templates/测试上传-` 等 file-like 文本。自动化验证通过 `npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run test:protocol-webview-messages`、定向 `npm run test:webview -- --grep "link activation posts parsed file and URL targets|styled hard-wrapped file fragments resolve as one link|styled hard-wrapped non-links are not guessed as one link|unstyled hard-wrapped file fragments are not guessed as one link"`、`npm run build` 与 `git diff --check`。
 
 ## 上下文与定向
 

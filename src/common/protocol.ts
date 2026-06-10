@@ -2594,6 +2594,7 @@ function isExecutionTerminalFileLinkSource(value: unknown): value is ExecutionTe
   return (
     value === 'detected' ||
     value === 'refined' ||
+    value === 'styled' ||
     value === 'fallback' ||
     value === 'hardwrap' ||
     value === 'explicit-uri'

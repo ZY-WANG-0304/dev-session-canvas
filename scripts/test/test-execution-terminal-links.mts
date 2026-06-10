@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {
   detectExecutionTerminalFallbackPathLink,
   detectExecutionTerminalPathLinks,
+  detectExecutionTerminalStyledPathLink,
+  isPlausibleExecutionTerminalStyledFilePath,
+  shouldAllowExecutionTerminalDetectedPathLink,
   shouldSuppressExecutionTerminalWordLink
 } from '../../src/common/executionTerminalLinks.ts';
 
@@ -58,6 +61,62 @@ assert.equal(detectExecutionTerminalFallbackPathLink('… +24 lines (ctrl + t to
 assert.equal(detectExecutionTerminalFallbackPathLink('│ … +2 lines'), undefined);
 assert.equal(detectExecutionTerminalFallbackPathLink('Implement {feature}'), undefined);
 assert.equal(detectExecutionTerminalFallbackPathLink('test-canvas-execution-context.mjs')?.path, 'test-canvas-execution-context.mjs');
+assert.equal(detectExecutionTerminalStyledPathLink('›', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('· 1', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('tab to queue message', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('Improve documentation in @filename', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('2m 45', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('2026-06-10 04:05', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('time.sleep(max(0, 30', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('20/60', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('@openai/codex', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('/model', 'posix'), undefined);
+assert.deepEqual(
+  detectExecutionTerminalStyledPathLink('         event.ts,', 'posix'),
+  {
+    text: 'event.ts',
+    path: 'event.ts',
+    startIndex: 9,
+    endIndexExclusive: 17,
+    line: undefined,
+    column: undefined,
+    lineEnd: undefined,
+    columnEnd: undefined
+  }
+);
+assert.equal(detectExecutionTerminalStyledPathLink('sql.ts', 'posix')?.path, 'sql.ts');
+assert.equal(detectExecutionTerminalStyledPathLink('docs/readme.md', 'posix')?.path, 'docs/readme.md');
+assert.equal(detectExecutionTerminalStyledPathLink('src/foo.ts:10', 'posix')?.line, 10);
+assert.equal(detectExecutionTerminalStyledPathLink('File "foo.ts", line 3', 'posix')?.path, 'foo.ts');
+assert.equal(isPlausibleExecutionTerminalStyledFilePath('foo.ts', 'posix'), true);
+assert.equal(isPlausibleExecutionTerminalStyledFilePath('docs/readme.md', 'posix'), true);
+assert.equal(isPlausibleExecutionTerminalStyledFilePath('20/60', 'posix'), false);
+for (const text of [
+  '2m 45',
+  '· 1',
+  'message 86',
+  'time.sleep(max(0, 30',
+  '20/60',
+  '97e713e 2026',
+  '2026-06-10 04:05',
+  '04:05:03'
+]) {
+  for (const link of detectExecutionTerminalPathLinks(text, 'posix')) {
+    assert.equal(shouldAllowExecutionTerminalDetectedPathLink(link, 'posix'), false, text);
+  }
+}
+assert.equal(
+  shouldAllowExecutionTerminalDetectedPathLink(detectExecutionTerminalPathLinks('src/foo.ts:10', 'posix')[0], 'posix'),
+  true
+);
+assert.equal(
+  shouldAllowExecutionTerminalDetectedPathLink(detectExecutionTerminalPathLinks('foo:10', 'posix')[0], 'posix'),
+  true
+);
+assert.equal(
+  shouldAllowExecutionTerminalDetectedPathLink(detectExecutionTerminalPathLinks('"foo", line 10', 'posix')[0], 'posix'),
+  true
+);
 assert.equal(shouldSuppressExecutionTerminalWordLink('文档/设计.md'), false);
 assert.equal(shouldSuppressExecutionTerminalWordLink('设计.md'), false);
 assert.deepEqual(

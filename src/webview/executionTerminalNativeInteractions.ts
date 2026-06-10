@@ -24,7 +24,9 @@ import {
   EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS,
   detectExecutionTerminalFallbackPathLink,
   detectExecutionTerminalPathLinks,
+  detectExecutionTerminalStyledPathLink,
   shouldSuppressExecutionTerminalWordLink,
+  shouldAllowExecutionTerminalDetectedPathLink,
   type DetectedExecutionTerminalPathLink,
   type ExecutionTerminalFileLinkCandidate,
   type ExecutionTerminalDroppedResource,
@@ -1635,7 +1637,8 @@ function collectFileLinkCandidates(
     .filter(
       (candidate) =>
         !isNonFileUriLikePath(candidate.path) &&
-        candidate.path.length <= EXECUTION_MAX_RESOLVED_LINK_LENGTH
+        candidate.path.length <= EXECUTION_MAX_RESOLVED_LINK_LENGTH &&
+        shouldAllowExecutionTerminalDetectedPathLink(candidate, pathStyle)
     );
 
   const candidates: ExecutionTerminalFileLinkCandidate[] = [];
@@ -1664,7 +1667,11 @@ async function collectStyledFileLinks(
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >
 ): Promise<ILink[]> {
-  const styledCandidates = collectStyledFileLinkCandidates(options.terminal, context);
+  const styledCandidates = collectStyledFileLinkCandidates(
+    options.terminal,
+    context,
+    options.getPathStyle()
+  );
   if (styledCandidates.length === 0) {
     return [];
   }
@@ -1685,7 +1692,8 @@ async function collectStyledFileLinks(
 
 function collectStyledFileLinkCandidates(
   terminal: Terminal,
-  context: WrappedLineContext
+  context: WrappedLineContext,
+  pathStyle: ExecutionTerminalPathStyle
 ): StyledFileLinkCandidate[] {
   const ranges = readXtermRangesByAttr(terminal, context.startLine, context.endLine);
   const candidates: StyledFileLinkCandidate[] = [];
@@ -1710,21 +1718,26 @@ function collectStyledFileLinkCandidates(
       continue;
     }
 
+    const detectedLink = detectExecutionTerminalStyledPathLink(text, pathStyle);
+    if (!detectedLink || isNonFileUriLikePath(detectedLink.path)) {
+      continue;
+    }
+
     candidates.push({
       candidate: {
-        candidateId: `styled:${range.start.y}:${range.start.x}:${range.end.y}:${range.end.x}:${text}`,
-        text,
-        path: text,
-        startIndex: 0,
-        endIndexExclusive: text.length,
+        candidateId: `styled:${range.start.y}:${range.start.x}:${range.end.y}:${range.end.x}:${detectedLink.text}`,
+        text: detectedLink.text,
+        path: detectedLink.path,
+        startIndex: detectedLink.startIndex,
+        endIndexExclusive: detectedLink.endIndexExclusive,
         bufferStartLine: context.startLine,
-        line: undefined,
-        column: undefined,
-        lineEnd: undefined,
-        columnEnd: undefined,
-        source: 'detected'
+        line: detectedLink.line,
+        column: detectedLink.column,
+        lineEnd: detectedLink.lineEnd,
+        columnEnd: detectedLink.columnEnd,
+        source: 'styled'
       },
-      bufferRange: range
+      bufferRange: sliceBufferRangeByTextOffsets(range, detectedLink.startIndex, detectedLink.endIndexExclusive)
     });
 
     if (candidates.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
@@ -1733,6 +1746,27 @@ function collectStyledFileLinkCandidates(
   }
 
   return candidates;
+}
+
+function sliceBufferRangeByTextOffsets(
+  range: IBufferRange,
+  startIndex: number,
+  endIndexExclusive: number
+): IBufferRange {
+  if (range.start.y !== range.end.y) {
+    return range;
+  }
+
+  return {
+    start: {
+      x: range.start.x + startIndex,
+      y: range.start.y
+    },
+    end: {
+      x: range.start.x + Math.max(startIndex, endIndexExclusive) - 1,
+      y: range.end.y
+    }
+  };
 }
 
 function toExecutionTerminalFileLinkCandidate(
