@@ -2378,7 +2378,10 @@ function registerTestCommands(
           injectAgentOutputChunk:
             typeof options.injectAgentOutputChunk === 'string' ? options.injectAgentOutputChunk : undefined,
           injectAgentExistingOutput:
-            typeof options.injectAgentExistingOutput === 'string' ? options.injectAgentExistingOutput : undefined
+            typeof options.injectAgentExistingOutput === 'string' ? options.injectAgentExistingOutput : undefined,
+          injectAgentOutputChunks: Array.isArray(options.injectAgentOutputChunks)
+            ? options.injectAgentOutputChunks.filter((item): item is string => typeof item === 'string')
+            : undefined
         });
       }
     ),

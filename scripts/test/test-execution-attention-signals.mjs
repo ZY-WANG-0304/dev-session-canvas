@@ -150,11 +150,8 @@ try {
   );
   assert.equal(
     codexStreamInterruption,
-    '■ stream disconnected before completion: stream closed before response.completed'
-  );
-  assert.equal(
-    normalizeAgentAbnormalStreamInterruptionSignature(codexStreamInterruption),
-    '■ stream disconnected before completion: stream closed before response.completed'
+    '■ stream disconnected before completion: stream closed before response.completed',
+    'A Codex square-marker stream-disconnected line at the output tail should be classified as final failure text.'
   );
   assert.equal(
     extractAgentAbnormalStreamInterruptionMessage(
@@ -162,6 +159,29 @@ try {
       'claude'
     ),
     undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      'Reconnecting... 1/5 (23m 57s · esc to interrupt)\n└ Stream disconnected before completion: stream closed before response.completed\n',
+      'codex'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      '■ stream disconnected before completion: stream closed before response.completed\nstill running\n',
+      'codex'
+    ),
+    undefined,
+    'A square-marker final error line should not notify if later non-prompt output follows it.'
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      '■ {"error":{"message":"Internal server error"}}\n› Write tests for @filename\n',
+      'codex'
+    ),
+    '■ {"error":{"message":"Internal server error"}}',
+    'A tail prompt after the square-marker error is part of the Codex input area and should not hide the final error.'
   );
   assert.equal(
     extractAgentAbnormalStreamInterruptionMessage(
@@ -186,6 +206,32 @@ try {
   );
   assert.equal(
     extractAgentAbnormalStreamInterruptionMessage(
+      '■ {"error":{"message":"Internal server error"}}\n',
+      'codex'
+    ),
+    '■ {"error":{"message":"Internal server error"}}'
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      '{"error":{"message":"Internal server error"}}\n',
+      'codex'
+    ),
+    undefined,
+    'A Codex final error text must use the TUI square-marker style.'
+  );
+  assert.equal(
+    normalizeAgentAbnormalStreamInterruptionSignature('■ {"error":{"message":"Internal server error"}}'),
+    '■ {"error":{"message":"internal server error"}}'
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
+      '■ {"error":{"message":"Internal server error"}}\n',
+      'claude'
+    ),
+    undefined
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
       'Claude stream finished normally.\nevent: message_stop\ndata: {"type":"message_stop"}\n'
     ),
     undefined
@@ -196,18 +242,53 @@ try {
   );
 
   const heuristicState = createAgentActivityHeuristicState();
-  const staleStreamLine =
+  const finalStreamLine =
     'Read README.md\n■ stream disconnected before completion: stream closed before response.completed\n';
   const firstStreamSnapshot = recordAgentOutputHeuristics(
     heuristicState,
-    staleStreamLine,
-    staleStreamLine,
+    finalStreamLine,
+    finalStreamLine,
     'codex',
     100
   );
-  assert.equal(firstStreamSnapshot.sawAbnormalStreamInterruption, true);
-  resetAgentActivityHeuristics(heuristicState, staleStreamLine);
-  const staleBufferWithNextTurn = `${staleStreamLine}> next prompt\n`;
+  assert.equal(
+    firstStreamSnapshot.sawAbnormalStreamInterruption,
+    true,
+    'A square-marker Codex stream-disconnected line at the tail should notify as final failure text.'
+  );
+
+  const nonTailStreamState = createAgentActivityHeuristicState();
+  const nonTailStreamOutput = `${finalStreamLine}still running\n`;
+  const nonTailStreamSnapshot = recordAgentOutputHeuristics(
+    nonTailStreamState,
+    nonTailStreamOutput,
+    nonTailStreamOutput,
+    'codex',
+    125
+  );
+  assert.equal(
+    nonTailStreamSnapshot.sawAbnormalStreamInterruption,
+    false,
+    'A square-marker Codex stream-disconnected line should not notify once non-prompt output follows it.'
+  );
+
+  const reconnectingStreamState = createAgentActivityHeuristicState();
+  const reconnectingStreamChunk =
+    'Reconnecting... 1/5 (23m 57s · esc to interrupt)\n└ Stream disconnected before completion: stream closed before response.completed\n';
+  const reconnectingStreamSnapshot = recordAgentOutputHeuristics(
+    reconnectingStreamState,
+    reconnectingStreamChunk,
+    reconnectingStreamChunk,
+    'codex',
+    175
+  );
+  assert.equal(
+    reconnectingStreamSnapshot.sawAbnormalStreamInterruption,
+    false,
+    'Codex Reconnecting tree output should be treated as still-running retry progress, not a final failure.'
+  );
+  resetAgentActivityHeuristics(heuristicState, finalStreamLine);
+  const staleBufferWithNextTurn = `${finalStreamLine}> next prompt\n`;
   const nextTurnSnapshot = recordAgentOutputHeuristics(
     heuristicState,
     '> next prompt\n',
@@ -218,15 +299,30 @@ try {
   assert.equal(nextTurnSnapshot.sawAbnormalStreamInterruption, false);
 
   const attachedSupervisorState = createAgentActivityHeuristicState();
-  resetAgentAbnormalStreamInterruptionHeuristics(attachedSupervisorState, staleStreamLine);
+  resetAgentAbnormalStreamInterruptionHeuristics(attachedSupervisorState, finalStreamLine);
   const supervisorAttachSnapshot = recordAgentOutputHeuristics(
     attachedSupervisorState,
     '> resumed output\n',
-    `${staleStreamLine}> resumed output\n`,
+    `${finalStreamLine}> resumed output\n`,
     'codex',
     300
   );
   assert.equal(supervisorAttachSnapshot.sawAbnormalStreamInterruption, false);
+
+  const internalServerState = createAgentActivityHeuristicState();
+  const internalServerLine = '■ {"error":{"message":"Internal server error"}}\n';
+  const internalServerSnapshot = recordAgentOutputHeuristics(
+    internalServerState,
+    internalServerLine,
+    internalServerLine,
+    'codex',
+    400
+  );
+  assert.equal(
+    internalServerSnapshot.sawAbnormalStreamInterruption,
+    true,
+    'A Codex internal-server-error JSON line should notify as a final abnormal output style.'
+  );
 
   console.log('executionAttentionSignals tests passed');
 } finally {

@@ -6529,8 +6529,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         cols: 90,
         rows: 28,
         provider: 'codex',
-        injectAgentOutputChunk:
-          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+        injectAgentOutputChunk: '\n■ {"error":{"message":"Internal server error"}}\n› Write tests for @filename\n'
       });
       await sleep(300);
       let textDiagnostics = await getDiagnosticEvents();
@@ -6559,8 +6558,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         cols: 90,
         rows: 28,
         provider: 'codex',
-        injectAgentOutputChunk:
-          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+        injectAgentOutputChunk: '\n■ {"error":{"message":"Internal server error"}}\n› Write tests for @filename\n'
       });
       const disabledStreamDiagnostics = await waitForDiagnosticEvents(
         (events) =>
@@ -6579,7 +6577,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       assert.notStrictEqual(
         findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending,
         true,
-        'Disabling codexAbnormalOutputText should avoid setting node attention for Codex stream text.'
+        'Disabling codexAbnormalOutputText should avoid setting node attention for Codex final-failure text.'
       );
       assert.ok(
         disabledStreamDiagnostics.some(
@@ -6591,7 +6589,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       );
       assert.ok(
         !calls.some((call) => /输出流异常/.test(call.message)),
-        'Expected disabled codexAbnormalOutputText not to surface a workbench notification.'
+        'Expected disabled codexAbnormalOutputText not to surface a workbench notification for Codex final-failure text.'
       );
 
       await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
@@ -6604,9 +6602,9 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         rows: 28,
         provider: 'codex',
         injectAgentOutputChunk:
-          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+          '\n■ stream disconnected before completion: stream closed before response.completed\n› Write tests for @filename\n'
       });
-      const streamDiagnostics = await waitForDiagnosticEvents(
+      const finalStreamDiagnostics = await waitForDiagnosticEvents(
         (events) =>
           events.some(
             (event) =>
@@ -6624,12 +6622,12 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       }, 20000);
       assert.strictEqual(findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending, true);
       assert.ok(
-        streamDiagnostics.some(
+        finalStreamDiagnostics.some(
           (event) =>
             event.kind === 'execution/attentionNotificationPosted' &&
             event.detail?.trigger === 'agent-abnormal-stream-interruption'
         ),
-        'Expected a Codex stream-disconnected line to post a supplemental attention notification diagnostic when enabled.'
+        'Expected tail Codex square-marker stream-disconnected output to post a supplemental diagnostic.'
       );
       await waitForInterceptedInformationMessage(
         calls,
@@ -6637,7 +6635,97 @@ async function verifyAgentAbnormalInterruptionNotifications() {
           /Codex Agent「Codex Crash Smoke」输出流异常/.test(call.message) &&
           /stream disconnected before completion/.test(call.message) &&
           call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
-        'Expected an enabled Codex stream-disconnected line to surface a supplemental workbench attention notification.'
+        'Expected tail Codex square-marker stream-disconnected output to surface a supplemental workbench notification.'
+      );
+      await performWebviewDomAction({
+        kind: 'selectNode',
+        nodeId: codexAgent.id
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === false;
+      }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunks: [
+          '\nReconnecting... 1/5 (23m 57s · esc to interrupt)\n',
+          '└ Stream disconnected before completion: stream closed before response.completed\n',
+          'Reconnecting... 2/5 (23m 58s · esc to interrupt)\n',
+          '└ Stream disconnected before completion: stream closed before response.completed\n'
+        ]
+      });
+      await sleep(300);
+      textDiagnostics = await getDiagnosticEvents();
+      snapshot = await getDebugSnapshot();
+      assert.notStrictEqual(
+        findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending,
+        true,
+        'Codex reconnecting tree output should not set node attention while the agent is still retrying.'
+      );
+      assert.ok(
+        !textDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected Codex reconnecting tree output not to post a supplemental diagnostic.'
+      );
+      assert.ok(
+        !calls.some(
+          (call) => /输出流异常/.test(call.message) && /stream disconnected before completion/.test(call.message)
+        ),
+        'Expected Codex reconnecting tree output not to surface a workbench notification.'
+      );
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunk: '\n■ {"error":{"message":"Internal server error"}}\n› Write tests for @filename\n'
+      });
+      const internalServerDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-stream-interruption' &&
+              event.detail?.nodeId === codexAgent.id &&
+              event.detail?.provider === 'codex' &&
+              event.detail?.reason === 'output-pattern'
+          ),
+        20000
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === true;
+      }, 20000);
+      assert.strictEqual(findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending, true);
+      assert.ok(
+        internalServerDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected Codex internal-server-error output to post a supplemental attention notification diagnostic when enabled.'
+      );
+      await waitForInterceptedInformationMessage(
+        calls,
+        (call) =>
+          /Codex Agent「Codex Crash Smoke」输出流异常/.test(call.message) &&
+          /Internal server error/.test(call.message) &&
+          call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+        'Expected Codex internal-server-error output to surface a supplemental workbench attention notification.'
       );
       await performWebviewDomAction({
         kind: 'selectNode',
@@ -11012,6 +11100,7 @@ async function startExecutionSessionForTest({
   provider,
   resumeRequested = false,
   injectAgentOutputChunk,
+  injectAgentOutputChunks,
   injectAgentExistingOutput,
   cwdOverride
 }) {
@@ -11023,8 +11112,8 @@ async function startExecutionSessionForTest({
     rows,
     provider,
     resumeRequested,
-    injectAgentOutputChunk || injectAgentExistingOutput
-      ? { injectAgentOutputChunk, injectAgentExistingOutput, cwdOverride }
+    injectAgentOutputChunk || injectAgentOutputChunks || injectAgentExistingOutput
+      ? { injectAgentOutputChunk, injectAgentOutputChunks, injectAgentExistingOutput, cwdOverride }
       : cwdOverride
         ? { cwdOverride }
       : undefined
