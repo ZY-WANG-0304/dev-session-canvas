@@ -594,22 +594,64 @@ function toExecutionTerminalLinkSuffix(
 
 export interface ExecutionTerminalFallbackPathLink extends DetectedExecutionTerminalPathLink {}
 
-const fallbackMatchers: RegExp[] = [
-  /^ *File (?<link>"(?<path>.+)"(, line (?<line>\d+))?)/,
-  /^ +FILE +(?<link>(?<path>.+)(?::(?<line>\d+)(?::(?<col>\d+))?)?)/,
-  /^(?<link>(?<path>.+)\((?<line>\d+)(?:, ?(?<col>\d+))?\)) ?:/,
-  /^(?<link>(?<path>.+):(?<line>\d+)(?::(?<col>\d+))?) ?:/,
-  /^(?:PS\s+)?(?<link>(?<path>[^>]+))>/,
-  /^ *(?<link>(?<path>.+))/
+type ExecutionTerminalFallbackPathMatcherKind =
+  | 'file-trace'
+  | 'file-label'
+  | 'paren-location'
+  | 'colon-location'
+  | 'shell-prompt'
+  | 'plain-line';
+
+interface ExecutionTerminalFallbackPathMatcher {
+  kind: ExecutionTerminalFallbackPathMatcherKind;
+  matcher: RegExp;
+}
+
+const fallbackMatchers: ExecutionTerminalFallbackPathMatcher[] = [
+  {
+    kind: 'file-trace',
+    matcher: /^ *File (?<link>"(?<path>.+)"(, line (?<line>\d+))?)/
+  },
+  {
+    kind: 'file-label',
+    matcher: /^ +FILE +(?<link>(?<path>.+)(?::(?<line>\d+)(?::(?<col>\d+))?)?)/
+  },
+  {
+    kind: 'paren-location',
+    matcher: /^(?<link>(?<path>.+)\((?<line>\d+)(?:, ?(?<col>\d+))?\)) ?:/
+  },
+  {
+    kind: 'colon-location',
+    matcher: /^(?<link>(?<path>.+):(?<line>\d+)(?::(?<col>\d+))?) ?:/
+  },
+  {
+    kind: 'shell-prompt',
+    matcher: /^(?:PS\s+)?(?<link>(?<path>[^>]+))>/
+  },
+  {
+    kind: 'plain-line',
+    matcher: /^ *(?<link>(?<path>.+))/
+  }
 ];
 
 export function detectExecutionTerminalFallbackPathLink(
   line: string
 ): ExecutionTerminalFallbackPathLink | undefined {
-  for (const matcher of fallbackMatchers) {
+  for (const { kind, matcher } of fallbackMatchers) {
     const match = line.match(matcher);
     const group = match?.groups;
     if (!group?.link || !group.path) {
+      continue;
+    }
+
+    if (
+      !shouldAllowExecutionTerminalFallbackPathLink({
+        kind,
+        line,
+        link: group.link,
+        path: group.path
+      })
+    ) {
       continue;
     }
 
@@ -633,4 +675,107 @@ export function detectExecutionTerminalFallbackPathLink(
   }
 
   return undefined;
+}
+
+function shouldAllowExecutionTerminalFallbackPathLink(options: {
+  kind: ExecutionTerminalFallbackPathMatcherKind;
+  line: string;
+  link: string;
+  path: string;
+}): boolean {
+  const trimmedLine = options.line.trim();
+  const trimmedLink = options.link.trim();
+  const trimmedPath = trimExecutionTerminalFallbackPathQuotes(options.path.trim());
+  if (!trimmedLine || !trimmedLink || !trimmedPath) {
+    return false;
+  }
+
+  if (isObviousLowConfidenceExecutionTerminalFallbackLine(trimmedLine)) {
+    return false;
+  }
+
+  if (options.kind === 'shell-prompt') {
+    return (
+      hasExplicitExecutionTerminalFallbackPathPrefix(trimmedPath) ||
+      hasExecutionTerminalFallbackPathSeparator(trimmedPath)
+    );
+  }
+
+  if (options.kind !== 'plain-line') {
+    return isPlausibleExecutionTerminalFallbackPath(trimmedPath);
+  }
+
+  if (trimmedLine !== trimmedLink) {
+    return false;
+  }
+
+  if (hasExecutionTerminalFallbackNaturalLanguageBoundary(trimmedPath)) {
+    return false;
+  }
+
+  return isPlausibleExecutionTerminalFallbackPath(trimmedPath);
+}
+
+function trimExecutionTerminalFallbackPathQuotes(value: string): string {
+  if (value.length < 2) {
+    return value;
+  }
+
+  const first = value[0];
+  const last = value[value.length - 1];
+  if ((first === '"' || first === '\'' || first === '`') && first === last) {
+    return value.slice(1, -1).trim();
+  }
+
+  return value;
+}
+
+function isObviousLowConfidenceExecutionTerminalFallbackLine(value: string): boolean {
+  return (
+    /^(?:[•·]|[│┃┆┊╎╏└├┌┐┘┤┬┴┼╭╰╮╯]|…|\.\.\.)/u.test(value) ||
+    /\bctrl\s*\+\s*t\s+to\s+view\s+transcript\b/iu.test(value)
+  );
+}
+
+function hasExecutionTerminalFallbackNaturalLanguageBoundary(value: string): boolean {
+  return /[\s{}]/u.test(value) || cjkPunctuationRegex.test(value);
+}
+
+function isPlausibleExecutionTerminalFallbackPath(value: string): boolean {
+  if (hasFallbackExecutionTerminalProsePrefix(value)) {
+    return false;
+  }
+
+  return (
+    hasExplicitExecutionTerminalFallbackPathPrefix(value) ||
+    hasExecutionTerminalFallbackPathSeparator(value) ||
+    hasExecutionTerminalFallbackFileExtension(value)
+  );
+}
+
+function hasExplicitExecutionTerminalFallbackPathPrefix(value: string): boolean {
+  return (
+    value.startsWith('/') ||
+    value.startsWith('./') ||
+    value.startsWith('../') ||
+    value.startsWith('~/') ||
+    value.startsWith('file://') ||
+    /^[a-zA-Z]:[\\/]/.test(value) ||
+    value.startsWith('\\\\')
+  );
+}
+
+function hasExecutionTerminalFallbackPathSeparator(value: string): boolean {
+  return /[\\/]/.test(value);
+}
+
+function hasExecutionTerminalFallbackFileExtension(value: string): boolean {
+  return /(?:^|[\\/])[^\\/]+\.[a-zA-Z\d]{1,16}$/u.test(value);
+}
+
+function hasFallbackExecutionTerminalProsePrefix(value: string): boolean {
+  return (
+    hasProsePrefixedRelativePath(value, 'posix') ||
+    hasProsePrefixedRelativePath(value, 'windows')
+  );
 }

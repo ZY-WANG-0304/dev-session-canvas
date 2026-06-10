@@ -259,6 +259,7 @@ import { inferExecutionTerminalPathStyle } from '../common/executionTerminalLink
 import {
   normalizeEditorMultiCursorModifier,
   normalizeExecutionTerminalWordSeparators,
+  filterResolvableExecutionTerminalFileLinkCandidates,
   openExecutionTerminalLink,
   prepareExecutionTerminalDroppedPath,
   resolveExecutionTerminalFileLinkCandidates,
@@ -281,6 +282,7 @@ export type { CanvasSurfaceLocation };
 
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
+const EXECUTION_FALLBACK_ONLY_FILE_LINK_RESOLVE_CONCURRENCY_PER_NODE = 1;
 const NODE_PLACEMENT_PADDING = 40;
 const NODE_PLACEMENT_STEP_X = 120;
 const NODE_PLACEMENT_STEP_Y = 96;
@@ -654,10 +656,17 @@ interface ExecutionFileLinkResolveCandidateDiagnostic {
 
 interface ExecutionFileLinkResolveDiagnostics {
   candidateCount: number;
+  retainedCandidateCount: number;
+  filteredCandidateCount: number;
   resolvedCount: number;
   durationMs: number;
   sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  retainedSourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  filteredSourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
   candidates: ExecutionFileLinkResolveCandidateDiagnostic[];
+  retainedCandidates: ExecutionFileLinkResolveCandidateDiagnostic[];
+  filteredCandidates: ExecutionFileLinkResolveCandidateDiagnostic[];
+  skippedReason?: 'fallback-only-concurrency';
 }
 
 interface ExecutionFileLinkResolveDiagnosticSample extends ExecutionFileLinkResolveDiagnostics {
@@ -670,11 +679,16 @@ interface ExecutionFileLinkResolveDiagnosticSample extends ExecutionFileLinkReso
 interface ExecutionFileLinkResolveDiagnosticsSummary {
   requestCount: number;
   candidateCount: number;
+  retainedCandidateCount: number;
+  filteredCandidateCount: number;
   resolvedCount: number;
   totalDurationMs: number;
   maxDurationMs: number;
   slowRequestCount: number;
   sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  retainedSourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  filteredSourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  skippedReasonCounts: Partial<Record<NonNullable<ExecutionFileLinkResolveDiagnostics['skippedReason']>, number>>;
   latestRequests: ExecutionFileLinkResolveDiagnosticSample[];
 }
 
@@ -977,6 +991,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly diagnosticHostMessages: CanvasHostMessageDiagnosticRecord[] = [];
   private readonly executionFileLinkResolveDiagnostics: ExecutionFileLinkResolveDiagnosticSample[] = [];
   private readonly executionPerformanceDiagnostics: ExecutionPerformanceDiagnosticSample[] = [];
+  private readonly fallbackOnlyExecutionFileLinkResolveInFlightByNode = new Map<string, number>();
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
   private readonly surfaceMessageWebview: Partial<Record<CanvasSurfaceLocation, vscode.Webview>> = {};
@@ -6600,14 +6615,77 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     candidates: ExecutionTerminalFileLinkCandidate[]
   ): Promise<void> {
     const context = this.getExecutionTerminalPathContext(kind, nodeId);
-    const startedAt = Date.now();
-    const resolvedCandidates = await resolveExecutionTerminalFileLinkCandidates(
+    const filteredCandidates = filterResolvableExecutionTerminalFileLinkCandidates(
       candidates,
-      context,
-      () => randomUUID()
-    ).catch(() => []);
+      context
+    );
+    const isFallbackOnlyRequest =
+      filteredCandidates.length > 0 &&
+      filteredCandidates.every((candidate) => candidate.source === 'fallback');
+    const fallbackOnlyInFlightKey = `${kind}:${nodeId}`;
+    if (
+      isFallbackOnlyRequest &&
+      (this.fallbackOnlyExecutionFileLinkResolveInFlightByNode.get(fallbackOnlyInFlightKey) ?? 0) >=
+        EXECUTION_FALLBACK_ONLY_FILE_LINK_RESOLVE_CONCURRENCY_PER_NODE
+    ) {
+      const diagnostics = buildExecutionFileLinkResolveDiagnostics(
+        candidates,
+        filteredCandidates,
+        0,
+        0,
+        'fallback-only-concurrency'
+      );
+      this.recordExecutionFileLinkResolveDiagnostics({
+        timestamp: new Date().toISOString(),
+        kind,
+        nodeId,
+        requestId,
+        ...diagnostics
+      });
+      this.postMessageToSurface(surface, {
+        type: 'host/executionFileLinksResolved',
+        payload: {
+          requestId,
+          nodeId,
+          kind,
+          resolvedLinks: []
+        }
+      });
+      return;
+    }
+
+    if (isFallbackOnlyRequest) {
+      this.fallbackOnlyExecutionFileLinkResolveInFlightByNode.set(
+        fallbackOnlyInFlightKey,
+        (this.fallbackOnlyExecutionFileLinkResolveInFlightByNode.get(fallbackOnlyInFlightKey) ?? 0) + 1
+      );
+    }
+
+    const startedAt = Date.now();
+    let resolvedCandidates: Awaited<ReturnType<typeof resolveExecutionTerminalFileLinkCandidates>>;
+    try {
+      resolvedCandidates = await resolveExecutionTerminalFileLinkCandidates(
+        filteredCandidates,
+        context,
+        () => randomUUID()
+      ).catch(() => []);
+    } finally {
+      if (isFallbackOnlyRequest) {
+        const remaining =
+          (this.fallbackOnlyExecutionFileLinkResolveInFlightByNode.get(fallbackOnlyInFlightKey) ?? 1) - 1;
+        if (remaining > 0) {
+          this.fallbackOnlyExecutionFileLinkResolveInFlightByNode.set(
+            fallbackOnlyInFlightKey,
+            remaining
+          );
+        } else {
+          this.fallbackOnlyExecutionFileLinkResolveInFlightByNode.delete(fallbackOnlyInFlightKey);
+        }
+      }
+    }
     const diagnostics = buildExecutionFileLinkResolveDiagnostics(
       candidates,
+      filteredCandidates,
       resolvedCandidates.length,
       Date.now() - startedAt
     );
@@ -15206,28 +15284,54 @@ function cloneJsonValue<T>(value: T): T {
 
 function buildExecutionFileLinkResolveDiagnostics(
   candidates: readonly ExecutionTerminalFileLinkCandidate[],
+  filteredCandidates: readonly ExecutionTerminalFileLinkCandidate[],
   resolvedCount: number,
-  durationMs: number
+  durationMs: number,
+  skippedReason?: ExecutionFileLinkResolveDiagnostics['skippedReason']
 ): ExecutionFileLinkResolveDiagnostics {
+  const sourceCounts = countExecutionFileLinkResolveCandidateSources(candidates);
+  const retainedSourceCounts = countExecutionFileLinkResolveCandidateSources(filteredCandidates);
+  const filteredCandidateIds = new Set(filteredCandidates.map((candidate) => candidate.candidateId));
+  const removedCandidates = candidates.filter(
+    (candidate) => !filteredCandidateIds.has(candidate.candidateId)
+  );
+  const filteredSourceCounts = countExecutionFileLinkResolveCandidateSources(removedCandidates);
+  const toCandidateDiagnostic = (
+    candidate: ExecutionTerminalFileLinkCandidate
+  ): ExecutionFileLinkResolveCandidateDiagnostic => ({
+    text: candidate.text,
+    path: candidate.path,
+    source: candidate.source,
+    bufferStartLine: candidate.bufferStartLine,
+    line: candidate.line,
+    column: candidate.column
+  });
+
+  return {
+    candidateCount: candidates.length,
+    retainedCandidateCount: filteredCandidates.length,
+    filteredCandidateCount: removedCandidates.length,
+    resolvedCount,
+    durationMs,
+    sourceCounts,
+    retainedSourceCounts,
+    filteredSourceCounts,
+    candidates: candidates.map(toCandidateDiagnostic),
+    retainedCandidates: filteredCandidates.map(toCandidateDiagnostic),
+    filteredCandidates: removedCandidates.map(toCandidateDiagnostic),
+    skippedReason
+  };
+}
+
+function countExecutionFileLinkResolveCandidateSources(
+  candidates: readonly ExecutionTerminalFileLinkCandidate[]
+): Partial<Record<ExecutionTerminalFileLinkSource, number>> {
   const sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>> = {};
   for (const candidate of candidates) {
     sourceCounts[candidate.source] = (sourceCounts[candidate.source] ?? 0) + 1;
   }
 
-  return {
-    candidateCount: candidates.length,
-    resolvedCount,
-    durationMs,
-    sourceCounts,
-    candidates: candidates.map((candidate) => ({
-      text: candidate.text,
-      path: candidate.path,
-      source: candidate.source,
-      bufferStartLine: candidate.bufferStartLine,
-      line: candidate.line,
-      column: candidate.column
-    }))
-  };
+  return sourceCounts;
 }
 
 function summarizeExecutionFileLinkResolveDiagnostics(
@@ -15236,16 +15340,23 @@ function summarizeExecutionFileLinkResolveDiagnostics(
   const summary: ExecutionFileLinkResolveDiagnosticsSummary = {
     requestCount: samples.length,
     candidateCount: 0,
+    retainedCandidateCount: 0,
+    filteredCandidateCount: 0,
     resolvedCount: 0,
     totalDurationMs: 0,
     maxDurationMs: 0,
     slowRequestCount: 0,
     sourceCounts: {},
+    retainedSourceCounts: {},
+    filteredSourceCounts: {},
+    skippedReasonCounts: {},
     latestRequests: samples.slice(-20).map((sample) => cloneJsonValue(sample))
   };
 
   for (const sample of samples) {
     summary.candidateCount += sample.candidateCount;
+    summary.retainedCandidateCount += sample.retainedCandidateCount;
+    summary.filteredCandidateCount += sample.filteredCandidateCount;
     summary.resolvedCount += sample.resolvedCount;
     summary.totalDurationMs += sample.durationMs;
     summary.maxDurationMs = Math.max(summary.maxDurationMs, sample.durationMs);
@@ -15257,6 +15368,23 @@ function summarizeExecutionFileLinkResolveDiagnostics(
       [ExecutionTerminalFileLinkSource, number]
     >) {
       summary.sourceCounts[source] = (summary.sourceCounts[source] ?? 0) + count;
+    }
+
+    for (const [source, count] of Object.entries(sample.retainedSourceCounts) as Array<
+      [ExecutionTerminalFileLinkSource, number]
+    >) {
+      summary.retainedSourceCounts[source] = (summary.retainedSourceCounts[source] ?? 0) + count;
+    }
+
+    for (const [source, count] of Object.entries(sample.filteredSourceCounts) as Array<
+      [ExecutionTerminalFileLinkSource, number]
+    >) {
+      summary.filteredSourceCounts[source] = (summary.filteredSourceCounts[source] ?? 0) + count;
+    }
+
+    if (sample.skippedReason) {
+      summary.skippedReasonCounts[sample.skippedReason] =
+        (summary.skippedReasonCounts[sample.skippedReason] ?? 0) + 1;
     }
   }
 

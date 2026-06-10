@@ -61,6 +61,7 @@ export interface OpenExecutionTerminalLinkResult {
 
 interface ResolveExecutionFileLinkOptions {
   allowPartialBasenameWorkspaceMatch?: boolean;
+  allowWorkspaceFallback?: boolean;
 }
 
 export function normalizeEditorMultiCursorModifier(value: unknown): 'ctrlCmd' | 'alt' {
@@ -116,6 +117,14 @@ export async function resolveExecutionFileLink(
     return undefined;
   }
 
+  if (
+    link.source === 'fallback' &&
+    !options?.allowPartialBasenameWorkspaceMatch &&
+    !shouldResolveFallbackExecutionTerminalFileLinkPath(sanitizedPath, context)
+  ) {
+    return undefined;
+  }
+
   const resolvedCwd = await resolveExecutionLinkCwd(link, context);
   const directCandidates = new Map<string, vscode.Uri>();
   if (sanitizedPath.startsWith('file://')) {
@@ -139,7 +148,7 @@ export async function resolveExecutionFileLink(
     }
   }
 
-  if (link.source === 'fallback' || link.source === 'hardwrap') {
+  if (shouldResolveExecutionWorkspaceFallbackLink(sanitizedPath, link, context, options)) {
     const fallbackResolved = await resolveExecutionWorkspaceFallbackLink(
       sanitizedPath,
       link,
@@ -160,7 +169,9 @@ export async function resolveExecutionTerminalFileLinkCandidates(
   createResolvedId: () => string
 ): Promise<PreparedExecutionTerminalResolvedFileLink[]> {
   const highConfidenceCandidates = candidates.filter((candidate) => candidate.source !== 'fallback');
-  const fallbackCandidates = candidates.filter((candidate) => candidate.source === 'fallback');
+  const fallbackCandidates = candidates
+    .filter((candidate) => candidate.source === 'fallback')
+    .filter((candidate) => shouldResolveFallbackExecutionTerminalFileLinkCandidate(candidate, context));
   const resolvedHighConfidence = await resolveExecutionTerminalFileLinkCandidateGroup(
     highConfidenceCandidates,
     context,
@@ -171,6 +182,17 @@ export async function resolveExecutionTerminalFileLinkCandidates(
   }
 
   return resolveExecutionTerminalFileLinkCandidateGroup(fallbackCandidates, context, createResolvedId);
+}
+
+export function filterResolvableExecutionTerminalFileLinkCandidates(
+  candidates: ExecutionTerminalFileLinkCandidate[],
+  context: ExecutionTerminalPathContext
+): ExecutionTerminalFileLinkCandidate[] {
+  return candidates.filter(
+    (candidate) =>
+      candidate.source !== 'fallback' ||
+      shouldResolveFallbackExecutionTerminalFileLinkCandidate(candidate, context)
+  );
 }
 
 async function resolveExecutionTerminalFileLinkCandidateGroup(
@@ -192,7 +214,15 @@ async function resolveExecutionTerminalFileLinkCandidateGroup(
         bufferStartLine: candidate.bufferStartLine,
         source: candidate.source
       },
-      context
+      context,
+      candidate.source === 'fallback'
+        ? {
+            allowWorkspaceFallback: shouldAllowFallbackExecutionTerminalWorkspaceFallback(
+              candidate.path,
+              context
+            )
+          }
+        : undefined
     );
     if (!resolved) {
       continue;
@@ -218,6 +248,146 @@ async function resolveExecutionTerminalFileLinkCandidateGroup(
   }
 
   return results;
+}
+
+function shouldResolveFallbackExecutionTerminalFileLinkCandidate(
+  candidate: ExecutionTerminalFileLinkCandidate,
+  context: ExecutionTerminalPathContext
+): boolean {
+  return shouldResolveFallbackExecutionTerminalFileLinkPath(candidate.path, context);
+}
+
+function shouldResolveFallbackExecutionTerminalFileLinkPath(
+  rawPath: string,
+  context: ExecutionTerminalPathContext
+): boolean {
+  const trimmedPath = trimFallbackExecutionTerminalFileLinkPath(rawPath);
+  if (!trimmedPath || isObviousLowConfidenceFallbackExecutionTerminalFileLinkPath(trimmedPath)) {
+    return false;
+  }
+
+  if (hasFallbackExecutionTerminalProsePrefix(trimmedPath, context.pathStyle)) {
+    return false;
+  }
+
+  return (
+    hasExplicitFallbackExecutionTerminalFileLinkPrefix(trimmedPath, context.pathStyle) ||
+    hasFallbackExecutionTerminalPathSeparator(trimmedPath) ||
+    hasFallbackExecutionTerminalFileExtension(trimmedPath)
+  );
+}
+
+function shouldAllowFallbackExecutionTerminalWorkspaceFallback(
+  rawPath: string,
+  context: ExecutionTerminalPathContext
+): boolean {
+  const trimmedPath = trimFallbackExecutionTerminalFileLinkPath(rawPath);
+  return (
+    hasExplicitRelativeFallbackExecutionTerminalFileLinkPrefix(trimmedPath) ||
+    hasFallbackExecutionTerminalPathSeparator(trimmedPath)
+  );
+}
+
+function shouldResolveExecutionWorkspaceFallbackLink(
+  sanitizedPath: string,
+  link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>,
+  context: ExecutionTerminalPathContext,
+  options?: ResolveExecutionFileLinkOptions
+): boolean {
+  if (link.source === 'hardwrap') {
+    return options?.allowWorkspaceFallback !== false;
+  }
+
+  if (link.source !== 'fallback' || options?.allowWorkspaceFallback === false) {
+    return false;
+  }
+
+  if (options?.allowPartialBasenameWorkspaceMatch) {
+    return true;
+  }
+
+  return shouldAllowFallbackExecutionTerminalWorkspaceFallback(sanitizedPath, context);
+}
+
+function trimFallbackExecutionTerminalFileLinkPath(rawPath: string): string {
+  const trimmedPath = rawPath.trim();
+  if (trimmedPath.length < 2) {
+    return trimmedPath;
+  }
+
+  const first = trimmedPath[0];
+  const last = trimmedPath[trimmedPath.length - 1];
+  return (first === '"' || first === '\'' || first === '`') && first === last
+    ? trimmedPath.slice(1, -1).trim()
+    : trimmedPath;
+}
+
+function isObviousLowConfidenceFallbackExecutionTerminalFileLinkPath(value: string): boolean {
+  return (
+    /[\r\n{}]/u.test(value) ||
+    /^(?:[•·]|[│┃┆┊╎╏└├┌┐┘┤┬┴┼╭╰╮╯]|…|\.\.\.)/u.test(value) ||
+    /\bctrl\s*\+\s*t\s+to\s+view\s+transcript\b/iu.test(value)
+  );
+}
+
+function hasExplicitFallbackExecutionTerminalFileLinkPrefix(
+  value: string,
+  style: ExecutionTerminalPathStyle
+): boolean {
+  if (
+    value.startsWith('/') ||
+    hasExplicitRelativeFallbackExecutionTerminalFileLinkPrefix(value) ||
+    value.startsWith('~/') ||
+    value.startsWith('file://')
+  ) {
+    return true;
+  }
+
+  return style === 'windows' && (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\'));
+}
+
+function hasExplicitRelativeFallbackExecutionTerminalFileLinkPrefix(value: string): boolean {
+  return value.startsWith('./') || value.startsWith('../');
+}
+
+function hasFallbackExecutionTerminalPathSeparator(value: string): boolean {
+  return /[\\/]/.test(value);
+}
+
+function hasFallbackExecutionTerminalFileExtension(value: string): boolean {
+  return !/\s/u.test(value) && /(?:^|[\\/])[^\\/]+\.[a-zA-Z\d]{1,16}$/u.test(value);
+}
+
+function hasFallbackExecutionTerminalProsePrefix(
+  value: string,
+  style: ExecutionTerminalPathStyle
+): boolean {
+  if (hasExplicitFallbackExecutionTerminalFileLinkPrefix(value, style)) {
+    return false;
+  }
+
+  const separatorIndex =
+    style === 'windows'
+      ? findFirstFallbackExecutionTerminalPathSeparator(value, ['\\', '/'])
+      : value.indexOf('/');
+  if (separatorIndex <= 0) {
+    return false;
+  }
+
+  const firstSegment = value.slice(0, separatorIndex);
+  return /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF][a-zA-Z][a-zA-Z._-]*$/u.test(firstSegment);
+}
+
+function findFirstFallbackExecutionTerminalPathSeparator(value: string, separators: string[]): number {
+  let index = -1;
+  for (const separator of separators) {
+    const nextIndex = value.indexOf(separator);
+    if (nextIndex >= 0 && (index < 0 || nextIndex < index)) {
+      index = nextIndex;
+    }
+  }
+
+  return index;
 }
 
 export async function openExecutionTerminalLink(
