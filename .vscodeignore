@@ -46,6 +46,7 @@ node_modules/**
 !node_modules/node-pty/prebuilds/win32-arm64/conpty/OpenConsole.exe
 package-lock.json
 tsconfig.json
+*.code-workspace
 .env
 .env.*
 *.md

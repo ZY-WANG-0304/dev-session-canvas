@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.15.1 - Preview Canvas Navigation and Multi-Root Patch
+
+相对 `0.15.0`，`0.15.1` 是同一 `0.15.x` 公开 `Preview` 线内的画布导航与可靠性补丁，重点收口分组标题可读性、分组双击聚焦、`Add Folder to Workspace` 新增 root section 的就近放置与聚焦、多根通知标题 root 标识，以及执行性能诊断插桩。它保留 `0.15.0` 的 Claude Code Agent `Fork`、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.15.0` bump 到 `0.15.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 分组标题溢出时补齐 hover tooltip，并保留 workspace-root 系统分组的 root 路径 tooltip，避免压缩标题后丢失 root 识别信息
+- 支持双击分组标题 tab 或未被节点覆盖的分组 body 空白区，将已有分组用缩放平移动画聚焦到当前视口；标题输入框、toolbar、resize 控制点等交互控件继续保留原语义
+- 修正分组双击聚焦过程中可能提交无意义拖拽 / resize 的问题，避免导航动作被误写成分组布局变更
+- 在 VS Code `Add Folder to Workspace` 新增 root 后，系统 root section 会以当前画布可见中心为锚点选择最近的不重叠位置，并通过动画进入视野；连续 Add Folder 会使用动画后的可见中心，Panel Webview frame 刷新后也会重放短窗口内的聚焦意图
+- 多根 workspace 的系统通知标题补充 root 标识，让同一窗口内多个 root 的 Agent / Terminal attention 通知更容易区分来源
+- 补充执行性能诊断插桩，覆盖 Host / Webview 的 output enqueue、drain、`xterm.write`、postMessage 和 input write 路径；宿主诊断 dump 可用于定位多 Agent 卡顿现场的瓶颈位置
+- 开发调试任务在新 worktree 中会先自举依赖，降低新 worktree 直接启动调试配置时的本地环境误报
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.15.0` 升级到 `0.15.1` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.15.1`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.1` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.15.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.15.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.15.0 - Preview Agent Fork and Release Automation Update
 
 相对 `0.14.1`，`0.15.0` 是一轮新的公开 `Preview` 里程碑更新，重点补齐 Claude Code Agent `Fork`、文件活动自动对象分组归属、Panel Webview lifecycle 诊断闭环，以及基于临时 `publish/vX.Y.Z` tag 的发布输入固定流程。它保留 `0.14.1` 的 Explorer Markdown 关联 Note、创建入口 surface 复用、分组 body 拖动画板、multi-root / 双窗口 shared live runtime 恢复验证、双市场发布元数据、安装拓扑和 Preview 支持边界。

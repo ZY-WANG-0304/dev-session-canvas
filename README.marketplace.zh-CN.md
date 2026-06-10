@@ -10,6 +10,19 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
+## 0.15.1 版本亮点
+
+当前公开的 `0.15.1` 版本是 Preview 补丁，重点收口画布导航与 multi-root 可靠性。它保留 `0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布自动化、双市场发布和 Preview 支持边界。
+
+- 分组标题溢出时保留可用 hover 文本，workspace-root 系统分组继续保留 root 路径 tooltip，便于 multi-root 定位
+- 双击分组标题 tab 或未被节点覆盖的分组 body 空白区，会用平移 / 缩放动画聚焦已有分组，不改变分组成员、位置或尺寸
+- `Add Folder to Workspace` 新增 workspace-root section 时，会在当前画布视野附近选择避让已有 root 的位置，并通过动画进入视野
+- 连续 Add Folder 会使用上一次聚焦动画后的可见中心；Panel Webview frame 刷新后也可重放短窗口内的聚焦请求，避免新 root 聚焦被丢弃
+- multi-root attention 系统通知标题补充 root 上下文，便于区分 Agent / Terminal 提醒来源
+- 执行性能诊断现在会在诊断 dump 中采样 Host/Webview output、drain、`xterm.write`、postMessage 和 input write 路径，便于后续分析卡顿瓶颈
+- 新 worktree 调试任务会在启动前自举依赖，降低源码开发者的本地准备成本
+- 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
+
 ## 核心功能
 
 - 在面板或编辑区打开主画布
@@ -53,24 +66,11 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Agent` 节点需要 Extension Host 可访问的 `codex` 或 `claude` CLI
 - `Terminal` 节点需要工作区侧可用的 shell
 
-## 0.15.0 版本亮点
-
-当前公开的 `0.15.0` 版本是新的 Preview 里程碑，重点补齐 Claude Code Agent Fork、文件活动自动对象按 owner Agent 推导分组、Panel Webview lifecycle 诊断闭环，以及 publish tag 发布输入固定流程。它保留 `0.14.1` 的 Markdown Note 快捷入口、surface 复用、分组 body 拖动画板、shared runtime 可靠性、空间导航、双市场发布和 Preview 支持边界。
-
-- 持有可信 Claude Code session id 的 Agent 节点现在会显示 `Fork`，点击后创建新的 Agent 节点，并用 `claude --resume <session-id> --fork-session` 启动，来源节点保持不变
-- 第一版 Fork 只面向 Claude Code：Codex、非 Claude provider、缺少可信 Claude session id 或未受信任 workspace 不会触发 fork 启动
-- 文件活动 `file` / `file-list` 自动对象现在按 owner Agent 推导分组：单 owner 跟随该 Agent 的最内层分组，多 owner 使用最近公共父分组，multi-root 下保持 root 内隔离
-- 多选拖拽收口会保留自动文件活动对象的 owner-derived 分组，不再让拖拽结果把它们移到与 owner Agent 不一致的分组
-- workspace-root section 标题现在和普通分组使用同一套缩放可读性与宽度压缩规则
-- Panel Webview lifecycle 诊断新增 Host 聚合摘要与 `npm run diagnose:webview-lifecycle` 离线分析入口，便于排查 restore / race 报告
-- Release-day 发布现在使用临时 `publish/vX.Y.Z` tag 固定发布输入，双市场验证通过后再由脚本创建正式 `vX.Y.Z` tag
-- 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
-
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.14.1` 升级到 `0.15.0` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.15.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.0` 后会继续沿用该明确选择
+- 首次安装与从 `0.15.0` 升级到 `0.15.1` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.15.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.1` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
