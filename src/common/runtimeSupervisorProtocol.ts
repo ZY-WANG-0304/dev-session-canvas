@@ -53,6 +53,10 @@ export interface RuntimeSupervisorSessionSnapshot {
   lastExitCode?: number;
   lastExitSignal?: string;
   lastExitMessage?: string;
+  preSuspendLifecycle?: AgentNodeStatus;
+  lastSuspendReason?: 'claude-ctrl-z';
+  lastSuspendMessage?: string;
+  lastReactivateError?: string;
 }
 
 export interface RuntimeSupervisorErrorPayload {
@@ -94,6 +98,10 @@ export interface RuntimeSupervisorUpdateSessionScrollbackParams {
 }
 
 export interface RuntimeSupervisorStopSessionParams {
+  sessionId: string;
+}
+
+export interface RuntimeSupervisorReactivateSessionParams {
   sessionId: string;
 }
 
@@ -142,6 +150,12 @@ export type RuntimeSupervisorRequest =
       id: string;
       method: 'stopSession';
       params: RuntimeSupervisorStopSessionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'reactivateSession';
+      params: RuntimeSupervisorReactivateSessionParams;
     }
   | {
       type: 'request';

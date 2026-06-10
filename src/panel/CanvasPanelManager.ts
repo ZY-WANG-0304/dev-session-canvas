@@ -21,6 +21,7 @@ import {
   normalizeAgentAbnormalStreamInterruptionSignature,
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
+import { countClaudeCodeSuspendOutputs, detectNewClaudeCodeSuspendOutput } from '../common/agentSuspendSignals';
 import {
   createExecutionAttentionSignalState,
   filterEnabledExecutionAttentionSignals,
@@ -409,6 +410,11 @@ interface ManagedExecutionSessionBase {
   agentResume?: AgentResumeContext;
   agentActivity?: AgentActivityHeuristicState;
   attentionSignalState?: ExecutionAttentionNotificationState;
+  preSuspendLifecycleStatus?: AgentNodeStatus;
+  lastSuspendReason?: 'claude-ctrl-z';
+  lastSuspendMessage?: string;
+  lastReactivateError?: string;
+  seenClaudeSuspendSignalCount?: number;
 }
 
 interface ExecutionAttentionNotificationState extends ExecutionAttentionSignalState {
@@ -2478,6 +2484,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         write: () => {},
         resize: () => {},
         kill: () => {},
+        reactivate: () => {},
         onData: () => noopSubscription,
         onExit: () => noopSubscription
       },
@@ -8766,6 +8773,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         snapshot.output
       ),
       stopRequested: false,
+      preSuspendLifecycleStatus: snapshot.preSuspendLifecycle,
+      lastSuspendReason: snapshot.lastSuspendReason,
+      lastSuspendMessage: snapshot.lastSuspendMessage,
+      lastReactivateError: snapshot.lastReactivateError,
+      seenClaudeSuspendSignalCount: countClaudeCodeSuspendOutputs(snapshot.output),
       syncTimer: undefined,
       syncDueAtMs: undefined,
       lifecycleTimer: undefined,
@@ -8844,6 +8856,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    const previousBuffer = session.buffer;
     session.buffer = appendTerminalBuffer(session.buffer, chunk);
     session.terminalStateTracker.write(chunk);
     session.lineContextTracker.write(chunk);
@@ -8853,6 +8866,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         allowOverwriteExisting: session.stopRequested,
         flushImmediately: session.stopRequested
       });
+      if (this.maybeMarkClaudeAgentSuspended(binding.nodeId, session, chunk, previousBuffer)) {
+        this.queueExecutionOutput(binding.kind, binding.nodeId, chunk);
+        this.flushLiveExecutionState(binding.kind, binding.nodeId);
+        return;
+      }
       this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(binding.nodeId, session, chunk);
     }
     this.queueExecutionStateSync(binding.kind, binding.nodeId);
@@ -9006,6 +9024,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
                 resumeStrategy: snapshot.resumeStrategy,
                 resumeSessionId: snapshot.resumeSessionId,
                 resumeStoragePath: snapshot.resumeStoragePath,
+                preSuspendLifecycle: snapshot.preSuspendLifecycle,
+                lastSuspendReason: snapshot.lastSuspendReason,
+                lastSuspendMessage: snapshot.lastSuspendMessage,
+                lastReactivateError: snapshot.lastReactivateError,
                 lastBackendLabel: snapshot.displayLabel
               }
             : {
@@ -9085,6 +9107,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               resumeStrategy: snapshot.resumeStrategy ?? ensureAgentMetadata(existingNode).resumeStrategy,
               resumeSessionId: snapshot.resumeSessionId ?? ensureAgentMetadata(existingNode).resumeSessionId,
               resumeStoragePath: snapshot.resumeStoragePath ?? ensureAgentMetadata(existingNode).resumeStoragePath,
+              preSuspendLifecycle: undefined,
+              lastSuspendReason: undefined,
+              lastSuspendMessage: undefined,
+              lastReactivateError: undefined,
               lastBackendLabel: snapshot.displayLabel
             }
           : {
@@ -9162,6 +9188,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               resumeStrategy: snapshot?.resumeStrategy ?? ensureAgentMetadata(existingNode).resumeStrategy,
               resumeSessionId: snapshot?.resumeSessionId ?? ensureAgentMetadata(existingNode).resumeSessionId,
               resumeStoragePath: snapshot?.resumeStoragePath ?? ensureAgentMetadata(existingNode).resumeStoragePath,
+              preSuspendLifecycle: undefined,
+              lastSuspendReason: undefined,
+              lastSuspendMessage: undefined,
+              lastReactivateError: undefined,
               lastBackendLabel: snapshot?.displayLabel ?? ensureAgentMetadata(existingNode).lastBackendLabel
             }
           : {
@@ -10096,6 +10126,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/stopExecutionSession':
         void this.stopExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
+        return;
+      case 'webview/reactivateSuspendedExecutionSession':
+        void this.reactivateSuspendedExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
         return;
       case 'webview/updateNodeTitle':
         this.state = updateNodeTitle(this.state, parsedMessage.payload.nodeId, parsedMessage.payload.title);
@@ -11328,6 +11361,54 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return `${providerLabel} Agent「${nodeLabel}」输出流异常：${clippedMessage}`;
   }
 
+  private maybeMarkClaudeAgentSuspended(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    latestOutputChunk = '',
+    previousOutput = ''
+  ): boolean {
+    if (
+      session.agentProvider !== 'claude' ||
+      session.stopRequested ||
+      session.lifecycleStatus === 'suspended'
+    ) {
+      return false;
+    }
+
+    const suspendSignal = detectNewClaudeCodeSuspendOutput(
+      session.buffer,
+      session.seenClaudeSuspendSignalCount,
+      latestOutputChunk,
+      previousOutput
+    );
+    session.seenClaudeSuspendSignalCount = suspendSignal.nextSeenCount;
+    if (!suspendSignal.detected) {
+      return false;
+    }
+
+    session.preSuspendLifecycleStatus = isRestorableAgentPreSuspendLifecycle(session.lifecycleStatus)
+      ? session.lifecycleStatus
+      : undefined;
+    session.lastSuspendReason = 'claude-ctrl-z';
+    session.lastSuspendMessage = 'Claude Code 已挂起。点击“恢复”继续当前会话，或点击“停止”结束会话。';
+    session.lastReactivateError = undefined;
+    session.lifecycleStatus = 'suspended';
+    if (session.lifecycleTimer) {
+      clearTimeout(session.lifecycleTimer);
+      session.lifecycleTimer = undefined;
+    }
+    this.recordDiagnosticEvent('execution/suspended', {
+      kind: 'agent',
+      nodeId,
+      sessionId: session.sessionId,
+      owner: session.owner,
+      provider: session.agentProvider,
+      reason: session.lastSuspendReason,
+      preSuspendLifecycle: session.preSuspendLifecycleStatus ?? null
+    });
+    return true;
+  }
+
   private recordAgentOutputHeuristicsAndNotifyAbnormalStream(
     nodeId: string,
     session: ManagedExecutionSession,
@@ -11460,6 +11541,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastCols: normalizedCols,
         lastRows: normalizedRows,
         serializedTerminalState: undefined,
+        preSuspendLifecycle: undefined,
+        lastSuspendReason: undefined,
+        lastSuspendMessage: undefined,
+        lastReactivateError: undefined,
         lastBackendLabel: cliSpec.label,
         lastLaunchCommandLine: displayLaunchCommandLine
       })
@@ -11991,6 +12076,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return;
         }
 
+        const previousBuffer = activeSession.buffer;
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
         activeSession.terminalStateTracker.write(text);
         activeSession.lineContextTracker.write(text);
@@ -11999,6 +12085,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           allowOverwriteExisting: activeSession.stopRequested,
           flushImmediately: activeSession.stopRequested
         });
+        if (this.maybeMarkClaudeAgentSuspended(nodeId, activeSession, text, previousBuffer)) {
+          this.queueExecutionOutput('agent', nodeId, text);
+          this.flushLiveExecutionState('agent', nodeId);
+          return;
+        }
         if (shouldRecordAgentOutputHeuristics(activeSession.lifecycleStatus)) {
           this.recordAgentOutputActivity(nodeId, activeSession, text);
         }
@@ -12091,6 +12182,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             lastCols: activeSession.cols,
             lastRows: activeSession.rows,
             serializedTerminalState: activeSession.terminalStateTracker.getSerializedState(),
+            preSuspendLifecycle: undefined,
+            lastSuspendReason: undefined,
+            lastSuspendMessage: undefined,
+            lastReactivateError: undefined,
             lastBackendLabel: cliSpec.label
           })
         });
@@ -12195,6 +12290,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastCols: normalizedCols,
           lastRows: normalizedRows,
           serializedTerminalState: undefined,
+          preSuspendLifecycle: undefined,
+          lastSuspendReason: undefined,
+          lastSuspendMessage: undefined,
+          lastReactivateError: undefined,
           lastBackendLabel: cliSpec.label,
           lastLaunchCommandLine: displayLaunchCommandLine
         })
@@ -13406,6 +13505,122 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postExecutionSnapshot(kind, nodeId);
   }
 
+  private async reactivateSuspendedExecutionSession(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
+    const session = this.getExecutionSessions(kind).get(nodeId);
+    if (!session) {
+      this.recordDiagnosticEvent('execution/reactivateFailed', {
+        kind,
+        nodeId,
+        reason: 'missing-session'
+      });
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: kind === 'agent' ? '当前没有可恢复的 Agent 会话。' : '当前执行节点不支持恢复挂起。'
+        }
+      });
+      return;
+    }
+
+    if (kind !== 'agent' || session.agentProvider !== 'claude') {
+      this.recordDiagnosticEvent('execution/reactivateFailed', {
+        kind,
+        nodeId,
+        sessionId: session.sessionId,
+        reason: 'unsupported-session',
+        provider: session.agentProvider ?? null
+      });
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '只有 Claude Code Agent 会话支持恢复挂起。'
+        }
+      });
+      return;
+    }
+
+    if (session.lifecycleStatus !== 'suspended') {
+      this.recordDiagnosticEvent('execution/reactivateFailed', {
+        kind,
+        nodeId,
+        sessionId: session.sessionId,
+        reason: 'not-suspended',
+        lifecycleStatus: session.lifecycleStatus
+      });
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: '当前 Claude Code Agent 会话未处于挂起状态。'
+        }
+      });
+      return;
+    }
+
+    this.recordDiagnosticEvent('execution/reactivateRequested', {
+      kind,
+      nodeId,
+      sessionId: session.sessionId,
+      owner: session.owner
+    });
+
+    const previousLifecycle = session.preSuspendLifecycleStatus ?? 'waiting-input';
+    try {
+      if (session.owner === 'local') {
+        session.process.reactivate();
+      } else {
+        const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
+        const operation = this.getRuntimeSupervisorClientForKind(
+          backendKind,
+          {},
+          session.runtimeStoragePath
+        ).then((client) =>
+          client.reactivateSession({
+            sessionId: session.runtimeSessionId
+          })
+        );
+        this.trackRuntimeSupervisorOperation(operation.catch(() => undefined));
+        await operation;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '恢复 Claude Code 挂起会话失败。';
+      session.lastReactivateError = message;
+      this.flushLiveExecutionState(kind, nodeId);
+      this.recordDiagnosticEvent('execution/reactivateFailed', {
+        kind,
+        nodeId,
+        sessionId: session.sessionId,
+        owner: session.owner,
+        reason: 'reactivate-failed',
+        message
+      });
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message
+        }
+      });
+      return;
+    }
+
+    session.lifecycleStatus = previousLifecycle;
+    session.preSuspendLifecycleStatus = undefined;
+    session.lastSuspendReason = undefined;
+    session.lastSuspendMessage = undefined;
+    session.lastReactivateError = undefined;
+    session.seenClaudeSuspendSignalCount = countClaudeCodeSuspendOutputs(session.buffer);
+    if (session.lifecycleStatus === 'resuming') {
+      session.resumePhaseActive = true;
+    }
+    this.flushLiveExecutionState(kind, nodeId);
+    this.recordDiagnosticEvent('execution/reactivated', {
+      kind,
+      nodeId,
+      sessionId: session.sessionId,
+      owner: session.owner,
+      lifecycleStatus: session.lifecycleStatus
+    });
+  }
+
   private async writeExecutionInput(kind: ExecutionNodeKind, nodeId: string, data: string): Promise<boolean> {
     const inputDetail = {
       kind,
@@ -13431,6 +13646,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.recordDiagnosticEvent('execution/inputRejected', {
         ...inputDetail,
         reason: 'missing-session'
+      });
+      return false;
+    }
+
+    if (kind === 'agent' && session.lifecycleStatus === 'suspended') {
+      this.recordDiagnosticEvent('execution/inputRejected', {
+        ...inputDetail,
+        sessionId: session.sessionId,
+        reason: 'agent-suspended'
+      });
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: 'Claude Code 已挂起，请先点击“恢复”再继续输入。'
+        }
       });
       return false;
     }
@@ -14336,7 +14566,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastRows: session.rows,
         serializedTerminalState: session.terminalStateTracker.getSerializedState(),
         lastRuntimeError: undefined,
-        ...(kind === 'agent' ? { lastBackendLabel: session.displayLabel } : {}),
+        ...(kind === 'agent'
+          ? {
+              lastBackendLabel: session.displayLabel,
+              preSuspendLifecycle: session.preSuspendLifecycleStatus,
+              lastSuspendReason: session.lastSuspendReason,
+              lastSuspendMessage: session.lastSuspendMessage,
+              lastReactivateError: session.lastReactivateError
+            }
+          : {}),
         ...(kind === 'agent' && session.agentResume
           ? {
               resumeSupported: session.agentResume.supported,
@@ -20370,6 +20608,7 @@ function normalizeAgentLifecycle(
     value === 'resuming' ||
     value === 'resume-ready' ||
     value === 'resume-failed' ||
+    value === 'suspended' ||
     value === 'stopping' ||
     value === 'stopped' ||
     value === 'error' ||
@@ -20384,6 +20623,10 @@ function normalizeAgentLifecycle(
 
   if (nodeStatus === 'starting' || nodeStatus === 'waiting-input' || nodeStatus === 'running' || nodeStatus === 'resuming') {
     return nodeStatus;
+  }
+
+  if (nodeStatus === 'suspended') {
+    return 'suspended';
   }
 
   if (nodeStatus === 'stopped' || nodeStatus === 'stopping') {
@@ -20497,6 +20740,7 @@ function normalizeMetadata(
         : undefined;
     const runtimeStoragePath = normalizeRuntimeStoragePath(agent.runtimeStoragePath);
     const resumeSupported = doesAgentResumeStrategyRequireSupport(resumeStrategy);
+    const preSuspendLifecycle = normalizeOptionalAgentLifecycle(agent.preSuspendLifecycle);
 
     return {
       agent: {
@@ -20572,6 +20816,16 @@ function normalizeMetadata(
         lastResumeError:
           typeof agent.lastResumeError === 'string'
             ? trimStoredTerminalText(agent.lastResumeError)
+            : undefined,
+        preSuspendLifecycle,
+        lastSuspendReason: agent.lastSuspendReason === 'claude-ctrl-z' ? 'claude-ctrl-z' : undefined,
+        lastSuspendMessage:
+          typeof agent.lastSuspendMessage === 'string'
+            ? trimStoredTerminalText(agent.lastSuspendMessage)
+            : undefined,
+        lastReactivateError:
+          typeof agent.lastReactivateError === 'string'
+            ? trimStoredTerminalText(agent.lastReactivateError)
             : undefined,
         lastCols:
           typeof agent.lastCols === 'number'
@@ -20899,6 +21153,10 @@ function reconcileAgentNodesInArray(
             lastCols: liveSession.cols,
             lastRows: liveSession.rows,
             serializedTerminalState: liveSession.terminalStateTracker.getSerializedState(),
+            preSuspendLifecycle: liveSession.preSuspendLifecycleStatus,
+            lastSuspendReason: liveSession.lastSuspendReason,
+            lastSuspendMessage: liveSession.lastSuspendMessage,
+            lastReactivateError: liveSession.lastReactivateError,
             lastBackendLabel: liveSession.displayLabel
           }
         }
@@ -22395,6 +22653,8 @@ function summarizeAgentSessionOutput(output: string, status: AgentNodeStatus, la
         return `${label} 已就绪，等待输入。`;
       case 'stopping':
         return `正在停止 ${label} 会话。`;
+      case 'suspended':
+        return `${label} 已挂起。点击“恢复”继续当前会话，或点击“停止”结束会话。`;
       case 'resume-ready':
         return `检测到可恢复的 ${label} 会话。`;
       case 'resume-failed':
@@ -22506,6 +22766,23 @@ function describeBlockedTerminalLiveRuntimeSummary(blockReason: LiveRuntimeRecon
     return '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。';
   }
   return '运行时持久化已关闭，原终端 live runtime 已恢复为历史结果。';
+}
+
+function normalizeOptionalAgentLifecycle(value: unknown): AgentNodeStatus | undefined {
+  if (
+    value === 'starting' ||
+    value === 'waiting-input' ||
+    value === 'running' ||
+    value === 'resuming'
+  ) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function isRestorableAgentPreSuspendLifecycle(status: AgentNodeStatus | TerminalNodeStatus): status is AgentNodeStatus {
+  return status === 'starting' || status === 'resuming' || status === 'running' || status === 'waiting-input';
 }
 
 function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {

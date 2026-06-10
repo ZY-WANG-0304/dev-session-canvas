@@ -31,6 +31,7 @@ export function canvasStatusToneClass(status: string): string {
     case 'stopped':
     case 'cancelled':
       return 'tone-stopped';
+    case 'suspended':
     case 'interrupted':
     case 'closed':
       return 'tone-disconnected';
@@ -93,6 +94,8 @@ export function humanizeCanvasStatus(status: string): string {
       return '停止中';
     case 'stopped':
       return '已停止';
+    case 'suspended':
+      return '已挂起';
     case 'running':
       return '运行中';
     case 'draft':
