@@ -25,6 +25,14 @@ function markdownNote(contentStatus: string, nodeStatus = 'ready') {
 
 assert.equal(humanizeCanvasNodeStatus(markdownNote('ok')), '已关联文件');
 assert.equal(canvasNodeStatusToneClass(markdownNote('ok')), 'tone-success');
+assert.equal(
+  humanizeCanvasNodeStatus({ kind: 'agent', status: 'suspended', metadata: {} }),
+  '已挂起'
+);
+assert.equal(
+  canvasNodeStatusToneClass({ kind: 'agent', status: 'suspended', metadata: {} }),
+  'tone-disconnected'
+);
 
 for (const [contentStatus, label] of [
   ['missing', '文件缺失'],
