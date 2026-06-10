@@ -21,7 +21,7 @@ import {
   normalizeAgentAbnormalStreamInterruptionSignature,
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
-import { countClaudeCodeSuspendOutputs } from '../common/agentSuspendSignals';
+import { countClaudeCodeSuspendOutputs, detectNewClaudeCodeSuspendOutput } from '../common/agentSuspendSignals';
 import {
   createExecutionAttentionSignalState,
   filterEnabledExecutionAttentionSignals,
@@ -8856,6 +8856,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    const previousBuffer = session.buffer;
     session.buffer = appendTerminalBuffer(session.buffer, chunk);
     session.terminalStateTracker.write(chunk);
     session.lineContextTracker.write(chunk);
@@ -8865,7 +8866,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         allowOverwriteExisting: session.stopRequested,
         flushImmediately: session.stopRequested
       });
-      if (this.maybeMarkClaudeAgentSuspended(binding.nodeId, session)) {
+      if (this.maybeMarkClaudeAgentSuspended(binding.nodeId, session, chunk, previousBuffer)) {
         this.queueExecutionOutput(binding.kind, binding.nodeId, chunk);
         this.flushLiveExecutionState(binding.kind, binding.nodeId);
         return;
@@ -11360,7 +11361,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return `${providerLabel} Agent「${nodeLabel}」输出流异常：${clippedMessage}`;
   }
 
-  private maybeMarkClaudeAgentSuspended(nodeId: string, session: ManagedExecutionSession): boolean {
+  private maybeMarkClaudeAgentSuspended(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    latestOutputChunk = '',
+    previousOutput = ''
+  ): boolean {
     if (
       session.agentProvider !== 'claude' ||
       session.stopRequested ||
@@ -11369,11 +11375,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return false;
     }
 
-    const suspendSignalCount = countClaudeCodeSuspendOutputs(session.buffer);
-    if (suspendSignalCount <= (session.seenClaudeSuspendSignalCount ?? 0)) {
+    const suspendSignal = detectNewClaudeCodeSuspendOutput(
+      session.buffer,
+      session.seenClaudeSuspendSignalCount,
+      latestOutputChunk,
+      previousOutput
+    );
+    session.seenClaudeSuspendSignalCount = suspendSignal.nextSeenCount;
+    if (!suspendSignal.detected) {
       return false;
     }
-    session.seenClaudeSuspendSignalCount = suspendSignalCount;
 
     session.preSuspendLifecycleStatus = isRestorableAgentPreSuspendLifecycle(session.lifecycleStatus)
       ? session.lifecycleStatus
@@ -12065,6 +12076,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return;
         }
 
+        const previousBuffer = activeSession.buffer;
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
         activeSession.terminalStateTracker.write(text);
         activeSession.lineContextTracker.write(text);
@@ -12073,7 +12085,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           allowOverwriteExisting: activeSession.stopRequested,
           flushImmediately: activeSession.stopRequested
         });
-        if (this.maybeMarkClaudeAgentSuspended(nodeId, activeSession)) {
+        if (this.maybeMarkClaudeAgentSuspended(nodeId, activeSession, text, previousBuffer)) {
           this.queueExecutionOutput('agent', nodeId, text);
           this.flushLiveExecutionState('agent', nodeId);
           return;

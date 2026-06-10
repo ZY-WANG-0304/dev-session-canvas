@@ -11,7 +11,7 @@ import {
   resetAgentActivityHeuristics,
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
-import { countClaudeCodeSuspendOutputs } from '../common/agentSuspendSignals';
+import { countClaudeCodeSuspendOutputs, detectNewClaudeCodeSuspendOutput } from '../common/agentSuspendSignals';
 import {
   type AgentNodeStatus,
   type AgentProviderKind,
@@ -480,6 +480,7 @@ class RuntimeSupervisorServer {
         return;
       }
 
+      const previousOutput = session.output;
       session.output = appendOutputTail(session.output, chunk);
       session.terminalStateTracker.write(chunk);
       if (session.kind === 'agent') {
@@ -489,7 +490,7 @@ class RuntimeSupervisorServer {
         });
       }
       if (session.kind === 'agent') {
-        if (this.maybeMarkClaudeAgentSuspended(session)) {
+        if (this.maybeMarkClaudeAgentSuspended(session, chunk, previousOutput)) {
           this.emitSessionOutput(session, chunk);
           this.schedulePersist();
           return;
@@ -521,7 +522,11 @@ class RuntimeSupervisorServer {
     });
   }
 
-  private maybeMarkClaudeAgentSuspended(session: SupervisorSession): boolean {
+  private maybeMarkClaudeAgentSuspended(
+    session: SupervisorSession,
+    latestOutputChunk = '',
+    previousOutput = ''
+  ): boolean {
     if (
       session.kind !== 'agent' ||
       session.provider !== 'claude' ||
@@ -532,11 +537,16 @@ class RuntimeSupervisorServer {
       return false;
     }
 
-    const suspendSignalCount = countClaudeCodeSuspendOutputs(session.output);
-    if (suspendSignalCount <= (session.seenClaudeSuspendSignalCount ?? 0)) {
+    const suspendSignal = detectNewClaudeCodeSuspendOutput(
+      session.output,
+      session.seenClaudeSuspendSignalCount,
+      latestOutputChunk,
+      previousOutput
+    );
+    session.seenClaudeSuspendSignalCount = suspendSignal.nextSeenCount;
+    if (!suspendSignal.detected) {
       return false;
     }
-    session.seenClaudeSuspendSignalCount = suspendSignalCount;
 
     session.preSuspendLifecycle = isRestorableAgentPreSuspendLifecycle(session.lifecycle)
       ? session.lifecycle

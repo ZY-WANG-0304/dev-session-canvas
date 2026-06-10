@@ -2,32 +2,60 @@ export function isClaudeCodeSuspendOutput(output: string): boolean {
   return countClaudeCodeSuspendOutputs(output) > 0;
 }
 
+export interface ClaudeCodeSuspendOutputDetection {
+  detected: boolean;
+  nextSeenCount: number;
+}
+
+const SUSPEND_OUTPUT_CONTEXT_LIMIT = 2000;
+
+export function detectNewClaudeCodeSuspendOutput(
+  output: string,
+  seenCount: number | undefined,
+  latestOutputChunk = '',
+  previousOutput = ''
+): ClaudeCodeSuspendOutputDetection {
+  const currentCount = countClaudeCodeSuspendOutputs(output);
+  const previousCount = normalizeSeenCount(seenCount);
+  const detectedByTailCount = currentCount > previousCount;
+  const detectedByAppendedContext =
+    !detectedByTailCount &&
+    latestOutputChunk.length > 0 &&
+    countClaudeCodeSuspendOutputs(
+      `${trimSuspendOutputContext(previousOutput)}${latestOutputChunk}`
+    ) > countClaudeCodeSuspendOutputs(trimSuspendOutputContext(previousOutput));
+
+  return {
+    detected: detectedByTailCount || detectedByAppendedContext,
+    nextSeenCount: currentCount
+  };
+}
+
 export function countClaudeCodeSuspendOutputs(output: string): number {
   const normalizedOutput = stripTerminalControlSequences(output)
     .replace(/\r/g, '\n')
     .replace(/\s+/g, ' ')
     .trim();
 
-  if (!normalizedOutput.includes('Run `fg` to bring Claude Code back')) {
-    return 0;
-  }
-
-  return countOccurrences(normalizedOutput, 'Claude Code has been suspended');
-}
-
-function countOccurrences(value: string, needle: string): number {
   let count = 0;
-  let index = 0;
-  while (index < value.length) {
-    const nextIndex = value.indexOf(needle, index);
-    if (nextIndex < 0) {
-      break;
-    }
+  const suspendSignalPattern = /Claude Code has been suspended\.?\s+Run `fg` to bring Claude Code back/g;
+  while (suspendSignalPattern.exec(normalizedOutput)) {
     count += 1;
-    index = nextIndex + needle.length;
   }
 
   return count;
+}
+
+function normalizeSeenCount(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+
+  return Math.floor(value);
+}
+
+function trimSuspendOutputContext(value: string): string {
+  return value.length > SUSPEND_OUTPUT_CONTEXT_LIMIT ? value.slice(-SUSPEND_OUTPUT_CONTEXT_LIMIT) : value;
 }
 
 function stripTerminalControlSequences(value: string): string {
