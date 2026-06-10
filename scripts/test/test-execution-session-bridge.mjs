@@ -25,6 +25,12 @@ try {
   const require = createRequire(import.meta.url);
   const { resolveExecutionSessionSpawnSpec } = require(outfile);
 
+  const bridgeSource = await import('node:fs/promises').then(({ readFile }) =>
+    readFile(path.resolve('src/panel/executionSessionBridge.ts'), 'utf8')
+  );
+  assert.match(bridgeSource, /reactivate\(\): void/u, 'ExecutionSessionProcess must expose a reactivate capability.');
+  assert.match(bridgeSource, /process\.kill\(this\.pty\.pid, 'SIGCONT'\)/u, 'node-pty reactivate must send SIGCONT to the PTY process.');
+
   const wrappedBatchSpec = resolveExecutionSessionSpawnSpec(
     {
       file: 'C:\\Users\\Jane Doe\\AppData\\Roaming\\npm\\codex.cmd',

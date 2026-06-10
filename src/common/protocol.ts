@@ -164,6 +164,7 @@ export type AgentNodeStatus =
   | 'resuming'
   | 'resume-ready'
   | 'resume-failed'
+  | 'suspended'
   | 'stopping'
   | 'stopped'
   | 'error'
@@ -208,6 +209,10 @@ export interface AgentNodeMetadata extends ExecutionSessionMetadata {
   resumeStoragePath?: string;
   lastResumeError?: string;
   lastBackendLabel?: string;
+  preSuspendLifecycle?: AgentNodeStatus;
+  lastSuspendReason?: 'claude-ctrl-z';
+  lastSuspendMessage?: string;
+  lastReactivateError?: string;
 }
 
 export interface TerminalNodeMetadata extends ExecutionSessionMetadata {
@@ -832,6 +837,13 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'webview/reactivateSuspendedExecutionSession';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+      };
+    }
+  | {
       type: 'webview/updateNodeTitle';
       payload: {
         nodeId: string;
@@ -1436,7 +1448,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (
     value.type === 'webview/attachExecutionSession' ||
-    value.type === 'webview/stopExecutionSession'
+    value.type === 'webview/stopExecutionSession' ||
+    value.type === 'webview/reactivateSuspendedExecutionSession'
   ) {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (

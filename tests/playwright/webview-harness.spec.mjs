@@ -2911,6 +2911,48 @@ test('canvas renders a shared execution help entry with tooltip text', async ({ 
   );
 });
 
+test('suspended Claude Agent shows restore action and suppresses terminal input', async ({ page }) => {
+  const state = createLiveExecutionNodeState('agent');
+  const agentNode = state.nodes[0];
+  agentNode.status = 'suspended';
+  agentNode.summary = 'Claude Code 已挂起。点击“恢复”继续当前会话，或点击“停止”结束会话。';
+  agentNode.metadata.agent.provider = 'claude';
+  agentNode.metadata.agent.shellPath = 'claude';
+  agentNode.metadata.agent.lifecycle = 'suspended';
+  agentNode.metadata.agent.lastBackendLabel = 'Claude Code';
+  agentNode.metadata.agent.preSuspendLifecycle = 'waiting-input';
+  agentNode.metadata.agent.lastSuspendReason = 'claude-ctrl-z';
+  agentNode.metadata.agent.lastSuspendMessage = 'Claude Code 已挂起。点击“恢复”继续当前会话，或点击“停止”结束会话。';
+
+  await openHarness(page);
+  await bootstrap(page, state);
+  await waitForExecutionTerminalReady(page, 'agent-zoom');
+
+  const node = nodeById(page, 'agent-zoom');
+  await expect(node.locator('.status-pill').first()).toHaveText('已挂起');
+  await expect(node.locator('[data-agent-reactivate-action="true"]')).toBeVisible();
+  await expect(node.locator('.terminal-overlay')).toContainText('Claude Code 已挂起');
+
+  await clearPostedMessages(page);
+  await node.locator('.xterm-screen').click({ position: { x: 16, y: 16 } });
+  await page.keyboard.type('ignored while suspended');
+  await settleWebview(page, 2);
+  expect(
+    await page.evaluate(() =>
+      window.__devSessionCanvasHarness
+        .getPostedMessages()
+        .some((entry) => entry.type === 'webview/executionInput')
+    )
+  ).toBe(false);
+
+  await node.locator('[data-agent-reactivate-action="true"]').click();
+  const reactivateMessage = await waitForPostedMessageByType(page, 'webview/reactivateSuspendedExecutionSession');
+  expect(reactivateMessage.payload).toMatchObject({
+    nodeId: 'agent-zoom',
+    kind: 'agent'
+  });
+});
+
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} renders an inline execution help trigger beside the subtitle`, async ({
     page
