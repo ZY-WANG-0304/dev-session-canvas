@@ -3429,6 +3429,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       editor: this.pendingBootstrapHostMessages.editor?.slice(),
       panel: this.pendingBootstrapHostMessages.panel?.slice()
     };
+    const previousPanelView = this.panelView;
     const previousCanvasTemplateInitialized = this.canvasTemplateInitialized;
     const previousPanelCenter = this.lastVisibleCanvasCenterBySurface.panel
       ? { ...this.lastVisibleCanvasCenterBySurface.panel }
@@ -3440,6 +3441,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const oldFrame = this.createLifecycleRaceFakeWebview('old');
     const competingFrame = this.createLifecycleRaceFakeWebview('competing');
+    const diagnosticPanelView = {
+      webview: oldFrame.webview,
+      visible: true
+    } as unknown as vscode.WebviewView;
 
     let gatedMessageQueuedBeforeAck = false;
     let gatedMessageDeliveredBeforeAck = false;
@@ -3461,6 +3466,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     try {
       this.activeSurface = surface;
+      this.panelView = diagnosticPanelView;
       this.canvasTemplateInitialized = true;
       this.clearPendingBootstrapHostMessages(surface);
       this.testHostMessages.length = 0;
@@ -3773,6 +3779,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.restoreSurfaceLifecycleStateForTest('panel', previousSurfaceMode, previousSurfaceReady, previousSurfaceLifecycle);
       this.restoreSurfaceMessageWebviewForTest('editor', previousSurfaceMessageWebview.editor);
       this.restoreSurfaceMessageWebviewForTest('panel', previousSurfaceMessageWebview.panel);
+      if (this.panelView === diagnosticPanelView) {
+        this.panelView = previousPanelView;
+      }
       this.restorePendingBootstrapHostMessagesForTest('editor', previousPendingBootstrapHostMessages.editor);
       this.restorePendingBootstrapHostMessagesForTest('panel', previousPendingBootstrapHostMessages.panel);
       this.canvasTemplateInitialized = previousCanvasTemplateInitialized;

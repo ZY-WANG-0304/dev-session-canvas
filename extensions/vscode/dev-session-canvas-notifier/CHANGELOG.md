@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.1
+
+- 与主扩展 `0.15.1` 对齐：本轮主扩展是 `0.15.x` Preview 线内的画布导航与可靠性补丁，聚焦分组标题可读性、分组双击聚焦、`Add Folder to Workspace` 新增 root 就近放置与聚焦、多根通知标题 root 标识，以及执行性能诊断插桩；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.15.0
 
 - 与主扩展 `0.15.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 Claude Code Agent `Fork`、文件活动自动对象分组归属、Panel Webview lifecycle 诊断闭环，以及基于临时 `publish/vX.Y.Z` tag 的发布输入固定流程；notifier companion 不引入新的通知投递行为变更。
