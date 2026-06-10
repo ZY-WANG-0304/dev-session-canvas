@@ -32,6 +32,9 @@ try {
   const require = createRequire(import.meta.url);
   const {
     createExecutionAttentionSignalState,
+    filterEnabledExecutionAttentionSignals,
+    isExecutionAttentionSignalEnabled,
+    normalizeEnabledExecutionAttentionSignalKinds,
     parseExecutionAttentionSignals
   } = require(signalsOutfile);
   const {
@@ -75,6 +78,47 @@ try {
       presentation: 'notify'
     }
   ]);
+
+  assert.deepEqual(
+    normalizeEnabledExecutionAttentionSignalKinds(undefined),
+    ['bel', 'osc9', 'osc777', 'agentAbnormalExit', 'codexAbnormalOutputText'],
+    'Missing enabled attention signal config should preserve the default signal set.'
+  );
+  assert.deepEqual(
+    normalizeEnabledExecutionAttentionSignalKinds([
+      'codexAbnormalOutputText',
+      'osc9',
+      'invalid',
+      'osc9',
+      'bel',
+      'agentAbnormalExit'
+    ]),
+    ['bel', 'osc9', 'agentAbnormalExit', 'codexAbnormalOutputText'],
+    'Configured attention signals should ignore invalid entries, dedupe values, and keep stable order.'
+  );
+  assert.deepEqual(
+    normalizeEnabledExecutionAttentionSignalKinds([]),
+    [],
+    'An empty enabled attention signal config should disable all attention.'
+  );
+  assert.deepEqual(
+    filterEnabledExecutionAttentionSignals(
+      [...bell.signals, ...osc9.signals, ...osc777.signals],
+      ['osc9', 'osc777']
+    ).map((signal) => signal.kind),
+    ['osc9', 'osc777'],
+    'Disabled BEL signals should be removed before product attention is generated.'
+  );
+  assert.equal(
+    isExecutionAttentionSignalEnabled(['agentAbnormalExit'], 'agentAbnormalExit'),
+    true,
+    'Agent abnormal-exit attention should be configurable by the shared allow-list.'
+  );
+  assert.equal(
+    isExecutionAttentionSignalEnabled(['agentAbnormalExit'], 'codexAbnormalOutputText'),
+    false,
+    'Codex abnormal text attention should be suppressible independently from Agent abnormal exits.'
+  );
 
   const osc9Progress = parseExecutionAttentionSignals('\u001b]9;4;1;25\u0007');
   assert.equal(osc9Progress.notificationCount, 1);
