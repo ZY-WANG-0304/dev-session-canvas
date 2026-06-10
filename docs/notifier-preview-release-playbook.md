@@ -1,8 +1,8 @@
 # Notifier 公开 Preview 发布执行手册
 
-本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.15.0`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
+本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.15.1`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
 
-当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。当前这轮 `0.15.0` 发布准备已经把两侧 manifest / changelog / 产物名同步到同一版本号；后续若再改目标版本，必须一起改回正式文档与验证记录。
+当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。当前这轮 `0.15.1` 发布准备已经把两侧 manifest / changelog / 产物名同步到同一版本号；后续若再改目标版本，必须一起改回正式文档与验证记录。
 
 ## 当前发布素材
 
@@ -64,18 +64,18 @@
 
 在最终 git ref、版本号与 VSIX 产物都锁定后，默认从仓库根目录使用 `publish/vX.Y.Z` 临时 tag 触发统一发布入口；这里的临时 tag 必须指向已经位于 `main` 上的 release commit。主扩展与 notifier 仍由同一个发布脚本同步处理：
 
-    git tag publish/v0.15.0 <final-ref-or-sha>
-    git push origin publish/v0.15.0
+    git tag publish/v0.15.1 <final-ref-or-sha>
+    git push origin publish/v0.15.1
 
 推送临时 tag 后，`.github/workflows/publish-marketplace-release.yml` 会执行：
 
-    npm run release:publish-tag -- --trigger-tag publish/v0.15.0 --delete-trigger-tag
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --delete-trigger-tag
 
-若只需要补发 notifier，可保留或重新创建同一个 `publish/v0.15.0`，并限定扩展与市场：
+若只需要补发 notifier，可保留或重新创建同一个 `publish/v0.15.1`，并限定扩展与市场：
 
-    npm run release:publish-tag -- --trigger-tag publish/v0.15.0 --skip-package --extension notifier --target visual-studio --no-create-final-tag
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --skip-package --extension notifier --target visual-studio --no-create-final-tag
 
-    npm run release:publish-tag -- --trigger-tag publish/v0.15.0 --skip-package --extension notifier --target open-vsx --no-create-final-tag
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --skip-package --extension notifier --target open-vsx --no-create-final-tag
 
 注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 package，或在使用 `--skip-package` 时让 `release:publish-tag` 校验已有 release manifest 与 notifier VSIX sha256，证明它针对同一个 release ref 完成过打包。
 
@@ -99,5 +99,5 @@
 
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
-- 截至 `2026-06-09`，上一轮 `0.14.1` 已完成双市场发布；已用 `git fetch origin main` 与 `git merge-base origin/main HEAD` 重新确认本轮发布准备基线为 `aeb9b6cccd5aaec4854f7639d0b92d40982deff6`（短 SHA `aeb9b6cccd5a`），当前 `0.15.0` 发布准备从该最新 `main` 切出，继续保持 notifier manifest 与 changelog 的 `0.15.0` 版本事实。本轮主扩展聚焦 Claude Code Agent Fork、文件活动自动对象按 owner Agent 推导分组、Panel Webview lifecycle 诊断闭环，以及 publish tag 发布输入固定流程；notifier companion 不引入新的通知投递行为变更。本轮需通过 `npm run build:notifier`、`npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；notifier VSIX 为 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.15.0.vsix`，文件数、大小与 `VSCE README doc ref` 以本轮打包输出为准。发布准备 MR 合并后还需在最终 `main` ref 上复跑 notifier 打包，确认 VSIX 文件名、README doc ref、文件数与大小都来自最终发布 ref。
+- 截至 `2026-06-10`，上一轮 `0.15.0` 已完成双市场发布；已用 `git fetch origin main` 重新确认本轮发布准备基线为 `b7e06dab01e74def57ea3c16db4ad7326f57cb9f`（短 SHA `b7e06dab01e7`），当前 `0.15.1` 发布准备从该最新 `main` 切出，继续保持 notifier manifest 与 changelog 的 `0.15.1` 版本事实。本轮主扩展聚焦分组标题可读性、分组双击聚焦、`Add Folder to Workspace` 新增 root 就近放置与聚焦、多根通知标题 root 标识，以及执行性能诊断插桩；notifier companion 不引入新的通知投递行为变更。本轮需通过 `npm run build:notifier`、`npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；notifier VSIX 为 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.15.1.vsix`，文件数、大小与 `VSCE README doc ref` 以本轮打包输出为准。发布准备 MR 合并后还需在最终 `main` ref 上复跑 notifier 打包，确认 VSIX 文件名、README doc ref、文件数与大小都来自最终发布 ref。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。

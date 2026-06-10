@@ -10,6 +10,19 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
+## 0.15.1 Highlights
+
+The public `0.15.1` release is a Preview patch focused on canvas navigation and multi-root reliability. It keeps the `0.15.0` Claude Code Agent Fork, owner-derived file-activity grouping, Panel Webview lifecycle diagnostics, publish-tag release automation, dual-market distribution, and Preview support boundaries.
+
+- Group titles now keep useful hover text when they overflow, and workspace-root system groups keep their root-path tooltip for multi-root orientation
+- Double-clicking a group title tab or an empty part of the group body now focuses that existing group with a pan/zoom animation without changing group membership, position, or size
+- `Add Folder to Workspace` now places a new workspace-root section near the current canvas view, avoids existing root sections, and animates the new root into view
+- Repeated Add Folder flows use the visible center after the previous focus animation, and Panel Webview frame refreshes can replay the short-lived focus request instead of dropping it
+- Multi-root attention notifications now include root context in the system notification title so Agent and Terminal alerts are easier to distinguish
+- Execution-performance diagnostics now sample Host/Webview output, drain, `xterm.write`, postMessage, and input-write paths in diagnostic dumps for later bottleneck analysis
+- New worktree debug tasks bootstrap dependencies before launching, reducing setup friction for source contributors
+- The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
+
 ## Core Capabilities
 
 - Open the main canvas in either the panel or the editor area
@@ -53,24 +66,11 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.15.0 Highlights
-
-The public `0.15.0` release is a new Preview milestone focused on Claude Code Agent Fork, owner-derived grouping for file-activity artifacts, Panel Webview lifecycle diagnostics, and publish-tag release automation. It keeps the `0.14.1` Markdown Note shortcut, surface reuse, group-body canvas panning, shared-runtime reliability, spatial navigation, dual-market distribution, and Preview support boundaries.
-
-- Claude Code Agent nodes with a trusted session id now expose `Fork`, creating a new Agent node and launching it with `claude --resume <session-id> --fork-session` while keeping the source node unchanged
-- The first Fork release is Claude-only: Codex, non-Claude providers, missing trusted Claude session ids, and untrusted workspaces do not trigger fork launches
-- File-activity `file` / `file-list` artifacts now derive their group from the owning Agent: single-owner artifacts follow that Agent's innermost group, multi-owner artifacts use the nearest common parent, and multi-root workspaces stay root-isolated
-- Multi-select drag cleanup now preserves owner-derived grouping for automatic file-activity artifacts instead of letting drag results move them into inconsistent groups
-- Workspace-root section titles now follow the same zoom readability and width-compression rules as normal canvas groups
-- Panel Webview lifecycle diagnostics now include a host-side lifecycle summary and the `npm run diagnose:webview-lifecycle` offline analyzer for troubleshooting restore/race reports
-- Release-day publishing now uses temporary `publish/vX.Y.Z` tags to pin the release input before the script creates the final `vX.Y.Z` tag after marketplace verification
-- The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
-
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.14.1` to `0.15.0` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.15.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.15.0` preserves that explicit choice
+- First-time installs and upgrades from `0.15.0` to `0.15.1` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.15.x` updates follow the corresponding registry upgrade path
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.15.1` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
