@@ -116,30 +116,17 @@ const branchAgentSessionMessage = {
 };
 
 assert.deepEqual(parseWebviewMessage(branchAgentSessionMessage), branchAgentSessionMessage);
-const reactivateSuspendedExecutionSessionMessage = {
-  type: 'webview/reactivateSuspendedExecutionSession',
-  payload: {
-    nodeId: 'agent-suspended',
-    kind: 'agent'
-  }
-};
-
-assert.deepEqual(
-  parseWebviewMessage(reactivateSuspendedExecutionSessionMessage),
-  reactivateSuspendedExecutionSessionMessage
-);
 assert.equal(
   parseWebviewMessage({
     type: 'webview/reactivateSuspendedExecutionSession',
     payload: {
       nodeId: 'agent-suspended',
-      kind: 'note'
+      kind: 'agent'
     }
   }),
   null,
-  'webview/reactivateSuspendedExecutionSession.kind 必须是执行节点类型。'
+  'webview/reactivateSuspendedExecutionSession 已移除，旧恢复挂起消息必须被拒绝。'
 );
-
 assert.equal(
   parseWebviewMessage({
     type: 'webview/branchAgentSession',

@@ -312,6 +312,7 @@ interface CanvasNodeData {
   onBranchAgentSession?: (nodeId: string) => void;
   onAttachExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput?: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
+  onShowTransientError?: (message: string) => void;
   onDropExecutionResource?: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -335,7 +336,6 @@ interface CanvasNodeData {
   ) => void;
   onResizeExecution?: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
-  onReactivateSuspendedExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNodeTitle?: (nodeId: string, title: string) => void;
   onUpdateNote?: (payload: {
     nodeId: string;
@@ -2240,6 +2240,14 @@ function App(): JSX.Element {
     });
   };
 
+  const showTransientCanvasError = (message: string): void => {
+    setErrorMessage(message);
+    if (clearErrorTimer.current) {
+      window.clearTimeout(clearErrorTimer.current);
+    }
+    clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
+  };
+
   const updateNodeLayoutDraft = (nodeId: string, draft: CanvasNodeLayoutDraft | null): void => {
     if (draft?.position && draft.size) {
       activeNodeResizeDraftsRef.current = {
@@ -2408,6 +2416,7 @@ function App(): JSX.Element {
         type: 'webview/executionInput',
         payload: { nodeId, kind, data }
       }),
+    onShowTransientError: showTransientCanvasError,
     onDropExecutionResource: (nodeId, kind, resource) =>
       postMessage({
         type: 'webview/dropExecutionResource',
@@ -2436,11 +2445,6 @@ function App(): JSX.Element {
     onStopExecution: (nodeId, kind) =>
       postMessage({
         type: 'webview/stopExecutionSession',
-        payload: { nodeId, kind }
-      }),
-    onReactivateSuspendedExecution: (nodeId, kind) =>
-      postMessage({
-        type: 'webview/reactivateSuspendedExecutionSession',
         payload: { nodeId, kind }
       }),
     onUpdateNodeTitle: (nodeId, title) =>
@@ -2788,14 +2792,6 @@ function App(): JSX.Element {
         parentGroupId
       }
     });
-  };
-
-  const showTransientCanvasError = (message: string): void => {
-    setErrorMessage(message);
-    if (clearErrorTimer.current) {
-      window.clearTimeout(clearErrorTimer.current);
-    }
-    clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
   };
 
   const createGroupFromCurrentSelectionRequest = (): void => {
@@ -4149,6 +4145,10 @@ function CanvasOverviewModeBridge(props: {
   return null;
 }
 
+function containsTerminalSuspendInput(input: string): boolean {
+  return input.includes('\u001a');
+}
+
 function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
   const { zoom } = useViewport();
   const agentMetadata = data.metadata?.agent;
@@ -4167,7 +4167,6 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
       agentMetadata.pendingLaunch === 'resume');
   const canResumeOriginalSession = canResumeAgentFromMetadataForWebview(agentMetadata);
   const reattaching = displayStatus === 'reattaching';
-  const suspended = lifecycle === 'suspended';
   const attentionPending = agentMetadata.attentionPending === true;
   const attentionFlashing =
     attentionPending && strongTerminalAttentionReminderShowsTitleBar(data.strongTerminalAttentionReminderMode);
@@ -4197,8 +4196,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     suppressShrinkFitUntilMs: 0
   });
   const terminalFlagsRef = useRef({
-    liveSession: agentMetadata.liveSession,
-    suspended
+    blockCtrlZInput: provider === 'claude'
   });
   const executionPathContextRef = useRef({
     shellPath: agentMetadata.shellPath,
@@ -4214,10 +4212,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
 
   useEffect(() => {
     terminalFlagsRef.current = {
-      liveSession: agentMetadata.liveSession,
-      suspended
+      blockCtrlZInput: provider === 'claude'
     };
-  }, [agentMetadata.liveSession, suspended]);
+  }, [provider]);
 
   useEffect(() => {
     executionPathContextRef.current = {
@@ -4415,7 +4412,8 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     resizeObserver.observe(container);
 
     const dataDisposable = terminal.onData((input) => {
-      if (terminalFlagsRef.current.suspended) {
+      if (terminalFlagsRef.current.blockCtrlZInput && containsTerminalSuspendInput(input)) {
+        data.onShowTransientError?.('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或 Fork。');
         return;
       }
       reportExecutionInputDispatch(id, 'agent', input, () => data.onExecutionInput?.(id, 'agent', input));
@@ -4480,11 +4478,6 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     data.onStopExecution?.(id, 'agent');
   };
 
-  const reactivateAgent = (): void => {
-    data.onSelectNode?.(id);
-    data.onReactivateSuspendedExecution?.(id, 'agent');
-  };
-
   const deleteAgent = (): void => {
     data.onSelectNode?.(id);
     data.onDeleteNode?.(id);
@@ -4512,8 +4505,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     };
   }, [agentMetadata.liveSession, agentMetadata.pendingLaunch, executionBlocked, id, provider]);
 
-  const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession;
-  const showBranchAction = provider === 'claude' && canResumeOriginalSession;
+  const isLegacySuspendedAgent = lifecycle === 'suspended';
+  const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession && !isLegacySuspendedAgent;
+  const showBranchAction = provider === 'claude' && canResumeOriginalSession && !isLegacySuspendedAgent;
   const isForkedClaudeAgentNode = isClaudeForkAgentLaunch(agentMetadata);
   const showTitleStatus = !isForkedClaudeAgentNode;
   const actionDisabled = executionBlocked || reattaching;
@@ -4564,43 +4558,15 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
             />
           ) : null}
           {agentMetadata.liveSession ? (
-            suspended ? (
-              <div className="action-button-group agent-suspended-action-group nodrag nopan" data-node-interactive="true">
-                <ActionButton
-                  label="恢复"
-                  onClick={reactivateAgent}
-                  tone="primary"
-                  disabled={actionDisabled}
-                  className="compact nodrag nopan"
-                  interactive
-                  onFocus={() => data.onSelectNode?.(id)}
-                  buttonProps={{
-                    title: '恢复当前 Claude Code 会话',
-                    'aria-label': '恢复当前 Claude Code 会话',
-                    'data-agent-reactivate-action': 'true'
-                  }}
-                />
-                <ActionButton
-                  label="停止"
-                  onClick={stopAgent}
-                  tone="primary"
-                  disabled={actionDisabled}
-                  className="compact nodrag nopan"
-                  interactive
-                  onFocus={() => data.onSelectNode?.(id)}
-                />
-              </div>
-            ) : (
-              <ActionButton
-                label="停止"
-                onClick={stopAgent}
-                tone="primary"
-                disabled={actionDisabled}
-                className="nodrag nopan compact"
-                interactive
-                onFocus={() => data.onSelectNode?.(id)}
-              />
-            )
+            <ActionButton
+              label="停止"
+              onClick={stopAgent}
+              tone="primary"
+              disabled={actionDisabled}
+              className="nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+            />
           ) : showRestartActions ? (
             <div className="action-button-group agent-restart-action-group nodrag nopan" data-node-interactive="true">
               <ActionButton
@@ -4650,6 +4616,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           {showBranchAction ? (
             <ActionButton
               label="Fork"
+              tone="primary"
               disabled={actionDisabled}
               className="nodrag nopan compact"
               interactive
@@ -4676,7 +4643,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
       <div className="session-body">
         <div
           ref={frameRef}
-          className={`terminal-frame nowheel nodrag nopan ${agentMetadata.liveSession ? 'is-live' : 'is-idle'} ${suspended ? 'is-suspended' : ''}`}
+          className={`terminal-frame nowheel nodrag nopan ${agentMetadata.liveSession ? 'is-live' : 'is-idle'}`}
           data-node-interactive="true"
           {...canvasOverviewInertProps(overviewInteractionsDisabled)}
           onMouseDown={(event) => {
@@ -4692,12 +4659,10 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         >
           <div ref={viewportRef} className="terminal-viewport" />
           <NodeOverviewTitle title={data.title} status={displayStatus} />
-          {suspended || !agentMetadata.liveSession ? (
+          {!agentMetadata.liveSession ? (
             <div className="terminal-overlay">
               <strong>
-                {suspended
-                  ? 'Claude Code 已挂起'
-                  : executionBlocked
+                {executionBlocked
                     ? 'Restricted Mode'
                     : reattaching
                       ? 'Agent 重连中'
@@ -4712,11 +4677,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
                       : 'Agent 尚未启动'}
               </strong>
               <span>
-                {suspended
-                  ? agentMetadata.lastReactivateError ??
-                    agentMetadata.lastSuspendMessage ??
-                    'Claude Code 已挂起。点击“恢复”继续当前会话，或点击“停止”结束会话。'
-                  : executionBlocked
+                {executionBlocked
                     ? '当前 workspace 未受信任，Agent 会话入口已禁用。'
                     : reattaching
                       ? data.summary
@@ -11016,6 +10977,7 @@ function toFlowNodes(params: {
   onBranchAgentSession: (nodeId: string) => void;
   onAttachExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onExecutionInput: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
+  onShowTransientError: (message: string) => void;
   onDropExecutionResource: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -11039,7 +11001,6 @@ function toFlowNodes(params: {
   ) => void;
   onResizeExecution: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
-  onReactivateSuspendedExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNote: (payload: {
     nodeId: string;
     content: string;
@@ -11132,13 +11093,13 @@ function toFlowNodes(params: {
         onBranchAgentSession: params.onBranchAgentSession,
         onAttachExecution: params.onAttachExecution,
         onExecutionInput: params.onExecutionInput,
+        onShowTransientError: params.onShowTransientError,
         onDropExecutionResource: params.onDropExecutionResource,
         onOpenExecutionLink: params.onOpenExecutionLink,
         onCopyExecutionSelection: params.onCopyExecutionSelection,
         onRequestExecutionPaste: params.onRequestExecutionPaste,
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
-        onReactivateSuspendedExecution: params.onReactivateSuspendedExecution,
         onUpdateNote: params.onUpdateNote,
         onBeginAssociatedNoteMarkdownEdit: params.onBeginAssociatedNoteMarkdownEdit,
         onEndAssociatedNoteMarkdownEdit: params.onEndAssociatedNoteMarkdownEdit,

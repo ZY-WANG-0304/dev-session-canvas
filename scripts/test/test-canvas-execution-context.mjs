@@ -358,7 +358,8 @@ try {
       /  private async branchAgentSession\([\s\S]*?\n  public getSessionHistoryRestoreBlockReason\(\)/u,
       '\n  public getSessionHistoryRestoreBlockReason()'
     )
-    .replace(/\nfunction isClaudeForkSessionLaunch\([\s\S]*?\n\}/u, '\n');
+    .replace(/\nfunction isClaudeForkSessionLaunch\([\s\S]*?\n\}/u, '\n')
+    .replace(/Claude Agent 节点不支持 Ctrl-Z\/fg；请使用停止、重启或 Fork。/gu, 'Claude Agent Ctrl-Z unsupported');
   const runtimeBindingKeyFunction = managerSource.match(
     /private buildRuntimeSessionBindingKey\([\s\S]*?\n  \}/u
   )?.[0] ?? '';
@@ -460,6 +461,16 @@ try {
     managerSourceWithoutProviderNativeSessionBranching,
     /(?:^|[^A-Za-z])fork(?:[^A-Za-z]|$)/i,
     'origin/main 新实现不应保留 multi-root fork 语义；Claude Code 原生 session fork 路径不属于 multi-root canvas fork。'
+  );
+  assert.match(
+    managerSource,
+    /session\.agentProvider === 'claude' && containsTerminalSuspendInput\(data\)[\s\S]*claude-agent-ctrl-z-unsupported[\s\S]*Claude Agent 节点不支持 Ctrl-Z\/fg/u,
+    '宿主输入路径必须拒绝 Claude Agent Ctrl-Z，避免 Webview 或旧客户端绕过前端拦截。'
+  );
+  assert.doesNotMatch(
+    managerSource,
+    /maybeMarkClaudeAgentSuspended|detectNewClaudeCodeSuspendOutput|agentSuspendSignals|reactivateSuspendedExecutionSession/u,
+    '宿主不应再保留 Claude suspend 文案识别或恢复挂起会话链路。'
   );
 
   console.log('canvas execution context tests passed');

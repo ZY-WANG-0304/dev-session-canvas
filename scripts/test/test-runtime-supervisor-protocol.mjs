@@ -66,6 +66,16 @@ try {
     /private broadcastToSessionSubscribers\([\s\S]*for \(const \[socket, subscriptions\] of this\.subscriptions\.entries\(\)\)/u,
     'runtime supervisor output/state 应向同一 session 的所有订阅 socket 多播。'
   );
+  assert.match(
+    supervisorSource,
+    /session\.kind === 'agent' && session\.provider === 'claude' && containsTerminalSuspendInput\(params\.data\)[\s\S]*Claude Agent 节点不支持 Ctrl-Z\/fg/u,
+    'runtime supervisor 必须拒绝 Claude Agent Ctrl-Z 输入，避免进入不可恢复的伪挂起态。'
+  );
+  assert.doesNotMatch(
+    supervisorSource,
+    /reactivateSession|maybeMarkClaudeAgentSuspended|agentSuspendSignals/u,
+    'runtime supervisor 不应再保留 Claude 挂起恢复或 suspend 文案识别链路。'
+  );
 
   console.log('runtimeSupervisorProtocol tests passed');
 } finally {

@@ -15,7 +15,8 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/agent-running-state-detection.md
-updated_at: 2026-06-10
+  - docs/exec-plans/completed/claude-agent-ctrl-z-containment.md
+updated_at: 2026-06-11
 ---
 
 # Agent 运行态判定与等待输入信号设计
@@ -194,7 +195,7 @@ updated_at: 2026-06-10
   - bell；
   - 长静默 hard fallback。
 - 普通换行本身不再被当成“当前回合已完成”的直接信号；因为长任务可能先输出一整行文本，再在静默期内继续执行。
-- Claude Code 的 `Ctrl-Z` 挂起输出是一个特殊生命周期信号，不属于 `running -> waiting-input` 启发式：只有在 provider 为 `claude` 且输出同时包含 `Claude Code has been suspended` 与 ``Run `fg` to bring Claude Code back`` 时，节点才进入 `suspended`。宿主随后禁止普通输入，等待用户点击中文“恢复”；实现动作叫 `reactivate`，因为这里恢复的是同一个 live process，而不是 provider session resume。
+- Claude Code 的 `Ctrl-Z` / `fg` 文案不再参与运行态或生命周期判定。当前 Claude Agent 是 direct-spawn provider CLI，没有普通 shell job table；如果把 provider 输出的 suspend 文案当作权威状态，会制造页面仍在更新、恢复后输入无效等伪挂起问题。新的输入路径在 Webview、宿主与 runtime supervisor 三层阻断 Claude Agent `Ctrl-Z`，并把后续处理引导到停止、重启或 Fork。
 - 若最近输出呈现 spinner 或 redraw 特征，例如 `\r` 覆写、退格或光标移动控制序列，则会延长回退窗口，避免 Agent 仍在工作时被过早判回 `waiting-input`。
 
 这一版仍然属于 `heuristic` / `best-effort`，只是把误判窗口从“固定静默时间”收紧为“多信号综合判断”。
@@ -217,7 +218,8 @@ updated_at: 2026-06-10
   - VS Code shell integration 的 prompt/command 边界。
 - 2026-04-13 已把共享启发式 helper 接入 `src/panel/CanvasPanelManager.ts` 与 `src/supervisor/runtimeSupervisorMain.ts`，统一本地 PTY 与 runtime supervisor 的 `running -> waiting-input` 回退规则。
 - 2026-04-13 已新增 smoke 回归，覆盖 spinner/redraw 持续输出期间不应过早回退到 `waiting-input`。
-- 2026-06-10 已补充 Claude Code `Ctrl-Z` 挂起输出识别的局部验证：识别函数会剥离 ANSI/OSC 控制序列，并要求 Claude 挂起文案与 `fg` 提示同时出现，避免普通 shell job-control 文本误触发。
+- 2026-06-10 曾补充 Claude Code `Ctrl-Z` 挂起输出识别；2026-06-11 已撤销该方向，不再把 suspend / `fg` 文案作为状态机输入。
+- 2026-06-11 已补充 Claude Agent `Ctrl-Z` 阻断验证：Webview 阻止 `\u001a` 发送到 host，host 与 runtime supervisor 也拒绝旧客户端绕过前端的写入请求；该逻辑不影响 Terminal 或 Codex Agent 输入。
 - 2026-04-13 已通过以下验证：
   - `npm run typecheck`
   - `npm run build`

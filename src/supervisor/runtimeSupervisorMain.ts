@@ -11,7 +11,6 @@ import {
   resetAgentActivityHeuristics,
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
-import { countClaudeCodeSuspendOutputs, detectNewClaudeCodeSuspendOutput } from '../common/agentSuspendSignals';
 import {
   type AgentNodeStatus,
   type AgentProviderKind,
@@ -35,7 +34,6 @@ import {
   type RuntimeSupervisorMessage,
   type RuntimeSupervisorPaths,
   type RuntimeSupervisorRequest,
-  type RuntimeSupervisorReactivateSessionParams,
   type RuntimeSupervisorResizeSessionParams,
   type RuntimeSupervisorSessionSnapshot,
   type RuntimeSupervisorStopSessionParams,
@@ -94,11 +92,6 @@ interface SupervisorSession {
   lastExitCode?: number;
   lastExitSignal?: string;
   lastExitMessage?: string;
-  preSuspendLifecycle?: AgentNodeStatus;
-  lastSuspendReason?: 'claude-ctrl-z';
-  lastSuspendMessage?: string;
-  lastReactivateError?: string;
-  seenClaudeSuspendSignalCount?: number;
   stopRequested: boolean;
   agentActivity?: AgentActivityHeuristicState;
   process?: ExecutionSessionProcess;
@@ -236,10 +229,6 @@ class RuntimeSupervisorServer {
           this.stopSession(request.params);
           this.writeOkResponse(socket, request.id);
           return;
-        case 'reactivateSession':
-          this.reactivateSession(request.params);
-          this.writeOkResponse(socket, request.id);
-          return;
         case 'deleteSession':
           this.deleteSession(request.params);
           this.writeOkResponse(socket, request.id);
@@ -306,11 +295,6 @@ class RuntimeSupervisorServer {
       resumeSessionId: initialResumeSessionId,
       resumeStoragePath: params.resumeStoragePath,
       stopRequested: false,
-      preSuspendLifecycle: undefined,
-      lastSuspendReason: undefined,
-      lastSuspendMessage: undefined,
-      lastReactivateError: undefined,
-      seenClaudeSuspendSignalCount: 0,
       agentActivity: params.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
       process
     };
@@ -365,8 +349,12 @@ class RuntimeSupervisorServer {
 
   private writeInput(params: RuntimeSupervisorWriteInputParams): void {
     const session = this.requireLiveSession(params.sessionId);
+    if (session.kind === 'agent' && session.provider === 'claude' && containsTerminalSuspendInput(params.data)) {
+      throw new Error('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或 Fork。');
+    }
+
     if (session.kind === 'agent' && session.lifecycle === 'suspended') {
-      throw new Error('Claude Code 已挂起，请先点击“恢复”再继续输入。');
+      throw new Error('Claude Code 已挂起，请点击“停止”结束会话后重启。');
     }
 
     if (session.kind === 'agent') {
@@ -434,28 +422,6 @@ class RuntimeSupervisorServer {
     session.process?.kill();
   }
 
-  private reactivateSession(params: RuntimeSupervisorReactivateSessionParams): void {
-    const session = this.requireLiveSession(params.sessionId);
-    if (session.kind !== 'agent' || session.provider !== 'claude') {
-      throw new Error('只有 Claude Code Agent 会话支持恢复挂起。');
-    }
-    if (session.lifecycle !== 'suspended') {
-      throw new Error('当前 Claude Code Agent 会话未处于挂起状态。');
-    }
-
-    session.process?.reactivate();
-    session.lifecycle = session.preSuspendLifecycle ?? 'waiting-input';
-    session.preSuspendLifecycle = undefined;
-    session.lastSuspendReason = undefined;
-    session.lastSuspendMessage = undefined;
-    session.lastReactivateError = undefined;
-    session.seenClaudeSuspendSignalCount = countClaudeCodeSuspendOutputs(session.output);
-    if (session.lifecycle === 'resuming') {
-      session.resumePhaseActive = true;
-    }
-    this.emitSessionState(session);
-  }
-
   private deleteSession(params: RuntimeSupervisorDeleteSessionParams): void {
     const session = this.requireSession(params.sessionId);
     const wasLive = session.live;
@@ -480,7 +446,6 @@ class RuntimeSupervisorServer {
         return;
       }
 
-      const previousOutput = session.output;
       session.output = appendOutputTail(session.output, chunk);
       session.terminalStateTracker.write(chunk);
       if (session.kind === 'agent') {
@@ -490,12 +455,6 @@ class RuntimeSupervisorServer {
         });
       }
       if (session.kind === 'agent') {
-        if (this.maybeMarkClaudeAgentSuspended(session, chunk, previousOutput)) {
-          this.emitSessionOutput(session, chunk);
-          this.schedulePersist();
-          return;
-        }
-
         if (
           session.lifecycle === 'starting' ||
           session.lifecycle === 'resuming' ||
@@ -522,47 +481,6 @@ class RuntimeSupervisorServer {
     });
   }
 
-  private maybeMarkClaudeAgentSuspended(
-    session: SupervisorSession,
-    latestOutputChunk = '',
-    previousOutput = ''
-  ): boolean {
-    if (
-      session.kind !== 'agent' ||
-      session.provider !== 'claude' ||
-      !session.live ||
-      session.lifecycle === 'suspended' ||
-      session.stopRequested
-    ) {
-      return false;
-    }
-
-    const suspendSignal = detectNewClaudeCodeSuspendOutput(
-      session.output,
-      session.seenClaudeSuspendSignalCount,
-      latestOutputChunk,
-      previousOutput
-    );
-    session.seenClaudeSuspendSignalCount = suspendSignal.nextSeenCount;
-    if (!suspendSignal.detected) {
-      return false;
-    }
-
-    session.preSuspendLifecycle = isRestorableAgentPreSuspendLifecycle(session.lifecycle)
-      ? session.lifecycle
-      : undefined;
-    session.lastSuspendReason = 'claude-ctrl-z';
-    session.lastSuspendMessage = 'Claude Code 已挂起。点击“恢复”继续当前会话，或点击“停止”结束会话。';
-    session.lastReactivateError = undefined;
-    session.lifecycle = 'suspended';
-    if (session.lifecycleTimer) {
-      clearTimeout(session.lifecycleTimer);
-      session.lifecycleTimer = undefined;
-    }
-    this.emitSessionState(session);
-    return true;
-  }
-
   private finalizeSession(sessionId: string, exitCode: number, signal?: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -582,10 +500,6 @@ class RuntimeSupervisorServer {
     session.live = false;
 
     if (session.kind === 'agent') {
-      session.preSuspendLifecycle = undefined;
-      session.lastSuspendReason = undefined;
-      session.lastSuspendMessage = undefined;
-      session.lastReactivateError = undefined;
       this.finalizeAgentResumeSessionIdFromOutput(session);
       if (session.stopRequested) {
         session.lifecycle = 'stopped';
@@ -914,10 +828,6 @@ class RuntimeSupervisorServer {
       lastExitCode: session.lastExitCode,
       lastExitSignal: session.lastExitSignal,
       lastExitMessage: session.lastExitMessage,
-      preSuspendLifecycle: session.preSuspendLifecycle,
-      lastSuspendReason: session.lastSuspendReason,
-      lastSuspendMessage: session.lastSuspendMessage,
-      lastReactivateError: session.lastReactivateError
     };
   }
 
@@ -1067,11 +977,6 @@ class RuntimeSupervisorServer {
             isAgentResumePhaseActive(snapshot.lifecycle as AgentNodeStatus),
       lastExitMessage,
       stopRequested: false,
-      preSuspendLifecycle: undefined,
-      lastSuspendReason: undefined,
-      lastSuspendMessage: undefined,
-      lastReactivateError: undefined,
-      seenClaudeSuspendSignalCount: countClaudeCodeSuspendOutputs(snapshot.output),
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
       scrollback,
       terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
@@ -1181,9 +1086,6 @@ function normalizeRecoveredAgentLifecycle(status: AgentNodeStatus): AgentNodeSta
   return status;
 }
 
-function isRestorableAgentPreSuspendLifecycle(status: AgentNodeStatus | TerminalNodeStatus): status is AgentNodeStatus {
-  return status === 'starting' || status === 'resuming' || status === 'running' || status === 'waiting-input';
-}
 
 function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
   return status === 'starting' || status === 'resuming';
@@ -1197,6 +1099,10 @@ function isAgentLifecycleAwaitingInteractiveState(
 
 function isAgentInstructionSubmission(data: string): boolean {
   return /[\r\n]/.test(data);
+}
+
+function containsTerminalSuspendInput(data: string): boolean {
+  return data.includes('\u001a');
 }
 
 function normalizeRecoveredTerminalLifecycle(status: TerminalNodeStatus): TerminalNodeStatus {
