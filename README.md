@@ -66,7 +66,7 @@ Explicit conclusions:
 - The current version is `Preview`, not a stable release.
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
-- The primary public distribution channel remains `Visual Studio Marketplace`; the `Open VSX` namespace is now claimed and later releases should mirror the same version there as a supplemental channel.
+- The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; as of the `0.15.2` release-prep review on 2026-06-12, Open VSX is publicly visible but the Visual Studio Marketplace item pages still need to be restored / verified before final publish is treated as complete.
 - The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.15.2` repo-local validation focuses on version/package consistency, notification allow-list coverage, Codex final-failure text coverage, Claude Agent `Ctrl-Z` containment coverage, extension manifest checks, VSIX payload checks, and publish dry-run consistency; Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
@@ -78,10 +78,10 @@ Related entry points:
 
 ## Preview Distribution
 
-Public distribution is intended to happen through public extension registries. Official VS Code continues to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. `.vsix` files are no longer treated as a public distribution format for ordinary users and are kept only as build artifacts and release-verification inputs.
+Public distribution is intended to happen through public extension registries. Official VS Code is still intended to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. During `0.15.2` release prep, Open VSX visibility is confirmed and Visual Studio Marketplace visibility remains a final-publish gate. `.vsix` files are no longer treated as a public distribution format for ordinary users and are kept only as build artifacts and release-verification inputs.
 
 - Public `Preview` users should install through the extension registry configured by their host rather than by manually distributing a `.vsix`
-- `Visual Studio Marketplace` is already the primary public installation path; later `0.15.x` updates still need the final git ref to be locked, the same version published to both `Visual Studio Marketplace` and `Open VSX`, and post-release verification completed
+- `Visual Studio Marketplace` remains the intended official VS Code installation path, but `0.15.2` final publish must first confirm that both the main extension and notifier are publicly visible there; later `0.15.x` updates still need the final git ref locked, the same version published to both `Visual Studio Marketplace` and `Open VSX`, and post-release verification completed
 - `Open VSX` does not change the official VS Code Marketplace path and does not expand the compatibility-support matrix by itself
 
 ## Desktop Notification Companion (Auto-Installed)
@@ -116,7 +116,7 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 
 - The product is still in `Preview` and should not be treated as a stable production tool.
 - `Virtual Workspace` is not supported.
-- The public `Preview` distribution path has been consolidated around `Visual Studio Marketplace` with same-version `Open VSX` mirroring; release-day publication still requires manual execution and review.
+- The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring, but `0.15.2` final publish must first restore / verify Visual Studio Marketplace public visibility; release-day publication still requires manual execution and review.
 - The `Remote SSH` main path is validated and usable, and it remains the most strongly validated recommended path. Linux, macOS, and Windows local main paths also have functional validation now, but Windows still has a known limitation where embedded `Codex` history cannot page upward.
 - `Note` Markdown preview does not support raw HTML passthrough, arbitrary link schemes, file links outside the current workspace, directory targets, or rich-text block editing.
 - Templates currently save static layout and configuration only; they do not save running sessions, terminal output, file activity, thumbnails, cloud sync, or template history.

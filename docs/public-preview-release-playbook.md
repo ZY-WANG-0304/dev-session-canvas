@@ -47,7 +47,7 @@
 当前对外统一使用以下安装与升级说明：
 
 1. 当前目标版本为 `0.15.2`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.15.1` 升级到 `0.15.2` 将通过当前宿主配置的公开扩展市场常规安装 / 升级完成；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。后续 `0.15.x` 更新应保持两个公开市场同版本发布。
+2. 首次安装与从 `0.15.1` 升级到 `0.15.2` 的目标仍是通过当前宿主配置的公开扩展市场常规安装 / 升级完成；Open VSX 侧已可公开查询，官方 VS Code 的 `Visual Studio Marketplace` 仍是目标主路径，但只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后，才能对外宣称该路径可用。后续 `0.15.x` 更新应保持两个公开市场同版本发布，并继续把 VSM 可见性纳入最终发布门禁。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
 4. 若用户此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.2` 后会继续沿用该明确选择；未配置 `enabledAttentionSignals` 时使用本轮默认 allow-list，默认安装路径仍优先使用 `system` 桥接并在必要时回退到工作台消息。
 5. 当前仍为 `Preview`，不承诺跨版本 workspace 状态完全兼容；若涉及关键工作区，建议升级前先自行备份或先在非关键环境验证。
@@ -119,13 +119,14 @@
 
 ## 当前验证备注
 
-截至 `2026-06-11`，上一轮 `0.15.1` 已完成发布并在本地存在 `v0.15.1` tag；该 tag 指向 `d33679244aaf4451be61960280168a74d6e35797`（短 SHA `d33679244aaf`）。Open VSX API 显示主扩展与 notifier 的 latest 均为 `0.15.1`。当前 `main` 已包含 `v0.15.1` 之后合入的 #149、#151、#153 和 #154；已用 `git fetch origin main --tags` 重新确认本轮发布准备基线为 `52899a7ef319fe0a85dda4eb229438e665b3c86e`（短 SHA `52899a7ef319`），因此本轮从该最新 `main` 切出 `release-0-15-2`，目标版本升级为 `0.15.2`。
+截至 `2026-06-12`，上一轮 `0.15.1` 已在本地与远端存在 `v0.15.1` / `publish/v0.15.1` tag，均指向 `d33679244aaf4451be61960280168a74d6e35797`（短 SHA `d33679244aaf`）。Open VSX API 显示主扩展与 notifier 的 latest 均为 `0.15.1`；但 Visual Studio Marketplace 公开 item 页面 `devsessioncanvas.dev-session-canvas` 与 `devsessioncanvas.dev-session-canvas-notifier` 仍返回 404，public gallery `extensionquery` 对这两个 extension id 均返回 0 个结果。因此当前只能确认 `0.15.1` 在 Open VSX 侧公开可见，不能把上一轮写成已完成双市场公开可见发布。当前 `main` 已包含 `v0.15.1` 之后合入的 #149、#151、#153 和 #154；已用 `git fetch origin main --tags` 重新确认本轮发布准备基线为 `52899a7ef319fe0a85dda4eb229438e665b3c86e`（短 SHA `52899a7ef319`），因此本轮从该最新 `main` 切出 `release-0-15-2`，目标版本升级为 `0.15.2`。
 
 当前功能输入已有 repo-local 证据：`docs/product-specs/canvas-node-notifications.md` 与 `docs/design-docs/execution-node-notification-and-attention-signals.md` 记录了 attention signal allow-list、Codex 文本异常提醒 opt-in 与最终失败文本边界；`docs/design-docs/execution-lifecycle-and-recovery.md`、`docs/design-docs/agent-running-state-detection.md` 和 `docs/exec-plans/completed/claude-agent-ctrl-z-containment.md` 记录了 Claude Agent `Ctrl-Z` / `fg` 收口处理和旧 `suspended` 兼容边界；`docs/design-docs/public-marketplace-release-readiness.md` 与 `docs/exec-plans/active/publish-tag-release-flow.md` 继续记录 publish tag 发布输入固定流程。
 
 本轮发布准备分支已刷新并完成以下验证 / 审计复核：
 
 - 版本一致性检查：`package.json`、notifier manifest、`package-lock.json` 根版本、root package entry 与 notifier package entry 均为 `0.15.2`
+- 发布渠道可见性复核：Open VSX API 可查到主扩展与 notifier `0.15.1`；Visual Studio Marketplace 公开 item 页面仍返回 404，public gallery `extensionquery` 对主扩展与 notifier 均返回 0 个结果
 - `git diff --check`
 - `node --check tests/vscode-smoke/extension-tests.cjs`
 - `npm run test:extension-manifest`
@@ -157,7 +158,7 @@
 - 两个 VSIX 的 `VSCE README doc ref` 均已在本轮发布准备分支打包日志中打印；发布准备 MR 合并后还需在最终 `main` release commit 上重新锁定
 - 本轮已补跑 `npm run test:vsix-smoke` 并通过；clean checkout 打包验证也已通过，且按参数跳过 packaged-payload smoke
 
-残余风险：发布准备 MR 合并后，仍必须在最终 `main` release commit 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 与必要的 packaged-payload smoke，确认 README 相对链接改写、VSIX 文件数 / 大小、`VSCE README doc ref` 和 packaged-payload smoke 均与最终发布 ref 一致。真实 publish 与 `v0.15.2` tag 仍只能在发布准备 MR 合并后的最终 `main` ref 上执行。
+残余风险：发布准备 MR 合并后，仍必须在最终 `main` release commit 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 与必要的 packaged-payload smoke，确认 README 相对链接改写、VSIX 文件数 / 大小、`VSCE README doc ref` 和 packaged-payload smoke 均与最终发布 ref 一致。真实 publish 与 `v0.15.2` tag 仍只能在发布准备 MR 合并后的最终 `main` ref 上执行。由于 `2026-06-12` 复核时 Visual Studio Marketplace 主扩展与 notifier 仍不可公开查询，最终 publish 前还必须先确认 VSCE publisher / extension visibility / marketplace verification gate 已恢复；若仍不可见，不得创建正式 `v0.15.2` tag，也不得把官方 VS Code 安装路径宣称为已可用。
 
 ## 发布命令
 
