@@ -4505,8 +4505,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     };
   }, [agentMetadata.liveSession, agentMetadata.pendingLaunch, executionBlocked, id, provider]);
 
-  const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession;
-  const showBranchAction = provider === 'claude' && canResumeOriginalSession;
+  const isLegacySuspendedAgent = lifecycle === 'suspended';
+  const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession && !isLegacySuspendedAgent;
+  const showBranchAction = provider === 'claude' && canResumeOriginalSession && !isLegacySuspendedAgent;
   const isForkedClaudeAgentNode = isClaudeForkAgentLaunch(agentMetadata);
   const showTitleStatus = !isForkedClaudeAgentNode;
   const actionDisabled = executionBlocked || reattaching;

@@ -3006,6 +3006,8 @@ test('suspended Claude Agent legacy state no longer exposes restore actions', as
   agentNode.metadata.agent.preSuspendLifecycle = 'waiting-input';
   agentNode.metadata.agent.lastSuspendReason = 'claude-ctrl-z';
   agentNode.metadata.agent.lastSuspendMessage = 'Claude Code 已挂起，请点击“停止”结束会话后重启。';
+  agentNode.metadata.agent.resumeStrategy = 'claude-session-id';
+  agentNode.metadata.agent.resumeSessionId = 'session-123';
 
   await openHarness(page);
   await bootstrap(page, state);
@@ -3014,6 +3016,7 @@ test('suspended Claude Agent legacy state no longer exposes restore actions', as
   const node = nodeById(page, 'agent-zoom');
   await expect(node.locator('.status-pill').first()).toHaveText('已挂起');
   await expect(node.getByRole('button', { name: '恢复', exact: true })).toHaveCount(0);
+  await expect(node.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
   await expect(node.getByRole('button', { name: '停止' })).toBeVisible();
   await expect(node.locator('.terminal-overlay')).toHaveCount(0);
 
