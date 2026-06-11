@@ -71,6 +71,8 @@
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --delete-trigger-tag
 
+该 workflow 只应由 `publish/v*` tag push 或手动 `workflow_dispatch` 触发；创建普通分支、普通 tag 或 release 分支不应产生 skipped publish run。若 Actions 列表出现这类噪音，应优先修正 workflow 触发条件，而不是把 skipped run 当作真实 notifier 发布动作。
+
 若只需要补发 notifier，可保留或重新创建同一个 `publish/v0.15.2`，并限定扩展与市场：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package --extension notifier --target visual-studio --no-create-final-tag

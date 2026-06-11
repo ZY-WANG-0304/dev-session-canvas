@@ -179,6 +179,8 @@
     npm ci
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --delete-trigger-tag
 
+该 workflow 只响应 `publish/v*` tag push 与手动 `workflow_dispatch`；创建普通分支、普通 tag 或 release 分支不应再生成 skipped publish run。若 Actions 列表出现非 `publish/v*` 引起的 `Publish Marketplace Release` run，应先修正 workflow 触发条件，不要把 skipped run 当作真实发布动作。
+
 本地人工执行同一路径时，也应使用同一入口；发布前可先 dry-run：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --dry-run --package-only

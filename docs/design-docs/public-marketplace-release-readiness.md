@@ -180,7 +180,7 @@ updated_at: 2026-06-11
 
 ### 7.5 发布流水线最小 CI 化
 
-当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag`、上传 release manifest / VSIX artifact。发布校验、打包、marketplace 发布、正式 tag 创建与临时 tag 删除仍由仓库脚本负责，避免把核心 release 逻辑散落在 CI yaml 中。
+当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag`、上传 release manifest / VSIX artifact。发布校验、打包、marketplace 发布、正式 tag 创建与临时 tag 删除仍由仓库脚本负责，避免把核心 release 逻辑散落在 CI yaml 中。workflow 触发范围必须保持收窄：只响应 `publish/v*` tag push 与手动 `workflow_dispatch`，不响应普通分支、普通 tag 或 release 分支创建，避免 Actions 列表出现大量 skipped publish run 并干扰发布判断。
 
 当前轮次仍需保留的最小手工 gate 是：
 
