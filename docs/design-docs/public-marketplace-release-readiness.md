@@ -12,7 +12,7 @@ related_specs: []
 related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
   - docs/exec-plans/active/publish-tag-release-flow.md
-updated_at: 2026-06-10
+updated_at: 2026-06-11
 ---
 
 # 公开平台发布准备
@@ -27,6 +27,8 @@ updated_at: 2026-06-10
 > 2026-06-09 补充：上一轮 `0.14.1` 已完成双市场发布并在 `main` 上打 `v0.14.1` tag。当前发布准备目标为 `0.15.0`，输入范围是 `v0.14.1` 之后合入 `main` 的 Claude Code Agent Fork、文件活动自动对象 owner-derived 分组、workspace-root section 标题缩放对齐、Panel Webview lifecycle 诊断闭环，以及 publish tag 发布输入固定流程。`0.15.0` 不改变本文已选定的渠道策略、Preview 定位、README 打包入口、双市场同版本同步和最终 `main` ref 发布 / tag 约束；发布输入、release notes、安装/升级、回退、验证记录与 tag 命令以 `docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 为准。
 
 > 2026-06-10 补充：上一轮 `0.15.0` 已完成双市场发布并在 `main` 上打 `v0.15.0` tag。当前发布准备目标为 `0.15.1`，输入范围是 `v0.15.0` 之后合入 `main` 的分组标题 tooltip、分组双击聚焦、`Add Folder to Workspace` 新增 root 就近放置与聚焦、多根通知标题 root 标识、执行性能诊断插桩与新 worktree 调试自举依赖。`0.15.1` 仍不改变本文已选定的渠道策略、Preview 定位、README 打包入口、双市场同版本同步和最终 `main` ref 发布 / tag 约束；发布输入、release notes、安装/升级、回退、验证记录与 tag 命令以 `docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 为准。
+
+> 2026-06-11 补充：上一轮 `0.15.1` 已完成发布并在本地存在 `v0.15.1` tag。当前发布准备目标为 `0.15.2`，输入范围是 `v0.15.1` 之后合入 `main` 的 execution attention signal allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` / `fg` 误导状态收口，以及旧 `suspended` 状态兼容渲染。`0.15.2` 仍不改变本文已选定的渠道策略、Preview 定位、README 打包入口、双市场同版本同步和最终 `main` ref 发布 / tag 约束；发布输入、release notes、安装/升级、回退、验证记录与 tag 命令以 `docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 为准。
 
 > 2026-06-08 流程更新：后续发布输入改为由临时 tag `publish/vX.Y.Z` 固定。该 tag 只表示 publish intent，发布成功并验证双市场主扩展 / notifier 四个目标后，由发布脚本创建正式 `vX.Y.Z` tag 并删除临时 `publish/` tag。release manifest 记录 VSIX sha256、README doc ref、marketplace 验证结果和 tag 状态，但不写回代码库，只作为 GitHub Actions artifact / GitHub Release asset 保存。
 

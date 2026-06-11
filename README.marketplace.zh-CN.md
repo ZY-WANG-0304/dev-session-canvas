@@ -10,17 +10,16 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.15.1 版本亮点
+## 0.15.2 版本亮点
 
-当前公开的 `0.15.1` 版本是 Preview 补丁，重点收口画布导航与 multi-root 可靠性。它保留 `0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布自动化、双市场发布和 Preview 支持边界。
+当前公开的 `0.15.2` 版本是 Preview 补丁，重点收口通知控制与 Claude Agent 可靠性。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布自动化、双市场发布和 Preview 支持边界。
 
-- 分组标题溢出时保留可用 hover 文本，workspace-root 系统分组继续保留 root 路径 tooltip，便于 multi-root 定位
-- 双击分组标题 tab 或未被节点覆盖的分组 body 空白区，会用平移 / 缩放动画聚焦已有分组，不改变分组成员、位置或尺寸
-- `Add Folder to Workspace` 新增 workspace-root section 时，会在当前画布视野附近选择避让已有 root 的位置，并通过动画进入视野
-- 连续 Add Folder 会使用上一次聚焦动画后的可见中心；Panel Webview frame 刷新后也可重放短窗口内的聚焦请求，避免新 root 聚焦被丢弃
-- multi-root attention 系统通知标题补充 root 上下文，便于区分 Agent / Terminal 提醒来源
-- 执行性能诊断现在会在诊断 dump 中采样 Host/Webview output、drain、`xterm.write`、postMessage 和 input write 路径，便于后续分析卡顿瓶颈
-- 新 worktree 调试任务会在启动前自举依赖，降低源码开发者的本地准备成本
+- `devSessionCanvas.notifications.enabledAttentionSignals` 可分别控制 `BEL`、`OSC 9`、`OSC 777`、Agent 异常退出和 Codex 文本异常是否生成画布 attention
+- 将 allow-list 设为空数组时，所有执行 attention signal 都不会设置节点提醒、Minimap 闪烁或外部通知桥接
+- Codex 文本异常提醒继续通过 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications=codex` 显式开启，并且仍可被 allow-list 独立禁用
+- Codex 最终失败识别覆盖高置信的最终 `Internal server error` 与尾部 `stream disconnected before completion` 文案，同时忽略 retry / reconnect 暂态输出
+- Claude Agent `Ctrl-Z` 现在会在 Webview、宿主和 runtime supervisor 路径被阻断，因为直接启动的 Agent 没有 shell `fg` job-control 承诺；请改用停止、重启或 Fork
+- 旧 `suspended` Agent snapshot 仍可安全渲染，但不再暴露恢复动作或旧挂起态 Fork 入口
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 核心功能
@@ -69,8 +68,8 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.15.0` 升级到 `0.15.1` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.15.x` 更新同样按对应市场升级获取
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.1` 后会继续沿用该明确选择
+- 首次安装与从 `0.15.1` 升级到 `0.15.2` 应通过当前宿主配置的公开扩展市场获取：官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`；后续 `0.15.x` 更新同样按对应市场升级获取
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.2` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 

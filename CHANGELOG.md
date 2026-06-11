@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.15.2 - Preview Notification Controls and Claude Ctrl-Z Patch
+
+相对 `0.15.1`，`0.15.2` 是同一 `0.15.x` 公开 `Preview` 线内的通知控制与 Agent 可靠性补丁，重点收口执行节点 attention signal allow-list、Codex 最终失败文本提醒，以及 Claude Agent `Ctrl-Z` / `fg` 误导状态处理。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent `Fork`、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.15.1` bump 到 `0.15.2`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增 `devSessionCanvas.notifications.enabledAttentionSignals` allow-list，可分别控制 `BEL`、`OSC 9`、`OSC 777`、已运行 Agent 异常退出和 Codex 文本异常是否生成画布 attention；设置为空数组时不会设置节点提醒、Minimap 闪烁或外部通知桥接
+- Codex 文本异常提醒继续保持显式 opt-in：只有 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications=codex` 且 `codexAbnormalOutputText` 未被 allow-list 禁用时才生效
+- 收紧 Codex 最终失败文本识别：方块标记的 `Internal server error` 与尾部 `stream disconnected before completion: stream closed before response.completed` 会触发补充提醒，`Reconnecting... n/m` 下方树形缩进的 stream-disconnected 暂态输出不会误触发
+- Claude Agent 节点不再把 Claude Code 的 `Ctrl-Z` / `fg` 文案当成可恢复生命周期；Webview、宿主和 runtime supervisor 写入路径都会阻断 Claude Agent `Ctrl-Z`，并提示使用停止、重启或 Fork
+- 旧版本遗留的 `suspended` Agent snapshot 仍可渲染，但不再暴露“恢复 / 恢复中”入口，也不会继续显示旧挂起态 Fork 动作，避免把不可交互状态误写成可恢复状态
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.15.1` 升级到 `0.15.2` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.15.2`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.2` 后会继续沿用该明确选择；未配置 `enabledAttentionSignals` 时使用本轮默认 allow-list
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.15.2` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.15.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.15.1 - Preview Canvas Navigation and Multi-Root Patch
 
 相对 `0.15.0`，`0.15.1` 是同一 `0.15.x` 公开 `Preview` 线内的画布导航与可靠性补丁，重点收口分组标题可读性、分组双击聚焦、`Add Folder to Workspace` 新增 root section 的就近放置与聚焦、多根通知标题 root 标识，以及执行性能诊断插桩。它保留 `0.15.0` 的 Claude Code Agent `Fork`、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、双市场发布元数据、安装拓扑和 Preview 支持边界。
