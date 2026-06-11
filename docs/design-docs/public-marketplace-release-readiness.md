@@ -183,7 +183,7 @@ updated_at: 2026-06-14
 
 ### 7.5 发布流水线最小 CI 化
 
-当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag` 和上传发布产物。自 2026-06-13 起，workflow 在 Visual Studio Marketplace / Open VSX 发布与验证之外增加 GitHub Release assets：首次运行时用 `--package-only` 打包并生成 manifest，创建或确认正式 tag，创建 / 更新对应 GitHub Release 并上传两个 VSIX 与 manifest；同版本重跑时若 Release 已有完整 assets，则下载并用 `--skip-package --package-only` 校验既有 manifest / VSIX，不重新打包或覆盖 VSIX；随后再用 `--skip-package` 复用同一批 VSIX 发布并验证 marketplace。GitHub Release 创建、assets 上传、最终 manifest 覆盖和临时 tag 删除由 workflow 负责；只有 marketplace 发布验证成功后才删除临时 tag，marketplace 失败时保留 `publish/vX.Y.Z` 供同一 release input 重跑。
+当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag` 和上传发布产物。自 2026-06-13 起，workflow 在 Visual Studio Marketplace / Open VSX 发布与验证之外增加 GitHub Release assets：首次运行时用 `--package-only` 打包并生成 manifest，创建或确认正式 tag，创建 / 更新对应 GitHub Release 并上传两个 VSIX 与 manifest；同版本重跑时若 Release 已有完整 assets，则下载并用 `--skip-package --package-only` 校验既有 manifest / VSIX，不重新打包或覆盖 VSIX；随后再用 `--skip-package` 复用同一批 VSIX 发布并验证 marketplace。GitHub Release 创建、assets 上传、最终 manifest 覆盖和临时 tag 删除由 workflow 负责；只有 marketplace 发布验证成功后才删除临时 tag，marketplace 失败时保留 `publish/vX.Y.Z` 供同一 release input 重跑。workflow 触发范围必须保持收窄：只响应 `publish/v*` tag push 与手动 `workflow_dispatch`，不响应普通分支、普通 tag 或 release 分支创建，避免 Actions 列表出现 skipped publish run 并干扰发布判断。
 
 当前轮次仍需保留的最小手工 gate 是：
 

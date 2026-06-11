@@ -71,6 +71,8 @@
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --package-only
 
+workflow 只应由 `publish/v*` tag push 或手动 `workflow_dispatch` 触发；创建普通分支、普通 tag 或 release 分支不应产生 skipped publish run。若 Actions 列表出现这类噪音，应优先修正 workflow 触发条件，而不是把 skipped run 当作真实 notifier 发布动作。
+
 workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起上传到 `v0.15.2` 对应的 GitHub Release assets。GitHub 不支持裸 tag assets，因此用户下载入口是 GitHub Release 的 Assets 区，不是 tag 对象本身。上传 Release assets 后，workflow 会继续复用同一份 manifest / VSIX 发布并验证 Visual Studio Marketplace 与 Open VSX：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package

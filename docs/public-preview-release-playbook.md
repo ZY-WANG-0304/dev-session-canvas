@@ -176,6 +176,8 @@
     npm ci
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --package-only
 
+该 workflow 只响应 `publish/v*` tag push 与手动 `workflow_dispatch`；创建普通分支、普通 tag 或 release 分支不应再生成 skipped publish run。若 Actions 列表出现非 `publish/v*` 引起的 `Publish Marketplace Release` run，应先修正 workflow 触发条件，不要把 skipped run 当作真实发布动作。
+
 随后 workflow 会创建或确认正式 `v0.15.2` tag 指向同一 release ref，创建或更新 `v0.15.2` 对应的 GitHub Release，并上传以下 Release assets：
 
     release-artifacts/release-manifest-0.15.2.json
@@ -188,7 +190,7 @@ Release assets 上传后，workflow 会继续复用同一批 manifest / VSIX 执
 
 只有 marketplace 发布与验证成功后，workflow 才上传最终 manifest 并删除远端和本地 `publish/v0.15.2`。如果 marketplace 发布或验证失败，GitHub Release assets 会保留为手动安装兜底，job 失败且临时 tag 保留，便于修复 token / 渠道问题后重跑同一 release input；重跑必须复用这批既有 assets 并通过 manifest sha256 校验。
 
-发布前可先 dry-run，预览 release ref、VSIX 计划和 manifest：
+本地人工执行同一路径时，也应使用同一入口；发布前可先 dry-run，预览 release ref、VSIX 计划和 manifest：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --dry-run --package-only
 
