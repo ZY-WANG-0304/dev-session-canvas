@@ -18,7 +18,7 @@
 
 - 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
 - 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
-- 首次安装与从 `0.15.1` 升级到 `0.15.2` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 首次安装与从 `0.15.1` 升级到 `0.15.2` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧已可公开查询，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用
 - 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.15.2`，不引入新的通知投递行为变更
 - 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.2` 后会继续沿用该明确选择；未配置 `enabledAttentionSignals` 时使用本轮默认 allow-list
 - Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
