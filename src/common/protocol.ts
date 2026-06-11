@@ -164,6 +164,7 @@ export type AgentNodeStatus =
   | 'resuming'
   | 'resume-ready'
   | 'resume-failed'
+  /** @deprecated Legacy Claude Ctrl-Z state. New Claude Agent sessions block Ctrl-Z instead. */
   | 'suspended'
   | 'stopping'
   | 'stopped'
@@ -209,9 +210,13 @@ export interface AgentNodeMetadata extends ExecutionSessionMetadata {
   resumeStoragePath?: string;
   lastResumeError?: string;
   lastBackendLabel?: string;
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
   preSuspendLifecycle?: AgentNodeStatus;
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
   lastSuspendReason?: 'claude-ctrl-z';
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
   lastSuspendMessage?: string;
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions no longer reactivate. */
   lastReactivateError?: string;
 }
 
@@ -837,13 +842,6 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
-      type: 'webview/reactivateSuspendedExecutionSession';
-      payload: {
-        nodeId: string;
-        kind: ExecutionNodeKind;
-      };
-    }
-  | {
       type: 'webview/updateNodeTitle';
       payload: {
         nodeId: string;
@@ -1448,8 +1446,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (
     value.type === 'webview/attachExecutionSession' ||
-    value.type === 'webview/stopExecutionSession' ||
-    value.type === 'webview/reactivateSuspendedExecutionSession'
+    value.type === 'webview/stopExecutionSession'
   ) {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (

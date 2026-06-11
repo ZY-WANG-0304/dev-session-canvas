@@ -30,7 +30,6 @@ export interface ExecutionSessionProcess {
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(): void;
-  reactivate(): void;
   onData(listener: (chunk: string) => void): DisposableLike;
   onExit(listener: (event: ExecutionSessionExitEvent) => void): DisposableLike;
 }
@@ -92,22 +91,6 @@ class NodePtyExecutionSessionProcess implements ExecutionSessionProcess {
 
   public kill(): void {
     this.pty.kill();
-  }
-
-  public reactivate(): void {
-    if (process.platform === 'win32') {
-      throw new Error('当前平台不支持恢复已挂起的 PTY 会话。');
-    }
-
-    try {
-      process.kill(this.pty.pid, 'SIGCONT');
-    } catch (error) {
-      try {
-        process.kill(-this.pty.pid, 'SIGCONT');
-      } catch {
-        throw error;
-      }
-    }
   }
 
   public onData(listener: (chunk: string) => void): DisposableLike {

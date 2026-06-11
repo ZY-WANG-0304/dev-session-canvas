@@ -2911,18 +2911,103 @@ test('canvas renders a shared execution help entry with tooltip text', async ({ 
   );
 });
 
-test('suspended Claude Agent shows restore action and suppresses terminal input', async ({ page }) => {
+test('Claude Agent Ctrl-Z is blocked before execution input reaches the host', async ({ page }) => {
+  const state = createLiveExecutionNodeState('agent');
+  const agentNode = state.nodes[0];
+  agentNode.status = 'waiting-input';
+  agentNode.summary = 'Claude Code 已就绪，等待输入。';
+  agentNode.metadata.agent.provider = 'claude';
+  agentNode.metadata.agent.shellPath = 'claude';
+  agentNode.metadata.agent.lifecycle = 'waiting-input';
+  agentNode.metadata.agent.lastBackendLabel = 'Claude Code';
+
+  await openHarness(page);
+  await bootstrap(page, state);
+  await waitForExecutionTerminalReady(page, 'agent-zoom');
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'sendExecutionInput',
+    nodeId: 'agent-zoom',
+    data: '\u001a'
+  });
+
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveText(
+    'Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或 Fork。'
+  );
+  const inputMessages = await page.evaluate(() =>
+    window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === 'webview/executionInput')
+  );
+  expect(inputMessages).toHaveLength(0);
+});
+
+test('Claude Agent Ctrl-Z block is scoped away from Terminal and Codex Agent input', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  await waitForExecutionTerminalReady(page, 'terminal-zoom');
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'sendExecutionInput',
+    nodeId: 'terminal-zoom',
+    data: '\u001a'
+  });
+
+  await expect
+    .poll(async () => {
+      const message = await page.evaluate(() => {
+        return (
+          window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .find((entry) => entry.type === 'webview/executionInput') ?? null
+        );
+      });
+      return message ? JSON.stringify(message.payload) : null;
+    })
+    .toBe(JSON.stringify({ nodeId: 'terminal-zoom', kind: 'terminal', data: '\u001a' }));
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveCount(0);
+
+  await bootstrap(page, createLiveExecutionNodeState('agent'));
+  await waitForExecutionTerminalReady(page, 'agent-zoom');
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'sendExecutionInput',
+    nodeId: 'agent-zoom',
+    data: '\u001a'
+  });
+
+  await expect
+    .poll(async () => {
+      const message = await page.evaluate(() => {
+        return (
+          window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .find((entry) => entry.type === 'webview/executionInput') ?? null
+        );
+      });
+      return message ? JSON.stringify(message.payload) : null;
+    })
+    .toBe(JSON.stringify({ nodeId: 'agent-zoom', kind: 'agent', data: '\u001a' }));
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveCount(0);
+});
+
+test('suspended Claude Agent legacy state no longer exposes restore actions', async ({ page }) => {
   const state = createLiveExecutionNodeState('agent');
   const agentNode = state.nodes[0];
   agentNode.status = 'suspended';
-  agentNode.summary = 'Claude Code 已挂起。点击“恢复”继续当前会话，或点击“停止”结束会话。';
+  agentNode.summary = 'Claude Code 已挂起，请点击“停止”结束会话后重启。';
   agentNode.metadata.agent.provider = 'claude';
   agentNode.metadata.agent.shellPath = 'claude';
   agentNode.metadata.agent.lifecycle = 'suspended';
   agentNode.metadata.agent.lastBackendLabel = 'Claude Code';
   agentNode.metadata.agent.preSuspendLifecycle = 'waiting-input';
   agentNode.metadata.agent.lastSuspendReason = 'claude-ctrl-z';
-  agentNode.metadata.agent.lastSuspendMessage = 'Claude Code 已挂起。点击“恢复”继续当前会话，或点击“停止”结束会话。';
+  agentNode.metadata.agent.lastSuspendMessage = 'Claude Code 已挂起，请点击“停止”结束会话后重启。';
+  agentNode.metadata.agent.resumeStrategy = 'claude-session-id';
+  agentNode.metadata.agent.resumeSessionId = 'session-123';
 
   await openHarness(page);
   await bootstrap(page, state);
@@ -2930,24 +3015,15 @@ test('suspended Claude Agent shows restore action and suppresses terminal input'
 
   const node = nodeById(page, 'agent-zoom');
   await expect(node.locator('.status-pill').first()).toHaveText('已挂起');
-  await expect(node.locator('[data-agent-reactivate-action="true"]')).toBeVisible();
-  await expect(node.locator('.terminal-overlay')).toContainText('Claude Code 已挂起');
+  await expect(node.getByRole('button', { name: '恢复', exact: true })).toHaveCount(0);
+  await expect(node.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+  await expect(node.getByRole('button', { name: '停止' })).toBeVisible();
+  await expect(node.locator('.terminal-overlay')).toHaveCount(0);
 
   await clearPostedMessages(page);
-  await node.locator('.xterm-screen').click({ position: { x: 16, y: 16 } });
-  await page.keyboard.type('ignored while suspended');
-  await settleWebview(page, 2);
-  expect(
-    await page.evaluate(() =>
-      window.__devSessionCanvasHarness
-        .getPostedMessages()
-        .some((entry) => entry.type === 'webview/executionInput')
-    )
-  ).toBe(false);
-
-  await node.locator('[data-agent-reactivate-action="true"]').click();
-  const reactivateMessage = await waitForPostedMessageByType(page, 'webview/reactivateSuspendedExecutionSession');
-  expect(reactivateMessage.payload).toMatchObject({
+  await node.getByRole('button', { name: '停止' }).click();
+  const stopMessage = await waitForPostedMessageByType(page, 'webview/stopExecutionSession');
+  expect(stopMessage.payload).toMatchObject({
     nodeId: 'agent-zoom',
     kind: 'agent'
   });

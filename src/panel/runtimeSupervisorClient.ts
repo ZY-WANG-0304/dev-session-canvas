@@ -10,7 +10,6 @@ import type {
   RuntimeSupervisorEvent,
   RuntimeSupervisorHelloResult,
   RuntimeSupervisorMessage,
-  RuntimeSupervisorReactivateSessionParams,
   RuntimeSupervisorResizeSessionParams,
   RuntimeSupervisorSessionSnapshot,
   RuntimeSupervisorStopSessionParams,
@@ -91,10 +90,6 @@ export class RuntimeSupervisorClient {
     await this.request('stopSession', params);
   }
 
-  public async reactivateSession(params: RuntimeSupervisorReactivateSessionParams): Promise<void> {
-    await this.request('reactivateSession', params);
-  }
-
   public async deleteSession(params: RuntimeSupervisorDeleteSessionParams): Promise<void> {
     await this.request('deleteSession', params);
   }
@@ -119,7 +114,6 @@ export class RuntimeSupervisorClient {
       | 'resizeSession'
       | 'updateSessionScrollback'
       | 'stopSession'
-      | 'reactivateSession'
       | 'deleteSession',
     params:
       | RuntimeSupervisorCreateSessionParams
@@ -128,7 +122,6 @@ export class RuntimeSupervisorClient {
       | RuntimeSupervisorResizeSessionParams
       | RuntimeSupervisorUpdateSessionScrollbackParams
       | RuntimeSupervisorStopSessionParams
-      | RuntimeSupervisorReactivateSessionParams
       | RuntimeSupervisorDeleteSessionParams
   ): Promise<T>;
   private async request<T>(method: string, params?: unknown): Promise<T> {

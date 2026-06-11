@@ -2032,10 +2032,6 @@ body {
     inset 0 0 0 9999px color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent 90%);
 }
 
-.terminal-frame.is-suspended .terminal-viewport {
-  filter: grayscale(0.35) opacity(0.72);
-}
-
 .terminal-viewport {
   flex: 1;
   min-height: 0;
