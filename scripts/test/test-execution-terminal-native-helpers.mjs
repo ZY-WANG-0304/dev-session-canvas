@@ -35,14 +35,16 @@ try {
       '  files: new Map(),',
       '  commands: [],',
       '  showTextDocumentCalls: [],',
+      '  openExternalCalls: [],',
       '  allowedLinkSchemes: []',
       '};',
       'function createUri(fsPath, rawValue) {',
       "  const normalizedPath = fsPath.replace(/\\\\/g, '/');",
+      '  const schemeMatch = typeof rawValue === "string" ? /^([a-z][a-z0-9+.-]*):/i.exec(rawValue) : null;',
       '  return {',
       '    fsPath,',
       '    path: normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`,',
-      '    scheme: rawValue && rawValue.includes("://") ? rawValue.slice(0, rawValue.indexOf("://")) : "file",',
+      '    scheme: schemeMatch ? schemeMatch[1] : "file",',
       '    toString() { return rawValue ?? fsPath; }',
       '  };',
       '}',
@@ -86,6 +88,7 @@ try {
       '  state.files = new Map();',
       '  state.commands = [];',
       '  state.showTextDocumentCalls = [];',
+      '  state.openExternalCalls = [];',
       '  state.allowedLinkSchemes = [];',
       '}',
       'exports.__reset = resetState;',
@@ -107,10 +110,14 @@ try {
       'exports.__getShowTextDocumentCalls = function getShowTextDocumentCalls() {',
       '  return state.showTextDocumentCalls.slice();',
       '};',
+      'exports.__getOpenExternalCalls = function getOpenExternalCalls() {',
+      '  return state.openExternalCalls.slice();',
+      '};',
       'exports.Range = Range;',
       'exports.RelativePattern = RelativePattern;',
       'exports.FileType = FileType;',
       'exports.ConfigurationTarget = ConfigurationTarget;',
+      'exports.ViewColumn = { Active: -1, Beside: -2, One: 1 };',
       'exports.Uri = {',
       '  parse(value) {',
       '    if (value.startsWith("file://")) {',
@@ -182,6 +189,12 @@ try {
       '  async executeCommand(command, ...args) {',
       '    state.commands.push({ command, args });',
       '    return undefined;',
+      '  }',
+      '};',
+      'exports.env = {',
+      '  async openExternal(uri) {',
+      '    state.openExternalCalls.push(uri);',
+      '    return true;',
       '  }',
       '};',
       ''
@@ -460,6 +473,82 @@ try {
   const validResolvedIdIgnoredOpenCalls = vscodeStub.__getShowTextDocumentCalls();
   assert.equal(validResolvedIdIgnoredOpenCalls.length, 1);
   assert.equal(validResolvedIdIgnoredOpenCalls[0].document.uri.fsPath, '/workspace/current-target.ts');
+
+  vscodeStub.__reset();
+  await vscodeStub.workspace
+    .getConfiguration('terminal.integrated')
+    .update('allowedLinkSchemes', ['https']);
+  const defaultUrlOpenResult = await openExecutionTerminalLink(
+    {
+      linkKind: 'url',
+      text: 'https://example.com/docs',
+      url: 'https://example.com/docs',
+      source: 'implicit'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.deepEqual(defaultUrlOpenResult, {
+    opened: true,
+    openerKind: 'simpleBrowser.api.open',
+    targetUri: 'https://example.com/docs'
+  });
+  const defaultUrlOpenCommands = vscodeStub.__getExecutedCommands();
+  assert.equal(defaultUrlOpenCommands.length, 1);
+  assert.equal(defaultUrlOpenCommands[0].command, 'simpleBrowser.api.open');
+  assert.equal(defaultUrlOpenCommands[0].args[0].toString(), 'https://example.com/docs');
+  assert.deepEqual(defaultUrlOpenCommands[0].args[1], {
+    preserveFocus: false,
+    viewColumn: -1
+  });
+  assert.equal(vscodeStub.__getOpenExternalCalls().length, 0);
+
+  vscodeStub.__reset();
+  await vscodeStub.workspace
+    .getConfiguration('terminal.integrated')
+    .update('allowedLinkSchemes', ['mailto']);
+  const mailtoUrlOpenResult = await openExecutionTerminalLink(
+    {
+      linkKind: 'url',
+      text: 'mailto:team@example.com',
+      url: 'mailto:team@example.com',
+      source: 'implicit'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.deepEqual(mailtoUrlOpenResult, {
+    opened: true,
+    openerKind: 'vscode.open',
+    targetUri: 'mailto:team@example.com'
+  });
+  const mailtoUrlOpenCommands = vscodeStub.__getExecutedCommands();
+  assert.equal(mailtoUrlOpenCommands.length, 1);
+  assert.equal(mailtoUrlOpenCommands[0].command, 'vscode.open');
+  assert.equal(mailtoUrlOpenCommands[0].args[0].toString(), 'mailto:team@example.com');
+  assert.equal(vscodeStub.__getOpenExternalCalls().length, 0);
+
+  vscodeStub.__reset();
+  await vscodeStub.workspace
+    .getConfiguration('terminal.integrated')
+    .update('allowedLinkSchemes', ['https']);
+  const externalUrlOpenResult = await openExecutionTerminalLink(
+    {
+      linkKind: 'url',
+      text: 'https://example.com/docs',
+      url: 'https://example.com/docs',
+      source: 'implicit'
+    },
+    createContext('/bin/bash', '/workspace', 'posix', {
+      linkOpenMode: 'externalBrowser'
+    })
+  );
+  assert.deepEqual(externalUrlOpenResult, {
+    opened: true,
+    openerKind: 'vscode.env.openExternal',
+    targetUri: 'https://example.com/docs'
+  });
+  assert.deepEqual(vscodeStub.__getExecutedCommands(), []);
+  assert.equal(vscodeStub.__getOpenExternalCalls().length, 1);
+  assert.equal(vscodeStub.__getOpenExternalCalls()[0].toString(), 'https://example.com/docs');
 
   console.log('executionTerminalNativeHelpers tests passed');
 } finally {

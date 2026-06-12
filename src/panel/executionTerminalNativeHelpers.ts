@@ -17,12 +17,18 @@ import {
   removeExecutionTerminalLinkQueryString,
   removeExecutionTerminalLinkSuffix
 } from '../common/executionTerminalLinks';
+import {
+  normalizeCanvasLinkOpenMode,
+  type CanvasLinkOpenMode
+} from '../common/protocol';
+import { openCanvasExternalLink } from './linkOpenMode';
 
 export interface ExecutionTerminalPathContext {
   shellPath?: string;
   cwd: string;
   pathStyle: ExecutionTerminalPathStyle;
   userHome?: string;
+  linkOpenMode?: CanvasLinkOpenMode;
   resolveCwdForBufferLine?: (bufferStartLine: number) => Promise<string | undefined> | string | undefined;
 }
 
@@ -39,7 +45,9 @@ export interface PreparedExecutionTerminalResolvedFileLink {
 }
 
 export type ExecutionTerminalHostOpenerKind =
+  | 'simpleBrowser.api.open'
   | 'vscode.open'
+  | 'vscode.env.openExternal'
   | 'showTextDocument'
   | 'revealInExplorer'
   | 'vscode.openFolder'
@@ -221,11 +229,11 @@ export async function openExecutionTerminalLink(
       return { opened: false };
     }
     const uri = vscode.Uri.parse(link.url);
-    await vscode.commands.executeCommand('vscode.open', uri);
+    const openResult = await openCanvasExternalLink(uri, normalizeCanvasLinkOpenMode(context.linkOpenMode));
     return {
-      opened: true,
-      openerKind: 'vscode.open',
-      targetUri: uri.toString()
+      opened: openResult.opened,
+      openerKind: openResult.openerKind,
+      targetUri: openResult.targetUri
     };
   }
 

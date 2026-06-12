@@ -57,6 +57,10 @@
   - 用户可在节点内编辑标题和正文
   - 正文聚焦编辑时保持纯文本输入；结束编辑后按 Markdown 预览展示
   - 当前阅读态至少支持可直接勾选的任务列表、可点击外部链接、可打开 workspace 内文件链接、图片预览、语法高亮代码块与数学公式
+- 画布外部链接打开方式：
+  - 用户可通过 `devSessionCanvas.canvas.linkOpenMode` 选择外部链接在 VS Code editor 中预览打开，或交给系统默认外部浏览器 / 应用打开
+  - 默认 `editorPreview` 对 `http` / `https` 链接使用 VS Code 内置 Simple Browser，以避免通用 opener 把网页链接委派到系统浏览器
+  - 该设置只影响画布内 Note 预览外部链接与执行节点 URL 链接；workspace 文件链接仍按 VS Code 文件编辑器语义打开
 - 节点窗口尺寸能力：
   - `Agent`、`Terminal`、`Note` 三类节点都可在画布中调整宽高
   - 用户调整后的节点尺寸会进入宿主状态，并在 reload 后恢复
