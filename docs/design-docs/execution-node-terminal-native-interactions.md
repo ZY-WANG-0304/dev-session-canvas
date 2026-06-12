@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/active/execution-terminal-native-link-parity.md
   - docs/exec-plans/completed/execution-node-terminal-native-interactions.md
   - docs/exec-plans/completed/execution-node-link-parity-and-extensions.md
-updated_at: 2026-05-19
+updated_at: 2026-06-12
 ---
 
 # 执行节点的 VSCode 原生 Terminal 交互对齐
@@ -191,7 +191,7 @@ updated_at: 2026-05-19
 - workspace 内目录：`revealInExplorer`。
 - workspace 外目录：新窗口打开目录。
 - search：先 exact-open，再 `workbench.action.quickOpen`。
-- URL：非 `file://` 走 VSCode opener 路径，而不是浏览器默认行为。
+- URL：非 `file://` 默认按 `devSessionCanvas.canvas.linkOpenMode=editorPreview` 处理；其中 `http` / `https` 显式调用 VS Code 内置 Simple Browser 的 `simpleBrowser.api.open`，保证在 editor 区域预览打开，避免通用 `vscode.open` 被 opener service 委派到系统浏览器。其它安全 URI scheme 继续走 `vscode.open`。用户也可以通过 `devSessionCanvas.canvas.linkOpenMode=externalBrowser` 改为 `vscode.env.openExternal`，把外部链接交给系统默认浏览器或应用。`file://` 与普通文件 / 目录 opener 分流不受该设置影响，仍按文件安全与定位规则在 VS Code 中处理。
 
 ### 7.7 当前自定义 heuristics 的处置原则
 

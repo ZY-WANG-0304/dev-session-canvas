@@ -7508,7 +7508,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
             event.detail?.nodeId === terminalNodeId &&
             event.detail?.text === urlLinkText &&
             event.detail?.linkKind === 'url' &&
-            event.detail?.openerKind === 'vscode.open' &&
+            event.detail?.openerKind === 'simpleBrowser.api.open' &&
             event.detail?.targetUri === urlLinkText
         ),
       10000
@@ -7550,7 +7550,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
             event.detail?.nodeId === terminalNodeId &&
             event.detail?.text === explicitUrlLinkText &&
             event.detail?.linkKind === 'url' &&
-            event.detail?.openerKind === 'vscode.open' &&
+            event.detail?.openerKind === 'simpleBrowser.api.open' &&
             event.detail?.targetUri === explicitUrlLinkText
         ),
       10000

@@ -9,6 +9,21 @@ const manifest = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 
 const defaultSurface = manifest.contributes.configuration.properties['devSessionCanvas.canvas.defaultSurface'];
 assert.equal(defaultSurface.default, 'panel');
 
+const canvasLinkOpenMode =
+  manifest.contributes.configuration.properties['devSessionCanvas.canvas.linkOpenMode'];
+assert.ok(canvasLinkOpenMode, 'Expected canvas link open mode to be contributed as a configuration property.');
+assert.deepEqual(
+  canvasLinkOpenMode.enum,
+  ['editorPreview', 'externalBrowser'],
+  'Expected canvas link open mode to support VS Code editor preview and external browser modes.'
+);
+assert.equal(
+  canvasLinkOpenMode.default,
+  'editorPreview',
+  'Expected canvas links to preserve VS Code editor preview behavior by default.'
+);
+assert.equal(canvasLinkOpenMode.scope, 'window');
+
 const enabledAttentionSignals =
   manifest.contributes.configuration.properties['devSessionCanvas.notifications.enabledAttentionSignals'];
 assert.ok(enabledAttentionSignals, 'Expected enabledAttentionSignals to be contributed as a configuration property.');
