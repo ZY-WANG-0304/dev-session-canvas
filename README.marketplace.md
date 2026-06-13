@@ -36,7 +36,7 @@ The public `0.15.2` release is a Preview patch focused on notification controls,
 - Associate `Note` nodes with `.md` / `.markdown` files in the workspace, including YAML metadata popovers and safe Markdown image previews
 - Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces, including explicit save modes for associated Markdown Notes
 - Organize related `Agent`, `Terminal`, and `Note` nodes with named canvas groups, nested group frames, group resize, and grouped sidebar browsing
-- Fork a Claude Code Agent with a trusted session id into a new Agent node using provider-native fork semantics
+- Fork a Codex or Claude Code Agent with a trusted session id into a new Agent node using provider-native fork semantics
 - Compose VS Code multi-root workspaces into one canvas with system workspace-root sections while preserving each root's own canvas state
 - Use fit view and the MiniMap across the full canvas space, including nodes, user groups, and workspace-root sections
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points

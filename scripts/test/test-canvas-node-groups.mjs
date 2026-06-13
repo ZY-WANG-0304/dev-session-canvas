@@ -27,6 +27,7 @@ try {
     'applyCanvasTemplateToState',
     'createNextState',
     'normalizeState',
+    'createBranchAgentUserEdge',
     'createUserCanvasEdge',
     'updateCanvasEdge',
     'recordAgentFileActivity',
@@ -126,6 +127,7 @@ try {
     applyCanvasTemplateToState,
     createNextState,
     normalizeState,
+    createBranchAgentUserEdge,
     createUserCanvasEdge,
     updateCanvasEdge,
     recordAgentFileActivity,
@@ -880,6 +882,27 @@ try {
     sameRootEdgeState.edges.some((candidate) => candidate.id === 'edge-same-root'),
     'Edges between nodes inside the same workspace root should still be accepted.'
   );
+  const branchEdgeState = createBranchAgentUserEdge(
+    state({
+      nodes: [
+        agent('fork-source-agent', { x: 100, y: 120 }, { size: { width: 420, height: 320 } }),
+        agent('fork-target-agent', { x: 600, y: 120 }, { size: { width: 420, height: 320 } })
+      ]
+    }),
+    agent('fork-source-agent', { x: 100, y: 120 }, { size: { width: 420, height: 320 } }),
+    agent('fork-target-agent', { x: 600, y: 120 }, { size: { width: 420, height: 320 } })
+  );
+  const branchEdge = branchEdgeState.edges.find(
+    (candidate) =>
+      candidate.sourceNodeId === 'fork-source-agent' &&
+      candidate.targetNodeId === 'fork-target-agent'
+  );
+  assert.ok(branchEdge, 'Agent Fork should create a user edge from source Agent to forked Agent.');
+  assert.strictEqual(branchEdge.owner, 'user');
+  assert.strictEqual(branchEdge.arrowMode, 'forward');
+  assert.strictEqual(branchEdge.sourceAnchor, 'right');
+  assert.strictEqual(branchEdge.targetAnchor, 'left');
+  assert.strictEqual(branchEdge.label, 'fork');
   const workspaceRootEdgeState = {
     ...workspaceRootState,
     nodes: [

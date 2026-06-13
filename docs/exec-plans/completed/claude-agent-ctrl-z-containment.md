@@ -8,7 +8,7 @@
 
 用户在普通 shell 终端里按 `Ctrl-Z` 后可以用 shell job control 把程序放到后台，再通过 `fg` 回到前台。但 Dev Session Canvas 的 Claude Agent 节点当前是直接通过 `node-pty` 启动 `claude` 进程，没有外层交互 shell 的 job table。实测中，Claude 输出 “suspended / fg” 文案并不等价于 Canvas 已经获得可恢复的后台 job；页面仍可能继续更新，点击恢复后也可能无法真正恢复输入。
 
-本次收口完成后，Claude Agent 节点不再把 Claude 自身输出的 suspend 文案当成生命周期权威信号，也不再展示“恢复”或“恢复中”。当用户在 Claude Agent 节点里输入 `Ctrl-Z` 时，Webview、宿主和 runtime supervisor 三层都会阻断该输入，并显示明确提示：Claude Agent 节点不支持 `Ctrl-Z/fg`，请改用停止、重启或 Fork。普通 Terminal 节点和非 Claude Agent 不因为这条 Claude 专属规则被拦截。
+本次收口完成后，Claude Agent 节点不再把 Claude 自身输出的 suspend 文案当成生命周期权威信号，也不再展示“恢复”或“恢复中”。当用户在 Claude Agent 节点里输入 `Ctrl-Z` 时，Webview、宿主和 runtime supervisor 三层都会阻断该输入，并显示明确提示：Claude Agent 节点不支持 `Ctrl-Z/fg`，请改用停止、重启或分叉。普通 Terminal 节点和非 Claude Agent 不因为这条 Claude 专属规则被拦截。
 
 ## 进度
 
@@ -33,7 +33,7 @@
   理由：该文案来自 provider 内部 UI，不代表 Canvas 有一个可通过 `fg` 或 `SIGCONT` 稳定恢复的 shell job。继续相信它会制造假“已挂起 / 可恢复”状态。
   日期/作者：2026-06-11 / Codex
 
-- 决策：Claude Agent 节点输入 `Ctrl-Z` 时直接阻断，并提示使用停止、重启或 Fork。
+- 决策：Claude Agent 节点输入 `Ctrl-Z` 时直接阻断，并提示使用停止、重启或分叉。
   理由：阻断能避免进入不可解释的半挂起交互状态；停止和重启是 Canvas 已有且可验证的生命周期动作，Fork 则是 Claude 会话层的显式分支动作。
   日期/作者：2026-06-11 / Codex
 
