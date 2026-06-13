@@ -81,7 +81,7 @@ jobs:
           release_ref="${{ steps.ref.outputs.release_ref }}"
           git fetch origin --tags
 
-          local_ref="$(git rev-parse "$final_tag^{}" 2>/dev/null || true)"
+          local_ref="$(git rev-parse --verify --quiet "$final_tag^{}" 2>/dev/null || true)"
           if [[ -n "$local_ref" && "$local_ref" != "$release_ref" ]]; then
             echo "Local final tag $final_tag points to $local_ref, expected $release_ref." >&2
             exit 1
