@@ -5,6 +5,9 @@ import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from './term
 
 export const SERIALIZED_TERMINAL_STATE_FORMAT = 'xterm-serialize-v1';
 const MAX_SERIALIZED_TERMINAL_STATE_DATA_LENGTH = 5 * 1024 * 1024;
+const SERIALIZED_TERMINAL_STATE_WRITE_BATCH_DELAY_MS = 16;
+const SERIALIZED_TERMINAL_STATE_WRITE_CHUNK_CHARS = 32 * 1024;
+const SERIALIZED_TERMINAL_STATE_CACHE_REFRESH_INTERVAL_MS = 1000;
 
 export interface SerializedTerminalState {
   format: typeof SERIALIZED_TERMINAL_STATE_FORMAT;
@@ -60,6 +63,11 @@ export class SerializedTerminalStateTracker {
   private serializeAddon: SerializeAddon;
   private scrollback: number;
   private operationChain: Promise<void> = Promise.resolve();
+  private pendingWriteData = '';
+  private pendingWriteDrainTimer: ReturnType<typeof setTimeout> | undefined;
+  private cachedStateDirty = false;
+  private lastCachedStateRefreshAtMs = Date.now();
+  private disposed = false;
   private cachedState: SerializedTerminalState = {
     format: SERIALIZED_TERMINAL_STATE_FORMAT,
     data: ''
@@ -88,15 +96,23 @@ export class SerializedTerminalStateTracker {
   }
 
   public write(chunk: string): void {
-    if (!chunk) {
+    if (!chunk || this.disposed) {
       return;
     }
 
-    this.enqueueOperation(() => this.writeInternal(chunk));
+    this.pendingWriteData += chunk;
+    this.schedulePendingWriteDrain();
   }
 
   public resize(cols: number, rows: number): void {
-    this.enqueueOperation(() => {
+    if (this.disposed) {
+      return;
+    }
+
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteData = this.takePendingWriteData();
+    this.enqueueOperation(async () => {
+      await this.drainWriteData(pendingWriteData, true);
       this.terminal.resize(cols, rows);
       this.refreshCachedState();
     });
@@ -107,13 +123,24 @@ export class SerializedTerminalStateTracker {
   }
 
   public async setScrollback(scrollback: number): Promise<void> {
-    const normalizedScrollback = normalizeTerminalScrollback(scrollback, DEFAULT_TERMINAL_SCROLLBACK);
-    if (normalizedScrollback === this.scrollback) {
+    if (this.disposed) {
       await this.operationChain;
       return;
     }
 
+    const normalizedScrollback = normalizeTerminalScrollback(scrollback, DEFAULT_TERMINAL_SCROLLBACK);
+    if (normalizedScrollback === this.scrollback) {
+      this.clearPendingWriteDrainTimer();
+      const pendingWriteData = this.takePendingWriteData();
+      this.enqueueOperation(() => this.drainWriteData(pendingWriteData, true));
+      await this.operationChain;
+      return;
+    }
+
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteData = this.takePendingWriteData();
     this.enqueueOperation(async () => {
+      await this.drainWriteData(pendingWriteData, true);
       const currentState = this.serializeState();
       const cols = this.terminal.cols;
       const rows = this.terminal.rows;
@@ -132,27 +159,115 @@ export class SerializedTerminalStateTracker {
   }
 
   public async flush(): Promise<SerializedTerminalState> {
+    if (this.disposed) {
+      await this.operationChain;
+      return this.getSerializedState();
+    }
+
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteData = this.takePendingWriteData();
+    this.enqueueOperation(() => this.drainWriteData(pendingWriteData, true));
     await this.operationChain;
+    if (this.cachedStateDirty) {
+      this.refreshCachedState();
+    }
     return this.getSerializedState();
   }
 
   public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+
+    this.disposed = true;
+    this.clearPendingWriteDrainTimer();
+    this.pendingWriteData = '';
     this.disposeRuntime();
   }
 
   private enqueueOperation(operation: () => Promise<void> | void): void {
     this.operationChain = this.operationChain
-      .then(() => operation())
+      .then(() => {
+        if (this.disposed) {
+          return;
+        }
+
+        return operation();
+      })
       .catch(() => {
-        this.refreshCachedState();
+        if (!this.disposed) {
+          this.refreshCachedState();
+        }
       });
   }
 
-  private async writeInternal(data: string): Promise<void> {
+  private schedulePendingWriteDrain(): void {
+    if (this.pendingWriteDrainTimer) {
+      return;
+    }
+
+    this.pendingWriteDrainTimer = setTimeout(() => {
+      this.pendingWriteDrainTimer = undefined;
+      const pendingWriteData = this.takePendingWriteData();
+      this.enqueueOperation(() => this.drainWriteData(pendingWriteData, false));
+    }, SERIALIZED_TERMINAL_STATE_WRITE_BATCH_DELAY_MS);
+  }
+
+  private clearPendingWriteDrainTimer(): void {
+    if (!this.pendingWriteDrainTimer) {
+      return;
+    }
+
+    clearTimeout(this.pendingWriteDrainTimer);
+    this.pendingWriteDrainTimer = undefined;
+  }
+
+  private takePendingWriteData(): string {
+    const data = this.pendingWriteData;
+    this.pendingWriteData = '';
+    return data;
+  }
+
+  private async drainWriteData(data: string, forceRefresh: boolean): Promise<void> {
+    let remainingData = data;
+    while (remainingData && !this.disposed) {
+      const chunk = remainingData.slice(0, SERIALIZED_TERMINAL_STATE_WRITE_CHUNK_CHARS);
+      remainingData = remainingData.slice(chunk.length);
+      await this.writeInternal(chunk, {
+        refreshCachedState: false
+      });
+      this.cachedStateDirty = true;
+      if (forceRefresh || Date.now() - this.lastCachedStateRefreshAtMs >= SERIALIZED_TERMINAL_STATE_CACHE_REFRESH_INTERVAL_MS) {
+        this.refreshCachedState();
+      }
+      if (remainingData) {
+        await delay(0);
+      }
+    }
+
+    if (forceRefresh && this.cachedStateDirty) {
+      this.refreshCachedState();
+    }
+  }
+
+  private async writeInternal(
+    data: string,
+    options: {
+      refreshCachedState?: boolean;
+    } = {}
+  ): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+
     await new Promise<void>((resolve) => {
       this.terminal.write(data, () => resolve());
     });
-    this.refreshCachedState();
+    if (options.refreshCachedState !== false) {
+      this.refreshCachedState();
+    } else {
+      this.cachedStateDirty = true;
+    }
   }
 
   private async hydrateSerializedState(state: SerializedTerminalState): Promise<void> {
@@ -166,6 +281,8 @@ export class SerializedTerminalStateTracker {
 
   private refreshCachedState(): void {
     this.cachedState = this.serializeState();
+    this.cachedStateDirty = false;
+    this.lastCachedStateRefreshAtMs = Date.now();
   }
 
   private replaceRuntime(cols: number, rows: number, scrollback: number): void {
@@ -215,4 +332,10 @@ export class SerializedTerminalStateTracker {
       viewportY: this.terminal.buffer.active.viewportY >= 0 ? this.terminal.buffer.active.viewportY : undefined
     };
   }
+}
+
+function delay(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, timeoutMs);
+  });
 }

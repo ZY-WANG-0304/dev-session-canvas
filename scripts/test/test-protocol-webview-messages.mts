@@ -2,10 +2,17 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import {
+  EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
   extractWebviewMessageLifecycle,
   isWebviewDomAction,
   parseWebviewMessage
 } from '../../src/common/protocol.ts';
+
+assert.equal(
+  EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
+  8,
+  'Execution performance diagnostics schema should mark input ack, host event-loop lag and bounded Webview snapshot reset diagnostics.'
+);
 
 const hardwrapLinkText = 'src/webview/executionTerminalNativeInteractions.ts:1600:12';
 const hardwrapPath = 'src/webview/executionTerminalNativeInteractions.ts';
@@ -16,6 +23,7 @@ const hardwrapResolveMessage = {
     requestId: 'execution-file-links-test',
     nodeId: 'terminal-test',
     kind: 'terminal',
+    priority: 'background',
     candidates: [
       {
         candidateId: 'hardwrap-styled:1:2',
@@ -34,6 +42,10 @@ const hardwrapResolveMessage = {
 
 assert.deepEqual(parseWebviewMessage(hardwrapResolveMessage), hardwrapResolveMessage);
 
+const invalidPriorityResolveMessage = JSON.parse(JSON.stringify(hardwrapResolveMessage));
+invalidPriorityResolveMessage.payload.priority = 'eager';
+assert.equal(parseWebviewMessage(invalidPriorityResolveMessage), null);
+
 const styledResolveMessage = JSON.parse(JSON.stringify(hardwrapResolveMessage));
 styledResolveMessage.payload.candidates[0].candidateId = 'styled:1:2:1:8:foo.ts';
 styledResolveMessage.payload.candidates[0].text = 'foo.ts';
@@ -41,6 +53,64 @@ styledResolveMessage.payload.candidates[0].path = 'foo.ts';
 styledResolveMessage.payload.candidates[0].endIndexExclusive = 'foo.ts'.length;
 styledResolveMessage.payload.candidates[0].source = 'styled';
 assert.deepEqual(parseWebviewMessage(styledResolveMessage), styledResolveMessage);
+
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: 'agent-1',
+      kind: 'agent',
+      data: 'hello\r',
+      sequence: 7,
+      webviewEpochMs: 1781111111111,
+      webviewPerformanceNowMs: 123.45
+    }
+  }),
+  {
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: 'agent-1',
+      kind: 'agent',
+      data: 'hello\r',
+      sequence: 7,
+      webviewEpochMs: 1781111111111,
+      webviewPerformanceNowMs: 123.45
+    }
+  },
+  'execution input diagnostic metadata 应随输入消息保留。'
+);
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/executionInput',
+    payload: {
+      nodeId: 'agent-1',
+      kind: 'agent',
+      data: 'hello\r',
+      sequence: 1.5
+    }
+  })?.payload.sequence,
+  undefined,
+  'execution input sequence 必须是非负整数。'
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/attachExecutionSession',
+    payload: {
+      nodeId: 'agent-1',
+      kind: 'agent',
+      requestId: 'snapshot-reset-1'
+    }
+  }),
+  {
+    type: 'webview/attachExecutionSession',
+    payload: {
+      nodeId: 'agent-1',
+      kind: 'agent',
+      requestId: 'snapshot-reset-1'
+    }
+  },
+  'execution snapshot reset 复用 attachExecutionSession 请求刷新 Host 侧权威快照，并保留 requestId 供回包关联。'
+);
 
 const lifecycleMessage = {
   type: 'webview/bootstrapAck',
@@ -248,6 +318,7 @@ assert.match(
 );
 
 const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
+const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
 assert.match(
   panelManagerSource,
   /isCurrentWebviewMessage\(sourceSurface, sourceWebview, lifecycle, parsedMessage\.type/u,
@@ -287,6 +358,56 @@ assert.match(
   panelManagerSource,
   /setPersistedStateForTest[\s\S]*const multiRootOverlay = this\.writeRootLocalCanvasSnapshotsForState\(this\.state\)[\s\S]*state: this\.state[\s\S]*multiRootOverlay[\s\S]*waitForPendingWorkspaceStateUpdates/u,
   'Expected seeded test state to update all persisted backends before later reloads choose root-local snapshots.'
+);
+assert.match(
+  panelManagerSource,
+  /CANVAS_STATE_DEFERRED_PERSIST_DEBOUNCE_MS[\s\S]*scheduleDeferredCanvasStatePersist[\s\S]*state\/persistDeferred[\s\S]*flushDeferredCanvasStatePersist/u,
+  'Expected live execution state persistence to be debounced and coalesced instead of writing every output tick.'
+);
+assert.match(
+  panelManagerSource,
+  /const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 2500/u,
+  'Expected live output state sync to avoid posting React state for every short output burst.'
+);
+assert.match(
+  panelManagerSource,
+  /flushLiveExecutionState\([\s\S]*persistMode\?: CanvasStatePersistMode[\s\S]*mode: options\.persistMode \?\? 'deferred'/u,
+  'Expected live execution state flushes to default to deferred persistence.'
+);
+assert.match(
+  panelManagerSource,
+  /queueExecutionStateSync\([\s\S]*options: \{ postState\?: boolean \} = \{\}[\s\S]*postState: options\.postState === true/u,
+  'Expected routine live execution state syncs to persist without forcing Webview state renders.'
+);
+assert.match(
+  panelManagerSource,
+  /options\.postState !== false[\s\S]*options\.postState === true \|\| options\.persistMode === 'immediate'/u,
+  'Expected Webview state updates during active execution to be reserved for explicit or lifecycle-boundary changes.'
+);
+assert.match(
+  panelManagerSource,
+  /getCanvasStatePersistBarrierBeforeExecutionOutput[\s\S]*first-output-post[\s\S]*persisted: persistBarrier === undefined/u,
+  'Expected first output after deferred state changes to be gated until the state snapshot is safely flushed.'
+);
+assert.match(
+  panelManagerSource,
+  /source: 'host-input-received'[\s\S]*type: 'host\/executionInputAck'[\s\S]*hostAckEpochMs/u,
+  'Expected Host to ack execution input before the asynchronous input write path.'
+);
+assert.match(
+  panelManagerSource,
+  /source: 'host-event-loop-lag'[\s\S]*reason: 'timer-lag'/u,
+  'Expected Host event-loop lag to be sampled alongside Webview main-thread lag.'
+);
+assert.match(
+  webviewSource,
+  /case 'host\/executionInputAck':[\s\S]*handleExecutionInputAck/u,
+  'Expected Webview to measure input ack round-trip latency without local echoing input.'
+);
+assert.match(
+  panelManagerSource,
+  /executionPerformance: EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION/u,
+  'Expected host diagnostics schema to mark the input ack and host event-loop lag generation.'
 );
 assert.match(
   panelManagerSource,
@@ -404,7 +525,6 @@ assert.doesNotMatch(
   'Panel view dispose cleanup must not read webviewView.webview because VS Code throws after the view is disposed.'
 );
 
-const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
 assert.match(
   webviewSource,
   /requiresHostMessageLifecycle\(message\.type\) && !messageLifecycle[\s\S]*ignore host message without lifecycle/u,
@@ -414,6 +534,45 @@ assert.match(
   webviewSource,
   /messageLifecycle && !isCurrentWebviewLifecycleIdentity\(messageLifecycle\)[\s\S]*ignore host message with mismatched lifecycle/u,
   'Expected the Webview to reject host messages for stale lifecycle identities.'
+);
+assert.match(
+  webviewSource,
+  /persisted: message\.payload\.persisted[\s\S]*let pendingPersistBarrier = false[\s\S]*outputOptions\?\.persisted === false[\s\S]*pendingPersistBarrier = true[\s\S]*outputOptions\?\.persisted === true[\s\S]*pendingPersistBarrier = false[\s\S]*disposed \|\| pendingPersistBarrier \|\| pendingOutput\.length === 0/u,
+  'Expected the Webview to buffer first unpersisted output until the Host confirms the latest execution state was persisted.'
+);
+assert.match(
+  webviewSource,
+  /EXECUTION_TERMINAL_DRAIN_MAX_CHARS_PER_FRAME[\s\S]*EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER/u,
+  'Expected Webview output draining to use a global frame budget and queued-write backpressure.'
+);
+assert.match(
+  webviewSource,
+  /document\.hidden[\s\S]*reason: 'hidden-paused'[\s\S]*pendingOutputLength/u,
+  'Expected hidden Webviews to pause output drain and report backlog instead of replaying output bursts immediately.'
+);
+assert.match(
+  webviewSource,
+  /shouldThrottleForLagRecovery[\s\S]*'lag-recovery'/u,
+  'Expected Webview drain to enter a small-budget recovery mode after main-thread lag or visibility restore.'
+);
+assert.match(
+  webviewSource,
+  /getQueuedWriteCount\(\)[\s\S]*queuedWriteCount/u,
+  'Expected each terminal controller to expose queued xterm writes so drain can avoid parser queue buildup.'
+);
+
+const serializedTerminalStateSource = await readFile('src/common/serializedTerminalState.ts', 'utf8');
+assert.match(
+  serializedTerminalStateSource,
+  /SERIALIZED_TERMINAL_STATE_WRITE_BATCH_DELAY_MS[\s\S]*schedulePendingWriteDrain[\s\S]*SERIALIZED_TERMINAL_STATE_CACHE_REFRESH_INTERVAL_MS/u,
+  'Expected Host terminal-state snapshots to batch headless xterm writes and avoid serializing on every output chunk.'
+);
+
+const lineContextTrackerSource = await readFile('src/panel/executionTerminalLineContextTracker.ts', 'utf8');
+assert.match(
+  lineContextTrackerSource,
+  /LINE_CONTEXT_WRITE_BATCH_DELAY_MS[\s\S]*takePendingWriteData[\s\S]*drainWriteData/u,
+  'Expected Host line-context tracking to batch headless xterm writes while preserving ordering before input and link lookup.'
 );
 
 const extensionIdentitySource = await readFile('src/common/extensionIdentity.ts', 'utf8');
@@ -529,13 +688,19 @@ const executionPerformanceDiagnosticMessage = {
     nodeId: 'agent-1',
     kind: 'agent',
     reason: 'output',
+    sequence: 3,
     durationMs: 42.5,
+    webviewEpochMs: 1781111111000,
+    hostReceivedEpochMs: 1781111111042,
+    hostAckEpochMs: 1781111111043,
+    queueDelayMs: 42,
     characters: 4096,
     bytes: 4096,
     queuedWriteCount: 2,
     bufferLength: 1000,
     owner: 'supervisor',
     lifecycleStatus: 'running',
+    workspaceStateMode: 'full',
     success: true
   }
 };
@@ -543,6 +708,8 @@ assert.deepEqual(parseWebviewMessage(executionPerformanceDiagnosticMessage), {
   type: 'webview/executionPerformanceDiagnostic',
   payload: {
     ...executionPerformanceDiagnosticMessage.payload,
+    requestId: undefined,
+    executionSessionId: undefined,
     controllerCount: undefined,
     flushedControllerCount: undefined,
     pendingControllerCount: undefined,
@@ -569,7 +736,14 @@ assert.deepEqual(
       nodeId: 'agent-1',
       kind: 'agent',
       reason: undefined,
+      sequence: undefined,
       durationMs: 3,
+      webviewEpochMs: undefined,
+      hostReceivedEpochMs: undefined,
+      hostAckEpochMs: undefined,
+      queueDelayMs: undefined,
+      requestId: undefined,
+      executionSessionId: undefined,
       characters: 4096,
       bytes: undefined,
       controllerCount: undefined,
@@ -580,6 +754,278 @@ assert.deepEqual(
       pendingOutputLength: 8192,
       owner: undefined,
       lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
+      success: true
+    }
+  }
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-output-snapshot-reset',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      reason: 'lag-backlog-snapshot-reset',
+      requestId: 'snapshot-reset-1',
+      executionSessionId: 'session-1',
+      sequence: 12,
+      characters: 6142227,
+      pendingOutputLength: 6142227,
+      success: true
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-output-snapshot-reset',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      reason: 'lag-backlog-snapshot-reset',
+      sequence: 12,
+      durationMs: undefined,
+      webviewEpochMs: undefined,
+      hostReceivedEpochMs: undefined,
+      hostAckEpochMs: undefined,
+      queueDelayMs: undefined,
+      requestId: 'snapshot-reset-1',
+      executionSessionId: 'session-1',
+      characters: 6142227,
+      bytes: undefined,
+      controllerCount: undefined,
+      flushedControllerCount: undefined,
+      pendingControllerCount: undefined,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: 6142227,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
+      success: true
+    }
+  }
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-input-received',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      sequence: 9,
+      durationMs: 180,
+      webviewEpochMs: 1781111111000,
+      hostReceivedEpochMs: 1781111111180,
+      hostAckEpochMs: undefined,
+      queueDelayMs: 180,
+      requestId: undefined,
+      executionSessionId: undefined,
+      characters: 1,
+      bytes: 1,
+      success: true
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-input-received',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      reason: undefined,
+      sequence: 9,
+      durationMs: 180,
+      webviewEpochMs: 1781111111000,
+      hostReceivedEpochMs: 1781111111180,
+      hostAckEpochMs: undefined,
+      queueDelayMs: 180,
+      requestId: undefined,
+      executionSessionId: undefined,
+      characters: 1,
+      bytes: 1,
+      controllerCount: undefined,
+      flushedControllerCount: undefined,
+      pendingControllerCount: undefined,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: undefined,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
+      success: true
+    }
+  }
+);
+
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-input-ack',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      sequence: 11,
+      durationMs: 318,
+      webviewEpochMs: 1781111111000,
+      hostReceivedEpochMs: 1781111111280,
+      hostAckEpochMs: 1781111111281,
+      queueDelayMs: 280,
+      requestId: undefined,
+      executionSessionId: undefined,
+      characters: 1,
+      bytes: 1,
+      success: true
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-input-ack',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      reason: undefined,
+      sequence: 11,
+      durationMs: 318,
+      webviewEpochMs: 1781111111000,
+      hostReceivedEpochMs: 1781111111280,
+      hostAckEpochMs: 1781111111281,
+      queueDelayMs: 280,
+      requestId: undefined,
+      executionSessionId: undefined,
+      characters: 1,
+      bytes: 1,
+      controllerCount: undefined,
+      flushedControllerCount: undefined,
+      pendingControllerCount: undefined,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: undefined,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
+      success: true
+    }
+  }
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-event-loop-lag',
+      reason: 'timer-lag',
+      durationMs: 180,
+      controllerCount: 4,
+      success: true
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-event-loop-lag',
+      nodeId: undefined,
+      kind: undefined,
+      reason: 'timer-lag',
+      sequence: undefined,
+      durationMs: 180,
+      webviewEpochMs: undefined,
+      hostReceivedEpochMs: undefined,
+      hostAckEpochMs: undefined,
+      queueDelayMs: undefined,
+      requestId: undefined,
+      executionSessionId: undefined,
+      characters: undefined,
+      bytes: undefined,
+      controllerCount: 4,
+      flushedControllerCount: undefined,
+      pendingControllerCount: undefined,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: undefined,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
+      success: true
+    }
+  }
+);
+
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-state-persist',
+      reason: 'persist-snapshot-write',
+      durationMs: 21,
+      bytes: 4096,
+      controllerCount: 4,
+      workspaceStateMode: 'skip'
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-state-persist',
+      nodeId: undefined,
+      kind: undefined,
+      reason: 'persist-snapshot-write',
+      sequence: undefined,
+      durationMs: 21,
+      webviewEpochMs: undefined,
+      hostReceivedEpochMs: undefined,
+      hostAckEpochMs: undefined,
+      queueDelayMs: undefined,
+      requestId: undefined,
+      executionSessionId: undefined,
+      characters: undefined,
+      bytes: 4096,
+      controllerCount: 4,
+      flushedControllerCount: undefined,
+      pendingControllerCount: undefined,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: undefined,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      workspaceStateMode: 'skip',
+      success: undefined
+    }
+  }
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-main-thread-lag',
+      reason: 'timer-lag',
+      durationMs: 180,
+      success: true
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-main-thread-lag',
+      nodeId: undefined,
+      kind: undefined,
+      reason: 'timer-lag',
+      sequence: undefined,
+      durationMs: 180,
+      webviewEpochMs: undefined,
+      hostReceivedEpochMs: undefined,
+      hostAckEpochMs: undefined,
+      queueDelayMs: undefined,
+      requestId: undefined,
+      executionSessionId: undefined,
+      characters: undefined,
+      bytes: undefined,
+      controllerCount: undefined,
+      flushedControllerCount: undefined,
+      pendingControllerCount: undefined,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: undefined,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
       success: true
     }
   }
@@ -604,7 +1050,14 @@ assert.deepEqual(
       nodeId: 'terminal-1',
       kind: 'terminal',
       reason: undefined,
+      sequence: undefined,
       durationMs: 19,
+      webviewEpochMs: undefined,
+      hostReceivedEpochMs: undefined,
+      hostAckEpochMs: undefined,
+      queueDelayMs: undefined,
+      requestId: undefined,
+      executionSessionId: undefined,
       characters: 32768,
       bytes: 32768,
       controllerCount: undefined,
@@ -615,6 +1068,7 @@ assert.deepEqual(
       pendingOutputLength: undefined,
       owner: undefined,
       lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
       success: true
     }
   }
@@ -637,7 +1091,14 @@ assert.deepEqual(
       nodeId: undefined,
       kind: undefined,
       reason: undefined,
+      sequence: undefined,
       durationMs: 18,
+      webviewEpochMs: undefined,
+      hostReceivedEpochMs: undefined,
+      hostAckEpochMs: undefined,
+      queueDelayMs: undefined,
+      requestId: undefined,
+      executionSessionId: undefined,
       characters: undefined,
       bytes: undefined,
       controllerCount: 3,
@@ -648,6 +1109,7 @@ assert.deepEqual(
       pendingOutputLength: undefined,
       owner: undefined,
       lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
       success: undefined
     }
   }
