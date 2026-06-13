@@ -32,6 +32,7 @@
 - [x] (2026-05-19 15:21 +0800) 调整 continuation 边界：续行 link 片段从允许缩进后行首开始时，允许后面跟默认样式说明文字；继续拒绝首片段后混入 prose 或续片段不在缩进后行首的误拼接。
 - [x] (2026-05-22 17:30 +0800) 按 hotfix 要求先补性能回归并记录修复前基线：fallback-only 负缓存测试在修复前 agent / terminal 都产生 36 次 live-output 后台 resolve request；随后限制 live output 只刷新高置信负缓存，并增加输出 invalidation 最小间隔。
 - [x] (2026-06-10 18:40 +0800) 根据二次宿主诊断继续降载：styled span 不再直接伪装成 `detected`，而是必须通过共享 path plausibility gate 后以 `styled` source 发送；`detected` / `styled` 在 Webview 与 Host 双侧都执行同一准入防线，并补协议、纯函数与 Host helper 回归。
+- [x] (2026-06-11 20:35 +0800) 根据第四次宿主诊断改为交互优先：file-link provider 只暴露轻量 pending link，Host resolve 改为点击时 `interactive` 触发；高置信负缓存后台刷新标记为 `background`，Host 增加 resolve cache / in-flight dedupe / 背景请求节流，并把诊断 schema 提升到 v3。
 
 ## 意外与发现
 
@@ -89,6 +90,9 @@
 - 观察：2026-06-10 的二次宿主诊断显示 fallback 降载没有命中当前主因；400 条 file-link resolve 采样中全部仍是 `source: detected`，`filteredCandidateCount = 0`，但候选文本大量是 `›`、`· 1`、`tab to queue message`、`Improve documentation in @filename`、`2m 45`、日期时间、代码表达式和 box drawing 文本，最终 `resolvedCount = 0`。
   证据：用户提供的 `/home/users/ziyang01.wang-al/projects/dsc-test-03/.debug/current-host-diagnostics/2026-06-10T10-08-29-170Z/execution-file-link-resolve-diagnostics.json`；对比旧诊断后，file-link resolve p50 从 29ms 升到 116ms，p90 从 71ms 升到 450ms，而 input write p50 从 86ms 降到 14ms。
 
+- 观察：2026-06-11 复核第三次宿主诊断时，input write 相比原始版本仍改善，但 file-link resolve 已成为新的主瓶颈；207 次请求累计 613.7s，p90 13.0s，max 33.3s，慢请求主要是 `build/plan`、`Dashboard/配置页/状态按钮很多不会按预期工作`、`@earendil-works/pi-coding-agent` 等非文件候选。该 dump 仍显示 `filteredCandidateCount = 0` 且没有 `source: styled`，因此后续诊断需要 schema/version 标记来区分“未安装最新构建”和“规则仍不够窄”。
+  证据：用户提供的 `/home/users/ziyang01.wang-al/projects/dsc-test-02/.debug/current-host-diagnostics/2026-06-10T16-23-08-709Z/summary.json` 与 `execution-file-link-resolve-diagnostics.json`；同一 dump 的 host input p50 为 20ms、p90 为 118ms，但 file-link resolve p50 为 116ms、p90 为 13027ms、p95 为 17160ms、max 为 33345ms。
+
 ## 决策记录
 
 - 决策：这次不再继续微调当前仓库 heuristics，而是把用户可观察的 link 解析与交互行为整体收口到 VSCode 原生 Terminal。
@@ -143,6 +147,14 @@
   理由：真实 TUI 会把 prompt glyph、状态文案、时间、包名、代码表达式等都染成非默认样式；把这些文本直接标成 `detected` 会绕过 fallback 降载和 source 诊断，造成大量 `resolvedCount = 0` 的 Host 解析请求。新增 `styled` source 让后续诊断能区分 styled span 来源，同时 Host backstop 可保护旧 Webview 或其他入口。
   日期/作者：2026-06-10 / Codex
 
+- 决策：继续收紧 `detected` / `styled` / `hardwrap` 的 extensionless path gate，并把 Host 侧同一节点 file-link resolve 串行化；诊断 summary 增加 `diagnosticsSchema.executionFileLinkResolve = 2`。
+  理由：第三次真实 dump 证明剩余主因已经不是 prompt glyph，而是 CJK prose 斜杠短语、domain path fragment、package name 和泛化目录短语进入 Host resolve；同时同一节点重复 resolve 会把单次 100ms 级 filesystem probe 排队放大成 30s 级尾延迟。新规则只保留带文件扩展名、显式路径前缀、`file://`、或以 `src` / `docs` / `packages` 等常见代码目录根开头的 extensionless 目录；不同节点仍可并行，同一节点内部串行。schema 标记用于下次现场直接确认是否运行到本批代码。
+  日期/作者：2026-06-11 / Codex
+
+- 决策：停止继续靠静态 allowlist / denylist 扩展保性能，转为“交互优先 + 懒解析 + 缓存 + 预算”。Webview provider 不再因 hover / link 枚举主动发 Host resolve；pending file link 在点击时以 `priority: interactive` 解析并立即打开，失败则降级 search。高置信 negative cache 的 live-output 刷新保留，但标记为 `priority: background`；Host 对同 key in-flight 去重、30s 结果缓存、同节点串行和背景请求最小间隔做统一保护，诊断 schema 提升为 v3 并记录 priority / cache 计数。
+  理由：第四次真实 dump 显示 file-link 请求已从 207 降到 7，输入 p90 约 79ms，但候选已明显偏少；继续收紧会损害链接体验，且单次 `stat` 仍可能抖到秒级。昂贵的文件验证必须被用户意图、缓存和预算约束，而不是由 xterm provider 枚举触发。
+  日期/作者：2026-06-11 / Codex
+
 ## 结果与复盘
 
 当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。
@@ -154,6 +166,10 @@
 PR review 后补齐 output throttle trailing refresh：当第二次 live output 在 1s 最小间隔内才让高置信 `detected` 负缓存变为可解析时，不再直接丢弃 invalidation，而是在 remaining interval 后触发 trailing refresh。新增 `refreshes detected negative file link after second live output inside throttle window` 覆盖 agent / terminal。
 
 2026-06-10 二次降载继续把 styled span 与一般 detected 候选收窄到明确路径形态。对用户提供的新诊断样本做离线回放时，582 个候选中只有 28 个会通过新 gate，其余 554 个 prompt glyph、状态文案、时间/日期、包名、纯数字比例和代码表达式会被过滤；保留的主要是 `input.ts`、`event.ts`、`sql.ts`、`session.ts` 和 `.dev-session-canvas/templates/测试上传-` 等 file-like 文本。自动化验证通过 `npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run test:protocol-webview-messages`、定向 `npm run test:webview -- --grep "link activation posts parsed file and URL targets|styled hard-wrapped file fragments resolve as one link|styled hard-wrapped non-links are not guessed as one link|unstyled hard-wrapped file fragments are not guessed as one link"`、`npm run build` 与 `git diff --check`。
+
+2026-06-11 第三轮诊断后继续降载：共享 gate 过滤 `旧源码里某个未发布/未同步版本`、`openai.com/policies`、`en/articles/...`、`Plus/Pro`、`build/plan`、`directory/project/`、`package/@earendil-works/pi-coding-agent` 和 `Dashboard/配置页/状态按钮很多不会按预期工作`；Host backstop 同步覆盖 `hardwrap`，避免 `@earendil-works/pi-coding-agent` 进入高置信 resolve；fallback 拒绝 `git+https://...` 这类非 file URI-like 字符串。对第三次 dump 离线回放，213 个候选中 182 个会被新 gate 过滤，保留 31 个明确路径；其中 100% 过滤了 `build/plan`、`openai.com/policies`、package 名、CJK prose 和泛化目录。Host 同一节点 file-link resolve 改成串行队列，避免同一节点 hover/cache refresh 重入把 filesystem probe 打满；summary 增加 `diagnosticsSchema.executionFileLinkResolve = 2` 作为下次现场校验标记。当前已通过 `npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run build`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "styled hard-wrapped non-links are not guessed as one link|unstyled hard-wrapped file fragments are not guessed as one link|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"` 与 `git diff --check`。
+
+同日第四轮诊断后转向交互机制：最新 dump 证明 hotfix 已把 file-link resolve 从 207 次 / 613.7s 降到 7 次 / 2.93s，输入 p50 17ms、p90 79ms，但候选也被压到只剩少量明确路径，继续静态收紧会牺牲链接可发现性。实现上，`src/webview/executionTerminalNativeInteractions.ts` 的 file / multiline / styled / hardwrap provider 现在只返回 pending file link；点击 pending link 时才调用 Host resolve，成功后立即打开 file，失败后降级 search。`src/webview/main.tsx` 和协议增加 `priority` 字段；`src/panel/CanvasPanelManager.ts` 记录 priority / cache 诊断，维护 30s resolve cache、in-flight dedupe、同节点串行和背景请求节流，`resolvedId` 也保存真实 resolved target，打开时优先复用已解析结果。`src/panel/executionTerminalNativeHelpers.ts` 在单次 candidate group 内复用 `stat` / workspace fallback promise，避免重复路径重复 filesystem probe。新增 / 更新测试覆盖 priority 协议、重复 stat 去重、fallback hover 不 eager resolve、fallback 点击才 interactive resolve、既有高置信 negative refresh 和 link activation 回归；已通过 `npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run test:protocol-webview-messages`、`npm run build` 和定向 `npm run test:webview -- --grep "link activation posts parsed file and URL targets|styled hard-wrapped file fragments resolve as one link|reuses file link resolution while live output continues|refreshes negative file link cache while live output continues|does not eagerly resolve fallback-only text during hover or live output|resolves fallback file links only on activation|keeps unresolved file link fallback stable while live output continues"`。
 
 ## 上下文与定向
 

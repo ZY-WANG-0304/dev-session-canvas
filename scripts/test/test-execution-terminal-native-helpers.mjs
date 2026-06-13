@@ -39,6 +39,7 @@ try {
       '  asExternalUriCalls: [],',
       '  externalUriResolutions: new Map(),',
       '  findFilesCalls: [],',
+      '  statCalls: [],',
       '  allowedLinkSchemes: []',
       '};',
       'function createUri(fsPath, rawValue) {',
@@ -95,6 +96,7 @@ try {
       '  state.asExternalUriCalls = [];',
       '  state.externalUriResolutions = new Map();',
       '  state.findFilesCalls = [];',
+      '  state.statCalls = [];',
       '  state.allowedLinkSchemes = [];',
       '}',
       'exports.__reset = resetState;',
@@ -128,6 +130,9 @@ try {
       'exports.__getFindFilesCalls = function getFindFilesCalls() {',
       '  return state.findFilesCalls.slice();',
       '};',
+      'exports.__getStatCalls = function getStatCalls() {',
+      '  return state.statCalls.slice();',
+      '};',
       'exports.Range = Range;',
       'exports.RelativePattern = RelativePattern;',
       'exports.FileType = FileType;',
@@ -146,6 +151,7 @@ try {
       '  get workspaceFolders() { return state.workspaceFolders; },',
       '  fs: {',
       '    async stat(uri) {',
+      '      state.statCalls.push(uri.fsPath);',
       '      const entry = state.files.get(uri.fsPath);',
       '      if (!entry) {',
       "        throw new Error('ENOENT');",
@@ -243,7 +249,8 @@ try {
     filterResolvableExecutionTerminalFileLinkCandidates,
     openExecutionTerminalLink,
     prepareExecutionTerminalDroppedPath,
-    resolveExecutionFileLink
+    resolveExecutionFileLink,
+    resolveExecutionTerminalFileLinkCandidates
   } = helperModule;
 
   assert.equal(
@@ -480,7 +487,23 @@ try {
           source: 'detected'
         },
         {
+          ...createFallbackCandidate('detected-prose', 'Dashboard/配置页/状态按钮很多不会按预期工作'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('detected-urlish', 'openai.com/policies'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('detected-generic-dir', 'build/plan'),
+          source: 'detected'
+        },
+        {
           ...createFallbackCandidate('detected-path', 'docs/readme.md'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('detected-code-dir', 'src/panel'),
           source: 'detected'
         },
         {
@@ -496,11 +519,27 @@ try {
         {
           ...createFallbackCandidate('styled-basename', 'event.ts'),
           source: 'styled'
+        },
+        {
+          ...createFallbackCandidate('hardwrap-package', '@earendil-works/pi-coding-agent'),
+          source: 'hardwrap'
+        },
+        {
+          ...createFallbackCandidate('hardwrap-path', '.lark-slides/plan/report.json'),
+          source: 'hardwrap'
         }
       ],
       fallbackFilterContext
     ).map((candidate) => candidate.candidateId),
-    ['basename', 'relative-path', 'detected-path', 'styled-path', 'styled-basename']
+    [
+      'basename',
+      'relative-path',
+      'detected-path',
+      'detected-code-dir',
+      'styled-path',
+      'styled-basename',
+      'hardwrap-path'
+    ]
   );
 
   vscodeStub.__reset();
@@ -524,6 +563,25 @@ try {
   assert.equal(lineScopedResolved?.uri.fsPath, '/workspace/scratch/link-target.ts');
   assert.equal(lineScopedResolved?.selection?.start.line, 1);
   assert.equal(lineScopedResolved?.selection?.start.character, 7);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/repeated.ts', type: 'file' }]);
+  const repeatedResolveResults = await resolveExecutionTerminalFileLinkCandidates(
+    [
+      createDetectedCandidate('repeat-a', 'repeated.ts'),
+      {
+        ...createDetectedCandidate('repeat-b', 'repeated.ts'),
+        startIndex: 10,
+        endIndexExclusive: 21,
+        line: 2
+      }
+    ],
+    createContext('/bin/bash', '/workspace', 'posix'),
+    () => 'resolved-repeat'
+  );
+  assert.equal(repeatedResolveResults.length, 2);
+  assert.deepEqual(vscodeStub.__getStatCalls(), ['/workspace/repeated.ts']);
 
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
@@ -732,5 +790,12 @@ function createFallbackCandidate(candidateId, pathText) {
     endIndexExclusive: pathText.length,
     bufferStartLine: 0,
     source: 'fallback'
+  };
+}
+
+function createDetectedCandidate(candidateId, pathText) {
+  return {
+    ...createFallbackCandidate(candidateId, pathText),
+    source: 'detected'
   };
 }

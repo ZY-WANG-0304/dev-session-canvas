@@ -11,6 +11,7 @@ export type ExecutionTerminalFileLinkSource =
   | 'fallback'
   | 'hardwrap'
   | 'explicit-uri';
+export type ExecutionTerminalFileLinkResolvePriority = 'interactive' | 'background';
 export type ExecutionTerminalSearchLinkSource = 'word';
 export const DEFAULT_EXECUTION_TERMINAL_WORD_SEPARATORS = ' ()[]{}\',"`';
 export type ExecutionTerminalOpenLink =
@@ -199,6 +200,38 @@ const cjkPunctuationRegex = new RegExp(`[${EXECUTION_TERMINAL_CJK_PUNCTUATION_CH
 const cjkIdeographRegex = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/;
 const cjkProsePrefixBeforeAsciiPathRegex = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF][a-zA-Z][a-zA-Z._-]*$/;
 const fileLikeWordRegex = /(?:^|[\\/])[^\\/]+\.[a-zA-Z\d]{1,16}(?::\d+(?::\d+)?)?$/;
+const codeDirectoryRootSegments = new Set([
+  'api',
+  'app',
+  'apps',
+  'bin',
+  'client',
+  'cmd',
+  'components',
+  'config',
+  'configs',
+  'docs',
+  'e2e',
+  'examples',
+  'internal',
+  'lib',
+  'libs',
+  'packages',
+  'pages',
+  'pkg',
+  'playwright',
+  'public',
+  'scripts',
+  'server',
+  'services',
+  'source',
+  'spec',
+  'src',
+  'test',
+  'tests',
+  'tools',
+  'web'
+]);
 const linkWithSuffixPathCharacters = new RegExp(
   `(?<path>(?:file:\\/\\/\\/)?[^\\s\\|<>\\[\\({${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}][^\\s\\|<>${EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS}]*)$`
 );
@@ -581,7 +614,8 @@ function isPlausibleExplicitExecutionTerminalStyledPath(
   }
 
   if (value.startsWith('file://')) {
-    return isPlausibleSeparatedExecutionTerminalStyledPath(value.replace(/^file:\/\/\/?/, ''));
+    const filePath = value.replace(/^file:\/\/\/?/u, '');
+    return hasExecutionTerminalStyledFileExtension(filePath) || filePath.includes('/');
   }
 
   if (value.startsWith('./') || value.startsWith('../') || value.startsWith('~/')) {
@@ -599,6 +633,7 @@ function isPlausibleSeparatedExecutionTerminalStyledPath(value: string): boolean
   if (
     value.startsWith('//') ||
     value.startsWith('@') ||
+    hasUrlLikeExecutionTerminalPathPrefix(value) ||
     /[()[\]]/u.test(value) ||
     /[•·›│┃┆┊╎╏└├┌┐┘┤┬┴┼╭╰╮╯…]/u.test(value)
   ) {
@@ -615,7 +650,49 @@ function isPlausibleSeparatedExecutionTerminalStyledPath(value: string): boolean
     return false;
   }
 
-  return parts.some((part) => /[a-zA-Z_\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u.test(part));
+  if (parts.some((part) => part.startsWith('@'))) {
+    return false;
+  }
+
+  if (hasExecutionTerminalStyledFileExtension(normalizedValue)) {
+    return true;
+  }
+
+  return isPlausibleExtensionlessExecutionTerminalDirectoryPath(parts);
+}
+
+function hasUrlLikeExecutionTerminalPathPrefix(value: string): boolean {
+  const firstSegment = value.split(/[\\/]+/u).find((part) => part.length > 0) ?? '';
+  return /^[a-zA-Z\d-]+(?:\.[a-zA-Z\d-]+)+$/u.test(firstSegment);
+}
+
+function isPlausibleExtensionlessExecutionTerminalDirectoryPath(parts: string[]): boolean {
+  if (parts.length < 2 || parts.some((part) => cjkIdeographRegex.test(part))) {
+    return false;
+  }
+
+  if (
+    parts.some(
+      (part) =>
+        part.length > 80 ||
+        !/^[.@A-Za-z0-9_-]+$/u.test(part) ||
+        part === '.' ||
+        part === '..'
+    )
+  ) {
+    return false;
+  }
+
+  const firstSegment = parts[0].replace(/^\.+/u, '').toLowerCase();
+  if (codeDirectoryRootSegments.has(firstSegment)) {
+    return true;
+  }
+
+  if (parts[0].startsWith('.') && parts.length >= 3) {
+    return true;
+  }
+
+  return false;
 }
 
 function escapeRegExp(value: string): string {
@@ -1058,14 +1135,26 @@ function hasExecutionTerminalFallbackNaturalLanguageBoundary(value: string): boo
 }
 
 function isPlausibleExecutionTerminalFallbackPath(value: string): boolean {
-  if (hasFallbackExecutionTerminalProsePrefix(value)) {
+  if (
+    hasFallbackExecutionTerminalProsePrefix(value) ||
+    isNonFileUriLikeExecutionTerminalPath(value)
+  ) {
     return false;
   }
 
+  if (hasExplicitExecutionTerminalFallbackPathPrefix(value)) {
+    return true;
+  }
+
+  if (hasExecutionTerminalFallbackFileExtension(value)) {
+    return true;
+  }
+
   return (
-    hasExplicitExecutionTerminalFallbackPathPrefix(value) ||
-    hasExecutionTerminalFallbackPathSeparator(value) ||
-    hasExecutionTerminalFallbackFileExtension(value)
+    hasExecutionTerminalFallbackPathSeparator(value) &&
+    isPlausibleExtensionlessExecutionTerminalDirectoryPath(
+      value.split(/[\\/]+/u).filter((part) => part.length > 0)
+    )
   );
 }
 
@@ -1087,6 +1176,18 @@ function hasExecutionTerminalFallbackPathSeparator(value: string): boolean {
 
 function hasExecutionTerminalFallbackFileExtension(value: string): boolean {
   return /(?:^|[\\/])[^\\/]+\.[a-zA-Z\d]{1,16}$/u.test(value);
+}
+
+function isNonFileUriLikeExecutionTerminalPath(value: string): boolean {
+  if (value.startsWith('file://')) {
+    return false;
+  }
+
+  if (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\')) {
+    return false;
+  }
+
+  return /^[a-zA-Z][a-zA-Z\d+\-.]*:/u.test(value);
 }
 
 function hasFallbackExecutionTerminalProsePrefix(value: string): boolean {

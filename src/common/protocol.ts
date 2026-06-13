@@ -3,6 +3,7 @@ import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
   ExecutionTerminalFileLinkSource,
+  ExecutionTerminalFileLinkResolvePriority,
   ExecutionTerminalOpenLink,
   ExecutionTerminalResolvedFileLink
 } from './executionTerminalLinks';
@@ -12,6 +13,7 @@ export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
 export type CanvasGroupDeleteMode = 'delete-members' | 'keep-members';
 export type ExecutionNodeKind = 'agent' | 'terminal';
+export const EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION = 8;
 export const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
 export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
@@ -490,10 +492,16 @@ export type ExecutionPerformanceDiagnosticSource =
   | 'webview-output-enqueue'
   | 'webview-terminal-drain'
   | 'webview-terminal-write'
+  | 'webview-output-snapshot-reset'
   | 'webview-input-dispatch'
+  | 'webview-input-ack'
+  | 'webview-main-thread-lag'
+  | 'host-event-loop-lag'
+  | 'host-input-received'
   | 'host-input-write'
   | 'host-output-chunk'
-  | 'host-output-post';
+  | 'host-output-post'
+  | 'host-state-persist';
 
 export type ExecutionPerformanceDiagnosticOwner = 'local' | 'supervisor';
 
@@ -502,7 +510,14 @@ export interface ExecutionPerformanceDiagnosticPayload {
   nodeId?: string;
   kind?: ExecutionNodeKind;
   reason?: string;
+  sequence?: number;
   durationMs?: number;
+  webviewEpochMs?: number;
+  hostReceivedEpochMs?: number;
+  hostAckEpochMs?: number;
+  queueDelayMs?: number;
+  requestId?: string;
+  executionSessionId?: string;
   characters?: number;
   bytes?: number;
   controllerCount?: number;
@@ -513,6 +528,7 @@ export interface ExecutionPerformanceDiagnosticPayload {
   pendingOutputLength?: number;
   owner?: ExecutionPerformanceDiagnosticOwner;
   lifecycleStatus?: string;
+  workspaceStateMode?: string;
   success?: boolean;
 }
 
@@ -793,6 +809,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        requestId?: string;
       };
     }
   | {
@@ -801,6 +818,9 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         nodeId: string;
         kind: ExecutionNodeKind;
         data: string;
+        sequence?: number;
+        webviewEpochMs?: number;
+        webviewPerformanceNowMs?: number;
       };
     }
   | {
@@ -852,6 +872,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         nodeId: string;
         kind: ExecutionNodeKind;
         candidates: ExecutionTerminalFileLinkCandidate[];
+        priority?: ExecutionTerminalFileLinkResolvePriority;
       };
     }
   | {
@@ -1094,14 +1115,30 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'host/executionInputAck';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        sequence?: number;
+        webviewEpochMs?: number;
+        webviewPerformanceNowMs?: number;
+        hostReceivedEpochMs: number;
+        hostAckEpochMs: number;
+        queueDelayMs?: number;
+      };
+    }
+  | {
       type: 'host/executionSnapshot';
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        requestId?: string;
+        executionSessionId?: string;
         output: string;
         cols: number;
         rows: number;
         liveSession: boolean;
+        outputSequence?: number;
         serializedTerminalState?: SerializedTerminalState;
       };
     }
@@ -1110,7 +1147,10 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        executionSessionId?: string;
         chunk: string;
+        persisted?: boolean;
+        outputSequence?: number;
       };
     }
   | {
@@ -1494,7 +1534,10 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: value.type,
       payload: {
         nodeId: payload.nodeId,
-        kind: payload.kind
+        kind: payload.kind,
+        ...(value.type === 'webview/attachExecutionSession' && typeof payload.requestId === 'string'
+          ? { requestId: payload.requestId }
+          : {})
       }
     };
   }
@@ -1586,7 +1629,10 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       payload: {
         nodeId: payload.nodeId,
         kind: payload.kind,
-        data: payload.data
+        data: payload.data,
+        sequence: normalizeNonNegativeInteger(payload.sequence),
+        webviewEpochMs: normalizeNonNegativeFiniteNumber(payload.webviewEpochMs),
+        webviewPerformanceNowMs: normalizeNonNegativeFiniteNumber(payload.webviewPerformanceNowMs)
       }
     };
   }
@@ -1708,7 +1754,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       typeof payload.nodeId !== 'string' ||
       !isExecutionNodeKind(payload.kind) ||
       !Array.isArray(payload.candidates) ||
-      !payload.candidates.every((candidate) => isExecutionTerminalFileLinkCandidate(candidate))
+      !payload.candidates.every((candidate) => isExecutionTerminalFileLinkCandidate(candidate)) ||
+      (payload.priority !== undefined && !isExecutionTerminalFileLinkResolvePriority(payload.priority))
     ) {
       return null;
     }
@@ -1719,7 +1766,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         requestId: payload.requestId,
         nodeId: payload.nodeId,
         kind: payload.kind,
-        candidates: payload.candidates
+        candidates: payload.candidates,
+        ...(payload.priority !== undefined ? { priority: payload.priority } : {})
       }
     };
   }
@@ -2290,7 +2338,14 @@ function normalizeExecutionPerformanceDiagnosticPayload(
     nodeId: typeof value.nodeId === 'string' ? value.nodeId : undefined,
     kind: isExecutionNodeKind(value.kind) ? value.kind : undefined,
     reason: typeof value.reason === 'string' ? value.reason : undefined,
+    sequence: normalizeNonNegativeInteger(value.sequence),
     durationMs: normalizeNonNegativeFiniteNumber(value.durationMs),
+    webviewEpochMs: normalizeNonNegativeFiniteNumber(value.webviewEpochMs),
+    hostReceivedEpochMs: normalizeNonNegativeFiniteNumber(value.hostReceivedEpochMs),
+    hostAckEpochMs: normalizeNonNegativeFiniteNumber(value.hostAckEpochMs),
+    queueDelayMs: normalizeNonNegativeFiniteNumber(value.queueDelayMs),
+    requestId: typeof value.requestId === 'string' ? value.requestId : undefined,
+    executionSessionId: typeof value.executionSessionId === 'string' ? value.executionSessionId : undefined,
     characters: normalizeNonNegativeInteger(value.characters),
     bytes: normalizeNonNegativeInteger(value.bytes),
     controllerCount: normalizeNonNegativeInteger(value.controllerCount),
@@ -2301,6 +2356,7 @@ function normalizeExecutionPerformanceDiagnosticPayload(
     pendingOutputLength: normalizeNonNegativeInteger(value.pendingOutputLength),
     owner: isExecutionPerformanceDiagnosticOwner(value.owner) ? value.owner : undefined,
     lifecycleStatus: typeof value.lifecycleStatus === 'string' ? value.lifecycleStatus : undefined,
+    workspaceStateMode: typeof value.workspaceStateMode === 'string' ? value.workspaceStateMode : undefined,
     success: typeof value.success === 'boolean' ? value.success : undefined
   };
 }
@@ -2312,10 +2368,16 @@ function isExecutionPerformanceDiagnosticSource(
     value === 'webview-output-enqueue' ||
     value === 'webview-terminal-drain' ||
     value === 'webview-terminal-write' ||
+    value === 'webview-output-snapshot-reset' ||
     value === 'webview-input-dispatch' ||
+    value === 'webview-input-ack' ||
+    value === 'webview-main-thread-lag' ||
+    value === 'host-event-loop-lag' ||
+    value === 'host-input-received' ||
     value === 'host-input-write' ||
     value === 'host-output-chunk' ||
-    value === 'host-output-post'
+    value === 'host-output-post' ||
+    value === 'host-state-persist'
   );
 }
 
@@ -2599,6 +2661,12 @@ function isExecutionTerminalFileLinkSource(value: unknown): value is ExecutionTe
     value === 'hardwrap' ||
     value === 'explicit-uri'
   );
+}
+
+function isExecutionTerminalFileLinkResolvePriority(
+  value: unknown
+): value is ExecutionTerminalFileLinkResolvePriority {
+  return value === 'interactive' || value === 'background';
 }
 
 function isPositiveInteger(value: unknown): value is number {

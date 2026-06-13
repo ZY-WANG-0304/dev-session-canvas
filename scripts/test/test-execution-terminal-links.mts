@@ -71,6 +71,23 @@ assert.equal(detectExecutionTerminalStyledPathLink('time.sleep(max(0, 30', 'posi
 assert.equal(detectExecutionTerminalStyledPathLink('20/60', 'posix'), undefined);
 assert.equal(detectExecutionTerminalStyledPathLink('@openai/codex', 'posix'), undefined);
 assert.equal(detectExecutionTerminalStyledPathLink('/model', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('旧源码里某个未发布/未同步版本', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('openai.com/policies', 'posix'), undefined);
+assert.equal(
+  detectExecutionTerminalStyledPathLink(
+    'en/articles/5722486-how-your-data-is-used-to-improve-model-',
+    'posix'
+  ),
+  undefined
+);
+assert.equal(detectExecutionTerminalStyledPathLink('Plus/Pro', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('build/plan', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('directory/project/', 'posix'), undefined);
+assert.equal(detectExecutionTerminalStyledPathLink('package/@earendil-works/pi-coding-agent', 'posix'), undefined);
+assert.equal(
+  detectExecutionTerminalStyledPathLink('Dashboard/配置页/状态按钮很多不会按预期工作', 'posix'),
+  undefined
+);
 assert.deepEqual(
   detectExecutionTerminalStyledPathLink('         event.ts,', 'posix'),
   {
@@ -99,7 +116,18 @@ for (const text of [
   '20/60',
   '97e713e 2026',
   '2026-06-10 04:05',
-  '04:05:03'
+  '04:05:03',
+  '旧源码里某个未发布/未同步版本',
+  '有可能只是看到了页面/连接/回显',
+  '今天有工作人员帮我看过/演示过',
+  'openai.com/policies',
+  'en/articles/5722486-how-your-data-is-used-to-improve-model-',
+  '敏感代码只走企业/受控通道',
+  'Plus/Pro',
+  'build/plan',
+  'directory/project/',
+  'Dashboard/配置页/状态按钮很多不会按预期工作',
+  'package/@earendil-works/pi-coding-agent'
 ]) {
   for (const link of detectExecutionTerminalPathLinks(text, 'posix')) {
     assert.equal(shouldAllowExecutionTerminalDetectedPathLink(link, 'posix'), false, text);
@@ -116,6 +144,34 @@ assert.equal(
 assert.equal(
   shouldAllowExecutionTerminalDetectedPathLink(detectExecutionTerminalPathLinks('"foo", line 10', 'posix')[0], 'posix'),
   true
+);
+assert.equal(
+  shouldAllowExecutionTerminalDetectedPathLink(
+    detectExecutionTerminalPathLinks('packages/opencode/src/cli/cmd/tui.ts', 'posix')[0],
+    'posix'
+  ),
+  true
+);
+assert.equal(
+  shouldAllowExecutionTerminalDetectedPathLink(
+    detectExecutionTerminalPathLinks('src/panel', 'posix')[0],
+    'posix'
+  ),
+  true
+);
+assert.equal(
+  shouldAllowExecutionTerminalDetectedPathLink(
+    detectExecutionTerminalPathLinks('file:///workspace/docs/readme.md', 'posix')[0],
+    'posix'
+  ),
+  true
+);
+assert.equal(
+  shouldAllowExecutionTerminalDetectedPathLink(
+    detectExecutionTerminalPathLinks('.lark-slides/plan/', 'posix')[0],
+    'posix'
+  ),
+  false
 );
 assert.equal(shouldSuppressExecutionTerminalWordLink('文档/设计.md'), false);
 assert.equal(shouldSuppressExecutionTerminalWordLink('设计.md'), false);

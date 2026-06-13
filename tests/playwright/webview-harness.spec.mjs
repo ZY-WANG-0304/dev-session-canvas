@@ -5346,7 +5346,7 @@ for (const executionKind of ['agent', 'terminal']) {
     ).toBe(false);
   });
 
-  test(`${executionKind} does not refresh fallback-only negative file links during live output`, async ({
+  test(`${executionKind} does not eagerly resolve fallback-only text during hover or live output`, async ({
     page
   }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -5391,7 +5391,7 @@ for (const executionKind of ['agent', 'terminal']) {
       });
     }
 
-    await expect.poll(async () => countFallbackResolveRequests()).toBe(ordinaryLines.length);
+    await expect.poll(async () => countFallbackResolveRequests()).toBe(0);
     await performTestDomAction(page, {
       kind: 'clearExecutionLinkHover',
       nodeId
@@ -5409,6 +5409,58 @@ for (const executionKind of ['agent', 'terminal']) {
     await settleWebview(page, 4);
 
     expect(await countFallbackResolveRequests()).toBe(0);
+  });
+
+  test(`${executionKind} resolves fallback file links only on activation`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'lazy-fallback-target.mjs';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'hoverExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    expect(await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks')).toEqual([]);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'fallback'
+      });
+    const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(resolveRequests).toHaveLength(1);
+    expect(resolveRequests[0].payload.priority).toBe('interactive');
+    expect(resolveRequests[0].payload.candidates).toMatchObject([
+      {
+        text: filePath,
+        source: 'fallback'
+      }
+    ]);
   });
 
   test(`${executionKind} ignores stale pending negative file link resolution after live output`, async ({
@@ -12268,6 +12320,217 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} requests snapshot reset instead of replaying a huge restored backlog`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-SHOULD-NOT-REPLAY';
+    const freshSnapshotLine = 'FRESH-SNAPSHOT-AFTER-BACKLOG-RESET';
+    const freshLiveLine = 'LIVE-AFTER-SNAPSHOT-RESET';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(`${freshSnapshotLine}\r\n`);
+    const executionSessionId = `${executionKind}-session-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+    });
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    expect(attachRequest.payload).toMatchObject({
+      nodeId,
+      kind: executionKind
+    });
+    expect(attachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${freshLiveLine}\r\n`,
+      executionSessionId,
+      outputSequence: 2
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      outputSequence: 1,
+      serializedTerminalState
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(freshSnapshotLine)) &&
+        visibleLines.some((line) => line.includes(freshLiveLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshSnapshotLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshLiveLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+
+    const snapshotResetDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
+    expect(
+      snapshotResetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'visibility-backlog-snapshot-reset' &&
+          message.payload.characters >= hugeBacklog.length
+      )
+    ).toBe(true);
+    expect(
+      snapshotResetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-applied'
+      )
+    ).toBe(true);
+  });
+
+  test(`${executionKind} keeps snapshot reset deferred output bounded while waiting for Host snapshot`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-BUDGET-SHOULD-NOT-REPLAY';
+    const freshSnapshotLine = 'FRESH-SNAPSHOT-AFTER-BUDGET-RESET';
+    const freshTailLine = 'LIVE-TAIL-AFTER-BUDGET-RESET';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-budget-reset`;
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(`${freshSnapshotLine}\r\n`);
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+    });
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+    const firstAttachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    expect(firstAttachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
+
+    for (let index = 0; index < 5; index += 1) {
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: `DEFERRED-BULK-${index}-${'y'.repeat(70 * 1024)}\r\n`,
+        executionSessionId,
+        outputSequence: index + 2
+      });
+    }
+
+    const resetDiagnostics = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionPerformanceDiagnostic',
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.payload.source === 'webview-output-snapshot-reset' &&
+            message.payload.nodeId === nodeId &&
+            message.payload.reason === 'deferred-output-budget-reset'
+        )
+    );
+    const budgetDiagnostic = resetDiagnostics.find(
+      (message) =>
+        message.payload.source === 'webview-output-snapshot-reset' &&
+        message.payload.nodeId === nodeId &&
+        message.payload.reason === 'deferred-output-budget-reset'
+    );
+    expect(budgetDiagnostic.payload.pendingOutputLength).toBeGreaterThan(256 * 1024);
+
+    const attachRequests = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/attachExecutionSession',
+      (messages) => messages.length >= 2
+    );
+    const latestAttachRequest = attachRequests.at(-1);
+    expect(latestAttachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
+    expect(latestAttachRequest.payload.requestId).not.toBe(firstAttachRequest.payload.requestId);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${freshTailLine}\r\n`,
+      executionSessionId,
+      outputSequence: 8
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: latestAttachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      outputSequence: 7,
+      serializedTerminalState
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(freshSnapshotLine)) &&
+        visibleLines.some((line) => line.includes(freshTailLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine)) &&
+        !visibleLines.some((line) => line.includes('DEFERRED-BULK-'))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshSnapshotLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshTailLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes('DEFERRED-BULK-'))).toBe(false);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} xterm selection stays aligned under zoomed React Flow`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const outputLine = '0123456789ABCDEFGHIJKLMNO';
@@ -13155,6 +13418,24 @@ async function readPostedMessagesByType(page, type, options = {}) {
   return options.includeLifecycle === true ? messages : messages.map(stripPostedMessageLifecycle);
 }
 
+async function waitForPostedMessagesByTypeMatch(page, type, predicate, options = {}) {
+  let matchedMessages = [];
+
+  await expect
+    .poll(async () => {
+      const messages = await readPostedMessagesByType(page, type, options);
+      if (!predicate(messages)) {
+        return null;
+      }
+
+      matchedMessages = messages;
+      return 'matched';
+    })
+    .toBe('matched');
+
+  return matchedMessages;
+}
+
 function stripPostedMessageLifecycle(message) {
   if (!message || typeof message !== 'object') {
     return message;
@@ -13334,6 +13615,9 @@ async function dispatchExecutionSnapshot(
     cols = 96,
     rows = 28,
     liveSession = true,
+    requestId,
+    executionSessionId,
+    outputSequence,
     serializedTerminalState
   }
 ) {
@@ -13351,12 +13635,15 @@ async function dispatchExecutionSnapshot(
       cols,
       rows,
       liveSession,
+      requestId,
+      executionSessionId,
+      outputSequence,
       serializedTerminalState
     }
   );
 }
 
-async function dispatchExecutionOutput(page, { nodeId, kind, chunk }) {
+async function dispatchExecutionOutput(page, { nodeId, kind, chunk, executionSessionId, persisted, outputSequence }) {
   await page.evaluate(
     (payload) => {
       window.__devSessionCanvasHarness.dispatchHostMessage({
@@ -13367,7 +13654,10 @@ async function dispatchExecutionOutput(page, { nodeId, kind, chunk }) {
     {
       nodeId,
       kind,
-      chunk
+      chunk,
+      executionSessionId,
+      persisted,
+      outputSequence
     }
   );
 }

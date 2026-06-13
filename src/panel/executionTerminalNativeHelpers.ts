@@ -13,6 +13,7 @@ import {
   detectExecutionTerminalPathLinks,
   inferExecutionTerminalPathStyle,
   getExecutionTerminalLinkSuffix,
+  isPlausibleExecutionTerminalStyledFilePath,
   shouldAllowExecutionTerminalDetectedPathLink,
   normalizeExecutionTerminalWordSeparators,
   removeExecutionTerminalLinkQueryString,
@@ -63,6 +64,19 @@ export interface OpenExecutionTerminalLinkResult {
 interface ResolveExecutionFileLinkOptions {
   allowPartialBasenameWorkspaceMatch?: boolean;
   allowWorkspaceFallback?: boolean;
+  resolveCache?: ExecutionFileLinkResolverCache;
+}
+
+export interface ExecutionFileLinkResolverCache {
+  stat: Map<string, Promise<ResolvedExecutionFileLink | undefined>>;
+  workspaceFallback: Map<string, Promise<ResolvedExecutionFileLink | undefined>>;
+}
+
+export function createExecutionFileLinkResolverCache(): ExecutionFileLinkResolverCache {
+  return {
+    stat: new Map(),
+    workspaceFallback: new Map()
+  };
 }
 
 export function normalizeEditorMultiCursorModifier(value: unknown): 'ctrlCmd' | 'alt' {
@@ -126,7 +140,7 @@ export async function resolveExecutionFileLink(
     return undefined;
   }
   if (
-    (link.source === 'detected' || link.source === 'styled') &&
+    (link.source === 'detected' || link.source === 'styled' || link.source === 'hardwrap') &&
     !shouldAllowExecutionTerminalDetectedPathLink(
       {
         text: link.text,
@@ -159,14 +173,14 @@ export async function resolveExecutionFileLink(
   }
 
   for (const uri of directCandidates.values()) {
-    const resolved = await statExecutionLinkTarget(uri, link);
+    const resolved = await statExecutionLinkTarget(uri, link, options?.resolveCache);
     if (resolved) {
       return resolved;
     }
   }
 
   if (shouldResolveExecutionWorkspaceFallbackLink(sanitizedPath, link, context, options)) {
-    const fallbackResolved = await resolveExecutionWorkspaceFallbackLink(
+    const fallbackResolved = await resolveExecutionWorkspaceFallbackLinkWithCache(
       sanitizedPath,
       link,
       context,
@@ -210,7 +224,11 @@ export function filterResolvableExecutionTerminalFileLinkCandidates(
       return shouldResolveFallbackExecutionTerminalFileLinkCandidate(candidate, context);
     }
 
-    if (candidate.source === 'detected' || candidate.source === 'styled') {
+    if (
+      candidate.source === 'detected' ||
+      candidate.source === 'styled' ||
+      candidate.source === 'hardwrap'
+    ) {
       return shouldAllowExecutionTerminalDetectedPathLink(candidate, context.pathStyle);
     }
 
@@ -224,6 +242,7 @@ async function resolveExecutionTerminalFileLinkCandidateGroup(
   createResolvedId: () => string
 ): Promise<PreparedExecutionTerminalResolvedFileLink[]> {
   const results: PreparedExecutionTerminalResolvedFileLink[] = [];
+  const resolveCache = createExecutionFileLinkResolverCache();
   for (const candidate of candidates) {
     const resolved = await resolveExecutionFileLink(
       {
@@ -243,9 +262,12 @@ async function resolveExecutionTerminalFileLinkCandidateGroup(
             allowWorkspaceFallback: shouldAllowFallbackExecutionTerminalWorkspaceFallback(
               candidate.path,
               context
-            )
+            ),
+            resolveCache
           }
-        : undefined
+        : {
+            resolveCache
+          }
     );
     if (!resolved) {
       continue;
@@ -289,13 +311,17 @@ function shouldResolveFallbackExecutionTerminalFileLinkPath(
     return false;
   }
 
-  if (hasFallbackExecutionTerminalProsePrefix(trimmedPath, context.pathStyle)) {
+  if (
+    hasFallbackExecutionTerminalProsePrefix(trimmedPath, context.pathStyle) ||
+    isNonFileUriLikeExecutionTerminalPath(trimmedPath)
+  ) {
     return false;
   }
 
   return (
     hasExplicitFallbackExecutionTerminalFileLinkPrefix(trimmedPath, context.pathStyle) ||
-    hasFallbackExecutionTerminalPathSeparator(trimmedPath) ||
+    (hasFallbackExecutionTerminalPathSeparator(trimmedPath) &&
+      isPlausibleExecutionTerminalStyledFilePath(trimmedPath, context.pathStyle)) ||
     hasFallbackExecutionTerminalFileExtension(trimmedPath)
   );
 }
@@ -379,6 +405,18 @@ function hasFallbackExecutionTerminalPathSeparator(value: string): boolean {
 
 function hasFallbackExecutionTerminalFileExtension(value: string): boolean {
   return !/\s/u.test(value) && /(?:^|[\\/])[^\\/]+\.[a-zA-Z\d]{1,16}$/u.test(value);
+}
+
+function isNonFileUriLikeExecutionTerminalPath(value: string): boolean {
+  if (value.startsWith('file://')) {
+    return false;
+  }
+
+  if (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\')) {
+    return false;
+  }
+
+  return /^[a-zA-Z][a-zA-Z\d+\-.]*:/u.test(value);
 }
 
 function hasFallbackExecutionTerminalProsePrefix(
@@ -730,6 +768,29 @@ function isAbsoluteExecutionPath(
 
 async function statExecutionLinkTarget(
   uri: vscode.Uri,
+  link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>,
+  resolveCache?: ExecutionFileLinkResolverCache
+): Promise<ResolvedExecutionFileLink | undefined> {
+  const cacheKey = uri.toString();
+  const cached = resolveCache?.stat.get(cacheKey);
+  if (cached) {
+    const resolved = await cached;
+    return resolved
+      ? {
+          ...resolved,
+          selection: toExecutionLinkSelection(link)
+        }
+      : undefined;
+  }
+
+  let request: Promise<ResolvedExecutionFileLink | undefined>;
+  request = statExecutionLinkTargetUncached(uri, link).catch(() => undefined);
+  resolveCache?.stat.set(cacheKey, request);
+  return request;
+}
+
+async function statExecutionLinkTargetUncached(
+  uri: vscode.Uri,
   link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>
 ): Promise<ResolvedExecutionFileLink | undefined> {
   try {
@@ -742,6 +803,37 @@ async function statExecutionLinkTarget(
   } catch {
     return undefined;
   }
+}
+
+async function resolveExecutionWorkspaceFallbackLinkWithCache(
+  sanitizedPath: string,
+  link: Extract<ExecutionTerminalOpenLink, { linkKind: 'file' }>,
+  context: ExecutionTerminalPathContext,
+  options?: ResolveExecutionFileLinkOptions
+): Promise<ResolvedExecutionFileLink | undefined> {
+  if (!options?.resolveCache) {
+    return resolveExecutionWorkspaceFallbackLink(sanitizedPath, link, context, options);
+  }
+
+  const cacheKey = [
+    sanitizedPath,
+    context.pathStyle,
+    options.allowPartialBasenameWorkspaceMatch === true ? 'partial' : 'exact'
+  ].join('\0');
+  const cached = options.resolveCache.workspaceFallback.get(cacheKey);
+  if (cached) {
+    const resolved = await cached;
+    return resolved
+      ? {
+          ...resolved,
+          selection: toExecutionLinkSelection(link)
+        }
+      : undefined;
+  }
+
+  const request = resolveExecutionWorkspaceFallbackLink(sanitizedPath, link, context, options);
+  options.resolveCache.workspaceFallback.set(cacheKey, request);
+  return request;
 }
 
 async function resolveExecutionWorkspaceFallbackLink(
