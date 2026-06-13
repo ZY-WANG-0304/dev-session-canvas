@@ -75,7 +75,7 @@ workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起�
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --skip-package
 
-只有 marketplace 发布与验证成功后，workflow 才删除 `publish/v0.15.1` 临时 tag；如果 marketplace 失败，Release assets 保留为手动安装兜底，job 失败且临时 tag 保留，便于重跑同一 release input。
+只有 marketplace 发布与验证成功后，workflow 才删除 `publish/v0.15.1` 临时 tag；如果 marketplace 失败，Release assets 保留为手动安装兜底，job 失败且临时 tag 保留，便于重跑同一 release input。重跑同一版本时，workflow 会下载并校验 `v0.15.1` Release 中已有的 notifier VSIX、主扩展 VSIX 与 manifest，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
 
 若 GitHub Actions 中某个 marketplace 目标失败，或需要只重跑 notifier 到某个市场，可保留或重新创建同一个 `publish/v0.15.1`，复用同一份 manifest / VSIX，并限定扩展与市场：
 
@@ -83,12 +83,12 @@ workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起�
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --skip-package --extension notifier --target open-vsx --no-create-final-tag
 
-注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 package，或在使用 `--skip-package` 时让 `release:publish-tag` 校验已有 release manifest 与 notifier VSIX sha256，证明它针对同一个 release ref 完成过打包。
+注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 package；发布失败后的同版本重跑必须复用 GitHub Release 中已有的 VSIX / manifest，并在使用 `--skip-package` 时让 `release:publish-tag` 校验已有 release manifest 与 notifier VSIX sha256，证明它针对同一个 release ref 完成过打包。
 
 ## Tag 与版本对齐约束
 
 - 如果 notifier 与主扩展共用同一个、已经位于 `main` 上的 release commit，继续复用主扩展的正式 `v<release-version>` 仓库 tag，不单独再发 notifier 专属 tag。
-- `publish/v<release-version>` 只是临时发布触发 tag；发布失败时保留用于重跑，GitHub Release assets 已上传、Visual Studio Marketplace / Open VSX 发布验证成功且正式 `v<release-version>` 已推送后可以删除。
+- `publish/v<release-version>` 只是临时发布触发 tag；发布失败时保留用于重跑，GitHub Release assets 已上传、Visual Studio Marketplace / Open VSX 发布验证成功且正式 `v<release-version>` 已推送后可以删除。同版本重跑必须复用并校验既有 Release assets；若 Release assets 不完整，先人工修复或删除不完整状态。
 - 如果 notifier 准备从另一个 commit 单独发布，但版本号仍想保持 `v<release-version>` 对应的同一组数字，这会让“同一个版本号对应哪个发布输入”变得不清晰；此时必须先决定是一起 bump 版本，还是显式放弃“版本对齐”策略，再继续发布。
 
 ## 发布后验证
