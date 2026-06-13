@@ -461,6 +461,24 @@
           "scope": "window",
           "markdownDescription": "%configuration.canvas.overviewZoomThreshold.description%"
         },
+        "devSessionCanvas.canvas.linkOpenMode": {
+          "type": "string",
+          "enum": [
+            "editorPreview",
+            "externalBrowser"
+          ],
+          "enumItemLabels": [
+            "%configuration.canvas.linkOpenMode.editorPreview.label%",
+            "%configuration.canvas.linkOpenMode.externalBrowser.label%"
+          ],
+          "default": "editorPreview",
+          "scope": "window",
+          "markdownDescription": "%configuration.canvas.linkOpenMode.description%",
+          "markdownEnumDescriptions": [
+            "%configuration.canvas.linkOpenMode.editorPreview.description%",
+            "%configuration.canvas.linkOpenMode.externalBrowser.description%"
+          ]
+        },
         "devSessionCanvas.runtimePersistence.enabled": {
           "type": "boolean",
           "default": false,

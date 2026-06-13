@@ -7508,8 +7508,8 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
             event.detail?.nodeId === terminalNodeId &&
             event.detail?.text === urlLinkText &&
             event.detail?.linkKind === 'url' &&
-            event.detail?.openerKind === 'vscode.open' &&
-            event.detail?.targetUri === urlLinkText
+            event.detail?.openerKind === 'simpleBrowser.api.open' &&
+            isExpectedPreviewTargetUri(event.detail?.targetUri, urlLinkText)
         ),
       10000
     );
@@ -7550,8 +7550,8 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
             event.detail?.nodeId === terminalNodeId &&
             event.detail?.text === explicitUrlLinkText &&
             event.detail?.linkKind === 'url' &&
-            event.detail?.openerKind === 'vscode.open' &&
-            event.detail?.targetUri === explicitUrlLinkText
+            event.detail?.openerKind === 'simpleBrowser.api.open' &&
+            isExpectedPreviewTargetUri(event.detail?.targetUri, explicitUrlLinkText)
         ),
       10000
     );
@@ -12127,6 +12127,52 @@ function describeExpectedExecutionLinkModifier() {
   }
 
   return process.platform === 'darwin' ? 'cmd + click' : 'ctrl + click';
+}
+
+function isExpectedPreviewTargetUri(actualTarget, originalTarget) {
+  if (typeof actualTarget !== 'string') {
+    return false;
+  }
+
+  if (actualTarget === originalTarget) {
+    return true;
+  }
+
+  const actual = safeParseUrl(actualTarget);
+  const original = safeParseUrl(originalTarget);
+  if (!actual || !original) {
+    return false;
+  }
+
+  return (
+    isLoopbackPreviewHost(original.hostname) &&
+    isExpectedPreviewProtocol(actual.protocol, original.protocol) &&
+    actual.pathname === original.pathname &&
+    actual.search === original.search &&
+    actual.hash === original.hash &&
+    Boolean(actual.hostname)
+  );
+}
+
+function safeParseUrl(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function isLoopbackPreviewHost(hostname) {
+  const normalizedHostname = hostname.toLowerCase().replace(/\.$/, '');
+  return (
+    normalizedHostname === 'localhost' ||
+    normalizedHostname === '127.0.0.1' ||
+    normalizedHostname === '[::1]'
+  );
+}
+
+function isExpectedPreviewProtocol(actualProtocol, originalProtocol) {
+  return actualProtocol === originalProtocol || (originalProtocol === 'http:' && actualProtocol === 'https:');
 }
 
 async function createLocalBrowserSmokeServer(title) {
