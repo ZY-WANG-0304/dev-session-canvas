@@ -69,6 +69,7 @@ import {
   type CanvasFileNodeDisplayMode,
   type CanvasFilePathDisplayMode,
   type CanvasFilePresentationMode,
+  type CanvasLinkOpenMode,
   type CanvasFileIconDescriptor,
   type CanvasOverviewMode,
   type CanvasStrongTerminalAttentionReminderMode,
@@ -113,6 +114,7 @@ import {
   isExecutionNodeKind,
   normalizeCanvasAttentionNotificationBridgeMode,
   normalizeCanvasAgentAbnormalOutputTextNotificationMode,
+  normalizeCanvasLinkOpenMode,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -223,6 +225,7 @@ import {
   inspectCurrentConfiguredTerminalShellInCwd
 } from './configuration';
 import { getWebviewHtml } from './getWebviewHtml';
+import { openCanvasExternalLink } from './linkOpenMode';
 import { RuntimeSupervisorClient } from './runtimeSupervisorClient';
 import {
   CanvasTemplateStore,
@@ -735,6 +738,7 @@ export interface CanvasDebugSnapshot {
 }
 
 interface CanvasDebugConfigurationSnapshot {
+  linkOpenMode: CanvasLinkOpenMode;
   terminalShellPath: string;
   terminalShellPathOverride?: string;
   terminalShellResolutionSource: TerminalShellResolutionSource;
@@ -1133,6 +1137,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const canvasOverviewZoomThresholdChanged = event.affectsConfiguration(
           CONFIG_KEYS.canvasOverviewZoomThreshold
         );
+        const canvasLinkOpenModeChanged = event.affectsConfiguration(CONFIG_KEYS.canvasLinkOpenMode);
         const filesFeatureEnabledChanged = event.affectsConfiguration(CONFIG_KEYS.filesFeatureEnabled);
         const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
         const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
@@ -1194,6 +1199,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !agentClaudeDefaultArgsChanged &&
           !canvasOverviewModeChanged &&
           !canvasOverviewZoomThresholdChanged &&
+          !canvasLinkOpenModeChanged &&
           !filesPresentationModeChanged &&
           !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
@@ -1226,6 +1232,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             agentClaudeDefaultArgsChanged,
             canvasOverviewModeChanged,
             canvasOverviewZoomThresholdChanged,
+            canvasLinkOpenModeChanged,
             filesPresentationModeChanged,
             fileNodeDisplayStyleChanged,
             filesNodeDisplayModeChanged,
@@ -5787,6 +5794,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
+  private getCanvasLinkOpenMode(): CanvasLinkOpenMode {
+    return normalizeCanvasLinkOpenMode(
+      getConfigurationValue<CanvasLinkOpenMode>('canvasLinkOpenMode', 'editorPreview')
+    );
+  }
+
   private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
     const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'lists');
     const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal');
@@ -6034,6 +6047,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     agentClaudeDefaultArgsChanged: boolean;
     canvasOverviewModeChanged: boolean;
     canvasOverviewZoomThresholdChanged: boolean;
+    canvasLinkOpenModeChanged: boolean;
     filesPresentationModeChanged: boolean;
     fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
@@ -6051,6 +6065,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     terminalWordSeparatorsChanged: boolean;
     workbenchIconThemeChanged: boolean;
   }): Promise<void> {
+    if (options.canvasLinkOpenModeChanged) {
+      this.recordDiagnosticEvent('canvas/linkOpenModeConfigChanged', {
+        mode: this.getCanvasLinkOpenMode()
+      });
+    }
+
     if (options.attentionNotificationBridgeChanged) {
       this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
       this.recordDiagnosticEvent('execution/attentionNotificationBridgeConfigChanged', {
@@ -6145,6 +6165,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.agentClaudeDefaultArgsChanged ||
       options.canvasOverviewModeChanged ||
       options.canvasOverviewZoomThresholdChanged ||
+      options.canvasLinkOpenModeChanged ||
       options.filesPresentationModeChanged ||
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||
@@ -6991,10 +7012,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (resolvedTarget.kind === 'external') {
-      await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(resolvedTarget.href));
+      const openResult = await openCanvasExternalLink(
+        vscode.Uri.parse(resolvedTarget.href),
+        this.getCanvasLinkOpenMode()
+      );
+      if (!openResult.opened) {
+        this.recordDiagnosticEvent('note/linkOpenRejected', {
+          nodeId,
+          href: resolvedTarget.href,
+          openerKind: openResult.openerKind,
+          reason: 'external-opener-failed',
+          targetKind: 'external'
+        });
+        return;
+      }
       this.recordDiagnosticEvent('note/linkOpened', {
         nodeId,
         href: resolvedTarget.href,
+        openerKind: openResult.openerKind,
         targetKind: 'external'
       });
       return;
@@ -7868,6 +7903,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     cwd: string;
     pathStyle: 'windows' | 'posix';
     userHome?: string;
+    linkOpenMode?: CanvasLinkOpenMode;
     resolveCwdForBufferLine?: (bufferStartLine: number) => Promise<string | undefined>;
   } {
     const session = this.getExecutionSessions(kind).get(nodeId);
@@ -7886,6 +7922,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       cwd,
       pathStyle: inferExecutionTerminalPathStyle(shellPath, cwd),
       userHome: process.env.HOME ?? process.env.USERPROFILE,
+      linkOpenMode: this.getCanvasLinkOpenMode(),
       resolveCwdForBufferLine:
         session ? (bufferStartLine) => session.lineContextTracker.getCwdForBufferLine(bufferStartLine) : undefined
     };
@@ -12657,6 +12694,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): CanvasDebugConfigurationSnapshot {
     const configuredTerminalShell = getConfiguredTerminalShell();
     return {
+      linkOpenMode: this.getCanvasLinkOpenMode(),
       terminalShellPath: this.resolveTerminalShellPathForConfigurationCwd(configuredTerminalShell.resolvedPath),
       terminalShellPathOverride: configuredTerminalShell.configuredPath || undefined,
       terminalShellResolutionSource: configuredTerminalShell.resolutionSource,

@@ -24,6 +24,8 @@ export type CanvasFilePresentationMode = 'nodes' | 'lists';
 export type CanvasFileNodeDisplayStyle = 'card' | 'minimal';
 export type CanvasFileNodeDisplayMode = 'icon-path' | 'icon-only' | 'path-only';
 export type CanvasFilePathDisplayMode = 'basename' | 'relative-path';
+export const canvasLinkOpenModes = ['editorPreview', 'externalBrowser'] as const;
+export type CanvasLinkOpenMode = (typeof canvasLinkOpenModes)[number];
 export const canvasOverviewModes = ['none', 'title'] as const;
 export type CanvasOverviewMode = (typeof canvasOverviewModes)[number];
 export const DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.2;
@@ -65,6 +67,14 @@ export function isCanvasOverviewMode(value: unknown): value is CanvasOverviewMod
 
 export function normalizeCanvasOverviewMode(value: unknown): CanvasOverviewMode {
   return isCanvasOverviewMode(value) ? value : 'title';
+}
+
+export function isCanvasLinkOpenMode(value: unknown): value is CanvasLinkOpenMode {
+  return value === 'editorPreview' || value === 'externalBrowser';
+}
+
+export function normalizeCanvasLinkOpenMode(value: unknown): CanvasLinkOpenMode {
+  return isCanvasLinkOpenMode(value) ? value : 'editorPreview';
 }
 
 export function normalizeCanvasOverviewZoomThreshold(value: unknown): number {
