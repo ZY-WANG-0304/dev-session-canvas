@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       trigger_tag:
-        description: 'Temporary publish tag, for example publish/v0.14.2'
+        description: 'Temporary publish tag, for example publish/vX.Y.Z'
         required: true
         type: string
 
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish VS Code Marketplace Artifacts
+    name: Publish Marketplaces And Release Assets
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'create' && github.event.ref_type == 'tag' && startsWith(github.event.ref, 'publish/v')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -22,15 +22,39 @@ jobs:
       group: marketplace-release-${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.event.ref }}
       cancel-in-progress: false
     env:
+      GH_TOKEN: ${{ github.token }}
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
       TRIGGER_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.event.ref }}
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
+      - name: Derive release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$TRIGGER_TAG" =~ ^publish/v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "TRIGGER_TAG must be publish/vX.Y.Z, got: $TRIGGER_TAG" >&2
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          {
+            echo "version=$version"
+            echo "final_tag=v$version"
+            echo "manifest_path=release-artifacts/release-manifest-$version.json"
+            echo "main_vsix=dev-session-canvas-$version.vsix"
+            echo "notifier_vsix=extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-$version.vsix"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: refs/tags/${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.event.ref }}
+          ref: refs/tags/${{ env.TRIGGER_TAG }}
+
+      - name: Resolve release ref
+        id: ref
+        shell: bash
+        run: echo "release_ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -46,10 +70,180 @@ jobs:
           test -n "$VSCE_PAT" || { echo "VSCE_PAT secret is required."; exit 1; }
           test -n "$OVSX_PAT" || { echo "OVSX_PAT secret is required."; exit 1; }
 
-      - name: Publish and finalize release tag
-        run: npm run release:publish-tag -- --trigger-tag "$TRIGGER_TAG" --delete-trigger-tag
+      - name: Package release artifacts
+        run: npm run release:publish-tag -- --trigger-tag "$TRIGGER_TAG" --package-only
 
-      - name: Upload release artifacts
+      - name: Create final release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          final_tag="${{ steps.release.outputs.final_tag }}"
+          release_ref="${{ steps.ref.outputs.release_ref }}"
+          git fetch origin --tags
+
+          local_ref="$(git rev-parse "$final_tag^{}" 2>/dev/null || true)"
+          if [[ -n "$local_ref" && "$local_ref" != "$release_ref" ]]; then
+            echo "Local final tag $final_tag points to $local_ref, expected $release_ref." >&2
+            exit 1
+          fi
+
+          remote_ref="$(git ls-remote --tags origin "refs/tags/$final_tag" | awk '{print $1}')"
+          if [[ -n "$remote_ref" && "$remote_ref" != "$release_ref" ]]; then
+            echo "Remote final tag $final_tag points to $remote_ref, expected $release_ref." >&2
+            exit 1
+          fi
+
+          if [[ -z "$local_ref" ]]; then
+            git tag "$final_tag" "$release_ref"
+          fi
+          if [[ -z "$remote_ref" ]]; then
+            git push origin "$final_tag"
+          fi
+
+      - name: Record final release tag in manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest_path="${{ steps.release.outputs.manifest_path }}"
+          node -e '
+            const fs = require("fs");
+            const manifestPath = process.argv[1];
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+            manifest.tags = {
+              ...(manifest.tags || {}),
+              finalTag: manifest.finalTag,
+              finalTagStatus: "pushed"
+            };
+            fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+          ' "$manifest_path"
+
+      - name: Write GitHub release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-artifacts/github-release-notes.md <<'NOTES'
+          This release publishes Dev Session Canvas to Visual Studio Marketplace and Open VSX, and also mirrors the installable VSIX packages as GitHub Release assets.
+
+          Use the marketplace listing for normal installation when available. If marketplace access is delayed or unavailable, install one or both VSIX files manually from this release's Assets section. The release manifest records the exact release ref, package checksums, and marketplace verification status.
+          NOTES
+
+      - name: Create or update GitHub Release assets
+        id: release_assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          final_tag="${{ steps.release.outputs.final_tag }}"
+          release_ref="${{ steps.ref.outputs.release_ref }}"
+          notes_file="release-artifacts/github-release-notes.md"
+
+          if release_id="$(gh api "repos/{owner}/{repo}/releases/tags/$final_tag" --jq '.id' 2>/dev/null)"; then
+            body="$(cat "$notes_file")"
+            gh api --method PATCH "repos/{owner}/{repo}/releases/$release_id" \
+              -f target_commitish="$release_ref" \
+              -f name="$final_tag" \
+              -f body="$body" \
+              --silent
+          else
+            gh release create "$final_tag" --target "$release_ref" --title "$final_tag" --notes-file "$notes_file"
+          fi
+
+          gh release upload "$final_tag" \
+            "${{ steps.release.outputs.manifest_path }}" \
+            "${{ steps.release.outputs.main_vsix }}" \
+            "${{ steps.release.outputs.notifier_vsix }}" \
+            --clobber
+
+      - name: Publish and verify marketplaces
+        id: marketplaces
+        shell: bash
+        run: |
+          set +e
+          npm run release:publish-tag -- --trigger-tag "$TRIGGER_TAG" --skip-package
+          status="$?"
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Upload final release manifest
+        if: always() && steps.release_assets.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest_path="${{ steps.release.outputs.manifest_path }}"
+          final_tag="${{ steps.release.outputs.final_tag }}"
+          if [[ -f "$manifest_path" ]]; then
+            node -e '
+              const fs = require("fs");
+              const manifestPath = process.argv[1];
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+              manifest.githubRelease = {
+                ...(manifest.githubRelease || {}),
+                assets: (manifest.artifacts || []).map((artifact) => artifact.path),
+                finalTag: manifest.finalTag,
+                releaseRef: manifest.releaseRef,
+                status: "assets-uploaded",
+                uploadedAt: new Date().toISOString()
+              };
+              manifest.tags = {
+                ...(manifest.tags || {}),
+                finalTag: manifest.finalTag,
+                finalTagStatus: "pushed"
+              };
+              fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+            ' "$manifest_path"
+            gh release upload "$final_tag" "$manifest_path" --clobber
+          fi
+
+      - name: Delete temporary publish tag
+        if: steps.marketplaces.outputs.status == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          final_tag="${{ steps.release.outputs.final_tag }}"
+          release_ref="${{ steps.ref.outputs.release_ref }}"
+          manifest_path="${{ steps.release.outputs.manifest_path }}"
+          final_ref="$(git rev-parse "$final_tag^{}")"
+          trigger_ref="$(git rev-parse "$TRIGGER_TAG^{}")"
+
+          if [[ "$final_ref" != "$release_ref" || "$trigger_ref" != "$release_ref" ]]; then
+            echo "Ref mismatch; refusing to delete $TRIGGER_TAG." >&2
+            echo "release_ref=$release_ref final_ref=$final_ref trigger_ref=$trigger_ref" >&2
+            exit 1
+          fi
+
+          git push origin ":refs/tags/$TRIGGER_TAG"
+          git tag -d "$TRIGGER_TAG" || true
+
+          node -e '
+            const fs = require("fs");
+            const manifestPath = process.argv[1];
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+            manifest.githubRelease = {
+              ...(manifest.githubRelease || {}),
+              assets: (manifest.artifacts || []).map((artifact) => artifact.path),
+              finalTag: manifest.finalTag,
+              releaseRef: manifest.releaseRef,
+              status: "assets-uploaded",
+              uploadedAt: new Date().toISOString()
+            };
+            manifest.tags = {
+              ...(manifest.tags || {}),
+              finalTag: manifest.finalTag,
+              finalTagStatus: "pushed"
+            };
+            if (manifest.tags) {
+              manifest.tags.triggerTagStatus = "deleted";
+            }
+            fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+          ' "$manifest_path"
+          gh release upload "$final_tag" "$manifest_path" --clobber
+
+      - name: Fail when marketplace publish failed
+        if: steps.marketplaces.outputs.status != '0'
+        run: |
+          echo "Marketplace publish or verification failed. GitHub Release assets were uploaded for manual installation, and the temporary publish tag was kept for rerun."
+          exit 1
+
+      - name: Upload workflow artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
