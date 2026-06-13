@@ -65,13 +65,40 @@ export function buildAgentHistoryResumeCommandLine(
   ]);
 }
 
+export function buildAgentBranchCommandLine(
+  provider: AgentProviderKind,
+  sessionId: string,
+  defaults: AgentProviderLaunchDefaults
+): string {
+  return provider === 'claude'
+    ? buildClaudeBranchCommandLine(sessionId, defaults)
+    : buildCodexBranchCommandLine(sessionId, defaults);
+}
+
+export function buildCodexBranchCommandLine(
+  sessionId: string,
+  defaults: AgentProviderLaunchDefaults
+): string {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    throw new Error('分叉会话标识不能为空。');
+  }
+
+  const command = defaults.command.trim() || 'codex';
+  const baseArgs = assertAgentDefaultArgsParsable('codex', defaults);
+  return formatCommandLine([
+    command,
+    ...buildCodexBranchArgv(baseArgs, normalizedSessionId)
+  ]);
+}
+
 export function buildClaudeBranchCommandLine(
   sessionId: string,
   defaults: AgentProviderLaunchDefaults
 ): string {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
-    throw new Error('Fork 会话标识不能为空。');
+    throw new Error('分叉会话标识不能为空。');
   }
 
   const command = defaults.command.trim() || 'claude';
@@ -219,6 +246,10 @@ export function extractClaudeCommandSessionFlag(
 
 export function hasClaudeForkSessionFlag(argv: readonly string[]): boolean {
   return argv.some((token) => token === '--fork-session' || token.startsWith('--fork-session='));
+}
+
+export function hasCodexForkSubcommand(argv: readonly string[]): boolean {
+  return findCodexSessionSubcommandIndex(argv, ['fork']) >= 0;
 }
 
 export function extractClaudeCommandRuntimeSessionFlag(
@@ -526,6 +557,12 @@ function buildAgentResumeArgv(
   return buildCodexResumeArgv(baseArgs, explicitSessionId);
 }
 
+function buildCodexBranchArgv(baseArgs: readonly string[], explicitSessionId: string): string[] {
+  const { leadingArgs, subcommandArgs } = splitCodexSessionSubcommandArgs(baseArgs, ['fork', 'resume']);
+  const normalizedSubcommandArgs = subcommandArgs ? stripCodexForkSelectionArgs(subcommandArgs) : [];
+  return ['fork', ...leadingArgs, ...normalizedSubcommandArgs, explicitSessionId];
+}
+
 function buildClaudeBranchArgv(baseArgs: readonly string[], explicitSessionId: string): string[] {
   const normalizedArgs = stripClaudeResumeTargetArgs(baseArgs);
   return ['--resume', explicitSessionId, '--fork-session', ...normalizedArgs];
@@ -575,6 +612,17 @@ function splitCodexResumeArgs(baseArgs: readonly string[]): {
   leadingArgs: string[];
   resumeArgs?: string[];
 } {
+  const splitArgs = splitCodexSessionSubcommandArgs(baseArgs, ['resume']);
+  return {
+    leadingArgs: splitArgs.leadingArgs,
+    resumeArgs: splitArgs.subcommandArgs
+  };
+}
+
+function splitCodexSessionSubcommandArgs(baseArgs: readonly string[], subcommands: readonly string[]): {
+  leadingArgs: string[];
+  subcommandArgs?: string[];
+} {
   let nextTokenIsOptionValue = false;
   let encounteredPositional = false;
 
@@ -591,10 +639,10 @@ function splitCodexResumeArgs(baseArgs: readonly string[]): {
       continue;
     }
 
-    if (!encounteredPositional && token === 'resume') {
+    if (!encounteredPositional && subcommands.includes(token)) {
       return {
         leadingArgs: [...baseArgs.slice(0, index)],
-        resumeArgs: [...baseArgs.slice(index + 1)]
+        subcommandArgs: [...baseArgs.slice(index + 1)]
       };
     }
 
@@ -611,6 +659,40 @@ function splitCodexResumeArgs(baseArgs: readonly string[]): {
   return {
     leadingArgs: [...baseArgs]
   };
+}
+
+function findCodexSessionSubcommandIndex(baseArgs: readonly string[], subcommands: readonly string[]): number {
+  let nextTokenIsOptionValue = false;
+  let encounteredPositional = false;
+
+  for (let index = 0; index < baseArgs.length; index += 1) {
+    const token = baseArgs[index];
+
+    if (nextTokenIsOptionValue) {
+      nextTokenIsOptionValue = false;
+      continue;
+    }
+
+    if (token === '--') {
+      encounteredPositional = true;
+      continue;
+    }
+
+    if (!encounteredPositional && subcommands.includes(token)) {
+      return index;
+    }
+
+    if (codexOptionConsumesFollowingValue(token)) {
+      nextTokenIsOptionValue = true;
+      continue;
+    }
+
+    if (!encounteredPositional && !isOptionLikeCommandToken(token)) {
+      encounteredPositional = true;
+    }
+  }
+
+  return -1;
 }
 
 function stripCodexResumeSelectionArgs(
@@ -641,6 +723,40 @@ function stripCodexResumeSelectionArgs(
     }
 
     if (explicitTarget && (token === '--all' || token === '--include-non-interactive')) {
+      continue;
+    }
+
+    if (!isOptionLikeCommandToken(token)) {
+      continue;
+    }
+
+    normalizedArgs.push(token);
+    if (codexOptionConsumesFollowingValue(token)) {
+      nextTokenIsOptionValue = true;
+    }
+  }
+
+  return normalizedArgs;
+}
+
+function stripCodexForkSelectionArgs(forkArgs: readonly string[]): string[] {
+  const normalizedArgs: string[] = [];
+  let nextTokenIsOptionValue = false;
+
+  for (let index = 0; index < forkArgs.length; index += 1) {
+    const token = forkArgs[index];
+
+    if (nextTokenIsOptionValue) {
+      normalizedArgs.push(token);
+      nextTokenIsOptionValue = false;
+      continue;
+    }
+
+    if (token === '--') {
+      break;
+    }
+
+    if (token === '--last' || token === '--all' || token === '--include-non-interactive') {
       continue;
     }
 

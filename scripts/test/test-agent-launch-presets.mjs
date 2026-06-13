@@ -25,12 +25,15 @@ try {
     buildAgentPresetCommandLine,
     buildFreshAgentCommandLine,
     buildAgentHistoryResumeCommandLine,
+    buildAgentBranchCommandLine,
+    buildCodexBranchCommandLine,
     buildClaudeBranchCommandLine,
     classifyAgentLaunchPreset,
     extractClaudeCommandRuntimeSessionFlag,
     extractClaudeCommandSessionFlag,
     formatCommandLine,
     hasAnyCommandLineFlag,
+    hasCodexForkSubcommand,
     matchesAgentCommandLinePreset,
     parseCommandLine,
     validateAgentCommandLine
@@ -40,6 +43,38 @@ try {
     command: '/tmp/providers/claude-custom',
     defaultArgs: ''
   };
+
+  assert.equal(
+    buildAgentBranchCommandLine('codex', 'codex-branch-session-001', {
+      command: '/tmp/providers/codex-custom',
+      defaultArgs: '--model gpt-5.2 --sandbox workspace-write'
+    }),
+    '/tmp/providers/codex-custom fork --model gpt-5.2 --sandbox workspace-write codex-branch-session-001'
+  );
+
+  assert.equal(
+    buildCodexBranchCommandLine(' codex-branch-session-002 ', {
+      command: 'codex',
+      defaultArgs: '--model gpt-5.2 resume --all --include-non-interactive old-session --sandbox workspace-write'
+    }),
+    'codex fork --model gpt-5.2 --sandbox workspace-write codex-branch-session-002'
+  );
+
+  assert.equal(
+    buildCodexBranchCommandLine('codex-branch-session-003', {
+      command: 'codex',
+      defaultArgs: '--profile prod fork --last --all old-session --sandbox workspace-write'
+    }),
+    'codex fork --profile prod --sandbox workspace-write codex-branch-session-003'
+  );
+
+  assert.throws(
+    () => buildCodexBranchCommandLine('   ', { command: 'codex', defaultArgs: '' }),
+    /分叉会话标识不能为空。/
+  );
+
+  assert.equal(hasCodexForkSubcommand(['--profile', 'prod', 'fork', 'session-123']), true);
+  assert.equal(hasCodexForkSubcommand(['--config', 'fork', 'resume', 'session-123']), false);
 
   assert.equal(
     buildClaudeBranchCommandLine('claude-branch-session-123', claudeDefaults),
@@ -64,7 +99,7 @@ try {
 
   assert.throws(
     () => buildClaudeBranchCommandLine('   ', claudeDefaults),
-    /Fork 会话标识不能为空。/
+    /分叉会话标识不能为空。/
   );
 
   assert.deepEqual(
