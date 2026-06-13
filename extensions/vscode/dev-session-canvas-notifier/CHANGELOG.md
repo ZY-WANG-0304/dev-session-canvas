@@ -2,7 +2,7 @@
 
 ## 0.15.2
 
-- 与主扩展 `0.15.2` 对齐：本轮主扩展是 `0.15.x` Preview 线内的通知控制与 Agent 可靠性补丁，聚焦执行节点 attention signal allow-list、Codex 最终失败文本提醒，以及 Claude Agent `Ctrl-Z` / `fg` 误导状态收口；notifier companion 不引入新的通知投递行为变更。
+- 与主扩展 `0.15.2` 对齐：本轮主扩展是 `0.15.x` Preview 线内的通知控制与 Agent 可靠性补丁，并包含画布外部链接打开方式配置与 GitHub Release assets 发布流程收口；notifier companion 不引入新的通知投递行为变更。
 - 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
 
 ## 0.15.1

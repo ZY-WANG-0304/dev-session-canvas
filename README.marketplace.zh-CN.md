@@ -12,7 +12,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 ## 0.15.2 版本亮点
 
-当前公开的 `0.15.2` 版本是 Preview 补丁，重点收口通知控制与 Claude Agent 可靠性。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布自动化、双市场发布和 Preview 支持边界。
+当前公开的 `0.15.2` 版本是 Preview 补丁，重点收口通知控制、Claude Agent 可靠性，以及更安全的画布外部链接打开方式。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag / GitHub Release assets 发布自动化、双市场发布和 Preview 支持边界。
 
 - `devSessionCanvas.notifications.enabledAttentionSignals` 可分别控制 `BEL`、`OSC 9`、`OSC 777`、Agent 异常退出和 Codex 文本异常是否生成画布 attention
 - 将 allow-list 设为空数组时，所有执行 attention signal 都不会设置节点提醒、Minimap 闪烁或外部通知桥接
@@ -20,6 +20,8 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - Codex 最终失败识别覆盖高置信的最终 `Internal server error` 与尾部 `stream disconnected before completion` 文案，同时忽略 retry / reconnect 暂态输出
 - Claude Agent `Ctrl-Z` 现在会在 Webview、宿主和 runtime supervisor 路径被阻断，因为直接启动的 Agent 没有 shell `fg` job-control 承诺；请改用停止、重启或 Fork
 - 旧 `suspended` Agent snapshot 仍可安全渲染，但不再暴露恢复动作或旧挂起态 Fork 入口
+- `devSessionCanvas.canvas.linkOpenMode` 可让画布外部链接默认在 VS Code editor 预览打开，也可选择交给系统外部浏览器 / 应用
+- localhost / loopback 开发服务链接在 editor 预览前会先通过 VS Code 端口转发解析，避免 Remote SSH / Dev Container 中误连到客户端本机
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 核心功能

@@ -12,7 +12,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 ## 0.15.2 Highlights
 
-The public `0.15.2` release is a Preview patch focused on notification controls and Claude Agent reliability. It keeps the `0.15.1` canvas navigation and multi-root reliability patch, the `0.15.0` Claude Code Agent Fork, owner-derived file-activity grouping, Panel Webview lifecycle diagnostics, publish-tag release automation, dual-market distribution, and Preview support boundaries.
+The public `0.15.2` release is a Preview patch focused on notification controls, Claude Agent reliability, and safer canvas external-link opening. It keeps the `0.15.1` canvas navigation and multi-root reliability patch, the `0.15.0` Claude Code Agent Fork, owner-derived file-activity grouping, Panel Webview lifecycle diagnostics, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
 
 - `devSessionCanvas.notifications.enabledAttentionSignals` lets you decide which `BEL`, `OSC 9`, `OSC 777`, Agent abnormal-exit, and Codex abnormal-output signals can create canvas attention
 - Setting that allow-list to an empty array suppresses node attention, MiniMap flashing, and external notification bridging for all execution attention signals
@@ -20,6 +20,8 @@ The public `0.15.2` release is a Preview patch focused on notification controls 
 - Codex final-failure detection now covers high-confidence final `Internal server error` and tail `stream disconnected before completion` messages while ignoring retry / reconnect progress output
 - Claude Agent `Ctrl-Z` is now blocked in the Webview, host, and runtime supervisor paths because the direct-spawn Agent has no shell `fg` job-control contract; use Stop, Restart, or Fork instead
 - Legacy `suspended` Agent snapshots still render safely but no longer expose restore actions or stale Fork entry points
+- `devSessionCanvas.canvas.linkOpenMode` lets canvas external links open in VS Code editor preview by default, or in the system browser / app when you choose `externalBrowser`
+- Localhost and loopback development-service links are resolved through VS Code port forwarding before editor preview, which keeps Remote SSH / Dev Container links pointed at the workspace-side service
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Core Capabilities

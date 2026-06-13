@@ -2,7 +2,7 @@
 
 ## 0.15.2 - Preview Notification Controls and Claude Ctrl-Z Patch
 
-相对 `0.15.1`，`0.15.2` 是同一 `0.15.x` 公开 `Preview` 线内的通知控制与 Agent 可靠性补丁，重点收口执行节点 attention signal allow-list、Codex 最终失败文本提醒，以及 Claude Agent `Ctrl-Z` / `fg` 误导状态处理。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent `Fork`、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、双市场发布元数据、安装拓扑和 Preview 支持边界。
+相对 `0.15.1`，`0.15.2` 是同一 `0.15.x` 公开 `Preview` 线内的通知控制与 Agent 可靠性补丁，重点收口执行节点 attention signal allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` / `fg` 误导状态处理，以及画布外部链接打开方式配置。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent `Fork`、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
 
 ### 本版本聚焦
 
@@ -12,6 +12,8 @@
 - 收紧 Codex 最终失败文本识别：方块标记的 `Internal server error` 与尾部 `stream disconnected before completion: stream closed before response.completed` 会触发补充提醒，`Reconnecting... n/m` 下方树形缩进的 stream-disconnected 暂态输出不会误触发
 - Claude Agent 节点不再把 Claude Code 的 `Ctrl-Z` / `fg` 文案当成可恢复生命周期；Webview、宿主和 runtime supervisor 写入路径都会阻断 Claude Agent `Ctrl-Z`，并提示使用停止、重启或 Fork
 - 旧版本遗留的 `suspended` Agent snapshot 仍可渲染，但不再暴露“恢复 / 恢复中”入口，也不会继续显示旧挂起态 Fork 动作，避免把不可交互状态误写成可恢复状态
+- 新增 `devSessionCanvas.canvas.linkOpenMode`，可选择画布内外部链接默认在 VS Code editor 预览打开，或交给系统外部浏览器 / 应用；默认预览模式会先解析 localhost / loopback 开发服务链接，避免远程场景把服务地址误指向客户端本机
+- 发布流程继续由 `publish/vX.Y.Z` 固定输入，并把同一批主扩展 / notifier VSIX 与 release manifest 镜像到对应 GitHub Release assets；该入口只是 marketplace 暂时不可用时的手动安装兜底，不替代 Visual Studio Marketplace / Open VSX 发布验证
 - 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
 
 ### 安装与升级

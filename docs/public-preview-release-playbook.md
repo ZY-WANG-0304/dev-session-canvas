@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.15.2`。当前版本范围收口为“发布同一 `0.15.x` Preview 线内的通知控制与 Agent 可靠性补丁：执行节点 attention signal allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` / `fg` 误导状态处理，以及旧 `suspended` 状态兼容渲染收口；继续保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent Fork、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、双市场发布边界、安装拓扑和 Preview 支持边界”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.15.2`。当前版本范围收口为“发布同一 `0.15.x` Preview 线内的通知控制与 Agent 可靠性补丁：执行节点 attention signal allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` / `fg` 误导状态处理、旧 `suspended` 状态兼容渲染、画布外部链接打开方式配置 / localhost 预览链接转发，以及 GitHub Release assets 镜像 / 复用发布流程；继续保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent Fork、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、双市场发布边界、安装拓扑和 Preview 支持边界”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -38,7 +38,7 @@
 
 - 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.15.2 - Preview Notification Controls and Claude Ctrl-Z Patch`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：`0.15.2` 收口执行节点 attention signal allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` 阻断和旧 `suspended` 状态兼容渲染；保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、双市场同版本同步策略，以及 `Dev Session Canvas Notifier` companion 版本对齐
+- release notes 应覆盖以下当前已确认范围：`0.15.2` 收口执行节点 attention signal allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` 阻断、旧 `suspended` 状态兼容渲染、画布外部链接打开方式配置 / localhost 预览链接转发，以及 GitHub Release assets 兜底入口；保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、双市场同版本同步策略，以及 `Dev Session Canvas Notifier` companion 版本对齐
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -116,9 +116,9 @@
 
 ## 当前验证备注
 
-截至 `2026-06-12`，上一轮 `0.15.1` 已在本地与远端存在 `v0.15.1` / `publish/v0.15.1` tag，均指向 `d33679244aaf4451be61960280168a74d6e35797`（短 SHA `d33679244aaf`）。Open VSX API 显示主扩展与 notifier 的 latest 均为 `0.15.1`；但 Visual Studio Marketplace 公开 item 页面 `devsessioncanvas.dev-session-canvas` 与 `devsessioncanvas.dev-session-canvas-notifier` 仍返回 404，public gallery `extensionquery` 对这两个 extension id 均返回 0 个结果。因此当前只能确认 `0.15.1` 在 Open VSX 侧公开可见，不能把上一轮写成已完成双市场公开可见发布。当前 `main` 已包含 `v0.15.1` 之后合入的 #149、#151、#153 和 #154；已用 `git fetch origin main --tags` 重新确认本轮发布准备基线为 `52899a7ef319fe0a85dda4eb229438e665b3c86e`（短 SHA `52899a7ef319`），因此本轮从该最新 `main` 切出 `release-0-15-2`，目标版本升级为 `0.15.2`。
+截至 `2026-06-14`，上一轮 `0.15.1` 的远端正式 tag `v0.15.1` 指向 `d33679244aaf4451be61960280168a74d6e35797`（短 SHA `d33679244aaf`），但 `gh release view v0.15.1` 返回 `release not found`，因此上一轮没有可复用的 GitHub Release assets。Open VSX API 显示主扩展与 notifier 的 latest 均为 `0.15.1`；但 Visual Studio Marketplace 公开 item 页面 `devsessioncanvas.dev-session-canvas` 与 `devsessioncanvas.dev-session-canvas-notifier` 仍返回 404，public gallery `extensionquery` 对这两个 extension id 均返回 0 个结果。因此当前只能确认 `0.15.1` 在 Open VSX 侧公开可见，不能把上一轮写成已完成双市场公开可见发布。当前最新 `main` / `origin/main` 为 `a1a0660d2c35f5e011ae9e464bcc509a57bc219e`（短 SHA `a1a0660`），已包含 `v0.15.1` 之后合入的 #149、#151、#153、#154、#156 和 #157；本轮从该最新 `main` 切出 `release-0-15-2`，目标版本升级为 `0.15.2`。
 
-当前功能输入已有 repo-local 证据：`docs/product-specs/canvas-node-notifications.md` 与 `docs/design-docs/execution-node-notification-and-attention-signals.md` 记录了 attention signal allow-list、Codex 文本异常提醒 opt-in 与最终失败文本边界；`docs/design-docs/execution-lifecycle-and-recovery.md`、`docs/design-docs/agent-running-state-detection.md` 和 `docs/exec-plans/completed/claude-agent-ctrl-z-containment.md` 记录了 Claude Agent `Ctrl-Z` / `fg` 收口处理和旧 `suspended` 兼容边界；`docs/design-docs/public-marketplace-release-readiness.md` 与 `docs/exec-plans/active/publish-tag-release-flow.md` 继续记录 publish tag 发布输入固定流程。
+当前功能输入已有 repo-local 证据：`docs/product-specs/canvas-node-notifications.md` 与 `docs/design-docs/execution-node-notification-and-attention-signals.md` 记录了 attention signal allow-list、Codex 文本异常提醒 opt-in 与最终失败文本边界；`docs/design-docs/execution-lifecycle-and-recovery.md`、`docs/design-docs/agent-running-state-detection.md` 和 `docs/exec-plans/completed/claude-agent-ctrl-z-containment.md` 记录了 Claude Agent `Ctrl-Z` / `fg` 收口处理和旧 `suspended` 兼容边界；`docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/design-docs/execution-node-terminal-native-interactions.md` 与 `docs/design-docs/note-markdown-preview-rendering.md` 记录了画布外部链接打开方式配置、Simple Browser 预览与 localhost / loopback 转发边界；`docs/design-docs/public-marketplace-release-readiness.md`、`docs/exec-plans/active/publish-tag-release-flow.md` 和 `docs/exec-plans/active/github-release-assets-flow.md` 继续记录 publish tag 发布输入固定流程与 GitHub Release assets 镜像 / 复用发布流程。
 
 本轮发布准备分支已刷新并完成以下验证 / 审计复核：
 
@@ -129,8 +129,10 @@
 - `npm run test:extension-manifest`
 - `npm run test:package-vsix-command`
 - `npm run test:publish-marketplaces`
+- `npm run test:publish-marketplace-workflow`
 - `npm run test:publish-tag-release`
 - `npm run test:execution-attention-signals`
+- `npm run test:execution-terminal-native-helpers`
 - `npm run test:protocol-webview-messages`
 - `npm run test:runtime-supervisor-protocol`
 - `npm run test:execution-session-bridge`
@@ -140,18 +142,17 @@
 - `npm run test:notifier-source`
 - `npm run build`
 - `npm run publish:marketplaces -- --dry-run`（仅预演，未执行真实 publish）
-- `npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --dry-run --package-only --skip-origin-main-check --manifest-dir <temp-dir>`（在临时干净 clone 中用本轮 release-prep commit tag 预演，未执行真实 publish / tag 推送）
 - `npm run package:vsix`
 - `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`
-- `npm run test:vsix-smoke`
+- `npm run test:vsix-smoke`（首跑暴露 `simpleBrowser.api.open` 打开 editor 预览后，后续 DOM action 仍发往已隐藏 editor Webview；本轮已在 smoke harness 中补回重新打开 Canvas editor 的步骤并复跑通过）
 - `npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke`
 - `npm audit --omit=dev`（0 vulnerabilities，退出码 0）
-- `npm audit`（退出码 1；仍报告 5 个 dev/tooling transitive vulnerabilities：4 moderate、1 high；当前生产依赖审计为 0）
+- `npm audit`（退出码 1；仍报告 6 个 dev/tooling transitive vulnerabilities：4 moderate、2 high；当前生产依赖审计为 0）
 
 本轮打包产物与发布前打包结果如下：
 
-- 主扩展 VSIX：`dev-session-canvas-0.15.2.vsix`，114 files，约 3.43 MB（本地文件大小 3,593,908 bytes）
-- Notifier VSIX：`extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.15.2.vsix`，10 files，约 144.32 KB（本地文件大小 147,786 bytes）
+- 主扩展 VSIX：`dev-session-canvas-0.15.2.vsix`，114 files，约 3.43 MB（本地文件大小 3,595,654 bytes）
+- Notifier VSIX：`extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.15.2.vsix`，10 files，约 144.31 KB（本地文件大小 147,769 bytes）
 - 两个 VSIX 的 `VSCE README doc ref` 均已在本轮发布准备分支打包日志中打印；发布准备 MR 合并后还需在最终 `main` release commit 上重新锁定
 - 本轮已补跑 `npm run test:vsix-smoke` 并通过；clean checkout 打包验证也已通过，且按参数跳过 packaged-payload smoke
 
