@@ -57,8 +57,8 @@
        DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref> npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix
 
 6. 确认打包日志打印了 `VSCE README doc ref: <final-ref-or-sha>`；如果当前 `README.marketplace.md` 没有相对链接，日志也应显式打印“当前没有需要重写的相对链接”，避免误把“没有输出”当成脚本未校验。
-7. 确认本地 `vsce login devsessioncanvas` 仍有效，发布账号继续沿用 `devsessioncanvas`，不需要为 notifier 单独新建 publisher。
-8. 确认 `Open VSX` 的 `devsessioncanvas` namespace 已完成 owner/verified 认领，发布 token 已写入 `~/.ovsx` 的 `devsessioncanvas` entry，且 `python3 scripts/release/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas` 可通过。
+7. 确认 workflow 仍会把 notifier 与主扩展同轮发布并验证到 Visual Studio Marketplace / Open VSX，同时把 notifier VSIX、主扩展 VSIX 与 release manifest 上传到同一个 GitHub Release assets 列表。
+8. 复核本地 `vsce login devsessioncanvas`、Open VSX namespace / token 和相关 repository secrets；当前 workflow 仍要求 `VSCE_PAT` / `OVSX_PAT`，GitHub Release assets 只是额外下载入口。
 
 ## 发布命令
 
@@ -67,33 +67,40 @@
     git tag publish/v0.15.1 <final-ref-or-sha>
     git push origin publish/v0.15.1
 
-推送临时 tag 后，`.github/workflows/publish-marketplace-release.yml` 会执行：
+推送临时 tag 后，`.github/workflows/publish-marketplace-release.yml` 会先执行：
 
-    npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --delete-trigger-tag
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --package-only
 
-若只需要补发 notifier，可保留或重新创建同一个 `publish/v0.15.1`，并限定扩展与市场：
+workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起上传到 `v0.15.1` 对应的 GitHub Release assets。GitHub 不支持裸 tag assets，因此用户下载入口是 GitHub Release 的 Assets 区，不是 tag 对象本身。上传 Release assets 后，workflow 会继续复用同一份 manifest / VSIX 发布并验证 Visual Studio Marketplace 与 Open VSX：
+
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --skip-package
+
+只有 marketplace 发布与验证成功后，workflow 才删除 `publish/v0.15.1` 临时 tag；如果 marketplace 失败，Release assets 保留为手动安装兜底，job 失败且临时 tag 保留，便于重跑同一 release input。重跑同一版本时，workflow 会下载并校验 `v0.15.1` Release 中已有的 notifier VSIX、主扩展 VSIX 与 manifest，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
+
+若 GitHub Actions 中某个 marketplace 目标失败，或需要只重跑 notifier 到某个市场，可保留或重新创建同一个 `publish/v0.15.1`，复用同一份 manifest / VSIX，并限定扩展与市场：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --skip-package --extension notifier --target visual-studio --no-create-final-tag
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --skip-package --extension notifier --target open-vsx --no-create-final-tag
 
-注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 package，或在使用 `--skip-package` 时让 `release:publish-tag` 校验已有 release manifest 与 notifier VSIX sha256，证明它针对同一个 release ref 完成过打包。
+注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 package；发布失败后的同版本重跑必须复用 GitHub Release 中已有的 VSIX / manifest，并在使用 `--skip-package` 时让 `release:publish-tag` 校验已有 release manifest 与 notifier VSIX sha256，证明它针对同一个 release ref 完成过打包。
 
 ## Tag 与版本对齐约束
 
 - 如果 notifier 与主扩展共用同一个、已经位于 `main` 上的 release commit，继续复用主扩展的正式 `v<release-version>` 仓库 tag，不单独再发 notifier 专属 tag。
-- `publish/v<release-version>` 只是临时发布触发 tag；发布失败时保留用于重跑，发布成功且正式 `v<release-version>` 已推送后可以删除。
+- `publish/v<release-version>` 只是临时发布触发 tag；发布失败时保留用于重跑，GitHub Release assets 已上传、Visual Studio Marketplace / Open VSX 发布验证成功且正式 `v<release-version>` 已推送后可以删除。同版本重跑必须复用并校验既有 Release assets；若 Release assets 不完整，先人工修复或删除不完整状态。
 - 如果 notifier 准备从另一个 commit 单独发布，但版本号仍想保持 `v<release-version>` 对应的同一组数字，这会让“同一个版本号对应哪个发布输入”变得不清晰；此时必须先决定是一起 bump 版本，还是显式放弃“版本对齐”策略，再继续发布。
 
 ## 发布后验证
 
-1. 打开 `Visual Studio Marketplace` 与 `Open VSX` 页面，确认名称、图标、README 文案、issue 链接与许可证信息没有失真。
-2. 在干净 profile 中分别验证两条安装路径：
+1. 打开 Visual Studio Marketplace 与 Open VSX 页面，确认 notifier 与主扩展都已经同步到本轮版本，名称、图标、README 文案、issue 链接与许可证信息没有失真。
+2. 打开 GitHub Release 页面，确认 notifier VSIX、主扩展 VSIX 与 release manifest 都存在于 Assets 中。
+3. 在干净 profile 中优先从 Marketplace / Open VSX 安装或升级；另从 GitHub Release 下载 VSIX，并分别验证两条安装路径：
    - 只安装 `Dev Session Canvas Notifier`，确认 VS Code 会自动补齐 `Dev Session Canvas`
    - 卸载后只安装 `Dev Session Canvas`，确认 VS Code 会自动补齐 `Dev Session Canvas Notifier`
-3. 确认主扩展设置里的 `devSessionCanvas.notifications.attentionSignalBridge` 默认值是 `system`。
-4. 运行 `Dev Session Canvas Notifier: 发送测试桌面通知`，确认系统通知出现，并在支持平台上验证点击后是否能回到 VS Code。
-5. 运行 `Dev Session Canvas Notifier: 打开通知诊断输出`，确认 `backend`、`activationMode` 与最近一次投递结果符合当前平台预期。
+4. 确认主扩展设置里的 `devSessionCanvas.notifications.attentionSignalBridge` 默认值是 `system`。
+5. 运行 `Dev Session Canvas Notifier: 发送测试桌面通知`，确认系统通知出现，并在支持平台上验证点击后是否能回到 VS Code。
+6. 运行 `Dev Session Canvas Notifier: 打开通知诊断输出`，确认 `backend`、`activationMode` 与最近一次投递结果符合当前平台预期。
 
 ## 当前验证备注
 
