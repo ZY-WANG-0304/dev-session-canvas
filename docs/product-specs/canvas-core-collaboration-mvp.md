@@ -60,6 +60,7 @@
 - 画布外部链接打开方式：
   - 用户可通过 `devSessionCanvas.canvas.linkOpenMode` 选择外部链接在 VS Code editor 中预览打开，或交给系统默认外部浏览器 / 应用打开
   - 默认 `editorPreview` 对 `http` / `https` 链接使用 VS Code 内置 Simple Browser，以避免通用 opener 把网页链接委派到系统浏览器
+  - 默认预览模式下，远程工作区中的 localhost / loopback 开发服务链接必须先经过 VS Code 端口转发解析，再在 editor 预览中打开，避免预览 Webview 访问到客户端本机 localhost
   - 该设置只影响画布内 Note 预览外部链接与执行节点 URL 链接；workspace 文件链接仍按 VS Code 文件编辑器语义打开
 - 节点窗口尺寸能力：
   - `Agent`、`Terminal`、`Note` 三类节点都可在画布中调整宽高

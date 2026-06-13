@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/completed/note-markdown-workspace-file-links.md
   - docs/exec-plans/completed/note-markdown-interactive-checklists.md
   - docs/exec-plans/completed/note-preview-double-click-source-map-v2.md
-updated_at: 2026-06-12
+updated_at: 2026-06-13
 ---
 
 # Note Markdown 预览展示模式
@@ -164,7 +164,7 @@ updated_at: 2026-06-12
 - 如果用户点击的是 Markdown 链接元素，则不进入编辑，而是发消息给宿主；宿主按两类目标处理：
   - 外部链接只允许 `http`、`https`、`mailto` 三类 scheme。
   - workspace 文件链接只允许当前 workspace 内文件，单根 workspace 支持纯相对路径，多根 workspace 要求 `workspace-folder/relative/path` 前缀。
-- 外部链接的打开容器由 `devSessionCanvas.canvas.linkOpenMode` 控制：默认 `editorPreview` 对 `http` / `https` 链接显式调用 VS Code 内置 Simple Browser 的 `simpleBrowser.api.open`，在 editor 区域预览打开；其它安全外部 scheme 继续通过 `vscode.open` 交给 VS Code opener 处理。`externalBrowser` 则通过 `vscode.env.openExternal` 交给系统默认浏览器或应用。这个设置只影响外部链接，不改变 workspace 文件链接始终在 VS Code 编辑器中打开的安全边界。
+- 外部链接的打开容器由 `devSessionCanvas.canvas.linkOpenMode` 控制：默认 `editorPreview` 对 `http` / `https` 链接显式调用 VS Code 内置 Simple Browser 的 `simpleBrowser.api.open`，在 editor 区域预览打开；若链接指向 `localhost`、loopback IP 或 all-interface 本地服务，宿主会先用 `vscode.env.asExternalUri(...)` 解析成远程场景可访问的预览 URI。其它安全外部 scheme 继续通过 `vscode.open` 交给 VS Code opener 处理。`externalBrowser` 则通过 `vscode.env.openExternal` 交给系统默认浏览器或应用。这个设置只影响外部链接，不改变 workspace 文件链接始终在 VS Code 编辑器中打开的安全边界。
 - 链接安全边界必须在渲染层和宿主层双重 fail closed：`src/webview/main.tsx` 的 Markdown renderer 不应为 `command:`、未知 scheme、绝对路径、query 路径或 `..` 逃逸路径生成真实 `href`，宿主 `src/panel/CanvasPanelManager.ts` 仍在 `openNoteLink()` 中执行最终白名单和 workspace containment 校验。
 - workspace 文件链接支持可选 `#L12`、`#L12C3` 行列 fragment；宿主会按当前画布 surface 语义打开文件并定位到对应行列。
 - 绝对路径、`..` 逃逸、目录目标和多根 workspace 下缺少根名前缀的歧义路径都必须 fail closed。

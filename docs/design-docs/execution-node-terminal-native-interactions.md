@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/active/execution-terminal-native-link-parity.md
   - docs/exec-plans/completed/execution-node-terminal-native-interactions.md
   - docs/exec-plans/completed/execution-node-link-parity-and-extensions.md
-updated_at: 2026-06-12
+updated_at: 2026-06-13
 ---
 
 # 执行节点的 VSCode 原生 Terminal 交互对齐
@@ -191,7 +191,7 @@ updated_at: 2026-06-12
 - workspace 内目录：`revealInExplorer`。
 - workspace 外目录：新窗口打开目录。
 - search：先 exact-open，再 `workbench.action.quickOpen`。
-- URL：非 `file://` 默认按 `devSessionCanvas.canvas.linkOpenMode=editorPreview` 处理；其中 `http` / `https` 显式调用 VS Code 内置 Simple Browser 的 `simpleBrowser.api.open`，保证在 editor 区域预览打开，避免通用 `vscode.open` 被 opener service 委派到系统浏览器。其它安全 URI scheme 继续走 `vscode.open`。用户也可以通过 `devSessionCanvas.canvas.linkOpenMode=externalBrowser` 改为 `vscode.env.openExternal`，把外部链接交给系统默认浏览器或应用。`file://` 与普通文件 / 目录 opener 分流不受该设置影响，仍按文件安全与定位规则在 VS Code 中处理。
+- URL：非 `file://` 默认按 `devSessionCanvas.canvas.linkOpenMode=editorPreview` 处理；其中 `http` / `https` 显式调用 VS Code 内置 Simple Browser 的 `simpleBrowser.api.open`，保证在 editor 区域预览打开，避免通用 `vscode.open` 被 opener service 委派到系统浏览器。若 URL 指向 `localhost`、`127.0.0.1`、`::1` 或 `0.0.0.0` / `[::]` 这类本地开发服务，宿主必须先用 `vscode.env.asExternalUri(...)` 解析为 Remote SSH / Dev Container 可访问的转发 URI，再交给 Simple Browser；`0.0.0.0` / `[::]` 在转发前按可连接的 `localhost` 处理。其它安全 URI scheme 继续走 `vscode.open`。用户也可以通过 `devSessionCanvas.canvas.linkOpenMode=externalBrowser` 改为 `vscode.env.openExternal`，把外部链接交给系统默认浏览器或应用；这一路径不预先调用 `asExternalUri`，因为 VS Code 的 external opener 会自行处理 localhost 端口转发。`file://` 与普通文件 / 目录 opener 分流不受该设置影响，仍按文件安全与定位规则在 VS Code 中处理。
 
 ### 7.7 当前自定义 heuristics 的处置原则
 
@@ -224,3 +224,8 @@ updated_at: 2026-06-12
    - search link 的 exact-open / Quick Access fallback。
    - hover 修饰键文案与打开动作。
 5. 若新增了 allowed scheme 提示语义，还必须补一条真实或可控自动化验证，证明未放行 scheme 不会直接打开。
+
+2026-06-13 追加验证：
+
+1. `scripts/test/test-execution-terminal-native-helpers.mjs` 已新增 `editorPreview` 下 loopback / all-interface URL 回归，验证 `http://127.0.0.1:3000/...` 与 `http://0.0.0.0:3000/...` 会先经过 `vscode.env.asExternalUri(...)`，再把解析后的 URI 传给 `simpleBrowser.api.open`。
+2. `tests/vscode-smoke/extension-tests.cjs` 的 URL 打开诊断断言允许 `targetUri` 是 VS Code 端口转发后的预览 URI，以覆盖 Remote SSH / Dev Container 中 `targetUri` 不再等于终端原始文本的情况。
