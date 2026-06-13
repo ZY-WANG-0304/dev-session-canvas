@@ -70,10 +70,97 @@ jobs:
           test -n "$VSCE_PAT" || { echo "VSCE_PAT secret is required."; exit 1; }
           test -n "$OVSX_PAT" || { echo "OVSX_PAT secret is required."; exit 1; }
 
+      - name: Detect existing GitHub Release assets
+        id: existing_assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          final_tag="${{ steps.release.outputs.final_tag }}"
+          manifest_name="$(basename "${{ steps.release.outputs.manifest_path }}")"
+          main_name="$(basename "${{ steps.release.outputs.main_vsix }}")"
+          notifier_name="$(basename "${{ steps.release.outputs.notifier_vsix }}")"
+          release_json="$(mktemp)"
+          assets_file="$(mktemp)"
+          api_error="$(mktemp)"
+
+          if gh api "repos/{owner}/{repo}/releases/tags/$final_tag" > "$release_json" 2> "$api_error"; then
+            node -e '
+              const fs = require("fs");
+              const release = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              for (const asset of release.assets || []) {
+                console.log(asset.name);
+              }
+            ' "$release_json" > "$assets_file"
+
+            missing=()
+            for name in "$manifest_name" "$main_name" "$notifier_name"; do
+              if ! grep -Fxq "$name" "$assets_file"; then
+                missing+=("$name")
+              fi
+            done
+
+            if (( ${#missing[@]} > 0 )); then
+              echo "GitHub Release $final_tag exists but required assets are missing: ${missing[*]}" >&2
+              echo "Refusing to repackage or clobber release assets for an existing release. Repair or delete the incomplete release assets manually, then rerun." >&2
+              exit 1
+            fi
+
+            echo "GitHub Release $final_tag already has the expected VSIX and manifest assets; reusing them for this rerun."
+            echo "mode=reuse" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if grep -q 'HTTP 404' "$api_error"; then
+            echo "GitHub Release $final_tag was not found; packaging a new VSIX batch."
+            echo "mode=package" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          cat "$api_error" >&2
+          echo "Unable to determine whether GitHub Release $final_tag already exists; refusing to package a new batch." >&2
+          exit 1
+
+      - name: Download existing GitHub Release assets
+        if: steps.existing_assets.outputs.mode == 'reuse'
+        shell: bash
+        run: |
+          set -euo pipefail
+          final_tag="${{ steps.release.outputs.final_tag }}"
+          manifest_path="${{ steps.release.outputs.manifest_path }}"
+          main_vsix="${{ steps.release.outputs.main_vsix }}"
+          notifier_vsix="${{ steps.release.outputs.notifier_vsix }}"
+          manifest_name="$(basename "$manifest_path")"
+          main_name="$(basename "$main_vsix")"
+          notifier_name="$(basename "$notifier_vsix")"
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          gh release download "$final_tag" \
+            --pattern "$manifest_name" \
+            --pattern "$main_name" \
+            --pattern "$notifier_name" \
+            --dir "$tmpdir"
+
+          test -s "$tmpdir/$manifest_name"
+          test -s "$tmpdir/$main_name"
+          test -s "$tmpdir/$notifier_name"
+
+          mkdir -p "$(dirname "$manifest_path")" "$(dirname "$main_vsix")" "$(dirname "$notifier_vsix")"
+          mv "$tmpdir/$manifest_name" "$manifest_path"
+          mv "$tmpdir/$main_name" "$main_vsix"
+          mv "$tmpdir/$notifier_name" "$notifier_vsix"
+
+      - name: Validate existing GitHub Release assets
+        id: validate_existing_assets
+        if: steps.existing_assets.outputs.mode == 'reuse'
+        run: npm run release:publish-tag -- --trigger-tag "$TRIGGER_TAG" --skip-package --package-only
+
       - name: Package release artifacts
+        if: steps.existing_assets.outputs.mode == 'package'
         run: npm run release:publish-tag -- --trigger-tag "$TRIGGER_TAG" --package-only
 
       - name: Create final release tag
+        id: final_tag
         shell: bash
         run: |
           set -euo pipefail
@@ -129,6 +216,7 @@ jobs:
 
       - name: Create or update GitHub Release assets
         id: release_assets
+        if: steps.existing_assets.outputs.mode == 'package'
         shell: bash
         run: |
           set -euo pipefail
@@ -164,7 +252,7 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
       - name: Upload final release manifest
-        if: always() && steps.release_assets.outcome == 'success'
+        if: always() && steps.final_tag.outcome == 'success' && (steps.release_assets.outcome == 'success' || steps.validate_existing_assets.outcome == 'success')
         shell: bash
         run: |
           set -euo pipefail
