@@ -110,12 +110,9 @@
    - `CHANGELOG.md`
    - `docs/support.md`
    - `docs/SECURITY.md`
-7. 确认 `Visual Studio Marketplace` 发布账号仍可用，且本地 `vsce login devsessioncanvas` 已保持有效。
-8. 确认 `Open VSX` 的 `devsessioncanvas` namespace 已完成 owner/verified 认领，发布 token 已写入 `~/.ovsx` 的 `devsessioncanvas` entry，且本地可执行：
-
-       python3 scripts/release/openvsx-api.py --prefer-ipv4 verify-pat devsessioncanvas
-
-9. 若通过 GitHub Actions 执行发布，确认 repository secrets `VSCE_PAT` / `OVSX_PAT` 已配置，且 release workflow 具备创建正式 tag、删除临时 tag 和上传 Actions artifact 所需权限；本地人工发布仍按第 7、8 步复核本机 token。
+7. 确认发布 workflow 仍以 Visual Studio Marketplace / Open VSX 发布与验证为完成条件，同时把同一批 VSIX 镜像到 GitHub Release assets；仓库 Actions 必须具备 `contents: write` 权限，且 `GITHUB_TOKEN` 可创建 / 更新 Release、上传 assets、创建正式 tag 与删除临时 tag。
+8. 复核 `VSCE_PAT` / `OVSX_PAT`、本地 `vsce login devsessioncanvas` 和 Open VSX token；当前 workflow 仍要求这些 marketplace secrets，GitHub Release assets 只使用 `GITHUB_TOKEN` 作为额外下载入口。
+9. 确认 GitHub Release notes 的安装口径准确：优先通过 Visual Studio Marketplace / Open VSX 安装；如果 marketplace 访问、审核或同步暂时不可用，用户可从 `vX.Y.Z` 对应 GitHub Release 的 Assets 下载 VSIX 手动安装。
 
 ## 当前验证备注
 
@@ -157,7 +154,7 @@
 - 两个 VSIX 的 `VSCE README doc ref` 均已在本轮发布准备分支打包日志中打印并指向当时的 release-prep `HEAD`；发布准备 MR 合并后还需在最终 `main` release commit 上重新锁定
 - 本轮已补跑 `npm run test:vsix-smoke` 并通过；补跑过程中先暴露 lifecycle race 诊断命令在 packaged smoke 中没有临时绑定可见 panel view，导致 workspace-root focus replay 被误判为未重放。该测试诊断构造已收口到 `src/panel/CanvasPanelManager.ts`，避免把 harness 现场误判为 `0.15.1` packaged payload blocker。
 
-残余风险：发布准备 MR 合并后，仍必须在最终 `main` release commit 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 与必要的 packaged-payload smoke，确认 README 相对链接改写、VSIX 文件数 / 大小、`VSCE README doc ref` 和 packaged-payload smoke 均与最终发布 ref 一致。真实 publish 与 `v0.15.1` tag 仍只能在发布准备 MR 合并后的最终 `main` ref 上执行。
+残余风险：发布准备 MR 合并后，仍必须在最终 `main` release commit 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 与必要的 packaged-payload smoke，确认 README 相对链接改写、VSIX 文件数 / 大小、`VSCE README doc ref` 和 packaged-payload smoke 均与最终发布 ref 一致。真实 Visual Studio Marketplace / Open VSX 发布、GitHub Release assets 上传与 `v0.15.1` tag 收口仍只能在发布准备 MR 合并后的最终 `main` ref 上执行。
 
 ## 发布命令
 
@@ -174,20 +171,32 @@
     git tag publish/v0.15.1 <final-ref-or-sha>
     git push origin publish/v0.15.1
 
-推送 `publish/v0.15.1` 会触发 `.github/workflows/publish-marketplace-release.yml`。该 workflow checkout 临时 tag 指向的 commit，执行：
+推送 `publish/v0.15.1` 会触发 `.github/workflows/publish-marketplace-release.yml`。该 workflow checkout 临时 tag 指向的 commit，先执行：
 
     npm ci
-    npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --delete-trigger-tag
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --package-only
 
-本地人工执行同一路径时，也应使用同一入口；发布前可先 dry-run：
+随后 workflow 会创建或确认正式 `v0.15.1` tag 指向同一 release ref，创建或更新 `v0.15.1` 对应的 GitHub Release，并上传以下 Release assets：
+
+    release-artifacts/release-manifest-0.15.1.json
+    dev-session-canvas-0.15.1.vsix
+    extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.15.1.vsix
+
+Release assets 上传后，workflow 会继续复用同一批 manifest / VSIX 执行 Visual Studio Marketplace 与 Open VSX 发布、验证：
+
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --skip-package
+
+只有 marketplace 发布与验证成功后，workflow 才上传最终 manifest 并删除远端和本地 `publish/v0.15.1`。如果 marketplace 发布或验证失败，GitHub Release assets 会保留为手动安装兜底，job 失败且临时 tag 保留，便于修复 token / 渠道问题后重跑同一 release input。
+
+发布前可先 dry-run，预览 release ref、VSIX 计划和 manifest：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --dry-run --package-only
 
-`release:publish-tag` 会校验 tag 名称、版本号、`CHANGELOG.md`、notifier 版本、当前 `HEAD`、`origin/main` 祖先关系和 clean working tree，并把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` / `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 都绑定到 `publish/v0.15.1` 指向的 commit。它会先打包两个 VSIX，生成 `release-artifacts/release-manifest-0.15.1.json`，再发布到 Visual Studio Marketplace 与 Open VSX，验证四个目标版本与关键 metadata，最后创建正式 `v0.15.1` tag 并删除临时 `publish/v0.15.1`。
+`release:publish-tag` 会校验 tag 名称、版本号、`CHANGELOG.md`、notifier 版本、当前 `HEAD`、`origin/main` 祖先关系和 clean working tree，并把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` / `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 都绑定到 `publish/v0.15.1` 指向的 commit。当前 workflow 会先打包两个 VSIX，生成 `release-artifacts/release-manifest-0.15.1.json` 并上传 GitHub Release assets，再用 `--skip-package` 复用同一批 VSIX 发布并验证 Visual Studio Marketplace / Open VSX。
 
-release manifest 不提交回代码库。它记录 publish 后事实，包括 release ref、VSIX sha256、README doc ref、marketplace 验证结果和 tag 状态，应作为 GitHub Actions artifact 或 GitHub Release asset 保存。
+release manifest 不提交回代码库。它记录发布后事实，包括 release ref、VSIX sha256、README doc ref、GitHub Release assets 状态、marketplace 发布 / 验证状态和 tag 状态，应作为 GitHub Release asset 保存；workflow 同时保留一份 Actions artifact 便于排障。
 
-若某个市场已经成功、需要补发另一个市场，保留或重新创建同一个 `publish/v0.15.1` tag，并复用同一份 manifest / VSIX：
+若 GitHub Actions 中某个 marketplace 目标失败，或需要手工重跑某个市场，必须复用同一 release ref 的 manifest / VSIX，并显式走 marketplace 补发命令：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.1 --skip-package --target open-vsx --no-create-final-tag
 
@@ -201,21 +210,21 @@ release manifest 不提交回代码库。它记录 publish 后事实，包括 re
 
 `publish/vX.Y.Z` 是临时发布意图 tag，只用于固定 release input 和触发 / 重跑发布。它不是正式 release tag；发布中途失败时应保留，便于重跑同一输入。
 
-`vX.Y.Z` 是正式 lightweight release tag，只在主扩展与 notifier 已经发布到 Visual Studio Marketplace 和 Open VSX、且发布后验证通过后由 `release:publish-tag` 创建并推送。正式 tag 创建成功后，脚本可以删除远端和本地 `publish/vX.Y.Z`。如果需要人工删除，可在确认两个 tag 指向同一 commit 后执行：
+`vX.Y.Z` 是正式 lightweight release tag，也是 GitHub Release 绑定的 tag。为了让 Release assets 在 marketplace 暂时不可用时仍能先提供手动安装兜底，workflow 会在打包后、marketplace 发布验证前创建或确认该 tag。单看 `vX.Y.Z` 存在不再足以判断整轮发布完成；完整完成条件是 GitHub Release assets 已上传、Visual Studio Marketplace / Open VSX 已发布并验证、最终 manifest 已更新，且 `publish/vX.Y.Z` 已删除。如果 marketplace 发布或验证失败，`vX.Y.Z` 与 Release assets 可能已经存在，但 workflow 会失败并保留临时 tag。需要人工删除临时 tag 时，应先确认两个 tag 指向同一 commit、Release assets 已存在，且 marketplace 发布验证已经完成：
 
     git push origin :refs/tags/publish/v0.15.1
     git tag -d publish/v0.15.1
 
-不要在发布未完成或正式 `vX.Y.Z` 尚未指向同一 release ref 时删除临时 tag。
+不要在 GitHub Release assets 上传未完成、正式 `vX.Y.Z` 尚未指向同一 release ref、marketplace 发布验证尚未成功，或还需要依赖临时 tag 重跑时删除临时 tag。
 
 ## 发布后验证
 
 发布完成后至少执行以下复核：
 
-1. 确认对应版本的 lightweight tag 已存在于远端，且指向本次实际发布的 commit。
-2. 打开 `Visual Studio Marketplace` 与 `Open VSX` 页面，确认标题、图标、banner、README 文案与 CHANGELOG 没有失真。
-3. 直接调用 Open VSX API 复核主扩展 `0.15.1` 的 `files.icon`、`files.license`、`files.vsixmanifest` 与 `files.sha256` 都存在，避免只验证 VSIX 本体而漏掉 registry asset metadata。
-4. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
-5. 在干净 profile 中从官方 VS Code Marketplace 安装刚发布的版本，验证扩展可成功激活并能打开主画布。
-6. 在 Open VSX 兼容宿主或 Open VSX 页面中复核两个扩展版本一致，且主扩展 / notifier 的安装关系没有因缺失补充渠道产物而断裂。
-7. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace`、本地 CLI 依赖、multi-root shared live runtime 恢复边界与 Open VSX 兼容宿主边界仍被正确表达，没有被商店页误读成稳定版承诺或全宿主支持承诺。
+1. 确认对应版本的 lightweight tag 已存在于远端，且指向本次实际发布的 commit；确认远端 `publish/v0.15.1` 已删除。
+2. 打开 Visual Studio Marketplace 与 Open VSX 页面，复核主扩展和 notifier 的标题、图标、banner、README 文案、CHANGELOG、版本号与 Open VSX `files.*` metadata 均已同步到本轮版本。
+3. 打开 GitHub Release 页面，确认 `dev-session-canvas-0.15.1.vsix`、`dev-session-canvas-notifier-0.15.1.vsix` 与 `release-manifest-0.15.1.json` 都存在于 Assets 中。
+4. 下载 release manifest，复核其中 `releaseRef`、两个 VSIX 的 `sha256`、`readmeDocRef`、`githubRelease.status`、marketplace `verified` 状态和 `tags.triggerTagStatus` 与实际发布事实一致。
+5. 在干净 profile 中优先从 Visual Studio Marketplace / Open VSX 安装或升级；另从 GitHub Release 下载 VSIX 手动安装一次，验证兜底包可成功激活并能打开主画布，同时验证 notifier 与主扩展的安装关系未被打包破坏。
+6. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
+7. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace`、本地 CLI 依赖、multi-root shared live runtime 恢复边界与 GitHub Release assets 兜底安装口径仍被正确表达，没有被误读成稳定版承诺或 marketplace 可用性承诺。
