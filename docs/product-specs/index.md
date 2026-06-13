@@ -21,7 +21,7 @@
 | `docs/product-specs/canvas-node-notifications.md` | 画布节点通知：attention signal allow-list 与桥接、Agent 异常中断提醒、异常输出文本匹配配置、节点视觉提示、强提醒模式与 notifier companion 优先回退链路 | 已确认 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/execution-node-notification-and-attention-signals.md`、`src/common/executionAttentionSignals.ts`、`src/common/agentActivityHeuristics.ts` | 2026-06-10 |
 | `docs/product-specs/canvas-core-collaboration-mvp.md` | 画布核心协作 MVP 主路径与验收口径 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/vscode-canvas-runtime-architecture.md`、`docs/design-docs/canvas-surface-placement.md` | 2026-04-08 |
 | `docs/product-specs/canvas-sidebar-controls.md` | 画布外层控件极简化与侧栏承载范围 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-sidebar-controls.md` | 2026-05-10 |
-| `docs/product-specs/canvas-sidebar-node-and-session-lists.md` | 画布侧栏节点列表与历史会话列表 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-sidebar-node-and-session-lists.md` | 2026-06-03 |
+| `docs/product-specs/canvas-sidebar-node-and-session-lists.md` | 画布侧栏节点列表与历史会话列表 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-sidebar-node-and-session-lists.md` | 2026-06-13 |
 | `docs/product-specs/runtime-persistence-modes.md` | `Agent` / `Terminal` 在关闭画布、关闭 VSCode 与重新打开后的两档运行时持久化模式 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/runtime-persistence-and-session-supervisor.md` | 2026-04-08 |
 | `docs/product-specs/canvas-template-feature.md` | Canvas 模板功能：默认模板机制、内置模板、自定义模板保存与分享、模板管理 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-template-feature.md` | 2026-05-15 |
 

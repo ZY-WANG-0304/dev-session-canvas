@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
-updated_at: 2026-06-03
+updated_at: 2026-06-13
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -117,6 +117,8 @@ updated_at: 2026-06-03
 - 视觉上继续收口为 VS Code 原生 sidebar 列表质感：无卡片、无阴影、无多层装饰，只保留轻量 hover / selected 态和紧凑两行排版。
 - 节点列表的显示模式切换使用 VSCode 原生 view title secondary action，即 `节点` view 标题右上角宿主提供的 `...` 更多菜单；Webview 内容区不自绘 `...` 按钮或菜单。菜单项提供“平铺展示节点”和“按分组树展示节点”，默认选中按分组树展示，并用当前模式的 check icon 反馈选中项。
 - 默认按分组树展示时，Webview 只把权威节点快照和 `CanvasGroupSummary` 投影成侧栏树：父子分组按层级缩进，每个分组 section 可折叠/展开；没有分组的节点进入同样可折叠的“未分组”section。这个折叠状态只存在于侧栏呈现层，不持久化为画布状态，不影响画布分组可见性，也不推导新的成员关系。
+- 当存在处于 attention 状态的节点时，节点列表把“回到需要处理的节点”作为最高优先级入口：平铺展示中 attention 节点排在普通节点前；分组树展示中顶部额外显示“待处理提醒”虚拟分组，汇总所有 attention 节点，同时这些节点仍保留在原分组树位置，避免虚拟汇总覆盖真实归属。
+- 多根 workspace 下的平铺展示不会完全抹平 root 归属，而是继续保留 workspace root 分组。若此时存在 attention 节点，顶部仍显示“待处理提醒”虚拟分组，并且该虚拟分组排在所有 root 分组之前；root 分组内仍保留各自节点，其中 attention 节点在对应 root 内排在普通节点前。
 - 点击节点项后，宿主会统一执行“打开/定位画布 -> 等待 Webview ready -> 下发 `host/focusNode`”，把节点滚入可见区域并选中。
 
 ### 6.2 会话历史使用最小 `WebviewView`
@@ -205,13 +207,15 @@ updated_at: 2026-06-03
 1. 打开 `Extension Development Host` 后，sidebar 中能看到新增的 `节点` 与 `会话历史` section。
 2. 节点列表中不出现 `file` / `file-list` 节点；点击任一项后，画布能滚动并聚焦到对应节点。
 3. `节点` view 默认按分组树展示，标题右上角使用 VSCode 原生 `...` 菜单承载平铺 / 按分组树展示切换；按分组树展示时，分组和“未分组”section 可折叠/展开，折叠只影响侧栏列表可见行。
-4. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
-5. 搜索框输入关键词后，列表会即时过滤。
-6. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
-7. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
+4. attention 节点在单根平铺展示中排在普通节点前；按分组树展示中顶部出现“待处理提醒”虚拟分组，且不移除节点的原分组位置；多根 workspace 平铺展示中保留 root 分组，并让“待处理提醒”虚拟分组排在 root 分组之前。
+5. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
+6. 搜索框输入关键词后，列表会即时过滤。
+7. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
+8. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
 
 ## 9. 当前验证状态
 
+- 2026-06-13：节点列表 attention 入口补齐三条规则：单根平铺展示中 attention 节点前置；分组树展示中顶部显示“待处理提醒”虚拟分组且保留原分组位置；多根 workspace 平铺展示保留 workspace root 分组，并把“待处理提醒”虚拟分组排在 root 分组之前。新增 `npm run test:sidebar-node-list` 覆盖这些 DOM 排序与分组规则。
 - 2026-05-11：`节点` view section 新增专属单色 SVG 图标，manifest 改为引用 `images/dev-session-canvas-nodes-activitybar.svg`；已通过 `npm run typecheck`、`npm run build` 与本地 manifest 图标路径检查验证。
 - 2026-06-03：会话历史 tooltip 的工作目录追加目录尾缀，并按 cwd 来源分隔符显示 POSIX、Windows drive、反斜杠 UNC 与 slash-style network path；已通过 `npm run test:sidebar-session-history`、`npm run test:workspace-relative-paths` 与 `npm run typecheck`。
 - 2026-06-03：节点列表中的 Agent 第二行跟随 Explorer cwd 可见反馈，显示 `cwdLabel · provider · 状态`；`cwdLabel` 追加目录尾缀并保留 cwd 来源分隔符。本轮已通过 `npm run test:workspace-relative-paths` 与 `npm run typecheck`。

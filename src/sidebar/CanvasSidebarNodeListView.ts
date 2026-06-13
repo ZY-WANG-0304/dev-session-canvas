@@ -14,7 +14,7 @@ import {
 import type { CanvasGroupSummary, CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
 import { formatExecutionCwdLabel } from '../common/executionCwdLabel';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
-import { CanvasPanelManager, type CanvasSidebarNodeListSnapshot } from '../panel/CanvasPanelManager';
+import type { CanvasPanelManager, CanvasSidebarNodeListSnapshot } from '../panel/CanvasPanelManager';
 
 const SIDEBAR_NODE_DANGLING_CSI_FRAGMENT_PATTERN = /(?:^|\s)\[\?[0-9;:<>=$]*[ -/]*[@-~](?=\s|$)/g;
 const SIDEBAR_NODE_ATTENTION_TOOLTIP = '该节点当前有待处理的通知提醒。';
@@ -652,7 +652,7 @@ function normalizeSidebarNodeListViewMode(value: unknown): SidebarNodeListViewMo
   return value === 'flat' ? 'flat' : 'grouped';
 }
 
-function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const nonce = createNonce();
   const codiconCssUri = getVersionedWebviewResourceUri(
     webview,
@@ -760,6 +760,13 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         margin-left: auto;
         color: var(--row-muted);
         font-size: 11px;
+      }
+
+      .node-group-kind-icon {
+        flex: 0 0 auto;
+        color: var(--attention);
+        font-size: 13px;
+        line-height: 1;
       }
 
       .node-row {
@@ -960,7 +967,10 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
     <div id="emptyState" class="empty-state" role="status" aria-live="polite"></div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const ATTENTION_GROUP_KEY = '__attention__';
+      const ATTENTION_GROUP_LABEL = '待处理提醒';
       const UNGROUPED_GROUP_KEY = '__ungrouped__';
+      const WORKSPACE_ROOT_GROUP_ROLE = 'workspace-root';
       const state = {
         items: [],
         groups: [],
@@ -985,6 +995,76 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
           return item.groupPathIds.filter((groupId) => typeof groupId === 'string' && groupId.length > 0);
         }
         return [];
+      }
+
+      function normalizeItemGroupPath(item) {
+        if (!Array.isArray(item.groupPath)) {
+          return [];
+        }
+        return item.groupPath.filter((part) => typeof part === 'string' && part.length > 0);
+      }
+
+      function isWorkspaceRootGroup(group) {
+        return group && group.role === WORKSPACE_ROOT_GROUP_ROLE;
+      }
+
+      function getWorkspaceRootGroups() {
+        return state.groups.filter(isWorkspaceRootGroup);
+      }
+
+      function shouldRenderFlatRootGroups() {
+        return state.viewMode === 'flat' && getWorkspaceRootGroups().length > 1;
+      }
+
+      function isTreeRenderMode() {
+        return state.viewMode === 'grouped' || shouldRenderFlatRootGroups();
+      }
+
+      function hasAttentionItems(items = state.items) {
+        return items.some((item) => item && item.attentionPending === true);
+      }
+
+      function getAttentionItems(items = state.items) {
+        return items.filter((item) => item && item.attentionPending === true);
+      }
+
+      function sortItemsForFlat(items) {
+        const indexedItems = items.map((item, index) => ({ item, index }));
+        if (!indexedItems.some((entry) => entry.item.attentionPending === true)) {
+          return indexedItems.map((entry) => entry.item);
+        }
+        indexedItems.sort((left, right) => {
+          const attentionDelta = Number(right.item.attentionPending === true) - Number(left.item.attentionPending === true);
+          return attentionDelta || left.index - right.index;
+        });
+        return indexedItems.map((entry) => entry.item);
+      }
+
+      function sortItemsByLabel(items) {
+        items.sort((left, right) => left.label.localeCompare(right.label, 'zh-CN') || left.id.localeCompare(right.id, 'zh-CN'));
+      }
+
+      function resolveItemWorkspaceRootGroupId(item, workspaceRootGroupIds) {
+        return normalizeGroupIds(item).find((groupId) => workspaceRootGroupIds.has(groupId));
+      }
+
+      function buildGroupPathLabel(item, options = {}) {
+        const path = normalizeItemGroupPath(item);
+        if (path.length === 0) {
+          return '';
+        }
+
+        if (!options.rootGroupId) {
+          return path.join(' / ');
+        }
+
+        const groupIds = normalizeGroupIds(item);
+        const rootIndex = groupIds.indexOf(options.rootGroupId);
+        if (rootIndex < 0) {
+          return path.join(' / ');
+        }
+
+        return path.slice(rootIndex + 1).join(' / ');
       }
 
       function syncRenderedSelection() {
@@ -1105,7 +1185,18 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       }
 
       function getFlatRenderedItems() {
-        return state.items;
+        return sortItemsForFlat(state.items);
+      }
+
+      function getPreferredInitialItem() {
+        const attentionItems = getAttentionItems();
+        if (attentionItems.length > 0) {
+          return sortItemsForFlat(attentionItems)[0];
+        }
+        if (state.viewMode === 'flat') {
+          return getFlatRenderedItems()[0];
+        }
+        return state.items[0];
       }
 
       function createGroupTreeNode(group) {
@@ -1155,16 +1246,13 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
           }
         }
 
-        const sortItems = (items) => {
-          items.sort((left, right) => left.label.localeCompare(right.label, 'zh-CN'));
-        };
         const sortGroups = (groups) => {
           groups.sort((left, right) => left.label.localeCompare(right.label, 'zh-CN') || left.id.localeCompare(right.id, 'zh-CN'));
         };
         const visit = (groupNode, depth) => {
           groupNode.depth = depth;
           sortGroups(groupNode.childGroups);
-          sortItems(groupNode.items);
+          sortItemsByLabel(groupNode.items);
           let total = groupNode.items.length;
           for (const childGroup of groupNode.childGroups) {
             total += visit(childGroup, depth + 1);
@@ -1174,7 +1262,7 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         };
 
         sortGroups(root.childGroups);
-        sortItems(root.items);
+        sortItemsByLabel(root.items);
         root.totalItemCount = root.items.length;
         for (const groupNode of root.childGroups) {
           root.totalItemCount += visit(groupNode, 0);
@@ -1186,6 +1274,9 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         const validKeys = new Set();
         if (root.items.length > 0) {
           validKeys.add(UNGROUPED_GROUP_KEY);
+        }
+        if (hasAttentionItems()) {
+          validKeys.add(ATTENTION_GROUP_KEY);
         }
         const visit = (groupNode) => {
           validKeys.add(groupNode.key);
@@ -1213,6 +1304,9 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         row.setAttribute('data-sidebar-node-group-key', options.key);
         row.setAttribute('data-sidebar-node-group-label', options.label);
         row.setAttribute('data-sidebar-node-group-depth', String(options.depth));
+        if (options.virtualKind) {
+          row.setAttribute('data-sidebar-node-group-virtual-kind', options.virtualKind);
+        }
         row.setAttribute('role', 'treeitem');
         row.setAttribute('aria-level', String(options.depth + 1));
         row.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
@@ -1222,6 +1316,12 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         twistie.className = 'node-group-twistie codicon ' + (isExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right');
         twistie.setAttribute('aria-hidden', 'true');
 
+        const leadingIcon = document.createElement('span');
+        if (options.leadingIconClass) {
+          leadingIcon.className = 'node-group-kind-icon codicon ' + options.leadingIconClass;
+          leadingIcon.setAttribute('aria-hidden', 'true');
+        }
+
         const title = document.createElement('span');
         title.className = 'node-group-title';
         title.textContent = options.label;
@@ -1230,7 +1330,11 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         count.className = 'node-group-count';
         count.textContent = options.totalItemCount > 0 ? String(options.totalItemCount) : '';
 
-        row.append(twistie, title, count);
+        if (options.leadingIconClass) {
+          row.append(twistie, leadingIcon, title, count);
+        } else {
+          row.append(twistie, title, count);
+        }
         row.addEventListener('click', () => toggleGroup(options.key));
         row.addEventListener('keydown', (event) => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -1241,7 +1345,7 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         list.append(row);
       }
 
-      function renderNodeRow(item, depth) {
+      function renderNodeRow(item, depth, options = {}) {
         const row = document.createElement('div');
         row.className = 'node-row';
         row.tabIndex = 0;
@@ -1249,13 +1353,13 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         row.setAttribute('data-sidebar-node-item-id', item.id);
         row.setAttribute('data-sidebar-node-id', item.nodeId);
         row.setAttribute('data-attention-pending', item.attentionPending ? 'true' : 'false');
-        row.setAttribute('role', state.viewMode === 'grouped' ? 'treeitem' : 'option');
+        row.setAttribute('role', isTreeRenderMode() ? 'treeitem' : 'option');
         row.setAttribute('aria-selected', item.id === state.selectedId ? 'true' : 'false');
         row.setAttribute(
           'aria-label',
           item.label + '，' + item.status + (item.attentionPending ? '，当前有通知提醒' : '')
         );
-        if (state.viewMode === 'grouped') {
+        if (isTreeRenderMode()) {
           row.classList.add('is-grouped');
           row.style.paddingLeft = String(12 + depth * 14) + 'px';
           row.setAttribute('aria-level', String(depth + 1));
@@ -1311,10 +1415,13 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         status.append(statusPill);
         main.append(status);
 
-        if (state.viewMode !== 'grouped' && Array.isArray(item.groupPath) && item.groupPath.length > 0) {
+        const groupPathLabel = options.groupPathLabel ?? (
+          state.viewMode !== 'grouped' ? buildGroupPathLabel(item, { rootGroupId: options.rootGroupId }) : ''
+        );
+        if (groupPathLabel) {
           const groupPath = document.createElement('div');
           groupPath.className = 'node-group-path';
-          groupPath.textContent = item.groupPath.join(' / ');
+          groupPath.textContent = groupPathLabel;
           main.append(groupPath);
         }
 
@@ -1329,6 +1436,31 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         }
 
         list.append(row);
+      }
+
+      function renderAttentionGroup(depth, options = {}) {
+        const attentionItems = sortItemsForFlat(getAttentionItems());
+        if (attentionItems.length === 0) {
+          return;
+        }
+
+        renderGroupRow({
+          key: ATTENTION_GROUP_KEY,
+          label: ATTENTION_GROUP_LABEL,
+          depth,
+          totalItemCount: attentionItems.length,
+          leadingIconClass: 'codicon-bell',
+          virtualKind: 'attention'
+        });
+        if (state.collapsedGroupKeys.has(ATTENTION_GROUP_KEY)) {
+          return;
+        }
+
+        for (const item of attentionItems) {
+          renderNodeRow(item, depth + 1, {
+            groupPathLabel: options.showGroupPath ? buildGroupPathLabel(item) : ''
+          });
+        }
       }
 
       function renderGroupNode(groupNode) {
@@ -1352,6 +1484,7 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
       function renderGroupedTree() {
         const root = buildGroupedTree();
         pruneCollapsedGroupKeys(root);
+        renderAttentionGroup(0, { showGroupPath: true });
         if (root.items.length > 0) {
           renderGroupRow({
             key: UNGROUPED_GROUP_KEY,
@@ -1370,17 +1503,80 @@ function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.
         }
       }
 
+      function renderFlatRootGroups() {
+        const workspaceRootGroups = getWorkspaceRootGroups();
+        const workspaceRootGroupIds = new Set(workspaceRootGroups.map((group) => group.id));
+        const itemsByRootGroupId = new Map(workspaceRootGroups.map((group) => [group.id, []]));
+        const unrootedItems = [];
+
+        for (const item of state.items) {
+          const rootGroupId = resolveItemWorkspaceRootGroupId(item, workspaceRootGroupIds);
+          if (rootGroupId && itemsByRootGroupId.has(rootGroupId)) {
+            itemsByRootGroupId.get(rootGroupId).push(item);
+          } else {
+            unrootedItems.push(item);
+          }
+        }
+
+        const root = {
+          items: unrootedItems,
+          childGroups: workspaceRootGroups.map((group) => ({
+            key: group.id,
+            label: normalizeGroupTitle(group),
+            depth: 0,
+            childGroups: [],
+            items: itemsByRootGroupId.get(group.id) ?? [],
+            totalItemCount: (itemsByRootGroupId.get(group.id) ?? []).length
+          }))
+        };
+
+        pruneCollapsedGroupKeys(root);
+        renderAttentionGroup(0, { showGroupPath: true });
+
+        for (const rootGroup of root.childGroups) {
+          renderGroupRow({
+            key: rootGroup.key,
+            label: rootGroup.label,
+            depth: rootGroup.depth,
+            totalItemCount: rootGroup.totalItemCount
+          });
+          if (state.collapsedGroupKeys.has(rootGroup.key)) {
+            continue;
+          }
+          for (const item of sortItemsForFlat(rootGroup.items)) {
+            renderNodeRow(item, 1, { rootGroupId: rootGroup.key });
+          }
+        }
+
+        if (root.items.length > 0) {
+          renderGroupRow({
+            key: UNGROUPED_GROUP_KEY,
+            label: '未分组',
+            depth: 0,
+            totalItemCount: root.items.length
+          });
+          if (!state.collapsedGroupKeys.has(UNGROUPED_GROUP_KEY)) {
+            for (const item of sortItemsForFlat(root.items)) {
+              renderNodeRow(item, 1);
+            }
+          }
+        }
+      }
+
       function render() {
         if (!state.selectedId || !state.items.some((item) => item.id === state.selectedId)) {
-          state.selectedId = state.items[0] ? state.items[0].id : undefined;
+          const preferredItem = getPreferredInitialItem();
+          state.selectedId = preferredItem ? preferredItem.id : undefined;
         }
 
         list.replaceChildren();
-        list.setAttribute('role', state.viewMode === 'grouped' ? 'tree' : 'listbox');
-        list.setAttribute('aria-label', state.viewMode === 'grouped' ? '当前画布节点分组树' : '当前画布节点列表');
+        list.setAttribute('role', isTreeRenderMode() ? 'tree' : 'listbox');
+        list.setAttribute('aria-label', isTreeRenderMode() ? '当前画布节点分组树' : '当前画布节点列表');
 
         if (state.viewMode === 'grouped') {
           renderGroupedTree();
+        } else if (shouldRenderFlatRootGroups()) {
+          renderFlatRootGroups();
         } else {
           for (const item of getFlatRenderedItems()) {
             renderNodeRow(item, 0);
