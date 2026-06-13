@@ -20,6 +20,7 @@
 - [x] (2026-06-13T12:40Z) 已修改 GitHub Actions workflow：校验 `VSCE_PAT` / `OVSX_PAT`，先打包并上传 GitHub Release assets，再发布并验证 Visual Studio Marketplace / Open VSX，成功后删除临时 tag。
 - [x] (2026-06-13T13:05Z) 已同步正式设计文档、发布手册和技术债记录，明确 GitHub Release assets 是额外镜像 / 兜底，不替代 marketplace 发布与验证。
 - [x] (2026-06-13T13:18Z) 已运行目标测试和语法检查：`npm run test:publish-tag-release`、`node --check scripts/release/publish-tag-release.mjs`、`node --check scripts/test/test-publish-tag-release.mjs`、`git diff --check`、`js-yaml` 解析 workflow 均通过。
+- [x] (2026-06-13T15:25Z) 已处理 PR review blocker：正式 tag 不存在时改用 `git rev-parse --verify --quiet` 静默解析，并新增 `test:publish-marketplace-workflow` 覆盖缺失正式 tag 的 workflow 回归。
 
 ## 意外与发现
 
@@ -37,6 +38,8 @@
   证据：workflow 的 `Publish and verify marketplaces` step 现在执行命令后写出 `status=$status` 到 `$GITHUB_OUTPUT`，后续删除临时 tag 和显式失败都只判断 `steps.marketplaces.outputs.status`。
 - 观察：`gh api -F body=@file` 会按 CLI 规则把文件内容作为字段值读取，但为避免不同版本或 PATCH 语义下误解，workflow 先把 notes 文件读入 shell 变量，再用 `-f body=...` 提交纯字符串。
   证据：本地 `gh api --help` 说明 `-F` 遇到 `@` 会读文件；当前 workflow 已改为 `body="$(cat "$notes_file")"` 后调用 `gh api --method PATCH ... -f body="$body"`。
+- 观察：`git rev-parse "$final_tag^{}"` 在 tag 缺失时即使退出非零，也会把未解析的 rev token 写到 stdout；如果命令替换后接 `|| true`，变量会变成非空字符串，导致 workflow 把缺失 tag 误判为指向错误 ref。
+  证据：review 复现了 `local_ref="$(git rev-parse "$final_tag^{}" 2>/dev/null || true)"` 会得到 `v9.9.9^{}`；当前 workflow 改为 `git rev-parse --verify --quiet "$final_tag^{}"`，并由 `npm run test:publish-marketplace-workflow` 验证缺失 tag 时 `local_ref` 为空。
 
 ## 决策记录
 
@@ -61,7 +64,7 @@
 
 ## 结果与复盘
 
-本计划的本地交付已经完成：0.15.2 准备分支已清理，workflow 已改为“先上传 GitHub Release assets、再继续发布并验证 Visual Studio Marketplace / Open VSX”，正式文档和技术债已同步，目标测试与静态检查均通过。当前剩余风险是尚未用真实 `publish/vX.Y.Z` tag 在 GitHub Actions 中完成首跑，因此设计文档验证状态保持“验证中”，技术债记录继续跟踪真实 Actions 首跑。
+本计划的本地交付已经完成：0.15.2 准备分支已清理，workflow 已改为“先上传 GitHub Release assets、再继续发布并验证 Visual Studio Marketplace / Open VSX”，正式文档和技术债已同步，目标测试与静态检查均通过。PR review 发现的缺失正式 tag 误判已修复，并新增 workflow 静态 / shell probe 测试覆盖。当前剩余风险是尚未用真实 `publish/vX.Y.Z` tag 在 GitHub Actions 中完成首跑，因此设计文档验证状态保持“验证中”，技术债记录继续跟踪真实 Actions 首跑。
 
 ## 上下文与定向
 
@@ -86,6 +89,7 @@
 在仓库根目录执行修改和验证。实现完成后预期运行：
 
     npm run test:publish-tag-release
+    npm run test:publish-marketplace-workflow
     git diff --check
     node --check scripts/release/publish-tag-release.mjs
     node -e "const fs = require('fs'); const yaml = require('js-yaml'); yaml.load(fs.readFileSync('.github/workflows/publish-marketplace-release.yml', 'utf8')); console.log('workflow yaml parsed');"
@@ -97,8 +101,12 @@
     npm run test:publish-tag-release
     # publish-tag-release tests passed
 
+    npm run test:publish-marketplace-workflow
+    # publish-marketplace workflow tests passed
+
     node --check scripts/release/publish-tag-release.mjs
     node --check scripts/test/test-publish-tag-release.mjs
+    node --check scripts/test/test-publish-marketplace-workflow.mjs
     git diff --check
     # 均无输出，退出码 0
 
