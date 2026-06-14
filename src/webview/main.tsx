@@ -84,6 +84,7 @@ import type {
   WebviewClipboardTextSource,
   WebviewLifecycleIdentity,
   ExecutionPerformanceDiagnosticPayload,
+  ExecutionTerminalClipboardDiagnosticPayload,
   WebviewProbeEdgeSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
@@ -332,6 +333,7 @@ interface CanvasNodeData {
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
   ) => void;
+  onExecutionClipboardDiagnostic?: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   onResizeExecution?: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNodeTitle?: (nodeId: string, title: string) => void;
@@ -2439,6 +2441,7 @@ function App(): JSX.Element {
       }),
     onCopyExecutionSelection: copyExecutionSelection,
     onRequestExecutionPaste: requestExecutionPaste,
+    onExecutionClipboardDiagnostic: reportExecutionClipboardDiagnostic,
     onResizeExecution: (nodeId, kind, cols, rows) =>
       postMessage({
         type: 'webview/resizeExecutionSession',
@@ -4296,6 +4299,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
+      onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
     terminal.loadAddon(fitAddon);
@@ -4829,6 +4833,7 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
         data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
+      onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
     terminal.loadAddon(fitAddon);
@@ -11117,6 +11122,7 @@ function toFlowNodes(params: {
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
   ) => void;
+  onExecutionClipboardDiagnostic: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   onResizeExecution: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNote: (payload: {
@@ -11216,6 +11222,7 @@ function toFlowNodes(params: {
         onOpenExecutionLink: params.onOpenExecutionLink,
         onCopyExecutionSelection: params.onCopyExecutionSelection,
         onRequestExecutionPaste: params.onRequestExecutionPaste,
+        onExecutionClipboardDiagnostic: params.onExecutionClipboardDiagnostic,
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
         onUpdateNote: params.onUpdateNote,
@@ -13230,6 +13237,9 @@ function readProbeExecutionTerminalState(
   | 'terminalVisibleLines'
   | 'terminalTextareaLeft'
   | 'terminalTextareaTop'
+  | 'terminalMouseTrackingMode'
+  | 'terminalBufferType'
+  | 'terminalHasFocus'
   | 'terminalTheme'
 > {
   const terminal = executionTerminalRegistry.get(nodeId);
@@ -13246,6 +13256,9 @@ function readProbeExecutionTerminalState(
     terminalVisibleLines: readProbeTerminalVisibleLines(terminal.terminal),
     terminalTextareaLeft: readProbeNumericStyleValue(terminal.terminal.textarea?.style.left),
     terminalTextareaTop: readProbeNumericStyleValue(terminal.terminal.textarea?.style.top),
+    terminalMouseTrackingMode: terminal.terminal.modes.mouseTrackingMode,
+    terminalBufferType: terminal.terminal.buffer.active.type,
+    terminalHasFocus: terminal.terminal.textarea === document.activeElement,
     terminalTheme: readProbeTerminalTheme(terminal.terminal.options.theme)
   };
 }
@@ -15003,6 +15016,15 @@ function copyExecutionSelection(
       text,
       clearSelectionAfterCopy
     }
+  });
+}
+
+function reportExecutionClipboardDiagnostic(
+  payload: ExecutionTerminalClipboardDiagnosticPayload
+): void {
+  postMessage({
+    type: 'webview/executionClipboardDiagnostic',
+    payload
   });
 }
 

@@ -1942,6 +1942,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         hostMessageSummary: summarizeDiagnosticHostMessages(diagnosticHostMessages),
         executionFileLinkResolveSummary: executionFileLinkResolveDiagnostics.summary,
         executionPerformanceSummary: executionPerformanceDiagnostics.summary,
+        executionClipboardSummary: summarizeExecutionClipboardDiagnostics(diagnosticEvents),
         diagnosticEventCount: diagnosticEvents.length,
         latestDiagnosticKinds: diagnosticEvents.slice(-20).map((event) => event.kind),
         webviewLifecycleStatus: webviewLifecycleSummary.status,
@@ -9884,6 +9885,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.recordExecutionPerformanceDiagnostics({
         timestamp: new Date().toISOString(),
         ...diagnosticDetail
+      });
+      return;
+    }
+
+    if (parsedMessage.type === 'webview/executionClipboardDiagnostic') {
+      const current = this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type, {
+        recordIgnored: false
+      });
+      this.recordDiagnosticEvent('webview/executionClipboardDiagnostic', {
+        surface: sourceSurface,
+        current,
+        lifecycle: summarizeWebviewLifecycleIdentity(lifecycle),
+        ...parsedMessage.payload
       });
       return;
     }
@@ -20020,6 +20034,40 @@ function summarizeDiagnosticHostMessages(
     byType,
     bySurface,
     executionByNode
+  };
+}
+
+function summarizeExecutionClipboardDiagnostics(
+  events: readonly CanvasTestDiagnosticEvent[]
+): Record<string, unknown> {
+  const bySource: Record<string, number> = {};
+  const byNode: Record<string, Record<string, number>> = {};
+  const latestByNode: Record<string, Record<string, unknown>> = {};
+
+  for (const event of events) {
+    if (event.kind !== 'webview/executionClipboardDiagnostic') {
+      continue;
+    }
+
+    const source = typeof event.detail?.source === 'string' ? event.detail.source : 'unknown';
+    const nodeId = typeof event.detail?.nodeId === 'string' ? event.detail.nodeId : 'unknown';
+    bySource[source] = (bySource[source] ?? 0) + 1;
+
+    const currentNode = byNode[nodeId] ?? {};
+    currentNode[source] = (currentNode[source] ?? 0) + 1;
+    byNode[nodeId] = currentNode;
+
+    latestByNode[nodeId] = {
+      timestamp: event.timestamp,
+      source,
+      detail: event.detail?.detail
+    };
+  }
+
+  return {
+    bySource,
+    byNode,
+    latestByNode
   };
 }
 

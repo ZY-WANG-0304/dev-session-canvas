@@ -182,6 +182,20 @@ export type AgentNodeStatus =
   | 'interrupted';
 export type AgentRuntimeKind = 'pty-cli';
 export type AgentResumeStrategy = 'none' | 'claude-session-id' | 'codex-session-id' | 'fake-provider';
+export type ExecutionTerminalClipboardDiagnosticSource =
+  | 'environment'
+  | 'shortcut'
+  | 'selectionChange'
+  | 'mouseTrackingMode'
+  | 'mouseSelection'
+  | 'contextMenu'
+  | 'osc52';
+export interface ExecutionTerminalClipboardDiagnosticPayload {
+  nodeId: string;
+  kind: ExecutionNodeKind;
+  source: ExecutionTerminalClipboardDiagnosticSource;
+  detail?: Record<string, unknown>;
+}
 
 export interface ExecutionSessionMetadata {
   backend: TerminalBackendKind;
@@ -433,6 +447,9 @@ export interface WebviewProbeNodeSnapshot {
   terminalVisibleLines?: string[];
   terminalTextareaLeft?: number;
   terminalTextareaTop?: number;
+  terminalMouseTrackingMode?: 'none' | 'x10' | 'vt200' | 'drag' | 'any';
+  terminalBufferType?: 'normal' | 'alternate';
+  terminalHasFocus?: boolean;
   terminalTheme?: WebviewProbeTerminalThemeSnapshot;
 }
 
@@ -993,6 +1010,10 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'webview/executionPerformanceDiagnostic';
       payload: ExecutionPerformanceDiagnosticPayload;
+    }
+  | {
+      type: 'webview/executionClipboardDiagnostic';
+      payload: ExecutionTerminalClipboardDiagnosticPayload;
     }
   | {
       type: 'webview/testProbeResult';
@@ -2070,6 +2091,19 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/executionClipboardDiagnostic') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const normalizedPayload = normalizeExecutionClipboardDiagnosticPayload(payload);
+    if (!normalizedPayload) {
+      return null;
+    }
+
+    return {
+      type: 'webview/executionClipboardDiagnostic',
+      payload: normalizedPayload
+    };
+  }
+
   if (value.type === 'webview/testProbeResult') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
@@ -2289,6 +2323,41 @@ function isExecutionPerformanceDiagnosticOwner(
   value: unknown
 ): value is ExecutionPerformanceDiagnosticOwner {
   return value === 'local' || value === 'supervisor';
+}
+
+function normalizeExecutionClipboardDiagnosticPayload(
+  value: unknown
+): ExecutionTerminalClipboardDiagnosticPayload | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.nodeId !== 'string' ||
+    !isExecutionNodeKind(value.kind) ||
+    !isExecutionClipboardDiagnosticSource(value.source) ||
+    (value.detail !== undefined && !isRecord(value.detail))
+  ) {
+    return undefined;
+  }
+
+  return {
+    nodeId: value.nodeId,
+    kind: value.kind,
+    source: value.source,
+    detail: value.detail === undefined ? undefined : value.detail
+  };
+}
+
+function isExecutionClipboardDiagnosticSource(
+  value: unknown
+): value is ExecutionTerminalClipboardDiagnosticSource {
+  return (
+    value === 'environment' ||
+    value === 'shortcut' ||
+    value === 'selectionChange' ||
+    value === 'mouseTrackingMode' ||
+    value === 'mouseSelection' ||
+    value === 'contextMenu' ||
+    value === 'osc52'
+  );
 }
 
 function normalizeNonNegativeFiniteNumber(value: unknown): number | undefined {
@@ -2578,6 +2647,16 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
       (typeof value.terminalTextareaLeft === 'number' && Number.isFinite(value.terminalTextareaLeft))) &&
     (value.terminalTextareaTop === undefined ||
       (typeof value.terminalTextareaTop === 'number' && Number.isFinite(value.terminalTextareaTop))) &&
+    (value.terminalMouseTrackingMode === undefined ||
+      value.terminalMouseTrackingMode === 'none' ||
+      value.terminalMouseTrackingMode === 'x10' ||
+      value.terminalMouseTrackingMode === 'vt200' ||
+      value.terminalMouseTrackingMode === 'drag' ||
+      value.terminalMouseTrackingMode === 'any') &&
+    (value.terminalBufferType === undefined ||
+      value.terminalBufferType === 'normal' ||
+      value.terminalBufferType === 'alternate') &&
+    (value.terminalHasFocus === undefined || typeof value.terminalHasFocus === 'boolean') &&
     (value.terminalTheme === undefined || isWebviewProbeTerminalThemeSnapshot(value.terminalTheme))
   );
 }

@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 画布交互域, 协作对象域, 执行编排域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层]
 related_specs: [docs/product-specs/agent-terminal-clipboard-shortcuts.md]
 related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md]
-updated_at: 2026-05-09
+updated_at: 2026-06-14
 ---
 
 # Agent / Terminal 终端复制粘贴快捷键交互
@@ -112,6 +112,8 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 
 这些规则只在 xterm focus 内生效。`Agent` 和 `Terminal` 使用同一套规则；差异只体现在 Host 写入的目标会话类型不同。对 Agent 来说，无选区 `Ctrl+C` 是发送给 provider CLI 的 interrupt，不等同于节点 stop。对 Terminal 来说，它就是 shell interrupt。非 live 节点可以复制已有 scrollback 选区，但粘贴必须在 Webview 或 Host 侧确认目标仍有可输入 live session；如果没有，应取消粘贴并可用 `host/error` 给出轻量反馈。
 
+2026-06-14 补充：为了定位“复制快捷键或右键复制没有生效”的现场原因，正式方案增加只读诊断，不改变复制行为。`src/webview/executionTerminalNativeInteractions.ts` 在执行节点 xterm 内上报 `webview/executionClipboardDiagnostic`，覆盖本地 Webview 平台推断、复制/粘贴快捷键判定、xterm selection 变化、TUI mouse tracking 模式变化、mouse tracking 下的拖选尝试、右键菜单触发时的选区状态，以及收到 OSC 52 时的目标、payload 类型和短预览。`src/panel/CanvasPanelManager.ts` 只把这些事件写入 `diagnostic-events.json`，并在 `summary.json.diagnostics.executionClipboardSummary` 汇总按 source / node 的计数和最新状态；Host 不因为该诊断写剪贴板，也不把 OSC 52 转成复制。`src/common/protocol.ts` 同步扩展 `WebviewProbeNodeSnapshot`，让 `panel-probe.json` 能直接看到 `terminalMouseTrackingMode`、`terminalBufferType` 和 `terminalHasFocus`，用于区分“没有 xterm 选区”“TUI mouse tracking 捕获了拖选”“平台快捷键推断错误”和“OSC 52 已出现但未桥接”等原因。
+
 ## 8. 验证方法
 
 实现时应同时覆盖纯规则测试、Webview DOM 测试和至少一条真实 VSCode smoke / 手动验证说明。
@@ -123,6 +125,8 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 宿主级验证可以先用测试命令或 smoke harness 注入剪贴板内容，打开真实 VSCode Webview，聚焦一个 `Terminal` 节点后执行粘贴并观察 PTY 收到文本。若宿主级剪贴板在 CI 环境不可用，必须在验证说明中明确记录限制，并保留 Playwright 的协议级替代证据。
 
 截至 2026-05-09，本设计已通过纯规则测试、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke 验证。已执行命令包括 `npm run test:execution-terminal-clipboard`、`npm run typecheck`、`npm run test:webview` 和 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`。
+
+2026-06-14 诊断补充已通过 `npm run typecheck`、`npm run test:execution-terminal-clipboard` 和 `npm run test:webview -- --grep "terminal copy diagnostics"` 验证。覆盖范围包括协议 validator、Agent / Terminal 两类节点的 mouse tracking 模式上报、mouse tracking 下拖选后无 xterm 选区的快捷键诊断、右键菜单选区诊断，以及 OSC 52 诊断事件。
 
 ## 9. 参考资料
 

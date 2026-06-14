@@ -3522,6 +3522,127 @@ for (const executionKind of ['agent', 'terminal']) {
     });
   });
 
+  test(`${executionKind} terminal copy diagnostics expose shortcut, mouse tracking, context menu, and OSC52 state`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const outputLine = 'diagnostic-copy-target';
+    const osc52Text = 'osc52 diagnostic copy';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const readyProbe = await waitForExecutionTerminalReady(page, nodeId);
+    expect(readyProbe.terminalMouseTrackingMode).toBe('none');
+    expect(readyProbe.terminalBufferType).toBe('normal');
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${outputLine}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: '\x1b[?1002h'
+    });
+    await settleWebview(page, 4);
+
+    await expect
+      .poll(async () => {
+        const probeNode = await readProbeNode(page, nodeId, 20);
+        return probeNode?.terminalMouseTrackingMode ?? null;
+      })
+      .toBe('drag');
+    let diagnostic = (await readPostedMessagesByType(page, 'webview/executionClipboardDiagnostic')).find(
+      (entry) => entry.payload.source === 'mouseTrackingMode'
+    );
+    expect(diagnostic).toBeTruthy();
+    expect(diagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'mouseTrackingMode'
+    });
+    expect(diagnostic.payload.detail).toMatchObject({
+      previous: 'none',
+      current: 'drag',
+      enabled: true
+    });
+
+    await clearPostedMessages(page);
+    await dragTerminalSelection(page, {
+      nodeId,
+      row: 1,
+      startCol: 1,
+      endCol: Math.min(12, outputLine.length)
+    });
+
+    await expect
+      .poll(async () => {
+        const diagnostics = await readPostedMessagesByType(page, 'webview/executionClipboardDiagnostic');
+        return diagnostics.some(
+          (entry) =>
+            entry.payload.source === 'mouseSelection' &&
+            entry.payload.detail?.phase === 'mouseup' &&
+            entry.payload.detail?.mouseTrackingMode === 'drag'
+        );
+      })
+      .toBe(true);
+
+    await clearPostedMessages(page);
+    await dispatchTerminalShortcut(page, nodeId, executionTerminalCopyShortcutEvent());
+    diagnostic = await waitForPostedMessageByType(page, 'webview/executionClipboardDiagnostic');
+    expect(diagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'shortcut'
+    });
+    expect(diagnostic.payload.detail).toMatchObject({
+      mouseTrackingMode: 'drag',
+      selectionLength: 0,
+      hasSelection: false
+    });
+
+    await clearPostedMessages(page);
+    await nodeById(page, nodeId).locator('.xterm-screen').click({
+      button: 'right',
+      position: { x: 24, y: 24 }
+    });
+    diagnostic = await waitForPostedMessageByType(page, 'webview/executionClipboardDiagnostic');
+    expect(diagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'contextMenu'
+    });
+    expect(diagnostic.payload.detail).toMatchObject({
+      mouseTrackingMode: 'drag',
+      hasSelection: false
+    });
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `\x1b]52;c;${Buffer.from(osc52Text, 'utf8').toString('base64')}\x07`
+    });
+    diagnostic = await waitForPostedMessageByType(page, 'webview/executionClipboardDiagnostic');
+    expect(diagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'osc52'
+    });
+    expect(diagnostic.payload.detail).toMatchObject({
+      target: 'c',
+      dataKind: 'base64',
+      decodedPreview: osc52Text
+    });
+  });
+
   test(`${executionKind} terminal paste shortcut requests host clipboard text and routes returned text through xterm`, async ({
     page
   }) => {
