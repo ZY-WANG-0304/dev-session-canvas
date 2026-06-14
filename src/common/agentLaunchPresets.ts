@@ -559,8 +559,9 @@ function buildAgentResumeArgv(
 
 function buildCodexBranchArgv(baseArgs: readonly string[], explicitSessionId: string): string[] {
   const { leadingArgs, subcommandArgs } = splitCodexSessionSubcommandArgs(baseArgs, ['fork', 'resume']);
+  const normalizedLeadingArgs = stripCodexForkSelectionArgs(leadingArgs);
   const normalizedSubcommandArgs = subcommandArgs ? stripCodexForkSelectionArgs(subcommandArgs) : [];
-  return ['fork', ...leadingArgs, ...normalizedSubcommandArgs, explicitSessionId];
+  return ['fork', ...normalizedLeadingArgs, ...normalizedSubcommandArgs, explicitSessionId];
 }
 
 function buildClaudeBranchArgv(baseArgs: readonly string[], explicitSessionId: string): string[] {

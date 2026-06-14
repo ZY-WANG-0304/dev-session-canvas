@@ -68,6 +68,22 @@ try {
     'codex fork --profile prod --sandbox workspace-write codex-branch-session-003'
   );
 
+  assert.equal(
+    buildCodexBranchCommandLine('codex-branch-session-004', {
+      command: 'codex',
+      defaultArgs: '--last --model gpt-5.2'
+    }),
+    'codex fork --model gpt-5.2 codex-branch-session-004'
+  );
+
+  assert.equal(
+    buildCodexBranchCommandLine('codex-branch-session-005', {
+      command: 'codex',
+      defaultArgs: '--all --include-non-interactive old-session --profile prod'
+    }),
+    'codex fork --profile prod codex-branch-session-005'
+  );
+
   assert.throws(
     () => buildCodexBranchCommandLine('   ', { command: 'codex', defaultArgs: '' }),
     /分叉会话标识不能为空。/

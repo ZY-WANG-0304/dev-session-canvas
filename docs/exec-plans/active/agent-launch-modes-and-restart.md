@@ -42,6 +42,8 @@
 - [x] (2026-06-13) 按最新 UI 决策收口分叉节点标题栏：用户可见按钮文案改为 `分叉`，新分叉节点和普通 Agent 节点一样显示状态胶囊；窄宽度沿用 PR121 的按钮级压缩/内部换行，不再通过隐藏状态腾空间，也不让整组动作区换行打散布局。
 - [x] (2026-06-14) 修正右上角动作按钮内部换行触发：节点接近最小宽度时切到 `compact-actions` 密度，让 `启动/停止/新建/重启/分叉/删除` 等动作文案统一在按钮内部两行显示，同时保持 action cluster 不整组换行。
 - [x] (2026-06-14) 分叉创建的自动 `user` 边现在默认写入 `fork` 标签，并补充 Host smoke 断言，覆盖宿主状态与 Webview probe 都应看到该标签。
+- [x] (2026-06-14) 根据 PR159 review 收口 Codex 分叉参数清理：`buildCodexBranchArgv()` 现在同时清理 `fork` / `resume` 子命令之前与之后的旧选择参数，再追加当前可信 session id。
+- [x] (2026-06-14) 根据 PR159 review 将旧 Claude-only 分叉计划从 `docs/exec-plans/active/claude-agent-branch.md` 移入 `docs/exec-plans/completed/claude-agent-branch.md`，当前 active scope 统一指向本计划。
 
 ## 意外与发现
 
@@ -161,6 +163,14 @@
   理由：用户需要在画布上直接看出这条关系来自分叉动作；只画箭头不足以解释关系语义，而继续使用普通 `user` 边可以保留现有编辑、删除与模板能力，不引入正式 branch lineage。
   日期/作者：2026-06-14 / Codex
 
+- 决策：Codex 分叉命令必须在 leading args 与 `fork` / `resume` 子命令 args 两侧统一剥离选择语义，再把当前节点可信 session id 作为唯一目标追加到末尾。
+  理由：用户可能把 `--last`、`--all`、`--include-non-interactive` 或旧 session id 写在 `agent.codexDefaultArgs` 的子命令前缀里；如果只清理子命令之后的参数，`codex fork --last ... <source-session-id>` 会重新引入“最近会话/选择范围”语义，破坏显式从当前节点分叉的安全边界。
+  日期/作者：2026-06-14 / Codex
+
+- 决策：最初的 Claude-only 分叉 ExecPlan 不再作为 active 计划维护，而是移动到 completed 历史记录；当前 Codex / Claude Code 分叉事实统一维护在本计划、产品规格与设计文档中。
+  理由：该旧计划的目标、职责和验证段落包含当时的 Claude-only 当前态描述，继续留在 active 目录会误导后续协作者；移动到 completed 并标注历史状态，比在两个 active 计划里同时维护分叉事实更可追踪。
+  日期/作者：2026-06-14 / Codex
+
 ## 结果与复盘
 
 - 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。同时，命令面板 / 侧栏 `创建节点` 第二步 Quick Input 的行为也重新和规格对齐：点击 `默认 / Resume / YOLO / 沙盒` 只会改写顶部完整命令输入，必须显式按 Enter 才会真正创建节点；脚本化 QuickPick override 不再把“仅选择预设”误当成创建。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
@@ -173,6 +183,7 @@
 - 已更新：按最新决策，Webview 不再识别或隐藏 fork launch 节点的标题栏状态胶囊，分叉节点停止态和运行态都会像普通 Agent 一样显示状态；`分叉` 按钮改为像 PR121 的重启动作按钮一样在按钮级别允许压缩/内部换行；标题栏 action cluster 保持 inline，避免整组换行破坏布局，同时也不再用移除状态来解决空间冲突。用户可见按钮、aria/title、Host 错误和自动派生标题同步中文化为 `分叉`，底层命令与技术语义仍保留 provider-native `fork`。
 - 已更新：继续修正上一次 UI follow-up 的可观察行为。之前按钮虽然允许 `white-space: normal`，但由于两个中文字符的 `min-content` 宽度很小且按钮本身没有被压到更窄，用户把节点拉到最小宽度仍不会看到两行。现在 Webview 根据 Agent 节点宽度给标题栏动作区设置 `compact-actions` 密度，CSS 对右上角所有动作按钮应用相同内部两行格式，不让整个 action cluster 换行；Playwright 也从“只检查 white-space”升级为检查所有动作按钮的内部 label 高宽比符合两行。
 - 已更新：分叉自动连线现在不再只有箭头。`src/panel/CanvasPanelManager.ts` 的分叉建边 helper 在创建来源 Agent 指向新 Agent 的普通 `user` 边时默认写入 `label: 'fork'`；VSCode smoke 对 Codex / Claude 两条 Host 分叉路径都补充断言：状态里的边标签为 `fork`，editor Webview probe 也应看到该标签。
+- 已更新：PR159 review 指出的两个 blocker 已在文档和命令层收口。Codex 分叉命令现在会同时清理默认参数前缀与子命令尾部的旧选择参数，避免 `--last` 等参数覆盖当前可信 source session；旧 Claude-only active 计划已移到 completed 并在文件头标注历史状态，当前分叉范围只由本计划与正式规格/设计承载。
 
 ## 上下文与定向
 
@@ -209,6 +220,7 @@
 7. Codex Fork follow-up：在 `src/common/agentLaunchPresets.ts` 中新增 provider-neutral Fork command builder，Codex 分支生成 `codex fork <session-id>` 并剥离旧 `resume` / `fork` 选择目标；在 `src/webview/main.tsx` 中把分叉按钮从 Claude-only 改成 Codex / Claude Code provider-native 判断；在 `src/panel/CanvasPanelManager.ts` 中让 `branchAgentSession()` 根据来源节点 provider 创建同 provider 新节点；同步补命令层、Playwright 与 VSCode smoke 回归。
 8. 分叉 UI follow-up：把用户可见按钮文案、派生标题与错误提示改为 `分叉`；移除 Webview 对 fork launch 节点隐藏标题栏状态的特判；更新 Playwright 覆盖，确认分叉节点在停止 / 运行状态均显示状态胶囊，且 `分叉` 按钮采用 PR121 式按钮级压缩/内部换行，action cluster 不整组换行。实现中应确保右上角所有动作按钮在接近最小宽度时真实呈现为按钮内部两行，而不是只在 CSS 上允许换行。
 9. 分叉边标签 follow-up：在 `src/panel/CanvasPanelManager.ts` 的分叉自动建边路径中默认写入 `label: 'fork'`；更新 VSCode smoke，确认 Codex / Claude 分叉后宿主状态和 Webview probe 都能看到 `fork` 标签；同步更新产品规格、设计文档与本计划。
+10. PR159 review follow-up：在 `src/common/agentLaunchPresets.ts` 中让 Codex 分叉命令对 leading args 和 subcommand args 使用同一套 fork selection stripping；在 `scripts/test/test-agent-launch-presets.mjs` 中补充 leading `--last`、`--all`、`--include-non-interactive` 与旧 positional target 的回归；将旧 `claude-agent-branch.md` 移入 completed，并在 active 计划中记录当前 Codex / Claude Code 分叉事实。
 
 ## 验证与验收
 
@@ -219,6 +231,7 @@
 - Codex Fork follow-up 已运行 `npm run test:agent-launch-presets`、`npm run test:protocol-webview-messages`、`npm run test:canvas-execution-context`、`npm run typecheck`，以及 focused `npm run test:webview -- --grep "Agent Fork action|forked Agent"`；VSCode smoke 已新增 Codex Fork helper 覆盖 Host 创建、user edge 和 `execution/started.launchArgs`，但完整 trusted smoke 当前被既有 editor Webview DOM 动作超时阻塞，未进入该 helper。
 - 分叉 UI follow-up 已重新运行 focused Webview / 命令层 / 执行上下文 / typecheck / diff check；结果确认标题栏状态胶囊恢复、`分叉` 文案覆盖和 PR121 式按钮级换行契约通过。2026-06-14 又补跑 focused Webview，确认 `compact-actions` 下右上角所有动作按钮真实两行显示且 action cluster 仍为 `nowrap`。
 - 分叉边标签 follow-up 需要通过 `scripts/test/test-canvas-node-groups.mjs` 的 helper 级断言、`tests/vscode-smoke/extension-tests.cjs` 的 Codex / Claude Host 分叉断言、`npm run typecheck` 与 diff whitespace 检查；若完整 smoke 不跑全，必须说明本次只更新了现有 helper 与 smoke 断言，未额外重新跑完整 Development Host。
+- PR159 review follow-up 需要通过 `npm run test:agent-launch-presets` 验证新增 leading 参数清理回归，并至少补跑 `npm run test:canvas-execution-context`、`npm run test:canvas-node-groups`、`npm run typecheck`、Playwright / VSCode smoke 语法检查、focused `Agent title action buttons` Webview 回归、conflict marker 搜索与 diff whitespace 检查。
 
 ## 幂等性与恢复
 
@@ -264,6 +277,7 @@
 - 2026-06-13：分叉 UI follow-up 已完成验证：`npm run test:webview -- --grep "Agent Fork action|forked Agent"`（3 passed）、`npm run test:agent-launch-presets`、`npm run test:canvas-execution-context`、`npm run typecheck`、`node --check tests/playwright/webview-harness.spec.mjs`、`node --check tests/vscode-smoke/extension-tests.cjs`、`git diff --check` 均通过。完整 trusted smoke 仍沿用上一条记录中的既有阻塞，不作为本次中文文案与状态显示调整的必跑项。
 - 2026-06-14：标题栏动作按钮内部换行修正已运行 `npm run test:webview -- --grep "Agent Fork action|forked Agent|Agent title action buttons"`（4 passed）、`node --check tests/playwright/webview-harness.spec.mjs`、`npm run typecheck`、`npm run test:agent-launch-presets`、`npm run test:canvas-execution-context`、`node --check tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check`，均通过。
 - 2026-06-14：分叉边标签 follow-up 已运行 `npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`node --check tests/playwright/webview-harness.spec.mjs`、focused `npm run test:webview -- --grep "manual edges can be created, selected, edited, and deleted|edge label text color follows the rendered edge color"` 与 `git diff --check`，均通过。本轮未重新跑完整 `npm run test:smoke`；VSCode smoke 文件已补 Codex / Claude 分叉边标签断言，实际 Development Host 端到端仍沿用既有完整 smoke 阻塞记录。
+- 2026-06-14：PR159 review follow-up 已运行 `npm run test:agent-launch-presets`、`npm run test:protocol-webview-messages`、`npm run test:canvas-execution-context`、`npm run test:canvas-node-groups`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`node --check tests/playwright/webview-harness.spec.mjs`、focused `npm run test:webview -- --grep "Agent title action buttons"`、conflict marker 搜索与 diff whitespace 检查，均通过。
 
 ## 接口与依赖
 
@@ -305,3 +319,5 @@
 本次验证说明：2026-06-14 已完成 focused Webview 回归、Playwright / VSCode smoke 语法检查、typecheck、命令层与执行上下文脚本回归、diff whitespace 检查，确认右上角所有动作按钮两行紧凑显示、状态胶囊保留、action cluster 不整组换行。
 本次更新说明：2026-06-14 将分叉自动连线从“仅有箭头”收口为“普通 `user` 边 + 默认 `fork` 标签”，让画布关系在视觉上直接表达分叉语义，同时继续不引入正式 branch lineage。
 本次验证说明：2026-06-14 已完成分叉边标签 follow-up 的 helper 级回归、执行上下文脚本回归、typecheck、Playwright / VSCode smoke 语法检查、focused Webview 连线标签渲染回归与 diff whitespace 检查；完整 VSCode smoke 未重新运行，继续沿用既有 Development Host 阻塞记录。
+本次更新说明：2026-06-14 按 PR159 review 收口 Codex 分叉命令的参数边界，并将旧 Claude-only 分叉 ExecPlan 从 active 移入 completed；当前 Codex / Claude Code 分叉事实只在本 active 计划和正式规格/设计文档中维护。
+本次验证说明：2026-06-14 已完成命令层、协议、执行上下文、节点分组、typecheck、Playwright / VSCode smoke 语法检查、focused 标题栏按钮 Webview 回归、conflict marker 搜索与 diff whitespace 检查。
