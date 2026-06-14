@@ -1,7 +1,9 @@
 name: Publish Marketplace Release
 
 on:
-  create:
+  push:
+    tags:
+      - 'publish/v*'
   workflow_dispatch:
     inputs:
       trigger_tag:
@@ -15,17 +17,17 @@ permissions:
 jobs:
   publish:
     name: Publish Marketplaces And Release Assets
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'create' && github.event.ref_type == 'tag' && startsWith(github.event.ref, 'publish/v')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.deleted != true && startsWith(github.ref, 'refs/tags/publish/v')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
-      group: marketplace-release-${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.event.ref }}
+      group: marketplace-release-${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
       cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
-      TRIGGER_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.event.ref }}
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      TRIGGER_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
     steps:
       - name: Derive release metadata
         id: release

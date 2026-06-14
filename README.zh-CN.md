@@ -4,7 +4,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是准备 `0.15.1` Preview 补丁发布，并围绕后续 `0.15.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是准备 `0.15.2` Preview 补丁发布，并围绕后续 `0.15.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](images/marketplace/canvas-overview.gif)
 
@@ -59,15 +59,15 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前 `0.15.1` 发布准备重点是发布 Preview 补丁：分组标题可读性、分组双击聚焦、Add Folder 新增 root 放置与聚焦、多根通知标题 root 标识，以及执行性能诊断插桩。它保留 `0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布自动化、Marketplace 元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前 `0.15.2` 发布准备重点是发布 Preview 补丁：执行节点通知控制、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` 收口处理，以及画布外部链接打开方式配置。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag / GitHub Release assets 发布自动化、Marketplace 元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
 - 版本定位为 `Preview`，尚未达到稳定正式版。
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
-- 公开发布主渠道仍以 `Visual Studio Marketplace` 为主；`Open VSX` namespace 已认领，后续发布按同版本补充同步。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.15.1` 的 repo-local 验证重点收口版本 / 打包一致性、分组聚焦与 Add Folder 放置覆盖、多根通知标题覆盖、执行性能诊断协议覆盖、扩展 manifest 检查、VSIX payload 检查与发布 dry-run 一致性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- 公开发布主渠道目标仍以 `Visual Studio Marketplace` 为主，`Open VSX` 作为同版本补充渠道；截至 2026-06-14 的 `0.15.2` release-prep review，Open VSX 已公开可见，但 Visual Studio Marketplace item 页面仍需在最终 publish 前恢复 / 复核。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.15.2` 的 repo-local 验证重点收口版本 / 打包一致性、通知 allow-list 覆盖、Codex 最终失败文本覆盖、Claude Agent `Ctrl-Z` 阻断覆盖、扩展 manifest 检查、VSIX payload 检查与发布 dry-run 一致性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
@@ -78,10 +78,10 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## Preview 分发
 
-对外分发目标是通过公开扩展市场发布；官方 VS Code 仍以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。`.vsix` 不再作为面向普通用户的公开分发方式，仅保留为构建工件和发布验证输入。
+对外分发目标是通过公开扩展市场发布；官方 VS Code 仍计划以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。`0.15.2` 发布准备阶段已确认 Open VSX 可见，Visual Studio Marketplace 可见性仍是最终发布门禁。GitHub Release assets 作为 release-day 工件镜像和手动安装兜底入口，不替代 marketplace 验证；除此之外，`.vsix` 仍仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过当前宿主配置的扩展市场安装，而非手动分发 `.vsix`
-- `Visual Studio Marketplace` 已是当前公开安装主路径；后续 `0.15.x` 更新仍需按发布手册锁定最终 git ref、同步发布到 `Visual Studio Marketplace` 与 `Open VSX`，并完成发布后验证
+- `Visual Studio Marketplace` 仍是官方 VS Code 安装主路径目标，但 `0.15.2` 最终 publish 前必须先确认主扩展和 notifier 在该市场均已公开可见；后续 `0.15.x` 更新仍需按发布手册锁定最终 git ref、同步发布到 `Visual Studio Marketplace` 与 `Open VSX`，并完成发布后验证
 - `Open VSX` 不改变当前 VS Code 官方市场主路径，也不额外承诺所有兼容宿主的完整支持矩阵
 
 ## 桌面通知 companion（自动安装）
@@ -116,7 +116,7 @@ npm run build
 
 - 仍处于 `Preview`，不应按稳定生产工具看待。
 - 不支持 `Virtual Workspace`。
-- 公开 `Preview` 的分发主路径已收口到 `Visual Studio Marketplace`，并补充 `Open VSX` 同版本发布；release-day 仍需手工执行与复核。
+- 公开 `Preview` 的分发主路径目标仍是 `Visual Studio Marketplace`，并补充 `Open VSX` 同版本发布；`0.15.2` 最终 publish 前必须先恢复 / 复核 Visual Studio Marketplace 公开可见性，release-day 仍需手工执行与复核。
 - `Remote SSH` 主路径已验证可用，且仍是验证最充分的推荐路径；Linux、macOS、Windows 本地主路径也已完成功能可用性验证，但 Windows 下使用 `Codex` 时仍存在执行节点内历史无法向上翻页的已知问题。
 - `Note` Markdown 预览不支持原始 HTML 透传、任意 scheme 链接、越出 workspace 的文件链接、目录目标或富文本块编辑。
 - 模板当前只保存静态布局与配置，不保存运行中会话、终端输出、文件活动、缩略图、云同步或模板历史。

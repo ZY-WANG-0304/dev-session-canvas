@@ -7514,6 +7514,9 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       10000
     );
 
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
     const explicitUrlLinkText = browserSmokeServer.url.replace('/hit', '/explicit');
     await performWebviewDomAction(
       {
