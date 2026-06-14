@@ -5,11 +5,16 @@ import type {
   ILink,
   ILinkDecorations,
   ILinkProvider,
+  IDisposable,
   Terminal
 } from '@xterm/xterm';
 import LinkifyIt from 'linkify-it';
 
-import type { CanvasRuntimeContext, ExecutionNodeKind } from '../common/protocol';
+import type {
+  CanvasRuntimeContext,
+  ExecutionNodeKind,
+  ExecutionTerminalClipboardDiagnosticPayload
+} from '../common/protocol';
 import {
   inferExecutionTerminalClipboardPlatform,
   resolveExecutionTerminalClipboardShortcut,
@@ -63,6 +68,7 @@ interface ExecutionTerminalNativeInteractionsOptions {
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
   ) => void;
+  onClipboardDiagnostic?: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   resolveFileLinks: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -173,6 +179,11 @@ const EXECUTION_HARD_WRAPPED_LINK_MAX_LINES = 4;
 const EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX = 16;
 const EXECUTION_NEGATIVE_FILE_LINK_CACHE_REFRESH_DELAY_MS = 200;
 const EXECUTION_NEGATIVE_FILE_LINK_CACHE_OUTPUT_INVALIDATION_MIN_INTERVAL_MS = 1000;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT = 120;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LIMIT = 3;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LENGTH_LIMIT = 160;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT = 2048;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_DECODED_PREVIEW_LIMIT = 120;
 const FILE_LINK_LABEL = 'Open file in editor';
 const FOCUS_DIRECTORY_LINK_LABEL = 'Focus folder in explorer';
 const OPEN_DIRECTORY_LINK_LABEL = 'Open folder in new window';
@@ -365,6 +376,27 @@ export function setupExecutionTerminalNativeInteractions(
   const urlLinkDisposable = terminal.registerLinkProvider(urlLinkProvider);
   const wordLinkDisposable = terminal.registerLinkProvider(wordLinkProvider);
   const clipboardPlatform = detectExecutionTerminalClipboardPlatform();
+  const emitClipboardDiagnostic = createExecutionClipboardDiagnosticEmitter(options);
+
+  emitClipboardDiagnostic('environment', () => ({
+    platform: clipboardPlatform,
+    navigatorPlatform: window.navigator.platform,
+    userAgent: window.navigator.userAgent,
+    initialMouseTrackingMode: terminal.modes.mouseTrackingMode,
+    initialBufferType: terminal.buffer.active.type
+  }));
+
+  const mouseModeDisposable = monitorExecutionTerminalMouseTrackingMode(
+    terminal,
+    emitClipboardDiagnostic
+  );
+  const selectionDiagnosticsDisposable = terminal.onSelectionChange(() => {
+    emitClipboardDiagnostic('selectionChange', () => readExecutionSelectionDiagnosticDetail(terminal));
+  });
+  const osc52DiagnosticDisposable = terminal.parser.registerOscHandler(52, (data) => {
+    emitClipboardDiagnostic('osc52', () => readExecutionOsc52DiagnosticDetail(data));
+    return false;
+  });
 
   terminal.attachCustomKeyEventHandler((event) => {
     if (event.type !== 'keydown') {
@@ -373,6 +405,28 @@ export function setupExecutionTerminalNativeInteractions(
 
     const selection = terminal.getSelection();
     const action = resolveExecutionTerminalClipboardShortcut(clipboardPlatform, event, selection.length > 0);
+    if (action !== 'passThrough' || isExecutionClipboardShortcutCandidate(clipboardPlatform, event)) {
+      emitClipboardDiagnostic('shortcut', () => ({
+        platform: clipboardPlatform,
+        action,
+        key: event.key,
+        code: event.code,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        selectionLength: selection.length,
+        hasSelection: selection.length > 0,
+        mouseTrackingMode: terminal.modes.mouseTrackingMode,
+        bufferType: terminal.buffer.active.type,
+        bracketedPasteMode: terminal.modes.bracketedPasteMode,
+        terminalHasFocus: terminal.textarea === document.activeElement,
+        selectionPreview: summarizeExecutionDiagnosticText(
+          selection,
+          EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT
+        )
+      }));
+    }
     if (action === 'passThrough') {
       return true;
     }
@@ -443,11 +497,88 @@ export function setupExecutionTerminalNativeInteractions(
     options.onDropResource(options.nodeId, options.kind, resource);
   };
 
+  const handleMouseDown = (event: MouseEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const mouseTrackingMode = terminal.modes.mouseTrackingMode;
+    if (mouseTrackingMode === 'none') {
+      return;
+    }
+
+    emitClipboardDiagnostic('mouseSelection', () => ({
+      phase: 'mousedown',
+      button: event.button,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      mouseTrackingMode,
+      bufferType: terminal.buffer.active.type,
+      terminalHasFocus: terminal.textarea === document.activeElement,
+      selectionLengthBefore: terminal.getSelection().length,
+      forceSelectionLikely: event.shiftKey
+    }));
+  };
+
+  const handleMouseUp = (event: MouseEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const mouseTrackingMode = terminal.modes.mouseTrackingMode;
+    if (mouseTrackingMode === 'none') {
+      return;
+    }
+
+    emitClipboardDiagnostic('mouseSelection', () => ({
+      phase: 'mouseup',
+      button: event.button,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      mouseTrackingMode,
+      bufferType: terminal.buffer.active.type,
+      terminalHasFocus: terminal.textarea === document.activeElement,
+      selectionLengthAfter: terminal.getSelection().length,
+      selectionPreview: summarizeExecutionDiagnosticText(
+        terminal.getSelection(),
+        EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT
+      ),
+      forceSelectionLikely: event.shiftKey
+    }));
+  };
+
+  const handleContextMenu = (event: MouseEvent): void => {
+    emitClipboardDiagnostic('contextMenu', () => ({
+      button: event.button,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      selectionLength: terminal.getSelection().length,
+      hasSelection: terminal.getSelection().length > 0,
+      mouseTrackingMode: terminal.modes.mouseTrackingMode,
+      bufferType: terminal.buffer.active.type,
+      terminalHasFocus: terminal.textarea === document.activeElement,
+      selectionPreview: summarizeExecutionDiagnosticText(
+        terminal.getSelection(),
+        EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT
+      ),
+      visibleLinePreview: readExecutionTerminalVisibleLinePreview(terminal)
+    }));
+  };
+
   dropTarget.addEventListener('dragenter', handleDragEnter);
   dropTarget.addEventListener('dragover', handleDragOver);
   dropTarget.addEventListener('dragleave', handleDragLeave);
   dropTarget.addEventListener('dragend', handleDragLeave);
   dropTarget.addEventListener('drop', handleDrop);
+  dropTarget.addEventListener('mousedown', handleMouseDown);
+  dropTarget.addEventListener('mouseup', handleMouseUp);
+  dropTarget.addEventListener('contextmenu', handleContextMenu);
 
   return {
     async activateLinkForTest(linkText: string): Promise<void> {
@@ -522,6 +653,9 @@ export function setupExecutionTerminalNativeInteractions(
       fileLinkDisposable.dispose();
       urlLinkDisposable.dispose();
       wordLinkDisposable.dispose();
+      mouseModeDisposable.dispose();
+      selectionDiagnosticsDisposable.dispose();
+      osc52DiagnosticDisposable.dispose();
       hardWrappedHoverOverlayController.dispose();
       terminal.attachCustomKeyEventHandler(() => true);
       dropTarget.removeEventListener('dragenter', handleDragEnter);
@@ -529,6 +663,9 @@ export function setupExecutionTerminalNativeInteractions(
       dropTarget.removeEventListener('dragleave', handleDragLeave);
       dropTarget.removeEventListener('dragend', handleDragLeave);
       dropTarget.removeEventListener('drop', handleDrop);
+      dropTarget.removeEventListener('mousedown', handleMouseDown);
+      dropTarget.removeEventListener('mouseup', handleMouseUp);
+      dropTarget.removeEventListener('contextmenu', handleContextMenu);
       fileLinkResolutionCache.clear();
       getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.clear();
     }
@@ -540,6 +677,197 @@ function detectExecutionTerminalClipboardPlatform(): ExecutionTerminalClipboardP
     platform: window.navigator.platform,
     userAgent: window.navigator.userAgent
   });
+}
+
+function isExecutionClipboardShortcutCandidate(
+  platform: ExecutionTerminalClipboardPlatform,
+  event: KeyboardEvent
+): boolean {
+  if (event.altKey) {
+    return false;
+  }
+
+  const key = event.key.trim().toLowerCase();
+  const normalizedKey = key === 'keyc' || key === 'c' ? 'c' : key === 'keyv' || key === 'v' ? 'v' : key;
+  if (normalizedKey !== 'c' && normalizedKey !== 'v') {
+    return false;
+  }
+
+  if (platform === 'mac') {
+    return event.metaKey && !event.ctrlKey && !event.shiftKey;
+  }
+
+  if (platform === 'windows') {
+    return event.ctrlKey && !event.metaKey && (normalizedKey === 'v' || !event.shiftKey);
+  }
+
+  if (platform === 'linux') {
+    return event.ctrlKey && event.shiftKey && !event.metaKey;
+  }
+
+  return Boolean(event.metaKey || (event.ctrlKey && event.shiftKey));
+}
+
+function createExecutionClipboardDiagnosticEmitter(
+  options: ExecutionTerminalNativeInteractionsOptions
+): (
+  source: ExecutionTerminalClipboardDiagnosticPayload['source'],
+  readDetail?: () => Record<string, unknown>
+) => void {
+  return (source, readDetail): void => {
+    if (!options.onClipboardDiagnostic) {
+      return;
+    }
+
+    try {
+      options.onClipboardDiagnostic({
+        nodeId: options.nodeId,
+        kind: options.kind,
+        source,
+        detail: readDetail?.()
+      });
+    } catch {
+      // Clipboard diagnostics must never affect terminal input, selection, or rendering.
+    }
+  };
+}
+
+function monitorExecutionTerminalMouseTrackingMode(
+  terminal: Terminal,
+  emitClipboardDiagnostic: (
+    source: ExecutionTerminalClipboardDiagnosticPayload['source'],
+    readDetail?: () => Record<string, unknown>
+  ) => void
+): IDisposable {
+  let previousMouseTrackingMode = terminal.modes.mouseTrackingMode;
+  const disposable = terminal.onWriteParsed(() => {
+    const mouseTrackingMode = terminal.modes.mouseTrackingMode;
+    if (mouseTrackingMode === previousMouseTrackingMode) {
+      return;
+    }
+
+    const previous = previousMouseTrackingMode;
+    previousMouseTrackingMode = mouseTrackingMode;
+    emitClipboardDiagnostic('mouseTrackingMode', () => ({
+      previous,
+      current: mouseTrackingMode,
+      enabled: mouseTrackingMode !== 'none',
+      bufferType: terminal.buffer.active.type,
+      bracketedPasteMode: terminal.modes.bracketedPasteMode
+    }));
+  });
+
+  return disposable;
+}
+
+function readExecutionSelectionDiagnosticDetail(terminal: Terminal): Record<string, unknown> {
+  const selection = terminal.getSelection();
+  return {
+    selectionLength: selection.length,
+    hasSelection: selection.length > 0,
+    mouseTrackingMode: terminal.modes.mouseTrackingMode,
+    bufferType: terminal.buffer.active.type,
+    terminalHasFocus: terminal.textarea === document.activeElement,
+    selectionPreview: summarizeExecutionDiagnosticText(
+      selection,
+      EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT
+    )
+  };
+}
+
+function readExecutionOsc52DiagnosticDetail(data: string): Record<string, unknown> {
+  const separatorIndex = data.indexOf(';');
+  const target = separatorIndex >= 0 ? data.slice(0, separatorIndex) : '';
+  const payload = separatorIndex >= 0 ? data.slice(separatorIndex + 1) : data;
+  const baseDetail: Record<string, unknown> = {
+    payloadLength: data.length,
+    target: summarizeExecutionDiagnosticText(target, 32),
+    dataLength: payload.length
+  };
+
+  if (payload.length === 0) {
+    return {
+      ...baseDetail,
+      dataKind: 'empty'
+    };
+  }
+
+  if (payload === '?') {
+    return {
+      ...baseDetail,
+      dataKind: 'query'
+    };
+  }
+
+  const normalizedPayload = payload.replace(/\s+/g, '');
+  const base64Like = /^[A-Za-z0-9+/]*={0,2}$/u.test(normalizedPayload);
+  if (!base64Like) {
+    return {
+      ...baseDetail,
+      dataKind: 'non-base64'
+    };
+  }
+
+  const detail: Record<string, unknown> = {
+    ...baseDetail,
+    dataKind: 'base64',
+    base64Length: normalizedPayload.length,
+    base64TruncatedForDiagnostics:
+      normalizedPayload.length > EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT
+  };
+
+  if (normalizedPayload.length > EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT) {
+    return detail;
+  }
+
+  try {
+    const binary = window.atob(normalizedPayload);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    const decodedText = new TextDecoder().decode(bytes);
+    return {
+      ...detail,
+      decodedBytes: bytes.byteLength,
+      decodedPreview: summarizeExecutionDiagnosticText(
+        decodedText,
+        EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_DECODED_PREVIEW_LIMIT
+      )
+    };
+  } catch (error) {
+    return {
+      ...detail,
+      decodeError: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function readExecutionTerminalVisibleLinePreview(terminal: Terminal): string[] {
+  const startLine = Math.max(0, terminal.buffer.active.viewportY);
+  const preview: string[] = [];
+  for (let offset = 0; offset < EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LIMIT; offset += 1) {
+    const line = terminal.buffer.active.getLine(startLine + offset);
+    if (!line) {
+      break;
+    }
+    preview.push(
+      summarizeExecutionDiagnosticText(
+        line.translateToString(true),
+        EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LENGTH_LIMIT
+      )
+    );
+  }
+
+  return preview;
+}
+
+function summarizeExecutionDiagnosticText(text: string, limit: number): string {
+  if (text.length <= limit) {
+    return text;
+  }
+
+  return `${text.slice(0, Math.max(0, limit))}...`;
 }
 
 function createHardWrappedLinkProvider(
