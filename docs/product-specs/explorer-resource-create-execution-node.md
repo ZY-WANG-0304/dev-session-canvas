@@ -22,7 +22,7 @@
 4. 若选择 `Agent`，扩展复用现有 Agent 创建 Quick Input，让用户选择 provider、启动方式或自定义启动命令；确认后创建 Agent 节点，并在解析后的目标目录 cwd 中启动。
 5. 新节点优先出现在当前画布视口附近；若画布尚未 ready，则使用宿主已有默认落点与避碰规则。
 6. Terminal 节点标题栏不额外显示 cwd 标签；用户通过终端 prompt / `pwd` 等终端内容理解当前路径。
-7. Agent 节点标题副标题显示 `cwdLabel · 启动命令`，让用户在画布上直接看到该 Agent 的目录上下文和启动方式。
+7. Agent 节点标题上方显示 `cwdLabel`，标题下方副标题显示启动命令，让用户在画布上直接看到该 Agent 的目录上下文和启动方式。
 8. 节点停止后，Terminal 的重启、Agent 的新建会话或恢复原会话都继续使用该节点绑定的 cwd，不回退到 workspace 根目录。
 9. 在侧栏节点列表中，Agent 节点第二行显示 `cwdLabel · provider · 状态`，帮助用户不进入画布也能区分多个目录上下文中的 Agent。
 
@@ -46,7 +46,7 @@
   - 创建前 provider、preset 和 custom command 选择复用现有 Agent Quick Input 与校验规则。
   - 新 Agent 节点的 `metadata.agent.cwd` 写入目标 cwd。
   - 首次自动启动、后续新建会话、恢复原会话、Agent CLI resolver、文件活动和 diagnostic 都以该 cwd 为准。
-  - Agent 标题副标题显示 `cwdLabel · 启动命令`；完整 cwd 与完整启动命令在 hover title 中可见。
+  - Agent 标题栏把 `cwdLabel` 与启动命令拆成两行：`cwdLabel` 位于标题上方，启动命令仍位于标题下方副标题；完整 cwd 与完整启动命令分别跟随各自文本的 hover title。
   - 侧栏节点列表中的 Agent 第二行显示 `cwdLabel · provider · 状态`；Terminal / Note 等其他节点不增加 cwdLabel。
 - 落点与画布打开：
   - 如果已有可交互画布，节点仍优先落在当前视口附近，并复用当前已打开的 `editor` 或 `panel` surface。
@@ -84,12 +84,12 @@
 - Agent CLI resolver 与 shell env probe 使用的 cwd-sensitive cache key
 - diagnostic 中记录的 cwd
 
-### Agent 标题副标题
+### Agent 标题栏 cwd 与副标题
 
 - `cwdLabel`
 - 启动命令
-- hover 中的完整 cwd
-- hover 中的完整启动命令
+- `cwdLabel` hover 中的完整 cwd
+- 启动命令 hover 中的完整启动命令
 
 ### 侧栏节点列表中的 Agent 第二行
 
@@ -112,8 +112,8 @@
 - 在 workspace 内目录或普通文件右键选择创建 Agent 后，仍出现现有 Agent provider / 启动方式 Quick Input，而不是新的一套重复选择 UI。
 - 确认 Agent 创建后，画布中出现 Agent 节点；若右键目标是目录，`metadata.agent.cwd` 等于目标目录；若右键目标是普通文件，`metadata.agent.cwd` 等于该文件父目录。
 - 该 Agent 首次自动启动时，`execution/startRequested.cwd` 和 `execution/started.cwd` 等于目标目录。
-- Agent 标题副标题按 `cwdLabel · 启动命令` 展示；当内容被截断时，hover 能看到完整 cwd 和完整启动命令。
-- Agent 标题副标题和 hover 中的执行目录都追加目录尾缀；显示分隔符保留 cwd 来源风格，含反斜杠来源使用 `\`，slash-style 来源使用 `/`。
+- Agent 标题栏按“标题上方 `cwdLabel`、标题下方启动命令副标题”展示；当内容被截断时，`cwdLabel` hover 能看到完整 cwd，启动命令 hover 能看到完整启动命令。
+- Agent 标题栏中的 `cwdLabel` 和 hover 中的执行目录都追加目录尾缀；显示分隔符保留 cwd 来源风格，含反斜杠来源使用 `\`，slash-style 来源使用 `/`。
 - 侧栏节点列表中，Agent 节点第二行按 `cwdLabel · provider · 状态` 展示；Terminal / Note 等其他节点仍只显示状态。
 - 停止后再次启动 Terminal 或 Agent 时，仍使用节点 metadata 中的 cwd，不回退到 workspace 根目录。
 - 如果右键资源不是目录或普通文件、解析后的 cwd 不属于当前 workspace、cwd 不存在或 workspace 未受信任，系统不会创建可运行执行节点，并给出明确反馈。

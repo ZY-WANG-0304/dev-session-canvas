@@ -3229,17 +3229,22 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 
   if (executionKind === 'agent') {
-    test('agent subtitle shows cwd label with the launch command and exposes both when truncated', async ({
+    test('agent title context shows cwd label above title and leaves launch command in subtitle', async ({
       page
     }) => {
       const state = createLiveExecutionNodeState('agent');
       const agentNode = state.nodes[0];
       const longLaunchCommand =
         'codex --model gpt-5.2 --sandbox workspace-write --yolo --config very-long-command-for-subtitle-overflow';
+      const longCwd = [
+        '/workspace/packages',
+        'app-with-an-extraordinarily-long-root-label',
+        'that-forces-the-cwd-context-tooltip'
+      ].join('/');
 
-      agentNode.size = { width: 280, height: agentNode.size.height };
+      agentNode.size = { width: 420, height: agentNode.size.height };
       agentNode.metadata.agent.lastLaunchCommandLine = longLaunchCommand;
-      agentNode.metadata.agent.cwd = '/workspace/packages/app';
+      agentNode.metadata.agent.cwd = longCwd;
 
       await openHarness(page);
       await bootstrap(
@@ -3251,11 +3256,35 @@ for (const executionKind of ['agent', 'terminal']) {
       );
       await waitForExecutionTerminalReady(page, 'agent-zoom');
 
-      const subtitle = nodeById(page, 'agent-zoom').locator('.window-title-subtitle');
+      const node = nodeById(page, 'agent-zoom');
+      const context = node.locator('.window-title-context');
+      const subtitle = node.locator('.window-title-subtitle');
+      await expect
+        .poll(async () => context.getAttribute('title'))
+        .toBe(`${longCwd}/`);
+      await expect(context).toContainText('packages/app-with-an-extraordinarily-long-root-label');
       await expect
         .poll(async () => subtitle.getAttribute('title'))
-        .toBe(`/workspace/packages/app/ · ${longLaunchCommand}`);
-      await expect(subtitle).toContainText('packages/app/ · codex --model gpt-5.2');
+        .toBe(longLaunchCommand);
+      await expect(subtitle).toContainText('codex --model gpt-5.2');
+
+      const verticalOrder = await node.evaluate(() => {
+        const contextElement = document.querySelector('[data-node-id="agent-zoom"] .window-title-context');
+        const titleElement = document.querySelector('[data-node-id="agent-zoom"] [data-probe-field="title"]');
+        const subtitleElement = document.querySelector('[data-node-id="agent-zoom"] .window-title-subtitle');
+        if (!(contextElement instanceof HTMLElement) || !(titleElement instanceof HTMLElement) || !(subtitleElement instanceof HTMLElement)) {
+          throw new Error('Agent title context, title, or subtitle was not rendered.');
+        }
+
+        return {
+          contextBottom: contextElement.getBoundingClientRect().bottom,
+          titleTop: titleElement.getBoundingClientRect().top,
+          titleBottom: titleElement.getBoundingClientRect().bottom,
+          subtitleTop: subtitleElement.getBoundingClientRect().top
+        };
+      });
+      expect(verticalOrder.contextBottom).toBeLessThanOrEqual(verticalOrder.titleTop + 1);
+      expect(verticalOrder.titleBottom).toBeLessThanOrEqual(verticalOrder.subtitleTop + 1);
     });
 
     test('agent title chrome keeps a bounded width even when the node grows wider', async ({ page }) => {
