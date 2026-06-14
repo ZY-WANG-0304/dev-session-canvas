@@ -1037,6 +1037,7 @@ async function runTrustedSmoke() {
   await verifyReadExitFileActivityDrain();
   await verifyRuntimePersistenceRequiresReloadAndClearsState();
   await verifySidebarSessionHistoryRestore();
+  await verifyCodexAgentBranchFromCurrentNode();
   await verifyClaudeAgentBranchFromCurrentNode();
   await verifyAgentBranchRejectsUnsupportedSources();
   await verifySidebarSessionHistorySearchByTitleUi();
@@ -1469,9 +1470,192 @@ async function verifySidebarSessionHistoryRestore() {
   }
 }
 
+async function verifyCodexAgentBranchFromCurrentNode() {
+  const baselineSnapshot = await getDebugSnapshot();
+  const sourceTitle = 'Codex 分叉 Source';
+  const sourceSessionId = '019dbfb8-cffa-70b0-9c97-000000001234';
+  const sourceNodeId = 'codex-branch-source-node';
+  const previousCodexCommandEnv = process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND;
+  let branchNodeId;
+
+  try {
+    process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND = path.join(
+      __dirname,
+      'fixtures',
+      'fake-codex-provider'
+    );
+
+    const withSourceSnapshot = await setPersistedState({
+      ...baselineSnapshot.state,
+      nodes: [
+        ...baselineSnapshot.state.nodes,
+        {
+          id: sourceNodeId,
+          kind: 'agent',
+          title: sourceTitle,
+          status: 'stopped',
+          summary: '检测到可分叉的 Codex 会话。',
+          position: { x: 120, y: 120 },
+          size: { width: 560, height: 420 },
+          metadata: {
+            agent: {
+              provider: 'codex',
+              lifecycle: 'stopped',
+              launchPreset: 'custom',
+              customLaunchCommand: `codex resume ${sourceSessionId}`,
+              lastLaunchCommandLine: `codex resume ${sourceSessionId}`,
+              resumeSupported: true,
+              resumeStrategy: 'codex-session-id',
+              resumeSessionId: sourceSessionId,
+              persistenceMode: 'snapshot-only',
+              attachmentState: 'history-restored',
+              liveSession: false,
+              pendingLaunch: undefined,
+              lastBackendLabel: 'Codex'
+            }
+          }
+        }
+      ]
+    });
+    const sourceNode = findNodeById(withSourceSnapshot, sourceNodeId);
+    await ensureEditorCanvasReady();
+
+    const beforeBranchSnapshot = await getDebugSnapshot();
+    const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+    await dispatchWebviewMessage({
+      type: 'webview/branchAgentSession',
+      payload: {
+        nodeId: sourceNode.id
+      }
+    });
+
+    const branchedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const branchNodes = currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'agent' &&
+          node.id !== sourceNode.id &&
+          node.title.includes('分叉') &&
+          node.metadata?.agent?.provider === 'codex' &&
+          node.metadata.agent.launchPreset === 'custom' &&
+          typeof node.metadata.agent.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(`fork ${sourceSessionId}`)
+      );
+      return branchNodes.length === 1;
+    }, 10000);
+
+    assert.strictEqual(
+      branchedSnapshot.state.nodes.length,
+      beforeBranchSnapshot.state.nodes.length + 1,
+      'Expected Codex Fork to create exactly one additional Agent node.'
+    );
+
+    const originalAfterBranch = branchedSnapshot.state.nodes.find((node) => node.id === sourceNode.id);
+    assert.strictEqual(
+      originalAfterBranch.metadata.agent.resumeSessionId,
+      sourceSessionId,
+      'Expected Codex Fork to leave the source node resume session id unchanged.'
+    );
+
+    const branchNode = branchedSnapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.id !== sourceNode.id &&
+        node.metadata?.agent?.customLaunchCommand?.includes(`fork ${sourceSessionId}`)
+    );
+    assert.ok(branchNode, 'Expected Fork to create a Codex Agent node with codex fork command.');
+    branchNodeId = branchNode.id;
+
+    const branchEdgeSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.edges.some(
+        (edge) =>
+          edge.owner === 'user' &&
+          edge.sourceNodeId === sourceNode.id &&
+          edge.targetNodeId === branchNode.id &&
+          edge.arrowMode === 'forward' &&
+          edge.label === 'fork'
+      );
+    }, 10000);
+
+    const branchEdge = branchEdgeSnapshot.state.edges.find(
+      (edge) =>
+        edge.owner === 'user' &&
+        edge.sourceNodeId === sourceNode.id &&
+        edge.targetNodeId === branchNode.id
+    );
+    assert.ok(branchEdge, 'Expected Fork to create a user edge from source Codex Agent to Forked Agent.');
+    assert.strictEqual(branchEdge.arrowMode, 'forward');
+    assert.strictEqual(branchEdge.sourceAnchor, 'right');
+    assert.strictEqual(branchEdge.targetAnchor, 'left');
+    assert.strictEqual(branchEdge.label, 'fork');
+
+    const branchEdgeProbe = await waitForWebviewProbeOnSurface(
+      'editor',
+      (currentProbe) =>
+        currentProbe.edges.some(
+          (edge) =>
+            edge.edgeId === branchEdge.id &&
+            edge.sourceNodeId === sourceNode.id &&
+            edge.targetNodeId === branchNode.id &&
+            edge.label === 'fork'
+        ),
+      10000
+    );
+    assert.ok(
+      branchEdgeProbe.edges.some((edge) => edge.edgeId === branchEdge.id && edge.label === 'fork'),
+      'Expected the Codex Fork edge label to render as fork in the editor Webview.'
+    );
+
+    const startedEvents = await waitForDiagnosticEvents((events) => {
+      const branchStartEvents = events.slice(diagnosticStartIndex).filter(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === branchNode.id &&
+          event.detail?.provider === 'codex'
+      );
+      return branchStartEvents.length === 1;
+    }, 20000);
+
+    const branchStartEvents = startedEvents.slice(diagnosticStartIndex).filter(
+      (event) =>
+        event.kind === 'execution/started' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === branchNode.id &&
+        event.detail?.provider === 'codex'
+    );
+    assert.strictEqual(branchStartEvents.length, 1, 'Expected Codex Fork node to enter the Agent start path once.');
+    const branchLaunchArgs = branchStartEvents[0].detail?.launchArgs ?? [];
+    assert.ok(Array.isArray(branchLaunchArgs), 'Expected Fork start diagnostic to expose launch args.');
+    assert.ok(branchLaunchArgs.includes('fork'), 'Expected Codex Fork launch args to include the fork subcommand.');
+    assert.ok(branchLaunchArgs.includes(sourceSessionId), 'Expected Codex Fork launch args to include the source session id.');
+
+    const startedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const startedBranchNode = currentSnapshot.state.nodes.find((node) => node.id === branchNode.id);
+      return Boolean(
+        startedBranchNode?.metadata?.agent?.liveSession &&
+          startedBranchNode.metadata.agent.pendingLaunch === undefined
+      );
+    }, 20000);
+    const startedBranchNode = findNodeById(startedSnapshot, branchNode.id);
+    assert.strictEqual(startedBranchNode.metadata.agent.provider, 'codex');
+  } finally {
+    if (previousCodexCommandEnv === undefined) {
+      delete process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND;
+    } else {
+      process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND = previousCodexCommandEnv;
+    }
+
+    if (branchNodeId) {
+      await maybeEnsureAgentStopped(branchNodeId).catch(() => {});
+    }
+    await maybeEnsureAgentStopped(sourceNodeId).catch(() => {});
+    await setPersistedState(baselineSnapshot.state);
+  }
+}
+
 async function verifyClaudeAgentBranchFromCurrentNode() {
   const baselineSnapshot = await getDebugSnapshot();
-  const sourceTitle = 'Claude Fork Source';
+  const sourceTitle = 'Claude 分叉 Source';
   const sourceSessionId = 'claude-branch-source-session-123';
   const sourceNodeId = 'claude-branch-source-node';
   const previousClaudeCommandEnv = process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
@@ -1493,7 +1677,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
           kind: 'agent',
           title: sourceTitle,
           status: 'stopped',
-          summary: '检测到可 Fork 的 Claude Code 会话。',
+          summary: '检测到可分叉的 Claude Code 会话。',
           position: { x: 120, y: 120 },
           size: { width: 560, height: 420 },
           metadata: {
@@ -1533,7 +1717,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
         (node) =>
           node.kind === 'agent' &&
           node.id !== sourceNode.id &&
-          node.title.includes('Fork') &&
+          node.title.includes('分叉') &&
           node.metadata?.agent?.provider === 'claude' &&
           node.metadata.agent.launchPreset === 'custom' &&
           typeof node.metadata.agent.customLaunchCommand === 'string' &&
@@ -1571,7 +1755,8 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
           edge.owner === 'user' &&
           edge.sourceNodeId === sourceNode.id &&
           edge.targetNodeId === branchNode.id &&
-          edge.arrowMode === 'forward'
+          edge.arrowMode === 'forward' &&
+          edge.label === 'fork'
       );
     }, 10000);
 
@@ -1585,7 +1770,24 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
     assert.strictEqual(branchEdge.arrowMode, 'forward');
     assert.strictEqual(branchEdge.sourceAnchor, 'right');
     assert.strictEqual(branchEdge.targetAnchor, 'left');
-    assert.strictEqual(branchEdge.label, undefined);
+    assert.strictEqual(branchEdge.label, 'fork');
+
+    const branchEdgeProbe = await waitForWebviewProbeOnSurface(
+      'editor',
+      (currentProbe) =>
+        currentProbe.edges.some(
+          (edge) =>
+            edge.edgeId === branchEdge.id &&
+            edge.sourceNodeId === sourceNode.id &&
+            edge.targetNodeId === branchNode.id &&
+            edge.label === 'fork'
+        ),
+      10000
+    );
+    assert.ok(
+      branchEdgeProbe.edges.some((edge) => edge.edgeId === branchEdge.id && edge.label === 'fork'),
+      'Expected the Claude Fork edge label to render as fork in the editor Webview.'
+    );
 
     const startedEvents = await waitForDiagnosticEvents((events) => {
       const branchStartEvents = events.slice(diagnosticStartIndex).filter(
@@ -1664,17 +1866,17 @@ async function verifyAgentBranchRejectsUnsupportedSources() {
 
   try {
     await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'codex', {
-      titleOverride: 'Codex Fork Rejection Source'
+      titleOverride: 'Agent 分叉 Rejection Source'
     });
     const codexSnapshot = await waitForSnapshot((currentSnapshot) => {
       return currentSnapshot.state.nodes.some(
-        (node) => node.kind === 'agent' && node.title === 'Codex Fork Rejection Source'
+        (node) => node.kind === 'agent' && node.title === 'Agent 分叉 Rejection Source'
       );
     }, 10000);
     const codexNode = codexSnapshot.state.nodes.find(
-      (node) => node.kind === 'agent' && node.title === 'Codex Fork Rejection Source'
+      (node) => node.kind === 'agent' && node.title === 'Agent 分叉 Rejection Source'
     );
-    assert.ok(codexNode, 'Expected Codex rejection source node to exist.');
+    assert.ok(codexNode, 'Expected rejection source node to exist.');
 
     await dispatchWebviewMessage({
       type: 'webview/branchAgentSession',
@@ -1686,7 +1888,7 @@ async function verifyAgentBranchRejectsUnsupportedSources() {
     assert.strictEqual(
       afterRejectedBranch.state.nodes.length,
       codexSnapshot.state.nodes.length,
-      'Expected Codex Fork request to be rejected without creating a node.'
+      'Expected Fork request without a trusted session id to be rejected without creating a node.'
     );
   } finally {
     await setPersistedState(baselineSnapshot.state);

@@ -145,9 +145,9 @@ import {
   type CanvasRootLocalStateSnapshot
 } from '../common/canvasMultiRootComposition';
 import {
+  buildAgentBranchCommandLine as buildAgentProviderBranchCommandLine,
   buildFreshAgentCommandLine,
   buildAgentHistoryResumeCommandLine,
-  buildClaudeBranchCommandLine,
   extractClaudeCommandRuntimeSessionFlag,
   formatCommandLine,
   validateAgentCommandLine
@@ -2817,39 +2817,41 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async branchAgentSession(nodeId: string): Promise<{ branched: boolean; errorMessage?: string }> {
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Fork Agent 会话。')) {
+    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止分叉 Agent 会话。')) {
       return {
         branched: false,
-        errorMessage: '当前 workspace 未受信任，不能 Fork Agent 会话。'
+        errorMessage: '当前 workspace 未受信任，不能分叉 Agent 会话。'
       };
     }
 
     const sourceNode = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
     if (!sourceNode) {
-      const message = '未找到可 Fork 的 Agent 节点。';
+      const message = '未找到可分叉的 Agent 节点。';
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
 
     const metadata = ensureAgentMetadata(sourceNode);
-    if (metadata.provider !== 'claude' || metadata.resumeStrategy !== 'claude-session-id') {
-      const message = '只有持有可信会话的 Claude Code Agent 才能 Fork。';
+    if (!isAgentProviderBranchSupported(metadata.provider, metadata.resumeStrategy)) {
+      const message = '只有持有可信会话的 Codex / Claude Code Agent 才能分叉。';
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
 
     const sessionId = metadata.resumeSessionId?.trim();
     if (!sessionId) {
-      const message = '当前 Claude Code Agent 尚未确认可 Fork 的会话标识。';
+      const message = `当前 ${agentProviderDisplayLabel(metadata.provider)} Agent 尚未确认可分叉的会话标识。`;
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
 
     let branchCommandLine: string;
     try {
-      branchCommandLine = this.buildClaudeBranchCommandLine(sessionId);
+      branchCommandLine = this.buildAgentBranchCommandLine(metadata.provider, sessionId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : '无法解析 Claude Code Fork 启动命令。';
+      const message = error instanceof Error
+        ? error.message
+        : `无法解析 ${agentProviderDisplayLabel(metadata.provider)} 分叉启动命令。`;
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
@@ -2860,10 +2862,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       y: sourceNode.position.y
     };
     const createdNode = this.applyCreateNode('agent', preferredPosition, {
-      agentProvider: 'claude',
+      agentProvider: metadata.provider,
       agentLaunchPreset: 'custom',
       agentCustomLaunchCommand: branchCommandLine,
-      titleOverride: `${sourceNode.title} Fork`,
+      titleOverride: `${sourceNode.title} 分叉`,
       cwdOverride: metadata.cwd
     });
     if (!createdNode) {
@@ -2877,7 +2879,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     try {
       await this.focusNodeInCanvas(createdNode.id);
     } catch {
-      void vscode.window.showWarningMessage(`Fork 节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+      void vscode.window.showWarningMessage(`分叉节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
     }
 
     return { branched: true };
@@ -12539,10 +12541,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private buildClaudeBranchCommandLine(sessionId: string): string {
-    return buildClaudeBranchCommandLine(
+  private buildAgentBranchCommandLine(provider: AgentProviderKind, sessionId: string): string {
+    return buildAgentProviderBranchCommandLine(
+      provider,
       sessionId,
-      this.getAgentLaunchDefaults('claude')
+      this.getAgentLaunchDefaults(provider)
     );
   }
 
@@ -13554,7 +13557,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: 'Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或 Fork。'
+          message: 'Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。'
         }
       });
       return false;
@@ -19066,7 +19069,8 @@ function createBranchAgentUserEdge(
     sourceAnchor: anchors.sourceAnchor,
     targetAnchor: anchors.targetAnchor,
     arrowMode: 'forward',
-    owner: 'user'
+    owner: 'user',
+    label: 'fork'
   });
 }
 
@@ -22246,6 +22250,13 @@ function canResumeAgentFromMetadata(metadata: Pick<AgentNodeMetadata, 'resumeStr
   }
 
   return false;
+}
+
+function isAgentProviderBranchSupported(provider: AgentProviderKind, resumeStrategy: AgentResumeStrategy): boolean {
+  return (
+    (provider === 'claude' && resumeStrategy === 'claude-session-id') ||
+    (provider === 'codex' && resumeStrategy === 'codex-session-id')
+  );
 }
 
 function isClaudeForkSessionLaunch(launchArgs: readonly string[]): boolean {

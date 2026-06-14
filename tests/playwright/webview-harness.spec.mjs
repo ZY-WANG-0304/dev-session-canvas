@@ -2399,120 +2399,229 @@ test('agent restart actions render inline without a dropdown', async ({ page }) 
   expect(actionLabels).toEqual(['新建', '重启']);
 });
 
-test('Claude Agent Fork action posts a branchAgentSession message', async ({ page }) => {
+test('Agent Fork action posts a branchAgentSession message for supported providers', async ({ page }) => {
   await openHarness(page);
-  await bootstrap(page, createStoppedAgentNodeState({ provider: 'claude', resumable: true }));
-  await clearPostedMessages(page);
 
-  const agentNode = nodeById(page, 'agent-1');
-  await expect(agentNode.locator('[data-agent-branch-action="true"]')).toBeVisible();
-  await agentNode.locator('[data-agent-branch-action="true"]').click();
+  for (const { provider, label } of [
+    { provider: 'codex', label: 'Codex' },
+    { provider: 'claude', label: 'Claude Code' }
+  ]) {
+    await bootstrap(page, createStoppedAgentNodeState({ provider, resumable: true }));
+    await clearPostedMessages(page);
 
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const message = window.__devSessionCanvasHarness
-          .getPostedMessages()
-          .find((entry) => entry.type === 'webview/branchAgentSession');
+    const agentNode = nodeById(page, 'agent-1');
+    const branchAction = agentNode.locator('[data-agent-branch-action="true"]');
+    await expect(branchAction).toBeVisible();
+    await expect(branchAction).toHaveText('分叉');
+    await expect(branchAction).toHaveAttribute('aria-label', `分叉当前 ${label} 会话`);
+    await branchAction.click();
 
-        return message
-          ? JSON.stringify({
-              type: message.type,
-              payload: message.payload
-            })
-          : null;
-      });
-    })
-    .toBe(
-      JSON.stringify({
-        type: 'webview/branchAgentSession',
-        payload: {
-          nodeId: 'agent-1'
-        }
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const message = window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .find((entry) => entry.type === 'webview/branchAgentSession');
+
+          return message
+            ? JSON.stringify({
+                type: message.type,
+                payload: message.payload
+              })
+            : null;
+        });
       })
-    );
+      .toBe(
+        JSON.stringify({
+          type: 'webview/branchAgentSession',
+          payload: {
+            nodeId: 'agent-1'
+          }
+        })
+      );
+  }
 });
 
-test('forked Claude Agent nodes keep title actions readable before and after launch', async ({ page }) => {
+test('forked Agent nodes keep title actions readable before and after launch', async ({ page }) => {
   await openHarness(page);
-  const state = createStoppedAgentNodeState({ provider: 'claude', resumable: false });
-  state.nodes[0] = {
-    ...state.nodes[0],
-    title: 'Claude Agent Fork layout regression probe Fork',
-    summary: '等待启动从当前 Claude Code 会话 fork 出来的 Agent。',
-    size: {
-      ...state.nodes[0].size,
-      width: 360
+
+  for (const variant of [
+    {
+      provider: 'codex',
+      title: 'Codex Agent 分叉 layout regression probe 分叉',
+      summary: '等待启动从当前 Codex 会话 fork 出来的 Agent。',
+      customLaunchCommand: 'codex fork session-123',
+      runningSummary: 'Codex CLI 正在执行 fork 出来的 Agent。',
+      lastBackendLabel: 'Codex CLI',
+      minActionsGap: 9
     },
-    metadata: {
-      ...state.nodes[0].metadata,
-      agent: {
-        ...state.nodes[0].metadata.agent,
-        launchPreset: 'custom',
-        customLaunchCommand: 'claude --resume session-123 --fork-session',
-        resumeStrategy: 'none',
-        resumeSessionId: undefined,
-        lastBackendLabel: 'Claude Code CLI'
-      }
+    {
+      provider: 'claude',
+      title: 'Claude Agent 分叉 layout regression probe 分叉',
+      summary: '等待启动从当前 Claude Code 会话 fork 出来的 Agent。',
+      customLaunchCommand: 'claude --resume session-123 --fork-session',
+      runningSummary: 'Claude Code CLI 正在执行 fork 出来的 Agent。',
+      lastBackendLabel: 'Claude Code CLI',
+      minActionsGap: 9
     }
-  };
+  ]) {
+    const state = createStoppedAgentNodeState({ provider: variant.provider, resumable: false });
+    state.nodes[0] = {
+      ...state.nodes[0],
+      title: variant.title,
+      summary: variant.summary,
+      size: {
+        ...state.nodes[0].size,
+        width: 360
+      },
+      metadata: {
+        ...state.nodes[0].metadata,
+        agent: {
+          ...state.nodes[0].metadata.agent,
+          launchPreset: 'custom',
+          customLaunchCommand: variant.customLaunchCommand,
+          resumeStrategy: 'none',
+          resumeSessionId: undefined,
+          lastBackendLabel: variant.lastBackendLabel
+        }
+      }
+    };
+    await bootstrap(page, state);
+
+    const agentNode = nodeById(page, 'agent-1');
+    await expect(agentNode.locator('button:has-text("启动")')).toBeVisible();
+    await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+    await expect(agentNode.locator('button:has-text("删除")')).toBeVisible();
+    await expect(agentNode.locator('.window-chrome .status-pill')).toHaveText('已停止');
+
+    await expectForkedAgentActionsToBeReadable(agentNode, ['启动', '删除'], {
+      minActionsGap: variant.minActionsGap,
+      expectCompactActions: true
+    });
+
+    await bootstrap(page, {
+      ...state,
+      nodes: [
+        {
+          ...state.nodes[0],
+          status: 'running',
+          summary: variant.runningSummary,
+          metadata: {
+            ...state.nodes[0].metadata,
+            agent: {
+              ...state.nodes[0].metadata.agent,
+              lifecycle: 'running',
+              liveSession: true,
+              resumeSupported: false
+            }
+          }
+        }
+      ]
+    });
+
+    await expect(agentNode.locator('button:has-text("停止")')).toBeVisible();
+    await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+    await expect(agentNode.locator('button:has-text("删除")')).toBeVisible();
+    await expect(agentNode.locator('.window-chrome .status-pill')).toHaveText('运行中');
+
+    await expectForkedAgentActionsToBeReadable(agentNode, ['停止', '删除'], {
+      minActionsGap: variant.minActionsGap,
+      expectCompactActions: true
+    });
+  }
+});
+
+test('Agent title action buttons wrap before pushing delete outside compact chrome', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+
+  const state = createStoppedAgentNodeState({ provider: 'codex', resumable: true });
+  state.nodes[0].title = 'Agent 4';
+  state.nodes[0].size = { width: 360, height: state.nodes[0].size.height };
+  state.nodes[0].metadata.agent.cwd =
+    '/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2';
+  state.nodes[0].metadata.agent.lastLaunchCommandLine =
+    'codex --sandbox workspace-write --config compact-branch-action-overflow';
+
   await bootstrap(page, state);
 
   const agentNode = nodeById(page, 'agent-1');
-  await expect(agentNode.locator('button:has-text("启动")')).toBeVisible();
-  await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
-  await expect(agentNode.locator('button:has-text("删除")')).toBeVisible();
-  await expect(agentNode.locator('.window-chrome .status-pill')).toHaveCount(0);
+  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toBeVisible();
+  await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toBeVisible();
+  await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveText('分叉');
+  await expect(agentNode.locator('.window-chrome .status-pill')).toHaveText('已停止');
+  await expect(agentNode.getByRole('button', { name: '删除' })).toBeVisible();
 
-  await expectForkedAgentActionsToBeReadable(agentNode, ['启动', '删除']);
-
-  await bootstrap(page, {
-    ...state,
-    nodes: [
-      {
-        ...state.nodes[0],
-        status: 'running',
-        summary: 'Claude Code CLI 正在执行 fork 出来的 Agent。',
-        metadata: {
-          ...state.nodes[0].metadata,
-          agent: {
-            ...state.nodes[0].metadata.agent,
-            lifecycle: 'running',
-            liveSession: true,
-            resumeSupported: false
-          }
-        }
-      }
-    ]
+  await expectForkedAgentActionsToBeReadable(agentNode, ['新建', '重启', '分叉', '删除'], {
+    minActionsGap: -80,
+    expectBranchActionWrap: true,
+    expectCompactActions: true,
+    expectedBranchVisible: 'true'
   });
-
-  await expect(agentNode.locator('button:has-text("停止")')).toBeVisible();
-  await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
-  await expect(agentNode.locator('button:has-text("删除")')).toBeVisible();
-  await expect(agentNode.locator('.window-chrome .status-pill')).toHaveCount(0);
-
-  await expectForkedAgentActionsToBeReadable(agentNode, ['停止', '删除']);
 });
 
-async function expectForkedAgentActionsToBeReadable(agentNode, expectedLabels) {
+async function expectForkedAgentActionsToBeReadable(agentNode, expectedLabels, options = {}) {
   const layoutContract = await agentNode.locator('.window-chrome').evaluate((chrome) => {
     const title = chrome.querySelector('.window-title');
     const actions = chrome.querySelector('.window-chrome-actions');
+    const statusPill = chrome.querySelector('.window-chrome-actions .status-pill');
     const buttons = Array.from(chrome.querySelectorAll('.window-chrome-actions .action-button'));
-    if (!(title instanceof HTMLElement) || !(actions instanceof HTMLElement)) {
+    const branchButton = chrome.querySelector('[data-agent-branch-action="true"]');
+    if (!(title instanceof HTMLElement) || !(actions instanceof HTMLElement) || !(statusPill instanceof HTMLElement)) {
       throw new Error('Agent title chrome was not rendered.');
     }
 
+    const chromeRect = chrome.getBoundingClientRect();
     const titleRect = title.getBoundingClientRect();
     const actionsRect = actions.getBoundingClientRect();
+    const statusRect = statusPill.getBoundingClientRect();
     const buttonRects = buttons.map((button) => button.getBoundingClientRect());
+    const actionsStyle = getComputedStyle(actions);
+    const branchRect = branchButton instanceof HTMLElement ? branchButton.getBoundingClientRect() : null;
+    const branchStyle = branchButton instanceof HTMLElement ? getComputedStyle(branchButton) : null;
+    const branchLabel = branchButton instanceof HTMLElement
+      ? branchButton.querySelector('.action-button-label')
+      : null;
+    const branchLabelRect = branchLabel instanceof HTMLElement ? branchLabel.getBoundingClientRect() : null;
+    const branchLabelStyle = branchLabel instanceof HTMLElement ? getComputedStyle(branchLabel) : null;
 
     return {
       branchVisible: actions.dataset.agentBranchVisible,
+      actionDensity: actions.dataset.agentActionDensity,
       titleFlexShrink: getComputedStyle(title).flexShrink,
-      actionsFlexShrink: getComputedStyle(actions).flexShrink,
+      actionsFlexShrink: actionsStyle.flexShrink,
+      actionsFlexWrap: actionsStyle.flexWrap,
       titleRight: titleRect.right,
       actionsLeft: actionsRect.left,
+      chromeRight: chromeRect.right,
+      actionsRight: actionsRect.right,
+      statusStyle: {
+        label: statusPill.textContent?.trim() ?? '',
+        whiteSpace: getComputedStyle(statusPill).whiteSpace,
+        width: statusRect.width,
+        height: statusRect.height,
+        right: statusRect.right,
+        clientWidth: statusPill.clientWidth,
+        scrollWidth: statusPill.scrollWidth
+      },
+      branchStyle: branchRect && branchStyle
+        ? {
+            label: branchButton.textContent?.trim() ?? '',
+            whiteSpace: branchStyle.whiteSpace,
+            width: branchRect.width,
+            height: branchRect.height,
+            clientWidth: branchButton.clientWidth,
+            scrollWidth: branchButton.scrollWidth
+          }
+        : null,
+      branchLabelStyle: branchLabelRect && branchLabelStyle
+        ? {
+            display: branchLabelStyle.display,
+            whiteSpace: branchLabelStyle.whiteSpace,
+            width: branchLabelRect.width,
+            height: branchLabelRect.height
+          }
+        : null,
       titleInputStyle: (() => {
         const input = chrome.querySelector('.window-title-input');
         if (!(input instanceof HTMLElement)) {
@@ -2526,44 +2635,112 @@ async function expectForkedAgentActionsToBeReadable(agentNode, expectedLabels) {
         };
       })(),
       buttonStyles: buttons.map((button, index) => ({
+        ...(() => {
+          const label = button.querySelector('.action-button-label');
+          const labelRect = label instanceof HTMLElement ? label.getBoundingClientRect() : null;
+          const labelStyle = label instanceof HTMLElement ? getComputedStyle(label) : null;
+          return {
+            labelDisplay: labelStyle?.display ?? '',
+            labelWhiteSpace: labelStyle?.whiteSpace ?? '',
+            labelWidth: labelRect?.width ?? 0,
+            labelHeight: labelRect?.height ?? 0
+          };
+        })(),
         label: button.textContent?.trim() ?? '',
+        groupKey: button.closest('.action-button-group')?.className ?? '',
         whiteSpace: getComputedStyle(button).whiteSpace,
         width: buttonRects[index].width,
         height: buttonRects[index].height,
         left: buttonRects[index].left,
         right: buttonRects[index].right,
+        top: buttonRects[index].top,
+        bottom: buttonRects[index].bottom,
         clientWidth: button.clientWidth,
         scrollWidth: button.scrollWidth
       }))
     };
   });
 
-  expect(layoutContract.branchVisible).toBe('false');
+  const minActionsGap = options.minActionsGap ?? 9;
+  expect(layoutContract.branchVisible).toBe(options.expectedBranchVisible ?? 'false');
   expect(layoutContract.titleFlexShrink).toBe('1');
   expect(layoutContract.actionsFlexShrink).toBe('0');
-  expect(layoutContract.actionsLeft - layoutContract.titleRight).toBeGreaterThanOrEqual(9);
+  expect(layoutContract.actionsFlexWrap).toBe('nowrap');
+  expect(layoutContract.actionsLeft - layoutContract.titleRight).toBeGreaterThanOrEqual(minActionsGap);
+  expect(['已停止', '运行中']).toContain(layoutContract.statusStyle.label);
+  expect(layoutContract.statusStyle.whiteSpace).toBe('nowrap');
+  expect(layoutContract.statusStyle.width).toBeGreaterThanOrEqual(34);
+  expect(layoutContract.statusStyle.height).toBeGreaterThanOrEqual(22);
+  expect(layoutContract.statusStyle.right).toBeLessThanOrEqual(layoutContract.chromeRight - 1);
+  expect(layoutContract.statusStyle.scrollWidth).toBeLessThanOrEqual(layoutContract.statusStyle.clientWidth + 1);
   expect(layoutContract.titleInputStyle).toMatchObject({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap'
   });
   expect(layoutContract.buttonStyles.map((button) => button.label)).toEqual(expectedLabels);
+  expect(layoutContract.actionsRight).toBeLessThanOrEqual(layoutContract.chromeRight - 1);
+  const normalWhiteSpaceLabels = new Set(options.normalWhiteSpaceLabels ?? []);
   for (const button of layoutContract.buttonStyles) {
-    expect(button.whiteSpace).toBe('nowrap');
-    expect(button.width).toBeGreaterThanOrEqual(34);
+    if (options.expectCompactActions || normalWhiteSpaceLabels.has(button.label)) {
+      expect(button.whiteSpace).toBe('normal');
+    } else {
+      expect(button.whiteSpace).toBe('nowrap');
+    }
+    if (options.expectCompactActions) {
+      expect(button.width).toBeGreaterThanOrEqual(20);
+    } else {
+      expect(button.width).toBeGreaterThanOrEqual(34);
+    }
     expect(button.height).toBeGreaterThanOrEqual(22);
     expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth + 1);
   }
+  if (options.expectCompactActions) {
+    expect(layoutContract.actionDensity).toBe('compact-actions');
+    for (const button of layoutContract.buttonStyles) {
+      expect(button.labelDisplay).toBe('block');
+      expect(button.labelWhiteSpace).toBe('normal');
+      expect(button.labelHeight).toBeGreaterThan(button.labelWidth * 1.5);
+    }
+  }
+  if (options.expectBranchActionWrap) {
+    expect(layoutContract.branchStyle).toMatchObject({
+      label: '分叉',
+      whiteSpace: 'normal'
+    });
+    const branchButton = layoutContract.buttonStyles.find((button) => button.label === '分叉');
+    const deleteButton = layoutContract.buttonStyles.find((button) => button.label === '删除');
+    expect(branchButton).toBeTruthy();
+    expect(deleteButton).toBeTruthy();
+    expect(branchButton.height).toBeCloseTo(deleteButton.height, 1);
+    expect(branchButton.width).toBeCloseTo(deleteButton.width, 1);
+    expect(layoutContract.branchLabelStyle).toMatchObject({
+      display: 'block',
+      whiteSpace: 'normal'
+    });
+    expect(layoutContract.branchLabelStyle.height).toBeGreaterThan(layoutContract.branchLabelStyle.width * 1.5);
+  }
   for (let index = 1; index < layoutContract.buttonStyles.length; index += 1) {
-    expect(layoutContract.buttonStyles[index].left - layoutContract.buttonStyles[index - 1].right).toBeGreaterThanOrEqual(5);
+    const previousButton = layoutContract.buttonStyles[index - 1];
+    const currentButton = layoutContract.buttonStyles[index];
+    if (previousButton.groupKey && previousButton.groupKey === currentButton.groupKey) {
+      expect(currentButton.left - previousButton.right).toBeGreaterThanOrEqual(0);
+    } else {
+      expect(currentButton.left - previousButton.right).toBeGreaterThanOrEqual(5);
+    }
   }
 }
 
-test('Agent Fork action is hidden outside resumable Claude sessions', async ({ page }) => {
+test('Agent Fork action is hidden outside supported resumable sessions', async ({ page }) => {
   await openHarness(page);
-  await bootstrap(page, createStoppedAgentNodeState({ provider: 'codex', resumable: true }));
+  await bootstrap(page, createStoppedAgentNodeState({ provider: 'codex', resumable: false }));
   await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
 
   await bootstrap(page, createStoppedAgentNodeState({ provider: 'claude', resumable: false }));
+  await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+
+  const mismatchedState = createStoppedAgentNodeState({ provider: 'codex', resumable: true });
+  mismatchedState.nodes[0].metadata.agent.resumeStrategy = 'claude-session-id';
+  await bootstrap(page, mismatchedState);
   await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
 });
 
@@ -2933,7 +3110,7 @@ test('Claude Agent Ctrl-Z is blocked before execution input reaches the host', a
   });
 
   await expect(page.locator('[data-toast-kind="error"]')).toHaveText(
-    'Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或 Fork。'
+    'Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。'
   );
   const inputMessages = await page.evaluate(() =>
     window.__devSessionCanvasHarness

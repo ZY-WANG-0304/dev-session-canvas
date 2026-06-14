@@ -159,7 +159,7 @@ updated_at: 2026-06-11
 - `resume-ready` 只应建立在 provider 原生显式 session identity 之上；`resume --last`、交互式 picker 或“最近会话推断”都不能作为正式自动恢复语义。
 - 如果某个 provider 还没有被验证出可可靠持久化并恢复显式 session identity，或拿到的 identity 仅来自启发式反查，节点应退化为 `interrupted` 或历史态，而不是继续伪装成可恢复。
 - `Agent` 的内部生命周期与节点主状态都保留 `running / waiting-input` 区分；节点处于可继续输入的阶段时，应稳定显示 `waiting-input`，而不是被粗暴收口成 `running`。
-- Claude Agent 节点不支持普通终端的 `Ctrl-Z` / `fg` job-control 语义。当前实现直接 spawn `claude`，没有外层交互 shell 的 job table；因此 `Ctrl-Z` 必须在 Webview、宿主和 runtime supervisor 写入路径被阻断，并提示用户使用停止、重启或 Fork。Claude 输出里的 suspend / `fg` 文案只能作为诊断文本，不得触发新的生命周期状态。
+- Claude Agent 节点不支持普通终端的 `Ctrl-Z` / `fg` job-control 语义。当前实现直接 spawn `claude`，没有外层交互 shell 的 job table；因此 `Ctrl-Z` 必须在 Webview、宿主和 runtime supervisor 写入路径被阻断，并提示用户使用停止、重启或分叉。Claude 输出里的 suspend / `fg` 文案只能作为诊断文本，不得触发新的生命周期状态。
 - `Agent` 的 `running / waiting-input` 仍然是正式用户语义，但“这些状态如何被判定出来”需要单独按 [docs/design-docs/agent-running-state-detection.md](./agent-running-state-detection.md) 的优先级收口：优先使用 provider 原生结构化事件，其次才是结构化输出、shell integration 和 PTY 启发式。
 
 这部分详细边界以 [docs/design-docs/agent-cli-launch-context-and-resume.md](./agent-cli-launch-context-and-resume.md) 为准。

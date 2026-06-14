@@ -1,5 +1,9 @@
 # Claude Code Agent Fork Implementation Plan
 
+> 2026-06-14 状态：本计划已从 `docs/exec-plans/active/` 移入 `docs/exec-plans/completed/`，只作为最初 Claude Code Agent Fork 交付的历史记录保留；当前 Codex / Claude Code provider-native 分叉事实以 `docs/exec-plans/active/agent-launch-modes-and-restart.md`、`docs/design-docs/agent-launch-modes-and-restart.md` 和 `docs/product-specs/agent-launch-modes-and-restart.md` 为准。
+
+> 2026-06-13 补充：本文记录最初 Claude Code Agent Fork 的实现计划。当前正式产品范围已经在 `docs/design-docs/agent-launch-modes-and-restart.md` 扩展为 Codex / Claude Code provider-native Fork；Codex 使用 `codex fork <session-id>`，不再属于“不可启用 Fork”的 provider；最新用户可见按钮文案为中文 `分叉`，分叉节点标题栏状态也应像普通 Agent 节点一样显示。以下 Goal、Architecture、文件职责和旧验证条目描述的是当时的 Claude-only 实施范围，不再代表当前 active scope。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a user-visible `Fork` action on Claude Code Agent nodes that creates a new Agent node and immediately starts it with `claude --resume <session-id> --fork-session`.
@@ -12,19 +16,19 @@
 
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
 
-当前文档必须按 `docs/PLANS.md` 的要求持续维护。本计划实现已提交设计 `b3ef9cf docs(canvas): define Claude Code Agent Branch semantics` 中的 Claude Code fork-session 方案；最终用户可见术语按 review 收口为 `Fork`，内部 protocol 与 helper 继续沿用 `branchAgentSession` / `buildClaudeBranchCommandLine`，相关正式规格在 `docs/product-specs/agent-launch-modes-and-restart.md`，相关设计在 `docs/design-docs/agent-launch-modes-and-restart.md`。
+当前文档必须按 `docs/PLANS.md` 的要求持续维护。本计划实现已提交设计 `b3ef9cf docs(canvas): define Claude Code Agent Branch semantics` 中的 Claude Code fork-session 方案；当前用户可见术语已按最新决策收口为 `分叉`，内部 protocol 与 helper 继续沿用 `branchAgentSession` / `buildClaudeBranchCommandLine`，相关正式规格在 `docs/product-specs/agent-launch-modes-and-restart.md`，相关设计在 `docs/design-docs/agent-launch-modes-and-restart.md`。
 
 ## 目标与全局图景
 
-完成后，用户在 DevSessionCanvas 里看到一个已经持有可信 Claude Code session id 的 Agent 节点时，可以点击标题栏里的 `Fork`。画布会新增一个 Agent 节点，标题弱提示它来自原节点，自动创建一条普通可编辑 `user` 边，并立即启动 Claude Code，启动命令包含原 session id 和 `--fork-session`。原节点不停止、不改 metadata，用户可以继续在原节点或新节点里独立对话。
+完成后，用户在 DevSessionCanvas 里看到一个已经持有可信 Claude Code session id 的 Agent 节点时，可以点击标题栏里的 `分叉`。画布会新增一个 Agent 节点，标题弱提示它来自原节点，自动创建一条普通可编辑 `user` 边，并立即启动 Claude Code，启动命令包含原 session id 和 `--fork-session`。原节点不停止、不改 metadata，用户可以继续在原节点或新节点里独立对话。
 
-从代码路径看，Webview 只表达“对 nodeId 执行 Fork”的意图；Host 重新读取权威节点 metadata，确认 provider 是 `claude` 且 `resumeStrategy === 'claude-session-id'` 且 `resumeSessionId` 非空。Host 然后构造 fork-session 命令，创建新 Agent 节点，依赖已有 `pendingLaunch: 'start'` 自动启动机制让新节点进入执行路径。
+从代码路径看，Webview 只表达“对 nodeId 执行分叉”的意图；Host 重新读取权威节点 metadata，确认 provider 是 `claude` 且 `resumeStrategy === 'claude-session-id'` 且 `resumeSessionId` 非空。Host 然后构造 fork-session 命令，创建新 Agent 节点，依赖已有 `pendingLaunch: 'start'` 自动启动机制让新节点进入执行路径。
 
 ## 文件结构与职责
 
 `src/common/agentLaunchPresets.ts` 负责命令字符串的纯逻辑。新增 `buildClaudeBranchCommandLine(sessionId, defaults)`，它只支持 Claude Code，使用当前 Claude 命令路径、默认参数中仍可保留的非 session-target 参数，以及 `--resume <session-id> --fork-session` 生成完整命令。它必须剥离默认参数里的旧 `--resume`、`--continue`、`--session-id`、`-r`、`-c` 目标，避免同一命令携带两个 resume 目标。
 
-`scripts/test/test-agent-launch-presets.mjs` 是命令层回归测试。新增断言覆盖 Fork 命令生成、默认参数目标剥离、空 session id 报错、命令格式化保留可用默认参数。
+`scripts/test/test-agent-launch-presets.mjs` 是命令层回归测试。新增断言覆盖分叉命令生成、默认参数目标剥离、空 session id 报错、命令格式化保留可用默认参数。
 
 `src/common/protocol.ts` 是 Webview/Host 共享协议。新增 `webview/branchAgentSession` 消息，payload 只有 `{ nodeId: string }`。`parseWebviewMessage()` 必须拒绝缺失或非字符串 nodeId 的消息。
 
@@ -32,13 +36,13 @@
 
 `src/webview/main.tsx` 负责 Agent 节点标题栏按钮和 postMessage。新增 `onBranchAgentSession` 回调和 Agent 节点内 `Fork` 按钮。按钮只在 provider 为 `claude` 且 `canResumeAgentFromMetadataForWebview(agentMetadata)` 为真时显示；点击只发送 nodeId，不发送 session id。
 
-`tests/playwright/webview-harness.spec.mjs` 负责 Webview 行为回归。新增测试确认 Claude resumable 节点显示 `Fork` 并 post `webview/branchAgentSession`，Codex resumable 节点不显示 `Fork`，Claude 不可恢复节点不显示 `Fork`。
+`tests/playwright/webview-harness.spec.mjs` 负责 Webview 行为回归。最初新增测试确认 Claude resumable 节点显示 `Fork` 并 post `webview/branchAgentSession`，Claude 不可恢复节点不显示 `Fork`；2026-06-13 起该覆盖已扩展为 Codex / Claude Code 两个 supported provider，Codex resumable 节点同样应显示 `Fork`。
 
 `src/panel/CanvasPanelManager.ts` 负责 Host 权威行为。新增 `branchAgentSession(nodeId)` 和 `buildClaudeBranchCommandLine(sessionId)` 私有方法，在 message switch 中处理 `webview/branchAgentSession`。该方法负责 trust 检查、节点存在检查、provider/session 检查、创建新节点、保留弱标题、聚焦新节点，并让新节点立即启动。
 
 `tests/vscode-smoke/extension-tests.cjs` 负责 Host 端集成回归。新增 smoke helper/verify 函数，通过 `dispatchWebviewMessage({ type: 'webview/branchAgentSession', payload: { nodeId } })` 验证 Host 新增一个 Claude Agent 节点，metadata 是 `custom` 启动命令，命令包含 `--resume <id> --fork-session`，原节点 metadata 不变；同时验证 Codex/缺 session id 不会新增节点。
 
-`docs/exec-plans/active/claude-agent-branch.md` 是本活文档。执行时每完成一个任务都更新 `进度`，发现新事实时更新 `意外与发现`，关键取舍更新 `决策记录`，完成后更新 `结果与复盘`。
+`docs/exec-plans/completed/claude-agent-branch.md` 是已完成的历史执行计划，不再作为当前活文档推进；当前 Codex / Claude Code 分叉维护入口是 `docs/exec-plans/active/agent-launch-modes-and-restart.md`。
 
 ## 进度
 
@@ -69,7 +73,7 @@
   理由：Webview 是非权威 UI，session id 必须从 Host 当前状态重新读取；这样能避免伪造消息用任意 session id 启动 CLI。
   日期/作者：2026-06-06 / Claude
 
-- 决策：Fork 第一版的新节点使用 `agentLaunchPreset: 'custom'` 和 `agentCustomLaunchCommand`，复用现有 fresh-start 启动链路。
+- 决策：Fork 新节点使用 `agentLaunchPreset: 'custom'` 和 `agentCustomLaunchCommand`，复用现有 fresh-start 启动链路。
   理由：Fork 命令是一次明确的 provider-specific 启动命令，现有 custom preset 已经能持久化完整命令并走统一校验、resolver、pendingLaunch 自动启动流程。
   日期/作者：2026-06-06 / Claude
 
@@ -95,7 +99,7 @@
 
 当前 Agent 启动/恢复能力已经分三层：共享命令层在 `src/common/agentLaunchPresets.ts`，Webview 消息协议在 `src/common/protocol.ts`，Host 执行编排在 `src/panel/CanvasPanelManager.ts`。已有历史恢复入口 `CanvasPanelManager.restoreAgentSessionFromHistory()` 会调用 `buildHistoryResumeCommandLine()`，然后创建一个 custom Agent 节点；Fork 要复用这个结构，但命令必须是 Claude Code 的 fork 语义。
 
-`AgentNodeMetadata` 在 `src/common/protocol.ts` 中定义，包含 `provider`、`launchPreset`、`customLaunchCommand`、`resumeStrategy`、`resumeSessionId` 等字段。Host 端 `canResumeAgentFromMetadata()` 在 `src/panel/CanvasPanelManager.ts` 文件底部附近，Webview 端 `canResumeAgentFromMetadataForWebview()` 在 `src/webview/main.tsx` 文件底部附近。Fork 的可信条件必须是 provider 为 `claude`，resume strategy 为 `claude-session-id`，session id 非空；不能对 Codex 的 `codex-session-id` 启用。
+`AgentNodeMetadata` 在 `src/common/protocol.ts` 中定义，包含 `provider`、`launchPreset`、`customLaunchCommand`、`resumeStrategy`、`resumeSessionId` 等字段。Host 端 `isAgentProviderBranchSupported()` 在 `src/panel/CanvasPanelManager.ts` 文件底部附近，Webview 端 `canForkAgentFromMetadataForWebview()` 在 `src/webview/main.tsx` 文件底部附近。Fork 的当前可信条件是 provider 为 `claude` 且 resume strategy 为 `claude-session-id`，或 provider 为 `codex` 且 resume strategy 为 `codex-session-id`，并且 session id 非空；其他 provider 或 resumeStrategy 不匹配的节点不能启用。
 
 `applyCreateNode()` 在 `src/panel/CanvasPanelManager.ts` 中负责创建节点。创建 Agent 成功后，它会把新节点置为 `starting` 并写 `pendingLaunch: 'start'`。这意味着 Host 的 `branchAgentSession()` 方法只需要创建新节点并 post state；Webview 收到新节点后会自动启动。为了让启动发生，Fork 新节点必须使用有效 custom command，并且 workspace 必须 trusted。
 
@@ -157,7 +161,7 @@
 
       assert.throws(
         () => buildClaudeBranchCommandLine('   ', claudeDefaults),
-        /Fork 会话标识不能为空。/
+        /分叉会话标识不能为空。/
       );
 
 - [ ] **Step 2: Run test and verify it fails**
@@ -178,7 +182,7 @@
       ): string {
         const normalizedSessionId = sessionId.trim();
         if (!normalizedSessionId) {
-          throw new Error('Fork 会话标识不能为空。');
+          throw new Error('分叉会话标识不能为空。');
         }
 
         const command = defaults.command.trim() || 'claude';
@@ -419,8 +423,8 @@
           onFocus={() => data.onSelectNode?.(id)}
           onClick={branchAgent}
           buttonProps={{
-            title: 'Fork 当前 Claude Code 会话',
-            'aria-label': 'Fork 当前 Claude Code 会话',
+            title: '分叉当前 Claude Code 会话',
+            'aria-label': '分叉当前 Claude Code 会话',
             'data-agent-branch-action': 'true'
           }}
         />
@@ -444,7 +448,7 @@
       git commit -m "$(cat <<'EOF'
       feat(canvas): show Claude Agent Fork action
 
-      Add a Claude-only Fork button for nodes with a trusted resumable session and route the intent to the host.
+      Add the initial Claude Fork button for nodes with a trusted resumable session and route the intent to the host.
 
       Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
       EOF
@@ -494,7 +498,7 @@
               return {
                 ...node,
                 status: 'stopped',
-                summary: '检测到可 Fork 的 Claude Code 会话。',
+                summary: '检测到可分叉的 Claude Code 会话。',
                 metadata: {
                   ...node.metadata,
                   agent: {
@@ -525,7 +529,7 @@
               (node) =>
                 node.kind === 'agent' &&
                 node.id !== sourceNode.id &&
-                node.title.includes('Fork') &&
+                node.title.includes('分叉') &&
                 node.metadata?.agent?.provider === 'claude' &&
                 node.metadata.agent.launchPreset === 'custom' &&
                 typeof node.metadata.agent.customLaunchCommand === 'string' &&
@@ -574,15 +578,15 @@
         try {
           await createNodeForTest('agent', undefined, {
             agentProvider: 'codex',
-            titleOverride: 'Codex Fork Rejection Source'
+            titleOverride: 'Codex 分叉 Rejection Source'
           });
           const codexSnapshot = await waitForSnapshot((currentSnapshot) => {
             return currentSnapshot.state.nodes.some(
-              (node) => node.kind === 'agent' && node.title === 'Codex Fork Rejection Source'
+              (node) => node.kind === 'agent' && node.title === 'Codex 分叉 Rejection Source'
             );
           }, 10000);
           const codexNode = codexSnapshot.state.nodes.find(
-            (node) => node.kind === 'agent' && node.title === 'Codex Fork Rejection Source'
+            (node) => node.kind === 'agent' && node.title === 'Codex 分叉 Rejection Source'
           );
           assert.ok(codexNode, 'Expected Codex rejection source node to exist.');
 
@@ -634,30 +638,30 @@
   Add this public/private method near `restoreAgentSessionFromHistory()`:
 
       private async branchAgentSession(nodeId: string): Promise<{ branched: boolean; errorMessage?: string }> {
-        if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Forked Agent 会话。')) {
+        if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止分叉 Agent 会话。')) {
           return {
             branched: false,
-            errorMessage: '当前 workspace 未受信任，不能 Forked Agent 会话。'
+            errorMessage: '当前 workspace 未受信任，不能分叉 Agent 会话。'
           };
         }
 
         const sourceNode = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
         if (!sourceNode) {
-          const message = '未找到可 Fork 的 Agent 节点。';
+          const message = '未找到可分叉的 Agent 节点。';
           this.postMessage({ type: 'host/error', payload: { message } });
           return { branched: false, errorMessage: message };
         }
 
         const metadata = ensureAgentMetadata(sourceNode);
         if (metadata.provider !== 'claude' || metadata.resumeStrategy !== 'claude-session-id') {
-          const message = '只有持有可信会话的 Claude Code Agent 才能 Fork。';
+          const message = '只有持有可信会话的 Claude Code Agent 才能分叉。';
           this.postMessage({ type: 'host/error', payload: { message } });
           return { branched: false, errorMessage: message };
         }
 
         const sessionId = metadata.resumeSessionId?.trim();
         if (!sessionId) {
-          const message = '当前 Claude Code Agent 尚未确认可 Fork 的会话标识。';
+          const message = '当前 Claude Code Agent 尚未确认可分叉的会话标识。';
           this.postMessage({ type: 'host/error', payload: { message } });
           return { branched: false, errorMessage: message };
         }
@@ -666,7 +670,7 @@
         try {
           branchCommandLine = this.buildClaudeBranchCommandLine(sessionId);
         } catch (error) {
-          const message = error instanceof Error ? error.message : '无法解析 Claude Code Fork 启动命令。';
+          const message = error instanceof Error ? error.message : '无法解析 Claude Code 分叉启动命令。';
           this.postMessage({ type: 'host/error', payload: { message } });
           return { branched: false, errorMessage: message };
         }
@@ -680,7 +684,7 @@
           agentProvider: 'claude',
           agentLaunchPreset: 'custom',
           agentCustomLaunchCommand: branchCommandLine,
-          titleOverride: `${sourceNode.title} Fork`,
+          titleOverride: `${sourceNode.title} 分叉`,
           cwdOverride: metadata.cwd
         });
         if (!createdNode) {
@@ -690,7 +694,7 @@
         try {
           await this.focusNodeInCanvas(createdNode.id);
         } catch {
-          void vscode.window.showWarningMessage(`Fork 节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+          void vscode.window.showWarningMessage(`分叉节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
         }
 
         return { branched: true };
@@ -745,7 +749,7 @@
 
 **Files:**
 - Modify: `docs/design-docs/agent-launch-modes-and-restart.md:319-352`
-- Modify: `docs/exec-plans/active/claude-agent-branch.md`
+- Modify: `docs/exec-plans/completed/claude-agent-branch.md`
 - Test: package scripts listed below
 
 - [ ] **Step 1: Update design validation status section**
@@ -801,7 +805,7 @@
 
   Run:
 
-      git add docs/design-docs/agent-launch-modes-and-restart.md docs/exec-plans/active/claude-agent-branch.md
+      git add docs/design-docs/agent-launch-modes-and-restart.md docs/exec-plans/completed/claude-agent-branch.md
       git commit -m "$(cat <<'EOF'
       docs(canvas): record Claude Agent Fork verification
 
