@@ -97,6 +97,43 @@ try {
   assert.notEqual(skipPackageMismatch.status, 0);
   assert.match(skipPackageMismatch.stderr, /sha256/u);
 
+  await writeMainVsixAndManifest(tempDir, version, releaseRef);
+  await writePublishBehaviorFixture(tempDir);
+  const previousQueryMode = process.env.DEV_SESSION_CANVAS_RELEASE_MARKETPLACE_QUERY_MODE;
+  process.env.DEV_SESSION_CANVAS_RELEASE_MARKETPLACE_QUERY_MODE = 'missing';
+  const decoupledPublish = runRelease([
+    '--trigger-tag', `publish/v${version}`,
+    '--skip-package',
+    '--skip-origin-main-check',
+    '--marketplace-verify-attempts',
+    '1',
+    '--marketplace-verify-interval-ms',
+    '0'
+  ]);
+  if (previousQueryMode === undefined) {
+    delete process.env.DEV_SESSION_CANVAS_RELEASE_MARKETPLACE_QUERY_MODE;
+  } else {
+    process.env.DEV_SESSION_CANVAS_RELEASE_MARKETPLACE_QUERY_MODE = previousQueryMode;
+  }
+  assert.notEqual(decoupledPublish.status, 0);
+  assert.match(
+    decoupledPublish.stdout + decoupledPublish.stderr,
+    /visual-studio devsessioncanvas\.dev-session-canvas-notifier 1\.2\.3 发布失败，继续尝试其他 marketplace 目标/u
+  );
+  const publishCalls = (await readFile(path.join(tempDir, 'publish-calls.log'), 'utf8')).trim().split(/\r?\n/u);
+  assert.deepEqual(publishCalls, [
+    'notifier visual-studio',
+    'main visual-studio',
+    'main open-vsx'
+  ]);
+  const manifestAfterDecoupledPublish = JSON.parse(await readFile(manifestPath, 'utf8'));
+  assert.equal(manifestAfterDecoupledPublish.status, 'publish-failed');
+  assert.equal(manifestAfterDecoupledPublish.marketplaces.visualStudio.notifier.status, 'publish-failed');
+  assert.equal(manifestAfterDecoupledPublish.marketplaces.openVsx.notifier.status, 'verified');
+  assert.equal(manifestAfterDecoupledPublish.marketplaces.visualStudio.main.status, 'pending-verification');
+  assert.equal(manifestAfterDecoupledPublish.marketplaces.openVsx.main.status, 'pending-verification');
+  assert.equal(manifestAfterDecoupledPublish.tags.finalTagStatus, 'pushed');
+
   console.log('publish-tag-release tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
@@ -107,32 +144,34 @@ function runRelease(args) {
     cwd: tempDir,
     env: {
       ...process.env,
-      PATH: `${path.join(tempDir, 'bin')}${path.delimiter}${process.env.PATH || ''}`
+      PATH: `${path.join(tempDir, 'bin')}${path.delimiter}${process.env.PATH || ''}`,
+      DEV_SESSION_CANVAS_RELEASE_MARKETPLACE_QUERY_MODE:
+        process.env.DEV_SESSION_CANVAS_RELEASE_MARKETPLACE_QUERY_MODE || '',
+      DEV_SESSION_CANVAS_RELEASE_TEST_MODE: '1'
     },
     encoding: 'utf8'
   });
 }
 
-
 async function writeMainVsixAndManifest(root, fixtureVersion, fixtureReleaseRef) {
-  const zip = new JSZip();
-  zip.file(
-    'extension/package.json',
-    JSON.stringify(
-      {
-        name: 'dev-session-canvas',
-        publisher: 'devsessioncanvas',
-        version: fixtureVersion
-      },
-      null,
-      2
+  const main = await writeVsix(root, {
+    name: 'dev-session-canvas',
+    readme: `release ref ${fixtureReleaseRef}\n`,
+    version: fixtureVersion,
+    vsixPath: path.join(root, `dev-session-canvas-${fixtureVersion}.vsix`)
+  });
+  const notifier = await writeVsix(root, {
+    name: 'dev-session-canvas-notifier',
+    readme: 'notifier readme\n',
+    version: fixtureVersion,
+    vsixPath: path.join(
+      root,
+      'extensions',
+      'vscode',
+      'dev-session-canvas-notifier',
+      `dev-session-canvas-notifier-${fixtureVersion}.vsix`
     )
-  );
-  zip.file('extension/readme.md', `release ref ${fixtureReleaseRef}\n`);
-  const buffer = await zip.generateAsync({ type: 'nodebuffer' });
-  const vsixPath = path.join(root, `dev-session-canvas-${fixtureVersion}.vsix`);
-  await writeFile(vsixPath, buffer);
-  const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+  });
   const manifestPath = path.join(root, 'release-artifacts', `release-manifest-${fixtureVersion}.json`);
   await mkdir(path.dirname(manifestPath), { recursive: true });
   await writeFile(
@@ -141,15 +180,29 @@ async function writeMainVsixAndManifest(root, fixtureVersion, fixtureReleaseRef)
       {
         version: fixtureVersion,
         releaseRef: fixtureReleaseRef,
+        tags: {
+          finalTag: `v${fixtureVersion}`,
+          finalTagStatus: 'pushed',
+          triggerTag: `publish/v${fixtureVersion}`,
+          triggerTagStatus: 'kept'
+        },
+        marketplaces: {
+          openVsx: {
+            notifier: {
+              status: 'verified',
+              version: fixtureVersion
+            }
+          }
+        },
         artifacts: [
           {
             extension: 'notifier',
-            sha256: 'notifier-sha',
+            sha256: notifier.sha256,
             version: fixtureVersion
           },
           {
             extension: 'main',
-            sha256,
+            sha256: main.sha256,
             version: fixtureVersion
           }
         ]
@@ -157,6 +210,77 @@ async function writeMainVsixAndManifest(root, fixtureVersion, fixtureReleaseRef)
       null,
       2
     )}\n`,
+    'utf8'
+  );
+}
+
+async function writeVsix(root, { name, readme, version: fixtureVersion, vsixPath }) {
+  const zip = new JSZip();
+  zip.file(
+    'extension/package.json',
+    JSON.stringify(
+      {
+        name,
+        publisher: 'devsessioncanvas',
+        version: fixtureVersion
+      },
+      null,
+      2
+    )
+  );
+  zip.file('extension/readme.md', readme);
+  const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+  await mkdir(path.dirname(vsixPath), { recursive: true });
+  await writeFile(vsixPath, buffer);
+  return { sha256: crypto.createHash('sha256').update(buffer).digest('hex') };
+}
+
+async function writePublishBehaviorFixture(root) {
+  await writeFile(
+    path.join(root, 'fake-publish-marketplaces.js'),
+    `const fs = require('fs');
+const args = process.argv.slice(2);
+const extension = args[args.indexOf('--extension') + 1];
+const target = args[args.indexOf('--target') + 1];
+fs.appendFileSync('publish-calls.log', extension + ' ' + target + '\\n');
+if (extension === 'notifier' && target === 'visual-studio') {
+  process.exit(23);
+}
+process.exit(0);
+`,
+    'utf8'
+  );
+  await writeFile(path.join(root, 'publish-calls.log'), '', 'utf8');
+  await writeFile(
+    path.join(root, 'bin', 'git-fake.js'),
+    `const args = process.argv.slice(2);
+const releaseRef = '${releaseRef}';
+if (args[0] === 'rev-parse') {
+  const rev = args[args.length - 1];
+  if (rev === 'HEAD' || rev.startsWith('publish/v')) {
+    console.log(releaseRef);
+    process.exit(0);
+  }
+  process.exit(1);
+}
+if (args[0] === 'status' && args[1] === '--porcelain') {
+  process.exit(0);
+}
+if (args[0] === 'fetch') {
+  process.exit(0);
+}
+if (args[0] === 'merge-base') {
+  process.exit(0);
+}
+if (args[0] === 'ls-remote') {
+  process.exit(0);
+}
+if (args[0] === 'tag' || args[0] === 'push') {
+  process.exit(0);
+}
+console.error('unexpected git args: ' + JSON.stringify(args));
+process.exit(1);
+`,
     'utf8'
   );
 }
