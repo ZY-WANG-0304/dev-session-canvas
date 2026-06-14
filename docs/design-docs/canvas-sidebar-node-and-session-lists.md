@@ -125,6 +125,7 @@ updated_at: 2026-06-15
 ### 6.2 会话历史使用最小 `WebviewView`
 
 - 在同一 sidebar container 中新增一个 `会话历史` section。
+- `会话历史` section 在 `package.json` 中使用 `images/dev-session-canvas-sessions-activitybar.svg` 作为专属 view icon；图标延续主 Dev Session Canvas activitybar glyph，并用右上角 badge 表达历史语义，badge 内部参考 VS Code Codicon `history` 的时钟指针部分，去掉外圈和回退箭头以保证 24px 下清晰。这只是该 view section 在标题不可见或被用户拖到 Activity Bar 时的识别资产，不引入新的 Activity Bar 容器。
 - 它使用最小 `WebviewView`，原因不是要做更复杂 UI，而是必须在同一区域内提供搜索框与双击恢复能力。
 - 具体承载文件是 `src/sidebar/CanvasSidebarSessionHistoryView.ts`；宿主只向 Webview 提供搜索前的 snapshot，搜索输入与双击行为都在这个最小视图内部完成。
 - 视图结构只保留两层：
@@ -223,6 +224,7 @@ updated_at: 2026-06-15
 ## 9. 当前验证状态
 
 - 2026-06-15：会话历史项右侧 `恢复` / `分叉` icon-only 按钮收口为 bundled VSCode Codicon（`history` / `repo-forked`），与节点列表和模板侧栏共用 `dist/sidebar-codicon.css` 资源路线。
+- 2026-06-15：会话历史 view section 新增专属 `images/dev-session-canvas-sessions-activitybar.svg`，沿用主 glyph + 右上角 badge 约定，badge 内部参考 VS Code Codicon `history` 的时钟指针部分；已纳入 `npm run test:activitybar-badges` 与 manifest 测试。
 - 2026-06-14：会话历史项右侧新增 `恢复` / `分叉` 两个 icon-only 按钮，双击与 Enter / Space 保持既有恢复行为；Host 新增 `forkAgentSessionFromHistory(...)`，从历史会话生成 provider-native fork 启动命令。已运行 `npm run typecheck`、`npm run test:sidebar-session-history` 与 `git diff --check`。
 
 - 2026-06-13：节点列表 attention 入口补齐三条规则：单根平铺展示中 attention 节点前置；分组树展示中顶部显示“待处理提醒”虚拟分组且保留原分组位置；多根 workspace 平铺展示保留 workspace root 分组，并把“待处理提醒”虚拟分组排在 root 分组之前。新增 `npm run test:sidebar-node-list` 覆盖这些 DOM 排序与分组规则。

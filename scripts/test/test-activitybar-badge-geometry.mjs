@@ -22,6 +22,10 @@ const badgeIcons = [
     path: 'images/dev-session-canvas-nodes-activitybar.svg'
   },
   {
+    label: 'sessions',
+    path: 'images/dev-session-canvas-sessions-activitybar.svg'
+  },
+  {
     label: 'notifier-draft',
     path: 'images/dev-session-canvas-notifier-activitybar.svg'
   },
@@ -44,6 +48,9 @@ try {
     assertBadgeContract(svg, icon.path, icon.contentGuide ?? defaultContentGuide);
     if (icon.label === 'nodes') {
       assertNodesBadgeUsesSingleWindow(svg, icon.path);
+    }
+    if (icon.label === 'sessions') {
+      assertSessionsBadgeUsesHistoryClockHands(svg, icon.path);
     }
     const metrics = await measureBadgeCutout(page, svg);
     const targetContentRadius = icon.targetContentRadius ?? defaultTargetContentRadius;
@@ -78,6 +85,22 @@ function assertBadgeContract(svg, filePath, contentGuide) {
   for (const snippet of expectedSnippets) {
     assert.ok(svg.includes(snippet), `${filePath} must include ${snippet}`);
   }
+}
+
+function assertSessionsBadgeUsesHistoryClockHands(svg, filePath) {
+  const cutoutMask = extractBetween(svg, '<mask id="sessions-badge-cutout">', '</mask>');
+  assert.ok(
+    cutoutMask.includes('d="M18.75 2.15V5.25H21.65"'),
+    `${filePath} badge cutout should keep only the clock-hand portion of the history glyph.`
+  );
+  assert.ok(
+    cutoutMask.includes('stroke-width="1.55"'),
+    `${filePath} badge clock hands should use a heavier stroke for 24px readability.`
+  );
+  assert.ok(
+    !cutoutMask.includes('M7.99909 3C10.7605'),
+    `${filePath} badge cutout should not include the full history clock outline.`
+  );
 }
 
 function assertNodesBadgeUsesSingleWindow(svg, filePath) {
