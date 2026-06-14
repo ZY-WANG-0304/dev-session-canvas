@@ -186,19 +186,20 @@
     dev-session-canvas-0.15.2.vsix
     extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.15.2.vsix
 
-Release assets 上传后，workflow 会继续复用同一批 manifest / VSIX 执行 Visual Studio Marketplace 与 Open VSX 发布、验证。如果同一 `publish/v0.15.2` 因 marketplace 失败而重跑，workflow 会先下载并校验 `v0.15.2` GitHub Release 中已有的 manifest / VSIX assets，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
+Release assets 上传后，workflow 会继续复用同一批 manifest / VSIX 分别执行 Open VSX 与 Visual Studio Marketplace 发布、验证。如果同一 `publish/v0.15.2` 因任一 marketplace 失败而重跑，workflow 会先下载并校验 `v0.15.2` GitHub Release 中已有的 manifest / VSIX assets，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
 
-    npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package --target open-vsx --no-create-final-tag
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package --target visual-studio --no-create-final-tag
 
-只有 marketplace 发布与验证成功后，workflow 才上传最终 manifest 并删除远端和本地 `publish/v0.15.2`。如果 marketplace 发布或验证失败，GitHub Release assets 会保留为手动安装兜底，job 失败且临时 tag 保留，便于修复 token / 渠道问题后重跑同一 release input；重跑必须复用这批既有 assets 并通过 manifest sha256 校验。
+两个 marketplace 不再互相串行阻断：Open VSX 失败不阻止 Visual Studio Marketplace 尝试发布，Visual Studio Marketplace 失败也不阻止 Open VSX 尝试发布。workflow 会在两个目标都跑完后上传最终 manifest，并用当前 manifest 重新生成 GitHub Release notes；Release notes 必须包含本版本亮点、渠道状态、残余风险和发布证据。只有两个 marketplace 发布与验证都成功后，workflow 才删除远端和本地 `publish/v0.15.2`。如果任一 marketplace 发布或验证失败，GitHub Release assets 和更新后的 Release notes 会保留为手动安装兜底，失败的 marketplace job 会在上传自身结果 manifest 后标红，finalize job 也会在收口 Release 状态后标红，临时 tag 保留，便于修复 token / 渠道问题后使用 GitHub Actions 的 Re-run failed jobs 或 workflow_dispatch 重跑同一 release input；重跑必须复用这批既有 assets 并通过 manifest sha256 校验。
 
 本地人工执行同一路径时，也应使用同一入口；发布前可先 dry-run，预览 release ref、VSIX 计划和 manifest：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --dry-run --package-only
 
-`release:publish-tag` 会校验 tag 名称、版本号、`CHANGELOG.md`、notifier 版本、当前 `HEAD`、`origin/main` 祖先关系和 clean working tree，并把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` / `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 都绑定到 `publish/v0.15.2` 指向的 commit。当前 workflow 在首次创建 Release assets 时会先打包两个 VSIX，生成 `release-artifacts/release-manifest-0.15.2.json` 并上传 GitHub Release assets；同一版本重跑时会下载并校验既有 Release assets。随后两种路径都会用 `--skip-package` 复用同一批 VSIX 发布并验证 Visual Studio Marketplace / Open VSX。
+`release:publish-tag` 会校验 tag 名称、版本号、`CHANGELOG.md`、notifier 版本、当前 `HEAD`、`origin/main` 祖先关系和 clean working tree，并把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` / `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 都绑定到 `publish/v0.15.2` 指向的 commit。当前 workflow 在首次创建 Release assets 时会先打包两个 VSIX，生成 `release-artifacts/release-manifest-0.15.2.json` 并上传 GitHub Release assets；同一版本重跑时会下载并校验既有 Release assets。随后两种路径都会用 `--skip-package` 复用同一批 VSIX，分别发布并验证 Visual Studio Marketplace 与 Open VSX；脚本会保留既有 manifest 中已 verified 的渠道状态，避免已经完成的渠道被未完成渠道重跑覆盖。
 
-release manifest 不提交回代码库。它记录发布后事实，包括 release ref、VSIX sha256、README doc ref、GitHub Release assets 状态、marketplace 发布 / 验证状态和 tag 状态，应作为 GitHub Release asset 保存；workflow 同时保留一份 Actions artifact 便于排障。
+release manifest 不提交回代码库。它记录发布后事实，包括 release ref、VSIX sha256、README doc ref、GitHub Release assets 状态、marketplace 发布 / 验证状态和 tag 状态，应作为 GitHub Release asset 保存；workflow 同时保留一份 Actions artifact 便于排障。GitHub Release notes 由 `CHANGELOG.md` 和当前 manifest 生成，必须在初次上传 assets 时和最终 manifest 上传时都同步更新，避免 Release 页面只有泛化模板而没有版本亮点和残余风险。
 
 若 GitHub Actions 中某个 marketplace 目标失败，或需要手工重跑某个市场，必须复用同一 release ref 的 manifest / VSIX，并显式走 marketplace 补发命令；不要重新执行 package 覆盖 GitHub Release VSIX assets，因为同一 checkout 的 VSIX 打包当前不保证 byte-for-byte 可复现：
 

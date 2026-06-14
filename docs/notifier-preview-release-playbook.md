@@ -73,11 +73,12 @@
 
 workflow 只应由 `publish/v*` tag push 或手动 `workflow_dispatch` 触发；创建普通分支、普通 tag 或 release 分支不应产生 skipped publish run。若 Actions 列表出现这类噪音，应优先修正 workflow 触发条件，而不是把 skipped run 当作真实 notifier 发布动作。
 
-workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起上传到 `v0.15.2` 对应的 GitHub Release assets。GitHub 不支持裸 tag assets，因此用户下载入口是 GitHub Release 的 Assets 区，不是 tag 对象本身。上传 Release assets 后，workflow 会继续复用同一份 manifest / VSIX 发布并验证 Visual Studio Marketplace 与 Open VSX：
+workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起上传到 `v0.15.2` 对应的 GitHub Release assets。GitHub 不支持裸 tag assets，因此用户下载入口是 GitHub Release 的 Assets 区，不是 tag 对象本身。上传 Release assets 后，workflow 会继续复用同一份 manifest / VSIX，分别发布并验证 Open VSX 与 Visual Studio Marketplace：
 
-    npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package --target open-vsx --no-create-final-tag
+    npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package --target visual-studio --no-create-final-tag
 
-只有 marketplace 发布与验证成功后，workflow 才删除 `publish/v0.15.2` 临时 tag；如果 marketplace 失败，Release assets 保留为手动安装兜底，job 失败且临时 tag 保留，便于重跑同一 release input。重跑同一版本时，workflow 会下载并校验 `v0.15.2` Release 中已有的 notifier VSIX、主扩展 VSIX 与 manifest，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
+两个 marketplace 不再互相串行阻断；其中一个目标失败时，另一个目标仍会尝试发布和验证。workflow 在两个目标都跑完后上传最终 manifest，并根据 `CHANGELOG.md` 与 manifest 重新生成 GitHub Release notes，确保 Release 页面包含版本亮点、渠道状态、残余风险和发布证据。只有两个 marketplace 发布与验证都成功后，workflow 才删除 `publish/v0.15.2` 临时 tag；如果任一 marketplace 失败，Release assets 和最终 Release notes 保留为手动安装兜底，失败的 marketplace job 会在上传自身结果 manifest 后标红，finalize job 也会在收口 Release 状态后标红，临时 tag 保留，便于使用 GitHub Actions 的 Re-run failed jobs 或 workflow_dispatch 重跑同一 release input。重跑同一版本时，workflow 会下载并校验 `v0.15.2` Release 中已有的 notifier VSIX、主扩展 VSIX 与 manifest，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
 
 若 GitHub Actions 中某个 marketplace 目标失败，或需要只重跑 notifier 到某个市场，可保留或重新创建同一个 `publish/v0.15.2`，复用同一份 manifest / VSIX，并限定扩展与市场：
 
