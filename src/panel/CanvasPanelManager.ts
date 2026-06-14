@@ -6972,9 +6972,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     priority: ExecutionTerminalFileLinkResolvePriority | undefined
   ): Promise<void> {
     const context = this.getExecutionTerminalPathContext(kind, nodeId);
+    const resolvePriority = priority ?? 'interactive';
     const filteredCandidates = filterResolvableExecutionTerminalFileLinkCandidates(
       candidates,
-      context
+      context,
+      { priority: resolvePriority }
     );
     const startedAt = Date.now();
     const resolveResult = await this.runExecutionFileLinkResolveForNode(
@@ -6982,7 +6984,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodeId,
       filteredCandidates,
       context,
-      priority ?? 'interactive'
+      resolvePriority
     );
     const diagnostics = buildExecutionFileLinkResolveDiagnostics(
       candidates,
@@ -6994,7 +6996,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         cacheHitCount: resolveResult.cacheHitCount,
         cacheMissCount: resolveResult.cacheMissCount,
         cachePendingCount: resolveResult.cachePendingCount,
-        priority: priority ?? 'interactive'
+        priority: resolvePriority
       }
     );
     this.recordExecutionFileLinkResolveDiagnostics({
@@ -7131,7 +7133,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     resolveRequest = resolveExecutionTerminalFileLinkCandidates(
       filteredCandidates,
       context,
-      () => randomUUID()
+      () => randomUUID(),
+      { priority }
     )
       .then((resolvedCandidates) => {
         this.writeExecutionFileLinkResolveCacheEntry(

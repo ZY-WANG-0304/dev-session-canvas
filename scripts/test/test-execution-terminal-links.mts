@@ -82,6 +82,21 @@ assert.equal(
 );
 assert.equal(detectExecutionTerminalStyledPathLink('Plus/Pro', 'posix'), undefined);
 assert.equal(detectExecutionTerminalStyledPathLink('build/plan', 'posix'), undefined);
+assert.equal(detectExecutionTerminalFallbackPathLink('custom/tool'), undefined);
+assert.equal(
+  detectExecutionTerminalFallbackPathLink('custom/tool', {
+    mode: 'interactive',
+    pathStyle: 'posix'
+  })?.path,
+  'custom/tool'
+);
+assert.equal(
+  detectExecutionTerminalFallbackPathLink('openai.com/policies', {
+    mode: 'interactive',
+    pathStyle: 'posix'
+  }),
+  undefined
+);
 assert.equal(detectExecutionTerminalStyledPathLink('directory/project/', 'posix'), undefined);
 assert.equal(detectExecutionTerminalStyledPathLink('package/@earendil-works/pi-coding-agent', 'posix'), undefined);
 assert.equal(

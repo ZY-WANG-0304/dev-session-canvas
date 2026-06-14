@@ -987,6 +987,8 @@ function toExecutionTerminalLinkSuffix(
 
 export interface ExecutionTerminalFallbackPathLink extends DetectedExecutionTerminalPathLink {}
 
+export type ExecutionTerminalFallbackPathDetectionMode = 'strict' | 'interactive';
+
 type ExecutionTerminalFallbackPathMatcherKind =
   | 'file-trace'
   | 'file-label'
@@ -1028,7 +1030,11 @@ const fallbackMatchers: ExecutionTerminalFallbackPathMatcher[] = [
 ];
 
 export function detectExecutionTerminalFallbackPathLink(
-  line: string
+  line: string,
+  options: {
+    mode?: ExecutionTerminalFallbackPathDetectionMode;
+    pathStyle?: ExecutionTerminalPathStyle;
+  } = {}
 ): ExecutionTerminalFallbackPathLink | undefined {
   for (const { kind, matcher } of fallbackMatchers) {
     const match = line.match(matcher);
@@ -1042,7 +1048,9 @@ export function detectExecutionTerminalFallbackPathLink(
         kind,
         line,
         link: group.link,
-        path: group.path
+        path: group.path,
+        mode: options.mode ?? 'strict',
+        pathStyle: options.pathStyle ?? 'posix'
       })
     ) {
       continue;
@@ -1075,6 +1083,8 @@ function shouldAllowExecutionTerminalFallbackPathLink(options: {
   line: string;
   link: string;
   path: string;
+  mode: ExecutionTerminalFallbackPathDetectionMode;
+  pathStyle: ExecutionTerminalPathStyle;
 }): boolean {
   const trimmedLine = options.line.trim();
   const trimmedLink = options.link.trim();
@@ -1104,6 +1114,10 @@ function shouldAllowExecutionTerminalFallbackPathLink(options: {
 
   if (hasExecutionTerminalFallbackNaturalLanguageBoundary(trimmedPath)) {
     return false;
+  }
+
+  if (options.mode === 'interactive') {
+    return isPlausibleInteractiveExecutionTerminalFallbackPath(trimmedPath, options.pathStyle);
   }
 
   return isPlausibleExecutionTerminalFallbackPath(trimmedPath);
@@ -1155,6 +1169,56 @@ function isPlausibleExecutionTerminalFallbackPath(value: string): boolean {
     isPlausibleExtensionlessExecutionTerminalDirectoryPath(
       value.split(/[\\/]+/u).filter((part) => part.length > 0)
     )
+  );
+}
+
+export function isPlausibleInteractiveExecutionTerminalFallbackPath(
+  value: string,
+  style: ExecutionTerminalPathStyle
+): boolean {
+  const trimmedValue = trimExecutionTerminalFallbackPathQuotes(value.trim());
+  if (
+    !trimmedValue ||
+    hasFallbackExecutionTerminalProsePrefix(trimmedValue) ||
+    isNonFileUriLikeExecutionTerminalPath(trimmedValue)
+  ) {
+    return false;
+  }
+
+  if (hasExplicitExecutionTerminalFallbackPathPrefix(trimmedValue)) {
+    return true;
+  }
+
+  if (hasExecutionTerminalFallbackFileExtension(trimmedValue)) {
+    return true;
+  }
+
+  if (!hasExecutionTerminalFallbackPathSeparator(trimmedValue)) {
+    return false;
+  }
+
+  if (hasUrlLikeExecutionTerminalPathPrefix(trimmedValue)) {
+    return false;
+  }
+
+  const normalizedValue = trimmedValue
+    .replace(/^file:\/\/\/?/u, '')
+    .replace(/^[a-zA-Z]:/u, '')
+    .replace(/^\\\\/u, '')
+    .replace(/^(?:\.{1,2}|~)[\\/]/u, '');
+  const parts = normalizedValue.split(/[\\/]+/u).filter((part) => part.length > 0);
+  return (
+    parts.length >= 2 &&
+    !parts.some(
+      (part) =>
+        part.startsWith('@') ||
+        part.length > 80 ||
+        cjkIdeographRegex.test(part) ||
+        !/^[.@A-Za-z0-9_-]+$/u.test(part) ||
+        part === '.' ||
+        part === '..'
+    ) &&
+    !hasProsePrefixedRelativePath(trimmedValue, style)
   );
 }
 

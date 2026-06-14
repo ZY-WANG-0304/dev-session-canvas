@@ -471,6 +471,31 @@ try {
   assert.equal(fallbackPathResult?.uri.fsPath, '/workspace/packages/app/docs/readme.md');
   assert.deepEqual(vscodeStub.__getFindFilesCalls().map((call) => call.pattern), ['**/docs/readme.md']);
 
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/custom/tool', type: 'file' }]);
+  const interactiveFallbackPathResult = await resolveExecutionTerminalFileLinkCandidates(
+    [createFallbackCandidate('interactive-tool', 'custom/tool')],
+    createContext('/bin/bash', '/workspace', 'posix'),
+    () => 'resolved-interactive-tool',
+    { priority: 'interactive' }
+  );
+  assert.equal(interactiveFallbackPathResult[0]?.resolved.uri.fsPath, '/workspace/custom/tool');
+  assert.deepEqual(vscodeStub.__getStatCalls(), ['/workspace/custom/tool']);
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), []);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/custom/tool', type: 'file' }]);
+  const backgroundFallbackPathResult = await resolveExecutionTerminalFileLinkCandidates(
+    [createFallbackCandidate('background-tool', 'custom/tool')],
+    createContext('/bin/bash', '/workspace', 'posix'),
+    () => 'resolved-background-tool',
+    { priority: 'background' }
+  );
+  assert.equal(backgroundFallbackPathResult.length, 0);
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), []);
+
   const fallbackFilterContext = createContext('/bin/bash', '/workspace', 'posix');
   assert.deepEqual(
     filterResolvableExecutionTerminalFileLinkCandidates(
@@ -482,6 +507,7 @@ try {
         createFallbackCandidate('low-prose', '这里要么在demo/web_demo/omni_stream.py:159'),
         createFallbackCandidate('basename', 'test-canvas-execution-context.mjs'),
         createFallbackCandidate('relative-path', 'docs/readme.md'),
+        createFallbackCandidate('interactive-extensionless-path', 'custom/tool'),
         {
           ...createFallbackCandidate('detected', '• Working   6'),
           source: 'detected'
@@ -529,11 +555,13 @@ try {
           source: 'hardwrap'
         }
       ],
-      fallbackFilterContext
+      fallbackFilterContext,
+      { priority: 'interactive' }
     ).map((candidate) => candidate.candidateId),
     [
       'basename',
       'relative-path',
+      'interactive-extensionless-path',
       'detected-path',
       'detected-code-dir',
       'styled-path',
