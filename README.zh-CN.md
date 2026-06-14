@@ -2,6 +2,8 @@
 
 简体中文 | [English](README.md)
 
+> **VS Code Marketplace 临时说明 / Temporary VS Code Marketplace notice**：由于未知原因，本扩展暂时无法在 VS Code Marketplace 上线；你可以从 GitHub Releases 下载 VSIX，并通过 `Extensions: Install from VSIX...` 安装；Open VSX 市场不受影响。/ Due to an unknown VS Code Marketplace availability issue, this extension is temporarily unavailable there. You can download the VSIX from GitHub Releases and install it with `Extensions: Install from VSIX...`; Open VSX is not affected.
+
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
 产品已进入公开 `Preview` 阶段，并已完成首个对外版本发布；当前主要工作是准备 `0.15.2` Preview 补丁发布，并围绕后续 `0.15.x` 迭代持续收口能力、发布材料与回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。

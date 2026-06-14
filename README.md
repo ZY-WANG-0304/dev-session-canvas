@@ -2,6 +2,8 @@
 
 English | [简体中文](README.zh-CN.md)
 
+> **Temporary VS Code Marketplace notice / VS Code Marketplace 临时说明**: Due to an unknown VS Code Marketplace availability issue, this extension is temporarily unavailable there. You can download the VSIX from GitHub Releases and install it with `Extensions: Install from VSIX...`; Open VSX is not affected. / 由于未知原因，本扩展暂时无法在 VS Code Marketplace 上线；你可以从 GitHub Releases 下载 VSIX，并通过 `Extensions: Install from VSIX...` 安装；Open VSX 市场不受影响。
+
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
 The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on preparing the `0.15.2` Preview patch release and tightening follow-up `0.15.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
