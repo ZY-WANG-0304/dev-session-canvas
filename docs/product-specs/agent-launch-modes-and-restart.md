@@ -69,6 +69,7 @@
   - Codex 的可信 session id 来源沿用现有 Codex 恢复上下文确认规则；Claude Code 的可信 session id 来源沿用现有 Claude Code 恢复上下文确认规则。
   - 点击 `分叉` 后，宿主创建一个同 provider 的新 Agent 节点并立即启动，不要求用户再点一次 `启动`。
   - 新节点启动命令必须使用对应 provider 原生 fork 语义：Codex 使用 `codex fork <session-id>`，Claude Code 使用 `claude --resume <session-id> --fork-session`；它们都不是普通 resume。
+  - Codex 分叉命令生成必须只信任当前节点的显式 session id；无论默认参数里的旧选择语义位于 `fork` / `resume` 子命令之前还是之后，都必须剥离 `--last`、`--all`、`--include-non-interactive` 与旧 positional target，再追加当前可信 session id。
   - 旧节点保持不变，用户仍可继续在旧节点对话；新节点通过标题弱提示来源，并自动创建一条普通可编辑 `user` 边，边标签默认为 `fork`；这条边不表示正式父子边、分支树或强持久化分支关系。
   - 新分叉节点和普通 Agent 节点一样在标题栏显示状态胶囊；窄节点下沿用 PR121 的局部压缩规则：标题栏整体仍保持一行主结构，只有可压缩的动作按钮自身按内容收缩或内部换行，不让整组动作区换行打散布局，也不通过隐藏状态来腾空间。当前 Agent 节点接近最小宽度时，标题栏右上角所有动作按钮统一切换为按钮内部两行显示，避免短中文文案因为浏览器 `min-content` 宽度保护而永远看不到可见换行。
 - 自定义启动输入约束：
@@ -145,6 +146,7 @@
 - 当节点缺少可恢复上下文时，标题栏只显示单个 `启动` 按钮，不再显示 disabled 的 `新建 | 重启` 双按钮；也不会偷偷改成恢复 provider 的最近会话。
 - 对 `Claude Code` 的 fresh-start，如果启动后已根据候选 `session-id` 确认 provider 会话文件存在，即使 stop-time 没再额外打印 resume 提示，节点也应继续保留“恢复原会话”入口；只有既没有文件确认也没有 stop-time 提示时，才退化为单个 `启动` 按钮。
 - 对持有可信 `codex-session-id` 的 Codex Agent 或可信 `claude-session-id` 的 Claude Code Agent，标题栏提供 `分叉` 动作；点击后创建同 provider 的新 Agent 节点并立即启动，Codex 启动命令包含 `fork <session-id>`，Claude Code 启动命令包含 `--resume <session-id> --fork-session`，原节点状态不变化。
+- Codex `分叉` 启动命令不会继承默认参数中的旧目标选择：即使 `--last`、`--all`、`--include-non-interactive` 或旧 session id 写在默认参数前缀里，最终命令也只以当前节点可信 session id 作为分叉目标。
 - 新分叉节点标题弱提示来源，例如以当前节点标题加 `分叉` 后缀表达；画布自动创建来源 Agent 指向新 Agent 的普通可编辑 `user` 边，并默认显示 `fork` 标签，但不新增正式父子边，也不要求用户区分哪个节点是“主分支”。
 - 新分叉节点标题栏继续显示状态胶囊，并在 `启动/停止`、`删除` 等动作旁保持和普通 Agent 节点一致的状态反馈；窄宽度时应采用 PR121 式的按钮级压缩/内部换行，标题栏 action cluster 本身保持 inline，不应整组换行破坏布局，也不应隐藏状态。当前 Agent 节点接近最小宽度时，右上角所有动作按钮都应实际呈现为按钮内部两行，而不是只声明允许换行。
 - 缺少可信 session id、provider 与 resume strategy 不匹配，或其他未支持 provider 的 Agent 不会误触发分叉启动。

@@ -1,6 +1,8 @@
 # Claude Code Agent Fork Implementation Plan
 
-> 2026-06-13 补充：本文记录最初 Claude Code Agent Fork 的实现计划。当前正式产品范围已经在 `docs/design-docs/agent-launch-modes-and-restart.md` 扩展为 Codex / Claude Code provider-native Fork；Codex 使用 `codex fork <session-id>`，不再属于“不可启用 Fork”的 provider；最新用户可见按钮文案为中文 `分叉`，分叉节点标题栏状态也应像普通 Agent 节点一样显示。
+> 2026-06-14 状态：本计划已从 `docs/exec-plans/active/` 移入 `docs/exec-plans/completed/`，只作为最初 Claude Code Agent Fork 交付的历史记录保留；当前 Codex / Claude Code provider-native 分叉事实以 `docs/exec-plans/active/agent-launch-modes-and-restart.md`、`docs/design-docs/agent-launch-modes-and-restart.md` 和 `docs/product-specs/agent-launch-modes-and-restart.md` 为准。
+
+> 2026-06-13 补充：本文记录最初 Claude Code Agent Fork 的实现计划。当前正式产品范围已经在 `docs/design-docs/agent-launch-modes-and-restart.md` 扩展为 Codex / Claude Code provider-native Fork；Codex 使用 `codex fork <session-id>`，不再属于“不可启用 Fork”的 provider；最新用户可见按钮文案为中文 `分叉`，分叉节点标题栏状态也应像普通 Agent 节点一样显示。以下 Goal、Architecture、文件职责和旧验证条目描述的是当时的 Claude-only 实施范围，不再代表当前 active scope。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -40,7 +42,7 @@
 
 `tests/vscode-smoke/extension-tests.cjs` 负责 Host 端集成回归。新增 smoke helper/verify 函数，通过 `dispatchWebviewMessage({ type: 'webview/branchAgentSession', payload: { nodeId } })` 验证 Host 新增一个 Claude Agent 节点，metadata 是 `custom` 启动命令，命令包含 `--resume <id> --fork-session`，原节点 metadata 不变；同时验证 Codex/缺 session id 不会新增节点。
 
-`docs/exec-plans/active/claude-agent-branch.md` 是本活文档。执行时每完成一个任务都更新 `进度`，发现新事实时更新 `意外与发现`，关键取舍更新 `决策记录`，完成后更新 `结果与复盘`。
+`docs/exec-plans/completed/claude-agent-branch.md` 是已完成的历史执行计划，不再作为当前活文档推进；当前 Codex / Claude Code 分叉维护入口是 `docs/exec-plans/active/agent-launch-modes-and-restart.md`。
 
 ## 进度
 
@@ -747,7 +749,7 @@
 
 **Files:**
 - Modify: `docs/design-docs/agent-launch-modes-and-restart.md:319-352`
-- Modify: `docs/exec-plans/active/claude-agent-branch.md`
+- Modify: `docs/exec-plans/completed/claude-agent-branch.md`
 - Test: package scripts listed below
 
 - [ ] **Step 1: Update design validation status section**
@@ -803,7 +805,7 @@
 
   Run:
 
-      git add docs/design-docs/agent-launch-modes-and-restart.md docs/exec-plans/active/claude-agent-branch.md
+      git add docs/design-docs/agent-launch-modes-and-restart.md docs/exec-plans/completed/claude-agent-branch.md
       git commit -m "$(cat <<'EOF'
       docs(canvas): record Claude Agent Fork verification
 
