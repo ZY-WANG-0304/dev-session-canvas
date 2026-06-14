@@ -35,7 +35,7 @@
 1. 用户在同一侧栏视图中看到历史会话列表区域。
 2. 会话列表按时间倒序显示当前 workspace 下的 Codex 和 Claude Code 历史会话，最新会话在上；每条采用紧凑两行结构，首行显示 provider 图标和“会话中的第一条用户指令”作为标题，次行显示相对时间和 session id。
 3. 用户可以使用搜索框按会话标题、provider、session id、工作目录等信息过滤会话列表；搜索不匹配画布节点副标题。
-4. 用户通过双击某个会话项，或在选中项上按 Enter / Space，恢复或打开该历史会话；新建节点时沿用当前 provider 命令与默认启动参数，并显式附加目标会话的 resume 参数；resume 相关 argv 应尽量前置到命令前部；若默认启动参数里已含只作用于 resume picker / `--last` 选择范围的参数（如 `Codex --all`、`--include-non-interactive`），历史恢复时要先剥离这些选择阶段参数，再写入目标 `session-id`。
+4. 每个会话项右侧显示两个 icon-only 操作按钮：按钮图标使用 VSCode Codicon，`恢复` 使用 `history`，`分叉` 使用 `repo-forked`；`恢复` 使用 provider 显式 resume 语义创建新 Agent，`分叉` 使用 provider 原生 fork 语义创建新 Agent；当前会话项双击、选中项 Enter / Space 的效果保持为原来的 `恢复`，不改成分叉或展开菜单。恢复新建节点时沿用当前 provider 命令与默认启动参数，并显式附加目标会话的 resume 参数；resume 相关 argv 应尽量前置到命令前部；若默认启动参数里已含只作用于 resume picker / `--last` 选择范围的参数（如 `Codex --all`、`--include-non-interactive`），历史恢复时要先剥离这些选择阶段参数，再写入目标 `session-id`。分叉新建节点时复用当前 provider 命令与默认启动参数，并生成 provider 原生 fork 命令：Codex 使用 `fork <session-id>`，Claude Code 使用 `--resume <session-id> --fork-session`。
 
 ## 4. 在范围内
 
@@ -68,7 +68,9 @@
 - 提供搜索过滤功能，支持按会话标题、provider、session id、工作目录等信息筛选；不匹配节点副标题。
 - 会话项 tooltip 只展示 provider 历史已知的会话元信息，不展示当前画布节点标题或节点副标题。
 - 会话项 tooltip 中的工作目录追加目录尾缀，并保留 cwd 来源分隔符；含反斜杠来源使用 `\`，slash-style 来源使用 `/`。
-- 双击会话项可以在画板中新建节点恢复或打开该历史会话，并自动定位到新建节点的位置；恢复命令需沿用当前 provider 命令与默认启动参数，再附加目标会话的显式 resume 参数；resume 相关 argv 应尽量前置到命令前部；若默认启动参数里已含只影响 resume picker / `--last` 的选择阶段参数，则需先剥离这些参数，再写入显式 `session-id`。
+- 会话项右侧提供 `恢复` 与 `分叉` 两个 icon-only 操作按钮，图标必须使用 bundled VSCode Codicon（`history` / `repo-forked`），并提供 `aria-label` / `title` 等可访问名称；双击会话项、在选中项上按 Enter / Space 仍执行原有恢复行为。
+- 双击会话项或点击 `恢复` 按钮可以在画板中新建节点恢复或打开该历史会话，并自动定位到新建节点的位置；恢复命令需沿用当前 provider 命令与默认启动参数，再附加目标会话的显式 resume 参数；resume 相关 argv 应尽量前置到命令前部；若默认启动参数里已含只影响 resume picker / `--last` 的选择阶段参数，则需先剥离这些参数，再写入显式 `session-id`。
+- 点击 `分叉` 按钮可以在画板中新建同 provider Agent 节点并以 provider 原生 fork 语义启动；Codex 分叉命令使用 `fork <session-id>`，Claude Code 分叉命令使用 `--resume <session-id> --fork-session`，同样沿用并清理当前 provider 默认启动参数。
 - UI 风格符合 VSCode 原生列表风格。
 
 ### 布局与视觉
@@ -124,6 +126,8 @@
   - 相对时间
   - 创建时间
   - 最后修改时间
+  - 恢复按钮
+  - 分叉按钮
 - **排序规则**：
   - 按时间倒序
 - **过滤规则**：
@@ -132,6 +136,10 @@
 - **数据来源**：
   - Codex 和 Claude Code 分别独立存储
   - 具体读取接口在设计阶段确定
+- **交互行为**：
+  - 双击恢复历史会话为新 Agent 节点
+  - 点击 `恢复` icon 按钮恢复历史会话为新 Agent 节点
+  - 点击 `分叉` icon 按钮以 provider 原生 fork 语义创建新 Agent 节点
 
 ### 侧栏容器
 
@@ -169,8 +177,11 @@
 - 会话标题取自该会话中的第一条用户指令，而不是当前画布中的节点标题。
 - 每条会话项的第二行显示相对时间和 session id。
 - 用户可以使用搜索框过滤会话列表，并支持匹配会话标题、provider、session id 与工作目录；不匹配节点副标题。
-- 双击会话项，或在选中项上按 Enter / Space，可以恢复或打开该历史会话。
-- 历史恢复新建出的节点会沿用当前 provider 命令与默认启动参数，再附加目标会话的显式 resume 参数，而不是绕过默认启动参数设置；若默认参数里已含 `Codex --all` / `--include-non-interactive` 这类只服务于 picker / `--last` 的选择阶段参数，则历史恢复不会继续保留它们。
+- 每个会话项右侧显示 `恢复` 与 `分叉` 两个 icon-only 操作按钮，按钮使用 VSCode Codicon 且具有可访问名称。
+- 双击会话项，或在选中项上按 Enter / Space，可以恢复或打开该历史会话，既有双击行为不改变。
+- 点击 `恢复` icon 按钮时，效果与双击会话项一致。
+- 点击 `分叉` icon 按钮时，会创建同 provider 新 Agent 节点并以 provider 原生 fork 语义启动；Codex 命令包含 `fork <session-id>`，Claude Code 命令包含 `--resume <session-id> --fork-session`。
+- 历史恢复 / 分叉新建出的节点会沿用当前 provider 命令与默认启动参数，再附加目标会话的显式 resume 或 fork 参数，而不是绕过默认启动参数设置；若默认参数里已含 `Codex --all` / `--include-non-interactive` 这类只服务于 picker / `--last` 的选择阶段参数，则历史恢复 / 分叉不会继续保留它们。
 - 会话列表的视觉风格符合 VSCode 原生列表组件。
 - 会话列表在浅色和深色主题下都能正常显示。
 
@@ -186,7 +197,7 @@
 - 节点列表的数据获取方式：是从前端画布状态直接读取，还是通过 Extension API 获取？具体方案在设计阶段讨论。
 - 节点列表的更新机制：是通过事件监听实时更新，还是定期轮询？性能和实时性如何平衡？
 - 历史会话的读取接口：Codex 和 Claude Code 的会话数据存储格式和读取方式是什么？
-- 会话列表的恢复行为：点击会话项后，是在当前画布中恢复，还是新建画布？如何处理冲突？
+- 会话列表的恢复 / 分叉行为已选定为新建 Agent 节点；后续仍可补充节点摆放、批量管理或冲突提示的细节。
 - 侧栏容器的具体集成位置：是新增独立的侧栏视图，还是集成到现有的某个侧栏视图中？
 - 节点列表是否需要支持多选或批量操作？
 - 会话列表是否需要支持删除、重命名等管理操作？

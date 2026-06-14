@@ -2822,6 +2822,64 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
+  public async forkAgentSessionFromHistory(params: {
+    provider: AgentProviderKind;
+    sessionId: string;
+    title?: string;
+  }): Promise<{ forked: boolean; errorMessage?: string }> {
+    const restoreBlockReason = this.getSessionHistoryRestoreBlockReason();
+    if (restoreBlockReason) {
+      return {
+        forked: false,
+        errorMessage: restoreBlockReason
+      };
+    }
+
+    const sessionId = params.sessionId.trim();
+    if (!sessionId) {
+      return {
+        forked: false
+      };
+    }
+
+    let historyForkCommandLine: string;
+    try {
+      historyForkCommandLine = this.buildAgentBranchCommandLine(params.provider, sessionId);
+    } catch (error) {
+      return {
+        forked: false,
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : `无法解析 ${agentProviderDisplayLabel(params.provider)} 历史分叉启动命令。`
+      };
+    }
+
+    const createdNode = this.applyCreateNode('agent', undefined, {
+      agentProvider: params.provider,
+      agentLaunchPreset: 'custom',
+      agentCustomLaunchCommand: historyForkCommandLine,
+      titleOverride: formatHistoryForkTitle(params.title)
+    });
+    if (!createdNode) {
+      return {
+        forked: false
+      };
+    }
+
+    try {
+      await this.focusNodeInCanvas(createdNode.id);
+      return {
+        forked: true
+      };
+    } catch {
+      void vscode.window.showWarningMessage(`历史会话分叉节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+      return {
+        forked: true
+      };
+    }
+  }
+
   private async branchAgentSession(nodeId: string): Promise<{ branched: boolean; errorMessage?: string }> {
     if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止分叉 Agent 会话。')) {
       return {
@@ -2892,7 +2950,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public getSessionHistoryRestoreBlockReason(): string | undefined {
-    return vscode.workspace.isTrusted ? undefined : '当前 workspace 未受信任，只能查看历史会话，不能恢复为新 Agent 节点。';
+    return vscode.workspace.isTrusted ? undefined : '当前 workspace 未受信任，只能查看历史会话，不能恢复或分叉为新 Agent 节点。';
   }
 
   public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
@@ -22511,6 +22569,11 @@ function defaultAgentCommand(provider: AgentProviderKind): string {
 
 function agentProviderDisplayLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+function formatHistoryForkTitle(title: string | undefined): string {
+  const baseTitle = title?.trim();
+  return baseTitle ? `${baseTitle} 分叉` : '历史会话分叉';
 }
 
 function describeCreateNodeBlockReason(
