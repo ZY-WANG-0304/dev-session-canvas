@@ -18,7 +18,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/completed/explorer-resource-create-execution-node-implementation.md
-updated_at: 2026-06-08
+updated_at: 2026-06-14
 ---
 
 # File Explorer 资源右键创建执行节点设计
@@ -136,7 +136,7 @@ Explorer 命令的主流程为：
 
 `revealOrCreateCurrentCanvasSurface()` 的语义是：如果当前窗口已经有打开的主画布 surface，复用该 surface；只有画布未打开时才按默认承载面创建。这保证 Explorer 右键创建执行节点和普通创建节点一样，都是“在当前画板中创建对象”，而不是每次按默认配置强行切换承载面。
 
-本轮不改变默认标题。Agent 的 cwd 上下文通过副标题和 tooltip 呈现；Terminal 保持原副标题。
+本轮不改变默认标题。Agent 的 cwd 上下文通过标题上方上下文行和独立 tooltip 呈现；Terminal 保持原副标题。
 
 ### 6.5 启动、恢复与后续重启语义
 
@@ -162,7 +162,7 @@ Explorer 命令的主流程为：
 第一版不新增全局 inspector。节点本体按节点类型区别处理目录上下文：
 
 - `Terminal` 标题副标题继续只显示 shell path，不额外拼接 `cwdLabel`。
-- `Agent` 标题副标题改为 `cwdLabel · 启动命令`；启动命令仍来自 `resolveAgentLaunchCommandLineForSubtitle(...)`，`cwdLabel` 由 `metadata.agent.cwd` 和 runtime context 中的 workspace folder 列表派生。完整 cwd 和完整启动命令进入 hover title，避免窄节点下被截断后丢失上下文。
+- `Agent` 标题栏把 `cwdLabel` 与启动命令拆成两个独立文本：`cwdLabel` 由 `metadata.agent.cwd` 和 runtime context 中的 workspace folder 列表派生，显示在标题上方；启动命令仍来自 `resolveAgentLaunchCommandLineForSubtitle(...)`，显示在标题下方副标题。完整 cwd 和完整启动命令分别进入各自文本的 hover title，避免窄节点下被截断后丢失上下文。
 - `src/sidebar/CanvasSidebarNodeListView.ts` 投影 Agent 节点时，第二行从 `provider · 状态` 改为 `cwdLabel · provider · 状态`；`cwdLabel` 同样由 `metadata.agent.cwd` 派生，并按单根 / 多根 workspace 规则缩短。Terminal / Note 节点列表项保持只显示状态。
 - `cwdLabel` 与完整 cwd tooltip 都追加目录尾缀，用最小字符区分“执行目录”和普通文件路径。显示分隔符保留 cwd 来源风格：来源路径含反斜杠时使用 `\`；否则使用 `/`。因此 `\\server\share\repo\src` 展示为 `src\`，`//server/share/repo/src` 继续展示为 `src/`，不会因 network path 形态被强制改写成反斜杠。
 - `terminal-overlay` / `agent overlay` 在未运行或启动失败时继续使用 `data.summary` / `lastExitMessage`，其中 cwd 不可用错误需要可读。
@@ -174,7 +174,7 @@ Explorer 命令的主流程为：
 - 风险：启动时目录已被删除。缓解：启动前再次校验 metadata.cwd，失败时进入错误态，不回退默认 root。
 - 风险：Agent CLI 和 shell env patch 误复用默认 root 缓存。缓解：cwd-sensitive helper 显式接收 cwd，缓存 key 包含 cwd。
 - 风险：Explorer cwd 影响 workspace-relative `terminal.shellPath`，让 repo-local shell wrapper 被错误解析到目标子目录。缓解：shell executable 以 workspace/configuration cwd 解析，执行进程 cwd 独立保持节点 cwd。
-- 风险：Agent 副标题过长。缓解：只显示短 `cwdLabel`，完整 cwd 放到 hover title。
+- 风险：Agent 标题栏元信息过长。缓解：`cwdLabel` 和启动命令分别占用标题上下两条独立元信息行，各自用单行 ellipsis 和 hover title 暴露完整值。
 
 ## 8. 验证计划
 
@@ -183,7 +183,7 @@ Explorer 命令的主流程为：
 - `npm run test:workspace-relative-paths` 覆盖 cwdLabel 派生 helper。
 - `npm run test:canvas-execution-context` 覆盖默认执行 metadata cwd、workspace-relative terminal shell path 解析基准、旧 HOME metadata 迁移，以及 workspace folder 变化时强制发布 state 的宿主源码契约。
 - `npm run test:extension-manifest` 覆盖 Explorer 菜单和命令注册。
-- VSCode smoke 覆盖目录 / 文件右键创建 Terminal 和 Agent 后 metadata.cwd、diagnostic cwd、Agent 副标题与侧栏第二行。
+- VSCode smoke 覆盖目录 / 文件右键创建 Terminal 和 Agent 后 metadata.cwd、diagnostic cwd、Agent 标题上方 cwd 上下文、启动命令副标题与侧栏第二行。
 
 ## 9. 当前验证状态
 
@@ -192,3 +192,5 @@ Explorer 命令的主流程为：
 2026-06-03：执行目录可见反馈追加目录尾缀，并把 Windows / network path 展示规则收口为“保留 cwd 来源分隔符”，避免把 `//server/share/...` 这类 slash-style network path 改写成 `\\server\share\...`。本轮验证通过 `npm run test:workspace-relative-paths`、`npm run test:sidebar-session-history` 与 `npm run typecheck`。
 
 2026-06-08：Explorer 创建 Terminal / Agent 的打开逻辑改为复用已打开的主画布 surface；只有画布未打开时才使用默认承载面。本轮新增真实宿主 smoke 断言覆盖已打开 panel surface 时执行 Explorer Terminal / Agent 创建仍停留在 panel，并通过 `node --check tests/vscode-smoke/extension-tests.cjs`、`npm run typecheck`、`npm run test:extension-manifest` 与 `git diff --check`。`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 已执行到后续 serialized terminal scrollback 既有断言失败，Explorer Terminal / Agent surface 复用断言已先行通过。
+
+2026-06-14：Agent 标题栏可见反馈将原本拼接在同一 subtitle 中的 `cwdLabel` 与启动命令拆开：`cwdLabel` 上移到标题上方上下文行，启动命令保留在标题下方 subtitle。Playwright 回归覆盖两条文本的垂直顺序与各自 hover title；Webview probe 新增 `chromeContext`，真实 VSCode smoke 改为分别断言 cwd 上下文与启动命令副标题。

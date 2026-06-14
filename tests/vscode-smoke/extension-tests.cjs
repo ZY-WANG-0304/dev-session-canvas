@@ -2475,7 +2475,7 @@ async function verifyExplorerResourceExecutionNodeCreation() {
     activeSurface,
     (probe) => {
       const probedAgent = probe.nodes.find((node) => node.nodeId === agentNode.id);
-      return Boolean(probedAgent?.chromeSubtitle?.includes('.debug/vscode-smoke/explorer-cwd/ · '));
+      return Boolean(probedAgent?.chromeContext?.includes('.debug/vscode-smoke/explorer-cwd/'));
     },
     20000
   );
@@ -4842,7 +4842,7 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
           agentNode &&
           agentNode.kind === 'agent' &&
           agentNode.titleInputValue === expectedAgentNode.title &&
-          (expectedAgentLaunchCommand === null || agentNode.chromeSubtitle?.endsWith(` · ${expectedAgentLaunchCommand}`)) &&
+          (expectedAgentLaunchCommand === null || agentNode.chromeSubtitle === expectedAgentLaunchCommand) &&
           agentNode.minimapVisible === true &&
           terminalNode &&
           terminalNode.kind === 'terminal' &&
@@ -4870,9 +4870,10 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(probe.nodeCount, expectedNodeCount);
   assert.strictEqual(probe.toastMessage, null);
   if (expectedAgentLaunchCommand !== null) {
-    assert.ok(
-      agentProbeNode.chromeSubtitle?.endsWith(` · ${expectedAgentLaunchCommand}`),
-      'Expected Agent subtitle to keep the launch command after the cwd label.'
+    assert.strictEqual(
+      agentProbeNode.chromeSubtitle,
+      expectedAgentLaunchCommand,
+      'Expected Agent subtitle to keep only the launch command.'
     );
   }
   assert.strictEqual(noteProbeNode.bodyValue, expectedNoteNode.metadata.note.content);
