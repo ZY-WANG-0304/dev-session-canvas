@@ -1,0 +1,34 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Badge content guide: center 18.75,5.25; outer radius 3.85. -->
+    <mask id="sessions-badge-clearance">
+      <rect width="24" height="24" fill="white"/>
+      <circle cx="18.75" cy="5.25" r="6.35" fill="black"/>
+    </mask>
+    <mask id="sessions-badge-cutout">
+      <rect width="24" height="24" fill="white"/>
+      <g>
+        <path
+          d="M18.75 2.15V5.25H21.65"
+          stroke="black"
+          stroke-width="1.55"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <circle cx="18.75" cy="5.25" r="0.72" fill="black"/>
+      </g>
+    </mask>
+  </defs>
+
+  <g mask="url(#sessions-badge-clearance)">
+    <rect x="3" y="1" width="18" height="8.75" rx="1.45" stroke="currentColor" stroke-width="1.5"/>
+    <path d="M6.1 3.2L8.9 5.35L6.1 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10.45 7.1H18.45" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+
+    <rect x="3" y="14.25" width="18" height="8.75" rx="1.45" stroke="currentColor" stroke-width="1.5"/>
+    <path d="M6.1 16.45L8.9 18.6L6.1 20.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10.45 20.35H18.45" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+
+  <circle cx="18.75" cy="5.25" r="4.85" fill="currentColor" mask="url(#sessions-badge-cutout)"/>
+</svg>
