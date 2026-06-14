@@ -15,7 +15,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/active/execution-terminal-native-link-parity.md
-updated_at: 2026-06-10
+updated_at: 2026-06-14
 ---
 
 # 执行节点 TUI 硬换行链接支持分析
@@ -161,6 +161,8 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 同日追加交互优先策略：第四次宿主诊断显示上述收紧后 file-link 请求已降到 7 次、输入 p90 约 79ms，但候选也只剩极少数明确路径，说明继续静态收紧会损失链接可发现性，且单次 filesystem probe 仍可能抖到秒级。因此 file-link provider 不再把 hover / provider 枚举本身作为 Host resolve 触发条件；`detected`、`styled`、`hardwrap`、`multiline` 和 `fallback` 候选只在 Webview 侧建立轻量 pending link，用户按修饰键点击时才用 `priority: interactive` 发送 `webview/resolveExecutionFileLinks`。若解析成功，同一次交互立即打开文件；若失败，降级为 search link。低置信 `fallback` 不做 live-output 后台刷新；高置信 negative cache 仍保留受节流的 live-output 后台刷新，用 `priority: background` 标记，不阻塞用户点击。Host 侧增加 30s resolve cache、同 key in-flight dedupe、同节点串行队列和背景请求最小间隔；已解析的 `resolvedId` 会保存真实 resolved target，点击时优先直接打开 cached target，避免再次 stat。诊断 schema 提升为 `executionFileLinkResolve = 3`，summary 增加 `priorityCounts`、`cacheHitCount`、`cacheMissCount` 和 `cachePendingCount`，用于区分交互解析、后台刷新、缓存命中和预算跳过。
 
+2026-06-14 追加 activation fallback 与候选分层：懒解析不能让点击路径在 timeout / reject 时变成 no-op。pending file link 的 activation 若 2.5s 内没有 Host resolve 结果，或 Host resolve promise reject，必须按原始文本打开 search fallback；这保证越是卡顿场景，用户点击越不会“没有反应”。同时把 fallback path gate 拆成 `strict` 与 `interactive` 两档：后台刷新和普通准入继续使用 strict，用户点击触发的 interactive resolve 可以接受更宽的 extensionless path，例如 `custom/tool`，但仍拒绝 URL-like、package scope、CJK prose、过长或明显自然语言片段。Webview 本地候选和 Host backstop 都必须透传 `priority`，避免 Webview 认为可交互、Host 又按 background strict 静默丢弃。候选仍只由当前 xterm link provider 命中的行和当前节点发起，不跨节点预解析；当前选中节点不应成为唯一条件，因为用户可以直接点击非选中运行节点里的链接，activation 本身就是明确交互意图。
+
 ## 验证方法
 
 若进入实现，至少需要完成：
@@ -176,6 +178,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 9. fallback 性能回归：普通 TUI 状态行、transcript 折叠提示和模板占位文本不应生成 fallback file link candidate；Host 侧低置信 fallback 不应触发 workspace fallback 搜索；可接受的裸 basename fallback 只允许 cwd direct stat。
 10. styled / detected 性能回归：真实诊断中出现的 prompt glyph、bullet、状态文案、时间/日期、包名、纯数字比例、代码表达式、CJK prose 斜杠短语、domain path fragment、package name 和泛化目录短语不应进入 Host file resolve；保留 `event.ts`、`docs/readme.md`、`src/foo.ts:10`、`packages/app/src/index.ts`、`src/panel`、`file:///workspace/docs/readme.md` 与 `"foo", line 10` 等明确文件形态。
 11. 交互优先回归：hover / link provider 枚举不应触发 fallback Host resolve；点击 pending file link 后才发送 `priority: interactive` resolve 并打开文件；高置信负缓存的 live-output 刷新应发送 `priority: background` 且不阻塞点击；重复 candidate / 重复路径应被 Webview cache 或 Host cache / in-flight dedupe 复用。
+12. activation fallback 回归：点击 pending file link 后若 Host resolve 超时或 reject，应打开 search fallback，不应成为 no-op；extensionless interactive fallback path 应在 hover 时不 resolve、点击时以 `priority: interactive` 发送候选，background / strict 路径仍不接收同样宽的候选。
 
 ### 当前验证记录
 
@@ -218,3 +221,4 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 - `test-execution-terminal-native-helpers` 覆盖 Host backstop：`source: detected` / `source: styled` / `source: hardwrap` 的低置信 TUI 文本、URL-like 片段、package 名和泛化目录短语会被过滤，明确路径、代码目录或 basename 才保留；`test-protocol-webview-messages` 覆盖 `styled` source 的 resolve / open 协议解析。
 - 2026-06-11 补充验证通过：`npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run build`、`npm run test:protocol-webview-messages`、定向 `npm run test:webview -- --grep "styled hard-wrapped non-links are not guessed as one link|unstyled hard-wrapped file fragments are not guessed as one link|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"` 与 `git diff --check`。
 - 同日补充交互优先回归：`test-protocol-webview-messages` 覆盖 `priority: background` / 非法 priority；`test-execution-terminal-native-helpers` 覆盖单次 candidate group 内重复 `stat` 只执行一次；Playwright 覆盖 `does not eagerly resolve fallback-only text during hover or live output`、`resolves fallback file links only on activation`、`keeps unresolved file link fallback stable while live output continues`、`link activation posts parsed file and URL targets`、`styled hard-wrapped file fragments resolve as one link`、`reuses file link resolution while live output continues` 与 `refreshes negative file link cache while live output continues`。
+- 2026-06-14 补充 activation fallback 与 interactive fallback 回归：`test-execution-terminal-links` 覆盖 `custom/tool` 在 strict 下不进入 fallback、interactive 下可作为候选且 URL-like 仍拒绝；`test-execution-terminal-native-helpers` 覆盖 `priority: interactive` 可解析 `custom/tool`、`priority: background` 仍过滤；Playwright 覆盖 Agent / Terminal 点击 pending link 超时后打开 search fallback，以及 extensionless fallback path 仍是 hover 不解析、activation 才以 interactive priority 解析。

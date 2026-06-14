@@ -5463,6 +5463,99 @@ for (const executionKind of ['agent', 'terminal']) {
     ]);
   });
 
+  test(`${executionKind} falls back to search when lazy file link activation times out`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'timeout-fallback-target.mjs';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(3000);
+    }, [filePath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+    const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(resolveRequests).toHaveLength(1);
+    expect(resolveRequests[0].payload.priority).toBe('interactive');
+  });
+
+  test(`${executionKind} keeps extensionless fallback paths activation-only with interactive priority`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'custom/tool';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'hoverExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    expect(await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks')).toEqual([]);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+    const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(resolveRequests).toHaveLength(1);
+    expect(resolveRequests[0].payload.priority).toBe('interactive');
+    expect(resolveRequests[0].payload.candidates).toMatchObject([
+      {
+        text: filePath,
+        path: filePath,
+        source: 'fallback'
+      }
+    ]);
+  });
+
   test(`${executionKind} ignores stale pending negative file link resolution after live output`, async ({
     page
   }) => {
@@ -12320,6 +12413,84 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} requests only one attach snapshot for an already-live mounted node`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await settleWebview(page, 4);
+
+    const attachRequests = await readPostedMessagesByType(page, 'webview/attachExecutionSession');
+    expect(
+      attachRequests.filter(
+        (message) =>
+          message.payload.nodeId === nodeId &&
+          message.payload.kind === executionKind &&
+          message.payload.requestId === undefined
+      )
+    ).toHaveLength(1);
+  });
+
+  test(`${executionKind} staggers snapshot hydrates and prioritizes the node with recent input`, async ({ page }) => {
+    const state = createMultiLiveExecutionNodeState(executionKind, 3);
+    const nodeIds = state.nodes.map((node) => node.id);
+    const inputNodeId = nodeIds[2];
+
+    await openHarness(page);
+    await bootstrap(page, state);
+    for (const nodeId of nodeIds) {
+      await waitForExecutionTerminalReady(page, nodeId);
+    }
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'sendExecutionInput',
+      nodeId: inputNodeId,
+      data: 'i'
+    });
+    const snapshot = {
+      format: 'xterm-serialize-v1',
+      data: `SNAPSHOT-${'x'.repeat(40 * 1024)}\r\n`
+    };
+
+    for (const nodeId of nodeIds) {
+      await dispatchExecutionSnapshot(page, {
+        nodeId,
+        kind: executionKind,
+        output: '',
+        cols: 96,
+        rows: 28,
+        liveSession: true,
+        executionSessionId: `${nodeId}-session`,
+        outputSequence: 1,
+        serializedTerminalState: snapshot
+      });
+    }
+
+    const startedDiagnostics = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionPerformanceDiagnostic',
+      (messages) =>
+        messages.filter(
+          (message) =>
+            message.payload.source === 'webview-snapshot-restore-queue' &&
+            message.payload.reason === 'started'
+        ).length >= nodeIds.length
+    );
+    const startedNodeIds = startedDiagnostics
+      .filter(
+        (message) =>
+          message.payload.source === 'webview-snapshot-restore-queue' &&
+          message.payload.reason === 'started'
+      )
+      .map((message) => message.payload.nodeId);
+
+    expect(startedNodeIds[0]).toBe(inputNodeId);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} requests snapshot reset instead of replaying a huge restored backlog`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const staleBacklogLine = 'STALE-BACKLOG-SHOULD-NOT-REPLAY';
@@ -12527,6 +12698,302 @@ for (const executionKind of ['agent', 'terminal']) {
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshTailLine))).toBe(true);
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
     expect(probeNode.terminalVisibleLines.some((line) => line.includes('DEFERRED-BULK-'))).toBe(false);
+  });
+
+  test(`${executionKind} ignores unsequenced live snapshot reset responses until a sequenced snapshot arrives`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-UNSEQUENCED-LIVE-SHOULD-NOT-REPLAY';
+    const unsequencedSnapshotLine = 'UNSEQUENCED-LIVE-SNAPSHOT-SHOULD-NOT-APPLY';
+    const freshSnapshotLine = 'FRESH-SNAPSHOT-AFTER-UNSEQUENCED-LIVE';
+    const deferredLiveLine = 'DEFERRED-LIVE-AFTER-UNSEQUENCED-LIVE';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-unsequenced-live-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${deferredLiveLine}\r\n`,
+      executionSessionId,
+      outputSequence: 2
+    });
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${unsequencedSnapshotLine}\r\n`)
+    });
+    const unsequencedDiagnostics = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionPerformanceDiagnostic',
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.payload.source === 'webview-output-snapshot-reset' &&
+            message.payload.nodeId === nodeId &&
+            message.payload.requestId === attachRequest.payload.requestId &&
+            message.payload.reason === 'snapshot-reset-unsequenced-snapshot'
+        )
+    );
+    expect(
+      unsequencedDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-applied'
+      )
+    ).toBe(false);
+    await settleWebview(page, 4);
+    const ignoredProbe = await readProbeNode(page, nodeId, 20);
+    expect(ignoredProbe.terminalVisibleLines.some((line) => line.includes(unsequencedSnapshotLine))).toBe(false);
+    expect(ignoredProbe.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(false);
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      outputSequence: 1,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${freshSnapshotLine}\r\n`)
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(freshSnapshotLine)) &&
+        visibleLines.some((line) => line.includes(deferredLiveLine)) &&
+        !visibleLines.some((line) => line.includes(unsequencedSnapshotLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshSnapshotLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(unsequencedSnapshotLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+  });
+
+  test(`${executionKind} accepts unsequenced ended snapshot reset without replaying deferred live output`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-ENDED-SNAPSHOT-SHOULD-NOT-REPLAY';
+    const deferredLiveLine = 'DEFERRED-LIVE-AFTER-ENDED-SNAPSHOT-SHOULD-NOT-REPLAY';
+    const finalSnapshotLine = 'FINAL-UNSEQUENCED-ENDED-SNAPSHOT';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-ended-snapshot-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${deferredLiveLine}\r\n`,
+      executionSessionId,
+      outputSequence: 2
+    });
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: false,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${finalSnapshotLine}\r\n`)
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(finalSnapshotLine)) &&
+        !visibleLines.some((line) => line.includes(deferredLiveLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(finalSnapshotLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+
+    const resetDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
+    expect(
+      resetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-session-ended-snapshot'
+      )
+    ).toBe(true);
+    expect(
+      resetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-applied'
+      )
+    ).toBe(false);
+  });
+
+  test(`${executionKind} clears pending snapshot reset when the session exits`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-EXIT-SHOULD-NOT-REPLAY';
+    const deferredLiveLine = 'DEFERRED-LIVE-AFTER-EXIT-SHOULD-NOT-REPLAY';
+    const lateSnapshotLine = 'LATE-SNAPSHOT-AFTER-EXIT-SHOULD-NOT-APPLY';
+    const exitMessage = 'Exited after snapshot reset';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-exit-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${deferredLiveLine}\r\n`,
+      executionSessionId,
+      outputSequence: 2
+    });
+    await dispatchExecutionExit(page, {
+      nodeId,
+      kind: executionKind,
+      message: exitMessage
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: false,
+      outputSequence: 1,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${lateSnapshotLine}\r\n`)
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
+        !visibleLines.some((line) => line.includes(deferredLiveLine)) &&
+        !visibleLines.some((line) => line.includes(lateSnapshotLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
+      true
+    );
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(lateSnapshotLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+
+    const resetDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
+    expect(
+      resetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-session-ended'
+      )
+    ).toBe(true);
+    expect(
+      resetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'stale-snapshot-reset-ignored'
+      )
+    ).toBe(true);
   });
 }
 
@@ -14793,66 +15260,77 @@ function createNoteNodeState() {
 }
 
 function createLiveExecutionNodeState(kind) {
+  return createMultiLiveExecutionNodeState(kind, 1);
+}
+
+function createMultiLiveExecutionNodeState(kind, count) {
   const common = {
     version: 1,
     updatedAt: '2026-04-12T00:00:00.000Z',
     nodes: []
   };
 
-  if (kind === 'agent') {
-    common.nodes.push({
-      id: 'agent-zoom',
-      kind: 'agent',
-      title: 'Zoom Agent',
-      status: 'running',
-      summary: '验证缩放后的鼠标拖选坐标。',
-      position: { x: 120, y: 140 },
-      size: sizeFor('agent'),
-      metadata: {
-        agent: {
-          backend: 'node-pty',
-          shellPath: 'codex',
-          cwd: '/workspace',
-          liveSession: true,
-          provider: 'codex',
-          runtimeKind: 'pty-cli',
-          resumeSupported: false,
-          resumeStrategy: 'none',
-          lifecycle: 'running',
-          lastCols: 96,
-          lastRows: 28,
-          lastBackendLabel: 'Codex CLI'
+  for (let index = 0; index < count; index += 1) {
+    const suffix = index === 0 ? 'zoom' : `zoom-${index + 1}`;
+    const position = { x: 120 + index * 620, y: 140 };
+
+    if (kind === 'agent') {
+      common.nodes.push({
+        id: `agent-${suffix}`,
+        kind: 'agent',
+        title: index === 0 ? 'Zoom Agent' : `Zoom Agent ${index + 1}`,
+        status: 'running',
+        summary: '验证缩放后的鼠标拖选坐标。',
+        position,
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: true,
+            provider: 'codex',
+            runtimeKind: 'pty-cli',
+            resumeSupported: false,
+            resumeStrategy: 'none',
+            lifecycle: 'running',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
         }
-      }
-    });
-    return common;
+      });
+      continue;
+    }
+
+    if (kind === 'terminal') {
+      common.nodes.push({
+        id: `terminal-${suffix}`,
+        kind: 'terminal',
+        title: index === 0 ? 'Zoom Terminal' : `Zoom Terminal ${index + 1}`,
+        status: 'live',
+        summary: '验证缩放后的鼠标拖选坐标。',
+        position,
+        size: sizeFor('terminal'),
+        metadata: {
+          terminal: {
+            backend: 'node-pty',
+            shellPath: '/bin/bash',
+            cwd: '/workspace',
+            liveSession: true,
+            lifecycle: 'live',
+            lastCols: 96,
+            lastRows: 28
+          }
+        }
+      });
+      continue;
+    }
+
+    throw new Error(`Unsupported execution kind ${kind}`);
   }
 
-  if (kind === 'terminal') {
-    common.nodes.push({
-      id: 'terminal-zoom',
-      kind: 'terminal',
-      title: 'Zoom Terminal',
-      status: 'live',
-      summary: '验证缩放后的鼠标拖选坐标。',
-      position: { x: 120, y: 140 },
-      size: sizeFor('terminal'),
-      metadata: {
-        terminal: {
-          backend: 'node-pty',
-          shellPath: '/bin/bash',
-          cwd: '/workspace',
-          liveSession: true,
-          lifecycle: 'live',
-          lastCols: 96,
-          lastRows: 28
-        }
-      }
-    });
-    return common;
-  }
-
-  throw new Error(`Unsupported execution kind ${kind}`);
+  return common;
 }
 
 function createRuntimeChromeState() {

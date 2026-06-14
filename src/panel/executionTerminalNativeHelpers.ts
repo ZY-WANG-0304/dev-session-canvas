@@ -13,6 +13,7 @@ import {
   detectExecutionTerminalPathLinks,
   inferExecutionTerminalPathStyle,
   getExecutionTerminalLinkSuffix,
+  isPlausibleInteractiveExecutionTerminalFallbackPath,
   isPlausibleExecutionTerminalStyledFilePath,
   shouldAllowExecutionTerminalDetectedPathLink,
   normalizeExecutionTerminalWordSeparators,
@@ -64,6 +65,7 @@ export interface OpenExecutionTerminalLinkResult {
 interface ResolveExecutionFileLinkOptions {
   allowPartialBasenameWorkspaceMatch?: boolean;
   allowWorkspaceFallback?: boolean;
+  priority?: 'interactive' | 'background';
   resolveCache?: ExecutionFileLinkResolverCache;
 }
 
@@ -135,7 +137,9 @@ export async function resolveExecutionFileLink(
   if (
     link.source === 'fallback' &&
     !options?.allowPartialBasenameWorkspaceMatch &&
-    !shouldResolveFallbackExecutionTerminalFileLinkPath(sanitizedPath, context)
+    !shouldResolveFallbackExecutionTerminalFileLinkPath(sanitizedPath, context, {
+      priority: options?.priority
+    })
   ) {
     return undefined;
   }
@@ -197,31 +201,34 @@ export async function resolveExecutionFileLink(
 export async function resolveExecutionTerminalFileLinkCandidates(
   candidates: ExecutionTerminalFileLinkCandidate[],
   context: ExecutionTerminalPathContext,
-  createResolvedId: () => string
+  createResolvedId: () => string,
+  options: { priority?: 'interactive' | 'background' } = {}
 ): Promise<PreparedExecutionTerminalResolvedFileLink[]> {
   const highConfidenceCandidates = candidates.filter((candidate) => candidate.source !== 'fallback');
   const fallbackCandidates = candidates
     .filter((candidate) => candidate.source === 'fallback')
-    .filter((candidate) => shouldResolveFallbackExecutionTerminalFileLinkCandidate(candidate, context));
+    .filter((candidate) => shouldResolveFallbackExecutionTerminalFileLinkCandidate(candidate, context, options));
   const resolvedHighConfidence = await resolveExecutionTerminalFileLinkCandidateGroup(
     highConfidenceCandidates,
     context,
-    createResolvedId
+    createResolvedId,
+    options
   );
   if (resolvedHighConfidence.length > 0 || fallbackCandidates.length === 0) {
     return resolvedHighConfidence;
   }
 
-  return resolveExecutionTerminalFileLinkCandidateGroup(fallbackCandidates, context, createResolvedId);
+  return resolveExecutionTerminalFileLinkCandidateGroup(fallbackCandidates, context, createResolvedId, options);
 }
 
 export function filterResolvableExecutionTerminalFileLinkCandidates(
   candidates: ExecutionTerminalFileLinkCandidate[],
-  context: ExecutionTerminalPathContext
+  context: ExecutionTerminalPathContext,
+  options: { priority?: 'interactive' | 'background' } = {}
 ): ExecutionTerminalFileLinkCandidate[] {
   return candidates.filter((candidate) => {
     if (candidate.source === 'fallback') {
-      return shouldResolveFallbackExecutionTerminalFileLinkCandidate(candidate, context);
+      return shouldResolveFallbackExecutionTerminalFileLinkCandidate(candidate, context, options);
     }
 
     if (
@@ -239,7 +246,8 @@ export function filterResolvableExecutionTerminalFileLinkCandidates(
 async function resolveExecutionTerminalFileLinkCandidateGroup(
   candidates: ExecutionTerminalFileLinkCandidate[],
   context: ExecutionTerminalPathContext,
-  createResolvedId: () => string
+  createResolvedId: () => string,
+  options: { priority?: 'interactive' | 'background' } = {}
 ): Promise<PreparedExecutionTerminalResolvedFileLink[]> {
   const results: PreparedExecutionTerminalResolvedFileLink[] = [];
   const resolveCache = createExecutionFileLinkResolverCache();
@@ -263,9 +271,11 @@ async function resolveExecutionTerminalFileLinkCandidateGroup(
               candidate.path,
               context
             ),
+            priority: options.priority,
             resolveCache
           }
         : {
+            priority: options.priority,
             resolveCache
           }
     );
@@ -297,14 +307,16 @@ async function resolveExecutionTerminalFileLinkCandidateGroup(
 
 function shouldResolveFallbackExecutionTerminalFileLinkCandidate(
   candidate: ExecutionTerminalFileLinkCandidate,
-  context: ExecutionTerminalPathContext
+  context: ExecutionTerminalPathContext,
+  options: { priority?: 'interactive' | 'background' } = {}
 ): boolean {
-  return shouldResolveFallbackExecutionTerminalFileLinkPath(candidate.path, context);
+  return shouldResolveFallbackExecutionTerminalFileLinkPath(candidate.path, context, options);
 }
 
 function shouldResolveFallbackExecutionTerminalFileLinkPath(
   rawPath: string,
-  context: ExecutionTerminalPathContext
+  context: ExecutionTerminalPathContext,
+  options: { priority?: 'interactive' | 'background' } = {}
 ): boolean {
   const trimmedPath = trimFallbackExecutionTerminalFileLinkPath(rawPath);
   if (!trimmedPath || isObviousLowConfidenceFallbackExecutionTerminalFileLinkPath(trimmedPath)) {
@@ -316,6 +328,10 @@ function shouldResolveFallbackExecutionTerminalFileLinkPath(
     isNonFileUriLikeExecutionTerminalPath(trimmedPath)
   ) {
     return false;
+  }
+
+  if (options.priority === 'interactive') {
+    return isPlausibleInteractiveExecutionTerminalFallbackPath(trimmedPath, context.pathStyle);
   }
 
   return (

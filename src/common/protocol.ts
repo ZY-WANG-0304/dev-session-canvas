@@ -13,7 +13,7 @@ export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
 export type CanvasGroupDeleteMode = 'delete-members' | 'keep-members';
 export type ExecutionNodeKind = 'agent' | 'terminal';
-export const EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION = 8;
+export const EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION = 9;
 export const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
 export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
@@ -492,6 +492,7 @@ export type ExecutionPerformanceDiagnosticSource =
   | 'webview-output-enqueue'
   | 'webview-terminal-drain'
   | 'webview-terminal-write'
+  | 'webview-snapshot-restore-queue'
   | 'webview-output-snapshot-reset'
   | 'webview-input-dispatch'
   | 'webview-input-ack'
@@ -523,6 +524,7 @@ export interface ExecutionPerformanceDiagnosticPayload {
   controllerCount?: number;
   flushedControllerCount?: number;
   pendingControllerCount?: number;
+  queuedSnapshotCount?: number;
   queuedWriteCount?: number;
   bufferLength?: number;
   pendingOutputLength?: number;
@@ -2351,6 +2353,7 @@ function normalizeExecutionPerformanceDiagnosticPayload(
     controllerCount: normalizeNonNegativeInteger(value.controllerCount),
     flushedControllerCount: normalizeNonNegativeInteger(value.flushedControllerCount),
     pendingControllerCount: normalizeNonNegativeInteger(value.pendingControllerCount),
+    queuedSnapshotCount: normalizeNonNegativeInteger(value.queuedSnapshotCount),
     queuedWriteCount: normalizeNonNegativeInteger(value.queuedWriteCount),
     bufferLength: normalizeNonNegativeInteger(value.bufferLength),
     pendingOutputLength: normalizeNonNegativeInteger(value.pendingOutputLength),
@@ -2368,6 +2371,7 @@ function isExecutionPerformanceDiagnosticSource(
     value === 'webview-output-enqueue' ||
     value === 'webview-terminal-drain' ||
     value === 'webview-terminal-write' ||
+    value === 'webview-snapshot-restore-queue' ||
     value === 'webview-output-snapshot-reset' ||
     value === 'webview-input-dispatch' ||
     value === 'webview-input-ack' ||

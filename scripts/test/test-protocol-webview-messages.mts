@@ -10,8 +10,8 @@ import {
 
 assert.equal(
   EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
-  8,
-  'Execution performance diagnostics schema should mark input ack, host event-loop lag and bounded Webview snapshot reset diagnostics.'
+  9,
+  'Execution performance diagnostics schema should mark input ack, host event-loop lag, bounded Webview snapshot reset and snapshot restore queue diagnostics.'
 );
 
 const hardwrapLinkText = 'src/webview/executionTerminalNativeInteractions.ts:1600:12';
@@ -713,6 +713,7 @@ assert.deepEqual(parseWebviewMessage(executionPerformanceDiagnosticMessage), {
     controllerCount: undefined,
     flushedControllerCount: undefined,
     pendingControllerCount: undefined,
+    queuedSnapshotCount: undefined,
     pendingOutputLength: undefined
   }
 });
@@ -749,6 +750,7 @@ assert.deepEqual(
       controllerCount: undefined,
       flushedControllerCount: undefined,
       pendingControllerCount: undefined,
+      queuedSnapshotCount: undefined,
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: 8192,
@@ -795,6 +797,7 @@ assert.deepEqual(
       controllerCount: undefined,
       flushedControllerCount: undefined,
       pendingControllerCount: undefined,
+      queuedSnapshotCount: undefined,
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: 6142227,
@@ -845,6 +848,7 @@ assert.deepEqual(
       controllerCount: undefined,
       flushedControllerCount: undefined,
       pendingControllerCount: undefined,
+      queuedSnapshotCount: undefined,
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: undefined,
@@ -896,6 +900,7 @@ assert.deepEqual(
       controllerCount: undefined,
       flushedControllerCount: undefined,
       pendingControllerCount: undefined,
+      queuedSnapshotCount: undefined,
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: undefined,
@@ -937,6 +942,7 @@ assert.deepEqual(
       controllerCount: 4,
       flushedControllerCount: undefined,
       pendingControllerCount: undefined,
+      queuedSnapshotCount: undefined,
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: undefined,
@@ -980,6 +986,7 @@ assert.deepEqual(
       controllerCount: 4,
       flushedControllerCount: undefined,
       pendingControllerCount: undefined,
+      queuedSnapshotCount: undefined,
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: undefined,
@@ -1020,6 +1027,7 @@ assert.deepEqual(
       controllerCount: undefined,
       flushedControllerCount: undefined,
       pendingControllerCount: undefined,
+      queuedSnapshotCount: undefined,
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: undefined,
@@ -1063,6 +1071,7 @@ assert.deepEqual(
       controllerCount: undefined,
       flushedControllerCount: undefined,
       pendingControllerCount: undefined,
+      queuedSnapshotCount: undefined,
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: undefined,
@@ -1104,6 +1113,7 @@ assert.deepEqual(
       controllerCount: 3,
       flushedControllerCount: 2,
       pendingControllerCount: 1,
+      queuedSnapshotCount: undefined,
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: undefined,
@@ -1114,6 +1124,51 @@ assert.deepEqual(
     }
   }
 );
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-snapshot-restore-queue',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      reason: 'started',
+      durationMs: 64,
+      queuedSnapshotCount: 2,
+      success: true
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'webview-snapshot-restore-queue',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      reason: 'started',
+      sequence: undefined,
+      durationMs: 64,
+      webviewEpochMs: undefined,
+      hostReceivedEpochMs: undefined,
+      hostAckEpochMs: undefined,
+      queueDelayMs: undefined,
+      requestId: undefined,
+      executionSessionId: undefined,
+      characters: undefined,
+      bytes: undefined,
+      controllerCount: undefined,
+      flushedControllerCount: undefined,
+      pendingControllerCount: undefined,
+      queuedSnapshotCount: 2,
+      queuedWriteCount: undefined,
+      bufferLength: undefined,
+      pendingOutputLength: undefined,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
+      success: true
+    }
+  }
+);
+
 assert.equal(
   parseWebviewMessage({
     type: 'webview/executionPerformanceDiagnostic',

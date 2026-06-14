@@ -1701,7 +1701,10 @@ function collectFileLinkCandidates(
     candidates.push(toExecutionTerminalFileLinkCandidate(context, candidate, 'detected'));
   }
 
-  const fallback = detectExecutionTerminalFallbackPathLink(context.text);
+  const fallback = detectExecutionTerminalFallbackPathLink(context.text, {
+    mode: 'interactive',
+    pathStyle
+  });
   if (
     fallback &&
     !isNonFileUriLikePath(fallback.path) &&
@@ -2426,7 +2429,7 @@ function createPendingFileResolveInteractionLink(
           candidates,
           fileLinkResolutionCache,
           'interactive'
-        );
+        ).catch(() => []);
         const resolvedLink = resolvedLinks.find((link) => link.link.text === text) ?? resolvedLinks[0];
         if (resolvedLink) {
           options.onOpenLink(options.nodeId, options.kind, resolvedLink.link);
