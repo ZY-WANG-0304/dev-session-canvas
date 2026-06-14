@@ -45,7 +45,15 @@ async function main() {
 
   validateReleaseInputs({ context, mainPackageJson, notifierPackageJson, extensions });
 
+  const previousManifest = options.skipPackage ? readExistingManifest(options.manifestDir, context.version) : undefined;
+  if (previousManifest) {
+    validatePreviousManifest(previousManifest, context);
+  }
+
   const manifest = createBaseManifest({ context, extensions, targets, options });
+  if (previousManifest) {
+    mergePreviousManifestState(manifest, previousManifest);
+  }
   console.log(`Release trigger tag: ${context.triggerTag}`);
   console.log(`Release version: ${context.version}`);
   console.log(`Release ref: ${context.releaseRef}`);
@@ -61,7 +69,7 @@ async function main() {
     console.log('复用现有 VSIX，跳过重新打包。');
   }
 
-  const artifacts = await resolveArtifacts({ context, extensions, manifest });
+  const artifacts = await resolveArtifacts({ context, extensions, manifest, previousManifest });
   manifest.artifacts = artifacts;
   manifest.status = options.packageOnly ? 'packaged' : 'packaged-awaiting-publish';
   writeManifest(manifest, options.manifestDir, context.version);
@@ -72,22 +80,21 @@ async function main() {
   }
 
   const publishStatus = await publishMissingMarketplaceTargets({ context, extensions, targets, manifest });
-  if (publishStatus !== 0) {
-    manifest.status = 'publish-failed';
-    writeManifest(manifest, options.manifestDir, context.version);
-    return publishStatus;
-  }
-
   const verificationOk = await verifyMarketplaceTargets({ context, extensions, targets, manifest });
   if (!verificationOk) {
-    manifest.status = 'verification-failed';
+    manifest.status = publishStatus !== 0 ? 'publish-failed' : 'verification-failed';
     writeManifest(manifest, options.manifestDir, context.version);
-    return 1;
+    return publishStatus || 1;
+  }
+  if (publishStatus !== 0) {
+    console.log('Marketplace 发布命令曾返回失败，但当前选择的目标已经验证通过，继续收口。');
   }
 
   if (!options.createFinalTag) {
     console.log('已按参数跳过正式 release tag 创建。');
-    manifest.tags.finalTagStatus = 'skipped';
+    if (!manifest.tags.finalTagStatus || manifest.tags.finalTagStatus === 'pending') {
+      manifest.tags.finalTagStatus = 'skipped';
+    }
   } else {
     const tagStatus = createAndPushFinalTag(context, manifest);
     if (tagStatus !== 0) {
@@ -292,7 +299,7 @@ function runPackageStep({ context, extensions }) {
   });
 }
 
-async function resolveArtifacts({ context, extensions, manifest }) {
+async function resolveArtifacts({ context, extensions, manifest, previousManifest }) {
   if (options.dryRun && !options.skipPackage) {
     const plannedArtifacts = extensions.map((extension) => ({
       extension: extension.id,
@@ -308,11 +315,6 @@ async function resolveArtifacts({ context, extensions, manifest }) {
       console.log(`planned artifact: ${artifact.path} (${artifact.version}, ref ${artifact.readmeDocRef})`);
     }
     return plannedArtifacts;
-  }
-
-  const previousManifest = options.skipPackage ? readExistingManifest(options.manifestDir, context.version) : undefined;
-  if (options.skipPackage) {
-    validatePreviousManifest(previousManifest, context);
   }
 
   const artifacts = [];
@@ -372,10 +374,17 @@ async function inspectVsix(extension, context) {
 }
 
 async function publishMissingMarketplaceTargets({ context, extensions, targets, manifest }) {
+  let firstFailureStatus = 0;
   for (const extension of extensions) {
     for (const target of targets) {
       const key = marketplaceKey(target);
       manifest.marketplaces[key] ??= {};
+      const existingStatus = manifest.marketplaces[key][extension.id]?.status;
+      if (existingStatus === 'verified') {
+        console.log(`${target} ${extension.fullId} ${context.version} 已在 release manifest 中验证完成，跳过发布。`);
+        continue;
+      }
+
       const exists = await marketplaceVersionExists(target, extension, context.version);
       if (exists) {
         console.log(`${target} ${extension.fullId} ${context.version} 已存在，跳过发布。`);
@@ -415,12 +424,16 @@ async function publishMissingMarketplaceTargets({ context, extensions, targets, 
       });
       if (status !== 0) {
         manifest.marketplaces[key][extension.id].status = 'publish-failed';
-        return status;
+        if (firstFailureStatus === 0) {
+          firstFailureStatus = status;
+        }
+        console.error(`${target} ${extension.fullId} ${context.version} 发布失败，继续尝试其他 marketplace 目标。`);
+        continue;
       }
       manifest.marketplaces[key][extension.id].status = 'published-awaiting-verification';
     }
   }
-  return 0;
+  return firstFailureStatus;
 }
 
 async function verifyMarketplaceTargets({ context, extensions, targets, manifest }) {
@@ -436,9 +449,14 @@ async function verifyMarketplaceTargets({ context, extensions, targets, manifest
         const ok = await marketplaceVersionExists(target, extension, context.version, { requireFiles: true });
         const key = marketplaceKey(target);
         manifest.marketplaces[key] ??= {};
+        const previousEntry = manifest.marketplaces[key][extension.id] || {};
+        const previousStatus = previousEntry.status;
+        if (previousStatus === 'verified') {
+          continue;
+        }
         manifest.marketplaces[key][extension.id] = {
-          ...(manifest.marketplaces[key][extension.id] || {}),
-          status: ok ? 'verified' : 'pending-verification',
+          ...previousEntry,
+          status: ok ? 'verified' : previousStatus === 'publish-failed' ? 'publish-failed' : 'pending-verification',
           verifiedAt: ok ? new Date().toISOString() : undefined,
           version: context.version
         };
@@ -465,6 +483,16 @@ async function verifyMarketplaceTargets({ context, extensions, targets, manifest
 }
 
 async function marketplaceVersionExists(target, extension, version, verifyOptions = {}) {
+  const fixtureMode =
+    process.env.DEV_SESSION_CANVAS_RELEASE_TEST_MODE === '1'
+      ? process.env.DEV_SESSION_CANVAS_RELEASE_MARKETPLACE_QUERY_MODE
+      : undefined;
+  if (fixtureMode === 'missing') {
+    return false;
+  }
+  if (fixtureMode === 'present') {
+    return true;
+  }
   if (options.dryRun) {
     return false;
   }
@@ -668,6 +696,24 @@ function validatePreviousManifest(manifest, context) {
   }
   if (manifest.releaseRef !== context.releaseRef) {
     throw new Error(`已有 release manifest releaseRef ${manifest.releaseRef} 与 ${context.releaseRef} 不一致。`);
+  }
+}
+
+function mergePreviousManifestState(manifest, previousManifest) {
+  if (previousManifest.marketplaces) {
+    manifest.marketplaces = JSON.parse(JSON.stringify(previousManifest.marketplaces));
+  }
+  if (previousManifest.githubRelease) {
+    manifest.githubRelease = JSON.parse(JSON.stringify(previousManifest.githubRelease));
+  }
+  if (previousManifest.tags) {
+    manifest.tags = {
+      ...manifest.tags,
+      ...JSON.parse(JSON.stringify(previousManifest.tags))
+    };
+  }
+  if (previousManifest.openVsxManualRecovery) {
+    manifest.openVsxManualRecovery = JSON.parse(JSON.stringify(previousManifest.openVsxManualRecovery));
   }
 }
 
