@@ -411,6 +411,7 @@ export interface WebviewProbeNodeSnapshot {
   nodeId: string;
   kind: CanvasNodeKind;
   chromeTitle: string | null;
+  chromeContext?: string | null;
   chromeSubtitle: string | null;
   statusText: string | null;
   attentionIndicatorVisible: boolean;
@@ -2540,6 +2541,7 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     typeof value.nodeId === 'string' &&
     isCanvasNodeKind(value.kind) &&
     isNullableString(value.chromeTitle) &&
+    (value.chromeContext === undefined || isNullableString(value.chromeContext)) &&
     isNullableString(value.chromeSubtitle) &&
     isNullableString(value.statusText) &&
     typeof value.attentionIndicatorVisible === 'boolean' &&

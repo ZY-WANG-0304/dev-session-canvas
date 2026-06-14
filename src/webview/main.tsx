@@ -4182,8 +4182,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     .join(' ');
   const launchCommandSubtitle = resolveAgentLaunchCommandLineForSubtitle(agentMetadata);
   const cwdLabel = formatExecutionCwdLabel(agentMetadata.cwd, data.workspaceFolders);
-  const agentSubtitle = `${cwdLabel} · ${launchCommandSubtitle}`;
-  const agentSubtitleTooltip = `${formatExecutionCwdTooltip(agentMetadata.cwd, cwdLabel)} · ${launchCommandSubtitle}`;
+  const cwdTooltip = formatExecutionCwdTooltip(agentMetadata.cwd, cwdLabel);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
@@ -4542,8 +4541,10 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
       >
         <ChromeTitleEditor
           value={data.title}
-          subtitle={agentSubtitle}
-          subtitleTooltip={agentSubtitleTooltip}
+          contextLabel={cwdLabel}
+          contextTooltip={cwdTooltip}
+          subtitle={launchCommandSubtitle}
+          subtitleTooltip={launchCommandSubtitle}
           subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
           placeholder="Agent 标题"
           className="agent-window-title"
@@ -10824,6 +10825,8 @@ function CanvasGroupFrame(props: {
 function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
+  contextLabel?: string;
+  contextTooltip?: string;
   subtitle?: string;
   subtitleTooltip?: string;
   subtitleAccessory?: React.ReactNode;
@@ -10892,6 +10895,15 @@ function ChromeTitleEditor(props: {
   return (
     <div className={`window-title ${props.className ?? ''}`.trim()}>
       <div className="window-title-copy">
+        {props.contextLabel ? (
+          <div className="window-title-context-row">
+            <OverflowAwareText
+              className="window-title-context"
+              text={props.contextLabel}
+              tooltipText={props.contextTooltip}
+            />
+          </div>
+        ) : null}
         <input
           ref={inputRef}
           className="window-title-input nodrag nopan"
@@ -13121,8 +13133,9 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
       ) ??
       readProbeFieldValue(element, 'title') ??
       null,
+    chromeContext: readProbeText(element.querySelector('.window-title-context, .node-topline .node-context')),
     chromeSubtitle: readProbeText(
-      element.querySelector('.window-title span, .node-topline span, .file-node-copy span')
+      element.querySelector('.window-title-subtitle, .node-topline span, .file-node-copy span')
     ),
     statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
     attentionIndicatorVisible: Boolean(element.querySelector('[data-attention-indicator="true"]')),
