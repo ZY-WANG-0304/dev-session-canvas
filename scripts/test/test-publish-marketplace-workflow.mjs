@@ -125,7 +125,7 @@ assert.match(releaseNotesStep.run, /node scripts\/release\/write-github-release-
 assert.doesNotMatch(releaseNotesStep.run, /This release publishes Dev Session Canvas/u);
 assert.ok(workflowText.includes('Update GitHub Release notes for reused assets'));
 
-const artifactNamePattern = /\bname:\s+(prepared-release|marketplace-result-open-vsx|marketplace-result-visual-studio|marketplace-release)-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/gu;
+const artifactNamePattern = /\bname:\s+(prepared-release|marketplace-result-open-vsx|marketplace-result-visual-studio|marketplace-release)-\$\{\{ github\.run_id \}\}/gu;
 const artifactNames = [...workflowText.matchAll(artifactNamePattern)].map((match) => match[1]);
 assert.deepEqual(
   artifactNames,
@@ -140,13 +140,25 @@ assert.deepEqual(
     'marketplace-result-visual-studio',
     'marketplace-release'
   ],
-  'all upload/download artifact names must include run_attempt so GitHub reruns do not collide with previous attempts'
+  'all upload/download artifact names must stay stable within one workflow run so failed-only reruns can find previous successful job artifacts'
 );
 assert.doesNotMatch(
   workflowText,
-  /\bname:\s+(prepared-release|marketplace-result-open-vsx|marketplace-result-visual-studio|marketplace-release)-\$\{\{ github\.run_id \}\}(?!-\$\{\{ github\.run_attempt \}\})/u,
-  'artifact names must not use run_id alone'
+  /github\.run_attempt/u,
+  'artifact names must not use run_attempt because GitHub failed-only reruns do not rerun successful upstream artifact producers'
 );
+for (const [jobName, stepName] of [
+  ['prepare', 'Upload prepared release artifacts'],
+  ['publish-open-vsx', 'Upload Open VSX result manifest'],
+  ['publish-visual-studio', 'Upload Visual Studio Marketplace result manifest'],
+  ['finalize', 'Upload final workflow artifacts']
+]) {
+  assert.equal(
+    step(jobName, stepName).with.overwrite,
+    true,
+    `${jobName} ${stepName} must overwrite stable artifact names on full workflow reruns`
+  );
+}
 
 assert.deepEqual(openVsxJob.needs, 'prepare');
 assert.deepEqual(visualStudioJob.needs, 'prepare');
@@ -160,19 +172,36 @@ assert.equal(openVsxMarketplaceStep.id, 'publish');
 assert.match(openVsxMarketplaceStep.run, /--target open-vsx --no-create-final-tag/u);
 assert.match(openVsxMarketplaceStep.run, /echo "status=\$status" >> "\$GITHUB_OUTPUT"/u);
 
+const openVsxFailStep = step('publish-open-vsx', 'Fail Open VSX job when publish failed');
+assert.equal(
+  openVsxFailStep.if,
+  "steps.publish.outputs.status != '0' || steps.verify_secret.outputs.status != '0'",
+  'Open VSX job must fail after uploading its manifest so GitHub failed-only reruns retry the marketplace job'
+);
+
 const visualStudioMarketplaceStep = step('publish-visual-studio', 'Publish and verify Visual Studio Marketplace');
 assert.equal(visualStudioMarketplaceStep.id, 'publish');
 assert.match(visualStudioMarketplaceStep.run, /--target visual-studio --no-create-final-tag/u);
 assert.match(visualStudioMarketplaceStep.run, /echo "status=\$status" >> "\$GITHUB_OUTPUT"/u);
 
+const visualStudioFailStep = step('publish-visual-studio', 'Fail Visual Studio Marketplace job when publish failed');
+assert.equal(
+  visualStudioFailStep.if,
+  "steps.publish.outputs.status != '0' || steps.verify_secret.outputs.status != '0'",
+  'Visual Studio Marketplace job must fail after uploading its manifest so GitHub failed-only reruns retry the marketplace job'
+);
+
 assert.deepEqual(finalizeJob.needs, ['prepare', 'publish-open-vsx', 'publish-visual-studio']);
 assert.equal(finalizeJob.if, "always() && needs.prepare.result == 'success'");
 
 const mergeStep = step('finalize', 'Merge marketplace manifests');
+assert.equal(mergeStep.id, 'merge');
 assert.match(mergeStep.run, /find marketplace-results\/open-vsx -type f -name "release-manifest-\$version\.json"/u);
-assert.match(mergeStep.run, /marketplaceComplete = openStatus === "0" && visualStatus === "0"/u);
+assert.match(mergeStep.run, /const targetComplete = \(key\) =>/u);
+assert.match(mergeStep.run, /const marketplaceComplete = openComplete && visualComplete/u);
 assert.match(mergeStep.run, /manifest.status = marketplaceComplete \? "complete" : "publish-failed"/u);
 assert.match(mergeStep.run, /manifest.selectedTargets = \["visual-studio", "open-vsx"\]/u);
+assert.match(mergeStep.run, /marketplace_complete=\$\{marketplaceComplete\}/u);
 
 const updateReleaseStep = step('finalize', 'Update GitHub Release manifest and notes');
 assert.match(updateReleaseStep.run, /write-github-release-notes\.mjs/u);
@@ -182,14 +211,14 @@ assert.match(updateReleaseStep.run, /gh release upload "\$final_tag" "\$manifest
 const deleteTagStep = step('finalize', 'Delete temporary publish tag');
 assert.equal(
   deleteTagStep.if,
-  "env.OPEN_VSX_STATUS == '0' && env.VISUAL_STUDIO_STATUS == '0' && env.OPEN_VSX_RESULT == 'success' && env.VISUAL_STUDIO_RESULT == 'success'",
+  "steps.merge.outputs.marketplace_complete == 'true'",
   'temporary tag must only be deleted when both marketplace targets succeeded'
 );
 
 const failStep = step('finalize', 'Fail when marketplace publish failed');
 assert.equal(
   failStep.if,
-  "env.OPEN_VSX_STATUS != '0' || env.VISUAL_STUDIO_STATUS != '0' || env.OPEN_VSX_RESULT != 'success' || env.VISUAL_STUDIO_RESULT != 'success'",
+  "steps.merge.outputs.marketplace_complete != 'true'",
   'workflow must fail if either marketplace target failed, after uploading final Release state'
 );
 
