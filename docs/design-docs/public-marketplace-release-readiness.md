@@ -13,7 +13,7 @@ related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
   - docs/exec-plans/active/publish-tag-release-flow.md
   - docs/exec-plans/active/github-release-assets-flow.md
-updated_at: 2026-06-14
+updated_at: 2026-06-15
 ---
 
 # 公开平台发布准备
@@ -35,7 +35,7 @@ updated_at: 2026-06-14
 
 > 2026-06-13 流程更新：当前自动化发布路线在继续执行 Visual Studio Marketplace / Open VSX 发布与验证的基础上，增加 GitHub Release assets 镜像。`publish/vX.Y.Z` 仍固定 release input；workflow 在 Release 不存在时先打包主扩展与 notifier VSIX、生成 release manifest、创建或确认正式 `vX.Y.Z` tag，并把两个 VSIX 与 manifest 上传到该 tag 对应的 GitHub Release assets；同版本重跑时如果 Release 已有完整 assets，则下载并校验既有 manifest / VSIX，不重新打包或覆盖 VSIX，若 Release assets 不完整则 fail closed。GitHub 不支持裸 tag assets，因此对外口径必须写成“`vX.Y.Z` 对应 GitHub Release 的 Assets”。随后 workflow 复用同一批 VSIX 发布并验证 Visual Studio Marketplace / Open VSX；只有这些 marketplace 目标成功后才删除临时 `publish/` tag。由于 Release assets 需要先绑定正式 tag，单看 `vX.Y.Z` 存在不再足以判断整轮发布完成，完整完成条件还包括 marketplace 验证成功、最终 manifest 更新和临时 tag 删除。
 
-> 2026-06-14 流程更新：`0.15.2` 真实发布中 Visual Studio Marketplace 出现 `VSID Concurrency` 限流，证明两个 marketplace 的失败域不能串行绑定。后续 workflow 改为先准备 / 上传 GitHub Release assets，再并行执行 Open VSX 与 Visual Studio Marketplace 两个发布 job；两个 job 均使用同一批 VSIX 和 `--no-create-final-tag`，任一失败都不阻断另一方。finalize job 在两个 marketplace job 成功、失败或缺 secret 后都会合并可用 manifest、覆盖 GitHub Release manifest，并用 `CHANGELOG.md` 当前版本段落与 manifest 重新生成 GitHub Release notes；Release notes 必须包含版本亮点、渠道状态、残余风险和发布证据。只有两个 marketplace 都 verified 后才删除 `publish/vX.Y.Z`，否则保留临时 tag 供同一 release input 重跑。
+> 2026-06-14 流程更新：`0.15.2` 真实发布中 Visual Studio Marketplace 出现 `VSID Concurrency` 限流，证明两个 marketplace 的失败域不能串行绑定。后续 workflow 改为先准备 / 上传 GitHub Release assets，再并行执行 Open VSX 与 Visual Studio Marketplace 两个发布 job；两个 job 均使用同一批 VSIX 和 `--no-create-final-tag`，任一失败都不阻断另一方。finalize job 在两个 marketplace job 成功、失败或缺 secret 后都会合并可用 manifest、覆盖 GitHub Release manifest，并用 `CHANGELOG.md` 当前版本段落与 manifest 重新生成 GitHub Release notes；Release notes 必须包含版本亮点、渠道状态、残余风险和发布证据。只有两个 marketplace 都 verified 后才删除 `publish/vX.Y.Z`，否则保留临时 tag 供同一 release input 重跑；失败的 marketplace job 会在上传自身结果 manifest 后标红，使 GitHub Actions 的 Re-run failed jobs 能实际重试失败渠道，而不是只重跑 finalize。
 
 ## 1. 背景
 
@@ -185,7 +185,7 @@ updated_at: 2026-06-14
 
 ### 7.5 发布流水线最小 CI 化
 
-当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag` 和上传发布产物。自 2026-06-13 起，workflow 在 Visual Studio Marketplace / Open VSX 发布与验证之外增加 GitHub Release assets：首次运行时用 `--package-only` 打包并生成 manifest，创建或确认正式 tag，创建 / 更新对应 GitHub Release 并上传两个 VSIX 与 manifest；同版本重跑时若 Release 已有完整 assets，则下载并用 `--skip-package --package-only` 校验既有 manifest / VSIX，不重新打包或覆盖 VSIX。自 2026-06-14 起，Open VSX 与 Visual Studio Marketplace 在 workflow 中拆成两个独立目标步骤：任一 marketplace 发布或验证失败都不阻断另一 marketplace 尝试发布和验证；两个目标都跑完后，workflow 根据最终 manifest 上传 release manifest 并重新生成 GitHub Release notes。GitHub Release 创建、assets 上传、最终 manifest / Release notes 覆盖和临时 tag 删除由 workflow 负责；只有两个 marketplace 都发布验证成功后才删除临时 tag，任一 marketplace 失败时保留 `publish/vX.Y.Z` 供同一 release input 重跑。workflow 触发范围必须保持收窄：只响应 `publish/v*` tag push 与手动 `workflow_dispatch`，不响应普通分支、普通 tag 或 release 分支创建，避免 Actions 列表出现 skipped publish run 并干扰发布判断。
+当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag` 和上传发布产物。自 2026-06-13 起，workflow 在 Visual Studio Marketplace / Open VSX 发布与验证之外增加 GitHub Release assets：首次运行时用 `--package-only` 打包并生成 manifest，创建或确认正式 tag，创建 / 更新对应 GitHub Release 并上传两个 VSIX 与 manifest；同版本重跑时若 Release 已有完整 assets，则下载并用 `--skip-package --package-only` 校验既有 manifest / VSIX，不重新打包或覆盖 VSIX。自 2026-06-14 起，Open VSX 与 Visual Studio Marketplace 在 workflow 中拆成两个独立目标步骤：任一 marketplace 发布或验证失败都不阻断另一 marketplace 尝试发布和验证；两个目标都跑完后，workflow 根据最终 manifest 上传 release manifest 并重新生成 GitHub Release notes。GitHub Release 创建、assets 上传、最终 manifest / Release notes 覆盖和临时 tag 删除由 workflow 负责；只有两个 marketplace 都发布验证成功后才删除临时 tag，任一 marketplace 失败时保留 `publish/vX.Y.Z` 供同一 release input 重跑；失败的 marketplace job 会在上传自身结果 manifest 后标红，使 GitHub Actions 的 Re-run failed jobs 能实际重试失败渠道，而不是只重跑 finalize。workflow 触发范围必须保持收窄：只响应 `publish/v*` tag push 与手动 `workflow_dispatch`，不响应普通分支、普通 tag 或 release 分支创建，避免 Actions 列表出现 skipped publish run 并干扰发布判断。
 
 当前轮次仍需保留的最小手工 gate 是：
 

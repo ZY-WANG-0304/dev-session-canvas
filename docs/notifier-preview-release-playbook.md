@@ -78,7 +78,7 @@ workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起�
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package --target open-vsx --no-create-final-tag
     npm run release:publish-tag -- --trigger-tag publish/v0.15.2 --skip-package --target visual-studio --no-create-final-tag
 
-两个 marketplace 不再互相串行阻断；其中一个目标失败时，另一个目标仍会尝试发布和验证。workflow 在两个目标都跑完后上传最终 manifest，并根据 `CHANGELOG.md` 与 manifest 重新生成 GitHub Release notes，确保 Release 页面包含版本亮点、渠道状态、残余风险和发布证据。只有两个 marketplace 发布与验证都成功后，workflow 才删除 `publish/v0.15.2` 临时 tag；如果任一 marketplace 失败，Release assets 和最终 Release notes 保留为手动安装兜底，job 失败且临时 tag 保留，便于重跑同一 release input。重跑同一版本时，workflow 会下载并校验 `v0.15.2` Release 中已有的 notifier VSIX、主扩展 VSIX 与 manifest，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
+两个 marketplace 不再互相串行阻断；其中一个目标失败时，另一个目标仍会尝试发布和验证。workflow 在两个目标都跑完后上传最终 manifest，并根据 `CHANGELOG.md` 与 manifest 重新生成 GitHub Release notes，确保 Release 页面包含版本亮点、渠道状态、残余风险和发布证据。只有两个 marketplace 发布与验证都成功后，workflow 才删除 `publish/v0.15.2` 临时 tag；如果任一 marketplace 失败，Release assets 和最终 Release notes 保留为手动安装兜底，失败的 marketplace job 会在上传自身结果 manifest 后标红，finalize job 也会在收口 Release 状态后标红，临时 tag 保留，便于使用 GitHub Actions 的 Re-run failed jobs 或 workflow_dispatch 重跑同一 release input。重跑同一版本时，workflow 会下载并校验 `v0.15.2` Release 中已有的 notifier VSIX、主扩展 VSIX 与 manifest，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
 
 若 GitHub Actions 中某个 marketplace 目标失败，或需要只重跑 notifier 到某个市场，可保留或重新创建同一个 `publish/v0.15.2`，复用同一份 manifest / VSIX，并限定扩展与市场：
 

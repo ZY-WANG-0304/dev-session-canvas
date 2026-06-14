@@ -260,12 +260,13 @@ jobs:
       - name: Upload prepared release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: prepared-release-${{ github.run_id }}-${{ github.run_attempt }}
+          name: prepared-release-${{ github.run_id }}
           path: |
             release-artifacts/
             dev-session-canvas-*.vsix
             extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-*.vsix
           if-no-files-found: error
+          overwrite: true
 
   publish-open-vsx:
     name: Publish Open VSX
@@ -298,7 +299,7 @@ jobs:
       - name: Download prepared release artifacts
         uses: actions/download-artifact@v4
         with:
-          name: prepared-release-${{ github.run_id }}-${{ github.run_attempt }}
+          name: prepared-release-${{ github.run_id }}
           path: .
 
       - name: Verify Open VSX secret
@@ -331,9 +332,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: marketplace-result-open-vsx-${{ github.run_id }}-${{ github.run_attempt }}
+          name: marketplace-result-open-vsx-${{ github.run_id }}
           path: release-artifacts/
           if-no-files-found: warn
+          overwrite: true
+
+      - name: Fail Open VSX job when publish failed
+        if: steps.publish.outputs.status != '0' || steps.verify_secret.outputs.status != '0'
+        run: |
+          echo "Open VSX publish or verification failed. Result manifest was uploaded for finalize."
+          exit 1
 
   publish-visual-studio:
     name: Publish Visual Studio Marketplace
@@ -366,7 +374,7 @@ jobs:
       - name: Download prepared release artifacts
         uses: actions/download-artifact@v4
         with:
-          name: prepared-release-${{ github.run_id }}-${{ github.run_attempt }}
+          name: prepared-release-${{ github.run_id }}
           path: .
 
       - name: Verify Visual Studio Marketplace secret
@@ -399,9 +407,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: marketplace-result-visual-studio-${{ github.run_id }}-${{ github.run_attempt }}
+          name: marketplace-result-visual-studio-${{ github.run_id }}
           path: release-artifacts/
           if-no-files-found: warn
+          overwrite: true
+
+      - name: Fail Visual Studio Marketplace job when publish failed
+        if: steps.publish.outputs.status != '0' || steps.verify_secret.outputs.status != '0'
+        run: |
+          echo "Visual Studio Marketplace publish or verification failed. Result manifest was uploaded for finalize."
+          exit 1
 
   finalize:
     name: Finalize Release State
@@ -414,10 +429,6 @@ jobs:
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
-      OPEN_VSX_STATUS: ${{ needs.publish-open-vsx.outputs.status || '1' }}
-      OPEN_VSX_RESULT: ${{ needs.publish-open-vsx.result }}
-      VISUAL_STUDIO_STATUS: ${{ needs.publish-visual-studio.outputs.status || '1' }}
-      VISUAL_STUDIO_RESULT: ${{ needs.publish-visual-studio.result }}
       TRIGGER_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
     steps:
       - name: Checkout release ref
@@ -429,24 +440,25 @@ jobs:
       - name: Download prepared release artifacts
         uses: actions/download-artifact@v4
         with:
-          name: prepared-release-${{ github.run_id }}-${{ github.run_attempt }}
+          name: prepared-release-${{ github.run_id }}
           path: .
 
       - name: Download Open VSX result manifest
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          name: marketplace-result-open-vsx-${{ github.run_id }}-${{ github.run_attempt }}
+          name: marketplace-result-open-vsx-${{ github.run_id }}
           path: marketplace-results/open-vsx
 
       - name: Download Visual Studio Marketplace result manifest
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          name: marketplace-result-visual-studio-${{ github.run_id }}-${{ github.run_attempt }}
+          name: marketplace-result-visual-studio-${{ github.run_id }}
           path: marketplace-results/visual-studio
 
       - name: Merge marketplace manifests
+        id: merge
         shell: bash
         run: |
           set -euo pipefail
@@ -456,7 +468,7 @@ jobs:
           visual_manifest="$(find marketplace-results/visual-studio -type f -name "release-manifest-$version.json" -print -quit 2>/dev/null || true)"
           node -e '
             const fs = require("fs");
-            const [manifestPath, openManifestPath, visualManifestPath, openStatus, visualStatus, openResult, visualResult] = process.argv.slice(1);
+            const [manifestPath, openManifestPath, visualManifestPath] = process.argv.slice(1);
             const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
             for (const [key, filePath] of [["openVsx", openManifestPath], ["visualStudio", visualManifestPath]]) {
               if (!filePath || !fs.existsSync(filePath)) {
@@ -468,7 +480,13 @@ jobs:
                 manifest.marketplaces[key] = partial.marketplaces[key];
               }
             }
-            const marketplaceComplete = openStatus === "0" && visualStatus === "0" && openResult === "success" && visualResult === "success";
+            const targetComplete = (key) => {
+              const entries = manifest.marketplaces?.[key] || {};
+              return ["main", "notifier"].every((extension) => ["verified", "already-published"].includes(entries[extension]?.status));
+            };
+            const openComplete = targetComplete("openVsx");
+            const visualComplete = targetComplete("visualStudio");
+            const marketplaceComplete = openComplete && visualComplete;
             manifest.status = marketplaceComplete ? "complete" : "publish-failed";
             manifest.selectedTargets = ["visual-studio", "open-vsx"];
             manifest.options = {
@@ -489,7 +507,13 @@ jobs:
               finalTagStatus: "pushed"
             };
             fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-          ' "$manifest_path" "$open_manifest" "$visual_manifest" "$OPEN_VSX_STATUS" "$VISUAL_STUDIO_STATUS" "$OPEN_VSX_RESULT" "$VISUAL_STUDIO_RESULT"
+            if (process.env.GITHUB_OUTPUT) {
+              fs.appendFileSync(
+                process.env.GITHUB_OUTPUT,
+                `open_vsx_complete=${openComplete}\nvisual_studio_complete=${visualComplete}\nmarketplace_complete=${marketplaceComplete}\n`
+              );
+            }
+          ' "$manifest_path" "$open_manifest" "$visual_manifest"
 
       - name: Update GitHub Release manifest and notes
         shell: bash
@@ -510,7 +534,7 @@ jobs:
           gh release upload "$final_tag" "$manifest_path" --clobber
 
       - name: Delete temporary publish tag
-        if: env.OPEN_VSX_STATUS == '0' && env.VISUAL_STUDIO_STATUS == '0' && env.OPEN_VSX_RESULT == 'success' && env.VISUAL_STUDIO_RESULT == 'success'
+        if: steps.merge.outputs.marketplace_complete == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -559,16 +583,17 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: marketplace-release-${{ github.run_id }}-${{ github.run_attempt }}
+          name: marketplace-release-${{ github.run_id }}
           path: |
             release-artifacts/
             dev-session-canvas-*.vsix
             extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-*.vsix
             marketplace-results/
           if-no-files-found: warn
+          overwrite: true
 
       - name: Fail when marketplace publish failed
-        if: env.OPEN_VSX_STATUS != '0' || env.VISUAL_STUDIO_STATUS != '0' || env.OPEN_VSX_RESULT != 'success' || env.VISUAL_STUDIO_RESULT != 'success'
+        if: steps.merge.outputs.marketplace_complete != 'true'
         run: |
           echo "Marketplace publish or verification failed. GitHub Release assets and notes were uploaded for manual installation, and the temporary publish tag was kept for rerun."
           exit 1
