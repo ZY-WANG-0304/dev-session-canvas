@@ -9634,6 +9634,206 @@ test('workspace root group keeps the root path tooltip when its display title is
   await expect(rootTitle).toHaveAttribute('title', workspaceRootPath);
 });
 
+test('workspace root group body renders a tiled non-interactive root name watermark', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'workspace-root-watermark',
+      selectedGroupIds: ['workspace-root-watermark'],
+      viewport: { x: 0, y: 0, zoom: 0.5 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note', { x: 200, y: 200 }),
+      groupId: 'workspace-root-watermark'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-watermark',
+      title: 'Frontend',
+      position: { x: 120, y: 140 },
+      size: { width: 720, height: 520 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'group-child',
+      title: 'Child Group',
+      position: { x: 260, y: 260 },
+      size: { width: 360, height: 260 },
+      parentGroupId: 'workspace-root-watermark'
+    },
+    {
+      id: 'group-regular',
+      title: 'Frontend',
+      position: { x: 960, y: 140 },
+      size: { width: 720, height: 520 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootBackground = page.locator('[data-group-background-id="workspace-root-watermark"]');
+  const rootWatermarkFrame = page.locator('[data-root-watermark-frame-id="workspace-root-watermark"]');
+  const rootWatermark = rootWatermarkFrame.locator('.canvas-root-watermark-tile[data-root-name-watermark="true"]');
+  const rootWatermarkLabel = rootWatermark.locator('[data-root-watermark-label="Frontend"]');
+  await expect(rootBackground).toHaveAttribute('data-group-background-role', 'workspace-root');
+  await expect(rootWatermarkFrame).toHaveCount(1);
+  await expect(rootWatermarkLabel).toHaveText('Frontend');
+  await expect(page.locator('[data-group-background-id="group-regular"] [data-root-name-watermark="true"]')).toHaveCount(0);
+  await expect(page.locator('[data-root-watermark-frame-id="group-regular"]')).toHaveCount(0);
+
+  const watermarkStyle = await rootWatermark.evaluate((watermark) => {
+    const watermarkFrame = watermark.closest('[data-root-watermark-frame-id]');
+    const groupId = watermarkFrame?.getAttribute('data-root-watermark-frame-id');
+    const background = groupId ? document.querySelector(`[data-group-background-id="${CSS.escape(groupId)}"]`) : null;
+    const bodyHitArea = background?.querySelector('[data-group-background-body-hit-area="true"]');
+    const rootFrame = groupId ? document.querySelector(`[data-group-id="${CSS.escape(groupId)}"]`) : null;
+    const rootTitle = rootFrame?.querySelector('[data-probe-field="title"]');
+    const childBackground = document.querySelector('[data-group-background-id="group-child"]');
+    const node = document.querySelector('[data-node-id="root-note"]');
+    const nodeWrapper = node?.closest('.react-flow__node');
+    const viewport = document.querySelector('.react-flow__viewport');
+    const renderer = document.querySelector('.react-flow__renderer');
+    const backgroundLayer = watermarkFrame?.closest('.canvas-group-background-layer');
+    if (
+      !(watermarkFrame instanceof HTMLElement) ||
+      !(background instanceof HTMLElement) ||
+      !(bodyHitArea instanceof HTMLElement) ||
+      !(rootTitle instanceof HTMLElement) ||
+      !(childBackground instanceof HTMLElement) ||
+      !(nodeWrapper instanceof HTMLElement) ||
+      !(viewport instanceof HTMLElement) ||
+      !(renderer instanceof HTMLElement) ||
+      !(backgroundLayer instanceof HTMLElement)
+    ) {
+      throw new Error('Workspace root watermark frame not found.');
+    }
+    const watermarkRect = watermark.getBoundingClientRect();
+    const watermarkFrameRect = watermarkFrame.getBoundingClientRect();
+    const bodyRect = bodyHitArea.getBoundingClientRect();
+    const layerChildren = Array.from(backgroundLayer.children);
+    const style = getComputedStyle(watermark);
+    const frameStyle = getComputedStyle(watermarkFrame);
+    const rootTitleStyle = getComputedStyle(rootTitle);
+    const childBackgroundStyle = getComputedStyle(childBackground);
+    const viewportStyle = getComputedStyle(viewport);
+    const rendererStyle = getComputedStyle(renderer);
+    const nodeRect = nodeWrapper.getBoundingClientRect();
+    const topElementAtNodeCenter = document.elementFromPoint(
+      nodeRect.left + nodeRect.width / 2,
+      nodeRect.top + nodeRect.height / 2
+    );
+    const beforeStyle = getComputedStyle(watermark, '::before');
+    const maskSize = beforeStyle.maskSize || beforeStyle.webkitMaskSize;
+    const tileWidth = Number.parseFloat(maskSize.split(' ')[0]);
+    const tileHeight = Number.parseFloat(maskSize.split(' ')[1]);
+    const zIndexValue = (value) => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    return {
+      framePointerEvents: frameStyle.pointerEvents,
+      pointerEvents: style.pointerEvents,
+      left: Math.round(watermarkRect.left - bodyRect.left),
+      top: Math.round(watermarkRect.top - bodyRect.top),
+      frameLeft: Math.round(watermarkFrameRect.left - background.getBoundingClientRect().left),
+      frameTop: Math.round(watermarkFrameRect.top - background.getBoundingClientRect().top),
+      width: Math.round(watermarkRect.width),
+      height: Math.round(watermarkRect.height),
+      bodyWidth: Math.round(bodyRect.width),
+      bodyHeight: Math.round(bodyRect.height),
+      beforeOpacity: Number.parseFloat(beforeStyle.opacity),
+      beforeBackgroundColor: beforeStyle.backgroundColor,
+      beforeMaskImage: beforeStyle.maskImage || beforeStyle.webkitMaskImage,
+      beforeMaskRepeat: beforeStyle.maskRepeat || beforeStyle.webkitMaskRepeat,
+      beforeMaskSize: maskSize,
+      labelFontStyle: getComputedStyle(watermark.querySelector('[data-root-watermark-label]')).fontStyle,
+      labelFontSize: Number.parseFloat(getComputedStyle(watermark.querySelector('[data-root-watermark-label]')).fontSize),
+      titleFontSize: Number.parseFloat(rootTitleStyle.fontSize),
+      tileWidth,
+      tileHeight,
+      watermarkZIndex: zIndexValue(frameStyle.zIndex),
+      childBackgroundZIndex: zIndexValue(childBackgroundStyle.zIndex),
+      watermarkAfterChildBackground: layerChildren.indexOf(watermarkFrame) > layerChildren.indexOf(childBackground),
+      watermarkInsideViewport: watermarkFrame.closest('.react-flow__viewport') === viewport,
+      nodeInsideRenderer: nodeWrapper.closest('.react-flow__renderer') === renderer,
+      viewportZIndex: zIndexValue(viewportStyle.zIndex),
+      rendererZIndex: zIndexValue(rendererStyle.zIndex),
+      topNodeIdAtNodeCenter: topElementAtNodeCenter?.closest('[data-node-id]')?.getAttribute('data-node-id') ?? null
+    };
+  });
+  expect(watermarkStyle.framePointerEvents).toBe('none');
+  expect(watermarkStyle.pointerEvents).toBe('none');
+  expect(watermarkStyle.left).toBe(0);
+  expect(watermarkStyle.top).toBe(0);
+  expect(watermarkStyle.frameLeft).toBe(0);
+  expect(watermarkStyle.frameTop).toBe(0);
+  expect(watermarkStyle.width).toBe(watermarkStyle.bodyWidth);
+  expect(watermarkStyle.height).toBe(watermarkStyle.bodyHeight);
+  expect(watermarkStyle.beforeOpacity).toBeGreaterThan(0);
+  expect(watermarkStyle.beforeOpacity).toBeLessThan(0.6);
+  expect(watermarkStyle.beforeBackgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  expect(watermarkStyle.beforeMaskImage).toContain('data:image/svg+xml');
+  expect(watermarkStyle.beforeMaskImage).toContain('Frontend');
+  expect(watermarkStyle.beforeMaskImage).not.toContain('rotate');
+  expect(watermarkStyle.beforeMaskRepeat).toContain('repeat');
+  expect(watermarkStyle.tileHeight).toBeCloseTo(88 * (watermarkStyle.labelFontSize / 12), 1);
+  expect(watermarkStyle.labelFontStyle).toBe('normal');
+  expect(watermarkStyle.labelFontSize).toBeGreaterThan(12);
+  expect(watermarkStyle.labelFontSize).toBeCloseTo(watermarkStyle.titleFontSize, 1);
+  expect(watermarkStyle.tileWidth).toBeGreaterThan(0);
+  expect(watermarkStyle.tileWidth).toBeLessThan(watermarkStyle.bodyWidth);
+  expect(watermarkStyle.tileHeight).toBeLessThan(watermarkStyle.bodyHeight);
+  expect(watermarkStyle.watermarkZIndex).toBeGreaterThan(watermarkStyle.childBackgroundZIndex);
+  expect(watermarkStyle.watermarkAfterChildBackground).toBe(true);
+  expect(watermarkStyle.watermarkInsideViewport).toBe(true);
+  expect(watermarkStyle.nodeInsideRenderer).toBe(true);
+  expect(watermarkStyle.rendererZIndex).toBeGreaterThan(watermarkStyle.viewportZIndex);
+  expect(watermarkStyle.topNodeIdAtNodeCenter).toBe('root-note');
+
+  await clearPostedMessages(page);
+  const rootBackgroundBox = await rootBackground.boundingBox();
+  expect(rootBackgroundBox).not.toBeNull();
+  await page.mouse.click(rootBackgroundBox.x + rootBackgroundBox.width - 30, rootBackgroundBox.y + rootBackgroundBox.height - 15);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
+    .toBe('workspace-root-watermark');
+});
+
+test('workspace root group body watermark can be disabled by runtime configuration', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-watermark-disabled',
+      title: 'Backend',
+      position: { x: 120, y: 140 },
+      size: { width: 720, height: 520 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/backend'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext({ workspaceRootWatermarksEnabled: false }));
+  await settleWebview(page, 2);
+
+  const rootBackground = page.locator('[data-group-background-id="workspace-root-watermark-disabled"]');
+  const rootWatermarkFrame = page.locator('[data-root-watermark-frame-id="workspace-root-watermark-disabled"]');
+  await expect(rootBackground).toHaveAttribute('data-group-background-role', 'workspace-root');
+  await expect(rootWatermarkFrame).toHaveCount(0);
+
+  await updateHostState(page, state, createRuntimeContext({ workspaceRootWatermarksEnabled: true }));
+  await settleWebview(page, 2);
+  await expect(rootWatermarkFrame.locator('[data-root-name-watermark="true"]')).toHaveCount(1);
+});
+
 test('workspace root group title reuses regular group title chrome without rename actions', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -12516,6 +12716,7 @@ function createRuntimeContext(overrides = {}) {
     terminalWordSeparators: ' ()[]{}\',"`',
     overviewMode: 'title',
     overviewZoomThreshold: 0.2,
+    workspaceRootWatermarksEnabled: true,
     filesEnabled: true,
     filePresentationMode: 'nodes',
     fileNodeDisplayStyle: 'minimal',

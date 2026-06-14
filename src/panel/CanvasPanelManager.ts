@@ -1138,6 +1138,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           CONFIG_KEYS.canvasOverviewZoomThreshold
         );
         const canvasLinkOpenModeChanged = event.affectsConfiguration(CONFIG_KEYS.canvasLinkOpenMode);
+        const canvasWorkspaceRootWatermarksChanged = event.affectsConfiguration(
+          CONFIG_KEYS.canvasWorkspaceRootWatermarksEnabled
+        );
         const filesFeatureEnabledChanged = event.affectsConfiguration(CONFIG_KEYS.filesFeatureEnabled);
         const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
         const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
@@ -1200,6 +1203,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !canvasOverviewModeChanged &&
           !canvasOverviewZoomThresholdChanged &&
           !canvasLinkOpenModeChanged &&
+          !canvasWorkspaceRootWatermarksChanged &&
           !filesPresentationModeChanged &&
           !fileNodeDisplayStyleChanged &&
           !filesNodeDisplayModeChanged &&
@@ -1233,6 +1237,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             canvasOverviewModeChanged,
             canvasOverviewZoomThresholdChanged,
             canvasLinkOpenModeChanged,
+            canvasWorkspaceRootWatermarksChanged,
             filesPresentationModeChanged,
             fileNodeDisplayStyleChanged,
             filesNodeDisplayModeChanged,
@@ -5750,6 +5755,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ),
       overviewMode: this.getCanvasOverviewMode(),
       overviewZoomThreshold: this.getCanvasOverviewZoomThreshold(),
+      workspaceRootWatermarksEnabled: this.getWorkspaceRootWatermarksEnabled(),
       filePresentationMode: fileConfiguration.presentationMode,
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
@@ -5800,6 +5806,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return normalizeCanvasLinkOpenMode(
       getConfigurationValue<CanvasLinkOpenMode>('canvasLinkOpenMode', 'editorPreview')
     );
+  }
+
+  private getWorkspaceRootWatermarksEnabled(): boolean {
+    return getConfigurationValue<boolean>('canvasWorkspaceRootWatermarksEnabled', true);
   }
 
   private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
@@ -6050,6 +6060,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     canvasOverviewModeChanged: boolean;
     canvasOverviewZoomThresholdChanged: boolean;
     canvasLinkOpenModeChanged: boolean;
+    canvasWorkspaceRootWatermarksChanged: boolean;
     filesPresentationModeChanged: boolean;
     fileNodeDisplayStyleChanged: boolean;
     filesNodeDisplayModeChanged: boolean;
@@ -6168,6 +6179,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.canvasOverviewModeChanged ||
       options.canvasOverviewZoomThresholdChanged ||
       options.canvasLinkOpenModeChanged ||
+      options.canvasWorkspaceRootWatermarksChanged ||
       options.filesPresentationModeChanged ||
       options.fileNodeDisplayStyleChanged ||
       options.filesNodeDisplayModeChanged ||

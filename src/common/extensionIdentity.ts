@@ -118,6 +118,7 @@ export const CONFIG_KEYS = {
   canvasLinkOpenMode: 'devSessionCanvas.canvas.linkOpenMode',
   canvasOverviewMode: 'devSessionCanvas.canvas.overviewMode',
   canvasOverviewZoomThreshold: 'devSessionCanvas.canvas.overviewZoomThreshold',
+  canvasWorkspaceRootWatermarksEnabled: 'devSessionCanvas.canvas.workspaceRootWatermarks.enabled',
   terminalShell: 'devSessionCanvas.terminal.shell',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
   terminalInheritEnv: 'devSessionCanvas.terminal.inheritEnv',
