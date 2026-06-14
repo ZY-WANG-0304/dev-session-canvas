@@ -358,8 +358,9 @@ try {
       /  private async branchAgentSession\([\s\S]*?\n  public getSessionHistoryRestoreBlockReason\(\)/u,
       '\n  public getSessionHistoryRestoreBlockReason()'
     )
+    .replace(/\nfunction createBranchAgentUserEdge\([\s\S]*?\n\}/u, '\n')
     .replace(/\nfunction isClaudeForkSessionLaunch\([\s\S]*?\n\}/u, '\n')
-    .replace(/Claude Agent 节点不支持 Ctrl-Z\/fg；请使用停止、重启或 Fork。/gu, 'Claude Agent Ctrl-Z unsupported');
+    .replace(/Claude Agent 节点不支持 Ctrl-Z\/fg；请使用停止、重启或分叉。/gu, 'Claude Agent Ctrl-Z unsupported');
   const runtimeBindingKeyFunction = managerSource.match(
     /private buildRuntimeSessionBindingKey\([\s\S]*?\n  \}/u
   )?.[0] ?? '';

@@ -46,7 +46,7 @@ The product has entered the public `Preview` phase and already completed its fir
 - Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics
 - Execution-terminal link detection for native-style URLs, file paths, multiline line-number output, high-confidence TUI hard-wrapped URL / styled-file fragments, and live-output file-link cache refresh
 - Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands, opening their config files, and separating stopped-node `New` versus `Restart` actions
-- Claude Code Agent `Fork` from a trusted session id into a new Agent node that starts with provider-native fork semantics
+- Codex / Claude Code Agent `Fork` from a trusted session id into a new Agent node that starts with provider-native fork semantics
 - Automatic CLI selection / installation recovery when an `Agent` launch cannot resolve the requested CLI
 - Multi-section desktop-notification companion sidebar with platform onboarding and `Codex` / `Claude Code` notification-configuration guidance
 - Limited capability handling under `Restricted Mode`

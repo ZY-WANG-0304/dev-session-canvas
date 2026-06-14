@@ -350,7 +350,7 @@ class RuntimeSupervisorServer {
   private writeInput(params: RuntimeSupervisorWriteInputParams): void {
     const session = this.requireLiveSession(params.sessionId);
     if (session.kind === 'agent' && session.provider === 'claude' && containsTerminalSuspendInput(params.data)) {
-      throw new Error('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或 Fork。');
+      throw new Error('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。');
     }
 
     if (session.kind === 'agent' && session.lifecycle === 'suspended') {

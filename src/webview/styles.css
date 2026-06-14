@@ -233,6 +233,10 @@ body {
     color 120ms ease;
 }
 
+.action-button-label {
+  display: inline;
+}
+
 .action-button.compact {
   min-height: 22px;
   padding: 0 8px;
@@ -1173,10 +1177,32 @@ body {
 
 .agent-window-chrome-actions .action-button {
   box-sizing: border-box;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: min-content;
   white-space: nowrap;
 }
 
-.agent-window-chrome-actions .agent-restart-action-group .action-button {
+.agent-window-chrome-actions .agent-restart-action-group .action-button,
+.agent-window-chrome-actions .agent-branch-action-button {
+  white-space: normal;
+}
+
+.agent-window-chrome-actions[data-agent-action-density="compact-actions"] .action-button {
+  width: 25px;
+  min-width: 25px;
+  min-height: 26px;
+  align-items: center;
+  padding-block: 2px;
+  line-height: 1;
+  white-space: normal;
+}
+
+.agent-window-chrome-actions[data-agent-action-density="compact-actions"] .action-button .action-button-label {
+  display: block;
+  width: min-content;
+  line-height: 1.05;
+  text-align: center;
   white-space: normal;
 }
 

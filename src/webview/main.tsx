@@ -106,8 +106,6 @@ import {
   classifyAgentLaunchPreset,
   createDefaultAgentLaunchDefaults,
   formatCommandLine,
-  hasClaudeForkSessionFlag,
-  parseFullAgentCommandLine,
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
 import { CANVAS_ATTENTION_INDICATOR_ICON_ID } from '../common/canvasAttentionVisuals';
@@ -537,6 +535,7 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
 const EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS = 1000;
+const AGENT_TITLE_ACTION_COMPACT_WIDTH = 440;
 let nextExecutionNodeHelpTooltipId = 0;
 let nextNoteMarkdownMetadataPopoverId = 0;
 type ExecutionHostEvent =
@@ -4413,7 +4412,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
 
     const dataDisposable = terminal.onData((input) => {
       if (terminalFlagsRef.current.blockCtrlZInput && containsTerminalSuspendInput(input)) {
-        data.onShowTransientError?.('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或 Fork。');
+        data.onShowTransientError?.('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。');
         return;
       }
       reportExecutionInputDispatch(id, 'agent', input, () => data.onExecutionInput?.(id, 'agent', input));
@@ -4507,9 +4506,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
 
   const isLegacySuspendedAgent = lifecycle === 'suspended';
   const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession && !isLegacySuspendedAgent;
-  const showBranchAction = provider === 'claude' && canResumeOriginalSession && !isLegacySuspendedAgent;
-  const isForkedClaudeAgentNode = isClaudeForkAgentLaunch(agentMetadata);
-  const showTitleStatus = !isForkedClaudeAgentNode;
+  const showBranchAction = canForkAgentFromMetadataForWebview(agentMetadata) && !isLegacySuspendedAgent;
+  const titleActionChromeDensity =
+    data.size.width <= AGENT_TITLE_ACTION_COMPACT_WIDTH ? 'compact-actions' : 'regular';
   const actionDisabled = executionBlocked || reattaching;
 
   return (
@@ -4550,13 +4549,12 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         <div
           className="window-chrome-actions agent-window-chrome-actions"
           data-agent-branch-visible={showBranchAction ? 'true' : 'false'}
+          data-agent-action-density={titleActionChromeDensity}
         >
-          {showTitleStatus ? (
-            <ExecutionAttentionStatus
-              status={displayStatus}
-              attentionPending={attentionPending}
-            />
-          ) : null}
+          <ExecutionAttentionStatus
+            status={displayStatus}
+            attentionPending={attentionPending}
+          />
           {agentMetadata.liveSession ? (
             <ActionButton
               label="停止"
@@ -4615,16 +4613,16 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           )}
           {showBranchAction ? (
             <ActionButton
-              label="Fork"
+              label="分叉"
               tone="primary"
               disabled={actionDisabled}
-              className="nodrag nopan compact"
+              className="agent-branch-action-button nodrag nopan compact"
               interactive
               onFocus={() => data.onSelectNode?.(id)}
               onClick={branchAgent}
               buttonProps={{
-                title: 'Fork 当前 Claude Code 会话',
-                'aria-label': 'Fork 当前 Claude Code 会话',
+                title: `分叉当前 ${providerLabel(provider)} 会话`,
+                'aria-label': `分叉当前 ${providerLabel(provider)} 会话`,
                 'data-agent-branch-action': 'true'
               }}
             />
@@ -7877,7 +7875,7 @@ function ActionButton(props: {
       onPointerUp={props.interactive ? stopCanvasEvent : undefined}
       onKeyDown={props.interactive ? stopCanvasEvent : undefined}
     >
-      {props.label}
+      <span className="action-button-label">{props.label}</span>
     </button>
   );
 }
@@ -11676,23 +11674,6 @@ function orderedAgentProviders(defaultProvider: AgentProviderKind): AgentProvide
   return [defaultProvider, secondaryProvider];
 }
 
-function isClaudeForkAgentLaunch(metadata: AgentNodeMetadata): boolean {
-  if (metadata.provider !== 'claude') {
-    return false;
-  }
-
-  const commandLine = metadata.lastLaunchCommandLine?.trim() || metadata.customLaunchCommand?.trim();
-  if (!commandLine) {
-    return false;
-  }
-
-  try {
-    return hasClaudeForkSessionFlag(parseFullAgentCommandLine(commandLine).args);
-  } catch {
-    return commandLine.includes('--fork-session');
-  }
-}
-
 function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): string {
   const lastLaunchCommandLine = metadata.lastLaunchCommandLine?.trim();
   if (lastLaunchCommandLine) {
@@ -11763,6 +11744,17 @@ function canResumeAgentFromMetadataForWebview(
   }
 
   return Boolean(metadata.resumeSessionId?.trim());
+}
+
+function canForkAgentFromMetadataForWebview(metadata: AgentNodeMetadata): boolean {
+  if (!canResumeAgentFromMetadataForWebview(metadata)) {
+    return false;
+  }
+
+  return (
+    (metadata.provider === 'claude' && metadata.resumeStrategy === 'claude-session-id') ||
+    (metadata.provider === 'codex' && metadata.resumeStrategy === 'codex-session-id')
+  );
 }
 
 function humanizeFileAccessMode(accessMode: FileListNodeEntrySummary['accessMode']): string {
