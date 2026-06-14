@@ -222,6 +222,36 @@ function runProtocolChecks(): void {
     },
     'requestExecutionPaste 协议应通过 validator。'
   );
+
+  assert.deepEqual(
+    parseWebviewMessage({
+      type: 'webview/executionClipboardDiagnostic',
+      payload: {
+        nodeId: 'agent-1',
+        kind: 'agent',
+        source: 'shortcut',
+        detail: {
+          action: 'copy',
+          selectionLength: 12,
+          mouseTrackingMode: 'none'
+        }
+      }
+    }),
+    {
+      type: 'webview/executionClipboardDiagnostic',
+      payload: {
+        nodeId: 'agent-1',
+        kind: 'agent',
+        source: 'shortcut',
+        detail: {
+          action: 'copy',
+          selectionLength: 12,
+          mouseTrackingMode: 'none'
+        }
+      }
+    },
+    'executionClipboardDiagnostic 协议应通过 validator。'
+  );
 }
 
 runShortcutMatrix();
