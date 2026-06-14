@@ -1,7 +1,7 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-06-10
+updated_at: 2026-06-13
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
 related_plans:
@@ -34,6 +34,7 @@ related_plans:
 2. 单根 workspace 读取并写入当前 root-local 画布状态。
 3. 多根 workspace 读取所有当前 root-local 画布状态，并组合成一张画布显示。
 4. 多根组合视图中，每个 root 显示为一个系统 root section。
+   root section 的 body 以固定密度平铺同名签名式水印，用于在多根 workspace 中快速确认当前会话所属 root；水印只使用 root 展示名，不替代标题 tooltip 中的完整路径，采用横向文本，字号与 root section title 相同并跟随同一套缩放逻辑，且不可交互。该能力由 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 控制，默认开启。
 5. 系统 root section 可以移动和 resize；移动后只保存多根 overlay 位置，不改变单根 root-local 节点坐标。
 6. 系统 root section 不能被删除、取消分组或重命名。
 7. root section 是 root-local 内容的硬容器：root 内节点或用户分组移动到边界外时，root section 扩张并继续包含它们。
@@ -65,6 +66,8 @@ related_plans:
 
 - 在单根 `frontend` workspace 中创建一个 Note，关闭后打开包含 `frontend` 与 `backend` 的 multi-root workspace，能在 `frontend` root section 中看到该 Note。
 - 在 multi-root workspace 中，每个 workspace folder 都显示一个系统 root section，标题对应 folder 名称。
+- 在 multi-root workspace 中，系统 root section 的 body 区域以固定密度平铺对应 folder 名称的低透明签名式水印；普通用户分组不显示自己的水印，也不会用分组背景遮掉所在 root 的水印；稳定节点仍覆盖水印。水印使用与 root section title 一致的字号和缩放逻辑，不拦截 root body 选择、聚焦或右键创建。
+- `devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 默认为 `true`；设为 `false` 后，系统 root section 不再渲染 body 水印，但保留 root section 标题和完整路径 tooltip。
 - 在 multi-root workspace 中移动某个 root section 后重新加载，多根布局保持；单独打开该 root 时，节点仍保持 root-local 相对位置。
 - 在 multi-root workspace 中把某个 root 内 Note 拖到 root 边界外后，root section 自动扩张；单独打开该 root 可以看到 Note 的 root-local 位置变化。
 - 在 multi-root workspace 中两个同父 root section 不会重叠；选中多个同父 root section 创建普通分组后，外层分组可以包含这些 root。
@@ -86,4 +89,4 @@ related_plans:
 
 ## 验证状态
 
-截至 2026-06-09，本规格已完成主路径自动化验证：`npm run test:canvas-multi-root-composition`、`npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:note-markdown-file-association`、`npm run test:extension-storage-paths`、`npm run typecheck`、`npm run build`、`git diff --check` 和针对 workspace root / cross-root edge 的 Playwright 用例均通过。Add Folder root placement 本轮新增 composition 回归覆盖新增 root 以当前可见中心就近避让、写入 overlay；新增 Webview 回归覆盖 `host/focusGroup` 通过缩放平移动画聚焦 workspace root section。review follow-up 追加覆盖 Host 侧多根文件活动自动 artifact 命名空间、live 文件活动 root-namespaced reference、suppression 剪枝，以及旧 multi-root skip 不覆盖 root-local live runtime 重连信号。2026-06-06 已实现 live runtime 验收口径修订：multi-root 按 root-local runtime metadata 共享恢复，不再整体 skip；自动化已覆盖取消 multi-root block、runtime binding key 包含 backend/storage/session/kind、缺失 `runtimeStoragePath` 的显式降级、supervisor output/state 多播与 delete 终态广播。2026-06-07 补充同 root 多 VS Code slot 验证：`node scripts/smoke/run-vscode-storage-slot-smoke.mjs` 已通过，覆盖 root-local snapshot 优先、旧 sibling slot 恢复、root-local live runtime 缺少 `runtimeStoragePath` 时不会被当前同 root slot 隐式接管；`single-to-multi-root-real-reopen` 真实 smoke 在最新 attach kind guard 与降级逻辑后复跑通过，并校验 setup 与 verify 阶段的 workspaceStorage slot name 一致。真实 VSCode smoke 已新增并通过 `multi-root-real-reopen`、`single-to-multi-root-real-reopen` 与 `two-window-shared-runtime`，覆盖 multi-root 窗口重启恢复、单根创建后 multi-root 重启恢复、离线输出可见、重连后输入继续作用同一 session、使用 root-local `runtimeStoragePath` 而不是当前 multi-root workspace storage，以及两个独立 VS Code 窗口同时 attach 同一 Agent/Terminal runtime 的双向 output 多播、双向 input、Terminal resize last-writer-wins、第二窗口 stop Terminal 和 delete Agent 后第一窗口收到非 live 终态。root section 参与全局 fit view 与 MiniMap 的导航增强已在 `docs/exec-plans/completed/canvas-spatial-fit-minimap.md` 中完成并记录定向验证。全量 Webview Playwright 仍有与本功能无直接关系或 lifecycle 断言口径相关的失败，需要后续按 Webview lifecycle / 截图基线测试口径单独收口。
+截至 2026-06-13，本规格已完成主路径自动化验证：`npm run test:canvas-multi-root-composition`、`npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run test:protocol-webview-messages`、`npm run test:canvas-templates`、`npm run test:note-markdown-file-association`、`npm run test:extension-storage-paths`、`npm run typecheck`、`npm run build`、`git diff --check` 和针对 workspace root / cross-root edge 的 Playwright 用例均通过。Add Folder root placement 本轮新增 composition 回归覆盖新增 root 以当前可见中心就近避让、写入 overlay；新增 Webview 回归覆盖 `host/focusGroup` 通过缩放平移动画聚焦 workspace root section；root body 平铺签名水印新增 Playwright 回归覆盖 workspace-root 专属渲染、root title 展示、重复铺排、横向样式、字号与 root title 同步缩放、低透明不可交互、配置关闭、body 点击穿透、普通分组背景不遮挡以及节点层仍覆盖水印。review follow-up 追加覆盖 Host 侧多根文件活动自动 artifact 命名空间、live 文件活动 root-namespaced reference、suppression 剪枝，以及旧 multi-root skip 不覆盖 root-local live runtime 重连信号。2026-06-06 已实现 live runtime 验收口径修订：multi-root 按 root-local runtime metadata 共享恢复，不再整体 skip；自动化已覆盖取消 multi-root block、runtime binding key 包含 backend/storage/session/kind、缺失 `runtimeStoragePath` 的显式降级、supervisor output/state 多播与 delete 终态广播。2026-06-07 补充同 root 多 VS Code slot 验证：`node scripts/smoke/run-vscode-storage-slot-smoke.mjs` 已通过，覆盖 root-local snapshot 优先、旧 sibling slot 恢复、root-local live runtime 缺少 `runtimeStoragePath` 时不会被当前同 root slot 隐式接管；`single-to-multi-root-real-reopen` 真实 smoke 在最新 attach kind guard 与降级逻辑后复跑通过，并校验 setup 与 verify 阶段的 workspaceStorage slot name 一致。真实 VSCode smoke 已新增并通过 `multi-root-real-reopen`、`single-to-multi-root-real-reopen` 与 `two-window-shared-runtime`，覆盖 multi-root 窗口重启恢复、单根创建后 multi-root 重启恢复、离线输出可见、重连后输入继续作用同一 session、使用 root-local `runtimeStoragePath` 而不是当前 multi-root workspace storage，以及两个独立 VS Code 窗口同时 attach 同一 Agent/Terminal runtime 的双向 output 多播、双向 input、Terminal resize last-writer-wins、第二窗口 stop Terminal 和 delete Agent 后第一窗口收到非 live 终态。root section 参与全局 fit view 与 MiniMap 的导航增强已在 `docs/exec-plans/completed/canvas-spatial-fit-minimap.md` 中完成并记录定向验证。全量 Webview Playwright 仍有与本功能无直接关系或 lifecycle 断言口径相关的失败，需要后续按 Webview lifecycle / 截图基线测试口径单独收口。

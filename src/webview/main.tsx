@@ -1042,6 +1042,7 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
   overviewMode: 'title',
   overviewZoomThreshold: DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  workspaceRootWatermarksEnabled: true,
   filePresentationMode: 'nodes',
   fileNodeDisplayStyle: 'minimal',
   fileNodeDisplayMode: 'icon-path',
@@ -1106,6 +1107,7 @@ function normalizeRuntimeContext(
         : normalizeExecutionTerminalWordSeparators(undefined),
     overviewMode: normalizeCanvasOverviewMode(runtimeContext?.overviewMode),
     overviewZoomThreshold: normalizeCanvasOverviewZoomThreshold(runtimeContext?.overviewZoomThreshold),
+    workspaceRootWatermarksEnabled: runtimeContext?.workspaceRootWatermarksEnabled !== false,
     filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
     fileNodeDisplayStyle: runtimeContext?.fileNodeDisplayStyle === 'card' ? 'card' : 'minimal',
     fileNodeDisplayMode:
@@ -1179,6 +1181,7 @@ function App(): JSX.Element {
     terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
     overviewMode: latestRuntimeContext.overviewMode,
     overviewZoomThreshold: latestRuntimeContext.overviewZoomThreshold,
+    workspaceRootWatermarksEnabled: latestRuntimeContext.workspaceRootWatermarksEnabled,
     filePresentationMode: latestRuntimeContext.filePresentationMode,
     fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
@@ -3489,6 +3492,7 @@ function App(): JSX.Element {
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
           <CanvasGroupsViewportLayer
             groups={groups}
+            workspaceRootWatermarksEnabled={runtimeContext.workspaceRootWatermarksEnabled}
             selectedGroupIds={resolveSelectedGroupIds(localUiState)}
             onSelectGroupBody={selectGroup}
             onFocusGroupInViewport={focusGroupInViewport}
@@ -9841,6 +9845,7 @@ function NoteMarkdownMetadataTrigger(props: {
 
 function CanvasGroupsViewportLayer(props: {
   groups: CanvasGroupSummary[];
+  workspaceRootWatermarksEnabled: boolean;
   selectedGroupIds?: readonly string[];
   onSelectGroupBody: (
     groupId: string,
@@ -9879,6 +9884,7 @@ function CanvasGroupsViewportLayer(props: {
         ? createPortal(
             <CanvasGroupBackgroundLayer
               groups={props.groups}
+              workspaceRootWatermarksEnabled={props.workspaceRootWatermarksEnabled}
               selectedGroupIds={props.selectedGroupIds}
               zoom={viewport.zoom}
               onSelectGroupBody={props.onSelectGroupBody}
@@ -9907,6 +9913,7 @@ function selectCanvasGroupForegroundPortalElement(state: ReactFlowState): HTMLDi
 
 function CanvasGroupBackgroundLayer(props: {
   groups: CanvasGroupSummary[];
+  workspaceRootWatermarksEnabled: boolean;
   selectedGroupIds?: readonly string[];
   zoom: number;
   onSelectGroupBody: (
@@ -9931,7 +9938,50 @@ function CanvasGroupBackgroundLayer(props: {
           onGroupBodyContextMenu={props.onGroupBodyContextMenu}
         />
       ))}
+      <CanvasRootWatermarkLayer
+        groups={orderedGroups}
+        enabled={props.workspaceRootWatermarksEnabled}
+        selectedGroupIds={selectedGroupIds}
+        zoom={props.zoom}
+      />
     </div>
+  );
+}
+
+function CanvasRootWatermarkLayer(props: {
+  groups: readonly CanvasGroupSummary[];
+  enabled: boolean;
+  selectedGroupIds: ReadonlySet<string>;
+  zoom: number;
+}): JSX.Element | null {
+  if (!props.enabled) {
+    return null;
+  }
+
+  const rootGroups = props.groups.filter((group) => isWorkspaceRootCanvasGroupRole(group.role));
+  if (rootGroups.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {rootGroups.map((group) => (
+        <div
+          key={`watermark-${group.id}`}
+          className="canvas-root-watermark-frame"
+          data-root-watermark-frame-id={group.id}
+          style={createCanvasGroupFrameStyle(group, props.zoom, props.selectedGroupIds.has(group.id), true)}
+        >
+          <div
+            className="canvas-root-watermark-tile"
+            data-root-name-watermark="true"
+            aria-hidden="true"
+          >
+            <span data-root-watermark-label={group.title}>{group.title}</span>
+          </div>
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -9946,11 +9996,13 @@ function CanvasGroupBackgroundFrame(props: {
   onFocusGroupInViewport: (groupId: string) => void;
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }): JSX.Element {
+  const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(props.group.role);
   return (
     <div
-      className="canvas-group-background-frame"
+      className={`canvas-group-background-frame${isWorkspaceRootGroup ? ' is-workspace-root' : ''}`}
       data-group-background-id={props.group.id}
-      style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
+      data-group-background-role={isWorkspaceRootGroup ? 'workspace-root' : 'user'}
+      style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected, false)}
     >
       <div
         className="canvas-group-background-body-hit-area"
@@ -10228,6 +10280,7 @@ const CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_MAX_INTERVAL_MS = 700;
 const CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_POSITION_TOLERANCE_PX = 8;
 const CANVAS_GROUP_TITLE_BASE_HEIGHT = 28;
 const CANVAS_GROUP_BODY_TOP_OFFSET = CANVAS_GROUP_TITLE_BASE_HEIGHT;
+const CANVAS_GROUP_TITLE_BASE_FONT_SIZE = 12;
 const CANVAS_GROUP_TITLE_BASE_MIN_WIDTH = 112;
 const CANVAS_GROUP_TITLE_HORIZONTAL_PADDING = 32;
 const CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR = 7;
@@ -10256,7 +10309,7 @@ function createCanvasGroupChromeStyle(zoom: number, readableScale: number): CSSP
     '--canvas-group-readable-scale': String(readableScale),
     '--canvas-group-title-height': `${CANVAS_GROUP_TITLE_BASE_HEIGHT * readableScale}px`,
     '--canvas-group-body-top': `${CANVAS_GROUP_BODY_TOP_OFFSET}px`,
-    '--canvas-group-title-font-size': `${12 * readableScale}px`,
+    '--canvas-group-title-font-size': `${CANVAS_GROUP_TITLE_BASE_FONT_SIZE * readableScale}px`,
     '--canvas-group-title-padding-left': `${12 * readableScale}px`,
     '--canvas-group-title-padding-right': `${10 * readableScale}px`,
     '--canvas-group-toolbar-button-padding-x': `${8 * readableScale}px`,
@@ -10275,7 +10328,8 @@ function createCanvasGroupChromeStyle(zoom: number, readableScale: number): CSSP
 function createCanvasGroupFrameStyle(
   group: Pick<CanvasGroupSummary, 'position' | 'size' | 'title' | 'role'>,
   zoom: number,
-  selected = false
+  selected = false,
+  workspaceRootWatermarksEnabled = true
 ): CSSProperties {
   const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(group.role);
   const titleBaseWidth = Math.max(
@@ -10300,15 +10354,69 @@ function createCanvasGroupFrameStyle(
   const toolbarWidth = selected && toolbarRenderBaseWidth > 0 && availableToolbarWidth >= 1
     ? Math.max(1, Math.min(desiredToolbarWidth, availableToolbarWidth))
     : 0;
+  const titleFontSize = CANVAS_GROUP_TITLE_BASE_FONT_SIZE * readableScale;
+  const rootWatermarkPattern = isWorkspaceRootGroup && workspaceRootWatermarksEnabled
+    ? createCanvasRootWatermarkPattern(group.title, titleFontSize, readableScale)
+    : undefined;
   return {
     ...createCanvasGroupChromeStyle(zoom, readableScale),
     '--canvas-group-title-tab-width': bodyAlignedTitleTabWidth,
     '--canvas-group-toolbar-width': `${toolbarWidth}px`,
+    ...(rootWatermarkPattern
+      ? {
+          '--canvas-root-watermark-pattern': rootWatermarkPattern.pattern,
+          '--canvas-root-watermark-tile-width': `${rootWatermarkPattern.tileWidth}px`,
+          '--canvas-root-watermark-tile-height': `${rootWatermarkPattern.tileHeight}px`
+        }
+      : {}),
     left: group.position.x,
     top: group.position.y,
     width: group.size.width,
     height: group.size.height
   } as CSSProperties;
+}
+
+function createCanvasRootWatermarkPattern(
+  title: string,
+  fontSize: number,
+  readableScale: number
+): { pattern: string; tileWidth: number; tileHeight: number } {
+  const label = title.trim() || 'Root';
+  const safeReadableScale = Number.isFinite(readableScale) && readableScale > 0 ? readableScale : 1;
+  const safeFontSize = Number.isFinite(fontSize) && fontSize > 0
+    ? fontSize
+    : CANVAS_GROUP_TITLE_BASE_FONT_SIZE * safeReadableScale;
+  const baseTileWidth = Math.max(
+    160,
+    Math.min(360, label.length * CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR + 84)
+  );
+  const tileWidth = Math.round(baseTileWidth * safeReadableScale);
+  const tileHeight = Math.round(88 * safeReadableScale);
+  const textX = Math.round(tileWidth / 2);
+  const textY = Math.round(tileHeight / 2);
+  const textLength = Math.max(84 * safeReadableScale, tileWidth - 44 * safeReadableScale);
+  const letterSpacing = 0.6 * safeReadableScale;
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${tileWidth}" height="${tileHeight}" viewBox="0 0 ${tileWidth} ${tileHeight}">`,
+    `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="middle" fill="black" font-family="sans-serif" font-size="${formatSvgNumber(safeFontSize)}" font-weight="600" letter-spacing="${formatSvgNumber(letterSpacing)}" textLength="${formatSvgNumber(textLength)}" lengthAdjust="spacingAndGlyphs">${escapeSvgText(label)}</text>`,
+    '</svg>'
+  ].join('');
+  return {
+    pattern: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
+    tileWidth,
+    tileHeight
+  };
+}
+
+function formatSvgNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/\.?0+$/u, '');
+}
+
+function escapeSvgText(value: string): string {
+  return value
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;');
 }
 
 function CanvasGroupFrame(props: {

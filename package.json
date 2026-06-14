@@ -479,6 +479,12 @@
             "%configuration.canvas.linkOpenMode.externalBrowser.description%"
           ]
         },
+        "devSessionCanvas.canvas.workspaceRootWatermarks.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "%configuration.canvas.workspaceRootWatermarks.enabled.description%"
+        },
         "devSessionCanvas.runtimePersistence.enabled": {
           "type": "boolean",
           "default": false,

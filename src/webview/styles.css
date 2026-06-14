@@ -3142,7 +3142,8 @@ body {
 }
 
 .canvas-group-frame,
-.canvas-group-background-frame {
+.canvas-group-background-frame,
+.canvas-root-watermark-frame {
   --canvas-group-panel-border: var(--vscode-panel-border);
   --canvas-group-panel-surface: var(--vscode-panel-background);
   --canvas-group-tab-surface: var(--vscode-panel-background);
@@ -3174,6 +3175,7 @@ body {
 }
 
 .canvas-group-background-frame {
+  z-index: 0;
   border: 0;
   background:
     linear-gradient(var(--canvas-group-panel-surface), var(--canvas-group-panel-surface))
@@ -3207,6 +3209,53 @@ body {
   border: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
   border-radius: 0;
   pointer-events: none;
+}
+
+.canvas-root-watermark-frame {
+  z-index: 1;
+  overflow: hidden;
+}
+
+.canvas-root-watermark-tile {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--canvas-group-body-top);
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.canvas-root-watermark-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.32;
+  background-color: color-mix(in srgb, var(--vscode-editor-foreground) 26%, transparent);
+  mask-image: var(--canvas-root-watermark-pattern);
+  mask-position: 18px 18px;
+  mask-repeat: repeat;
+  mask-size: var(--canvas-root-watermark-tile-width, 180px) var(--canvas-root-watermark-tile-height, 88px);
+  pointer-events: none;
+  -webkit-mask-image: var(--canvas-root-watermark-pattern);
+  -webkit-mask-position: 18px 18px;
+  -webkit-mask-repeat: repeat;
+  -webkit-mask-size: var(--canvas-root-watermark-tile-width, 180px) var(--canvas-root-watermark-tile-height, 88px);
+}
+
+.canvas-root-watermark-tile > span {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground) 26%, transparent);
+  font-family: var(--vscode-font-family);
+  font-size: var(--canvas-group-title-font-size);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .canvas-group-frame {

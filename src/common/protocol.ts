@@ -390,6 +390,7 @@ export interface CanvasRuntimeContext {
   terminalWordSeparators: string;
   overviewMode: CanvasOverviewMode;
   overviewZoomThreshold: number;
+  workspaceRootWatermarksEnabled: boolean;
   filePresentationMode: CanvasFilePresentationMode;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
