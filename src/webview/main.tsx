@@ -4488,6 +4488,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(id, 'agent', terminal, {
       onContentWillChange: (reason) => {
+        if (reason !== 'snapshot') {
+          nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+        }
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
         } else if (reason === 'output') {
@@ -4506,7 +4509,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         } else {
           cancelDeferredShrinkFit();
         }
-      }
+      },
+      beginSnapshotRestoreDiagnosticsSuppression: () =>
+        nativeInteractions?.beginSnapshotRestoreDiagnosticsSuppression()
     });
     nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
@@ -5034,6 +5039,9 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(id, 'terminal', terminal, {
       onContentWillChange: (reason) => {
+        if (reason !== 'snapshot') {
+          nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+        }
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
         } else if (reason === 'output') {
@@ -5052,7 +5060,9 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
         } else {
           cancelDeferredShrinkFit();
         }
-      }
+      },
+      beginSnapshotRestoreDiagnosticsSuppression: () =>
+        nativeInteractions?.beginSnapshotRestoreDiagnosticsSuppression()
     });
     nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
@@ -13343,6 +13353,7 @@ function createExecutionTerminalController(
   options?: {
     onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
+    beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
   }
 ): ExecutionTerminalController {
   let pendingOutput = '';
@@ -13800,7 +13811,10 @@ function createExecutionTerminalController(
                 return;
               }
               markStarted?.();
+              const releaseSnapshotRestoreDiagnosticsSuppression =
+                options?.beginSnapshotRestoreDiagnosticsSuppression?.();
               restoreExecutionTerminalSnapshot(terminal, detail, () => {
+                releaseSnapshotRestoreDiagnosticsSuppression?.();
                 finishSnapshotWrite(snapshotDone);
               });
             },
