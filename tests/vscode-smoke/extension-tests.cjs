@@ -1522,6 +1522,7 @@ async function verifyCodexAgentBranchFromCurrentNode() {
     await ensureEditorCanvasReady();
 
     const beforeBranchSnapshot = await getDebugSnapshot();
+    await clearDiagnosticEvents();
     const diagnosticStartIndex = (await getDiagnosticEvents()).length;
     await dispatchWebviewMessage({
       type: 'webview/branchAgentSession',
@@ -1705,6 +1706,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
     await ensureEditorCanvasReady();
 
     const beforeBranchSnapshot = await getDebugSnapshot();
+    await clearDiagnosticEvents();
     const diagnosticStartIndex = (await getDiagnosticEvents()).length;
     await dispatchWebviewMessage({
       type: 'webview/branchAgentSession',
@@ -4570,7 +4572,14 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   assert.strictEqual(agentNode.status, 'waiting-input');
 
   await requestExecutionSnapshot('agent', agentNodeId);
-  let hostMessages = await getHostMessages();
+  let hostMessages = await waitForHostMessages((messages) =>
+    messages.some(
+      (message) =>
+        message.type === 'host/executionSnapshot' &&
+        message.payload.kind === 'agent' &&
+        message.payload.nodeId === agentNodeId
+    )
+  );
   assert.ok(
     hostMessages.some(
       (message) =>

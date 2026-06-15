@@ -18,7 +18,7 @@ English | [简体中文](README.zh-CN.md)
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on preparing the `0.15.2` Preview patch release and tightening follow-up `0.15.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase and already completed its first external release. Current work is focused on preparing the `0.16.0` Preview milestone release and tightening follow-up `0.16.x` capabilities, release materials, and regression verification. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](images/marketplace/canvas-overview.gif)
 
@@ -39,19 +39,19 @@ The product has entered the public `Preview` phase and already completed its fir
 - `Note` nodes can be associated with `.md` / `.markdown` files in the workspace, with YAML metadata popovers and safe Markdown image previews
 - Canvas templates with built-in default templates, custom template save / import / export, a template sidebar, reset entry points, and explicit save modes for associated Markdown Notes
 - Canvas groups for naming, nesting, moving, resizing, and browsing related `Agent` / `Terminal` / `Note` nodes as larger work areas
-- Multi-root workspace composition that shows each workspace folder as a system root section while preserving root-local canvas state
+- Multi-root workspace composition that shows each workspace folder as a system root section with optional root-name watermarks while preserving root-local canvas state
 - Spatial fit view and MiniMap navigation that include nodes, user groups, and workspace-root sections
 - Cross-platform shell-environment inheritance and diagnosable launch paths for `Agent` and embedded `Terminal` nodes
 - File Explorer context-menu entries that create cwd-scoped `Terminal` or `Agent` nodes from workspace folders or files
 - Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics
-- Execution-terminal link detection for native-style URLs, file paths, multiline line-number output, high-confidence TUI hard-wrapped URL / styled-file fragments, and live-output file-link cache refresh
+- Execution-terminal link detection for native-style URLs, file paths, multiline line-number output, high-confidence TUI hard-wrapped URL / styled-file fragments, live-output file-link cache refresh, and click-time fallback search
 - Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands, opening their config files, and separating stopped-node `New` versus `Restart` actions
 - Codex / Claude Code Agent `Fork` from a trusted session id into a new Agent node that starts with provider-native fork semantics
 - Automatic CLI selection / installation recovery when an `Agent` launch cannot resolve the requested CLI
 - Multi-section desktop-notification companion sidebar with platform onboarding and `Codex` / `Claude Code` notification-configuration guidance
 - Limited capability handling under `Restricted Mode`
 - A public `Preview` release path targeting the `Visual Studio Marketplace` and `Open VSX`
-- Sidebar `Nodes` and `Session History` lists that let users jump to canvas nodes and restore a new `Agent` node from history
+- Sidebar `Nodes` and `Session History` lists that let users jump to canvas nodes and restore or fork a new `Agent` node from history
 
 ## What The Preview Does Not Include
 
@@ -73,15 +73,15 @@ The product has entered the public `Preview` phase and already completed its fir
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current `0.15.2` release-prep focus is to ship a Preview patch for execution-node notification controls, Codex final-failure text reminders, Claude Agent `Ctrl-Z` containment, and canvas external-link opening controls. It preserves the `0.15.1` canvas navigation and multi-root reliability patch, the `0.15.0` Claude Code Agent Fork, owner-derived file-activity grouping, Panel Webview lifecycle diagnostics, publish-tag / GitHub Release assets automation, Marketplace metadata, installation topology, support boundaries, and Marketplace `Preview` positioning. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current `0.16.0` release-prep focus is to ship a Preview milestone for Codex / Claude Code Agent Fork from current nodes and history, sidebar pending-attention triage, multi-root root watermarks, Agent cwd / launch-command title clarity, execution-terminal copy diagnostics, file-link activation fallback, and multi-Agent input responsiveness. It preserves the `0.15.2` notification controls, Claude Agent `Ctrl-Z` containment, canvas external-link opening controls, GitHub Release assets automation, Marketplace metadata, installation topology, support boundaries, and Marketplace `Preview` positioning. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
 - The current version is `Preview`, not a stable release.
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
-- The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; as of the `0.15.2` release-prep review on 2026-06-14, Open VSX is publicly visible but the Visual Studio Marketplace item pages still need to be restored / verified before final publish is treated as complete.
-- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.15.2` repo-local validation focuses on version/package consistency, notification allow-list coverage, Codex final-failure text coverage, Claude Agent `Ctrl-Z` containment coverage, extension manifest checks, VSIX payload checks, and publish dry-run consistency; Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; as of the `0.16.0` release-prep review on 2026-06-15, the previous `0.15.2` Open VSX release and GitHub Release assets are publicly visible, but the Visual Studio Marketplace item pages still need to be restored / verified before the next final publish is treated as complete.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.16.0` repo-local validation focuses on version/package consistency, Codex / Claude Fork command coverage, sidebar node and history coverage, multi-root watermark coverage, execution-terminal link and clipboard diagnostics coverage, output sequence recovery coverage, extension manifest checks, VSIX payload checks, and publish dry-run consistency; Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
@@ -92,10 +92,10 @@ Related entry points:
 
 ## Preview Distribution
 
-Public distribution is intended to happen through public extension registries. Official VS Code is still intended to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. During `0.15.2` release prep, Open VSX visibility is confirmed and Visual Studio Marketplace visibility remains a final-publish gate. GitHub Release assets are used as a release-day artifact mirror and manual-install fallback, not as a replacement for marketplace verification. `.vsix` files are otherwise kept as build artifacts and release-verification inputs rather than ordinary distribution files.
+Public distribution is intended to happen through public extension registries. Official VS Code is still intended to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. During `0.16.0` release prep, the previous `0.15.2` Open VSX release and GitHub Release assets are confirmed, while Visual Studio Marketplace visibility remains a final-publish gate. GitHub Release assets are used as a release-day artifact mirror and manual-install fallback, not as a replacement for marketplace verification. `.vsix` files are otherwise kept as build artifacts and release-verification inputs rather than ordinary distribution files.
 
 - Public `Preview` users should install through the extension registry configured by their host rather than by manually distributing a `.vsix`
-- `Visual Studio Marketplace` remains the intended official VS Code installation path, but `0.15.2` final publish must first confirm that both the main extension and notifier are publicly visible there; later `0.15.x` updates still need the final git ref locked, the same version published to both `Visual Studio Marketplace` and `Open VSX`, and post-release verification completed
+- `Visual Studio Marketplace` remains the intended official VS Code installation path, but `0.16.0` final publish must first confirm that both the main extension and notifier are publicly visible there; later `0.16.x` updates still need the final git ref locked, the same version published to both `Visual Studio Marketplace` and `Open VSX`, and post-release verification completed
 - `Open VSX` does not change the official VS Code Marketplace path and does not expand the compatibility-support matrix by itself
 
 ## Desktop Notification Companion (Auto-Installed)
@@ -130,7 +130,7 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 
 - The product is still in `Preview` and should not be treated as a stable production tool.
 - `Virtual Workspace` is not supported.
-- The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring, but `0.15.2` final publish must first restore / verify Visual Studio Marketplace public visibility; release-day publication still requires manual execution and review.
+- The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring, but `0.16.0` final publish must first restore / verify Visual Studio Marketplace public visibility; release-day publication still requires manual execution and review.
 - The `Remote SSH` main path is validated and usable, and it remains the most strongly validated recommended path. Linux, macOS, and Windows local main paths also have functional validation now, but Windows still has a known limitation where embedded `Codex` history cannot page upward.
 - `Note` Markdown preview does not support raw HTML passthrough, arbitrary link schemes, file links outside the current workspace, directory targets, or rich-text block editing.
 - Templates currently save static layout and configuration only; they do not save running sessions, terminal output, file activity, thumbnails, cloud sync, or template history.

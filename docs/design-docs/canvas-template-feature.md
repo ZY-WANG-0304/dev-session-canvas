@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/canvas-template-feature.md
   - docs/exec-plans/active/canvas-template-associated-note-modes.md
-updated_at: 2026-05-15
+updated_at: 2026-06-15
 ---
 
 # 画布模板功能设计
@@ -292,5 +292,6 @@ updated_at: 2026-05-15
 - 画布空白区右键菜单根层已移除说明文案，只保留“画布操作”标题和具体操作项；Playwright harness 已补充断言覆盖根层不再出现“先创建节点”提示。本轮再次执行 `npm run typecheck` 与 `npm run test:webview -- --grep "right-clicking the empty pane opens a quick-create menu near the pointer"`，均通过。
 - Webview 右键重置路径在 smoke 中已显式模拟 modal 确认；命令面板和 sidebar 模板入口已改为应用 / 重置后拿到新增节点 id，reveal 到最终承载面后再触发组级追焦。本轮再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`，均通过。
 - 模板 sidebar 第二行位置标签已从 `内置 / 用户` 扩展为 `内置 / 工作区 / 用户`，用于区分内置模板、workspace 模板和当前设备用户模板。本轮再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已覆盖 workspace 模板映射为 `工作区` 标签。
+- 2026-06-15 `0.16.0` 发布准备的 VSIX packaged-payload smoke 发现：若当前默认模板指向已删除的用户模板，宿主只在显式解析默认模板记录时回退，模板 catalog 更新仍可能把已删除 id 作为 `defaultTemplateId` 发给 Webview。当前修复为发送 catalog 和删除用户模板后都先 reconcile 并持久化有效默认模板 id；已通过 `npm run test:vsix-smoke` 回归验证。
 - Marketplace 预览媒体录制入口已改为启动真实 Extension Development Host，不再依赖 VS Code extension test host；右键重置模板路径保留原生 modal，并在录制片段内通过鼠标/键盘完成确认。
 - 验证覆盖了“首次默认模板”“保存/应用不自动启动”“导入/导出/删除与默认模板回退”“组级避碰落位”“restricted note-only 限制”以及 Agent `argv` 在模板保存/加载链路中的保留。
