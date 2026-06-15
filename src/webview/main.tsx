@@ -4649,6 +4649,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     resizeObserver.observe(container);
 
     const dataDisposable = terminal.onData((input) => {
+      nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
       if (terminalFlagsRef.current.blockCtrlZInput && containsTerminalSuspendInput(input)) {
         data.onShowTransientError?.('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。');
         return;
@@ -5199,11 +5200,12 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
     });
     resizeObserver.observe(container);
 
-    const dataDisposable = terminal.onData((input) =>
+    const dataDisposable = terminal.onData((input) => {
+      nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
       reportExecutionInputDispatch(id, 'terminal', input, (metadata) =>
         data.onExecutionInput?.(id, 'terminal', input, metadata)
-      )
-    );
+      );
+    });
     const selectionDisposable = terminal.onSelectionChange(() => {
       if (shouldSelectExecutionNodeForTerminalSelection(terminal)) {
         data.onSelectNode?.(id);
