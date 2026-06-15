@@ -425,7 +425,7 @@ try {
   );
   assert.match(
     managerSource,
-    /handleRuntimeSupervisorOutput\(backend\.kind, runtimeStoragePath, event\.kind, event\.sessionId, event\.chunk\)/u,
+    /handleRuntimeSupervisorOutput\(backend\.kind, runtimeStoragePath, event\)/u,
     'supervisor output 绑定必须使用事件里的 execution kind，避免同 session id 不同 kind 串线。'
   );
   assert.match(

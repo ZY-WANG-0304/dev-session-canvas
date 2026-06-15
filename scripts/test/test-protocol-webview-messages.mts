@@ -98,7 +98,9 @@ assert.deepEqual(
     payload: {
       nodeId: 'agent-1',
       kind: 'agent',
-      requestId: 'snapshot-reset-1'
+      requestId: 'snapshot-reset-1',
+      executionSessionId: 'agent-session-1',
+      minOutputSequence: 42
     }
   }),
   {
@@ -106,10 +108,12 @@ assert.deepEqual(
     payload: {
       nodeId: 'agent-1',
       kind: 'agent',
-      requestId: 'snapshot-reset-1'
+      requestId: 'snapshot-reset-1',
+      executionSessionId: 'agent-session-1',
+      minOutputSequence: 42
     }
   },
-  'execution snapshot reset 复用 attachExecutionSession 请求刷新 Host 侧权威快照，并保留 requestId 供回包关联。'
+  'execution snapshot reset 复用 attachExecutionSession 请求刷新 Host 侧权威快照，并保留 requestId、session 与最小 outputSequence 供 Host 对齐。'
 );
 
 const lifecycleMessage = {

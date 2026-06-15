@@ -203,6 +203,7 @@ export interface ExecutionSessionMetadata {
   backend: TerminalBackendKind;
   shellPath: string;
   cwd: string;
+  outputSequence?: number;
   persistenceMode: RuntimePersistenceMode;
   attachmentState: RuntimeAttachmentState;
   runtimeBackend?: RuntimeHostBackendKind;
@@ -812,6 +813,8 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         nodeId: string;
         kind: ExecutionNodeKind;
         requestId?: string;
+        executionSessionId?: string;
+        minOutputSequence?: number;
       };
     }
   | {
@@ -1532,6 +1535,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       return null;
     }
 
+    const minOutputSequence = normalizeNonNegativeInteger(payload.minOutputSequence);
     return {
       type: value.type,
       payload: {
@@ -1539,6 +1543,12 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         kind: payload.kind,
         ...(value.type === 'webview/attachExecutionSession' && typeof payload.requestId === 'string'
           ? { requestId: payload.requestId }
+          : {}),
+        ...(value.type === 'webview/attachExecutionSession' && typeof payload.executionSessionId === 'string'
+          ? { executionSessionId: payload.executionSessionId }
+          : {}),
+        ...(value.type === 'webview/attachExecutionSession' && minOutputSequence !== undefined
+          ? { minOutputSequence }
           : {})
       }
     };

@@ -12529,7 +12529,9 @@ for (const executionKind of ['agent', 'terminal']) {
     const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
     expect(attachRequest.payload).toMatchObject({
       nodeId,
-      kind: executionKind
+      kind: executionKind,
+      executionSessionId,
+      minOutputSequence: 1
     });
     expect(attachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
 
@@ -12588,6 +12590,83 @@ for (const executionKind of ['agent', 'terminal']) {
     ).toBe(true);
   });
 
+  test(`${executionKind} requests hidden snapshot reset before visible backlog threshold`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const hiddenBacklogLine = 'HIDDEN-BACKLOG-SHOULD-RESET-EARLY';
+    const hiddenBacklog = `${hiddenBacklogLine}\r\n${'h'.repeat(160 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-hidden-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get: () => true
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await clearPostedMessages(page);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hiddenBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    expect(attachRequest.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      minOutputSequence: 1
+    });
+    expect(attachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
+
+    const resetDiagnostics = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionPerformanceDiagnostic',
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.payload.source === 'webview-output-snapshot-reset' &&
+            message.payload.nodeId === nodeId &&
+            message.payload.requestId === attachRequest.payload.requestId &&
+            message.payload.reason === 'hidden-backlog-snapshot-reset'
+        )
+    );
+    const resetDiagnostic = resetDiagnostics.find(
+      (message) =>
+        message.payload.source === 'webview-output-snapshot-reset' &&
+        message.payload.nodeId === nodeId &&
+        message.payload.requestId === attachRequest.payload.requestId &&
+        message.payload.reason === 'hidden-backlog-snapshot-reset'
+    );
+    expect(resetDiagnostic.payload.characters).toBeGreaterThanOrEqual(hiddenBacklog.length);
+    expect(resetDiagnostic.payload.sequence).toBe(1);
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get: () => false
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  });
+
   test(`${executionKind} keeps snapshot reset deferred output bounded while waiting for Host snapshot`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const staleBacklogLine = 'STALE-BACKLOG-BUDGET-SHOULD-NOT-REPLAY';
@@ -12625,6 +12704,12 @@ for (const executionKind of ['agent', 'terminal']) {
     });
     const firstAttachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
     expect(firstAttachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
+    expect(firstAttachRequest.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      minOutputSequence: 1
+    });
 
     for (let index = 0; index < 5; index += 1) {
       await dispatchExecutionOutput(page, {
@@ -12663,6 +12748,12 @@ for (const executionKind of ['agent', 'terminal']) {
     const latestAttachRequest = attachRequests.at(-1);
     expect(latestAttachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
     expect(latestAttachRequest.payload.requestId).not.toBe(firstAttachRequest.payload.requestId);
+    expect(latestAttachRequest.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      minOutputSequence: 5
+    });
 
     await dispatchExecutionOutput(page, {
       nodeId,
