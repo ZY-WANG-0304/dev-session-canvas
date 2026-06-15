@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 画布交互域, 协作对象域, 执行编排域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层]
 related_specs: [docs/product-specs/agent-terminal-clipboard-shortcuts.md]
 related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md]
-updated_at: 2026-06-14
+updated_at: 2026-06-15
 ---
 
 # Agent / Terminal 终端复制粘贴快捷键交互
@@ -114,6 +114,8 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 
 2026-06-14 补充：为了定位“复制快捷键或右键复制没有生效”的现场原因，正式方案增加只读诊断，不改变复制行为。`src/webview/executionTerminalNativeInteractions.ts` 在执行节点 xterm 内上报 `webview/executionClipboardDiagnostic`，覆盖本地 Webview 平台推断、复制/粘贴快捷键判定、xterm selection 变化、TUI mouse tracking 模式变化、mouse tracking 下的拖选尝试、右键菜单触发时的选区状态，以及收到 OSC 52 时的目标、payload 类型和短预览。`src/panel/CanvasPanelManager.ts` 只把这些事件写入 `diagnostic-events.json`，并在 `summary.json.diagnostics.executionClipboardSummary` 汇总按 source / node 的计数和最新状态；Host 不因为该诊断写剪贴板，也不把 OSC 52 转成复制。`src/common/protocol.ts` 同步扩展 `WebviewProbeNodeSnapshot`，让 `panel-probe.json` 能直接看到 `terminalMouseTrackingMode`、`terminalBufferType` 和 `terminalHasFocus`，用于区分“没有 xterm 选区”“TUI mouse tracking 捕获了拖选”“平台快捷键推断错误”和“OSC 52 已出现但未桥接”等原因。
 
+2026-06-15 补充：snapshot restore 期间的 `terminal.reset()` 与 `terminal.write(snapshot)` 会触发 xterm 内部 selection、mouse tracking 和 OSC 52 parser 事件，这些属于程序化恢复副作用，不代表用户实际选择或复制。Webview 只在显式进入 snapshot restore 上下文时抑制 `selectionChange`、`mouseTrackingMode` 和 `osc52` 三类 clipboard 诊断，并在 restore 完成后的短帧窗口内继续吸收 xterm 延迟派发的同类事件，随后聚合上报一条 `restoreSuppressed`，其中包含 reason、generation、total 与按 source 的 counts；若下一次真实 output/input/exit 写入开始，会先刷新这条聚合诊断，避免抑制窗口跨越到用户路径。`shortcut`、`contextMenu`、`mouseSelection`、paste/copy 请求和 `environment` 诊断不进入抑制窗口；系统也不做“空选区同值去重/节流”，避免把真实用户现场误判为噪音。
+
 ## 8. 验证方法
 
 实现时应同时覆盖纯规则测试、Webview DOM 测试和至少一条真实 VSCode smoke / 手动验证说明。
@@ -127,6 +129,8 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 截至 2026-05-09，本设计已通过纯规则测试、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke 验证。已执行命令包括 `npm run test:execution-terminal-clipboard`、`npm run typecheck`、`npm run test:webview` 和 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`。
 
 2026-06-14 诊断补充已通过 `npm run typecheck`、`npm run test:execution-terminal-clipboard` 和 `npm run test:webview -- --grep "terminal copy diagnostics"` 验证。覆盖范围包括协议 validator、Agent / Terminal 两类节点的 mouse tracking 模式上报、mouse tracking 下拖选后无 xterm 选区的快捷键诊断、右键菜单选区诊断，以及 OSC 52 诊断事件。
+
+2026-06-15 snapshot restore 抑制补充的验证口径是：协议 validator 接受 `restoreSuppressed` source；Playwright 在 Agent / Terminal 两类节点上通过 snapshot replay 触发 mouse tracking 与 OSC 52，断言 restore 窗口内没有原始 `mouseTrackingMode` / `osc52` / `selectionChange` 诊断，只保留聚合 `restoreSuppressed`；同一节点在 restore 之后收到 live OSC 52 output 时仍正常上报原始 `osc52` 诊断。
 
 ## 9. 参考资料
 

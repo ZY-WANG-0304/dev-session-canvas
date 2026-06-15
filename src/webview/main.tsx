@@ -4488,6 +4488,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(id, 'agent', terminal, {
       onContentWillChange: (reason) => {
+        if (reason !== 'snapshot') {
+          nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+        }
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
         } else if (reason === 'output') {
@@ -4506,7 +4509,9 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         } else {
           cancelDeferredShrinkFit();
         }
-      }
+      },
+      beginSnapshotRestoreDiagnosticsSuppression: () =>
+        nativeInteractions?.beginSnapshotRestoreDiagnosticsSuppression()
     });
     nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
@@ -4644,6 +4649,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     resizeObserver.observe(container);
 
     const dataDisposable = terminal.onData((input) => {
+      nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
       if (terminalFlagsRef.current.blockCtrlZInput && containsTerminalSuspendInput(input)) {
         data.onShowTransientError?.('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。');
         return;
@@ -5034,6 +5040,9 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
     const controller = createExecutionTerminalController(id, 'terminal', terminal, {
       onContentWillChange: (reason) => {
+        if (reason !== 'snapshot') {
+          nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+        }
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
         } else if (reason === 'output') {
@@ -5052,7 +5061,9 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
         } else {
           cancelDeferredShrinkFit();
         }
-      }
+      },
+      beginSnapshotRestoreDiagnosticsSuppression: () =>
+        nativeInteractions?.beginSnapshotRestoreDiagnosticsSuppression()
     });
     nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
@@ -5189,11 +5200,12 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
     });
     resizeObserver.observe(container);
 
-    const dataDisposable = terminal.onData((input) =>
+    const dataDisposable = terminal.onData((input) => {
+      nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
       reportExecutionInputDispatch(id, 'terminal', input, (metadata) =>
         data.onExecutionInput?.(id, 'terminal', input, metadata)
-      )
-    );
+      );
+    });
     const selectionDisposable = terminal.onSelectionChange(() => {
       if (shouldSelectExecutionNodeForTerminalSelection(terminal)) {
         data.onSelectNode?.(id);
@@ -13524,6 +13536,7 @@ function createExecutionTerminalController(
   options?: {
     onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
+    beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
   }
 ): ExecutionTerminalController {
   let pendingOutput = '';
@@ -13981,7 +13994,10 @@ function createExecutionTerminalController(
                 return;
               }
               markStarted?.();
+              const releaseSnapshotRestoreDiagnosticsSuppression =
+                options?.beginSnapshotRestoreDiagnosticsSuppression?.();
               restoreExecutionTerminalSnapshot(terminal, detail, () => {
+                releaseSnapshotRestoreDiagnosticsSuppression?.();
                 finishSnapshotWrite(snapshotDone);
               });
             },
