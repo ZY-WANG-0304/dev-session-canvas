@@ -191,7 +191,8 @@ export type ExecutionTerminalClipboardDiagnosticSource =
   | 'mouseTrackingMode'
   | 'mouseSelection'
   | 'contextMenu'
-  | 'osc52';
+  | 'osc52'
+  | 'restoreSuppressed';
 export interface ExecutionTerminalClipboardDiagnosticPayload {
   nodeId: string;
   kind: ExecutionNodeKind;
@@ -2432,7 +2433,8 @@ function isExecutionClipboardDiagnosticSource(
     value === 'mouseTrackingMode' ||
     value === 'mouseSelection' ||
     value === 'contextMenu' ||
-    value === 'osc52'
+    value === 'osc52' ||
+    value === 'restoreSuppressed'
   );
 }
 

@@ -252,6 +252,42 @@ function runProtocolChecks(): void {
     },
     'executionClipboardDiagnostic 协议应通过 validator。'
   );
+
+  assert.deepEqual(
+    parseWebviewMessage({
+      type: 'webview/executionClipboardDiagnostic',
+      payload: {
+        nodeId: 'terminal-1',
+        kind: 'terminal',
+        source: 'restoreSuppressed',
+        detail: {
+          reason: 'snapshot-restore',
+          total: 2,
+          counts: {
+            selectionChange: 1,
+            osc52: 1
+          }
+        }
+      }
+    }),
+    {
+      type: 'webview/executionClipboardDiagnostic',
+      payload: {
+        nodeId: 'terminal-1',
+        kind: 'terminal',
+        source: 'restoreSuppressed',
+        detail: {
+          reason: 'snapshot-restore',
+          total: 2,
+          counts: {
+            selectionChange: 1,
+            osc52: 1
+          }
+        }
+      }
+    },
+    'snapshot restore clipboard diagnostic suppression summary 应通过 validator。'
+  );
 }
 
 runShortcutMatrix();

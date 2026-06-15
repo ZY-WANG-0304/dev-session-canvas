@@ -3643,6 +3643,69 @@ for (const executionKind of ['agent', 'terminal']) {
     });
   });
 
+  test(`${executionKind} snapshot restore suppresses programmatic clipboard diagnostics`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const osc52Text = 'snapshot restore osc52 diagnostic';
+    const snapshotOutput = `before restore\r\n\x1b[?1002h\x1b]52;c;${Buffer.from(
+      osc52Text,
+      'utf8'
+    ).toString('base64')}\x07after restore\r\n`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: snapshotOutput,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+
+    await expect
+      .poll(async () => {
+        const diagnostics = await readPostedMessagesByType(page, 'webview/executionClipboardDiagnostic');
+        return diagnostics.some((entry) => entry.payload.source === 'restoreSuppressed');
+      })
+      .toBe(true);
+
+    const diagnostics = await readPostedMessagesByType(page, 'webview/executionClipboardDiagnostic');
+    expect(
+      diagnostics.filter((entry) => ['selectionChange', 'mouseTrackingMode', 'osc52'].includes(entry.payload.source))
+    ).toHaveLength(0);
+    const suppressionDiagnostic = diagnostics.find((entry) => entry.payload.source === 'restoreSuppressed');
+    expect(suppressionDiagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'restoreSuppressed'
+    });
+    expect(suppressionDiagnostic.payload.detail).toMatchObject({
+      reason: 'snapshot-restore',
+      counts: {
+        mouseTrackingMode: 1,
+        osc52: 1
+      }
+    });
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `\x1b]52;c;${Buffer.from('live osc52 diagnostic', 'utf8').toString('base64')}\x07`
+    });
+    const liveDiagnostic = await waitForPostedMessageByType(page, 'webview/executionClipboardDiagnostic');
+    expect(liveDiagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'osc52'
+    });
+  });
+
   test(`${executionKind} terminal paste shortcut requests host clipboard text and routes returned text through xterm`, async ({
     page
   }) => {
