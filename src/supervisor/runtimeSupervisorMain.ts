@@ -62,6 +62,10 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
 
+function normalizeRuntimeSupervisorOutputSequence(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
 interface SupervisorRegistry {
   version: 1;
   sessions: RuntimeSupervisorSessionSnapshot[];
@@ -82,6 +86,7 @@ interface SupervisorSession {
   rows: number;
   scrollback: number;
   output: string;
+  outputSequence: number;
   terminalStateTracker: SerializedTerminalStateTracker;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
@@ -285,6 +290,7 @@ class RuntimeSupervisorServer {
       rows: params.launchSpec.rows,
       scrollback,
       output: '',
+      outputSequence: 0,
       terminalStateTracker: new SerializedTerminalStateTracker(params.launchSpec.cols, params.launchSpec.rows, {
         scrollback
       }),
@@ -731,13 +737,15 @@ class RuntimeSupervisorServer {
   }
 
   private emitSessionOutput(session: SupervisorSession, chunk: string): void {
+    session.outputSequence += 1;
     const message: RuntimeSupervisorEvent = {
       type: 'event',
       event: 'sessionOutput',
       payload: {
         sessionId: session.sessionId,
         kind: session.kind,
-        chunk
+        chunk,
+        outputSequence: session.outputSequence
       }
     };
     this.broadcastToSessionSubscribers(session.sessionId, message);
@@ -818,6 +826,7 @@ class RuntimeSupervisorServer {
       rows: session.rows,
       scrollback: session.scrollback,
       output: session.output,
+      outputSequence: session.outputSequence,
       serializedTerminalState: session.terminalStateTracker.getSerializedState(),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
@@ -979,6 +988,7 @@ class RuntimeSupervisorServer {
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
       scrollback,
+      outputSequence: normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence),
       terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
         scrollback,
         initialState: snapshot.serializedTerminalState,

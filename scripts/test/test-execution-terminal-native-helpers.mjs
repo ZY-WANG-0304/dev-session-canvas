@@ -38,6 +38,8 @@ try {
       '  openExternalCalls: [],',
       '  asExternalUriCalls: [],',
       '  externalUriResolutions: new Map(),',
+      '  findFilesCalls: [],',
+      '  statCalls: [],',
       '  allowedLinkSchemes: []',
       '};',
       'function createUri(fsPath, rawValue) {',
@@ -93,6 +95,8 @@ try {
       '  state.openExternalCalls = [];',
       '  state.asExternalUriCalls = [];',
       '  state.externalUriResolutions = new Map();',
+      '  state.findFilesCalls = [];',
+      '  state.statCalls = [];',
       '  state.allowedLinkSchemes = [];',
       '}',
       'exports.__reset = resetState;',
@@ -123,6 +127,12 @@ try {
       'exports.__setExternalUriResolution = function setExternalUriResolution(source, target) {',
       '  state.externalUriResolutions.set(source, target);',
       '};',
+      'exports.__getFindFilesCalls = function getFindFilesCalls() {',
+      '  return state.findFilesCalls.slice();',
+      '};',
+      'exports.__getStatCalls = function getStatCalls() {',
+      '  return state.statCalls.slice();',
+      '};',
       'exports.Range = Range;',
       'exports.RelativePattern = RelativePattern;',
       'exports.FileType = FileType;',
@@ -141,6 +151,7 @@ try {
       '  get workspaceFolders() { return state.workspaceFolders; },',
       '  fs: {',
       '    async stat(uri) {',
+      '      state.statCalls.push(uri.fsPath);',
       '      const entry = state.files.get(uri.fsPath);',
       '      if (!entry) {',
       "        throw new Error('ENOENT');",
@@ -152,6 +163,11 @@ try {
       '    return { uri };',
       '  },',
       '  async findFiles(relativePattern, _exclude, maxResults) {',
+      '    state.findFilesCalls.push({',
+      '      base: relativePattern.baseUri.fsPath,',
+      '      pattern: relativePattern.pattern,',
+      '      maxResults',
+      '    });',
       '    const workspaceFolderPath = relativePattern.baseUri.fsPath;',
       '    const matcher = globPatternToRegExp(relativePattern.pattern);',
       '    const results = [];',
@@ -229,7 +245,13 @@ try {
   const require = createRequire(import.meta.url);
   const helperModule = require(outfile);
   const vscodeStub = createRequire(outfile)('vscode');
-  const { openExecutionTerminalLink, prepareExecutionTerminalDroppedPath, resolveExecutionFileLink } = helperModule;
+  const {
+    filterResolvableExecutionTerminalFileLinkCandidates,
+    openExecutionTerminalLink,
+    prepareExecutionTerminalDroppedPath,
+    resolveExecutionFileLink,
+    resolveExecutionTerminalFileLinkCandidates
+  } = helperModule;
 
   assert.equal(
     prepareExecutionTerminalDroppedPath(
@@ -415,6 +437,138 @@ try {
     createContext('/bin/bash', '/workspace', 'posix')
   );
   assert.equal(fallbackFileResult, undefined);
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), []);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/nested/test-canvas-execution-context.mjs', type: 'file' }]);
+  const fallbackBasenameResult = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: 'test-canvas-execution-context.mjs',
+      path: 'test-canvas-execution-context.mjs',
+      bufferStartLine: 9,
+      source: 'fallback'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.equal(fallbackBasenameResult, undefined);
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), []);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/packages/app/docs/readme.md', type: 'file' }]);
+  const fallbackPathResult = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: 'docs/readme.md',
+      path: 'docs/readme.md',
+      bufferStartLine: 10,
+      source: 'fallback'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.equal(fallbackPathResult?.uri.fsPath, '/workspace/packages/app/docs/readme.md');
+  assert.deepEqual(vscodeStub.__getFindFilesCalls().map((call) => call.pattern), ['**/docs/readme.md']);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/custom/tool', type: 'file' }]);
+  const interactiveFallbackPathResult = await resolveExecutionTerminalFileLinkCandidates(
+    [createFallbackCandidate('interactive-tool', 'custom/tool')],
+    createContext('/bin/bash', '/workspace', 'posix'),
+    () => 'resolved-interactive-tool',
+    { priority: 'interactive' }
+  );
+  assert.equal(interactiveFallbackPathResult[0]?.resolved.uri.fsPath, '/workspace/custom/tool');
+  assert.deepEqual(vscodeStub.__getStatCalls(), ['/workspace/custom/tool']);
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), []);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/custom/tool', type: 'file' }]);
+  const backgroundFallbackPathResult = await resolveExecutionTerminalFileLinkCandidates(
+    [createFallbackCandidate('background-tool', 'custom/tool')],
+    createContext('/bin/bash', '/workspace', 'posix'),
+    () => 'resolved-background-tool',
+    { priority: 'background' }
+  );
+  assert.equal(backgroundFallbackPathResult.length, 0);
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), []);
+
+  const fallbackFilterContext = createContext('/bin/bash', '/workspace', 'posix');
+  assert.deepEqual(
+    filterResolvableExecutionTerminalFileLinkCandidates(
+      [
+        createFallbackCandidate('low-bullet', '• Working   6'),
+        createFallbackCandidate('low-transcript', '… +24 lines (ctrl + t to view transcript)'),
+        createFallbackCandidate('low-box', '│ … +2 lines'),
+        createFallbackCandidate('low-template', 'Implement {feature}'),
+        createFallbackCandidate('low-prose', '这里要么在demo/web_demo/omni_stream.py:159'),
+        createFallbackCandidate('basename', 'test-canvas-execution-context.mjs'),
+        createFallbackCandidate('relative-path', 'docs/readme.md'),
+        createFallbackCandidate('interactive-extensionless-path', 'custom/tool'),
+        {
+          ...createFallbackCandidate('detected', '• Working   6'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('detected-prose', 'Dashboard/配置页/状态按钮很多不会按预期工作'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('detected-urlish', 'openai.com/policies'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('detected-generic-dir', 'build/plan'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('detected-path', 'docs/readme.md'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('detected-code-dir', 'src/panel'),
+          source: 'detected'
+        },
+        {
+          ...createFallbackCandidate('styled-low', '2m'),
+          text: '2m 45',
+          line: 45,
+          source: 'styled'
+        },
+        {
+          ...createFallbackCandidate('styled-path', 'docs/readme.md'),
+          source: 'styled'
+        },
+        {
+          ...createFallbackCandidate('styled-basename', 'event.ts'),
+          source: 'styled'
+        },
+        {
+          ...createFallbackCandidate('hardwrap-package', '@earendil-works/pi-coding-agent'),
+          source: 'hardwrap'
+        },
+        {
+          ...createFallbackCandidate('hardwrap-path', '.lark-slides/plan/report.json'),
+          source: 'hardwrap'
+        }
+      ],
+      fallbackFilterContext,
+      { priority: 'interactive' }
+    ).map((candidate) => candidate.candidateId),
+    [
+      'basename',
+      'relative-path',
+      'interactive-extensionless-path',
+      'detected-path',
+      'detected-code-dir',
+      'styled-path',
+      'styled-basename',
+      'hardwrap-path'
+    ]
+  );
 
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
@@ -437,6 +591,25 @@ try {
   assert.equal(lineScopedResolved?.uri.fsPath, '/workspace/scratch/link-target.ts');
   assert.equal(lineScopedResolved?.selection?.start.line, 1);
   assert.equal(lineScopedResolved?.selection?.start.character, 7);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/repeated.ts', type: 'file' }]);
+  const repeatedResolveResults = await resolveExecutionTerminalFileLinkCandidates(
+    [
+      createDetectedCandidate('repeat-a', 'repeated.ts'),
+      {
+        ...createDetectedCandidate('repeat-b', 'repeated.ts'),
+        startIndex: 10,
+        endIndexExclusive: 21,
+        line: 2
+      }
+    ],
+    createContext('/bin/bash', '/workspace', 'posix'),
+    () => 'resolved-repeat'
+  );
+  assert.equal(repeatedResolveResults.length, 2);
+  assert.deepEqual(vscodeStub.__getStatCalls(), ['/workspace/repeated.ts']);
 
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
@@ -633,5 +806,24 @@ function createContext(shellPath, cwd, pathStyle, extra = {}) {
     cwd,
     pathStyle,
     ...extra
+  };
+}
+
+function createFallbackCandidate(candidateId, pathText) {
+  return {
+    candidateId,
+    text: pathText,
+    path: pathText,
+    startIndex: 0,
+    endIndexExclusive: pathText.length,
+    bufferStartLine: 0,
+    source: 'fallback'
+  };
+}
+
+function createDetectedCandidate(candidateId, pathText) {
+  return {
+    ...createFallbackCandidate(candidateId, pathText),
+    source: 'detected'
   };
 }

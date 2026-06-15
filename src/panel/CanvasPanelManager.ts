@@ -105,6 +105,7 @@ import {
   type WebviewProbeSnapshot,
   type WebviewToHostMessage,
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
   NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
   estimateMinimalFileNodeFootprint,
   estimatedCanvasNodeFootprint,
@@ -236,6 +237,7 @@ import {
 import {
   serializeExecutionSessionLaunchSpec,
   type RuntimeSupervisorCreateSessionParams,
+  type RuntimeSupervisorEvent,
   type RuntimeSupervisorSessionSnapshot
 } from '../common/runtimeSupervisorProtocol';
 import {
@@ -253,16 +255,22 @@ import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
   ExecutionTerminalOpenLink,
+  ExecutionTerminalFileLinkResolvePriority,
   ExecutionTerminalFileLinkSource
 } from '../common/executionTerminalLinks';
 import { inferExecutionTerminalPathStyle } from '../common/executionTerminalLinks';
 import {
   normalizeEditorMultiCursorModifier,
   normalizeExecutionTerminalWordSeparators,
+  filterResolvableExecutionTerminalFileLinkCandidates,
   openExecutionTerminalLink,
+  openResolvedExecutionTerminalLink,
   prepareExecutionTerminalDroppedPath,
   resolveExecutionTerminalFileLinkCandidates,
-  type OpenExecutionTerminalLinkResult
+  type PreparedExecutionTerminalResolvedFileLink,
+  type ExecutionTerminalPathContext,
+  type OpenExecutionTerminalLinkResult,
+  type ResolvedExecutionFileLink
 } from './executionTerminalNativeHelpers';
 import { ExecutionTerminalLineContextTracker } from './executionTerminalLineContextTracker';
 import {
@@ -304,12 +312,19 @@ const CANVAS_WORKSPACE_ROOT_GROUP_MEMBER_INSETS = {
 const CANVAS_GROUP_COLLISION_PADDING = 24;
 const CANVAS_NODE_COLLISION_PADDING = 24;
 const EXECUTION_OUTPUT_FLUSH_INTERVAL_MS = 32;
-const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 1000;
+const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 2500;
 const EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS = 160;
+const CANVAS_STATE_DEFERRED_PERSIST_DEBOUNCE_MS = 1500;
+const CANVAS_STATE_DEFERRED_PERSIST_MAX_WAIT_MS = 5000;
 const EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES = 500;
 const EXECUTION_PERFORMANCE_HOST_INPUT_WRITE_MIN_DURATION_MS = 8;
 const EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_DURATION_MS = 16;
 const EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_CHARACTERS = 32 * 1024;
+const EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS = 500;
+const EXECUTION_HOST_EVENT_LOOP_LAG_REPORT_THRESHOLD_MS = 120;
+const EXECUTION_FILE_LINK_RESOLVE_CACHE_MAX_ENTRIES = 512;
+const EXECUTION_FILE_LINK_RESOLVE_CACHE_TTL_MS = 30_000;
+const EXECUTION_FILE_LINK_BACKGROUND_RESOLVE_MIN_INTERVAL_MS = 150;
 const EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT = 140;
 const EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS = 4000;
 const EXECUTION_ATTENTION_BELL_NOTIFICATION_COOLDOWN_MS = 8000;
@@ -371,6 +386,12 @@ interface ExecutionCwdValidationOptions {
   allowLegacyDefaultCwd?: boolean;
 }
 
+interface ExecutionSnapshotAttachOptions {
+  requestId?: string;
+  executionSessionId?: string;
+  minOutputSequence?: number;
+}
+
 interface CreateNodeOptions {
   requestId?: string;
   agentProvider?: AgentProviderKind;
@@ -399,6 +420,7 @@ interface ManagedExecutionSessionBase {
   syncDueAtMs: number | undefined;
   lifecycleTimer: NodeJS.Timeout | undefined;
   pendingOutput: string;
+  outputSequence: number;
   outputFlushTimer: NodeJS.Timeout | undefined;
   displayLabel: string;
   lifecycleStatus: AgentNodeStatus | TerminalNodeStatus;
@@ -451,6 +473,11 @@ interface SupervisorExecutionSession extends ManagedExecutionSessionBase {
 }
 
 type ManagedExecutionSession = LocalExecutionSession | SupervisorExecutionSession;
+
+type RuntimeSupervisorSessionOutputEvent = Extract<
+  RuntimeSupervisorEvent,
+  { event: 'sessionOutput' }
+>['payload'];
 
 interface PendingWebviewProbeRequest {
   surface: CanvasSurfaceLocation;
@@ -654,10 +681,21 @@ interface ExecutionFileLinkResolveCandidateDiagnostic {
 
 interface ExecutionFileLinkResolveDiagnostics {
   candidateCount: number;
+  retainedCandidateCount: number;
+  filteredCandidateCount: number;
   resolvedCount: number;
   durationMs: number;
   sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  retainedSourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  filteredSourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
   candidates: ExecutionFileLinkResolveCandidateDiagnostic[];
+  retainedCandidates: ExecutionFileLinkResolveCandidateDiagnostic[];
+  filteredCandidates: ExecutionFileLinkResolveCandidateDiagnostic[];
+  skippedReason?: string;
+  priority?: ExecutionTerminalFileLinkResolvePriority;
+  cacheHitCount?: number;
+  cacheMissCount?: number;
+  cachePendingCount?: number;
 }
 
 interface ExecutionFileLinkResolveDiagnosticSample extends ExecutionFileLinkResolveDiagnostics {
@@ -670,11 +708,20 @@ interface ExecutionFileLinkResolveDiagnosticSample extends ExecutionFileLinkReso
 interface ExecutionFileLinkResolveDiagnosticsSummary {
   requestCount: number;
   candidateCount: number;
+  retainedCandidateCount: number;
+  filteredCandidateCount: number;
   resolvedCount: number;
   totalDurationMs: number;
   maxDurationMs: number;
   slowRequestCount: number;
   sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  retainedSourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  filteredSourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>>;
+  skippedReasonCounts: Record<string, number>;
+  priorityCounts: Partial<Record<ExecutionTerminalFileLinkResolvePriority, number>>;
+  cacheHitCount: number;
+  cacheMissCount: number;
+  cachePendingCount: number;
   latestRequests: ExecutionFileLinkResolveDiagnosticSample[];
 }
 
@@ -693,6 +740,57 @@ interface ExecutionPerformanceDiagnosticsSummary {
   totalCharacters: number;
   totalBytes: number;
   latestSamples: ExecutionPerformanceDiagnosticSample[];
+}
+
+interface ExecutionInputDiagnosticMetadata {
+  sequence?: number;
+  webviewEpochMs?: number;
+  webviewPerformanceNowMs?: number;
+  hostReceivedEpochMs?: number;
+  queueDelayMs?: number;
+}
+
+type CanvasStatePersistMode = 'immediate' | 'deferred';
+type CanvasWorkspaceStatePersistMode = 'full' | 'skip';
+
+interface PendingCanvasStatePersist {
+  snapshot: PersistedCanvasSnapshot;
+  rootLocalStates?: CanvasRootLocalStateSnapshot[];
+  requestedAtMs: number;
+  latestRequestedAtMs: number;
+  mode: CanvasStatePersistMode;
+  workspaceStateMode: CanvasWorkspaceStatePersistMode;
+  reason: string;
+  coalescedCount: number;
+}
+
+interface ExecutionFileLinkResolveCacheEntry {
+  createdAt: number;
+  resolvedCandidates: ExecutionFileLinkResolveCachedCandidate[];
+}
+
+interface ExecutionFileLinkResolveCachedCandidate {
+  candidateCacheKey: string;
+  openLink: PreparedExecutionTerminalResolvedFileLink['openLink'];
+  resolved: PreparedExecutionTerminalResolvedFileLink['resolved'];
+}
+
+interface ExecutionFileLinkResolveCacheState {
+  entries: Map<string, ExecutionFileLinkResolveCacheEntry>;
+  inFlight: Map<string, ExecutionFileLinkResolveInFlightEntry>;
+  lastBackgroundStartedAt: number;
+}
+
+interface ExecutionFileLinkResolveResult {
+  resolvedCandidates: PreparedExecutionTerminalResolvedFileLink[];
+  cacheHitCount: number;
+  cacheMissCount: number;
+  cachePendingCount: number;
+}
+
+interface ExecutionFileLinkResolveInFlightEntry {
+  priority: ExecutionTerminalFileLinkResolvePriority;
+  promise: Promise<PreparedExecutionTerminalResolvedFileLink[]>;
 }
 
 export interface CanvasSidebarState {
@@ -977,6 +1075,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly diagnosticHostMessages: CanvasHostMessageDiagnosticRecord[] = [];
   private readonly executionFileLinkResolveDiagnostics: ExecutionFileLinkResolveDiagnosticSample[] = [];
   private readonly executionPerformanceDiagnostics: ExecutionPerformanceDiagnosticSample[] = [];
+  private readonly executionFileLinkResolveQueueByNode = new Map<string, Promise<void>>();
+  private readonly executionFileLinkResolveCache: ExecutionFileLinkResolveCacheState = {
+    entries: new Map(),
+    inFlight: new Map(),
+    lastBackgroundStartedAt: 0
+  };
   private readonly testHostMessages: HostToWebviewMessage[] = [];
   private readonly testDiagnosticEvents: CanvasTestDiagnosticEvent[] = [];
   private readonly surfaceMessageWebview: Partial<Record<CanvasSurfaceLocation, vscode.Webview>> = {};
@@ -984,10 +1088,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly pendingBootstrapHostMessages: Partial<Record<CanvasSurfaceLocation, HostToWebviewMessage[]>> = {};
   private readonly pendingWebviewProbeRequests = new Map<string, PendingWebviewProbeRequest>();
   private readonly pendingWebviewDomActionRequests = new Map<string, PendingWebviewDomActionRequest>();
-  private readonly resolvedExecutionFileLinks = new Map<string, { nodeId: string; kind: ExecutionNodeKind }>();
+  private readonly resolvedExecutionFileLinks = new Map<
+    string,
+    { nodeId: string; kind: ExecutionNodeKind; resolved?: ResolvedExecutionFileLink }
+  >();
   private readonly pendingRuntimeSupervisorOperations = new Set<Promise<unknown>>();
   private readonly executionSessionOperationTokens = new Map<string, number>();
   private pendingWorkspaceStateUpdate: Promise<void> = Promise.resolve();
+  private pendingCanvasStatePersist: PendingCanvasStatePersist | undefined;
+  private pendingCanvasStatePersistFlush: Promise<void> | undefined;
+  private pendingCanvasStatePersistTimer: NodeJS.Timeout | undefined;
+  private hostEventLoopLagMonitorTimer: NodeJS.Timeout | undefined;
+  private hostEventLoopLagMonitorExpectedAtMs = 0;
   private lastPersistedCanvasSnapshotError: string | undefined;
   private lastPersistedCanvasSnapshotWrittenAt: string | undefined;
   private multiRootOverlay: CanvasMultiRootOverlay | undefined;
@@ -1034,7 +1146,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.lastComposedWorkspaceRootPaths = this.getMultiRootWorkspaceFoldersForComposition().map((folder) => folder.path);
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
-    this.persistState();
+    this.persistState({ reason: 'state-initialized' });
     this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/initialized', {
       activeSurface: this.activeSurface,
@@ -1047,13 +1159,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       storageSelectionBasis: this.storageRecoverySelection.selectionBasis
     });
     context.subscriptions.push(this.sidebarStateEmitter, this.templateCatalogEmitter);
+    this.startHostEventLoopLagMonitor();
+    context.subscriptions.push({
+      dispose: () => {
+        if (this.hostEventLoopLagMonitorTimer) {
+          clearTimeout(this.hostEventLoopLagMonitorTimer);
+          this.hostEventLoopLagMonitorTimer = undefined;
+        }
+      }
+    });
 
     context.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
         this.recordDiagnosticEvent('workspace/trustGranted');
         this.state = this.loadReconciledState();
         this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
-        this.persistState();
+        this.persistState({ reason: 'workspace-trust-granted' });
         this.postState('host/stateUpdated');
         this.scheduleRestoreLiveRuntimeSessions();
       })
@@ -1110,7 +1231,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const focusedRootGroup = this.resolveWorkspaceRootGroupForAddedFolder(addedWorkspaceRootPaths);
         this.reconcileDefaultExecutionMetadataCwd();
         this.refreshConfiguredTerminalShellMetadata();
-        this.persistState();
+        this.persistState({ reason: 'workspace-folders-changed' });
         this.postState('host/stateUpdated');
         if (focusedRootGroup) {
           this.recordDiagnosticEvent('workspaceRoot/focusAddedRoot', {
@@ -1846,6 +1967,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async dumpCurrentHostDiagnostics(): Promise<CanvasHostDiagnosticsDumpResult> {
+    await this.flushDeferredCanvasStatePersist('diagnostics');
     await this.waitForPendingWorkspaceStateUpdates();
 
     const capturedAt = new Date().toISOString();
@@ -1896,6 +2018,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             ? this.context.extension.packageJSON.version
             : undefined,
         mode: describeExtensionMode(this.context.extensionMode)
+      },
+      diagnosticsSchema: {
+        executionFileLinkResolve: 3,
+        executionPerformance: EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION
       },
       host: {
         platform: process.platform,
@@ -2519,6 +2645,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       syncDueAtMs: undefined,
       lifecycleTimer: undefined,
       pendingOutput: '',
+      outputSequence: 0,
       outputFlushTimer: undefined,
       displayLabel: agentProviderDisplayLabel(provider),
       lifecycleStatus: 'running',
@@ -3078,13 +3205,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async reloadPersistedStateForTest(): Promise<CanvasDebugSnapshot> {
+    await this.flushDeferredCanvasStatePersist('test-reload');
     await this.waitForPendingWorkspaceStateUpdates();
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
-    this.persistState();
+    this.persistState({ reason: 'test-reload' });
     this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/reloaded', {
       activeSurface: this.activeSurface,
@@ -3120,6 +3248,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       state: this.state,
       multiRootOverlay,
       activeSurface: this.activeSurface
+    }, {
+      workspaceStateMode: 'full',
+      reason: 'test-seed'
     });
     await this.waitForPendingWorkspaceStateUpdates();
 
@@ -3135,6 +3266,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async simulateRuntimeReloadForTest(): Promise<CanvasDebugSnapshot> {
+    await this.flushDeferredCanvasStatePersist('test-runtime-reload');
     const nextStartupConfiguration = this.readStartupConfiguration();
     await this.prepareForHostBoundary({
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
@@ -3147,7 +3279,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.state = this.loadReconciledState();
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
-    this.persistState();
+    this.persistState({ reason: 'test-runtime-reload' });
     this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/runtimeReloaded', {
       activeSurface: this.activeSurface,
@@ -3182,10 +3314,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('flushPersistedCanvasStateForTest 仅在测试模式下可用。');
     }
 
+    await this.flushDeferredCanvasStatePersist('test-flush');
     await this.queuePersistedCanvasSnapshotWrite({
       version: 1,
       state: this.state,
       activeSurface: this.activeSurface
+    }, {
+      workspaceStateMode: 'full',
+      reason: 'test-flush'
     });
     await this.waitForPendingWorkspaceStateUpdates();
 
@@ -3219,6 +3355,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     await this.waitForPendingRuntimeSupervisorOperations();
     await this.flushAllExecutionSessionStatesForHostBoundary();
+    await this.flushDeferredCanvasStatePersist('host-boundary');
     await this.waitForPendingWorkspaceStateUpdates();
 
     const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions();
@@ -3250,6 +3387,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     await this.waitForPendingRuntimeSupervisorOperations();
     this.disposeRuntimeSupervisorClients();
+    await this.flushDeferredCanvasStatePersist('host-boundary-final');
     await this.waitForPendingWorkspaceStateUpdates();
   }
 
@@ -3265,7 +3403,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
     this.canvasTemplateInitialized = true;
-    this.persistState();
+    this.persistState({ reason: 'state-reset' });
     this.recordDiagnosticEvent('state/reset', {
       previousNodeCount,
       clearedAgentCliResolutionCache: options.clearAgentCliResolutionCache === true
@@ -3439,6 +3577,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       stopRequested: session.stopRequested,
       bufferLength: session.buffer.length,
       pendingOutputLength: session.pendingOutput.length,
+      outputSequence: session.outputSequence,
       runtimeBackend: session.runtimeBackend,
       runtimeGuarantee: session.runtimeGuarantee,
       runtimeSessionId: session.runtimeSessionId,
@@ -4029,7 +4168,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     this.state = this.loadReconciledState();
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
-    this.persistState();
+    this.persistState({ reason: 'editor-restore' });
     if ((this.activeSurface ?? this.getConfiguredSurface()) !== 'editor') {
       this.recordDiagnosticEvent('surface/editorRestoreSkipped', {
         activeSurface: this.activeSurface,
@@ -4462,7 +4601,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.canvasTemplateInitialized = true;
-    this.persistState();
+    this.persistState({ reason: 'template-getting-started-initialized' });
   }
 
   private async resolveDefaultCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
@@ -4585,7 +4724,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : applyResult.nodeIds;
     this.state = this.reconcileCanvasFileArtifacts(appliedState);
     this.canvasTemplateInitialized = true;
-    this.persistState();
+    this.persistState({ reason: 'template-applied' });
     this.recordDiagnosticEvent('template/applied', {
       templateId: storedTemplate.template.id,
       templateName: storedTemplate.template.name,
@@ -5264,7 +5403,169 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return undefined;
   }
 
-  private queuePersistedCanvasSnapshotWrite(snapshot: PersistedCanvasSnapshot): Promise<void> {
+  private queuePersistedCanvasSnapshotWrite(
+    snapshot: PersistedCanvasSnapshot,
+    options: {
+      mode?: CanvasStatePersistMode;
+      workspaceStateMode?: CanvasWorkspaceStatePersistMode;
+      reason?: string;
+      rootLocalStates?: CanvasRootLocalStateSnapshot[];
+    } = {}
+  ): Promise<void> {
+    const mode = options.mode ?? 'immediate';
+    const workspaceStateMode = options.workspaceStateMode ?? (this.hasActiveExecutionSessions() ? 'skip' : 'full');
+    const reason = options.reason ?? (mode === 'deferred' ? 'deferred' : 'persist-snapshot');
+    if (mode === 'deferred') {
+      this.scheduleDeferredCanvasStatePersist(
+        snapshot,
+        reason,
+        workspaceStateMode,
+        options.rootLocalStates
+      );
+      return this.pendingWorkspaceStateUpdate;
+    }
+
+    this.clearDeferredCanvasStatePersistTimer();
+    if (this.pendingCanvasStatePersist) {
+      this.recordDiagnosticEvent('state/persistDeferredSuperseded', {
+        reason,
+        coalescedCount: this.pendingCanvasStatePersist.coalescedCount,
+        ...summarizeCanvasStateForDiagnostics(this.pendingCanvasStatePersist.snapshot.state)
+      });
+      this.pendingCanvasStatePersist = undefined;
+    }
+    return this.writePersistedCanvasSnapshotNow(snapshot, {
+      mode,
+      workspaceStateMode,
+      reason,
+      coalescedCount: 0
+    });
+  }
+
+  private scheduleDeferredCanvasStatePersist(
+    snapshot: PersistedCanvasSnapshot,
+    reason: string,
+    workspaceStateMode: CanvasWorkspaceStatePersistMode,
+    rootLocalStates: CanvasRootLocalStateSnapshot[] | undefined
+  ): void {
+    const now = Date.now();
+    const current = this.pendingCanvasStatePersist;
+    const pending: PendingCanvasStatePersist = current
+      ? {
+          snapshot,
+          rootLocalStates,
+          requestedAtMs: current.requestedAtMs,
+          latestRequestedAtMs: now,
+          mode: 'deferred',
+          workspaceStateMode: current.workspaceStateMode === 'full' ? 'full' : workspaceStateMode,
+          reason,
+          coalescedCount: current.coalescedCount + 1
+        }
+      : {
+          snapshot,
+          rootLocalStates,
+          requestedAtMs: now,
+          latestRequestedAtMs: now,
+          mode: 'deferred',
+          workspaceStateMode,
+          reason,
+          coalescedCount: 0
+        };
+    this.pendingCanvasStatePersist = pending;
+
+    const elapsedMs = now - pending.requestedAtMs;
+    const delayMs = Math.max(
+      0,
+      Math.min(CANVAS_STATE_DEFERRED_PERSIST_DEBOUNCE_MS, CANVAS_STATE_DEFERRED_PERSIST_MAX_WAIT_MS - elapsedMs)
+    );
+    this.recordDiagnosticEvent('state/persistDeferred', {
+      reason,
+      delayMs,
+      coalescedCount: pending.coalescedCount,
+      mode: 'deferred',
+      workspaceStateMode: pending.workspaceStateMode,
+      ...summarizeCanvasStateForDiagnostics(snapshot.state)
+    });
+
+    this.clearDeferredCanvasStatePersistTimer();
+    this.pendingCanvasStatePersistTimer = setTimeout(() => {
+      void this.flushDeferredCanvasStatePersist('timer').catch(() => undefined);
+    }, delayMs);
+  }
+
+  private clearDeferredCanvasStatePersistTimer(): void {
+    if (!this.pendingCanvasStatePersistTimer) {
+      return;
+    }
+
+    clearTimeout(this.pendingCanvasStatePersistTimer);
+    this.pendingCanvasStatePersistTimer = undefined;
+  }
+
+  private async flushDeferredCanvasStatePersist(trigger: string): Promise<void> {
+    const pending = this.pendingCanvasStatePersist;
+    if (!pending) {
+      await this.pendingCanvasStatePersistFlush;
+      return;
+    }
+
+    this.pendingCanvasStatePersist = undefined;
+    this.clearDeferredCanvasStatePersistTimer();
+    this.writeDeferredRootLocalCanvasSnapshots(pending);
+    const operation = this.writePersistedCanvasSnapshotNow(pending.snapshot, {
+      mode: pending.mode,
+      workspaceStateMode: pending.workspaceStateMode,
+      reason: `${pending.reason}:${trigger}`,
+      coalescedCount: pending.coalescedCount
+    });
+    const flushBarrier = operation.then(
+      () => undefined,
+      () => undefined
+    );
+    this.pendingCanvasStatePersistFlush = flushBarrier;
+    try {
+      await operation;
+    } finally {
+      if (this.pendingCanvasStatePersistFlush === flushBarrier) {
+        this.pendingCanvasStatePersistFlush = undefined;
+      }
+    }
+  }
+
+  private writeDeferredRootLocalCanvasSnapshots(pending: PendingCanvasStatePersist): void {
+    if (!pending.rootLocalStates || pending.rootLocalStates.length === 0) {
+      return;
+    }
+
+    const startedAt = Date.now();
+    for (const rootState of pending.rootLocalStates) {
+      try {
+        this.writeRootLocalCanvasSnapshot(rootState.rootPath, rootState.state);
+      } catch (error) {
+        this.recordDiagnosticEvent('state/rootLocalPersistFailed', {
+          rootPath: rootState.rootPath,
+          mode: pending.mode,
+          reason: pending.reason,
+          message: formatUnknownError(error)
+        });
+      }
+    }
+    this.recordStatePersistPerformance('persist-root-local-snapshots', startedAt, pending.snapshot.state, undefined, {
+      mode: pending.mode,
+      workspaceStateMode: pending.workspaceStateMode,
+      coalescedCount: pending.coalescedCount
+    });
+  }
+
+  private writePersistedCanvasSnapshotNow(
+    snapshot: PersistedCanvasSnapshot,
+    options: {
+      mode: CanvasStatePersistMode;
+      workspaceStateMode: CanvasWorkspaceStatePersistMode;
+      reason?: string;
+      coalescedCount: number;
+    }
+  ): Promise<void> {
     const snapshotPath = this.getPersistedCanvasSnapshotPath();
     const snapshotWithMetadata = this.buildPersistedCanvasSnapshot(snapshot);
     const snapshotSummary = summarizeCanvasStateForDiagnostics(snapshotWithMetadata.state);
@@ -5273,18 +5574,38 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       activeSurface: snapshotWithMetadata.activeSurface,
       writePath: this.getExtensionStoragePath(),
       snapshotWrittenAt: snapshotWithMetadata.writtenAt,
+      mode: options.mode,
+      workspaceStateMode: options.workspaceStateMode,
+      reason: options.reason,
+      coalescedCount: options.coalescedCount,
       ...snapshotSummary
     });
 
     try {
-      this.writePersistedCanvasSnapshotToDisk(snapshotPath, snapshotWithMetadata);
+      const writeStartedAt = Date.now();
+      const byteLength = this.writePersistedCanvasSnapshotToDisk(snapshotPath, snapshotWithMetadata);
       this.lastPersistedCanvasSnapshotError = undefined;
       this.lastPersistedCanvasSnapshotWrittenAt = snapshotWithMetadata.writtenAt;
+      this.recordStatePersistPerformance(
+        'persist-snapshot-write',
+        writeStartedAt,
+        snapshotWithMetadata.state,
+        byteLength,
+        {
+          mode: options.mode,
+          workspaceStateMode: options.workspaceStateMode,
+          coalescedCount: options.coalescedCount
+        }
+      );
       this.recordDiagnosticEvent('state/persistWritten', {
         snapshotPath,
         activeSurface: snapshotWithMetadata.activeSurface,
         writePath: this.getExtensionStoragePath(),
         writtenAt: snapshotWithMetadata.writtenAt,
+        mode: options.mode,
+        workspaceStateMode: options.workspaceStateMode,
+        reason: options.reason,
+        coalescedCount: options.coalescedCount,
         ...snapshotSummary
       });
     } catch (error) {
@@ -5295,12 +5616,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         snapshotPath,
         activeSurface: snapshotWithMetadata.activeSurface,
         writePath: this.getExtensionStoragePath(),
+        mode: options.mode,
+        workspaceStateMode: options.workspaceStateMode,
+        reason: options.reason,
+        coalescedCount: options.coalescedCount,
         ...snapshotSummary
       });
       return Promise.reject(error);
     }
 
+    if (options.workspaceStateMode === 'skip') {
+      this.recordDiagnosticEvent('state/workspaceStateSkipped', {
+        snapshotPath,
+        activeSurface: snapshotWithMetadata.activeSurface,
+        writePath: this.getExtensionStoragePath(),
+        mode: options.mode,
+        reason: options.reason,
+        coalescedCount: options.coalescedCount,
+        ...snapshotSummary
+      });
+      return Promise.resolve();
+    }
+
     const operation = this.pendingWorkspaceStateUpdate.then(async () => {
+      const workspaceUpdateStartedAt = Date.now();
       const normalizedWorkspaceState = normalizeState(
         snapshotWithMetadata.state,
         this.getAgentCliConfig().defaultProvider
@@ -5328,6 +5667,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.canvasTemplateInitialized
       );
       this.lastPersistedCanvasSnapshotError = undefined;
+      this.recordStatePersistPerformance(
+        'persist-workspace-state',
+        workspaceUpdateStartedAt,
+        snapshotWithMetadata.state,
+        undefined,
+        {
+          mode: options.mode,
+          workspaceStateMode: options.workspaceStateMode,
+          coalescedCount: options.coalescedCount
+        }
+      );
     }).catch((error) => {
       const message = formatUnknownError(error);
       this.lastPersistedCanvasSnapshotError = message;
@@ -5336,6 +5686,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         snapshotPath,
         activeSurface: snapshotWithMetadata.activeSurface,
         writePath: this.getExtensionStoragePath(),
+        mode: options.mode,
+        workspaceStateMode: options.workspaceStateMode,
+        reason: options.reason,
+        coalescedCount: options.coalescedCount,
         ...snapshotSummary
       });
       throw error;
@@ -5383,14 +5737,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private writePersistedCanvasSnapshotToDisk(snapshotPath: string, snapshot: PersistedCanvasSnapshot): void {
+  private writePersistedCanvasSnapshotToDisk(snapshotPath: string, snapshot: PersistedCanvasSnapshot): number {
     fs.mkdirSync(path.dirname(snapshotPath), {
       recursive: true
     });
     const tempSnapshotPath = `${snapshotPath}.tmp`;
     const serializedSnapshot = `${JSON.stringify(snapshot, null, 2)}\n`;
+    const byteLength = Buffer.byteLength(serializedSnapshot, 'utf8');
     fs.writeFileSync(tempSnapshotPath, serializedSnapshot, 'utf8');
     fs.renameSync(tempSnapshotPath, snapshotPath);
+    return byteLength;
   }
 
   private loadStoredRuntimePersistenceEnabled(snapshot?: PersistedCanvasSnapshot): boolean | undefined {
@@ -5627,11 +5983,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private persistState(): void {
+  private persistState(
+    options: {
+      mode?: CanvasStatePersistMode;
+      workspaceStateMode?: CanvasWorkspaceStatePersistMode;
+      reason?: string;
+    } = {}
+  ): void {
+    const startedAt = Date.now();
+    const mode = options.mode ?? 'immediate';
+    const workspaceStateMode =
+      options.workspaceStateMode ?? (mode === 'deferred' || this.hasActiveExecutionSessions() ? 'skip' : 'full');
+    const reason = options.reason ?? 'persist-state';
     this.syncNoteMarkdownFileWatchers();
     this.cleanupUnreferencedNoteMarkdownRecoverableDraftFiles();
     const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
     let overlayToPersist: CanvasMultiRootOverlay | undefined;
+    let rootLocalStatesToPersist: CanvasRootLocalStateSnapshot[] | undefined;
     if (workspaceFolders.length > 1) {
       const previousRootStates = this.lastLoadedRootLocalStates;
       const decomposed = decomposeMultiRootCanvasState({
@@ -5643,26 +6011,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.lastLoadedRootLocalStates = cloneJsonValue(rootStatesToPersist);
       this.multiRootOverlay = decomposed.overlay;
       overlayToPersist = decomposed.overlay;
-      for (const rootState of rootStatesToPersist) {
-        try {
-          this.writeRootLocalCanvasSnapshot(rootState.rootPath, rootState.state);
-        } catch (error) {
-          this.recordDiagnosticEvent('state/rootLocalPersistFailed', {
-            rootPath: rootState.rootPath,
-            message: formatUnknownError(error)
-          });
+      rootLocalStatesToPersist = rootStatesToPersist;
+      if (mode === 'immediate') {
+        for (const rootState of rootStatesToPersist) {
+          try {
+            this.writeRootLocalCanvasSnapshot(rootState.rootPath, rootState.state);
+          } catch (error) {
+            this.recordDiagnosticEvent('state/rootLocalPersistFailed', {
+              rootPath: rootState.rootPath,
+              message: formatUnknownError(error)
+            });
+          }
         }
       }
     } else if (workspaceFolders.length === 1) {
       const rootPath = workspaceFolders[0].path;
       this.lastLoadedRootLocalStates = [{ rootPath, state: cloneJsonValue(this.state) }];
-      try {
-        this.writeRootLocalCanvasSnapshot(rootPath, this.state);
-      } catch (error) {
-        this.recordDiagnosticEvent('state/rootLocalPersistFailed', {
-          rootPath,
-          message: formatUnknownError(error)
-        });
+      rootLocalStatesToPersist = [{ rootPath, state: this.state }];
+      if (mode === 'immediate') {
+        try {
+          this.writeRootLocalCanvasSnapshot(rootPath, this.state);
+        } catch (error) {
+          this.recordDiagnosticEvent('state/rootLocalPersistFailed', {
+            rootPath,
+            message: formatUnknownError(error)
+          });
+        }
       }
     }
     void this.queuePersistedCanvasSnapshotWrite({
@@ -5670,7 +6044,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       state: this.state,
       multiRootOverlay: overlayToPersist,
       activeSurface: this.activeSurface
+    }, {
+      mode,
+      workspaceStateMode,
+      reason,
+      rootLocalStates: rootLocalStatesToPersist
     }).catch(() => undefined);
+    this.recordStatePersistPerformance('persist-state', startedAt, this.state, undefined, {
+      mode,
+      workspaceStateMode,
+      coalescedCount: 0
+    });
   }
 
   private reconcileCanvasFileArtifacts(state: CanvasPrototypeState): CanvasPrototypeState {
@@ -5920,7 +6304,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       excludeGlobs: nextState.excludeGlobs
     });
     this.state = this.reconcileCanvasFileArtifacts(this.state);
-    this.persistState();
+    this.persistState({ reason: 'file-filter-updated' });
     this.postState('host/stateUpdated');
     this.notifySidebarStateChanged();
   }
@@ -6311,7 +6695,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       updatedAt: new Date().toISOString(),
       nodes: nextNodes
     };
-    this.persistState();
+    this.persistState({ reason: 'terminal-shell-metadata' });
     return true;
   }
 
@@ -6597,19 +6981,36 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     kind: ExecutionNodeKind,
     nodeId: string,
     requestId: string,
-    candidates: ExecutionTerminalFileLinkCandidate[]
+    candidates: ExecutionTerminalFileLinkCandidate[],
+    priority: ExecutionTerminalFileLinkResolvePriority | undefined
   ): Promise<void> {
     const context = this.getExecutionTerminalPathContext(kind, nodeId);
-    const startedAt = Date.now();
-    const resolvedCandidates = await resolveExecutionTerminalFileLinkCandidates(
+    const resolvePriority = priority ?? 'interactive';
+    const filteredCandidates = filterResolvableExecutionTerminalFileLinkCandidates(
       candidates,
       context,
-      () => randomUUID()
-    ).catch(() => []);
+      { priority: resolvePriority }
+    );
+    const startedAt = Date.now();
+    const resolveResult = await this.runExecutionFileLinkResolveForNode(
+      kind,
+      nodeId,
+      filteredCandidates,
+      context,
+      resolvePriority
+    );
     const diagnostics = buildExecutionFileLinkResolveDiagnostics(
       candidates,
-      resolvedCandidates.length,
-      Date.now() - startedAt
+      filteredCandidates,
+      resolveResult.resolvedCandidates.length,
+      Date.now() - startedAt,
+      undefined,
+      {
+        cacheHitCount: resolveResult.cacheHitCount,
+        cacheMissCount: resolveResult.cacheMissCount,
+        cachePendingCount: resolveResult.cachePendingCount,
+        priority: resolvePriority
+      }
     );
     this.recordExecutionFileLinkResolveDiagnostics({
       timestamp: new Date().toISOString(),
@@ -6619,10 +7020,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ...diagnostics
     });
 
-    for (const resolvedCandidate of resolvedCandidates) {
+    for (const resolvedCandidate of resolveResult.resolvedCandidates) {
       this.resolvedExecutionFileLinks.set(resolvedCandidate.openLink.resolvedId, {
         nodeId,
-        kind
+        kind,
+        resolved: resolvedCandidate.resolved
       });
     }
 
@@ -6632,12 +7034,301 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         requestId,
         nodeId,
         kind,
-        resolvedLinks: resolvedCandidates.map((resolvedCandidate) => ({
+        resolvedLinks: resolveResult.resolvedCandidates.map((resolvedCandidate) => ({
           candidateId: resolvedCandidate.candidateId,
           link: resolvedCandidate.openLink
         }))
       }
     });
+  }
+
+  private async runExecutionFileLinkResolveForNode(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    filteredCandidates: ExecutionTerminalFileLinkCandidate[],
+    context: ExecutionTerminalPathContext,
+    priority: ExecutionTerminalFileLinkResolvePriority
+  ): Promise<ExecutionFileLinkResolveResult> {
+    if (filteredCandidates.length === 0) {
+      return {
+        resolvedCandidates: [],
+        cacheHitCount: 0,
+        cacheMissCount: 0,
+        cachePendingCount: 0
+      };
+    }
+
+    const cacheKey = this.createExecutionFileLinkResolveCacheKey(kind, nodeId, context, filteredCandidates);
+    const cachedEntry = this.readExecutionFileLinkResolveCacheEntry(cacheKey);
+    if (cachedEntry) {
+      return {
+        resolvedCandidates: this.prepareCachedExecutionFileLinkResolveCandidates(
+          filteredCandidates,
+          context,
+          cachedEntry
+        ),
+        cacheHitCount: filteredCandidates.length,
+        cacheMissCount: 0,
+        cachePendingCount: 0
+      };
+    }
+
+    const pending = this.executionFileLinkResolveCache.inFlight.get(cacheKey);
+    if (pending) {
+      if (priority === 'background') {
+        return {
+          resolvedCandidates: [],
+          cacheHitCount: 0,
+          cacheMissCount: 0,
+          cachePendingCount: filteredCandidates.length
+        };
+      }
+
+      const resolvedCandidates = await pending.promise;
+      return {
+        resolvedCandidates,
+        cacheHitCount: 0,
+        cacheMissCount: 0,
+        cachePendingCount: filteredCandidates.length
+      };
+    }
+
+    if (priority === 'background') {
+      const now = Date.now();
+      if (
+        this.executionFileLinkResolveCache.lastBackgroundStartedAt > 0 &&
+        now - this.executionFileLinkResolveCache.lastBackgroundStartedAt <
+          EXECUTION_FILE_LINK_BACKGROUND_RESOLVE_MIN_INTERVAL_MS
+      ) {
+        return {
+          resolvedCandidates: [],
+          cacheHitCount: 0,
+          cacheMissCount: 0,
+          cachePendingCount: filteredCandidates.length
+        };
+      }
+
+      this.executionFileLinkResolveCache.lastBackgroundStartedAt = now;
+    }
+
+    const nodeQueueKey = `${kind}:${nodeId}`;
+    const previous = this.executionFileLinkResolveQueueByNode.get(nodeQueueKey);
+    let releaseQueue: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+    const queued = previous ? previous.then(() => current, () => current) : current;
+    this.executionFileLinkResolveQueueByNode.set(
+      nodeQueueKey,
+      queued
+    );
+
+    await previous?.catch(() => undefined);
+    const cachedEntryAfterQueue = this.readExecutionFileLinkResolveCacheEntry(cacheKey);
+    if (cachedEntryAfterQueue) {
+      releaseQueue();
+      if (this.executionFileLinkResolveQueueByNode.get(nodeQueueKey) === queued) {
+        this.executionFileLinkResolveQueueByNode.delete(nodeQueueKey);
+      }
+      return {
+        resolvedCandidates: this.prepareCachedExecutionFileLinkResolveCandidates(
+          filteredCandidates,
+          context,
+          cachedEntryAfterQueue
+        ),
+        cacheHitCount: filteredCandidates.length,
+        cacheMissCount: 0,
+        cachePendingCount: 0
+      };
+    }
+
+    let resolveRequest: Promise<PreparedExecutionTerminalResolvedFileLink[]>;
+    resolveRequest = resolveExecutionTerminalFileLinkCandidates(
+      filteredCandidates,
+      context,
+      () => randomUUID(),
+      { priority }
+    )
+      .then((resolvedCandidates) => {
+        this.writeExecutionFileLinkResolveCacheEntry(
+          cacheKey,
+          filteredCandidates,
+          context,
+          resolvedCandidates
+        );
+        return resolvedCandidates;
+      })
+      .catch(() => []);
+    this.executionFileLinkResolveCache.inFlight.set(cacheKey, {
+      priority,
+      promise: resolveRequest
+    });
+    try {
+      const resolvedCandidates = await resolveRequest;
+      return {
+        resolvedCandidates,
+        cacheHitCount: 0,
+        cacheMissCount: filteredCandidates.length,
+        cachePendingCount: 0
+      };
+    } finally {
+      if (this.executionFileLinkResolveCache.inFlight.get(cacheKey)?.promise === resolveRequest) {
+        this.executionFileLinkResolveCache.inFlight.delete(cacheKey);
+      }
+      releaseQueue();
+      if (this.executionFileLinkResolveQueueByNode.get(nodeQueueKey) === queued) {
+        this.executionFileLinkResolveQueueByNode.delete(nodeQueueKey);
+      }
+    }
+  }
+
+  private createExecutionFileLinkResolveCacheKey(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    context: ExecutionTerminalPathContext,
+    candidates: readonly ExecutionTerminalFileLinkCandidate[]
+  ): string {
+    const hasLineScopedCandidate = candidates.some((candidate) =>
+      this.shouldScopeExecutionFileLinkResolveCacheToBufferLine(candidate, context)
+    );
+    return JSON.stringify({
+      kind,
+      nodeId: hasLineScopedCandidate ? nodeId : undefined,
+      cwd: context.cwd,
+      shellPath: hasLineScopedCandidate ? context.shellPath ?? '' : '',
+      pathStyle: context.pathStyle,
+      userHome: context.userHome ?? '',
+      workspaceFolders: vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [],
+      candidates: candidates.map((candidate) =>
+        this.createExecutionFileLinkResolveCandidateCacheKey(candidate, context)
+      )
+    });
+  }
+
+  private createExecutionFileLinkResolveCandidateCacheKey(
+    candidate: ExecutionTerminalFileLinkCandidate,
+    context: ExecutionTerminalPathContext
+  ): string {
+    return JSON.stringify({
+      text: candidate.text,
+      path: candidate.path,
+      lineScopedBufferStartLine: this.shouldScopeExecutionFileLinkResolveCacheToBufferLine(
+        candidate,
+        context
+      )
+        ? candidate.bufferStartLine
+        : undefined,
+      line: candidate.line,
+      column: candidate.column,
+      lineEnd: candidate.lineEnd,
+      columnEnd: candidate.columnEnd,
+      source: candidate.source
+    });
+  }
+
+  private shouldScopeExecutionFileLinkResolveCacheToBufferLine(
+    candidate: ExecutionTerminalFileLinkCandidate,
+    context: ExecutionTerminalPathContext
+  ): boolean {
+    const value = candidate.path.trim();
+    if (
+      value.startsWith('/') ||
+      value.startsWith('~/') ||
+      value.startsWith('file://') ||
+      (context.pathStyle === 'windows' && (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\')))
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private readExecutionFileLinkResolveCacheEntry(
+    cacheKey: string
+  ): ExecutionFileLinkResolveCacheEntry | undefined {
+    const cachedEntry = this.executionFileLinkResolveCache.entries.get(cacheKey);
+    if (!cachedEntry) {
+      return undefined;
+    }
+
+    if (Date.now() - cachedEntry.createdAt > EXECUTION_FILE_LINK_RESOLVE_CACHE_TTL_MS) {
+      this.executionFileLinkResolveCache.entries.delete(cacheKey);
+      return undefined;
+    }
+
+    return cachedEntry;
+  }
+
+  private writeExecutionFileLinkResolveCacheEntry(
+    cacheKey: string,
+    candidates: readonly ExecutionTerminalFileLinkCandidate[],
+    context: ExecutionTerminalPathContext,
+    resolvedCandidates: PreparedExecutionTerminalResolvedFileLink[]
+  ): void {
+    const candidatesById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
+    this.executionFileLinkResolveCache.entries.set(cacheKey, {
+      createdAt: Date.now(),
+      resolvedCandidates: resolvedCandidates.flatMap((resolvedCandidate) => {
+        const candidate = candidatesById.get(resolvedCandidate.candidateId);
+        if (!candidate) {
+          return [];
+        }
+
+        return [
+          {
+            candidateCacheKey: this.createExecutionFileLinkResolveCandidateCacheKey(candidate, context),
+            openLink: resolvedCandidate.openLink,
+            resolved: resolvedCandidate.resolved
+          }
+        ];
+      })
+    });
+
+    while (this.executionFileLinkResolveCache.entries.size > EXECUTION_FILE_LINK_RESOLVE_CACHE_MAX_ENTRIES) {
+      const oldestKey = this.executionFileLinkResolveCache.entries.keys().next().value;
+      if (typeof oldestKey !== 'string') {
+        break;
+      }
+      this.executionFileLinkResolveCache.entries.delete(oldestKey);
+    }
+  }
+
+  private prepareCachedExecutionFileLinkResolveCandidates(
+    candidates: readonly ExecutionTerminalFileLinkCandidate[],
+    context: ExecutionTerminalPathContext,
+    cachedEntry: ExecutionFileLinkResolveCacheEntry
+  ): PreparedExecutionTerminalResolvedFileLink[] {
+    const cachedCandidatesByKey = new Map(
+      cachedEntry.resolvedCandidates.map((candidate) => [candidate.candidateCacheKey, candidate])
+    );
+    const resolvedCandidates: PreparedExecutionTerminalResolvedFileLink[] = [];
+    for (const candidate of candidates) {
+      const cachedCandidate = cachedCandidatesByKey.get(
+        this.createExecutionFileLinkResolveCandidateCacheKey(candidate, context)
+      );
+      if (!cachedCandidate) {
+        continue;
+      }
+
+      resolvedCandidates.push({
+        candidateId: candidate.candidateId,
+        openLink: {
+          ...cachedCandidate.openLink,
+          text: candidate.text,
+          path: candidate.path,
+          line: candidate.line,
+          column: candidate.column,
+          lineEnd: candidate.lineEnd,
+          columnEnd: candidate.columnEnd,
+          bufferStartLine: candidate.bufferStartLine,
+          source: candidate.source,
+          resolvedId: randomUUID()
+        },
+        resolved: cachedCandidate.resolved
+      });
+    }
+
+    return resolvedCandidates;
   }
 
   private async handleOpenExecutionLink(
@@ -6650,12 +7341,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       link.linkKind === 'file' && typeof link.resolvedId === 'string'
         ? this.resolvedExecutionFileLinks.get(link.resolvedId)
         : undefined;
-    const openResult =
-      cached && (cached.nodeId !== nodeId || cached.kind !== kind)
-        ? { opened: false }
-        : await openExecutionTerminalLink(link, context).catch(
-            (): OpenExecutionTerminalLinkResult => ({ opened: false })
-          );
+    let openResult: OpenExecutionTerminalLinkResult;
+    if (cached && (cached.nodeId !== nodeId || cached.kind !== kind)) {
+      openResult = { opened: false };
+    } else if (cached?.resolved) {
+      openResult = await openResolvedExecutionTerminalLink(cached.resolved).catch(
+        (): OpenExecutionTerminalLinkResult => ({ opened: false })
+      );
+    } else {
+      openResult = await openExecutionTerminalLink(link, context).catch(
+        (): OpenExecutionTerminalLinkResult => ({ opened: false })
+      );
+    }
 
     this.recordDiagnosticEvent(openResult.opened ? 'execution/linkOpened' : 'execution/linkOpenRejected', {
       kind,
@@ -8067,6 +8764,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.appliedStartupConfiguration.runtimePersistenceEnabled;
   }
 
+  private hasActiveExecutionSessions(): boolean {
+    return this.agentSessions.size > 0 || this.terminalSessions.size > 0;
+  }
+
   private getLiveRuntimeReconnectBlockReason(): LiveRuntimeReconnectBlockReason | undefined {
     if (!this.isRuntimePersistenceEnabled()) {
       return 'runtime-persistence-disabled';
@@ -8251,7 +8952,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         supervisorScriptPath: this.getRuntimeSupervisorScriptPath(),
         supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath(),
         onSessionOutput: (event) =>
-          this.handleRuntimeSupervisorOutput(backend.kind, runtimeStoragePath, event.kind, event.sessionId, event.chunk),
+          this.handleRuntimeSupervisorOutput(backend.kind, runtimeStoragePath, event),
         onSessionState: (snapshot) => {
           void this.handleRuntimeSupervisorState(backend.kind, runtimeStoragePath, snapshot).catch((error) => {
             this.recordDiagnosticEvent('runtime/sessionStateHandlerFailed', {
@@ -8857,13 +9558,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private createSupervisorExecutionSession(
     snapshot: RuntimeSupervisorSessionSnapshot,
-    runtimeStoragePath: string | undefined
+    runtimeStoragePath: string | undefined,
+    options: { outputSequenceFloor?: number } = {}
   ): SupervisorExecutionSession {
     const agentActivity =
       snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined;
     if (agentActivity) {
       resetAgentAbnormalStreamInterruptionHeuristics(agentActivity, snapshot.output);
     }
+
+    const snapshotOutputSequence = normalizeExecutionOutputSequence(snapshot.outputSequence) ?? 0;
+    const outputSequenceFloor = normalizeExecutionOutputSequence(options.outputSequenceFloor) ?? 0;
 
     return {
       sessionId: snapshot.sessionId,
@@ -8900,6 +9605,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       syncDueAtMs: undefined,
       lifecycleTimer: undefined,
       pendingOutput: '',
+      outputSequence: Math.max(snapshotOutputSequence, outputSequenceFloor),
       outputFlushTimer: undefined,
       displayLabel: snapshot.displayLabel,
       lifecycleStatus: snapshot.lifecycle,
@@ -8957,13 +9663,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private handleRuntimeSupervisorOutput(
     runtimeBackend: RuntimeHostBackendKind,
     runtimeStoragePath: string,
-    kind: ExecutionNodeKind,
-    runtimeSessionId: string,
-    chunk: string
+    event: RuntimeSupervisorSessionOutputEvent
   ): void {
     const startedAt = Date.now();
     const binding = this.runtimeSessionBindings.get(
-      this.buildRuntimeSessionBindingKey(kind, runtimeSessionId, runtimeStoragePath, runtimeBackend)
+      this.buildRuntimeSessionBindingKey(event.kind, event.sessionId, runtimeStoragePath, runtimeBackend)
     );
     if (!binding) {
       return;
@@ -8974,19 +9678,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    session.buffer = appendTerminalBuffer(session.buffer, chunk);
-    session.terminalStateTracker.write(chunk);
-    session.lineContextTracker.write(chunk);
-    void this.bridgeExecutionAttentionSignals(binding.kind, binding.nodeId, session, chunk);
+    const supervisorOutputSequence = normalizeExecutionOutputSequence(event.outputSequence);
+    if (supervisorOutputSequence !== undefined && supervisorOutputSequence > session.outputSequence) {
+      session.outputSequence = supervisorOutputSequence;
+    } else {
+      session.outputSequence += 1;
+    }
+    session.buffer = appendTerminalBuffer(session.buffer, event.chunk);
+    session.terminalStateTracker.write(event.chunk);
+    session.lineContextTracker.write(event.chunk);
+    void this.bridgeExecutionAttentionSignals(binding.kind, binding.nodeId, session, event.chunk);
     if (binding.kind === 'agent') {
       this.maybeSyncAgentResumeContextFromOutput(binding.nodeId, session, {
         allowOverwriteExisting: session.stopRequested,
         flushImmediately: session.stopRequested
       });
-      this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(binding.nodeId, session, chunk);
+      this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(binding.nodeId, session, event.chunk);
     }
     this.queueExecutionStateSync(binding.kind, binding.nodeId);
-    this.queueExecutionOutput(binding.kind, binding.nodeId, chunk);
+    this.queueExecutionOutput(binding.kind, binding.nodeId, event.chunk);
     this.recordExecutionPerformanceDiagnostics({
       timestamp: new Date().toISOString(),
       source: 'host-output-chunk',
@@ -8995,8 +9705,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       owner: session.owner,
       lifecycleStatus: session.lifecycleStatus,
       durationMs: Date.now() - startedAt,
-      characters: chunk.length,
-      bytes: Buffer.byteLength(chunk, 'utf8'),
+      characters: event.chunk.length,
+      bytes: Buffer.byteLength(event.chunk, 'utf8'),
+      sequence: session.outputSequence,
       bufferLength: session.buffer.length,
       pendingOutputLength: session.pendingOutput.length
     });
@@ -9099,8 +9810,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const runtimeStoragePath = this.resolveRuntimeStoragePath(
         this.getPersistedRuntimeStoragePath(existingRuntimeMetadata)
       );
-      this.disposeManagedExecutionSession(this.getExecutionSessions(kind).get(nodeId));
-      const session = this.createSupervisorExecutionSession(snapshot, runtimeStoragePath);
+      const existingSession = this.getExecutionSessions(kind).get(nodeId);
+      const outputSequenceFloor =
+        maxExecutionOutputSequence(existingRuntimeMetadata.outputSequence, existingSession?.outputSequence) ?? 0;
+      this.disposeManagedExecutionSession(existingSession);
+      const session = this.createSupervisorExecutionSession(snapshot, runtimeStoragePath, {
+        outputSequenceFloor
+      });
       this.getExecutionSessions(kind).set(nodeId, session);
       this.state = updateExecutionNode(this.state, nodeId, kind, {
         status: snapshot.lifecycle,
@@ -9119,6 +9835,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastRuntimeError: undefined,
           shellPath: snapshot.shellPath,
           cwd: snapshot.cwd,
+          outputSequence: session.outputSequence,
           recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || undefined,
           lastCols: snapshot.cols,
           lastRows: snapshot.rows,
@@ -9147,10 +9864,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               })
         })
       });
-      this.persistState();
+      this.persistState({ reason: 'runtime-supervisor-live-snapshot' });
       this.postState('host/stateUpdated');
       if (options.postSnapshot) {
-        this.postExecutionSnapshot(kind, nodeId);
+        this.postExecutionSnapshot(kind, nodeId, {
+          executionSessionId: session.sessionId
+        });
       }
       return;
     }
@@ -9201,6 +9920,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         shellPath: snapshot.shellPath,
         cwd: snapshot.cwd,
         recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || currentMetadata.recentOutput,
+        outputSequence: maxExecutionOutputSequence(
+          snapshot.outputSequence,
+          existingSession?.outputSequence,
+          currentMetadata.outputSequence
+        ),
         lastExitCode: snapshot.lastExitCode,
         lastExitSignal: snapshot.lastExitSignal,
         lastExitMessage: snapshot.lastExitMessage,
@@ -9230,7 +9954,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             })
       })
     });
-    this.persistState();
+    this.persistState({ reason: 'runtime-supervisor-completed-snapshot' });
     this.postState('host/stateUpdated');
   }
 
@@ -9282,6 +10006,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           snapshot?.output !== undefined
             ? extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || currentMetadata.recentOutput
             : currentMetadata.recentOutput,
+        outputSequence: maxExecutionOutputSequence(
+          snapshot?.outputSequence,
+          existingSession?.outputSequence,
+          currentMetadata.outputSequence
+        ),
         lastExitCode: snapshot?.lastExitCode ?? currentMetadata.lastExitCode,
         lastExitSignal: snapshot?.lastExitSignal ?? currentMetadata.lastExitSignal,
         lastExitMessage: snapshot?.lastExitMessage ?? currentMetadata.lastExitMessage ?? summary,
@@ -9313,7 +10042,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             })
       })
     });
-    this.persistState();
+    this.persistState({ reason: 'runtime-history-restored' });
     this.postState('host/stateUpdated');
   }
 
@@ -9380,7 +10109,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       resumeSessionId: metadata.resumeSessionId ?? null,
       reason: reason ?? null
     });
-    this.persistState();
+    this.persistState({ reason: 'agent-live-runtime-fallback-to-resume' });
     this.postState('host/stateUpdated');
     return true;
   }
@@ -9447,6 +10176,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       version: 1,
       state: this.state,
       activeSurface: this.activeSurface
+    }, {
+      reason: 'active-surface'
     }).catch(() => undefined);
   }
 
@@ -10186,15 +10917,61 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         void this.branchAgentSession(parsedMessage.payload.nodeId);
         return;
       case 'webview/attachExecutionSession':
-        this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId);
+        this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId, {
+          requestId: parsedMessage.payload.requestId,
+          executionSessionId: parsedMessage.payload.executionSessionId,
+          minOutputSequence: parsedMessage.payload.minOutputSequence
+        });
         return;
       case 'webview/executionInput':
-        void this.writeExecutionInput(
-          parsedMessage.payload.kind,
-          parsedMessage.payload.nodeId,
-          parsedMessage.payload.data
-        );
-        return;
+        {
+          const hostReceivedEpochMs = Date.now();
+          const queueDelayMs =
+            typeof parsedMessage.payload.webviewEpochMs === 'number'
+              ? Math.max(0, hostReceivedEpochMs - parsedMessage.payload.webviewEpochMs)
+              : undefined;
+          this.recordExecutionPerformanceDiagnostics({
+            timestamp: new Date(hostReceivedEpochMs).toISOString(),
+            source: 'host-input-received',
+            nodeId: parsedMessage.payload.nodeId,
+            kind: parsedMessage.payload.kind,
+            sequence: parsedMessage.payload.sequence,
+            webviewEpochMs: parsedMessage.payload.webviewEpochMs,
+            hostReceivedEpochMs,
+            queueDelayMs,
+            durationMs: queueDelayMs,
+            characters: parsedMessage.payload.data.length,
+            bytes: Buffer.byteLength(parsedMessage.payload.data, 'utf8'),
+            success: true
+          });
+          const hostAckEpochMs = Date.now();
+          this.postMessageToSurface(sourceSurface, {
+            type: 'host/executionInputAck',
+            payload: {
+              nodeId: parsedMessage.payload.nodeId,
+              kind: parsedMessage.payload.kind,
+              sequence: parsedMessage.payload.sequence,
+              webviewEpochMs: parsedMessage.payload.webviewEpochMs,
+              webviewPerformanceNowMs: parsedMessage.payload.webviewPerformanceNowMs,
+              hostReceivedEpochMs,
+              hostAckEpochMs,
+              queueDelayMs
+            }
+          });
+          void this.writeExecutionInput(
+            parsedMessage.payload.kind,
+            parsedMessage.payload.nodeId,
+            parsedMessage.payload.data,
+            {
+              sequence: parsedMessage.payload.sequence,
+              webviewEpochMs: parsedMessage.payload.webviewEpochMs,
+              webviewPerformanceNowMs: parsedMessage.payload.webviewPerformanceNowMs,
+              hostReceivedEpochMs,
+              queueDelayMs
+            }
+          );
+          return;
+        }
       case 'webview/copyExecutionSelection':
         void this.copyExecutionSelection(
           sourceSurface,
@@ -10238,7 +11015,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           parsedMessage.payload.kind,
           parsedMessage.payload.nodeId,
           parsedMessage.payload.requestId,
-          parsedMessage.payload.candidates
+          parsedMessage.payload.candidates,
+          parsedMessage.payload.priority
         );
         return;
       case 'webview/resizeExecutionSession':
@@ -10624,7 +11402,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     );
     if (options.flushImmediately !== false) {
-      this.flushLiveExecutionState('agent', nodeId);
+      this.flushLiveExecutionState('agent', nodeId, {
+        persistMode: 'immediate',
+        persistReason: 'agent-resume-context'
+      });
     }
     return true;
   }
@@ -10729,7 +11510,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       startedAtMs: session.startedAtMs,
       trigger
     });
-    this.flushLiveExecutionState('agent', nodeId);
+    this.flushLiveExecutionState('agent', nodeId, {
+      persistMode: 'immediate',
+      persistReason: 'agent-resume-context'
+    });
   }
 
   private async maybeConfirmClaudeResumeSessionId(
@@ -10790,7 +11574,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       startedAtMs: session.startedAtMs,
       trigger
     });
-    this.flushLiveExecutionState('agent', nodeId);
+    this.flushLiveExecutionState('agent', nodeId, {
+      persistMode: 'immediate',
+      persistReason: 'agent-resume-context'
+    });
   }
 
   private ensureAgentActivityState(session: ManagedExecutionSession): AgentActivityHeuristicState {
@@ -10840,7 +11627,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         attentionPending: pending
       })
     });
-    this.persistState();
+    this.persistState({ reason: 'execution-attention' });
     if (options.postState !== false) {
       this.postState('host/stateUpdated');
     }
@@ -11566,7 +12353,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
         current.lifecycleStatus = 'waiting-input';
         void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, current, 'waiting-input');
-        this.flushLiveExecutionState('agent', nodeId);
+        this.flushLiveExecutionState('agent', nodeId, {
+          persistMode: 'immediate',
+          persistReason: 'agent-waiting-input'
+        });
         this.recordDiagnosticEvent('agent/waitingInputHeuristicMatched', {
           nodeId,
           reason: evaluation.reason ?? 'unknown'
@@ -11640,6 +12430,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastExitMessage: undefined,
         lastResumeError: undefined,
         lastRuntimeError: undefined,
+        outputSequence: undefined,
         lastCols: normalizedCols,
         lastRows: normalizedRows,
         serializedTerminalState: undefined,
@@ -11651,7 +12442,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastLaunchCommandLine: displayLaunchCommandLine
       })
     });
-    this.persistState();
+    this.persistState({ reason: 'agent-supervisor-launching' });
     this.postState('host/stateUpdated');
 
     const previousRuntimeSessionId = existingMetadata.runtimeSessionId;
@@ -11790,10 +12581,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastExitSignal: undefined,
         lastExitMessage: undefined,
         lastRuntimeError: undefined,
+        outputSequence: undefined,
         serializedTerminalState: undefined
       })
     });
-    this.persistState();
+    this.persistState({ reason: 'terminal-supervisor-launching' });
     this.postState('host/stateUpdated');
 
     const previousRuntimeSessionId = existingMetadata.runtimeSessionId;
@@ -12151,6 +12943,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         syncDueAtMs: undefined,
         lifecycleTimer: undefined,
         pendingOutput: '',
+        outputSequence: 0,
         outputFlushTimer: undefined,
         displayLabel: cliSpec.label,
         lifecycleStatus,
@@ -12178,6 +12971,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return;
         }
 
+        activeSession.outputSequence += 1;
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
         activeSession.terminalStateTracker.write(text);
         activeSession.lineContextTracker.write(text);
@@ -12201,6 +12995,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           durationMs: Date.now() - startedAt,
           characters: text.length,
           bytes: Buffer.byteLength(text, 'utf8'),
+          sequence: activeSession.outputSequence,
           bufferLength: activeSession.buffer.length,
           pendingOutputLength: activeSession.pendingOutput.length
         });
@@ -12236,6 +13031,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
         this.finalizeAgentResumeContextFromOutput(nodeId, activeSession);
         const finalizedResumeContext = activeSession.agentResume ?? resumeContext;
+        const serializedTerminalState = await activeSession.terminalStateTracker
+          .flush()
+          .catch(() => activeSession.terminalStateTracker.getSerializedState());
 
         sessionMap.delete(nodeId);
         this.recordDiagnosticEvent('execution/exited', {
@@ -12272,12 +13070,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             shellPath: activeSession.shellPath,
             cwd: activeSession.cwd,
             recentOutput: recentOutput || undefined,
+            outputSequence: activeSession.outputSequence,
             lastExitCode: exitCode,
             lastExitSignal: signal ?? undefined,
             lastExitMessage: message,
             lastCols: activeSession.cols,
             lastRows: activeSession.rows,
-            serializedTerminalState: activeSession.terminalStateTracker.getSerializedState(),
+            serializedTerminalState,
             preSuspendLifecycle: undefined,
             lastSuspendReason: undefined,
             lastSuspendMessage: undefined,
@@ -12380,6 +13179,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           shellPath: cliSpec.command,
           cwd,
           recentOutput: undefined,
+          outputSequence: undefined,
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
@@ -12396,7 +13196,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       this.persistState();
       this.postState('host/stateUpdated');
-      this.postExecutionSnapshot('agent', nodeId);
+      this.postExecutionSnapshot('agent', nodeId, {
+        executionSessionId: session.sessionId
+      });
       void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, session, 'startup');
     } catch (error) {
       await this.disposeAgentFileActivitySession(nodeId);
@@ -13237,6 +14039,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         syncDueAtMs: undefined,
         lifecycleTimer: undefined,
         pendingOutput: '',
+        outputSequence: 0,
         outputFlushTimer: undefined,
         displayLabel: shellPath,
         lifecycleStatus: 'launching',
@@ -13258,6 +14061,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return;
         }
 
+        activeSession.outputSequence += 1;
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
         activeSession.terminalStateTracker.write(text);
         activeSession.lineContextTracker.write(text);
@@ -13277,6 +14081,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           durationMs: Date.now() - startedAt,
           characters: text.length,
           bytes: Buffer.byteLength(text, 'utf8'),
+          sequence: activeSession.outputSequence,
           bufferLength: activeSession.buffer.length,
           pendingOutputLength: activeSession.pendingOutput.length
         });
@@ -13308,6 +14113,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
+        const serializedTerminalState = await activeSession.terminalStateTracker
+          .flush()
+          .catch(() => activeSession.terminalStateTracker.getSerializedState());
 
         this.terminalSessions.delete(nodeId);
         this.recordDiagnosticEvent('execution/exited', {
@@ -13336,12 +14144,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             shellPath: activeSession.shellPath,
             cwd: activeSession.cwd,
             recentOutput: recentOutput || undefined,
+            outputSequence: activeSession.outputSequence,
             lastExitCode: exitCode,
             lastExitSignal: signal ?? undefined,
             lastExitMessage: message,
             lastCols: activeSession.cols,
             lastRows: activeSession.rows,
-            serializedTerminalState: activeSession.terminalStateTracker.getSerializedState()
+            serializedTerminalState
           })
         });
         this.disposeManagedExecutionSession(activeSession);
@@ -13407,6 +14216,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastCols: normalizedCols,
           lastRows: normalizedRows,
           recentOutput: undefined,
+          outputSequence: undefined,
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
@@ -13415,7 +14225,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       this.persistState();
       this.postState('host/stateUpdated');
-      this.postExecutionSnapshot('terminal', nodeId);
+      this.postExecutionSnapshot('terminal', nodeId, {
+        executionSessionId: session.sessionId
+      });
       await this.flushPendingTerminalInitialInput(nodeId);
 
       session.lifecycleTimer = setTimeout(() => {
@@ -13426,7 +14238,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         activeSession.lifecycleTimer = undefined;
         activeSession.lifecycleStatus = 'live';
-        this.flushLiveExecutionState('terminal', nodeId);
+      this.flushLiveExecutionState('terminal', nodeId, {
+        persistMode: 'immediate',
+        persistReason: 'terminal-launch-live'
+      });
       }, 160);
     } catch (error) {
       const message = describeEmbeddedTerminalSpawnError(shellPath, error);
@@ -13564,10 +14379,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private attachExecutionSession(kind: ExecutionNodeKind, nodeId: string): void {
+  private attachExecutionSession(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    options: ExecutionSnapshotAttachOptions = {}
+  ): void {
     this.recordDiagnosticEvent('execution/attachRequested', {
       kind,
       nodeId,
+      requestId: options.requestId,
+      executionSessionId: options.executionSessionId,
+      minOutputSequence: options.minOutputSequence,
       liveSession: this.getExecutionSessions(kind).has(nodeId)
     });
 
@@ -13600,10 +14422,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.trackRuntimeSupervisorOperation(operation);
     }
 
-    this.postExecutionSnapshot(kind, nodeId);
+    this.postExecutionSnapshot(kind, nodeId, options);
   }
 
-  private async writeExecutionInput(kind: ExecutionNodeKind, nodeId: string, data: string): Promise<boolean> {
+  private async writeExecutionInput(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    data: string,
+    diagnosticMetadata: ExecutionInputDiagnosticMetadata = {}
+  ): Promise<boolean> {
     const inputDetail = {
       kind,
       nodeId,
@@ -13672,11 +14499,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.buffer);
         session.lifecycleStatus = 'running';
         session.resumePhaseActive = false;
-        this.queueExecutionStateSync('agent', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS);
+        this.queueExecutionStateSync('agent', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS, {
+          postState: true
+        });
       }
     } else if (session.lifecycleStatus === 'launching') {
       session.lifecycleStatus = 'live';
-      this.queueExecutionStateSync('terminal', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS);
+      this.queueExecutionStateSync('terminal', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS, {
+        postState: true
+      });
     }
 
     if (kind === 'terminal') {
@@ -13710,9 +14541,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         source: 'host-input-write',
         nodeId,
         kind,
+        sequence: diagnosticMetadata.sequence,
         owner: session.owner,
         lifecycleStatus: session.lifecycleStatus,
         durationMs: Date.now() - writeStartedAt,
+        webviewEpochMs: diagnosticMetadata.webviewEpochMs,
+        hostReceivedEpochMs: diagnosticMetadata.hostReceivedEpochMs,
+        queueDelayMs: diagnosticMetadata.queueDelayMs,
         characters: data.length,
         bytes: inputDetail.bytes,
         success: false,
@@ -13737,9 +14572,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           source: 'host-input-write',
           nodeId,
           kind,
+          sequence: diagnosticMetadata.sequence,
           owner: session.owner,
           lifecycleStatus: session.lifecycleStatus,
           durationMs: Date.now() - writeStartedAt,
+          webviewEpochMs: diagnosticMetadata.webviewEpochMs,
+          hostReceivedEpochMs: diagnosticMetadata.hostReceivedEpochMs,
+          queueDelayMs: diagnosticMetadata.queueDelayMs,
           characters: data.length,
           bytes: inputDetail.bytes,
           success: true
@@ -14004,7 +14843,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       clearTimeout(session.lifecycleTimer);
       session.lifecycleTimer = undefined;
     }
-    this.flushLiveExecutionState(kind, nodeId);
+    this.flushLiveExecutionState(kind, nodeId, {
+      persistMode: 'immediate',
+      persistReason: 'execution-stop'
+    });
     if (session.owner === 'local') {
       if (kind === 'agent') {
         if (session.agentProvider === 'claude') {
@@ -14420,6 +15262,40 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.takePendingExecutionOutput(session);
   }
 
+  private getCanvasStatePersistBarrierBeforeExecutionOutput(
+    kind: ExecutionNodeKind,
+    nodeId: string
+  ): Promise<void> | undefined {
+    if (this.pendingCanvasStatePersistFlush) {
+      return this.pendingCanvasStatePersistFlush;
+    }
+
+    const pendingState = this.pendingCanvasStatePersist?.snapshot.state;
+    if (!isRecord(pendingState) || !Array.isArray(pendingState.nodes)) {
+      return undefined;
+    }
+
+    const pendingNode = pendingState.nodes.find(
+      (candidate) => isRecord(candidate) && candidate.id === nodeId && candidate.kind === kind
+    );
+    if (!isRecord(pendingNode)) {
+      return undefined;
+    }
+
+    const nodeMetadata = isRecord(pendingNode.metadata) ? pendingNode.metadata : undefined;
+    const executionMetadata =
+      kind === 'agent'
+        ? nodeMetadata && isRecord(nodeMetadata.agent)
+          ? nodeMetadata.agent
+          : undefined
+        : nodeMetadata && isRecord(nodeMetadata.terminal)
+          ? nodeMetadata.terminal
+          : undefined;
+    return executionMetadata?.serializedTerminalState !== undefined
+      ? undefined
+      : this.flushDeferredCanvasStatePersist('first-output-post');
+  }
+
   private takePendingExecutionOutput(session: ManagedExecutionSession): string {
     if (session.outputFlushTimer) {
       clearTimeout(session.outputFlushTimer);
@@ -14433,14 +15309,50 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private postExecutionOutput(kind: ExecutionNodeKind, nodeId: string, chunk: string): void {
     const startedAt = Date.now();
+    const persistBarrier = this.getCanvasStatePersistBarrierBeforeExecutionOutput(kind, nodeId);
+    const session = this.getExecutionSessions(kind).get(nodeId);
+    const outputSequence = session?.outputSequence;
+    const executionSessionId = session?.sessionId;
     this.postMessage({
       type: 'host/executionOutput',
       payload: {
         nodeId,
         kind,
-        chunk
+        executionSessionId,
+        chunk,
+        persisted: persistBarrier === undefined,
+        outputSequence
       }
     });
+    if (persistBarrier) {
+      void persistBarrier.then(
+        () => undefined,
+        (error) => {
+          this.recordDiagnosticEvent('state/persistOutputBarrierFailed', {
+            kind,
+            nodeId,
+            message: formatUnknownError(error)
+          });
+        }
+      ).then(() => {
+        const controllerStillNeedsOutput =
+          this.getExecutionSessions(kind).get(nodeId)?.pendingOutput.length === 0;
+        if (!controllerStillNeedsOutput) {
+          return;
+        }
+        this.postMessage({
+          type: 'host/executionOutput',
+          payload: {
+            nodeId,
+            kind,
+            executionSessionId,
+            chunk: '',
+            persisted: true,
+            outputSequence
+          }
+        });
+      }).catch(() => undefined);
+    }
     this.recordExecutionPerformanceDiagnostics({
       timestamp: new Date().toISOString(),
       source: 'host-output-post',
@@ -14449,6 +15361,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       durationMs: Date.now() - startedAt,
       characters: chunk.length,
       bytes: Buffer.byteLength(chunk, 'utf8'),
+      sequence: outputSequence,
+      executionSessionId,
+      pendingOutputLength: session?.pendingOutput.length,
       success: true
     });
   }
@@ -14456,7 +15371,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private queueExecutionStateSync(
     kind: ExecutionNodeKind,
     nodeId: string,
-    delayMs = EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS
+    delayMs = EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS,
+    options: { postState?: boolean } = {}
   ): void {
     const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session) {
@@ -14482,7 +15398,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       activeSession.syncTimer = undefined;
       activeSession.syncDueAtMs = undefined;
-      this.flushLiveExecutionState(kind, nodeId);
+      this.flushLiveExecutionState(kind, nodeId, {
+        postState: options.postState === true
+      });
     }, nextDelayMs);
   }
 
@@ -14507,7 +15425,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ?.terminalStateTracker.flush()
       .catch(() => undefined);
     this.flushExecutionStateSyncTimer(kind, nodeId);
-    this.flushLiveExecutionState(kind, nodeId);
+    this.flushLiveExecutionState(kind, nodeId, {
+      persistMode: 'immediate',
+      persistReason: 'execution-boundary'
+    });
   }
 
   private async flushAllExecutionSessionStatesForHostBoundary(): Promise<void> {
@@ -14522,7 +15443,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private flushLiveExecutionState(
     kind: ExecutionNodeKind,
     nodeId: string,
-    options: { postState?: boolean } = {}
+    options: { postState?: boolean; persistMode?: CanvasStatePersistMode; persistReason?: string } = {}
   ): void {
     const session = this.getExecutionSessions(kind).get(nodeId);
     if (!session) {
@@ -14559,6 +15480,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         shellPath: session.shellPath,
         cwd: session.cwd,
         recentOutput: recentOutput || undefined,
+        outputSequence: session.outputSequence,
         lastCols: session.cols,
         lastRows: session.rows,
         serializedTerminalState: session.terminalStateTracker.getSerializedState(),
@@ -14582,15 +15504,36 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           : {})
       })
     });
-    this.persistState();
-    if (options.postState !== false) {
+    this.persistState({
+      mode: options.persistMode ?? 'deferred',
+      reason: options.persistReason ?? 'live-execution-state'
+    });
+    if (
+      options.postState !== false &&
+      (options.postState === true || options.persistMode === 'immediate' || !this.hasActiveExecutionSessions())
+    ) {
       this.postState('host/stateUpdated');
     }
   }
 
-  private async postExecutionSnapshot(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
+  private async postExecutionSnapshot(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    options: ExecutionSnapshotAttachOptions = {}
+  ): Promise<void> {
     this.clearQueuedExecutionOutput(kind, nodeId);
     const session = this.getExecutionSessions(kind).get(nodeId);
+    if (
+      session &&
+      options.executionSessionId !== undefined &&
+      options.executionSessionId === session.sessionId &&
+      options.minOutputSequence !== undefined &&
+      options.minOutputSequence > session.outputSequence
+    ) {
+      session.outputSequence = options.minOutputSequence;
+    }
+    const outputSequence = session?.outputSequence;
+    const executionSessionId = session?.sessionId;
     const serializedTerminalState = session
       ? await session.terminalStateTracker.flush().catch(() => session.terminalStateTracker.getSerializedState())
       : undefined;
@@ -14609,10 +15552,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       payload: {
         nodeId,
         kind,
+        requestId: options.requestId,
+        executionSessionId,
         output: session?.buffer ?? metadata?.recentOutput ?? '',
         cols: session?.cols ?? metadata?.lastCols ?? DEFAULT_TERMINAL_COLS,
         rows: session?.rows ?? metadata?.lastRows ?? DEFAULT_TERMINAL_ROWS,
         liveSession: Boolean(session),
+        outputSequence,
         serializedTerminalState:
           serializedTerminalState ??
           cloneSerializedTerminalState(metadata?.serializedTerminalState)
@@ -14621,9 +15567,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.recordDiagnosticEvent('execution/snapshotPosted', {
       kind,
       nodeId,
+      requestId: options.requestId,
+      requestedExecutionSessionId: options.executionSessionId,
+      minOutputSequence: options.minOutputSequence,
+      executionSessionId,
       cols: session?.cols ?? metadata?.lastCols ?? DEFAULT_TERMINAL_COLS,
       rows: session?.rows ?? metadata?.lastRows ?? DEFAULT_TERMINAL_ROWS,
-      liveSession: Boolean(session)
+      liveSession: Boolean(session),
+      outputSequence
     });
   }
 
@@ -14632,7 +15583,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     message: string
   ): Promise<void> {
-    await this.postExecutionSnapshot(kind, nodeId);
+    await this.postExecutionSnapshot(kind, nodeId, {
+      executionSessionId: this.getExecutionSessions(kind).get(nodeId)?.sessionId
+    });
     this.postMessage({
       type: 'host/executionExit',
       payload: {
@@ -14784,6 +15737,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
+          outputSequence: undefined,
           recentOutput: undefined,
           lastResumeError: undefined
         })
@@ -14800,6 +15754,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
+          outputSequence: undefined,
           recentOutput: undefined
         })
       });
@@ -15001,6 +15956,56 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.executionPerformanceDiagnostics.length - EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES
       );
     }
+  }
+
+  private startHostEventLoopLagMonitor(): void {
+    this.hostEventLoopLagMonitorExpectedAtMs = Date.now() + EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS;
+    const tick = (): void => {
+      const now = Date.now();
+      const lagMs = Math.max(0, now - this.hostEventLoopLagMonitorExpectedAtMs);
+      if (lagMs >= EXECUTION_HOST_EVENT_LOOP_LAG_REPORT_THRESHOLD_MS) {
+        this.recordExecutionPerformanceDiagnostics({
+          timestamp: new Date(now).toISOString(),
+          source: 'host-event-loop-lag',
+          reason: 'timer-lag',
+          durationMs: lagMs,
+          controllerCount: this.agentSessions.size + this.terminalSessions.size,
+          success: true
+        });
+      }
+      this.hostEventLoopLagMonitorExpectedAtMs = now + EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS;
+      this.hostEventLoopLagMonitorTimer = setTimeout(tick, EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS);
+    };
+    this.hostEventLoopLagMonitorTimer = setTimeout(tick, EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS);
+  }
+
+  private recordStatePersistPerformance(
+    reason: string,
+    startedAt: number,
+    state: unknown,
+    bytes?: number,
+    options: {
+      mode?: CanvasStatePersistMode;
+      workspaceStateMode?: CanvasWorkspaceStatePersistMode;
+      coalescedCount?: number;
+    } = {}
+  ): void {
+    const durationMs = Date.now() - startedAt;
+    if (durationMs < EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_DURATION_MS) {
+      return;
+    }
+
+    this.recordExecutionPerformanceDiagnostics({
+      timestamp: new Date().toISOString(),
+      source: 'host-state-persist',
+      reason,
+      durationMs,
+      bytes,
+      lifecycleStatus: options.mode,
+      workspaceStateMode: options.workspaceStateMode,
+      queuedWriteCount: options.coalescedCount,
+      ...summarizeCanvasStatePerformanceDetail(state)
+    });
   }
 
   private recordDiagnosticEvent(kind: string, detail?: Record<string, unknown>): void {
@@ -15206,28 +16211,64 @@ function cloneJsonValue<T>(value: T): T {
 
 function buildExecutionFileLinkResolveDiagnostics(
   candidates: readonly ExecutionTerminalFileLinkCandidate[],
+  filteredCandidates: readonly ExecutionTerminalFileLinkCandidate[],
   resolvedCount: number,
-  durationMs: number
+  durationMs: number,
+  skippedReason?: ExecutionFileLinkResolveDiagnostics['skippedReason'],
+  options: {
+    priority?: ExecutionTerminalFileLinkResolvePriority;
+    cacheHitCount?: number;
+    cacheMissCount?: number;
+    cachePendingCount?: number;
+  } = {}
 ): ExecutionFileLinkResolveDiagnostics {
+  const sourceCounts = countExecutionFileLinkResolveCandidateSources(candidates);
+  const retainedSourceCounts = countExecutionFileLinkResolveCandidateSources(filteredCandidates);
+  const filteredCandidateIds = new Set(filteredCandidates.map((candidate) => candidate.candidateId));
+  const removedCandidates = candidates.filter(
+    (candidate) => !filteredCandidateIds.has(candidate.candidateId)
+  );
+  const filteredSourceCounts = countExecutionFileLinkResolveCandidateSources(removedCandidates);
+  const toCandidateDiagnostic = (
+    candidate: ExecutionTerminalFileLinkCandidate
+  ): ExecutionFileLinkResolveCandidateDiagnostic => ({
+    text: candidate.text,
+    path: candidate.path,
+    source: candidate.source,
+    bufferStartLine: candidate.bufferStartLine,
+    line: candidate.line,
+    column: candidate.column
+  });
+
+  return {
+    candidateCount: candidates.length,
+    retainedCandidateCount: filteredCandidates.length,
+    filteredCandidateCount: removedCandidates.length,
+    resolvedCount,
+    durationMs,
+    sourceCounts,
+    retainedSourceCounts,
+    filteredSourceCounts,
+    candidates: candidates.map(toCandidateDiagnostic),
+    retainedCandidates: filteredCandidates.map(toCandidateDiagnostic),
+    filteredCandidates: removedCandidates.map(toCandidateDiagnostic),
+    skippedReason,
+    priority: options.priority,
+    cacheHitCount: options.cacheHitCount,
+    cacheMissCount: options.cacheMissCount,
+    cachePendingCount: options.cachePendingCount
+  };
+}
+
+function countExecutionFileLinkResolveCandidateSources(
+  candidates: readonly ExecutionTerminalFileLinkCandidate[]
+): Partial<Record<ExecutionTerminalFileLinkSource, number>> {
   const sourceCounts: Partial<Record<ExecutionTerminalFileLinkSource, number>> = {};
   for (const candidate of candidates) {
     sourceCounts[candidate.source] = (sourceCounts[candidate.source] ?? 0) + 1;
   }
 
-  return {
-    candidateCount: candidates.length,
-    resolvedCount,
-    durationMs,
-    sourceCounts,
-    candidates: candidates.map((candidate) => ({
-      text: candidate.text,
-      path: candidate.path,
-      source: candidate.source,
-      bufferStartLine: candidate.bufferStartLine,
-      line: candidate.line,
-      column: candidate.column
-    }))
-  };
+  return sourceCounts;
 }
 
 function summarizeExecutionFileLinkResolveDiagnostics(
@@ -15236,16 +16277,27 @@ function summarizeExecutionFileLinkResolveDiagnostics(
   const summary: ExecutionFileLinkResolveDiagnosticsSummary = {
     requestCount: samples.length,
     candidateCount: 0,
+    retainedCandidateCount: 0,
+    filteredCandidateCount: 0,
     resolvedCount: 0,
     totalDurationMs: 0,
     maxDurationMs: 0,
     slowRequestCount: 0,
     sourceCounts: {},
+    retainedSourceCounts: {},
+    filteredSourceCounts: {},
+    skippedReasonCounts: {},
+    priorityCounts: {},
+    cacheHitCount: 0,
+    cacheMissCount: 0,
+    cachePendingCount: 0,
     latestRequests: samples.slice(-20).map((sample) => cloneJsonValue(sample))
   };
 
   for (const sample of samples) {
     summary.candidateCount += sample.candidateCount;
+    summary.retainedCandidateCount += sample.retainedCandidateCount;
+    summary.filteredCandidateCount += sample.filteredCandidateCount;
     summary.resolvedCount += sample.resolvedCount;
     summary.totalDurationMs += sample.durationMs;
     summary.maxDurationMs = Math.max(summary.maxDurationMs, sample.durationMs);
@@ -15258,6 +16310,32 @@ function summarizeExecutionFileLinkResolveDiagnostics(
     >) {
       summary.sourceCounts[source] = (summary.sourceCounts[source] ?? 0) + count;
     }
+
+    for (const [source, count] of Object.entries(sample.retainedSourceCounts) as Array<
+      [ExecutionTerminalFileLinkSource, number]
+    >) {
+      summary.retainedSourceCounts[source] = (summary.retainedSourceCounts[source] ?? 0) + count;
+    }
+
+    for (const [source, count] of Object.entries(sample.filteredSourceCounts) as Array<
+      [ExecutionTerminalFileLinkSource, number]
+    >) {
+      summary.filteredSourceCounts[source] = (summary.filteredSourceCounts[source] ?? 0) + count;
+    }
+
+    if (sample.skippedReason) {
+      summary.skippedReasonCounts[sample.skippedReason] =
+        (summary.skippedReasonCounts[sample.skippedReason] ?? 0) + 1;
+    }
+
+    if (sample.priority) {
+      summary.priorityCounts[sample.priority] =
+        (summary.priorityCounts[sample.priority] ?? 0) + 1;
+    }
+
+    summary.cacheHitCount += sample.cacheHitCount ?? 0;
+    summary.cacheMissCount += sample.cacheMissCount ?? 0;
+    summary.cachePendingCount += sample.cachePendingCount ?? 0;
   }
 
   return summary;
@@ -15272,6 +16350,22 @@ function shouldRetainExecutionPerformanceDiagnosticSample(
 
   if (sample.source === 'host-input-write') {
     return (sample.durationMs ?? 0) >= EXECUTION_PERFORMANCE_HOST_INPUT_WRITE_MIN_DURATION_MS;
+  }
+
+  if (sample.source === 'host-input-received') {
+    return (sample.queueDelayMs ?? sample.durationMs ?? 0) >= EXECUTION_PERFORMANCE_HOST_INPUT_WRITE_MIN_DURATION_MS;
+  }
+
+  if (sample.source === 'host-event-loop-lag') {
+    return (sample.durationMs ?? 0) >= EXECUTION_HOST_EVENT_LOOP_LAG_REPORT_THRESHOLD_MS;
+  }
+
+  if (sample.source === 'webview-output-snapshot-reset') {
+    return (
+      sample.success !== true ||
+      sample.reason !== 'output-deferred-until-snapshot-reset' ||
+      (sample.pendingOutputLength ?? sample.characters ?? 0) >= EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_CHARACTERS
+    );
   }
 
   if (sample.source === 'host-output-chunk' || sample.source === 'host-output-post') {
@@ -15369,6 +16463,15 @@ function summarizeCanvasStateForDiagnostics(rawState: unknown): Record<string, u
     nodeCount: rawNodes.length,
     updatedAt: typeof rawState.updatedAt === 'string' ? rawState.updatedAt : undefined,
     nodeIds
+  };
+}
+
+function summarizeCanvasStatePerformanceDetail(
+  rawState: unknown
+): Pick<ExecutionPerformanceDiagnosticPayload, 'controllerCount'> {
+  const nodes = isRecord(rawState) && Array.isArray(rawState.nodes) ? rawState.nodes : [];
+  return {
+    controllerCount: nodes.length
   };
 }
 
@@ -19922,6 +21025,9 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
       return {
         nodeId: message.payload.nodeId,
         kind: message.payload.kind,
+        requestId: message.payload.requestId,
+        executionSessionId: message.payload.executionSessionId,
+        outputSequence: message.payload.outputSequence,
         cols: message.payload.cols,
         rows: message.payload.rows,
         liveSession: message.payload.liveSession,
@@ -19933,8 +21039,17 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
       return {
         nodeId: message.payload.nodeId,
         kind: message.payload.kind,
+        executionSessionId: message.payload.executionSessionId,
+        outputSequence: message.payload.outputSequence,
         chunkLength: message.payload.chunk.length,
         chunkPreview: summarizeDiagnosticText(message.payload.chunk)
+      };
+    case 'host/executionInputAck':
+      return {
+        nodeId: message.payload.nodeId,
+        kind: message.payload.kind,
+        sequence: message.payload.sequence,
+        queueDelayMs: message.payload.queueDelayMs
       };
     case 'host/executionExit':
       return {
@@ -20049,7 +21164,7 @@ function areWebviewLifecycleIdentitiesEqual(
 }
 
 function isBootstrapAckGatedHostMessage(type: HostToWebviewMessage['type']): boolean {
-  return type !== 'host/bootstrap' && type !== 'host/error';
+  return type !== 'host/bootstrap' && type !== 'host/error' && type !== 'host/executionInputAck';
 }
 
 function formatSurfaceForDiagnostics(surface: CanvasSurfaceLocation): string {
@@ -20631,6 +21746,20 @@ function normalizeRuntimeAttachmentState(
   return persistenceMode === 'live-runtime' ? 'history-restored' : 'history-restored';
 }
 
+function normalizeExecutionOutputSequence(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+function maxExecutionOutputSequence(...values: unknown[]): number | undefined {
+  return values.reduce<number | undefined>((currentMax, value) => {
+    const normalized = normalizeExecutionOutputSequence(value);
+    if (normalized === undefined) {
+      return currentMax;
+    }
+    return currentMax === undefined ? normalized : Math.max(currentMax, normalized);
+  }, undefined);
+}
+
 function normalizeAgentLifecycle(
   nodeStatus: string | undefined,
   liveSession: boolean,
@@ -20835,6 +21964,7 @@ function normalizeMetadata(
             : typeof agent.lastResponse === 'string'
               ? trimStoredTerminalText(agent.lastResponse)
               : undefined,
+        outputSequence: normalizeExecutionOutputSequence(agent.outputSequence),
         lastExitCode:
           typeof agent.lastExitCode === 'number'
             ? agent.lastExitCode
@@ -20945,6 +22075,7 @@ function normalizeMetadata(
           typeof terminal.recentOutput === 'string'
             ? trimStoredTerminalText(terminal.recentOutput)
             : undefined,
+        outputSequence: normalizeExecutionOutputSequence(terminal.outputSequence),
         lastExitCode:
           typeof terminal.lastExitCode === 'number'
             ? terminal.lastExitCode
@@ -21186,6 +22317,7 @@ function reconcileAgentNodesInArray(
             shellPath: liveSession.shellPath,
             cwd: liveSession.cwd,
             recentOutput: recentOutput || metadata.recentOutput,
+            outputSequence: liveSession.outputSequence,
             lastCols: liveSession.cols,
             lastRows: liveSession.rows,
             serializedTerminalState: liveSession.terminalStateTracker.getSerializedState(),
@@ -21368,6 +22500,7 @@ function reconcileTerminalNodesInArray(
             shellPath: liveSession.shellPath,
             cwd: liveSession.cwd,
             recentOutput: recentOutput || metadata.recentOutput,
+            outputSequence: liveSession.outputSequence,
             lastCols: liveSession.cols,
             lastRows: liveSession.rows,
             serializedTerminalState: liveSession.terminalStateTracker.getSerializedState()

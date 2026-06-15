@@ -18,7 +18,8 @@ related_plans:
   - docs/exec-plans/completed/execution-session-platform-compatibility.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
   - docs/exec-plans/completed/terminal-output-flood-input-responsiveness.md
-updated_at: 2026-06-10
+  - docs/exec-plans/active/execution-input-responsiveness.md
+updated_at: 2026-06-15
 ---
 
 # Terminal 节点嵌入式会话窗口设计
@@ -92,7 +93,7 @@ updated_at: 2026-06-10
 - 它适合作为 Linux 原型，但不适合作为 Linux / macOS / Windows 的统一长期主线。
 - 运行中 resize、停止语义和平台错误处理都会被迫继续分叉。
 
-## 6. 当前结论
+## 6. 正式方案
 
 当前收敛结论如下：
 
@@ -125,8 +126,13 @@ updated_at: 2026-06-10
 - 执行节点的滚动语义必须保持和标准终端一致：用户一旦向上滚动进入历史查看，增量输出、spinner/redraw、主题刷新与 visibility redraw 都不应主动 `scrollToBottom()`；只有用户自己回到底部，或显式触发“滚到底部”命令时，视图才恢复跟随最新输出。
 - 当前恢复语义面向“尽量保住与 live xterm 对齐的 scrollback 历史”；仍不额外承诺用户手动滚到任意 scrollback 位置后的 viewport 也能跨重建精确复原。
 - 运行中 resize 现在通过 PTY 后端原生能力处理，不再通过 stdin 注入 `stty`。
-- 高频输出现在也属于正式运行时边界的一部分：宿主侧增量输出允许继续按小时间窗批量合并，但 Webview 不得再在 `window.message` 回调里同步广播到所有执行节点并立刻 `terminal.write()`。标准做法是按节点维护独立输出控制器，把连续 `host/executionOutput` 先入队，再以异步批量 drain 写入 `xterm.js`，让输入与画布交互始终有机会先进入主线程。
-- 2026-06-10 起，卡顿现场的第一步收敛为诊断而不是继续猜测。`Dev Session Canvas: 落盘当前宿主诊断` 必须写出 `execution-performance-diagnostics.json`，并在 `summary.json.diagnostics.executionPerformanceSummary` 中内嵌摘要。样本来源覆盖 Webview 侧输出入队、批量 drain、单次 `xterm.write`、输入 `postMessage` 分发，以及 Host 侧输出 chunk 处理、输出投递和输入写入；样本只记录节点、类型、耗时、字符/字节数、队列/缓冲长度、owner、生命周期与成功/失败，不记录完整终端内容。
+- 高频输出现在也属于正式运行时边界的一部分：宿主侧增量输出允许继续按小时间窗批量合并，但 Webview 不得再在 `window.message` 回调里同步广播到所有执行节点并立刻 `terminal.write()`。标准做法是按节点维护独立输出控制器，把连续 `host/executionOutput` 先入队，再以异步批量 drain 写入 `xterm.js`，让输入与画布交互始终有机会先进入主线程。多节点持续输出时，drain 必须带全局每帧字符预算、每 controller 小块预算和 xterm queued write 背压；用户输入发生后的短窗口内，输出只能小块推进，并优先推进刚输入节点的回显，避免其他节点的大块输出继续占满 xterm parser 队列。普通 live attach snapshot 在同一 Webview mount 内不得重复请求；多个执行节点的 serialized snapshot hydrate 不应同帧并发写入 xterm，而应进入全局恢复队列，最近输入节点优先，其余节点按短间隔错峰恢复。最近输入发生后，snapshot hydrate 必须先让出短窗口，但要有等待上限，不能因为持续输入永久不恢复 Host snapshot。Webview hidden 或刚从主线程 lag / visibility restore 恢复时，不应一次性回放 backlog，而应暂停或进入小预算 recovery；若单节点 Webview pending raw output 已超过安全阈值，则不能盲目截断后继续写原 xterm，而必须清空 Webview 待渲染 backlog、请求 Host serialized terminal snapshot 重建显示，再按 `outputSequence` 只重放 snapshot 之后的新 output。当前阈值区分可见与隐藏场景：visible / lag recovery 仍按 512KB 单节点 backlog 触发，`document.hidden` 时提前到 128KB，避免用户切回画板时才承担后台积压的 raw replay 成本。snapshot reset 必须有 request id、超时重试和等待期预算：Host snapshot 应带回 request id 与 execution session id；Webview 等待 snapshot 时的 deferred output 不能无界增长，超过预算后应推进 reset 边界并重新请求 Host snapshot，而不是把 MB 级 backlog 从 raw pending queue 转移到 deferred queue。仍在运行的 reset snapshot 若缺少 `outputSequence`，不能作为有序 reset 边界应用，只能记录诊断并等待 sequenced snapshot 或 timeout retry；已结束会话的无序 snapshot 可以作为最终画面收口，但不得重放等待期 live output。若会话在 reset 等待期退出，Webview 必须清空 reset 状态并显示 exit，后到的旧 reset snapshot 只能被诊断为 stale 并忽略。
+- 2026-06-10 起，卡顿现场的第一步收敛为诊断而不是继续猜测。`Dev Session Canvas: 落盘当前宿主诊断` 必须写出 `execution-performance-diagnostics.json`，并在 `summary.json.diagnostics.executionPerformanceSummary` 中内嵌摘要。样本来源覆盖 Webview 侧输出入队、批量 drain、单次 `xterm.write`、snapshot restore queue、backlog snapshot reset、输入 `postMessage` 分发、输入 ack 往返、Webview 主线程 timer lag、Host event-loop timer lag、Host 侧输入到达、Host 侧输入写入、Host 侧输出 chunk 处理、输出投递和状态持久化；样本只记录节点、类型、耗时、字符/字节数、队列/缓冲长度、owner、生命周期、sequence、request id、execution session id 与成功/失败，不记录完整终端内容。
+- 2026-06-11 的现场诊断显示 file-link resolve 已完全退出热路径，但 `workspaceState.update` 在多 Agent 输出期间形成高频慢任务。因此 live execution state 的常规持久化必须按“交互优先”处理：内存权威状态和 Webview state 仍立即更新，主快照文件与 root-local snapshot 继续写出；`workspaceState.update` 不再进入活跃执行会话期间的热路径，只在没有活跃 Agent / Terminal 会话时作为兼容 fallback 更新。当前策略使用短 debounce 与 max wait 合并 live execution state，并在 active session 期间用 `workspaceStateMode: "skip"` 记录跳过；生命周期边界、停止、挂起、等待输入、恢复确认、宿主边界、测试 reload 与诊断 dump 仍必须保证主快照 flush。
+- 延迟持久化不能牺牲恢复正确性。若首个 `host/executionOutput` 到达时，对应会话的启动快照仍未安全写出，Host 必须把该输出标为 `persisted: false`；Webview controller 必须缓冲 chunk 而不是丢弃或写入 xterm，等 Host 写完快照后用 `persisted: true` 释放缓冲。这样用户不会看到一个宿主尚无法恢复的“幽灵输出”，也不会因为持久化栅栏丢失首个 output chunk。
+- Host 侧用于恢复和链接上下文的 headless terminal 处理也不应与用户输入竞争。`SerializedTerminalStateTracker` 与 `ExecutionTerminalLineContextTracker` 对连续 output 使用短时间窗批处理和固定 chunk 拆分；`flush()`、`resize()`、`setScrollback()`、输入记录和链接 cwd 查询这类正确性边界必须先 drain pending write，保证恢复快照、尺寸变化和文件链接上下文仍按顺序可用。常规 live output state sync 默认只更新权威状态和持久化快照，不再强制向 Webview 广播整份 `host/stateUpdated`；只有输入提交、生命周期边界、immediate persist 或无活跃执行会话时才推送完整状态。
+- `host/executionInputAck` 只用于测量 Webview 到 Host 再回 Webview 的消息桥往返。它不表示输入已经写入 PTY，也不得触发本地 echo、乐观回显或状态变更；真实终端反馈仍必须来自 Host 写入后的 PTY / supervisor 输出。
+- `host/executionOutput.outputSequence` 与 `host/executionSnapshot.outputSequence` 是 Webview backlog reset 的顺序边界，不是用户可见内容。Host 每次收到 PTY / supervisor output chunk 时递增或采纳 supervisor 提供的单调序号，之后投递 output 与 snapshot 都必须带同一 session 下不回退的序号；runtime supervisor 的 sessionOutput、snapshot、registry 恢复和 Host live execution metadata 都要保留该序号，reattach 时以已持久化 metadata 为 floor，避免旧 registry 或 Host session 重建把序号重置到 0。Webview 丢弃旧 raw backlog 后请求 snapshot，snapshot 序号之前的旧 output 不得再写入 xterm，snapshot 序号之后已经收到的新 output 只能在 snapshot hydrate 完成后重放。`webview/attachExecutionSession.requestId` 与 snapshot 回包的 `requestId` 用于确认 reset 请求是否完成；`executionSessionId` 用于区分同一节点的新旧执行会话，避免新会话低序号 output 被上一轮 reset 边界误判为 stale。reset attach request 可携带同一 session 的 `minOutputSequence`，Host 只能在 session id 匹配时把 snapshot 序号提升到该边界，不能跨 session 复用。reset 已清空或 session 已结束后，带 `snapshot-reset-*` request id 的迟到 snapshot 不应覆盖当前终端画面。
 - 生产 Webview bundle 必须使用 `@xterm/xterm/lib/xterm.js` 作为浏览器端打包输入；`scripts/build/build.mjs` 通过 `xterm-browser-main-entry` esbuild plugin 只重定向裸导入 `@xterm/xterm`，不影响 `@xterm/xterm/css/xterm.css`。当前不使用 xterm 的 ESM `module` 入口作为生产打包输入，因为在本仓库的 esbuild production minify 组合下，`@xterm/xterm@6.0.0` ESM 入口里的局部 `const enum` 降级代码会被压成未声明变量，遇到 Vim / glab 等 TUI 发送 `DECRQM`（例如 `CSI ? 12 $ p` 查询光标闪烁模式）时会在 Webview 侧抛 `ReferenceError`，从而中断 xterm parser。宿主 `extension.js` 与 `runtime-supervisor.js` 仍可继续使用各自 Node bundle 的解析规则；这个约束只针对浏览器 Webview bundle。
 
 ## 7. 风险与取舍
@@ -142,6 +148,15 @@ updated_at: 2026-06-10
 
 - 风险：如果用户把 `terminal.integrated.scrollback` 设得非常大，serialized terminal state 的内存与落盘体积会同步上升。
   当前缓解：主快照文件继续保留完整 terminal state，以优先满足恢复正确性；`workspaceState` 只保留去掉 serialized terminal state 的轻量兜底，避免把所有存储都膨胀到同一量级。
+
+- 风险：如果运行中状态持久化被收得过狠，扩展宿主崩溃或 VS Code 被强制退出时，最近几秒的 live terminal state 可能尚未落盘。
+  当前缓解：只有高频 live execution state 默认延迟合并，主 `canvas-state.json` 仍是恢复权威并按合并窗口写出；active session 期间仅跳过慢的 `workspaceState` fallback。first output 受 `persisted` 栅栏保护，保证用户看到输出前至少已有一次可恢复的会话快照。
+
+- 风险：如果 Webview output backlog 限流过严，非当前输入节点的输出可能明显滞后，用户会误以为 Agent 没有继续运行。
+  当前缓解：限流只推迟 Webview 写入，不丢弃 Host output；输入窗口外仍按全局预算逐帧推进，诊断记录 `pendingOutputLength`、`webview-terminal-drain.reason` 和 `webview-terminal-write.queuedWriteCount`，用于判断是必要让步还是过度限流。
+
+- 风险：如果 Webview 直接丢弃 raw output 后继续沿用原 xterm 状态，ANSI 模式、alternate screen、scrollback 或半截控制序列会导致显示异常。
+  当前缓解：只有在 Host `outputSequence` 可用、且 Webview 处于 hidden 或刚经历 lag/visibility restore、且 pending raw output 超过阈值时，才触发 snapshot reset；hidden 阈值低于 visible 阈值，用更频繁的 Host snapshot 请求换取更低的切回恢复成本。reset 会清空 Webview 待渲染 backlog并请求 Host serialized terminal state 重建，旧 output 不再 replay。reset 后新 output 只在预算内暂存到 snapshot 之后写入；若 snapshot 未及时到达，Webview 会超时重试，若暂存超过预算则丢弃等待期 tail、推进 reset 边界并重新请求 snapshot。无 `outputSequence` 的 live snapshot 不作为 reset-safe 边界；session ended snapshot 和 exit 会关闭 reset 状态，但不 replay 等待期 output，避免为了收口而把未知顺序 backlog 写回 xterm。
 
 - 风险：`node-pty` 路线会引入原生模块与扩展打包约束。
   当前缓解：构建脚本已把 `node-pty` 设为 external，并依赖其预编译产物；当前先以 `build` / `typecheck` / Linux smoke test 证明基本可行。
@@ -166,7 +181,8 @@ updated_at: 2026-06-10
 8. 用户向上滚动查看历史后，增量输出、spinner/redraw 与 `host/visibilityRestored` 这类纯视图刷新都不会把 viewport 强制拉回底部；用户滚回底部后，最新输出会再次自动跟随。
 9. 一个或多个 `Terminal` 节点执行高频持续输出命令时，当前终端的 `Ctrl-C`、其他执行节点输入、至少一种画布内 DOM 交互，以及在压力期间新建并启动额外执行节点，都仍能在命令进行期间完成，而不是等输出结束后再排队执行。
 10. production minified Webview bundle 必须通过 `DECRQM` 探针：向 xterm 写入 `CSI ? 12 $ p` 后，Webview 侧应正常产生 `CSI ? 12 ; 1 $ y` 或同类合法模式响应，而不是抛出 `ReferenceError`；同时至少覆盖一次 Vim 风格 alternate screen 进入后的真实输入路径。
-11. 多个执行节点同时输出并出现输入卡顿时，用户应先执行 `Dev Session Canvas: 落盘当前宿主诊断`。诊断目录中的 `execution-performance-diagnostics.json` 应能区分主要耗时发生在 Host output chunk 处理、Host output postMessage、Webview output enqueue、Webview drain、`xterm.write`，还是 Host input write；若样本为空，至少说明当前阈值下没有捕捉到慢路径，应结合现场复现强度继续调整阈值或采集。
+11. 多个执行节点同时输出并出现输入卡顿时，用户应先执行 `Dev Session Canvas: 落盘当前宿主诊断`。诊断目录中的 `execution-performance-diagnostics.json` 应能区分主要耗时发生在 Webview 主线程 lag、Webview input dispatch、Host input received queue delay、Host input write、Host output chunk 处理、Host output postMessage、Webview output enqueue、Webview drain、`xterm.write`，还是 Host state persist；若样本为空，至少说明当前阈值下没有捕捉到慢路径，应结合现场复现强度继续调整阈值或采集。
+12. 持久化合并、`workspaceState` 非热路径化和 backlog scheduling 生效后，新的诊断 `summary.json.diagnostics.diagnosticsSchema.executionPerformance` 应至少为 9；`state/persistDeferred` 与 `state/workspaceStateSkipped` 可以出现，但运行期间 `persist-workspace-state` 不应再跟随 live output state sync 增长。上一轮 12:35 基线中 `persist-workspace-state` p95 为 2635ms、max 为 16573ms，输入 `queueDelayMs` p95 为 4019ms；14:43 基线中 `webview-terminal-drain.characters` 曾出现 427750 / 336810 / 205738 / 74666 字符突刺，`webview-main-thread-lag` p95 约 59488ms；13:53 基线中 `webview-input-ack` 平均约 142ms、最大 272ms，但 Webview 恢复时 `pendingOutputLength` 达到 6,142,227。本轮验收应重点确认 `webview-output-snapshot-reset` 能替代 6MB 级 raw replay，`snapshot-reset-requested` 与 `snapshot-reset-applied` 能成对出现，等待期 `pendingOutputLength` 不再长期超过 256KB，且真实终端反馈仍来自 Host 写入后的 PTY / supervisor 输出。边界回归还要覆盖 unsequenced live snapshot 被忽略并等待 retry、unsequenced ended snapshot 能收口但不重放 deferred output、session exit 会清理 pending reset、迟到 reset snapshot 不覆盖 exit 画面，以及普通 attach snapshot 去重和多节点 snapshot hydrate 输入节点优先。
 
 ## 9. 当前验证状态
 
@@ -179,4 +195,17 @@ updated_at: 2026-06-10
 - 截至 `2026-04-28`，`Remote SSH` 主路径以及 Linux、macOS、Windows 本地 workspace 的 `Terminal` / `Agent` / `Note` 主路径都已补齐当前轮功能可用性验证。
 - 截至 `2026-05-27`，已用 v0.10.6 正常安装宿主诊断确认：`vim tmp.txt` 后宿主仍收到 `execution/inputWritten` 且 PTY 有 Vim 输出，但 Webview 记录 `ReferenceError: n is not defined`，栈位于 `@xterm/xterm` 的 `requestMode`；调试宿主没有该错误。该问题已收敛为生产 Webview bundle 选择 ESM 入口并压缩后触发的 xterm `DECRQM` parser 运行时错误。已新增构建入口约束和 Playwright TUI 回归作为验证口径。
 - 截至 `2026-06-10`，已补充执行性能诊断插桩，覆盖 Host/Webview 输出与输入路径，并把结果接入当前宿主诊断 dump；本轮代码级验证以协议解析、lifecycle 诊断测试、typecheck 与差异检查为准，真实多 Agent 卡顿现场仍需用户复现时采集 dump 后再判断瓶颈位置。
+- 截至 `2026-06-11`，最新现场诊断显示 file-link resolve 已降为 0，但用户仍能感到明显输入卡顿；因此已补充输入 sequence、Webview→Host queue delay、Host state persist、Webview main-thread lag 诊断，并给 Webview terminal output drain 增加每帧预算和输入后小块优先策略。当前代码级验证已通过 `npm run test:protocol-webview-messages` 与 `npm run typecheck`；真实多 Agent 体感仍需用户安装后重新采集宿主诊断确认。
+- 截至 `2026-06-11`，新现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-03/.debug/current-host-diagnostics/2026-06-11T08-05-07-282Z` 显示 `host-state-persist` 占 488/500 个性能样本，`persist-workspace-state` 平均 161ms、p95 300ms、max 470ms，输入到达 Host 前排队 110ms 到 266ms。已将 live execution state 的默认持久化改为延迟合并，并增加 `host/executionOutput.persisted` 栅栏；当前代码级验证已通过 `npm run test:protocol-webview-messages`、`npm run typecheck`、`npm run build`、定向 Webview 回归与 `git diff --check`，仍需新的真实宿主诊断验证体感和指标变化。
+- 截至 `2026-06-11`，第三轮现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-03/.debug/current-host-diagnostics/2026-06-11T12-35-46-410Z` 显示 deferred coalescing 已把 `state/persistDeferred = 622` 合并到 `state/persistWritten = 66`，但剩余 `workspaceState.update` 单次写入已恶化到平均 1555.79ms、p95 2635ms、max 16573ms，输入到达 Host 前排队平均 945ms、p95 4019ms。当前实现把 active session 期间的 `workspaceState.update` 跳过，只保留主快照文件作为恢复权威，并把诊断 schema 提升到 4；仍需新的真实宿主诊断验证体感和指标变化。
+- 截至 `2026-06-11`，第四轮现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-03/.debug/current-host-diagnostics/2026-06-11T14-43-43-595Z` 显示 `workspaceState` 跳过已生效，file-link request 仍为 0，但 Webview main-thread lag 出现分钟级样本，恢复后 terminal drain 仍有几十万字符 backlog 突刺，且 Host input received queue delay p95 约 7157ms。当前实现进一步收紧为 schema 5：Webview drain 使用全局帧预算、queued write 背压、hidden pause 与 lag/visibility recovery；Host 侧 serialized terminal state 和 line-context tracker 改为批处理，常规 live stateUpdated 静默化。该结论仍需新的真实宿主诊断验证体感和指标变化。
+- 截至 `2026-06-12`，第五轮现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-02/.debug/current-host-diagnostics/2026-06-12T02-58-38-216Z` 显示 schema 5 已移除分钟级 Webview lag 和 backlog 突刺，`host/stateUpdated` 只剩 2 条，但 `host-input-received.queueDelayMs` 仍稳定在 p50 309ms、p95 377ms。当前实现把诊断 schema 提升到 6，增加 `host/executionInputAck`、`webview-input-ack` 和 `host-event-loop-lag`，且明确不在 Host 写入前做本地反馈；仍需新的真实宿主诊断验证剩余 300ms 的来源。
+- 截至 `2026-06-13`，第六轮现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-02/.debug/current-host-diagnostics/2026-06-13T13-53-34-850Z` 显示 schema 6 已能区分 ack 往返与 Host queue delay：`webview-input-ack` 平均约 142ms、最大 272ms，未见对应 Host event-loop lag；剩余明显体感卡顿转为 Webview 长时间 timer-lag 后恢复时的 6MB 级 raw output backlog。当前实现把诊断 schema 提升到 7，增加 `webview-output-snapshot-reset`，并用 Host serialized terminal snapshot 替代 Webview raw backlog replay；仍需新的真实宿主诊断验证体感和指标变化。
+- 截至 `2026-06-14`，第七轮现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-02/.debug/current-host-diagnostics/2026-06-13T15-44-39-405Z` 显示 schema 7 已让 raw replay 退出 retained drain 样本，但 `webview-output-snapshot-reset` 中 `output-deferred-until-snapshot-reset` 仍可把等待期队列增长到约 5.59MB。当前实现把诊断 schema 提升到 8，增加 reset `requestId`、`executionSessionId`、timeout retry、deferred-output budget reset 和采样诊断；仍需新的真实宿主诊断验证体感和指标变化。
+- 截至 `2026-06-14`，已补齐 snapshot reset 的 session 结束和无序 snapshot 行为回归：live unsequenced reset snapshot 不应用、不 replay 等待期 output，并等待 sequenced snapshot 或 timeout retry；ended unsequenced snapshot 可作为最终画面应用但不 replay deferred live output；reset 等待期收到 exit 会清理 reset 状态并忽略迟到 reset snapshot。定向 Playwright 已覆盖 Agent / Terminal 两类节点。
+
+- 截至 `2026-06-14`，第九轮现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-03/.debug/current-host-diagnostics/2026-06-14T05-43-23-414Z` 显示 file-link、MB 级 raw backlog 和 `workspaceState` 热路径都不是当前主因；剩余卡顿集中在 panel restore 后 8 个普通 snapshot hydrate 与输入重叠。当前实现把诊断 schema 提升到 9，普通 live attach snapshot 在 mount 内去重，并新增 `webview-snapshot-restore-queue` 诊断，snapshot hydrate 串行且优先最近输入节点；仍保持 Host 写入前不做本地 echo。
+- 截至 `2026-06-14`，现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-03/.debug/current-host-diagnostics/2026-06-14T08-48-07-706Z` 显示 attach 去重和 snapshot reset 握手已经生效，`webview-input-ack` p50 108.2ms、p95 172ms、max 209ms；但 hidden 期间总 pending raw output 仍升到约 1.22MB，恢复后需要从约 1MB 开始 lag-recovery drain。当前实现把 hidden 场景的单节点 snapshot reset 阈值降到 128KB，visible / lag recovery 仍保留 512KB，并已用 Playwright 覆盖 Agent / Terminal 在 160KB hidden backlog 时提前发起 `hidden-backlog-snapshot-reset`。
+
+- 截至 `2026-06-15`，现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-03/.debug/current-host-diagnostics/2026-06-14T17-23-57-416Z` 显示 Webview lifecycle、file-link resolve、input ack 与 hidden 128KB reset 方向均已生效，但两个 live-runtime Agent 的 snapshot reset 进入 timeout/retry/stale 循环：Webview reset 边界分别为 3581 / 6437，Host snapshot 却长期返回 `outputSequence = 2`。当前实现将 `outputSequence` 纳入 runtime supervisor output/snapshot/registry、Host metadata、reattach floor 和 Webview reset attach 的 `minOutputSequence` 握手，避免同一 session 下序号回退造成无限 stale snapshot。
 - Windows 下使用 `Codex` 时，执行节点内历史当前仍有无法向上翻页的已知限制；Remote SSH 之外的更深远程场景也还缺少同等级人工验证证据，因此文档状态继续保持为“验证中”。
