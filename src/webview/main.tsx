@@ -695,6 +695,7 @@ const EXECUTION_TERMINAL_LAG_RECOVERY_WINDOW_MS = 2000;
 const EXECUTION_TERMINAL_VISIBILITY_RESTORE_RECOVERY_MS = 3000;
 const EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER = 1;
 const EXECUTION_TERMINAL_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 512 * 1024;
+const EXECUTION_TERMINAL_HIDDEN_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 128 * 1024;
 const EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS = 2000;
 const EXECUTION_TERMINAL_SNAPSHOT_RESET_REQUEST_COOLDOWN_MS = 1000;
 const EXECUTION_TERMINAL_SNAPSHOT_RESET_TIMEOUT_MS = 1500;
@@ -13003,17 +13004,20 @@ function maybeResetExecutionTerminalBacklogFromSnapshot(
     return;
   }
 
-  const pendingOutputLength = controller.getPendingOutputLength();
-  if (pendingOutputLength < EXECUTION_TERMINAL_SNAPSHOT_RESET_BACKLOG_THRESHOLD) {
-    return;
-  }
-
   const now = readPerformanceNow();
   const recentLagOrRestore =
     now - lastExecutionMainThreadLagAtMs < EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS ||
     now - lastExecutionVisibilityRestoredAtMs < EXECUTION_TERMINAL_VISIBILITY_RESTORE_RECOVERY_MS ||
     document.hidden;
   if (!recentLagOrRestore) {
+    return;
+  }
+
+  const resetThreshold = document.hidden
+    ? EXECUTION_TERMINAL_HIDDEN_SNAPSHOT_RESET_BACKLOG_THRESHOLD
+    : EXECUTION_TERMINAL_SNAPSHOT_RESET_BACKLOG_THRESHOLD;
+  const pendingOutputLength = controller.getPendingOutputLength();
+  if (pendingOutputLength < resetThreshold) {
     return;
   }
 
@@ -13417,7 +13421,13 @@ function createExecutionTerminalController(
       type: 'webview/attachExecutionSession',
       payload: {
         nodeId,
-        kind
+        kind,
+        ...(currentExecutionSessionId !== undefined
+          ? { executionSessionId: currentExecutionSessionId }
+          : {}),
+        ...(lastAppliedSnapshotSequence > 0
+          ? { minOutputSequence: lastAppliedSnapshotSequence }
+          : {})
       }
     });
   };
@@ -13500,7 +13510,11 @@ function createExecutionTerminalController(
       payload: {
         nodeId,
         kind,
-        requestId
+        requestId,
+        ...(pendingSnapshotResetExecutionSessionId !== undefined
+          ? { executionSessionId: pendingSnapshotResetExecutionSessionId }
+          : {}),
+        minOutputSequence: pendingSnapshotResetAfterSequence
       }
     });
     reportExecutionPerformanceDiagnostic(
