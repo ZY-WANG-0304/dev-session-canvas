@@ -10076,12 +10076,15 @@ test('workspace root group body renders a tiled non-interactive root name waterm
   expect(watermarkStyle.beforeMaskImage).toContain('Frontend');
   expect(watermarkStyle.beforeMaskImage).not.toContain('rotate');
   expect(watermarkStyle.beforeMaskRepeat).toContain('repeat');
-  expect(watermarkStyle.tileHeight).toBeCloseTo(88 * (watermarkStyle.labelFontSize / 12), 1);
+  expect(watermarkStyle.beforeOpacity).toBeGreaterThanOrEqual(0.24);
+  expect(watermarkStyle.beforeOpacity).toBeLessThanOrEqual(0.34);
   expect(watermarkStyle.labelFontStyle).toBe('normal');
   expect(watermarkStyle.labelFontSize).toBeGreaterThan(12);
   expect(watermarkStyle.labelFontSize).toBeCloseTo(watermarkStyle.titleFontSize, 1);
   expect(watermarkStyle.tileWidth).toBeGreaterThan(0);
-  expect(watermarkStyle.tileWidth).toBeLessThan(watermarkStyle.bodyWidth);
+  expect(watermarkStyle.tileWidth).toBeGreaterThan(180 * (watermarkStyle.labelFontSize / 12));
+  expect(watermarkStyle.tileWidth).toBeLessThan(watermarkStyle.bodyWidth * 1.5);
+  expect(watermarkStyle.tileHeight).toBeGreaterThan(88 * (watermarkStyle.labelFontSize / 12));
   expect(watermarkStyle.tileHeight).toBeLessThan(watermarkStyle.bodyHeight);
   expect(watermarkStyle.watermarkZIndex).toBeGreaterThan(watermarkStyle.childBackgroundZIndex);
   expect(watermarkStyle.watermarkAfterChildBackground).toBe(true);
@@ -10097,6 +10100,101 @@ test('workspace root group body renders a tiled non-interactive root name waterm
   await expect
     .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
     .toBe('workspace-root-watermark');
+});
+
+test('workspace root watermark keeps overview-scale text when the title chrome is width-capped', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.25 }
+    }
+  });
+  const longTitle = './dsc-test-02 - home/users/ziyang01.wang-al/projects/dsc-test-02';
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-watermark-long-title',
+      title: longTitle,
+      position: { x: 120, y: 140 },
+      size: { width: 180, height: 320 },
+      role: 'workspace-root',
+      workspaceRootPath: `/repo/${longTitle}`
+    },
+    {
+      id: 'group-distant-min-zoom-anchor',
+      title: 'Distant Anchor',
+      position: { x: 8400, y: 140 },
+      size: { width: 320, height: 240 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const watermark = page.locator(
+    '[data-root-watermark-frame-id="workspace-root-watermark-long-title"] .canvas-root-watermark-tile'
+  );
+  const title = page.locator('[data-group-id="workspace-root-watermark-long-title"] [data-probe-field="title"]');
+  await expect(watermark.locator(`[data-root-watermark-label="${longTitle}"]`)).toHaveText(longTitle);
+  await expect(title).toHaveValue(longTitle);
+
+  const watermarkStyle = await watermark.evaluate((element) => {
+    const frame = element.closest('[data-root-watermark-frame-id]');
+    const groupId = frame?.getAttribute('data-root-watermark-frame-id');
+    const groupFrame = groupId ? document.querySelector(`[data-group-id="${CSS.escape(groupId)}"]`) : null;
+    const titleInput = groupFrame?.querySelector('[data-probe-field="title"]');
+    const beforeStyle = getComputedStyle(element, '::before');
+    const maskImage = beforeStyle.maskImage || beforeStyle.webkitMaskImage;
+    const maskSize = beforeStyle.maskSize || beforeStyle.webkitMaskSize;
+    const tileWidth = Number.parseFloat(maskSize.split(' ')[0]);
+    const tileHeight = Number.parseFloat(maskSize.split(' ')[1]);
+    if (!(frame instanceof HTMLElement) || !(groupFrame instanceof HTMLElement) || !(titleInput instanceof HTMLElement)) {
+      throw new Error('Workspace root watermark elements not found.');
+    }
+
+    const frameStyles = getComputedStyle(frame);
+    const titleStyles = getComputedStyle(titleInput);
+    const label = element.querySelector('[data-root-watermark-label]');
+    const labelStyles = label instanceof HTMLElement ? getComputedStyle(label) : null;
+    const viewport = document.querySelector('.react-flow__viewport');
+    const viewportZoom = viewport instanceof HTMLElement
+      ? Number.parseFloat(viewport.style.transform.match(/scale\(([-\d.]+)\)/)?.[1] ?? 'NaN')
+      : NaN;
+    const decodeSvgMaskImage = (value) => {
+      const match = value.match(/url\("data:image\/svg\+xml,([^"]+)"\)/u) ??
+        value.match(/url\(data:image\/svg\+xml,([^)]*)\)/u);
+      return match ? decodeURIComponent(match[1]) : null;
+    };
+    return {
+      groupWidth: Math.round(groupFrame.getBoundingClientRect().width),
+      titleClientWidth: titleInput.clientWidth,
+      titleScrollWidth: titleInput.scrollWidth,
+      titleFontSize: Number.parseFloat(titleStyles.fontSize),
+      titleReadableScale: Number.parseFloat(frameStyles.getPropertyValue('--canvas-group-readable-scale')),
+      viewportZoom,
+      watermarkFontSize: Number.parseFloat(frameStyles.getPropertyValue('--canvas-root-watermark-font-size')),
+      watermarkReadableScale: Number.parseFloat(frameStyles.getPropertyValue('--canvas-root-watermark-readable-scale')),
+      labelFontSize: labelStyles ? Number.parseFloat(labelStyles.fontSize) : null,
+      maskImage,
+      textElementCount: decodeSvgMaskImage(maskImage)?.match(/<text\b/gu)?.length ?? 0,
+      hasSecondTextLine: Boolean(decodeSvgMaskImage(maskImage)?.match(/<text\b[^>]* y="[^"]+"/gu)?.[1]),
+      tileWidth,
+      tileHeight
+    };
+  });
+
+  expect(watermarkStyle.titleReadableScale).toBeLessThan(1);
+  expect(watermarkStyle.titleReadableScale).toBeLessThan(watermarkStyle.watermarkReadableScale / 3);
+  expect(watermarkStyle.watermarkReadableScale).toBeCloseTo(1 / watermarkStyle.viewportZoom, 1);
+  expect(watermarkStyle.watermarkFontSize).toBeCloseTo(12 / watermarkStyle.viewportZoom, 1);
+  expect(watermarkStyle.watermarkFontSize).toBeGreaterThan(watermarkStyle.titleFontSize * 3);
+  expect(watermarkStyle.labelFontSize).toBeCloseTo(watermarkStyle.watermarkFontSize, 1);
+  expect(watermarkStyle.maskImage).toContain('data:image/svg+xml');
+  expect(watermarkStyle.maskImage).toContain('dsc-test-02');
+  expect(watermarkStyle.maskImage).not.toContain('home%2Fusers');
+  expect(watermarkStyle.maskImage).not.toContain('projects%2Fdsc-test-02');
+  expect(watermarkStyle.textElementCount).toBe(1);
+  expect(watermarkStyle.hasSecondTextLine).toBe(false);
+  expect(watermarkStyle.tileWidth).toBeGreaterThan(watermarkStyle.groupWidth);
+  expect(watermarkStyle.tileHeight).toBeGreaterThanOrEqual(88 * watermarkStyle.watermarkReadableScale);
 });
 
 test('workspace root group body watermark can be disabled by runtime configuration', async ({ page }) => {
