@@ -22,7 +22,7 @@
 - [x] (2026-06-09) 已给发布 workflow 增加同一 trigger tag 的 concurrency、60 分钟 timeout 与 secrets fail-fast 检查，避免重复发布任务并在 token 缺失时提前失败。
 - [x] (2026-06-09) 已按 review 修复 tag deletion 自触发 blocker：workflow 不再监听 `push.tags`，改为监听 `create` event 并在 job `if` 中限定 `ref_type=tag` 且 `ref` 以 `publish/v` 开头，避免脚本删除临时 tag 后再次触发发布 job。
 
-- [x] (2026-06-13) 已由 `docs/exec-plans/active/github-release-assets-flow.md` 接续处理 GitHub Release assets 镜像与 marketplace 继续发布验证的组合方案；本计划中的原始 tag-first 机制仍作为输入固定基线保留。
+- [x] (2026-06-13) 已由 `docs/exec-plans/completed/github-release-assets-flow.md` 接续处理 GitHub Release assets 镜像与 marketplace 继续发布验证的组合方案；本计划中的原始 tag-first 机制仍作为输入固定基线保留。
 
 ## 意外与发现
 
@@ -52,13 +52,13 @@
   理由：notifier Marketplace README 当前没有相对链接，打包脚本仍会打印并使用 `VSCE README doc ref` 校验打包上下文，但内嵌 readme 内容本身不会出现 SHA。
   日期/作者：2026-06-08 / Codex
 
-- 决策：2026-06-13 起，在继续发布并验证 Visual Studio Marketplace / Open VSX 的基础上，自动化发布增加 GitHub Release assets 镜像；最新方案由 `docs/exec-plans/active/github-release-assets-flow.md` 跟踪。
+- 决策：2026-06-13 起，在继续发布并验证 Visual Studio Marketplace / Open VSX 的基础上，自动化发布增加 GitHub Release assets 镜像；最新方案由 `docs/exec-plans/completed/github-release-assets-flow.md` 跟踪。
   理由：用户需要 marketplace 分发与验证继续执行，同时也需要在 marketplace 访问、审核或同步暂时不可用时能从 GitHub Release 下载同一批 VSIX。
   日期/作者：2026-06-13 / Codex
 
 ## 结果与复盘
 
-本计划的 tag-first 脚本、workflow 骨架、文档和测试已经落地，并通过目标验证。2026-06-13 之后，GitHub Release assets 镜像、marketplace 发布验证继续执行、临时 tag 删除顺序和首跑风险由 `docs/exec-plans/active/github-release-assets-flow.md` 接续跟踪；本计划不再作为 Release assets 方案的最新事实来源。
+本计划的 tag-first 脚本、workflow 骨架、文档和测试已经落地，并通过目标验证。2026-06-13 之后，GitHub Release assets 镜像、marketplace 发布验证继续执行、临时 tag 删除顺序和首跑风险由 `docs/exec-plans/completed/github-release-assets-flow.md` 接续跟踪；本计划不再作为 Release assets 方案的最新事实来源。
 
 ## 上下文与定向
 
@@ -164,4 +164,4 @@
 计划更新记录：2026-06-08 15:24Z，补充脚本实现、workflow、文档更新和测试通过证据。
 计划更新记录：2026-06-09，补充远端 Actions / secrets 检查结果；本计划已满足本轮交付目标，后续若 GitHub Release asset 上传策略变化，或首次真实 GitHub Actions publish tag 首跑完成，应继续更新本计划或迁入 completed 后登记新技术债。
 
-计划更新记录：2026-06-13，GitHub Release assets 镜像与 marketplace 继续发布验证的组合方案已迁入 `docs/exec-plans/active/github-release-assets-flow.md` 接续；本计划保留 tag-first 输入固定机制的历史上下文，不再作为当前分发渠道的最新方案。
+计划更新记录：2026-06-13，GitHub Release assets 镜像与 marketplace 继续发布验证的组合方案已迁入 `docs/exec-plans/completed/github-release-assets-flow.md` 接续；本计划保留 tag-first 输入固定机制的历史上下文，不再作为当前分发渠道的最新方案。
