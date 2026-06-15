@@ -23,11 +23,13 @@
 - [x] (2026-06-13T15:25Z) 已处理 PR review blocker：正式 tag 不存在时改用 `git rev-parse --verify --quiet` 静默解析，并新增 `test:publish-marketplace-workflow` 覆盖缺失正式 tag 的 workflow 回归。
 - [x] (2026-06-14T01:45Z) 已处理 PR review blocker：workflow 重跑时先复用并校验既有 GitHub Release manifest / VSIX assets；若已有 Release 缺少任一必需 asset，则拒绝重新打包或 clobber，避免同一版本的 marketplace 与 Release assets 指向不同 VSIX 批次。
 - [x] (2026-06-14T04:50Z) 已根据 `0.15.2` 发布实际失败模式收口：Open VSX 与 Visual Studio Marketplace 在 workflow 中拆成独立步骤，任一 marketplace 失败不再阻断另一 marketplace 尝试发布；最终 manifest 与 GitHub Release notes 无论成功失败都会上传 / 更新，Release notes 从 `CHANGELOG.md` 与 manifest 生成，包含版本亮点、渠道状态、残余风险和发布证据。
-- [x] (2026-06-14T05:33Z) 已完成解耦 workflow 的本地验证：`npm run test:publish-tag-release`、`npm run test:publish-marketplace-workflow`、脚本 `node --check`、workflow YAML 解析与 `git diff --check` 均通过；新 workflow 仍待下一次真实 `publish/vX.Y.Z` tag 首跑验证。
+- [x] (2026-06-14T05:33Z) 已完成解耦 workflow 的本地验证：`npm run test:publish-tag-release`、`npm run test:publish-marketplace-workflow`、脚本 `node --check`、workflow YAML 解析与 `git diff --check` 均通过；当时新 workflow 仍待下一次真实 `publish/vX.Y.Z` tag 首跑验证。
 - [x] (2026-06-14T15:19Z) 已处理 PR review blocker：确认同一个 workflow run 重新运行时 `upload-artifact@v4` 同名 artifact 会冲突，并在 `test:publish-marketplace-workflow` 中补回归断言；后续 2026-06-15 评审进一步要求兼容 failed-only rerun，因此最终方案改为稳定 artifact 名称 + 显式 overwrite。
 - [x] (2026-06-15T00:55Z) 已处理 PR review blocker：marketplace job 在上传自身 result manifest 后按发布退出码标红；Actions artifact 名称改回同一 run 内稳定的 `github.run_id` 并显式 `overwrite: true`，让 GitHub Actions 的 Re-run failed jobs 能复用 prepare 产物并实际重试失败 marketplace job。
 
 - [x] (2026-06-15T08:20Z) 用户明确允许 `0.16.0` 在 Visual Studio Marketplace 仍不可公开查询时，仅依赖 GitHub Release assets 与 Open VSX 兜底完成；已把 release completion gate 从“两市场均 verified”调整为“GitHub Release assets uploaded + Open VSX main/notifier verified”，并将 Visual Studio Marketplace 记录为 deferred channel。
+- [x] (2026-06-15T08:37Z) 已用真实 `publish/v0.16.0` tag 完成 GitHub Actions 首跑：run `27533849564` 成功上传 GitHub Release assets、验证 Open VSX 主扩展 / notifier、把 Visual Studio Marketplace 记录为 deferred、更新最终 manifest / Release notes，并删除远端临时 tag。
+- [x] (2026-06-15T09:20Z) 已将本计划归档到 `docs/exec-plans/completed/github-release-assets-flow.md`，并把剩余非阻塞问题收敛为 Visual Studio Marketplace deferred channel 技术债。
 
 ## 意外与发现
 
@@ -56,6 +58,9 @@
 
 - 观察：`0.16.0` release-day 前再次复核 Visual Studio Marketplace public gallery，主扩展与 notifier 对应 extension id 仍返回 0 个结果；如果继续把 VSM 作为阻塞门禁，会导致已可用的 GitHub Release assets 与 Open VSX 同版本兜底也无法对外收口。
   证据：2026-06-15 在最终 `main` ref `936f61bc067dd6c5ab0c4f7cced970254bf01e59` 上复核 `devsessioncanvas.dev-session-canvas` 与 `devsessioncanvas.dev-session-canvas-notifier`，VSM public gallery `extensionquery` 均为 `count=0`；用户随后明确允许在 VSM 仍不可见时仅依赖 GitHub Release assets 和 Open VSX 兜底。
+
+- 观察：`0.16.0` 真实 GitHub Actions 首跑验证了新的 GitHub Release assets + Open VSX 完成门禁；workflow 在 VSM 目标失败 / deferred 的情况下仍成功完成最终 manifest / Release notes 更新并删除临时 tag。
+  证据：GitHub Actions run `27533849564` 的四个 job 均为 success；GitHub Release `v0.16.0` 有 `dev-session-canvas-0.16.0.vsix`、`dev-session-canvas-notifier-0.16.0.vsix`、`release-manifest-0.16.0.json` 三个 assets；最终 manifest `status` 为 `complete-with-deferred-visual-studio`，`openVsxComplete` 为 `true`，`visualStudioComplete` 为 `false`，`triggerTagStatus` 为 `deleted`。
 
 ## 决策记录
 
@@ -94,9 +99,13 @@
   理由：用户已明确允许在 VSM 仍不可见时仅依赖 GitHub Release assets 与 Open VSX 兜底；同时保留 VSM 状态记录，避免把未恢复的官方 VS Code Marketplace 路径误写成已可用。
   日期/作者：2026-06-15 / Codex
 
+- 决策：真实首跑完成后，将本计划从 `active` 归档到 `completed`，并把剩余未闭合项改记为 Visual Studio Marketplace deferred channel 技术债。
+  理由：GitHub Release assets 上传、Open VSX 完成门禁、finalize 合并 manifest / notes、临时 tag 删除和 Release asset 校验均已有真实发布证据；剩余问题不是该 workflow 首跑缺口，而是 VSM public gallery / publisher 可见性仍未恢复。
+  日期/作者：2026-06-15 / Codex
+
 ## 结果与复盘
 
-本计划的本地交付已经完成：0.15.2 准备分支已清理，workflow 已改为“先上传或复用 GitHub Release assets、再继续发布并验证 Visual Studio Marketplace / Open VSX”，正式文档和技术债已同步，目标测试与静态检查均通过。PR review 发现的缺失正式 tag 误判已修复，并新增 workflow 静态 / shell probe 测试覆盖；review 后续发现的非确定性 VSIX 重打包 / Release assets clobber 风险也已通过“既有 assets 复用 + incomplete Release fail-closed”收口。`0.15.2` 真实发布暴露出 marketplace 串行 fail-fast 会让 Microsoft 限流阻断 Open VSX 的问题；当前后续改造已把两个 marketplace 拆成独立步骤，并补齐 Release notes 的版本亮点 / 残余风险生成。针对 rerun，workflow 现在让失败 marketplace job 在上传结果 manifest 后标红，artifact 名称保持 run 内稳定并显式 overwrite，支持 Re-run failed jobs 复用 prepare 产物重试失败渠道。当前剩余风险是新解耦 workflow 尚未在下一次真实 `publish/vX.Y.Z` tag 中首跑，且 `0.16.0` 本轮首次采用 Visual Studio Marketplace deferred completion gate，因此设计文档验证状态仍保持“验证中”。
+本计划已完成并归档：workflow 已改为“先上传或复用 GitHub Release assets、再分别发布并验证 Open VSX 与 Visual Studio Marketplace”，并已在 `0.16.0` 真实 GitHub Actions run `27533849564` 中验证首跑。PR review 发现的缺失正式 tag 误判、非确定性 VSIX 重打包 / Release assets clobber 风险、marketplace 串行 fail-fast 风险，以及 GitHub Actions artifact rerun 冲突都已通过测试和真实发布收口。最终 `v0.16.0` Release assets 已上传，Open VSX 主扩展 / notifier 均 verified，Release manifest / notes 已更新，`publish/v0.16.0` 临时 tag 已删除。剩余非阻塞问题是 Visual Studio Marketplace public gallery 仍不可见，本轮已按用户确认记录为 deferred channel，并在 `docs/exec-plans/tech-debt-tracker.md` 继续跟踪后续补发 / 可见性恢复。
 
 ## 上下文与定向
 
@@ -114,9 +123,9 @@
 
 第四步由 `finalize` job 在 `always() && needs.prepare.result == 'success'` 下下载 prepare 产物和两个 marketplace 结果 manifest。它会合并可用 marketplace 状态，覆盖 GitHub Release manifest，并用最终 manifest 重新生成 Release notes；当前完成门禁是 Open VSX 成功，因此 Visual Studio Marketplace 失败 / 不可见时记录为 deferred channel 而不阻塞删除 `publish/vX.Y.Z`，Open VSX 失败时保留临时 tag 并显式失败。Actions artifact 名称在同一 run 内保持稳定并使用 `overwrite: true`，便于 Re-run failed jobs 复用已成功的 prepare artifact。
 
-第五步同步文档。`docs/design-docs/public-marketplace-release-readiness.md` 要更新发布流水线基线：GitHub Release assets 是安装包镜像 / 兜底，不替代 marketplace 发布与验证；两个 marketplace 的失败域相互独立；Release notes 必须包含版本亮点和残余风险。`docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 要说明 workflow 仍要求 `VSCE_PAT` / `OVSX_PAT`，仍发布并验证 Visual Studio Marketplace / Open VSX。`docs/exec-plans/tech-debt-tracker.md` 要把残余风险改成真实 Actions 首跑、assets 上传、marketplace 失败时 tag / manifest / notes 状态是否符合预期。
+第五步同步文档。`docs/design-docs/public-marketplace-release-readiness.md` 要更新发布流水线基线：GitHub Release assets 是安装包镜像 / 兜底，不替代 marketplace 发布与验证；两个 marketplace 的失败域相互独立；Release notes 必须包含版本亮点和残余风险。`docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 要说明 workflow 仍要求 `VSCE_PAT` / `OVSX_PAT`，仍发布并验证 Visual Studio Marketplace / Open VSX。真实首跑完成后，文档还要记录 Actions run、Release assets、Open VSX verification、VSM deferred 状态，并把剩余风险改记为 VSM deferred channel 技术债。
 
-第六步运行验证。目标测试至少包括 `npm run test:publish-tag-release`，证明脚本恢复后原有发布编排测试仍通过；`npm run test:publish-marketplace-workflow` 继续覆盖 workflow YAML 解析、缺失正式 tag 分支、既有 Release assets 检测 / 下载 / 校验、marketplace job 解耦、失败 marketplace job 上传 manifest 后标红、failed-only rerun 可复用稳定 artifact、最终 Release manifest / notes 更新，以及 package 模式才允许打包和上传 VSIX assets。运行 `git diff --check` 检查空白，运行脚本 `node --check` 检查语法，并使用 `js-yaml` 解析 workflow。真实 Release assets 上传与 marketplace 发布只能在 GitHub Actions 中首跑确认，本地验证只覆盖脚本和 workflow 静态结构。
+第六步运行验证。目标测试至少包括 `npm run test:publish-tag-release`，证明脚本恢复后原有发布编排测试仍通过；`npm run test:publish-marketplace-workflow` 继续覆盖 workflow YAML 解析、缺失正式 tag 分支、既有 Release assets 检测 / 下载 / 校验、marketplace job 解耦、失败 marketplace job 上传 manifest 后标红、failed-only rerun 可复用稳定 artifact、最终 Release manifest / notes 更新，以及 package 模式才允许打包和上传 VSIX assets。运行 `git diff --check` 检查空白，运行脚本 `node --check` 检查语法，并使用 `js-yaml` 解析 workflow。真实 Release assets 上传与 Open VSX 发布已在 GitHub Actions run `27533849564` 中确认；本地验证仍覆盖脚本和 workflow 静态结构，Visual Studio Marketplace 可见性恢复需后续补发复核。
 
 ## 具体步骤
 
@@ -129,7 +138,7 @@
     node --check scripts/release/write-github-release-notes.mjs
     node -e "const fs = require('fs'); const yaml = require('js-yaml'); yaml.load(fs.readFileSync('.github/workflows/publish-marketplace-release.yml', 'utf8')); console.log('workflow yaml parsed');"
 
-真实 Release assets 上传、Visual Studio Marketplace 发布、Open VSX 发布与 post-publish metadata 验证只能通过 GitHub Actions 首跑确认。
+真实 Release assets 上传、Open VSX 发布验证、Visual Studio Marketplace deferred 记录、最终 manifest / Release notes 更新与临时 tag 删除已通过 GitHub Actions run `27533849564` 确认；Visual Studio Marketplace public gallery 可见性仍需后续补发 / 复核。
 
 本次已获得的本地验证记录如下：
 

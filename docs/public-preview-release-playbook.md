@@ -117,9 +117,9 @@
 
 ## 当前验证备注
 
-截至 `2026-06-15`，上一轮 `0.15.2` 的远端正式 tag `v0.15.2` 与临时 tag `publish/v0.15.2` 均指向 `9f5d1926a88de8a2286291c4ad18ec4dcba246bb`（短 SHA `9f5d192`）；`v0.15.2` 对应 GitHub Release 已存在 `dev-session-canvas-0.15.2.vsix`、`dev-session-canvas-notifier-0.15.2.vsix` 和 `release-manifest-0.15.2.json` 三个 assets。Open VSX API 显示主扩展与 notifier 的 latest 均为 `0.15.2`；但 Visual Studio Marketplace public gallery `extensionquery` 对 `devsessioncanvas.dev-session-canvas` 与 `devsessioncanvas.dev-session-canvas-notifier` 仍返回 0 个结果。因此当前只能确认上一轮 `0.15.2` 已具备 Open VSX 与 GitHub Release assets 兜底入口，不能把上一轮写成已完成双市场公开可见发布；`publish/v0.15.2` 临时 tag 仍保留用于同一 release input 的 marketplace 补发 / 重跑排障。发布准备 MR 合并前的最新 `main` / `origin/main` 为 `a41a540d115ec27fd2441b10f5fc5ca4f1ec0da7`（短 SHA `a41a540`），已包含 `v0.15.2` 之后合入的 #159、#162、#163、#164、#165、#166、#167 和 #152；本轮从该最新 `main` 切出发布准备分支，目标版本升级为 `0.16.0`。
+截至 `2026-06-15`，`0.16.0` 已完成正式发布收口。本轮发布输入来自 `main` 上的最终 release ref `542d90cf6f7ce60e832f2ea1dc17fe0b71d2695c`；发布准备 MR #168 合入后的 `936f61bc067dd6c5ab0c4f7cced970254bf01e59` 先完成版本与发布物料收口，随后 VSM deferred 完成门禁通过 PR #169 合入到最终 release ref。`publish/v0.16.0` 临时 tag 曾指向该最终 ref 触发 GitHub Actions，workflow 完成后已删除远端临时 tag；正式 `v0.16.0` tag 指向同一最终 ref。
 
-当前功能输入已有 repo-local 证据：`docs/product-specs/agent-launch-modes-and-restart.md`、`docs/design-docs/agent-launch-modes-and-restart.md` 和 `docs/design-docs/canvas-sidebar-node-and-session-lists.md` 记录了 Codex / Claude Code current-node Fork、历史会话恢复 / 分叉和 fork 连线语义；`docs/design-docs/canvas-multi-root-workspace-support.md` 记录了 workspace-root body 水印和关闭配置；`docs/design-docs/embedded-terminal-runtime-window.md`、`docs/exec-plans/active/execution-input-responsiveness.md` 与 `docs/design-docs/execution-terminal-tui-hard-wrapped-links.md` 记录了多 Agent 输入响应、snapshot reset sequence 和 file-link activation fallback；`docs/design-docs/execution-terminal-clipboard-shortcuts.md` 记录了复制诊断边界；`docs/design-docs/public-marketplace-release-readiness.md`、`docs/exec-plans/active/publish-tag-release-flow.md` 和 `docs/exec-plans/active/github-release-assets-flow.md` 继续记录 publish tag 发布输入固定流程、GitHub Release assets 镜像 / 复用发布流程和 marketplace job 解耦。
+当前功能输入已有 repo-local 证据：`docs/product-specs/agent-launch-modes-and-restart.md`、`docs/design-docs/agent-launch-modes-and-restart.md` 和 `docs/design-docs/canvas-sidebar-node-and-session-lists.md` 记录了 Codex / Claude Code current-node Fork、历史会话恢复 / 分叉和 fork 连线语义；`docs/design-docs/canvas-multi-root-workspace-support.md` 记录了 workspace-root body 水印和关闭配置；`docs/design-docs/embedded-terminal-runtime-window.md`、`docs/exec-plans/active/execution-input-responsiveness.md` 与 `docs/design-docs/execution-terminal-tui-hard-wrapped-links.md` 记录了多 Agent 输入响应、snapshot reset sequence 和 file-link activation fallback；`docs/design-docs/execution-terminal-clipboard-shortcuts.md` 记录了复制诊断边界；`docs/design-docs/public-marketplace-release-readiness.md`、`docs/exec-plans/active/publish-tag-release-flow.md` 和 `docs/exec-plans/completed/github-release-assets-flow.md` 记录 publish tag 发布输入固定流程、GitHub Release assets 镜像 / 复用发布流程、marketplace job 解耦，以及 VSM deferred 完成门禁。
 
 本轮发布准备分支已刷新并完成以下验证 / 审计复核：
 
@@ -155,15 +155,24 @@
 - `npm run validate:clean-checkout:vsix -- --source working-tree --skip-vsix-smoke`
 - `npm audit --omit=dev`（0 vulnerabilities，退出码 0）
 
-本轮打包产物与发布前打包结果如下：
+在最终 release ref `542d90cf6f7ce60e832f2ea1dc17fe0b71d2695c` 上，正式推送 `publish/v0.16.0` 前还完成了以下发布 gate：
 
-- 主扩展 VSIX：`dev-session-canvas-0.16.0.vsix`，115 files，`3,617,040` bytes（约 3.45 MiB；本轮本地打包观测，最终字节数以合并后最终 ref 复跑为准）
-- Notifier VSIX：`extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.16.0.vsix`，10 files，`147,905` bytes（约 144.44 KiB；本轮本地打包观测，最终字节数以合并后最终 ref 复跑为准）
-- 主扩展 VSIX 内嵌 Marketplace README 的相对资源已改写到 `a41a540d115ec27fd2441b10f5fc5ca4f1ec0da7`；最终合并后仍需重新确认 `VSCE README doc ref` 来自最终 `main` release commit
-- `npm run test:vsix-smoke` 已在本发布准备分支补跑通过；该轮 VSIX smoke 同时暴露并收口了默认模板缺失回退、执行终端 flood backlog reset、以及 xterm 空选区 selectionChange 不应抢回节点选中的回归
-- 完整 `npm audit` 当前仍因 dev / tooling transitive dependency 返回退出码 1，报告 6 个已知开发期漏洞（4 moderate、2 high；涉及 `brace-expansion`、`esbuild`、`qs`、`tmp` 和经 `@azure/msal-node` 引入的 `uuid`）；本轮生产依赖审计为 0
+- `npm ci`
+- `npm run validate:clean-checkout:vsix -- --ref 542d90cf6f7ce60e832f2ea1dc17fe0b71d2695c` 曾因 VSIX smoke 等待 `stopping` terminal 结束超时而失败一次；使用既有 VS Code test cache 复跑同一 ref 后通过，判定为本轮 smoke flaky 而非发布输入变化
+- `npm run package:vsix` 通过；本地主扩展 VSIX 为 115 files、`3,617,144` bytes，sha256 为 `b0b210234ea8026fe57c08e2654409758f1acc8323761f454953129fb11f4a37`，`VSCE README doc ref` 来自最终 release ref
+- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过；本地 notifier VSIX 为 10 files、`147,905` bytes，sha256 为 `0ffe20f7bce79bdacf1f7e18dd94390588432e7320d3c71cd59453b4c1f32b9e`
+- `npm audit --omit=dev` 通过，`found 0 vulnerabilities`
+- 本地临时 `publish/v0.16.0` tag 指向最终 ref 的 dry-run：`npm run release:publish-tag -- --trigger-tag publish/v0.16.0 --dry-run --package-only` 通过，随后删除本地临时 tag
 
-发布准备 MR #168 合并后，已在当时的 `main` release commit `936f61bc067dd6c5ab0c4f7cced970254bf01e59` 上重新执行 `npm run validate:clean-checkout:vsix -- --ref 936f61bc067dd6c5ab0c4f7cced970254bf01e59`、`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`、packaged-payload smoke 与 `npm audit --omit=dev`。该轮主扩展本地 VSIX 为 115 files、`3,617,044` bytes，notifier 为 10 files、`147,905` bytes，`VSCE README doc ref` 已确认来自 `936f61bc067dd6c5ab0c4f7cced970254bf01e59`。由于 `2026-06-15` 复核时 Visual Studio Marketplace 主扩展与 notifier 仍不可公开查询，本轮 `0.16.0` 允许在 VSM 记录为 deferred channel 的前提下，仅以 GitHub Release assets 上传和 Open VSX 主扩展 / notifier verified 作为完成门禁；不得把官方 VS Code 的 VSM 安装路径宣称为已可用。本 VSM deferred policy 合入 `main` 后，正式推送 `publish/v0.16.0` 前仍需在新的最终 `main` ref 上复跑同一组 release gate，并以新 ref 的 VSIX 文件数、字节数、sha256 与 README doc ref 为最终发布证据。
+正式发布由 GitHub Actions run `27533849564` 执行，地址为 `https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/27533849564`。该 run 的 `Prepare GitHub Release Assets`、`Publish Open VSX`、`Publish Visual Studio Marketplace` 与 `Finalize Release State` job 均以 job-level success 结束；其中 Visual Studio Marketplace 目标在 manifest 中仍记录为 `publish-failed` / deferred，不作为本轮完成门禁。run 结束后，GitHub Release `v0.16.0` 已发布：`https://github.com/ZY-WANG-0304/dev-session-canvas/releases/tag/v0.16.0`。
+
+GitHub Release `v0.16.0` 的实际 assets 与下载校验如下；这些 sha256 来自 Release 页面下载包，因 GitHub Actions runner 重新打包，允许与本地预发布打包 sha256 不一致，最终以 Release manifest 与 Release assets 为准：
+
+- `dev-session-canvas-0.16.0.vsix`：`3,617,144` bytes，sha256 `70f44f29e787f91e1ea6c43294aeb3683d6cf58bb02f80524add0e84cec8942d`
+- `dev-session-canvas-notifier-0.16.0.vsix`：`147,905` bytes，sha256 `9aee22d1b626f1fbab18bdbe9b201bfa66f194674114ccaeb5f0c03acc5f7d73`
+- `release-manifest-0.16.0.json`：`3,067` bytes，sha256 `f32eec0c294cf7ff848368391e39a80bce8ce43e665fb86a022300cc4da98dfb`
+
+最终 release manifest 记录 `version = 0.16.0`、`releaseRef = 542d90cf6f7ce60e832f2ea1dc17fe0b71d2695c`、`status = complete-with-deferred-visual-studio`、`githubRelease.status = assets-uploaded`、`releaseCompletion.openVsxComplete = true`、`releaseCompletion.visualStudioComplete = false`、`releaseCompletion.visualStudioBlocking = false`、`releaseCompletion.requiredTargets = ["github-release-assets", "open-vsx"]`、`tags.finalTagStatus = pushed`、`tags.triggerTagStatus = deleted`。Open VSX API 已确认主扩展与 notifier 均为 `0.16.0`，且 files metadata 包含 `download`、`sha256`、`icon`、`license`、`manifest` 与 `vsixmanifest` 等字段。Visual Studio Marketplace public gallery 在同日复核 `devsessioncanvas.dev-session-canvas` 与 `devsessioncanvas.dev-session-canvas-notifier` 仍均为 `extensions_len=0`、`TotalCount=0`；因此不得把 VSM 路径宣称为已可用。
 
 ## 发布命令
 
