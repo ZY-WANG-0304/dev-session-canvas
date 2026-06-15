@@ -10,19 +10,15 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.16.0 版本亮点
+## 0.16.1 版本亮点
 
-当前公开的 `0.16.0` 版本是 Preview 里程碑，重点收口 Codex / Claude Code Agent 分叉、侧栏提醒分流、multi-root 方位识别，以及执行终端响应能力。它保留 `0.15.2` 的通知控制、Claude Agent `Ctrl-Z` 收口处理、画布外部链接打开方式配置、publish tag / GitHub Release assets 发布自动化、双市场发布和 Preview 支持边界。
+当前公开的 `0.16.1` 版本是 Preview 补丁，重点收口 multi-root root 水印可读性，以及执行终端恢复期间的剪贴板诊断噪音。它保留 `0.16.0` 的 Codex / Claude Code Agent 分叉、侧栏提醒分流、multi-root 方位识别、执行终端响应能力、publish tag / GitHub Release assets 发布自动化、双市场发布和 Preview 支持边界。
 
-- 持有可信 session id 的 Codex Agent 节点现在可通过 provider 原生 `codex fork <session-id>` 语义分叉出新 Agent
-- Claude Code Agent Fork 继续使用 `claude --resume <session-id> --fork-session`；当前节点与历史会话分叉都会创建一条可编辑的 `fork` 连线，帮助保留空间上下文
-- 侧栏 `节点` 会前置待处理 attention 节点；分组模式新增“待处理提醒”虚拟分组，多根平铺模式仍保留 root 分组
-- 侧栏 `会话历史` 为当前 workspace 的 Codex / Claude Code 会话提供明确的恢复与分叉 icon 操作
-- Agent 节点标题栏拆分 cwd 与最近一次实际启动命令，长启动命令通过 hover 查看，避免挤占标题行
-- 多根 workspace 的系统 root section 默认显示 root 名称 body 水印，可通过 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 关闭
-- 执行终端通过输出 drain 预算、输入优先恢复、serialized snapshot 错峰 hydrate 和 `outputSequence` 恢复保护，提升多 Agent 场景下的输入响应
-- 文件链接 activation 在超时或 reject 时会退化为 workspace search；extensionless fallback path 只在用户明确点击时放宽
-- 复制诊断现在记录 xterm 选区、mouse tracking、右键复制、快捷键判定和 OSC 52 观察结果，但不会自动把 OSC 52 桥接为剪贴板写入
+- 多根 workspace 的系统 root section body 水印改为独立可读缩放，窄 root section 和低倍率概览下仍能显示可辨认的 root 名称
+- root 水印会把 path-like 标题收敛为 basename，并把长名称限制为最多两行，同时降低透明度、增大 tile 间距，避免干扰真实节点和分组
+- 执行终端剪贴板诊断会在 snapshot restore 窗口内抑制由程序化恢复触发的选区变化、mouse tracking 和 OSC 52 噪音，并通过 `restoreSuppressed` 聚合计数保留排障线索
+- Agent / Terminal 节点会在用户输入前刷新 snapshot restore 诊断抑制状态，避免恢复窗口尾部继续压住后续真实剪贴板诊断
+- 恢复后的 live OSC 52 与用户交互诊断仍会正常出现；本补丁不新增 OSC 52 自动剪贴板桥接，也不改变输入的本地乐观回显语义
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 核心功能
@@ -71,8 +67,8 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.15.2` 升级到 `0.16.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径已同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。由于 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode` 或 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`，升级到 `0.16.0` 后会继续沿用该明确选择
+- 首次安装与从 `0.16.0` 升级到 `0.16.1` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode` 或 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`，升级到 `0.16.1` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
