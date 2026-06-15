@@ -151,7 +151,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
   const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri);
   const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri, context.workspaceState);
-  const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(panelManager);
+  const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(panelManager, context.extensionUri);
 
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
     const dumpResult = await panelManager.dumpCurrentHostDiagnostics();
@@ -1124,6 +1124,7 @@ interface SidebarSessionQuickPickItem extends vscode.QuickPickItem {
   provider: AgentProviderKind;
   sessionId: string;
   titleOverride?: string;
+  action?: 'resume' | 'fork';
 }
 
 async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): Promise<void> {
@@ -1173,22 +1174,47 @@ async function showSessionHistoryQuickPick(
   }
 
   const picked = await vscode.window.showQuickPick<SidebarSessionQuickPickItem>(
-    items.map((item) => ({
-      label: item.title,
-      detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
-      provider: item.provider,
-      sessionId: item.sessionId,
-      titleOverride: item.title
-    })),
+    items.flatMap((item) => [
+      {
+        label: item.title,
+        description: '恢复',
+        detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
+        provider: item.provider,
+        sessionId: item.sessionId,
+        titleOverride: item.title,
+        action: 'resume' as const
+      },
+      {
+        label: item.title,
+        description: '分叉',
+        detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
+        provider: item.provider,
+        sessionId: item.sessionId,
+        titleOverride: item.title,
+        action: 'fork' as const
+      }
+    ]),
     {
       title: restoreBlockReason,
       placeHolder: restoreBlockReason
-        ? '当前为只读查看模式；可浏览历史会话，但不能恢复为新 Agent 节点'
-        : '选择一条历史会话并恢复为新节点',
+        ? '当前为只读查看模式；可浏览历史会话，但不能恢复或分叉为新 Agent 节点'
+        : '选择一条历史会话并恢复或分叉为新节点',
       matchOnDetail: true
     }
   );
   if (!picked) {
+    return;
+  }
+
+  if (picked.action === 'fork') {
+    const result = await panelManager.forkAgentSessionFromHistory({
+      provider: picked.provider,
+      sessionId: picked.sessionId,
+      title: picked.titleOverride
+    });
+    if (!result.forked && result.errorMessage) {
+      await vscode.window.showWarningMessage(result.errorMessage);
+    }
     return;
   }
 

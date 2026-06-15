@@ -119,7 +119,7 @@
         {
           "id": "devSessionCanvas.sidebarSessions",
           "name": "%view.canvas.sidebar.sessions.title%",
-          "icon": "images/dev-session-canvas-activitybar.svg",
+          "icon": "images/dev-session-canvas-sessions-activitybar.svg",
           "type": "webview"
         }
       ],

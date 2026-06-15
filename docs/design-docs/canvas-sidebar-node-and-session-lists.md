@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
-updated_at: 2026-06-13
+updated_at: 2026-06-15
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -47,13 +47,14 @@ updated_at: 2026-06-13
 
 - 让用户在不拖动画布的情况下，也能从 sidebar 快速理解当前有哪些节点、它们的状态是什么、点一下就能回到哪里。
 - 让用户在同一侧栏中看到当前 workspace 的 `Codex` / `Claude Code` 历史会话，并能通过搜索快速筛到目标会话。
-- 让“从历史恢复为一个新节点”成为稳定的一跳操作，而不是要求用户手工拼 resume 命令。
+- 让“从历史恢复为一个新节点”和“从历史分叉出一个新节点”都成为稳定的一跳操作，而不是要求用户手工拼 resume / fork 命令。
 - 保持整个 sidebar 仍然像 VS Code 原生 view section，而不是长成新的 mini dashboard。
 
 ## 4. 非目标
 
 - 不在本轮显示完整 transcript、完整终端输出或 provider 私有元数据。
 - 不在本轮支持会话删除、重命名、归档或跨 workspace 聚合。
+- 不在本轮为历史分叉新增正式分支树或机器可读 lineage；会话历史分叉只是创建同 provider 新 Agent 节点并执行 provider 原生 fork 命令。
 - 不在本轮把节点列表做成可拖拽重排或层级树。
 - 不在本轮引入新的 Activity Bar 容器或独立面板。
 
@@ -113,7 +114,7 @@ updated_at: 2026-06-13
   - 人类可读的第二行状态文案；其中 `Agent` 固定显示 `cwdLabel · provider · 状态`，其余节点继续只显示状态
   - 当节点正处于 notification 提醒中时，在该项最右侧显示通知图标
 - 节点列表的图标与提醒都直接使用 Webview 内的 codicon 资源：左侧是带运行时颜色的 `circle-filled`，右侧提醒位是与画布节点一致的 `bell`。
-- 节点列表 Webview 的 codicon 资源采用与主画布一致的 bundled asset 路线：构建阶段把 `@vscode/codicons/dist/codicon.css` 打成 `dist/sidebar-codicon.css` 并连同字体资产一起发版，运行时只从扩展自己的 `dist/` 目录读取，不再直连 `node_modules/`。
+- 节点列表与会话历史 Webview 的 codicon 资源采用与主画布一致的 bundled asset 路线：构建阶段把 `@vscode/codicons/dist/codicon.css` 打成 `dist/sidebar-codicon.css` 并连同字体资产一起发版，运行时只从扩展自己的 `dist/` 目录读取，不再直连 `node_modules/`。
 - 视觉上继续收口为 VS Code 原生 sidebar 列表质感：无卡片、无阴影、无多层装饰，只保留轻量 hover / selected 态和紧凑两行排版。
 - 节点列表的显示模式切换使用 VSCode 原生 view title secondary action，即 `节点` view 标题右上角宿主提供的 `...` 更多菜单；Webview 内容区不自绘 `...` 按钮或菜单。菜单项提供“平铺展示节点”和“按分组树展示节点”，默认选中按分组树展示，并用当前模式的 check icon 反馈选中项。
 - 默认按分组树展示时，Webview 只把权威节点快照和 `CanvasGroupSummary` 投影成侧栏树：父子分组按层级缩进，每个分组 section 可折叠/展开；没有分组的节点进入同样可折叠的“未分组”section。这个折叠状态只存在于侧栏呈现层，不持久化为画布状态，不影响画布分组可见性，也不推导新的成员关系。
@@ -124,14 +125,16 @@ updated_at: 2026-06-13
 ### 6.2 会话历史使用最小 `WebviewView`
 
 - 在同一 sidebar container 中新增一个 `会话历史` section。
+- `会话历史` section 在 `package.json` 中使用 `images/dev-session-canvas-sessions-activitybar.svg` 作为专属 view icon；图标延续主 Dev Session Canvas activitybar glyph，并用右上角 badge 表达历史语义，badge 内部参考 VS Code Codicon `history` 的时钟指针部分，去掉外圈和回退箭头以保证 24px 下清晰。这只是该 view section 在标题不可见或被用户拖到 Activity Bar 时的识别资产，不引入新的 Activity Bar 容器。
 - 它使用最小 `WebviewView`，原因不是要做更复杂 UI，而是必须在同一区域内提供搜索框与双击恢复能力。
 - 具体承载文件是 `src/sidebar/CanvasSidebarSessionHistoryView.ts`；宿主只向 Webview 提供搜索前的 snapshot，搜索输入与双击行为都在这个最小视图内部完成。
 - 视图结构只保留两层：
   - 顶部一个搜索框
   - 下方一列结果列表
 - 结果项保持 VS Code 原生 list 风格：无卡片、无阴影、无多层装饰，只用主题 token、轻量 hover/selected 态和紧凑行距。
-- 每条结果项采用两行紧凑结构：首行显示 provider 图标和“会话中的第一条用户指令”标题，次行显示“相对更新时间 + sessionId”；工作目录和绝对时间收口到 tooltip。
+- 每条结果项采用两行紧凑结构：首行显示 provider 图标、“会话中的第一条用户指令”标题，以及右侧 `恢复` / `分叉` 两个 icon-only 按钮；按钮图标使用 VSCode Codicon，其中 `恢复` 使用 `history`，`分叉` 使用 `repo-forked`，不单独自绘同义 SVG；次行显示“相对更新时间 + sessionId”；工作目录和绝对时间收口到 tooltip。
 - 搜索文本覆盖会话标题、provider、sessionId 与工作目录等信息；仍不匹配当前画布节点副标题。
+- `恢复` / `分叉` 按钮都提供 `aria-label` 与 `title`，按钮最小热区为 24px；按钮点击会阻止事件冒泡，避免误触行双击。会话项本身的双击、Enter、Space 仍保持原有恢复行为。
 - tooltip 只展示 provider 历史已知的会话元信息，不再注入当前画布节点标题或副标题。
 - tooltip 中的工作目录追加目录尾缀，并保留 provider session 记录中 cwd 的来源分隔符风格：含反斜杠来源显示为 `\`，slash-style 来源显示为 `/`；`//server/share/...` 不被改写成 `\\server\share\...`。
 
@@ -162,24 +165,28 @@ updated_at: 2026-06-13
 
 这样可以让侧栏标题稳定反映“这条会话最初是为了解决什么问题”，同时避免继续复用当前画布节点标题或节点副标题。
 
-### 6.5 从历史恢复时，新建一个 `Agent` 节点并写入带默认启动参数的显式 resume 命令
+### 6.5 从历史恢复或分叉时，新建一个 `Agent` 节点并写入带默认启动参数的显式 provider 命令
 
-- 双击会话历史项后，不修改当前节点，也不要求用户二次确认。
-- 宿主会直接新建一个 `Agent` 节点，并把它的自定义启动命令写成“当前 provider 命令 + 当前默认启动参数 + 显式 resume 参数”的组合；例如：
+- 双击会话历史项或点击 `恢复` icon 按钮后，不修改当前节点，也不要求用户二次确认。
+- 点击 `分叉` icon 按钮后，同样不修改当前节点，也不要求用户二次确认；它创建同 provider 新 Agent 节点，并使用 provider 原生 fork 语义启动。
+- 宿主会直接新建一个 `Agent` 节点，并把它的自定义启动命令写成“当前 provider 命令 + 当前默认启动参数 + 显式 resume / fork 参数”的组合；例如：
   - `codex resume <当前仍有效的默认参数...> <session-id>`
   - `claude --resume <session-id> <当前仍有效的默认参数...>`
-- 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复后面；若默认参数里已含 `Codex resume --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数，历史恢复时要先剥离这些选择阶段参数，再写入目标 `session-id`。与之相对，`--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` 仍有效的参数继续保留；而 `resume` / `--resume` 这类模式 argv 本身则尽量前置到命令前部。
+  - `codex fork <当前仍有效的默认参数...> <session-id>`（实现上命令层把 `fork` 尽量前置，session id 保持在命令尾部）
+  - `claude --resume <session-id> --fork-session <当前仍有效的默认参数...>`
+- 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复或分叉后面；若默认参数里已含 `Codex resume --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数，历史恢复 / 分叉时要先剥离这些选择阶段参数，再写入目标 `session-id`。与之相对，`--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` / `fork <session-id>` 仍有效的参数继续保留；而 `resume` / `fork` / `--resume` 这类模式 argv 本身则尽量前置到命令前部。
+- 历史分叉节点标题使用原会话标题加 `分叉` 后缀作为弱提示；从历史列表发起时没有现有画布来源节点，因此不自动创建 `fork` 连线。
 - 新节点创建后，宿主会自动打开或定位画布，并聚焦到新节点。
 - 后续自动启动仍沿用现有 `Agent` 节点“等待尺寸就绪后自动启动”的宿主/前端链路，不再另开一套特殊恢复流程。
 
-这条链路收口在 `src/panel/CanvasPanelManager.ts` 的 `restoreAgentSessionFromHistory(...)`、`focusNodeById(...)` 和 `buildHistoryResumeCommandLine(...)`，并由 `src/extension.ts` 暴露给 sidebar 内部命令与 QuickPick 回退入口。
+这条链路收口在 `src/panel/CanvasPanelManager.ts` 的 `restoreAgentSessionFromHistory(...)`、`forkAgentSessionFromHistory(...)`、`focusNodeById(...)`、`buildHistoryResumeCommandLine(...)` 和 `buildAgentBranchCommandLine(...)`，并由 `src/extension.ts` 暴露给 sidebar 内部命令与 QuickPick 回退入口。
 
 ### 6.6 侧栏不可见时，仍保留命令入口
 
 为了满足规格里的“侧栏不可见时仍可通过命令入口访问”，当前再补两条命令：
 
 - `显示节点列表`：用 QuickPick 临时展示当前非文件节点，选择后定位到画布节点。
-- `显示会话历史`：用 QuickPick 临时展示当前 workspace 会话记录，选择后恢复为新节点。
+- `显示会话历史`：用 QuickPick 临时展示当前 workspace 会话记录，选择后恢复或分叉为新节点。
 
 它们不是新的主交互面，而是 sidebar 被折叠、移动或暂时不可见时的回退入口。
 
@@ -211,9 +218,14 @@ updated_at: 2026-06-13
 5. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
 6. 搜索框输入关键词后，列表会即时过滤。
 7. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
-8. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
+8. 点击会话项右侧 `恢复` icon 按钮后，效果与双击一致；点击 `分叉` icon 按钮后，会新建同 provider `Agent` 节点，并带着正确的 provider-native fork 命令进入自动启动链路。
+9. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
 
 ## 9. 当前验证状态
+
+- 2026-06-15：会话历史项右侧 `恢复` / `分叉` icon-only 按钮收口为 bundled VSCode Codicon（`history` / `repo-forked`），与节点列表和模板侧栏共用 `dist/sidebar-codicon.css` 资源路线。
+- 2026-06-15：会话历史 view section 新增专属 `images/dev-session-canvas-sessions-activitybar.svg`，沿用主 glyph + 右上角 badge 约定，badge 内部参考 VS Code Codicon `history` 的时钟指针部分；已纳入 `npm run test:activitybar-badges` 与 manifest 测试。
+- 2026-06-14：会话历史项右侧新增 `恢复` / `分叉` 两个 icon-only 按钮，双击与 Enter / Space 保持既有恢复行为；Host 新增 `forkAgentSessionFromHistory(...)`，从历史会话生成 provider-native fork 启动命令。已运行 `npm run typecheck`、`npm run test:sidebar-session-history` 与 `git diff --check`。
 
 - 2026-06-13：节点列表 attention 入口补齐三条规则：单根平铺展示中 attention 节点前置；分组树展示中顶部显示“待处理提醒”虚拟分组且保留原分组位置；多根 workspace 平铺展示保留 workspace root 分组，并把“待处理提醒”虚拟分组排在 root 分组之前。新增 `npm run test:sidebar-node-list` 覆盖这些 DOM 排序与分组规则。
 - 2026-05-11：`节点` view section 新增专属单色 SVG 图标，manifest 改为引用 `images/dev-session-canvas-nodes-activitybar.svg`；已通过 `npm run typecheck`、`npm run build` 与本地 manifest 图标路径检查验证。

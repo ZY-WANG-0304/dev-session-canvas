@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { chromium } from 'playwright';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -226,7 +227,7 @@ try {
   const vscodeStubDir = path.join(tempDir, 'node_modules', 'vscode');
   await mkdir(vscodeStubDir, { recursive: true });
   await writeFile(path.join(vscodeStubDir, 'index.js'), 'module.exports = {};', 'utf8');
-  const { buildCanvasSidebarSessionHistoryItems } = require(bundledSidebarModule);
+  const { buildCanvasSidebarSessionHistoryItems, buildSidebarSessionHistoryHtml } = require(bundledSidebarModule);
   const sidebarItems = buildCanvasSidebarSessionHistoryItems(entries, workspaceRoot);
   const claudeRootSidebarItem = sidebarItems.find((entry) => entry.sessionId === 'claude-session-root');
   assert.ok(claudeRootSidebarItem, 'Expected the sidebar session history builder to include the Claude root entry.');
@@ -334,6 +335,14 @@ try {
     'Expected extremely long session history titles to stay bounded with an ellipsis.'
   );
 
+  const sidebarHtml = buildSidebarSessionHistoryHtml({ cspSource: 'vscode-resource:' });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    await assertSessionHistoryActionButtons(browser, sidebarHtml);
+  } finally {
+    await browser.close();
+  }
+
   const limitedEntries = await listWorkspaceAgentSessionHistory({
     workspaceRoot,
     maxEntries: 2,
@@ -368,6 +377,103 @@ try {
   );
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+async function assertSessionHistoryActionButtons(browser, html) {
+  const page = await createSidebarHistoryPage(browser, html);
+  try {
+    const item = {
+      id: 'codex:history-action-session',
+      provider: 'codex',
+      providerLabel: 'Codex',
+      sessionId: 'history-action-session',
+      title: '历史 action 按钮回归',
+      timestampLabel: 'Codex · 刚刚 · history-action-session',
+      tooltip: '历史 action 按钮回归',
+      searchText: '历史 action 按钮回归 codex history-action-session'
+    };
+    await renderSidebarHistoryState(page, { items: [item] });
+
+    const buttons = await page.evaluate(() => {
+      const row = document.querySelector('[data-session-history-item-id="codex:history-action-session"]');
+      return Array.from(row?.querySelectorAll('[data-session-history-action]') ?? []).map((button) => ({
+        action: button.getAttribute('data-session-history-action'),
+        ariaLabel: button.getAttribute('aria-label'),
+        title: button.getAttribute('title'),
+        width: button.getBoundingClientRect().width,
+        height: button.getBoundingClientRect().height,
+        iconClassName: button.querySelector('.session-action-icon')?.className ?? ''
+      }));
+    });
+    assert.deepEqual(
+      buttons.map((button) => button.action),
+      ['resume', 'fork'],
+      'Expected each sidebar session history row to render resume and fork action buttons.'
+    );
+    for (const button of buttons) {
+      assert.match(button.ariaLabel ?? '', /历史会话/u, 'Expected icon-only session actions to expose an accessible label.');
+      assert.match(button.title ?? '', /历史会话/u, 'Expected icon-only session actions to expose a title tooltip.');
+      assert.ok(button.width >= 24 && button.height >= 24, 'Expected session action buttons to keep at least a 24px hit target.');
+      assert.match(button.iconClassName, /\bcodicon\b/u, 'Expected session action buttons to use VSCode Codicon icons.');
+    }
+    assert.match(buttons[0]?.iconClassName ?? '', /\bcodicon-history\b/u, 'Expected the resume action to use a Codicon history icon.');
+    assert.match(buttons[1]?.iconClassName ?? '', /\bcodicon-repo-forked\b/u, 'Expected the fork action to use a Codicon fork icon.');
+
+    await page.click('[data-session-history-action="resume"]');
+    await page.click('[data-session-history-action="fork"]');
+    await page.dblclick('[data-session-history-item-id="codex:history-action-session"]');
+
+    const postedMessages = await page.evaluate(() => window.__sidebarSessionHistoryMessages);
+    assert.deepEqual(
+      postedMessages.filter((message) => message.type !== 'sidebarSessionHistory/ready').map((message) => message.type),
+      [
+        'sidebarSessionHistory/openSession',
+        'sidebarSessionHistory/forkSession',
+        'sidebarSessionHistory/openSession'
+      ],
+      'Expected action buttons to post explicit resume/fork messages while row double-click keeps the existing resume action.'
+    );
+    assert.deepEqual(
+      postedMessages
+        .filter((message) => message.type === 'sidebarSessionHistory/openSession' || message.type === 'sidebarSessionHistory/forkSession')
+        .map((message) => message.payload?.sessionId),
+      ['history-action-session', 'history-action-session', 'history-action-session']
+    );
+  } finally {
+    await page.close();
+  }
+}
+
+async function createSidebarHistoryPage(browser, html) {
+  const page = await browser.newPage({ viewport: { width: 320, height: 600 } });
+  const testHtml = html.replace(
+    'const vscode = acquireVsCodeApi();',
+    `
+      window.__sidebarSessionHistoryMessages = [];
+      window.acquireVsCodeApi = () => ({
+        postMessage(message) {
+          window.__sidebarSessionHistoryMessages.push(message);
+        }
+      });
+      const vscode = acquireVsCodeApi();`
+  );
+  await page.setContent(testHtml, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() =>
+    window.__sidebarSessionHistoryMessages.some((message) => message.type === 'sidebarSessionHistory/ready')
+  );
+  return page;
+}
+
+async function renderSidebarHistoryState(page, payload) {
+  await page.evaluate((nextPayload) => {
+    window.dispatchEvent(new MessageEvent('message', {
+      data: {
+        type: 'sidebarSessionHistory/state',
+        payload: nextPayload
+      }
+    }));
+  }, payload);
+  await page.waitForFunction(() => document.querySelectorAll('[data-session-history-item-id]').length > 0);
 }
 
 async function writeCodexSessionFile({ homeDir, sessionId, cwd, timestampMs, fileSuffix, userMessages = [] }) {
