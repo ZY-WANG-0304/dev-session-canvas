@@ -3,12 +3,14 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { listWorkspaceAgentSessionHistory, type WorkspaceAgentSessionHistoryEntry } from '../common/agentSessionHistory';
+import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import type { AgentProviderKind } from '../common/protocol';
 import { isAgentProviderKind } from '../common/protocol';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
 
 const SESSION_REFRESH_DEBOUNCE_MS = 350;
 const SIDEBAR_SESSION_ICON_ROOT = path.resolve(__dirname, '..', 'images');
+const SIDEBAR_BUNDLED_CODICON_PATH_SEGMENTS = ['dist', 'sidebar-codicon.css'] as const;
 const FALLBACK_CLAUDE_PROVIDER_ICON_SVG =
   '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" fill="currentColor" fill-opacity="0.18"/><path d="M6.25 5.25L3.75 8L6.25 10.75" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.75 5.25L12.25 8L9.75 10.75" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FALLBACK_CODEX_PROVIDER_ICON_SVG =
@@ -17,6 +19,10 @@ const SIDEBAR_SESSION_PROVIDER_ICON_SVGS = {
   claude: readBundledProviderIconSvg('provider-claude-code-anthropic.svg', FALLBACK_CLAUDE_PROVIDER_ICON_SVG),
   codex: readBundledProviderIconSvg('provider-codex-openai.svg', FALLBACK_CODEX_PROVIDER_ICON_SVG)
 } satisfies Record<AgentProviderKind, string>;
+const SIDEBAR_SESSION_ACTION_CODICONS = {
+  resume: 'history',
+  fork: 'repo-forked'
+} satisfies Record<'resume' | 'fork', string>;
 
 export interface CanvasSidebarSessionHistoryItemSnapshot {
   id: string;
@@ -47,6 +53,12 @@ export type SidebarSessionHistoryTestAction =
       kind: 'filterItems';
       query: string;
       delayMs?: number;
+    }
+  | {
+      kind: 'clickActionButton';
+      itemId: string;
+      action: 'resume' | 'fork';
+      delayMs?: number;
     };
 
 type SidebarSessionHistoryInboundMessage =
@@ -55,6 +67,14 @@ type SidebarSessionHistoryInboundMessage =
     }
   | {
       type: 'sidebarSessionHistory/openSession';
+      payload: {
+        provider: AgentProviderKind;
+        sessionId: string;
+        title?: string;
+      };
+    }
+  | {
+      type: 'sidebarSessionHistory/forkSession';
       payload: {
         provider: AgentProviderKind;
         sessionId: string;
@@ -112,7 +132,10 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
   private readonly pendingReadyRequests = new Map<string, PendingSidebarSessionHistoryReadyRequest>();
   private readonly pendingTestActionRequests = new Map<string, PendingSidebarSessionHistoryTestActionRequest>();
 
-  public constructor(private readonly panelManager: CanvasPanelManager) {
+  public constructor(
+    private readonly panelManager: CanvasPanelManager,
+    private readonly extensionUri: vscode.Uri
+  ) {
     this.trustSubscription = vscode.workspace.onDidGrantWorkspaceTrust(() => {
       this.actionErrorMessage = undefined;
       void this.postState();
@@ -135,9 +158,15 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
     this.view = webviewView;
     this.isWebviewReady = false;
     webviewView.webview.options = {
-      enableScripts: true
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')]
     };
-    webviewView.webview.html = buildSidebarSessionHistoryHtml(webviewView.webview);
+    const codiconCssUri = getVersionedWebviewResourceUri(
+      webviewView.webview,
+      this.extensionUri,
+      ...SIDEBAR_BUNDLED_CODICON_PATH_SEGMENTS
+    ).toString();
+    webviewView.webview.html = buildSidebarSessionHistoryHtml(webviewView.webview, codiconCssUri);
 
     webviewView.onDidDispose(() => {
       if (this.view === webviewView) {
@@ -337,6 +366,18 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
           title: parsed.payload.title
         });
         if (!result.restored && result.errorMessage) {
+          this.actionErrorMessage = result.errorMessage;
+          await this.postState();
+        }
+        return;
+      }
+      case 'sidebarSessionHistory/forkSession': {
+        const result = await this.panelManager.forkAgentSessionFromHistory({
+          provider: parsed.payload.provider,
+          sessionId: parsed.payload.sessionId,
+          title: parsed.payload.title
+        });
+        if (!result.forked && result.errorMessage) {
           this.actionErrorMessage = result.errorMessage;
           await this.postState();
         }
@@ -576,6 +617,28 @@ function parseSidebarSessionHistoryMessage(message: unknown): SidebarSessionHist
         }
       };
     }
+    case 'sidebarSessionHistory/forkSession': {
+      const payload = 'payload' in message ? message.payload : undefined;
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        !('provider' in payload) ||
+        !isAgentProviderKind(payload.provider) ||
+        !('sessionId' in payload) ||
+        typeof payload.sessionId !== 'string'
+      ) {
+        return null;
+      }
+
+      return {
+        type: 'sidebarSessionHistory/forkSession',
+        payload: {
+          provider: payload.provider,
+          sessionId: payload.sessionId,
+          title: 'title' in payload && typeof payload.title === 'string' ? payload.title : undefined
+        }
+      };
+    }
     case 'sidebarSessionHistory/testActionResult': {
       const payload = 'payload' in message ? message.payload : undefined;
       if (
@@ -644,15 +707,27 @@ export function isSidebarSessionHistoryTestAction(value: unknown): value is Side
     'kind' in value &&
     (
       (value.kind === 'doubleClickItem' && 'itemId' in value && typeof value.itemId === 'string') ||
-      (value.kind === 'filterItems' && 'query' in value && typeof value.query === 'string')
+      (value.kind === 'filterItems' && 'query' in value && typeof value.query === 'string') ||
+      (
+        value.kind === 'clickActionButton' &&
+        'itemId' in value &&
+        typeof value.itemId === 'string' &&
+        'action' in value &&
+        (value.action === 'resume' || value.action === 'fork')
+      )
     ) &&
     (!('delayMs' in value) || typeof value.delayMs === 'number')
   );
 }
 
-function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
+export function buildSidebarSessionHistoryHtml(
+  webview: Pick<vscode.Webview, 'cspSource'>,
+  codiconCssUri?: string
+): string {
   const nonce = createNonce();
   const providerIconsJson = JSON.stringify(SIDEBAR_SESSION_PROVIDER_ICON_SVGS);
+  const actionCodiconsJson = JSON.stringify(SIDEBAR_SESSION_ACTION_CODICONS);
+  const codiconLink = codiconCssUri ? `\n    <link rel="stylesheet" href="${escapeHtmlAttribute(codiconCssUri)}" />` : '';
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -660,9 +735,9 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"
+      content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';"
     />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />${codiconLink}
     <style>
       :root {
         color-scheme: light dark;
@@ -873,10 +948,80 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         min-width: 0;
       }
 
+      .session-actions {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: auto;
+        opacity: 0.74;
+        transform: translateX(0);
+        transition:
+          opacity 120ms ease,
+          transform 120ms ease;
+      }
+
+      .session-row:hover .session-actions,
+      .session-row:focus-within .session-actions,
+      .session-row.is-selected .session-actions {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      .session-action {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 0;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--row-muted);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .session-action:hover {
+        background: color-mix(
+          in srgb,
+          var(--vscode-toolbar-hoverBackground, var(--vscode-button-secondaryHoverBackground, var(--list-hover))) 70%,
+          transparent
+        );
+        color: var(--row-fg);
+      }
+
+      .session-action:focus-visible {
+        outline: 1px solid var(--focus);
+        outline-offset: -1px;
+        color: var(--row-fg);
+      }
+
+      .session-action[disabled] {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .session-action .codicon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        width: 15px;
+        height: 15px;
+        pointer-events: none;
+      }
+
       .session-time {
         color: var(--row-muted);
         font-size: 11px;
         padding-left: 22px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .session-actions {
+          transition: none;
+        }
       }
 
       .empty-state {
@@ -912,6 +1057,7 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const providerIcons = ${providerIconsJson};
+      const actionCodicons = ${actionCodiconsJson};
       const state = {
         items: [],
         selectedId: undefined,
@@ -959,13 +1105,13 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         syncRenderedSelection();
       }
 
-      function openItem(item) {
+      function openItem(item, action = 'resume') {
         if (state.restoreBlockedMessage) {
           return;
         }
 
         vscode.postMessage({
-          type: 'sidebarSessionHistory/openSession',
+          type: action === 'fork' ? 'sidebarSessionHistory/forkSession' : 'sidebarSessionHistory/openSession',
           payload: {
             provider: item.provider,
             sessionId: item.sessionId,
@@ -1002,6 +1148,12 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         return list.querySelector('[data-session-history-item-id="' + CSS.escape(itemId) + '"]');
       }
 
+      function queryActionButtonByItemId(itemId, action) {
+        return list.querySelector(
+          '[data-session-history-item-id="' + CSS.escape(itemId) + '"] [data-session-history-action="' + CSS.escape(action) + '"]'
+        );
+      }
+
       async function performTestAction(action) {
         if (!action || typeof action.kind !== 'string') {
           throw new Error('Unsupported sidebar session history test action.');
@@ -1019,6 +1171,24 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
           setSearchQuery(action.query);
           render();
           await waitForDomActionFlush();
+          return captureTestSnapshot();
+        }
+
+        if (action.kind === 'clickActionButton') {
+          if (typeof action.itemId !== 'string' || (action.action !== 'resume' && action.action !== 'fork')) {
+            throw new Error('Sidebar session history action button requires an item id and supported action.');
+          }
+
+          const button = queryActionButtonByItemId(action.itemId, action.action);
+          if (!button) {
+            throw new Error('Target session history action button is not visible.');
+          }
+
+          button.focus();
+          button.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+          dispatchSyntheticMouseClick(button);
+          await waitForDomActionFlush();
+
           return captureTestSnapshot();
         }
 
@@ -1083,6 +1253,9 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
             openItem(item);
           });
           row.addEventListener('keydown', (event) => {
+            if (event.target?.closest?.('[data-session-history-action]')) {
+              return;
+            }
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault();
               openItem(item);
@@ -1101,7 +1274,14 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
           title.className = 'session-title';
           title.textContent = item.title;
 
-          titleLine.append(providerIcon, title);
+          const actions = document.createElement('div');
+          actions.className = 'session-actions';
+
+          const resumeButton = createActionButton('resume', item, interactionBlocked);
+          const forkButton = createActionButton('fork', item, interactionBlocked);
+          actions.append(resumeButton, forkButton);
+
+          titleLine.append(providerIcon, title, actions);
 
           const time = document.createElement('div');
           time.className = 'session-time';
@@ -1155,6 +1335,36 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         searchInput.focus();
       });
 
+      function createActionButton(action, item, disabled) {
+        const button = document.createElement('button');
+        button.className = 'session-action session-action-' + action;
+        button.type = 'button';
+        button.dataset.sessionHistoryAction = action;
+        const icon = document.createElement('span');
+        icon.className = 'session-action-icon codicon codicon-' + resolveActionCodicon(action);
+        icon.setAttribute('aria-hidden', 'true');
+        button.append(icon);
+        const actionLabel = action === 'fork' ? '分叉' : '恢复';
+        const label = actionLabel + '历史会话：' + item.title;
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        if (disabled) {
+          button.disabled = true;
+          button.setAttribute('aria-disabled', 'true');
+        }
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setSelectedId(item.id);
+          openItem(item, action);
+        });
+        button.addEventListener('dblclick', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        });
+        return button;
+      }
+
       window.addEventListener('message', (event) => {
         const message = event.data;
         if (!message || typeof message.type !== 'string') {
@@ -1204,6 +1414,10 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
       function renderProviderIcon(provider) {
         return providerIcons[provider] || '';
       }
+
+      function resolveActionCodicon(action) {
+        return actionCodicons[action] || 'circle-large-outline';
+      }
     </script>
   </body>
 </html>`;
@@ -1215,6 +1429,10 @@ function readBundledProviderIconSvg(fileName: string, fallbackSvg: string): stri
   } catch {
     return fallbackSvg;
   }
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function createNonce(): string {

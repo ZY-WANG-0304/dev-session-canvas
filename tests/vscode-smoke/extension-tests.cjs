@@ -11,7 +11,7 @@ const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
 const EXPLICIT_CLAUDE_SESSION_ID = 'session-explicit-123456789';
 const RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE =
-  '当前 workspace 未受信任，只能查看历史会话，不能恢复为新 Agent 节点。';
+  '当前 workspace 未受信任，只能查看历史会话，不能恢复或分叉为新 Agent 节点。';
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -1037,6 +1037,7 @@ async function runTrustedSmoke() {
   await verifyReadExitFileActivityDrain();
   await verifyRuntimePersistenceRequiresReloadAndClearsState();
   await verifySidebarSessionHistoryRestore();
+  await verifySidebarSessionHistoryForkActionUi();
   await verifyCodexAgentBranchFromCurrentNode();
   await verifyClaudeAgentBranchFromCurrentNode();
   await verifyAgentBranchRejectsUnsupportedSources();
@@ -2035,6 +2036,78 @@ async function verifySidebarSessionHistoryDoubleClickUi() {
   }
 }
 
+
+async function verifySidebarSessionHistoryForkActionUi() {
+  const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const homeDir = os.homedir();
+  const codexSessionId = 'sidebar-codex-ui-fork-123';
+  const firstUserInstruction = '请通过按钮分叉这个历史会话';
+  let sessionFilePath;
+
+  try {
+    await performSidebarSessionHistoryAction(
+      {
+        kind: 'filterItems',
+        query: ''
+      },
+      10000
+    );
+
+    sessionFilePath = await writeCodexSessionFile({
+      homeDir,
+      sessionId: codexSessionId,
+      cwd: workspaceCwd,
+      timestampMs: Date.parse('2026-04-27T11:35:00.000Z'),
+      fileSuffix: 'sidebar-ui-fork',
+      userMessages: [firstUserInstruction]
+    });
+
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+    const historyItems = await getSidebarSessionHistoryItems();
+    const codexItem = historyItems.find(
+      (item) => item.provider === 'codex' && item.sessionId === codexSessionId
+    );
+    assert.ok(codexItem, 'Expected the sidebar history UI fork test session to appear in the session list.');
+
+    const baselineSnapshot = await getDebugSnapshot();
+    const actionSnapshot = await performSidebarSessionHistoryAction(
+      {
+        kind: 'clickActionButton',
+        itemId: codexItem.id,
+        action: 'fork'
+      },
+      10000
+    );
+    assert.strictEqual(
+      actionSnapshot.selectedId,
+      codexItem.id,
+      'Expected clicking the Fork action button to select the target session row.'
+    );
+
+    const forkedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.nodes.some(
+        (node) =>
+          node.kind === 'agent' &&
+          node.title === `${codexItem.title} 分叉` &&
+          node.metadata?.agent?.provider === 'codex' &&
+          typeof node.metadata?.agent?.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(`fork ${codexSessionId}`)
+      );
+    }, 20000);
+
+    assert.strictEqual(
+      forkedSnapshot.state.nodes.length,
+      baselineSnapshot.state.nodes.length + 1,
+      'Expected clicking a sidebar session Fork action to create one additional Agent node.'
+    );
+  } finally {
+    if (sessionFilePath) {
+      await fs.rm(sessionFilePath, { force: true });
+    }
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+  }
+}
+
 async function verifyRestrictedSessionHistoryRestoreIsDisabled() {
   const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
   const homeDir = os.homedir();
@@ -2117,7 +2190,7 @@ async function verifyRestrictedSessionHistoryRestoreIsDisabled() {
             /只读查看模式/,
             'Expected restricted session history QuickPick to explain the read-only mode.'
           );
-          assert.strictEqual(quickPickItem.description, undefined);
+          assert.strictEqual(quickPickItem.description, '恢复');
           assert.match(quickPickItem.detail ?? '', /^Codex · .+ · restricted-sidebar-history-123$/);
           assert.deepStrictEqual(
             warningCalls.map((call) => call.message),

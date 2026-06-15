@@ -54,6 +54,25 @@ assert.ok(
   'Panel placement bootstrap should not activate the extension or reveal the canvas on every VS Code startup.'
 );
 
+const sidebarViews = manifest.contributes.views.devSessionCanvas;
+assert.ok(Array.isArray(sidebarViews), 'Expected devSessionCanvas sidebar views contribution.');
+assert.deepEqual(
+  sidebarViews
+    .filter((view) => view.id === 'devSessionCanvas.sidebarNodes' || view.id === 'devSessionCanvas.sidebarSessions')
+    .map((view) => ({ id: view.id, icon: view.icon })),
+  [
+    {
+      id: 'devSessionCanvas.sidebarNodes',
+      icon: 'images/dev-session-canvas-nodes-activitybar.svg'
+    },
+    {
+      id: 'devSessionCanvas.sidebarSessions',
+      icon: 'images/dev-session-canvas-sessions-activitybar.svg'
+    }
+  ],
+  'Expected sidebar node and session history views to use dedicated section activitybar icons.'
+);
+
 const viewTitleMenus = manifest.contributes.menus['view/title'];
 assert.ok(Array.isArray(viewTitleMenus), 'Expected view/title menu contributions.');
 const createNodeTitleMenus = viewTitleMenus.filter((item) => item.command === 'devSessionCanvas.createNode');
