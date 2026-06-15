@@ -133,6 +133,7 @@
 - `npm run test:publish-marketplaces`
 - `npm run test:publish-marketplace-workflow`
 - `npm run test:publish-tag-release`
+- `npm run release:publish-tag -- --trigger-tag publish/v0.16.1 --dry-run --package-only --skip-origin-main-check`（在发布准备提交后用本地临时 `publish/v0.16.1` tag 预演统一 publish-tag 入口，确认计划产物为 notifier 与主扩展 `0.16.1` VSIX；本地临时 tag 已删除。由于发布准备 head 尚未合入 `origin/main`，这里的 `--skip-origin-main-check` 只适用于本地预演，最终 `main` release ref 必须不带该参数复跑）
 - `npm run test:canvas-multi-root-composition`
 - `npm run test:execution-terminal-clipboard`
 - `npm run typecheck`
