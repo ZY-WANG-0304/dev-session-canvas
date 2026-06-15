@@ -3251,15 +3251,15 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  opacity: 0.32;
-  background-color: color-mix(in srgb, var(--vscode-editor-foreground) 26%, transparent);
+  opacity: 0.28;
+  background-color: color-mix(in srgb, var(--vscode-editor-foreground) 24%, transparent);
   mask-image: var(--canvas-root-watermark-pattern);
-  mask-position: 18px 18px;
+  mask-position: 24px 22px;
   mask-repeat: repeat;
   mask-size: var(--canvas-root-watermark-tile-width, 180px) var(--canvas-root-watermark-tile-height, 88px);
   pointer-events: none;
   -webkit-mask-image: var(--canvas-root-watermark-pattern);
-  -webkit-mask-position: 18px 18px;
+  -webkit-mask-position: 24px 22px;
   -webkit-mask-repeat: repeat;
   -webkit-mask-size: var(--canvas-root-watermark-tile-width, 180px) var(--canvas-root-watermark-tile-height, 88px);
 }
@@ -3270,7 +3270,7 @@ body {
   top: -9999px;
   color: color-mix(in srgb, var(--vscode-editor-foreground) 26%, transparent);
   font-family: var(--vscode-font-family);
-  font-size: var(--canvas-group-title-font-size);
+  font-size: var(--canvas-root-watermark-font-size, var(--canvas-group-title-font-size));
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1;
