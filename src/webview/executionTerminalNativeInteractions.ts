@@ -13,7 +13,8 @@ import LinkifyIt from 'linkify-it';
 import type {
   CanvasRuntimeContext,
   ExecutionNodeKind,
-  ExecutionTerminalClipboardDiagnosticPayload
+  ExecutionTerminalClipboardDiagnosticPayload,
+  ExecutionTerminalClipboardDiagnosticSource
 } from '../common/protocol';
 import {
   inferExecutionTerminalClipboardPlatform,
@@ -157,6 +158,11 @@ interface ExecutionFileLinkResolutionCacheEntryMetadata {
 
 type ScheduleExecutionNegativeFileLinkCacheRefresh = () => void;
 
+type ExecutionClipboardDiagnosticEmitter = (
+  source: ExecutionTerminalClipboardDiagnosticPayload['source'],
+  readDetail?: () => Record<string, unknown>
+) => void;
+
 interface ExecutionFileLinkNegativeCacheInvalidationResult {
   invalidated: boolean;
   retryDelayMs?: number;
@@ -190,6 +196,9 @@ const EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LIMIT = 3;
 const EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LENGTH_LIMIT = 160;
 const EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT = 2048;
 const EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_DECODED_PREVIEW_LIMIT = 120;
+const EXECUTION_RESTORE_CLIPBOARD_DIAGNOSTIC_GRACE_FRAMES = 3;
+const EXECUTION_RESTORE_SUPPRESSED_CLIPBOARD_DIAGNOSTIC_SOURCES: ReadonlySet<ExecutionTerminalClipboardDiagnosticSource> =
+  new Set(['selectionChange', 'mouseTrackingMode', 'osc52']);
 const FILE_LINK_LABEL = 'Open file in editor';
 const FOCUS_DIRECTORY_LINK_LABEL = 'Focus folder in explorer';
 const OPEN_DIRECTORY_LINK_LABEL = 'Open folder in new window';
@@ -226,6 +235,8 @@ export interface ExecutionTerminalNativeInteractionsHandle {
   hoverLinkForTest(linkText: string): Promise<void>;
   clearHoverForTest(): void;
   invalidateLinkResolutionCache(mode?: 'all' | 'negative' | 'negative-delayed'): void;
+  beginSnapshotRestoreDiagnosticsSuppression(reason?: string): () => void;
+  flushSnapshotRestoreDiagnosticsSuppression(): void;
   dispose(): void;
 }
 
@@ -239,6 +250,7 @@ export function setupExecutionTerminalNativeInteractions(
   let tooltipTimer: number | undefined;
   let delayedNegativeCacheRefreshTimer: number | undefined;
   let trailingNegativeCacheRefreshTimer: number | undefined;
+  const restoreSuppressionState = createExecutionClipboardRestoreSuppressionState();
 
   const clearDropTarget = (): void => {
     dropTarget.classList.remove('is-drop-target');
@@ -383,7 +395,7 @@ export function setupExecutionTerminalNativeInteractions(
   const urlLinkDisposable = terminal.registerLinkProvider(urlLinkProvider);
   const wordLinkDisposable = terminal.registerLinkProvider(wordLinkProvider);
   const clipboardPlatform = detectExecutionTerminalClipboardPlatform();
-  const emitClipboardDiagnostic = createExecutionClipboardDiagnosticEmitter(options);
+  const emitClipboardDiagnostic = createExecutionClipboardDiagnosticEmitter(options, restoreSuppressionState);
 
   emitClipboardDiagnostic('environment', () => ({
     platform: clipboardPlatform,
@@ -650,10 +662,21 @@ export function setupExecutionTerminalNativeInteractions(
       // xterm's linkifier will revalidate hovered ranges on render; forcing a
       // synthetic mouseleave here makes links disappear during spinner redraws.
     },
+    beginSnapshotRestoreDiagnosticsSuppression(reason = 'snapshot-restore'): () => void {
+      return beginExecutionClipboardRestoreDiagnosticSuppression(
+        options,
+        restoreSuppressionState,
+        reason
+      );
+    },
+    flushSnapshotRestoreDiagnosticsSuppression(): void {
+      flushPendingExecutionClipboardRestoreDiagnosticSuppression(options, restoreSuppressionState);
+    },
     dispose(): void {
       clearHoveredLink();
       clearDropTarget();
       cancelDelayedNegativeCacheRefresh();
+      cancelExecutionClipboardRestoreDiagnosticSuppression(options, restoreSuppressionState);
       terminal.options.linkHandler = previousLinkHandler;
       hardWrappedLinkDisposable.dispose();
       multilineLinkDisposable.dispose();
@@ -716,17 +739,22 @@ function isExecutionClipboardShortcutCandidate(
 }
 
 function createExecutionClipboardDiagnosticEmitter(
-  options: ExecutionTerminalNativeInteractionsOptions
-): (
-  source: ExecutionTerminalClipboardDiagnosticPayload['source'],
-  readDetail?: () => Record<string, unknown>
-) => void {
+  options: ExecutionTerminalNativeInteractionsOptions,
+  restoreSuppressionState: ExecutionClipboardRestoreSuppressionState
+): ExecutionClipboardDiagnosticEmitter {
   return (source, readDetail): void => {
     if (!options.onClipboardDiagnostic) {
       return;
     }
 
     try {
+      const restoreSuppressionActive =
+        restoreSuppressionState.depth > 0 || restoreSuppressionState.releaseFrame !== undefined;
+      if (restoreSuppressionActive && EXECUTION_RESTORE_SUPPRESSED_CLIPBOARD_DIAGNOSTIC_SOURCES.has(source)) {
+        recordSuppressedExecutionClipboardDiagnostic(restoreSuppressionState, source);
+        return;
+      }
+
       options.onClipboardDiagnostic({
         nodeId: options.nodeId,
         kind: options.kind,
@@ -739,12 +767,158 @@ function createExecutionClipboardDiagnosticEmitter(
   };
 }
 
+interface ExecutionClipboardRestoreSuppressionState {
+  depth: number;
+  generation: number;
+  reason: string;
+  startedAtMs: number;
+  suppressedCounts: Partial<Record<ExecutionTerminalClipboardDiagnosticSource, number>>;
+  releaseFrame?: number;
+}
+
+function createExecutionClipboardRestoreSuppressionState(): ExecutionClipboardRestoreSuppressionState {
+  return {
+    depth: 0,
+    generation: 0,
+    reason: 'snapshot-restore',
+    startedAtMs: 0,
+    suppressedCounts: {}
+  };
+}
+
+function beginExecutionClipboardRestoreDiagnosticSuppression(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState,
+  reason: string
+): () => void {
+  if (state.depth === 0 && state.releaseFrame !== undefined) {
+    cancelScheduledExecutionClipboardRestoreDiagnosticFlush(state);
+    flushExecutionClipboardRestoreSuppressedDiagnostic(options, state);
+  }
+  if (state.depth === 0) {
+    state.generation += 1;
+    state.reason = reason;
+    state.startedAtMs = readExecutionDiagnosticNow();
+    state.suppressedCounts = {};
+  }
+  state.depth += 1;
+
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    finishExecutionClipboardRestoreDiagnosticSuppression(options, state);
+  };
+}
+
+function finishExecutionClipboardRestoreDiagnosticSuppression(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  state.depth = Math.max(0, state.depth - 1);
+  if (state.depth > 0) {
+    return;
+  }
+
+  cancelScheduledExecutionClipboardRestoreDiagnosticFlush(state);
+  let remainingFrames = EXECUTION_RESTORE_CLIPBOARD_DIAGNOSTIC_GRACE_FRAMES;
+  const scheduleNextReleaseFrame = (): void => {
+    state.releaseFrame = window.requestAnimationFrame(() => {
+      state.releaseFrame = undefined;
+      if (state.depth > 0) {
+        return;
+      }
+      remainingFrames -= 1;
+      if (remainingFrames > 0) {
+        scheduleNextReleaseFrame();
+        return;
+      }
+      flushExecutionClipboardRestoreSuppressedDiagnostic(options, state);
+    });
+  };
+  scheduleNextReleaseFrame();
+}
+
+function flushPendingExecutionClipboardRestoreDiagnosticSuppression(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  if (state.depth > 0) {
+    return;
+  }
+  cancelScheduledExecutionClipboardRestoreDiagnosticFlush(state);
+  flushExecutionClipboardRestoreSuppressedDiagnostic(options, state);
+}
+
+function cancelExecutionClipboardRestoreDiagnosticSuppression(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  state.depth = 0;
+  flushPendingExecutionClipboardRestoreDiagnosticSuppression(options, state);
+}
+
+function cancelScheduledExecutionClipboardRestoreDiagnosticFlush(
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  if (state.releaseFrame !== undefined) {
+    window.cancelAnimationFrame(state.releaseFrame);
+    state.releaseFrame = undefined;
+  }
+}
+
+function recordSuppressedExecutionClipboardDiagnostic(
+  state: ExecutionClipboardRestoreSuppressionState,
+  source: ExecutionTerminalClipboardDiagnosticSource
+): void {
+  state.suppressedCounts[source] = (state.suppressedCounts[source] ?? 0) + 1;
+}
+
+function flushExecutionClipboardRestoreSuppressedDiagnostic(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  const counts = Object.fromEntries(
+    Object.entries(state.suppressedCounts).filter(([, count]) => typeof count === 'number' && count > 0)
+  );
+  const total = Object.values(counts).reduce(
+    (sum, count) => sum + (typeof count === 'number' ? count : 0),
+    0
+  );
+  if (total <= 0) {
+    state.suppressedCounts = {};
+    return;
+  }
+
+  try {
+    options.onClipboardDiagnostic?.({
+      nodeId: options.nodeId,
+      kind: options.kind,
+      source: 'restoreSuppressed',
+      detail: {
+        reason: state.reason,
+        generation: state.generation,
+        durationMs: Math.max(0, readExecutionDiagnosticNow() - state.startedAtMs),
+        total,
+        counts
+      }
+    });
+  } catch {
+    // Clipboard diagnostics must never affect terminal input, selection, or rendering.
+  } finally {
+    state.suppressedCounts = {};
+  }
+}
+
+function readExecutionDiagnosticNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+}
+
 function monitorExecutionTerminalMouseTrackingMode(
   terminal: Terminal,
-  emitClipboardDiagnostic: (
-    source: ExecutionTerminalClipboardDiagnosticPayload['source'],
-    readDetail?: () => Record<string, unknown>
-  ) => void
+  emitClipboardDiagnostic: ExecutionClipboardDiagnosticEmitter
 ): IDisposable {
   let previousMouseTrackingMode = terminal.modes.mouseTrackingMode;
   const disposable = terminal.onWriteParsed(() => {

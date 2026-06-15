@@ -42,6 +42,7 @@
 - [x] (2026-06-15 02:29 +0800) 分析现场诊断 `/home/users/ziyang01.wang-al/projects/dsc-test-03/.debug/current-host-diagnostics/2026-06-14T17-23-57-416Z`，确认 Webview lifecycle、input ack 和 file-link 热路径已健康，但两个 Agent 节点进入 snapshot reset timeout/retry/stale 循环，Host snapshot 的 `outputSequence` 长期只有 2，低于 Webview reset 边界 3581 / 6437。
 - [x] (2026-06-15 02:35 +0800) 实现第十一轮修复：Host / runtime supervisor 持久化并传递 `outputSequence`，live-runtime attach 时用 metadata floor 保持序号单调；Webview 的 reset attach request 额外携带 `executionSessionId` 与 `minOutputSequence`，Host 在同一 session 快照前对齐最小边界，避免低序号 stale snapshot 造成无限重试。
 - [x] (2026-06-15 02:52 +0800) 纠正验收记录：`200ms` 以内来自上一轮诊断指标解读，不是用户手动验证数据；本轮仍需要以修复后新诊断或明确手动反馈作为最终验收依据。
+- [x] (2026-06-15 22:07 +0800) 收口 clipboard/selection 诊断噪音：snapshot restore 的 `terminal.reset()` / `terminal.write(snapshot)` 期间只抑制明确由恢复过程触发的 `selectionChange`、`mouseTrackingMode` 和 `OSC 52` 诊断，并以 `restoreSuppressed` 聚合上报；不做空选区去重/节流，避免隐藏真实用户选择或复制现场。
 
 ## 意外与发现
 
@@ -113,6 +114,12 @@
 
 - 观察：file-link 候选不应继续全局收紧，应该区分后台预算和用户明确点击。
   证据：`custom/tool` 这类 extensionless path 在 strict gate 下会被过滤，但用户点击时已经表达明确意图；interactive gate 可以允许这类 path 进入一次解析，同时 background gate 仍拒绝它，避免 live output 后台刷新重新制造 Host 解析压力。
+
+- 观察：`executionClipboardDiagnostic` 的 211 条事件并不代表用户执行了 211 次选择/复制；xterm restore 会在 `reset()` 与 snapshot replay 中触发空选区变化、mouse tracking 切换和 OSC 52 parser hook。
+  证据：`2026-06-15T09-00-14-651Z` 中 `selectionChange = 169`，大多数 detail 为 `selectionLength: 0`、`hasSelection: false`、`terminalHasFocus: false`，并集中出现在 panel / snapshot restore 时间窗。
+
+- 观察：不能用“空选区 1 秒内去重”压低诊断量。
+  证据：用户明确指出这会导致诊断失误；真实用户点击、焦点变化或 mouse tracking 场景也可能表现为空选区，因此本轮只在有明确 snapshot restore 上下文时抑制。
 
 
 - 观察：第九轮现场诊断显示前几轮优化已经把主要热路径收敛到恢复窗口，而不是稳态输出。
@@ -240,6 +247,10 @@
   理由：`2026-06-14T17-23-57-416Z` 显示两个 Agent 的 Host snapshot 快速返回但序号回退到 2，低于 Webview reset boundary 3581 / 6437，导致无限 stale reset retry。把序号作为恢复边界持久化并在同 session 下对齐，可以修复旧 supervisor registry 或 reattach 时序号缺失的兼容问题，同时不跨 session 伪造输出顺序。
   日期/作者：2026-06-15 / Codex
 
+- 决策：clipboard/selection 诊断不做空选区去重或固定节流；只在显式 snapshot restore 窗口内抑制 xterm 程序化副作用，并以 `restoreSuppressed` 聚合计数保留可观测性。
+  理由：空选区事件本身也可能是用户真实选择、焦点或 TUI mouse tracking 问题的证据；但 `terminal.reset()` / snapshot replay 期间的 `selectionChange`、`mouseTrackingMode` 和 `OSC 52` 明确来自恢复过程，原样上报会把诊断误导成用户大量选择/复制。
+  日期/作者：2026-06-15 / Codex
+
 ## 结果与复盘
 
 当前计划的第一轮实现已完成。新增协议字段让 `webview/executionInput` 携带 `sequence`、`webviewEpochMs` 与 `webviewPerformanceNowMs`；Webview、Host received、Host write 三类样本可以用同一 sequence 串起来。Webview 侧还新增 `webview-main-thread-lag`，用于捕捉输入回调触发前的整体主线程停顿；Host 侧新增 `host-state-persist`，用于判断高频持久化是否参与卡顿。
@@ -268,6 +279,8 @@ file-link 方面，第八轮保持“懒解析退出热路径”的大方向，�
 本轮仍不能单凭自动化证明用户现场体感已经完全恢复；下一步必须让用户安装当前构建后重新在多 Agent 同时运行场景采集宿主诊断，重点看 `diagnosticsSchema.executionPerformance` 是否为 9，是否出现 `webview-snapshot-restore-queue`、`snapshot-reset-requested` 与 `snapshot-reset-applied` 成对样本，`snapshot-reset-timeout` 是否少量或没有，`webview-output-snapshot-reset.pendingOutputLength` 是否不再长期超过 256KB，以及 `webview-input-ack.durationMs` 是否继续保持在可接受范围。若出现 `snapshot-reset-unsequenced-snapshot`，应结合后续 timeout retry 或 session ended 样本判断 Host 是否没有带回 sequence snapshot。
 
 2026-06-15 纠正：`200ms` 以内来自前一次诊断指标解读，不是用户手动验证结论，不能写作手动验收通过。本轮修复后仍需要通过新的宿主诊断或用户明确反馈确认最终体感；后续若再次采集宿主诊断，仍优先确认 `stale-snapshot-reset-ignored` 不再持续出现，且 reset request 能与 applied 成对。
+
+2026-06-15 晚间补充收口 clipboard/selection 诊断噪音。该变更不改变输入输出反馈、不增加本地 echo，也不改变 snapshot hydrate 的正确性边界；它只让 restore 期间的 xterm 内部 selection / mouse tracking / OSC 52 事件不再以原始用户诊断形式淹没 retained window，同时通过 `restoreSuppressed` 保留“恢复期间确实发生过多少被抑制事件”的聚合证据。后续看宿主诊断时，应预期 `executionClipboardSummary.bySource.selectionChange` 不再因为 panel restore 暴涨；若 restore 期间有副作用，会转为少量 `restoreSuppressed`。
 
 ## 上下文与定向
 
@@ -633,3 +646,5 @@ file-link 方面，第八轮保持“懒解析退出热路径”的大方向，�
 最后更新说明：2026-06-14 根据 `2026-06-14T08-48-07-706Z` 现场诊断补充第十轮 hidden backlog 提前 reset；原因是 attach 去重和 hydrate 调度已经生效，剩余恢复卡顿来自 hidden 期间 raw output 仍积到约 1MB 后才回放，应该在不可见时更早切到 Host snapshot。
 
 最后更新说明：2026-06-15 根据 `2026-06-14T17-23-57-416Z` 现场诊断补充第十一轮 outputSequence 单调性修复；原因是输入 ack 和 hidden reset 已健康，但 live-runtime snapshot 序号回退到 1/2，导致两个 Agent 节点持续 stale snapshot reset timeout/retry。
+
+最后更新说明：2026-06-15 根据 `2026-06-15T09-00-14-651Z` 现场诊断补充 snapshot restore clipboard 诊断抑制；原因是 211 条 clipboard/selection 诊断主要来自 xterm restore 副作用，而用户明确要求不能通过空选区去重/节流隐藏真实诊断。
