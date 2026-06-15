@@ -27,6 +27,8 @@
 - [x] (2026-06-14T15:19Z) 已处理 PR review blocker：确认同一个 workflow run 重新运行时 `upload-artifact@v4` 同名 artifact 会冲突，并在 `test:publish-marketplace-workflow` 中补回归断言；后续 2026-06-15 评审进一步要求兼容 failed-only rerun，因此最终方案改为稳定 artifact 名称 + 显式 overwrite。
 - [x] (2026-06-15T00:55Z) 已处理 PR review blocker：marketplace job 在上传自身 result manifest 后按发布退出码标红；Actions artifact 名称改回同一 run 内稳定的 `github.run_id` 并显式 `overwrite: true`，让 GitHub Actions 的 Re-run failed jobs 能复用 prepare 产物并实际重试失败 marketplace job。
 
+- [x] (2026-06-15T08:20Z) 用户明确允许 `0.16.0` 在 Visual Studio Marketplace 仍不可公开查询时，仅依赖 GitHub Release assets 与 Open VSX 兜底完成；已把 release completion gate 从“两市场均 verified”调整为“GitHub Release assets uploaded + Open VSX main/notifier verified”，并将 Visual Studio Marketplace 记录为 deferred channel。
+
 ## 意外与发现
 
 - 观察：当前 GitHub workflow 原本只上传 Actions artifact；设计文档已有“后续再视情况补 GitHub Release asset 上传步骤”的技术债，正好对应本次需求。
@@ -51,6 +53,9 @@
   证据：`0.15.2` GitHub Actions run `27487404678` 在 `devsessioncanvas.dev-session-canvas-notifier` 的 Visual Studio Marketplace 发布处失败；随后本地复用 `v0.15.2` Release assets 把主扩展与 notifier 都补发到 Open VSX `0.15.2` 并验证 API files metadata 齐全。
 - 观察：`actions/upload-artifact@v4` 的同名 artifact 在同一个 workflow run 的 full rerun attempt 中会冲突；但如果 artifact 名称加入 `github.run_attempt`，GitHub Actions 的 Re-run failed jobs 不会重跑已经成功的 prepare job，失败 marketplace / finalize job 又会去下载当前 attempt 的 prepare artifact，导致恢复路径找不到产物。
   证据：workflow 现在把 `prepared-release-*`、两个 `marketplace-result-*` 和最终 `marketplace-release-*` 的 artifact 名称统一保持为 `${{ github.run_id }}`，所有 upload 都显式 `overwrite: true`；marketplace job 在上传 result manifest 后根据自身 publish / secret status 标红，`npm run test:publish-marketplace-workflow` 校验不再出现 `github.run_attempt`，并覆盖 failed-only rerun 可重试失败 marketplace job 的结构。
+
+- 观察：`0.16.0` release-day 前再次复核 Visual Studio Marketplace public gallery，主扩展与 notifier 对应 extension id 仍返回 0 个结果；如果继续把 VSM 作为阻塞门禁，会导致已可用的 GitHub Release assets 与 Open VSX 同版本兜底也无法对外收口。
+  证据：2026-06-15 在最终 `main` ref `936f61bc067dd6c5ab0c4f7cced970254bf01e59` 上复核 `devsessioncanvas.dev-session-canvas` 与 `devsessioncanvas.dev-session-canvas-notifier`，VSM public gallery `extensionquery` 均为 `count=0`；用户随后明确允许在 VSM 仍不可见时仅依赖 GitHub Release assets 和 Open VSX 兜底。
 
 ## 决策记录
 
@@ -85,9 +90,13 @@
   理由：GitHub Actions 的 Re-run failed jobs 不会重跑已经成功的 prepare job；稳定 artifact 名称能让失败 marketplace / finalize job 在 failed-only rerun 中继续下载同一批 prepare 产物，而 `overwrite: true` 避免 full rerun 时同名 artifact 冲突。
   日期/作者：2026-06-15 / Codex
 
+- 决策：`0.16.0` release-day 的完成门禁改为 GitHub Release assets 已上传且 Open VSX 主扩展 / notifier 均验证通过；Visual Studio Marketplace 仍尝试发布 / 验证，但若 public gallery 仍不可见，则作为 deferred channel 记录到 manifest / Release notes，不阻塞临时 tag 删除和本轮完成。
+  理由：用户已明确允许在 VSM 仍不可见时仅依赖 GitHub Release assets 与 Open VSX 兜底；同时保留 VSM 状态记录，避免把未恢复的官方 VS Code Marketplace 路径误写成已可用。
+  日期/作者：2026-06-15 / Codex
+
 ## 结果与复盘
 
-本计划的本地交付已经完成：0.15.2 准备分支已清理，workflow 已改为“先上传或复用 GitHub Release assets、再继续发布并验证 Visual Studio Marketplace / Open VSX”，正式文档和技术债已同步，目标测试与静态检查均通过。PR review 发现的缺失正式 tag 误判已修复，并新增 workflow 静态 / shell probe 测试覆盖；review 后续发现的非确定性 VSIX 重打包 / Release assets clobber 风险也已通过“既有 assets 复用 + incomplete Release fail-closed”收口。`0.15.2` 真实发布暴露出 marketplace 串行 fail-fast 会让 Microsoft 限流阻断 Open VSX 的问题；当前后续改造已把两个 marketplace 拆成独立步骤，并补齐 Release notes 的版本亮点 / 残余风险生成。针对 rerun，workflow 现在让失败 marketplace job 在上传结果 manifest 后标红，artifact 名称保持 run 内稳定并显式 overwrite，支持 Re-run failed jobs 复用 prepare 产物重试失败渠道。当前剩余风险是新解耦 workflow 尚未在下一次真实 `publish/vX.Y.Z` tag 中首跑，因此设计文档验证状态仍保持“验证中”。
+本计划的本地交付已经完成：0.15.2 准备分支已清理，workflow 已改为“先上传或复用 GitHub Release assets、再继续发布并验证 Visual Studio Marketplace / Open VSX”，正式文档和技术债已同步，目标测试与静态检查均通过。PR review 发现的缺失正式 tag 误判已修复，并新增 workflow 静态 / shell probe 测试覆盖；review 后续发现的非确定性 VSIX 重打包 / Release assets clobber 风险也已通过“既有 assets 复用 + incomplete Release fail-closed”收口。`0.15.2` 真实发布暴露出 marketplace 串行 fail-fast 会让 Microsoft 限流阻断 Open VSX 的问题；当前后续改造已把两个 marketplace 拆成独立步骤，并补齐 Release notes 的版本亮点 / 残余风险生成。针对 rerun，workflow 现在让失败 marketplace job 在上传结果 manifest 后标红，artifact 名称保持 run 内稳定并显式 overwrite，支持 Re-run failed jobs 复用 prepare 产物重试失败渠道。当前剩余风险是新解耦 workflow 尚未在下一次真实 `publish/vX.Y.Z` tag 中首跑，且 `0.16.0` 本轮首次采用 Visual Studio Marketplace deferred completion gate，因此设计文档验证状态仍保持“验证中”。
 
 ## 上下文与定向
 
@@ -103,7 +112,7 @@
 
 第三步由 `publish-open-vsx` 与 `publish-visual-studio` 两个 job 分别下载 prepare 产物，校验对应 secret 后运行 `npm run release:publish-tag -- --trigger-tag "$TRIGGER_TAG" --skip-package --target <target> --no-create-final-tag`。两个 job 会先记录自身退出码并上传结果 manifest，再在缺 secret、发布失败或验证失败时标红；两者不互相依赖，因此某一 marketplace 失败不会阻断另一 marketplace job。
 
-第四步由 `finalize` job 在 `always() && needs.prepare.result == 'success'` 下下载 prepare 产物和两个 marketplace 结果 manifest。它会合并可用 marketplace 状态，覆盖 GitHub Release manifest，并用最终 manifest 重新生成 Release notes；只有两个 marketplace 都成功时才删除 `publish/vX.Y.Z` 并再次覆盖 manifest / notes，否则保留临时 tag，最后显式失败。Actions artifact 名称在同一 run 内保持稳定并使用 `overwrite: true`，便于 Re-run failed jobs 复用已成功的 prepare artifact。
+第四步由 `finalize` job 在 `always() && needs.prepare.result == 'success'` 下下载 prepare 产物和两个 marketplace 结果 manifest。它会合并可用 marketplace 状态，覆盖 GitHub Release manifest，并用最终 manifest 重新生成 Release notes；当前完成门禁是 Open VSX 成功，因此 Visual Studio Marketplace 失败 / 不可见时记录为 deferred channel 而不阻塞删除 `publish/vX.Y.Z`，Open VSX 失败时保留临时 tag 并显式失败。Actions artifact 名称在同一 run 内保持稳定并使用 `overwrite: true`，便于 Re-run failed jobs 复用已成功的 prepare artifact。
 
 第五步同步文档。`docs/design-docs/public-marketplace-release-readiness.md` 要更新发布流水线基线：GitHub Release assets 是安装包镜像 / 兜底，不替代 marketplace 发布与验证；两个 marketplace 的失败域相互独立；Release notes 必须包含版本亮点和残余风险。`docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 要说明 workflow 仍要求 `VSCE_PAT` / `OVSX_PAT`，仍发布并验证 Visual Studio Marketplace / Open VSX。`docs/exec-plans/tech-debt-tracker.md` 要把残余风险改成真实 Actions 首跑、assets 上传、marketplace 失败时 tag / manifest / notes 状态是否符合预期。
 
@@ -144,11 +153,11 @@
 
 验收标准是：
 
-workflow 文件中仍要求 `VSCE_PAT` / `OVSX_PAT`，仍运行 `release:publish-tag -- --skip-package --target <target> --no-create-final-tag` 发布并验证 marketplace；同时能从 `publish/vX.Y.Z` 推导 `vX.Y.Z`，创建 / 更新对应 GitHub Release，并上传两个 `.vsix` 与 manifest。Open VSX 与 Visual Studio Marketplace 必须是独立 job，任一失败不阻断另一方；失败 job 必须在上传 result manifest 后标红，让 Re-run failed jobs 能实际重试失败渠道。finalize job 必须在 marketplace 成功或失败后覆盖最终 manifest 和 GitHub Release notes，Release notes 必须包含版本亮点、渠道状态、残余风险和发布证据。重跑同一版本时，如果 GitHub Release 已有完整 assets，workflow 必须下载并校验既有 VSIX / manifest，而不是重新打包或 clobber；如果既有 Release 不完整，必须 fail closed。文档中不再把 GitHub Release assets 写成 marketplace 的替代路径，也不再把“tag assets”写成 GitHub 的真实能力。
+workflow 文件中仍要求 `VSCE_PAT` / `OVSX_PAT`，仍运行 `release:publish-tag -- --skip-package --target <target> --no-create-final-tag` 发布并验证 marketplace；同时能从 `publish/vX.Y.Z` 推导 `vX.Y.Z`，创建 / 更新对应 GitHub Release，并上传两个 `.vsix` 与 manifest。Open VSX 与 Visual Studio Marketplace 必须是独立 job，任一失败不阻断另一方；Open VSX 失败 job 必须在上传 result manifest 后标红，让 Re-run failed jobs 能实际重试失败渠道。`0.16.0` 当前完成门禁为 GitHub Release assets uploaded + Open VSX verified，Visual Studio Marketplace 可以 deferred 状态进入 manifest / notes。finalize job 必须在 marketplace 成功、失败或 deferred 后覆盖最终 manifest 和 GitHub Release notes，Release notes 必须包含版本亮点、渠道状态、残余风险和发布证据。重跑同一版本时，如果 GitHub Release 已有完整 assets，workflow 必须下载并校验既有 VSIX / manifest，而不是重新打包或 clobber；如果既有 Release 不完整，必须 fail closed。文档中不再把 GitHub Release assets 写成 marketplace 的替代路径，也不再把“tag assets”写成 GitHub 的真实能力。
 
 ## 幂等性与恢复
 
-`publish/vX.Y.Z` 临时 tag 仍是可重跑输入。若 workflow 在创建 GitHub Release 前失败，重跑同一 workflow 可以重新打包并上传。若 `vX.Y.Z` 对应 GitHub Release 已存在且同时包含 `release-manifest-X.Y.Z.json`、`dev-session-canvas-X.Y.Z.vsix` 与 `dev-session-canvas-notifier-X.Y.Z.vsix`，workflow 下载这批 assets 到本地预期路径，使用 `--skip-package --package-only` 校验 manifest 与 VSIX sha256，然后继续 marketplace 发布 / 验证。若 GitHub Release 已存在但任一必需 asset 缺失，workflow 直接失败并要求人工修复或删除不完整 assets，不重新打包、不 clobber VSIX。若任一 marketplace 发布或验证失败，对应 marketplace job 会上传 result manifest 后失败，finalize job 仍上传最终 manifest 和 Release notes 后失败，但保留 `publish/vX.Y.Z`；维护者修复 token / 渠道问题后可使用 Re-run failed jobs 重跑失败 marketplace 与 finalize，或通过 workflow_dispatch 指定同一 trigger tag 重跑全流程。若两个 marketplace 全部成功，workflow 删除 `publish/vX.Y.Z`，并上传最终 manifest。
+`publish/vX.Y.Z` 临时 tag 仍是可重跑输入。若 workflow 在创建 GitHub Release 前失败，重跑同一 workflow 可以重新打包并上传。若 `vX.Y.Z` 对应 GitHub Release 已存在且同时包含 `release-manifest-X.Y.Z.json`、`dev-session-canvas-X.Y.Z.vsix` 与 `dev-session-canvas-notifier-X.Y.Z.vsix`，workflow 下载这批 assets 到本地预期路径，使用 `--skip-package --package-only` 校验 manifest 与 VSIX sha256，然后继续 marketplace 发布 / 验证。若 GitHub Release 已存在但任一必需 asset 缺失，workflow 直接失败并要求人工修复或删除不完整 assets，不重新打包、不 clobber VSIX。若任一 marketplace 发布或验证失败，对应 marketplace job 会上传 result manifest 后失败，finalize job 仍上传最终 manifest 和 Release notes 后失败，但保留 `publish/vX.Y.Z`；维护者修复 token / 渠道问题后可使用 Re-run failed jobs 重跑失败 marketplace 与 finalize，或通过 workflow_dispatch 指定同一 trigger tag 重跑全流程。若 Open VSX 成功且 Visual Studio Marketplace 状态已记录为 verified 或 deferred，workflow 删除 `publish/vX.Y.Z`，并上传最终 manifest；后续 VSM 恢复时仍可用同一 release input / assets 进行补发验证。
 
 ## 证据与备注
 

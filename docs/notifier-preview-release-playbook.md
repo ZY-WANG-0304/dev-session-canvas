@@ -57,8 +57,8 @@
        DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref> npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix
 
 6. 确认打包日志打印了 `VSCE README doc ref: <final-ref-or-sha>`；如果当前 `README.marketplace.md` 没有相对链接，日志也应显式打印“当前没有需要重写的相对链接”，避免误把“没有输出”当成脚本未校验。
-7. 确认 workflow 仍会把 notifier 与主扩展同轮发布并验证到 Visual Studio Marketplace / Open VSX，同时把 notifier VSIX、主扩展 VSIX 与 release manifest 上传到同一个 GitHub Release assets 列表。
-8. 复核本地 `vsce login devsessioncanvas`、Open VSX namespace / token 和相关 repository secrets；当前 workflow 仍要求 `VSCE_PAT` / `OVSX_PAT`，GitHub Release assets 只是额外下载入口。
+7. 确认 workflow 仍会把 notifier 与主扩展同轮上传到 GitHub Release assets，并以 Open VSX 主扩展 / notifier 发布验证作为本轮完成门禁；Visual Studio Marketplace 仍会尝试发布和验证，但当前可记录为 deferred channel，不阻塞 `0.16.0` 完成。
+8. 复核 Open VSX namespace / token、`OVSX_PAT`、本地 `vsce login devsessioncanvas` 与 `VSCE_PAT`；当前完成门禁要求 Open VSX 可验证，`VSCE_PAT` 用于尝试 Visual Studio Marketplace 补发 / 验证。GitHub Release assets 只是额外下载入口。
 
 ## 发布命令
 
@@ -78,7 +78,7 @@ workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起�
     npm run release:publish-tag -- --trigger-tag publish/v0.16.0 --skip-package --target open-vsx --no-create-final-tag
     npm run release:publish-tag -- --trigger-tag publish/v0.16.0 --skip-package --target visual-studio --no-create-final-tag
 
-两个 marketplace 不再互相串行阻断；其中一个目标失败时，另一个目标仍会尝试发布和验证。workflow 在两个目标都跑完后上传最终 manifest，并根据 `CHANGELOG.md` 与 manifest 重新生成 GitHub Release notes，确保 Release 页面包含版本亮点、渠道状态、残余风险和发布证据。只有两个 marketplace 发布与验证都成功后，workflow 才删除 `publish/v0.16.0` 临时 tag；如果任一 marketplace 失败，Release assets 和最终 Release notes 保留为手动安装兜底，失败的 marketplace job 会在上传自身结果 manifest 后标红，finalize job 也会在收口 Release 状态后标红，临时 tag 保留，便于使用 GitHub Actions 的 Re-run failed jobs 或 workflow_dispatch 重跑同一 release input。重跑同一版本时，workflow 会下载并校验 `v0.16.0` Release 中已有的 notifier VSIX、主扩展 VSIX 与 manifest，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
+两个 marketplace 不再互相串行阻断；其中一个目标失败时，另一个目标仍会尝试发布和验证。workflow 在两个目标都跑完后上传最终 manifest，并根据 `CHANGELOG.md` 与 manifest 重新生成 GitHub Release notes，确保 Release 页面包含版本亮点、渠道状态、残余风险和发布证据。本轮 `0.16.0` 完成门禁是 GitHub Release assets 已上传且 Open VSX 主扩展 / notifier 均 verified；Visual Studio Marketplace 若仍不可见，则以 deferred channel 写入 manifest / notes，不阻塞删除 `publish/v0.16.0` 临时 tag。如果 Open VSX 失败，Release assets 和最终 Release notes 保留为手动安装兜底，失败的 Open VSX job 会在上传自身结果 manifest 后标红，finalize job 也会在收口 Release 状态后标红，临时 tag 保留，便于使用 GitHub Actions 的 Re-run failed jobs 或 workflow_dispatch 重跑同一 release input。重跑同一版本时，workflow 会下载并校验 `v0.16.0` Release 中已有的 notifier VSIX、主扩展 VSIX 与 manifest，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
 
 若 GitHub Actions 中某个 marketplace 目标失败，或需要只重跑 notifier 到某个市场，可保留或重新创建同一个 `publish/v0.16.0`，复用同一份 manifest / VSIX，并限定扩展与市场：
 
@@ -91,14 +91,14 @@ workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起�
 ## Tag 与版本对齐约束
 
 - 如果 notifier 与主扩展共用同一个、已经位于 `main` 上的 release commit，继续复用主扩展的正式 `v<release-version>` 仓库 tag，不单独再发 notifier 专属 tag。
-- `publish/v<release-version>` 只是临时发布触发 tag；发布失败时保留用于重跑，GitHub Release assets 已上传、Visual Studio Marketplace / Open VSX 发布验证成功且正式 `v<release-version>` 已推送后可以删除。同版本重跑必须复用并校验既有 Release assets；若 Release assets 不完整，先人工修复或删除不完整状态。
+- `publish/v<release-version>` 只是临时发布触发 tag；发布失败时保留用于重跑。`0.16.0` 本轮在 GitHub Release assets 已上传、Open VSX 发布验证成功、Visual Studio Marketplace 已记录为 verified 或 deferred 且正式 `v<release-version>` 已推送后可以删除。同版本重跑必须复用并校验既有 Release assets；若 Release assets 不完整，先人工修复或删除不完整状态。
 - 如果 notifier 准备从另一个 commit 单独发布，但版本号仍想保持 `v<release-version>` 对应的同一组数字，这会让“同一个版本号对应哪个发布输入”变得不清晰；此时必须先决定是一起 bump 版本，还是显式放弃“版本对齐”策略，再继续发布。
 
 ## 发布后验证
 
-1. 打开 Visual Studio Marketplace 与 Open VSX 页面，确认 notifier 与主扩展都已经同步到本轮版本，名称、图标、README 文案、issue 链接与许可证信息没有失真。
+1. 打开 Open VSX 页面，确认 notifier 与主扩展都已经同步到本轮版本，名称、图标、README 文案、issue 链接与许可证信息没有失真；同时复核 Visual Studio Marketplace 状态，若仍不可见则确认 Release notes / manifest 标记为 deferred。
 2. 打开 GitHub Release 页面，确认 notifier VSIX、主扩展 VSIX 与 release manifest 都存在于 Assets 中。
-3. 在干净 profile 中优先从 Marketplace / Open VSX 安装或升级；另从 GitHub Release 下载 VSIX，并分别验证两条安装路径：
+3. 在干净 profile 中优先从 Open VSX 安装或升级；另从 GitHub Release 下载 VSIX，并分别验证两条安装路径。Visual Studio Marketplace 恢复后再补做该路径验证：
    - 只安装 `Dev Session Canvas Notifier`，确认 VS Code 会自动补齐 `Dev Session Canvas`
    - 卸载后只安装 `Dev Session Canvas`，确认 VS Code 会自动补齐 `Dev Session Canvas Notifier`
 4. 确认主扩展设置里的 `devSessionCanvas.notifications.attentionSignalBridge` 默认值是 `system`。
@@ -109,6 +109,6 @@ workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起�
 
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
-- 截至 `2026-06-15`，上一轮 `0.15.2` 的远端正式 tag `v0.15.2` 与临时 tag `publish/v0.15.2` 均指向 `9f5d1926a88de8a2286291c4ad18ec4dcba246bb`；`v0.15.2` 对应 GitHub Release 已存在 notifier VSIX、主扩展 VSIX 与 release manifest assets。Open VSX API 显示 notifier latest 为 `0.15.2`，但 Visual Studio Marketplace public gallery 对 `devsessioncanvas.dev-session-canvas-notifier` 仍返回 0 个结果。因此当前不能把 notifier 上一轮写成已完成双市场公开可见发布；`0.16.0` 最终 publish 前必须先确认 notifier 在 Visual Studio Marketplace 的可见性 / verification gate 已恢复。
+- 截至 `2026-06-15`，上一轮 `0.15.2` 的远端正式 tag `v0.15.2` 与临时 tag `publish/v0.15.2` 均指向 `9f5d1926a88de8a2286291c4ad18ec4dcba246bb`；`v0.15.2` 对应 GitHub Release 已存在 notifier VSIX、主扩展 VSIX 与 release manifest assets。Open VSX API 显示 notifier latest 为 `0.15.2`，但 Visual Studio Marketplace public gallery 对 `devsessioncanvas.dev-session-canvas-notifier` 仍返回 0 个结果。因此当前不能把 notifier 上一轮写成已完成双市场公开可见发布；`0.16.0` 本轮允许在 notifier 的 Visual Studio Marketplace 可见性 / verification gate 仍未恢复时，把 VSM 记录为 deferred channel，并以 GitHub Release assets + Open VSX notifier / 主扩展 verified 作为完成门禁。
 - 已用 `git fetch origin main --tags` 重新确认本轮发布准备基线为 `a41a540d115ec27fd2441b10f5fc5ca4f1ec0da7`（短 SHA `a41a540`），当前 `0.16.0` 发布准备从该最新 `main` 切出，继续保持 notifier manifest 与 changelog 的 `0.16.0` 版本事实。本轮主扩展聚焦 Codex / Claude Code Agent Fork、侧栏待处理提醒与历史分叉入口、multi-root root section 水印、Agent cwd / 启动命令标题拆分、多 Agent 输入响应、执行终端链接 activation fallback、复制诊断，以及 GitHub Release assets / 双市场发布 workflow 解耦；notifier companion 不引入新的通知投递行为变更。本轮已通过 `npm run build:notifier`、`npm run test:notifier-source` 与 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`；notifier VSIX 为 `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.16.0.vsix`，10 files，`147,905` bytes（约 144.44 KiB，本轮本地打包观测；最终字节数以合并后最终 ref 复跑为准）。发布准备 MR 合并后还需在最终 `main` ref 上复跑 notifier 打包，确认 VSIX 文件名、README doc ref、文件数与大小都来自最终发布 ref。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。

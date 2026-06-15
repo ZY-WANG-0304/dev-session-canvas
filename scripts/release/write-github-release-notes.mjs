@@ -163,13 +163,25 @@ function formatChannelStatus(manifest) {
   lines.push(`- GitHub Release assets：${githubStatus}`);
 
   const targets = [
-    ['Visual Studio Marketplace', manifest.marketplaces?.visualStudio],
-    ['Open VSX', manifest.marketplaces?.openVsx]
+    ['Open VSX', manifest.marketplaces?.openVsx, false],
+    [
+      'Visual Studio Marketplace',
+      manifest.marketplaces?.visualStudio,
+      manifest.releaseCompletion?.visualStudioBlocking === false &&
+        !targetIsComplete(manifest.marketplaces?.visualStudio)
+    ]
   ];
-  for (const [label, target] of targets) {
-    lines.push(`- ${label}：${formatTargetStatus(target)}`);
+  for (const [label, target, deferred] of targets) {
+    lines.push(`- ${label}${deferred ? '（deferred）' : ''}：${formatTargetStatus(target)}`);
   }
   return lines;
+}
+
+function targetIsComplete(target) {
+  const entries = target || {};
+  return ['main', 'notifier'].every((extension) =>
+    ['verified', 'already-published'].includes(entries[extension]?.status)
+  );
 }
 
 function formatTargetStatus(target) {
@@ -186,7 +198,7 @@ function formatTargetStatus(target) {
 function formatResidualRisks(manifest) {
   const risks = [
     '- 当前仍是公开 Preview；不承诺跨版本 workspace 状态完全兼容，关键工作区升级前仍建议备份或先在非关键环境验证。',
-    '- Marketplace 渠道发布、审核、缓存和公开可见性彼此独立；某一市场失败不应阻塞另一市场，但对外宣称安装路径前仍需以实际 verified 状态为准。',
+    '- Marketplace 渠道发布、审核、缓存和公开可见性彼此独立；Open VSX 是当前完成门禁，Visual Studio Marketplace 当前允许延期补发，但对外宣称任一安装路径前仍需以实际 verified 状态为准。',
     '- 同版本重跑必须复用 GitHub Release 中已有的 VSIX / manifest，不应重新打包覆盖，以避免同一版本号对应不同 checksum。'
   ];
 
@@ -204,21 +216,21 @@ function formatResidualRisks(manifest) {
 
 function collectIncompleteTargets(manifest) {
   if (!manifest?.marketplaces) {
-    return ['Visual Studio Marketplace=pending', 'Open VSX=pending'];
+    return ['Open VSX=pending', 'Visual Studio Marketplace=pending(deferred)'];
   }
   const targets = [
-    ['Visual Studio Marketplace', manifest.marketplaces.visualStudio],
-    ['Open VSX', manifest.marketplaces.openVsx]
+    ['Open VSX', manifest.marketplaces.openVsx, false],
+    ['Visual Studio Marketplace', manifest.marketplaces.visualStudio, manifest.releaseCompletion?.visualStudioBlocking === false]
   ];
   const incomplete = [];
-  for (const [label, target] of targets) {
+  for (const [label, target, deferred] of targets) {
     if (!target || Object.keys(target).length === 0) {
-      incomplete.push(`${label}=pending`);
+      incomplete.push(`${label}=pending${deferred ? '(deferred)' : ''}`);
       continue;
     }
     for (const [extension, entry] of Object.entries(target)) {
       if (!['verified', 'already-published'].includes(entry?.status)) {
-        incomplete.push(`${label}/${extension}=${entry?.status || 'unknown'}`);
+        incomplete.push(`${label}/${extension}=${entry?.status || 'unknown'}${deferred ? '(deferred)' : ''}`);
       }
     }
   }
