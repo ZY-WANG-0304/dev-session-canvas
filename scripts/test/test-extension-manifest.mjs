@@ -92,6 +92,32 @@ const sidebarNodeListViewTitleMenus = viewTitleMenus.filter(
   (item) => typeof item.command === 'string' && item.when?.includes('view == devSessionCanvas.sidebarNodes')
 );
 assert.deepEqual(
+  sidebarNodeListViewTitleMenus
+    .filter((item) =>
+      [
+        'devSessionCanvas.addFolderToWorkspace',
+        'devSessionCanvas.createWorktree',
+        'devSessionCanvas.createNode'
+      ].includes(item.command)
+    )
+    .map((item) => ({ command: item.command, group: item.group })),
+  [
+    {
+      command: 'devSessionCanvas.addFolderToWorkspace',
+      group: 'navigation@1'
+    },
+    {
+      command: 'devSessionCanvas.createWorktree',
+      group: 'navigation@2'
+    },
+    {
+      command: 'devSessionCanvas.createNode',
+      group: 'navigation@99'
+    }
+  ],
+  'Expected Nodes sidebar title navigation to expose workspace-folder and worktree actions before create-node.'
+);
+assert.deepEqual(
   sidebarNodeListViewTitleMenus.filter((item) => item.command.startsWith('devSessionCanvas.setSidebarNodeList')),
   [
     {
@@ -126,6 +152,53 @@ assert.ok(
 
 const commandPaletteMenus = manifest.contributes.menus.commandPalette;
 assert.ok(Array.isArray(commandPaletteMenus), 'Expected commandPalette menu contributions.');
+assert.deepEqual(
+  manifest.contributes.commands
+    .filter((entry) =>
+      [
+        'devSessionCanvas.addFolderToWorkspace',
+        'devSessionCanvas.createWorktree',
+        'devSessionCanvas.createWorktreeForRoot',
+        'devSessionCanvas.removeWorkspaceRoot'
+      ].includes(entry.command)
+    )
+    .map((entry) => ({ command: entry.command, icon: entry.icon })),
+  [
+    {
+      command: 'devSessionCanvas.addFolderToWorkspace',
+      icon: '$(new-folder)'
+    },
+    {
+      command: 'devSessionCanvas.createWorktree',
+      icon: '$(repo-forked)'
+    },
+    {
+      command: 'devSessionCanvas.createWorktreeForRoot',
+      icon: '$(repo-forked)'
+    },
+    {
+      command: 'devSessionCanvas.removeWorkspaceRoot',
+      icon: '$(close)'
+    }
+  ],
+  'Expected workspace and worktree commands to be contributed with stable Codicon entry points.'
+);
+assert.deepEqual(
+  commandPaletteMenus.filter((item) =>
+    ['devSessionCanvas.createWorktreeForRoot', 'devSessionCanvas.removeWorkspaceRoot'].includes(item.command)
+  ),
+  [
+    {
+      command: 'devSessionCanvas.createWorktreeForRoot',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.removeWorkspaceRoot',
+      when: 'false'
+    }
+  ],
+  'Expected root-scoped sidebar webview commands to stay out of the global Command Palette.'
+);
 const groupCommandIds = ['devSessionCanvas.createEmptyGroup', 'devSessionCanvas.createGroupFromSelection'];
 const contributedCommandIds = manifest.contributes.commands.map((entry) => entry.command);
 const explorerExecutionCommandIds = [

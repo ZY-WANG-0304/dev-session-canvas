@@ -188,6 +188,26 @@
         "icon": "$(add)"
       },
       {
+        "command": "devSessionCanvas.addFolderToWorkspace",
+        "title": "%command.addFolderToWorkspace.title%",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "devSessionCanvas.createWorktree",
+        "title": "%command.createWorktree.title%",
+        "icon": "$(repo-forked)"
+      },
+      {
+        "command": "devSessionCanvas.createWorktreeForRoot",
+        "title": "%command.createWorktreeForRoot.title%",
+        "icon": "$(repo-forked)"
+      },
+      {
+        "command": "devSessionCanvas.removeWorkspaceRoot",
+        "title": "%command.removeWorkspaceRoot.title%",
+        "icon": "$(close)"
+      },
+      {
         "command": "devSessionCanvas.createTerminalFromExplorerResource",
         "title": "%command.createTerminalFromExplorerResource.title%",
         "icon": "$(terminal)"
@@ -309,6 +329,14 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "devSessionCanvas.createWorktreeForRoot",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.removeWorkspaceRoot",
+          "when": "false"
+        },
+        {
           "command": "devSessionCanvas.setSidebarNodeListFlatView",
           "when": "false"
         },
@@ -357,6 +385,16 @@
           "command": "devSessionCanvas.refreshSessionHistory",
           "when": "view == devSessionCanvas.sidebarSessions",
           "group": "navigation@1"
+        },
+        {
+          "command": "devSessionCanvas.addFolderToWorkspace",
+          "when": "view == devSessionCanvas.sidebarNodes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "devSessionCanvas.createWorktree",
+          "when": "view == devSessionCanvas.sidebarNodes",
+          "group": "navigation@2"
         },
         {
           "command": "devSessionCanvas.createNode",
