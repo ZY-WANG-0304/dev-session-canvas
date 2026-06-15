@@ -43,6 +43,7 @@ export interface RuntimeSupervisorSessionSnapshot {
   rows: number;
   scrollback: number;
   output: string;
+  outputSequence?: number;
   serializedTerminalState?: SerializedTerminalState;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
@@ -185,6 +186,7 @@ export type RuntimeSupervisorEvent =
         sessionId: string;
         kind: ExecutionNodeKind;
         chunk: string;
+        outputSequence?: number;
       };
     }
   | {

@@ -24,10 +24,13 @@ import {
   EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS,
   detectExecutionTerminalFallbackPathLink,
   detectExecutionTerminalPathLinks,
+  detectExecutionTerminalStyledPathLink,
   shouldSuppressExecutionTerminalWordLink,
+  shouldAllowExecutionTerminalDetectedPathLink,
   type DetectedExecutionTerminalPathLink,
   type ExecutionTerminalFileLinkCandidate,
   type ExecutionTerminalDroppedResource,
+  type ExecutionTerminalFileLinkResolvePriority,
   type ExecutionTerminalOpenLink,
   type ExecutionTerminalPathStyle,
   type ExecutionTerminalResolvedFileLink
@@ -72,7 +75,8 @@ interface ExecutionTerminalNativeInteractionsOptions {
   resolveFileLinks: (
     nodeId: string,
     kind: ExecutionNodeKind,
-    candidates: ExecutionTerminalFileLinkCandidate[]
+    candidates: ExecutionTerminalFileLinkCandidate[],
+    priority?: ExecutionTerminalFileLinkResolvePriority
   ) => Promise<ExecutionTerminalResolvedFileLink[]>;
 }
 
@@ -148,6 +152,7 @@ interface ExecutionFileLinkResolutionCacheEntryMetadata {
   bufferEndLine: number;
   needsRefreshAfterCurrent?: boolean;
   negativeInvalidationGeneration: number;
+  priority?: ExecutionTerminalFileLinkResolvePriority;
 }
 
 type ScheduleExecutionNegativeFileLinkCacheRefresh = () => void;
@@ -161,6 +166,7 @@ interface InteractionLinkOptions {
   lowConfidence?: boolean;
   hoverOverlayRanges?: IBufferRange[];
   hoverOverlayController?: HardWrappedHoverOverlayController;
+  activate?: () => void | Promise<void>;
 }
 
 const EXECUTION_LINK_TOOLTIP_CLASS = 'execution-link-tooltip';
@@ -259,6 +265,7 @@ export function setupExecutionTerminalNativeInteractions(
       window.clearTimeout(trailingNegativeCacheRefreshTimer);
       trailingNegativeCacheRefreshTimer = undefined;
     }
+
   };
 
   const refreshNegativeFileLinkResolutionCacheNow = (): void => {
@@ -1194,12 +1201,25 @@ async function collectHardWrappedStyledFileLinks(
     return [];
   }
 
-  const resolvedLinks = await resolveExecutionFileLinksForContext(
-    options,
+  const resolvedLinks = resolveCachedExecutionFileLinksForContext(
     context,
     candidates.map((entry) => entry.candidate),
     fileLinkResolutionCache
   );
+  if (resolvedLinks === undefined) {
+    const pendingCandidates = candidates.map((entry) => entry.candidate);
+    return mapPendingHardWrappedFileLinksToInteractions(
+      options,
+      candidates,
+      pendingCandidates,
+      context,
+      requestedLineIndex,
+      tooltipController,
+      hoverOverlayController,
+      fileLinkResolutionCache
+    );
+  }
+
   return mapResolvedHardWrappedFileLinksToInteractions(
     options,
     candidates,
@@ -1259,7 +1279,10 @@ function collectHardWrappedStyledFileLinkCandidates(
     }
 
     const detectedLink = detectExecutionTerminalPathLinks(fullText, pathStyle).find(
-      (link) => link.text === fullText && !isNonFileUriLikePath(link.path)
+      (link) =>
+        link.text === fullText &&
+        !isNonFileUriLikePath(link.path) &&
+        shouldAllowExecutionTerminalDetectedPathLink(link, pathStyle)
     );
     if (!detectedLink) {
       continue;
@@ -1344,34 +1367,62 @@ async function collectFileLinks(
 
   const directCandidates = candidates.filter((candidate) => candidate.source !== 'fallback');
   const fallbackCandidates = candidates.filter((candidate) => candidate.source === 'fallback');
-  const resolvedDirectLinks =
-    directCandidates.length > 0
-      ? await resolveExecutionFileLinksForContext(options, context, directCandidates, fileLinkResolutionCache)
-      : [];
-  if (resolvedDirectLinks.length > 0 || fallbackCandidates.length === 0) {
-    return mapResolvedFileLinksToInteractions(
-      options,
+  if (directCandidates.length > 0) {
+    const resolvedDirectLinks = resolveCachedExecutionFileLinksForContext(
       context,
       directCandidates,
-      resolvedDirectLinks,
-      tooltipController
+      fileLinkResolutionCache
     );
+    if (resolvedDirectLinks === undefined) {
+      return mapPendingFileLinksToInteractions(
+        options,
+        context,
+        directCandidates,
+        (candidate) => [candidate, ...fallbackCandidates],
+        tooltipController,
+        fileLinkResolutionCache
+      );
+    }
+
+    if (resolvedDirectLinks.length > 0 || fallbackCandidates.length === 0) {
+      return mapResolvedFileLinksToInteractions(
+        options,
+        context,
+        directCandidates,
+        resolvedDirectLinks,
+        tooltipController
+      );
+    }
   }
 
-  const resolvedFallbackLinks = await resolveExecutionFileLinksForContext(
-    options,
-    context,
-    fallbackCandidates,
-    fileLinkResolutionCache
-  );
-  if (resolvedFallbackLinks.length > 0) {
-    return mapResolvedFileLinksToInteractions(
-      options,
+  if (fallbackCandidates.length > 0) {
+    const resolvedFallbackLinks = resolveCachedExecutionFileLinksForContext(
       context,
       fallbackCandidates,
-      resolvedFallbackLinks,
-      tooltipController
+      fileLinkResolutionCache
     );
+    if (resolvedFallbackLinks === undefined) {
+      return mapPendingFileLinksToInteractions(
+        options,
+        context,
+        fallbackCandidates,
+        undefined,
+        tooltipController,
+        fileLinkResolutionCache
+      );
+    }
+
+    if (resolvedFallbackLinks.length > 0) {
+      return mapResolvedFileLinksToInteractions(
+        options,
+        context,
+        fallbackCandidates,
+        resolvedFallbackLinks,
+        tooltipController
+      );
+    }
+
+    return collectStyledFileLinks(options, context, tooltipController, fileLinkResolutionCache);
   }
 
   return collectStyledFileLinks(options, context, tooltipController, fileLinkResolutionCache);
@@ -1391,12 +1442,18 @@ async function collectMultilineLinks(
     return [];
   }
 
-  const resolvedLinks = await resolveExecutionFileLinksForContext(
-    options,
-    context,
-    candidates,
-    fileLinkResolutionCache
-  );
+  const resolvedLinks = resolveCachedExecutionFileLinksForContext(context, candidates, fileLinkResolutionCache);
+  if (resolvedLinks === undefined) {
+    return mapPendingFileLinksToInteractions(
+      options,
+      context,
+      candidates,
+      undefined,
+      tooltipController,
+      fileLinkResolutionCache
+    );
+  }
+
   return mapResolvedFileLinksToInteractions(
     options,
     context,
@@ -1635,7 +1692,8 @@ function collectFileLinkCandidates(
     .filter(
       (candidate) =>
         !isNonFileUriLikePath(candidate.path) &&
-        candidate.path.length <= EXECUTION_MAX_RESOLVED_LINK_LENGTH
+        candidate.path.length <= EXECUTION_MAX_RESOLVED_LINK_LENGTH &&
+        shouldAllowExecutionTerminalDetectedPathLink(candidate, pathStyle)
     );
 
   const candidates: ExecutionTerminalFileLinkCandidate[] = [];
@@ -1643,7 +1701,10 @@ function collectFileLinkCandidates(
     candidates.push(toExecutionTerminalFileLinkCandidate(context, candidate, 'detected'));
   }
 
-  const fallback = detectExecutionTerminalFallbackPathLink(context.text);
+  const fallback = detectExecutionTerminalFallbackPathLink(context.text, {
+    mode: 'interactive',
+    pathStyle
+  });
   if (
     fallback &&
     !isNonFileUriLikePath(fallback.path) &&
@@ -1664,17 +1725,32 @@ async function collectStyledFileLinks(
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >
 ): Promise<ILink[]> {
-  const styledCandidates = collectStyledFileLinkCandidates(options.terminal, context);
+  const styledCandidates = collectStyledFileLinkCandidates(
+    options.terminal,
+    context,
+    options.getPathStyle()
+  );
   if (styledCandidates.length === 0) {
     return [];
   }
 
-  const resolvedLinks = await resolveExecutionFileLinksForContext(
-    options,
+  const resolvedLinks = resolveCachedExecutionFileLinksForContext(
     context,
     styledCandidates.map((entry) => entry.candidate),
     fileLinkResolutionCache
   );
+  if (resolvedLinks === undefined) {
+    const pendingCandidates = styledCandidates.map((entry) => entry.candidate);
+    return mapPendingStyledFileLinksToInteractions(
+      options,
+      styledCandidates,
+      pendingCandidates,
+      context,
+      tooltipController,
+      fileLinkResolutionCache
+    );
+  }
+
   return mapResolvedStyledFileLinksToInteractions(
     options,
     styledCandidates,
@@ -1685,7 +1761,8 @@ async function collectStyledFileLinks(
 
 function collectStyledFileLinkCandidates(
   terminal: Terminal,
-  context: WrappedLineContext
+  context: WrappedLineContext,
+  pathStyle: ExecutionTerminalPathStyle
 ): StyledFileLinkCandidate[] {
   const ranges = readXtermRangesByAttr(terminal, context.startLine, context.endLine);
   const candidates: StyledFileLinkCandidate[] = [];
@@ -1710,21 +1787,26 @@ function collectStyledFileLinkCandidates(
       continue;
     }
 
+    const detectedLink = detectExecutionTerminalStyledPathLink(text, pathStyle);
+    if (!detectedLink || isNonFileUriLikePath(detectedLink.path)) {
+      continue;
+    }
+
     candidates.push({
       candidate: {
-        candidateId: `styled:${range.start.y}:${range.start.x}:${range.end.y}:${range.end.x}:${text}`,
-        text,
-        path: text,
-        startIndex: 0,
-        endIndexExclusive: text.length,
+        candidateId: `styled:${range.start.y}:${range.start.x}:${range.end.y}:${range.end.x}:${detectedLink.text}`,
+        text: detectedLink.text,
+        path: detectedLink.path,
+        startIndex: detectedLink.startIndex,
+        endIndexExclusive: detectedLink.endIndexExclusive,
         bufferStartLine: context.startLine,
-        line: undefined,
-        column: undefined,
-        lineEnd: undefined,
-        columnEnd: undefined,
-        source: 'detected'
+        line: detectedLink.line,
+        column: detectedLink.column,
+        lineEnd: detectedLink.lineEnd,
+        columnEnd: detectedLink.columnEnd,
+        source: 'styled'
       },
-      bufferRange: range
+      bufferRange: sliceBufferRangeByTextOffsets(range, detectedLink.startIndex, detectedLink.endIndexExclusive)
     });
 
     if (candidates.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
@@ -1733,6 +1815,27 @@ function collectStyledFileLinkCandidates(
   }
 
   return candidates;
+}
+
+function sliceBufferRangeByTextOffsets(
+  range: IBufferRange,
+  startIndex: number,
+  endIndexExclusive: number
+): IBufferRange {
+  if (range.start.y !== range.end.y) {
+    return range;
+  }
+
+  return {
+    start: {
+      x: range.start.x + startIndex,
+      y: range.start.y
+    },
+    end: {
+      x: range.start.x + Math.max(startIndex, endIndexExclusive) - 1,
+      y: range.end.y
+    }
+  };
 }
 
 function toExecutionTerminalFileLinkCandidate(
@@ -1767,7 +1870,8 @@ async function resolveExecutionFileLinksForContext(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
   candidates: ExecutionTerminalFileLinkCandidate[],
-  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  priority: ExecutionTerminalFileLinkResolvePriority = 'interactive'
 ): Promise<ExecutionTerminalResolvedFileLink[]> {
   const cacheKey = createExecutionFileLinkResolutionCacheKey(context, candidates);
   const cachedEntry = fileLinkResolutionCache.get(cacheKey);
@@ -1776,7 +1880,11 @@ async function resolveExecutionFileLinksForContext(
   }
 
   if (cachedEntry) {
-    return cachedEntry;
+    const cachedMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache)
+      .entries.get(cacheKey);
+    if (!(priority === 'interactive' && cachedMetadata?.priority === 'background')) {
+      return cachedEntry;
+    }
   }
 
   const cacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
@@ -1786,10 +1894,11 @@ async function resolveExecutionFileLinksForContext(
     bufferEndLine: context.endLine,
     bufferStartLine: context.startLine,
     candidates,
-    negativeInvalidationGeneration
+    negativeInvalidationGeneration,
+    priority
   });
   request = options
-    .resolveFileLinks(options.nodeId, options.kind, candidates)
+    .resolveFileLinks(options.nodeId, options.kind, candidates, priority)
     .then((resolvedLinks) => {
       if (fileLinkResolutionCache.get(cacheKey) !== request) {
         return resolvedLinks;
@@ -1824,6 +1933,17 @@ async function resolveExecutionFileLinksForContext(
     });
   fileLinkResolutionCache.set(cacheKey, request);
   return request;
+}
+
+function resolveCachedExecutionFileLinksForContext(
+  context: WrappedLineContext,
+  candidates: ExecutionTerminalFileLinkCandidate[],
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ExecutionTerminalResolvedFileLink[] | undefined {
+  const cachedEntry = fileLinkResolutionCache.get(
+    createExecutionFileLinkResolutionCacheKey(context, candidates)
+  );
+  return Array.isArray(cachedEntry) ? cachedEntry : undefined;
 }
 
 function createExecutionFileLinkResolutionCacheKey(
@@ -1945,7 +2065,7 @@ function refreshNegativeExecutionFileLinkResolutionCacheEntry(
   entryMetadata.needsRefreshAfterCurrent = false;
   let refreshRequest: Promise<void>;
   refreshRequest = options
-    .resolveFileLinks(options.nodeId, options.kind, entryMetadata.candidates)
+    .resolveFileLinks(options.nodeId, options.kind, entryMetadata.candidates, 'background')
     .then((resolvedLinks) => {
       const latestEntry = fileLinkResolutionCache.get(cacheKey);
       if (!Array.isArray(latestEntry) || latestEntry.length !== 0) {
@@ -1996,7 +2116,10 @@ function getExecutionFileLinkResolutionCacheMetadata(
 ): ExecutionFileLinkResolutionCacheMetadata {
   let metadata = executionFileLinkResolutionCacheMetadata.get(fileLinkResolutionCache);
   if (!metadata) {
-    metadata = { entries: new Map(), negativeInvalidationGeneration: 0 };
+    metadata = {
+      entries: new Map(),
+      negativeInvalidationGeneration: 0
+    };
     executionFileLinkResolutionCacheMetadata.set(fileLinkResolutionCache, metadata);
   }
 
@@ -2101,6 +2224,47 @@ function mapResolvedFileLinksToInteractions(
   return links;
 }
 
+function mapPendingFileLinksToInteractions(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  context: WrappedLineContext,
+  candidates: ExecutionTerminalFileLinkCandidate[],
+  resolveCandidatesForCandidate:
+    | ((candidate: ExecutionTerminalFileLinkCandidate) => ExecutionTerminalFileLinkCandidate[])
+    | undefined,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ILink[] {
+  const links: ILink[] = [];
+  for (const candidate of candidates) {
+    links.push(
+      createPendingFileResolveInteractionLink(
+        options,
+        candidate.text,
+        convertLinkRangeToBuffer(
+          context.lines,
+          options.terminal.cols,
+          {
+            startColumn: candidate.startIndex + 1,
+            startLineNumber: 1,
+            endColumn: candidate.endIndexExclusive + 1,
+            endLineNumber: 1
+          },
+          context.startLine
+        ),
+        resolveCandidatesForCandidate?.(candidate) ?? [candidate],
+        context,
+        tooltipController,
+        fileLinkResolutionCache
+      )
+    );
+    if (links.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
+      break;
+    }
+  }
+
+  return links;
+}
+
 function mapResolvedStyledFileLinksToInteractions(
   options: ExecutionTerminalNativeInteractionsOptions,
   candidates: StyledFileLinkCandidate[],
@@ -2128,6 +2292,27 @@ function mapResolvedStyledFileLinksToInteractions(
   }
 
   return links;
+}
+
+function mapPendingStyledFileLinksToInteractions(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  candidates: StyledFileLinkCandidate[],
+  fileLinkCandidates: ExecutionTerminalFileLinkCandidate[],
+  context: WrappedLineContext,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ILink[] {
+  return candidates.map((candidate) =>
+    createPendingFileResolveInteractionLink(
+      options,
+      candidate.candidate.text,
+      candidate.bufferRange,
+      fileLinkCandidates,
+      context,
+      tooltipController,
+      fileLinkResolutionCache
+    )
+  );
 }
 
 function mapResolvedHardWrappedFileLinksToInteractions(
@@ -2170,6 +2355,98 @@ function mapResolvedHardWrappedFileLinksToInteractions(
   }
 
   return links;
+}
+
+function mapPendingHardWrappedFileLinksToInteractions(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  candidates: HardWrappedFileLinkCandidate[],
+  fileLinkCandidates: ExecutionTerminalFileLinkCandidate[],
+  context: WrappedLineContext,
+  requestedLineIndex: number,
+  tooltipController: TooltipController,
+  hoverOverlayController: HardWrappedHoverOverlayController,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ILink[] {
+  const links: ILink[] = [];
+  for (const candidate of candidates) {
+    for (const fragment of candidate.fragments) {
+      if (fragment.bufferRange.start.y !== requestedLineIndex + 1) {
+        continue;
+      }
+
+      const hoverOverlayRanges = candidate.fragments.map((entry) => entry.bufferRange);
+      links.push(
+        createPendingFileResolveInteractionLink(
+          options,
+          candidate.candidate.text,
+          fragment.bufferRange,
+          fileLinkCandidates,
+          context,
+          tooltipController,
+          fileLinkResolutionCache,
+          {
+            hoverOverlayController,
+            hoverOverlayRanges
+          }
+        )
+      );
+    }
+  }
+
+  return links;
+}
+
+function createPendingFileResolveInteractionLink(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  text: string,
+  bufferRange: IBufferRange,
+  candidates: ExecutionTerminalFileLinkCandidate[],
+  context: WrappedLineContext,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  linkOptions?: Pick<InteractionLinkOptions, 'hoverOverlayController' | 'hoverOverlayRanges'>
+): ILink {
+  return createBufferRangeInteractionLink(
+    options,
+    text,
+    FILE_LINK_LABEL,
+    {
+      linkKind: 'search',
+      text,
+      searchText: text,
+      contextLine: context.text,
+      bufferStartLine: context.startLine,
+      source: 'word'
+    },
+    tooltipController,
+    bufferRange,
+    {
+      ...linkOptions,
+      activate: async (): Promise<void> => {
+        const resolvedLinks = await resolveExecutionFileLinksForContext(
+          options,
+          context,
+          candidates,
+          fileLinkResolutionCache,
+          'interactive'
+        ).catch(() => []);
+        const resolvedLink = resolvedLinks.find((link) => link.link.text === text) ?? resolvedLinks[0];
+        if (resolvedLink) {
+          options.onOpenLink(options.nodeId, options.kind, resolvedLink.link);
+          return;
+        }
+
+        options.onOpenLink(options.nodeId, options.kind, {
+          linkKind: 'search',
+          text,
+          searchText: text,
+          contextLine: context.text,
+          bufferStartLine: context.startLine,
+          source: 'word'
+        });
+      }
+    }
+  );
 }
 
 function labelForResolvedFileLink(
@@ -2342,6 +2619,11 @@ function createBufferRangeInteractionLink(
       : undefined),
     activate: (event): void => {
       if (!shouldActivateExecutionLink(options.getRuntimeContext(), event)) {
+        return;
+      }
+
+      if (linkOptions?.activate) {
+        void Promise.resolve(linkOptions.activate());
         return;
       }
 
