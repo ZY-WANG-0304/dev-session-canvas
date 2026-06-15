@@ -184,11 +184,16 @@ assert.equal(visualStudioMarketplaceStep.id, 'publish');
 assert.match(visualStudioMarketplaceStep.run, /--target visual-studio --no-create-final-tag/u);
 assert.match(visualStudioMarketplaceStep.run, /echo "status=\$status" >> "\$GITHUB_OUTPUT"/u);
 
-const visualStudioFailStep = step('publish-visual-studio', 'Fail Visual Studio Marketplace job when publish failed');
+const visualStudioDeferredStep = step('publish-visual-studio', 'Record Visual Studio Marketplace deferred status');
 assert.equal(
-  visualStudioFailStep.if,
+  visualStudioDeferredStep.if,
   "steps.publish.outputs.status != '0' || steps.verify_secret.outputs.status != '0'",
-  'Visual Studio Marketplace job must fail after uploading its manifest so GitHub failed-only reruns retry the marketplace job'
+  'Visual Studio Marketplace job must record deferred status after uploading its manifest'
+);
+assert.doesNotMatch(
+  visualStudioDeferredStep.run,
+  /exit 1/u,
+  'Visual Studio Marketplace is currently deferred and must not fail the release completion gate'
 );
 
 assert.deepEqual(finalizeJob.needs, ['prepare', 'publish-open-vsx', 'publish-visual-studio']);
@@ -199,9 +204,13 @@ assert.equal(mergeStep.id, 'merge');
 assert.match(mergeStep.run, /find marketplace-results\/open-vsx -type f -name "release-manifest-\$version\.json"/u);
 assert.match(mergeStep.run, /const targetComplete = \(key\) =>/u);
 assert.match(mergeStep.run, /const marketplaceComplete = openComplete && visualComplete/u);
-assert.match(mergeStep.run, /manifest.status = marketplaceComplete \? "complete" : "publish-failed"/u);
+assert.match(mergeStep.run, /const releaseComplete = openComplete/u);
+assert.match(mergeStep.run, /"complete-with-deferred-visual-studio"/u);
+assert.match(mergeStep.run, /requiredCompletionTargets: \["github-release-assets", "open-vsx"\]/u);
+assert.match(mergeStep.run, /visualStudioBlocking: false/u);
 assert.match(mergeStep.run, /manifest.selectedTargets = \["visual-studio", "open-vsx"\]/u);
 assert.match(mergeStep.run, /marketplace_complete=\$\{marketplaceComplete\}/u);
+assert.match(mergeStep.run, /release_complete=\$\{releaseComplete\}/u);
 
 const updateReleaseStep = step('finalize', 'Update GitHub Release manifest and notes');
 assert.match(updateReleaseStep.run, /write-github-release-notes\.mjs/u);
@@ -211,15 +220,15 @@ assert.match(updateReleaseStep.run, /gh release upload "\$final_tag" "\$manifest
 const deleteTagStep = step('finalize', 'Delete temporary publish tag');
 assert.equal(
   deleteTagStep.if,
-  "steps.merge.outputs.marketplace_complete == 'true'",
-  'temporary tag must only be deleted when both marketplace targets succeeded'
+  "steps.merge.outputs.release_complete == 'true'",
+  'temporary tag may be deleted once GitHub Release assets and Open VSX have completed; Visual Studio Marketplace is deferred'
 );
 
 const failStep = step('finalize', 'Fail when marketplace publish failed');
 assert.equal(
   failStep.if,
-  "steps.merge.outputs.marketplace_complete != 'true'",
-  'workflow must fail if either marketplace target failed, after uploading final Release state'
+  "steps.merge.outputs.release_complete != 'true'",
+  'workflow must fail if Open VSX failed, after uploading final Release state'
 );
 
 const notesTempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-release-notes-'));
@@ -237,6 +246,9 @@ try {
         finalTag: `v${currentVersion}`,
         githubRelease: {
           status: 'assets-uploaded'
+        },
+        releaseCompletion: {
+          visualStudioBlocking: false
         },
         tags: {
           triggerTagStatus: 'kept'
@@ -299,7 +311,9 @@ try {
   assert.match(notes, /## 版本亮点/u);
   assert.match(notes, /## 渠道状态/u);
   assert.match(notes, /## 残余风险/u);
+  assert.match(notes, /Visual Studio Marketplace（deferred）/u);
   assert.match(notes, /Visual Studio Marketplace\/main=publish-failed/u);
+  assert.match(notes, /Visual Studio Marketplace\/main=publish-failed\(deferred\)/u);
   assert.match(notes, /Release ref/u);
 } finally {
   await rm(notesTempDir, { recursive: true, force: true });
