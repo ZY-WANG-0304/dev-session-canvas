@@ -10,18 +10,19 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.15.2 版本亮点
+## 0.16.0 版本亮点
 
-当前公开的 `0.15.2` 版本是 Preview 补丁，重点收口通知控制、Claude Agent 可靠性，以及更安全的画布外部链接打开方式。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent Fork、文件活动 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag / GitHub Release assets 发布自动化、双市场发布和 Preview 支持边界。
+当前公开的 `0.16.0` 版本是 Preview 里程碑，重点收口 Codex / Claude Code Agent 分叉、侧栏提醒分流、multi-root 方位识别，以及执行终端响应能力。它保留 `0.15.2` 的通知控制、Claude Agent `Ctrl-Z` 收口处理、画布外部链接打开方式配置、publish tag / GitHub Release assets 发布自动化、双市场发布和 Preview 支持边界。
 
-- `devSessionCanvas.notifications.enabledAttentionSignals` 可分别控制 `BEL`、`OSC 9`、`OSC 777`、Agent 异常退出和 Codex 文本异常是否生成画布 attention
-- 将 allow-list 设为空数组时，所有执行 attention signal 都不会设置节点提醒、Minimap 闪烁或外部通知桥接
-- Codex 文本异常提醒继续通过 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications=codex` 显式开启，并且仍可被 allow-list 独立禁用
-- Codex 最终失败识别覆盖高置信的最终 `Internal server error` 与尾部 `stream disconnected before completion` 文案，同时忽略 retry / reconnect 暂态输出
-- Claude Agent `Ctrl-Z` 现在会在 Webview、宿主和 runtime supervisor 路径被阻断，因为直接启动的 Agent 没有 shell `fg` job-control 承诺；请改用停止、重启或 Fork
-- 旧 `suspended` Agent snapshot 仍可安全渲染，但不再暴露恢复动作或旧挂起态 Fork 入口
-- `devSessionCanvas.canvas.linkOpenMode` 可让画布外部链接默认在 VS Code editor 预览打开，也可选择交给系统外部浏览器 / 应用
-- localhost / loopback 开发服务链接在 editor 预览前会先通过 VS Code 端口转发解析，避免 Remote SSH / Dev Container 中误连到客户端本机
+- 持有可信 session id 的 Codex Agent 节点现在可通过 provider 原生 `codex fork <session-id>` 语义分叉出新 Agent
+- Claude Code Agent Fork 继续使用 `claude --resume <session-id> --fork-session`；当前节点与历史会话分叉都会创建一条可编辑的 `fork` 连线，帮助保留空间上下文
+- 侧栏 `节点` 会前置待处理 attention 节点；分组模式新增“待处理提醒”虚拟分组，多根平铺模式仍保留 root 分组
+- 侧栏 `会话历史` 为当前 workspace 的 Codex / Claude Code 会话提供明确的恢复与分叉 icon 操作
+- Agent 节点标题栏拆分 cwd 与最近一次实际启动命令，长启动命令通过 hover 查看，避免挤占标题行
+- 多根 workspace 的系统 root section 默认显示 root 名称 body 水印，可通过 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 关闭
+- 执行终端通过输出 drain 预算、输入优先恢复、serialized snapshot 错峰 hydrate 和 `outputSequence` 恢复保护，提升多 Agent 场景下的输入响应
+- 文件链接 activation 在超时或 reject 时会退化为 workspace search；extensionless fallback path 只在用户明确点击时放宽
+- 复制诊断现在记录 xterm 选区、mouse tracking、右键复制、快捷键判定和 OSC 52 观察结果，但不会自动把 OSC 52 桥接为剪贴板写入
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 核心功能
@@ -41,7 +42,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 全局 fit view 与 MiniMap 会理解完整画布空间，包括节点、用户分组和 workspace-root section
 - `Restricted Mode` 下保留画布浏览，执行入口自动禁用
 - 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
-- 在侧栏查看 `节点` 与 `会话历史` 列表，支持快速定位当前画布节点并从历史恢复新 `Agent` 节点
+- 在侧栏查看 `节点` 与 `会话历史` 列表，支持快速定位当前画布节点并从历史恢复或分叉新 `Agent` 节点
 
 ## 适用场景
 
@@ -70,8 +71,8 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.15.1` 升级到 `0.15.2` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径已可公开查询，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.2` 后会继续沿用该明确选择
+- 首次安装与从 `0.15.2` 升级到 `0.16.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布同版本，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode` 或 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`，升级到 `0.16.0` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 
@@ -105,7 +106,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续更高的 `0.15.x` 修复版本，而非尝试手动降级
+- 优先等待后续更高的 `0.16.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 

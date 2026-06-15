@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.16.0 - Preview Agent Fork, Sidebar, and Input Responsiveness Update
+
+相对 `0.15.2`，`0.16.0` 是新的公开 `Preview` 里程碑更新，重点补齐 Codex Agent 原生 `Fork`、会话历史分叉入口、侧栏待处理提醒汇总、multi-root root section 水印、Agent 标题栏 cwd / 启动命令拆分，以及多 Agent 输入响应和执行终端链接解析可靠性收口。它保留 `0.15.2` 的通知 allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` / `fg` 误导状态处理、画布外部链接打开方式配置、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.15.2` bump 到 `0.16.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- Codex Agent 节点在持有可信 `codex-session-id` 时支持 `Fork`，新节点使用 `codex fork <session-id>` 启动，并清理默认参数中的旧 `--last`、`--all`、`--include-non-interactive` 或旧目标 session；Claude Code 的 provider-native fork 路径继续保留
+- 当前 Agent 或历史会话分叉出的新节点会自动创建一条普通可编辑、标签为 `fork` 的来源连线；这只是画布语义连接，不新增正式分支树或机器可读 lineage
+- 侧栏 `节点` view 会把处于 attention 状态的节点前置；按分组树展示时新增“待处理提醒”虚拟分组，多根平铺展示仍保留 workspace root 分组并把待处理提醒放在最前
+- 侧栏 `会话历史` view 现在为每条 Codex / Claude Code 历史会话提供 `恢复` 与 `分叉` 两个 icon-only 操作，并补充专属 view 图标
+- 多根 workspace 的系统 root section body 默认平铺 root 名称水印，帮助低倍率总览中识别 root；可通过 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 关闭
+- Agent 节点标题栏拆分 cwd 标签与最近一次实际启动命令副标题，长命令通过 hover 展示完整内容，避免把工作目录和启动参数挤在同一行
+- 执行终端在多 Agent 大量输出时改进输入响应：活跃会话期间跳过 `workspaceState` 热路径、输出 drain 带全局预算和最近输入优先、snapshot hydrate 错峰恢复，并用 `outputSequence` 避免 live-runtime reattach 后陷入 stale snapshot reset 循环
+- 执行终端文件链接继续降载：hover 不再急切解析低置信候选，用户点击 pending link 时才用 interactive priority 解析；resolve 超时或失败会降级为 search fallback，extensionless path 只在明确点击场景下放宽
+- 执行终端复制路径新增只读诊断，覆盖 xterm selection、mouse tracking、右键复制、快捷键判定与 OSC 52 观察结果；本轮不把 OSC 52 自动桥接成剪贴板写入
+- 发布 workflow 拆分 Open VSX 与 Visual Studio Marketplace 两个失败域，继续复用同一批 GitHub Release assets，并由 manifest 生成包含版本亮点、渠道状态、残余风险和发布证据的 GitHub Release notes
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.15.2` 升级到 `0.16.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.16.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode` 或 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`，升级到 `0.16.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.16.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.16.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.15.2 - Preview Notification Controls and Claude Ctrl-Z Patch
 
 相对 `0.15.1`，`0.15.2` 是同一 `0.15.x` 公开 `Preview` 线内的通知控制与 Agent 可靠性补丁，重点收口执行节点 attention signal allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` / `fg` 误导状态处理，以及画布外部链接打开方式配置。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent `Fork`、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
