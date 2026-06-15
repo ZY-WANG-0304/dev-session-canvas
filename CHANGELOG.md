@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.16.1 - Preview Root Watermark and Clipboard Diagnostic Patch
+
+相对 `0.16.0`，`0.16.1` 是同一 `0.16.x` 公开 `Preview` 线内的可读性与诊断噪音补丁，重点收口 multi-root workspace root section 水印可读性，以及执行终端在 snapshot restore / 用户输入边界上的剪贴板诊断噪音。它保留 `0.16.0` 的 Codex / Claude Code Agent Fork、会话历史分叉入口、侧栏待处理提醒汇总、Agent 标题栏 cwd / 启动命令拆分、多 Agent 输入响应、执行终端链接解析可靠性、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.16.0` bump 到 `0.16.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- multi-root workspace root section 的 body 水印改为独立于标题压缩的可读缩放，低倍率概览或窄 root section 下仍能显示可辨认的 root 名称
+- root 水印会把 path-like 标题收敛为 basename，并把长名称限制为最多两行，同时降低透明度、增大 tile 间距，减少对 root 内节点和普通分组的背景噪声
+- 执行终端剪贴板诊断在 snapshot restore 窗口内抑制由程序化恢复触发的 selection、mouse tracking 和 OSC 52 噪音，并用 `restoreSuppressed` 聚合计数保留可观测性；真实用户交互和恢复后的 live OSC 52 诊断不会被空选区去重误吞
+- Agent / Terminal 节点在用户输入前会刷新 snapshot restore 诊断抑制状态，避免恢复窗口尾部继续压住后续真实剪贴板诊断，同时不改变 Host 写入前不做本地 optimistic echo 的输入语义
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.16.0` 升级到 `0.16.1` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用；若 VSM 仍不可见，本轮继续允许依赖 GitHub Release assets 与 Open VSX 兜底完成
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.16.1`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode` 或 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`，升级到 `0.16.1` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.16.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.16.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.16.0 - Preview Agent Fork, Sidebar, and Input Responsiveness Update
 
 相对 `0.15.2`，`0.16.0` 是新的公开 `Preview` 里程碑更新，重点补齐 Codex Agent 原生 `Fork`、会话历史分叉入口、侧栏待处理提醒汇总、multi-root root section 水印、Agent 标题栏 cwd / 启动命令拆分，以及多 Agent 输入响应和执行终端链接解析可靠性收口。它保留 `0.15.2` 的通知 allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` / `fg` 误导状态处理、画布外部链接打开方式配置、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。

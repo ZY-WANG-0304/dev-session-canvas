@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.1
+
+- 与主扩展 `0.16.1` 对齐：本轮主扩展是 `0.16.x` Preview 线内的可读性与诊断噪音补丁，聚焦 multi-root workspace root section 水印可读性、snapshot restore 窗口内剪贴板诊断抑制，以及用户输入前刷新恢复诊断抑制状态；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.16.0
 
 - 与主扩展 `0.16.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 Codex / Claude Code Agent Fork、侧栏待处理提醒与历史分叉入口、multi-root root section 水印、Agent cwd / 启动命令标题拆分、多 Agent 输入响应、执行终端链接 activation fallback、复制诊断，以及 GitHub Release assets / 双市场发布 workflow 解耦；notifier companion 不引入新的通知投递行为变更。
