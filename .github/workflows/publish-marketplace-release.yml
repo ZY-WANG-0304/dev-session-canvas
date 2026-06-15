@@ -412,11 +412,10 @@ jobs:
           if-no-files-found: warn
           overwrite: true
 
-      - name: Fail Visual Studio Marketplace job when publish failed
+      - name: Record Visual Studio Marketplace deferred status
         if: steps.publish.outputs.status != '0' || steps.verify_secret.outputs.status != '0'
         run: |
-          echo "Visual Studio Marketplace publish or verification failed. Result manifest was uploaded for finalize."
-          exit 1
+          echo "Visual Studio Marketplace publish or verification did not complete. Result manifest was uploaded for finalize; this channel is currently deferred and does not block GitHub Release Assets plus Open VSX completion."
 
   finalize:
     name: Finalize Release State
@@ -487,11 +486,25 @@ jobs:
             const openComplete = targetComplete("openVsx");
             const visualComplete = targetComplete("visualStudio");
             const marketplaceComplete = openComplete && visualComplete;
-            manifest.status = marketplaceComplete ? "complete" : "publish-failed";
+            const releaseComplete = openComplete;
+            manifest.status = releaseComplete
+              ? marketplaceComplete
+                ? "complete"
+                : "complete-with-deferred-visual-studio"
+              : "publish-failed";
             manifest.selectedTargets = ["visual-studio", "open-vsx"];
             manifest.options = {
               ...(manifest.options || {}),
-              target: "all"
+              target: "all",
+              requiredCompletionTargets: ["github-release-assets", "open-vsx"],
+              visualStudioBlocking: false
+            };
+            manifest.releaseCompletion = {
+              marketplaceComplete,
+              openVsxComplete: openComplete,
+              requiredTargets: ["github-release-assets", "open-vsx"],
+              visualStudioBlocking: false,
+              visualStudioComplete: visualComplete
             };
             manifest.githubRelease = {
               ...(manifest.githubRelease || {}),
@@ -510,7 +523,7 @@ jobs:
             if (process.env.GITHUB_OUTPUT) {
               fs.appendFileSync(
                 process.env.GITHUB_OUTPUT,
-                `open_vsx_complete=${openComplete}\nvisual_studio_complete=${visualComplete}\nmarketplace_complete=${marketplaceComplete}\n`
+                `open_vsx_complete=${openComplete}\nvisual_studio_complete=${visualComplete}\nmarketplace_complete=${marketplaceComplete}\nrelease_complete=${releaseComplete}\n`
               );
             }
           ' "$manifest_path" "$open_manifest" "$visual_manifest"
@@ -534,7 +547,7 @@ jobs:
           gh release upload "$final_tag" "$manifest_path" --clobber
 
       - name: Delete temporary publish tag
-        if: steps.merge.outputs.marketplace_complete == 'true'
+        if: steps.merge.outputs.release_complete == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -558,7 +571,6 @@ jobs:
             const fs = require("fs");
             const manifestPath = process.argv[1];
             const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-            manifest.status = "complete";
             manifest.tags = {
               ...(manifest.tags || {}),
               finalTag: manifest.finalTag,
@@ -593,7 +605,7 @@ jobs:
           overwrite: true
 
       - name: Fail when marketplace publish failed
-        if: steps.merge.outputs.marketplace_complete != 'true'
+        if: steps.merge.outputs.release_complete != 'true'
         run: |
-          echo "Marketplace publish or verification failed. GitHub Release assets and notes were uploaded for manual installation, and the temporary publish tag was kept for rerun."
+          echo "Open VSX publish or verification failed. GitHub Release assets and notes were uploaded for manual installation, and the temporary publish tag was kept for rerun. Visual Studio Marketplace is deferred and is not part of the current completion gate."
           exit 1
