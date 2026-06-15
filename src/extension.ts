@@ -1,4 +1,7 @@
 import * as path from 'path';
+import { execFile } from 'child_process';
+import { mkdir, stat } from 'fs/promises';
+import { promisify } from 'util';
 import * as vscode from 'vscode';
 
 import {
@@ -68,8 +71,13 @@ import { CanvasSidebarTemplateView } from './sidebar/CanvasSidebarTemplateView';
 import { CanvasSidebarView, getCanvasSidebarSummaryItems } from './sidebar/CanvasSidebarView';
 import { isTestHarnessMode } from './common/testHarness';
 
+const execFileAsync = promisify(execFile);
+
 let activePanelManager: CanvasPanelManager | undefined;
 let queuedQuickPickSelectionIds: CreateNodeQuickPickSelectionId[] = [];
+
+const WORKTREE_BRANCH_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+const GIT_WORKTREE_COMMAND_TIMEOUT_MS = 120_000;
 
 type CreateNodeRequest = {
   kind: CanvasCreatableNodeKind;
@@ -132,6 +140,20 @@ interface ExplorerExecutionResource {
 
 interface ExplorerMarkdownNoteResource {
   uri: vscode.Uri;
+}
+
+interface WorkspaceRootQuickPickItem extends vscode.QuickPickItem {
+  folder: vscode.WorkspaceFolder;
+}
+
+interface WorkspaceWorktreeRequest {
+  rootPath?: string;
+}
+
+interface WorkspaceWorktreeTarget {
+  rootFolder: vscode.WorkspaceFolder;
+  branchName: string;
+  targetPath: string;
 }
 
 function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
@@ -344,6 +366,30 @@ export function activate(context: vscode.ExtensionContext): void {
       agentCustomLaunchCommand: createRequest.agentCustomLaunchCommand
     });
   });
+
+  registerCommand(context, COMMAND_IDS.addFolderToWorkspace, async () => {
+    await addFolderToWorkspaceFromCommand();
+  });
+
+  registerCommand(context, COMMAND_IDS.createWorktree, async () => {
+    await createWorktreeAndAddToWorkspaceFromCommand({});
+  });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_IDS.createWorktreeForRoot, async (rootPath?: unknown) => {
+      await createWorktreeAndAddToWorkspaceFromCommand({
+        rootPath: typeof rootPath === 'string' ? rootPath : undefined
+      });
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.removeWorkspaceRoot, async (rootPath?: unknown) => {
+      if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
+        await vscode.window.showWarningMessage('未找到要移除的 workspace root。');
+        return;
+      }
+
+      await removeWorkspaceRootFromCommand(rootPath);
+    })
+  );
 
   registerCommand(context, COMMAND_IDS.createTerminalFromExplorerResource, async (resource?: unknown) => {
     const resolvedResource = await resolveExplorerExecutionResource(resource);
@@ -1114,6 +1160,272 @@ function isSameOrDescendantFileSystemPath(candidatePath: string, ancestorPath: s
 function normalizeComparableFileSystemPath(filePath: string): string {
   const resolvedPath = path.resolve(filePath);
   return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
+async function addFolderToWorkspaceFromCommand(): Promise<void> {
+  const selectedUris = await vscode.window.showOpenDialog({
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: true,
+    openLabel: '添加到 Workspace'
+  });
+  if (!selectedUris || selectedUris.length === 0) {
+    return;
+  }
+
+  const existingWorkspaceFolderPaths = new Set(
+    (vscode.workspace.workspaceFolders ?? []).map((folder) => normalizeComparableFileSystemPath(folder.uri.fsPath))
+  );
+  const foldersToAdd: { uri: vscode.Uri }[] = [];
+  const pendingPaths = new Set<string>();
+  for (const uri of selectedUris) {
+    if (uri.scheme !== 'file') {
+      continue;
+    }
+    const normalizedPath = normalizeComparableFileSystemPath(uri.fsPath);
+    if (existingWorkspaceFolderPaths.has(normalizedPath) || pendingPaths.has(normalizedPath)) {
+      continue;
+    }
+
+    pendingPaths.add(normalizedPath);
+    foldersToAdd.push({ uri });
+  }
+
+  if (foldersToAdd.length === 0) {
+    await vscode.window.showInformationMessage('所选文件夹已经在当前 workspace 中。');
+    return;
+  }
+
+  const inserted = vscode.workspace.updateWorkspaceFolders(
+    vscode.workspace.workspaceFolders?.length ?? 0,
+    0,
+    ...foldersToAdd
+  );
+  if (!inserted) {
+    await vscode.window.showWarningMessage('无法将所选文件夹添加到当前 workspace。');
+  }
+}
+
+async function removeWorkspaceRootFromCommand(rootPath: string): Promise<void> {
+  const workspaceFolder = resolveWorkspaceFolderByFsPath(rootPath);
+  if (!workspaceFolder) {
+    await vscode.window.showWarningMessage('该 root 已不在当前 workspace 中。');
+    return;
+  }
+
+  const confirmed = await vscode.window.showWarningMessage(
+    `从当前 workspace 移除 root「${workspaceFolder.name}」？磁盘文件不会被删除。`,
+    { modal: true },
+    '移除 Root'
+  );
+  if (confirmed !== '移除 Root') {
+    return;
+  }
+
+  const removed = vscode.workspace.updateWorkspaceFolders(workspaceFolder.index, 1);
+  if (!removed) {
+    await vscode.window.showWarningMessage(`无法从当前 workspace 移除 root：${workspaceFolder.name}`);
+  }
+}
+
+async function createWorktreeAndAddToWorkspaceFromCommand(request: WorkspaceWorktreeRequest): Promise<void> {
+  if (!vscode.workspace.isTrusted) {
+    await vscode.window.showWarningMessage('当前 workspace 未受信任，暂不能执行 git worktree 命令。');
+    return;
+  }
+
+  const target = await promptWorkspaceWorktreeTarget(request);
+  if (!target) {
+    return;
+  }
+
+  const confirmed = await vscode.window.showInformationMessage(
+    `将基于 root「${target.rootFolder.name}」创建 worktree 分支「${target.branchName}」，并添加到当前 workspace。`,
+    { modal: true, detail: target.targetPath },
+    '创建 Worktree'
+  );
+  if (confirmed !== '创建 Worktree') {
+    return;
+  }
+
+  try {
+    await mkdir(path.dirname(target.targetPath), { recursive: true });
+    await execFileAsync(
+      'git',
+      ['-C', target.rootFolder.uri.fsPath, 'worktree', 'add', '-b', target.branchName, target.targetPath],
+      {
+        timeout: GIT_WORKTREE_COMMAND_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024
+      }
+    );
+  } catch (error) {
+    await vscode.window.showErrorMessage(`创建 git worktree 失败：${formatExecErrorMessage(error)}`);
+    return;
+  }
+
+  const added = addWorkspaceFolderIfMissing(target.targetPath);
+  if (!added) {
+    await vscode.window.showWarningMessage(
+      `Worktree 已创建，但无法自动加入当前 workspace。请手动添加：${target.targetPath}`
+    );
+    return;
+  }
+
+  await vscode.window.showInformationMessage(`已创建 worktree 并添加到 workspace：${target.branchName}`);
+}
+
+async function promptWorkspaceWorktreeTarget(
+  request: WorkspaceWorktreeRequest
+): Promise<WorkspaceWorktreeTarget | undefined> {
+  const rootFolder = request.rootPath
+    ? resolveWorkspaceFolderByFsPath(request.rootPath)
+    : await promptWorkspaceRootFolderForWorktree();
+  if (!rootFolder) {
+    await vscode.window.showWarningMessage('请先打开一个本地 git workspace root，再创建 worktree。');
+    return undefined;
+  }
+
+  if (rootFolder.uri.scheme !== 'file') {
+    await vscode.window.showWarningMessage('当前只支持为本地文件系统 root 新建 git worktree。');
+    return undefined;
+  }
+
+  const branchName = await promptWorktreeBranchName(rootFolder);
+  if (!branchName) {
+    return undefined;
+  }
+
+  const defaultTargetPath = path.join(
+    path.dirname(rootFolder.uri.fsPath),
+    `${path.basename(rootFolder.uri.fsPath)}.worktrees`,
+    branchName
+  );
+  const targetPathInput = await vscode.window.showInputBox({
+    title: '选择 worktree 目录',
+    value: defaultTargetPath,
+    valueSelection: [defaultTargetPath.length, defaultTargetPath.length],
+    prompt: '输入新 worktree 的本地目录；目录不能已经存在。',
+    ignoreFocusOut: true,
+    validateInput: async (value) => {
+      const normalizedValue = value.trim();
+      if (!normalizedValue) {
+        return '请输入 worktree 目录。';
+      }
+      if (!path.isAbsolute(normalizedValue)) {
+        return '请输入绝对路径。';
+      }
+      return await pathExists(normalizedValue) ? '该路径已存在，请选择一个尚不存在的目录。' : undefined;
+    }
+  });
+  if (!targetPathInput) {
+    return undefined;
+  }
+
+  return {
+    rootFolder,
+    branchName,
+    targetPath: path.resolve(targetPathInput.trim())
+  };
+}
+
+async function promptWorkspaceRootFolderForWorktree(): Promise<vscode.WorkspaceFolder | undefined> {
+  const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).filter((folder) => folder.uri.scheme === 'file');
+  if (workspaceFolders.length === 0) {
+    return undefined;
+  }
+
+  if (workspaceFolders.length === 1) {
+    return workspaceFolders[0];
+  }
+
+  const picked = await vscode.window.showQuickPick<WorkspaceRootQuickPickItem>(
+    workspaceFolders.map((folder) => ({
+      label: folder.name,
+      description: folder.uri.fsPath,
+      folder
+    })),
+    {
+      title: '选择要基于哪个 root 新建 worktree',
+      placeHolder: '多根 workspace 中需要先选择 git root',
+      matchOnDescription: true
+    }
+  );
+
+  return picked?.folder;
+}
+
+async function promptWorktreeBranchName(rootFolder: vscode.WorkspaceFolder): Promise<string | undefined> {
+  const branchName = await vscode.window.showInputBox({
+    title: `为 ${rootFolder.name} 新建 worktree`,
+    prompt: '输入要创建的新分支名。将执行 git worktree add -b <branch>。',
+    placeHolder: 'feature/my-worktree',
+    ignoreFocusOut: true,
+    validateInput: (value) => validateWorktreeBranchName(value)
+  });
+  return branchName?.trim() || undefined;
+}
+
+function validateWorktreeBranchName(value: string): string | undefined {
+  const branchName = value.trim();
+  if (!branchName) {
+    return '请输入分支名。';
+  }
+  if (
+    branchName.startsWith('/') ||
+    branchName.endsWith('/') ||
+    branchName.includes('..') ||
+    branchName.includes('//') ||
+    !WORKTREE_BRANCH_NAME_PATTERN.test(branchName) ||
+    /[\\~^:?*[\]\s]/u.test(branchName)
+  ) {
+    return '分支名只能包含字母、数字、点、下划线、短横线和斜杠，且不能包含空格、.. 或特殊 git ref 字符。';
+  }
+
+  return undefined;
+}
+
+function resolveWorkspaceFolderByFsPath(rootPath: string): vscode.WorkspaceFolder | undefined {
+  const normalizedRootPath = normalizeComparableFileSystemPath(rootPath);
+  return (vscode.workspace.workspaceFolders ?? []).find(
+    (folder) => normalizeComparableFileSystemPath(folder.uri.fsPath) === normalizedRootPath
+  );
+}
+
+function addWorkspaceFolderIfMissing(folderPath: string): boolean {
+  if (resolveWorkspaceFolderByFsPath(folderPath)) {
+    return true;
+  }
+
+  return vscode.workspace.updateWorkspaceFolders(
+    vscode.workspace.workspaceFolders?.length ?? 0,
+    0,
+    { uri: vscode.Uri.file(folderPath) }
+  );
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if (isNodeErrorWithCode(error, 'ENOENT')) {
+      return false;
+    }
+    return true;
+  }
+}
+
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+  return error instanceof Error && 'code' in error && error.code === code;
+}
+
+function formatExecErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const stderr = 'stderr' in error && typeof error.stderr === 'string' ? error.stderr.trim() : '';
+    return stderr || error.message;
+  }
+
+  return String(error);
 }
 
 interface SidebarNodeQuickPickItem extends vscode.QuickPickItem {

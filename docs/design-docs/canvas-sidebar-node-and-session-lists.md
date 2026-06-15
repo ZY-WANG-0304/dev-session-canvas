@@ -17,7 +17,8 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
-updated_at: 2026-06-15
+  - docs/exec-plans/completed/sidebar-workspace-worktree-actions.md
+updated_at: 2026-06-16
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -120,6 +121,9 @@ updated_at: 2026-06-15
 - 默认按分组树展示时，Webview 只把权威节点快照和 `CanvasGroupSummary` 投影成侧栏树：父子分组按层级缩进，每个分组 section 可折叠/展开；没有分组的节点进入同样可折叠的“未分组”section。这个折叠状态只存在于侧栏呈现层，不持久化为画布状态，不影响画布分组可见性，也不推导新的成员关系。
 - 当存在处于 attention 状态的节点时，节点列表把“回到需要处理的节点”作为最高优先级入口：平铺展示中 attention 节点排在普通节点前；分组树展示中顶部额外显示“待处理提醒”虚拟分组，汇总所有 attention 节点，同时这些节点仍保留在原分组树位置，避免虚拟汇总覆盖真实归属。
 - 多根 workspace 下的平铺展示不会完全抹平 root 归属，而是继续保留 workspace root 分组。若此时存在 attention 节点，顶部仍显示“待处理提醒”虚拟分组，并且该虚拟分组排在所有 root 分组之前；root 分组内仍保留各自节点，其中 attention 节点在对应 root 内排在普通节点前。
+- `节点` view 标题栏除了创建节点和显示模式切换外，还提供两个 workspace 操作入口：添加文件夹到当前 workspace，以及新建 git worktree 并添加到当前 workspace。添加文件夹走 VS Code `workspace.updateWorkspaceFolders(...)`；新建 worktree 由宿主调用 `git -C <root> worktree add -b <branch> <targetPath>`，成功后再把目标目录作为 workspace folder 加入当前窗口。
+- 多根 workspace 下，如果用户从 `节点` view 标题栏点击全局新建 worktree，宿主必须先用 QuickPick 选择基准 root，避免猜测要基于哪个仓库创建 worktree；单根 workspace 直接使用唯一 root。
+- workspace root 分组行尾显示两个 root 级 icon-only 操作：基于该 root 新建 worktree，以及从当前 workspace 移除该 root。它们只出现在 `role === 'workspace-root'` 且存在 `workspaceRootPath` 的系统 root 分组行，不出现在普通用户分组、未分组或待处理提醒虚拟分组。移除 root 只调用 VS Code workspace folder 移除语义，不删除磁盘目录。
 - 点击节点项后，宿主会统一执行“打开/定位画布 -> 等待 Webview ready -> 下发 `host/focusNode`”，把节点滚入可见区域并选中。
 
 ### 6.2 会话历史使用最小 `WebviewView`
@@ -215,14 +219,18 @@ updated_at: 2026-06-15
 2. 节点列表中不出现 `file` / `file-list` 节点；点击任一项后，画布能滚动并聚焦到对应节点。
 3. `节点` view 默认按分组树展示，标题右上角使用 VSCode 原生 `...` 菜单承载平铺 / 按分组树展示切换；按分组树展示时，分组和“未分组”section 可折叠/展开，折叠只影响侧栏列表可见行。
 4. attention 节点在单根平铺展示中排在普通节点前；按分组树展示中顶部出现“待处理提醒”虚拟分组，且不移除节点的原分组位置；多根 workspace 平铺展示中保留 root 分组，并让“待处理提醒”虚拟分组排在 root 分组之前。
-5. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
-6. 搜索框输入关键词后，列表会即时过滤。
-7. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
-8. 点击会话项右侧 `恢复` icon 按钮后，效果与双击一致；点击 `分叉` icon 按钮后，会新建同 provider `Agent` 节点，并带着正确的 provider-native fork 命令进入自动启动链路。
-9. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
+5. `节点` view 标题栏提供添加 workspace folder 与新建 worktree 的全局按钮；多根 workspace 下全局新建 worktree 先选择基准 root。
+6. workspace root 分组行尾只在系统 root 分组上显示新建 worktree 与移除 root 两个 icon-only 操作；普通用户分组和虚拟分组不显示这组 root 操作。
+7. root 行新建 worktree 成功后，新 worktree 目录被加入当前 workspace；root 行移除 root 后，该 root 从当前 workspace 中移除但磁盘目录不被删除。
+8. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
+9. 搜索框输入关键词后，列表会即时过滤。
+10. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
+11. 点击会话项右侧 `恢复` icon 按钮后，效果与双击一致；点击 `分叉` icon 按钮后，会新建同 provider `Agent` 节点，并带着正确的 provider-native fork 命令进入自动启动链路。
+12. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
 
 ## 9. 当前验证状态
 
+- 2026-06-16：`节点` view 标题栏新增添加 workspace folder 与新建 worktree 入口，workspace root 分组行尾新增 root 级新建 worktree / 移除 root 操作；已新增 `npm run test:sidebar-node-list` 覆盖 root 行 action 呈现和 Webview 消息，`npm run test:extension-manifest` 覆盖 sidebar title action 与 root scoped 命令 contribution。真实 VS Code 中的文件夹 picker、`git worktree add` 与 workspace folder 增删仍需人工验证。
 - 2026-06-15：会话历史项右侧 `恢复` / `分叉` icon-only 按钮收口为 bundled VSCode Codicon（`history` / `repo-forked`），与节点列表和模板侧栏共用 `dist/sidebar-codicon.css` 资源路线。
 - 2026-06-15：会话历史 view section 新增专属 `images/dev-session-canvas-sessions-activitybar.svg`，沿用主 glyph + 右上角 badge 约定，badge 内部参考 VS Code Codicon `history` 的时钟指针部分；已纳入 `npm run test:activitybar-badges` 与 manifest 测试。
 - 2026-06-14：会话历史项右侧新增 `恢复` / `分叉` 两个 icon-only 按钮，双击与 Enter / Space 保持既有恢复行为；Host 新增 `forkAgentSessionFromHistory(...)`，从历史会话生成 provider-native fork 启动命令。已运行 `npm run typecheck`、`npm run test:sidebar-session-history` 与 `git diff --check`。

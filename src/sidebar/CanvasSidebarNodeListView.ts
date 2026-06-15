@@ -7,6 +7,7 @@ import {
   humanizeCanvasNodeStatus
 } from '../common/canvasNodeStatusPresentation';
 import {
+  COMMAND_IDS,
   CONTEXT_KEYS,
   STORAGE_KEYS,
   type SidebarNodeListViewMode
@@ -53,6 +54,7 @@ export interface SidebarNodeListTestGroupRowSnapshot {
   label: string;
   expanded: boolean;
   depth: number;
+  rootActionTypes: string[];
 }
 
 export type SidebarNodeListTestAction =
@@ -78,6 +80,14 @@ type SidebarNodeListInboundMessage =
       };
     }
   | {
+      type: 'sidebarNodeList/createWorktreeForRoot';
+      payload: SidebarWorkspaceRootActionPayload;
+    }
+  | {
+      type: 'sidebarNodeList/removeWorkspaceRoot';
+      payload: SidebarWorkspaceRootActionPayload;
+    }
+  | {
       type: 'sidebarNodeList/testActionResult';
       payload: {
         requestId: string;
@@ -85,6 +95,11 @@ type SidebarNodeListInboundMessage =
         errorMessage?: string;
       };
     };
+
+interface SidebarWorkspaceRootActionPayload {
+  rootPath: string;
+  groupId?: string;
+}
 
 type SidebarNodeListOutboundMessage =
   | {
@@ -334,6 +349,20 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
         }
         return;
       }
+      case 'sidebarNodeList/createWorktreeForRoot':
+        await vscode.commands.executeCommand(
+          COMMAND_IDS.createWorktreeForRoot,
+          parsed.payload.rootPath,
+          parsed.payload.groupId
+        );
+        return;
+      case 'sidebarNodeList/removeWorkspaceRoot':
+        await vscode.commands.executeCommand(
+          COMMAND_IDS.removeWorkspaceRoot,
+          parsed.payload.rootPath,
+          parsed.payload.groupId
+        );
+        return;
       case 'sidebarNodeList/testActionResult':
         this.resolvePendingTestActionRequest(parsed.payload.requestId, parsed.payload.snapshot, parsed.payload.errorMessage);
         return;
@@ -535,6 +564,18 @@ function parseSidebarNodeListMessage(message: unknown): SidebarNodeListInboundMe
         }
       };
     }
+    case 'sidebarNodeList/createWorktreeForRoot':
+    case 'sidebarNodeList/removeWorkspaceRoot': {
+      const payload = parseSidebarWorkspaceRootActionPayload('payload' in message ? message.payload : undefined);
+      if (!payload) {
+        return null;
+      }
+
+      return {
+        type: message.type,
+        payload
+      };
+    }
     case 'sidebarNodeList/testActionResult': {
       const payload = 'payload' in message ? message.payload : undefined;
       if (
@@ -564,6 +605,26 @@ function parseSidebarNodeListMessage(message: unknown): SidebarNodeListInboundMe
     default:
       return null;
   }
+}
+
+function parseSidebarWorkspaceRootActionPayload(value: unknown): SidebarWorkspaceRootActionPayload | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const rootPath = 'rootPath' in value && typeof value.rootPath === 'string' ? value.rootPath.trim() : '';
+  if (!rootPath) {
+    return null;
+  }
+
+  const groupId = 'groupId' in value && typeof value.groupId === 'string' && value.groupId.trim()
+    ? value.groupId.trim()
+    : undefined;
+
+  return {
+    rootPath,
+    groupId
+  };
 }
 
 function parseSidebarNodeListTestSnapshot(value: unknown): SidebarNodeListTestSnapshot | null {
@@ -612,6 +673,10 @@ function parseSidebarNodeListTestGroupRowSnapshot(value: unknown): SidebarNodeLi
   const label = 'label' in value && typeof value.label === 'string' ? value.label : null;
   const expanded = 'expanded' in value && typeof value.expanded === 'boolean' ? value.expanded : null;
   const depth = 'depth' in value && typeof value.depth === 'number' ? value.depth : null;
+  const rootActionTypes =
+    'rootActionTypes' in value && Array.isArray(value.rootActionTypes)
+      ? value.rootActionTypes.filter((actionType): actionType is string => typeof actionType === 'string')
+      : [];
   if (key === null || label === null || expanded === null || depth === null) {
     return null;
   }
@@ -620,7 +685,8 @@ function parseSidebarNodeListTestGroupRowSnapshot(value: unknown): SidebarNodeLi
     key,
     label,
     expanded,
-    depth
+    depth,
+    rootActionTypes
   };
 }
 
@@ -760,6 +826,43 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         margin-left: auto;
         color: var(--row-muted);
         font-size: 11px;
+      }
+
+      .node-group-actions {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 1px;
+        margin-left: 4px;
+      }
+
+      .node-group-action {
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 0;
+        border-radius: 3px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        color: var(--row-muted);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .node-group-action:hover {
+        background: color-mix(in srgb, var(--list-hover) 82%, var(--fg) 8%);
+        color: var(--row-fg);
+      }
+
+      .node-group-action.is-danger:hover {
+        color: var(--vscode-errorForeground, var(--row-fg));
+      }
+
+      .node-group-action:focus-visible {
+        outline: 1px solid var(--focus);
+        outline-offset: -1px;
       }
 
       .node-group-kind-icon {
@@ -1110,7 +1213,10 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
             key: row.getAttribute('data-sidebar-node-group-key') || '',
             label: row.getAttribute('data-sidebar-node-group-label') || '',
             expanded: row.getAttribute('aria-expanded') === 'true',
-            depth: Number(row.getAttribute('data-sidebar-node-group-depth') || '0')
+            depth: Number(row.getAttribute('data-sidebar-node-group-depth') || '0'),
+            rootActionTypes: Array.from(
+              row.querySelectorAll('[data-sidebar-root-action]')
+            ).map((action) => action.getAttribute('data-sidebar-root-action')).filter(Boolean)
           }))
         };
       }
@@ -1205,6 +1311,9 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
           key: group.id,
           label: normalizeGroupTitle(group),
           parentGroupId: typeof group.parentGroupId === 'string' ? group.parentGroupId : undefined,
+          workspaceRootPath: isWorkspaceRootGroup(group) && typeof group.workspaceRootPath === 'string'
+            ? group.workspaceRootPath
+            : undefined,
           childGroups: [],
           items: [],
           depth: 0,
@@ -1295,15 +1404,19 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
       }
 
       function renderGroupRow(options) {
-        const row = document.createElement('button');
+        const row = document.createElement('div');
         const isExpanded = !state.collapsedGroupKeys.has(options.key);
+        const isWorkspaceRoot = typeof options.workspaceRootPath === 'string' && options.workspaceRootPath.trim().length > 0;
         row.className = 'node-group-row';
-        row.type = 'button';
-        row.title = options.label;
+        row.tabIndex = 0;
+        row.title = isWorkspaceRoot ? options.label + '\\n' + options.workspaceRootPath : options.label;
         row.style.paddingLeft = String(4 + options.depth * 14) + 'px';
         row.setAttribute('data-sidebar-node-group-key', options.key);
         row.setAttribute('data-sidebar-node-group-label', options.label);
         row.setAttribute('data-sidebar-node-group-depth', String(options.depth));
+        if (isWorkspaceRoot) {
+          row.setAttribute('data-sidebar-workspace-root-path', options.workspaceRootPath);
+        }
         if (options.virtualKind) {
           row.setAttribute('data-sidebar-node-group-virtual-kind', options.virtualKind);
         }
@@ -1330,11 +1443,15 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         count.className = 'node-group-count';
         count.textContent = options.totalItemCount > 0 ? String(options.totalItemCount) : '';
 
-        if (options.leadingIconClass) {
-          row.append(twistie, leadingIcon, title, count);
-        } else {
-          row.append(twistie, title, count);
+        const children = options.leadingIconClass
+          ? [twistie, leadingIcon, title, count]
+          : [twistie, title, count];
+        if (isWorkspaceRoot) {
+          const actions = renderWorkspaceRootActions(options.key, options.workspaceRootPath);
+          children.push(actions);
         }
+
+        row.append(...children);
         row.addEventListener('click', () => toggleGroup(options.key));
         row.addEventListener('keydown', (event) => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -1343,6 +1460,79 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
           }
         });
         list.append(row);
+      }
+
+      function renderWorkspaceRootActions(groupKey, rootPath) {
+        const actions = document.createElement('span');
+        actions.className = 'node-group-actions';
+
+        const worktreeButton = createWorkspaceRootActionButton({
+          action: 'createWorktree',
+          iconClass: 'codicon-repo-forked',
+          label: '为此 root 新建 worktree',
+          danger: false,
+          onClick: () => {
+            vscode.postMessage({
+              type: 'sidebarNodeList/createWorktreeForRoot',
+              payload: {
+                rootPath,
+                groupId: groupKey
+              }
+            });
+          }
+        });
+
+        const removeButton = createWorkspaceRootActionButton({
+          action: 'removeRoot',
+          iconClass: 'codicon-close',
+          label: '从 workspace 移除此 root',
+          danger: true,
+          onClick: () => {
+            vscode.postMessage({
+              type: 'sidebarNodeList/removeWorkspaceRoot',
+              payload: {
+                rootPath,
+                groupId: groupKey
+              }
+            });
+          }
+        });
+
+        actions.append(worktreeButton, removeButton);
+        return actions;
+      }
+
+      function createWorkspaceRootActionButton(options) {
+        const button = document.createElement('span');
+        button.className = 'node-group-action codicon ' + options.iconClass + (options.danger ? ' is-danger' : '');
+        button.setAttribute('role', 'button');
+        button.setAttribute('tabindex', '0');
+        button.setAttribute('aria-label', options.label);
+        button.setAttribute('title', options.label);
+        button.setAttribute('data-sidebar-root-action', options.action);
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          options.onClick();
+        });
+        button.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            event.stopPropagation();
+            options.onClick();
+          }
+        });
+        return button;
+      }
+
+      function groupRowOptionsFromTreeNode(groupNode) {
+        return {
+          key: groupNode.key,
+          label: groupNode.label,
+          depth: groupNode.depth,
+          totalItemCount: groupNode.totalItemCount,
+          workspaceRootPath: groupNode.workspaceRootPath
+        };
       }
 
       function renderNodeRow(item, depth, options = {}) {
@@ -1464,12 +1654,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
       }
 
       function renderGroupNode(groupNode) {
-        renderGroupRow({
-          key: groupNode.key,
-          label: groupNode.label,
-          depth: groupNode.depth,
-          totalItemCount: groupNode.totalItemCount
-        });
+        renderGroupRow(groupRowOptionsFromTreeNode(groupNode));
         if (state.collapsedGroupKeys.has(groupNode.key)) {
           return;
         }
@@ -1526,7 +1711,8 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
             depth: 0,
             childGroups: [],
             items: itemsByRootGroupId.get(group.id) ?? [],
-            totalItemCount: (itemsByRootGroupId.get(group.id) ?? []).length
+            totalItemCount: (itemsByRootGroupId.get(group.id) ?? []).length,
+            workspaceRootPath: typeof group.workspaceRootPath === 'string' ? group.workspaceRootPath : undefined
           }))
         };
 
@@ -1534,12 +1720,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         renderAttentionGroup(0, { showGroupPath: true });
 
         for (const rootGroup of root.childGroups) {
-          renderGroupRow({
-            key: rootGroup.key,
-            label: rootGroup.label,
-            depth: rootGroup.depth,
-            totalItemCount: rootGroup.totalItemCount
-          });
+          renderGroupRow(groupRowOptionsFromTreeNode(rootGroup));
           if (state.collapsedGroupKeys.has(rootGroup.key)) {
             continue;
           }

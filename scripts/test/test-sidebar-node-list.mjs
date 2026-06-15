@@ -85,6 +85,7 @@ try {
     await assertFlatViewPromotesAttentionRows(browser, html);
     await assertGroupedViewAddsAttentionSection(browser, html);
     await assertMultiRootFlatViewKeepsRootGroups(browser, html);
+    await assertWorkspaceRootGroupActions(browser, html);
   } finally {
     await browser.close();
   }
@@ -202,6 +203,63 @@ async function assertMultiRootFlatViewKeepsRootGroups(browser, html) {
   }
 }
 
+async function assertWorkspaceRootGroupActions(browser, html) {
+  const page = await createSidebarPage(browser, html);
+  try {
+    const rootPath = '/repo/frontend';
+    const snapshot = await renderSidebarState(page, {
+      viewMode: 'grouped',
+      groups: [
+        group('workspace-root-frontend', 'Frontend', { role: 'workspace-root', workspaceRootPath: rootPath }),
+        group('group-regular', 'Regular Group')
+      ],
+      items: [
+        item('frontend-note', {
+          label: 'Frontend Note',
+          groupPath: ['Frontend'],
+          groupPathIds: ['workspace-root-frontend'],
+          nodeKind: 'note'
+        }),
+        item('regular-note', {
+          label: 'Regular Note',
+          groupPath: ['Regular Group'],
+          groupPathIds: ['group-regular'],
+          nodeKind: 'note'
+        })
+      ]
+    });
+
+    const rootGroupRow = snapshot.groupRows.find((row) => row.key === 'workspace-root-frontend');
+    assert.deepEqual(
+      rootGroupRow?.rootActionTypes,
+      ['createWorktree', 'removeRoot'],
+      'Workspace-root group rows should expose worktree and remove-root actions.'
+    );
+    const regularGroupRow = snapshot.groupRows.find((row) => row.key === 'group-regular');
+    assert.deepEqual(
+      regularGroupRow?.rootActionTypes,
+      [],
+      'Regular user groups should not expose workspace-root actions.'
+    );
+
+    await page.click('[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-root-action="createWorktree"]');
+    const createWorktreeMessage = await lastSidebarMessage(page, 'sidebarNodeList/createWorktreeForRoot');
+    assert.deepEqual(createWorktreeMessage?.payload, {
+      rootPath,
+      groupId: 'workspace-root-frontend'
+    });
+
+    await page.click('[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-root-action="removeRoot"]');
+    const removeRootMessage = await lastSidebarMessage(page, 'sidebarNodeList/removeWorkspaceRoot');
+    assert.deepEqual(removeRootMessage?.payload, {
+      rootPath,
+      groupId: 'workspace-root-frontend'
+    });
+  } finally {
+    await page.close();
+  }
+}
+
 async function createSidebarPage(browser, html) {
   const page = await browser.newPage({ viewport: { width: 320, height: 600 } });
   const testHtml = html.replace(
@@ -220,6 +278,13 @@ async function createSidebarPage(browser, html) {
     window.__sidebarNodeListMessages.some((message) => message.type === 'sidebarNodeList/ready')
   );
   return page;
+}
+
+async function lastSidebarMessage(page, type) {
+  return await page.evaluate((messageType) => {
+    const matchingMessages = window.__sidebarNodeListMessages.filter((message) => message.type === messageType);
+    return matchingMessages[matchingMessages.length - 1];
+  }, type);
 }
 
 async function renderSidebarState(page, payload) {
@@ -244,7 +309,10 @@ async function renderSidebarState(page, payload) {
       groupRows: groupRows.map((row) => ({
         key: row.getAttribute('data-sidebar-node-group-key') || '',
         label: row.getAttribute('data-sidebar-node-group-label') || '',
-        virtualKind: row.getAttribute('data-sidebar-node-group-virtual-kind') || undefined
+        virtualKind: row.getAttribute('data-sidebar-node-group-virtual-kind') || undefined,
+        rootActionTypes: Array.from(row.querySelectorAll('[data-sidebar-root-action]'))
+          .map((action) => action.getAttribute('data-sidebar-root-action'))
+          .filter(Boolean)
       }))
     };
   });
