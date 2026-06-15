@@ -214,6 +214,10 @@ function canvasOverviewInertProps(disabled: boolean): React.HTMLAttributes<HTMLE
   return disabled ? overviewInertAttributes : {};
 }
 
+function shouldSelectExecutionNodeForTerminalSelection(terminal: Terminal): boolean {
+  return terminal.getSelection().length > 0 || terminal.textarea === document.activeElement;
+}
+
 function resolveSelectedGroupIds(state: Pick<LocalUiState, 'selectedGroupId' | 'selectedGroupIds'>): string[] {
   return state.selectedGroupIds ?? (state.selectedGroupId ? [state.selectedGroupId] : []);
 }
@@ -694,6 +698,7 @@ const EXECUTION_TERMINAL_INPUT_OUTPUT_YIELD_MS = 240;
 const EXECUTION_TERMINAL_LAG_RECOVERY_WINDOW_MS = 2000;
 const EXECUTION_TERMINAL_VISIBILITY_RESTORE_RECOVERY_MS = 3000;
 const EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER = 1;
+const EXECUTION_TERMINAL_HARD_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 1024 * 1024;
 const EXECUTION_TERMINAL_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 512 * 1024;
 const EXECUTION_TERMINAL_HIDDEN_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 128 * 1024;
 const EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS = 2000;
@@ -4647,7 +4652,11 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         data.onExecutionInput?.(id, 'agent', input, metadata)
       );
     });
-    const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
+    const selectionDisposable = terminal.onSelectionChange(() => {
+      if (shouldSelectExecutionNodeForTerminalSelection(terminal)) {
+        data.onSelectNode?.(id);
+      }
+    });
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
       terminalSizeRef.current = {
         cols,
@@ -5185,7 +5194,11 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
         data.onExecutionInput?.(id, 'terminal', input, metadata)
       )
     );
-    const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
+    const selectionDisposable = terminal.onSelectionChange(() => {
+      if (shouldSelectExecutionNodeForTerminalSelection(terminal)) {
+        data.onSelectNode?.(id);
+      }
+    });
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
       terminalSizeRef.current = {
         cols,
@@ -13005,6 +13018,12 @@ function maybeResetExecutionTerminalBacklogFromSnapshot(
   }
 
   const now = readPerformanceNow();
+  const pendingOutputLength = controller.getPendingOutputLength();
+  if (pendingOutputLength >= EXECUTION_TERMINAL_HARD_SNAPSHOT_RESET_BACKLOG_THRESHOLD) {
+    controller.resetBacklogForSnapshot('hard-backlog-snapshot-reset');
+    return;
+  }
+
   const recentLagOrRestore =
     now - lastExecutionMainThreadLagAtMs < EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS ||
     now - lastExecutionVisibilityRestoredAtMs < EXECUTION_TERMINAL_VISIBILITY_RESTORE_RECOVERY_MS ||
@@ -13016,7 +13035,6 @@ function maybeResetExecutionTerminalBacklogFromSnapshot(
   const resetThreshold = document.hidden
     ? EXECUTION_TERMINAL_HIDDEN_SNAPSHOT_RESET_BACKLOG_THRESHOLD
     : EXECUTION_TERMINAL_SNAPSHOT_RESET_BACKLOG_THRESHOLD;
-  const pendingOutputLength = controller.getPendingOutputLength();
   if (pendingOutputLength < resetThreshold) {
     return;
   }
