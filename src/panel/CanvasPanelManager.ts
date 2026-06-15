@@ -1792,9 +1792,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     await this.canvasTemplateStore.deleteUserTemplate(storedTemplate.filePath);
-    if (this.getDefaultCanvasTemplateId() === storedTemplate.template.id) {
-      await this.setDefaultCanvasTemplateById(DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID);
-    }
+    await this.reconcileDefaultCanvasTemplateId();
     this.notifyTemplateCatalogChanged();
   }
 
@@ -4536,7 +4534,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     try {
       const catalog = await this.getCanvasTemplateCatalog();
-      const defaultTemplateId = resolveEffectiveCanvasTemplateId(catalog.templates, this.getDefaultCanvasTemplateId());
+      const defaultTemplateId = await this.reconcileDefaultCanvasTemplateId(catalog);
       this.postMessage({
         type: 'host/templateCatalogUpdated',
         payload: {
@@ -4606,17 +4604,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async resolveDefaultCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
     const catalog = await this.getCanvasTemplateCatalog();
-    const preferredTemplateId = this.getDefaultCanvasTemplateId();
-    const storedTemplate =
-      findCanvasTemplateById(catalog.templates, preferredTemplateId) ??
-      findCanvasTemplateById(catalog.templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID) ??
-      catalog.templates[0];
+    const defaultTemplateId = await this.reconcileDefaultCanvasTemplateId(catalog);
+    return defaultTemplateId ? findCanvasTemplateById(catalog.templates, defaultTemplateId) : undefined;
+  }
 
-    if (storedTemplate && storedTemplate.template.id !== preferredTemplateId) {
-      await this.context.globalState.update(CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY, storedTemplate.template.id);
+  private async reconcileDefaultCanvasTemplateId(catalog?: CanvasTemplateCatalog): Promise<string | undefined> {
+    const resolvedCatalog = catalog ?? await this.getCanvasTemplateCatalog();
+    const preferredTemplateId = this.getDefaultCanvasTemplateId();
+    const defaultTemplateId = resolveEffectiveCanvasTemplateId(resolvedCatalog.templates, preferredTemplateId);
+
+    if (defaultTemplateId && defaultTemplateId !== preferredTemplateId) {
+      await this.context.globalState.update(CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY, defaultTemplateId);
     }
 
-    return storedTemplate;
+    return defaultTemplateId;
   }
 
   private async resolveFirstOpenCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {

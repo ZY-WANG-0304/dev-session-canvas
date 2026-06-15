@@ -10,18 +10,19 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.15.2 Highlights
+## 0.16.0 Highlights
 
-The public `0.15.2` release is a Preview patch focused on notification controls, Claude Agent reliability, and safer canvas external-link opening. It keeps the `0.15.1` canvas navigation and multi-root reliability patch, the `0.15.0` Claude Code Agent Fork, owner-derived file-activity grouping, Panel Webview lifecycle diagnostics, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
+The public `0.16.0` release is a Preview milestone focused on Codex / Claude Code Agent Fork, sidebar triage, multi-root orientation, and execution-terminal responsiveness. It keeps the `0.15.2` notification controls, Claude Agent `Ctrl-Z` containment, canvas external-link opening controls, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
 
-- `devSessionCanvas.notifications.enabledAttentionSignals` lets you decide which `BEL`, `OSC 9`, `OSC 777`, Agent abnormal-exit, and Codex abnormal-output signals can create canvas attention
-- Setting that allow-list to an empty array suppresses node attention, MiniMap flashing, and external notification bridging for all execution attention signals
-- Codex abnormal-output text notifications remain explicit opt-in through `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications=codex`, and the allow-list can still disable them independently
-- Codex final-failure detection now covers high-confidence final `Internal server error` and tail `stream disconnected before completion` messages while ignoring retry / reconnect progress output
-- Claude Agent `Ctrl-Z` is now blocked in the Webview, host, and runtime supervisor paths because the direct-spawn Agent has no shell `fg` job-control contract; use Stop, Restart, or Fork instead
-- Legacy `suspended` Agent snapshots still render safely but no longer expose restore actions or stale Fork entry points
-- `devSessionCanvas.canvas.linkOpenMode` lets canvas external links open in VS Code editor preview by default, or in the system browser / app when you choose `externalBrowser`
-- Localhost and loopback development-service links are resolved through VS Code port forwarding before editor preview, which keeps Remote SSH / Dev Container links pointed at the workspace-side service
+- Codex Agent nodes with a trusted session id can now fork into a new Agent through provider-native `codex fork <session-id>` semantics
+- Claude Code Agent Fork remains provider-native through `claude --resume <session-id> --fork-session`; current-node and history fork actions both create an editable `fork` edge for spatial context
+- Sidebar `Nodes` now promotes pending attention nodes; grouped mode adds a `Pending attention` virtual section while multi-root flat mode keeps root grouping intact
+- Sidebar `Session History` adds explicit restore and fork icon actions for current-workspace Codex / Claude Code sessions
+- Agent node headers split cwd from the last actual launch command, with long command subtitles available through hover instead of crowding the title row
+- Multi-root workspace root sections now show root-name body watermarks by default, with `devSessionCanvas.canvas.workspaceRootWatermarks.enabled` available to turn them off
+- Execution terminals improve multi-Agent input responsiveness with output drain budgets, input-first recovery, serialized snapshot hydration, and `outputSequence` recovery guards
+- File-link activation now falls back to workspace search on timeout / reject, and extensionless fallback paths are only broadened for explicit user clicks
+- Copy diagnostics now record xterm selection, mouse tracking, right-click copy, shortcut decisions, and OSC 52 observations without automatically bridging OSC 52 to the clipboard
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Core Capabilities
@@ -41,7 +42,7 @@ The public `0.15.2` release is a Preview patch focused on notification controls,
 - Use fit view and the MiniMap across the full canvas space, including nodes, user groups, and workspace-root sections
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
-- View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore a new `Agent` node from history
+- View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore or fork a new `Agent` node from history
 
 ## Best Fit
 
@@ -70,8 +71,8 @@ The public `0.15.2` release is a Preview patch focused on notification controls,
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.15.1` to `0.15.2` should use the public extension registry configured by the current host. Open VSX is publicly visible for compatible hosts; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, or `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, upgrading to `0.15.2` preserves that explicit choice
+- First-time installs and upgrades from `0.15.2` to `0.16.0` should use the public extension registry configured by the current host. Open VSX should publish the same version for compatible hosts; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, or `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, upgrading to `0.16.0` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -107,7 +108,7 @@ The public `0.15.2` release is a Preview patch focused on notification controls,
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.15.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.16.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
