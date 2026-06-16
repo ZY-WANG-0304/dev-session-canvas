@@ -10,8 +10,8 @@ import {
 
 assert.equal(
   EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
-  9,
-  'Execution performance diagnostics schema should mark input ack, host event-loop lag, bounded Webview snapshot reset and snapshot restore queue diagnostics.'
+  10,
+  'Execution performance diagnostics schema should mark host output scheduling, input ack post timing, bounded Webview snapshot reset and snapshot restore queue diagnostics.'
 );
 
 const hardwrapLinkText = 'src/webview/executionTerminalNativeInteractions.ts:1600:12';
@@ -390,13 +390,13 @@ assert.match(
 );
 assert.match(
   panelManagerSource,
-  /getCanvasStatePersistBarrierBeforeExecutionOutput[\s\S]*first-output-post[\s\S]*persisted: persistBarrier === undefined/u,
+  /getCanvasStatePersistBarrierBeforeExecutionOutput[\s\S]*first-output-post[\s\S]*const persisted = persistBarrier === undefined/u,
   'Expected first output after deferred state changes to be gated until the state snapshot is safely flushed.'
 );
 assert.match(
   panelManagerSource,
-  /source: 'host-input-received'[\s\S]*type: 'host\/executionInputAck'[\s\S]*hostAckEpochMs/u,
-  'Expected Host to ack execution input before the asynchronous input write path.'
+  /source: 'host-input-received'[\s\S]*type: 'host\/executionInputAck'[\s\S]*hostAckPostEpochMs/u,
+  'Expected Host to ack execution input before the asynchronous input write path and include ack post timing.'
 );
 assert.match(
   panelManagerSource,
@@ -697,6 +697,7 @@ const executionPerformanceDiagnosticMessage = {
     webviewEpochMs: 1781111111000,
     hostReceivedEpochMs: 1781111111042,
     hostAckEpochMs: 1781111111043,
+    hostAckPostEpochMs: 1781111111044,
     queueDelayMs: 42,
     characters: 4096,
     bytes: 4096,
@@ -746,6 +747,7 @@ assert.deepEqual(
       webviewEpochMs: undefined,
       hostReceivedEpochMs: undefined,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: undefined,
       requestId: undefined,
       executionSessionId: undefined,
@@ -793,6 +795,7 @@ assert.deepEqual(
       webviewEpochMs: undefined,
       hostReceivedEpochMs: undefined,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: undefined,
       requestId: 'snapshot-reset-1',
       executionSessionId: 'session-1',
@@ -824,6 +827,7 @@ assert.deepEqual(
       webviewEpochMs: 1781111111000,
       hostReceivedEpochMs: 1781111111180,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: 180,
       requestId: undefined,
       executionSessionId: undefined,
@@ -844,6 +848,7 @@ assert.deepEqual(
       webviewEpochMs: 1781111111000,
       hostReceivedEpochMs: 1781111111180,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: 180,
       requestId: undefined,
       executionSessionId: undefined,
@@ -876,6 +881,7 @@ assert.deepEqual(
       webviewEpochMs: 1781111111000,
       hostReceivedEpochMs: 1781111111280,
       hostAckEpochMs: 1781111111281,
+      hostAckPostEpochMs: 1781111111282,
       queueDelayMs: 280,
       requestId: undefined,
       executionSessionId: undefined,
@@ -896,6 +902,7 @@ assert.deepEqual(
       webviewEpochMs: 1781111111000,
       hostReceivedEpochMs: 1781111111280,
       hostAckEpochMs: 1781111111281,
+      hostAckPostEpochMs: 1781111111282,
       queueDelayMs: 280,
       requestId: undefined,
       executionSessionId: undefined,
@@ -938,6 +945,7 @@ assert.deepEqual(
       webviewEpochMs: undefined,
       hostReceivedEpochMs: undefined,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: undefined,
       requestId: undefined,
       executionSessionId: undefined,
@@ -982,6 +990,7 @@ assert.deepEqual(
       webviewEpochMs: undefined,
       hostReceivedEpochMs: undefined,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: undefined,
       requestId: undefined,
       executionSessionId: undefined,
@@ -1023,6 +1032,7 @@ assert.deepEqual(
       webviewEpochMs: undefined,
       hostReceivedEpochMs: undefined,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: undefined,
       requestId: undefined,
       executionSessionId: undefined,
@@ -1067,6 +1077,7 @@ assert.deepEqual(
       webviewEpochMs: undefined,
       hostReceivedEpochMs: undefined,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: undefined,
       requestId: undefined,
       executionSessionId: undefined,
@@ -1079,6 +1090,57 @@ assert.deepEqual(
       queuedWriteCount: undefined,
       bufferLength: undefined,
       pendingOutputLength: undefined,
+      owner: undefined,
+      lifecycleStatus: undefined,
+      workspaceStateMode: undefined,
+      success: true
+    }
+  }
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-output-scheduler',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      reason: 'input-priority',
+      durationMs: 4,
+      characters: 8192,
+      bytes: 8192,
+      controllerCount: 4,
+      flushedControllerCount: 1,
+      pendingControllerCount: 3,
+      queuedWriteCount: 3,
+      pendingOutputLength: 65536,
+      success: true
+    }
+  }),
+  {
+    type: 'webview/executionPerformanceDiagnostic',
+    payload: {
+      source: 'host-output-scheduler',
+      nodeId: 'agent-1',
+      kind: 'agent',
+      reason: 'input-priority',
+      sequence: undefined,
+      durationMs: 4,
+      webviewEpochMs: undefined,
+      hostReceivedEpochMs: undefined,
+      hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
+      queueDelayMs: undefined,
+      requestId: undefined,
+      executionSessionId: undefined,
+      characters: 8192,
+      bytes: 8192,
+      controllerCount: 4,
+      flushedControllerCount: 1,
+      pendingControllerCount: 3,
+      queuedSnapshotCount: undefined,
+      queuedWriteCount: 3,
+      bufferLength: undefined,
+      pendingOutputLength: 65536,
       owner: undefined,
       lifecycleStatus: undefined,
       workspaceStateMode: undefined,
@@ -1109,6 +1171,7 @@ assert.deepEqual(
       webviewEpochMs: undefined,
       hostReceivedEpochMs: undefined,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: undefined,
       requestId: undefined,
       executionSessionId: undefined,
@@ -1153,6 +1216,7 @@ assert.deepEqual(
       webviewEpochMs: undefined,
       hostReceivedEpochMs: undefined,
       hostAckEpochMs: undefined,
+      hostAckPostEpochMs: undefined,
       queueDelayMs: undefined,
       requestId: undefined,
       executionSessionId: undefined,

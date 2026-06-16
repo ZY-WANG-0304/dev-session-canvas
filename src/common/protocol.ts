@@ -13,7 +13,7 @@ export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
 export type CanvasGroupDeleteMode = 'delete-members' | 'keep-members';
 export type ExecutionNodeKind = 'agent' | 'terminal';
-export const EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION = 9;
+export const EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION = 10;
 export const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
 export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
@@ -503,6 +503,7 @@ export type ExecutionPerformanceDiagnosticSource =
   | 'host-input-received'
   | 'host-input-write'
   | 'host-output-chunk'
+  | 'host-output-scheduler'
   | 'host-output-post'
   | 'host-state-persist';
 
@@ -518,6 +519,7 @@ export interface ExecutionPerformanceDiagnosticPayload {
   webviewEpochMs?: number;
   hostReceivedEpochMs?: number;
   hostAckEpochMs?: number;
+  hostAckPostEpochMs?: number;
   queueDelayMs?: number;
   requestId?: string;
   executionSessionId?: string;
@@ -1130,7 +1132,12 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         webviewPerformanceNowMs?: number;
         hostReceivedEpochMs: number;
         hostAckEpochMs: number;
+        hostAckPostEpochMs?: number;
         queueDelayMs?: number;
+        controllerCount?: number;
+        pendingControllerCount?: number;
+        queuedWriteCount?: number;
+        pendingOutputLength?: number;
       };
     }
   | {
@@ -2356,6 +2363,7 @@ function normalizeExecutionPerformanceDiagnosticPayload(
     webviewEpochMs: normalizeNonNegativeFiniteNumber(value.webviewEpochMs),
     hostReceivedEpochMs: normalizeNonNegativeFiniteNumber(value.hostReceivedEpochMs),
     hostAckEpochMs: normalizeNonNegativeFiniteNumber(value.hostAckEpochMs),
+    hostAckPostEpochMs: normalizeNonNegativeFiniteNumber(value.hostAckPostEpochMs),
     queueDelayMs: normalizeNonNegativeFiniteNumber(value.queueDelayMs),
     requestId: typeof value.requestId === 'string' ? value.requestId : undefined,
     executionSessionId: typeof value.executionSessionId === 'string' ? value.executionSessionId : undefined,
@@ -2391,6 +2399,7 @@ function isExecutionPerformanceDiagnosticSource(
     value === 'host-input-received' ||
     value === 'host-input-write' ||
     value === 'host-output-chunk' ||
+    value === 'host-output-scheduler' ||
     value === 'host-output-post' ||
     value === 'host-state-persist'
   );
