@@ -43,6 +43,7 @@
 - [x] (2026-06-15 02:35 +0800) 实现第十一轮修复：Host / runtime supervisor 持久化并传递 `outputSequence`，live-runtime attach 时用 metadata floor 保持序号单调；Webview 的 reset attach request 额外携带 `executionSessionId` 与 `minOutputSequence`，Host 在同一 session 快照前对齐最小边界，避免低序号 stale snapshot 造成无限重试。
 - [x] (2026-06-15 02:52 +0800) 纠正验收记录：`200ms` 以内来自上一轮诊断指标解读，不是用户手动验证数据；本轮仍需要以修复后新诊断或明确手动反馈作为最终验收依据。
 - [x] (2026-06-15 22:07 +0800) 收口 clipboard/selection 诊断噪音：snapshot restore 的 `terminal.reset()` / `terminal.write(snapshot)` 期间只抑制明确由恢复过程触发的 `selectionChange`、`mouseTrackingMode` 和 `OSC 52` 诊断，并以 `restoreSuppressed` 聚合上报；不做空选区去重/节流，避免隐藏真实用户选择或复制现场。
+- [x] (2026-06-16 01:54 +0800) 实现第十二轮 Host 输出投递调度：`host/executionOutput` 进入 Host 侧 scheduler 后按 16ms tick 分批投递，最近输入节点在 300ms 窗口内优先，非输入节点最多等待 750ms；`host/executionInputAck` 继续绕过输出队列直接投递，并携带 ACK post 时间和 scheduler backlog 状态。
 
 ## 意外与发现
 
@@ -143,6 +144,9 @@
 
 - 观察：这是“Webview reset 边界已经正确，但 Host 重新附着 / 恢复后的序号没有单调延续”的 correctness 边界，而不是继续降低 Webview backlog 阈值能解决的问题。
   证据：同一诊断中 `agent-1` 的 snapshot 序号为 14865..15032，可正常完成 hidden reset；问题节点均是 live-runtime 会话，snapshot/output 还保持同一 session id，但 Host 侧 `ManagedExecutionSessionBase.outputSequence` 曾在 session 构造路径中从 0 开始。
+
+- 观察：`2026-06-15T09-00-14-651Z` 诊断显示 ACK 仍可能被 Host→Webview output flood 挤在 Webview 消息队列后面，不能只继续收紧 Webview drain。
+  证据：该轮 `host-input-received.queueDelayMs` p50 约 17ms、p95 约 85ms，Host 收到输入后立即生成 ACK；但 Webview 视角 `webview-input-ack.durationMs` p50 约 1091ms、max 约 2625ms，期间 retained host messages 中存在大量 `host/executionOutput`。
 
 ## 决策记录
 
@@ -251,6 +255,14 @@
   理由：空选区事件本身也可能是用户真实选择、焦点或 TUI mouse tracking 问题的证据；但 `terminal.reset()` / snapshot replay 期间的 `selectionChange`、`mouseTrackingMode` 和 `OSC 52` 明确来自恢复过程，原样上报会把诊断误导成用户大量选择/复制。
   日期/作者：2026-06-15 / Codex
 
+- 决策：Host→Webview 的 execution output 也必须经过分批 scheduler；输入 ACK、error、state/snapshot/exit 等控制消息不进入该输出队列。
+  理由：上一轮诊断证明 Host 已快速处理输入并立即 ACK，但 ACK 在 Webview 侧仍被 output flood 排在后面。继续只收 Webview drain 会让输出越来越滞后，却不能保证控制消息先到达；Host 侧先分批 post output，才能让 ACK/control message 不和大批 output 共享同一突发。
+  日期/作者：2026-06-16 / Codex
+
+- 决策：输入后的 Host 输出优先级只偏向“最近输入节点”，但非输入节点设置最大延迟上限。
+  理由：用户刚输入的节点需要尽快看到真实 PTY / supervisor 回显；其他 Agent 的输出可以短暂让步，但不能永久被持续输入饿死，否则用户会误以为后台 Agent 停止运行。
+  日期/作者：2026-06-16 / Codex
+
 ## 结果与复盘
 
 当前计划的第一轮实现已完成。新增协议字段让 `webview/executionInput` 携带 `sequence`、`webviewEpochMs` 与 `webviewPerformanceNowMs`；Webview、Host received、Host write 三类样本可以用同一 sequence 串起来。Webview 侧还新增 `webview-main-thread-lag`，用于捕捉输入回调触发前的整体主线程停顿；Host 侧新增 `host-state-persist`，用于判断高频持久化是否参与卡顿。
@@ -282,6 +294,8 @@ file-link 方面，第八轮保持“懒解析退出热路径”的大方向，�
 
 2026-06-15 晚间补充收口 clipboard/selection 诊断噪音。该变更不改变输入输出反馈、不增加本地 echo，也不改变 snapshot hydrate 的正确性边界；它只让 restore 期间的 xterm 内部 selection / mouse tracking / OSC 52 事件不再以原始用户诊断形式淹没 retained window，同时通过 `restoreSuppressed` 保留“恢复期间确实发生过多少被抑制事件”的聚合证据。后续看宿主诊断时，应预期 `executionClipboardSummary.bySource.selectionChange` 不再因为 panel restore 暴涨；若 restore 期间有副作用，会转为少量 `restoreSuppressed`。
 
+第十二轮针对 `2026-06-15T09-00-14-651Z` 诊断继续收敛 Host→Webview 消息突发。Host 侧新增 execution output scheduler，普通 `host/executionOutput` 先按节点合并进入 scheduler，再以 16ms tick、每轮最多 3 个节点的节奏投递；用户输入后的 300ms 内，最近输入节点优先，其他节点只在等待超过 750ms 后每轮释放一个，避免饥饿。`host/executionInputAck` 不进入 scheduler，仍在 Host 收到输入后直接向同一 surface post；ACK payload 增加 `hostAckPostEpochMs`、`pendingOutputLength`、`queuedWriteCount` 和 pending controller 数，Webview 的 `webview-input-ack` 继续以自身 `performance.now()` 往返为准，不再把跨时钟 `queueDelayMs` 当作唯一可信指标。诊断 schema 提升到 10，并新增 `host-output-scheduler` source。
+
 ## 上下文与定向
 
 `src/webview/main.tsx` 是画布 Webview 的主要入口。执行节点用 `new Terminal(...)` 创建 xterm 实例，`terminal.onData(...)` 在用户输入时调用 `data.onExecutionInput`，再由 `postMessage` 发出 `webview/executionInput`。同一文件里的 `queueExecutionTerminalOutput`、`scheduleExecutionTerminalDrain` 和 `createExecutionTerminalController` 负责把 Host 输出写入 xterm。
@@ -311,6 +325,8 @@ file-link 方面，第八轮保持“懒解析退出热路径”的大方向，�
 第八步处理第七轮诊断暴露出的 snapshot reset 等待队列。`src/common/protocol.ts` 把 execution performance schema 提升到 8，并让 `webview/attachExecutionSession`、`host/executionSnapshot`、`host/executionOutput` 携带可选 `requestId` / `executionSessionId`。`src/panel/CanvasPanelManager.ts` 在 attach request 到 snapshot response 之间透传 `requestId`，在 snapshot/output 中附带当前 session id。`src/webview/main.tsx` 在 reset 时记录 request id，设置 1.5s timeout watchdog，超时则重发 attach；等待 snapshot 期间的 deferred output 超过 256KB 时，丢弃暂存 tail、把 reset 边界推进到最新 output sequence，并重新请求 Host snapshot。诊断只按 128KB 或 1 秒采样 deferred 增长，避免逐 chunk 挤掉关键事件。
 
 第九步处理第十轮诊断暴露出的 hidden raw backlog 恢复成本。`src/webview/main.tsx` 中的 `maybeResetExecutionTerminalBacklogFromSnapshot` 保持“只有 Host outputSequence 可用、且处于 hidden / lag / visibility restore 窗口才触发 reset”的正确性边界，但将 threshold 拆成 visible 512KB 和 hidden 128KB 两档。测试只验证用户可见行为：在 harness 里把 `document.hidden` 临时置为 true，发送 160KB sequenced output，预期 Webview 立即发出带 `snapshot-reset-*` request id 的 attach request，并记录 `hidden-backlog-snapshot-reset`。
+
+第十二步处理 Host→Webview output flood 抢占 ACK 的问题。`src/common/executionOutputScheduler.ts` 提供纯函数 `selectExecutionOutputSchedulerEntries`，用行为测试证明输入节点优先、普通 FIFO、非输入节点最大等待上限和短窗口 defer。`src/panel/CanvasPanelManager.ts` 保留原每 session 32ms output coalescing 作为 producer，但把普通 persisted output 转入 Host scheduler；first-output `persisted: false`、生命周期边界 flush、snapshot 前清队列和 dispose 仍保持立即或清理语义。`src/common/protocol.ts` 把诊断 schema 提升到 10，新增 `host-output-scheduler` source 与 `hostAckPostEpochMs`，`src/webview/main.tsx` 在 `webview-input-ack` 样本中保留 ACK post 和 Host scheduler backlog 字段。
 
 ## 具体步骤
 
@@ -342,9 +358,11 @@ file-link 方面，第八轮保持“懒解析退出热路径”的大方向，�
 
 如果 input ack 与 Host event-loop lag 插桩生效，新的现场诊断中 `diagnosticsSchema.executionPerformance` 应为 6，并出现 `webview-input-ack` 样本。若 `webview-input-ack.durationMs` 约等于 `host-input-received.queueDelayMs`，而 `host-event-loop-lag` 没有对应 120ms 以上样本，则剩余 300ms 更像 Webview bridge / 远端宿主调度或跨进程时钟问题；若两者同时出现，则继续追 Extension Host 长任务。无论哪种情况，终端都不应出现 Host 写入前的本地 echo。
 
-如果 bounded snapshot reset 与 snapshot hydrate 调度生效，新的现场诊断中 `diagnosticsSchema.executionPerformance` 应为 9。一次 reset 应能看到 `snapshot-reset-requested`，随后看到 `snapshot-reset-applied`；如果 Host 或 bridge 卡住，最多先出现 `snapshot-reset-timeout` 并重试，而不是长期只有 `output-deferred-until-snapshot-reset`。等待 snapshot 期间 `pendingOutputLength` 不应再增长到 MB 级；超过 256KB 时应出现 `deferred-output-budget-reset` 并重新请求 snapshot。panel restore 期间普通 attach snapshot 不应再按节点数翻倍，`webview-snapshot-restore-queue` 应显示 snapshot hydrate 串行开始，最近输入节点优先。
+如果 bounded snapshot reset 与 snapshot hydrate 调度生效，新的现场诊断中 `diagnosticsSchema.executionPerformance` 应至少为 9。一次 reset 应能看到 `snapshot-reset-requested`，随后看到 `snapshot-reset-applied`；如果 Host 或 bridge 卡住，最多先出现 `snapshot-reset-timeout` 并重试，而不是长期只有 `output-deferred-until-snapshot-reset`。等待 snapshot 期间 `pendingOutputLength` 不应再增长到 MB 级；超过 256KB 时应出现 `deferred-output-budget-reset` 并重新请求 snapshot。panel restore 期间普通 attach snapshot 不应再按节点数翻倍，`webview-snapshot-restore-queue` 应显示 snapshot hydrate 串行开始，最近输入节点优先。
 
 如果 hidden backlog 提前 reset 生效，后台期间不应再等单节点 raw pending output 达到 512KB 才请求 snapshot。自动化回归 `requests hidden snapshot reset before visible backlog threshold` 发送 160KB output 即应看到 `hidden-backlog-snapshot-reset`；新的现场诊断中，hidden-paused 的总 `pendingOutputLength` 可以因多个节点同时输出而短暂上升，但不应再稳定累积到约 1MB 后才触发第一次 snapshot reset。若仍出现总量很高，需要继续判断是单节点阈值不够低，还是多个节点各自低于阈值但总体节点数过多。
+
+如果 Host output scheduler 生效，新的现场诊断中 `diagnosticsSchema.executionPerformance` 应为 10。`host/executionInputAck` 的 retained host message detail 应包含 `hostAckPostEpochMs` 和 scheduler backlog；`webview-input-ack.durationMs` 仍是判断用户可感知 ACK 往返的主指标，`host-input-received.queueDelayMs` 只作为跨时钟参考。高输出压力下应能看到少量 `host-output-scheduler` 样本，reason 可能为 `input-priority` 或 `input-window-defer-expired`；若 ACK 仍慢，应优先比较 ACK 时的 `pendingOutputLength`、`queuedWriteCount` 与 Webview 侧 `webview-terminal-drain` / `webview-main-thread-lag`。
 
 ## 幂等性与恢复
 
@@ -619,7 +637,7 @@ file-link 方面，第八轮保持“懒解析退出热路径”的大方向，�
 
 `src/common/protocol.ts` 必须继续作为唯一消息 validator；新增字段只能是可选字段。`src/webview/main.tsx` 中 `CanvasData` / `CanvasDataProvider` 的 `onExecutionInput` 签名需要扩展为接收诊断 metadata，但调用方可以不传。`src/panel/CanvasPanelManager.ts` 的 `writeExecutionInput` 可以增加第四个可选参数，例如 `{ sequence, webviewEpochMs, webviewPerformanceNowMs, hostReceivedEpochMs }`。所有诊断字段都必须是数字、布尔、短字符串或现有枚举，不能写入完整终端输入内容。
 
-`src/common/protocol.ts` 中 `EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION` 当前为 9，表示诊断已经包含 active execution session 期间跳过 `workspaceState.update`、Webview/Host backlog scheduling、input ack 往返测量、Host event-loop lag generation、Webview backlog snapshot reset，以及 reset request/applied/timeout、deferred-output budget 与 Webview snapshot restore queue 诊断。`host/executionOutput.payload.persisted` 是可选布尔值：旧消息缺省按已持久化处理；`false` 表示 Webview 必须缓冲输出，直到同一节点收到后续 `persisted: true` 输出释放。`host/executionOutput.payload.outputSequence` 与 `host/executionSnapshot.payload.outputSequence` 是可选单调序号，用来让 Webview 在 snapshot reset 期间丢弃 reset 边界前的旧 output，并把 reset 后的新 output 暂存在 snapshot 之后重放；旧消息缺少序号时不触发 backlog snapshot reset。`webview/attachExecutionSession.payload.requestId`、`host/executionSnapshot.payload.requestId` 和 `host/executionSnapshot|host/executionOutput.payload.executionSessionId` 都是可选字段，只用于 reset 关联、会话切换判断和诊断，不改变旧消息兼容性。`webview/attachExecutionSession.payload.executionSessionId` 与 `minOutputSequence` 也是可选字段，只允许 Host 在同一 live session 下把 snapshot 序号对齐到 Webview 已观察过的最小边界，避免 live-runtime reattach 或旧 supervisor registry 让 `outputSequence` 回退后进入 stale snapshot reset 循环；它不表示可见内容，也不能用来伪造新 output。`host/executionInputAck` 只携带 sequence、时间戳和 queue delay，用于诊断消息桥往返，不表示输入已经写入 PTY，也不能触发本地 echo。`src/panel/CanvasPanelManager.ts` 中 `CanvasStatePersistMode` 只能是 `immediate` 或 `deferred`，`CanvasWorkspaceStatePersistMode` 只能是 `full` 或 `skip`；live execution state 默认使用 `deferred + skip`，普通 `persistState()` 在有活跃执行会话时也默认 `skip`，但主快照文件仍同步写出。
+`src/common/protocol.ts` 中 `EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION` 当前为 10，表示诊断已经包含 active execution session 期间跳过 `workspaceState.update`、Webview/Host backlog scheduling、input ack 往返测量、Host event-loop lag generation、Host output scheduler、Webview backlog snapshot reset，以及 reset request/applied/timeout、deferred-output budget 与 Webview snapshot restore queue 诊断。`host/executionOutput.payload.persisted` 是可选布尔值：旧消息缺省按已持久化处理；`false` 表示 Webview 必须缓冲输出，直到同一节点收到后续 `persisted: true` 输出释放。`host/executionOutput.payload.outputSequence` 与 `host/executionSnapshot.payload.outputSequence` 是可选单调序号，用来让 Webview 在 snapshot reset 期间丢弃 reset 边界前的旧 output，并把 reset 后的新 output 暂存在 snapshot 之后重放；旧消息缺少序号时不触发 backlog snapshot reset。`webview/attachExecutionSession.payload.requestId`、`host/executionSnapshot.payload.requestId` 和 `host/executionSnapshot|host/executionOutput.payload.executionSessionId` 都是可选字段，只用于 reset 关联、会话切换判断和诊断，不改变旧消息兼容性。`webview/attachExecutionSession.payload.executionSessionId` 与 `minOutputSequence` 也是可选字段，只允许 Host 在同一 live session 下把 snapshot 序号对齐到 Webview 已观察过的最小边界，避免 live-runtime reattach 或旧 supervisor registry 让 `outputSequence` 回退后进入 stale snapshot reset 循环；它不表示可见内容，也不能用来伪造新 output。`host/executionInputAck` 携带 sequence、时间戳、Host ACK post 时间和 Host output scheduler backlog，用于诊断消息桥往返，不表示输入已经写入 PTY，也不能触发本地 echo。`src/panel/CanvasPanelManager.ts` 中 `CanvasStatePersistMode` 只能是 `immediate` 或 `deferred`，`CanvasWorkspaceStatePersistMode` 只能是 `full` 或 `skip`；live execution state 默认使用 `deferred + skip`，普通 `persistState()` 在有活跃执行会话时也默认 `skip`，但主快照文件仍同步写出。
 
 最后更新说明：2026-06-11 创建本计划，原因是最新诊断已排除 file-link resolver 热路径，但用户仍感受到明显输入卡顿，需要用端到端插桩和交互优先输出预算继续收敛。
 
@@ -648,3 +666,5 @@ file-link 方面，第八轮保持“懒解析退出热路径”的大方向，�
 最后更新说明：2026-06-15 根据 `2026-06-14T17-23-57-416Z` 现场诊断补充第十一轮 outputSequence 单调性修复；原因是输入 ack 和 hidden reset 已健康，但 live-runtime snapshot 序号回退到 1/2，导致两个 Agent 节点持续 stale snapshot reset timeout/retry。
 
 最后更新说明：2026-06-15 根据 `2026-06-15T09-00-14-651Z` 现场诊断补充 snapshot restore clipboard 诊断抑制；原因是 211 条 clipboard/selection 诊断主要来自 xterm restore 副作用，而用户明确要求不能通过空选区去重/节流隐藏真实诊断。
+
+最后更新说明：2026-06-16 根据 `2026-06-15T09-00-14-651Z` 输入 ACK 被 output flood 延迟的现场诊断补充 Host output scheduler；原因是 Host 已能快速收到输入并生成 ACK，但 ACK 仍会在 Webview 消息队列中排在大量 `host/executionOutput` 后面，必须让 Host 侧输出投递也遵循交互优先和分批预算。
