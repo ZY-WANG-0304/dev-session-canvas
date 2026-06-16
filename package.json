@@ -203,9 +203,14 @@
         "icon": "$(worktree)"
       },
       {
-        "command": "devSessionCanvas.removeWorkspaceRoot",
-        "title": "%command.removeWorkspaceRoot.title%",
+        "command": "devSessionCanvas.removeFolderFromWorkspace",
+        "title": "%command.removeFolderFromWorkspace.title%",
         "icon": "$(close)"
+      },
+      {
+        "command": "devSessionCanvas.removeWorktreeFromWorkspace",
+        "title": "%command.removeWorktreeFromWorkspace.title%",
+        "icon": "$(trash)"
       },
       {
         "command": "devSessionCanvas.createTerminalFromExplorerResource",
@@ -333,7 +338,11 @@
           "when": "false"
         },
         {
-          "command": "devSessionCanvas.removeWorkspaceRoot",
+          "command": "devSessionCanvas.removeFolderFromWorkspace",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.removeWorktreeFromWorkspace",
           "when": "false"
         },
         {

@@ -54,8 +54,8 @@ export interface SidebarNodeListTestGroupRowSnapshot {
   label: string;
   expanded: boolean;
   depth: number;
-  rootActionTypes: string[];
-  rootActionIconClasses: string[];
+  folderActionTypes: string[];
+  folderActionIconClasses: string[];
 }
 
 export type SidebarNodeListTestAction =
@@ -82,11 +82,15 @@ type SidebarNodeListInboundMessage =
     }
   | {
       type: 'sidebarNodeList/createWorktreeForRoot';
-      payload: SidebarWorkspaceRootActionPayload;
+      payload: SidebarWorkspaceFolderActionPayload;
     }
   | {
-      type: 'sidebarNodeList/removeWorkspaceRoot';
-      payload: SidebarWorkspaceRootActionPayload;
+      type: 'sidebarNodeList/removeFolderFromWorkspace';
+      payload: SidebarWorkspaceFolderActionPayload;
+    }
+  | {
+      type: 'sidebarNodeList/removeWorktreeFromWorkspace';
+      payload: SidebarWorkspaceFolderActionPayload;
     }
   | {
       type: 'sidebarNodeList/testActionResult';
@@ -97,7 +101,7 @@ type SidebarNodeListInboundMessage =
       };
     };
 
-interface SidebarWorkspaceRootActionPayload {
+interface SidebarWorkspaceFolderActionPayload {
   rootPath: string;
   groupId?: string;
 }
@@ -357,9 +361,16 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
           parsed.payload.groupId
         );
         return;
-      case 'sidebarNodeList/removeWorkspaceRoot':
+      case 'sidebarNodeList/removeFolderFromWorkspace':
         await vscode.commands.executeCommand(
-          COMMAND_IDS.removeWorkspaceRoot,
+          COMMAND_IDS.removeFolderFromWorkspace,
+          parsed.payload.rootPath,
+          parsed.payload.groupId
+        );
+        return;
+      case 'sidebarNodeList/removeWorktreeFromWorkspace':
+        await vscode.commands.executeCommand(
+          COMMAND_IDS.removeWorktreeFromWorkspace,
           parsed.payload.rootPath,
           parsed.payload.groupId
         );
@@ -566,8 +577,9 @@ function parseSidebarNodeListMessage(message: unknown): SidebarNodeListInboundMe
       };
     }
     case 'sidebarNodeList/createWorktreeForRoot':
-    case 'sidebarNodeList/removeWorkspaceRoot': {
-      const payload = parseSidebarWorkspaceRootActionPayload('payload' in message ? message.payload : undefined);
+    case 'sidebarNodeList/removeFolderFromWorkspace':
+    case 'sidebarNodeList/removeWorktreeFromWorkspace': {
+      const payload = parseSidebarWorkspaceFolderActionPayload('payload' in message ? message.payload : undefined);
       if (!payload) {
         return null;
       }
@@ -608,7 +620,7 @@ function parseSidebarNodeListMessage(message: unknown): SidebarNodeListInboundMe
   }
 }
 
-function parseSidebarWorkspaceRootActionPayload(value: unknown): SidebarWorkspaceRootActionPayload | null {
+function parseSidebarWorkspaceFolderActionPayload(value: unknown): SidebarWorkspaceFolderActionPayload | null {
   if (!value || typeof value !== 'object') {
     return null;
   }
@@ -674,13 +686,13 @@ function parseSidebarNodeListTestGroupRowSnapshot(value: unknown): SidebarNodeLi
   const label = 'label' in value && typeof value.label === 'string' ? value.label : null;
   const expanded = 'expanded' in value && typeof value.expanded === 'boolean' ? value.expanded : null;
   const depth = 'depth' in value && typeof value.depth === 'number' ? value.depth : null;
-  const rootActionTypes =
-    'rootActionTypes' in value && Array.isArray(value.rootActionTypes)
-      ? value.rootActionTypes.filter((actionType): actionType is string => typeof actionType === 'string')
+  const folderActionTypes =
+    'folderActionTypes' in value && Array.isArray(value.folderActionTypes)
+      ? value.folderActionTypes.filter((actionType): actionType is string => typeof actionType === 'string')
       : [];
-  const rootActionIconClasses =
-    'rootActionIconClasses' in value && Array.isArray(value.rootActionIconClasses)
-      ? value.rootActionIconClasses.filter((iconClass): iconClass is string => typeof iconClass === 'string')
+  const folderActionIconClasses =
+    'folderActionIconClasses' in value && Array.isArray(value.folderActionIconClasses)
+      ? value.folderActionIconClasses.filter((iconClass): iconClass is string => typeof iconClass === 'string')
       : [];
   if (key === null || label === null || expanded === null || depth === null) {
     return null;
@@ -691,8 +703,8 @@ function parseSidebarNodeListTestGroupRowSnapshot(value: unknown): SidebarNodeLi
     label,
     expanded,
     depth,
-    rootActionTypes,
-    rootActionIconClasses
+    folderActionTypes,
+    folderActionIconClasses
   };
 }
 
@@ -834,7 +846,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         font-size: 11px;
       }
 
-      .node-group-actions {
+      .node-group-folder-actions {
         flex: 0 0 auto;
         display: inline-flex;
         align-items: center;
@@ -842,7 +854,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         margin-left: 4px;
       }
 
-      .node-group-action {
+      .node-group-folder-action {
         width: 20px;
         height: 20px;
         padding: 0;
@@ -857,16 +869,16 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         cursor: pointer;
       }
 
-      .node-group-action:hover {
+      .node-group-folder-action:hover {
         background: color-mix(in srgb, var(--list-hover) 82%, var(--fg) 8%);
         color: var(--row-fg);
       }
 
-      .node-group-action.is-danger:hover {
+      .node-group-folder-action.is-danger:hover {
         color: var(--vscode-errorForeground, var(--row-fg));
       }
 
-      .node-group-action:focus-visible {
+      .node-group-folder-action:focus-visible {
         outline: 1px solid var(--focus);
         outline-offset: -1px;
       }
@@ -1220,12 +1232,12 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
             label: row.getAttribute('data-sidebar-node-group-label') || '',
             expanded: row.getAttribute('aria-expanded') === 'true',
             depth: Number(row.getAttribute('data-sidebar-node-group-depth') || '0'),
-            rootActionTypes: Array.from(
-              row.querySelectorAll('[data-sidebar-root-action]')
-            ).map((action) => action.getAttribute('data-sidebar-root-action')).filter(Boolean),
-            rootActionIconClasses: Array.from(
-              row.querySelectorAll('[data-sidebar-root-action]')
-            ).map((action) => action.getAttribute('data-sidebar-root-action-icon')).filter(Boolean)
+            folderActionTypes: Array.from(
+              row.querySelectorAll('[data-sidebar-folder-action]')
+            ).map((action) => action.getAttribute('data-sidebar-folder-action')).filter(Boolean),
+            folderActionIconClasses: Array.from(
+              row.querySelectorAll('[data-sidebar-folder-action]')
+            ).map((action) => action.getAttribute('data-sidebar-folder-action-icon')).filter(Boolean)
           }))
         };
       }
@@ -1415,16 +1427,16 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
       function renderGroupRow(options) {
         const row = document.createElement('div');
         const isExpanded = !state.collapsedGroupKeys.has(options.key);
-        const isWorkspaceRoot = typeof options.workspaceRootPath === 'string' && options.workspaceRootPath.trim().length > 0;
+        const isWorkspaceFolder = typeof options.workspaceRootPath === 'string' && options.workspaceRootPath.trim().length > 0;
         row.className = 'node-group-row';
         row.tabIndex = 0;
-        row.title = isWorkspaceRoot ? options.label + '\\n' + options.workspaceRootPath : options.label;
+        row.title = isWorkspaceFolder ? options.label + '\\n' + options.workspaceRootPath : options.label;
         row.style.paddingLeft = String(4 + options.depth * 14) + 'px';
         row.setAttribute('data-sidebar-node-group-key', options.key);
         row.setAttribute('data-sidebar-node-group-label', options.label);
         row.setAttribute('data-sidebar-node-group-depth', String(options.depth));
-        if (isWorkspaceRoot) {
-          row.setAttribute('data-sidebar-workspace-root-path', options.workspaceRootPath);
+        if (isWorkspaceFolder) {
+          row.setAttribute('data-sidebar-workspace-folder-path', options.workspaceRootPath);
         }
         if (options.virtualKind) {
           row.setAttribute('data-sidebar-node-group-virtual-kind', options.virtualKind);
@@ -1455,8 +1467,8 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         const children = options.leadingIconClass
           ? [twistie, leadingIcon, title, count]
           : [twistie, title, count];
-        if (isWorkspaceRoot) {
-          const actions = renderWorkspaceRootActions(options.key, options.workspaceRootPath);
+        if (isWorkspaceFolder) {
+          const actions = renderWorkspaceFolderActions(options.key, options.workspaceRootPath);
           children.push(actions);
         }
 
@@ -1471,14 +1483,14 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         list.append(row);
       }
 
-      function renderWorkspaceRootActions(groupKey, rootPath) {
+      function renderWorkspaceFolderActions(groupKey, rootPath) {
         const actions = document.createElement('span');
-        actions.className = 'node-group-actions';
+        actions.className = 'node-group-folder-actions';
 
-        const worktreeButton = createWorkspaceRootActionButton({
+        const worktreeButton = createWorkspaceFolderActionButton({
           action: 'createWorktree',
           iconClass: 'codicon-worktree',
-          label: '为此 root 新建 worktree',
+          label: '为此 folder 新建 worktree 并加入 workspace',
           danger: false,
           onClick: () => {
             vscode.postMessage({
@@ -1491,14 +1503,14 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
           }
         });
 
-        const removeButton = createWorkspaceRootActionButton({
-          action: 'removeRoot',
+        const removeButton = createWorkspaceFolderActionButton({
+          action: 'removeFolder',
           iconClass: 'codicon-close',
-          label: '从 workspace 移除此 root',
+          label: '从 workspace 移除此 folder',
           danger: true,
           onClick: () => {
             vscode.postMessage({
-              type: 'sidebarNodeList/removeWorkspaceRoot',
+              type: 'sidebarNodeList/removeFolderFromWorkspace',
               payload: {
                 rootPath,
                 groupId: groupKey
@@ -1507,19 +1519,35 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
           }
         });
 
-        actions.append(worktreeButton, removeButton);
+        const removeWorktreeButton = createWorkspaceFolderActionButton({
+          action: 'removeWorktree',
+          iconClass: 'codicon-trash',
+          label: '移除 worktree 并从 workspace 移除 folder',
+          danger: true,
+          onClick: () => {
+            vscode.postMessage({
+              type: 'sidebarNodeList/removeWorktreeFromWorkspace',
+              payload: {
+                rootPath,
+                groupId: groupKey
+              }
+            });
+          }
+        });
+
+        actions.append(worktreeButton, removeButton, removeWorktreeButton);
         return actions;
       }
 
-      function createWorkspaceRootActionButton(options) {
+      function createWorkspaceFolderActionButton(options) {
         const button = document.createElement('span');
-        button.className = 'node-group-action codicon ' + options.iconClass + (options.danger ? ' is-danger' : '');
+        button.className = 'node-group-folder-action codicon ' + options.iconClass + (options.danger ? ' is-danger' : '');
         button.setAttribute('role', 'button');
         button.setAttribute('tabindex', '0');
         button.setAttribute('aria-label', options.label);
         button.setAttribute('title', options.label);
-        button.setAttribute('data-sidebar-root-action', options.action);
-        button.setAttribute('data-sidebar-root-action-icon', options.iconClass);
+        button.setAttribute('data-sidebar-folder-action', options.action);
+        button.setAttribute('data-sidebar-folder-action-icon', options.iconClass);
         button.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
