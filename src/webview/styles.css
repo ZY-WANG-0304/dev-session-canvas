@@ -3569,13 +3569,9 @@ body {
 .canvas-shell.is-pane-gallery {
   --pane-gallery-pane-min-width: 520px;
   --pane-gallery-pane-min-height: 380px;
+  --pane-gallery-thumbnail-size: 180px;
   overflow: hidden;
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%),
-      var(--vscode-editor-background)
-    );
+  background: var(--vscode-editor-background);
 }
 
 .canvas-shell.is-pane-gallery > .canvas-help-panel {
@@ -3586,190 +3582,153 @@ body {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
+  min-width: 0;
+  min-height: 0;
   box-sizing: border-box;
-  padding: 12px;
   color: var(--vscode-editor-foreground);
 }
 
-.pane-gallery-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 320px) auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 34px;
-  box-sizing: border-box;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: var(--canvas-widget-radius);
-  padding: 6px;
-  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+.pane-gallery-mode-switch {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 20;
 }
 
-.pane-gallery-heading,
-.pane-gallery-search,
-.pane-gallery-layout-toggle {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.pane-gallery-heading {
-  gap: 8px;
-  padding: 0 8px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.pane-gallery-heading .codicon {
-  color: var(--vscode-focusBorder);
-}
-
-.pane-gallery-count,
-.pane-gallery-status-pill {
-  flex: 0 0 auto;
-  border-radius: 999px;
-  padding: 2px 7px;
-  background: color-mix(in srgb, var(--vscode-focusBorder) 14%, transparent);
-  color: var(--vscode-descriptionForeground);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.pane-gallery-status-pill[data-pane-gallery-status='running'] {
-  background: color-mix(in srgb, #22c55e 15%, transparent);
-  color: color-mix(in srgb, var(--vscode-editor-foreground) 82%, #22c55e 18%);
-}
-
-.pane-gallery-status-pill[data-pane-gallery-status='waiting'] {
-  background: color-mix(in srgb, #38bdf8 14%, transparent);
-  color: color-mix(in srgb, var(--vscode-editor-foreground) 78%, #38bdf8 22%);
-}
-
-.pane-gallery-status-pill[data-pane-gallery-status='error'],
-.pane-gallery-status-pill[data-pane-gallery-status='attention'] {
-  background: color-mix(in srgb, var(--vscode-errorForeground, #ef4444) 14%, transparent);
-  color: var(--vscode-errorForeground, #ef4444);
-}
-
-.pane-gallery-search {
-  gap: 6px;
-  min-height: 28px;
-  border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, var(--vscode-panel-border)));
-  border-radius: var(--canvas-widget-radius-sm);
-  padding: 0 8px;
-  background: var(--vscode-input-background, var(--vscode-editor-background));
-  color: var(--vscode-descriptionForeground);
-}
-
-.pane-gallery-search input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
-  font: inherit;
-  font-size: 12px;
-}
-
-.pane-gallery-layout-toggle {
-  justify-self: end;
-  overflow: hidden;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: var(--canvas-widget-radius-sm);
-}
-
-.pane-gallery-layout-toggle button,
-.pane-gallery-root-actions button,
+.pane-gallery-mode-trigger,
+.pane-gallery-mode-menu button,
 .pane-gallery-thumbnail {
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   color: var(--vscode-editor-foreground);
   cursor: pointer;
   font: inherit;
 }
 
-.pane-gallery-layout-toggle button {
-  min-height: 28px;
-  padding: 0 10px;
+.pane-gallery-mode-trigger {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: var(--canvas-widget-radius-sm);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.pane-gallery-mode-trigger:hover,
+.pane-gallery-mode-trigger:focus-visible,
+.pane-gallery-mode-menu button:hover,
+.pane-gallery-mode-menu button:focus-visible,
+.pane-gallery-thumbnail:hover,
+.pane-gallery-thumbnail:focus-visible {
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent));
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pane-gallery-mode-menu {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(108px, 1fr));
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  background: var(--vscode-widget-border, var(--vscode-panel-border));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.pane-gallery-mode-menu button {
+  display: grid;
+  min-height: 68px;
+  justify-items: center;
+  align-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 0;
+  padding: 8px 10px;
+  color: var(--vscode-descriptionForeground);
   font-size: 12px;
 }
 
-.pane-gallery-layout-toggle button + button {
-  border-left: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+.pane-gallery-mode-menu button .codicon {
+  font-size: 22px;
 }
 
-.pane-gallery-layout-toggle button:hover,
-.pane-gallery-layout-toggle button:focus-visible,
-.pane-gallery-root-actions button:hover,
-.pane-gallery-root-actions button:focus-visible,
-.pane-gallery-thumbnail:hover,
-.pane-gallery-thumbnail:focus-visible {
-  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent));
-  outline: none;
+.pane-gallery-mode-menu button.is-active {
+  color: var(--vscode-editor-foreground);
+  box-shadow: inset 0 -2px 0 var(--vscode-focusBorder);
 }
 
-.pane-gallery-layout-toggle button.is-active {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+.pane-gallery-grid,
+.pane-gallery-thumbnail-layout {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--vscode-widget-border, var(--vscode-panel-border));
 }
 
 .pane-gallery-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--pane-gallery-pane-min-width), 1fr));
-  grid-auto-rows: minmax(var(--pane-gallery-pane-min-height), 48vh);
-  gap: 12px;
-  min-height: 0;
+  gap: 1px;
+  padding: 1px;
   overflow: auto;
-  padding: 2px 2px 10px;
   scrollbar-gutter: stable both-edges;
 }
 
-.pane-gallery-focus-layout {
+.pane-gallery-grid-dynamic {
+  grid-template-columns: repeat(auto-fit, minmax(var(--pane-gallery-pane-min-width), 1fr));
+  grid-auto-rows: minmax(var(--pane-gallery-pane-min-height), 52vh);
+}
+
+.pane-gallery-grid-grid {
+  grid-template-columns: repeat(auto-fill, minmax(var(--pane-gallery-pane-min-width), 1fr));
+  grid-auto-rows: minmax(var(--pane-gallery-pane-min-height), 1fr);
+}
+
+.pane-gallery-thumbnail-layout {
   display: grid;
+  gap: 1px;
+  padding: 1px;
+}
+
+.pane-gallery-thumbnail-layout-topThumbnails {
+  grid-template-rows: var(--pane-gallery-thumbnail-size) minmax(0, 1fr);
+}
+
+.pane-gallery-thumbnail-layout-sideThumbnails {
   grid-template-columns: minmax(0, 1fr) 220px;
-  gap: 12px;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .pane-gallery-root-pane {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: var(--canvas-node-radius);
-  background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-sideBar-background) 6%);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+  background: var(--vscode-editor-background);
 }
 
-.pane-gallery-root-pane:focus-within,
-.pane-gallery-root-pane:hover {
-  border-color: color-mix(in srgb, var(--vscode-focusBorder) 58%, var(--vscode-widget-border, var(--vscode-panel-border)) 42%);
-}
-
-.pane-gallery-root-pane-main {
-  min-height: 0;
+.pane-gallery-root-pane:focus-within {
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
 }
 
 .pane-gallery-root-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
+  max-width: min(440px, 72%);
+  min-width: 160px;
   box-sizing: border-box;
-  border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  padding: 7px 8px 7px 10px;
-  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border-right: 1px solid var(--vscode-panel-border);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  padding: 6px 9px;
+  background: var(--vscode-panel-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
 }
 
-.pane-gallery-root-title-block {
+.pane-gallery-root-title-block,
+.pane-gallery-thumbnail-copy {
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -3794,91 +3753,115 @@ body {
   white-space: nowrap;
 }
 
-.pane-gallery-root-actions {
-  display: inline-flex;
-  gap: 4px;
-  min-width: max-content;
-}
-
-.pane-gallery-root-actions button {
-  min-height: 26px;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: var(--canvas-widget-radius-sm);
-  padding: 0 8px;
-  font-size: 11px;
-}
-
-.pane-gallery-root-actions button:first-child {
-  background: var(--vscode-button-secondaryBackground, transparent);
-  color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
-}
-
 .pane-gallery-root-flow-shell {
-  position: relative;
+  position: absolute;
+  inset: 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
 .pane-gallery-root-flow-shell .react-flow {
-  background: color-mix(in srgb, var(--vscode-editor-background) 96%, var(--vscode-sideBar-background) 4%);
+  background: var(--vscode-editor-background);
 }
 
 .pane-gallery-thumbnail-rail {
   display: grid;
-  align-content: start;
-  gap: 8px;
   min-width: 0;
   min-height: 0;
+  gap: 1px;
   overflow: auto;
-  padding: 2px 2px 10px;
+  background: var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.pane-gallery-thumbnail-rail-topThumbnails {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(160px, 220px);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.pane-gallery-thumbnail-rail-sideThumbnails {
+  grid-auto-rows: minmax(132px, max-content);
+  align-content: start;
 }
 
 .pane-gallery-thumbnail {
   display: grid;
-  gap: 3px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 6px;
   min-width: 0;
-  min-height: 64px;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: var(--canvas-widget-radius);
-  padding: 9px 10px;
-  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 6px;
+  background: var(--vscode-editor-background);
   text-align: left;
 }
 
-.pane-gallery-empty {
-  display: grid;
-  place-items: center;
-  min-height: 220px;
-  border: 1px dashed var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: var(--canvas-node-radius);
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
+.pane-gallery-thumbnail-preview {
+  display: block;
+  min-height: 78px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 80%, transparent);
+  background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-sideBar-background) 6%);
+}
+
+.pane-gallery-thumbnail-preview svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.pane-gallery-thumbnail-root-rect {
+  fill: color-mix(in srgb, var(--vscode-panel-background, var(--vscode-editor-background)) 84%, transparent);
+  stroke: var(--vscode-panel-border);
+  stroke-width: 6;
+}
+
+.pane-gallery-thumbnail-group-rect {
+  fill: color-mix(in srgb, var(--vscode-panel-background, var(--vscode-editor-background)) 48%, transparent);
+  stroke: color-mix(in srgb, var(--vscode-panel-border) 76%, transparent);
+  stroke-width: 4;
+}
+
+.pane-gallery-thumbnail-edge-line {
+  stroke: color-mix(in srgb, var(--vscode-descriptionForeground) 66%, transparent);
+  stroke-width: 4;
+}
+
+.pane-gallery-thumbnail-node-rect {
+  fill: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 88%, var(--vscode-focusBorder) 12%);
+  stroke: var(--vscode-widget-border, var(--vscode-panel-border));
+  stroke-width: 4;
+}
+
+.pane-gallery-thumbnail-node-agent {
+  fill: color-mix(in srgb, #22c55e 50%, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 50%);
+}
+
+.pane-gallery-thumbnail-node-terminal {
+  fill: color-mix(in srgb, #38bdf8 50%, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 50%);
+}
+
+.pane-gallery-thumbnail-node-note {
+  fill: color-mix(in srgb, #a78bfa 40%, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 60%);
 }
 
 @media (max-width: 900px) {
   .canvas-shell.is-pane-gallery {
-    --pane-gallery-pane-min-width: min(420px, calc(100vw - 28px));
+    --pane-gallery-pane-min-width: min(420px, calc(100vw - 4px));
     --pane-gallery-pane-min-height: 340px;
+    --pane-gallery-thumbnail-size: 132px;
   }
 
-  .pane-gallery-toolbar {
+  .pane-gallery-thumbnail-layout-sideThumbnails {
     grid-template-columns: 1fr;
-    align-items: stretch;
+    grid-template-rows: minmax(0, 1fr) var(--pane-gallery-thumbnail-size);
   }
 
-  .pane-gallery-layout-toggle {
-    justify-self: start;
-  }
-
-  .pane-gallery-focus-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) auto;
-  }
-
-  .pane-gallery-thumbnail-rail {
+  .pane-gallery-thumbnail-layout-sideThumbnails .pane-gallery-thumbnail-rail {
     grid-auto-flow: column;
-    grid-auto-columns: minmax(160px, 220px);
+    grid-auto-columns: minmax(150px, 210px);
     overflow-x: auto;
     overflow-y: hidden;
   }

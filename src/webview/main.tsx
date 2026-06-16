@@ -178,13 +178,13 @@ interface LocalUiState {
   collapsedFileListTreeBranches?: Record<string, string[]>;
 }
 
-type PaneGalleryLayoutMode = 'tiled' | 'focus';
+type PaneGalleryLayoutMode = 'dynamic' | 'grid' | 'topThumbnails' | 'sideThumbnails';
 
 interface PaneGalleryLocalState {
   layout?: PaneGalleryLayoutMode;
   activeRootGroupId?: string;
   paneViewports?: Record<string, Viewport>;
-  searchQuery?: string;
+  modeMenuOpen?: boolean;
 }
 
 interface CanvasSurfaceBinding {
@@ -230,13 +230,23 @@ function normalizePaneGalleryLocalState(value: unknown): PaneGalleryLocalState |
         )
       : undefined;
   const normalized: PaneGalleryLocalState = {
-    layout: candidate.layout === 'focus' ? 'focus' : candidate.layout === 'tiled' ? 'tiled' : undefined,
+    layout: normalizePaneGalleryLayoutMode(candidate.layout),
     activeRootGroupId: typeof candidate.activeRootGroupId === 'string' ? candidate.activeRootGroupId : undefined,
     paneViewports: paneViewports && Object.keys(paneViewports).length > 0 ? paneViewports : undefined,
-    searchQuery: typeof candidate.searchQuery === 'string' ? candidate.searchQuery : undefined
+    modeMenuOpen: candidate.modeMenuOpen === true ? true : undefined
   };
 
   return Object.values(normalized).some((entry) => entry !== undefined) ? normalized : undefined;
+}
+
+function normalizePaneGalleryLayoutMode(value: unknown): PaneGalleryLayoutMode | undefined {
+  return value === 'dynamic' || value === 'grid' || value === 'topThumbnails' || value === 'sideThumbnails'
+    ? value
+    : undefined;
+}
+
+function isPaneGalleryThumbnailLayout(layout: PaneGalleryLayoutMode): boolean {
+  return layout === 'topThumbnails' || layout === 'sideThumbnails';
 }
 
 interface CanvasViewportSize {
@@ -1158,8 +1168,7 @@ let lastExecutionTerminalSnapshotWriteAtMs = Number.NEGATIVE_INFINITY;
 const CANVAS_FIT_VIEW_PADDING = 0.05;
 const CANVAS_COMFORT_MIN_ZOOM = 0.4;
 const CANVAS_MAX_ZOOM = 1.8;
-const PANE_GALLERY_MIN_INTERACTIVE_ZOOM = CANVAS_COMFORT_MIN_ZOOM;
-const PANE_GALLERY_MAX_INITIAL_ZOOM = 1.05;
+const PANE_GALLERY_MIN_ZOOM = 0.02;
 const PANE_GALLERY_FIT_VIEW_PADDING = 0.16;
 const CANVAS_MINIMAP_WIDTH = 194;
 const CANVAS_MINIMAP_HEIGHT = 126;
@@ -2207,7 +2216,7 @@ function App(): JSX.Element {
             nodes: nodeIds.map((id) => ({ id })),
             padding: NODE_FOCUS_VIEW_PADDING,
             maxZoom: NODE_FOCUS_MAX_ZOOM,
-            minZoom: PANE_GALLERY_MIN_INTERACTIVE_ZOOM,
+            minZoom: PANE_GALLERY_MIN_ZOOM,
             duration
           });
     if (didFit) {
@@ -2262,7 +2271,7 @@ function App(): JSX.Element {
       rectForGroupLike(group),
       Math.max(1, shell.clientWidth),
       Math.max(1, shell.clientHeight),
-      PANE_GALLERY_MIN_INTERACTIVE_ZOOM,
+      PANE_GALLERY_MIN_ZOOM,
       NODE_FOCUS_MAX_ZOOM,
       NODE_FOCUS_VIEW_PADDING
     );
@@ -2325,7 +2334,7 @@ function App(): JSX.Element {
         return true;
       }
 
-      updatePaneGalleryLayout('focus', rootGroupId, { fitRoot: false });
+      updatePaneGalleryLayout('sideThumbnails', rootGroupId, { fitRoot: false });
       schedulePaneGalleryNodeFit(rootGroupId, [nodeId], mode);
       return true;
     }
@@ -2389,7 +2398,7 @@ function App(): JSX.Element {
         return false;
       }
 
-      updatePaneGalleryLayout('focus', rootGroupId, { fitRoot: false });
+      updatePaneGalleryLayout('sideThumbnails', rootGroupId, { fitRoot: false });
       closeFloatingMenus();
       setSelectedEdgeId(undefined);
       setLocalUiState((current) => {
@@ -2401,7 +2410,7 @@ function App(): JSX.Element {
           selectedGroupIds: [groupId],
           paneGallery: {
             ...(current.paneGallery ?? {}),
-            layout: 'focus' as const,
+            layout: 'sideThumbnails' as const,
             activeRootGroupId: rootGroupId
           }
         };
@@ -2476,7 +2485,7 @@ function App(): JSX.Element {
         return true;
       }
 
-      updatePaneGalleryLayout('focus', rootGroupId, { fitRoot: false });
+      updatePaneGalleryLayout('sideThumbnails', rootGroupId, { fitRoot: false });
       closeFloatingMenus();
       setSelectedEdgeId(undefined);
       schedulePaneGalleryNodeFit(rootGroupId, targetNodeIds);
@@ -3207,12 +3216,11 @@ function App(): JSX.Element {
   );
   const paneGalleryRootIds = paneGalleryRootModels.map((model) => model.rootGroup.id);
   const paneGalleryState = localUiState.paneGallery;
-  const paneGalleryLayout: PaneGalleryLayoutMode = paneGalleryState?.layout === 'focus' ? 'focus' : 'tiled';
+  const normalizedPaneGalleryLayout = normalizePaneGalleryLayoutMode(paneGalleryState?.layout) ?? 'dynamic';
   const activePaneGalleryRootId = paneGalleryRootIds.includes(paneGalleryState?.activeRootGroupId ?? '')
     ? paneGalleryState?.activeRootGroupId
     : paneGalleryRootIds[0];
-  const paneGallerySearchQuery = paneGalleryState?.searchQuery ?? '';
-  const filteredPaneGalleryModels = filterPaneGalleryRootModels(paneGalleryRootModels, paneGallerySearchQuery);
+  const paneGalleryModeMenuOpen = paneGalleryState?.modeMenuOpen === true;
   const isPaneGalleryPresentation =
     runtimeContext.multiRootPresentationMode === 'paneGallery' && paneGalleryRootModels.length > 1;
   const selectedGroupIds = resolveSelectedGroupIds(localUiState);
@@ -3232,9 +3240,14 @@ function App(): JSX.Element {
       const normalizedActiveRootGroupId = activeRootGroupId && knownRootIds.has(activeRootGroupId)
         ? activeRootGroupId
         : paneGalleryRootIds[0];
+      const normalizedLayout = normalizePaneGalleryLayoutMode(currentPaneState?.layout) ?? 'dynamic';
       const paneViewportsChanged =
         Object.keys(paneViewports).length !== Object.keys(currentPaneState?.paneViewports ?? {}).length;
-      if (normalizedActiveRootGroupId === activeRootGroupId && !paneViewportsChanged) {
+      if (
+        normalizedActiveRootGroupId === activeRootGroupId &&
+        normalizedLayout === currentPaneState?.layout &&
+        !paneViewportsChanged
+      ) {
         return current;
       }
 
@@ -3242,6 +3255,7 @@ function App(): JSX.Element {
         ...current,
         paneGallery: {
           ...(currentPaneState ?? {}),
+          layout: normalizedLayout,
           activeRootGroupId: normalizedActiveRootGroupId,
           paneViewports: Object.keys(paneViewports).length > 0 ? paneViewports : undefined
         }
@@ -4162,8 +4176,8 @@ function App(): JSX.Element {
       },
       Math.max(1, shell.clientWidth),
       Math.max(1, shell.clientHeight),
-      PANE_GALLERY_MIN_INTERACTIVE_ZOOM,
-      PANE_GALLERY_MAX_INITIAL_ZOOM,
+      PANE_GALLERY_MIN_ZOOM,
+      CANVAS_MAX_ZOOM,
       PANE_GALLERY_FIT_VIEW_PADDING
     );
     instance.setViewport(viewport, { duration });
@@ -4178,7 +4192,8 @@ function App(): JSX.Element {
     setPaneGalleryState((current) => ({
       ...current,
       layout,
-      activeRootGroupId
+      activeRootGroupId,
+      modeMenuOpen: undefined
     }));
     if (options.fitRoot === false) {
       return;
@@ -4252,30 +4267,6 @@ function App(): JSX.Element {
       }
     });
   };
-  const createNodeInPaneGalleryRoot = (kind: CanvasCreatableNodeKind, rootGroup: CanvasGroupSummary): void => {
-    bindPaneGallerySurface(rootGroup.id);
-    const viewportCenter = resolveVisibleCanvasCenter(
-      paneGalleryFlowRefs.current[rootGroup.id],
-      paneGalleryShellRefs.current[rootGroup.id]
-    );
-    const rootNodeCount = (hostState?.nodes ?? []).filter((node) =>
-      resolveContainingWorkspaceRootGroupIdForWebview(groups, node.groupId) === rootGroup.id
-    ).length;
-    const preferredPosition = viewportCenter
-      ? resolveCreateNodePreferredPositionFromFlowAnchor(kind, viewportCenter)
-      : {
-          x: Math.round(rootGroup.position.x + 96 + (rootNodeCount % 5) * 34),
-          y: Math.round(rootGroup.position.y + 88 + (rootNodeCount % 7) * 28)
-        };
-    createNode(kind, preferredPosition, rootGroup.id);
-  };
-  const handlePaneGallerySearchChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    const searchQuery = event.currentTarget.value;
-    setPaneGalleryState((current) => ({
-      ...current,
-      searchQuery
-    }));
-  };
   return (
     <div
       ref={canvasShellRef}
@@ -4293,20 +4284,23 @@ function App(): JSX.Element {
         <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
         {isPaneGalleryPresentation ? (
           <PaneGallery
-            models={paneGalleryLayout === 'focus'
-              ? paneGalleryRootModels.filter((model) => model.rootGroup.id === activePaneGalleryRootId)
-              : filteredPaneGalleryModels}
+            models={paneGalleryRootModels}
             allModels={paneGalleryRootModels}
             activeRootGroupId={activePaneGalleryRootId}
-            layout={paneGalleryLayout}
-            searchQuery={paneGallerySearchQuery}
+            layout={normalizedPaneGalleryLayout}
+            modeMenuOpen={paneGalleryModeMenuOpen}
             paneViewports={paneGalleryState?.paneViewports ?? {}}
             selectedGroupIds={selectedGroupIds}
             workspaceRootWatermarksEnabled={runtimeContext.workspaceRootWatermarksEnabled}
             paneRefs={paneGalleryShellRefs}
             flowRefs={paneGalleryFlowRefs}
             onBindActiveSurface={bindPaneGallerySurface}
-            onSearchChange={handlePaneGallerySearchChange}
+            onSetModeMenuOpen={(open) => {
+              setPaneGalleryState((current) => ({
+                ...current,
+                modeMenuOpen: open ? true : undefined
+              }));
+            }}
             onSetLayout={updatePaneGalleryLayout}
             onFitPane={fitPaneGalleryRoot}
             onSavePaneViewport={savePaneGalleryViewport}
@@ -4335,7 +4329,6 @@ function App(): JSX.Element {
             onDragEnd={handleGroupDragEnd}
             onResizePointerMove={handleGroupResizePointerMove}
             onResizeEnd={handleGroupResizeEnd}
-            onCreateNode={createNodeInPaneGalleryRoot}
           />
         ) : (
         <ReactFlow
@@ -8702,35 +8695,20 @@ function buildPaneGalleryRootModels(params: {
   });
 }
 
-function filterPaneGalleryRootModels(
-  models: readonly PaneGalleryRootModel[],
-  searchQuery: string
-): PaneGalleryRootModel[] {
-  const query = searchQuery.trim().toLowerCase();
-  if (!query) {
-    return [...models];
-  }
-
-  return models.filter((model) => {
-    const haystack = `${model.rootGroup.title} ${model.rootGroup.workspaceRootPath ?? ''}`.toLowerCase();
-    return haystack.includes(query);
-  });
-}
-
 interface PaneGalleryProps {
   models: PaneGalleryRootModel[];
   allModels: PaneGalleryRootModel[];
   activeRootGroupId?: string;
   layout: PaneGalleryLayoutMode;
-  searchQuery: string;
+  modeMenuOpen: boolean;
   paneViewports: Record<string, Viewport>;
   selectedGroupIds: string[];
   workspaceRootWatermarksEnabled: boolean;
   paneRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
   flowRefs: React.MutableRefObject<Record<string, ReactFlowInstance<CanvasNodeData> | undefined>>;
   onBindActiveSurface: (rootGroupId: string) => CanvasSurfaceBinding;
-  onSearchChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSetLayout: (layout: PaneGalleryLayoutMode, activeRootGroupId?: string) => void;
+  onSetModeMenuOpen: (open: boolean) => void;
   onFitPane: (rootGroupId: string, instance?: ReactFlowInstance<CanvasNodeData>, duration?: number) => boolean;
   onSavePaneViewport: (rootGroupId: string, viewport: Viewport) => void;
   onNodesChange: (changes: any[]) => void;
@@ -8775,131 +8753,226 @@ interface PaneGalleryProps {
     onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
   ) => void;
   onResizeEnd: () => void;
-  onCreateNode: (kind: CanvasCreatableNodeKind, rootGroup: CanvasGroupSummary) => void;
 }
 
+const PANE_GALLERY_LAYOUT_OPTIONS: ReadonlyArray<{
+  layout: PaneGalleryLayoutMode;
+  label: string;
+  icon: string;
+}> = [
+  { layout: 'dynamic', label: '动态', icon: 'layout' },
+  { layout: 'grid', label: '宫格', icon: 'table' },
+  { layout: 'topThumbnails', label: '顶部缩略图', icon: 'layout-panel' },
+  { layout: 'sideThumbnails', label: '侧边缩略图', icon: 'layout-sidebar-right' }
+];
+
 function PaneGallery(props: PaneGalleryProps): JSX.Element {
+  const modeMenuRef = useRef<HTMLDivElement | null>(null);
   const activeModel = props.allModels.find((model) => model.rootGroup.id === props.activeRootGroupId) ?? props.allModels[0];
-  const railModels = props.layout === 'focus'
-    ? props.allModels.filter((model) => model.rootGroup.id !== activeModel?.rootGroup.id)
+  const isThumbnailLayout = isPaneGalleryThumbnailLayout(props.layout);
+  const railModels = isThumbnailLayout && activeModel
+    ? props.allModels.filter((model) => model.rootGroup.id !== activeModel.rootGroup.id)
     : [];
-  const shownCount = props.layout === 'focus' ? 1 : props.models.length;
-  const totalRunningCount = props.allModels.reduce((sum, model) => sum + model.runningCount, 0);
-  const totalErrorCount = props.allModels.reduce((sum, model) => sum + model.errorCount, 0);
-  const totalWaitingCount = props.allModels.reduce((sum, model) => sum + model.waitingCount, 0);
-  const totalAttentionCount = props.allModels.reduce((sum, model) => sum + model.attentionCount, 0);
+
+  useEffect(() => {
+    if (!props.modeMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (event.target instanceof globalThis.Node && modeMenuRef.current?.contains(event.target)) {
+        return;
+      }
+      props.onSetModeMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        props.onSetModeMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [props.modeMenuOpen, props.onSetModeMenuOpen]);
 
   return (
-    <div className={`pane-gallery pane-gallery-${props.layout}`} data-pane-gallery="true">
-      <div className="pane-gallery-toolbar">
-        <div className="pane-gallery-heading">
+    <div className={`pane-gallery pane-gallery-${props.layout}`} data-pane-gallery="true" data-pane-gallery-layout={props.layout}>
+      <div className="pane-gallery-mode-switch" ref={modeMenuRef}>
+        <button
+          type="button"
+          className="pane-gallery-mode-trigger"
+          aria-label="切换 workspace pane 模式"
+          aria-haspopup="menu"
+          aria-expanded={props.modeMenuOpen}
+          title="切换 workspace pane 模式"
+          onClick={(event) => {
+            stopCanvasEvent(event);
+            props.onSetModeMenuOpen(!props.modeMenuOpen);
+          }}
+        >
           <span className="codicon codicon-layout" aria-hidden="true" />
-          <span>Workspace panes</span>
-          <span className="pane-gallery-count">
-            {shownCount}/{props.allModels.length}
-          </span>
-          {totalRunningCount > 0 ? (
-            <span className="pane-gallery-status-pill" data-pane-gallery-status="running">
-              {totalRunningCount} running
-            </span>
-          ) : null}
-          {totalWaitingCount > 0 ? (
-            <span className="pane-gallery-status-pill" data-pane-gallery-status="waiting">
-              {totalWaitingCount} waiting
-            </span>
-          ) : null}
-          {totalErrorCount > 0 ? (
-            <span className="pane-gallery-status-pill" data-pane-gallery-status="error">
-              {totalErrorCount} error
-            </span>
-          ) : null}
-          {totalAttentionCount > 0 ? (
-            <span className="pane-gallery-status-pill" data-pane-gallery-status="attention">
-              {totalAttentionCount} attention
-            </span>
-          ) : null}
-        </div>
-        <label className="pane-gallery-search">
-          <span className="codicon codicon-search" aria-hidden="true" />
-          <input
-            type="search"
-            value={props.searchQuery}
-            onChange={props.onSearchChange}
-            placeholder="Filter roots"
-            aria-label="Filter workspace roots"
-          />
-        </label>
-        <div className="pane-gallery-layout-toggle" role="group" aria-label="Pane gallery layout">
-          <button
-            type="button"
-            className={props.layout === 'tiled' ? 'is-active' : ''}
-            onClick={() => props.onSetLayout('tiled', activeModel?.rootGroup.id)}
-          >
-            Tiled
-          </button>
-          <button
-            type="button"
-            className={props.layout === 'focus' ? 'is-active' : ''}
-            onClick={() => props.onSetLayout('focus', activeModel?.rootGroup.id)}
-          >
-            Focus
-          </button>
-        </div>
+        </button>
+        {props.modeMenuOpen ? (
+          <div className="pane-gallery-mode-menu" role="menu" aria-label="Workspace pane mode">
+            {PANE_GALLERY_LAYOUT_OPTIONS.map((option) => (
+              <button
+                key={option.layout}
+                type="button"
+                role="menuitemradio"
+                aria-checked={props.layout === option.layout}
+                className={props.layout === option.layout ? 'is-active' : ''}
+                data-pane-gallery-mode-option={option.layout}
+                onClick={(event) => {
+                  stopCanvasEvent(event);
+                  props.onSetLayout(option.layout, activeModel?.rootGroup.id);
+                }}
+              >
+                <span className={`codicon codicon-${option.icon}`} aria-hidden="true" />
+                <span>{option.label}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
-      {props.layout === 'focus' && activeModel ? (
-        <div className="pane-gallery-focus-layout">
+      {isThumbnailLayout && activeModel ? (
+        <div className={`pane-gallery-thumbnail-layout pane-gallery-thumbnail-layout-${props.layout}`}>
+          {props.layout === 'topThumbnails' ? (
+            <PaneGalleryThumbnailRail
+              layout={props.layout}
+              models={railModels}
+              onActivate={(rootGroupId) => props.onSetLayout(props.layout, rootGroupId)}
+            />
+          ) : null}
           <PaneGalleryRootPane
             {...props}
             key={activeModel.rootGroup.id}
             model={activeModel}
             mode="main"
           />
-          <div className="pane-gallery-thumbnail-rail" aria-label="Other workspace roots">
-            {railModels.map((model) => (
-              <button
-                type="button"
-                key={model.rootGroup.id}
-                className="pane-gallery-thumbnail"
-                data-pane-gallery-thumbnail-id={model.rootGroup.id}
-                onClick={() => props.onSetLayout('focus', model.rootGroup.id)}
-                title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}
-              >
-                <span className="pane-gallery-thumbnail-title">{model.rootGroup.title}</span>
-                <span className="pane-gallery-thumbnail-meta">
-                  {model.nodeCount} nodes
-                  {model.errorCount > 0 ? ` / ${model.errorCount} error` : ''}
-                  {model.runningCount > 0 ? ` / ${model.runningCount} running` : ''}
-                  {model.attentionCount > 0 ? ` / ${model.attentionCount} attention` : ''}
-                </span>
-              </button>
-            ))}
-          </div>
+          {props.layout === 'sideThumbnails' ? (
+            <PaneGalleryThumbnailRail
+              layout={props.layout}
+              models={railModels}
+              onActivate={(rootGroupId) => props.onSetLayout(props.layout, rootGroupId)}
+            />
+          ) : null}
         </div>
       ) : (
-        <div className="pane-gallery-grid" data-pane-gallery-grid="true">
-          {props.models.length > 0 ? (
-            props.models.map((model) => (
-              <PaneGalleryRootPane
-                {...props}
-                key={model.rootGroup.id}
-                model={model}
-                mode="tiled"
-              />
-            ))
-          ) : (
-            <div className="pane-gallery-empty" role="status">
-              No workspace roots match this filter.
-            </div>
-          )}
+        <div className={`pane-gallery-grid pane-gallery-grid-${props.layout}`} data-pane-gallery-grid="true">
+          {props.models.map((model) => (
+            <PaneGalleryRootPane
+              {...props}
+              key={model.rootGroup.id}
+              model={model}
+              mode="tile"
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
+function PaneGalleryThumbnailRail(props: {
+  layout: Extract<PaneGalleryLayoutMode, 'topThumbnails' | 'sideThumbnails'>;
+  models: PaneGalleryRootModel[];
+  onActivate: (rootGroupId: string) => void;
+}): JSX.Element {
+  return (
+    <div className={`pane-gallery-thumbnail-rail pane-gallery-thumbnail-rail-${props.layout}`} aria-label="Other workspace roots">
+      {props.models.map((model) => (
+        <button
+          type="button"
+          key={model.rootGroup.id}
+          className="pane-gallery-thumbnail"
+          data-pane-gallery-thumbnail-id={model.rootGroup.id}
+          onDoubleClick={() => props.onActivate(model.rootGroup.id)}
+          title={`${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}`}
+        >
+          <PaneGalleryThumbnailPreview model={model} />
+          <span className="pane-gallery-thumbnail-copy">
+            <span className="pane-gallery-thumbnail-title">{model.rootGroup.title}</span>
+            <span className="pane-gallery-thumbnail-meta">
+              {model.nodeCount} nodes
+              {model.errorCount > 0 ? ` / ${model.errorCount} error` : ''}
+              {model.runningCount > 0 ? ` / ${model.runningCount} running` : ''}
+              {model.attentionCount > 0 ? ` / ${model.attentionCount} attention` : ''}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PaneGalleryThumbnailPreview(props: { model: PaneGalleryRootModel }): JSX.Element {
+  const bounds = rectForGroupLike(props.model.rootGroup);
+  const nodeById = new Map(props.model.nodes.map((node) => [node.id, node] as const));
+  return (
+    <span className="pane-gallery-thumbnail-preview" aria-hidden="true">
+      <svg viewBox={`${bounds.x} ${bounds.y} ${Math.max(1, bounds.width)} ${Math.max(1, bounds.height)}`} preserveAspectRatio="xMidYMid meet">
+        <rect className="pane-gallery-thumbnail-root-rect" x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} rx="0" />
+        {props.model.groups
+          .filter((group) => group.id !== props.model.rootGroup.id)
+          .map((group) => (
+            <rect
+              key={group.id}
+              className="pane-gallery-thumbnail-group-rect"
+              x={group.position.x}
+              y={group.position.y}
+              width={Math.max(1, group.size.width)}
+              height={Math.max(1, group.size.height)}
+              rx="0"
+            />
+          ))}
+        {props.model.edges.map((edge) => {
+          const source = nodeById.get(edge.source);
+          const target = nodeById.get(edge.target);
+          if (!source || !target) {
+            return null;
+          }
+          const sourceWidth = numberOrUndefined(source.width) ?? numberOrUndefined(source.style?.width) ?? source.data.size.width;
+          const sourceHeight = numberOrUndefined(source.height) ?? numberOrUndefined(source.style?.height) ?? source.data.size.height;
+          const targetWidth = numberOrUndefined(target.width) ?? numberOrUndefined(target.style?.width) ?? target.data.size.width;
+          const targetHeight = numberOrUndefined(target.height) ?? numberOrUndefined(target.style?.height) ?? target.data.size.height;
+          return (
+            <line
+              key={edge.id}
+              className="pane-gallery-thumbnail-edge-line"
+              x1={source.position.x + sourceWidth / 2}
+              y1={source.position.y + sourceHeight / 2}
+              x2={target.position.x + targetWidth / 2}
+              y2={target.position.y + targetHeight / 2}
+            />
+          );
+        })}
+        {props.model.nodes.map((node) => {
+          const width = numberOrUndefined(node.width) ?? numberOrUndefined(node.style?.width) ?? node.data.size.width;
+          const height = numberOrUndefined(node.height) ?? numberOrUndefined(node.style?.height) ?? node.data.size.height;
+          return (
+            <rect
+              key={node.id}
+              className={`pane-gallery-thumbnail-node-rect pane-gallery-thumbnail-node-${node.data.kind}`}
+              x={node.position.x}
+              y={node.position.y}
+              width={Math.max(1, width)}
+              height={Math.max(1, height)}
+              rx="8"
+            />
+          );
+        })}
+      </svg>
+    </span>
+  );
+}
+
 function PaneGalleryRootPane(props: PaneGalleryProps & {
   model: PaneGalleryRootModel;
-  mode: 'tiled' | 'main';
+  mode: 'tile' | 'main';
 }): JSX.Element {
   const { model } = props;
   const rootGroupId = model.rootGroup.id;
@@ -8936,15 +9009,6 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
             {model.attentionCount > 0 ? ` / ${model.attentionCount} attention` : ''}
           </span>
         </div>
-        <div className="pane-gallery-root-actions">
-          {(['note', 'terminal', 'agent'] as const).map((kind) => (
-            <button key={kind} type="button" onClick={() => props.onCreateNode(kind, model.rootGroup)}>
-              {humanizeNodeKind(kind)}
-            </button>
-          ))}
-          <button type="button" onClick={() => props.onFitPane(rootGroupId)}>Fit</button>
-          <button type="button" onClick={() => props.onSetLayout('focus', rootGroupId)}>Focus</button>
-        </div>
       </header>
       <div
         className="pane-gallery-root-flow-shell"
@@ -8961,7 +9025,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
           defaultViewport={defaultViewport}
-          minZoom={PANE_GALLERY_MIN_INTERACTIVE_ZOOM}
+          minZoom={PANE_GALLERY_MIN_ZOOM}
           maxZoom={CANVAS_MAX_ZOOM}
           onInit={(instance) => {
             props.flowRefs.current[rootGroupId] = instance;

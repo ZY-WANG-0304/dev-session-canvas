@@ -847,14 +847,19 @@ test('workspace root groups reject cross-root edge creation and reconnect', asyn
     .toBe(0);
 });
 
-test('pane gallery renders tiled workspace roots and creates nodes in the pane root', async ({ page }) => {
+test('pane gallery renders dynamic workspace roots without toolbar or filter', async ({ page }) => {
   await openHarness(page);
   const state = createPaneGalleryCanvasState();
   await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
   await settleWebview(page, 4);
 
   await expect(page.locator('[data-pane-gallery="true"]')).toBeVisible();
+  await expect(page.locator('[data-pane-gallery-layout="dynamic"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-toolbar')).toHaveCount(0);
+  await expect(page.getByLabel('Filter workspace roots')).toHaveCount(0);
+  await expect(page.getByLabel('切换 workspace pane 模式')).toBeVisible();
   await expect(page.locator('[data-pane-gallery-root-id]')).toHaveCount(2);
+
   const frontendPane = page.locator('[data-pane-gallery-root-id="workspace-root-frontend"]');
   const backendPane = page.locator('[data-pane-gallery-root-id="workspace-root-backend"]');
   await expect(frontendPane.locator('.pane-gallery-root-title')).toHaveText('Frontend');
@@ -862,40 +867,63 @@ test('pane gallery renders tiled workspace roots and creates nodes in the pane r
   await expect(backendPane.locator('.pane-gallery-root-meta')).toContainText('2 nodes');
 
   await clearPostedMessages(page);
-  await backendPane.locator('.pane-gallery-root-actions').getByRole('button', { name: 'Note', exact: true }).click();
+  await backendPane.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 120,
+      y: 150
+    }
+  });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-kind="note"]').click();
   const createPayload = await waitForCreateDemoNodePayload(page);
   expect(createPayload.kind).toBe('note');
   expect(createPayload.targetGroupId).toBe('workspace-root-backend');
   expect(Number.isFinite(createPayload.preferredPosition.x)).toBe(true);
   expect(Number.isFinite(createPayload.preferredPosition.y)).toBe(true);
-
-  await page.getByLabel('Filter workspace roots').fill('frontend');
-  await expect(page.locator('[data-pane-gallery-root-id]')).toHaveCount(1);
-  await expect(page.locator('[data-pane-gallery-root-id="workspace-root-frontend"]')).toBeVisible();
 });
 
-test('pane gallery focus thumbnails only switch the active root', async ({ page }) => {
+test('pane gallery mode menu exposes four layouts and thumbnail double-click activates roots', async ({ page }) => {
   await openHarness(page);
   const state = createPaneGalleryCanvasState({ rootCount: 3 });
   await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
   await settleWebview(page, 4);
 
-  await page
-    .locator('[data-pane-gallery-root-id="workspace-root-backend"]')
-    .getByRole('button', { name: 'Focus' })
-    .click();
-  await expect(page.locator('.pane-gallery-focus-layout')).toBeVisible();
+  await page.getByLabel('切换 workspace pane 模式').click();
+  await expect(page.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
+  await expect(page.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
+  await expect(page.locator('[data-pane-gallery-mode-option="grid"]')).toContainText('宫格');
+  await expect(page.locator('[data-pane-gallery-mode-option="topThumbnails"]')).toContainText('顶部缩略图');
+  await expect(page.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toContainText('侧边缩略图');
+
+  await page.locator('[data-pane-gallery-mode-option="grid"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="grid"]')).toBeVisible();
+  await expect(page.locator('[data-pane-gallery-root-id]')).toHaveCount(3);
+
+  await page.getByLabel('切换 workspace pane 模式').click();
+  await page.locator('[data-pane-gallery-mode-option="topThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
     'data-pane-gallery-root-id',
-    'workspace-root-backend'
+    'workspace-root-frontend'
+  );
+  await expect(page.locator('.pane-gallery-thumbnail')).toHaveCount(2);
+
+  await page.getByLabel('切换 workspace pane 模式').click();
+  await page.locator('[data-pane-gallery-mode-option="sideThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
   );
   await expect(page.locator('.pane-gallery-thumbnail')).toHaveCount(2);
   await expect
-    .poll(async () => (await readPersistedUiState(page)).paneGallery?.activeRootGroupId)
-    .toBe('workspace-root-backend');
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.layout)
+    .toBe('sideThumbnails');
 
   await clearPostedMessages(page);
-  await page.locator('[data-pane-gallery-thumbnail-id="workspace-root-frontend"]').click();
+  await page.locator('[data-pane-gallery-thumbnail-id="workspace-root-backend"]').click();
   await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
     'data-pane-gallery-root-id',
     'workspace-root-frontend'
@@ -903,9 +931,21 @@ test('pane gallery focus thumbnails only switch the active root', async ({ page 
   expect(await readPostedMessagesByType(page, 'webview/createDemoNode')).toEqual([]);
   expect(await readPostedMessagesByType(page, 'webview/moveNode')).toEqual([]);
   expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
+
+  await page.locator('[data-pane-gallery-thumbnail-id="workspace-root-backend"]').dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.activeRootGroupId)
+    .toBe('workspace-root-backend');
+  expect(await readPostedMessagesByType(page, 'webview/createDemoNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
 });
 
-test('pane gallery keeps tiled panes usable for many roots and targets markdown drops', async ({ page }) => {
+test('pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops', async ({ page }) => {
   await openHarness(page);
   const state = createPaneGalleryCanvasState({ rootCount: 8, hugeFirstRoot: true });
   await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
@@ -927,7 +967,8 @@ test('pane gallery keeps tiled panes usable for many roots and targets markdown 
   expect(galleryMetrics.scrolls).toBe(true);
   expect(galleryMetrics.paneWidth).toBeGreaterThanOrEqual(420);
   expect(galleryMetrics.paneHeight).toBeGreaterThanOrEqual(320);
-  expect(galleryMetrics.scale).toBeGreaterThanOrEqual(0.4);
+  expect(galleryMetrics.scale).toBeLessThan(0.4);
+  expect(galleryMetrics.scale).toBeGreaterThan(0);
 
   await clearPostedMessages(page);
   const dropResult = await page.locator('[data-pane-gallery-root-id="workspace-root-backend"] .pane-gallery-root-flow-shell').evaluate((shell) => {
