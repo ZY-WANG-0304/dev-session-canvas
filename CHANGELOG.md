@@ -2,7 +2,7 @@
 
 ## 0.16.1 - Preview Root Watermark and Clipboard Diagnostic Patch
 
-相对 `0.16.0`，`0.16.1` 是同一 `0.16.x` 公开 `Preview` 线内的可读性与诊断噪音补丁，重点收口 multi-root workspace root section 水印可读性，以及执行终端在 snapshot restore / 用户输入边界上的剪贴板诊断噪音。它保留 `0.16.0` 的 Codex / Claude Code Agent Fork、会话历史分叉入口、侧栏待处理提醒汇总、Agent 标题栏 cwd / 启动命令拆分、多 Agent 输入响应、执行终端链接解析可靠性、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
+相对 `0.16.0`，`0.16.1` 是同一 `0.16.x` 公开 `Preview` 线内的可读性、诊断噪音与生产依赖审计补丁，重点收口 multi-root workspace root section 水印可读性、执行终端在 snapshot restore / 用户输入边界上的剪贴板诊断噪音，以及生产依赖 audit 告警。它保留 `0.16.0` 的 Codex / Claude Code Agent Fork、会话历史分叉入口、侧栏待处理提醒汇总、Agent 标题栏 cwd / 启动命令拆分、多 Agent 输入响应、执行终端链接解析可靠性、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
 
 ### 本版本聚焦
 
@@ -11,6 +11,7 @@
 - root 水印会把 path-like 标题收敛为 basename，并把长名称限制为最多两行，同时降低透明度、增大 tile 间距，减少对 root 内节点和普通分组的背景噪声
 - 执行终端剪贴板诊断在 snapshot restore 窗口内抑制由程序化恢复触发的 selection、mouse tracking 和 OSC 52 噪音，并用 `restoreSuppressed` 聚合计数保留可观测性；真实用户交互和恢复后的 live OSC 52 诊断不会被空选区去重误吞
 - Agent / Terminal 节点在用户输入前会刷新 snapshot restore 诊断抑制状态，避免恢复窗口尾部继续压住后续真实剪贴板诊断，同时不改变 Host 写入前不做本地 optimistic echo 的输入语义
+- 生产依赖审计告警已收口：升级 `js-yaml` 到 `^4.2.0`、`markdown-it` 到 `^14.2.0`，lockfile 中 `linkify-it` 解析到 `5.0.1`，不改变 Markdown / YAML 的用户可见功能语义
 - 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
 
 ### 安装与升级
