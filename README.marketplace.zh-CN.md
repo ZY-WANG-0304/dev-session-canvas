@@ -19,6 +19,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 执行终端剪贴板诊断会在 snapshot restore 窗口内抑制由程序化恢复触发的选区变化、mouse tracking 和 OSC 52 噪音，并通过 `restoreSuppressed` 聚合计数保留排障线索
 - Agent / Terminal 节点会在用户输入前刷新 snapshot restore 诊断抑制状态，避免恢复窗口尾部继续压住后续真实剪贴板诊断
 - 恢复后的 live OSC 52 与用户交互诊断仍会正常出现；本补丁不新增 OSC 52 自动剪贴板桥接，也不改变输入的本地乐观回显语义
+- 生产依赖 audit 告警已收口：升级 `js-yaml` 与 `markdown-it`，并保持用户可见的 Markdown / YAML 行为不变
 - 扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵都保持不变
 
 ## 核心功能

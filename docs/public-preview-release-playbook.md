@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.16.1`。当前版本范围收口为“发布同一 `0.16.x` Preview 线内的可读性与诊断噪音补丁：multi-root workspace root section 水印独立可读缩放、path-like 标题 basename 收敛、长名称两行限制、低噪声水印样式、snapshot restore 窗口内剪贴板诊断抑制，以及用户输入前刷新恢复诊断抑制；继续保留 `0.16.0` 的 Codex / Claude Code Agent Fork、历史会话分叉、侧栏待处理提醒汇总、Agent cwd / 启动命令标题拆分、多 Agent 输入响应、执行终端链接 activation fallback、复制诊断、GitHub Release assets / 双市场发布 workflow 解耦、安装拓扑和 Preview 支持边界”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.16.1`。当前版本范围收口为“发布同一 `0.16.x` Preview 线内的可读性、诊断噪音与生产依赖审计补丁：multi-root workspace root section 水印独立可读缩放、path-like 标题 basename 收敛、长名称两行限制、低噪声水印样式、snapshot restore 窗口内剪贴板诊断抑制、用户输入前刷新恢复诊断抑制，以及 `js-yaml` / `markdown-it` 生产依赖 audit 告警收口；继续保留 `0.16.0` 的 Codex / Claude Code Agent Fork、历史会话分叉、侧栏待处理提醒汇总、Agent cwd / 启动命令标题拆分、多 Agent 输入响应、执行终端链接 activation fallback、复制诊断、GitHub Release assets / 双市场发布 workflow 解耦、安装拓扑和 Preview 支持边界”。它不是对外宣传页，而是发布当天的执行与复核手册。
 
 ## 当前发布素材
 
@@ -38,7 +38,7 @@
 
 - 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.16.1 - Preview Root Watermark and Clipboard Diagnostic Patch`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：`0.16.1` 收口 multi-root workspace root section 水印可读性、snapshot restore 窗口内剪贴板诊断抑制、用户输入前刷新恢复诊断抑制状态；保留 `0.16.0` 的 Codex / Claude Code Agent Fork、历史会话分叉、侧栏待处理提醒汇总、Agent cwd / 启动命令标题拆分、多 Agent 输入响应、执行终端链接 activation fallback、复制诊断、GitHub Release assets 兜底入口、双市场同版本同步策略，以及 `Dev Session Canvas Notifier` companion 版本对齐
+- release notes 应覆盖以下当前已确认范围：`0.16.1` 收口 multi-root workspace root section 水印可读性、snapshot restore 窗口内剪贴板诊断抑制、用户输入前刷新恢复诊断抑制状态，以及 `js-yaml` / `markdown-it` 生产依赖 audit 告警；保留 `0.16.0` 的 Codex / Claude Code Agent Fork、历史会话分叉、侧栏待处理提醒汇总、Agent cwd / 启动命令标题拆分、多 Agent 输入响应、执行终端链接 activation fallback、复制诊断、GitHub Release assets 兜底入口、双市场同版本同步策略，以及 `Dev Session Canvas Notifier` companion 版本对齐
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -118,9 +118,9 @@
 
 截至 `2026-06-16`，上一轮 `0.16.0` 已完成正式发布收口。本轮上一发布输入来自 `main` 上的 release ref `542d90cf6f7ce60e832f2ea1dc17fe0b71d2695c`；正式 `v0.16.0` tag 指向同一 ref，`publish/v0.16.0` 临时 tag 已删除。GitHub Actions run `27533849564` 已完成 GitHub Release assets 上传、Open VSX 主扩展 / notifier 发布验证、最终 manifest / Release notes 更新；GitHub Release `v0.16.0` 位于 `https://github.com/ZY-WANG-0304/dev-session-canvas/releases/tag/v0.16.0`，包含 `dev-session-canvas-0.16.0.vsix`、`dev-session-canvas-notifier-0.16.0.vsix` 与 `release-manifest-0.16.0.json`。最终 manifest 状态为 `complete-with-deferred-visual-studio`，Open VSX 主扩展与 notifier 均为 `verified`，Visual Studio Marketplace 主扩展与 notifier 均为 `publish-failed` / deferred。
 
-当前 `0.16.1` 发布准备基线为最新 `origin/main` / `main` ref `d947ee80cd3d1d0b47e6c6b91042060578f9668d`。`v0.16.0` 之后合入 `main` 的发布输入包括：#170 记录 `0.16.0` 发布事实，#171 优化 multi-root workspace root section body 水印可读性，#173 抑制执行终端 snapshot restore 期间的剪贴板诊断噪音并在用户输入前刷新恢复诊断抑制状态。本轮从最新 `origin/main` 单独切出 `release-0-16-1-prep`，目标版本升级为 `0.16.1`；截至本发布准备文档更新时，远端不存在 `v0.16.1` / `publish/v0.16.1` tag，GitHub Release `v0.16.1` 也不存在。
+当前 `0.16.1` 发布准备基线已 rebase 到最新 `origin/main` / `main` ref `70b6ff24e6e8e6bcc04d28dd5043d7873aa29e5f`。`v0.16.0` 之后合入 `main` 的发布输入包括：#170 记录 `0.16.0` 发布事实，#171 优化 multi-root workspace root section body 水印可读性，#173 抑制执行终端 snapshot restore 期间的剪贴板诊断噪音并在用户输入前刷新恢复诊断抑制状态，#175 修复生产依赖 audit 告警并升级 `js-yaml` / `markdown-it`。本轮从最新 `origin/main` 单独切出并持续 rebase `release-0-16-1-prep`，目标版本升级为 `0.16.1`；截至本发布准备文档更新时，远端不存在 `v0.16.1` / `publish/v0.16.1` tag，GitHub Release `v0.16.1` 也不存在。
 
-当前功能输入已有 repo-local 证据：`docs/design-docs/canvas-multi-root-workspace-support.md` 与 `docs/product-specs/canvas-multi-root-workspace-support.md` 记录 workspace-root body 水印、path-like 标题收敛、低噪声样式和关闭配置；`docs/design-docs/execution-terminal-clipboard-shortcuts.md`、`docs/design-docs/embedded-terminal-runtime-window.md` 与 `docs/exec-plans/active/execution-input-responsiveness.md` 记录 snapshot restore 窗口内 clipboard/selection 诊断抑制、`restoreSuppressed` 聚合计数和用户输入前刷新边界；`docs/design-docs/public-marketplace-release-readiness.md`、`docs/exec-plans/active/publish-tag-release-flow.md` 和 `docs/exec-plans/completed/github-release-assets-flow.md` 记录 publish tag 发布输入固定流程、GitHub Release assets 镜像 / 复用发布流程、marketplace job 解耦，以及 VSM deferred 完成门禁。
+当前功能输入已有 repo-local 证据：`docs/design-docs/canvas-multi-root-workspace-support.md` 与 `docs/product-specs/canvas-multi-root-workspace-support.md` 记录 workspace-root body 水印、path-like 标题收敛、低噪声样式和关闭配置；`docs/design-docs/execution-terminal-clipboard-shortcuts.md`、`docs/design-docs/embedded-terminal-runtime-window.md` 与 `docs/exec-plans/active/execution-input-responsiveness.md` 记录 snapshot restore 窗口内 clipboard/selection 诊断抑制、`restoreSuppressed` 聚合计数和用户输入前刷新边界；#175 已把生产依赖 `js-yaml` 升到 `^4.2.0`、`markdown-it` 升到 `^14.2.0`，并由 `npm audit --omit=dev` 验证生产依赖 0 vulnerabilities；`docs/design-docs/public-marketplace-release-readiness.md`、`docs/exec-plans/active/publish-tag-release-flow.md` 和 `docs/exec-plans/completed/github-release-assets-flow.md` 记录 publish tag 发布输入固定流程、GitHub Release assets 镜像 / 复用发布流程、marketplace job 解耦，以及 VSM deferred 完成门禁。
 
 本轮发布准备分支已完成以下验证 / 审计复核：
 
@@ -141,8 +141,8 @@
 - `npm run test:notifier-source`
 - `npm run build`
 - `npm run publish:marketplaces -- --dry-run`（仅预演，未执行真实 publish）
-- `npm run package:vsix` 通过；本地主扩展 VSIX 为 115 files、`3,618,908` bytes，sha256 `63d0b7bf9f1537347ebdd489db6873f7ecc8e216d20ec0bbd6cd2ba0708bc0b2`，`VSCE README doc ref` 来自 release-prep 基线 `d947ee80cd3d1d0b47e6c6b91042060578f9668d`
-- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过；本地 notifier VSIX 为 10 files、`147,988` bytes，sha256 `b6185d967f3bb9322e9a6870e6ff3e8f557dcc3a19ec56017dbb4a2f99a85bed`
+- `npm run package:vsix` 通过；本地主扩展 VSIX 仍为 115 files，并已覆盖 #175 生产依赖升级后的打包路径。release-prep 分支仍会继续产生文档提交，因此本地预打包的 byte-level sha256 不作为最终发布事实；最终以发布准备 MR 合并后的 `main` ref 重跑打包和 release manifest 为准
+- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过；本地 notifier VSIX 仍为 10 files。release-prep 分支仍会继续产生文档提交，因此本地预打包的 byte-level sha256 不作为最终发布事实；最终以发布准备 MR 合并后的 `main` ref 重跑打包和 release manifest 为准
 - `npm run test:webview -- -g "workspace root group body renders a tiled non-interactive root name watermark|workspace root watermark keeps overview-scale text when the title chrome is width-capped|workspace root group body watermark can be disabled by runtime configuration|snapshot restore suppresses programmatic clipboard diagnostics|input flushes snapshot restore clipboard diagnostic suppression"`（7 个本轮定向 Playwright 用例通过）
 - `npm audit --omit=dev`（0 vulnerabilities，退出码 0）
 

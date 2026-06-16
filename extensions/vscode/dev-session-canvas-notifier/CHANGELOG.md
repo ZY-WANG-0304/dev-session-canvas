@@ -2,7 +2,7 @@
 
 ## 0.16.1
 
-- 与主扩展 `0.16.1` 对齐：本轮主扩展是 `0.16.x` Preview 线内的可读性与诊断噪音补丁，聚焦 multi-root workspace root section 水印可读性、snapshot restore 窗口内剪贴板诊断抑制，以及用户输入前刷新恢复诊断抑制状态；notifier companion 不引入新的通知投递行为变更。
+- 与主扩展 `0.16.1` 对齐：本轮主扩展是 `0.16.x` Preview 线内的可读性、诊断噪音与生产依赖审计补丁，聚焦 multi-root workspace root section 水印可读性、snapshot restore 窗口内剪贴板诊断抑制、用户输入前刷新恢复诊断抑制状态，以及 `js-yaml` / `markdown-it` 生产依赖 audit 告警收口；notifier companion 不引入新的通知投递行为变更。
 - 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
 
 ## 0.16.0

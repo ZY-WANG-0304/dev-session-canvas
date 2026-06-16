@@ -73,7 +73,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前 `0.16.1` 发布准备范围是一个 Preview 补丁：multi-root root 水印可读性，以及执行终端在 snapshot restore 与用户输入边界上的剪贴板诊断噪音收口。它保留 `0.16.0` 的 Codex / Claude Code Agent 从当前节点和历史会话分叉、侧栏待处理提醒汇总、Agent cwd / 启动命令标题拆分、文件链接点击 fallback、多 Agent 输入响应、publish tag / GitHub Release assets 发布自动化、Marketplace 元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前 `0.16.1` 发布准备范围是一个 Preview 补丁：multi-root root 水印可读性、执行终端在 snapshot restore 与用户输入边界上的剪贴板诊断噪音收口，以及生产依赖 audit 告警收口。它保留 `0.16.0` 的 Codex / Claude Code Agent 从当前节点和历史会话分叉、侧栏待处理提醒汇总、Agent cwd / 启动命令标题拆分、文件链接点击 fallback、多 Agent 输入响应、publish tag / GitHub Release assets 发布自动化、Marketplace 元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 

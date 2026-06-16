@@ -19,6 +19,7 @@ The public `0.16.1` release is a Preview patch focused on multi-root root-waterm
 - Execution-terminal clipboard diagnostics suppress programmatic snapshot-restore side effects for selection changes, mouse tracking, and OSC 52 while preserving an aggregate `restoreSuppressed` count for troubleshooting
 - Agent and Terminal nodes flush snapshot-restore diagnostic suppression before user input, so restore-tail noise does not hide later real clipboard diagnostics
 - Live OSC 52 and user interaction diagnostics after restore remain visible; this patch does not add automatic OSC 52 clipboard bridging or optimistic local input echo
+- Production dependency audit cleanup updates `js-yaml` and `markdown-it` while keeping user-facing Markdown / YAML behavior unchanged
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Core Capabilities
