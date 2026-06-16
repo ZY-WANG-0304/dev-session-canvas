@@ -10,18 +10,17 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.16.1 Highlights
+## 0.17.0 Highlights
 
-The public `0.16.1` release is a Preview patch focused on multi-root root-watermark readability and lower-noise clipboard diagnostics during execution-terminal restore. It keeps the `0.16.0` Codex / Claude Code Agent Fork, sidebar triage, multi-root orientation, execution-terminal responsiveness, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
+The public `0.17.0` release is a Preview milestone focused on sidebar workspace-folder / git-worktree management and smoother multi-Agent terminal output scheduling. It keeps the `0.16.1` root-watermark readability, restore-time clipboard diagnostic cleanup, Codex / Claude Code Agent Fork, sidebar triage, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
 
-- Multi-root workspace root sections now render body watermarks with an independent readable scale, so narrow sections and low-zoom overviews still show recognizable root names
-- Root watermarks collapse path-like titles to their basename, clamp long names to at most two lines, reduce opacity, and increase tile spacing to avoid fighting real nodes and groups
-- Execution-terminal clipboard diagnostics suppress programmatic snapshot-restore side effects for selection changes, mouse tracking, and OSC 52 while preserving an aggregate `restoreSuppressed` count for troubleshooting
-- Agent and Terminal nodes flush snapshot-restore diagnostic suppression before user input, so restore-tail noise does not hide later real clipboard diagnostics
-- Live OSC 52 and user interaction diagnostics after restore remain visible; this patch does not add automatic OSC 52 clipboard bridging or optimistic local input echo
-- Production dependency audit cleanup updates `js-yaml` and `markdown-it` while keeping user-facing Markdown / YAML behavior unchanged
-- The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
-
+- The sidebar `Nodes` view now has title-bar actions to add folders to the current workspace and create git worktrees into the workspace
+- Workspace-root group rows distinguish ordinary folders, git repositories, and linked git worktrees through `.git` metadata, then expose root-scoped worktree / remove actions only where the target is known
+- Global worktree creation asks for the base folder in multi-root workspaces, then uses VS Code-style QuickPick flows for new branches, new branches from a start point, `HEAD`, and local branches
+- Removing a folder only removes it from the VS Code workspace; removing a linked worktree first verifies the target and then runs `git worktree remove` before removing the workspace folder
+- Host-to-Webview execution output now uses an input-prioritized scheduler so recent user input and its visible response are less likely to sit behind older multi-Agent output bursts
+- Execution input ACKs still bypass output scheduling and include queue diagnostics; lifecycle output flushes and persistence barriers keep their immediate path
+- The release updates the README / Marketplace WeChat discussion-group QR asset and keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 ## Core Capabilities
 
 - Open the main canvas in either the panel or the editor area
@@ -40,6 +39,7 @@ The public `0.16.1` release is a Preview patch focused on multi-root root-waterm
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
 - View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore or fork a new `Agent` node from history
+- Manage workspace folders and git worktrees from the sidebar `Nodes` view, with explicit confirmations before removing folders or linked worktrees
 
 ## Best Fit
 
@@ -68,8 +68,9 @@ The public `0.16.1` release is a Preview patch focused on multi-root root-waterm
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.16.0` to `0.16.1` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, or `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, upgrading to `0.16.1` preserves that explicit choice
+- First-time installs and upgrades from `0.16.1` to `0.17.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- Workspace worktree actions require a trusted file workspace, a target folder that `git` can recognize, and a working `git` executable on the local or remote Extension Host
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, or `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, upgrading to `0.17.0` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -105,7 +106,7 @@ The public `0.16.1` release is a Preview patch focused on multi-root root-waterm
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.16.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.17.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
