@@ -172,6 +172,7 @@ import {
   cloneSerializedTerminalState,
   normalizeSerializedTerminalState
 } from '../common/serializedTerminalState';
+import { selectExecutionOutputSchedulerEntries } from '../common/executionOutputScheduler';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import { isTestHarnessMode } from '../common/testHarness';
 import {
@@ -312,6 +313,10 @@ const CANVAS_WORKSPACE_ROOT_GROUP_MEMBER_INSETS = {
 const CANVAS_GROUP_COLLISION_PADDING = 24;
 const CANVAS_NODE_COLLISION_PADDING = 24;
 const EXECUTION_OUTPUT_FLUSH_INTERVAL_MS = 32;
+const EXECUTION_HOST_OUTPUT_SCHEDULER_FLUSH_INTERVAL_MS = 16;
+const EXECUTION_HOST_OUTPUT_SCHEDULER_MAX_POSTS_PER_FLUSH = 3;
+const EXECUTION_HOST_OUTPUT_INPUT_PRIORITY_WINDOW_MS = 300;
+const EXECUTION_HOST_OUTPUT_INPUT_NON_PRIORITY_MAX_DEFER_MS = 750;
 const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 2500;
 const EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS = 160;
 const CANVAS_STATE_DEFERRED_PERSIST_DEBOUNCE_MS = 1500;
@@ -750,6 +755,25 @@ interface ExecutionInputDiagnosticMetadata {
   queueDelayMs?: number;
 }
 
+interface ScheduledExecutionOutputPost {
+  key: string;
+  kind: ExecutionNodeKind;
+  nodeId: string;
+  chunk: string;
+  persisted: boolean;
+  outputSequence?: number;
+  executionSessionId?: string;
+  queuedAtMs: number;
+  lastUpdatedAtMs: number;
+}
+
+interface ExecutionInputPriorityState {
+  kind: ExecutionNodeKind;
+  nodeId: string;
+  receivedAtMs: number;
+  sequence?: number;
+}
+
 type CanvasStatePersistMode = 'immediate' | 'deferred';
 type CanvasWorkspaceStatePersistMode = 'full' | 'skip';
 
@@ -1100,6 +1124,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private pendingCanvasStatePersistTimer: NodeJS.Timeout | undefined;
   private hostEventLoopLagMonitorTimer: NodeJS.Timeout | undefined;
   private hostEventLoopLagMonitorExpectedAtMs = 0;
+  private readonly scheduledExecutionOutputPosts = new Map<string, ScheduledExecutionOutputPost>();
+  private executionOutputSchedulerTimer: NodeJS.Timeout | undefined;
+  private recentExecutionInputPriority: ExecutionInputPriorityState | undefined;
   private lastPersistedCanvasSnapshotError: string | undefined;
   private lastPersistedCanvasSnapshotWrittenAt: string | undefined;
   private multiRootOverlay: CanvasMultiRootOverlay | undefined;
@@ -1166,6 +1193,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           clearTimeout(this.hostEventLoopLagMonitorTimer);
           this.hostEventLoopLagMonitorTimer = undefined;
         }
+        if (this.executionOutputSchedulerTimer) {
+          clearTimeout(this.executionOutputSchedulerTimer);
+          this.executionOutputSchedulerTimer = undefined;
+        }
+        this.scheduledExecutionOutputPosts.clear();
       }
     });
 
@@ -10945,7 +10977,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             bytes: Buffer.byteLength(parsedMessage.payload.data, 'utf8'),
             success: true
           });
+          this.recentExecutionInputPriority = {
+            nodeId: parsedMessage.payload.nodeId,
+            kind: parsedMessage.payload.kind,
+            receivedAtMs: hostReceivedEpochMs,
+            sequence: parsedMessage.payload.sequence
+          };
           const hostAckEpochMs = Date.now();
+          const schedulerStateBeforeAck = this.getExecutionOutputSchedulerDiagnosticState();
+          const hostAckPostEpochMs = Date.now();
           this.postMessageToSurface(sourceSurface, {
             type: 'host/executionInputAck',
             payload: {
@@ -10956,7 +10996,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               webviewPerformanceNowMs: parsedMessage.payload.webviewPerformanceNowMs,
               hostReceivedEpochMs,
               hostAckEpochMs,
-              queueDelayMs
+              hostAckPostEpochMs,
+              queueDelayMs,
+              controllerCount: schedulerStateBeforeAck.controllerCount,
+              pendingControllerCount: schedulerStateBeforeAck.pendingControllerCount,
+              queuedWriteCount: schedulerStateBeforeAck.queuedWriteCount,
+              pendingOutputLength: schedulerStateBeforeAck.pendingOutputLength
             }
           });
           void this.writeExecutionInput(
@@ -15150,6 +15195,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputFlushTimer = undefined;
     }
     session.pendingOutput = '';
+    this.clearScheduledExecutionOutputPost(kind, nodeId);
 
     session.outputSubscription?.dispose();
     session.exitSubscription?.dispose();
@@ -15246,21 +15292,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    this.flushScheduledExecutionOutputForKey(kind, nodeId, 'immediate-flush');
     const pendingOutput = this.takePendingExecutionOutput(session);
     if (!pendingOutput) {
       return;
     }
 
-    this.postExecutionOutput(kind, nodeId, pendingOutput);
+    this.postExecutionOutput(kind, nodeId, pendingOutput, { immediate: true });
   }
 
   private clearQueuedExecutionOutput(kind: ExecutionNodeKind, nodeId: string): void {
     const session = this.getExecutionSessions(kind).get(nodeId);
-    if (!session) {
-      return;
+    if (session) {
+      this.takePendingExecutionOutput(session);
     }
 
-    this.takePendingExecutionOutput(session);
+    this.clearScheduledExecutionOutputPost(kind, nodeId);
   }
 
   private getCanvasStatePersistBarrierBeforeExecutionOutput(
@@ -15308,23 +15355,41 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return pendingOutput;
   }
 
-  private postExecutionOutput(kind: ExecutionNodeKind, nodeId: string, chunk: string): void {
-    const startedAt = Date.now();
+  private postExecutionOutput(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    chunk: string,
+    options: { immediate?: boolean } = {}
+  ): void {
+    if (!chunk) {
+      return;
+    }
+
     const persistBarrier = this.getCanvasStatePersistBarrierBeforeExecutionOutput(kind, nodeId);
     const session = this.getExecutionSessions(kind).get(nodeId);
     const outputSequence = session?.outputSequence;
     const executionSessionId = session?.sessionId;
-    this.postMessage({
-      type: 'host/executionOutput',
-      payload: {
-        nodeId,
+    const persisted = persistBarrier === undefined;
+    if (options.immediate === true || !persisted) {
+      this.postExecutionOutputMessage(kind, nodeId, chunk, {
+        persisted,
+        outputSequence,
+        executionSessionId
+      });
+    } else {
+      this.scheduleExecutionOutputPost({
+        key: this.getExecutionOutputSchedulerKey(kind, nodeId),
         kind,
-        executionSessionId,
+        nodeId,
         chunk,
-        persisted: persistBarrier === undefined,
-        outputSequence
-      }
-    });
+        persisted: true,
+        outputSequence,
+        executionSessionId,
+        queuedAtMs: Date.now(),
+        lastUpdatedAtMs: Date.now()
+      });
+    }
+
     if (persistBarrier) {
       void persistBarrier.then(
         () => undefined,
@@ -15336,8 +15401,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           });
         }
       ).then(() => {
+        const schedulerKey = this.getExecutionOutputSchedulerKey(kind, nodeId);
         const controllerStillNeedsOutput =
-          this.getExecutionSessions(kind).get(nodeId)?.pendingOutput.length === 0;
+          this.getExecutionSessions(kind).get(nodeId)?.pendingOutput.length === 0 &&
+          !this.scheduledExecutionOutputPosts.has(schedulerKey);
         if (!controllerStillNeedsOutput) {
           return;
         }
@@ -15354,6 +15421,208 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         });
       }).catch(() => undefined);
     }
+  }
+
+  private getExecutionOutputSchedulerKey(kind: ExecutionNodeKind, nodeId: string): string {
+    return `${kind}:${nodeId}`;
+  }
+
+  private scheduleExecutionOutputPost(entry: ScheduledExecutionOutputPost): void {
+    const existing = this.scheduledExecutionOutputPosts.get(entry.key);
+    if (existing) {
+      existing.chunk += entry.chunk;
+      existing.persisted = existing.persisted && entry.persisted;
+      existing.outputSequence = entry.outputSequence;
+      existing.executionSessionId = entry.executionSessionId;
+      existing.lastUpdatedAtMs = entry.lastUpdatedAtMs;
+    } else {
+      this.scheduledExecutionOutputPosts.set(entry.key, entry);
+    }
+
+    this.scheduleExecutionOutputSchedulerFlush();
+  }
+
+  private scheduleExecutionOutputSchedulerFlush(): void {
+    if (this.executionOutputSchedulerTimer || this.scheduledExecutionOutputPosts.size === 0) {
+      return;
+    }
+
+    this.executionOutputSchedulerTimer = setTimeout(() => {
+      this.executionOutputSchedulerTimer = undefined;
+      this.flushScheduledExecutionOutputPosts();
+    }, EXECUTION_HOST_OUTPUT_SCHEDULER_FLUSH_INTERVAL_MS);
+  }
+
+  private flushScheduledExecutionOutputForKey(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    reason: string
+  ): void {
+    const key = this.getExecutionOutputSchedulerKey(kind, nodeId);
+    const entry = this.scheduledExecutionOutputPosts.get(key);
+    if (!entry) {
+      return;
+    }
+
+    const startedAt = Date.now();
+    this.scheduledExecutionOutputPosts.delete(key);
+    if (this.scheduledExecutionOutputPosts.size === 0 && this.executionOutputSchedulerTimer) {
+      clearTimeout(this.executionOutputSchedulerTimer);
+      this.executionOutputSchedulerTimer = undefined;
+    }
+
+    const posted = this.postScheduledExecutionOutput(entry);
+    const schedulerState = this.getExecutionOutputSchedulerDiagnosticState();
+    this.recordExecutionPerformanceDiagnostics({
+      timestamp: new Date().toISOString(),
+      source: 'host-output-scheduler',
+      reason,
+      nodeId,
+      kind,
+      durationMs: Date.now() - startedAt,
+      characters: posted ? entry.chunk.length : 0,
+      bytes: posted ? Buffer.byteLength(entry.chunk, 'utf8') : 0,
+      controllerCount: 1,
+      flushedControllerCount: posted ? 1 : 0,
+      pendingControllerCount: schedulerState.pendingControllerCount,
+      queuedWriteCount: schedulerState.queuedWriteCount,
+      pendingOutputLength: schedulerState.pendingOutputLength,
+      sequence: entry.outputSequence,
+      executionSessionId: entry.executionSessionId,
+      success: posted
+    });
+  }
+
+  private clearScheduledExecutionOutputPost(kind: ExecutionNodeKind, nodeId: string): void {
+    this.scheduledExecutionOutputPosts.delete(this.getExecutionOutputSchedulerKey(kind, nodeId));
+    if (this.scheduledExecutionOutputPosts.size === 0 && this.executionOutputSchedulerTimer) {
+      clearTimeout(this.executionOutputSchedulerTimer);
+      this.executionOutputSchedulerTimer = undefined;
+    }
+  }
+
+  private flushScheduledExecutionOutputPosts(): void {
+    const entries = Array.from(this.scheduledExecutionOutputPosts.values());
+    if (entries.length === 0) {
+      return;
+    }
+
+    const startedAt = Date.now();
+    const selected = this.selectScheduledExecutionOutputPosts(entries, startedAt);
+    if (selected.entries.length === 0) {
+      const schedulerState = this.getExecutionOutputSchedulerDiagnosticState();
+      this.recordExecutionPerformanceDiagnostics({
+        timestamp: new Date().toISOString(),
+        source: 'host-output-scheduler',
+        reason: selected.reason,
+        durationMs: Date.now() - startedAt,
+        characters: 0,
+        bytes: 0,
+        controllerCount: entries.length,
+        flushedControllerCount: 0,
+        pendingControllerCount: schedulerState.pendingControllerCount,
+        queuedWriteCount: schedulerState.queuedWriteCount,
+        pendingOutputLength: schedulerState.pendingOutputLength,
+        success: true
+      });
+      this.scheduleExecutionOutputSchedulerFlush();
+      return;
+    }
+
+    let postedCount = 0;
+    let postedCharacters = 0;
+    let postedBytes = 0;
+    for (const entry of selected.entries) {
+      this.scheduledExecutionOutputPosts.delete(entry.key);
+      if (!this.postScheduledExecutionOutput(entry)) {
+        continue;
+      }
+      postedCount += 1;
+      postedCharacters += entry.chunk.length;
+      postedBytes += Buffer.byteLength(entry.chunk, 'utf8');
+    }
+
+    const schedulerState = this.getExecutionOutputSchedulerDiagnosticState();
+    this.recordExecutionPerformanceDiagnostics({
+      timestamp: new Date().toISOString(),
+      source: 'host-output-scheduler',
+      reason: selected.reason,
+      durationMs: Date.now() - startedAt,
+      characters: postedCharacters,
+      bytes: postedBytes,
+      controllerCount: entries.length,
+      flushedControllerCount: postedCount,
+      pendingControllerCount: schedulerState.pendingControllerCount,
+      queuedWriteCount: schedulerState.queuedWriteCount,
+      pendingOutputLength: schedulerState.pendingOutputLength,
+      nodeId: selected.entries.length === 1 ? selected.entries[0].nodeId : undefined,
+      kind: selected.entries.length === 1 ? selected.entries[0].kind : undefined,
+      sequence: selected.entries.length === 1 ? selected.entries[0].outputSequence : undefined,
+      executionSessionId: selected.entries.length === 1 ? selected.entries[0].executionSessionId : undefined,
+      success: true
+    });
+
+    if (this.scheduledExecutionOutputPosts.size > 0) {
+      this.scheduleExecutionOutputSchedulerFlush();
+    }
+  }
+
+  private selectScheduledExecutionOutputPosts(
+    entries: ScheduledExecutionOutputPost[],
+    now: number
+  ): { entries: ScheduledExecutionOutputPost[]; reason: string } {
+    return selectExecutionOutputSchedulerEntries(entries, now, this.getActiveExecutionInputPriority(now), {
+      maxPostsPerFlush: EXECUTION_HOST_OUTPUT_SCHEDULER_MAX_POSTS_PER_FLUSH,
+      inputPriorityWindowMs: EXECUTION_HOST_OUTPUT_INPUT_PRIORITY_WINDOW_MS,
+      nonPriorityMaxDeferMs: EXECUTION_HOST_OUTPUT_INPUT_NON_PRIORITY_MAX_DEFER_MS
+    });
+  }
+
+  private getActiveExecutionInputPriority(now: number): ExecutionInputPriorityState | undefined {
+    const priority = this.recentExecutionInputPriority;
+    if (!priority || now - priority.receivedAtMs > EXECUTION_HOST_OUTPUT_INPUT_PRIORITY_WINDOW_MS) {
+      return undefined;
+    }
+
+    return priority;
+  }
+
+  private postScheduledExecutionOutput(entry: ScheduledExecutionOutputPost): boolean {
+    const activeSession = this.getExecutionSessions(entry.kind).get(entry.nodeId);
+    if (!activeSession || (entry.executionSessionId && activeSession.sessionId !== entry.executionSessionId)) {
+      return false;
+    }
+
+    this.postExecutionOutputMessage(entry.kind, entry.nodeId, entry.chunk, {
+      persisted: entry.persisted,
+      outputSequence: entry.outputSequence,
+      executionSessionId: entry.executionSessionId
+    });
+    return true;
+  }
+
+  private postExecutionOutputMessage(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    chunk: string,
+    options: {
+      persisted: boolean;
+      outputSequence?: number;
+      executionSessionId?: string;
+    }
+  ): void {
+    const startedAt = Date.now();
+    this.postMessage({
+      type: 'host/executionOutput',
+      payload: {
+        nodeId,
+        kind,
+        executionSessionId: options.executionSessionId,
+        chunk,
+        persisted: options.persisted,
+        outputSequence: options.outputSequence
+      }
+    });
     this.recordExecutionPerformanceDiagnostics({
       timestamp: new Date().toISOString(),
       source: 'host-output-post',
@@ -15362,11 +15631,51 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       durationMs: Date.now() - startedAt,
       characters: chunk.length,
       bytes: Buffer.byteLength(chunk, 'utf8'),
-      sequence: outputSequence,
-      executionSessionId,
-      pendingOutputLength: session?.pendingOutput.length,
+      sequence: options.outputSequence,
+      executionSessionId: options.executionSessionId,
+      pendingOutputLength: this.getExecutionOutputPendingLength(kind, nodeId),
       success: true
     });
+  }
+
+  private getExecutionOutputPendingLength(kind: ExecutionNodeKind, nodeId: string): number {
+    const sessionPendingOutputLength = this.getExecutionSessions(kind).get(nodeId)?.pendingOutput.length ?? 0;
+    const scheduledOutputLength =
+      this.scheduledExecutionOutputPosts.get(this.getExecutionOutputSchedulerKey(kind, nodeId))?.chunk.length ?? 0;
+    return sessionPendingOutputLength + scheduledOutputLength;
+  }
+
+  private getExecutionOutputSchedulerDiagnosticState(): {
+    controllerCount: number;
+    pendingControllerCount: number;
+    queuedWriteCount: number;
+    pendingOutputLength: number;
+  } {
+    const pendingControllerKeys = new Set<string>();
+    let pendingOutputLength = 0;
+    for (const [nodeId, session] of this.agentSessions) {
+      if (session.pendingOutput.length > 0) {
+        pendingControllerKeys.add(this.getExecutionOutputSchedulerKey('agent', nodeId));
+        pendingOutputLength += session.pendingOutput.length;
+      }
+    }
+    for (const [nodeId, session] of this.terminalSessions) {
+      if (session.pendingOutput.length > 0) {
+        pendingControllerKeys.add(this.getExecutionOutputSchedulerKey('terminal', nodeId));
+        pendingOutputLength += session.pendingOutput.length;
+      }
+    }
+    for (const [key, entry] of this.scheduledExecutionOutputPosts) {
+      pendingControllerKeys.add(key);
+      pendingOutputLength += entry.chunk.length;
+    }
+
+    return {
+      controllerCount: this.agentSessions.size + this.terminalSessions.size,
+      pendingControllerCount: pendingControllerKeys.size,
+      queuedWriteCount: this.scheduledExecutionOutputPosts.size,
+      pendingOutputLength
+    };
   }
 
   private queueExecutionStateSync(
@@ -16359,6 +16668,15 @@ function shouldRetainExecutionPerformanceDiagnosticSample(
 
   if (sample.source === 'host-event-loop-lag') {
     return (sample.durationMs ?? 0) >= EXECUTION_HOST_EVENT_LOOP_LAG_REPORT_THRESHOLD_MS;
+  }
+
+  if (sample.source === 'host-output-scheduler') {
+    return (
+      sample.reason !== 'flush' ||
+      (sample.durationMs ?? 0) >= EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_DURATION_MS ||
+      (sample.characters ?? 0) >= EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_CHARACTERS ||
+      (sample.pendingOutputLength ?? 0) >= EXECUTION_PERFORMANCE_HOST_OUTPUT_MIN_CHARACTERS
+    );
   }
 
   if (sample.source === 'webview-output-snapshot-reset') {
@@ -21050,7 +21368,11 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
         nodeId: message.payload.nodeId,
         kind: message.payload.kind,
         sequence: message.payload.sequence,
-        queueDelayMs: message.payload.queueDelayMs
+        hostAckPostEpochMs: message.payload.hostAckPostEpochMs,
+        queueDelayMs: message.payload.queueDelayMs,
+        pendingControllerCount: message.payload.pendingControllerCount,
+        queuedWriteCount: message.payload.queuedWriteCount,
+        pendingOutputLength: message.payload.pendingOutputLength
       };
     case 'host/executionExit':
       return {

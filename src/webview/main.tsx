@@ -945,6 +945,7 @@ function normalizeExecutionPerformanceDiagnosticForWebview(
     webviewEpochMs: roundDiagnosticNumber(payload.webviewEpochMs),
     hostReceivedEpochMs: roundDiagnosticNumber(payload.hostReceivedEpochMs),
     hostAckEpochMs: roundDiagnosticNumber(payload.hostAckEpochMs),
+    hostAckPostEpochMs: roundDiagnosticNumber(payload.hostAckPostEpochMs),
     queueDelayMs: roundDiagnosticNumber(payload.queueDelayMs),
     requestId: payload.requestId,
     executionSessionId: payload.executionSessionId,
@@ -972,7 +973,12 @@ function handleExecutionInputAck(payload: {
   webviewPerformanceNowMs?: number;
   hostReceivedEpochMs: number;
   hostAckEpochMs: number;
+  hostAckPostEpochMs?: number;
   queueDelayMs?: number;
+  controllerCount?: number;
+  pendingControllerCount?: number;
+  queuedWriteCount?: number;
+  pendingOutputLength?: number;
 }): void {
   const pending = typeof payload.sequence === 'number' ? pendingExecutionInputAcks.get(payload.sequence) : undefined;
   if (typeof payload.sequence === 'number') {
@@ -991,9 +997,14 @@ function handleExecutionInputAck(payload: {
       webviewEpochMs: payload.webviewEpochMs ?? pending?.webviewEpochMs,
       hostReceivedEpochMs: payload.hostReceivedEpochMs,
       hostAckEpochMs: payload.hostAckEpochMs,
+      hostAckPostEpochMs: payload.hostAckPostEpochMs,
       queueDelayMs: payload.queueDelayMs,
       characters: pending?.characters,
       bytes: pending?.bytes,
+      controllerCount: payload.controllerCount,
+      pendingControllerCount: payload.pendingControllerCount,
+      queuedWriteCount: payload.queuedWriteCount,
+      pendingOutputLength: payload.pendingOutputLength,
       success: true
     },
     {
