@@ -56,6 +56,7 @@ related_plans:
 21. `节点` sidebar section 可以基于某个现有本地 git folder 创建 worktree，并在 `git worktree add` 成功后把新 worktree 目录添加到当前 workspace。多根 workspace 下，如果入口不来自具体 workspace folder 分组，必须先让用户选择基准 folder；随后用 VS Code 风格 QuickPick 选择新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree；`HEAD` 或已被其他 worktree checkout 的分支会以 detached HEAD 创建。
 
 22. `节点` sidebar section 可以对 workspace folder 分组执行移除 worktree：宿主先确认该 folder 是 linked git worktree，再执行 `git worktree remove` 并从当前 workspace 移除对应 folder；若不是 git repository、不是 linked worktree、workspace 未受信任或找不到 `git`，必须弹窗说明具体原因。
+23. `节点` sidebar section 的 workspace folder 分组行应在标题前用图标区分普通 folder、git repository 和 git worktree；行尾操作顺序为新建 worktree、移除 worktree、移除 folder。
 
 ## 非目标
 
@@ -91,6 +92,7 @@ related_plans:
 - 在 `节点` sidebar section 添加 folder 或创建 worktree 并加入 workspace 后，新 root section 与 VS Code 原生 Add Folder 一样进入 multi-root composed view，并按新增 root 聚焦规则移入视野。
 - 在 `节点` sidebar section 的 workspace folder 分组行点击移除 folder 后，该 folder 从当前 workspace 和 composed view 中消失，但对应磁盘目录不被删除，后续仍可重新添加。
 - 在 `节点` sidebar section 的 workspace folder 分组行点击移除 worktree 后，如果该 folder 是 linked git worktree，则 git worktree 目录被删除，该 folder 也从当前 workspace 和 composed view 中消失；如果该 folder 不是 git repository 或不是 linked worktree，用户会看到说明具体原因的弹窗。
+- 在 `节点` sidebar section 的 workspace folder 分组行中，普通 folder、git repository 和 linked git worktree 分别使用不同前置图标；行尾按钮按新建 worktree、移除 worktree、移除 folder 的顺序出现。
 - 在 multi-root workspace 中通过全局新建 worktree 入口时，用户必须先选择基准 folder；通过 workspace folder 分组行新建 worktree 时，基准 folder 固定为该行对应 folder；两条路径随后都展示同一套 worktree ref QuickPick，并允许从 `HEAD`、本地分支或二级 base ref 创建。
 - 添加 folder 后当前画布通过短暂缩放平移动画移动到新增 root section，新增 root section 可见并被选中。
 - 连续添加 folder 且用户不手动平移时，第二个新增 root 的落点应锚定在上一次程序化聚焦后的可见中心附近，而不是聚焦前的旧视口中心。
