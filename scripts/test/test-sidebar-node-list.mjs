@@ -210,7 +210,21 @@ async function assertWorkspaceFolderGroupActions(browser, html) {
     const snapshot = await renderSidebarState(page, {
       viewMode: 'grouped',
       groups: [
-        group('workspace-root-frontend', 'Frontend', { role: 'workspace-root', workspaceRootPath: rootPath }),
+        group('workspace-root-frontend', 'Frontend', {
+          role: 'workspace-root',
+          workspaceRootPath: rootPath,
+          workspaceFolderKind: 'repository'
+        }),
+        group('workspace-root-scratch', 'Scratch', {
+          role: 'workspace-root',
+          workspaceRootPath: '/repo/scratch',
+          workspaceFolderKind: 'folder'
+        }),
+        group('workspace-root-linked', 'Linked Worktree', {
+          role: 'workspace-root',
+          workspaceRootPath: '/repo/main.worktrees/linked',
+          workspaceFolderKind: 'worktree'
+        }),
         group('group-regular', 'Regular Group')
       ],
       items: [
@@ -232,8 +246,18 @@ async function assertWorkspaceFolderGroupActions(browser, html) {
     const rootGroupRow = snapshot.groupRows.find((row) => row.key === 'workspace-root-frontend');
     assert.deepEqual(
       rootGroupRow?.folderActionTypes,
-      ['createWorktree', 'removeFolder', 'removeWorktree'],
+      ['createWorktree', 'removeWorktree', 'removeFolder'],
       'Workspace-root group rows should expose folder and worktree actions.'
+    );
+    assert.equal(rootGroupRow?.folderKind, 'repository');
+    assert.equal(rootGroupRow?.folderKindIconClass, 'codicon-repo');
+    assert.equal(
+      snapshot.groupRows.find((row) => row.key === 'workspace-root-scratch')?.folderKindIconClass,
+      'codicon-folder'
+    );
+    assert.equal(
+      snapshot.groupRows.find((row) => row.key === 'workspace-root-linked')?.folderKindIconClass,
+      'codicon-worktree'
     );
     const folderGroupActionIcons = await page.$$eval(
       '[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-folder-action]',
@@ -241,7 +265,7 @@ async function assertWorkspaceFolderGroupActions(browser, html) {
     );
     assert.deepEqual(
       folderGroupActionIcons,
-      ['codicon-worktree', 'codicon-close', 'codicon-trash'],
+      ['codicon-worktree', 'codicon-trash', 'codicon-close'],
       'Workspace-root group rows should use the dedicated worktree Codicon and separate remove icons.'
     );
     const regularGroupRow = snapshot.groupRows.find((row) => row.key === 'group-regular');
@@ -326,6 +350,8 @@ async function renderSidebarState(page, payload) {
         key: row.getAttribute('data-sidebar-node-group-key') || '',
         label: row.getAttribute('data-sidebar-node-group-label') || '',
         virtualKind: row.getAttribute('data-sidebar-node-group-virtual-kind') || undefined,
+        folderKind: row.getAttribute('data-sidebar-workspace-folder-kind') || undefined,
+        folderKindIconClass: row.getAttribute('data-sidebar-workspace-folder-kind-icon') || undefined,
         folderActionTypes: Array.from(row.querySelectorAll('[data-sidebar-folder-action]'))
           .map((action) => action.getAttribute('data-sidebar-folder-action'))
           .filter(Boolean),
@@ -365,6 +391,7 @@ function group(id, title, options = {}) {
     size: { width: 720, height: 520 },
     parentGroupId: options.parentGroupId,
     role: options.role,
-    workspaceRootPath: options.workspaceRootPath
+    workspaceRootPath: options.workspaceRootPath,
+    workspaceFolderKind: options.workspaceFolderKind
   };
 }

@@ -19,6 +19,8 @@
 - [x] (2026-06-16 14:05 +0800) 根据用户截图补充二次收口：worktree 操作改用 VS Code 专用 `worktree` Codicon，并将创建 worktree 流程对齐到 VS Code Source Control 的两层 QuickPick ref 选择。
 - [x] (2026-06-16 14:20 +0800) 已更新源码、manifest 测试、节点列表 Webview 测试、codicon bundle 测试、产品规格和设计文档；最终验证 `npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:sidebar-list-colors`、`npm run typecheck`、`npm run build` 与 `git diff --check` 已通过。
 - [x] (2026-06-16 15:30 +0800) 根据用户补充反馈，将“移除 root”改为 VS Code 语义的“从 workspace 移除 folder”，workspace folder 分组 worktree 文案补齐“并加入 workspace”，并新增“移除 worktree 并从 workspace 移除 folder”入口；worktree 不可用时改为 modal 弹窗说明具体原因。
+- [x] (2026-06-16 16:20 +0800) 根据用户新一轮反馈，为 workspace folder 分组行补充普通 folder / git repository / linked worktree 前置图标，并将行尾移除操作顺序调整为“移除 worktree”在“移除 folder”之前。
+- [x] (2026-06-16 23:32 +0800) 已完成本轮最终验证：`npm run typecheck`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:extension-manifest`、`npm run test:sidebar-list-colors`、`npm run build` 与 `git diff --check` 均通过。
 
 ## 意外与发现
 
@@ -45,10 +47,13 @@
 - 决策：worktree 相关 command icon 与 workspace folder 行 icon 使用 `worktree` Codicon；会话历史里的 provider 分叉继续使用 `repo-forked`，两者不混用。移除 worktree 使用 `trash`，普通从 workspace 移除 folder 使用 `close`。
   理由：worktree 是 git 工作目录语义，不是 Agent session fork 语义；截图显示 VS Code 自身也对 worktree 使用专用图标，区分后能减少用户误读。移除 worktree 会删除 linked worktree 目录，危险性高于普通 workspace folder 移除，因此用 `trash` 区分。
   日期/作者：2026-06-16 / Codex。
+- 决策：workspace folder 分组行前置 kind 图标采用轻量 `.git` 元数据检测，而不是每次刷新都调用 `git` 命令；普通 folder / repository / linked worktree 分别用 `folder` / `repo` / `worktree` Codicon。
+  理由：sidebar 刷新频率高，前置图标只服务视觉区分，不应引入额外 git 子进程开销或在非 git folder 上弹错；真正执行 worktree 操作时仍由宿主 git 命令做权威校验与错误提示。
+  日期/作者：2026-06-16 / Codex。
 
 ## 结果与复盘
 
-实现与验证已完成。当前改动让 `节点` section 标题栏出现添加 folder 与新建 worktree 并加入 workspace 操作，workspace folder 分组行尾出现新建 worktree 并加入 workspace、从 workspace 移除 folder、移除 worktree 并从 workspace 移除 folder 三个操作；worktree 操作使用专用 `worktree` Codicon，创建流程对齐 VS Code Source Control 的 ref QuickPick；新增 worktree 被自动加入 workspace 后，现有 multi-root compose 流程会创建并聚焦新的 workspace-root section。自动化已补 workspace folder 行 DOM / 消息、manifest contribution、sidebar list color token、TypeScript 编译、build 与 diff 检查覆盖；真实 VS Code 文件夹 picker、git worktree 创建与移除仍建议在 disposable repo 中人工验证一次。
+实现与验证已完成。当前改动让 `节点` section 标题栏出现添加 folder 与新建 worktree 并加入 workspace 操作，workspace folder 分组行前置图标区分普通 folder / git repository / linked worktree，行尾出现新建 worktree 并加入 workspace、移除 worktree 并从 workspace 移除 folder、从 workspace 移除 folder 三个操作；worktree 操作使用专用 `worktree` Codicon，创建流程对齐 VS Code Source Control 的 ref QuickPick；新增 worktree 被自动加入 workspace 后，现有 multi-root compose 流程会创建并聚焦新的 workspace-root section。自动化已补 workspace folder 行 DOM / 消息、manifest contribution、sidebar list color token、TypeScript 编译、build 与 diff 检查覆盖；真实 VS Code 文件夹 picker、git worktree 创建与移除仍建议在 disposable repo 中人工验证一次。
 
 ## 上下文与定向
 
@@ -66,7 +71,7 @@
 
 第二步实现 workspace 操作。`src/extension.ts` 中新增函数：选择文件夹并加入 workspace；从 folder path 解析 workspace folder 并从 workspace 移除；创建 worktree 的用户输入、git 命令执行和 workspace 添加；移除 worktree 时先确认该 folder 是 linked git worktree，再执行 `git worktree remove` 并从 workspace 移除。添加 folder 应使用 `vscode.window.showOpenDialog({ canSelectFolders: true, canSelectMany: true })`，过滤掉已在 workspace 中的目录，再调用 `vscode.workspace.updateWorkspaceFolders(currentCount, 0, ...folders)`。移除 folder 应弹 modal 确认，只移除 workspace folder，不删除磁盘文件。创建 worktree 应先解析基准 folder，读取 `HEAD` 与本地分支 refs，展示 VS Code 风格 QuickPick；创建新分支路径执行 `git worktree add -b <branch> <path> [startPoint]`，已有 ref 路径执行 `git worktree add [--detach] <path> <ref>`；选择 `HEAD` 或已在其他 worktree checkout 的分支时使用 detached HEAD，成功后把目录加入 workspace。
 
-第三步扩展 `CanvasSidebarNodeListView.ts`。宿主侧 outbound item 或 group 不需要新增复杂模型，但 Webview 渲染 group row 时需要识别 `role === 'workspace-root'` 且存在 `workspaceRootPath` 的 group，并在行尾显示三个 icon-only 按钮：`worktree` 表示新建 worktree 并加入 workspace，`close` 表示从 workspace 移除 folder，`trash` 表示移除 worktree 并从 workspace 移除 folder。按钮点击发送 `sidebarNodeList/createWorktreeForRoot`、`sidebarNodeList/removeFolderFromWorkspace` 或 `sidebarNodeList/removeWorktreeFromWorkspace` 消息，payload 携带 `rootPath` 和 `groupId`。普通用户分组、attention 虚拟分组和未分组分组不显示这些按钮。
+第三步扩展 `CanvasSidebarNodeListView.ts`。宿主侧在发送 group snapshot 前为 workspace folder 分组补充 `workspaceFolderKind`，Webview 渲染 group row 时识别 `role === 'workspace-root'` 且存在 `workspaceRootPath` 的 group，在标题前显示 `folder` / `repo` / `worktree` kind 图标，并在行尾按顺序显示三个 icon-only 按钮：`worktree` 表示新建 worktree 并加入 workspace，`trash` 表示移除 worktree 并从 workspace 移除 folder，`close` 表示从 workspace 移除 folder。按钮点击发送 `sidebarNodeList/createWorktreeForRoot`、`sidebarNodeList/removeWorktreeFromWorkspace` 或 `sidebarNodeList/removeFolderFromWorkspace` 消息，payload 携带 `rootPath` 和 `groupId`。普通用户分组、attention 虚拟分组和未分组分组不显示这些按钮。
 
 第四步补文档。更新 `docs/product-specs/canvas-sidebar-node-and-session-lists.md` 记录节点 section 的 workspace 操作入口；更新 `docs/product-specs/canvas-multi-root-workspace-support.md` 记录 workspace folder 分组 remove/worktree 行为；更新 `docs/design-docs/canvas-sidebar-node-and-session-lists.md` 和 `docs/design-docs/canvas-multi-root-workspace-support.md` 的正式方案、验证方法和验证状态；必要时更新 `docs/design-docs/index.md` 的日期。
 
@@ -90,9 +95,9 @@
 
 ## 验证与验收
 
-自动化验收包括：`npm run test:extension-manifest` 通过，证明 manifest 暴露了新增 sidebar title actions 且未破坏原有 view-mode 菜单；`npm run test:sidebar-node-list` 通过，证明 workspace folder 分组行出现 folder-specific actions，按钮消息正确，普通分组不出现这些 action；`npm run typecheck` 通过，证明新增 VS Code API、child process 和消息类型在 TypeScript 上成立；`git diff --check` 通过，证明没有空白错误。
+自动化验收包括：`npm run test:extension-manifest` 通过，证明 manifest 暴露了新增 sidebar title actions 且未破坏原有 view-mode 菜单；`npm run test:sidebar-node-list` 通过，证明 workspace folder 分组行出现 folder kind 图标和 folder-specific actions，按钮消息正确，普通分组不出现这些 action；`npm run test:sidebar-codicon-bundle` 通过，证明 bundled Codicon CSS 包含 `worktree`、`repo` 与 `folder` 图标；`npm run typecheck` 通过，证明新增 VS Code API、child process 和消息类型在 TypeScript 上成立；`git diff --check` 通过，证明没有空白错误。
 
-用户可观察验收包括：在单根 workspace 中，`节点` section 标题栏可以添加文件夹到 workspace，并可以新建当前 folder 的 worktree；在多根 workspace 中，点击全局新建 worktree 会先选择基准 folder；worktree 创建 QuickPick 显示 `Create new branch...`、`Create new branch from...`、`HEAD` 与本地分支；每个 workspace folder 分组行都有新建 worktree、移除 folder 和移除 worktree 按钮，且新建 worktree 使用专用 worktree 图标；移除 folder 只让它从当前 VS Code workspace 消失，不删除磁盘目录；移除 worktree 会执行 `git worktree remove` 删除 linked worktree 目录并从 workspace 移除对应 folder；新建 worktree 成功后，新目录加入 workspace，并由现有多根组合视图显示为新的 root section。
+用户可观察验收包括：在单根 workspace 中，`节点` section 标题栏可以添加文件夹到 workspace，并可以新建当前 folder 的 worktree；在多根 workspace 中，点击全局新建 worktree 会先选择基准 folder；worktree 创建 QuickPick 显示 `Create new branch...`、`Create new branch from...`、`HEAD` 与本地分支；每个 workspace folder 分组行前置图标能区分普通 folder、git repository 和 linked git worktree，行尾按钮顺序为新建 worktree、移除 worktree、移除 folder，且新建 worktree 使用专用 worktree 图标；移除 folder 只让它从当前 VS Code workspace 消失，不删除磁盘目录；移除 worktree 会执行 `git worktree remove` 删除 linked worktree 目录并从 workspace 移除对应 folder；新建 worktree 成功后，新目录加入 workspace，并由现有多根组合视图显示为新的 root section。
 
 ## 幂等性与恢复
 
@@ -156,3 +161,5 @@
 本次更新说明：2026-06-16 创建计划，明确 sidebar workspace/worktree 操作的范围、主要文件、验证方式和默认交互决策。2026-06-16 实现后更新进度、发现、结果复盘和证据摘要，记录 Webview workspace folder 行 action 与 workspace trust 决策。2026-06-16 最终验证通过后归档到 completed。2026-06-16 根据用户截图二次更新，记录专用 worktree Codicon、VS Code 风格 Create Worktree QuickPick 和既有 ref 创建路径。
 
 2026-06-16 根据用户反馈三次更新：文案从 root 改为 VS Code folder 语义；workspace folder 行 worktree 文案补齐“并加入 workspace”；新增移除 worktree 并从 workspace 移除 folder 的命令、Webview 消息与不可用原因 modal。
+
+2026-06-16 根据用户反馈四次更新：workspace folder 分组行首增加普通 folder / git repository / linked worktree 类型图标；行尾操作顺序调整为新建 worktree、移除 worktree、移除 folder；补充节点列表和 Codicon bundle 测试覆盖。
