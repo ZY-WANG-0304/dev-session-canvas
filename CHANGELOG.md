@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.17.0 - Preview Workspace Worktree and Output Scheduling Update
+
+相对 `0.16.1`，`0.17.0` 是新的公开 `Preview` 里程碑更新，重点补齐侧栏 `节点` view 的 workspace folder / git worktree 管理入口、folder / worktree 类型识别与移除动作，同时在 Host 到 Webview 的执行输出投递层加入输入优先 scheduler，降低多 Agent 输出洪峰中 ACK 和真实回显被旧输出排队压住的概率。它保留 `0.16.1` 的 multi-root root 水印可读性补丁、执行终端剪贴板诊断噪音收口、生产依赖 audit 收口、Codex / Claude Code Agent Fork、会话历史分叉入口、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.16.1` bump 到 `0.17.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 侧栏 `节点` view 标题栏新增 `Add Folder to Workspace` 和 `Create Worktree` 入口；添加 folder 走 VS Code workspace folder 语义，新建 worktree 走受信任 file workspace 下的 VS Code QuickPick + `git worktree add` 语义
+- 多根 workspace 下的全局新建 worktree 会先选择基准 folder；workspace folder 分组行提供基于该 folder 新建 worktree、从 workspace 移除 folder、移除 linked worktree 并同步移出 workspace 三个 icon-only 操作
+- workspace folder 分组行会按 `.git` 元数据区分普通 folder、git repository 和 linked git worktree；移除 folder 不删除磁盘目录，移除 worktree 会先确认目标确实是 linked worktree 再执行 `git worktree remove`
+- 执行终端 Host 输出投递新增 scheduler：对同一 controller 的待投递输出做合并，并在近期用户输入窗口内优先推进刚输入的节点输出；ACK 继续绕过 scheduler 立即投递，同时携带 scheduler 队列状态用于诊断
+- lifecycle 边界、持久化栅栏和显式 flush 仍保留 immediate output 路径；本轮不引入 Host 写入前的本地乐观回显，也不改变终端输入语义
+- README / Marketplace listing 的微信群二维码资产已更新，不改变扩展运行行为
+- Notifier companion 本轮只随主扩展版本对齐，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.16.1` 升级到 `0.17.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用；若 VSM 仍不可见，本轮继续允许依赖 GitHub Release assets 与 Open VSX 兜底完成
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.17.0`，不引入新的通知投递行为变更
+- workspace worktree 操作只在受信任 file workspace、目标 folder 可被 `git` 识别且本机 / 远端 Extension Host 可执行 `git` 时可用；不可用时会 fail closed 并提示原因
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode` 或 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`，升级到 `0.17.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.17.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.17.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.16.1 - Preview Root Watermark and Clipboard Diagnostic Patch
 
 相对 `0.16.0`，`0.16.1` 是同一 `0.16.x` 公开 `Preview` 线内的可读性、诊断噪音与生产依赖审计补丁，重点收口 multi-root workspace root section 水印可读性、执行终端在 snapshot restore / 用户输入边界上的剪贴板诊断噪音，以及生产依赖 audit 告警。它保留 `0.16.0` 的 Codex / Claude Code Agent Fork、会话历史分叉入口、侧栏待处理提醒汇总、Agent 标题栏 cwd / 启动命令拆分、多 Agent 输入响应、执行终端链接解析可靠性、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
