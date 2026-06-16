@@ -85,7 +85,7 @@ try {
     await assertFlatViewPromotesAttentionRows(browser, html);
     await assertGroupedViewAddsAttentionSection(browser, html);
     await assertMultiRootFlatViewKeepsRootGroups(browser, html);
-    await assertWorkspaceRootGroupActions(browser, html);
+    await assertWorkspaceFolderGroupActions(browser, html);
   } finally {
     await browser.close();
   }
@@ -203,7 +203,7 @@ async function assertMultiRootFlatViewKeepsRootGroups(browser, html) {
   }
 }
 
-async function assertWorkspaceRootGroupActions(browser, html) {
+async function assertWorkspaceFolderGroupActions(browser, html) {
   const page = await createSidebarPage(browser, html);
   try {
     const rootPath = '/repo/frontend';
@@ -231,36 +231,43 @@ async function assertWorkspaceRootGroupActions(browser, html) {
 
     const rootGroupRow = snapshot.groupRows.find((row) => row.key === 'workspace-root-frontend');
     assert.deepEqual(
-      rootGroupRow?.rootActionTypes,
-      ['createWorktree', 'removeRoot'],
-      'Workspace-root group rows should expose worktree and remove-root actions.'
+      rootGroupRow?.folderActionTypes,
+      ['createWorktree', 'removeFolder', 'removeWorktree'],
+      'Workspace-root group rows should expose folder and worktree actions.'
     );
-    const rootGroupActionIcons = await page.$$eval(
-      '[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-root-action]',
-      (actions) => actions.map((action) => action.getAttribute('data-sidebar-root-action-icon'))
+    const folderGroupActionIcons = await page.$$eval(
+      '[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-folder-action]',
+      (actions) => actions.map((action) => action.getAttribute('data-sidebar-folder-action-icon'))
     );
     assert.deepEqual(
-      rootGroupActionIcons,
-      ['codicon-worktree', 'codicon-close'],
-      'Workspace-root group rows should use the dedicated worktree Codicon for worktree actions.'
+      folderGroupActionIcons,
+      ['codicon-worktree', 'codicon-close', 'codicon-trash'],
+      'Workspace-root group rows should use the dedicated worktree Codicon and separate remove icons.'
     );
     const regularGroupRow = snapshot.groupRows.find((row) => row.key === 'group-regular');
     assert.deepEqual(
-      regularGroupRow?.rootActionTypes,
+      regularGroupRow?.folderActionTypes,
       [],
-      'Regular user groups should not expose workspace-root actions.'
+      'Regular user groups should not expose workspace-folder actions.'
     );
 
-    await page.click('[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-root-action="createWorktree"]');
+    await page.click('[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-folder-action="createWorktree"]');
     const createWorktreeMessage = await lastSidebarMessage(page, 'sidebarNodeList/createWorktreeForRoot');
     assert.deepEqual(createWorktreeMessage?.payload, {
       rootPath,
       groupId: 'workspace-root-frontend'
     });
 
-    await page.click('[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-root-action="removeRoot"]');
-    const removeRootMessage = await lastSidebarMessage(page, 'sidebarNodeList/removeWorkspaceRoot');
-    assert.deepEqual(removeRootMessage?.payload, {
+    await page.click('[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-folder-action="removeFolder"]');
+    const removeFolderMessage = await lastSidebarMessage(page, 'sidebarNodeList/removeFolderFromWorkspace');
+    assert.deepEqual(removeFolderMessage?.payload, {
+      rootPath,
+      groupId: 'workspace-root-frontend'
+    });
+
+    await page.click('[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-folder-action="removeWorktree"]');
+    const removeWorktreeMessage = await lastSidebarMessage(page, 'sidebarNodeList/removeWorktreeFromWorkspace');
+    assert.deepEqual(removeWorktreeMessage?.payload, {
       rootPath,
       groupId: 'workspace-root-frontend'
     });
@@ -319,11 +326,11 @@ async function renderSidebarState(page, payload) {
         key: row.getAttribute('data-sidebar-node-group-key') || '',
         label: row.getAttribute('data-sidebar-node-group-label') || '',
         virtualKind: row.getAttribute('data-sidebar-node-group-virtual-kind') || undefined,
-        rootActionTypes: Array.from(row.querySelectorAll('[data-sidebar-root-action]'))
-          .map((action) => action.getAttribute('data-sidebar-root-action'))
+        folderActionTypes: Array.from(row.querySelectorAll('[data-sidebar-folder-action]'))
+          .map((action) => action.getAttribute('data-sidebar-folder-action'))
           .filter(Boolean),
-        rootActionIconClasses: Array.from(row.querySelectorAll('[data-sidebar-root-action]'))
-          .map((action) => action.getAttribute('data-sidebar-root-action-icon'))
+        folderActionIconClasses: Array.from(row.querySelectorAll('[data-sidebar-folder-action]'))
+          .map((action) => action.getAttribute('data-sidebar-folder-action-icon'))
           .filter(Boolean)
       }))
     };

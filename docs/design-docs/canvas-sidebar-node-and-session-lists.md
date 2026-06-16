@@ -122,8 +122,8 @@ updated_at: 2026-06-16
 - 当存在处于 attention 状态的节点时，节点列表把“回到需要处理的节点”作为最高优先级入口：平铺展示中 attention 节点排在普通节点前；分组树展示中顶部额外显示“待处理提醒”虚拟分组，汇总所有 attention 节点，同时这些节点仍保留在原分组树位置，避免虚拟汇总覆盖真实归属。
 - 多根 workspace 下的平铺展示不会完全抹平 root 归属，而是继续保留 workspace root 分组。若此时存在 attention 节点，顶部仍显示“待处理提醒”虚拟分组，并且该虚拟分组排在所有 root 分组之前；root 分组内仍保留各自节点，其中 attention 节点在对应 root 内排在普通节点前。
 - `节点` view 标题栏除了创建节点和显示模式切换外，还提供两个 workspace 操作入口：添加文件夹到当前 workspace，以及新建 git worktree 并添加到当前 workspace。添加文件夹走 VS Code `workspace.updateWorkspaceFolders(...)`；新建 worktree 由宿主读取 `HEAD` 和本地分支 refs 后展示 VS Code 风格 QuickPick，成功执行 `git -C <root> worktree add ...` 后再把目标目录作为 workspace folder 加入当前窗口。
-- 多根 workspace 下，如果用户从 `节点` view 标题栏点击全局新建 worktree，宿主必须先用 QuickPick 选择基准 root，避免猜测要基于哪个仓库创建 worktree；单根 workspace 直接使用唯一 root。选定 root 后的第一层 QuickPick 使用 `Create Worktree (...path...) (1/2)` 标题，包含 `Create new branch...`、`Create new branch from...`、`HEAD` 和本地分支；`Create new branch from...` 进入第二层 `Create new branch from...` ref picker。创建新分支路径使用 `git worktree add -b <branch> <path> [startPoint]`，已有 ref 路径使用 `git worktree add [--detach] <path> <ref>`，其中 `HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。
-- workspace root 分组行尾显示两个 root 级 icon-only 操作：基于该 root 新建 worktree，以及从当前 workspace 移除该 root。它们只出现在 `role === 'workspace-root'` 且存在 `workspaceRootPath` 的系统 root 分组行，不出现在普通用户分组、未分组或待处理提醒虚拟分组。新建 worktree 按钮使用 VS Code 专用 `worktree` Codicon；移除 root 只调用 VS Code workspace folder 移除语义，不删除磁盘目录。
+- 多根 workspace 下，如果用户从 `节点` view 标题栏点击全局新建 worktree，宿主必须先用 QuickPick 选择基准 folder，避免猜测要基于哪个仓库创建 worktree；单根 workspace 直接使用唯一 folder。选定 folder 后的第一层 QuickPick 使用 `Create Worktree (...path...) (1/2)` 标题，包含 `Create new branch...`、`Create new branch from...`、`HEAD` 和本地分支；`Create new branch from...` 进入第二层 `Create new branch from...` ref picker。创建新分支路径使用 `git worktree add -b <branch> <path> [startPoint]`，已有 ref 路径使用 `git worktree add [--detach] <path> <ref>`，其中 `HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。
+- workspace folder 分组行尾显示三个 folder 级 icon-only 操作：基于该 folder 新建 worktree 并加入 workspace、从当前 workspace 移除该 folder，以及移除 git worktree 并从 workspace 移除该 folder。它们只出现在 `role === 'workspace-root'` 且存在 `workspaceRootPath` 的系统 workspace folder 分组行，不出现在普通用户分组、未分组或待处理提醒虚拟分组。新建 worktree 按钮使用 VS Code 专用 `worktree` Codicon；移除 folder 只调用 VS Code workspace folder 移除语义，不删除磁盘目录；移除 worktree 会先确认该 folder 是 linked git worktree，再执行 `git worktree remove`。
 - 点击节点项后，宿主会统一执行“打开/定位画布 -> 等待 Webview ready -> 下发 `host/focusNode`”，把节点滚入可见区域并选中。
 
 ### 6.2 会话历史使用最小 `WebviewView`
@@ -219,10 +219,10 @@ updated_at: 2026-06-16
 2. 节点列表中不出现 `file` / `file-list` 节点；点击任一项后，画布能滚动并聚焦到对应节点。
 3. `节点` view 默认按分组树展示，标题右上角使用 VSCode 原生 `...` 菜单承载平铺 / 按分组树展示切换；按分组树展示时，分组和“未分组”section 可折叠/展开，折叠只影响侧栏列表可见行。
 4. attention 节点在单根平铺展示中排在普通节点前；按分组树展示中顶部出现“待处理提醒”虚拟分组，且不移除节点的原分组位置；多根 workspace 平铺展示中保留 root 分组，并让“待处理提醒”虚拟分组排在 root 分组之前。
-5. `节点` view 标题栏提供添加 workspace folder 与新建 worktree 的全局按钮；多根 workspace 下全局新建 worktree 先选择基准 root。
+5. `节点` view 标题栏提供添加 workspace folder 与新建 worktree 的全局按钮；多根 workspace 下全局新建 worktree 先选择基准 folder。
 6. 新建 worktree 的第一层 QuickPick 包含创建新分支、从 ref 创建新分支和已有 ref 选择；第二层只在用户选择 `Create new branch from...` 时出现；已有 ref 创建不要求输入新分支名。
-7. workspace root 分组行尾只在系统 root 分组上显示新建 worktree 与移除 root 两个 icon-only 操作；普通用户分组和虚拟分组不显示这组 root 操作；新建 worktree 图标使用 `worktree` Codicon。
-8. root 行新建 worktree 成功后，新 worktree 目录被加入当前 workspace；root 行移除 root 后，该 root 从当前 workspace 中移除但磁盘目录不被删除。
+7. workspace folder 分组行尾只在系统 workspace folder 分组上显示新建 worktree、移除 folder 与移除 worktree 三个 icon-only 操作；普通用户分组和虚拟分组不显示这组 folder 操作；新建 worktree 图标使用 `worktree` Codicon。
+8. workspace folder 行新建 worktree 成功后，新 worktree 目录被加入当前 workspace；workspace folder 行移除 folder 后，该 folder 从当前 workspace 中移除但磁盘目录不被删除；移除 worktree 会删除对应 git worktree 目录并从 workspace 移除该 folder。
 9. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
 10. 搜索框输入关键词后，列表会即时过滤。
 11. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
@@ -231,8 +231,8 @@ updated_at: 2026-06-16
 
 ## 9. 当前验证状态
 
-- 2026-06-16：根据 VS Code Source Control 截图反馈，worktree 全局命令与 root 行按钮改用专用 `worktree` Codicon；新建 worktree 流程从单一分支名输入扩展为 `Create Worktree (...path...) (1/2)` + `Create new branch from...` 的 QuickPick ref 选择，可创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建；`HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。已复跑 `npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:sidebar-list-colors`、`npm run typecheck`、`npm run build` 与 `git diff --check`。
-- 2026-06-16：`节点` view 标题栏新增添加 workspace folder 与新建 worktree 入口，workspace root 分组行尾新增 root 级新建 worktree / 移除 root 操作；已新增 `npm run test:sidebar-node-list` 覆盖 root 行 action 呈现和 Webview 消息，`npm run test:extension-manifest` 覆盖 sidebar title action 与 root scoped 命令 contribution。真实 VS Code 中的文件夹 picker、`git worktree add` 与 workspace folder 增删仍需人工验证。
+- 2026-06-16：根据 VS Code Source Control 截图反馈，worktree 全局命令与 workspace folder 行按钮改用专用 `worktree` Codicon；新建 worktree 流程从单一分支名输入扩展为 `Create Worktree (...path...) (1/2)` + `Create new branch from...` 的 QuickPick ref 选择，可创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建；`HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。已复跑 `npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:sidebar-list-colors`、`npm run typecheck`、`npm run build` 与 `git diff --check`。
+- 2026-06-16：`节点` view 标题栏新增添加 workspace folder 与新建 worktree 入口，workspace folder 分组行尾新增 folder 级新建 worktree / 移除 folder / 移除 worktree 操作；已新增 `npm run test:sidebar-node-list` 覆盖 workspace folder 行 action 呈现和 Webview 消息，`npm run test:extension-manifest` 覆盖 sidebar title action 与 folder scoped 命令 contribution。真实 VS Code 中的文件夹 picker、`git worktree add`、`git worktree remove` 与 workspace folder 增删仍需人工验证。
 - 2026-06-15：会话历史项右侧 `恢复` / `分叉` icon-only 按钮收口为 bundled VSCode Codicon（`history` / `repo-forked`），与节点列表和模板侧栏共用 `dist/sidebar-codicon.css` 资源路线。
 - 2026-06-15：会话历史 view section 新增专属 `images/dev-session-canvas-sessions-activitybar.svg`，沿用主 glyph + 右上角 badge 约定，badge 内部参考 VS Code Codicon `history` 的时钟指针部分；已纳入 `npm run test:activitybar-badges` 与 manifest 测试。
 - 2026-06-14：会话历史项右侧新增 `恢复` / `分叉` 两个 icon-only 按钮，双击与 Enter / Space 保持既有恢复行为；Host 新增 `forkAgentSessionFromHistory(...)`，从历史会话生成 provider-native fork 启动命令。已运行 `npm run typecheck`、`npm run test:sidebar-session-history` 与 `git diff --check`。

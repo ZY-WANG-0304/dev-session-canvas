@@ -15,7 +15,7 @@ related_plans:
 
 ## 背景
 
-用户在 VSCode 中既会单独打开一个工程，也会把多个工程作为 multi-root workspace 一起打开。Dev Session Canvas 应保持同一套 root 心智：单根只显示当前 root 自己的画布，多根显示所有当前 root 的画布内容，并用系统 root section 区分不同工程。
+用户在 VSCode 中既会单独打开一个工程，也会把多个工程作为 multi-root workspace 一起打开。Dev Session Canvas 应保持同一套 root 心智：单根只显示当前 folder 自己的画布，多根显示所有当前 folder 的画布内容，并用系统 root section 区分不同工程。
 
 ## 用户目标
 
@@ -24,8 +24,8 @@ related_plans:
 - 每个 root 都有清晰的系统分组区域，避免不同工程的节点混在一起。
 - 点击全局 fit view 或查看右下角 MiniMap 时，可以看到所有 root section 的组合布局，即使某个 root 暂时没有节点。
 - 通过 VSCode `Add Folder to Workspace` 添加新 root 后，新 root section 出现在当前视野附近，并通过缩放平移动效进入视野。
-- 通过 Dev Session Canvas sidebar 的 `节点` section 添加 folder、移除 root 或新建 git worktree 时，仍复用同一套 workspace root section 组合语义。
-- 在多根画布中整理某个 root 内的节点后，单独打开该 root 仍能看到这些整理结果。
+- 通过 Dev Session Canvas sidebar 的 `节点` section 添加 folder、移除 folder、新建 git worktree 或移除 git worktree 时，仍复用同一套 workspace root section 组合语义。
+- 在多根画布中整理某个 root 内的节点后，单独打开该 folder 仍能看到这些整理结果。
 - 移动 multi-root 中的 root 区域只影响多根布局，不改写单根 root-local 节点坐标。
 - root 内对象移动到边界外时，root 区域自动扩张，内容不会静默移出所属 root。
 - 多根窗口重启后，已有 `Agent` / `Terminal` live runtime 可以按 root-local runtime 身份重新附着；单根窗口与多根窗口同时打开时共享同一个后端 session。
@@ -50,10 +50,12 @@ related_plans:
 15. 多根组合视图中的 `Agent` / `Terminal` 恢复时，display node id 只服务渲染、选择、连线、布局和拆回 root-local；runtime binding id 以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威，其中 `runtimeStoragePath` 必须保留具体 VS Code `workspaceStorage` slot。
 16. 多根窗口不能用当前 multi-root workspace storage path 猜 runtime；同一个 root 的多个 storage slot 也不能互相替代，必须使用 root-local metadata 中保存的完整 `runtimeStoragePath`。旧 snapshot 缺少 `runtimeStoragePath` 时必须迁移或显式降级为历史恢复，并记录诊断。
 17. 全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 把所有系统 root section 作为一等空间对象纳入；multi-root 下全局 fit view 默认包含所有 root section。
-18. 当 VSCode workspace folder 变化新增 root 时，如果该 root 在 multi-root overlay 中还没有位置，系统应以当前画布可见中心为锚点，选择离该中心最近且不与已有 root section 重叠的可用位置；已有 overlay root 位置不被重新计算。
-19. 新增 root section 进入 composed view 后，Host 应请求当前 Webview 聚焦该 workspace-root group；Webview 通过平移与缩放动画把该 root section 移入视野，并在动画结束后持久化 viewport，同时向 Host 上报动画后的 `webview/updateViewportCenter`。
-20. `节点` sidebar section 可以调用 VS Code workspace folder API 添加文件夹、移除 root；移除 root 只影响当前 workspace folder 列表，不删除磁盘目录。
-21. `节点` sidebar section 可以基于某个现有本地 git root 创建 worktree，并在 `git worktree add` 成功后把新 worktree 目录添加到当前 workspace。多根 workspace 下，如果入口不来自具体 root 分组，必须先让用户选择基准 root；随后用 VS Code 风格 QuickPick 选择新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree；`HEAD` 或已被其他 worktree checkout 的分支会以 detached HEAD 创建。
+18. 当 VSCode workspace folder 变化新增 root 时，如果该 folder 在 multi-root overlay 中还没有位置，系统应以当前画布可见中心为锚点，选择离该中心最近且不与已有 root section 重叠的可用位置；已有 overlay root 位置不被重新计算。
+19. 新增 root section 进入 composed view 后，Host 应请求当前 Webview 聚焦该 workspace-root group；Webview 通过平移与缩放动画把该 folder section 移入视野，并在动画结束后持久化 viewport，同时向 Host 上报动画后的 `webview/updateViewportCenter`。
+20. `节点` sidebar section 可以调用 VS Code workspace folder API 添加文件夹或移除 folder；移除 folder 只影响当前 workspace folder 列表，不删除磁盘目录。
+21. `节点` sidebar section 可以基于某个现有本地 git folder 创建 worktree，并在 `git worktree add` 成功后把新 worktree 目录添加到当前 workspace。多根 workspace 下，如果入口不来自具体 workspace folder 分组，必须先让用户选择基准 folder；随后用 VS Code 风格 QuickPick 选择新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree；`HEAD` 或已被其他 worktree checkout 的分支会以 detached HEAD 创建。
+
+22. `节点` sidebar section 可以对 workspace folder 分组执行移除 worktree：宿主先确认该 folder 是 linked git worktree，再执行 `git worktree remove` 并从当前 workspace 移除对应 folder；若不是 git repository、不是 linked worktree、workspace 未受信任或找不到 `git`，必须弹窗说明具体原因。
 
 ## 非目标
 
@@ -72,10 +74,10 @@ related_plans:
 - 在 multi-root workspace 中，每个 workspace folder 都显示一个系统 root section，标题对应 folder 名称。
 - 在 multi-root workspace 中，系统 root section 的 body 区域以固定密度平铺对应 folder 名称的低透明签名式水印；普通用户分组不显示自己的水印，也不会用分组背景遮掉所在 root 的水印；稳定节点仍覆盖水印。水印基础字号使用 root section title 的基准字号，但在 title tab 因 root section 宽度过窄而被压缩或截断时，水印仍按当前 zoom 独立反向缩放；path-like 长标题在水印里收敛成 root 名称，普通长 root 展示名最多允许两行，不拦截 root body 选择、聚焦或右键创建。
 - `devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 默认为 `true`；设为 `false` 后，系统 root section 不再渲染 body 水印，但保留 root section 标题和完整路径 tooltip。
-- 在 multi-root workspace 中移动某个 root section 后重新加载，多根布局保持；单独打开该 root 时，节点仍保持 root-local 相对位置。
-- 在 multi-root workspace 中把某个 root 内 Note 拖到 root 边界外后，root section 自动扩张；单独打开该 root 可以看到 Note 的 root-local 位置变化。
+- 在 multi-root workspace 中移动某个 root section 后重新加载，多根布局保持；单独打开该 folder 时，节点仍保持 root-local 相对位置。
+- 在 multi-root workspace 中把某个 root 内 Note 拖到 root 边界外后，root section 自动扩张；单独打开该 folder 可以看到 Note 的 root-local 位置变化。
 - 在 multi-root workspace 中两个同父 root section 不会重叠；选中多个同父 root section 创建普通分组后，外层分组可以包含这些 root。
-- 在 multi-root workspace 的某个 root section 内创建 Note / Agent / Terminal / 模板内容 / 关联 Markdown Note 后，单独打开该 root 可以看到对应对象。
+- 在 multi-root workspace 的某个 root section 内创建 Note / Agent / Terminal / 模板内容 / 关联 Markdown Note 后，单独打开该 folder 可以看到对应对象。
 - 两个 root 中都存在 `note-1` 或 `agent-1` 时，多根组合视图不会发生节点 ID 冲突。
 - 在 multi-root workspace 中，跨 root 画线或把既有连线重连到另一个 root 的节点不会创建或更新连线。
 - 两个 root 都有文件活动时，自动 `file` / `file-list` 节点和 file-activity edge 均保留在各自 root section 内，按各自 root 内 owner Agent 最近公共父分组归属，且 ID 不冲突；当前版本不把跨 root owner 合并成同一个自动文件 artifact。
@@ -87,12 +89,13 @@ related_plans:
 - 在 multi-root workspace 中，空 root section 没有节点时也会被全局 fit view 纳入；右下角 MiniMap 能看出多个 root section 的相对布局。
 - 在 multi-root workspace 中添加第三个 folder 后，新 root section 不使用远离当前视口的默认 index 网格位置，而是落在当前可见中心附近的最近可用空位，且不与已有 root section 重叠；重载后该位置保持。
 - 在 `节点` sidebar section 添加 folder 或创建 worktree 并加入 workspace 后，新 root section 与 VS Code 原生 Add Folder 一样进入 multi-root composed view，并按新增 root 聚焦规则移入视野。
-- 在 `节点` sidebar section 的 root 分组行点击移除 root 后，该 root 从当前 workspace 和 composed view 中消失，但对应磁盘目录不被删除，后续仍可重新添加。
-- 在 multi-root workspace 中通过全局新建 worktree 入口时，用户必须先选择基准 root；通过 root 分组行新建 worktree 时，基准 root 固定为该行对应 root；两条路径随后都展示同一套 worktree ref QuickPick，并允许从 `HEAD`、本地分支或二级 base ref 创建。
+- 在 `节点` sidebar section 的 workspace folder 分组行点击移除 folder 后，该 folder 从当前 workspace 和 composed view 中消失，但对应磁盘目录不被删除，后续仍可重新添加。
+- 在 `节点` sidebar section 的 workspace folder 分组行点击移除 worktree 后，如果该 folder 是 linked git worktree，则 git worktree 目录被删除，该 folder 也从当前 workspace 和 composed view 中消失；如果该 folder 不是 git repository 或不是 linked worktree，用户会看到说明具体原因的弹窗。
+- 在 multi-root workspace 中通过全局新建 worktree 入口时，用户必须先选择基准 folder；通过 workspace folder 分组行新建 worktree 时，基准 folder 固定为该行对应 folder；两条路径随后都展示同一套 worktree ref QuickPick，并允许从 `HEAD`、本地分支或二级 base ref 创建。
 - 添加 folder 后当前画布通过短暂缩放平移动画移动到新增 root section，新增 root section 可见并被选中。
 - 连续添加 folder 且用户不手动平移时，第二个新增 root 的落点应锚定在上一次程序化聚焦后的可见中心附近，而不是聚焦前的旧视口中心。
 - 如果添加 folder 后 Panel Webview 发生同 generation frame refresh，新增 root section 的聚焦请求仍会在当前 frame 上 replay 并完成动画。
-- 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
+- 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 folder 路径或显式 Explorer cwd。
 
 ## 验证状态
 

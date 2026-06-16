@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { execFile } from 'child_process';
-import { mkdir, stat } from 'fs/promises';
+import { mkdir, realpath, stat } from 'fs/promises';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
 
@@ -151,6 +151,15 @@ interface WorkspaceWorktreeRequest {
   rootPath?: string;
 }
 
+type WorktreeUnavailableReasonCode =
+  | 'workspace-untrusted'
+  | 'not-file-root'
+  | 'not-git-repository'
+  | 'no-git-refs'
+  | 'not-linked-worktree'
+  | 'git-unavailable'
+  | 'unknown';
+
 interface WorkspaceWorktreeTarget {
   rootFolder: vscode.WorkspaceFolder;
   branchName?: string;
@@ -171,6 +180,13 @@ interface GitWorktreeRef {
   worktreePath?: string;
   isCurrentWorktree: boolean;
   isCheckedOutInWorktree: boolean;
+}
+
+interface GitWorktreeRepositoryInfo {
+  rootPath: string;
+  topLevelPath: string;
+  gitCommonDir: string;
+  isLinkedWorktree: boolean;
 }
 
 interface WorktreeCreationPlan {
@@ -419,13 +435,21 @@ export function activate(context: vscode.ExtensionContext): void {
         rootPath: typeof rootPath === 'string' ? rootPath : undefined
       });
     }),
-    vscode.commands.registerCommand(COMMAND_IDS.removeWorkspaceRoot, async (rootPath?: unknown) => {
+    vscode.commands.registerCommand(COMMAND_IDS.removeFolderFromWorkspace, async (rootPath?: unknown) => {
       if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
-        await vscode.window.showWarningMessage('未找到要移除的 workspace root。');
+        await vscode.window.showWarningMessage('未找到要从 workspace 移除的 folder。');
         return;
       }
 
-      await removeWorkspaceRootFromCommand(rootPath);
+      await removeFolderFromWorkspaceFromCommand(rootPath);
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.removeWorktreeFromWorkspace, async (rootPath?: unknown) => {
+      if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
+        await vscode.window.showWarningMessage('未找到要移除的 worktree folder。');
+        return;
+      }
+
+      await removeWorktreeFromWorkspaceFromCommand(rootPath);
     })
   );
 
@@ -1244,31 +1268,114 @@ async function addFolderToWorkspaceFromCommand(): Promise<void> {
   }
 }
 
-async function removeWorkspaceRootFromCommand(rootPath: string): Promise<void> {
+async function removeFolderFromWorkspaceFromCommand(rootPath: string): Promise<void> {
   const workspaceFolder = resolveWorkspaceFolderByFsPath(rootPath);
   if (!workspaceFolder) {
-    await vscode.window.showWarningMessage('该 root 已不在当前 workspace 中。');
+    await vscode.window.showWarningMessage('该 folder 已不在当前 workspace 中。');
     return;
   }
 
   const confirmed = await vscode.window.showWarningMessage(
-    `从当前 workspace 移除 root「${workspaceFolder.name}」？磁盘文件不会被删除。`,
+    `从当前 workspace 移除 folder「${workspaceFolder.name}」？磁盘文件不会被删除。`,
     { modal: true },
-    '移除 Root'
+    '移除 Folder'
   );
-  if (confirmed !== '移除 Root') {
+  if (confirmed !== '移除 Folder') {
     return;
   }
 
-  const removed = vscode.workspace.updateWorkspaceFolders(workspaceFolder.index, 1);
-  if (!removed) {
-    await vscode.window.showWarningMessage(`无法从当前 workspace 移除 root：${workspaceFolder.name}`);
+  const removalResult = removeWorkspaceFolderByFsPath(workspaceFolder.uri.fsPath);
+  if (removalResult === 'missing') {
+    await vscode.window.showWarningMessage('该 folder 已不在当前 workspace 中。');
+  } else if (removalResult === 'failed') {
+    await vscode.window.showWarningMessage(`无法从当前 workspace 移除 folder：${workspaceFolder.name}`);
+  }
+}
+
+async function removeWorktreeFromWorkspaceFromCommand(rootPath: string): Promise<void> {
+  const workspaceFolder = resolveWorkspaceFolderByFsPath(rootPath);
+  if (!workspaceFolder) {
+    await vscode.window.showWarningMessage('该 worktree folder 已不在当前 workspace 中。');
+    return;
+  }
+
+  if (!vscode.workspace.isTrusted) {
+    await showWorktreeUnavailableModal({
+      code: 'workspace-untrusted',
+      rootPath,
+      operation: 'remove'
+    });
+    return;
+  }
+
+  if (workspaceFolder.uri.scheme !== 'file') {
+    await showWorktreeUnavailableModal({
+      code: 'not-file-root',
+      rootPath: workspaceFolder.uri.toString(),
+      operation: 'remove'
+    });
+    return;
+  }
+
+  let repositoryInfo: GitWorktreeRepositoryInfo;
+  try {
+    repositoryInfo = await getGitWorktreeRepositoryInfo(workspaceFolder.uri.fsPath);
+  } catch (error) {
+    await showWorktreeUnavailableModal({
+      code: classifyWorktreeRepositoryError(error),
+      rootPath: workspaceFolder.uri.fsPath,
+      operation: 'remove',
+      cause: error
+    });
+    return;
+  }
+
+  if (!repositoryInfo.isLinkedWorktree) {
+    await showWorktreeUnavailableModal({
+      code: 'not-linked-worktree',
+      rootPath: workspaceFolder.uri.fsPath,
+      operation: 'remove',
+      detail: '当前 folder 是 git 主工作区或普通文件夹，不是可通过 git worktree remove 删除的 linked worktree。'
+    });
+    return;
+  }
+
+  const confirmed = await vscode.window.showWarningMessage(
+    `移除 worktree「${workspaceFolder.name}」并从当前 workspace 移除该 folder？磁盘目录会被 git worktree remove 删除。`,
+    { modal: true, detail: workspaceFolder.uri.fsPath },
+    '移除 Worktree'
+  );
+  if (confirmed !== '移除 Worktree') {
+    return;
+  }
+
+  try {
+    await execFileAsync('git', ['-C', workspaceFolder.uri.fsPath, 'worktree', 'remove', workspaceFolder.uri.fsPath], {
+      timeout: GIT_WORKTREE_COMMAND_TIMEOUT_MS,
+      maxBuffer: GIT_COMMAND_MAX_BUFFER_BYTES,
+      encoding: 'utf8'
+    });
+  } catch (error) {
+    await vscode.window.showErrorMessage(`移除 git worktree 失败：${formatExecErrorMessage(error)}`, { modal: true });
+    return;
+  }
+
+  const removalResult = removeWorkspaceFolderByFsPath(workspaceFolder.uri.fsPath);
+  if (removalResult === 'failed') {
+    await vscode.window.showWarningMessage(
+      `Worktree 已移除，但无法自动从当前 workspace 移除 folder：${workspaceFolder.name}`,
+      { modal: true }
+    );
   }
 }
 
 async function createWorktreeAndAddToWorkspaceFromCommand(request: WorkspaceWorktreeRequest): Promise<void> {
   if (!vscode.workspace.isTrusted) {
-    await vscode.window.showWarningMessage('当前 workspace 未受信任，暂不能执行 git worktree 命令。');
+    await showWorktreeUnavailableModal({
+      code: 'workspace-untrusted',
+      rootPath: request.rootPath,
+      operation: 'create'
+    });
     return;
   }
 
@@ -1293,7 +1400,8 @@ async function createWorktreeAndAddToWorkspaceFromCommand(request: WorkspaceWork
       buildGitWorktreeAddArgs(target),
       {
         timeout: GIT_WORKTREE_COMMAND_TIMEOUT_MS,
-        maxBuffer: GIT_COMMAND_MAX_BUFFER_BYTES
+        maxBuffer: GIT_COMMAND_MAX_BUFFER_BYTES,
+        encoding: 'utf8'
       }
     );
   } catch (error) {
@@ -1312,6 +1420,28 @@ async function createWorktreeAndAddToWorkspaceFromCommand(request: WorkspaceWork
   await vscode.window.showInformationMessage(`已创建 worktree 并添加到 workspace：${target.displayName}`);
 }
 
+async function getGitWorktreeRepositoryInfo(rootPath: string): Promise<GitWorktreeRepositoryInfo> {
+  const [topLevelOutput, gitDirOutput, gitCommonDirOutput] = await Promise.all([
+    execGit(rootPath, ['rev-parse', '--show-toplevel']),
+    execGit(rootPath, ['rev-parse', '--git-dir']),
+    execGit(rootPath, ['rev-parse', '--git-common-dir'])
+  ]);
+  const topLevelPath = path.resolve(topLevelOutput.trim());
+  const gitDir = resolveGitMetadataPath(rootPath, gitDirOutput.trim());
+  const gitCommonDir = resolveGitMetadataPath(rootPath, gitCommonDirOutput.trim());
+  const [realGitDir, realGitCommonDir] = await Promise.all([
+    resolveRealPathBestEffort(gitDir),
+    resolveRealPathBestEffort(gitCommonDir)
+  ]);
+
+  return {
+    rootPath: path.resolve(rootPath),
+    topLevelPath,
+    gitCommonDir,
+    isLinkedWorktree: normalizeComparableFileSystemPath(realGitDir) !== normalizeComparableFileSystemPath(realGitCommonDir)
+  };
+}
+
 async function promptWorkspaceWorktreeTarget(
   request: WorkspaceWorktreeRequest
 ): Promise<WorkspaceWorktreeTarget | undefined> {
@@ -1319,12 +1449,35 @@ async function promptWorkspaceWorktreeTarget(
     ? resolveWorkspaceFolderByFsPath(request.rootPath)
     : await promptWorkspaceRootFolderForWorktree();
   if (!rootFolder) {
-    await vscode.window.showWarningMessage('请先打开一个本地 git workspace root，再创建 worktree。');
+    await showWorktreeUnavailableModal({
+      code: request.rootPath ? 'unknown' : 'not-file-root',
+      rootPath: request.rootPath,
+      operation: 'create',
+      detail: request.rootPath
+        ? '指定的 folder 已不在当前 workspace 中。'
+        : '当前窗口没有可用于创建 worktree 的本地 workspace folder。'
+    });
     return undefined;
   }
 
   if (rootFolder.uri.scheme !== 'file') {
-    await vscode.window.showWarningMessage('当前只支持为本地文件系统 root 新建 git worktree。');
+    await showWorktreeUnavailableModal({
+      code: 'not-file-root',
+      rootPath: rootFolder.uri.toString(),
+      operation: 'create'
+    });
+    return undefined;
+  }
+
+  try {
+    await getGitWorktreeRepositoryInfo(rootFolder.uri.fsPath);
+  } catch (error) {
+    await showWorktreeUnavailableModal({
+      code: classifyWorktreeRepositoryError(error),
+      rootPath: rootFolder.uri.fsPath,
+      operation: 'create',
+      cause: error
+    });
     return undefined;
   }
 
@@ -1332,11 +1485,21 @@ async function promptWorkspaceWorktreeTarget(
   try {
     refs = await getGitWorktreeRefs(rootFolder);
   } catch (error) {
-    await vscode.window.showWarningMessage(`无法读取 git refs：${formatExecErrorMessage(error)}`);
+    await showWorktreeUnavailableModal({
+      code: classifyWorktreeRepositoryError(error),
+      rootPath: rootFolder.uri.fsPath,
+      operation: 'create',
+      cause: error
+    });
     return undefined;
   }
   if (refs.length === 0) {
-    await vscode.window.showWarningMessage('当前 root 没有可用于创建 worktree 的 git ref。');
+    await showWorktreeUnavailableModal({
+      code: 'no-git-refs',
+      rootPath: rootFolder.uri.fsPath,
+      operation: 'create',
+      detail: '当前 git repository 还没有可用于创建 worktree 的 commit 或本地 ref。'
+    });
     return undefined;
   }
 
@@ -1581,7 +1744,7 @@ async function promptWorkspaceRootFolderForWorktree(): Promise<vscode.WorkspaceF
     })),
     {
       title: 'Select Git repository to create worktree from',
-      placeHolder: 'Choose the workspace root that owns the git repository',
+      placeHolder: 'Choose the workspace folder that owns the git repository',
       matchOnDescription: true
     }
   );
@@ -1642,11 +1805,11 @@ function buildGitWorktreeAddArgs(target: WorkspaceWorktreeTarget): string[] {
 function formatWorktreeConfirmationMessage(target: WorkspaceWorktreeTarget): string {
   if (target.branchName) {
     const startPointText = target.startPoint ? `，起点为「${target.startPoint}」` : '';
-    return `将基于 root「${target.rootFolder.name}」创建 worktree 分支「${target.branchName}」${startPointText}，并添加到当前 workspace。`;
+    return `将基于 folder「${target.rootFolder.name}」创建 worktree 分支「${target.branchName}」${startPointText}，并添加到当前 workspace。`;
   }
 
   const detachedText = target.detached ? '（detached HEAD）' : '';
-  return `将基于 root「${target.rootFolder.name}」为引用「${target.checkoutRef ?? target.displayName}」创建 worktree${detachedText}，并添加到当前 workspace。`;
+  return `将基于 folder「${target.rootFolder.name}」为引用「${target.checkoutRef ?? target.displayName}」创建 worktree${detachedText}，并添加到当前 workspace。`;
 }
 
 function abbreviateWorktreeRootPath(rootPath: string): string {
@@ -1673,6 +1836,18 @@ function sanitizeWorktreePathSegment(value: string): string {
   return segments.length > 0 ? path.join(...segments) : 'worktree';
 }
 
+function resolveGitMetadataPath(rootPath: string, gitPath: string): string {
+  return path.isAbsolute(gitPath) ? path.resolve(gitPath) : path.resolve(rootPath, gitPath);
+}
+
+async function resolveRealPathBestEffort(filePath: string): Promise<string> {
+  try {
+    return await realpath(filePath);
+  } catch {
+    return path.resolve(filePath);
+  }
+}
+
 function resolveWorkspaceFolderByFsPath(rootPath: string): vscode.WorkspaceFolder | undefined {
   const normalizedRootPath = normalizeComparableFileSystemPath(rootPath);
   return (vscode.workspace.workspaceFolders ?? []).find(
@@ -1692,6 +1867,15 @@ function addWorkspaceFolderIfMissing(folderPath: string): boolean {
   );
 }
 
+function removeWorkspaceFolderByFsPath(folderPath: string): 'removed' | 'missing' | 'failed' {
+  const workspaceFolder = resolveWorkspaceFolderByFsPath(folderPath);
+  if (!workspaceFolder) {
+    return 'missing';
+  }
+
+  return vscode.workspace.updateWorkspaceFolders(workspaceFolder.index, 1) ? 'removed' : 'failed';
+}
+
 async function pathExists(filePath: string): Promise<boolean> {
   try {
     await stat(filePath);
@@ -1708,9 +1892,81 @@ function isNodeErrorWithCode(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code;
 }
 
+function classifyWorktreeRepositoryError(error: unknown): WorktreeUnavailableReasonCode {
+  if (isNodeErrorWithCode(error, 'ENOENT')) {
+    return 'git-unavailable';
+  }
+
+  if (error instanceof Error) {
+    const message = formatExecErrorMessage(error).toLowerCase();
+    if (
+      message.includes('needed a single revision') ||
+      message.includes('ambiguous argument') ||
+      message.includes('unknown revision')
+    ) {
+      return 'no-git-refs';
+    }
+    if (
+      message.includes('not a git repository') ||
+      message.includes('not a git work tree')
+    ) {
+      return 'not-git-repository';
+    }
+  }
+
+  return 'unknown';
+}
+
+async function showWorktreeUnavailableModal(options: {
+  code: WorktreeUnavailableReasonCode;
+  rootPath?: string;
+  operation: 'create' | 'remove';
+  detail?: string;
+  cause?: unknown;
+}): Promise<void> {
+  const operationLabel = options.operation === 'create' ? '新建 worktree' : '移除 worktree';
+  const reason = formatWorktreeUnavailableReason(options);
+  const rootDetail = options.rootPath ? `\n\n目标 folder：${options.rootPath}` : '';
+  const causeDetail = options.cause ? `\n\n底层错误：${formatExecErrorMessage(options.cause)}` : '';
+  const customDetail = options.detail ? `\n\n${options.detail}` : '';
+  await vscode.window.showWarningMessage(
+    `${operationLabel} 不可用：${reason}${rootDetail}${customDetail}${causeDetail}`,
+    { modal: true }
+  );
+}
+
+function formatWorktreeUnavailableReason(options: {
+  code: WorktreeUnavailableReasonCode;
+  operation: 'create' | 'remove';
+}): string {
+  switch (options.code) {
+    case 'workspace-untrusted':
+      return '当前 workspace 未受信任。请先信任 workspace 后再执行 git worktree 操作。';
+    case 'not-file-root':
+      return '当前没有本地文件系统 folder。git worktree 只能作用于本地 folder。';
+    case 'not-git-repository':
+      return options.operation === 'create'
+        ? '当前 folder 还不是 git repository。请先初始化为 repository，或选择已有 git repository folder。'
+        : '当前 folder 还不是 git repository。请先选择一个 git repository folder。';
+    case 'no-git-refs':
+      return '当前 git repository 还没有可用于创建 worktree 的 commit 或本地 ref。请先完成初始提交，或选择已有 commit 的 repository。';
+    case 'not-linked-worktree':
+      return '当前 folder 不是可移除的 linked git worktree。请确认它是通过 git worktree 创建的 folder。';
+    case 'git-unavailable':
+      return '当前环境无法找到 git 命令。请先安装 git 并确保 VS Code extension host 能访问 git。';
+    case 'unknown':
+      return '无法确认当前 folder 是否支持 git worktree。';
+  }
+}
+
 function formatExecErrorMessage(error: unknown): string {
   if (error instanceof Error) {
-    const stderr = 'stderr' in error && typeof error.stderr === 'string' ? error.stderr.trim() : '';
+    const stderrValue = 'stderr' in error ? error.stderr : undefined;
+    const stderr = typeof stderrValue === 'string'
+      ? stderrValue.trim()
+      : Buffer.isBuffer(stderrValue)
+        ? stderrValue.toString('utf8').trim()
+        : '';
     return stderr || error.message;
   }
 

@@ -159,7 +159,8 @@ assert.deepEqual(
         'devSessionCanvas.addFolderToWorkspace',
         'devSessionCanvas.createWorktree',
         'devSessionCanvas.createWorktreeForRoot',
-        'devSessionCanvas.removeWorkspaceRoot'
+        'devSessionCanvas.removeFolderFromWorkspace',
+        'devSessionCanvas.removeWorktreeFromWorkspace'
       ].includes(entry.command)
     )
     .map((entry) => ({ command: entry.command, icon: entry.icon })),
@@ -177,15 +178,23 @@ assert.deepEqual(
       icon: '$(worktree)'
     },
     {
-      command: 'devSessionCanvas.removeWorkspaceRoot',
+      command: 'devSessionCanvas.removeFolderFromWorkspace',
       icon: '$(close)'
+    },
+    {
+      command: 'devSessionCanvas.removeWorktreeFromWorkspace',
+      icon: '$(trash)'
     }
   ],
   'Expected workspace and worktree commands to be contributed with stable Codicon entry points.'
 );
 assert.deepEqual(
   commandPaletteMenus.filter((item) =>
-    ['devSessionCanvas.createWorktreeForRoot', 'devSessionCanvas.removeWorkspaceRoot'].includes(item.command)
+    [
+      'devSessionCanvas.createWorktreeForRoot',
+      'devSessionCanvas.removeFolderFromWorkspace',
+      'devSessionCanvas.removeWorktreeFromWorkspace'
+    ].includes(item.command)
   ),
   [
     {
@@ -193,11 +202,15 @@ assert.deepEqual(
       when: 'false'
     },
     {
-      command: 'devSessionCanvas.removeWorkspaceRoot',
+      command: 'devSessionCanvas.removeFolderFromWorkspace',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.removeWorktreeFromWorkspace',
       when: 'false'
     }
   ],
-  'Expected root-scoped sidebar webview commands to stay out of the global Command Palette.'
+  'Expected folder-scoped sidebar webview commands to stay out of the global Command Palette.'
 );
 const groupCommandIds = ['devSessionCanvas.createEmptyGroup', 'devSessionCanvas.createGroupFromSelection'];
 const contributedCommandIds = manifest.contributes.commands.map((entry) => entry.command);
