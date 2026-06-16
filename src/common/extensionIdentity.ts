@@ -123,6 +123,7 @@ export const CONFIG_KEYS = {
   canvasLinkOpenMode: 'devSessionCanvas.canvas.linkOpenMode',
   canvasOverviewMode: 'devSessionCanvas.canvas.overviewMode',
   canvasOverviewZoomThreshold: 'devSessionCanvas.canvas.overviewZoomThreshold',
+  canvasMultiRootPresentationMode: 'devSessionCanvas.canvas.multiRootPresentationMode',
   canvasWorkspaceRootWatermarksEnabled: 'devSessionCanvas.canvas.workspaceRootWatermarks.enabled',
   terminalShell: 'devSessionCanvas.terminal.shell',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',

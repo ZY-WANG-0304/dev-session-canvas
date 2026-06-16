@@ -847,6 +847,157 @@ test('workspace root groups reject cross-root edge creation and reconnect', asyn
     .toBe(0);
 });
 
+test('pane gallery renders tiled workspace roots and creates nodes in the pane root', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  await expect(page.locator('[data-pane-gallery="true"]')).toBeVisible();
+  await expect(page.locator('[data-pane-gallery-root-id]')).toHaveCount(2);
+  const frontendPane = page.locator('[data-pane-gallery-root-id="workspace-root-frontend"]');
+  const backendPane = page.locator('[data-pane-gallery-root-id="workspace-root-backend"]');
+  await expect(frontendPane.locator('.pane-gallery-root-title')).toHaveText('Frontend');
+  await expect(frontendPane.locator('.pane-gallery-root-title')).toHaveAttribute('title', '/repo/frontend');
+  await expect(backendPane.locator('.pane-gallery-root-meta')).toContainText('2 nodes');
+
+  await clearPostedMessages(page);
+  await backendPane.locator('.pane-gallery-root-actions').getByRole('button', { name: 'Note', exact: true }).click();
+  const createPayload = await waitForCreateDemoNodePayload(page);
+  expect(createPayload.kind).toBe('note');
+  expect(createPayload.targetGroupId).toBe('workspace-root-backend');
+  expect(Number.isFinite(createPayload.preferredPosition.x)).toBe(true);
+  expect(Number.isFinite(createPayload.preferredPosition.y)).toBe(true);
+
+  await page.getByLabel('Filter workspace roots').fill('frontend');
+  await expect(page.locator('[data-pane-gallery-root-id]')).toHaveCount(1);
+  await expect(page.locator('[data-pane-gallery-root-id="workspace-root-frontend"]')).toBeVisible();
+});
+
+test('pane gallery focus thumbnails only switch the active root', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState({ rootCount: 3 });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  await page
+    .locator('[data-pane-gallery-root-id="workspace-root-backend"]')
+    .getByRole('button', { name: 'Focus' })
+    .click();
+  await expect(page.locator('.pane-gallery-focus-layout')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect(page.locator('.pane-gallery-thumbnail')).toHaveCount(2);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.activeRootGroupId)
+    .toBe('workspace-root-backend');
+
+  await clearPostedMessages(page);
+  await page.locator('[data-pane-gallery-thumbnail-id="workspace-root-frontend"]').click();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/createDemoNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
+});
+
+test('pane gallery keeps tiled panes usable for many roots and targets markdown drops', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState({ rootCount: 8, hugeFirstRoot: true });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const galleryMetrics = await page.locator('.pane-gallery-grid').evaluate((grid) => {
+    const pane = grid.querySelector('[data-pane-gallery-root-id="workspace-root-frontend"]');
+    const flowViewport = pane?.querySelector('.react-flow__viewport');
+    const paneBox = pane instanceof HTMLElement ? pane.getBoundingClientRect() : null;
+    const transform = flowViewport instanceof HTMLElement ? getComputedStyle(flowViewport).transform : '';
+    const scale = transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).a : null;
+    return {
+      scrolls: grid.scrollHeight > grid.clientHeight + 20,
+      paneWidth: paneBox?.width ?? 0,
+      paneHeight: paneBox?.height ?? 0,
+      scale
+    };
+  });
+  expect(galleryMetrics.scrolls).toBe(true);
+  expect(galleryMetrics.paneWidth).toBeGreaterThanOrEqual(420);
+  expect(galleryMetrics.paneHeight).toBeGreaterThanOrEqual(320);
+  expect(galleryMetrics.scale).toBeGreaterThanOrEqual(0.4);
+
+  await clearPostedMessages(page);
+  const dropResult = await page.locator('[data-pane-gallery-root-id="workspace-root-backend"] .pane-gallery-root-flow-shell').evaluate((shell) => {
+    const attachDataTransfer = (event, dataTransfer) => {
+      Object.defineProperty(event, 'dataTransfer', {
+        configurable: true,
+        value: dataTransfer
+      });
+      return event;
+    };
+    let exposeDropPayload = false;
+    const dataTransfer = {
+      dropEffect: 'copy',
+      effectAllowed: 'all',
+      files: [],
+      items: [],
+      types: ['ResourceURLs'],
+      getData: (type) =>
+        exposeDropPayload && type === 'ResourceURLs'
+          ? JSON.stringify(['file:///repo/backend/notes.md'])
+          : '',
+      setData: () => {},
+      clearData: () => {},
+      setDragImage: () => {}
+    };
+    const box = shell.getBoundingClientRect();
+    const dragOverEvent = attachDataTransfer(
+      new DragEvent('dragover', {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2
+      }),
+      dataTransfer
+    );
+    const dropEvent = attachDataTransfer(
+      new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2
+      }),
+      dataTransfer
+    );
+
+    shell.dispatchEvent(dragOverEvent);
+    exposeDropPayload = true;
+    shell.dispatchEvent(dropEvent);
+
+    return {
+      dragOverDefaultPrevented: dragOverEvent.defaultPrevented,
+      dropDefaultPrevented: dropEvent.defaultPrevented
+    };
+  });
+  expect(dropResult).toEqual({
+    dragOverDefaultPrevented: true,
+    dropDefaultPrevented: true
+  });
+
+  const dropMessage = await waitForPostedMessageByType(page, 'webview/dropNoteMarkdownFiles');
+  expect(dropMessage.payload.targetGroupId).toBe('workspace-root-backend');
+  expect(dropMessage.payload.resources).toEqual([
+    {
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value: 'file:///repo/backend/notes.md'
+    }
+  ]);
+});
+
 test('file activity edges expose the same toolbar actions as manual edges', async ({ page }) => {
   const state = createFileNodeState();
 
@@ -13940,6 +14091,7 @@ function createRuntimeContext(overrides = {}) {
     terminalWordSeparators: ' ()[]{}\',"`',
     overviewMode: 'title',
     overviewZoomThreshold: 0.2,
+    multiRootPresentationMode: 'rootGroups',
     workspaceRootWatermarksEnabled: true,
     filesEnabled: true,
     filePresentationMode: 'nodes',
@@ -14903,6 +15055,57 @@ function createEmptyCanvasState() {
     version: 1,
     updatedAt: '2026-04-06T00:00:00.000Z',
     nodes: []
+  };
+}
+
+function createPaneGalleryCanvasState(options = {}) {
+  const rootDefinitions = [
+    ['workspace-root-frontend', 'Frontend', '/repo/frontend'],
+    ['workspace-root-backend', 'Backend', '/repo/backend'],
+    ['workspace-root-tools', 'Tools', '/repo/tools'],
+    ['workspace-root-mobile', 'Mobile', '/repo/mobile'],
+    ['workspace-root-docs', 'Docs', '/repo/docs'],
+    ['workspace-root-cli', 'CLI', '/repo/cli'],
+    ['workspace-root-services', 'Services', '/repo/services'],
+    ['workspace-root-infra', 'Infra', '/repo/infra']
+  ];
+  const rootCount = options.rootCount ?? 2;
+  const groups = rootDefinitions.slice(0, rootCount).map(([id, title, workspaceRootPath], index) => ({
+    id,
+    title,
+    position: { x: 120 + index * 860, y: 100 },
+    size: options.hugeFirstRoot && index === 0
+      ? { width: 12000, height: 8200 }
+      : { width: 680, height: 460 },
+    role: 'workspace-root',
+    workspaceRootPath
+  }));
+  const nodes = groups.flatMap((group, index) => [
+    {
+      ...createManualNoteNode(`${group.id}-note`, {
+        x: group.position.x + 120,
+        y: group.position.y + 140
+      }),
+      title: `${group.title} Note`,
+      groupId: group.id
+    },
+    {
+      ...createManualTerminalNode(`${group.id}-terminal`, {
+        x: group.position.x + 360,
+        y: group.position.y + 140
+      }),
+      title: `${group.title} Terminal`,
+      status: index === 1 ? 'running' : 'draft',
+      groupId: group.id
+    }
+  ]);
+
+  return {
+    version: 1,
+    updatedAt: '2026-06-16T00:00:00.000Z',
+    nodes,
+    groups,
+    edges: []
   };
 }
 

@@ -5,6 +5,7 @@ import {
   EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
   extractWebviewMessageLifecycle,
   isWebviewDomAction,
+  normalizeCanvasMultiRootPresentationMode,
   parseWebviewMessage
 } from '../../src/common/protocol.ts';
 
@@ -12,6 +13,14 @@ assert.equal(
   EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
   10,
   'Execution performance diagnostics schema should mark host output scheduling, input ack post timing, bounded Webview snapshot reset and snapshot restore queue diagnostics.'
+);
+
+assert.equal(normalizeCanvasMultiRootPresentationMode('rootGroups'), 'rootGroups');
+assert.equal(normalizeCanvasMultiRootPresentationMode('paneGallery'), 'paneGallery');
+assert.equal(
+  normalizeCanvasMultiRootPresentationMode('unknownMode'),
+  'rootGroups',
+  'Unknown multi-root presentation modes should fall back to the existing root groups view.'
 );
 
 const hardwrapLinkText = 'src/webview/executionTerminalNativeInteractions.ts:1600:12';
