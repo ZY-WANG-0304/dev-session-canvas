@@ -53,7 +53,7 @@ related_plans:
 18. 当 VSCode workspace folder 变化新增 root 时，如果该 root 在 multi-root overlay 中还没有位置，系统应以当前画布可见中心为锚点，选择离该中心最近且不与已有 root section 重叠的可用位置；已有 overlay root 位置不被重新计算。
 19. 新增 root section 进入 composed view 后，Host 应请求当前 Webview 聚焦该 workspace-root group；Webview 通过平移与缩放动画把该 root section 移入视野，并在动画结束后持久化 viewport，同时向 Host 上报动画后的 `webview/updateViewportCenter`。
 20. `节点` sidebar section 可以调用 VS Code workspace folder API 添加文件夹、移除 root；移除 root 只影响当前 workspace folder 列表，不删除磁盘目录。
-21. `节点` sidebar section 可以基于某个现有本地 git root 创建 worktree，并在 `git worktree add` 成功后把新 worktree 目录添加到当前 workspace。多根 workspace 下，如果入口不来自具体 root 分组，必须先让用户选择基准 root。
+21. `节点` sidebar section 可以基于某个现有本地 git root 创建 worktree，并在 `git worktree add` 成功后把新 worktree 目录添加到当前 workspace。多根 workspace 下，如果入口不来自具体 root 分组，必须先让用户选择基准 root；随后用 VS Code 风格 QuickPick 选择新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree；`HEAD` 或已被其他 worktree checkout 的分支会以 detached HEAD 创建。
 
 ## 非目标
 
@@ -88,7 +88,7 @@ related_plans:
 - 在 multi-root workspace 中添加第三个 folder 后，新 root section 不使用远离当前视口的默认 index 网格位置，而是落在当前可见中心附近的最近可用空位，且不与已有 root section 重叠；重载后该位置保持。
 - 在 `节点` sidebar section 添加 folder 或创建 worktree 并加入 workspace 后，新 root section 与 VS Code 原生 Add Folder 一样进入 multi-root composed view，并按新增 root 聚焦规则移入视野。
 - 在 `节点` sidebar section 的 root 分组行点击移除 root 后，该 root 从当前 workspace 和 composed view 中消失，但对应磁盘目录不被删除，后续仍可重新添加。
-- 在 multi-root workspace 中通过全局新建 worktree 入口时，用户必须先选择基准 root；通过 root 分组行新建 worktree 时，基准 root 固定为该行对应 root。
+- 在 multi-root workspace 中通过全局新建 worktree 入口时，用户必须先选择基准 root；通过 root 分组行新建 worktree 时，基准 root 固定为该行对应 root；两条路径随后都展示同一套 worktree ref QuickPick，并允许从 `HEAD`、本地分支或二级 base ref 创建。
 - 添加 folder 后当前画布通过短暂缩放平移动画移动到新增 root section，新增 root section 可见并被选中。
 - 连续添加 folder 且用户不手动平移时，第二个新增 root 的落点应锚定在上一次程序化聚焦后的可见中心附近，而不是聚焦前的旧视口中心。
 - 如果添加 folder 后 Panel Webview 发生同 generation frame refresh，新增 root section 的聚焦请求仍会在当前 frame 上 replay 并完成动画。

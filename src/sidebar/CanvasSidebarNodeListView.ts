@@ -55,6 +55,7 @@ export interface SidebarNodeListTestGroupRowSnapshot {
   expanded: boolean;
   depth: number;
   rootActionTypes: string[];
+  rootActionIconClasses: string[];
 }
 
 export type SidebarNodeListTestAction =
@@ -677,6 +678,10 @@ function parseSidebarNodeListTestGroupRowSnapshot(value: unknown): SidebarNodeLi
     'rootActionTypes' in value && Array.isArray(value.rootActionTypes)
       ? value.rootActionTypes.filter((actionType): actionType is string => typeof actionType === 'string')
       : [];
+  const rootActionIconClasses =
+    'rootActionIconClasses' in value && Array.isArray(value.rootActionIconClasses)
+      ? value.rootActionIconClasses.filter((iconClass): iconClass is string => typeof iconClass === 'string')
+      : [];
   if (key === null || label === null || expanded === null || depth === null) {
     return null;
   }
@@ -686,7 +691,8 @@ function parseSidebarNodeListTestGroupRowSnapshot(value: unknown): SidebarNodeLi
     label,
     expanded,
     depth,
-    rootActionTypes
+    rootActionTypes,
+    rootActionIconClasses
   };
 }
 
@@ -1216,7 +1222,10 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
             depth: Number(row.getAttribute('data-sidebar-node-group-depth') || '0'),
             rootActionTypes: Array.from(
               row.querySelectorAll('[data-sidebar-root-action]')
-            ).map((action) => action.getAttribute('data-sidebar-root-action')).filter(Boolean)
+            ).map((action) => action.getAttribute('data-sidebar-root-action')).filter(Boolean),
+            rootActionIconClasses: Array.from(
+              row.querySelectorAll('[data-sidebar-root-action]')
+            ).map((action) => action.getAttribute('data-sidebar-root-action-icon')).filter(Boolean)
           }))
         };
       }
@@ -1468,7 +1477,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
 
         const worktreeButton = createWorkspaceRootActionButton({
           action: 'createWorktree',
-          iconClass: 'codicon-repo-forked',
+          iconClass: 'codicon-worktree',
           label: '为此 root 新建 worktree',
           danger: false,
           onClick: () => {
@@ -1510,6 +1519,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         button.setAttribute('aria-label', options.label);
         button.setAttribute('title', options.label);
         button.setAttribute('data-sidebar-root-action', options.action);
+        button.setAttribute('data-sidebar-root-action-icon', options.iconClass);
         button.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
