@@ -195,12 +195,12 @@
       {
         "command": "devSessionCanvas.createWorktree",
         "title": "%command.createWorktree.title%",
-        "icon": "$(repo-forked)"
+        "icon": "$(worktree)"
       },
       {
         "command": "devSessionCanvas.createWorktreeForRoot",
         "title": "%command.createWorktreeForRoot.title%",
-        "icon": "$(repo-forked)"
+        "icon": "$(worktree)"
       },
       {
         "command": "devSessionCanvas.removeWorkspaceRoot",

@@ -235,6 +235,15 @@ async function assertWorkspaceRootGroupActions(browser, html) {
       ['createWorktree', 'removeRoot'],
       'Workspace-root group rows should expose worktree and remove-root actions.'
     );
+    const rootGroupActionIcons = await page.$$eval(
+      '[data-sidebar-node-group-key="workspace-root-frontend"] [data-sidebar-root-action]',
+      (actions) => actions.map((action) => action.getAttribute('data-sidebar-root-action-icon'))
+    );
+    assert.deepEqual(
+      rootGroupActionIcons,
+      ['codicon-worktree', 'codicon-close'],
+      'Workspace-root group rows should use the dedicated worktree Codicon for worktree actions.'
+    );
     const regularGroupRow = snapshot.groupRows.find((row) => row.key === 'group-regular');
     assert.deepEqual(
       regularGroupRow?.rootActionTypes,
@@ -312,6 +321,9 @@ async function renderSidebarState(page, payload) {
         virtualKind: row.getAttribute('data-sidebar-node-group-virtual-kind') || undefined,
         rootActionTypes: Array.from(row.querySelectorAll('[data-sidebar-root-action]'))
           .map((action) => action.getAttribute('data-sidebar-root-action'))
+          .filter(Boolean),
+        rootActionIconClasses: Array.from(row.querySelectorAll('[data-sidebar-root-action]'))
+          .map((action) => action.getAttribute('data-sidebar-root-action-icon'))
           .filter(Boolean)
       }))
     };

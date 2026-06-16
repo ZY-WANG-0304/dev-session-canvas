@@ -170,11 +170,11 @@ assert.deepEqual(
     },
     {
       command: 'devSessionCanvas.createWorktree',
-      icon: '$(repo-forked)'
+      icon: '$(worktree)'
     },
     {
       command: 'devSessionCanvas.createWorktreeForRoot',
-      icon: '$(repo-forked)'
+      icon: '$(worktree)'
     },
     {
       command: 'devSessionCanvas.removeWorkspaceRoot',

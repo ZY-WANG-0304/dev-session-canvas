@@ -29,8 +29,8 @@
 4. 节点列表默认使用“按分组树展示节点”；用户通过 `节点` view 标题右上角的 VSCode 原生 `...` 更多菜单切换“平铺展示节点”和“按分组树展示节点”。按分组树展示时，分组标题按画布分组树缩进呈现，并可在侧栏中折叠/展开具体分组 section，但不折叠画布上的分组框，也不改变任何分组事实；若存在处于 attention 状态的节点，顶部额外显示一个“待处理提醒”虚拟分组汇总这些节点。
 5. 平铺展示在单根 workspace 下仍显示为普通列表；若存在处于 attention 状态的节点，这些节点排在普通节点前。多根 workspace 下的平铺展示仍保留 workspace root 分组；若存在处于 attention 状态的节点，顶部先显示“待处理提醒”虚拟分组，然后再显示各 root 分组。
 6. 当画布上的节点发生变化（新增、删除、状态更新）时，节点列表自动同步更新。
-7. 用户可以在 `节点` view 标题栏直接添加文件夹到当前 workspace，也可以新建 git worktree 并把新目录加入 workspace；多根 workspace 下全局新建 worktree 先选择基准 root。
-8. 多根 workspace 的 root 分组行尾提供 root 级操作：基于该 root 新建 worktree，以及仅从当前 workspace 移除该 root；移除操作不删除磁盘目录。
+7. 用户可以在 `节点` view 标题栏直接添加文件夹到当前 workspace，也可以新建 git worktree 并把新目录加入 workspace；多根 workspace 下全局新建 worktree 先选择基准 root，再用 VS Code 风格 QuickPick 选择创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree。
+8. 多根 workspace 的 root 分组行尾提供 root 级操作：基于该 root 新建 worktree，以及仅从当前 workspace 移除该 root；worktree 操作使用 VS Code 专用 `worktree` Codicon，移除操作不删除磁盘目录。
 
 ### 历史会话列表流程
 
@@ -57,7 +57,8 @@
 - 当存在处于 attention 状态的节点时，平铺展示把这些节点排在普通节点前；按分组树展示在顶部显示“待处理提醒”虚拟分组汇总这些节点，同时保留节点在原分组树中的位置。
 - 多根 workspace 下，即使用户切到平铺展示，节点列表也保留 workspace root 分组；此时若存在处于 attention 状态的节点，顶部仍显示“待处理提醒”虚拟分组，并且这个虚拟分组排在 root 分组之前。
 - `节点` view 标题栏提供添加 workspace folder 与新建 worktree 的全局入口；新建 worktree 成功后必须把新 worktree 目录加入当前 workspace。
-- 多根 workspace 下，workspace root 分组行尾提供 `新建 worktree` 与 `从 workspace 移除 root` 两个 icon-only 操作；root 行的新建 worktree 直接使用该 root，不再额外要求用户选择基准 root。
+- 新建 worktree 的宿主交互对齐 VS Code Source Control：先展示包含 `Create new branch...`、`Create new branch from...`、`HEAD` 和本地分支 refs 的 QuickPick；选择 `Create new branch from...` 后进入第二层 ref QuickPick；只有创建新分支路径需要输入分支名，已有 ref 路径直接确认目标目录；`HEAD` 或已被其他 worktree checkout 的分支会以 detached HEAD 创建，避免重复 checkout 同一分支失败。
+- 多根 workspace 下，workspace root 分组行尾提供 `新建 worktree` 与 `从 workspace 移除 root` 两个 icon-only 操作；root 行的新建 worktree 直接使用该 root，不再额外要求用户选择基准 root；worktree 按钮必须使用 bundled VSCode Codicon `worktree`。
 - 从 workspace 移除 root 只调用 VS Code workspace folder 移除语义，不删除 root 目录或 git worktree。
 - UI 风格符合 VSCode 原生 sidebar 内容列表风格，简洁克制，不加过多装饰和线条。
 
@@ -173,8 +174,8 @@
 - 按分组树展示中，若存在 attention 节点，列表顶部显示“待处理提醒”虚拟分组，并汇总所有 attention 节点；这些节点仍保留在原分组树位置。
 - 多根 workspace 平铺展示中，列表保留 workspace root 分组；若存在 attention 节点，“待处理提醒”虚拟分组显示在所有 root 分组之前。
 - `节点` view 标题栏显示添加 workspace folder 与新建 worktree 的按钮；点击添加 folder 后，所选文件夹会进入当前 VS Code workspace。
-- 点击全局新建 worktree 时，单根 workspace 直接使用当前 root；多根 workspace 先选择基准 root，再输入分支名和目标目录。
-- 多根 workspace 的每个 workspace root 分组行尾显示新建 worktree 和移除 root 的 icon-only 操作；点击 root 行的新建 worktree 直接基于该 root 创建 worktree 并加入 workspace；点击移除 root 只把该 root 从当前 workspace 中移除。
+- 点击全局新建 worktree 时，单根 workspace 直接使用当前 root；多根 workspace 先选择基准 root；随后通过 VS Code 风格 QuickPick 选择创建新分支、从某个 ref 创建新分支或直接 checkout / detached checkout 已有 ref，并确认目标目录。
+- 多根 workspace 的每个 workspace root 分组行尾显示新建 worktree 和移除 root 的 icon-only 操作；新建 worktree 使用专用 `worktree` Codicon；点击 root 行的新建 worktree 直接基于该 root 创建 worktree 并加入 workspace；点击移除 root 只把该 root 从当前 workspace 中移除。
 - 节点列表的视觉风格符合 VSCode 原生列表组件，不引入额外装饰。
 - 节点列表在浅色和深色主题下都能正常显示，颜色跟随主题。
 

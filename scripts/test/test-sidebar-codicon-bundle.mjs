@@ -42,6 +42,11 @@ try {
 
   const bundledCss = await readFile(path.join(tempDir, 'sidebar-codicon.css'), 'utf8');
   assert.match(bundledCss, /\.codicon/u, 'Expected the bundled sidebar codicon CSS to contain codicon class rules.');
+  assert.match(
+    bundledCss,
+    /\.codicon-worktree/u,
+    'Expected the bundled sidebar codicon CSS to include the dedicated worktree icon used by workspace-root actions.'
+  );
   assert.match(bundledCss, /@font-face/u, 'Expected the bundled sidebar codicon CSS to contain a font-face declaration.');
 
   console.log('sidebar codicon bundle tests passed');
