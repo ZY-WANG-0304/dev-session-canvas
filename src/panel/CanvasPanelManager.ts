@@ -14989,7 +14989,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '系统 root section 不能删除；如需移除 root，请使用 VSCode workspace folder 管理。'
+          message: '系统 root section 不能删除；如需从 workspace 移除 folder，请使用 VSCode workspace folder 管理。'
         }
       });
       return;
