@@ -10,19 +10,16 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.16.0 Highlights
+## 0.16.1 Highlights
 
-The public `0.16.0` release is a Preview milestone focused on Codex / Claude Code Agent Fork, sidebar triage, multi-root orientation, and execution-terminal responsiveness. It keeps the `0.15.2` notification controls, Claude Agent `Ctrl-Z` containment, canvas external-link opening controls, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
+The public `0.16.1` release is a Preview patch focused on multi-root root-watermark readability and lower-noise clipboard diagnostics during execution-terminal restore. It keeps the `0.16.0` Codex / Claude Code Agent Fork, sidebar triage, multi-root orientation, execution-terminal responsiveness, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
 
-- Codex Agent nodes with a trusted session id can now fork into a new Agent through provider-native `codex fork <session-id>` semantics
-- Claude Code Agent Fork remains provider-native through `claude --resume <session-id> --fork-session`; current-node and history fork actions both create an editable `fork` edge for spatial context
-- Sidebar `Nodes` now promotes pending attention nodes; grouped mode adds a `Pending attention` virtual section while multi-root flat mode keeps root grouping intact
-- Sidebar `Session History` adds explicit restore and fork icon actions for current-workspace Codex / Claude Code sessions
-- Agent node headers split cwd from the last actual launch command, with long command subtitles available through hover instead of crowding the title row
-- Multi-root workspace root sections now show root-name body watermarks by default, with `devSessionCanvas.canvas.workspaceRootWatermarks.enabled` available to turn them off
-- Execution terminals improve multi-Agent input responsiveness with output drain budgets, input-first recovery, serialized snapshot hydration, and `outputSequence` recovery guards
-- File-link activation now falls back to workspace search on timeout / reject, and extensionless fallback paths are only broadened for explicit user clicks
-- Copy diagnostics now record xterm selection, mouse tracking, right-click copy, shortcut decisions, and OSC 52 observations without automatically bridging OSC 52 to the clipboard
+- Multi-root workspace root sections now render body watermarks with an independent readable scale, so narrow sections and low-zoom overviews still show recognizable root names
+- Root watermarks collapse path-like titles to their basename, clamp long names to at most two lines, reduce opacity, and increase tile spacing to avoid fighting real nodes and groups
+- Execution-terminal clipboard diagnostics suppress programmatic snapshot-restore side effects for selection changes, mouse tracking, and OSC 52 while preserving an aggregate `restoreSuppressed` count for troubleshooting
+- Agent and Terminal nodes flush snapshot-restore diagnostic suppression before user input, so restore-tail noise does not hide later real clipboard diagnostics
+- Live OSC 52 and user interaction diagnostics after restore remain visible; this patch does not add automatic OSC 52 clipboard bridging or optimistic local input echo
+- Production dependency audit cleanup updates `js-yaml` and `markdown-it` while keeping user-facing Markdown / YAML behavior unchanged
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
 
 ## Core Capabilities
@@ -71,8 +68,8 @@ The public `0.16.0` release is a Preview milestone focused on Codex / Claude Cod
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.15.2` to `0.16.0` should use the public extension registry configured by the current host. Open VSX has published and verified the same version for compatible hosts and is the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. Because VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, or `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, upgrading to `0.16.0` preserves that explicit choice
+- First-time installs and upgrades from `0.16.0` to `0.16.1` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, or `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, upgrading to `0.16.1` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
