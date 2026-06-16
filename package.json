@@ -508,6 +508,24 @@
           "scope": "window",
           "markdownDescription": "%configuration.canvas.overviewZoomThreshold.description%"
         },
+        "devSessionCanvas.canvas.multiRootPresentationMode": {
+          "type": "string",
+          "enum": [
+            "rootGroups",
+            "paneGallery"
+          ],
+          "enumItemLabels": [
+            "%configuration.canvas.multiRootPresentationMode.rootGroups.label%",
+            "%configuration.canvas.multiRootPresentationMode.paneGallery.label%"
+          ],
+          "default": "rootGroups",
+          "scope": "window",
+          "markdownDescription": "%configuration.canvas.multiRootPresentationMode.description%",
+          "markdownEnumDescriptions": [
+            "%configuration.canvas.multiRootPresentationMode.rootGroups.description%",
+            "%configuration.canvas.multiRootPresentationMode.paneGallery.description%"
+          ]
+        },
         "devSessionCanvas.canvas.linkOpenMode": {
           "type": "string",
           "enum": [

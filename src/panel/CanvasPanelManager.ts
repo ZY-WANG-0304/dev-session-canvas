@@ -71,6 +71,7 @@ import {
   type CanvasFilePresentationMode,
   type CanvasLinkOpenMode,
   type CanvasFileIconDescriptor,
+  type CanvasMultiRootPresentationMode,
   type CanvasOverviewMode,
   type CanvasStrongTerminalAttentionReminderMode,
   type CanvasFileReferenceOwnerSummary,
@@ -116,6 +117,7 @@ import {
   normalizeCanvasAttentionNotificationBridgeMode,
   normalizeCanvasAgentAbnormalOutputTextNotificationMode,
   normalizeCanvasLinkOpenMode,
+  normalizeCanvasMultiRootPresentationMode,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -1291,6 +1293,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const canvasOverviewZoomThresholdChanged = event.affectsConfiguration(
           CONFIG_KEYS.canvasOverviewZoomThreshold
         );
+        const canvasMultiRootPresentationModeChanged = event.affectsConfiguration(
+          CONFIG_KEYS.canvasMultiRootPresentationMode
+        );
         const canvasLinkOpenModeChanged = event.affectsConfiguration(CONFIG_KEYS.canvasLinkOpenMode);
         const canvasWorkspaceRootWatermarksChanged = event.affectsConfiguration(
           CONFIG_KEYS.canvasWorkspaceRootWatermarksEnabled
@@ -1356,6 +1361,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !agentClaudeDefaultArgsChanged &&
           !canvasOverviewModeChanged &&
           !canvasOverviewZoomThresholdChanged &&
+          !canvasMultiRootPresentationModeChanged &&
           !canvasLinkOpenModeChanged &&
           !canvasWorkspaceRootWatermarksChanged &&
           !filesPresentationModeChanged &&
@@ -1390,6 +1396,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             agentClaudeDefaultArgsChanged,
             canvasOverviewModeChanged,
             canvasOverviewZoomThresholdChanged,
+            canvasMultiRootPresentationModeChanged,
             canvasLinkOpenModeChanged,
             canvasWorkspaceRootWatermarksChanged,
             filesPresentationModeChanged,
@@ -6232,6 +6239,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ),
       overviewMode: this.getCanvasOverviewMode(),
       overviewZoomThreshold: this.getCanvasOverviewZoomThreshold(),
+      multiRootPresentationMode: this.getCanvasMultiRootPresentationMode(),
       workspaceRootWatermarksEnabled: this.getWorkspaceRootWatermarksEnabled(),
       filePresentationMode: fileConfiguration.presentationMode,
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
@@ -6276,6 +6284,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private getCanvasOverviewZoomThreshold(): number {
     return normalizeCanvasOverviewZoomThreshold(
       getConfigurationValue<number>('canvasOverviewZoomThreshold', DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD)
+    );
+  }
+
+  private getCanvasMultiRootPresentationMode(): CanvasMultiRootPresentationMode {
+    return normalizeCanvasMultiRootPresentationMode(
+      getConfigurationValue<CanvasMultiRootPresentationMode>('canvasMultiRootPresentationMode', 'rootGroups')
     );
   }
 
@@ -6536,6 +6550,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     agentClaudeDefaultArgsChanged: boolean;
     canvasOverviewModeChanged: boolean;
     canvasOverviewZoomThresholdChanged: boolean;
+    canvasMultiRootPresentationModeChanged: boolean;
     canvasLinkOpenModeChanged: boolean;
     canvasWorkspaceRootWatermarksChanged: boolean;
     filesPresentationModeChanged: boolean;
@@ -6655,6 +6670,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.agentClaudeDefaultArgsChanged ||
       options.canvasOverviewModeChanged ||
       options.canvasOverviewZoomThresholdChanged ||
+      options.canvasMultiRootPresentationModeChanged ||
       options.canvasLinkOpenModeChanged ||
       options.canvasWorkspaceRootWatermarksChanged ||
       options.filesPresentationModeChanged ||

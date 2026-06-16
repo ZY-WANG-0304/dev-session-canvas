@@ -30,6 +30,8 @@ export const canvasLinkOpenModes = ['editorPreview', 'externalBrowser'] as const
 export type CanvasLinkOpenMode = (typeof canvasLinkOpenModes)[number];
 export const canvasOverviewModes = ['none', 'title'] as const;
 export type CanvasOverviewMode = (typeof canvasOverviewModes)[number];
+export const canvasMultiRootPresentationModes = ['rootGroups', 'paneGallery'] as const;
+export type CanvasMultiRootPresentationMode = (typeof canvasMultiRootPresentationModes)[number];
 export const DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.2;
 export const canvasAttentionNotificationBridgeModes = ['none', 'workbench', 'system'] as const;
 export type CanvasAttentionNotificationBridgeMode =
@@ -69,6 +71,14 @@ export function isCanvasOverviewMode(value: unknown): value is CanvasOverviewMod
 
 export function normalizeCanvasOverviewMode(value: unknown): CanvasOverviewMode {
   return isCanvasOverviewMode(value) ? value : 'title';
+}
+
+export function isCanvasMultiRootPresentationMode(value: unknown): value is CanvasMultiRootPresentationMode {
+  return value === 'rootGroups' || value === 'paneGallery';
+}
+
+export function normalizeCanvasMultiRootPresentationMode(value: unknown): CanvasMultiRootPresentationMode {
+  return isCanvasMultiRootPresentationMode(value) ? value : 'rootGroups';
 }
 
 export function isCanvasLinkOpenMode(value: unknown): value is CanvasLinkOpenMode {
@@ -408,6 +418,7 @@ export interface CanvasRuntimeContext {
   terminalWordSeparators: string;
   overviewMode: CanvasOverviewMode;
   overviewZoomThreshold: number;
+  multiRootPresentationMode: CanvasMultiRootPresentationMode;
   workspaceRootWatermarksEnabled: boolean;
   filePresentationMode: CanvasFilePresentationMode;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;

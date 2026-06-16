@@ -95,6 +95,7 @@ import {
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
   NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
   extractWebviewMessageLifecycle,
+  normalizeCanvasMultiRootPresentationMode,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -171,9 +172,71 @@ interface LocalUiState {
   selectedGroupId?: string;
   selectedGroupIds?: string[];
   viewport?: Viewport;
+  paneGallery?: PaneGalleryLocalState;
   fileListViewModes?: Record<string, FileListViewMode>;
   selectedFileListEntries?: Record<string, string>;
   collapsedFileListTreeBranches?: Record<string, string[]>;
+}
+
+type PaneGalleryLayoutMode = 'tiled' | 'focus';
+
+interface PaneGalleryLocalState {
+  layout?: PaneGalleryLayoutMode;
+  activeRootGroupId?: string;
+  paneViewports?: Record<string, Viewport>;
+  searchQuery?: string;
+}
+
+interface CanvasSurfaceBinding {
+  flow: ReactFlowInstance<CanvasNodeData> | null | undefined;
+  shell: HTMLDivElement | null;
+  viewportKind: 'rootGroups' | 'paneGallery';
+  rootGroupId?: string;
+}
+
+function normalizePaneGalleryLocalState(value: unknown): PaneGalleryLocalState | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const candidate = value as Partial<PaneGalleryLocalState>;
+  const paneViewports =
+    candidate.paneViewports && typeof candidate.paneViewports === 'object'
+      ? Object.fromEntries(
+          Object.entries(candidate.paneViewports).flatMap(([rootGroupId, viewport]) => {
+            if (
+              typeof rootGroupId !== 'string' ||
+              !viewport ||
+              typeof viewport !== 'object' ||
+              typeof (viewport as Partial<Viewport>).x !== 'number' ||
+              typeof (viewport as Partial<Viewport>).y !== 'number' ||
+              typeof (viewport as Partial<Viewport>).zoom !== 'number'
+            ) {
+              return [];
+            }
+
+            const normalizedViewport = viewport as Viewport;
+            if (
+              !Number.isFinite(normalizedViewport.x) ||
+              !Number.isFinite(normalizedViewport.y) ||
+              !Number.isFinite(normalizedViewport.zoom) ||
+              normalizedViewport.zoom <= 0
+            ) {
+              return [];
+            }
+
+            return [[rootGroupId, normalizedViewport]];
+          })
+        )
+      : undefined;
+  const normalized: PaneGalleryLocalState = {
+    layout: candidate.layout === 'focus' ? 'focus' : candidate.layout === 'tiled' ? 'tiled' : undefined,
+    activeRootGroupId: typeof candidate.activeRootGroupId === 'string' ? candidate.activeRootGroupId : undefined,
+    paneViewports: paneViewports && Object.keys(paneViewports).length > 0 ? paneViewports : undefined,
+    searchQuery: typeof candidate.searchQuery === 'string' ? candidate.searchQuery : undefined
+  };
+
+  return Object.values(normalized).some((entry) => entry !== undefined) ? normalized : undefined;
 }
 
 interface CanvasViewportSize {
@@ -1095,6 +1158,9 @@ let lastExecutionTerminalSnapshotWriteAtMs = Number.NEGATIVE_INFINITY;
 const CANVAS_FIT_VIEW_PADDING = 0.05;
 const CANVAS_COMFORT_MIN_ZOOM = 0.4;
 const CANVAS_MAX_ZOOM = 1.8;
+const PANE_GALLERY_MIN_INTERACTIVE_ZOOM = CANVAS_COMFORT_MIN_ZOOM;
+const PANE_GALLERY_MAX_INITIAL_ZOOM = 1.05;
+const PANE_GALLERY_FIT_VIEW_PADDING = 0.16;
 const CANVAS_MINIMAP_WIDTH = 194;
 const CANVAS_MINIMAP_HEIGHT = 126;
 const CANVAS_MINIMAP_OFFSET_SCALE = 5;
@@ -1252,6 +1318,7 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
   overviewMode: 'title',
   overviewZoomThreshold: DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  multiRootPresentationMode: 'rootGroups',
   workspaceRootWatermarksEnabled: true,
   filePresentationMode: 'nodes',
   fileNodeDisplayStyle: 'minimal',
@@ -1317,6 +1384,7 @@ function normalizeRuntimeContext(
         : normalizeExecutionTerminalWordSeparators(undefined),
     overviewMode: normalizeCanvasOverviewMode(runtimeContext?.overviewMode),
     overviewZoomThreshold: normalizeCanvasOverviewZoomThreshold(runtimeContext?.overviewZoomThreshold),
+    multiRootPresentationMode: normalizeCanvasMultiRootPresentationMode(runtimeContext?.multiRootPresentationMode),
     workspaceRootWatermarksEnabled: runtimeContext?.workspaceRootWatermarksEnabled !== false,
     filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
     fileNodeDisplayStyle: runtimeContext?.fileNodeDisplayStyle === 'card' ? 'card' : 'minimal',
@@ -1391,6 +1459,7 @@ function App(): JSX.Element {
     terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
     overviewMode: latestRuntimeContext.overviewMode,
     overviewZoomThreshold: latestRuntimeContext.overviewZoomThreshold,
+    multiRootPresentationMode: latestRuntimeContext.multiRootPresentationMode,
     workspaceRootWatermarksEnabled: latestRuntimeContext.workspaceRootWatermarksEnabled,
     filePresentationMode: latestRuntimeContext.filePresentationMode,
     fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
@@ -1432,7 +1501,8 @@ function App(): JSX.Element {
                 : []
             )
           )
-        : undefined
+        : undefined,
+    paneGallery: normalizePaneGalleryLocalState(initialPersistedState.paneGallery)
   }));
   const pendingModifierNodeSelectionRef = useRef<{
     nodeId: string;
@@ -1455,6 +1525,13 @@ function App(): JSX.Element {
   const canvasShellRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
+  const paneGalleryFlowRefs = useRef<Record<string, ReactFlowInstance<CanvasNodeData> | undefined>>({});
+  const paneGalleryShellRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const activeCanvasSurfaceRef = useRef<CanvasSurfaceBinding>({
+    flow: reactFlowRef.current,
+    shell: canvasShellRef.current,
+    viewportKind: 'rootGroups'
+  });
   const pendingViewportRequestRef = useRef<PendingNodeViewportRequest | undefined>();
   const pendingNodeGroupViewportRequestRef = useRef<PendingNodeGroupViewportRequest | undefined>();
   const pendingNodeGroupViewportRetryTimeoutRef = useRef<number | undefined>();
@@ -2099,16 +2176,171 @@ function App(): JSX.Element {
     });
   };
 
+  const fitPaneGalleryNodesInViewport = (
+    rootGroupId: string,
+    nodeIds: readonly string[],
+    mode: NodeViewportFocusMode = 'fit',
+    duration = NODE_FOCUS_ANIMATION_DURATION_MS
+  ): boolean => {
+    const binding: CanvasSurfaceBinding = {
+      flow: paneGalleryFlowRefs.current[rootGroupId],
+      shell: paneGalleryShellRefs.current[rootGroupId],
+      viewportKind: 'paneGallery',
+      rootGroupId
+    };
+    activeCanvasSurfaceRef.current = binding;
+    const reactFlowInstance = binding.flow;
+    if (!reactFlowInstance?.viewportInitialized || nodeIds.length === 0) {
+      return false;
+    }
+
+    const didFit =
+      nodeIds.length === 1 && mode === 'center-no-extra-zoom-if-visible'
+        ? centerNodeInViewportWithoutExtraZoomIfPossible(
+            reactFlowInstance,
+            binding.shell,
+            hostStateRef.current,
+            nodeIds[0],
+            duration
+          )
+        : reactFlowInstance.fitView({
+            nodes: nodeIds.map((id) => ({ id })),
+            padding: NODE_FOCUS_VIEW_PADDING,
+            maxZoom: NODE_FOCUS_MAX_ZOOM,
+            minZoom: PANE_GALLERY_MIN_INTERACTIVE_ZOOM,
+            duration
+          });
+    if (didFit) {
+      window.setTimeout(() => {
+        const viewport = reactFlowInstance.getViewport();
+        savePaneGalleryViewport(rootGroupId, viewport);
+      }, duration + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
+    }
+    return didFit;
+  };
+
+  const schedulePaneGalleryNodeFit = (
+    rootGroupId: string,
+    nodeIds: readonly string[],
+    mode: NodeViewportFocusMode = 'fit'
+  ): void => {
+    let remainingAttempts = 6;
+    const tryFit = (): void => {
+      if (fitPaneGalleryNodesInViewport(rootGroupId, nodeIds, mode)) {
+        return;
+      }
+      remainingAttempts -= 1;
+      if (remainingAttempts > 0) {
+        window.setTimeout(tryFit, 50);
+      }
+    };
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(tryFit);
+    });
+  };
+
+  const fitPaneGalleryGroupInViewport = (
+    rootGroupId: string,
+    groupId: string,
+    duration = NODE_FOCUS_ANIMATION_DURATION_MS
+  ): boolean => {
+    const reactFlowInstance = paneGalleryFlowRefs.current[rootGroupId];
+    const shell = paneGalleryShellRefs.current[rootGroupId];
+    const group = groups.find((candidate) => candidate.id === groupId);
+    activeCanvasSurfaceRef.current = {
+      flow: reactFlowInstance,
+      shell,
+      viewportKind: 'paneGallery',
+      rootGroupId
+    };
+    if (!reactFlowInstance?.viewportInitialized || !shell || !group) {
+      return false;
+    }
+
+    const viewport = getViewportForBounds(
+      rectForGroupLike(group),
+      Math.max(1, shell.clientWidth),
+      Math.max(1, shell.clientHeight),
+      PANE_GALLERY_MIN_INTERACTIVE_ZOOM,
+      NODE_FOCUS_MAX_ZOOM,
+      NODE_FOCUS_VIEW_PADDING
+    );
+    reactFlowInstance.setViewport(viewport, { duration });
+    savePaneGalleryViewport(rootGroupId, viewport);
+    return true;
+  };
+
+  const schedulePaneGalleryGroupFit = (rootGroupId: string, groupId: string): void => {
+    let remainingAttempts = 6;
+    const tryFit = (): void => {
+      if (fitPaneGalleryGroupInViewport(rootGroupId, groupId)) {
+        return;
+      }
+      remainingAttempts -= 1;
+      if (remainingAttempts > 0) {
+        window.setTimeout(tryFit, 50);
+      }
+    };
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(tryFit);
+    });
+  };
+
+  const resolveSurfaceForNode = (nodeId: string): CanvasSurfaceBinding => {
+    if (isPaneGalleryPresentation) {
+      const node = hostStateRef.current?.nodes.find((candidate) => candidate.id === nodeId);
+      const rootGroupId = node
+        ? resolveContainingWorkspaceRootGroupIdForWebview(groups, node.groupId)
+        : undefined;
+      if (rootGroupId) {
+        return {
+          flow: paneGalleryFlowRefs.current[rootGroupId],
+          shell: paneGalleryShellRefs.current[rootGroupId],
+          viewportKind: 'paneGallery',
+          rootGroupId
+        };
+      }
+    }
+
+    return {
+      flow: reactFlowRef.current,
+      shell: canvasShellRef.current,
+      viewportKind: 'rootGroups'
+    };
+  };
+
   const moveNodeIntoViewport = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): boolean => {
-    const reactFlowInstance = reactFlowRef.current;
+    if (isPaneGalleryPresentation) {
+      const node = hostStateRef.current?.nodes.find((candidate) => candidate.id === nodeId);
+      const rootGroupId = node
+        ? resolveContainingWorkspaceRootGroupIdForWebview(groups, node.groupId)
+        : undefined;
+      if (!rootGroupId) {
+        return false;
+      }
+
+      if (fitPaneGalleryNodesInViewport(rootGroupId, [nodeId], mode)) {
+        return true;
+      }
+
+      updatePaneGalleryLayout('focus', rootGroupId, { fitRoot: false });
+      schedulePaneGalleryNodeFit(rootGroupId, [nodeId], mode);
+      return true;
+    }
+
+    const binding = resolveSurfaceForNode(nodeId);
+    const reactFlowInstance = binding.flow;
     if (!reactFlowInstance?.viewportInitialized) {
       return false;
     }
 
+    activeCanvasSurfaceRef.current = binding;
     return mode === 'center-no-extra-zoom-if-visible'
       ? centerNodeInViewportWithoutExtraZoomIfPossible(
           reactFlowInstance,
-          canvasShellRef.current,
+          binding.shell,
           hostState,
           nodeId,
           NODE_FOCUS_ANIMATION_DURATION_MS
@@ -2147,6 +2379,39 @@ function App(): JSX.Element {
   };
 
   const centerGroupInViewport = (groupId: string): boolean => {
+    if (isPaneGalleryPresentation) {
+      const group = (hostStateRef.current?.groups ?? []).find((candidate) => candidate.id === groupId);
+      const rootGroupId = group
+        ? resolveContainingWorkspaceRootGroupIdForWebview(groups, group.id) ??
+          (isWorkspaceRootCanvasGroupRole(group.role) ? group.id : undefined)
+        : undefined;
+      if (!group || !rootGroupId) {
+        return false;
+      }
+
+      updatePaneGalleryLayout('focus', rootGroupId, { fitRoot: false });
+      closeFloatingMenus();
+      setSelectedEdgeId(undefined);
+      setLocalUiState((current) => {
+        const nextState = {
+          ...current,
+          selectedNodeId: undefined,
+          selectedNodeIds: undefined,
+          selectedGroupId: groupId,
+          selectedGroupIds: [groupId],
+          paneGallery: {
+            ...(current.paneGallery ?? {}),
+            layout: 'focus' as const,
+            activeRootGroupId: rootGroupId
+          }
+        };
+        localUiStateRef.current = nextState;
+        return nextState;
+      });
+      schedulePaneGalleryGroupFit(rootGroupId, groupId);
+      return true;
+    }
+
     const reactFlowInstance = reactFlowRef.current;
     const group = (hostStateRef.current?.groups ?? []).find((candidate) => candidate.id === groupId);
     if (!reactFlowInstance?.viewportInitialized || !group) {
@@ -2186,6 +2451,38 @@ function App(): JSX.Element {
 
   const focusNodeGroupInViewport = (nodeIds: readonly string[]): boolean => {
     const targetNodeIds = normalizeNodeGroupFocusIds(nodeIds);
+    if (isPaneGalleryPresentation) {
+      if (!hostState || targetNodeIds.length === 0) {
+        return false;
+      }
+
+      const rootGroupIds = new Set(
+        targetNodeIds.flatMap((nodeId) => {
+          const node = hostState.nodes.find((candidate) => candidate.id === nodeId);
+          const rootGroupId = node
+            ? resolveContainingWorkspaceRootGroupIdForWebview(groups, node.groupId)
+            : undefined;
+          return rootGroupId ? [rootGroupId] : [];
+        })
+      );
+      if (rootGroupIds.size !== 1) {
+        return false;
+      }
+
+      const rootGroupId = [...rootGroupIds][0];
+      if (fitPaneGalleryNodesInViewport(rootGroupId, targetNodeIds)) {
+        closeFloatingMenus();
+        setSelectedEdgeId(undefined);
+        return true;
+      }
+
+      updatePaneGalleryLayout('focus', rootGroupId, { fitRoot: false });
+      closeFloatingMenus();
+      setSelectedEdgeId(undefined);
+      schedulePaneGalleryNodeFit(rootGroupId, targetNodeIds);
+      return true;
+    }
+
     const reactFlowInstance = reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized || targetNodeIds.length === 0) {
       return false;
@@ -2477,6 +2774,27 @@ function App(): JSX.Element {
     clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
   };
 
+  const persistViewportForSurface = (binding: CanvasSurfaceBinding, viewport: Viewport): void => {
+    if (binding.viewportKind === 'paneGallery' && binding.rootGroupId) {
+      setLocalUiState((current) => ({
+        ...current,
+        paneGallery: {
+          ...(current.paneGallery ?? {}),
+          paneViewports: {
+            ...(current.paneGallery?.paneViewports ?? {}),
+            [binding.rootGroupId as string]: viewport
+          }
+        }
+      }));
+      return;
+    }
+
+    setLocalUiState((current) => ({
+      ...current,
+      viewport
+    }));
+  };
+
   const updateNodeLayoutDraft = (nodeId: string, draft: CanvasNodeLayoutDraft | null): void => {
     if (draft?.position && draft.size) {
       activeNodeResizeDraftsRef.current = {
@@ -2521,15 +2839,11 @@ function App(): JSX.Element {
     onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
   ): void => {
     if (!nodeResizeAutoPanRef.current) {
+      const binding = activeCanvasSurfaceRef.current;
       nodeResizeAutoPanRef.current = createCanvasAutoPanController(
-        reactFlowRef.current,
-        canvasShellRef.current,
-        (viewport) => {
-          setLocalUiState((current) => ({
-            ...current,
-            viewport
-          }));
-        }
+        binding.flow ?? reactFlowRef.current,
+        binding.shell ?? canvasShellRef.current,
+        (viewport) => persistViewportForSurface(binding, viewport)
       );
     }
 
@@ -2788,6 +3102,10 @@ function App(): JSX.Element {
   };
 
   const focusGroupInViewport = (groupId: string): boolean => {
+    if (isPaneGalleryPresentation) {
+      return centerGroupInViewport(groupId);
+    }
+
     if (!moveGroupIntoViewport(groupId)) {
       return false;
     }
@@ -2876,6 +3194,62 @@ function App(): JSX.Element {
     onSetColor: setEdgeColor,
     onDeleteEdge: deleteEdge
   });
+  const hostNodes = hostState?.nodes ?? [];
+  const paneGalleryRootModels = useMemo(
+    () => buildPaneGalleryRootModels({
+      rootGroups: groups.filter((group) => isWorkspaceRootCanvasGroupRole(group.role)),
+      groups,
+      nodes,
+      edges,
+      hostNodes
+    }),
+    [edges, groups, hostNodes, nodes]
+  );
+  const paneGalleryRootIds = paneGalleryRootModels.map((model) => model.rootGroup.id);
+  const paneGalleryState = localUiState.paneGallery;
+  const paneGalleryLayout: PaneGalleryLayoutMode = paneGalleryState?.layout === 'focus' ? 'focus' : 'tiled';
+  const activePaneGalleryRootId = paneGalleryRootIds.includes(paneGalleryState?.activeRootGroupId ?? '')
+    ? paneGalleryState?.activeRootGroupId
+    : paneGalleryRootIds[0];
+  const paneGallerySearchQuery = paneGalleryState?.searchQuery ?? '';
+  const filteredPaneGalleryModels = filterPaneGalleryRootModels(paneGalleryRootModels, paneGallerySearchQuery);
+  const isPaneGalleryPresentation =
+    runtimeContext.multiRootPresentationMode === 'paneGallery' && paneGalleryRootModels.length > 1;
+  const selectedGroupIds = resolveSelectedGroupIds(localUiState);
+
+  useEffect(() => {
+    if (paneGalleryRootIds.length === 0) {
+      return;
+    }
+
+    setLocalUiState((current) => {
+      const currentPaneState = current.paneGallery;
+      const knownRootIds = new Set(paneGalleryRootIds);
+      const paneViewports = Object.fromEntries(
+        Object.entries(currentPaneState?.paneViewports ?? {}).filter(([rootGroupId]) => knownRootIds.has(rootGroupId))
+      );
+      const activeRootGroupId = currentPaneState?.activeRootGroupId;
+      const normalizedActiveRootGroupId = activeRootGroupId && knownRootIds.has(activeRootGroupId)
+        ? activeRootGroupId
+        : paneGalleryRootIds[0];
+      const paneViewportsChanged =
+        Object.keys(paneViewports).length !== Object.keys(currentPaneState?.paneViewports ?? {}).length;
+      if (normalizedActiveRootGroupId === activeRootGroupId && !paneViewportsChanged) {
+        return current;
+      }
+
+      const nextState = {
+        ...current,
+        paneGallery: {
+          ...(currentPaneState ?? {}),
+          activeRootGroupId: normalizedActiveRootGroupId,
+          paneViewports: Object.keys(paneViewports).length > 0 ? paneViewports : undefined
+        }
+      };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
+  }, [paneGalleryRootIds.join('\0')]);
 
   useEffect(() => {
     if (didApplyInitialCanvasFitRef.current || !reactFlowReadyVersion || !canvasSpatialBounds.bounds) {
@@ -2909,20 +3283,26 @@ function App(): JSX.Element {
     selectNode(node.id);
   };
 
-  const resolveGroupBodyHitAtPointer = (event: Pick<React.MouseEvent, 'clientX' | 'clientY'>): CanvasGroupSummary | undefined => {
-    const reactFlowInstance = reactFlowRef.current;
-    if (reactFlowInstance?.viewportInitialized) {
+  const resolveGroupBodyHitAtPointer = (
+    event: Pick<React.MouseEvent | React.DragEvent, 'clientX' | 'clientY'>,
+    binding: CanvasSurfaceBinding = activeCanvasSurfaceRef.current
+  ): CanvasGroupSummary | undefined => {
+    if (binding.flow?.viewportInitialized) {
       return findInnermostCanvasGroupBodyAtFlowPoint(
         groups,
-        canvasShellRef.current,
-        reactFlowInstance.screenToFlowPosition({
+        binding.shell,
+        binding.flow.screenToFlowPosition({
           x: event.clientX,
           y: event.clientY
         })
       );
     }
 
-    return findInnermostCanvasGroupBodyAtScreenPoint(groups, canvasShellRef.current, event.clientX, event.clientY);
+    return findInnermostCanvasGroupBodyAtScreenPoint(groups, binding.shell, event.clientX, event.clientY);
+  };
+
+  const bindActiveCanvasSurface = (binding: CanvasSurfaceBinding): void => {
+    activeCanvasSurfaceRef.current = binding;
   };
 
   const handlePaneClick = (event: React.MouseEvent): void => {
@@ -3069,15 +3449,11 @@ function App(): JSX.Element {
     onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
   ): void => {
     if (!groupDragAutoPanRef.current) {
+      const binding = activeCanvasSurfaceRef.current;
       groupDragAutoPanRef.current = createCanvasAutoPanController(
-        reactFlowRef.current,
-        canvasShellRef.current,
-        (viewport) => {
-          setLocalUiState((current) => ({
-            ...current,
-            viewport
-          }));
-        }
+        binding.flow ?? reactFlowRef.current,
+        binding.shell ?? canvasShellRef.current,
+        (viewport) => persistViewportForSurface(binding, viewport)
       );
     }
 
@@ -3094,15 +3470,11 @@ function App(): JSX.Element {
     onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
   ): void => {
     if (!groupResizeAutoPanRef.current) {
+      const binding = activeCanvasSurfaceRef.current;
       groupResizeAutoPanRef.current = createCanvasAutoPanController(
-        reactFlowRef.current,
-        canvasShellRef.current,
-        (viewport) => {
-          setLocalUiState((current) => ({
-            ...current,
-            viewport
-          }));
-        }
+        binding.flow ?? reactFlowRef.current,
+        binding.shell ?? canvasShellRef.current,
+        (viewport) => persistViewportForSurface(binding, viewport)
       );
     }
 
@@ -3220,7 +3592,33 @@ function App(): JSX.Element {
     });
   };
 
+  const isCanvasNodeInPaneGalleryRoot = (nodeId: string, rootGroupId: string): boolean => {
+    const hostNode = hostStateRef.current?.nodes.find((candidate) => candidate.id === nodeId);
+    return Boolean(
+      hostNode &&
+        resolveContainingWorkspaceRootGroupIdForWebview(groups, hostNode.groupId) === rootGroupId
+    );
+  };
+
+  const filterCanvasNodeLayoutDraftsForPaneRoot = (
+    drafts: Record<string, CanvasNodeLayoutDraft>,
+    rootGroupId?: string
+  ): Record<string, CanvasNodeLayoutDraft> => {
+    if (!rootGroupId) {
+      return drafts;
+    }
+
+    const nextDrafts = Object.fromEntries(
+      Object.entries(drafts).filter(([nodeId]) => isCanvasNodeInPaneGalleryRoot(nodeId, rootGroupId))
+    );
+    return shallowEqualCanvasNodeLayoutDrafts(drafts, nextDrafts) ? drafts : nextDrafts;
+  };
+
   const handleNodesChange = (changes: any[]): void => {
+    const paneRootGroupId =
+      activeCanvasSurfaceRef.current.viewportKind === 'paneGallery'
+        ? activeCanvasSurfaceRef.current.rootGroupId
+        : undefined;
     const selectionChanges = changes.filter(
       (change) => change?.type === 'select' && typeof change.id === 'string' && typeof change.selected === 'boolean'
     );
@@ -3232,10 +3630,13 @@ function App(): JSX.Element {
         ...activeNodeResizeDraftsRef.current
       };
       if (selectionChanges.length > 0 || !changes.some((change) => change?.type === 'position')) {
-        return nextDrafts;
+        return filterCanvasNodeLayoutDraftsForPaneRoot(nextDrafts, paneRootGroupId);
       }
 
-      return extendCanvasNodeLayoutDraftsForSelectedDrag(groupDraftLayout.nodes, nextNodes, nextDrafts);
+      return filterCanvasNodeLayoutDraftsForPaneRoot(
+        extendCanvasNodeLayoutDraftsForSelectedDrag(groupDraftLayout.nodes, nextNodes, nextDrafts),
+        paneRootGroupId
+      );
     });
 
     if (selectionChanges.length > 0) {
@@ -3342,11 +3743,17 @@ function App(): JSX.Element {
   };
 
   const scheduleFocusedViewportPersistence = (): void => {
+    const binding = activeCanvasSurfaceRef.current;
     clearPendingViewportPersistenceTimeout();
     pendingViewportSyncTimeoutRef.current = window.setTimeout(() => {
       pendingViewportSyncTimeoutRef.current = undefined;
-      const viewport = reactFlowRef.current?.getViewport();
+      const viewport = binding.flow?.getViewport();
       if (!viewport) {
+        return;
+      }
+
+      if (binding.viewportKind === 'paneGallery') {
+        persistViewportForSurface(binding, viewport);
         return;
       }
 
@@ -3358,7 +3765,8 @@ function App(): JSX.Element {
     event.preventDefault();
     stopCanvasEvent(event);
 
-    const reactFlowInstance = reactFlowRef.current;
+    const surfaceBinding = activeCanvasSurfaceRef.current;
+    const reactFlowInstance = surfaceBinding.flow ?? reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized) {
       return;
     }
@@ -3371,7 +3779,7 @@ function App(): JSX.Element {
     const explicitBodyHitGroup = explicitTargetGroupId
       ? groups.find((group) => group.id === explicitTargetGroupId)
       : undefined;
-    const bodyHitGroup = explicitBodyHitGroup ?? resolveGroupBodyHitAtPointer(event);
+    const bodyHitGroup = explicitBodyHitGroup ?? resolveGroupBodyHitAtPointer(event, surfaceBinding);
     setSelectedEdgeId(undefined);
     closeEdgeMenus();
     const currentSelectedNodeIds =
@@ -3432,7 +3840,11 @@ function App(): JSX.Element {
     event.preventDefault();
   };
 
-  const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>): void => {
+  const handleCanvasDropForSurface = (
+    event: React.DragEvent,
+    binding: CanvasSurfaceBinding = activeCanvasSurfaceRef.current,
+    explicitTargetGroupId?: string
+  ): void => {
     if (!isCanvasBlankDropTarget(event.target)) {
       return;
     }
@@ -3449,7 +3861,7 @@ function App(): JSX.Element {
 
     event.preventDefault();
     stopCanvasEvent(event);
-    const reactFlowInstance = reactFlowRef.current;
+    const reactFlowInstance = binding.flow ?? reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized) {
       return;
     }
@@ -3458,7 +3870,7 @@ function App(): JSX.Element {
       x: event.clientX,
       y: event.clientY
     });
-    const targetGroupId = resolveGroupBodyHitAtPointer(event)?.id;
+    const targetGroupId = explicitTargetGroupId ?? resolveGroupBodyHitAtPointer(event, binding)?.id;
     postMessage({
       type: 'webview/dropNoteMarkdownFiles',
       payload: {
@@ -3470,6 +3882,45 @@ function App(): JSX.Element {
         targetGroupId
       }
     });
+  };
+
+  const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>): void => {
+    handleCanvasDropForSurface(event);
+  };
+
+  const bindPaneGallerySurface = (rootGroupId: string): CanvasSurfaceBinding => {
+    const binding: CanvasSurfaceBinding = {
+      flow: paneGalleryFlowRefs.current[rootGroupId],
+      shell: paneGalleryShellRefs.current[rootGroupId],
+      viewportKind: 'paneGallery',
+      rootGroupId
+    };
+    bindActiveCanvasSurface(binding);
+    return binding;
+  };
+
+  const handlePaneGalleryPaneClick = (event: React.MouseEvent, rootGroupId: string): void => {
+    bindPaneGallerySurface(rootGroupId);
+    handlePaneClick(event);
+  };
+
+  const handlePaneGalleryContextMenu = (
+    event: React.MouseEvent,
+    rootGroupId: string,
+    targetGroupId = rootGroupId
+  ): void => {
+    bindPaneGallerySurface(rootGroupId);
+    handlePaneContextMenu(event, targetGroupId);
+  };
+
+  const handlePaneGalleryDragOver = (event: React.DragEvent, rootGroupId: string): void => {
+    bindPaneGallerySurface(rootGroupId);
+    handleCanvasDragOver(event as React.DragEvent<HTMLDivElement>);
+  };
+
+  const handlePaneGalleryDrop = (event: React.DragEvent, rootGroupId: string): void => {
+    const binding = bindPaneGallerySurface(rootGroupId);
+    handleCanvasDropForSurface(event, binding, rootGroupId);
   };
 
   useEffect(() => {
@@ -3676,11 +4127,161 @@ function App(): JSX.Element {
       }) as CSSProperties,
     [canvasOverviewTitleScale]
   );
+  const setPaneGalleryState = (updater: (current: PaneGalleryLocalState | undefined) => PaneGalleryLocalState): void => {
+    setLocalUiState((current) => ({
+      ...current,
+      paneGallery: updater(current.paneGallery)
+    }));
+  };
+  const savePaneGalleryViewport = (rootGroupId: string, viewport: Viewport): void => {
+    setPaneGalleryState((current) => ({
+      ...current,
+      paneViewports: {
+        ...(current?.paneViewports ?? {}),
+        [rootGroupId]: viewport
+      }
+    }));
+  };
+  const fitPaneGalleryRoot = (
+    rootGroupId: string,
+    instance = paneGalleryFlowRefs.current[rootGroupId],
+    duration = 0
+  ): boolean => {
+    const rootGroup = groups.find((group) => group.id === rootGroupId);
+    const shell = paneGalleryShellRefs.current[rootGroupId];
+    if (!instance?.viewportInitialized || !rootGroup || !shell) {
+      return false;
+    }
 
+    const viewport = getViewportForBounds(
+      {
+        x: rootGroup.position.x,
+        y: rootGroup.position.y,
+        width: Math.max(1, rootGroup.size.width),
+        height: Math.max(1, rootGroup.size.height)
+      },
+      Math.max(1, shell.clientWidth),
+      Math.max(1, shell.clientHeight),
+      PANE_GALLERY_MIN_INTERACTIVE_ZOOM,
+      PANE_GALLERY_MAX_INITIAL_ZOOM,
+      PANE_GALLERY_FIT_VIEW_PADDING
+    );
+    instance.setViewport(viewport, { duration });
+    savePaneGalleryViewport(rootGroupId, viewport);
+    return true;
+  };
+  const updatePaneGalleryLayout = (
+    layout: PaneGalleryLayoutMode,
+    activeRootGroupId = activePaneGalleryRootId,
+    options: { fitRoot?: boolean } = {}
+  ): void => {
+    setPaneGalleryState((current) => ({
+      ...current,
+      layout,
+      activeRootGroupId
+    }));
+    if (options.fitRoot === false) {
+      return;
+    }
+    window.setTimeout(() => {
+      if (activeRootGroupId) {
+        fitPaneGalleryRoot(activeRootGroupId);
+      }
+    }, 0);
+  };
+  const handlePaneGalleryNodeDragStop = (
+    rootGroupId: string,
+    event: React.MouseEvent,
+    node: Node<CanvasNodeData>,
+    draggedNodes: Node<CanvasNodeData>[]
+  ): void => {
+    bindPaneGallerySurface(rootGroupId);
+    const paneFlow = paneGalleryFlowRefs.current[rootGroupId];
+    const pointerPosition = paneFlow?.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY
+    });
+    const primaryPointerPosition = pointerPosition
+      ? {
+          x: Math.round(pointerPosition.x),
+          y: Math.round(pointerPosition.y)
+        }
+      : undefined;
+    const draggedNodeIds = new Set(draggedNodes.map((draggedNode) => draggedNode.id));
+    const selectedFlowNodesById = new Map(
+      nodes
+        .filter(
+          (candidate) =>
+            candidate.id !== node.id &&
+            isCanvasNodeInPaneGalleryRoot(candidate.id, rootGroupId) &&
+            candidate.selected &&
+            !draggedNodeIds.has(candidate.id) &&
+            candidate.draggable !== false &&
+            nodeLayoutDrafts[candidate.id]?.position
+        )
+        .map((candidate) => [candidate.id, candidate] as const)
+    );
+    const selectedMoves = [
+      ...draggedNodes.filter((draggedNode) => draggedNode.id !== node.id),
+      ...selectedFlowNodesById.values()
+    ].map((draggedNode) => {
+      const draftPosition = nodeLayoutDrafts[draggedNode.id]?.position;
+      const resolvedPosition = draftPosition ?? draggedNode.position;
+      return {
+        id: draggedNode.id,
+        position: {
+          x: Math.round(resolvedPosition.x),
+          y: Math.round(resolvedPosition.y)
+        },
+        pointerPosition: primaryPointerPosition
+      };
+    });
+    const nodeDraftPosition = nodeLayoutDrafts[node.id]?.position;
+    const nodePosition = nodeDraftPosition ?? node.position;
+    markCommittedNodeLayoutDrafts([node.id, ...selectedMoves.map((move) => move.id)]);
+    postMessage({
+      type: 'webview/moveNode',
+      payload: {
+        id: node.id,
+        position: {
+          x: Math.round(nodePosition.x),
+          y: Math.round(nodePosition.y)
+        },
+        pointerPosition: primaryPointerPosition,
+        selectedMoves: selectedMoves.length > 0 ? selectedMoves : undefined
+      }
+    });
+  };
+  const createNodeInPaneGalleryRoot = (kind: CanvasCreatableNodeKind, rootGroup: CanvasGroupSummary): void => {
+    bindPaneGallerySurface(rootGroup.id);
+    const viewportCenter = resolveVisibleCanvasCenter(
+      paneGalleryFlowRefs.current[rootGroup.id],
+      paneGalleryShellRefs.current[rootGroup.id]
+    );
+    const rootNodeCount = (hostState?.nodes ?? []).filter((node) =>
+      resolveContainingWorkspaceRootGroupIdForWebview(groups, node.groupId) === rootGroup.id
+    ).length;
+    const preferredPosition = viewportCenter
+      ? resolveCreateNodePreferredPositionFromFlowAnchor(kind, viewportCenter)
+      : {
+          x: Math.round(rootGroup.position.x + 96 + (rootNodeCount % 5) * 34),
+          y: Math.round(rootGroup.position.y + 88 + (rootNodeCount % 7) * 28)
+        };
+    createNode(kind, preferredPosition, rootGroup.id);
+  };
+  const handlePaneGallerySearchChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+    const searchQuery = event.currentTarget.value;
+    setPaneGalleryState((current) => ({
+      ...current,
+      searchQuery
+    }));
+  };
   return (
     <div
       ref={canvasShellRef}
-      className={`canvas-shell ${canvasOverviewMode ? 'is-overview-mode' : ''}`.trim()}
+      className={`canvas-shell ${canvasOverviewMode ? 'is-overview-mode' : ''} ${
+        isPaneGalleryPresentation ? 'is-pane-gallery' : ''
+      }`.trim()}
       data-canvas-overview-mode={canvasOverviewMode ? 'true' : 'false'}
       data-canvas-overview-config={runtimeContext.overviewMode}
       style={canvasShellStyle}
@@ -3690,6 +4291,53 @@ function App(): JSX.Element {
     >
       <CanvasOverviewInteractionContext.Provider value={canvasOverviewMode}>
         <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
+        {isPaneGalleryPresentation ? (
+          <PaneGallery
+            models={paneGalleryLayout === 'focus'
+              ? paneGalleryRootModels.filter((model) => model.rootGroup.id === activePaneGalleryRootId)
+              : filteredPaneGalleryModels}
+            allModels={paneGalleryRootModels}
+            activeRootGroupId={activePaneGalleryRootId}
+            layout={paneGalleryLayout}
+            searchQuery={paneGallerySearchQuery}
+            paneViewports={paneGalleryState?.paneViewports ?? {}}
+            selectedGroupIds={selectedGroupIds}
+            workspaceRootWatermarksEnabled={runtimeContext.workspaceRootWatermarksEnabled}
+            paneRefs={paneGalleryShellRefs}
+            flowRefs={paneGalleryFlowRefs}
+            onBindActiveSurface={bindPaneGallerySurface}
+            onSearchChange={handlePaneGallerySearchChange}
+            onSetLayout={updatePaneGalleryLayout}
+            onFitPane={fitPaneGalleryRoot}
+            onSavePaneViewport={savePaneGalleryViewport}
+            onNodesChange={handleNodesChange}
+            onNodeDragStop={handlePaneGalleryNodeDragStop}
+            onConnect={handleConnect}
+            onEdgeClick={handleEdgeClick}
+            onEdgeDoubleClick={handleEdgeDoubleClick}
+            onReconnect={handleEdgeReconnect}
+            onEdgeContextMenu={handleEdgeContextMenu}
+            onNodeClick={handleNodeClick}
+            onPaneClick={handlePaneGalleryPaneClick}
+            onPaneContextMenu={handlePaneGalleryContextMenu}
+            onPaneDragOver={handlePaneGalleryDragOver}
+            onPaneDrop={handlePaneGalleryDrop}
+            onSelectGroupBody={selectGroup}
+            onFocusGroupInViewport={focusGroupInViewport}
+            onSelectGroup={selectGroup}
+            onDraftGroup={updateGroupDraft}
+            onMoveGroup={handleMoveGroup}
+            onResizeGroup={handleResizeGroup}
+            onUpdateGroupTitle={handleUpdateGroupTitle}
+            onUngroup={handleUngroup}
+            onDeleteGroup={handleDeleteGroup}
+            onDragPointerMove={handleGroupDragPointerMove}
+            onDragEnd={handleGroupDragEnd}
+            onResizePointerMove={handleGroupResizePointerMove}
+            onResizeEnd={handleGroupResizeEnd}
+            onCreateNode={createNodeInPaneGalleryRoot}
+          />
+        ) : (
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -3701,6 +4349,11 @@ function App(): JSX.Element {
           maxZoom={CANVAS_MAX_ZOOM}
           onInit={(instance) => {
             reactFlowRef.current = instance;
+            bindActiveCanvasSurface({
+              flow: instance,
+              shell: canvasShellRef.current,
+              viewportKind: 'rootGroups'
+            });
             setReactFlowReadyVersion((current) => current + 1);
           }}
           onNodesChange={handleNodesChange}
@@ -3717,6 +4370,20 @@ function App(): JSX.Element {
           onNodeDragStop={handleNodeDragStop}
           multiSelectionKeyCode={null}
           selectNodesOnDrag={false}
+          onPointerDownCapture={() =>
+            bindActiveCanvasSurface({
+              flow: reactFlowRef.current,
+              shell: canvasShellRef.current,
+              viewportKind: 'rootGroups'
+            })
+          }
+          onMouseEnter={() =>
+            bindActiveCanvasSurface({
+              flow: reactFlowRef.current,
+              shell: canvasShellRef.current,
+              viewportKind: 'rootGroups'
+            })
+          }
           onMoveStart={handleMoveStart}
           onPaneClick={handlePaneClick}
           onPaneContextMenu={handlePaneContextMenu}
@@ -3775,6 +4442,7 @@ function App(): JSX.Element {
             </button>
           </Controls>
         </ReactFlow>
+        )}
       </CanvasOverviewInteractionContext.Provider>
 
       {contextMenu ? (
@@ -3839,7 +4507,10 @@ function App(): JSX.Element {
             postMessage({
               type: 'webview/applyDefaultTemplate',
               payload: {
-                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current),
+                visibleCenter: resolveVisibleCanvasCenter(
+                  activeCanvasSurfaceRef.current.flow,
+                  activeCanvasSurfaceRef.current.shell
+                ),
                 targetGroupId: contextMenu.targetGroupId
               }
             });
@@ -3849,7 +4520,10 @@ function App(): JSX.Element {
             postMessage({
               type: 'webview/resetToDefaultTemplate',
               payload: {
-                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current),
+                visibleCenter: resolveVisibleCanvasCenter(
+                  activeCanvasSurfaceRef.current.flow,
+                  activeCanvasSurfaceRef.current.shell
+                ),
                 targetGroupId: contextMenu.targetGroupId
               }
             });
@@ -3866,7 +4540,10 @@ function App(): JSX.Element {
               type: reset ? 'webview/resetToTemplate' : 'webview/applyTemplate',
               payload: {
                 templateId,
-                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current),
+                visibleCenter: resolveVisibleCanvasCenter(
+                  activeCanvasSurfaceRef.current.flow,
+                  activeCanvasSurfaceRef.current.shell
+                ),
                 targetGroupId: contextMenu.targetGroupId
               }
             });
@@ -4138,7 +4815,7 @@ function doesNodeMatchPendingManualCreateRequest(
 }
 
 function resolveVisibleCanvasCenter(
-  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null,
+  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null | undefined,
   canvasShellElement: HTMLDivElement | null
 ): CanvasNodePosition | undefined {
   if (!reactFlowInstance?.viewportInitialized || !canvasShellElement) {
@@ -7971,6 +8648,396 @@ const edgeTypes = {
   canvas: CanvasEdge
 };
 
+interface PaneGalleryRootModel {
+  rootGroup: CanvasGroupSummary;
+  nodes: CanvasFlowNode[];
+  edges: CanvasFlowEdge[];
+  groups: CanvasGroupSummary[];
+  nodeCount: number;
+  runningCount: number;
+  errorCount: number;
+  waitingCount: number;
+  attentionCount: number;
+}
+
+function buildPaneGalleryRootModels(params: {
+  rootGroups: readonly CanvasGroupSummary[];
+  groups: readonly CanvasGroupSummary[];
+  nodes: readonly CanvasFlowNode[];
+  edges: readonly CanvasFlowEdge[];
+  hostNodes: readonly CanvasNodeSummary[];
+}): PaneGalleryRootModel[] {
+  const hostNodesById = new Map(params.hostNodes.map((node) => [node.id, node] as const));
+  const nodeRootGroupIds = new Map<string, string>();
+  for (const hostNode of params.hostNodes) {
+    const rootGroupId = resolveContainingWorkspaceRootGroupIdForWebview(params.groups, hostNode.groupId);
+    if (rootGroupId) {
+      nodeRootGroupIds.set(hostNode.id, rootGroupId);
+    }
+  }
+
+  return params.rootGroups.map((rootGroup) => {
+    const subtreeGroupIds = collectGroupSubtreeIdsForWebview(params.groups, rootGroup.id);
+    const paneNodes = params.nodes.filter((node) => nodeRootGroupIds.get(node.id) === rootGroup.id);
+    const paneNodeIds = new Set(paneNodes.map((node) => node.id));
+    const paneEdges = params.edges.filter((edge) => paneNodeIds.has(edge.source) && paneNodeIds.has(edge.target));
+    const paneHostNodes = paneNodes.flatMap((node) => {
+      const hostNode = hostNodesById.get(node.id);
+      return hostNode ? [hostNode] : [];
+    });
+    return {
+      rootGroup,
+      nodes: paneNodes,
+      edges: paneEdges,
+      groups: params.groups.filter((group) => subtreeGroupIds.has(group.id)),
+      nodeCount: paneNodes.length,
+      runningCount: paneHostNodes.filter((node) => node.status === 'running').length,
+      errorCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-error').length,
+      waitingCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-waiting').length,
+      attentionCount: paneNodes.filter((node) =>
+        node.data?.metadata?.agent?.attentionPending === true ||
+        node.data?.metadata?.terminal?.attentionPending === true
+      ).length
+    };
+  });
+}
+
+function filterPaneGalleryRootModels(
+  models: readonly PaneGalleryRootModel[],
+  searchQuery: string
+): PaneGalleryRootModel[] {
+  const query = searchQuery.trim().toLowerCase();
+  if (!query) {
+    return [...models];
+  }
+
+  return models.filter((model) => {
+    const haystack = `${model.rootGroup.title} ${model.rootGroup.workspaceRootPath ?? ''}`.toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
+interface PaneGalleryProps {
+  models: PaneGalleryRootModel[];
+  allModels: PaneGalleryRootModel[];
+  activeRootGroupId?: string;
+  layout: PaneGalleryLayoutMode;
+  searchQuery: string;
+  paneViewports: Record<string, Viewport>;
+  selectedGroupIds: string[];
+  workspaceRootWatermarksEnabled: boolean;
+  paneRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
+  flowRefs: React.MutableRefObject<Record<string, ReactFlowInstance<CanvasNodeData> | undefined>>;
+  onBindActiveSurface: (rootGroupId: string) => CanvasSurfaceBinding;
+  onSearchChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onSetLayout: (layout: PaneGalleryLayoutMode, activeRootGroupId?: string) => void;
+  onFitPane: (rootGroupId: string, instance?: ReactFlowInstance<CanvasNodeData>, duration?: number) => boolean;
+  onSavePaneViewport: (rootGroupId: string, viewport: Viewport) => void;
+  onNodesChange: (changes: any[]) => void;
+  onNodeDragStop: (
+    rootGroupId: string,
+    event: React.MouseEvent,
+    node: Node<CanvasNodeData>,
+    draggedNodes: Node<CanvasNodeData>[]
+  ) => void;
+  onConnect: (connection: Connection) => void;
+  onEdgeClick: EdgeMouseHandler;
+  onEdgeDoubleClick: EdgeMouseHandler;
+  onReconnect: (previousEdge: Edge, connection: Connection) => void;
+  onEdgeContextMenu: EdgeMouseHandler;
+  onNodeClick: NodeMouseHandler;
+  onPaneClick: (event: React.MouseEvent, rootGroupId: string) => void;
+  onPaneContextMenu: (event: React.MouseEvent, rootGroupId: string, targetGroupId?: string) => void;
+  onPaneDragOver: (event: React.DragEvent, rootGroupId: string) => void;
+  onPaneDrop: (event: React.DragEvent, rootGroupId: string) => void;
+  onSelectGroupBody: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onFocusGroupInViewport: (groupId: string) => boolean;
+  onSelectGroup: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
+  onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onUpdateGroupTitle: (groupId: string, title: string) => void;
+  onUngroup: (groupId: string) => void;
+  onDeleteGroup: (groupId: string) => void;
+  onDragPointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onDragEnd: () => void;
+  onResizePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeEnd: () => void;
+  onCreateNode: (kind: CanvasCreatableNodeKind, rootGroup: CanvasGroupSummary) => void;
+}
+
+function PaneGallery(props: PaneGalleryProps): JSX.Element {
+  const activeModel = props.allModels.find((model) => model.rootGroup.id === props.activeRootGroupId) ?? props.allModels[0];
+  const railModels = props.layout === 'focus'
+    ? props.allModels.filter((model) => model.rootGroup.id !== activeModel?.rootGroup.id)
+    : [];
+  const shownCount = props.layout === 'focus' ? 1 : props.models.length;
+  const totalRunningCount = props.allModels.reduce((sum, model) => sum + model.runningCount, 0);
+  const totalErrorCount = props.allModels.reduce((sum, model) => sum + model.errorCount, 0);
+  const totalWaitingCount = props.allModels.reduce((sum, model) => sum + model.waitingCount, 0);
+  const totalAttentionCount = props.allModels.reduce((sum, model) => sum + model.attentionCount, 0);
+
+  return (
+    <div className={`pane-gallery pane-gallery-${props.layout}`} data-pane-gallery="true">
+      <div className="pane-gallery-toolbar">
+        <div className="pane-gallery-heading">
+          <span className="codicon codicon-layout" aria-hidden="true" />
+          <span>Workspace panes</span>
+          <span className="pane-gallery-count">
+            {shownCount}/{props.allModels.length}
+          </span>
+          {totalRunningCount > 0 ? (
+            <span className="pane-gallery-status-pill" data-pane-gallery-status="running">
+              {totalRunningCount} running
+            </span>
+          ) : null}
+          {totalWaitingCount > 0 ? (
+            <span className="pane-gallery-status-pill" data-pane-gallery-status="waiting">
+              {totalWaitingCount} waiting
+            </span>
+          ) : null}
+          {totalErrorCount > 0 ? (
+            <span className="pane-gallery-status-pill" data-pane-gallery-status="error">
+              {totalErrorCount} error
+            </span>
+          ) : null}
+          {totalAttentionCount > 0 ? (
+            <span className="pane-gallery-status-pill" data-pane-gallery-status="attention">
+              {totalAttentionCount} attention
+            </span>
+          ) : null}
+        </div>
+        <label className="pane-gallery-search">
+          <span className="codicon codicon-search" aria-hidden="true" />
+          <input
+            type="search"
+            value={props.searchQuery}
+            onChange={props.onSearchChange}
+            placeholder="Filter roots"
+            aria-label="Filter workspace roots"
+          />
+        </label>
+        <div className="pane-gallery-layout-toggle" role="group" aria-label="Pane gallery layout">
+          <button
+            type="button"
+            className={props.layout === 'tiled' ? 'is-active' : ''}
+            onClick={() => props.onSetLayout('tiled', activeModel?.rootGroup.id)}
+          >
+            Tiled
+          </button>
+          <button
+            type="button"
+            className={props.layout === 'focus' ? 'is-active' : ''}
+            onClick={() => props.onSetLayout('focus', activeModel?.rootGroup.id)}
+          >
+            Focus
+          </button>
+        </div>
+      </div>
+      {props.layout === 'focus' && activeModel ? (
+        <div className="pane-gallery-focus-layout">
+          <PaneGalleryRootPane
+            {...props}
+            key={activeModel.rootGroup.id}
+            model={activeModel}
+            mode="main"
+          />
+          <div className="pane-gallery-thumbnail-rail" aria-label="Other workspace roots">
+            {railModels.map((model) => (
+              <button
+                type="button"
+                key={model.rootGroup.id}
+                className="pane-gallery-thumbnail"
+                data-pane-gallery-thumbnail-id={model.rootGroup.id}
+                onClick={() => props.onSetLayout('focus', model.rootGroup.id)}
+                title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}
+              >
+                <span className="pane-gallery-thumbnail-title">{model.rootGroup.title}</span>
+                <span className="pane-gallery-thumbnail-meta">
+                  {model.nodeCount} nodes
+                  {model.errorCount > 0 ? ` / ${model.errorCount} error` : ''}
+                  {model.runningCount > 0 ? ` / ${model.runningCount} running` : ''}
+                  {model.attentionCount > 0 ? ` / ${model.attentionCount} attention` : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="pane-gallery-grid" data-pane-gallery-grid="true">
+          {props.models.length > 0 ? (
+            props.models.map((model) => (
+              <PaneGalleryRootPane
+                {...props}
+                key={model.rootGroup.id}
+                model={model}
+                mode="tiled"
+              />
+            ))
+          ) : (
+            <div className="pane-gallery-empty" role="status">
+              No workspace roots match this filter.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaneGalleryRootPane(props: PaneGalleryProps & {
+  model: PaneGalleryRootModel;
+  mode: 'tiled' | 'main';
+}): JSX.Element {
+  const { model } = props;
+  const rootGroupId = model.rootGroup.id;
+  const defaultViewport = props.paneViewports[rootGroupId];
+  const bindSurface = (): CanvasSurfaceBinding => props.onBindActiveSurface(rootGroupId);
+
+  useEffect(
+    () => () => {
+      props.flowRefs.current[rootGroupId] = undefined;
+      props.paneRefs.current[rootGroupId] = null;
+    },
+    [props.flowRefs, props.paneRefs, rootGroupId]
+  );
+
+  return (
+    <section
+      className={`pane-gallery-root-pane pane-gallery-root-pane-${props.mode}`}
+      data-pane-gallery-root-id={rootGroupId}
+      aria-label={`Workspace root ${model.rootGroup.title}`}
+      onMouseEnter={bindSurface}
+      onFocusCapture={bindSurface}
+      onPointerDownCapture={bindSurface}
+    >
+      <header className="pane-gallery-root-header">
+        <div className="pane-gallery-root-title-block">
+          <span className="pane-gallery-root-title" title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}>
+            {model.rootGroup.title}
+          </span>
+          <span className="pane-gallery-root-meta">
+            {model.nodeCount} nodes
+            {model.errorCount > 0 ? ` / ${model.errorCount} error` : ''}
+            {model.waitingCount > 0 ? ` / ${model.waitingCount} waiting` : ''}
+            {model.runningCount > 0 ? ` / ${model.runningCount} running` : ''}
+            {model.attentionCount > 0 ? ` / ${model.attentionCount} attention` : ''}
+          </span>
+        </div>
+        <div className="pane-gallery-root-actions">
+          {(['note', 'terminal', 'agent'] as const).map((kind) => (
+            <button key={kind} type="button" onClick={() => props.onCreateNode(kind, model.rootGroup)}>
+              {humanizeNodeKind(kind)}
+            </button>
+          ))}
+          <button type="button" onClick={() => props.onFitPane(rootGroupId)}>Fit</button>
+          <button type="button" onClick={() => props.onSetLayout('focus', rootGroupId)}>Focus</button>
+        </div>
+      </header>
+      <div
+        className="pane-gallery-root-flow-shell"
+        ref={(element) => {
+          props.paneRefs.current[rootGroupId] = element;
+        }}
+        onDragOver={(event) => props.onPaneDragOver(event, rootGroupId)}
+        onDrop={(event) => props.onPaneDrop(event, rootGroupId)}
+      >
+        <ReactFlow
+          nodes={model.nodes}
+          edges={model.edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          connectionMode={ConnectionMode.Loose}
+          defaultViewport={defaultViewport}
+          minZoom={PANE_GALLERY_MIN_INTERACTIVE_ZOOM}
+          maxZoom={CANVAS_MAX_ZOOM}
+          onInit={(instance) => {
+            props.flowRefs.current[rootGroupId] = instance;
+            bindSurface();
+            window.requestAnimationFrame(() => {
+              if (!defaultViewport) {
+                props.onFitPane(rootGroupId, instance);
+              }
+            });
+          }}
+          onNodesChange={props.onNodesChange}
+          onConnect={props.onConnect}
+          onEdgeClick={(event, edge) => {
+            bindSurface();
+            props.onEdgeClick(event, edge);
+          }}
+          onEdgeDoubleClick={(event, edge) => {
+            bindSurface();
+            props.onEdgeDoubleClick(event, edge);
+          }}
+          onReconnect={props.onReconnect}
+          onEdgeContextMenu={(event, edge) => {
+            bindSurface();
+            props.onEdgeContextMenu(event, edge);
+          }}
+          onNodeClick={(event, node) => {
+            bindSurface();
+            props.onNodeClick(event, node);
+          }}
+          onNodeDragStop={(event, node, draggedNodes) =>
+            props.onNodeDragStop(rootGroupId, event, node, draggedNodes)
+          }
+          multiSelectionKeyCode={null}
+          selectNodesOnDrag={false}
+          onMoveStart={bindSurface}
+          onPaneClick={(event) => props.onPaneClick(event, rootGroupId)}
+          onPaneContextMenu={(event) => props.onPaneContextMenu(event, rootGroupId)}
+          onMoveEnd={(_event, viewport) => props.onSavePaneViewport(rootGroupId, viewport)}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
+          <CanvasGroupsViewportLayer
+            groups={model.groups}
+            workspaceRootWatermarksEnabled={props.workspaceRootWatermarksEnabled}
+            selectedGroupIds={props.selectedGroupIds}
+            workspaceRootForegroundMode="background-only"
+            onSelectGroupBody={(groupId, event) => {
+              bindSurface();
+              props.onSelectGroupBody(groupId, event);
+            }}
+            onFocusGroupInViewport={(groupId) => {
+              bindSurface();
+              props.onFocusGroupInViewport(groupId);
+            }}
+            onGroupBodyContextMenu={(event, groupId) => props.onPaneContextMenu(event, rootGroupId, groupId)}
+            onSelectGroup={(groupId, event) => {
+              bindSurface();
+              props.onSelectGroup(groupId, event);
+            }}
+            onDraftGroup={props.onDraftGroup}
+            onMoveGroup={props.onMoveGroup}
+            onResizeGroup={props.onResizeGroup}
+            onUpdateGroupTitle={props.onUpdateGroupTitle}
+            onUngroup={props.onUngroup}
+            onDeleteGroup={props.onDeleteGroup}
+            onDragPointerMove={props.onDragPointerMove}
+            onDragEnd={props.onDragEnd}
+            onResizePointerMove={props.onResizePointerMove}
+            onResizeEnd={props.onResizeEnd}
+          />
+        </ReactFlow>
+      </div>
+    </section>
+  );
+}
+
 function CanvasExecutionHelpPanel(props: { help: ExecutionNodeHelpContent }): JSX.Element {
   return (
     <div className="canvas-corner-panel canvas-help-panel">
@@ -10144,6 +11211,7 @@ function CanvasGroupsViewportLayer(props: {
   groups: CanvasGroupSummary[];
   workspaceRootWatermarksEnabled: boolean;
   selectedGroupIds?: readonly string[];
+  workspaceRootForegroundMode?: 'editable' | 'background-only';
   onSelectGroupBody: (
     groupId: string,
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
@@ -10320,6 +11388,7 @@ function CanvasGroupBackgroundFrame(props: {
 function CanvasGroupLayer(props: {
   groups: CanvasGroupSummary[];
   selectedGroupIds?: readonly string[];
+  workspaceRootForegroundMode?: 'editable' | 'background-only';
   viewport: Viewport;
   onSelectGroup: (
     groupId: string,
@@ -10343,7 +11412,11 @@ function CanvasGroupLayer(props: {
   ) => void;
   onResizeEnd: () => void;
 }): JSX.Element {
-  const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
+  const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups).filter(
+    (group) =>
+      props.workspaceRootForegroundMode !== 'background-only' ||
+      !isWorkspaceRootCanvasGroupRole(group.role)
+  );
   const selectedGroupIds = new Set(props.selectedGroupIds ?? []);
   return (
     <div

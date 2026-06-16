@@ -2,7 +2,7 @@
 
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
 
-本文位于 `docs/exec-plans/active/canvas-multi-root-pane-gallery-mode.md`，必须按 `docs/PLANS.md` 的要求持续维护。
+本文位于 `docs/exec-plans/completed/canvas-multi-root-pane-gallery-mode.md`，已随第一轮实现完成归档；若后续重新打开本计划，仍必须按 `docs/PLANS.md` 的要求持续维护。
 
 ## 目标与全局图景
 
@@ -17,9 +17,10 @@
 - [x] (2026-06-15 23:45 +0800) 将 `paneGallery` 的设计方案、配置边界、局部 UI 状态、风险取舍和验证方法写入 `docs/design-docs/canvas-multi-root-workspace-support.md`。
 - [x] (2026-06-16) 根据用户反馈将 `paneGallery` 的 `tiled` root pane 修订为可交互窗格，并同步产品规格、设计文档和本计划的风险/验收口径。
 - [x] (2026-06-16) 明确 `paneGallery` 的缩放与规模策略：每个 `tiled` root pane 独立 fit-to-pane，不低于可读/可交互缩放下限；root 很多时使用滚动/虚拟化 gallery，而不是无限压缩同屏。
-- [ ] 在扩展清单、协议和宿主运行时上下文中新增 `devSessionCanvas.canvas.multiRootPresentationMode` 配置及其热更新路径。
-- [ ] 在 Webview 中实现 `MultiRootPaneGallery`、root pane view model、`tiled` 多窗格交互、`focus` 布局和 active root 主窗格交互。
-- [ ] 补充 Playwright / protocol / manifest 回归并运行验证。
+- [x] (2026-06-16) 在扩展清单、协议和宿主运行时上下文中新增 `devSessionCanvas.canvas.multiRootPresentationMode` 配置及其热更新路径。
+- [x] (2026-06-16) 在 Webview 中实现 `PaneGallery`、root pane view model、`tiled` 多窗格交互、`focus` 布局和 active root 主窗格交互。
+- [x] (2026-06-16) 补充 manifest、protocol 和 Playwright pane gallery 回归；已通过 `npm run typecheck`、`npm run build` 和 pane gallery 定向 Playwright。
+- [x] (2026-06-16) 运行最终提交前的完整目标验证组合，并把最终命令结果回填到本计划。
 
 ## 意外与发现
 
@@ -34,6 +35,12 @@
 
 - 观察：现有画布已经有舒适最小缩放、最大缩放和 fit view 的边界语义，`paneGallery` 应复用这类约束，而不是为平铺视图引入无下限缩放。
   证据：`src/webview/main.tsx` 定义了 `CANVAS_COMFORT_MIN_ZOOM`、`CANVAS_MAX_ZOOM`、动态最小缩放和 `fitView` / `getViewportForBounds` 路径，可作为 pane fit-to-pane 的实现参考。
+
+- 观察：第一版实现采用滚动 gallery 和搜索过滤来处理 root 很多的情况，暂未接入可见区虚拟化。
+  证据：`src/webview/styles.css` 的 `.pane-gallery-grid` 保持最小 pane 宽高并 `overflow: auto`；`tests/playwright/webview-harness.spec.mjs` 的 pane gallery many-roots 用例断言 grid 可滚动、pane 尺寸不低于最小交互尺寸、初始缩放不低于 `0.4`。
+
+- 观察：terminal input 能通过 `tiled` root pane 和 `focus` active root 主窗格中挂载的既有 execution node 继续走原有节点输入路径，但本轮自动化尚未覆盖真实 xterm 输入端到端。
+  证据：`PaneGalleryRootPane` 渲染同一套 `nodeTypes`，`CanvasNodeData.onExecutionInput` 仍发送 `webview/executionInput`；现有新增 Playwright 主要覆盖窗格渲染、创建、focus 缩略窗格无副作用、滚动规模策略和 Markdown drop 目标 root。
 
 ## 决策记录
 
@@ -61,9 +68,13 @@
   理由：大量 root 下可读性和交互命中率比“所有 root 同屏”更重要；虚拟化还能避免同时挂载过多 React Flow / xterm surface。
   日期/作者：2026-06-16 / Codex
 
+- 决策：第一版先落地滚动 gallery + 搜索过滤，不在本次提交中引入 heavy pane 可见区虚拟化。
+  理由：用户当前问题的核心是缩放和很多 root 时不能无限压缩；滚动 gallery 已能保持最小可交互尺寸并通过自动化验证，虚拟化需要额外处理 React Flow / xterm mount 生命周期，适合在有真实规模性能证据后单独收口。
+  日期/作者：2026-06-16 / Codex
+
 ## 结果与复盘
 
-当前已完成设计阶段收口：产品规格和正式设计文档已经记录 `paneGallery` 的目标、非目标、配置边界、交互模型、风险与验证方法。实现尚未开始，因此本文保持 active 状态，设计文档验证状态保持 `验证中`。下一步应从配置/协议最小切口开始实现，先让 Webview 能在测试 harness 中收到 `multiRootPresentationMode` 并切换到 pane shell，再逐步接入 `tiled` root pane 与 `focus` active root 主窗格交互。
+当前已完成第一轮实现：配置 `devSessionCanvas.canvas.multiRootPresentationMode` 已进入 manifest、NLS、协议和 Host runtime context；Webview 已能在 multi-root 且配置为 `paneGallery` 时渲染多 root pane，支持 `tiled` 可交互窗格、`focus` active root 主窗格、缩略窗格切换、每 root 独立 viewport、滚动 gallery、搜索过滤、按窗格创建 Note / Terminal / Agent、Markdown drop 目标 root 和 pane 内 focus/selection 路径。实现没有新增 root-local 事实源，也没有让 pane viewport 写入 multi-root overlay。最终提交前已通过 manifest、protocol、multi-root composition、typecheck、build、pane gallery + workspace root 定向 Playwright 和 `git diff --check`。缺口是第一版还没有真正按可见区虚拟化 heavy pane，且自动化没有覆盖真实 live terminal input 的完整端到端路径；这些不阻塞当前第一版交付，已登记到 `docs/exec-plans/tech-debt-tracker.md` 以便后续追踪。
 
 ## 上下文与定向
 
@@ -75,11 +86,11 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是�
 
 第一阶段先接通配置和协议。需要在 `package.json` 与 `package.nls.json` 新增 `devSessionCanvas.canvas.multiRootPresentationMode`，在 `src/common/extensionIdentity.ts` 新增 `CONFIG_KEYS.canvasMultiRootPresentationMode`，在 `src/common/protocol.ts` 定义 `CanvasMultiRootPresentationMode` 并把它加入 `CanvasRuntimeContext`。`src/panel/CanvasPanelManager.ts` 的 `getRuntimeContext()` 要读取配置并透传给 Webview；配置变更监听应把该字段作为普通 runtime context 变化处理，触发 `host/stateUpdated` 或等价 runtime context 更新。
 
-第二阶段实现 Webview pane shell 与缩放/规模骨架。`src/webview/main.tsx` 需要根据 `runtimeContext.multiRootPresentationMode` 与当前是否存在多个 `workspace-root` group 选择渲染：单根或 `rootGroups` 继续走现有 React Flow；multi-root 且 `paneGallery` 时渲染 `MultiRootPaneGallery`。先实现 root pane view model、标题栏、路径 tooltip、节点数量、状态聚合、attention/error/waiting 摘要和空 root 提示；tiled/focus/active root、每 root pane viewport、gallery scroll offset 和筛选/搜索条件放入 `LocalUiState`，并在 root 不存在时回退到第一个 root。`tiled` pane 默认基于 root 子图 bounds 做 fit-to-pane，缩放夹在可读/可交互区间内；root 很多时先按最小可交互 pane 尺寸进入滚动 gallery，并预留虚拟化挂载边界。
+第二阶段实现 Webview pane shell 与缩放/规模骨架。`src/webview/main.tsx` 根据 `runtimeContext.multiRootPresentationMode` 与当前是否存在多个 `workspace-root` group 选择渲染：单根或 `rootGroups` 继续走现有 React Flow；multi-root 且 `paneGallery` 时渲染 `PaneGallery`。root pane view model 从同一份 composed state 派生，标题栏展示 root 名称、路径 tooltip、节点数量、运行/等待/错误/attention 聚合；tiled/focus/active root、每 root pane viewport 和筛选/搜索条件放入 `LocalUiState`，并在 root 不存在时回退到第一个 root。`tiled` pane 默认基于 root 分组 bounds 做 fit-to-pane，缩放夹在 `0.4` 到初始上限内；root 很多时第一版按最小可交互 pane 尺寸进入滚动 gallery，并保留未来虚拟化挂载边界。
 
 第三阶段接入 `tiled` root pane 与 `focus` active root 主窗格交互。每个可交互窗格应复用现有节点渲染、创建消息、terminal input、Markdown drop 和拖拽语义，并确保所有消息携带该窗格对应的 workspace-root group id。`tiled` 下同 root 内拖拽和输入写回对应 root-local state；跨窗格拖拽、跨 root 连线或 edge update 必须被拒绝或回弹。`focus` 缩略窗格点击只能切换 active root，不能发送创建、拖拽、terminal input 或 edge update 消息。
 
-第四阶段补充回归。Playwright harness 需要能注入 `multiRootPresentationMode: 'paneGallery'` 的 runtime context，并断言多 root pane、tiled/focus 切换、独立 pane viewport、fit-to-pane 缩放下限、root 很多时的滚动/虚拟化 gallery、`tiled` root pane 创建/拖拽/terminal input/Markdown drop 目标、缩略窗格点击、状态聚合和 active root 创建目标。协议/manifest 测试需要覆盖新配置 key、默认值、enum 文案和 runtime context normalization。已有 multi-root composition 与 cross-root edge 测试必须继续通过，证明 paneGallery 没有破坏事实源。
+第四阶段补充回归。Playwright harness 已能注入 `multiRootPresentationMode: 'paneGallery'` 的 runtime context，并新增回归覆盖多 root pane、tiled 创建目标 root、搜索过滤、focus 缩略窗格只切换 active root、many-roots 滚动 gallery、pane 最小尺寸、缩放下限和 Markdown drop 目标 root。协议/manifest 测试覆盖新配置 key、默认值、enum 和 runtime context normalization。已有 multi-root composition 与 cross-root edge 测试需要在最终验证中继续通过，证明 paneGallery 没有破坏事实源。terminal input 和真实拖拽端到端路径第一版通过复用现有节点渲染与 Host 跨 root guard 支撑，后续应补更专门的真实宿主或 xterm 输入自动化。
 
 ## 具体步骤
 
@@ -116,13 +127,37 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是�
 
 ## 证据与备注
 
-当前设计阶段证据如下。
+当前实现阶段证据如下。
 
-    docs/product-specs/canvas-multi-root-workspace-support.md
-      已新增 paneGallery 用户目标、功能范围、非目标、验收标准和未验证说明。
+    src/common/protocol.ts / src/panel/CanvasPanelManager.ts / package.json
+      已新增 multiRootPresentationMode 配置、类型归一化、runtime context 透传和热更新监听。
 
-    docs/design-docs/canvas-multi-root-workspace-support.md
-      已新增 paneGallery 候选方案、正式方案、配置边界、风险取舍和验证方法；frontmatter validation_status 保持 验证中。
+    src/webview/main.tsx / src/webview/styles.css
+      已新增 paneGallery local state、surface binding、多 root pane view model、tiled/focus 布局、独立 pane viewport、滚动 gallery、搜索过滤和可交互 pane。
+
+    tests/playwright/webview-harness.spec.mjs
+      已新增 pane gallery 渲染、创建目标 root、focus thumbnail、many roots scroll/min zoom 和 Markdown drop 目标 root 回归。
+
+    npm run test:extension-manifest
+      extension manifest tests passed
+
+    npm run test:protocol-webview-messages
+      protocol webview message tests passed
+
+    npm run test:canvas-multi-root-composition
+      canvas multi-root composition tests passed
+
+    npm run typecheck
+      tsc --noEmit 通过
+
+    npm run build
+      node scripts/build/build.mjs 通过
+
+    node scripts/test/run-playwright-webview.mjs --grep "pane gallery|workspace root groups reject cross-root edge creation and reconnect|workspace root group"
+      11 passed
+
+    git diff --check
+      无输出，表示 whitespace 检查通过
 
     git status --short --branch
       当前 worktree 存在用户未跟踪图片文件，本计划不触碰这些文件。
@@ -147,7 +182,7 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是�
   - 归一化 runtime context 字段。
   - `LocalUiState` 新增 pane gallery 局部状态。
   - 为每个可交互 root pane 维护独立 viewport，并实现 fit-to-pane、缩放下限和 root 多时的滚动/虚拟化 gallery。
-  - 新增 `MultiRootPaneGallery` / root pane view model / tiled-focus 切换。
+  - 新增 `PaneGallery` / root pane view model / tiled-focus 切换。
   - 在 `tiled` root pane 与 `focus` active root 主窗格交互时继续走现有 root target group 语义。
 - `tests/playwright/webview-harness.spec.mjs`
   - 新增 paneGallery 渲染、切换、`tiled` root pane 交互、缩略窗格和 active root 创建目标回归。
