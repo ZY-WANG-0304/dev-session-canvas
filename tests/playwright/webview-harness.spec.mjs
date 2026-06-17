@@ -867,6 +867,7 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
   await expect(backendPane.locator('.pane-gallery-root-meta')).toHaveCount(0);
   await expect(frontendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
   await expect(backendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
+  await expect(page.locator('.canvas-help-panel .execution-help-trigger-canvas')).toBeVisible();
   await expect(frontendPane.locator('[data-group-background-role="workspace-root"]')).toHaveCount(0);
   await expect(frontendPane.locator('[data-root-name-watermark="true"]')).toHaveCount(0);
 
@@ -895,7 +896,7 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await settleWebview(page, 4);
 
   const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
-  await expect(frontendTile.locator('[data-pane-gallery-mode-trigger="true"] .codicon-globe')).toHaveCount(1);
+  await expect(frontendTile.locator('[data-pane-gallery-mode-trigger="true"] .codicon-eye')).toHaveCount(1);
   await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').hover();
   await expect(frontendTile.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
   await expect(frontendTile.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
@@ -903,18 +904,21 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await expect(frontendTile.locator('[data-pane-gallery-mode-option="topThumbnails"]')).toContainText('顶部缩略图');
   await expect(frontendTile.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toContainText('右侧缩略图');
   await expect(frontendTile.locator('[data-pane-gallery-mode-option="dynamic"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="dynamic"] .codicon-layout')).toHaveCount(1);
   await expect(frontendTile.locator('[data-pane-gallery-mode-option="topThumbnails"] .codicon-split-vertical')).toHaveCount(1);
   await expect(frontendTile.locator('[data-pane-gallery-mode-option="sideThumbnails"] .codicon-split-horizontal')).toHaveCount(1);
 
   await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
   await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+  await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
   await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
     'data-pane-gallery-root-id',
     'workspace-root-frontend'
   );
 
   let mainPane = page.locator('.pane-gallery-root-pane-main');
-  await expect(mainPane.locator('[data-pane-gallery-mode-trigger="true"] .codicon-eye')).toHaveCount(1);
+  await expect(mainPane.locator('[data-pane-gallery-mode-trigger="true"] .codicon-globe')).toHaveCount(1);
   await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
   await expect(mainPane.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
   await expect(mainPane.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
@@ -925,6 +929,7 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').click();
   await expect(page.locator('[data-pane-gallery-layout="dynamic"]')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-tile')).toHaveCount(3);
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
   await expect
     .poll(async () => (await readPersistedUiState(page)).paneGallery?.layout)
     .toBe('dynamic');
@@ -937,6 +942,7 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
     'workspace-root-frontend'
   );
   await expect(page.locator('.pane-gallery-root-pane-main .pane-gallery-canvas-controls')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
   await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
   await expect(page.locator('.pane-gallery-root-pane-thumbnail .react-flow')).toHaveCount(2);
   await expect(page.locator('.pane-gallery-thumbnail-preview svg')).toHaveCount(0);
@@ -970,7 +976,7 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
 
   mainPane = page.locator('.pane-gallery-root-pane-main');
-  await expect(mainPane.locator('[data-pane-gallery-mode-trigger="true"] .codicon-eye')).toHaveCount(1);
+  await expect(mainPane.locator('[data-pane-gallery-mode-trigger="true"] .codicon-globe')).toHaveCount(1);
   await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
   await expect(mainPane.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
   await expect(mainPane.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
@@ -979,24 +985,49 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toContainText('右侧缩略图');
   await expect(mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"] .codicon-split-vertical')).toHaveCount(1);
   await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"] .codicon-split-horizontal')).toHaveCount(1);
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="dynamic"] .codicon-layout')).toHaveCount(1);
 
   await mainPane.locator('[data-pane-gallery-mode-option="grid"]').click();
   await expect(page.locator('[data-pane-gallery-layout="grid"]')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-tile')).toHaveCount(3);
-  await expect(page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"] [data-pane-gallery-mode-trigger="true"] .codicon-globe')).toHaveCount(1);
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+  await expect(page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"] [data-pane-gallery-mode-trigger="true"] .codicon-eye')).toHaveCount(1);
   await expect
     .poll(async () => (await readPersistedUiState(page)).paneGallery?.layout)
     .toBe('grid');
 
   const backendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"]');
-  await backendTile.locator('[data-pane-gallery-mode-trigger="true"]').hover();
-  await backendTile.locator('[data-pane-gallery-mode-option="sideThumbnails"]').click();
-  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await backendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
     'data-pane-gallery-root-id',
     'workspace-root-backend'
   );
+  await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.lastOverviewLayout)
+    .toBe('grid');
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.lastThumbnailLayout)
+    .toBe('topThumbnails');
+
+  mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="grid"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+
+  await page
+    .locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"] [data-pane-gallery-mode-trigger="true"]')
+    .click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
+  const rememberedTopRailAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => getComputedStyle(rail).justifyContent);
+  expect(rememberedTopRailAlignment).toBe('center');
+
+  mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
   const sideRailAlignment = await page.locator('.pane-gallery-thumbnail-rail-sideThumbnails').evaluate((rail) => getComputedStyle(rail).alignContent);
   expect(sideRailAlignment).toBe('center');
 });

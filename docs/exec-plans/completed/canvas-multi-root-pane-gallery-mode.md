@@ -60,15 +60,15 @@
   理由：用户希望模式与参考图一致，动态/宫格表达全览，顶部缩略图/右侧缩略图表达主画板加 rail；这个命名也比 `focus` 更少会议隐喻。
   日期/作者：2026-06-17 / Codex
 
-- 决策：`paneGallery` 不提供整条顶部 toolbar、常驻 filter roots 或右上角模式切换按钮；模式切换入口放到可交互画板左下角控制区。全览态入口使用 `globe`，点击后以当前 pane 作为 thumbnail 主画板；thumbnail 态入口使用 `eye`，点击后返回全览；hover 菜单始终向右展开 `dynamic`、`grid`、`topThumbnails`、`sideThumbnails` 四个具体模式，并让顶部/右侧缩略图选项使用 `split-vertical` / `split-horizontal`。
+- 决策：`paneGallery` 不提供整条顶部 toolbar、常驻 filter roots 或右上角模式切换按钮，但保留主线画布右上角使用提示入口；模式切换入口放到可交互画板左下角控制区。全览态入口使用 `eye`，点击后以当前 pane 作为 thumbnail 主画板；thumbnail 态入口使用 `globe`，点击后返回全览；hover 菜单始终向右展开 `dynamic`、`grid`、`topThumbnails`、`sideThumbnails` 四个具体模式，并让四个选项分别使用 `layout`、`table`、`split-vertical`、`split-horizontal`。粗切换保留上次选择的具体模式：全览转 thumbnail 默认 `sideThumbnails`，后续使用上次 `topThumbnails` / `sideThumbnails`；thumbnail 返回全览默认 `dynamic`，后续使用上次 `dynamic` / `grid`。
   理由：现有主线画布是低 chrome、空间画布优先；顶部 toolbar、搜索框和右上角全局按钮让新 UI 偏 dashboard 化。把入口放入画板控制区能与单一画板控件保持肌肉记忆；点击只处理高频粗切换，hover 提供完整四模式选择，减少用户为了从 thumbnail 直接切到另一个 thumbnail 形态而往返全览。
   日期/作者：2026-06-17 / Codex
 
-- 决策：`dynamic` / `grid` 下每个 root pane 直接交互；`topThumbnails` / `sideThumbnails` 的 active root 主画板同样可交互，缩略图渲染为不可交互的真实 root 画板 fit view，且双击才切换 active root。
+- 决策：`dynamic` / `grid` 下每个 root pane 直接交互；`topThumbnails` / `sideThumbnails` 的 active root 主画板同样可交互并显示右下角 MiniMap，缩略图渲染为不可交互的真实 root 画板 fit view，且双击才切换 active root；`dynamic` / `grid` 子画板不显示 MiniMap。
   理由：平铺视图的价值不只是观察，还包括在任一 root 上立即处理；缩略图需要保持画板状态语义，但尺寸和语境不适合承载终端输入或拖拽编辑，双击切换能降低误触。
   日期/作者：2026-06-17 / Codex
 
-- 决策：`paneGallery` 的 active root、`dynamic` / `grid` / `topThumbnails` / `sideThumbnails` 和每 root 临时 viewport 只进入 Webview local state，不进入 root-local state 或 multi-root overlay。
+- 决策：`paneGallery` 的 active root、`dynamic` / `grid` / `topThumbnails` / `sideThumbnails`、上次使用的全览/缩略图具体模式和每 root 临时 viewport 只进入 Webview local state，不进入 root-local state 或 multi-root overlay。
   理由：这些是当前窗口的呈现偏好，不是 root 内容或 multi-root 空间整理结果；写入 root-local 会污染单根视图，写入 overlay 会破坏 `rootGroups` 的空间布局语义。
   日期/作者：2026-06-15 / Codex
 
@@ -94,7 +94,7 @@
 
 ## 结果与复盘
 
-第一轮实现已完成并提交：配置 `devSessionCanvas.canvas.multiRootPresentationMode` 已进入 manifest、NLS、协议和 Host runtime context；Webview 已能在 multi-root 且配置为 `paneGallery` 时渲染多 root pane。2026-06-17 根据新的交互反馈，本轮把第一轮 `tiled` / `focus` UI 收敛为低 chrome 的四模式 `paneGallery`：移除顶部 toolbar 与 filter roots，随后进一步取消右上角模式按钮，把模式入口放入左下角画板控制区。入口在全览态使用 `globe`，点击粗切换到 thumbnail；在 thumbnail 态使用 `eye`，点击粗切换回全览；hover 始终展示四个具体模式，顶部/右侧缩略图选项使用 `split-vertical` / `split-horizontal`，菜单样式对齐画板控制按钮。`dynamic` / `grid` 中所有 root pane 保持可交互，thumbnail 模式只让 active root 主画板交互，缩略图渲染为不可交互的真实画板 fit view 且双击才切换 active root。fit-to-pane 不再使用固定 `0.4` 下限，overview 按每个 pane 自己的 zoom 判定；dynamic 布局使用非等尺寸 pane 弹性铺排，many-roots 继续通过保持最小 pane 尺寸的滚动 gallery 访问所有 root。自动化已覆盖 manifest、protocol、multi-root composition、typecheck、build、pane gallery 定向 Playwright、workspace root/cross-root edge 守护和 whitespace 检查。仍遗留真实 VSCode 宿主下 terminal input、复杂跨 pane 拖拽和可见区虚拟化性能验证，因此设计与规格继续保持“验证中”。
+第一轮实现已完成并提交：配置 `devSessionCanvas.canvas.multiRootPresentationMode` 已进入 manifest、NLS、协议和 Host runtime context；Webview 已能在 multi-root 且配置为 `paneGallery` 时渲染多 root pane。2026-06-17 根据新的交互反馈，本轮把第一轮 `tiled` / `focus` UI 收敛为低 chrome 的四模式 `paneGallery`：移除顶部 toolbar 与 filter roots，保留右上角使用提示，随后进一步取消右上角模式按钮，把模式入口放入左下角画板控制区。入口在全览态使用 `eye`，点击粗切换到 thumbnail；在 thumbnail 态使用 `globe`，点击粗切换回全览；hover 始终展示四个具体模式，动态/宫格/顶部缩略图/右侧缩略图选项使用 `layout` / `table` / `split-vertical` / `split-horizontal`，菜单样式对齐画板控制按钮；粗切换记住上次的全览/thumbnail 具体模式，默认分别回到 `dynamic` 和 `sideThumbnails`。`dynamic` / `grid` 中所有 root pane 保持可交互，thumbnail 模式只让 active root 主画板交互并显示右下角 MiniMap，缩略图渲染为不可交互的真实画板 fit view 且双击才切换 active root；dynamic / grid 子画板不显示 MiniMap。fit-to-pane 不再使用固定 `0.4` 下限，overview 按每个 pane 自己的 zoom 判定；dynamic 布局使用非等尺寸 pane 弹性铺排，many-roots 继续通过保持最小 pane 尺寸的滚动 gallery 访问所有 root。自动化已覆盖 manifest、protocol、multi-root composition、typecheck、build、pane gallery 定向 Playwright、workspace root/cross-root edge 守护和 whitespace 检查。仍遗留真实 VSCode 宿主下 terminal input、复杂跨 pane 拖拽和可见区虚拟化性能验证，因此设计与规格继续保持“验证中”。
 
 ## 上下文与定向
 
@@ -106,11 +106,11 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是�
 
 第一阶段先接通配置和协议。需要在 `package.json` 与 `package.nls.json` 新增 `devSessionCanvas.canvas.multiRootPresentationMode`，在 `src/common/extensionIdentity.ts` 新增 `CONFIG_KEYS.canvasMultiRootPresentationMode`，在 `src/common/protocol.ts` 定义 `CanvasMultiRootPresentationMode` 并把它加入 `CanvasRuntimeContext`。`src/panel/CanvasPanelManager.ts` 的 `getRuntimeContext()` 要读取配置并透传给 Webview；配置变更监听应把该字段作为普通 runtime context 变化处理，触发 `host/stateUpdated` 或等价 runtime context 更新。
 
-第二阶段实现 Webview pane shell 与缩放/规模骨架。`src/webview/main.tsx` 根据 `runtimeContext.multiRootPresentationMode` 与当前是否存在多个 `workspace-root` group 选择渲染：单根或 `rootGroups` 继续走现有 React Flow；multi-root 且 `paneGallery` 时渲染 `PaneGallery`。root pane view model 从同一份 composed state 派生，左上角轻量标签展示 root 名称和路径 tooltip，不常驻节点数量、运行/等待/错误/attention 汇总 subtitle；dynamic/grid/topThumbnails/sideThumbnails/active root 和每 root pane viewport 放入 `LocalUiState`，并在 root 不存在时回退到第一个 root。每个 pane 默认基于 root 分组 bounds 做 fit-to-pane，缩放下限按该 pane 的空间 bounds 动态计算，不额外固定为 `0.4`；overview 按各 pane 自己的 zoom 判定；root 很多时第一版按最小可交互 pane 尺寸进入滚动 gallery，并保留未来虚拟化挂载边界。
+第二阶段实现 Webview pane shell 与缩放/规模骨架。`src/webview/main.tsx` 根据 `runtimeContext.multiRootPresentationMode` 与当前是否存在多个 `workspace-root` group 选择渲染：单根或 `rootGroups` 继续走现有 React Flow；multi-root 且 `paneGallery` 时渲染 `PaneGallery`。root pane view model 从同一份 composed state 派生，左上角轻量标签展示 root 名称和路径 tooltip，不常驻节点数量、运行/等待/错误/attention 汇总 subtitle；dynamic/grid/topThumbnails/sideThumbnails/active root、上次全览/缩略图具体模式和每 root pane viewport 放入 `LocalUiState`，并在 root 不存在时回退到第一个 root。每个 pane 默认基于 root 分组 bounds 做 fit-to-pane，缩放下限按该 pane 的空间 bounds 动态计算，不额外固定为 `0.4`；overview 按各 pane 自己的 zoom 判定；root 很多时第一版按最小可交互 pane 尺寸进入滚动 gallery，并保留未来虚拟化挂载边界。
 
-第三阶段接入 `dynamic` / `grid` root pane 与 thumbnail 模式 active root 主画板交互。每个可交互窗格应复用现有节点渲染、创建消息、terminal input、Markdown drop 和拖拽语义，并确保所有消息携带该窗格对应的 workspace-root group id。`dynamic` / `grid` 下同 root 内拖拽和输入写回对应 root-local state；跨窗格拖拽、跨 root 连线或 edge update 必须被拒绝或回弹。thumbnail 模式缩略图是不可交互的真实 React Flow 画板，单击不能切换 active root，也不能发送创建、拖拽、terminal input 或 edge update 消息；只有双击缩略图切换 active root。
+第三阶段接入 `dynamic` / `grid` root pane 与 thumbnail 模式 active root 主画板交互。每个可交互窗格应复用现有节点渲染、创建消息、terminal input、Markdown drop 和拖拽语义，并确保所有消息携带该窗格对应的 workspace-root group id。`dynamic` / `grid` 下同 root 内拖拽和输入写回对应 root-local state；跨窗格拖拽、跨 root 连线或 edge update 必须被拒绝或回弹。thumbnail 模式缩略图是不可交互的真实 React Flow 画板，active root 主画板显示与单一画板一致的右下角 MiniMap，单击缩略图不能切换 active root，也不能发送创建、拖拽、terminal input 或 edge update 消息；只有双击缩略图切换 active root。
 
-第四阶段补充回归。Playwright harness 已能注入 `multiRootPresentationMode: 'paneGallery'` 的 runtime context，并新增回归覆盖多 root pane、dynamic 右键创建目标 root、移除 toolbar/search/右上角入口、左下角模式入口、`globe` / `eye` 粗切换、hover 四模式菜单、顶部/右侧缩略图 `split-vertical` / `split-horizontal` 图标、画板化缩略图、缩略图单击无副作用、缩略图双击切换 active root、many-roots 滚动 gallery、pane 最小尺寸、不额外限制缩放、per-pane overview、动态非等尺寸布局和 Markdown drop 目标 root。协议/manifest 测试覆盖新配置 key、默认值、enum 和 runtime context normalization。已有 multi-root composition 与 cross-root edge 测试需要在最终验证中继续通过，证明 paneGallery 没有破坏事实源。terminal input 和真实拖拽端到端路径第一版通过复用现有节点渲染与 Host 跨 root guard 支撑，后续应补更专门的真实宿主或 xterm 输入自动化。
+第四阶段补充回归。Playwright harness 已能注入 `multiRootPresentationMode: 'paneGallery'` 的 runtime context，并新增回归覆盖多 root pane、dynamic 右键创建目标 root、移除 toolbar/search/右上角模式入口、保留右上角使用提示、左下角模式入口、`eye` / `globe` 粗切换、hover 四模式菜单、`layout` / `table` / `split-vertical` / `split-horizontal` 模式图标、粗切换记忆、thumbnail 主画板 MiniMap、画板化缩略图、缩略图单击无副作用、缩略图双击切换 active root、many-roots 滚动 gallery、pane 最小尺寸、不额外限制缩放、per-pane overview、动态非等尺寸布局和 Markdown drop 目标 root。协议/manifest 测试覆盖新配置 key、默认值、enum 和 runtime context normalization。已有 multi-root composition 与 cross-root edge 测试需要在最终验证中继续通过，证明 paneGallery 没有破坏事实源。terminal input 和真实拖拽端到端路径第一版通过复用现有节点渲染与 Host 跨 root guard 支撑，后续应补更专门的真实宿主或 xterm 输入自动化。
 
 ## 具体步骤
 
@@ -135,7 +135,7 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是�
 3. `paneGallery` 的 `dynamic` / `grid` 布局显示所有 root pane；每个 pane 用左上角轻量标签显示 root 名称和完整路径 tooltip，不显示 nodes / waiting / attention subtitle，并支持在该 root 内创建、拖拽、输入和拖入内容。
 4. 每个 `dynamic` / `grid` root pane 默认 fit 当前 root 子图，且不额外限制缩放比例；root 内容过大时 pane 内 pan/zoom 可用。
 5. root 数量超过同屏可交互容量时，gallery 保持 pane 最小可交互尺寸，通过滚动/虚拟化或等价机制访问所有 root；本轮不提供 filter roots，后续如需要再补快速跳转入口。
-6. 用户通过左下角画板控制区的模式按钮粗切换全览与 thumbnail：全览态按钮为 `globe`，thumbnail 态按钮为 `eye`；hover 始终展开四个具体模式选项，其中 `topThumbnails` / `sideThumbnails` 分别使用 `split-vertical` / `split-horizontal`。进入 `topThumbnails` 或 `sideThumbnails` 后，active root 成为主画板，其他 root 成为对应方向的不可交互画板缩略图 rail。
+6. 用户通过左下角画板控制区的模式按钮粗切换全览与 thumbnail：全览态按钮为 `eye`，thumbnail 态按钮为 `globe`；hover 始终展开四个具体模式选项，其中 `dynamic` / `grid` / `topThumbnails` / `sideThumbnails` 分别使用 `layout` / `table` / `split-vertical` / `split-horizontal`。粗切换记住上次具体模式，默认从全览进入 `sideThumbnails`、从 thumbnail 返回 `dynamic`。进入 `topThumbnails` 或 `sideThumbnails` 后，active root 成为主画板，其他 root 成为对应方向的不可交互画板缩略图 rail。
 7. 单击缩略图不切换 active root；双击缩略图只切换 active root，不发送 create / drag / terminal input / edge update 消息；缩略图不是 MiniMap/SVG 预览，也不带外部标题卡片。
 8. 在 `dynamic` / `grid` root pane 或 thumbnail 模式 active root 主画板创建 Note / Agent / Terminal 后，单独打开该 root 可以看到对象；创建 `Agent` / `Terminal` 时 `metadata.cwd` 等于目标 root 或显式 Explorer cwd。
 9. 跨 root 连线、跨 root 拖拽迁移和静默改写 `cwd` 仍被拒绝。
@@ -153,10 +153,10 @@ Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是�
       已新增 multiRootPresentationMode 配置、类型归一化、runtime context 透传和热更新监听。
 
     src/webview/main.tsx / src/webview/styles.css
-      已新增 paneGallery local state、surface binding、多 root pane view model、四模式布局、独立 pane viewport、滚动 gallery 和可交互 pane；本轮移除搜索过滤、右上角模式入口和 pane 内 workspace-root 分组视觉，补充左下角 `globe` / `eye` 粗切换、四模式 hover 菜单、画板化缩略图、per-pane overview 与动态非等尺寸布局。
+      已新增 paneGallery local state、surface binding、多 root pane view model、四模式布局、独立 pane viewport、滚动 gallery 和可交互 pane；本轮移除搜索过滤、右上角模式入口和 pane 内 workspace-root 分组视觉，补充左下角 `eye` / `globe` 粗切换、四模式 hover 菜单、画板化缩略图、per-pane overview 与动态非等尺寸布局。
 
     tests/playwright/webview-harness.spec.mjs
-      已新增 pane gallery 渲染、创建目标 root、thumbnail 模式、many roots scroll/min zoom 和 Markdown drop 目标 root 回归；本轮更新为无 toolbar/search/右上角入口、左下角 `globe` / `eye` 粗切换、四模式 hover 菜单、顶部/右侧缩略图图标、画板化缩略图、缩略图双击、不额外限制缩放、per-pane overview 与动态非等尺寸布局。
+      已新增 pane gallery 渲染、创建目标 root、thumbnail 模式、many roots scroll/min zoom 和 Markdown drop 目标 root 回归；本轮更新为无 toolbar/search/右上角模式入口、保留右上角使用提示、左下角 `eye` / `globe` 粗切换、四模式 hover 菜单、`layout` / `table` / `split-vertical` / `split-horizontal` 模式图标、粗切换记忆、thumbnail 主画板 MiniMap、画板化缩略图、缩略图双击、不额外限制缩放、per-pane overview 与动态非等尺寸布局。
 
     npm run test:extension-manifest
       extension manifest tests passed
