@@ -68,6 +68,7 @@ const CODEX_FINAL_ERROR_MESSAGE_PATTERNS: RegExp[] = [
 interface AgentAbnormalStreamTailLine {
   end: number;
   line: string;
+  start: number;
 }
 
 export function createAgentActivityHeuristicState(): AgentActivityHeuristicState {
@@ -226,14 +227,25 @@ function extractAgentAbnormalStreamInterruptions(
     if (line) {
       tailLines.push({
         end: lineEnd,
-        line
+        line,
+        start: lineStart
       });
     }
     lineStart = lineEnd + 1;
   }
 
   const candidate = getTailCodexFinalErrorLine(tailLines);
-  if (!candidate || candidate.end <= minMatchEndOffset) {
+  if (!candidate) {
+    return [];
+  }
+  if (
+    candidate.end <= minMatchEndOffset &&
+    !doesTailAfterCandidateIncludeNewlyCompletedIgnorableCodexChrome(
+      tailLines,
+      candidate,
+      minMatchEndOffset
+    )
+  ) {
     return [];
   }
 
@@ -271,6 +283,27 @@ function getTailCodexFinalErrorLine(
 
 function isIgnorableCodexTrailingChromeLine(line: string): boolean {
   return CODEX_TAIL_PROMPT_PATTERN.test(line) || CODEX_TAIL_STATUS_FOOTER_PATTERN.test(line);
+}
+
+function doesTailAfterCandidateIncludeNewlyCompletedIgnorableCodexChrome(
+  tailLines: AgentAbnormalStreamTailLine[],
+  candidate: AgentAbnormalStreamTailLine,
+  minMatchEndOffset: number
+): boolean {
+  let sawNewlyCompletedChrome = false;
+  for (const tailLine of tailLines) {
+    if (tailLine.end <= candidate.end) {
+      continue;
+    }
+    if (!isIgnorableCodexTrailingChromeLine(tailLine.line)) {
+      return false;
+    }
+    if (tailLine.start < minMatchEndOffset && tailLine.end > minMatchEndOffset) {
+      sawNewlyCompletedChrome = true;
+    }
+  }
+
+  return sawNewlyCompletedChrome;
 }
 
 function isCodexFinalErrorLine(line: string): boolean {
