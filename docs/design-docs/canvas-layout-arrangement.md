@@ -13,7 +13,8 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/canvas-layout-arrangement.md
-updated_at: 2026-06-17
+  - docs/exec-plans/completed/canvas-layout-arrangement-edge-polish.md
+updated_at: 2026-06-18
 ---
 
 # 画布布局整理设计
@@ -63,7 +64,9 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 
 关系图只在当前容器的直接成员之间构造。用户 edge 是强关系，file activity edge 和文件 owner 是强关系，同 cwd 的 Agent / Terminal 是弱关系。若关系发生在子分组内部，父容器只看到对应子分组 block；若关系跨不同 root 或不同普通分组，布局不会跨边界搬移节点，只会在共同父容器中让直接 block 尽量靠近。
 
-排列策略是确定性的：先按关系图拆 connected components；component 内按 Agent、Terminal、文件、分组、Note 的稳定优先级和关系权重排序，排成小型网格；component 之间按原始位置顺序进行行列 packing。节点间距和 component 间距使用固定值，坐标取整。整理后分组尺寸按直接成员 bounds 扩展到最小尺寸与成员内边距；root 使用 root section 最小尺寸与 root 内容 inset，普通分组使用现有普通分组标题 / padding inset。
+排列策略是确定性的：先按关系图拆 connected components；component 之间按原始位置顺序进行行列 packing。component 内部若没有明确方向关系，则继续按 Agent、Terminal、文件、分组、Note 的稳定优先级和关系权重排成小型网格。若存在用户 edge、file activity edge 或文件 owner 关系，则把关系保留为有方向的布局证据：用户 edge 使用既有 source / target 和 anchor 推导左右或上下层级，文件 owner 使用 owner -> file 方向；若约束成环，则优先保留权重高的约束并丢弃会形成环的低优先级约束。水平或垂直层级排列时，直接相连对象进入相邻层，同一 source 的多个 target 尽量同层排列，层间距按连线标签估算宽度放大，让连线文案有可读通道，不再只把“有关系”理解为同一网格组件。
+
+整理后分组尺寸按直接成员 bounds 收缩或扩展到最小尺寸与成员内边距；root 使用 root section 最小尺寸与 root 内容 inset，普通分组使用现有普通分组标题 / padding inset。普通分组即使只有一个直接成员也会执行内部整理，因此单成员分组会把成员移动到内容内边距附近，而不是保留整理前的大块空白。root section 仍保留 workspace root 的最小尺寸，不因内容少而收缩到普通分组大小。
 
 Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，并走现有 `persistState()`。在 multi-root workspace 下，后续既有 decompose / root-local storage / overlay 持久化继续负责把 root-local 坐标和 root section overlay 写回对应存储，因此 reload 与重开 VSCode 后保持整理结果。
 
@@ -72,3 +75,5 @@ Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，�
 自动化验证包括：`npm run test:canvas-layout-arrangement` 覆盖节点避让、关系靠近、普通分组内部整理、root hard boundary、语义不变；`npm run test:protocol-webview-messages` 覆盖消息解析；`npm run test:webview` 覆盖右键菜单入口、消息发送和无完成 toast。最终交付前还应运行 `npm run typecheck`、`npm run build` 和 `git diff --check`。
 
 截至 2026-06-17，本设计已完成布局纯函数测试、协议解析测试、右键菜单定向 Playwright 测试、可信工作区 smoke 持久化测试、`typecheck` 和 `git diff --check`。可信工作区 smoke 覆盖整理后写入持久化快照并 reload 保持位置。完整 `test:webview` 在本轮曾出现 4 个既有或波动失败，新增右键菜单用例在完整运行和定向运行中均通过；因此当前验证状态标记为“已部分验证”，后续若完整 Webview 回归也清洁通过，可再升级为“已验证”。
+
+截至 2026-06-18，针对真实截图反馈补充了单成员普通分组紧凑和连线感知层级排列的状态级回归：`npm run test:canvas-layout-arrangement` 覆盖单成员分组贴近内容内边距、无关节点不横向夹在用户连线端点之间、用户连线链路按 source -> target 展开、同 source fanout target 同层以及长 label 连线通道放大；`npm run typecheck` 通过。该轮未改变协议、菜单入口或 Host 持久化链路。

@@ -3,7 +3,7 @@ import {
   isWorkspaceRootGroup
 } from './canvasMultiRootComposition';
 import type {
-  CanvasEdgeSummary,
+  CanvasEdgeAnchor,
   CanvasGroupSummary,
   CanvasNodeFootprint,
   CanvasNodeKind,
@@ -15,6 +15,9 @@ import type {
 const NODE_GAP = 72;
 const COMPONENT_GAP = 180;
 const DEFAULT_COMPONENT_TARGET_WIDTH = 960;
+const MINIMUM_EDGE_CHANNEL_GAP = 160;
+const EDGE_LABEL_CHANNEL_PADDING = 72;
+const MAXIMUM_EDGE_CHANNEL_GAP = 560;
 const CANVAS_GROUP_PADDING = 24;
 const CANVAS_GROUP_TITLE_HEIGHT = 28;
 const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
@@ -75,6 +78,32 @@ interface WeightedRelation {
   weight: number;
 }
 
+type DirectedRelationKind = 'user-edge' | 'file-activity-edge' | 'file-owner';
+type LayoutAxis = 'horizontal' | 'vertical';
+
+interface DirectedLayoutRelation {
+  sourceId: string;
+  targetId: string;
+  weight: number;
+  kind: DirectedRelationKind;
+  sourceAnchor?: CanvasEdgeAnchor;
+  targetAnchor?: CanvasEdgeAnchor;
+  label?: string;
+}
+
+interface LayoutRelationBundle {
+  weighted: WeightedRelation[];
+  directed: DirectedLayoutRelation[];
+}
+
+interface LayoutConstraint {
+  beforeId: string;
+  afterId: string;
+  axis: LayoutAxis;
+  weight: number;
+  labelWidth: number;
+}
+
 export function arrangeCanvasLayout(
   state: CanvasPrototypeState,
   now = new Date().toISOString()
@@ -101,7 +130,7 @@ class LayoutContext {
     }
 
     const items = this.getDirectItems(groupId);
-    if (items.length > 1) {
+    if (items.length > 1 || (groupId && items.length > 0)) {
       this.applyContainerLayout(groupId, items);
     }
 
@@ -195,7 +224,7 @@ class LayoutContext {
     };
   }
 
-  private collectRelationsForItems(items: readonly LayoutItem[]): WeightedRelation[] {
+  private collectRelationsForItems(items: readonly LayoutItem[]): LayoutRelationBundle {
     const itemIds = new Set(items.map((item) => item.id));
     const itemByNodeId = this.mapDescendantNodesToDirectItems(items);
     const relations = new RelationAccumulator(items);
@@ -204,7 +233,12 @@ class LayoutContext {
       const sourceItemId = itemByNodeId.get(edge.sourceNodeId);
       const targetItemId = itemByNodeId.get(edge.targetNodeId);
       if (sourceItemId && targetItemId && sourceItemId !== targetItemId) {
-        relations.add(sourceItemId, targetItemId, edge.owner === 'file-activity' ? 6 : 8);
+        relations.addDirected(sourceItemId, targetItemId, edge.owner === 'file-activity' ? 6 : 12, {
+          kind: edge.owner === 'file-activity' ? 'file-activity-edge' : 'user-edge',
+          sourceAnchor: edge.sourceAnchor,
+          targetAnchor: edge.targetAnchor,
+          label: edge.label
+        });
       }
     }
 
@@ -217,7 +251,9 @@ class LayoutContext {
       for (const ownerNodeId of collectFileOwnerNodeIds(node)) {
         const ownerItemId = itemByNodeId.get(ownerNodeId);
         if (ownerItemId && ownerItemId !== fileItemId) {
-          relations.add(ownerItemId, fileItemId, 10);
+          relations.addDirected(ownerItemId, fileItemId, 10, {
+            kind: 'file-owner'
+          });
         }
       }
     }
@@ -233,7 +269,9 @@ class LayoutContext {
 
         for (const fileItemId of fileItemIds) {
           if (ownerItemId !== fileItemId) {
-            relations.add(ownerItemId, fileItemId, 10);
+            relations.addDirected(ownerItemId, fileItemId, 10, {
+              kind: 'file-owner'
+            });
           }
         }
       }
@@ -330,18 +368,18 @@ class LayoutContext {
 
   private buildLayoutComponents(
     items: readonly LayoutItem[],
-    relations: readonly WeightedRelation[]
+    relations: LayoutRelationBundle
   ): LayoutComponent[] {
     const itemById = new Map(items.map((item) => [item.id, item] as const));
     const adjacency = new Map(items.map((item) => [item.id, new Set<string>()] as const));
-    for (const relation of relations) {
+    for (const relation of relations.weighted) {
       adjacency.get(relation.leftId)?.add(relation.rightId);
       adjacency.get(relation.rightId)?.add(relation.leftId);
     }
 
     const visited = new Set<string>();
     const components: LayoutComponent[] = [];
-    for (const item of items.slice().sort((left, right) => compareItemsForComponentOrder(left, right, relations))) {
+    for (const item of items.slice().sort((left, right) => compareItemsForComponentOrder(left, right, relations.weighted))) {
       if (visited.has(item.id)) {
         continue;
       }
@@ -363,7 +401,7 @@ class LayoutContext {
       const componentItems = componentIds
         .map((id) => itemById.get(id))
         .filter((candidate): candidate is LayoutItem => candidate !== undefined)
-        .sort((left, right) => compareItemsForComponentOrder(left, right, relations));
+        .sort((left, right) => compareItemsForComponentOrder(left, right, relations.weighted));
       components.push(layoutComponent(componentItems, relations));
     }
 
@@ -447,6 +485,7 @@ class LayoutContext {
 
 class RelationAccumulator {
   private readonly weights = new Map<string, WeightedRelation>();
+  private readonly directedRelations: DirectedLayoutRelation[] = [];
   private readonly itemsById: Map<string, LayoutItem>;
 
   public constructor(items: readonly LayoutItem[]) {
@@ -474,12 +513,64 @@ class RelationAccumulator {
     });
   }
 
-  public values(): WeightedRelation[] {
-    return [...this.weights.values()];
+  public addDirected(
+    sourceId: string,
+    targetId: string,
+    weight: number,
+    metadata: Omit<DirectedLayoutRelation, 'sourceId' | 'targetId' | 'weight'>
+  ): void {
+    if (sourceId === targetId || !this.itemsById.has(sourceId) || !this.itemsById.has(targetId)) {
+      return;
+    }
+
+    const sourceItem = this.itemsById.get(sourceId);
+    const targetItem = this.itemsById.get(targetId);
+    if (sourceItem?.role === 'workspace-root' && targetItem?.role === 'workspace-root') {
+      return;
+    }
+
+    this.add(sourceId, targetId, weight);
+    this.directedRelations.push({
+      sourceId,
+      targetId,
+      weight,
+      ...metadata
+    });
+  }
+
+  public values(): LayoutRelationBundle {
+    return {
+      weighted: [...this.weights.values()],
+      directed: [...this.directedRelations]
+    };
   }
 }
 
-function layoutComponent(items: readonly LayoutItem[], relations: readonly WeightedRelation[]): LayoutComponent {
+function layoutComponent(items: readonly LayoutItem[], relations: LayoutRelationBundle): LayoutComponent {
+  const itemIds = new Set(items.map((item) => item.id));
+  const constraints = buildLayoutConstraints(
+    relations.directed.filter((relation) => itemIds.has(relation.sourceId) && itemIds.has(relation.targetId))
+  );
+  const primaryAxis = resolvePrimaryConstraintAxis(constraints);
+  if (primaryAxis) {
+    const constrainedComponent = layoutConstrainedComponent(
+      items,
+      relations.weighted,
+      constraints.filter((constraint) => constraint.axis === primaryAxis),
+      primaryAxis
+    );
+    if (constrainedComponent) {
+      return constrainedComponent;
+    }
+  }
+
+  return layoutGridComponent(items, relations.weighted);
+}
+
+function layoutGridComponent(
+  items: readonly LayoutItem[],
+  relations: readonly WeightedRelation[]
+): LayoutComponent {
   const orderedItems = items.slice().sort((left, right) => compareItemsForComponentOrder(left, right, relations));
   const relativePositions = new Map<string, CanvasNodePosition>();
   const rowLimit = orderedItems.length <= 3 ? orderedItems.length : 3;
@@ -518,6 +609,460 @@ function layoutComponent(items: readonly LayoutItem[], relations: readonly Weigh
     height,
     relativePositions
   };
+}
+
+function layoutConstrainedComponent(
+  items: readonly LayoutItem[],
+  relations: readonly WeightedRelation[],
+  constraints: readonly LayoutConstraint[],
+  axis: LayoutAxis
+): LayoutComponent | undefined {
+  const itemById = new Map(items.map((item) => [item.id, item] as const));
+  const acyclicConstraints = buildAcyclicConstraints(items, constraints);
+  if (acyclicConstraints.length === 0) {
+    return undefined;
+  }
+
+  const layerById = assignConstraintLayers(items, acyclicConstraints, relations);
+  const layers = groupItemsByLayer(items, layerById, relations);
+  if (layers.length === 0) {
+    return undefined;
+  }
+
+  refineLayerOrdersByRelations(layers, layerById, acyclicConstraints, relations);
+
+  const relativePositions =
+    axis === 'horizontal'
+      ? layoutHorizontalLayers(layers, acyclicConstraints, layerById)
+      : layoutVerticalLayers(layers, acyclicConstraints, layerById);
+  const componentRect = boundingRectForRects(
+    [...relativePositions.entries()].flatMap(([itemId, position]) => {
+      const item = itemById.get(itemId);
+      return item
+        ? [
+            {
+              left: position.x,
+              top: position.y,
+              right: position.x + item.size.width,
+              bottom: position.y + item.size.height
+            }
+          ]
+        : [];
+    })
+  );
+  if (!componentRect) {
+    return undefined;
+  }
+
+  const normalizedPositions = new Map<string, CanvasNodePosition>();
+  for (const [itemId, position] of relativePositions) {
+    normalizedPositions.set(itemId, {
+      x: Math.round(position.x - componentRect.left),
+      y: Math.round(position.y - componentRect.top)
+    });
+  }
+
+  const orderedItems = layers.flat();
+  const originalRect = boundingRectForRects(orderedItems.map((item) => rectForLayoutItem(item))) ?? {
+    left: 0,
+    top: 0,
+    right: componentRect.right - componentRect.left,
+    bottom: componentRect.bottom - componentRect.top
+  };
+
+  return {
+    id: orderedItems.map((item) => item.id).sort().join('\u0000'),
+    items: orderedItems,
+    originalRect,
+    width: Math.round(componentRect.right - componentRect.left),
+    height: Math.round(componentRect.bottom - componentRect.top),
+    relativePositions: normalizedPositions
+  };
+}
+
+function buildLayoutConstraints(relations: readonly DirectedLayoutRelation[]): LayoutConstraint[] {
+  return relations
+    .map((relation) => {
+      const direction = resolveDirectedRelationDirection(relation);
+      if (!direction) {
+        return undefined;
+      }
+
+      const labelWidth = relation.label ? estimateEdgeLabelWidth(relation.label) : 0;
+      return {
+        beforeId: direction.beforeId,
+        afterId: direction.afterId,
+        axis: direction.axis,
+        weight: relation.weight + directedRelationKindWeight(relation.kind),
+        labelWidth
+      };
+    })
+    .filter((constraint): constraint is LayoutConstraint => constraint !== undefined);
+}
+
+function resolveDirectedRelationDirection(
+  relation: DirectedLayoutRelation
+): { beforeId: string; afterId: string; axis: LayoutAxis } | undefined {
+  if (relation.sourceId === relation.targetId) {
+    return undefined;
+  }
+
+  const horizontalScore = relationAnchorHorizontalScore(relation.sourceAnchor, relation.targetAnchor);
+  const verticalScore = relationAnchorVerticalScore(relation.sourceAnchor, relation.targetAnchor);
+  if (Math.abs(verticalScore) > Math.abs(horizontalScore)) {
+    return verticalScore >= 0
+      ? { beforeId: relation.sourceId, afterId: relation.targetId, axis: 'vertical' }
+      : { beforeId: relation.targetId, afterId: relation.sourceId, axis: 'vertical' };
+  }
+
+  if (horizontalScore < 0) {
+    return { beforeId: relation.targetId, afterId: relation.sourceId, axis: 'horizontal' };
+  }
+
+  return { beforeId: relation.sourceId, afterId: relation.targetId, axis: 'horizontal' };
+}
+
+function relationAnchorHorizontalScore(
+  sourceAnchor: CanvasEdgeAnchor | undefined,
+  targetAnchor: CanvasEdgeAnchor | undefined
+): number {
+  return (
+    (sourceAnchor === 'right' ? 1 : 0) +
+    (sourceAnchor === 'left' ? -1 : 0) +
+    (targetAnchor === 'left' ? 1 : 0) +
+    (targetAnchor === 'right' ? -1 : 0)
+  );
+}
+
+function relationAnchorVerticalScore(
+  sourceAnchor: CanvasEdgeAnchor | undefined,
+  targetAnchor: CanvasEdgeAnchor | undefined
+): number {
+  return (
+    (sourceAnchor === 'bottom' ? 1 : 0) +
+    (sourceAnchor === 'top' ? -1 : 0) +
+    (targetAnchor === 'top' ? 1 : 0) +
+    (targetAnchor === 'bottom' ? -1 : 0)
+  );
+}
+
+function directedRelationKindWeight(kind: DirectedRelationKind): number {
+  switch (kind) {
+    case 'user-edge':
+      return 40;
+    case 'file-activity-edge':
+      return 18;
+    case 'file-owner':
+      return 12;
+  }
+}
+
+function resolvePrimaryConstraintAxis(constraints: readonly LayoutConstraint[]): LayoutAxis | undefined {
+  if (constraints.length === 0) {
+    return undefined;
+  }
+
+  const horizontalWeight = constraints
+    .filter((constraint) => constraint.axis === 'horizontal')
+    .reduce((sum, constraint) => sum + constraint.weight, 0);
+  const verticalWeight = constraints
+    .filter((constraint) => constraint.axis === 'vertical')
+    .reduce((sum, constraint) => sum + constraint.weight, 0);
+
+  return verticalWeight > horizontalWeight ? 'vertical' : 'horizontal';
+}
+
+function buildAcyclicConstraints(
+  items: readonly LayoutItem[],
+  constraints: readonly LayoutConstraint[]
+): LayoutConstraint[] {
+  const itemIds = new Set(items.map((item) => item.id));
+  const adjacency = new Map(items.map((item) => [item.id, new Set<string>()] as const));
+  const accepted = new Map<string, LayoutConstraint>();
+  const candidates = constraints
+    .filter((constraint) =>
+      constraint.beforeId !== constraint.afterId &&
+      itemIds.has(constraint.beforeId) &&
+      itemIds.has(constraint.afterId)
+    )
+    .sort((left, right) =>
+      right.weight - left.weight ||
+      right.labelWidth - left.labelWidth ||
+      left.beforeId.localeCompare(right.beforeId) ||
+      left.afterId.localeCompare(right.afterId)
+    );
+
+  for (const constraint of candidates) {
+    const key = `${constraint.beforeId}\u0000${constraint.afterId}`;
+    const previous = accepted.get(key);
+    if (previous) {
+      accepted.set(key, {
+        ...previous,
+        weight: Math.max(previous.weight, constraint.weight),
+        labelWidth: Math.max(previous.labelWidth, constraint.labelWidth)
+      });
+      continue;
+    }
+
+    // Keep the layer assignment deterministic by dropping lower-priority edges that would create a cycle.
+    if (hasConstraintPath(adjacency, constraint.afterId, constraint.beforeId)) {
+      continue;
+    }
+
+    adjacency.get(constraint.beforeId)?.add(constraint.afterId);
+    accepted.set(key, constraint);
+  }
+
+  return [...accepted.values()].sort((left, right) =>
+    left.beforeId.localeCompare(right.beforeId) ||
+    left.afterId.localeCompare(right.afterId)
+  );
+}
+
+function hasConstraintPath(adjacency: ReadonlyMap<string, ReadonlySet<string>>, fromId: string, toId: string): boolean {
+  const visited = new Set<string>();
+  const queue = [fromId];
+  while (queue.length > 0) {
+    const currentId = queue.shift() as string;
+    if (currentId === toId) {
+      return true;
+    }
+    if (visited.has(currentId)) {
+      continue;
+    }
+    visited.add(currentId);
+    for (const nextId of adjacency.get(currentId) ?? []) {
+      queue.push(nextId);
+    }
+  }
+
+  return false;
+}
+
+function assignConstraintLayers(
+  items: readonly LayoutItem[],
+  constraints: readonly LayoutConstraint[],
+  relations: readonly WeightedRelation[]
+): Map<string, number> {
+  const itemIds = new Set(items.map((item) => item.id));
+  const itemById = new Map(items.map((item) => [item.id, item] as const));
+  const outgoing = new Map(items.map((item) => [item.id, [] as LayoutConstraint[]] as const));
+  const indegree = new Map<string, number>(items.map((item) => [item.id, 0]));
+
+  for (const constraint of constraints) {
+    if (!itemIds.has(constraint.beforeId) || !itemIds.has(constraint.afterId)) {
+      continue;
+    }
+
+    outgoing.get(constraint.beforeId)?.push(constraint);
+    indegree.set(constraint.afterId, (indegree.get(constraint.afterId) ?? 0) + 1);
+  }
+
+  for (const edges of outgoing.values()) {
+    edges.sort((left, right) =>
+      right.weight - left.weight ||
+      left.afterId.localeCompare(right.afterId)
+    );
+  }
+
+  const layerById = new Map<string, number>(items.map((item) => [item.id, 0]));
+  const queue = items
+    .filter((item) => (indegree.get(item.id) ?? 0) === 0)
+    .sort((left, right) => compareItemsForComponentOrder(left, right, relations))
+    .map((item) => item.id);
+
+  while (queue.length > 0) {
+    const currentId = queue.shift() as string;
+    for (const constraint of outgoing.get(currentId) ?? []) {
+      layerById.set(
+        constraint.afterId,
+        Math.max(layerById.get(constraint.afterId) ?? 0, (layerById.get(currentId) ?? 0) + 1)
+      );
+      const nextIndegree = Math.max(0, (indegree.get(constraint.afterId) ?? 0) - 1);
+      indegree.set(constraint.afterId, nextIndegree);
+      if (nextIndegree === 0) {
+        queue.push(constraint.afterId);
+        queue.sort((leftId, rightId) => {
+          const left = itemById.get(leftId);
+          const right = itemById.get(rightId);
+          return left && right ? compareItemsForComponentOrder(left, right, relations) : leftId.localeCompare(rightId);
+        });
+      }
+    }
+  }
+
+  return layerById;
+}
+
+function groupItemsByLayer(
+  items: readonly LayoutItem[],
+  layerById: ReadonlyMap<string, number>,
+  relations: readonly WeightedRelation[]
+): LayoutItem[][] {
+  const layers = new Map<number, LayoutItem[]>();
+  for (const item of items) {
+    const layer = Math.max(0, layerById.get(item.id) ?? 0);
+    const layerItems = layers.get(layer) ?? [];
+    layerItems.push(item);
+    layers.set(layer, layerItems);
+  }
+
+  return [...layers.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([, layerItems]) => layerItems.sort((left, right) => compareItemsForComponentOrder(left, right, relations)));
+}
+
+function refineLayerOrdersByRelations(
+  layers: LayoutItem[][],
+  layerById: ReadonlyMap<string, number>,
+  constraints: readonly LayoutConstraint[],
+  relations: readonly WeightedRelation[]
+): void {
+  const fallbackCompare = (left: LayoutItem, right: LayoutItem) => compareItemsForComponentOrder(left, right, relations);
+
+  for (let layerIndex = 1; layerIndex < layers.length; layerIndex += 1) {
+    const previousOrder = orderIndexForLayers(layers.slice(0, layerIndex));
+    layers[layerIndex]?.sort((left, right) =>
+      relationOrderScore(left.id, constraints, previousOrder, 'predecessor') -
+        relationOrderScore(right.id, constraints, previousOrder, 'predecessor') ||
+      fallbackCompare(left, right)
+    );
+  }
+
+  for (let layerIndex = layers.length - 2; layerIndex >= 0; layerIndex -= 1) {
+    const followingOrder = orderIndexForLayers(layers.slice(layerIndex + 1));
+    layers[layerIndex]?.sort((left, right) =>
+      relationOrderScore(left.id, constraints, followingOrder, 'successor') -
+        relationOrderScore(right.id, constraints, followingOrder, 'successor') ||
+      fallbackCompare(left, right)
+    );
+  }
+}
+
+function orderIndexForLayers(layers: readonly LayoutItem[][]): Map<string, number> {
+  const order = new Map<string, number>();
+  let index = 0;
+  for (const layer of layers) {
+    for (const item of layer) {
+      order.set(item.id, index);
+      index += 1;
+    }
+  }
+
+  return order;
+}
+
+function relationOrderScore(
+  itemId: string,
+  constraints: readonly LayoutConstraint[],
+  order: ReadonlyMap<string, number>,
+  mode: 'predecessor' | 'successor'
+): number {
+  const scores = constraints.flatMap((constraint) => {
+    if (mode === 'predecessor' && constraint.afterId === itemId) {
+      const value = order.get(constraint.beforeId);
+      return value === undefined ? [] : [value];
+    }
+    if (mode === 'successor' && constraint.beforeId === itemId) {
+      const value = order.get(constraint.afterId);
+      return value === undefined ? [] : [value];
+    }
+    return [];
+  });
+
+  if (scores.length === 0) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return scores.reduce((sum, score) => sum + score, 0) / scores.length;
+}
+
+function layoutHorizontalLayers(
+  layers: readonly LayoutItem[][],
+  constraints: readonly LayoutConstraint[],
+  layerById: ReadonlyMap<string, number>
+): Map<string, CanvasNodePosition> {
+  const columnWidths = layers.map((layer) => Math.max(...layer.map((item) => item.size.width), 0));
+  const columnHeights = layers.map((layer) =>
+    Math.max(
+      0,
+      layer.reduce((sum, item) => sum + item.size.height, 0) + Math.max(0, layer.length - 1) * NODE_GAP
+    )
+  );
+  const componentHeight = Math.max(...columnHeights, 0);
+  const positions = new Map<string, CanvasNodePosition>();
+  let x = 0;
+
+  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+    const layer = layers[layerIndex] ?? [];
+    const columnWidth = columnWidths[layerIndex] ?? 0;
+    let y = Math.max(0, (componentHeight - (columnHeights[layerIndex] ?? 0)) / 2);
+    for (const item of layer) {
+      positions.set(item.id, {
+        x: Math.round(x + Math.max(0, (columnWidth - item.size.width) / 2)),
+        y: Math.round(y)
+      });
+      y += item.size.height + NODE_GAP;
+    }
+
+    x += columnWidth + channelGapAfterLayer(layerIndex, constraints, layerById);
+  }
+
+  return positions;
+}
+
+function layoutVerticalLayers(
+  layers: readonly LayoutItem[][],
+  constraints: readonly LayoutConstraint[],
+  layerById: ReadonlyMap<string, number>
+): Map<string, CanvasNodePosition> {
+  const rowWidths = layers.map((layer) =>
+    Math.max(
+      0,
+      layer.reduce((sum, item) => sum + item.size.width, 0) + Math.max(0, layer.length - 1) * NODE_GAP
+    )
+  );
+  const rowHeights = layers.map((layer) => Math.max(...layer.map((item) => item.size.height), 0));
+  const componentWidth = Math.max(...rowWidths, 0);
+  const positions = new Map<string, CanvasNodePosition>();
+  let y = 0;
+
+  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+    const layer = layers[layerIndex] ?? [];
+    const rowHeight = rowHeights[layerIndex] ?? 0;
+    let x = Math.max(0, (componentWidth - (rowWidths[layerIndex] ?? 0)) / 2);
+    for (const item of layer) {
+      positions.set(item.id, {
+        x: Math.round(x),
+        y: Math.round(y + Math.max(0, (rowHeight - item.size.height) / 2))
+      });
+      x += item.size.width + NODE_GAP;
+    }
+
+    y += rowHeight + channelGapAfterLayer(layerIndex, constraints, layerById);
+  }
+
+  return positions;
+}
+
+function channelGapAfterLayer(
+  layerIndex: number,
+  constraints: readonly LayoutConstraint[],
+  layerById: ReadonlyMap<string, number>
+): number {
+  const labelWidth = constraints.reduce((maxWidth, constraint) => {
+    const beforeLayer = layerById.get(constraint.beforeId) ?? 0;
+    const afterLayer = layerById.get(constraint.afterId) ?? 0;
+    return beforeLayer <= layerIndex && afterLayer > layerIndex
+      ? Math.max(maxWidth, constraint.labelWidth)
+      : maxWidth;
+  }, 0);
+
+  if (labelWidth <= 0) {
+    return MINIMUM_EDGE_CHANNEL_GAP;
+  }
+
+  return Math.min(MAXIMUM_EDGE_CHANNEL_GAP, Math.max(MINIMUM_EDGE_CHANNEL_GAP, labelWidth + EDGE_LABEL_CHANNEL_PADDING));
 }
 
 function packComponents(
@@ -562,6 +1107,22 @@ function collectFilePaths(node: CanvasNodeSummary): string[] {
     ...(node.metadata?.file?.filePath ? [node.metadata.file.filePath] : []),
     ...(node.metadata?.fileList?.entries ?? []).map((entry) => entry.filePath)
   ].filter((filePath): filePath is string => typeof filePath === 'string' && filePath.trim().length > 0);
+}
+
+function estimateEdgeLabelWidth(label: string): number {
+  let glyphUnits = 0;
+
+  for (const character of label) {
+    if (/\s/.test(character)) {
+      glyphUnits += 0.45;
+      continue;
+    }
+
+    const codePoint = character.codePointAt(0) ?? 0;
+    glyphUnits += codePoint >= 0x1100 ? 1.7 : 0.96;
+  }
+
+  return Math.max(12, Math.ceil(glyphUnits * 7 + 8));
 }
 
 function compareItemsForComponentOrder(

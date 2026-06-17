@@ -166,6 +166,20 @@ try {
     return Math.hypot(leftCenter.x - rightCenter.x, leftCenter.y - rightCenter.y);
   }
 
+  function centerX(item) {
+    return item.position.x + item.size.width / 2;
+  }
+
+  function horizontalGap(left, right) {
+    return right.position.x - (left.position.x + left.size.width);
+  }
+
+  function horizontallyBetweenEndpoints(candidate, left, right) {
+    const start = left.position.x + left.size.width;
+    const end = right.position.x;
+    return candidate.position.x >= start && candidate.position.x + candidate.size.width <= end;
+  }
+
   function byId(items, id) {
     const item = items.find((candidate) => candidate.id === id);
     assert.ok(item, `Expected ${id} to exist.`);
@@ -268,6 +282,108 @@ try {
       paddedOverlap(rect(byId(arranged.nodes, 'root-a-note-a')), rect(byId(arranged.nodes, 'root-a-note-b')), 40),
       false,
       'root 内部对象也应单独整理。'
+    );
+  }
+
+  {
+    const arranged = arrangeCanvasLayout(state({
+      nodes: [
+        note('solo-note', { x: 320, y: 240 }, { groupId: 'group-solo' })
+      ],
+      groups: [group('group-solo', { x: 10, y: 20 }, { width: 620, height: 420 })]
+    }));
+
+    const arrangedGroup = byId(arranged.groups, 'group-solo');
+    const arrangedNote = byId(arranged.nodes, 'solo-note');
+    assert.equal(arrangedNote.position.x, arrangedGroup.position.x + 24, '单成员普通分组应把成员整理到左侧内容内边距。');
+    assert.equal(arrangedNote.position.y, arrangedGroup.position.y + 52, '单成员普通分组应把成员整理到标题下方内容内边距。');
+    assert.ok(arrangedGroup.size.width < 300, '单成员普通分组整理后不应保留原有大宽度。');
+    assert.ok(arrangedGroup.size.height < 220, '单成员普通分组整理后不应保留原有大高度。');
+  }
+
+  {
+    const arranged = arrangeCanvasLayout(state({
+      nodes: [
+        agent('agent-source', { x: 0, y: 0 }),
+        terminal('terminal-side', { x: 10, y: 10 }),
+        note('note-target', { x: 20, y: 20 })
+      ],
+      edges: [
+        edge('edge-source-target', 'agent-source', 'note-target')
+      ]
+    }));
+
+    const arrangedAgent = byId(arranged.nodes, 'agent-source');
+    const arrangedTerminal = byId(arranged.nodes, 'terminal-side');
+    const arrangedNote = byId(arranged.nodes, 'note-target');
+    assert.ok(
+      arrangedAgent.position.x < arrangedNote.position.x,
+      '用户连线 source -> target 应推动 target 排到 source 右侧。'
+    );
+    assert.equal(
+      horizontallyBetweenEndpoints(arrangedTerminal, arrangedAgent, arrangedNote),
+      false,
+      '只有弱关系的节点不应横向夹在用户连线端点之间。'
+    );
+  }
+
+  {
+    const arranged = arrangeCanvasLayout(state({
+      nodes: [
+        agent('fanout-source', { x: 0, y: 0 }),
+        terminal('fanout-terminal', { x: 10, y: 10 }),
+        note('fanout-note', { x: 20, y: 20 })
+      ],
+      edges: [
+        edge('edge-fanout-terminal', 'fanout-source', 'fanout-terminal'),
+        edge('edge-fanout-note', 'fanout-source', 'fanout-note')
+      ]
+    }));
+
+    assert.ok(
+      Math.abs(centerX(byId(arranged.nodes, 'fanout-terminal')) - centerX(byId(arranged.nodes, 'fanout-note'))) < 1,
+      '同一 source 连接的多个 target 应同列排列，减少多条连线相互跨越。'
+    );
+  }
+
+  {
+    const arranged = arrangeCanvasLayout(state({
+      nodes: [
+        agent('chain-agent', { x: 0, y: 0 }),
+        terminal('chain-terminal', { x: 10, y: 10 }),
+        fileNode('chain-file', { x: 20, y: 20 }, ['chain-agent'])
+      ],
+      edges: [
+        edge('edge-chain-agent-terminal', 'chain-agent', 'chain-terminal'),
+        edge('edge-chain-terminal-file', 'chain-terminal', 'chain-file')
+      ]
+    }));
+
+    const arrangedAgent = byId(arranged.nodes, 'chain-agent');
+    const arrangedTerminal = byId(arranged.nodes, 'chain-terminal');
+    const arrangedFile = byId(arranged.nodes, 'chain-file');
+    assert.ok(
+      arrangedAgent.position.x < arrangedTerminal.position.x && arrangedTerminal.position.x < arrangedFile.position.x,
+      '用户连线链路应按 source -> target 顺序展开，避免链路端点跨越多个节点。'
+    );
+  }
+
+  {
+    const arranged = arrangeCanvasLayout(state({
+      nodes: [
+        agent('label-source', { x: 0, y: 0 }),
+        note('label-target', { x: 10, y: 10 })
+      ],
+      edges: [
+        edge('edge-with-long-label', 'label-source', 'label-target', {
+          label: 'very long relationship label for regression'
+        })
+      ]
+    }));
+
+    assert.ok(
+      horizontalGap(byId(arranged.nodes, 'label-source'), byId(arranged.nodes, 'label-target')) >= 240,
+      '带长文案的连线应在端点之间预留更宽通道，避免 label 被节点挤压。'
     );
   }
 
