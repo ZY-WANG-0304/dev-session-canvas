@@ -83,11 +83,11 @@
 - 触发范围：
   - `agentAbnormalExit` 已启用，且本地 PTY Agent 已进入 `running` 或 `waiting-input` 后，进程退出码非 `0` 且不是用户主动停止，状态进入 `error`
   - `agentAbnormalExit` 已启用，且 live-runtime supervisor 上报同等的“已跑起来后非用户主动非 `0` 退出” `error` 非 live 终态
-  - `codexAbnormalOutputText` 已启用，且 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 设置为 `codex` 时，本地 PTY 或 live-runtime 已跑起来的 Codex 输出中出现已知最终失败文案。当前样本包括 Codex TUI 最终错误行 `■ {"error":{"message":"Internal server error"}}`，以及出现在输出尾部的 `■ stream disconnected before completion: stream closed before response.completed`。这类文本必须是 Codex TUI 方块标记行，并且位于输出尾部；尾部紧随的输入提示行（如 `› Write tests for @filename`）不影响判定。`Reconnecting... n/m` 下方树形缩进的 `└ Stream disconnected ...` 表示 Codex 仍可能自动 retry / reconnect，不作为最终失败文本触发提醒，即使同类文本重复出现也不触发。
+  - `codexAbnormalOutputText` 已启用，且 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 设置为 `codex` 时，本地 PTY 或 live-runtime 已跑起来的 Codex 输出中出现已知最终失败文案。当前样本包括 Codex TUI 最终错误行 `■ {"error":{"message":"Internal server error"}}`，以及出现在输出尾部的 `■ stream disconnected before completion: stream closed before response.completed`。这类文本必须是 Codex TUI 方块标记行，并且位于输出尾部；尾部紧随的输入提示行（如 `› Write tests for @filename`、`›继续`）和模型 / cwd footer（如 `gpt-5.4 xhigh · ~/ZeroInput`）不影响判定。`Reconnecting... n/m` 下方树形缩进的 `└ Stream disconnected ...` 表示 Codex 仍可能自动 retry / reconnect，不作为最终失败文本触发提醒，即使同类文本重复出现也不触发。
 - Provider 边界：
   - `response.completed` 是 Codex 一次 turn 成功完成的权威事件；缺少它意味着 Codex 认为本次 stream 未完整完成。该文案不是 Claude Code 的标准事件或标准报错。
   - Claude / Anthropic 的流式完成事件是 `message_stop`，Claude Code 的公开 hook 语义里 API error 对应 `StopFailure` 而不是 `Stop`。在没有 Claude Code 真实输出样本或结构化 `StopFailure` 证据前，不把 Codex 的 `response.completed` 文案泛化为 Claude-specific 规则。
-  - Dev Session Canvas 只补充提醒，不自动重放 prompt、不自动 resume、不替 provider 做 stream recovery；retry / reconnect / continuation 由 Codex / Claude 自己负责，避免重复执行工具或破坏会话状态。`Reconnecting... n/m` 与树形缩进的 `└ Stream disconnected ...` 是 Codex 仍在自动 retry / reconnect 的暂态输出，不进入异常通知候选；只有方块标记的 `■ stream disconnected ... response.completed` 出现在输出尾部时才视为最终失败。
+  - Dev Session Canvas 只补充提醒，不自动重放 prompt、不自动 resume、不替 provider 做 stream recovery；retry / reconnect / continuation 由 Codex / Claude 自己负责，避免重复执行工具或破坏会话状态。`Reconnecting... n/m` 与树形缩进的 `└ Stream disconnected ...` 是 Codex 仍在自动 retry / reconnect 的暂态输出，不进入异常通知候选；只有方块标记的 `■ stream disconnected ... response.completed` 出现在输出尾部时才视为最终失败，尾部 Codex 输入提示和模型 / cwd footer 不会把它降级为普通历史输出。
 - 不触发范围：
   - 启动前校验失败、启动命令解析失败、命令不存在或 spawn 失败
   - resume 启动失败或状态进入 `resume-failed`
@@ -155,7 +155,7 @@
   - 作用域：`window`
 - 各模式行为：
   - `off`：不根据终端输出文本做额外异常提醒；已运行 Agent 非用户主动非 `0` 退出的异常中断提醒仍受 `enabledAttentionSignals` 中的 `agentAbnormalExit` 控制
-  - `codex`：允许 Codex 的高置信最终失败文案进入候选 attention signal，当前为方块标记并出现在输出尾部的 `■ {"error":{"message":"Internal server error"}}`，以及 `■ stream disconnected before completion: stream closed before response.completed`；`Reconnecting... n/m` 下方树形缩进的 stream-disconnected 文案属于 retry / reconnect 暂态输出，不进入候选 attention signal；最终是否生成节点 attention 仍受 `enabledAttentionSignals` 中的 `codexAbnormalOutputText` 控制
+  - `codex`：允许 Codex 的高置信最终失败文案进入候选 attention signal，当前为方块标记并出现在输出尾部的 `■ {"error":{"message":"Internal server error"}}`，以及 `■ stream disconnected before completion: stream closed before response.completed`；该方块错误行后允许紧随 Codex 输入提示与模型 / cwd footer；`Reconnecting... n/m` 下方树形缩进的 stream-disconnected 文案属于 retry / reconnect 暂态输出，不进入候选 attention signal；最终是否生成节点 attention 仍受 `enabledAttentionSignals` 中的 `codexAbnormalOutputText` 控制
 - 这项配置不影响 provider 原生 `BEL` / `OSC` attention signal 解析，也不直接控制已运行后非用户主动非 `0` 退出的异常终态提醒。
 
 ### 4.4 Agent 等待输入检测
@@ -279,7 +279,7 @@ type CanvasAgentAbnormalOutputTextNotificationMode = 'off' | 'codex';
 - [x] `enabledAttentionSignals` 能禁止指定终端信号、Agent 异常退出和 Codex 文本异常生成节点 attention、Minimap 提醒和外部 bridge，同时允许重新启用后恢复触发
 - [x] 当检测到已启用的注意力信号时，节点内提醒 icon 和 Minimap 同色明暗闪烁显示
 - [x] 当 `Codex` / `Claude Code` Agent 已运行后非用户主动非 `0` 异常退出且 `agentAbnormalExit` 启用时，节点进入 `attentionPending` 并按桥接模式发出可选外部通知
-- [x] 当 `agentAbnormalOutputTextNotifications=codex`、`codexAbnormalOutputText` 启用且 Codex 运行输出出现已知最终失败文本时，节点进入 `attentionPending` 并按桥接模式发出可选外部通知；默认 `off` 或 signal 禁用时不触发文本匹配通知；方块标记且位于输出尾部的 `Internal server error` / stream-disconnected 文案会触发提醒；`Reconnecting... n/m` 与树形缩进的 stream-disconnected 暂态输出即使重复出现也不触发提醒
+- [x] 当 `agentAbnormalOutputTextNotifications=codex`、`codexAbnormalOutputText` 启用且 Codex 运行输出出现已知最终失败文本时，节点进入 `attentionPending` 并按桥接模式发出可选外部通知；默认 `off` 或 signal 禁用时不触发文本匹配通知；方块标记且位于输出尾部的 `Internal server error` / stream-disconnected 文案会触发提醒，尾部 Codex 输入提示与模型 / cwd footer 不影响判定；`Reconnecting... n/m` 与树形缩进的 stream-disconnected 暂态输出即使重复出现也不触发提醒
 - [x] 配置 `attentionSignalBridge` 为 `none` 时，不额外弹出 VS Code 工作台消息或系统通知，但节点内提醒 icon 和 Minimap 闪烁仍然保留
 - [x] 配置 `attentionSignalBridge` 为 `workbench` 时，会弹出 VS Code 工作台消息
 - [x] 配置 `attentionSignalBridge` 为 `system` 且 companion 可用时，主扩展会优先把 attention event 发送给 companion，并避免重复弹出 VS Code 工作台消息
