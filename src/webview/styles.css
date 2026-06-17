@@ -379,73 +379,73 @@ body {
   border-color: color-mix(in srgb, var(--canvas-node-color) 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%);
 }
 
-.canvas-shell.is-overview-mode .canvas-node {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .canvas-node {
   background: color-mix(in srgb, var(--vscode-editor-background) 98%, var(--vscode-focusBorder) 2%);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-widget-border, var(--vscode-panel-border)) 72%, transparent);
 }
 
-.canvas-shell.is-overview-mode .canvas-node.is-selected {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .canvas-node.is-selected {
   box-shadow:
     0 0 0 1px var(--vscode-focusBorder),
     0 0 0 4px color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
 }
 
-.canvas-shell.is-overview-mode .window-chrome,
-.canvas-shell.is-overview-mode .file-list-minimal-header {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .window-chrome,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-minimal-header {
   padding: 8px 10px;
   border-bottom-color: color-mix(in srgb, var(--vscode-panel-border) 60%, transparent);
   background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-focusBorder) 6%);
 }
 
-.canvas-shell.is-overview-mode .window-title-input {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .window-title-input {
   pointer-events: none;
 }
 
-.canvas-shell.is-overview-mode .window-title-context-row,
-.canvas-shell.is-overview-mode .window-title-subtitle-row,
-.canvas-shell.is-overview-mode .execution-help-trigger,
-.canvas-shell.is-overview-mode .action-button,
-.canvas-shell.is-overview-mode .action-button-group,
-.canvas-shell.is-overview-mode .file-list-view-toggle,
-.canvas-shell.is-overview-mode .file-node-copy span,
-.canvas-shell.is-overview-mode .file-list-entry-copy span,
-.canvas-shell.is-overview-mode .node-hint,
-.canvas-shell.is-overview-mode .node-topline,
-.canvas-shell.is-overview-mode .node-status,
-.canvas-shell.is-overview-mode .compact-node-actions,
-.canvas-shell.is-overview-mode .compact-node p {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .window-title-context-row,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .window-title-subtitle-row,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .execution-help-trigger,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .action-button,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .action-button-group,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-view-toggle,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-node-copy span,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-entry-copy span,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .node-hint,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .node-topline,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .node-status,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .compact-node-actions,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .compact-node p {
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
 }
 
-.canvas-shell.is-overview-mode .file-node-action:disabled {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-node-action:disabled {
   cursor: default;
 }
 
-.canvas-shell.is-overview-mode .session-body,
-.canvas-shell.is-overview-mode .object-body,
-.canvas-shell.is-overview-mode .file-list-body {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .session-body,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .object-body,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-body {
   position: relative;
   pointer-events: none;
 }
 
-.canvas-shell.is-overview-mode .terminal-viewport,
-.canvas-shell.is-overview-mode .terminal-overlay,
-.canvas-shell.is-overview-mode .note-editor-surface,
-.canvas-shell.is-overview-mode .file-node-icon,
-.canvas-shell.is-overview-mode .file-node-copy,
-.canvas-shell.is-overview-mode .file-list-entries,
-.canvas-shell.is-overview-mode .file-list-tree,
-.canvas-shell.is-overview-mode .file-list-empty {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .terminal-viewport,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .terminal-overlay,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .note-editor-surface,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-node-icon,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-node-copy,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-entries,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-tree,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-empty {
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
 }
 
-.canvas-shell.is-overview-mode .terminal-frame::after,
-.canvas-shell.is-overview-mode .object-body::after,
-.canvas-shell.is-overview-mode .file-list-body::after {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .terminal-frame::after,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .object-body::after,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-body::after {
   content: '';
   position: absolute;
   inset: 8px;
@@ -543,7 +543,7 @@ body {
     color-mix(in srgb, currentColor 28%, var(--vscode-editor-background) 72%);
 }
 
-.canvas-shell.is-overview-mode[data-canvas-overview-config='title'] .node-overview-title {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode)[data-canvas-overview-config='title'] .node-overview-title {
   visibility: visible;
   opacity: 1;
 }
@@ -3588,78 +3588,6 @@ body {
   color: var(--vscode-editor-foreground);
 }
 
-.pane-gallery-mode-switch {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 20;
-}
-
-.pane-gallery-mode-trigger,
-.pane-gallery-mode-menu button,
-.pane-gallery-thumbnail {
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-  color: var(--vscode-editor-foreground);
-  cursor: pointer;
-  font: inherit;
-}
-
-.pane-gallery-mode-trigger {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: var(--canvas-widget-radius-sm);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
-}
-
-.pane-gallery-mode-trigger:hover,
-.pane-gallery-mode-trigger:focus-visible,
-.pane-gallery-mode-menu button:hover,
-.pane-gallery-mode-menu button:focus-visible,
-.pane-gallery-thumbnail:hover,
-.pane-gallery-thumbnail:focus-visible {
-  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent));
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
-.pane-gallery-mode-menu {
-  position: absolute;
-  top: 34px;
-  right: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(108px, 1fr));
-  gap: 1px;
-  padding: 1px;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  background: var(--vscode-widget-border, var(--vscode-panel-border));
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-}
-
-.pane-gallery-mode-menu button {
-  display: grid;
-  min-height: 68px;
-  justify-items: center;
-  align-content: center;
-  gap: 7px;
-  border: 0;
-  border-radius: 0;
-  padding: 8px 10px;
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
-}
-
-.pane-gallery-mode-menu button .codicon {
-  font-size: 22px;
-}
-
-.pane-gallery-mode-menu button.is-active {
-  color: var(--vscode-editor-foreground);
-  box-shadow: inset 0 -2px 0 var(--vscode-focusBorder);
-}
-
 .pane-gallery-grid,
 .pane-gallery-thumbnail-layout {
   min-width: 0;
@@ -3677,8 +3605,29 @@ body {
 }
 
 .pane-gallery-grid-dynamic {
-  grid-template-columns: repeat(auto-fit, minmax(var(--pane-gallery-pane-min-width), 1fr));
-  grid-auto-rows: minmax(var(--pane-gallery-pane-min-height), 52vh);
+  display: flex;
+  flex-wrap: wrap;
+  align-content: stretch;
+}
+
+.pane-gallery-grid-dynamic .pane-gallery-root-pane {
+  flex: 1 1 var(--pane-gallery-pane-min-width);
+  min-width: var(--pane-gallery-pane-min-width);
+  min-height: var(--pane-gallery-pane-min-height);
+}
+
+.pane-gallery-grid-dynamic .pane-gallery-root-pane[data-pane-gallery-dynamic-slot='wide'] {
+  flex-basis: calc(var(--pane-gallery-pane-min-width) * 1.55);
+}
+
+.pane-gallery-grid-dynamic .pane-gallery-root-pane[data-pane-gallery-dynamic-slot='tall'] {
+  flex-basis: calc(var(--pane-gallery-pane-min-width) * 0.95);
+  min-height: calc(var(--pane-gallery-pane-min-height) * 1.28);
+}
+
+.pane-gallery-grid-dynamic .pane-gallery-root-pane[data-pane-gallery-dynamic-slot='large'] {
+  flex-basis: calc(var(--pane-gallery-pane-min-width) * 1.72);
+  min-height: calc(var(--pane-gallery-pane-min-height) * 1.32);
 }
 
 .pane-gallery-grid-grid {
@@ -3712,45 +3661,39 @@ body {
   box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
 }
 
+.pane-gallery-root-pane-thumbnail {
+  width: 100%;
+  min-height: 0;
+}
+
 .pane-gallery-root-header {
   position: absolute;
   top: 0;
   left: 0;
   z-index: 5;
   display: grid;
-  max-width: min(440px, 72%);
-  min-width: 160px;
+  max-width: min(360px, 68%);
+  min-width: 0;
   box-sizing: border-box;
-  border-right: 1px solid var(--vscode-panel-border);
-  border-bottom: 1px solid var(--vscode-panel-border);
-  padding: 6px 9px;
-  background: var(--vscode-panel-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  border-right: 1px solid color-mix(in srgb, var(--vscode-panel-border) 72%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 72%, transparent);
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
+  color: var(--vscode-descriptionForeground);
 }
 
-.pane-gallery-root-title-block,
-.pane-gallery-thumbnail-copy {
+.pane-gallery-root-title-block {
   display: grid;
-  gap: 2px;
   min-width: 0;
 }
 
-.pane-gallery-root-title,
-.pane-gallery-thumbnail-title {
+.pane-gallery-root-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.pane-gallery-root-meta,
-.pane-gallery-thumbnail-meta {
-  overflow: hidden;
-  color: var(--vscode-descriptionForeground);
   font-size: 11px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 .pane-gallery-root-flow-shell {
@@ -3765,6 +3708,79 @@ body {
   background: var(--vscode-editor-background);
 }
 
+.pane-gallery-root-flow-shell.is-inert .react-flow,
+.pane-gallery-root-pane-thumbnail .react-flow__renderer,
+.pane-gallery-root-pane-thumbnail .react-flow__pane {
+  pointer-events: none;
+}
+
+.pane-gallery-canvas-controls {
+  z-index: 8;
+  overflow: visible !important;
+}
+
+.pane-gallery-control-mode {
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+
+.pane-gallery-control-mode-trigger .codicon {
+  font-size: 14px;
+}
+
+.pane-gallery-control-mode > .react-flow__controls-button {
+  border-bottom: 0;
+}
+
+.pane-gallery-control-mode-menu {
+  position: absolute;
+  left: calc(100% + 4px);
+  bottom: 0;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  overflow: hidden;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: var(--canvas-widget-radius);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.pane-gallery-control-mode-menu button {
+  display: inline-flex;
+  height: 28px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-right: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 0;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--vscode-icon-foreground, var(--vscode-editor-foreground));
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.pane-gallery-control-mode-menu button:last-child {
+  border-right: 0;
+}
+
+.pane-gallery-control-mode-menu button:hover,
+.pane-gallery-control-mode-menu button:focus-visible,
+.pane-gallery-control-mode-menu button.is-active {
+  outline: none;
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent));
+  color: var(--vscode-editor-foreground);
+}
+
 .pane-gallery-thumbnail-rail {
   display: grid;
   min-width: 0;
@@ -3776,75 +3792,17 @@ body {
 
 .pane-gallery-thumbnail-rail-topThumbnails {
   grid-auto-flow: column;
-  grid-auto-columns: minmax(160px, 220px);
+  grid-auto-columns: minmax(180px, 240px);
+  justify-content: center;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
 .pane-gallery-thumbnail-rail-sideThumbnails {
-  grid-auto-rows: minmax(132px, max-content);
-  align-content: start;
-}
-
-.pane-gallery-thumbnail {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 6px;
-  min-width: 0;
-  min-height: 0;
-  border: 0;
-  border-radius: 0;
-  padding: 6px;
-  background: var(--vscode-editor-background);
-  text-align: left;
-}
-
-.pane-gallery-thumbnail-preview {
-  display: block;
-  min-height: 78px;
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 80%, transparent);
-  background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-sideBar-background) 6%);
-}
-
-.pane-gallery-thumbnail-preview svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.pane-gallery-thumbnail-root-rect {
-  fill: color-mix(in srgb, var(--vscode-panel-background, var(--vscode-editor-background)) 84%, transparent);
-  stroke: var(--vscode-panel-border);
-  stroke-width: 6;
-}
-
-.pane-gallery-thumbnail-group-rect {
-  fill: color-mix(in srgb, var(--vscode-panel-background, var(--vscode-editor-background)) 48%, transparent);
-  stroke: color-mix(in srgb, var(--vscode-panel-border) 76%, transparent);
-  stroke-width: 4;
-}
-
-.pane-gallery-thumbnail-edge-line {
-  stroke: color-mix(in srgb, var(--vscode-descriptionForeground) 66%, transparent);
-  stroke-width: 4;
-}
-
-.pane-gallery-thumbnail-node-rect {
-  fill: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 88%, var(--vscode-focusBorder) 12%);
-  stroke: var(--vscode-widget-border, var(--vscode-panel-border));
-  stroke-width: 4;
-}
-
-.pane-gallery-thumbnail-node-agent {
-  fill: color-mix(in srgb, #22c55e 50%, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 50%);
-}
-
-.pane-gallery-thumbnail-node-terminal {
-  fill: color-mix(in srgb, #38bdf8 50%, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 50%);
-}
-
-.pane-gallery-thumbnail-node-note {
-  fill: color-mix(in srgb, #a78bfa 40%, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 60%);
+  grid-auto-rows: minmax(132px, 172px);
+  align-content: center;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 @media (max-width: 900px) {
@@ -3862,6 +3820,7 @@ body {
   .pane-gallery-thumbnail-layout-sideThumbnails .pane-gallery-thumbnail-rail {
     grid-auto-flow: column;
     grid-auto-columns: minmax(150px, 210px);
+    justify-content: center;
     overflow-x: auto;
     overflow-y: hidden;
   }
