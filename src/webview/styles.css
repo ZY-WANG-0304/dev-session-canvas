@@ -3574,10 +3574,6 @@ body {
   background: var(--vscode-editor-background);
 }
 
-.canvas-shell.is-pane-gallery > .canvas-help-panel {
-  display: none;
-}
-
 .pane-gallery {
   position: absolute;
   inset: 0;

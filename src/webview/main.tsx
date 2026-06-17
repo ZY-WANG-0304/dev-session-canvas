@@ -179,10 +179,17 @@ interface LocalUiState {
 }
 
 type PaneGalleryLayoutMode = 'dynamic' | 'grid' | 'topThumbnails' | 'sideThumbnails';
+type PaneGalleryOverviewLayoutMode = Extract<PaneGalleryLayoutMode, 'dynamic' | 'grid'>;
+type PaneGalleryThumbnailLayoutMode = Extract<PaneGalleryLayoutMode, 'topThumbnails' | 'sideThumbnails'>;
+
+const PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT: PaneGalleryOverviewLayoutMode = 'dynamic';
+const PANE_GALLERY_DEFAULT_THUMBNAIL_LAYOUT: PaneGalleryThumbnailLayoutMode = 'sideThumbnails';
 
 interface PaneGalleryLocalState {
   layout?: PaneGalleryLayoutMode;
   activeRootGroupId?: string;
+  lastOverviewLayout?: PaneGalleryOverviewLayoutMode;
+  lastThumbnailLayout?: PaneGalleryThumbnailLayoutMode;
   paneViewports?: Record<string, Viewport>;
 }
 
@@ -228,9 +235,16 @@ function normalizePaneGalleryLocalState(value: unknown): PaneGalleryLocalState |
           })
         )
       : undefined;
+  const normalizedLayout = normalizePaneGalleryLayoutMode(candidate.layout);
   const normalized: PaneGalleryLocalState = {
-    layout: normalizePaneGalleryLayoutMode(candidate.layout),
+    layout: normalizedLayout,
     activeRootGroupId: typeof candidate.activeRootGroupId === 'string' ? candidate.activeRootGroupId : undefined,
+    lastOverviewLayout:
+      normalizePaneGalleryOverviewLayoutMode(candidate.lastOverviewLayout) ??
+      normalizePaneGalleryOverviewLayoutMode(normalizedLayout),
+    lastThumbnailLayout:
+      normalizePaneGalleryThumbnailLayoutMode(candidate.lastThumbnailLayout) ??
+      normalizePaneGalleryThumbnailLayoutMode(normalizedLayout),
     paneViewports: paneViewports && Object.keys(paneViewports).length > 0 ? paneViewports : undefined
   };
 
@@ -245,6 +259,32 @@ function normalizePaneGalleryLayoutMode(value: unknown): PaneGalleryLayoutMode |
 
 function isPaneGalleryThumbnailLayout(layout: PaneGalleryLayoutMode): boolean {
   return layout === 'topThumbnails' || layout === 'sideThumbnails';
+}
+
+function normalizePaneGalleryOverviewLayoutMode(value: unknown): PaneGalleryOverviewLayoutMode | undefined {
+  return value === 'dynamic' || value === 'grid' ? value : undefined;
+}
+
+function normalizePaneGalleryThumbnailLayoutMode(value: unknown): PaneGalleryThumbnailLayoutMode | undefined {
+  return value === 'topThumbnails' || value === 'sideThumbnails' ? value : undefined;
+}
+
+function resolvePaneGalleryLastOverviewLayout(state: PaneGalleryLocalState | undefined): PaneGalleryOverviewLayoutMode {
+  return (
+    normalizePaneGalleryOverviewLayoutMode(state?.lastOverviewLayout) ??
+    normalizePaneGalleryOverviewLayoutMode(state?.layout) ??
+    PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+  );
+}
+
+function resolvePaneGalleryLastThumbnailLayout(
+  state: PaneGalleryLocalState | undefined
+): PaneGalleryThumbnailLayoutMode {
+  return (
+    normalizePaneGalleryThumbnailLayoutMode(state?.lastThumbnailLayout) ??
+    normalizePaneGalleryThumbnailLayoutMode(state?.layout) ??
+    PANE_GALLERY_DEFAULT_THUMBNAIL_LAYOUT
+  );
 }
 
 interface CanvasViewportSize {
@@ -2400,6 +2440,7 @@ function App(): JSX.Element {
       closeFloatingMenus();
       setSelectedEdgeId(undefined);
       setLocalUiState((current) => {
+        const lastOverviewLayout = resolvePaneGalleryLastOverviewLayout(current.paneGallery);
         const nextState = {
           ...current,
           selectedNodeId: undefined,
@@ -2409,7 +2450,9 @@ function App(): JSX.Element {
           paneGallery: {
             ...(current.paneGallery ?? {}),
             layout: 'sideThumbnails' as const,
-            activeRootGroupId: rootGroupId
+            activeRootGroupId: rootGroupId,
+            lastOverviewLayout,
+            lastThumbnailLayout: 'sideThumbnails' as const
           }
         };
         localUiStateRef.current = nextState;
@@ -3214,7 +3257,10 @@ function App(): JSX.Element {
   );
   const paneGalleryRootIds = paneGalleryRootModels.map((model) => model.rootGroup.id);
   const paneGalleryState = localUiState.paneGallery;
-  const normalizedPaneGalleryLayout = normalizePaneGalleryLayoutMode(paneGalleryState?.layout) ?? 'dynamic';
+  const normalizedPaneGalleryLayout =
+    normalizePaneGalleryLayoutMode(paneGalleryState?.layout) ?? PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT;
+  const lastPaneGalleryOverviewLayout = resolvePaneGalleryLastOverviewLayout(paneGalleryState);
+  const lastPaneGalleryThumbnailLayout = resolvePaneGalleryLastThumbnailLayout(paneGalleryState);
   const activePaneGalleryRootId = paneGalleryRootIds.includes(paneGalleryState?.activeRootGroupId ?? '')
     ? paneGalleryState?.activeRootGroupId
     : paneGalleryRootIds[0];
@@ -3237,12 +3283,17 @@ function App(): JSX.Element {
       const normalizedActiveRootGroupId = activeRootGroupId && knownRootIds.has(activeRootGroupId)
         ? activeRootGroupId
         : paneGalleryRootIds[0];
-      const normalizedLayout = normalizePaneGalleryLayoutMode(currentPaneState?.layout) ?? 'dynamic';
+      const normalizedLayout =
+        normalizePaneGalleryLayoutMode(currentPaneState?.layout) ?? PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT;
+      const normalizedLastOverviewLayout = resolvePaneGalleryLastOverviewLayout(currentPaneState);
+      const normalizedLastThumbnailLayout = resolvePaneGalleryLastThumbnailLayout(currentPaneState);
       const paneViewportsChanged =
         Object.keys(paneViewports).length !== Object.keys(currentPaneState?.paneViewports ?? {}).length;
       if (
         normalizedActiveRootGroupId === activeRootGroupId &&
         normalizedLayout === currentPaneState?.layout &&
+        normalizedLastOverviewLayout === currentPaneState?.lastOverviewLayout &&
+        normalizedLastThumbnailLayout === currentPaneState?.lastThumbnailLayout &&
         !paneViewportsChanged
       ) {
         return current;
@@ -3254,6 +3305,8 @@ function App(): JSX.Element {
           ...(currentPaneState ?? {}),
           layout: normalizedLayout,
           activeRootGroupId: normalizedActiveRootGroupId,
+          lastOverviewLayout: normalizedLastOverviewLayout,
+          lastThumbnailLayout: normalizedLastThumbnailLayout,
           paneViewports: Object.keys(paneViewports).length > 0 ? paneViewports : undefined
         }
       };
@@ -4186,10 +4239,16 @@ function App(): JSX.Element {
     activeRootGroupId = activePaneGalleryRootId,
     options: { fitRoot?: boolean } = {}
   ): void => {
+    const lastOverviewLayout =
+      normalizePaneGalleryOverviewLayoutMode(layout) ?? lastPaneGalleryOverviewLayout;
+    const lastThumbnailLayout =
+      normalizePaneGalleryThumbnailLayoutMode(layout) ?? lastPaneGalleryThumbnailLayout;
     setPaneGalleryState((current) => ({
       ...current,
       layout,
-      activeRootGroupId
+      activeRootGroupId,
+      lastOverviewLayout,
+      lastThumbnailLayout
     }));
     if (options.fitRoot === false) {
       return;
@@ -4284,6 +4343,8 @@ function App(): JSX.Element {
             allModels={paneGalleryRootModels}
             activeRootGroupId={activePaneGalleryRootId}
             layout={normalizedPaneGalleryLayout}
+            lastOverviewLayout={lastPaneGalleryOverviewLayout}
+            lastThumbnailLayout={lastPaneGalleryThumbnailLayout}
             paneViewports={paneGalleryState?.paneViewports ?? {}}
             selectedGroupIds={selectedGroupIds}
             overviewMode={runtimeContext.overviewMode}
@@ -8690,6 +8751,8 @@ interface PaneGalleryProps {
   allModels: PaneGalleryRootModel[];
   activeRootGroupId?: string;
   layout: PaneGalleryLayoutMode;
+  lastOverviewLayout: PaneGalleryOverviewLayoutMode;
+  lastThumbnailLayout: PaneGalleryThumbnailLayoutMode;
   paneViewports: Record<string, Viewport>;
   selectedGroupIds: string[];
   overviewMode: CanvasOverviewMode;
@@ -8749,7 +8812,7 @@ const PANE_GALLERY_LAYOUT_OPTIONS: ReadonlyArray<{
   label: string;
   icon: string;
 }> = [
-  { layout: 'dynamic', label: '动态', icon: 'globe' },
+  { layout: 'dynamic', label: '动态', icon: 'layout' },
   { layout: 'grid', label: '宫格', icon: 'table' },
   { layout: 'topThumbnails', label: '顶部缩略图', icon: 'split-vertical' },
   { layout: 'sideThumbnails', label: '右侧缩略图', icon: 'split-horizontal' }
@@ -8765,8 +8828,12 @@ function paneGalleryControlTargetOptions(): ReadonlyArray<(typeof PANE_GALLERY_L
   return PANE_GALLERY_LAYOUT_OPTIONS;
 }
 
-function paneGalleryCoarseToggleTarget(layout: PaneGalleryLayoutMode): PaneGalleryLayoutMode {
-  return isPaneGalleryThumbnailLayout(layout) ? 'dynamic' : 'sideThumbnails';
+function paneGalleryCoarseToggleTarget(
+  layout: PaneGalleryLayoutMode,
+  lastOverviewLayout: PaneGalleryOverviewLayoutMode,
+  lastThumbnailLayout: PaneGalleryThumbnailLayoutMode
+): PaneGalleryLayoutMode {
+  return isPaneGalleryThumbnailLayout(layout) ? lastOverviewLayout : lastThumbnailLayout;
 }
 
 function PaneGallery(props: PaneGalleryProps): JSX.Element {
@@ -8876,6 +8943,8 @@ function PaneGalleryThumbnailRail(props: PaneGalleryProps & {
 
 function PaneGalleryControls(props: {
   layout: PaneGalleryLayoutMode;
+  lastOverviewLayout: PaneGalleryOverviewLayoutMode;
+  lastThumbnailLayout: PaneGalleryThumbnailLayoutMode;
   rootGroupId: string;
   onFitView: () => void;
   onSetLayout: (layout: PaneGalleryLayoutMode, activeRootGroupId?: string) => void;
@@ -8900,6 +8969,8 @@ function PaneGalleryControls(props: {
       </button>
       <PaneGalleryModeControl
         layout={props.layout}
+        lastOverviewLayout={props.lastOverviewLayout}
+        lastThumbnailLayout={props.lastThumbnailLayout}
         rootGroupId={props.rootGroupId}
         onSetLayout={props.onSetLayout}
       />
@@ -8909,15 +8980,21 @@ function PaneGalleryControls(props: {
 
 function PaneGalleryModeControl(props: {
   layout: PaneGalleryLayoutMode;
+  lastOverviewLayout: PaneGalleryOverviewLayoutMode;
+  lastThumbnailLayout: PaneGalleryThumbnailLayoutMode;
   rootGroupId: string;
   onSetLayout: (layout: PaneGalleryLayoutMode, activeRootGroupId?: string) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const thumbnailLayout = isPaneGalleryThumbnailLayout(props.layout);
   const targetOptions = paneGalleryControlTargetOptions();
-  const controlIcon = thumbnailLayout ? 'eye' : 'globe';
+  const controlIcon = thumbnailLayout ? 'globe' : 'eye';
   const controlLabel = thumbnailLayout ? '返回全览模式' : '切换到缩略图模式';
-  const coarseTargetLayout = paneGalleryCoarseToggleTarget(props.layout);
+  const coarseTargetLayout = paneGalleryCoarseToggleTarget(
+    props.layout,
+    props.lastOverviewLayout,
+    props.lastThumbnailLayout
+  );
 
   const closeIfFocusLeaves = (event: React.FocusEvent<HTMLDivElement>): void => {
     const nextTarget = event.relatedTarget;
@@ -8995,17 +9072,31 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   const interactive = props.mode !== 'thumbnail';
   const defaultViewport = interactive ? props.paneViewports[rootGroupId] : undefined;
   const localPaneRef = useRef<HTMLDivElement | null>(null);
+  const [paneViewportSize, setPaneViewportSize] = useState<CanvasViewportSize>({ width: 1, height: 1 });
   const [overviewState, setOverviewState] = useState<CanvasOverviewViewportState>({
     active: false,
     titleScale: 1
   });
   const bindSurface = (): CanvasSurfaceBinding => props.onBindActiveSurface(rootGroupId);
-  const setFlowShellRef = (element: HTMLDivElement | null): void => {
+  const updatePaneViewportSize = useCallback((element: HTMLDivElement | null = localPaneRef.current): void => {
+    if (!element) {
+      return;
+    }
+    const nextSize = {
+      width: Math.max(1, Math.round(element.clientWidth)),
+      height: Math.max(1, Math.round(element.clientHeight))
+    };
+    setPaneViewportSize((current) =>
+      current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
+    );
+  }, []);
+  const setFlowShellRef = useCallback((element: HTMLDivElement | null): void => {
     localPaneRef.current = element;
     if (interactive) {
       props.paneRefs.current[rootGroupId] = element;
     }
-  };
+    updatePaneViewportSize(element);
+  }, [interactive, props.paneRefs, rootGroupId, updatePaneViewportSize]);
   const fitLocalPane = (instance: ReactFlowInstance<CanvasNodeData> | undefined, duration = 0): boolean => {
     const shell = localPaneRef.current;
     if (!instance?.viewportInitialized || !shell) {
@@ -9045,6 +9136,10 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
       })),
     [interactive, model.nodes, overviewState.active]
   );
+  const paneSpatialBounds = useMemo(
+    () => resolveCanvasSpatialBounds(paneNodes, model.groups),
+    [model.groups, paneNodes]
+  );
   const handleOverviewViewportStateChange = useCallback((nextState: CanvasOverviewViewportState): void => {
     setOverviewState((current) =>
       current.active === nextState.active && Math.abs(current.titleScale - nextState.titleScale) < 0.01
@@ -9052,6 +9147,32 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
         : nextState
     );
   }, []);
+
+  useEffect(() => {
+    if (props.mode !== 'main') {
+      return;
+    }
+
+    const element = localPaneRef.current;
+    if (!element) {
+      return;
+    }
+
+    updatePaneViewportSize(element);
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(() => updatePaneViewportSize(element));
+      observer.observe(element);
+      return () => {
+        observer.disconnect();
+      };
+    }
+
+    const handleResize = (): void => updatePaneViewportSize(element);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [props.mode, updatePaneViewportSize]);
 
   useEffect(
     () => () => {
@@ -9220,9 +9341,20 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
             onResizePointerMove={props.onResizePointerMove}
             onResizeEnd={props.onResizeEnd}
           />
+          {props.mode === 'main' ? (
+            <CanvasMiniMap
+              nodes={paneNodes}
+              groups={model.groups}
+              spatialBounds={paneSpatialBounds}
+              viewportSize={paneViewportSize}
+              onViewportCommit={(viewport) => props.onSavePaneViewport(rootGroupId, viewport)}
+            />
+          ) : null}
           {interactive ? (
             <PaneGalleryControls
               layout={props.layout}
+              lastOverviewLayout={props.lastOverviewLayout}
+              lastThumbnailLayout={props.lastThumbnailLayout}
               rootGroupId={rootGroupId}
               onFitView={() => {
                 const instance = props.flowRefs.current[rootGroupId];
