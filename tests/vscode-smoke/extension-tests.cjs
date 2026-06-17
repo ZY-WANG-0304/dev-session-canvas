@@ -464,6 +464,182 @@ async function verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope() {
   );
 }
 
+async function verifyCanvasLayoutArrangementPersists() {
+  const seededState = {
+    version: 1,
+    updatedAt: '2026-06-17T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'arrange-root-a-note-a',
+        kind: 'note',
+        title: 'Arrange Root A Note A',
+        status: 'ready',
+        summary: '',
+        position: { x: 90, y: 90 },
+        size: { width: 160, height: 96 },
+        groupId: 'arrange-root-a',
+        metadata: { note: { content: 'root a note a' } }
+      },
+      {
+        id: 'arrange-root-a-note-b',
+        kind: 'note',
+        title: 'Arrange Root A Note B',
+        status: 'ready',
+        summary: '',
+        position: { x: 104, y: 104 },
+        size: { width: 160, height: 96 },
+        groupId: 'arrange-root-a',
+        metadata: { note: { content: 'root a note b' } }
+      },
+      {
+        id: 'arrange-inner-note-a',
+        kind: 'note',
+        title: 'Arrange Inner Note A',
+        status: 'ready',
+        summary: '',
+        position: { x: 120, y: 320 },
+        size: { width: 140, height: 80 },
+        groupId: 'arrange-inner-group',
+        metadata: { note: { content: 'inner a' } }
+      },
+      {
+        id: 'arrange-inner-note-b',
+        kind: 'note',
+        title: 'Arrange Inner Note B',
+        status: 'ready',
+        summary: '',
+        position: { x: 132, y: 328 },
+        size: { width: 140, height: 80 },
+        groupId: 'arrange-inner-group',
+        metadata: { note: { content: 'inner b' } }
+      },
+      {
+        id: 'arrange-root-b-note',
+        kind: 'note',
+        title: 'Arrange Root B Note',
+        status: 'ready',
+        summary: '',
+        position: { x: 120, y: 120 },
+        size: { width: 160, height: 96 },
+        groupId: 'arrange-root-b',
+        metadata: { note: { content: 'root b note' } }
+      }
+    ],
+    edges: [
+      {
+        id: 'arrange-edge-a',
+        sourceNodeId: 'arrange-root-a-note-a',
+        targetNodeId: 'arrange-root-a-note-b',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'forward',
+        owner: 'user'
+      }
+    ],
+    groups: [
+      {
+        id: 'arrange-root-a',
+        title: 'Arrange Root A',
+        position: { x: 0, y: 0 },
+        size: { width: 720, height: 520 },
+        role: 'workspace-root',
+        workspaceRootPath: '/tmp/dev-session-canvas-arrange-a'
+      },
+      {
+        id: 'arrange-root-b',
+        title: 'Arrange Root B',
+        position: { x: 60, y: 60 },
+        size: { width: 720, height: 520 },
+        role: 'workspace-root',
+        workspaceRootPath: '/tmp/dev-session-canvas-arrange-b'
+      },
+      {
+        id: 'arrange-inner-group',
+        title: 'Arrange Inner Group',
+        position: { x: 96, y: 296 },
+        size: { width: 260, height: 180 },
+        parentGroupId: 'arrange-root-a'
+      }
+    ],
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: [],
+    nextGroupSequence: 2
+  };
+
+  await setPersistedState(seededState);
+  const beforeSnapshot = await getDebugSnapshot();
+  const beforeRootB = findGroupById(beforeSnapshot, 'arrange-root-b');
+
+  const arrangedSnapshot = await dispatchWebviewMessage({ type: 'webview/arrangeCanvasLayout' });
+  const arrangedRootA = findGroupById(arrangedSnapshot, 'arrange-root-a');
+  const arrangedRootB = findGroupById(arrangedSnapshot, 'arrange-root-b');
+  const arrangedInnerGroup = findGroupById(arrangedSnapshot, 'arrange-inner-group');
+  const arrangedRootNoteA = findNodeById(arrangedSnapshot, 'arrange-root-a-note-a');
+  const arrangedRootNoteB = findNodeById(arrangedSnapshot, 'arrange-root-a-note-b');
+  const arrangedInnerNoteA = findNodeById(arrangedSnapshot, 'arrange-inner-note-a');
+  const arrangedInnerNoteB = findNodeById(arrangedSnapshot, 'arrange-inner-note-b');
+  const arrangedRootBNote = findNodeById(arrangedSnapshot, 'arrange-root-b-note');
+
+  assert.notDeepStrictEqual(
+    arrangedRootB.position,
+    beforeRootB.position,
+    'Expected arranging the canvas to move an overlapping workspace root section.'
+  );
+  assert.strictEqual(arrangedRootNoteA.groupId, 'arrange-root-a');
+  assert.strictEqual(arrangedRootNoteB.groupId, 'arrange-root-a');
+  assert.strictEqual(arrangedInnerNoteA.groupId, 'arrange-inner-group');
+  assert.strictEqual(arrangedInnerNoteB.groupId, 'arrange-inner-group');
+  assert.strictEqual(arrangedRootBNote.groupId, 'arrange-root-b');
+  assert.strictEqual(arrangedInnerGroup.parentGroupId, 'arrange-root-a');
+  assert.strictEqual(arrangedSnapshot.state.edges[0].sourceNodeId, 'arrange-root-a-note-a');
+  assert.strictEqual(arrangedSnapshot.state.edges[0].targetNodeId, 'arrange-root-a-note-b');
+  assert.strictEqual(
+    paddedRectanglesOverlap(arrangedRootA, arrangedRootB, 40),
+    false,
+    'Expected arranging the canvas to prevent workspace root sections from overlapping.'
+  );
+  assert.strictEqual(
+    paddedRectanglesOverlap(arrangedRootNoteA, arrangedRootNoteB, 40),
+    false,
+    'Expected arranging the canvas to separate overlapping direct root members.'
+  );
+  assert.strictEqual(
+    paddedRectanglesOverlap(arrangedInnerNoteA, arrangedInnerNoteB, 40),
+    false,
+    'Expected arranging the canvas to separately organize nodes inside a normal group.'
+  );
+
+  const persistedSnapshot = await flushPersistedStateSnapshot();
+  assert.deepStrictEqual(
+    findNodeById(persistedSnapshot, 'arrange-root-a-note-a').position,
+    arrangedRootNoteA.position,
+    'Expected the arranged node position to be written to the persisted snapshot.'
+  );
+  assert.deepStrictEqual(
+    findGroupById(persistedSnapshot, 'arrange-root-b').position,
+    arrangedRootB.position,
+    'Expected the arranged root position to be written to the persisted snapshot.'
+  );
+
+  const reloadedSnapshot = await reloadPersistedState();
+  assert.deepStrictEqual(
+    findNodeById(reloadedSnapshot, 'arrange-inner-note-b').position,
+    arrangedInnerNoteB.position,
+    'Expected reloading persisted state to keep the arranged normal-group node position.'
+  );
+  assert.deepStrictEqual(
+    findGroupById(reloadedSnapshot, 'arrange-root-b').position,
+    arrangedRootB.position,
+    'Expected reloading persisted state to keep the arranged root section position.'
+  );
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  const resetSnapshot = await ensureEditorCanvasReady();
+  assert.strictEqual(resetSnapshot.state.nodes.length, 0, 'Expected layout arrangement smoke seed nodes to be cleaned up.');
+  assert.strictEqual(resetSnapshot.state.groups.length, 0, 'Expected layout arrangement smoke seed groups to be cleaned up.');
+}
+
 async function applyCanvasTemplateForTest(templateId, reset = false) {
   return vscode.commands.executeCommand(COMMAND_IDS.testApplyCanvasTemplate, templateId, reset);
 }
@@ -923,6 +1099,7 @@ async function runTrustedSmoke() {
 
   await verifyEmptyGroupDeletionSkipsConfirmation();
   await verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope();
+  await verifyCanvasLayoutArrangementPersists();
   await clearHostMessages();
   await createBaseNodes();
   snapshot = await getDebugSnapshot();
@@ -12524,6 +12701,12 @@ function findNodeById(snapshot, nodeId) {
   return node;
 }
 
+function findGroupById(snapshot, groupId) {
+  const group = snapshot.state.groups.find((currentGroup) => currentGroup.id === groupId);
+  assert.ok(group, `Missing group ${groupId} in smoke snapshot.`);
+  return group;
+}
+
 function findEdgeById(snapshot, edgeId) {
   const edge = snapshot.state.edges.find((currentEdge) => currentEdge.id === edgeId);
   assert.ok(edge, `Missing edge ${edgeId} in smoke snapshot.`);
@@ -12820,6 +13003,15 @@ function rectanglesOverlap(left, right) {
     left.position.x + left.size.width > right.position.x &&
     left.position.y < right.position.y + right.size.height &&
     left.position.y + left.size.height > right.position.y
+  );
+}
+
+function paddedRectanglesOverlap(left, right, padding = 0) {
+  return (
+    left.position.x < right.position.x + right.size.width + padding &&
+    left.position.x + left.size.width > right.position.x - padding &&
+    left.position.y < right.position.y + right.size.height + padding &&
+    left.position.y + left.size.height > right.position.y - padding
   );
 }
 

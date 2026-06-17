@@ -9553,6 +9553,8 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
   await expect(
     menu.locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="create-default"]')
   ).toContainText('Codex（默认）');
+  await expect(menu.locator('[data-context-menu-action="arrange-canvas-layout"]')).toContainText('整理画布布局');
+  await expect(menu.locator('[data-context-menu-action="arrange-canvas-layout"] .codicon-type-hierarchy-sub')).toBeVisible();
   await expect
     .poll(async () =>
       menu
@@ -9560,11 +9562,14 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
         .evaluateAll((elements) =>
           elements.map(
             (element) =>
-              element.getAttribute('data-context-menu-kind') ?? element.getAttribute('data-context-menu-provider')
+              element.getAttribute('data-context-menu-kind') ??
+              element.getAttribute('data-context-menu-provider') ??
+              element.getAttribute('data-context-menu-action') ??
+              element.getAttribute('data-context-menu-template-group')
           ).filter(Boolean)
         )
     )
-    .toEqual(['note', 'terminal', 'codex', 'claude']);
+    .toEqual(['note', 'terminal', 'codex', 'claude', 'create-empty-group', 'arrange-canvas-layout', 'apply', 'reset', 'save-canvas-template']);
 
   await menu.locator('[data-context-menu-kind="note"]').click();
 
@@ -9576,6 +9581,40 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
       y: 360
     }
   });
+});
+
+test('canvas context menu can request layout arrangement without a completion toast', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  await page.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 920,
+      y: 500
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-action="arrange-canvas-layout"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="arrange-canvas-layout"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect(page.locator('[data-toast-kind="success"]')).toHaveCount(0);
+  await expect
+    .poll(async () => readPostedMessagesByType(page, 'webview/arrangeCanvasLayout'))
+    .toContainEqual({
+      type: 'webview/arrangeCanvasLayout'
+    });
 });
 
 test('right-click create menu still shows execution entries in untrusted mode and asks host for reason', async ({ page }) => {
