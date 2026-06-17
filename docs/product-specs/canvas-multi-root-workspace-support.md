@@ -62,7 +62,7 @@ related_plans:
 24. `节点` sidebar section 的 workspace folder 分组行应在标题前用图标区分普通 folder、git repository 和 git worktree；行尾操作顺序为新建 worktree、移除 worktree、移除 folder。
 25. `paneGallery` 不改变 root-local storage、runtime binding、文件活动或 cross-root 限制；它只是多根呈现层。每个 root 窗格左上角只保留轻量 root 标签，显示 root 名称并在 tooltip 中保留完整路径；不在标签 subtitle 中常驻 nodes / waiting / attention 等汇总信息。界面不提供整条 paneGallery 顶部 toolbar，也不提供常驻 filter roots 搜索框，但保留主线画布右上角的使用提示入口。
 26. `paneGallery` 包含四个运行时布局状态：`dynamic` 把所有 root 窗格按可用区域弹性排列并允许不同窗格尺寸不一致但铺满画布区域，`grid` 使用规则宫格排列，二者都用于全览、状态观察和在任一 root 窗格内直接处理；`topThumbnails` 与 `sideThumbnails` 保留一个 active root 主画板，并分别把其他 root 放到顶部或右侧缩略图 rail。默认粗状态是 `dynamic` 与 `sideThumbnails`，四种布局以及上次使用的全览/缩略图具体模式都属于 Webview 局部 UI 状态，不写入 root-local state。
-27. `paneGallery` 的 `dynamic` / `grid` 窗格是可交互 root pane，支持在对应 root 内创建节点、拖拽节点、输入终端、拖入 Markdown 和应用模板；每个交互动作的目标 root 由所在窗格身份确定。thumbnail 模式中的缩略图仍是对应 root 的画板 fit view，而不是复用 MiniMap 或 SVG 预览；缩略图不可交互，不承载终端输入、节点拖拽或编辑。单击缩略图不切换主画板，双击缩略图才把对应 root 变成 active root 主画板。
+27. `paneGallery` 的 `dynamic` / `grid` 窗格是可交互 root pane，支持在对应 root 内创建节点、拖拽节点、输入终端、拖入 Markdown 和应用模板；每个交互动作的目标 root 由所在窗格身份确定。thumbnail 模式中的缩略图仍是对应 root 的画板 fit view，而不是复用 MiniMap 或 SVG 预览；缩略图可以完整挂载对应 root 的子画板并进行 execution snapshot / live 状态 hydrate，以保证缩略图内容与切换为主画板时的连续性。这里的“不可交互 / 不承载终端输入”仅指缩略图不接受用户直接输入、节点拖拽、编辑、创建、drop 或 start / stop 等操作，不禁止只读状态同步。单击缩略图不切换主画板，双击缩略图才把对应 root 变成 active root 主画板。
 28. `paneGallery` 的每个可交互 root pane 拥有独立 viewport。首次进入或 pane 尺寸变化时，默认按该 root 的子图做 fit-to-pane，缩放比例与概览触发都遵循主线单一画板的 fit/overview 语义，不在 paneGallery 中额外设置下限，也不因为进入 paneGallery 就强制所有节点进入概览状态；root 内容过大时 pane 允许内部 pan/zoom。四种布局下的 pane viewport 属于 Webview local UI state，不写入 root-local state 或 multi-root overlay。
 29. 当 workspace root 很多时，`paneGallery` 不把所有 root 无限压缩到同屏。布局应优先保证 pane 的最小可交互尺寸；超过当前可用区域后使用可滚动/虚拟化 gallery，并依靠稳定排序、缩略图模式和后续快速跳转入口定位 root；本轮不提供 filter roots。thumbnail rail 可以比 `dynamic` / `grid` pane 更小，但仍以画板 fit view 呈现；顶部缩略图 rail 内的缩略图横向居中，右侧缩略图 rail 内的缩略图纵向居中。
 30. 在 `paneGallery` 的 `dynamic` / `grid` root pane 或 thumbnail 模式 active root 主画板内创建节点、拖入 Markdown、应用模板或启动执行节点时，目标 root 由窗格身份直接确定；跨 root 连线、跨 root 拖拽迁移和静默改写 `cwd` 仍不支持。
@@ -115,7 +115,7 @@ related_plans:
 - 连续添加 folder 且用户不手动平移时，第二个新增 root 的落点应锚定在上一次程序化聚焦后的可见中心附近，而不是聚焦前的旧视口中心。
 - 如果添加 folder 后 Panel Webview 发生同 generation frame refresh，新增 root 分组的聚焦请求仍会在当前 frame 上 replay 并完成动画。
 - 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
-- 在 `paneGallery` 的 `dynamic` / `grid` root pane 中交互只写入对应 root-local state；在 thumbnail 模式缩略图中单击 root 不切换 active root，双击 root 只切换 active root，不会启动终端输入、拖拽节点或写入 root-local state。
+- 在 `paneGallery` 的 `dynamic` / `grid` root pane 中交互只写入对应 root-local state；在 thumbnail 模式缩略图中允许只读预加载与 execution snapshot 同步；单击 root 不切换 active root，双击 root 只切换 active root，不会发送 create / drag / edit / terminal input / start / stop 等用户交互消息，也不会写入 root-local state。
 
 ## 验证状态
 
