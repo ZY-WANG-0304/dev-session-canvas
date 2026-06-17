@@ -3379,10 +3379,22 @@ test('canvas renders a shared execution help entry with tooltip text', async ({ 
   await expect(helpTrigger).toBeVisible();
   await expect(helpTrigger).toContainText('使用提示');
   await helpTrigger.hover();
-  await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText('执行节点使用提示');
-  await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText(
+  const helpTooltip = page.locator('.execution-node-help-tooltip.is-visible');
+  await expect(helpTooltip).toContainText('执行节点使用提示');
+  await expect(helpTooltip).toContainText(
     '1. 拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径'
   );
+  await expect(helpTooltip).toContainText(
+    '4. 如需让 Agent 完成后主动提醒，请先在对应的 Agent CLI（Claude Code 或 Codex）中启用通知。'
+  );
+  await expect(helpTooltip).toContainText(
+    '5. Windows 环境下如果执行节点受 PowerShell 策略影响，请按系统安全要求完成对应设置后再重试。'
+  );
+  await expect(helpTooltip).toContainText(
+    '6. 多根 workspace 可通过 devSessionCanvas.canvas.multiRootPresentationMode 在 rootGroups 单张组合画布和 paneGallery 窗格画廊之间切换。'
+  );
+  await expect(helpTooltip).not.toContainText('notification_method');
+  await expect(helpTooltip).not.toContainText('Set-ExecutionPolicy');
 });
 
 test('Claude Agent Ctrl-Z is blocked before execution input reaches the host', async ({ page }) => {
