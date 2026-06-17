@@ -667,8 +667,9 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
     '拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径',
     'Panel 模式下可拖拽画板标签页在底部面板与右侧辅助侧栏之间切换位置',
     '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）',
-    '通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。Claude Code 需设置 preferredNotifChannel: "iterm2"；Codex 需在 [tui] 设置 notifications = true、notification_method = "osc9"、notification_condition = "always"',
-    '部分 Windows 环境下若 workspace 已信任但仍异常地只能创建 Note 节点，可尝试以管理员身份运行 PowerShell 并执行 Set-ExecutionPolicy RemoteSigned，排查执行策略是否影响 Node.js 相关命令'
+    '如需让 Agent 完成后主动提醒，请先在对应的 Agent CLI（Claude Code 或 Codex）中启用通知。',
+    'Windows 环境下如果执行节点受 PowerShell 策略影响，请按系统安全要求完成对应设置后再重试。',
+    '多根 workspace 可通过 devSessionCanvas.canvas.multiRootPresentationMode 在 rootGroups 单张组合画布和 paneGallery 窗格画廊之间切换。'
   ]
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
