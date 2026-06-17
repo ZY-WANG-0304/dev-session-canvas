@@ -661,6 +661,9 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'webview/arrangeCanvasLayout';
+    }
+  | {
       type: 'webview/createDemoNode';
       payload: {
         requestId?: string;
@@ -1330,6 +1333,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     value.type === 'webview/ready' ||
     value.type === 'webview/bootstrapAck' ||
     value.type === 'webview/resetDemoState' ||
+    value.type === 'webview/arrangeCanvasLayout' ||
     value.type === 'webview/saveCanvasAsTemplate'
   ) {
     return { type: value.type };

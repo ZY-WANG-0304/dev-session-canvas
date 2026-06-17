@@ -128,6 +128,15 @@ const lifecycleMessage = {
 assert.deepEqual(parseWebviewMessage(lifecycleMessage), {
   type: 'webview/bootstrapAck'
 });
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/arrangeCanvasLayout'
+  }),
+  {
+    type: 'webview/arrangeCanvasLayout'
+  },
+  '画布布局整理消息不携带 payload，Host 侧按当前权威状态整理并持久化。'
+);
 assert.deepEqual(extractWebviewMessageLifecycle(lifecycleMessage), lifecycleMessage.lifecycle);
 assert.equal(extractWebviewMessageLifecycle({ type: 'webview/ready' }), undefined);
 assert.equal(
