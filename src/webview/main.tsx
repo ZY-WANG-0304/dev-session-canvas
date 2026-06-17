@@ -2133,6 +2133,25 @@ function App(): JSX.Element {
     closeEdgeMenus();
   };
 
+  const clearCanvasTransientInteractionState = (): void => {
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    setEdgeLabelEditor(null);
+    setEdgeArrowMenuEdgeId(undefined);
+    setEdgeColorMenuEdgeId(undefined);
+    setLocalUiState((current) => {
+      const nextState = {
+        ...current,
+        selectedNodeId: undefined,
+        selectedNodeIds: undefined,
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined
+      };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
+  };
+
   const deleteNode = (nodeId: string): void => {
     setLocalUiState((current) => ({
       ...current,
@@ -4240,6 +4259,18 @@ function App(): JSX.Element {
     activeRootGroupId = activePaneGalleryRootId,
     options: { fitRoot?: boolean } = {}
   ): void => {
+    const currentLayout = normalizedPaneGalleryLayout;
+    const currentActiveRootGroupId = activePaneGalleryRootId;
+    const enteringThumbnailLayout =
+      !isPaneGalleryThumbnailLayout(currentLayout) && isPaneGalleryThumbnailLayout(layout);
+    const switchingThumbnailMainPane =
+      isPaneGalleryThumbnailLayout(currentLayout) &&
+      isPaneGalleryThumbnailLayout(layout) &&
+      activeRootGroupId !== currentActiveRootGroupId;
+    if (enteringThumbnailLayout || switchingThumbnailMainPane) {
+      clearCanvasTransientInteractionState();
+    }
+
     const lastOverviewLayout =
       normalizePaneGalleryOverviewLayoutMode(layout) ?? lastPaneGalleryOverviewLayout;
     const lastThumbnailLayout =

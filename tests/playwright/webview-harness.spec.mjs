@@ -1032,6 +1032,77 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   expect(sideRailAlignment).toBe('center');
 });
 
+test('pane gallery clears transient selection before roots become thumbnails', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  state.edges = [
+    {
+      id: 'edge-backend',
+      sourceNodeId: 'workspace-root-backend-note',
+      targetNodeId: 'workspace-root-backend-terminal',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    },
+    {
+      id: 'edge-frontend',
+      sourceNodeId: 'workspace-root-frontend-note',
+      targetNodeId: 'workspace-root-frontend-terminal',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    edgeId: 'edge-backend'
+  });
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-backend"]')).toBeVisible();
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+  await expect(backendThumbnail).toBeVisible();
+  await expect(backendThumbnail.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-backend"]')).toHaveCount(0);
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-backend"]')).toHaveCount(0);
+
+  await clearPostedMessages(page);
+  await backendThumbnail.click();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/deleteEdge')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/updateEdge')).toEqual([]);
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    edgeId: 'edge-frontend'
+  });
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-frontend"]')).toBeVisible();
+
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  const frontendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-frontend"]'
+  );
+  await expect(frontendThumbnail.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-frontend"]')).toHaveCount(0);
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-frontend"]')).toHaveCount(0);
+  expect(await readPostedMessagesByType(page, 'webview/deleteEdge')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/updateEdge')).toEqual([]);
+});
+
 test('pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops', async ({ page }) => {
   await openHarness(page);
   const state = createPaneGalleryCanvasState({ rootCount: 8, hugeFirstRoot: true });
