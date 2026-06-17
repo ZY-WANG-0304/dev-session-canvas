@@ -295,6 +295,34 @@ try {
     'Codex input prompt text and footer chrome after the final error should still notify.'
   );
 
+  const splitFooterState = createAgentActivityHeuristicState();
+  const splitFooterFirstChunk = `${finalStreamLine}›继续\ngpt-5.4 xhigh ·`;
+  const splitFooterFirstSnapshot = recordAgentOutputHeuristics(
+    splitFooterState,
+    splitFooterFirstChunk,
+    splitFooterFirstChunk,
+    'codex',
+    160
+  );
+  assert.equal(
+    splitFooterFirstSnapshot.sawAbnormalStreamInterruption,
+    false,
+    'An incomplete Codex footer split across chunks should not notify until the footer is complete.'
+  );
+  const splitFooterFullOutput = `${splitFooterFirstChunk} ~/ZeroInput\n`;
+  const splitFooterSecondSnapshot = recordAgentOutputHeuristics(
+    splitFooterState,
+    ' ~/ZeroInput\n',
+    splitFooterFullOutput,
+    'codex',
+    165
+  );
+  assert.equal(
+    splitFooterSecondSnapshot.sawAbnormalStreamInterruption,
+    true,
+    'Completing Codex footer chrome in a later chunk should still notify for the preceding final error.'
+  );
+
   const reconnectingStreamState = createAgentActivityHeuristicState();
   const reconnectingStreamChunk =
     'Reconnecting... 1/5 (23m 57s · esc to interrupt)\n└ Stream disconnected before completion: stream closed before response.completed\n';
