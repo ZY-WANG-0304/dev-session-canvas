@@ -121,7 +121,7 @@
 
 当前功能输入已有 repo-local 证据：`docs/design-docs/canvas-multi-root-workspace-support.md`、`docs/product-specs/canvas-multi-root-workspace-support.md` 与 `docs/exec-plans/completed/canvas-multi-root-pane-gallery-mode.md` 记录 `paneGallery` 的四种局部模式、窗格交互边界、缩略图只读边界和验证状态；`docs/design-docs/canvas-layout-arrangement.md` 与 `docs/exec-plans/completed/canvas-layout-arrangement.md`、`docs/exec-plans/completed/canvas-layout-arrangement-edge-polish.md` 记录一次性布局整理算法、Host 持久化和连线感知整理取舍；`docs/design-docs/execution-node-notification-and-attention-signals.md` 与 `docs/product-specs/canvas-node-notifications.md` 记录 Codex 方块最终错误行后输入提示 / 模型 footer 仍可触发最终失败提醒的边界。
 
-本轮发布准备分支待完成以下验证 / 审计复核：
+本轮发布准备分支已完成以下验证 / 审计复核：
 
 - 版本一致性检查：`package.json`、notifier manifest、`package-lock.json` 根版本、root package entry 与 notifier package entry 均为 `0.18.0`
 - 发布渠道可见性复核：GitHub Release `v0.17.0` assets 完整；Open VSX API 可查到主扩展与 notifier `0.17.0` 且 files metadata 齐全；Visual Studio Marketplace public gallery 对主扩展与 notifier 仍返回 0 个结果；远端不存在 `v0.18.0` / `publish/v0.18.0` tag，GitHub Release `v0.18.0` 尚未创建
@@ -140,9 +140,10 @@
 - `npm run test:notifier-source`
 - `npm run build`
 - `npm run publish:marketplaces -- --dry-run`（仅预演，不执行真实 publish）
-- `npm run package:vsix`
-- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`
-- `npm run release:publish-tag -- --trigger-tag publish/v0.18.0 --dry-run --package-only --skip-origin-main-check`（仅用于发布准备分支本地预演；最终 `main` release ref 必须不带该参数复跑）
+- `npm run package:vsix` 通过；本地主扩展 VSIX 为 115 files，约 3.47 MB，`VSCE README doc ref` 为当前发布准备提交 `c913ef9e69551cb994ba02733f48c5ca046e440a`。release-prep 分支仍会继续产生文档提交，因此本地预打包的 byte-level sha256 不作为最终发布事实；最终以发布准备 MR 合并后的 `main` ref 重跑打包和 release manifest 为准
+- `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过；本地 notifier VSIX 为 10 files，约 145.15 KB，`VSCE README doc ref` 为当前发布准备提交 `c913ef9e69551cb994ba02733f48c5ca046e440a`。release-prep 分支仍会继续产生文档提交，因此本地预打包的 byte-level sha256 不作为最终发布事实；最终以发布准备 MR 合并后的 `main` ref 重跑打包和 release manifest 为准
+- `npm run release:publish-tag -- --trigger-tag publish/v0.18.0 --dry-run --package-only --skip-origin-main-check`（在发布准备提交后用本地临时 `publish/v0.18.0` tag 预演统一 publish-tag 入口，确认计划产物为 notifier 与主扩展 `0.18.0` VSIX，release ref 为 `c913ef9e69551cb994ba02733f48c5ca046e440a`；本地临时 tag 已删除。由于发布准备 head 尚未合入 `origin/main`，这里的 `--skip-origin-main-check` 只适用于本地预演，最终 `main` release ref 必须不带该参数复跑）
+- `npm run validate:clean-checkout:vsix -- --ref HEAD --skip-vsix-smoke` 通过，clean checkout 主扩展 VSIX 为 115 files，约 3.47 MB，README 改写 ref 为 `c913ef9e69551cb994ba02733f48c5ca046e440a`；本次为发布准备分支预验证，跳过 VSIX smoke，最终 release commit 仍需按发布前检查复跑完整 clean checkout / smoke gate
 - `npm audit --omit=dev`
 
 残余风险：发布准备 MR 合并后，仍必须在最终 `main` release commit 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 与必要的 packaged-payload smoke，确认 README 相对链接改写、VSIX 文件数 / 大小、`VSCE README doc ref` 和 packaged-payload smoke 均与最终发布 ref 一致。真实 Open VSX / Visual Studio Marketplace 发布、GitHub Release assets 上传与 `v0.18.0` tag 收口只能在发布准备 MR 合并后的最终 `main` ref 上执行。若 Visual Studio Marketplace public gallery 仍不可见，本轮继续按 GitHub Release assets + Open VSX verified 完成，并在 manifest / Release notes 中把 VSM 写成 deferred；不得把官方 VS Code 安装路径宣称为已可用。
