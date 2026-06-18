@@ -1384,6 +1384,54 @@ test('pane gallery fits a root the first time it becomes the main thumbnail pane
     .toContain('translate(5000px, -3000px)');
 });
 
+test('pane gallery fits the active root when entering thumbnail mode without a main viewport', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'dynamic',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        overviewViewports: {
+          'workspace-root-frontend': {
+            x: 5000,
+            y: -3000,
+            zoom: 2
+          }
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+
+  await expect
+    .poll(async () => {
+      const paneGallery = (await readPersistedUiState(page)).paneGallery;
+      return paneGallery?.mainViewports?.['workspace-root-frontend'] ?? null;
+    })
+    .not.toBeNull();
+
+  const paneGalleryState = (await readPersistedUiState(page)).paneGallery;
+  expect(paneGalleryState?.overviewViewports?.['workspace-root-frontend']).toEqual({
+    x: 5000,
+    y: -3000,
+    zoom: 2
+  });
+  const frontendMainViewport = paneGalleryState?.mainViewports?.['workspace-root-frontend'];
+  expect(frontendMainViewport?.x).not.toBe(5000);
+  expect(frontendMainViewport?.y).not.toBe(-3000);
+});
+
 test('pane gallery restores the saved main viewport when switching thumbnail roots', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
