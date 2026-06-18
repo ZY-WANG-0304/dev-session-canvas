@@ -24,6 +24,24 @@ assert.equal(
 );
 assert.equal(canvasLinkOpenMode.scope, 'window');
 
+const multiRootPresentationMode =
+  manifest.contributes.configuration.properties['devSessionCanvas.canvas.multiRootPresentationMode'];
+assert.ok(
+  multiRootPresentationMode,
+  'Expected multi-root presentation mode to be contributed as a configuration property.'
+);
+assert.deepEqual(
+  multiRootPresentationMode.enum,
+  ['rootGroups', 'paneGallery'],
+  'Expected multi-root presentation mode to support root groups and pane gallery.'
+);
+assert.equal(
+  multiRootPresentationMode.default,
+  'rootGroups',
+  'Expected multi-root workspaces to keep the existing root group canvas by default.'
+);
+assert.equal(multiRootPresentationMode.scope, 'window');
+
 const enabledAttentionSignals =
   manifest.contributes.configuration.properties['devSessionCanvas.notifications.enabledAttentionSignals'];
 assert.ok(enabledAttentionSignals, 'Expected enabledAttentionSignals to be contributed as a configuration property.');

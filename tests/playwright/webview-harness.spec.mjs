@@ -847,6 +847,637 @@ test('workspace root groups reject cross-root edge creation and reconnect', asyn
     .toBe(0);
 });
 
+test('pane gallery renders dynamic workspace roots with canvas controls and light labels', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  await expect(page.locator('[data-pane-gallery="true"]')).toBeVisible();
+  await expect(page.locator('[data-pane-gallery-layout="dynamic"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-toolbar')).toHaveCount(0);
+  await expect(page.getByLabel('Filter workspace roots')).toHaveCount(0);
+  await expect(page.getByLabel('切换 workspace pane 模式')).toHaveCount(0);
+  await expect(page.locator('[data-pane-gallery-root-id]')).toHaveCount(2);
+
+  const frontendPane = page.locator('[data-pane-gallery-root-id="workspace-root-frontend"]');
+  const backendPane = page.locator('[data-pane-gallery-root-id="workspace-root-backend"]');
+  await expect(frontendPane.locator('.pane-gallery-root-title')).toHaveText('Frontend');
+  await expect(frontendPane.locator('.pane-gallery-root-title')).toHaveAttribute('title', '/repo/frontend');
+  await expect(backendPane.locator('.pane-gallery-root-meta')).toHaveCount(0);
+  await expect(frontendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
+  await expect(backendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
+  await expect(page.locator('.canvas-help-panel .execution-help-trigger-canvas')).toBeVisible();
+  await expect(frontendPane.locator('[data-group-background-role="workspace-root"]')).toHaveCount(0);
+  await expect(frontendPane.locator('[data-root-name-watermark="true"]')).toHaveCount(0);
+
+  await clearPostedMessages(page);
+  await backendPane.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 120,
+      y: 150
+    }
+  });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-kind="note"]').click();
+  const createPayload = await waitForCreateDemoNodePayload(page);
+  expect(createPayload.kind).toBe('note');
+  expect(createPayload.targetGroupId).toBe('workspace-root-backend');
+  expect(Number.isFinite(createPayload.preferredPosition.x)).toBe(true);
+  expect(Number.isFinite(createPayload.preferredPosition.y)).toBe(true);
+});
+
+test('pane gallery lower-left mode control switches layouts and canvas thumbnails', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState({ rootCount: 3 });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-trigger="true"] .codicon-eye')).toHaveCount(1);
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="grid"]')).toContainText('宫格');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="topThumbnails"]')).toContainText('顶部缩略图');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toContainText('右侧缩略图');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="dynamic"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="dynamic"] .codicon-layout')).toHaveCount(1);
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="topThumbnails"] .codicon-split-vertical')).toHaveCount(1);
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="sideThumbnails"] .codicon-split-horizontal')).toHaveCount(1);
+
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+  await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+
+  let mainPane = page.locator('.pane-gallery-root-pane-main');
+  await expect(mainPane.locator('[data-pane-gallery-mode-trigger="true"] .codicon-globe')).toHaveCount(1);
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await expect(mainPane.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="grid"]')).toContainText('宫格');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]')).toContainText('顶部缩略图');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toContainText('右侧缩略图');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toHaveAttribute('aria-checked', 'true');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="dynamic"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile')).toHaveCount(3);
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.layout)
+    .toBe('dynamic');
+
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await frontendTile.locator('[data-pane-gallery-mode-option="topThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  await expect(page.locator('.pane-gallery-root-pane-main .pane-gallery-canvas-controls')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail .react-flow')).toHaveCount(2);
+  await expect(page.locator('.pane-gallery-thumbnail-preview svg')).toHaveCount(0);
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"] .pane-gallery-root-title')).toHaveText('Backend');
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail .pane-gallery-root-meta')).toHaveCount(0);
+
+  const topTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => {
+    const track = rail.querySelector('.pane-gallery-thumbnail-track');
+    const railRect = rail.getBoundingClientRect();
+    const trackRect = track instanceof HTMLElement ? track.getBoundingClientRect() : null;
+    return trackRect
+      ? {
+          leading: trackRect.left - railRect.left,
+          trailing: railRect.right - trackRect.right
+        }
+      : null;
+  });
+  expect(topTrackAlignment?.leading).toBeGreaterThan(0);
+  expect(Math.abs((topTrackAlignment?.leading ?? 0) - (topTrackAlignment?.trailing ?? 0))).toBeLessThanOrEqual(1);
+
+  await clearPostedMessages(page);
+  const backendThumbnail = page.locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]');
+  await backendThumbnail.click();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/createDemoNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
+
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.activeRootGroupId)
+    .toBe('workspace-root-backend');
+  expect(await readPostedMessagesByType(page, 'webview/createDemoNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
+
+  mainPane = page.locator('.pane-gallery-root-pane-main');
+  await expect(mainPane.locator('[data-pane-gallery-mode-trigger="true"] .codicon-globe')).toHaveCount(1);
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await expect(mainPane.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="grid"]')).toContainText('宫格');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]')).toContainText('顶部缩略图');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toContainText('右侧缩略图');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"] .codicon-split-vertical')).toHaveCount(1);
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"] .codicon-split-horizontal')).toHaveCount(1);
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="dynamic"] .codicon-layout')).toHaveCount(1);
+
+  await mainPane.locator('[data-pane-gallery-mode-option="grid"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="grid"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile')).toHaveCount(3);
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+  await expect(page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"] [data-pane-gallery-mode-trigger="true"] .codicon-eye')).toHaveCount(1);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.layout)
+    .toBe('grid');
+
+  const backendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"]');
+  await backendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.lastOverviewLayout)
+    .toBe('grid');
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.lastThumbnailLayout)
+    .toBe('topThumbnails');
+
+  mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="grid"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+
+  await page
+    .locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"] [data-pane-gallery-mode-trigger="true"]')
+    .click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
+  const rememberedTopTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => {
+    const track = rail.querySelector('.pane-gallery-thumbnail-track');
+    const railRect = rail.getBoundingClientRect();
+    const trackRect = track instanceof HTMLElement ? track.getBoundingClientRect() : null;
+    return trackRect
+      ? {
+          leading: trackRect.left - railRect.left,
+          trailing: railRect.right - trackRect.right
+        }
+      : null;
+  });
+  expect(rememberedTopTrackAlignment?.leading).toBeGreaterThan(0);
+  expect(
+    Math.abs((rememberedTopTrackAlignment?.leading ?? 0) - (rememberedTopTrackAlignment?.trailing ?? 0))
+  ).toBeLessThanOrEqual(1);
+
+  mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const sideTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-sideThumbnails').evaluate((rail) => {
+    const track = rail.querySelector('.pane-gallery-thumbnail-track');
+    const railRect = rail.getBoundingClientRect();
+    const trackRect = track instanceof HTMLElement ? track.getBoundingClientRect() : null;
+    return trackRect
+      ? {
+          leading: trackRect.top - railRect.top,
+          trailing: railRect.bottom - trackRect.bottom
+        }
+      : null;
+  });
+  expect(sideTrackAlignment?.leading).toBeGreaterThan(0);
+  expect(Math.abs((sideTrackAlignment?.leading ?? 0) - (sideTrackAlignment?.trailing ?? 0))).toBeLessThanOrEqual(1);
+});
+
+test('pane gallery overflowing thumbnail rails keep first and last roots reachable', async ({ page }) => {
+  const state = createPaneGalleryCanvasState({ rootCount: 16 });
+  const activeRootId = state.groups[0].id;
+  const firstThumbnailRootId = state.groups[1].id;
+  const lastThumbnailRootId = state.groups.at(-1).id;
+
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'sideThumbnails',
+        activeRootGroupId: activeRootId,
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails'
+      }
+    }
+  });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const measureRailReachability = async (layout) => {
+    const axis = layout === 'topThumbnails' ? 'x' : 'y';
+    const rail = page.locator(`[data-pane-gallery-thumbnail-rail="${layout}"]`);
+    await expect(rail).toBeVisible();
+    return rail.evaluate(
+      (railElement, { firstRootId, lastRootId, scrollAxis }) => {
+        const collect = () => {
+          const railRect = railElement.getBoundingClientRect();
+          const entries = [...railElement.querySelectorAll('.pane-gallery-root-pane-thumbnail')]
+            .filter((entry) => entry instanceof HTMLElement)
+            .map((entry) => {
+              const rect = entry.getBoundingClientRect();
+              return {
+                id: entry.getAttribute('data-pane-gallery-root-id'),
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                left: rect.left
+              };
+            });
+          const visibleIds = entries
+            .filter((entry) =>
+              entry.right > railRect.left + 1 &&
+              entry.left < railRect.right - 1 &&
+              entry.bottom > railRect.top + 1 &&
+              entry.top < railRect.bottom - 1
+            )
+            .map((entry) => entry.id);
+          const isFullyVisible = (entry) =>
+            entry
+              ? scrollAxis === 'x'
+                ? entry.left >= railRect.left - 1 && entry.right <= railRect.right + 1
+                : entry.top >= railRect.top - 1 && entry.bottom <= railRect.bottom + 1
+              : false;
+          const firstEntry = entries.find((entry) => entry.id === firstRootId);
+          const lastEntry = entries.find((entry) => entry.id === lastRootId);
+
+          return {
+            scrollLeft: railElement.scrollLeft,
+            scrollTop: railElement.scrollTop,
+            visibleIds,
+            firstFullyVisible: isFullyVisible(firstEntry),
+            lastFullyVisible: isFullyVisible(lastEntry),
+            firstOffset: firstEntry
+              ? scrollAxis === 'x'
+                ? firstEntry.left - railRect.left
+                : firstEntry.top - railRect.top
+              : null,
+            lastOffset: lastEntry
+              ? scrollAxis === 'x'
+                ? railRect.right - lastEntry.right
+                : railRect.bottom - lastEntry.bottom
+              : null
+          };
+        };
+
+        railElement.scrollLeft = 0;
+        railElement.scrollTop = 0;
+        const start = collect();
+        railElement.scrollLeft = railElement.scrollWidth;
+        railElement.scrollTop = railElement.scrollHeight;
+        const end = collect();
+
+        return {
+          axis: scrollAxis,
+          railJustifyContent: getComputedStyle(railElement).justifyContent,
+          railAlignContent: getComputedStyle(railElement).alignContent,
+          scrollMax: scrollAxis === 'x'
+            ? railElement.scrollWidth - railElement.clientWidth
+            : railElement.scrollHeight - railElement.clientHeight,
+          start,
+          end
+        };
+      },
+      { firstRootId: firstThumbnailRootId, lastRootId: lastThumbnailRootId, scrollAxis: axis }
+    );
+  };
+
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const sideRailMetrics = await measureRailReachability('sideThumbnails');
+  expect(sideRailMetrics.railAlignContent).not.toContain('safe');
+  expect(sideRailMetrics.railAlignContent).not.toBe('center');
+  expect(sideRailMetrics.scrollMax).toBeGreaterThan(0);
+  expect(sideRailMetrics.start.firstFullyVisible).toBe(true);
+  expect(sideRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
+  expect(sideRailMetrics.start.firstOffset).toBeGreaterThanOrEqual(-1);
+  expect(sideRailMetrics.end.lastFullyVisible).toBe(true);
+  expect(sideRailMetrics.end.visibleIds).toContain(lastThumbnailRootId);
+  expect(sideRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
+
+  const mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  await settleWebview(page, 2);
+
+  const topRailMetrics = await measureRailReachability('topThumbnails');
+  expect(topRailMetrics.railJustifyContent).not.toContain('safe');
+  expect(topRailMetrics.railJustifyContent).not.toBe('center');
+  expect(topRailMetrics.scrollMax).toBeGreaterThan(0);
+  expect(topRailMetrics.start.firstFullyVisible).toBe(true);
+  expect(topRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
+  expect(topRailMetrics.start.firstOffset).toBeGreaterThanOrEqual(-1);
+  expect(topRailMetrics.end.lastFullyVisible).toBe(true);
+  expect(topRailMetrics.end.visibleIds).toContain(lastThumbnailRootId);
+  expect(topRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
+});
+
+test('pane gallery clears transient selection before roots become thumbnails', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  state.edges = [
+    {
+      id: 'edge-backend',
+      sourceNodeId: 'workspace-root-backend-note',
+      targetNodeId: 'workspace-root-backend-terminal',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    },
+    {
+      id: 'edge-frontend',
+      sourceNodeId: 'workspace-root-frontend-note',
+      targetNodeId: 'workspace-root-frontend-terminal',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    edgeId: 'edge-backend'
+  });
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-backend"]')).toBeVisible();
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+  await expect(backendThumbnail).toBeVisible();
+  await expect(backendThumbnail.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-backend"]')).toHaveCount(0);
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-backend"]')).toHaveCount(0);
+
+  await clearPostedMessages(page);
+  await backendThumbnail.click();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/deleteEdge')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/updateEdge')).toEqual([]);
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    edgeId: 'edge-frontend'
+  });
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-frontend"]')).toBeVisible();
+
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  const frontendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-frontend"]'
+  );
+  await expect(frontendThumbnail.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-frontend"]')).toHaveCount(0);
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-frontend"]')).toHaveCount(0);
+  expect(await readPostedMessagesByType(page, 'webview/deleteEdge')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/updateEdge')).toEqual([]);
+});
+
+test('pane gallery thumbnail hit layer blocks execution node attention acknowledgement', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  const backendTerminal = state.nodes.find((node) => node.id === 'workspace-root-backend-terminal');
+  backendTerminal.status = 'running';
+  backendTerminal.metadata.terminal.attentionPending = true;
+
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+  const backendTerminalNode = backendThumbnail.locator('[data-node-id="workspace-root-backend-terminal"]');
+  await expect(backendTerminalNode.locator('[data-execution-attention-pending="true"]')).toHaveCount(1);
+  await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toBeVisible();
+  await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toHaveCSS(
+    'cursor',
+    'default'
+  );
+
+  const terminalCenter = await backendTerminalNode.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  });
+  const hitLayerOwnsTerminalPoint = await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    return target instanceof Element && target.closest('[data-pane-gallery-thumbnail-hit-layer="true"]') !== null;
+  }, terminalCenter);
+  expect(hitLayerOwnsTerminalPoint).toBe(true);
+
+  await clearPostedMessages(page);
+  await page.mouse.click(terminalCenter.x, terminalCenter.y);
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/selectNode')).toEqual([]);
+
+  await page.mouse.dblclick(terminalCenter.x, terminalCenter.y);
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/selectNode')).toEqual([]);
+});
+
+test('pane gallery fits a root the first time it becomes the main thumbnail pane', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'dynamic',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        paneViewports: {
+          'workspace-root-backend': {
+            x: 5000,
+            y: -3000,
+            zoom: 2
+          }
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect
+    .poll(async () => {
+      const paneGallery = (await readPersistedUiState(page)).paneGallery;
+      return paneGallery?.mainFitRootGroupIds?.includes('workspace-root-backend') === true;
+    })
+    .toBe(true);
+
+  const backendViewport = (await readPersistedUiState(page)).paneGallery?.paneViewports?.['workspace-root-backend'];
+  expect(backendViewport?.x).not.toBe(5000);
+  expect(backendViewport?.y).not.toBe(-3000);
+  expect(backendViewport?.zoom).toBeLessThan(1.95);
+});
+
+test('pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState({ rootCount: 8, hugeFirstRoot: true });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => page.locator('[data-pane-gallery-root-id="workspace-root-frontend"]').getAttribute('data-canvas-overview-mode'))
+    .toBe('true');
+  await expect
+    .poll(async () => page.locator('[data-pane-gallery-root-id="workspace-root-backend"]').getAttribute('data-canvas-overview-mode'))
+    .toBe('false');
+
+  const galleryMetrics = await page.locator('.pane-gallery-grid').evaluate((grid) => {
+    const pane = grid.querySelector('[data-pane-gallery-root-id="workspace-root-frontend"]');
+    const flowViewport = pane?.querySelector('.react-flow__viewport');
+    const paneBox = pane instanceof HTMLElement ? pane.getBoundingClientRect() : null;
+    const transform = flowViewport instanceof HTMLElement ? getComputedStyle(flowViewport).transform : '';
+    const scale = transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).a : null;
+    const paneBoxes = [...grid.querySelectorAll('.pane-gallery-root-pane')]
+      .filter((entry) => entry instanceof HTMLElement)
+      .map((entry) => {
+        const box = entry.getBoundingClientRect();
+        return {
+          width: Math.round(box.width),
+          height: Math.round(box.height)
+        };
+      });
+    return {
+      scrolls: grid.scrollHeight > grid.clientHeight + 20,
+      paneWidth: paneBox?.width ?? 0,
+      paneHeight: paneBox?.height ?? 0,
+      scale,
+      distinctPaneSizes: new Set(paneBoxes.map((box) => `${box.width}x${box.height}`)).size
+    };
+  });
+  expect(galleryMetrics.scrolls).toBe(true);
+  expect(galleryMetrics.paneWidth).toBeGreaterThanOrEqual(420);
+  expect(galleryMetrics.paneHeight).toBeGreaterThanOrEqual(320);
+  expect(galleryMetrics.distinctPaneSizes).toBeGreaterThan(1);
+  expect(galleryMetrics.scale).toBeLessThan(0.4);
+  expect(galleryMetrics.scale).toBeGreaterThan(0);
+
+  await clearPostedMessages(page);
+  const dropResult = await page.locator('[data-pane-gallery-root-id="workspace-root-backend"] .pane-gallery-root-flow-shell').evaluate((shell) => {
+    const attachDataTransfer = (event, dataTransfer) => {
+      Object.defineProperty(event, 'dataTransfer', {
+        configurable: true,
+        value: dataTransfer
+      });
+      return event;
+    };
+    let exposeDropPayload = false;
+    const dataTransfer = {
+      dropEffect: 'copy',
+      effectAllowed: 'all',
+      files: [],
+      items: [],
+      types: ['ResourceURLs'],
+      getData: (type) =>
+        exposeDropPayload && type === 'ResourceURLs'
+          ? JSON.stringify(['file:///repo/backend/notes.md'])
+          : '',
+      setData: () => {},
+      clearData: () => {},
+      setDragImage: () => {}
+    };
+    const box = shell.getBoundingClientRect();
+    const dragOverEvent = attachDataTransfer(
+      new DragEvent('dragover', {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2
+      }),
+      dataTransfer
+    );
+    const dropEvent = attachDataTransfer(
+      new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2
+      }),
+      dataTransfer
+    );
+
+    shell.dispatchEvent(dragOverEvent);
+    exposeDropPayload = true;
+    shell.dispatchEvent(dropEvent);
+
+    return {
+      dragOverDefaultPrevented: dragOverEvent.defaultPrevented,
+      dropDefaultPrevented: dropEvent.defaultPrevented
+    };
+  });
+  expect(dropResult).toEqual({
+    dragOverDefaultPrevented: true,
+    dropDefaultPrevented: true
+  });
+
+  const dropMessage = await waitForPostedMessageByType(page, 'webview/dropNoteMarkdownFiles');
+  expect(dropMessage.payload.targetGroupId).toBe('workspace-root-backend');
+  expect(dropMessage.payload.resources).toEqual([
+    {
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value: 'file:///repo/backend/notes.md'
+    }
+  ]);
+});
+
 test('file activity edges expose the same toolbar actions as manual edges', async ({ page }) => {
   const state = createFileNodeState();
 
@@ -3082,10 +3713,22 @@ test('canvas renders a shared execution help entry with tooltip text', async ({ 
   await expect(helpTrigger).toBeVisible();
   await expect(helpTrigger).toContainText('使用提示');
   await helpTrigger.hover();
-  await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText('执行节点使用提示');
-  await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText(
+  const helpTooltip = page.locator('.execution-node-help-tooltip.is-visible');
+  await expect(helpTooltip).toContainText('执行节点使用提示');
+  await expect(helpTooltip).toContainText(
     '1. 拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径'
   );
+  await expect(helpTooltip).toContainText(
+    '4. 如需让 Agent 完成后主动提醒，请先在对应的 Agent CLI（Claude Code 或 Codex）中启用通知。'
+  );
+  await expect(helpTooltip).toContainText(
+    '5. Windows 环境下如果执行节点受 PowerShell 策略影响，请按系统安全要求完成对应设置后再重试。'
+  );
+  await expect(helpTooltip).toContainText(
+    '6. 多根 workspace 可通过 devSessionCanvas.canvas.multiRootPresentationMode 在 rootGroups 单张组合画布和 paneGallery 窗格画廊之间切换。'
+  );
+  await expect(helpTooltip).not.toContainText('notification_method');
+  await expect(helpTooltip).not.toContainText('Set-ExecutionPolicy');
 });
 
 test('Claude Agent Ctrl-Z is blocked before execution input reaches the host', async ({ page }) => {
@@ -13940,6 +14583,7 @@ function createRuntimeContext(overrides = {}) {
     terminalWordSeparators: ' ()[]{}\',"`',
     overviewMode: 'title',
     overviewZoomThreshold: 0.2,
+    multiRootPresentationMode: 'rootGroups',
     workspaceRootWatermarksEnabled: true,
     filesEnabled: true,
     filePresentationMode: 'nodes',
@@ -14903,6 +15547,65 @@ function createEmptyCanvasState() {
     version: 1,
     updatedAt: '2026-04-06T00:00:00.000Z',
     nodes: []
+  };
+}
+
+function createPaneGalleryCanvasState(options = {}) {
+  const baseRootDefinitions = [
+    ['workspace-root-frontend', 'Frontend', '/repo/frontend'],
+    ['workspace-root-backend', 'Backend', '/repo/backend'],
+    ['workspace-root-tools', 'Tools', '/repo/tools'],
+    ['workspace-root-mobile', 'Mobile', '/repo/mobile'],
+    ['workspace-root-docs', 'Docs', '/repo/docs'],
+    ['workspace-root-cli', 'CLI', '/repo/cli'],
+    ['workspace-root-services', 'Services', '/repo/services'],
+    ['workspace-root-infra', 'Infra', '/repo/infra']
+  ];
+  const rootCount = options.rootCount ?? 2;
+  const rootDefinitions = Array.from(
+    { length: rootCount },
+    (_, index) => baseRootDefinitions[index] ?? [
+      `workspace-root-extra-${index + 1}`,
+      `Root ${index + 1}`,
+      `/repo/root-${index + 1}`
+    ]
+  );
+  const groups = rootDefinitions.map(([id, title, workspaceRootPath], index) => ({
+    id,
+    title,
+    position: { x: 120 + index * 860, y: 100 },
+    size: options.hugeFirstRoot && index === 0
+      ? { width: 12000, height: 8200 }
+      : { width: 680, height: 460 },
+    role: 'workspace-root',
+    workspaceRootPath
+  }));
+  const nodes = groups.flatMap((group, index) => [
+    {
+      ...createManualNoteNode(`${group.id}-note`, {
+        x: group.position.x + 120,
+        y: group.position.y + 140
+      }),
+      title: `${group.title} Note`,
+      groupId: group.id
+    },
+    {
+      ...createManualTerminalNode(`${group.id}-terminal`, {
+        x: group.position.x + 360,
+        y: group.position.y + 140
+      }),
+      title: `${group.title} Terminal`,
+      status: index === 1 ? 'running' : 'draft',
+      groupId: group.id
+    }
+  ]);
+
+  return {
+    version: 1,
+    updatedAt: '2026-06-16T00:00:00.000Z',
+    nodes,
+    groups,
+    edges: []
   };
 }
 
