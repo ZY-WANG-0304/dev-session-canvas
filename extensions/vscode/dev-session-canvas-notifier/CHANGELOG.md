@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.0
+
+- 与主扩展 `0.18.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 multi-root workspace 窗格画廊呈现模式、一次性画布布局整理，以及 Codex 异常输出尾部输入提示 / 模型 footer 兼容；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.17.0
 
 - 与主扩展 `0.17.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦侧栏 `节点` view 的 workspace folder / git worktree 管理入口、folder / worktree 类型识别、Host 输出投递输入优先 scheduler，以及 README / Marketplace 微信群二维码资产更新；notifier companion 不引入新的通知投递行为变更。
