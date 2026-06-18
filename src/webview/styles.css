@@ -3796,19 +3796,36 @@ body {
   background: var(--vscode-widget-border, var(--vscode-panel-border));
 }
 
+.pane-gallery-thumbnail-track {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  gap: 1px;
+}
+
 .pane-gallery-thumbnail-rail-topThumbnails {
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(180px, 240px);
-  justify-content: center;
+  justify-content: safe center;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
+.pane-gallery-thumbnail-track-topThumbnails {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(180px, 240px);
+  width: max-content;
+  height: 100%;
+}
+
 .pane-gallery-thumbnail-rail-sideThumbnails {
-  grid-auto-rows: minmax(132px, 172px);
-  align-content: center;
+  align-content: safe center;
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+.pane-gallery-thumbnail-track-sideThumbnails {
+  grid-auto-rows: minmax(132px, 172px);
+  width: 100%;
+  height: max-content;
 }
 
 @media (max-width: 900px) {
@@ -3824,10 +3841,15 @@ body {
   }
 
   .pane-gallery-thumbnail-layout-sideThumbnails .pane-gallery-thumbnail-rail {
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(150px, 210px);
-    justify-content: center;
+    justify-content: safe center;
     overflow-x: auto;
     overflow-y: hidden;
+  }
+
+  .pane-gallery-thumbnail-layout-sideThumbnails .pane-gallery-thumbnail-track {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(150px, 210px);
+    width: max-content;
+    height: 100%;
   }
 }
