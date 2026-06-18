@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.18.0 - Preview Pane Gallery and Layout Arrangement Update
+
+相对 `0.17.0`，`0.18.0` 是新的公开 `Preview` 里程碑更新，重点引入 multi-root workspace 的窗格画廊呈现模式、一次性画布布局整理能力，并收口 Codex 异常输出文本在尾部状态栏之后仍能触发提醒的兼容性。它保留 `0.17.0` 的侧栏 workspace folder / git worktree 管理入口、folder / worktree 类型识别、Host 输出投递输入优先 scheduler、Codex / Claude Code Agent Fork、GitHub Release assets 镜像、Open VSX 完成门禁、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.17.0` bump 到 `0.18.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增 `devSessionCanvas.canvas.multiRootPresentationMode` 配置，默认继续使用现有 `rootGroups` 组合画布；多根 workspace 可显式切到 `paneGallery` 窗格画廊，不迁移或复制 root-local 画布状态
+- `paneGallery` 提供 `dynamic`、`grid`、`topThumbnails` 与 `sideThumbnails` 四种局部布局：前两者用于多 root 可交互全览，后两者把一个 active root 放大为主画布并用只读缩略图保留其他 root 上下文
+- 窗格画廊入口位于画布左下角控制区，支持粗切换记忆、thumbnail 主画布 MiniMap、画板化缩略图、root 标签轻量化和旧 Chromium 缩略图滚动兼容；`rootGroups` 仍是移动 root section、编辑跨 root overlay 布局和默认多根呈现的保守路径
+- 画布空白处右键菜单新增“整理画布布局”，由 Host 侧确定性布局函数写回权威状态并持久化，减少同一容器内的节点 / 分组重叠
+- 布局整理会尊重普通分组与 workspace root section 的硬边界，利用用户连线、文件活动 owner 与同 cwd 执行节点关系让相关对象靠近；不改变节点归属、root 归属、`cwd`、runtime metadata、连线端点或文件 owner
+- Codex 异常输出文本匹配兼容尾部输入提示和模型 / cwd footer：方块最终错误行后紧跟 `›继续` 或 `gpt-... · ~/path` 这类尾部状态栏时仍视为尾部最终失败；`Reconnecting... n/m` 下方树形缩进的暂态输出仍不触发提醒
+- Notifier companion 本轮只随主扩展版本对齐，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.17.0` 升级到 `0.18.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用；若 VSM 仍不可见，本轮继续允许依赖 GitHub Release assets 与 Open VSX 兜底完成
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.18.0`，不引入新的通知投递行为变更
+- 多根窗格画廊当前只影响 multi-root workspace 呈现；单根 workspace 继续显示单 root 画布，`rootGroups` 仍是默认值和最保守回退路径
+- 布局整理是一次性显式操作，不提供撤销、不持续自动重排，也不跨普通分组或跨 root 搬移节点；如工作区画布状态重要，建议升级前先备份或在非关键环境验证
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.18.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.18.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.18.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.17.0 - Preview Workspace Worktree and Output Scheduling Update
 
 相对 `0.16.1`，`0.17.0` 是新的公开 `Preview` 里程碑更新，重点补齐侧栏 `节点` view 的 workspace folder / git worktree 管理入口、folder / worktree 类型识别与移除动作，同时在 Host 到 Webview 的执行输出投递层加入输入优先 scheduler，降低多 Agent 输出洪峰中 ACK 和真实回显被旧输出排队压住的概率。它保留 `0.16.1` 的 multi-root root 水印可读性补丁、执行终端剪贴板诊断噪音收口、生产依赖 audit 收口、Codex / Claude Code Agent Fork、会话历史分叉入口、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。

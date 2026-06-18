@@ -2,7 +2,7 @@
   "name": "dev-session-canvas-notifier",
   "displayName": "Dev Session Canvas Notifier",
   "description": "在本机 UI 侧为 Dev Session Canvas 投递桌面系统通知的 companion extension。",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "publisher": "devsessioncanvas",
   "license": "Apache-2.0",
   "repository": {
