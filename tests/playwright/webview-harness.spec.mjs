@@ -1103,6 +1103,56 @@ test('pane gallery clears transient selection before roots become thumbnails', a
   expect(await readPostedMessagesByType(page, 'webview/updateEdge')).toEqual([]);
 });
 
+test('pane gallery thumbnail hit layer blocks execution node attention acknowledgement', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  const backendTerminal = state.nodes.find((node) => node.id === 'workspace-root-backend-terminal');
+  backendTerminal.status = 'running';
+  backendTerminal.metadata.terminal.attentionPending = true;
+
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+  const backendTerminalNode = backendThumbnail.locator('[data-node-id="workspace-root-backend-terminal"]');
+  await expect(backendTerminalNode.locator('[data-execution-attention-pending="true"]')).toHaveCount(1);
+  await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toBeVisible();
+
+  const terminalCenter = await backendTerminalNode.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  });
+  const hitLayerOwnsTerminalPoint = await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    return target instanceof Element && target.closest('[data-pane-gallery-thumbnail-hit-layer="true"]') !== null;
+  }, terminalCenter);
+  expect(hitLayerOwnsTerminalPoint).toBe(true);
+
+  await clearPostedMessages(page);
+  await page.mouse.click(terminalCenter.x, terminalCenter.y);
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/selectNode')).toEqual([]);
+
+  await page.mouse.dblclick(terminalCenter.x, terminalCenter.y);
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/selectNode')).toEqual([]);
+});
+
 test('pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops', async ({ page }) => {
   await openHarness(page);
   const state = createPaneGalleryCanvasState({ rootCount: 8, hugeFirstRoot: true });
