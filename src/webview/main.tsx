@@ -181,6 +181,7 @@ interface LocalUiState {
 type PaneGalleryLayoutMode = 'dynamic' | 'grid' | 'topThumbnails' | 'sideThumbnails';
 type PaneGalleryOverviewLayoutMode = Extract<PaneGalleryLayoutMode, 'dynamic' | 'grid'>;
 type PaneGalleryThumbnailLayoutMode = Extract<PaneGalleryLayoutMode, 'topThumbnails' | 'sideThumbnails'>;
+type PaneGalleryViewportRole = 'overview' | 'main';
 
 const PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT: PaneGalleryOverviewLayoutMode = 'dynamic';
 const PANE_GALLERY_DEFAULT_THUMBNAIL_LAYOUT: PaneGalleryThumbnailLayoutMode = 'sideThumbnails';
@@ -190,8 +191,8 @@ interface PaneGalleryLocalState {
   activeRootGroupId?: string;
   lastOverviewLayout?: PaneGalleryOverviewLayoutMode;
   lastThumbnailLayout?: PaneGalleryThumbnailLayoutMode;
-  paneViewports?: Record<string, Viewport>;
-  mainFitRootGroupIds?: string[];
+  overviewViewports?: Record<string, Viewport>;
+  mainViewports?: Record<string, Viewport>;
 }
 
 interface CanvasSurfaceBinding {
@@ -199,6 +200,7 @@ interface CanvasSurfaceBinding {
   shell: HTMLDivElement | null;
   viewportKind: 'rootGroups' | 'paneGallery';
   rootGroupId?: string;
+  paneGalleryViewportRole?: PaneGalleryViewportRole;
 }
 
 function normalizePaneGalleryLocalState(value: unknown): PaneGalleryLocalState | undefined {
@@ -206,37 +208,18 @@ function normalizePaneGalleryLocalState(value: unknown): PaneGalleryLocalState |
     return undefined;
   }
 
-  const candidate = value as Partial<PaneGalleryLocalState>;
-  const mainFitRootGroupIds = normalizeUniqueStringArray(candidate.mainFitRootGroupIds);
-  const paneViewports =
-    candidate.paneViewports && typeof candidate.paneViewports === 'object'
-      ? Object.fromEntries(
-          Object.entries(candidate.paneViewports).flatMap(([rootGroupId, viewport]) => {
-            if (
-              typeof rootGroupId !== 'string' ||
-              !viewport ||
-              typeof viewport !== 'object' ||
-              typeof (viewport as Partial<Viewport>).x !== 'number' ||
-              typeof (viewport as Partial<Viewport>).y !== 'number' ||
-              typeof (viewport as Partial<Viewport>).zoom !== 'number'
-            ) {
-              return [];
-            }
-
-            const normalizedViewport = viewport as Viewport;
-            if (
-              !Number.isFinite(normalizedViewport.x) ||
-              !Number.isFinite(normalizedViewport.y) ||
-              !Number.isFinite(normalizedViewport.zoom) ||
-              normalizedViewport.zoom <= 0
-            ) {
-              return [];
-            }
-
-            return [[rootGroupId, normalizedViewport]];
-          })
-        )
-      : undefined;
+  const candidate = value as Partial<PaneGalleryLocalState> & {
+    paneViewports?: unknown;
+    mainFitRootGroupIds?: unknown;
+  };
+  const legacyPaneViewports = normalizePaneGalleryViewportRecord(candidate.paneViewports);
+  const legacyMainRootIds = new Set(normalizeUniqueStringArray(candidate.mainFitRootGroupIds) ?? []);
+  const overviewViewports =
+    normalizePaneGalleryViewportRecord(candidate.overviewViewports) ??
+    filterPaneGalleryViewportRecord(legacyPaneViewports, (rootGroupId) => !legacyMainRootIds.has(rootGroupId));
+  const mainViewports =
+    normalizePaneGalleryViewportRecord(candidate.mainViewports) ??
+    filterPaneGalleryViewportRecord(legacyPaneViewports, (rootGroupId) => legacyMainRootIds.has(rootGroupId));
   const normalizedLayout = normalizePaneGalleryLayoutMode(candidate.layout);
   const normalized: PaneGalleryLocalState = {
     layout: normalizedLayout,
@@ -247,11 +230,58 @@ function normalizePaneGalleryLocalState(value: unknown): PaneGalleryLocalState |
     lastThumbnailLayout:
       normalizePaneGalleryThumbnailLayoutMode(candidate.lastThumbnailLayout) ??
       normalizePaneGalleryThumbnailLayoutMode(normalizedLayout),
-    paneViewports: paneViewports && Object.keys(paneViewports).length > 0 ? paneViewports : undefined,
-    mainFitRootGroupIds
+    overviewViewports: overviewViewports && Object.keys(overviewViewports).length > 0 ? overviewViewports : undefined,
+    mainViewports: mainViewports && Object.keys(mainViewports).length > 0 ? mainViewports : undefined
   };
 
   return Object.values(normalized).some((entry) => entry !== undefined) ? normalized : undefined;
+}
+
+function normalizePaneGalleryViewportRecord(value: unknown): Record<string, Viewport> | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const normalized = Object.fromEntries(
+    Object.entries(value).flatMap(([rootGroupId, viewport]) => {
+      if (
+        typeof rootGroupId !== 'string' ||
+        !viewport ||
+        typeof viewport !== 'object' ||
+        typeof (viewport as Partial<Viewport>).x !== 'number' ||
+        typeof (viewport as Partial<Viewport>).y !== 'number' ||
+        typeof (viewport as Partial<Viewport>).zoom !== 'number'
+      ) {
+        return [];
+      }
+
+      const normalizedViewport = viewport as Viewport;
+      if (
+        !Number.isFinite(normalizedViewport.x) ||
+        !Number.isFinite(normalizedViewport.y) ||
+        !Number.isFinite(normalizedViewport.zoom) ||
+        normalizedViewport.zoom <= 0
+      ) {
+        return [];
+      }
+
+      return [[rootGroupId, normalizedViewport]];
+    })
+  );
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function filterPaneGalleryViewportRecord(
+  record: Record<string, Viewport> | undefined,
+  predicate: (rootGroupId: string) => boolean
+): Record<string, Viewport> | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const filtered = Object.fromEntries(Object.entries(record).filter(([rootGroupId]) => predicate(rootGroupId)));
+  return Object.keys(filtered).length > 0 ? filtered : undefined;
 }
 
 function normalizeUniqueStringArray(value: unknown): string[] | undefined {
@@ -271,6 +301,10 @@ function normalizePaneGalleryLayoutMode(value: unknown): PaneGalleryLayoutMode |
 
 function isPaneGalleryThumbnailLayout(layout: PaneGalleryLayoutMode): boolean {
   return layout === 'topThumbnails' || layout === 'sideThumbnails';
+}
+
+function resolvePaneGalleryViewportRole(layout: PaneGalleryLayoutMode): PaneGalleryViewportRole {
+  return isPaneGalleryThumbnailLayout(layout) ? 'main' : 'overview';
 }
 
 function normalizePaneGalleryOverviewLayoutMode(value: unknown): PaneGalleryOverviewLayoutMode | undefined {
@@ -2259,13 +2293,21 @@ function App(): JSX.Element {
     rootGroupId: string,
     nodeIds: readonly string[],
     mode: NodeViewportFocusMode = 'fit',
-    duration = NODE_FOCUS_ANIMATION_DURATION_MS
+    duration = NODE_FOCUS_ANIMATION_DURATION_MS,
+    viewportRole?: PaneGalleryViewportRole
   ): boolean => {
+    const resolvedViewportRole =
+      viewportRole ??
+      resolvePaneGalleryViewportRole(
+        normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+          PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+      );
     const binding: CanvasSurfaceBinding = {
       flow: paneGalleryFlowRefs.current[rootGroupId],
       shell: paneGalleryShellRefs.current[rootGroupId],
       viewportKind: 'paneGallery',
-      rootGroupId
+      rootGroupId,
+      paneGalleryViewportRole: resolvedViewportRole
     };
     activeCanvasSurfaceRef.current = binding;
     const reactFlowInstance = binding.flow;
@@ -2292,7 +2334,7 @@ function App(): JSX.Element {
     if (didFit) {
       window.setTimeout(() => {
         const viewport = reactFlowInstance.getViewport();
-        savePaneGalleryViewport(rootGroupId, viewport);
+        savePaneGalleryViewport(rootGroupId, viewport, resolvedViewportRole);
       }, duration + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
     }
     return didFit;
@@ -2301,11 +2343,12 @@ function App(): JSX.Element {
   const schedulePaneGalleryNodeFit = (
     rootGroupId: string,
     nodeIds: readonly string[],
-    mode: NodeViewportFocusMode = 'fit'
+    mode: NodeViewportFocusMode = 'fit',
+    viewportRole?: PaneGalleryViewportRole
   ): void => {
     let remainingAttempts = 6;
     const tryFit = (): void => {
-      if (fitPaneGalleryNodesInViewport(rootGroupId, nodeIds, mode)) {
+      if (fitPaneGalleryNodesInViewport(rootGroupId, nodeIds, mode, NODE_FOCUS_ANIMATION_DURATION_MS, viewportRole)) {
         return;
       }
       remainingAttempts -= 1;
@@ -2322,8 +2365,15 @@ function App(): JSX.Element {
   const fitPaneGalleryGroupInViewport = (
     rootGroupId: string,
     groupId: string,
-    duration = NODE_FOCUS_ANIMATION_DURATION_MS
+    duration = NODE_FOCUS_ANIMATION_DURATION_MS,
+    viewportRole?: PaneGalleryViewportRole
   ): boolean => {
+    const resolvedViewportRole =
+      viewportRole ??
+      resolvePaneGalleryViewportRole(
+        normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+          PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+      );
     const reactFlowInstance = paneGalleryFlowRefs.current[rootGroupId];
     const shell = paneGalleryShellRefs.current[rootGroupId];
     const group = groups.find((candidate) => candidate.id === groupId);
@@ -2331,7 +2381,8 @@ function App(): JSX.Element {
       flow: reactFlowInstance,
       shell,
       viewportKind: 'paneGallery',
-      rootGroupId
+      rootGroupId,
+      paneGalleryViewportRole: resolvedViewportRole
     };
     if (!reactFlowInstance?.viewportInitialized || !shell || !group) {
       return false;
@@ -2346,14 +2397,18 @@ function App(): JSX.Element {
       NODE_FOCUS_VIEW_PADDING
     );
     reactFlowInstance.setViewport(viewport, { duration });
-    savePaneGalleryViewport(rootGroupId, viewport);
+    savePaneGalleryViewport(rootGroupId, viewport, resolvedViewportRole);
     return true;
   };
 
-  const schedulePaneGalleryGroupFit = (rootGroupId: string, groupId: string): void => {
+  const schedulePaneGalleryGroupFit = (
+    rootGroupId: string,
+    groupId: string,
+    viewportRole?: PaneGalleryViewportRole
+  ): void => {
     let remainingAttempts = 6;
     const tryFit = (): void => {
-      if (fitPaneGalleryGroupInViewport(rootGroupId, groupId)) {
+      if (fitPaneGalleryGroupInViewport(rootGroupId, groupId, NODE_FOCUS_ANIMATION_DURATION_MS, viewportRole)) {
         return;
       }
       remainingAttempts -= 1;
@@ -2378,7 +2433,11 @@ function App(): JSX.Element {
           flow: paneGalleryFlowRefs.current[rootGroupId],
           shell: paneGalleryShellRefs.current[rootGroupId],
           viewportKind: 'paneGallery',
-          rootGroupId
+          rootGroupId,
+          paneGalleryViewportRole: resolvePaneGalleryViewportRole(
+            normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+              PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+          )
         };
       }
     }
@@ -2405,7 +2464,7 @@ function App(): JSX.Element {
       }
 
       updatePaneGalleryLayout('sideThumbnails', rootGroupId, { fitRoot: false });
-      schedulePaneGalleryNodeFit(rootGroupId, [nodeId], mode);
+      schedulePaneGalleryNodeFit(rootGroupId, [nodeId], mode, 'main');
       return true;
     }
 
@@ -2490,7 +2549,7 @@ function App(): JSX.Element {
         localUiStateRef.current = nextState;
         return nextState;
       });
-      schedulePaneGalleryGroupFit(rootGroupId, groupId);
+      schedulePaneGalleryGroupFit(rootGroupId, groupId, 'main');
       return true;
     }
 
@@ -2561,7 +2620,7 @@ function App(): JSX.Element {
       updatePaneGalleryLayout('sideThumbnails', rootGroupId, { fitRoot: false });
       closeFloatingMenus();
       setSelectedEdgeId(undefined);
-      schedulePaneGalleryNodeFit(rootGroupId, targetNodeIds);
+      schedulePaneGalleryNodeFit(rootGroupId, targetNodeIds, 'fit', 'main');
       return true;
     }
 
@@ -2858,12 +2917,20 @@ function App(): JSX.Element {
 
   const persistViewportForSurface = (binding: CanvasSurfaceBinding, viewport: Viewport): void => {
     if (binding.viewportKind === 'paneGallery' && binding.rootGroupId) {
+      const viewportRole =
+        binding.paneGalleryViewportRole ??
+        resolvePaneGalleryViewportRole(
+          normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+            PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+        );
       setLocalUiState((current) => ({
         ...current,
         paneGallery: {
           ...(current.paneGallery ?? {}),
-          paneViewports: {
-            ...(current.paneGallery?.paneViewports ?? {}),
+          [viewportRole === 'main' ? 'mainViewports' : 'overviewViewports']: {
+            ...(viewportRole === 'main'
+              ? current.paneGallery?.mainViewports ?? {}
+              : current.paneGallery?.overviewViewports ?? {}),
             [binding.rootGroupId as string]: viewport
           }
         }
@@ -3308,11 +3375,15 @@ function App(): JSX.Element {
     setLocalUiState((current) => {
       const currentPaneState = current.paneGallery;
       const knownRootIds = new Set(paneGalleryRootIds);
-      const paneViewports = Object.fromEntries(
-        Object.entries(currentPaneState?.paneViewports ?? {}).filter(([rootGroupId]) => knownRootIds.has(rootGroupId))
+      const overviewViewports = Object.fromEntries(
+        Object.entries(currentPaneState?.overviewViewports ?? {}).filter(([rootGroupId]) =>
+          knownRootIds.has(rootGroupId)
+        )
       );
-      const mainFitRootGroupIds = (currentPaneState?.mainFitRootGroupIds ?? []).filter((rootGroupId) =>
-        knownRootIds.has(rootGroupId)
+      const mainViewports = Object.fromEntries(
+        Object.entries(currentPaneState?.mainViewports ?? {}).filter(([rootGroupId]) =>
+          knownRootIds.has(rootGroupId)
+        )
       );
       const activeRootGroupId = currentPaneState?.activeRootGroupId;
       const normalizedActiveRootGroupId = activeRootGroupId && knownRootIds.has(activeRootGroupId)
@@ -3322,17 +3393,17 @@ function App(): JSX.Element {
         normalizePaneGalleryLayoutMode(currentPaneState?.layout) ?? PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT;
       const normalizedLastOverviewLayout = resolvePaneGalleryLastOverviewLayout(currentPaneState);
       const normalizedLastThumbnailLayout = resolvePaneGalleryLastThumbnailLayout(currentPaneState);
-      const paneViewportsChanged =
-        Object.keys(paneViewports).length !== Object.keys(currentPaneState?.paneViewports ?? {}).length;
-      const mainFitRootGroupIdsChanged =
-        mainFitRootGroupIds.length !== (currentPaneState?.mainFitRootGroupIds ?? []).length;
+      const overviewViewportsChanged =
+        Object.keys(overviewViewports).length !== Object.keys(currentPaneState?.overviewViewports ?? {}).length;
+      const mainViewportsChanged =
+        Object.keys(mainViewports).length !== Object.keys(currentPaneState?.mainViewports ?? {}).length;
       if (
         normalizedActiveRootGroupId === activeRootGroupId &&
         normalizedLayout === currentPaneState?.layout &&
         normalizedLastOverviewLayout === currentPaneState?.lastOverviewLayout &&
         normalizedLastThumbnailLayout === currentPaneState?.lastThumbnailLayout &&
-        !paneViewportsChanged &&
-        !mainFitRootGroupIdsChanged
+        !overviewViewportsChanged &&
+        !mainViewportsChanged
       ) {
         return current;
       }
@@ -3345,8 +3416,8 @@ function App(): JSX.Element {
           activeRootGroupId: normalizedActiveRootGroupId,
           lastOverviewLayout: normalizedLastOverviewLayout,
           lastThumbnailLayout: normalizedLastThumbnailLayout,
-          paneViewports: Object.keys(paneViewports).length > 0 ? paneViewports : undefined,
-          mainFitRootGroupIds: mainFitRootGroupIds.length > 0 ? mainFitRootGroupIds : undefined
+          overviewViewports: Object.keys(overviewViewports).length > 0 ? overviewViewports : undefined,
+          mainViewports: Object.keys(mainViewports).length > 0 ? mainViewports : undefined
         }
       };
       localUiStateRef.current = nextState;
@@ -3991,12 +4062,19 @@ function App(): JSX.Element {
     handleCanvasDropForSurface(event);
   };
 
-  const bindPaneGallerySurface = (rootGroupId: string): CanvasSurfaceBinding => {
+  const bindPaneGallerySurface = (
+    rootGroupId: string,
+    viewportRole = resolvePaneGalleryViewportRole(
+      normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+        PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+    )
+  ): CanvasSurfaceBinding => {
     const binding: CanvasSurfaceBinding = {
       flow: paneGalleryFlowRefs.current[rootGroupId],
       shell: paneGalleryShellRefs.current[rootGroupId],
       viewportKind: 'paneGallery',
-      rootGroupId
+      rootGroupId,
+      paneGalleryViewportRole: viewportRole
     };
     bindActiveCanvasSurface(binding);
     return binding;
@@ -4236,11 +4314,19 @@ function App(): JSX.Element {
       paneGallery: updater(current.paneGallery)
     }));
   };
-  const savePaneGalleryViewport = (rootGroupId: string, viewport: Viewport): void => {
+  const savePaneGalleryViewport = (
+    rootGroupId: string,
+    viewport: Viewport,
+    viewportRole: PaneGalleryViewportRole = resolvePaneGalleryViewportRole(
+      normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+        PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+    )
+  ): void => {
+    const viewportKey = viewportRole === 'main' ? 'mainViewports' : 'overviewViewports';
     setPaneGalleryState((current) => ({
       ...current,
-      paneViewports: {
-        ...(current?.paneViewports ?? {}),
+      [viewportKey]: {
+        ...(current?.[viewportKey] ?? {}),
         [rootGroupId]: viewport
       }
     }));
@@ -4249,8 +4335,14 @@ function App(): JSX.Element {
     rootGroupId: string,
     instance = paneGalleryFlowRefs.current[rootGroupId],
     duration = 0,
-    options: { markMainFit?: boolean; requirePaneMode?: 'main' } = {}
+    options: { viewportRole?: PaneGalleryViewportRole; requirePaneMode?: 'main' } = {}
   ): boolean => {
+    const viewportRole =
+      options.viewportRole ??
+      resolvePaneGalleryViewportRole(
+        normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+          PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+      );
     const rootGroup = groups.find((group) => group.id === rootGroupId);
     const shell = paneGalleryShellRefs.current[rootGroupId];
     if (!instance?.viewportInitialized || !rootGroup || !shell) {
@@ -4280,29 +4372,14 @@ function App(): JSX.Element {
       PANE_GALLERY_FIT_VIEW_PADDING
     );
     instance.setViewport(viewport, { duration });
-    setPaneGalleryState((current) => {
-      const mainFitRootGroupIds = options.markMainFit
-        ? current?.mainFitRootGroupIds?.includes(rootGroupId)
-          ? current.mainFitRootGroupIds
-          : [...(current?.mainFitRootGroupIds ?? []), rootGroupId]
-        : current?.mainFitRootGroupIds;
-      return {
-        ...current,
-        paneViewports: {
-          ...(current?.paneViewports ?? {}),
-          [rootGroupId]: viewport
-        },
-        mainFitRootGroupIds
-      };
-    });
+    savePaneGalleryViewport(rootGroupId, viewport, viewportRole);
     return true;
   };
-  const hasPaneGalleryMainFit = (rootGroupId: string): boolean =>
-    (paneGalleryState?.mainFitRootGroupIds ?? []).includes(rootGroupId) &&
-    paneGalleryState?.paneViewports?.[rootGroupId] !== undefined;
+  const hasPaneGalleryMainViewport = (rootGroupId: string): boolean =>
+    paneGalleryState?.mainViewports?.[rootGroupId] !== undefined;
   const schedulePaneGalleryRootFit = (
     rootGroupId: string,
-    options: { markMainFit?: boolean; requirePaneMode?: 'main' } = {},
+    options: { viewportRole?: PaneGalleryViewportRole; requirePaneMode?: 'main' } = {},
     duration = 0
   ): void => {
     let remainingAttempts = 8;
@@ -4356,11 +4433,11 @@ function App(): JSX.Element {
     }
 
     const thumbnailMainRootNeedsFit =
-      isPaneGalleryThumbnailLayout(layout) && !hasPaneGalleryMainFit(activeRootGroupId);
-    if (!isPaneGalleryThumbnailLayout(layout) || thumbnailMainRootNeedsFit) {
+      isPaneGalleryThumbnailLayout(layout) && !hasPaneGalleryMainViewport(activeRootGroupId);
+    if (thumbnailMainRootNeedsFit) {
       schedulePaneGalleryRootFit(activeRootGroupId, {
-        markMainFit: isPaneGalleryThumbnailLayout(layout),
-        requirePaneMode: isPaneGalleryThumbnailLayout(layout) ? 'main' : undefined
+        viewportRole: 'main',
+        requirePaneMode: 'main'
       });
     }
   };
@@ -4369,18 +4446,17 @@ function App(): JSX.Element {
       !isPaneGalleryPresentation ||
       !isPaneGalleryThumbnailLayout(normalizedPaneGalleryLayout) ||
       !activePaneGalleryRootId ||
-      hasPaneGalleryMainFit(activePaneGalleryRootId)
+      hasPaneGalleryMainViewport(activePaneGalleryRootId)
     ) {
       return;
     }
 
-    schedulePaneGalleryRootFit(activePaneGalleryRootId, { markMainFit: true, requirePaneMode: 'main' });
+    schedulePaneGalleryRootFit(activePaneGalleryRootId, { viewportRole: 'main', requirePaneMode: 'main' });
   }, [
     activePaneGalleryRootId,
     isPaneGalleryPresentation,
     normalizedPaneGalleryLayout,
-    paneGalleryState?.mainFitRootGroupIds?.join('\0'),
-    activePaneGalleryRootId ? paneGalleryState?.paneViewports?.[activePaneGalleryRootId] !== undefined : false
+    activePaneGalleryRootId ? paneGalleryState?.mainViewports?.[activePaneGalleryRootId] !== undefined : false
   ]);
   const handlePaneGalleryNodeDragStop = (
     rootGroupId: string,
@@ -4468,7 +4544,8 @@ function App(): JSX.Element {
             layout={normalizedPaneGalleryLayout}
             lastOverviewLayout={lastPaneGalleryOverviewLayout}
             lastThumbnailLayout={lastPaneGalleryThumbnailLayout}
-            paneViewports={paneGalleryState?.paneViewports ?? {}}
+            overviewViewports={paneGalleryState?.overviewViewports ?? {}}
+            mainViewports={paneGalleryState?.mainViewports ?? {}}
             selectedGroupIds={selectedGroupIds}
             overviewMode={runtimeContext.overviewMode}
             overviewZoomThreshold={runtimeContext.overviewZoomThreshold}
@@ -8876,16 +8953,22 @@ interface PaneGalleryProps {
   layout: PaneGalleryLayoutMode;
   lastOverviewLayout: PaneGalleryOverviewLayoutMode;
   lastThumbnailLayout: PaneGalleryThumbnailLayoutMode;
-  paneViewports: Record<string, Viewport>;
+  overviewViewports: Record<string, Viewport>;
+  mainViewports: Record<string, Viewport>;
   selectedGroupIds: string[];
   overviewMode: CanvasOverviewMode;
   overviewZoomThreshold: number;
   paneRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
   flowRefs: React.MutableRefObject<Record<string, ReactFlowInstance<CanvasNodeData> | undefined>>;
-  onBindActiveSurface: (rootGroupId: string) => CanvasSurfaceBinding;
+  onBindActiveSurface: (rootGroupId: string, viewportRole?: PaneGalleryViewportRole) => CanvasSurfaceBinding;
   onSetLayout: (layout: PaneGalleryLayoutMode, activeRootGroupId?: string) => void;
-  onFitPane: (rootGroupId: string, instance?: ReactFlowInstance<CanvasNodeData>, duration?: number) => boolean;
-  onSavePaneViewport: (rootGroupId: string, viewport: Viewport) => void;
+  onFitPane: (
+    rootGroupId: string,
+    instance?: ReactFlowInstance<CanvasNodeData>,
+    duration?: number,
+    options?: { viewportRole?: PaneGalleryViewportRole }
+  ) => boolean;
+  onSavePaneViewport: (rootGroupId: string, viewport: Viewport, viewportRole?: PaneGalleryViewportRole) => void;
   onNodesChange: (changes: any[]) => void;
   onNodeDragStop: (
     rootGroupId: string,
@@ -9198,14 +9281,19 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   const { model } = props;
   const rootGroupId = model.rootGroup.id;
   const interactive = props.mode !== 'thumbnail';
-  const defaultViewport = interactive ? props.paneViewports[rootGroupId] : undefined;
+  const viewportRole: PaneGalleryViewportRole = props.mode === 'main' ? 'main' : 'overview';
+  const defaultViewport = interactive
+    ? viewportRole === 'main'
+      ? props.mainViewports[rootGroupId]
+      : props.overviewViewports[rootGroupId]
+    : undefined;
   const localPaneRef = useRef<HTMLDivElement | null>(null);
   const [paneViewportSize, setPaneViewportSize] = useState<CanvasViewportSize>({ width: 1, height: 1 });
   const [overviewState, setOverviewState] = useState<CanvasOverviewViewportState>({
     active: false,
     titleScale: 1
   });
-  const bindSurface = (): CanvasSurfaceBinding => props.onBindActiveSurface(rootGroupId);
+  const bindSurface = (): CanvasSurfaceBinding => props.onBindActiveSurface(rootGroupId, viewportRole);
   const updatePaneViewportSize = useCallback((element: HTMLDivElement | null = localPaneRef.current): void => {
     if (!element) {
       return;
@@ -9258,7 +9346,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
     );
     instance.setViewport(viewport, { duration });
     if (interactive) {
-      props.onSavePaneViewport(rootGroupId, viewport);
+      props.onSavePaneViewport(rootGroupId, viewport, viewportRole);
     }
     return true;
   };
@@ -9369,6 +9457,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
         onDrop={interactive ? (event) => props.onPaneDrop(event, rootGroupId) : undefined}
       >
         <ReactFlow
+          key={`${rootGroupId}-${props.mode}`}
           nodes={paneNodes}
           edges={model.edges}
           nodeTypes={nodeTypes}
@@ -9443,7 +9532,9 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
           onMoveStart={interactive ? bindSurface : undefined}
           onPaneClick={interactive ? (event) => props.onPaneClick(event, rootGroupId) : undefined}
           onPaneContextMenu={interactive ? (event) => props.onPaneContextMenu(event, rootGroupId) : undefined}
-          onMoveEnd={interactive ? (_event, viewport) => props.onSavePaneViewport(rootGroupId, viewport) : undefined}
+          onMoveEnd={
+            interactive ? (_event, viewport) => props.onSavePaneViewport(rootGroupId, viewport, viewportRole) : undefined
+          }
           proOptions={{ hideAttribution: true }}
         >
           <CanvasOverviewModeBridge
@@ -9487,7 +9578,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
               groups={model.groups}
               spatialBounds={paneSpatialBounds}
               viewportSize={paneViewportSize}
-              onViewportCommit={(viewport) => props.onSavePaneViewport(rootGroupId, viewport)}
+              onViewportCommit={(viewport) => props.onSavePaneViewport(rootGroupId, viewport, viewportRole)}
             />
           ) : null}
           {interactive ? (
@@ -9499,7 +9590,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
               onFitView={() => {
                 const instance = props.flowRefs.current[rootGroupId];
                 if (!fitLocalPane(instance, NODE_FOCUS_ANIMATION_DURATION_MS)) {
-                  props.onFitPane(rootGroupId, instance, NODE_FOCUS_ANIMATION_DURATION_MS);
+                  props.onFitPane(rootGroupId, instance, NODE_FOCUS_ANIMATION_DURATION_MS, { viewportRole });
                 }
               }}
               onSetLayout={props.onSetLayout}

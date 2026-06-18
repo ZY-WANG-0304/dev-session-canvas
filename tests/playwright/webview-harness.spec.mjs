@@ -1327,7 +1327,7 @@ test('pane gallery fits a root the first time it becomes the main thumbnail pane
         activeRootGroupId: 'workspace-root-frontend',
         lastOverviewLayout: 'dynamic',
         lastThumbnailLayout: 'sideThumbnails',
-        paneViewports: {
+        overviewViewports: {
           'workspace-root-backend': {
             x: 5000,
             y: -3000,
@@ -1356,14 +1356,76 @@ test('pane gallery fits a root the first time it becomes the main thumbnail pane
   await expect
     .poll(async () => {
       const paneGallery = (await readPersistedUiState(page)).paneGallery;
-      return paneGallery?.mainFitRootGroupIds?.includes('workspace-root-backend') === true;
+      return paneGallery?.mainViewports?.['workspace-root-backend'] ?? null;
     })
-    .toBe(true);
+    .not.toBeNull();
 
-  const backendViewport = (await readPersistedUiState(page)).paneGallery?.paneViewports?.['workspace-root-backend'];
-  expect(backendViewport?.x).not.toBe(5000);
-  expect(backendViewport?.y).not.toBe(-3000);
-  expect(backendViewport?.zoom).toBeLessThan(1.95);
+  const paneGalleryState = (await readPersistedUiState(page)).paneGallery;
+  const backendOverviewViewport = paneGalleryState?.overviewViewports?.['workspace-root-backend'];
+  const backendMainViewport = paneGalleryState?.mainViewports?.['workspace-root-backend'];
+  expect(backendOverviewViewport).toEqual({
+    x: 5000,
+    y: -3000,
+    zoom: 2
+  });
+  expect(backendMainViewport?.x).not.toBe(5000);
+  expect(backendMainViewport?.y).not.toBe(-3000);
+  expect(backendMainViewport?.zoom).toBeLessThan(1.95);
+
+  const mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="dynamic"]')).toBeVisible();
+  await expect
+    .poll(async () =>
+      page
+        .locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"] .react-flow__viewport')
+        .evaluate((viewport) => (viewport instanceof HTMLElement ? viewport.style.transform : null))
+    )
+    .toContain('translate(5000px, -3000px)');
+});
+
+test('pane gallery restores the saved main viewport when switching thumbnail roots', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'sideThumbnails',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        mainViewports: {
+          'workspace-root-backend': {
+            x: -700,
+            y: -200,
+            zoom: 1.2
+          }
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect
+    .poll(async () =>
+      page
+        .locator('.pane-gallery-root-pane-main .react-flow__viewport')
+        .evaluate((viewport) => (viewport instanceof HTMLElement ? viewport.style.transform : null))
+    )
+    .toContain('translate(-700px, -200px) scale(1.2)');
+  expect((await readPersistedUiState(page)).paneGallery?.mainViewports?.['workspace-root-backend']).toEqual({
+    x: -700,
+    y: -200,
+    zoom: 1.2
+  });
 });
 
 test('pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops', async ({ page }) => {
