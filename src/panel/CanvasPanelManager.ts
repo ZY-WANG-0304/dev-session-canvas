@@ -145,6 +145,7 @@ import {
   type CanvasMultiRootWorkspaceFolder,
   type CanvasRootLocalStateSnapshot
 } from '../common/canvasMultiRootComposition';
+import { arrangeCanvasLayout } from '../common/canvasLayoutArrangement';
 import {
   buildAgentBranchCommandLine as buildAgentProviderBranchCommandLine,
   buildFreshAgentCommandLine,
@@ -10814,6 +10815,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/selectNode':
         this.acknowledgeExecutionAttentionForNode(parsedMessage.payload.nodeId);
+        return;
+      case 'webview/arrangeCanvasLayout':
+        this.state = this.reconcileCanvasFileArtifacts(
+          finalizeCanvasGroupState(arrangeCanvasLayout(this.state))
+        );
+        this.canvasTemplateInitialized = true;
+        this.persistState();
+        this.postState('host/stateUpdated');
         return;
       case 'webview/createDemoNode':
         this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {

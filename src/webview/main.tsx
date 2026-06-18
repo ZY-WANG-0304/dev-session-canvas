@@ -3855,6 +3855,12 @@ function App(): JSX.Element {
             });
             closePaneContextMenu();
           }}
+          onArrangeCanvasLayout={() => {
+            postMessage({
+              type: 'webview/arrangeCanvasLayout'
+            });
+            closePaneContextMenu();
+          }}
           onApplyTemplate={(templateId, reset) => {
             postMessage({
               type: reset ? 'webview/resetToTemplate' : 'webview/applyTemplate',
@@ -8185,6 +8191,7 @@ const CanvasContextMenu = React.forwardRef<
     onShowTemplatePicker: (view: 'apply-template' | 'reset-template') => void;
     onApplyDefaultTemplate: () => void;
     onResetToDefaultTemplate: () => void;
+    onArrangeCanvasLayout: () => void;
     onApplyTemplate: (templateId: string, reset: boolean) => void;
     onSaveCanvasAsTemplate: () => void;
     onCreateEmptyGroup: () => void;
@@ -8412,6 +8419,18 @@ const CanvasContextMenu = React.forwardRef<
                 </span>
               </button>
             ) : null}
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="arrange-canvas-layout"
+              onClick={props.onArrangeCanvasLayout}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>整理画布布局</strong>
+                <span>按关系靠近对象并自动避让重叠</span>
+              </span>
+            </button>
             <div className="canvas-context-menu-separator" aria-hidden="true" />
             <div className="canvas-context-menu-split-item" data-context-menu-template-group="apply">
               <button
