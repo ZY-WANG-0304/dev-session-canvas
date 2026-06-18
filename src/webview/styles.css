@@ -3804,7 +3804,6 @@ body {
 }
 
 .pane-gallery-thumbnail-rail-topThumbnails {
-  justify-content: safe center;
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -3814,10 +3813,10 @@ body {
   grid-auto-columns: minmax(180px, 240px);
   width: max-content;
   height: 100%;
+  margin-inline: auto;
 }
 
 .pane-gallery-thumbnail-rail-sideThumbnails {
-  align-content: safe center;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -3826,6 +3825,7 @@ body {
   grid-auto-rows: minmax(132px, 172px);
   width: 100%;
   height: max-content;
+  margin-block: auto;
 }
 
 @media (max-width: 900px) {
@@ -3841,7 +3841,6 @@ body {
   }
 
   .pane-gallery-thumbnail-layout-sideThumbnails .pane-gallery-thumbnail-rail {
-    justify-content: safe center;
     overflow-x: auto;
     overflow-y: hidden;
   }
@@ -3851,5 +3850,7 @@ body {
     grid-auto-columns: minmax(150px, 210px);
     width: max-content;
     height: 100%;
+    margin-block: 0;
+    margin-inline: auto;
   }
 }
