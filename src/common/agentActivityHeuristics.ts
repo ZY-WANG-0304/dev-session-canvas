@@ -56,7 +56,8 @@ interface AgentAbnormalStreamInterruptionMatch {
 }
 
 const CODEX_FINAL_ERROR_MARKER_PATTERN = /^\s*■\s+/u;
-const CODEX_TAIL_PROMPT_PATTERN = /^\s{0,4}(?:>|›|❯|≫|»)(?:\s+.*)?$/u;
+const CODEX_TAIL_PROMPT_PATTERN = /^\s{0,4}(?:›.*|[>❯≫»](?:\s+.*)?)$/u;
+const CODEX_TAIL_STATUS_FOOTER_PATTERN = /^(?:gpt|o\d|codex)[\w.-]*(?:\s+[\w.-]+){0,4}\s+·\s+\S.*$/iu;
 // Keep this list limited to Codex TUI final-error lines rendered with the
 // leading square marker at the tail. Reconnecting tree lines are retry progress.
 const CODEX_FINAL_ERROR_MESSAGE_PATTERNS: RegExp[] = [
@@ -67,6 +68,7 @@ const CODEX_FINAL_ERROR_MESSAGE_PATTERNS: RegExp[] = [
 interface AgentAbnormalStreamTailLine {
   end: number;
   line: string;
+  start: number;
 }
 
 export function createAgentActivityHeuristicState(): AgentActivityHeuristicState {
@@ -225,14 +227,25 @@ function extractAgentAbnormalStreamInterruptions(
     if (line) {
       tailLines.push({
         end: lineEnd,
-        line
+        line,
+        start: lineStart
       });
     }
     lineStart = lineEnd + 1;
   }
 
   const candidate = getTailCodexFinalErrorLine(tailLines);
-  if (!candidate || candidate.end <= minMatchEndOffset) {
+  if (!candidate) {
+    return [];
+  }
+  if (
+    candidate.end <= minMatchEndOffset &&
+    !doesTailAfterCandidateIncludeNewlyCompletedIgnorableCodexChrome(
+      tailLines,
+      candidate,
+      minMatchEndOffset
+    )
+  ) {
     return [];
   }
 
@@ -252,16 +265,45 @@ export function normalizeAgentAbnormalStreamInterruptionSignature(message: strin
 function getTailCodexFinalErrorLine(
   tailLines: AgentAbnormalStreamTailLine[]
 ): AgentAbnormalStreamTailLine | undefined {
-  if (tailLines.length === 0) {
+  for (let index = tailLines.length - 1; index >= 0; index -= 1) {
+    const candidate = tailLines[index];
+    if (isCodexFinalErrorLine(candidate.line)) {
+      return candidate;
+    }
+
+    if (isIgnorableCodexTrailingChromeLine(candidate.line)) {
+      continue;
+    }
+
     return undefined;
   }
 
-  const lastLine = tailLines[tailLines.length - 1];
-  if (CODEX_TAIL_PROMPT_PATTERN.test(lastLine.line) && tailLines.length > 1) {
-    return tailLines[tailLines.length - 2];
+  return undefined;
+}
+
+function isIgnorableCodexTrailingChromeLine(line: string): boolean {
+  return CODEX_TAIL_PROMPT_PATTERN.test(line) || CODEX_TAIL_STATUS_FOOTER_PATTERN.test(line);
+}
+
+function doesTailAfterCandidateIncludeNewlyCompletedIgnorableCodexChrome(
+  tailLines: AgentAbnormalStreamTailLine[],
+  candidate: AgentAbnormalStreamTailLine,
+  minMatchEndOffset: number
+): boolean {
+  let sawNewlyCompletedChrome = false;
+  for (const tailLine of tailLines) {
+    if (tailLine.end <= candidate.end) {
+      continue;
+    }
+    if (!isIgnorableCodexTrailingChromeLine(tailLine.line)) {
+      return false;
+    }
+    if (tailLine.start < minMatchEndOffset && tailLine.end > minMatchEndOffset) {
+      sawNewlyCompletedChrome = true;
+    }
   }
 
-  return lastLine;
+  return sawNewlyCompletedChrome;
 }
 
 function isCodexFinalErrorLine(line: string): boolean {

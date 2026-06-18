@@ -185,6 +185,14 @@ try {
   );
   assert.equal(
     extractAgentAbnormalStreamInterruptionMessage(
+      '■ stream disconnected before completion: stream closed before response.completed\n›继续\ngpt-5.4 xhigh · ~/ZeroInput\n',
+      'codex'
+    ),
+    '■ stream disconnected before completion: stream closed before response.completed',
+    'Codex prompt text without a separating space and the TUI footer should not hide the final stream error.'
+  );
+  assert.equal(
+    extractAgentAbnormalStreamInterruptionMessage(
       'stream disconnected before completion\n',
       'codex'
     ),
@@ -270,6 +278,49 @@ try {
     nonTailStreamSnapshot.sawAbnormalStreamInterruption,
     false,
     'A square-marker Codex stream-disconnected line should not notify once non-prompt output follows it.'
+  );
+
+  const codexChromeTailState = createAgentActivityHeuristicState();
+  const codexChromeTailOutput = `${finalStreamLine}›继续\ngpt-5.4 xhigh · ~/ZeroInput\n`;
+  const codexChromeTailSnapshot = recordAgentOutputHeuristics(
+    codexChromeTailState,
+    codexChromeTailOutput,
+    codexChromeTailOutput,
+    'codex',
+    150
+  );
+  assert.equal(
+    codexChromeTailSnapshot.sawAbnormalStreamInterruption,
+    true,
+    'Codex input prompt text and footer chrome after the final error should still notify.'
+  );
+
+  const splitFooterState = createAgentActivityHeuristicState();
+  const splitFooterFirstChunk = `${finalStreamLine}›继续\ngpt-5.4 xhigh ·`;
+  const splitFooterFirstSnapshot = recordAgentOutputHeuristics(
+    splitFooterState,
+    splitFooterFirstChunk,
+    splitFooterFirstChunk,
+    'codex',
+    160
+  );
+  assert.equal(
+    splitFooterFirstSnapshot.sawAbnormalStreamInterruption,
+    false,
+    'An incomplete Codex footer split across chunks should not notify until the footer is complete.'
+  );
+  const splitFooterFullOutput = `${splitFooterFirstChunk} ~/ZeroInput\n`;
+  const splitFooterSecondSnapshot = recordAgentOutputHeuristics(
+    splitFooterState,
+    ' ~/ZeroInput\n',
+    splitFooterFullOutput,
+    'codex',
+    165
+  );
+  assert.equal(
+    splitFooterSecondSnapshot.sawAbnormalStreamInterruption,
+    true,
+    'Completing Codex footer chrome in a later chunk should still notify for the preceding final error.'
   );
 
   const reconnectingStreamState = createAgentActivityHeuristicState();
