@@ -3710,6 +3710,16 @@ body {
   pointer-events: none;
 }
 
+.pane-gallery-thumbnail-hit-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  cursor: zoom-in;
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+}
+
 .pane-gallery-canvas-controls {
   z-index: 8;
   overflow: visible !important;

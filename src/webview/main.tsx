@@ -9129,6 +9129,18 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
     }
     updatePaneViewportSize(element);
   }, [interactive, props.paneRefs, rootGroupId, updatePaneViewportSize]);
+  const activateThumbnail = (event: React.MouseEvent): void => {
+    event.preventDefault();
+    stopCanvasEvent(event);
+    props.onThumbnailActivate?.(rootGroupId);
+  };
+  const blockThumbnailPointerEvent = (event: React.SyntheticEvent): void => {
+    stopCanvasEvent(event);
+  };
+  const blockThumbnailDefaultEvent = (event: React.SyntheticEvent): void => {
+    event.preventDefault();
+    stopCanvasEvent(event);
+  };
   const fitLocalPane = (instance: ReactFlowInstance<CanvasNodeData> | undefined, duration = 0): boolean => {
     const shell = localPaneRef.current;
     if (!instance?.viewportInitialized || !shell) {
@@ -9398,6 +9410,25 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
             />
           ) : null}
         </ReactFlow>
+        {props.mode === 'thumbnail' ? (
+          <div
+            className="pane-gallery-thumbnail-hit-layer"
+            data-pane-gallery-thumbnail-hit-layer="true"
+            aria-hidden="true"
+            title={`${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}`}
+            onPointerDown={blockThumbnailPointerEvent}
+            onPointerMove={blockThumbnailPointerEvent}
+            onPointerUp={blockThumbnailPointerEvent}
+            onPointerCancel={blockThumbnailPointerEvent}
+            onWheel={blockThumbnailDefaultEvent}
+            onClick={blockThumbnailPointerEvent}
+            onDoubleClick={activateThumbnail}
+            onContextMenu={blockThumbnailDefaultEvent}
+            onDragStart={blockThumbnailDefaultEvent}
+            onDragOver={blockThumbnailDefaultEvent}
+            onDrop={blockThumbnailDefaultEvent}
+          />
+        ) : null}
       </div>
     </section>
   );
