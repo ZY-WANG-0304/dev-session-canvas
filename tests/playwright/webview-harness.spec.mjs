@@ -950,7 +950,7 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await expect(page.locator('.pane-gallery-root-pane-thumbnail .pane-gallery-root-meta')).toHaveCount(0);
 
   const topRailAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => getComputedStyle(rail).justifyContent);
-  expect(topRailAlignment).toBe('center');
+  expect(topRailAlignment).toBe('safe center');
 
   await clearPostedMessages(page);
   const backendThumbnail = page.locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]');
@@ -1022,14 +1022,135 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
   const rememberedTopRailAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => getComputedStyle(rail).justifyContent);
-  expect(rememberedTopRailAlignment).toBe('center');
+  expect(rememberedTopRailAlignment).toBe('safe center');
 
   mainPane = page.locator('.pane-gallery-root-pane-main');
   await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
   await mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]').click();
   await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
   const sideRailAlignment = await page.locator('.pane-gallery-thumbnail-rail-sideThumbnails').evaluate((rail) => getComputedStyle(rail).alignContent);
-  expect(sideRailAlignment).toBe('center');
+  expect(sideRailAlignment).toBe('safe center');
+});
+
+test('pane gallery overflowing thumbnail rails keep first and last roots reachable', async ({ page }) => {
+  const state = createPaneGalleryCanvasState({ rootCount: 16 });
+  const activeRootId = state.groups[0].id;
+  const firstThumbnailRootId = state.groups[1].id;
+  const lastThumbnailRootId = state.groups.at(-1).id;
+
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'sideThumbnails',
+        activeRootGroupId: activeRootId,
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails'
+      }
+    }
+  });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const measureRailReachability = async (layout) => {
+    const axis = layout === 'topThumbnails' ? 'x' : 'y';
+    const rail = page.locator(`[data-pane-gallery-thumbnail-rail="${layout}"]`);
+    await expect(rail).toBeVisible();
+    return rail.evaluate(
+      (railElement, { firstRootId, lastRootId, scrollAxis }) => {
+        const collect = () => {
+          const railRect = railElement.getBoundingClientRect();
+          const entries = [...railElement.querySelectorAll('.pane-gallery-root-pane-thumbnail')]
+            .filter((entry) => entry instanceof HTMLElement)
+            .map((entry) => {
+              const rect = entry.getBoundingClientRect();
+              return {
+                id: entry.getAttribute('data-pane-gallery-root-id'),
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                left: rect.left
+              };
+            });
+          const visibleIds = entries
+            .filter((entry) =>
+              entry.right > railRect.left + 1 &&
+              entry.left < railRect.right - 1 &&
+              entry.bottom > railRect.top + 1 &&
+              entry.top < railRect.bottom - 1
+            )
+            .map((entry) => entry.id);
+          const isFullyVisible = (entry) =>
+            entry
+              ? scrollAxis === 'x'
+                ? entry.left >= railRect.left - 1 && entry.right <= railRect.right + 1
+                : entry.top >= railRect.top - 1 && entry.bottom <= railRect.bottom + 1
+              : false;
+          const firstEntry = entries.find((entry) => entry.id === firstRootId);
+          const lastEntry = entries.find((entry) => entry.id === lastRootId);
+
+          return {
+            scrollLeft: railElement.scrollLeft,
+            scrollTop: railElement.scrollTop,
+            visibleIds,
+            firstFullyVisible: isFullyVisible(firstEntry),
+            lastFullyVisible: isFullyVisible(lastEntry),
+            firstOffset: firstEntry
+              ? scrollAxis === 'x'
+                ? firstEntry.left - railRect.left
+                : firstEntry.top - railRect.top
+              : null,
+            lastOffset: lastEntry
+              ? scrollAxis === 'x'
+                ? railRect.right - lastEntry.right
+                : railRect.bottom - lastEntry.bottom
+              : null
+          };
+        };
+
+        railElement.scrollLeft = 0;
+        railElement.scrollTop = 0;
+        const start = collect();
+        railElement.scrollLeft = railElement.scrollWidth;
+        railElement.scrollTop = railElement.scrollHeight;
+        const end = collect();
+
+        return {
+          axis: scrollAxis,
+          scrollMax: scrollAxis === 'x'
+            ? railElement.scrollWidth - railElement.clientWidth
+            : railElement.scrollHeight - railElement.clientHeight,
+          start,
+          end
+        };
+      },
+      { firstRootId: firstThumbnailRootId, lastRootId: lastThumbnailRootId, scrollAxis: axis }
+    );
+  };
+
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const sideRailMetrics = await measureRailReachability('sideThumbnails');
+  expect(sideRailMetrics.scrollMax).toBeGreaterThan(0);
+  expect(sideRailMetrics.start.firstFullyVisible).toBe(true);
+  expect(sideRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
+  expect(sideRailMetrics.start.firstOffset).toBeGreaterThanOrEqual(-1);
+  expect(sideRailMetrics.end.lastFullyVisible).toBe(true);
+  expect(sideRailMetrics.end.visibleIds).toContain(lastThumbnailRootId);
+  expect(sideRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
+
+  const mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  await settleWebview(page, 2);
+
+  const topRailMetrics = await measureRailReachability('topThumbnails');
+  expect(topRailMetrics.scrollMax).toBeGreaterThan(0);
+  expect(topRailMetrics.start.firstFullyVisible).toBe(true);
+  expect(topRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
+  expect(topRailMetrics.start.firstOffset).toBeGreaterThanOrEqual(-1);
+  expect(topRailMetrics.end.lastFullyVisible).toBe(true);
+  expect(topRailMetrics.end.visibleIds).toContain(lastThumbnailRootId);
+  expect(topRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
 });
 
 test('pane gallery clears transient selection before roots become thumbnails', async ({ page }) => {
@@ -15389,7 +15510,7 @@ function createEmptyCanvasState() {
 }
 
 function createPaneGalleryCanvasState(options = {}) {
-  const rootDefinitions = [
+  const baseRootDefinitions = [
     ['workspace-root-frontend', 'Frontend', '/repo/frontend'],
     ['workspace-root-backend', 'Backend', '/repo/backend'],
     ['workspace-root-tools', 'Tools', '/repo/tools'],
@@ -15400,7 +15521,15 @@ function createPaneGalleryCanvasState(options = {}) {
     ['workspace-root-infra', 'Infra', '/repo/infra']
   ];
   const rootCount = options.rootCount ?? 2;
-  const groups = rootDefinitions.slice(0, rootCount).map(([id, title, workspaceRootPath], index) => ({
+  const rootDefinitions = Array.from(
+    { length: rootCount },
+    (_, index) => baseRootDefinitions[index] ?? [
+      `workspace-root-extra-${index + 1}`,
+      `Root ${index + 1}`,
+      `/repo/root-${index + 1}`
+    ]
+  );
+  const groups = rootDefinitions.map(([id, title, workspaceRootPath], index) => ({
     id,
     title,
     position: { x: 120 + index * 860, y: 100 },

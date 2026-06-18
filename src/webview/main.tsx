@@ -9051,15 +9051,20 @@ function PaneGalleryThumbnailRail(props: PaneGalleryProps & {
       aria-label="Other workspace roots"
       data-pane-gallery-thumbnail-rail={props.layout}
     >
-      {props.models.map((model) => (
-        <PaneGalleryRootPane
-          {...props}
-          key={model.rootGroup.id}
-          model={model}
-          mode="thumbnail"
-          onThumbnailActivate={props.onActivate}
-        />
-      ))}
+      <div
+        className={`pane-gallery-thumbnail-track pane-gallery-thumbnail-track-${props.layout}`}
+        data-pane-gallery-thumbnail-track={props.layout}
+      >
+        {props.models.map((model) => (
+          <PaneGalleryRootPane
+            {...props}
+            key={model.rootGroup.id}
+            model={model}
+            mode="thumbnail"
+            onThumbnailActivate={props.onActivate}
+          />
+        ))}
+      </div>
     </div>
   );
 }
