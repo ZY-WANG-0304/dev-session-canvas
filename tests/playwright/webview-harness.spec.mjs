@@ -949,8 +949,19 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await expect(page.locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"] .pane-gallery-root-title')).toHaveText('Backend');
   await expect(page.locator('.pane-gallery-root-pane-thumbnail .pane-gallery-root-meta')).toHaveCount(0);
 
-  const topRailAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => getComputedStyle(rail).justifyContent);
-  expect(topRailAlignment).toBe('safe center');
+  const topTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => {
+    const track = rail.querySelector('.pane-gallery-thumbnail-track');
+    const railRect = rail.getBoundingClientRect();
+    const trackRect = track instanceof HTMLElement ? track.getBoundingClientRect() : null;
+    return trackRect
+      ? {
+          leading: trackRect.left - railRect.left,
+          trailing: railRect.right - trackRect.right
+        }
+      : null;
+  });
+  expect(topTrackAlignment?.leading).toBeGreaterThan(0);
+  expect(Math.abs((topTrackAlignment?.leading ?? 0) - (topTrackAlignment?.trailing ?? 0))).toBeLessThanOrEqual(1);
 
   await clearPostedMessages(page);
   const backendThumbnail = page.locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]');
@@ -1021,15 +1032,39 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
     .click();
   await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
-  const rememberedTopRailAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => getComputedStyle(rail).justifyContent);
-  expect(rememberedTopRailAlignment).toBe('safe center');
+  const rememberedTopTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => {
+    const track = rail.querySelector('.pane-gallery-thumbnail-track');
+    const railRect = rail.getBoundingClientRect();
+    const trackRect = track instanceof HTMLElement ? track.getBoundingClientRect() : null;
+    return trackRect
+      ? {
+          leading: trackRect.left - railRect.left,
+          trailing: railRect.right - trackRect.right
+        }
+      : null;
+  });
+  expect(rememberedTopTrackAlignment?.leading).toBeGreaterThan(0);
+  expect(
+    Math.abs((rememberedTopTrackAlignment?.leading ?? 0) - (rememberedTopTrackAlignment?.trailing ?? 0))
+  ).toBeLessThanOrEqual(1);
 
   mainPane = page.locator('.pane-gallery-root-pane-main');
   await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
   await mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]').click();
   await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
-  const sideRailAlignment = await page.locator('.pane-gallery-thumbnail-rail-sideThumbnails').evaluate((rail) => getComputedStyle(rail).alignContent);
-  expect(sideRailAlignment).toBe('safe center');
+  const sideTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-sideThumbnails').evaluate((rail) => {
+    const track = rail.querySelector('.pane-gallery-thumbnail-track');
+    const railRect = rail.getBoundingClientRect();
+    const trackRect = track instanceof HTMLElement ? track.getBoundingClientRect() : null;
+    return trackRect
+      ? {
+          leading: trackRect.top - railRect.top,
+          trailing: railRect.bottom - trackRect.bottom
+        }
+      : null;
+  });
+  expect(sideTrackAlignment?.leading).toBeGreaterThan(0);
+  expect(Math.abs((sideTrackAlignment?.leading ?? 0) - (sideTrackAlignment?.trailing ?? 0))).toBeLessThanOrEqual(1);
 });
 
 test('pane gallery overflowing thumbnail rails keep first and last roots reachable', async ({ page }) => {
@@ -1116,6 +1151,8 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
 
         return {
           axis: scrollAxis,
+          railJustifyContent: getComputedStyle(railElement).justifyContent,
+          railAlignContent: getComputedStyle(railElement).alignContent,
           scrollMax: scrollAxis === 'x'
             ? railElement.scrollWidth - railElement.clientWidth
             : railElement.scrollHeight - railElement.clientHeight,
@@ -1129,6 +1166,8 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
 
   await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
   const sideRailMetrics = await measureRailReachability('sideThumbnails');
+  expect(sideRailMetrics.railAlignContent).not.toContain('safe');
+  expect(sideRailMetrics.railAlignContent).not.toBe('center');
   expect(sideRailMetrics.scrollMax).toBeGreaterThan(0);
   expect(sideRailMetrics.start.firstFullyVisible).toBe(true);
   expect(sideRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
@@ -1144,6 +1183,8 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
   await settleWebview(page, 2);
 
   const topRailMetrics = await measureRailReachability('topThumbnails');
+  expect(topRailMetrics.railJustifyContent).not.toContain('safe');
+  expect(topRailMetrics.railJustifyContent).not.toBe('center');
   expect(topRailMetrics.scrollMax).toBeGreaterThan(0);
   expect(topRailMetrics.start.firstFullyVisible).toBe(true);
   expect(topRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
