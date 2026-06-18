@@ -191,6 +191,7 @@ interface PaneGalleryLocalState {
   lastOverviewLayout?: PaneGalleryOverviewLayoutMode;
   lastThumbnailLayout?: PaneGalleryThumbnailLayoutMode;
   paneViewports?: Record<string, Viewport>;
+  mainFitRootGroupIds?: string[];
 }
 
 interface CanvasSurfaceBinding {
@@ -206,6 +207,7 @@ function normalizePaneGalleryLocalState(value: unknown): PaneGalleryLocalState |
   }
 
   const candidate = value as Partial<PaneGalleryLocalState>;
+  const mainFitRootGroupIds = normalizeUniqueStringArray(candidate.mainFitRootGroupIds);
   const paneViewports =
     candidate.paneViewports && typeof candidate.paneViewports === 'object'
       ? Object.fromEntries(
@@ -245,10 +247,20 @@ function normalizePaneGalleryLocalState(value: unknown): PaneGalleryLocalState |
     lastThumbnailLayout:
       normalizePaneGalleryThumbnailLayoutMode(candidate.lastThumbnailLayout) ??
       normalizePaneGalleryThumbnailLayoutMode(normalizedLayout),
-    paneViewports: paneViewports && Object.keys(paneViewports).length > 0 ? paneViewports : undefined
+    paneViewports: paneViewports && Object.keys(paneViewports).length > 0 ? paneViewports : undefined,
+    mainFitRootGroupIds
   };
 
   return Object.values(normalized).some((entry) => entry !== undefined) ? normalized : undefined;
+}
+
+function normalizeUniqueStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const entries = [...new Set(value.filter((entry): entry is string => typeof entry === 'string'))];
+  return entries.length > 0 ? entries : undefined;
 }
 
 function normalizePaneGalleryLayoutMode(value: unknown): PaneGalleryLayoutMode | undefined {
@@ -3299,6 +3311,9 @@ function App(): JSX.Element {
       const paneViewports = Object.fromEntries(
         Object.entries(currentPaneState?.paneViewports ?? {}).filter(([rootGroupId]) => knownRootIds.has(rootGroupId))
       );
+      const mainFitRootGroupIds = (currentPaneState?.mainFitRootGroupIds ?? []).filter((rootGroupId) =>
+        knownRootIds.has(rootGroupId)
+      );
       const activeRootGroupId = currentPaneState?.activeRootGroupId;
       const normalizedActiveRootGroupId = activeRootGroupId && knownRootIds.has(activeRootGroupId)
         ? activeRootGroupId
@@ -3309,12 +3324,15 @@ function App(): JSX.Element {
       const normalizedLastThumbnailLayout = resolvePaneGalleryLastThumbnailLayout(currentPaneState);
       const paneViewportsChanged =
         Object.keys(paneViewports).length !== Object.keys(currentPaneState?.paneViewports ?? {}).length;
+      const mainFitRootGroupIdsChanged =
+        mainFitRootGroupIds.length !== (currentPaneState?.mainFitRootGroupIds ?? []).length;
       if (
         normalizedActiveRootGroupId === activeRootGroupId &&
         normalizedLayout === currentPaneState?.layout &&
         normalizedLastOverviewLayout === currentPaneState?.lastOverviewLayout &&
         normalizedLastThumbnailLayout === currentPaneState?.lastThumbnailLayout &&
-        !paneViewportsChanged
+        !paneViewportsChanged &&
+        !mainFitRootGroupIdsChanged
       ) {
         return current;
       }
@@ -3327,7 +3345,8 @@ function App(): JSX.Element {
           activeRootGroupId: normalizedActiveRootGroupId,
           lastOverviewLayout: normalizedLastOverviewLayout,
           lastThumbnailLayout: normalizedLastThumbnailLayout,
-          paneViewports: Object.keys(paneViewports).length > 0 ? paneViewports : undefined
+          paneViewports: Object.keys(paneViewports).length > 0 ? paneViewports : undefined,
+          mainFitRootGroupIds: mainFitRootGroupIds.length > 0 ? mainFitRootGroupIds : undefined
         }
       };
       localUiStateRef.current = nextState;
@@ -4229,12 +4248,22 @@ function App(): JSX.Element {
   const fitPaneGalleryRoot = (
     rootGroupId: string,
     instance = paneGalleryFlowRefs.current[rootGroupId],
-    duration = 0
+    duration = 0,
+    options: { markMainFit?: boolean; requirePaneMode?: 'main' } = {}
   ): boolean => {
     const rootGroup = groups.find((group) => group.id === rootGroupId);
     const shell = paneGalleryShellRefs.current[rootGroupId];
     if (!instance?.viewportInitialized || !rootGroup || !shell) {
       return false;
+    }
+    if (options.requirePaneMode) {
+      const paneElement = shell.closest('.pane-gallery-root-pane');
+      if (
+        !(paneElement instanceof HTMLElement) ||
+        paneElement.dataset.paneGalleryRootMode !== options.requirePaneMode
+      ) {
+        return false;
+      }
     }
 
     const viewport = getViewportForBounds(
@@ -4251,8 +4280,45 @@ function App(): JSX.Element {
       PANE_GALLERY_FIT_VIEW_PADDING
     );
     instance.setViewport(viewport, { duration });
-    savePaneGalleryViewport(rootGroupId, viewport);
+    setPaneGalleryState((current) => {
+      const mainFitRootGroupIds = options.markMainFit
+        ? current?.mainFitRootGroupIds?.includes(rootGroupId)
+          ? current.mainFitRootGroupIds
+          : [...(current?.mainFitRootGroupIds ?? []), rootGroupId]
+        : current?.mainFitRootGroupIds;
+      return {
+        ...current,
+        paneViewports: {
+          ...(current?.paneViewports ?? {}),
+          [rootGroupId]: viewport
+        },
+        mainFitRootGroupIds
+      };
+    });
     return true;
+  };
+  const hasPaneGalleryMainFit = (rootGroupId: string): boolean =>
+    (paneGalleryState?.mainFitRootGroupIds ?? []).includes(rootGroupId) &&
+    paneGalleryState?.paneViewports?.[rootGroupId] !== undefined;
+  const schedulePaneGalleryRootFit = (
+    rootGroupId: string,
+    options: { markMainFit?: boolean; requirePaneMode?: 'main' } = {},
+    duration = 0
+  ): void => {
+    let remainingAttempts = 8;
+    const tryFit = (): void => {
+      if (fitPaneGalleryRoot(rootGroupId, undefined, duration, options)) {
+        return;
+      }
+      remainingAttempts -= 1;
+      if (remainingAttempts > 0) {
+        window.setTimeout(tryFit, 50);
+      }
+    };
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(tryFit);
+    });
   };
   const updatePaneGalleryLayout = (
     layout: PaneGalleryLayoutMode,
@@ -4285,12 +4351,37 @@ function App(): JSX.Element {
     if (options.fitRoot === false) {
       return;
     }
-    window.setTimeout(() => {
-      if (activeRootGroupId) {
-        fitPaneGalleryRoot(activeRootGroupId);
-      }
-    }, 0);
+    if (!activeRootGroupId) {
+      return;
+    }
+
+    const thumbnailMainRootNeedsFit =
+      isPaneGalleryThumbnailLayout(layout) && !hasPaneGalleryMainFit(activeRootGroupId);
+    if (!isPaneGalleryThumbnailLayout(layout) || thumbnailMainRootNeedsFit) {
+      schedulePaneGalleryRootFit(activeRootGroupId, {
+        markMainFit: isPaneGalleryThumbnailLayout(layout),
+        requirePaneMode: isPaneGalleryThumbnailLayout(layout) ? 'main' : undefined
+      });
+    }
   };
+  useEffect(() => {
+    if (
+      !isPaneGalleryPresentation ||
+      !isPaneGalleryThumbnailLayout(normalizedPaneGalleryLayout) ||
+      !activePaneGalleryRootId ||
+      hasPaneGalleryMainFit(activePaneGalleryRootId)
+    ) {
+      return;
+    }
+
+    schedulePaneGalleryRootFit(activePaneGalleryRootId, { markMainFit: true, requirePaneMode: 'main' });
+  }, [
+    activePaneGalleryRootId,
+    isPaneGalleryPresentation,
+    normalizedPaneGalleryLayout,
+    paneGalleryState?.mainFitRootGroupIds?.join('\0'),
+    activePaneGalleryRootId ? paneGalleryState?.paneViewports?.[activePaneGalleryRootId] !== undefined : false
+  ]);
   const handlePaneGalleryNodeDragStop = (
     rootGroupId: string,
     event: React.MouseEvent,

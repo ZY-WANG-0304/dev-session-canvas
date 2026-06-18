@@ -1123,6 +1123,10 @@ test('pane gallery thumbnail hit layer blocks execution node attention acknowled
   const backendTerminalNode = backendThumbnail.locator('[data-node-id="workspace-root-backend-terminal"]');
   await expect(backendTerminalNode.locator('[data-execution-attention-pending="true"]')).toHaveCount(1);
   await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toBeVisible();
+  await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toHaveCSS(
+    'cursor',
+    'default'
+  );
 
   const terminalCenter = await backendTerminalNode.evaluate((node) => {
     const rect = node.getBoundingClientRect();
@@ -1151,6 +1155,53 @@ test('pane gallery thumbnail hit layer blocks execution node attention acknowled
     'workspace-root-backend'
   );
   expect(await readPostedMessagesByType(page, 'webview/selectNode')).toEqual([]);
+});
+
+test('pane gallery fits a root the first time it becomes the main thumbnail pane', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'dynamic',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        paneViewports: {
+          'workspace-root-backend': {
+            x: 5000,
+            y: -3000,
+            zoom: 2
+          }
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect
+    .poll(async () => {
+      const paneGallery = (await readPersistedUiState(page)).paneGallery;
+      return paneGallery?.mainFitRootGroupIds?.includes('workspace-root-backend') === true;
+    })
+    .toBe(true);
+
+  const backendViewport = (await readPersistedUiState(page)).paneGallery?.paneViewports?.['workspace-root-backend'];
+  expect(backendViewport?.x).not.toBe(5000);
+  expect(backendViewport?.y).not.toBe(-3000);
+  expect(backendViewport?.zoom).toBeLessThan(1.95);
 });
 
 test('pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops', async ({ page }) => {
