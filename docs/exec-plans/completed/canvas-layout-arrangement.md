@@ -44,7 +44,7 @@
 
 本计划已交付画布空白右键菜单入口、Host 权威布局整理、持久化写回、纯函数测试、协议测试、Webview 菜单测试与 trusted smoke 持久化验证。实现保持节点归属、root 归属、`cwd`、runtime metadata、edge endpoints 和文件 owner 不变；普通分组与 root 均按容器边界递归整理。
 
-剩余风险是完整 `npm run test:webview` 在本轮曾出现 4 个与本功能无关或疑似波动的失败：baseline screenshot 选择态差异、Claude Ctrl-Z payload 额外 lifecycle 字段、硬换行 file link hover 超时等。新增布局右键菜单用例在完整运行和定向运行中均通过；因此设计文档状态记录为“已部分验证”，等待完整 Webview 回归清洁通过后再升级。
+剩余风险是完整 `npm run test:webview` 在本轮曾出现 4 个与本功能无关或疑似波动的失败：baseline screenshot 选择态差异、Claude Ctrl-Z payload 额外 lifecycle 字段、硬换行 file link hover 超时等。新增布局右键菜单用例在完整运行和定向运行中均通过；因此设计文档验证状态保持为“验证中”，等待完整 Webview 回归清洁通过后再升级为“已验证”。
 
 ## 上下文与定向
 

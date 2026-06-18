@@ -1,7 +1,7 @@
 ---
 title: 画布布局整理设计
 decision_status: 已选定
-validation_status: 已部分验证
+validation_status: 验证中
 domains:
   - 画布交互域
   - 协作对象域
@@ -74,6 +74,6 @@ Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，�
 
 自动化验证包括：`npm run test:canvas-layout-arrangement` 覆盖节点避让、关系靠近、普通分组内部整理、root hard boundary、语义不变；`npm run test:protocol-webview-messages` 覆盖消息解析；`npm run test:webview` 覆盖右键菜单入口、消息发送和无完成 toast。最终交付前还应运行 `npm run typecheck`、`npm run build` 和 `git diff --check`。
 
-截至 2026-06-17，本设计已完成布局纯函数测试、协议解析测试、右键菜单定向 Playwright 测试、可信工作区 smoke 持久化测试、`typecheck` 和 `git diff --check`。可信工作区 smoke 覆盖整理后写入持久化快照并 reload 保持位置。完整 `test:webview` 在本轮曾出现 4 个既有或波动失败，新增右键菜单用例在完整运行和定向运行中均通过；因此当前验证状态标记为“已部分验证”，后续若完整 Webview 回归也清洁通过，可再升级为“已验证”。
+截至 2026-06-17，本设计已完成布局纯函数测试、协议解析测试、右键菜单定向 Playwright 测试、可信工作区 smoke 持久化测试、`typecheck` 和 `git diff --check`。可信工作区 smoke 覆盖整理后写入持久化快照并 reload 保持位置。完整 `test:webview` 在本轮曾出现 4 个既有或波动失败，新增右键菜单用例在完整运行和定向运行中均通过；因此当前验证状态保持为“验证中”，后续若完整 Webview 回归也清洁通过，可再升级为“已验证”。
 
 截至 2026-06-18，针对真实截图反馈补充了单成员普通分组紧凑和连线感知层级排列的状态级回归：`npm run test:canvas-layout-arrangement` 覆盖单成员分组贴近内容内边距、无关节点不横向夹在用户连线端点之间、用户连线链路按 source -> target 展开、同 source fanout target 同层以及长 label 连线通道放大；`npm run typecheck` 通过。该轮未改变协议、菜单入口或 Host 持久化链路。
