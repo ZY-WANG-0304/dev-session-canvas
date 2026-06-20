@@ -14,7 +14,7 @@ related_specs: []
 related_plans:
   - docs/exec-plans/completed/canvas-layout-arrangement.md
   - docs/exec-plans/completed/canvas-layout-arrangement-edge-polish.md
-updated_at: 2026-06-18
+updated_at: 2026-06-21
 ---
 
 # 画布布局整理设计
@@ -56,6 +56,8 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 
 首版使用持久化 footprint 而不是渲染后 DOM 尺寸，极端情况下可能与真实视觉高度有少量差异；但当前节点尺寸本身已在状态中维护，足以作为整理依据。算法优先确定性和语义边界，不追求专业图布局最优解；大型画布可能不是全局最紧凑，但应明显减少重叠并让相关对象更容易一起看见。文件活动节点归属继续由现有 Host reconciliation 维护，整理函数只移动当前成员，不抢占 owner 推导。
 
+空分组在整理语义中只表示“当前没有直接成员的可见分组对象”。它不是垃圾区域，不能在整理时被删除、折叠或重命名；它也不被额外解释为用户预留规划空间，整理命令可以规范化其几何尺寸。风险主要是显式整理会改变可见对象尺寸；当前取舍是把这视为“整理画布布局”的合理几何副作用，并通过保持父级归属、标题和 workspace root 专属最小尺寸来限制影响范围。
+
 ## 7. 正式方案
 
 主要落点：`src/common/canvasLayoutArrangement.ts` 提供纯函数 `arrangeCanvasLayout(state, now)`；`src/common/protocol.ts` 增加 `webview/arrangeCanvasLayout` 消息；`src/webview/main.tsx` 在画布右键菜单发送该消息；`src/panel/CanvasPanelManager.ts` 在 Host 侧调用整理函数、执行现有文件活动 reconciliation、持久化并广播 `host/stateUpdated`。
@@ -66,7 +68,7 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 
 排列策略是确定性的：先按关系图拆 connected components；component 之间按原始位置顺序进行行列 packing。component 内部若没有明确方向关系，则继续按 Agent、Terminal、文件、分组、Note 的稳定优先级和关系权重排成小型网格。若存在用户 edge、file activity edge 或文件 owner 关系，则把关系保留为有方向的布局证据：用户 edge 使用既有 source / target 和 anchor 推导左右或上下层级，文件 owner 使用 owner -> file 方向；若约束成环，则优先保留权重高的约束并丢弃会形成环的低优先级约束。水平或垂直层级排列时，直接相连对象进入相邻层，同一 source 的多个 target 尽量同层排列，层间距按连线标签估算宽度放大，让连线文案有可读通道，不再只把“有关系”理解为同一网格组件。
 
-整理后分组尺寸按直接成员 bounds 收缩或扩展到最小尺寸与成员内边距；root 使用 root section 最小尺寸与 root 内容 inset，普通分组使用现有普通分组标题 / padding inset。普通分组即使只有一个直接成员也会执行内部整理，因此单成员分组会把成员移动到内容内边距附近，而不是保留整理前的大块空白。root section 仍保留 workspace root 的最小尺寸，不因内容少而收缩到普通分组大小。
+整理后分组尺寸按直接成员 bounds 收缩或扩展到最小尺寸与成员内边距；root 使用 root section 最小尺寸与 root 内容 inset，普通分组使用现有普通分组标题 / padding inset。普通分组即使只有一个直接成员也会执行内部整理，因此单成员分组会把成员移动到内容内边距附近，而不是保留整理前的大块空白。普通空分组没有内容 bounds 可参考，整理时先把尺寸规范化为创建空分组的默认尺寸 `360 x 240`，再作为普通 `group` block 参与父容器排列；嵌套空分组同样适用该规则，并会触发外层分组按规范化后的空子分组 bounds 收口。workspace root section 不适用普通空分组默认尺寸；空 root section 仍规范化到 workspace root 最小尺寸，不因内容少而收缩到普通分组大小。
 
 Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，并走现有 `persistState()`。在 multi-root workspace 下，后续既有 decompose / root-local storage / overlay 持久化继续负责把 root-local 坐标和 root section overlay 写回对应存储，因此 reload 与重开 VSCode 后保持整理结果。
 
@@ -77,3 +79,5 @@ Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，�
 截至 2026-06-17，本设计已完成布局纯函数测试、协议解析测试、右键菜单定向 Playwright 测试、可信工作区 smoke 持久化测试、`typecheck` 和 `git diff --check`。可信工作区 smoke 覆盖整理后写入持久化快照并 reload 保持位置。完整 `test:webview` 在本轮曾出现 4 个既有或波动失败，新增右键菜单用例在完整运行和定向运行中均通过；因此当前验证状态保持为“验证中”，后续若完整 Webview 回归也清洁通过，可再升级为“已验证”。
 
 截至 2026-06-18，针对真实截图反馈补充了单成员普通分组紧凑和连线感知层级排列的状态级回归：`npm run test:canvas-layout-arrangement` 覆盖单成员分组贴近内容内边距、无关节点不横向夹在用户连线端点之间、用户连线链路按 source -> target 展开、同 source fanout target 同层以及长 label 连线通道放大；`npm run typecheck` 通过。该轮未改变协议、菜单入口或 Host 持久化链路。
+
+截至 2026-06-21，补充普通空分组尺寸规范化回归：`npm run test:canvas-layout-arrangement` 覆盖普通空分组归一到 `360 x 240` 后参与同级避让、嵌套空分组归一后驱动父分组收口，以及空 workspace root section 继续使用 root 最小尺寸。
