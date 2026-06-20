@@ -260,6 +260,67 @@ try {
   {
     const arranged = arrangeCanvasLayout(state({
       nodes: [
+        note('outside-empty-groups', { x: 32, y: 32 })
+      ],
+      groups: [
+        group('empty-wide', { x: 0, y: 0 }, { width: 900, height: 620 }),
+        group('empty-small', { x: 20, y: 20 }, { width: 120, height: 80 })
+      ]
+    }));
+
+    const emptyWide = byId(arranged.groups, 'empty-wide');
+    const emptySmall = byId(arranged.groups, 'empty-small');
+    assert.deepEqual(emptyWide.size, { width: 360, height: 240 }, '普通空分组整理时应归一到默认空分组尺寸。');
+    assert.deepEqual(emptySmall.size, { width: 360, height: 240 }, '普通空分组整理时不保留小于默认值的尺寸。');
+    assert.equal(
+      paddedOverlap(rect(emptyWide), rect(emptySmall), 40),
+      false,
+      '普通空分组归一到默认尺寸后应作为同级 block 参与避让。'
+    );
+    assert.equal(
+      paddedOverlap(rect(emptyWide), rect(byId(arranged.nodes, 'outside-empty-groups')), 40),
+      false,
+      '普通空分组归一到默认尺寸后应避让同级节点。'
+    );
+  }
+
+  {
+    const arranged = arrangeCanvasLayout(state({
+      groups: [
+        group('outer-empty-parent', { x: 100, y: 120 }, { width: 840, height: 680 }),
+        group('nested-empty', { x: 420, y: 460 }, { width: 760, height: 520 }, { parentGroupId: 'outer-empty-parent' })
+      ]
+    }));
+
+    const outerGroup = byId(arranged.groups, 'outer-empty-parent');
+    const nestedEmpty = byId(arranged.groups, 'nested-empty');
+    assert.deepEqual(nestedEmpty.size, { width: 360, height: 240 }, '嵌套普通空分组也应先归一到默认尺寸。');
+    assert.equal(nestedEmpty.parentGroupId, 'outer-empty-parent', '整理不应改变空分组父级归属。');
+    assert.equal(nestedEmpty.position.x, outerGroup.position.x + 24, '单个嵌套空分组应贴近父分组左侧内容内边距。');
+    assert.equal(nestedEmpty.position.y, outerGroup.position.y + 52, '单个嵌套空分组应贴近父分组标题下方内容内边距。');
+    assert.deepEqual(outerGroup.size, { width: 408, height: 316 }, '父分组应按默认尺寸后的空子分组 bounds 收口。');
+  }
+
+  {
+    const arranged = arrangeCanvasLayout(state({
+      groups: [
+        group('empty-root', { x: 0, y: 0 }, { width: 360, height: 240 }, {
+          role: 'workspace-root',
+          workspaceRootPath: '/repo/empty'
+        })
+      ]
+    }));
+
+    assert.deepEqual(
+      byId(arranged.groups, 'empty-root').size,
+      { width: 720, height: 520 },
+      '空 workspace root section 不使用普通空分组默认尺寸，应保持 root section 最小尺寸。'
+    );
+  }
+
+  {
+    const arranged = arrangeCanvasLayout(state({
+      nodes: [
         note('root-a-note-a', { x: 90, y: 90 }, { groupId: 'root-a' }),
         note('root-a-note-b', { x: 100, y: 100 }, { groupId: 'root-a' }),
         note('root-b-note-a', { x: 110, y: 110 }, { groupId: 'root-b' }),
