@@ -41,6 +41,12 @@ export const COMMAND_IDS = {
   setSidebarNodeListGroupedViewChecked: 'devSessionCanvas.setSidebarNodeListGroupedViewChecked',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
+  enableSidebarSessionHistoryRootGrouping: 'devSessionCanvas.enableSidebarSessionHistoryRootGrouping',
+  disableSidebarSessionHistoryRootGrouping: 'devSessionCanvas.disableSidebarSessionHistoryRootGrouping',
+  enableSidebarSessionHistoryProviderGrouping: 'devSessionCanvas.enableSidebarSessionHistoryProviderGrouping',
+  disableSidebarSessionHistoryProviderGrouping: 'devSessionCanvas.disableSidebarSessionHistoryProviderGrouping',
+  enableSidebarSessionHistoryTimeGrouping: 'devSessionCanvas.enableSidebarSessionHistoryTimeGrouping',
+  disableSidebarSessionHistoryTimeGrouping: 'devSessionCanvas.disableSidebarSessionHistoryTimeGrouping',
   resetCanvasState: 'devSessionCanvas.resetCanvasState',
   dumpHostDiagnostics: 'devSessionCanvas.dumpHostDiagnostics',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
@@ -140,10 +146,19 @@ export const CONFIG_KEYS = {
 export const CONTEXT_KEYS = {
   panelVisibilityManaged: 'devSessionCanvas.canvas.panelVisibilityManaged',
   panelViewVisible: 'devSessionCanvas.canvas.panelViewVisible',
-  sidebarNodeListGroupedView: 'devSessionCanvas.sidebarNodeList.groupedView'
+  sidebarNodeListGroupedView: 'devSessionCanvas.sidebarNodeList.groupedView',
+  sidebarSessionHistoryGroupByWorkspaceRoot: 'devSessionCanvas.sidebarSessionHistory.groupByWorkspaceRoot',
+  sidebarSessionHistoryGroupByProvider: 'devSessionCanvas.sidebarSessionHistory.groupByProvider',
+  sidebarSessionHistoryGroupByTime: 'devSessionCanvas.sidebarSessionHistory.groupByTime'
 } as const;
 
 export type SidebarNodeListViewMode = 'flat' | 'grouped';
+
+export interface SidebarSessionHistoryGroupingOptions {
+  groupByWorkspaceRoot: boolean;
+  groupByProvider: boolean;
+  groupByTime: boolean;
+}
 
 export const STORAGE_KEYS = {
   canvasState: 'devSessionCanvas.canvas.state',
@@ -153,5 +168,8 @@ export const STORAGE_KEYS = {
   canvasFilesFeatureEnabled: 'devSessionCanvas.canvas.filesFeatureEnabled',
   canvasFileFilterState: 'devSessionCanvas.canvas.fileFilterState',
   canvasTemplateInitialized: 'devSessionCanvas.canvas.templateInitialized',
-  sidebarNodeListViewMode: 'devSessionCanvas.sidebarNodeList.viewMode'
+  sidebarNodeListViewMode: 'devSessionCanvas.sidebarNodeList.viewMode',
+  sidebarSessionHistoryGroupByWorkspaceRoot: 'devSessionCanvas.sidebarSessionHistory.groupByWorkspaceRoot',
+  sidebarSessionHistoryGroupByProvider: 'devSessionCanvas.sidebarSessionHistory.groupByProvider',
+  sidebarSessionHistoryGroupByTime: 'devSessionCanvas.sidebarSessionHistory.groupByTime'
 } as const;

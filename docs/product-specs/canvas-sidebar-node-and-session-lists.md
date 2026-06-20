@@ -38,6 +38,7 @@
 2. 会话列表按时间倒序显示当前 workspace 下的 Codex 和 Claude Code 历史会话，最新会话在上；每条采用紧凑两行结构，首行显示 provider 图标和“会话中的第一条用户指令”作为标题，次行显示相对时间和 session id。
 3. 用户可以使用搜索框按会话标题、provider、session id、工作目录等信息过滤会话列表；搜索不匹配画布节点副标题。
 4. 每个会话项右侧显示两个 icon-only 操作按钮：按钮图标使用 VSCode Codicon，`恢复` 使用 `history`，`分叉` 使用 `repo-forked`；`恢复` 使用 provider 显式 resume 语义创建新 Agent，`分叉` 使用 provider 原生 fork 语义创建新 Agent；当前会话项双击、选中项 Enter / Space 的效果保持为原来的 `恢复`，不改成分叉或展开菜单。恢复新建节点时沿用当前 provider 命令与默认启动参数，并显式附加目标会话的 resume 参数；resume 相关 argv 应尽量前置到命令前部；若默认启动参数里已含只作用于 resume picker / `--last` 选择范围的参数（如 `Codex --all`、`--include-non-interactive`），历史恢复时要先剥离这些选择阶段参数，再写入目标 `session-id`。分叉新建节点时复用当前 provider 命令与默认启动参数，并生成 provider 原生 fork 命令：Codex 使用 `fork <session-id>`，Claude Code 使用 `--resume <session-id> --fork-session`。
+5. 用户可以通过 `会话历史` view 标题右上角的 VSCode 原生 `...` 更多菜单多选分组开关：多根 root workspace 下按 root 分组（默认开启）、按 provider 分组、按分级时间分组（`24小时内`、`一周内`、`更早`）。当多个开关同时开启时，列表按 root > provider > 时间的层级呈现；root 分组在单根 workspace 下不产生额外视觉分组。
 
 ## 4. 在范围内
 
@@ -74,6 +75,11 @@
   - 首行显示 Codex / Claude Code provider 图标和会话中的第一条用户指令
   - 次行显示相对时间和 session id
 - 提供搜索过滤功能，支持按会话标题、provider、session id、工作目录等信息筛选；不匹配节点副标题。
+- `会话历史` view 的分组入口使用 VSCode 原生 view title secondary action，也就是标题右上角 `...` 更多菜单；Webview 内容区不自绘额外的更多按钮或菜单。已开启的分组项在标题左侧显式显示 `✓`，作为 `view/title` popup 中稳定可见的 checked fallback。
+- 分组开关可多选，包含“多根 root workspace 下按 root 分组”“按 provider 分组”“按分级时间分组”；root 分组默认开启，provider 与时间默认关闭。
+- 多个分组开关同时开启时，层级固定为 root > provider > 时间，不按用户勾选顺序改变；时间分组固定为 `24小时内`、`一周内`、`更早`。
+- 多根 workspace 下 root 分组按每条会话 cwd 所属的最深匹配 workspace folder 归属；单根 workspace 下即使 root 分组开关开启，也不额外增加 root 标题行。
+- 会话历史分组标题行支持折叠/展开，折叠后隐藏该分组下的子分组和会话项；折叠只影响侧栏呈现，不改变会话排序、过滤结果、root/provider/time 归属或恢复 / 分叉行为。
 - 会话项 tooltip 只展示 provider 历史已知的会话元信息，不展示当前画布节点标题或节点副标题。
 - 会话项 tooltip 中的工作目录追加目录尾缀，并保留 cwd 来源分隔符；含反斜杠来源使用 `\`，slash-style 来源使用 `/`。
 - 会话项右侧提供 `恢复` 与 `分叉` 两个 icon-only 操作按钮，图标必须使用 bundled VSCode Codicon（`history` / `repo-forked`），并提供 `aria-label` / `title` 等可访问名称；双击会话项、在选中项上按 Enter / Space 仍执行原有恢复行为。
@@ -140,6 +146,11 @@
   - 分叉按钮
 - **排序规则**：
   - 按时间倒序
+  - 开启多个分组开关时，按 root > provider > 时间形成层级，层级内继续保持会话时间倒序
+- **分组开关**：
+  - root 分组：默认开启；仅在多根 workspace 下形成可见 root 分组
+  - provider 分组：默认关闭；开启后按 Codex / Claude Code 分组
+  - 时间分组：默认关闭；开启后按 `24小时内`、`一周内`、`更早` 分组
 - **过滤规则**：
   - 只显示当前 workspace 下的会话
   - 支持关键词搜索
@@ -150,6 +161,7 @@
   - 双击恢复历史会话为新 Agent 节点
   - 点击 `恢复` icon 按钮恢复历史会话为新 Agent 节点
   - 点击 `分叉` icon 按钮以 provider 原生 fork 语义创建新 Agent 节点
+  - 点击分组标题行或在分组标题行按 Enter / Space 可折叠/展开该分组
 
 ### 侧栏容器
 
@@ -190,6 +202,10 @@
 - 会话标题取自该会话中的第一条用户指令，而不是当前画布中的节点标题。
 - 每条会话项的第二行显示相对时间和 session id。
 - 用户可以使用搜索框过滤会话列表，并支持匹配会话标题、provider、session id 与工作目录；不匹配节点副标题。
+- 用户可以从 `会话历史` view 标题右上角的原生 `...` 菜单多选分组开关；root 分组默认开启，provider 和分级时间分组默认关闭；切换入口出现在宿主 view title secondary menu 中，而不是 Webview 内容区。已开启的分组菜单项使用独立 checked variant，并在标题左侧显式显示 `✓`；不开启的 variant 不显示 `✓`，以便用户区分多选开关状态。
+- 多根 workspace 下 root 分组开启时，列表先按会话 cwd 所属 workspace root 分组；单根 workspace 下 root 分组不额外显示 root 标题行。
+- 同时开启 root、provider 和时间分组时，列表层级固定为 root > provider > 时间；时间分组标题分别为 `24小时内`、`一周内`、`更早`；各分组内会话仍保持时间倒序。
+- 会话历史的每个可见分组标题行都可折叠/展开；折叠状态只保存在当前 Webview 呈现层，搜索或分组设置变化后仅保留仍然存在的分组 key。
 - 每个会话项右侧显示 `恢复` 与 `分叉` 两个 icon-only 操作按钮，按钮使用 VSCode Codicon 且具有可访问名称。
 - 双击会话项，或在选中项上按 Enter / Space，可以恢复或打开该历史会话，既有双击行为不改变。
 - 点击 `恢复` icon 按钮时，效果与双击会话项一致。
