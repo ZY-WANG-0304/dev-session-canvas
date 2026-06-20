@@ -228,7 +228,22 @@ try {
   await mkdir(vscodeStubDir, { recursive: true });
   await writeFile(path.join(vscodeStubDir, 'index.js'), 'module.exports = {};', 'utf8');
   const { buildCanvasSidebarSessionHistoryItems, buildSidebarSessionHistoryHtml } = require(bundledSidebarModule);
+  const multiRootWorkspaceFolders = [
+    { name: 'main-root', path: workspaceRoot },
+    { name: 'feature-a', path: nestedWorkspace }
+  ];
   const sidebarItems = buildCanvasSidebarSessionHistoryItems(entries, workspaceRoot);
+  const multiRootSidebarItems = buildCanvasSidebarSessionHistoryItems(entries, multiRootWorkspaceFolders);
+  const multiRootNestedSidebarItem = multiRootSidebarItems.find((entry) => entry.sessionId === 'claude-session-nested');
+  assert.equal(
+    multiRootNestedSidebarItem?.workspaceRootLabel,
+    'feature-a',
+    'Expected multi-root session history items to use the deepest matching workspace root label.'
+  );
+  assert.ok(
+    multiRootNestedSidebarItem?.tooltip.includes('Root：feature-a'),
+    'Expected multi-root session history tooltip to include the matched workspace root label.'
+  );
   const claudeRootSidebarItem = sidebarItems.find((entry) => entry.sessionId === 'claude-session-root');
   assert.ok(claudeRootSidebarItem, 'Expected the sidebar session history builder to include the Claude root entry.');
   assert.ok(
@@ -339,6 +354,7 @@ try {
   const browser = await chromium.launch({ headless: true });
   try {
     await assertSessionHistoryActionButtons(browser, sidebarHtml);
+    await assertSessionHistoryGrouping(browser, sidebarHtml);
   } finally {
     await browser.close();
   }
@@ -442,6 +458,142 @@ async function assertSessionHistoryActionButtons(browser, html) {
   } finally {
     await page.close();
   }
+}
+
+async function assertSessionHistoryGrouping(browser, html) {
+  const page = await createSidebarHistoryPage(browser, html);
+  const now = Date.now();
+  try {
+    const items = [
+      createSidebarHistoryTestItem({
+        provider: 'codex',
+        sessionId: 'codex-main-recent',
+        title: 'main recent codex',
+        updatedAtMs: now - 60 * 60 * 1000,
+        workspaceRootLabel: 'main-root',
+        workspaceRootPath: '/workspace/main'
+      }),
+      createSidebarHistoryTestItem({
+        provider: 'claude',
+        sessionId: 'claude-feature-week',
+        title: 'feature week claude',
+        updatedAtMs: now - 3 * 24 * 60 * 60 * 1000,
+        workspaceRootLabel: 'feature-root',
+        workspaceRootPath: '/workspace/feature'
+      }),
+      createSidebarHistoryTestItem({
+        provider: 'codex',
+        sessionId: 'codex-feature-older',
+        title: 'feature older codex',
+        updatedAtMs: now - 10 * 24 * 60 * 60 * 1000,
+        workspaceRootLabel: 'feature-root',
+        workspaceRootPath: '/workspace/feature'
+      })
+    ];
+
+    await renderSidebarHistoryState(page, {
+      items,
+      workspaceRootCount: 2,
+      grouping: {
+        groupByWorkspaceRoot: true,
+        groupByProvider: true,
+        groupByTime: true
+      }
+    });
+
+    const groupRows = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-session-history-group-key]')).map((row) => ({
+        key: row.getAttribute('data-session-history-group-key'),
+        label: row.getAttribute('data-session-history-group-label'),
+        expanded: row.getAttribute('aria-expanded') === 'true',
+        role: row.getAttribute('role'),
+        twistieClassName: row.querySelector('.session-group-twistie')?.className ?? '',
+        depth: Number(row.getAttribute('data-session-history-group-depth'))
+      }))
+    );
+    assert.deepEqual(
+      groupRows.map((row) => `${row.depth}:${row.label}`),
+      [
+        '0:main-root',
+        '1:Codex',
+        '2:24小时内',
+        '0:feature-root',
+        '1:Claude Code',
+        '2:一周内',
+        '1:Codex',
+        '2:更早'
+      ],
+      'Expected multi-selected session history grouping to render in root > provider > time order.'
+    );
+    assert.ok(
+      groupRows.every((row) => row.role === 'treeitem' && row.expanded && row.twistieClassName.includes('codicon-chevron-down')),
+      'Expected session history group headers to render as expanded collapsible tree rows.'
+    );
+
+    const featureRootGroup = groupRows.find((row) => row.label === 'feature-root');
+    assert.ok(featureRootGroup?.key, 'Expected feature root session history group to expose a stable group key.');
+    await page.click(`[data-session-history-group-key="${featureRootGroup.key}"]`);
+    const collapsedSnapshot = await page.evaluate((groupKey) => ({
+      visibleItemIds: Array.from(document.querySelectorAll('[data-session-history-item-id]'))
+        .map((row) => row.getAttribute('data-session-history-item-id'))
+        .filter(Boolean),
+      featureRootExpanded:
+        document.querySelector(`[data-session-history-group-key="${CSS.escape(groupKey)}"]`)
+          ?.getAttribute('aria-expanded'),
+      featureRootTwistieClassName:
+        document.querySelector(`[data-session-history-group-key="${CSS.escape(groupKey)}"] .session-group-twistie`)
+          ?.className ?? ''
+    }), featureRootGroup.key);
+    assert.equal(collapsedSnapshot.featureRootExpanded, 'false');
+    assert.match(collapsedSnapshot.featureRootTwistieClassName, /\bcodicon-chevron-right\b/u);
+    assert.deepEqual(
+      collapsedSnapshot.visibleItemIds,
+      ['codex:codex-main-recent'],
+      'Expected collapsing a session history group to hide all descendant session rows.'
+    );
+    await page.click(`[data-session-history-group-key="${featureRootGroup.key}"]`);
+
+    await renderSidebarHistoryState(page, {
+      items,
+      workspaceRootCount: 1,
+      grouping: {
+        groupByWorkspaceRoot: true,
+        groupByProvider: true,
+        groupByTime: false
+      }
+    });
+
+    const singleRootGroupRows = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-session-history-group-key]')).map((row) => ({
+        label: row.getAttribute('data-session-history-group-label'),
+        depth: Number(row.getAttribute('data-session-history-group-depth'))
+      }))
+    );
+    assert.deepEqual(
+      singleRootGroupRows.map((row) => `${row.depth}:${row.label}`),
+      ['0:Codex', '0:Claude Code'],
+      'Expected workspace-root grouping to stay visually inactive in a single-root workspace.'
+    );
+  } finally {
+    await page.close();
+  }
+}
+
+function createSidebarHistoryTestItem({ provider, sessionId, title, updatedAtMs, workspaceRootLabel, workspaceRootPath }) {
+  const providerLabel = provider === 'claude' ? 'Claude Code' : 'Codex';
+  return {
+    id: `${provider}:${sessionId}`,
+    provider,
+    providerLabel,
+    sessionId,
+    title,
+    updatedAtMs,
+    timestampLabel: `${providerLabel} · 刚刚 · ${sessionId}`,
+    workspaceRootLabel,
+    workspaceRootPath,
+    tooltip: title,
+    searchText: [title, provider, providerLabel, sessionId, workspaceRootLabel, workspaceRootPath].join(' ').toLowerCase()
+  };
 }
 
 async function createSidebarHistoryPage(browser, html) {
