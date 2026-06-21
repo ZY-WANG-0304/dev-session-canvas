@@ -167,6 +167,30 @@ assert.ok(
     .every((item) => !String(item.group).startsWith('navigation')),
   'Expected sidebar node list view-mode commands to stay behind the native ... menu instead of inline title actions.'
 );
+assert.deepEqual(
+  manifest.contributes.commands
+    .filter((entry) => entry.command.startsWith('devSessionCanvas.setSidebarNodeList'))
+    .map((entry) => ({ command: entry.command, title: entry.title })),
+  [
+    {
+      command: 'devSessionCanvas.setSidebarNodeListFlatView',
+      title: '%command.setSidebarNodeListFlatView.title%'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListFlatViewChecked',
+      title: '%command.setSidebarNodeListFlatView.checkedTitle%'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListGroupedView',
+      title: '%command.setSidebarNodeListGroupedView.title%'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListGroupedViewChecked',
+      title: '%command.setSidebarNodeListGroupedView.checkedTitle%'
+    }
+  ],
+  'Expected checked sidebar node list view-mode variants to use visible checkmark titles.'
+);
 
 const sidebarSessionHistoryViewTitleMenus = viewTitleMenus.filter(
   (item) => typeof item.command === 'string' && item.when?.includes('view == devSessionCanvas.sidebarSessions')
@@ -449,16 +473,20 @@ assert.deepEqual(
 const nls = JSON.parse(await readFile(path.join(repoRoot, 'package.nls.json'), 'utf8'));
 assert.deepEqual(
   [
+    nls['command.setSidebarNodeListFlatView.checkedTitle'],
+    nls['command.setSidebarNodeListGroupedView.checkedTitle'],
     nls['command.sidebarSessionHistoryRootGrouping.checkedTitle'],
     nls['command.sidebarSessionHistoryProviderGrouping.checkedTitle'],
     nls['command.sidebarSessionHistoryTimeGrouping.checkedTitle']
   ],
   [
+    '✓ 平铺视图',
+    '✓ 分组视图',
     '✓ 按 Workspace Root 分组',
     '✓ 按 Provider 分组',
     '✓ 按时间分组'
   ],
-  'Expected checked session history grouping menu titles to make multi-select state visible in view/title popup menus.'
+  'Expected checked sidebar view/title menu variants to make the active state visible in popup menus.'
 );
 
 console.log('extension manifest tests passed');

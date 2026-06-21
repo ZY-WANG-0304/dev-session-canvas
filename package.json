@@ -253,8 +253,7 @@
       },
       {
         "command": "devSessionCanvas.setSidebarNodeListFlatViewChecked",
-        "title": "%command.setSidebarNodeListFlatView.title%",
-        "icon": "$(check)"
+        "title": "%command.setSidebarNodeListFlatView.checkedTitle%"
       },
       {
         "command": "devSessionCanvas.setSidebarNodeListGroupedView",
@@ -262,8 +261,7 @@
       },
       {
         "command": "devSessionCanvas.setSidebarNodeListGroupedViewChecked",
-        "title": "%command.setSidebarNodeListGroupedView.title%",
-        "icon": "$(check)"
+        "title": "%command.setSidebarNodeListGroupedView.checkedTitle%"
       },
       {
         "command": "devSessionCanvas.showSessionHistory",
