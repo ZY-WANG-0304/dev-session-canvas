@@ -657,7 +657,8 @@
     "test:marketplace-vscode-preview-e2e": "npm run build && node scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs",
     "test:marketplace-shared": "npm run -w @dev-session-canvas/marketplace-shared test",
     "typecheck:marketplace": "npm run -w @dev-session-canvas/marketplace-shared typecheck && npm run -w @dev-session-canvas/template-marketplace typecheck",
-    "test:marketplace-web": "npm run -w @dev-session-canvas/template-marketplace test:web"
+    "test:marketplace-web": "npm run -w @dev-session-canvas/template-marketplace test:web",
+    "test:marketplace-vscode-local-preview-e2e": "npm run build && node scripts/smoke/run-template-marketplace-vscode-local-preview-e2e.mjs"
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.45",

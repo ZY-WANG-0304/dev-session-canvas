@@ -334,7 +334,7 @@ Phase 4 在本方案中的承载方式如下：
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。
 3. 在浏览器运行 Vite dev server，验证搜索、标签、排序、详情、发布表单和登录态切换；使用 Playwright 编写 E2E 测试覆盖核心路径。
-4. 扩展 VSCode smoke：默认 `npm run test:marketplace-vscode-e2e` 使用本地 fixture 做稳定回归；`npm run test:marketplace-vscode-preview-e2e` 先做非阻塞 preflight 诊断，再通过 VSCode Webview 直接访问 workers.dev 调试验证环境，覆盖真实 preview API 下的列表、详情、版本菜单和安装 sidecar。后续还需覆盖多种真实 VSCode Color Theme、高对比主题、离线时仍可应用模板、更新提醒与回滚。
+4. 扩展 VSCode smoke：默认 `npm run test:marketplace-vscode-e2e` 使用本地 fixture 做稳定回归；`npm run test:marketplace-vscode-local-preview-e2e` 使用本地 fixture server 复用 preview 测试脚本，覆盖无需外网的 preview 匿名读取、详情、版本菜单和安装 sidecar；`npm run test:marketplace-vscode-preview-e2e` 直接访问 workers.dev 调试验证环境，先做 10 秒 preflight，当前网络不可达时默认 skip，只有设置 `MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK=1` 或 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_REQUIRE_NETWORK=1` 时才把不可达视为失败。后续还需覆盖多种真实 VSCode Color Theme、高对比主题、离线时仍可应用模板、更新提醒与回滚。
 5. 验证 VSCode 端发布流程使用 `vscode.authentication.getSession('github', ...)`，且 GitHub access token 不写入 `workspaceState`、`globalState`、模板 JSON 或 Webview local state。
 6. 对上传大小、缩略图格式、重复点赞、被封禁用户发布、非作者发布新版本、非管理员访问后台等失败路径执行自动化测试。
 7. 执行 `git diff --check`、`npm run typecheck`，并为新增 app / package 补齐对应 `npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web` 和 `npm run typecheck:marketplace`；这些市场回归通过 `npm run test:marketplace` 纳入根 `npm test` 默认入口。

@@ -21,6 +21,9 @@ const fakeAgentProviderPath = path.join(smokeFixturesDir, 'fake-agent-provider')
 const missingAgentProviderPath = path.join(smokeFixturesDir, 'missing-agent-provider');
 const smokeFixturesPath = `${smokeFixturesDir}${path.delimiter}${process.env.PATH ?? ''}`;
 const MARKETPLACE_PREFLIGHT_TIMEOUT_MS = 10000;
+const REQUIRE_NETWORK =
+  process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_REQUIRE_NETWORK === '1' ||
+  process.env.MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK === '1';
 
 process.env.TMPDIR = hostTmpRoot;
 process.env.TMP = process.env.TMPDIR;
@@ -37,7 +40,17 @@ async function main() {
       process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_SOURCE_URL ||
       DEFAULT_PREVIEW_MARKETPLACE_SOURCE_URL
   );
-  await warnIfMarketplaceSourcePreflightFails(marketplaceSourceUrl);
+  const preflight = await checkMarketplaceSourcePreflight(marketplaceSourceUrl);
+  if (!preflight.ok) {
+    const message = formatPreflightFailure(preflight.error);
+    if (REQUIRE_NETWORK) {
+      throw new Error(`${message}. Strict preview network validation is enabled.`);
+    }
+    console.warn(
+      `Template marketplace VS Code preview E2E skipped: ${message}. Set MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK=1 to fail instead of skipping.`
+    );
+    return;
+  }
 
   const extensionTestsEnv = {
     DEV_SESSION_CANVAS_SMOKE_SCENARIO: 'template-marketplace-preview',
@@ -90,11 +103,12 @@ function normalizeMarketplaceSourceUrl(value) {
   return url.toString();
 }
 
-async function warnIfMarketplaceSourcePreflightFails(marketplaceSourceUrl) {
+async function checkMarketplaceSourcePreflight(marketplaceSourceUrl) {
   try {
     await preflightMarketplaceSource(marketplaceSourceUrl);
+    return { ok: true };
   } catch (error) {
-    console.warn(formatPreflightWarning(error));
+    return { ok: false, error };
   }
 }
 
@@ -125,9 +139,9 @@ async function preflightMarketplaceSource(marketplaceSourceUrl) {
   }
 }
 
-function formatPreflightWarning(error) {
+function formatPreflightFailure(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return `Preview marketplace API preflight warning: ${message}. Continuing with the VS Code Webview E2E because Electron may use a different network path.`;
+  return `Preview marketplace API preflight failed: ${message}`;
 }
 
 function formatPreflightError(error) {

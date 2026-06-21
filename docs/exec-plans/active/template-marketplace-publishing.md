@@ -50,6 +50,7 @@
 - [x] (2026-05-31 10:45 +0800) 更新 workers.dev 调试环境：为 4 个 preview seed 版本补传完整 `package.zip` 到 R2，重新部署 Worker / Static Assets 到版本 `d4717aef-7fa9-4067-bb6f-753b939e87da`，随后运行 VSCode preview E2E；当前执行主机访问 workers.dev 超时，E2E 停留在加载态，已记录为环境网络阻塞而非通过。
 - [x] (2026-05-31 11:45 +0800) 修复 preview 中历史发布模板点击 `Download full package` 下载成 `download.json` 的问题：Worker 在 `/download` 找不到历史 `package.zip` 时，会基于同版本 `template.json`、D1 README / CHANGELOG 和缩略图即时生成最小完整 zip；同时强制 package 响应 `content-type: application/zip`，避免 R2 旧 metadata 让浏览器按 JSON 处理。
 - [x] (2026-05-31 19:20 +0800) 处理 PR107 review：Package 上传路径不再把原始上传 zip 原样保存到 R2；Worker 会在解析后用服务端规范化后的 `template.json`、manifest/checksum、README、CHANGELOG、缩略图和保留下来的 `media/` / `assets/` 资源重新生成 canonical `package.zip`，确保包内 `template.json` hash 与版本 `sha256` 一致。
+- [x] (2026-06-22 01:09 +0800) 收口验证环境网络不稳定问题：真实 workers.dev preview E2E 在 preflight 不可达时默认快速 skip，显式设置 `MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK=1` 或 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_REQUIRE_NETWORK=1` 时才失败；新增本地 preview 等价 E2E，复用 preview 测试脚本但用本地 fixture server 提供 `/templates` 和 `/api/v1/*`，避免当前服务器访问不到 workers.dev 时反复超时。
 
 ## 意外与发现
 
@@ -83,8 +84,11 @@
 - 观察：本地 fixture VSCode E2E 只能证明宿主、Webview 和模板库写入的可控回归路径，不能证明调试环境 Worker / D1 / R2 / CORS / CSP 的真实组合。
   证据：新增 `scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs` 和 `tests/vscode-smoke/template-marketplace-preview-tests.cjs`，通过 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_SOURCE_URL` 指向 `https://dscanvas-template-marketplace.wzy0304.workers.dev/templates`，不启动本地 fixture server，先执行非阻塞 preview API preflight 诊断，再用真实 VSCode Webview 访问 preview API 执行匿名浏览、详情读取、版本菜单和安装。
 
-- 观察：当前执行环境不能稳定访问 workers.dev 调试市场，因此不能把本机这次 preview E2E 失败解读为插件逻辑失败。
-  证据：`npm run test:marketplace-vscode-preview-e2e` 在 VSCode Webview 中停留在“正在加载...”；同一主机上代理访问 `https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates?sort=newest` 返回 Squid `ERR_CONNECT_FAIL 110`，绕过代理直连则 443 连接超时。runner 已增加 10 秒非阻塞 preflight 诊断；即使 Node 侧 preflight 网络不可达，也继续启动 VSCode Webview E2E，因为 Electron 可能使用不同的网络路径。
+- 观察：当前执行环境不能稳定访问 workers.dev 调试市场，因此不能把本机这次 preview E2E 失败解读为插件逻辑失败，也不能让已知不可达的网络继续触发长时间 VSCode 超时。
+  证据：`npm run test:marketplace-vscode-preview-e2e` 曾在 VSCode Webview 中停留在“正在加载...”；同一主机上代理访问 `https://dscanvas-template-marketplace.wzy0304.workers.dev/api/v1/templates?sort=newest` 返回 Squid `ERR_CONNECT_FAIL 110`，绕过代理直连则 443 连接超时。2026-06-22 后，真实 preview runner 先执行 10 秒 preflight，失败时默认输出 `Template marketplace VS Code preview E2E skipped` 并退出；只有显式要求网络验收时才把 preflight 失败作为命令失败。
+
+- 观察：真实 workers.dev preview E2E 与本地 fixture E2E覆盖的是不同风险，不能互相替代。
+  证据：`npm run test:marketplace-vscode-local-preview-e2e` 新增为本地等价 preview 验证入口，复用 `tests/vscode-smoke/template-marketplace-preview-tests.cjs` 的匿名读取、详情、版本菜单和安装 sidecar 断言，但数据由 `tests/vscode-smoke/template-marketplace-fixture.cjs` 提供；真实 `npm run test:marketplace-vscode-preview-e2e` 继续只覆盖 Cloudflare preview 的真实路由、D1/R2/CORS/CSP 组合。
 
 - 观察：模板包用户教育可以先作为发布表单的非阻塞预览和 lint 落地，不需要等待 zip 上传、schema 或 Worker 组包重构。
   证据：`apps/template-marketplace/src/web/components/TemplatePublishView.tsx` 只新增 package structure / package checks / README media lint UI，不改变 `publishMarketplaceTemplate()` 的 JSON 请求体；`npm run test:marketplace-web`、`npm run typecheck:marketplace`、`npm run test:canvas-templates` 和 `npm run test:marketplace-browser-e2e` 均通过。
@@ -176,6 +180,14 @@
   理由：侧栏和应用模板读取的是解压目录里的 `template.json`；如果不重写，首次安装返回的是本地 `market-template-*` id，但重启或重新扫描后会退回包内原始 id，导致目录扫描和更新判断不稳定。保留原始 zip 可继续满足完整包审计和重新导出需要。
   日期/作者：2026-05-31 / Codex。
 
+- 决策：真实 workers.dev preview E2E 的网络 preflight 失败时默认 skip，而不是继续启动 VSCode 等待 Webview 超时；需要把网络不可达当成失败时，通过 `MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK=1` 或 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_REQUIRE_NETWORK=1` 显式启用强制模式。
+  理由：当前服务器到 workers.dev 的网络路径不稳定，这是验证环境限制，不是插件逻辑失败。默认快速 skip 可以避免后续反复消耗长 E2E 超时；强制模式保留给发布前或可访问网络环境，确保真实 Cloudflare preview 仍能作为独立验收。
+  日期/作者：2026-06-22 / Codex。
+
+- 决策：新增 `npm run test:marketplace-vscode-local-preview-e2e` 作为“本地等价 preview”验证入口，复用 preview 测试脚本，但由本地 fixture server 提供 `/templates` 和 `/api/v1/*`。
+  理由：本地 fixture E2E 覆盖发布入口，真实 preview E2E 覆盖 Cloudflare 组合；两者之间缺少一个不依赖外网、但执行 preview 匿名读取 / 详情 / 版本菜单 / 安装 sidecar 同一断言的稳定命令。新增 local preview 后，当前服务器也能验证这条主路径，真实 workers.dev smoke 只在网络可达环境承担部署后确认。
+  日期/作者：2026-06-22 / Codex。
+
 ## 结果与复盘
 
 当前已完成 Phase 2 发布能力的本地代码闭环：共享发布 schema、浏览器 GitHub OAuth/session helper、测试专用 fake auth、OAuth 发起页回跳、市场 session 退出登录、`POST /api/v1/templates`、`POST /api/v1/templates/:id/versions`、`GET /api/v1/me/templates`、D1/R2 写入 helper、浏览器 `/templates/publish` 与 `/templates/me` 页面、浏览器 Templates 列表上传入口、VSCode 命令面板 / 市场面板 header / 侧边栏发布入口、共享自动缩略图生成、内容安全最小检查、文件大小超限错误和结构化失败提示均已接入。
@@ -212,6 +224,8 @@
 同日上午更新 workers.dev 调试环境以匹配完整模板主路径：preview R2 中 4 个 seed 版本均已补齐 `package.zip`，Worker / Static Assets 已重新部署，最新 deployment 100% 指向版本 `d4717aef-7fa9-4067-bb6f-753b939e87da`。VSCode preview E2E 已执行一次，但当前 Remote SSH 主机无法连通 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，Webview 只能停留在加载态；后续需要从能访问 workers.dev 的网络环境复跑同一命令，或由用户本地手动打开 preview URL 做安装验证。
 
 随后根据用户截图修复历史 preview 模板完整包下载：对于此前通过旧 JSON 路径发布、R2 中没有 `package.zip` 的版本，`/download` 不再返回 JSON 错误，而是用同目录 `template.json` 和 D1 中已有的 README / CHANGELOG / 缩略图生成一个包含 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md` 和 `media/thumbnail.png` 的最小完整 zip。真实 `package.zip` 存在时仍优先返回 R2 原包；该 fallback 通过 `x-marketplace-package-source: generated-from-template-json` 标记，方便后续数据迁移时清理。
+
+2026-06-22 继续收口验证环境稳定性：真实 workers.dev preview E2E 仍保留为部署后 smoke，但在 preflight 访问不到 preview API 时默认快速 skip，不再继续启动 VSCode 并等待 Webview 超时。新增 `npm run test:marketplace-vscode-local-preview-e2e`，它启动本地 fixture server 后复用 `tests/vscode-smoke/template-marketplace-preview-tests.cjs`，覆盖列表、详情、README/CHANGELOG tab、版本菜单和完整包安装 sidecar。这样当前服务器可以稳定验证 preview 匿名主路径，真实 Cloudflare 路由 / D1 / R2 / CORS 组合则交给网络可达环境或强制模式验证。
 
 ## 上下文与定向
 
@@ -285,7 +299,9 @@
 
 UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器和 VSCode 两段。浏览器段必须覆盖 Templates 列表、模板详情、My Templates、Publish；VSCode 段必须覆盖插件市场面板的筛选、详情、返回、版本菜单、安装和发布入口。
 
-调试验证环境 E2E 的验收是：`npm run test:marketplace-vscode-preview-e2e` 不启动本地 fixture，直接使用 `https://dscanvas-template-marketplace.wzy0304.workers.dev/templates` 或 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_SOURCE_URL` 指定的 `/templates` 来源；它必须能打开 VSCode 内市场列表、读取真实模板详情、打开并关闭版本菜单、安装真实模板，并在 sidecar 中保留 preview `sourceUrl`。
+本地 preview 等价 E2E 的验收是：`npm run test:marketplace-vscode-local-preview-e2e` 启动本地 fixture server，并用同一份 `tests/vscode-smoke/template-marketplace-preview-tests.cjs` 验证 VSCode 内市场列表、真实详情视图、README / CHANGELOG tab、版本菜单和完整包安装 sidecar。这个命令不访问 Cloudflare，适合作为当前服务器上的稳定验证入口。
+
+调试验证环境 E2E 的验收是：`npm run test:marketplace-vscode-preview-e2e` 不启动本地 fixture，直接使用 `https://dscanvas-template-marketplace.wzy0304.workers.dev/templates` 或 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_SOURCE_URL` 指定的 `/templates` 来源。该命令先对 `/api/v1/templates?sort=newest` 做 10 秒 preflight；默认情况下 preflight 不可达会输出 skipped 并退出，不把当前服务器网络限制写成产品失败。设置 `MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK=1` 或 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_REQUIRE_NETWORK=1` 后，preflight 不可达必须失败；在网络可达环境中，它必须能打开 VSCode 内市场列表、读取真实模板详情、打开并关闭版本菜单、安装真实模板，并在 sidecar 中保留 preview `sourceUrl`。
 
 真实模板包上传/下载 UI 的验收是：浏览器模板详情页以 `Download full package` / “下载完整模板” 提供主下载动作，该动作应调用 `GET /api/v1/templates/:slug/download?version=<latestVersionId>` 并返回完整 `package.zip`；迁移期已存在的 `GET /api/v1/templates/:slug/package?version=<latestVersionId>` 可作为隐藏兼容别名。有 R2 binding 且同版本目录存在 `package.zip` 时，Worker 以 `application/zip` 和 `Content-Disposition: attachment` 返回真实 zip，并在对象存在后才记录下载计数。浏览器详情页可继续提供 `Download template.json`，但它应调用单独轻量导出接口，例如 `GET /api/v1/templates/:slug/template.json?version=<latestVersionId>`，只用于把包内模板主体导出为轻量模板，不能作为市场模板主下载或安装路径。VSCode 安装同一版本时必须下载完整包，校验后写入目标模板库的 `marketplace/{slug}/` 目录，目录中保留原始 `package.zip`、解压后的包内容和 `.market.json` sidecar；`listInstalledTemplates` / 侧栏模板扫描通过 sidecar 找到包内 `template.json` 并展示为一个市场模板。发布页提供 `template.json` 轻量输入和高级 `Upload package.zip` 完整输入；选择合法包后自动填充名称、slug、描述、tags、README、CHANGELOG、Template JSON Preview 和缩略图预览；`package.zip` 与 `template.json` 上传入口互斥，后选择的入口清空前一个入口的文件状态，避免表单显示与提交来源不一致。Package 模式下允许继续编辑公开字段、README、CHANGELOG、Template JSON Preview 和缩略图；点击发布时前端基于原包资源重新生成 canonical `package.zip`，把修改写回 manifest / README / CHANGELOG / template JSON / thumbnail 后使用 `multipart/form-data` 提交，Worker 校验包路径、大小、文件数量、manifest、模板 JSON、README 媒体规则和缩略图，并写入 R2 `package.zip`、兼容 `template.json`、`thumbnail.png`、`manifest.json` 与 D1 派生索引。现有 JSON 表单发布仍可用，但提交后必须同时生成 canonical `package.zip`，使市场最终只管理完整模板。
 
@@ -831,6 +847,40 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
     npm run -w @dev-session-canvas/template-marketplace typecheck -- --pretty false
     <passed>
 
+本轮验证环境稳定性收口验证输出（2026-06-22 01:44 +0800）：
+
+    node --check scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs
+    node --check scripts/smoke/run-template-marketplace-vscode-local-preview-e2e.mjs
+    node --check tests/vscode-smoke/template-marketplace-tests.cjs
+    node --check tests/vscode-smoke/template-marketplace-preview-tests.cjs
+    node --check tests/vscode-smoke/template-marketplace-fixture.cjs
+    node --check scripts/smoke/vscode-smoke-runner.mjs
+    <passed>
+
+    node scripts/test/test-vscode-smoke-runner-env.mjs
+    vscode smoke runner env sanitization passed
+
+    npm run test:canvas-templates
+    canvas template store tests passed
+
+    npm run test:marketplace-vscode-preview-e2e
+    <skipped on this host: preview API preflight 报 `ETIMEDOUT` / `ENETUNREACH`，runner 按默认非强制模式快速退出；强制网络验收需设置 `MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK=1`。>
+
+    npm run test:marketplace-vscode-local-preview-e2e
+    Template marketplace VS Code local preview E2E passed against http://127.0.0.1:<port>/templates.
+
+    npm run test:marketplace-vscode-fixture-e2e
+    Template marketplace VS Code UI E2E passed.
+
+    npm run typecheck:marketplace
+    <passed>
+
+    npm run build:marketplace
+    <passed>
+
+    git diff --check
+    <no output>
+
 ## 接口与依赖
 
 需要在 `packages/marketplace-shared/src/index.ts` 导出以下跨端 contract：发布请求 schema、发布新版本请求 schema、发布响应类型、模板包大小默认上限、缩略图大小上限和 canvas template document schema。Worker、Web 和 VSCode 只能依赖这些 contract，而不是复制校验规则。
@@ -848,3 +898,5 @@ UI 操作 E2E 的验收是：`npm run test:marketplace-e2e` 同时跑浏览器�
 2026-05-31 / Codex：补充历史 JSON-only 版本下载 fallback，原因是 preview 中旧发布模板没有 `package.zip` 导致浏览器点击完整下载时保存 JSON 错误；计划同步了临时生成完整 zip 的兼容策略、验证命令和新的 preview 版本号。
 
 2026-05-31 / Codex：补充 Package 上传 canonical 重建修复记录，原因是 PR review 发现 Worker 原样保存上传 zip 会让包内 `template.json` hash 与 D1 版本 `sha256` 不一致；计划同步了服务端重建包、保留媒体资源和 API 回归测试证据。
+
+2026-06-22 / Codex：补充验证环境稳定性记录，原因是当前服务器访问 workers.dev 不稳定会让真实 preview E2E 反复超时；计划同步了默认 skip、强制网络模式和本地 preview 等价 E2E 的分工。
