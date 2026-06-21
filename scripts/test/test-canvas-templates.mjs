@@ -636,10 +636,15 @@ try {
   assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-shared/u);
   assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-api/u);
   assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-web/u);
+  assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-vscode-preview-preflight/u);
   assert.strictEqual(packageManifest.scripts['test:marketplace-vscode-e2e'], 'npm run test:marketplace-vscode-fixture-e2e');
   assert.strictEqual(
     packageManifest.scripts['test:marketplace-vscode-fixture-e2e'],
     'npm run build && node scripts/smoke/run-template-marketplace-vscode-e2e.mjs'
+  );
+  assert.strictEqual(
+    packageManifest.scripts['test:marketplace-vscode-preview-preflight'],
+    'node scripts/test/test-template-marketplace-preview-preflight.mjs'
   );
   assert.strictEqual(
     packageManifest.scripts['test:marketplace-vscode-preview-e2e'],
@@ -1169,6 +1174,12 @@ try {
   assert.match(marketplaceVscodePreviewE2eRunnerSource, /preflightMarketplaceSource\(marketplaceSourceUrl\)/u);
   assert.match(marketplaceVscodePreviewE2eRunnerSource, /Template marketplace VS Code preview E2E skipped/u);
   assert.match(marketplaceVscodePreviewE2eRunnerSource, /MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK=1/u);
+  assert.match(marketplaceVscodePreviewE2eRunnerSource, /kind === 'transport'/u);
+  assert.match(
+    marketplaceVscodePreviewE2eRunnerSource,
+    /createPreflightError\('api', apiUrl, `HTTP \$\{response\.status\}`\)/u
+  );
+  assert.match(marketplaceVscodePreviewE2eRunnerSource, /createPreflightError\('api', apiUrl, 'preview API returned 0 templates'\)/u);
   assert.match(marketplaceVscodePreviewE2eRunnerSource, /MARKETPLACE_PREFLIGHT_TIMEOUT_MS = 10000/u);
   assert.doesNotMatch(marketplaceVscodePreviewE2eRunnerSource, /findAvailablePort|createServer/u);
   assert.match(marketplaceVscodeLocalPreviewE2eRunnerSource, /createMarketplaceFixture\(port\)/u);
