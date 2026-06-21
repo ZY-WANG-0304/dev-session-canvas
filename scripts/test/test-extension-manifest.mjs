@@ -167,6 +167,108 @@ assert.ok(
     .every((item) => !String(item.group).startsWith('navigation')),
   'Expected sidebar node list view-mode commands to stay behind the native ... menu instead of inline title actions.'
 );
+assert.deepEqual(
+  manifest.contributes.commands
+    .filter((entry) => entry.command.startsWith('devSessionCanvas.setSidebarNodeList'))
+    .map((entry) => ({ command: entry.command, title: entry.title })),
+  [
+    {
+      command: 'devSessionCanvas.setSidebarNodeListFlatView',
+      title: '%command.setSidebarNodeListFlatView.title%'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListFlatViewChecked',
+      title: '%command.setSidebarNodeListFlatView.checkedTitle%'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListGroupedView',
+      title: '%command.setSidebarNodeListGroupedView.title%'
+    },
+    {
+      command: 'devSessionCanvas.setSidebarNodeListGroupedViewChecked',
+      title: '%command.setSidebarNodeListGroupedView.checkedTitle%'
+    }
+  ],
+  'Expected checked sidebar node list view-mode variants to use visible checkmark titles.'
+);
+
+const sidebarSessionHistoryViewTitleMenus = viewTitleMenus.filter(
+  (item) => typeof item.command === 'string' && item.when?.includes('view == devSessionCanvas.sidebarSessions')
+);
+assert.deepEqual(
+  sidebarSessionHistoryViewTitleMenus.filter((item) => item.command !== 'devSessionCanvas.refreshSessionHistory'),
+  [
+    {
+      command: 'devSessionCanvas.disableSidebarSessionHistoryRootGrouping',
+      when: 'view == devSessionCanvas.sidebarSessions && devSessionCanvas.sidebarSessionHistory.groupByWorkspaceRoot',
+      group: '1_grouping@1'
+    },
+    {
+      command: 'devSessionCanvas.enableSidebarSessionHistoryRootGrouping',
+      when: 'view == devSessionCanvas.sidebarSessions && !devSessionCanvas.sidebarSessionHistory.groupByWorkspaceRoot',
+      group: '1_grouping@1'
+    },
+    {
+      command: 'devSessionCanvas.disableSidebarSessionHistoryProviderGrouping',
+      when: 'view == devSessionCanvas.sidebarSessions && devSessionCanvas.sidebarSessionHistory.groupByProvider',
+      group: '1_grouping@2'
+    },
+    {
+      command: 'devSessionCanvas.enableSidebarSessionHistoryProviderGrouping',
+      when: 'view == devSessionCanvas.sidebarSessions && !devSessionCanvas.sidebarSessionHistory.groupByProvider',
+      group: '1_grouping@2'
+    },
+    {
+      command: 'devSessionCanvas.disableSidebarSessionHistoryTimeGrouping',
+      when: 'view == devSessionCanvas.sidebarSessions && devSessionCanvas.sidebarSessionHistory.groupByTime',
+      group: '1_grouping@3'
+    },
+    {
+      command: 'devSessionCanvas.enableSidebarSessionHistoryTimeGrouping',
+      when: 'view == devSessionCanvas.sidebarSessions && !devSessionCanvas.sidebarSessionHistory.groupByTime',
+      group: '1_grouping@3'
+    }
+  ],
+  'Expected session history grouping toggles to live in the native view title secondary menu.'
+);
+assert.ok(
+  sidebarSessionHistoryViewTitleMenus
+    .filter((item) => item.command.includes('SidebarSessionHistory'))
+    .every((item) => !String(item.group).startsWith('navigation')),
+  'Expected session history grouping toggles to stay behind the native ... menu instead of inline title actions.'
+);
+assert.deepEqual(
+  manifest.contributes.commands
+    .filter((entry) => entry.command.includes('SidebarSessionHistory'))
+    .map((entry) => ({ command: entry.command, title: entry.title })),
+  [
+    {
+      command: 'devSessionCanvas.enableSidebarSessionHistoryRootGrouping',
+      title: '%command.sidebarSessionHistoryRootGrouping.title%'
+    },
+    {
+      command: 'devSessionCanvas.disableSidebarSessionHistoryRootGrouping',
+      title: '%command.sidebarSessionHistoryRootGrouping.checkedTitle%'
+    },
+    {
+      command: 'devSessionCanvas.enableSidebarSessionHistoryProviderGrouping',
+      title: '%command.sidebarSessionHistoryProviderGrouping.title%'
+    },
+    {
+      command: 'devSessionCanvas.disableSidebarSessionHistoryProviderGrouping',
+      title: '%command.sidebarSessionHistoryProviderGrouping.checkedTitle%'
+    },
+    {
+      command: 'devSessionCanvas.enableSidebarSessionHistoryTimeGrouping',
+      title: '%command.sidebarSessionHistoryTimeGrouping.title%'
+    },
+    {
+      command: 'devSessionCanvas.disableSidebarSessionHistoryTimeGrouping',
+      title: '%command.sidebarSessionHistoryTimeGrouping.checkedTitle%'
+    }
+  ],
+  'Expected checked session history grouping variants to use a visible checkmark title fallback.'
+);
 
 const commandPaletteMenus = manifest.contributes.menus.commandPalette;
 assert.ok(Array.isArray(commandPaletteMenus), 'Expected commandPalette menu contributions.');
@@ -336,6 +438,55 @@ assert.deepEqual(
     }
   ],
   'Expected internal sidebar node list view-mode variants to stay out of the global Command Palette.'
+);
+assert.deepEqual(
+  commandPaletteMenus.filter((item) => item.command.includes('SidebarSessionHistory')),
+  [
+    {
+      command: 'devSessionCanvas.enableSidebarSessionHistoryRootGrouping',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.disableSidebarSessionHistoryRootGrouping',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.enableSidebarSessionHistoryProviderGrouping',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.disableSidebarSessionHistoryProviderGrouping',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.enableSidebarSessionHistoryTimeGrouping',
+      when: 'false'
+    },
+    {
+      command: 'devSessionCanvas.disableSidebarSessionHistoryTimeGrouping',
+      when: 'false'
+    }
+  ],
+  'Expected internal session history grouping variants to stay out of the global Command Palette.'
+);
+
+const nls = JSON.parse(await readFile(path.join(repoRoot, 'package.nls.json'), 'utf8'));
+assert.deepEqual(
+  [
+    nls['command.setSidebarNodeListFlatView.checkedTitle'],
+    nls['command.setSidebarNodeListGroupedView.checkedTitle'],
+    nls['command.sidebarSessionHistoryRootGrouping.checkedTitle'],
+    nls['command.sidebarSessionHistoryProviderGrouping.checkedTitle'],
+    nls['command.sidebarSessionHistoryTimeGrouping.checkedTitle']
+  ],
+  [
+    '✓ 平铺视图',
+    '✓ 分组视图',
+    '✓ 按 Workspace Root 分组',
+    '✓ 按 Provider 分组',
+    '✓ 按时间分组'
+  ],
+  'Expected checked sidebar view/title menu variants to make the active state visible in popup menus.'
 );
 
 console.log('extension manifest tests passed');

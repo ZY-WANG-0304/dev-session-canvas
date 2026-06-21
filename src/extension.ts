@@ -227,7 +227,11 @@ export function activate(context: vscode.ExtensionContext): void {
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
   const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri);
   const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri, context.workspaceState);
-  const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(panelManager, context.extensionUri);
+  const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(
+    panelManager,
+    context.extensionUri,
+    context.workspaceState
+  );
 
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
     const dumpResult = await panelManager.dumpCurrentHostDiagnostics();
@@ -557,6 +561,30 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.refreshSessionHistory, async () => {
     await sidebarSessionHistoryView.refresh();
+  });
+
+  registerCommand(context, COMMAND_IDS.enableSidebarSessionHistoryRootGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByWorkspaceRoot', true);
+  });
+
+  registerCommand(context, COMMAND_IDS.disableSidebarSessionHistoryRootGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByWorkspaceRoot', false);
+  });
+
+  registerCommand(context, COMMAND_IDS.enableSidebarSessionHistoryProviderGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByProvider', true);
+  });
+
+  registerCommand(context, COMMAND_IDS.disableSidebarSessionHistoryProviderGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByProvider', false);
+  });
+
+  registerCommand(context, COMMAND_IDS.enableSidebarSessionHistoryTimeGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByTime', true);
+  });
+
+  registerCommand(context, COMMAND_IDS.disableSidebarSessionHistoryTimeGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByTime', false);
   });
 
   registerCommand(context, COMMAND_IDS.resetCanvasState, async () => {
