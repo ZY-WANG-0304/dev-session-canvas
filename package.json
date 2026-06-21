@@ -253,8 +253,7 @@
       },
       {
         "command": "devSessionCanvas.setSidebarNodeListFlatViewChecked",
-        "title": "%command.setSidebarNodeListFlatView.title%",
-        "icon": "$(check)"
+        "title": "%command.setSidebarNodeListFlatView.checkedTitle%"
       },
       {
         "command": "devSessionCanvas.setSidebarNodeListGroupedView",
@@ -262,8 +261,7 @@
       },
       {
         "command": "devSessionCanvas.setSidebarNodeListGroupedViewChecked",
-        "title": "%command.setSidebarNodeListGroupedView.title%",
-        "icon": "$(check)"
+        "title": "%command.setSidebarNodeListGroupedView.checkedTitle%"
       },
       {
         "command": "devSessionCanvas.showSessionHistory",
@@ -274,6 +272,30 @@
         "command": "devSessionCanvas.refreshSessionHistory",
         "title": "%command.refreshSessionHistory.title%",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "devSessionCanvas.enableSidebarSessionHistoryRootGrouping",
+        "title": "%command.sidebarSessionHistoryRootGrouping.title%"
+      },
+      {
+        "command": "devSessionCanvas.disableSidebarSessionHistoryRootGrouping",
+        "title": "%command.sidebarSessionHistoryRootGrouping.checkedTitle%"
+      },
+      {
+        "command": "devSessionCanvas.enableSidebarSessionHistoryProviderGrouping",
+        "title": "%command.sidebarSessionHistoryProviderGrouping.title%"
+      },
+      {
+        "command": "devSessionCanvas.disableSidebarSessionHistoryProviderGrouping",
+        "title": "%command.sidebarSessionHistoryProviderGrouping.checkedTitle%"
+      },
+      {
+        "command": "devSessionCanvas.enableSidebarSessionHistoryTimeGrouping",
+        "title": "%command.sidebarSessionHistoryTimeGrouping.title%"
+      },
+      {
+        "command": "devSessionCanvas.disableSidebarSessionHistoryTimeGrouping",
+        "title": "%command.sidebarSessionHistoryTimeGrouping.checkedTitle%"
       },
       {
         "command": "devSessionCanvas.resetCanvasState",
@@ -360,6 +382,30 @@
         {
           "command": "devSessionCanvas.setSidebarNodeListGroupedViewChecked",
           "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.enableSidebarSessionHistoryRootGrouping",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.disableSidebarSessionHistoryRootGrouping",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.enableSidebarSessionHistoryProviderGrouping",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.disableSidebarSessionHistoryProviderGrouping",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.enableSidebarSessionHistoryTimeGrouping",
+          "when": "false"
+        },
+        {
+          "command": "devSessionCanvas.disableSidebarSessionHistoryTimeGrouping",
+          "when": "false"
         }
       ],
       "explorer/context": [
@@ -394,6 +440,36 @@
           "command": "devSessionCanvas.refreshSessionHistory",
           "when": "view == devSessionCanvas.sidebarSessions",
           "group": "navigation@1"
+        },
+        {
+          "command": "devSessionCanvas.disableSidebarSessionHistoryRootGrouping",
+          "when": "view == devSessionCanvas.sidebarSessions && devSessionCanvas.sidebarSessionHistory.groupByWorkspaceRoot",
+          "group": "1_grouping@1"
+        },
+        {
+          "command": "devSessionCanvas.enableSidebarSessionHistoryRootGrouping",
+          "when": "view == devSessionCanvas.sidebarSessions && !devSessionCanvas.sidebarSessionHistory.groupByWorkspaceRoot",
+          "group": "1_grouping@1"
+        },
+        {
+          "command": "devSessionCanvas.disableSidebarSessionHistoryProviderGrouping",
+          "when": "view == devSessionCanvas.sidebarSessions && devSessionCanvas.sidebarSessionHistory.groupByProvider",
+          "group": "1_grouping@2"
+        },
+        {
+          "command": "devSessionCanvas.enableSidebarSessionHistoryProviderGrouping",
+          "when": "view == devSessionCanvas.sidebarSessions && !devSessionCanvas.sidebarSessionHistory.groupByProvider",
+          "group": "1_grouping@2"
+        },
+        {
+          "command": "devSessionCanvas.disableSidebarSessionHistoryTimeGrouping",
+          "when": "view == devSessionCanvas.sidebarSessions && devSessionCanvas.sidebarSessionHistory.groupByTime",
+          "group": "1_grouping@3"
+        },
+        {
+          "command": "devSessionCanvas.enableSidebarSessionHistoryTimeGrouping",
+          "when": "view == devSessionCanvas.sidebarSessions && !devSessionCanvas.sidebarSessionHistory.groupByTime",
+          "group": "1_grouping@3"
         },
         {
           "command": "devSessionCanvas.addFolderToWorkspace",
