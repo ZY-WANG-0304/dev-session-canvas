@@ -20,6 +20,7 @@ const EDGE_LABEL_CHANNEL_PADDING = 72;
 const MAXIMUM_EDGE_CHANNEL_GAP = 560;
 const CANVAS_GROUP_PADDING = 24;
 const CANVAS_GROUP_TITLE_HEIGHT = 28;
+const DEFAULT_EMPTY_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
 const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
 const MINIMUM_WORKSPACE_ROOT_GROUP_SIZE: CanvasNodeFootprint = { width: 720, height: 520 };
 
@@ -127,6 +128,10 @@ class LayoutContext {
   public arrangeContainer(groupId: string | undefined): void {
     for (const group of this.getDirectChildGroups(groupId)) {
       this.arrangeContainer(group.id);
+    }
+
+    if (groupId) {
+      this.normalizeEmptyGroupSize(groupId);
     }
 
     const items = this.getDirectItems(groupId);
@@ -443,6 +448,25 @@ class LayoutContext {
         this.nodesById.set(node.id, translateNode(node, delta));
       }
     }
+  }
+
+  private normalizeEmptyGroupSize(groupId: string): void {
+    const group = this.groupsById.get(groupId);
+    if (!group || this.getDirectItems(groupId).length > 0) {
+      return;
+    }
+
+    const targetSize = isWorkspaceRootGroup(group)
+      ? MINIMUM_WORKSPACE_ROOT_GROUP_SIZE
+      : DEFAULT_EMPTY_CANVAS_GROUP_SIZE;
+    if (group.size.width === targetSize.width && group.size.height === targetSize.height) {
+      return;
+    }
+
+    this.groupsById.set(group.id, {
+      ...group,
+      size: targetSize
+    });
   }
 
   private resizeGroupToDirectMembers(groupId: string): void {
