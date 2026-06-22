@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.18.1`。当前版本范围收口为“发布新的公开 `Preview` 里程碑：multi-root workspace 的 `paneGallery` 窗格画廊呈现模式、画布右键菜单的一次性布局整理，以及 Codex 异常输出文本尾部输入提示 / 模型 footer 兼容；继续保留 `0.17.0` 的侧栏 workspace folder / git worktree 管理入口、folder / worktree 类型识别、Host 到 Webview 执行输出投递输入优先 scheduler、Codex / Claude Code Agent Fork、GitHub Release assets / 双市场发布 workflow 解耦、安装拓扑和 Preview 支持边界”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、手工发布步骤、安装/升级说明、验证记录与回退口径；当前目标版本为 `0.18.1`。当前版本范围收口为“相对已发布 `0.18.0` 的补丁更新：侧栏会话历史分组控制、节点 / 会话历史菜单选中态表达、画布布局整理空分组尺寸规范化、窗格画廊视口记忆隔离，以及公开隐私 / 许可证元数据；继续保留 `0.18.0` 的 multi-root `paneGallery` 窗格画廊、一次性画布布局整理、Codex 异常输出 footer 兼容、侧栏 workspace folder / git worktree 管理、Host 到 Webview 执行输出投递输入优先 scheduler、Codex / Claude Code Agent Fork、GitHub Release assets / 双市场发布 workflow 解耦、安装拓扑和 Preview 支持边界”。它不是对外宣传页，而是发布当天的执行与复核手册。
 ## 当前发布素材
 
 - Marketplace listing 正文：`README.marketplace.md`（引用 `images/marketplace/canvas-overview.png` + `images/marketplace/canvas-overview.mp4`）
@@ -35,9 +35,9 @@
 
 发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
 
-- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.18.1 - Preview Pane Gallery and Layout Arrangement Update`
+- 顶部版本标题与 `CHANGELOG.md` 保持一致；当前标题为 `0.18.1 - Sidebar History Grouping and Canvas Layout Fixes`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- release notes 应覆盖以下当前已确认范围：`0.18.1` 新增 multi-root `paneGallery` 呈现模式、画布布局整理入口与 Codex 异常输出 footer 兼容；保留 `0.17.0` 的侧栏 workspace folder / git worktree 操作、Host 输出投递输入优先 scheduler、GitHub Release assets 兜底入口、双市场同版本同步策略，以及 `Dev Session Canvas Notifier` companion 版本对齐
+- release notes 应覆盖以下当前已确认范围：`0.18.1` 收口侧栏会话历史分组控制、节点 / 会话历史菜单选中态、画布布局整理空分组尺寸、窗格画廊视口记忆隔离、公开隐私 / 许可证元数据，以及 `Dev Session Canvas Notifier` companion 版本对齐；docs-only 的侧栏视觉确认不进入用户可见更新说明
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 `Preview` 误写成稳定正式版承诺
 
@@ -79,9 +79,9 @@
 
 若发布当天能补齐更高质量的截图，可按下列优先级追加：
 
-1. 多根 workspace 中 `paneGallery` 的 dynamic / grid 全览与 side / top thumbnail 模式切换
-2. 画布右键菜单“整理画布布局”前后的节点 / 分组重叠收口对比
-3. Codex 异常输出尾部 footer 兼容的 attention 状态或诊断视图
+1. 侧栏 `会话历史` 分组开关与分组折叠 / 展开状态
+2. `节点` / `会话历史` view title 更多菜单中的 `✓` 选中态
+3. 画布布局整理后空分组尺寸稳定，以及窗格画廊切换后各窗格视口互不干扰
 
 若来不及补截图，不阻塞当前公开 `Preview` 更新。
 
@@ -115,18 +115,20 @@
 
 ## 当前验证备注
 
-截至 `2026-06-19`，上一轮 `0.17.0` 已完成正式发布收口。本轮上一发布输入来自 `main` 上的 release ref `2259900286708540a18a858ce4f82ed4fd836c40`；正式 `v0.17.0` tag 指向同一 ref，远端不存在 `publish/v0.17.0` 临时 tag。GitHub Release `v0.17.0` 位于 `https://github.com/ZY-WANG-0304/dev-session-canvas/releases/tag/v0.17.0`，包含 `dev-session-canvas-0.17.0.vsix`、`dev-session-canvas-notifier-0.17.0.vsix` 与 `release-manifest-0.17.0.json`。Open VSX API 已确认主扩展与 notifier `0.17.0` 均可查询且 files metadata 齐全；Visual Studio Marketplace public gallery 对主扩展与 notifier 仍返回 0 个结果，因此 VSM 继续作为 deferred channel，不得对外宣称为已可用。
+截至 `2026-06-22`，上一轮 `0.18.0` 已完成 GitHub Release assets + Open VSX 兜底发布。本轮上一发布输入来自 `main` 上的 release ref `85f8bb1a38a048afdcee43c2bcfaeb8f1c604bf5`；正式 `v0.18.0` tag 指向同一 ref，远端不存在 `publish/v0.18.0` 临时 tag。GitHub Release `v0.18.0` 位于 `https://github.com/ZY-WANG-0304/dev-session-canvas/releases/tag/v0.18.0`，包含 `dev-session-canvas-0.18.0.vsix`、`dev-session-canvas-notifier-0.18.0.vsix` 与 `release-manifest-0.18.0.json`。Release manifest 记录 Open VSX 主扩展与 notifier `0.18.0` 均 verified，Visual Studio Marketplace 主扩展与 notifier 均为 `publish-failed` / deferred；因此 VSM 继续作为 deferred channel，不得对外宣称为已可用。
 
-当前 `0.18.1` 发布准备基线来自最新 `origin/main` / `main` ref `f9ba961eb95f57d33ab54b67e452968168080050`。`v0.17.0` 之后合入 `main` 的发布输入包括：#182 兼容 Codex 异常输出尾部状态栏，#181 实现画布布局整理，#180 新增 multi-root pane gallery 模式。本轮从最新 `origin/main` 单独切出 `release-0-18-0-prep`，目标版本升级为 `0.18.1`；截至本发布准备文档更新时，远端不存在 `v0.18.1` / `publish/v0.18.1` tag，GitHub Release `v0.18.1` 尚未创建。
+当前 `0.18.1` 发布准备基线来自最新 `origin/main` / `main` ref `d5160f45d05102ea12e5019e83386d3be0ff30b4`。`v0.18.0` 之后合入 `main` 的发布输入包括：#184 分离窗格画廊视口记忆，#186 规范化布局整理空分组尺寸，#187 增强侧栏历史分组与菜单选中态；同轮还包含 #188 侧栏菜单视觉确认文档和 #190 隐私政策 / manifest `privacyUrl`、`licenseUrl` 元数据。当前发布准备分支为 `chore/release-0.18.1`，目标版本升级为 `0.18.1`；截至本发布准备文档更新时，远端不存在 `v0.18.1` / `publish/v0.18.1` tag，GitHub Release `v0.18.1` 尚未创建。
 
-当前功能输入已有 repo-local 证据：`docs/design-docs/canvas-multi-root-workspace-support.md`、`docs/product-specs/canvas-multi-root-workspace-support.md` 与 `docs/exec-plans/completed/canvas-multi-root-pane-gallery-mode.md` 记录 `paneGallery` 的四种局部模式、窗格交互边界、缩略图只读边界和验证状态；`docs/design-docs/canvas-layout-arrangement.md` 与 `docs/exec-plans/completed/canvas-layout-arrangement.md`、`docs/exec-plans/completed/canvas-layout-arrangement-edge-polish.md` 记录一次性布局整理算法、Host 持久化和连线感知整理取舍；`docs/design-docs/execution-node-notification-and-attention-signals.md` 与 `docs/product-specs/canvas-node-notifications.md` 记录 Codex 方块最终错误行后输入提示 / 模型 footer 仍可触发最终失败提醒的边界。
+当前功能输入已有 repo-local 证据：`docs/design-docs/canvas-sidebar-node-and-session-lists.md` 与 `docs/product-specs/canvas-sidebar-node-and-session-lists.md` 记录侧栏节点 / 会话历史 view title secondary menu、分组开关、`✓` 选中态 fallback 与会话历史分组折叠边界；`docs/design-docs/canvas-layout-arrangement.md` 与 `docs/exec-plans/completed/canvas-layout-arrangement-edge-polish.md` 记录布局整理空分组尺寸规范化和边界；`docs/design-docs/canvas-multi-root-workspace-support.md` 与 `docs/exec-plans/completed/canvas-multi-root-pane-gallery-mode.md` 记录 `paneGallery` 视口记忆隔离边界；`PRIVACY.md`、`package.json` 和 notifier manifest 记录本轮新增的公开隐私 / 许可证元数据。
 
 本轮发布准备分支已完成以下验证 / 审计复核：
 
 - 版本一致性检查：`package.json`、notifier manifest、`package-lock.json` 根版本、root package entry 与 notifier package entry 均为 `0.18.1`
-- 发布渠道可见性复核：GitHub Release `v0.17.0` assets 完整；Open VSX API 可查到主扩展与 notifier `0.17.0` 且 files metadata 齐全；Visual Studio Marketplace public gallery 对主扩展与 notifier 仍返回 0 个结果；远端不存在 `v0.18.1` / `publish/v0.18.1` tag，GitHub Release `v0.18.1` 尚未创建
+- 公开元数据一致性检查：主扩展与 notifier manifest 均包含仓库 `PRIVACY.md` 对应的 `privacyUrl`，且 `licenseUrl` 指向当前仓库 `LICENSE`
+- 发布渠道可见性复核：GitHub Release `v0.18.0` assets 完整；release manifest 记录 Open VSX 主扩展与 notifier `0.18.0` 均 verified，Visual Studio Marketplace 主扩展与 notifier 为 deferred / `publish-failed`；远端不存在 `v0.18.1` / `publish/v0.18.1` tag，GitHub Release `v0.18.1` 尚未创建
 - `git diff --check`
 - `npm run test:extension-manifest`
+- `npm run test:sidebar-session-history`
 - `npm run test:canvas-layout-arrangement`
 - `npm run test:canvas-multi-root-composition`
 - `npm run test:execution-attention-signals`
