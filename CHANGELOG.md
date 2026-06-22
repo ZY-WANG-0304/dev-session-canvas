@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.18.1 - Sidebar History Grouping and Canvas Layout Fixes
+
+相对 `0.18.0`，`0.18.1` 是补丁版本，收口侧栏会话历史分组控制、菜单选中态增强，以及画布布局整理的空分组尺寸规范化与窗格画廊视口记忆分离。
+
+### 本版本聚焦
+
+- 版本号从 `0.18.0` bump 到 `0.18.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 侧栏历史视图新增会话分组控制，支持按分组折叠和展开会话历史记录
+- 增强侧栏历史分组与菜单选中态：分组菜单现在正确反映当前选中状态，以对号标记节点视图模式
+- 修复画布布局整理中空分组的尺寸规范化，避免空分组在整理后出现异常尺寸
+- 修复窗格画廊视口记忆逻辑，将各窗格的视口状态从共享存储中分离，避免切换画廊时视口互相干扰
+- 补齐主扩展与 Notifier companion 的公开隐私政策和许可证 URL 元数据
+- Notifier companion 随主扩展版本对齐到 `0.18.1`，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.18.0` 升级到 `0.18.1` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+
+### 回退建议
+
+- 若 `0.18.1` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.18.x` 修复版本
+
 ## 0.18.0 - Preview Pane Gallery and Layout Arrangement Update
 
 相对 `0.17.0`，`0.18.0` 是新的公开 `Preview` 里程碑更新，重点引入 multi-root workspace 的窗格画廊呈现模式、一次性画布布局整理能力，并收口 Codex 异常输出文本在尾部状态栏之后仍能触发提醒的兼容性。它保留 `0.17.0` 的侧栏 workspace folder / git worktree 管理入口、folder / worktree 类型识别、Host 输出投递输入优先 scheduler、Codex / Claude Code Agent Fork、GitHub Release assets 镜像、Open VSX 完成门禁、安装拓扑和 Preview 支持边界。
