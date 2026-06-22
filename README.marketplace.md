@@ -10,9 +10,9 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.18.0 Highlights
+## 0.18.1 Highlights
 
-The public `0.18.0` release is a Preview milestone focused on multi-root pane-gallery presentation, one-shot canvas layout arrangement, and Codex abnormal-output footer compatibility. It keeps the `0.17.0` sidebar workspace-folder / git-worktree management, input-prioritized Host output scheduling, Codex / Claude Code Agent Fork, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
+The public `0.18.1` release is a patch update that closes out sidebar session-history grouping controls, menu selection-state polish, canvas layout arrangement empty-group size normalization, and pane-gallery viewport memory isolation. It keeps all `0.18.0` capabilities: multi-root pane-gallery presentation, one-shot canvas layout arrangement, Codex abnormal-output footer compatibility, sidebar workspace-folder / git-worktree management, input-prioritized Host output scheduling, Codex / Claude Code Agent Fork, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
 
 - Multi-root workspaces can opt into `devSessionCanvas.canvas.multiRootPresentationMode = paneGallery`, while the existing `rootGroups` combined canvas remains the default
 - Pane Gallery provides `dynamic` and `grid` interactive overviews, plus `topThumbnails` and `sideThumbnails` modes that keep one active root as the main canvas and show the other roots as read-only thumbnails
@@ -70,10 +70,10 @@ The public `0.18.0` release is a Preview milestone focused on multi-root pane-ga
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.17.0` to `0.18.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- First-time installs and upgrades from `0.18.0` to `0.18.1` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
 - Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.18.0` preserves that explicit choice
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.18.1` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
