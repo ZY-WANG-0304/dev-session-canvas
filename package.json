@@ -17,6 +17,8 @@
   "bugs": {
     "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/issues"
   },
+  "licenseUrl": "https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/LICENSE",
+  "privacyUrl": "https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/PRIVACY.md",
   "preview": true,
   "engines": {
     "vscode": "^1.80.0"
