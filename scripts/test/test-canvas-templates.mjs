@@ -636,14 +636,23 @@ try {
   assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-shared/u);
   assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-api/u);
   assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-web/u);
+  assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-vscode-preview-preflight/u);
   assert.strictEqual(packageManifest.scripts['test:marketplace-vscode-e2e'], 'npm run test:marketplace-vscode-fixture-e2e');
   assert.strictEqual(
     packageManifest.scripts['test:marketplace-vscode-fixture-e2e'],
     'npm run build && node scripts/smoke/run-template-marketplace-vscode-e2e.mjs'
   );
   assert.strictEqual(
+    packageManifest.scripts['test:marketplace-vscode-preview-preflight'],
+    'node scripts/test/test-template-marketplace-preview-preflight.mjs'
+  );
+  assert.strictEqual(
     packageManifest.scripts['test:marketplace-vscode-preview-e2e'],
     'npm run build && node scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs'
+  );
+  assert.strictEqual(
+    packageManifest.scripts['test:marketplace-vscode-local-preview-e2e'],
+    'npm run build && node scripts/smoke/run-template-marketplace-vscode-local-preview-e2e.mjs'
   );
   assert.ok(packageManifest.activationEvents.includes('onUri'));
   assert.ok(packageManifest.activationEvents.includes('onCommand:devSessionCanvas.openTemplateMarketplace'));
@@ -963,7 +972,9 @@ try {
   const marketplaceWorkerAppTestSource = await readFile('apps/template-marketplace/src/worker/app.test.ts', 'utf8');
   const marketplaceDetailViewSource = await readFile('apps/template-marketplace/src/web/components/TemplateDetailView.tsx', 'utf8');
   const marketplacePublishViewSource = await readFile('apps/template-marketplace/src/web/components/TemplatePublishView.tsx', 'utf8');
+  const vscodeSmokeRunnerSource = await readFile('scripts/smoke/vscode-smoke-runner.mjs', 'utf8');
   const marketplaceVscodePreviewE2eRunnerSource = await readFile('scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs', 'utf8');
+  const marketplaceVscodeLocalPreviewE2eRunnerSource = await readFile('scripts/smoke/run-template-marketplace-vscode-local-preview-e2e.mjs', 'utf8');
   const marketplaceVscodePreviewE2eTestSource = await readFile('tests/vscode-smoke/template-marketplace-preview-tests.cjs', 'utf8');
   const marketplaceDesignDocSource = await readFile('docs/design-docs/template-marketplace.md', 'utf8');
   assert.match(panelManagerSource, /installMarketplaceTemplatePackage/u);
@@ -992,6 +1003,8 @@ try {
   assert.match(marketplaceClientSource, /thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64\(templateDocument\)/u);
   assert.match(marketplaceClientSource, /vscode\.authentication\.getSession\('github', \['read:user'\], \{ createIfNone: true \}\)/u);
   assert.match(marketplaceClientSource, /context\.secrets\.store\(MARKETPLACE_TOKEN_SECRET_KEY, tokenResponse\.token\)/u);
+  assert.match(vscodeSmokeRunnerSource, /BLOCKED_VSCODE_ENV_SECRET_PATTERNS/u);
+  assert.match(vscodeSmokeRunnerSource, /pattern\.test\(key\)/u);
   assert.match(marketplaceClientSource, /findPublishableStoredTemplate/u);
   assert.match(marketplaceClientSource, /marketplaceTemplateDocumentSchema/u);
   assert.match(marketplaceClientSource, /parseMarketplaceTemplateDocumentJson\(request\.templateJson\)/u);
@@ -1159,10 +1172,21 @@ try {
   );
   assert.match(marketplaceVscodePreviewE2eRunnerSource, /DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_SOURCE_URL/u);
   assert.match(marketplaceVscodePreviewE2eRunnerSource, /preflightMarketplaceSource\(marketplaceSourceUrl\)/u);
-  assert.match(marketplaceVscodePreviewE2eRunnerSource, /Continuing with the VS Code Webview E2E/u);
+  assert.match(marketplaceVscodePreviewE2eRunnerSource, /Template marketplace VS Code preview E2E skipped/u);
+  assert.match(marketplaceVscodePreviewE2eRunnerSource, /MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK=1/u);
+  assert.match(marketplaceVscodePreviewE2eRunnerSource, /kind === 'transport'/u);
+  assert.match(
+    marketplaceVscodePreviewE2eRunnerSource,
+    /createPreflightError\('api', apiUrl, `HTTP \$\{response\.status\}`\)/u
+  );
+  assert.match(marketplaceVscodePreviewE2eRunnerSource, /createPreflightError\('api', apiUrl, 'preview API returned 0 templates'\)/u);
   assert.match(marketplaceVscodePreviewE2eRunnerSource, /MARKETPLACE_PREFLIGHT_TIMEOUT_MS = 10000/u);
   assert.doesNotMatch(marketplaceVscodePreviewE2eRunnerSource, /findAvailablePort|createServer/u);
+  assert.match(marketplaceVscodeLocalPreviewE2eRunnerSource, /createMarketplaceFixture\(port\)/u);
+  assert.match(marketplaceVscodeLocalPreviewE2eRunnerSource, /startMarketplaceFixtureServer\(port, fixture\)/u);
+  assert.match(marketplaceVscodeLocalPreviewE2eRunnerSource, /template-marketplace-preview-tests\.cjs/u);
   assert.match(marketplaceVscodePreviewE2eTestSource, /templateCount > 0/u);
+  assert.match(marketplaceVscodePreviewE2eTestSource, /probe\.statusText/u);
   assert.match(marketplaceVscodePreviewE2eTestSource, /entry\.marketplace\.sourceUrl\.startsWith\(`\$\{sourceUrl\}\/`\)/u);
   assert.doesNotMatch(marketplaceVscodePreviewE2eTestSource, /publish|token exchange|POST \/api\/v1\/templates/u);
 

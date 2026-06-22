@@ -21,6 +21,17 @@ const fakeAgentProviderPath = path.join(smokeFixturesDir, 'fake-agent-provider')
 const missingAgentProviderPath = path.join(smokeFixturesDir, 'missing-agent-provider');
 const smokeFixturesPath = `${smokeFixturesDir}${path.delimiter}${process.env.PATH ?? ''}`;
 const MARKETPLACE_PREFLIGHT_TIMEOUT_MS = 10000;
+const REQUIRE_NETWORK =
+  process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_REQUIRE_NETWORK === '1' ||
+  process.env.MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK === '1';
+
+class MarketplacePreflightError extends Error {
+  constructor(kind, message, cause) {
+    super(message, cause instanceof Error ? { cause } : undefined);
+    this.name = 'MarketplacePreflightError';
+    this.kind = kind;
+  }
+}
 
 process.env.TMPDIR = hostTmpRoot;
 process.env.TMP = process.env.TMPDIR;
@@ -37,7 +48,20 @@ async function main() {
       process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_PREVIEW_SOURCE_URL ||
       DEFAULT_PREVIEW_MARKETPLACE_SOURCE_URL
   );
-  await warnIfMarketplaceSourcePreflightFails(marketplaceSourceUrl);
+  const preflight = await checkMarketplaceSourcePreflight(marketplaceSourceUrl);
+  if (!preflight.ok) {
+    const message = formatPreflightFailure(preflight.error);
+    if (!preflight.skippable) {
+      throw new Error(message);
+    }
+    if (REQUIRE_NETWORK) {
+      throw new Error(`${message}. Strict preview network validation is enabled.`);
+    }
+    console.warn(
+      `Template marketplace VS Code preview E2E skipped: ${message}. Set MARKETPLACE_PREVIEW_E2E_REQUIRE_NETWORK=1 to fail instead of skipping.`
+    );
+    return;
+  }
 
   const extensionTestsEnv = {
     DEV_SESSION_CANVAS_SMOKE_SCENARIO: 'template-marketplace-preview',
@@ -90,11 +114,12 @@ function normalizeMarketplaceSourceUrl(value) {
   return url.toString();
 }
 
-async function warnIfMarketplaceSourcePreflightFails(marketplaceSourceUrl) {
+async function checkMarketplaceSourcePreflight(marketplaceSourceUrl) {
   try {
     await preflightMarketplaceSource(marketplaceSourceUrl);
+    return { ok: true };
   } catch (error) {
-    console.warn(formatPreflightWarning(error));
+    return { ok: false, error, skippable: isSkippablePreflightError(error) };
   }
 }
 
@@ -103,31 +128,51 @@ async function preflightMarketplaceSource(marketplaceSourceUrl) {
   const apiUrl = new URL('/api/v1/templates?sort=newest', source.origin);
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), MARKETPLACE_PREFLIGHT_TIMEOUT_MS);
+  let response;
   try {
-    const response = await fetch(apiUrl, {
-      headers: { accept: 'application/json' },
-      signal: abortController.signal
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    try {
+      response = await fetch(apiUrl, {
+        headers: { accept: 'application/json' },
+        signal: abortController.signal
+      });
+    } catch (error) {
+      throw createPreflightError('transport', apiUrl, formatPreflightError(error), error);
     }
-    const body = await response.json();
+
+    if (!response.ok) {
+      throw createPreflightError('api', apiUrl, `HTTP ${response.status}`);
+    }
+
+    let body;
+    try {
+      body = await response.json();
+    } catch (error) {
+      throw createPreflightError('api', apiUrl, `invalid JSON response: ${formatPreflightError(error)}`, error);
+    }
+
     const templates = Array.isArray(body?.items) ? body.items : [];
     if (templates.length === 0) {
-      throw new Error('preview API returned 0 templates');
+      throw createPreflightError('api', apiUrl, 'preview API returned 0 templates');
     }
-  } catch (error) {
-    throw new Error(
-      `Preview marketplace API preflight failed for ${apiUrl.toString()}: ${formatPreflightError(error)}`
-    );
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function formatPreflightWarning(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  return `Preview marketplace API preflight warning: ${message}. Continuing with the VS Code Webview E2E because Electron may use a different network path.`;
+function createPreflightError(kind, apiUrl, detail, cause) {
+  return new MarketplacePreflightError(
+    kind,
+    `Preview marketplace API preflight failed for ${apiUrl.toString()}: ${detail}`,
+    cause
+  );
+}
+
+function isSkippablePreflightError(error) {
+  return error instanceof MarketplacePreflightError && error.kind === 'transport';
+}
+
+function formatPreflightFailure(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function formatPreflightError(error) {

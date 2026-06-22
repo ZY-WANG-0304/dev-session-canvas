@@ -32,7 +32,8 @@ async function run() {
     probe.apiOrigin === sourceOrigin &&
     probe.marketplaceSourceUrl === sourceUrl &&
     probe.templateCount > 0 &&
-    probe.visibleTemplateNames.length > 0
+    probe.visibleTemplateNames.length > 0 &&
+    /共 \d+ 个模板/u.test(probe.statusText || '')
   );
   assert.ok(listProbe.installTargetLabels.length > 0, 'Expected preview E2E to expose install targets.');
   assert.ok(listProbe.buttonTexts.some((text) => /安装/u.test(text)), 'Expected preview list to expose install split button.');

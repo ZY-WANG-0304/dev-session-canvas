@@ -294,6 +294,14 @@ async function installApiRoutes(page) {
   });
 
   await page.route(/\/api\/v1\/me\/templates(?:\?.*)?$/u, (route) => fulfillJson(route, { items: [fixtures.templates[0]], pagination: { page: 1, pageSize: 50, total: 1, hasMore: false }, storageMode: 'd1' }));
+  await page.route(/\/api\/v1\/me\/stats(?:\?.*)?$/u, (route) =>
+    fulfillJson(route, {
+      totals: { templateCount: 1, downloadCount: 44, likeCount: 9, publishCount: 2 },
+      daily: [{ day: '2026-05-10', downloadCount: 3, likeCount: 2, publishCount: 1 }],
+      templates: [{ template: fixtures.templates[0], downloadCount: 44, likeCount: 9, publishCount: 2 }],
+      storageMode: 'd1'
+    })
+  );
   await page.route(/\/api\/v1\/templates\/slug-availability(?:\?.*)?$/u, (route) => {
     const slug = new URL(route.request().url()).searchParams.get('slug') ?? '';
     return fulfillJson(route, { slug, available: !fixtures.details.has(slug), storageMode: 'd1' });
@@ -359,6 +367,14 @@ async function installApiRoutes(page) {
       return fulfillJson(route, { error: { code: 'template_not_found', message: 'Template was not found.' } }, 404);
     }
     return fulfillJson(route, { template: detail, storageMode: 'd1' });
+  });
+  await page.route(/\/api\/v1\/templates\/[^/]+\/like(?:\?.*)?$/u, (route) => {
+    const slug = readSlugFromRoute(route.request().url(), '/like');
+    const detail = fixtures.details.get(slug);
+    if (!detail) {
+      return fulfillJson(route, { error: { code: 'template_not_found', message: 'Template was not found.' } }, 404);
+    }
+    return fulfillJson(route, { templateId: detail.id, liked: false, likeCount: detail.likeCount, storageMode: 'd1' });
   });
   await page.route(/\/api\/v1\/templates(?:\?.*)?$/u, async (route) => {
     if (route.request().method() === 'POST') {
