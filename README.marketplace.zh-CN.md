@@ -14,13 +14,13 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 当前公开的 `0.18.1` 版本是补丁更新，收口侧栏会话历史分组控制、菜单选中态增强，以及画布布局整理空分组尺寸规范化与窗格画廊视口记忆分离。它保留 `0.18.0` 的全部能力：multi-root workspace 窗格画廊呈现、一次性画布布局整理、Codex 异常输出尾部状态栏兼容、侧栏 workspace folder / git worktree 管理、Host 输出投递输入优先 scheduler、Codex / Claude Code Agent 分叉、publish tag / GitHub Release assets 发布自动化、双市场发布和 Preview 支持边界。
 
-- 多根 workspace 可显式切到 `devSessionCanvas.canvas.multiRootPresentationMode = paneGallery`；现有 `rootGroups` 组合画布仍是默认值
-- 窗格画廊提供 `dynamic`、`grid` 可交互全览，以及 `topThumbnails`、`sideThumbnails` 主画布 + 只读缩略图模式
-- 窗格画廊入口位于画布左下角控制区，支持粗切换记忆、thumbnail 主画布 MiniMap，并且不改写 root-local state 或 multi-root overlay
-- 画布右键菜单新增一次性“整理画布布局”，减少节点和分组重叠，同时把普通分组与 workspace root section 当作硬边界
-- 布局整理会使用用户连线、文件活动 owner 和同 cwd 执行关系让相关对象靠近，但不改变 `cwd`、root 归属、runtime metadata、连线端点或文件 owner
-- Codex 异常输出文本匹配现在兼容方块最终错误行后紧跟输入提示或模型 / cwd footer；retry / reconnect 暂态输出仍不触发提醒
-- 本轮保持扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略和支持矩阵不变
+- 侧栏 `会话历史` view 新增 workspace root、provider 和时间分组控制，分组标题可折叠 / 展开，便于快速浏览当前 workspace 的历史会话
+- 侧栏 view title 菜单现在用可见的 `✓` 标题表达节点列表和会话历史的当前选中状态，即使 VS Code 菜单不渲染 command icon 也能读出当前模式
+- 画布布局整理会规范化空分组尺寸，避免一次性整理后出现不稳定的空分组边框
+- 窗格画廊视口记忆按 pane / root 隔离，切换 root 或画廊模式时不会把一个窗格的视口泄漏到另一个窗格
+- 公开 package metadata 现在同时为主扩展和 notifier companion 暴露仓库隐私政策与许可证 URL
+- 本轮保持扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略、VSM deferred 完成门禁和支持矩阵不变
+
 ## 核心功能
 
 - 在面板或编辑区打开主画布
