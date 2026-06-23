@@ -4374,6 +4374,12 @@ function App(): JSX.Element {
       }
     }));
   };
+  const resolvePaneGalleryRootContentBounds = (
+    rootGroupId: string
+  ): CanvasMiniMapRect | undefined => {
+    const model = paneGalleryRootModels.find((candidate) => candidate.rootGroup.id === rootGroupId);
+    return model ? resolvePaneGalleryModelContentBounds(model) : undefined;
+  };
   const fitPaneGalleryRoot = (
     rootGroupId: string,
     instance = paneGalleryFlowRefs.current[rootGroupId],
@@ -4386,9 +4392,9 @@ function App(): JSX.Element {
         normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
           PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
       );
-    const rootGroup = groups.find((group) => group.id === rootGroupId);
+    const contentBounds = resolvePaneGalleryRootContentBounds(rootGroupId);
     const shell = paneGalleryShellRefs.current[rootGroupId];
-    if (!instance?.viewportInitialized || !rootGroup || !shell) {
+    if (!instance?.viewportInitialized || !contentBounds || !shell) {
       return false;
     }
     if (options.requirePaneMode) {
@@ -4402,12 +4408,7 @@ function App(): JSX.Element {
     }
 
     const viewport = getViewportForBounds(
-      {
-        x: rootGroup.position.x,
-        y: rootGroup.position.y,
-        width: Math.max(1, rootGroup.size.width),
-        height: Math.max(1, rootGroup.size.height)
-      },
+      contentBounds,
       Math.max(1, shell.clientWidth),
       Math.max(1, shell.clientHeight),
       PANE_GALLERY_MIN_ZOOM,
@@ -8996,6 +8997,10 @@ function buildPaneGalleryRootModels(params: {
   });
 }
 
+function resolvePaneGalleryModelContentBounds(model: PaneGalleryRootModel): CanvasMiniMapRect | undefined {
+  return resolveCanvasSpatialBounds(model.nodes, model.groups).bounds;
+}
+
 function sortPaneGalleryRootGroupsByWorkspaceOrder(
   rootGroups: readonly CanvasGroupSummary[],
   workspaceFolders: readonly CanvasRuntimeContext['workspaceFolders'][number][]
@@ -9432,17 +9437,13 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   };
   const fitLocalPane = (instance: ReactFlowInstance<CanvasNodeData> | undefined, duration = 0): boolean => {
     const shell = localPaneRef.current;
-    if (!instance?.viewportInitialized || !shell) {
+    const contentBounds = resolvePaneGalleryModelContentBounds(model);
+    if (!instance?.viewportInitialized || !shell || !contentBounds) {
       return false;
     }
 
     const viewport = getViewportForBounds(
-      {
-        x: model.rootGroup.position.x,
-        y: model.rootGroup.position.y,
-        width: Math.max(1, model.rootGroup.size.width),
-        height: Math.max(1, model.rootGroup.size.height)
-      },
+      contentBounds,
       Math.max(1, shell.clientWidth),
       Math.max(1, shell.clientHeight),
       PANE_GALLERY_MIN_ZOOM,
