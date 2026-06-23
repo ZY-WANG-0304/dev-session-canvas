@@ -8952,6 +8952,50 @@ interface PaneGalleryRootModel {
   attentionCount: number;
 }
 
+type PaneGalleryPaneStatus = 'idle' | 'running' | 'attention';
+
+function paneGalleryNodeHasAttention(node: CanvasFlowNode): boolean {
+  return (
+    node.data?.metadata?.agent?.attentionPending === true ||
+    node.data?.metadata?.terminal?.attentionPending === true
+  );
+}
+
+function paneGalleryNodeIsRunning(node: CanvasNodeSummary): boolean {
+  switch (node.status) {
+    case 'launching':
+    case 'starting':
+    case 'resuming':
+    case 'reattaching':
+    case 'running':
+    case 'live':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function paneGalleryPaneStatusForModel(model: PaneGalleryRootModel): PaneGalleryPaneStatus {
+  if (model.attentionCount > 0) {
+    return 'attention';
+  }
+  if (model.runningCount > 0) {
+    return 'running';
+  }
+  return 'idle';
+}
+
+function paneGalleryPaneStatusDescription(model: PaneGalleryRootModel): string | undefined {
+  const fragments: string[] = [];
+  if (model.attentionCount > 0) {
+    fragments.push(`${model.attentionCount} 个节点需要关注`);
+  }
+  if (model.runningCount > 0) {
+    fragments.push(`${model.runningCount} 个节点正在运行`);
+  }
+  return fragments.length > 0 ? fragments.join('，') : undefined;
+}
+
 function buildPaneGalleryRootModels(params: {
   rootGroups: readonly CanvasGroupSummary[];
   groups: readonly CanvasGroupSummary[];
@@ -8986,13 +9030,10 @@ function buildPaneGalleryRootModels(params: {
       edges: paneEdges,
       groups: params.groups.filter((group) => group.id !== rootGroup.id && subtreeGroupIds.has(group.id)),
       nodeCount: paneNodes.length,
-      runningCount: paneHostNodes.filter((node) => node.status === 'running').length,
+      runningCount: paneHostNodes.filter((node) => paneGalleryNodeIsRunning(node)).length,
       errorCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-error').length,
       waitingCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-waiting').length,
-      attentionCount: paneNodes.filter((node) =>
-        node.data?.metadata?.agent?.attentionPending === true ||
-        node.data?.metadata?.terminal?.attentionPending === true
-      ).length
+      attentionCount: paneNodes.filter((node) => paneGalleryNodeHasAttention(node)).length
     };
   });
 }
@@ -9392,6 +9433,9 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   const rootGroupId = model.rootGroup.id;
   const interactive = props.mode !== 'thumbnail';
   const viewportRole: PaneGalleryViewportRole = props.mode === 'main' ? 'main' : 'overview';
+  const paneStatus = paneGalleryPaneStatusForModel(model);
+  const paneStatusDescription = paneGalleryPaneStatusDescription(model);
+  const paneTitle = `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}${paneStatusDescription ? ` - ${paneStatusDescription}` : ''}`;
   const defaultViewport = interactive
     ? viewportRole === 'main'
       ? props.mainViewports[rootGroupId]
@@ -9524,10 +9568,13 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
       data-pane-gallery-root-id={rootGroupId}
       data-pane-gallery-root-mode={props.mode}
       data-pane-gallery-dynamic-slot={props.dynamicSlot}
+      data-pane-gallery-status={paneStatus}
+      data-pane-gallery-attention-count={model.attentionCount}
+      data-pane-gallery-running-count={model.runningCount}
       data-canvas-overview-mode={overviewState.active ? 'true' : 'false'}
       data-canvas-overview-config={props.overviewMode}
-      aria-label={`Workspace root ${model.rootGroup.title}`}
-      title={props.mode === 'thumbnail' ? `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}` : undefined}
+      aria-label={`Workspace root ${model.rootGroup.title}${paneStatusDescription ? `, ${paneStatusDescription}` : ''}`}
+      title={props.mode === 'thumbnail' ? paneTitle : undefined}
       style={{ '--canvas-overview-title-scale': overviewState.titleScale } as CSSProperties}
       onMouseEnter={interactive ? bindSurface : undefined}
       onFocusCapture={interactive ? bindSurface : undefined}
@@ -9710,7 +9757,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
             className="pane-gallery-thumbnail-hit-layer"
             data-pane-gallery-thumbnail-hit-layer="true"
             aria-hidden="true"
-            title={`${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}`}
+            title={paneTitle}
             onPointerDown={blockThumbnailPointerEvent}
             onPointerMove={blockThumbnailPointerEvent}
             onPointerUp={blockThumbnailPointerEvent}

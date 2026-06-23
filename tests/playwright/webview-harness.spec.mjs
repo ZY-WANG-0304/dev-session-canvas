@@ -850,6 +850,7 @@ test('workspace root groups reject cross-root edge creation and reconnect', asyn
 
 test('pane gallery renders dynamic workspace roots with canvas controls and light labels', async ({ page }) => {
   await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
   const state = createPaneGalleryCanvasState();
   await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
   await settleWebview(page, 4);
@@ -868,6 +869,18 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
   await expect(backendPane.locator('.pane-gallery-root-meta')).toHaveCount(0);
   await expect(frontendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
   await expect(backendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
+  await expect(frontendPane).toHaveAttribute('data-pane-gallery-status', 'idle');
+  await expect(backendPane).toHaveAttribute('data-pane-gallery-status', 'running');
+  await expect(backendPane).toHaveAttribute('aria-label', /1 个节点正在运行/);
+  await expect(backendPane).toHaveAttribute('data-pane-gallery-running-count', '1');
+  await expect(backendPane).toHaveAttribute('data-pane-gallery-attention-count', '0');
+  await expect
+    .poll(async () =>
+      backendPane.locator('.pane-gallery-root-header').evaluate((header) => getComputedStyle(header).backgroundColor)
+    )
+    .not.toBe(
+      await frontendPane.locator('.pane-gallery-root-header').evaluate((header) => getComputedStyle(header).backgroundColor)
+    );
   await expect(page.locator('.canvas-help-panel .execution-help-trigger-canvas')).toBeVisible();
   await expect(frontendPane.locator('[data-group-background-role="workspace-root"]')).toHaveCount(0);
   await expect(frontendPane.locator('[data-root-name-watermark="true"]')).toHaveCount(0);
@@ -1350,6 +1363,7 @@ test('pane gallery clears transient selection before roots become thumbnails', a
 
 test('pane gallery thumbnail hit layer blocks execution node attention acknowledgement', async ({ page }) => {
   await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
   const state = createPaneGalleryCanvasState();
   const backendTerminal = state.nodes.find((node) => node.id === 'workspace-root-backend-terminal');
   backendTerminal.status = 'running';
@@ -1366,6 +1380,19 @@ test('pane gallery thumbnail hit layer blocks execution node attention acknowled
     '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
   );
   const backendTerminalNode = backendThumbnail.locator('[data-node-id="workspace-root-backend-terminal"]');
+  await expect(backendThumbnail).toHaveAttribute('data-pane-gallery-status', 'attention');
+  await expect(backendThumbnail).toHaveAttribute('data-pane-gallery-attention-count', '1');
+  await expect(backendThumbnail).toHaveAttribute('data-pane-gallery-running-count', '1');
+  await expect(backendThumbnail).toHaveAttribute('aria-label', /1 个节点需要关注，1 个节点正在运行/);
+  await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toHaveAttribute(
+    'title',
+    /1 个节点需要关注，1 个节点正在运行/
+  );
+  await expect
+    .poll(async () =>
+      backendThumbnail.locator('.pane-gallery-root-header').evaluate((header) => getComputedStyle(header).backgroundColor)
+    )
+    .not.toBe('rgba(0, 0, 0, 0)');
   await expect(backendTerminalNode.locator('[data-execution-attention-pending="true"]')).toHaveCount(1);
   await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toBeVisible();
   await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toHaveCSS(
