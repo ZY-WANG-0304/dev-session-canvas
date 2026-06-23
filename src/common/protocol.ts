@@ -126,6 +126,18 @@ export interface CanvasNodeFootprint {
   height: number;
 }
 
+export type CanvasGroupRole = 'user' | 'workspace-root';
+
+export interface CanvasGroupSummary {
+  id: string;
+  title: string;
+  position: CanvasNodePosition;
+  size: CanvasNodeFootprint;
+  parentGroupId?: string;
+  role?: CanvasGroupRole;
+  workspaceRootPath?: string;
+}
+
 export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
 export type AgentLaunchPresetKind = 'default' | 'resume' | 'yolo' | 'sandbox' | 'custom';
@@ -269,6 +281,7 @@ export interface CanvasNodeSummary {
   summary: string;
   position: CanvasNodePosition;
   size: CanvasNodeFootprint;
+  groupId?: string;
   metadata?: CanvasNodeMetadata;
 }
 
@@ -303,6 +316,8 @@ export interface CanvasPrototypeState {
   updatedAt: string;
   nodes: CanvasNodeSummary[];
   edges: CanvasEdgeSummary[];
+  groups: CanvasGroupSummary[];
+  nextGroupSequence: number;
   fileReferences: CanvasFileReferenceSummary[];
   suppressedFileActivityEdgeIds: string[];
   suppressedAutomaticFileArtifactNodeIds: string[];

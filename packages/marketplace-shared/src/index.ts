@@ -170,6 +170,7 @@ export interface MarketplaceTemplateDocument {
     category: 'builtin' | 'user';
     nodes: MarketplaceTemplateNodeSnapshot[];
     edges: MarketplaceTemplateEdgeSnapshot[];
+    groups?: MarketplaceTemplateGroupSnapshot[];
     createdAt: string;
     updatedAt: string;
   };
@@ -186,6 +187,7 @@ export interface MarketplaceTemplateNodeSnapshot {
     width: number;
     height: number;
   };
+  groupIndex?: number;
   metadata?: {
     note?: {
       content: string;
@@ -197,6 +199,19 @@ export interface MarketplaceTemplateNodeSnapshot {
       argv?: string[];
     };
   };
+}
+
+export interface MarketplaceTemplateGroupSnapshot {
+  title: string;
+  position: {
+    x: number;
+    y: number;
+  };
+  size: {
+    width: number;
+    height: number;
+  };
+  parentGroupIndex?: number;
 }
 
 export interface MarketplaceTemplateEdgeSnapshot {
@@ -427,6 +442,7 @@ const marketplaceTemplateNodeSchema = z.object({
   title: z.string().trim().min(1).max(120),
   position: marketplaceTemplatePositionSchema,
   size: marketplaceTemplateSizeSchema,
+  groupIndex: z.number().int().nonnegative().optional(),
   metadata: z
     .object({
       note: marketplaceTemplateNoteSchema.optional(),
@@ -438,6 +454,13 @@ const marketplaceTemplateNodeSchema = z.object({
         .optional()
     })
     .optional()
+});
+
+const marketplaceTemplateGroupSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  position: marketplaceTemplatePositionSchema,
+  size: marketplaceTemplateSizeSchema,
+  parentGroupIndex: z.number().int().nonnegative().optional()
 });
 
 const marketplaceTemplateEdgeSchema = z.object({
@@ -459,12 +482,23 @@ export const marketplaceTemplateDocumentSchema = z
       category: z.enum(['builtin', 'user']),
       nodes: z.array(marketplaceTemplateNodeSchema).min(1),
       edges: z.array(marketplaceTemplateEdgeSchema),
+      groups: z.array(marketplaceTemplateGroupSchema).optional(),
       createdAt: z.string().trim().min(1).max(80),
       updatedAt: z.string().trim().min(1).max(80)
     })
   })
   .superRefine((document, context) => {
     const nodeCount = document.template.nodes.length;
+    const groupCount = document.template.groups?.length ?? 0;
+    document.template.nodes.forEach((node, index) => {
+      if (node.groupIndex !== undefined && node.groupIndex >= groupCount) {
+        context.addIssue({
+          code: 'custom',
+          path: ['template', 'nodes', index, 'groupIndex'],
+          message: 'groupIndex must point to an existing group.'
+        });
+      }
+    });
     document.template.edges.forEach((edge, index) => {
       if (edge.sourceNodeIndex >= nodeCount) {
         context.addIssue({
@@ -479,6 +513,40 @@ export const marketplaceTemplateDocumentSchema = z
           path: ['template', 'edges', index, 'targetNodeIndex'],
           message: 'targetNodeIndex must point to an existing node.'
         });
+      }
+    });
+    document.template.groups?.forEach((group, index) => {
+      if (group.parentGroupIndex !== undefined && group.parentGroupIndex >= groupCount) {
+        context.addIssue({
+          code: 'custom',
+          path: ['template', 'groups', index, 'parentGroupIndex'],
+          message: 'parentGroupIndex must point to an existing group.'
+        });
+      }
+      if (group.parentGroupIndex === index) {
+        context.addIssue({
+          code: 'custom',
+          path: ['template', 'groups', index, 'parentGroupIndex'],
+          message: 'parentGroupIndex must not point to the same group.'
+        });
+      }
+    });
+
+    document.template.groups?.forEach((_group, index) => {
+      const visited = new Set<number>();
+      let parentGroupIndex = document.template.groups?.[index]?.parentGroupIndex;
+      while (parentGroupIndex !== undefined) {
+        if (visited.has(parentGroupIndex)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['template', 'groups', index, 'parentGroupIndex'],
+            message: 'parentGroupIndex must not create a cycle.'
+          });
+          return;
+        }
+
+        visited.add(parentGroupIndex);
+        parentGroupIndex = document.template.groups?.[parentGroupIndex]?.parentGroupIndex;
       }
     });
   });

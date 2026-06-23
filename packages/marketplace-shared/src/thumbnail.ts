@@ -7,6 +7,7 @@ interface ThumbnailTemplateDocument {
     name: string;
     nodes: ThumbnailNode[];
     edges: ThumbnailEdge[];
+    groups?: ThumbnailGroup[];
   };
 }
 
@@ -21,7 +22,21 @@ interface ThumbnailNode {
     width: number;
     height: number;
   };
+  groupIndex?: number;
   metadata?: unknown;
+}
+
+interface ThumbnailGroup {
+  title: string;
+  position: {
+    x: number;
+    y: number;
+  };
+  size: {
+    width: number;
+    height: number;
+  };
+  parentGroupIndex?: number;
 }
 
 interface ThumbnailEdge {
@@ -81,14 +96,20 @@ function paintBackground(pixels: Uint8Array): void {
 
 function paintTemplateLayout(pixels: Uint8Array, document: ThumbnailTemplateDocument): void {
   const nodes = document.template.nodes;
+  const groups = document.template.groups ?? [];
   if (nodes.length === 0) {
     fillRect(pixels, 92, 148, 456, 64, [40, 96, 117, 120]);
     return;
   }
 
-  const bounds = measureBounds(nodes);
+  const bounds = measureBounds(nodes, groups);
   const layout = resolveLayout(bounds);
   const rects = nodes.map((node) => mapNodeRect(node, bounds, layout));
+  const groupRects = groups.map((group) => mapGroupRect(group, bounds, layout));
+
+  groupRects.forEach((rect, index) => {
+    paintGroupFrame(pixels, rect, groups[index]);
+  });
 
   for (const edge of document.template.edges) {
     const source = rects[edge.sourceNodeIndex];
@@ -119,22 +140,40 @@ function paintTemplateLayout(pixels: Uint8Array, document: ThumbnailTemplateDocu
   });
 }
 
-function measureBounds(nodes: readonly ThumbnailNode[]): { minX: number; minY: number; width: number; height: number } {
+function measureBounds(
+  nodes: readonly ThumbnailNode[],
+  groups: readonly ThumbnailGroup[]
+): { minX: number; minY: number; width: number; height: number } {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
-  for (const node of nodes) {
-    minX = Math.min(minX, node.position.x);
-    minY = Math.min(minY, node.position.y);
-    maxX = Math.max(maxX, node.position.x + node.size.width);
-    maxY = Math.max(maxY, node.position.y + node.size.height);
+  for (const item of [...nodes, ...groups]) {
+    minX = Math.min(minX, item.position.x);
+    minY = Math.min(minY, item.position.y);
+    maxX = Math.max(maxX, item.position.x + item.size.width);
+    maxY = Math.max(maxY, item.position.y + item.size.height);
   }
   return {
     minX,
     minY,
     width: Math.max(1, maxX - minX),
     height: Math.max(1, maxY - minY)
+  };
+}
+
+function mapGroupRect(
+  group: ThumbnailGroup,
+  bounds: { minX: number; minY: number },
+  layout: { x: number; y: number; scale: number }
+): { x: number; y: number; width: number; height: number } {
+  const width = Math.max(72, group.size.width * layout.scale);
+  const height = Math.max(52, group.size.height * layout.scale);
+  return {
+    x: layout.x + (group.position.x - bounds.minX) * layout.scale,
+    y: layout.y + (group.position.y - bounds.minY) * layout.scale,
+    width,
+    height
   };
 }
 
@@ -170,6 +209,21 @@ function mapNodeRect(
 
 function getNodePalette(kind: ThumbnailNode['kind']): { body: Rgba; accent: Rgba; border: Rgba; text: Rgba } {
   return MARKETPLACE_TEMPLATE_THUMBNAIL_NODE_PALETTE[kind];
+}
+
+function paintGroupFrame(
+  pixels: Uint8Array,
+  rect: { x: number; y: number; width: number; height: number },
+  group: ThumbnailGroup
+): void {
+  const x = Math.round(rect.x);
+  const y = Math.round(rect.y);
+  const width = Math.round(rect.width);
+  const height = Math.round(rect.height);
+  fillRect(pixels, x, y, width, height, [15, 118, 110, 22]);
+  strokeRect(pixels, x, y, width, height, [15, 118, 110, 110], 2);
+  fillRect(pixels, x + 10, y + 10, Math.max(44, Math.min(width - 20, group.title.trim().length * 6 + 20)), 16, [240, 253, 250, 225]);
+  fillRect(pixels, x + 18, y + 17, Math.max(24, Math.min(width - 36, group.title.trim().length * 5)), 3, [15, 118, 110, 145]);
 }
 
 function paintNodeGlyph(
