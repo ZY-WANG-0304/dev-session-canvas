@@ -7261,7 +7261,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       shellPath: hasLineScopedCandidate ? context.shellPath ?? '' : '',
       pathStyle: context.pathStyle,
       userHome: context.userHome ?? '',
-      workspaceFolders: vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [],
+      workspaceFolders:
+        vscode.workspace.workspaceFolders?.map((folder) => ({
+          name: folder.name,
+          path: folder.uri.fsPath
+        })) ?? [],
       candidates: candidates.map((candidate) =>
         this.createExecutionFileLinkResolveCandidateCacheKey(candidate, context)
       )
