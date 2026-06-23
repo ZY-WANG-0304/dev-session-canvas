@@ -117,15 +117,15 @@
 
 截至 `2026-06-24`，上一轮 `0.18.1` 已完成 GitHub Release assets + Open VSX 兜底发布。上一发布输入来自 `main` 上的 release ref `a6a55fe2f40aee1ccac7887cd5bd83730e550676`；正式 `v0.18.1` tag 指向同一 ref，远端不存在 `publish/v0.18.1` 临时 tag。GitHub Release `v0.18.1` 位于 `https://github.com/ZY-WANG-0304/dev-session-canvas/releases/tag/v0.18.1`，包含 `dev-session-canvas-0.18.1.vsix`、`dev-session-canvas-notifier-0.18.1.vsix` 与 `release-manifest-0.18.1.json`。Release manifest 记录 Open VSX 主扩展与 notifier `0.18.1` 均 verified，Visual Studio Marketplace 主扩展与 notifier 均为 `publish-failed` / deferred；因此 VSM 继续作为 deferred channel，不得对外宣称为已可用。
 
-当前 `0.18.2` 发布准备基线来自最新 `origin/main` / `main` ref `0893730f60ff958d0acb3040c0d5982e4c56e0d3`。`v0.18.1` 之后合入 `main` 的发布输入包括：#192 移除 Marketplace README 交流二维码并同步发布手册素材口径，#193 修复 Webview Playwright 回归用例稳定性，#195 清理分组 resize 残留草稿并补充几何诊断 / 回归测试，#197 保持窗格画廊缩略图 rail 按 workspace root 顺序排列。当前发布准备分支为 `release-0-18-2-prep`，目标版本升级为 `0.18.2`；截至本发布准备文档更新时，远端不存在 `v0.18.2` / `publish/v0.18.2` tag，GitHub Release `v0.18.2` 尚未创建。
+`0.18.2` 已从最终 `main` release ref `0bba3f82c3de0f4a08ddb674ffbc3eef80a3f54d` 完成 GitHub Release assets + Open VSX 兜底发布；正式 `v0.18.2` tag 指向同一 ref，远端 `publish/v0.18.2` 临时 tag 已由 workflow 删除。`v0.18.1` 之后合入 `main` 的发布输入包括：#192 移除 Marketplace README 交流二维码并同步发布手册素材口径，#193 修复 Webview Playwright 回归用例稳定性，#195 清理分组 resize 残留草稿并补充几何诊断 / 回归测试，#197 保持窗格画廊缩略图 rail 按 workspace root 顺序排列。GitHub Release `v0.18.2` 位于 `https://github.com/ZY-WANG-0304/dev-session-canvas/releases/tag/v0.18.2`，包含 `dev-session-canvas-0.18.2.vsix`、`dev-session-canvas-notifier-0.18.2.vsix` 与 `release-manifest-0.18.2.json`。Release manifest 记录 Open VSX 主扩展与 notifier `0.18.2` 均 verified，Visual Studio Marketplace 主扩展与 notifier 均为 `publish-failed` / deferred；因此 VSM 继续作为 deferred channel，不得对外宣称为已可用。
 
 当前功能输入已有 repo-local 证据：`docs/design-docs/canvas-multi-root-workspace-support.md` 与 `docs/design-docs/index.md` 记录缩略图 rail 顺序不再因 active root 切换而互换；`docs/design-docs/canvas-layout-arrangement.md`、`docs/exec-plans/completed/canvas-layout-arrangement-edge-polish.md` 与 #195 的实现 / 测试记录分组 resize 草稿清理和几何稳定性；`README.marketplace.md`、`README.marketplace.zh-CN.md` 与本手册记录 Marketplace listing 不再展示交流群二维码；`CHANGELOG.md` 与 notifier changelog 记录本轮版本对齐和用户可见差异。
 
-本轮发布准备分支已完成以下验证 / 审计复核：
+本轮发布准备分支与最终 `main` release commit 已完成以下验证 / 审计复核：
 
 - 版本一致性检查：`package.json`、notifier manifest、`package-lock.json` 根版本、root package entry 与 notifier package entry 均为 `0.18.2`
 - 公开元数据一致性检查：主扩展与 notifier manifest 均包含仓库 `PRIVACY.md` 对应的 `privacyUrl`，且 `licenseUrl` 指向当前仓库 `LICENSE`
-- 发布渠道可见性复核：GitHub Release `v0.18.1` assets 完整；release manifest 记录 Open VSX 主扩展与 notifier `0.18.1` 均 verified，Visual Studio Marketplace 主扩展与 notifier 为 deferred / `publish-failed`；远端不存在 `v0.18.2` / `publish/v0.18.2` tag，GitHub Release `v0.18.2` 尚未创建
+- 发布渠道可见性复核：GitHub Release `v0.18.2` assets 完整；release manifest 记录 Open VSX 主扩展与 notifier `0.18.2` 均 verified，Visual Studio Marketplace 主扩展与 notifier 为 deferred / `publish-failed`；远端 `publish/v0.18.2` tag 已删除，正式 `v0.18.2` tag 指向 `0bba3f82c3de0f4a08ddb674ffbc3eef80a3f54d`
 - Marketplace README 二维码移除复核：`rg -n "lark-group-qr|wechat-group-qr|discussion group|飞书交流群|微信交流群|二维码|QR" README.marketplace.md README.marketplace.zh-CN.md` 无命中
 - `npm install` 通过，用于恢复清理后的 workspace 依赖与本地 `@vscode/vsce` 入口；安装阶段报告的 6 个 audit 告警经 `npm audit --omit=dev` 复核后，生产依赖面为 0 vulnerabilities
 - `git diff --check`
@@ -145,9 +145,9 @@
 - `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 通过；本地 notifier VSIX 为 10 files，约 145.49 KB，打包日志打印 `VSCE README doc ref`，并确认 notifier Marketplace README 当前没有需要重写的相对链接
 - `npm run release:publish-tag -- --trigger-tag publish/v0.18.2 --dry-run --package-only --skip-origin-main-check`（使用本地临时 `publish/v0.18.2` tag 预演统一 publish-tag 入口；dry-run 只打印计划，不执行真实 publish、tag 变更或 marketplace 验证；本地临时 tag 需在预演后删除）
 
-本轮本地 package / dry-run 只作为发布准备分支预验证，byte-level sha256 不作为最终发布事实。发布准备 MR 合并后，仍必须在最终 `main` release commit 上重新执行 `npm run validate:clean-checkout:vsix -- --ref <final-ref>`、`npm run package:vsix`、notifier 打包与必要的 packaged-payload smoke，确认 README 相对链接改写、VSIX 文件数 / 大小、`VSCE README doc ref` 和 packaged-payload smoke 均与最终发布 ref 一致。
+本轮最终 `main` release commit 已重新执行 clean-checkout VSIX、主扩展 / notifier 打包、packaged-payload smoke 与 `publish/v0.18.2` dry-run；真实发布 workflow 已上传 GitHub Release assets、创建正式 `v0.18.2` tag、验证 Open VSX 主扩展 / notifier `0.18.2` 并删除远端临时 `publish/v0.18.2` tag。
 
-残余风险：真实 Open VSX / Visual Studio Marketplace 发布、GitHub Release assets 上传与 `v0.18.2` tag 收口只能在发布准备 MR 合并后的最终 `main` ref 上执行。若 Visual Studio Marketplace public gallery 仍不可见，本轮继续按 GitHub Release assets + Open VSX verified 完成，并在 manifest / Release notes 中把 VSM 写成 deferred；不得把官方 VS Code 安装路径宣称为已可用。
+残余风险：Visual Studio Marketplace public gallery 当前仍不可见，manifest / Release notes 已把 VSM 写成 deferred / `publish-failed`；不得把官方 VS Code Marketplace 安装路径宣称为已可用。
 
 ## 发布命令
 
