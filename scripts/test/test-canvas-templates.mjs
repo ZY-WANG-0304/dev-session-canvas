@@ -284,8 +284,34 @@ try {
   const packageTemplate = {
     ...marketTemplate,
     id: 'market-package-original',
-    name: 'Package Installed Template'
+    name: 'Package Installed Template',
+    nodes: [
+      {
+        ...marketTemplate.nodes[0],
+        groupIndex: 1
+      }
+    ],
+    groups: [
+      {
+        title: 'Package lane',
+        position: { x: -40, y: -40 },
+        size: { width: 420, height: 320 }
+      },
+      {
+        title: 'Nested package pod',
+        position: { x: -20, y: -20 },
+        size: { width: 360, height: 280 },
+        parentGroupIndex: 0
+      }
+    ]
   };
+  const parsedPackageTemplateGroups = [
+    {
+      ...packageTemplate.groups[0],
+      parentGroupIndex: undefined
+    },
+    packageTemplate.groups[1]
+  ];
   const templatePackageManifest = {
     schemaVersion: 1,
     slug: 'package-template',
@@ -329,6 +355,8 @@ try {
   });
   assert.strictEqual(savedPackageMarketTemplate.relativeDirectory, path.join('marketplace', 'package-template'));
   assert.strictEqual(savedPackageMarketTemplate.template.id.startsWith('market-template-'), true);
+  assert.deepStrictEqual(savedPackageMarketTemplate.template.groups, packageTemplate.groups);
+  assert.strictEqual(savedPackageMarketTemplate.template.nodes[0].groupIndex, 1);
   assert.strictEqual(savedPackageMarketTemplate.marketplace?.localTemplateId, savedPackageMarketTemplate.template.id);
   assert.strictEqual(savedPackageMarketTemplate.marketplace?.templatePath, 'template.json');
   assert.deepStrictEqual((await readdir(path.join(globalUserDir, 'marketplace', 'package-template'))).sort(), [
@@ -361,6 +389,11 @@ try {
     parseCanvasTemplateDocument(JSON.parse(await readFile(path.join(globalUserDir, 'marketplace', 'package-template', 'template.json'), 'utf8'))).document.template.id,
     savedPackageMarketTemplate.template.id
   );
+  const installedPackageTemplateDocument = parseCanvasTemplateDocument(
+    JSON.parse(await readFile(path.join(globalUserDir, 'marketplace', 'package-template', 'template.json'), 'utf8'))
+  ).document.template;
+  assert.deepStrictEqual(installedPackageTemplateDocument.groups, parsedPackageTemplateGroups);
+  assert.strictEqual(installedPackageTemplateDocument.nodes[0].groupIndex, 1);
 
   const exportPath = path.join(tempDir, 'exports', 'template-export.json');
   await store.exportTemplateToFile(userTemplate, exportPath);
@@ -379,6 +412,7 @@ try {
         summary: 'summary',
         position: { x: 100, y: 140 },
         size: { width: 520, height: 380 },
+        groupId: 'group-child',
         metadata: { agent: { provider: 'claude', templateArgv: ['--model', 'sonnet'] } }
       },
       {
@@ -389,6 +423,7 @@ try {
         summary: 'summary',
         position: { x: 700, y: 140 },
         size: { width: 500, height: 360 },
+        groupId: 'group-child',
         metadata: { terminal: {} }
       },
       {
@@ -433,6 +468,28 @@ try {
         owner: 'automatic'
       }
     ],
+    groups: [
+      {
+        id: 'group-root',
+        title: 'Root lane',
+        position: { x: 60, y: 100 },
+        size: { width: 1180, height: 760 }
+      },
+      {
+        id: 'group-child',
+        title: 'Execution pod',
+        position: { x: 80, y: 120 },
+        size: { width: 1140, height: 420 },
+        parentGroupId: 'group-root'
+      },
+      {
+        id: 'group-file-only',
+        title: 'File-only group',
+        position: { x: 1460, y: 260 },
+        size: { width: 360, height: 200 }
+      }
+    ],
+    nextGroupSequence: 4,
     fileReferences: [],
     suppressedFileActivityEdgeIds: [],
     suppressedAutomaticFileArtifactNodeIds: []
@@ -452,6 +509,23 @@ try {
   assert.strictEqual(capturedDefault.template.nodes.length, 3);
   assert.deepStrictEqual(capturedDefault.template.nodes[0].position, { x: 0, y: 0 });
   assert.strictEqual(capturedDefault.template.nodes[0].metadata.agent.provider, 'default');
+  assert.deepStrictEqual(capturedDefault.template.groups, [
+    {
+      title: 'Root lane',
+      position: { x: -40, y: -40 },
+      size: { width: 1180, height: 760 },
+      parentGroupIndex: undefined
+    },
+    {
+      title: 'Execution pod',
+      position: { x: -20, y: -20 },
+      size: { width: 1140, height: 420 },
+      parentGroupIndex: 0
+    }
+  ]);
+  assert.strictEqual(capturedDefault.template.nodes[0].groupIndex, 1);
+  assert.strictEqual(capturedDefault.template.nodes[1].groupIndex, 1);
+  assert.strictEqual(capturedDefault.template.nodes[2].groupIndex, undefined);
   assert.deepStrictEqual(capturedDefault.template.nodes[0].metadata.agent.argv, ['--model', 'sonnet']);
   assert.strictEqual(capturedDefault.template.edges.length, 1);
   assert.strictEqual(capturedDefault.template.edges[0].label, 'run');
@@ -628,6 +702,46 @@ try {
 
   const roundTripText = encodeCanvasTemplateDocument(userTemplate);
   assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(roundTripText)).document.template, userTemplate);
+  const groupedTemplateRoundTrip = parseCanvasTemplateDocument({
+    version: 1,
+    template: packageTemplate
+  }).document.template;
+  assert.deepStrictEqual(groupedTemplateRoundTrip.groups, parsedPackageTemplateGroups);
+  assert.strictEqual(groupedTemplateRoundTrip.nodes[0].groupIndex, 1);
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...packageTemplate,
+        nodes: [
+          {
+            ...packageTemplate.nodes[0],
+            groupIndex: 99
+          }
+        ]
+      }
+    }),
+    /分组索引/u
+  );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...packageTemplate,
+        groups: [
+          {
+            ...packageTemplate.groups[0],
+            parentGroupIndex: 1
+          },
+          {
+            ...packageTemplate.groups[1],
+            parentGroupIndex: 0
+          }
+        ]
+      }
+    }),
+    /循环父子关系/u
+  );
 
   const extensionSource = await readFile('src/extension.ts', 'utf8');
   const packageManifest = JSON.parse(await readFile('package.json', 'utf8'));

@@ -61,6 +61,7 @@ import {
   type CanvasFilePathDisplayMode,
   type CanvasFilePresentationMode,
   type CanvasFileIconDescriptor,
+  type CanvasGroupSummary,
   type CanvasOverviewMode,
   type CanvasStrongTerminalAttentionReminderMode,
   type CanvasFileReferenceOwnerSummary,
@@ -249,6 +250,8 @@ const NODE_PLACEMENT_PADDING = 40;
 const NODE_PLACEMENT_STEP_X = 120;
 const NODE_PLACEMENT_STEP_Y = 96;
 const NODE_PLACEMENT_SEARCH_RADIUS = 8;
+const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
+const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
 const EXECUTION_OUTPUT_FLUSH_INTERVAL_MS = 32;
 const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 1000;
 const EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS = 160;
@@ -11758,6 +11761,8 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
     updatedAt: new Date().toISOString(),
     nodes: [],
     edges: [],
+    groups: [],
+    nextGroupSequence: 1,
     fileReferences: [],
     suppressedFileActivityEdgeIds: [],
     suppressedAutomaticFileArtifactNodeIds: []
@@ -11778,6 +11783,8 @@ function clearFileDomainState(state: CanvasPrototypeState): CanvasPrototypeState
     ...state,
     nodes: retainedNodes,
     edges: retainedEdges,
+    groups: state.groups ?? [],
+    nextGroupSequence: state.nextGroupSequence ?? readNextGroupSequence(state),
     fileReferences: [],
     suppressedFileActivityEdgeIds: [],
     suppressedAutomaticFileArtifactNodeIds: []
@@ -12200,6 +12207,31 @@ function applyCanvasTemplateToState(
       : resolveTemplatePlacementTopLeft(previousState.nodes, template.nodes, centeredTopLeft);
 
   let nextSequence = readNextNodeSequence(previousState.nodes);
+  let nextGroupSequence = readNextGroupSequence(previousState);
+  const groupIdByTemplateIndex = new Map<number, string>();
+  const templateGroups = template.groups ?? [];
+  for (const [index] of templateGroups.entries()) {
+    const groupId = createCanvasGroupObjectId(nextGroupSequence);
+    nextGroupSequence += 1;
+    groupIdByTemplateIndex.set(index, groupId);
+  }
+  const parentGroupIndexByTemplateIndex = resolveTemplateGroupParentIndexesForApply(templateGroups);
+  const materializedGroups = templateGroups
+    .map((templateGroup, index) => {
+      const groupId = groupIdByTemplateIndex.get(index);
+      if (!groupId) {
+        return undefined;
+      }
+      return materializeTemplateGroup(
+        groupId,
+        templateGroup,
+        bounds.origin,
+        resolvedTopLeft,
+        groupIdByTemplateIndex,
+        parentGroupIndexByTemplateIndex.get(index)
+      );
+    })
+    .filter((group): group is CanvasGroupSummary => Boolean(group));
   const nodeIdByTemplateIndex = new Map<number, string>();
   const materializedNodes = template.nodes.map((templateNode, index) => {
     const resolvedAgentProvider =
@@ -12222,6 +12254,16 @@ function applyCanvasTemplateToState(
       resolvedAgentProvider,
       templateNode.kind === 'note' ? options.noteMaterializations?.get(index) : undefined
     );
+  });
+  const materializedNodesWithGroups = materializedNodes.map((node, index) => {
+    const groupIndex = template.nodes[index]?.groupIndex;
+    const groupId = groupIndex === undefined ? undefined : groupIdByTemplateIndex.get(groupIndex);
+    return groupId
+      ? {
+          ...node,
+          groupId
+        }
+      : node;
   });
 
   const materializedEdges = template.edges.flatMap((edge) => {
@@ -12250,11 +12292,81 @@ function applyCanvasTemplateToState(
     state: {
       ...previousState,
       updatedAt: new Date().toISOString(),
-      nodes: [...previousState.nodes, ...materializedNodes],
-      edges: [...previousState.edges, ...materializedEdges]
+      nodes: [...previousState.nodes, ...materializedNodesWithGroups],
+      edges: [...previousState.edges, ...materializedEdges],
+      groups: [...(previousState.groups ?? []), ...materializedGroups],
+      nextGroupSequence
     },
     nodeIds: materializedNodes.map((node) => node.id)
   };
+}
+
+function materializeTemplateGroup(
+  groupId: string,
+  templateGroup: NonNullable<CanvasTemplate['groups']>[number],
+  templateOrigin: CanvasNodePosition,
+  placedTopLeft: CanvasNodePosition,
+  groupIdByTemplateIndex: ReadonlyMap<number, string>,
+  parentGroupIndex: number | undefined
+): CanvasGroupSummary {
+  return {
+    id: groupId,
+    title: templateGroup.title,
+    position: snapCanvasPosition({
+      x: placedTopLeft.x + (templateGroup.position.x - templateOrigin.x),
+      y: placedTopLeft.y + (templateGroup.position.y - templateOrigin.y)
+    }),
+    size: normalizeCanvasGroupFootprint(templateGroup.size),
+    parentGroupId:
+      parentGroupIndex === undefined
+        ? undefined
+        : groupIdByTemplateIndex.get(parentGroupIndex)
+  };
+}
+
+function resolveTemplateGroupParentIndexesForApply(
+  templateGroups: readonly NonNullable<CanvasTemplate['groups']>[number][]
+): Map<number, number> {
+  const parentIndexByGroupIndex = new Map<number, number>();
+
+  for (const [index, templateGroup] of templateGroups.entries()) {
+    const parentGroupIndex = templateGroup.parentGroupIndex;
+    if (
+      parentGroupIndex === undefined ||
+      !Number.isInteger(parentGroupIndex) ||
+      parentGroupIndex < 0 ||
+      parentGroupIndex >= templateGroups.length ||
+      parentGroupIndex === index
+    ) {
+      continue;
+    }
+
+    if (!wouldCreateTemplateGroupParentCycle(parentIndexByGroupIndex, index, parentGroupIndex)) {
+      parentIndexByGroupIndex.set(index, parentGroupIndex);
+    }
+  }
+
+  return parentIndexByGroupIndex;
+}
+
+function wouldCreateTemplateGroupParentCycle(
+  parentIndexByGroupIndex: ReadonlyMap<number, number>,
+  groupIndex: number,
+  parentGroupIndex: number
+): boolean {
+  let nextParentIndex: number | undefined = parentGroupIndex;
+  const visited = new Set<number>();
+
+  while (nextParentIndex !== undefined) {
+    if (nextParentIndex === groupIndex || visited.has(nextParentIndex)) {
+      return true;
+    }
+
+    visited.add(nextParentIndex);
+    nextParentIndex = parentIndexByGroupIndex.get(nextParentIndex);
+  }
+
+  return false;
 }
 
 function materializeTemplateNode(
@@ -13627,12 +13739,23 @@ function normalizeState(
   const suppressedAutomaticFileArtifactNodeIds = Array.isArray(value.suppressedAutomaticFileArtifactNodeIds)
     ? value.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
     : [];
+  const normalizedGroups = normalizeCanvasGroups(value.groups);
+  const normalizedNodesWithGroups = normalizeCanvasNodeGroupMemberships(
+    reconcileRuntimeNodesInArray(normalizedNodes),
+    normalizedGroups
+  );
+  const nextGroupSequence = readNextGroupSequence({
+    groups: normalizedGroups,
+    nextGroupSequence: value.nextGroupSequence
+  });
 
   return {
     version: 1,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
-    nodes: reconcileRuntimeNodesInArray(normalizedNodes),
+    nodes: normalizedNodesWithGroups,
     edges,
+    groups: normalizedGroups,
+    nextGroupSequence,
     fileReferences,
     suppressedFileActivityEdgeIds,
     suppressedAutomaticFileArtifactNodeIds
@@ -13749,6 +13872,7 @@ function normalizeNode(
       value.size,
       fileView
     ),
+    groupId: typeof value.groupId === 'string' ? value.groupId : undefined,
     metadata: normalizedMetadata
   };
 }
@@ -13833,6 +13957,144 @@ function normalizePosition(value: unknown, sequence: number): CanvasNodePosition
   }
 
   return createNodePosition(sequence);
+}
+
+function createCanvasGroupObjectId(sequence: number): string {
+  return `group-${sequence}-${randomUUID()}`;
+}
+
+function normalizeCanvasGroups(value: unknown): CanvasGroupSummary[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const groups = value
+    .map((group) => normalizeCanvasGroup(group))
+    .filter((group): group is CanvasGroupSummary => Boolean(group));
+  return removeInvalidCanvasGroupParents(groups);
+}
+
+function normalizeCanvasGroup(value: unknown): CanvasGroupSummary | null {
+  if (!isRecord(value) || typeof value.id !== 'string') {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    title: typeof value.title === 'string' && value.title.trim() ? value.title.trim() : 'Group',
+    position: normalizeCanvasGroupPosition(value.position),
+    size: normalizeCanvasGroupFootprint(value.size),
+    parentGroupId: typeof value.parentGroupId === 'string' ? value.parentGroupId : undefined,
+    role: value.role === 'workspace-root' ? 'workspace-root' : 'user',
+    workspaceRootPath: typeof value.workspaceRootPath === 'string' ? value.workspaceRootPath : undefined
+  };
+}
+
+function normalizeCanvasGroupPosition(value: unknown): CanvasNodePosition {
+  return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number'
+    ? {
+        x: Math.round(value.x),
+        y: Math.round(value.y)
+      }
+    : { x: 0, y: 0 };
+}
+
+function normalizeCanvasGroupFootprint(value: unknown): CanvasNodeFootprint {
+  if (
+    !isRecord(value) ||
+    typeof value.width !== 'number' ||
+    !Number.isFinite(value.width) ||
+    typeof value.height !== 'number' ||
+    !Number.isFinite(value.height)
+  ) {
+    return DEFAULT_CANVAS_GROUP_SIZE;
+  }
+
+  return {
+    width: Math.max(MINIMUM_CANVAS_GROUP_SIZE.width, Math.round(value.width)),
+    height: Math.max(MINIMUM_CANVAS_GROUP_SIZE.height, Math.round(value.height))
+  };
+}
+
+function removeInvalidCanvasGroupParents(groups: readonly CanvasGroupSummary[]): CanvasGroupSummary[] {
+  const groupIds = new Set(groups.map((group) => group.id));
+  return groups.map((group) => {
+    if (
+      group.parentGroupId &&
+      groupIds.has(group.parentGroupId) &&
+      group.parentGroupId !== group.id &&
+      !wouldCreateGroupCycle(groups, group.id, group.parentGroupId)
+    ) {
+      return group;
+    }
+
+    if (!group.parentGroupId) {
+      return group;
+    }
+
+    return {
+      ...group,
+      parentGroupId: undefined
+    };
+  });
+}
+
+function wouldCreateGroupCycle(
+  groups: readonly CanvasGroupSummary[],
+  groupId: string,
+  parentGroupId: string
+): boolean {
+  let nextParentId: string | undefined = parentGroupId;
+  const visited = new Set<string>();
+
+  while (nextParentId) {
+    if (nextParentId === groupId || visited.has(nextParentId)) {
+      return true;
+    }
+
+    visited.add(nextParentId);
+    nextParentId = groups.find((group) => group.id === nextParentId)?.parentGroupId;
+  }
+
+  return false;
+}
+
+function normalizeCanvasNodeGroupMemberships(
+  nodes: readonly CanvasNodeSummary[],
+  groups: readonly CanvasGroupSummary[]
+): CanvasNodeSummary[] {
+  const groupIds = new Set(groups.map((group) => group.id));
+  return nodes.map((node) => {
+    if (!node.groupId || groupIds.has(node.groupId)) {
+      return node;
+    }
+
+    const { groupId: _groupId, ...nodeWithoutGroup } = node;
+    return nodeWithoutGroup;
+  });
+}
+
+function readNextGroupSequence(state: { groups?: readonly CanvasGroupSummary[]; nextGroupSequence?: unknown }): number {
+  const persistedSequence =
+    typeof state.nextGroupSequence === 'number' && Number.isInteger(state.nextGroupSequence) && state.nextGroupSequence > 0
+      ? state.nextGroupSequence
+      : 1;
+  const maxSequence = (state.groups ?? []).reduce((currentMax, group) => {
+    const parsedValue = readCanvasGroupDisplaySequence(group);
+    return parsedValue === undefined ? currentMax : Math.max(currentMax, parsedValue);
+  }, 0);
+
+  return Math.max(persistedSequence, maxSequence + 1);
+}
+
+function readCanvasGroupDisplaySequence(group: Pick<CanvasGroupSummary, 'id'>): number | undefined {
+  const matchedPrefix = group.id.match(/^group-([1-9]\d*)(?:-.+)?$/u);
+  if (!matchedPrefix) {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseInt(matchedPrefix[1], 10);
+  return Number.isFinite(parsedValue) ? parsedValue : undefined;
 }
 
 function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<string, unknown> | undefined {
