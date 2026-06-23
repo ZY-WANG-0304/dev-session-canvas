@@ -17,15 +17,28 @@ describe('template marketplace worker api', () => {
 
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.storageMode).toBe('seed');
+    expect(body.storageMode).toBe('empty');
   });
 
-  it('lists templates with query filtering', async () => {
+  it('keeps the marketplace empty without D1 or explicit development seed fallback', async () => {
     const response = await app.request('http://localhost/api/v1/templates?q=review&tag=quality');
     const body = await response.json<{ items: Array<{ slug: string }>; storageMode: string }>();
 
     expect(response.status).toBe(200);
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(body.storageMode).toBe('empty');
+    expect(body.items).toEqual([]);
+  });
+
+  it('lists seed templates only when the development seed fallback is explicitly enabled', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/templates?q=review&tag=quality',
+      {},
+      { MARKETPLACE_ENABLE_SEED_TEMPLATES: 'true' }
+    );
+    const body = await response.json<{ items: Array<{ slug: string }>; storageMode: string }>();
+
+    expect(response.status).toBe(200);
     expect(body.storageMode).toBe('seed');
     expect(body.items.map((item) => item.slug)).toEqual(['review-loop']);
   });
@@ -94,7 +107,11 @@ describe('template marketplace worker api', () => {
   });
 
   it('returns template details by slug', async () => {
-    const response = await app.request('http://localhost/api/v1/templates/release-readiness');
+    const response = await app.request(
+      'http://localhost/api/v1/templates/release-readiness',
+      {},
+      { MARKETPLACE_ENABLE_SEED_TEMPLATES: 'true' }
+    );
     const body = await response.json<{ template: { id: string; versions: unknown[] } }>();
 
     expect(response.status).toBe(200);
@@ -103,7 +120,11 @@ describe('template marketplace worker api', () => {
   });
 
   it('builds seed full package download metadata', async () => {
-    const response = await app.request('http://localhost/api/v1/templates/review-loop/download');
+    const response = await app.request(
+      'http://localhost/api/v1/templates/review-loop/download',
+      {},
+      { MARKETPLACE_ENABLE_SEED_TEMPLATES: 'true' }
+    );
     const body = await response.json<{ storageMode: string; packageObjectKey: string; packageDownloadUrl: string }>();
 
     expect(response.status).toBe(200);
@@ -113,7 +134,11 @@ describe('template marketplace worker api', () => {
   });
 
   it('builds seed lightweight template JSON export metadata', async () => {
-    const response = await app.request('http://localhost/api/v1/templates/review-loop/template.json');
+    const response = await app.request(
+      'http://localhost/api/v1/templates/review-loop/template.json',
+      {},
+      { MARKETPLACE_ENABLE_SEED_TEMPLATES: 'true' }
+    );
     const body = await response.json<{ storageMode: string; objectKey: string; downloadUrl: string }>();
 
     expect(response.status).toBe(200);
@@ -296,7 +321,11 @@ describe('template marketplace worker api', () => {
   });
 
   it('returns a generated seed thumbnail when no bucket binding is present', async () => {
-    const response = await app.request('http://localhost/api/v1/templates/review-loop/thumbnail');
+    const response = await app.request(
+      'http://localhost/api/v1/templates/review-loop/thumbnail',
+      {},
+      { MARKETPLACE_ENABLE_SEED_TEMPLATES: 'true' }
+    );
     const body = await response.text();
 
     expect(response.status).toBe(200);
@@ -351,7 +380,11 @@ describe('template marketplace worker api', () => {
   });
 
   it('returns a structured 404 when a thumbnail version is unknown', async () => {
-    const response = await app.request('http://localhost/api/v1/templates/review-loop/thumbnail?version=missing-version');
+    const response = await app.request(
+      'http://localhost/api/v1/templates/review-loop/thumbnail?version=missing-version',
+      {},
+      { MARKETPLACE_ENABLE_SEED_TEMPLATES: 'true' }
+    );
     const body = await response.json<{ error: { code: string } }>();
 
     expect(response.status).toBe(404);

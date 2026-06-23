@@ -16,7 +16,7 @@ import { buildTemplateThumbnailHref } from '../lib/thumbnail';
 interface TemplateDetailViewProps {
   template: MarketplaceTemplateDetail;
   storageMode: string;
-  source: 'api' | 'seed-fallback';
+  source: 'api' | 'seed-fallback' | 'empty-fallback';
 }
 
 type DetailTab = 'readme' | 'changelog';
@@ -58,7 +58,7 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
   const thumbnailHref = buildTemplateThumbnailHref(template);
   const readme = template.readme.trim() || 'This template does not have a README yet.';
   const versions = [...template.versions].sort((left, right) => right.versionNumber - left.versionNumber);
-  const sourceLabel = source === 'api' ? 'Worker API' : 'Seed fallback';
+  const sourceLabel = source === 'api' ? 'Worker API' : source === 'seed-fallback' ? 'Seed fallback' : 'Local fallback';
 
   useEffect(() => {
     setActiveDetailTab('readme');

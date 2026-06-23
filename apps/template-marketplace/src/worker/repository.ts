@@ -147,7 +147,7 @@ export interface MarketplaceTemplateRepository {
 }
 
 export class SeedTemplateRepository implements MarketplaceTemplateRepository {
-  public readonly storageMode = 'seed' as const;
+  public readonly storageMode: MarketplaceStorageMode = 'seed';
 
   public async listTemplates(query: MarketplaceListTemplatesRequest): Promise<MarketplaceListTemplatesResponse> {
     return listSeedTemplates(query);
@@ -304,6 +304,58 @@ export class SeedTemplateRepository implements MarketplaceTemplateRepository {
 
   public async publishTemplateVersion(): Promise<TemplateDetailResponse> {
     throw new MarketplaceRepositoryWriteError('marketplace_writes_unavailable', 'Template publishing requires D1 storage.', 503);
+  }
+}
+
+export class EmptyTemplateRepository extends SeedTemplateRepository {
+  public readonly storageMode = 'empty' as const;
+
+  public async listTemplates(query: MarketplaceListTemplatesRequest): Promise<MarketplaceListTemplatesResponse> {
+    return listMarketplaceTemplatesFromCatalog([], query, this.storageMode);
+  }
+
+  public async getTemplateDetail(_templateIdOrSlug: string): Promise<TemplateDetailResponse | undefined> {
+    return undefined;
+  }
+
+  public async buildDownloadResponse(_templateIdOrSlug: string, _versionId?: string): Promise<MarketplaceDownloadResponse | undefined> {
+    return undefined;
+  }
+
+  public async buildPackageDownloadResponse(_templateIdOrSlug: string, _versionId?: string): Promise<MarketplacePackageDownloadResponse | undefined> {
+    return undefined;
+  }
+
+  public async getTemplateLikeState(): Promise<MarketplaceTemplateLikeResponse | undefined> {
+    return undefined;
+  }
+
+  public async getAdminStats(): Promise<MarketplaceAdminStatsResponse> {
+    return {
+      totals: {
+        templateCount: 0,
+        publishedTemplateCount: 0,
+        delistedTemplateCount: 0,
+        userCount: 0,
+        bannedUserCount: 0,
+        publisherCount: 0,
+        downloadCount: 0,
+        likeCount: 0,
+        publishCount: 0,
+        reportCount: 0,
+        openReportCount: 0,
+        resolvedReportCount: 0,
+        rejectedReportCount: 0,
+        adminActionCount: 0
+      },
+      daily: [],
+      topTemplates: [],
+      storageMode: this.storageMode
+    };
+  }
+
+  public async isTemplateSlugAvailable(_slug: string): Promise<boolean> {
+    return true;
   }
 }
 
@@ -1068,6 +1120,10 @@ function isAdminBootstrapUser(user: MarketplaceRepositoryUserInput, allowlist: M
 
 export function createTemplateRepository(database?: D1Database): MarketplaceTemplateRepository {
   return database ? new D1TemplateRepository(database) : new SeedTemplateRepository();
+}
+
+export function createProductionTemplateRepository(database?: D1Database): MarketplaceTemplateRepository {
+  return database ? new D1TemplateRepository(database) : new EmptyTemplateRepository();
 }
 
 // Prefer the template's latest pointer when it still resolves to a published version;
