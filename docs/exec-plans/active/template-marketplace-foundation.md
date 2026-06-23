@@ -6,7 +6,7 @@
 
 ## 目标与全局图景
 
-这次变更把已经选定的模板市场方案从文档推进到可运行的基础工程。完成后，开发者可以在本仓库内安装依赖，启动一个 `apps/template-marketplace` 应用，看到 React + Vite 的市场首页，并通过同一个应用的 Hono Worker API 访问 `/api/v1/templates`、`/api/v1/templates/:id` 和 `/api/v1/templates/:id/download`。这些接口先基于内存种子数据和共享类型实现，用来证明浏览、详情和下载主路径的 API 合约、前端调用、Vite `/templates/` base path、Workers runtime 入口和测试脚本已经连通。
+这次变更把已经选定的模板市场方案从文档推进到可运行的基础工程。完成后，开发者可以在本仓库内安装依赖，启动一个 `apps/template-marketplace` 应用，看到 React + Vite 的市场首页，并通过同一个应用的 Hono Worker API 访问 `/api/v1/templates`、`/api/v1/templates/:id` 和 `/api/v1/templates/:id/download`。这些接口最初基于内存种子数据和共享类型实现，用来证明浏览、详情和下载主路径的 API 合约、前端调用、Vite `/templates/` base path、Workers runtime 入口和测试脚本已经连通；当前正式口径是生产环境无 D1 时保持 empty 空目录，3 个 seed/preview 模板只作为开发、测试和调试 fixture，通过显式开关启用。
 
 这不是完整 Phase 1-4 生产实现。本轮的可观察目标是“本地可跑、可测、结构正确，并把 preview D1/R2 只读下载主路径接通”，为后续接入 GitHub OAuth、共享 React Webview bundle、写接口、生产资源分离和治理后台留出明确边界，而不是把尚未完成的 Phase 4 能力伪装成已完成线上产品。
 
@@ -16,11 +16,11 @@
 - [x] (2026-05-10 03:39 +0800) 从当前文档选型分支切出实现分支 `feat-template-marketplace-foundation`，避免继续把开发提交混在技术选型分支名下。
 - [x] (2026-05-10 03:45 +0800) 创建 `packages/marketplace-shared/`，导出市场 API 类型、排序/分页常量、种子数据、搜索/排序/详情/下载纯函数和共享测试。
 - [x] (2026-05-10 03:49 +0800) 创建 `apps/template-marketplace/`，包含 React + Vite 浏览器入口、Hono Worker 入口、Wrangler 配置、Vite 配置、Tailwind 基础主题和基础 CSS。
-- [x] (2026-05-10 03:50 +0800) 为共享包、Worker API 和 Web API client 补最小自动化测试，覆盖列表、搜索、排序、详情、下载响应、404 和 API 失败时的 seed fallback。
+- [x] (2026-05-10 03:50 +0800) 为共享包、Worker API 和 Web API client 补最小自动化测试，覆盖列表、搜索、排序、详情、下载响应、404 和 API 不可用时的 fallback；该 fallback 口径后来在 2026-06-23 收敛为生产 empty、开发/调试 seed。
 - [x] (2026-05-10 04:02 +0800) 更新根 `package.json`、`package-lock.json` 和设计索引相关文档，让新增 workspace、脚本和验证方式可被后续协作者直接执行。
 - [x] (2026-05-10 04:04 +0800) 运行 `git diff --check`、`npm audit`、`npm run typecheck`、`npm run build`、`npm run typecheck:marketplace`、`npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web` 和 `npm run build:marketplace`，全部通过。
 - [x] (2026-05-10 04:48 +0800) 继续接入 D1 里程碑：为 `packages/marketplace-shared` 安装 `drizzle-orm`，新增 Phase 1-4 核心表的 Drizzle schema，并在 `apps/template-marketplace/migrations/0001_marketplace_core.sql` 写入对应 D1 SQL migration。
-- [x] (2026-05-10 04:56 +0800) 新增 `MarketplaceTemplateRepository` 边界、seed repository 和 D1 repository，让 Worker 在存在 `MARKETPLACE_DB` binding 时读取 D1 元数据，否则继续显式回退到 seed 数据。
+- [x] (2026-05-10 04:56 +0800) 新增 `MarketplaceTemplateRepository` 边界、seed repository 和 D1 repository；当时无 `MARKETPLACE_DB` 会回退 seed 数据，该策略后来在 2026-06-23 被“生产 empty 默认、显式 seed 开关”取代。
 - [x] (2026-05-10 04:59 +0800) 补齐 D1 repository、migration、Worker D1 binding 和共享 schema 子路径导出测试；修复 Hono 测试中未传 Env 时 `context.env` 为空、`Array.map` 回调签名误用和测试 helper 重复注册测试的问题。
 - [x] (2026-05-10 05:02 +0800) 重新运行 `npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web`、`npm run typecheck:marketplace`、`npm run build:marketplace`、`npm run typecheck`、`npm run build`、`npm audit`、`git diff --check` 和 `/templates/` 构建产物检查，全部通过。
 - [x] (2026-05-10 05:08 +0800) schema 子路径导出调整后再次运行完整验证；修复 `git diff --check` 发现的 `packages/marketplace-shared/src/index.ts` EOF 空行后，`npm audit`、`git diff --check`、`/templates/` 资源路径检查和 Web bundle Drizzle 排除检查均通过。
@@ -124,6 +124,8 @@
 
 - [x] (2026-05-13 17:43 +0800) 处理最新 review：把 IPv6 loopback `http://[::1]:*` / `https://[::1]:*` 纳入 Webview `connect-src`，并把本地调试来源补进 `img-src`，让本地 Worker dev server 的详情、下载和缩略图 CSP 边界与 trusted debug source 一致。
 - [x] (2026-05-13 17:43 +0800) 运行 `npm run test:canvas-templates`、`npm run typecheck`、`npm run test:marketplace`、`npm run build`、`npm run build:marketplace`、Webview JS `node --check`、`npm run test:package-vsix-file-list` 和 `git diff --check`，全部通过。
+- [x] (2026-06-23 23:08 +0800) 根据 PR #196 review 同步 seed fallback 口径：生产 Worker 在无 `MARKETPLACE_DB` 时默认返回 `storageMode: "empty"` 和空目录；只有 `MARKETPLACE_ENABLE_SEED_TEMPLATES=true` 才启用 Worker seed repository；Web API 不可用时生产默认 empty，只有 Vite dev 或 `VITE_MARKETPLACE_ENABLE_SEED_FALLBACK=true` 才启用 seed fallback。
+- [x] (2026-06-23 23:14 +0800) 重新运行 PR #196 review 相关验证：`npm run -w @dev-session-canvas/template-marketplace typecheck`、`test:api`、`test:web`、`npm run -w @dev-session-canvas/marketplace-shared test`、`typecheck`、`npm run build:marketplace`、`npm run test:marketplace-vscode-preview-preflight` 和 `git diff --check`，全部通过。
 
 ## 意外与发现
 
@@ -140,7 +142,7 @@
   证据：把 `vite.config.ts` 纳入 `tsconfig.web.json` 时，`tsc` 报 `Cannot find module '@vitejs/plugin-react'`；Vite 自身能正常加载配置，因此本轮把 Vite 配置从 Web 应用类型检查范围移出，保留 `vite build` 作为配置验证。
 
 - 观察：Hono 的 `app.request(...)` 测试如果不传第三个 Env 参数，`context.env` 可能是 `undefined`，不能直接读取 `context.env.MARKETPLACE_DB`。
-  证据：新增 D1 repository 后，旧 seed 路由测试报 `Cannot read properties of undefined (reading 'MARKETPLACE_DB')`；改为 `context.env?.MARKETPLACE_DB` 后 seed 与 D1 binding 测试同时通过。
+  证据：新增 D1 repository 后，旧 seed 路由测试报 `Cannot read properties of undefined (reading 'MARKETPLACE_DB')`；改为 `context.env?.MARKETPLACE_DB` 后，不传 Env 的 empty 默认、显式 seed fallback 与 D1 binding 测试都能通过。
 
 - 观察：把 `mapTemplateRow(row, versions?)` 直接作为 `Array.map` 回调会让 TypeScript 把第二个 `index` 参数误配给 `versions` 参数。
   证据：`npm run typecheck:marketplace` 曾报 `Argument of type '(row: TemplateRow, versions?: MarketplaceTemplateVersion[]) => MarketplaceTemplateDetail' is not assignable to parameter of type ...`；改为 `rows.map((row) => mapTemplateRow(row))` 后类型检查通过。
@@ -227,7 +229,7 @@
   理由：用户已确认正式入口计划为 `https://dscanvas.dev/templates`，因此前端路由和构建产物必须尽早适配子路径；API 前缀暂不移动到 `/templates/api/v1`，避免和已确认设计文档冲突。
   日期/作者：2026-05-10 / Codex
 
-- 决策：本轮使用 seed repository 作为 D1/R2 接入前的开发数据源，并在 API 响应中显式返回 `storageMode: "seed"`。
+- 决策：本轮使用 seed repository 作为 D1/R2 接入前的开发数据源，并在 API 响应中显式返回 `storageMode: "seed"`；该策略在 2026-06-23 后仅保留为开发/测试/调试 fixture，不再作为生产无 D1 默认内容。
   理由：账号和云资源尚未准备完成，内存种子数据能验证 API 合约和前端集成，同时通过显式 storage mode 避免把模拟数据误认作生产持久化。
   日期/作者：2026-05-10 / Codex
 
@@ -239,16 +241,20 @@
   理由：用户要求以 Phase 4 为目标，因此 schema 必须覆盖版本、互动、统计、举报和审计；但云端账号、OAuth 回调和 R2 对象尚未准备，先把 D1 元数据模型和 public read path 接到 Worker，可以独立验证数据边界且不阻塞后续云资源申请。
   日期/作者：2026-05-10 / Codex
 
-- 决策：Worker 通过 `createTemplateRepository(database?)` 选择 D1 或 seed repository，未绑定 `MARKETPLACE_DB` 时继续返回 `storageMode: "seed"`，绑定存在时返回 `storageMode: "d1"`。
-  理由：这让本地开发、CI 和 `*.workers.dev` 预览可以在 D1 未配置时继续运行，同时真实 D1 binding 一接入就能走同一套 API 合约；响应中的 `storageMode` 防止把 seed 数据误认为生产数据。
-  日期/作者：2026-05-10 / Codex
+- 决策：Worker 最初通过 `createTemplateRepository(database?)` 选择 D1 或 seed repository，未绑定 `MARKETPLACE_DB` 时返回 `storageMode: "seed"`，绑定存在时返回 `storageMode: "d1"`；该决策已被 2026-06-23 的生产 empty 默认取代。
+  理由：这曾让本地开发、CI 和 `*.workers.dev` 预览在 D1 未配置时继续运行，同时真实 D1 binding 一接入就能走同一套 API 合约；但后续确认官方模板必须走正常发布流程，不能把代码内 seed 当成生产市场内容。
+  日期/作者：2026-05-10 / Codex；2026-06-23 标记为被取代 / Codex
+
+- 决策：生产 Worker 使用 `createProductionTemplateRepository(database?)` 选择 repository；存在 `MARKETPLACE_DB` 时读取 D1，缺少 D1 时返回 `EmptyTemplateRepository` 和 `storageMode: "empty"`。只有 `MARKETPLACE_ENABLE_SEED_TEMPLATES=true` 时，`createMarketplaceRepository()` 才允许进入 `createTemplateRepository()` 的 seed fallback。Web API client 同步采用生产 empty fallback，只有 Vite dev 或 `VITE_MARKETPLACE_ENABLE_SEED_FALLBACK=true` 才使用共享 seed 数据。
+  理由：模板市场正式环境必须是干净目录，官方模板也要通过正常发布流程写入 D1/R2，而不是由代码内置 seed 管理；保留显式 seed 开关可以继续支持本地开发、调试和测试预览，不会把 fixture 冒充生产内容。
+  日期/作者：2026-06-23 / Codex
 
 - 决策：D1 public repository 只读取 `published` 模板和 `published` 版本；下架、驳回和管理员治理视角后续通过独立 admin API 实现。
   理由：当前 API 是匿名公开浏览和下载路径，不能因为 D1 中保留治理状态就泄漏下架模板或 rejected 版本；Phase 4 的管理后台需要更强权限边界和审计日志，不能复用公开详情路由绕过权限。
   日期/作者：2026-05-10 / Codex
 
 - 决策：`@dev-session-canvas/marketplace-shared` 根入口保持浏览器安全，只导出 API 类型、Zod schema、seed 数据和纯函数；Drizzle schema 通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出。
-  理由：浏览器市场需要导入共享 API 类型和 seed fallback，但不应该携带 Drizzle runtime；子路径导出仍让 Worker、迁移和测试可以复用 schema，同时避免 Web bundle 膨胀。当前 workspace 仍使用 TypeScript `moduleResolution: "Node"`，因此 package 还需要 `typesVersions.schema` 才能被跨包类型检查解析。
+  理由：浏览器市场需要导入共享 API 类型和开发/调试 seed fallback，但不应该携带 Drizzle runtime；子路径导出仍让 Worker、迁移和测试可以复用 schema，同时避免 Web bundle 膨胀。当前 workspace 仍使用 TypeScript `moduleResolution: "Node"`，因此 package 还需要 `typesVersions.schema` 才能被跨包类型检查解析。
   日期/作者：2026-05-10 / Codex
 
 - 决策：preview seed 使用单独的 `apps/template-marketplace/seeds/0001_preview_templates.sql`，通过 upsert 写入官方模板元数据，不把 seed 数据混入 schema migration。
@@ -264,7 +270,7 @@
   日期/作者：2026-05-10 / Codex
 
 - 决策：`GET /api/v1/templates/:id/download` 在存在 `TEMPLATE_BUCKET` binding 时直接返回 R2 中的 `template.json` attachment；没有 R2 binding 时才返回包含 `objectKey`、`sha256` 和 `sizeBytes` 的 metadata JSON。
-  理由：正式产品语义是“下载模板文件”，而不是只暴露内部对象 key；保留 metadata JSON 降级路径可以让本地测试、seed fallback 和未配置 R2 的开发环境继续工作，同时通过 `x-marketplace-storage-mode: r2` 和 `x-marketplace-catalog-storage-mode` 响应头区分真实对象来源与 D1/seed 元数据来源。
+  理由：正式产品语义是“下载模板文件”，而不是只暴露内部对象 key；保留 metadata JSON 降级路径可以让本地测试、显式 seed fallback 和未配置 R2 的开发环境继续工作，同时通过 `x-marketplace-storage-mode: r2` 和 `x-marketplace-catalog-storage-mode` 响应头区分真实对象来源与 D1/seed/empty 元数据来源。
   日期/作者：2026-05-10 / Codex
 
 - 决策：Workers Static Assets 保持 `not_found_handling = "single-page-application"`，但同时配置 `run_worker_first = ["/api/*", "/templates", "/templates/*"]`。
@@ -317,9 +323,9 @@
 
 ## 结果与复盘
 
-本轮已经交付模板市场基础工程：新增 `packages/marketplace-shared/` 共享合约与 seed repository，新增 `apps/template-marketplace/` React + Vite 浏览器应用和 Hono Worker API，并在根 `package.json` 中补齐 `build:marketplace`、`test:marketplace`、`test:marketplace-shared`、`test:marketplace-api`、`test:marketplace-web` 与 `typecheck:marketplace` 脚本；其中 `test:marketplace` 已纳入根 `npm test` 默认回归入口。浏览器构建使用 `/templates/` base path，Worker API 暴露 `/api/v1/health`、`/api/v1/templates`、`/api/v1/templates/:id`、`/api/v1/templates/:id/download` 和 `/api/v1/templates/:id/thumbnail`。
+本轮已经交付模板市场基础工程：新增 `packages/marketplace-shared/` 共享合约与 seed repository，新增 `apps/template-marketplace/` React + Vite 浏览器应用和 Hono Worker API，并在根 `package.json` 中补齐 `build:marketplace`、`test:marketplace`、`test:marketplace-shared`、`test:marketplace-api`、`test:marketplace-web` 与 `typecheck:marketplace` 脚本；其中 `test:marketplace` 已纳入根 `npm test` 默认回归入口。浏览器构建使用 `/templates/` base path，Worker API 暴露 `/api/v1/health`、`/api/v1/templates`、`/api/v1/templates/:id`、`/api/v1/templates/:id/download` 和 `/api/v1/templates/:id/thumbnail`。2026-06-23 后，seed repository 明确只作为开发、测试和调试 fixture；生产缺少 D1 时应返回 empty repository，不展示代码内置模板。
 
-本轮续做已经把 D1 元数据模型推进到可验证边界：`packages/marketplace-shared/src/schema.ts` 定义 Phase 1-4 核心表并通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出，`apps/template-marketplace/migrations/0001_marketplace_core.sql` 提供 D1 migration，`apps/template-marketplace/src/worker/repository.ts` 让 public list/detail/download API 可以在 D1 binding 存在时读取 D1 元数据，在 binding 缺席时继续使用 seed fallback。
+本轮续做已经把 D1 元数据模型推进到可验证边界：`packages/marketplace-shared/src/schema.ts` 定义 Phase 1-4 核心表并通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出，`apps/template-marketplace/migrations/0001_marketplace_core.sql` 提供 D1 migration，`apps/template-marketplace/src/worker/repository.ts` 让 public list/detail/download API 可以在 D1 binding 存在时读取 D1 元数据。当前 repository contract 是：`createProductionTemplateRepository(database?)` 在无 D1 时返回 `EmptyTemplateRepository` 和 `storageMode: "empty"`；`createTemplateRepository(database?)` 保留 D1/seed 二选一能力，但只应通过 `MARKETPLACE_ENABLE_SEED_TEMPLATES=true` 等显式开发/调试开关进入。
 
 Cloudflare preview 资源也已经接入：`apps/template-marketplace/wrangler.toml` 绑定真实 D1 database id `0944dc87-a603-4a59-8a59-b75ab3a796c5` 和 R2 bucket `template-marketplace-preview`，远端 D1 已执行 migration 和 preview seed，当前包含 3 个官方模板、4 个已发布版本和对应标签/日统计，其中 `review-loop` 的 latest version 已指向 v2。R2 bucket 已写入 4 个真实 `template.json` 对象和 4 个 `thumbnail.png` 对象，并通过 Wrangler 读回校验 size / sha256。
 
@@ -331,7 +337,7 @@ Workers preview 已部署：`apps/template-marketplace/src/worker/index.ts` 现�
 
 用户已在浏览器人工确认 preview 根路径可正常渲染 3 张模板卡片，且卡片级 `Download` 按钮可见。
 
-前端现在支持模板详情独立路径：`/templates/:slug` 会加载 `GET /api/v1/templates/:slug`，API 不可用时回退到 seed detail；详情页包含返回市场、readme、版本历史、统计、sha256 和 `Download JSON`。这仍是浏览器下载文件入口，不是 VSCode 本地安装落盘。
+前端现在支持模板详情独立路径：`/templates/:slug` 会加载 `GET /api/v1/templates/:slug`；API 不可用时，生产构建回退到 empty detail，Vite dev 或 `VITE_MARKETPLACE_ENABLE_SEED_FALLBACK=true` 才回退到 seed detail。详情页包含返回市场、readme、版本历史、统计、sha256 和 `Download JSON`。这仍是浏览器下载文件入口，不是 VSCode 本地安装落盘。
 
 用户已在浏览器人工确认 `review-loop` 详情页正常渲染，详情数据来自 Worker API / D1，详情页的下载入口可见。
 
@@ -339,7 +345,7 @@ Workers preview 已部署：`apps/template-marketplace/src/worker/index.ts` 现�
 
 用户已在预览环境人工验证点击下载后可观察到下载量 +1，说明 D1 累计下载计数已经贯通到浏览器页面可见结果。
 
-Web 端现在支持基础标签筛选：列表结果上方展示 tag chips，选中后会把 tag 作为 Worker API 查询参数传给列表接口；seed fallback 也使用同一组 tags 过滤。当前 tag chips 只从当前可见结果与已选标签生成，后续如果要在筛选后仍显示全量 tag vocabulary，需要 API 增加 facet/metadata 响应。
+Web 端现在支持基础标签筛选：列表结果上方展示 tag chips，选中后会把 tag 作为 Worker API 查询参数传给列表接口；显式启用的 seed fallback 也使用同一组 tags 过滤，生产 empty fallback 则返回空结果。当前 tag chips 只从当前可见结果与已选标签生成，后续如果要在筛选后仍显示全量 tag vocabulary，需要 API 增加 facet/metadata 响应。
 
 浏览器端和插件内 Webview 现在都能展示真实缩略图：卡片和详情页会请求 `GET /api/v1/templates/:slug/thumbnail?version=:versionId`，Worker 在 preview 环境从 R2 返回 PNG 并设置公开缓存头；本地无 R2 binding 时返回显式 seed SVG，前端图片加载失败时继续显示原有渐变占位，避免缩略图对象缺失导致卡片空白。用户已确认预览环境能看到 3 张模板卡片和卡片预览图。
 
@@ -359,7 +365,7 @@ VSCode 本地安装主路径已经有代码落点：扩展注册 `onUri`，外�
 
 先更新 workspace 和依赖，让根包识别 `apps/template-marketplace` 与 `packages/marketplace-shared`。随后创建共享包，定义模板摘要、模板详情、版本、发布者、分页、排序、下载响应和错误响应类型，并提供少量内存种子数据。共享包要有独立测试，证明排序、搜索和详情查找是纯函数、可在 Node 测试里重复执行。
 
-接着创建市场应用包。Worker 入口使用 Hono，暴露健康检查、模板列表、模板详情和下载接口。最初没有 D1/R2 binding 时，Worker 通过共享包的 repository 函数读取种子数据，并在响应中明确 `storageMode: "seed"`，避免把模拟数据误写成生产持久化。续做里程碑已经让 Worker 在存在 D1 binding 时读取 D1 公开元数据，在存在 R2 binding 时从 R2 返回真实 `template.json` attachment。Web 入口使用 React + Vite，渲染市场标题、搜索框、排序选择、模板卡片、详情占位和安装按钮。UI 不接入 VSCode 文件系统，只展示浏览器主路径和 `/templates/` base path 是否生效。
+接着创建市场应用包。Worker 入口使用 Hono，暴露健康检查、模板列表、模板详情和下载接口。最初没有 D1/R2 binding 时，Worker 通过共享包的 repository 函数读取种子数据，并在响应中明确 `storageMode: "seed"`，避免把模拟数据误写成生产持久化。2026-06-23 后，这一路径收敛为显式开发/调试开关：生产 Worker 无 D1 时必须通过 `createProductionTemplateRepository()` 返回 `EmptyTemplateRepository` 与空目录；只有 `MARKETPLACE_ENABLE_SEED_TEMPLATES=true` 时才允许读取 seed。续做里程碑已经让 Worker 在存在 D1 binding 时读取 D1 公开元数据，在存在 R2 binding 时从 R2 返回真实 `template.json` attachment。Web 入口使用 React + Vite，渲染市场标题、搜索框、排序选择、模板卡片、详情占位和安装按钮；生产 API 不可用时展示 empty fallback，Vite dev 或 `VITE_MARKETPLACE_ENABLE_SEED_FALLBACK=true` 才展示 seed fallback。UI 不接入 VSCode 文件系统，只展示浏览器主路径和 `/templates/` base path 是否生效。
 
 最后补验证脚本。新增 `npm run test:marketplace-shared`、`npm run test:marketplace-api`、`npm run test:marketplace-web`、`npm run typecheck:marketplace` 和 `npm run build:marketplace`；随着 shared / Worker / Web 回归已稳定，本轮又新增 `npm run test:marketplace` 聚合并串入根 `npm test` 默认入口，防止市场 workspace 变更绕过常规回归。preview 云资源脚本单独放在 app workspace 中，D1 用 `db:*:preview`，R2 用 `r2:*:preview`；远端部署、D1/R2 preview 种子和真实 VSCode smoke 仍保留为按需验证，不放进默认 `npm test`。
 
@@ -386,7 +392,7 @@ VSCode 本地安装主路径已经有代码落点：扩展注册 `onUri`，外�
 
 如果某个新增依赖版本要求更高 Node 或 TypeScript，优先选择与当前仓库 Node 25 / TypeScript 5.0 能工作的版本，并把取舍记录到 `意外与发现`。
 
-D1 schema 里程碑的具体文件是 `packages/marketplace-shared/src/schema.ts`、`apps/template-marketplace/migrations/0001_marketplace_core.sql`、`apps/template-marketplace/src/worker/repository.ts`、`apps/template-marketplace/src/worker/repository.test.ts`、`apps/template-marketplace/src/worker/migration.test.ts` 和 `apps/template-marketplace/src/worker/testD1Database.ts`。`app.ts` 中读取 binding 必须使用 `context.env?.MARKETPLACE_DB`，因为没有 Env 的 Hono 测试仍应走 seed fallback。
+D1 schema 里程碑的具体文件是 `packages/marketplace-shared/src/schema.ts`、`apps/template-marketplace/migrations/0001_marketplace_core.sql`、`apps/template-marketplace/src/worker/repository.ts`、`apps/template-marketplace/src/worker/repository.test.ts`、`apps/template-marketplace/src/worker/migration.test.ts` 和 `apps/template-marketplace/src/worker/testD1Database.ts`。`app.ts` 中读取 binding 必须使用 `context.env?.MARKETPLACE_DB`，因为没有 Env 的 Hono 测试仍应稳定进入 production empty 默认；只有测试显式传入 `{ MARKETPLACE_ENABLE_SEED_TEMPLATES: "true" }` 时才应走 seed fallback。
 
 Cloudflare preview 资源准备好后，先用 `wrangler d1 list` 确认真实 UUID，再更新 `apps/template-marketplace/wrangler.toml` 的 `database_id`。随后执行 `npm run -w @dev-session-canvas/template-marketplace db:migrate:preview` 建表，执行 `npm run -w @dev-session-canvas/template-marketplace db:seed:preview` 写入官方 seed 元数据，最后执行 `npm run -w @dev-session-canvas/template-marketplace db:verify:preview` 确认远端 D1 中的模板版本 object key、sha256 和 size。R2 对象通过 `npm run -w @dev-session-canvas/template-marketplace r2:seed:preview` 上传，通过 `npm run -w @dev-session-canvas/template-marketplace r2:verify:preview` 读回并校验摘要。
 
@@ -396,7 +402,7 @@ Cloudflare preview 资源准备好后，先用 `wrangler d1 list` 确认真实 U
 
 本轮完成后，以下行为必须可观察：
 
-运行 `npm run test:marketplace-shared`，预期共享包测试通过，证明种子数据搜索、排序和 `marketplaceSchema` 导出可用。运行 `npm run test:marketplace-api`，预期 Worker API 测试通过，至少覆盖 `GET /api/v1/health`、`GET /api/v1/templates`、`GET /api/v1/templates/:id`、`GET /api/v1/templates/:id/download`、未知模板 404、D1 repository 映射、D1 binding 路由选择、R2 文件下载、R2 missing object、schema 子路径导出和 migration 核心表。运行 `npm run test:marketplace-web`，预期 Web API client 测试通过，覆盖 Worker API 可用和本地 seed fallback 两条路径。运行 `npm run typecheck:marketplace` 和 `npm run build:marketplace`，预期 Vite browser build、共享包类型检查和 Worker TypeScript 检查通过，并且生成的浏览器 bundle 使用 `/templates/` base path。运行 `npm run typecheck` 和 `npm run build`，预期现有扩展代码和新增 workspace 类型检查/构建不冲突。运行 `npm audit` 和 `git diff --check`，预期无漏洞报告、无空白错误。
+运行 `npm run test:marketplace-shared`，预期共享包测试通过，证明 seed fixture 的搜索、排序、`empty` storage mode 类型和 `marketplaceSchema` 导出可用。运行 `npm run test:marketplace-api`，预期 Worker API 测试通过，至少覆盖 `GET /api/v1/health`、`GET /api/v1/templates`、`GET /api/v1/templates/:id`、`GET /api/v1/templates/:id/download`、未知模板 404、无 D1 时的 production empty 默认、`MARKETPLACE_ENABLE_SEED_TEMPLATES=true` 显式 seed fallback、D1 repository 映射、D1 binding 路由选择、R2 文件下载、R2 missing object、schema 子路径导出和 migration 核心表。运行 `npm run test:marketplace-web`，预期 Web API client 测试通过，覆盖 Worker API 可用、生产 API 不可用时的 empty fallback，以及 Vite dev 或 `VITE_MARKETPLACE_ENABLE_SEED_FALLBACK=true` 下的 seed fallback。运行 `npm run typecheck:marketplace` 和 `npm run build:marketplace`，预期 Vite browser build、共享包类型检查和 Worker TypeScript 检查通过，并且生成的浏览器 bundle 使用 `/templates/` base path。运行 `npm run typecheck` 和 `npm run build`，预期现有扩展代码和新增 workspace 类型检查/构建不冲突。运行 `npm audit` 和 `git diff --check`，预期无漏洞报告、无空白错误。
 
 ## 幂等性与恢复
 
@@ -527,16 +533,48 @@ Cloudflare preview 资源准备好后，先用 `wrangler d1 list` 确认真实 U
     git diff --check
     # 通过，无输出
 
+PR #196 review 修复后，重新确认生产 empty / 显式 seed fallback 相关验证：
+
+    npm run -w @dev-session-canvas/template-marketplace typecheck
+    # 通过，无输出错误
+
+    npm run -w @dev-session-canvas/template-marketplace test:api
+    # Test Files  5 passed (5)
+    # Tests  92 passed (92)
+
+    npm run -w @dev-session-canvas/template-marketplace test:web
+    # Test Files  6 passed (6)
+    # Tests  43 passed (43)
+
+    npm run -w @dev-session-canvas/marketplace-shared test
+    # Test Files  2 passed (2)
+    # Tests  28 passed (28)
+
+    npm run -w @dev-session-canvas/marketplace-shared typecheck
+    # 通过，无输出错误
+
+    npm run build:marketplace
+    # vite v7.3.3 building client environment for production...
+    # dist/web/assets/index-IH5vbkZv.js 307.30 kB
+    # built in 3.17s
+
+    npm run test:marketplace-vscode-preview-preflight
+    # template marketplace preview preflight classification passed
+
+    git diff --check
+    # 通过，无输出
+
 ## 接口与依赖
 
 `packages/marketplace-shared/src/index.ts` 必须导出市场 API 类型和纯函数。核心类型包括 `MarketplaceTemplateSummary`、`MarketplaceTemplateDetail`、`MarketplaceTemplateVersion`、`MarketplacePublisherSummary`、`MarketplaceListTemplatesRequest`、`MarketplaceListTemplatesResponse`、`MarketplaceDownloadResponse` 和 `MarketplaceApiError`。核心函数包括 `listSeedTemplates(query)`、`getSeedTemplateDetail(templateId)`、`buildSeedDownloadResponse(templateId, versionId?)` 和 `calculateHotScore(downloadCount, likeCount, updatedAt)`。`packages/marketplace-shared/src/schema.ts` 必须通过 package export 子路径 `./schema` 暴露 `marketplaceSchema`，并在 `typesVersions.schema` 中暴露同一类型入口；不要从根入口 re-export Drizzle schema。
 
-`apps/template-marketplace/src/worker/app.ts` 必须导出 `createMarketplaceWorkerApp()`，返回一个 Hono app，测试可以直接调用 `app.request(...)`。`apps/template-marketplace/src/worker/index.ts` 必须默认导出 Cloudflare Worker fetch handler。`apps/template-marketplace/src/worker/repository.ts` 必须导出 `MarketplaceTemplateRepository`、`SeedTemplateRepository`、`D1TemplateRepository` 和 `createTemplateRepository(database?)`，其中 D1 public repository 只读取 published 模板/版本，且没有 binding 时不得破坏 seed fallback。
+`apps/template-marketplace/src/worker/app.ts` 必须导出 `createMarketplaceWorkerApp()`，返回一个 Hono app，测试可以直接调用 `app.request(...)`。`apps/template-marketplace/src/worker/index.ts` 必须默认导出 Cloudflare Worker fetch handler。`apps/template-marketplace/src/worker/repository.ts` 必须导出 `MarketplaceTemplateRepository`、`EmptyTemplateRepository`、`SeedTemplateRepository`、`D1TemplateRepository`、`createTemplateRepository(database?)` 和 `createProductionTemplateRepository(database?)`。其中 D1 public repository 只读取 published 模板/版本；`createProductionTemplateRepository()` 无 binding 时必须返回 `storageMode: "empty"`；`createTemplateRepository()` 的无 binding seed fallback 仅供 `MARKETPLACE_ENABLE_SEED_TEMPLATES=true`、本地开发、调试和测试使用，不能作为生产默认行为。
 
-`apps/template-marketplace/src/web/App.tsx` 必须渲染一个无需认证即可使用的浏览页面。它可以先调用 `/api/v1/templates`，也可以在 API 不可用时展示本地 seed fallback，但 fallback 必须显式标注为开发模式，不能冒充生产数据。
+`apps/template-marketplace/src/web/App.tsx` 必须渲染一个无需认证即可使用的浏览页面。它可以先调用 `/api/v1/templates`；API 不可用时，生产构建必须展示 `empty-fallback` 空目录，只有 Vite dev 或 `VITE_MARKETPLACE_ENABLE_SEED_FALLBACK=true` 才展示本地 seed fallback。任何 seed fallback 都必须显式标注为开发/调试模式，不能冒充生产数据。
 
 ## 修订记录
 
+- 2026-06-23 23:08 +0800 / Codex：按 PR #196 review 同步 active ExecPlan 的 seed fallback 合同，原因是生产模板市场已改为无 D1 默认 empty，seed/preview 模板只允许开发、测试和调试开关显式启用。
 - 2026-05-13 17:43 +0800 / Codex：补充 Webview CSP 本地调试来源收口，原因是 review 指出 `[::1]` 与本地 HTTP thumbnail 已在 trusted debug source 范围内但未被 CSP 放行。
 - 2026-05-13 16:44 +0800 / Codex：补充默认来源按扩展安装模式选择、外部 `source` 按模式校验的收口，原因是用户确认正式安装应打开正式入口、调试安装应打开调试入口，并且跨环境链接必须报错。
 - 2026-05-13 15:54 +0800 / Codex：补充默认入口 source 复位收口，原因是 review 指出上一次外部来源会粘住命令入口，与固定默认入口语义冲突。
