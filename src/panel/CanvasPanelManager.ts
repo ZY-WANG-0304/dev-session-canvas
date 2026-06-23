@@ -2059,7 +2059,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       },
       diagnosticsSchema: {
         executionFileLinkResolve: 3,
-        executionPerformance: EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION
+        executionPerformance: EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
+        canvasGroupGeometry: 1
       },
       host: {
         platform: process.platform,
@@ -6043,12 +6044,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     let rootLocalStatesToPersist: CanvasRootLocalStateSnapshot[] | undefined;
     if (workspaceFolders.length > 1) {
       const previousRootStates = this.lastLoadedRootLocalStates;
+      const composedRootGeometryBeforeDecompose = summarizeWorkspaceRootGroupsForDiagnostics(this.state);
+      const previousRootGeometry = summarizeRootLocalStatesForDiagnostics(previousRootStates);
       const decomposed = decomposeMultiRootCanvasState({
         composedState: this.state,
         workspaceFolders,
         previousRootStates
       });
       const rootStatesToPersist = decomposed.rootStates;
+      this.recordDiagnosticEvent('state/multiRootDecomposed', {
+        reason,
+        mode,
+        workspaceStateMode,
+        rootCount: workspaceFolders.length,
+        composedRootGeometry: composedRootGeometryBeforeDecompose,
+        overlayRoots: summarizeCanvasMultiRootOverlayRootsForDiagnostics(decomposed.overlay),
+        previousRootStates: previousRootGeometry,
+        nextRootStates: summarizeRootLocalStatesForDiagnostics(rootStatesToPersist)
+      });
       this.lastLoadedRootLocalStates = cloneJsonValue(rootStatesToPersist);
       this.multiRootOverlay = decomposed.overlay;
       overlayToPersist = decomposed.overlay;
@@ -10887,28 +10900,72 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/moveGroup':
-        this.state = this.reconcileCanvasFileArtifacts(
-          moveGroup(
-            this.state,
-            parsedMessage.payload.groupId,
-            parsedMessage.payload.position,
-            parsedMessage.payload.pointerPosition
-          )
-        );
-        this.persistState();
-        this.postState('host/stateUpdated');
+        {
+          const groupId = parsedMessage.payload.groupId;
+          this.recordDiagnosticEvent('canvas/groupMoveRequested', {
+            groupId,
+            previous: summarizeCanvasGroupGeometryForDiagnostics(this.state, groupId),
+            requested: {
+              position: parsedMessage.payload.position,
+              pointerPosition: parsedMessage.payload.pointerPosition
+            }
+          });
+          this.state = this.reconcileCanvasFileArtifacts(
+            moveGroup(
+              this.state,
+              groupId,
+              parsedMessage.payload.position,
+              parsedMessage.payload.pointerPosition
+            )
+          );
+          this.recordDiagnosticEvent('canvas/groupMoveApplied', {
+            groupId,
+            applied: summarizeCanvasGroupGeometryForDiagnostics(this.state, groupId)
+          });
+          this.persistState();
+          this.postState('host/stateUpdated');
+        }
         return;
       case 'webview/resizeGroup':
-        this.state = this.reconcileCanvasFileArtifacts(
-          resizeGroup(
-            this.state,
-            parsedMessage.payload.groupId,
-            parsedMessage.payload.position,
-            parsedMessage.payload.size
-          )
-        );
-        this.persistState();
-        this.postState('host/stateUpdated');
+        {
+          const groupId = parsedMessage.payload.groupId;
+          const previousGroup = findCanvasGroupById(this.state, groupId);
+          this.recordDiagnosticEvent('canvas/groupResizeRequested', {
+            groupId,
+            previous: summarizeCanvasGroupGeometryForDiagnostics(this.state, groupId),
+            requested: {
+              position: parsedMessage.payload.position,
+              size: parsedMessage.payload.size
+            }
+          });
+          this.state = this.reconcileCanvasFileArtifacts(
+            resizeGroup(
+              this.state,
+              groupId,
+              parsedMessage.payload.position,
+              parsedMessage.payload.size
+            )
+          );
+          const appliedGroup = findCanvasGroupById(this.state, groupId);
+          this.recordDiagnosticEvent('canvas/groupResizeApplied', {
+            groupId,
+            applied: summarizeCanvasGroupGeometryForDiagnostics(this.state, groupId),
+            requestedChangedByRepair: previousGroup && appliedGroup
+              ? {
+                  position: !canvasPositionsEqual(appliedGroup.position, parsedMessage.payload.position),
+                  size: !canvasFootprintsEqual(appliedGroup.size, parsedMessage.payload.size)
+                }
+              : undefined,
+            changedFromPrevious: previousGroup && appliedGroup
+              ? {
+                  position: !canvasPositionsEqual(previousGroup.position, appliedGroup.position),
+                  size: !canvasFootprintsEqual(previousGroup.size, appliedGroup.size)
+                }
+              : undefined
+          });
+          this.persistState();
+          this.postState('host/stateUpdated');
+        }
         return;
       case 'webview/ungroup':
         this.state = this.reconcileCanvasFileArtifacts(ungroupCanvasGroup(this.state, parsedMessage.payload.groupId));
@@ -16797,17 +16854,150 @@ function summarizeCanvasStateForDiagnostics(rawState: unknown): Record<string, u
   }
 
   const rawNodes = Array.isArray(rawState.nodes) ? rawState.nodes : [];
+  const rawGroups = Array.isArray(rawState.groups) ? rawState.groups : [];
   const nodeIds = rawNodes
     .map((node) => (isRecord(node) && typeof node.id === 'string' ? node.id : undefined))
     .filter((nodeId): nodeId is string => Boolean(nodeId))
+    .slice(0, 8);
+  const rootGroups = rawGroups
+    .filter((group) => isRecord(group) && group.role === 'workspace-root')
+    .map((group) => ({
+      groupId: typeof group.id === 'string' ? group.id : undefined,
+      workspaceRootPath: typeof group.workspaceRootPath === 'string' ? group.workspaceRootPath : undefined,
+      position: isRecord(group.position) ? group.position : undefined,
+      size: isRecord(group.size) ? group.size : undefined
+    }))
     .slice(0, 8);
 
   return {
     stateHash: buildDiagnosticStateHash(rawState),
     nodeCount: rawNodes.length,
+    groupCount: rawGroups.length,
+    rootGroupCount: rootGroups.length,
     updatedAt: typeof rawState.updatedAt === 'string' ? rawState.updatedAt : undefined,
-    nodeIds
+    nodeIds,
+    rootGroups
   };
+}
+
+interface CanvasGroupMemberGeometryDiagnostics {
+  count: number;
+  sampleIds: string[];
+  bounds?: CanvasRect;
+}
+
+function summarizeCanvasGroupGeometryForDiagnostics(
+  state: CanvasPrototypeState,
+  groupId: string
+): Record<string, unknown> | undefined {
+  const group = findCanvasGroupById(state, groupId);
+  if (!group) {
+    return undefined;
+  }
+
+  const directNodes = state.nodes.filter((node) => node.groupId === group.id);
+  const directStableNodes = directNodes.filter((node) => isStableCanvasGroupMemberKind(node.kind));
+  const directAutomaticNodes = directNodes.filter((node) => isAutomaticFileArtifactNodeKind(node.kind));
+  const directChildGroups = (state.groups ?? []).filter((candidate) => candidate.parentGroupId === group.id);
+  const memberInsets = memberInsetsForCanvasGroup(group);
+  const memberRects = [...directNodes.map((node) => rectForNode(node)), ...directChildGroups.map((child) => rectForGroup(child))];
+  const memberBounds = boundingRectForRects(memberRects);
+  const requiredRect = memberBounds ? expandRectByInsets(memberBounds, memberInsets) : undefined;
+  const groupRect = rectForGroup(group);
+
+  return {
+    groupId: group.id,
+    title: group.title,
+    role: group.role ?? 'user',
+    workspaceRootPath: group.workspaceRootPath,
+    parentGroupId: group.parentGroupId,
+    position: group.position,
+    size: group.size,
+    rect: groupRect,
+    directMemberInsets: memberInsets,
+    directStableNodes: summarizeCanvasGroupMemberRectsForDiagnostics(directStableNodes),
+    directAutomaticNodes: summarizeCanvasGroupMemberRectsForDiagnostics(directAutomaticNodes),
+    directChildGroups: summarizeCanvasGroupMemberRectsForDiagnostics(directChildGroups),
+    directMemberBounds: memberBounds,
+    directMemberRequiredRect: requiredRect,
+    directMembersContained: requiredRect ? rectContainsRect(groupRect, requiredRect) : true,
+    containingWorkspaceRootGroupId: isWorkspaceRootGroup(group)
+      ? group.id
+      : resolveContainingWorkspaceRootGroupId(state.groups ?? [], group.parentGroupId),
+    workspaceRootGroupCount: (state.groups ?? []).filter(isWorkspaceRootGroup).length
+  };
+}
+
+function summarizeCanvasGroupMemberRectsForDiagnostics(
+  items: readonly (CanvasNodeSummary | CanvasGroupSummary)[]
+): CanvasGroupMemberGeometryDiagnostics {
+  return {
+    count: items.length,
+    sampleIds: items.slice(0, 8).map((item) => item.id),
+    bounds: boundingRectForRects(items.map((item) => rectForGroupOrNode(item)))
+  };
+}
+
+function summarizeWorkspaceRootGroupsForDiagnostics(
+  state: CanvasPrototypeState
+): Record<string, unknown>[] {
+  return (state.groups ?? [])
+    .filter(isWorkspaceRootGroup)
+    .map((group) => ({
+      groupId: group.id,
+      title: group.title,
+      workspaceRootPath: group.workspaceRootPath,
+      parentGroupId: group.parentGroupId,
+      position: group.position,
+      size: group.size
+    }));
+}
+
+function summarizeCanvasMultiRootOverlayRootsForDiagnostics(
+  overlay: CanvasMultiRootOverlay | undefined
+): Record<string, unknown>[] {
+  return (overlay?.roots ?? []).map((root) => ({
+    rootPath: root.rootPath,
+    position: root.position,
+    size: root.size,
+    parentGroupId: root.parentGroupId
+  }));
+}
+
+function summarizeRootLocalStatesForDiagnostics(
+  rootStates: readonly CanvasRootLocalStateSnapshot[]
+): Record<string, unknown>[] {
+  return rootStates.map((rootState) => ({
+    rootPath: rootState.rootPath,
+    stateHash: buildDiagnosticStateHash(rootState.state),
+    updatedAt: rootState.state.updatedAt,
+    nodeCount: rootState.state.nodes.length,
+    groupCount: (rootState.state.groups ?? []).length,
+    nodeBounds: boundingRectForRects(rootState.state.nodes.map((node) => rectForNode(node))),
+    groupBounds: boundingRectForRects((rootState.state.groups ?? []).map((group) => rectForGroup(group)))
+  }));
+}
+
+function findCanvasGroupById(
+  state: Pick<CanvasPrototypeState, 'groups'>,
+  groupId: string
+): CanvasGroupSummary | undefined {
+  return (state.groups ?? []).find((group) => group.id === groupId);
+}
+
+function rectForGroupOrNode(item: CanvasGroupSummary | CanvasNodeSummary): CanvasRect {
+  return rectForGroup(item);
+}
+
+function canvasPositionsEqual(left: CanvasNodePosition, right: CanvasNodePosition): boolean {
+  return Math.round(left.x) === Math.round(right.x) && Math.round(left.y) === Math.round(right.y);
+}
+
+function canvasFootprintsEqual(left: CanvasNodeFootprint, right: CanvasNodeFootprint): boolean {
+  return (
+    Math.round(left.width) === Math.round(right.width) &&
+    Math.round(left.height) === Math.round(right.height)
+  );
 }
 
 function summarizeCanvasStatePerformanceDetail(
@@ -21341,9 +21531,12 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
     case 'host/stateUpdated':
       return {
         nodeCount: message.payload.state.nodes.length,
+        groupCount: (message.payload.state.groups ?? []).length,
         updatedAt: message.payload.state.updatedAt,
         surfaceLocation: message.payload.runtime.surfaceLocation,
-        workspaceTrusted: message.payload.runtime.workspaceTrusted
+        workspaceTrusted: message.payload.runtime.workspaceTrusted,
+        multiRootPresentationMode: message.payload.runtime.multiRootPresentationMode,
+        workspaceRootGroups: summarizeWorkspaceRootGroupsForDiagnostics(message.payload.state)
       };
     case 'host/focusNode':
       return {
