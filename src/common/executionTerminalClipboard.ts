@@ -1,5 +1,23 @@
 export type ExecutionTerminalClipboardPlatform = 'mac' | 'windows' | 'linux' | 'other';
 
+export const EXECUTION_IMAGE_PASTE_MAX_BYTES = 10 * 1024 * 1024;
+export const EXECUTION_IMAGE_PASTE_MAX_BASE64_LENGTH =
+  Math.ceil(EXECUTION_IMAGE_PASTE_MAX_BYTES / 3) * 4 + 4;
+export const EXECUTION_IMAGE_PASTE_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp'
+] as const;
+
+export type ExecutionImagePasteMimeType = (typeof EXECUTION_IMAGE_PASTE_MIME_TYPES)[number];
+
+export interface ExecutionImagePasteData {
+  mimeType: ExecutionImagePasteMimeType;
+  dataBase64: string;
+  sizeBytes: number;
+  name?: string;
+}
+
 export type ExecutionTerminalClipboardShortcutAction =
   | 'copy'
   | 'copyAndClearSelection'
@@ -139,6 +157,119 @@ export function prepareExecutionTerminalPasteText(
   };
 }
 
+export function isExecutionImagePasteMimeType(value: unknown): value is ExecutionImagePasteMimeType {
+  return (
+    typeof value === 'string' &&
+    EXECUTION_IMAGE_PASTE_MIME_TYPES.includes(value.toLowerCase() as ExecutionImagePasteMimeType)
+  );
+}
+
+export function normalizeExecutionImagePasteMimeType(
+  value: string | undefined
+): ExecutionImagePasteMimeType | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return isExecutionImagePasteMimeType(normalized) ? normalized : undefined;
+}
+
+export function isExecutionImagePasteSizeAllowed(
+  sizeBytes: unknown,
+  maxBytes = EXECUTION_IMAGE_PASTE_MAX_BYTES
+): sizeBytes is number {
+  return (
+    typeof sizeBytes === 'number' &&
+    Number.isSafeInteger(sizeBytes) &&
+    sizeBytes > 0 &&
+    sizeBytes <= maxBytes
+  );
+}
+
+export function isLikelyExecutionImagePasteBase64Payload(
+  value: unknown,
+  maxBase64Length = EXECUTION_IMAGE_PASTE_MAX_BASE64_LENGTH
+): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= maxBase64Length &&
+    value.length % 4 === 0 &&
+    /^[A-Za-z0-9+/]*={0,2}$/u.test(value)
+  );
+}
+
+export function getExecutionImagePasteFileExtension(
+  mimeType: ExecutionImagePasteMimeType
+): 'png' | 'jpg' | 'webp' {
+  if (mimeType === 'image/jpeg') {
+    return 'jpg';
+  }
+  if (mimeType === 'image/webp') {
+    return 'webp';
+  }
+  return 'png';
+}
+
+export function createExecutionImagePasteFileName(params: {
+  mimeType: ExecutionImagePasteMimeType;
+  now?: Date;
+  randomSuffix?: string;
+}): string {
+  const now = params.now ?? new Date();
+  const timestamp = Number.isNaN(now.getTime())
+    ? 'unknown-time'
+    : now.toISOString().replace(/[-:.]/g, '');
+  const suffix = sanitizeExecutionImagePastePathSegment(params.randomSuffix ?? '', 'image')
+    .slice(0, 24);
+  return `pasted-screenshot-${timestamp}-${suffix}.${getExecutionImagePasteFileExtension(params.mimeType)}`;
+}
+
+export function sanitizeExecutionImagePastePathSegment(value: string, fallback: string): string {
+  const sanitized = value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[. -]+|[. -]+$/g, '')
+    .slice(0, 80);
+  return sanitized || fallback;
+}
+
+export function hasValidExecutionImagePasteSignature(
+  bytes: Uint8Array,
+  mimeType: ExecutionImagePasteMimeType
+): boolean {
+  if (mimeType === 'image/png') {
+    return (
+      bytes.length >= 8 &&
+      bytes[0] === 0x89 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x4e &&
+      bytes[3] === 0x47 &&
+      bytes[4] === 0x0d &&
+      bytes[5] === 0x0a &&
+      bytes[6] === 0x1a &&
+      bytes[7] === 0x0a
+    );
+  }
+
+  if (mimeType === 'image/jpeg') {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+
+  return (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  );
+}
+
+export function formatExecutionImagePasteText(filePath: string): string {
+  return `${shellQuoteExecutionImagePastePath(filePath)} `;
+}
+
 function normalizeClipboardShortcutKey(key: string): string {
   const normalized = key.trim().toLowerCase();
   if (normalized === 'keyc') {
@@ -152,4 +283,8 @@ function normalizeClipboardShortcutKey(key: string): string {
 
 function normalizePlatformText(value: string | undefined): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function shellQuoteExecutionImagePastePath(filePath: string): string {
+  return `'${filePath.replace(/'/g, `'\\''`)}'`;
 }

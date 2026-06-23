@@ -31,7 +31,15 @@ import {
   type ExecutionAttentionSignalKind,
   type ExecutionAttentionSignalState
 } from '../common/executionAttentionSignals';
-import { prepareExecutionTerminalPasteText } from '../common/executionTerminalClipboard';
+import {
+  createExecutionImagePasteFileName,
+  EXECUTION_IMAGE_PASTE_MAX_BYTES,
+  formatExecutionImagePasteText,
+  hasValidExecutionImagePasteSignature,
+  isExecutionImagePasteSizeAllowed,
+  prepareExecutionTerminalPasteText,
+  type ExecutionImagePasteMimeType
+} from '../common/executionTerminalClipboard';
 import {
   COMMAND_IDS,
   CONTEXT_KEYS,
@@ -1030,6 +1038,7 @@ type NoteMarkdownExistingDropChoice = 'create' | 'locate';
 // Keep the directory name stable so existing storage-backed drafts survive the field rename.
 const NOTE_MARKDOWN_RECOVERABLE_DRAFTS_STORAGE_DIRECTORY = 'note-markdown-drafts';
 const NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const EXECUTION_IMAGE_PASTE_STORAGE_DIRECTORY = 'execution-image-pastes';
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
@@ -11127,6 +11136,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           parsedMessage.payload.bracketedPasteMode
         );
         return;
+      case 'webview/pasteExecutionImage':
+        void this.handleExecutionImagePasteRequest(
+          sourceSurface,
+          parsedMessage.payload.kind,
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.requestId,
+          parsedMessage.payload.mimeType,
+          parsedMessage.payload.dataBase64,
+          parsedMessage.payload.sizeBytes,
+          parsedMessage.payload.name
+        );
+        return;
       case 'webview/dropExecutionResource':
         void this.handleDroppedExecutionResource(
           parsedMessage.payload.kind,
@@ -14863,6 +14884,156 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       bytes: Buffer.byteLength(pasteText, 'utf8'),
       preview: summarizeDiagnosticInput(pasteText)
     });
+  }
+
+  private async handleExecutionImagePasteRequest(
+    sourceSurface: CanvasSurfaceLocation,
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    requestId: string,
+    mimeType: ExecutionImagePasteMimeType,
+    dataBase64: string,
+    sizeBytes: number,
+    name?: string
+  ): Promise<void> {
+    if (kind !== 'agent') {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: 'Terminal 节点暂不支持直接粘贴截图。'
+        }
+      });
+      return;
+    }
+
+    const session = this.getExecutionSessions('agent').get(nodeId);
+    if (!session) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: '当前 Agent 没有可输入的运行中会话。'
+        }
+      });
+      return;
+    }
+
+    let imageBuffer: Buffer;
+    try {
+      imageBuffer = Buffer.from(dataBase64, 'base64');
+    } catch (error) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.recordDiagnosticEvent('execution/imagePasteRejected', {
+        kind,
+        nodeId,
+        requestId,
+        reason: 'decode-failed',
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: '读取截图数据失败。'
+        }
+      });
+      return;
+    }
+
+    if (
+      !isExecutionImagePasteSizeAllowed(sizeBytes) ||
+      imageBuffer.length !== sizeBytes ||
+      imageBuffer.length > EXECUTION_IMAGE_PASTE_MAX_BYTES ||
+      !hasValidExecutionImagePasteSignature(imageBuffer, mimeType)
+    ) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.recordDiagnosticEvent('execution/imagePasteRejected', {
+        kind,
+        nodeId,
+        requestId,
+        reason: 'invalid-image',
+        mimeType,
+        declaredBytes: sizeBytes,
+        decodedBytes: imageBuffer.length
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: '剪贴板中的图片格式不支持或文件过大。'
+        }
+      });
+      return;
+    }
+
+    try {
+      const imagePath = this.writeExecutionImagePasteFile(nodeId, mimeType, imageBuffer);
+      const pasteText = formatExecutionImagePasteText(imagePath);
+
+      if (!this.getExecutionSessions('agent').has(nodeId)) {
+        this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+        return;
+      }
+
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/executionPasteText',
+        payload: {
+          requestId,
+          nodeId,
+          kind,
+          text: pasteText
+        }
+      });
+      this.recordDiagnosticEvent('execution/imagePastePrepared', {
+        kind,
+        nodeId,
+        requestId,
+        provider: session.agentProvider ?? 'codex',
+        mimeType,
+        bytes: imageBuffer.length,
+        originalName: name,
+        imagePath
+      });
+    } catch (error) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.recordDiagnosticEvent('execution/imagePasteWriteFailed', {
+        kind,
+        nodeId,
+        requestId,
+        mimeType,
+        bytes: imageBuffer.length,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: error instanceof Error ? error.message : '保存剪贴板截图失败。'
+        }
+      });
+    }
+  }
+
+  private writeExecutionImagePasteFile(
+    nodeId: string,
+    mimeType: ExecutionImagePasteMimeType,
+    imageBuffer: Buffer
+  ): string {
+    const nodeDirectory = path.join(
+      this.getExtensionStoragePath(),
+      EXECUTION_IMAGE_PASTE_STORAGE_DIRECTORY,
+      sanitizeExecutionImagePasteStorageSegment(nodeId)
+    );
+    fs.mkdirSync(nodeDirectory, {
+      recursive: true
+    });
+    const fileName = createExecutionImagePasteFileName({
+      mimeType,
+      randomSuffix: randomUUID().replace(/-/g, '').slice(0, 12)
+    });
+    const imagePath = path.join(nodeDirectory, fileName);
+    const tempPath = `${imagePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tempPath, imageBuffer);
+    fs.renameSync(tempPath, imagePath);
+    return imagePath;
   }
 
   private postExecutionPasteCancelled(
@@ -21076,6 +21247,15 @@ function normalizeTrackedFilePath(filePath: string): string | undefined {
 function normalizeExecutionCwd(cwd: string): string | undefined {
   const trimmed = cwd.trim();
   return trimmed ? path.normalize(trimmed) : undefined;
+}
+
+function sanitizeExecutionImagePasteStorageSegment(value: string): string {
+  const sanitized = value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[. -]+|[. -]+$/g, '')
+    .slice(0, 80);
+  return sanitized || 'agent';
 }
 
 function areSameExecutionPath(left: string, right: string): boolean {

@@ -5,8 +5,8 @@ validation_status: 已验证
 domains: [VSCode 集成域, 画布交互域, 协作对象域, 执行编排域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层]
 related_specs: [docs/product-specs/agent-terminal-clipboard-shortcuts.md]
-related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md]
-updated_at: 2026-06-15
+related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md, docs/exec-plans/active/agent-screenshot-paste-input.md]
+updated_at: 2026-06-24
 ---
 
 # Agent / Terminal 终端复制粘贴快捷键交互
@@ -116,6 +116,9 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 
 2026-06-15 补充：snapshot restore 期间的 `terminal.reset()` 与 `terminal.write(snapshot)` 会触发 xterm 内部 selection、mouse tracking 和 OSC 52 parser 事件，这些属于程序化恢复副作用，不代表用户实际选择或复制。Webview 只在显式进入 snapshot restore 上下文时抑制 `selectionChange`、`mouseTrackingMode` 和 `osc52` 三类 clipboard 诊断，并在 restore 完成后的短帧窗口内继续吸收 xterm 延迟派发的同类事件，随后聚合上报一条 `restoreSuppressed`，其中包含 reason、generation、total 与按 source 的 counts；若下一次真实 output/input/exit 写入开始，会先刷新这条聚合诊断，避免抑制窗口跨越到用户路径。`shortcut`、`contextMenu`、`mouseSelection`、paste/copy 请求和 `environment` 诊断不进入抑制窗口；系统也不做“空选区同值去重/节流”，避免把真实用户现场误判为噪音。
 
+
+2026-06-24 补充：Agent 截图粘贴进入正式范围，但仅覆盖 `Agent` 节点。Codex 当前官方手册确认 CLI 支持 `--image/-i` 初始图片、交互 composer 支持粘贴图片、IDE 支持图片拖放；本轮源码调研还看到 Codex TUI composer 会把粘贴的图片路径识别为本地图片附件。Claude Code 文档确认可以把图片直接粘贴到 prompt、拖放图片，或提供图片路径；交互模式还定义了图片剪贴板快捷键并会插入 `[Image #N]` chip。基于这些证据，画布不尝试伪造 provider 原生 chip，而采用跨 provider 的文件路径文本方案：Webview 从 `ClipboardEvent.clipboardData` 或 `navigator.clipboard.read()` 读取第一张支持图片，发送 `webview/pasteExecutionImage`；`src/panel/CanvasPanelManager.ts` 校验 live Agent 会话、MIME、大小和图片 magic number，把图片写入 `getExtensionStoragePath()/execution-image-pastes/<nodeId>/`，再通过现有 `host/executionPasteText` 返回不带回车的图片路径引用文本；`src/webview/main.tsx` 仍调用 `terminal.paste(text)`。`Terminal` 节点粘贴图片不自动落盘或写入 shell，继续走文本粘贴或取消路径。该补充由 `docs/exec-plans/active/agent-screenshot-paste-input.md` 跟踪，已通过协议、Webview、Host 和 Playwright 定向回归验证。
+
 ## 8. 验证方法
 
 实现时应同时覆盖纯规则测试、Webview DOM 测试和至少一条真实 VSCode smoke / 手动验证说明。
@@ -126,11 +129,14 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 
 宿主级验证可以先用测试命令或 smoke harness 注入剪贴板内容，打开真实 VSCode Webview，聚焦一个 `Terminal` 节点后执行粘贴并观察 PTY 收到文本。若宿主级剪贴板在 CI 环境不可用，必须在验证说明中明确记录限制，并保留 Playwright 的协议级替代证据。
 
-截至 2026-05-09，本设计已通过纯规则测试、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke 验证。已执行命令包括 `npm run test:execution-terminal-clipboard`、`npm run typecheck`、`npm run test:webview` 和 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`。
+截至 2026-05-09，复制、文本粘贴与 `Ctrl+C` 打断设计已通过纯规则测试、TypeScript 类型检查、完整 Webview Playwright 回归和 trusted VSCode smoke 验证。已执行命令包括 `npm run test:execution-terminal-clipboard`、`npm run typecheck`、`npm run test:webview` 和 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`。
 
 2026-06-14 诊断补充已通过 `npm run typecheck`、`npm run test:execution-terminal-clipboard` 和 `npm run test:webview -- --grep "terminal copy diagnostics"` 验证。覆盖范围包括协议 validator、Agent / Terminal 两类节点的 mouse tracking 模式上报、mouse tracking 下拖选后无 xterm 选区的快捷键诊断、右键菜单选区诊断，以及 OSC 52 诊断事件。
 
 2026-06-15 snapshot restore 抑制补充的验证口径是：协议 validator 接受 `restoreSuppressed` source；Playwright 在 Agent / Terminal 两类节点上通过 snapshot replay 触发 mouse tracking 与 OSC 52，断言 restore 窗口内没有原始 `mouseTrackingMode` / `osc52` / `selectionChange` 诊断，只保留聚合 `restoreSuppressed`；同一节点在 restore 之后收到 live OSC 52 output 时仍正常上报原始 `osc52` 诊断。
+
+
+2026-06-24 Agent 截图粘贴补充已通过 `npm run test:execution-terminal-clipboard`、`npm run test:protocol-webview-messages`、`npm run typecheck`、`npm run test:webview -- --grep "paste"` 和 `git diff --check` 验证。协议 validator 接受合法 `webview/pasteExecutionImage` 并拒绝非法 MIME / base64；纯 helper 测试覆盖 magic number、文件名和路径引用；Playwright 在 `Agent` 节点上模拟图片 paste 事件，断言 Webview 发送图片粘贴消息、Host 回包后图片路径文本进入 xterm 输入；同一组现有文本粘贴测试继续通过；`Terminal` 节点的图片剪贴板不向 shell 发送图片路径。
 
 ## 9. 参考资料
 
@@ -139,3 +145,5 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 - VSCode Terminal xterm key event handling: https://github.com/microsoft/vscode/blob/9300eb847eaf812841160885d4885ae6dd394d1c/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
 - VSCode Terminal configuration schema: https://github.com/microsoft/vscode/blob/9300eb847eaf812841160885d4885ae6dd394d1c/src/vs/workbench/contrib/terminal/common/terminalConfiguration.ts
 - VSCode Terminal skipped command defaults: https://github.com/microsoft/vscode/blob/9300eb847eaf812841160885d4885ae6dd394d1c/src/vs/workbench/contrib/terminal/common/terminal.ts
+- Claude Code common workflows, Work with images: https://code.claude.com/docs/en/common-workflows
+- Claude Code interactive mode keyboard shortcuts: https://code.claude.com/docs/en/interactive-mode
