@@ -118,14 +118,6 @@ The public `0.18.1` release is a patch update that closes out sidebar session-hi
 - Preview support boundaries: <https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/docs/support.md>
 - Bugs and feature feedback: <https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
 - Security issues: `wzy0304@outlook.com`
-- Feishu discussion group:
-
-  <img src="images/lark-group-qr.png" alt="Dev Session Canvas Feishu Group" width="240" />
-
-- WeChat discussion group:
-
-  <img src="images/wechat-group-qr.png" alt="Dev Session Canvas WeChat Group" width="240" />
-
 ## Open Source
 
 - License: `Apache-2.0`
