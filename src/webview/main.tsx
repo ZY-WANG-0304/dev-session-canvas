@@ -86,6 +86,7 @@ import type {
   ExecutionPerformanceDiagnosticPayload,
   ExecutionTerminalClipboardDiagnosticPayload,
   WebviewProbeEdgeSnapshot,
+  WebviewProbeGroupSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
   WebviewToHostMessage
@@ -1613,6 +1614,8 @@ function App(): JSX.Element {
   const [nodeResizeDrafts, setNodeResizeDrafts] = useState<Record<string, CanvasNodeResizeDraft>>({});
   const pendingCommittedNodeLayoutDraftIdsRef = useRef<Set<string>>(new Set());
   const [groupDrafts, setGroupDrafts] = useState<Record<string, CanvasGroupDraft>>({});
+  const activeGroupInteractionIdsRef = useRef<Set<string>>(new Set());
+  const committedGroupDraftIdsRef = useRef<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
@@ -1692,6 +1695,26 @@ function App(): JSX.Element {
             });
             setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
             activeNodeResizeDraftsRef.current = {};
+            setGroupDrafts((current) => {
+              const activeGroupIds = activeGroupInteractionIdsRef.current;
+              const committedGroupIds = committedGroupDraftIdsRef.current;
+              const knownGroupIds = new Set(normalizedState.groups.map((group) => group.id));
+              for (const groupId of Array.from(activeGroupIds)) {
+                if (!knownGroupIds.has(groupId)) {
+                  activeGroupIds.delete(groupId);
+                }
+              }
+
+              const next = Object.fromEntries(
+                Object.entries(current).filter(([groupId]) =>
+                  knownGroupIds.has(groupId) &&
+                  activeGroupIds.has(groupId) &&
+                  !committedGroupIds.has(groupId)
+                )
+              );
+              committedGroupIds.clear();
+              return shallowEqualCanvasGroupDrafts(current, next) ? current : next;
+            });
             applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
             if (message.type === 'host/bootstrap') {
               postMessage({ type: 'webview/bootstrapAck' });
@@ -3553,14 +3576,31 @@ function App(): JSX.Element {
 
   const updateGroupDraft = (groupId: string, draft: CanvasGroupDraft | null): void => {
     setGroupDrafts((current) => {
+      if (draft && !activeGroupInteractionIdsRef.current.has(groupId)) {
+        return current;
+      }
+
       const next = { ...current };
       if (draft) {
         next[groupId] = draft;
       } else {
         delete next[groupId];
       }
-      return next;
+      return shallowEqualCanvasGroupDrafts(current, next) ? current : next;
     });
+  };
+
+  const handleGroupInteractionStart = (groupId: string): void => {
+    activeGroupInteractionIdsRef.current.add(groupId);
+  };
+
+  const handleGroupInteractionEnd = (groupId: string): void => {
+    activeGroupInteractionIdsRef.current.delete(groupId);
+  };
+
+  const markCommittedGroupDraft = (groupId: string): void => {
+    activeGroupInteractionIdsRef.current.delete(groupId);
+    committedGroupDraftIdsRef.current.add(groupId);
   };
 
   const handleCreateEmptyGroup = (position: CanvasNodePosition, parentGroupId?: string): void => {
@@ -3605,6 +3645,7 @@ function App(): JSX.Element {
   };
 
   const handleMoveGroup = (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition): void => {
+    markCommittedGroupDraft(groupId);
     updateGroupDraft(groupId, null);
     groupDragAutoPanRef.current?.stop();
     groupDragAutoPanRef.current = null;
@@ -3661,6 +3702,7 @@ function App(): JSX.Element {
   };
 
   const handleResizeGroup = (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint): void => {
+    markCommittedGroupDraft(groupId);
     updateGroupDraft(groupId, null);
     handleGroupResizeEnd();
     postMessage({
@@ -4571,6 +4613,8 @@ function App(): JSX.Element {
             onFocusGroupInViewport={focusGroupInViewport}
             onSelectGroup={selectGroup}
             onDraftGroup={updateGroupDraft}
+            onGroupInteractionStart={handleGroupInteractionStart}
+            onGroupInteractionEnd={handleGroupInteractionEnd}
             onMoveGroup={handleMoveGroup}
             onResizeGroup={handleResizeGroup}
             onUpdateGroupTitle={handleUpdateGroupTitle}
@@ -4649,6 +4693,8 @@ function App(): JSX.Element {
             onGroupBodyContextMenu={handlePaneContextMenu}
             onSelectGroup={selectGroup}
             onDraftGroup={updateGroupDraft}
+            onGroupInteractionStart={handleGroupInteractionStart}
+            onGroupInteractionEnd={handleGroupInteractionEnd}
             onMoveGroup={handleMoveGroup}
             onResizeGroup={handleResizeGroup}
             onUpdateGroupTitle={handleUpdateGroupTitle}
@@ -8996,6 +9042,8 @@ interface PaneGalleryProps {
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onGroupInteractionStart: (groupId: string) => void;
+  onGroupInteractionEnd: (groupId: string) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
@@ -9562,6 +9610,8 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
               props.onSelectGroup(groupId, event);
             }}
             onDraftGroup={props.onDraftGroup}
+            onGroupInteractionStart={props.onGroupInteractionStart}
+            onGroupInteractionEnd={props.onGroupInteractionEnd}
             onMoveGroup={props.onMoveGroup}
             onResizeGroup={props.onResizeGroup}
             onUpdateGroupTitle={props.onUpdateGroupTitle}
@@ -11806,6 +11856,8 @@ function CanvasGroupsViewportLayer(props: {
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onGroupInteractionStart: (groupId: string) => void;
+  onGroupInteractionEnd: (groupId: string) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
@@ -11979,6 +12031,8 @@ function CanvasGroupLayer(props: {
   ) => void;
   onFocusGroupInViewport: (groupId: string) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onGroupInteractionStart: (groupId: string) => void;
+  onGroupInteractionEnd: (groupId: string) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
@@ -12017,6 +12071,8 @@ function CanvasGroupLayer(props: {
           onSelectGroup={props.onSelectGroup}
           onFocusGroupInViewport={props.onFocusGroupInViewport}
           onDraftGroup={props.onDraftGroup}
+          onGroupInteractionStart={props.onGroupInteractionStart}
+          onGroupInteractionEnd={props.onGroupInteractionEnd}
           onMoveGroup={props.onMoveGroup}
           onResizeGroup={props.onResizeGroup}
           onUpdateGroupTitle={props.onUpdateGroupTitle}
@@ -12563,6 +12619,8 @@ function CanvasGroupFrame(props: {
   ) => void;
   onFocusGroupInViewport: (groupId: string) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onGroupInteractionStart: (groupId: string) => void;
+  onGroupInteractionEnd: (groupId: string) => void;
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
@@ -12598,6 +12656,8 @@ function CanvasGroupFrame(props: {
     direction: CanvasGroupResizeDirection;
     autoPanOffset: CanvasNodePosition;
   } | null>(null);
+  const lastDragEventRef = useRef<Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'> | null>(null);
+  const lastResizeEventRef = useRef<Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'> | null>(null);
   const lastTitlebarPointerClickRef = useRef<{
     clientX: number;
     clientY: number;
@@ -12605,6 +12665,11 @@ function CanvasGroupFrame(props: {
   } | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const ignoreNextClickSelectionRef = useRef(false);
+  const latestPropsRef = useRef(props);
+
+  useEffect(() => {
+    latestPropsRef.current = props;
+  });
 
   const selectGroup = (
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
@@ -12663,7 +12728,9 @@ function CanvasGroupFrame(props: {
     return true;
   };
 
-  const rememberTitlebarPointerClick = (event: React.PointerEvent): void => {
+  const rememberTitlebarPointerClick = (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY' | 'timeStamp'>
+  ): void => {
     lastTitlebarPointerClickRef.current = {
       clientX: event.clientX,
       clientY: event.clientY,
@@ -12674,6 +12741,205 @@ function CanvasGroupFrame(props: {
   const clearTitlebarPointerClickMemory = (): void => {
     lastTitlebarPointerClickRef.current = null;
   };
+
+  const applyDragMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'pointerId' | 'clientX' | 'clientY'>
+  ): boolean => {
+    const dragStart = dragStartRef.current;
+    if (!dragStart || dragStart.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    lastDragEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    const currentProps = latestPropsRef.current;
+    const publishDraft = (): void => {
+      currentProps.onDraftGroup(currentProps.group.id, {
+        position: resolveGroupDragPosition(dragStart, event, currentProps.zoom)
+      });
+    };
+    currentProps.onDragPointerMove(event, (previousViewport, nextViewport) => {
+      const zoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : currentProps.zoom;
+      dragStart.autoPanOffset = {
+        x: dragStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / zoom,
+        y: dragStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / zoom
+      };
+      publishDraft();
+    });
+    publishDraft();
+    return true;
+  };
+
+  const applyResizeMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'pointerId' | 'clientX' | 'clientY'>
+  ): boolean => {
+    const resizeStart = resizeStartRef.current;
+    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    lastResizeEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    const currentProps = latestPropsRef.current;
+    const publishDraft = (): void => {
+      currentProps.onDraftGroup(currentProps.group.id, resolveGroupResizeGeometry(resizeStart, event, currentProps.zoom));
+    };
+    currentProps.onResizePointerMove(event, (previousViewport, nextViewport) => {
+      const zoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : currentProps.zoom;
+      resizeStart.autoPanOffset = {
+        x: resizeStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / zoom,
+        y: resizeStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / zoom
+      };
+      publishDraft();
+    });
+    publishDraft();
+    return true;
+  };
+
+  const completeDrag = (
+    event: Pick<PointerEvent | React.PointerEvent, 'pointerId' | 'clientX' | 'clientY' | 'timeStamp'>
+  ): boolean => {
+    const dragStart = dragStartRef.current;
+    if (!dragStart || dragStart.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    dragStartRef.current = null;
+    lastDragEventRef.current = null;
+    const currentProps = latestPropsRef.current;
+    const position = resolveGroupDragPosition(dragStart, event, currentProps.zoom);
+    currentProps.onDragEnd();
+    if (
+      !hasGroupPointerCommitMovement(dragStart, event, currentProps.zoom) ||
+      positionsEqual(position, dragStart.position)
+    ) {
+      currentProps.onDraftGroup(currentProps.group.id, null);
+      currentProps.onGroupInteractionEnd(currentProps.group.id);
+      if (dragStart.source === 'titlebar') {
+        rememberTitlebarPointerClick(event);
+      } else {
+        clearTitlebarPointerClickMemory();
+      }
+      return true;
+    }
+
+    clearTitlebarPointerClickMemory();
+    currentProps.onGroupInteractionEnd(currentProps.group.id);
+    currentProps.onMoveGroup(currentProps.group.id, position, {
+      x: Math.round(position.x + dragStart.pointerOffset.x),
+      y: Math.round(position.y + dragStart.pointerOffset.y)
+    });
+    return true;
+  };
+
+  const completeResize = (
+    event: Pick<PointerEvent | React.PointerEvent, 'pointerId' | 'clientX' | 'clientY'>
+  ): boolean => {
+    const resizeStart = resizeStartRef.current;
+    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    resizeStartRef.current = null;
+    lastResizeEventRef.current = null;
+    const currentProps = latestPropsRef.current;
+    const resizedGeometry = resolveGroupResizeGeometry(resizeStart, event, currentProps.zoom);
+    currentProps.onResizeEnd();
+    if (
+      !hasGroupPointerCommitMovement(resizeStart, event, currentProps.zoom) ||
+      (positionsEqual(resizedGeometry.position, resizeStart.position) &&
+        footprintsEqual(resizedGeometry.size, resizeStart.size))
+    ) {
+      currentProps.onDraftGroup(currentProps.group.id, null);
+      currentProps.onGroupInteractionEnd(currentProps.group.id);
+      return true;
+    }
+
+    clearTitlebarPointerClickMemory();
+    currentProps.onGroupInteractionEnd(currentProps.group.id);
+    currentProps.onResizeGroup(currentProps.group.id, resizedGeometry.position, resizedGeometry.size);
+    return true;
+  };
+
+  const cancelActiveGroupInteraction = (
+    event?: Pick<PointerEvent | React.PointerEvent, 'pointerId'>
+  ): boolean => {
+    const hasMatchingDrag = Boolean(
+      dragStartRef.current && (!event || dragStartRef.current.pointerId === event.pointerId)
+    );
+    const hasMatchingResize = Boolean(
+      resizeStartRef.current && (!event || resizeStartRef.current.pointerId === event.pointerId)
+    );
+    if (!hasMatchingDrag && !hasMatchingResize) {
+      return false;
+    }
+
+    dragStartRef.current = null;
+    resizeStartRef.current = null;
+    lastDragEventRef.current = null;
+    lastResizeEventRef.current = null;
+    ignoreNextClickSelectionRef.current = false;
+    clearTitlebarPointerClickMemory();
+    const currentProps = latestPropsRef.current;
+    currentProps.onDraftGroup(currentProps.group.id, null);
+    currentProps.onGroupInteractionEnd(currentProps.group.id);
+    if (hasMatchingDrag) {
+      currentProps.onDragEnd();
+    }
+    if (hasMatchingResize) {
+      currentProps.onResizeEnd();
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    const handleWindowPointerMove = (event: PointerEvent): void => {
+      if (!applyDragMove(event) && !applyResizeMove(event)) {
+        return;
+      }
+
+      stopCanvasEvent(event);
+    };
+
+    const handleWindowPointerUp = (event: PointerEvent): void => {
+      if (!completeDrag(event) && !completeResize(event)) {
+        return;
+      }
+
+      stopCanvasEvent(event);
+    };
+
+    const handleWindowPointerCancel = (event: PointerEvent): void => {
+      if (!cancelActiveGroupInteraction(event)) {
+        return;
+      }
+
+      stopCanvasEvent(event);
+    };
+
+    const handleWindowBlur = (): void => {
+      cancelActiveGroupInteraction();
+    };
+
+    window.addEventListener('pointermove', handleWindowPointerMove, true);
+    window.addEventListener('pointerup', handleWindowPointerUp, true);
+    window.addEventListener('pointercancel', handleWindowPointerCancel, true);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove, true);
+      window.removeEventListener('pointerup', handleWindowPointerUp, true);
+      window.removeEventListener('pointercancel', handleWindowPointerCancel, true);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  });
+
+  useEffect(() => () => {
+    cancelActiveGroupInteraction();
+  }, []);
 
   const beginDrag = (event: React.PointerEvent, source: 'titlebar' | 'border'): void => {
     if (event.button !== 0 || isInteractiveTarget(event.target)) {
@@ -12690,6 +12956,12 @@ function CanvasGroupFrame(props: {
     event.currentTarget.setPointerCapture(event.pointerId);
     stopCanvasEvent(event);
     props.onSelectGroup(props.group.id);
+    props.onGroupInteractionStart(props.group.id);
+    lastDragEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    lastResizeEventRef.current = null;
     dragStartRef.current = {
       pointerId: event.pointerId,
       source,
@@ -12702,53 +12974,15 @@ function CanvasGroupFrame(props: {
   };
 
   const handleDragMove = (event: React.PointerEvent): void => {
-    const dragStart = dragStartRef.current;
-    if (!dragStart || dragStart.pointerId !== event.pointerId) {
-      return;
+    if (applyDragMove(event)) {
+      stopCanvasEvent(event);
     }
-
-    stopCanvasEvent(event);
-    const publishDraft = (): void => {
-      props.onDraftGroup(props.group.id, {
-        position: resolveGroupDragPosition(dragStart, event, props.zoom)
-      });
-    };
-    props.onDragPointerMove(event, (previousViewport, nextViewport) => {
-      const zoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : props.zoom;
-      dragStart.autoPanOffset = {
-        x: dragStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / zoom,
-        y: dragStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / zoom
-      };
-      publishDraft();
-    });
-    publishDraft();
   };
 
   const endDrag = (event: React.PointerEvent): void => {
-    const dragStart = dragStartRef.current;
-    if (!dragStart || dragStart.pointerId !== event.pointerId) {
-      return;
+    if (completeDrag(event)) {
+      stopCanvasEvent(event);
     }
-
-    stopCanvasEvent(event);
-    dragStartRef.current = null;
-    const position = resolveGroupDragPosition(dragStart, event, props.zoom);
-    props.onDragEnd();
-    if (!hasGroupPointerCommitMovement(dragStart, event, props.zoom) || positionsEqual(position, dragStart.position)) {
-      props.onDraftGroup(props.group.id, null);
-      if (dragStart.source === 'titlebar') {
-        rememberTitlebarPointerClick(event);
-      } else {
-        clearTitlebarPointerClickMemory();
-      }
-      return;
-    }
-
-    clearTitlebarPointerClickMemory();
-    props.onMoveGroup(props.group.id, position, {
-      x: Math.round(position.x + dragStart.pointerOffset.x),
-      y: Math.round(position.y + dragStart.pointerOffset.y)
-    });
   };
 
   const beginResize = (event: React.PointerEvent, direction: CanvasGroupResizeDirection): void => {
@@ -12766,7 +13000,13 @@ function CanvasGroupFrame(props: {
     event.currentTarget.setPointerCapture(event.pointerId);
     stopCanvasEvent(event);
     props.onSelectGroup(props.group.id);
+    props.onGroupInteractionStart(props.group.id);
     clearTitlebarPointerClickMemory();
+    lastDragEventRef.current = null;
+    lastResizeEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
     resizeStartRef.current = {
       pointerId: event.pointerId,
       clientX: event.clientX,
@@ -12779,47 +13019,15 @@ function CanvasGroupFrame(props: {
   };
 
   const handleResizeMove = (event: React.PointerEvent): void => {
-    const resizeStart = resizeStartRef.current;
-    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
-      return;
+    if (applyResizeMove(event)) {
+      stopCanvasEvent(event);
     }
-
-    stopCanvasEvent(event);
-    const publishDraft = (): void => {
-      props.onDraftGroup(props.group.id, resolveGroupResizeGeometry(resizeStart, event, props.zoom));
-    };
-    props.onResizePointerMove(event, (previousViewport, nextViewport) => {
-      const zoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : props.zoom;
-      resizeStart.autoPanOffset = {
-        x: resizeStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / zoom,
-        y: resizeStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / zoom
-      };
-      publishDraft();
-    });
-    publishDraft();
   };
 
   const endResize = (event: React.PointerEvent): void => {
-    const resizeStart = resizeStartRef.current;
-    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
-      return;
+    if (completeResize(event)) {
+      stopCanvasEvent(event);
     }
-
-    stopCanvasEvent(event);
-    resizeStartRef.current = null;
-    const resizedGeometry = resolveGroupResizeGeometry(resizeStart, event, props.zoom);
-    props.onResizeEnd();
-    if (
-      !hasGroupPointerCommitMovement(resizeStart, event, props.zoom) ||
-      (positionsEqual(resizedGeometry.position, resizeStart.position) &&
-        footprintsEqual(resizedGeometry.size, resizeStart.size))
-    ) {
-      props.onDraftGroup(props.group.id, null);
-      return;
-    }
-
-    clearTitlebarPointerClickMemory();
-    props.onResizeGroup(props.group.id, resizedGeometry.position, resizedGeometry.size);
   };
 
   const handleFocusDoubleClick = (event: React.MouseEvent<HTMLElement>): void => {
@@ -12866,14 +13074,9 @@ function CanvasGroupFrame(props: {
         endResize(event);
       }}
       onPointerCancel={(event) => {
-        dragStartRef.current = null;
-        resizeStartRef.current = null;
-        ignoreNextClickSelectionRef.current = false;
-        clearTitlebarPointerClickMemory();
-        props.onDraftGroup(props.group.id, null);
-        props.onDragEnd();
-        props.onResizeEnd();
-        stopCanvasEvent(event);
+        if (cancelActiveGroupInteraction(event)) {
+          stopCanvasEvent(event);
+        }
       }}
     >
       <div className="canvas-group-body" aria-hidden="true" />
@@ -13570,6 +13773,30 @@ function applyCanvasGroupDrafts(params: {
   });
 
   return { groups, nodes };
+}
+
+function shallowEqualCanvasGroupDrafts(
+  left: Record<string, CanvasGroupDraft>,
+  right: Record<string, CanvasGroupDraft>
+): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+
+  return leftKeys.every((key) => {
+    const leftDraft = left[key];
+    const rightDraft = right[key];
+    if (!rightDraft) {
+      return false;
+    }
+
+    return (
+      positionsEqual(leftDraft.position, rightDraft.position) &&
+      footprintsEqual(leftDraft.size, rightDraft.size)
+    );
+  });
 }
 
 function collectGroupSubtreeIdsForWebview(groups: readonly CanvasGroupSummary[], groupId: string): Set<string> {
@@ -16118,6 +16345,10 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
   const edges = edgeElements
     .map((element) => readWebviewProbeEdgeSnapshot(element))
     .filter((edge): edge is WebviewProbeSnapshot['edges'][number] => edge !== null);
+  const groupElements = Array.from(document.querySelectorAll<HTMLElement>('[data-group-id]'));
+  const groups = groupElements
+    .map((element) => readWebviewProbeGroupSnapshot(element))
+    .filter((group): group is WebviewProbeGroupSnapshot => group !== null);
 
   return {
     documentTitle: document.title,
@@ -16129,7 +16360,40 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
     nodeCount: nodes.length,
     nodes,
     edgeCount: edges.length,
-    edges
+    edges,
+    groupCount: groups.length,
+    groups,
+    selectedGroupIds: groups.filter((group) => group.selected).map((group) => group.groupId)
+  };
+}
+
+function readWebviewProbeGroupSnapshot(element: HTMLElement): WebviewProbeGroupSnapshot | null {
+  const groupId = element.dataset.groupId;
+  if (!groupId) {
+    return null;
+  }
+
+  const left = Number.parseFloat(element.style.left);
+  const top = Number.parseFloat(element.style.top);
+  const width = Number.parseFloat(element.style.width);
+  const height = Number.parseFloat(element.style.height);
+  const title = readProbeFieldValue(element, 'title') ?? readProbeText(element.querySelector('[data-probe-field="title"]'));
+  const background = document.querySelector<HTMLElement>(`[data-group-background-id="${CSS.escape(groupId)}"]`);
+  const role = background?.dataset.groupBackgroundRole === 'workspace-root' ? 'workspace-root' : 'user';
+  const bodyTopOffset = background
+    ? Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-body-top'))
+    : Number.NaN;
+
+  return {
+    groupId,
+    title,
+    role,
+    selected: element.classList.contains('is-selected'),
+    left: Number.isFinite(left) ? Math.round(left) : 0,
+    top: Number.isFinite(top) ? Math.round(top) : 0,
+    width: Number.isFinite(width) ? Math.round(width) : Math.round(element.offsetWidth),
+    height: Number.isFinite(height) ? Math.round(height) : Math.round(element.offsetHeight),
+    bodyTopOffset: Number.isFinite(bodyTopOffset) ? Math.round(bodyTopOffset) : 0
   };
 }
 
