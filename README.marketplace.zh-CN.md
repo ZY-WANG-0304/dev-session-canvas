@@ -10,15 +10,15 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.18.1 版本亮点
+## 0.18.2 版本亮点
 
-当前公开的 `0.18.1` 版本是补丁更新，收口侧栏会话历史分组控制、菜单选中态增强，以及画布布局整理空分组尺寸规范化与窗格画廊视口记忆分离。它保留 `0.18.0` 的全部能力：multi-root workspace 窗格画廊呈现、一次性画布布局整理、Codex 异常输出尾部状态栏兼容、侧栏 workspace folder / git worktree 管理、Host 输出投递输入优先 scheduler、Codex / Claude Code Agent 分叉、publish tag / GitHub Release assets 发布自动化、双市场发布和 Preview 支持边界。
+当前公开的 `0.18.2` 版本是 multi-root 窗格画廊与 Webview 分组几何补丁：稳定缩略图 rail 的 workspace folder 顺序、清理 Host 更新后的旧分组 resize 草稿、刷新 Webview 回归覆盖，并简化 Marketplace 支持区媒体输入。它保留 `0.18.1` 的全部能力：侧栏会话历史分组控制、菜单选中态增强、画布布局整理空分组尺寸规范化、窗格画廊视口记忆分离、公开隐私 / 许可证元数据、双市场发布和 Preview 支持边界。
 
-- 侧栏 `会话历史` view 新增 workspace root、provider 和时间分组控制，分组标题可折叠 / 展开，便于快速浏览当前 workspace 的历史会话
-- 侧栏 view title 菜单现在用可见的 `✓` 标题表达节点列表和会话历史的当前选中状态，即使 VS Code 菜单不渲染 command icon 也能读出当前模式
-- 画布布局整理会规范化空分组尺寸，避免一次性整理后出现不稳定的空分组边框
-- 窗格画廊视口记忆按 pane / root 隔离，切换 root 或画廊模式时不会把一个窗格的视口泄漏到另一个窗格
-- 公开 package metadata 现在同时为主扩展和 notifier companion 暴露仓库隐私政策与许可证 URL
+- 窗格画廊 `topThumbnails` / `sideThumbnails` 的缩略图 rail 在切换 active root 后继续保持 VS Code workspace folder 顺序；被双击的缩略图不再与原主画板 root 互换位置
+- workspace-root 与普通分组 resize 在 Host 已提交状态后会清理 Webview 旧草稿，避免再次选中或刷新分组时出现几何漂移
+- Webview 回归覆盖已同步 Agent cwd context 截图基线、Edge IME 连线选择、Claude `Ctrl-Z` payload 匹配、硬换行文件链接和 Note Tab 缩进时序
+- Marketplace listing 输入现在把支持区收敛为直接链接；仅仓库使用的社区媒体继续保持在 VSIX 与 Marketplace README 路径之外
+- notifier companion 随主扩展版本对齐，不引入新的通知投递行为变更
 - 本轮保持扩展 ID、Preview 定位、最低 VS Code 版本、notifier 自动安装关系、Open VSX 同版本同步策略、VSM deferred 完成门禁和支持矩阵不变
 
 ## 核心功能
@@ -70,10 +70,10 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.18.0` 升级到 `0.18.1` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
+- 首次安装与从 `0.18.1` 升级到 `0.18.2` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
 - 窗格画廊只改变多根呈现；单根 workspace 继续显示普通画布，`rootGroups` 仍是默认多根模式和保守回退路径
 - 布局整理是一次性显式操作，不提供撤销、不持续自动重排，也不跨普通分组或跨 root 搬移节点
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.18.1` 后会继续沿用该明确选择
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.18.2` 后会继续沿用该明确选择
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
 

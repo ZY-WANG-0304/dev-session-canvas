@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.2
+
+- 与主扩展 `0.18.2` 对齐：本轮主扩展收口窗格画廊缩略图 rail 的 workspace root 稳定排序、workspace root / 分组 resize 后的 Webview 草稿清理、相关 Playwright 回归稳定性，以及 Marketplace README 交流二维码移除后的发布口径；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.18.1
 
 - 与主扩展 `0.18.1` 对齐：本轮主扩展收口侧栏会话历史分组控制、菜单选中态增强（对号标记节点视图模式）、画布布局整理空分组尺寸规范化、窗格画廊视口记忆分离，以及公开隐私政策 / 许可证 URL 元数据；notifier companion 不引入新的通知投递行为变更。

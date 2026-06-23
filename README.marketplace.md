@@ -10,15 +10,15 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.18.1 Highlights
+## 0.18.2 Highlights
 
-The public `0.18.1` release is a patch update that closes out sidebar session-history grouping controls, menu selection-state polish, canvas layout arrangement empty-group size normalization, and pane-gallery viewport memory isolation. It keeps all `0.18.0` capabilities: multi-root pane-gallery presentation, one-shot canvas layout arrangement, Codex abnormal-output footer compatibility, sidebar workspace-folder / git-worktree management, input-prioritized Host output scheduling, Codex / Claude Code Agent Fork, publish-tag / GitHub Release assets automation, dual-market distribution, and Preview support boundaries.
+The public `0.18.2` release is a patch update for multi-root Pane Gallery and Webview group geometry. It stabilizes thumbnail-rail ordering by VS Code workspace-folder order, clears stale group resize drafts after Host updates, refreshes Webview regression coverage, and simplifies Marketplace support media inputs. It keeps all `0.18.1` capabilities: sidebar session-history grouping controls, menu selection-state polish, canvas layout arrangement empty-group size normalization, pane-gallery viewport memory isolation, public privacy / license metadata, dual-market distribution, and Preview support boundaries.
 
-- The sidebar `Session History` view now has grouping controls for workspace root, provider, and time buckets, with collapsible group rows for scanning current-workspace history faster
-- Sidebar view-title menus now use visible checkmark titles for selected node-list and session-history states, so the current mode stays readable even when VS Code does not render command icons in the menu
-- Canvas layout arrangement now normalizes empty group sizes, avoiding unstable empty-group frames after a one-shot arrange operation
-- Pane Gallery viewport memory is isolated per pane/root, so switching roots or gallery modes no longer lets one pane's viewport leak into another
-- Public package metadata now exposes the repository privacy policy and license URLs for both the main extension and the notifier companion
+- Pane Gallery `topThumbnails` and `sideThumbnails` rails now preserve VS Code workspace-folder order when the active root changes; the clicked thumbnail no longer swaps position with the previous main canvas root
+- Workspace-root and ordinary group resize now clears stale Webview drafts after committed Host state updates, avoiding geometry drift when a group is selected or refreshed again
+- Webview regression coverage has been refreshed for Agent cwd context snapshots, Edge IME edge selection, Claude `Ctrl-Z` payload matching, hard-wrapped file links, and Note Tab indentation timing
+- Marketplace listing inputs now keep the support section to direct links only; repository-only community media stays outside the packaged VSIX and Marketplace README path
+- The notifier companion is version-aligned with the main extension and does not introduce notification-delivery behavior changes
 - The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, VSM deferred completion gate, and support matrix
 
 ## Core Capabilities
@@ -70,10 +70,10 @@ The public `0.18.1` release is a patch update that closes out sidebar session-hi
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.18.0` to `0.18.1` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- First-time installs and upgrades from `0.18.1` to `0.18.2` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
 - Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.18.1` preserves that explicit choice
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.18.2` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
