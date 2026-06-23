@@ -548,6 +548,75 @@ try {
   ]);
 
   vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([
+    { name: 'workspace-a', path: '/workspace-a' },
+    { name: 'workspace-b', path: '/workspace-b' }
+  ]);
+  vscodeStub.__setFiles([{ path: '/workspace-b/packages/app/docs/readme.md', type: 'file' }]);
+  const lineScopedMultiRootFallbackResult = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: 'docs/readme.md',
+      path: 'docs/readme.md',
+      bufferStartLine: 10,
+      source: 'fallback'
+    },
+    createContext('/bin/bash', '/workspace-a', 'posix', {
+      resolveCwdForBufferLine: async (bufferStartLine) =>
+        bufferStartLine === 10 ? '/workspace-b/src' : '/workspace-a'
+    })
+  );
+  assert.equal(lineScopedMultiRootFallbackResult?.uri.fsPath, '/workspace-b/packages/app/docs/readme.md');
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), [
+    {
+      base: '/workspace-b',
+      pattern: '**/docs/readme.md',
+      maxResults: 64
+    }
+  ]);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([
+    { name: 'workspace-a', path: '/workspace-a' },
+    { name: 'workspace-b', path: '/workspace-b' }
+  ]);
+  vscodeStub.__setFiles([{ path: '/workspace-b/packages/app/docs/readme.md', type: 'file' }]);
+  const cachedLineScopedMultiRootResults = await resolveExecutionTerminalFileLinkCandidates(
+    [
+      createFallbackCandidate('workspace-a-miss', 'docs/readme.md'),
+      {
+        ...createFallbackCandidate('workspace-b-hit', 'docs/readme.md'),
+        bufferStartLine: 10
+      }
+    ],
+    createContext('/bin/bash', '/workspace-a', 'posix', {
+      resolveCwdForBufferLine: async (bufferStartLine) =>
+        bufferStartLine === 10 ? '/workspace-b/src' : '/workspace-a'
+    }),
+    () => 'resolved-line-scoped'
+  );
+  assert.deepEqual(
+    cachedLineScopedMultiRootResults.map((result) => result.candidateId),
+    ['workspace-b-hit']
+  );
+  assert.equal(
+    cachedLineScopedMultiRootResults[0]?.resolved.uri.fsPath,
+    '/workspace-b/packages/app/docs/readme.md'
+  );
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), [
+    {
+      base: '/workspace-a',
+      pattern: '**/docs/readme.md',
+      maxResults: 64
+    },
+    {
+      base: '/workspace-b',
+      pattern: '**/docs/readme.md',
+      maxResults: 64
+    }
+  ]);
+
+  vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
   vscodeStub.__setFiles([{ path: '/workspace/custom/tool', type: 'file' }]);
   const interactiveFallbackPathResult = await resolveExecutionTerminalFileLinkCandidates(
