@@ -644,6 +644,7 @@ test('edge label IME confirmation does not submit before explicit commit', async
 
   await openHarness(page);
   await bootstrap(page, state);
+  await expect(page.locator('[data-edge-hitbox="true"][data-edge-id="edge-user-1"]')).toHaveCount(1);
   await performTestDomAction(page, {
     kind: 'selectEdge',
     nodeId: 'agent-1',
@@ -3886,17 +3887,8 @@ test('Claude Agent Ctrl-Z block is scoped away from Terminal and Codex Agent inp
   });
 
   await expect
-    .poll(async () => {
-      const message = await page.evaluate(() => {
-        return (
-          window.__devSessionCanvasHarness
-            .getPostedMessages()
-            .find((entry) => entry.type === 'webview/executionInput') ?? null
-        );
-      });
-      return message ? JSON.stringify(message.payload) : null;
-    })
-    .toBe(JSON.stringify({ nodeId: 'terminal-zoom', kind: 'terminal', data: '\u001a' }));
+    .poll(async () => readFirstExecutionInputPayload(page))
+    .toMatchObject({ nodeId: 'terminal-zoom', kind: 'terminal', data: '\u001a' });
   await expect(page.locator('[data-toast-kind="error"]')).toHaveCount(0);
 
   await bootstrap(page, createLiveExecutionNodeState('agent'));
@@ -3910,17 +3902,8 @@ test('Claude Agent Ctrl-Z block is scoped away from Terminal and Codex Agent inp
   });
 
   await expect
-    .poll(async () => {
-      const message = await page.evaluate(() => {
-        return (
-          window.__devSessionCanvasHarness
-            .getPostedMessages()
-            .find((entry) => entry.type === 'webview/executionInput') ?? null
-        );
-      });
-      return message ? JSON.stringify(message.payload) : null;
-    })
-    .toBe(JSON.stringify({ nodeId: 'agent-zoom', kind: 'agent', data: '\u001a' }));
+    .poll(async () => readFirstExecutionInputPayload(page))
+    .toMatchObject({ nodeId: 'agent-zoom', kind: 'agent', data: '\u001a' });
   await expect(page.locator('[data-toast-kind="error"]')).toHaveCount(0);
 });
 
@@ -5997,14 +5980,14 @@ for (const executionKind of ['agent', 'terminal']) {
 
     try {
       await performTestDomAction(page, {
-        kind: 'hoverExecutionText',
+        kind: 'hoverExecutionLink',
         nodeId,
-        text: secondPathFragment
+        text: hardWrappedPath
       });
       await page.keyboard.down('Control');
-      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(secondPathFragment);
+      await expect.poll(async () => readHardWrappedLinkHoverSegmentCount(page, nodeId)).toBe(2);
 
-      const hoveredPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      const hoveredPoint = await readLastHardWrappedLinkHoverSegmentPoint(page, nodeId);
       if (!hoveredPoint) {
         throw new Error(`Expected ${secondPathFragment} to be underlined before live output.`);
       }
@@ -6015,7 +5998,7 @@ for (const executionKind of ['agent', 'terminal']) {
         .poll(async () => readLastOpenedExecutionLink(page, nodeId))
         .toMatchObject({
           linkKind: 'search',
-          text: secondPathFragment,
+          text: hardWrappedPath,
           source: 'word'
         });
 
@@ -8364,23 +8347,32 @@ test('note body editor supports tab indentation and line numbers', async ({ page
   const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
   await expect(bodyInput).toHaveValue(markdownBody);
   await expect(noteNode.locator('.note-document-line-number')).toHaveText(['1', '2', '3']);
+  await settleWebview(page, 2);
 
   await bodyInput.evaluate((element) => {
+    element.focus();
     element.setSelectionRange(0, 0);
   });
+  await expectSelectionRange(bodyInput, 0, 0);
   await page.keyboard.press('Tab');
+  await settleWebview(page, 2);
   await expect(bodyInput).toHaveValue(`  ${markdownBody}`);
 
   await page.keyboard.press('Shift+Tab');
+  await settleWebview(page, 2);
   await expect(bodyInput).toHaveValue(markdownBody);
 
   await bodyInput.evaluate((element) => {
+    element.focus();
     element.setSelectionRange(0, element.value.length);
   });
+  await expectSelectionRange(bodyInput, 0, markdownBody.length);
   await page.keyboard.press('Tab');
+  await settleWebview(page, 2);
   await expect(bodyInput).toHaveValue(['  alpha', '  beta', '  gamma'].join('\n'));
 
   await page.keyboard.press('Shift+Tab');
+  await settleWebview(page, 2);
   await expect(bodyInput).toHaveValue(markdownBody);
   await expect(bodyInput).toBeFocused();
 });
@@ -14983,6 +14975,16 @@ async function readPostedMessagesByType(page, type, options = {}) {
   return options.includeLifecycle === true ? messages : messages.map(stripPostedMessageLifecycle);
 }
 
+async function readFirstExecutionInputPayload(page) {
+  return page.evaluate(() => {
+    return (
+      window.__devSessionCanvasHarness
+        .getPostedMessages()
+        .find((entry) => entry.type === 'webview/executionInput')?.payload ?? null
+    );
+  });
+}
+
 async function waitForPostedMessagesByTypeMatch(page, type, predicate, options = {}) {
   let matchedMessages = [];
 
@@ -15119,6 +15121,24 @@ async function readHardWrappedLinkHoverSegmentCount(page, nodeId) {
     return document.querySelectorAll(
       `[data-node-id="${nextNodeId}"] .execution-hard-wrapped-link-hover-segment`
     ).length;
+  }, nodeId);
+}
+
+async function readLastHardWrappedLinkHoverSegmentPoint(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    const segments = Array.from(
+      document.querySelectorAll(`[data-node-id="${nextNodeId}"] .execution-hard-wrapped-link-hover-segment`)
+    ).filter((entry) => entry instanceof HTMLElement);
+    const segment = segments.at(-1);
+    if (!(segment instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rect = segment.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top
+    };
   }, nodeId);
 }
 
@@ -15431,6 +15451,20 @@ async function expectCaretPosition(locator, expectedCaret) {
     .toEqual({
       selectionStart: expectedCaret,
       selectionEnd: expectedCaret
+    });
+}
+
+async function expectSelectionRange(locator, expectedStart, expectedEnd) {
+  await expect
+    .poll(async () =>
+      locator.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedStart,
+      selectionEnd: expectedEnd
     });
 }
 
