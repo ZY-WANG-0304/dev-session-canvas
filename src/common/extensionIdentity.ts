@@ -25,10 +25,30 @@ export const COMMAND_IDS = {
   openCodexAuthFile: 'devSessionCanvas.openCodexAuthFile',
   openClaudeSettingsFile: 'devSessionCanvas.openClaudeSettingsFile',
   createNode: 'devSessionCanvas.createNode',
+  addFolderToWorkspace: 'devSessionCanvas.addFolderToWorkspace',
+  createWorktree: 'devSessionCanvas.createWorktree',
+  createWorktreeForRoot: 'devSessionCanvas.createWorktreeForRoot',
+  removeFolderFromWorkspace: 'devSessionCanvas.removeFolderFromWorkspace',
+  removeWorktreeFromWorkspace: 'devSessionCanvas.removeWorktreeFromWorkspace',
+  createTerminalFromExplorerResource: 'devSessionCanvas.createTerminalFromExplorerResource',
+  createAgentFromExplorerResource: 'devSessionCanvas.createAgentFromExplorerResource',
+  createNoteFromExplorerMarkdown: 'devSessionCanvas.createNoteFromExplorerMarkdown',
+  createEmptyGroup: 'devSessionCanvas.createEmptyGroup',
+  createGroupFromSelection: 'devSessionCanvas.createGroupFromSelection',
   saveNoteAsMarkdownFile: 'devSessionCanvas.saveNoteAsMarkdownFile',
   showNodeList: 'devSessionCanvas.showNodeList',
+  setSidebarNodeListFlatView: 'devSessionCanvas.setSidebarNodeListFlatView',
+  setSidebarNodeListFlatViewChecked: 'devSessionCanvas.setSidebarNodeListFlatViewChecked',
+  setSidebarNodeListGroupedView: 'devSessionCanvas.setSidebarNodeListGroupedView',
+  setSidebarNodeListGroupedViewChecked: 'devSessionCanvas.setSidebarNodeListGroupedViewChecked',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
+  enableSidebarSessionHistoryRootGrouping: 'devSessionCanvas.enableSidebarSessionHistoryRootGrouping',
+  disableSidebarSessionHistoryRootGrouping: 'devSessionCanvas.disableSidebarSessionHistoryRootGrouping',
+  enableSidebarSessionHistoryProviderGrouping: 'devSessionCanvas.enableSidebarSessionHistoryProviderGrouping',
+  disableSidebarSessionHistoryProviderGrouping: 'devSessionCanvas.disableSidebarSessionHistoryProviderGrouping',
+  enableSidebarSessionHistoryTimeGrouping: 'devSessionCanvas.enableSidebarSessionHistoryTimeGrouping',
+  disableSidebarSessionHistoryTimeGrouping: 'devSessionCanvas.disableSidebarSessionHistoryTimeGrouping',
   resetCanvasState: 'devSessionCanvas.resetCanvasState',
   dumpHostDiagnostics: 'devSessionCanvas.dumpHostDiagnostics',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
@@ -52,6 +72,7 @@ export const TEST_COMMAND_IDS = {
   clearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   getDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   clearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
+  dumpHostDiagnostics: 'devSessionCanvas.__test.dumpHostDiagnostics',
   locateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
   locateClaudeSessionId: 'devSessionCanvas.__test.locateClaudeSessionId',
   extractCodexResumeSessionId: 'devSessionCanvas.__test.extractCodexResumeSessionId',
@@ -62,6 +83,7 @@ export const TEST_COMMAND_IDS = {
   performWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
   captureTemplateMarketplaceProbe: 'devSessionCanvas.__test.captureTemplateMarketplaceProbe',
   performTemplateMarketplaceAction: 'devSessionCanvas.__test.performTemplateMarketplaceAction',
+  runWebviewLifecycleRaceDiagnostics: 'devSessionCanvas.__test.runWebviewLifecycleRaceDiagnostics',
   performSidebarNodeListAction: 'devSessionCanvas.__test.performSidebarNodeListAction',
   performSidebarSessionHistoryAction: 'devSessionCanvas.__test.performSidebarSessionHistoryAction',
   getCanvasTemplateItems: 'devSessionCanvas.__test.getCanvasTemplateItems',
@@ -103,12 +125,16 @@ export const CONFIG_KEYS = {
   agentCodexDefaultArgs: 'devSessionCanvas.agent.codexDefaultArgs',
   agentClaudeDefaultArgs: 'devSessionCanvas.agent.claudeDefaultArgs',
   notificationAttentionSignalBridge: 'devSessionCanvas.notifications.attentionSignalBridge',
+  enabledAttentionSignals: 'devSessionCanvas.notifications.enabledAttentionSignals',
   legacyNotificationBridgeTerminalAttentionSignals: 'devSessionCanvas.notifications.bridgeTerminalAttentionSignals',
   legacyNotificationPreferNotifierCompanion: 'devSessionCanvas.notifications.preferNotifierCompanion',
   notificationStrongTerminalAttentionReminder: 'devSessionCanvas.notifications.strongTerminalAttentionReminder',
   agentAbnormalOutputTextNotifications: 'devSessionCanvas.notifications.agentAbnormalOutputTextNotifications',
+  canvasLinkOpenMode: 'devSessionCanvas.canvas.linkOpenMode',
   canvasOverviewMode: 'devSessionCanvas.canvas.overviewMode',
   canvasOverviewZoomThreshold: 'devSessionCanvas.canvas.overviewZoomThreshold',
+  canvasMultiRootPresentationMode: 'devSessionCanvas.canvas.multiRootPresentationMode',
+  canvasWorkspaceRootWatermarksEnabled: 'devSessionCanvas.canvas.workspaceRootWatermarks.enabled',
   terminalShell: 'devSessionCanvas.terminal.shell',
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
   terminalInheritEnv: 'devSessionCanvas.terminal.inheritEnv',
@@ -123,8 +149,20 @@ export const CONFIG_KEYS = {
 
 export const CONTEXT_KEYS = {
   panelVisibilityManaged: 'devSessionCanvas.canvas.panelVisibilityManaged',
-  panelViewVisible: 'devSessionCanvas.canvas.panelViewVisible'
+  panelViewVisible: 'devSessionCanvas.canvas.panelViewVisible',
+  sidebarNodeListGroupedView: 'devSessionCanvas.sidebarNodeList.groupedView',
+  sidebarSessionHistoryGroupByWorkspaceRoot: 'devSessionCanvas.sidebarSessionHistory.groupByWorkspaceRoot',
+  sidebarSessionHistoryGroupByProvider: 'devSessionCanvas.sidebarSessionHistory.groupByProvider',
+  sidebarSessionHistoryGroupByTime: 'devSessionCanvas.sidebarSessionHistory.groupByTime'
 } as const;
+
+export type SidebarNodeListViewMode = 'flat' | 'grouped';
+
+export interface SidebarSessionHistoryGroupingOptions {
+  groupByWorkspaceRoot: boolean;
+  groupByProvider: boolean;
+  groupByTime: boolean;
+}
 
 export const STORAGE_KEYS = {
   canvasState: 'devSessionCanvas.canvas.state',
@@ -133,5 +171,9 @@ export const STORAGE_KEYS = {
   canvasRuntimePersistenceEnabled: 'devSessionCanvas.canvas.runtimePersistenceEnabled',
   canvasFilesFeatureEnabled: 'devSessionCanvas.canvas.filesFeatureEnabled',
   canvasFileFilterState: 'devSessionCanvas.canvas.fileFilterState',
-  canvasTemplateInitialized: 'devSessionCanvas.canvas.templateInitialized'
+  canvasTemplateInitialized: 'devSessionCanvas.canvas.templateInitialized',
+  sidebarNodeListViewMode: 'devSessionCanvas.sidebarNodeList.viewMode',
+  sidebarSessionHistoryGroupByWorkspaceRoot: 'devSessionCanvas.sidebarSessionHistory.groupByWorkspaceRoot',
+  sidebarSessionHistoryGroupByProvider: 'devSessionCanvas.sidebarSessionHistory.groupByProvider',
+  sidebarSessionHistoryGroupByTime: 'devSessionCanvas.sidebarSessionHistory.groupByTime'
 } as const;

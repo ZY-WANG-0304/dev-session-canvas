@@ -50,11 +50,26 @@ const ABNORMAL_STREAM_CARRYOVER_LIMIT = 320;
 const AGENT_SPINNER_REDRAW_PATTERN = /(?:\r(?!\n)|\u0008|\u001b\[[0-9;?]*[ABCDGHJKfhlmnrsu])/u;
 const AGENT_SPINNER_GLYPH_PATTERN = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]/u;
 const AGENT_PROMPT_PATTERN = /(?:^|\n)\s{0,4}(?:>|›|❯|≫|»)\s*$/u;
-// `response.completed` is a Codex/OpenAI Responses turn-completion event, not a
-// Claude Code contract. Keep provider-specific stream failures explicit here.
-const CODEX_ABNORMAL_STREAM_PATTERNS = [
-  /stream\s+disconnected\s+before\s+completion.*stream\s+closed\s+before\s+response\.completed/iu
+
+interface AgentAbnormalStreamInterruptionMatch {
+  message: string;
+}
+
+const CODEX_FINAL_ERROR_MARKER_PATTERN = /^\s*■\s+/u;
+const CODEX_TAIL_PROMPT_PATTERN = /^\s{0,4}(?:›.*|[>❯≫»](?:\s+.*)?)$/u;
+const CODEX_TAIL_STATUS_FOOTER_PATTERN = /^(?:gpt|o\d|codex)[\w.-]*(?:\s+[\w.-]+){0,4}\s+·\s+\S.*$/iu;
+// Keep this list limited to Codex TUI final-error lines rendered with the
+// leading square marker at the tail. Reconnecting tree lines are retry progress.
+const CODEX_FINAL_ERROR_MESSAGE_PATTERNS: RegExp[] = [
+  /stream\s+disconnected\s+before\s+completion.*stream\s+closed\s+before\s+response\.completed/iu,
+  /\{\s*"error"\s*:\s*\{[^{}]*"message"\s*:\s*"internal server error"[^{}]*\}\s*\}/iu
 ];
+
+interface AgentAbnormalStreamTailLine {
+  end: number;
+  line: string;
+  start: number;
+}
 
 export function createAgentActivityHeuristicState(): AgentActivityHeuristicState {
   return {
@@ -140,22 +155,33 @@ export function recordAgentOutputHeuristics(
     strippedBuffer.length > abnormalStreamScanStart
       ? strippedBuffer.slice(abnormalStreamScanStart)
       : normalizedChunk;
-  const abnormalStreamScanText = `${state.abnormalStreamCarryover ?? ''}${abnormalStreamNewOutput}`;
-  const abnormalStreamInterruptionMessage = provider
-    ? extractAgentAbnormalStreamInterruptionMessage(abnormalStreamScanText, provider)
+  const previousAbnormalStreamCarryover = state.abnormalStreamCarryover ?? '';
+  const abnormalStreamScanText = `${previousAbnormalStreamCarryover}${abnormalStreamNewOutput}`;
+  const abnormalStreamInterruptions = provider
+    ? extractAgentAbnormalStreamInterruptions(
+        abnormalStreamScanText,
+        provider,
+        0,
+        previousAbnormalStreamCarryover.length
+      )
     : undefined;
   if (provider) {
     state.lastAbnormalStreamScanLength = strippedBuffer.length;
     state.abnormalStreamCarryover = abnormalStreamScanText.slice(-ABNORMAL_STREAM_CARRYOVER_LIMIT);
   }
   let sawAbnormalStreamInterruption = false;
-  if (abnormalStreamInterruptionMessage) {
+  let abnormalStreamInterruptionMessage: string | undefined;
+  for (const abnormalStreamInterruption of abnormalStreamInterruptions ?? []) {
     const abnormalStreamSignature = normalizeAgentAbnormalStreamInterruptionSignature(
-      abnormalStreamInterruptionMessage
+      abnormalStreamInterruption.message
     );
-    sawAbnormalStreamInterruption = abnormalStreamSignature !== state.lastAbnormalStreamSignature;
     state.lastAbnormalStreamAtMs = now;
-    state.lastAbnormalStreamMessage = abnormalStreamInterruptionMessage;
+    state.lastAbnormalStreamMessage = abnormalStreamInterruption.message;
+    if (abnormalStreamSignature === state.lastAbnormalStreamSignature) {
+      continue;
+    }
+    sawAbnormalStreamInterruption = true;
+    abnormalStreamInterruptionMessage = abnormalStreamInterruption.message;
     state.lastAbnormalStreamSignature = abnormalStreamSignature;
   }
 
@@ -175,31 +201,117 @@ export function extractAgentAbnormalStreamInterruptionMessage(
   provider: AgentProviderKind = 'codex',
   scanStart = 0
 ): string | undefined {
+  return extractAgentAbnormalStreamInterruptions(output, provider, scanStart).at(-1)?.message;
+}
+
+function extractAgentAbnormalStreamInterruptions(
+  output: string,
+  provider: AgentProviderKind = 'codex',
+  scanStart = 0,
+  minMatchEndOffset = 0
+): AgentAbnormalStreamInterruptionMatch[] {
   if (provider !== 'codex') {
-    return undefined;
+    return [];
   }
 
   const stripped = stripTerminalControlSequences(output).replace(/\r/g, '');
   const safeScanStart = Math.min(Math.max(0, scanStart), stripped.length);
   const tailStart = Math.max(safeScanStart, stripped.length - ABNORMAL_STREAM_TAIL_LIMIT);
   const tail = stripped.slice(tailStart);
-  const lines = tail
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const tailLines: AgentAbnormalStreamTailLine[] = [];
+  let lineStart = tailStart;
 
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index];
-    if (CODEX_ABNORMAL_STREAM_PATTERNS.some((pattern) => pattern.test(line))) {
-      return line.length > 240 ? `${line.slice(0, 240)}...` : line;
+  for (const rawLine of tail.split('\n')) {
+    const lineEnd = lineStart + rawLine.length;
+    const line = rawLine.trim();
+    if (line) {
+      tailLines.push({
+        end: lineEnd,
+        line,
+        start: lineStart
+      });
     }
+    lineStart = lineEnd + 1;
+  }
+
+  const candidate = getTailCodexFinalErrorLine(tailLines);
+  if (!candidate) {
+    return [];
+  }
+  if (
+    candidate.end <= minMatchEndOffset &&
+    !doesTailAfterCandidateIncludeNewlyCompletedIgnorableCodexChrome(
+      tailLines,
+      candidate,
+      minMatchEndOffset
+    )
+  ) {
+    return [];
+  }
+
+  return isCodexFinalErrorLine(candidate.line)
+    ? [
+        {
+          message: candidate.line.length > 240 ? `${candidate.line.slice(0, 240)}...` : candidate.line
+        }
+      ]
+    : [];
+}
+
+export function normalizeAgentAbnormalStreamInterruptionSignature(message: string): string {
+  return message.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function getTailCodexFinalErrorLine(
+  tailLines: AgentAbnormalStreamTailLine[]
+): AgentAbnormalStreamTailLine | undefined {
+  for (let index = tailLines.length - 1; index >= 0; index -= 1) {
+    const candidate = tailLines[index];
+    if (isCodexFinalErrorLine(candidate.line)) {
+      return candidate;
+    }
+
+    if (isIgnorableCodexTrailingChromeLine(candidate.line)) {
+      continue;
+    }
+
+    return undefined;
   }
 
   return undefined;
 }
 
-export function normalizeAgentAbnormalStreamInterruptionSignature(message: string): string {
-  return message.replace(/\s+/g, ' ').trim().toLowerCase();
+function isIgnorableCodexTrailingChromeLine(line: string): boolean {
+  return CODEX_TAIL_PROMPT_PATTERN.test(line) || CODEX_TAIL_STATUS_FOOTER_PATTERN.test(line);
+}
+
+function doesTailAfterCandidateIncludeNewlyCompletedIgnorableCodexChrome(
+  tailLines: AgentAbnormalStreamTailLine[],
+  candidate: AgentAbnormalStreamTailLine,
+  minMatchEndOffset: number
+): boolean {
+  let sawNewlyCompletedChrome = false;
+  for (const tailLine of tailLines) {
+    if (tailLine.end <= candidate.end) {
+      continue;
+    }
+    if (!isIgnorableCodexTrailingChromeLine(tailLine.line)) {
+      return false;
+    }
+    if (tailLine.start < minMatchEndOffset && tailLine.end > minMatchEndOffset) {
+      sawNewlyCompletedChrome = true;
+    }
+  }
+
+  return sawNewlyCompletedChrome;
+}
+
+function isCodexFinalErrorLine(line: string): boolean {
+  if (!CODEX_FINAL_ERROR_MARKER_PATTERN.test(line)) {
+    return false;
+  }
+  const message = line.replace(CODEX_FINAL_ERROR_MARKER_PATTERN, '');
+  return CODEX_FINAL_ERROR_MESSAGE_PATTERNS.some((pattern) => pattern.test(message));
 }
 
 export function evaluateAgentWaitingInputTransition(

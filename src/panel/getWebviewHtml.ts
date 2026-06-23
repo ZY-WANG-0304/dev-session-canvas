@@ -1,14 +1,18 @@
 import * as vscode from 'vscode';
 
 import { COMMAND_IDS, EXTENSION_DISPLAY_NAME } from '../common/extensionIdentity';
+import type {
+  CanvasSurfaceLocation,
+  CanvasSurfaceMode,
+  WebviewLifecycleIdentity
+} from '../common/protocol';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 
-type CanvasSurfaceLocation = 'editor' | 'panel';
-
 interface CanvasWebviewHtmlOptions {
-  mode: 'active' | 'standby';
+  mode: CanvasSurfaceMode;
   surface: CanvasSurfaceLocation;
   activeSurface?: CanvasSurfaceLocation;
+  lifecycle?: WebviewLifecycleIdentity;
 }
 
 export function getWebviewHtml(
@@ -25,7 +29,11 @@ export function getWebviewHtml(
     return buildStandbyHtml(shell, options);
   }
 
-  return buildActiveHtml(shell, scriptUri, nonce);
+  if (!options.lifecycle) {
+    throw new Error('Active canvas webview HTML requires a lifecycle identity.');
+  }
+
+  return buildActiveHtml(shell, scriptUri, nonce, options.lifecycle);
 }
 
 function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode.Uri): string {
@@ -139,10 +147,18 @@ function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode
   </head>`;
 }
 
-function buildActiveHtml(shell: string, scriptUri: vscode.Uri, nonce: string): string {
+function buildActiveHtml(
+  shell: string,
+  scriptUri: vscode.Uri,
+  nonce: string,
+  lifecycle: WebviewLifecycleIdentity
+): string {
   return `${shell}
   <body>
     <div id="app"></div>
+    <script nonce="${nonce}">
+      window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__ = ${escapeHtmlScriptJson(lifecycle)};
+    </script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;
@@ -177,6 +193,25 @@ function buildStandbyHtml(shell: string, options: CanvasWebviewHtmlOptions): str
 
 function humanizeSurfaceLocation(surface: CanvasSurfaceLocation): string {
   return surface === 'panel' ? '工作台视图' : '编辑区';
+}
+
+function escapeHtmlScriptJson(value: unknown): string {
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/gu, (character) => {
+    switch (character) {
+      case '<':
+        return '\\u003C';
+      case '>':
+        return '\\u003E';
+      case '&':
+        return '\\u0026';
+      case '\u2028':
+        return '\\u2028';
+      case '\u2029':
+        return '\\u2029';
+      default:
+        return character;
+    }
+  });
 }
 
 function createNonce(): string {

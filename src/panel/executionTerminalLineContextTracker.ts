@@ -12,6 +12,8 @@ const OSC_ST_TERMINATOR = '\u001b\\';
 const BRACKETED_PASTE_START = '\u001b[200~';
 const BRACKETED_PASTE_END = '\u001b[201~';
 const MAX_REPLAY_SEGMENT_CHARS = 200_000;
+const LINE_CONTEXT_WRITE_BATCH_DELAY_MS = 16;
+const LINE_CONTEXT_WRITE_CHUNK_CHARS = 32 * 1024;
 
 interface ExecutionTerminalLineContextTrackerOptions {
   cwd: string;
@@ -40,6 +42,8 @@ export class ExecutionTerminalLineContextTracker {
   private readonly lineCwds: string[] = [];
   private pendingInputLine = '';
   private pendingOsc7Chunk = '';
+  private pendingWriteData = '';
+  private pendingWriteDrainTimer: NodeJS.Timeout | undefined;
   private operationChain: Promise<void> = Promise.resolve();
   private readonly disposedSignal = createDeferred<void>();
 
@@ -59,7 +63,8 @@ export class ExecutionTerminalLineContextTracker {
       return;
     }
 
-    this.enqueueOperation(() => this.writeInternal(chunk));
+    this.pendingWriteData += chunk;
+    this.schedulePendingWriteDrain();
   }
 
   public recordInput(data: string): void {
@@ -67,7 +72,10 @@ export class ExecutionTerminalLineContextTracker {
       return;
     }
 
-    this.enqueueOperation(() => {
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteData = this.takePendingWriteData();
+    this.enqueueOperation(async () => {
+      await this.drainWriteData(pendingWriteData);
       this.recordInputInternal(data);
     });
   }
@@ -77,11 +85,14 @@ export class ExecutionTerminalLineContextTracker {
       return;
     }
 
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteData = this.takePendingWriteData();
     this.enqueueOperation(async () => {
       if (this.disposed) {
         return;
       }
 
+      await this.drainWriteData(pendingWriteData);
       if (this.terminal.cols === cols && this.terminal.rows === rows) {
         return;
       }
@@ -98,23 +109,40 @@ export class ExecutionTerminalLineContextTracker {
 
     const normalizedScrollback = normalizeTerminalScrollback(scrollback, DEFAULT_TERMINAL_SCROLLBACK);
     if (normalizedScrollback === this.scrollback) {
+      this.clearPendingWriteDrainTimer();
+      const pendingWriteData = this.takePendingWriteData();
+      this.enqueueOperation(() => this.drainWriteData(pendingWriteData));
       await this.awaitPendingOperations();
       return;
     }
 
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteData = this.takePendingWriteData();
     this.enqueueOperation(async () => {
       if (this.disposed) {
         return;
       }
 
+      await this.drainWriteData(pendingWriteData);
       await this.rebuild(this.terminal.cols, this.terminal.rows, normalizedScrollback);
     });
     await this.awaitPendingOperations();
   }
 
   public async getCwdForBufferLine(bufferStartLine: number): Promise<string | undefined> {
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteData = this.takePendingWriteData();
+    this.enqueueOperation(() => this.drainWriteData(pendingWriteData));
     await this.awaitPendingOperations();
-    return this.lineCwds[bufferStartLine] ?? this.currentCwd;
+    const startLine = Math.min(bufferStartLine, this.lineCwds.length - 1);
+    for (let lineIndex = startLine; lineIndex >= 0; lineIndex -= 1) {
+      const cwd = this.lineCwds[lineIndex];
+      const line = this.terminal.buffer.active.getLine(lineIndex)?.translateToString(true) ?? '';
+      if (cwd && line.trim().length > 0) {
+        return cwd;
+      }
+    }
+    return this.currentCwd;
   }
 
   public dispose(): void {
@@ -124,6 +152,8 @@ export class ExecutionTerminalLineContextTracker {
 
     this.disposed = true;
     this.disposedSignal.resolve();
+    this.clearPendingWriteDrainTimer();
+    this.pendingWriteData = '';
     this.terminal.dispose();
   }
 
@@ -137,6 +167,45 @@ export class ExecutionTerminalLineContextTracker {
         await operation();
       })
       .catch(() => {});
+  }
+
+  private schedulePendingWriteDrain(): void {
+    if (this.pendingWriteDrainTimer) {
+      return;
+    }
+
+    this.pendingWriteDrainTimer = setTimeout(() => {
+      this.pendingWriteDrainTimer = undefined;
+      const pendingWriteData = this.takePendingWriteData();
+      this.enqueueOperation(() => this.drainWriteData(pendingWriteData));
+    }, LINE_CONTEXT_WRITE_BATCH_DELAY_MS);
+  }
+
+  private clearPendingWriteDrainTimer(): void {
+    if (!this.pendingWriteDrainTimer) {
+      return;
+    }
+
+    clearTimeout(this.pendingWriteDrainTimer);
+    this.pendingWriteDrainTimer = undefined;
+  }
+
+  private takePendingWriteData(): string {
+    const data = this.pendingWriteData;
+    this.pendingWriteData = '';
+    return data;
+  }
+
+  private async drainWriteData(data: string): Promise<void> {
+    let remainingData = data;
+    while (remainingData && !this.disposed) {
+      const chunk = remainingData.slice(0, LINE_CONTEXT_WRITE_CHUNK_CHARS);
+      remainingData = remainingData.slice(chunk.length);
+      await this.writeInternal(chunk);
+      if (remainingData) {
+        await delay(0);
+      }
+    }
   }
 
   private async awaitPendingOperations(): Promise<void> {
@@ -377,6 +446,12 @@ function stripTerminalInputControlSequences(value: string): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function delay(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, timeoutMs);
+  });
 }
 
 function extractTrackedShellClause(

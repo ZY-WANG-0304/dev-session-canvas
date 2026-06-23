@@ -1,4 +1,7 @@
 import * as path from 'path';
+import { execFile } from 'child_process';
+import { mkdir, realpath, stat } from 'fs/promises';
+import { promisify } from 'util';
 import * as vscode from 'vscode';
 
 import {
@@ -20,6 +23,7 @@ import {
   type CanvasNodeKind,
   type CanvasNodeSummary
 } from './common/protocol';
+import { isSupportedNoteMarkdownFilePath } from './common/noteMarkdownFileAssociation';
 import {
   buildAgentPresetCommandLine,
   classifyAgentLaunchPreset,
@@ -69,8 +73,14 @@ import { CanvasSidebarTemplateView } from './sidebar/CanvasSidebarTemplateView';
 import { CanvasSidebarView, getCanvasSidebarSummaryItems } from './sidebar/CanvasSidebarView';
 import { isTestHarnessMode } from './common/testHarness';
 
+const execFileAsync = promisify(execFile);
+
 let activePanelManager: CanvasPanelManager | undefined;
 let queuedQuickPickSelectionIds: CreateNodeQuickPickSelectionId[] = [];
+
+const WORKTREE_BRANCH_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+const GIT_WORKTREE_COMMAND_TIMEOUT_MS = 120_000;
+const GIT_COMMAND_MAX_BUFFER_BYTES = 1024 * 1024;
 
 type CreateNodeRequest = {
   kind: CanvasCreatableNodeKind;
@@ -90,6 +100,14 @@ type CreateNodeQuickPickSelectionId =
   | 'agent-launch-apply-resume'
   | 'agent-launch-apply-yolo'
   | 'agent-launch-apply-sandbox';
+
+type WebviewLifecycleDumpStatus =
+  | 'healthy'
+  | 'standby'
+  | 'initializing'
+  | 'attention'
+  | 'blocked'
+  | 'not-attached';
 
 interface CreateNodeQuickPickItem extends vscode.QuickPickItem {
   selectionId?: CreateNodeQuickPickSelectionId;
@@ -121,6 +139,83 @@ interface CanvasTemplatePickOptions {
   emptyMessage?: string;
 }
 
+interface ExplorerExecutionResource {
+  cwd: string;
+  cwdUri: vscode.Uri;
+  resourceKind: 'directory' | 'file-parent';
+  workspaceFolder: vscode.WorkspaceFolder;
+}
+
+interface ExplorerMarkdownNoteResource {
+  uri: vscode.Uri;
+}
+
+interface WorkspaceRootQuickPickItem extends vscode.QuickPickItem {
+  folder: vscode.WorkspaceFolder;
+}
+
+interface WorkspaceWorktreeRequest {
+  rootPath?: string;
+}
+
+type WorktreeUnavailableReasonCode =
+  | 'workspace-untrusted'
+  | 'not-file-root'
+  | 'not-git-repository'
+  | 'no-git-refs'
+  | 'not-linked-worktree'
+  | 'git-unavailable'
+  | 'unknown';
+
+interface WorkspaceWorktreeTarget {
+  rootFolder: vscode.WorkspaceFolder;
+  branchName?: string;
+  checkoutRef?: string;
+  startPoint?: string;
+  detached?: boolean;
+  displayName: string;
+  targetPath: string;
+}
+
+interface GitWorktreeRef {
+  name: string;
+  shortSha: string;
+  relativeDate?: string;
+  author?: string;
+  subject?: string;
+  kind: 'head' | 'localBranch';
+  worktreePath?: string;
+  isCurrentWorktree: boolean;
+  isCheckedOutInWorktree: boolean;
+}
+
+interface GitWorktreeRepositoryInfo {
+  rootPath: string;
+  topLevelPath: string;
+  gitCommonDir: string;
+  isLinkedWorktree: boolean;
+}
+
+interface WorktreeCreationPlan {
+  kind: 'newBranch' | 'existingRef';
+  branchName?: string;
+  startPoint?: string;
+  checkoutRef?: string;
+  detached?: boolean;
+  defaultPathName: string;
+  displayName: string;
+}
+
+interface WorktreeActionQuickPickItem extends vscode.QuickPickItem {
+  type: 'createNewBranch' | 'createNewBranchFrom';
+}
+
+interface WorktreeRefQuickPickItem extends vscode.QuickPickItem {
+  type: 'ref';
+  ref: GitWorktreeRef;
+}
+
+type WorktreeQuickPickItem = WorktreeActionQuickPickItem | WorktreeRefQuickPickItem;
 function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
   return vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0
     ? vscode.ConfigurationTarget.Workspace
@@ -143,17 +238,33 @@ export function activate(context: vscode.ExtensionContext): void {
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
   const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri);
-  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri);
-  const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(panelManager);
+  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri, context.workspaceState);
+  const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(
+    panelManager,
+    context.extensionUri,
+    context.workspaceState
+  );
 
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
     const dumpResult = await panelManager.dumpCurrentHostDiagnostics();
     const revealAction = '在资源管理器中显示';
+    const openLifecycleSummaryAction = '打开 lifecycle 摘要';
+    const openPerformanceDiagnosticsAction = '打开性能诊断';
+    const lifecycleStatus = formatWebviewLifecycleDumpStatus(dumpResult.webviewLifecycleStatus);
+    const panelRestoreHint = dumpResult.webviewLifecyclePanelRestoreLikelyAffected
+      ? '；Panel restore 可能仍受 lifecycle 阻塞'
+      : '';
     const selection = await vscode.window.showInformationMessage(
-      `当前宿主诊断已写入 ${dumpResult.outputDir}`,
+      `当前宿主诊断已写入 ${dumpResult.outputDir}。Webview lifecycle：${lifecycleStatus}${panelRestoreHint}`,
+      openLifecycleSummaryAction,
+      openPerformanceDiagnosticsAction,
       revealAction
     );
-    if (selection === revealAction) {
+    if (selection === openLifecycleSummaryAction) {
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(dumpResult.webviewLifecycleSummaryPath));
+    } else if (selection === openPerformanceDiagnosticsAction) {
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(dumpResult.executionPerformanceDiagnosticsPath));
+    } else if (selection === revealAction) {
       await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dumpResult.summaryPath));
     }
   });
@@ -244,7 +355,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(COMMAND_IDS.applyDefaultTemplate, async () => {
       try {
         const appliedNodeIds = await panelManager.applyDefaultCanvasTemplate();
-        await panelManager.revealOrCreate();
+        await panelManager.revealOrCreateCurrentCanvasSurface();
         panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
       } catch (error) {
         await showCanvasTemplateError('应用默认模板失败', error);
@@ -261,7 +372,7 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         const appliedNodeIds = await panelManager.resetDefaultCanvasTemplateWithConfirmation();
         if (appliedNodeIds) {
-          await panelManager.revealOrCreate();
+          await panelManager.revealOrCreateCurrentCanvasSurface();
           panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
         }
       } catch (error) {
@@ -339,12 +450,124 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await panelManager.revealOrCreate();
+    const blockedReason = panelManager.getCreateNodeBlockedReason(createRequest.kind);
+    if (blockedReason) {
+      await panelManager.showCreateNodeBlockedReasonModal(createRequest.kind);
+      return;
+    }
+
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.createNode(createRequest.kind, {
       agentProvider: createRequest.agentProvider,
       agentLaunchPreset: createRequest.agentLaunchPreset,
       agentCustomLaunchCommand: createRequest.agentCustomLaunchCommand
     });
+  });
+
+  registerCommand(context, COMMAND_IDS.addFolderToWorkspace, async () => {
+    await addFolderToWorkspaceFromCommand();
+  });
+
+  registerCommand(context, COMMAND_IDS.createWorktree, async () => {
+    await createWorktreeAndAddToWorkspaceFromCommand({});
+  });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_IDS.createWorktreeForRoot, async (rootPath?: unknown) => {
+      await createWorktreeAndAddToWorkspaceFromCommand({
+        rootPath: typeof rootPath === 'string' ? rootPath : undefined
+      });
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.removeFolderFromWorkspace, async (rootPath?: unknown) => {
+      if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
+        await vscode.window.showWarningMessage('未找到要从 workspace 移除的 folder。');
+        return;
+      }
+
+      await removeFolderFromWorkspaceFromCommand(rootPath);
+    }),
+    vscode.commands.registerCommand(COMMAND_IDS.removeWorktreeFromWorkspace, async (rootPath?: unknown) => {
+      if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
+        await vscode.window.showWarningMessage('未找到要移除的 worktree folder。');
+        return;
+      }
+
+      await removeWorktreeFromWorkspaceFromCommand(rootPath);
+    })
+  );
+
+  registerCommand(context, COMMAND_IDS.createTerminalFromExplorerResource, async (resource?: unknown) => {
+    const resolvedResource = await resolveExplorerExecutionResource(resource);
+    if (!resolvedResource) {
+      return;
+    }
+
+    const blockedReason = panelManager.getCreateNodeBlockedReason('terminal');
+    if (blockedReason) {
+      await panelManager.showCreateNodeBlockedReasonModal('terminal');
+      return;
+    }
+
+    await panelManager.revealOrCreateCurrentCanvasSurface();
+    panelManager.createNode('terminal', {
+      cwdOverride: resolvedResource.cwd
+    });
+  });
+
+  registerCommand(context, COMMAND_IDS.createAgentFromExplorerResource, async (resource?: unknown) => {
+    const resolvedResource = await resolveExplorerExecutionResource(resource);
+    if (!resolvedResource) {
+      return;
+    }
+
+    const blockedReason = panelManager.getCreateNodeBlockedReason('agent');
+    if (blockedReason) {
+      await panelManager.showCreateNodeBlockedReasonModal('agent');
+      return;
+    }
+
+    const agentRequest = await promptCreateNodeRequest(['agent']);
+    if (!agentRequest || agentRequest.kind !== 'agent') {
+      return;
+    }
+
+    await panelManager.revealOrCreateCurrentCanvasSurface();
+    panelManager.createNode('agent', {
+      agentProvider: agentRequest.agentProvider,
+      agentLaunchPreset: agentRequest.agentLaunchPreset,
+      agentCustomLaunchCommand: agentRequest.agentCustomLaunchCommand,
+      cwdOverride: resolvedResource.cwd
+    });
+  });
+
+  registerCommand(context, COMMAND_IDS.createNoteFromExplorerMarkdown, async (resource?: unknown) => {
+    const resolvedResource = await resolveExplorerMarkdownNoteResource(resource);
+    if (!resolvedResource) {
+      return;
+    }
+
+    await panelManager.revealOrCreateCurrentCanvasSurface();
+    await panelManager.createNoteFromMarkdownResource(resolvedResource.uri);
+  });
+
+  registerCommand(context, COMMAND_IDS.createEmptyGroup, async () => {
+    await panelManager.revealOrCreateCurrentCanvasSurface();
+    panelManager.createEmptyGroupFromCommand();
+  });
+
+  registerCommand(context, COMMAND_IDS.createGroupFromSelection, async () => {
+    await panelManager.revealOrCreateCurrentCanvasSurface();
+    try {
+      await panelManager.waitForCanvasReady(undefined, 15000);
+    } catch {
+      await vscode.window.showInformationMessage('请先打开画布并选中至少两个同一父级的节点或分组。');
+      return;
+    }
+
+    const requested = panelManager.createGroupFromSelectionFromCommand();
+    if (!requested) {
+      await vscode.window.showInformationMessage('请先打开画布并选中至少两个同一父级的节点或分组。');
+    }
   });
 
   registerCommand(context, COMMAND_IDS.saveNoteAsMarkdownFile, async (nodeId?: unknown) => {
@@ -355,12 +578,52 @@ export function activate(context: vscode.ExtensionContext): void {
     await showSidebarNodeListQuickPick(panelManager);
   });
 
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListFlatView, async () => {
+    await sidebarNodeListView.setViewMode('flat');
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListFlatViewChecked, async () => {
+    await sidebarNodeListView.setViewMode('flat');
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListGroupedView, async () => {
+    await sidebarNodeListView.setViewMode('grouped');
+  });
+
+  registerCommand(context, COMMAND_IDS.setSidebarNodeListGroupedViewChecked, async () => {
+    await sidebarNodeListView.setViewMode('grouped');
+  });
+
   registerCommand(context, COMMAND_IDS.showSessionHistory, async () => {
     await showSessionHistoryQuickPick(sidebarSessionHistoryView, panelManager);
   });
 
   registerCommand(context, COMMAND_IDS.refreshSessionHistory, async () => {
     await sidebarSessionHistoryView.refresh();
+  });
+
+  registerCommand(context, COMMAND_IDS.enableSidebarSessionHistoryRootGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByWorkspaceRoot', true);
+  });
+
+  registerCommand(context, COMMAND_IDS.disableSidebarSessionHistoryRootGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByWorkspaceRoot', false);
+  });
+
+  registerCommand(context, COMMAND_IDS.enableSidebarSessionHistoryProviderGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByProvider', true);
+  });
+
+  registerCommand(context, COMMAND_IDS.disableSidebarSessionHistoryProviderGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByProvider', false);
+  });
+
+  registerCommand(context, COMMAND_IDS.enableSidebarSessionHistoryTimeGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByTime', true);
+  });
+
+  registerCommand(context, COMMAND_IDS.disableSidebarSessionHistoryTimeGrouping, async () => {
+    await sidebarSessionHistoryView.setGroupingOption('groupByTime', false);
   });
 
   registerCommand(context, COMMAND_IDS.resetCanvasState, async () => {
@@ -908,6 +1171,879 @@ async function promptCreateNodeRequest(
   }
 }
 
+async function resolveExplorerMarkdownNoteResource(
+  resource: unknown
+): Promise<ExplorerMarkdownNoteResource | undefined> {
+  const inputUri = resource instanceof vscode.Uri ? resource : undefined;
+  if (!inputUri || inputUri.scheme !== 'file') {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  if (!isSupportedNoteMarkdownFilePath(inputUri.fsPath)) {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  let stat: vscode.FileStat;
+  try {
+    stat = await vscode.workspace.fs.stat(inputUri);
+  } catch {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  if ((stat.type & vscode.FileType.File) === 0) {
+    await showExplorerMarkdownNoteResourceWarning();
+    return undefined;
+  }
+
+  return {
+    uri: inputUri
+  };
+}
+
+async function showExplorerMarkdownNoteResourceWarning(): Promise<void> {
+  await vscode.window.showWarningMessage('请选择 Markdown 文件（.md / .markdown）来创建关联 Note。');
+}
+
+async function resolveExplorerExecutionResource(resource: unknown): Promise<ExplorerExecutionResource | undefined> {
+  const inputUri = resource instanceof vscode.Uri ? resource : undefined;
+  if (!inputUri || inputUri.scheme !== 'file') {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  let stat: vscode.FileStat;
+  try {
+    stat = await vscode.workspace.fs.stat(inputUri);
+  } catch {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  let cwdUri: vscode.Uri;
+  let resourceKind: ExplorerExecutionResource['resourceKind'];
+  if ((stat.type & vscode.FileType.Directory) !== 0) {
+    cwdUri = inputUri;
+    resourceKind = 'directory';
+  } else if ((stat.type & vscode.FileType.File) !== 0) {
+    cwdUri = vscode.Uri.file(path.dirname(inputUri.fsPath));
+    resourceKind = 'file-parent';
+  } else {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  let cwdStat: vscode.FileStat;
+  try {
+    cwdStat = await vscode.workspace.fs.stat(cwdUri);
+  } catch {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  if ((cwdStat.type & vscode.FileType.Directory) === 0) {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  const workspaceFolder = resolveExplorerExecutionWorkspaceFolder(cwdUri);
+  if (!workspaceFolder) {
+    await showExplorerExecutionResourceWarning();
+    return undefined;
+  }
+
+  return {
+    cwd: cwdUri.fsPath,
+    cwdUri,
+    resourceKind,
+    workspaceFolder
+  };
+}
+
+async function showExplorerExecutionResourceWarning(): Promise<void> {
+  await vscode.window.showWarningMessage('请选择当前 workspace 内的文件夹或普通文件来创建画布 Terminal / Agent。');
+}
+
+function resolveExplorerExecutionWorkspaceFolder(cwdUri: vscode.Uri): vscode.WorkspaceFolder | undefined {
+  const directWorkspaceFolder = vscode.workspace.getWorkspaceFolder(cwdUri);
+  if (directWorkspaceFolder) {
+    return directWorkspaceFolder;
+  }
+
+  return vscode.workspace.workspaceFolders?.find((workspaceFolder) =>
+    isSameOrDescendantFileSystemPath(cwdUri.fsPath, workspaceFolder.uri.fsPath)
+  );
+}
+
+function isSameOrDescendantFileSystemPath(candidatePath: string, ancestorPath: string): boolean {
+  const normalizedCandidate = normalizeComparableFileSystemPath(candidatePath);
+  const normalizedAncestor = normalizeComparableFileSystemPath(ancestorPath);
+  if (normalizedCandidate === normalizedAncestor) {
+    return true;
+  }
+
+  const ancestorWithSeparator = normalizedAncestor.endsWith(path.sep)
+    ? normalizedAncestor
+    : `${normalizedAncestor}${path.sep}`;
+  return normalizedCandidate.startsWith(ancestorWithSeparator);
+}
+
+function normalizeComparableFileSystemPath(filePath: string): string {
+  const resolvedPath = path.resolve(filePath);
+  return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
+async function addFolderToWorkspaceFromCommand(): Promise<void> {
+  const selectedUris = await vscode.window.showOpenDialog({
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: true,
+    openLabel: '添加到 Workspace'
+  });
+  if (!selectedUris || selectedUris.length === 0) {
+    return;
+  }
+
+  const existingWorkspaceFolderPaths = new Set(
+    (vscode.workspace.workspaceFolders ?? []).map((folder) => normalizeComparableFileSystemPath(folder.uri.fsPath))
+  );
+  const foldersToAdd: { uri: vscode.Uri }[] = [];
+  const pendingPaths = new Set<string>();
+  for (const uri of selectedUris) {
+    if (uri.scheme !== 'file') {
+      continue;
+    }
+    const normalizedPath = normalizeComparableFileSystemPath(uri.fsPath);
+    if (existingWorkspaceFolderPaths.has(normalizedPath) || pendingPaths.has(normalizedPath)) {
+      continue;
+    }
+
+    pendingPaths.add(normalizedPath);
+    foldersToAdd.push({ uri });
+  }
+
+  if (foldersToAdd.length === 0) {
+    await vscode.window.showInformationMessage('所选文件夹已经在当前 workspace 中。');
+    return;
+  }
+
+  const inserted = vscode.workspace.updateWorkspaceFolders(
+    vscode.workspace.workspaceFolders?.length ?? 0,
+    0,
+    ...foldersToAdd
+  );
+  if (!inserted) {
+    await vscode.window.showWarningMessage('无法将所选文件夹添加到当前 workspace。');
+  }
+}
+
+async function removeFolderFromWorkspaceFromCommand(rootPath: string): Promise<void> {
+  const workspaceFolder = resolveWorkspaceFolderByFsPath(rootPath);
+  if (!workspaceFolder) {
+    await vscode.window.showWarningMessage('该 folder 已不在当前 workspace 中。');
+    return;
+  }
+
+  const confirmed = await vscode.window.showWarningMessage(
+    `从当前 workspace 移除 folder「${workspaceFolder.name}」？磁盘文件不会被删除。`,
+    { modal: true },
+    '移除 Folder'
+  );
+  if (confirmed !== '移除 Folder') {
+    return;
+  }
+
+  const removalResult = removeWorkspaceFolderByFsPath(workspaceFolder.uri.fsPath);
+  if (removalResult === 'missing') {
+    await vscode.window.showWarningMessage('该 folder 已不在当前 workspace 中。');
+  } else if (removalResult === 'failed') {
+    await vscode.window.showWarningMessage(`无法从当前 workspace 移除 folder：${workspaceFolder.name}`);
+  }
+}
+
+async function removeWorktreeFromWorkspaceFromCommand(rootPath: string): Promise<void> {
+  const workspaceFolder = resolveWorkspaceFolderByFsPath(rootPath);
+  if (!workspaceFolder) {
+    await vscode.window.showWarningMessage('该 worktree folder 已不在当前 workspace 中。');
+    return;
+  }
+
+  if (!vscode.workspace.isTrusted) {
+    await showWorktreeUnavailableModal({
+      code: 'workspace-untrusted',
+      rootPath,
+      operation: 'remove'
+    });
+    return;
+  }
+
+  if (workspaceFolder.uri.scheme !== 'file') {
+    await showWorktreeUnavailableModal({
+      code: 'not-file-root',
+      rootPath: workspaceFolder.uri.toString(),
+      operation: 'remove'
+    });
+    return;
+  }
+
+  let repositoryInfo: GitWorktreeRepositoryInfo;
+  try {
+    repositoryInfo = await getGitWorktreeRepositoryInfo(workspaceFolder.uri.fsPath);
+  } catch (error) {
+    await showWorktreeUnavailableModal({
+      code: classifyWorktreeRepositoryError(error),
+      rootPath: workspaceFolder.uri.fsPath,
+      operation: 'remove',
+      cause: error
+    });
+    return;
+  }
+
+  if (!repositoryInfo.isLinkedWorktree) {
+    await showWorktreeUnavailableModal({
+      code: 'not-linked-worktree',
+      rootPath: workspaceFolder.uri.fsPath,
+      operation: 'remove',
+      detail: '当前 folder 是 git 主工作区或普通文件夹，不是可通过 git worktree remove 删除的 linked worktree。'
+    });
+    return;
+  }
+
+  const confirmed = await vscode.window.showWarningMessage(
+    `移除 worktree「${workspaceFolder.name}」并从当前 workspace 移除该 folder？磁盘目录会被 git worktree remove 删除。`,
+    { modal: true, detail: workspaceFolder.uri.fsPath },
+    '移除 Worktree'
+  );
+  if (confirmed !== '移除 Worktree') {
+    return;
+  }
+
+  try {
+    await execFileAsync('git', ['-C', workspaceFolder.uri.fsPath, 'worktree', 'remove', workspaceFolder.uri.fsPath], {
+      timeout: GIT_WORKTREE_COMMAND_TIMEOUT_MS,
+      maxBuffer: GIT_COMMAND_MAX_BUFFER_BYTES,
+      encoding: 'utf8'
+    });
+  } catch (error) {
+    await vscode.window.showErrorMessage(`移除 git worktree 失败：${formatExecErrorMessage(error)}`, { modal: true });
+    return;
+  }
+
+  const removalResult = removeWorkspaceFolderByFsPath(workspaceFolder.uri.fsPath);
+  if (removalResult === 'failed') {
+    await vscode.window.showWarningMessage(
+      `Worktree 已移除，但无法自动从当前 workspace 移除 folder：${workspaceFolder.name}`,
+      { modal: true }
+    );
+  }
+}
+
+async function createWorktreeAndAddToWorkspaceFromCommand(request: WorkspaceWorktreeRequest): Promise<void> {
+  if (!vscode.workspace.isTrusted) {
+    await showWorktreeUnavailableModal({
+      code: 'workspace-untrusted',
+      rootPath: request.rootPath,
+      operation: 'create'
+    });
+    return;
+  }
+
+  const target = await promptWorkspaceWorktreeTarget(request);
+  if (!target) {
+    return;
+  }
+
+  const confirmed = await vscode.window.showInformationMessage(
+    formatWorktreeConfirmationMessage(target),
+    { modal: true, detail: target.targetPath },
+    '创建 Worktree'
+  );
+  if (confirmed !== '创建 Worktree') {
+    return;
+  }
+
+  try {
+    await mkdir(path.dirname(target.targetPath), { recursive: true });
+    await execFileAsync(
+      'git',
+      buildGitWorktreeAddArgs(target),
+      {
+        timeout: GIT_WORKTREE_COMMAND_TIMEOUT_MS,
+        maxBuffer: GIT_COMMAND_MAX_BUFFER_BYTES,
+        encoding: 'utf8'
+      }
+    );
+  } catch (error) {
+    await vscode.window.showErrorMessage(`创建 git worktree 失败：${formatExecErrorMessage(error)}`);
+    return;
+  }
+
+  const added = addWorkspaceFolderIfMissing(target.targetPath);
+  if (!added) {
+    await vscode.window.showWarningMessage(
+      `Worktree 已创建，但无法自动加入当前 workspace。请手动添加：${target.targetPath}`
+    );
+    return;
+  }
+
+  await vscode.window.showInformationMessage(`已创建 worktree 并添加到 workspace：${target.displayName}`);
+}
+
+async function getGitWorktreeRepositoryInfo(rootPath: string): Promise<GitWorktreeRepositoryInfo> {
+  const [topLevelOutput, gitDirOutput, gitCommonDirOutput] = await Promise.all([
+    execGit(rootPath, ['rev-parse', '--show-toplevel']),
+    execGit(rootPath, ['rev-parse', '--git-dir']),
+    execGit(rootPath, ['rev-parse', '--git-common-dir'])
+  ]);
+  const topLevelPath = path.resolve(topLevelOutput.trim());
+  const gitDir = resolveGitMetadataPath(rootPath, gitDirOutput.trim());
+  const gitCommonDir = resolveGitMetadataPath(rootPath, gitCommonDirOutput.trim());
+  const [realGitDir, realGitCommonDir] = await Promise.all([
+    resolveRealPathBestEffort(gitDir),
+    resolveRealPathBestEffort(gitCommonDir)
+  ]);
+
+  return {
+    rootPath: path.resolve(rootPath),
+    topLevelPath,
+    gitCommonDir,
+    isLinkedWorktree: normalizeComparableFileSystemPath(realGitDir) !== normalizeComparableFileSystemPath(realGitCommonDir)
+  };
+}
+
+async function promptWorkspaceWorktreeTarget(
+  request: WorkspaceWorktreeRequest
+): Promise<WorkspaceWorktreeTarget | undefined> {
+  const rootFolder = request.rootPath
+    ? resolveWorkspaceFolderByFsPath(request.rootPath)
+    : await promptWorkspaceRootFolderForWorktree();
+  if (!rootFolder) {
+    await showWorktreeUnavailableModal({
+      code: request.rootPath ? 'unknown' : 'not-file-root',
+      rootPath: request.rootPath,
+      operation: 'create',
+      detail: request.rootPath
+        ? '指定的 folder 已不在当前 workspace 中。'
+        : '当前窗口没有可用于创建 worktree 的本地 workspace folder。'
+    });
+    return undefined;
+  }
+
+  if (rootFolder.uri.scheme !== 'file') {
+    await showWorktreeUnavailableModal({
+      code: 'not-file-root',
+      rootPath: rootFolder.uri.toString(),
+      operation: 'create'
+    });
+    return undefined;
+  }
+
+  try {
+    await getGitWorktreeRepositoryInfo(rootFolder.uri.fsPath);
+  } catch (error) {
+    await showWorktreeUnavailableModal({
+      code: classifyWorktreeRepositoryError(error),
+      rootPath: rootFolder.uri.fsPath,
+      operation: 'create',
+      cause: error
+    });
+    return undefined;
+  }
+
+  let refs: GitWorktreeRef[];
+  try {
+    refs = await getGitWorktreeRefs(rootFolder);
+  } catch (error) {
+    await showWorktreeUnavailableModal({
+      code: classifyWorktreeRepositoryError(error),
+      rootPath: rootFolder.uri.fsPath,
+      operation: 'create',
+      cause: error
+    });
+    return undefined;
+  }
+  if (refs.length === 0) {
+    await showWorktreeUnavailableModal({
+      code: 'no-git-refs',
+      rootPath: rootFolder.uri.fsPath,
+      operation: 'create',
+      detail: '当前 git repository 还没有可用于创建 worktree 的 commit 或本地 ref。'
+    });
+    return undefined;
+  }
+
+  const creationPlan = await promptWorktreeCreationPlan(rootFolder, refs);
+  if (!creationPlan) {
+    return undefined;
+  }
+  const defaultTargetPath = buildDefaultWorktreeTargetPath(rootFolder.uri.fsPath, creationPlan.defaultPathName);
+  const targetPath = await promptWorktreeTargetPath(defaultTargetPath);
+  if (!targetPath) {
+    return undefined;
+  }
+
+  return {
+    rootFolder,
+    branchName: creationPlan.branchName,
+    checkoutRef: creationPlan.checkoutRef,
+    startPoint: creationPlan.startPoint,
+    detached: creationPlan.detached,
+    displayName: creationPlan.displayName,
+    targetPath
+  };
+}
+
+async function getGitWorktreeRefs(rootFolder: vscode.WorkspaceFolder): Promise<GitWorktreeRef[]> {
+  const rootPath = rootFolder.uri.fsPath;
+  const headShortSha = (await execGit(rootPath, ['rev-parse', '--short', 'HEAD'])).trim();
+  const headDetailOutput = (await execGit(rootPath, ['log', '-1', '--format=%an%x09%s'])).trim();
+  const [headAuthor, headSubject] = headDetailOutput.split('\t');
+  const currentBranchName = (await execGit(rootPath, ['branch', '--show-current']).catch(() => '')).trim();
+  const branchOutput = await execGit(rootPath, [
+    'for-each-ref',
+    '--sort=-committerdate',
+    '--format=%(refname:short)%09%(objectname:short)%09%(committerdate:relative)%09%(authorname)%09%(subject)%09%(worktreepath)',
+    'refs/heads'
+  ]);
+
+  const refs: GitWorktreeRef[] = [
+    {
+      name: 'HEAD',
+      shortSha: headShortSha,
+      author: headAuthor || undefined,
+      subject: headSubject || undefined,
+      kind: 'head',
+      worktreePath: rootPath,
+      isCurrentWorktree: true,
+      isCheckedOutInWorktree: true
+    }
+  ];
+
+  for (const line of branchOutput.split(/\r?\n/u)) {
+    if (!line.trim()) {
+      continue;
+    }
+    const [name, shortSha, relativeDate, author, subject, worktreePath] = line.split('\t');
+    if (!name) {
+      continue;
+    }
+
+    refs.push({
+      name,
+      shortSha: shortSha || '',
+      relativeDate: relativeDate || undefined,
+      author: author || undefined,
+      subject: subject || undefined,
+      kind: 'localBranch',
+      worktreePath: worktreePath || undefined,
+      isCurrentWorktree: Boolean(currentBranchName && name === currentBranchName),
+      isCheckedOutInWorktree: Boolean(worktreePath)
+    });
+  }
+
+  return refs;
+}
+
+async function execGit(rootPath: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync('git', ['-C', rootPath, ...args], {
+    timeout: GIT_WORKTREE_COMMAND_TIMEOUT_MS,
+    maxBuffer: GIT_COMMAND_MAX_BUFFER_BYTES,
+    encoding: 'utf8'
+  });
+  return stdout;
+}
+
+async function promptWorktreeCreationPlan(
+  rootFolder: vscode.WorkspaceFolder,
+  refs: GitWorktreeRef[]
+): Promise<WorktreeCreationPlan | undefined> {
+  const picked = await vscode.window.showQuickPick<WorktreeQuickPickItem>(
+    [
+      {
+        type: 'createNewBranch',
+        label: '$(add) Create new branch...',
+        alwaysShow: true
+      },
+      {
+        type: 'createNewBranchFrom',
+        label: '$(git-branch-create) Create new branch from...',
+        alwaysShow: true
+      },
+      ...refs.map(buildWorktreeRefQuickPickItem)
+    ],
+    {
+      title: `Create Worktree (${abbreviateWorktreeRootPath(rootFolder.uri.fsPath)}) (1/2)`,
+      placeHolder: 'Choose a branch to create a new worktree from',
+      matchOnDescription: true,
+      matchOnDetail: true,
+      ignoreFocusOut: true
+    }
+  );
+
+  if (!picked) {
+    return undefined;
+  }
+
+  if (picked.type === 'createNewBranch') {
+    const branchName = await promptWorktreeBranchName(rootFolder);
+    return branchName
+      ? {
+          kind: 'newBranch',
+          branchName,
+          defaultPathName: branchName,
+          displayName: branchName
+        }
+      : undefined;
+  }
+
+  if (picked.type === 'createNewBranchFrom') {
+    const baseRef = await promptWorktreeBaseRef(refs);
+    if (!baseRef) {
+      return undefined;
+    }
+    const branchName = await promptWorktreeBranchName(rootFolder, baseRef.name);
+    return branchName
+      ? {
+          kind: 'newBranch',
+          branchName,
+          startPoint: baseRef.name,
+          defaultPathName: branchName,
+          displayName: branchName
+        }
+      : undefined;
+  }
+
+  if (picked.type !== 'ref') {
+    return undefined;
+  }
+
+  const defaultPathName =
+    picked.ref.kind === 'head' ? `HEAD-${picked.ref.shortSha || 'detached'}` : picked.ref.name;
+  return {
+    kind: 'existingRef',
+    checkoutRef: picked.ref.name,
+    detached: picked.ref.kind === 'head' || picked.ref.isCheckedOutInWorktree,
+    defaultPathName,
+    displayName: picked.ref.name
+  };
+}
+
+async function promptWorktreeBaseRef(refs: GitWorktreeRef[]): Promise<GitWorktreeRef | undefined> {
+  const picked = await vscode.window.showQuickPick<WorktreeRefQuickPickItem>(
+    refs.map(buildWorktreeRefQuickPickItem),
+    {
+      title: 'Create new branch from...',
+      placeHolder: 'Choose a reference to create new branch from',
+      matchOnDescription: true,
+      matchOnDetail: true,
+      ignoreFocusOut: true
+    }
+  );
+
+  return picked?.ref;
+}
+
+function buildWorktreeRefQuickPickItem(ref: GitWorktreeRef): WorktreeRefQuickPickItem {
+  const descriptionParts =
+    ref.kind === 'head'
+      ? ['Current commit hash']
+      : [ref.shortSha, ref.relativeDate].filter((part): part is string => Boolean(part));
+  if (ref.isCheckedOutInWorktree) {
+    descriptionParts.push('worktree');
+  }
+
+  return {
+    type: 'ref',
+    label: ref.kind === 'head' ? `$(worktree) HEAD ${ref.shortSha}` : `${ref.isCurrentWorktree ? '$(check)' : '$(git-branch)'} ${ref.name}`,
+    description: descriptionParts.join('  •  '),
+    detail: [ref.author, ref.subject].filter((part): part is string => Boolean(part)).join('  •  '),
+    ref
+  };
+}
+
+function buildDefaultWorktreeTargetPath(rootPath: string, pathName: string): string {
+  const defaultTargetPath = path.join(
+    path.dirname(rootPath),
+    `${path.basename(rootPath)}.worktrees`,
+    sanitizeWorktreePathSegment(pathName)
+  );
+  return defaultTargetPath;
+}
+
+async function promptWorktreeTargetPath(defaultTargetPath: string): Promise<string | undefined> {
+  const targetPathInput = await vscode.window.showInputBox({
+    title: '选择 worktree 目录',
+    value: defaultTargetPath,
+    valueSelection: [defaultTargetPath.length, defaultTargetPath.length],
+    prompt: '输入新 worktree 的本地目录；目录不能已经存在。',
+    ignoreFocusOut: true,
+    validateInput: async (value) => {
+      const normalizedValue = value.trim();
+      if (!normalizedValue) {
+        return '请输入 worktree 目录。';
+      }
+      if (!path.isAbsolute(normalizedValue)) {
+        return '请输入绝对路径。';
+      }
+      return await pathExists(normalizedValue) ? '该路径已存在，请选择一个尚不存在的目录。' : undefined;
+    }
+  });
+  if (!targetPathInput) {
+    return undefined;
+  }
+
+  return path.resolve(targetPathInput.trim());
+}
+
+async function promptWorkspaceRootFolderForWorktree(): Promise<vscode.WorkspaceFolder | undefined> {
+  const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).filter((folder) => folder.uri.scheme === 'file');
+  if (workspaceFolders.length === 0) {
+    return undefined;
+  }
+
+  if (workspaceFolders.length === 1) {
+    return workspaceFolders[0];
+  }
+
+  const picked = await vscode.window.showQuickPick<WorkspaceRootQuickPickItem>(
+    workspaceFolders.map((folder) => ({
+      label: `$(repo) ${folder.name}`,
+      description: folder.uri.fsPath,
+      folder
+    })),
+    {
+      title: 'Select Git repository to create worktree from',
+      placeHolder: 'Choose the workspace folder that owns the git repository',
+      matchOnDescription: true
+    }
+  );
+
+  return picked?.folder;
+}
+
+async function promptWorktreeBranchName(
+  rootFolder: vscode.WorkspaceFolder,
+  startPoint?: string
+): Promise<string | undefined> {
+  const branchName = await vscode.window.showInputBox({
+    title: startPoint ? `Create new branch from ${startPoint}` : `Create new branch (${rootFolder.name})`,
+    prompt: '输入要创建的新分支名。将执行 git worktree add -b <branch>。',
+    placeHolder: 'feature/my-worktree',
+    ignoreFocusOut: true,
+    validateInput: (value) => validateWorktreeBranchName(value)
+  });
+  return branchName?.trim() || undefined;
+}
+
+function validateWorktreeBranchName(value: string): string | undefined {
+  const branchName = value.trim();
+  if (!branchName) {
+    return '请输入分支名。';
+  }
+  if (
+    branchName.startsWith('/') ||
+    branchName.endsWith('/') ||
+    branchName.includes('..') ||
+    branchName.includes('//') ||
+    !WORKTREE_BRANCH_NAME_PATTERN.test(branchName) ||
+    /[\\~^:?*[\]\s]/u.test(branchName)
+  ) {
+    return '分支名只能包含字母、数字、点、下划线、短横线和斜杠，且不能包含空格、.. 或特殊 git ref 字符。';
+  }
+
+  return undefined;
+}
+
+function buildGitWorktreeAddArgs(target: WorkspaceWorktreeTarget): string[] {
+  const args = ['-C', target.rootFolder.uri.fsPath, 'worktree', 'add'];
+  if (target.branchName) {
+    args.push('-b', target.branchName, target.targetPath);
+    if (target.startPoint) {
+      args.push(target.startPoint);
+    }
+    return args;
+  }
+
+  if (target.detached) {
+    args.push('--detach');
+  }
+  args.push(target.targetPath, target.checkoutRef ?? target.displayName);
+  return args;
+}
+
+function formatWorktreeConfirmationMessage(target: WorkspaceWorktreeTarget): string {
+  if (target.branchName) {
+    const startPointText = target.startPoint ? `，起点为「${target.startPoint}」` : '';
+    return `将基于 folder「${target.rootFolder.name}」创建 worktree 分支「${target.branchName}」${startPointText}，并添加到当前 workspace。`;
+  }
+
+  const detachedText = target.detached ? '（detached HEAD）' : '';
+  return `将基于 folder「${target.rootFolder.name}」为引用「${target.checkoutRef ?? target.displayName}」创建 worktree${detachedText}，并添加到当前 workspace。`;
+}
+
+function abbreviateWorktreeRootPath(rootPath: string): string {
+  const normalizedPath = path.normalize(rootPath);
+  if (normalizedPath.length <= 42) {
+    return normalizedPath;
+  }
+
+  return `...${normalizedPath.slice(-39)}`;
+}
+
+function sanitizeWorktreePathSegment(value: string): string {
+  const segments = value
+    .trim()
+    .split(/[\\/]+/u)
+    .map((segment) =>
+      segment
+        .replace(/[\s:*?"<>|]+/gu, '-')
+        .replace(/^\.+/u, '')
+        .replace(/\.+$/u, '')
+    )
+    .filter(Boolean);
+
+  return segments.length > 0 ? path.join(...segments) : 'worktree';
+}
+
+function resolveGitMetadataPath(rootPath: string, gitPath: string): string {
+  return path.isAbsolute(gitPath) ? path.resolve(gitPath) : path.resolve(rootPath, gitPath);
+}
+
+async function resolveRealPathBestEffort(filePath: string): Promise<string> {
+  try {
+    return await realpath(filePath);
+  } catch {
+    return path.resolve(filePath);
+  }
+}
+
+function resolveWorkspaceFolderByFsPath(rootPath: string): vscode.WorkspaceFolder | undefined {
+  const normalizedRootPath = normalizeComparableFileSystemPath(rootPath);
+  return (vscode.workspace.workspaceFolders ?? []).find(
+    (folder) => normalizeComparableFileSystemPath(folder.uri.fsPath) === normalizedRootPath
+  );
+}
+
+function addWorkspaceFolderIfMissing(folderPath: string): boolean {
+  if (resolveWorkspaceFolderByFsPath(folderPath)) {
+    return true;
+  }
+
+  return vscode.workspace.updateWorkspaceFolders(
+    vscode.workspace.workspaceFolders?.length ?? 0,
+    0,
+    { uri: vscode.Uri.file(folderPath) }
+  );
+}
+
+function removeWorkspaceFolderByFsPath(folderPath: string): 'removed' | 'missing' | 'failed' {
+  const workspaceFolder = resolveWorkspaceFolderByFsPath(folderPath);
+  if (!workspaceFolder) {
+    return 'missing';
+  }
+
+  return vscode.workspace.updateWorkspaceFolders(workspaceFolder.index, 1) ? 'removed' : 'failed';
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if (isNodeErrorWithCode(error, 'ENOENT')) {
+      return false;
+    }
+    return true;
+  }
+}
+
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+  return error instanceof Error && 'code' in error && error.code === code;
+}
+
+function classifyWorktreeRepositoryError(error: unknown): WorktreeUnavailableReasonCode {
+  if (isNodeErrorWithCode(error, 'ENOENT')) {
+    return 'git-unavailable';
+  }
+
+  if (error instanceof Error) {
+    const message = formatExecErrorMessage(error).toLowerCase();
+    if (
+      message.includes('needed a single revision') ||
+      message.includes('ambiguous argument') ||
+      message.includes('unknown revision')
+    ) {
+      return 'no-git-refs';
+    }
+    if (
+      message.includes('not a git repository') ||
+      message.includes('not a git work tree')
+    ) {
+      return 'not-git-repository';
+    }
+  }
+
+  return 'unknown';
+}
+
+async function showWorktreeUnavailableModal(options: {
+  code: WorktreeUnavailableReasonCode;
+  rootPath?: string;
+  operation: 'create' | 'remove';
+  detail?: string;
+  cause?: unknown;
+}): Promise<void> {
+  const operationLabel = options.operation === 'create' ? '新建 worktree' : '移除 worktree';
+  const reason = formatWorktreeUnavailableReason(options);
+  const rootDetail = options.rootPath ? `\n\n目标 folder：${options.rootPath}` : '';
+  const causeDetail = options.cause ? `\n\n底层错误：${formatExecErrorMessage(options.cause)}` : '';
+  const customDetail = options.detail ? `\n\n${options.detail}` : '';
+  await vscode.window.showWarningMessage(
+    `${operationLabel} 不可用：${reason}${rootDetail}${customDetail}${causeDetail}`,
+    { modal: true }
+  );
+}
+
+function formatWorktreeUnavailableReason(options: {
+  code: WorktreeUnavailableReasonCode;
+  operation: 'create' | 'remove';
+}): string {
+  switch (options.code) {
+    case 'workspace-untrusted':
+      return '当前 workspace 未受信任。请先信任 workspace 后再执行 git worktree 操作。';
+    case 'not-file-root':
+      return '当前没有本地文件系统 folder。git worktree 只能作用于本地 folder。';
+    case 'not-git-repository':
+      return options.operation === 'create'
+        ? '当前 folder 还不是 git repository。请先初始化为 repository，或选择已有 git repository folder。'
+        : '当前 folder 还不是 git repository。请先选择一个 git repository folder。';
+    case 'no-git-refs':
+      return '当前 git repository 还没有可用于创建 worktree 的 commit 或本地 ref。请先完成初始提交，或选择已有 commit 的 repository。';
+    case 'not-linked-worktree':
+      return '当前 folder 不是可移除的 linked git worktree。请确认它是通过 git worktree 创建的 folder。';
+    case 'git-unavailable':
+      return '当前环境无法找到 git 命令。请先安装 git 并确保 VS Code extension host 能访问 git。';
+    case 'unknown':
+      return '无法确认当前 folder 是否支持 git worktree。';
+  }
+}
+
+function formatExecErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const stderrValue = 'stderr' in error ? error.stderr : undefined;
+    const stderr = typeof stderrValue === 'string'
+      ? stderrValue.trim()
+      : Buffer.isBuffer(stderrValue)
+        ? stderrValue.toString('utf8').trim()
+        : '';
+    return stderr || error.message;
+  }
+
+  return String(error);
+}
+
 interface SidebarNodeQuickPickItem extends vscode.QuickPickItem {
   nodeId: string;
 }
@@ -916,12 +2052,16 @@ interface SidebarSessionQuickPickItem extends vscode.QuickPickItem {
   provider: AgentProviderKind;
   sessionId: string;
   titleOverride?: string;
+  action?: 'resume' | 'fork';
 }
 
 async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): Promise<void> {
   const nodes = panelManager.getCanvasNodes();
   const nodesById = new Map(nodes.map((node) => [node.id, node] as const));
-  const items = getCanvasSidebarNodeListItems(nodes);
+  const items = getCanvasSidebarNodeListItems(
+    panelManager.getCanvasSidebarNodeListSnapshot(),
+    panelManager.getWorkspaceFoldersForDisplay()
+  );
   if (items.length === 0) {
     await vscode.window.showInformationMessage('当前画布还没有可定位的非文件节点。');
     return;
@@ -962,22 +2102,47 @@ async function showSessionHistoryQuickPick(
   }
 
   const picked = await vscode.window.showQuickPick<SidebarSessionQuickPickItem>(
-    items.map((item) => ({
-      label: item.title,
-      detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
-      provider: item.provider,
-      sessionId: item.sessionId,
-      titleOverride: item.title
-    })),
+    items.flatMap((item) => [
+      {
+        label: item.title,
+        description: '恢复',
+        detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
+        provider: item.provider,
+        sessionId: item.sessionId,
+        titleOverride: item.title,
+        action: 'resume' as const
+      },
+      {
+        label: item.title,
+        description: '分叉',
+        detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
+        provider: item.provider,
+        sessionId: item.sessionId,
+        titleOverride: item.title,
+        action: 'fork' as const
+      }
+    ]),
     {
       title: restoreBlockReason,
       placeHolder: restoreBlockReason
-        ? '当前为只读查看模式；可浏览历史会话，但不能恢复为新 Agent 节点'
-        : '选择一条历史会话并恢复为新节点',
+        ? '当前为只读查看模式；可浏览历史会话，但不能恢复或分叉为新 Agent 节点'
+        : '选择一条历史会话并恢复或分叉为新节点',
       matchOnDetail: true
     }
   );
   if (!picked) {
+    return;
+  }
+
+  if (picked.action === 'fork') {
+    const result = await panelManager.forkAgentSessionFromHistory({
+      provider: picked.provider,
+      sessionId: picked.sessionId,
+      title: picked.titleOverride
+    });
+    if (!result.forked && result.errorMessage) {
+      await vscode.window.showWarningMessage(result.errorMessage);
+    }
     return;
   }
 
@@ -1534,7 +2699,7 @@ async function applyTemplateFromCommand(
   }
 
   const appliedNodeIds = await panelManager.applyCanvasTemplateById(selectedTemplate.template.id);
-  await panelManager.revealOrCreate();
+  await panelManager.revealOrCreateCurrentCanvasSurface();
   panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
 }
 
@@ -1553,7 +2718,7 @@ async function resetToTemplateFromCommand(
 
   const appliedNodeIds = await panelManager.resetCanvasTemplateByIdWithConfirmation(selectedTemplate.template.id);
   if (appliedNodeIds) {
-    await panelManager.revealOrCreate();
+    await panelManager.revealOrCreateCurrentCanvasSurface();
     panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
   }
 }
@@ -1899,7 +3064,10 @@ function registerTestCommands(
       getCanvasSidebarSummaryItems(panelManager.getSidebarState())
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarNodeListItems, () =>
-      getCanvasSidebarNodeListItems(panelManager.getCanvasNodes())
+      getCanvasSidebarNodeListItems(
+        panelManager.getCanvasSidebarNodeListSnapshot(),
+        panelManager.getWorkspaceFoldersForDisplay()
+      )
     ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.getSidebarSessionHistoryItems,
@@ -1919,6 +3087,7 @@ function registerTestCommands(
     vscode.commands.registerCommand(TEST_COMMAND_IDS.clearDiagnosticEvents, () => {
       panelManager.clearDiagnosticEventsForTest();
     }),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.dumpHostDiagnostics, () => panelManager.dumpCurrentHostDiagnostics()),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.locateCodexSessionId,
       async (cwd?: unknown, startedAtMs?: unknown, homeDir?: unknown, timeoutMs?: unknown) => {
@@ -2033,6 +3202,9 @@ function registerTestCommands(
           typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000
         );
       }
+    ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.runWebviewLifecycleRaceDiagnostics, () =>
+      panelManager.runWebviewLifecycleRaceDiagnosticsForTest()
     ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.captureTemplateMarketplaceProbe,
@@ -2196,10 +3368,15 @@ function registerTestCommands(
           rows: typeof rows === 'number' ? rows : undefined,
           provider: provider === 'codex' || provider === 'claude' ? provider : undefined,
           resumeRequested: resumeRequested === true,
+          cwdOverride:
+            typeof options.cwdOverride === 'string' ? options.cwdOverride : undefined,
           injectAgentOutputChunk:
             typeof options.injectAgentOutputChunk === 'string' ? options.injectAgentOutputChunk : undefined,
           injectAgentExistingOutput:
-            typeof options.injectAgentExistingOutput === 'string' ? options.injectAgentExistingOutput : undefined
+            typeof options.injectAgentExistingOutput === 'string' ? options.injectAgentExistingOutput : undefined,
+          injectAgentOutputChunks: Array.isArray(options.injectAgentOutputChunks)
+            ? options.injectAgentOutputChunks.filter((item): item is string => typeof item === 'string')
+            : undefined
         });
       }
     ),
@@ -2241,6 +3418,7 @@ function registerTestCommands(
             : undefined,
           agentCustomLaunchCommand:
             typeof options.agentCustomLaunchCommand === 'string' ? options.agentCustomLaunchCommand : undefined,
+          cwdOverride: typeof options.cwdOverride === 'string' ? options.cwdOverride : undefined,
           titleOverride: typeof options.titleOverride === 'string' ? options.titleOverride : undefined
         });
         return panelManager.getDebugSnapshot();
@@ -2257,4 +3435,21 @@ function registerTestCommands(
 
 function parseCanvasSurfaceLocation(value: unknown): CanvasSurfaceLocation | undefined {
   return value === 'editor' || value === 'panel' ? value : undefined;
+}
+
+function formatWebviewLifecycleDumpStatus(status: WebviewLifecycleDumpStatus): string {
+  switch (status) {
+    case 'healthy':
+      return '健康';
+    case 'standby':
+      return '非活动承载面';
+    case 'initializing':
+      return '初始化中';
+    case 'attention':
+      return '有可追踪线索';
+    case 'blocked':
+      return '可能阻塞';
+    case 'not-attached':
+      return '未 attached';
+  }
 }

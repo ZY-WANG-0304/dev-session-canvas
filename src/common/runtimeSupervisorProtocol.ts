@@ -43,6 +43,7 @@ export interface RuntimeSupervisorSessionSnapshot {
   rows: number;
   scrollback: number;
   output: string;
+  outputSequence?: number;
   serializedTerminalState?: SerializedTerminalState;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
@@ -53,6 +54,14 @@ export interface RuntimeSupervisorSessionSnapshot {
   lastExitCode?: number;
   lastExitSignal?: string;
   lastExitMessage?: string;
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
+  preSuspendLifecycle?: AgentNodeStatus;
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
+  lastSuspendReason?: 'claude-ctrl-z';
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
+  lastSuspendMessage?: string;
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions no longer reactivate. */
+  lastReactivateError?: string;
 }
 
 export interface RuntimeSupervisorErrorPayload {
@@ -177,6 +186,7 @@ export type RuntimeSupervisorEvent =
         sessionId: string;
         kind: ExecutionNodeKind;
         chunk: string;
+        outputSequence?: number;
       };
     }
   | {

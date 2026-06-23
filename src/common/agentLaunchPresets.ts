@@ -65,6 +65,50 @@ export function buildAgentHistoryResumeCommandLine(
   ]);
 }
 
+export function buildAgentBranchCommandLine(
+  provider: AgentProviderKind,
+  sessionId: string,
+  defaults: AgentProviderLaunchDefaults
+): string {
+  return provider === 'claude'
+    ? buildClaudeBranchCommandLine(sessionId, defaults)
+    : buildCodexBranchCommandLine(sessionId, defaults);
+}
+
+export function buildCodexBranchCommandLine(
+  sessionId: string,
+  defaults: AgentProviderLaunchDefaults
+): string {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    throw new Error('分叉会话标识不能为空。');
+  }
+
+  const command = defaults.command.trim() || 'codex';
+  const baseArgs = assertAgentDefaultArgsParsable('codex', defaults);
+  return formatCommandLine([
+    command,
+    ...buildCodexBranchArgv(baseArgs, normalizedSessionId)
+  ]);
+}
+
+export function buildClaudeBranchCommandLine(
+  sessionId: string,
+  defaults: AgentProviderLaunchDefaults
+): string {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    throw new Error('分叉会话标识不能为空。');
+  }
+
+  const command = defaults.command.trim() || 'claude';
+  const baseArgs = assertAgentDefaultArgsParsable('claude', defaults);
+  return formatCommandLine([
+    command,
+    ...buildClaudeBranchArgv(baseArgs, normalizedSessionId)
+  ]);
+}
+
 export function validateAgentCommandLine(
   commandLine: string,
   provider: AgentProviderKind,
@@ -197,6 +241,30 @@ export function hasAnyCommandLineFlag(argv: readonly string[], flags: readonly s
 export function extractClaudeCommandSessionFlag(
   argv: readonly string[]
 ): ClaudeCommandSessionFlag | null {
+  return extractClaudeCommandSessionFlagByTarget(argv, ['--session-id', '--resume', '--continue']);
+}
+
+export function hasClaudeForkSessionFlag(argv: readonly string[]): boolean {
+  return argv.some((token) => token === '--fork-session' || token.startsWith('--fork-session='));
+}
+
+export function hasCodexForkSubcommand(argv: readonly string[]): boolean {
+  return findCodexSessionSubcommandIndex(argv, ['fork']) >= 0;
+}
+
+export function extractClaudeCommandRuntimeSessionFlag(
+  argv: readonly string[]
+): ClaudeCommandSessionFlag | null {
+  return hasClaudeForkSessionFlag(argv)
+    ? extractClaudeCommandSessionFlagByTarget(argv, ['--session-id'], { requireSessionId: true })
+    : extractClaudeCommandSessionFlag(argv);
+}
+
+function extractClaudeCommandSessionFlagByTarget(
+  argv: readonly string[],
+  targetFlags: readonly ClaudeCommandSessionFlag['flag'][],
+  options: { requireSessionId?: boolean } = {}
+): ClaudeCommandSessionFlag | null {
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]?.trim();
     if (!token) {
@@ -204,11 +272,14 @@ export function extractClaudeCommandSessionFlag(
     }
 
     const matchedFlag = matchClaudeCommandSessionFlag(token);
-    if (!matchedFlag) {
+    if (!matchedFlag || !targetFlags.includes(matchedFlag.flag)) {
       continue;
     }
 
     if (matchedFlag.sessionId !== undefined) {
+      if (options.requireSessionId && !matchedFlag.sessionId) {
+        continue;
+      }
       return {
         flag: matchedFlag.flag,
         sessionId: matchedFlag.sessionId
@@ -216,9 +287,13 @@ export function extractClaudeCommandSessionFlag(
     }
 
     const nextToken = argv[index + 1]?.trim();
+    const sessionId = nextToken && !nextToken.startsWith('-') ? nextToken : undefined;
+    if (options.requireSessionId && !sessionId) {
+      continue;
+    }
     return {
       flag: matchedFlag.flag,
-      sessionId: nextToken && !nextToken.startsWith('-') ? nextToken : undefined
+      sessionId
     };
   }
 
@@ -482,6 +557,18 @@ function buildAgentResumeArgv(
   return buildCodexResumeArgv(baseArgs, explicitSessionId);
 }
 
+function buildCodexBranchArgv(baseArgs: readonly string[], explicitSessionId: string): string[] {
+  const { leadingArgs, subcommandArgs } = splitCodexSessionSubcommandArgs(baseArgs, ['fork', 'resume']);
+  const normalizedLeadingArgs = stripCodexForkSelectionArgs(leadingArgs);
+  const normalizedSubcommandArgs = subcommandArgs ? stripCodexForkSelectionArgs(subcommandArgs) : [];
+  return ['fork', ...normalizedLeadingArgs, ...normalizedSubcommandArgs, explicitSessionId];
+}
+
+function buildClaudeBranchArgv(baseArgs: readonly string[], explicitSessionId: string): string[] {
+  const normalizedArgs = stripClaudeResumeTargetArgs(baseArgs);
+  return ['--resume', explicitSessionId, '--fork-session', ...normalizedArgs];
+}
+
 function stripCodexExecutionModeArgs(baseArgs: readonly string[]): string[] {
   const normalizedArgs: string[] = [];
   for (let index = 0; index < baseArgs.length; index += 1) {
@@ -526,6 +613,17 @@ function splitCodexResumeArgs(baseArgs: readonly string[]): {
   leadingArgs: string[];
   resumeArgs?: string[];
 } {
+  const splitArgs = splitCodexSessionSubcommandArgs(baseArgs, ['resume']);
+  return {
+    leadingArgs: splitArgs.leadingArgs,
+    resumeArgs: splitArgs.subcommandArgs
+  };
+}
+
+function splitCodexSessionSubcommandArgs(baseArgs: readonly string[], subcommands: readonly string[]): {
+  leadingArgs: string[];
+  subcommandArgs?: string[];
+} {
   let nextTokenIsOptionValue = false;
   let encounteredPositional = false;
 
@@ -542,10 +640,10 @@ function splitCodexResumeArgs(baseArgs: readonly string[]): {
       continue;
     }
 
-    if (!encounteredPositional && token === 'resume') {
+    if (!encounteredPositional && subcommands.includes(token)) {
       return {
         leadingArgs: [...baseArgs.slice(0, index)],
-        resumeArgs: [...baseArgs.slice(index + 1)]
+        subcommandArgs: [...baseArgs.slice(index + 1)]
       };
     }
 
@@ -562,6 +660,40 @@ function splitCodexResumeArgs(baseArgs: readonly string[]): {
   return {
     leadingArgs: [...baseArgs]
   };
+}
+
+function findCodexSessionSubcommandIndex(baseArgs: readonly string[], subcommands: readonly string[]): number {
+  let nextTokenIsOptionValue = false;
+  let encounteredPositional = false;
+
+  for (let index = 0; index < baseArgs.length; index += 1) {
+    const token = baseArgs[index];
+
+    if (nextTokenIsOptionValue) {
+      nextTokenIsOptionValue = false;
+      continue;
+    }
+
+    if (token === '--') {
+      encounteredPositional = true;
+      continue;
+    }
+
+    if (!encounteredPositional && subcommands.includes(token)) {
+      return index;
+    }
+
+    if (codexOptionConsumesFollowingValue(token)) {
+      nextTokenIsOptionValue = true;
+      continue;
+    }
+
+    if (!encounteredPositional && !isOptionLikeCommandToken(token)) {
+      encounteredPositional = true;
+    }
+  }
+
+  return -1;
 }
 
 function stripCodexResumeSelectionArgs(
@@ -592,6 +724,40 @@ function stripCodexResumeSelectionArgs(
     }
 
     if (explicitTarget && (token === '--all' || token === '--include-non-interactive')) {
+      continue;
+    }
+
+    if (!isOptionLikeCommandToken(token)) {
+      continue;
+    }
+
+    normalizedArgs.push(token);
+    if (codexOptionConsumesFollowingValue(token)) {
+      nextTokenIsOptionValue = true;
+    }
+  }
+
+  return normalizedArgs;
+}
+
+function stripCodexForkSelectionArgs(forkArgs: readonly string[]): string[] {
+  const normalizedArgs: string[] = [];
+  let nextTokenIsOptionValue = false;
+
+  for (let index = 0; index < forkArgs.length; index += 1) {
+    const token = forkArgs[index];
+
+    if (nextTokenIsOptionValue) {
+      normalizedArgs.push(token);
+      nextTokenIsOptionValue = false;
+      continue;
+    }
+
+    if (token === '--') {
+      break;
+    }
+
+    if (token === '--last' || token === '--all' || token === '--include-non-interactive') {
       continue;
     }
 

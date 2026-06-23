@@ -2,7 +2,7 @@
 
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
 
-本文位于 `docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md`，必须按 `docs/PLANS.md` 的要求持续维护。
+本计划已完成，归档于 `docs/exec-plans/completed/execution-attention-indicator-and-acknowledgement.md`；其执行过程、验证结果与剩余风险仍按 `docs/PLANS.md` 的要求保留可追溯记录。
 
 ## 目标与全局图景
 
@@ -31,6 +31,7 @@
 - [x] (2026-05-24 00:00 +0800) 处理 review blocker：将异常输出文本匹配改成 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 配置，默认 `off`；当前只允许 `codex` 开启，且不对 Claude 执行文本匹配。
 - [x] (2026-05-24 00:00 +0800) 修复 stale stream notification 风险：用户下一轮输入、配置切换和测试注入旧 buffer 时都会把当前 buffer 长度标记为已扫描，只扫描新增输出；补单测和 smoke 覆盖默认关闭、Codex opt-in、Claude 不触发、旧 buffer 不重复触发。
 - [x] (2026-05-24 13:05 +0800) 处理 live-runtime attach review blocker：`createSupervisorExecutionSession()` 从 `snapshot.output` 恢复已有输出时同步初始化异常流文本扫描游标，避免 attach 后第一段新输出重新扫描历史 stream error；补单测覆盖 supervisor existing output + new chunk。
+- [x] (2026-05-26 07:25 +0800) 功能分支已合入 `main`，本计划随 `0.10.6` 发布准备从 active 归档到 completed，并把剩余真实终端协议人工验证缺口登记到技术债追踪。
 
 ## 意外与发现
 
@@ -158,14 +159,14 @@ review follow-up 增量验证：
 - `npm run build` 通过
 - `npm run test:extension-manifest` 通过
 - `node --check tests/vscode-smoke/extension-tests.cjs` 通过
-- `git diff --check -- docs/design-docs/execution-node-notification-and-attention-signals.md docs/design-docs/index.md docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md docs/product-specs/canvas-node-notifications.md docs/product-specs/index.md package.json package.nls.json scripts/test/test-execution-attention-signals.mjs src/common/agentActivityHeuristics.ts src/panel/CanvasPanelManager.ts tests/vscode-smoke/extension-tests.cjs` 通过
+- `git diff --check -- docs/design-docs/execution-node-notification-and-attention-signals.md docs/design-docs/index.md docs/exec-plans/completed/execution-attention-indicator-and-acknowledgement.md docs/product-specs/canvas-node-notifications.md docs/product-specs/index.md package.json package.nls.json scripts/test/test-execution-attention-signals.mjs src/common/agentActivityHeuristics.ts src/panel/CanvasPanelManager.ts tests/vscode-smoke/extension-tests.cjs` 通过
 
 2026-05-24 live-runtime attach review follow-up 增量验证：
 
 - `npm run test:execution-attention-signals` 通过
 - `npm run typecheck` 通过
 - `npm run build` 通过
-- `git diff --check -- docs/design-docs/execution-node-notification-and-attention-signals.md docs/exec-plans/active/execution-attention-indicator-and-acknowledgement.md docs/product-specs/canvas-node-notifications.md scripts/test/test-execution-attention-signals.mjs src/panel/CanvasPanelManager.ts` 通过
+- `git diff --check -- docs/design-docs/execution-node-notification-and-attention-signals.md docs/exec-plans/completed/execution-attention-indicator-and-acknowledgement.md docs/product-specs/canvas-node-notifications.md scripts/test/test-execution-attention-signals.mjs src/panel/CanvasPanelManager.ts` 通过
 
 剩余风险：
 
@@ -279,6 +280,8 @@ review follow-up 增量验证：
 ---
 
 本次创建说明：2026-04-22 新增本计划，用于覆盖 execution attention 的节点内 icon、强力提醒闪烁、点击确认语义，以及 `bridgeTerminalAttentionSignals` 与新提醒开关的边界拆分。之所以独立起计划，是因为本轮同时涉及正式设计更新、共享协议扩展、宿主状态调整、Webview UI 改造和 smoke 回归。
+
+本次归档说明：2026-05-26 随 `0.10.6` 发布准备归档到 `docs/exec-plans/completed/`。实现、设计与验证记录已经闭环；真实 Ghostty / kitty / iTerm2 / tmux 协议人工验证仍作为非阻塞技术债单独登记。
 
 本次更新说明：2026-05-22 根据 `stream closed before response.completed` 后续调研，补充 Codex / Claude provider 边界和“不替 provider 自动恢复”的决策，避免把 Codex Responses 的完成事件误写成 Claude Code 标准语义。
 

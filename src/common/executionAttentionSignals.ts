@@ -2,11 +2,20 @@ export interface ExecutionAttentionSignalState {
   carryover: string;
 }
 
-export type ExecutionAttentionSignalKind = 'bel' | 'osc9' | 'osc777';
+export const terminalExecutionAttentionSignalKinds = ['bel', 'osc9', 'osc777'] as const;
+export type TerminalExecutionAttentionSignalKind = (typeof terminalExecutionAttentionSignalKinds)[number];
+export const executionAttentionSignalKinds = [
+  ...terminalExecutionAttentionSignalKinds,
+  'agentAbnormalExit',
+  'codexAbnormalOutputText'
+] as const;
+export type ExecutionAttentionSignalKind = (typeof executionAttentionSignalKinds)[number];
+export const DEFAULT_ENABLED_EXECUTION_ATTENTION_SIGNAL_KINDS: readonly ExecutionAttentionSignalKind[] =
+  executionAttentionSignalKinds;
 export type ExecutionAttentionSignalPresentation = 'notify' | 'ignore';
 
 export interface ExecutionAttentionSignal {
-  kind: ExecutionAttentionSignalKind;
+  kind: TerminalExecutionAttentionSignalKind;
   rawMessage?: string;
   message?: string;
   presentation: ExecutionAttentionSignalPresentation;
@@ -20,6 +29,45 @@ export interface ParsedExecutionAttentionSignals {
 }
 
 const OSC_CARRYOVER_LIMIT = 256;
+
+export function isExecutionAttentionSignalKind(value: unknown): value is ExecutionAttentionSignalKind {
+  return (
+    typeof value === 'string' &&
+    (executionAttentionSignalKinds as readonly string[]).includes(value)
+  );
+}
+
+export function normalizeEnabledExecutionAttentionSignalKinds(
+  value: unknown
+): ExecutionAttentionSignalKind[] {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_ENABLED_EXECUTION_ATTENTION_SIGNAL_KINDS];
+  }
+
+  const configuredKinds = new Set<ExecutionAttentionSignalKind>();
+  for (const item of value) {
+    if (isExecutionAttentionSignalKind(item)) {
+      configuredKinds.add(item);
+    }
+  }
+
+  return executionAttentionSignalKinds.filter((kind) => configuredKinds.has(kind));
+}
+
+export function filterEnabledExecutionAttentionSignals(
+  signals: readonly ExecutionAttentionSignal[],
+  enabledKinds: readonly ExecutionAttentionSignalKind[]
+): ExecutionAttentionSignal[] {
+  const enabledKindSet = new Set(enabledKinds);
+  return signals.filter((signal) => enabledKindSet.has(signal.kind));
+}
+
+export function isExecutionAttentionSignalEnabled(
+  enabledKinds: readonly ExecutionAttentionSignalKind[],
+  kind: ExecutionAttentionSignalKind
+): boolean {
+  return enabledKinds.includes(kind);
+}
 
 export function createExecutionAttentionSignalState(): ExecutionAttentionSignalState {
   return {
@@ -94,7 +142,7 @@ export function parseExecutionAttentionSignals(
 
       if (identifier === '9' || identifier === '777') {
         notificationCount += 1;
-        const kind: ExecutionAttentionSignalKind = identifier === '9' ? 'osc9' : 'osc777';
+        const kind: TerminalExecutionAttentionSignalKind = identifier === '9' ? 'osc9' : 'osc777';
         const rawMessage = source.slice(messageStart, messageEnd);
         signals.push({
           kind,

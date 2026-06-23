@@ -1,5 +1,84 @@
 # Changelog
 
+## 0.18.2
+
+- 与主扩展 `0.18.2` 对齐：本轮主扩展收口窗格画廊缩略图 rail 的 workspace root 稳定排序、workspace root / 分组 resize 后的 Webview 草稿清理、相关 Playwright 回归稳定性，以及 Marketplace README 交流二维码移除后的发布口径；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.18.1
+
+- 与主扩展 `0.18.1` 对齐：本轮主扩展收口侧栏会话历史分组控制、菜单选中态增强（对号标记节点视图模式）、画布布局整理空分组尺寸规范化、窗格画廊视口记忆分离，以及公开隐私政策 / 许可证 URL 元数据；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.18.0
+
+- 与主扩展 `0.18.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 multi-root workspace 窗格画廊呈现模式、一次性画布布局整理，以及 Codex 异常输出尾部输入提示 / 模型 footer 兼容；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.17.0
+
+- 与主扩展 `0.17.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦侧栏 `节点` view 的 workspace folder / git worktree 管理入口、folder / worktree 类型识别、Host 输出投递输入优先 scheduler，以及 README / Marketplace 微信群二维码资产更新；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.16.1
+
+- 与主扩展 `0.16.1` 对齐：本轮主扩展是 `0.16.x` Preview 线内的可读性、诊断噪音与生产依赖审计补丁，聚焦 multi-root workspace root section 水印可读性、snapshot restore 窗口内剪贴板诊断抑制、用户输入前刷新恢复诊断抑制状态，以及 `js-yaml` / `markdown-it` 生产依赖 audit 告警收口；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.16.0
+
+- 与主扩展 `0.16.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 Codex / Claude Code Agent Fork、侧栏待处理提醒与历史分叉入口、multi-root root section 水印、Agent cwd / 启动命令标题拆分、多 Agent 输入响应、执行终端链接 activation fallback、复制诊断，以及 GitHub Release assets / 双市场发布 workflow 解耦；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.15.2
+
+- 与主扩展 `0.15.2` 对齐：本轮主扩展是 `0.15.x` Preview 线内的通知控制与 Agent 可靠性补丁，并包含画布外部链接打开方式配置与 GitHub Release assets 发布流程收口；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.15.1
+
+- 与主扩展 `0.15.1` 对齐：本轮主扩展是 `0.15.x` Preview 线内的画布导航与可靠性补丁，聚焦分组标题可读性、分组双击聚焦、`Add Folder to Workspace` 新增 root 就近放置与聚焦、多根通知标题 root 标识，以及执行性能诊断插桩；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.15.0
+
+- 与主扩展 `0.15.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 Claude Code Agent `Fork`、文件活动自动对象分组归属、Panel Webview lifecycle 诊断闭环，以及基于临时 `publish/vX.Y.Z` tag 的发布输入固定流程；notifier companion 不引入新的通知投递行为变更。
+
+## 0.14.1
+
+- 与主扩展 `0.14.1` 对齐：本轮主扩展是 `0.14.x` Preview 线内的能力与可靠性补丁，聚焦 Explorer Markdown 文件右键创建关联 Note、创建类入口复用已打开 Canvas surface、分组 body 空白区拖动画板，以及 multi-root / 双窗口 shared live runtime 恢复验证与硬化；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.14.0
+
+- 与主扩展 `0.14.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦画布空间边界导航、普通用户分组与 multi-root workspace root section 的全局 fit view / MiniMap 可见性，以及 Agent 重启动作紧凑布局修复；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.13.0
+
+- 与主扩展 `0.13.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 VS Code multi-root workspace 组合画布、系统 root section、root-local 状态共享、跨 root 连线拒绝和多根文件活动命名空间；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.12.0
+
+- 与主扩展 `0.12.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 File Explorer 资源右键创建绑定 cwd 的 `Terminal` / `Agent` 节点、Panel Webview lifecycle 串线修复、执行目录可见反馈和画布节点 padding 收口；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.11.0
+
+- 与主扩展 `0.11.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦画布节点分组、分组树侧栏、分组模板保存 / 应用和受限创建入口解释；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.10.7
+
+- 与主扩展 `0.10.7` 对齐：本轮主扩展是 `0.10.x` Preview 线内的 Terminal TUI 输入热修复，聚焦生产 Webview bundle 中 xterm 入口选择导致的 Vim / glab auth login 等 TUI 输入卡死；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
+## 0.10.6
+
+- 与主扩展 `0.10.6` 对齐：本轮主扩展是 `0.10.x` Preview 线内的 Agent 异常提醒补丁，聚焦 Codex / Claude Code Agent 已运行后异常中断提醒，以及 Codex 高置信输出流断开文本匹配的显式 opt-in 配置；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.10.5
 
 - 与主扩展 `0.10.5` 对齐：本轮主扩展是 `0.10.x` Preview 线内的 Note Markdown 修复版本，聚焦预览双击源码定位与关联 Markdown 可恢复草稿模型；notifier companion 不引入新的通知投递行为变更。

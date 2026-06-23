@@ -1,7 +1,7 @@
 ---
 title: 画布导航与工作台原生收口设计
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 画布交互域
@@ -13,10 +13,14 @@ architecture_layers:
 related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
   - docs/product-specs/canvas-core-collaboration-mvp.md
+  - docs/product-specs/canvas-node-groups.md
+  - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
   - docs/exec-plans/completed/canvas-navigation-and-native-polish.md
   - docs/exec-plans/completed/canvas-dynamic-overview-zoom.md
-updated_at: 2026-05-15
+  - docs/exec-plans/active/create-node-entry-availability-and-block-reasons.md
+  - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
+updated_at: 2026-06-06
 ---
 
 # 画布导航与工作台原生收口设计
@@ -38,6 +42,7 @@ updated_at: 2026-05-15
 5. `Agent` 与 `Terminal` 中内嵌的 `xterm` 在 VSCode 切换深浅主题后，应如何稳定同步颜色主题而不打断当前会话。
 6. 当节点数量增加或节点分布变宽时，画布全局缩放下限应如何保证“完整概览”仍可达，而不破坏日常编辑手感。
 7. 当用户缩到概览倍率后，是否应允许关闭低信息密度概览，以及概览态如何保留节点身份和本身有状态节点的状态线索。
+8. 当画布已经包含普通分组和 multi-root workspace root section 时，全局 fit view 与右下角 MiniMap 是否仍只理解节点，还是应把这些空间组织对象一起纳入。
 
 ## 3. 目标
 
@@ -48,6 +53,7 @@ updated_at: 2026-05-15
 - 让空白区右键可以直接创建节点，并尽量让新节点靠近用户右键点。
 - 让全局 fit view 和手动缩小都能在节点分散时突破 `0.4` 舒适编辑下限，进入完整概览。
 - 让低倍率概览成为可配置行为：用户可以选择完全不进入概览，也可以在概览态的节点内容区域直接看到节点标题；对 `Agent` / `Terminal` 等本身有运行状态的节点，同时显示状态标记。
+- 让全局 fit view、初始自动 fit、动态最小缩放和右下角 MiniMap 使用同一套画布空间边界；该边界包含节点、普通用户分组和 multi-root 的系统 workspace root section。
 
 ## 4. 非目标
 
@@ -57,6 +63,7 @@ updated_at: 2026-05-15
 - 不在本轮引入搜索面板、对象列表跳转或快捷键方案。
 - 不改变单节点聚焦的阅读倍率范围；节点聚焦仍服务“读当前节点”，不承担“看全局”。
 - 不在本轮暴露除“无概览”和“内容区显示标题”之外的其他概览策略。
+- 不新增局部 fit root / fit selected 动作；当前全局 fit view 在 multi-root 下默认包含所有 workspace root section。
 
 ## 5. 候选方案
 
@@ -140,6 +147,9 @@ updated_at: 2026-05-15
 - 风险：如果概览模式只隐藏正文而没有额外身份和必要状态线索，节点数量变多后用户虽然能看到全局位置，却仍难以确认每个节点是谁，以及执行型节点处于什么状态。
   当前缓解：概览模式改为显式配置；默认 `title` 在节点内容区域叠加节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点追加状态标记，`none` 则完全关闭概览视觉收口。
 
+- 风险：React Flow 原生 fit view 和 MiniMap 只理解 flow nodes；如果继续沿用它们，普通分组、空分组以及 multi-root workspace root section 会从全局导航中消失。
+  当前缓解：引入 Webview 侧统一画布空间边界，把节点、普通用户分组和 `role = workspace-root` 的系统 root section 都转成同一类 bounds 输入；全局 fit view、初始自动 fit、动态 `minZoom` 和 MiniMap viewBox 都使用这套边界。
+
 ## 7. 正式方案
 
 ### 7.1 节点聚焦入口收口为标题栏双击
@@ -169,12 +179,14 @@ updated_at: 2026-05-15
 - Agent provider 通过标题副标题只读展示，不再在已创建节点上提供切换控件。
 - 节点外轮廓改用更接近 VSCode editor widget / panel 的小圆角边界，降低当前窗口卡片的白板感。
 - 右下角 minimap 改成与 workbench 角落 widget 一致的小圆角地图面板，减少当前浮层式大圆角和重阴影；框外区域主要依靠更明显的背景遮罩，而不是继续依赖高饱和节点色块来做视口内外区分。
+- MiniMap 不再只绘制节点；它应使用统一画布空间边界绘制 workspace root section、普通用户分组和节点。workspace root section 表达工程级区域，普通用户分组表达次级组织边界，节点仍表达具体工作对象；attention / strong reminder 等节点提醒视觉优先级高于分组边界。MiniMap 分组区域不维护“普通 group”和“user group”两套颜色 token：非 workspace-root 的普通用户分组统一沿用主画布分组边框 token `--vscode-panel-border` 作为 fill 与 stroke 的同色基础，并用透明度保证缩略图可辨；workspace root section 也沿用这组同色基础，但透明度和描边强度高于普通分组，并通过虚线描边表达系统 root 层级。节点缩略块同样让 fill 使用与 stroke 相同的类型色混合结果，避免同一对象在 MiniMap 内出现两套色相。
 
 ### 7.5 空白区右键菜单只做快捷创建
 
 - 菜单只在空白 pane 弹出。
-- 第一版仅提供 `Agent`、`Terminal`、`Note` 三项创建动作。
+- 第一版仅提供 `Agent`、`Terminal`、`Note` 三项创建动作，并且这三类入口在 trusted / untrusted 下都保持可见。
 - 选中菜单项后，新节点以右键点对应的 flow 坐标为锚点创建，再复用宿主已有避碰逻辑。
+- 若当前 workspace 未受信任，点击 `Agent` 或 `Terminal` 不再尝试静默创建，也不把入口隐藏；Webview 改为向宿主发送“解释当前不可创建原因”的消息，由宿主弹出 modal 说明受限原因。真正的 `webview/createDemoNode` 只保留给实际可创建路径与 forged-message 兜底测试。
 - 菜单在点击外部、完成创建、按 `Escape` 或切换视图后关闭。
 
 ### 7.6 内嵌 `xterm` 跟随 VSCode 主题热更新
@@ -188,10 +200,10 @@ updated_at: 2026-05-15
 
 ### 7.7 全局概览缩放使用动态最小倍率
 
-- `src/webview/main.tsx` 中的主 `<ReactFlow>` 不再把 `minZoom` 固定为 `0.4`。`0.4` 被保留为 `CANVAS_COMFORT_MIN_ZOOM`，表示日常编辑的舒适下限；真实传给 React Flow 的 `minZoom` 由当前全部 flow nodes 的外接矩形、`.canvas-shell` 当前宽高与 `CANVAS_FIT_VIEW_PADDING` 共同计算。
-- 动态下限规则为：若没有节点、节点 bounds 不可用或视口尺寸不可用，则使用 `0.4`；否则计算完整容纳全部节点所需倍率，并取 `Math.min(0.4, fitAllZoom)`。本轮不引入 `HARD_MIN_ZOOM` 或其他绝对下限。
-- 初始 fit view 与左下角 `<Controls>` 的 fit view 使用同一个动态 `minZoom` 和 `CANVAS_MAX_ZOOM = 1.8`，确保“回到全局视图”不会被旧的 `0.4` 下限卡住。
-- 单节点聚焦和创建后追焦继续使用 `NODE_FOCUS_MIN_ZOOM = 0.55` 与 `NODE_FOCUS_MAX_ZOOM = 1.15`。这条路径服务节点阅读与定位，不跟全局概览共用动态下限。
+- `src/webview/main.tsx` 中的主 `<ReactFlow>` 不再把 `minZoom` 固定为 `0.4`。`0.4` 被保留为 `CANVAS_COMFORT_MIN_ZOOM`，表示日常编辑的舒适下限；真实传给 React Flow 的 `minZoom` 由当前画布空间边界、`.canvas-shell` 当前宽高与 `CANVAS_FIT_VIEW_PADDING` 共同计算。画布空间边界包含 flow nodes、普通用户分组和 `role = workspace-root` 的系统 root section。
+- 动态下限规则为：若没有任何有效空间对象、空间 bounds 不可用或视口尺寸不可用，则使用 `0.4`；否则计算完整容纳全部空间对象所需倍率，并取 `Math.min(0.4, fitAllZoom)`。本轮不引入 `HARD_MIN_ZOOM` 或其他绝对下限。
+- 初始 fit view 与左下角全局 fit view 使用同一个动态 `minZoom` 和 `CANVAS_MAX_ZOOM = 1.8`，确保“回到全局视图”不会被旧的 `0.4` 下限卡住。由于 React Flow 原生 fit view 只理解 nodes，全局 fit view 改由 Webview 自行基于空间边界计算 viewport 并调用 React Flow viewport API。
+- 单节点聚焦和创建后追焦继续使用 `NODE_FOCUS_MIN_ZOOM = 0.55` 与 `NODE_FOCUS_MAX_ZOOM = 1.15`。这条路径服务节点阅读与定位，不跟全局概览共用动态下限，也不因为节点所在 root section 很大而强制缩到全局视角。
 - 概览模式由 `devSessionCanvas.canvas.overviewMode` 控制。`src/common/protocol.ts` 只接受 `none` 与 `title` 两个值，并通过 `CanvasRuntimeContext.overviewMode` 从 `src/panel/CanvasPanelManager.ts` 传到 `src/webview/main.tsx`；未知值统一归一为默认值 `title`。
 - 概览触发倍率由 `devSessionCanvas.canvas.overviewZoomThreshold` 控制，默认值来自 `DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.2`。`normalizeCanvasOverviewZoomThreshold` 将非有限数字回退到默认值，并把有效数字钳制在 `[0, 1]`；归一后的值通过 `CanvasRuntimeContext.overviewZoomThreshold` 下发给 Webview。修改 `overviewMode` 或 `overviewZoomThreshold` 都会触发 `CanvasPanelManager` 重新 post runtime state，当前画布无需重新加载即可更新概览判定。
 - `none` 表示无概览：即使当前 viewport `zoom < overviewZoomThreshold`，`CanvasOverviewModeBridge` 也不会给 `.canvas-shell` 加上 `.is-overview-mode`，节点继续按普通表面渲染。这个选项只关闭概览视觉收口，不改变动态 `minZoom`、fit view 或手动缩小能力。
@@ -204,18 +216,22 @@ updated_at: 2026-05-15
 
 1. 在浏览器 harness 中验证标题栏双击能改变 viewport，且双击输入框不会触发聚焦。
 2. 在浏览器 harness 中验证空白区右键菜单出现、选择后会发出 `webview/createDemoNode` 并带上靠近右键点的坐标。
-3. 在真实 VSCode smoke 中验证默认 `openCanvas` 走 `panel` route。
-4. 手动验证当用户把 `panel` view 移到 Secondary Sidebar 后，显式 `panel` 打开命令仍能正确 reveal 该 view。
-5. 运行 `npm run typecheck`、`npm run test:webview`、`npm run test:smoke`。
-6. 浏览器 harness 截图基线应能直接体现节点外轮廓与 minimap 的小圆角 widget 化收口。
-7. 在浏览器 harness 中验证 `Agent` 与 `Terminal` 节点里的 `xterm` 会在不重建实例的前提下，随 VSCode 深浅主题切换一起刷新背景、前景与 ANSI 调色板。
-8. 在浏览器 harness 中验证远距离节点点击 fit view 后 zoom 可低于 `0.4`，全部节点仍进入视口，且默认 `title` 配置和默认 `overviewZoomThreshold = 0.2` 下 `zoom < 0.2` 时概览模式标记、正文弱化样式、内容区标题与执行型节点内容区状态标记都生效。
-9. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewMode = none` 时，即使 fit view 把 zoom 降到概览触发倍率以下，也不会进入概览模式，节点正文继续按普通表面显示。
-10. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewZoomThreshold` 运行时变更会立即改变概览模式判定，例如当前 zoom 位于默认 `0.2` 与自定义 `0.5` 之间时，提高阈值会进入 `title` 概览，降回默认值会退出概览。
+3. 在浏览器 harness 中验证 `workspaceTrusted = false` 时，右键菜单仍显示 `Agent` / `Terminal` / `Note`，且点击 `Agent` / `Terminal` 会改为请求宿主解释原因，而不是发出 `webview/createDemoNode`。
+4. 在真实 VSCode smoke 中验证默认 `openCanvas` 走 `panel` route。
+5. 手动验证当用户把 `panel` view 移到 Secondary Sidebar 后，显式 `panel` 打开命令仍能正确 reveal 该 view。
+6. 运行 `npm run typecheck`、`npm run test:webview`、`npm run test:smoke`。
+7. 浏览器 harness 截图基线应能直接体现节点外轮廓与 minimap 的小圆角 widget 化收口。
+8. 在浏览器 harness 中验证 `Agent` 与 `Terminal` 节点里的 `xterm` 会在不重建实例的前提下，随 VSCode 深浅主题切换一起刷新背景、前景与 ANSI 调色板。
+9. 在浏览器 harness 中验证远距离节点点击 fit view 后 zoom 可低于 `0.4`，全部节点仍进入视口，且默认 `title` 配置和默认 `overviewZoomThreshold = 0.2` 下 `zoom < 0.2` 时概览模式标记、正文弱化样式、内容区标题与执行型节点内容区状态标记都生效。
+10. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewMode = none` 时，即使 fit view 把 zoom 降到概览触发倍率以下，也不会进入概览模式，节点正文继续按普通表面显示。
+11. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewZoomThreshold` 运行时变更会立即改变概览模式判定，例如当前 zoom 位于默认 `0.2` 与自定义 `0.5` 之间时，提高阈值会进入 `title` 概览，降回默认值会退出概览。
+12. 在浏览器 harness 中验证全局 fit view 包含普通用户分组和 workspace root section：空 root section 没有节点时仍能被 fit 到视口内，root section 大于内部节点时边界不会被裁掉。
+13. 在浏览器 harness 中验证 MiniMap 能显示 workspace root section、普通用户分组和节点，并且 attention 节点的 minimap flash / size pulse 仍保留。
 
 ## 9. 验证结果
 
 - 2026-04-13 运行 `npm run typecheck`，通过。
+- 2026-05-29 已为“untrusted 下右键菜单仍显示 execution entries，并在点击时解释原因”补齐 Playwright / restricted smoke 用例与实现；但当前只拿到了 `npm run typecheck` 通过证据，新增 UI 回归仍受本机 Playwright Chromium `bootstrap_check_in ... Permission denied (1100)` 与 restricted smoke 宿主 `SIGABRT` 阻塞，尚未拿到完整跑通记录。因此本文当前验证状态回调为 `验证中`，待在可用环境中补齐自动化绿灯后再恢复为 `已验证`。
 - 2026-04-13 运行 `npm run test:webview`，23 个 Playwright 用例全部通过；其中新增覆盖 `body` 级 theme vars、同类主题切换、稀疏 `terminal.*` token 与当前 surface 背景 fallback，确认 `Agent` / `Terminal` 内嵌 `xterm` 不再只在少数主题下正确跟随。
 - 2026-04-13 追加运行 `node scripts/test/run-playwright-webview.mjs --update-snapshots`，23 个 Playwright 用例全部通过；刷新主画布截图与 dark / light 两张 minimap 专用截图基线，确认“加深框外遮罩 + 适度压低 minimap 节点色块对抗性”的方案在浅色和深色 workbench token 下都能拉开视口内外区分，同时 `xterm` 主题跟随改动后的整体画布视觉基线已同步收口。
 - 2026-04-13 运行 `npm run test:smoke`，通过；覆盖 trusted / restricted、real reopen、fake systemd-user / fallback 与 remote-ssh real reopen，确认默认 `Dev Session Canvas: 打开画布` 走 `panel` route。

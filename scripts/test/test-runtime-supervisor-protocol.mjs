@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,21 +9,33 @@ import esbuild from 'esbuild';
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-runtime-supervisor-protocol-'));
 
 try {
-  const outfile = path.join(tempDir, 'runtimeSupervisorProtocol.cjs');
-  await esbuild.build({
-    entryPoints: [path.resolve('src/common/runtimeSupervisorProtocol.ts')],
-    bundle: true,
-    format: 'cjs',
-    outfile,
-    platform: 'node',
-    target: 'node18'
-  });
+  const protocolOutfile = path.join(tempDir, 'runtimeSupervisorProtocol.cjs');
+  const supervisorOutfile = path.join(tempDir, 'runtimeSupervisorMain.cjs');
+  await Promise.all([
+    esbuild.build({
+      entryPoints: [path.resolve('src/common/runtimeSupervisorProtocol.ts')],
+      bundle: true,
+      format: 'cjs',
+      outfile: protocolOutfile,
+      platform: 'node',
+      target: 'node18'
+    }),
+    esbuild.build({
+      entryPoints: [path.resolve('src/supervisor/runtimeSupervisorMain.ts')],
+      bundle: true,
+      format: 'cjs',
+      outfile: supervisorOutfile,
+      platform: 'node',
+      target: 'node18',
+      external: ['node-pty']
+    })
+  ]);
 
   const require = createRequire(import.meta.url);
   const {
     createRuntimeSupervisorError,
     serializeRuntimeSupervisorError
-  } = require(outfile);
+  } = require(protocolOutfile);
 
   const spawnError = new Error('spawn /missing/codex ENOENT');
   spawnError.code = 'ENOENT';
@@ -42,6 +54,28 @@ try {
     message: 'generic failure'
   });
   assert.equal(createRuntimeSupervisorError(genericPayload).code, undefined);
+
+  const supervisorSource = await readFile(path.resolve('src/supervisor/runtimeSupervisorMain.ts'), 'utf8');
+  assert.match(
+    supervisorSource,
+    /private deleteSession\([\s\S]*?session\.live = false;[\s\S]*?this\.emitSessionState\(session\);[\s\S]*?this\.sessions\.delete\(params\.sessionId\);/u,
+    'deleteSession 必须先向所有订阅窗口广播非 live 终态，再删除共享 backend session。'
+  );
+  assert.match(
+    supervisorSource,
+    /private broadcastToSessionSubscribers\([\s\S]*for \(const \[socket, subscriptions\] of this\.subscriptions\.entries\(\)\)/u,
+    'runtime supervisor output/state 应向同一 session 的所有订阅 socket 多播。'
+  );
+  assert.match(
+    supervisorSource,
+    /session\.kind === 'agent' && session\.provider === 'claude' && containsTerminalSuspendInput\(params\.data\)[\s\S]*Claude Agent 节点不支持 Ctrl-Z\/fg/u,
+    'runtime supervisor 必须拒绝 Claude Agent Ctrl-Z 输入，避免进入不可恢复的伪挂起态。'
+  );
+  assert.doesNotMatch(
+    supervisorSource,
+    /reactivateSession|maybeMarkClaudeAgentSuspended|agentSuspendSignals/u,
+    'runtime supervisor 不应再保留 Claude 挂起恢复或 suspend 文案识别链路。'
+  );
 
   console.log('runtimeSupervisorProtocol tests passed');
 } finally {

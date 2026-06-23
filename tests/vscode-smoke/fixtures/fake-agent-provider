@@ -272,6 +272,14 @@ while IFS= read -r line; do
     continue
   fi
 
+  if [[ "$line" == bell\ * ]]; then
+    bell_message="${line#bell }"
+    printf '\007'
+    printf '%s belled %s\n' "$prefix" "$bell_message"
+    print_prompt
+    continue
+  fi
+
   echo "${prefix} ${line}"
   print_prompt
 done

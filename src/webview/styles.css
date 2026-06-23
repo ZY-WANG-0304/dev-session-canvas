@@ -21,6 +21,13 @@ body {
   --canvas-widget-radius: 8px;
   --canvas-widget-radius-sm: 6px;
   --canvas-edge-stroke-default: var(--vscode-descriptionForeground);
+  --canvas-node-body-padding: 12px;
+  --canvas-node-body-gap: 12px;
+  --canvas-runtime-frame-padding: 8px;
+  --canvas-document-padding-block: 16px;
+  --canvas-document-padding-inline: 18px;
+  --canvas-note-line-number-gutter-width: 46px;
+  --canvas-note-document-input-padding-left: 62px;
   --canvas-edge-color-1: #d16969;
   --canvas-edge-color-2: #d19a66;
   --canvas-edge-color-3: #cca700;
@@ -29,6 +36,12 @@ body {
   --canvas-edge-color-6: #a77dc2;
   --execution-attention-flash-duration: 1.2s;
   --execution-attention-flash-easing: ease-in-out;
+}
+
+.canvas-shell .react-flow,
+.canvas-shell .react-flow__renderer,
+.canvas-shell .react-flow__pane {
+  overflow: hidden;
 }
 
 .canvas-corner-panel {
@@ -53,7 +66,7 @@ body {
   position: absolute;
   top: 14px;
   right: 14px;
-  z-index: 20;
+  z-index: 30;
   overflow: hidden;
   border-radius: var(--canvas-widget-radius);
   border-color: var(--vscode-widget-border, var(--vscode-panel-border));
@@ -61,6 +74,7 @@ body {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
   backdrop-filter: none;
 }
+
 
 .canvas-shell .react-flow__controls-button {
   width: 28px;
@@ -102,8 +116,10 @@ body {
 }
 
 .canvas-shell .canvas-minimap {
+  position: absolute;
   right: 14px;
   bottom: 14px;
+  z-index: 6;
   padding: 4px;
   overflow: hidden;
   border-radius: var(--canvas-widget-radius);
@@ -111,6 +127,7 @@ body {
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
   backdrop-filter: none;
+  pointer-events: auto;
 }
 
 .canvas-shell .canvas-minimap svg {
@@ -119,32 +136,32 @@ body {
   height: 100%;
   border-radius: calc(var(--canvas-widget-radius) - 2px);
   background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-sideBar-background) 6%);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.canvas-shell .canvas-minimap svg:active {
+  cursor: grabbing;
 }
 
 .canvas-shell .canvas-minimap .react-flow__minimap-mask {
   filter: none;
 }
 
-.canvas-shell .canvas-minimap-viewport-outline,
-.canvas-shell .canvas-minimap-viewport-outline * {
-  pointer-events: none;
+.canvas-shell .canvas-minimap-group {
+  fill: var(--vscode-panel-border);
+  fill-opacity: 0.85;
+  stroke: var(--vscode-panel-border);
+  stroke-opacity: 0.85;
+  stroke-width: 1.1;
 }
 
-.canvas-shell .canvas-minimap-viewport-outline {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 6;
-  margin: 15px;
-  padding: 4px;
-  border: 1px solid transparent;
-  background: transparent;
-}
-
-.canvas-shell .canvas-minimap-viewport-outline svg {
-  display: block;
-  width: 100%;
-  height: 100%;
+.canvas-shell .canvas-minimap-group.is-workspace-root {
+  fill-opacity: 1;
+  stroke-opacity: 1;
+  stroke-width: 1.35;
+  stroke-dasharray: 5 3;
 }
 
 .canvas-shell .canvas-minimap-viewport-outline-rect {
@@ -214,6 +231,10 @@ body {
     background-color 120ms ease,
     border-color 120ms ease,
     color 120ms ease;
+}
+
+.action-button-label {
+  display: inline;
 }
 
 .action-button.compact {
@@ -297,6 +318,19 @@ body {
   border-bottom-left-radius: 0;
 }
 
+.agent-restart-action-group {
+  flex: 0 1 auto;
+  min-width: min-content;
+}
+
+.agent-restart-action-group .action-button {
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: min-content;
+  white-space: normal;
+}
+
 .canvas-node {
   --canvas-node-color: var(--vscode-focusBorder);
   --execution-node-attention-color: var(--vscode-focusBorder);
@@ -345,72 +379,73 @@ body {
   border-color: color-mix(in srgb, var(--canvas-node-color) 28%, var(--vscode-widget-border, var(--vscode-panel-border)) 72%);
 }
 
-.canvas-shell.is-overview-mode .canvas-node {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .canvas-node {
   background: color-mix(in srgb, var(--vscode-editor-background) 98%, var(--vscode-focusBorder) 2%);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-widget-border, var(--vscode-panel-border)) 72%, transparent);
 }
 
-.canvas-shell.is-overview-mode .canvas-node.is-selected {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .canvas-node.is-selected {
   box-shadow:
     0 0 0 1px var(--vscode-focusBorder),
     0 0 0 4px color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
 }
 
-.canvas-shell.is-overview-mode .window-chrome,
-.canvas-shell.is-overview-mode .file-list-minimal-header {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .window-chrome,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-minimal-header {
   padding: 8px 10px;
   border-bottom-color: color-mix(in srgb, var(--vscode-panel-border) 60%, transparent);
   background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-focusBorder) 6%);
 }
 
-.canvas-shell.is-overview-mode .window-title-input {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .window-title-input {
   pointer-events: none;
 }
 
-.canvas-shell.is-overview-mode .window-title-subtitle-row,
-.canvas-shell.is-overview-mode .execution-help-trigger,
-.canvas-shell.is-overview-mode .action-button,
-.canvas-shell.is-overview-mode .action-button-group,
-.canvas-shell.is-overview-mode .file-list-view-toggle,
-.canvas-shell.is-overview-mode .file-node-copy span,
-.canvas-shell.is-overview-mode .file-list-entry-copy span,
-.canvas-shell.is-overview-mode .node-hint,
-.canvas-shell.is-overview-mode .node-topline,
-.canvas-shell.is-overview-mode .node-status,
-.canvas-shell.is-overview-mode .compact-node-actions,
-.canvas-shell.is-overview-mode .compact-node p {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .window-title-context-row,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .window-title-subtitle-row,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .execution-help-trigger,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .action-button,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .action-button-group,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-view-toggle,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-node-copy span,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-entry-copy span,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .node-hint,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .node-topline,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .node-status,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .compact-node-actions,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .compact-node p {
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
 }
 
-.canvas-shell.is-overview-mode .file-node-action:disabled {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-node-action:disabled {
   cursor: default;
 }
 
-.canvas-shell.is-overview-mode .session-body,
-.canvas-shell.is-overview-mode .object-body,
-.canvas-shell.is-overview-mode .file-list-body {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .session-body,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .object-body,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-body {
   position: relative;
   pointer-events: none;
 }
 
-.canvas-shell.is-overview-mode .terminal-viewport,
-.canvas-shell.is-overview-mode .terminal-overlay,
-.canvas-shell.is-overview-mode .note-editor-surface,
-.canvas-shell.is-overview-mode .file-node-icon,
-.canvas-shell.is-overview-mode .file-node-copy,
-.canvas-shell.is-overview-mode .file-list-entries,
-.canvas-shell.is-overview-mode .file-list-tree,
-.canvas-shell.is-overview-mode .file-list-empty {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .terminal-viewport,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .terminal-overlay,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .note-editor-surface,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-node-icon,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-node-copy,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-entries,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-tree,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-empty {
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
 }
 
-.canvas-shell.is-overview-mode .terminal-frame::after,
-.canvas-shell.is-overview-mode .object-body::after,
-.canvas-shell.is-overview-mode .file-list-body::after {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .terminal-frame::after,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .object-body::after,
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode) .file-list-body::after {
   content: '';
   position: absolute;
   inset: 8px;
@@ -508,7 +543,7 @@ body {
     color-mix(in srgb, currentColor 28%, var(--vscode-editor-background) 72%);
 }
 
-.canvas-shell.is-overview-mode[data-canvas-overview-config='title'] .node-overview-title {
+:is(.canvas-shell.is-overview-mode, .pane-gallery-root-pane.is-overview-mode)[data-canvas-overview-config='title'] .node-overview-title {
   visibility: visible;
   opacity: 1;
 }
@@ -516,6 +551,7 @@ body {
 .canvas-node-handle {
   width: 10px;
   height: 10px;
+  z-index: 40;
   border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 78%, var(--vscode-editor-background) 22%);
   background: color-mix(in srgb, var(--vscode-editor-background) 82%, var(--vscode-focusBorder) 18%);
   opacity: 0;
@@ -798,7 +834,7 @@ body {
 .compact-node {
   position: relative;
   justify-content: space-between;
-  padding: 14px 14px 12px;
+  padding: var(--canvas-node-body-padding);
 }
 
 .session-node {
@@ -867,12 +903,34 @@ body {
   box-sizing: border-box;
   border: 0;
   padding: 0;
+  overflow: hidden;
   background: transparent;
   color: var(--vscode-editor-foreground);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-title-context-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.window-title-context {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  cursor: default;
+  font-size: 10px;
+  line-height: 1.2;
+  opacity: 0.86;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .window-title-subtitle-row {
@@ -1133,6 +1191,41 @@ body {
   gap: 6px;
 }
 
+.agent-window-chrome-actions {
+  flex: 0 0 auto;
+}
+
+.agent-window-chrome-actions .action-button {
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: min-content;
+  white-space: nowrap;
+}
+
+.agent-window-chrome-actions .agent-restart-action-group .action-button,
+.agent-window-chrome-actions .agent-branch-action-button {
+  white-space: normal;
+}
+
+.agent-window-chrome-actions[data-agent-action-density="compact-actions"] .action-button {
+  width: 25px;
+  min-width: 25px;
+  min-height: 26px;
+  align-items: center;
+  padding-block: 2px;
+  line-height: 1;
+  white-space: normal;
+}
+
+.agent-window-chrome-actions[data-agent-action-density="compact-actions"] .action-button .action-button-label {
+  display: block;
+  width: min-content;
+  line-height: 1.05;
+  text-align: center;
+  white-space: normal;
+}
+
 .execution-status-cluster {
   display: inline-flex;
   align-items: center;
@@ -1359,8 +1452,8 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--canvas-node-body-gap);
+  padding: var(--canvas-node-body-padding);
 }
 
 .session-banner {
@@ -1506,7 +1599,6 @@ body {
   flex: 1;
   min-height: 0;
   gap: 0;
-  padding: 0;
 }
 
 .file-node {
@@ -1541,7 +1633,7 @@ body {
 .file-node-action-card {
   grid-template-columns: auto minmax(0, 1fr);
   height: 100%;
-  padding: 14px 16px;
+  padding: var(--canvas-node-body-padding);
 }
 
 .file-node-action-minimal {
@@ -1713,7 +1805,7 @@ body {
   display: flex;
   flex: 1;
   min-height: 0;
-  padding: 10px;
+  padding: var(--canvas-node-body-padding);
 }
 
 .file-list-body.minimal {
@@ -1974,8 +2066,8 @@ body {
   flex: 1;
   min-height: 0;
   border: 0;
-  border-radius: 0 0 var(--canvas-node-radius) var(--canvas-node-radius);
-  padding: 6px;
+  border-radius: var(--canvas-node-radius-inner);
+  padding: var(--canvas-runtime-frame-padding);
   background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
   overflow: hidden;
 }
@@ -2084,8 +2176,8 @@ body {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--canvas-node-body-gap);
+  padding: var(--canvas-node-body-padding);
 }
 
 .node-text-input,
@@ -2161,9 +2253,9 @@ body {
   top: 0;
   bottom: 0;
   left: 0;
-  width: 46px;
+  width: var(--canvas-note-line-number-gutter-width);
   box-sizing: border-box;
-  padding: 16px 8px 16px 6px;
+  padding: var(--canvas-document-padding-block) 8px var(--canvas-document-padding-block) 6px;
   overflow: hidden;
   border-right: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent 30%);
   background: color-mix(in srgb, var(--vscode-editor-background) 86%, var(--vscode-sideBar-background) 14%);
@@ -2194,7 +2286,8 @@ body {
   top: 0;
   left: 0;
   box-sizing: border-box;
-  padding: 16px 18px 16px 62px;
+  padding: var(--canvas-document-padding-block) var(--canvas-document-padding-inline) var(--canvas-document-padding-block)
+    var(--canvas-note-document-input-padding-left);
   overflow: hidden;
   color: transparent;
   font: inherit;
@@ -2214,7 +2307,8 @@ body {
 .note-document-input {
   min-height: 100%;
   height: 100%;
-  padding: 16px 18px 16px 62px;
+  padding: var(--canvas-document-padding-block) var(--canvas-document-padding-inline) var(--canvas-document-padding-block)
+    var(--canvas-note-document-input-padding-left);
   resize: none;
   tab-size: 2;
 }
@@ -2295,7 +2389,7 @@ body {
   min-height: 0;
   width: 100%;
   box-sizing: border-box;
-  padding: 16px 18px;
+  padding: var(--canvas-document-padding-block) var(--canvas-document-padding-inline);
   overflow: auto;
   color: var(--vscode-editor-foreground);
   cursor: text;
@@ -2588,17 +2682,135 @@ body {
   padding: 2px 0;
 }
 
-.canvas-node-resize-handle {
+.canvas-node-resize-control {
+  position: absolute;
+  z-index: 30;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.canvas-node-resize-line {
+  position: absolute;
+  z-index: 29;
+  border: 0 solid var(--canvas-node-color);
+  pointer-events: none;
+}
+
+.canvas-node-resize-line-top,
+.canvas-node-resize-line-bottom {
+  left: 0;
+  width: 100%;
+  height: 1px;
+  transform: translate(0, -50%);
+}
+
+.canvas-node-resize-line-top {
+  top: 0;
+  border-top-width: 2px;
+}
+
+.canvas-node-resize-line-bottom {
+  top: 100%;
+  border-bottom-width: 2px;
+}
+
+.canvas-node-resize-line-left,
+.canvas-node-resize-line-right {
+  top: 0;
+  width: 1px;
+  height: 100%;
+  transform: translate(-50%, 0);
+}
+
+.canvas-node-resize-line-left {
+  left: 0;
+  border-left-width: 2px;
+}
+
+.canvas-node-resize-line-right {
+  left: 100%;
+  border-right-width: 2px;
+}
+
+.canvas-node-resize-control::after {
+  content: '';
+  position: absolute;
+  inset: 50%;
   width: 12px;
   height: 12px;
   border-radius: 999px;
   border: 2px solid var(--vscode-editor-background);
-  background: var(--vscode-focusBorder);
+  background: var(--canvas-node-color);
   box-shadow: 0 2px 12px rgba(15, 23, 42, 0.35);
+  transform: translate(-50%, -50%);
 }
 
-.canvas-node-resize-line {
-  border-width: 2px;
+.canvas-node-resize-top,
+.canvas-node-resize-bottom {
+  left: 12px;
+  right: 12px;
+  height: 12px;
+}
+
+.canvas-node-resize-top {
+  top: -6px;
+}
+
+.canvas-node-resize-bottom {
+  bottom: -6px;
+}
+
+.canvas-node-resize-left,
+.canvas-node-resize-right {
+  top: 12px;
+  bottom: 12px;
+  width: 12px;
+}
+
+.canvas-node-resize-left {
+  left: -6px;
+}
+
+.canvas-node-resize-right {
+  right: -6px;
+}
+
+.canvas-node-resize-top-left,
+.canvas-node-resize-top-right,
+.canvas-node-resize-bottom-left,
+.canvas-node-resize-bottom-right {
+  width: 16px;
+  height: 16px;
+}
+
+.canvas-node-resize-top-left {
+  top: -8px;
+  left: -8px;
+}
+
+.canvas-node-resize-top-right {
+  top: -8px;
+  right: -8px;
+}
+
+.canvas-node-resize-bottom-left {
+  bottom: -8px;
+  left: -8px;
+}
+
+.canvas-node-resize-bottom-right {
+  right: -8px;
+  bottom: -8px;
+}
+
+.canvas-node-resize-top::after,
+.canvas-node-resize-right::after,
+.canvas-node-resize-bottom::after,
+.canvas-node-resize-left::after {
+  display: none;
 }
 
 .node-text-input:focus,
@@ -2917,4 +3129,728 @@ body {
   font-size: 11px;
   line-height: 1.35;
   color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
+}
+
+.canvas-group-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 3;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.canvas-group-background-layer {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  height: 0;
+  z-index: -1;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.canvas-group-background-body-hit-area {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--canvas-group-body-top);
+  bottom: 0;
+  pointer-events: auto;
+}
+
+.canvas-group-frame,
+.canvas-group-background-frame,
+.canvas-root-watermark-frame {
+  --canvas-group-panel-border: var(--vscode-panel-border);
+  --canvas-group-panel-surface: var(--vscode-panel-background);
+  --canvas-group-tab-surface: var(--vscode-panel-background);
+  --canvas-group-selection-color: var(--canvas-group-panel-border);
+  --canvas-group-title-height: 28px;
+  --canvas-group-body-top: 28px;
+  /* Readable title chrome grows outward while body geometry stays stable. */
+  --canvas-group-visual-top: calc(var(--canvas-group-body-top) - var(--canvas-group-title-height));
+  --canvas-group-title-tab-width: 112px;
+  --canvas-group-title-font-size: 12px;
+  --canvas-group-title-padding-left: 12px;
+  --canvas-group-title-padding-right: 10px;
+  --canvas-group-toolbar-width: 0px;
+  --canvas-group-toolbar-button-padding-x: 8px;
+  --canvas-group-toolbar-font-size: 11px;
+  --canvas-group-border-width: 1px;
+  --canvas-group-resize-line-width: 2px;
+  --canvas-group-resize-control-size: 16px;
+  --canvas-group-resize-edge-inset: 12px;
+  --canvas-group-resize-edge-thickness: 12px;
+  --canvas-group-resize-dot-size: 12px;
+  --canvas-group-resize-dot-border-width: 2px;
+  --canvas-group-resize-dot-shadow-y: 2px;
+  --canvas-group-resize-dot-shadow-blur: 12px;
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 0;
+  pointer-events: none;
+}
+
+.canvas-group-background-frame {
+  z-index: 0;
+  border: 0;
+  background:
+    linear-gradient(var(--canvas-group-panel-surface), var(--canvas-group-panel-surface))
+      0 var(--canvas-group-body-top) / 100% calc(100% - var(--canvas-group-body-top)) no-repeat;
+  box-shadow: none;
+}
+
+.canvas-group-background-frame::before {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  left: 0;
+  top: calc(var(--canvas-group-body-top) - var(--canvas-group-title-height));
+  width: var(--canvas-group-title-tab-width);
+  height: var(--canvas-group-title-height);
+  border: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-bottom: 0;
+  border-radius: 0;
+  background: var(--canvas-group-panel-surface);
+  pointer-events: none;
+}
+
+.canvas-group-background-frame::after {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  left: 0;
+  right: 0;
+  top: var(--canvas-group-body-top);
+  bottom: 0;
+  border: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-radius: 0;
+  pointer-events: none;
+}
+
+.canvas-root-watermark-frame {
+  z-index: 1;
+  overflow: hidden;
+}
+
+.canvas-root-watermark-tile {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--canvas-group-body-top);
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.canvas-root-watermark-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.28;
+  background-color: color-mix(in srgb, var(--vscode-editor-foreground) 24%, transparent);
+  mask-image: var(--canvas-root-watermark-pattern);
+  mask-position: 24px 22px;
+  mask-repeat: repeat;
+  mask-size: var(--canvas-root-watermark-tile-width, 180px) var(--canvas-root-watermark-tile-height, 88px);
+  pointer-events: none;
+  -webkit-mask-image: var(--canvas-root-watermark-pattern);
+  -webkit-mask-position: 24px 22px;
+  -webkit-mask-repeat: repeat;
+  -webkit-mask-size: var(--canvas-root-watermark-tile-width, 180px) var(--canvas-root-watermark-tile-height, 88px);
+}
+
+.canvas-root-watermark-tile > span {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground) 26%, transparent);
+  font-family: var(--vscode-font-family);
+  font-size: var(--canvas-root-watermark-font-size, var(--canvas-group-title-font-size));
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.canvas-group-frame {
+  border: var(--canvas-group-border-width) solid transparent;
+  background: transparent;
+}
+
+.canvas-group-frame.is-selected {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.canvas-group-body {
+  position: absolute;
+  inset: var(--canvas-group-body-top) 0 0;
+  pointer-events: none;
+}
+
+.canvas-group-titlebar {
+  position: absolute;
+  left: 0;
+  top: calc(var(--canvas-group-body-top) - var(--canvas-group-title-height));
+  width: var(--canvas-group-title-tab-width);
+  min-width: 0;
+  height: var(--canvas-group-title-height);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--canvas-group-title-padding-right) 0 var(--canvas-group-title-padding-left);
+  border-right: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-bottom: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-radius: 0;
+  background: var(--canvas-group-tab-surface);
+  box-shadow: none;
+  color: var(--vscode-panelTitle-inactiveForeground, var(--vscode-descriptionForeground));
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.canvas-group-frame.is-selected .canvas-group-titlebar {
+  min-width: 0;
+  color: var(--vscode-panelTitle-activeForeground, var(--vscode-editor-foreground));
+}
+
+.canvas-group-titlebar:active {
+  cursor: grabbing;
+}
+
+.canvas-group-title {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.canvas-group-title .window-title-copy {
+  width: 100%;
+  max-width: 100%;
+}
+
+.canvas-group-title .window-title-input {
+  color: inherit;
+  font-size: var(--canvas-group-title-font-size);
+  font-weight: 600;
+}
+
+.canvas-group-border {
+  position: absolute;
+  pointer-events: auto;
+}
+
+.canvas-group-border-top,
+.canvas-group-border-bottom {
+  left: 0;
+  width: 100%;
+  height: 8px;
+  cursor: grab;
+}
+
+.canvas-group-border-top {
+  top: var(--canvas-group-body-top);
+  height: calc(100% - var(--canvas-group-body-top));
+  cursor: default;
+  pointer-events: none;
+}
+
+.canvas-group-border-bottom {
+  bottom: calc((8px - var(--canvas-group-border-width)) / -2);
+}
+
+.canvas-group-border-left,
+.canvas-group-border-right {
+  top: var(--canvas-group-body-top);
+  width: 8px;
+  height: calc(100% - var(--canvas-group-body-top));
+  cursor: grab;
+}
+
+.canvas-group-border-left {
+  left: calc((8px - var(--canvas-group-border-width)) / -2);
+}
+
+.canvas-group-border-right {
+  right: calc((8px - var(--canvas-group-border-width)) / -2);
+}
+
+.canvas-group-resize-line {
+  position: absolute;
+  z-index: 29;
+  box-sizing: border-box;
+  border: 0 solid var(--canvas-group-selection-color);
+  pointer-events: none;
+}
+
+.canvas-group-resize-line-top,
+.canvas-group-resize-line-bottom {
+  left: 0;
+  width: 100%;
+  height: var(--canvas-group-border-width);
+  transform: translate(0, -50%);
+}
+
+.canvas-group-resize-line-top {
+  top: var(--canvas-group-visual-top);
+  border-top-width: var(--canvas-group-resize-line-width);
+}
+
+.canvas-group-resize-line-bottom {
+  top: 100%;
+  border-bottom-width: var(--canvas-group-resize-line-width);
+}
+
+.canvas-group-resize-line-left,
+.canvas-group-resize-line-right {
+  top: var(--canvas-group-visual-top);
+  width: var(--canvas-group-border-width);
+  height: calc(100% - var(--canvas-group-visual-top));
+  transform: translate(-50%, 0);
+}
+
+.canvas-group-resize-line-left {
+  left: 0;
+  border-left-width: var(--canvas-group-resize-line-width);
+}
+
+.canvas-group-resize-line-right {
+  left: 100%;
+  border-right-width: var(--canvas-group-resize-line-width);
+}
+
+.canvas-group-resize-control {
+  position: absolute;
+  z-index: 30;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  pointer-events: auto;
+}
+
+.canvas-group-resize-control::after {
+  content: '';
+  position: absolute;
+  inset: 50%;
+  width: var(--canvas-group-resize-dot-size);
+  height: var(--canvas-group-resize-dot-size);
+  border-radius: 999px;
+  border: var(--canvas-group-resize-dot-border-width) solid var(--vscode-editor-background);
+  background: var(--canvas-group-selection-color);
+  box-shadow: 0 var(--canvas-group-resize-dot-shadow-y) var(--canvas-group-resize-dot-shadow-blur) rgba(15, 23, 42, 0.35);
+  transform: translate(-50%, -50%);
+}
+
+.canvas-group-resize-top,
+.canvas-group-resize-bottom {
+  left: var(--canvas-group-resize-edge-inset);
+  right: var(--canvas-group-resize-edge-inset);
+  height: var(--canvas-group-resize-edge-thickness);
+}
+
+.canvas-group-resize-top {
+  top: calc(var(--canvas-group-visual-top) - var(--canvas-group-resize-edge-thickness) / 2);
+}
+
+.canvas-group-resize-bottom {
+  bottom: calc(var(--canvas-group-resize-edge-thickness) / -2);
+}
+
+.canvas-group-resize-left,
+.canvas-group-resize-right {
+  top: calc(var(--canvas-group-visual-top) + var(--canvas-group-resize-edge-inset));
+  bottom: var(--canvas-group-resize-edge-inset);
+  width: var(--canvas-group-resize-edge-thickness);
+}
+
+.canvas-group-resize-left {
+  left: calc(var(--canvas-group-resize-edge-thickness) / -2);
+}
+
+.canvas-group-resize-right {
+  right: calc(var(--canvas-group-resize-edge-thickness) / -2);
+}
+
+.canvas-group-resize-top-left,
+.canvas-group-resize-top-right,
+.canvas-group-resize-bottom-left,
+.canvas-group-resize-bottom-right {
+  width: var(--canvas-group-resize-control-size);
+  height: var(--canvas-group-resize-control-size);
+}
+
+.canvas-group-resize-top-left {
+  top: calc(var(--canvas-group-visual-top) - var(--canvas-group-resize-control-size) / 2);
+  left: calc(var(--canvas-group-resize-control-size) / -2);
+}
+
+.canvas-group-resize-top-right {
+  top: calc(var(--canvas-group-visual-top) - var(--canvas-group-resize-control-size) / 2);
+  right: calc(var(--canvas-group-resize-control-size) / -2);
+}
+
+.canvas-group-resize-bottom-left {
+  bottom: calc(var(--canvas-group-resize-control-size) / -2);
+  left: calc(var(--canvas-group-resize-control-size) / -2);
+}
+
+.canvas-group-resize-bottom-right {
+  right: calc(var(--canvas-group-resize-control-size) / -2);
+  bottom: calc(var(--canvas-group-resize-control-size) / -2);
+}
+
+.canvas-group-resize-top::after,
+.canvas-group-resize-right::after,
+.canvas-group-resize-bottom::after,
+.canvas-group-resize-left::after {
+  display: none;
+}
+
+.canvas-group-toolbar {
+  position: absolute;
+  left: var(--canvas-group-title-tab-width);
+  top: calc(var(--canvas-group-body-top) - var(--canvas-group-title-height));
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  width: var(--canvas-group-toolbar-width);
+  max-width: calc(100% - var(--canvas-group-title-tab-width));
+  height: var(--canvas-group-title-height);
+  padding: 0;
+  border: var(--canvas-group-border-width) solid var(--canvas-group-panel-border);
+  border-left: 0;
+  border-radius: 0;
+  background: var(--canvas-group-panel-surface);
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+.canvas-group-toolbar button {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 0;
+  padding: 0 var(--canvas-group-toolbar-button-padding-x);
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  font-size: var(--canvas-group-toolbar-font-size);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.canvas-group-split-primary {
+  min-width: 0;
+}
+
+.canvas-group-split-danger {
+  border-left: var(--canvas-group-border-width) solid var(--canvas-group-panel-border) !important;
+  color: var(--vscode-errorForeground, #fca5a5) !important;
+}
+
+.canvas-group-toolbar button:hover,
+.canvas-group-toolbar button:focus-visible {
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent));
+  outline: none;
+}
+
+.canvas-shell.is-pane-gallery {
+  --pane-gallery-pane-min-width: 520px;
+  --pane-gallery-pane-min-height: 380px;
+  --pane-gallery-thumbnail-size: 180px;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+
+.pane-gallery {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  color: var(--vscode-editor-foreground);
+}
+
+.pane-gallery-grid,
+.pane-gallery-thumbnail-layout {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.pane-gallery-grid {
+  display: grid;
+  gap: 1px;
+  padding: 1px;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.pane-gallery-grid-dynamic {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: stretch;
+}
+
+.pane-gallery-grid-dynamic .pane-gallery-root-pane {
+  flex: 1 1 var(--pane-gallery-pane-min-width);
+  min-width: var(--pane-gallery-pane-min-width);
+  min-height: var(--pane-gallery-pane-min-height);
+}
+
+.pane-gallery-grid-dynamic .pane-gallery-root-pane[data-pane-gallery-dynamic-slot='wide'] {
+  flex-basis: calc(var(--pane-gallery-pane-min-width) * 1.55);
+}
+
+.pane-gallery-grid-dynamic .pane-gallery-root-pane[data-pane-gallery-dynamic-slot='tall'] {
+  flex-basis: calc(var(--pane-gallery-pane-min-width) * 0.95);
+  min-height: calc(var(--pane-gallery-pane-min-height) * 1.28);
+}
+
+.pane-gallery-grid-dynamic .pane-gallery-root-pane[data-pane-gallery-dynamic-slot='large'] {
+  flex-basis: calc(var(--pane-gallery-pane-min-width) * 1.72);
+  min-height: calc(var(--pane-gallery-pane-min-height) * 1.32);
+}
+
+.pane-gallery-grid-grid {
+  grid-template-columns: repeat(auto-fill, minmax(var(--pane-gallery-pane-min-width), 1fr));
+  grid-auto-rows: minmax(var(--pane-gallery-pane-min-height), 1fr);
+}
+
+.pane-gallery-thumbnail-layout {
+  display: grid;
+  gap: 1px;
+  padding: 1px;
+}
+
+.pane-gallery-thumbnail-layout-topThumbnails {
+  grid-template-rows: var(--pane-gallery-thumbnail-size) minmax(0, 1fr);
+}
+
+.pane-gallery-thumbnail-layout-sideThumbnails {
+  grid-template-columns: minmax(0, 1fr) 220px;
+}
+
+.pane-gallery-root-pane {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+
+.pane-gallery-root-pane:focus-within {
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.pane-gallery-root-pane-thumbnail {
+  width: 100%;
+  min-height: 0;
+}
+
+.pane-gallery-root-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  max-width: min(360px, 68%);
+  min-width: 0;
+  box-sizing: border-box;
+  border-right: 1px solid color-mix(in srgb, var(--vscode-panel-border) 72%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 72%, transparent);
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
+  color: var(--vscode-descriptionForeground);
+}
+
+.pane-gallery-root-title-block {
+  display: grid;
+  min-width: 0;
+}
+
+.pane-gallery-root-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.pane-gallery-root-flow-shell {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane-gallery-root-flow-shell .react-flow {
+  background: var(--vscode-editor-background);
+}
+
+.pane-gallery-root-flow-shell.is-inert .react-flow,
+.pane-gallery-root-pane-thumbnail .react-flow__renderer,
+.pane-gallery-root-pane-thumbnail .react-flow__pane {
+  pointer-events: none;
+}
+
+.pane-gallery-thumbnail-hit-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  cursor: default;
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+}
+
+.pane-gallery-canvas-controls {
+  z-index: 8;
+  overflow: visible !important;
+}
+
+.pane-gallery-control-mode {
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+
+.pane-gallery-control-mode-trigger .codicon {
+  font-size: 14px;
+}
+
+.pane-gallery-control-mode > .react-flow__controls-button {
+  border-bottom: 0;
+}
+
+.pane-gallery-control-mode-menu {
+  position: absolute;
+  left: calc(100% + 4px);
+  bottom: 0;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  overflow: hidden;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: var(--canvas-widget-radius);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.pane-gallery-control-mode-menu button {
+  display: inline-flex;
+  height: 28px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-right: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 0;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--vscode-icon-foreground, var(--vscode-editor-foreground));
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.pane-gallery-control-mode-menu button:last-child {
+  border-right: 0;
+}
+
+.pane-gallery-control-mode-menu button:hover,
+.pane-gallery-control-mode-menu button:focus-visible,
+.pane-gallery-control-mode-menu button.is-active {
+  outline: none;
+  background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent));
+  color: var(--vscode-editor-foreground);
+}
+
+.pane-gallery-thumbnail-rail {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  gap: 1px;
+  overflow: auto;
+  background: var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.pane-gallery-thumbnail-track {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  gap: 1px;
+}
+
+.pane-gallery-thumbnail-rail-topThumbnails {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.pane-gallery-thumbnail-track-topThumbnails {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(180px, 240px);
+  width: max-content;
+  height: 100%;
+  margin-inline: auto;
+}
+
+.pane-gallery-thumbnail-rail-sideThumbnails {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.pane-gallery-thumbnail-track-sideThumbnails {
+  grid-auto-rows: minmax(132px, 172px);
+  width: 100%;
+  height: max-content;
+  margin-block: auto;
+}
+
+@media (max-width: 900px) {
+  .canvas-shell.is-pane-gallery {
+    --pane-gallery-pane-min-width: min(420px, calc(100vw - 4px));
+    --pane-gallery-pane-min-height: 340px;
+    --pane-gallery-thumbnail-size: 132px;
+  }
+
+  .pane-gallery-thumbnail-layout-sideThumbnails {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) var(--pane-gallery-thumbnail-size);
+  }
+
+  .pane-gallery-thumbnail-layout-sideThumbnails .pane-gallery-thumbnail-rail {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .pane-gallery-thumbnail-layout-sideThumbnails .pane-gallery-thumbnail-track {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(150px, 210px);
+    width: max-content;
+    height: 100%;
+    margin-block: 0;
+    margin-inline: auto;
+  }
 }

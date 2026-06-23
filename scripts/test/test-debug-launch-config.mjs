@@ -10,11 +10,19 @@ const localRepoRoot = '${input:devSessionCanvas.localRepoRoot}';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const launchJsonPath = path.join(repoRoot, '.vscode', 'launch.json');
+const tasksJsonPath = path.join(repoRoot, '.vscode', 'tasks.json');
 const launchJson = JSON.parse(await readFile(launchJsonPath, 'utf8'));
+const tasksJson = JSON.parse(await readFile(tasksJsonPath, 'utf8'));
 
 function getConfiguration(name) {
   const match = launchJson.configurations.find((configuration) => configuration.name === name);
   assert.ok(match, `Missing launch configuration: ${name}`);
+  return match;
+}
+
+function getTask(label) {
+  const match = tasksJson.tasks.find((task) => task.label === label);
+  assert.ok(match, `Missing VS Code task: ${label}`);
   return match;
 }
 
@@ -74,6 +82,18 @@ assert.deepEqual(
   ['devSessionCanvas.localRepoRoot'],
   'Expected the remote notifier config to be the only remaining prompt-driven entry.'
 );
+
+const installDependenciesTask = getTask('install dependencies');
+assert.equal(installDependenciesTask.command, 'node');
+assert.deepEqual(installDependenciesTask.args, ['scripts/shared/ensure-node-dependencies.mjs']);
+
+const buildExtensionTask = getTask('build extension');
+assert.equal(buildExtensionTask.dependsOrder, 'sequence');
+assert.deepEqual(buildExtensionTask.dependsOn, ['install dependencies']);
+
+const buildNotifierTask = getTask('build notifier');
+assert.equal(buildNotifierTask.dependsOrder, 'sequence');
+assert.deepEqual(buildNotifierTask.dependsOn, ['install dependencies']);
 
 const preparedOutputDir = path.join(repoRoot, '.debug', 'test-vscode-extension-main-only');
 await prepareDebugMainOnlyExtension({ sourceRoot: repoRoot, outputDir: preparedOutputDir });

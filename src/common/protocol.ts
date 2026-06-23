@@ -3,6 +3,7 @@ import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
   ExecutionTerminalFileLinkSource,
+  ExecutionTerminalFileLinkResolvePriority,
   ExecutionTerminalOpenLink,
   ExecutionTerminalResolvedFileLink
 } from './executionTerminalLinks';
@@ -10,7 +11,9 @@ import type { NoteContentSource } from './noteMarkdownFileAssociation';
 
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
+export type CanvasGroupDeleteMode = 'delete-members' | 'keep-members';
 export type ExecutionNodeKind = 'agent' | 'terminal';
+export const EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION = 10;
 export const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
 export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
@@ -23,8 +26,12 @@ export type CanvasFilePresentationMode = 'nodes' | 'lists';
 export type CanvasFileNodeDisplayStyle = 'card' | 'minimal';
 export type CanvasFileNodeDisplayMode = 'icon-path' | 'icon-only' | 'path-only';
 export type CanvasFilePathDisplayMode = 'basename' | 'relative-path';
+export const canvasLinkOpenModes = ['editorPreview', 'externalBrowser'] as const;
+export type CanvasLinkOpenMode = (typeof canvasLinkOpenModes)[number];
 export const canvasOverviewModes = ['none', 'title'] as const;
 export type CanvasOverviewMode = (typeof canvasOverviewModes)[number];
+export const canvasMultiRootPresentationModes = ['rootGroups', 'paneGallery'] as const;
+export type CanvasMultiRootPresentationMode = (typeof canvasMultiRootPresentationModes)[number];
 export const DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.2;
 export const canvasAttentionNotificationBridgeModes = ['none', 'workbench', 'system'] as const;
 export type CanvasAttentionNotificationBridgeMode =
@@ -64,6 +71,22 @@ export function isCanvasOverviewMode(value: unknown): value is CanvasOverviewMod
 
 export function normalizeCanvasOverviewMode(value: unknown): CanvasOverviewMode {
   return isCanvasOverviewMode(value) ? value : 'title';
+}
+
+export function isCanvasMultiRootPresentationMode(value: unknown): value is CanvasMultiRootPresentationMode {
+  return value === 'rootGroups' || value === 'paneGallery';
+}
+
+export function normalizeCanvasMultiRootPresentationMode(value: unknown): CanvasMultiRootPresentationMode {
+  return isCanvasMultiRootPresentationMode(value) ? value : 'rootGroups';
+}
+
+export function isCanvasLinkOpenMode(value: unknown): value is CanvasLinkOpenMode {
+  return value === 'editorPreview' || value === 'externalBrowser';
+}
+
+export function normalizeCanvasLinkOpenMode(value: unknown): CanvasLinkOpenMode {
+  return isCanvasLinkOpenMode(value) ? value : 'editorPreview';
 }
 
 export function normalizeCanvasOverviewZoomThreshold(value: unknown): number {
@@ -163,17 +186,35 @@ export type AgentNodeStatus =
   | 'resuming'
   | 'resume-ready'
   | 'resume-failed'
+  /** @deprecated Legacy Claude Ctrl-Z state. New Claude Agent sessions block Ctrl-Z instead. */
+  | 'suspended'
   | 'stopping'
   | 'stopped'
   | 'error'
   | 'interrupted';
 export type AgentRuntimeKind = 'pty-cli';
 export type AgentResumeStrategy = 'none' | 'claude-session-id' | 'codex-session-id' | 'fake-provider';
+export type ExecutionTerminalClipboardDiagnosticSource =
+  | 'environment'
+  | 'shortcut'
+  | 'selectionChange'
+  | 'mouseTrackingMode'
+  | 'mouseSelection'
+  | 'contextMenu'
+  | 'osc52'
+  | 'restoreSuppressed';
+export interface ExecutionTerminalClipboardDiagnosticPayload {
+  nodeId: string;
+  kind: ExecutionNodeKind;
+  source: ExecutionTerminalClipboardDiagnosticSource;
+  detail?: Record<string, unknown>;
+}
 
 export interface ExecutionSessionMetadata {
   backend: TerminalBackendKind;
   shellPath: string;
   cwd: string;
+  outputSequence?: number;
   persistenceMode: RuntimePersistenceMode;
   attachmentState: RuntimeAttachmentState;
   runtimeBackend?: RuntimeHostBackendKind;
@@ -207,6 +248,14 @@ export interface AgentNodeMetadata extends ExecutionSessionMetadata {
   resumeStoragePath?: string;
   lastResumeError?: string;
   lastBackendLabel?: string;
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
+  preSuspendLifecycle?: AgentNodeStatus;
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
+  lastSuspendReason?: 'claude-ctrl-z';
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
+  lastSuspendMessage?: string;
+  /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions no longer reactivate. */
+  lastReactivateError?: string;
 }
 
 export interface TerminalNodeMetadata extends ExecutionSessionMetadata {
@@ -333,14 +382,34 @@ export interface AgentLaunchDefaultsByProvider {
   claude: AgentProviderLaunchDefaults;
 }
 
+export type CanvasSurfaceLocation = 'editor' | 'panel';
+export type CanvasSurfaceMode = 'active' | 'standby';
+
+export interface WebviewLifecycleIdentity {
+  surface: CanvasSurfaceLocation;
+  mode: CanvasSurfaceMode;
+  generation: number;
+  frameId?: string;
+}
+
+interface WebviewLifecycleEnvelope {
+  lifecycle?: WebviewLifecycleIdentity;
+}
+
 export interface NoteMarkdownImageWorkspaceRoot {
   name: string;
   webviewResourceBaseUri: string;
 }
 
+export interface CanvasRuntimeWorkspaceFolder {
+  name: string;
+  path: string;
+}
+
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
-  surfaceLocation: 'editor' | 'panel';
+  surfaceLocation: CanvasSurfaceLocation;
+  workspaceFolders: CanvasRuntimeWorkspaceFolder[];
   defaultAgentProvider: AgentProviderKind;
   agentLaunchDefaults: AgentLaunchDefaultsByProvider;
   strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
@@ -349,6 +418,8 @@ export interface CanvasRuntimeContext {
   terminalWordSeparators: string;
   overviewMode: CanvasOverviewMode;
   overviewZoomThreshold: number;
+  multiRootPresentationMode: CanvasMultiRootPresentationMode;
+  workspaceRootWatermarksEnabled: boolean;
   filePresentationMode: CanvasFilePresentationMode;
   fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
@@ -369,6 +440,7 @@ export interface WebviewProbeNodeSnapshot {
   nodeId: string;
   kind: CanvasNodeKind;
   chromeTitle: string | null;
+  chromeContext?: string | null;
   chromeSubtitle: string | null;
   statusText: string | null;
   attentionIndicatorVisible: boolean;
@@ -390,6 +462,9 @@ export interface WebviewProbeNodeSnapshot {
   terminalVisibleLines?: string[];
   terminalTextareaLeft?: number;
   terminalTextareaTop?: number;
+  terminalMouseTrackingMode?: 'none' | 'x10' | 'vt200' | 'drag' | 'any';
+  terminalBufferType?: 'normal' | 'alternate';
+  terminalHasFocus?: boolean;
   terminalTheme?: WebviewProbeTerminalThemeSnapshot;
 }
 
@@ -413,6 +488,21 @@ export interface WebviewProbeSnapshot {
   nodes: WebviewProbeNodeSnapshot[];
   edgeCount: number;
   edges: WebviewProbeEdgeSnapshot[];
+  groupCount?: number;
+  groups?: WebviewProbeGroupSnapshot[];
+  selectedGroupIds?: string[];
+}
+
+export interface WebviewProbeGroupSnapshot {
+  groupId: string;
+  title: string | null;
+  role: CanvasGroupRole | 'user';
+  selected: boolean;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  bodyTopOffset: number;
 }
 
 export interface WebviewProbeEdgeSnapshot {
@@ -424,6 +514,54 @@ export interface WebviewProbeEdgeSnapshot {
   color: string | null;
   label: string | null;
   selected: boolean;
+}
+
+export type ExecutionPerformanceDiagnosticSource =
+  | 'webview-output-enqueue'
+  | 'webview-terminal-drain'
+  | 'webview-terminal-write'
+  | 'webview-snapshot-restore-queue'
+  | 'webview-output-snapshot-reset'
+  | 'webview-input-dispatch'
+  | 'webview-input-ack'
+  | 'webview-main-thread-lag'
+  | 'host-event-loop-lag'
+  | 'host-input-received'
+  | 'host-input-write'
+  | 'host-output-chunk'
+  | 'host-output-scheduler'
+  | 'host-output-post'
+  | 'host-state-persist';
+
+export type ExecutionPerformanceDiagnosticOwner = 'local' | 'supervisor';
+
+export interface ExecutionPerformanceDiagnosticPayload {
+  source: ExecutionPerformanceDiagnosticSource;
+  nodeId?: string;
+  kind?: ExecutionNodeKind;
+  reason?: string;
+  sequence?: number;
+  durationMs?: number;
+  webviewEpochMs?: number;
+  hostReceivedEpochMs?: number;
+  hostAckEpochMs?: number;
+  hostAckPostEpochMs?: number;
+  queueDelayMs?: number;
+  requestId?: string;
+  executionSessionId?: string;
+  characters?: number;
+  bytes?: number;
+  controllerCount?: number;
+  flushedControllerCount?: number;
+  pendingControllerCount?: number;
+  queuedSnapshotCount?: number;
+  queuedWriteCount?: number;
+  bufferLength?: number;
+  pendingOutputLength?: number;
+  owner?: ExecutionPerformanceDiagnosticOwner;
+  lifecycleStatus?: string;
+  workspaceStateMode?: string;
+  success?: boolean;
 }
 
 export type WebviewDomAction =
@@ -529,9 +667,12 @@ export type WebviewDomAction =
       delayMs?: number;
     };
 
-export type WebviewToHostMessage =
+export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'webview/ready';
+    }
+  | {
+      type: 'webview/bootstrapAck';
     }
   | {
       type: 'webview/updateViewportCenter';
@@ -546,14 +687,76 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/arrangeCanvasLayout';
+    }
+  | {
       type: 'webview/createDemoNode';
       payload: {
         requestId?: string;
         kind: CanvasCreatableNodeKind;
         preferredPosition?: CanvasNodePosition;
+        targetGroupId?: string;
+        cwd?: string;
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
+      };
+    }
+  | {
+      type: 'webview/showCreateNodeBlockedReason';
+      payload: {
+        kind: CanvasCreatableNodeKind;
+      };
+    }
+  | {
+      type: 'webview/createEmptyGroup';
+      payload: {
+        position: CanvasNodePosition;
+        size?: CanvasNodeFootprint;
+        parentGroupId?: string;
+      };
+    }
+  | {
+      type: 'webview/createGroupFromSelection';
+      payload: {
+        nodeIds: string[];
+        groupIds: string[];
+        parentGroupId?: string;
+      };
+    }
+  | {
+      type: 'webview/updateGroupTitle';
+      payload: {
+        groupId: string;
+        title: string;
+      };
+    }
+  | {
+      type: 'webview/moveGroup';
+      payload: {
+        groupId: string;
+        position: CanvasNodePosition;
+        pointerPosition?: CanvasNodePosition;
+      };
+    }
+  | {
+      type: 'webview/resizeGroup';
+      payload: {
+        groupId: string;
+        position: CanvasNodePosition;
+        size: CanvasNodeFootprint;
+      };
+    }
+  | {
+      type: 'webview/deleteGroup';
+      payload: {
+        groupId: string;
+      };
+    }
+  | {
+      type: 'webview/ungroup';
+      payload: {
+        groupId: string;
       };
     }
   | {
@@ -561,6 +764,12 @@ export type WebviewToHostMessage =
       payload: {
         id: string;
         position: CanvasNodePosition;
+        pointerPosition?: CanvasNodePosition;
+        selectedMoves?: Array<{
+          id: string;
+          position: CanvasNodePosition;
+          pointerPosition?: CanvasNodePosition;
+        }>;
       };
     }
   | {
@@ -584,6 +793,7 @@ export type WebviewToHostMessage =
       type: 'webview/applyDefaultTemplate';
       payload?: {
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -591,12 +801,14 @@ export type WebviewToHostMessage =
       payload: {
         templateId: string;
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
       type: 'webview/resetToDefaultTemplate';
       payload?: {
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -604,6 +816,7 @@ export type WebviewToHostMessage =
       payload: {
         templateId: string;
         visibleCenter?: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -621,10 +834,19 @@ export type WebviewToHostMessage =
       };
     }
   | {
+      type: 'webview/branchAgentSession';
+      payload: {
+        nodeId: string;
+      };
+    }
+  | {
       type: 'webview/attachExecutionSession';
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        requestId?: string;
+        executionSessionId?: string;
+        minOutputSequence?: number;
       };
     }
   | {
@@ -633,6 +855,9 @@ export type WebviewToHostMessage =
         nodeId: string;
         kind: ExecutionNodeKind;
         data: string;
+        sequence?: number;
+        webviewEpochMs?: number;
+        webviewPerformanceNowMs?: number;
       };
     }
   | {
@@ -684,6 +909,7 @@ export type WebviewToHostMessage =
         nodeId: string;
         kind: ExecutionNodeKind;
         candidates: ExecutionTerminalFileLinkCandidate[];
+        priority?: ExecutionTerminalFileLinkResolvePriority;
       };
     }
   | {
@@ -782,6 +1008,7 @@ export type WebviewToHostMessage =
       payload: {
         resources: ExecutionTerminalDroppedResource[];
         position: CanvasNodePosition;
+        targetGroupId?: string;
       };
     }
   | {
@@ -829,7 +1056,7 @@ export type WebviewToHostMessage =
   | {
       type: 'webview/runtimeDiagnostic';
       payload: {
-        source: 'window.error' | 'window.unhandledrejection';
+        source: 'window.error' | 'window.unhandledrejection' | 'webview.lifecycle';
         message: string;
         stack?: string;
         filename?: string;
@@ -837,6 +1064,14 @@ export type WebviewToHostMessage =
         column?: number;
         readyState?: 'loading' | 'interactive' | 'complete';
       };
+    }
+  | {
+      type: 'webview/executionPerformanceDiagnostic';
+      payload: ExecutionPerformanceDiagnosticPayload;
+    }
+  | {
+      type: 'webview/executionClipboardDiagnostic';
+      payload: ExecutionTerminalClipboardDiagnosticPayload;
     }
   | {
       type: 'webview/testProbeResult';
@@ -852,9 +1087,10 @@ export type WebviewToHostMessage =
         ok: boolean;
         errorMessage?: string;
       };
-    };
+    }
+);
 
-export type HostToWebviewMessage =
+export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'host/bootstrap';
       payload: {
@@ -903,6 +1139,12 @@ export type HostToWebviewMessage =
       };
     }
   | {
+      type: 'host/focusGroup';
+      payload: {
+        groupId: string;
+      };
+    }
+  | {
       type: 'host/error';
       payload: {
         message: string;
@@ -910,14 +1152,35 @@ export type HostToWebviewMessage =
       };
     }
   | {
+      type: 'host/executionInputAck';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        sequence?: number;
+        webviewEpochMs?: number;
+        webviewPerformanceNowMs?: number;
+        hostReceivedEpochMs: number;
+        hostAckEpochMs: number;
+        hostAckPostEpochMs?: number;
+        queueDelayMs?: number;
+        controllerCount?: number;
+        pendingControllerCount?: number;
+        queuedWriteCount?: number;
+        pendingOutputLength?: number;
+      };
+    }
+  | {
       type: 'host/executionSnapshot';
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        requestId?: string;
+        executionSessionId?: string;
         output: string;
         cols: number;
         rows: number;
         liveSession: boolean;
+        outputSequence?: number;
         serializedTerminalState?: SerializedTerminalState;
       };
     }
@@ -926,7 +1189,10 @@ export type HostToWebviewMessage =
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        executionSessionId?: string;
         chunk: string;
+        persisted?: boolean;
+        outputSequence?: number;
       };
     }
   | {
@@ -967,10 +1233,15 @@ export type HostToWebviewMessage =
       type: 'host/requestCreateNode';
       payload: {
         kind: CanvasCreatableNodeKind;
+        cwd?: string;
+        targetGroupId?: string;
         agentProvider?: AgentProviderKind;
         agentLaunchPreset?: AgentLaunchPresetKind;
         agentCustomLaunchCommand?: string;
       };
+    }
+  | {
+      type: 'host/requestCreateGroupFromSelection';
     }
   | {
       type: 'host/testProbeRequest';
@@ -985,8 +1256,11 @@ export type HostToWebviewMessage =
         requestId: string;
         action: WebviewDomAction;
       };
-    };
+    }
+);
 
+const canvasSurfaceLocations: CanvasSurfaceLocation[] = ['editor', 'panel'];
+const canvasSurfaceModes: CanvasSurfaceMode[] = ['active', 'standby'];
 const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note', 'file', 'file-list'];
 const canvasCreatableNodeKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
@@ -995,6 +1269,56 @@ const webviewClipboardTextSources: WebviewClipboardTextSource[] = [
   'note-markdown-subtitle',
   'note-markdown-metadata'
 ];
+const WEBVIEW_LIFECYCLE_FRAME_ID_MAX_LENGTH = 128;
+const WEBVIEW_LIFECYCLE_FRAME_ID_PATTERN = /^[A-Za-z0-9._:-]+$/u;
+
+export function isCanvasSurfaceLocation(value: unknown): value is CanvasSurfaceLocation {
+  return typeof value === 'string' && canvasSurfaceLocations.includes(value as CanvasSurfaceLocation);
+}
+
+export function isCanvasSurfaceMode(value: unknown): value is CanvasSurfaceMode {
+  return typeof value === 'string' && canvasSurfaceModes.includes(value as CanvasSurfaceMode);
+}
+
+export function extractWebviewMessageLifecycle(value: unknown): WebviewLifecycleIdentity | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const lifecycle = value.lifecycle;
+  if (!isRecord(lifecycle)) {
+    return undefined;
+  }
+
+  if (
+    !isCanvasSurfaceLocation(lifecycle.surface) ||
+    !isCanvasSurfaceMode(lifecycle.mode) ||
+    !isWebviewLifecycleGeneration(lifecycle.generation) ||
+    (lifecycle.frameId !== undefined && !isWebviewLifecycleFrameId(lifecycle.frameId))
+  ) {
+    return undefined;
+  }
+
+  return {
+    surface: lifecycle.surface,
+    mode: lifecycle.mode,
+    generation: lifecycle.generation,
+    frameId: typeof lifecycle.frameId === 'string' ? lifecycle.frameId : undefined
+  };
+}
+
+function isWebviewLifecycleGeneration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isWebviewLifecycleFrameId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= WEBVIEW_LIFECYCLE_FRAME_ID_MAX_LENGTH &&
+    WEBVIEW_LIFECYCLE_FRAME_ID_PATTERN.test(value)
+  );
+}
 
 export function isCanvasNodeKind(value: unknown): value is CanvasNodeKind {
   return typeof value === 'string' && canvasNodeKinds.includes(value as CanvasNodeKind);
@@ -1033,7 +1357,9 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (
     value.type === 'webview/ready' ||
+    value.type === 'webview/bootstrapAck' ||
     value.type === 'webview/resetDemoState' ||
+    value.type === 'webview/arrangeCanvasLayout' ||
     value.type === 'webview/saveCanvasAsTemplate'
   ) {
     return { type: value.type };
@@ -1067,19 +1393,123 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/createEmptyGroup') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || !isCanvasNodePosition(payload.position)) {
+      return null;
+    }
+
+    return {
+      type: 'webview/createEmptyGroup',
+      payload: {
+        position: payload.position,
+        size: isCanvasNodeFootprint(payload.size) ? payload.size : undefined,
+        parentGroupId: typeof payload.parentGroupId === 'string' ? payload.parentGroupId : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/createGroupFromSelection') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || !Array.isArray(payload.nodeIds) || !Array.isArray(payload.groupIds)) {
+      return null;
+    }
+
+    return {
+      type: 'webview/createGroupFromSelection',
+      payload: {
+        nodeIds: payload.nodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string'),
+        groupIds: payload.groupIds.filter((groupId): groupId is string => typeof groupId === 'string'),
+        parentGroupId: typeof payload.parentGroupId === 'string' ? payload.parentGroupId : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/updateGroupTitle') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.groupId !== 'string' || typeof payload.title !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/updateGroupTitle',
+      payload: {
+        groupId: payload.groupId,
+        title: payload.title
+      }
+    };
+  }
+
+  if (value.type === 'webview/moveGroup') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.groupId !== 'string' || !isCanvasNodePosition(payload.position)) {
+      return null;
+    }
+
+    return {
+      type: 'webview/moveGroup',
+      payload: {
+        groupId: payload.groupId,
+        position: payload.position,
+        pointerPosition: isCanvasNodePosition(payload.pointerPosition) ? payload.pointerPosition : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/resizeGroup') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.groupId !== 'string' ||
+      !isCanvasNodePosition(payload.position) ||
+      !isCanvasNodeFootprint(payload.size)
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/resizeGroup',
+      payload: {
+        groupId: payload.groupId,
+        position: payload.position,
+        size: payload.size
+      }
+    };
+  }
+
+  if (value.type === 'webview/deleteGroup' || value.type === 'webview/ungroup') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.groupId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: value.type,
+      payload: {
+        groupId: payload.groupId
+      }
+    };
+  }
+
   if (value.type === 'webview/applyDefaultTemplate' || value.type === 'webview/resetToDefaultTemplate') {
     const payload = isRecord(value.payload) ? value.payload : null;
-    if (payload && payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) {
+    if (
+      payload &&
+      ((payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) ||
+        (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string'))
+    ) {
       return null;
     }
     const visibleCenterValue = payload?.visibleCenter;
     const visibleCenter = isCanvasNodePosition(visibleCenterValue) ? visibleCenterValue : undefined;
+    const targetGroupId = typeof payload?.targetGroupId === 'string' ? payload.targetGroupId : undefined;
 
     if (value.type === 'webview/applyDefaultTemplate') {
       return {
         type: 'webview/applyDefaultTemplate',
         payload: {
-          visibleCenter
+          visibleCenter,
+          targetGroupId
         }
       };
     }
@@ -1087,7 +1517,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     return {
       type: 'webview/resetToDefaultTemplate',
       payload: {
-        visibleCenter
+        visibleCenter,
+        targetGroupId
       }
     };
   }
@@ -1098,7 +1529,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       !payload ||
       typeof payload.templateId !== 'string' ||
       payload.templateId.trim().length === 0 ||
-      (payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter))
+      (payload.visibleCenter !== undefined && !isCanvasNodePosition(payload.visibleCenter)) ||
+      (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string')
     ) {
       return null;
     }
@@ -1106,12 +1538,14 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const normalizedTemplateId = payload.templateId.trim();
     const visibleCenterValue = payload.visibleCenter;
     const visibleCenter = isCanvasNodePosition(visibleCenterValue) ? visibleCenterValue : undefined;
+    const targetGroupId = typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined;
     if (value.type === 'webview/applyTemplate') {
       return {
         type: 'webview/applyTemplate',
         payload: {
           templateId: normalizedTemplateId,
-          visibleCenter
+          visibleCenter,
+          targetGroupId
         }
       };
     }
@@ -1120,7 +1554,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/resetToTemplate',
       payload: {
         templateId: normalizedTemplateId,
-        visibleCenter
+        visibleCenter,
+        targetGroupId
       }
     };
   }
@@ -1138,11 +1573,21 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       return null;
     }
 
+    const minOutputSequence = normalizeNonNegativeInteger(payload.minOutputSequence);
     return {
       type: value.type,
       payload: {
         nodeId: payload.nodeId,
-        kind: payload.kind
+        kind: payload.kind,
+        ...(value.type === 'webview/attachExecutionSession' && typeof payload.requestId === 'string'
+          ? { requestId: payload.requestId }
+          : {}),
+        ...(value.type === 'webview/attachExecutionSession' && typeof payload.executionSessionId === 'string'
+          ? { executionSessionId: payload.executionSessionId }
+          : {}),
+        ...(value.type === 'webview/attachExecutionSession' && minOutputSequence !== undefined
+          ? { minOutputSequence }
+          : {})
       }
     };
   }
@@ -1177,6 +1622,20 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         rows: payload.rows,
         resume: payload.resume === true,
         provider: payload.kind === 'agent' && isAgentProviderKind(payload.provider) ? payload.provider : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/branchAgentSession') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string') {
+      return null;
+    }
+
+    return {
+      type: 'webview/branchAgentSession',
+      payload: {
+        nodeId: payload.nodeId
       }
     };
   }
@@ -1220,7 +1679,10 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       payload: {
         nodeId: payload.nodeId,
         kind: payload.kind,
-        data: payload.data
+        data: payload.data,
+        sequence: normalizeNonNegativeInteger(payload.sequence),
+        webviewEpochMs: normalizeNonNegativeFiniteNumber(payload.webviewEpochMs),
+        webviewPerformanceNowMs: normalizeNonNegativeFiniteNumber(payload.webviewPerformanceNowMs)
       }
     };
   }
@@ -1342,7 +1804,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       typeof payload.nodeId !== 'string' ||
       !isExecutionNodeKind(payload.kind) ||
       !Array.isArray(payload.candidates) ||
-      !payload.candidates.every((candidate) => isExecutionTerminalFileLinkCandidate(candidate))
+      !payload.candidates.every((candidate) => isExecutionTerminalFileLinkCandidate(candidate)) ||
+      (payload.priority !== undefined && !isExecutionTerminalFileLinkResolvePriority(payload.priority))
     ) {
       return null;
     }
@@ -1353,7 +1816,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         requestId: payload.requestId,
         nodeId: payload.nodeId,
         kind: payload.kind,
-        candidates: payload.candidates
+        candidates: payload.candidates,
+        ...(payload.priority !== undefined ? { priority: payload.priority } : {})
       }
     };
   }
@@ -1547,6 +2011,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       !payload ||
       !Array.isArray(payload.resources) ||
       !payload.resources.every((resource) => isExecutionTerminalDroppedResource(resource)) ||
+      (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
       !position ||
       typeof position.x !== 'number' ||
       typeof position.y !== 'number' ||
@@ -1563,7 +2028,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         position: {
           x: Math.round(position.x),
           y: Math.round(position.y)
-        }
+        },
+        targetGroupId: typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined
       }
     };
   }
@@ -1670,7 +2136,11 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const payload = isRecord(value.payload) ? value.payload : null;
     if (
       !payload ||
-      (payload.source !== 'window.error' && payload.source !== 'window.unhandledrejection') ||
+      (
+        payload.source !== 'window.error' &&
+        payload.source !== 'window.unhandledrejection' &&
+        payload.source !== 'webview.lifecycle'
+      ) ||
       typeof payload.message !== 'string' ||
       (payload.stack !== undefined && typeof payload.stack !== 'string') ||
       (payload.filename !== undefined && typeof payload.filename !== 'string') ||
@@ -1703,6 +2173,32 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
             ? payload.readyState
             : undefined
       }
+    };
+  }
+
+  if (value.type === 'webview/executionPerformanceDiagnostic') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const normalizedPayload = normalizeExecutionPerformanceDiagnosticPayload(payload);
+    if (!normalizedPayload) {
+      return null;
+    }
+
+    return {
+      type: 'webview/executionPerformanceDiagnostic',
+      payload: normalizedPayload
+    };
+  }
+
+  if (value.type === 'webview/executionClipboardDiagnostic') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const normalizedPayload = normalizeExecutionClipboardDiagnosticPayload(payload);
+    if (!normalizedPayload) {
+      return null;
+    }
+
+    return {
+      type: 'webview/executionClipboardDiagnostic',
+      payload: normalizedPayload
     };
   }
 
@@ -1766,11 +2262,33 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       return null;
     }
 
+    const selectedMoves = Array.isArray(payload.selectedMoves)
+      ? payload.selectedMoves.flatMap((entry) => {
+          if (
+            !isRecord(entry) ||
+            typeof entry.id !== 'string' ||
+            !isCanvasNodePosition(entry.position)
+          ) {
+            return [];
+          }
+
+          return [
+            {
+              id: entry.id,
+              position: entry.position,
+              pointerPosition: isCanvasNodePosition(entry.pointerPosition) ? entry.pointerPosition : undefined
+            }
+          ];
+        })
+      : undefined;
+
     return {
       type: 'webview/moveNode',
       payload: {
         id: payload.id,
-        position: payload.position
+        position: payload.position,
+        pointerPosition: isCanvasNodePosition(payload.pointerPosition) ? payload.pointerPosition : undefined,
+        selectedMoves: selectedMoves && selectedMoves.length > 0 ? selectedMoves : undefined
       }
     };
   }
@@ -1803,6 +2321,8 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       (payload.requestId !== undefined && typeof payload.requestId !== 'string') ||
       !isCanvasCreatableNodeKind(payload.kind) ||
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
+      (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
+      (payload.cwd !== undefined && typeof payload.cwd !== 'string') ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
       (payload.agentLaunchPreset !== undefined && !isAgentLaunchPresetKind(payload.agentLaunchPreset)) ||
       (payload.agentCustomLaunchCommand !== undefined && typeof payload.agentCustomLaunchCommand !== 'string')
@@ -1818,10 +2338,26 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         preferredPosition: isCanvasNodePosition(payload.preferredPosition)
           ? payload.preferredPosition
           : undefined,
+        targetGroupId: typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined,
+        cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
         agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined,
         agentLaunchPreset: isAgentLaunchPresetKind(payload.agentLaunchPreset) ? payload.agentLaunchPreset : undefined,
         agentCustomLaunchCommand:
           typeof payload.agentCustomLaunchCommand === 'string' ? payload.agentCustomLaunchCommand : undefined
+      }
+    };
+  }
+
+  if (value.type === 'webview/showCreateNodeBlockedReason') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || !isCanvasCreatableNodeKind(payload.kind)) {
+      return null;
+    }
+
+    return {
+      type: 'webview/showCreateNodeBlockedReason',
+      payload: {
+        kind: payload.kind
       }
     };
   }
@@ -1833,12 +2369,134 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function normalizeExecutionPerformanceDiagnosticPayload(
+  value: unknown
+): ExecutionPerformanceDiagnosticPayload | undefined {
+  if (!isRecord(value) || !isExecutionPerformanceDiagnosticSource(value.source)) {
+    return undefined;
+  }
+
+  if (value.kind !== undefined && !isExecutionNodeKind(value.kind)) {
+    return undefined;
+  }
+  if (value.owner !== undefined && !isExecutionPerformanceDiagnosticOwner(value.owner)) {
+    return undefined;
+  }
+
+  return {
+    source: value.source,
+    nodeId: typeof value.nodeId === 'string' ? value.nodeId : undefined,
+    kind: isExecutionNodeKind(value.kind) ? value.kind : undefined,
+    reason: typeof value.reason === 'string' ? value.reason : undefined,
+    sequence: normalizeNonNegativeInteger(value.sequence),
+    durationMs: normalizeNonNegativeFiniteNumber(value.durationMs),
+    webviewEpochMs: normalizeNonNegativeFiniteNumber(value.webviewEpochMs),
+    hostReceivedEpochMs: normalizeNonNegativeFiniteNumber(value.hostReceivedEpochMs),
+    hostAckEpochMs: normalizeNonNegativeFiniteNumber(value.hostAckEpochMs),
+    hostAckPostEpochMs: normalizeNonNegativeFiniteNumber(value.hostAckPostEpochMs),
+    queueDelayMs: normalizeNonNegativeFiniteNumber(value.queueDelayMs),
+    requestId: typeof value.requestId === 'string' ? value.requestId : undefined,
+    executionSessionId: typeof value.executionSessionId === 'string' ? value.executionSessionId : undefined,
+    characters: normalizeNonNegativeInteger(value.characters),
+    bytes: normalizeNonNegativeInteger(value.bytes),
+    controllerCount: normalizeNonNegativeInteger(value.controllerCount),
+    flushedControllerCount: normalizeNonNegativeInteger(value.flushedControllerCount),
+    pendingControllerCount: normalizeNonNegativeInteger(value.pendingControllerCount),
+    queuedSnapshotCount: normalizeNonNegativeInteger(value.queuedSnapshotCount),
+    queuedWriteCount: normalizeNonNegativeInteger(value.queuedWriteCount),
+    bufferLength: normalizeNonNegativeInteger(value.bufferLength),
+    pendingOutputLength: normalizeNonNegativeInteger(value.pendingOutputLength),
+    owner: isExecutionPerformanceDiagnosticOwner(value.owner) ? value.owner : undefined,
+    lifecycleStatus: typeof value.lifecycleStatus === 'string' ? value.lifecycleStatus : undefined,
+    workspaceStateMode: typeof value.workspaceStateMode === 'string' ? value.workspaceStateMode : undefined,
+    success: typeof value.success === 'boolean' ? value.success : undefined
+  };
+}
+
+function isExecutionPerformanceDiagnosticSource(
+  value: unknown
+): value is ExecutionPerformanceDiagnosticSource {
+  return (
+    value === 'webview-output-enqueue' ||
+    value === 'webview-terminal-drain' ||
+    value === 'webview-terminal-write' ||
+    value === 'webview-snapshot-restore-queue' ||
+    value === 'webview-output-snapshot-reset' ||
+    value === 'webview-input-dispatch' ||
+    value === 'webview-input-ack' ||
+    value === 'webview-main-thread-lag' ||
+    value === 'host-event-loop-lag' ||
+    value === 'host-input-received' ||
+    value === 'host-input-write' ||
+    value === 'host-output-chunk' ||
+    value === 'host-output-scheduler' ||
+    value === 'host-output-post' ||
+    value === 'host-state-persist'
+  );
+}
+
+function isExecutionPerformanceDiagnosticOwner(
+  value: unknown
+): value is ExecutionPerformanceDiagnosticOwner {
+  return value === 'local' || value === 'supervisor';
+}
+
+function normalizeExecutionClipboardDiagnosticPayload(
+  value: unknown
+): ExecutionTerminalClipboardDiagnosticPayload | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.nodeId !== 'string' ||
+    !isExecutionNodeKind(value.kind) ||
+    !isExecutionClipboardDiagnosticSource(value.source) ||
+    (value.detail !== undefined && !isRecord(value.detail))
+  ) {
+    return undefined;
+  }
+
+  return {
+    nodeId: value.nodeId,
+    kind: value.kind,
+    source: value.source,
+    detail: value.detail === undefined ? undefined : value.detail
+  };
+}
+
+function isExecutionClipboardDiagnosticSource(
+  value: unknown
+): value is ExecutionTerminalClipboardDiagnosticSource {
+  return (
+    value === 'environment' ||
+    value === 'shortcut' ||
+    value === 'selectionChange' ||
+    value === 'mouseTrackingMode' ||
+    value === 'mouseSelection' ||
+    value === 'contextMenu' ||
+    value === 'osc52' ||
+    value === 'restoreSuppressed'
+  );
+}
+
+function normalizeNonNegativeFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function normalizeNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
 function isCanvasNodePosition(value: unknown): value is CanvasNodePosition {
-  return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number';
+  return (
+    isRecord(value) &&
+    typeof value.x === 'number' &&
+    Number.isFinite(value.x) &&
+    typeof value.y === 'number' &&
+    Number.isFinite(value.y)
+  );
 }
 
 function isCanvasNodeFootprint(value: unknown): value is CanvasNodeFootprint {
@@ -2053,10 +2711,17 @@ function isExecutionTerminalFileLinkSource(value: unknown): value is ExecutionTe
   return (
     value === 'detected' ||
     value === 'refined' ||
+    value === 'styled' ||
     value === 'fallback' ||
     value === 'hardwrap' ||
     value === 'explicit-uri'
   );
+}
+
+function isExecutionTerminalFileLinkResolvePriority(
+  value: unknown
+): value is ExecutionTerminalFileLinkResolvePriority {
+  return value === 'interactive' || value === 'background';
 }
 
 function isPositiveInteger(value: unknown): value is number {
@@ -2069,6 +2734,7 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     typeof value.nodeId === 'string' &&
     isCanvasNodeKind(value.kind) &&
     isNullableString(value.chromeTitle) &&
+    (value.chromeContext === undefined || isNullableString(value.chromeContext)) &&
     isNullableString(value.chromeSubtitle) &&
     isNullableString(value.statusText) &&
     typeof value.attentionIndicatorVisible === 'boolean' &&
@@ -2105,6 +2771,16 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
       (typeof value.terminalTextareaLeft === 'number' && Number.isFinite(value.terminalTextareaLeft))) &&
     (value.terminalTextareaTop === undefined ||
       (typeof value.terminalTextareaTop === 'number' && Number.isFinite(value.terminalTextareaTop))) &&
+    (value.terminalMouseTrackingMode === undefined ||
+      value.terminalMouseTrackingMode === 'none' ||
+      value.terminalMouseTrackingMode === 'x10' ||
+      value.terminalMouseTrackingMode === 'vt200' ||
+      value.terminalMouseTrackingMode === 'drag' ||
+      value.terminalMouseTrackingMode === 'any') &&
+    (value.terminalBufferType === undefined ||
+      value.terminalBufferType === 'normal' ||
+      value.terminalBufferType === 'alternate') &&
+    (value.terminalHasFocus === undefined || typeof value.terminalHasFocus === 'boolean') &&
     (value.terminalTheme === undefined || isWebviewProbeTerminalThemeSnapshot(value.terminalTheme))
   );
 }
@@ -2139,7 +2815,32 @@ function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
     typeof value.edgeCount === 'number' &&
     Number.isInteger(value.edgeCount) &&
     Array.isArray(value.edges) &&
-    value.edges.every((edge) => isWebviewProbeEdgeSnapshot(edge))
+    value.edges.every((edge) => isWebviewProbeEdgeSnapshot(edge)) &&
+    (value.groupCount === undefined || (typeof value.groupCount === 'number' && Number.isInteger(value.groupCount))) &&
+    (value.groups === undefined ||
+      (Array.isArray(value.groups) && value.groups.every((group) => isWebviewProbeGroupSnapshot(group)))) &&
+    (value.selectedGroupIds === undefined ||
+      (Array.isArray(value.selectedGroupIds) && value.selectedGroupIds.every((groupId) => typeof groupId === 'string')))
+  );
+}
+
+function isWebviewProbeGroupSnapshot(value: unknown): value is WebviewProbeGroupSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.groupId === 'string' &&
+    isNullableString(value.title) &&
+    (value.role === 'user' || value.role === 'workspace-root') &&
+    typeof value.selected === 'boolean' &&
+    typeof value.left === 'number' &&
+    Number.isFinite(value.left) &&
+    typeof value.top === 'number' &&
+    Number.isFinite(value.top) &&
+    typeof value.width === 'number' &&
+    Number.isFinite(value.width) &&
+    typeof value.height === 'number' &&
+    Number.isFinite(value.height) &&
+    typeof value.bodyTopOffset === 'number' &&
+    Number.isFinite(value.bodyTopOffset)
   );
 }
 

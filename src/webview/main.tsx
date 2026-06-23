@@ -14,23 +14,21 @@ import ReactFlow, {
   ConnectionMode,
   Controls,
   EdgeLabelRenderer,
-  getBoundsOfRects,
-  getNodesBounds,
+  getViewportForBounds,
   Handle,
   MarkerType,
-  MiniMap,
-  NodeResizer,
   Position,
+  useReactFlow,
   useStore,
   useViewport,
   type Connection,
   type Edge,
   type EdgeMouseHandler,
   type EdgeProps,
-  type MiniMapNodeProps,
   type ReactFlowInstance,
   type ReactFlowState,
   type Node,
+  type NodeDragHandler,
   type NodeMouseHandler,
   type NodeProps,
   type Viewport
@@ -60,6 +58,7 @@ import type {
   AgentProviderKind,
   AgentProviderLaunchDefaults,
   CanvasCreatableNodeKind,
+  CanvasGroupSummary,
   CanvasEdgeArrowMode,
   CanvasEdgeColor,
   CanvasEdgeOwner,
@@ -83,7 +82,11 @@ import type {
   HostToWebviewMessage,
   WebviewDomAction,
   WebviewClipboardTextSource,
+  WebviewLifecycleIdentity,
+  ExecutionPerformanceDiagnosticPayload,
+  ExecutionTerminalClipboardDiagnosticPayload,
   WebviewProbeEdgeSnapshot,
+  WebviewProbeGroupSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
   WebviewToHostMessage
@@ -92,6 +95,8 @@ import {
   canvasEdgePresetColors,
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
   NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
+  extractWebviewMessageLifecycle,
+  normalizeCanvasMultiRootPresentationMode,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
   normalizeCanvasStrongTerminalAttentionReminderMode,
@@ -118,6 +123,7 @@ import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
   ExecutionTerminalOpenLink,
+  ExecutionTerminalFileLinkResolvePriority,
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
 import {
@@ -126,6 +132,7 @@ import {
 } from '../common/executionTerminalLinks';
 import { toggleNoteMarkdownChecklistAtLine } from '../common/noteMarkdownChecklist';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
+import { formatExecutionCwdLabel, formatExecutionCwdTooltip } from '../common/executionCwdLabel';
 import {
   estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
@@ -146,18 +153,185 @@ import {
 import { createNoteBodyIndentEdit, createNoteBodyOutdentEdit } from './noteBodyIndent';
 import { parseNoteMarkdownFrontMatter, type NoteMarkdownFrontMatter } from './noteMarkdownFrontMatter';
 
+type CanvasGroupRole = CanvasGroupSummary['role'];
+
 declare function acquireVsCodeApi<T>(): {
   getState(): T | undefined;
   setState(state: T): void;
   postMessage(message: unknown): void;
 };
 
+declare global {
+  interface Window {
+    __DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__?: WebviewLifecycleIdentity;
+  }
+}
+
 interface LocalUiState {
   selectedNodeId?: string;
+  selectedNodeIds?: string[];
+  selectedGroupId?: string;
+  selectedGroupIds?: string[];
   viewport?: Viewport;
+  paneGallery?: PaneGalleryLocalState;
   fileListViewModes?: Record<string, FileListViewMode>;
   selectedFileListEntries?: Record<string, string>;
   collapsedFileListTreeBranches?: Record<string, string[]>;
+}
+
+type PaneGalleryLayoutMode = 'dynamic' | 'grid' | 'topThumbnails' | 'sideThumbnails';
+type PaneGalleryOverviewLayoutMode = Extract<PaneGalleryLayoutMode, 'dynamic' | 'grid'>;
+type PaneGalleryThumbnailLayoutMode = Extract<PaneGalleryLayoutMode, 'topThumbnails' | 'sideThumbnails'>;
+type PaneGalleryViewportRole = 'overview' | 'main';
+
+const PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT: PaneGalleryOverviewLayoutMode = 'dynamic';
+const PANE_GALLERY_DEFAULT_THUMBNAIL_LAYOUT: PaneGalleryThumbnailLayoutMode = 'sideThumbnails';
+
+interface PaneGalleryLocalState {
+  layout?: PaneGalleryLayoutMode;
+  activeRootGroupId?: string;
+  lastOverviewLayout?: PaneGalleryOverviewLayoutMode;
+  lastThumbnailLayout?: PaneGalleryThumbnailLayoutMode;
+  overviewViewports?: Record<string, Viewport>;
+  mainViewports?: Record<string, Viewport>;
+}
+
+interface CanvasSurfaceBinding {
+  flow: ReactFlowInstance<CanvasNodeData> | null | undefined;
+  shell: HTMLDivElement | null;
+  viewportKind: 'rootGroups' | 'paneGallery';
+  rootGroupId?: string;
+  paneGalleryViewportRole?: PaneGalleryViewportRole;
+}
+
+function normalizePaneGalleryLocalState(value: unknown): PaneGalleryLocalState | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const candidate = value as Partial<PaneGalleryLocalState> & {
+    paneViewports?: unknown;
+    mainFitRootGroupIds?: unknown;
+  };
+  const legacyPaneViewports = normalizePaneGalleryViewportRecord(candidate.paneViewports);
+  const legacyMainRootIds = new Set(normalizeUniqueStringArray(candidate.mainFitRootGroupIds) ?? []);
+  const overviewViewports =
+    normalizePaneGalleryViewportRecord(candidate.overviewViewports) ??
+    filterPaneGalleryViewportRecord(legacyPaneViewports, (rootGroupId) => !legacyMainRootIds.has(rootGroupId));
+  const mainViewports =
+    normalizePaneGalleryViewportRecord(candidate.mainViewports) ??
+    filterPaneGalleryViewportRecord(legacyPaneViewports, (rootGroupId) => legacyMainRootIds.has(rootGroupId));
+  const normalizedLayout = normalizePaneGalleryLayoutMode(candidate.layout);
+  const normalized: PaneGalleryLocalState = {
+    layout: normalizedLayout,
+    activeRootGroupId: typeof candidate.activeRootGroupId === 'string' ? candidate.activeRootGroupId : undefined,
+    lastOverviewLayout:
+      normalizePaneGalleryOverviewLayoutMode(candidate.lastOverviewLayout) ??
+      normalizePaneGalleryOverviewLayoutMode(normalizedLayout),
+    lastThumbnailLayout:
+      normalizePaneGalleryThumbnailLayoutMode(candidate.lastThumbnailLayout) ??
+      normalizePaneGalleryThumbnailLayoutMode(normalizedLayout),
+    overviewViewports: overviewViewports && Object.keys(overviewViewports).length > 0 ? overviewViewports : undefined,
+    mainViewports: mainViewports && Object.keys(mainViewports).length > 0 ? mainViewports : undefined
+  };
+
+  return Object.values(normalized).some((entry) => entry !== undefined) ? normalized : undefined;
+}
+
+function normalizePaneGalleryViewportRecord(value: unknown): Record<string, Viewport> | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const normalized = Object.fromEntries(
+    Object.entries(value).flatMap(([rootGroupId, viewport]) => {
+      if (
+        typeof rootGroupId !== 'string' ||
+        !viewport ||
+        typeof viewport !== 'object' ||
+        typeof (viewport as Partial<Viewport>).x !== 'number' ||
+        typeof (viewport as Partial<Viewport>).y !== 'number' ||
+        typeof (viewport as Partial<Viewport>).zoom !== 'number'
+      ) {
+        return [];
+      }
+
+      const normalizedViewport = viewport as Viewport;
+      if (
+        !Number.isFinite(normalizedViewport.x) ||
+        !Number.isFinite(normalizedViewport.y) ||
+        !Number.isFinite(normalizedViewport.zoom) ||
+        normalizedViewport.zoom <= 0
+      ) {
+        return [];
+      }
+
+      return [[rootGroupId, normalizedViewport]];
+    })
+  );
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function filterPaneGalleryViewportRecord(
+  record: Record<string, Viewport> | undefined,
+  predicate: (rootGroupId: string) => boolean
+): Record<string, Viewport> | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const filtered = Object.fromEntries(Object.entries(record).filter(([rootGroupId]) => predicate(rootGroupId)));
+  return Object.keys(filtered).length > 0 ? filtered : undefined;
+}
+
+function normalizeUniqueStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const entries = [...new Set(value.filter((entry): entry is string => typeof entry === 'string'))];
+  return entries.length > 0 ? entries : undefined;
+}
+
+function normalizePaneGalleryLayoutMode(value: unknown): PaneGalleryLayoutMode | undefined {
+  return value === 'dynamic' || value === 'grid' || value === 'topThumbnails' || value === 'sideThumbnails'
+    ? value
+    : undefined;
+}
+
+function isPaneGalleryThumbnailLayout(layout: PaneGalleryLayoutMode): boolean {
+  return layout === 'topThumbnails' || layout === 'sideThumbnails';
+}
+
+function resolvePaneGalleryViewportRole(layout: PaneGalleryLayoutMode): PaneGalleryViewportRole {
+  return isPaneGalleryThumbnailLayout(layout) ? 'main' : 'overview';
+}
+
+function normalizePaneGalleryOverviewLayoutMode(value: unknown): PaneGalleryOverviewLayoutMode | undefined {
+  return value === 'dynamic' || value === 'grid' ? value : undefined;
+}
+
+function normalizePaneGalleryThumbnailLayoutMode(value: unknown): PaneGalleryThumbnailLayoutMode | undefined {
+  return value === 'topThumbnails' || value === 'sideThumbnails' ? value : undefined;
+}
+
+function resolvePaneGalleryLastOverviewLayout(state: PaneGalleryLocalState | undefined): PaneGalleryOverviewLayoutMode {
+  return (
+    normalizePaneGalleryOverviewLayoutMode(state?.lastOverviewLayout) ??
+    normalizePaneGalleryOverviewLayoutMode(state?.layout) ??
+    PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+  );
+}
+
+function resolvePaneGalleryLastThumbnailLayout(
+  state: PaneGalleryLocalState | undefined
+): PaneGalleryThumbnailLayoutMode {
+  return (
+    normalizePaneGalleryThumbnailLayoutMode(state?.lastThumbnailLayout) ??
+    normalizePaneGalleryThumbnailLayoutMode(state?.layout) ??
+    PANE_GALLERY_DEFAULT_THUMBNAIL_LAYOUT
+  );
 }
 
 interface CanvasViewportSize {
@@ -177,9 +351,14 @@ interface CanvasMiniMapRect {
   height: number;
 }
 
-interface CanvasMiniMapViewportOutlineState {
-  viewBB: CanvasMiniMapRect;
-  boundingRect: CanvasMiniMapRect;
+interface CanvasSpatialRect extends CanvasMiniMapRect {
+  id: string;
+  kind: 'node' | 'group' | 'workspace-root';
+}
+
+interface CanvasSpatialBounds {
+  rects: CanvasSpatialRect[];
+  bounds?: CanvasMiniMapRect;
 }
 
 const CanvasOverviewInteractionContext = React.createContext(false);
@@ -193,19 +372,78 @@ function canvasOverviewInertProps(disabled: boolean): React.HTMLAttributes<HTMLE
   return disabled ? overviewInertAttributes : {};
 }
 
+function shouldSelectExecutionNodeForTerminalSelection(terminal: Terminal): boolean {
+  return terminal.getSelection().length > 0 || terminal.textarea === document.activeElement;
+}
+
+function resolveSelectedGroupIds(state: Pick<LocalUiState, 'selectedGroupId' | 'selectedGroupIds'>): string[] {
+  return state.selectedGroupIds ?? (state.selectedGroupId ? [state.selectedGroupId] : []);
+}
+
+function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 function CanvasNodeInteractionBoundary(props: {
+  nodeId: string;
   disabled: boolean;
+  onModifierSelectNode: (nodeId: string) => void;
   children: JSX.Element;
 }): JSX.Element {
+  const handlePointerDownCapture = (event: React.PointerEvent): void => {
+    if (event.button !== 0 || isModifierSelectionInteractiveTarget(event.target)) {
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    props.onModifierSelectNode(props.nodeId);
+  };
+
   return (
     <CanvasOverviewInteractionContext.Provider value={props.disabled}>
-      {props.children}
+      {React.cloneElement(props.children, {
+        onPointerDownCapture: composeReactEventHandlers(
+          props.children.props.onPointerDownCapture,
+          handlePointerDownCapture
+        )
+      })}
     </CanvasOverviewInteractionContext.Provider>
   );
 }
 
+function composeReactEventHandlers<E extends React.SyntheticEvent>(
+  first: ((event: E) => void) | undefined,
+  second: (event: E) => void
+): (event: E) => void {
+  return (event) => {
+    first?.(event);
+    if (!event.isPropagationStopped()) {
+      second(event);
+    }
+  };
+}
+
 interface EdgeLabelEditorState {
   edgeId: string;
+}
+
+interface ExecutionInputDispatchMetadata {
+  sequence: number;
+  webviewEpochMs: number;
+  webviewPerformanceNowMs: number;
+}
+
+interface PendingExecutionInputAck {
+  nodeId: string;
+  kind: ExecutionNodeKind;
+  webviewEpochMs: number;
+  webviewPerformanceNowMs: number;
+  characters: number;
+  bytes: number;
 }
 
 interface CanvasNodeData {
@@ -223,6 +461,7 @@ interface CanvasNodeData {
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   noteMarkdownImageWorkspaceRoots: NoteMarkdownImageWorkspaceRoot[];
+  workspaceFolders: CanvasRuntimeContext['workspaceFolders'];
   fileListViewMode: FileListViewMode;
   selectedFileListEntryPath?: string;
   collapsedFileListTreeBranchKeys?: string[];
@@ -247,8 +486,15 @@ interface CanvasNodeData {
     provider?: AgentProviderKind,
     resume?: boolean
   ) => void;
+  onBranchAgentSession?: (nodeId: string) => void;
   onAttachExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
-  onExecutionInput?: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
+  onExecutionInput?: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    data: string,
+    metadata?: ExecutionInputDispatchMetadata
+  ) => void;
+  onShowTransientError?: (message: string) => void;
   onDropExecutionResource?: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -270,6 +516,7 @@ interface CanvasNodeData {
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
   ) => void;
+  onExecutionClipboardDiagnostic?: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   onResizeExecution?: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution?: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNodeTitle?: (nodeId: string, title: string) => void;
@@ -292,9 +539,16 @@ interface CanvasNodeData {
   }) => void;
   onClearAssociatedNoteMarkdownDraft?: (nodeId: string) => void;
   onCopyAssociatedNoteMarkdownDraft?: (nodeId: string, content: string) => void;
+  onDraftNodeLayout?: (nodeId: string, draft: CanvasNodeLayoutDraft | null) => void;
+  onResizeNodePointerMove?: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeNodeEnd?: () => void;
   onResizeNode?: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport?: (nodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
+  onModifierSelectNode?: (nodeId: string) => void;
 }
 
 type CanvasFlowNode = Node<CanvasNodeData>;
@@ -372,17 +626,60 @@ interface CanvasNodeLayoutDraft {
   position?: CanvasNodePosition;
   size?: CanvasNodeFootprint;
 }
+
+interface CanvasNodeResizeDraft {
+  position: CanvasNodePosition;
+  size: CanvasNodeFootprint;
+}
+
+type CanvasNodeResizeDirection =
+  | 'top'
+  | 'right'
+  | 'bottom'
+  | 'left'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
 type CanvasContextMenuView = 'root' | 'agent-launch-mode' | 'apply-template' | 'reset-template';
 interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
   flowAnchor: CanvasNodePosition;
   view: CanvasContextMenuView;
+  targetGroupId?: string;
   selectedAgentProvider?: AgentProviderKind;
+  selectedNodeIds?: string[];
+  selectedGroupIds?: string[];
+  canCreateGroupFromSelection?: boolean;
+}
+
+interface CanvasGroupDraft {
+  position?: CanvasNodePosition;
+  size?: CanvasNodeFootprint;
+}
+type CanvasGroupResizeDirection =
+  | 'top'
+  | 'right'
+  | 'bottom'
+  | 'left'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
+
+interface AutoPanController {
+  handlePointerMove(
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ): void;
+  stop(): void;
 }
 type NodeViewportFocusMode = 'fit' | 'center-no-extra-zoom-if-visible';
+type CanvasViewportObjectKind = 'node' | 'group';
 interface PendingNodeViewportRequest {
-  nodeId: string;
+  objectId: string;
+  objectKind: CanvasViewportObjectKind;
   mode: NodeViewportFocusMode;
   selectNode: boolean;
 }
@@ -395,9 +692,11 @@ interface PendingManualNodeCreateRequest {
   knownNodeIdsSnapshot: ReadonlySet<string>;
   kind: CanvasCreatableNodeKind;
   preferredPosition?: CanvasNodePosition;
+  targetGroupId?: string;
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
+  cwd?: string;
 }
 interface ExecutionNodeHelpContent {
   title: string;
@@ -415,12 +714,14 @@ const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
     '拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径',
     'Panel 模式下可拖拽画板标签页在底部面板与右侧辅助侧栏之间切换位置',
     '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）',
-    '通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。Claude Code 需设置 preferredNotifChannel: "iterm2"；Codex 需在 [tui] 设置 notifications = true、notification_method = "osc9"、notification_condition = "always"',
-    '部分 Windows 环境下若 workspace 已信任但仍异常地只能创建 Note 节点，可尝试以管理员身份运行 PowerShell 并执行 Set-ExecutionPolicy RemoteSigned，排查执行策略是否影响 Node.js 相关命令'
+    '如需让 Agent 完成后主动提醒，请先在对应的 Agent CLI（Claude Code 或 Codex）中启用通知。',
+    'Windows 环境下如果执行节点受 PowerShell 策略影响，请按系统安全要求完成对应设置后再重试。',
+    '多根 workspace 可通过 devSessionCanvas.canvas.multiRootPresentationMode 在 rootGroups 单张组合画布和 paneGallery 窗格画廊之间切换。'
   ]
 };
 const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
 const EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS = 1000;
+const AGENT_TITLE_ACTION_COMPACT_WIDTH = 440;
 let nextExecutionNodeHelpTooltipId = 0;
 let nextNoteMarkdownMetadataPopoverId = 0;
 type ExecutionHostEvent =
@@ -432,6 +733,9 @@ type ExecutionHostEvent =
       cols: number;
       rows: number;
       liveSession: boolean;
+      requestId?: string;
+      executionSessionId?: string;
+      outputSequence?: number;
       serializedTerminalState?: SerializedTerminalState;
     }
   | {
@@ -439,6 +743,9 @@ type ExecutionHostEvent =
       nodeId: string;
       kind: ExecutionNodeKind;
       chunk: string;
+      executionSessionId?: string;
+      persisted?: boolean;
+      outputSequence?: number;
     }
   | {
       type: 'exit';
@@ -448,11 +755,21 @@ type ExecutionHostEvent =
     };
 
 interface ExecutionTerminalController {
+  nodeId: string;
+  kind: ExecutionNodeKind;
   applySnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void;
-  enqueueOutput(chunk: string): void;
+  requestAttachSnapshot(): void;
+  enqueueOutput(
+    chunk: string,
+    options?: { persisted?: boolean; outputSequence?: number; executionSessionId?: string }
+  ): void;
+  resetBacklogForSnapshot(reason: string): void;
   showExit(message: string): void;
   refreshVisibleRows(): void;
-  flushPendingOutput(): void;
+  flushPendingOutput(maxCharacters?: number): number;
+  getPendingOutputLength(): number;
+  getQueuedWriteCount(): number;
+  isOutputDrainBlocked(): boolean;
   dispose(): void;
 }
 
@@ -490,6 +807,15 @@ interface XtermCoreWithMouseInternals {
 const vscode = acquireVsCodeApi<LocalUiState>();
 const reportedRuntimeDiagnostics = new Set<string>();
 const initialPersistedState = vscode.getState() ?? {};
+const injectedWebviewLifecycleIdentity = extractWebviewMessageLifecycle({
+  lifecycle: window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__
+});
+const webviewLifecycleIdentity = createWebviewLifecycleIdentity(injectedWebviewLifecycleIdentity);
+if (!injectedWebviewLifecycleIdentity) {
+  window.setTimeout(() => {
+    emitWebviewLifecycleDiagnostic('Active Webview HTML is missing a valid lifecycle identity; using the test fallback identity.');
+  }, 0);
+}
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionTerminalRegistry = new Map<
   string,
@@ -515,6 +841,43 @@ const pendingExecutionPasteRequests = new Map<
     kind: ExecutionNodeKind;
   }
 >();
+
+const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS = 24;
+const EXECUTION_PERFORMANCE_DIAGNOSTIC_DRAIN_MIN_DURATION_MS = 16;
+const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS = 32 * 1024;
+const EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES = 500;
+const EXECUTION_TERMINAL_DRAIN_MAX_CONTROLLERS_PER_FRAME = 2;
+const EXECUTION_TERMINAL_DRAIN_MAX_CHARS_PER_FRAME = 32 * 1024;
+const EXECUTION_TERMINAL_DRAIN_MAX_CHARS_PER_CONTROLLER = 16 * 1024;
+const EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CONTROLLERS_PER_FRAME = 1;
+const EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_FRAME = 4 * 1024;
+const EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_CONTROLLER = 4 * 1024;
+const EXECUTION_TERMINAL_LAG_RECOVERY_DRAIN_MAX_CHARS_PER_FRAME = 8 * 1024;
+const EXECUTION_TERMINAL_INPUT_OUTPUT_YIELD_MS = 240;
+const EXECUTION_TERMINAL_LAG_RECOVERY_WINDOW_MS = 2000;
+const EXECUTION_TERMINAL_VISIBILITY_RESTORE_RECOVERY_MS = 3000;
+const EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER = 1;
+const EXECUTION_TERMINAL_HARD_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 1024 * 1024;
+const EXECUTION_TERMINAL_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 512 * 1024;
+const EXECUTION_TERMINAL_HIDDEN_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 128 * 1024;
+const EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS = 2000;
+const EXECUTION_TERMINAL_SNAPSHOT_RESET_REQUEST_COOLDOWN_MS = 1000;
+const EXECUTION_TERMINAL_SNAPSHOT_RESET_TIMEOUT_MS = 1500;
+const EXECUTION_TERMINAL_SNAPSHOT_RESET_DEFERRED_OUTPUT_BUDGET = 256 * 1024;
+const EXECUTION_TERMINAL_SNAPSHOT_RESET_DEFERRED_OUTPUT_DIAGNOSTIC_STEP = 128 * 1024;
+const EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS = 32;
+const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS = 96;
+const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS = 480;
+const EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS = 500;
+const EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS = 120;
+const executionPerformanceDiagnosticSamples: ExecutionPerformanceDiagnosticPayload[] = [];
+let nextExecutionInputSequence = 1;
+let nextExecutionSnapshotResetRequestSequence = 1;
+const pendingExecutionInputAcks = new Map<number, PendingExecutionInputAck>();
+let lastExecutionInputAtMs = Number.NEGATIVE_INFINITY;
+let lastExecutionInputNodeId: string | undefined;
+let lastExecutionMainThreadLagAtMs = Number.NEGATIVE_INFINITY;
+let lastExecutionVisibilityRestoredAtMs = Number.NEGATIVE_INFINITY;
 
 type WebviewRuntimeDiagnosticPayload = Extract<
   WebviewToHostMessage,
@@ -565,7 +928,7 @@ function emitRuntimeDiagnostic(payload: WebviewRuntimeDiagnosticPayload): void {
   reportedRuntimeDiagnostics.add(diagnosticKey);
 
   try {
-    vscode.postMessage({
+    postMessage({
       type: 'webview/runtimeDiagnostic',
       payload
     });
@@ -621,12 +984,278 @@ function normalizeRuntimeDiagnosticCoordinate(value: number | undefined): number
   return Math.round(value);
 }
 
+function reportExecutionInputDispatch(
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  input: string,
+  dispatch: (metadata: ExecutionInputDispatchMetadata) => void
+): void {
+  const metadata = createExecutionInputDispatchMetadata();
+  lastExecutionInputAtMs = metadata.webviewPerformanceNowMs;
+  lastExecutionInputNodeId = nodeId;
+  pendingExecutionInputAcks.set(metadata.sequence, {
+    nodeId,
+    kind,
+    webviewEpochMs: metadata.webviewEpochMs,
+    webviewPerformanceNowMs: metadata.webviewPerformanceNowMs,
+    characters: input.length,
+    bytes: estimateUtf8ByteLength(input)
+  });
+  trimPendingExecutionInputAcks();
+  const startedAt = readPerformanceNow();
+  try {
+    dispatch(metadata);
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-input-dispatch',
+        nodeId,
+        kind,
+        sequence: metadata.sequence,
+        durationMs: readPerformanceNow() - startedAt,
+        webviewEpochMs: metadata.webviewEpochMs,
+        characters: input.length,
+        bytes: estimateUtf8ByteLength(input),
+        success: true
+      },
+      {
+        minDurationMs: 8
+      }
+    );
+  } catch (error) {
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-input-dispatch',
+        nodeId,
+        kind,
+        sequence: metadata.sequence,
+        durationMs: readPerformanceNow() - startedAt,
+        webviewEpochMs: metadata.webviewEpochMs,
+        characters: input.length,
+        bytes: estimateUtf8ByteLength(input),
+        success: false,
+        reason: error instanceof Error ? error.message : String(error)
+      },
+      {
+        force: true
+      }
+    );
+    throw error;
+  }
+}
+
+function createExecutionInputDispatchMetadata(): ExecutionInputDispatchMetadata {
+  return {
+    sequence: nextExecutionInputSequence++,
+    webviewEpochMs: Date.now(),
+    webviewPerformanceNowMs: readPerformanceNow()
+  };
+}
+
+function reportExecutionPerformanceDiagnostic(
+  payload: ExecutionPerformanceDiagnosticPayload,
+  options: {
+    force?: boolean;
+    minDurationMs?: number;
+    minCharacters?: number;
+  } = {}
+): void {
+  const normalizedPayload = normalizeExecutionPerformanceDiagnosticForWebview(payload);
+  const minDurationMs = options.minDurationMs ?? EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS;
+  const minCharacters = options.minCharacters ?? Number.POSITIVE_INFINITY;
+  const diagnosticCharacters = Math.max(normalizedPayload.characters ?? 0, normalizedPayload.pendingOutputLength ?? 0);
+  const shouldReport =
+    options.force === true ||
+    normalizedPayload.success === false ||
+    (typeof normalizedPayload.durationMs === 'number' && normalizedPayload.durationMs >= minDurationMs) ||
+    diagnosticCharacters >= minCharacters;
+
+  if (!shouldReport) {
+    return;
+  }
+
+  executionPerformanceDiagnosticSamples.push(normalizedPayload);
+  if (executionPerformanceDiagnosticSamples.length > EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES) {
+    executionPerformanceDiagnosticSamples.splice(
+      0,
+      executionPerformanceDiagnosticSamples.length - EXECUTION_PERFORMANCE_DIAGNOSTIC_MAX_SAMPLES
+    );
+  }
+
+  try {
+    postMessage({
+      type: 'webview/executionPerformanceDiagnostic',
+      payload: normalizedPayload
+    });
+  } catch {
+    // Ignore telemetry failures; performance diagnostics must not affect input/output.
+  }
+}
+
+function normalizeExecutionPerformanceDiagnosticForWebview(
+  payload: ExecutionPerformanceDiagnosticPayload
+): ExecutionPerformanceDiagnosticPayload {
+  return {
+    source: payload.source,
+    nodeId: payload.nodeId,
+    kind: payload.kind,
+    reason: payload.reason,
+    sequence: normalizeDiagnosticInteger(payload.sequence),
+    durationMs: roundDiagnosticNumber(payload.durationMs),
+    webviewEpochMs: roundDiagnosticNumber(payload.webviewEpochMs),
+    hostReceivedEpochMs: roundDiagnosticNumber(payload.hostReceivedEpochMs),
+    hostAckEpochMs: roundDiagnosticNumber(payload.hostAckEpochMs),
+    hostAckPostEpochMs: roundDiagnosticNumber(payload.hostAckPostEpochMs),
+    queueDelayMs: roundDiagnosticNumber(payload.queueDelayMs),
+    requestId: payload.requestId,
+    executionSessionId: payload.executionSessionId,
+    characters: normalizeDiagnosticInteger(payload.characters),
+    bytes: normalizeDiagnosticInteger(payload.bytes),
+    controllerCount: normalizeDiagnosticInteger(payload.controllerCount),
+    flushedControllerCount: normalizeDiagnosticInteger(payload.flushedControllerCount),
+    pendingControllerCount: normalizeDiagnosticInteger(payload.pendingControllerCount),
+    queuedSnapshotCount: normalizeDiagnosticInteger(payload.queuedSnapshotCount),
+    queuedWriteCount: normalizeDiagnosticInteger(payload.queuedWriteCount),
+    bufferLength: normalizeDiagnosticInteger(payload.bufferLength),
+    pendingOutputLength: normalizeDiagnosticInteger(payload.pendingOutputLength),
+    owner: payload.owner,
+    lifecycleStatus: payload.lifecycleStatus,
+    workspaceStateMode: payload.workspaceStateMode,
+    success: payload.success
+  };
+}
+
+function handleExecutionInputAck(payload: {
+  nodeId: string;
+  kind: ExecutionNodeKind;
+  sequence?: number;
+  webviewEpochMs?: number;
+  webviewPerformanceNowMs?: number;
+  hostReceivedEpochMs: number;
+  hostAckEpochMs: number;
+  hostAckPostEpochMs?: number;
+  queueDelayMs?: number;
+  controllerCount?: number;
+  pendingControllerCount?: number;
+  queuedWriteCount?: number;
+  pendingOutputLength?: number;
+}): void {
+  const pending = typeof payload.sequence === 'number' ? pendingExecutionInputAcks.get(payload.sequence) : undefined;
+  if (typeof payload.sequence === 'number') {
+    pendingExecutionInputAcks.delete(payload.sequence);
+  }
+  const now = readPerformanceNow();
+  const startedAt = pending?.webviewPerformanceNowMs ?? payload.webviewPerformanceNowMs;
+  const durationMs = typeof startedAt === 'number' ? Math.max(0, now - startedAt) : undefined;
+  reportExecutionPerformanceDiagnostic(
+    {
+      source: 'webview-input-ack',
+      nodeId: payload.nodeId,
+      kind: payload.kind,
+      sequence: payload.sequence,
+      durationMs,
+      webviewEpochMs: payload.webviewEpochMs ?? pending?.webviewEpochMs,
+      hostReceivedEpochMs: payload.hostReceivedEpochMs,
+      hostAckEpochMs: payload.hostAckEpochMs,
+      hostAckPostEpochMs: payload.hostAckPostEpochMs,
+      queueDelayMs: payload.queueDelayMs,
+      characters: pending?.characters,
+      bytes: pending?.bytes,
+      controllerCount: payload.controllerCount,
+      pendingControllerCount: payload.pendingControllerCount,
+      queuedWriteCount: payload.queuedWriteCount,
+      pendingOutputLength: payload.pendingOutputLength,
+      success: true
+    },
+    {
+      minDurationMs: 8
+    }
+  );
+}
+
+function trimPendingExecutionInputAcks(): void {
+  if (pendingExecutionInputAcks.size <= 200) {
+    return;
+  }
+
+  const overflow = pendingExecutionInputAcks.size - 200;
+  let deletedCount = 0;
+  for (const sequence of pendingExecutionInputAcks.keys()) {
+    pendingExecutionInputAcks.delete(sequence);
+    deletedCount += 1;
+    if (deletedCount >= overflow) {
+      return;
+    }
+  }
+}
+
+function roundDiagnosticNumber(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : undefined;
+}
+
+function normalizeDiagnosticInteger(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.round(value) : undefined;
+}
+
+function estimateUtf8ByteLength(value: string): number {
+  try {
+    return new TextEncoder().encode(value).length;
+  } catch {
+    return value.length;
+  }
+}
+
+function readPerformanceNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+}
+
+function startExecutionMainThreadLagMonitor(): void {
+  let expectedAt = readPerformanceNow() + EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS;
+  window.setTimeout(function tick(): void {
+    const now = readPerformanceNow();
+    const lagMs = Math.max(0, now - expectedAt);
+    if (lagMs >= EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS) {
+      lastExecutionMainThreadLagAtMs = now;
+      reportExecutionPerformanceDiagnostic(
+        {
+          source: 'webview-main-thread-lag',
+          durationMs: lagMs,
+          reason: 'timer-lag',
+          success: true
+        },
+        {
+          force: true
+        }
+      );
+    }
+    expectedAt = now + EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS;
+    window.setTimeout(tick, EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS);
+  }, EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS);
+}
+
 registerRuntimeDiagnosticListeners();
+startExecutionMainThreadLagMonitor();
 const pendingExecutionTerminalDrains = new Set<ExecutionTerminalController>();
 let executionTerminalDrainFrame: number | undefined;
+let executionTerminalDrainTimer: number | undefined;
+interface PendingExecutionTerminalSnapshotWrite {
+  nodeId: string;
+  kind: ExecutionNodeKind;
+  queuedAtMs: number;
+  run: (done: () => void) => void;
+  cancel: () => void;
+  finishQueue?: () => void;
+}
+const pendingExecutionTerminalSnapshotWrites: PendingExecutionTerminalSnapshotWrite[] = [];
+let executionTerminalSnapshotWriteFrame: number | undefined;
+let executionTerminalSnapshotWriteTimer: number | undefined;
+let executionTerminalSnapshotWriteInFlight = false;
+let activeExecutionTerminalSnapshotWrite: PendingExecutionTerminalSnapshotWrite | undefined;
+let lastExecutionTerminalSnapshotWriteAtMs = Number.NEGATIVE_INFINITY;
 const CANVAS_FIT_VIEW_PADDING = 0.05;
 const CANVAS_COMFORT_MIN_ZOOM = 0.4;
 const CANVAS_MAX_ZOOM = 1.8;
+const PANE_GALLERY_MIN_ZOOM = 0.02;
+const PANE_GALLERY_FIT_VIEW_PADDING = 0.16;
 const CANVAS_MINIMAP_WIDTH = 194;
 const CANVAS_MINIMAP_HEIGHT = 126;
 const CANVAS_MINIMAP_OFFSET_SCALE = 5;
@@ -638,6 +1267,10 @@ const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
 const NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS = 48;
 const NODE_GROUP_FOCUS_RETRY_INTERVAL_MS = 48;
 const NODE_GROUP_FOCUS_MAX_RETRY_COUNT = 8;
+const CANVAS_AUTO_PAN_EDGE_THRESHOLD_PX = 48;
+const CANVAS_AUTO_PAN_MAX_SPEED_PX = 24;
+const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
+const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
 const EMBEDDED_TERMINAL_BACKGROUND_CSS_VAR = '--canvas-embedded-terminal-background';
 const EMBEDDED_TERMINAL_FOREGROUND_CSS_VAR = '--canvas-embedded-terminal-foreground';
 const TERMINAL_BACKGROUND_FALLBACKS: Record<'editor' | 'panel', string[]> = {
@@ -780,11 +1413,14 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   terminalWordSeparators: normalizeExecutionTerminalWordSeparators(undefined),
   overviewMode: 'title',
   overviewZoomThreshold: DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
+  multiRootPresentationMode: 'rootGroups',
+  workspaceRootWatermarksEnabled: true,
   filePresentationMode: 'nodes',
   fileNodeDisplayStyle: 'minimal',
   fileNodeDisplayMode: 'icon-path',
   filePathDisplayMode: 'basename',
   fileIconFontFaces: [],
+  workspaceFolders: [],
   noteMarkdownImageWorkspaceRoots: []
 };
 let embeddedTerminalThemeObserverDispose: (() => void) | undefined;
@@ -807,6 +1443,13 @@ function normalizeRuntimeContext(
       ? runtimeContext.noteMarkdownImageWorkspaceRoots.filter(
           (root): root is NoteMarkdownImageWorkspaceRoot =>
             typeof root?.name === 'string' && typeof root.webviewResourceBaseUri === 'string'
+        )
+      : [];
+  const workspaceFolders =
+    runtimeContext && Array.isArray(runtimeContext.workspaceFolders)
+      ? runtimeContext.workspaceFolders.filter(
+          (folder): folder is CanvasRuntimeContext['workspaceFolders'][number] =>
+            typeof folder?.name === 'string' && typeof folder.path === 'string'
         )
       : [];
   const legacyStrongTerminalAttentionReminderEnabled = runtimeContext
@@ -836,6 +1479,8 @@ function normalizeRuntimeContext(
         : normalizeExecutionTerminalWordSeparators(undefined),
     overviewMode: normalizeCanvasOverviewMode(runtimeContext?.overviewMode),
     overviewZoomThreshold: normalizeCanvasOverviewZoomThreshold(runtimeContext?.overviewZoomThreshold),
+    multiRootPresentationMode: normalizeCanvasMultiRootPresentationMode(runtimeContext?.multiRootPresentationMode),
+    workspaceRootWatermarksEnabled: runtimeContext?.workspaceRootWatermarksEnabled !== false,
     filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
     fileNodeDisplayStyle: runtimeContext?.fileNodeDisplayStyle === 'card' ? 'card' : 'minimal',
     fileNodeDisplayMode:
@@ -844,6 +1489,7 @@ function normalizeRuntimeContext(
         : 'icon-path',
     filePathDisplayMode: runtimeContext?.filePathDisplayMode === 'relative-path' ? 'relative-path' : 'basename',
     fileIconFontFaces,
+    workspaceFolders,
     noteMarkdownImageWorkspaceRoots
   };
 }
@@ -911,15 +1557,25 @@ function App(): JSX.Element {
     terminalWordSeparators: latestRuntimeContext.terminalWordSeparators,
     overviewMode: latestRuntimeContext.overviewMode,
     overviewZoomThreshold: latestRuntimeContext.overviewZoomThreshold,
+    multiRootPresentationMode: latestRuntimeContext.multiRootPresentationMode,
+    workspaceRootWatermarksEnabled: latestRuntimeContext.workspaceRootWatermarksEnabled,
     filePresentationMode: latestRuntimeContext.filePresentationMode,
     fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
     fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
     filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
     fileIconFontFaces: latestRuntimeContext.fileIconFontFaces,
+    workspaceFolders: latestRuntimeContext.workspaceFolders,
     noteMarkdownImageWorkspaceRoots: latestRuntimeContext.noteMarkdownImageWorkspaceRoots
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
+    selectedNodeIds: Array.isArray(initialPersistedState.selectedNodeIds)
+      ? initialPersistedState.selectedNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
+      : undefined,
+    selectedGroupId: initialPersistedState.selectedGroupId,
+    selectedGroupIds: Array.isArray(initialPersistedState.selectedGroupIds)
+      ? initialPersistedState.selectedGroupIds.filter((groupId): groupId is string => typeof groupId === 'string')
+      : undefined,
     viewport: initialPersistedState.viewport,
     fileListViewModes:
       initialPersistedState.fileListViewModes && typeof initialPersistedState.fileListViewModes === 'object'
@@ -943,27 +1599,51 @@ function App(): JSX.Element {
                 : []
             )
           )
-        : undefined
+        : undefined,
+    paneGallery: normalizePaneGalleryLocalState(initialPersistedState.paneGallery)
   }));
+  const pendingModifierNodeSelectionRef = useRef<{
+    nodeId: string;
+    baseSelectedNodeIds: string[];
+  } | null>(null);
+  const hostStateRef = useRef<CanvasPrototypeState | null>(hostState);
+  const localUiStateRef = useRef<LocalUiState>(localUiState);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>();
   const [documentHasFocus, setDocumentHasFocus] = useState<boolean>(() => document.hasFocus());
   const [edgeLabelEditor, setEdgeLabelEditor] = useState<EdgeLabelEditorState | null>(null);
   const [edgeArrowMenuEdgeId, setEdgeArrowMenuEdgeId] = useState<string | undefined>();
   const [edgeColorMenuEdgeId, setEdgeColorMenuEdgeId] = useState<string | undefined>();
   const [nodeLayoutDrafts, setNodeLayoutDrafts] = useState<Record<string, CanvasNodeLayoutDraft>>({});
+  const [nodeResizeDrafts, setNodeResizeDrafts] = useState<Record<string, CanvasNodeResizeDraft>>({});
+  const pendingCommittedNodeLayoutDraftIdsRef = useRef<Set<string>>(new Set());
+  const [groupDrafts, setGroupDrafts] = useState<Record<string, CanvasGroupDraft>>({});
+  const activeGroupInteractionIdsRef = useRef<Set<string>>(new Set());
+  const committedGroupDraftIdsRef = useRef<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const clearErrorTimer = useRef<number | null>(null);
   const canvasShellRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
+  const paneGalleryFlowRefs = useRef<Record<string, ReactFlowInstance<CanvasNodeData> | undefined>>({});
+  const paneGalleryShellRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const activeCanvasSurfaceRef = useRef<CanvasSurfaceBinding>({
+    flow: reactFlowRef.current,
+    shell: canvasShellRef.current,
+    viewportKind: 'rootGroups'
+  });
   const pendingViewportRequestRef = useRef<PendingNodeViewportRequest | undefined>();
   const pendingNodeGroupViewportRequestRef = useRef<PendingNodeGroupViewportRequest | undefined>();
   const pendingNodeGroupViewportRetryTimeoutRef = useRef<number | undefined>();
   const pendingManualCreateRequestRef = useRef<PendingManualNodeCreateRequest | undefined>();
   const latestHostNodeIdsRef = useRef<Set<string>>(new Set());
   const pendingViewportSyncTimeoutRef = useRef<number | undefined>();
+  const groupDragAutoPanRef = useRef<AutoPanController | null>(null);
+  const groupResizeAutoPanRef = useRef<AutoPanController | null>(null);
+  const nodeResizeAutoPanRef = useRef<AutoPanController | null>(null);
+  const activeNodeResizeDraftsRef = useRef<Record<string, CanvasNodeLayoutDraft>>({});
   const [reactFlowReadyVersion, setReactFlowReadyVersion] = useState(0);
+  const didApplyInitialCanvasFitRef = useRef(Boolean(initialPersistedState.viewport));
   const [canvasViewportSize, setCanvasViewportSize] = useState<CanvasViewportSize>(() => ({
     width: Math.max(1, window.innerWidth),
     height: Math.max(1, window.innerHeight)
@@ -980,6 +1660,16 @@ function App(): JSX.Element {
   useEffect(() => {
     const listener = (event: MessageEvent<HostToWebviewMessage>) => {
       const message = event.data;
+      const messageLifecycle = extractWebviewMessageLifecycle(message);
+      if (requiresHostMessageLifecycle(message.type) && !messageLifecycle) {
+        emitWebviewLifecycleDiagnostic(`ignore host message without lifecycle: ${message.type}`);
+        return;
+      }
+
+      if (messageLifecycle && !isCurrentWebviewLifecycleIdentity(messageLifecycle)) {
+        emitWebviewLifecycleDiagnostic(`ignore host message with mismatched lifecycle: ${message.type}`);
+        return;
+      }
 
       switch (message.type) {
         case 'host/bootstrap':
@@ -987,11 +1677,51 @@ function App(): JSX.Element {
           {
             const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
             const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
+            hostStateRef.current = normalizedState;
             latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
             latestRuntimeContext = normalizedRuntime;
             setHostState(normalizedState);
             setRuntimeContext(normalizedRuntime);
+            setNodeLayoutDrafts((current) => {
+              // Host layout wins after a move/resize has been submitted.
+              const pendingNodeIds = pendingCommittedNodeLayoutDraftIdsRef.current;
+              if (pendingNodeIds.size === 0) {
+                return current;
+              }
+
+              const next = { ...current };
+              for (const nodeId of pendingNodeIds) {
+                delete next[nodeId];
+              }
+              pendingNodeIds.clear();
+              return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
+            });
+            setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
+            activeNodeResizeDraftsRef.current = {};
+            setGroupDrafts((current) => {
+              const activeGroupIds = activeGroupInteractionIdsRef.current;
+              const committedGroupIds = committedGroupDraftIdsRef.current;
+              const knownGroupIds = new Set(normalizedState.groups.map((group) => group.id));
+              for (const groupId of Array.from(activeGroupIds)) {
+                if (!knownGroupIds.has(groupId)) {
+                  activeGroupIds.delete(groupId);
+                }
+              }
+
+              const next = Object.fromEntries(
+                Object.entries(current).filter(([groupId]) =>
+                  knownGroupIds.has(groupId) &&
+                  activeGroupIds.has(groupId) &&
+                  !committedGroupIds.has(groupId)
+                )
+              );
+              committedGroupIds.clear();
+              return shallowEqualCanvasGroupDrafts(current, next) ? current : next;
+            });
             applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
+            if (message.type === 'host/bootstrap') {
+              postMessage({ type: 'webview/bootstrapAck' });
+            }
           }
           scheduleEmbeddedTerminalAppearanceRefresh();
           break;
@@ -1016,6 +1746,9 @@ function App(): JSX.Element {
         case 'host/focusNodes':
           requestNodeGroupFocus(message.payload.nodeIds);
           break;
+        case 'host/focusGroup':
+          requestGroupFocus(message.payload.groupId);
+          break;
         case 'host/executionSnapshot':
           routeExecutionTerminalSnapshot({
             type: 'snapshot',
@@ -1025,6 +1758,9 @@ function App(): JSX.Element {
             cols: message.payload.cols,
             rows: message.payload.rows,
             liveSession: message.payload.liveSession,
+            requestId: message.payload.requestId,
+            executionSessionId: message.payload.executionSessionId,
+            outputSequence: message.payload.outputSequence,
             serializedTerminalState: message.payload.serializedTerminalState
           });
           break;
@@ -1033,8 +1769,14 @@ function App(): JSX.Element {
             type: 'output',
             nodeId: message.payload.nodeId,
             kind: message.payload.kind,
-            chunk: message.payload.chunk
+            chunk: message.payload.chunk,
+            executionSessionId: message.payload.executionSessionId,
+            persisted: message.payload.persisted,
+            outputSequence: message.payload.outputSequence
           });
+          break;
+        case 'host/executionInputAck':
+          handleExecutionInputAck(message.payload);
           break;
         case 'host/executionExit':
           routeExecutionTerminalExit({
@@ -1069,20 +1811,26 @@ function App(): JSX.Element {
           if (message.payload.createRequestId === pendingManualCreateRequestRef.current?.requestId) {
             pendingManualCreateRequestRef.current = undefined;
           }
-          setErrorMessage(message.payload.message);
-          if (clearErrorTimer.current) {
-            window.clearTimeout(clearErrorTimer.current);
-          }
-          clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
+          showTransientCanvasError(message.payload.message);
           break;
         case 'host/requestCreateNode':
+          // Host commands have already passed workspace-trust validation; the host still rejects if trust changes.
           createNode(
             message.payload.kind,
             undefined,
+            message.payload.targetGroupId,
             message.payload.agentProvider,
             message.payload.agentLaunchPreset,
-            message.payload.agentCustomLaunchCommand
+            message.payload.agentCustomLaunchCommand,
+            {
+              skipWorkspaceTrustCheck: true,
+              cwd: message.payload.cwd,
+              useDefaultPlacement: Boolean(message.payload.targetGroupId || message.payload.cwd)
+            }
           );
+          break;
+        case 'host/requestCreateGroupFromSelection':
+          createGroupFromCurrentSelectionRequest();
           break;
         case 'host/testProbeRequest':
           void respondWithWebviewProbeSnapshot(message.payload.requestId, message.payload.delayMs);
@@ -1133,6 +1881,14 @@ function App(): JSX.Element {
     };
     const handleVisibilityChange = (): void => {
       setDocumentHasFocus(document.hasFocus());
+      if (!document.hidden && pendingExecutionTerminalDrains.size > 0) {
+        lastExecutionVisibilityRestoredAtMs = readPerformanceNow();
+        scheduleExecutionTerminalDrainPump();
+      }
+      if (!document.hidden && pendingExecutionTerminalSnapshotWrites.length > 0) {
+        lastExecutionVisibilityRestoredAtMs = readPerformanceNow();
+        scheduleExecutionTerminalSnapshotWritePump();
+      }
     };
 
     window.addEventListener('focus', handleFocus);
@@ -1179,6 +1935,7 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    localUiStateRef.current = localUiState;
     vscode.setState(localUiState);
   }, [localUiState]);
 
@@ -1208,6 +1965,7 @@ function App(): JSX.Element {
         ])
     );
     const validEdgeIds = new Set(hostState.edges.map((edge) => edge.id));
+    const validGroupIds = new Set((hostState.groups ?? []).map((group) => group.id));
     setLocalUiState((current) => {
       let changed = false;
       let nextState = current;
@@ -1218,6 +1976,36 @@ function App(): JSX.Element {
           selectedNodeId: undefined
         };
         changed = true;
+      }
+
+      if (current.selectedNodeIds) {
+        const selectedNodeIds = current.selectedNodeIds.filter((nodeId) => validNodeIds.has(nodeId));
+        if (selectedNodeIds.length !== current.selectedNodeIds.length) {
+          nextState = {
+            ...nextState,
+            selectedNodeIds: selectedNodeIds.length > 0 ? selectedNodeIds : undefined
+          };
+          changed = true;
+        }
+      }
+
+      if (current.selectedGroupId && !validGroupIds.has(current.selectedGroupId)) {
+        nextState = {
+          ...nextState,
+          selectedGroupId: undefined
+        };
+        changed = true;
+      }
+
+      if (current.selectedGroupIds) {
+        const selectedGroupIds = current.selectedGroupIds.filter((groupId) => validGroupIds.has(groupId));
+        if (selectedGroupIds.length !== current.selectedGroupIds.length) {
+          nextState = {
+            ...nextState,
+            selectedGroupIds: selectedGroupIds.length > 0 ? selectedGroupIds : undefined
+          };
+          changed = true;
+        }
       }
 
       const currentViewModes = current.fileListViewModes;
@@ -1285,6 +2073,33 @@ function App(): JSX.Element {
   }, [hostState]);
 
   useEffect(() => {
+    if (!contextMenu || contextMenu.view !== 'root') {
+      return;
+    }
+
+    const selectedNodeIds = contextMenu.selectedNodeIds ?? [];
+    const selectedGroupIds = contextMenu.selectedGroupIds ?? [];
+    const nextCanCreateGroupFromSelection = canCreateCanvasGroupFromSelection(
+      hostState,
+      selectedNodeIds,
+      selectedGroupIds,
+      contextMenu.targetGroupId
+    );
+    if (contextMenu.canCreateGroupFromSelection === nextCanCreateGroupFromSelection) {
+      return;
+    }
+
+    setContextMenu((current) =>
+      current
+        ? {
+            ...current,
+            canCreateGroupFromSelection: nextCanCreateGroupFromSelection
+          }
+        : current
+    );
+  }, [contextMenu, hostState]);
+
+  useEffect(() => {
     setEdgeLabelEditor((current) => (current && current.edgeId !== selectedEdgeId ? null : current));
     setEdgeArrowMenuEdgeId((current) => (current && current !== selectedEdgeId ? undefined : current));
     setEdgeColorMenuEdgeId((current) => (current && current !== selectedEdgeId ? undefined : current));
@@ -1296,18 +2111,26 @@ function App(): JSX.Element {
         window.clearTimeout(pendingViewportSyncTimeoutRef.current);
       }
       clearPendingNodeGroupViewportRetryTimeout();
+      groupDragAutoPanRef.current?.stop();
+      groupDragAutoPanRef.current = null;
+      groupResizeAutoPanRef.current?.stop();
+      groupResizeAutoPanRef.current = null;
+      nodeResizeAutoPanRef.current?.stop();
+      nodeResizeAutoPanRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     const pendingViewportRequest = pendingViewportRequestRef.current;
-    if (!pendingViewportRequest || !hostState?.nodes.some((node) => node.id === pendingViewportRequest.nodeId)) {
+    if (!pendingViewportRequest || !isPendingViewportTargetAvailable(hostState, pendingViewportRequest)) {
       return;
     }
 
     const didApply = pendingViewportRequest.selectNode
-      ? focusNodeInViewport(pendingViewportRequest.nodeId, pendingViewportRequest.mode)
-      : centerNodeInViewport(pendingViewportRequest.nodeId, pendingViewportRequest.mode);
+      ? focusNodeInViewport(pendingViewportRequest.objectId, pendingViewportRequest.mode)
+      : pendingViewportRequest.objectKind === 'group'
+        ? centerGroupInViewport(pendingViewportRequest.objectId)
+        : centerNodeInViewport(pendingViewportRequest.objectId, pendingViewportRequest.mode);
     if (didApply) {
       pendingViewportRequestRef.current = undefined;
       if (pendingViewportRequest.selectNode) {
@@ -1345,6 +2168,7 @@ function App(): JSX.Element {
     const pendingManualCreateRequest = pendingManualCreateRequestRef.current;
     if (pendingManualCreateRequest) {
       const createdNode = resolvePendingManualNodeCreateTarget(
+        hostState,
         hostState.nodes,
         pendingManualCreateRequest.knownNodeIdsSnapshot,
         pendingManualCreateRequest
@@ -1357,7 +2181,7 @@ function App(): JSX.Element {
   }, [hostState]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
-  const creatableKinds: CanvasCreatableNodeKind[] = workspaceTrusted ? ['agent', 'terminal', 'note'] : ['note'];
+  const creatableKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 
   const closePaneContextMenu = (): void => {
     setContextMenu(null);
@@ -1381,15 +2205,33 @@ function App(): JSX.Element {
     closeEdgeMenus();
   };
 
+  const clearCanvasTransientInteractionState = (): void => {
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    setEdgeLabelEditor(null);
+    setEdgeArrowMenuEdgeId(undefined);
+    setEdgeColorMenuEdgeId(undefined);
+    setLocalUiState((current) => {
+      const nextState = {
+        ...current,
+        selectedNodeId: undefined,
+        selectedNodeIds: undefined,
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined
+      };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
+  };
+
   const deleteNode = (nodeId: string): void => {
-    setLocalUiState((current) =>
-      current.selectedNodeId === nodeId
-        ? {
-            ...current,
-            selectedNodeId: undefined
-          }
-        : current
-    );
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: current.selectedNodeId === nodeId ? undefined : current.selectedNodeId,
+      selectedNodeIds: current.selectedNodeIds?.filter((selectedNodeId) => selectedNodeId !== nodeId),
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined
+    }));
     closeFloatingMenus();
     postMessage({
       type: 'webview/deleteNode',
@@ -1400,6 +2242,12 @@ function App(): JSX.Element {
   };
 
   const deleteEdge = (edgeId: string): void => {
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeIds: current.selectedNodeId ? [current.selectedNodeId] : undefined,
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined
+    }));
     setEdgeLabelEditor((current) => (current?.edgeId === edgeId ? null : current));
     setEdgeArrowMenuEdgeId((current) => (current === edgeId ? undefined : current));
     setEdgeColorMenuEdgeId((current) => (current === edgeId ? undefined : current));
@@ -1467,16 +2315,196 @@ function App(): JSX.Element {
     });
   };
 
+  const fitPaneGalleryNodesInViewport = (
+    rootGroupId: string,
+    nodeIds: readonly string[],
+    mode: NodeViewportFocusMode = 'fit',
+    duration = NODE_FOCUS_ANIMATION_DURATION_MS,
+    viewportRole?: PaneGalleryViewportRole
+  ): boolean => {
+    const resolvedViewportRole =
+      viewportRole ??
+      resolvePaneGalleryViewportRole(
+        normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+          PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+      );
+    const binding: CanvasSurfaceBinding = {
+      flow: paneGalleryFlowRefs.current[rootGroupId],
+      shell: paneGalleryShellRefs.current[rootGroupId],
+      viewportKind: 'paneGallery',
+      rootGroupId,
+      paneGalleryViewportRole: resolvedViewportRole
+    };
+    activeCanvasSurfaceRef.current = binding;
+    const reactFlowInstance = binding.flow;
+    if (!reactFlowInstance?.viewportInitialized || nodeIds.length === 0) {
+      return false;
+    }
+
+    const didFit =
+      nodeIds.length === 1 && mode === 'center-no-extra-zoom-if-visible'
+        ? centerNodeInViewportWithoutExtraZoomIfPossible(
+            reactFlowInstance,
+            binding.shell,
+            hostStateRef.current,
+            nodeIds[0],
+            duration
+          )
+        : reactFlowInstance.fitView({
+            nodes: nodeIds.map((id) => ({ id })),
+            padding: NODE_FOCUS_VIEW_PADDING,
+            maxZoom: NODE_FOCUS_MAX_ZOOM,
+            minZoom: PANE_GALLERY_MIN_ZOOM,
+            duration
+          });
+    if (didFit) {
+      window.setTimeout(() => {
+        const viewport = reactFlowInstance.getViewport();
+        savePaneGalleryViewport(rootGroupId, viewport, resolvedViewportRole);
+      }, duration + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
+    }
+    return didFit;
+  };
+
+  const schedulePaneGalleryNodeFit = (
+    rootGroupId: string,
+    nodeIds: readonly string[],
+    mode: NodeViewportFocusMode = 'fit',
+    viewportRole?: PaneGalleryViewportRole
+  ): void => {
+    let remainingAttempts = 6;
+    const tryFit = (): void => {
+      if (fitPaneGalleryNodesInViewport(rootGroupId, nodeIds, mode, NODE_FOCUS_ANIMATION_DURATION_MS, viewportRole)) {
+        return;
+      }
+      remainingAttempts -= 1;
+      if (remainingAttempts > 0) {
+        window.setTimeout(tryFit, 50);
+      }
+    };
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(tryFit);
+    });
+  };
+
+  const fitPaneGalleryGroupInViewport = (
+    rootGroupId: string,
+    groupId: string,
+    duration = NODE_FOCUS_ANIMATION_DURATION_MS,
+    viewportRole?: PaneGalleryViewportRole
+  ): boolean => {
+    const resolvedViewportRole =
+      viewportRole ??
+      resolvePaneGalleryViewportRole(
+        normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+          PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+      );
+    const reactFlowInstance = paneGalleryFlowRefs.current[rootGroupId];
+    const shell = paneGalleryShellRefs.current[rootGroupId];
+    const group = groups.find((candidate) => candidate.id === groupId);
+    activeCanvasSurfaceRef.current = {
+      flow: reactFlowInstance,
+      shell,
+      viewportKind: 'paneGallery',
+      rootGroupId,
+      paneGalleryViewportRole: resolvedViewportRole
+    };
+    if (!reactFlowInstance?.viewportInitialized || !shell || !group) {
+      return false;
+    }
+
+    const viewport = getViewportForBounds(
+      rectForGroupLike(group),
+      Math.max(1, shell.clientWidth),
+      Math.max(1, shell.clientHeight),
+      PANE_GALLERY_MIN_ZOOM,
+      NODE_FOCUS_MAX_ZOOM,
+      NODE_FOCUS_VIEW_PADDING
+    );
+    reactFlowInstance.setViewport(viewport, { duration });
+    savePaneGalleryViewport(rootGroupId, viewport, resolvedViewportRole);
+    return true;
+  };
+
+  const schedulePaneGalleryGroupFit = (
+    rootGroupId: string,
+    groupId: string,
+    viewportRole?: PaneGalleryViewportRole
+  ): void => {
+    let remainingAttempts = 6;
+    const tryFit = (): void => {
+      if (fitPaneGalleryGroupInViewport(rootGroupId, groupId, NODE_FOCUS_ANIMATION_DURATION_MS, viewportRole)) {
+        return;
+      }
+      remainingAttempts -= 1;
+      if (remainingAttempts > 0) {
+        window.setTimeout(tryFit, 50);
+      }
+    };
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(tryFit);
+    });
+  };
+
+  const resolveSurfaceForNode = (nodeId: string): CanvasSurfaceBinding => {
+    if (isPaneGalleryPresentation) {
+      const node = hostStateRef.current?.nodes.find((candidate) => candidate.id === nodeId);
+      const rootGroupId = node
+        ? resolveContainingWorkspaceRootGroupIdForWebview(groups, node.groupId)
+        : undefined;
+      if (rootGroupId) {
+        return {
+          flow: paneGalleryFlowRefs.current[rootGroupId],
+          shell: paneGalleryShellRefs.current[rootGroupId],
+          viewportKind: 'paneGallery',
+          rootGroupId,
+          paneGalleryViewportRole: resolvePaneGalleryViewportRole(
+            normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+              PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+          )
+        };
+      }
+    }
+
+    return {
+      flow: reactFlowRef.current,
+      shell: canvasShellRef.current,
+      viewportKind: 'rootGroups'
+    };
+  };
+
   const moveNodeIntoViewport = (nodeId: string, mode: NodeViewportFocusMode = 'fit'): boolean => {
-    const reactFlowInstance = reactFlowRef.current;
+    if (isPaneGalleryPresentation) {
+      const node = hostStateRef.current?.nodes.find((candidate) => candidate.id === nodeId);
+      const rootGroupId = node
+        ? resolveContainingWorkspaceRootGroupIdForWebview(groups, node.groupId)
+        : undefined;
+      if (!rootGroupId) {
+        return false;
+      }
+
+      if (fitPaneGalleryNodesInViewport(rootGroupId, [nodeId], mode)) {
+        return true;
+      }
+
+      updatePaneGalleryLayout('sideThumbnails', rootGroupId, { fitRoot: false });
+      schedulePaneGalleryNodeFit(rootGroupId, [nodeId], mode, 'main');
+      return true;
+    }
+
+    const binding = resolveSurfaceForNode(nodeId);
+    const reactFlowInstance = binding.flow;
     if (!reactFlowInstance?.viewportInitialized) {
       return false;
     }
 
+    activeCanvasSurfaceRef.current = binding;
     return mode === 'center-no-extra-zoom-if-visible'
       ? centerNodeInViewportWithoutExtraZoomIfPossible(
           reactFlowInstance,
-          canvasShellRef.current,
+          binding.shell,
           hostState,
           nodeId,
           NODE_FOCUS_ANIMATION_DURATION_MS
@@ -1514,6 +2542,74 @@ function App(): JSX.Element {
     return true;
   };
 
+  const centerGroupInViewport = (groupId: string): boolean => {
+    if (isPaneGalleryPresentation) {
+      const group = (hostStateRef.current?.groups ?? []).find((candidate) => candidate.id === groupId);
+      const rootGroupId = group
+        ? resolveContainingWorkspaceRootGroupIdForWebview(groups, group.id) ??
+          (isWorkspaceRootCanvasGroupRole(group.role) ? group.id : undefined)
+        : undefined;
+      if (!group || !rootGroupId) {
+        return false;
+      }
+
+      updatePaneGalleryLayout('sideThumbnails', rootGroupId, { fitRoot: false });
+      closeFloatingMenus();
+      setSelectedEdgeId(undefined);
+      setLocalUiState((current) => {
+        const lastOverviewLayout = resolvePaneGalleryLastOverviewLayout(current.paneGallery);
+        const nextState = {
+          ...current,
+          selectedNodeId: undefined,
+          selectedNodeIds: undefined,
+          selectedGroupId: groupId,
+          selectedGroupIds: [groupId],
+          paneGallery: {
+            ...(current.paneGallery ?? {}),
+            layout: 'sideThumbnails' as const,
+            activeRootGroupId: rootGroupId,
+            lastOverviewLayout,
+            lastThumbnailLayout: 'sideThumbnails' as const
+          }
+        };
+        localUiStateRef.current = nextState;
+        return nextState;
+      });
+      schedulePaneGalleryGroupFit(rootGroupId, groupId, 'main');
+      return true;
+    }
+
+    const reactFlowInstance = reactFlowRef.current;
+    const group = (hostStateRef.current?.groups ?? []).find((candidate) => candidate.id === groupId);
+    if (!reactFlowInstance?.viewportInitialized || !group) {
+      return false;
+    }
+
+    const targetViewport = resolveViewportForCanvasRect(
+      rectForGroupLike(group),
+      canvasViewportSize,
+      dynamicCanvasMinZoom
+    );
+    if (!targetViewport) {
+      return false;
+    }
+
+    reactFlowInstance.setViewport(targetViewport, { duration: NODE_FOCUS_ANIMATION_DURATION_MS });
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: undefined,
+      selectedNodeIds: undefined,
+      selectedGroupId: groupId,
+      selectedGroupIds: [groupId],
+      viewport: targetViewport
+    }));
+    scheduleFocusedViewportPersistence();
+    postCanvasViewportCenter(targetViewport);
+    return true;
+  };
+
   const normalizeNodeGroupFocusIds = (nodeIds: readonly string[]): string[] => {
     return Array.from(
       new Set(nodeIds.filter((nodeId) => typeof nodeId === 'string' && nodeId.trim().length > 0))
@@ -1522,6 +2618,38 @@ function App(): JSX.Element {
 
   const focusNodeGroupInViewport = (nodeIds: readonly string[]): boolean => {
     const targetNodeIds = normalizeNodeGroupFocusIds(nodeIds);
+    if (isPaneGalleryPresentation) {
+      if (!hostState || targetNodeIds.length === 0) {
+        return false;
+      }
+
+      const rootGroupIds = new Set(
+        targetNodeIds.flatMap((nodeId) => {
+          const node = hostState.nodes.find((candidate) => candidate.id === nodeId);
+          const rootGroupId = node
+            ? resolveContainingWorkspaceRootGroupIdForWebview(groups, node.groupId)
+            : undefined;
+          return rootGroupId ? [rootGroupId] : [];
+        })
+      );
+      if (rootGroupIds.size !== 1) {
+        return false;
+      }
+
+      const rootGroupId = [...rootGroupIds][0];
+      if (fitPaneGalleryNodesInViewport(rootGroupId, targetNodeIds)) {
+        closeFloatingMenus();
+        setSelectedEdgeId(undefined);
+        return true;
+      }
+
+      updatePaneGalleryLayout('sideThumbnails', rootGroupId, { fitRoot: false });
+      closeFloatingMenus();
+      setSelectedEdgeId(undefined);
+      schedulePaneGalleryNodeFit(rootGroupId, targetNodeIds, 'fit', 'main');
+      return true;
+    }
+
     const reactFlowInstance = reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized || targetNodeIds.length === 0) {
       return false;
@@ -1596,7 +2724,8 @@ function App(): JSX.Element {
     }
 
     pendingViewportRequestRef.current = {
-      nodeId,
+      objectId: nodeId,
+      objectKind: 'node',
       mode,
       selectNode: true
     };
@@ -1609,8 +2738,23 @@ function App(): JSX.Element {
     }
 
     pendingViewportRequestRef.current = {
-      nodeId,
+      objectId: nodeId,
+      objectKind: 'node',
       mode,
+      selectNode: false
+    };
+  };
+
+  const requestGroupFocus = (groupId: string): void => {
+    if (centerGroupInViewport(groupId)) {
+      pendingViewportRequestRef.current = undefined;
+      return;
+    }
+
+    pendingViewportRequestRef.current = {
+      objectId: groupId,
+      objectKind: 'group',
+      mode: 'fit',
       selectNode: false
     };
   };
@@ -1649,14 +2793,46 @@ function App(): JSX.Element {
   const selectNode = (nodeId: string): void => {
     closeFloatingMenus();
     setSelectedEdgeId(undefined);
-    setLocalUiState((current) =>
-      current.selectedNodeId === nodeId
-        ? current
-        : {
-            ...current,
-            selectedNodeId: nodeId
-          }
+    setLocalUiState((current) => ({
+      ...current,
+      selectedNodeId: nodeId,
+      selectedNodeIds: [nodeId],
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined,
+      selectedFileListEntries:
+        current.selectedFileListEntries && nodeId in current.selectedFileListEntries
+          ? { [nodeId]: current.selectedFileListEntries[nodeId] }
+          : undefined
+    }));
+  };
+
+  const toggleNodeSelection = (nodeId: string): void => {
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    const currentUiState = localUiStateRef.current;
+    const selectedNodeIds = new Set(
+      currentUiState.selectedNodeIds ?? (currentUiState.selectedNodeId ? [currentUiState.selectedNodeId] : [])
     );
+    const baseSelectedNodeIds = Array.from(selectedNodeIds);
+    if (selectedNodeIds.has(nodeId)) {
+      selectedNodeIds.delete(nodeId);
+    } else {
+      selectedNodeIds.add(nodeId);
+    }
+    const nextSelectedNodeIds = Array.from(selectedNodeIds);
+    pendingModifierNodeSelectionRef.current = { nodeId, baseSelectedNodeIds };
+    setLocalUiState((current) => {
+      const nextState = {
+        ...current,
+        selectedNodeId: nextSelectedNodeIds.at(-1),
+        selectedNodeIds: nextSelectedNodeIds.length > 0 ? nextSelectedNodeIds : undefined,
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined,
+        selectedFileListEntries: undefined
+      };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
   };
 
   const setFileListViewMode = (nodeId: string, viewMode: FileListViewMode): void => {
@@ -1697,6 +2873,9 @@ function App(): JSX.Element {
       return {
         ...current,
         selectedNodeId: nodeId,
+        selectedNodeIds: [nodeId],
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined,
         collapsedFileListTreeBranches:
           Object.keys(nextCollapsedBranches).length > 0 ? nextCollapsedBranches : undefined
       };
@@ -1714,6 +2893,9 @@ function App(): JSX.Element {
       return {
         ...current,
         selectedNodeId: nodeId,
+        selectedNodeIds: [nodeId],
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined,
         selectedFileListEntries: {
           ...(current.selectedFileListEntries ?? {}),
           [nodeId]: filePath
@@ -1722,9 +2904,138 @@ function App(): JSX.Element {
     });
   };
 
+  const markCommittedNodeLayoutDrafts = (nodeIds: readonly string[]): void => {
+    for (const nodeId of nodeIds) {
+      pendingCommittedNodeLayoutDraftIdsRef.current.add(nodeId);
+    }
+  };
+
+  const handleResizeNode = (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint): void => {
+    markCommittedNodeLayoutDrafts([nodeId]);
+    nodeResizeAutoPanRef.current?.stop();
+    nodeResizeAutoPanRef.current = null;
+    setNodeResizeDrafts((current) => {
+      if (!current[nodeId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[nodeId];
+      return next;
+    });
+    postMessage({
+      type: 'webview/resizeNode',
+      payload: {
+        nodeId,
+        position,
+        size
+      }
+    });
+  };
+
+  const showTransientCanvasError = (message: string): void => {
+    setErrorMessage(message);
+    if (clearErrorTimer.current) {
+      window.clearTimeout(clearErrorTimer.current);
+    }
+    clearErrorTimer.current = window.setTimeout(() => setErrorMessage(null), 2600);
+  };
+
+  const persistViewportForSurface = (binding: CanvasSurfaceBinding, viewport: Viewport): void => {
+    if (binding.viewportKind === 'paneGallery' && binding.rootGroupId) {
+      const viewportRole =
+        binding.paneGalleryViewportRole ??
+        resolvePaneGalleryViewportRole(
+          normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+            PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+        );
+      setLocalUiState((current) => ({
+        ...current,
+        paneGallery: {
+          ...(current.paneGallery ?? {}),
+          [viewportRole === 'main' ? 'mainViewports' : 'overviewViewports']: {
+            ...(viewportRole === 'main'
+              ? current.paneGallery?.mainViewports ?? {}
+              : current.paneGallery?.overviewViewports ?? {}),
+            [binding.rootGroupId as string]: viewport
+          }
+        }
+      }));
+      return;
+    }
+
+    setLocalUiState((current) => ({
+      ...current,
+      viewport
+    }));
+  };
+
+  const updateNodeLayoutDraft = (nodeId: string, draft: CanvasNodeLayoutDraft | null): void => {
+    if (draft?.position && draft.size) {
+      activeNodeResizeDraftsRef.current = {
+        ...activeNodeResizeDraftsRef.current,
+        [nodeId]: draft
+      };
+      setNodeResizeDrafts((current) => ({
+        ...current,
+        [nodeId]: {
+          position: draft.position as CanvasNodePosition,
+          size: draft.size as CanvasNodeFootprint
+        }
+      }));
+    } else {
+      const nextActiveDrafts = { ...activeNodeResizeDraftsRef.current };
+      delete nextActiveDrafts[nodeId];
+      activeNodeResizeDraftsRef.current = nextActiveDrafts;
+      setNodeResizeDrafts((current) => {
+        if (!current[nodeId]) {
+          return current;
+        }
+
+        const next = { ...current };
+        delete next[nodeId];
+        return next;
+      });
+    }
+
+    setNodeLayoutDrafts((current) => {
+      const next = { ...current };
+      if (draft) {
+        next[nodeId] = draft;
+      } else {
+        delete next[nodeId];
+      }
+      return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
+    });
+  };
+
+  const handleResizeNodePointerMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ): void => {
+    if (!nodeResizeAutoPanRef.current) {
+      const binding = activeCanvasSurfaceRef.current;
+      nodeResizeAutoPanRef.current = createCanvasAutoPanController(
+        binding.flow ?? reactFlowRef.current,
+        binding.shell ?? canvasShellRef.current,
+        (viewport) => persistViewportForSurface(binding, viewport)
+      );
+    }
+
+    nodeResizeAutoPanRef.current.handlePointerMove(event, onPan);
+  };
+
+  const handleResizeNodeEnd = (): void => {
+    nodeResizeAutoPanRef.current?.stop();
+    nodeResizeAutoPanRef.current = null;
+    activeNodeResizeDraftsRef.current = {};
+    setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
+  };
+
   const baseNodes = toFlowNodes({
     nodes: hostState?.nodes ?? [],
     selectedNodeId: localUiState.selectedNodeId,
+    selectedNodeIds: localUiState.selectedNodeIds,
     documentHasFocus,
     workspaceTrusted,
     overviewInteractionsDisabled: canvasOverviewMode,
@@ -1733,9 +3044,11 @@ function App(): JSX.Element {
     fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
     filePathDisplayMode: runtimeContext.filePathDisplayMode,
     noteMarkdownImageWorkspaceRoots: runtimeContext.noteMarkdownImageWorkspaceRoots ?? [],
+    workspaceFolders: runtimeContext.workspaceFolders ?? [],
     fileListViewModes: localUiState.fileListViewModes,
     selectedFileListEntries: localUiState.selectedFileListEntries,
     collapsedFileListTreeBranches: localUiState.collapsedFileListTreeBranches,
+    nodeResizeDrafts,
     onSelectNode: selectNode,
     onAcknowledgeNodeAttention: acknowledgeNodeAttention,
     onOpenCanvasFile: (nodeId, filePath) =>
@@ -1806,16 +3119,33 @@ function App(): JSX.Element {
           resume: resume === true
         }
       }),
+    onBranchAgentSession: (nodeId) =>
+      postMessage({
+        type: 'webview/branchAgentSession',
+        payload: { nodeId }
+      }),
     onAttachExecution: (nodeId, kind) =>
       postMessage({
         type: 'webview/attachExecutionSession',
         payload: { nodeId, kind }
       }),
-    onExecutionInput: (nodeId, kind, data) =>
+    onExecutionInput: (nodeId, kind, data, metadata) =>
       postMessage({
         type: 'webview/executionInput',
-        payload: { nodeId, kind, data }
+        payload: {
+          nodeId,
+          kind,
+          data,
+          ...(metadata
+            ? {
+                sequence: metadata.sequence,
+                webviewEpochMs: metadata.webviewEpochMs,
+                webviewPerformanceNowMs: metadata.webviewPerformanceNowMs
+              }
+            : {})
+        }
       }),
+    onShowTransientError: showTransientCanvasError,
     onDropExecutionResource: (nodeId, kind, resource) =>
       postMessage({
         type: 'webview/dropExecutionResource',
@@ -1836,6 +3166,7 @@ function App(): JSX.Element {
       }),
     onCopyExecutionSelection: copyExecutionSelection,
     onRequestExecutionPaste: requestExecutionPaste,
+    onExecutionClipboardDiagnostic: reportExecutionClipboardDiagnostic,
     onResizeExecution: (nodeId, kind, cols, rows) =>
       postMessage({
         type: 'webview/resizeExecutionSession',
@@ -1891,31 +3222,120 @@ function App(): JSX.Element {
           content
         }
       }),
-    onResizeNode: (nodeId, position, size) =>
-      postMessage({
-        type: 'webview/resizeNode',
-        payload: {
-          nodeId,
-          position,
-          size
-        }
-      }),
+    onDraftNodeLayout: updateNodeLayoutDraft,
+    onResizeNodePointerMove: handleResizeNodePointerMove,
+    onResizeNodeEnd: handleResizeNodeEnd,
+    onResizeNode: handleResizeNode,
     onFocusNodeInViewport: focusNodeInViewport,
-    onDeleteNode: deleteNode
+    onDeleteNode: deleteNode,
+    onModifierSelectNode: toggleNodeSelection
   });
-  const nodes = applyCanvasNodeLayoutDrafts(baseNodes, nodeLayoutDrafts);
+  const groupDraftLayout = applyCanvasGroupDrafts({
+    groups: hostState?.groups ?? [],
+    hostNodes: hostState?.nodes ?? [],
+    flowNodes: baseNodes,
+    drafts: groupDrafts
+  });
+  const nodes = applyCanvasNodeLayoutDrafts(groupDraftLayout.nodes, nodeLayoutDrafts);
+  const groups = groupDraftLayout.groups;
+  const canvasSpatialBounds = useMemo(
+    () => resolveCanvasSpatialBounds(nodes, groups),
+    [groups, nodes]
+  );
   const dynamicCanvasMinZoom = useMemo(
-    () => resolveDynamicCanvasMinZoom(nodes, canvasViewportSize),
-    [canvasViewportSize, nodes]
+    () => resolveDynamicCanvasMinZoom(canvasSpatialBounds, canvasViewportSize),
+    [canvasSpatialBounds, canvasViewportSize]
   );
-  const canvasFitViewOptions = useMemo(
-    () => ({
-      padding: CANVAS_FIT_VIEW_PADDING,
-      minZoom: dynamicCanvasMinZoom,
-      maxZoom: CANVAS_MAX_ZOOM
-    }),
-    [dynamicCanvasMinZoom]
-  );
+
+  const moveGroupIntoViewport = (groupId: string): boolean => {
+    const reactFlowInstance = reactFlowRef.current;
+    const targetGroup = groups.find((group) => group.id === groupId);
+    if (
+      !reactFlowInstance?.viewportInitialized ||
+      !targetGroup ||
+      !isPositiveFiniteNumber(targetGroup.size.width) ||
+      !isPositiveFiniteNumber(targetGroup.size.height)
+    ) {
+      return false;
+    }
+
+    const viewport = getViewportForBounds(
+      {
+        x: targetGroup.position.x,
+        y: targetGroup.position.y,
+        width: targetGroup.size.width,
+        height: targetGroup.size.height
+      },
+      canvasViewportSize.width,
+      canvasViewportSize.height,
+      Math.min(NODE_FOCUS_MIN_ZOOM, dynamicCanvasMinZoom),
+      NODE_FOCUS_MAX_ZOOM,
+      NODE_FOCUS_VIEW_PADDING
+    );
+    reactFlowInstance.setViewport(viewport, { duration: NODE_FOCUS_ANIMATION_DURATION_MS });
+    return true;
+  };
+
+  const focusGroupInViewport = (groupId: string): boolean => {
+    if (isPaneGalleryPresentation) {
+      return centerGroupInViewport(groupId);
+    }
+
+    if (!moveGroupIntoViewport(groupId)) {
+      return false;
+    }
+
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) => {
+      const nextState = {
+        ...current,
+        selectedNodeId: undefined,
+        selectedNodeIds: undefined,
+        selectedGroupId: groupId,
+        selectedGroupIds: [groupId]
+      };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
+    scheduleFocusedViewportPersistence();
+    return true;
+  };
+
+  const fitCanvasView = useCallback((duration = 0): boolean => {
+    const reactFlowInstance = reactFlowRef.current;
+    const bounds = canvasSpatialBounds.bounds;
+    if (!reactFlowInstance?.viewportInitialized || !bounds) {
+      return false;
+    }
+
+    const viewport = getViewportForBounds(
+      bounds,
+      canvasViewportSize.width,
+      canvasViewportSize.height,
+      dynamicCanvasMinZoom,
+      CANVAS_MAX_ZOOM,
+      CANVAS_FIT_VIEW_PADDING
+    );
+    reactFlowInstance.setViewport(viewport, { duration });
+    if (duration <= 0) {
+      setLocalUiState((current) => ({
+        ...current,
+        viewport
+      }));
+    } else {
+      clearPendingViewportPersistenceTimeout();
+      pendingViewportSyncTimeoutRef.current = window.setTimeout(() => {
+        pendingViewportSyncTimeoutRef.current = undefined;
+        const latestViewport = reactFlowRef.current?.getViewport() ?? viewport;
+        setLocalUiState((current) => ({
+          ...current,
+          viewport: latestViewport
+        }));
+      }, duration + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
+    }
+    return true;
+  }, [canvasSpatialBounds, canvasViewportSize.height, canvasViewportSize.width, dynamicCanvasMinZoom]);
   const edges = toFlowEdges({
     edges: hostState?.edges ?? [],
     selectedEdgeId,
@@ -1928,7 +3348,10 @@ function App(): JSX.Element {
       setSelectedEdgeId(edgeId);
       setLocalUiState((current) => ({
         ...current,
-        selectedNodeId: undefined
+        selectedNodeId: undefined,
+        selectedNodeIds: undefined,
+        selectedGroupId: undefined,
+        selectedGroupIds: undefined
       }));
     },
     onStartLabelEdit: startEdgeLabelEdit,
@@ -1946,12 +3369,105 @@ function App(): JSX.Element {
     onSetColor: setEdgeColor,
     onDeleteEdge: deleteEdge
   });
+  const hostNodes = hostState?.nodes ?? [];
+  const paneGalleryRootModels = useMemo(
+    () => buildPaneGalleryRootModels({
+      rootGroups: groups.filter((group) => isWorkspaceRootCanvasGroupRole(group.role)),
+      groups,
+      nodes,
+      edges,
+      hostNodes,
+      workspaceFolders: runtimeContext.workspaceFolders ?? []
+    }),
+    [edges, groups, hostNodes, nodes, runtimeContext.workspaceFolders]
+  );
+  const paneGalleryRootIds = paneGalleryRootModels.map((model) => model.rootGroup.id);
+  const paneGalleryState = localUiState.paneGallery;
+  const normalizedPaneGalleryLayout =
+    normalizePaneGalleryLayoutMode(paneGalleryState?.layout) ?? PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT;
+  const lastPaneGalleryOverviewLayout = resolvePaneGalleryLastOverviewLayout(paneGalleryState);
+  const lastPaneGalleryThumbnailLayout = resolvePaneGalleryLastThumbnailLayout(paneGalleryState);
+  const activePaneGalleryRootId = paneGalleryRootIds.includes(paneGalleryState?.activeRootGroupId ?? '')
+    ? paneGalleryState?.activeRootGroupId
+    : paneGalleryRootIds[0];
+  const isPaneGalleryPresentation =
+    runtimeContext.multiRootPresentationMode === 'paneGallery' && paneGalleryRootModels.length > 1;
+  const selectedGroupIds = resolveSelectedGroupIds(localUiState);
+
+  useEffect(() => {
+    if (paneGalleryRootIds.length === 0) {
+      return;
+    }
+
+    setLocalUiState((current) => {
+      const currentPaneState = current.paneGallery;
+      const knownRootIds = new Set(paneGalleryRootIds);
+      const overviewViewports = Object.fromEntries(
+        Object.entries(currentPaneState?.overviewViewports ?? {}).filter(([rootGroupId]) =>
+          knownRootIds.has(rootGroupId)
+        )
+      );
+      const mainViewports = Object.fromEntries(
+        Object.entries(currentPaneState?.mainViewports ?? {}).filter(([rootGroupId]) =>
+          knownRootIds.has(rootGroupId)
+        )
+      );
+      const activeRootGroupId = currentPaneState?.activeRootGroupId;
+      const normalizedActiveRootGroupId = activeRootGroupId && knownRootIds.has(activeRootGroupId)
+        ? activeRootGroupId
+        : paneGalleryRootIds[0];
+      const normalizedLayout =
+        normalizePaneGalleryLayoutMode(currentPaneState?.layout) ?? PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT;
+      const normalizedLastOverviewLayout = resolvePaneGalleryLastOverviewLayout(currentPaneState);
+      const normalizedLastThumbnailLayout = resolvePaneGalleryLastThumbnailLayout(currentPaneState);
+      const overviewViewportsChanged =
+        Object.keys(overviewViewports).length !== Object.keys(currentPaneState?.overviewViewports ?? {}).length;
+      const mainViewportsChanged =
+        Object.keys(mainViewports).length !== Object.keys(currentPaneState?.mainViewports ?? {}).length;
+      if (
+        normalizedActiveRootGroupId === activeRootGroupId &&
+        normalizedLayout === currentPaneState?.layout &&
+        normalizedLastOverviewLayout === currentPaneState?.lastOverviewLayout &&
+        normalizedLastThumbnailLayout === currentPaneState?.lastThumbnailLayout &&
+        !overviewViewportsChanged &&
+        !mainViewportsChanged
+      ) {
+        return current;
+      }
+
+      const nextState = {
+        ...current,
+        paneGallery: {
+          ...(currentPaneState ?? {}),
+          layout: normalizedLayout,
+          activeRootGroupId: normalizedActiveRootGroupId,
+          lastOverviewLayout: normalizedLastOverviewLayout,
+          lastThumbnailLayout: normalizedLastThumbnailLayout,
+          overviewViewports: Object.keys(overviewViewports).length > 0 ? overviewViewports : undefined,
+          mainViewports: Object.keys(mainViewports).length > 0 ? mainViewports : undefined
+        }
+      };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
+  }, [paneGalleryRootIds.join('\0')]);
+
+  useEffect(() => {
+    if (didApplyInitialCanvasFitRef.current || !reactFlowReadyVersion || !canvasSpatialBounds.bounds) {
+      return;
+    }
+
+    if (fitCanvasView(0)) {
+      didApplyInitialCanvasFitRef.current = true;
+    }
+  }, [canvasSpatialBounds, fitCanvasView, reactFlowReadyVersion]);
 
   useEffect(() => {
     setNodeLayoutDrafts((current) => pruneCanvasNodeLayoutDrafts(baseNodes, current));
   }, [hostState]);
 
   const updateLocalUiState = (nextState: LocalUiState): void => {
+    localUiStateRef.current = nextState;
     setLocalUiState(nextState);
   };
 
@@ -1961,55 +3477,476 @@ function App(): JSX.Element {
     }
 
     closeFloatingMenus();
+    if (_event.ctrlKey || _event.metaKey) {
+      return;
+    }
+
     selectNode(node.id);
   };
 
-  const handlePaneClick = (): void => {
+  const resolveGroupBodyHitAtPointer = (
+    event: Pick<React.MouseEvent | React.DragEvent, 'clientX' | 'clientY'>,
+    binding: CanvasSurfaceBinding = activeCanvasSurfaceRef.current
+  ): CanvasGroupSummary | undefined => {
+    if (binding.flow?.viewportInitialized) {
+      return findInnermostCanvasGroupBodyAtFlowPoint(
+        groups,
+        binding.shell,
+        binding.flow.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY
+        })
+      );
+    }
+
+    return findInnermostCanvasGroupBodyAtScreenPoint(groups, binding.shell, event.clientX, event.clientY);
+  };
+
+  const bindActiveCanvasSurface = (binding: CanvasSurfaceBinding): void => {
+    activeCanvasSurfaceRef.current = binding;
+  };
+
+  const handlePaneClick = (event: React.MouseEvent): void => {
     closeFloatingMenus();
-    if (!localUiState.selectedNodeId && !selectedEdgeId) {
+    const bodyHitGroup = resolveGroupBodyHitAtPointer(event);
+    if (bodyHitGroup) {
+      selectGroup(bodyHitGroup.id, event);
+      return;
+    }
+
+    if (
+      !localUiState.selectedNodeId &&
+      !localUiState.selectedGroupId &&
+      !localUiState.selectedGroupIds?.length &&
+      !selectedEdgeId
+    ) {
       return;
     }
 
     setSelectedEdgeId(undefined);
     updateLocalUiState({
       ...localUiState,
-      selectedNodeId: undefined
+      selectedNodeId: undefined,
+      selectedNodeIds: undefined,
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined
     });
   };
 
-  const handleNodeDragStop: NodeMouseHandler = (_event, node) => {
+  const selectGroup = (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ): void => {
+    closeFloatingMenus();
+    setSelectedEdgeId(undefined);
+    setLocalUiState((current) => {
+      const useModifierSelection = event?.ctrlKey === true || event?.metaKey === true;
+      if (useModifierSelection) {
+        const selectedGroupIds = new Set(resolveSelectedGroupIds(current));
+        if (selectedGroupIds.has(groupId)) {
+          selectedGroupIds.delete(groupId);
+        } else {
+          selectedGroupIds.add(groupId);
+        }
+        const nextSelectedGroupIds = Array.from(selectedGroupIds);
+        const nextState = {
+          ...current,
+          selectedNodeId: undefined,
+          selectedNodeIds: undefined,
+          selectedGroupId: nextSelectedGroupIds.at(-1),
+          selectedGroupIds: nextSelectedGroupIds.length > 0 ? nextSelectedGroupIds : undefined
+        };
+        localUiStateRef.current = nextState;
+        return nextState;
+      }
+
+      const nextState =
+        current.selectedGroupId === groupId &&
+        !current.selectedNodeId &&
+        !current.selectedNodeIds?.length &&
+        arraysEqual(resolveSelectedGroupIds(current), [groupId])
+          ? current
+          : {
+              ...current,
+              selectedNodeId: undefined,
+              selectedNodeIds: undefined,
+              selectedGroupIds: [groupId],
+              selectedGroupId: groupId
+            };
+      localUiStateRef.current = nextState;
+      return nextState;
+    });
+  };
+
+  const updateGroupDraft = (groupId: string, draft: CanvasGroupDraft | null): void => {
+    setGroupDrafts((current) => {
+      if (draft && !activeGroupInteractionIdsRef.current.has(groupId)) {
+        return current;
+      }
+
+      const next = { ...current };
+      if (draft) {
+        next[groupId] = draft;
+      } else {
+        delete next[groupId];
+      }
+      return shallowEqualCanvasGroupDrafts(current, next) ? current : next;
+    });
+  };
+
+  const handleGroupInteractionStart = (groupId: string): void => {
+    activeGroupInteractionIdsRef.current.add(groupId);
+  };
+
+  const handleGroupInteractionEnd = (groupId: string): void => {
+    activeGroupInteractionIdsRef.current.delete(groupId);
+  };
+
+  const markCommittedGroupDraft = (groupId: string): void => {
+    activeGroupInteractionIdsRef.current.delete(groupId);
+    committedGroupDraftIdsRef.current.add(groupId);
+  };
+
+  const handleCreateEmptyGroup = (position: CanvasNodePosition, parentGroupId?: string): void => {
     postMessage({
-      type: 'webview/moveNode',
+      type: 'webview/createEmptyGroup',
       payload: {
-        id: node.id,
-        position: node.position
+        position,
+        size: DEFAULT_CANVAS_GROUP_SIZE,
+        parentGroupId
       }
     });
   };
 
-  const handleNodesChange = (changes: any[]): void => {
-    setNodeLayoutDrafts((current) => {
-      const currentNodes = applyCanvasNodeLayoutDrafts(baseNodes, current);
-      const nextNodes = applyNodeChanges(changes, currentNodes);
-      return collectCanvasNodeLayoutDrafts(baseNodes, nextNodes);
+  const handleCreateGroupFromSelection = (
+    nodeIds: readonly string[],
+    groupIds: readonly string[],
+    parentGroupId?: string
+  ): void => {
+    postMessage({
+      type: 'webview/createGroupFromSelection',
+      payload: {
+        nodeIds: [...nodeIds],
+        groupIds: [...groupIds],
+        parentGroupId
+      }
     });
   };
 
+  const createGroupFromCurrentSelectionRequest = (): void => {
+    const currentHostState = hostStateRef.current;
+    const currentUiState = localUiStateRef.current;
+    const nodeIds = currentUiState.selectedNodeIds ?? (currentUiState.selectedNodeId ? [currentUiState.selectedNodeId] : []);
+    const groupIds = resolveSelectedGroupIds(currentUiState);
+    const parentGroupId = resolveSelectedObjectParentGroupId(currentHostState, nodeIds, groupIds);
+
+    if (!canCreateCanvasGroupFromSelection(currentHostState, nodeIds, groupIds, parentGroupId)) {
+      showTransientCanvasError('请先选中至少两个同一父级的节点或分组。');
+      return;
+    }
+
+    handleCreateGroupFromSelection(nodeIds, groupIds, parentGroupId);
+  };
+
+  const handleMoveGroup = (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition): void => {
+    markCommittedGroupDraft(groupId);
+    updateGroupDraft(groupId, null);
+    groupDragAutoPanRef.current?.stop();
+    groupDragAutoPanRef.current = null;
+    postMessage({
+      type: 'webview/moveGroup',
+      payload: {
+        groupId,
+        position,
+        pointerPosition
+      }
+    });
+  };
+
+  const handleGroupDragPointerMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ): void => {
+    if (!groupDragAutoPanRef.current) {
+      const binding = activeCanvasSurfaceRef.current;
+      groupDragAutoPanRef.current = createCanvasAutoPanController(
+        binding.flow ?? reactFlowRef.current,
+        binding.shell ?? canvasShellRef.current,
+        (viewport) => persistViewportForSurface(binding, viewport)
+      );
+    }
+
+    groupDragAutoPanRef.current.handlePointerMove(event, onPan);
+  };
+
+  const handleGroupDragEnd = (): void => {
+    groupDragAutoPanRef.current?.stop();
+    groupDragAutoPanRef.current = null;
+  };
+
+  const handleGroupResizePointerMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ): void => {
+    if (!groupResizeAutoPanRef.current) {
+      const binding = activeCanvasSurfaceRef.current;
+      groupResizeAutoPanRef.current = createCanvasAutoPanController(
+        binding.flow ?? reactFlowRef.current,
+        binding.shell ?? canvasShellRef.current,
+        (viewport) => persistViewportForSurface(binding, viewport)
+      );
+    }
+
+    groupResizeAutoPanRef.current.handlePointerMove(event, onPan);
+  };
+
+  const handleGroupResizeEnd = (): void => {
+    groupResizeAutoPanRef.current?.stop();
+    groupResizeAutoPanRef.current = null;
+  };
+
+  const handleResizeGroup = (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint): void => {
+    markCommittedGroupDraft(groupId);
+    updateGroupDraft(groupId, null);
+    handleGroupResizeEnd();
+    postMessage({
+      type: 'webview/resizeGroup',
+      payload: {
+        groupId,
+        position,
+        size
+      }
+    });
+  };
+
+  const handleUpdateGroupTitle = (groupId: string, title: string): void => {
+    postMessage({
+      type: 'webview/updateGroupTitle',
+      payload: {
+        groupId,
+        title
+      }
+    });
+  };
+
+  const handleUngroup = (groupId: string): void => {
+    setLocalUiState((current) =>
+      current.selectedGroupId === groupId
+        ? {
+            ...current,
+            selectedGroupId: undefined,
+            selectedGroupIds: undefined
+          }
+        : current
+    );
+    postMessage({
+      type: 'webview/ungroup',
+      payload: { groupId }
+    });
+  };
+
+  const handleDeleteGroup = (groupId: string): void => {
+    setLocalUiState((current) =>
+      current.selectedGroupId === groupId
+        ? {
+            ...current,
+            selectedGroupId: undefined,
+            selectedGroupIds: undefined
+          }
+        : current
+    );
+    postMessage({
+      type: 'webview/deleteGroup',
+      payload: { groupId }
+    });
+  };
+
+  const handleNodeDragStop: NodeDragHandler = (event, node, draggedNodes) => {
+    const pointerPosition = reactFlowRef.current?.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY
+    });
+    const primaryPointerPosition = pointerPosition
+      ? {
+          x: Math.round(pointerPosition.x),
+          y: Math.round(pointerPosition.y)
+        }
+      : undefined;
+    const draggedNodeIds = new Set(draggedNodes.map((draggedNode) => draggedNode.id));
+    const selectedFlowNodesById = new Map(
+      nodes
+        .filter(
+          (candidate) =>
+            candidate.id !== node.id &&
+            candidate.selected &&
+            !draggedNodeIds.has(candidate.id) &&
+            candidate.draggable !== false &&
+            nodeLayoutDrafts[candidate.id]?.position
+        )
+        .map((candidate) => [candidate.id, candidate] as const)
+    );
+    const selectedMoves = [
+      ...draggedNodes.filter((draggedNode) => draggedNode.id !== node.id),
+      ...selectedFlowNodesById.values()
+    ].map((draggedNode) => {
+      const draftPosition = nodeLayoutDrafts[draggedNode.id]?.position;
+      const resolvedPosition = draftPosition ?? draggedNode.position;
+      return {
+        id: draggedNode.id,
+        position: {
+          x: Math.round(resolvedPosition.x),
+          y: Math.round(resolvedPosition.y)
+        },
+        pointerPosition: primaryPointerPosition
+      };
+    });
+    markCommittedNodeLayoutDrafts([node.id, ...selectedMoves.map((move) => move.id)]);
+    postMessage({
+      type: 'webview/moveNode',
+      payload: {
+        id: node.id,
+        position: node.position,
+        pointerPosition: primaryPointerPosition,
+        selectedMoves: selectedMoves.length > 0 ? selectedMoves : undefined
+      }
+    });
+  };
+
+  const isCanvasNodeInPaneGalleryRoot = (nodeId: string, rootGroupId: string): boolean => {
+    const hostNode = hostStateRef.current?.nodes.find((candidate) => candidate.id === nodeId);
+    return Boolean(
+      hostNode &&
+        resolveContainingWorkspaceRootGroupIdForWebview(groups, hostNode.groupId) === rootGroupId
+    );
+  };
+
+  const filterCanvasNodeLayoutDraftsForPaneRoot = (
+    drafts: Record<string, CanvasNodeLayoutDraft>,
+    rootGroupId?: string
+  ): Record<string, CanvasNodeLayoutDraft> => {
+    if (!rootGroupId) {
+      return drafts;
+    }
+
+    const nextDrafts = Object.fromEntries(
+      Object.entries(drafts).filter(([nodeId]) => isCanvasNodeInPaneGalleryRoot(nodeId, rootGroupId))
+    );
+    return shallowEqualCanvasNodeLayoutDrafts(drafts, nextDrafts) ? drafts : nextDrafts;
+  };
+
+  const handleNodesChange = (changes: any[]): void => {
+    const paneRootGroupId =
+      activeCanvasSurfaceRef.current.viewportKind === 'paneGallery'
+        ? activeCanvasSurfaceRef.current.rootGroupId
+        : undefined;
+    const selectionChanges = changes.filter(
+      (change) => change?.type === 'select' && typeof change.id === 'string' && typeof change.selected === 'boolean'
+    );
+    setNodeLayoutDrafts((current) => {
+      const currentNodes = applyCanvasNodeLayoutDrafts(groupDraftLayout.nodes, current);
+      const nextNodes = applyNodeChanges(changes, currentNodes);
+      const nextDrafts = {
+        ...collectCanvasNodeLayoutDrafts(groupDraftLayout.nodes, nextNodes),
+        ...activeNodeResizeDraftsRef.current
+      };
+      if (selectionChanges.length > 0 || !changes.some((change) => change?.type === 'position')) {
+        return filterCanvasNodeLayoutDraftsForPaneRoot(nextDrafts, paneRootGroupId);
+      }
+
+      return filterCanvasNodeLayoutDraftsForPaneRoot(
+        extendCanvasNodeLayoutDraftsForSelectedDrag(groupDraftLayout.nodes, nextNodes, nextDrafts),
+        paneRootGroupId
+      );
+    });
+
+    if (selectionChanges.length > 0) {
+      setSelectedEdgeId(undefined);
+      setLocalUiState((current) => {
+        const pendingModifierNodeSelection = pendingModifierNodeSelectionRef.current;
+        const selectedNodeIds = new Set(
+          pendingModifierNodeSelection?.baseSelectedNodeIds ??
+            current.selectedNodeIds ??
+            (current.selectedNodeId ? [current.selectedNodeId] : [])
+        );
+        let lastSelectedNodeId = current.selectedNodeId;
+        if (pendingModifierNodeSelection) {
+          if (selectedNodeIds.has(pendingModifierNodeSelection.nodeId)) {
+            selectedNodeIds.delete(pendingModifierNodeSelection.nodeId);
+          } else {
+            selectedNodeIds.add(pendingModifierNodeSelection.nodeId);
+          }
+          pendingModifierNodeSelectionRef.current = null;
+          const nextSelectedNodeIds = Array.from(selectedNodeIds);
+          const nextState = {
+            ...current,
+            selectedNodeId: nextSelectedNodeIds.at(-1),
+            selectedNodeIds: nextSelectedNodeIds.length > 0 ? nextSelectedNodeIds : undefined,
+            selectedGroupId: undefined,
+            selectedGroupIds: undefined
+          };
+          localUiStateRef.current = nextState;
+          return nextState;
+        }
+        if (!selectionChanges.some((change) => change.selected)) {
+          return current;
+        }
+        for (const change of selectionChanges) {
+          if (change.selected) {
+            selectedNodeIds.add(change.id);
+            lastSelectedNodeId = change.id;
+          } else {
+            selectedNodeIds.delete(change.id);
+          }
+        }
+        const selectedChangeCount = selectionChanges.filter((change) => change.selected).length;
+        const nextSelectedNodeIds =
+          selectedChangeCount === 1
+            ? [lastSelectedNodeId ?? selectionChanges.find((change) => change.selected)?.id].filter(
+                (id): id is string => typeof id === 'string'
+              )
+            : Array.from(selectedNodeIds);
+        const nextState = {
+          ...current,
+          selectedNodeId: nextSelectedNodeIds.at(-1),
+          selectedNodeIds: nextSelectedNodeIds.length > 0 ? nextSelectedNodeIds : undefined,
+          selectedGroupId: undefined,
+          selectedGroupIds: undefined
+        };
+        localUiStateRef.current = nextState;
+        return nextState;
+      });
+    }
+  };
+
   const handleMoveEnd = (_event: MouseEvent | TouchEvent | null, viewport: Viewport): void => {
-    clearPendingViewportPersistenceTimeout();
+    persistCanvasViewport(viewport);
+  };
+
+  const postCanvasViewportCenter = (viewport: Viewport): void => {
+    const visibleCenter = resolveVisibleCanvasCenterFromViewport(viewport, canvasShellRef.current);
+    if (!visibleCenter) {
+      return;
+    }
+
+    postMessage({
+      type: 'webview/updateViewportCenter',
+      payload: {
+        visibleCenter
+      }
+    });
+  };
+
+  const commitCanvasViewport = (viewport: Viewport): void => {
     setLocalUiState((current) => ({
       ...current,
       viewport
     }));
-    const visibleCenter = resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current);
-    if (visibleCenter) {
-      postMessage({
-        type: 'webview/updateViewportCenter',
-        payload: {
-          visibleCenter
-        }
-      });
-    }
+    postCanvasViewportCenter(viewport);
+  };
+
+  const persistCanvasViewport = (viewport: Viewport): void => {
+    clearPendingViewportPersistenceTimeout();
+    commitCanvasViewport(viewport);
   };
 
   const handleMoveStart = (): void => {
@@ -2026,26 +3963,30 @@ function App(): JSX.Element {
   };
 
   const scheduleFocusedViewportPersistence = (): void => {
+    const binding = activeCanvasSurfaceRef.current;
     clearPendingViewportPersistenceTimeout();
     pendingViewportSyncTimeoutRef.current = window.setTimeout(() => {
       pendingViewportSyncTimeoutRef.current = undefined;
-      const viewport = reactFlowRef.current?.getViewport();
+      const viewport = binding.flow?.getViewport();
       if (!viewport) {
         return;
       }
 
-      setLocalUiState((current) => ({
-        ...current,
-        viewport
-      }));
+      if (binding.viewportKind === 'paneGallery') {
+        persistViewportForSurface(binding, viewport);
+        return;
+      }
+
+      commitCanvasViewport(viewport);
     }, NODE_FOCUS_ANIMATION_DURATION_MS + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
   };
 
-  const handlePaneContextMenu = (event: React.MouseEvent): void => {
+  const handlePaneContextMenu = (event: React.MouseEvent, explicitTargetGroupId?: string): void => {
     event.preventDefault();
     stopCanvasEvent(event);
 
-    const reactFlowInstance = reactFlowRef.current;
+    const surfaceBinding = activeCanvasSurfaceRef.current;
+    const reactFlowInstance = surfaceBinding.flow ?? reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized) {
       return;
     }
@@ -2055,11 +3996,43 @@ function App(): JSX.Element {
       y: event.clientY
     });
 
+    const explicitBodyHitGroup = explicitTargetGroupId
+      ? groups.find((group) => group.id === explicitTargetGroupId)
+      : undefined;
+    const bodyHitGroup = explicitBodyHitGroup ?? resolveGroupBodyHitAtPointer(event, surfaceBinding);
     setSelectedEdgeId(undefined);
     closeEdgeMenus();
+    const currentSelectedNodeIds =
+      localUiState.selectedNodeIds ?? (localUiState.selectedNodeId ? [localUiState.selectedNodeId] : []);
+    const currentSelectedGroupIds =
+      resolveSelectedGroupIds(localUiState);
+    const bodyHitGroupForSelection = bodyHitGroup;
+    const targetGroupId = bodyHitGroup?.id;
+    const preserveSelectionForBodyAction =
+      bodyHitGroupForSelection &&
+      canCreateCanvasGroupFromSelection(hostState, currentSelectedNodeIds, currentSelectedGroupIds, bodyHitGroupForSelection.id);
+    const selectedNodeIds = preserveSelectionForBodyAction
+      ? currentSelectedNodeIds
+      : bodyHitGroupForSelection
+        ? []
+        : currentSelectedNodeIds;
+    const selectedGroupIds = preserveSelectionForBodyAction
+      ? currentSelectedGroupIds
+      : bodyHitGroupForSelection
+        ? [bodyHitGroupForSelection.id]
+        : currentSelectedGroupIds;
+    const canCreateGroupFromSelection = canCreateCanvasGroupFromSelection(
+      hostState,
+      selectedNodeIds,
+      selectedGroupIds,
+      targetGroupId
+    );
     setLocalUiState((current) => ({
       ...current,
-      selectedNodeId: undefined
+      selectedNodeId: undefined,
+      selectedNodeIds: undefined,
+      selectedGroupId: selectedGroupIds.at(-1),
+      selectedGroupIds: selectedGroupIds.length > 0 ? selectedGroupIds : undefined
     }));
     setContextMenu({
       screenX: event.clientX,
@@ -2068,7 +4041,11 @@ function App(): JSX.Element {
         x: Math.round(flowAnchor.x),
         y: Math.round(flowAnchor.y)
       },
-      view: 'root'
+      view: 'root',
+      targetGroupId,
+      selectedNodeIds,
+      selectedGroupIds,
+      canCreateGroupFromSelection
     });
   };
 
@@ -2083,7 +4060,11 @@ function App(): JSX.Element {
     event.preventDefault();
   };
 
-  const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>): void => {
+  const handleCanvasDropForSurface = (
+    event: React.DragEvent,
+    binding: CanvasSurfaceBinding = activeCanvasSurfaceRef.current,
+    explicitTargetGroupId?: string
+  ): void => {
     if (!isCanvasBlankDropTarget(event.target)) {
       return;
     }
@@ -2100,7 +4081,7 @@ function App(): JSX.Element {
 
     event.preventDefault();
     stopCanvasEvent(event);
-    const reactFlowInstance = reactFlowRef.current;
+    const reactFlowInstance = binding.flow ?? reactFlowRef.current;
     if (!reactFlowInstance?.viewportInitialized) {
       return;
     }
@@ -2109,6 +4090,7 @@ function App(): JSX.Element {
       x: event.clientX,
       y: event.clientY
     });
+    const targetGroupId = explicitTargetGroupId ?? resolveGroupBodyHitAtPointer(event, binding)?.id;
     postMessage({
       type: 'webview/dropNoteMarkdownFiles',
       payload: {
@@ -2116,9 +4098,56 @@ function App(): JSX.Element {
         position: {
           x: Math.round(flowPosition.x),
           y: Math.round(flowPosition.y)
-        }
+        },
+        targetGroupId
       }
     });
+  };
+
+  const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>): void => {
+    handleCanvasDropForSurface(event);
+  };
+
+  const bindPaneGallerySurface = (
+    rootGroupId: string,
+    viewportRole = resolvePaneGalleryViewportRole(
+      normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+        PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+    )
+  ): CanvasSurfaceBinding => {
+    const binding: CanvasSurfaceBinding = {
+      flow: paneGalleryFlowRefs.current[rootGroupId],
+      shell: paneGalleryShellRefs.current[rootGroupId],
+      viewportKind: 'paneGallery',
+      rootGroupId,
+      paneGalleryViewportRole: viewportRole
+    };
+    bindActiveCanvasSurface(binding);
+    return binding;
+  };
+
+  const handlePaneGalleryPaneClick = (event: React.MouseEvent, rootGroupId: string): void => {
+    bindPaneGallerySurface(rootGroupId);
+    handlePaneClick(event);
+  };
+
+  const handlePaneGalleryContextMenu = (
+    event: React.MouseEvent,
+    rootGroupId: string,
+    targetGroupId = rootGroupId
+  ): void => {
+    bindPaneGallerySurface(rootGroupId);
+    handlePaneContextMenu(event, targetGroupId);
+  };
+
+  const handlePaneGalleryDragOver = (event: React.DragEvent, rootGroupId: string): void => {
+    bindPaneGallerySurface(rootGroupId);
+    handleCanvasDragOver(event as React.DragEvent<HTMLDivElement>);
+  };
+
+  const handlePaneGalleryDrop = (event: React.DragEvent, rootGroupId: string): void => {
+    const binding = bindPaneGallerySurface(rootGroupId);
+    handleCanvasDropForSurface(event, binding, rootGroupId);
   };
 
   useEffect(() => {
@@ -2244,6 +4273,9 @@ function App(): JSX.Element {
     if (!connection.source || !connection.target || !sourceAnchor || !targetAnchor) {
       return;
     }
+    if (!canConnectCanvasEdgeEndpoints(hostState, connection.source, connection.target)) {
+      return;
+    }
 
     closeFloatingMenus();
     setSelectedEdgeId(undefined);
@@ -2262,6 +4294,9 @@ function App(): JSX.Element {
     const sourceAnchor = parseHandleAnchor(connection.sourceHandle);
     const targetAnchor = parseHandleAnchor(connection.targetHandle);
     if (!connection.source || !connection.target || !sourceAnchor || !targetAnchor) {
+      return;
+    }
+    if (!canConnectCanvasEdgeEndpoints(hostState, connection.source, connection.target)) {
       return;
     }
 
@@ -2287,7 +4322,10 @@ function App(): JSX.Element {
     setSelectedEdgeId(edge.id);
     setLocalUiState((current) => ({
       ...current,
-      selectedNodeId: undefined
+      selectedNodeId: undefined,
+      selectedNodeIds: undefined,
+      selectedGroupId: undefined,
+      selectedGroupIds: undefined
     }));
   };
 
@@ -2316,33 +4354,298 @@ function App(): JSX.Element {
       }) as CSSProperties,
     [canvasOverviewTitleScale]
   );
+  const setPaneGalleryState = (updater: (current: PaneGalleryLocalState | undefined) => PaneGalleryLocalState): void => {
+    setLocalUiState((current) => ({
+      ...current,
+      paneGallery: updater(current.paneGallery)
+    }));
+  };
+  const savePaneGalleryViewport = (
+    rootGroupId: string,
+    viewport: Viewport,
+    viewportRole: PaneGalleryViewportRole = resolvePaneGalleryViewportRole(
+      normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+        PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+    )
+  ): void => {
+    const viewportKey = viewportRole === 'main' ? 'mainViewports' : 'overviewViewports';
+    setPaneGalleryState((current) => ({
+      ...current,
+      [viewportKey]: {
+        ...(current?.[viewportKey] ?? {}),
+        [rootGroupId]: viewport
+      }
+    }));
+  };
+  const fitPaneGalleryRoot = (
+    rootGroupId: string,
+    instance = paneGalleryFlowRefs.current[rootGroupId],
+    duration = 0,
+    options: { viewportRole?: PaneGalleryViewportRole; requirePaneMode?: 'main' } = {}
+  ): boolean => {
+    const viewportRole =
+      options.viewportRole ??
+      resolvePaneGalleryViewportRole(
+        normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
+          PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
+      );
+    const rootGroup = groups.find((group) => group.id === rootGroupId);
+    const shell = paneGalleryShellRefs.current[rootGroupId];
+    if (!instance?.viewportInitialized || !rootGroup || !shell) {
+      return false;
+    }
+    if (options.requirePaneMode) {
+      const paneElement = shell.closest('.pane-gallery-root-pane');
+      if (
+        !(paneElement instanceof HTMLElement) ||
+        paneElement.dataset.paneGalleryRootMode !== options.requirePaneMode
+      ) {
+        return false;
+      }
+    }
 
+    const viewport = getViewportForBounds(
+      {
+        x: rootGroup.position.x,
+        y: rootGroup.position.y,
+        width: Math.max(1, rootGroup.size.width),
+        height: Math.max(1, rootGroup.size.height)
+      },
+      Math.max(1, shell.clientWidth),
+      Math.max(1, shell.clientHeight),
+      PANE_GALLERY_MIN_ZOOM,
+      CANVAS_MAX_ZOOM,
+      PANE_GALLERY_FIT_VIEW_PADDING
+    );
+    instance.setViewport(viewport, { duration });
+    savePaneGalleryViewport(rootGroupId, viewport, viewportRole);
+    return true;
+  };
+  const hasPaneGalleryMainViewport = (rootGroupId: string): boolean =>
+    paneGalleryState?.mainViewports?.[rootGroupId] !== undefined;
+  const schedulePaneGalleryRootFit = (
+    rootGroupId: string,
+    options: { viewportRole?: PaneGalleryViewportRole; requirePaneMode?: 'main' } = {},
+    duration = 0
+  ): void => {
+    let remainingAttempts = 8;
+    const tryFit = (): void => {
+      if (fitPaneGalleryRoot(rootGroupId, undefined, duration, options)) {
+        return;
+      }
+      remainingAttempts -= 1;
+      if (remainingAttempts > 0) {
+        window.setTimeout(tryFit, 50);
+      }
+    };
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(tryFit);
+    });
+  };
+  const updatePaneGalleryLayout = (
+    layout: PaneGalleryLayoutMode,
+    activeRootGroupId = activePaneGalleryRootId,
+    options: { fitRoot?: boolean } = {}
+  ): void => {
+    const currentLayout = normalizedPaneGalleryLayout;
+    const currentActiveRootGroupId = activePaneGalleryRootId;
+    const enteringThumbnailLayout =
+      !isPaneGalleryThumbnailLayout(currentLayout) && isPaneGalleryThumbnailLayout(layout);
+    const switchingThumbnailMainPane =
+      isPaneGalleryThumbnailLayout(currentLayout) &&
+      isPaneGalleryThumbnailLayout(layout) &&
+      activeRootGroupId !== currentActiveRootGroupId;
+    if (enteringThumbnailLayout || switchingThumbnailMainPane) {
+      clearCanvasTransientInteractionState();
+    }
+
+    const lastOverviewLayout =
+      normalizePaneGalleryOverviewLayoutMode(layout) ?? lastPaneGalleryOverviewLayout;
+    const lastThumbnailLayout =
+      normalizePaneGalleryThumbnailLayoutMode(layout) ?? lastPaneGalleryThumbnailLayout;
+    setPaneGalleryState((current) => ({
+      ...current,
+      layout,
+      activeRootGroupId,
+      lastOverviewLayout,
+      lastThumbnailLayout
+    }));
+    if (options.fitRoot === false) {
+      return;
+    }
+    if (!activeRootGroupId) {
+      return;
+    }
+
+    const thumbnailMainRootNeedsFit =
+      isPaneGalleryThumbnailLayout(layout) && !hasPaneGalleryMainViewport(activeRootGroupId);
+    if (thumbnailMainRootNeedsFit) {
+      schedulePaneGalleryRootFit(activeRootGroupId, {
+        viewportRole: 'main',
+        requirePaneMode: 'main'
+      });
+    }
+  };
+  useEffect(() => {
+    if (
+      !isPaneGalleryPresentation ||
+      !isPaneGalleryThumbnailLayout(normalizedPaneGalleryLayout) ||
+      !activePaneGalleryRootId ||
+      hasPaneGalleryMainViewport(activePaneGalleryRootId)
+    ) {
+      return;
+    }
+
+    schedulePaneGalleryRootFit(activePaneGalleryRootId, { viewportRole: 'main', requirePaneMode: 'main' });
+  }, [
+    activePaneGalleryRootId,
+    isPaneGalleryPresentation,
+    normalizedPaneGalleryLayout,
+    activePaneGalleryRootId ? paneGalleryState?.mainViewports?.[activePaneGalleryRootId] !== undefined : false
+  ]);
+  const handlePaneGalleryNodeDragStop = (
+    rootGroupId: string,
+    event: React.MouseEvent,
+    node: Node<CanvasNodeData>,
+    draggedNodes: Node<CanvasNodeData>[]
+  ): void => {
+    bindPaneGallerySurface(rootGroupId);
+    const paneFlow = paneGalleryFlowRefs.current[rootGroupId];
+    const pointerPosition = paneFlow?.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY
+    });
+    const primaryPointerPosition = pointerPosition
+      ? {
+          x: Math.round(pointerPosition.x),
+          y: Math.round(pointerPosition.y)
+        }
+      : undefined;
+    const draggedNodeIds = new Set(draggedNodes.map((draggedNode) => draggedNode.id));
+    const selectedFlowNodesById = new Map(
+      nodes
+        .filter(
+          (candidate) =>
+            candidate.id !== node.id &&
+            isCanvasNodeInPaneGalleryRoot(candidate.id, rootGroupId) &&
+            candidate.selected &&
+            !draggedNodeIds.has(candidate.id) &&
+            candidate.draggable !== false &&
+            nodeLayoutDrafts[candidate.id]?.position
+        )
+        .map((candidate) => [candidate.id, candidate] as const)
+    );
+    const selectedMoves = [
+      ...draggedNodes.filter((draggedNode) => draggedNode.id !== node.id),
+      ...selectedFlowNodesById.values()
+    ].map((draggedNode) => {
+      const draftPosition = nodeLayoutDrafts[draggedNode.id]?.position;
+      const resolvedPosition = draftPosition ?? draggedNode.position;
+      return {
+        id: draggedNode.id,
+        position: {
+          x: Math.round(resolvedPosition.x),
+          y: Math.round(resolvedPosition.y)
+        },
+        pointerPosition: primaryPointerPosition
+      };
+    });
+    const nodeDraftPosition = nodeLayoutDrafts[node.id]?.position;
+    const nodePosition = nodeDraftPosition ?? node.position;
+    markCommittedNodeLayoutDrafts([node.id, ...selectedMoves.map((move) => move.id)]);
+    postMessage({
+      type: 'webview/moveNode',
+      payload: {
+        id: node.id,
+        position: {
+          x: Math.round(nodePosition.x),
+          y: Math.round(nodePosition.y)
+        },
+        pointerPosition: primaryPointerPosition,
+        selectedMoves: selectedMoves.length > 0 ? selectedMoves : undefined
+      }
+    });
+  };
   return (
     <div
       ref={canvasShellRef}
-      className={`canvas-shell ${canvasOverviewMode ? 'is-overview-mode' : ''}`.trim()}
-      data-canvas-overview-mode={canvasOverviewMode ? 'true' : 'false'}
+      className={`canvas-shell ${canvasOverviewMode && !isPaneGalleryPresentation ? 'is-overview-mode' : ''} ${
+        isPaneGalleryPresentation ? 'is-pane-gallery' : ''
+      }`.trim()}
+      data-canvas-overview-mode={canvasOverviewMode && !isPaneGalleryPresentation ? 'true' : 'false'}
       data-canvas-overview-config={runtimeContext.overviewMode}
       style={canvasShellStyle}
       tabIndex={runtimeContext.surfaceLocation === 'editor' ? -1 : undefined}
       onDragOver={handleCanvasDragOver}
       onDrop={handleCanvasDrop}
     >
-      <CanvasOverviewInteractionContext.Provider value={canvasOverviewMode}>
+      <CanvasOverviewInteractionContext.Provider value={isPaneGalleryPresentation ? false : canvasOverviewMode}>
         <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
+        {isPaneGalleryPresentation ? (
+          <PaneGallery
+            models={paneGalleryRootModels}
+            allModels={paneGalleryRootModels}
+            activeRootGroupId={activePaneGalleryRootId}
+            layout={normalizedPaneGalleryLayout}
+            lastOverviewLayout={lastPaneGalleryOverviewLayout}
+            lastThumbnailLayout={lastPaneGalleryThumbnailLayout}
+            overviewViewports={paneGalleryState?.overviewViewports ?? {}}
+            mainViewports={paneGalleryState?.mainViewports ?? {}}
+            selectedGroupIds={selectedGroupIds}
+            overviewMode={runtimeContext.overviewMode}
+            overviewZoomThreshold={runtimeContext.overviewZoomThreshold}
+            paneRefs={paneGalleryShellRefs}
+            flowRefs={paneGalleryFlowRefs}
+            onBindActiveSurface={bindPaneGallerySurface}
+            onSetLayout={updatePaneGalleryLayout}
+            onFitPane={fitPaneGalleryRoot}
+            onSavePaneViewport={savePaneGalleryViewport}
+            onNodesChange={handleNodesChange}
+            onNodeDragStop={handlePaneGalleryNodeDragStop}
+            onConnect={handleConnect}
+            onEdgeClick={handleEdgeClick}
+            onEdgeDoubleClick={handleEdgeDoubleClick}
+            onReconnect={handleEdgeReconnect}
+            onEdgeContextMenu={handleEdgeContextMenu}
+            onNodeClick={handleNodeClick}
+            onPaneClick={handlePaneGalleryPaneClick}
+            onPaneContextMenu={handlePaneGalleryContextMenu}
+            onPaneDragOver={handlePaneGalleryDragOver}
+            onPaneDrop={handlePaneGalleryDrop}
+            onSelectGroupBody={selectGroup}
+            onFocusGroupInViewport={focusGroupInViewport}
+            onSelectGroup={selectGroup}
+            onDraftGroup={updateGroupDraft}
+            onGroupInteractionStart={handleGroupInteractionStart}
+            onGroupInteractionEnd={handleGroupInteractionEnd}
+            onMoveGroup={handleMoveGroup}
+            onResizeGroup={handleResizeGroup}
+            onUpdateGroupTitle={handleUpdateGroupTitle}
+            onUngroup={handleUngroup}
+            onDeleteGroup={handleDeleteGroup}
+            onDragPointerMove={handleGroupDragPointerMove}
+            onDragEnd={handleGroupDragEnd}
+            onResizePointerMove={handleGroupResizePointerMove}
+            onResizeEnd={handleGroupResizeEnd}
+          />
+        ) : (
         <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
-          fitView={!localUiState.viewport}
-          fitViewOptions={canvasFitViewOptions}
           defaultViewport={localUiState.viewport}
           minZoom={dynamicCanvasMinZoom}
           maxZoom={CANVAS_MAX_ZOOM}
           onInit={(instance) => {
             reactFlowRef.current = instance;
+            bindActiveCanvasSurface({
+              flow: instance,
+              shell: canvasShellRef.current,
+              viewportKind: 'rootGroups'
+            });
             setReactFlowReadyVersion((current) => current + 1);
           }}
           onNodesChange={handleNodesChange}
@@ -2357,6 +4660,22 @@ function App(): JSX.Element {
           }}
           onNodeClick={handleNodeClick}
           onNodeDragStop={handleNodeDragStop}
+          multiSelectionKeyCode={null}
+          selectNodesOnDrag={false}
+          onPointerDownCapture={() =>
+            bindActiveCanvasSurface({
+              flow: reactFlowRef.current,
+              shell: canvasShellRef.current,
+              viewportKind: 'rootGroups'
+            })
+          }
+          onMouseEnter={() =>
+            bindActiveCanvasSurface({
+              flow: reactFlowRef.current,
+              shell: canvasShellRef.current,
+              viewportKind: 'rootGroups'
+            })
+          }
           onMoveStart={handleMoveStart}
           onPaneClick={handlePaneClick}
           onPaneContextMenu={handlePaneContextMenu}
@@ -2369,29 +4688,55 @@ function App(): JSX.Element {
             onViewportStateChange={handleCanvasOverviewViewportStateChange}
           />
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
-          <MiniMap
-            className="canvas-corner-panel canvas-minimap"
-            position="bottom-right"
-            style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
-            pannable
-            zoomable
-            nodeClassName={(node) => minimapClassNameForNode(node as Node<CanvasNodeData>)}
-            nodeColor={(node) => minimapFillColorForKind((node.data as CanvasNodeData).kind)}
-            nodeStrokeColor={(node) => minimapStrokeColorForKind((node.data as CanvasNodeData).kind)}
-            nodeComponent={CanvasMiniMapNode}
-            nodeBorderRadius={4}
-            nodeStrokeWidth={1.2}
-            maskColor="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
-            maskStrokeColor="none"
-            maskStrokeWidth={0}
+          <CanvasGroupsViewportLayer
+            groups={groups}
+            workspaceRootWatermarksEnabled={runtimeContext.workspaceRootWatermarksEnabled}
+            selectedGroupIds={resolveSelectedGroupIds(localUiState)}
+            onSelectGroupBody={selectGroup}
+            onFocusGroupInViewport={focusGroupInViewport}
+            onGroupBodyContextMenu={handlePaneContextMenu}
+            onSelectGroup={selectGroup}
+            onDraftGroup={updateGroupDraft}
+            onGroupInteractionStart={handleGroupInteractionStart}
+            onGroupInteractionEnd={handleGroupInteractionEnd}
+            onMoveGroup={handleMoveGroup}
+            onResizeGroup={handleResizeGroup}
+            onUpdateGroupTitle={handleUpdateGroupTitle}
+            onUngroup={handleUngroup}
+            onDeleteGroup={handleDeleteGroup}
+            onDragPointerMove={handleGroupDragPointerMove}
+            onDragEnd={handleGroupDragEnd}
+            onResizePointerMove={handleGroupResizePointerMove}
+            onResizeEnd={handleGroupResizeEnd}
           />
-          <CanvasMiniMapViewportOutline />
+          <CanvasMiniMap
+            nodes={nodes}
+            groups={groups}
+            spatialBounds={canvasSpatialBounds}
+            viewportSize={canvasViewportSize}
+            onViewportCommit={persistCanvasViewport}
+          />
           <Controls
             className="canvas-corner-panel canvas-controls"
             showInteractive={false}
-            fitViewOptions={canvasFitViewOptions}
-          />
+            showFitView={false}
+          >
+            <button
+              type="button"
+              className="react-flow__controls-button react-flow__controls-fitview"
+              title="fit view"
+              aria-label="fit view"
+              onClick={() => {
+                fitCanvasView(NODE_FOCUS_ANIMATION_DURATION_MS);
+              }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 32" aria-hidden="true" focusable="false">
+                <path d="M3.692 4.63c0-.53.4-.938.939-.938h5.215V0H4.708C2.13 0 0 2.054 0 4.63v5.216h3.692V4.631zM20.292 0h-5.2v3.692h5.17c.53 0 .984.4.984.939v5.215h3.692V4.631A4.624 4.624 0 0020.292 0zm.954 24.83c0 .532-.4.94-.939.94h-5.215v3.768h5.215c2.577 0 4.631-2.13 4.631-4.707v-5.139h-3.692v5.139zm-16.615.94c-.531 0-.939-.4-.939-.94v-5.138H0v5.139c0 2.577 2.13 4.707 4.708 4.707h5.138V25.77H4.631z" />
+              </svg>
+            </button>
+          </Controls>
         </ReactFlow>
+        )}
       </CanvasOverviewInteractionContext.Provider>
 
       {contextMenu ? (
@@ -2406,10 +4751,24 @@ function App(): JSX.Element {
           defaultAgentProvider={runtimeContext.defaultAgentProvider}
           agentLaunchDefaults={runtimeContext.agentLaunchDefaults}
           canSaveCurrentCanvas={hostState?.nodes.some((node) => isTemplateCompatibleNodeKind(node.kind)) ?? false}
+          canCreateGroupFromSelection={contextMenu.canCreateGroupFromSelection === true}
+          onCreateEmptyGroup={() => {
+            handleCreateEmptyGroup(contextMenu.flowAnchor, contextMenu.targetGroupId);
+            closePaneContextMenu();
+          }}
+          onCreateGroupFromSelection={() => {
+            handleCreateGroupFromSelection(
+              contextMenu.selectedNodeIds ?? [],
+              contextMenu.selectedGroupIds ?? [],
+              contextMenu.targetGroupId
+            );
+            closePaneContextMenu();
+          }}
           onCreate={(kind, agentProvider, agentLaunchPreset, agentCustomLaunchCommand) => {
             createNode(
               kind,
               resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor),
+              contextMenu.targetGroupId,
               agentProvider,
               agentLaunchPreset,
               agentCustomLaunchCommand
@@ -2442,7 +4801,11 @@ function App(): JSX.Element {
             postMessage({
               type: 'webview/applyDefaultTemplate',
               payload: {
-                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current)
+                visibleCenter: resolveVisibleCanvasCenter(
+                  activeCanvasSurfaceRef.current.flow,
+                  activeCanvasSurfaceRef.current.shell
+                ),
+                targetGroupId: contextMenu.targetGroupId
               }
             });
             closePaneContextMenu();
@@ -2451,8 +4814,18 @@ function App(): JSX.Element {
             postMessage({
               type: 'webview/resetToDefaultTemplate',
               payload: {
-                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current)
+                visibleCenter: resolveVisibleCanvasCenter(
+                  activeCanvasSurfaceRef.current.flow,
+                  activeCanvasSurfaceRef.current.shell
+                ),
+                targetGroupId: contextMenu.targetGroupId
               }
+            });
+            closePaneContextMenu();
+          }}
+          onArrangeCanvasLayout={() => {
+            postMessage({
+              type: 'webview/arrangeCanvasLayout'
             });
             closePaneContextMenu();
           }}
@@ -2461,7 +4834,11 @@ function App(): JSX.Element {
               type: reset ? 'webview/resetToTemplate' : 'webview/applyTemplate',
               payload: {
                 templateId,
-                visibleCenter: resolveVisibleCanvasCenter(reactFlowRef.current, canvasShellRef.current)
+                visibleCenter: resolveVisibleCanvasCenter(
+                  activeCanvasSurfaceRef.current.flow,
+                  activeCanvasSurfaceRef.current.shell
+                ),
+                targetGroupId: contextMenu.targetGroupId
               }
             });
             closePaneContextMenu();
@@ -2499,13 +4876,31 @@ function App(): JSX.Element {
   function createNode(
     kind: CanvasCreatableNodeKind,
     preferredPosition?: CanvasNodePosition,
+    targetGroupId?: string,
     agentProvider?: AgentProviderKind,
     agentLaunchPreset?: AgentLaunchPresetKind,
-    agentCustomLaunchCommand?: string
+    agentCustomLaunchCommand?: string,
+    options?: {
+      skipWorkspaceTrustCheck?: boolean;
+      cwd?: string;
+      useDefaultPlacement?: boolean;
+    }
   ): void {
+    if (!options?.skipWorkspaceTrustCheck && !workspaceTrusted && (kind === 'agent' || kind === 'terminal')) {
+      postMessage({
+        type: 'webview/showCreateNodeBlockedReason',
+        payload: {
+          kind
+        }
+      });
+      return;
+    }
+
     const requestId = createManualNodeCreateRequestId();
     const resolvedPreferredPosition =
-      preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
+      options?.useDefaultPlacement === true
+        ? undefined
+        : preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
     const resolvedAgentProvider = kind === 'agent' ? agentProvider ?? runtimeContext.defaultAgentProvider : undefined;
     const resolvedAgentLaunchPreset = kind === 'agent' ? agentLaunchPreset ?? 'default' : undefined;
     pendingManualCreateRequestRef.current = {
@@ -2513,10 +4908,12 @@ function App(): JSX.Element {
       knownNodeIdsSnapshot: new Set(latestHostNodeIdsRef.current),
       kind,
       preferredPosition: resolvedPreferredPosition,
+      targetGroupId,
       agentProvider: resolvedAgentProvider,
       agentLaunchPreset: resolvedAgentLaunchPreset,
       agentCustomLaunchCommand:
-        resolvedAgentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined
+        resolvedAgentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined,
+      cwd: options?.cwd
     };
     postMessage({
       type: 'webview/createDemoNode',
@@ -2524,6 +4921,8 @@ function App(): JSX.Element {
         requestId,
         kind,
         preferredPosition: resolvedPreferredPosition,
+        targetGroupId,
+        cwd: options?.cwd,
         agentProvider,
         agentLaunchPreset,
         agentCustomLaunchCommand
@@ -2583,13 +4982,60 @@ function isCanvasNodeFullyVisible(
   return left >= 0 && top >= 0 && right <= viewportWidth && bottom <= viewportHeight;
 }
 
+function isPendingViewportTargetAvailable(
+  state: CanvasPrototypeState | null,
+  request: PendingNodeViewportRequest
+): boolean {
+  if (!state) {
+    return false;
+  }
+
+  return request.objectKind === 'group'
+    ? (state.groups ?? []).some((group) => group.id === request.objectId)
+    : state.nodes.some((node) => node.id === request.objectId);
+}
+
+function resolveViewportForCanvasRect(
+  rect: CanvasMiniMapRect,
+  viewportSize: CanvasViewportSize,
+  minZoom: number
+): Viewport | undefined {
+  if (
+    !isPositiveFiniteNumber(rect.width) ||
+    !isPositiveFiniteNumber(rect.height) ||
+    viewportSize.width <= 0 ||
+    viewportSize.height <= 0
+  ) {
+    return undefined;
+  }
+
+  return getViewportForBounds(
+    rect,
+    viewportSize.width,
+    viewportSize.height,
+    minZoom,
+    CANVAS_MAX_ZOOM,
+    NODE_FOCUS_VIEW_PADDING
+  );
+}
+
+function rectForGroupLike(group: CanvasGroupSummary): CanvasMiniMapRect {
+  return {
+    x: group.position.x,
+    y: group.position.y,
+    width: group.size.width,
+    height: group.size.height
+  };
+}
+
 function resolvePendingManualNodeCreateTarget(
+  state: CanvasPrototypeState,
   nodes: CanvasNodeSummary[],
   knownNodeIds: ReadonlySet<string>,
   request: PendingManualNodeCreateRequest
 ): CanvasNodeSummary | undefined {
   const createdNodes = nodes.filter(
-    (node) => !knownNodeIds.has(node.id) && doesNodeMatchPendingManualCreateRequest(node, request)
+    (node) => !knownNodeIds.has(node.id) && doesNodeMatchPendingManualCreateRequest(state, node, request)
   );
   if (createdNodes.length === 0) {
     return undefined;
@@ -2613,6 +5059,7 @@ function resolvePendingManualNodeCreateTarget(
 }
 
 function doesNodeMatchPendingManualCreateRequest(
+  state: CanvasPrototypeState,
   node: CanvasNodeSummary,
   request: PendingManualNodeCreateRequest
 ): boolean {
@@ -2620,7 +5067,20 @@ function doesNodeMatchPendingManualCreateRequest(
     return false;
   }
 
+  if (request.targetGroupId && node.groupId !== request.targetGroupId) {
+    const targetGroup = state.groups.find((group) => group.id === request.targetGroupId);
+    if (targetGroup?.role !== 'workspace-root') {
+      return false;
+    }
+    if (!node.groupId || !isCanvasGroupInsideTargetRoot(state.groups, node.groupId, targetGroup.id)) {
+      return false;
+    }
+  }
+
   if (node.kind !== 'agent') {
+    if (request.cwd && node.kind === 'terminal' && node.metadata?.terminal?.cwd !== request.cwd) {
+      return false;
+    }
     return true;
   }
 
@@ -2630,6 +5090,10 @@ function doesNodeMatchPendingManualCreateRequest(
   }
 
   if (request.agentProvider && agentMetadata.provider !== request.agentProvider) {
+    return false;
+  }
+
+  if (request.cwd && agentMetadata.cwd !== request.cwd) {
     return false;
   }
 
@@ -2645,7 +5109,7 @@ function doesNodeMatchPendingManualCreateRequest(
 }
 
 function resolveVisibleCanvasCenter(
-  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null,
+  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null | undefined,
   canvasShellElement: HTMLDivElement | null
 ): CanvasNodePosition | undefined {
   if (!reactFlowInstance?.viewportInitialized || !canvasShellElement) {
@@ -2668,8 +5132,115 @@ function resolveVisibleCanvasCenter(
   };
 }
 
+function resolveVisibleCanvasCenterFromViewport(
+  viewport: Viewport,
+  canvasShellElement: HTMLDivElement | null
+): CanvasNodePosition | undefined {
+  if (!canvasShellElement || viewport.zoom <= 0) {
+    return undefined;
+  }
+
+  const bounds = canvasShellElement.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    return undefined;
+  }
+
+  return {
+    x: Math.round((bounds.width / 2 - viewport.x) / viewport.zoom),
+    y: Math.round((bounds.height / 2 - viewport.y) / viewport.zoom)
+  };
+}
+
 function canvasPositionDistance(left: CanvasNodePosition, right: CanvasNodePosition): number {
   return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
+}
+
+function createCanvasAutoPanController(
+  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null,
+  canvasShellElement: HTMLDivElement | null,
+  onViewportChange: (viewport: Viewport) => void
+): AutoPanController {
+  let frameId: number | undefined;
+  let pointer: { clientX: number; clientY: number } | null = null;
+  let onPanFrame: ((previousViewport: Viewport, nextViewport: Viewport) => void) | undefined;
+  let running = false;
+
+  const tick = (): void => {
+    if (!running || !reactFlowInstance?.viewportInitialized || !canvasShellElement || !pointer) {
+      frameId = undefined;
+      running = false;
+      return;
+    }
+
+    const bounds = canvasShellElement.getBoundingClientRect();
+    const delta = resolveCanvasAutoPanDelta(pointer, bounds);
+    if (delta.x !== 0 || delta.y !== 0) {
+      const currentViewport = reactFlowInstance.getViewport();
+      const nextViewport = {
+        ...currentViewport,
+        x: currentViewport.x + delta.x,
+        y: currentViewport.y + delta.y
+      };
+      reactFlowInstance.setViewport(nextViewport);
+      onViewportChange(nextViewport);
+      onPanFrame?.(currentViewport, nextViewport);
+    }
+
+    frameId = window.requestAnimationFrame(tick);
+  };
+
+  return {
+    handlePointerMove(event, onPan) {
+      pointer = { clientX: event.clientX, clientY: event.clientY };
+      onPanFrame = onPan;
+      if (running) {
+        return;
+      }
+
+      running = true;
+      frameId = window.requestAnimationFrame(tick);
+    },
+    stop() {
+      running = false;
+      pointer = null;
+      onPanFrame = undefined;
+      if (frameId !== undefined) {
+        window.cancelAnimationFrame(frameId);
+        frameId = undefined;
+      }
+    }
+  };
+}
+
+function resolveCanvasAutoPanDelta(
+  pointer: { clientX: number; clientY: number },
+  bounds: DOMRect
+): CanvasNodePosition {
+  const edgeThreshold = CANVAS_AUTO_PAN_EDGE_THRESHOLD_PX;
+  const maxSpeed = CANVAS_AUTO_PAN_MAX_SPEED_PX;
+
+  return {
+    x: resolveCanvasAutoPanAxisDelta(pointer.clientX, bounds.left, bounds.right, edgeThreshold, maxSpeed),
+    y: resolveCanvasAutoPanAxisDelta(pointer.clientY, bounds.top, bounds.bottom, edgeThreshold, maxSpeed)
+  };
+}
+
+function resolveCanvasAutoPanAxisDelta(
+  pointerValue: number,
+  start: number,
+  end: number,
+  edgeThreshold: number,
+  maxSpeed: number
+): number {
+  if (pointerValue < start + edgeThreshold) {
+    return Math.round(((start + edgeThreshold - pointerValue) / edgeThreshold) * maxSpeed);
+  }
+
+  if (pointerValue > end - edgeThreshold) {
+    return -Math.round(((pointerValue - (end - edgeThreshold)) / edgeThreshold) * maxSpeed);
+  }
+
+  return 0;
 }
 
 function createManualNodeCreateRequestId(): string {
@@ -2677,15 +5248,11 @@ function createManualNodeCreateRequestId(): string {
 }
 
 function resolveDynamicCanvasMinZoom(
-  nodes: readonly CanvasFlowNode[],
+  spatialBounds: CanvasSpatialBounds,
   viewportSize: CanvasViewportSize
 ): number {
-  if (nodes.length === 0 || viewportSize.width <= 0 || viewportSize.height <= 0) {
-    return CANVAS_COMFORT_MIN_ZOOM;
-  }
-
-  const bounds = getNodesBounds(nodes as CanvasFlowNode[]);
-  if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) {
+  const bounds = spatialBounds.bounds;
+  if (!bounds || viewportSize.width <= 0 || viewportSize.height <= 0) {
     return CANVAS_COMFORT_MIN_ZOOM;
   }
 
@@ -2696,6 +5263,78 @@ function resolveDynamicCanvasMinZoom(
   return Number.isFinite(fitAllZoom)
     ? Math.min(CANVAS_COMFORT_MIN_ZOOM, fitAllZoom)
     : CANVAS_COMFORT_MIN_ZOOM;
+}
+
+function resolveCanvasSpatialBounds(
+  nodes: readonly CanvasFlowNode[],
+  groups: readonly CanvasGroupSummary[]
+): CanvasSpatialBounds {
+  const nodeRects = nodes.flatMap((node): CanvasSpatialRect[] => {
+    const width = numberOrUndefined(node.width) ?? numberOrUndefined(node.style?.width) ?? node.data.size.width;
+    const height = numberOrUndefined(node.height) ?? numberOrUndefined(node.style?.height) ?? node.data.size.height;
+    if (!isPositiveFiniteNumber(width) || !isPositiveFiniteNumber(height)) {
+      return [];
+    }
+
+    return [{
+      id: node.id,
+      kind: 'node',
+      x: node.position.x,
+      y: node.position.y,
+      width,
+      height
+    }];
+  });
+  const groupRects = groups.flatMap((group): CanvasSpatialRect[] => {
+    if (!isPositiveFiniteNumber(group.size.width) || !isPositiveFiniteNumber(group.size.height)) {
+      return [];
+    }
+
+    return [{
+      id: group.id,
+      kind: isWorkspaceRootCanvasGroupRole(group.role) ? 'workspace-root' : 'group',
+      x: group.position.x,
+      y: group.position.y,
+      width: group.size.width,
+      height: group.size.height
+    }];
+  });
+  const rects = [...groupRects, ...nodeRects];
+  return {
+    rects,
+    bounds: mergeCanvasMiniMapRects(rects)
+  };
+}
+
+function isPositiveFiniteNumber(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function mergeCanvasMiniMapRects(rects: readonly CanvasMiniMapRect[]): CanvasMiniMapRect | undefined {
+  if (rects.length === 0) {
+    return undefined;
+  }
+
+  const left = Math.min(...rects.map((rect) => rect.x));
+  const top = Math.min(...rects.map((rect) => rect.y));
+  const right = Math.max(...rects.map((rect) => rect.x + rect.width));
+  const bottom = Math.max(...rects.map((rect) => rect.y + rect.height));
+  const width = right - left;
+  const height = bottom - top;
+  if (!isPositiveFiniteNumber(width) || !isPositiveFiniteNumber(height)) {
+    return undefined;
+  }
+
+  return {
+    x: left,
+    y: top,
+    width,
+    height
+  };
 }
 
 function resolveCanvasOverviewTitleScale(zoom: number): number {
@@ -2725,14 +5364,18 @@ function CanvasOverviewModeBridge(props: {
   return null;
 }
 
-function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function containsTerminalSuspendInput(input: string): boolean {
+  return input.includes('\u001a');
+}
+
+function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const agentMetadata = data.metadata?.agent;
   if (!agentMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
-  const { zoom } = useViewport();
   const provider = agentMetadata.provider ?? 'codex';
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = agentMetadata.lifecycle;
@@ -2753,6 +5396,9 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   ]
     .filter(Boolean)
     .join(' ');
+  const launchCommandSubtitle = resolveAgentLaunchCommandLineForSubtitle(agentMetadata);
+  const cwdLabel = formatExecutionCwdLabel(agentMetadata.cwd, data.workspaceFolders);
+  const cwdTooltip = formatExecutionCwdTooltip(agentMetadata.cwd, cwdLabel);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const resizeFrameRef = useRef<number | undefined>(undefined);
@@ -2767,8 +5413,9 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     hasAppliedSnapshot: false,
     suppressShrinkFitUntilMs: 0
   });
+  const attachSnapshotRequestedRef = useRef(false);
   const terminalFlagsRef = useRef({
-    liveSession: agentMetadata.liveSession
+    blockCtrlZInput: provider === 'claude'
   });
   const executionPathContextRef = useRef({
     shellPath: agentMetadata.shellPath,
@@ -2784,9 +5431,9 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
 
   useEffect(() => {
     terminalFlagsRef.current = {
-      liveSession: agentMetadata.liveSession
+      blockCtrlZInput: provider === 'claude'
     };
-  }, [agentMetadata.liveSession]);
+  }, [provider]);
 
   useEffect(() => {
     executionPathContextRef.current = {
@@ -2827,8 +5474,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
-    const controller = createExecutionTerminalController(terminal, {
+    const controller = createExecutionTerminalController(id, 'agent', terminal, {
       onContentWillChange: (reason) => {
+        if (reason !== 'snapshot') {
+          nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+        }
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
         } else if (reason === 'output') {
@@ -2847,7 +5497,9 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         } else {
           cancelDeferredShrinkFit();
         }
-      }
+      },
+      beginSnapshotRestoreDiagnosticsSuppression: () =>
+        nativeInteractions?.beginSnapshotRestoreDiagnosticsSuppression()
     });
     nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
@@ -2866,6 +5518,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
+      onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
     terminal.loadAddon(fitAddon);
@@ -2983,8 +5636,21 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     });
     resizeObserver.observe(container);
 
-    const dataDisposable = terminal.onData((input) => data.onExecutionInput?.(id, 'agent', input));
-    const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
+    const dataDisposable = terminal.onData((input) => {
+      nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+      if (terminalFlagsRef.current.blockCtrlZInput && containsTerminalSuspendInput(input)) {
+        data.onShowTransientError?.('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。');
+        return;
+      }
+      reportExecutionInputDispatch(id, 'agent', input, (metadata) =>
+        data.onExecutionInput?.(id, 'agent', input, metadata)
+      );
+    });
+    const selectionDisposable = terminal.onSelectionChange(() => {
+      if (shouldSelectExecutionNodeForTerminalSelection(terminal)) {
+        data.onSelectNode?.(id);
+      }
+    });
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
       terminalSizeRef.current = {
         cols,
@@ -2992,7 +5658,8 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       };
     });
 
-    data.onAttachExecution?.(id, 'agent');
+    attachSnapshotRequestedRef.current = true;
+    controller.requestAttachSnapshot();
 
     return () => {
       dataDisposable.dispose();
@@ -3022,8 +5689,12 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   }, [id]);
 
   useEffect(() => {
-    if (agentMetadata.liveSession) {
-      data.onAttachExecution?.(id, 'agent');
+    if (agentMetadata.liveSession && !attachSnapshotRequestedRef.current) {
+      attachSnapshotRequestedRef.current = true;
+      executionTerminalRegistry.get(id)?.controller.requestAttachSnapshot();
+    }
+    if (!agentMetadata.liveSession) {
+      attachSnapshotRequestedRef.current = false;
     }
   }, [agentMetadata.liveSession, id]);
 
@@ -3049,6 +5720,11 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     data.onDeleteNode?.(id);
   };
 
+  const branchAgent = (): void => {
+    data.onSelectNode?.(id);
+    data.onBranchAgentSession?.(id);
+  };
+
   useEffect(() => {
     if (!agentMetadata.pendingLaunch) {
       autoLaunchRef.current = null;
@@ -3066,11 +5742,19 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
     };
   }, [agentMetadata.liveSession, agentMetadata.pendingLaunch, executionBlocked, id, provider]);
 
-  const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession;
+  const isLegacySuspendedAgent = lifecycle === 'suspended';
+  const showRestartActions = !agentMetadata.liveSession && canResumeOriginalSession && !isLegacySuspendedAgent;
+  const showBranchAction = canForkAgentFromMetadataForWebview(agentMetadata) && !isLegacySuspendedAgent;
+  const titleActionChromeDensity =
+    data.size.width <= AGENT_TITLE_ACTION_COMPACT_WIDTH ? 'compact-actions' : 'regular';
   const actionDisabled = executionBlocked || reattaching;
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node session-node agent-session-node kind-agent ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -3082,7 +5766,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
         }
       }}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <div
         className={chromeClassName}
@@ -3092,14 +5776,21 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
       >
         <ChromeTitleEditor
           value={data.title}
-          subtitle={resolveAgentLaunchCommandLineForSubtitle(agentMetadata)}
+          contextLabel={cwdLabel}
+          contextTooltip={cwdTooltip}
+          subtitle={launchCommandSubtitle}
+          subtitleTooltip={launchCommandSubtitle}
           subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
           placeholder="Agent 标题"
           className="agent-window-title"
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
         />
-        <div className="window-chrome-actions">
+        <div
+          className="window-chrome-actions agent-window-chrome-actions"
+          data-agent-branch-visible={showBranchAction ? 'true' : 'false'}
+          data-agent-action-density={titleActionChromeDensity}
+        >
           <ExecutionAttentionStatus
             status={displayStatus}
             attentionPending={attentionPending}
@@ -3115,7 +5806,7 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               onFocus={() => data.onSelectNode?.(id)}
             />
           ) : showRestartActions ? (
-            <div className="action-button-group nodrag nopan" data-node-interactive="true">
+            <div className="action-button-group agent-restart-action-group nodrag nopan" data-node-interactive="true">
               <ActionButton
                 label="新建"
                 tone="primary"
@@ -3160,6 +5851,22 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
               onFocus={() => data.onSelectNode?.(id)}
             />
           )}
+          {showBranchAction ? (
+            <ActionButton
+              label="分叉"
+              tone="primary"
+              disabled={actionDisabled}
+              className="agent-branch-action-button nodrag nopan compact"
+              interactive
+              onFocus={() => data.onSelectNode?.(id)}
+              onClick={branchAgent}
+              buttonProps={{
+                title: `分叉当前 ${providerLabel(provider)} 会话`,
+                'aria-label': `分叉当前 ${providerLabel(provider)} 会话`,
+                'data-agent-branch-action': 'true'
+              }}
+            />
+          ) : null}
           <ActionButton
             label="删除"
             tone="danger"
@@ -3194,33 +5901,33 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
             <div className="terminal-overlay">
               <strong>
                 {executionBlocked
-                  ? 'Restricted Mode'
-                  : reattaching
-                    ? 'Agent 重连中'
-                    : displayStatus === 'history-restored'
-                      ? '历史恢复'
-                  : lifecycle === 'resume-ready'
-                    ? 'Agent 可恢复'
-                    : lifecycle === 'resume-failed'
-                      ? 'Agent 恢复失败'
-                  : agentMetadata.lastExitMessage
-                    ? 'Agent 当前未运行'
-                    : 'Agent 尚未启动'}
+                    ? 'Restricted Mode'
+                    : reattaching
+                      ? 'Agent 重连中'
+                      : displayStatus === 'history-restored'
+                        ? '历史恢复'
+                    : lifecycle === 'resume-ready'
+                      ? 'Agent 可恢复'
+                      : lifecycle === 'resume-failed'
+                        ? 'Agent 恢复失败'
+                    : agentMetadata.lastExitMessage
+                      ? 'Agent 当前未运行'
+                      : 'Agent 尚未启动'}
               </strong>
               <span>
                 {executionBlocked
-                  ? '当前 workspace 未受信任，Agent 会话入口已禁用。'
-                  : reattaching
-                    ? data.summary
-                    : displayStatus === 'history-restored'
+                    ? '当前 workspace 未受信任，Agent 会话入口已禁用。'
+                    : reattaching
                       ? data.summary
-                  : lifecycle === 'resume-ready'
-                    ? data.summary
-                    : lifecycle === 'resume-failed'
-                      ? agentMetadata.lastResumeError ?? data.summary
-                  : agentMetadata.lastExitMessage
-                    ? agentMetadata.lastExitMessage
-                    : data.summary}
+                      : displayStatus === 'history-restored'
+                        ? data.summary
+                    : lifecycle === 'resume-ready'
+                      ? data.summary
+                      : lifecycle === 'resume-failed'
+                        ? agentMetadata.lastResumeError ?? data.summary
+                    : agentMetadata.lastExitMessage
+                      ? agentMetadata.lastExitMessage
+                      : data.summary}
               </span>
             </div>
           ) : null}
@@ -3231,14 +5938,14 @@ function AgentSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   );
 }
 
-function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const terminalMetadata = data.metadata?.terminal;
   if (!terminalMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
-  const { zoom } = useViewport();
   const executionBlocked = !data.workspaceTrusted;
   const lifecycle = terminalMetadata.lifecycle;
   const displayStatus = data.status;
@@ -3269,6 +5976,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     hasAppliedSnapshot: false,
     suppressShrinkFitUntilMs: 0
   });
+  const attachSnapshotRequestedRef = useRef(false);
   const resizeFrameRef = useRef<number | undefined>(undefined);
   const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
 
@@ -3318,8 +6026,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     const terminal = new Terminal(createEmbeddedTerminalOptions());
     const fitAddon = new FitAddon();
     let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
-    const controller = createExecutionTerminalController(terminal, {
+    const controller = createExecutionTerminalController(id, 'terminal', terminal, {
       onContentWillChange: (reason) => {
+        if (reason !== 'snapshot') {
+          nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+        }
         if (reason === 'snapshot') {
           nativeInteractions?.invalidateLinkResolutionCache();
         } else if (reason === 'output') {
@@ -3338,7 +6049,9 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         } else {
           cancelDeferredShrinkFit();
         }
-      }
+      },
+      beginSnapshotRestoreDiagnosticsSuppression: () =>
+        nativeInteractions?.beginSnapshotRestoreDiagnosticsSuppression()
     });
     nativeInteractions = setupExecutionTerminalNativeInteractions({
       nodeId: id,
@@ -3357,6 +6070,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
+      onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
     terminal.loadAddon(fitAddon);
@@ -3474,8 +6188,17 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
     });
     resizeObserver.observe(container);
 
-    const dataDisposable = terminal.onData((input) => data.onExecutionInput?.(id, 'terminal', input));
-    const selectionDisposable = terminal.onSelectionChange(() => data.onSelectNode?.(id));
+    const dataDisposable = terminal.onData((input) => {
+      nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+      reportExecutionInputDispatch(id, 'terminal', input, (metadata) =>
+        data.onExecutionInput?.(id, 'terminal', input, metadata)
+      );
+    });
+    const selectionDisposable = terminal.onSelectionChange(() => {
+      if (shouldSelectExecutionNodeForTerminalSelection(terminal)) {
+        data.onSelectNode?.(id);
+      }
+    });
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
       terminalSizeRef.current = {
         cols,
@@ -3483,7 +6206,8 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
       };
     });
 
-    data.onAttachExecution?.(id, 'terminal');
+    attachSnapshotRequestedRef.current = true;
+    controller.requestAttachSnapshot();
 
     return () => {
       dataDisposable.dispose();
@@ -3513,8 +6237,12 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   }, [id]);
 
   useEffect(() => {
-    if (terminalMetadata.liveSession) {
-      data.onAttachExecution?.(id, 'terminal');
+    if (terminalMetadata.liveSession && !attachSnapshotRequestedRef.current) {
+      attachSnapshotRequestedRef.current = true;
+      executionTerminalRegistry.get(id)?.controller.requestAttachSnapshot();
+    }
+    if (!terminalMetadata.liveSession) {
+      attachSnapshotRequestedRef.current = false;
     }
   }, [id, terminalMetadata.liveSession]);
 
@@ -3551,7 +6279,11 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
   }, [executionBlocked, id, terminalMetadata.liveSession, terminalMetadata.pendingLaunch]);
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node session-node terminal-session-node kind-terminal ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
@@ -3563,7 +6295,7 @@ function TerminalSessionNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Eleme
         }
       }}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <div
         className={chromeClassName}
@@ -3682,61 +6414,202 @@ function ExecutionAttentionStatus(props: {
   );
 }
 
-function CanvasMiniMapNode(props: MiniMapNodeProps): JSX.Element {
-  const classNames = props.className.split(/\s+/).filter(Boolean);
+function CanvasMiniMap(props: {
+  nodes: readonly CanvasFlowNode[];
+  groups: readonly CanvasGroupSummary[];
+  spatialBounds: CanvasSpatialBounds;
+  viewportSize: CanvasViewportSize;
+  onViewportCommit: (viewport: Viewport) => void;
+}): JSX.Element {
+  const { x, y, zoom } = useViewport();
+  const reactFlowInstance = useReactFlow<CanvasNodeData>();
+  const minZoom = useStore((state) => state.minZoom);
+  const viewBB = resolveCanvasViewportBoundsForMiniMap(x, y, zoom, props.viewportSize);
+  const boundingRect = mergeCanvasMiniMapRects([props.spatialBounds.bounds, viewBB].filter(isCanvasMiniMapRect)) ?? viewBB;
+  const viewBox = resolveCanvasMiniMapViewBox(boundingRect);
+  const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>): void => {
+    if (event.button !== 0 || !reactFlowInstance.viewportInitialized) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    stopCanvasEvent(event);
+    const start = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      viewport: reactFlowInstance.getViewport(),
+      viewScale: viewBox.width / CANVAS_MINIMAP_WIDTH
+    };
+    let latestViewport: Viewport | undefined;
+
+    const handlePointerMove = (moveEvent: PointerEvent): void => {
+      if (!reactFlowInstance.viewportInitialized) {
+        return;
+      }
+
+      const multiplier = start.viewScale * Math.max(1, start.viewport.zoom);
+      const nextViewport = {
+        ...start.viewport,
+        x: start.viewport.x - (moveEvent.clientX - start.clientX) * multiplier,
+        y: start.viewport.y - (moveEvent.clientY - start.clientY) * multiplier
+      };
+      latestViewport = nextViewport;
+      reactFlowInstance.setViewport(nextViewport);
+    };
+    const stop = (): void => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      if (latestViewport) {
+        props.onViewportCommit(latestViewport);
+      }
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stop, { once: true });
+    window.addEventListener('pointercancel', stop, { once: true });
+  };
+  const handleWheel = (event: React.WheelEvent<SVGSVGElement>): void => {
+    if (!reactFlowInstance.viewportInitialized) {
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    const currentViewport = reactFlowInstance.getViewport();
+    const delta = -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002) * 10;
+    const nextZoom = Math.min(CANVAS_MAX_ZOOM, Math.max(minZoom, currentViewport.zoom * Math.pow(2, delta)));
+    const rect = event.currentTarget.getBoundingClientRect();
+    const flowPoint = {
+      x: viewBox.x + ((event.clientX - rect.left) / Math.max(1, rect.width)) * viewBox.width,
+      y: viewBox.y + ((event.clientY - rect.top) / Math.max(1, rect.height)) * viewBox.height
+    };
+    const nextViewport = {
+      x: event.clientX - flowPoint.x * nextZoom,
+      y: event.clientY - flowPoint.y * nextZoom,
+      zoom: nextZoom
+    };
+    reactFlowInstance.setViewport(nextViewport);
+    props.onViewportCommit(nextViewport);
+  };
+
+  return (
+    <div
+      className="canvas-corner-panel canvas-minimap react-flow__minimap"
+      data-testid="rf__minimap"
+      style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
+    >
+      <svg
+        width={CANVAS_MINIMAP_WIDTH}
+        height={CANVAS_MINIMAP_HEIGHT}
+        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
+        role="img"
+        aria-label="Canvas minimap"
+        onPointerDown={handlePointerDown}
+        onWheel={handleWheel}
+      >
+        <title>Canvas minimap</title>
+        <g className="canvas-minimap-groups" aria-hidden="true">
+          {props.groups.map((group) => (
+            <rect
+              key={group.id}
+              className={`canvas-minimap-group${isWorkspaceRootCanvasGroupRole(group.role) ? ' is-workspace-root' : ''}`}
+              data-minimap-group-id={group.id}
+              data-minimap-group-role={isWorkspaceRootCanvasGroupRole(group.role) ? 'workspace-root' : 'user'}
+              x={group.position.x}
+              y={group.position.y}
+              width={group.size.width}
+              height={group.size.height}
+              rx={isWorkspaceRootCanvasGroupRole(group.role) ? 0 : 2}
+              ry={isWorkspaceRootCanvasGroupRole(group.role) ? 0 : 2}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </g>
+        <g className="canvas-minimap-nodes">
+          {props.nodes.map((node) => (
+            <CanvasMiniMapNode key={node.id} node={node} />
+          ))}
+        </g>
+        <path
+          className="react-flow__minimap-mask"
+          d={`M${viewBox.x},${viewBox.y}h${viewBox.width}v${viewBox.height}h${-viewBox.width}z M${viewBB.x},${viewBB.y}h${viewBB.width}v${viewBB.height}h${-viewBB.width}z`}
+          fill="color-mix(in srgb, var(--vscode-editor-background) 74%, transparent)"
+          fillRule="evenodd"
+          stroke="none"
+          strokeWidth={0}
+          pointerEvents="none"
+        />
+        <rect
+          className="canvas-minimap-viewport-outline-rect"
+          x={viewBB.x}
+          y={viewBB.y}
+          width={viewBB.width}
+          height={viewBB.height}
+          fill="none"
+          strokeWidth={CANVAS_MINIMAP_VIEWPORT_STROKE_WIDTH}
+          pointerEvents="none"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function CanvasMiniMapNode(props: { node: CanvasFlowNode }): JSX.Element {
+  const node = props.node;
+  const className = minimapClassNameForNode(node as Node<CanvasNodeData>);
+  const classNames = className.split(/\s+/).filter(Boolean);
   const attentionPending = classNames.includes('has-attention');
   const attentionFlashing = classNames.includes('is-attention-flashing');
   const attentionSizePulsing = classNames.includes('has-strong-attention-reminder');
+  const color = minimapFillColorForKind(node.data.kind);
+  const strokeColor = minimapStrokeColorForKind(node.data.kind);
   const style = {
-    ...(props.style ?? {}),
-    '--minimap-node-attention-color': props.color,
-    '--minimap-node-attention-stroke-color': props.strokeColor || props.color,
+    '--minimap-node-attention-color': color,
+    '--minimap-node-attention-stroke-color': strokeColor,
     '--minimap-node-attention-scale-peak': attentionSizePulsing ? '1.16' : '1'
   } as CSSProperties;
 
   return (
     <rect
-      className={['react-flow__minimap-node', props.selected ? 'selected' : '', props.className]
+      className={['react-flow__minimap-node', node.selected ? 'selected' : '', className]
         .filter(Boolean)
         .join(' ')}
-      data-minimap-node-id={props.id}
+      data-minimap-node-id={node.id}
       data-minimap-attention-pending={attentionPending ? 'true' : 'false'}
       data-minimap-attention-flashing={attentionFlashing ? 'true' : 'false'}
       data-minimap-attention-size-pulsing={attentionSizePulsing ? 'true' : 'false'}
-      x={props.x}
-      y={props.y}
-      rx={props.borderRadius}
-      ry={props.borderRadius}
-      width={props.width}
-      height={props.height}
-      fill={props.color}
-      stroke={props.strokeColor}
-      strokeWidth={props.strokeWidth}
-      shapeRendering={props.shapeRendering}
+      x={node.position.x}
+      y={node.position.y}
+      rx={4}
+      ry={4}
+      width={node.width ?? node.data.size.width}
+      height={node.height ?? node.data.size.height}
+      fill={color}
+      stroke={strokeColor}
+      strokeWidth={1.2}
+      shapeRendering={typeof window === 'undefined' || Boolean((window as unknown as { chrome?: unknown }).chrome) ? 'crispEdges' : 'geometricPrecision'}
       style={style}
-      onClick={props.onClick ? (event) => props.onClick?.(event, props.id) : undefined}
     />
   );
 }
 
-function selectCanvasMiniMapViewportOutlineState(
-  state: ReactFlowState
-): CanvasMiniMapViewportOutlineState {
-  const zoom = state.transform[2];
-  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-  const viewBB = {
-    x: -state.transform[0] / safeZoom,
-    y: -state.transform[1] / safeZoom,
-    width: state.width / safeZoom,
-    height: state.height / safeZoom
-  };
-  const nodes = state.getNodes();
-  const boundingRect =
-    nodes.length > 0 ? getBoundsOfRects(getNodesBounds(nodes, state.nodeOrigin), viewBB) : viewBB;
+function isCanvasMiniMapRect(value: CanvasMiniMapRect | undefined): value is CanvasMiniMapRect {
+  return Boolean(value && isPositiveFiniteNumber(value.width) && isPositiveFiniteNumber(value.height));
+}
 
+function resolveCanvasViewportBoundsForMiniMap(
+  x: number,
+  y: number,
+  zoom: number,
+  viewportSize: CanvasViewportSize
+): CanvasMiniMapRect {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   return {
-    viewBB,
-    boundingRect
+    x: -x / safeZoom,
+    y: -y / safeZoom,
+    width: Math.max(1, viewportSize.width) / safeZoom,
+    height: Math.max(1, viewportSize.height) / safeZoom
   };
 }
 
@@ -3757,36 +6630,6 @@ function resolveCanvasMiniMapViewBox(
     width: viewWidth + offset * 2,
     height: viewHeight + offset * 2
   };
-}
-
-function CanvasMiniMapViewportOutline(): JSX.Element {
-  const { boundingRect, viewBB } = useStore(selectCanvasMiniMapViewportOutlineState);
-  const viewBox = resolveCanvasMiniMapViewBox(boundingRect);
-
-  return (
-    <div
-      className="canvas-minimap-viewport-outline"
-      style={{ width: CANVAS_MINIMAP_WIDTH, height: CANVAS_MINIMAP_HEIGHT }}
-      aria-hidden="true"
-    >
-      <svg
-        width={CANVAS_MINIMAP_WIDTH}
-        height={CANVAS_MINIMAP_HEIGHT}
-        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
-        focusable="false"
-      >
-        <rect
-          className="canvas-minimap-viewport-outline-rect"
-          x={viewBB.x}
-          y={viewBB.y}
-          width={viewBB.width}
-          height={viewBB.height}
-          fill="none"
-          strokeWidth={CANVAS_MINIMAP_VIEWPORT_STROKE_WIDTH}
-        />
-      </svg>
-    </div>
-  );
 }
 
 function RestrictedBanner(props: { title: string; description: string }): JSX.Element {
@@ -3850,55 +6693,297 @@ function NodeHandles(props: { selected: boolean }): JSX.Element {
   );
 }
 
+function resolveNodeResizeGeometry(
+  resizeStart: {
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    size: CanvasNodeFootprint;
+    direction: CanvasNodeResizeDirection;
+    autoPanOffset: CanvasNodePosition;
+  },
+  event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+  zoom: number,
+  minimum: CanvasNodeFootprint
+): CanvasNodeResizeDraft {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const deltaX = (event.clientX - resizeStart.clientX) / safeZoom + resizeStart.autoPanOffset.x;
+  const deltaY = (event.clientY - resizeStart.clientY) / safeZoom + resizeStart.autoPanOffset.y;
+  const resizeLeft = resizeStart.direction.includes('left');
+  const resizeRight = resizeStart.direction.includes('right');
+  const resizeTop = resizeStart.direction.includes('top');
+  const resizeBottom = resizeStart.direction.includes('bottom');
+  const width = Math.max(
+    minimum.width,
+    Math.round(resizeStart.size.width + (resizeRight ? deltaX : 0) - (resizeLeft ? deltaX : 0))
+  );
+  const height = Math.max(
+    minimum.height,
+    Math.round(resizeStart.size.height + (resizeBottom ? deltaY : 0) - (resizeTop ? deltaY : 0))
+  );
+
+  return {
+    position: {
+      x: resizeLeft ? Math.round(resizeStart.position.x + resizeStart.size.width - width) : resizeStart.position.x,
+      y: resizeTop ? Math.round(resizeStart.position.y + resizeStart.size.height - height) : resizeStart.position.y
+    },
+    size: {
+      width,
+      height
+    }
+  };
+}
+
+function canvasNodeResizeCursorForDirection(direction: CanvasNodeResizeDirection): string {
+  switch (direction) {
+    case 'top':
+    case 'bottom':
+      return 'ns-resize';
+    case 'left':
+    case 'right':
+      return 'ew-resize';
+    case 'top-left':
+    case 'bottom-right':
+      return 'nwse-resize';
+    case 'top-right':
+    case 'bottom-left':
+      return 'nesw-resize';
+    default:
+      return 'default';
+  }
+}
+
+const CANVAS_NODE_RESIZE_DIRECTIONS: CanvasNodeResizeDirection[] = [
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right'
+];
+
+const CANVAS_NODE_RESIZE_LINE_DIRECTIONS: CanvasNodeResizeDirection[] = ['top', 'right', 'bottom', 'left'];
+
 function NodeResizeAffordance({
   id,
   data,
+  position,
+  zoom,
   minimumOverride
-}: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'> & { minimumOverride?: CanvasNodeFootprint }): JSX.Element {
+}: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'> & {
+  position: CanvasNodePosition;
+  zoom: number;
+  minimumOverride?: CanvasNodeFootprint;
+}): JSX.Element {
   const minimum = minimumOverride ?? minimumCanvasNodeFootprintForDisplayStyle(data);
+  const resizeStartRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    size: CanvasNodeFootprint;
+    direction: CanvasNodeResizeDirection;
+    autoPanOffset: CanvasNodePosition;
+  } | null>(null);
+  const lastResizeEventRef = useRef<Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'> | null>(null);
+  const activeResizeDraftRef = useRef<CanvasNodeResizeDraft | null>(null);
+
+  useEffect(() => {
+    const applyResizeMove = (event: Pick<PointerEvent | MouseEvent, 'clientX' | 'clientY'>): void => {
+      const resizeStart = resizeStartRef.current;
+      if (!resizeStart) {
+        return;
+      }
+
+      lastResizeEventRef.current = {
+        clientX: event.clientX,
+        clientY: event.clientY
+      };
+      const publishDraft = (): void => {
+        const draft = resolveNodeResizeGeometry(resizeStart, lastResizeEventRef.current ?? event, zoom, minimum);
+        activeResizeDraftRef.current = draft;
+        data.onDraftNodeLayout?.(id, draft);
+      };
+      data.onResizeNodePointerMove?.(event, (previousViewport, nextViewport) => {
+        const safeZoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : zoom;
+        resizeStart.autoPanOffset = {
+          x: resizeStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / safeZoom,
+          y: resizeStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / safeZoom
+        };
+        publishDraft();
+      });
+      publishDraft();
+    };
+
+    const applyResizeEnd = (event: Pick<PointerEvent | MouseEvent, 'clientX' | 'clientY'>): void => {
+      const resizeStart = resizeStartRef.current;
+      if (!resizeStart) {
+        return;
+      }
+
+      resizeStartRef.current = null;
+      const eventForGeometry = lastResizeEventRef.current ?? event;
+      lastResizeEventRef.current = null;
+      const nextDraft = resolveNodeResizeGeometry(resizeStart, eventForGeometry, zoom, minimum);
+      activeResizeDraftRef.current = null;
+      if (
+        nextDraft.position.x === resizeStart.position.x &&
+        nextDraft.position.y === resizeStart.position.y &&
+        nextDraft.size.width === resizeStart.size.width &&
+        nextDraft.size.height === resizeStart.size.height
+      ) {
+        data.onDraftNodeLayout?.(id, null);
+        data.onResizeNodeEnd?.();
+        return;
+      }
+
+      data.onResizeNode?.(id, nextDraft.position, nextDraft.size);
+    };
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      if (resizeStartRef.current?.pointerId !== event.pointerId) {
+        return;
+      }
+
+      applyResizeMove(event);
+    };
+
+    const handlePointerUp = (event: PointerEvent): void => {
+      if (resizeStartRef.current?.pointerId !== event.pointerId) {
+        return;
+      }
+
+      applyResizeEnd(event);
+    };
+
+    const handleMouseMove = (event: MouseEvent): void => {
+      if (!resizeStartRef.current) {
+        return;
+      }
+
+      applyResizeMove(event);
+    };
+
+    const handleMouseUp = (event: MouseEvent): void => {
+      if (!resizeStartRef.current) {
+        return;
+      }
+
+      applyResizeEnd(event);
+    };
+
+    const handlePointerCancel = (event: PointerEvent): void => {
+      const resizeStart = resizeStartRef.current;
+      if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+        return;
+      }
+
+      resizeStartRef.current = null;
+      lastResizeEventRef.current = null;
+      activeResizeDraftRef.current = null;
+      data.onDraftNodeLayout?.(id, null);
+      data.onResizeNodeEnd?.();
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [data, id, minimum, zoom]);
+
+  const beginResize = (event: React.PointerEvent, direction: CanvasNodeResizeDirection): void => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    stopCanvasEvent(event);
+    data.onSelectNode?.(id);
+    lastResizeEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    activeResizeDraftRef.current = null;
+    resizeStartRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      position,
+      size: data.size,
+      direction,
+      autoPanOffset: { x: 0, y: 0 }
+    };
+  };
+
+  const handleResizeMove = (event: React.PointerEvent): void => {
+    if (resizeStartRef.current?.pointerId === event.pointerId) {
+      stopCanvasEvent(event);
+    }
+  };
+
+  const endResize = (event: React.PointerEvent): void => {
+    if (resizeStartRef.current?.pointerId === event.pointerId) {
+      stopCanvasEvent(event);
+    }
+  };
+
+  const cancelResize = (event: React.PointerEvent): void => {
+    const resizeStart = resizeStartRef.current;
+    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+      return;
+    }
+
+    resizeStartRef.current = null;
+    data.onDraftNodeLayout?.(id, null);
+    data.onResizeNodeEnd?.();
+    stopCanvasEvent(event);
+  };
+
+  if (!data.selected) {
+    return <></>;
+  }
 
   return (
-    <NodeResizer
-      nodeId={id}
-      isVisible={data.selected}
-      minWidth={minimum.width}
-      minHeight={minimum.height}
-      handleClassName="canvas-node-resize-handle"
-      lineClassName="canvas-node-resize-line"
-      color={colorForKind(data.kind)}
-      onResizeStart={() => {
-        data.onSelectNode?.(id);
-      }}
-      onResizeEnd={(_event, params) => {
-        const nextSize = {
-          width: Math.max(minimum.width, Math.round(params.width)),
-          height: Math.max(minimum.height, Math.round(params.height))
-        };
-
-        if (
-          nextSize.width === data.size.width &&
-          nextSize.height === data.size.height
-        ) {
-          return;
-        }
-
-        data.onResizeNode?.(
-          id,
-          {
-            x: Math.round(params.x),
-            y: Math.round(params.y)
-          },
-          nextSize
-        );
-      }}
-    />
+    <>
+      {CANVAS_NODE_RESIZE_LINE_DIRECTIONS.map((direction) => (
+        <span
+          key={`line-${direction}`}
+          className={`canvas-node-resize-line canvas-node-resize-line-${direction}`}
+          aria-hidden="true"
+        />
+      ))}
+      {CANVAS_NODE_RESIZE_DIRECTIONS.map((direction) => (
+        <button
+          key={direction}
+          type="button"
+          className={`canvas-node-resize-control canvas-node-resize-${direction} nodrag nopan`}
+          data-node-resize-direction={direction}
+          aria-label={`向 ${direction} 调整节点 ${data.title} 尺寸`}
+          style={{ cursor: canvasNodeResizeCursorForDirection(direction) }}
+          onPointerDown={(event) => beginResize(event, direction)}
+          onPointerMove={handleResizeMove}
+          onPointerUp={endResize}
+          onPointerCancel={cancelResize}
+        />
+      ))}
+    </>
   );
 }
 
-function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function FileNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const fileMetadata = data.metadata?.file;
   if (!fileMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
   const fileActionPointerStateRef = useRef<{
@@ -3928,14 +7013,18 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   const showText = data.fileNodeDisplayMode !== 'icon-only';
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node file-node kind-file display-style-${data.fileNodeDisplayStyle} ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
-      <NodeResizeAffordance id={id} data={data} minimumOverride={minimumFootprint} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} minimumOverride={minimumFootprint} />
       <NodeHandles selected={data.selected} />
       <button
         type="button"
@@ -4028,10 +7117,11 @@ function FileNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
   );
 }
 
-function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const fileListMetadata = data.metadata?.fileList;
   if (!fileListMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
@@ -4046,7 +7136,11 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
     data.selected && data.documentHasFocus ? 'active' : 'inactive';
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node file-list-node kind-file-list display-style-${data.fileNodeDisplayStyle} ${
         data.selected ? 'is-selected' : ''
@@ -4055,7 +7149,7 @@ function FileListNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <div
         className={isMinimalStyle ? 'file-list-minimal-header' : 'window-chrome'}
@@ -4537,10 +7631,11 @@ function renderFileListTreeBranches(
   return rows;
 }
 
-function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element {
+function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
   const noteMetadata = data.metadata?.note;
   if (!noteMetadata) {
-    return <CanvasCardNode id={id} data={data} />;
+    return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
   }
 
   const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
@@ -5484,14 +8579,18 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   };
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node object-editor-node kind-note ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
@@ -5771,19 +8870,28 @@ function NoteEditableNode({ id, data }: NodeProps<CanvasNodeData>): JSX.Element 
   );
 }
 
-function CanvasCardNode({ id, data }: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'>): JSX.Element {
+function CompactCanvasCardNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
+  const { zoom } = useViewport();
+  return <CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
+}
+
+function CompactCanvasCardNodeContent({ id, data, position, zoom }: Pick<NodeProps<CanvasNodeData>, 'id' | 'data'> & { position: CanvasNodePosition; zoom: number }): JSX.Element {
   const agentMetadata = data.metadata?.agent;
   const terminalMetadata = data.metadata?.terminal;
 
   return (
-    <CanvasNodeInteractionBoundary disabled={data.overviewInteractionsDisabled}>
+    <CanvasNodeInteractionBoundary
+      nodeId={id}
+      disabled={data.overviewInteractionsDisabled}
+      onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
+    >
       <div
       className={`canvas-node compact-node kind-${data.kind} ${data.selected ? 'is-selected' : ''}`}
       data-node-id={id}
       data-node-kind={data.kind}
       data-node-selected={data.selected ? 'true' : 'false'}
     >
-      <NodeResizeAffordance id={id} data={data} />
+      <NodeResizeAffordance id={id} data={data} position={position} zoom={zoom} />
       <NodeHandles selected={data.selected} />
       <NodeOverviewTitle title={data.title} status={overviewStatusForNode(data)} />
       <div className="node-topline">
@@ -5827,12 +8935,801 @@ const nodeTypes = {
   note: NoteEditableNode,
   file: FileNode,
   'file-list': FileListNode,
-  card: CanvasCardNode
+  card: CompactCanvasCardNode
 };
 
 const edgeTypes = {
   canvas: CanvasEdge
 };
+
+interface PaneGalleryRootModel {
+  rootGroup: CanvasGroupSummary;
+  nodes: CanvasFlowNode[];
+  edges: CanvasFlowEdge[];
+  groups: CanvasGroupSummary[];
+  nodeCount: number;
+  runningCount: number;
+  errorCount: number;
+  waitingCount: number;
+  attentionCount: number;
+}
+
+function buildPaneGalleryRootModels(params: {
+  rootGroups: readonly CanvasGroupSummary[];
+  groups: readonly CanvasGroupSummary[];
+  nodes: readonly CanvasFlowNode[];
+  edges: readonly CanvasFlowEdge[];
+  hostNodes: readonly CanvasNodeSummary[];
+  workspaceFolders: readonly CanvasRuntimeContext['workspaceFolders'][number][];
+}): PaneGalleryRootModel[] {
+  const hostNodesById = new Map(params.hostNodes.map((node) => [node.id, node] as const));
+  const nodeRootGroupIds = new Map<string, string>();
+  for (const hostNode of params.hostNodes) {
+    const rootGroupId = resolveContainingWorkspaceRootGroupIdForWebview(params.groups, hostNode.groupId);
+    if (rootGroupId) {
+      nodeRootGroupIds.set(hostNode.id, rootGroupId);
+    }
+  }
+
+  const orderedRootGroups = sortPaneGalleryRootGroupsByWorkspaceOrder(params.rootGroups, params.workspaceFolders);
+
+  return orderedRootGroups.map((rootGroup) => {
+    const subtreeGroupIds = collectGroupSubtreeIdsForWebview(params.groups, rootGroup.id);
+    const paneNodes = params.nodes.filter((node) => nodeRootGroupIds.get(node.id) === rootGroup.id);
+    const paneNodeIds = new Set(paneNodes.map((node) => node.id));
+    const paneEdges = params.edges.filter((edge) => paneNodeIds.has(edge.source) && paneNodeIds.has(edge.target));
+    const paneHostNodes = paneNodes.flatMap((node) => {
+      const hostNode = hostNodesById.get(node.id);
+      return hostNode ? [hostNode] : [];
+    });
+    return {
+      rootGroup,
+      nodes: paneNodes,
+      edges: paneEdges,
+      groups: params.groups.filter((group) => group.id !== rootGroup.id && subtreeGroupIds.has(group.id)),
+      nodeCount: paneNodes.length,
+      runningCount: paneHostNodes.filter((node) => node.status === 'running').length,
+      errorCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-error').length,
+      waitingCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-waiting').length,
+      attentionCount: paneNodes.filter((node) =>
+        node.data?.metadata?.agent?.attentionPending === true ||
+        node.data?.metadata?.terminal?.attentionPending === true
+      ).length
+    };
+  });
+}
+
+function sortPaneGalleryRootGroupsByWorkspaceOrder(
+  rootGroups: readonly CanvasGroupSummary[],
+  workspaceFolders: readonly CanvasRuntimeContext['workspaceFolders'][number][]
+): CanvasGroupSummary[] {
+  const originalIndexes = new Map(rootGroups.map((group, index) => [group.id, index] as const));
+  const workspaceRootIndexes = new Map<string, number>();
+  workspaceFolders.forEach((folder, index) => {
+    const normalizedPath = normalizePaneGalleryRootOrderPath(folder.path);
+    if (normalizedPath && !workspaceRootIndexes.has(normalizedPath)) {
+      workspaceRootIndexes.set(normalizedPath, index);
+    }
+  });
+
+  return [...rootGroups].sort((left, right) => {
+    const leftWorkspaceIndex = readPaneGalleryWorkspaceRootIndex(left, workspaceRootIndexes);
+    const rightWorkspaceIndex = readPaneGalleryWorkspaceRootIndex(right, workspaceRootIndexes);
+    if (leftWorkspaceIndex !== rightWorkspaceIndex) {
+      if (leftWorkspaceIndex === undefined) {
+        return 1;
+      }
+      if (rightWorkspaceIndex === undefined) {
+        return -1;
+      }
+      return leftWorkspaceIndex - rightWorkspaceIndex;
+    }
+
+    return (originalIndexes.get(left.id) ?? 0) - (originalIndexes.get(right.id) ?? 0);
+  });
+}
+
+function readPaneGalleryWorkspaceRootIndex(
+  group: CanvasGroupSummary,
+  workspaceRootIndexes: ReadonlyMap<string, number>
+): number | undefined {
+  const normalizedPath = normalizePaneGalleryRootOrderPath(group.workspaceRootPath);
+  return normalizedPath ? workspaceRootIndexes.get(normalizedPath) : undefined;
+}
+
+function normalizePaneGalleryRootOrderPath(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const slashNormalized = trimmed.replace(/\\/g, '/');
+  const normalized =
+    slashNormalized === '/' || /^[A-Za-z]:\/$/u.test(slashNormalized)
+      ? slashNormalized
+      : slashNormalized.replace(/\/+$/u, '');
+  const caseInsensitive = /^[A-Za-z]:\//u.test(slashNormalized) || trimmed.includes('\\');
+  return caseInsensitive ? normalized.toLowerCase() : normalized;
+}
+
+interface PaneGalleryProps {
+  models: PaneGalleryRootModel[];
+  allModels: PaneGalleryRootModel[];
+  activeRootGroupId?: string;
+  layout: PaneGalleryLayoutMode;
+  lastOverviewLayout: PaneGalleryOverviewLayoutMode;
+  lastThumbnailLayout: PaneGalleryThumbnailLayoutMode;
+  overviewViewports: Record<string, Viewport>;
+  mainViewports: Record<string, Viewport>;
+  selectedGroupIds: string[];
+  overviewMode: CanvasOverviewMode;
+  overviewZoomThreshold: number;
+  paneRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
+  flowRefs: React.MutableRefObject<Record<string, ReactFlowInstance<CanvasNodeData> | undefined>>;
+  onBindActiveSurface: (rootGroupId: string, viewportRole?: PaneGalleryViewportRole) => CanvasSurfaceBinding;
+  onSetLayout: (layout: PaneGalleryLayoutMode, activeRootGroupId?: string) => void;
+  onFitPane: (
+    rootGroupId: string,
+    instance?: ReactFlowInstance<CanvasNodeData>,
+    duration?: number,
+    options?: { viewportRole?: PaneGalleryViewportRole }
+  ) => boolean;
+  onSavePaneViewport: (rootGroupId: string, viewport: Viewport, viewportRole?: PaneGalleryViewportRole) => void;
+  onNodesChange: (changes: any[]) => void;
+  onNodeDragStop: (
+    rootGroupId: string,
+    event: React.MouseEvent,
+    node: Node<CanvasNodeData>,
+    draggedNodes: Node<CanvasNodeData>[]
+  ) => void;
+  onConnect: (connection: Connection) => void;
+  onEdgeClick: EdgeMouseHandler;
+  onEdgeDoubleClick: EdgeMouseHandler;
+  onReconnect: (previousEdge: Edge, connection: Connection) => void;
+  onEdgeContextMenu: EdgeMouseHandler;
+  onNodeClick: NodeMouseHandler;
+  onPaneClick: (event: React.MouseEvent, rootGroupId: string) => void;
+  onPaneContextMenu: (event: React.MouseEvent, rootGroupId: string, targetGroupId?: string) => void;
+  onPaneDragOver: (event: React.DragEvent, rootGroupId: string) => void;
+  onPaneDrop: (event: React.DragEvent, rootGroupId: string) => void;
+  onSelectGroupBody: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onFocusGroupInViewport: (groupId: string) => boolean;
+  onSelectGroup: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onGroupInteractionStart: (groupId: string) => void;
+  onGroupInteractionEnd: (groupId: string) => void;
+  onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
+  onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onUpdateGroupTitle: (groupId: string, title: string) => void;
+  onUngroup: (groupId: string) => void;
+  onDeleteGroup: (groupId: string) => void;
+  onDragPointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onDragEnd: () => void;
+  onResizePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeEnd: () => void;
+}
+
+const PANE_GALLERY_LAYOUT_OPTIONS: ReadonlyArray<{
+  layout: PaneGalleryLayoutMode;
+  label: string;
+  icon: string;
+}> = [
+  { layout: 'dynamic', label: '动态', icon: 'layout' },
+  { layout: 'grid', label: '宫格', icon: 'table' },
+  { layout: 'topThumbnails', label: '顶部缩略图', icon: 'split-vertical' },
+  { layout: 'sideThumbnails', label: '右侧缩略图', icon: 'split-horizontal' }
+];
+
+const PANE_GALLERY_FIT_VIEW_ICON = (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 32" aria-hidden="true" focusable="false">
+    <path d="M3.692 4.63c0-.53.4-.938.939-.938h5.215V0H4.708C2.13 0 0 2.054 0 4.63v5.216h3.692V4.631zM20.292 0h-5.2v3.692h5.17c.53 0 .984.4.984.939v5.215h3.692V4.631A4.624 4.624 0 0020.292 0zm.954 24.83c0 .532-.4.94-.939.94h-5.215v3.768h5.215c2.577 0 4.631-2.13 4.631-4.707v-5.139h-3.692v5.139zm-16.615.94c-.531 0-.939-.4-.939-.94v-5.138H0v5.139c0 2.577 2.13 4.707 4.708 4.707h5.138V25.77H4.631z" />
+  </svg>
+);
+
+function paneGalleryControlTargetOptions(): ReadonlyArray<(typeof PANE_GALLERY_LAYOUT_OPTIONS)[number]> {
+  return PANE_GALLERY_LAYOUT_OPTIONS;
+}
+
+function paneGalleryCoarseToggleTarget(
+  layout: PaneGalleryLayoutMode,
+  lastOverviewLayout: PaneGalleryOverviewLayoutMode,
+  lastThumbnailLayout: PaneGalleryThumbnailLayoutMode
+): PaneGalleryLayoutMode {
+  return isPaneGalleryThumbnailLayout(layout) ? lastOverviewLayout : lastThumbnailLayout;
+}
+
+function PaneGallery(props: PaneGalleryProps): JSX.Element {
+  const activeModel = props.allModels.find((model) => model.rootGroup.id === props.activeRootGroupId) ?? props.allModels[0];
+  const isThumbnailLayout = isPaneGalleryThumbnailLayout(props.layout);
+  const railModels = isThumbnailLayout && activeModel
+    ? props.allModels.filter((model) => model.rootGroup.id !== activeModel.rootGroup.id)
+    : [];
+
+  return (
+    <div
+      className={`pane-gallery pane-gallery-${props.layout}`}
+      data-pane-gallery="true"
+      data-pane-gallery-layout={props.layout}
+      data-pane-gallery-count={props.allModels.length}
+    >
+      {isThumbnailLayout && activeModel ? (
+        <div className={`pane-gallery-thumbnail-layout pane-gallery-thumbnail-layout-${props.layout}`}>
+          {props.layout === 'topThumbnails' ? (
+            <PaneGalleryThumbnailRail
+              {...props}
+              layout={props.layout}
+              models={railModels}
+              onActivate={(rootGroupId) => props.onSetLayout(props.layout, rootGroupId)}
+            />
+          ) : null}
+          <PaneGalleryRootPane
+            {...props}
+            key={activeModel.rootGroup.id}
+            model={activeModel}
+            mode="main"
+          />
+          {props.layout === 'sideThumbnails' ? (
+            <PaneGalleryThumbnailRail
+              {...props}
+              layout={props.layout}
+              models={railModels}
+              onActivate={(rootGroupId) => props.onSetLayout(props.layout, rootGroupId)}
+            />
+          ) : null}
+        </div>
+      ) : (
+        <div className={`pane-gallery-grid pane-gallery-grid-${props.layout}`} data-pane-gallery-grid="true">
+          {props.models.map((model, index) => (
+            <PaneGalleryRootPane
+              {...props}
+              key={model.rootGroup.id}
+              model={model}
+              mode="tile"
+              dynamicSlot={paneGalleryDynamicSlotForIndex(index, props.models.length)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function paneGalleryDynamicSlotForIndex(index: number, count: number): 'wide' | 'tall' | 'large' | 'base' {
+  if (count <= 1) {
+    return 'large';
+  }
+  if (count === 2) {
+    return index === 0 ? 'wide' : 'base';
+  }
+  if (count === 3) {
+    return index === 0 ? 'large' : 'base';
+  }
+  if (count === 4) {
+    return index === 0 ? 'wide' : index === 3 ? 'tall' : 'base';
+  }
+  if (index === 0) {
+    return 'large';
+  }
+  if (index % 5 === 1) {
+    return 'wide';
+  }
+  if (index % 5 === 3) {
+    return 'tall';
+  }
+  return 'base';
+}
+
+function PaneGalleryThumbnailRail(props: PaneGalleryProps & {
+  layout: Extract<PaneGalleryLayoutMode, 'topThumbnails' | 'sideThumbnails'>;
+  models: PaneGalleryRootModel[];
+  onActivate: (rootGroupId: string) => void;
+}): JSX.Element {
+  return (
+    <div
+      className={`pane-gallery-thumbnail-rail pane-gallery-thumbnail-rail-${props.layout}`}
+      aria-label="Other workspace roots"
+      data-pane-gallery-thumbnail-rail={props.layout}
+    >
+      <div
+        className={`pane-gallery-thumbnail-track pane-gallery-thumbnail-track-${props.layout}`}
+        data-pane-gallery-thumbnail-track={props.layout}
+      >
+        {props.models.map((model) => (
+          <PaneGalleryRootPane
+            {...props}
+            key={model.rootGroup.id}
+            model={model}
+            mode="thumbnail"
+            onThumbnailActivate={props.onActivate}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PaneGalleryControls(props: {
+  layout: PaneGalleryLayoutMode;
+  lastOverviewLayout: PaneGalleryOverviewLayoutMode;
+  lastThumbnailLayout: PaneGalleryThumbnailLayoutMode;
+  rootGroupId: string;
+  onFitView: () => void;
+  onSetLayout: (layout: PaneGalleryLayoutMode, activeRootGroupId?: string) => void;
+}): JSX.Element {
+  return (
+    <Controls
+      className="canvas-corner-panel canvas-controls pane-gallery-canvas-controls"
+      showInteractive={false}
+      showFitView={false}
+    >
+      <button
+        type="button"
+        className="react-flow__controls-button react-flow__controls-fitview"
+        title="fit view"
+        aria-label="fit view"
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          props.onFitView();
+        }}
+      >
+        {PANE_GALLERY_FIT_VIEW_ICON}
+      </button>
+      <PaneGalleryModeControl
+        layout={props.layout}
+        lastOverviewLayout={props.lastOverviewLayout}
+        lastThumbnailLayout={props.lastThumbnailLayout}
+        rootGroupId={props.rootGroupId}
+        onSetLayout={props.onSetLayout}
+      />
+    </Controls>
+  );
+}
+
+function PaneGalleryModeControl(props: {
+  layout: PaneGalleryLayoutMode;
+  lastOverviewLayout: PaneGalleryOverviewLayoutMode;
+  lastThumbnailLayout: PaneGalleryThumbnailLayoutMode;
+  rootGroupId: string;
+  onSetLayout: (layout: PaneGalleryLayoutMode, activeRootGroupId?: string) => void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const thumbnailLayout = isPaneGalleryThumbnailLayout(props.layout);
+  const targetOptions = paneGalleryControlTargetOptions();
+  const controlIcon = thumbnailLayout ? 'globe' : 'eye';
+  const controlLabel = thumbnailLayout ? '返回全览模式' : '切换到缩略图模式';
+  const coarseTargetLayout = paneGalleryCoarseToggleTarget(
+    props.layout,
+    props.lastOverviewLayout,
+    props.lastThumbnailLayout
+  );
+
+  const closeIfFocusLeaves = (event: React.FocusEvent<HTMLDivElement>): void => {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof globalThis.Node && event.currentTarget.contains(nextTarget)) {
+      return;
+    }
+    setOpen(false);
+  };
+
+  return (
+    <div
+      className="pane-gallery-control-mode"
+      data-pane-gallery-control-mode="true"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={closeIfFocusLeaves}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          stopCanvasEvent(event);
+          setOpen(false);
+        }
+      }}
+    >
+      <button
+        type="button"
+        className="react-flow__controls-button pane-gallery-control-mode-trigger"
+        aria-label={controlLabel}
+        title={controlLabel}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-pane-gallery-mode-trigger="true"
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          setOpen(false);
+          props.onSetLayout(coarseTargetLayout, props.rootGroupId);
+        }}
+      >
+        <span className={`codicon codicon-${controlIcon}`} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="pane-gallery-control-mode-menu" role="menu" aria-label={controlLabel}>
+          {targetOptions.map((option) => (
+            <button
+              key={option.layout}
+              type="button"
+              role="menuitemradio"
+              aria-checked={props.layout === option.layout}
+              className={props.layout === option.layout ? 'is-active' : ''}
+              data-pane-gallery-mode-option={option.layout}
+              onClick={(event) => {
+                stopCanvasEvent(event);
+                setOpen(false);
+                props.onSetLayout(option.layout, props.rootGroupId);
+              }}
+            >
+              <span className={`codicon codicon-${option.icon}`} aria-hidden="true" />
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PaneGalleryRootPane(props: PaneGalleryProps & {
+  model: PaneGalleryRootModel;
+  mode: 'tile' | 'main' | 'thumbnail';
+  dynamicSlot?: 'wide' | 'tall' | 'large' | 'base';
+  onThumbnailActivate?: (rootGroupId: string) => void;
+}): JSX.Element {
+  const { model } = props;
+  const rootGroupId = model.rootGroup.id;
+  const interactive = props.mode !== 'thumbnail';
+  const viewportRole: PaneGalleryViewportRole = props.mode === 'main' ? 'main' : 'overview';
+  const defaultViewport = interactive
+    ? viewportRole === 'main'
+      ? props.mainViewports[rootGroupId]
+      : props.overviewViewports[rootGroupId]
+    : undefined;
+  const localPaneRef = useRef<HTMLDivElement | null>(null);
+  const [paneViewportSize, setPaneViewportSize] = useState<CanvasViewportSize>({ width: 1, height: 1 });
+  const [overviewState, setOverviewState] = useState<CanvasOverviewViewportState>({
+    active: false,
+    titleScale: 1
+  });
+  const bindSurface = (): CanvasSurfaceBinding => props.onBindActiveSurface(rootGroupId, viewportRole);
+  const updatePaneViewportSize = useCallback((element: HTMLDivElement | null = localPaneRef.current): void => {
+    if (!element) {
+      return;
+    }
+    const nextSize = {
+      width: Math.max(1, Math.round(element.clientWidth)),
+      height: Math.max(1, Math.round(element.clientHeight))
+    };
+    setPaneViewportSize((current) =>
+      current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
+    );
+  }, []);
+  const setFlowShellRef = useCallback((element: HTMLDivElement | null): void => {
+    localPaneRef.current = element;
+    if (interactive) {
+      props.paneRefs.current[rootGroupId] = element;
+    }
+    updatePaneViewportSize(element);
+  }, [interactive, props.paneRefs, rootGroupId, updatePaneViewportSize]);
+  const activateThumbnail = (event: React.MouseEvent): void => {
+    event.preventDefault();
+    stopCanvasEvent(event);
+    props.onThumbnailActivate?.(rootGroupId);
+  };
+  const blockThumbnailPointerEvent = (event: React.SyntheticEvent): void => {
+    stopCanvasEvent(event);
+  };
+  const blockThumbnailDefaultEvent = (event: React.SyntheticEvent): void => {
+    event.preventDefault();
+    stopCanvasEvent(event);
+  };
+  const fitLocalPane = (instance: ReactFlowInstance<CanvasNodeData> | undefined, duration = 0): boolean => {
+    const shell = localPaneRef.current;
+    if (!instance?.viewportInitialized || !shell) {
+      return false;
+    }
+
+    const viewport = getViewportForBounds(
+      {
+        x: model.rootGroup.position.x,
+        y: model.rootGroup.position.y,
+        width: Math.max(1, model.rootGroup.size.width),
+        height: Math.max(1, model.rootGroup.size.height)
+      },
+      Math.max(1, shell.clientWidth),
+      Math.max(1, shell.clientHeight),
+      PANE_GALLERY_MIN_ZOOM,
+      CANVAS_MAX_ZOOM,
+      PANE_GALLERY_FIT_VIEW_PADDING
+    );
+    instance.setViewport(viewport, { duration });
+    if (interactive) {
+      props.onSavePaneViewport(rootGroupId, viewport, viewportRole);
+    }
+    return true;
+  };
+
+  const paneNodes = useMemo(
+    () =>
+      model.nodes.map((node) => ({
+        ...node,
+        selected: interactive ? node.selected : false,
+        data: {
+          ...node.data,
+          selected: interactive ? node.data.selected : false,
+          overviewInteractionsDisabled: !interactive || overviewState.active
+        }
+      })),
+    [interactive, model.nodes, overviewState.active]
+  );
+  const paneSpatialBounds = useMemo(
+    () => resolveCanvasSpatialBounds(paneNodes, model.groups),
+    [model.groups, paneNodes]
+  );
+  const handleOverviewViewportStateChange = useCallback((nextState: CanvasOverviewViewportState): void => {
+    setOverviewState((current) =>
+      current.active === nextState.active && Math.abs(current.titleScale - nextState.titleScale) < 0.01
+        ? current
+        : nextState
+    );
+  }, []);
+
+  useEffect(() => {
+    if (props.mode !== 'main') {
+      return;
+    }
+
+    const element = localPaneRef.current;
+    if (!element) {
+      return;
+    }
+
+    updatePaneViewportSize(element);
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(() => updatePaneViewportSize(element));
+      observer.observe(element);
+      return () => {
+        observer.disconnect();
+      };
+    }
+
+    const handleResize = (): void => updatePaneViewportSize(element);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [props.mode, updatePaneViewportSize]);
+
+  useEffect(
+    () => () => {
+      if (interactive) {
+        props.flowRefs.current[rootGroupId] = undefined;
+        props.paneRefs.current[rootGroupId] = null;
+      }
+    },
+    [interactive, props.flowRefs, props.paneRefs, rootGroupId]
+  );
+
+  return (
+    <section
+      className={`pane-gallery-root-pane pane-gallery-root-pane-${props.mode} ${overviewState.active ? 'is-overview-mode' : ''}`.trim()}
+      data-pane-gallery-root-id={rootGroupId}
+      data-pane-gallery-root-mode={props.mode}
+      data-pane-gallery-dynamic-slot={props.dynamicSlot}
+      data-canvas-overview-mode={overviewState.active ? 'true' : 'false'}
+      data-canvas-overview-config={props.overviewMode}
+      aria-label={`Workspace root ${model.rootGroup.title}`}
+      title={props.mode === 'thumbnail' ? `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}` : undefined}
+      style={{ '--canvas-overview-title-scale': overviewState.titleScale } as CSSProperties}
+      onMouseEnter={interactive ? bindSurface : undefined}
+      onFocusCapture={interactive ? bindSurface : undefined}
+      onPointerDownCapture={interactive ? bindSurface : undefined}
+      onDoubleClick={
+        props.mode === 'thumbnail'
+          ? (event) => {
+              stopCanvasEvent(event);
+              props.onThumbnailActivate?.(rootGroupId);
+            }
+          : undefined
+      }
+      onContextMenu={
+        props.mode === 'thumbnail'
+          ? (event) => {
+              event.preventDefault();
+              stopCanvasEvent(event);
+            }
+          : undefined
+      }
+    >
+      <header className="pane-gallery-root-header">
+        <div className="pane-gallery-root-title-block">
+          <span className="pane-gallery-root-title" title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}>
+            {model.rootGroup.title}
+          </span>
+        </div>
+      </header>
+      <div
+        className={`pane-gallery-root-flow-shell ${interactive ? '' : 'is-inert'}`.trim()}
+        ref={setFlowShellRef}
+        onDragOver={interactive ? (event) => props.onPaneDragOver(event, rootGroupId) : undefined}
+        onDrop={interactive ? (event) => props.onPaneDrop(event, rootGroupId) : undefined}
+      >
+        <ReactFlow
+          key={`${rootGroupId}-${props.mode}`}
+          nodes={paneNodes}
+          edges={model.edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          connectionMode={ConnectionMode.Loose}
+          defaultViewport={defaultViewport}
+          minZoom={PANE_GALLERY_MIN_ZOOM}
+          maxZoom={CANVAS_MAX_ZOOM}
+          nodesDraggable={interactive}
+          nodesConnectable={interactive}
+          nodesFocusable={interactive}
+          edgesFocusable={interactive}
+          elementsSelectable={interactive}
+          panOnDrag={interactive}
+          zoomOnScroll={interactive}
+          zoomOnPinch={interactive}
+          zoomOnDoubleClick={interactive}
+          preventScrolling={interactive}
+          onInit={(instance) => {
+            if (interactive) {
+              props.flowRefs.current[rootGroupId] = instance;
+              bindSurface();
+            }
+            window.requestAnimationFrame(() => {
+              if (!defaultViewport || !interactive) {
+                fitLocalPane(instance);
+              }
+            });
+          }}
+          onNodesChange={interactive ? props.onNodesChange : undefined}
+          onConnect={interactive ? props.onConnect : undefined}
+          onEdgeClick={
+            interactive
+              ? (event, edge) => {
+                  bindSurface();
+                  props.onEdgeClick(event, edge);
+                }
+              : undefined
+          }
+          onEdgeDoubleClick={
+            interactive
+              ? (event, edge) => {
+                  bindSurface();
+                  props.onEdgeDoubleClick(event, edge);
+                }
+              : undefined
+          }
+          onReconnect={interactive ? props.onReconnect : undefined}
+          onEdgeContextMenu={
+            interactive
+              ? (event, edge) => {
+                  bindSurface();
+                  props.onEdgeContextMenu(event, edge);
+                }
+              : undefined
+          }
+          onNodeClick={
+            interactive
+              ? (event, node) => {
+                  bindSurface();
+                  props.onNodeClick(event, node);
+                }
+              : undefined
+          }
+          onNodeDragStop={
+            interactive
+              ? (event, node, draggedNodes) => props.onNodeDragStop(rootGroupId, event, node, draggedNodes)
+              : undefined
+          }
+          multiSelectionKeyCode={null}
+          selectNodesOnDrag={false}
+          onMoveStart={interactive ? bindSurface : undefined}
+          onPaneClick={interactive ? (event) => props.onPaneClick(event, rootGroupId) : undefined}
+          onPaneContextMenu={interactive ? (event) => props.onPaneContextMenu(event, rootGroupId) : undefined}
+          onMoveEnd={
+            interactive ? (_event, viewport) => props.onSavePaneViewport(rootGroupId, viewport, viewportRole) : undefined
+          }
+          proOptions={{ hideAttribution: true }}
+        >
+          <CanvasOverviewModeBridge
+            mode={props.overviewMode}
+            threshold={props.overviewZoomThreshold}
+            onViewportStateChange={handleOverviewViewportStateChange}
+          />
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
+          <CanvasGroupsViewportLayer
+            groups={model.groups}
+            workspaceRootWatermarksEnabled={false}
+            selectedGroupIds={interactive ? props.selectedGroupIds : []}
+            workspaceRootForegroundMode="background-only"
+            onSelectGroupBody={(groupId, event) => {
+              bindSurface();
+              props.onSelectGroupBody(groupId, event);
+            }}
+            onFocusGroupInViewport={(groupId) => {
+              bindSurface();
+              props.onFocusGroupInViewport(groupId);
+            }}
+            onGroupBodyContextMenu={(event, groupId) => props.onPaneContextMenu(event, rootGroupId, groupId)}
+            onSelectGroup={(groupId, event) => {
+              bindSurface();
+              props.onSelectGroup(groupId, event);
+            }}
+            onDraftGroup={props.onDraftGroup}
+            onGroupInteractionStart={props.onGroupInteractionStart}
+            onGroupInteractionEnd={props.onGroupInteractionEnd}
+            onMoveGroup={props.onMoveGroup}
+            onResizeGroup={props.onResizeGroup}
+            onUpdateGroupTitle={props.onUpdateGroupTitle}
+            onUngroup={props.onUngroup}
+            onDeleteGroup={props.onDeleteGroup}
+            onDragPointerMove={props.onDragPointerMove}
+            onDragEnd={props.onDragEnd}
+            onResizePointerMove={props.onResizePointerMove}
+            onResizeEnd={props.onResizeEnd}
+          />
+          {props.mode === 'main' ? (
+            <CanvasMiniMap
+              nodes={paneNodes}
+              groups={model.groups}
+              spatialBounds={paneSpatialBounds}
+              viewportSize={paneViewportSize}
+              onViewportCommit={(viewport) => props.onSavePaneViewport(rootGroupId, viewport, viewportRole)}
+            />
+          ) : null}
+          {interactive ? (
+            <PaneGalleryControls
+              layout={props.layout}
+              lastOverviewLayout={props.lastOverviewLayout}
+              lastThumbnailLayout={props.lastThumbnailLayout}
+              rootGroupId={rootGroupId}
+              onFitView={() => {
+                const instance = props.flowRefs.current[rootGroupId];
+                if (!fitLocalPane(instance, NODE_FOCUS_ANIMATION_DURATION_MS)) {
+                  props.onFitPane(rootGroupId, instance, NODE_FOCUS_ANIMATION_DURATION_MS, { viewportRole });
+                }
+              }}
+              onSetLayout={props.onSetLayout}
+            />
+          ) : null}
+        </ReactFlow>
+        {props.mode === 'thumbnail' ? (
+          <div
+            className="pane-gallery-thumbnail-hit-layer"
+            data-pane-gallery-thumbnail-hit-layer="true"
+            aria-hidden="true"
+            title={`${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}`}
+            onPointerDown={blockThumbnailPointerEvent}
+            onPointerMove={blockThumbnailPointerEvent}
+            onPointerUp={blockThumbnailPointerEvent}
+            onPointerCancel={blockThumbnailPointerEvent}
+            onWheel={blockThumbnailDefaultEvent}
+            onClick={blockThumbnailPointerEvent}
+            onDoubleClick={activateThumbnail}
+            onContextMenu={blockThumbnailDefaultEvent}
+            onDragStart={blockThumbnailDefaultEvent}
+            onDragOver={blockThumbnailDefaultEvent}
+            onDrop={blockThumbnailDefaultEvent}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
 
 function CanvasExecutionHelpPanel(props: { help: ExecutionNodeHelpContent }): JSX.Element {
   return (
@@ -6026,7 +9923,7 @@ function ActionButton(props: {
       onPointerUp={props.interactive ? stopCanvasEvent : undefined}
       onKeyDown={props.interactive ? stopCanvasEvent : undefined}
     >
-      {props.label}
+      <span className="action-button-label">{props.label}</span>
     </button>
   );
 }
@@ -6043,6 +9940,7 @@ const CanvasContextMenu = React.forwardRef<
     defaultAgentProvider: AgentProviderKind;
     agentLaunchDefaults: AgentLaunchDefaultsByProvider;
     canSaveCurrentCanvas: boolean;
+    canCreateGroupFromSelection: boolean;
     onCreate: (
       kind: CanvasCreatableNodeKind,
       agentProvider?: AgentProviderKind,
@@ -6053,8 +9951,11 @@ const CanvasContextMenu = React.forwardRef<
     onShowTemplatePicker: (view: 'apply-template' | 'reset-template') => void;
     onApplyDefaultTemplate: () => void;
     onResetToDefaultTemplate: () => void;
+    onArrangeCanvasLayout: () => void;
     onApplyTemplate: (templateId: string, reset: boolean) => void;
     onSaveCanvasAsTemplate: () => void;
+    onCreateEmptyGroup: () => void;
+    onCreateGroupFromSelection: () => void;
     onBack: () => void;
     onClose: () => void;
   }
@@ -6251,6 +10152,45 @@ const CanvasContextMenu = React.forwardRef<
                   </div>
                 ))
               : null}
+            <div className="canvas-context-menu-separator" aria-hidden="true" />
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="create-empty-group"
+              onClick={props.onCreateEmptyGroup}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-symbol-array" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>创建分组</strong>
+                <span>在当前位置创建空白分组</span>
+              </span>
+            </button>
+            {props.canCreateGroupFromSelection ? (
+              <button
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-action="create-group-from-selection"
+                onClick={props.onCreateGroupFromSelection}
+              >
+                <span className="canvas-context-menu-icon codicon codicon-group-by-ref-type" aria-hidden="true" />
+                <span className="canvas-context-menu-copy">
+                  <strong>从选中项创建分组</strong>
+                  <span>将当前选中的节点归入新分组</span>
+                </span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="arrange-canvas-layout"
+              onClick={props.onArrangeCanvasLayout}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>整理画布布局</strong>
+                <span>按关系靠近对象并自动避让重叠</span>
+              </span>
+            </button>
             <div className="canvas-context-menu-separator" aria-hidden="true" />
             <div className="canvas-context-menu-split-item" data-context-menu-template-group="apply">
               <button
@@ -6561,6 +10501,136 @@ function isCanvasEdgePresetColor(value: string | undefined): value is (typeof ca
 
 function isTemplateCompatibleNodeKind(value: CanvasNodeKind): value is 'agent' | 'terminal' | 'note' {
   return value === 'agent' || value === 'terminal' || value === 'note';
+}
+
+function canCreateCanvasGroupFromSelection(
+  state: CanvasPrototypeState | null,
+  nodeIds: readonly string[],
+  groupIds: readonly string[],
+  targetParentGroupId?: string
+): boolean {
+  if (!state) {
+    return false;
+  }
+
+  const selectedNodeIds = new Set(nodeIds);
+  const selectedGroupIds = new Set(groupIds);
+  const selectedNodes = state.nodes.filter(
+    (node) => selectedNodeIds.has(node.id) && isTemplateCompatibleNodeKind(node.kind)
+  );
+  const selectedGroups = (state.groups ?? []).filter((group) => selectedGroupIds.has(group.id));
+  if (selectedNodes.length + selectedGroups.length < 2) {
+    return false;
+  }
+
+  const selectedParents = new Set<string | undefined>([
+    ...selectedNodes.map((node) => node.groupId),
+    ...selectedGroups.map((group) => group.parentGroupId)
+  ]);
+  if (selectedParents.size !== 1) {
+    return false;
+  }
+  const selectedParentGroupId = selectedParents.values().next().value as string | undefined;
+  if (targetParentGroupId !== selectedParentGroupId) {
+    return false;
+  }
+
+  for (const group of selectedGroups) {
+    const subtreeGroupIds = collectGroupSubtreeIdsForWebview(state.groups ?? [], group.id);
+    for (const descendantGroupId of subtreeGroupIds) {
+      if (descendantGroupId !== group.id && selectedGroupIds.has(descendantGroupId)) {
+        return false;
+      }
+    }
+    if (selectedNodes.some((node) => node.groupId && subtreeGroupIds.has(node.groupId))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function resolveSelectedObjectParentGroupId(
+  state: CanvasPrototypeState | null,
+  nodeIds: readonly string[],
+  groupIds: readonly string[]
+): string | undefined {
+  if (!state) {
+    return undefined;
+  }
+
+  const selectedNodeIds = new Set(nodeIds);
+  const selectedGroupIds = new Set(groupIds);
+  const selectedNodes = state.nodes.filter(
+    (node) => selectedNodeIds.has(node.id) && isTemplateCompatibleNodeKind(node.kind)
+  );
+  const selectedGroups = (state.groups ?? []).filter((group) => selectedGroupIds.has(group.id));
+  const selectedParents = new Set<string | undefined>([
+    ...selectedNodes.map((node) => node.groupId),
+    ...selectedGroups.map((group) => group.parentGroupId)
+  ]);
+
+  return selectedParents.size === 1 ? selectedParents.values().next().value : undefined;
+}
+
+function isCanvasGroupInsideTargetRoot(
+  groups: readonly CanvasGroupSummary[],
+  groupId: string,
+  targetRootGroupId: string
+): boolean {
+  let current = groups.find((group) => group.id === groupId);
+  const visited = new Set<string>();
+  while (current && !visited.has(current.id)) {
+    if (current.id === targetRootGroupId) {
+      return true;
+    }
+
+    visited.add(current.id);
+    current = current.parentGroupId ? groups.find((group) => group.id === current?.parentGroupId) : undefined;
+  }
+  return false;
+}
+
+function canConnectCanvasEdgeEndpoints(
+  state: CanvasPrototypeState | null,
+  sourceNodeId: string,
+  targetNodeId: string
+): boolean {
+  if (!state) {
+    return false;
+  }
+
+  const sourceNode = state.nodes.find((node) => node.id === sourceNodeId);
+  const targetNode = state.nodes.find((node) => node.id === targetNodeId);
+  if (!sourceNode || !targetNode) {
+    return false;
+  }
+
+  const groups = state.groups ?? [];
+  if (!groups.some((group) => isWorkspaceRootCanvasGroupRole(group.role))) {
+    return true;
+  }
+
+  const sourceRootGroupId = resolveContainingWorkspaceRootGroupIdForWebview(groups, sourceNode.groupId);
+  const targetRootGroupId = resolveContainingWorkspaceRootGroupIdForWebview(groups, targetNode.groupId);
+  return Boolean(sourceRootGroupId && sourceRootGroupId === targetRootGroupId);
+}
+
+function resolveContainingWorkspaceRootGroupIdForWebview(
+  groups: readonly CanvasGroupSummary[],
+  groupId?: string
+): string | undefined {
+  let current = groupId ? groups.find((group) => group.id === groupId) : undefined;
+  const visited = new Set<string>();
+  while (current && !visited.has(current.id)) {
+    if (isWorkspaceRootCanvasGroupRole(current.role)) {
+      return current.id;
+    }
+
+    visited.add(current.id);
+    current = current.parentGroupId ? groups.find((group) => group.id === current?.parentGroupId) : undefined;
+  }
+  return undefined;
 }
 
 function resolveCanvasEdgeStrokeColor(color: CanvasEdgeColor | undefined): string {
@@ -7830,15 +11900,1337 @@ function NoteMarkdownMetadataTrigger(props: {
   );
 }
 
+function CanvasGroupsViewportLayer(props: {
+  groups: CanvasGroupSummary[];
+  workspaceRootWatermarksEnabled: boolean;
+  selectedGroupIds?: readonly string[];
+  workspaceRootForegroundMode?: 'editable' | 'background-only';
+  onSelectGroupBody: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
+  onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
+  onSelectGroup: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onGroupInteractionStart: (groupId: string) => void;
+  onGroupInteractionEnd: (groupId: string) => void;
+  onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
+  onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onUpdateGroupTitle: (groupId: string, title: string) => void;
+  onUngroup: (groupId: string) => void;
+  onDeleteGroup: (groupId: string) => void;
+  onDragPointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onDragEnd: () => void;
+  onResizePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeEnd: () => void;
+}): JSX.Element {
+  const viewport = useViewport();
+  const backgroundPortalElement = useStore(selectCanvasGroupBackgroundViewportElement);
+  const foregroundPortalElement = useStore(selectCanvasGroupForegroundPortalElement);
+
+  return (
+    <>
+      {backgroundPortalElement
+        ? createPortal(
+            <CanvasGroupBackgroundLayer
+              groups={props.groups}
+              workspaceRootWatermarksEnabled={props.workspaceRootWatermarksEnabled}
+              selectedGroupIds={props.selectedGroupIds}
+              zoom={viewport.zoom}
+              onSelectGroupBody={props.onSelectGroupBody}
+              onFocusGroupInViewport={props.onFocusGroupInViewport}
+              onGroupBodyContextMenu={props.onGroupBodyContextMenu}
+            />,
+            backgroundPortalElement
+          )
+        : null}
+      {foregroundPortalElement
+        ? createPortal(<CanvasGroupLayer {...props} viewport={viewport} />, foregroundPortalElement)
+        : null}
+    </>
+  );
+}
+
+function selectCanvasGroupBackgroundViewportElement(state: ReactFlowState): HTMLDivElement | null {
+  const viewportElement = state.domNode?.querySelector('.react-flow__viewport');
+  return viewportElement instanceof HTMLDivElement ? viewportElement : null;
+}
+
+function selectCanvasGroupForegroundPortalElement(state: ReactFlowState): HTMLDivElement | null {
+  const rendererElement = state.domNode?.querySelector('.react-flow__renderer');
+  return rendererElement instanceof HTMLDivElement ? rendererElement : null;
+}
+
+function CanvasGroupBackgroundLayer(props: {
+  groups: CanvasGroupSummary[];
+  workspaceRootWatermarksEnabled: boolean;
+  selectedGroupIds?: readonly string[];
+  zoom: number;
+  onSelectGroupBody: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
+  onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
+}): JSX.Element {
+  const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
+  const selectedGroupIds = new Set(props.selectedGroupIds ?? []);
+  return (
+    <div className="canvas-group-background-layer" aria-hidden="true">
+      {orderedGroups.map((group) => (
+        <CanvasGroupBackgroundFrame
+          key={group.id}
+          group={group}
+          selected={selectedGroupIds.has(group.id)}
+          zoom={props.zoom}
+          onSelectGroupBody={props.onSelectGroupBody}
+          onFocusGroupInViewport={props.onFocusGroupInViewport}
+          onGroupBodyContextMenu={props.onGroupBodyContextMenu}
+        />
+      ))}
+      <CanvasRootWatermarkLayer
+        groups={orderedGroups}
+        enabled={props.workspaceRootWatermarksEnabled}
+        selectedGroupIds={selectedGroupIds}
+        zoom={props.zoom}
+      />
+    </div>
+  );
+}
+
+function CanvasRootWatermarkLayer(props: {
+  groups: readonly CanvasGroupSummary[];
+  enabled: boolean;
+  selectedGroupIds: ReadonlySet<string>;
+  zoom: number;
+}): JSX.Element | null {
+  if (!props.enabled) {
+    return null;
+  }
+
+  const rootGroups = props.groups.filter((group) => isWorkspaceRootCanvasGroupRole(group.role));
+  if (rootGroups.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {rootGroups.map((group) => (
+        <div
+          key={`watermark-${group.id}`}
+          className="canvas-root-watermark-frame"
+          data-root-watermark-frame-id={group.id}
+          style={createCanvasGroupFrameStyle(group, props.zoom, props.selectedGroupIds.has(group.id), true)}
+        >
+          <div
+            className="canvas-root-watermark-tile"
+            data-root-name-watermark="true"
+            aria-hidden="true"
+          >
+            <span data-root-watermark-label={group.title}>{group.title}</span>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function CanvasGroupBackgroundFrame(props: {
+  group: CanvasGroupSummary;
+  selected: boolean;
+  zoom: number;
+  onSelectGroupBody: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
+  onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
+}): JSX.Element {
+  const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(props.group.role);
+  return (
+    <div
+      className={`canvas-group-background-frame${isWorkspaceRootGroup ? ' is-workspace-root' : ''}`}
+      data-group-background-id={props.group.id}
+      data-group-background-role={isWorkspaceRootGroup ? 'workspace-root' : 'user'}
+      style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected, false)}
+    >
+      <div
+        className="canvas-group-background-body-hit-area"
+        data-group-background-body-hit-area="true"
+        onClick={(event) => {
+          stopCanvasEvent(event);
+          props.onSelectGroupBody(props.group.id, event);
+        }}
+        onDoubleClick={(event) => handleGroupChromeDoubleClick(event, props.group.id, props.onFocusGroupInViewport)}
+        onContextMenu={(event) => {
+          props.onGroupBodyContextMenu(event, props.group.id);
+        }}
+      />
+    </div>
+  );
+}
+
+function CanvasGroupLayer(props: {
+  groups: CanvasGroupSummary[];
+  selectedGroupIds?: readonly string[];
+  workspaceRootForegroundMode?: 'editable' | 'background-only';
+  viewport: Viewport;
+  onSelectGroup: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
+  onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onGroupInteractionStart: (groupId: string) => void;
+  onGroupInteractionEnd: (groupId: string) => void;
+  onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
+  onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onUpdateGroupTitle: (groupId: string, title: string) => void;
+  onUngroup: (groupId: string) => void;
+  onDeleteGroup: (groupId: string) => void;
+  onDragPointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onDragEnd: () => void;
+  onResizePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeEnd: () => void;
+}): JSX.Element {
+  const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups).filter(
+    (group) =>
+      props.workspaceRootForegroundMode !== 'background-only' ||
+      !isWorkspaceRootCanvasGroupRole(group.role)
+  );
+  const selectedGroupIds = new Set(props.selectedGroupIds ?? []);
+  return (
+    <div
+      className="canvas-group-layer"
+      style={{
+        transform: `translate(${props.viewport.x}px, ${props.viewport.y}px) scale(${props.viewport.zoom})`
+      }}
+    >
+      {orderedGroups.map((group) => (
+        <CanvasGroupFrame
+          key={group.id}
+          group={group}
+          selected={selectedGroupIds.has(group.id)}
+          zoom={props.viewport.zoom}
+          onSelectGroup={props.onSelectGroup}
+          onFocusGroupInViewport={props.onFocusGroupInViewport}
+          onDraftGroup={props.onDraftGroup}
+          onGroupInteractionStart={props.onGroupInteractionStart}
+          onGroupInteractionEnd={props.onGroupInteractionEnd}
+          onMoveGroup={props.onMoveGroup}
+          onResizeGroup={props.onResizeGroup}
+          onUpdateGroupTitle={props.onUpdateGroupTitle}
+          onUngroup={props.onUngroup}
+          onDeleteGroup={props.onDeleteGroup}
+          onDragPointerMove={props.onDragPointerMove}
+          onDragEnd={props.onDragEnd}
+          onResizePointerMove={props.onResizePointerMove}
+          onResizeEnd={props.onResizeEnd}
+        />
+      ))}
+    </div>
+  );
+}
+
+function sortCanvasGroupsByDepthForWebview(groups: readonly CanvasGroupSummary[]): CanvasGroupSummary[] {
+  return [...groups].sort((left, right) => {
+    const depthDelta = groupDepthForWebview(groups, left.id) - groupDepthForWebview(groups, right.id);
+    return depthDelta !== 0 ? depthDelta : groupAreaForWebview(left) - groupAreaForWebview(right);
+  });
+}
+
+function findInnermostCanvasGroupBodyAtScreenPoint(
+  groups: readonly CanvasGroupSummary[],
+  canvasShellElement: HTMLElement | null,
+  clientX: number,
+  clientY: number
+): CanvasGroupSummary | undefined {
+  if (!canvasShellElement) {
+    return undefined;
+  }
+
+  const backgroundLayer = canvasShellElement.querySelector<HTMLElement>('.canvas-group-background-layer');
+  const viewportElement = backgroundLayer?.closest<HTMLElement>('.react-flow__viewport');
+  if (!backgroundLayer || !viewportElement) {
+    return undefined;
+  }
+
+  const viewportRect = viewportElement.getBoundingClientRect();
+  const viewportTransform = readCanvasViewportTransform(viewportElement);
+  const safeZoom = Number.isFinite(viewportTransform.zoom) && viewportTransform.zoom > 0 ? viewportTransform.zoom : 1;
+  const flowPoint = {
+    x: (clientX - viewportRect.left) / safeZoom,
+    y: (clientY - viewportRect.top) / safeZoom
+  };
+
+  return findInnermostCanvasGroupBodyAtFlowPoint(groups, canvasShellElement, flowPoint);
+}
+
+function findInnermostCanvasGroupBodyAtFlowPoint(
+  groups: readonly CanvasGroupSummary[],
+  canvasShellElement: HTMLElement | null,
+  flowPoint: CanvasPoint
+): CanvasGroupSummary | undefined {
+  if (!canvasShellElement) {
+    return undefined;
+  }
+
+  const backgroundLayer = canvasShellElement.querySelector<HTMLElement>('.canvas-group-background-layer');
+  if (!backgroundLayer) {
+    return undefined;
+  }
+
+  return [...groups]
+    .filter((group) =>
+      isCanvasPointInsideGroupBody(flowPoint, group, readCanvasGroupBodyTopOffset(backgroundLayer, group.id))
+    )
+    .sort((left, right) => {
+      const depthDelta = groupDepthForWebview(groups, right.id) - groupDepthForWebview(groups, left.id);
+      return depthDelta !== 0 ? depthDelta : groupAreaForWebview(left) - groupAreaForWebview(right);
+    })
+    .at(0);
+}
+
+function readCanvasViewportTransform(viewportElement: HTMLElement): Viewport {
+  const match = viewportElement.style.transform.match(
+    /translate\((-?\d+(?:\.\d+)?)px,\s*(-?\d+(?:\.\d+)?)px\)\s+scale\((-?\d+(?:\.\d+)?)\)/u
+  );
+  if (match) {
+    return {
+      x: Number.parseFloat(match[1]),
+      y: Number.parseFloat(match[2]),
+      zoom: Number.parseFloat(match[3])
+    };
+  }
+
+  const transform = getComputedStyle(viewportElement).transform;
+  if (transform && transform !== 'none') {
+    const matrix = new DOMMatrixReadOnly(transform);
+    return {
+      x: matrix.m41,
+      y: matrix.m42,
+      zoom: matrix.a
+    };
+  }
+
+  return { x: 0, y: 0, zoom: 1 };
+}
+
+function readCanvasGroupBodyTopOffset(backgroundLayer: HTMLElement, groupId: string): number {
+  const background = backgroundLayer.querySelector<HTMLElement>(`[data-group-background-id="${CSS.escape(groupId)}"]`);
+  if (!background) {
+    return CANVAS_GROUP_BODY_TOP_OFFSET;
+  }
+
+  const bodyTopOffset = Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-body-top'));
+  return Number.isFinite(bodyTopOffset) && bodyTopOffset >= 0 ? bodyTopOffset : CANVAS_GROUP_BODY_TOP_OFFSET;
+}
+
+function isCanvasPointInsideGroupBody(
+  point: CanvasPoint,
+  group: CanvasGroupSummary,
+  bodyTopOffset: number
+): boolean {
+  const left = group.position.x;
+  const top = group.position.y + bodyTopOffset;
+  const right = group.position.x + group.size.width;
+  const bottom = group.position.y + group.size.height;
+  return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
+}
+
+function groupAreaForWebview(group: CanvasGroupSummary): number {
+  return group.size.width * group.size.height;
+}
+
+function resolveGroupDragPosition(
+  dragStart: { clientX: number; clientY: number; position: CanvasNodePosition; autoPanOffset: CanvasNodePosition },
+  event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+  zoom: number
+): CanvasNodePosition {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  return {
+    x: Math.round(dragStart.position.x + (event.clientX - dragStart.clientX) / safeZoom + dragStart.autoPanOffset.x),
+    y: Math.round(dragStart.position.y + (event.clientY - dragStart.clientY) / safeZoom + dragStart.autoPanOffset.y)
+  };
+}
+
+function resolveGroupResizeGeometry(
+  resizeStart: {
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    size: CanvasNodeFootprint;
+    direction: CanvasGroupResizeDirection;
+    autoPanOffset: CanvasNodePosition;
+  },
+  event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+  zoom: number
+): { position: CanvasNodePosition; size: CanvasNodeFootprint } {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const deltaX = (event.clientX - resizeStart.clientX) / safeZoom + resizeStart.autoPanOffset.x;
+  const deltaY = (event.clientY - resizeStart.clientY) / safeZoom + resizeStart.autoPanOffset.y;
+  const resizeLeft = resizeStart.direction.includes('left');
+  const resizeRight = resizeStart.direction.includes('right');
+  const resizeTop = resizeStart.direction.includes('top');
+  const resizeBottom = resizeStart.direction.includes('bottom');
+  const nextWidth = Math.max(
+    MINIMUM_CANVAS_GROUP_SIZE.width,
+    Math.round(resizeStart.size.width + (resizeRight ? deltaX : 0) - (resizeLeft ? deltaX : 0))
+  );
+  const nextHeight = Math.max(
+    MINIMUM_CANVAS_GROUP_SIZE.height,
+    Math.round(resizeStart.size.height + (resizeBottom ? deltaY : 0) - (resizeTop ? deltaY : 0))
+  );
+
+  return {
+    position: {
+      x: resizeLeft
+        ? Math.round(resizeStart.position.x + resizeStart.size.width - nextWidth)
+        : resizeStart.position.x,
+      y: resizeTop
+        ? Math.round(resizeStart.position.y + resizeStart.size.height - nextHeight)
+        : resizeStart.position.y
+    },
+    size: {
+      width: nextWidth,
+      height: nextHeight
+    }
+  };
+}
+
+function hasGroupPointerCommitMovement(
+  pointerStart: { clientX: number; clientY: number; autoPanOffset: CanvasNodePosition },
+  event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+  zoom: number
+): boolean {
+  const pointerDelta = Math.hypot(event.clientX - pointerStart.clientX, event.clientY - pointerStart.clientY);
+  if (pointerDelta > CANVAS_GROUP_POINTER_COMMIT_THRESHOLD_PX) {
+    return true;
+  }
+
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const autoPanScreenDelta = Math.hypot(
+    pointerStart.autoPanOffset.x * safeZoom,
+    pointerStart.autoPanOffset.y * safeZoom
+  );
+  return autoPanScreenDelta > CANVAS_GROUP_POINTER_COMMIT_THRESHOLD_PX;
+}
+
+const CANVAS_GROUP_RESIZE_DIRECTIONS: CanvasGroupResizeDirection[] = [
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right'
+];
+
+const CANVAS_GROUP_RESIZE_LINE_DIRECTIONS: CanvasGroupResizeDirection[] = ['top', 'right', 'bottom', 'left'];
+const CANVAS_GROUP_POINTER_COMMIT_THRESHOLD_PX = 3;
+const CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_MAX_INTERVAL_MS = 700;
+const CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_POSITION_TOLERANCE_PX = 8;
+const CANVAS_GROUP_TITLE_BASE_HEIGHT = 28;
+const CANVAS_GROUP_BODY_TOP_OFFSET = CANVAS_GROUP_TITLE_BASE_HEIGHT;
+const CANVAS_GROUP_TITLE_BASE_FONT_SIZE = 12;
+const CANVAS_GROUP_TITLE_BASE_MIN_WIDTH = 112;
+const CANVAS_GROUP_TITLE_HORIZONTAL_PADDING = 32;
+const CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR = 7;
+const CANVAS_GROUP_ACTION_PRIMARY_WIDTH = 76;
+const CANVAS_GROUP_ACTION_DANGER_WIDTH = 62;
+const CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP = 0;
+const CANVAS_ROOT_WATERMARK_BASE_MIN_TILE_WIDTH = 160;
+const CANVAS_ROOT_WATERMARK_BASE_MAX_TILE_WIDTH = 360;
+const CANVAS_ROOT_WATERMARK_BASE_TILE_HEIGHT = 88;
+const CANVAS_ROOT_WATERMARK_BASE_HORIZONTAL_PADDING = 84;
+const CANVAS_ROOT_WATERMARK_BASE_TEXT_INSET = 22;
+const CANVAS_ROOT_WATERMARK_BASE_LINE_HEIGHT = 18;
+const CANVAS_ROOT_WATERMARK_BASE_VERTICAL_PADDING = 50;
+const CANVAS_ROOT_WATERMARK_BASE_TILE_GAP_X = 52;
+const CANVAS_ROOT_WATERMARK_BASE_TILE_GAP_Y = 24;
+const CANVAS_ROOT_WATERMARK_MAX_LINES = 2;
+
+function isWorkspaceRootCanvasGroupRole(role: CanvasGroupRole | undefined): boolean {
+  return role === 'workspace-root';
+}
+
+function cssPixelForCanvasZoom(value: number, zoom: number): string {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  return `${value / safeZoom}px`;
+}
+
+function groupReadableChromeScaleForZoom(zoom: number, maxScale: number): number {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const targetScale = safeZoom < 1 ? 1 / safeZoom : 1;
+  return Math.min(targetScale, Math.max(0, maxScale));
+}
+
+function createCanvasGroupChromeStyle(zoom: number, readableScale: number): CSSProperties {
+  return {
+    '--canvas-group-border-width': cssPixelForCanvasZoom(1, zoom),
+    '--canvas-group-readable-scale': String(readableScale),
+    '--canvas-group-title-height': `${CANVAS_GROUP_TITLE_BASE_HEIGHT * readableScale}px`,
+    '--canvas-group-body-top': `${CANVAS_GROUP_BODY_TOP_OFFSET}px`,
+    '--canvas-group-title-font-size': `${CANVAS_GROUP_TITLE_BASE_FONT_SIZE * readableScale}px`,
+    '--canvas-group-title-padding-left': `${12 * readableScale}px`,
+    '--canvas-group-title-padding-right': `${10 * readableScale}px`,
+    '--canvas-group-toolbar-button-padding-x': `${8 * readableScale}px`,
+    '--canvas-group-toolbar-font-size': `${11 * readableScale}px`,
+    '--canvas-group-resize-line-width': cssPixelForCanvasZoom(2, zoom),
+    '--canvas-group-resize-control-size': cssPixelForCanvasZoom(16, zoom),
+    '--canvas-group-resize-edge-inset': cssPixelForCanvasZoom(12, zoom),
+    '--canvas-group-resize-edge-thickness': cssPixelForCanvasZoom(12, zoom),
+    '--canvas-group-resize-dot-size': cssPixelForCanvasZoom(12, zoom),
+    '--canvas-group-resize-dot-border-width': cssPixelForCanvasZoom(2, zoom),
+    '--canvas-group-resize-dot-shadow-y': cssPixelForCanvasZoom(2, zoom),
+    '--canvas-group-resize-dot-shadow-blur': cssPixelForCanvasZoom(12, zoom)
+  } as CSSProperties;
+}
+
+function createCanvasGroupFrameStyle(
+  group: Pick<CanvasGroupSummary, 'position' | 'size' | 'title' | 'role'>,
+  zoom: number,
+  selected = false,
+  workspaceRootWatermarksEnabled = true
+): CSSProperties {
+  const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(group.role);
+  const titleBaseWidth = Math.max(
+    CANVAS_GROUP_TITLE_BASE_MIN_WIDTH,
+    group.title.length * CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR + CANVAS_GROUP_TITLE_HORIZONTAL_PADDING
+  );
+  const toolbarScaleBaseWidth = selected
+    ? CANVAS_GROUP_ACTION_PRIMARY_WIDTH + CANVAS_GROUP_ACTION_DANGER_WIDTH
+    : 0;
+  const toolbarRenderBaseWidth = selected && !isWorkspaceRootGroup ? toolbarScaleBaseWidth : 0;
+  const toolbarGap = toolbarRenderBaseWidth > 0 ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0;
+  const widthBase = Math.max(
+    1,
+    titleBaseWidth + toolbarScaleBaseWidth + (toolbarScaleBaseWidth > 0 ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0)
+  );
+  const readableScale = groupReadableChromeScaleForZoom(zoom, group.size.width / widthBase);
+  const desiredTitleTabWidth = titleBaseWidth * readableScale;
+  const desiredToolbarWidth = toolbarRenderBaseWidth * readableScale;
+  const titleTabWidth = Math.min(desiredTitleTabWidth, group.size.width);
+  const bodyAlignedTitleTabWidth = `min(${titleTabWidth}px, 100%)`;
+  const availableToolbarWidth = Math.max(0, group.size.width - titleTabWidth - toolbarGap);
+  const toolbarWidth = selected && toolbarRenderBaseWidth > 0 && availableToolbarWidth >= 1
+    ? Math.max(1, Math.min(desiredToolbarWidth, availableToolbarWidth))
+    : 0;
+  const watermarkReadableScale = isWorkspaceRootGroup && workspaceRootWatermarksEnabled
+    ? groupReadableChromeScaleForZoom(zoom, Number.POSITIVE_INFINITY)
+    : readableScale;
+  const watermarkFontSize = CANVAS_GROUP_TITLE_BASE_FONT_SIZE * watermarkReadableScale;
+  const rootWatermarkPattern = isWorkspaceRootGroup && workspaceRootWatermarksEnabled
+    ? createCanvasRootWatermarkPattern(group.title, watermarkFontSize, watermarkReadableScale)
+    : undefined;
+  return {
+    ...createCanvasGroupChromeStyle(zoom, readableScale),
+    '--canvas-group-title-tab-width': bodyAlignedTitleTabWidth,
+    '--canvas-group-toolbar-width': `${toolbarWidth}px`,
+    ...(rootWatermarkPattern
+      ? {
+          '--canvas-root-watermark-pattern': rootWatermarkPattern.pattern,
+          '--canvas-root-watermark-tile-width': `${rootWatermarkPattern.tileWidth}px`,
+          '--canvas-root-watermark-tile-height': `${rootWatermarkPattern.tileHeight}px`,
+          '--canvas-root-watermark-font-size': `${watermarkFontSize}px`,
+          '--canvas-root-watermark-readable-scale': String(watermarkReadableScale)
+        }
+      : {}),
+    left: group.position.x,
+    top: group.position.y,
+    width: group.size.width,
+    height: group.size.height
+  } as CSSProperties;
+}
+
+function createCanvasRootWatermarkPattern(
+  title: string,
+  fontSize: number,
+  readableScale: number
+): { pattern: string; tileWidth: number; tileHeight: number } {
+  const label = resolveCanvasRootWatermarkVisualLabel(title);
+  const safeReadableScale = Number.isFinite(readableScale) && readableScale > 0 ? readableScale : 1;
+  const safeFontSize = Number.isFinite(fontSize) && fontSize > 0
+    ? fontSize
+    : CANVAS_GROUP_TITLE_BASE_FONT_SIZE * safeReadableScale;
+  const lines = wrapCanvasRootWatermarkLabel(label);
+  const longestLineBaseWidth = Math.max(...lines.map((line) => estimateCanvasRootWatermarkTextWidth(line)));
+  const baseTextTileWidth = Math.max(
+    CANVAS_ROOT_WATERMARK_BASE_MIN_TILE_WIDTH,
+    Math.min(
+      CANVAS_ROOT_WATERMARK_BASE_MAX_TILE_WIDTH,
+      longestLineBaseWidth + CANVAS_ROOT_WATERMARK_BASE_HORIZONTAL_PADDING
+    )
+  );
+  const baseTextTileHeight = Math.max(
+    CANVAS_ROOT_WATERMARK_BASE_TILE_HEIGHT,
+    CANVAS_ROOT_WATERMARK_BASE_VERTICAL_PADDING + lines.length * CANVAS_ROOT_WATERMARK_BASE_LINE_HEIGHT
+  );
+  const tileWidth = Math.round((baseTextTileWidth + CANVAS_ROOT_WATERMARK_BASE_TILE_GAP_X) * safeReadableScale);
+  const tileHeight = Math.round((baseTextTileHeight + CANVAS_ROOT_WATERMARK_BASE_TILE_GAP_Y) * safeReadableScale);
+  const textX = Math.round(tileWidth / 2);
+  const lineHeight = CANVAS_ROOT_WATERMARK_BASE_LINE_HEIGHT * safeReadableScale;
+  const firstTextY = tileHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
+  const textLength = Math.max(
+    84 * safeReadableScale,
+    (baseTextTileWidth - CANVAS_ROOT_WATERMARK_BASE_TEXT_INSET * 2) * safeReadableScale
+  );
+  const letterSpacing = 0.6 * safeReadableScale;
+  const textElements = lines.map((line, index) => {
+    const textY = firstTextY + index * lineHeight;
+    return `<text x="${textX}" y="${formatSvgNumber(textY)}" text-anchor="middle" dominant-baseline="middle" fill="black" font-family="sans-serif" font-size="${formatSvgNumber(safeFontSize)}" font-weight="600" letter-spacing="${formatSvgNumber(letterSpacing)}" textLength="${formatSvgNumber(textLength)}" lengthAdjust="spacingAndGlyphs">${escapeSvgText(line)}</text>`;
+  });
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${tileWidth}" height="${tileHeight}" viewBox="0 0 ${tileWidth} ${tileHeight}">`,
+    ...textElements,
+    '</svg>'
+  ].join('');
+  return {
+    pattern: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
+    tileWidth,
+    tileHeight
+  };
+}
+
+function resolveCanvasRootWatermarkVisualLabel(title: string): string {
+  let label = title.trim() || 'Root';
+  const separatedPathLabel = label.match(/^(.*?)\s+-\s+(.+)$/u);
+  if (separatedPathLabel && isCanvasRootWatermarkPathLikeLabel(separatedPathLabel[2])) {
+    label = separatedPathLabel[1].trim() || separatedPathLabel[2].trim();
+  }
+
+  label = label.replace(/^\.[\\/]+/u, '').trim();
+  if (isCanvasRootWatermarkPathLikeLabel(label)) {
+    label = basenameForCanvasRootWatermarkLabel(label) || label;
+  }
+
+  return label || 'Root';
+}
+
+function isCanvasRootWatermarkPathLikeLabel(value: string): boolean {
+  return /[\\/]/u.test(value) || /^[A-Za-z]:[\\/]/u.test(value) || /^~[\\/]/u.test(value);
+}
+
+function basenameForCanvasRootWatermarkLabel(value: string): string | undefined {
+  const normalized = value.trim().replace(/[\\/]+$/u, '');
+  const segments = normalized.split(/[\\/]+/u).filter(Boolean);
+  return segments.at(-1);
+}
+
+function wrapCanvasRootWatermarkLabel(label: string): string[] {
+  const normalizedLabel = label.replace(/\s+/gu, ' ').trim() || 'Root';
+  const maxLineWidth =
+    CANVAS_ROOT_WATERMARK_BASE_MAX_TILE_WIDTH - CANVAS_ROOT_WATERMARK_BASE_TEXT_INSET * 2;
+  const chunks = splitCanvasRootWatermarkLabelIntoChunks(normalizedLabel);
+  const lines: string[] = [];
+  let currentLine = '';
+
+  chunks.forEach((chunk) => {
+    const nextLine = currentLine ? `${currentLine}${chunk}` : chunk.trimStart();
+    if (currentLine && estimateCanvasRootWatermarkTextWidth(nextLine) > maxLineWidth) {
+      lines.push(currentLine.trim());
+      currentLine = chunk.trimStart();
+      return;
+    }
+
+    currentLine = nextLine;
+  });
+
+  if (currentLine.trim()) {
+    lines.push(currentLine.trim());
+  }
+
+  if (lines.length <= CANVAS_ROOT_WATERMARK_MAX_LINES) {
+    return lines.length > 0 ? lines : ['Root'];
+  }
+
+  const clampedLines = lines.slice(0, CANVAS_ROOT_WATERMARK_MAX_LINES);
+  const overflowText = lines.slice(CANVAS_ROOT_WATERMARK_MAX_LINES - 1).join(' ');
+  clampedLines[CANVAS_ROOT_WATERMARK_MAX_LINES - 1] =
+    truncateCanvasRootWatermarkLine(overflowText, maxLineWidth);
+  return clampedLines;
+}
+
+function splitCanvasRootWatermarkLabelIntoChunks(label: string): string[] {
+  const chunks: string[] = [];
+  let currentChunk = '';
+
+  for (const char of label) {
+    currentChunk += char;
+    if (/[\s._/-]/u.test(char) || isCanvasRootWatermarkCjkCharacter(char)) {
+      chunks.push(currentChunk);
+      currentChunk = '';
+    }
+  }
+
+  if (currentChunk) {
+    chunks.push(currentChunk);
+  }
+
+  const maxLineWidth =
+    CANVAS_ROOT_WATERMARK_BASE_MAX_TILE_WIDTH - CANVAS_ROOT_WATERMARK_BASE_TEXT_INSET * 2;
+  return chunks.flatMap((chunk) => breakCanvasRootWatermarkLongChunk(chunk, maxLineWidth));
+}
+
+function breakCanvasRootWatermarkLongChunk(chunk: string, maxLineWidth: number): string[] {
+  if (estimateCanvasRootWatermarkTextWidth(chunk) <= maxLineWidth) {
+    return [chunk];
+  }
+
+  const parts: string[] = [];
+  let currentPart = '';
+  for (const char of chunk) {
+    const nextPart = `${currentPart}${char}`;
+    if (currentPart && estimateCanvasRootWatermarkTextWidth(nextPart) > maxLineWidth) {
+      parts.push(currentPart);
+      currentPart = char;
+    } else {
+      currentPart = nextPart;
+    }
+  }
+
+  if (currentPart) {
+    parts.push(currentPart);
+  }
+
+  return parts;
+}
+
+function estimateCanvasRootWatermarkTextWidth(value: string): number {
+  let width = 0;
+  for (const char of value) {
+    if (char === ' ') {
+      width += 4;
+    } else if (/[._/-]/u.test(char)) {
+      width += 5;
+    } else if (isCanvasRootWatermarkCjkCharacter(char)) {
+      width += 12;
+    } else if (/[A-ZMW@#%&]/u.test(char)) {
+      width += 8;
+    } else if (/[ilI1|]/u.test(char)) {
+      width += 4;
+    } else {
+      width += CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR;
+    }
+  }
+
+  return width;
+}
+
+function truncateCanvasRootWatermarkLine(value: string, maxLineWidth: number): string {
+  const ellipsis = '...';
+  const normalized = value.trim();
+  if (estimateCanvasRootWatermarkTextWidth(normalized) <= maxLineWidth) {
+    return normalized;
+  }
+
+  const ellipsisWidth = estimateCanvasRootWatermarkTextWidth(ellipsis);
+  let truncated = '';
+  for (const char of normalized) {
+    const nextValue = `${truncated}${char}`;
+    if (estimateCanvasRootWatermarkTextWidth(nextValue) + ellipsisWidth > maxLineWidth) {
+      break;
+    }
+    truncated = nextValue;
+  }
+
+  return `${truncated.trimEnd()}${ellipsis}`;
+}
+
+function isCanvasRootWatermarkCjkCharacter(char: string): boolean {
+  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(char);
+}
+
+function formatSvgNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/\.?0+$/u, '');
+}
+
+function escapeSvgText(value: string): string {
+  return value
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;');
+}
+
+function CanvasGroupFrame(props: {
+  group: CanvasGroupSummary;
+  selected: boolean;
+  zoom: number;
+  onSelectGroup: (
+    groupId: string,
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ) => void;
+  onFocusGroupInViewport: (groupId: string) => void;
+  onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
+  onGroupInteractionStart: (groupId: string) => void;
+  onGroupInteractionEnd: (groupId: string) => void;
+  onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
+  onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
+  onUpdateGroupTitle: (groupId: string, title: string) => void;
+  onUngroup: (groupId: string) => void;
+  onDeleteGroup: (groupId: string) => void;
+  onDragPointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onDragEnd: () => void;
+  onResizePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeEnd: () => void;
+}): JSX.Element {
+  const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(props.group.role);
+  const dragStartRef = useRef<{
+    pointerId: number;
+    source: 'titlebar' | 'border';
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    pointerOffset: CanvasNodePosition;
+    autoPanOffset: CanvasNodePosition;
+  } | null>(null);
+  const resizeStartRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    position: CanvasNodePosition;
+    size: CanvasNodeFootprint;
+    direction: CanvasGroupResizeDirection;
+    autoPanOffset: CanvasNodePosition;
+  } | null>(null);
+  const lastDragEventRef = useRef<Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'> | null>(null);
+  const lastResizeEventRef = useRef<Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'> | null>(null);
+  const lastTitlebarPointerClickRef = useRef<{
+    clientX: number;
+    clientY: number;
+    timestamp: number;
+  } | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const ignoreNextClickSelectionRef = useRef(false);
+  const latestPropsRef = useRef(props);
+
+  useEffect(() => {
+    latestPropsRef.current = props;
+  });
+
+  const selectGroup = (
+    event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
+  ): void => props.onSelectGroup(props.group.id, event);
+
+  const handleModifierSelectionPointerDownCapture = (event: React.PointerEvent): void => {
+    if (
+      event.button !== 0 ||
+      (!event.ctrlKey && !event.metaKey) ||
+      isGroupModifierSelectionBlockedTarget(event.target)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    stopCanvasEvent(event);
+    ignoreNextClickSelectionRef.current = true;
+    props.onSelectGroup(props.group.id, event);
+  };
+
+  const resolvePointerOffsetInGroup = (event: React.PointerEvent): CanvasNodePosition => {
+    const frameElement = event.currentTarget instanceof HTMLElement
+      ? event.currentTarget.closest<HTMLElement>('.canvas-group-frame')
+      : null;
+    const frameRect = frameElement?.getBoundingClientRect();
+    if (!frameRect) {
+      return {
+        x: Math.round(props.group.size.width / 2),
+        y: Math.round(props.group.size.height / 2)
+      };
+    }
+
+    return {
+      x: Math.round((event.clientX - frameRect.left) / props.zoom),
+      y: Math.round((event.clientY - frameRect.top) / props.zoom)
+    };
+  };
+
+  const takeTitlebarDoubleClickPointerIntent = (event: React.PointerEvent): boolean => {
+    const lastClick = lastTitlebarPointerClickRef.current;
+    if (!lastClick) {
+      return false;
+    }
+
+    const elapsed = event.timeStamp - lastClick.timestamp;
+    const distance = Math.hypot(event.clientX - lastClick.clientX, event.clientY - lastClick.clientY);
+    if (
+      elapsed < 0 ||
+      elapsed > CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_MAX_INTERVAL_MS ||
+      distance > CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_POSITION_TOLERANCE_PX
+    ) {
+      return false;
+    }
+
+    lastTitlebarPointerClickRef.current = null;
+    return true;
+  };
+
+  const rememberTitlebarPointerClick = (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY' | 'timeStamp'>
+  ): void => {
+    lastTitlebarPointerClickRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      timestamp: event.timeStamp
+    };
+  };
+
+  const clearTitlebarPointerClickMemory = (): void => {
+    lastTitlebarPointerClickRef.current = null;
+  };
+
+  const applyDragMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'pointerId' | 'clientX' | 'clientY'>
+  ): boolean => {
+    const dragStart = dragStartRef.current;
+    if (!dragStart || dragStart.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    lastDragEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    const currentProps = latestPropsRef.current;
+    const publishDraft = (): void => {
+      currentProps.onDraftGroup(currentProps.group.id, {
+        position: resolveGroupDragPosition(dragStart, event, currentProps.zoom)
+      });
+    };
+    currentProps.onDragPointerMove(event, (previousViewport, nextViewport) => {
+      const zoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : currentProps.zoom;
+      dragStart.autoPanOffset = {
+        x: dragStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / zoom,
+        y: dragStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / zoom
+      };
+      publishDraft();
+    });
+    publishDraft();
+    return true;
+  };
+
+  const applyResizeMove = (
+    event: Pick<PointerEvent | React.PointerEvent, 'pointerId' | 'clientX' | 'clientY'>
+  ): boolean => {
+    const resizeStart = resizeStartRef.current;
+    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    lastResizeEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    const currentProps = latestPropsRef.current;
+    const publishDraft = (): void => {
+      currentProps.onDraftGroup(currentProps.group.id, resolveGroupResizeGeometry(resizeStart, event, currentProps.zoom));
+    };
+    currentProps.onResizePointerMove(event, (previousViewport, nextViewport) => {
+      const zoom = Number.isFinite(nextViewport.zoom) && nextViewport.zoom > 0 ? nextViewport.zoom : currentProps.zoom;
+      resizeStart.autoPanOffset = {
+        x: resizeStart.autoPanOffset.x + (previousViewport.x - nextViewport.x) / zoom,
+        y: resizeStart.autoPanOffset.y + (previousViewport.y - nextViewport.y) / zoom
+      };
+      publishDraft();
+    });
+    publishDraft();
+    return true;
+  };
+
+  const completeDrag = (
+    event: Pick<PointerEvent | React.PointerEvent, 'pointerId' | 'clientX' | 'clientY' | 'timeStamp'>
+  ): boolean => {
+    const dragStart = dragStartRef.current;
+    if (!dragStart || dragStart.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    dragStartRef.current = null;
+    lastDragEventRef.current = null;
+    const currentProps = latestPropsRef.current;
+    const position = resolveGroupDragPosition(dragStart, event, currentProps.zoom);
+    currentProps.onDragEnd();
+    if (
+      !hasGroupPointerCommitMovement(dragStart, event, currentProps.zoom) ||
+      positionsEqual(position, dragStart.position)
+    ) {
+      currentProps.onDraftGroup(currentProps.group.id, null);
+      currentProps.onGroupInteractionEnd(currentProps.group.id);
+      if (dragStart.source === 'titlebar') {
+        rememberTitlebarPointerClick(event);
+      } else {
+        clearTitlebarPointerClickMemory();
+      }
+      return true;
+    }
+
+    clearTitlebarPointerClickMemory();
+    currentProps.onGroupInteractionEnd(currentProps.group.id);
+    currentProps.onMoveGroup(currentProps.group.id, position, {
+      x: Math.round(position.x + dragStart.pointerOffset.x),
+      y: Math.round(position.y + dragStart.pointerOffset.y)
+    });
+    return true;
+  };
+
+  const completeResize = (
+    event: Pick<PointerEvent | React.PointerEvent, 'pointerId' | 'clientX' | 'clientY'>
+  ): boolean => {
+    const resizeStart = resizeStartRef.current;
+    if (!resizeStart || resizeStart.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    resizeStartRef.current = null;
+    lastResizeEventRef.current = null;
+    const currentProps = latestPropsRef.current;
+    const resizedGeometry = resolveGroupResizeGeometry(resizeStart, event, currentProps.zoom);
+    currentProps.onResizeEnd();
+    if (
+      !hasGroupPointerCommitMovement(resizeStart, event, currentProps.zoom) ||
+      (positionsEqual(resizedGeometry.position, resizeStart.position) &&
+        footprintsEqual(resizedGeometry.size, resizeStart.size))
+    ) {
+      currentProps.onDraftGroup(currentProps.group.id, null);
+      currentProps.onGroupInteractionEnd(currentProps.group.id);
+      return true;
+    }
+
+    clearTitlebarPointerClickMemory();
+    currentProps.onGroupInteractionEnd(currentProps.group.id);
+    currentProps.onResizeGroup(currentProps.group.id, resizedGeometry.position, resizedGeometry.size);
+    return true;
+  };
+
+  const cancelActiveGroupInteraction = (
+    event?: Pick<PointerEvent | React.PointerEvent, 'pointerId'>
+  ): boolean => {
+    const hasMatchingDrag = Boolean(
+      dragStartRef.current && (!event || dragStartRef.current.pointerId === event.pointerId)
+    );
+    const hasMatchingResize = Boolean(
+      resizeStartRef.current && (!event || resizeStartRef.current.pointerId === event.pointerId)
+    );
+    if (!hasMatchingDrag && !hasMatchingResize) {
+      return false;
+    }
+
+    dragStartRef.current = null;
+    resizeStartRef.current = null;
+    lastDragEventRef.current = null;
+    lastResizeEventRef.current = null;
+    ignoreNextClickSelectionRef.current = false;
+    clearTitlebarPointerClickMemory();
+    const currentProps = latestPropsRef.current;
+    currentProps.onDraftGroup(currentProps.group.id, null);
+    currentProps.onGroupInteractionEnd(currentProps.group.id);
+    if (hasMatchingDrag) {
+      currentProps.onDragEnd();
+    }
+    if (hasMatchingResize) {
+      currentProps.onResizeEnd();
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    const handleWindowPointerMove = (event: PointerEvent): void => {
+      if (!applyDragMove(event) && !applyResizeMove(event)) {
+        return;
+      }
+
+      stopCanvasEvent(event);
+    };
+
+    const handleWindowPointerUp = (event: PointerEvent): void => {
+      if (!completeDrag(event) && !completeResize(event)) {
+        return;
+      }
+
+      stopCanvasEvent(event);
+    };
+
+    const handleWindowPointerCancel = (event: PointerEvent): void => {
+      if (!cancelActiveGroupInteraction(event)) {
+        return;
+      }
+
+      stopCanvasEvent(event);
+    };
+
+    const handleWindowBlur = (): void => {
+      cancelActiveGroupInteraction();
+    };
+
+    window.addEventListener('pointermove', handleWindowPointerMove, true);
+    window.addEventListener('pointerup', handleWindowPointerUp, true);
+    window.addEventListener('pointercancel', handleWindowPointerCancel, true);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove, true);
+      window.removeEventListener('pointerup', handleWindowPointerUp, true);
+      window.removeEventListener('pointercancel', handleWindowPointerCancel, true);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  });
+
+  useEffect(() => () => {
+    cancelActiveGroupInteraction();
+  }, []);
+
+  const beginDrag = (event: React.PointerEvent, source: 'titlebar' | 'border'): void => {
+    if (event.button !== 0 || isInteractiveTarget(event.target)) {
+      return;
+    }
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      stopCanvasEvent(event);
+      ignoreNextClickSelectionRef.current = true;
+      props.onSelectGroup(props.group.id, event);
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    stopCanvasEvent(event);
+    props.onSelectGroup(props.group.id);
+    props.onGroupInteractionStart(props.group.id);
+    lastDragEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    lastResizeEventRef.current = null;
+    dragStartRef.current = {
+      pointerId: event.pointerId,
+      source,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      position: props.group.position,
+      pointerOffset: resolvePointerOffsetInGroup(event),
+      autoPanOffset: { x: 0, y: 0 }
+    };
+  };
+
+  const handleDragMove = (event: React.PointerEvent): void => {
+    if (applyDragMove(event)) {
+      stopCanvasEvent(event);
+    }
+  };
+
+  const endDrag = (event: React.PointerEvent): void => {
+    if (completeDrag(event)) {
+      stopCanvasEvent(event);
+    }
+  };
+
+  const beginResize = (event: React.PointerEvent, direction: CanvasGroupResizeDirection): void => {
+    if (event.button !== 0) {
+      return;
+    }
+    if (takeTitlebarDoubleClickPointerIntent(event)) {
+      event.preventDefault();
+      stopCanvasEvent(event);
+      props.onSelectGroup(props.group.id);
+      props.onFocusGroupInViewport(props.group.id);
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    stopCanvasEvent(event);
+    props.onSelectGroup(props.group.id);
+    props.onGroupInteractionStart(props.group.id);
+    clearTitlebarPointerClickMemory();
+    lastDragEventRef.current = null;
+    lastResizeEventRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    resizeStartRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      position: props.group.position,
+      size: props.group.size,
+      direction,
+      autoPanOffset: { x: 0, y: 0 }
+    };
+  };
+
+  const handleResizeMove = (event: React.PointerEvent): void => {
+    if (applyResizeMove(event)) {
+      stopCanvasEvent(event);
+    }
+  };
+
+  const endResize = (event: React.PointerEvent): void => {
+    if (completeResize(event)) {
+      stopCanvasEvent(event);
+    }
+  };
+
+  const handleFocusDoubleClick = (event: React.MouseEvent<HTMLElement>): void => {
+    if (isGroupChromeFocusBlockedTarget(event.target)) {
+      return;
+    }
+
+    dragStartRef.current = null;
+    resizeStartRef.current = null;
+    clearTitlebarPointerClickMemory();
+    props.onDraftGroup(props.group.id, null);
+    props.onDragEnd();
+    props.onResizeEnd();
+    handleGroupChromeDoubleClick(event, props.group.id, props.onFocusGroupInViewport);
+  };
+
+  return (
+    <div
+      className={`canvas-group-frame nodrag nopan${props.selected ? ' is-selected' : ''}`}
+      data-group-id={props.group.id}
+      style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
+      onPointerDownCapture={handleModifierSelectionPointerDownCapture}
+      onClickCapture={(event) => {
+        if (!ignoreNextClickSelectionRef.current) {
+          return;
+        }
+        ignoreNextClickSelectionRef.current = false;
+        event.preventDefault();
+        stopCanvasEvent(event);
+      }}
+      onClick={(event) => {
+        stopCanvasEvent(event);
+        if (event.ctrlKey || event.metaKey) {
+          return;
+        }
+        selectGroup();
+      }}
+      onPointerMove={(event) => {
+        handleDragMove(event);
+        handleResizeMove(event);
+      }}
+      onPointerUp={(event) => {
+        endDrag(event);
+        endResize(event);
+      }}
+      onPointerCancel={(event) => {
+        if (cancelActiveGroupInteraction(event)) {
+          stopCanvasEvent(event);
+        }
+      }}
+    >
+      <div className="canvas-group-body" aria-hidden="true" />
+      <div
+        className="canvas-group-titlebar"
+        onPointerDown={(event) => beginDrag(event, 'titlebar')}
+        onDoubleClick={handleFocusDoubleClick}
+      >
+        <ChromeTitleEditor
+          value={props.group.title}
+          placeholder="分组标题"
+          className="canvas-group-title"
+          tooltip={isWorkspaceRootGroup ? props.group.workspaceRootPath ?? props.group.title : undefined}
+          readOnly={isWorkspaceRootGroup}
+          onSubmit={isWorkspaceRootGroup ? undefined : (title) => props.onUpdateGroupTitle(props.group.id, title)}
+          onSelectNode={() => selectGroup()}
+        />
+      </div>
+      <div className="canvas-group-border canvas-group-border-top" onPointerDown={(event) => beginDrag(event, 'border')} />
+      <div className="canvas-group-border canvas-group-border-right" onPointerDown={(event) => beginDrag(event, 'border')} />
+      <div className="canvas-group-border canvas-group-border-bottom" onPointerDown={(event) => beginDrag(event, 'border')} />
+      <div className="canvas-group-border canvas-group-border-left" onPointerDown={(event) => beginDrag(event, 'border')} />
+      {props.selected ? (
+        <>
+          {CANVAS_GROUP_RESIZE_LINE_DIRECTIONS.map((direction) => (
+            <span
+              key={`line-${direction}`}
+              className={`canvas-group-resize-line canvas-group-resize-line-${direction}`}
+              aria-hidden="true"
+            />
+          ))}
+          {CANVAS_GROUP_RESIZE_DIRECTIONS.map((direction) => (
+            <button
+              key={direction}
+              type="button"
+              className={`canvas-group-resize-control canvas-group-resize-${direction} nodrag nopan`}
+              data-group-resize-direction={direction}
+              data-resize-direction={direction}
+              aria-label={`向 ${direction} 调整分组 ${props.group.title} 尺寸`}
+              style={{ cursor: canvasNodeResizeCursorForDirection(direction) }}
+              onPointerDown={(event) => beginResize(event, direction)}
+            />
+          ))}
+        </>
+      ) : null}
+      {props.selected && !isWorkspaceRootGroup ? (
+        <div
+          ref={toolbarRef}
+          className="canvas-group-toolbar"
+          data-group-toolbar="true"
+          data-node-interactive="true"
+          onPointerDown={stopCanvasEvent}
+          onMouseDown={stopCanvasEvent}
+          onClick={stopCanvasEvent}
+        >
+          <button
+            type="button"
+            className="canvas-group-split-primary"
+            onClick={(event) => {
+              stopCanvasEvent(event);
+              props.onUngroup(props.group.id);
+            }}
+          >
+            取消分组
+          </button>
+          <button
+            type="button"
+            className="canvas-group-split-danger"
+            onClick={(event) => {
+              stopCanvasEvent(event);
+              props.onDeleteGroup(props.group.id);
+            }}
+          >
+            删除分组
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ChromeTitleEditor(props: {
   value: string;
   placeholder: string;
+  contextLabel?: string;
+  contextTooltip?: string;
   subtitle?: string;
   subtitleTooltip?: string;
   subtitleAccessory?: React.ReactNode;
   className?: string;
+  tooltip?: string;
+  readOnly?: boolean;
   onSelectNode?: () => void;
-  onSubmit: (title: string) => void;
+  onSubmit?: (title: string) => void;
 }): JSX.Element {
   const overviewInteractionsDisabled = useCanvasOverviewInteractionsDisabled();
   const [draft, setDraft] = useState(props.value);
@@ -7876,11 +13268,20 @@ function ChromeTitleEditor(props: {
     }
   }, [overviewInteractionsDisabled]);
 
+  const overflowTitle = useOverflowAwareElementTitle(inputRef, draft, props.tooltip);
+  const titleReadOnly = props.readOnly === true;
+  const editingDisabled = overviewInteractionsDisabled || titleReadOnly;
+
   const commitTitle = (rawValue: string): void => {
     const baselineTitle = committedTitleRef.current;
+    if (titleReadOnly) {
+      setDraft(baselineTitle);
+      return;
+    }
+
     const nextTitle = rawValue.trim() || baselineTitle;
     setDraft(nextTitle);
-    if (nextTitle !== baselineTitle) {
+    if (props.onSubmit && nextTitle !== baselineTitle) {
       pendingTitleRef.current = nextTitle;
       committedTitleRef.current = nextTitle;
       props.onSubmit(nextTitle);
@@ -7890,40 +13291,82 @@ function ChromeTitleEditor(props: {
   return (
     <div className={`window-title ${props.className ?? ''}`.trim()}>
       <div className="window-title-copy">
+        {props.contextLabel ? (
+          <div className="window-title-context-row">
+            <OverflowAwareText
+              className="window-title-context"
+              text={props.contextLabel}
+              tooltipText={props.contextTooltip}
+            />
+          </div>
+        ) : null}
         <input
           ref={inputRef}
           className="window-title-input nodrag nopan"
           data-node-interactive="true"
           data-probe-field="title"
           value={draft}
-          readOnly={overviewInteractionsDisabled}
+          title={overflowTitle ?? props.tooltip}
+          readOnly={editingDisabled}
           tabIndex={overviewInteractionsDisabled ? -1 : undefined}
           onFocus={() => {
             if (overviewInteractionsDisabled) {
+              setIsEditing(false);
               inputRef.current?.blur();
               return;
             }
-            setIsEditing(true);
             props.onSelectNode?.();
+            if (titleReadOnly) {
+              setIsEditing(false);
+              return;
+            }
+            setIsEditing(true);
           }}
           onMouseDown={stopCanvasEvent}
           onClick={stopCanvasEvent}
-          onCompositionStart={() => setIsComposing(true)}
+          onCompositionStart={() => {
+            if (!editingDisabled) {
+              setIsComposing(true);
+            }
+          }}
           onCompositionEnd={(event) => {
             setIsComposing(false);
-            setDraft(event.currentTarget.value);
+            if (!editingDisabled) {
+              setDraft(event.currentTarget.value);
+            }
           }}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            if (!editingDisabled) {
+              setDraft(event.target.value);
+            }
+          }}
           onBlur={(event) => {
             setIsComposing(false);
             setIsEditing(false);
             commitTitle(event.currentTarget.value);
           }}
-          onKeyDown={(event) =>
+          onKeyDown={(event) => {
+            if (titleReadOnly) {
+              if (shouldHandleReadonlySelectAllShortcut(event)) {
+                event.preventDefault();
+                stopCanvasEvent(event);
+                event.currentTarget.select();
+                return;
+              }
+              if (shouldAllowReadonlyTextShortcutToBubble(event)) {
+                return;
+              }
+              stopCanvasEvent(event);
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+              return;
+            }
             handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value), {
               isComposing
-            })
-          }
+            });
+          }}
           placeholder={props.placeholder}
         />
         {props.subtitle || props.subtitleAccessory ? (
@@ -7945,10 +13388,24 @@ function ChromeTitleEditor(props: {
 
 function OverflowAwareText(props: { className: string; text: string; tooltipText?: string }): JSX.Element {
   const textRef = useRef<HTMLSpanElement | null>(null);
+  const title = useOverflowAwareElementTitle(textRef, props.text, props.tooltipText);
+
+  return (
+    <span ref={textRef} className={props.className} title={title}>
+      {props.text}
+    </span>
+  );
+}
+
+function useOverflowAwareElementTitle<TElement extends HTMLElement>(
+  elementRef: React.RefObject<TElement>,
+  text: string,
+  tooltipText?: string
+): string | undefined {
   const [title, setTitle] = useState<string | undefined>(undefined);
 
   useLayoutEffect(() => {
-    const element = textRef.current;
+    const element = elementRef.current;
     if (!element) {
       setTitle(undefined);
       return;
@@ -7956,10 +13413,7 @@ function OverflowAwareText(props: { className: string; text: string; tooltipText
 
     let frameId: number | undefined;
     const updateTitle = (): void => {
-      const nextTitle =
-        element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1
-          ? props.tooltipText ?? props.text
-          : undefined;
+      const nextTitle = isElementVisuallyOverflowing(element) ? tooltipText ?? text : undefined;
       setTitle((currentTitle) => (currentTitle === nextTitle ? currentTitle : nextTitle));
     };
     const scheduleUpdate = (): void => {
@@ -7987,18 +13441,19 @@ function OverflowAwareText(props: { className: string; text: string; tooltipText
       resizeObserver?.disconnect();
       window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [props.text, props.tooltipText]);
+  }, [elementRef, text, tooltipText]);
 
-  return (
-    <span ref={textRef} className={props.className} title={title}>
-      {props.text}
-    </span>
-  );
+  return title;
+}
+
+function isElementVisuallyOverflowing(element: HTMLElement): boolean {
+  return element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1;
 }
 
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   selectedNodeId: string | undefined;
+  selectedNodeIds: readonly string[] | undefined;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
   overviewInteractionsDisabled: boolean;
@@ -8007,9 +13462,11 @@ function toFlowNodes(params: {
   fileNodeDisplayMode: CanvasFileNodeDisplayMode;
   filePathDisplayMode: CanvasFilePathDisplayMode;
   noteMarkdownImageWorkspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[];
+  workspaceFolders: CanvasRuntimeContext['workspaceFolders'];
   fileListViewModes: Record<string, FileListViewMode> | undefined;
   selectedFileListEntries: Record<string, string> | undefined;
   collapsedFileListTreeBranches: Record<string, string[]> | undefined;
+  nodeResizeDrafts: Record<string, CanvasNodeResizeDraft>;
   onSelectNode: (nodeId: string) => void;
   onAcknowledgeNodeAttention: (nodeId: string) => void;
   onOpenCanvasFile: (nodeId: string, filePath: string) => void;
@@ -8031,8 +13488,15 @@ function toFlowNodes(params: {
     provider?: AgentProviderKind,
     resume?: boolean
   ) => void;
+  onBranchAgentSession: (nodeId: string) => void;
   onAttachExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
-  onExecutionInput: (nodeId: string, kind: ExecutionNodeKind, data: string) => void;
+  onExecutionInput: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    data: string,
+    metadata?: ExecutionInputDispatchMetadata
+  ) => void;
+  onShowTransientError: (message: string) => void;
   onDropExecutionResource: (
     nodeId: string,
     kind: ExecutionNodeKind,
@@ -8054,6 +13518,7 @@ function toFlowNodes(params: {
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
   ) => void;
+  onExecutionClipboardDiagnostic: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   onResizeExecution: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
   onUpdateNote: (payload: {
@@ -8075,10 +13540,18 @@ function toFlowNodes(params: {
   }) => void;
   onClearAssociatedNoteMarkdownDraft: (nodeId: string) => void;
   onCopyAssociatedNoteMarkdownDraft: (nodeId: string, content: string) => void;
+  onDraftNodeLayout: (nodeId: string, draft: CanvasNodeLayoutDraft | null) => void;
+  onResizeNodePointerMove: (
+    event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
+    onPan?: (previousViewport: Viewport, nextViewport: Viewport) => void
+  ) => void;
+  onResizeNodeEnd: () => void;
   onResizeNode: (nodeId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onFocusNodeInViewport: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
+  onModifierSelectNode: (nodeId: string) => void;
 }): CanvasFlowNode[] {
+  const selectedNodeIds = new Set(params.selectedNodeIds ?? (params.selectedNodeId ? [params.selectedNodeId] : []));
   return params.nodes.map((node) => {
     const size = normalizeCanvasNodeFootprintForDisplayStyle(
       node.kind,
@@ -8088,34 +13561,37 @@ function toFlowNodes(params: {
       params.fileNodeDisplayMode,
       params.filePathDisplayMode
     );
+    const resizeDraft = params.nodeResizeDrafts[node.id];
+    const renderedSize = resizeDraft?.size ?? size;
 
     return {
       id: node.id,
       type: node.kind === 'agent' || node.kind === 'terminal' || node.kind === 'note' || node.kind === 'file' || node.kind === 'file-list' ? node.kind : 'card',
       position: node.position,
       draggable: true,
-      selected: node.id === params.selectedNodeId,
-      width: size.width,
-      height: size.height,
+      selected: selectedNodeIds.has(node.id),
+      width: renderedSize.width,
+      height: renderedSize.height,
       style: {
-        width: size.width,
-        height: size.height
+        width: renderedSize.width,
+        height: renderedSize.height
       },
       data: {
         kind: node.kind,
         title: node.title,
         status: node.status,
         summary: node.summary,
-        selected: node.id === params.selectedNodeId,
+        selected: selectedNodeIds.has(node.id),
         documentHasFocus: params.documentHasFocus,
         workspaceTrusted: params.workspaceTrusted,
         overviewInteractionsDisabled: params.overviewInteractionsDisabled,
         strongTerminalAttentionReminderMode: params.strongTerminalAttentionReminderMode,
-        size,
+        size: renderedSize,
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
         filePathDisplayMode: params.filePathDisplayMode,
         noteMarkdownImageWorkspaceRoots: [...params.noteMarkdownImageWorkspaceRoots],
+        workspaceFolders: [...params.workspaceFolders],
         fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
         collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],
@@ -8134,12 +13610,15 @@ function toFlowNodes(params: {
         onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
+        onBranchAgentSession: params.onBranchAgentSession,
         onAttachExecution: params.onAttachExecution,
         onExecutionInput: params.onExecutionInput,
+        onShowTransientError: params.onShowTransientError,
         onDropExecutionResource: params.onDropExecutionResource,
         onOpenExecutionLink: params.onOpenExecutionLink,
         onCopyExecutionSelection: params.onCopyExecutionSelection,
         onRequestExecutionPaste: params.onRequestExecutionPaste,
+        onExecutionClipboardDiagnostic: params.onExecutionClipboardDiagnostic,
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
         onUpdateNote: params.onUpdateNote,
@@ -8148,9 +13627,13 @@ function toFlowNodes(params: {
         onUpdateAssociatedNoteMarkdownDraft: params.onUpdateAssociatedNoteMarkdownDraft,
         onClearAssociatedNoteMarkdownDraft: params.onClearAssociatedNoteMarkdownDraft,
         onCopyAssociatedNoteMarkdownDraft: params.onCopyAssociatedNoteMarkdownDraft,
+        onDraftNodeLayout: params.onDraftNodeLayout,
+        onResizeNodePointerMove: params.onResizeNodePointerMove,
+        onResizeNodeEnd: params.onResizeNodeEnd,
         onResizeNode: params.onResizeNode,
         onFocusNodeInViewport: params.onFocusNodeInViewport,
-        onDeleteNode: params.onDeleteNode
+        onDeleteNode: params.onDeleteNode,
+        onModifierSelectNode: params.onModifierSelectNode
       }
     };
   });
@@ -8266,12 +13749,204 @@ function applyCanvasNodeLayoutDrafts(
   });
 }
 
+function applyCanvasGroupDrafts(params: {
+  groups: CanvasGroupSummary[];
+  hostNodes: CanvasNodeSummary[];
+  flowNodes: CanvasFlowNode[];
+  drafts: Record<string, CanvasGroupDraft>;
+}): { groups: CanvasGroupSummary[]; nodes: CanvasFlowNode[] } {
+  const groupsById = new Map(params.groups.map((group) => [group.id, group] as const));
+  const movingDrafts = Object.entries(params.drafts).flatMap(([groupId, draft]) => {
+    const group = groupsById.get(groupId);
+    if (
+      !group?.id ||
+      !draft.position ||
+      draft.size ||
+      (draft.position.x === group.position.x && draft.position.y === group.position.y)
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        groupId,
+        subtreeGroupIds: collectGroupSubtreeIdsForWebview(params.groups, groupId),
+        delta: {
+          x: draft.position.x - group.position.x,
+          y: draft.position.y - group.position.y
+        }
+      }
+    ];
+  });
+
+  const groups = params.groups.map((group) => {
+    const translatedPosition = movingDrafts.reduce(
+      (position, movingDraft) =>
+        movingDraft.subtreeGroupIds.has(group.id)
+          ? {
+              x: position.x + movingDraft.delta.x,
+              y: position.y + movingDraft.delta.y
+            }
+          : position,
+      group.position
+    );
+    const draft = params.drafts[group.id];
+    const nextPosition = draft?.position ?? translatedPosition;
+    return {
+      ...group,
+      position: {
+        x: Math.round(nextPosition.x),
+        y: Math.round(nextPosition.y)
+      },
+      size: draft?.size ?? group.size
+    };
+  });
+
+  const hostNodesById = new Map(params.hostNodes.map((node) => [node.id, node] as const));
+  const nodes = params.flowNodes.map((node) => {
+    const hostNode = hostNodesById.get(node.id);
+    if (!hostNode?.groupId) {
+      return node;
+    }
+
+    const delta = movingDrafts.reduce(
+      (currentDelta, movingDraft) =>
+        movingDraft.subtreeGroupIds.has(hostNode.groupId ?? '')
+          ? {
+              x: currentDelta.x + movingDraft.delta.x,
+              y: currentDelta.y + movingDraft.delta.y
+            }
+          : currentDelta,
+      { x: 0, y: 0 }
+    );
+    if (delta.x === 0 && delta.y === 0) {
+      return node;
+    }
+
+    return {
+      ...node,
+      position: {
+        x: Math.round(node.position.x + delta.x),
+        y: Math.round(node.position.y + delta.y)
+      }
+    };
+  });
+
+  return { groups, nodes };
+}
+
+function shallowEqualCanvasGroupDrafts(
+  left: Record<string, CanvasGroupDraft>,
+  right: Record<string, CanvasGroupDraft>
+): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+
+  return leftKeys.every((key) => {
+    const leftDraft = left[key];
+    const rightDraft = right[key];
+    if (!rightDraft) {
+      return false;
+    }
+
+    return (
+      positionsEqual(leftDraft.position, rightDraft.position) &&
+      footprintsEqual(leftDraft.size, rightDraft.size)
+    );
+  });
+}
+
+function collectGroupSubtreeIdsForWebview(groups: readonly CanvasGroupSummary[], groupId: string): Set<string> {
+  const childrenByParent = new Map<string, string[]>();
+  for (const group of groups) {
+    if (!group.parentGroupId) {
+      continue;
+    }
+
+    childrenByParent.set(group.parentGroupId, [...(childrenByParent.get(group.parentGroupId) ?? []), group.id]);
+  }
+
+  const subtreeGroupIds = new Set<string>();
+  const stack = [groupId];
+  while (stack.length > 0) {
+    const nextGroupId = stack.pop();
+    if (!nextGroupId || subtreeGroupIds.has(nextGroupId)) {
+      continue;
+    }
+
+    subtreeGroupIds.add(nextGroupId);
+    for (const childGroupId of childrenByParent.get(nextGroupId) ?? []) {
+      stack.push(childGroupId);
+    }
+  }
+
+  return subtreeGroupIds;
+}
+
+function groupDepthForWebview(groups: readonly CanvasGroupSummary[], groupId: string): number {
+  let depth = 0;
+  let current = groups.find((group) => group.id === groupId);
+  const visited = new Set<string>();
+  while (current?.parentGroupId && !visited.has(current.parentGroupId)) {
+    visited.add(current.parentGroupId);
+    depth += 1;
+    current = groups.find((group) => group.id === current?.parentGroupId);
+  }
+  return depth;
+}
+
 function pruneCanvasNodeLayoutDrafts(
   nodes: CanvasFlowNode[],
   drafts: Record<string, CanvasNodeLayoutDraft>
 ): Record<string, CanvasNodeLayoutDraft> {
   const nextDrafts = collectCanvasNodeLayoutDrafts(nodes, applyCanvasNodeLayoutDrafts(nodes, drafts));
   return shallowEqualCanvasNodeLayoutDrafts(drafts, nextDrafts) ? drafts : nextDrafts;
+}
+
+function extendCanvasNodeLayoutDraftsForSelectedDrag(
+  baseNodes: CanvasFlowNode[],
+  nextNodes: CanvasFlowNode[],
+  drafts: Record<string, CanvasNodeLayoutDraft>
+): Record<string, CanvasNodeLayoutDraft> {
+  const draggedDraftEntries = Object.entries(drafts).filter(([, draft]) => draft.position);
+  if (draggedDraftEntries.length !== 1) {
+    return drafts;
+  }
+
+  const [draggedNodeId, draggedDraft] = draggedDraftEntries[0];
+  const draggedBaseNode = baseNodes.find((node) => node.id === draggedNodeId);
+  if (!draggedBaseNode || !draggedDraft.position) {
+    return drafts;
+  }
+
+  const delta = {
+    x: draggedDraft.position.x - draggedBaseNode.position.x,
+    y: draggedDraft.position.y - draggedBaseNode.position.y
+  };
+  if (delta.x === 0 && delta.y === 0) {
+    return drafts;
+  }
+
+  const nextNodeIds = new Set(nextNodes.map((node) => node.id));
+  const nextDrafts = { ...drafts };
+  for (const node of baseNodes) {
+    if (node.id === draggedNodeId || !node.selected || !nextNodeIds.has(node.id)) {
+      continue;
+    }
+
+    nextDrafts[node.id] = {
+      ...nextDrafts[node.id],
+      position: {
+        x: Math.round(node.position.x + delta.x),
+        y: Math.round(node.position.y + delta.y)
+      }
+    };
+  }
+
+  return nextDrafts;
 }
 
 function collectCanvasNodeLayoutDrafts(
@@ -8433,7 +14108,7 @@ function colorForKind(kind: CanvasNodeKind): string {
 }
 
 function minimapFillColorForKind(kind: CanvasNodeKind): string {
-  return `color-mix(in srgb, ${colorForKind(kind)} 70%, var(--vscode-editor-background) 30%)`;
+  return minimapStrokeColorForKind(kind);
 }
 
 function minimapStrokeColorForKind(kind: CanvasNodeKind): string {
@@ -8616,6 +14291,17 @@ function canResumeAgentFromMetadataForWebview(
   }
 
   return Boolean(metadata.resumeSessionId?.trim());
+}
+
+function canForkAgentFromMetadataForWebview(metadata: AgentNodeMetadata): boolean {
+  if (!canResumeAgentFromMetadataForWebview(metadata)) {
+    return false;
+  }
+
+  return (
+    (metadata.provider === 'claude' && metadata.resumeStrategy === 'claude-session-id') ||
+    (metadata.provider === 'codex' && metadata.resumeStrategy === 'codex-session-id')
+  );
 }
 
 function humanizeFileAccessMode(accessMode: FileListNodeEntrySummary['accessMode']): string {
@@ -9299,7 +14985,27 @@ function selectReadonlyTextContents(container: HTMLElement): void {
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
-    Boolean(target.closest('[data-node-interactive="true"], .react-flow__resize-control'))
+    Boolean(target.closest('[data-node-interactive="true"], .react-flow__resize-control, [data-node-resize-direction]'))
+  );
+}
+
+function isModifierSelectionInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(
+    target.closest(
+      'input, textarea, select, button, a, [contenteditable="true"], .react-flow__resize-control, [data-node-resize-direction]'
+    )
+  ) || Boolean(
+    target.closest('[data-node-interactive="true"]') && !target.closest('.note-markdown-preview')
+  );
+}
+
+function isGroupModifierSelectionBlockedTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(
+    target.closest('button, a, [contenteditable="true"], .canvas-group-resize-control, .canvas-group-toolbar')
   );
 }
 
@@ -9359,6 +15065,42 @@ function isNodeChromeFocusBlockedTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && isDeleteShortcutBlockedTarget(target);
 }
 
+function handleGroupChromeDoubleClick(
+  event: React.MouseEvent<HTMLElement>,
+  groupId: string,
+  onFocusGroupInViewport: (groupId: string) => void
+): void {
+  if (isGroupChromeFocusBlockedTarget(event.target)) {
+    return;
+  }
+
+  event.preventDefault();
+  stopCanvasEvent(event);
+  onFocusGroupInViewport(groupId);
+}
+
+function isGroupChromeFocusBlockedTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(
+    target.closest(
+      [
+        'input',
+        'textarea',
+        'select',
+        'button',
+        'a',
+        '[contenteditable="true"]',
+        '[data-node-interactive="true"]',
+        '.canvas-group-resize-control',
+        '.canvas-group-toolbar'
+      ].join(', ')
+    )
+  );
+}
+
 function resolveContextMenuScreenPosition(screenX: number, screenY: number): { x: number; y: number } {
   const maxX = Math.max(12, window.innerWidth - 236);
   const maxY = Math.max(12, window.innerHeight - 230);
@@ -9389,127 +15131,1103 @@ function routeExecutionTerminalSnapshot(detail: Extract<ExecutionHostEvent, { ty
 }
 
 function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type: 'output' }>): void {
-  executionTerminalRegistry.get(detail.nodeId)?.controller.enqueueOutput(detail.chunk);
+  const startedAt = readPerformanceNow();
+  const controller = executionTerminalRegistry.get(detail.nodeId)?.controller;
+  try {
+    controller?.enqueueOutput(detail.chunk, {
+      persisted: detail.persisted,
+      outputSequence: detail.outputSequence,
+      executionSessionId: detail.executionSessionId
+    });
+    maybeResetExecutionTerminalBacklogFromSnapshot(controller, detail);
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-output-enqueue',
+        nodeId: detail.nodeId,
+        kind: detail.kind,
+        durationMs: readPerformanceNow() - startedAt,
+        characters: detail.chunk.length,
+        pendingOutputLength: controller?.getPendingOutputLength() ?? 0,
+        success: controller !== undefined
+      },
+      {
+        minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_DRAIN_MIN_DURATION_MS,
+        minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+      }
+    );
+  } catch (error) {
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-output-enqueue',
+        nodeId: detail.nodeId,
+        kind: detail.kind,
+        durationMs: readPerformanceNow() - startedAt,
+        characters: detail.chunk.length,
+        pendingOutputLength: controller?.getPendingOutputLength() ?? 0,
+        success: false,
+        reason: error instanceof Error ? error.message : String(error)
+      },
+      {
+        force: true
+      }
+    );
+    throw error;
+  }
+}
+
+function maybeResetExecutionTerminalBacklogFromSnapshot(
+  controller: ExecutionTerminalController | undefined,
+  detail: Extract<ExecutionHostEvent, { type: 'output' }>
+): void {
+  if (!controller || detail.persisted === false || detail.outputSequence === undefined) {
+    return;
+  }
+
+  const now = readPerformanceNow();
+  const pendingOutputLength = controller.getPendingOutputLength();
+  if (pendingOutputLength >= EXECUTION_TERMINAL_HARD_SNAPSHOT_RESET_BACKLOG_THRESHOLD) {
+    controller.resetBacklogForSnapshot('hard-backlog-snapshot-reset');
+    return;
+  }
+
+  const recentLagOrRestore =
+    now - lastExecutionMainThreadLagAtMs < EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS ||
+    now - lastExecutionVisibilityRestoredAtMs < EXECUTION_TERMINAL_VISIBILITY_RESTORE_RECOVERY_MS ||
+    document.hidden;
+  if (!recentLagOrRestore) {
+    return;
+  }
+
+  const resetThreshold = document.hidden
+    ? EXECUTION_TERMINAL_HIDDEN_SNAPSHOT_RESET_BACKLOG_THRESHOLD
+    : EXECUTION_TERMINAL_SNAPSHOT_RESET_BACKLOG_THRESHOLD;
+  if (pendingOutputLength < resetThreshold) {
+    return;
+  }
+
+  controller.resetBacklogForSnapshot(
+    document.hidden
+      ? 'hidden-backlog-snapshot-reset'
+      : now - lastExecutionMainThreadLagAtMs < EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS
+        ? 'lag-backlog-snapshot-reset'
+        : 'visibility-backlog-snapshot-reset'
+  );
 }
 
 function routeExecutionTerminalExit(detail: Extract<ExecutionHostEvent, { type: 'exit' }>): void {
   executionTerminalRegistry.get(detail.nodeId)?.controller.showExit(detail.message);
 }
 
+function scheduleExecutionTerminalSnapshotWrite(entry: PendingExecutionTerminalSnapshotWrite): void {
+  pendingExecutionTerminalSnapshotWrites.push(entry);
+  const now = readPerformanceNow();
+  const recentInput = now - lastExecutionInputAtMs < EXECUTION_TERMINAL_INPUT_OUTPUT_YIELD_MS;
+  reportExecutionPerformanceDiagnostic(
+    {
+      source: 'webview-snapshot-restore-queue',
+      nodeId: entry.nodeId,
+      kind: entry.kind,
+      reason: 'queued',
+      queuedSnapshotCount: pendingExecutionTerminalSnapshotWrites.length,
+      success: true
+    },
+    {
+      force: true
+    }
+  );
+  scheduleExecutionTerminalSnapshotWritePump(
+    recentInput ? EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS : EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS
+  );
+}
+
+function scheduleExecutionTerminalSnapshotWritePump(delayMs = 0): void {
+  if (
+    executionTerminalSnapshotWriteInFlight ||
+    executionTerminalSnapshotWriteFrame !== undefined ||
+    executionTerminalSnapshotWriteTimer !== undefined
+  ) {
+    return;
+  }
+
+  const useTimer = delayMs > 0 || document.hidden;
+  if (useTimer) {
+    executionTerminalSnapshotWriteTimer = window.setTimeout(() => {
+      executionTerminalSnapshotWriteTimer = undefined;
+      drainExecutionTerminalSnapshotWrites();
+    }, document.hidden ? Math.max(delayMs, 250) : delayMs);
+    return;
+  }
+
+  executionTerminalSnapshotWriteFrame = window.requestAnimationFrame(() => {
+    executionTerminalSnapshotWriteFrame = undefined;
+    drainExecutionTerminalSnapshotWrites();
+  });
+}
+
+function drainExecutionTerminalSnapshotWrites(): void {
+  if (executionTerminalSnapshotWriteInFlight) {
+    return;
+  }
+
+  if (document.hidden) {
+    if (pendingExecutionTerminalSnapshotWrites.length > 0) {
+      scheduleExecutionTerminalSnapshotWritePump(250);
+    }
+    return;
+  }
+
+  if (pendingExecutionTerminalSnapshotWrites.length === 0) {
+    return;
+  }
+
+  const now = readPerformanceNow();
+  const inputAgeMs = now - lastExecutionInputAtMs;
+  const oldestSnapshotQueuedAgeMs = pendingExecutionTerminalSnapshotWrites.reduce(
+    (oldestAgeMs, entry) => Math.max(oldestAgeMs, now - entry.queuedAtMs),
+    0
+  );
+  if (
+    inputAgeMs >= 0 &&
+    inputAgeMs < EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS &&
+    oldestSnapshotQueuedAgeMs < EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS
+  ) {
+    scheduleExecutionTerminalSnapshotWritePump(EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS - inputAgeMs);
+    return;
+  }
+
+  const nextWrite = takeNextExecutionTerminalSnapshotWrite();
+  if (!nextWrite) {
+    return;
+  }
+
+  executionTerminalSnapshotWriteInFlight = true;
+  activeExecutionTerminalSnapshotWrite = nextWrite;
+  lastExecutionTerminalSnapshotWriteAtMs = readPerformanceNow();
+  reportExecutionPerformanceDiagnostic(
+    {
+      source: 'webview-snapshot-restore-queue',
+      nodeId: nextWrite.nodeId,
+      kind: nextWrite.kind,
+      reason: 'started',
+      durationMs: Math.max(0, lastExecutionTerminalSnapshotWriteAtMs - nextWrite.queuedAtMs),
+      queuedSnapshotCount: pendingExecutionTerminalSnapshotWrites.length,
+      success: true
+    },
+    {
+      force: true
+    }
+  );
+  let completed = false;
+  const completeSnapshotWrite = (): void => {
+    if (completed) {
+      return;
+    }
+    completed = true;
+    executionTerminalSnapshotWriteInFlight = false;
+    if (activeExecutionTerminalSnapshotWrite === nextWrite) {
+      activeExecutionTerminalSnapshotWrite = undefined;
+    }
+    nextWrite.finishQueue = undefined;
+    if (pendingExecutionTerminalSnapshotWrites.length > 0) {
+      const now = readPerformanceNow();
+      const recentInput = now - lastExecutionInputAtMs < EXECUTION_TERMINAL_INPUT_OUTPUT_YIELD_MS;
+      const spacingMs = recentInput
+        ? EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS
+        : EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS;
+      const elapsedSinceLastWriteMs = Math.max(0, now - lastExecutionTerminalSnapshotWriteAtMs);
+      scheduleExecutionTerminalSnapshotWritePump(Math.max(0, spacingMs - elapsedSinceLastWriteMs));
+    }
+  };
+  nextWrite.finishQueue = completeSnapshotWrite;
+  nextWrite.run(completeSnapshotWrite);
+}
+
+function takeNextExecutionTerminalSnapshotWrite(): PendingExecutionTerminalSnapshotWrite | undefined {
+  if (pendingExecutionTerminalSnapshotWrites.length === 0) {
+    return undefined;
+  }
+
+  const inputNodeIndex =
+    lastExecutionInputNodeId === undefined
+      ? -1
+      : pendingExecutionTerminalSnapshotWrites.findIndex((entry) => entry.nodeId === lastExecutionInputNodeId);
+  const index = inputNodeIndex >= 0 ? inputNodeIndex : 0;
+  const [entry] = pendingExecutionTerminalSnapshotWrites.splice(index, 1);
+  return entry;
+}
+
 function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController): void {
   pendingExecutionTerminalDrains.add(controller);
-  if (executionTerminalDrainFrame !== undefined) {
+  scheduleExecutionTerminalDrainPump();
+}
+
+function scheduleExecutionTerminalDrainPump(delayMs = 0): void {
+  if (executionTerminalDrainFrame !== undefined || executionTerminalDrainTimer !== undefined) {
+    return;
+  }
+
+  const useTimer = delayMs > 0 || document.hidden;
+  if (useTimer) {
+    executionTerminalDrainTimer = window.setTimeout(() => {
+      executionTerminalDrainTimer = undefined;
+      drainExecutionTerminalOutput();
+    }, document.hidden ? Math.max(delayMs, 250) : delayMs);
     return;
   }
 
   executionTerminalDrainFrame = window.requestAnimationFrame(() => {
     executionTerminalDrainFrame = undefined;
-    const controllers = Array.from(pendingExecutionTerminalDrains);
-    pendingExecutionTerminalDrains.clear();
-    for (const currentController of controllers) {
-      currentController.flushPendingOutput();
-    }
-    if (pendingExecutionTerminalDrains.size > 0) {
-      const remainingControllers = Array.from(pendingExecutionTerminalDrains);
-      pendingExecutionTerminalDrains.clear();
-      for (const currentController of remainingControllers) {
-        scheduleExecutionTerminalDrain(currentController);
-      }
-    }
+    drainExecutionTerminalOutput();
   });
 }
 
+function drainExecutionTerminalOutput(): void {
+  if (document.hidden) {
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-terminal-drain',
+        durationMs: 0,
+        controllerCount: pendingExecutionTerminalDrains.size,
+        pendingControllerCount: pendingExecutionTerminalDrains.size,
+        pendingOutputLength: getTotalPendingExecutionTerminalOutputLength(),
+        reason: 'hidden-paused'
+      },
+      {
+        minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+      }
+    );
+    return;
+  }
+
+  const startedAt = readPerformanceNow();
+  const controllers = Array.from(pendingExecutionTerminalDrains);
+  pendingExecutionTerminalDrains.clear();
+  if (controllers.length === 0) {
+    return;
+  }
+
+  const now = readPerformanceNow();
+  const shouldThrottleForInput = now - lastExecutionInputAtMs < EXECUTION_TERMINAL_INPUT_OUTPUT_YIELD_MS;
+  const shouldThrottleForLagRecovery =
+    !shouldThrottleForInput &&
+    (now - lastExecutionMainThreadLagAtMs < EXECUTION_TERMINAL_LAG_RECOVERY_WINDOW_MS ||
+      now - lastExecutionVisibilityRestoredAtMs < EXECUTION_TERMINAL_VISIBILITY_RESTORE_RECOVERY_MS);
+  const maxControllersThisFrame = shouldThrottleForInput
+    ? EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CONTROLLERS_PER_FRAME
+    : EXECUTION_TERMINAL_DRAIN_MAX_CONTROLLERS_PER_FRAME;
+  const maxCharsThisFrame = shouldThrottleForInput
+    ? EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_FRAME
+    : shouldThrottleForLagRecovery
+      ? EXECUTION_TERMINAL_LAG_RECOVERY_DRAIN_MAX_CHARS_PER_FRAME
+      : EXECUTION_TERMINAL_DRAIN_MAX_CHARS_PER_FRAME;
+  const maxCharsPerController = shouldThrottleForInput
+    ? EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_CONTROLLER
+    : shouldThrottleForLagRecovery
+      ? EXECUTION_TERMINAL_LAG_RECOVERY_DRAIN_MAX_CHARS_PER_FRAME
+      : EXECUTION_TERMINAL_DRAIN_MAX_CHARS_PER_CONTROLLER;
+  let flushedControllerCount = 0;
+  let characters = 0;
+  let pendingOutputLength = 0;
+  let processedControllerCount = 0;
+  let queuedWriteBlockedControllerCount = 0;
+  const orderedControllers = lastExecutionInputNodeId
+    ? [...controllers].sort((left, right) => {
+        if (left.nodeId === lastExecutionInputNodeId && right.nodeId !== lastExecutionInputNodeId) {
+          return -1;
+        }
+        if (right.nodeId === lastExecutionInputNodeId && left.nodeId !== lastExecutionInputNodeId) {
+          return 1;
+        }
+        return 0;
+      })
+    : controllers;
+  for (const currentController of orderedControllers) {
+    const pendingLength = currentController.getPendingOutputLength();
+    pendingOutputLength += pendingLength;
+    if (pendingLength <= 0 || currentController.isOutputDrainBlocked()) {
+      continue;
+    }
+    if (currentController.getQueuedWriteCount() >= EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER) {
+      queuedWriteBlockedControllerCount += 1;
+      pendingExecutionTerminalDrains.add(currentController);
+      continue;
+    }
+    if (processedControllerCount >= maxControllersThisFrame) {
+      pendingExecutionTerminalDrains.add(currentController);
+      continue;
+    }
+
+    const remainingFrameBudget = Math.max(0, maxCharsThisFrame - characters);
+    if (remainingFrameBudget <= 0) {
+      pendingExecutionTerminalDrains.add(currentController);
+      continue;
+    }
+
+    processedControllerCount += 1;
+    const flushedCharacters = currentController.flushPendingOutput(Math.min(maxCharsPerController, remainingFrameBudget));
+    if (flushedCharacters > 0) {
+      characters += flushedCharacters;
+      flushedControllerCount += 1;
+    }
+    if (currentController.getPendingOutputLength() > 0 && !currentController.isOutputDrainBlocked()) {
+      pendingExecutionTerminalDrains.add(currentController);
+    }
+  }
+  if (pendingExecutionTerminalDrains.size > 0) {
+    scheduleExecutionTerminalDrainPump(flushedControllerCount === 0 && queuedWriteBlockedControllerCount > 0 ? 16 : 0);
+  }
+  reportExecutionPerformanceDiagnostic(
+    {
+      source: 'webview-terminal-drain',
+      durationMs: readPerformanceNow() - startedAt,
+      controllerCount: controllers.length,
+      flushedControllerCount,
+      pendingControllerCount: pendingExecutionTerminalDrains.size,
+      pendingOutputLength,
+      characters,
+      reason: shouldThrottleForInput ? 'input-throttle' : shouldThrottleForLagRecovery ? 'lag-recovery' : undefined
+    },
+    {
+      minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_DRAIN_MIN_DURATION_MS,
+      minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+    }
+  );
+}
+
+function getTotalPendingExecutionTerminalOutputLength(): number {
+  let total = 0;
+  for (const controller of pendingExecutionTerminalDrains) {
+    total += controller.getPendingOutputLength();
+  }
+  return total;
+}
+
 function createExecutionTerminalController(
+  nodeId: string,
+  kind: ExecutionNodeKind,
   terminal: Terminal,
   options?: {
     onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
+    beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
   }
 ): ExecutionTerminalController {
   let pendingOutput = '';
+  let pendingPersistBarrier = false;
+  let pendingExitMessage: string | undefined;
   let disposed = false;
   let writeGeneration = 0;
+  let queuedWriteCount = 0;
   let writeChain: Promise<void> = Promise.resolve();
+  let snapshotResetRequestedAtMs = Number.NEGATIVE_INFINITY;
+  let snapshotResetTimeout: number | undefined;
+  let snapshotResetRequestPending = false;
+  let pendingSnapshotResetRequestId: string | undefined;
+  let currentExecutionSessionId: string | undefined;
+  let pendingSnapshotResetExecutionSessionId: string | undefined;
+  let pendingSnapshotResetAfterSequence: number | undefined;
+  let pendingSnapshotOutputQueue: Array<{
+    chunk: string;
+    persisted?: boolean;
+    outputSequence?: number;
+    executionSessionId?: string;
+  }> = [];
+  let pendingSnapshotOutputLength = 0;
+  let pendingSnapshotLastDeferredDiagnosticAtMs = Number.NEGATIVE_INFINITY;
+  let pendingSnapshotLastDeferredDiagnosticLength = 0;
+  let lastAppliedSnapshotSequence = 0;
 
-  const queueTerminalWrite = (writer: (done: () => void) => void): void => {
+  const normalizeOutputSequence = (value: number | undefined): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
+
+  const queueTerminalWrite = (
+    writer: (done: () => void, markStarted?: () => void) => void,
+    detail?: {
+      reason: string;
+      characters?: number;
+    },
+    onComplete?: () => void
+  ): void => {
     const generation = writeGeneration;
+    queuedWriteCount += 1;
     writeChain = writeChain
       .catch(() => undefined)
       .then(
         () =>
           new Promise<void>((resolve) => {
             if (disposed || generation !== writeGeneration) {
+              queuedWriteCount = Math.max(0, queuedWriteCount - 1);
+              onComplete?.();
               resolve();
               return;
             }
 
-            writer(() => resolve());
+            let startedAt = readPerformanceNow();
+            const markStarted = (): void => {
+              startedAt = readPerformanceNow();
+            };
+            writer(() => {
+              queuedWriteCount = Math.max(0, queuedWriteCount - 1);
+              reportExecutionPerformanceDiagnostic(
+                {
+                  source: 'webview-terminal-write',
+                  nodeId,
+                  kind,
+                  reason: detail?.reason,
+                  durationMs: readPerformanceNow() - startedAt,
+                  characters: detail?.characters,
+                  queuedWriteCount,
+                  bufferLength: terminal.buffer.active.length
+                },
+                {
+                  minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS,
+                  minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+                }
+              );
+              onComplete?.();
+              resolve();
+            }, markStarted);
           })
       );
   };
 
+  const queueExitWrite = (message: string): void => {
+    options?.onContentWillChange?.('exit');
+    queueTerminalWrite((done) => {
+      terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
+    }, {
+      reason: 'exit',
+      characters: message.length
+    });
+  };
+
+  const postAttachSnapshotRequest = (): void => {
+    postMessage({
+      type: 'webview/attachExecutionSession',
+      payload: {
+        nodeId,
+        kind,
+        ...(currentExecutionSessionId !== undefined
+          ? { executionSessionId: currentExecutionSessionId }
+          : {}),
+        ...(lastAppliedSnapshotSequence > 0
+          ? { minOutputSequence: lastAppliedSnapshotSequence }
+          : {})
+      }
+    });
+  };
+
+  const flushDeferredExitIfReady = (): void => {
+    if (pendingPersistBarrier || pendingOutput.length > 0 || pendingExitMessage === undefined) {
+      return;
+    }
+
+    const message = pendingExitMessage;
+    pendingExitMessage = undefined;
+    queueExitWrite(message);
+  };
+
+  const clearSnapshotResetTimeout = (): void => {
+    if (snapshotResetTimeout !== undefined) {
+      window.clearTimeout(snapshotResetTimeout);
+      snapshotResetTimeout = undefined;
+    }
+  };
+
+  const clearPendingSnapshotResetState = (): void => {
+    clearSnapshotResetTimeout();
+    pendingSnapshotResetAfterSequence = undefined;
+    pendingSnapshotResetRequestId = undefined;
+    pendingSnapshotResetExecutionSessionId = undefined;
+    snapshotResetRequestPending = false;
+    pendingSnapshotOutputQueue = [];
+    pendingSnapshotOutputLength = 0;
+    pendingSnapshotLastDeferredDiagnosticAtMs = Number.NEGATIVE_INFINITY;
+    pendingSnapshotLastDeferredDiagnosticLength = 0;
+  };
+
+  const requestSnapshotForReset = (reason: string, options?: { force?: boolean }): boolean => {
+    if (pendingSnapshotResetAfterSequence === undefined) {
+      return false;
+    }
+
+    const now = readPerformanceNow();
+    const shouldRequestSnapshot =
+      options?.force === true ||
+      !snapshotResetRequestPending ||
+      now - snapshotResetRequestedAtMs >= EXECUTION_TERMINAL_SNAPSHOT_RESET_REQUEST_COOLDOWN_MS;
+    if (!shouldRequestSnapshot) {
+      return false;
+    }
+
+    const requestId = `snapshot-reset-${nextExecutionSnapshotResetRequestSequence++}`;
+    pendingSnapshotResetRequestId = requestId;
+    snapshotResetRequestedAtMs = now;
+    snapshotResetRequestPending = true;
+    clearSnapshotResetTimeout();
+    snapshotResetTimeout = window.setTimeout(() => {
+      snapshotResetTimeout = undefined;
+      if (disposed || pendingSnapshotResetAfterSequence === undefined) {
+        return;
+      }
+      const requestAgeMs = Math.max(0, readPerformanceNow() - snapshotResetRequestedAtMs);
+      reportExecutionPerformanceDiagnostic(
+        {
+          source: 'webview-output-snapshot-reset',
+          nodeId,
+          kind,
+          reason: 'snapshot-reset-timeout',
+          requestId: pendingSnapshotResetRequestId,
+          executionSessionId: pendingSnapshotResetExecutionSessionId,
+          sequence: pendingSnapshotResetAfterSequence,
+          durationMs: requestAgeMs,
+          pendingOutputLength: pendingSnapshotOutputLength,
+          success: false
+        },
+        {
+          force: true
+        }
+      );
+      requestSnapshotForReset('snapshot-reset-timeout-retry', { force: true });
+    }, EXECUTION_TERMINAL_SNAPSHOT_RESET_TIMEOUT_MS);
+    postMessage({
+      type: 'webview/attachExecutionSession',
+      payload: {
+        nodeId,
+        kind,
+        requestId,
+        ...(pendingSnapshotResetExecutionSessionId !== undefined
+          ? { executionSessionId: pendingSnapshotResetExecutionSessionId }
+          : {}),
+        minOutputSequence: pendingSnapshotResetAfterSequence
+      }
+    });
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-output-snapshot-reset',
+        nodeId,
+        kind,
+        reason,
+        requestId,
+        executionSessionId: pendingSnapshotResetExecutionSessionId,
+        sequence: pendingSnapshotResetAfterSequence,
+        pendingOutputLength: pendingSnapshotOutputLength,
+        success: true
+      },
+      {
+        force: true
+      }
+    );
+    return true;
+  };
+
+  const reportDeferredSnapshotOutputIfNeeded = (outputSequence: number | undefined, chunkLength: number): void => {
+    const now = readPerformanceNow();
+    if (
+      pendingSnapshotOutputLength - pendingSnapshotLastDeferredDiagnosticLength <
+        EXECUTION_TERMINAL_SNAPSHOT_RESET_DEFERRED_OUTPUT_DIAGNOSTIC_STEP &&
+      now - pendingSnapshotLastDeferredDiagnosticAtMs < 1000
+    ) {
+      return;
+    }
+
+    pendingSnapshotLastDeferredDiagnosticAtMs = now;
+    pendingSnapshotLastDeferredDiagnosticLength = pendingSnapshotOutputLength;
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-output-snapshot-reset',
+        nodeId,
+        kind,
+        reason: 'output-deferred-until-snapshot-reset',
+        requestId: pendingSnapshotResetRequestId,
+        executionSessionId: pendingSnapshotResetExecutionSessionId,
+        sequence: outputSequence,
+        characters: chunkLength,
+        pendingOutputLength: pendingSnapshotOutputLength,
+        pendingControllerCount: pendingSnapshotOutputQueue.length,
+        success: true
+      },
+      {
+        force: true
+      }
+    );
+  };
+
+  const compactDeferredSnapshotOutputForBudget = (latestOutputSequence: number | undefined): void => {
+    if (pendingSnapshotOutputLength <= EXECUTION_TERMINAL_SNAPSHOT_RESET_DEFERRED_OUTPUT_BUDGET) {
+      return;
+    }
+
+    const droppedCharacters = pendingSnapshotOutputLength;
+    const latestQueuedSequence = pendingSnapshotOutputQueue.reduce<number | undefined>((latest, entry) => {
+      const entrySequence = normalizeOutputSequence(entry.outputSequence);
+      if (entrySequence === undefined) {
+        return latest;
+      }
+      return latest === undefined ? entrySequence : Math.max(latest, entrySequence);
+    }, latestOutputSequence);
+    if (latestQueuedSequence !== undefined) {
+      pendingSnapshotResetAfterSequence =
+        pendingSnapshotResetAfterSequence === undefined
+          ? latestQueuedSequence
+          : Math.max(pendingSnapshotResetAfterSequence, latestQueuedSequence);
+    }
+    pendingSnapshotOutputQueue = [];
+    pendingSnapshotOutputLength = 0;
+    pendingSnapshotLastDeferredDiagnosticLength = 0;
+    reportExecutionPerformanceDiagnostic(
+      {
+        source: 'webview-output-snapshot-reset',
+        nodeId,
+        kind,
+        reason: 'deferred-output-budget-reset',
+        requestId: pendingSnapshotResetRequestId,
+        executionSessionId: pendingSnapshotResetExecutionSessionId,
+        sequence: pendingSnapshotResetAfterSequence,
+        characters: droppedCharacters,
+        pendingOutputLength: droppedCharacters,
+        success: true
+      },
+      {
+        force: true
+      }
+    );
+    requestSnapshotForReset('deferred-output-budget-reset-requested');
+  };
+
   const controller: ExecutionTerminalController = {
+    nodeId,
+    kind,
     applySnapshot(detail) {
       if (disposed) {
         return;
       }
 
+      if (
+        pendingSnapshotResetAfterSequence === undefined &&
+        typeof detail.requestId === 'string' &&
+        detail.requestId.startsWith('snapshot-reset-')
+      ) {
+        reportExecutionPerformanceDiagnostic(
+          {
+            source: 'webview-output-snapshot-reset',
+            nodeId,
+            kind,
+            reason: 'stale-snapshot-reset-ignored',
+            requestId: detail.requestId,
+            executionSessionId: detail.executionSessionId,
+            sequence: normalizeOutputSequence(detail.outputSequence),
+            success: false
+          },
+          {
+            force: true
+          }
+        );
+        return;
+      }
+
+      const snapshotSequence = normalizeOutputSequence(detail.outputSequence);
+      const hasPendingSnapshotReset = pendingSnapshotResetAfterSequence !== undefined;
+      const snapshotRequestMismatch =
+        hasPendingSnapshotReset &&
+        pendingSnapshotResetRequestId !== undefined &&
+        detail.requestId !== undefined &&
+        detail.requestId !== pendingSnapshotResetRequestId;
+      if (snapshotRequestMismatch) {
+        reportExecutionPerformanceDiagnostic(
+          {
+            source: 'webview-output-snapshot-reset',
+            nodeId,
+            kind,
+            reason: 'stale-snapshot-reset-ignored',
+            requestId: detail.requestId,
+            executionSessionId: detail.executionSessionId ?? pendingSnapshotResetExecutionSessionId,
+            sequence: snapshotSequence,
+            success: false
+          },
+          {
+            force: true
+          }
+        );
+        return;
+      }
+
+      const resetSessionChanged =
+        pendingSnapshotResetExecutionSessionId !== undefined &&
+        detail.executionSessionId !== undefined &&
+        detail.executionSessionId !== pendingSnapshotResetExecutionSessionId;
+      if (
+        pendingSnapshotResetAfterSequence !== undefined &&
+        !resetSessionChanged &&
+        snapshotSequence !== undefined &&
+        snapshotSequence < pendingSnapshotResetAfterSequence
+      ) {
+        reportExecutionPerformanceDiagnostic(
+          {
+            source: 'webview-output-snapshot-reset',
+            nodeId,
+            kind,
+            reason: 'stale-snapshot-reset-ignored',
+            requestId: detail.requestId ?? pendingSnapshotResetRequestId,
+            executionSessionId: detail.executionSessionId ?? pendingSnapshotResetExecutionSessionId,
+            sequence: snapshotSequence,
+            success: false
+          },
+          {
+            force: true
+          }
+        );
+        return;
+      }
+
+      if (hasPendingSnapshotReset && !resetSessionChanged && snapshotSequence === undefined) {
+        reportExecutionPerformanceDiagnostic(
+          {
+            source: 'webview-output-snapshot-reset',
+            nodeId,
+            kind,
+            reason: detail.liveSession ? 'snapshot-reset-unsequenced-snapshot' : 'snapshot-reset-session-ended-snapshot',
+            requestId: detail.requestId ?? pendingSnapshotResetRequestId,
+            executionSessionId: detail.executionSessionId ?? pendingSnapshotResetExecutionSessionId,
+            sequence: pendingSnapshotResetAfterSequence,
+            pendingOutputLength: pendingSnapshotOutputLength,
+            success: detail.liveSession === false
+          },
+          {
+            force: true
+          }
+        );
+        if (detail.liveSession) {
+          return;
+        }
+      }
+
+      const outputsAfterSnapshotReset =
+        !hasPendingSnapshotReset || resetSessionChanged || snapshotSequence === undefined
+          ? []
+          : pendingSnapshotOutputQueue.filter((entry) => {
+              const outputSequence = normalizeOutputSequence(entry.outputSequence);
+              return outputSequence !== undefined && outputSequence > snapshotSequence;
+            });
+      const requestId = detail.requestId ?? pendingSnapshotResetRequestId;
+      const appliedPendingLength = pendingSnapshotOutputLength;
+      const snapshotResetApplied =
+        hasPendingSnapshotReset && !resetSessionChanged && snapshotSequence !== undefined;
+      if (hasPendingSnapshotReset && resetSessionChanged) {
+        reportExecutionPerformanceDiagnostic(
+          {
+            source: 'webview-output-snapshot-reset',
+            nodeId,
+            kind,
+            reason: 'snapshot-reset-session-changed',
+            requestId,
+            executionSessionId: detail.executionSessionId ?? pendingSnapshotResetExecutionSessionId,
+            sequence: snapshotSequence ?? pendingSnapshotResetAfterSequence,
+            pendingOutputLength: appliedPendingLength,
+            success: true
+          },
+          {
+            force: true
+          }
+        );
+      }
+      clearPendingSnapshotResetState();
+      if (detail.executionSessionId !== undefined && detail.executionSessionId !== currentExecutionSessionId) {
+        lastAppliedSnapshotSequence = 0;
+      }
+      currentExecutionSessionId = detail.executionSessionId ?? currentExecutionSessionId;
+      lastAppliedSnapshotSequence = Math.max(lastAppliedSnapshotSequence, snapshotSequence ?? lastAppliedSnapshotSequence);
       pendingOutput = '';
+      pendingPersistBarrier = false;
+      pendingExitMessage = undefined;
       pendingExecutionTerminalDrains.delete(controller);
       writeGeneration += 1;
       options?.onContentWillChange?.('snapshot');
       options?.onSnapshotApplied?.(detail);
-      queueTerminalWrite((done) => {
-        restoreExecutionTerminalSnapshot(terminal, detail, done);
-      });
+      queueTerminalWrite(
+        (done, markStarted) => {
+          const snapshotWriteGeneration = writeGeneration;
+          let finished = false;
+          const finishSnapshotWrite = (snapshotDone?: () => void): void => {
+            if (finished) {
+              snapshotDone?.();
+              return;
+            }
+            finished = true;
+            snapshotDone?.();
+            done();
+          };
+          scheduleExecutionTerminalSnapshotWrite({
+            nodeId,
+            kind,
+            queuedAtMs: readPerformanceNow(),
+            run: (snapshotDone) => {
+              if (disposed || snapshotWriteGeneration !== writeGeneration) {
+                finishSnapshotWrite(snapshotDone);
+                return;
+              }
+              markStarted?.();
+              const releaseSnapshotRestoreDiagnosticsSuppression =
+                options?.beginSnapshotRestoreDiagnosticsSuppression?.();
+              restoreExecutionTerminalSnapshot(terminal, detail, () => {
+                releaseSnapshotRestoreDiagnosticsSuppression?.();
+                finishSnapshotWrite(snapshotDone);
+              });
+            },
+            cancel: finishSnapshotWrite
+          });
+        },
+        {
+          reason: 'snapshot',
+          characters: detail.serializedTerminalState?.data.length ?? detail.output.length
+        }
+      );
+      if (snapshotResetApplied) {
+        reportExecutionPerformanceDiagnostic(
+          {
+            source: 'webview-output-snapshot-reset',
+            nodeId,
+            kind,
+            reason: 'snapshot-reset-applied',
+            requestId,
+            executionSessionId: currentExecutionSessionId,
+            sequence: snapshotSequence,
+            characters: detail.serializedTerminalState?.data.length ?? detail.output.length,
+            pendingOutputLength: appliedPendingLength,
+            pendingControllerCount: outputsAfterSnapshotReset.length,
+            success: true
+          },
+          {
+            force: true
+          }
+        );
+      }
+      for (const output of outputsAfterSnapshotReset) {
+        controller.enqueueOutput(output.chunk, {
+          persisted: output.persisted,
+          outputSequence: output.outputSequence,
+          executionSessionId: output.executionSessionId
+        });
+      }
     },
-    enqueueOutput(chunk) {
-      if (disposed || !chunk) {
+    requestAttachSnapshot() {
+      if (disposed) {
         return;
       }
 
-      pendingOutput += chunk;
-      options?.onContentWillChange?.('output');
+      postAttachSnapshotRequest();
+    },
+    enqueueOutput(chunk, outputOptions) {
+      if (disposed) {
+        return;
+      }
+
+      const outputSequence = normalizeOutputSequence(outputOptions?.outputSequence);
+      const outputExecutionSessionId = outputOptions?.executionSessionId;
+      if (outputExecutionSessionId !== undefined && currentExecutionSessionId !== outputExecutionSessionId) {
+        if (currentExecutionSessionId !== undefined) {
+          clearPendingSnapshotResetState();
+          lastAppliedSnapshotSequence = 0;
+        }
+        currentExecutionSessionId = outputExecutionSessionId;
+      }
+      const resetSessionMatches =
+        pendingSnapshotResetExecutionSessionId === undefined ||
+        outputExecutionSessionId === undefined ||
+        outputExecutionSessionId === pendingSnapshotResetExecutionSessionId;
+      if (
+        pendingSnapshotResetAfterSequence !== undefined &&
+        resetSessionMatches &&
+        (outputSequence === undefined || outputSequence <= pendingSnapshotResetAfterSequence)
+      ) {
+        reportExecutionPerformanceDiagnostic(
+          {
+            source: 'webview-output-snapshot-reset',
+            nodeId,
+            kind,
+            reason: 'stale-output-after-reset-dropped',
+            requestId: pendingSnapshotResetRequestId,
+            executionSessionId: outputExecutionSessionId ?? pendingSnapshotResetExecutionSessionId,
+            sequence: outputSequence,
+            characters: chunk.length,
+            success: true
+          },
+          {
+            force: true
+          }
+        );
+        return;
+      }
+      if (pendingSnapshotResetAfterSequence !== undefined && resetSessionMatches) {
+        pendingSnapshotOutputQueue.push({
+          chunk,
+          persisted: outputOptions?.persisted,
+          outputSequence,
+          executionSessionId: outputExecutionSessionId
+        });
+        pendingSnapshotOutputLength += chunk.length;
+        reportDeferredSnapshotOutputIfNeeded(outputSequence, chunk.length);
+        compactDeferredSnapshotOutputForBudget(outputSequence);
+        return;
+      }
+      if (outputSequence !== undefined) {
+        lastAppliedSnapshotSequence = Math.max(lastAppliedSnapshotSequence, outputSequence);
+      }
+
+      if (chunk) {
+        pendingOutput += chunk;
+        options?.onContentWillChange?.('output');
+      }
+      if (outputOptions?.persisted === false) {
+        pendingPersistBarrier = true;
+      }
+      if (outputOptions?.persisted === true) {
+        pendingPersistBarrier = false;
+      }
+      if (pendingPersistBarrier || pendingOutput.length === 0) {
+        flushDeferredExitIfReady();
+        pendingExecutionTerminalDrains.delete(controller);
+        return;
+      }
+
       scheduleExecutionTerminalDrain(controller);
+    },
+    resetBacklogForSnapshot(reason) {
+      if (disposed || pendingPersistBarrier || pendingOutput.length === 0 || pendingSnapshotResetAfterSequence !== undefined) {
+        return;
+      }
+
+      const droppedCharacters = pendingOutput.length;
+      const resetAfterSequence = lastAppliedSnapshotSequence;
+      pendingOutput = '';
+      pendingExitMessage = undefined;
+      pendingSnapshotResetAfterSequence = resetAfterSequence;
+      pendingSnapshotResetExecutionSessionId = currentExecutionSessionId;
+      pendingSnapshotOutputQueue = [];
+      pendingSnapshotOutputLength = 0;
+      pendingSnapshotLastDeferredDiagnosticAtMs = Number.NEGATIVE_INFINITY;
+      pendingSnapshotLastDeferredDiagnosticLength = 0;
+      pendingExecutionTerminalDrains.delete(controller);
+      const requestedSnapshot = requestSnapshotForReset('snapshot-reset-requested', { force: true });
+      reportExecutionPerformanceDiagnostic(
+        {
+          source: 'webview-output-snapshot-reset',
+          nodeId,
+          kind,
+          reason,
+          requestId: pendingSnapshotResetRequestId,
+          executionSessionId: pendingSnapshotResetExecutionSessionId,
+          sequence: resetAfterSequence,
+          characters: droppedCharacters,
+          pendingOutputLength: droppedCharacters,
+          success: requestedSnapshot
+        },
+        {
+          force: true
+        }
+      );
     },
     showExit(message) {
       if (disposed) {
         return;
       }
 
-      controller.flushPendingOutput();
-      options?.onContentWillChange?.('exit');
-      queueTerminalWrite((done) => {
-        terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
-      });
+      if (pendingSnapshotResetAfterSequence !== undefined) {
+        reportExecutionPerformanceDiagnostic(
+          {
+            source: 'webview-output-snapshot-reset',
+            nodeId,
+            kind,
+            reason: 'snapshot-reset-session-ended',
+            requestId: pendingSnapshotResetRequestId,
+            executionSessionId: pendingSnapshotResetExecutionSessionId,
+            sequence: pendingSnapshotResetAfterSequence,
+            pendingOutputLength: pendingSnapshotOutputLength,
+            pendingControllerCount: pendingSnapshotOutputQueue.length,
+            success: true
+          },
+          {
+            force: true
+          }
+        );
+        clearPendingSnapshotResetState();
+      }
+
+      if (pendingPersistBarrier) {
+        pendingExitMessage = message;
+        return;
+      }
+
+      if (pendingOutput.length > 0) {
+        pendingExitMessage = message;
+        scheduleExecutionTerminalDrain(controller);
+        return;
+      }
+      queueExitWrite(message);
     },
     refreshVisibleRows() {
       if (disposed) {
         return;
       }
 
-      controller.flushPendingOutput();
+      if (pendingOutput.length > 0 && !pendingPersistBarrier) {
+        scheduleExecutionTerminalDrain(controller);
+      }
       if (terminal.rows > 0) {
         terminal.refresh(0, terminal.rows - 1);
       }
     },
-    flushPendingOutput() {
-      if (disposed || pendingOutput.length === 0) {
-        return;
+    flushPendingOutput(maxCharacters) {
+      if (disposed || pendingPersistBarrier || pendingOutput.length === 0) {
+        return 0;
       }
 
-      const chunk = pendingOutput;
-      pendingOutput = '';
+      const chunkLength =
+        typeof maxCharacters === 'number' && Number.isFinite(maxCharacters) && maxCharacters > 0
+          ? Math.min(pendingOutput.length, Math.round(maxCharacters))
+          : pendingOutput.length;
+      const chunk = pendingOutput.slice(0, chunkLength);
+      pendingOutput = pendingOutput.slice(chunkLength);
       // Keep the host message callback lightweight by deferring real terminal writes
       // to a batched drain step. xterm will continue to apply its own async parser queue.
       queueTerminalWrite((done) => {
         terminal.write(chunk, done);
+      }, {
+        reason: 'output',
+        characters: chunk.length
       });
+      flushDeferredExitIfReady();
+      return chunk.length;
+    },
+    getPendingOutputLength() {
+      return pendingOutput.length;
+    },
+    getQueuedWriteCount() {
+      return queuedWriteCount;
+    },
+    isOutputDrainBlocked() {
+      return pendingPersistBarrier;
     },
     dispose() {
       disposed = true;
       pendingOutput = '';
+      pendingPersistBarrier = false;
+      pendingExitMessage = undefined;
+      for (let index = pendingExecutionTerminalSnapshotWrites.length - 1; index >= 0; index -= 1) {
+        const snapshotWrite = pendingExecutionTerminalSnapshotWrites[index];
+        if (snapshotWrite.nodeId === nodeId && snapshotWrite.kind === kind) {
+          pendingExecutionTerminalSnapshotWrites.splice(index, 1);
+          snapshotWrite.cancel();
+        }
+      }
+      if (activeExecutionTerminalSnapshotWrite?.nodeId === nodeId && activeExecutionTerminalSnapshotWrite.kind === kind) {
+        const snapshotWrite = activeExecutionTerminalSnapshotWrite;
+        snapshotWrite.cancel();
+        snapshotWrite.finishQueue?.();
+      }
+      clearPendingSnapshotResetState();
       writeGeneration += 1;
+      queuedWriteCount = 0;
       writeChain = Promise.resolve();
       pendingExecutionTerminalDrains.delete(controller);
     }
@@ -9560,6 +16278,13 @@ function restoreExecutionTerminalSnapshot(
 }
 
 function scheduleExecutionTerminalVisibilityRestore(): void {
+  lastExecutionVisibilityRestoredAtMs = readPerformanceNow();
+  if (pendingExecutionTerminalDrains.size > 0) {
+    scheduleExecutionTerminalDrainPump();
+  }
+  if (pendingExecutionTerminalSnapshotWrites.length > 0) {
+    scheduleExecutionTerminalSnapshotWritePump();
+  }
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
       for (const { controller } of executionTerminalRegistry.values()) {
@@ -9680,6 +16405,10 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
   const edges = edgeElements
     .map((element) => readWebviewProbeEdgeSnapshot(element))
     .filter((edge): edge is WebviewProbeSnapshot['edges'][number] => edge !== null);
+  const groupElements = Array.from(document.querySelectorAll<HTMLElement>('[data-group-id]'));
+  const groups = groupElements
+    .map((element) => readWebviewProbeGroupSnapshot(element))
+    .filter((group): group is WebviewProbeGroupSnapshot => group !== null);
 
   return {
     documentTitle: document.title,
@@ -9691,7 +16420,40 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
     nodeCount: nodes.length,
     nodes,
     edgeCount: edges.length,
-    edges
+    edges,
+    groupCount: groups.length,
+    groups,
+    selectedGroupIds: groups.filter((group) => group.selected).map((group) => group.groupId)
+  };
+}
+
+function readWebviewProbeGroupSnapshot(element: HTMLElement): WebviewProbeGroupSnapshot | null {
+  const groupId = element.dataset.groupId;
+  if (!groupId) {
+    return null;
+  }
+
+  const left = Number.parseFloat(element.style.left);
+  const top = Number.parseFloat(element.style.top);
+  const width = Number.parseFloat(element.style.width);
+  const height = Number.parseFloat(element.style.height);
+  const title = readProbeFieldValue(element, 'title') ?? readProbeText(element.querySelector('[data-probe-field="title"]'));
+  const background = document.querySelector<HTMLElement>(`[data-group-background-id="${CSS.escape(groupId)}"]`);
+  const role = background?.dataset.groupBackgroundRole === 'workspace-root' ? 'workspace-root' : 'user';
+  const bodyTopOffset = background
+    ? Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-body-top'))
+    : Number.NaN;
+
+  return {
+    groupId,
+    title,
+    role,
+    selected: element.classList.contains('is-selected'),
+    left: Number.isFinite(left) ? Math.round(left) : 0,
+    top: Number.isFinite(top) ? Math.round(top) : 0,
+    width: Number.isFinite(width) ? Math.round(width) : Math.round(element.offsetWidth),
+    height: Number.isFinite(height) ? Math.round(height) : Math.round(element.offsetHeight),
+    bodyTopOffset: Number.isFinite(bodyTopOffset) ? Math.round(bodyTopOffset) : 0
   };
 }
 
@@ -9715,8 +16477,9 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
       ) ??
       readProbeFieldValue(element, 'title') ??
       null,
+    chromeContext: readProbeText(element.querySelector('.window-title-context, .node-topline .node-context')),
     chromeSubtitle: readProbeText(
-      element.querySelector('.window-title span, .node-topline span, .file-node-copy span')
+      element.querySelector('.window-title-subtitle, .node-topline span, .file-node-copy span')
     ),
     statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
     attentionIndicatorVisible: Boolean(element.querySelector('[data-attention-indicator="true"]')),
@@ -9811,6 +16574,9 @@ function readProbeExecutionTerminalState(
   | 'terminalVisibleLines'
   | 'terminalTextareaLeft'
   | 'terminalTextareaTop'
+  | 'terminalMouseTrackingMode'
+  | 'terminalBufferType'
+  | 'terminalHasFocus'
   | 'terminalTheme'
 > {
   const terminal = executionTerminalRegistry.get(nodeId);
@@ -9827,6 +16593,9 @@ function readProbeExecutionTerminalState(
     terminalVisibleLines: readProbeTerminalVisibleLines(terminal.terminal),
     terminalTextareaLeft: readProbeNumericStyleValue(terminal.terminal.textarea?.style.left),
     terminalTextareaTop: readProbeNumericStyleValue(terminal.terminal.textarea?.style.top),
+    terminalMouseTrackingMode: terminal.terminal.modes.mouseTrackingMode,
+    terminalBufferType: terminal.terminal.buffer.active.type,
+    terminalHasFocus: terminal.terminal.textarea === document.activeElement,
     terminalTheme: readProbeTerminalTheme(terminal.terminal.options.theme)
   };
 }
@@ -11520,7 +18289,8 @@ function formatExecutionNodeHelpTooltip(help: {
 function resolveExecutionTerminalFileLinks(
   nodeId: string,
   kind: ExecutionNodeKind,
-  candidates: ExecutionTerminalFileLinkCandidate[]
+  candidates: ExecutionTerminalFileLinkCandidate[],
+  priority: ExecutionTerminalFileLinkResolvePriority = 'interactive'
 ): Promise<ExecutionTerminalResolvedFileLink[]> {
   const requestId = `execution-file-links-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -11542,7 +18312,8 @@ function resolveExecutionTerminalFileLinks(
         requestId,
         nodeId,
         kind,
-        candidates
+        candidates,
+        priority
       }
     });
   });
@@ -11584,6 +18355,15 @@ function copyExecutionSelection(
       text,
       clearSelectionAfterCopy
     }
+  });
+}
+
+function reportExecutionClipboardDiagnostic(
+  payload: ExecutionTerminalClipboardDiagnosticPayload
+): void {
+  postMessage({
+    type: 'webview/executionClipboardDiagnostic',
+    payload
   });
 }
 
@@ -11643,7 +18423,55 @@ function clearPendingExecutionPasteRequests(): void {
 }
 
 function postMessage(message: WebviewToHostMessage): void {
-  vscode.postMessage(message);
+  vscode.postMessage({
+    ...message,
+    lifecycle: webviewLifecycleIdentity
+  });
+}
+
+function isCurrentWebviewLifecycleIdentity(lifecycle: WebviewLifecycleIdentity): boolean {
+  return (
+    lifecycle.surface === webviewLifecycleIdentity.surface &&
+    lifecycle.mode === webviewLifecycleIdentity.mode &&
+    lifecycle.generation === webviewLifecycleIdentity.generation &&
+    (lifecycle.frameId === undefined || lifecycle.frameId === webviewLifecycleIdentity.frameId)
+  );
+}
+
+function requiresHostMessageLifecycle(type: HostToWebviewMessage['type']): boolean {
+  return type !== 'host/error' && type !== 'host/executionInputAck';
+}
+
+function emitWebviewLifecycleDiagnostic(message: string): void {
+  emitRuntimeDiagnostic({
+    source: 'webview.lifecycle',
+    message,
+    readyState: document.readyState
+  });
+}
+
+function createWebviewLifecycleIdentity(hostLifecycle: WebviewLifecycleIdentity | undefined): WebviewLifecycleIdentity {
+  return {
+    ...(hostLifecycle ?? {
+      surface: 'panel',
+      mode: 'active',
+      generation: 0
+    }),
+    frameId: createWebviewFrameId()
+  };
+}
+
+function createWebviewFrameId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return `frame-${cryptoApi.randomUUID()}`;
+  }
+
+  const randomParts =
+    cryptoApi && typeof cryptoApi.getRandomValues === 'function'
+      ? Array.from(cryptoApi.getRandomValues(new Uint32Array(2)), (value) => value.toString(36))
+      : [Math.random().toString(36).slice(2), Math.random().toString(36).slice(2)];
+  return `frame-${Date.now().toString(36)}-${randomParts.join('-')}`;
 }
 
 root.render(<App />);

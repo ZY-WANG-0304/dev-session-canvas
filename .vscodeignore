@@ -16,6 +16,7 @@
 docs/**
 scripts/README.md
 scripts/build/**
+scripts/diagnostics/**
 scripts/media/**
 scripts/release/**
 scripts/shared/**
@@ -46,6 +47,7 @@ node_modules/**
 !node_modules/node-pty/prebuilds/win32-arm64/conpty/OpenConsole.exe
 package-lock.json
 tsconfig.json
+*.code-workspace
 .env
 .env.*
 *.md
@@ -56,6 +58,7 @@ core
 core.*
 playwright.config.mjs
 test-results/**
+release-artifacts/**
 image.png
 image copy*.png
 img_v3_*.jpg
@@ -71,3 +74,4 @@ images/dev-session-canvas-icon-v1.svg
 images/dev-session-canvas-icon-v3.svg
 images/dev-session-canvas-icon.svg
 images/lark-group-qr.png
+images/wechat-group-qr.png

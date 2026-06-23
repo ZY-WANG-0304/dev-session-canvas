@@ -412,7 +412,7 @@ try {
         summary: 'summary',
         position: { x: 100, y: 140 },
         size: { width: 520, height: 380 },
-        groupId: 'group-child',
+        groupId: 'group-inner',
         metadata: { agent: { provider: 'claude', templateArgv: ['--model', 'sonnet'] } }
       },
       {
@@ -423,7 +423,7 @@ try {
         summary: 'summary',
         position: { x: 700, y: 140 },
         size: { width: 500, height: 360 },
-        groupId: 'group-child',
+        groupId: 'group-inner',
         metadata: { terminal: {} }
       },
       {
@@ -434,6 +434,7 @@ try {
         summary: 'summary',
         position: { x: 220, y: 560 },
         size: { width: 420, height: 240 },
+        groupId: 'group-outer',
         metadata: { note: { content: 'remember this' } }
       },
       {
@@ -444,9 +445,32 @@ try {
         summary: 'summary',
         position: { x: 1500, y: 300 },
         size: { width: 280, height: 120 },
+        groupId: 'group-ignored-file',
         metadata: { file: { filePath: 'src/ignore.ts', ownerNodeIds: ['agent-1'], accessMode: 'read' } }
       }
     ],
+    groups: [
+      {
+        id: 'group-outer',
+        title: 'Template Group',
+        position: { x: 60, y: 100 },
+        size: { width: 1220, height: 760 }
+      },
+      {
+        id: 'group-inner',
+        title: 'Execution Pair',
+        position: { x: 80, y: 120 },
+        size: { width: 1160, height: 420 },
+        parentGroupId: 'group-outer'
+      },
+      {
+        id: 'group-ignored-file',
+        title: 'Ignored File Group',
+        position: { x: 1460, y: 260 },
+        size: { width: 360, height: 200 }
+      }
+    ],
+    nextGroupSequence: 4,
     edges: [
       {
         id: 'edge-user',
@@ -466,27 +490,6 @@ try {
         targetAnchor: 'top',
         arrowMode: 'none',
         owner: 'automatic'
-      }
-    ],
-    groups: [
-      {
-        id: 'group-root',
-        title: 'Root lane',
-        position: { x: 60, y: 100 },
-        size: { width: 1180, height: 760 }
-      },
-      {
-        id: 'group-child',
-        title: 'Execution pod',
-        position: { x: 80, y: 120 },
-        size: { width: 1140, height: 420 },
-        parentGroupId: 'group-root'
-      },
-      {
-        id: 'group-file-only',
-        title: 'File-only group',
-        position: { x: 1460, y: 260 },
-        size: { width: 360, height: 200 }
       }
     ],
     nextGroupSequence: 4,
@@ -509,24 +512,24 @@ try {
   assert.strictEqual(capturedDefault.template.nodes.length, 3);
   assert.deepStrictEqual(capturedDefault.template.nodes[0].position, { x: 0, y: 0 });
   assert.strictEqual(capturedDefault.template.nodes[0].metadata.agent.provider, 'default');
+  assert.deepStrictEqual(capturedDefault.template.nodes[0].metadata.agent.argv, ['--model', 'sonnet']);
+  assert.strictEqual(capturedDefault.template.nodes[0].groupIndex, 1);
+  assert.strictEqual(capturedDefault.template.nodes[1].groupIndex, 1);
+  assert.strictEqual(capturedDefault.template.nodes[2].groupIndex, 0);
   assert.deepStrictEqual(capturedDefault.template.groups, [
     {
-      title: 'Root lane',
+      title: 'Template Group',
       position: { x: -40, y: -40 },
-      size: { width: 1180, height: 760 },
+      size: { width: 1220, height: 760 },
       parentGroupIndex: undefined
     },
     {
-      title: 'Execution pod',
+      title: 'Execution Pair',
       position: { x: -20, y: -20 },
-      size: { width: 1140, height: 420 },
+      size: { width: 1160, height: 420 },
       parentGroupIndex: 0
     }
   ]);
-  assert.strictEqual(capturedDefault.template.nodes[0].groupIndex, 1);
-  assert.strictEqual(capturedDefault.template.nodes[1].groupIndex, 1);
-  assert.strictEqual(capturedDefault.template.nodes[2].groupIndex, undefined);
-  assert.deepStrictEqual(capturedDefault.template.nodes[0].metadata.agent.argv, ['--model', 'sonnet']);
   assert.strictEqual(capturedDefault.template.edges.length, 1);
   assert.strictEqual(capturedDefault.template.edges[0].label, 'run');
 
@@ -743,6 +746,66 @@ try {
     /循环父子关系/u
   );
 
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 }, parentGroupIndex: 1 },
+          { title: 'Group B', position: { x: 40, y: 60 }, size: { width: 280, height: 180 }, parentGroupIndex: 0 }
+        ]
+      }
+    }),
+    /循环父子关系/u
+  );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 }, parentGroupIndex: 9 }
+        ]
+      }
+    }),
+    /不存在的父分组索引/u
+  );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 }, parentGroupIndex: 0 }
+        ]
+      }
+    }),
+    /不能引用自身作为父分组/u
+  );
+  assert.throws(
+    () => parseCanvasTemplateDocument({
+      version: 1,
+      template: {
+        ...userTemplate,
+        groups: [
+          { title: 'Group A', position: { x: 0, y: 0 }, size: { width: 360, height: 240 } }
+        ],
+        nodes: [
+          {
+            kind: 'note',
+            title: 'Broken Group Note',
+            position: { x: 0, y: 0 },
+            size: { width: 320, height: 240 },
+            groupIndex: 3,
+            metadata: { note: { content: '' } }
+          }
+        ]
+      }
+    }),
+    /不存在的分组索引/u
+  );
+
   const extensionSource = await readFile('src/extension.ts', 'utf8');
   const packageManifest = JSON.parse(await readFile('package.json', 'utf8'));
   assert.match(packageManifest.scripts.test, /npm run test:marketplace/u);
@@ -806,7 +869,7 @@ try {
   assert.match(applyDefaultCommandSource, /const appliedNodeIds = await panelManager\.applyDefaultCanvasTemplate\(\)/u);
   assert.match(
     applyDefaultCommandSource,
-    /await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+    /await panelManager\.revealOrCreateCurrentCanvasSurface\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
   );
   assert.doesNotMatch(applyDefaultCommandSource, /focusAppliedNodes: true/u);
   const resetDefaultCommandSource = sliceBetween(
@@ -817,7 +880,7 @@ try {
   assert.match(resetDefaultCommandSource, /const appliedNodeIds = await panelManager\.resetDefaultCanvasTemplateWithConfirmation\(\)/u);
   assert.match(
     resetDefaultCommandSource,
-    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreateCurrentCanvasSurface\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
   );
   assert.doesNotMatch(resetDefaultCommandSource, /focusAppliedNodes: true/u);
   const applyTemplateCommandSource = sliceBetween(
@@ -828,7 +891,7 @@ try {
   assert.match(applyTemplateCommandSource, /const appliedNodeIds = await panelManager\.applyCanvasTemplateById/u);
   assert.match(
     applyTemplateCommandSource,
-    /await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+    /await panelManager\.revealOrCreateCurrentCanvasSurface\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
   );
   assert.doesNotMatch(applyTemplateCommandSource, /focusAppliedNodes: true/u);
   const resetTemplateCommandSource = sliceBetween(
@@ -839,7 +902,7 @@ try {
   assert.match(resetTemplateCommandSource, /const appliedNodeIds = await panelManager\.resetCanvasTemplateByIdWithConfirmation/u);
   assert.match(
     resetTemplateCommandSource,
-    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreate\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
+    /if \(appliedNodeIds\) \{[\s\S]*await panelManager\.revealOrCreateCurrentCanvasSurface\(\);[\s\S]*panelManager\.focusCanvasTemplateNodeGroup\(appliedNodeIds\)/u
   );
   assert.doesNotMatch(resetTemplateCommandSource, /focusAppliedNodes: true/u);
 
@@ -891,7 +954,7 @@ try {
     "if (parsedMessage.type === 'webview/ready')",
     'private async bootstrapInteractiveSurface'
   );
-  assert.match(webviewReadyHandlerSource, /bootstrapInteractiveSurface\(sourceSurface\)/u);
+  assert.match(webviewReadyHandlerSource, /bootstrapInteractiveSurface\(sourceSurface,/u);
   assert.doesNotMatch(webviewReadyHandlerSource, /postState\('host\/bootstrap'\)/u);
   const bootstrapSurfaceSource = sliceBetween(
     panelManagerSource,
@@ -899,7 +962,7 @@ try {
     'private handleActiveWebviewMessage'
   );
   assert.match(bootstrapSurfaceSource, /await this\.ensureDefaultTemplateAppliedIfNeeded\(\)/u);
-  assert.match(bootstrapSurfaceSource, /postState\('host\/bootstrap'\)/u);
+  assert.match(bootstrapSurfaceSource, /postState\('host\/bootstrap',/u);
   const resetDefaultWebviewCaseSource = sliceBetween(
     panelManagerSource,
     "case 'webview/resetToDefaultTemplate':",
@@ -922,7 +985,8 @@ try {
   assert.match(applyTemplateMethodSource, /focusAppliedNodes\?: boolean/u);
   assert.match(applyTemplateMethodSource, /resolveCanvasTemplateNoteMaterializations/u);
   assert.match(applyTemplateMethodSource, /noteMaterializations/u);
-  assert.match(applyTemplateMethodSource, /requestTemplateNodeGroupFocus\(applyResult\.nodeIds\)/u);
+  assert.match(applyTemplateMethodSource, /requestTemplateNodeGroupFocus\(appliedNodeIds\)/u);
+  assert.match(applyTemplateMethodSource, /多根 workspace 中暂不支持重置模板/u);
   const pathOnlyNoteMaterializationSource = sliceBetween(
     panelManagerSource,
     'private async resolvePathOnlyCanvasTemplateNoteMaterialization',
@@ -952,6 +1016,16 @@ try {
   );
   assert.match(createNodeSource, /createCanvasNodeObjectId\(kind, sequence\)/u);
   assert.match(createNodeSource, /randomUUID\(\)/u);
+  const saveCurrentCanvasTemplateSource = sliceBetween(
+    panelManagerSource,
+    'public async saveCurrentCanvasAsTemplate',
+    'private buildStateForCanvasTemplateCapture'
+  );
+  assert.match(
+    saveCurrentCanvasTemplateSource,
+    /多根 workspace 中暂不支持保存整个组合视图为模板/u,
+    '多根组合视图不能直接保存为跨 root 模板。'
+  );
   const nodeSequenceSource = sliceBetween(
     panelManagerSource,
     'function readCanvasNodeDisplaySequence',

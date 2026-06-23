@@ -3,12 +3,19 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { listWorkspaceAgentSessionHistory, type WorkspaceAgentSessionHistoryEntry } from '../common/agentSessionHistory';
+import {
+  CONTEXT_KEYS,
+  STORAGE_KEYS,
+  type SidebarSessionHistoryGroupingOptions
+} from '../common/extensionIdentity';
+import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import type { AgentProviderKind } from '../common/protocol';
 import { isAgentProviderKind } from '../common/protocol';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
 
 const SESSION_REFRESH_DEBOUNCE_MS = 350;
 const SIDEBAR_SESSION_ICON_ROOT = path.resolve(__dirname, '..', 'images');
+const SIDEBAR_BUNDLED_CODICON_PATH_SEGMENTS = ['dist', 'sidebar-codicon.css'] as const;
 const FALLBACK_CLAUDE_PROVIDER_ICON_SVG =
   '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" fill="currentColor" fill-opacity="0.18"/><path d="M6.25 5.25L3.75 8L6.25 10.75" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.75 5.25L12.25 8L9.75 10.75" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FALLBACK_CODEX_PROVIDER_ICON_SVG =
@@ -17,6 +24,10 @@ const SIDEBAR_SESSION_PROVIDER_ICON_SVGS = {
   claude: readBundledProviderIconSvg('provider-claude-code-anthropic.svg', FALLBACK_CLAUDE_PROVIDER_ICON_SVG),
   codex: readBundledProviderIconSvg('provider-codex-openai.svg', FALLBACK_CODEX_PROVIDER_ICON_SVG)
 } satisfies Record<AgentProviderKind, string>;
+const SIDEBAR_SESSION_ACTION_CODICONS = {
+  resume: 'history',
+  fork: 'repo-forked'
+} satisfies Record<'resume' | 'fork', string>;
 
 export interface CanvasSidebarSessionHistoryItemSnapshot {
   id: string;
@@ -24,7 +35,10 @@ export interface CanvasSidebarSessionHistoryItemSnapshot {
   providerLabel: string;
   sessionId: string;
   title: string;
+  updatedAtMs: number;
   timestampLabel: string;
+  workspaceRootLabel: string;
+  workspaceRootPath?: string;
   tooltip: string;
   searchText: string;
 }
@@ -34,7 +48,15 @@ export interface SidebarSessionHistoryTestSnapshot {
   visibleItemIds: string[];
   selectedId?: string;
   disabledItemIds: string[];
+  groupRows: SidebarSessionHistoryTestGroupRowSnapshot[];
   statusNoteText?: string;
+}
+
+export interface SidebarSessionHistoryTestGroupRowSnapshot {
+  key: string;
+  label: string;
+  expanded: boolean;
+  depth: number;
 }
 
 export type SidebarSessionHistoryTestAction =
@@ -47,6 +69,17 @@ export type SidebarSessionHistoryTestAction =
       kind: 'filterItems';
       query: string;
       delayMs?: number;
+    }
+  | {
+      kind: 'clickActionButton';
+      itemId: string;
+      action: 'resume' | 'fork';
+      delayMs?: number;
+    }
+  | {
+      kind: 'toggleGroup';
+      groupKey: string;
+      delayMs?: number;
     };
 
 type SidebarSessionHistoryInboundMessage =
@@ -55,6 +88,14 @@ type SidebarSessionHistoryInboundMessage =
     }
   | {
       type: 'sidebarSessionHistory/openSession';
+      payload: {
+        provider: AgentProviderKind;
+        sessionId: string;
+        title?: string;
+      };
+    }
+  | {
+      type: 'sidebarSessionHistory/forkSession';
       payload: {
         provider: AgentProviderKind;
         sessionId: string;
@@ -75,6 +116,8 @@ type SidebarSessionHistoryOutboundMessage =
       type: 'sidebarSessionHistory/state';
       payload: {
         items: CanvasSidebarSessionHistoryItemSnapshot[];
+        grouping: SidebarSessionHistoryGroupingOptions;
+        workspaceRootCount: number;
         errorMessage?: string;
         actionErrorMessage?: string;
         restoreBlockedMessage?: string;
@@ -100,10 +143,17 @@ interface PendingSidebarSessionHistoryTestActionRequest {
   timer: NodeJS.Timeout;
 }
 
+export interface SidebarSessionHistoryWorkspaceRoot {
+  name: string;
+  path: string;
+}
+
 export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly trustSubscription: vscode.Disposable;
   private view: vscode.WebviewView | undefined;
   private items: CanvasSidebarSessionHistoryItemSnapshot[] = [];
+  private grouping: SidebarSessionHistoryGroupingOptions;
+  private workspaceRootCount = 0;
   private errorMessage: string | undefined;
   private actionErrorMessage: string | undefined;
   private refreshTimer: NodeJS.Timeout | undefined;
@@ -112,7 +162,13 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
   private readonly pendingReadyRequests = new Map<string, PendingSidebarSessionHistoryReadyRequest>();
   private readonly pendingTestActionRequests = new Map<string, PendingSidebarSessionHistoryTestActionRequest>();
 
-  public constructor(private readonly panelManager: CanvasPanelManager) {
+  public constructor(
+    private readonly panelManager: CanvasPanelManager,
+    private readonly extensionUri: vscode.Uri,
+    private readonly workspaceState?: vscode.Memento
+  ) {
+    this.grouping = normalizeSidebarSessionHistoryGroupingOptions(this.workspaceState);
+    this.applyGroupingContext();
     this.trustSubscription = vscode.workspace.onDidGrantWorkspaceTrust(() => {
       this.actionErrorMessage = undefined;
       void this.postState();
@@ -135,9 +191,15 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
     this.view = webviewView;
     this.isWebviewReady = false;
     webviewView.webview.options = {
-      enableScripts: true
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')]
     };
-    webviewView.webview.html = buildSidebarSessionHistoryHtml(webviewView.webview);
+    const codiconCssUri = getVersionedWebviewResourceUri(
+      webviewView.webview,
+      this.extensionUri,
+      ...SIDEBAR_BUNDLED_CODICON_PATH_SEGMENTS
+    ).toString();
+    webviewView.webview.html = buildSidebarSessionHistoryHtml(webviewView.webview, codiconCssUri);
 
     webviewView.onDidDispose(() => {
       if (this.view === webviewView) {
@@ -182,6 +244,25 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
 
   public async getSessionHistoryItems(options?: { homeDir?: string }): Promise<CanvasSidebarSessionHistoryItemSnapshot[]> {
     return this.refresh(options);
+  }
+
+  public async setGroupingOption(
+    option: keyof SidebarSessionHistoryGroupingOptions,
+    enabled: boolean
+  ): Promise<void> {
+    if (this.grouping[option] === enabled) {
+      this.applyGroupingContext();
+      await this.postState();
+      return;
+    }
+
+    this.grouping = {
+      ...this.grouping,
+      [option]: enabled
+    };
+    await this.workspaceState?.update(resolveSidebarSessionHistoryGroupingStorageKey(option), enabled);
+    this.applyGroupingContext();
+    await this.postState();
   }
 
   public async waitForReady(timeoutMs = 5000): Promise<void> {
@@ -279,8 +360,9 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
   }
 
   private async loadSessionHistoryItems(options?: { homeDir?: string }): Promise<CanvasSidebarSessionHistoryItemSnapshot[]> {
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceRoot) {
+    const workspaceRoots = this.getWorkspaceRootsForSessionHistory();
+    this.workspaceRootCount = workspaceRoots.length;
+    if (workspaceRoots.length === 0) {
       return [];
     }
 
@@ -293,12 +375,31 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
           }
         : process.env;
 
-    const sessionHistory = await listWorkspaceAgentSessionHistory({
-      workspaceRoot,
-      env,
-      maxEntries: 200
-    });
-    return buildCanvasSidebarSessionHistoryItems(sessionHistory, workspaceRoot);
+    const dedupedEntries = new Map<string, WorkspaceAgentSessionHistoryEntry>();
+    for (const workspaceRoot of workspaceRoots) {
+      // eslint-disable-next-line no-await-in-loop
+      const sessionHistory = await listWorkspaceAgentSessionHistory({
+        workspaceRoot: workspaceRoot.path,
+        env,
+        maxEntries: 200
+      });
+      for (const entry of sessionHistory) {
+        mergeSidebarSessionHistoryEntry(dedupedEntries, entry);
+      }
+    }
+
+    const sortedEntries = Array.from(dedupedEntries.values())
+      .sort(compareSidebarSessionHistoryEntries)
+      .slice(0, 200);
+    return buildCanvasSidebarSessionHistoryItems(sortedEntries, workspaceRoots);
+  }
+
+  private getWorkspaceRootsForSessionHistory(): SidebarSessionHistoryWorkspaceRoot[] {
+    return (vscode.workspace.workspaceFolders ?? [])
+      .map((workspaceFolder) => ({
+        name: workspaceFolder.name,
+        path: workspaceFolder.uri.fsPath
+      }));
   }
 
   private async postState(): Promise<void> {
@@ -310,12 +411,32 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
       type: 'sidebarSessionHistory/state',
       payload: {
         items: this.items,
+        grouping: this.grouping,
+        workspaceRootCount: this.workspaceRootCount,
         errorMessage: this.errorMessage,
         actionErrorMessage: this.actionErrorMessage,
         restoreBlockedMessage: this.panelManager.getSessionHistoryRestoreBlockReason()
       }
     };
     await this.view.webview.postMessage(message);
+  }
+
+  private applyGroupingContext(): void {
+    void vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.sidebarSessionHistoryGroupByWorkspaceRoot,
+      this.grouping.groupByWorkspaceRoot
+    );
+    void vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.sidebarSessionHistoryGroupByProvider,
+      this.grouping.groupByProvider
+    );
+    void vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.sidebarSessionHistoryGroupByTime,
+      this.grouping.groupByTime
+    );
   }
 
   private async handleMessage(message: unknown): Promise<void> {
@@ -337,6 +458,18 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
           title: parsed.payload.title
         });
         if (!result.restored && result.errorMessage) {
+          this.actionErrorMessage = result.errorMessage;
+          await this.postState();
+        }
+        return;
+      }
+      case 'sidebarSessionHistory/forkSession': {
+        const result = await this.panelManager.forkAgentSessionFromHistory({
+          provider: parsed.payload.provider,
+          sessionId: parsed.payload.sessionId,
+          title: parsed.payload.title
+        });
+        if (!result.forked && result.errorMessage) {
           this.actionErrorMessage = result.errorMessage;
           await this.postState();
         }
@@ -401,10 +534,17 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
 
 export function buildCanvasSidebarSessionHistoryItems(
   entries: WorkspaceAgentSessionHistoryEntry[],
-  workspaceRoot: string
+  workspaceRoots: string | readonly SidebarSessionHistoryWorkspaceRoot[]
 ): CanvasSidebarSessionHistoryItemSnapshot[] {
+  const normalizedWorkspaceRoots = normalizeSidebarSessionHistoryWorkspaceRoots(workspaceRoots);
   return entries.map((entry) => {
-    const relativeCwd = resolveWorkspaceRelativeCwd(entry.cwd, workspaceRoot);
+    const workspaceRoot = findBestSidebarSessionHistoryWorkspaceRoot(entry.cwd, normalizedWorkspaceRoots);
+    const workspaceRootPath = workspaceRoot?.path ?? normalizedWorkspaceRoots[0]?.path ?? entry.cwd;
+    const workspaceRootLabel =
+      workspaceRoot?.name?.trim() ||
+      basenameForDisplayPath(workspaceRootPath) ||
+      '工作区根目录';
+    const relativeCwd = resolveWorkspaceRelativeCwd(entry.cwd, workspaceRootPath);
     const title = formatSessionHistoryTitle(entry);
     const timestampLabel = [
       providerLabel(entry.provider),
@@ -418,10 +558,14 @@ export function buildCanvasSidebarSessionHistoryItems(
       providerLabel: providerLabel(entry.provider),
       sessionId: entry.sessionId,
       title,
+      updatedAtMs: entry.updatedAtMs,
       timestampLabel,
+      workspaceRootLabel,
+      workspaceRootPath: workspaceRoot?.path ?? workspaceRootPath,
       tooltip: [
         title,
         `${providerLabel(entry.provider)} · ${entry.sessionId}`,
+        `Root：${workspaceRootLabel}`,
         `目录：${relativeCwd}`,
         `创建：${formatTimestamp(entry.createdAtMs)}`,
         `更新：${formatTimestamp(entry.updatedAtMs)}`
@@ -433,6 +577,8 @@ export function buildCanvasSidebarSessionHistoryItems(
         providerLabel(entry.provider),
         entry.provider,
         entry.sessionId,
+        workspaceRootLabel,
+        workspaceRoot?.path,
         relativeCwd,
         entry.cwd
       ]
@@ -443,13 +589,125 @@ export function buildCanvasSidebarSessionHistoryItems(
   });
 }
 
-function resolveWorkspaceRelativeCwd(cwd: string, workspaceRoot: string): string {
-  const relativePath = path.relative(path.resolve(workspaceRoot), path.resolve(cwd));
-  if (!relativePath || relativePath === '.') {
-    return '工作区根目录';
+function mergeSidebarSessionHistoryEntry(
+  entries: Map<string, WorkspaceAgentSessionHistoryEntry>,
+  nextEntry: WorkspaceAgentSessionHistoryEntry
+): void {
+  const key = `${nextEntry.provider}:${nextEntry.sessionId}`;
+  const existingEntry = entries.get(key);
+  if (!existingEntry) {
+    entries.set(key, nextEntry);
+    return;
   }
 
-  return relativePath.startsWith('..') || path.isAbsolute(relativePath) ? cwd : relativePath.replace(/\\/g, '/');
+  const updatedAtMs = Math.max(existingEntry.updatedAtMs, nextEntry.updatedAtMs);
+  entries.set(key, {
+    provider: nextEntry.provider,
+    sessionId: nextEntry.sessionId,
+    cwd: nextEntry.cwd,
+    createdAtMs: Math.min(existingEntry.createdAtMs, nextEntry.createdAtMs),
+    updatedAtMs,
+    sourcePath: updatedAtMs === nextEntry.updatedAtMs ? nextEntry.sourcePath : existingEntry.sourcePath,
+    firstUserInstruction: existingEntry.firstUserInstruction || nextEntry.firstUserInstruction
+  });
+}
+
+function compareSidebarSessionHistoryEntries(
+  left: WorkspaceAgentSessionHistoryEntry,
+  right: WorkspaceAgentSessionHistoryEntry
+): number {
+  if (left.updatedAtMs !== right.updatedAtMs) {
+    return right.updatedAtMs - left.updatedAtMs;
+  }
+  return left.provider.localeCompare(right.provider) || left.sessionId.localeCompare(right.sessionId);
+}
+
+function normalizeSidebarSessionHistoryWorkspaceRoots(
+  workspaceRoots: string | readonly SidebarSessionHistoryWorkspaceRoot[]
+): SidebarSessionHistoryWorkspaceRoot[] {
+  if (typeof workspaceRoots === 'string') {
+    return [
+      {
+        name: basenameForDisplayPath(workspaceRoots) || '工作区根目录',
+        path: workspaceRoots
+      }
+    ];
+  }
+
+  return workspaceRoots
+    .map((workspaceRoot) => ({
+      name: workspaceRoot.name.trim() || basenameForDisplayPath(workspaceRoot.path) || '工作区根目录',
+      path: workspaceRoot.path
+    }))
+    .filter((workspaceRoot) => workspaceRoot.path.trim().length > 0);
+}
+
+function findBestSidebarSessionHistoryWorkspaceRoot(
+  cwd: string,
+  workspaceRoots: readonly SidebarSessionHistoryWorkspaceRoot[]
+): SidebarSessionHistoryWorkspaceRoot | undefined {
+  return workspaceRoots
+    .filter((workspaceRoot) => isCwdInsideWorkspaceRoot(cwd, workspaceRoot.path))
+    .sort((left, right) => normalizePathLength(right.path) - normalizePathLength(left.path))[0];
+}
+
+function isCwdInsideWorkspaceRoot(cwd: string, workspaceRoot: string): boolean {
+  const pathApi = inferCwdPathModule(cwd, workspaceRoot);
+  const relativePath = pathApi.relative(pathApi.resolve(workspaceRoot), pathApi.resolve(cwd));
+  return relativePath === '' || (!relativePath.startsWith('..') && !pathApi.isAbsolute(relativePath));
+}
+
+function normalizePathLength(value: string): number {
+  return value.replace(/[\\/]+$/u, '').length;
+}
+
+function basenameForDisplayPath(value: string): string {
+  const trimmed = value.trim().replace(/[\\/]+$/u, '');
+  if (!trimmed) {
+    return '';
+  }
+
+  const parts = trimmed.split(/[\\/]/u).filter(Boolean);
+  return parts[parts.length - 1] ?? trimmed;
+}
+
+function resolveWorkspaceRelativeCwd(cwd: string, workspaceRoot: string): string {
+  const pathApi = inferCwdPathModule(cwd, workspaceRoot);
+  const displaySeparator = inferCwdDisplaySeparator(cwd);
+  const relativePath = pathApi.relative(pathApi.resolve(workspaceRoot), pathApi.resolve(cwd));
+  if (!relativePath || relativePath === '.') {
+    return appendDirectoryIndicator('工作区根目录', displaySeparator);
+  }
+
+  return appendDirectoryIndicator(
+    formatCwdDisplayPath(relativePath.startsWith('..') || pathApi.isAbsolute(relativePath) ? cwd : relativePath, displaySeparator),
+    displaySeparator
+  );
+}
+
+function appendDirectoryIndicator(value: string, separator: '/' | '\\'): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.endsWith('/') || trimmed.endsWith('\\')) {
+    return trimmed;
+  }
+
+  return `${trimmed}${separator}`;
+}
+
+function inferCwdPathModule(cwd: string, workspaceRoot: string): typeof path.posix | typeof path.win32 {
+  return isWindowsLikePath(cwd) || isWindowsLikePath(workspaceRoot) ? path.win32 : path.posix;
+}
+
+function isWindowsLikePath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/u.test(value.trim()) || value.includes('\\');
+}
+
+function inferCwdDisplaySeparator(cwd: string): '/' | '\\' {
+  return cwd.includes('\\') ? '\\' : '/';
+}
+
+function formatCwdDisplayPath(value: string, separator: '/' | '\\'): string {
+  return value.replace(/[\\/]/g, separator);
 }
 
 const MAX_SESSION_HISTORY_TITLE_CHARS = 256;
@@ -546,6 +804,28 @@ function parseSidebarSessionHistoryMessage(message: unknown): SidebarSessionHist
         }
       };
     }
+    case 'sidebarSessionHistory/forkSession': {
+      const payload = 'payload' in message ? message.payload : undefined;
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        !('provider' in payload) ||
+        !isAgentProviderKind(payload.provider) ||
+        !('sessionId' in payload) ||
+        typeof payload.sessionId !== 'string'
+      ) {
+        return null;
+      }
+
+      return {
+        type: 'sidebarSessionHistory/forkSession',
+        payload: {
+          provider: payload.provider,
+          sessionId: payload.sessionId,
+          title: 'title' in payload && typeof payload.title === 'string' ? payload.title : undefined
+        }
+      };
+    }
     case 'sidebarSessionHistory/testActionResult': {
       const payload = 'payload' in message ? message.payload : undefined;
       if (
@@ -592,9 +872,15 @@ function parseSidebarSessionHistoryTestSnapshot(value: unknown): SidebarSessionH
     'disabledItemIds' in value && Array.isArray(value.disabledItemIds)
       ? value.disabledItemIds.filter((itemId): itemId is string => typeof itemId === 'string')
       : null;
+  const groupRows =
+    'groupRows' in value && Array.isArray(value.groupRows)
+      ? value.groupRows
+          .map(parseSidebarSessionHistoryTestGroupRowSnapshot)
+          .filter((row): row is SidebarSessionHistoryTestGroupRowSnapshot => row !== null)
+      : null;
   const statusNoteText = 'statusNoteText' in value && typeof value.statusNoteText === 'string' ? value.statusNoteText : undefined;
 
-  if (rowCount === null || visibleItemIds === null || disabledItemIds === null) {
+  if (rowCount === null || visibleItemIds === null || disabledItemIds === null || groupRows === null) {
     return null;
   }
 
@@ -603,7 +889,30 @@ function parseSidebarSessionHistoryTestSnapshot(value: unknown): SidebarSessionH
     visibleItemIds,
     selectedId,
     disabledItemIds,
+    groupRows,
     statusNoteText
+  };
+}
+
+function parseSidebarSessionHistoryTestGroupRowSnapshot(value: unknown): SidebarSessionHistoryTestGroupRowSnapshot | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const key = 'key' in value && typeof value.key === 'string' ? value.key : null;
+  const label = 'label' in value && typeof value.label === 'string' ? value.label : null;
+  const depth = 'depth' in value && typeof value.depth === 'number' ? value.depth : null;
+  const expanded = 'expanded' in value && typeof value.expanded === 'boolean' ? value.expanded : null;
+
+  if (key === null || label === null || depth === null || expanded === null) {
+    return null;
+  }
+
+  return {
+    key,
+    label,
+    expanded,
+    depth
   };
 }
 
@@ -614,15 +923,58 @@ export function isSidebarSessionHistoryTestAction(value: unknown): value is Side
     'kind' in value &&
     (
       (value.kind === 'doubleClickItem' && 'itemId' in value && typeof value.itemId === 'string') ||
-      (value.kind === 'filterItems' && 'query' in value && typeof value.query === 'string')
+      (value.kind === 'filterItems' && 'query' in value && typeof value.query === 'string') ||
+      (
+        value.kind === 'clickActionButton' &&
+        'itemId' in value &&
+        typeof value.itemId === 'string' &&
+        'action' in value &&
+        (value.action === 'resume' || value.action === 'fork')
+      ) ||
+      (
+        value.kind === 'toggleGroup' &&
+        'groupKey' in value &&
+        typeof value.groupKey === 'string'
+      )
     ) &&
     (!('delayMs' in value) || typeof value.delayMs === 'number')
   );
 }
 
-function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
+function normalizeSidebarSessionHistoryGroupingOptions(
+  workspaceState: vscode.Memento | undefined
+): SidebarSessionHistoryGroupingOptions {
+  return {
+    groupByWorkspaceRoot:
+      workspaceState?.get(STORAGE_KEYS.sidebarSessionHistoryGroupByWorkspaceRoot) !== false,
+    groupByProvider:
+      workspaceState?.get(STORAGE_KEYS.sidebarSessionHistoryGroupByProvider) === true,
+    groupByTime:
+      workspaceState?.get(STORAGE_KEYS.sidebarSessionHistoryGroupByTime) === true
+  };
+}
+
+function resolveSidebarSessionHistoryGroupingStorageKey(
+  option: keyof SidebarSessionHistoryGroupingOptions
+): string {
+  switch (option) {
+    case 'groupByWorkspaceRoot':
+      return STORAGE_KEYS.sidebarSessionHistoryGroupByWorkspaceRoot;
+    case 'groupByProvider':
+      return STORAGE_KEYS.sidebarSessionHistoryGroupByProvider;
+    case 'groupByTime':
+      return STORAGE_KEYS.sidebarSessionHistoryGroupByTime;
+  }
+}
+
+export function buildSidebarSessionHistoryHtml(
+  webview: Pick<vscode.Webview, 'cspSource'>,
+  codiconCssUri?: string
+): string {
   const nonce = createNonce();
   const providerIconsJson = JSON.stringify(SIDEBAR_SESSION_PROVIDER_ICON_SVGS);
+  const actionCodiconsJson = JSON.stringify(SIDEBAR_SESSION_ACTION_CODICONS);
+  const codiconLink = codiconCssUri ? `\n    <link rel="stylesheet" href="${escapeHtmlAttribute(codiconCssUri)}" />` : '';
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -630,9 +982,9 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"
+      content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';"
     />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />${codiconLink}
     <style>
       :root {
         color-scheme: light dark;
@@ -739,6 +1091,60 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         display: grid;
       }
 
+      .session-group-row {
+        --row-fg: var(--fg);
+        --row-muted: var(--muted);
+        width: 100%;
+        min-width: 0;
+        min-height: 22px;
+        padding: 0 12px;
+        border: 0;
+        background: transparent;
+        color: var(--row-fg);
+        cursor: default;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .session-group-row:hover {
+        background: var(--list-hover);
+        --row-fg: var(--list-hover-fg);
+        --row-muted: var(--list-hover-fg);
+      }
+
+      .session-group-row:focus-visible {
+        background: var(--list-active);
+        color: var(--list-active-fg);
+        outline: 1px solid var(--focus);
+        outline-offset: -1px;
+      }
+
+      .session-group-row:not(:first-child) {
+        margin-top: 2px;
+      }
+
+      .session-group-twistie {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        color: var(--row-muted);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .session-group-title {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
       .status-note {
         margin: 0 12px;
         padding: 8px 10px;
@@ -808,6 +1214,11 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         --row-muted: var(--muted);
       }
 
+      .session-row.is-grouped {
+        padding-top: 7px;
+        padding-bottom: 7px;
+      }
+
       .session-title-line {
         display: flex;
         align-items: center;
@@ -843,10 +1254,80 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         min-width: 0;
       }
 
+      .session-actions {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: auto;
+        opacity: 0.74;
+        transform: translateX(0);
+        transition:
+          opacity 120ms ease,
+          transform 120ms ease;
+      }
+
+      .session-row:hover .session-actions,
+      .session-row:focus-within .session-actions,
+      .session-row.is-selected .session-actions {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      .session-action {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 0;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--row-muted);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .session-action:hover {
+        background: color-mix(
+          in srgb,
+          var(--vscode-toolbar-hoverBackground, var(--vscode-button-secondaryHoverBackground, var(--list-hover))) 70%,
+          transparent
+        );
+        color: var(--row-fg);
+      }
+
+      .session-action:focus-visible {
+        outline: 1px solid var(--focus);
+        outline-offset: -1px;
+        color: var(--row-fg);
+      }
+
+      .session-action[disabled] {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .session-action .codicon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        width: 15px;
+        height: 15px;
+        pointer-events: none;
+      }
+
       .session-time {
         color: var(--row-muted);
         font-size: 11px;
         padding-left: 22px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .session-actions {
+          transition: none;
+        }
       }
 
       .empty-state {
@@ -882,13 +1363,21 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const providerIcons = ${providerIconsJson};
+      const actionCodicons = ${actionCodiconsJson};
       const state = {
         items: [],
         selectedId: undefined,
         query: '',
+        grouping: {
+          groupByWorkspaceRoot: true,
+          groupByProvider: false,
+          groupByTime: false
+        },
+        workspaceRootCount: 0,
         errorMessage: undefined,
         actionErrorMessage: undefined,
-        restoreBlockedMessage: undefined
+        restoreBlockedMessage: undefined,
+        collapsedGroupKeys: new Set()
       };
 
       const searchInput = document.getElementById('searchInput');
@@ -911,6 +1400,55 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         return state.items.filter((item) => item.searchText.includes(normalizedQuery));
       }
 
+      function getGroupingLevels() {
+        const levels = [];
+        if (state.grouping.groupByWorkspaceRoot && state.workspaceRootCount > 1) {
+          levels.push('root');
+        }
+        if (state.grouping.groupByProvider) {
+          levels.push('provider');
+        }
+        if (state.grouping.groupByTime) {
+          levels.push('time');
+        }
+        return levels;
+      }
+
+      function getGroupMeta(level, item) {
+        if (level === 'root') {
+          const label = item.workspaceRootLabel || '工作区根目录';
+          return {
+            key: 'root:' + (item.workspaceRootPath || label),
+            label
+          };
+        }
+        if (level === 'provider') {
+          return {
+            key: 'provider:' + item.provider,
+            label: item.providerLabel || item.provider
+          };
+        }
+
+        const timeGroup = resolveTimeGroup(item.updatedAtMs);
+        return {
+          key: 'time:' + timeGroup.key,
+          label: timeGroup.label
+        };
+      }
+
+      function resolveTimeGroup(timestampMs) {
+        const elapsedMs = Date.now() - (Number.isFinite(timestampMs) ? timestampMs : Date.now());
+        const dayMs = 24 * 60 * 60 * 1000;
+        const weekMs = 7 * dayMs;
+        if (elapsedMs <= dayMs) {
+          return { key: 'within-24h', label: '24小时内' };
+        }
+        if (elapsedMs <= weekMs) {
+          return { key: 'within-week', label: '一周内' };
+        }
+        return { key: 'older', label: '更早' };
+      }
+
       function syncRenderedSelection() {
         const rows = list.querySelectorAll('[data-session-history-item-id]');
         for (const row of rows) {
@@ -929,13 +1467,13 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         syncRenderedSelection();
       }
 
-      function openItem(item) {
+      function openItem(item, action = 'resume') {
         if (state.restoreBlockedMessage) {
           return;
         }
 
         vscode.postMessage({
-          type: 'sidebarSessionHistory/openSession',
+          type: action === 'fork' ? 'sidebarSessionHistory/forkSession' : 'sidebarSessionHistory/openSession',
           payload: {
             provider: item.provider,
             sessionId: item.sessionId,
@@ -945,13 +1483,22 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
       }
 
       function captureTestSnapshot() {
+        const rows = Array.from(list.querySelectorAll('[data-session-history-item-id]'));
         return {
-          rowCount: list.querySelectorAll('[data-session-history-item-id]').length,
-          visibleItemIds: getVisibleItems().map((item) => item.id),
+          rowCount: rows.length,
+          visibleItemIds: rows
+            .map((row) => row.getAttribute('data-session-history-item-id'))
+            .filter((itemId) => typeof itemId === 'string'),
           selectedId: state.selectedId,
           disabledItemIds: Array.from(list.querySelectorAll('.session-row.is-disabled'))
             .map((row) => row.getAttribute('data-session-history-item-id'))
             .filter((itemId) => typeof itemId === 'string'),
+          groupRows: Array.from(list.querySelectorAll('[data-session-history-group-key]')).map((row) => ({
+            key: row.getAttribute('data-session-history-group-key') || '',
+            label: row.getAttribute('data-session-history-group-label') || '',
+            expanded: row.getAttribute('aria-expanded') === 'true',
+            depth: Number(row.getAttribute('data-session-history-group-depth') || '0')
+          })),
           statusNoteText: statusNote.textContent || undefined
         };
       }
@@ -972,6 +1519,25 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         return list.querySelector('[data-session-history-item-id="' + CSS.escape(itemId) + '"]');
       }
 
+      function queryActionButtonByItemId(itemId, action) {
+        return list.querySelector(
+          '[data-session-history-item-id="' + CSS.escape(itemId) + '"] [data-session-history-action="' + CSS.escape(action) + '"]'
+        );
+      }
+
+      function queryGroupByKey(groupKey) {
+        return list.querySelector('[data-session-history-group-key="' + CSS.escape(groupKey) + '"]');
+      }
+
+      function toggleGroup(groupKey) {
+        if (state.collapsedGroupKeys.has(groupKey)) {
+          state.collapsedGroupKeys.delete(groupKey);
+        } else {
+          state.collapsedGroupKeys.add(groupKey);
+        }
+        render();
+      }
+
       async function performTestAction(action) {
         if (!action || typeof action.kind !== 'string') {
           throw new Error('Unsupported sidebar session history test action.');
@@ -988,6 +1554,39 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
 
           setSearchQuery(action.query);
           render();
+          await waitForDomActionFlush();
+          return captureTestSnapshot();
+        }
+
+        if (action.kind === 'clickActionButton') {
+          if (typeof action.itemId !== 'string' || (action.action !== 'resume' && action.action !== 'fork')) {
+            throw new Error('Sidebar session history action button requires an item id and supported action.');
+          }
+
+          const button = queryActionButtonByItemId(action.itemId, action.action);
+          if (!button) {
+            throw new Error('Target session history action button is not visible.');
+          }
+
+          button.focus();
+          button.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+          dispatchSyntheticMouseClick(button);
+          await waitForDomActionFlush();
+
+          return captureTestSnapshot();
+        }
+
+        if (action.kind === 'toggleGroup') {
+          if (typeof action.groupKey !== 'string') {
+            throw new Error('Sidebar session history group key is required.');
+          }
+          const groupRow = queryGroupByKey(action.groupKey);
+          if (!groupRow) {
+            throw new Error('Target sidebar session history group row is not visible.');
+          }
+          groupRow.focus();
+          groupRow.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+          dispatchSyntheticMouseClick(groupRow);
           await waitForDomActionFlush();
           return captureTestSnapshot();
         }
@@ -1019,67 +1618,14 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
 
       function render() {
         const visibleItems = getVisibleItems();
+        const groupingLevels = getGroupingLevels();
         const interactionBlocked = typeof state.restoreBlockedMessage === 'string' && state.restoreBlockedMessage.length > 0;
         if (!state.selectedId || !visibleItems.some((item) => item.id === state.selectedId)) {
           state.selectedId = visibleItems[0] ? visibleItems[0].id : undefined;
         }
 
         list.replaceChildren();
-        for (const item of visibleItems) {
-          const row = document.createElement('div');
-          row.className = 'session-row';
-          row.tabIndex = 0;
-          row.title = item.tooltip;
-          row.setAttribute('data-session-history-item-id', item.id);
-          row.setAttribute('role', 'option');
-          row.setAttribute('aria-selected', item.id === state.selectedId ? 'true' : 'false');
-          row.setAttribute('aria-label', item.providerLabel + '，' + item.title + '，' + item.timestampLabel);
-          if (interactionBlocked) {
-            row.setAttribute('aria-disabled', 'true');
-            row.classList.add('is-disabled');
-          }
-          if (item.id === state.selectedId) {
-            row.classList.add('is-selected');
-          }
-
-          row.addEventListener('click', () => {
-            setSelectedId(item.id);
-          });
-          row.addEventListener('focus', () => {
-            setSelectedId(item.id);
-          });
-          row.addEventListener('dblclick', () => {
-            // Keep the row DOM stable across the first click so the browser can emit dblclick.
-            openItem(item);
-          });
-          row.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              openItem(item);
-            }
-          });
-
-          const titleLine = document.createElement('div');
-          titleLine.className = 'session-title-line';
-
-          const providerIcon = document.createElement('span');
-          providerIcon.className = 'provider-icon';
-          providerIcon.setAttribute('aria-hidden', 'true');
-          providerIcon.innerHTML = renderProviderIcon(item.provider);
-
-          const title = document.createElement('div');
-          title.className = 'session-title';
-          title.textContent = item.title;
-
-          titleLine.append(providerIcon, title);
-
-          const time = document.createElement('div');
-          time.className = 'session-time';
-          time.textContent = item.timestampLabel;
-
-          row.append(titleLine, time);
-          list.append(row);
-        }
+        renderItems(visibleItems, groupingLevels, interactionBlocked);
 
         const statusMessage =
           (typeof state.actionErrorMessage === 'string' && state.actionErrorMessage.length > 0
@@ -1114,6 +1660,195 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         emptyState.classList.remove('is-visible');
       }
 
+      function renderItems(items, groupingLevels, interactionBlocked) {
+        if (groupingLevels.length === 0) {
+          list.setAttribute('role', 'listbox');
+          list.setAttribute('aria-label', '当前 workspace 会话历史');
+          for (const item of items) {
+            appendSessionRow(item, interactionBlocked);
+          }
+          return;
+        }
+
+        const validGroupKeys = collectGroupKeys(items, groupingLevels, 0, 'session-history');
+        pruneCollapsedGroupKeys(validGroupKeys);
+        list.setAttribute('role', 'tree');
+        list.setAttribute('aria-label', '当前 workspace 会话历史分组');
+        appendGroupedItems(items, groupingLevels, 0, 'session-history');
+      }
+
+      function appendGroupedItems(items, groupingLevels, depth, parentKey) {
+        if (depth >= groupingLevels.length) {
+          for (const item of items) {
+            appendSessionRow(item, typeof state.restoreBlockedMessage === 'string' && state.restoreBlockedMessage.length > 0, depth);
+          }
+          return;
+        }
+
+        const level = groupingLevels[depth];
+        const groups = new Map();
+        for (const item of items) {
+          const meta = getGroupMeta(level, item);
+          const key = parentKey + '/' + meta.key;
+          let group = groups.get(key);
+          if (!group) {
+            group = {
+              key,
+              label: meta.label,
+              items: []
+            };
+            groups.set(key, group);
+          }
+          group.items.push(item);
+        }
+
+        for (const group of groups.values()) {
+          const expanded = !state.collapsedGroupKeys.has(group.key);
+          appendGroupRow(group.key, group.label, depth, expanded);
+          if (!expanded) {
+            continue;
+          }
+          appendGroupedItems(group.items, groupingLevels, depth + 1, group.key);
+        }
+      }
+
+      function appendGroupRow(key, label, depth, expanded) {
+        const groupRow = document.createElement('div');
+        groupRow.className = 'session-group-row';
+        groupRow.tabIndex = 0;
+        groupRow.title = label;
+        groupRow.setAttribute('role', 'treeitem');
+        groupRow.setAttribute('aria-level', String(depth + 1));
+        groupRow.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        groupRow.setAttribute('aria-label', label + (expanded ? '，已展开' : '，已折叠'));
+        groupRow.setAttribute('data-session-history-group-key', key);
+        groupRow.setAttribute('data-session-history-group-label', label);
+        groupRow.setAttribute('data-session-history-group-depth', String(depth));
+        groupRow.style.paddingLeft = String(4 + depth * 14) + 'px';
+
+        const twistie = document.createElement('span');
+        twistie.className = 'session-group-twistie codicon ' + (expanded ? 'codicon-chevron-down' : 'codicon-chevron-right');
+        twistie.setAttribute('aria-hidden', 'true');
+
+        const title = document.createElement('span');
+        title.className = 'session-group-title';
+        title.textContent = label;
+
+        groupRow.append(twistie, title);
+        groupRow.addEventListener('click', () => toggleGroup(key));
+        groupRow.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleGroup(key);
+          }
+        });
+        list.append(groupRow);
+      }
+
+      function collectGroupKeys(items, groupingLevels, depth, parentKey, validKeys = new Set()) {
+        if (depth >= groupingLevels.length) {
+          return validKeys;
+        }
+
+        const level = groupingLevels[depth];
+        const groups = new Map();
+        for (const item of items) {
+          const meta = getGroupMeta(level, item);
+          const key = parentKey + '/' + meta.key;
+          let groupItems = groups.get(key);
+          if (!groupItems) {
+            groupItems = [];
+            groups.set(key, groupItems);
+            validKeys.add(key);
+          }
+          groupItems.push(item);
+        }
+
+        for (const [key, groupItems] of groups.entries()) {
+          collectGroupKeys(groupItems, groupingLevels, depth + 1, key, validKeys);
+        }
+        return validKeys;
+      }
+
+      function pruneCollapsedGroupKeys(validKeys) {
+        for (const groupKey of [...state.collapsedGroupKeys]) {
+          if (!validKeys.has(groupKey)) {
+            state.collapsedGroupKeys.delete(groupKey);
+          }
+        }
+      }
+
+      function appendSessionRow(item, interactionBlocked, depth = 0) {
+        const row = document.createElement('div');
+        row.className = 'session-row';
+        row.tabIndex = 0;
+        row.title = item.tooltip;
+        row.setAttribute('data-session-history-item-id', item.id);
+        row.setAttribute('role', depth > 0 ? 'treeitem' : 'option');
+        row.setAttribute('aria-selected', item.id === state.selectedId ? 'true' : 'false');
+        row.setAttribute('aria-label', item.providerLabel + '，' + item.title + '，' + item.timestampLabel);
+        if (interactionBlocked) {
+          row.setAttribute('aria-disabled', 'true');
+          row.classList.add('is-disabled');
+        }
+        if (item.id === state.selectedId) {
+          row.classList.add('is-selected');
+        }
+        if (depth > 0) {
+          row.classList.add('is-grouped');
+          row.style.paddingLeft = String(12 + depth * 14) + 'px';
+          row.setAttribute('aria-level', String(depth + 1));
+        }
+
+        row.addEventListener('click', () => {
+          setSelectedId(item.id);
+        });
+        row.addEventListener('focus', () => {
+          setSelectedId(item.id);
+        });
+        row.addEventListener('dblclick', () => {
+          // Keep the row DOM stable across the first click so the browser can emit dblclick.
+          openItem(item);
+        });
+        row.addEventListener('keydown', (event) => {
+          if (event.target?.closest?.('[data-session-history-action]')) {
+            return;
+          }
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openItem(item);
+          }
+        });
+
+        const titleLine = document.createElement('div');
+        titleLine.className = 'session-title-line';
+
+        const providerIcon = document.createElement('span');
+        providerIcon.className = 'provider-icon';
+        providerIcon.setAttribute('aria-hidden', 'true');
+        providerIcon.innerHTML = renderProviderIcon(item.provider);
+
+        const title = document.createElement('div');
+        title.className = 'session-title';
+        title.textContent = item.title;
+
+        const actions = document.createElement('div');
+        actions.className = 'session-actions';
+
+        const resumeButton = createActionButton('resume', item, interactionBlocked);
+        const forkButton = createActionButton('fork', item, interactionBlocked);
+        actions.append(resumeButton, forkButton);
+
+        titleLine.append(providerIcon, title, actions);
+
+        const time = document.createElement('div');
+        time.className = 'session-time';
+        time.textContent = item.timestampLabel;
+
+        row.append(titleLine, time);
+        list.append(row);
+      }
+
       searchInput.addEventListener('input', (event) => {
         setSearchQuery(event.target.value || '');
         render();
@@ -1124,6 +1859,36 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         render();
         searchInput.focus();
       });
+
+      function createActionButton(action, item, disabled) {
+        const button = document.createElement('button');
+        button.className = 'session-action session-action-' + action;
+        button.type = 'button';
+        button.dataset.sessionHistoryAction = action;
+        const icon = document.createElement('span');
+        icon.className = 'session-action-icon codicon codicon-' + resolveActionCodicon(action);
+        icon.setAttribute('aria-hidden', 'true');
+        button.append(icon);
+        const actionLabel = action === 'fork' ? '分叉' : '恢复';
+        const label = actionLabel + '历史会话：' + item.title;
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        if (disabled) {
+          button.disabled = true;
+          button.setAttribute('aria-disabled', 'true');
+        }
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setSelectedId(item.id);
+          openItem(item, action);
+        });
+        button.addEventListener('dblclick', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        });
+        return button;
+      }
 
       window.addEventListener('message', (event) => {
         const message = event.data;
@@ -1159,6 +1924,11 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
         }
 
         state.items = Array.isArray(message.payload.items) ? message.payload.items : [];
+        state.grouping = normalizeGrouping(message.payload.grouping);
+        state.workspaceRootCount =
+          typeof message.payload.workspaceRootCount === 'number' && message.payload.workspaceRootCount > 0
+            ? Math.floor(message.payload.workspaceRootCount)
+            : 0;
         state.errorMessage = typeof message.payload.errorMessage === 'string' ? message.payload.errorMessage : undefined;
         state.actionErrorMessage =
           typeof message.payload.actionErrorMessage === 'string' ? message.payload.actionErrorMessage : undefined;
@@ -1174,6 +1944,18 @@ function buildSidebarSessionHistoryHtml(webview: vscode.Webview): string {
       function renderProviderIcon(provider) {
         return providerIcons[provider] || '';
       }
+
+      function resolveActionCodicon(action) {
+        return actionCodicons[action] || 'circle-large-outline';
+      }
+
+      function normalizeGrouping(value) {
+        return {
+          groupByWorkspaceRoot: !value || value.groupByWorkspaceRoot !== false,
+          groupByProvider: Boolean(value && value.groupByProvider),
+          groupByTime: Boolean(value && value.groupByTime)
+        };
+      }
     </script>
   </body>
 </html>`;
@@ -1185,6 +1967,10 @@ function readBundledProviderIconSvg(fileName: string, fallbackSvg: string): stri
   } catch {
     return fallbackSvg;
   }
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function createNonce(): string {

@@ -10,6 +10,17 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
+## 0.18.2 Highlights
+
+The public `0.18.2` release is a patch update for multi-root Pane Gallery and Webview group geometry. It stabilizes thumbnail-rail ordering by VS Code workspace-folder order, clears stale group resize drafts after Host updates, refreshes Webview regression coverage, and simplifies Marketplace support media inputs. It keeps all `0.18.1` capabilities: sidebar session-history grouping controls, menu selection-state polish, canvas layout arrangement empty-group size normalization, pane-gallery viewport memory isolation, public privacy / license metadata, dual-market distribution, and Preview support boundaries.
+
+- Pane Gallery `topThumbnails` and `sideThumbnails` rails now preserve VS Code workspace-folder order when the active root changes; the clicked thumbnail no longer swaps position with the previous main canvas root
+- Workspace-root and ordinary group resize now clears stale Webview drafts after committed Host state updates, avoiding geometry drift when a group is selected or refreshed again
+- Webview regression coverage has been refreshed for Agent cwd context snapshots, Edge IME edge selection, Claude `Ctrl-Z` payload matching, hard-wrapped file links, and Note Tab indentation timing
+- Marketplace listing inputs now keep the support section to direct links only; repository-only community media stays outside the packaged VSIX and Marketplace README path
+- The notifier companion is version-aligned with the main extension and does not introduce notification-delivery behavior changes
+- The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, VSM deferred completion gate, and support matrix
+
 ## Core Capabilities
 
 - Open the main canvas in either the panel or the editor area
@@ -17,12 +28,20 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Drive `Agent` nodes through the `codex` or `claude` CLI
 - Run `Terminal` nodes through the embedded terminal surface
 - Let `Agent` and embedded `Terminal` nodes inherit a controlled shell environment, with diagnostics showing the current resolution path
+- Create cwd-scoped `Terminal` or `Agent` nodes from workspace folders and files through File Explorer context menus
 - Write contextual notes with Markdown syntax inside `Note` nodes
 - Associate `Note` nodes with `.md` / `.markdown` files in the workspace, including YAML metadata popovers and safe Markdown image previews
 - Use built-in and custom templates to restore reusable `Agent` / `Terminal` / `Note` work surfaces, including explicit save modes for associated Markdown Notes
+- Organize related `Agent`, `Terminal`, and `Note` nodes with named canvas groups, nested group frames, group resize, and grouped sidebar browsing
+- Fork a Codex or Claude Code Agent with a trusted session id into a new Agent node using provider-native fork semantics
+- Compose VS Code multi-root workspaces into one canvas with system workspace-root sections while preserving each root's own canvas state
+- Switch multi-root workspaces into an optional Pane Gallery with dynamic / grid overviews and top / side thumbnail modes
+- Use fit view and the MiniMap across the full canvas space, including nodes, user groups, and workspace-root sections
+- Arrange the canvas layout once from the context menu while preserving group and workspace-root boundaries
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
-- View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore a new `Agent` node from history
+- View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore or fork a new `Agent` node from history
+- Manage workspace folders and git worktrees from the sidebar `Nodes` view, with explicit confirmations before removing folders or linked worktrees
 
 ## Best Fit
 
@@ -48,21 +67,13 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - `Agent` nodes require `codex` or `claude` CLI to be reachable from the Extension Host
 - `Terminal` nodes require a shell available on the workspace side
 
-## 0.10.5 Highlights
-
-The public `0.10.5` release is a focused `0.10.x` Preview patch for Note Markdown preview editing and associated Markdown draft recovery. It keeps the `0.10.4` execution-terminal link refresh performance fix, Marketplace metadata, Open VSX mirroring strategy, and support matrix.
-
-- Double-clicking ordinary Note Markdown preview text now uses parser-position source maps, so the textarea caret lands near the corresponding Markdown source for paragraphs, list continuations, blockquotes, emphasis, code, entities, and task text
-- Double-clicking images, blank preview space, display math, or malformed math now falls back to the corresponding Markdown block end instead of jumping to the whole Note end
-- Associated Markdown Note drafts now use a `recoverableDraft` model, preserving active non-conflict drafts and unavailable-file recovery without treating every draft as a conflict
-- Older `conflictDraft` state is still migrated, while new persisted canvas state only keeps the draft reference and leaves draft content in the existing `note-markdown-drafts/` storage files
-- The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, and support matrix
-
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.10.4` to `0.10.5` should use the public extension registry configured by the current host: official VS Code uses the `Visual Studio Marketplace`, while Open VSX-compatible hosts use `Open VSX`; later `0.10.x` updates follow the corresponding registry upgrade path
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, upgrading to `0.10.5` preserves that explicit choice. The default installation path still prefers the `system` bridge and falls back to workbench notifications when needed
+- First-time installs and upgrades from `0.18.1` to `0.18.2` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
+- Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.18.2` preserves that explicit choice
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -71,7 +82,7 @@ The public `0.10.5` release is a focused `0.10.x` Preview patch for Note Markdow
 
 - Installing `Dev Session Canvas` automatically installs `Dev Session Canvas Notifier` (`devsessioncanvas.dev-session-canvas-notifier`)
 - If a user installs from the notifier page first, VS Code also auto-installs the main extension `Dev Session Canvas`
-- Execution-node attention signals now prefer the local desktop by default through `devSessionCanvas.notifications.attentionSignalBridge = system`; switch the setting if you want `workbench` or `none` instead
+- Execution-node attention signals now prefer the local desktop by default through `devSessionCanvas.notifications.attentionSignalBridge = system`; switch the setting if you want `workbench` or `none`, or narrow attention sources with `devSessionCanvas.notifications.enabledAttentionSignals`
 - In `system` mode, the main extension prefers the local UI-side companion and falls back to VS Code workbench notifications when the companion is missing, unsupported, or delivery fails
 - The companion is especially useful in `Remote SSH`, WSL, and Dev Container scenarios where the main extension runs on the workspace side but the notification needs to return to the local desktop
 
@@ -98,7 +109,7 @@ The public `0.10.5` release is a focused `0.10.x` Preview patch for Note Markdow
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.10.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.18.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
@@ -107,7 +118,6 @@ The public `0.10.5` release is a focused `0.10.x` Preview patch for Note Markdow
 - Preview support boundaries: <https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/docs/support.md>
 - Bugs and feature feedback: <https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
 - Security issues: `wzy0304@outlook.com`
-
 ## Open Source
 
 - License: `Apache-2.0`
