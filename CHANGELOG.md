@@ -1,5 +1,491 @@
 # Changelog
 
+## 0.18.2 - Pane Gallery Root Order and Group Resize Fixes
+
+相对 `0.18.1`，`0.18.2` 是补丁版本，收口窗格画廊缩略图 rail 的 workspace root 稳定排序、workspace root / 分组 resize 后的 Webview 草稿清理，以及 Marketplace listing 交流二维码移除后的发布口径。
+
+### 本版本聚焦
+
+- 版本号从 `0.18.1` bump 到 `0.18.2`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 窗格画廊 `topThumbnails` / `sideThumbnails` 的缩略图 rail 现在稳定跟随 VS Code multi-root workspace folder 顺序；切换 active root 时只把当前 active root 从 rail 中移除，其余 root 不再与原主画板位置互换
+- 修复 workspace root 分组 resize 后，Host 已回写 / repair 但 Webview 残留旧 group draft 导致再次选中或刷新后几何漂移的问题
+- Webview 分组拖拽 / resize 增加 active interaction 标记与 pointer / blur 兜底，并补充 group move / resize、multi-root decompose 几何诊断
+- Webview Playwright 回归用例同步当前 UI 与交互时序，覆盖 Agent cwd context 截图基线、Edge IME 连线选择、Claude `Ctrl-Z` payload、硬换行文件链接和 Note Tab 缩进稳定性
+- Marketplace 专用 README 不再展示 Feishu / WeChat 交流群二维码；仓库根 README 的二维码资产仍作为源码仓库交流入口保留，继续排除出 VSIX 与 Marketplace listing 输入
+- Notifier companion 随主扩展版本对齐到 `0.18.2`，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略、Visual Studio Marketplace deferred 完成门禁或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.18.1` 升级到 `0.18.2` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.18.2` 后会继续沿用该明确选择
+
+### 回退建议
+
+- 若 `0.18.2` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.18.x` 修复版本
+
+## 0.18.1 - Sidebar History Grouping and Canvas Layout Fixes
+
+相对 `0.18.0`，`0.18.1` 是补丁版本，收口侧栏会话历史分组控制、菜单选中态增强，以及画布布局整理的空分组尺寸规范化与窗格画廊视口记忆分离。
+
+### 本版本聚焦
+
+- 版本号从 `0.18.0` bump 到 `0.18.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 侧栏历史视图新增会话分组控制，支持按分组折叠和展开会话历史记录
+- 增强侧栏历史分组与菜单选中态：分组菜单现在正确反映当前选中状态，以对号标记节点视图模式
+- 修复画布布局整理中空分组的尺寸规范化，避免空分组在整理后出现异常尺寸
+- 修复窗格画廊视口记忆逻辑，将各窗格的视口状态从共享存储中分离，避免切换画廊时视口互相干扰
+- 补齐主扩展与 Notifier companion 的公开隐私政策和许可证 URL 元数据
+- Notifier companion 随主扩展版本对齐到 `0.18.1`，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.18.0` 升级到 `0.18.1` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+
+### 回退建议
+
+- 若 `0.18.1` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.18.x` 修复版本
+
+## 0.18.0 - Preview Pane Gallery and Layout Arrangement Update
+
+相对 `0.17.0`，`0.18.0` 是新的公开 `Preview` 里程碑更新，重点引入 multi-root workspace 的窗格画廊呈现模式、一次性画布布局整理能力，并收口 Codex 异常输出文本在尾部状态栏之后仍能触发提醒的兼容性。它保留 `0.17.0` 的侧栏 workspace folder / git worktree 管理入口、folder / worktree 类型识别、Host 输出投递输入优先 scheduler、Codex / Claude Code Agent Fork、GitHub Release assets 镜像、Open VSX 完成门禁、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.17.0` bump 到 `0.18.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增 `devSessionCanvas.canvas.multiRootPresentationMode` 配置，默认继续使用现有 `rootGroups` 组合画布；多根 workspace 可显式切到 `paneGallery` 窗格画廊，不迁移或复制 root-local 画布状态
+- `paneGallery` 提供 `dynamic`、`grid`、`topThumbnails` 与 `sideThumbnails` 四种局部布局：前两者用于多 root 可交互全览，后两者把一个 active root 放大为主画布并用只读缩略图保留其他 root 上下文
+- 窗格画廊入口位于画布左下角控制区，支持粗切换记忆、thumbnail 主画布 MiniMap、画板化缩略图、root 标签轻量化和旧 Chromium 缩略图滚动兼容；`rootGroups` 仍是移动 root section、编辑跨 root overlay 布局和默认多根呈现的保守路径
+- 画布空白处右键菜单新增“整理画布布局”，由 Host 侧确定性布局函数写回权威状态并持久化，减少同一容器内的节点 / 分组重叠
+- 布局整理会尊重普通分组与 workspace root section 的硬边界，利用用户连线、文件活动 owner 与同 cwd 执行节点关系让相关对象靠近；不改变节点归属、root 归属、`cwd`、runtime metadata、连线端点或文件 owner
+- Codex 异常输出文本匹配兼容尾部输入提示和模型 / cwd footer：方块最终错误行后紧跟 `›继续` 或 `gpt-... · ~/path` 这类尾部状态栏时仍视为尾部最终失败；`Reconnecting... n/m` 下方树形缩进的暂态输出仍不触发提醒
+- Notifier companion 本轮只随主扩展版本对齐，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.17.0` 升级到 `0.18.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用；若 VSM 仍不可见，本轮继续允许依赖 GitHub Release assets 与 Open VSX 兜底完成
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.18.0`，不引入新的通知投递行为变更
+- 多根窗格画廊当前只影响 multi-root workspace 呈现；单根 workspace 继续显示单 root 画布，`rootGroups` 仍是默认值和最保守回退路径
+- 布局整理是一次性显式操作，不提供撤销、不持续自动重排，也不跨普通分组或跨 root 搬移节点；如工作区画布状态重要，建议升级前先备份或在非关键环境验证
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.18.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.18.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.18.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.17.0 - Preview Workspace Worktree and Output Scheduling Update
+
+相对 `0.16.1`，`0.17.0` 是新的公开 `Preview` 里程碑更新，重点补齐侧栏 `节点` view 的 workspace folder / git worktree 管理入口、folder / worktree 类型识别与移除动作，同时在 Host 到 Webview 的执行输出投递层加入输入优先 scheduler，降低多 Agent 输出洪峰中 ACK 和真实回显被旧输出排队压住的概率。它保留 `0.16.1` 的 multi-root root 水印可读性补丁、执行终端剪贴板诊断噪音收口、生产依赖 audit 收口、Codex / Claude Code Agent Fork、会话历史分叉入口、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.16.1` bump 到 `0.17.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 侧栏 `节点` view 标题栏新增 `Add Folder to Workspace` 和 `Create Worktree` 入口；添加 folder 走 VS Code workspace folder 语义，新建 worktree 走受信任 file workspace 下的 VS Code QuickPick + `git worktree add` 语义
+- 多根 workspace 下的全局新建 worktree 会先选择基准 folder；workspace folder 分组行提供基于该 folder 新建 worktree、从 workspace 移除 folder、移除 linked worktree 并同步移出 workspace 三个 icon-only 操作
+- workspace folder 分组行会按 `.git` 元数据区分普通 folder、git repository 和 linked git worktree；移除 folder 不删除磁盘目录，移除 worktree 会先确认目标确实是 linked worktree 再执行 `git worktree remove`
+- 执行终端 Host 输出投递新增 scheduler：对同一 controller 的待投递输出做合并，并在近期用户输入窗口内优先推进刚输入的节点输出；ACK 继续绕过 scheduler 立即投递，同时携带 scheduler 队列状态用于诊断
+- lifecycle 边界、持久化栅栏和显式 flush 仍保留 immediate output 路径；本轮不引入 Host 写入前的本地乐观回显，也不改变终端输入语义
+- README / Marketplace listing 的微信群二维码资产已更新，不改变扩展运行行为
+- Notifier companion 本轮只随主扩展版本对齐，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.16.1` 升级到 `0.17.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用；若 VSM 仍不可见，本轮继续允许依赖 GitHub Release assets 与 Open VSX 兜底完成
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.17.0`，不引入新的通知投递行为变更
+- workspace worktree 操作只在受信任 file workspace、目标 folder 可被 `git` 识别且本机 / 远端 Extension Host 可执行 `git` 时可用；不可用时会 fail closed 并提示原因
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode` 或 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`，升级到 `0.17.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.17.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.17.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.16.1 - Preview Root Watermark and Clipboard Diagnostic Patch
+
+相对 `0.16.0`，`0.16.1` 是同一 `0.16.x` 公开 `Preview` 线内的可读性、诊断噪音与生产依赖审计补丁，重点收口 multi-root workspace root section 水印可读性、执行终端在 snapshot restore / 用户输入边界上的剪贴板诊断噪音，以及生产依赖 audit 告警。它保留 `0.16.0` 的 Codex / Claude Code Agent Fork、会话历史分叉入口、侧栏待处理提醒汇总、Agent 标题栏 cwd / 启动命令拆分、多 Agent 输入响应、执行终端链接解析可靠性、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.16.0` bump 到 `0.16.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- multi-root workspace root section 的 body 水印改为独立于标题压缩的可读缩放，低倍率概览或窄 root section 下仍能显示可辨认的 root 名称
+- root 水印会把 path-like 标题收敛为 basename，并把长名称限制为最多两行，同时降低透明度、增大 tile 间距，减少对 root 内节点和普通分组的背景噪声
+- 执行终端剪贴板诊断在 snapshot restore 窗口内抑制由程序化恢复触发的 selection、mouse tracking 和 OSC 52 噪音，并用 `restoreSuppressed` 聚合计数保留可观测性；真实用户交互和恢复后的 live OSC 52 诊断不会被空选区去重误吞
+- Agent / Terminal 节点在用户输入前会刷新 snapshot restore 诊断抑制状态，避免恢复窗口尾部继续压住后续真实剪贴板诊断，同时不改变 Host 写入前不做本地 optimistic echo 的输入语义
+- 生产依赖审计告警已收口：升级 `js-yaml` 到 `^4.2.0`、`markdown-it` 到 `^14.2.0`，lockfile 中 `linkify-it` 解析到 `5.0.1`，不改变 Markdown / YAML 的用户可见功能语义
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.16.0` 升级到 `0.16.1` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用；若 VSM 仍不可见，本轮继续允许依赖 GitHub Release assets 与 Open VSX 兜底完成
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.16.1`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode` 或 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`，升级到 `0.16.1` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.16.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.16.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.16.0 - Preview Agent Fork, Sidebar, and Input Responsiveness Update
+
+相对 `0.15.2`，`0.16.0` 是新的公开 `Preview` 里程碑更新，重点补齐 Codex Agent 原生 `Fork`、会话历史分叉入口、侧栏待处理提醒汇总、multi-root root section 水印、Agent 标题栏 cwd / 启动命令拆分，以及多 Agent 输入响应和执行终端链接解析可靠性收口。它保留 `0.15.2` 的通知 allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` / `fg` 误导状态处理、画布外部链接打开方式配置、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.15.2` bump 到 `0.16.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- Codex Agent 节点在持有可信 `codex-session-id` 时支持 `Fork`，新节点使用 `codex fork <session-id>` 启动，并清理默认参数中的旧 `--last`、`--all`、`--include-non-interactive` 或旧目标 session；Claude Code 的 provider-native fork 路径继续保留
+- 当前 Agent 或历史会话分叉出的新节点会自动创建一条普通可编辑、标签为 `fork` 的来源连线；这只是画布语义连接，不新增正式分支树或机器可读 lineage
+- 侧栏 `节点` view 会把处于 attention 状态的节点前置；按分组树展示时新增“待处理提醒”虚拟分组，多根平铺展示仍保留 workspace root 分组并把待处理提醒放在最前
+- 侧栏 `会话历史` view 现在为每条 Codex / Claude Code 历史会话提供 `恢复` 与 `分叉` 两个 icon-only 操作，并补充专属 view 图标
+- 多根 workspace 的系统 root section body 默认平铺 root 名称水印，帮助低倍率总览中识别 root；可通过 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 关闭
+- Agent 节点标题栏拆分 cwd 标签与最近一次实际启动命令副标题，长命令通过 hover 展示完整内容，避免把工作目录和启动参数挤在同一行
+- 执行终端在多 Agent 大量输出时改进输入响应：活跃会话期间跳过 `workspaceState` 热路径、输出 drain 带全局预算和最近输入优先、snapshot hydrate 错峰恢复，并用 `outputSequence` 避免 live-runtime reattach 后陷入 stale snapshot reset 循环
+- 执行终端文件链接继续降载：hover 不再急切解析低置信候选，用户点击 pending link 时才用 interactive priority 解析；resolve 超时或失败会降级为 search fallback，extensionless path 只在明确点击场景下放宽
+- 执行终端复制路径新增只读诊断，覆盖 xterm selection、mouse tracking、右键复制、快捷键判定与 OSC 52 观察结果；本轮不把 OSC 52 自动桥接成剪贴板写入
+- 发布 workflow 拆分 Open VSX 与 Visual Studio Marketplace 两个失败域，继续复用同一批 GitHub Release assets，并由 manifest 生成包含版本亮点、渠道状态、残余风险和发布证据的 GitHub Release notes
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.15.2` 升级到 `0.16.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用；若 VSM 仍不可见，本轮允许依赖 GitHub Release assets 与 Open VSX 兜底完成
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.16.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode` 或 `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`，升级到 `0.16.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.16.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.16.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.15.2 - Preview Notification Controls and Claude Ctrl-Z Patch
+
+相对 `0.15.1`，`0.15.2` 是同一 `0.15.x` 公开 `Preview` 线内的通知控制与 Agent 可靠性补丁，重点收口执行节点 attention signal allow-list、Codex 最终失败文本提醒、Claude Agent `Ctrl-Z` / `fg` 误导状态处理，以及画布外部链接打开方式配置。它保留 `0.15.1` 的画布导航与 multi-root 可靠性补丁、`0.15.0` 的 Claude Code Agent `Fork`、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、GitHub Release assets 镜像、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.15.1` bump 到 `0.15.2`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增 `devSessionCanvas.notifications.enabledAttentionSignals` allow-list，可分别控制 `BEL`、`OSC 9`、`OSC 777`、已运行 Agent 异常退出和 Codex 文本异常是否生成画布 attention；设置为空数组时不会设置节点提醒、Minimap 闪烁或外部通知桥接
+- Codex 文本异常提醒继续保持显式 opt-in：只有 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications=codex` 且 `codexAbnormalOutputText` 未被 allow-list 禁用时才生效
+- 收紧 Codex 最终失败文本识别：方块标记的 `Internal server error` 与尾部 `stream disconnected before completion: stream closed before response.completed` 会触发补充提醒，`Reconnecting... n/m` 下方树形缩进的 stream-disconnected 暂态输出不会误触发
+- Claude Agent 节点不再把 Claude Code 的 `Ctrl-Z` / `fg` 文案当成可恢复生命周期；Webview、宿主和 runtime supervisor 写入路径都会阻断 Claude Agent `Ctrl-Z`，并提示使用停止、重启或 Fork
+- 旧版本遗留的 `suspended` Agent snapshot 仍可渲染，但不再暴露“恢复 / 恢复中”入口，也不会继续显示旧挂起态 Fork 动作，避免把不可交互状态误写成可恢复状态
+- 新增 `devSessionCanvas.canvas.linkOpenMode`，可选择画布内外部链接默认在 VS Code editor 预览打开，或交给系统外部浏览器 / 应用；默认预览模式会先解析 localhost / loopback 开发服务链接，避免远程场景把服务地址误指向客户端本机
+- 发布流程继续由 `publish/vX.Y.Z` 固定输入，并把同一批主扩展 / notifier VSIX 与 release manifest 镜像到对应 GitHub Release assets；该入口只是 marketplace 暂时不可用时的手动安装兜底，不替代 Visual Studio Marketplace / Open VSX 发布验证
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.15.1` 升级到 `0.15.2` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧已可公开查询，官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.15.2`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.2` 后会继续沿用该明确选择；未配置 `enabledAttentionSignals` 时使用本轮默认 allow-list
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.15.2` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.15.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.15.1 - Preview Canvas Navigation and Multi-Root Patch
+
+相对 `0.15.0`，`0.15.1` 是同一 `0.15.x` 公开 `Preview` 线内的画布导航与可靠性补丁，重点收口分组标题可读性、分组双击聚焦、`Add Folder to Workspace` 新增 root section 的就近放置与聚焦、多根通知标题 root 标识，以及执行性能诊断插桩。它保留 `0.15.0` 的 Claude Code Agent `Fork`、文件活动自动对象 owner-derived 分组、Panel Webview lifecycle 诊断闭环、publish tag 发布输入固定流程、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.15.0` bump 到 `0.15.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 分组标题溢出时补齐 hover tooltip，并保留 workspace-root 系统分组的 root 路径 tooltip，避免压缩标题后丢失 root 识别信息
+- 支持双击分组标题 tab 或未被节点覆盖的分组 body 空白区，将已有分组用缩放平移动画聚焦到当前视口；标题输入框、toolbar、resize 控制点等交互控件继续保留原语义
+- 修正分组双击聚焦过程中可能提交无意义拖拽 / resize 的问题，避免导航动作被误写成分组布局变更
+- 在 VS Code `Add Folder to Workspace` 新增 root 后，系统 root section 会以当前画布可见中心为锚点选择最近的不重叠位置，并通过动画进入视野；连续 Add Folder 会使用动画后的可见中心，Panel Webview frame 刷新后也会重放短窗口内的聚焦意图
+- 多根 workspace 的系统通知标题补充 root 标识，让同一窗口内多个 root 的 Agent / Terminal attention 通知更容易区分来源
+- 补充执行性能诊断插桩，覆盖 Host / Webview 的 output enqueue、drain、`xterm.write`、postMessage 和 input write 路径；宿主诊断 dump 可用于定位多 Agent 卡顿现场的瓶颈位置
+- 开发调试任务在新 worktree 中会先自举依赖，降低新 worktree 直接启动调试配置时的本地环境误报
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.15.0` 升级到 `0.15.1` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.15.1`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.1` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.15.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.15.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.15.0 - Preview Agent Fork and Release Automation Update
+
+相对 `0.14.1`，`0.15.0` 是一轮新的公开 `Preview` 里程碑更新，重点补齐 Claude Code Agent `Fork`、文件活动自动对象分组归属、Panel Webview lifecycle 诊断闭环，以及基于临时 `publish/vX.Y.Z` tag 的发布输入固定流程。它保留 `0.14.1` 的 Explorer Markdown 关联 Note、创建入口 surface 复用、分组 body 拖动画板、multi-root / 双窗口 shared live runtime 恢复验证、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.14.1` bump 到 `0.15.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 对持有可信 Claude Code session id 的 Agent 节点新增 `Fork` 动作：点击后创建新的 Claude Code Agent 节点，并用 `claude --resume <session-id> --fork-session` 立即启动；来源节点保持不变，新节点通过标题弱提示来源，并自动创建一条普通可编辑 `user` 边
+- `Fork` 第一版只面向 Claude Code；`Codex`、非 Claude provider、未持有可信 Claude session id 或未受信任 workspace 不会误触发 fork 启动
+- 文件活动自动 `file` / `file-list` 节点现在按 owner Agent 推导分组归属：单 owner 跟随该 Agent 的最内层分组，多 owner 使用最近公共父分组，multi-root 下保持 root 内隔离；用户拖动自动文件对象只改变位置，不改写 owner-derived 分组事实
+- 修正文件活动自动对象在多选拖拽后的宿主收口，避免拖拽结果把自动文件对象落到与 owner Agent 不一致的分组
+- 对齐 multi-root workspace-root section 与普通分组标题在缩放下的宽度压缩和可读尺寸规则，低倍率概览和放大场景都不再把 root 分组标题异常挤出边界
+- 加固 Panel Webview lifecycle 诊断闭环：Host 侧区分当前 surface 对象和实际可用 message target frame，支持同 Webview frame ready 重新绑定；`Dev Session Canvas: 落盘当前宿主诊断` 会写出 lifecycle 聚合摘要，并新增 `npm run diagnose:webview-lifecycle` 离线分析入口
+- 发布流程升级为临时 `publish/vX.Y.Z` tag 固定 release input，发布脚本在双市场主扩展 / notifier 验证通过后再创建正式 `vX.Y.Z` tag，并输出 release manifest 作为 Actions artifact / 发布证据
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.14.1` 升级到 `0.15.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.15.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.15.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.15.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.15.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.14.1 - Preview Markdown Note Shortcut and Shared Runtime Patch
+
+相对 `0.14.0`，`0.14.1` 是同一 `0.14.x` 公开 `Preview` 线内的能力与可靠性补丁，重点补齐 File Explorer Markdown 文件右键创建关联 `Note`、创建类入口复用已打开 Canvas surface、分组 body 空白区拖动画板，以及 multi-root / 双窗口 shared live runtime 恢复验证与硬化。它保留 `0.14.0` 的空间级 fit view、初始自动 fit、动态最小缩放、右下角 MiniMap、workspace-root section 可见性、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.14.0` bump 到 `0.14.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增 File Explorer Markdown 文件右键入口：对 `.md` / `.markdown` 文件显示 `Dev Session Canvas: 在 Canvas 中创建关联 Note`，并复用现有关联 Markdown Note 的读取、去重确认、创建、聚焦、多根归属和持久化模型
+- Host 侧会二次校验 Explorer 资源的 `file` scheme、Markdown 扩展名、文件存在性和普通文件类型；非 Markdown、目录、缺失文件或非本地文件不会被静默创建为关联 Note
+- 创建类入口优先复用当前窗口已打开的 Canvas surface：普通创建节点、Explorer 创建 `Terminal` / `Agent`、Explorer Markdown 创建关联 Note、创建分组，以及模板应用 / 重置不再因为 `defaultSurface` 配置而意外打开另一个承载面
+- 修复分组 body 空白区左键拖动会移动分组的问题；现在 body 空白区与画布空白区一致用于平移画板，分组移动继续通过标题 tab 与可命中边框完成
+- 强化 multi-root 与多 VS Code 窗口共享 live runtime 的恢复路径：runtime binding 继续以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威，双窗口 output 多播、双向 input、Terminal resize last-writer-wins、第二窗口 stop / delete 后第一窗口收到非 live 终态已有真实 VS Code smoke 覆盖
+- Marketplace / README 支持入口补充微信交流群二维码；二维码通过 README 资源改写引用，继续排除出 VSIX payload
+- 补充 Explorer Markdown Note、surface 复用、分组 body 拖动画板、multi-root / storage slot / two-window shared runtime 的产品规格、设计记录和自动化验证
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.14.0` 升级到 `0.14.1` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.14.1`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.14.1` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.14.1` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.14.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.14.0 - Preview Spatial Navigation and MiniMap Update
+
+相对 `0.13.0`，`0.14.0` 是一轮新的公开 `Preview` 里程碑更新，重点把画布全局导航从“只理解节点”升级为“理解完整空间对象”：普通用户分组、空分组和 multi-root workspace 的系统 root section 都会参与全局 fit view、初始自动 fit、动态最小缩放与右下角 MiniMap。它保留 `0.13.0` 的 VS Code multi-root workspace 组合画布、root-local 状态共享、跨 root 连线拒绝、文件活动命名空间、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.13.0` bump 到 `0.14.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 全局 fit view、初始自动 fit、动态最小缩放和右下角 MiniMap 统一使用画布空间边界，默认纳入节点、普通用户分组和系统 workspace root section
+- 在 multi-root workspace 中，即使某个 root section 为空，或 root section 明显大于内部节点，点击 fit view 也会把所有 root section 纳入视口
+- 右下角 MiniMap 改为自有 SVG MiniMap，显示 workspace root section、普通用户分组与节点的相对布局；workspace root section 使用更强的虚线系统边界，普通用户分组沿用主画布 panel border token，节点 attention 仍保持最高视觉优先级
+- MiniMap 拖拽与滚轮导航会持久化 viewport 和 visible center；滚轮缩放遵循动态 fit view 最小倍率，不再被旧的舒适编辑下限卡住
+- 修复停止后的 Agent 节点在紧凑标题栏里显示 `新建` / `恢复` 重启动作时可能挤出 `删除` 按钮的问题；重启动作现在会在紧凑 chrome 内先换行收缩
+- 补充空间边界 fit view、MiniMap 分组 / root section 可见性、MiniMap 视口持久化和 Agent 重启动作紧凑布局的 Playwright 回归
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.13.0` 升级到 `0.14.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.14.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.14.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.14.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.14.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.13.0 - Preview Multi-Root Workspace Canvas Update
+
+相对 `0.12.0`，`0.13.0` 是一轮新的公开 `Preview` 里程碑更新，重点把 VS Code multi-root workspace 中的多个 workspace folder 组合到同一张画布中，并让单根与多根打开方式共享同一份 root-local 画布内容。它保留 `0.12.0` 的 File Explorer 绑定 cwd 创建执行节点、Panel Webview lifecycle 串线修复、执行目录可见反馈、画布节点 padding 收口，以及 `0.11.0` 的画布分组、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.12.0` bump 到 `0.13.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 在 VS Code multi-root workspace 中为每个 workspace folder 生成系统级 root section，并把各 root 的 root-local 画布状态组合成同一张画布；单独打开某个 root 时仍只显示该 root 自己的画布
+- root section 可以移动、resize，并可作为整体被外层普通分组包含；系统 root section 不允许删除、取消分组或重命名，移动 root section 只写入 multi-root overlay，不改写单根 root-local 节点坐标
+- 在 multi-root 组合视图中移动 root 内对象、创建 `Note` / `Agent` / `Terminal`、应用模板或拖入关联 Markdown Note，会按目标 root 写回对应 root-local 状态；执行节点真实 cwd 仍由 `metadata.cwd` 决定，不因拖到其他 root section 而静默改写
+- 节点、用户分组、连线、文件活动自动节点、file-activity edge 和 suppression id 在组合视图中按 root 命名空间隔离，避免不同 root 下同名对象或自动 file artifact 冲突
+- Webview 与 Host 双侧拒绝跨 root 创建或重连连线，避免生成只能在当前会话临时可见、无法拆回 root-local 或 overlay 的状态
+- multi-root 组合视图不重新连接 live runtime，只展示历史态；持久化时保留 root-local snapshot 中的 reattach 信号，用户单独打开所属 root 后仍可走 root-local live runtime 恢复路径
+- 修复发布前发现的 Panel / Editor Webview dispose 后仍读取已释放 `webview` 对象的问题，surface dispose cleanup 改用 attach 时捕获的 Webview 引用，并允许同 generation 的新 frameId ready 消息提升当前活跃 frame，避免 VS Code smoke 在 surface 切换时命中 `Webview is disposed`
+- 补齐关联 Markdown Note 读取期间文件内容变化的 re-stat / retry 保护，降低读取中途内容 revision 改变造成的 stale content 风险
+- 补充 multi-root composition、root section 分组策略、跨 root edge 拒绝、文件活动命名空间、suppression 往返、runtime skip 保守持久化、模板、Markdown drop、执行上下文、协议、Panel lifecycle 和 Webview 回归
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.12.0` 升级到 `0.13.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.13.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.13.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.13.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.13.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.12.0 - Preview Explorer Execution Context Update
+
+相对 `0.11.0`，`0.12.0` 是一轮新的公开 `Preview` 里程碑更新，重点把 VS Code File Explorer 中已经选定的目录或文件上下文带入画布执行节点，并修复 Panel Webview 恢复时可能出现的空画布串线问题。它保留 `0.11.0` 的画布分组、分组树侧栏、分组模板保存 / 应用、受限创建入口解释，以及既有生产 Webview Terminal TUI 输入热修复、Agent 异常提醒、Note Markdown 源码定位 / 可恢复草稿、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.11.0` bump 到 `0.12.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增 File Explorer 资源右键入口：workspace 内目录可直接在 Canvas 中创建 `Terminal` 或 `Agent`，普通文件会使用其父目录作为执行 cwd；非 `file` scheme、workspace 外资源或不可用目录会被拒绝并给出明确反馈
+- Explorer 创建的执行节点会把目标 cwd 写入节点 metadata；首次启动、停止后重启 / 新建 / resume、runtime supervisor、Agent CLI resolver、shell 环境探测、执行诊断和终端链接上下文都使用节点 cwd，不静默回退到 workspace 根目录
+- Agent 节点标题副标题与侧栏 `Nodes` 第二行会显示执行目录短标签；hover 保留完整 cwd 与启动命令；目录标签追加尾缀并保留 cwd 来源分隔符风格，Terminal 标题仍只展示 shell path
+- Panel Webview 引入 lifecycle identity、frameId 与 bootstrap ack，Host 侧把 ready、bootstrap、probe 和 DOM action 绑定到实际完成启动的 Webview frame，避免 VS Code Panel restore 双 attach 后旧 frame ready 串到新 frame、导致画布背景可见但节点不显示
+- 统一画布节点正文 padding、执行 runtime frame padding 与分组成员 inset，让 `Agent`、`Terminal`、`File`、`File List`、fallback card 和分组 body 的视觉节奏保持一致
+- 补充 Explorer cwd、执行上下文、workspace-relative path、协议、manifest、侧栏、Panel lifecycle、VS Code smoke 和 Playwright Webview 回归，覆盖 cwd 创建、cwd 可见投影、启动诊断、shell path 基准、Webview lifecycle stale 防护和分组 / padding 兼容路径
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.11.0` 升级到 `0.12.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.12.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.12.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.12.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.12.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.11.0 - Preview Canvas Groups Update
+
+相对 `0.10.7`，`0.11.0` 是一轮新的公开 `Preview` 里程碑更新，重点把画布从单纯摆放 `Agent` / `Terminal` / `Note` 节点，推进到可用分组组织多会话工作区。它保留 `0.10.7` 的生产 Webview Terminal TUI 输入热修复、`0.10.6` 的 Agent 异常提醒、`0.10.5` 的 Note Markdown 源码定位 / 可恢复草稿修复、`0.10.4` 的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.7` bump 到 `0.11.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增画布分组对象，可通过空白区右键或命令面板创建空分组，也可按住 Ctrl / Cmd 多选同一父级下的节点或分组后从选中项创建分组
+- 分组支持命名、移动、取消分组、删除空分组、删除非空分组确认、嵌套分组、成员随组移动、拖入 / 拖出、8 向 resize 和靠近画布边缘时的自动平移
+- 分组采用 VS Code Panel 风格视觉，body 背景位于普通节点下方，foreground 交互 chrome 保持在 React Flow renderer 内，避免放大画布时触发外层 Webview 滚动条
+- 侧栏 `Nodes` 列表默认按分组树展示，并通过原生 view title `...` 菜单在分组视图和平铺视图之间切换
+- 右键创建入口在受限状态下保持可见，并通过宿主返回具体不可用原因，避免用户误以为 `Terminal` / `Agent` 类型丢失
+- 模板保存与应用会保留兼容节点的分组结构，并在应用时重新映射节点与分组身份；外部模板的越界或循环分组引用会被拒绝或兜底切断
+- 补充分组协议、宿主几何收口、模板、manifest、VS Code smoke 和 Playwright Webview 回归，覆盖分组创建、选择、嵌套、resize、拖动、侧栏视图和创建入口受限解释
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.7` 升级到 `0.11.0` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.11.0`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.11.0` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.11.0` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.11.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.10.7 - Preview Terminal TUI Input Hotfix
+
+相对 `0.10.6`，`0.10.7` 是同一 `0.10.x` 公开 `Preview` 线内的 Terminal TUI 输入热修复。它保留 `0.10.6` 已验证的 Agent 异常提醒、`0.10.5` 的 Note Markdown 预览源码定位与可恢复草稿模型、`0.10.4` 的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点修复正常安装后的生产 Webview bundle 中，画布 `Terminal` 节点进入 Vim / `glab auth login` 等 TUI 后输入卡死的问题。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.6` bump 到 `0.10.7`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- Webview 生产构建将裸导入 `@xterm/xterm` 显式重定向到浏览器 CommonJS 入口 `@xterm/xterm/lib/xterm.js`，避开 xterm ESM 入口在 esbuild production minify 下的 DECRQM / `requestMode` 运行时错误
+- 修复正常安装的主扩展中，`Terminal` 节点进入 vi 风格 alternate screen 或交互式鉴权 TUI 后，Host 侧仍写入 PTY 但 Webview 侧控制序列解析中断、导致用户输入看似卡死的问题
+- 新增 `test:webview-build-xterm-entry`，直接在 minified Webview bundle 上发送 `CSI ? 12 $ p` 探针，确保 xterm 能返回合法模式响应，避免调试构建可用但发布构建损坏的回归
+- 补充 Playwright 回归，覆盖 `Agent` / `Terminal` 节点进入 vi 风格 alternate screen 后仍能接收输入，并确认节点控制按钮不被 TUI 状态阻塞
+- 同步终端运行时设计文档，记录 `0.10.6` 生产诊断结论、xterm 入口选择约束与验证口径
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.6` 升级到 `0.10.7` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.7`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.strongTerminalAttentionReminder` 或 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`，升级到 `0.10.7` 后会继续沿用该明确选择
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.7` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
+## 0.10.6 - Preview Agent Abnormal Interruption Notification Patch
+
+相对 `0.10.5`，`0.10.6` 是同一 `0.10.x` 公开 `Preview` 线内的 Agent 异常提醒补丁。它保留 `0.10.5` 已验证的 Note Markdown 预览源码定位与可恢复草稿模型、`0.10.4` 的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点补齐 Codex / Claude Code Agent 已运行会话异常中断时的节点内提醒与可选外部通知。
+
+### 本版本聚焦
+
+- 版本号从 `0.10.5` bump 到 `0.10.6`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- Codex / Claude Code Agent 已进入运行态后，如果在非用户主动停止的情况下以非 `0` 退出并进入 `error`，现在会补充触发节点 `attentionPending`、节点内提醒 icon、Minimap 闪烁和按配置的外部通知
+- 启动前校验失败、命令解析或 spawn 失败、`resume-failed`、用户主动停止、删除节点清理、正常 `0` 退出和 `Terminal` 节点退出都不会触发这条额外提醒，避免把用户仍在画布前处理的路径变成噪音
+- 新增 `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications` 配置，默认 `off`；显式设为 `codex` 时，Codex 输出中的高置信 `stream disconnected before completion: stream closed before response.completed` 文案会在进程退出前补充触发输出流异常提醒
+- Codex 异常输出文本匹配只扫描新增输出；用户下一轮输入、配置切换和 live-runtime attach 已有历史输出都会被标记为已扫描，避免旧 buffer 中的同一条 stream error 被重复通知
+- Claude Code 当前不启用输出文本匹配；在缺少真实 Claude 输出样本或结构化 `StopFailure` 证据前，Claude 只使用“已运行后非用户主动非 `0` 退出”的终态兜底提醒
+- 异常提醒复用既有 `attentionSignalBridge`：`none` 只保留节点内提醒，`workbench` 弹 VS Code 工作台消息，`system` 优先交给本机 UI 侧 notifier companion 并在失败时回退工作台消息
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 当前最低 VS Code 版本要求为 `1.80.0` 或更高版本
+- 首次安装与从 `0.10.5` 升级到 `0.10.6` 都通过当前宿主配置的公开扩展市场获取；官方 VS Code 使用 `Visual Studio Marketplace`，Open VSX 兼容宿主使用 `Open VSX`
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；本轮 notifier 版本号与主扩展对齐到 `0.10.6`，不引入新的通知投递行为变更
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge` 或 `devSessionCanvas.notifications.strongTerminalAttentionReminder`，升级到 `0.10.6` 后会继续沿用该明确选择；新增异常输出文本匹配配置默认关闭
+- Preview 阶段不承诺跨版本 workspace 状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
+
+### 回退建议
+
+- 若 `0.10.6` 阻塞当前工作流，建议先禁用或卸载扩展
+- 优先等待后续更高的 `0.10.x` 修复版本，而非尝试手动降级
+- 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
+
 ## 0.10.5 - Preview Note Markdown Recovery Patch
 
 相对 `0.10.4`，`0.10.5` 是同一 `0.10.x` 公开 `Preview` 线内的 Note Markdown 体验与草稿恢复修复版本。它保留 `0.10.4` 已验证的执行终端链接刷新性能修复、双市场发布元数据、安装拓扑和支持边界，重点收口 Markdown 预览双击进入编辑时的源码定位，以及关联 Markdown Note 的可恢复草稿模型。

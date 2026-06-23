@@ -17,7 +17,8 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
-updated_at: 2026-05-11
+  - docs/exec-plans/completed/sidebar-workspace-worktree-actions.md
+updated_at: 2026-06-22
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -47,13 +48,14 @@ updated_at: 2026-05-11
 
 - 让用户在不拖动画布的情况下，也能从 sidebar 快速理解当前有哪些节点、它们的状态是什么、点一下就能回到哪里。
 - 让用户在同一侧栏中看到当前 workspace 的 `Codex` / `Claude Code` 历史会话，并能通过搜索快速筛到目标会话。
-- 让“从历史恢复为一个新节点”成为稳定的一跳操作，而不是要求用户手工拼 resume 命令。
+- 让“从历史恢复为一个新节点”和“从历史分叉出一个新节点”都成为稳定的一跳操作，而不是要求用户手工拼 resume / fork 命令。
 - 保持整个 sidebar 仍然像 VS Code 原生 view section，而不是长成新的 mini dashboard。
 
 ## 4. 非目标
 
 - 不在本轮显示完整 transcript、完整终端输出或 provider 私有元数据。
 - 不在本轮支持会话删除、重命名、归档或跨 workspace 聚合。
+- 不在本轮为历史分叉新增正式分支树或机器可读 lineage；会话历史分叉只是创建同 provider 新 Agent 节点并执行 provider 原生 fork 命令。
 - 不在本轮把节点列表做成可拖拽重排或层级树。
 - 不在本轮引入新的 Activity Bar 容器或独立面板。
 
@@ -110,25 +112,39 @@ updated_at: 2026-05-11
 - 每个节点项显示：
   - 节点对应颜色的图标形圆点标记
   - 节点标题
-  - 人类可读的第二行状态文案；其中 `Agent` 固定显示 `provider · 状态`，其余节点继续只显示状态
+  - 人类可读的第二行状态文案；其中 `Agent` 固定显示 `cwdLabel · provider · 状态`，其余节点继续只显示状态
   - 当节点正处于 notification 提醒中时，在该项最右侧显示通知图标
 - 节点列表的图标与提醒都直接使用 Webview 内的 codicon 资源：左侧是带运行时颜色的 `circle-filled`，右侧提醒位是与画布节点一致的 `bell`。
-- 节点列表 Webview 的 codicon 资源采用与主画布一致的 bundled asset 路线：构建阶段把 `@vscode/codicons/dist/codicon.css` 打成 `dist/sidebar-codicon.css` 并连同字体资产一起发版，运行时只从扩展自己的 `dist/` 目录读取，不再直连 `node_modules/`。
+- 节点列表与会话历史 Webview 的 codicon 资源采用与主画布一致的 bundled asset 路线：构建阶段把 `@vscode/codicons/dist/codicon.css` 打成 `dist/sidebar-codicon.css` 并连同字体资产一起发版，运行时只从扩展自己的 `dist/` 目录读取，不再直连 `node_modules/`。
 - 视觉上继续收口为 VS Code 原生 sidebar 列表质感：无卡片、无阴影、无多层装饰，只保留轻量 hover / selected 态和紧凑两行排版。
+- 节点列表的显示模式切换使用 VSCode 原生 view title secondary action，即 `节点` view 标题右上角宿主提供的 `...` 更多菜单；Webview 内容区不自绘 `...` 按钮或菜单。菜单项提供“平铺展示节点”和“按分组树展示节点”，默认选中按分组树展示；当前模式使用标题左侧显式 `✓` 反馈选中项，避免 `view/title` popup 不稳定展示 command icon 时丢失状态提示。
+- 默认按分组树展示时，Webview 只把权威节点快照和 `CanvasGroupSummary` 投影成侧栏树：父子分组按层级缩进，每个分组 section 可折叠/展开；没有分组的节点进入同样可折叠的“未分组”section。这个折叠状态只存在于侧栏呈现层，不持久化为画布状态，不影响画布分组可见性，也不推导新的成员关系。
+- 当存在处于 attention 状态的节点时，节点列表把“回到需要处理的节点”作为最高优先级入口：平铺展示中 attention 节点排在普通节点前；分组树展示中顶部额外显示“待处理提醒”虚拟分组，汇总所有 attention 节点，同时这些节点仍保留在原分组树位置，避免虚拟汇总覆盖真实归属。
+- 多根 workspace 下的平铺展示不会完全抹平 root 归属，而是继续保留 workspace root 分组。若此时存在 attention 节点，顶部仍显示“待处理提醒”虚拟分组，并且该虚拟分组排在所有 root 分组之前；root 分组内仍保留各自节点，其中 attention 节点在对应 root 内排在普通节点前。
+- `节点` view 标题栏除了创建节点和显示模式切换外，还提供两个 workspace 操作入口：添加文件夹到当前 workspace，以及新建 git worktree 并添加到当前 workspace。添加文件夹走 VS Code `workspace.updateWorkspaceFolders(...)`；新建 worktree 由宿主读取 `HEAD` 和本地分支 refs 后展示 VS Code 风格 QuickPick，成功执行 `git -C <root> worktree add ...` 后再把目标目录作为 workspace folder 加入当前窗口。
+- 多根 workspace 下，如果用户从 `节点` view 标题栏点击全局新建 worktree，宿主必须先用 QuickPick 选择基准 folder，避免猜测要基于哪个仓库创建 worktree；单根 workspace 直接使用唯一 folder。选定 folder 后的第一层 QuickPick 使用 `Create Worktree (...path...) (1/2)` 标题，包含 `Create new branch...`、`Create new branch from...`、`HEAD` 和本地分支；`Create new branch from...` 进入第二层 `Create new branch from...` ref picker。创建新分支路径使用 `git worktree add -b <branch> <path> [startPoint]`，已有 ref 路径使用 `git worktree add [--detach] <path> <ref>`，其中 `HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。
+- workspace folder 分组行前置一个 folder kind 图标，用于区分普通 folder、git repository 和 linked git worktree：宿主读取 workspace root 下 `.git` 元数据，未发现 `.git` 视为普通 folder，目录型 `.git` 视为 repository，`gitdir:` 指向 `.git/worktrees/*` 的文件型 `.git` 视为 worktree，其他 `.git` 文件或读取失败时回退为 repository。workspace folder 分组行尾显示三个 folder 级 icon-only 操作，顺序为：基于该 folder 新建 worktree 并加入 workspace、移除 git worktree 并从 workspace 移除该 folder、从当前 workspace 移除该 folder。它们只出现在 `role === 'workspace-root'` 且存在 `workspaceRootPath` 的系统 workspace folder 分组行，不出现在普通用户分组、未分组或待处理提醒虚拟分组。新建 worktree 按钮使用 VS Code 专用 `worktree` Codicon；移除 folder 只调用 VS Code workspace folder 移除语义，不删除磁盘目录；移除 worktree 会先确认该 folder 是 linked git worktree，再执行 `git worktree remove`。
 - 点击节点项后，宿主会统一执行“打开/定位画布 -> 等待 Webview ready -> 下发 `host/focusNode`”，把节点滚入可见区域并选中。
 
 ### 6.2 会话历史使用最小 `WebviewView`
 
 - 在同一 sidebar container 中新增一个 `会话历史` section。
+- `会话历史` section 在 `package.json` 中使用 `images/dev-session-canvas-sessions-activitybar.svg` 作为专属 view icon；图标延续主 Dev Session Canvas activitybar glyph，并用右上角 badge 表达历史语义，badge 内部参考 VS Code Codicon `history` 的时钟指针部分，去掉外圈和回退箭头以保证 24px 下清晰。这只是该 view section 在标题不可见或被用户拖到 Activity Bar 时的识别资产，不引入新的 Activity Bar 容器。
 - 它使用最小 `WebviewView`，原因不是要做更复杂 UI，而是必须在同一区域内提供搜索框与双击恢复能力。
 - 具体承载文件是 `src/sidebar/CanvasSidebarSessionHistoryView.ts`；宿主只向 Webview 提供搜索前的 snapshot，搜索输入与双击行为都在这个最小视图内部完成。
 - 视图结构只保留两层：
   - 顶部一个搜索框
   - 下方一列结果列表
 - 结果项保持 VS Code 原生 list 风格：无卡片、无阴影、无多层装饰，只用主题 token、轻量 hover/selected 态和紧凑行距。
-- 每条结果项采用两行紧凑结构：首行显示 provider 图标和“会话中的第一条用户指令”标题，次行显示“相对更新时间 + sessionId”；工作目录和绝对时间收口到 tooltip。
+- 每条结果项采用两行紧凑结构：首行显示 provider 图标、“会话中的第一条用户指令”标题，以及右侧 `恢复` / `分叉` 两个 icon-only 按钮；按钮图标使用 VSCode Codicon，其中 `恢复` 使用 `history`，`分叉` 使用 `repo-forked`，不单独自绘同义 SVG；次行显示“相对更新时间 + sessionId”；工作目录和绝对时间收口到 tooltip。
 - 搜索文本覆盖会话标题、provider、sessionId 与工作目录等信息；仍不匹配当前画布节点副标题。
+- 会话历史的分组开关使用 VSCode 原生 view title secondary action，即 `会话历史` view 标题右上角宿主提供的 `...` 更多菜单；Webview 内容区不自绘 `...` 按钮或菜单。菜单项是可多选的三个开关：多根 root workspace 下按 root 分组（默认开启）、按 provider 分组、按分级时间分组。由于 stable `package.json#contributes.menus` 不能把一个 command 声明成动态 checked menu item，且 `view/title` popup 不稳定展示 command icon，当前采用 enable / disable 两个 command variant 切换；checked variant 的标题左侧显式带 `✓`，确保用户能在菜单里看出已选状态。
+- 多个分组开关同时开启时，Webview 呈现层固定按 root > provider > 时间递归生成标题行，不按用户勾选顺序改变层级。时间分组固定为 `24小时内`、`一周内`、`更早`；这些标题行只改变侧栏呈现，不改变历史会话事实、排序数据或恢复 / 分叉行为。
+- root 分组只在当前 VSCode 窗口存在多个 workspace folder 时产生可见标题行；单根 workspace 下即使 root 分组开关开启，也保持普通列表，避免默认状态引入无意义的单层标题。多根 workspace 下，每条会话按 cwd 所属的最深匹配 workspace folder 归入 root 分组，tooltip 与搜索文本也带上 root label。
+- 会话历史分组标题行使用与节点列表相同的侧栏 tree row 语义和 chevron twistie，支持点击、Enter 和 Space 折叠/展开。折叠状态只保存在 Webview 呈现层，不写入画布状态或 workspace state；搜索结果、分组设置或刷新导致某个 group key 不再存在时，呈现层会丢弃对应折叠 key。
+- `恢复` / `分叉` 按钮都提供 `aria-label` 与 `title`，按钮最小热区为 24px；按钮点击会阻止事件冒泡，避免误触行双击。会话项本身的双击、Enter、Space 仍保持原有恢复行为。
 - tooltip 只展示 provider 历史已知的会话元信息，不再注入当前画布节点标题或副标题。
+- tooltip 中的工作目录追加目录尾缀，并保留 provider session 记录中 cwd 的来源分隔符风格：含反斜杠来源显示为 `\`，slash-style 来源显示为 `/`；`//server/share/...` 不被改写成 `\\server\share\...`。
 
 ### 6.3 会话历史的数据来源是 provider 当前的 session 落地文件
 
@@ -141,7 +157,8 @@ updated_at: 2026-05-11
 
 过滤规则如下：
 
-- 只保留 `cwd` 位于当前 workspace 根目录内的记录。
+- 单根 workspace 下只保留 `cwd` 位于当前 workspace 根目录内的记录。
+- 多根 workspace 下逐个 workspace folder 扫描并合并结果，只保留 `cwd` 位于任一 workspace root 内的记录；同一会话若被多个 root 命中，呈现时按最深匹配 root 归组。
 - 按 `provider + sessionId` 去重。
 - 排序按最后修改时间倒序。
 
@@ -157,24 +174,28 @@ updated_at: 2026-05-11
 
 这样可以让侧栏标题稳定反映“这条会话最初是为了解决什么问题”，同时避免继续复用当前画布节点标题或节点副标题。
 
-### 6.5 从历史恢复时，新建一个 `Agent` 节点并写入带默认启动参数的显式 resume 命令
+### 6.5 从历史恢复或分叉时，新建一个 `Agent` 节点并写入带默认启动参数的显式 provider 命令
 
-- 双击会话历史项后，不修改当前节点，也不要求用户二次确认。
-- 宿主会直接新建一个 `Agent` 节点，并把它的自定义启动命令写成“当前 provider 命令 + 当前默认启动参数 + 显式 resume 参数”的组合；例如：
+- 双击会话历史项或点击 `恢复` icon 按钮后，不修改当前节点，也不要求用户二次确认。
+- 点击 `分叉` icon 按钮后，同样不修改当前节点，也不要求用户二次确认；它创建同 provider 新 Agent 节点，并使用 provider 原生 fork 语义启动。
+- 宿主会直接新建一个 `Agent` 节点，并把它的自定义启动命令写成“当前 provider 命令 + 当前默认启动参数 + 显式 resume / fork 参数”的组合；例如：
   - `codex resume <当前仍有效的默认参数...> <session-id>`
   - `claude --resume <session-id> <当前仍有效的默认参数...>`
-- 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复后面；若默认参数里已含 `Codex resume --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数，历史恢复时要先剥离这些选择阶段参数，再写入目标 `session-id`。与之相对，`--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` 仍有效的参数继续保留；而 `resume` / `--resume` 这类模式 argv 本身则尽量前置到命令前部。
+  - `codex fork <当前仍有效的默认参数...> <session-id>`（实现上命令层把 `fork` 尽量前置，session id 保持在命令尾部）
+  - `claude --resume <session-id> --fork-session <当前仍有效的默认参数...>`
+- 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复或分叉后面；若默认参数里已含 `Codex resume --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数，历史恢复 / 分叉时要先剥离这些选择阶段参数，再写入目标 `session-id`。与之相对，`--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` / `fork <session-id>` 仍有效的参数继续保留；而 `resume` / `fork` / `--resume` 这类模式 argv 本身则尽量前置到命令前部。
+- 历史分叉节点标题使用原会话标题加 `分叉` 后缀作为弱提示；从历史列表发起时没有现有画布来源节点，因此不自动创建 `fork` 连线。
 - 新节点创建后，宿主会自动打开或定位画布，并聚焦到新节点。
 - 后续自动启动仍沿用现有 `Agent` 节点“等待尺寸就绪后自动启动”的宿主/前端链路，不再另开一套特殊恢复流程。
 
-这条链路收口在 `src/panel/CanvasPanelManager.ts` 的 `restoreAgentSessionFromHistory(...)`、`focusNodeById(...)` 和 `buildHistoryResumeCommandLine(...)`，并由 `src/extension.ts` 暴露给 sidebar 内部命令与 QuickPick 回退入口。
+这条链路收口在 `src/panel/CanvasPanelManager.ts` 的 `restoreAgentSessionFromHistory(...)`、`forkAgentSessionFromHistory(...)`、`focusNodeById(...)`、`buildHistoryResumeCommandLine(...)` 和 `buildAgentBranchCommandLine(...)`，并由 `src/extension.ts` 暴露给 sidebar 内部命令与 QuickPick 回退入口。
 
 ### 6.6 侧栏不可见时，仍保留命令入口
 
 为了满足规格里的“侧栏不可见时仍可通过命令入口访问”，当前再补两条命令：
 
 - `显示节点列表`：用 QuickPick 临时展示当前非文件节点，选择后定位到画布节点。
-- `显示会话历史`：用 QuickPick 临时展示当前 workspace 会话记录，选择后恢复为新节点。
+- `显示会话历史`：用 QuickPick 临时展示当前 workspace 会话记录，选择后恢复或分叉为新节点。
 
 它们不是新的主交互面，而是 sidebar 被折叠、移动或暂时不可见时的回退入口。
 
@@ -201,14 +222,36 @@ updated_at: 2026-05-11
 
 1. 打开 `Extension Development Host` 后，sidebar 中能看到新增的 `节点` 与 `会话历史` section。
 2. 节点列表中不出现 `file` / `file-list` 节点；点击任一项后，画布能滚动并聚焦到对应节点。
-3. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
-4. 搜索框输入关键词后，列表会即时过滤。
-5. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
-6. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
+3. `节点` view 默认按分组树展示，标题右上角使用 VSCode 原生 `...` 菜单承载平铺 / 按分组树展示切换；按分组树展示时，分组和“未分组”section 可折叠/展开，折叠只影响侧栏列表可见行。
+4. attention 节点在单根平铺展示中排在普通节点前；按分组树展示中顶部出现“待处理提醒”虚拟分组，且不移除节点的原分组位置；多根 workspace 平铺展示中保留 root 分组，并让“待处理提醒”虚拟分组排在 root 分组之前。
+5. `节点` view 标题栏提供添加 workspace folder 与新建 worktree 的全局按钮；多根 workspace 下全局新建 worktree 先选择基准 folder。
+6. 新建 worktree 的第一层 QuickPick 包含创建新分支、从 ref 创建新分支和已有 ref 选择；第二层只在用户选择 `Create new branch from...` 时出现；已有 ref 创建不要求输入新分支名。
+7. workspace folder 分组行首只在系统 workspace folder 分组上显示 folder kind 图标，区分普通 folder、git repository 与 linked git worktree；行尾显示新建 worktree、移除 worktree 与移除 folder 三个 icon-only 操作；普通用户分组和虚拟分组不显示这组 folder 操作；新建 worktree 图标使用 `worktree` Codicon。
+8. workspace folder 行新建 worktree 成功后，新 worktree 目录被加入当前 workspace；workspace folder 行移除 folder 后，该 folder 从当前 workspace 中移除但磁盘目录不被删除；移除 worktree 会删除对应 git worktree 目录并从 workspace 移除该 folder。
+9. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
+10. 搜索框输入关键词后，列表会即时过滤。
+11. `会话历史` view 标题右上角原生 `...` 菜单提供三个可多选分组开关；多根 root workspace 下按 root 分组默认开启，provider / 分级时间默认关闭；checked 菜单 variant 在标题左侧显示 `✓`；同时开启时按 root > provider > 时间层级呈现，时间标题是 `24小时内`、`一周内`、`更早`。
+12. 会话历史分组标题行可折叠/展开；折叠任一 root / provider / 时间分组后，其后代子分组和会话项隐藏，重新展开后恢复显示。
+13. 双击一条会话后，会新建一个 `Agent` 节点，并带着正确的 provider resume 命令进入自动启动链路。
+14. 点击会话项右侧 `恢复` icon 按钮后，效果与双击一致；点击 `分叉` icon 按钮后，会新建同 provider `Agent` 节点，并带着正确的 provider-native fork 命令进入自动启动链路。
+15. 折叠或离开 sidebar 时，命令面板仍可通过“显示节点列表”“显示会话历史”到达相同能力。
 
 ## 9. 当前验证状态
 
+- 2026-06-22：维护者已在真实 `Extension Development Host` 中完成 `view/title` 原生 `...` 菜单视觉确认，确认 `会话历史` 的多选分组开关和 `节点` 的平铺 / 分组视图模式都能通过标题左侧 `✓` 稳定显示当前选中态；PR #187 中原记录的真实菜单视觉确认残余风险已收口。
+- 2026-06-19：会话历史 view title `...` 菜单新增三个可多选分组开关：多根 root workspace 下按 root 分组默认开启，按 provider 分组和按分级时间分组默认关闭；Webview 呈现层固定按 root > provider > 时间生成分组标题行，单根 workspace 下 root 开关不显示额外 root 标题；checked 菜单 variant 用标题左侧 `✓` 作为 `view/title` popup 的稳定可见 fallback，分组标题行支持折叠/展开。已补 `npm run test:extension-manifest` 覆盖菜单 contribution、checked title 与 commandPalette 隐藏，补 `npm run test:sidebar-session-history` 覆盖多根 root 归属、root/provider/time 层级、折叠行为和单根 root 退化，并已运行 `npm run typecheck`。
+- 2026-06-16：根据 VS Code Source Control 截图反馈，worktree 全局命令与 workspace folder 行按钮改用专用 `worktree` Codicon；新建 worktree 流程从单一分支名输入扩展为 `Create Worktree (...path...) (1/2)` + `Create new branch from...` 的 QuickPick ref 选择，可创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建；`HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。已复跑 `npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:sidebar-list-colors`、`npm run typecheck`、`npm run build` 与 `git diff --check`。
+- 2026-06-16：workspace folder 分组行新增前置 kind 图标，普通 folder / git repository / linked worktree 分别使用 `folder` / `repo` / `worktree` Codicon；行尾操作顺序调整为新建 worktree、移除 worktree、移除 folder。已复跑 `npm run typecheck`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:extension-manifest`、`npm run test:sidebar-list-colors`、`npm run build` 与 `git diff --check`。
+- 2026-06-16：`节点` view 标题栏新增添加 workspace folder 与新建 worktree 入口，workspace folder 分组行尾新增 folder 级新建 worktree / 移除 folder / 移除 worktree 操作；已新增 `npm run test:sidebar-node-list` 覆盖 workspace folder 行 action 呈现和 Webview 消息，`npm run test:extension-manifest` 覆盖 sidebar title action 与 folder scoped 命令 contribution。真实 VS Code 中的文件夹 picker、`git worktree add`、`git worktree remove` 与 workspace folder 增删仍需人工验证。
+- 2026-06-15：会话历史项右侧 `恢复` / `分叉` icon-only 按钮收口为 bundled VSCode Codicon（`history` / `repo-forked`），与节点列表和模板侧栏共用 `dist/sidebar-codicon.css` 资源路线。
+- 2026-06-15：会话历史 view section 新增专属 `images/dev-session-canvas-sessions-activitybar.svg`，沿用主 glyph + 右上角 badge 约定，badge 内部参考 VS Code Codicon `history` 的时钟指针部分；已纳入 `npm run test:activitybar-badges` 与 manifest 测试。
+- 2026-06-14：会话历史项右侧新增 `恢复` / `分叉` 两个 icon-only 按钮，双击与 Enter / Space 保持既有恢复行为；Host 新增 `forkAgentSessionFromHistory(...)`，从历史会话生成 provider-native fork 启动命令。已运行 `npm run typecheck`、`npm run test:sidebar-session-history` 与 `git diff --check`。
+
+- 2026-06-13：节点列表 attention 入口补齐三条规则：单根平铺展示中 attention 节点前置；分组树展示中顶部显示“待处理提醒”虚拟分组且保留原分组位置；多根 workspace 平铺展示保留 workspace root 分组，并把“待处理提醒”虚拟分组排在 root 分组之前。新增 `npm run test:sidebar-node-list` 覆盖这些 DOM 排序与分组规则。
 - 2026-05-11：`节点` view section 新增专属单色 SVG 图标，manifest 改为引用 `images/dev-session-canvas-nodes-activitybar.svg`；已通过 `npm run typecheck`、`npm run build` 与本地 manifest 图标路径检查验证。
+- 2026-06-03：会话历史 tooltip 的工作目录追加目录尾缀，并按 cwd 来源分隔符显示 POSIX、Windows drive、反斜杠 UNC 与 slash-style network path；已通过 `npm run test:sidebar-session-history`、`npm run test:workspace-relative-paths` 与 `npm run typecheck`。
+- 2026-06-03：节点列表中的 Agent 第二行跟随 Explorer cwd 可见反馈，显示 `cwdLabel · provider · 状态`；`cwdLabel` 追加目录尾缀并保留 cwd 来源分隔符。本轮已通过 `npm run test:workspace-relative-paths` 与 `npm run typecheck`。
+- 2026-05-26：`节点` view 默认按分组树展示；显示模式切换从 Webview 内容区自绘更多按钮收口到 VSCode 原生 view title `...` 菜单，并把按分组展示改为可折叠的侧栏分组树；该折叠状态只属于侧栏呈现，不改变画布分组事实。已通过 manifest、类型检查、侧栏颜色 token、build 和 diff 检查；`trusted` VSCode smoke 已执行到侧栏分组树路径，随后在既有 Note Markdown 文件关联用例中超时，需后续单独收口该非本轮 blocker。
 - 2026-04-29 已修复三条 review blocker：节点列表 Webview 的 codicon 资源现改为与主画布一致的 bundled asset，构建产物与 VSIX 都从 `dist/sidebar-codicon.css` 读取；Claude 会话历史只接受 transcript 内显式 `cwd`，冲突 project 目录下缺少 `cwd` 的会话会 fail closed；历史恢复节点会把当前 provider 默认启动参数并入显式 resume 命令。对应自动化验证已通过 `node scripts/test/test-sidebar-codicon-bundle.mjs`、`node scripts/test/test-sidebar-session-history.mjs` 与 `node scripts/test/test-agent-launch-presets.mjs`。
 - 2026-04-28 已完成上一版节点列表与会话历史实现，并通过 `node scripts/test/test-sidebar-session-history.mjs` 与 `npm run test:smoke`，证明 provider session 扫描、workspace 过滤、节点聚焦与历史恢复主路径成立。
 - 2026-04-28 产品规格新增两条节点列表要求：次级描述只显示状态，不再显示副标题；当节点正处于 notification 提醒中时，该项最右侧显示通知图标。

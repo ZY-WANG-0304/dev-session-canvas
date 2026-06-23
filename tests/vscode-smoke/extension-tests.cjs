@@ -11,7 +11,7 @@ const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
 const EXPLICIT_CLAUDE_SESSION_ID = 'session-explicit-123456789';
 const RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE =
-  '当前 workspace 未受信任，只能查看历史会话，不能恢复为新 Agent 节点。';
+  '当前 workspace 未受信任，只能查看历史会话，不能恢复或分叉为新 Agent 节点。';
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -33,10 +33,16 @@ const COMMAND_IDS = {
   openCodexAuthFile: 'devSessionCanvas.openCodexAuthFile',
   openClaudeSettingsFile: 'devSessionCanvas.openClaudeSettingsFile',
   createNode: 'devSessionCanvas.createNode',
+  createTerminalFromExplorerResource: 'devSessionCanvas.createTerminalFromExplorerResource',
+  createAgentFromExplorerResource: 'devSessionCanvas.createAgentFromExplorerResource',
+  createNoteFromExplorerMarkdown: 'devSessionCanvas.createNoteFromExplorerMarkdown',
   showNodeList: 'devSessionCanvas.showNodeList',
+  setSidebarNodeListFlatView: 'devSessionCanvas.setSidebarNodeListFlatView',
+  setSidebarNodeListGroupedView: 'devSessionCanvas.setSidebarNodeListGroupedView',
   showSessionHistory: 'devSessionCanvas.showSessionHistory',
   focusNode: 'devSessionCanvas.__internal.focusNode',
   refreshSessionHistory: 'devSessionCanvas.refreshSessionHistory',
+  dumpHostDiagnostics: 'devSessionCanvas.dumpHostDiagnostics',
   focusSidebarNode: 'devSessionCanvas.__internal.focusSidebarNode',
   restoreSidebarSessionHistoryEntry: 'devSessionCanvas.__internal.restoreSidebarSessionHistoryEntry',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
@@ -50,6 +56,7 @@ const COMMAND_IDS = {
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
+  testDumpHostDiagnostics: 'devSessionCanvas.__test.dumpHostDiagnostics',
   testLocateCodexSessionId: 'devSessionCanvas.__test.locateCodexSessionId',
   testLocateClaudeSessionId: 'devSessionCanvas.__test.locateClaudeSessionId',
   testExtractCodexResumeSessionId: 'devSessionCanvas.__test.extractCodexResumeSessionId',
@@ -58,6 +65,7 @@ const COMMAND_IDS = {
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testPerformWebviewDomAction: 'devSessionCanvas.__test.performWebviewDomAction',
+  testRunWebviewLifecycleRaceDiagnostics: 'devSessionCanvas.__test.runWebviewLifecycleRaceDiagnostics',
   testPerformSidebarNodeListAction: 'devSessionCanvas.__test.performSidebarNodeListAction',
   testPerformSidebarSessionHistoryAction: 'devSessionCanvas.__test.performSidebarSessionHistoryAction',
   testGetCanvasTemplateItems: 'devSessionCanvas.__test.getCanvasTemplateItems',
@@ -95,6 +103,13 @@ const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY =
   `# Associated Note\n\n- updated from canvas\n\n${REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL}\nupdated tail`;
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
 const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
+const DEFAULT_ATTENTION_SIGNALS = [
+  'bel',
+  'osc9',
+  'osc777',
+  'agentAbnormalExit',
+  'codexAbnormalOutputText'
+];
 const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
@@ -174,6 +189,7 @@ async function runSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
   await clearDiagnosticEvents();
+  await verifyWebviewLifecycleRaceDiagnostics();
 
   if (smokeScenario === 'restricted') {
     await runRestrictedSmoke();
@@ -233,8 +249,395 @@ async function verifyFirstOpenDefaultTemplate() {
   assert.strictEqual(templateCatalog.defaultTemplateId, 'builtin-getting-started');
 }
 
+async function verifyWebviewLifecycleRaceDiagnostics() {
+  const result = await vscode.commands.executeCommand(COMMAND_IDS.testRunWebviewLifecycleRaceDiagnostics);
+
+  assert.strictEqual(result.surface, 'panel');
+  assert.strictEqual(result.promoted, true, 'Expected older rendered panel frame to be promoted before stale checks.');
+  assert.strictEqual(result.ready, true, 'Expected promoted frame to mark the panel surface ready.');
+  assert.strictEqual(result.bootstrapAck, true, 'Expected bootstrap ack to belong to the promoted frame.');
+  assert.strictEqual(
+    result.bootstrapDeliveredToPromotedWebview,
+    true,
+    'Expected host/bootstrap to be delivered to the frame that sent ready.'
+  );
+  assert.strictEqual(
+    result.secondReadyPromotionIgnored,
+    true,
+    'Expected a competing frame ready after bootstrap ack not to trigger a second promotion.'
+  );
+  assert.strictEqual(
+    result.secondReadyBootstrapSuppressed,
+    true,
+    'Expected a competing frame ready after bootstrap ack not to trigger a second bootstrap.'
+  );
+  assert.strictEqual(
+    result.messageTargetStayedOnPromotedWebview,
+    true,
+    'Expected the promoted frame to keep the message target after a competing frame ready.'
+  );
+  assert.strictEqual(
+    result.sameWebviewFrameReadyPromoted,
+    true,
+    'Expected the current Webview object to accept a same-generation ready with a refreshed frame id.'
+  );
+  assert.strictEqual(
+    result.sameWebviewFrameBootstrapDelivered,
+    true,
+    'Expected a same-Webview refreshed frame to receive a replacement bootstrap.'
+  );
+  assert.strictEqual(
+    result.sameWebviewFrameLifecycleRebound,
+    true,
+    'Expected the current lifecycle frame id to rebind to the same-Webview refreshed frame.'
+  );
+  assert.strictEqual(
+    result.gatedMessageQueuedBeforeAck,
+    true,
+    'Expected non-bootstrap host messages to queue until bootstrap ack.'
+  );
+  assert.strictEqual(
+    result.gatedMessageDeliveredBeforeAck,
+    false,
+    'Expected queued host messages not to reach the frame before bootstrap ack.'
+  );
+  assert.strictEqual(
+    result.gatedMessageDeliveredAfterAck,
+    true,
+    'Expected queued host messages to flush after bootstrap ack.'
+  );
+  assert.strictEqual(
+    result.focusMessageRetriedAfterFrameRefresh,
+    true,
+    'Expected workspace-root focus to retry after a same-Webview frame refresh.'
+  );
+  assert.strictEqual(
+    result.focusMessageReachedRefreshedFrame,
+    true,
+    'Expected the retried workspace-root focus message to use the refreshed frame id.'
+  );
+  assert.strictEqual(result.staleMutationIgnored, true);
+  assert.strictEqual(result.staleProbeResultIgnored, true);
+  assert.strictEqual(result.pendingProbeResolvedFromCurrent, true);
+  assert.strictEqual(result.staleDomActionResultIgnored, true);
+  assert.strictEqual(result.pendingDomActionResolvedFromCurrent, true);
+  assert.strictEqual(
+    result.templateCatalogPostSettled,
+    true,
+    'Expected async template catalog posting after bootstrap ack to settle inside diagnostics.'
+  );
+  assert.deepStrictEqual(
+    result.oldWebviewPostedTypes.slice(0, 2),
+    ['host/bootstrap', 'host/visibilityRestored']
+  );
+  assert.ok(
+    result.oldWebviewPostedTypes.includes('host/templateCatalogUpdated') ||
+      result.diagnosticKinds.includes('template/catalogPostFailed'),
+    'Expected bootstrap ack follow-up to either post template catalog or record a catalog failure.'
+  );
+  assert.deepStrictEqual(result.competingWebviewPostedTypes, []);
+  assert.ok(result.diagnosticKinds.includes('surface/readyWebviewPromoted'));
+  assert.ok(result.diagnosticKinds.includes('surface/hostMessageQueuedUntilBootstrapAck'));
+  assert.ok(result.diagnosticKinds.includes('webview/staleMessageIgnored'));
+  assert.ok(result.diagnosticKinds.includes('webview/staleProbeResultIgnored'));
+  assert.ok(result.diagnosticKinds.includes('webview/staleDomActionResultIgnored'));
+}
+
 async function getCanvasTemplateCatalog() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetCanvasTemplateItems);
+}
+
+async function verifyEmptyGroupDeletionSkipsConfirmation() {
+  await setPersistedState({
+    version: 1,
+    updatedAt: '2026-05-23T04:30:00.000Z',
+    nodes: [],
+    edges: [],
+    groups: [
+      {
+        id: 'group-empty-smoke',
+        title: 'Empty Group Smoke',
+        position: { x: 120, y: 120 },
+        size: { width: 360, height: 240 }
+      }
+    ],
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: [],
+    nextGroupSequence: 2
+  });
+
+  await withInterceptedWarningMessages(async (warningCalls) => {
+    await dispatchWebviewMessage({
+      type: 'webview/deleteGroup',
+      payload: { groupId: 'group-empty-smoke' }
+    });
+    const snapshot = await waitForSnapshot(
+      (currentSnapshot) => !currentSnapshot.state.groups.some((group) => group.id === 'group-empty-smoke'),
+      10000
+    );
+    assert.strictEqual(snapshot.state.groups.length, 0);
+    assert.strictEqual(warningCalls.length, 0, 'Expected deleting an empty group to skip confirmation.');
+  });
+}
+
+async function verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope() {
+  await setPersistedState({
+    version: 1,
+    updatedAt: '2026-05-27T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'delete-parent-agent',
+        kind: 'agent',
+        title: 'Delete Parent Agent',
+        status: 'idle',
+        summary: '',
+        position: { x: 140, y: 160 },
+        size: { width: 320, height: 240 },
+        groupId: 'group-delete-parent',
+        metadata: { agent: { provider: 'codex' } }
+      },
+      {
+        id: 'delete-child-note',
+        kind: 'note',
+        title: 'Delete Child Note',
+        status: 'ready',
+        summary: '',
+        position: { x: 180, y: 460 },
+        size: { width: 320, height: 200 },
+        groupId: 'group-delete-child',
+        metadata: { note: { content: 'nested delete smoke' } }
+      }
+    ],
+    edges: [],
+    groups: [
+      {
+        id: 'group-delete-parent',
+        title: 'Delete Parent',
+        position: { x: 100, y: 100 },
+        size: { width: 760, height: 680 }
+      },
+      {
+        id: 'group-delete-child',
+        title: 'Delete Child',
+        position: { x: 140, y: 420 },
+        size: { width: 400, height: 260 },
+        parentGroupId: 'group-delete-parent'
+      }
+    ],
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: [],
+    nextGroupSequence: 3
+  });
+
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await dispatchWebviewMessage({
+        type: 'webview/deleteGroup',
+        payload: { groupId: 'group-delete-parent' }
+      });
+
+      const snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.length === 0 &&
+          currentSnapshot.state.groups.length === 0,
+        10000
+      );
+      assert.strictEqual(snapshot.state.edges.length, 0);
+
+      assert.strictEqual(warningCalls.length, 1, 'Expected deleting a non-empty group to show one confirmation.');
+      const [warningCall] = warningCalls;
+      assert.match(warningCall.message, /Delete Parent/u);
+      assert.ok(
+        warningCall.items.some((item) => /内部所有节点与子分组/.test(item.title) && /2 个节点/.test(item.title) && /1 个子分组/.test(item.title)),
+        `Expected destructive action title to disclose recursive counts. Items: ${JSON.stringify(warningCall.items)}`
+      );
+      assert.ok(
+        warningCall.items.some((item) => item.title === '仅删除分组框并保留内部对象'),
+        `Expected keep-members action title to disclose preservation. Items: ${JSON.stringify(warningCall.items)}`
+      );
+      assert.match(warningCall.options?.detail ?? '', /递归删除内部 2 个节点和 1 个子分组/u);
+      assert.match(warningCall.options?.detail ?? '', /1 个执行节点会先终止并清理运行会话/u);
+    },
+    ({ items }) => items.find((item) => /内部所有节点与子分组/.test(item.title))
+  );
+}
+
+async function verifyCanvasLayoutArrangementPersists() {
+  const seededState = {
+    version: 1,
+    updatedAt: '2026-06-17T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'arrange-root-a-note-a',
+        kind: 'note',
+        title: 'Arrange Root A Note A',
+        status: 'ready',
+        summary: '',
+        position: { x: 90, y: 90 },
+        size: { width: 160, height: 96 },
+        groupId: 'arrange-root-a',
+        metadata: { note: { content: 'root a note a' } }
+      },
+      {
+        id: 'arrange-root-a-note-b',
+        kind: 'note',
+        title: 'Arrange Root A Note B',
+        status: 'ready',
+        summary: '',
+        position: { x: 104, y: 104 },
+        size: { width: 160, height: 96 },
+        groupId: 'arrange-root-a',
+        metadata: { note: { content: 'root a note b' } }
+      },
+      {
+        id: 'arrange-inner-note-a',
+        kind: 'note',
+        title: 'Arrange Inner Note A',
+        status: 'ready',
+        summary: '',
+        position: { x: 120, y: 320 },
+        size: { width: 140, height: 80 },
+        groupId: 'arrange-inner-group',
+        metadata: { note: { content: 'inner a' } }
+      },
+      {
+        id: 'arrange-inner-note-b',
+        kind: 'note',
+        title: 'Arrange Inner Note B',
+        status: 'ready',
+        summary: '',
+        position: { x: 132, y: 328 },
+        size: { width: 140, height: 80 },
+        groupId: 'arrange-inner-group',
+        metadata: { note: { content: 'inner b' } }
+      },
+      {
+        id: 'arrange-root-b-note',
+        kind: 'note',
+        title: 'Arrange Root B Note',
+        status: 'ready',
+        summary: '',
+        position: { x: 120, y: 120 },
+        size: { width: 160, height: 96 },
+        groupId: 'arrange-root-b',
+        metadata: { note: { content: 'root b note' } }
+      }
+    ],
+    edges: [
+      {
+        id: 'arrange-edge-a',
+        sourceNodeId: 'arrange-root-a-note-a',
+        targetNodeId: 'arrange-root-a-note-b',
+        sourceAnchor: 'right',
+        targetAnchor: 'left',
+        arrowMode: 'forward',
+        owner: 'user'
+      }
+    ],
+    groups: [
+      {
+        id: 'arrange-root-a',
+        title: 'Arrange Root A',
+        position: { x: 0, y: 0 },
+        size: { width: 720, height: 520 },
+        role: 'workspace-root',
+        workspaceRootPath: '/tmp/dev-session-canvas-arrange-a'
+      },
+      {
+        id: 'arrange-root-b',
+        title: 'Arrange Root B',
+        position: { x: 60, y: 60 },
+        size: { width: 720, height: 520 },
+        role: 'workspace-root',
+        workspaceRootPath: '/tmp/dev-session-canvas-arrange-b'
+      },
+      {
+        id: 'arrange-inner-group',
+        title: 'Arrange Inner Group',
+        position: { x: 96, y: 296 },
+        size: { width: 260, height: 180 },
+        parentGroupId: 'arrange-root-a'
+      }
+    ],
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: [],
+    nextGroupSequence: 2
+  };
+
+  await setPersistedState(seededState);
+  const beforeSnapshot = await getDebugSnapshot();
+  const beforeRootB = findGroupById(beforeSnapshot, 'arrange-root-b');
+
+  const arrangedSnapshot = await dispatchWebviewMessage({ type: 'webview/arrangeCanvasLayout' });
+  const arrangedRootA = findGroupById(arrangedSnapshot, 'arrange-root-a');
+  const arrangedRootB = findGroupById(arrangedSnapshot, 'arrange-root-b');
+  const arrangedInnerGroup = findGroupById(arrangedSnapshot, 'arrange-inner-group');
+  const arrangedRootNoteA = findNodeById(arrangedSnapshot, 'arrange-root-a-note-a');
+  const arrangedRootNoteB = findNodeById(arrangedSnapshot, 'arrange-root-a-note-b');
+  const arrangedInnerNoteA = findNodeById(arrangedSnapshot, 'arrange-inner-note-a');
+  const arrangedInnerNoteB = findNodeById(arrangedSnapshot, 'arrange-inner-note-b');
+  const arrangedRootBNote = findNodeById(arrangedSnapshot, 'arrange-root-b-note');
+
+  assert.notDeepStrictEqual(
+    arrangedRootB.position,
+    beforeRootB.position,
+    'Expected arranging the canvas to move an overlapping workspace root section.'
+  );
+  assert.strictEqual(arrangedRootNoteA.groupId, 'arrange-root-a');
+  assert.strictEqual(arrangedRootNoteB.groupId, 'arrange-root-a');
+  assert.strictEqual(arrangedInnerNoteA.groupId, 'arrange-inner-group');
+  assert.strictEqual(arrangedInnerNoteB.groupId, 'arrange-inner-group');
+  assert.strictEqual(arrangedRootBNote.groupId, 'arrange-root-b');
+  assert.strictEqual(arrangedInnerGroup.parentGroupId, 'arrange-root-a');
+  assert.strictEqual(arrangedSnapshot.state.edges[0].sourceNodeId, 'arrange-root-a-note-a');
+  assert.strictEqual(arrangedSnapshot.state.edges[0].targetNodeId, 'arrange-root-a-note-b');
+  assert.strictEqual(
+    paddedRectanglesOverlap(arrangedRootA, arrangedRootB, 40),
+    false,
+    'Expected arranging the canvas to prevent workspace root sections from overlapping.'
+  );
+  assert.strictEqual(
+    paddedRectanglesOverlap(arrangedRootNoteA, arrangedRootNoteB, 40),
+    false,
+    'Expected arranging the canvas to separate overlapping direct root members.'
+  );
+  assert.strictEqual(
+    paddedRectanglesOverlap(arrangedInnerNoteA, arrangedInnerNoteB, 40),
+    false,
+    'Expected arranging the canvas to separately organize nodes inside a normal group.'
+  );
+
+  const persistedSnapshot = await flushPersistedStateSnapshot();
+  assert.deepStrictEqual(
+    findNodeById(persistedSnapshot, 'arrange-root-a-note-a').position,
+    arrangedRootNoteA.position,
+    'Expected the arranged node position to be written to the persisted snapshot.'
+  );
+  assert.deepStrictEqual(
+    findGroupById(persistedSnapshot, 'arrange-root-b').position,
+    arrangedRootB.position,
+    'Expected the arranged root position to be written to the persisted snapshot.'
+  );
+
+  const reloadedSnapshot = await reloadPersistedState();
+  assert.deepStrictEqual(
+    findNodeById(reloadedSnapshot, 'arrange-inner-note-b').position,
+    arrangedInnerNoteB.position,
+    'Expected reloading persisted state to keep the arranged normal-group node position.'
+  );
+  assert.deepStrictEqual(
+    findGroupById(reloadedSnapshot, 'arrange-root-b').position,
+    arrangedRootB.position,
+    'Expected reloading persisted state to keep the arranged root section position.'
+  );
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  const resetSnapshot = await ensureEditorCanvasReady();
+  assert.strictEqual(resetSnapshot.state.nodes.length, 0, 'Expected layout arrangement smoke seed nodes to be cleaned up.');
+  assert.strictEqual(resetSnapshot.state.groups.length, 0, 'Expected layout arrangement smoke seed groups to be cleaned up.');
 }
 
 async function applyCanvasTemplateForTest(templateId, reset = false) {
@@ -635,7 +1038,14 @@ async function runTrustedSmoke() {
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
   assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
   const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
-  assert.strictEqual(notificationModeSummaryItem.description, '系统通知 · 标题栏+Minimap 增强 · 文本异常关闭');
+  assert.strictEqual(
+    notificationModeSummaryItem.description,
+    '系统通知 · 全部 attention · 标题栏+Minimap 增强 · 文本异常关闭'
+  );
+  assert.match(
+    notificationModeSummaryItem.tooltip,
+    /启用的 attention signal：BEL、OSC 9、OSC 777、Agent 异常退出、Codex 文本异常。/
+  );
 
   await verifyCanvasTemplatesTrusted();
   await ensureEditorCanvasReady();
@@ -675,6 +1085,10 @@ async function runTrustedSmoke() {
   await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();
   await verifyDefaultSurfaceRequiresReload();
   await verifyCreateNodeCommandQuickPick();
+  await verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot();
+  await verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot();
+  await verifyExplorerResourceExecutionNodeCreation();
+  await verifyCreateNodeCommandUsesOpenCanvasSurface();
   await verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits();
   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
   await verifyPersistedStateFiltersLegacyTaskNodes();
@@ -683,6 +1097,9 @@ async function runTrustedSmoke() {
   snapshot = await getDebugSnapshot();
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
+  await verifyEmptyGroupDeletionSkipsConfirmation();
+  await verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope();
+  await verifyCanvasLayoutArrangementPersists();
   await clearHostMessages();
   await createBaseNodes();
   snapshot = await getDebugSnapshot();
@@ -797,6 +1214,10 @@ async function runTrustedSmoke() {
   await verifyReadExitFileActivityDrain();
   await verifyRuntimePersistenceRequiresReloadAndClearsState();
   await verifySidebarSessionHistoryRestore();
+  await verifySidebarSessionHistoryForkActionUi();
+  await verifyCodexAgentBranchFromCurrentNode();
+  await verifyClaudeAgentBranchFromCurrentNode();
+  await verifyAgentBranchRejectsUnsupportedSources();
   await verifySidebarSessionHistorySearchByTitleUi();
   await verifySidebarSessionHistoryDoubleClickUi();
 
@@ -829,8 +1250,8 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   );
   assert.match(
     nodeItems.find((item) => item.nodeId === agentNodeId)?.status ?? '',
-    /^(Codex|Claude Code) · /,
-    'Expected Agent sidebar rows to prefix the second line with provider information.'
+    / · (Codex|Claude Code) · /,
+    'Expected Agent sidebar rows to include cwd, provider and status in the second line.'
   );
 
   await clearHostMessages();
@@ -882,8 +1303,8 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   );
   assert.match(
     sanitizedAgentItem.status,
-    /^(Codex|Claude Code) · 等待输入$/,
-    'Expected sanitized Agent sidebar rows to keep provider and status in the second line.'
+    / · (Codex|Claude Code) · 等待输入$/,
+    'Expected sanitized Agent sidebar rows to keep cwd, provider and status in the second line.'
   );
   assert.ok(
     !sanitizedAgentItem.tooltip.includes('[?2026|'),
@@ -1014,6 +1435,138 @@ async function verifySidebarNodeListWebviewUi(agentNodeId) {
     seededSnapshot.state.nodes.some((node) => node.id === agentNodeId),
     'Expected the seeded sidebar node UI state to keep the target agent node present.'
   );
+
+  await verifySidebarNodeGroupedTreeUi(agentNodeId);
+}
+
+async function verifySidebarNodeGroupedTreeUi(agentNodeId) {
+  const baselineSnapshot = await getDebugSnapshot();
+  const agentNode = findNodeById(baselineSnapshot, agentNodeId);
+  const terminalNode = findNodeByKind(baselineSnapshot, 'terminal');
+  const noteNode = findNodeByKind(baselineSnapshot, 'note');
+  const groupedState = {
+    ...baselineSnapshot.state,
+    nodes: baselineSnapshot.state.nodes.map((node) => {
+      if (node.id === agentNode.id) {
+        return {
+          ...node,
+          position: { x: 40, y: 80 },
+          groupId: 'group-frontend-smoke'
+        };
+      }
+      if (node.id === terminalNode.id) {
+        return {
+          ...node,
+          position: { x: 420, y: 80 },
+          groupId: 'group-frontend-smoke'
+        };
+      }
+      if (node.id === noteNode.id) {
+        return {
+          ...node,
+          position: { x: 1000, y: 80 },
+          groupId: undefined
+        };
+      }
+      return node;
+    }),
+    groups: [
+      ...(baselineSnapshot.state.groups ?? []),
+      {
+        id: 'group-feature-smoke',
+        title: 'Feature Work',
+        position: { x: -40, y: -56 },
+        size: { width: 980, height: 520 }
+      },
+      {
+        id: 'group-frontend-smoke',
+        title: 'Frontend',
+        parentGroupId: 'group-feature-smoke',
+        position: { x: 0, y: 0 },
+        size: { width: 900, height: 400 }
+      }
+    ],
+    nextGroupSequence: Math.max(baselineSnapshot.state.nextGroupSequence ?? 1, 3)
+  };
+
+  try {
+    await setPersistedState(groupedState);
+    const sidebarItems = await getSidebarNodeListItems();
+    const agentItem = sidebarItems.find((item) => item.nodeId === agentNode.id);
+    assert.ok(agentItem, 'Expected grouped sidebar items to include the agent node.');
+    assert.deepStrictEqual(agentItem.groupPath, ['Feature Work', 'Frontend']);
+    assert.deepStrictEqual(agentItem.groupPathIds, ['group-feature-smoke', 'group-frontend-smoke']);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.setSidebarNodeListGroupedView);
+    await sleep(100);
+    const groupedSnapshot = await performSidebarNodeListAction({
+      kind: 'clickItem',
+      itemId: `node/${agentNode.id}`
+    }, 10000);
+    assert.strictEqual(groupedSnapshot.viewMode, 'grouped');
+    assert.ok(
+      groupedSnapshot.groupRows.some((row) => row.key === 'group-feature-smoke' && row.label === 'Feature Work' && row.expanded),
+      'Expected grouped sidebar mode to render the parent group as an expanded tree row.'
+    );
+    assert.ok(
+      groupedSnapshot.groupRows.some((row) => row.key === 'group-frontend-smoke' && row.label === 'Frontend' && row.expanded),
+      'Expected grouped sidebar mode to render the nested group as an expanded tree row.'
+    );
+    assert.ok(
+      groupedSnapshot.groupRows.some((row) => row.key === '__ungrouped__' && row.label === '未分组'),
+      'Expected grouped sidebar mode to keep ungrouped nodes in a collapsible section.'
+    );
+    assert.ok(
+      groupedSnapshot.visibleItemIds.includes(`node/${agentNode.id}`),
+      'Expected grouped sidebar mode to show nodes inside expanded groups.'
+    );
+    assert.ok(
+      groupedSnapshot.visibleItemIds.includes(`node/${noteNode.id}`),
+      'Expected grouped sidebar mode to show ungrouped nodes while the ungrouped section is expanded.'
+    );
+
+    const collapsedFrontend = await performSidebarNodeListAction({
+      kind: 'toggleGroup',
+      groupKey: 'group-frontend-smoke'
+    }, 10000);
+    assert.ok(
+      collapsedFrontend.groupRows.some((row) => row.key === 'group-frontend-smoke' && !row.expanded),
+      'Expected clicking a group row to collapse that sidebar group section.'
+    );
+    assert.ok(
+      !collapsedFrontend.visibleItemIds.includes(`node/${agentNode.id}`),
+      'Expected collapsing a group row to hide its direct member nodes in the sidebar.'
+    );
+    assert.ok(
+      collapsedFrontend.visibleItemIds.includes(`node/${noteNode.id}`),
+      'Expected collapsing a nested group to leave unrelated ungrouped rows visible.'
+    );
+
+    const collapsedUngrouped = await performSidebarNodeListAction({
+      kind: 'toggleGroup',
+      groupKey: '__ungrouped__'
+    }, 10000);
+    assert.ok(
+      collapsedUngrouped.groupRows.some((row) => row.key === '__ungrouped__' && !row.expanded),
+      'Expected the ungrouped sidebar section to be collapsible as well.'
+    );
+    assert.ok(
+      !collapsedUngrouped.visibleItemIds.includes(`node/${noteNode.id}`),
+      'Expected collapsing the ungrouped section to hide ungrouped node rows.'
+    );
+
+    await vscode.commands.executeCommand(COMMAND_IDS.setSidebarNodeListFlatView);
+    await sleep(100);
+    const flatSnapshot = await performSidebarNodeListAction({
+      kind: 'clickItem',
+      itemId: `node/${agentNode.id}`
+    }, 10000);
+    assert.strictEqual(flatSnapshot.viewMode, 'flat');
+    assert.strictEqual(flatSnapshot.groupRows.length, 0, 'Expected flat mode to remove sidebar group rows.');
+  } finally {
+    await vscode.commands.executeCommand(COMMAND_IDS.setSidebarNodeListFlatView);
+    await setPersistedState(baselineSnapshot.state);
+  }
 }
 
 async function verifySidebarSessionHistoryRestore() {
@@ -1092,6 +1645,433 @@ async function verifySidebarSessionHistoryRestore() {
     assert.ok(restoredAgentNode, 'Expected the restored sidebar history entry to materialize as a new Codex agent node.');
   } finally {
     await fs.rm(fakeHomeDir, { recursive: true, force: true });
+  }
+}
+
+async function verifyCodexAgentBranchFromCurrentNode() {
+  const baselineSnapshot = await getDebugSnapshot();
+  const sourceTitle = 'Codex 分叉 Source';
+  const sourceSessionId = '019dbfb8-cffa-70b0-9c97-000000001234';
+  const sourceNodeId = 'codex-branch-source-node';
+  const previousCodexCommandEnv = process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND;
+  let branchNodeId;
+
+  try {
+    process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND = path.join(
+      __dirname,
+      'fixtures',
+      'fake-codex-provider'
+    );
+
+    const withSourceSnapshot = await setPersistedState({
+      ...baselineSnapshot.state,
+      nodes: [
+        ...baselineSnapshot.state.nodes,
+        {
+          id: sourceNodeId,
+          kind: 'agent',
+          title: sourceTitle,
+          status: 'stopped',
+          summary: '检测到可分叉的 Codex 会话。',
+          position: { x: 120, y: 120 },
+          size: { width: 560, height: 420 },
+          metadata: {
+            agent: {
+              provider: 'codex',
+              lifecycle: 'stopped',
+              launchPreset: 'custom',
+              customLaunchCommand: `codex resume ${sourceSessionId}`,
+              lastLaunchCommandLine: `codex resume ${sourceSessionId}`,
+              resumeSupported: true,
+              resumeStrategy: 'codex-session-id',
+              resumeSessionId: sourceSessionId,
+              persistenceMode: 'snapshot-only',
+              attachmentState: 'history-restored',
+              liveSession: false,
+              pendingLaunch: undefined,
+              lastBackendLabel: 'Codex'
+            }
+          }
+        }
+      ]
+    });
+    const sourceNode = findNodeById(withSourceSnapshot, sourceNodeId);
+    await ensureEditorCanvasReady();
+
+    const beforeBranchSnapshot = await getDebugSnapshot();
+    await clearDiagnosticEvents();
+    const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+    await dispatchWebviewMessage({
+      type: 'webview/branchAgentSession',
+      payload: {
+        nodeId: sourceNode.id
+      }
+    });
+
+    const branchedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const branchNodes = currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'agent' &&
+          node.id !== sourceNode.id &&
+          node.title.includes('分叉') &&
+          node.metadata?.agent?.provider === 'codex' &&
+          node.metadata.agent.launchPreset === 'custom' &&
+          typeof node.metadata.agent.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(`fork ${sourceSessionId}`)
+      );
+      return branchNodes.length === 1;
+    }, 10000);
+
+    assert.strictEqual(
+      branchedSnapshot.state.nodes.length,
+      beforeBranchSnapshot.state.nodes.length + 1,
+      'Expected Codex Fork to create exactly one additional Agent node.'
+    );
+
+    const originalAfterBranch = branchedSnapshot.state.nodes.find((node) => node.id === sourceNode.id);
+    assert.strictEqual(
+      originalAfterBranch.metadata.agent.resumeSessionId,
+      sourceSessionId,
+      'Expected Codex Fork to leave the source node resume session id unchanged.'
+    );
+
+    const branchNode = branchedSnapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.id !== sourceNode.id &&
+        node.metadata?.agent?.customLaunchCommand?.includes(`fork ${sourceSessionId}`)
+    );
+    assert.ok(branchNode, 'Expected Fork to create a Codex Agent node with codex fork command.');
+    branchNodeId = branchNode.id;
+
+    const branchEdgeSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.edges.some(
+        (edge) =>
+          edge.owner === 'user' &&
+          edge.sourceNodeId === sourceNode.id &&
+          edge.targetNodeId === branchNode.id &&
+          edge.arrowMode === 'forward' &&
+          edge.label === 'fork'
+      );
+    }, 10000);
+
+    const branchEdge = branchEdgeSnapshot.state.edges.find(
+      (edge) =>
+        edge.owner === 'user' &&
+        edge.sourceNodeId === sourceNode.id &&
+        edge.targetNodeId === branchNode.id
+    );
+    assert.ok(branchEdge, 'Expected Fork to create a user edge from source Codex Agent to Forked Agent.');
+    assert.strictEqual(branchEdge.arrowMode, 'forward');
+    assert.strictEqual(branchEdge.sourceAnchor, 'right');
+    assert.strictEqual(branchEdge.targetAnchor, 'left');
+    assert.strictEqual(branchEdge.label, 'fork');
+
+    const branchEdgeProbe = await waitForWebviewProbeOnSurface(
+      'editor',
+      (currentProbe) =>
+        currentProbe.edges.some(
+          (edge) =>
+            edge.edgeId === branchEdge.id &&
+            edge.sourceNodeId === sourceNode.id &&
+            edge.targetNodeId === branchNode.id &&
+            edge.label === 'fork'
+        ),
+      10000
+    );
+    assert.ok(
+      branchEdgeProbe.edges.some((edge) => edge.edgeId === branchEdge.id && edge.label === 'fork'),
+      'Expected the Codex Fork edge label to render as fork in the editor Webview.'
+    );
+
+    const startedEvents = await waitForDiagnosticEvents((events) => {
+      const branchStartEvents = events.slice(diagnosticStartIndex).filter(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === branchNode.id &&
+          event.detail?.provider === 'codex'
+      );
+      return branchStartEvents.length === 1;
+    }, 20000);
+
+    const branchStartEvents = startedEvents.slice(diagnosticStartIndex).filter(
+      (event) =>
+        event.kind === 'execution/started' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === branchNode.id &&
+        event.detail?.provider === 'codex'
+    );
+    assert.strictEqual(branchStartEvents.length, 1, 'Expected Codex Fork node to enter the Agent start path once.');
+    const branchLaunchArgs = branchStartEvents[0].detail?.launchArgs ?? [];
+    assert.ok(Array.isArray(branchLaunchArgs), 'Expected Fork start diagnostic to expose launch args.');
+    assert.ok(branchLaunchArgs.includes('fork'), 'Expected Codex Fork launch args to include the fork subcommand.');
+    assert.ok(branchLaunchArgs.includes(sourceSessionId), 'Expected Codex Fork launch args to include the source session id.');
+
+    const startedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const startedBranchNode = currentSnapshot.state.nodes.find((node) => node.id === branchNode.id);
+      return Boolean(
+        startedBranchNode?.metadata?.agent?.liveSession &&
+          startedBranchNode.metadata.agent.pendingLaunch === undefined
+      );
+    }, 20000);
+    const startedBranchNode = findNodeById(startedSnapshot, branchNode.id);
+    assert.strictEqual(startedBranchNode.metadata.agent.provider, 'codex');
+  } finally {
+    if (previousCodexCommandEnv === undefined) {
+      delete process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND;
+    } else {
+      process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND = previousCodexCommandEnv;
+    }
+
+    if (branchNodeId) {
+      await maybeEnsureAgentStopped(branchNodeId).catch(() => {});
+    }
+    await maybeEnsureAgentStopped(sourceNodeId).catch(() => {});
+    await setPersistedState(baselineSnapshot.state);
+  }
+}
+
+async function verifyClaudeAgentBranchFromCurrentNode() {
+  const baselineSnapshot = await getDebugSnapshot();
+  const sourceTitle = 'Claude 分叉 Source';
+  const sourceSessionId = 'claude-branch-source-session-123';
+  const sourceNodeId = 'claude-branch-source-node';
+  const previousClaudeCommandEnv = process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
+  let branchNodeId;
+
+  try {
+    process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND = path.join(
+      __dirname,
+      'fixtures',
+      'fake-claude-provider'
+    );
+
+    const withSourceSnapshot = await setPersistedState({
+      ...baselineSnapshot.state,
+      nodes: [
+        ...baselineSnapshot.state.nodes,
+        {
+          id: sourceNodeId,
+          kind: 'agent',
+          title: sourceTitle,
+          status: 'stopped',
+          summary: '检测到可分叉的 Claude Code 会话。',
+          position: { x: 120, y: 120 },
+          size: { width: 560, height: 420 },
+          metadata: {
+            agent: {
+              provider: 'claude',
+              lifecycle: 'stopped',
+              launchPreset: 'custom',
+              customLaunchCommand: `claude --resume ${sourceSessionId}`,
+              lastLaunchCommandLine: `claude --resume ${sourceSessionId}`,
+              resumeSupported: true,
+              resumeStrategy: 'claude-session-id',
+              resumeSessionId: sourceSessionId,
+              persistenceMode: 'snapshot-only',
+              attachmentState: 'history-restored',
+              liveSession: false,
+              pendingLaunch: undefined,
+              lastBackendLabel: 'Claude Code'
+            }
+          }
+        }
+      ]
+    });
+    const sourceNode = findNodeById(withSourceSnapshot, sourceNodeId);
+    await ensureEditorCanvasReady();
+
+    const beforeBranchSnapshot = await getDebugSnapshot();
+    await clearDiagnosticEvents();
+    const diagnosticStartIndex = (await getDiagnosticEvents()).length;
+    await dispatchWebviewMessage({
+      type: 'webview/branchAgentSession',
+      payload: {
+        nodeId: sourceNode.id
+      }
+    });
+
+    const branchedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const branchNodes = currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'agent' &&
+          node.id !== sourceNode.id &&
+          node.title.includes('分叉') &&
+          node.metadata?.agent?.provider === 'claude' &&
+          node.metadata.agent.launchPreset === 'custom' &&
+          typeof node.metadata.agent.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(`--resume ${sourceSessionId}`) &&
+          node.metadata.agent.customLaunchCommand.includes('--fork-session')
+      );
+      return branchNodes.length === 1;
+    }, 10000);
+
+    assert.strictEqual(
+      branchedSnapshot.state.nodes.length,
+      beforeBranchSnapshot.state.nodes.length + 1,
+      'Expected Fork to create exactly one additional Agent node.'
+    );
+
+    const originalAfterBranch = branchedSnapshot.state.nodes.find((node) => node.id === sourceNode.id);
+    assert.strictEqual(
+      originalAfterBranch.metadata.agent.resumeSessionId,
+      sourceSessionId,
+      'Expected Fork to leave the source node resume session id unchanged.'
+    );
+
+    const branchNode = branchedSnapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'agent' &&
+        node.id !== sourceNode.id &&
+        node.metadata?.agent?.customLaunchCommand?.includes('--fork-session')
+    );
+    assert.ok(branchNode, 'Expected Fork to create a Claude Agent node with fork-session command.');
+    branchNodeId = branchNode.id;
+
+    const branchEdgeSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.edges.some(
+        (edge) =>
+          edge.owner === 'user' &&
+          edge.sourceNodeId === sourceNode.id &&
+          edge.targetNodeId === branchNode.id &&
+          edge.arrowMode === 'forward' &&
+          edge.label === 'fork'
+      );
+    }, 10000);
+
+    const branchEdge = branchEdgeSnapshot.state.edges.find(
+      (edge) =>
+        edge.owner === 'user' &&
+        edge.sourceNodeId === sourceNode.id &&
+        edge.targetNodeId === branchNode.id
+    );
+    assert.ok(branchEdge, 'Expected Fork to create a user edge from source Agent to Forked Agent.');
+    assert.strictEqual(branchEdge.arrowMode, 'forward');
+    assert.strictEqual(branchEdge.sourceAnchor, 'right');
+    assert.strictEqual(branchEdge.targetAnchor, 'left');
+    assert.strictEqual(branchEdge.label, 'fork');
+
+    const branchEdgeProbe = await waitForWebviewProbeOnSurface(
+      'editor',
+      (currentProbe) =>
+        currentProbe.edges.some(
+          (edge) =>
+            edge.edgeId === branchEdge.id &&
+            edge.sourceNodeId === sourceNode.id &&
+            edge.targetNodeId === branchNode.id &&
+            edge.label === 'fork'
+        ),
+      10000
+    );
+    assert.ok(
+      branchEdgeProbe.edges.some((edge) => edge.edgeId === branchEdge.id && edge.label === 'fork'),
+      'Expected the Claude Fork edge label to render as fork in the editor Webview.'
+    );
+
+    const startedEvents = await waitForDiagnosticEvents((events) => {
+      const branchStartEvents = events.slice(diagnosticStartIndex).filter(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === branchNode.id &&
+          event.detail?.provider === 'claude'
+      );
+      return branchStartEvents.length === 1;
+    }, 20000);
+
+    const branchStartEvents = startedEvents.slice(diagnosticStartIndex).filter(
+      (event) =>
+        event.kind === 'execution/started' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === branchNode.id &&
+        event.detail?.provider === 'claude'
+    );
+    assert.strictEqual(branchStartEvents.length, 1, 'Expected Fork node to enter the Agent start path once.');
+    const branchLaunchArgs = branchStartEvents[0].detail?.launchArgs ?? [];
+    assert.ok(Array.isArray(branchLaunchArgs), 'Expected Fork start diagnostic to expose launch args.');
+    assert.ok(branchLaunchArgs.includes('--resume'), 'Expected Fork launch args to include the source resume flag.');
+    assert.ok(branchLaunchArgs.includes(sourceSessionId), 'Expected Fork launch args to include the source session id.');
+    assert.ok(branchLaunchArgs.includes('--fork-session'), 'Expected Fork launch args to include --fork-session.');
+
+    const sessionIdFlagIndex = branchLaunchArgs.indexOf('--session-id');
+    assert.notStrictEqual(sessionIdFlagIndex, -1, 'Expected Fork launch args to include a new session id candidate.');
+    const branchSessionId = branchLaunchArgs[sessionIdFlagIndex + 1];
+    assert.ok(branchSessionId, 'Expected Fork session id candidate to have a value.');
+    assert.notStrictEqual(
+      branchSessionId,
+      sourceSessionId,
+      'Expected Fork session id candidate to differ from the source session id.'
+    );
+
+    const startedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const startedBranchNode = currentSnapshot.state.nodes.find((node) => node.id === branchNode.id);
+      return Boolean(
+        startedBranchNode?.metadata?.agent?.liveSession &&
+          startedBranchNode.metadata.agent.resumeSessionId === branchSessionId &&
+          startedBranchNode.metadata.agent.pendingLaunch === undefined
+      );
+    }, 20000);
+    const startedBranchNode = findNodeById(startedSnapshot, branchNode.id);
+    assert.strictEqual(startedBranchNode.metadata.agent.resumeSessionId, branchSessionId);
+    const duplicateBranchStartRejections = (await getDiagnosticEvents()).slice(diagnosticStartIndex).filter(
+      (event) =>
+        event.kind === 'execution/startRejected' &&
+        event.detail?.kind === 'agent' &&
+        event.detail?.nodeId === branchNode.id &&
+        event.detail?.reason === 'already-running'
+    );
+    assert.strictEqual(
+      duplicateBranchStartRejections.length,
+      0,
+      'Expected Fork auto-start to avoid racing a second start request.'
+    );
+  } finally {
+    if (previousClaudeCommandEnv === undefined) {
+      delete process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
+    } else {
+      process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND = previousClaudeCommandEnv;
+    }
+
+    if (branchNodeId) {
+      await maybeEnsureAgentStopped(branchNodeId).catch(() => {});
+    }
+    await maybeEnsureAgentStopped(sourceNodeId).catch(() => {});
+    await setPersistedState(baselineSnapshot.state);
+  }
+}
+
+async function verifyAgentBranchRejectsUnsupportedSources() {
+  const baselineSnapshot = await getDebugSnapshot();
+
+  try {
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent', 'codex', {
+      titleOverride: 'Agent 分叉 Rejection Source'
+    });
+    const codexSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.nodes.some(
+        (node) => node.kind === 'agent' && node.title === 'Agent 分叉 Rejection Source'
+      );
+    }, 10000);
+    const codexNode = codexSnapshot.state.nodes.find(
+      (node) => node.kind === 'agent' && node.title === 'Agent 分叉 Rejection Source'
+    );
+    assert.ok(codexNode, 'Expected rejection source node to exist.');
+
+    await dispatchWebviewMessage({
+      type: 'webview/branchAgentSession',
+      payload: { nodeId: codexNode.id }
+    });
+    await sleep(200);
+
+    const afterRejectedBranch = await getDebugSnapshot();
+    assert.strictEqual(
+      afterRejectedBranch.state.nodes.length,
+      codexSnapshot.state.nodes.length,
+      'Expected Fork request without a trusted session id to be rejected without creating a node.'
+    );
+  } finally {
+    await setPersistedState(baselineSnapshot.state);
   }
 }
 
@@ -1235,6 +2215,78 @@ async function verifySidebarSessionHistoryDoubleClickUi() {
   }
 }
 
+
+async function verifySidebarSessionHistoryForkActionUi() {
+  const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const homeDir = os.homedir();
+  const codexSessionId = 'sidebar-codex-ui-fork-123';
+  const firstUserInstruction = '请通过按钮分叉这个历史会话';
+  let sessionFilePath;
+
+  try {
+    await performSidebarSessionHistoryAction(
+      {
+        kind: 'filterItems',
+        query: ''
+      },
+      10000
+    );
+
+    sessionFilePath = await writeCodexSessionFile({
+      homeDir,
+      sessionId: codexSessionId,
+      cwd: workspaceCwd,
+      timestampMs: Date.parse('2026-04-27T11:35:00.000Z'),
+      fileSuffix: 'sidebar-ui-fork',
+      userMessages: [firstUserInstruction]
+    });
+
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+    const historyItems = await getSidebarSessionHistoryItems();
+    const codexItem = historyItems.find(
+      (item) => item.provider === 'codex' && item.sessionId === codexSessionId
+    );
+    assert.ok(codexItem, 'Expected the sidebar history UI fork test session to appear in the session list.');
+
+    const baselineSnapshot = await getDebugSnapshot();
+    const actionSnapshot = await performSidebarSessionHistoryAction(
+      {
+        kind: 'clickActionButton',
+        itemId: codexItem.id,
+        action: 'fork'
+      },
+      10000
+    );
+    assert.strictEqual(
+      actionSnapshot.selectedId,
+      codexItem.id,
+      'Expected clicking the Fork action button to select the target session row.'
+    );
+
+    const forkedSnapshot = await waitForSnapshot((currentSnapshot) => {
+      return currentSnapshot.state.nodes.some(
+        (node) =>
+          node.kind === 'agent' &&
+          node.title === `${codexItem.title} 分叉` &&
+          node.metadata?.agent?.provider === 'codex' &&
+          typeof node.metadata?.agent?.customLaunchCommand === 'string' &&
+          node.metadata.agent.customLaunchCommand.includes(`fork ${codexSessionId}`)
+      );
+    }, 20000);
+
+    assert.strictEqual(
+      forkedSnapshot.state.nodes.length,
+      baselineSnapshot.state.nodes.length + 1,
+      'Expected clicking a sidebar session Fork action to create one additional Agent node.'
+    );
+  } finally {
+    if (sessionFilePath) {
+      await fs.rm(sessionFilePath, { force: true });
+    }
+    await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+  }
+}
+
 async function verifyRestrictedSessionHistoryRestoreIsDisabled() {
   const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
   const homeDir = os.homedir();
@@ -1317,7 +2369,7 @@ async function verifyRestrictedSessionHistoryRestoreIsDisabled() {
             /只读查看模式/,
             'Expected restricted session history QuickPick to explain the read-only mode.'
           );
-          assert.strictEqual(quickPickItem.description, undefined);
+          assert.strictEqual(quickPickItem.description, '恢复');
           assert.match(quickPickItem.detail ?? '', /^Codex · .+ · restricted-sidebar-history-123$/);
           assert.deepStrictEqual(
             warningCalls.map((call) => call.message),
@@ -1427,6 +2479,338 @@ async function verifyCreateNodeCommandQuickPick() {
 
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+}
+
+async function verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  assert.ok(workspaceRoot, 'Expected trusted smoke to run inside a workspace.');
+
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+
+  const snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.some(
+        (node) => node.kind === 'agent' && node.metadata?.agent?.cwd === workspaceRoot
+      ) &&
+      currentSnapshot.state.nodes.some(
+        (node) => node.kind === 'terminal' && node.metadata?.terminal?.cwd === workspaceRoot
+      ),
+    20000
+  );
+  const agentNode = findNodeByKind(snapshot, 'agent');
+  const terminalNode = findNodeByKind(snapshot, 'terminal');
+  assert.strictEqual(agentNode.metadata.agent.cwd, workspaceRoot);
+  assert.strictEqual(terminalNode.metadata.terminal.cwd, workspaceRoot);
+  await ensureAgentStopped(agentNode.id).catch(() => {});
+  await ensureTerminalStopped(terminalNode.id).catch(() => {});
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+}
+
+async function verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  assert.ok(workspaceRoot, 'Expected trusted smoke to run inside a workspace.');
+
+  const configuration = vscode.workspace.getConfiguration();
+  const originalShellSetting = configuration.inspect('devSessionCanvas.terminal.shell');
+  const originalShellPathSetting = configuration.inspect('devSessionCanvas.terminal.shellPath');
+  const configurationTarget = resolvePreferredTerminalShellSettingsTarget();
+  const originalRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
+  const shellRelativePath = './.debug/vscode-smoke/relative-shell/dev-shell';
+  const expectedShellPath = path.join(workspaceRoot, '.debug', 'vscode-smoke', 'relative-shell', 'dev-shell');
+  const targetDirectory = path.join(workspaceRoot, '.debug', 'vscode-smoke', 'relative-shell', 'packages', 'app');
+  let terminalNodeId;
+
+  try {
+    await fs.mkdir(path.dirname(expectedShellPath), { recursive: true });
+    await fs.mkdir(targetDirectory, { recursive: true });
+    await fs.writeFile(
+      expectedShellPath,
+      process.platform === 'win32'
+        ? '@echo off\r\necho relative-shell:%CD%\r\nping -n 3 127.0.0.1 > nul\r\n'
+        : '#!/bin/sh\nprintf "relative-shell:%s\\n" "$PWD"\nsleep 2\n',
+      'utf8'
+    );
+    if (process.platform !== 'win32') {
+      await fs.chmod(expectedShellPath, 0o755);
+    }
+
+    await setTerminalShell('default', configurationTarget);
+    await setTerminalShellPath(shellRelativePath, configurationTarget);
+    await setRuntimePersistenceEnabled(false);
+    await simulateRuntimeReload();
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal', undefined, {
+      cwdOverride: targetDirectory
+    });
+
+    let snapshot = await waitForSnapshot(
+      (currentSnapshot) =>
+        currentSnapshot.state.nodes.some(
+          (node) =>
+            node.kind === 'terminal' &&
+            node.metadata?.terminal?.cwd === targetDirectory &&
+            normalizeShellPath(node.metadata?.terminal?.shellPath) === normalizeShellPath(expectedShellPath)
+        ),
+      20000
+    );
+    const terminalNode = snapshot.state.nodes.find(
+      (node) =>
+        node.kind === 'terminal' &&
+        node.metadata?.terminal?.cwd === targetDirectory &&
+        normalizeShellPath(node.metadata?.terminal?.shellPath) === normalizeShellPath(expectedShellPath)
+    );
+    assert.ok(terminalNode, 'Expected cwd-scoped Terminal to store workspace-resolved relative shell path.');
+    terminalNodeId = terminalNode.id;
+
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/started' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNode.id &&
+            event.detail?.cwd === targetDirectory &&
+            normalizeShellPath(event.detail?.shellPath) === normalizeShellPath(expectedShellPath)
+        ),
+      20000
+    );
+    snapshot = await waitForTerminalLive(terminalNode.id);
+    assert.strictEqual(findNodeById(snapshot, terminalNode.id).metadata.terminal.cwd, targetDirectory);
+  } finally {
+    if (terminalNodeId) {
+      await ensureTerminalStopped(terminalNodeId).catch(() => {});
+    }
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shell', originalShellSetting);
+    await restoreTerminalShellSetting('devSessionCanvas.terminal.shellPath', originalShellPathSetting);
+    await setRuntimePersistenceEnabled(originalRuntimePersistenceEnabled);
+    await simulateRuntimeReload();
+  }
+}
+
+async function verifyExplorerResourceExecutionNodeCreation() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  assert.ok(workspaceRoot, 'Expected trusted smoke to run inside a workspace.');
+  const targetDirectory = path.join(workspaceRoot, '.debug', 'vscode-smoke', 'explorer-cwd');
+  const targetFile = path.join(targetDirectory, 'entry.ts');
+  const defaultProvider =
+    vscode.workspace
+      .getConfiguration()
+      .get('devSessionCanvas.agent.defaultProvider', 'codex') === 'claude'
+      ? 'claude'
+      : 'codex';
+  const expectedProviderLabel = defaultProvider === 'claude' ? 'Claude Code' : 'Codex';
+  await fs.mkdir(targetDirectory, { recursive: true });
+  await fs.writeFile(targetFile, 'export const explorerCwdSmoke = true;\n', 'utf8');
+
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  let snapshot = await getDebugSnapshot();
+  assert.strictEqual(snapshot.activeSurface, 'panel');
+  const baselineNodeIds = new Set(snapshot.state.nodes.map((node) => node.id));
+
+  await vscode.commands.executeCommand(
+    COMMAND_IDS.createTerminalFromExplorerResource,
+    vscode.Uri.file(targetDirectory)
+  );
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.some(
+        (node) =>
+          !baselineNodeIds.has(node.id) &&
+          node.kind === 'terminal' &&
+          node.metadata?.terminal?.cwd === targetDirectory
+      ),
+    20000
+  );
+  const terminalNode = snapshot.state.nodes.find(
+    (node) =>
+      !baselineNodeIds.has(node.id) &&
+      node.kind === 'terminal' &&
+      node.metadata?.terminal?.cwd === targetDirectory
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Terminal creation to use the already-open Canvas surface instead of the default surface.'
+  );
+  assert.ok(terminalNode, 'Expected Explorer directory command to create a cwd-scoped Terminal.');
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/startRequested' &&
+          event.detail?.kind === 'terminal' &&
+          event.detail?.nodeId === terminalNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await waitForTerminalLive(terminalNode.id);
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'terminal' &&
+          event.detail?.nodeId === terminalNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await ensureTerminalStopped(terminalNode.id);
+
+  baselineNodeIds.add(terminalNode.id);
+  await clearDiagnosticEvents();
+  await setQuickPickSelections(['create-agent-default', 'agent-launch-accept-current']);
+  await vscode.commands.executeCommand(
+    COMMAND_IDS.createAgentFromExplorerResource,
+    vscode.Uri.file(targetFile)
+  );
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.some(
+        (node) =>
+          !baselineNodeIds.has(node.id) &&
+          node.kind === 'agent' &&
+          node.metadata?.agent?.cwd === targetDirectory
+      ),
+    20000
+  );
+  const agentNode = snapshot.state.nodes.find(
+    (node) =>
+      !baselineNodeIds.has(node.id) &&
+      node.kind === 'agent' &&
+      node.metadata?.agent?.cwd === targetDirectory
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Agent creation to stay on the already-open Canvas surface.'
+  );
+  assert.ok(agentNode, 'Expected Explorer file command to create an Agent bound to the file parent directory.');
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/startRequested' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === agentNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+
+  const sidebarItems = await getSidebarNodeListItems();
+  const agentItem = sidebarItems.find((item) => item.nodeId === agentNode.id);
+  assert.ok(agentItem, 'Expected cwd-scoped Agent to appear in the sidebar node list.');
+  assert.strictEqual(
+    agentItem.status.startsWith(`.debug/vscode-smoke/explorer-cwd/ · ${expectedProviderLabel} · `),
+    true,
+    'Expected Agent sidebar row to include cwd label before provider and status.'
+  );
+
+  const explorerSnapshot = await getDebugSnapshot();
+  const activeSurface = explorerSnapshot.activeSurface ?? 'editor';
+  await waitForWebviewProbeOnSurface(
+    activeSurface,
+    (probe) => {
+      const probedAgent = probe.nodes.find((node) => node.nodeId === agentNode.id);
+      return Boolean(probedAgent?.chromeContext?.includes('.debug/vscode-smoke/explorer-cwd/'));
+    },
+    20000
+  );
+
+  await waitForAgentLive(agentNode.id);
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'agent' &&
+          event.detail?.nodeId === agentNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await ensureAgentStopped(agentNode.id);
+  await clearDiagnosticEvents();
+  await startExecutionSessionForTest({
+    kind: 'terminal',
+    nodeId: terminalNode.id,
+    cols: 90,
+    rows: 26
+  });
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/startRequested' &&
+          event.detail?.kind === 'terminal' &&
+          event.detail?.nodeId === terminalNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await waitForTerminalLive(terminalNode.id);
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/started' &&
+          event.detail?.kind === 'terminal' &&
+          event.detail?.nodeId === terminalNode.id &&
+          event.detail?.cwd === targetDirectory
+      ),
+    20000
+  );
+  await ensureTerminalStopped(terminalNode.id);
+
+  await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
+  snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
+  assert.strictEqual(snapshot.state.nodes.length, 0);
+  await ensureEditorCanvasReady();
+}
+
+async function verifyCreateNodeCommandUsesOpenCanvasSurface() {
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  let snapshot = await getDebugSnapshot();
+  assert.strictEqual(snapshot.activeSurface, 'panel');
+
+  await setQuickPickSelections(['create-note']);
+  await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.activeSurface === 'panel' &&
+      currentSnapshot.state.nodes.some((node) => node.kind === 'note'),
+    20000
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected generic node creation to reuse the already-open Canvas surface.'
+  );
+
+  await dispatchWebviewMessage({ type: 'webview/resetDemoState' }, 'panel');
+  snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
+  assert.strictEqual(snapshot.state.nodes.length, 0);
+  await ensureEditorCanvasReady();
 }
 
 async function verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits() {
@@ -3033,7 +4417,7 @@ async function runRestrictedSmoke() {
   assert.strictEqual(snapshot.activeSurface, 'editor');
   assert.strictEqual(snapshot.sidebar.canvasSurface, 'visible');
   assert.strictEqual(snapshot.sidebar.workspaceTrusted, false);
-  assert.deepStrictEqual(snapshot.sidebar.creatableKinds, ['note']);
+  assert.deepStrictEqual(snapshot.sidebar.creatableKinds, ['agent', 'terminal', 'note']);
   assert.strictEqual(snapshot.surfaceReady.editor, true);
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
@@ -3076,6 +4460,42 @@ async function runRestrictedSmoke() {
         message.type === 'host/error' &&
         message.payload.message === '当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。'
     )
+  );
+
+  await withInterceptedWarningMessages(async (warningCalls) => {
+    await setQuickPickSelections(['create-terminal']);
+    await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+
+    assert.strictEqual(warningCalls.length, 1, 'Expected restricted Quick Input terminal create to show one modal.');
+    assert.strictEqual(
+      warningCalls[0].message,
+      '当前 workspace 未受信任，暂时不能创建 Terminal 节点。请先信任当前工作区，再创建执行型节点。'
+    );
+    assert.strictEqual(warningCalls[0].options?.modal, true);
+  });
+
+  snapshot = await getDebugSnapshot();
+  assert.deepStrictEqual(
+    snapshot.state.nodes.map((node) => node.kind).sort(),
+    ['note']
+  );
+
+  await withInterceptedWarningMessages(async (warningCalls) => {
+    await setQuickPickSelections(['create-agent-default', 'agent-launch-accept-current']);
+    await vscode.commands.executeCommand(COMMAND_IDS.createNode);
+
+    assert.strictEqual(warningCalls.length, 1, 'Expected restricted Quick Input agent create to show one modal.');
+    assert.strictEqual(
+      warningCalls[0].message,
+      '当前 workspace 未受信任，暂时不能创建 Agent 节点。请先信任当前工作区，再创建执行型节点。'
+    );
+    assert.strictEqual(warningCalls[0].options?.modal, true);
+  });
+
+  snapshot = await getDebugSnapshot();
+  assert.deepStrictEqual(
+    snapshot.state.nodes.map((node) => node.kind).sort(),
+    ['note']
   );
 
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
@@ -3233,6 +4653,15 @@ async function ensureAgentStopped(agentNodeId) {
   });
 }
 
+async function maybeEnsureAgentStopped(agentNodeId) {
+  const snapshot = await getDebugSnapshot();
+  if (!snapshot.state.nodes.some((node) => node.id === agentNodeId && node.kind === 'agent')) {
+    return snapshot;
+  }
+
+  return ensureAgentStopped(agentNodeId);
+}
+
 async function ensureTerminalStopped(terminalNodeId) {
   const snapshot = await getDebugSnapshot();
   const terminalNode = findNodeById(snapshot, terminalNodeId);
@@ -3320,7 +4749,14 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   assert.strictEqual(agentNode.status, 'waiting-input');
 
   await requestExecutionSnapshot('agent', agentNodeId);
-  let hostMessages = await getHostMessages();
+  let hostMessages = await waitForHostMessages((messages) =>
+    messages.some(
+      (message) =>
+        message.type === 'host/executionSnapshot' &&
+        message.payload.kind === 'agent' &&
+        message.payload.nodeId === agentNodeId
+    )
+  );
   assert.ok(
     hostMessages.some(
       (message) =>
@@ -3648,7 +5084,7 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
   const expectedAgentNode = findNodeById(editorReadySnapshot, agentNodeId);
   const expectedTerminalNode = findNodeById(editorReadySnapshot, terminalNodeId);
   const expectedNoteNode = findNodeById(editorReadySnapshot, noteNodeId);
-  const expectedAgentSubtitle = expectedAgentNode.metadata?.agent?.lastLaunchCommandLine ?? null;
+  const expectedAgentLaunchCommand = expectedAgentNode.metadata?.agent?.lastLaunchCommandLine ?? null;
   const expectedNodeCount = editorReadySnapshot.state.nodes.length;
 
   const probe = await waitForWebviewProbeOnSurface(
@@ -3665,7 +5101,7 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
           agentNode &&
           agentNode.kind === 'agent' &&
           agentNode.titleInputValue === expectedAgentNode.title &&
-          (expectedAgentSubtitle === null || agentNode.chromeSubtitle === expectedAgentSubtitle) &&
+          (expectedAgentLaunchCommand === null || agentNode.chromeSubtitle === expectedAgentLaunchCommand) &&
           agentNode.minimapVisible === true &&
           terminalNode &&
           terminalNode.kind === 'terminal' &&
@@ -3692,8 +5128,12 @@ async function verifyRealWebviewProbe(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(probe.hasReactFlow, true);
   assert.strictEqual(probe.nodeCount, expectedNodeCount);
   assert.strictEqual(probe.toastMessage, null);
-  if (expectedAgentSubtitle !== null) {
-    assert.strictEqual(agentProbeNode.chromeSubtitle, expectedAgentSubtitle);
+  if (expectedAgentLaunchCommand !== null) {
+    assert.strictEqual(
+      agentProbeNode.chromeSubtitle,
+      expectedAgentLaunchCommand,
+      'Expected Agent subtitle to keep only the launch command.'
+    );
   }
   assert.strictEqual(noteProbeNode.bodyValue, expectedNoteNode.metadata.note.content);
 }
@@ -4335,6 +5775,115 @@ async function verifyNoteMarkdownFileAssociation() {
     10000
   );
 
+  await clearHostMessages();
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await vscode.commands.executeCommand(COMMAND_IDS.createNoteFromExplorerMarkdown, associatedFileUri);
+      await waitForHostMessages(
+        (messages) =>
+          messages.some(
+            (message) =>
+              message.type === 'host/focusNodes' &&
+              Array.isArray(message.payload?.nodeIds) &&
+              message.payload.nodeIds.includes(associatedNote.id)
+          ),
+        10000
+      );
+      assert.strictEqual(
+        warningCalls.length,
+        1,
+        'Expected Explorer Markdown command to confirm before locating an existing associated Note.'
+      );
+      assert.ok(
+        warningCalls[0].items.includes('定位已有 Note'),
+        'Expected Explorer Markdown command to offer locating the associated Note.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '定位已有 Note')
+  );
+  snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Markdown Note creation to locate existing Notes on the already-open Canvas surface.'
+  );
+  assert.strictEqual(
+    snapshot.state.nodes.filter(
+      (node) =>
+        node.kind === 'note' &&
+        node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+    ).length,
+    1,
+    'Expected Explorer Markdown command locate flow not to create another Note for an existing association.'
+  );
+
+  await withInterceptedWarningMessages(
+    async (warningCalls) => {
+      await vscode.commands.executeCommand(COMMAND_IDS.createNoteFromExplorerMarkdown, associatedFileUri);
+      snapshot = await waitForSnapshot(
+        (currentSnapshot) =>
+          currentSnapshot.state.nodes.filter(
+            (node) =>
+              node.kind === 'note' &&
+              node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+          ).length === 2,
+        10000
+      );
+      assert.strictEqual(
+        warningCalls.length,
+        1,
+        'Expected Explorer Markdown command to confirm before adding a duplicate associated Note.'
+      );
+      assert.ok(
+        warningCalls[0].items.includes('添加新 Note'),
+        'Expected Explorer Markdown command to offer adding another associated Note.'
+      );
+    },
+    ({ items }) => items.find((item) => item === '添加新 Note')
+  );
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'panel',
+    'Expected Explorer Markdown Note creation to add duplicate Notes on the already-open Canvas surface.'
+  );
+  const explorerDuplicateAssociatedNote = snapshot.state.nodes.find(
+    (node) =>
+      node.kind === 'note' &&
+      node.id !== associatedNote.id &&
+      node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+  );
+  assert.ok(
+    explorerDuplicateAssociatedNote,
+    'Expected Explorer Markdown command add flow to create a second associated Note when confirmed.'
+  );
+  assert.strictEqual(
+    explorerDuplicateAssociatedNote.title,
+    'associated-note.md',
+    'Expected Explorer Markdown command to reuse the Markdown association title rule.'
+  );
+  assert.strictEqual(
+    explorerDuplicateAssociatedNote.metadata.note.content,
+    REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY,
+    'Expected Explorer Markdown command to read the associated file content into the Note buffer.'
+  );
+  await dispatchWebviewMessage({
+    type: 'webview/deleteNode',
+    payload: {
+      nodeId: explorerDuplicateAssociatedNote.id
+    }
+  });
+  snapshot = await waitForSnapshot(
+    (currentSnapshot) =>
+      currentSnapshot.state.nodes.filter(
+        (node) =>
+          node.kind === 'note' &&
+          node.metadata?.note?.contentSource?.resourceUri === associatedFileUri.toString()
+      ).length === 1,
+    10000
+  );
+
   await dispatchWebviewMessage({
     type: 'webview/updateNoteNode',
     payload: {
@@ -4582,6 +6131,8 @@ async function verifyNoteMarkdownFileAssociation() {
   await waitForSnapshot((currentSnapshot) =>
     currentSnapshot.state.nodes.every((node) => node.id !== missingNote.id)
   );
+  await ensureEditorCanvasReady();
+  await assertInteractiveEditorSurface('verifyNoteMarkdownFileAssociation');
 }
 
 async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNodeId) {
@@ -4733,6 +6284,9 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
   const originalBridgeMode = normalizeAttentionNotificationBridgeMode(
     configuration.get('devSessionCanvas.notifications.attentionSignalBridge', 'system')
   );
+  const originalEnabledAttentionSignals = normalizeEnabledAttentionSignals(
+    configuration.get('devSessionCanvas.notifications.enabledAttentionSignals', DEFAULT_ATTENTION_SIGNALS)
+  );
   const originalStrongReminderMode = normalizeStrongTerminalAttentionReminderMode(
     configuration.get('devSessionCanvas.notifications.strongTerminalAttentionReminder', 'both')
   );
@@ -4740,6 +6294,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
   const strongReminderNoneMessage = 'strong-reminder-none-smoke';
   const strongReminderTitleBarMessage = 'strong-reminder-titlebar-smoke';
   const strongReminderMinimapMessage = 'strong-reminder-minimap-smoke';
+  const disabledSignalMessage = 'terminal-signal-disabled-smoke';
+  const allowedSignalMessage = 'terminal-signal-enabled-smoke';
   const bridgeEnabledMessage = 'bridge-enabled-smoke';
   const bridgeViewMessage = 'bridge-focus-smoke';
   const bridgeDuplicateMessage = 'bridge-duplicate-smoke';
@@ -4752,6 +6308,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
   try {
+    await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
     await ensureStrongTerminalAttentionReminderMode('both');
     await ensureAttentionNotificationBridgeMode('none');
 
@@ -4901,6 +6458,114 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
           'both mode should add minimap size pulsing when bridge is disabled.'
         );
         await clearAttentionByClick();
+
+        const expectedBelMessage = `Agent「${agentLabel}」发出终端提醒。`;
+        await ensureAttentionNotificationBridgeMode('workbench');
+        await ensureEnabledAttentionSignals(['osc9', 'osc777']);
+        calls.length = 0;
+        await clearDiagnosticEvents();
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `bell ${disabledSignalMessage}\r`
+          }
+        });
+        await waitForSnapshot((currentSnapshot) => {
+          const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
+          return Boolean(
+            currentNode?.metadata?.agent?.recentOutput?.includes(`[fake-agent] belled ${disabledSignalMessage}`) &&
+              currentNode.status === 'waiting-input' &&
+              currentNode?.metadata?.agent?.attentionPending !== true
+          );
+        }, 20000);
+        const disabledProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === false &&
+                currentNode.attentionIndicatorFlashing === false &&
+                currentNode.minimapAttentionFlashing === false &&
+                currentNode.minimapAttentionSizePulsing === false
+            );
+          },
+          20000
+        );
+        const disabledDiagnostics = await waitForDiagnosticEvents(
+          (events) =>
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationSuppressed' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.reason === 'signal-disabled' &&
+                Array.isArray(event.detail?.signals) &&
+                event.detail.signals.includes('bel')
+            ),
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), []);
+        assert.strictEqual(
+          disabledProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          false,
+          'A disabled terminal BEL signal should not create node attention.'
+        );
+        assert.ok(
+          disabledDiagnostics.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationSuppressed' &&
+              event.detail?.nodeId === agentNodeId &&
+              event.detail?.reason === 'signal-disabled'
+          ),
+          'Expected disabled terminal signal to emit a diagnostic suppression event.'
+        );
+
+        await ensureEnabledAttentionSignals(['bel', 'osc9', 'osc777']);
+        calls.length = 0;
+        await clearDiagnosticEvents();
+        await dispatchWebviewMessage({
+          type: 'webview/executionInput',
+          payload: {
+            nodeId: agentNodeId,
+            kind: 'agent',
+            data: `bell ${allowedSignalMessage}\r`
+          }
+        });
+        await waitForDiagnosticEvents(
+          (events) =>
+            events.some(
+              (event) =>
+                event.kind === 'execution/attentionNotificationPosted' &&
+                event.detail?.nodeId === agentNodeId &&
+                event.detail?.signal === 'bel' &&
+                event.detail?.message === expectedBelMessage
+            ),
+          20000
+        );
+        const allowedProbe = await waitForWebviewProbeOnSurface(
+          'editor',
+          (currentProbe) => {
+            const currentNode = currentProbe.nodes.find((node) => node.nodeId === agentNodeId);
+            return Boolean(
+              currentNode &&
+                currentNode.attentionIndicatorVisible === true &&
+                currentNode.attentionIndicatorFlashing === true &&
+                currentNode.minimapAttentionFlashing === true &&
+                currentNode.minimapAttentionSizePulsing === true
+            );
+          },
+          20000
+        );
+        assert.deepStrictEqual(calls.map((call) => call.message), [expectedBelMessage]);
+        assert.strictEqual(
+          allowedProbe.nodes.find((node) => node.nodeId === agentNodeId)?.attentionIndicatorVisible,
+          true,
+          'Re-enabling BEL should allow the terminal signal to create node attention again.'
+        );
+        await clearAttentionByClick();
+        await ensureAttentionNotificationBridgeMode('none');
 
         await assertAttentionSurfaceForMode({
           mode: 'none',
@@ -5162,6 +6827,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
   } finally {
     await ensureAgentStopped(agentNodeId);
     await ensureAttentionNotificationBridgeMode(originalBridgeMode);
+    await ensureEnabledAttentionSignals(originalEnabledAttentionSignals);
     await ensureStrongTerminalAttentionReminderMode(originalStrongReminderMode);
     await clearHostMessages();
     await clearDiagnosticEvents();
@@ -5176,6 +6842,9 @@ async function verifyAgentAbnormalInterruptionNotifications() {
   const originalTextNotificationMode = normalizeAgentAbnormalOutputTextNotificationMode(
     configuration.get('devSessionCanvas.notifications.agentAbnormalOutputTextNotifications', 'off')
   );
+  const originalEnabledAttentionSignals = normalizeEnabledAttentionSignals(
+    configuration.get('devSessionCanvas.notifications.enabledAttentionSignals', DEFAULT_ATTENTION_SIGNALS)
+  );
   const originalRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
 
   await clearHostMessages();
@@ -5185,6 +6854,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
     await setRuntimePersistenceEnabled(false);
     await ensureAttentionNotificationBridgeMode('workbench');
     await ensureAgentAbnormalOutputTextNotificationMode('off');
+    await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
 
     await withInterceptedInformationMessages(async (calls) => {
       let snapshot = await getDebugSnapshot();
@@ -5261,14 +6931,67 @@ async function verifyAgentAbnormalInterruptionNotifications() {
 
       await clearDiagnosticEvents();
       calls.length = 0;
+      await ensureEnabledAttentionSignals(['bel', 'osc9', 'osc777', 'codexAbnormalOutputText']);
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex'
+      });
+      await waitForAgentLive(codexAgent.id);
+      await dispatchWebviewMessage({
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: codexAgent.id,
+          kind: 'agent',
+          data: 'exit 29\r'
+        }
+      });
+      const disabledAbnormalExitDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationSuppressed' &&
+              event.detail?.trigger === 'agent-abnormal-interruption' &&
+              event.detail?.reason === 'signal-disabled' &&
+              event.detail?.signal === 'agentAbnormalExit' &&
+              event.detail?.nodeId === codexAgent.id
+          ),
+        20000
+      );
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return Boolean(
+          currentAgent?.status === 'error' &&
+            currentAgent?.metadata?.agent?.lastExitCode === 29 &&
+            currentAgent?.metadata?.agent?.attentionPending !== true
+        );
+      }, 20000);
+      assert.ok(
+        disabledAbnormalExitDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationSuppressed' &&
+            event.detail?.signal === 'agentAbnormalExit'
+        ),
+        'Expected disabling agentAbnormalExit to suppress Agent abnormal-exit attention.'
+      );
+      assert.ok(
+        !calls.some((call) => /异常中断/.test(call.message)),
+        'Expected disabled agentAbnormalExit not to surface a workbench notification.'
+      );
+
+      await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
       await startExecutionSessionForTest({
         kind: 'agent',
         nodeId: codexAgent.id,
         cols: 90,
         rows: 28,
         provider: 'codex',
-        injectAgentOutputChunk:
-          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+        injectAgentOutputChunk: '\n■ {"error":{"message":"Internal server error"}}\n› Write tests for @filename\n'
       });
       await sleep(300);
       let textDiagnostics = await getDiagnosticEvents();
@@ -5290,6 +7013,50 @@ async function verifyAgentAbnormalInterruptionNotifications() {
 
       await clearDiagnosticEvents();
       calls.length = 0;
+      await ensureEnabledAttentionSignals(['bel', 'osc9', 'osc777', 'agentAbnormalExit']);
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunk: '\n■ {"error":{"message":"Internal server error"}}\n› Write tests for @filename\n'
+      });
+      const disabledStreamDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationSuppressed' &&
+              event.detail?.trigger === 'agent-abnormal-stream-interruption' &&
+              event.detail?.reason === 'signal-disabled' &&
+              event.detail?.signal === 'codexAbnormalOutputText' &&
+              event.detail?.nodeId === codexAgent.id
+          ),
+        20000
+      );
+      await sleep(300);
+      snapshot = await getDebugSnapshot();
+      assert.notStrictEqual(
+        findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending,
+        true,
+        'Disabling codexAbnormalOutputText should avoid setting node attention for Codex final-failure text.'
+      );
+      assert.ok(
+        disabledStreamDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationSuppressed' &&
+            event.detail?.signal === 'codexAbnormalOutputText'
+        ),
+        'Expected disabling codexAbnormalOutputText to suppress Codex abnormal text attention.'
+      );
+      assert.ok(
+        !calls.some((call) => /输出流异常/.test(call.message)),
+        'Expected disabled codexAbnormalOutputText not to surface a workbench notification for Codex final-failure text.'
+      );
+
+      await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
+      await clearDiagnosticEvents();
+      calls.length = 0;
       await startExecutionSessionForTest({
         kind: 'agent',
         nodeId: codexAgent.id,
@@ -5297,9 +7064,9 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         rows: 28,
         provider: 'codex',
         injectAgentOutputChunk:
-          '\n■ stream disconnected before completion: stream closed before response.completed\n'
+          '\n■ stream disconnected before completion: stream closed before response.completed\n› Write tests for @filename\n'
       });
-      const streamDiagnostics = await waitForDiagnosticEvents(
+      const finalStreamDiagnostics = await waitForDiagnosticEvents(
         (events) =>
           events.some(
             (event) =>
@@ -5317,12 +7084,12 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       }, 20000);
       assert.strictEqual(findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending, true);
       assert.ok(
-        streamDiagnostics.some(
+        finalStreamDiagnostics.some(
           (event) =>
             event.kind === 'execution/attentionNotificationPosted' &&
             event.detail?.trigger === 'agent-abnormal-stream-interruption'
         ),
-        'Expected a Codex stream-disconnected line to post a supplemental attention notification diagnostic when enabled.'
+        'Expected tail Codex square-marker stream-disconnected output to post a supplemental diagnostic.'
       );
       await waitForInterceptedInformationMessage(
         calls,
@@ -5330,7 +7097,97 @@ async function verifyAgentAbnormalInterruptionNotifications() {
           /Codex Agent「Codex Crash Smoke」输出流异常/.test(call.message) &&
           /stream disconnected before completion/.test(call.message) &&
           call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
-        'Expected an enabled Codex stream-disconnected line to surface a supplemental workbench attention notification.'
+        'Expected tail Codex square-marker stream-disconnected output to surface a supplemental workbench notification.'
+      );
+      await performWebviewDomAction({
+        kind: 'selectNode',
+        nodeId: codexAgent.id
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === false;
+      }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunks: [
+          '\nReconnecting... 1/5 (23m 57s · esc to interrupt)\n',
+          '└ Stream disconnected before completion: stream closed before response.completed\n',
+          'Reconnecting... 2/5 (23m 58s · esc to interrupt)\n',
+          '└ Stream disconnected before completion: stream closed before response.completed\n'
+        ]
+      });
+      await sleep(300);
+      textDiagnostics = await getDiagnosticEvents();
+      snapshot = await getDebugSnapshot();
+      assert.notStrictEqual(
+        findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending,
+        true,
+        'Codex reconnecting tree output should not set node attention while the agent is still retrying.'
+      );
+      assert.ok(
+        !textDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected Codex reconnecting tree output not to post a supplemental diagnostic.'
+      );
+      assert.ok(
+        !calls.some(
+          (call) => /输出流异常/.test(call.message) && /stream disconnected before completion/.test(call.message)
+        ),
+        'Expected Codex reconnecting tree output not to surface a workbench notification.'
+      );
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await startExecutionSessionForTest({
+        kind: 'agent',
+        nodeId: codexAgent.id,
+        cols: 90,
+        rows: 28,
+        provider: 'codex',
+        injectAgentOutputChunk: '\n■ {"error":{"message":"Internal server error"}}\n› Write tests for @filename\n'
+      });
+      const internalServerDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-abnormal-stream-interruption' &&
+              event.detail?.nodeId === codexAgent.id &&
+              event.detail?.provider === 'codex' &&
+              event.detail?.reason === 'output-pattern'
+          ),
+        20000
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === codexAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === true;
+      }, 20000);
+      assert.strictEqual(findNodeById(snapshot, codexAgent.id).metadata.agent.attentionPending, true);
+      assert.ok(
+        internalServerDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            event.detail?.trigger === 'agent-abnormal-stream-interruption'
+        ),
+        'Expected Codex internal-server-error output to post a supplemental attention notification diagnostic when enabled.'
+      );
+      await waitForInterceptedInformationMessage(
+        calls,
+        (call) =>
+          /Codex Agent「Codex Crash Smoke」输出流异常/.test(call.message) &&
+          /Internal server error/.test(call.message) &&
+          call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
+        'Expected Codex internal-server-error output to surface a supplemental workbench attention notification.'
       );
       await performWebviewDomAction({
         kind: 'selectNode',
@@ -5604,6 +7461,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
   } finally {
     await setRuntimePersistenceEnabled(originalRuntimePersistenceEnabled);
     await ensureAgentAbnormalOutputTextNotificationMode(originalTextNotificationMode);
+    await ensureEnabledAttentionSignals(originalEnabledAttentionSignals);
     await ensureAttentionNotificationBridgeMode(originalBridgeMode);
     await clearHostMessages();
     await clearDiagnosticEvents();
@@ -6112,11 +7970,14 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
             event.detail?.nodeId === terminalNodeId &&
             event.detail?.text === urlLinkText &&
             event.detail?.linkKind === 'url' &&
-            event.detail?.openerKind === 'vscode.open' &&
-            event.detail?.targetUri === urlLinkText
+            event.detail?.openerKind === 'simpleBrowser.api.open' &&
+            isExpectedPreviewTargetUri(event.detail?.targetUri, urlLinkText)
         ),
       10000
     );
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
     const explicitUrlLinkText = browserSmokeServer.url.replace('/hit', '/explicit');
     await performWebviewDomAction(
@@ -6154,8 +8015,8 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
             event.detail?.nodeId === terminalNodeId &&
             event.detail?.text === explicitUrlLinkText &&
             event.detail?.linkKind === 'url' &&
-            event.detail?.openerKind === 'vscode.open' &&
-            event.detail?.targetUri === explicitUrlLinkText
+            event.detail?.openerKind === 'simpleBrowser.api.open' &&
+            isExpectedPreviewTargetUri(event.detail?.targetUri, explicitUrlLinkText)
         ),
       10000
     );
@@ -6237,9 +8098,11 @@ async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(t
         payload: {
           nodeId: terminalNodeId,
           kind: 'terminal',
+          // Keep each line shorter than the embedded terminal width used by
+          // the smoke harness so scrollback assertions do not become wrap-dependent.
           data:
             'i=1; while [ $i -le 220 ]; do printf \'' +
-            `${TERMINAL_SCROLLBACK_PERSIST_MARKER}-%03d persisted scrollback verification\\r\\n` +
+            `${TERMINAL_SCROLLBACK_PERSIST_MARKER}-%03d\\r\\n` +
             '\' "$i"; i=$((i+1)); done\r'
         }
       },
@@ -9702,7 +11565,9 @@ async function startExecutionSessionForTest({
   provider,
   resumeRequested = false,
   injectAgentOutputChunk,
-  injectAgentExistingOutput
+  injectAgentOutputChunks,
+  injectAgentExistingOutput,
+  cwdOverride
 }) {
   return vscode.commands.executeCommand(
     COMMAND_IDS.testStartExecutionSession,
@@ -9712,8 +11577,10 @@ async function startExecutionSessionForTest({
     rows,
     provider,
     resumeRequested,
-    injectAgentOutputChunk || injectAgentExistingOutput
-      ? { injectAgentOutputChunk, injectAgentExistingOutput }
+    injectAgentOutputChunk || injectAgentOutputChunks || injectAgentExistingOutput
+      ? { injectAgentOutputChunk, injectAgentOutputChunks, injectAgentExistingOutput, cwdOverride }
+      : cwdOverride
+        ? { cwdOverride }
       : undefined
   );
 }
@@ -9997,6 +11864,49 @@ function normalizeAttentionNotificationBridgeMode(value) {
   return 'system';
 }
 
+function normalizeEnabledAttentionSignals(value) {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_ATTENTION_SIGNALS];
+  }
+
+  const configuredSignals = new Set();
+  for (const item of value) {
+    if (DEFAULT_ATTENTION_SIGNALS.includes(item)) {
+      configuredSignals.add(item);
+    }
+  }
+
+  return DEFAULT_ATTENTION_SIGNALS.filter((signal) => configuredSignals.has(signal));
+}
+
+async function ensureEnabledAttentionSignals(signals) {
+  const configuration = vscode.workspace.getConfiguration();
+  const normalizedSignals = normalizeEnabledAttentionSignals(signals);
+  const currentSignals = normalizeEnabledAttentionSignals(
+    configuration.get('devSessionCanvas.notifications.enabledAttentionSignals', DEFAULT_ATTENTION_SIGNALS)
+  );
+
+  if (JSON.stringify(currentSignals) === JSON.stringify(normalizedSignals)) {
+    return;
+  }
+
+  await clearDiagnosticEvents();
+  await configuration.update(
+    'devSessionCanvas.notifications.enabledAttentionSignals',
+    normalizedSignals,
+    vscode.ConfigurationTarget.Global
+  );
+  await waitForDiagnosticEvents(
+    (events) =>
+      events.some(
+        (event) =>
+          event.kind === 'execution/enabledAttentionSignalsConfigChanged' &&
+          JSON.stringify(event.detail?.enabledSignals) === JSON.stringify(normalizedSignals)
+      ),
+    20000
+  );
+}
+
 function normalizeAgentAbnormalOutputTextNotificationMode(value) {
   return value === 'codex' ? 'codex' : 'off';
 }
@@ -10161,25 +12071,54 @@ function createSerializedTerminalStateFixture(marker) {
 }
 
 async function waitForWebviewProbe(predicate, timeoutMs = 8000) {
+  await assertInteractiveEditorSurface('waitForWebviewProbe');
   return waitForWebviewProbeOnSurface('editor', predicate, timeoutMs);
+}
+
+async function assertInteractiveEditorSurface(caller) {
+  const snapshot = await getDebugSnapshot();
+  assert.strictEqual(
+    snapshot.activeSurface,
+    'editor',
+    `${caller} requires the editor surface to stay interactive; restore it with ensureEditorCanvasReady() after commands that reveal another surface.`
+  );
+  assert.strictEqual(
+    snapshot.surfaceReady.editor,
+    true,
+    `${caller} requires the editor surface to be ready before probing the real Webview.`
+  );
 }
 
 async function waitForWebviewProbeOnSurface(surface, predicate, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
-  let lastProbe = await captureWebviewProbe(surface, 2000);
+  let lastProbe;
+  let lastProbeError;
 
   while (Date.now() < deadline) {
-    if (predicate(lastProbe)) {
-      return lastProbe;
+    try {
+      const probeTimeoutMs = Math.min(5000, Math.max(500, deadline - Date.now()));
+      lastProbe = await captureWebviewProbe(surface, probeTimeoutMs);
+      lastProbeError = undefined;
+      if (predicate(lastProbe)) {
+        return lastProbe;
+      }
+    } catch (error) {
+      if (!isWebviewProbeCaptureTimeout(error)) {
+        throw error;
+      }
+      lastProbeError = error;
     }
 
     await sleep(100);
-    lastProbe = await captureWebviewProbe(surface, 2000);
   }
 
   assert.fail(
-    `Timed out while waiting for ${surface} webview probe. Last probe: ${JSON.stringify(lastProbe)}`
+    `Timed out while waiting for ${surface} webview probe. Last probe: ${JSON.stringify(lastProbe ?? null)}. Last probe error: ${lastProbeError ? formatError(lastProbeError) : '<none>'}`
   );
+}
+
+function isWebviewProbeCaptureTimeout(error) {
+  return /Webview probe 返回超时/.test(formatError(error));
 }
 
 async function waitForSnapshot(predicate, timeoutMs = 15000) {
@@ -10350,10 +12289,12 @@ async function withInterceptedWarningMessages(runIntercepted, resolveSelection) 
   const originalShowWarningMessage = vscode.window.showWarningMessage;
   const calls = [];
 
-  vscode.window.showWarningMessage = async (message, ...items) => {
-    calls.push({ message, items });
+  vscode.window.showWarningMessage = async (message, ...args) => {
+    const options = args.length > 0 && isMessageOptions(args[0]) ? args[0] : undefined;
+    const items = options ? args.slice(1) : args;
+    calls.push({ message, options, items });
     return typeof resolveSelection === 'function'
-      ? await resolveSelection({ message, items, calls })
+      ? await resolveSelection({ message, options, items, calls })
       : undefined;
   };
 
@@ -10368,6 +12309,16 @@ async function withInterceptedWarningMessages(runIntercepted, resolveSelection) 
   } finally {
     vscode.window.showWarningMessage = originalShowWarningMessage;
   }
+}
+
+function isMessageOptions(value) {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      ('modal' in value || 'detail' in value) &&
+      !('title' in value)
+  );
 }
 
 async function withInterceptedQuickPicks(runIntercepted, resolveSelection) {
@@ -10643,6 +12594,52 @@ function describeExpectedExecutionLinkModifier() {
   return process.platform === 'darwin' ? 'cmd + click' : 'ctrl + click';
 }
 
+function isExpectedPreviewTargetUri(actualTarget, originalTarget) {
+  if (typeof actualTarget !== 'string') {
+    return false;
+  }
+
+  if (actualTarget === originalTarget) {
+    return true;
+  }
+
+  const actual = safeParseUrl(actualTarget);
+  const original = safeParseUrl(originalTarget);
+  if (!actual || !original) {
+    return false;
+  }
+
+  return (
+    isLoopbackPreviewHost(original.hostname) &&
+    isExpectedPreviewProtocol(actual.protocol, original.protocol) &&
+    actual.pathname === original.pathname &&
+    actual.search === original.search &&
+    actual.hash === original.hash &&
+    Boolean(actual.hostname)
+  );
+}
+
+function safeParseUrl(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function isLoopbackPreviewHost(hostname) {
+  const normalizedHostname = hostname.toLowerCase().replace(/\.$/, '');
+  return (
+    normalizedHostname === 'localhost' ||
+    normalizedHostname === '127.0.0.1' ||
+    normalizedHostname === '[::1]'
+  );
+}
+
+function isExpectedPreviewProtocol(actualProtocol, originalProtocol) {
+  return actualProtocol === originalProtocol || (originalProtocol === 'http:' && actualProtocol === 'https:');
+}
+
 async function createLocalBrowserSmokeServer(title) {
   const server = http.createServer((request, response) => {
     response.writeHead(200, {
@@ -10702,6 +12699,12 @@ function findNodeById(snapshot, nodeId) {
   const node = snapshot.state.nodes.find((currentNode) => currentNode.id === nodeId);
   assert.ok(node, `Missing node ${nodeId} in smoke snapshot.`);
   return node;
+}
+
+function findGroupById(snapshot, groupId) {
+  const group = snapshot.state.groups.find((currentGroup) => currentGroup.id === groupId);
+  assert.ok(group, `Missing group ${groupId} in smoke snapshot.`);
+  return group;
 }
 
 function findEdgeById(snapshot, edgeId) {
@@ -10820,14 +12823,17 @@ async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
     )
   );
   assert.ok(
-    diagnosticEvents.some(
-      (event) =>
+    diagnosticEvents.some((event) => {
+      const source = event.detail?.source;
+      return (
         event.kind === 'state/loadSelected' &&
-        event.detail?.source === 'snapshot' &&
+        (source === 'snapshot' || source === 'rootLocalSnapshot') &&
         typeof event.detail?.storagePath === 'string' &&
         typeof event.detail?.stateHash === 'string' &&
         event.detail?.snapshotStateHash === event.detail?.stateHash
-    )
+      );
+    }),
+    'Expected state/loadSelected diagnostics to report the selected snapshot/root-local snapshot hash.'
   );
   assert.ok(
     diagnosticEvents.some(
@@ -10970,6 +12976,17 @@ async function writeFailureArtifacts(error) {
       'utf8'
     );
   }
+
+  const hostDiagnosticsDump = await safeGet(() =>
+    vscode.commands.executeCommand(COMMAND_IDS.testDumpHostDiagnostics)
+  );
+  if (hostDiagnosticsDump !== undefined) {
+    await fs.writeFile(
+      path.join(artifactDir, 'failure-host-diagnostics-dump.json'),
+      `${JSON.stringify(hostDiagnosticsDump, null, 2)}\n`,
+      'utf8'
+    );
+  }
 }
 
 async function safeGet(loader) {
@@ -10986,6 +13003,15 @@ function rectanglesOverlap(left, right) {
     left.position.x + left.size.width > right.position.x &&
     left.position.y < right.position.y + right.size.height &&
     left.position.y + left.size.height > right.position.y
+  );
+}
+
+function paddedRectanglesOverlap(left, right, padding = 0) {
+  return (
+    left.position.x < right.position.x + right.size.width + padding &&
+    left.position.x + left.size.width > right.position.x - padding &&
+    left.position.y < right.position.y + right.size.height + padding &&
+    left.position.y + left.size.height > right.position.y - padding
   );
 }
 

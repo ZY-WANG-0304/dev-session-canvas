@@ -1,5 +1,9 @@
 import esbuild from 'esbuild';
 import { promises as fs } from 'fs';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const xtermBrowserMainEntryPath = require.resolve('@xterm/xterm/lib/xterm.js');
 
 const isWatch = process.argv.includes('--watch');
 const isProduction = process.argv.includes('--production');
@@ -56,6 +60,16 @@ const webviewConfig = {
   entryNames: '[name]',
   platform: 'browser',
   target: 'es2020',
+  plugins: [
+    {
+      name: 'xterm-browser-main-entry',
+      setup(build) {
+        build.onResolve({ filter: /^@xterm\/xterm$/ }, () => ({
+          path: xtermBrowserMainEntryPath
+        }));
+      }
+    }
+  ],
   loader: {
     '.ttf': 'file',
     '.woff': 'file',

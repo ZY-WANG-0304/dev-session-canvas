@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { chromium } from 'playwright';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -226,13 +227,89 @@ try {
   const vscodeStubDir = path.join(tempDir, 'node_modules', 'vscode');
   await mkdir(vscodeStubDir, { recursive: true });
   await writeFile(path.join(vscodeStubDir, 'index.js'), 'module.exports = {};', 'utf8');
-  const { buildCanvasSidebarSessionHistoryItems } = require(bundledSidebarModule);
+  const { buildCanvasSidebarSessionHistoryItems, buildSidebarSessionHistoryHtml } = require(bundledSidebarModule);
+  const multiRootWorkspaceFolders = [
+    { name: 'main-root', path: workspaceRoot },
+    { name: 'feature-a', path: nestedWorkspace }
+  ];
   const sidebarItems = buildCanvasSidebarSessionHistoryItems(entries, workspaceRoot);
+  const multiRootSidebarItems = buildCanvasSidebarSessionHistoryItems(entries, multiRootWorkspaceFolders);
+  const multiRootNestedSidebarItem = multiRootSidebarItems.find((entry) => entry.sessionId === 'claude-session-nested');
+  assert.equal(
+    multiRootNestedSidebarItem?.workspaceRootLabel,
+    'feature-a',
+    'Expected multi-root session history items to use the deepest matching workspace root label.'
+  );
+  assert.ok(
+    multiRootNestedSidebarItem?.tooltip.includes('Root：feature-a'),
+    'Expected multi-root session history tooltip to include the matched workspace root label.'
+  );
   const claudeRootSidebarItem = sidebarItems.find((entry) => entry.sessionId === 'claude-session-root');
   assert.ok(claudeRootSidebarItem, 'Expected the sidebar session history builder to include the Claude root entry.');
   assert.ok(
+    claudeRootSidebarItem.tooltip.includes('目录：工作区根目录/'),
+    'Expected root session history tooltip cwd to include a POSIX directory suffix.'
+  );
+  assert.ok(
     claudeRootSidebarItem.searchText.includes('写一首打油诗'),
     'Expected sidebar session history search text to include the displayed session title.'
+  );
+  const claudeNestedSidebarItem = sidebarItems.find((entry) => entry.sessionId === 'claude-session-nested');
+  assert.ok(claudeNestedSidebarItem, 'Expected the sidebar session history builder to include the nested Claude entry.');
+  assert.ok(
+    claudeNestedSidebarItem.tooltip.includes('目录：packages/feature-a/'),
+    'Expected nested session history tooltip cwd to use POSIX separators and a directory suffix.'
+  );
+  const windowsSidebarItem = buildCanvasSidebarSessionHistoryItems(
+    [
+      {
+        provider: 'codex',
+        sessionId: 'codex-session-windows-cwd',
+        cwd: 'C:\\workspace\\packages\\feature-a',
+        createdAtMs: codexTimestamp,
+        updatedAtMs: codexTimestamp,
+        firstUserInstruction: '检查 Windows 原生 cwd 展示'
+      }
+    ],
+    'C:\\workspace'
+  )[0];
+  assert.ok(
+    windowsSidebarItem?.tooltip.includes('目录：packages\\feature-a\\'),
+    'Expected Windows session history tooltip cwd to use native separators and a directory suffix.'
+  );
+  const slashStyleNetworkSidebarItem = buildCanvasSidebarSessionHistoryItems(
+    [
+      {
+        provider: 'claude',
+        sessionId: 'claude-session-slash-style-network-cwd',
+        cwd: '//server/share/workspace/packages/feature-a',
+        createdAtMs: codexTimestamp,
+        updatedAtMs: codexTimestamp,
+        firstUserInstruction: '检查 slash-style network cwd 展示'
+      }
+    ],
+    '//server/share/workspace'
+  )[0];
+  assert.ok(
+    slashStyleNetworkSidebarItem?.tooltip.includes('目录：packages/feature-a/'),
+    'Expected slash-style network session history tooltip cwd to preserve slash separators and a directory suffix.'
+  );
+  const backslashUncSidebarItem = buildCanvasSidebarSessionHistoryItems(
+    [
+      {
+        provider: 'codex',
+        sessionId: 'codex-session-backslash-unc-cwd',
+        cwd: '\\\\server\\share\\workspace\\packages\\feature-a',
+        createdAtMs: codexTimestamp,
+        updatedAtMs: codexTimestamp,
+        firstUserInstruction: '检查反斜杠 UNC cwd 展示'
+      }
+    ],
+    '\\\\server\\share\\workspace'
+  )[0];
+  assert.ok(
+    backslashUncSidebarItem?.tooltip.includes('目录：packages\\feature-a\\'),
+    'Expected backslash UNC session history tooltip cwd to preserve backslash separators and a directory suffix.'
   );
   const longerInstructionWithinLimit = 'long-session-title-segment-'.repeat(5);
   const longerInstructionSidebarItem = buildCanvasSidebarSessionHistoryItems(
@@ -273,6 +350,15 @@ try {
     'Expected extremely long session history titles to stay bounded with an ellipsis.'
   );
 
+  const sidebarHtml = buildSidebarSessionHistoryHtml({ cspSource: 'vscode-resource:' });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    await assertSessionHistoryActionButtons(browser, sidebarHtml);
+    await assertSessionHistoryGrouping(browser, sidebarHtml);
+  } finally {
+    await browser.close();
+  }
+
   const limitedEntries = await listWorkspaceAgentSessionHistory({
     workspaceRoot,
     maxEntries: 2,
@@ -307,6 +393,239 @@ try {
   );
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+async function assertSessionHistoryActionButtons(browser, html) {
+  const page = await createSidebarHistoryPage(browser, html);
+  try {
+    const item = {
+      id: 'codex:history-action-session',
+      provider: 'codex',
+      providerLabel: 'Codex',
+      sessionId: 'history-action-session',
+      title: '历史 action 按钮回归',
+      timestampLabel: 'Codex · 刚刚 · history-action-session',
+      tooltip: '历史 action 按钮回归',
+      searchText: '历史 action 按钮回归 codex history-action-session'
+    };
+    await renderSidebarHistoryState(page, { items: [item] });
+
+    const buttons = await page.evaluate(() => {
+      const row = document.querySelector('[data-session-history-item-id="codex:history-action-session"]');
+      return Array.from(row?.querySelectorAll('[data-session-history-action]') ?? []).map((button) => ({
+        action: button.getAttribute('data-session-history-action'),
+        ariaLabel: button.getAttribute('aria-label'),
+        title: button.getAttribute('title'),
+        width: button.getBoundingClientRect().width,
+        height: button.getBoundingClientRect().height,
+        iconClassName: button.querySelector('.session-action-icon')?.className ?? ''
+      }));
+    });
+    assert.deepEqual(
+      buttons.map((button) => button.action),
+      ['resume', 'fork'],
+      'Expected each sidebar session history row to render resume and fork action buttons.'
+    );
+    for (const button of buttons) {
+      assert.match(button.ariaLabel ?? '', /历史会话/u, 'Expected icon-only session actions to expose an accessible label.');
+      assert.match(button.title ?? '', /历史会话/u, 'Expected icon-only session actions to expose a title tooltip.');
+      assert.ok(button.width >= 24 && button.height >= 24, 'Expected session action buttons to keep at least a 24px hit target.');
+      assert.match(button.iconClassName, /\bcodicon\b/u, 'Expected session action buttons to use VSCode Codicon icons.');
+    }
+    assert.match(buttons[0]?.iconClassName ?? '', /\bcodicon-history\b/u, 'Expected the resume action to use a Codicon history icon.');
+    assert.match(buttons[1]?.iconClassName ?? '', /\bcodicon-repo-forked\b/u, 'Expected the fork action to use a Codicon fork icon.');
+
+    await page.click('[data-session-history-action="resume"]');
+    await page.click('[data-session-history-action="fork"]');
+    await page.dblclick('[data-session-history-item-id="codex:history-action-session"]');
+
+    const postedMessages = await page.evaluate(() => window.__sidebarSessionHistoryMessages);
+    assert.deepEqual(
+      postedMessages.filter((message) => message.type !== 'sidebarSessionHistory/ready').map((message) => message.type),
+      [
+        'sidebarSessionHistory/openSession',
+        'sidebarSessionHistory/forkSession',
+        'sidebarSessionHistory/openSession'
+      ],
+      'Expected action buttons to post explicit resume/fork messages while row double-click keeps the existing resume action.'
+    );
+    assert.deepEqual(
+      postedMessages
+        .filter((message) => message.type === 'sidebarSessionHistory/openSession' || message.type === 'sidebarSessionHistory/forkSession')
+        .map((message) => message.payload?.sessionId),
+      ['history-action-session', 'history-action-session', 'history-action-session']
+    );
+  } finally {
+    await page.close();
+  }
+}
+
+async function assertSessionHistoryGrouping(browser, html) {
+  const page = await createSidebarHistoryPage(browser, html);
+  const now = Date.now();
+  try {
+    const items = [
+      createSidebarHistoryTestItem({
+        provider: 'codex',
+        sessionId: 'codex-main-recent',
+        title: 'main recent codex',
+        updatedAtMs: now - 60 * 60 * 1000,
+        workspaceRootLabel: 'main-root',
+        workspaceRootPath: '/workspace/main'
+      }),
+      createSidebarHistoryTestItem({
+        provider: 'claude',
+        sessionId: 'claude-feature-week',
+        title: 'feature week claude',
+        updatedAtMs: now - 3 * 24 * 60 * 60 * 1000,
+        workspaceRootLabel: 'feature-root',
+        workspaceRootPath: '/workspace/feature'
+      }),
+      createSidebarHistoryTestItem({
+        provider: 'codex',
+        sessionId: 'codex-feature-older',
+        title: 'feature older codex',
+        updatedAtMs: now - 10 * 24 * 60 * 60 * 1000,
+        workspaceRootLabel: 'feature-root',
+        workspaceRootPath: '/workspace/feature'
+      })
+    ];
+
+    await renderSidebarHistoryState(page, {
+      items,
+      workspaceRootCount: 2,
+      grouping: {
+        groupByWorkspaceRoot: true,
+        groupByProvider: true,
+        groupByTime: true
+      }
+    });
+
+    const groupRows = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-session-history-group-key]')).map((row) => ({
+        key: row.getAttribute('data-session-history-group-key'),
+        label: row.getAttribute('data-session-history-group-label'),
+        expanded: row.getAttribute('aria-expanded') === 'true',
+        role: row.getAttribute('role'),
+        twistieClassName: row.querySelector('.session-group-twistie')?.className ?? '',
+        depth: Number(row.getAttribute('data-session-history-group-depth'))
+      }))
+    );
+    assert.deepEqual(
+      groupRows.map((row) => `${row.depth}:${row.label}`),
+      [
+        '0:main-root',
+        '1:Codex',
+        '2:24小时内',
+        '0:feature-root',
+        '1:Claude Code',
+        '2:一周内',
+        '1:Codex',
+        '2:更早'
+      ],
+      'Expected multi-selected session history grouping to render in root > provider > time order.'
+    );
+    assert.ok(
+      groupRows.every((row) => row.role === 'treeitem' && row.expanded && row.twistieClassName.includes('codicon-chevron-down')),
+      'Expected session history group headers to render as expanded collapsible tree rows.'
+    );
+
+    const featureRootGroup = groupRows.find((row) => row.label === 'feature-root');
+    assert.ok(featureRootGroup?.key, 'Expected feature root session history group to expose a stable group key.');
+    await page.click(`[data-session-history-group-key="${featureRootGroup.key}"]`);
+    const collapsedSnapshot = await page.evaluate((groupKey) => ({
+      visibleItemIds: Array.from(document.querySelectorAll('[data-session-history-item-id]'))
+        .map((row) => row.getAttribute('data-session-history-item-id'))
+        .filter(Boolean),
+      featureRootExpanded:
+        document.querySelector(`[data-session-history-group-key="${CSS.escape(groupKey)}"]`)
+          ?.getAttribute('aria-expanded'),
+      featureRootTwistieClassName:
+        document.querySelector(`[data-session-history-group-key="${CSS.escape(groupKey)}"] .session-group-twistie`)
+          ?.className ?? ''
+    }), featureRootGroup.key);
+    assert.equal(collapsedSnapshot.featureRootExpanded, 'false');
+    assert.match(collapsedSnapshot.featureRootTwistieClassName, /\bcodicon-chevron-right\b/u);
+    assert.deepEqual(
+      collapsedSnapshot.visibleItemIds,
+      ['codex:codex-main-recent'],
+      'Expected collapsing a session history group to hide all descendant session rows.'
+    );
+    await page.click(`[data-session-history-group-key="${featureRootGroup.key}"]`);
+
+    await renderSidebarHistoryState(page, {
+      items,
+      workspaceRootCount: 1,
+      grouping: {
+        groupByWorkspaceRoot: true,
+        groupByProvider: true,
+        groupByTime: false
+      }
+    });
+
+    const singleRootGroupRows = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-session-history-group-key]')).map((row) => ({
+        label: row.getAttribute('data-session-history-group-label'),
+        depth: Number(row.getAttribute('data-session-history-group-depth'))
+      }))
+    );
+    assert.deepEqual(
+      singleRootGroupRows.map((row) => `${row.depth}:${row.label}`),
+      ['0:Codex', '0:Claude Code'],
+      'Expected workspace-root grouping to stay visually inactive in a single-root workspace.'
+    );
+  } finally {
+    await page.close();
+  }
+}
+
+function createSidebarHistoryTestItem({ provider, sessionId, title, updatedAtMs, workspaceRootLabel, workspaceRootPath }) {
+  const providerLabel = provider === 'claude' ? 'Claude Code' : 'Codex';
+  return {
+    id: `${provider}:${sessionId}`,
+    provider,
+    providerLabel,
+    sessionId,
+    title,
+    updatedAtMs,
+    timestampLabel: `${providerLabel} · 刚刚 · ${sessionId}`,
+    workspaceRootLabel,
+    workspaceRootPath,
+    tooltip: title,
+    searchText: [title, provider, providerLabel, sessionId, workspaceRootLabel, workspaceRootPath].join(' ').toLowerCase()
+  };
+}
+
+async function createSidebarHistoryPage(browser, html) {
+  const page = await browser.newPage({ viewport: { width: 320, height: 600 } });
+  const testHtml = html.replace(
+    'const vscode = acquireVsCodeApi();',
+    `
+      window.__sidebarSessionHistoryMessages = [];
+      window.acquireVsCodeApi = () => ({
+        postMessage(message) {
+          window.__sidebarSessionHistoryMessages.push(message);
+        }
+      });
+      const vscode = acquireVsCodeApi();`
+  );
+  await page.setContent(testHtml, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() =>
+    window.__sidebarSessionHistoryMessages.some((message) => message.type === 'sidebarSessionHistory/ready')
+  );
+  return page;
+}
+
+async function renderSidebarHistoryState(page, payload) {
+  await page.evaluate((nextPayload) => {
+    window.dispatchEvent(new MessageEvent('message', {
+      data: {
+        type: 'sidebarSessionHistory/state',
+        payload: nextPayload
+      }
+    }));
+  }, payload);
+  await page.waitForFunction(() => document.querySelectorAll('[data-session-history-item-id]').length > 0);
 }
 
 async function writeCodexSessionFile({ homeDir, sessionId, cwd, timestampMs, fileSuffix, userMessages = [] }) {

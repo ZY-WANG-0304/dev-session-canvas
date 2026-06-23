@@ -4,6 +4,7 @@
 
 - `build/`：主扩展构建入口，例如 `npm run build` / `npm run watch` 背后的实现。
 - `release/`：VSIX 打包、双市场发布、Open VSX API helper 与 clean-checkout 发布校验。
+- `diagnostics/`：离线诊断入口，例如分析宿主 dump 中的 Webview lifecycle 健康度。
 - `runtime/`：随主扩展 VSIX 打包的运行时辅助脚本，目前只放 Claude 文件事件 hook。
 - `media/`：Marketplace 预览素材录制与 X11 原生输入辅助。
 - `smoke/`：真实 VS Code / VSIX / notifier / Windows Codex smoke 运行器和夹具。

@@ -25,6 +25,14 @@ try {
   const require = createRequire(import.meta.url);
   const { resolveExecutionSessionSpawnSpec } = require(outfile);
 
+  const bridgeSource = await import('node:fs/promises').then(({ readFile }) =>
+    readFile(path.resolve('src/panel/executionSessionBridge.ts'), 'utf8')
+  );
+  assert.doesNotMatch(
+    bridgeSource,
+    /reactivate\(|SIGCONT/u,
+    'ExecutionSessionProcess 不应再暴露 SIGCONT/reactivate；当前 Claude Agent Ctrl-Z 不提供伪恢复。'
+  );
   const wrappedBatchSpec = resolveExecutionSessionSpawnSpec(
     {
       file: 'C:\\Users\\Jane Doe\\AppData\\Roaming\\npm\\codex.cmd',

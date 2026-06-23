@@ -52,7 +52,7 @@ import {
   locateClaudeSessionId,
   locateCodexSessionId
 } from '../common/codexSessionIdLocator';
-import { extractClaudeCommandSessionFlag } from '../common/agentLaunchPresets';
+import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPresets';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
 const TERMINAL_LIVE_DELAY_MS = 160;
@@ -61,6 +61,10 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
+
+function normalizeRuntimeSupervisorOutputSequence(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
 
 interface SupervisorRegistry {
   version: 1;
@@ -82,6 +86,7 @@ interface SupervisorSession {
   rows: number;
   scrollback: number;
   output: string;
+  outputSequence: number;
   terminalStateTracker: SerializedTerminalStateTracker;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
@@ -262,7 +267,7 @@ class RuntimeSupervisorServer {
     const launchSpec = deserializeExecutionSessionLaunchSpec(params.launchSpec);
     const explicitClaudeSessionFlag =
       params.kind === 'agent' && params.provider === 'claude' && params.launchMode === 'start'
-        ? extractClaudeCommandSessionFlag(launchSpec.args ?? [])
+        ? extractClaudeCommandRuntimeSessionFlag(launchSpec.args ?? [])
         : null;
     const initialResumeSessionId = explicitClaudeSessionFlag
       ? explicitClaudeSessionFlag.sessionId
@@ -285,6 +290,7 @@ class RuntimeSupervisorServer {
       rows: params.launchSpec.rows,
       scrollback,
       output: '',
+      outputSequence: 0,
       terminalStateTracker: new SerializedTerminalStateTracker(params.launchSpec.cols, params.launchSpec.rows, {
         scrollback
       }),
@@ -349,6 +355,14 @@ class RuntimeSupervisorServer {
 
   private writeInput(params: RuntimeSupervisorWriteInputParams): void {
     const session = this.requireLiveSession(params.sessionId);
+    if (session.kind === 'agent' && session.provider === 'claude' && containsTerminalSuspendInput(params.data)) {
+      throw new Error('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。');
+    }
+
+    if (session.kind === 'agent' && session.lifecycle === 'suspended') {
+      throw new Error('Claude Code 已挂起，请点击“停止”结束会话后重启。');
+    }
+
     if (session.kind === 'agent') {
       const submittedInstruction = isAgentInstructionSubmission(params.data);
       if (session.lifecycleTimer) {
@@ -416,8 +430,16 @@ class RuntimeSupervisorServer {
 
   private deleteSession(params: RuntimeSupervisorDeleteSessionParams): void {
     const session = this.requireSession(params.sessionId);
+    const wasLive = session.live;
+    if (wasLive) {
+      session.stopRequested = true;
+      session.lifecycle = session.kind === 'agent' ? 'stopped' : 'closed';
+      session.lastExitMessage = session.kind === 'agent' ? 'Agent 会话已删除。' : '终端会话已删除。';
+    }
+    session.live = false;
+    this.emitSessionState(session);
     this.disposeSession(session, {
-      terminateProcess: session.live
+      terminateProcess: wasLive
     });
     this.sessions.delete(params.sessionId);
     this.schedulePersist();
@@ -715,13 +737,15 @@ class RuntimeSupervisorServer {
   }
 
   private emitSessionOutput(session: SupervisorSession, chunk: string): void {
+    session.outputSequence += 1;
     const message: RuntimeSupervisorEvent = {
       type: 'event',
       event: 'sessionOutput',
       payload: {
         sessionId: session.sessionId,
         kind: session.kind,
-        chunk
+        chunk,
+        outputSequence: session.outputSequence
       }
     };
     this.broadcastToSessionSubscribers(session.sessionId, message);
@@ -802,6 +826,7 @@ class RuntimeSupervisorServer {
       rows: session.rows,
       scrollback: session.scrollback,
       output: session.output,
+      outputSequence: session.outputSequence,
       serializedTerminalState: session.terminalStateTracker.getSerializedState(),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
@@ -811,7 +836,7 @@ class RuntimeSupervisorServer {
       resumeStoragePath: session.resumeStoragePath,
       lastExitCode: session.lastExitCode,
       lastExitSignal: session.lastExitSignal,
-      lastExitMessage: session.lastExitMessage
+      lastExitMessage: session.lastExitMessage,
     };
   }
 
@@ -963,6 +988,7 @@ class RuntimeSupervisorServer {
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
       scrollback,
+      outputSequence: normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence),
       terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
         scrollback,
         initialState: snapshot.serializedTerminalState,
@@ -1061,6 +1087,7 @@ function normalizeRecoveredAgentLifecycle(status: AgentNodeStatus): AgentNodeSta
     status === 'running' ||
     status === 'waiting-input' ||
     status === 'resuming' ||
+    status === 'suspended' ||
     status === 'stopping'
   ) {
     return 'stopped';
@@ -1068,6 +1095,7 @@ function normalizeRecoveredAgentLifecycle(status: AgentNodeStatus): AgentNodeSta
 
   return status;
 }
+
 
 function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
   return status === 'starting' || status === 'resuming';
@@ -1081,6 +1109,10 @@ function isAgentLifecycleAwaitingInteractiveState(
 
 function isAgentInstructionSubmission(data: string): boolean {
   return /[\r\n]/.test(data);
+}
+
+function containsTerminalSuspendInput(data: string): boolean {
+  return data.includes('\u001a');
 }
 
 function normalizeRecoveredTerminalLifecycle(status: TerminalNodeStatus): TerminalNodeStatus {

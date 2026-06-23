@@ -5,11 +5,17 @@ import type {
   ILink,
   ILinkDecorations,
   ILinkProvider,
+  IDisposable,
   Terminal
 } from '@xterm/xterm';
 import LinkifyIt from 'linkify-it';
 
-import type { CanvasRuntimeContext, ExecutionNodeKind } from '../common/protocol';
+import type {
+  CanvasRuntimeContext,
+  ExecutionNodeKind,
+  ExecutionTerminalClipboardDiagnosticPayload,
+  ExecutionTerminalClipboardDiagnosticSource
+} from '../common/protocol';
 import {
   inferExecutionTerminalClipboardPlatform,
   resolveExecutionTerminalClipboardShortcut,
@@ -19,10 +25,13 @@ import {
   EXECUTION_TERMINAL_CJK_PUNCTUATION_CHARACTER_CLASS,
   detectExecutionTerminalFallbackPathLink,
   detectExecutionTerminalPathLinks,
+  detectExecutionTerminalStyledPathLink,
   shouldSuppressExecutionTerminalWordLink,
+  shouldAllowExecutionTerminalDetectedPathLink,
   type DetectedExecutionTerminalPathLink,
   type ExecutionTerminalFileLinkCandidate,
   type ExecutionTerminalDroppedResource,
+  type ExecutionTerminalFileLinkResolvePriority,
   type ExecutionTerminalOpenLink,
   type ExecutionTerminalPathStyle,
   type ExecutionTerminalResolvedFileLink
@@ -63,10 +72,12 @@ interface ExecutionTerminalNativeInteractionsOptions {
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
   ) => void;
+  onClipboardDiagnostic?: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   resolveFileLinks: (
     nodeId: string,
     kind: ExecutionNodeKind,
-    candidates: ExecutionTerminalFileLinkCandidate[]
+    candidates: ExecutionTerminalFileLinkCandidate[],
+    priority?: ExecutionTerminalFileLinkResolvePriority
   ) => Promise<ExecutionTerminalResolvedFileLink[]>;
 }
 
@@ -142,9 +153,15 @@ interface ExecutionFileLinkResolutionCacheEntryMetadata {
   bufferEndLine: number;
   needsRefreshAfterCurrent?: boolean;
   negativeInvalidationGeneration: number;
+  priority?: ExecutionTerminalFileLinkResolvePriority;
 }
 
 type ScheduleExecutionNegativeFileLinkCacheRefresh = () => void;
+
+type ExecutionClipboardDiagnosticEmitter = (
+  source: ExecutionTerminalClipboardDiagnosticPayload['source'],
+  readDetail?: () => Record<string, unknown>
+) => void;
 
 interface ExecutionFileLinkNegativeCacheInvalidationResult {
   invalidated: boolean;
@@ -155,6 +172,7 @@ interface InteractionLinkOptions {
   lowConfidence?: boolean;
   hoverOverlayRanges?: IBufferRange[];
   hoverOverlayController?: HardWrappedHoverOverlayController;
+  activate?: () => void | Promise<void>;
 }
 
 const EXECUTION_LINK_TOOLTIP_CLASS = 'execution-link-tooltip';
@@ -173,6 +191,14 @@ const EXECUTION_HARD_WRAPPED_LINK_MAX_LINES = 4;
 const EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX = 16;
 const EXECUTION_NEGATIVE_FILE_LINK_CACHE_REFRESH_DELAY_MS = 200;
 const EXECUTION_NEGATIVE_FILE_LINK_CACHE_OUTPUT_INVALIDATION_MIN_INTERVAL_MS = 1000;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT = 120;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LIMIT = 3;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LENGTH_LIMIT = 160;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT = 2048;
+const EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_DECODED_PREVIEW_LIMIT = 120;
+const EXECUTION_RESTORE_CLIPBOARD_DIAGNOSTIC_GRACE_FRAMES = 3;
+const EXECUTION_RESTORE_SUPPRESSED_CLIPBOARD_DIAGNOSTIC_SOURCES: ReadonlySet<ExecutionTerminalClipboardDiagnosticSource> =
+  new Set(['selectionChange', 'mouseTrackingMode', 'osc52']);
 const FILE_LINK_LABEL = 'Open file in editor';
 const FOCUS_DIRECTORY_LINK_LABEL = 'Focus folder in explorer';
 const OPEN_DIRECTORY_LINK_LABEL = 'Open folder in new window';
@@ -209,6 +235,8 @@ export interface ExecutionTerminalNativeInteractionsHandle {
   hoverLinkForTest(linkText: string): Promise<void>;
   clearHoverForTest(): void;
   invalidateLinkResolutionCache(mode?: 'all' | 'negative' | 'negative-delayed'): void;
+  beginSnapshotRestoreDiagnosticsSuppression(reason?: string): () => void;
+  flushSnapshotRestoreDiagnosticsSuppression(): void;
   dispose(): void;
 }
 
@@ -222,6 +250,7 @@ export function setupExecutionTerminalNativeInteractions(
   let tooltipTimer: number | undefined;
   let delayedNegativeCacheRefreshTimer: number | undefined;
   let trailingNegativeCacheRefreshTimer: number | undefined;
+  const restoreSuppressionState = createExecutionClipboardRestoreSuppressionState();
 
   const clearDropTarget = (): void => {
     dropTarget.classList.remove('is-drop-target');
@@ -248,6 +277,7 @@ export function setupExecutionTerminalNativeInteractions(
       window.clearTimeout(trailingNegativeCacheRefreshTimer);
       trailingNegativeCacheRefreshTimer = undefined;
     }
+
   };
 
   const refreshNegativeFileLinkResolutionCacheNow = (): void => {
@@ -365,6 +395,27 @@ export function setupExecutionTerminalNativeInteractions(
   const urlLinkDisposable = terminal.registerLinkProvider(urlLinkProvider);
   const wordLinkDisposable = terminal.registerLinkProvider(wordLinkProvider);
   const clipboardPlatform = detectExecutionTerminalClipboardPlatform();
+  const emitClipboardDiagnostic = createExecutionClipboardDiagnosticEmitter(options, restoreSuppressionState);
+
+  emitClipboardDiagnostic('environment', () => ({
+    platform: clipboardPlatform,
+    navigatorPlatform: window.navigator.platform,
+    userAgent: window.navigator.userAgent,
+    initialMouseTrackingMode: terminal.modes.mouseTrackingMode,
+    initialBufferType: terminal.buffer.active.type
+  }));
+
+  const mouseModeDisposable = monitorExecutionTerminalMouseTrackingMode(
+    terminal,
+    emitClipboardDiagnostic
+  );
+  const selectionDiagnosticsDisposable = terminal.onSelectionChange(() => {
+    emitClipboardDiagnostic('selectionChange', () => readExecutionSelectionDiagnosticDetail(terminal));
+  });
+  const osc52DiagnosticDisposable = terminal.parser.registerOscHandler(52, (data) => {
+    emitClipboardDiagnostic('osc52', () => readExecutionOsc52DiagnosticDetail(data));
+    return false;
+  });
 
   terminal.attachCustomKeyEventHandler((event) => {
     if (event.type !== 'keydown') {
@@ -373,6 +424,28 @@ export function setupExecutionTerminalNativeInteractions(
 
     const selection = terminal.getSelection();
     const action = resolveExecutionTerminalClipboardShortcut(clipboardPlatform, event, selection.length > 0);
+    if (action !== 'passThrough' || isExecutionClipboardShortcutCandidate(clipboardPlatform, event)) {
+      emitClipboardDiagnostic('shortcut', () => ({
+        platform: clipboardPlatform,
+        action,
+        key: event.key,
+        code: event.code,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        selectionLength: selection.length,
+        hasSelection: selection.length > 0,
+        mouseTrackingMode: terminal.modes.mouseTrackingMode,
+        bufferType: terminal.buffer.active.type,
+        bracketedPasteMode: terminal.modes.bracketedPasteMode,
+        terminalHasFocus: terminal.textarea === document.activeElement,
+        selectionPreview: summarizeExecutionDiagnosticText(
+          selection,
+          EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT
+        )
+      }));
+    }
     if (action === 'passThrough') {
       return true;
     }
@@ -443,11 +516,88 @@ export function setupExecutionTerminalNativeInteractions(
     options.onDropResource(options.nodeId, options.kind, resource);
   };
 
+  const handleMouseDown = (event: MouseEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const mouseTrackingMode = terminal.modes.mouseTrackingMode;
+    if (mouseTrackingMode === 'none') {
+      return;
+    }
+
+    emitClipboardDiagnostic('mouseSelection', () => ({
+      phase: 'mousedown',
+      button: event.button,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      mouseTrackingMode,
+      bufferType: terminal.buffer.active.type,
+      terminalHasFocus: terminal.textarea === document.activeElement,
+      selectionLengthBefore: terminal.getSelection().length,
+      forceSelectionLikely: event.shiftKey
+    }));
+  };
+
+  const handleMouseUp = (event: MouseEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const mouseTrackingMode = terminal.modes.mouseTrackingMode;
+    if (mouseTrackingMode === 'none') {
+      return;
+    }
+
+    emitClipboardDiagnostic('mouseSelection', () => ({
+      phase: 'mouseup',
+      button: event.button,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      mouseTrackingMode,
+      bufferType: terminal.buffer.active.type,
+      terminalHasFocus: terminal.textarea === document.activeElement,
+      selectionLengthAfter: terminal.getSelection().length,
+      selectionPreview: summarizeExecutionDiagnosticText(
+        terminal.getSelection(),
+        EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT
+      ),
+      forceSelectionLikely: event.shiftKey
+    }));
+  };
+
+  const handleContextMenu = (event: MouseEvent): void => {
+    emitClipboardDiagnostic('contextMenu', () => ({
+      button: event.button,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      selectionLength: terminal.getSelection().length,
+      hasSelection: terminal.getSelection().length > 0,
+      mouseTrackingMode: terminal.modes.mouseTrackingMode,
+      bufferType: terminal.buffer.active.type,
+      terminalHasFocus: terminal.textarea === document.activeElement,
+      selectionPreview: summarizeExecutionDiagnosticText(
+        terminal.getSelection(),
+        EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT
+      ),
+      visibleLinePreview: readExecutionTerminalVisibleLinePreview(terminal)
+    }));
+  };
+
   dropTarget.addEventListener('dragenter', handleDragEnter);
   dropTarget.addEventListener('dragover', handleDragOver);
   dropTarget.addEventListener('dragleave', handleDragLeave);
   dropTarget.addEventListener('dragend', handleDragLeave);
   dropTarget.addEventListener('drop', handleDrop);
+  dropTarget.addEventListener('mousedown', handleMouseDown);
+  dropTarget.addEventListener('mouseup', handleMouseUp);
+  dropTarget.addEventListener('contextmenu', handleContextMenu);
 
   return {
     async activateLinkForTest(linkText: string): Promise<void> {
@@ -512,16 +662,30 @@ export function setupExecutionTerminalNativeInteractions(
       // xterm's linkifier will revalidate hovered ranges on render; forcing a
       // synthetic mouseleave here makes links disappear during spinner redraws.
     },
+    beginSnapshotRestoreDiagnosticsSuppression(reason = 'snapshot-restore'): () => void {
+      return beginExecutionClipboardRestoreDiagnosticSuppression(
+        options,
+        restoreSuppressionState,
+        reason
+      );
+    },
+    flushSnapshotRestoreDiagnosticsSuppression(): void {
+      flushPendingExecutionClipboardRestoreDiagnosticSuppression(options, restoreSuppressionState);
+    },
     dispose(): void {
       clearHoveredLink();
       clearDropTarget();
       cancelDelayedNegativeCacheRefresh();
+      cancelExecutionClipboardRestoreDiagnosticSuppression(options, restoreSuppressionState);
       terminal.options.linkHandler = previousLinkHandler;
       hardWrappedLinkDisposable.dispose();
       multilineLinkDisposable.dispose();
       fileLinkDisposable.dispose();
       urlLinkDisposable.dispose();
       wordLinkDisposable.dispose();
+      mouseModeDisposable.dispose();
+      selectionDiagnosticsDisposable.dispose();
+      osc52DiagnosticDisposable.dispose();
       hardWrappedHoverOverlayController.dispose();
       terminal.attachCustomKeyEventHandler(() => true);
       dropTarget.removeEventListener('dragenter', handleDragEnter);
@@ -529,6 +693,9 @@ export function setupExecutionTerminalNativeInteractions(
       dropTarget.removeEventListener('dragleave', handleDragLeave);
       dropTarget.removeEventListener('dragend', handleDragLeave);
       dropTarget.removeEventListener('drop', handleDrop);
+      dropTarget.removeEventListener('mousedown', handleMouseDown);
+      dropTarget.removeEventListener('mouseup', handleMouseUp);
+      dropTarget.removeEventListener('contextmenu', handleContextMenu);
       fileLinkResolutionCache.clear();
       getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache).entries.clear();
     }
@@ -540,6 +707,348 @@ function detectExecutionTerminalClipboardPlatform(): ExecutionTerminalClipboardP
     platform: window.navigator.platform,
     userAgent: window.navigator.userAgent
   });
+}
+
+function isExecutionClipboardShortcutCandidate(
+  platform: ExecutionTerminalClipboardPlatform,
+  event: KeyboardEvent
+): boolean {
+  if (event.altKey) {
+    return false;
+  }
+
+  const key = event.key.trim().toLowerCase();
+  const normalizedKey = key === 'keyc' || key === 'c' ? 'c' : key === 'keyv' || key === 'v' ? 'v' : key;
+  if (normalizedKey !== 'c' && normalizedKey !== 'v') {
+    return false;
+  }
+
+  if (platform === 'mac') {
+    return event.metaKey && !event.ctrlKey && !event.shiftKey;
+  }
+
+  if (platform === 'windows') {
+    return event.ctrlKey && !event.metaKey && (normalizedKey === 'v' || !event.shiftKey);
+  }
+
+  if (platform === 'linux') {
+    return event.ctrlKey && event.shiftKey && !event.metaKey;
+  }
+
+  return Boolean(event.metaKey || (event.ctrlKey && event.shiftKey));
+}
+
+function createExecutionClipboardDiagnosticEmitter(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  restoreSuppressionState: ExecutionClipboardRestoreSuppressionState
+): ExecutionClipboardDiagnosticEmitter {
+  return (source, readDetail): void => {
+    if (!options.onClipboardDiagnostic) {
+      return;
+    }
+
+    try {
+      const restoreSuppressionActive =
+        restoreSuppressionState.depth > 0 || restoreSuppressionState.releaseFrame !== undefined;
+      if (restoreSuppressionActive && EXECUTION_RESTORE_SUPPRESSED_CLIPBOARD_DIAGNOSTIC_SOURCES.has(source)) {
+        recordSuppressedExecutionClipboardDiagnostic(restoreSuppressionState, source);
+        return;
+      }
+
+      options.onClipboardDiagnostic({
+        nodeId: options.nodeId,
+        kind: options.kind,
+        source,
+        detail: readDetail?.()
+      });
+    } catch {
+      // Clipboard diagnostics must never affect terminal input, selection, or rendering.
+    }
+  };
+}
+
+interface ExecutionClipboardRestoreSuppressionState {
+  depth: number;
+  generation: number;
+  reason: string;
+  startedAtMs: number;
+  suppressedCounts: Partial<Record<ExecutionTerminalClipboardDiagnosticSource, number>>;
+  releaseFrame?: number;
+}
+
+function createExecutionClipboardRestoreSuppressionState(): ExecutionClipboardRestoreSuppressionState {
+  return {
+    depth: 0,
+    generation: 0,
+    reason: 'snapshot-restore',
+    startedAtMs: 0,
+    suppressedCounts: {}
+  };
+}
+
+function beginExecutionClipboardRestoreDiagnosticSuppression(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState,
+  reason: string
+): () => void {
+  if (state.depth === 0 && state.releaseFrame !== undefined) {
+    cancelScheduledExecutionClipboardRestoreDiagnosticFlush(state);
+    flushExecutionClipboardRestoreSuppressedDiagnostic(options, state);
+  }
+  if (state.depth === 0) {
+    state.generation += 1;
+    state.reason = reason;
+    state.startedAtMs = readExecutionDiagnosticNow();
+    state.suppressedCounts = {};
+  }
+  state.depth += 1;
+
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    finishExecutionClipboardRestoreDiagnosticSuppression(options, state);
+  };
+}
+
+function finishExecutionClipboardRestoreDiagnosticSuppression(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  state.depth = Math.max(0, state.depth - 1);
+  if (state.depth > 0) {
+    return;
+  }
+
+  cancelScheduledExecutionClipboardRestoreDiagnosticFlush(state);
+  let remainingFrames = EXECUTION_RESTORE_CLIPBOARD_DIAGNOSTIC_GRACE_FRAMES;
+  const scheduleNextReleaseFrame = (): void => {
+    state.releaseFrame = window.requestAnimationFrame(() => {
+      state.releaseFrame = undefined;
+      if (state.depth > 0) {
+        return;
+      }
+      remainingFrames -= 1;
+      if (remainingFrames > 0) {
+        scheduleNextReleaseFrame();
+        return;
+      }
+      flushExecutionClipboardRestoreSuppressedDiagnostic(options, state);
+    });
+  };
+  scheduleNextReleaseFrame();
+}
+
+function flushPendingExecutionClipboardRestoreDiagnosticSuppression(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  if (state.depth > 0) {
+    return;
+  }
+  cancelScheduledExecutionClipboardRestoreDiagnosticFlush(state);
+  flushExecutionClipboardRestoreSuppressedDiagnostic(options, state);
+}
+
+function cancelExecutionClipboardRestoreDiagnosticSuppression(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  state.depth = 0;
+  flushPendingExecutionClipboardRestoreDiagnosticSuppression(options, state);
+}
+
+function cancelScheduledExecutionClipboardRestoreDiagnosticFlush(
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  if (state.releaseFrame !== undefined) {
+    window.cancelAnimationFrame(state.releaseFrame);
+    state.releaseFrame = undefined;
+  }
+}
+
+function recordSuppressedExecutionClipboardDiagnostic(
+  state: ExecutionClipboardRestoreSuppressionState,
+  source: ExecutionTerminalClipboardDiagnosticSource
+): void {
+  state.suppressedCounts[source] = (state.suppressedCounts[source] ?? 0) + 1;
+}
+
+function flushExecutionClipboardRestoreSuppressedDiagnostic(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  state: ExecutionClipboardRestoreSuppressionState
+): void {
+  const counts = Object.fromEntries(
+    Object.entries(state.suppressedCounts).filter(([, count]) => typeof count === 'number' && count > 0)
+  );
+  const total = Object.values(counts).reduce(
+    (sum, count) => sum + (typeof count === 'number' ? count : 0),
+    0
+  );
+  if (total <= 0) {
+    state.suppressedCounts = {};
+    return;
+  }
+
+  try {
+    options.onClipboardDiagnostic?.({
+      nodeId: options.nodeId,
+      kind: options.kind,
+      source: 'restoreSuppressed',
+      detail: {
+        reason: state.reason,
+        generation: state.generation,
+        durationMs: Math.max(0, readExecutionDiagnosticNow() - state.startedAtMs),
+        total,
+        counts
+      }
+    });
+  } catch {
+    // Clipboard diagnostics must never affect terminal input, selection, or rendering.
+  } finally {
+    state.suppressedCounts = {};
+  }
+}
+
+function readExecutionDiagnosticNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+}
+
+function monitorExecutionTerminalMouseTrackingMode(
+  terminal: Terminal,
+  emitClipboardDiagnostic: ExecutionClipboardDiagnosticEmitter
+): IDisposable {
+  let previousMouseTrackingMode = terminal.modes.mouseTrackingMode;
+  const disposable = terminal.onWriteParsed(() => {
+    const mouseTrackingMode = terminal.modes.mouseTrackingMode;
+    if (mouseTrackingMode === previousMouseTrackingMode) {
+      return;
+    }
+
+    const previous = previousMouseTrackingMode;
+    previousMouseTrackingMode = mouseTrackingMode;
+    emitClipboardDiagnostic('mouseTrackingMode', () => ({
+      previous,
+      current: mouseTrackingMode,
+      enabled: mouseTrackingMode !== 'none',
+      bufferType: terminal.buffer.active.type,
+      bracketedPasteMode: terminal.modes.bracketedPasteMode
+    }));
+  });
+
+  return disposable;
+}
+
+function readExecutionSelectionDiagnosticDetail(terminal: Terminal): Record<string, unknown> {
+  const selection = terminal.getSelection();
+  return {
+    selectionLength: selection.length,
+    hasSelection: selection.length > 0,
+    mouseTrackingMode: terminal.modes.mouseTrackingMode,
+    bufferType: terminal.buffer.active.type,
+    terminalHasFocus: terminal.textarea === document.activeElement,
+    selectionPreview: summarizeExecutionDiagnosticText(
+      selection,
+      EXECUTION_CLIPBOARD_DIAGNOSTIC_SELECTION_SAMPLE_LIMIT
+    )
+  };
+}
+
+function readExecutionOsc52DiagnosticDetail(data: string): Record<string, unknown> {
+  const separatorIndex = data.indexOf(';');
+  const target = separatorIndex >= 0 ? data.slice(0, separatorIndex) : '';
+  const payload = separatorIndex >= 0 ? data.slice(separatorIndex + 1) : data;
+  const baseDetail: Record<string, unknown> = {
+    payloadLength: data.length,
+    target: summarizeExecutionDiagnosticText(target, 32),
+    dataLength: payload.length
+  };
+
+  if (payload.length === 0) {
+    return {
+      ...baseDetail,
+      dataKind: 'empty'
+    };
+  }
+
+  if (payload === '?') {
+    return {
+      ...baseDetail,
+      dataKind: 'query'
+    };
+  }
+
+  const normalizedPayload = payload.replace(/\s+/g, '');
+  const base64Like = /^[A-Za-z0-9+/]*={0,2}$/u.test(normalizedPayload);
+  if (!base64Like) {
+    return {
+      ...baseDetail,
+      dataKind: 'non-base64'
+    };
+  }
+
+  const detail: Record<string, unknown> = {
+    ...baseDetail,
+    dataKind: 'base64',
+    base64Length: normalizedPayload.length,
+    base64TruncatedForDiagnostics:
+      normalizedPayload.length > EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT
+  };
+
+  if (normalizedPayload.length > EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT) {
+    return detail;
+  }
+
+  try {
+    const binary = window.atob(normalizedPayload);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    const decodedText = new TextDecoder().decode(bytes);
+    return {
+      ...detail,
+      decodedBytes: bytes.byteLength,
+      decodedPreview: summarizeExecutionDiagnosticText(
+        decodedText,
+        EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_DECODED_PREVIEW_LIMIT
+      )
+    };
+  } catch (error) {
+    return {
+      ...detail,
+      decodeError: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function readExecutionTerminalVisibleLinePreview(terminal: Terminal): string[] {
+  const startLine = Math.max(0, terminal.buffer.active.viewportY);
+  const preview: string[] = [];
+  for (let offset = 0; offset < EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LIMIT; offset += 1) {
+    const line = terminal.buffer.active.getLine(startLine + offset);
+    if (!line) {
+      break;
+    }
+    preview.push(
+      summarizeExecutionDiagnosticText(
+        line.translateToString(true),
+        EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LENGTH_LIMIT
+      )
+    );
+  }
+
+  return preview;
+}
+
+function summarizeExecutionDiagnosticText(text: string, limit: number): string {
+  if (text.length <= limit) {
+    return text;
+  }
+
+  return `${text.slice(0, Math.max(0, limit))}...`;
 }
 
 function createHardWrappedLinkProvider(
@@ -866,12 +1375,25 @@ async function collectHardWrappedStyledFileLinks(
     return [];
   }
 
-  const resolvedLinks = await resolveExecutionFileLinksForContext(
-    options,
+  const resolvedLinks = resolveCachedExecutionFileLinksForContext(
     context,
     candidates.map((entry) => entry.candidate),
     fileLinkResolutionCache
   );
+  if (resolvedLinks === undefined) {
+    const pendingCandidates = candidates.map((entry) => entry.candidate);
+    return mapPendingHardWrappedFileLinksToInteractions(
+      options,
+      candidates,
+      pendingCandidates,
+      context,
+      requestedLineIndex,
+      tooltipController,
+      hoverOverlayController,
+      fileLinkResolutionCache
+    );
+  }
+
   return mapResolvedHardWrappedFileLinksToInteractions(
     options,
     candidates,
@@ -931,7 +1453,10 @@ function collectHardWrappedStyledFileLinkCandidates(
     }
 
     const detectedLink = detectExecutionTerminalPathLinks(fullText, pathStyle).find(
-      (link) => link.text === fullText && !isNonFileUriLikePath(link.path)
+      (link) =>
+        link.text === fullText &&
+        !isNonFileUriLikePath(link.path) &&
+        shouldAllowExecutionTerminalDetectedPathLink(link, pathStyle)
     );
     if (!detectedLink) {
       continue;
@@ -1016,34 +1541,62 @@ async function collectFileLinks(
 
   const directCandidates = candidates.filter((candidate) => candidate.source !== 'fallback');
   const fallbackCandidates = candidates.filter((candidate) => candidate.source === 'fallback');
-  const resolvedDirectLinks =
-    directCandidates.length > 0
-      ? await resolveExecutionFileLinksForContext(options, context, directCandidates, fileLinkResolutionCache)
-      : [];
-  if (resolvedDirectLinks.length > 0 || fallbackCandidates.length === 0) {
-    return mapResolvedFileLinksToInteractions(
-      options,
+  if (directCandidates.length > 0) {
+    const resolvedDirectLinks = resolveCachedExecutionFileLinksForContext(
       context,
       directCandidates,
-      resolvedDirectLinks,
-      tooltipController
+      fileLinkResolutionCache
     );
+    if (resolvedDirectLinks === undefined) {
+      return mapPendingFileLinksToInteractions(
+        options,
+        context,
+        directCandidates,
+        (candidate) => [candidate, ...fallbackCandidates],
+        tooltipController,
+        fileLinkResolutionCache
+      );
+    }
+
+    if (resolvedDirectLinks.length > 0 || fallbackCandidates.length === 0) {
+      return mapResolvedFileLinksToInteractions(
+        options,
+        context,
+        directCandidates,
+        resolvedDirectLinks,
+        tooltipController
+      );
+    }
   }
 
-  const resolvedFallbackLinks = await resolveExecutionFileLinksForContext(
-    options,
-    context,
-    fallbackCandidates,
-    fileLinkResolutionCache
-  );
-  if (resolvedFallbackLinks.length > 0) {
-    return mapResolvedFileLinksToInteractions(
-      options,
+  if (fallbackCandidates.length > 0) {
+    const resolvedFallbackLinks = resolveCachedExecutionFileLinksForContext(
       context,
       fallbackCandidates,
-      resolvedFallbackLinks,
-      tooltipController
+      fileLinkResolutionCache
     );
+    if (resolvedFallbackLinks === undefined) {
+      return mapPendingFileLinksToInteractions(
+        options,
+        context,
+        fallbackCandidates,
+        undefined,
+        tooltipController,
+        fileLinkResolutionCache
+      );
+    }
+
+    if (resolvedFallbackLinks.length > 0) {
+      return mapResolvedFileLinksToInteractions(
+        options,
+        context,
+        fallbackCandidates,
+        resolvedFallbackLinks,
+        tooltipController
+      );
+    }
+
+    return collectStyledFileLinks(options, context, tooltipController, fileLinkResolutionCache);
   }
 
   return collectStyledFileLinks(options, context, tooltipController, fileLinkResolutionCache);
@@ -1063,12 +1616,18 @@ async function collectMultilineLinks(
     return [];
   }
 
-  const resolvedLinks = await resolveExecutionFileLinksForContext(
-    options,
-    context,
-    candidates,
-    fileLinkResolutionCache
-  );
+  const resolvedLinks = resolveCachedExecutionFileLinksForContext(context, candidates, fileLinkResolutionCache);
+  if (resolvedLinks === undefined) {
+    return mapPendingFileLinksToInteractions(
+      options,
+      context,
+      candidates,
+      undefined,
+      tooltipController,
+      fileLinkResolutionCache
+    );
+  }
+
   return mapResolvedFileLinksToInteractions(
     options,
     context,
@@ -1307,7 +1866,8 @@ function collectFileLinkCandidates(
     .filter(
       (candidate) =>
         !isNonFileUriLikePath(candidate.path) &&
-        candidate.path.length <= EXECUTION_MAX_RESOLVED_LINK_LENGTH
+        candidate.path.length <= EXECUTION_MAX_RESOLVED_LINK_LENGTH &&
+        shouldAllowExecutionTerminalDetectedPathLink(candidate, pathStyle)
     );
 
   const candidates: ExecutionTerminalFileLinkCandidate[] = [];
@@ -1315,7 +1875,10 @@ function collectFileLinkCandidates(
     candidates.push(toExecutionTerminalFileLinkCandidate(context, candidate, 'detected'));
   }
 
-  const fallback = detectExecutionTerminalFallbackPathLink(context.text);
+  const fallback = detectExecutionTerminalFallbackPathLink(context.text, {
+    mode: 'interactive',
+    pathStyle
+  });
   if (
     fallback &&
     !isNonFileUriLikePath(fallback.path) &&
@@ -1336,17 +1899,32 @@ async function collectStyledFileLinks(
     ExecutionTerminalResolvedFileLink[] | Promise<ExecutionTerminalResolvedFileLink[]>
   >
 ): Promise<ILink[]> {
-  const styledCandidates = collectStyledFileLinkCandidates(options.terminal, context);
+  const styledCandidates = collectStyledFileLinkCandidates(
+    options.terminal,
+    context,
+    options.getPathStyle()
+  );
   if (styledCandidates.length === 0) {
     return [];
   }
 
-  const resolvedLinks = await resolveExecutionFileLinksForContext(
-    options,
+  const resolvedLinks = resolveCachedExecutionFileLinksForContext(
     context,
     styledCandidates.map((entry) => entry.candidate),
     fileLinkResolutionCache
   );
+  if (resolvedLinks === undefined) {
+    const pendingCandidates = styledCandidates.map((entry) => entry.candidate);
+    return mapPendingStyledFileLinksToInteractions(
+      options,
+      styledCandidates,
+      pendingCandidates,
+      context,
+      tooltipController,
+      fileLinkResolutionCache
+    );
+  }
+
   return mapResolvedStyledFileLinksToInteractions(
     options,
     styledCandidates,
@@ -1357,7 +1935,8 @@ async function collectStyledFileLinks(
 
 function collectStyledFileLinkCandidates(
   terminal: Terminal,
-  context: WrappedLineContext
+  context: WrappedLineContext,
+  pathStyle: ExecutionTerminalPathStyle
 ): StyledFileLinkCandidate[] {
   const ranges = readXtermRangesByAttr(terminal, context.startLine, context.endLine);
   const candidates: StyledFileLinkCandidate[] = [];
@@ -1382,21 +1961,26 @@ function collectStyledFileLinkCandidates(
       continue;
     }
 
+    const detectedLink = detectExecutionTerminalStyledPathLink(text, pathStyle);
+    if (!detectedLink || isNonFileUriLikePath(detectedLink.path)) {
+      continue;
+    }
+
     candidates.push({
       candidate: {
-        candidateId: `styled:${range.start.y}:${range.start.x}:${range.end.y}:${range.end.x}:${text}`,
-        text,
-        path: text,
-        startIndex: 0,
-        endIndexExclusive: text.length,
+        candidateId: `styled:${range.start.y}:${range.start.x}:${range.end.y}:${range.end.x}:${detectedLink.text}`,
+        text: detectedLink.text,
+        path: detectedLink.path,
+        startIndex: detectedLink.startIndex,
+        endIndexExclusive: detectedLink.endIndexExclusive,
         bufferStartLine: context.startLine,
-        line: undefined,
-        column: undefined,
-        lineEnd: undefined,
-        columnEnd: undefined,
-        source: 'detected'
+        line: detectedLink.line,
+        column: detectedLink.column,
+        lineEnd: detectedLink.lineEnd,
+        columnEnd: detectedLink.columnEnd,
+        source: 'styled'
       },
-      bufferRange: range
+      bufferRange: sliceBufferRangeByTextOffsets(range, detectedLink.startIndex, detectedLink.endIndexExclusive)
     });
 
     if (candidates.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
@@ -1405,6 +1989,27 @@ function collectStyledFileLinkCandidates(
   }
 
   return candidates;
+}
+
+function sliceBufferRangeByTextOffsets(
+  range: IBufferRange,
+  startIndex: number,
+  endIndexExclusive: number
+): IBufferRange {
+  if (range.start.y !== range.end.y) {
+    return range;
+  }
+
+  return {
+    start: {
+      x: range.start.x + startIndex,
+      y: range.start.y
+    },
+    end: {
+      x: range.start.x + Math.max(startIndex, endIndexExclusive) - 1,
+      y: range.end.y
+    }
+  };
 }
 
 function toExecutionTerminalFileLinkCandidate(
@@ -1439,7 +2044,8 @@ async function resolveExecutionFileLinksForContext(
   options: ExecutionTerminalNativeInteractionsOptions,
   context: WrappedLineContext,
   candidates: ExecutionTerminalFileLinkCandidate[],
-  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  priority: ExecutionTerminalFileLinkResolvePriority = 'interactive'
 ): Promise<ExecutionTerminalResolvedFileLink[]> {
   const cacheKey = createExecutionFileLinkResolutionCacheKey(context, candidates);
   const cachedEntry = fileLinkResolutionCache.get(cacheKey);
@@ -1448,7 +2054,11 @@ async function resolveExecutionFileLinksForContext(
   }
 
   if (cachedEntry) {
-    return cachedEntry;
+    const cachedMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache)
+      .entries.get(cacheKey);
+    if (!(priority === 'interactive' && cachedMetadata?.priority === 'background')) {
+      return cachedEntry;
+    }
   }
 
   const cacheMetadata = getExecutionFileLinkResolutionCacheMetadata(fileLinkResolutionCache);
@@ -1458,10 +2068,11 @@ async function resolveExecutionFileLinksForContext(
     bufferEndLine: context.endLine,
     bufferStartLine: context.startLine,
     candidates,
-    negativeInvalidationGeneration
+    negativeInvalidationGeneration,
+    priority
   });
   request = options
-    .resolveFileLinks(options.nodeId, options.kind, candidates)
+    .resolveFileLinks(options.nodeId, options.kind, candidates, priority)
     .then((resolvedLinks) => {
       if (fileLinkResolutionCache.get(cacheKey) !== request) {
         return resolvedLinks;
@@ -1496,6 +2107,17 @@ async function resolveExecutionFileLinksForContext(
     });
   fileLinkResolutionCache.set(cacheKey, request);
   return request;
+}
+
+function resolveCachedExecutionFileLinksForContext(
+  context: WrappedLineContext,
+  candidates: ExecutionTerminalFileLinkCandidate[],
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ExecutionTerminalResolvedFileLink[] | undefined {
+  const cachedEntry = fileLinkResolutionCache.get(
+    createExecutionFileLinkResolutionCacheKey(context, candidates)
+  );
+  return Array.isArray(cachedEntry) ? cachedEntry : undefined;
 }
 
 function createExecutionFileLinkResolutionCacheKey(
@@ -1617,7 +2239,7 @@ function refreshNegativeExecutionFileLinkResolutionCacheEntry(
   entryMetadata.needsRefreshAfterCurrent = false;
   let refreshRequest: Promise<void>;
   refreshRequest = options
-    .resolveFileLinks(options.nodeId, options.kind, entryMetadata.candidates)
+    .resolveFileLinks(options.nodeId, options.kind, entryMetadata.candidates, 'background')
     .then((resolvedLinks) => {
       const latestEntry = fileLinkResolutionCache.get(cacheKey);
       if (!Array.isArray(latestEntry) || latestEntry.length !== 0) {
@@ -1668,7 +2290,10 @@ function getExecutionFileLinkResolutionCacheMetadata(
 ): ExecutionFileLinkResolutionCacheMetadata {
   let metadata = executionFileLinkResolutionCacheMetadata.get(fileLinkResolutionCache);
   if (!metadata) {
-    metadata = { entries: new Map(), negativeInvalidationGeneration: 0 };
+    metadata = {
+      entries: new Map(),
+      negativeInvalidationGeneration: 0
+    };
     executionFileLinkResolutionCacheMetadata.set(fileLinkResolutionCache, metadata);
   }
 
@@ -1773,6 +2398,47 @@ function mapResolvedFileLinksToInteractions(
   return links;
 }
 
+function mapPendingFileLinksToInteractions(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  context: WrappedLineContext,
+  candidates: ExecutionTerminalFileLinkCandidate[],
+  resolveCandidatesForCandidate:
+    | ((candidate: ExecutionTerminalFileLinkCandidate) => ExecutionTerminalFileLinkCandidate[])
+    | undefined,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ILink[] {
+  const links: ILink[] = [];
+  for (const candidate of candidates) {
+    links.push(
+      createPendingFileResolveInteractionLink(
+        options,
+        candidate.text,
+        convertLinkRangeToBuffer(
+          context.lines,
+          options.terminal.cols,
+          {
+            startColumn: candidate.startIndex + 1,
+            startLineNumber: 1,
+            endColumn: candidate.endIndexExclusive + 1,
+            endLineNumber: 1
+          },
+          context.startLine
+        ),
+        resolveCandidatesForCandidate?.(candidate) ?? [candidate],
+        context,
+        tooltipController,
+        fileLinkResolutionCache
+      )
+    );
+    if (links.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
+      break;
+    }
+  }
+
+  return links;
+}
+
 function mapResolvedStyledFileLinksToInteractions(
   options: ExecutionTerminalNativeInteractionsOptions,
   candidates: StyledFileLinkCandidate[],
@@ -1800,6 +2466,27 @@ function mapResolvedStyledFileLinksToInteractions(
   }
 
   return links;
+}
+
+function mapPendingStyledFileLinksToInteractions(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  candidates: StyledFileLinkCandidate[],
+  fileLinkCandidates: ExecutionTerminalFileLinkCandidate[],
+  context: WrappedLineContext,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ILink[] {
+  return candidates.map((candidate) =>
+    createPendingFileResolveInteractionLink(
+      options,
+      candidate.candidate.text,
+      candidate.bufferRange,
+      fileLinkCandidates,
+      context,
+      tooltipController,
+      fileLinkResolutionCache
+    )
+  );
 }
 
 function mapResolvedHardWrappedFileLinksToInteractions(
@@ -1842,6 +2529,98 @@ function mapResolvedHardWrappedFileLinksToInteractions(
   }
 
   return links;
+}
+
+function mapPendingHardWrappedFileLinksToInteractions(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  candidates: HardWrappedFileLinkCandidate[],
+  fileLinkCandidates: ExecutionTerminalFileLinkCandidate[],
+  context: WrappedLineContext,
+  requestedLineIndex: number,
+  tooltipController: TooltipController,
+  hoverOverlayController: HardWrappedHoverOverlayController,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache
+): ILink[] {
+  const links: ILink[] = [];
+  for (const candidate of candidates) {
+    for (const fragment of candidate.fragments) {
+      if (fragment.bufferRange.start.y !== requestedLineIndex + 1) {
+        continue;
+      }
+
+      const hoverOverlayRanges = candidate.fragments.map((entry) => entry.bufferRange);
+      links.push(
+        createPendingFileResolveInteractionLink(
+          options,
+          candidate.candidate.text,
+          fragment.bufferRange,
+          fileLinkCandidates,
+          context,
+          tooltipController,
+          fileLinkResolutionCache,
+          {
+            hoverOverlayController,
+            hoverOverlayRanges
+          }
+        )
+      );
+    }
+  }
+
+  return links;
+}
+
+function createPendingFileResolveInteractionLink(
+  options: ExecutionTerminalNativeInteractionsOptions,
+  text: string,
+  bufferRange: IBufferRange,
+  candidates: ExecutionTerminalFileLinkCandidate[],
+  context: WrappedLineContext,
+  tooltipController: TooltipController,
+  fileLinkResolutionCache: ExecutionFileLinkResolutionCache,
+  linkOptions?: Pick<InteractionLinkOptions, 'hoverOverlayController' | 'hoverOverlayRanges'>
+): ILink {
+  return createBufferRangeInteractionLink(
+    options,
+    text,
+    FILE_LINK_LABEL,
+    {
+      linkKind: 'search',
+      text,
+      searchText: text,
+      contextLine: context.text,
+      bufferStartLine: context.startLine,
+      source: 'word'
+    },
+    tooltipController,
+    bufferRange,
+    {
+      ...linkOptions,
+      activate: async (): Promise<void> => {
+        const resolvedLinks = await resolveExecutionFileLinksForContext(
+          options,
+          context,
+          candidates,
+          fileLinkResolutionCache,
+          'interactive'
+        ).catch(() => []);
+        const resolvedLink = resolvedLinks.find((link) => link.link.text === text) ?? resolvedLinks[0];
+        if (resolvedLink) {
+          options.onOpenLink(options.nodeId, options.kind, resolvedLink.link);
+          return;
+        }
+
+        options.onOpenLink(options.nodeId, options.kind, {
+          linkKind: 'search',
+          text,
+          searchText: text,
+          contextLine: context.text,
+          bufferStartLine: context.startLine,
+          source: 'word'
+        });
+      }
+    }
+  );
 }
 
 function labelForResolvedFileLink(
@@ -2014,6 +2793,11 @@ function createBufferRangeInteractionLink(
       : undefined),
     activate: (event): void => {
       if (!shouldActivateExecutionLink(options.getRuntimeContext(), event)) {
+        return;
+      }
+
+      if (linkOptions?.activate) {
+        void Promise.resolve(linkOptions.activate());
         return;
       }
 

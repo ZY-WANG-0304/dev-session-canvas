@@ -85,6 +85,46 @@ export async function launchPreparedVSCodeScenario(options) {
   return runtime;
 }
 
+export async function spawnPreparedVSCodeScenario(options) {
+  const runtime = options.runtime;
+  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot));
+  const args = buildVSCodeArgs({
+    workspacePath: options.workspacePath ?? options.projectRoot,
+    folderUri: options.folderUri,
+    remoteAuthority: options.remoteAuthority,
+    extensionDevelopmentPath: options.extensionDevelopmentPath,
+    extensionTestsPath: options.extensionTestsPath,
+    userDataDir: runtime.userDataDir,
+    extensionsDir: runtime.extensionsDir,
+    disableWorkspaceTrust: options.disableWorkspaceTrust ?? true,
+    disableExtensions: options.disableExtensions ?? true,
+    profileName: options.profileName,
+    extraLaunchArgs: options.extraLaunchArgs ?? []
+  });
+
+  const handle = spawnVSCodeTestProcess(vscodeExecutablePath, args, {
+    ...runtime.environment,
+    ...(options.extensionTestsEnv ?? {})
+  });
+  return {
+    ...handle,
+    completed: handle.completed.catch(async (error) => {
+      await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir);
+      console.error(`Smoke test artifacts saved to ${runtime.artifactsDir}`);
+      throw error;
+    })
+  };
+}
+
+export function resolveVSCodeSmokeDebugRoot(projectRoot) {
+  const override = process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT?.trim();
+  if (override) {
+    return override;
+  }
+
+  return path.join(projectRoot, '.debug', 'vscode-smoke');
+}
+
 export async function prepareRuntime(options) {
   const debugRoot = options.debugRoot;
   const userDataDir = path.join(debugRoot, 'user-data');
@@ -291,6 +331,7 @@ export function buildVSCodeArgs(options) {
     `--extensions-dir=${options.extensionsDir}`,
     '--no-sandbox',
     '--disable-gpu-sandbox',
+    '--password-store=basic',
     '--disable-updates',
     '--skip-welcome',
     '--skip-release-notes'
@@ -379,19 +420,24 @@ function findPreferredInstalledVSCodeExecutablePath() {
 }
 
 async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
+  const handle = spawnVSCodeTestProcess(executablePath, args, extensionTestsEnv);
+  await handle.completed;
+}
+
+function spawnVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
   const fullEnv = buildVSCodeChildEnv(extensionTestsEnv);
   const shell = process.platform === 'win32';
   const launchPath = resolveVSCodeTestLaunchPath(executablePath);
 
-  await new Promise((resolve, reject) => {
-    const child = spawn(shell ? `"${launchPath}"` : launchPath, args, {
-      env: fullEnv,
-      shell
-    });
+  const child = spawn(shell ? `"${launchPath}"` : launchPath, args, {
+    env: fullEnv,
+    shell
+  });
 
-    child.stdout.on('data', (chunk) => process.stdout.write(chunk));
-    child.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  child.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  child.stderr.on('data', (chunk) => process.stderr.write(chunk));
 
+  const completed = new Promise((resolve, reject) => {
     child.on('error', (error) => {
       reject(error);
     });
@@ -422,6 +468,16 @@ async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) 
     child.on('close', finalize);
     child.on('exit', finalize);
   });
+
+  return {
+    child,
+    completed,
+    kill: (signal = 'SIGTERM') => {
+      if (!child.killed) {
+        child.kill(signal);
+      }
+    }
+  };
 }
 
 export async function installVSCodeExtensions(options) {

@@ -291,6 +291,75 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
   });
 });
 
+test('lifecycle identity acks bootstrap and ignores stale bootstrap frames', async ({ page }) => {
+  await openHarness(page);
+  const readyMessage = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });
+  expect(readyMessage.lifecycle).toMatchObject({
+    surface: 'panel',
+    mode: 'active',
+    generation: 1
+  });
+  expect(readyMessage.lifecycle.frameId).toMatch(/^frame-/);
+
+  const staleState = createEmptyCanvasState();
+  const currentState = createCanvasScreenshotState();
+
+  await page.evaluate(({ nextState, nextRuntime }) => {
+    window.__devSessionCanvasHarness.clearPostedMessages();
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/bootstrap',
+      lifecycle: {
+        surface: 'panel',
+        mode: 'active',
+        generation: 0,
+        frameId: 'frame-stale'
+      },
+      payload: {
+        state: nextState,
+        runtime: nextRuntime
+      }
+    });
+  }, { nextState: staleState, nextRuntime: createRuntimeContext() });
+  await settleWebview(page, 3);
+
+  expect(await page.locator('.react-flow__node').count()).toBe(0);
+  expect(await readPostedMessagesByType(page, 'webview/bootstrapAck', { includeLifecycle: true })).toHaveLength(0);
+
+  await bootstrap(page, currentState);
+  const bootstrapAck = await waitForPostedMessageByType(page, 'webview/bootstrapAck', { includeLifecycle: true });
+  expect(bootstrapAck.lifecycle).toMatchObject({
+    surface: 'panel',
+    mode: 'active',
+    generation: 1
+  });
+  await expect(nodeById(page, 'agent-1')).toBeVisible();
+});
+
+test('lifecycle identity rejects missing lifecycle host bootstrap', async ({ page }) => {
+  await openHarness(page);
+  const currentState = createCanvasScreenshotState();
+
+  await page.evaluate(({ nextState, nextRuntime }) => {
+    window.__devSessionCanvasHarness.clearPostedMessages();
+    window.__devSessionCanvasHarness.dispatchRawHostMessage({
+      type: 'host/bootstrap',
+      payload: {
+        state: nextState,
+        runtime: nextRuntime
+      }
+    });
+  }, { nextState: currentState, nextRuntime: createRuntimeContext() });
+  await settleWebview(page, 3);
+
+  expect(await page.locator('.react-flow__node').count()).toBe(0);
+  expect(await readPostedMessagesByType(page, 'webview/bootstrapAck')).toHaveLength(0);
+  const diagnostic = await waitForPostedMessageByType(page, 'webview/runtimeDiagnostic');
+  expect(diagnostic.payload).toMatchObject({
+    source: 'webview.lifecycle',
+    message: 'ignore host message without lifecycle: host/bootstrap'
+  });
+});
+
 test('manual edges can be created, selected, edited, and deleted', async ({ page }) => {
   const state = createCanvasScreenshotState();
 
@@ -527,6 +596,38 @@ test('manual edges can be created, selected, edited, and deleted', async ({ page
   await expect.poll(async () => (await requestWebviewProbe(page, 20)).edgeCount).toBe(0);
 });
 
+test('selected node midpoint handles can start connections while resize affordance is visible', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state);
+
+  await performTestDomAction(page, {
+    kind: 'selectNode',
+    nodeId: 'agent-1'
+  });
+  await expect(nodeById(page, 'agent-1').locator('[data-node-resize-direction]')).toHaveCount(8);
+
+  for (const sourceAnchor of ['top', 'right', 'bottom', 'left']) {
+    await clearPostedMessages(page);
+    await dragConnectionBetweenAnchors(page, {
+      sourceNodeId: 'agent-1',
+      sourceAnchor,
+      targetNodeId: 'terminal-1',
+      targetAnchor: 'left'
+    });
+
+    const message = await waitForPostedMessageByType(page, 'webview/createEdge');
+    expect(message.payload).toEqual({
+      sourceNodeId: 'agent-1',
+      targetNodeId: 'terminal-1',
+      sourceAnchor,
+      targetAnchor: 'left'
+    });
+  }
+});
+
 test('edge label IME confirmation does not submit before explicit commit', async ({ page }) => {
   const state = createCanvasScreenshotState();
   state.edges = [
@@ -543,6 +644,7 @@ test('edge label IME confirmation does not submit before explicit commit', async
 
   await openHarness(page);
   await bootstrap(page, state);
+  await expect(page.locator('[data-edge-hitbox="true"][data-edge-id="edge-user-1"]')).toHaveCount(1);
   await performTestDomAction(page, {
     kind: 'selectEdge',
     nodeId: 'agent-1',
@@ -664,6 +766,911 @@ test('self loop edges can be created and rendered', async ({ page }) => {
   await expect(page.locator('.canvas-edge-label')).toContainText('自环');
 });
 
+test('workspace root groups reject cross-root edge creation and reconnect', async ({ page }) => {
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('frontend-note', { x: 180, y: 160 }),
+      groupId: 'workspace-root-frontend'
+    },
+    {
+      ...createManualNoteNode('backend-note', { x: 980, y: 160 }),
+      groupId: 'workspace-root-backend'
+    },
+    {
+      ...createManualNoteNode('frontend-peer', { x: 380, y: 160 }),
+      groupId: 'workspace-root-frontend'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-frontend',
+      title: 'frontend',
+      position: { x: 80, y: 80 },
+      size: { width: 640, height: 360 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'workspace-root-backend',
+      title: 'backend',
+      position: { x: 880, y: 80 },
+      size: { width: 640, height: 360 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/backend'
+    }
+  ];
+
+  await openHarness(page);
+  await bootstrap(page, state);
+  await clearPostedMessages(page);
+
+  await dragConnectionBetweenAnchors(page, {
+    sourceNodeId: 'frontend-note',
+    sourceAnchor: 'right',
+    targetNodeId: 'backend-note',
+    targetAnchor: 'left'
+  });
+
+  await expect
+    .poll(async () => (await readPostedMessagesByType(page, 'webview/createEdge')).length)
+    .toBe(0);
+
+  state.edges = [
+    {
+      id: 'edge-frontend',
+      sourceNodeId: 'frontend-note',
+      targetNodeId: 'frontend-peer',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    }
+  ];
+  await updateHostState(page, state);
+  await expect.poll(async () => (await readProbeEdge(page, 'edge-frontend', 20))?.targetNodeId ?? null).toBe('frontend-peer');
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    nodeId: 'frontend-note',
+    edgeId: 'edge-frontend'
+  });
+  await clearPostedMessages(page);
+  await reconnectEdgeEndpointToAnchor(page, {
+    edgeId: 'edge-frontend',
+    handleType: 'target',
+    targetNodeId: 'backend-note',
+    targetAnchor: 'left'
+  });
+
+  await expect
+    .poll(async () => (await readPostedMessagesByType(page, 'webview/updateEdge')).length)
+    .toBe(0);
+});
+
+test('pane gallery renders dynamic workspace roots with canvas controls and light labels', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  await expect(page.locator('[data-pane-gallery="true"]')).toBeVisible();
+  await expect(page.locator('[data-pane-gallery-layout="dynamic"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-toolbar')).toHaveCount(0);
+  await expect(page.getByLabel('Filter workspace roots')).toHaveCount(0);
+  await expect(page.getByLabel('切换 workspace pane 模式')).toHaveCount(0);
+  await expect(page.locator('[data-pane-gallery-root-id]')).toHaveCount(2);
+
+  const frontendPane = page.locator('[data-pane-gallery-root-id="workspace-root-frontend"]');
+  const backendPane = page.locator('[data-pane-gallery-root-id="workspace-root-backend"]');
+  await expect(frontendPane.locator('.pane-gallery-root-title')).toHaveText('Frontend');
+  await expect(frontendPane.locator('.pane-gallery-root-title')).toHaveAttribute('title', '/repo/frontend');
+  await expect(backendPane.locator('.pane-gallery-root-meta')).toHaveCount(0);
+  await expect(frontendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
+  await expect(backendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
+  await expect(page.locator('.canvas-help-panel .execution-help-trigger-canvas')).toBeVisible();
+  await expect(frontendPane.locator('[data-group-background-role="workspace-root"]')).toHaveCount(0);
+  await expect(frontendPane.locator('[data-root-name-watermark="true"]')).toHaveCount(0);
+
+  await clearPostedMessages(page);
+  await backendPane.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 120,
+      y: 150
+    }
+  });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-kind="note"]').click();
+  const createPayload = await waitForCreateDemoNodePayload(page);
+  expect(createPayload.kind).toBe('note');
+  expect(createPayload.targetGroupId).toBe('workspace-root-backend');
+  expect(Number.isFinite(createPayload.preferredPosition.x)).toBe(true);
+  expect(Number.isFinite(createPayload.preferredPosition.y)).toBe(true);
+});
+
+test('pane gallery lower-left mode control switches layouts and canvas thumbnails', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState({ rootCount: 3 });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-trigger="true"] .codicon-eye')).toHaveCount(1);
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="grid"]')).toContainText('宫格');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="topThumbnails"]')).toContainText('顶部缩略图');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toContainText('右侧缩略图');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="dynamic"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="dynamic"] .codicon-layout')).toHaveCount(1);
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="topThumbnails"] .codicon-split-vertical')).toHaveCount(1);
+  await expect(frontendTile.locator('[data-pane-gallery-mode-option="sideThumbnails"] .codicon-split-horizontal')).toHaveCount(1);
+
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+  await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+
+  let mainPane = page.locator('.pane-gallery-root-pane-main');
+  await expect(mainPane.locator('[data-pane-gallery-mode-trigger="true"] .codicon-globe')).toHaveCount(1);
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await expect(mainPane.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="grid"]')).toContainText('宫格');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]')).toContainText('顶部缩略图');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toContainText('右侧缩略图');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toHaveAttribute('aria-checked', 'true');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="dynamic"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile')).toHaveCount(3);
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.layout)
+    .toBe('dynamic');
+
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await frontendTile.locator('[data-pane-gallery-mode-option="topThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  await expect(page.locator('.pane-gallery-root-pane-main .pane-gallery-canvas-controls')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail .react-flow')).toHaveCount(2);
+  await expect(page.locator('.pane-gallery-thumbnail-preview svg')).toHaveCount(0);
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"] .pane-gallery-root-title')).toHaveText('Backend');
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail .pane-gallery-root-meta')).toHaveCount(0);
+
+  const topTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => {
+    const track = rail.querySelector('.pane-gallery-thumbnail-track');
+    const railRect = rail.getBoundingClientRect();
+    const trackRect = track instanceof HTMLElement ? track.getBoundingClientRect() : null;
+    return trackRect
+      ? {
+          leading: trackRect.left - railRect.left,
+          trailing: railRect.right - trackRect.right
+        }
+      : null;
+  });
+  expect(topTrackAlignment?.leading).toBeGreaterThan(0);
+  expect(Math.abs((topTrackAlignment?.leading ?? 0) - (topTrackAlignment?.trailing ?? 0))).toBeLessThanOrEqual(1);
+
+  await clearPostedMessages(page);
+  const backendThumbnail = page.locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]');
+  await backendThumbnail.click();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/createDemoNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
+
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.activeRootGroupId)
+    .toBe('workspace-root-backend');
+  expect(await readPostedMessagesByType(page, 'webview/createDemoNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
+
+  mainPane = page.locator('.pane-gallery-root-pane-main');
+  await expect(mainPane.locator('[data-pane-gallery-mode-trigger="true"] .codicon-globe')).toHaveCount(1);
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await expect(mainPane.locator('[data-pane-gallery-mode-option]')).toHaveCount(4);
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="dynamic"]')).toContainText('动态');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="grid"]')).toContainText('宫格');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]')).toContainText('顶部缩略图');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]')).toContainText('右侧缩略图');
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"] .codicon-split-vertical')).toHaveCount(1);
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"] .codicon-split-horizontal')).toHaveCount(1);
+  await expect(mainPane.locator('[data-pane-gallery-mode-option="dynamic"] .codicon-layout')).toHaveCount(1);
+
+  await mainPane.locator('[data-pane-gallery-mode-option="grid"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="grid"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile')).toHaveCount(3);
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+  await expect(page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"] [data-pane-gallery-mode-trigger="true"] .codicon-eye')).toHaveCount(1);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.layout)
+    .toBe('grid');
+
+  const backendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"]');
+  await backendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.lastOverviewLayout)
+    .toBe('grid');
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.lastThumbnailLayout)
+    .toBe('topThumbnails');
+
+  mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="grid"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-tile .canvas-minimap')).toHaveCount(0);
+
+  await page
+    .locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"] [data-pane-gallery-mode-trigger="true"]')
+    .click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
+  const rememberedTopTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => {
+    const track = rail.querySelector('.pane-gallery-thumbnail-track');
+    const railRect = rail.getBoundingClientRect();
+    const trackRect = track instanceof HTMLElement ? track.getBoundingClientRect() : null;
+    return trackRect
+      ? {
+          leading: trackRect.left - railRect.left,
+          trailing: railRect.right - trackRect.right
+        }
+      : null;
+  });
+  expect(rememberedTopTrackAlignment?.leading).toBeGreaterThan(0);
+  expect(
+    Math.abs((rememberedTopTrackAlignment?.leading ?? 0) - (rememberedTopTrackAlignment?.trailing ?? 0))
+  ).toBeLessThanOrEqual(1);
+
+  mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await mainPane.locator('[data-pane-gallery-mode-option="sideThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const sideTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-sideThumbnails').evaluate((rail) => {
+    const track = rail.querySelector('.pane-gallery-thumbnail-track');
+    const railRect = rail.getBoundingClientRect();
+    const trackRect = track instanceof HTMLElement ? track.getBoundingClientRect() : null;
+    return trackRect
+      ? {
+          leading: trackRect.top - railRect.top,
+          trailing: railRect.bottom - trackRect.bottom
+        }
+      : null;
+  });
+  expect(sideTrackAlignment?.leading).toBeGreaterThan(0);
+  expect(Math.abs((sideTrackAlignment?.leading ?? 0) - (sideTrackAlignment?.trailing ?? 0))).toBeLessThanOrEqual(1);
+});
+
+test('pane gallery overflowing thumbnail rails keep first and last roots reachable', async ({ page }) => {
+  const state = createPaneGalleryCanvasState({ rootCount: 16 });
+  const activeRootId = state.groups[0].id;
+  const firstThumbnailRootId = state.groups[1].id;
+  const lastThumbnailRootId = state.groups.at(-1).id;
+
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'sideThumbnails',
+        activeRootGroupId: activeRootId,
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails'
+      }
+    }
+  });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const measureRailReachability = async (layout) => {
+    const axis = layout === 'topThumbnails' ? 'x' : 'y';
+    const rail = page.locator(`[data-pane-gallery-thumbnail-rail="${layout}"]`);
+    await expect(rail).toBeVisible();
+    return rail.evaluate(
+      (railElement, { firstRootId, lastRootId, scrollAxis }) => {
+        const collect = () => {
+          const railRect = railElement.getBoundingClientRect();
+          const entries = [...railElement.querySelectorAll('.pane-gallery-root-pane-thumbnail')]
+            .filter((entry) => entry instanceof HTMLElement)
+            .map((entry) => {
+              const rect = entry.getBoundingClientRect();
+              return {
+                id: entry.getAttribute('data-pane-gallery-root-id'),
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                left: rect.left
+              };
+            });
+          const visibleIds = entries
+            .filter((entry) =>
+              entry.right > railRect.left + 1 &&
+              entry.left < railRect.right - 1 &&
+              entry.bottom > railRect.top + 1 &&
+              entry.top < railRect.bottom - 1
+            )
+            .map((entry) => entry.id);
+          const isFullyVisible = (entry) =>
+            entry
+              ? scrollAxis === 'x'
+                ? entry.left >= railRect.left - 1 && entry.right <= railRect.right + 1
+                : entry.top >= railRect.top - 1 && entry.bottom <= railRect.bottom + 1
+              : false;
+          const firstEntry = entries.find((entry) => entry.id === firstRootId);
+          const lastEntry = entries.find((entry) => entry.id === lastRootId);
+
+          return {
+            scrollLeft: railElement.scrollLeft,
+            scrollTop: railElement.scrollTop,
+            visibleIds,
+            firstFullyVisible: isFullyVisible(firstEntry),
+            lastFullyVisible: isFullyVisible(lastEntry),
+            firstOffset: firstEntry
+              ? scrollAxis === 'x'
+                ? firstEntry.left - railRect.left
+                : firstEntry.top - railRect.top
+              : null,
+            lastOffset: lastEntry
+              ? scrollAxis === 'x'
+                ? railRect.right - lastEntry.right
+                : railRect.bottom - lastEntry.bottom
+              : null
+          };
+        };
+
+        railElement.scrollLeft = 0;
+        railElement.scrollTop = 0;
+        const start = collect();
+        railElement.scrollLeft = railElement.scrollWidth;
+        railElement.scrollTop = railElement.scrollHeight;
+        const end = collect();
+
+        return {
+          axis: scrollAxis,
+          railJustifyContent: getComputedStyle(railElement).justifyContent,
+          railAlignContent: getComputedStyle(railElement).alignContent,
+          scrollMax: scrollAxis === 'x'
+            ? railElement.scrollWidth - railElement.clientWidth
+            : railElement.scrollHeight - railElement.clientHeight,
+          start,
+          end
+        };
+      },
+      { firstRootId: firstThumbnailRootId, lastRootId: lastThumbnailRootId, scrollAxis: axis }
+    );
+  };
+
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const sideRailMetrics = await measureRailReachability('sideThumbnails');
+  expect(sideRailMetrics.railAlignContent).not.toContain('safe');
+  expect(sideRailMetrics.railAlignContent).not.toBe('center');
+  expect(sideRailMetrics.scrollMax).toBeGreaterThan(0);
+  expect(sideRailMetrics.start.firstFullyVisible).toBe(true);
+  expect(sideRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
+  expect(sideRailMetrics.start.firstOffset).toBeGreaterThanOrEqual(-1);
+  expect(sideRailMetrics.end.lastFullyVisible).toBe(true);
+  expect(sideRailMetrics.end.visibleIds).toContain(lastThumbnailRootId);
+  expect(sideRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
+
+  const mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  await settleWebview(page, 2);
+
+  const topRailMetrics = await measureRailReachability('topThumbnails');
+  expect(topRailMetrics.railJustifyContent).not.toContain('safe');
+  expect(topRailMetrics.railJustifyContent).not.toBe('center');
+  expect(topRailMetrics.scrollMax).toBeGreaterThan(0);
+  expect(topRailMetrics.start.firstFullyVisible).toBe(true);
+  expect(topRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
+  expect(topRailMetrics.start.firstOffset).toBeGreaterThanOrEqual(-1);
+  expect(topRailMetrics.end.lastFullyVisible).toBe(true);
+  expect(topRailMetrics.end.visibleIds).toContain(lastThumbnailRootId);
+  expect(topRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
+});
+
+test('pane gallery thumbnail rail follows workspace root order after switching active root', async ({ page }) => {
+  const state = createPaneGalleryCanvasState({ rootCount: 4 });
+  const groupsById = new Map(state.groups.map((group) => [group.id, group]));
+  state.groups = [
+    'workspace-root-tools',
+    'workspace-root-frontend',
+    'workspace-root-mobile',
+    'workspace-root-backend'
+  ].map((groupId) => {
+    const group = groupsById.get(groupId);
+    if (!group) {
+      throw new Error(`Missing fixture group: ${groupId}`);
+    }
+    return group;
+  });
+  const workspaceFolders = [
+    { name: 'Frontend', path: '/repo/frontend' },
+    { name: 'Backend', path: '/repo/backend' },
+    { name: 'Tools', path: '/repo/tools' },
+    { name: 'Mobile', path: '/repo/mobile' }
+  ];
+
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'sideThumbnails',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails'
+      }
+    }
+  });
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({
+      multiRootPresentationMode: 'paneGallery',
+      workspaceFolders
+    })
+  );
+  await settleWebview(page, 4);
+
+  const readThumbnailIds = async (layout) =>
+    page
+      .locator(`[data-pane-gallery-thumbnail-track="${layout}"] .pane-gallery-root-pane-thumbnail`)
+      .evaluateAll((entries) => entries.map((entry) => entry.getAttribute('data-pane-gallery-root-id')));
+
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readThumbnailIds('sideThumbnails')).toEqual([
+    'workspace-root-backend',
+    'workspace-root-tools',
+    'workspace-root-mobile'
+  ]);
+
+  await page
+    .locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-tools"]')
+    .dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-tools'
+  );
+  expect(await readThumbnailIds('sideThumbnails')).toEqual([
+    'workspace-root-frontend',
+    'workspace-root-backend',
+    'workspace-root-mobile'
+  ]);
+
+  const mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  expect(await readThumbnailIds('topThumbnails')).toEqual([
+    'workspace-root-frontend',
+    'workspace-root-backend',
+    'workspace-root-mobile'
+  ]);
+});
+
+test('pane gallery clears transient selection before roots become thumbnails', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  state.edges = [
+    {
+      id: 'edge-backend',
+      sourceNodeId: 'workspace-root-backend-note',
+      targetNodeId: 'workspace-root-backend-terminal',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    },
+    {
+      id: 'edge-frontend',
+      sourceNodeId: 'workspace-root-frontend-note',
+      targetNodeId: 'workspace-root-frontend-terminal',
+      sourceAnchor: 'right',
+      targetAnchor: 'left',
+      arrowMode: 'forward',
+      owner: 'user'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    edgeId: 'edge-backend'
+  });
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-backend"]')).toBeVisible();
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+  await expect(backendThumbnail).toBeVisible();
+  await expect(backendThumbnail.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-backend"]')).toHaveCount(0);
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-backend"]')).toHaveCount(0);
+
+  await clearPostedMessages(page);
+  await backendThumbnail.click();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/deleteEdge')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/updateEdge')).toEqual([]);
+
+  await performTestDomAction(page, {
+    kind: 'selectEdge',
+    edgeId: 'edge-frontend'
+  });
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-frontend"]')).toBeVisible();
+
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  const frontendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-frontend"]'
+  );
+  await expect(frontendThumbnail.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-frontend"]')).toHaveCount(0);
+  await expect(page.locator('[data-edge-toolbar="true"][data-edge-toolbar-edge-id="edge-frontend"]')).toHaveCount(0);
+  expect(await readPostedMessagesByType(page, 'webview/deleteEdge')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/updateEdge')).toEqual([]);
+});
+
+test('pane gallery thumbnail hit layer blocks execution node attention acknowledgement', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  const backendTerminal = state.nodes.find((node) => node.id === 'workspace-root-backend-terminal');
+  backendTerminal.status = 'running';
+  backendTerminal.metadata.terminal.attentionPending = true;
+
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+  const backendTerminalNode = backendThumbnail.locator('[data-node-id="workspace-root-backend-terminal"]');
+  await expect(backendTerminalNode.locator('[data-execution-attention-pending="true"]')).toHaveCount(1);
+  await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toBeVisible();
+  await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toHaveCSS(
+    'cursor',
+    'default'
+  );
+
+  const terminalCenter = await backendTerminalNode.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  });
+  const hitLayerOwnsTerminalPoint = await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    return target instanceof Element && target.closest('[data-pane-gallery-thumbnail-hit-layer="true"]') !== null;
+  }, terminalCenter);
+  expect(hitLayerOwnsTerminalPoint).toBe(true);
+
+  await clearPostedMessages(page);
+  await page.mouse.click(terminalCenter.x, terminalCenter.y);
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/selectNode')).toEqual([]);
+
+  await page.mouse.dblclick(terminalCenter.x, terminalCenter.y);
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  expect(await readPostedMessagesByType(page, 'webview/selectNode')).toEqual([]);
+});
+
+test('pane gallery fits a root the first time it becomes the main thumbnail pane', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'dynamic',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        overviewViewports: {
+          'workspace-root-backend': {
+            x: 5000,
+            y: -3000,
+            zoom: 2
+          }
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect
+    .poll(async () => {
+      const paneGallery = (await readPersistedUiState(page)).paneGallery;
+      return paneGallery?.mainViewports?.['workspace-root-backend'] ?? null;
+    })
+    .not.toBeNull();
+
+  const paneGalleryState = (await readPersistedUiState(page)).paneGallery;
+  const backendOverviewViewport = paneGalleryState?.overviewViewports?.['workspace-root-backend'];
+  const backendMainViewport = paneGalleryState?.mainViewports?.['workspace-root-backend'];
+  expect(backendOverviewViewport).toEqual({
+    x: 5000,
+    y: -3000,
+    zoom: 2
+  });
+  expect(backendMainViewport?.x).not.toBe(5000);
+  expect(backendMainViewport?.y).not.toBe(-3000);
+  expect(backendMainViewport?.zoom).toBeLessThan(1.95);
+
+  const mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="dynamic"]')).toBeVisible();
+  await expect
+    .poll(async () =>
+      page
+        .locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-backend"] .react-flow__viewport')
+        .evaluate((viewport) => (viewport instanceof HTMLElement ? viewport.style.transform : null))
+    )
+    .toContain('translate(5000px, -3000px)');
+});
+
+test('pane gallery fits the active root when entering thumbnail mode without a main viewport', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'dynamic',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        overviewViewports: {
+          'workspace-root-frontend': {
+            x: 5000,
+            y: -3000,
+            zoom: 2
+          }
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+
+  await expect
+    .poll(async () => {
+      const paneGallery = (await readPersistedUiState(page)).paneGallery;
+      return paneGallery?.mainViewports?.['workspace-root-frontend'] ?? null;
+    })
+    .not.toBeNull();
+
+  const paneGalleryState = (await readPersistedUiState(page)).paneGallery;
+  expect(paneGalleryState?.overviewViewports?.['workspace-root-frontend']).toEqual({
+    x: 5000,
+    y: -3000,
+    zoom: 2
+  });
+  const frontendMainViewport = paneGalleryState?.mainViewports?.['workspace-root-frontend'];
+  expect(frontendMainViewport?.x).not.toBe(5000);
+  expect(frontendMainViewport?.y).not.toBe(-3000);
+});
+
+test('pane gallery restores the saved main viewport when switching thumbnail roots', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'sideThumbnails',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        mainViewports: {
+          'workspace-root-backend': {
+            x: -700,
+            y: -200,
+            zoom: 1.2
+          }
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+  await backendThumbnail.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect
+    .poll(async () =>
+      page
+        .locator('.pane-gallery-root-pane-main .react-flow__viewport')
+        .evaluate((viewport) => (viewport instanceof HTMLElement ? viewport.style.transform : null))
+    )
+    .toContain('translate(-700px, -200px) scale(1.2)');
+  expect((await readPersistedUiState(page)).paneGallery?.mainViewports?.['workspace-root-backend']).toEqual({
+    x: -700,
+    y: -200,
+    zoom: 1.2
+  });
+});
+
+test('pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState({ rootCount: 8, hugeFirstRoot: true });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  await expect
+    .poll(async () => page.locator('[data-pane-gallery-root-id="workspace-root-frontend"]').getAttribute('data-canvas-overview-mode'))
+    .toBe('true');
+  await expect
+    .poll(async () => page.locator('[data-pane-gallery-root-id="workspace-root-backend"]').getAttribute('data-canvas-overview-mode'))
+    .toBe('false');
+
+  const galleryMetrics = await page.locator('.pane-gallery-grid').evaluate((grid) => {
+    const pane = grid.querySelector('[data-pane-gallery-root-id="workspace-root-frontend"]');
+    const flowViewport = pane?.querySelector('.react-flow__viewport');
+    const paneBox = pane instanceof HTMLElement ? pane.getBoundingClientRect() : null;
+    const transform = flowViewport instanceof HTMLElement ? getComputedStyle(flowViewport).transform : '';
+    const scale = transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).a : null;
+    const paneBoxes = [...grid.querySelectorAll('.pane-gallery-root-pane')]
+      .filter((entry) => entry instanceof HTMLElement)
+      .map((entry) => {
+        const box = entry.getBoundingClientRect();
+        return {
+          width: Math.round(box.width),
+          height: Math.round(box.height)
+        };
+      });
+    return {
+      scrolls: grid.scrollHeight > grid.clientHeight + 20,
+      paneWidth: paneBox?.width ?? 0,
+      paneHeight: paneBox?.height ?? 0,
+      scale,
+      distinctPaneSizes: new Set(paneBoxes.map((box) => `${box.width}x${box.height}`)).size
+    };
+  });
+  expect(galleryMetrics.scrolls).toBe(true);
+  expect(galleryMetrics.paneWidth).toBeGreaterThanOrEqual(420);
+  expect(galleryMetrics.paneHeight).toBeGreaterThanOrEqual(320);
+  expect(galleryMetrics.distinctPaneSizes).toBeGreaterThan(1);
+  expect(galleryMetrics.scale).toBeLessThan(0.4);
+  expect(galleryMetrics.scale).toBeGreaterThan(0);
+
+  await clearPostedMessages(page);
+  const dropResult = await page.locator('[data-pane-gallery-root-id="workspace-root-backend"] .pane-gallery-root-flow-shell').evaluate((shell) => {
+    const attachDataTransfer = (event, dataTransfer) => {
+      Object.defineProperty(event, 'dataTransfer', {
+        configurable: true,
+        value: dataTransfer
+      });
+      return event;
+    };
+    let exposeDropPayload = false;
+    const dataTransfer = {
+      dropEffect: 'copy',
+      effectAllowed: 'all',
+      files: [],
+      items: [],
+      types: ['ResourceURLs'],
+      getData: (type) =>
+        exposeDropPayload && type === 'ResourceURLs'
+          ? JSON.stringify(['file:///repo/backend/notes.md'])
+          : '',
+      setData: () => {},
+      clearData: () => {},
+      setDragImage: () => {}
+    };
+    const box = shell.getBoundingClientRect();
+    const dragOverEvent = attachDataTransfer(
+      new DragEvent('dragover', {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2
+      }),
+      dataTransfer
+    );
+    const dropEvent = attachDataTransfer(
+      new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2
+      }),
+      dataTransfer
+    );
+
+    shell.dispatchEvent(dragOverEvent);
+    exposeDropPayload = true;
+    shell.dispatchEvent(dropEvent);
+
+    return {
+      dragOverDefaultPrevented: dragOverEvent.defaultPrevented,
+      dropDefaultPrevented: dropEvent.defaultPrevented
+    };
+  });
+  expect(dropResult).toEqual({
+    dragOverDefaultPrevented: true,
+    dropDefaultPrevented: true
+  });
+
+  const dropMessage = await waitForPostedMessageByType(page, 'webview/dropNoteMarkdownFiles');
+  expect(dropMessage.payload.targetGroupId).toBe('workspace-root-backend');
+  expect(dropMessage.payload.resources).toEqual([
+    {
+      source: 'resourceUrls',
+      valueKind: 'uri',
+      value: 'file:///repo/backend/notes.md'
+    }
+  ]);
+});
+
 test('file activity edges expose the same toolbar actions as manual edges', async ({ page }) => {
   const state = createFileNodeState();
 
@@ -774,6 +1781,69 @@ test('card file nodes do not fall back to owner counts when no secondary path la
   await expect(fileNode.locator('.file-node-copy strong')).toContainText('/workspace/src/main.ts');
   await expect(fileNode.locator('.file-node-copy span')).toHaveCount(0);
   await expect(fileNode).not.toContainText('1 个 Agent 引用');
+});
+
+test('canvas node body padding follows unified spacing tokens', async ({ page }) => {
+  const state = createCanvasScreenshotState();
+  state.nodes.push({
+    id: 'file-list-1',
+    kind: 'file-list',
+    title: 'Changed files',
+    status: 'ready',
+    summary: '1 file',
+    position: { x: 1040, y: 60 },
+    size: sizeFor('file-list'),
+    metadata: {
+      fileList: {
+        entries: [
+          {
+            fileId: 'src-main',
+            filePath: '/workspace/src/main.ts',
+            relativePath: 'src/main.ts',
+            accessMode: 'read-write',
+            icon: { kind: 'codicon', codicon: 'symbol-file' },
+            ownerNodeIds: ['agent-1']
+          }
+        ]
+      }
+    }
+  });
+
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, state, createRuntimeContext({ fileNodeDisplayStyle: 'card' }));
+
+  const padding = await page.evaluate(() => {
+    const readPadding = (selector) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) {
+        throw new Error(`Missing element for ${selector}`);
+      }
+      const styles = getComputedStyle(element);
+      return {
+        top: styles.paddingTop,
+        right: styles.paddingRight,
+        bottom: styles.paddingBottom,
+        left: styles.paddingLeft,
+        radius: styles.borderTopLeftRadius
+      };
+    };
+
+    return {
+      agentBody: readPadding('[data-node-id="agent-1"] .session-body'),
+      terminalBody: readPadding('[data-node-id="terminal-1"] .session-body'),
+      terminalFrame: readPadding('[data-node-id="terminal-1"] .terminal-frame'),
+      notePreview: readPadding('[data-node-id="note-1"] .note-markdown-preview'),
+      fileListBody: readPadding('[data-node-id="file-list-1"] .file-list-body')
+    };
+  });
+
+  expect(padding.agentBody).toMatchObject({ top: '12px', right: '12px', bottom: '12px', left: '12px' });
+  expect(padding.terminalBody).toMatchObject({ top: '12px', right: '12px', bottom: '12px', left: '12px' });
+  expect(padding.terminalFrame).toMatchObject({ top: '8px', right: '8px', bottom: '8px', left: '8px' });
+  expect(padding.terminalFrame.radius).toBe('8px');
+  expect(padding.notePreview).toMatchObject({ top: '16px', right: '18px', bottom: '16px', left: '18px' });
+  expect(padding.fileListBody).toMatchObject({ top: '12px', right: '12px', bottom: '12px', left: '12px' });
 });
 
 test('minimal file nodes keep a compact, tight border around the rendered content', async ({ page }) => {
@@ -1080,7 +2150,6 @@ test('minimal icon-path file nodes fit short numeric basenames without premature
 });
 
 test('minimal file nodes keep a content-fitting minimum size when manually resized', async ({ page }) => {
-  const minimumExpectedWidth = process.platform === 'win32' ? 72 : 80;
   const state = createFileNodeState();
   state.nodes = state.nodes.map((node) =>
     node.id === 'file-src-main'
@@ -1101,7 +2170,8 @@ test('minimal file nodes keep a content-fitting minimum size when manually resiz
   await clearPostedMessages(page);
 
   const fileNode = nodeById(page, 'file-src-main');
-  const handle = fileNode.locator('.canvas-node-resize-handle.bottom.right');
+  const minimumExpectedWidth = 64;
+  const handle = fileNode.locator('[data-node-resize-direction="bottom-right"]');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
   expect(handleBox).not.toBeNull();
@@ -1937,7 +3007,9 @@ test('minimap remains pannable with the viewport outline overlay', async ({ page
   });
   await bootstrap(page, createMinimapContrastState());
   await settleWebview(page, 4);
+  await clearPostedMessages(page);
 
+  const beforeState = await readPersistedUiState(page);
   const beforeDragTransform = await readCanvasViewportTransform(page);
   const minimapBox = await page.locator('.canvas-minimap svg').boundingBox();
   expect(minimapBox).not.toBeNull();
@@ -1955,6 +3027,85 @@ test('minimap remains pannable with the viewport outline overlay', async ({ page
       return transform && transform !== beforeDragTransform ? transform : null;
     })
     .not.toBeNull();
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.viewport.x).not.toBe(beforeState.viewport.x);
+  expect(afterState.viewport.zoom).toBe(beforeState.viewport.zoom);
+
+  const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+  expect(centerMessages.length).toBeGreaterThan(0);
+  expect(centerMessages.at(-1).payload.visibleCenter.x).not.toBe(0);
+});
+
+test('minimap shows workspace root sections, user groups, and attention nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.85
+      }
+    }
+  });
+  const state = createMinimapContrastState();
+  state.groups = [
+    {
+      id: 'workspace-root-minimap',
+      title: 'Frontend Root',
+      position: { x: -240, y: -80 },
+      size: { width: 780, height: 520 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'group-user-minimap',
+      title: 'Attention Follow-up',
+      position: { x: 1120, y: 420 },
+      size: { width: 460, height: 340 }
+    }
+  ];
+  state.nodes.find((node) => node.id === 'terminal-minimap-right').metadata.terminal.attentionPending = true;
+  await bootstrap(page, state, createRuntimeContext({ strongTerminalAttentionReminderMode: 'both' }));
+  await settleWebview(page, 4);
+
+  const rootGroup = page.locator('[data-minimap-group-id="workspace-root-minimap"]');
+  const userGroup = page.locator('[data-minimap-group-id="group-user-minimap"]');
+  await expect(rootGroup).toHaveAttribute('data-minimap-group-role', 'workspace-root');
+  await expect(userGroup).toHaveAttribute('data-minimap-group-role', 'user');
+
+  const minimapLayout = await page.locator('.canvas-minimap svg').evaluate((svg) => {
+    const rectFor = (selector) => {
+      const element = svg.querySelector(selector);
+      if (!(element instanceof SVGGraphicsElement)) {
+        throw new Error(`MiniMap element not found: ${selector}`);
+      }
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height
+      };
+    };
+
+    return {
+      root: rectFor('[data-minimap-group-id="workspace-root-minimap"]'),
+      userGroup: rectFor('[data-minimap-group-id="group-user-minimap"]'),
+      attentionNode: rectFor('[data-minimap-node-id="terminal-minimap-right"]')
+    };
+  });
+  expect(minimapLayout.root.width).toBeGreaterThan(0);
+  expect(minimapLayout.root.height).toBeGreaterThan(0);
+  expect(minimapLayout.userGroup.width).toBeGreaterThan(0);
+  expect(minimapLayout.userGroup.height).toBeGreaterThan(0);
+  expect(minimapLayout.userGroup.left).toBeGreaterThan(minimapLayout.root.left);
+  expect(minimapLayout.attentionNode.width).toBeGreaterThan(0);
+  expect(minimapLayout.attentionNode.height).toBeGreaterThan(0);
+
+  const attentionNode = page.locator('[data-minimap-node-id="terminal-minimap-right"]');
+  await expect(attentionNode).toHaveAttribute('data-minimap-attention-pending', 'true');
+  await expect(attentionNode).toHaveAttribute('data-minimap-attention-flashing', 'true');
+  await expect(attentionNode).toHaveAttribute('data-minimap-attention-size-pulsing', 'true');
 });
 
 test('agent start button posts a startExecutionSession message', async ({ page }) => {
@@ -2070,6 +3221,421 @@ test('agent restart actions render inline without a dropdown', async ({ page }) 
     buttons.map((button) => button.textContent?.trim() ?? '')
   );
   expect(actionLabels).toEqual(['新建', '重启']);
+});
+
+test('Agent Fork action posts a branchAgentSession message for supported providers', async ({ page }) => {
+  await openHarness(page);
+
+  for (const { provider, label } of [
+    { provider: 'codex', label: 'Codex' },
+    { provider: 'claude', label: 'Claude Code' }
+  ]) {
+    await bootstrap(page, createStoppedAgentNodeState({ provider, resumable: true }));
+    await clearPostedMessages(page);
+
+    const agentNode = nodeById(page, 'agent-1');
+    const branchAction = agentNode.locator('[data-agent-branch-action="true"]');
+    await expect(branchAction).toBeVisible();
+    await expect(branchAction).toHaveText('分叉');
+    await expect(branchAction).toHaveAttribute('aria-label', `分叉当前 ${label} 会话`);
+    await branchAction.click();
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const message = window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .find((entry) => entry.type === 'webview/branchAgentSession');
+
+          return message
+            ? JSON.stringify({
+                type: message.type,
+                payload: message.payload
+              })
+            : null;
+        });
+      })
+      .toBe(
+        JSON.stringify({
+          type: 'webview/branchAgentSession',
+          payload: {
+            nodeId: 'agent-1'
+          }
+        })
+      );
+  }
+});
+
+test('forked Agent nodes keep title actions readable before and after launch', async ({ page }) => {
+  await openHarness(page);
+
+  for (const variant of [
+    {
+      provider: 'codex',
+      title: 'Codex Agent 分叉 layout regression probe 分叉',
+      summary: '等待启动从当前 Codex 会话 fork 出来的 Agent。',
+      customLaunchCommand: 'codex fork session-123',
+      runningSummary: 'Codex CLI 正在执行 fork 出来的 Agent。',
+      lastBackendLabel: 'Codex CLI',
+      minActionsGap: 9
+    },
+    {
+      provider: 'claude',
+      title: 'Claude Agent 分叉 layout regression probe 分叉',
+      summary: '等待启动从当前 Claude Code 会话 fork 出来的 Agent。',
+      customLaunchCommand: 'claude --resume session-123 --fork-session',
+      runningSummary: 'Claude Code CLI 正在执行 fork 出来的 Agent。',
+      lastBackendLabel: 'Claude Code CLI',
+      minActionsGap: 9
+    }
+  ]) {
+    const state = createStoppedAgentNodeState({ provider: variant.provider, resumable: false });
+    state.nodes[0] = {
+      ...state.nodes[0],
+      title: variant.title,
+      summary: variant.summary,
+      size: {
+        ...state.nodes[0].size,
+        width: 360
+      },
+      metadata: {
+        ...state.nodes[0].metadata,
+        agent: {
+          ...state.nodes[0].metadata.agent,
+          launchPreset: 'custom',
+          customLaunchCommand: variant.customLaunchCommand,
+          resumeStrategy: 'none',
+          resumeSessionId: undefined,
+          lastBackendLabel: variant.lastBackendLabel
+        }
+      }
+    };
+    await bootstrap(page, state);
+
+    const agentNode = nodeById(page, 'agent-1');
+    await expect(agentNode.locator('button:has-text("启动")')).toBeVisible();
+    await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+    await expect(agentNode.locator('button:has-text("删除")')).toBeVisible();
+    await expect(agentNode.locator('.window-chrome .status-pill')).toHaveText('已停止');
+
+    await expectForkedAgentActionsToBeReadable(agentNode, ['启动', '删除'], {
+      minActionsGap: variant.minActionsGap,
+      expectCompactActions: true
+    });
+
+    await bootstrap(page, {
+      ...state,
+      nodes: [
+        {
+          ...state.nodes[0],
+          status: 'running',
+          summary: variant.runningSummary,
+          metadata: {
+            ...state.nodes[0].metadata,
+            agent: {
+              ...state.nodes[0].metadata.agent,
+              lifecycle: 'running',
+              liveSession: true,
+              resumeSupported: false
+            }
+          }
+        }
+      ]
+    });
+
+    await expect(agentNode.locator('button:has-text("停止")')).toBeVisible();
+    await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+    await expect(agentNode.locator('button:has-text("删除")')).toBeVisible();
+    await expect(agentNode.locator('.window-chrome .status-pill')).toHaveText('运行中');
+
+    await expectForkedAgentActionsToBeReadable(agentNode, ['停止', '删除'], {
+      minActionsGap: variant.minActionsGap,
+      expectCompactActions: true
+    });
+  }
+});
+
+test('Agent title action buttons wrap before pushing delete outside compact chrome', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+
+  const state = createStoppedAgentNodeState({ provider: 'codex', resumable: true });
+  state.nodes[0].title = 'Agent 4';
+  state.nodes[0].size = { width: 360, height: state.nodes[0].size.height };
+  state.nodes[0].metadata.agent.cwd =
+    '/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2';
+  state.nodes[0].metadata.agent.lastLaunchCommandLine =
+    'codex --sandbox workspace-write --config compact-branch-action-overflow';
+
+  await bootstrap(page, state);
+
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toBeVisible();
+  await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toBeVisible();
+  await expect(agentNode.locator('[data-agent-branch-action="true"]')).toHaveText('分叉');
+  await expect(agentNode.locator('.window-chrome .status-pill')).toHaveText('已停止');
+  await expect(agentNode.getByRole('button', { name: '删除' })).toBeVisible();
+
+  await expectForkedAgentActionsToBeReadable(agentNode, ['新建', '重启', '分叉', '删除'], {
+    minActionsGap: -80,
+    expectBranchActionWrap: true,
+    expectCompactActions: true,
+    expectedBranchVisible: 'true'
+  });
+});
+
+async function expectForkedAgentActionsToBeReadable(agentNode, expectedLabels, options = {}) {
+  const layoutContract = await agentNode.locator('.window-chrome').evaluate((chrome) => {
+    const title = chrome.querySelector('.window-title');
+    const actions = chrome.querySelector('.window-chrome-actions');
+    const statusPill = chrome.querySelector('.window-chrome-actions .status-pill');
+    const buttons = Array.from(chrome.querySelectorAll('.window-chrome-actions .action-button'));
+    const branchButton = chrome.querySelector('[data-agent-branch-action="true"]');
+    if (!(title instanceof HTMLElement) || !(actions instanceof HTMLElement) || !(statusPill instanceof HTMLElement)) {
+      throw new Error('Agent title chrome was not rendered.');
+    }
+
+    const chromeRect = chrome.getBoundingClientRect();
+    const titleRect = title.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    const statusRect = statusPill.getBoundingClientRect();
+    const buttonRects = buttons.map((button) => button.getBoundingClientRect());
+    const actionsStyle = getComputedStyle(actions);
+    const branchRect = branchButton instanceof HTMLElement ? branchButton.getBoundingClientRect() : null;
+    const branchStyle = branchButton instanceof HTMLElement ? getComputedStyle(branchButton) : null;
+    const branchLabel = branchButton instanceof HTMLElement
+      ? branchButton.querySelector('.action-button-label')
+      : null;
+    const branchLabelRect = branchLabel instanceof HTMLElement ? branchLabel.getBoundingClientRect() : null;
+    const branchLabelStyle = branchLabel instanceof HTMLElement ? getComputedStyle(branchLabel) : null;
+
+    return {
+      branchVisible: actions.dataset.agentBranchVisible,
+      actionDensity: actions.dataset.agentActionDensity,
+      titleFlexShrink: getComputedStyle(title).flexShrink,
+      actionsFlexShrink: actionsStyle.flexShrink,
+      actionsFlexWrap: actionsStyle.flexWrap,
+      titleRight: titleRect.right,
+      actionsLeft: actionsRect.left,
+      chromeRight: chromeRect.right,
+      actionsRight: actionsRect.right,
+      statusStyle: {
+        label: statusPill.textContent?.trim() ?? '',
+        whiteSpace: getComputedStyle(statusPill).whiteSpace,
+        width: statusRect.width,
+        height: statusRect.height,
+        right: statusRect.right,
+        clientWidth: statusPill.clientWidth,
+        scrollWidth: statusPill.scrollWidth
+      },
+      branchStyle: branchRect && branchStyle
+        ? {
+            label: branchButton.textContent?.trim() ?? '',
+            whiteSpace: branchStyle.whiteSpace,
+            width: branchRect.width,
+            height: branchRect.height,
+            clientWidth: branchButton.clientWidth,
+            scrollWidth: branchButton.scrollWidth
+          }
+        : null,
+      branchLabelStyle: branchLabelRect && branchLabelStyle
+        ? {
+            display: branchLabelStyle.display,
+            whiteSpace: branchLabelStyle.whiteSpace,
+            width: branchLabelRect.width,
+            height: branchLabelRect.height
+          }
+        : null,
+      titleInputStyle: (() => {
+        const input = chrome.querySelector('.window-title-input');
+        if (!(input instanceof HTMLElement)) {
+          return null;
+        }
+        const style = getComputedStyle(input);
+        return {
+          overflow: style.overflow,
+          textOverflow: style.textOverflow,
+          whiteSpace: style.whiteSpace
+        };
+      })(),
+      buttonStyles: buttons.map((button, index) => ({
+        ...(() => {
+          const label = button.querySelector('.action-button-label');
+          const labelRect = label instanceof HTMLElement ? label.getBoundingClientRect() : null;
+          const labelStyle = label instanceof HTMLElement ? getComputedStyle(label) : null;
+          return {
+            labelDisplay: labelStyle?.display ?? '',
+            labelWhiteSpace: labelStyle?.whiteSpace ?? '',
+            labelWidth: labelRect?.width ?? 0,
+            labelHeight: labelRect?.height ?? 0
+          };
+        })(),
+        label: button.textContent?.trim() ?? '',
+        groupKey: button.closest('.action-button-group')?.className ?? '',
+        whiteSpace: getComputedStyle(button).whiteSpace,
+        width: buttonRects[index].width,
+        height: buttonRects[index].height,
+        left: buttonRects[index].left,
+        right: buttonRects[index].right,
+        top: buttonRects[index].top,
+        bottom: buttonRects[index].bottom,
+        clientWidth: button.clientWidth,
+        scrollWidth: button.scrollWidth
+      }))
+    };
+  });
+
+  const minActionsGap = options.minActionsGap ?? 9;
+  expect(layoutContract.branchVisible).toBe(options.expectedBranchVisible ?? 'false');
+  expect(layoutContract.titleFlexShrink).toBe('1');
+  expect(layoutContract.actionsFlexShrink).toBe('0');
+  expect(layoutContract.actionsFlexWrap).toBe('nowrap');
+  expect(layoutContract.actionsLeft - layoutContract.titleRight).toBeGreaterThanOrEqual(minActionsGap);
+  expect(['已停止', '运行中']).toContain(layoutContract.statusStyle.label);
+  expect(layoutContract.statusStyle.whiteSpace).toBe('nowrap');
+  expect(layoutContract.statusStyle.width).toBeGreaterThanOrEqual(34);
+  expect(layoutContract.statusStyle.height).toBeGreaterThanOrEqual(22);
+  expect(layoutContract.statusStyle.right).toBeLessThanOrEqual(layoutContract.chromeRight - 1);
+  expect(layoutContract.statusStyle.scrollWidth).toBeLessThanOrEqual(layoutContract.statusStyle.clientWidth + 1);
+  expect(layoutContract.titleInputStyle).toMatchObject({
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  });
+  expect(layoutContract.buttonStyles.map((button) => button.label)).toEqual(expectedLabels);
+  expect(layoutContract.actionsRight).toBeLessThanOrEqual(layoutContract.chromeRight - 1);
+  const normalWhiteSpaceLabels = new Set(options.normalWhiteSpaceLabels ?? []);
+  for (const button of layoutContract.buttonStyles) {
+    if (options.expectCompactActions || normalWhiteSpaceLabels.has(button.label)) {
+      expect(button.whiteSpace).toBe('normal');
+    } else {
+      expect(button.whiteSpace).toBe('nowrap');
+    }
+    if (options.expectCompactActions) {
+      expect(button.width).toBeGreaterThanOrEqual(20);
+    } else {
+      expect(button.width).toBeGreaterThanOrEqual(34);
+    }
+    expect(button.height).toBeGreaterThanOrEqual(22);
+    expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth + 1);
+  }
+  if (options.expectCompactActions) {
+    expect(layoutContract.actionDensity).toBe('compact-actions');
+    for (const button of layoutContract.buttonStyles) {
+      expect(button.labelDisplay).toBe('block');
+      expect(button.labelWhiteSpace).toBe('normal');
+      expect(button.labelHeight).toBeGreaterThan(button.labelWidth * 1.5);
+    }
+  }
+  if (options.expectBranchActionWrap) {
+    expect(layoutContract.branchStyle).toMatchObject({
+      label: '分叉',
+      whiteSpace: 'normal'
+    });
+    const branchButton = layoutContract.buttonStyles.find((button) => button.label === '分叉');
+    const deleteButton = layoutContract.buttonStyles.find((button) => button.label === '删除');
+    expect(branchButton).toBeTruthy();
+    expect(deleteButton).toBeTruthy();
+    expect(branchButton.height).toBeCloseTo(deleteButton.height, 1);
+    expect(branchButton.width).toBeCloseTo(deleteButton.width, 1);
+    expect(layoutContract.branchLabelStyle).toMatchObject({
+      display: 'block',
+      whiteSpace: 'normal'
+    });
+    expect(layoutContract.branchLabelStyle.height).toBeGreaterThan(layoutContract.branchLabelStyle.width * 1.5);
+  }
+  for (let index = 1; index < layoutContract.buttonStyles.length; index += 1) {
+    const previousButton = layoutContract.buttonStyles[index - 1];
+    const currentButton = layoutContract.buttonStyles[index];
+    if (previousButton.groupKey && previousButton.groupKey === currentButton.groupKey) {
+      expect(currentButton.left - previousButton.right).toBeGreaterThanOrEqual(0);
+    } else {
+      expect(currentButton.left - previousButton.right).toBeGreaterThanOrEqual(5);
+    }
+  }
+}
+
+test('Agent Fork action is hidden outside supported resumable sessions', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createStoppedAgentNodeState({ provider: 'codex', resumable: false }));
+  await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+
+  await bootstrap(page, createStoppedAgentNodeState({ provider: 'claude', resumable: false }));
+  await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+
+  const mismatchedState = createStoppedAgentNodeState({ provider: 'codex', resumable: true });
+  mismatchedState.nodes[0].metadata.agent.resumeStrategy = 'claude-session-id';
+  await bootstrap(page, mismatchedState);
+  await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+});
+
+test('agent restart actions wrap before pushing delete outside compact chrome', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+
+  const state = createStoppedAgentNodeState({ resumable: true });
+  state.nodes[0].title = 'Agent 4';
+  state.nodes[0].size = { width: 420, height: state.nodes[0].size.height };
+  state.nodes[0].metadata.agent.cwd =
+    '/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2';
+  state.nodes[0].metadata.agent.lastLaunchCommandLine =
+    'codex --sandbox workspace-write --config compact-restart-action-overflow';
+
+  await bootstrap(page, state);
+
+  const agentNode = nodeById(page, 'agent-1');
+  await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toBeVisible();
+  await expect(agentNode.getByRole('button', { name: '删除' })).toBeVisible();
+
+  const layout = await agentNode.evaluate((root) => {
+    const chrome = root.querySelector('.window-chrome');
+    const restartGroup = root.querySelector('.agent-restart-action-group');
+    const newSessionButton = root.querySelector('[data-agent-restart-action="new-session"]');
+    const resumeButton = root.querySelector('[data-agent-restart-action="resume"]');
+    const deleteButton = Array.from(root.querySelectorAll('.window-chrome-actions button')).find(
+      (button) => button.textContent?.trim() === '删除'
+    );
+    if (!chrome || !restartGroup || !newSessionButton || !resumeButton || !deleteButton) {
+      throw new Error('Expected compact agent restart actions to be rendered.');
+    }
+
+    const chromeRect = chrome.getBoundingClientRect();
+    const restartGroupRect = restartGroup.getBoundingClientRect();
+    const newSessionButtonRect = newSessionButton.getBoundingClientRect();
+    const resumeButtonRect = resumeButton.getBoundingClientRect();
+    const deleteButtonRect = deleteButton.getBoundingClientRect();
+    const newSessionButtonStyle = getComputedStyle(newSessionButton);
+    const resumeButtonStyle = getComputedStyle(resumeButton);
+    const deleteButtonStyle = getComputedStyle(deleteButton);
+
+    return {
+      chromeRight: chromeRect.right,
+      restartGroupRight: restartGroupRect.right,
+      newSessionButtonHeight: newSessionButtonRect.height,
+      resumeButtonHeight: resumeButtonRect.height,
+      deleteButtonLeft: deleteButtonRect.left,
+      deleteButtonRight: deleteButtonRect.right,
+      deleteButtonHeight: deleteButtonRect.height,
+      newSessionButtonPaddingInlineStart: newSessionButtonStyle.paddingInlineStart,
+      newSessionButtonPaddingInlineEnd: newSessionButtonStyle.paddingInlineEnd,
+      resumeButtonPaddingInlineStart: resumeButtonStyle.paddingInlineStart,
+      resumeButtonPaddingInlineEnd: resumeButtonStyle.paddingInlineEnd,
+      deleteButtonPaddingInlineStart: deleteButtonStyle.paddingInlineStart,
+      deleteButtonPaddingInlineEnd: deleteButtonStyle.paddingInlineEnd,
+      newSessionButtonWhiteSpace: newSessionButtonStyle.whiteSpace,
+      resumeButtonWhiteSpace: resumeButtonStyle.whiteSpace
+    };
+  });
+
+  expect(layout.deleteButtonRight).toBeLessThanOrEqual(layout.chromeRight - 8);
+  expect(layout.restartGroupRight).toBeLessThanOrEqual(layout.deleteButtonLeft - 4);
+  expect(layout.newSessionButtonHeight).toBeGreaterThanOrEqual(layout.deleteButtonHeight);
+  expect(layout.resumeButtonHeight).toBeGreaterThanOrEqual(layout.deleteButtonHeight);
+  expect(layout.newSessionButtonPaddingInlineStart).toBe(layout.deleteButtonPaddingInlineStart);
+  expect(layout.newSessionButtonPaddingInlineEnd).toBe(layout.deleteButtonPaddingInlineEnd);
+  expect(layout.resumeButtonPaddingInlineStart).toBe(layout.deleteButtonPaddingInlineStart);
+  expect(layout.resumeButtonPaddingInlineEnd).toBe(layout.deleteButtonPaddingInlineEnd);
+  expect(layout.newSessionButtonWhiteSpace).toBe('normal');
+  expect(layout.resumeButtonWhiteSpace).toBe('normal');
 });
 
 test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
@@ -2340,10 +3906,122 @@ test('canvas renders a shared execution help entry with tooltip text', async ({ 
   await expect(helpTrigger).toBeVisible();
   await expect(helpTrigger).toContainText('使用提示');
   await helpTrigger.hover();
-  await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText('执行节点使用提示');
-  await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText(
+  const helpTooltip = page.locator('.execution-node-help-tooltip.is-visible');
+  await expect(helpTooltip).toContainText('执行节点使用提示');
+  await expect(helpTooltip).toContainText(
     '1. 拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径'
   );
+  await expect(helpTooltip).toContainText(
+    '4. 如需让 Agent 完成后主动提醒，请先在对应的 Agent CLI（Claude Code 或 Codex）中启用通知。'
+  );
+  await expect(helpTooltip).toContainText(
+    '5. Windows 环境下如果执行节点受 PowerShell 策略影响，请按系统安全要求完成对应设置后再重试。'
+  );
+  await expect(helpTooltip).toContainText(
+    '6. 多根 workspace 可通过 devSessionCanvas.canvas.multiRootPresentationMode 在 rootGroups 单张组合画布和 paneGallery 窗格画廊之间切换。'
+  );
+  await expect(helpTooltip).not.toContainText('notification_method');
+  await expect(helpTooltip).not.toContainText('Set-ExecutionPolicy');
+});
+
+test('Claude Agent Ctrl-Z is blocked before execution input reaches the host', async ({ page }) => {
+  const state = createLiveExecutionNodeState('agent');
+  const agentNode = state.nodes[0];
+  agentNode.status = 'waiting-input';
+  agentNode.summary = 'Claude Code 已就绪，等待输入。';
+  agentNode.metadata.agent.provider = 'claude';
+  agentNode.metadata.agent.shellPath = 'claude';
+  agentNode.metadata.agent.lifecycle = 'waiting-input';
+  agentNode.metadata.agent.lastBackendLabel = 'Claude Code';
+
+  await openHarness(page);
+  await bootstrap(page, state);
+  await waitForExecutionTerminalReady(page, 'agent-zoom');
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'sendExecutionInput',
+    nodeId: 'agent-zoom',
+    data: '\u001a'
+  });
+
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveText(
+    'Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。'
+  );
+  const inputMessages = await page.evaluate(() =>
+    window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((entry) => entry.type === 'webview/executionInput')
+  );
+  expect(inputMessages).toHaveLength(0);
+});
+
+test('Claude Agent Ctrl-Z block is scoped away from Terminal and Codex Agent input', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  await waitForExecutionTerminalReady(page, 'terminal-zoom');
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'sendExecutionInput',
+    nodeId: 'terminal-zoom',
+    data: '\u001a'
+  });
+
+  await expect
+    .poll(async () => readFirstExecutionInputPayload(page))
+    .toMatchObject({ nodeId: 'terminal-zoom', kind: 'terminal', data: '\u001a' });
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveCount(0);
+
+  await bootstrap(page, createLiveExecutionNodeState('agent'));
+  await waitForExecutionTerminalReady(page, 'agent-zoom');
+  await clearPostedMessages(page);
+
+  await performTestDomAction(page, {
+    kind: 'sendExecutionInput',
+    nodeId: 'agent-zoom',
+    data: '\u001a'
+  });
+
+  await expect
+    .poll(async () => readFirstExecutionInputPayload(page))
+    .toMatchObject({ nodeId: 'agent-zoom', kind: 'agent', data: '\u001a' });
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveCount(0);
+});
+
+test('suspended Claude Agent legacy state no longer exposes restore actions', async ({ page }) => {
+  const state = createLiveExecutionNodeState('agent');
+  const agentNode = state.nodes[0];
+  agentNode.status = 'suspended';
+  agentNode.summary = 'Claude Code 已挂起，请点击“停止”结束会话后重启。';
+  agentNode.metadata.agent.provider = 'claude';
+  agentNode.metadata.agent.shellPath = 'claude';
+  agentNode.metadata.agent.lifecycle = 'suspended';
+  agentNode.metadata.agent.lastBackendLabel = 'Claude Code';
+  agentNode.metadata.agent.preSuspendLifecycle = 'waiting-input';
+  agentNode.metadata.agent.lastSuspendReason = 'claude-ctrl-z';
+  agentNode.metadata.agent.lastSuspendMessage = 'Claude Code 已挂起，请点击“停止”结束会话后重启。';
+  agentNode.metadata.agent.resumeStrategy = 'claude-session-id';
+  agentNode.metadata.agent.resumeSessionId = 'session-123';
+
+  await openHarness(page);
+  await bootstrap(page, state);
+  await waitForExecutionTerminalReady(page, 'agent-zoom');
+
+  const node = nodeById(page, 'agent-zoom');
+  await expect(node.locator('.status-pill').first()).toHaveText('已挂起');
+  await expect(node.getByRole('button', { name: '恢复', exact: true })).toHaveCount(0);
+  await expect(node.locator('[data-agent-branch-action="true"]')).toHaveCount(0);
+  await expect(node.getByRole('button', { name: '停止' })).toBeVisible();
+  await expect(node.locator('.terminal-overlay')).toHaveCount(0);
+
+  await clearPostedMessages(page);
+  await node.getByRole('button', { name: '停止' }).click();
+  const stopMessage = await waitForPostedMessageByType(page, 'webview/stopExecutionSession');
+  expect(stopMessage.payload).toMatchObject({
+    nodeId: 'agent-zoom',
+    kind: 'agent'
+  });
 });
 
 for (const executionKind of ['agent', 'terminal']) {
@@ -2369,24 +4047,62 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 
   if (executionKind === 'agent') {
-    test('agent subtitle shows the launch command and exposes the full command when truncated', async ({
+    test('agent title context shows cwd label above title and leaves launch command in subtitle', async ({
       page
     }) => {
       const state = createLiveExecutionNodeState('agent');
       const agentNode = state.nodes[0];
       const longLaunchCommand =
         'codex --model gpt-5.2 --sandbox workspace-write --yolo --config very-long-command-for-subtitle-overflow';
+      const longCwd = [
+        '/workspace/packages',
+        'app-with-an-extraordinarily-long-root-label',
+        'that-forces-the-cwd-context-tooltip'
+      ].join('/');
 
-      agentNode.size = { width: 280, height: agentNode.size.height };
+      agentNode.size = { width: 420, height: agentNode.size.height };
       agentNode.metadata.agent.lastLaunchCommandLine = longLaunchCommand;
+      agentNode.metadata.agent.cwd = longCwd;
 
       await openHarness(page);
-      await bootstrap(page, state);
+      await bootstrap(
+        page,
+        state,
+        createRuntimeContext({
+          workspaceFolders: [{ name: 'workspace', path: '/workspace' }]
+        })
+      );
       await waitForExecutionTerminalReady(page, 'agent-zoom');
 
-      const subtitle = nodeById(page, 'agent-zoom').locator('.window-title-subtitle');
-      await expect(subtitle).toHaveAttribute('title', longLaunchCommand);
+      const node = nodeById(page, 'agent-zoom');
+      const context = node.locator('.window-title-context');
+      const subtitle = node.locator('.window-title-subtitle');
+      await expect
+        .poll(async () => context.getAttribute('title'))
+        .toBe(`${longCwd}/`);
+      await expect(context).toContainText('packages/app-with-an-extraordinarily-long-root-label');
+      await expect
+        .poll(async () => subtitle.getAttribute('title'))
+        .toBe(longLaunchCommand);
       await expect(subtitle).toContainText('codex --model gpt-5.2');
+
+      const verticalOrder = await node.evaluate(() => {
+        const contextElement = document.querySelector('[data-node-id="agent-zoom"] .window-title-context');
+        const titleElement = document.querySelector('[data-node-id="agent-zoom"] [data-probe-field="title"]');
+        const subtitleElement = document.querySelector('[data-node-id="agent-zoom"] .window-title-subtitle');
+        if (!(contextElement instanceof HTMLElement) || !(titleElement instanceof HTMLElement) || !(subtitleElement instanceof HTMLElement)) {
+          throw new Error('Agent title context, title, or subtitle was not rendered.');
+        }
+
+        return {
+          contextBottom: contextElement.getBoundingClientRect().bottom,
+          titleTop: titleElement.getBoundingClientRect().top,
+          titleBottom: titleElement.getBoundingClientRect().bottom,
+          subtitleTop: subtitleElement.getBoundingClientRect().top
+        };
+      });
+      expect(verticalOrder.contextBottom).toBeLessThanOrEqual(verticalOrder.titleTop + 1);
+      expect(verticalOrder.titleBottom).toBeLessThanOrEqual(verticalOrder.subtitleTop + 1);
     });
 
     test('agent title chrome keeps a bounded width even when the node grows wider', async ({ page }) => {
@@ -2624,6 +4340,243 @@ for (const executionKind of ['agent', 'terminal']) {
     });
   });
 
+  test(`${executionKind} terminal copy diagnostics expose shortcut, mouse tracking, context menu, and OSC52 state`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const outputLine = 'diagnostic-copy-target';
+    const osc52Text = 'osc52 diagnostic copy';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const readyProbe = await waitForExecutionTerminalReady(page, nodeId);
+    expect(readyProbe.terminalMouseTrackingMode).toBe('none');
+    expect(readyProbe.terminalBufferType).toBe('normal');
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${outputLine}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: '\x1b[?1002h'
+    });
+    await settleWebview(page, 4);
+
+    await expect
+      .poll(async () => {
+        const probeNode = await readProbeNode(page, nodeId, 20);
+        return probeNode?.terminalMouseTrackingMode ?? null;
+      })
+      .toBe('drag');
+    let diagnostic = (await readPostedMessagesByType(page, 'webview/executionClipboardDiagnostic')).find(
+      (entry) => entry.payload.source === 'mouseTrackingMode'
+    );
+    expect(diagnostic).toBeTruthy();
+    expect(diagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'mouseTrackingMode'
+    });
+    expect(diagnostic.payload.detail).toMatchObject({
+      previous: 'none',
+      current: 'drag',
+      enabled: true
+    });
+
+    await clearPostedMessages(page);
+    await dragTerminalSelection(page, {
+      nodeId,
+      row: 1,
+      startCol: 1,
+      endCol: Math.min(12, outputLine.length)
+    });
+
+    await expect
+      .poll(async () => {
+        const diagnostics = await readPostedMessagesByType(page, 'webview/executionClipboardDiagnostic');
+        return diagnostics.some(
+          (entry) =>
+            entry.payload.source === 'mouseSelection' &&
+            entry.payload.detail?.phase === 'mouseup' &&
+            entry.payload.detail?.mouseTrackingMode === 'drag'
+        );
+      })
+      .toBe(true);
+
+    await clearPostedMessages(page);
+    await dispatchTerminalShortcut(page, nodeId, executionTerminalCopyShortcutEvent());
+    diagnostic = await waitForPostedMessageByType(page, 'webview/executionClipboardDiagnostic');
+    expect(diagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'shortcut'
+    });
+    expect(diagnostic.payload.detail).toMatchObject({
+      mouseTrackingMode: 'drag',
+      selectionLength: 0,
+      hasSelection: false
+    });
+
+    await clearPostedMessages(page);
+    await nodeById(page, nodeId).locator('.xterm-screen').click({
+      button: 'right',
+      position: { x: 24, y: 24 }
+    });
+    diagnostic = await waitForPostedMessageByType(page, 'webview/executionClipboardDiagnostic');
+    expect(diagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'contextMenu'
+    });
+    expect(diagnostic.payload.detail).toMatchObject({
+      mouseTrackingMode: 'drag',
+      hasSelection: false
+    });
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `\x1b]52;c;${Buffer.from(osc52Text, 'utf8').toString('base64')}\x07`
+    });
+    diagnostic = await waitForPostedMessageByType(page, 'webview/executionClipboardDiagnostic');
+    expect(diagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'osc52'
+    });
+    expect(diagnostic.payload.detail).toMatchObject({
+      target: 'c',
+      dataKind: 'base64',
+      decodedPreview: osc52Text
+    });
+  });
+
+  test(`${executionKind} snapshot restore suppresses programmatic clipboard diagnostics`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const osc52Text = 'snapshot restore osc52 diagnostic';
+    const snapshotOutput = `before restore\r\n\x1b[?1002h\x1b]52;c;${Buffer.from(
+      osc52Text,
+      'utf8'
+    ).toString('base64')}\x07after restore\r\n`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: snapshotOutput,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+
+    await expect
+      .poll(async () => {
+        const diagnostics = await readPostedMessagesByType(page, 'webview/executionClipboardDiagnostic');
+        return diagnostics.some((entry) => entry.payload.source === 'restoreSuppressed');
+      })
+      .toBe(true);
+
+    const diagnostics = await readPostedMessagesByType(page, 'webview/executionClipboardDiagnostic');
+    expect(
+      diagnostics.filter((entry) => ['selectionChange', 'mouseTrackingMode', 'osc52'].includes(entry.payload.source))
+    ).toHaveLength(0);
+    const suppressionDiagnostic = diagnostics.find((entry) => entry.payload.source === 'restoreSuppressed');
+    expect(suppressionDiagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'restoreSuppressed'
+    });
+    expect(suppressionDiagnostic.payload.detail).toMatchObject({
+      reason: 'snapshot-restore',
+      counts: {
+        mouseTrackingMode: 1,
+        osc52: 1
+      }
+    });
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `\x1b]52;c;${Buffer.from('live osc52 diagnostic', 'utf8').toString('base64')}\x07`
+    });
+    const liveDiagnostic = await waitForPostedMessageByType(page, 'webview/executionClipboardDiagnostic');
+    expect(liveDiagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'osc52'
+    });
+  });
+
+  test(`${executionKind} input flushes snapshot restore clipboard diagnostic suppression`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const osc52Text = 'snapshot restore osc52 before input';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `before input\r\n\x1b]52;c;${Buffer.from(osc52Text, 'utf8').toString('base64')}\x07`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+
+    await performTestDomAction(page, {
+      kind: 'sendExecutionInput',
+      nodeId,
+      data: 'x'
+    });
+
+    await expect
+      .poll(async () => {
+        const diagnostics = await readPostedMessagesByType(page, 'webview/executionClipboardDiagnostic');
+        return diagnostics.some((entry) => entry.payload.source === 'restoreSuppressed');
+      })
+      .toBe(true);
+    await expect
+      .poll(async () => {
+        const inputMessages = await readPostedMessagesByType(page, 'webview/executionInput');
+        return inputMessages.some((entry) => entry.payload.nodeId === nodeId && entry.payload.data === 'x');
+      })
+      .toBe(true);
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `\x1b]52;c;${Buffer.from('live osc52 after input', 'utf8').toString('base64')}\x07`
+    });
+    const liveDiagnostic = await waitForPostedMessageByType(page, 'webview/executionClipboardDiagnostic');
+    expect(liveDiagnostic.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      source: 'osc52'
+    });
+  });
+
   test(`${executionKind} terminal paste shortcut requests host clipboard text and routes returned text through xterm`, async ({
     page
   }) => {
@@ -2725,6 +4678,71 @@ for (const executionKind of ['agent', 'terminal']) {
         return message?.payload?.data ?? null;
       })
       .toBe(pasteText);
+  });
+
+  test(`${executionKind} terminal handles vi-style alternate screen without blocking input or node controls`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output:
+        '\x1b[?1049h\x1b[?1h\x1b=\x1b[H\x1b[6n\x1bPzz\x1b\\\x1b[0%m\x1b[6n\x1b[>c\x1b]10;?\x07\x1b]11;?\x07' +
+        '~/.bashrc                        1,1            All',
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          return window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .filter((entry) => entry.type === 'webview/executionInput')
+            .map((entry) => entry.payload.data)
+            .join('');
+        });
+      })
+      .toMatch(/\x1b\[\d+;\d+R/);
+
+    await nodeById(page, nodeId).locator('.xterm-screen').click({ position: { x: 16, y: 16 } });
+    await settleWebview(page, 2);
+    await clearPostedMessages(page);
+
+    await page.keyboard.press('KeyI');
+    await page.keyboard.type('abc');
+    await page.keyboard.press('Escape');
+    await page.keyboard.type(':q!');
+    await page.keyboard.press('Enter');
+
+    await expect
+      .poll(async () => {
+        const payloads = await page.evaluate(() => {
+          return window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .filter((entry) => entry.type === 'webview/executionInput')
+            .map((entry) => entry.payload);
+        });
+        return payloads.map((payload) => payload.data).join('');
+      })
+      .toBe('iabc\x1b:q!\r');
+
+    await clearPostedMessages(page);
+    await nodeById(page, nodeId).getByRole('button', { name: '停止' }).click();
+
+    const stopMessage = await waitForPostedMessageByType(page, 'webview/stopExecutionSession');
+    expect(stopMessage.payload).toMatchObject({
+      nodeId,
+      kind: executionKind
+    });
   });
 
   test(`${executionKind} Ctrl+C without terminal selection still reaches the PTY as interrupt`, async ({
@@ -3416,6 +5434,75 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
+  test(`${executionKind} multiline line-number links prefer file links when shell echo repeats the text`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const pathLineText = 'link-target.ts';
+    const lineNumberLinkText = '2:8';
+    const resultLineText = `  ${lineNumberLinkText}  export const two = 2;`;
+    const serializedTerminalData =
+      "initialmoon@InitialMoondeMacBook-Air execution-native-interactions % print\r\nf '%s\\n%s\\n' 'link-target.ts' '  2:8  export const two = 2;'\r\nlink-target.ts\r\n  2:8  export const two = 2;\r\ninitialmoon@InitialMoondeMacBook-Air execution-native-interactions % [?2004h";
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [lineNumberLinkText]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 74,
+      rows: 24,
+      liveSession: true,
+      serializedTerminalState: {
+        format: 'xterm-serialize-v1',
+        data: serializedTerminalData,
+        viewportY: 0
+      }
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: lineNumberLinkText
+    });
+
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const linkEvents = window.__devSessionCanvasHarness
+            .getPostedMessages()
+            .filter((entry) => entry.type === 'webview/openExecutionLink')
+            .map((entry) => ({
+              linkKind: entry.payload.link.linkKind,
+              text: entry.payload.link.text,
+              path: entry.payload.link.path,
+              line: entry.payload.link.line,
+              column: entry.payload.link.column,
+              source: entry.payload.link.source
+            }));
+          return JSON.stringify(linkEvents);
+        });
+      })
+      .toBe(
+        JSON.stringify([
+          {
+            linkKind: 'file',
+            text: lineNumberLinkText,
+            path: pathLineText,
+            line: 2,
+            column: 8,
+            source: 'detected'
+          }
+        ])
+      );
+  });
+
   test(`${executionKind} multiline links do not reuse stale previous-path cache after snapshot redraw`, async ({
     page
   }) => {
@@ -3975,14 +6062,14 @@ for (const executionKind of ['agent', 'terminal']) {
 
     try {
       await performTestDomAction(page, {
-        kind: 'hoverExecutionText',
+        kind: 'hoverExecutionLink',
         nodeId,
-        text: secondPathFragment
+        text: hardWrappedPath
       });
       await page.keyboard.down('Control');
-      await expect.poll(async () => readTerminalUnderlinedText(page, nodeId)).toContain(secondPathFragment);
+      await expect.poll(async () => readHardWrappedLinkHoverSegmentCount(page, nodeId)).toBe(2);
 
-      const hoveredPoint = await readFirstTerminalUnderlinedPoint(page, nodeId);
+      const hoveredPoint = await readLastHardWrappedLinkHoverSegmentPoint(page, nodeId);
       if (!hoveredPoint) {
         throw new Error(`Expected ${secondPathFragment} to be underlined before live output.`);
       }
@@ -3993,7 +6080,7 @@ for (const executionKind of ['agent', 'terminal']) {
         .poll(async () => readLastOpenedExecutionLink(page, nodeId))
         .toMatchObject({
           linkKind: 'search',
-          text: secondPathFragment,
+          text: hardWrappedPath,
           source: 'word'
         });
 
@@ -4193,7 +6280,7 @@ for (const executionKind of ['agent', 'terminal']) {
     ).toBe(false);
   });
 
-  test(`${executionKind} does not refresh fallback-only negative file links during live output`, async ({
+  test(`${executionKind} does not eagerly resolve fallback-only text during hover or live output`, async ({
     page
   }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -4238,7 +6325,7 @@ for (const executionKind of ['agent', 'terminal']) {
       });
     }
 
-    await expect.poll(async () => countFallbackResolveRequests()).toBe(ordinaryLines.length);
+    await expect.poll(async () => countFallbackResolveRequests()).toBe(0);
     await performTestDomAction(page, {
       kind: 'clearExecutionLinkHover',
       nodeId
@@ -4256,6 +6343,151 @@ for (const executionKind of ['agent', 'terminal']) {
     await settleWebview(page, 4);
 
     expect(await countFallbackResolveRequests()).toBe(0);
+  });
+
+  test(`${executionKind} resolves fallback file links only on activation`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'lazy-fallback-target.mjs';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+    }, [filePath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'hoverExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    expect(await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks')).toEqual([]);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'file',
+        text: filePath,
+        source: 'fallback'
+      });
+    const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(resolveRequests).toHaveLength(1);
+    expect(resolveRequests[0].payload.priority).toBe('interactive');
+    expect(resolveRequests[0].payload.candidates).toMatchObject([
+      {
+        text: filePath,
+        source: 'fallback'
+      }
+    ]);
+  });
+
+  test(`${executionKind} falls back to search when lazy file link activation times out`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'timeout-fallback-target.mjs';
+
+    await openHarness(page);
+    await page.evaluate((nextResolvedTexts) => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(nextResolvedTexts);
+      window.__devSessionCanvasHarness.setExecutionFileLinkResolutionDelayMs(3000);
+    }, [filePath]);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+    const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(resolveRequests).toHaveLength(1);
+    expect(resolveRequests[0].payload.priority).toBe('interactive');
+  });
+
+  test(`${executionKind} keeps extensionless fallback paths activation-only with interactive priority`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const filePath = 'custom/tool';
+
+    await openHarness(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([]);
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: `${filePath}\r\n`,
+      cols: 96,
+      rows: 28,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'hoverExecutionLink',
+      nodeId,
+      text: filePath
+    });
+    expect(await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks')).toEqual([]);
+
+    await performTestDomAction(page, {
+      kind: 'activateExecutionLink',
+      nodeId,
+      text: filePath
+    });
+
+    await expect
+      .poll(async () => readLastOpenedExecutionLink(page, nodeId))
+      .toMatchObject({
+        linkKind: 'search',
+        text: filePath,
+        source: 'word'
+      });
+    const resolveRequests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+    expect(resolveRequests).toHaveLength(1);
+    expect(resolveRequests[0].payload.priority).toBe('interactive');
+    expect(resolveRequests[0].payload.candidates).toMatchObject([
+      {
+        text: filePath,
+        path: filePath,
+        source: 'fallback'
+      }
+    ]);
   });
 
   test(`${executionKind} ignores stale pending negative file link resolution after live output`, async ({
@@ -5107,6 +7339,202 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
     .toBe('1');
 });
 
+test('minimap wheel honors the dynamic fit view min zoom', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.8
+      }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-huge',
+      title: 'Huge Root',
+      position: { x: -2400, y: -1800 },
+      size: { width: 22000, height: 16000 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/huge'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.1);
+  await expect.poll(async () => (await readPersistedUiState(page)).viewport?.zoom ?? null).toBeLessThan(0.1);
+  await clearPostedMessages(page);
+
+  const beforeWheelState = await readPersistedUiState(page);
+  const minimapBox = await page.locator('.canvas-minimap svg').boundingBox();
+  expect(minimapBox).not.toBeNull();
+
+  await page.mouse.move(minimapBox.x + minimapBox.width / 2, minimapBox.y + minimapBox.height / 2);
+  await page.mouse.wheel(0, 120);
+  await settleWebview(page, 4);
+
+  const afterWheelState = await readPersistedUiState(page);
+  expect(afterWheelState.viewport.zoom).toBeLessThanOrEqual(beforeWheelState.viewport.zoom);
+  expect(afterWheelState.viewport.zoom).toBeLessThan(0.1);
+
+  const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+  expect(centerMessages.length).toBeGreaterThan(0);
+});
+
+test('fit view includes empty workspace root sections in multi-root canvases', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-frontend',
+      title: 'Frontend',
+      position: { x: 120, y: 120 },
+      size: { width: 760, height: 460 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'workspace-root-backend',
+      title: 'Backend',
+      position: { x: 5200, y: 2800 },
+      size: { width: 920, height: 540 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/backend'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect
+    .poll(async () => {
+      const rootBox = await page.locator('[data-group-id="workspace-root-backend"]').boundingBox();
+      return rootBox && rootBox.x < page.viewportSize().width ? rootBox : null;
+    })
+    .not.toBeNull();
+
+  const viewportSize = page.viewportSize();
+  expect(viewportSize).not.toBeNull();
+  for (const group of state.groups) {
+    const box = await page.locator(`[data-group-id="${group.id}"]`).boundingBox();
+    expect(box, `${group.id} should be rendered in the viewport after fit view`).not.toBeNull();
+    expect(box.x + box.width).toBeGreaterThanOrEqual(-2);
+    expect(box.y + box.height).toBeGreaterThanOrEqual(-2);
+    expect(box.x).toBeLessThanOrEqual(viewportSize.width + 2);
+    expect(box.y).toBeLessThanOrEqual(viewportSize.height + 2);
+  }
+
+  const fitZoom = await readCanvasViewportScale(page);
+  expect(fitZoom).toBeGreaterThan(0);
+  expect(fitZoom).toBeLessThan(0.4);
+});
+
+test('fit view includes empty user groups alongside nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.4
+      }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [createManualNoteNode('nearby-note', { x: 160, y: 140 })];
+  state.groups = [
+    {
+      id: 'group-empty-distant',
+      title: 'Later Investigation',
+      position: { x: 4200, y: 2600 },
+      size: { width: 820, height: 520 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect
+    .poll(async () => {
+      const groupBox = await page.locator('[data-group-id="group-empty-distant"]').boundingBox();
+      return groupBox && groupBox.x < page.viewportSize().width ? groupBox : null;
+    })
+    .not.toBeNull();
+
+  const viewportSize = page.viewportSize();
+  expect(viewportSize).not.toBeNull();
+  const nodeBox = await nodeById(page, 'nearby-note').boundingBox();
+  const groupBox = await page.locator('[data-group-id="group-empty-distant"]').boundingBox();
+  expect(nodeBox).not.toBeNull();
+  expect(groupBox).not.toBeNull();
+  for (const box of [nodeBox, groupBox]) {
+    expect(box.x + box.width).toBeGreaterThanOrEqual(-2);
+    expect(box.y + box.height).toBeGreaterThanOrEqual(-2);
+    expect(box.x).toBeLessThanOrEqual(viewportSize.width + 2);
+    expect(box.y).toBeLessThanOrEqual(viewportSize.height + 2);
+  }
+});
+
+test('fit view keeps a workspace root section visible when it is larger than its nodes', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.8
+      }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note-small', { x: 360, y: 340 }),
+      groupId: 'workspace-root-large'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-large',
+      title: 'Large Root',
+      position: { x: 80, y: 80 },
+      size: { width: 5200, height: 3200 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/large'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 4);
+
+  await page.locator('.react-flow__controls-fitview').click();
+
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.4);
+  const viewportSize = page.viewportSize();
+  expect(viewportSize).not.toBeNull();
+
+  const rootBox = await page.locator('[data-group-id="workspace-root-large"]').boundingBox();
+  const nodeBox = await nodeById(page, 'root-note-small').boundingBox();
+  expect(rootBox).not.toBeNull();
+  expect(nodeBox).not.toBeNull();
+  expect(rootBox.x).toBeGreaterThanOrEqual(-2);
+  expect(rootBox.y).toBeGreaterThanOrEqual(-2);
+  expect(rootBox.x + rootBox.width).toBeLessThanOrEqual(viewportSize.width + 2);
+  expect(rootBox.y + rootBox.height).toBeLessThanOrEqual(viewportSize.height + 2);
+  expect(rootBox.width).toBeGreaterThan(nodeBox.width * 2);
+  expect(rootBox.height).toBeGreaterThan(nodeBox.height * 2);
+});
+
 test('overview mode none keeps regular node rendering when fit view zooms below the overview threshold', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -5257,6 +7685,144 @@ test('host center node request recenters without selecting or acknowledging atte
   expect(terminalBox).not.toBeNull();
   expect(Math.abs(terminalBox.x + terminalBox.width / 2 - viewportSize.width / 2)).toBeLessThanOrEqual(18);
   expect(Math.abs(terminalBox.y + terminalBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
+});
+
+test('host focus group request animates to a workspace root section', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-06-09T00:00:00.000Z',
+    nodes: [],
+    edges: [],
+    groups: [
+      {
+        id: 'workspace-root-tools',
+        title: 'tools',
+        position: { x: 2400, y: 720 },
+        size: { width: 720, height: 520 },
+        role: 'workspace-root',
+        workspaceRootPath: '/workspace/tools'
+      }
+    ],
+    nextGroupSequence: 1,
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: []
+  });
+  await settleWebview(page, 4);
+
+  const beforeTransform = await readCanvasViewportTransform(page);
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/focusGroup',
+      payload: {
+        groupId: 'workspace-root-tools'
+      }
+    });
+  });
+
+  await expect
+    .poll(async () => {
+      const transform = await readCanvasViewportTransform(page);
+      return transform && transform !== beforeTransform ? transform : null;
+    })
+    .not.toBeNull();
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedGroupId).toBe('workspace-root-tools');
+  expect(afterState.selectedGroupIds).toEqual(['workspace-root-tools']);
+  await expect
+    .poll(async () => {
+      const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+      const latestCenter = centerMessages.at(-1)?.payload.visibleCenter;
+      return latestCenter ? `${latestCenter.x},${latestCenter.y}` : null;
+    })
+    .not.toBeNull();
+  const centerMessages = await readPostedMessagesByType(page, 'webview/updateViewportCenter');
+  const latestCenter = centerMessages.at(-1).payload.visibleCenter;
+  expect(Math.abs(latestCenter.x - (2400 + 720 / 2))).toBeLessThanOrEqual(18);
+  expect(Math.abs(latestCenter.y - (720 + 520 / 2))).toBeLessThanOrEqual(18);
+
+  const viewportSize = page.viewportSize();
+  const rootBox = await page.locator('[data-group-id="workspace-root-tools"]').boundingBox();
+  expect(viewportSize).not.toBeNull();
+  expect(rootBox).not.toBeNull();
+  expect(Math.abs(rootBox.x + rootBox.width / 2 - viewportSize.width / 2)).toBeLessThanOrEqual(18);
+  expect(Math.abs(rootBox.y + rootBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
+});
+
+test('host focus group request survives a same-generation frame refresh', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-06-09T00:00:00.000Z',
+    nodes: [],
+    edges: [],
+    groups: [
+      {
+        id: 'workspace-root-refresh',
+        title: 'refresh',
+        position: { x: 2400, y: 720 },
+        size: { width: 720, height: 520 },
+        role: 'workspace-root',
+        workspaceRootPath: '/workspace/refresh'
+      }
+    ],
+    nextGroupSequence: 1,
+    fileReferences: [],
+    suppressedFileActivityEdgeIds: [],
+    suppressedAutomaticFileArtifactNodeIds: []
+  });
+  await settleWebview(page, 4);
+
+  const beforeTransform = await readCanvasViewportTransform(page);
+  await page.evaluate(() => {
+    const lifecycle = window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__;
+    window.__devSessionCanvasHarness.dispatchRawHostMessage({
+      type: 'host/focusGroup',
+      lifecycle: {
+        ...lifecycle,
+        frameId: 'frame-before-refresh'
+      },
+      payload: {
+        groupId: 'workspace-root-refresh'
+      }
+    });
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/focusGroup',
+      payload: {
+        groupId: 'workspace-root-refresh'
+      }
+    });
+  });
+
+  await expect
+    .poll(async () => {
+      const transform = await readCanvasViewportTransform(page);
+      return transform && transform !== beforeTransform ? transform : null;
+    })
+    .not.toBeNull();
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedGroupId).toBe('workspace-root-refresh');
 });
 
 test('double-clicking the title input keeps the current viewport unchanged', async ({ page }) => {
@@ -5863,23 +8429,32 @@ test('note body editor supports tab indentation and line numbers', async ({ page
   const bodyInput = noteNode.locator('textarea[data-probe-field="body"]');
   await expect(bodyInput).toHaveValue(markdownBody);
   await expect(noteNode.locator('.note-document-line-number')).toHaveText(['1', '2', '3']);
+  await settleWebview(page, 2);
 
   await bodyInput.evaluate((element) => {
+    element.focus();
     element.setSelectionRange(0, 0);
   });
+  await expectSelectionRange(bodyInput, 0, 0);
   await page.keyboard.press('Tab');
+  await settleWebview(page, 2);
   await expect(bodyInput).toHaveValue(`  ${markdownBody}`);
 
   await page.keyboard.press('Shift+Tab');
+  await settleWebview(page, 2);
   await expect(bodyInput).toHaveValue(markdownBody);
 
   await bodyInput.evaluate((element) => {
+    element.focus();
     element.setSelectionRange(0, element.value.length);
   });
+  await expectSelectionRange(bodyInput, 0, markdownBody.length);
   await page.keyboard.press('Tab');
+  await settleWebview(page, 2);
   await expect(bodyInput).toHaveValue(['  alpha', '  beta', '  gamma'].join('\n'));
 
   await page.keyboard.press('Shift+Tab');
+  await settleWebview(page, 2);
   await expect(bodyInput).toHaveValue(markdownBody);
   await expect(bodyInput).toBeFocused();
 });
@@ -7516,22 +10091,69 @@ test('note markdown unsafe command links do not render clickable hrefs', async (
   await expect(noteNode.locator('.note-markdown-preview a[data-note-markdown-link="true"]')).toHaveCount(0);
 });
 
-test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
+test('selected node resize affordance keeps type-colored edge highlight', async ({ page }) => {
   await openHarness(page);
+  await bootstrap(page, createNoteNodeState());
+
+  const noteNode = nodeById(page, 'note-1');
+  await expect(noteNode.locator('.canvas-node-resize-line')).toHaveCount(0);
+
+  await noteNode.locator('.window-chrome').click();
+
+  await expect(noteNode.locator('.canvas-node-resize-line')).toHaveCount(4);
+  await expect(noteNode.locator('[data-node-resize-direction]')).toHaveCount(8);
+
+  const resizeChrome = await noteNode.evaluate((node) => {
+    const topLine = node.querySelector('.canvas-node-resize-line-top');
+    const rightLine = node.querySelector('.canvas-node-resize-line-right');
+    const cornerHandle = node.querySelector('[data-node-resize-direction="bottom-right"]');
+    if (
+      !(topLine instanceof HTMLElement) ||
+      !(rightLine instanceof HTMLElement) ||
+      !(cornerHandle instanceof HTMLElement)
+    ) {
+      return null;
+    }
+
+    const topLineStyle = window.getComputedStyle(topLine);
+    const rightLineStyle = window.getComputedStyle(rightLine);
+    const cornerHandleStyle = window.getComputedStyle(cornerHandle, '::after');
+
+    return {
+      topBorderColor: topLineStyle.borderTopColor,
+      topBorderWidth: topLineStyle.borderTopWidth,
+      rightBorderColor: rightLineStyle.borderRightColor,
+      rightBorderWidth: rightLineStyle.borderRightWidth,
+      handleBackground: cornerHandleStyle.backgroundColor
+    };
+  });
+
+  expect(resizeChrome).toEqual({
+    topBorderColor: 'rgb(167, 139, 250)',
+    topBorderWidth: '2px',
+    rightBorderColor: 'rgb(167, 139, 250)',
+    rightBorderWidth: '2px',
+    handleBackground: 'rgb(167, 139, 250)'
+  });
+});
+
+test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
   await bootstrap(page, createNoteNodeState());
   await clearPostedMessages(page);
 
   const noteNode = nodeById(page, 'note-1');
-  await performTestDomAction(page, {
-    kind: 'selectNode',
-    nodeId: 'note-1'
-  });
+  await noteNode.locator('.window-chrome').click();
   await clearPostedMessages(page);
 
   const beforeBox = await noteNode.boundingBox();
   expect(beforeBox).not.toBeNull();
 
-  const handle = noteNode.locator('.canvas-node-resize-handle.bottom.right');
+  const handle = noteNode.locator('[data-node-resize-direction="bottom-right"]');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
   expect(handleBox).not.toBeNull();
@@ -7622,7 +10244,7 @@ test('dragging the top-left resize handle moves the note origin and grows the fr
   const beforeBox = await noteNode.boundingBox();
   expect(beforeBox).not.toBeNull();
 
-  const handle = noteNode.locator('.canvas-node-resize-handle.top.left');
+  const handle = noteNode.locator('[data-node-resize-direction="top-left"]');
   await expect(handle).toBeVisible();
   const handleBox = await handle.boundingBox();
   expect(handleBox).not.toBeNull();
@@ -7758,6 +10380,8 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
   await expect(
     menu.locator('[data-context-menu-provider="codex"] [data-context-menu-provider-action="create-default"]')
   ).toContainText('Codex（默认）');
+  await expect(menu.locator('[data-context-menu-action="arrange-canvas-layout"]')).toContainText('整理画布布局');
+  await expect(menu.locator('[data-context-menu-action="arrange-canvas-layout"] .codicon-type-hierarchy-sub')).toBeVisible();
   await expect
     .poll(async () =>
       menu
@@ -7765,11 +10389,14 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
         .evaluateAll((elements) =>
           elements.map(
             (element) =>
-              element.getAttribute('data-context-menu-kind') ?? element.getAttribute('data-context-menu-provider')
+              element.getAttribute('data-context-menu-kind') ??
+              element.getAttribute('data-context-menu-provider') ??
+              element.getAttribute('data-context-menu-action') ??
+              element.getAttribute('data-context-menu-template-group')
           ).filter(Boolean)
         )
     )
-    .toEqual(['note', 'terminal', 'codex', 'claude']);
+    .toEqual(['note', 'terminal', 'codex', 'claude', 'create-empty-group', 'arrange-canvas-layout', 'apply', 'reset', 'save-canvas-template']);
 
   await menu.locator('[data-context-menu-kind="note"]').click();
 
@@ -7781,6 +10408,89 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
       y: 360
     }
   });
+});
+
+test('canvas context menu can request layout arrangement without a completion toast', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState());
+  await clearPostedMessages(page);
+
+  await page.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 920,
+      y: 500
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-action="arrange-canvas-layout"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="arrange-canvas-layout"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect(page.locator('[data-toast-kind="success"]')).toHaveCount(0);
+  await expect
+    .poll(async () => readPostedMessagesByType(page, 'webview/arrangeCanvasLayout'))
+    .toContainEqual({
+      type: 'webview/arrangeCanvasLayout'
+    });
+});
+
+test('right-click create menu still shows execution entries in untrusted mode and asks host for reason', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, createCanvasScreenshotState(), createRuntimeContext({ workspaceTrusted: false }));
+  await clearPostedMessages(page);
+
+  const pane = page.locator('.react-flow__pane');
+  await pane.click({
+    button: 'right',
+    position: {
+      x: 1100,
+      y: 560
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-kind="terminal"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="codex"]')).toBeVisible();
+  await expect(menu.locator('[data-context-menu-provider="claude"]')).toBeVisible();
+
+  await menu.locator('[data-context-menu-kind="terminal"]').click();
+
+  await expect
+    .poll(async () => readPostedMessagesByType(page, 'webview/showCreateNodeBlockedReason'))
+    .toContainEqual({
+      type: 'webview/showCreateNodeBlockedReason',
+      payload: {
+        kind: 'terminal'
+      }
+    });
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() =>
+        window.__devSessionCanvasHarness
+          .getPostedMessages()
+          .some((entry) => entry.type === 'webview/createDemoNode')
+      );
+    })
+    .toBe(false);
 });
 
 test('manually created nodes recenter without zooming when they already fully fit in view', async ({ page }) => {
@@ -7901,6 +10611,2430 @@ test('manually created nodes can zoom to fit before recentering when the node ov
   expect(Math.abs(noteBox.y + noteBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
 });
 
+
+test('canvas groups render, rename, and post group actions', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-22T00:00:00.000Z',
+    nodes: [
+      {
+        id: 'note-1',
+        kind: 'note',
+        title: 'Grouped Note',
+        status: 'ready',
+        summary: 'inside group',
+        position: { x: 160, y: 176 },
+        size: sizeFor('note'),
+        groupId: 'group-1',
+        metadata: { note: { content: 'inside' } }
+      }
+    ],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Group 1',
+        position: { x: 120, y: 120 },
+        size: { width: 520, height: 420 }
+      }
+    ],
+    edges: []
+  });
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const groupBackground = page.locator('[data-group-background-id="group-1"]');
+  await expect(groupFrame).toBeVisible();
+  await expect(groupBackground).toBeVisible();
+  await expect(groupFrame.locator('[data-probe-field="title"]')).toHaveValue('Group 1');
+
+  const groupPanelStyles = await groupFrame.evaluate((frame) => {
+    const background = document.querySelector('[data-group-background-id="group-1"]');
+    const titlebar = frame.querySelector('.canvas-group-titlebar');
+    const node = document.querySelector('[data-node-id="note-1"]');
+    const nodeWrapper = node?.closest('.react-flow__node');
+    const backgroundLayer = background?.closest('.canvas-group-background-layer');
+    const probeFrame = document.createElement('div');
+    probeFrame.className = 'canvas-group-frame';
+    probeFrame.style.position = 'absolute';
+    probeFrame.style.left = '-10000px';
+    probeFrame.style.top = '-10000px';
+    probeFrame.style.width = '70.5px';
+    probeFrame.style.height = '80px';
+    probeFrame.style.setProperty('--canvas-group-title-tab-width', 'min(112px, 100%)');
+    const probeTitlebar = document.createElement('div');
+    probeTitlebar.className = 'canvas-group-titlebar';
+    probeFrame.append(probeTitlebar);
+    document.body.append(probeFrame);
+    if (!(titlebar instanceof HTMLElement)) {
+      throw new Error('Group titlebar not found.');
+    }
+    if (!(background instanceof HTMLElement)) {
+      throw new Error('Group background not found.');
+    }
+    if (!(nodeWrapper instanceof HTMLElement)) {
+      throw new Error('Grouped node wrapper not found.');
+    }
+    if (!(backgroundLayer instanceof HTMLElement)) {
+      throw new Error('Group background layer not found.');
+    }
+    const frameStyles = getComputedStyle(frame);
+    const backgroundStyles = getComputedStyle(background);
+    const backgroundBeforeStyles = getComputedStyle(background, '::before');
+    const backgroundAfterStyles = getComputedStyle(background, '::after');
+    const backgroundLayerStyles = getComputedStyle(backgroundLayer);
+    const nodeWrapperStyles = getComputedStyle(nodeWrapper);
+    const titlebarStyles = getComputedStyle(titlebar);
+    const frameRect = frame.getBoundingClientRect();
+    const backgroundRect = background.getBoundingClientRect();
+    const titlebarRect = titlebar.getBoundingClientRect();
+    const nodeRect = nodeWrapper.getBoundingClientRect();
+    const probeFrameRect = probeFrame.getBoundingClientRect();
+    const probeTitlebarRect = probeTitlebar.getBoundingClientRect();
+    probeFrame.remove();
+    return {
+      frameBackgroundColor: frameStyles.backgroundColor,
+      frameBorderTopColor: frameStyles.borderTopColor,
+      frameBoxShadow: frameStyles.boxShadow,
+      backgroundColor: backgroundStyles.backgroundColor,
+      backgroundBeforeBorderTopColor: backgroundBeforeStyles.borderTopColor,
+      backgroundBeforeBorderTopLeftRadius: backgroundBeforeStyles.borderTopLeftRadius,
+      backgroundAfterBorderTopColor: backgroundAfterStyles.borderTopColor,
+      backgroundAfterBorderBottomColor: backgroundAfterStyles.borderBottomColor,
+      backgroundBeforeBorderTopWidth: backgroundBeforeStyles.borderTopWidth,
+      backgroundAfterBorderTopWidth: backgroundAfterStyles.borderTopWidth,
+      backgroundAfterBorderBottomWidth: backgroundAfterStyles.borderBottomWidth,
+      backgroundAfterBorderBottomLeftRadius: backgroundAfterStyles.borderBottomLeftRadius,
+      backgroundTopRightCornerColor: document.elementFromPoint(Math.floor(backgroundRect.right - 2), Math.floor(backgroundRect.top + 2)) === background
+        ? backgroundStyles.backgroundColor
+        : 'transparent',
+      backgroundBodyTopCss: Math.round(
+        Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-body-top'))
+      ),
+      backgroundBodyTop: Math.round(
+        Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-body-top')) * (frameRect.height / frame.offsetHeight)
+      ),
+      backgroundBoxShadow: backgroundStyles.boxShadow,
+      backgroundLayerZIndex: backgroundLayerStyles.zIndex,
+      backgroundSharesViewportWithNodes: background.closest('.react-flow__viewport') === nodeWrapper.closest('.react-flow__viewport'),
+      frameSharesRendererWithPane:
+        frame.closest('.react-flow__renderer') === document.querySelector('.react-flow__pane')?.closest('.react-flow__renderer'),
+      nodeWrapperZIndex: nodeWrapperStyles.zIndex,
+      backgroundLeft: Math.round(backgroundRect.left - frameRect.left),
+      backgroundTop: Math.round(backgroundRect.top - frameRect.top),
+      backgroundWidth: Math.round(backgroundRect.width),
+      backgroundHeight: Math.round(backgroundRect.height),
+      frameWidth: Math.round(frameRect.width),
+      frameHeight: Math.round(frameRect.height),
+      frameBorderTopLeftRadius: frameStyles.borderTopLeftRadius,
+      titlebarBackgroundColor: titlebarStyles.backgroundColor,
+      titlebarBorderRightColor: titlebarStyles.borderRightColor,
+      titlebarColor: titlebarStyles.color,
+      titlebarTop: Math.round(titlebarRect.top - frameRect.top),
+      titlebarBottom: Math.round(titlebarRect.bottom - frameRect.top),
+      titlebarBorderBottomWidth: titlebarStyles.borderBottomWidth,
+      titlebarBorderTopLeftRadius: titlebarStyles.borderTopLeftRadius,
+      titlebarBorderTopRightRadius: titlebarStyles.borderTopRightRadius,
+      titlebarBorderBottomRightRadius: titlebarStyles.borderBottomRightRadius,
+      titlebarBoxShadow: titlebarStyles.boxShadow,
+      subpixelTitlebarWidth: probeTitlebarRect.width,
+      subpixelFrameWidth: probeFrameRect.width,
+      nodeBodyTopInset: Math.round(
+        nodeRect.top - frameRect.top - Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-body-top')) * (frameRect.height / frame.offsetHeight)
+      )
+    };
+  });
+  expect(groupPanelStyles.frameBackgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(groupPanelStyles.frameBorderTopColor).toBe('rgba(0, 0, 0, 0)');
+  expect(groupPanelStyles.frameBoxShadow).toBe('none');
+  expect(groupPanelStyles.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(groupPanelStyles.titlebarBackgroundColor).toBe('rgb(24, 24, 24)');
+  expect(groupPanelStyles.backgroundBeforeBorderTopColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.backgroundAfterBorderTopColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.backgroundAfterBorderBottomColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.backgroundBeforeBorderTopWidth).toBe('1px');
+  expect(groupPanelStyles.backgroundAfterBorderTopWidth).toBe('1px');
+  expect(groupPanelStyles.backgroundAfterBorderBottomWidth).toBe('1px');
+  expect(Number.parseFloat(groupPanelStyles.backgroundBeforeBorderTopLeftRadius)).toBe(0);
+  expect(Number.parseFloat(groupPanelStyles.backgroundAfterBorderBottomLeftRadius)).toBe(0);
+  expect(groupPanelStyles.backgroundTopRightCornerColor).toBe('transparent');
+  expect(groupPanelStyles.backgroundBoxShadow).toBe('none');
+  expect(groupPanelStyles.backgroundLayerZIndex).toBe('-1');
+  expect(groupPanelStyles.backgroundSharesViewportWithNodes).toBe(true);
+  expect(groupPanelStyles.frameSharesRendererWithPane).toBe(true);
+  expect(Number.parseInt(groupPanelStyles.nodeWrapperZIndex, 10)).toBeGreaterThanOrEqual(0);
+  expect(groupPanelStyles.backgroundLeft).toBe(0);
+  expect(groupPanelStyles.backgroundTop).toBe(0);
+  expect(groupPanelStyles.backgroundWidth).toBe(groupPanelStyles.frameWidth);
+  expect(groupPanelStyles.backgroundHeight).toBe(groupPanelStyles.frameHeight);
+  expect(groupPanelStyles.titlebarBorderRightColor).toBe('rgb(69, 69, 69)');
+  expect(groupPanelStyles.titlebarColor).toBe('rgb(157, 157, 157)');
+  expect(Number.parseFloat(groupPanelStyles.frameBorderTopLeftRadius)).toBe(0);
+  expect(groupPanelStyles.backgroundBodyTopCss).toBe(28);
+  expect(groupPanelStyles.titlebarTop).toBeLessThanOrEqual(2);
+  expect(groupPanelStyles.titlebarBottom).toBeCloseTo(groupPanelStyles.backgroundBodyTop, -1);
+  expect(groupPanelStyles.titlebarBorderBottomWidth).toBe('1px');
+  expect(Number.parseFloat(groupPanelStyles.titlebarBorderTopLeftRadius)).toBe(0);
+  expect(Number.parseFloat(groupPanelStyles.titlebarBorderTopRightRadius)).toBe(0);
+  expect(Number.parseFloat(groupPanelStyles.titlebarBorderBottomRightRadius)).toBe(0);
+  expect(groupPanelStyles.titlebarBoxShadow).toBe('none');
+  expect(groupPanelStyles.subpixelTitlebarWidth).toBeLessThanOrEqual(groupPanelStyles.subpixelFrameWidth);
+  expect(groupPanelStyles.nodeBodyTopInset).toBeGreaterThanOrEqual(24);
+
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  const selectedTitlebarStyles = await groupFrame.locator('.canvas-group-titlebar').evaluate((titlebar) => {
+    const styles = getComputedStyle(titlebar);
+    return {
+      borderBottomColor: styles.borderBottomColor,
+      color: styles.color
+    };
+  });
+  expect(selectedTitlebarStyles.borderBottomColor).toBe('rgb(69, 69, 69)');
+  expect(selectedTitlebarStyles.color).toBe('rgb(204, 204, 204)');
+
+  await groupFrame.locator('[data-probe-field="title"]').fill('Planning Group');
+  await groupFrame.locator('[data-probe-field="title"]').press('Enter');
+  const titleMessage = await waitForPostedMessageByType(page, 'webview/updateGroupTitle');
+  expect(titleMessage.payload).toEqual({ groupId: 'group-1', title: 'Planning Group' });
+
+  const groupToolbarLayout = await groupFrame.evaluate((frame) => {
+    const titlebar = frame.querySelector('.canvas-group-titlebar');
+    const toolbar = frame.querySelector('.canvas-group-toolbar');
+    if (!(titlebar instanceof HTMLElement) || !(toolbar instanceof HTMLElement)) {
+      throw new Error('Group toolbar not found.');
+    }
+    const frameRect = frame.getBoundingClientRect();
+    const titlebarRect = titlebar.getBoundingClientRect();
+    const toolbarRect = toolbar.getBoundingClientRect();
+    return {
+      frameWidth: Math.round(frameRect.width),
+      toolbarLeft: Math.round(toolbarRect.left - frameRect.left),
+      toolbarTop: Math.round(toolbarRect.top - frameRect.top),
+      toolbarWidth: Math.round(toolbarRect.width),
+      toolbarRight: Math.round(toolbarRect.right - frameRect.left),
+      titlebarRight: Math.round(titlebarRect.right - frameRect.left),
+      titlebarTop: Math.round(titlebarRect.top - frameRect.top)
+    };
+  });
+  expect(groupToolbarLayout.toolbarLeft).toBe(groupToolbarLayout.titlebarRight);
+  expect(groupToolbarLayout.toolbarTop).toBe(groupToolbarLayout.titlebarTop);
+  expect(groupToolbarLayout.toolbarRight).toBeLessThanOrEqual(groupToolbarLayout.frameWidth);
+  expect(groupToolbarLayout.toolbarWidth).toBeLessThan(280);
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toHaveText('取消分组');
+  await expect(groupFrame.locator('.canvas-group-split-danger')).toHaveText('删除分组');
+  await groupFrame.locator('.canvas-group-split-danger').click();
+  const deleteGroupMessage = await waitForPostedMessageByType(page, 'webview/deleteGroup');
+  expect(deleteGroupMessage.payload).toEqual({ groupId: 'group-1' });
+  await clearPostedMessages(page);
+
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toBeVisible();
+  await groupFrame.locator('.canvas-group-split-primary').click();
+  const ungroupMessage = await waitForPostedMessageByType(page, 'webview/ungroup');
+  expect(ungroupMessage.payload).toEqual({ groupId: 'group-1' });
+});
+
+test('canvas group title exposes the full title when truncated like node titles', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const longTitle = '非常长的规划分组标题用于验证标题区域被截断时悬浮可以看到完整内容';
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-long-title', { x: 360, y: 168 }),
+      title: longTitle,
+      size: { width: 180, height: 220 }
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-long-title',
+      title: longTitle,
+      position: { x: 120, y: 140 },
+      size: { width: 150, height: 220 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const groupTitle = page.locator('[data-group-id="group-long-title"] [data-probe-field="title"]');
+  const nodeTitle = nodeById(page, 'note-long-title').locator('[data-probe-field="title"]');
+  await expect(groupTitle).toHaveValue(longTitle);
+  await expect(nodeTitle).toHaveValue(longTitle);
+  await expect
+    .poll(async () =>
+      groupTitle.evaluate((title) => title.scrollWidth > title.clientWidth + 1)
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      nodeTitle.evaluate((title) => title.scrollWidth > title.clientWidth + 1)
+    )
+    .toBe(true);
+  await expect(groupTitle).toHaveAttribute('title', longTitle);
+  await expect(nodeTitle).toHaveAttribute('title', longTitle);
+});
+
+test('workspace root group keeps the root path tooltip when its display title is truncated', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const displayTitle = '非常长的工作区根目录标题用于验证截断时仍然展示完整路径';
+  const workspaceRootPath = '/repo/frontend-app-with-a-very-long-folder-display-title';
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-long-title',
+      title: displayTitle,
+      position: { x: 120, y: 140 },
+      size: { width: 150, height: 220 },
+      role: 'workspace-root',
+      workspaceRootPath
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootTitle = page.locator('[data-group-id="workspace-root-long-title"] [data-probe-field="title"]');
+  await expect(rootTitle).toHaveValue(displayTitle);
+  await expect(rootTitle).toHaveAttribute('readonly', '');
+  await expect
+    .poll(async () =>
+      rootTitle.evaluate((title) => title.scrollWidth > title.clientWidth + 1)
+    )
+    .toBe(true);
+  await expect(rootTitle).toHaveAttribute('title', workspaceRootPath);
+});
+
+test('workspace root group body renders a tiled non-interactive root name watermark', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'workspace-root-watermark',
+      selectedGroupIds: ['workspace-root-watermark'],
+      viewport: { x: 0, y: 0, zoom: 0.5 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note', { x: 200, y: 200 }),
+      groupId: 'workspace-root-watermark'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-watermark',
+      title: 'Frontend',
+      position: { x: 120, y: 140 },
+      size: { width: 720, height: 520 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'group-child',
+      title: 'Child Group',
+      position: { x: 260, y: 260 },
+      size: { width: 360, height: 260 },
+      parentGroupId: 'workspace-root-watermark'
+    },
+    {
+      id: 'group-regular',
+      title: 'Frontend',
+      position: { x: 960, y: 140 },
+      size: { width: 720, height: 520 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootBackground = page.locator('[data-group-background-id="workspace-root-watermark"]');
+  const rootWatermarkFrame = page.locator('[data-root-watermark-frame-id="workspace-root-watermark"]');
+  const rootWatermark = rootWatermarkFrame.locator('.canvas-root-watermark-tile[data-root-name-watermark="true"]');
+  const rootWatermarkLabel = rootWatermark.locator('[data-root-watermark-label="Frontend"]');
+  await expect(rootBackground).toHaveAttribute('data-group-background-role', 'workspace-root');
+  await expect(rootWatermarkFrame).toHaveCount(1);
+  await expect(rootWatermarkLabel).toHaveText('Frontend');
+  await expect(page.locator('[data-group-background-id="group-regular"] [data-root-name-watermark="true"]')).toHaveCount(0);
+  await expect(page.locator('[data-root-watermark-frame-id="group-regular"]')).toHaveCount(0);
+
+  const watermarkStyle = await rootWatermark.evaluate((watermark) => {
+    const watermarkFrame = watermark.closest('[data-root-watermark-frame-id]');
+    const groupId = watermarkFrame?.getAttribute('data-root-watermark-frame-id');
+    const background = groupId ? document.querySelector(`[data-group-background-id="${CSS.escape(groupId)}"]`) : null;
+    const bodyHitArea = background?.querySelector('[data-group-background-body-hit-area="true"]');
+    const rootFrame = groupId ? document.querySelector(`[data-group-id="${CSS.escape(groupId)}"]`) : null;
+    const rootTitle = rootFrame?.querySelector('[data-probe-field="title"]');
+    const childBackground = document.querySelector('[data-group-background-id="group-child"]');
+    const node = document.querySelector('[data-node-id="root-note"]');
+    const nodeWrapper = node?.closest('.react-flow__node');
+    const viewport = document.querySelector('.react-flow__viewport');
+    const renderer = document.querySelector('.react-flow__renderer');
+    const backgroundLayer = watermarkFrame?.closest('.canvas-group-background-layer');
+    if (
+      !(watermarkFrame instanceof HTMLElement) ||
+      !(background instanceof HTMLElement) ||
+      !(bodyHitArea instanceof HTMLElement) ||
+      !(rootTitle instanceof HTMLElement) ||
+      !(childBackground instanceof HTMLElement) ||
+      !(nodeWrapper instanceof HTMLElement) ||
+      !(viewport instanceof HTMLElement) ||
+      !(renderer instanceof HTMLElement) ||
+      !(backgroundLayer instanceof HTMLElement)
+    ) {
+      throw new Error('Workspace root watermark frame not found.');
+    }
+    const watermarkRect = watermark.getBoundingClientRect();
+    const watermarkFrameRect = watermarkFrame.getBoundingClientRect();
+    const bodyRect = bodyHitArea.getBoundingClientRect();
+    const layerChildren = Array.from(backgroundLayer.children);
+    const style = getComputedStyle(watermark);
+    const frameStyle = getComputedStyle(watermarkFrame);
+    const rootTitleStyle = getComputedStyle(rootTitle);
+    const childBackgroundStyle = getComputedStyle(childBackground);
+    const viewportStyle = getComputedStyle(viewport);
+    const rendererStyle = getComputedStyle(renderer);
+    const nodeRect = nodeWrapper.getBoundingClientRect();
+    const topElementAtNodeCenter = document.elementFromPoint(
+      nodeRect.left + nodeRect.width / 2,
+      nodeRect.top + nodeRect.height / 2
+    );
+    const beforeStyle = getComputedStyle(watermark, '::before');
+    const maskSize = beforeStyle.maskSize || beforeStyle.webkitMaskSize;
+    const tileWidth = Number.parseFloat(maskSize.split(' ')[0]);
+    const tileHeight = Number.parseFloat(maskSize.split(' ')[1]);
+    const zIndexValue = (value) => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    return {
+      framePointerEvents: frameStyle.pointerEvents,
+      pointerEvents: style.pointerEvents,
+      left: Math.round(watermarkRect.left - bodyRect.left),
+      top: Math.round(watermarkRect.top - bodyRect.top),
+      frameLeft: Math.round(watermarkFrameRect.left - background.getBoundingClientRect().left),
+      frameTop: Math.round(watermarkFrameRect.top - background.getBoundingClientRect().top),
+      width: Math.round(watermarkRect.width),
+      height: Math.round(watermarkRect.height),
+      bodyWidth: Math.round(bodyRect.width),
+      bodyHeight: Math.round(bodyRect.height),
+      beforeOpacity: Number.parseFloat(beforeStyle.opacity),
+      beforeBackgroundColor: beforeStyle.backgroundColor,
+      beforeMaskImage: beforeStyle.maskImage || beforeStyle.webkitMaskImage,
+      beforeMaskRepeat: beforeStyle.maskRepeat || beforeStyle.webkitMaskRepeat,
+      beforeMaskSize: maskSize,
+      labelFontStyle: getComputedStyle(watermark.querySelector('[data-root-watermark-label]')).fontStyle,
+      labelFontSize: Number.parseFloat(getComputedStyle(watermark.querySelector('[data-root-watermark-label]')).fontSize),
+      titleFontSize: Number.parseFloat(rootTitleStyle.fontSize),
+      tileWidth,
+      tileHeight,
+      watermarkZIndex: zIndexValue(frameStyle.zIndex),
+      childBackgroundZIndex: zIndexValue(childBackgroundStyle.zIndex),
+      watermarkAfterChildBackground: layerChildren.indexOf(watermarkFrame) > layerChildren.indexOf(childBackground),
+      watermarkInsideViewport: watermarkFrame.closest('.react-flow__viewport') === viewport,
+      nodeInsideRenderer: nodeWrapper.closest('.react-flow__renderer') === renderer,
+      viewportZIndex: zIndexValue(viewportStyle.zIndex),
+      rendererZIndex: zIndexValue(rendererStyle.zIndex),
+      topNodeIdAtNodeCenter: topElementAtNodeCenter?.closest('[data-node-id]')?.getAttribute('data-node-id') ?? null
+    };
+  });
+  expect(watermarkStyle.framePointerEvents).toBe('none');
+  expect(watermarkStyle.pointerEvents).toBe('none');
+  expect(watermarkStyle.left).toBe(0);
+  expect(watermarkStyle.top).toBe(0);
+  expect(watermarkStyle.frameLeft).toBe(0);
+  expect(watermarkStyle.frameTop).toBe(0);
+  expect(watermarkStyle.width).toBe(watermarkStyle.bodyWidth);
+  expect(watermarkStyle.height).toBe(watermarkStyle.bodyHeight);
+  expect(watermarkStyle.beforeOpacity).toBeGreaterThan(0);
+  expect(watermarkStyle.beforeOpacity).toBeLessThan(0.6);
+  expect(watermarkStyle.beforeBackgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  expect(watermarkStyle.beforeMaskImage).toContain('data:image/svg+xml');
+  expect(watermarkStyle.beforeMaskImage).toContain('Frontend');
+  expect(watermarkStyle.beforeMaskImage).not.toContain('rotate');
+  expect(watermarkStyle.beforeMaskRepeat).toContain('repeat');
+  expect(watermarkStyle.beforeOpacity).toBeGreaterThanOrEqual(0.24);
+  expect(watermarkStyle.beforeOpacity).toBeLessThanOrEqual(0.34);
+  expect(watermarkStyle.labelFontStyle).toBe('normal');
+  expect(watermarkStyle.labelFontSize).toBeGreaterThan(12);
+  expect(watermarkStyle.labelFontSize).toBeCloseTo(watermarkStyle.titleFontSize, 1);
+  expect(watermarkStyle.tileWidth).toBeGreaterThan(0);
+  expect(watermarkStyle.tileWidth).toBeGreaterThan(180 * (watermarkStyle.labelFontSize / 12));
+  expect(watermarkStyle.tileWidth).toBeLessThan(watermarkStyle.bodyWidth * 1.5);
+  expect(watermarkStyle.tileHeight).toBeGreaterThan(88 * (watermarkStyle.labelFontSize / 12));
+  expect(watermarkStyle.tileHeight).toBeLessThan(watermarkStyle.bodyHeight);
+  expect(watermarkStyle.watermarkZIndex).toBeGreaterThan(watermarkStyle.childBackgroundZIndex);
+  expect(watermarkStyle.watermarkAfterChildBackground).toBe(true);
+  expect(watermarkStyle.watermarkInsideViewport).toBe(true);
+  expect(watermarkStyle.nodeInsideRenderer).toBe(true);
+  expect(watermarkStyle.rendererZIndex).toBeGreaterThan(watermarkStyle.viewportZIndex);
+  expect(watermarkStyle.topNodeIdAtNodeCenter).toBe('root-note');
+
+  await clearPostedMessages(page);
+  const rootBackgroundBox = await rootBackground.boundingBox();
+  expect(rootBackgroundBox).not.toBeNull();
+  await page.mouse.click(rootBackgroundBox.x + rootBackgroundBox.width - 30, rootBackgroundBox.y + rootBackgroundBox.height - 15);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
+    .toBe('workspace-root-watermark');
+});
+
+test('workspace root watermark keeps overview-scale text when the title chrome is width-capped', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.25 }
+    }
+  });
+  const longTitle = './dsc-test-02 - home/users/ziyang01.wang-al/projects/dsc-test-02';
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-watermark-long-title',
+      title: longTitle,
+      position: { x: 120, y: 140 },
+      size: { width: 180, height: 320 },
+      role: 'workspace-root',
+      workspaceRootPath: `/repo/${longTitle}`
+    },
+    {
+      id: 'group-distant-min-zoom-anchor',
+      title: 'Distant Anchor',
+      position: { x: 8400, y: 140 },
+      size: { width: 320, height: 240 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const watermark = page.locator(
+    '[data-root-watermark-frame-id="workspace-root-watermark-long-title"] .canvas-root-watermark-tile'
+  );
+  const title = page.locator('[data-group-id="workspace-root-watermark-long-title"] [data-probe-field="title"]');
+  await expect(watermark.locator(`[data-root-watermark-label="${longTitle}"]`)).toHaveText(longTitle);
+  await expect(title).toHaveValue(longTitle);
+
+  const watermarkStyle = await watermark.evaluate((element) => {
+    const frame = element.closest('[data-root-watermark-frame-id]');
+    const groupId = frame?.getAttribute('data-root-watermark-frame-id');
+    const groupFrame = groupId ? document.querySelector(`[data-group-id="${CSS.escape(groupId)}"]`) : null;
+    const titleInput = groupFrame?.querySelector('[data-probe-field="title"]');
+    const beforeStyle = getComputedStyle(element, '::before');
+    const maskImage = beforeStyle.maskImage || beforeStyle.webkitMaskImage;
+    const maskSize = beforeStyle.maskSize || beforeStyle.webkitMaskSize;
+    const tileWidth = Number.parseFloat(maskSize.split(' ')[0]);
+    const tileHeight = Number.parseFloat(maskSize.split(' ')[1]);
+    if (!(frame instanceof HTMLElement) || !(groupFrame instanceof HTMLElement) || !(titleInput instanceof HTMLElement)) {
+      throw new Error('Workspace root watermark elements not found.');
+    }
+
+    const frameStyles = getComputedStyle(frame);
+    const titleStyles = getComputedStyle(titleInput);
+    const label = element.querySelector('[data-root-watermark-label]');
+    const labelStyles = label instanceof HTMLElement ? getComputedStyle(label) : null;
+    const viewport = document.querySelector('.react-flow__viewport');
+    const viewportZoom = viewport instanceof HTMLElement
+      ? Number.parseFloat(viewport.style.transform.match(/scale\(([-\d.]+)\)/)?.[1] ?? 'NaN')
+      : NaN;
+    const decodeSvgMaskImage = (value) => {
+      const match = value.match(/url\("data:image\/svg\+xml,([^"]+)"\)/u) ??
+        value.match(/url\(data:image\/svg\+xml,([^)]*)\)/u);
+      return match ? decodeURIComponent(match[1]) : null;
+    };
+    return {
+      groupWidth: Math.round(groupFrame.getBoundingClientRect().width),
+      titleClientWidth: titleInput.clientWidth,
+      titleScrollWidth: titleInput.scrollWidth,
+      titleFontSize: Number.parseFloat(titleStyles.fontSize),
+      titleReadableScale: Number.parseFloat(frameStyles.getPropertyValue('--canvas-group-readable-scale')),
+      viewportZoom,
+      watermarkFontSize: Number.parseFloat(frameStyles.getPropertyValue('--canvas-root-watermark-font-size')),
+      watermarkReadableScale: Number.parseFloat(frameStyles.getPropertyValue('--canvas-root-watermark-readable-scale')),
+      labelFontSize: labelStyles ? Number.parseFloat(labelStyles.fontSize) : null,
+      maskImage,
+      textElementCount: decodeSvgMaskImage(maskImage)?.match(/<text\b/gu)?.length ?? 0,
+      hasSecondTextLine: Boolean(decodeSvgMaskImage(maskImage)?.match(/<text\b[^>]* y="[^"]+"/gu)?.[1]),
+      tileWidth,
+      tileHeight
+    };
+  });
+
+  expect(watermarkStyle.titleReadableScale).toBeLessThan(1);
+  expect(watermarkStyle.titleReadableScale).toBeLessThan(watermarkStyle.watermarkReadableScale / 3);
+  expect(watermarkStyle.watermarkReadableScale).toBeCloseTo(1 / watermarkStyle.viewportZoom, 1);
+  expect(watermarkStyle.watermarkFontSize).toBeCloseTo(12 / watermarkStyle.viewportZoom, 1);
+  expect(watermarkStyle.watermarkFontSize).toBeGreaterThan(watermarkStyle.titleFontSize * 3);
+  expect(watermarkStyle.labelFontSize).toBeCloseTo(watermarkStyle.watermarkFontSize, 1);
+  expect(watermarkStyle.maskImage).toContain('data:image/svg+xml');
+  expect(watermarkStyle.maskImage).toContain('dsc-test-02');
+  expect(watermarkStyle.maskImage).not.toContain('home%2Fusers');
+  expect(watermarkStyle.maskImage).not.toContain('projects%2Fdsc-test-02');
+  expect(watermarkStyle.textElementCount).toBe(1);
+  expect(watermarkStyle.hasSecondTextLine).toBe(false);
+  expect(watermarkStyle.tileWidth).toBeGreaterThan(watermarkStyle.groupWidth);
+  expect(watermarkStyle.tileHeight).toBeGreaterThanOrEqual(88 * watermarkStyle.watermarkReadableScale);
+});
+
+test('workspace root group body watermark can be disabled by runtime configuration', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'workspace-root-watermark-disabled',
+      title: 'Backend',
+      position: { x: 120, y: 140 },
+      size: { width: 720, height: 520 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/backend'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext({ workspaceRootWatermarksEnabled: false }));
+  await settleWebview(page, 2);
+
+  const rootBackground = page.locator('[data-group-background-id="workspace-root-watermark-disabled"]');
+  const rootWatermarkFrame = page.locator('[data-root-watermark-frame-id="workspace-root-watermark-disabled"]');
+  await expect(rootBackground).toHaveAttribute('data-group-background-role', 'workspace-root');
+  await expect(rootWatermarkFrame).toHaveCount(0);
+
+  await updateHostState(page, state, createRuntimeContext({ workspaceRootWatermarksEnabled: true }));
+  await settleWebview(page, 2);
+  await expect(rootWatermarkFrame.locator('[data-root-name-watermark="true"]')).toHaveCount(1);
+});
+
+test('workspace root group title reuses regular group title chrome without rename actions', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.5 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-06-03T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'workspace-root-a',
+        title: 'Frontend',
+        position: { x: 120, y: 120 },
+        size: { width: 900, height: 520 },
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/frontend'
+      },
+      {
+        id: 'group-regular',
+        title: 'Frontend',
+        position: { x: 1200, y: 120 },
+        size: { width: 900, height: 520 }
+      }
+    ],
+    edges: []
+  });
+  await settleWebview(page, 2);
+
+  const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
+  const regularFrame = page.locator('[data-group-id="group-regular"]');
+  const rootTitle = rootFrame.locator('[data-probe-field="title"]');
+  const regularTitle = regularFrame.locator('[data-probe-field="title"]');
+  await expect(rootTitle).toHaveValue('Frontend');
+  await expect(rootTitle).toHaveAttribute('readonly', '');
+  await expect(rootTitle).toHaveAttribute('title', '/repo/frontend');
+  await expect(regularTitle).not.toHaveAttribute('readonly', '');
+
+  const titleChrome = await rootFrame.evaluate((frame) => {
+    const regularFrame = document.querySelector('[data-group-id="group-regular"]');
+    const rootInput = frame.querySelector('[data-probe-field="title"]');
+    const regularInput = regularFrame?.querySelector('[data-probe-field="title"]');
+    const rootTitlebar = frame.querySelector('.canvas-group-titlebar');
+    const regularTitlebar = regularFrame?.querySelector('.canvas-group-titlebar');
+    if (
+      !(rootInput instanceof HTMLInputElement) ||
+      !(regularInput instanceof HTMLInputElement) ||
+      !(rootTitlebar instanceof HTMLElement) ||
+      !(regularTitlebar instanceof HTMLElement)
+    ) {
+      throw new Error('Group title chrome not found.');
+    }
+    const rootInputStyles = getComputedStyle(rootInput);
+    const regularInputStyles = getComputedStyle(regularInput);
+    return {
+      rootTagName: rootInput.tagName,
+      regularTagName: regularInput.tagName,
+      rootDataInteractive: rootInput.dataset.nodeInteractive,
+      regularDataInteractive: regularInput.dataset.nodeInteractive,
+      rootFontSize: Number.parseFloat(rootInputStyles.fontSize),
+      regularFontSize: Number.parseFloat(regularInputStyles.fontSize),
+      rootFontWeight: rootInputStyles.fontWeight,
+      regularFontWeight: regularInputStyles.fontWeight,
+      rootHeight: rootTitlebar.getBoundingClientRect().height,
+      regularHeight: regularTitlebar.getBoundingClientRect().height
+    };
+  });
+  expect(titleChrome.rootTagName).toBe(titleChrome.regularTagName);
+  expect(titleChrome.rootDataInteractive).toBe(titleChrome.regularDataInteractive);
+  expect(titleChrome.rootFontSize).toBeCloseTo(titleChrome.regularFontSize, 1);
+  expect(titleChrome.rootFontWeight).toBe(titleChrome.regularFontWeight);
+  expect(titleChrome.rootHeight).toBeCloseTo(titleChrome.regularHeight, 1);
+  expect(titleChrome.rootFontSize * 0.5).toBeCloseTo(12, 1);
+
+  await rootTitle.click();
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
+    .toBe('workspace-root-a');
+  await expect(rootFrame.locator('.canvas-group-split-primary')).toHaveCount(0);
+  await expect(rootFrame.locator('.canvas-group-split-danger')).toHaveCount(0);
+
+  await clearPostedMessages(page);
+  await rootTitle.press(`${PRIMARY_ACCELERATOR_KEY}+KeyA`);
+  await rootTitle.pressSequentially('Renamed Root');
+  await rootTitle.press('Enter');
+  await settleWebview(page, 1);
+  await expect(rootTitle).toHaveValue('Frontend');
+  await expect
+    .poll(async () => (await readPostedMessagesByType(page, 'webview/updateGroupTitle')).length)
+    .toBe(0);
+
+  const rootTitleBox = await rootTitle.boundingBox();
+  const rootFrameBox = await rootFrame.boundingBox();
+  expect(rootTitleBox).not.toBeNull();
+  expect(rootFrameBox).not.toBeNull();
+  await page.mouse.move(rootTitleBox.x + 8, rootTitleBox.y + rootTitleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rootTitleBox.x + 88, rootTitleBox.y + rootTitleBox.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await settleWebview(page, 1);
+  await expect
+    .poll(async () => (await readPostedMessagesByType(page, 'webview/moveGroup')).length)
+    .toBe(0);
+  const rootFrameBoxAfterTitleDrag = await rootFrame.boundingBox();
+  expect(rootFrameBoxAfterTitleDrag).not.toBeNull();
+  expectBoxEdgesClose(rootFrameBoxAfterTitleDrag, rootFrameBox);
+});
+
+for (const groupFixture of [
+  {
+    label: 'regular',
+    group: {
+      id: 'group-focus',
+      title: 'Focus Group',
+      position: { x: 700, y: 420 },
+      size: { width: 820, height: 520 }
+    },
+    viewport: { x: -230, y: -100, zoom: 0.5 }
+  },
+  {
+    label: 'workspace root',
+    group: {
+      id: 'workspace-root-focus',
+      title: 'Frontend Root',
+      position: { x: 1000, y: 740 },
+      size: { width: 1180, height: 760 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    viewport: { x: -340, y: -241, zoom: 0.42 }
+  }
+]) {
+  test(`double-clicking ${groupFixture.label} group titlebar blank area focuses the existing group`, async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 620 });
+    await openHarness(page, {
+      persistedState: {
+        selectedNodeId: 'stale-node-selection',
+        viewport: groupFixture.viewport
+      }
+    });
+    await bootstrap(page, createGroupFocusCanvasState(groupFixture.group));
+    await settleWebview(page, 4);
+
+    const groupFrame = page.locator(`[data-group-id="${groupFixture.group.id}"]`);
+    const beforeGeometry = await readGroupCanvasGeometry(page, groupFixture.group.id);
+    const beforeState = await readPersistedUiState(page);
+    expect(beforeState.viewport).toEqual(groupFixture.viewport);
+    await clearPostedMessages(page);
+
+    const titlebarBox = await groupFrame.locator('.canvas-group-titlebar').boundingBox();
+    expect(titlebarBox).not.toBeNull();
+    await page.mouse.dblclick(titlebarBox.x + 4, titlebarBox.y + titlebarBox.height / 2);
+
+    await expect
+      .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
+      .toBe(groupFixture.group.id);
+
+    await waitForNodeFocusAnimation(page);
+
+    const afterState = await readPersistedUiState(page);
+    expect(afterState.selectedNodeId ?? null).toBeNull();
+    expect(afterState.selectedGroupId).toBe(groupFixture.group.id);
+    expect(afterState.selectedGroupIds).toEqual([groupFixture.group.id]);
+    expect(afterState.viewport).not.toEqual(beforeState.viewport);
+    expect(afterState.viewport.zoom).toBeLessThanOrEqual(1.15);
+    expect(await readGroupCanvasGeometry(page, groupFixture.group.id)).toEqual(beforeGeometry);
+    expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+    expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+    expect(await readPostedMessagesByType(page, 'webview/createEmptyGroup')).toEqual([]);
+    await expectGroupCenteredInViewport(page, groupFixture.group.id);
+  });
+}
+
+test('double-clicking group body blank area focuses the existing group', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 620 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.65 }
+    }
+  });
+  const group = {
+    id: 'group-body-focus',
+    title: 'Body Focus Group',
+    position: { x: 120, y: 120 },
+    size: { width: 620, height: 500 }
+  };
+  await bootstrap(page, createGroupFocusCanvasState(group));
+  await settleWebview(page, 4);
+
+  const groupFrame = page.locator(`[data-group-id="${group.id}"]`);
+  const beforeGeometry = await readGroupCanvasGeometry(page, group.id);
+  const beforeState = await readPersistedUiState(page);
+  const beforeBox = await groupFrame.boundingBox();
+  expect(beforeBox).not.toBeNull();
+  await clearPostedMessages(page);
+
+  await page.mouse.dblclick(beforeBox.x + beforeBox.width - 70, beforeBox.y + beforeBox.height - 70);
+
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
+    .toBe(group.id);
+
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.selectedGroupId).toBe(group.id);
+  expect(afterState.selectedGroupIds).toEqual([group.id]);
+  expect(afterState.viewport).not.toEqual(beforeState.viewport);
+  expect(afterState.viewport.zoom).toBeLessThanOrEqual(1.15);
+  expect(await readGroupCanvasGeometry(page, group.id)).toEqual(beforeGeometry);
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/createEmptyGroup')).toEqual([]);
+  await expectGroupCenteredInViewport(page, group.id);
+});
+
+test('double-clicking group title input keeps the current viewport unchanged', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 620 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: -180, y: -120, zoom: 0.8 }
+    }
+  });
+  const group = {
+    id: 'group-title-input',
+    title: 'Editable Group',
+    position: { x: 260, y: 220 },
+    size: { width: 620, height: 420 }
+  };
+  await bootstrap(page, createGroupFocusCanvasState(group));
+  await settleWebview(page, 4);
+  await clearPostedMessages(page);
+
+  const beforeState = await readPersistedUiState(page);
+
+  await page.locator(`[data-group-id="${group.id}"] [data-probe-field="title"]`).dblclick();
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.viewport).toEqual(beforeState.viewport);
+  expect(await readPostedMessagesByType(page, 'webview/updateGroupTitle')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+});
+
+test('workspace root group title counter-scales like regular group titles below the content inset cap', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 520 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.4 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-06-08T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'workspace-root-a',
+        title: 'Frontend',
+        position: { x: 120, y: 120 },
+        size: { width: 2800, height: 1400 },
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/frontend'
+      },
+      {
+        id: 'group-regular',
+        title: 'Frontend',
+        position: { x: 3600, y: 120 },
+        size: { width: 2800, height: 1400 }
+      }
+    ],
+    edges: []
+  });
+  await settleWebview(page, 2);
+
+  await page.locator('.react-flow__controls-fitview').click();
+  await expect.poll(async () => readCanvasViewportScale(page)).toBeLessThan(0.25);
+
+  const titleChrome = await page.locator('[data-group-id="workspace-root-a"]').evaluate((frame) => {
+    const regularFrame = document.querySelector('[data-group-id="group-regular"]');
+    const rootTitlebar = frame.querySelector('.canvas-group-titlebar');
+    const regularTitlebar = regularFrame?.querySelector('.canvas-group-titlebar');
+    const rootInput = frame.querySelector('.canvas-group-title .window-title-input');
+    const regularInput = regularFrame?.querySelector('.canvas-group-title .window-title-input');
+    const viewport = document.querySelector('.react-flow__viewport');
+    if (
+      !(regularFrame instanceof HTMLElement) ||
+      !(rootTitlebar instanceof HTMLElement) ||
+      !(regularTitlebar instanceof HTMLElement) ||
+      !(rootInput instanceof HTMLInputElement) ||
+      !(regularInput instanceof HTMLInputElement) ||
+      !(viewport instanceof HTMLElement)
+    ) {
+      throw new Error('Workspace root title chrome not found.');
+    }
+    const zoom = Number(viewport.style.transform.match(/scale\(([-\d.]+)\)/)?.[1] ?? NaN);
+    const rootStyles = getComputedStyle(frame);
+    const regularStyles = getComputedStyle(regularFrame);
+    const rootInputStyles = getComputedStyle(rootInput);
+    const regularInputStyles = getComputedStyle(regularInput);
+    return {
+      zoom,
+      rootReadableScale: Number.parseFloat(rootStyles.getPropertyValue('--canvas-group-readable-scale')),
+      regularReadableScale: Number.parseFloat(regularStyles.getPropertyValue('--canvas-group-readable-scale')),
+      rootTitlebarHeight: rootTitlebar.getBoundingClientRect().height,
+      regularTitlebarHeight: regularTitlebar.getBoundingClientRect().height,
+      rootFontSize: Number.parseFloat(rootInputStyles.fontSize),
+      regularFontSize: Number.parseFloat(regularInputStyles.fontSize),
+      rootTitlebarWidth: rootTitlebar.getBoundingClientRect().width,
+      regularTitlebarWidth: regularTitlebar.getBoundingClientRect().width
+    };
+  });
+
+  expect(titleChrome.zoom).toBeLessThan(0.25);
+  expect(titleChrome.rootReadableScale).toBeCloseTo(1 / titleChrome.zoom, 1);
+  expect(titleChrome.rootReadableScale).toBeCloseTo(titleChrome.regularReadableScale, 1);
+  expect(titleChrome.rootTitlebarHeight).toBeCloseTo(titleChrome.regularTitlebarHeight, 1);
+  expect(titleChrome.rootTitlebarHeight).toBeGreaterThanOrEqual(24);
+  expect(titleChrome.rootFontSize * titleChrome.zoom).toBeCloseTo(12, 1);
+  expect(titleChrome.regularFontSize * titleChrome.zoom).toBeCloseTo(12, 1);
+  expect(titleChrome.rootTitlebarWidth).toBeCloseTo(titleChrome.regularTitlebarWidth, 1);
+});
+
+test('workspace root group resize commit survives host refresh and follow-up selection without geometry drift', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'workspace-root-a',
+      selectedGroupIds: ['workspace-root-a'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note', { x: 260, y: 260 }),
+      size: { width: 220, height: 180 },
+      groupId: 'workspace-root-a'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-a',
+      title: 'Frontend Root',
+      position: { x: 120, y: 120 },
+      size: { width: 760, height: 560 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
+  const initialProbe = await requestWebviewProbe(page);
+  expect(initialProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    groupId: 'workspace-root-a',
+    role: 'workspace-root',
+    selected: true,
+    left: 120,
+    top: 120,
+    width: 760,
+    height: 560
+  });
+
+  const handle = rootFrame.locator('[data-group-resize-direction="bottom-right"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await clearPostedMessages(page);
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 180, handleBox.y + handleBox.height / 2 + 120, { steps: 5 });
+  await page.mouse.up();
+
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload).toMatchObject({
+    groupId: 'workspace-root-a',
+    position: { x: 120, y: 120 },
+    size: { width: 940, height: 680 }
+  });
+
+  state.groups[0] = {
+    ...state.groups[0],
+    position: message.payload.position,
+    size: message.payload.size
+  };
+  await updateHostState(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const committedGeometry = await readGroupCanvasGeometry(page, 'workspace-root-a');
+  expect(committedGeometry).toEqual({ x: 120, y: 120, width: 940, height: 680 });
+  const committedProbe = await requestWebviewProbe(page);
+  expect(committedProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    selected: true,
+    left: 120,
+    top: 120,
+    width: 940,
+    height: 680
+  });
+
+  await clearPostedMessages(page);
+  await rootFrame.locator('.canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await settleWebview(page, 3);
+
+  expect(await readGroupCanvasGeometry(page, 'workspace-root-a')).toEqual(committedGeometry);
+  const afterClickProbe = await requestWebviewProbe(page);
+  expect(afterClickProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    selected: true,
+    left: 120,
+    top: 120,
+    width: 940,
+    height: 680
+  });
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+});
+
+test('workspace root group resize draft is replaced by repaired host geometry after refresh', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'workspace-root-a',
+      selectedGroupIds: ['workspace-root-a'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note', { x: 260, y: 260 }),
+      size: { width: 220, height: 180 },
+      groupId: 'workspace-root-a'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-a',
+      title: 'Frontend Root',
+      position: { x: 120, y: 120 },
+      size: { width: 760, height: 560 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'workspace-root-b',
+      title: 'Backend Root',
+      position: { x: 1120, y: 120 },
+      size: { width: 760, height: 560 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/backend'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
+  await clearPostedMessages(page);
+  const handle = rootFrame.locator('[data-group-resize-direction="bottom-right"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 180, handleBox.y + handleBox.height / 2 + 120, { steps: 5 });
+  await page.mouse.up();
+
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload).toMatchObject({
+    groupId: 'workspace-root-a',
+    position: { x: 120, y: 120 },
+    size: { width: 940, height: 680 }
+  });
+
+  state.groups[0] = {
+    ...state.groups[0],
+    position: { x: 96, y: 104 },
+    size: { width: 820, height: 620 }
+  };
+  await updateHostState(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  expect(await readGroupCanvasGeometry(page, 'workspace-root-a')).toEqual({
+    x: 96,
+    y: 104,
+    width: 820,
+    height: 620
+  });
+  const repairedProbe = await requestWebviewProbe(page);
+  expect(repairedProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    selected: true,
+    left: 96,
+    top: 104,
+    width: 820,
+    height: 620
+  });
+
+  await clearPostedMessages(page);
+  await page.locator('[data-group-id="workspace-root-b"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await settleWebview(page, 2);
+  await rootFrame.locator('.canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await settleWebview(page, 3);
+
+  expect(await readGroupCanvasGeometry(page, 'workspace-root-a')).toEqual({
+    x: 96,
+    y: 104,
+    width: 820,
+    height: 620
+  });
+  const afterReselectProbe = await requestWebviewProbe(page);
+  expect(afterReselectProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    selected: true,
+    left: 96,
+    top: 104,
+    width: 820,
+    height: 620
+  });
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+});
+
+test('workspace root group selected title chrome keeps nodes inside body while zoomed out', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'workspace-root-a',
+      selectedGroupIds: ['workspace-root-a', 'group-regular'],
+      viewport: { x: 0, y: 0, zoom: 0.25 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note', { x: 200, y: 200 }),
+      groupId: 'workspace-root-a'
+    },
+    createManualNoteNode('distant-note', { x: 9000, y: 200 })
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-a',
+      title: 'Frontend Root',
+      position: { x: 120, y: 120 },
+      size: { width: 760, height: 560 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'group-regular',
+      title: 'Frontend Root',
+      position: { x: 1120, y: 120 },
+      size: { width: 760, height: 560 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
+  const regularFrame = page.locator('[data-group-id="group-regular"]');
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds ?? [])
+    .toEqual(['workspace-root-a', 'group-regular']);
+  await expect(rootFrame.locator('.canvas-group-resize-control')).toHaveCount(8);
+  await expect(rootFrame.locator('.canvas-group-toolbar')).toHaveCount(0);
+
+  const layout = await rootFrame.evaluate((frame) => {
+    const regularFrame = document.querySelector('[data-group-id="group-regular"]');
+    const rootNode = document.querySelector('[data-node-id="root-note"]');
+    const rootBackground = document.querySelector('[data-group-background-id="workspace-root-a"]');
+    const rootTitlebar = frame.querySelector('.canvas-group-titlebar');
+    const regularTitlebar = regularFrame?.querySelector('.canvas-group-titlebar');
+    if (
+      !(rootNode instanceof HTMLElement) ||
+      !(rootBackground instanceof HTMLElement) ||
+      !(rootTitlebar instanceof HTMLElement) ||
+      !(regularTitlebar instanceof HTMLElement)
+    ) {
+      throw new Error('Workspace root selected chrome not found.');
+    }
+
+    const frameRect = frame.getBoundingClientRect();
+    const nodeRect = rootNode.getBoundingClientRect();
+    const titlebarRect = rootTitlebar.getBoundingClientRect();
+    const regularTitlebarRect = regularTitlebar.getBoundingClientRect();
+    const frameScale = frameRect.height / frame.offsetHeight;
+    const bodyTopOffset = Number.parseFloat(getComputedStyle(rootBackground).getPropertyValue('--canvas-group-body-top')) * frameScale;
+    return {
+      nodeTopOffsetFromFrame: Math.round(nodeRect.top - frameRect.top),
+      bodyTopOffsetFromFrame: bodyTopOffset,
+      titlebarTopOffsetFromFrame: titlebarRect.top - frameRect.top,
+      titlebarBottomOffsetFromFrame: titlebarRect.bottom - frameRect.top,
+      rootTitlebarHeight: titlebarRect.height,
+      regularTitlebarHeight: regularTitlebarRect.height
+    };
+  });
+  expect(layout.nodeTopOffsetFromFrame).toBeGreaterThanOrEqual(layout.bodyTopOffsetFromFrame - 1);
+  expect(layout.bodyTopOffsetFromFrame).toBeCloseTo(11.2, 1);
+  expect(Math.abs(layout.titlebarBottomOffsetFromFrame - layout.bodyTopOffsetFromFrame)).toBeLessThanOrEqual(2);
+  expect(layout.titlebarTopOffsetFromFrame).toBeLessThan(0);
+  expect(layout.rootTitlebarHeight).toBeCloseTo(layout.regularTitlebarHeight, 1);
+
+  await clearPostedMessages(page);
+  const handle = rootFrame.locator('[data-group-resize-direction="top-left"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 60, handleBox.y + handleBox.height / 2 + 60, { steps: 4 });
+  await page.mouse.up();
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload.groupId).toBe('workspace-root-a');
+  const resizedRootMember = state.nodes[0];
+  const repairedRootPosition = {
+    x: Math.min(message.payload.position.x, resizedRootMember.position.x - 80),
+    y: Math.min(message.payload.position.y, resizedRootMember.position.y - 80)
+  };
+  const repairedRootRight = Math.max(
+    message.payload.position.x + message.payload.size.width,
+    resizedRootMember.position.x + resizedRootMember.size.width + 80
+  );
+  const repairedRootBottom = Math.max(
+    message.payload.position.y + message.payload.size.height,
+    resizedRootMember.position.y + resizedRootMember.size.height + 80
+  );
+  state.groups[0] = {
+    ...state.groups[0],
+    position: repairedRootPosition,
+    size: {
+      width: repairedRootRight - repairedRootPosition.x,
+      height: repairedRootBottom - repairedRootPosition.y
+    }
+  };
+  await updateHostState(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const afterResize = await rootFrame.evaluate((frame) => {
+    const rootNode = document.querySelector('[data-node-id="root-note"]');
+    const rootBackground = document.querySelector('[data-group-background-id="workspace-root-a"]');
+    if (!(rootNode instanceof HTMLElement) || !(rootBackground instanceof HTMLElement)) {
+      throw new Error('Workspace root selected chrome not found after resize.');
+    }
+    const frameRect = frame.getBoundingClientRect();
+    const nodeRect = rootNode.getBoundingClientRect();
+    const titlebar = frame.querySelector('.canvas-group-titlebar');
+    if (!(titlebar instanceof HTMLElement)) {
+      throw new Error('Workspace root titlebar not found after resize.');
+    }
+    const titlebarRect = titlebar.getBoundingClientRect();
+    const frameScale = frameRect.height / frame.offsetHeight;
+    const bodyTopOffset = Number.parseFloat(getComputedStyle(rootBackground).getPropertyValue('--canvas-group-body-top')) * frameScale;
+    return {
+      nodeTopOffsetFromFrame: Math.round(nodeRect.top - frameRect.top),
+      bodyTopOffsetFromFrame: bodyTopOffset,
+      titlebarBottomOffsetFromFrame: titlebarRect.bottom - frameRect.top
+    };
+  });
+  expect(afterResize.nodeTopOffsetFromFrame).toBeGreaterThanOrEqual(afterResize.bodyTopOffsetFromFrame - 1);
+  expect(Math.abs(afterResize.titlebarBottomOffsetFromFrame - afterResize.bodyTopOffsetFromFrame)).toBeLessThanOrEqual(2);
+});
+
+test('canvas groups do not create document scrollbars when zoomed in', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 520 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1.8 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Zoomed Group',
+      position: { x: 120, y: 120 },
+      size: { width: 520, height: 420 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const overflowSnapshot = await page.locator('[data-group-id="group-1"]').evaluate((frame) => {
+    const shell = document.querySelector('.canvas-shell');
+    const reactFlow = document.querySelector('.react-flow');
+    const renderer = document.querySelector('.react-flow__renderer');
+    const pane = document.querySelector('.react-flow__pane');
+    if (
+      !(shell instanceof HTMLElement) ||
+      !(reactFlow instanceof HTMLElement) ||
+      !(renderer instanceof HTMLElement) ||
+      !(pane instanceof HTMLElement)
+    ) {
+      throw new Error('Canvas shell or React Flow layers not found.');
+    }
+    const documentElement = document.documentElement;
+    const reactFlowStyles = getComputedStyle(reactFlow);
+    const rendererStyles = getComputedStyle(renderer);
+    const paneStyles = getComputedStyle(pane);
+    return {
+      documentScrollWidth: documentElement.scrollWidth,
+      documentScrollHeight: documentElement.scrollHeight,
+      documentClientWidth: documentElement.clientWidth,
+      documentClientHeight: documentElement.clientHeight,
+      shellScrollWidth: shell.scrollWidth,
+      shellScrollHeight: shell.scrollHeight,
+      shellClientWidth: shell.clientWidth,
+      shellClientHeight: shell.clientHeight,
+      reactFlowOverflow: reactFlowStyles.overflow,
+      rendererOverflow: rendererStyles.overflow,
+      paneOverflow: paneStyles.overflow,
+      frameSharesRendererWithPane: frame.closest('.react-flow__renderer') === pane.closest('.react-flow__renderer')
+    };
+  });
+
+  expect(overflowSnapshot.documentScrollWidth).toBe(overflowSnapshot.documentClientWidth);
+  expect(overflowSnapshot.documentScrollHeight).toBe(overflowSnapshot.documentClientHeight);
+  expect(overflowSnapshot.shellScrollWidth).toBe(overflowSnapshot.shellClientWidth);
+  expect(overflowSnapshot.shellScrollHeight).toBe(overflowSnapshot.shellClientHeight);
+  expect(overflowSnapshot.reactFlowOverflow).toBe('hidden');
+  expect(overflowSnapshot.rendererOverflow).toBe('hidden');
+  expect(overflowSnapshot.paneOverflow).toBe('hidden');
+  expect(overflowSnapshot.frameSharesRendererWithPane).toBe(true);
+});
+
+test('canvas group drag follows the pointer without panning the canvas', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1.8 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Drag Group',
+      position: { x: 120, y: 120 },
+      size: { width: 320, height: 220 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const beforeBox = await groupFrame.boundingBox();
+  expect(beforeBox).not.toBeNull();
+  const beforeTransform = await readCanvasViewportTransform(page);
+  const dragDelta = { x: 90, y: 54 };
+  const startPoint = {
+    x: beforeBox.x + 4,
+    y: beforeBox.y + beforeBox.height / 2
+  };
+
+  await clearPostedMessages(page);
+  await page.mouse.move(startPoint.x, startPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(startPoint.x + dragDelta.x, startPoint.y + dragDelta.y, { steps: 4 });
+  await settleWebview(page, 2);
+
+  const draftBox = await groupFrame.boundingBox();
+  expect(draftBox).not.toBeNull();
+  expect(Math.abs(draftBox.x - beforeBox.x - dragDelta.x)).toBeLessThanOrEqual(5);
+  expect(Math.abs(draftBox.y - beforeBox.y - dragDelta.y)).toBeLessThanOrEqual(5);
+  expect(await readCanvasViewportTransform(page)).toBe(beforeTransform);
+
+  await page.mouse.up();
+  const message = await waitForPostedMessageByType(page, 'webview/moveGroup');
+  expect(message.payload.groupId).toBe('group-1');
+  expect(message.payload.position).toEqual({ x: 170, y: 150 });
+  expect(await readCanvasViewportTransform(page)).toBe(beforeTransform);
+});
+
+test('canvas group body drag pans the canvas instead of moving the group', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'group-1',
+      selectedGroupIds: ['group-1'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Pan Body Group',
+      position: { x: 120, y: 120 },
+      size: { width: 620, height: 500 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const beforeBox = await groupFrame.boundingBox();
+  expect(beforeBox).not.toBeNull();
+  const beforeViewport = await readCanvasViewport(page);
+  expect(beforeViewport).toEqual({ x: 0, y: 0, zoom: 1 });
+  const startPoint = {
+    x: beforeBox.x + beforeBox.width - 48,
+    y: beforeBox.y + beforeBox.height - 44
+  };
+
+  await clearPostedMessages(page);
+  await page.mouse.move(startPoint.x, startPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(startPoint.x + 96, startPoint.y + 72, { steps: 6 });
+  await settleWebview(page, 2);
+  await page.mouse.up();
+  await settleWebview(page, 2);
+
+  const afterViewport = await readCanvasViewport(page);
+  expect(afterViewport.zoom).toBe(beforeViewport.zoom);
+  expect(afterViewport.x).toBeLessThan(beforeViewport.x - 40);
+  expect(afterViewport.y).toBeLessThan(beforeViewport.y - 30);
+  const afterBox = await groupFrame.boundingBox();
+  expect(afterBox).not.toBeNull();
+  expect(Math.abs(afterBox.x - beforeBox.x - (afterViewport.x - beforeViewport.x))).toBeLessThanOrEqual(6);
+  expect(Math.abs(afterBox.y - beforeBox.y - (afterViewport.y - beforeViewport.y))).toBeLessThanOrEqual(6);
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+});
+
+test('canvas context menu can create an empty group', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createEmptyCanvasState());
+
+  await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 260, y: 220 } });
+  await expect(page.locator('[data-context-menu-action="create-empty-group"] .codicon-symbol-array')).toBeVisible();
+  await page.locator('[data-context-menu-action="create-empty-group"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createEmptyGroup');
+  expect(message.payload.size).toEqual({ width: 360, height: 240 });
+  expect(typeof message.payload.position.x).toBe('number');
+  expect(typeof message.payload.position.y).toBe('number');
+});
+
+test('canvas group body blank area selects the group and preserves right-click menu', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 160, y: 180 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 620, height: 500 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toHaveCount(0);
+
+  await page.mouse.click(690, 580);
+  await expect(groupFrame.locator('.canvas-group-split-primary')).toBeVisible();
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
+    .toBe('group-1');
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeId ?? null)
+    .toBeNull();
+
+  await page.locator('.react-flow__pane').click({ position: { x: 30, y: 30 } });
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null)
+    .toBeNull();
+
+  await page.mouse.click(690, 580, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('.canvas-context-menu-header-copy')).toContainText('画布操作');
+  await expect(menu.locator('[data-context-menu-action="create-empty-group"]')).toBeVisible();
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
+    .toBe('group-1');
+});
+
+test('canvas group body context menu creates objects inside the group', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 720, height: 620 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.mouse.click(520, 500, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-kind="note"]').click();
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'note',
+    preferredPosition: {
+      x: 330,
+      y: 300
+    },
+    targetGroupId: 'group-1'
+  });
+
+  await clearPostedMessages(page);
+  await page.mouse.click(520, 500, { button: 'right' });
+  await page.locator('[data-context-menu-action="create-empty-group"]').click();
+  const createGroupMessage = await waitForPostedMessageByType(page, 'webview/createEmptyGroup');
+  expect(createGroupMessage.payload).toEqual({
+    position: { x: 520, y: 500 },
+    size: { width: 360, height: 240 },
+    parentGroupId: 'group-1'
+  });
+});
+
+test('canvas group body context menu keeps target group after pan and zoom', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 100, y: 80, zoom: 0.8 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 240, y: 240 },
+      size: { width: 720, height: 620 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  await page.mouse.click(660, 420, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-kind="note"]').click();
+  expect(await waitForCreateDemoNodePayload(page)).toEqual({
+    kind: 'note',
+    preferredPosition: {
+      x: 510,
+      y: 225
+    },
+    targetGroupId: 'group-1'
+  });
+});
+
+test('canvas group body context menu can group selected members inside that group', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 180, y: 220 }),
+      groupId: 'group-1'
+    },
+    {
+      ...createManualNoteNode('note-2', { x: 460, y: 220 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 820, height: 620 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await nodeById(page, 'note-1').click();
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeIds)
+    .toEqual(['note-1', 'note-2']);
+
+  await page.mouse.click(880, 680, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-action="create-group-from-selection"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="create-group-from-selection"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: ['note-1', 'note-2'],
+    groupIds: [],
+    parentGroupId: 'group-1'
+  });
+});
+
+test('canvas context menu can create a group from selected peer groups', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.groups = [
+    {
+      id: 'group-a',
+      title: 'Group A',
+      position: { x: 120, y: 120 },
+      size: { width: 220, height: 180 }
+    },
+    {
+      id: 'group-b',
+      title: 'Group B',
+      position: { x: 420, y: 120 },
+      size: { width: 220, height: 180 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await page.locator('[data-group-id="group-a"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.locator('[data-group-id="group-b"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
+    .toEqual(['group-a', 'group-b']);
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await page.locator('[data-group-id="group-a"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
+    .toEqual(['group-b']);
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await page.locator('[data-group-id="group-a"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedGroupIds)
+    .toEqual(['group-b', 'group-a']);
+
+  await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 80, y: 520 } });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu.locator('[data-context-menu-action="create-group-from-selection"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="create-group-from-selection"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: [],
+    groupIds: ['group-b', 'group-a']
+  });
+});
+
+test('canvas groups resize from all eight directions', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-23T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Group 1',
+        position: { x: 240, y: 220 },
+        size: { width: 320, height: 220 }
+      }
+    ],
+    edges: []
+  });
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  await expect(groupFrame.locator('.canvas-group-resize-control')).toHaveCount(0);
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await expect(groupFrame.locator('.canvas-group-resize-line')).toHaveCount(4);
+  await expect(groupFrame.locator('.canvas-group-resize-control')).toHaveCount(8);
+
+  const resizeAffordanceStyles = await groupFrame.evaluate((frame) => {
+    const topLine = frame.querySelector('.canvas-group-resize-line-top');
+    const topControl = frame.querySelector('[data-group-resize-direction="top"]');
+    const cornerControl = frame.querySelector('[data-group-resize-direction="bottom-right"]');
+    if (!(topLine instanceof HTMLElement) || !(topControl instanceof HTMLElement) || !(cornerControl instanceof HTMLElement)) {
+      throw new Error('Group resize affordance not found.');
+    }
+    const topLineStyles = getComputedStyle(topLine);
+    const topControlAfterStyles = getComputedStyle(topControl, '::after');
+    const cornerControlStyles = getComputedStyle(cornerControl);
+    const cornerControlAfterStyles = getComputedStyle(cornerControl, '::after');
+    return {
+      topLineBorderTopWidth: topLineStyles.borderTopWidth,
+      topLineBorderTopColor: topLineStyles.borderTopColor,
+      topControlBackground: getComputedStyle(topControl).backgroundColor,
+      topControlAfterDisplay: topControlAfterStyles.display,
+      cornerControlBorderTopWidth: cornerControlStyles.borderTopWidth,
+      cornerControlBackground: cornerControlStyles.backgroundColor,
+      cornerControlAfterDisplay: cornerControlAfterStyles.display,
+      cornerControlAfterBorderRadius: cornerControlAfterStyles.borderRadius,
+      cornerControlAfterBackground: cornerControlAfterStyles.backgroundColor
+    };
+  });
+  expect(resizeAffordanceStyles.topLineBorderTopWidth).toBe('2px');
+  expect(resizeAffordanceStyles.topLineBorderTopColor).toBe('rgb(69, 69, 69)');
+  expect(resizeAffordanceStyles.topControlBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(resizeAffordanceStyles.topControlAfterDisplay).toBe('none');
+  expect(resizeAffordanceStyles.cornerControlBorderTopWidth).toBe('0px');
+  expect(resizeAffordanceStyles.cornerControlBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(resizeAffordanceStyles.cornerControlAfterDisplay).not.toBe('none');
+  expect(Number.parseFloat(resizeAffordanceStyles.cornerControlAfterBorderRadius)).toBeGreaterThanOrEqual(999);
+  expect(resizeAffordanceStyles.cornerControlAfterBackground).toBe('rgb(69, 69, 69)');
+
+  const dragResizeHandle = async (direction, deltaX, deltaY) => {
+    await clearPostedMessages(page);
+    const handle = groupFrame.locator(`[data-group-resize-direction="${direction}"]`);
+    const handleBox = await handle.boundingBox();
+    expect(handleBox).not.toBeNull();
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handleBox.x + handleBox.width / 2 + deltaX, handleBox.y + handleBox.height / 2 + deltaY, { steps: 4 });
+    await page.mouse.up();
+    const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+    expect(message.payload.groupId).toBe('group-1');
+    return message.payload;
+  };
+
+  expect(await dragResizeHandle('right', 40, 0)).toMatchObject({
+    position: { x: 240, y: 220 },
+    size: { width: 360, height: 220 }
+  });
+  expect(await dragResizeHandle('bottom', 0, 40)).toMatchObject({
+    position: { x: 240, y: 220 },
+    size: { width: 320, height: 260 }
+  });
+  expect(await dragResizeHandle('left', -40, 0)).toMatchObject({
+    position: { x: 200, y: 220 },
+    size: { width: 360, height: 220 }
+  });
+  expect(await dragResizeHandle('top', 0, -40)).toMatchObject({
+    position: { x: 240, y: 180 },
+    size: { width: 320, height: 260 }
+  });
+  expect(await dragResizeHandle('top-left', -40, -30)).toMatchObject({
+    position: { x: 200, y: 190 },
+    size: { width: 360, height: 250 }
+  });
+  expect(await dragResizeHandle('top-right', 40, -30)).toMatchObject({
+    position: { x: 240, y: 190 },
+    size: { width: 360, height: 250 }
+  });
+  expect(await dragResizeHandle('bottom-left', -40, 30)).toMatchObject({
+    position: { x: 200, y: 220 },
+    size: { width: 360, height: 250 }
+  });
+  expect(await dragResizeHandle('bottom-right', 40, 30)).toMatchObject({
+    position: { x: 240, y: 220 },
+    size: { width: 360, height: 250 }
+  });
+});
+
+test('canvas zoom keeps group title chrome outside the body boundary', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'group-1',
+      selectedGroupIds: ['group-1'],
+      // Keep the top-left resize handle away from the viewport edge so this isolates resize from auto-pan.
+      viewport: { x: 120, y: 120, zoom: 0.25 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 148, y: 148 }),
+      size: { width: 220, height: 180 },
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Readable Planning Group',
+      position: { x: 120, y: 120 },
+      size: { width: 520, height: 360 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const noteNode = nodeById(page, 'note-1');
+  const layout = await groupFrame.evaluate((frame) => {
+    const titlebar = frame.querySelector('.canvas-group-titlebar');
+    const background = document.querySelector('[data-group-background-id="group-1"]');
+    const note = document.querySelector('[data-node-id="note-1"]');
+    if (!(titlebar instanceof HTMLElement) || !(background instanceof HTMLElement) || !(note instanceof HTMLElement)) {
+      throw new Error('Group body boundary chrome not found.');
+    }
+
+    const frameRect = frame.getBoundingClientRect();
+    const titlebarRect = titlebar.getBoundingClientRect();
+    const noteRect = note.getBoundingClientRect();
+    const bodyTop = Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-body-top')) * (frameRect.height / frame.offsetHeight);
+    return {
+      bodyTop,
+      titlebarTop: titlebarRect.top - frameRect.top,
+      titlebarBottom: titlebarRect.bottom - frameRect.top,
+      titlebarHeight: titlebarRect.height,
+      noteTop: noteRect.top - frameRect.top
+    };
+  });
+  expect(layout.bodyTop).toBeCloseTo(11.2, 1);
+  expect(layout.titlebarHeight).toBeGreaterThan(layout.bodyTop);
+  expect(layout.titlebarTop).toBeLessThan(0);
+  expect(layout.titlebarBottom).toBeCloseTo(layout.bodyTop, -1);
+  expect(layout.noteTop).toBeGreaterThanOrEqual(layout.bodyTop - 1);
+  const viewportScale = await readCanvasViewportScale(page);
+  expect(viewportScale).not.toBeNull();
+
+  const initialNoteBox = await noteNode.boundingBox();
+  expect(initialNoteBox).not.toBeNull();
+  await clearPostedMessages(page);
+  const handle = groupFrame.locator('[data-group-resize-direction="top-left"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 - 40, handleBox.y + handleBox.height / 2 - 40, { steps: 4 });
+  await settleWebview(page, 2);
+  const draftNoteBox = await noteNode.boundingBox();
+  expect(draftNoteBox).not.toBeNull();
+  expectBoxEdgesClose(draftNoteBox, initialNoteBox);
+  await page.mouse.up();
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  const expectedResizeDelta = Math.round(40 / viewportScale);
+  expect(message.payload).toMatchObject({
+    groupId: 'group-1',
+    position: { x: 120 - expectedResizeDelta, y: 120 - expectedResizeDelta },
+    size: { width: 520 + expectedResizeDelta, height: 360 + expectedResizeDelta }
+  });
+});
+
+test('canvas group border stroke stays screen-stable across zoom levels', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.5 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-26T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Group 1',
+        position: { x: 240, y: 220 },
+        size: { width: 320, height: 220 }
+      }
+    ],
+    edges: []
+  });
+  await settleWebview(page, 2);
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const groupBackground = page.locator('[data-group-background-id="group-1"]');
+  await expect(groupBackground).toBeVisible();
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await expect(groupFrame.locator('.canvas-group-resize-line')).toHaveCount(4);
+
+  const zoomedChrome = await groupFrame.evaluate((frame) => {
+    const background = document.querySelector('[data-group-background-id="group-1"]');
+    const line = frame.querySelector('.canvas-group-resize-line-top');
+    if (!(background instanceof HTMLElement) || !(line instanceof HTMLElement)) {
+      throw new Error('Group chrome not found.');
+    }
+    const backgroundStyles = getComputedStyle(background);
+    const frameStyles = getComputedStyle(frame);
+    const lineStyles = getComputedStyle(line);
+    const viewport = document.querySelector('.react-flow__viewport');
+    return {
+      viewportTransform: viewport instanceof HTMLElement ? viewport.style.transform : '',
+      backgroundBeforeBorderTopWidth: getComputedStyle(background, '::before').borderTopWidth,
+      backgroundAfterBorderBottomWidth: getComputedStyle(background, '::after').borderBottomWidth,
+      frameBorderTopWidth: frameStyles.borderTopWidth,
+      selectedLineBorderTopWidth: lineStyles.borderTopWidth
+    };
+  });
+  expect(zoomedChrome.viewportTransform).toContain('scale(0.5)');
+  expect(Number.parseFloat(zoomedChrome.backgroundBeforeBorderTopWidth)).toBeCloseTo(2, 1);
+  expect(Number.parseFloat(zoomedChrome.backgroundAfterBorderBottomWidth)).toBeCloseTo(2, 1);
+  expect(Number.parseFloat(zoomedChrome.frameBorderTopWidth)).toBeCloseTo(2, 1);
+  expect(Number.parseFloat(zoomedChrome.selectedLineBorderTopWidth)).toBeCloseTo(4, 1);
+});
+
+test('canvas group title and action buttons only counter-scale while zooming out', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 0.5 }
+    }
+  });
+  await applyWorkbenchTheme(page, 'dark');
+  await bootstrap(page, {
+    version: 1,
+    updatedAt: '2026-05-26T00:00:00.000Z',
+    nodes: [],
+    groups: [
+      {
+        id: 'group-1',
+        title: 'Long Planning Group Title',
+        position: { x: 240, y: 220 },
+        size: { width: 360, height: 160 }
+      },
+      {
+        id: 'group-2',
+        title: 'Group 2',
+        position: { x: 520, y: 220 },
+        size: { width: 1000, height: 180 }
+      }
+    ],
+    edges: []
+  });
+  await settleWebview(page, 2);
+
+  const readGroupChromeLayout = async (groupId) => {
+    const groupFrame = page.locator('[data-group-id="' + groupId + '"]');
+    await groupFrame.locator('.canvas-group-titlebar').click();
+    await expect(groupFrame.locator('.canvas-group-toolbar')).toBeVisible();
+    return groupFrame.evaluate((frame, targetGroupId) => {
+      const background = document.querySelector('[data-group-background-id="' + targetGroupId + '"]');
+      const titlebar = frame.querySelector('.canvas-group-titlebar');
+      const titleInput = frame.querySelector('.canvas-group-title .window-title-input');
+      const toolbar = frame.querySelector('.canvas-group-toolbar');
+      const primaryButton = frame.querySelector('.canvas-group-split-primary');
+      const dangerButton = frame.querySelector('.canvas-group-split-danger');
+      if (
+        !(background instanceof HTMLElement) ||
+        !(titlebar instanceof HTMLElement) ||
+        !(titleInput instanceof HTMLElement) ||
+        !(toolbar instanceof HTMLElement) ||
+        !(primaryButton instanceof HTMLElement) ||
+        !(dangerButton instanceof HTMLElement)
+      ) {
+        throw new Error('Group readable chrome not found.');
+      }
+      const frameRect = frame.getBoundingClientRect();
+      const titlebarRect = titlebar.getBoundingClientRect();
+      const titleInputRect = titleInput.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const primaryRect = primaryButton.getBoundingClientRect();
+      const dangerRect = dangerButton.getBoundingClientRect();
+      const titleStyles = getComputedStyle(titlebar);
+      const inputStyles = getComputedStyle(titlebar.querySelector('.window-title-input'));
+      const buttonStyles = getComputedStyle(primaryButton);
+      return {
+        frameWidth: frameRect.width,
+        bodyTopOffset: Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-body-top')) * (frameRect.height / frame.offsetHeight),
+        titlebarTop: titlebarRect.top - frameRect.top,
+        titlebarWidth: titlebarRect.width,
+        titleInputWidth: titleInputRect.width,
+        toolbarWidth: toolbarRect.width,
+        titlebarHeight: titlebarRect.height,
+        toolbarHeight: toolbarRect.height,
+        titlebarRight: titlebarRect.right - frameRect.left,
+        toolbarLeft: toolbarRect.left - frameRect.left,
+        toolbarRight: toolbarRect.right - frameRect.left,
+        titleFontSize: Number.parseFloat(inputStyles.fontSize),
+        buttonFontSize: Number.parseFloat(buttonStyles.fontSize),
+        titlePaddingLeft: Number.parseFloat(titleStyles.paddingLeft),
+        buttonPaddingLeft: Number.parseFloat(buttonStyles.paddingLeft),
+        primaryButtonWidth: primaryRect.width,
+        dangerButtonWidth: dangerRect.width
+      };
+    }, groupId);
+  };
+
+  const narrowLayout = await readGroupChromeLayout('group-1');
+  expect(narrowLayout.titlebarHeight).toBeGreaterThan(14);
+  expect(narrowLayout.titlebarHeight).toBeLessThan(28);
+  expect(narrowLayout.titlebarTop + narrowLayout.titlebarHeight).toBeCloseTo(narrowLayout.bodyTopOffset, -1);
+  expect(narrowLayout.toolbarHeight).toBeLessThanOrEqual(narrowLayout.titlebarHeight + 2);
+  expect(narrowLayout.titlebarRight).toBeCloseTo(narrowLayout.toolbarLeft, 1);
+  expect(narrowLayout.toolbarRight).toBeLessThanOrEqual(narrowLayout.frameWidth + 1);
+  expect(narrowLayout.titlebarWidth + narrowLayout.toolbarWidth).toBeGreaterThanOrEqual(narrowLayout.frameWidth - 1);
+  expect(narrowLayout.primaryButtonWidth).toBeGreaterThan(0);
+  expect(narrowLayout.dangerButtonWidth).toBeGreaterThan(0);
+
+  const wideLayout = await readGroupChromeLayout('group-2');
+  expect(wideLayout.titlebarHeight).toBeCloseTo(28, 1);
+  expect(wideLayout.titlebarTop).toBeLessThan(0);
+  expect(wideLayout.titlebarTop + wideLayout.titlebarHeight).toBeCloseTo(wideLayout.bodyTopOffset, -1);
+  expect(wideLayout.titleFontSize * 0.5).toBeCloseTo(12, 1);
+  expect(wideLayout.buttonFontSize * 0.5).toBeCloseTo(11, 1);
+  expect(wideLayout.titlePaddingLeft * 0.5).toBeCloseTo(12, 1);
+  expect(wideLayout.buttonPaddingLeft * 0.5).toBeCloseTo(8, 1);
+  expect(wideLayout.titlebarRight).toBeCloseTo(wideLayout.toolbarLeft, 1);
+  expect(wideLayout.toolbarRight).toBeLessThan(wideLayout.frameWidth - 200);
+  expect(wideLayout.toolbarWidth).toBeGreaterThan(130);
+  expect(wideLayout.toolbarWidth).toBeLessThan(300);
+  expect(wideLayout.titlebarWidth + wideLayout.toolbarWidth).toBeLessThan(wideLayout.frameWidth);
+  expect(wideLayout.titleInputWidth).toBeGreaterThan(70);
+
+  const zoomedInScale = await page.evaluate(() => {
+    const frame = document.createElement('div');
+    frame.style.position = 'absolute';
+    frame.style.left = '-10000px';
+    frame.style.top = '-10000px';
+    frame.style.width = '1000px';
+    frame.style.height = '180px';
+    frame.style.setProperty('--canvas-group-title-height', '28px');
+    document.body.append(frame);
+    const titlebar = document.createElement('div');
+    titlebar.className = 'canvas-group-titlebar';
+    titlebar.style.transform = 'scale(1.5)';
+    frame.append(titlebar);
+    const result = titlebar.getBoundingClientRect().height / 28;
+    frame.remove();
+    return result;
+  });
+  expect(zoomedInScale).toBeCloseTo(1.5, 1);
+});
+
+test('node resize auto-pans at the canvas edge and keeps resizing', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 520 });
+  await openHarness(page, {
+    persistedState: {
+      selectedNodeId: 'note-1',
+      selectedNodeIds: ['note-1'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [createManualNoteNode('note-1', { x: 10, y: 20 })];
+  await bootstrap(page, state, createRuntimeContext());
+  await expect(nodeById(page, 'note-1').locator('[data-node-resize-direction="bottom-right"]')).toBeVisible();
+  await clearPostedMessages(page);
+
+  const beforePersistedState = await readPersistedUiState(page);
+  expect(beforePersistedState.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+
+  const handle = nodeById(page, 'note-1').locator('[data-node-resize-direction="bottom-right"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(636, 516, { steps: 8 });
+  await settleWebview(page, 12);
+  await page.mouse.up();
+
+  const message = await waitForPostedMessageByType(page, 'webview/resizeNode');
+  expect(message.payload.nodeId).toBe('note-1');
+  expect(message.payload.position).toEqual({ x: 10, y: 20 });
+  expect(message.payload.size.width).toBeGreaterThan(450);
+  expect(message.payload.size.height).toBeGreaterThan(460);
+
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).viewport?.x ?? 0)
+    .toBeLessThan(0);
+  const afterPersistedState = await readPersistedUiState(page);
+  expect(afterPersistedState.viewport.y).toBeLessThan(0);
+});
+
+test('canvas group resize draft keeps member nodes stationary until release', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 260, y: 260 }),
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 240, y: 220 },
+      size: { width: 520, height: 480 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const noteNode = nodeById(page, 'note-1');
+  const initialNoteBox = await noteNode.boundingBox();
+  expect(initialNoteBox).not.toBeNull();
+
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await clearPostedMessages(page);
+  const handle = groupFrame.locator('[data-group-resize-direction="top-left"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 - 60, handleBox.y + handleBox.height / 2 - 40, { steps: 4 });
+  await settleWebview(page, 2);
+  const draftNoteBox = await noteNode.boundingBox();
+  expect(draftNoteBox).not.toBeNull();
+  expectBoxEdgesClose(draftNoteBox, initialNoteBox);
+
+  await page.mouse.up();
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload.groupId).toBe('group-1');
+  expect(message.payload.position.x).toBeLessThan(240);
+  expect(message.payload.position.y).toBeLessThan(220);
+  expect(message.payload.size.width).toBeGreaterThan(520);
+  expect(message.payload.size.height).toBeGreaterThan(480);
+});
+
+test('canvas group resize auto-pans at the canvas edge and keeps member drafts stationary', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 520 });
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('note-1', { x: 170, y: 120 }),
+      size: { width: 280, height: 260 },
+      groupId: 'group-1'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 150, y: 80 },
+      size: { width: 200, height: 220 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const groupFrame = page.locator('[data-group-id="group-1"]');
+  const noteNode = nodeById(page, 'note-1');
+  const initialNoteStyle = await noteNode.evaluate((element) => {
+    const wrapper = element.closest('.react-flow__node');
+    return wrapper instanceof HTMLElement ? wrapper.getAttribute('style') : null;
+  });
+  expect(initialNoteStyle).not.toBeNull();
+  await groupFrame.locator('.canvas-group-titlebar').click();
+  await clearPostedMessages(page);
+
+  const handle = groupFrame.locator('[data-group-resize-direction="bottom-right"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(636, 516, { steps: 8 });
+  await settleWebview(page, 12);
+  const draftNoteStyle = await noteNode.evaluate((element) => {
+    const wrapper = element.closest('.react-flow__node');
+    return wrapper instanceof HTMLElement ? wrapper.getAttribute('style') : null;
+  });
+  expect(draftNoteStyle).toBe(initialNoteStyle);
+  await page.mouse.up();
+
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload.groupId).toBe('group-1');
+  expect(message.payload.position).toEqual({ x: 150, y: 80 });
+  expect(message.payload.size.width).toBeGreaterThan(400);
+  expect(message.payload.size.height).toBeGreaterThan(420);
+
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).viewport?.x ?? 0)
+    .toBeLessThan(0);
+  const afterPersistedState = await readPersistedUiState(page);
+  expect(afterPersistedState.viewport.y).toBeLessThan(0);
+});
+
+test('selected nodes move together and share the primary release intent', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedNodeId: 'note-2',
+      selectedNodeIds: ['note-1', 'note-2'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    createManualNoteNode('note-1', { x: 80, y: 120 }),
+    createManualNoteNode('note-2', { x: 360, y: 120 })
+  ];
+  state.nodes[0].title = 'Note 1';
+  state.nodes[1].title = 'Note 2';
+  await bootstrap(page, state, createRuntimeContext());
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).selectedNodeIds)
+    .toEqual(['note-1', 'note-2']);
+
+  await clearPostedMessages(page);
+  const firstBox = await nodeById(page, 'note-1').boundingBox();
+  expect(firstBox).not.toBeNull();
+  await page.mouse.move(firstBox.x + 30, firstBox.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(firstBox.x + 130, firstBox.y + 66, { steps: 8 });
+  await page.mouse.up();
+
+  const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+  expect(moveMessage.payload.id).toBe('note-1');
+  expect(moveMessage.payload.selectedMoves).toHaveLength(1);
+  expect(moveMessage.payload.selectedMoves[0].id).toBe('note-2');
+  expect(moveMessage.payload.selectedMoves[0].position.x - moveMessage.payload.position.x).toBe(280);
+  expect(moveMessage.payload.selectedMoves[0].position.y - moveMessage.payload.position.y).toBe(0);
+  expect(moveMessage.payload.selectedMoves[0].pointerPosition).toEqual(moveMessage.payload.pointerPosition);
+});
+
+test('node group drop applies the host avoidance position after state update', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('existing-1', { x: 180, y: 160 }),
+      title: 'Existing',
+      groupId: 'group-1'
+    },
+    {
+      ...createManualNoteNode('moved-1', { x: 700, y: 160 }),
+      title: 'Moved'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'group-1',
+      title: 'Group 1',
+      position: { x: 120, y: 120 },
+      size: { width: 520, height: 480 }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  const existingBox = await nodeById(page, 'existing-1').boundingBox();
+  const movedStartBox = await nodeById(page, 'moved-1').boundingBox();
+  expect(existingBox).not.toBeNull();
+  expect(movedStartBox).not.toBeNull();
+
+  await clearPostedMessages(page);
+  const dragOffset = { x: 6, y: 6 };
+  await page.mouse.move(movedStartBox.x + dragOffset.x, movedStartBox.y + dragOffset.y);
+  await page.mouse.down();
+  await page.mouse.move(existingBox.x + dragOffset.x, existingBox.y + dragOffset.y, { steps: 8 });
+  await page.mouse.up();
+
+  const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+  expect(moveMessage.payload.id).toBe('moved-1');
+  expect(moveMessage.payload.pointerPosition).toEqual({ x: 186, y: 166 });
+
+  await updateHostState(page, {
+    ...state,
+    updatedAt: '2026-05-23T12:00:00.000Z',
+    nodes: [
+      state.nodes[0],
+      {
+        ...state.nodes[1],
+        position: { x: 584, y: 160 },
+        groupId: 'group-1'
+      }
+    ],
+    groups: [
+      {
+        ...state.groups[0],
+        size: { width: 872, height: 480 }
+      }
+    ]
+  }, createRuntimeContext());
+
+  await expect
+    .poll(async () => (await nodeById(page, 'moved-1').boundingBox())?.x)
+    .toBeGreaterThan(existingBox.x + existingBox.width + 16);
+});
+
+test('canvas context menu can create a group from selected nodes', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      id: 'note-1',
+      kind: 'note',
+      title: 'Note 1',
+      status: 'ready',
+      summary: 'first',
+      position: { x: 80, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'first' } }
+    },
+    {
+      id: 'note-2',
+      kind: 'note',
+      title: 'Note 2',
+      status: 'ready',
+      summary: 'second',
+      position: { x: 360, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'second' } }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await nodeById(page, 'note-1').click();
+  await nodeById(page, 'note-2').click();
+  await nodeById(page, 'note-2').click();
+  let selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1']);
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1', 'note-2']);
+
+  await nodeById(page, 'note-1').click();
+  selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1']);
+  await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  selectedState = await page.evaluate(() => window.__devSessionCanvasHarness.getPersistedState());
+  expect(selectedState.selectedNodeIds).toEqual(['note-1', 'note-2']);
+
+  await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 40, y: 620 } });
+  await expect(page.locator('[data-context-menu-action="create-group-from-selection"] .codicon-group-by-ref-type')).toBeVisible();
+  await page.locator('[data-context-menu-action="create-group-from-selection"]').click();
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: ['note-1', 'note-2'],
+    groupIds: []
+  });
+});
+
+test('host-triggered group creation uses current webview selection', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      id: 'note-1',
+      kind: 'note',
+      title: 'Note 1',
+      status: 'ready',
+      summary: 'first',
+      position: { x: 80, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'first' } }
+    },
+    {
+      id: 'note-2',
+      kind: 'note',
+      title: 'Note 2',
+      status: 'ready',
+      summary: 'second',
+      position: { x: 520, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'second' } }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await page.keyboard.down(PRIMARY_ACCELERATOR_KEY);
+  await nodeById(page, 'note-1').click();
+  await nodeById(page, 'note-2').click();
+  await page.keyboard.up(PRIMARY_ACCELERATOR_KEY);
+  await clearPostedMessages(page);
+
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/requestCreateGroupFromSelection'
+    });
+  });
+
+  const message = await waitForPostedMessageByType(page, 'webview/createGroupFromSelection');
+  expect(message.payload).toEqual({
+    nodeIds: ['note-1', 'note-2'],
+    groupIds: []
+  });
+});
+
+test('host-triggered group creation reports invalid current webview selection without posting create', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      id: 'note-1',
+      kind: 'note',
+      title: 'Note 1',
+      status: 'ready',
+      summary: 'first',
+      position: { x: 80, y: 120 },
+      size: sizeFor('note'),
+      metadata: { note: { content: 'first' } }
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+
+  await nodeById(page, 'note-1').click();
+  await clearPostedMessages(page);
+
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/requestCreateGroupFromSelection'
+    });
+  });
+
+  await expect(page.locator('[data-toast-kind="error"]')).toContainText('请先选中至少两个同一父级的节点或分组。');
+  const createMessages = await page.evaluate(() =>
+    window.__devSessionCanvasHarness
+      .getPostedMessages()
+      .filter((message) => message.type === 'webview/createGroupFromSelection')
+  );
+  expect(createMessages).toEqual([]);
+});
+
 test('host-triggered manual node creation snapshots existing nodes before resolving autofocus', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -7954,6 +13088,87 @@ test('host-triggered manual node creation snapshots existing nodes before resolv
 
   const afterState = await readPersistedUiState(page);
   expect(afterState.selectedNodeId).toBe('note-2');
+});
+
+test('host-triggered agent creation bypasses stale webview workspace trust gate', async ({ page }) => {
+  await openHarness(page);
+  const runtime = createRuntimeContext({ workspaceTrusted: true });
+
+  await page.evaluate(
+    ({ nextRuntime }) => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/bootstrap',
+        payload: {
+          state: {
+            version: 1,
+            updatedAt: '2026-04-06T00:00:00.000Z',
+            nodes: []
+          },
+          runtime: nextRuntime
+        }
+      });
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/requestCreateNode',
+        payload: {
+          kind: 'agent',
+          agentProvider: 'claude',
+          agentLaunchPreset: 'yolo'
+        }
+      });
+    },
+    {
+      nextRuntime: runtime
+    }
+  );
+
+  await expect(waitForCreateDemoNodePayload(page)).resolves.toEqual(
+    expect.objectContaining({
+      kind: 'agent',
+      agentProvider: 'claude',
+      agentLaunchPreset: 'yolo'
+    })
+  );
+  expect(await readPostedMessagesByType(page, 'webview/showCreateNodeBlockedReason')).toEqual([]);
+});
+
+test('host-triggered execution node creation echoes cwd into the create request', async ({ page }) => {
+  await openHarness(page);
+  const runtime = createRuntimeContext({ workspaceTrusted: true });
+
+  await page.evaluate(
+    ({ nextRuntime }) => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/bootstrap',
+        payload: {
+          state: {
+            version: 1,
+            updatedAt: '2026-05-31T00:00:00.000Z',
+            nodes: []
+          },
+          runtime: nextRuntime
+        }
+      });
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/requestCreateNode',
+        payload: {
+          kind: 'terminal',
+          cwd: '/workspace/packages/app'
+        }
+      });
+    },
+    {
+      nextRuntime: runtime
+    }
+  );
+
+  await expect(waitForCreateDemoNodePayload(page)).resolves.toEqual(
+    expect.objectContaining({
+      kind: 'terminal',
+      cwd: '/workspace/packages/app'
+    })
+  );
 });
 
 test('unrelated host errors do not cancel pending manual node centering', async ({ page }) => {
@@ -8468,6 +13683,682 @@ for (const executionKind of ['agent', 'terminal']) {
       true
     );
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBufferedLine))).toBe(false);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} requests only one attach snapshot for an already-live mounted node`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await settleWebview(page, 4);
+
+    const attachRequests = await readPostedMessagesByType(page, 'webview/attachExecutionSession');
+    expect(
+      attachRequests.filter(
+        (message) =>
+          message.payload.nodeId === nodeId &&
+          message.payload.kind === executionKind &&
+          message.payload.requestId === undefined
+      )
+    ).toHaveLength(1);
+  });
+
+  test(`${executionKind} staggers snapshot hydrates and prioritizes the node with recent input`, async ({ page }) => {
+    const state = createMultiLiveExecutionNodeState(executionKind, 3);
+    const nodeIds = state.nodes.map((node) => node.id);
+    const inputNodeId = nodeIds[2];
+
+    await openHarness(page);
+    await bootstrap(page, state);
+    for (const nodeId of nodeIds) {
+      await waitForExecutionTerminalReady(page, nodeId);
+    }
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'sendExecutionInput',
+      nodeId: inputNodeId,
+      data: 'i'
+    });
+    const snapshot = {
+      format: 'xterm-serialize-v1',
+      data: `SNAPSHOT-${'x'.repeat(40 * 1024)}\r\n`
+    };
+
+    for (const nodeId of nodeIds) {
+      await dispatchExecutionSnapshot(page, {
+        nodeId,
+        kind: executionKind,
+        output: '',
+        cols: 96,
+        rows: 28,
+        liveSession: true,
+        executionSessionId: `${nodeId}-session`,
+        outputSequence: 1,
+        serializedTerminalState: snapshot
+      });
+    }
+
+    const startedDiagnostics = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionPerformanceDiagnostic',
+      (messages) =>
+        messages.filter(
+          (message) =>
+            message.payload.source === 'webview-snapshot-restore-queue' &&
+            message.payload.reason === 'started'
+        ).length >= nodeIds.length
+    );
+    const startedNodeIds = startedDiagnostics
+      .filter(
+        (message) =>
+          message.payload.source === 'webview-snapshot-restore-queue' &&
+          message.payload.reason === 'started'
+      )
+      .map((message) => message.payload.nodeId);
+
+    expect(startedNodeIds[0]).toBe(inputNodeId);
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} requests snapshot reset instead of replaying a huge restored backlog`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-SHOULD-NOT-REPLAY';
+    const freshSnapshotLine = 'FRESH-SNAPSHOT-AFTER-BACKLOG-RESET';
+    const freshLiveLine = 'LIVE-AFTER-SNAPSHOT-RESET';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(`${freshSnapshotLine}\r\n`);
+    const executionSessionId = `${executionKind}-session-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+    });
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    expect(attachRequest.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      minOutputSequence: 1
+    });
+    expect(attachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${freshLiveLine}\r\n`,
+      executionSessionId,
+      outputSequence: 2
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      outputSequence: 1,
+      serializedTerminalState
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(freshSnapshotLine)) &&
+        visibleLines.some((line) => line.includes(freshLiveLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshSnapshotLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshLiveLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+
+    const snapshotResetDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
+    expect(
+      snapshotResetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'visibility-backlog-snapshot-reset' &&
+          message.payload.characters >= hugeBacklog.length
+      )
+    ).toBe(true);
+    expect(
+      snapshotResetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-applied'
+      )
+    ).toBe(true);
+  });
+
+  test(`${executionKind} requests hidden snapshot reset before visible backlog threshold`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const hiddenBacklogLine = 'HIDDEN-BACKLOG-SHOULD-RESET-EARLY';
+    const hiddenBacklog = `${hiddenBacklogLine}\r\n${'h'.repeat(160 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-hidden-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get: () => true
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await clearPostedMessages(page);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hiddenBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    expect(attachRequest.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      minOutputSequence: 1
+    });
+    expect(attachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
+
+    const resetDiagnostics = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionPerformanceDiagnostic',
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.payload.source === 'webview-output-snapshot-reset' &&
+            message.payload.nodeId === nodeId &&
+            message.payload.requestId === attachRequest.payload.requestId &&
+            message.payload.reason === 'hidden-backlog-snapshot-reset'
+        )
+    );
+    const resetDiagnostic = resetDiagnostics.find(
+      (message) =>
+        message.payload.source === 'webview-output-snapshot-reset' &&
+        message.payload.nodeId === nodeId &&
+        message.payload.requestId === attachRequest.payload.requestId &&
+        message.payload.reason === 'hidden-backlog-snapshot-reset'
+    );
+    expect(resetDiagnostic.payload.characters).toBeGreaterThanOrEqual(hiddenBacklog.length);
+    expect(resetDiagnostic.payload.sequence).toBe(1);
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get: () => false
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  });
+
+  test(`${executionKind} keeps snapshot reset deferred output bounded while waiting for Host snapshot`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-BUDGET-SHOULD-NOT-REPLAY';
+    const freshSnapshotLine = 'FRESH-SNAPSHOT-AFTER-BUDGET-RESET';
+    const freshTailLine = 'LIVE-TAIL-AFTER-BUDGET-RESET';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-budget-reset`;
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(`${freshSnapshotLine}\r\n`);
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await page.evaluate(() => {
+      window.__devSessionCanvasHarness.clearPostedMessages();
+    });
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+    const firstAttachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    expect(firstAttachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
+    expect(firstAttachRequest.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      minOutputSequence: 1
+    });
+
+    for (let index = 0; index < 5; index += 1) {
+      await dispatchExecutionOutput(page, {
+        nodeId,
+        kind: executionKind,
+        chunk: `DEFERRED-BULK-${index}-${'y'.repeat(70 * 1024)}\r\n`,
+        executionSessionId,
+        outputSequence: index + 2
+      });
+    }
+
+    const resetDiagnostics = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionPerformanceDiagnostic',
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.payload.source === 'webview-output-snapshot-reset' &&
+            message.payload.nodeId === nodeId &&
+            message.payload.reason === 'deferred-output-budget-reset'
+        )
+    );
+    const budgetDiagnostic = resetDiagnostics.find(
+      (message) =>
+        message.payload.source === 'webview-output-snapshot-reset' &&
+        message.payload.nodeId === nodeId &&
+        message.payload.reason === 'deferred-output-budget-reset'
+    );
+    expect(budgetDiagnostic.payload.pendingOutputLength).toBeGreaterThan(256 * 1024);
+
+    const attachRequests = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/attachExecutionSession',
+      (messages) => messages.length >= 2
+    );
+    const latestAttachRequest = attachRequests.at(-1);
+    expect(latestAttachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
+    expect(latestAttachRequest.payload.requestId).not.toBe(firstAttachRequest.payload.requestId);
+    expect(latestAttachRequest.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      minOutputSequence: 5
+    });
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${freshTailLine}\r\n`,
+      executionSessionId,
+      outputSequence: 8
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: latestAttachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      outputSequence: 7,
+      serializedTerminalState
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(freshSnapshotLine)) &&
+        visibleLines.some((line) => line.includes(freshTailLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine)) &&
+        !visibleLines.some((line) => line.includes('DEFERRED-BULK-'))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshSnapshotLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshTailLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes('DEFERRED-BULK-'))).toBe(false);
+  });
+
+  test(`${executionKind} ignores unsequenced live snapshot reset responses until a sequenced snapshot arrives`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-UNSEQUENCED-LIVE-SHOULD-NOT-REPLAY';
+    const unsequencedSnapshotLine = 'UNSEQUENCED-LIVE-SNAPSHOT-SHOULD-NOT-APPLY';
+    const freshSnapshotLine = 'FRESH-SNAPSHOT-AFTER-UNSEQUENCED-LIVE';
+    const deferredLiveLine = 'DEFERRED-LIVE-AFTER-UNSEQUENCED-LIVE';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-unsequenced-live-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${deferredLiveLine}\r\n`,
+      executionSessionId,
+      outputSequence: 2
+    });
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${unsequencedSnapshotLine}\r\n`)
+    });
+    const unsequencedDiagnostics = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionPerformanceDiagnostic',
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.payload.source === 'webview-output-snapshot-reset' &&
+            message.payload.nodeId === nodeId &&
+            message.payload.requestId === attachRequest.payload.requestId &&
+            message.payload.reason === 'snapshot-reset-unsequenced-snapshot'
+        )
+    );
+    expect(
+      unsequencedDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-applied'
+      )
+    ).toBe(false);
+    await settleWebview(page, 4);
+    const ignoredProbe = await readProbeNode(page, nodeId, 20);
+    expect(ignoredProbe.terminalVisibleLines.some((line) => line.includes(unsequencedSnapshotLine))).toBe(false);
+    expect(ignoredProbe.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(false);
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      outputSequence: 1,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${freshSnapshotLine}\r\n`)
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(freshSnapshotLine)) &&
+        visibleLines.some((line) => line.includes(deferredLiveLine)) &&
+        !visibleLines.some((line) => line.includes(unsequencedSnapshotLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshSnapshotLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(unsequencedSnapshotLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+  });
+
+  test(`${executionKind} accepts unsequenced ended snapshot reset without replaying deferred live output`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-ENDED-SNAPSHOT-SHOULD-NOT-REPLAY';
+    const deferredLiveLine = 'DEFERRED-LIVE-AFTER-ENDED-SNAPSHOT-SHOULD-NOT-REPLAY';
+    const finalSnapshotLine = 'FINAL-UNSEQUENCED-ENDED-SNAPSHOT';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-ended-snapshot-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${deferredLiveLine}\r\n`,
+      executionSessionId,
+      outputSequence: 2
+    });
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: false,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${finalSnapshotLine}\r\n`)
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(finalSnapshotLine)) &&
+        !visibleLines.some((line) => line.includes(deferredLiveLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(finalSnapshotLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+
+    const resetDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
+    expect(
+      resetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-session-ended-snapshot'
+      )
+    ).toBe(true);
+    expect(
+      resetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-applied'
+      )
+    ).toBe(false);
+  });
+
+  test(`${executionKind} clears pending snapshot reset when the session exits`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const staleBacklogLine = 'STALE-BACKLOG-EXIT-SHOULD-NOT-REPLAY';
+    const deferredLiveLine = 'DEFERRED-LIVE-AFTER-EXIT-SHOULD-NOT-REPLAY';
+    const lateSnapshotLine = 'LATE-SNAPSHOT-AFTER-EXIT-SHOULD-NOT-APPLY';
+    const exitMessage = 'Exited after snapshot reset';
+    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
+    const executionSessionId = `${executionKind}-session-exit-reset`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+    });
+    await dispatchVisibilityRestored(page);
+    await clearPostedMessages(page);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: hugeBacklog,
+      executionSessionId,
+      outputSequence: 1
+    });
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${deferredLiveLine}\r\n`,
+      executionSessionId,
+      outputSequence: 2
+    });
+    await dispatchExecutionExit(page, {
+      nodeId,
+      kind: executionKind,
+      message: exitMessage
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      requestId: attachRequest.payload.requestId,
+      executionSessionId,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: false,
+      outputSequence: 1,
+      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${lateSnapshotLine}\r\n`)
+    });
+
+    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
+      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
+      return (
+        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
+        !visibleLines.some((line) => line.includes(deferredLiveLine)) &&
+        !visibleLines.some((line) => line.includes(lateSnapshotLine)) &&
+        !visibleLines.some((line) => line.includes(staleBacklogLine))
+      );
+    });
+
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
+      true
+    );
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(lateSnapshotLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+
+    const resetDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
+    expect(
+      resetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'snapshot-reset-session-ended'
+      )
+    ).toBe(true);
+    expect(
+      resetDiagnostics.some(
+        (message) =>
+          message.payload.source === 'webview-output-snapshot-reset' &&
+          message.payload.nodeId === nodeId &&
+          message.payload.requestId === attachRequest.payload.requestId &&
+          message.payload.reason === 'stale-snapshot-reset-ignored'
+      )
+    ).toBe(true);
   });
 }
 
@@ -9070,6 +14961,8 @@ function createRuntimeContext(overrides = {}) {
     terminalWordSeparators: ' ()[]{}\',"`',
     overviewMode: 'title',
     overviewZoomThreshold: 0.2,
+    multiRootPresentationMode: 'rootGroups',
+    workspaceRootWatermarksEnabled: true,
     filesEnabled: true,
     filePresentationMode: 'nodes',
     fileNodeDisplayStyle: 'minimal',
@@ -9084,6 +14977,11 @@ function normalizeCanvasState(state) {
   return {
     ...state,
     edges: Array.isArray(state?.edges) ? state.edges : [],
+    groups: Array.isArray(state?.groups) ? state.groups : [],
+    nextGroupSequence:
+      typeof state?.nextGroupSequence === 'number' && Number.isInteger(state.nextGroupSequence) && state.nextGroupSequence > 0
+        ? state.nextGroupSequence
+        : 1,
     fileReferences: Array.isArray(state?.fileReferences) ? state.fileReferences : []
   };
 }
@@ -9123,10 +15021,48 @@ async function readCanvasViewportTransform(page) {
   });
 }
 
+async function readCanvasViewport(page) {
+  const transform = await readCanvasViewportTransform(page);
+  const match = transform?.match(
+    /translate\((-?\d+(?:\.\d+)?)px,\s*(-?\d+(?:\.\d+)?)px\)\s+scale\((-?\d+(?:\.\d+)?)\)/
+  );
+  return match
+    ? {
+        x: Number.parseFloat(match[1]),
+        y: Number.parseFloat(match[2]),
+        zoom: Number.parseFloat(match[3])
+      }
+    : null;
+}
+
 async function readCanvasViewportScale(page) {
   const transform = await readCanvasViewportTransform(page);
   const scaleMatch = transform?.match(/scale\(([-\d.]+)\)/);
   return scaleMatch ? Number(scaleMatch[1]) : null;
+}
+
+async function readGroupCanvasGeometry(page, groupId) {
+  return page.locator(`[data-group-id="${groupId}"]`).evaluate((frame) => {
+    const left = Number.parseFloat(frame.style.left);
+    const top = Number.parseFloat(frame.style.top);
+    const width = Number.parseFloat(frame.style.width);
+    const height = Number.parseFloat(frame.style.height);
+    return {
+      x: Math.round(left),
+      y: Math.round(top),
+      width: Math.round(width),
+      height: Math.round(height)
+    };
+  });
+}
+
+async function expectGroupCenteredInViewport(page, groupId, tolerance = 20) {
+  const viewportSize = page.viewportSize();
+  const groupBox = await page.locator(`[data-group-id="${groupId}"]`).boundingBox();
+  expect(viewportSize).not.toBeNull();
+  expect(groupBox).not.toBeNull();
+  expect(Math.abs(groupBox.x + groupBox.width / 2 - viewportSize.width / 2)).toBeLessThanOrEqual(tolerance);
+  expect(Math.abs(groupBox.y + groupBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(tolerance);
 }
 
 async function readComputedOpacity(page, selector) {
@@ -9282,7 +15218,7 @@ async function edgeLabelIsProtected(page, edgeId) {
   }, edgeId);
 }
 
-async function waitForPostedMessageByType(page, type) {
+async function waitForPostedMessageByType(page, type, options = {}) {
   let matchedMessage = null;
 
   await expect
@@ -9303,15 +15239,53 @@ async function waitForPostedMessageByType(page, type) {
     })
     .toBe('matched');
 
-  return matchedMessage;
+  return options.includeLifecycle === true ? matchedMessage : stripPostedMessageLifecycle(matchedMessage);
 }
 
-async function readPostedMessagesByType(page, type) {
-  return page.evaluate((nextType) => {
+async function readPostedMessagesByType(page, type, options = {}) {
+  const messages = await page.evaluate((nextType) => {
     return window.__devSessionCanvasHarness
       .getPostedMessages()
       .filter((entry) => entry.type === nextType);
   }, type);
+  return options.includeLifecycle === true ? messages : messages.map(stripPostedMessageLifecycle);
+}
+
+async function readFirstExecutionInputPayload(page) {
+  return page.evaluate(() => {
+    return (
+      window.__devSessionCanvasHarness
+        .getPostedMessages()
+        .find((entry) => entry.type === 'webview/executionInput')?.payload ?? null
+    );
+  });
+}
+
+async function waitForPostedMessagesByTypeMatch(page, type, predicate, options = {}) {
+  let matchedMessages = [];
+
+  await expect
+    .poll(async () => {
+      const messages = await readPostedMessagesByType(page, type, options);
+      if (!predicate(messages)) {
+        return null;
+      }
+
+      matchedMessages = messages;
+      return 'matched';
+    })
+    .toBe('matched');
+
+  return matchedMessages;
+}
+
+function stripPostedMessageLifecycle(message) {
+  if (!message || typeof message !== 'object') {
+    return message;
+  }
+
+  const { lifecycle: _lifecycle, ...rest } = message;
+  return rest;
 }
 
 async function readLastOpenedExecutionLink(page, nodeId) {
@@ -9426,6 +15400,24 @@ async function readHardWrappedLinkHoverSegmentCount(page, nodeId) {
   }, nodeId);
 }
 
+async function readLastHardWrappedLinkHoverSegmentPoint(page, nodeId) {
+  return page.evaluate((nextNodeId) => {
+    const segments = Array.from(
+      document.querySelectorAll(`[data-node-id="${nextNodeId}"] .execution-hard-wrapped-link-hover-segment`)
+    ).filter((entry) => entry instanceof HTMLElement);
+    const segment = segments.at(-1);
+    if (!(segment instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rect = segment.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top
+    };
+  }, nodeId);
+}
+
 async function dragConnectionBetweenAnchors(page, { sourceNodeId, sourceAnchor, targetNodeId, targetAnchor }) {
   const sourceHandle = nodeById(page, sourceNodeId).locator(`.canvas-node-handle.anchor-${sourceAnchor}`);
   const targetHandle = nodeById(page, targetNodeId).locator(`.canvas-node-handle.anchor-${targetAnchor}`);
@@ -9484,6 +15476,9 @@ async function dispatchExecutionSnapshot(
     cols = 96,
     rows = 28,
     liveSession = true,
+    requestId,
+    executionSessionId,
+    outputSequence,
     serializedTerminalState
   }
 ) {
@@ -9501,12 +15496,15 @@ async function dispatchExecutionSnapshot(
       cols,
       rows,
       liveSession,
+      requestId,
+      executionSessionId,
+      outputSequence,
       serializedTerminalState
     }
   );
 }
 
-async function dispatchExecutionOutput(page, { nodeId, kind, chunk }) {
+async function dispatchExecutionOutput(page, { nodeId, kind, chunk, executionSessionId, persisted, outputSequence }) {
   await page.evaluate(
     (payload) => {
       window.__devSessionCanvasHarness.dispatchHostMessage({
@@ -9517,7 +15515,10 @@ async function dispatchExecutionOutput(page, { nodeId, kind, chunk }) {
     {
       nodeId,
       kind,
-      chunk
+      chunk,
+      executionSessionId,
+      persisted,
+      outputSequence
     }
   );
 }
@@ -9729,6 +15730,20 @@ async function expectCaretPosition(locator, expectedCaret) {
     });
 }
 
+async function expectSelectionRange(locator, expectedStart, expectedEnd) {
+  await expect
+    .poll(async () =>
+      locator.evaluate((element) => ({
+        selectionStart: element.selectionStart,
+        selectionEnd: element.selectionEnd
+      }))
+    )
+    .toEqual({
+      selectionStart: expectedStart,
+      selectionEnd: expectedEnd
+    });
+}
+
 async function performTestDomAction(page, action) {
   const requestId = `playwright-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -9937,11 +15952,80 @@ function createManualTerminalNode(nodeId, position) {
   };
 }
 
+function createGroupFocusCanvasState(group) {
+  return {
+    version: 1,
+    updatedAt: '2026-06-09T00:00:00.000Z',
+    nodes: [],
+    groups: [group],
+    edges: []
+  };
+}
+
 function createEmptyCanvasState() {
   return {
     version: 1,
     updatedAt: '2026-04-06T00:00:00.000Z',
     nodes: []
+  };
+}
+
+function createPaneGalleryCanvasState(options = {}) {
+  const baseRootDefinitions = [
+    ['workspace-root-frontend', 'Frontend', '/repo/frontend'],
+    ['workspace-root-backend', 'Backend', '/repo/backend'],
+    ['workspace-root-tools', 'Tools', '/repo/tools'],
+    ['workspace-root-mobile', 'Mobile', '/repo/mobile'],
+    ['workspace-root-docs', 'Docs', '/repo/docs'],
+    ['workspace-root-cli', 'CLI', '/repo/cli'],
+    ['workspace-root-services', 'Services', '/repo/services'],
+    ['workspace-root-infra', 'Infra', '/repo/infra']
+  ];
+  const rootCount = options.rootCount ?? 2;
+  const rootDefinitions = Array.from(
+    { length: rootCount },
+    (_, index) => baseRootDefinitions[index] ?? [
+      `workspace-root-extra-${index + 1}`,
+      `Root ${index + 1}`,
+      `/repo/root-${index + 1}`
+    ]
+  );
+  const groups = rootDefinitions.map(([id, title, workspaceRootPath], index) => ({
+    id,
+    title,
+    position: { x: 120 + index * 860, y: 100 },
+    size: options.hugeFirstRoot && index === 0
+      ? { width: 12000, height: 8200 }
+      : { width: 680, height: 460 },
+    role: 'workspace-root',
+    workspaceRootPath
+  }));
+  const nodes = groups.flatMap((group, index) => [
+    {
+      ...createManualNoteNode(`${group.id}-note`, {
+        x: group.position.x + 120,
+        y: group.position.y + 140
+      }),
+      title: `${group.title} Note`,
+      groupId: group.id
+    },
+    {
+      ...createManualTerminalNode(`${group.id}-terminal`, {
+        x: group.position.x + 360,
+        y: group.position.y + 140
+      }),
+      title: `${group.title} Terminal`,
+      status: index === 1 ? 'running' : 'draft',
+      groupId: group.id
+    }
+  ]);
+
+  return {
+    version: 1,
+    updatedAt: '2026-06-16T00:00:00.000Z',
+    nodes,
+    groups,
+    edges: []
   };
 }
 
@@ -10643,66 +16727,77 @@ function createNoteNodeState() {
 }
 
 function createLiveExecutionNodeState(kind) {
+  return createMultiLiveExecutionNodeState(kind, 1);
+}
+
+function createMultiLiveExecutionNodeState(kind, count) {
   const common = {
     version: 1,
     updatedAt: '2026-04-12T00:00:00.000Z',
     nodes: []
   };
 
-  if (kind === 'agent') {
-    common.nodes.push({
-      id: 'agent-zoom',
-      kind: 'agent',
-      title: 'Zoom Agent',
-      status: 'running',
-      summary: '验证缩放后的鼠标拖选坐标。',
-      position: { x: 120, y: 140 },
-      size: sizeFor('agent'),
-      metadata: {
-        agent: {
-          backend: 'node-pty',
-          shellPath: 'codex',
-          cwd: '/workspace',
-          liveSession: true,
-          provider: 'codex',
-          runtimeKind: 'pty-cli',
-          resumeSupported: false,
-          resumeStrategy: 'none',
-          lifecycle: 'running',
-          lastCols: 96,
-          lastRows: 28,
-          lastBackendLabel: 'Codex CLI'
+  for (let index = 0; index < count; index += 1) {
+    const suffix = index === 0 ? 'zoom' : `zoom-${index + 1}`;
+    const position = { x: 120 + index * 620, y: 140 };
+
+    if (kind === 'agent') {
+      common.nodes.push({
+        id: `agent-${suffix}`,
+        kind: 'agent',
+        title: index === 0 ? 'Zoom Agent' : `Zoom Agent ${index + 1}`,
+        status: 'running',
+        summary: '验证缩放后的鼠标拖选坐标。',
+        position,
+        size: sizeFor('agent'),
+        metadata: {
+          agent: {
+            backend: 'node-pty',
+            shellPath: 'codex',
+            cwd: '/workspace',
+            liveSession: true,
+            provider: 'codex',
+            runtimeKind: 'pty-cli',
+            resumeSupported: false,
+            resumeStrategy: 'none',
+            lifecycle: 'running',
+            lastCols: 96,
+            lastRows: 28,
+            lastBackendLabel: 'Codex CLI'
+          }
         }
-      }
-    });
-    return common;
+      });
+      continue;
+    }
+
+    if (kind === 'terminal') {
+      common.nodes.push({
+        id: `terminal-${suffix}`,
+        kind: 'terminal',
+        title: index === 0 ? 'Zoom Terminal' : `Zoom Terminal ${index + 1}`,
+        status: 'live',
+        summary: '验证缩放后的鼠标拖选坐标。',
+        position,
+        size: sizeFor('terminal'),
+        metadata: {
+          terminal: {
+            backend: 'node-pty',
+            shellPath: '/bin/bash',
+            cwd: '/workspace',
+            liveSession: true,
+            lifecycle: 'live',
+            lastCols: 96,
+            lastRows: 28
+          }
+        }
+      });
+      continue;
+    }
+
+    throw new Error(`Unsupported execution kind ${kind}`);
   }
 
-  if (kind === 'terminal') {
-    common.nodes.push({
-      id: 'terminal-zoom',
-      kind: 'terminal',
-      title: 'Zoom Terminal',
-      status: 'live',
-      summary: '验证缩放后的鼠标拖选坐标。',
-      position: { x: 120, y: 140 },
-      size: sizeFor('terminal'),
-      metadata: {
-        terminal: {
-          backend: 'node-pty',
-          shellPath: '/bin/bash',
-          cwd: '/workspace',
-          liveSession: true,
-          lifecycle: 'live',
-          lastCols: 96,
-          lastRows: 28
-        }
-      }
-    });
-    return common;
-  }
-
-  throw new Error(`Unsupported execution kind ${kind}`);
+  return common;
 }
 
 function createRuntimeChromeState() {

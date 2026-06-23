@@ -10,6 +10,12 @@
     <div id="app"></div>
     <script>
       (() => {
+        window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__ =
+          window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__ ?? {
+            surface: 'panel',
+            mode: 'active',
+            generation: 1
+          };
         const postedMessages = [];
         let persistedState = window.__devSessionCanvasHarnessInitialPersistedState ?? {};
         let resolvedExecutionFileLinkTexts = null;
@@ -56,7 +62,7 @@
                   : [];
                 const respond = () => {
                   window.postMessage(
-                    {
+                    attachHarnessLifecycle({
                       type: 'host/executionFileLinksResolved',
                       payload: {
                         requestId: message.payload?.requestId,
@@ -64,7 +70,7 @@
                         kind: message.payload?.kind,
                         resolvedLinks
                       }
-                    },
+                    }),
                     '*'
                   );
                 };
@@ -85,8 +91,22 @@
           };
         };
 
+        function attachHarnessLifecycle(message) {
+          if (!message || typeof message !== 'object' || message.lifecycle !== undefined) {
+            return message;
+          }
+
+          return {
+            ...message,
+            lifecycle: window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__
+          };
+        }
+
         window.__devSessionCanvasHarness = {
           dispatchHostMessage(message) {
+            window.postMessage(attachHarnessLifecycle(message), '*');
+          },
+          dispatchRawHostMessage(message) {
             window.postMessage(message, '*');
           },
           bootstrap(
@@ -101,6 +121,7 @@
               terminalWordSeparators: ' ()[]{}\',"`',
               overviewMode: 'title',
               overviewZoomThreshold: 0.2,
+              workspaceRootWatermarksEnabled: true,
               filesEnabled: true,
               filePresentationMode: 'nodes',
               fileNodeDisplayStyle: 'minimal',
@@ -129,6 +150,7 @@
               terminalWordSeparators: ' ()[]{}\',"`',
               overviewMode: 'title',
               overviewZoomThreshold: 0.2,
+              workspaceRootWatermarksEnabled: true,
               filesEnabled: true,
               filePresentationMode: 'nodes',
               fileNodeDisplayStyle: 'minimal',

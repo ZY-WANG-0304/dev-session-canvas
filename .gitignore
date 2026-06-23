@@ -23,3 +23,4 @@ core.*
 apps/template-marketplace/.dev.vars
 apps/template-marketplace/.dev.vars.*
 !apps/template-marketplace/.dev.vars.example
+release-artifacts/

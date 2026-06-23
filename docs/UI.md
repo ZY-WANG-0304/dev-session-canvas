@@ -1,5 +1,5 @@
 ---
-version: 2026-05-17
+version: 2026-06-14
 name: DevSessionCanvas UI
 description: DevSessionCanvas 的跨功能 UI design-system 基线。本文只记录 UI token、组件表面语言和通用 Do / Don't；产品判断、功能规格、具体设计方案和前端实现检查清单分别进入对应正式文档。
 colors:
@@ -121,6 +121,10 @@ components:
   canvas-edge:
     stroke: "var(--canvas-edge-stroke-default)"
     selectedOutline: "color-mix(in srgb, var(--vscode-focusBorder) 46%, transparent)"
+  canvas-group:
+    backgroundColor: "var(--vscode-panel-background)"
+    borderColor: "var(--vscode-panel-border)"
+    title: "straight-edged panel tab shape, not a pill"
   sidebar-section:
     hostSurface: "host-native sidebar surface by default"
     density: "compact workbench section"
@@ -173,6 +177,7 @@ components:
 
 | 用途 | 建议值 | 说明 |
 | --- | --- | --- |
+| 节点上下文 | 10px / 400 / 1.2 | 可选标题上方上下文，例如 Agent cwd。 |
 | 节点标题 | 13px / 600 / 1.3 | 对象身份，标题栏可编辑。 |
 | 节点副标题 | 11px / 400 / 1.35 | 来源、路径、摘要和辅助状态。 |
 | 正文小文本 | 12px / 400 / 1.5 | 文档正文、空状态、帮助说明。 |
@@ -199,12 +204,13 @@ components:
 - `2px`：标题与副标题之间的最小间隔。
 - `4px`：widget 内部微间距、空间概览控件 padding。
 - `6px`：标题栏按钮组、状态 cluster。
-- `8px`：菜单、资源列表、连线工具条内部节奏。
+- `8px`：菜单、资源列表、连线工具条内部节奏；执行型节点的内嵌运行时 frame padding。
 - `10px`：标题栏横向 gap、紧凑内容 padding。
-- `12px`：节点正文 padding、普通内容卡片 padding。
+- `12px`：节点正文外壳 padding、普通内容卡片 padding；卡片态 `Agent` / `Terminal` / `File` / `File List` / fallback 节点默认共享这一档。
 - `14px`：画布角落控件到边缘距离。
-- `16px`：侧栏内容 section 内较大间隔。
-- `24px`：文档级或大 section 间隔，不应频繁出现在 Webview 节点内部。
+- `16px`：侧栏内容 section 内较大间隔；文档型正文的纵向阅读 padding。
+- `18px`：文档型正文的横向阅读 padding，仅用于 Note Markdown 预览和编辑面。
+- `24px`：大 section 或空间组织对象的内部预留；分组成员到 group body 四边的视觉预留使用这一档。
 
 ### Container Rules
 
@@ -273,6 +279,7 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 状态摘要和宿主级导航优先使用宿主原生列表语义。
 - 需要更丰富行内控件时，应保持最小自绘 surface，不把局部能力扩展成完整面板。
 - 所有 sidebar section 都应贴近 VSCode 原生 sidebar：扁平列表、弱 hover、紧凑行距、少量 view title action。
+- sidebar section 的标题级动作优先使用 VSCode 原生 view title action / secondary `...` 菜单；不要在 Webview 内容区自绘一个替代宿主更多菜单的 `...` 按钮。
 - Webview 自绘 sidebar 列表必须按 VSCode list 状态 token 成对绑定颜色：默认标题文本优先使用全局 `foreground` 并以 `sideBar.foreground` 兜底；hover 使用 `list.hoverBackground` / `list.hoverForeground`；当前焦点选中项使用 `list.activeSelectionBackground` / `list.activeSelectionForeground`；失焦但保留选中项使用 `list.inactiveSelectionBackground` / `list.inactiveSelectionForeground`。不要把 `sideBar.foreground` 当作所有 row title 的唯一前景色，也不要只换背景不换对应前景色。
 - 禁止在 sidebar 中复制选中对象正文、连续运行输出或完整 inspector，也不要把 sidebar 做成 mini dashboard。
 
@@ -284,18 +291,32 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 
 - 外框使用 1px border、轻阴影、低圆角和类型弱边框。
 - 节点类型颜色是产品识别色，可用于 marker、minimap 和弱边框；它们不是状态色，也不是主题 token 选择错误。
-- 标题栏承载对象身份、可选副标题和右侧动作区。
+- 标题栏承载对象身份、可选标题上方上下文、可选副标题和右侧动作区。
 - 正文区按对象类型承载内容，但不应引入多层 card-in-card。
+- 节点正文 padding 以 `12px` 为默认外壳；执行型节点在正文外壳内再用 `8px` 的运行时 frame 包住 xterm，使 `Agent` 与 `Terminal` 的终端内容拥有一致留白。
+- Note 是文档 surface：节点 body 可贴边，Markdown 预览和编辑态文本区使用 `16px 18px` 的文档页边距；行号 gutter 只占用编辑态左侧文档留白，不改变预览态节奏。
+- File 和 File List 的卡片态使用默认 `12px` 正文 padding；minimal 文件活动仍可使用更小的 badge / list row padding，因为它们表达的是文件标签密度而非完整节点正文。
 - 选中态使用 `focusBorder` 外描边表达，不重绘整块背景。
 
 具体对象行为和字段边界由 `docs/design-docs/` 中对应对象或节点设计文档定义，并从 `docs/design-docs/index.md` 查找。
+
+### Canvas Group Surfaces
+
+分组是画布空间组织对象，视觉上应更接近 VSCode Panel，而不是节点卡片或白板贴纸：
+
+- 外框、body、标题 tab 和分组 toolbar 的背景统一使用 `--vscode-panel-background`，不使用混色或其他 surface fallback；普通态也要让用户能识别区域边界。body 背景应绘制在普通节点下方，避免 Panel 面层压住成员节点内容。
+- 边框使用 `--vscode-panel-border`，tab 和 body 都采用直角边界，body 上边界也必须有边框，且画布缩放时保持屏幕可见线宽不变；标题贴在分组左上角，采用类似 Panel 顶部 active tab 的标题区域；标题 tab 之外的顶部横向区域应保持挖空透明，不绘制 header 背景条，不使用外浮胶囊、强阴影或高饱和标签。
+- 选中态通过与节点 resize 一致的四边选中线、四角圆形控制点、标题文字前景和贴在 tab 右侧的轻量双段按钮表达；标题 tab 与双段按钮只在画板缩小时做反向缩放以保持可读；画板放大时不反向缩小，视觉上跟随画板一起放大；默认按内容自然宽度显示，只有自然宽度达到分组宽度上限时才停止继续变宽，整体不得超出分组框；tab 区域不额外显示 active 下划线，也不通过自定义分组颜色表达。
+- 分组 body 不应遮挡内部节点、连线或运行时内容的主交互；成员对象距离 body 左、上、右、下边界的视觉预留应保持一致，并使用 `24px` 的空间组织预留；因为标题 tab 占据顶部，宿主几何中的 top inset 应为 `24px + title height`。标题、不可见 header 拖动区、边框、resize 控制点和未被节点覆盖的 body 空白区都可用于选中分组，其中 body 空白区右键仍打开画布上下文菜单，菜单内新增 / 创建类操作归属于该 body 所在分组。
 
 ### Node Title And Subtitle
 
 节点标题与副标题共享同一套标题栏信息层级：
 
 - 标题是对象身份，使用 `window-title` 字体层级，可编辑，保持单行，不承载来源路径、启动命令或长说明。
+- 标题上方上下文是可选更低强调元信息，当前用于 Agent `cwdLabel` 这类定位上下文；它与标题同属对象身份区，但不和启动命令混在同一副标题里。
 - 副标题是可选元信息行，使用 `subtitle` 字体层级，可表达 Agent 启动命令、Terminal shell path、关联 Markdown 文件路径等来源信息。
+- Agent 标题栏中，路径 / multi-root root 上下文显示在标题上方；启动命令仍显示在标题下方副标题。两者各自独立做单行 ellipsis，并各自只在实际溢出时显示对应完整值 tooltip。
 - 副标题文本必须保留完整的人类可读值，不在数据层按字符数预截断，也不为 Canvas 节点做中间省略；`resourceUri` 这类内部身份不能直接进入可见副标题。
 - 可视最大长度由标题栏布局决定：Agent 标题副本区当前最多 `340px`，Terminal 与 Note 使用扣除右侧动作区后的标题栏剩余宽度；超出时统一单行 ellipsis。
 - 溢出 tooltip 只在实际溢出时出现，内容应是同一条完整人类可读副标题；不要为了常驻 tooltip 单独维护另一份缩写/完整文案。
