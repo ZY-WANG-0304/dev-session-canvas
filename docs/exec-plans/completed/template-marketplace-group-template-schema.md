@@ -20,6 +20,8 @@
 - [x] (2026-06-23 11:42Z) 已升级 `apps/template-marketplace/src/worker/publish.ts` 的文本字段采集，把分组标题纳入内容安全扫描，并补充 API 测试。
 - [x] (2026-06-23 11:46Z) 已更新 `docs/design-docs/template-marketplace.md` 和 `docs/product-specs/template-marketplace.md`，记录市场模板 schema 承载用户分组树，同时继续排除 file/file-list 成员。
 - [x] (2026-06-23 11:49Z) 已运行针对性验证并把结果写入本计划。
+- [x] (2026-06-23 18:35Z) 复审评论指出扩展侧 canonical parser/store 仍会在市场安装路径裁掉分组字段，已将本地模板 parser、capture、install apply 和状态持久化补齐到保留 `groups`、`node.groupIndex` 与 `group.parentGroupIndex`。
+- [x] (2026-06-23 18:48Z) 已补充 `scripts/test/test-canvas-templates.mjs` 的市场完整包安装、解析 round-trip、capture 分组树和非法分组引用回归，并重新运行完整验证。
 
 ## 意外与发现
 
@@ -35,6 +37,9 @@
 - 观察：完整针对性验证、根 typecheck 和 build 均清洁通过。
   证据：`npm run test:marketplace-shared && npm run test:marketplace-api && npm run typecheck:marketplace && npm run test:canvas-templates && npm run test:marketplace-web && git diff --check` 退出码为 0；随后 `npm run typecheck` 与 `npm run build` 退出码也为 0。
 
+- 观察：市场共享 schema 支持分组后，扩展侧 `parseCanvasTemplateDocument()` 与 `CanvasTemplateStore.writeMarketplaceTemplatePackage()` 仍会重新解析并写回 `template.json`；如果本地模板模型不保留分组，完整包安装和内联安装都会确定性丢分组。
+  证据：PR #194 review 评论指出 `src/common/canvasTemplates.ts`、`src/panel/CanvasTemplateStore.ts` 和 marketplace schema 的不一致；修复后新增 canvas template 回归覆盖完整包安装写回 `template.json` 后仍保留 `groups` 和 `nodes[].groupIndex`。
+
 ## 决策记录
 
 - 决策：市场模板 schema 直接支持本地模板 v1 的用户分组树字段：`template.groups`、`node.groupIndex`、`group.parentGroupIndex`。
@@ -49,13 +54,17 @@
   理由：`minExtensionVersion` 已在包 manifest 设计中存在，但安装门禁需要版本比较和客户端安装路径补充；它不影响分组字段是否被保留，混入本次会扩大回归面。
   日期/作者：2026-06-23 / Codex。
 
+- 决策：保留市场 schema 和文档对“安装解析保留分组”的声明，并在扩展侧补齐本地模板分组解析、capture 与 apply，而不是撤回分组支持声明。
+  理由：市场发布、包规范化和安装路径最终都会进入扩展侧 canonical parser/store；只有两侧 schema 对齐，用户从市场安装包含分组的模板时才不会经历字段被接受后又被裁掉的断裂。
+  日期/作者：2026-06-23 / Codex。
+
 ## 结果与复盘
 
 已完成 schema、缩略图和 Worker 治理文本升级：marketplace template document 现在声明并保留用户分组树，能拒绝越界、自引用和循环父子关系；缩略图会绘制分组框；分组标题会进入内容安全扫描。剩余工作是正式文档和完整验证。
 
 已同步正式设计与产品规格：模板市场 `template.json` 的主体范围明确包含用户创建的画布分组树，但仍排除 `file` / `file-list` 节点和多根 workspace root 分组。
 
-本计划已完成。交付物包括 marketplace shared schema 与类型升级、分组引用校验、缩略图分组框渲染、Worker 发布内容安全分组标题采集、API/shared 测试覆盖，以及设计文档和产品规格同步。未新增需要登记到 `docs/exec-plans/tech-debt-tracker.md` 的阻塞技术债；此前已知的 `minExtensionVersion` 安装门禁仍属于模板市场包能力后续 P1，不影响本次分组字段保留。
+本计划已完成。交付物包括 marketplace shared schema 与类型升级、分组引用校验、缩略图分组框渲染、Worker 发布内容安全分组标题采集、扩展侧本地模板 parser/capture/apply 分组保留、API/shared/canvas template 测试覆盖，以及设计文档和产品规格同步。未新增需要登记到 `docs/exec-plans/tech-debt-tracker.md` 的阻塞技术债；此前已知的 `minExtensionVersion` 安装门禁仍属于模板市场包能力后续 P1，不影响本次分组字段保留。
 
 ## 上下文与定向
 
@@ -161,6 +170,19 @@ Worker 发布治理文本采集位于 `apps/template-marketplace/src/worker/publ
     npm run build
     node scripts/build/build.mjs
 
+复审修复后的回归验证记录：
+
+    npm run test:canvas-templates
+    npm run typecheck
+    npm run test:marketplace-shared
+    npm run test:marketplace-api
+    npm run typecheck:marketplace
+    npm run test:marketplace-web
+    git diff --check
+    npm run build
+
+这些命令均已通过。验证范围覆盖本地模板解析、市场完整包安装写回、市场 shared/API/Web 回归、根类型检查和扩展构建；未执行真实 VS Code 端到端市场安装。
+
 ## 接口与依赖
 
 在 `packages/marketplace-shared/src/index.ts` 中必须存在以下接口字段：`MarketplaceTemplateDocument.template.groups?: MarketplaceTemplateGroupSnapshot[]`、`MarketplaceTemplateNodeSnapshot.groupIndex?: number`、`MarketplaceTemplateGroupSnapshot.parentGroupIndex?: number`。`marketplaceTemplateDocumentSchema` 必须保留这些字段，并在 `superRefine()` 中校验引用关系。
@@ -176,3 +198,5 @@ Worker 发布治理文本采集位于 `apps/template-marketplace/src/worker/publ
 计划更新记录：2026-06-23 完成正式设计文档与产品规格同步后更新进度，原因是仓库要求涉及设计和产品结论的实现必须同步文档。
 
 计划更新记录：2026-06-23 完成最终验证和复盘后更新计划，原因是计划完成时必须记录可证明有效的工作结果和剩余技术债判断。
+
+计划更新记录：2026-06-23 处理 PR #194 复审 blocker 后补充计划，原因是修复范围从 marketplace shared 扩展到扩展侧 canonical parser/store，必须记录新增决策、证据和残余验证边界。
