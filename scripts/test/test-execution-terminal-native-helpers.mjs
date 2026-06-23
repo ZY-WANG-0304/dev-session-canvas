@@ -472,6 +472,151 @@ try {
   assert.deepEqual(vscodeStub.__getFindFilesCalls().map((call) => call.pattern), ['**/docs/readme.md']);
 
   vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([
+    { name: 'workspace-a', path: '/workspace-a' },
+    { name: 'workspace-b', path: '/workspace-b' }
+  ]);
+  vscodeStub.__setFiles([{ path: '/workspace-b/src/index.ts', type: 'file' }]);
+  const multiRootQualifiedFileResult = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: 'workspace-b/src/index.ts',
+      path: 'workspace-b/src/index.ts',
+      bufferStartLine: 10,
+      source: 'detected'
+    },
+    createContext('/bin/bash', '/workspace-a', 'posix')
+  );
+  assert.equal(multiRootQualifiedFileResult?.uri.fsPath, '/workspace-b/src/index.ts');
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), [
+    {
+      base: '/workspace-b',
+      pattern: 'src/index.ts',
+      maxResults: 64
+    }
+  ]);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([
+    { name: 'workspace-a', path: '/workspace-a' },
+    { name: 'workspace-b', path: '/workspace-b' }
+  ]);
+  vscodeStub.__setFiles([{ path: '/workspace-b/src/index.ts', type: 'file' }]);
+  const multiRootQualifiedSearchResult = await openExecutionTerminalLink(
+    {
+      linkKind: 'search',
+      text: 'workspace-b/src/index.ts:8',
+      searchText: 'workspace-b/src/index.ts:8',
+      contextLine: 'workspace-b/src/index.ts:8',
+      bufferStartLine: 10,
+      source: 'word'
+    },
+    createContext('/bin/bash', '/workspace-a', 'posix')
+  );
+  assert.deepEqual(multiRootQualifiedSearchResult, {
+    opened: true,
+    openerKind: 'showTextDocument',
+    targetUri: '/workspace-b/src/index.ts'
+  });
+  const multiRootQualifiedSearchCalls = vscodeStub.__getShowTextDocumentCalls();
+  assert.equal(multiRootQualifiedSearchCalls[0].document.uri.fsPath, '/workspace-b/src/index.ts');
+  assert.equal(multiRootQualifiedSearchCalls[0].options.selection.start.line, 7);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([
+    { name: 'workspace-a', path: '/workspace-a' },
+    { name: 'workspace-b', path: '/workspace-b' }
+  ]);
+  vscodeStub.__setFiles([{ path: '/workspace-b/src/shared.ts', type: 'file' }]);
+  const unqualifiedMultiRootResult = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: 'src/shared.ts',
+      path: 'src/shared.ts',
+      bufferStartLine: 10,
+      source: 'fallback'
+    },
+    createContext('/bin/bash', '/workspace-a', 'posix')
+  );
+  assert.equal(unqualifiedMultiRootResult, undefined);
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), [
+    {
+      base: '/workspace-a',
+      pattern: '**/src/shared.ts',
+      maxResults: 64
+    }
+  ]);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([
+    { name: 'workspace-a', path: '/workspace-a' },
+    { name: 'workspace-b', path: '/workspace-b' }
+  ]);
+  vscodeStub.__setFiles([{ path: '/workspace-b/packages/app/docs/readme.md', type: 'file' }]);
+  const lineScopedMultiRootFallbackResult = await resolveExecutionFileLink(
+    {
+      linkKind: 'file',
+      text: 'docs/readme.md',
+      path: 'docs/readme.md',
+      bufferStartLine: 10,
+      source: 'fallback'
+    },
+    createContext('/bin/bash', '/workspace-a', 'posix', {
+      resolveCwdForBufferLine: async (bufferStartLine) =>
+        bufferStartLine === 10 ? '/workspace-b/src' : '/workspace-a'
+    })
+  );
+  assert.equal(lineScopedMultiRootFallbackResult?.uri.fsPath, '/workspace-b/packages/app/docs/readme.md');
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), [
+    {
+      base: '/workspace-b',
+      pattern: '**/docs/readme.md',
+      maxResults: 64
+    }
+  ]);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([
+    { name: 'workspace-a', path: '/workspace-a' },
+    { name: 'workspace-b', path: '/workspace-b' }
+  ]);
+  vscodeStub.__setFiles([{ path: '/workspace-b/packages/app/docs/readme.md', type: 'file' }]);
+  const cachedLineScopedMultiRootResults = await resolveExecutionTerminalFileLinkCandidates(
+    [
+      createFallbackCandidate('workspace-a-miss', 'docs/readme.md'),
+      {
+        ...createFallbackCandidate('workspace-b-hit', 'docs/readme.md'),
+        bufferStartLine: 10
+      }
+    ],
+    createContext('/bin/bash', '/workspace-a', 'posix', {
+      resolveCwdForBufferLine: async (bufferStartLine) =>
+        bufferStartLine === 10 ? '/workspace-b/src' : '/workspace-a'
+    }),
+    () => 'resolved-line-scoped'
+  );
+  assert.deepEqual(
+    cachedLineScopedMultiRootResults.map((result) => result.candidateId),
+    ['workspace-b-hit']
+  );
+  assert.equal(
+    cachedLineScopedMultiRootResults[0]?.resolved.uri.fsPath,
+    '/workspace-b/packages/app/docs/readme.md'
+  );
+  assert.deepEqual(vscodeStub.__getFindFilesCalls(), [
+    {
+      base: '/workspace-a',
+      pattern: '**/docs/readme.md',
+      maxResults: 64
+    },
+    {
+      base: '/workspace-b',
+      pattern: '**/docs/readme.md',
+      maxResults: 64
+    }
+  ]);
+
+  vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
   vscodeStub.__setFiles([{ path: '/workspace/custom/tool', type: 'file' }]);
   const interactiveFallbackPathResult = await resolveExecutionTerminalFileLinkCandidates(
