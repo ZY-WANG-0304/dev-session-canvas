@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 
 import {
+  createExecutionImagePasteFileName,
+  formatExecutionImagePasteText,
+  hasValidExecutionImagePasteSignature,
   inferExecutionTerminalClipboardPlatform,
   prepareExecutionTerminalPasteText,
-  resolveExecutionTerminalClipboardShortcut
+  resolveExecutionTerminalClipboardShortcut,
+  sanitizeExecutionImagePastePathSegment
 } from '../../src/common/executionTerminalClipboard.ts';
 import { parseWebviewMessage } from '../../src/common/protocol.ts';
 
@@ -138,6 +142,54 @@ function runPastePreparationChecks(): void {
   );
 }
 
+function runImagePasteHelperChecks(): void {
+  assert.equal(
+    createExecutionImagePasteFileName({
+      mimeType: 'image/png',
+      now: new Date('2026-06-24T01:02:03.004Z'),
+      randomSuffix: 'abc/unsafe value'
+    }),
+    'pasted-screenshot-20260624T010203004Z-abc-unsafe-value.png',
+    '截图粘贴文件名应稳定包含时间、随机后缀和 MIME 扩展名。'
+  );
+  assert.equal(
+    sanitizeExecutionImagePastePathSegment(' ../agent:one? ', 'fallback'),
+    'agent-one',
+    '截图粘贴存储段应去除路径与 shell 危险字符。'
+  );
+  assert.equal(
+    formatExecutionImagePasteText("/tmp/path with 'quote'.png"),
+    "'/tmp/path with '\\''quote'\\''.png' ",
+    '粘贴给 Agent 的图片路径文本应使用 shell-safe 单引号并保留尾随空格。'
+  );
+  assert.equal(
+    hasValidExecutionImagePasteSignature(
+      Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      'image/png'
+    ),
+    true,
+    'PNG magic number 应被接受。'
+  );
+  assert.equal(
+    hasValidExecutionImagePasteSignature(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]), 'image/jpeg'),
+    true,
+    'JPEG magic number 应被接受。'
+  );
+  assert.equal(
+    hasValidExecutionImagePasteSignature(
+      Uint8Array.from([0x52, 0x49, 0x46, 0x46, 1, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]),
+      'image/webp'
+    ),
+    true,
+    'WebP RIFF/WEBP magic number 应被接受。'
+  );
+  assert.equal(
+    hasValidExecutionImagePasteSignature(Uint8Array.from([0x47, 0x49, 0x46]), 'image/png'),
+    false,
+    'MIME 与 magic number 不一致时应拒绝。'
+  );
+}
+
 function runProtocolChecks(): void {
   assert.deepEqual(
     parseWebviewMessage({
@@ -225,6 +277,49 @@ function runProtocolChecks(): void {
 
   assert.deepEqual(
     parseWebviewMessage({
+      type: 'webview/pasteExecutionImage',
+      payload: {
+        requestId: 'image-paste-1',
+        nodeId: 'agent-1',
+        kind: 'agent',
+        mimeType: 'image/png',
+        dataBase64: 'iVBORw0KGgo=',
+        sizeBytes: 8,
+        name: 'screenshot.png'
+      }
+    }),
+    {
+      type: 'webview/pasteExecutionImage',
+      payload: {
+        requestId: 'image-paste-1',
+        nodeId: 'agent-1',
+        kind: 'agent',
+        mimeType: 'image/png',
+        dataBase64: 'iVBORw0KGgo=',
+        sizeBytes: 8,
+        name: 'screenshot.png'
+      }
+    },
+    'pasteExecutionImage 协议应通过 validator。'
+  );
+  assert.equal(
+    parseWebviewMessage({
+      type: 'webview/pasteExecutionImage',
+      payload: {
+        requestId: 'image-paste-1',
+        nodeId: 'agent-1',
+        kind: 'agent',
+        mimeType: 'image/svg+xml',
+        dataBase64: 'PHN2Zz4=',
+        sizeBytes: 6
+      }
+    }),
+    null,
+    'pasteExecutionImage 应拒绝不在白名单内的 MIME。'
+  );
+
+  assert.deepEqual(
+    parseWebviewMessage({
       type: 'webview/executionClipboardDiagnostic',
       payload: {
         nodeId: 'agent-1',
@@ -293,5 +388,6 @@ function runProtocolChecks(): void {
 runShortcutMatrix();
 runRemotePlatformInferenceChecks();
 runPastePreparationChecks();
+runImagePasteHelperChecks();
 runProtocolChecks();
 console.log('execution terminal clipboard tests passed');
