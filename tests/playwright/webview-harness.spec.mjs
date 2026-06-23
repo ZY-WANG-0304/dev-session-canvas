@@ -13878,6 +13878,56 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 }
 
+test('agent output drain reaches every live node when many nodes have pending backlog', async ({ page }) => {
+  const state = createMultiLiveExecutionNodeState('agent', 6);
+  const nodeIds = state.nodes.map((node) => node.id);
+  const outputEvents = nodeIds.map((nodeId, index) => {
+    const marker = `AGENT-FAIR-DRAIN-${nodeId}`;
+    const chunk =
+      Array.from({ length: 12000 }, (_value, lineIndex) => {
+        return `${marker}-${String(lineIndex).padStart(4, '0')}`;
+      }).join('\r\n') + '\r\n';
+    return {
+      nodeId,
+      kind: 'agent',
+      chunk,
+      executionSessionId: `fair-drain-session-${index + 1}`,
+      outputSequence: index + 1
+    };
+  });
+
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, state);
+  for (const nodeId of nodeIds) {
+    await waitForExecutionTerminalReady(page, nodeId);
+  }
+
+  await page.evaluate((events) => {
+    for (const payload of events) {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionOutput',
+        payload
+      });
+    }
+  }, outputEvents);
+  await settleWebview(page, 12);
+
+  for (const nodeId of nodeIds) {
+    const probeNode = await readProbeNode(page, nodeId, 0);
+    expect(
+      probeNode?.terminalVisibleLines?.some((line) => line.includes(`AGENT-FAIR-DRAIN-${nodeId}`))
+    ).toBe(true);
+  }
+});
+
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} requests snapshot reset instead of replaying a huge restored backlog`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
