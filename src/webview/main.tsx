@@ -877,12 +877,20 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
   const suppressedAutomaticFileArtifactNodeIds = state && Array.isArray(state.suppressedAutomaticFileArtifactNodeIds)
     ? state.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
     : [];
+  const rawGroups = state?.groups;
+  const groups = Array.isArray(rawGroups) ? rawGroups : [];
+  const nextGroupSequence = state?.nextGroupSequence;
 
   return {
     version: 1,
     updatedAt: typeof state?.updatedAt === 'string' ? state.updatedAt : new Date().toISOString(),
     nodes,
     edges,
+    groups,
+    nextGroupSequence:
+      typeof nextGroupSequence === 'number' && Number.isInteger(nextGroupSequence) && nextGroupSequence > 0
+        ? nextGroupSequence
+        : 1,
     fileReferences,
     suppressedFileActivityEdgeIds,
     suppressedAutomaticFileArtifactNodeIds
