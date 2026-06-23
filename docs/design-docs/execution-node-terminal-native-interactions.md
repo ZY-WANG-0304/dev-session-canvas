@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/active/execution-terminal-native-link-parity.md
   - docs/exec-plans/completed/execution-node-terminal-native-interactions.md
   - docs/exec-plans/completed/execution-node-link-parity-and-extensions.md
-updated_at: 2026-06-13
+updated_at: 2026-06-24
 ---
 
 # 执行节点的 VSCode 原生 Terminal 交互对齐
@@ -168,6 +168,7 @@ updated_at: 2026-06-13
   - ripgrep / eslint 类“上一行路径、下一行 `16:5`”格式。
   - git diff hunk header 类原生已支持场景。
 - 本地路径解析必须继续使用当前仓库已有的 line-scoped cwd 语义；也就是 `src/panel/executionTerminalLineContextTracker.ts` 追踪出来的 `buffer line -> cwd` 结果，应作为原生 command detection 能力在当前仓库里的等价输入。
+- 多根 workspace 下，`workspace-folder/relative/path` 形式的相对 file link 是显式 root-qualified 路径，Host opener 必须保留 folder 前缀完成 root 定位，再只在该 root 内以去掉前缀后的相对路径做 exact / search fallback；不能先把前缀当作普通目录段或为了 search exact-open 统一裁掉。未带 root 前缀的相对路径继续按执行节点 line-scoped cwd 所属 root 优先解析，避免在 sibling root 中误命中。
 
 ### 7.5 URI 与 word/search 语义
 
@@ -229,3 +230,8 @@ updated_at: 2026-06-13
 
 1. `scripts/test/test-execution-terminal-native-helpers.mjs` 已新增 `editorPreview` 下 loopback / all-interface URL 回归，验证 `http://127.0.0.1:3000/...` 与 `http://0.0.0.0:3000/...` 会先经过 `vscode.env.asExternalUri(...)`，再把解析后的 URI 传给 `simpleBrowser.api.open`。
 2. `tests/vscode-smoke/extension-tests.cjs` 的 URL 打开诊断断言允许 `targetUri` 是 VS Code 端口转发后的预览 URI，以覆盖 Remote SSH / Dev Container 中 `targetUri` 不再等于终端原始文本的情况。
+
+2026-06-24 追加验证：
+
+1. `scripts/test/test-execution-terminal-native-helpers.mjs` 覆盖 multi-root 下 `workspace-b/src/index.ts` 这类 root-qualified file link：即使当前执行节点 cwd 在 `workspace-a`，Host 也会把搜索限定到 `workspace-b`，并按 `src/index.ts` 打开目标文件。
+2. 同一脚本覆盖 root-qualified word/search exact-open 保留 `#line`/`:line` 定位，以及不带 root 前缀的多根相对路径只优先检索当前 cwd 所属 root，不再跨 sibling roots 做全局 exact fallback。

@@ -359,11 +359,19 @@ function shouldResolveExecutionWorkspaceFallbackLink(
   context: ExecutionTerminalPathContext,
   options?: ResolveExecutionFileLinkOptions
 ): boolean {
-  if (link.source === 'hardwrap') {
-    return options?.allowWorkspaceFallback !== false;
+  if (options?.allowWorkspaceFallback === false) {
+    return false;
   }
 
-  if (link.source !== 'fallback' || options?.allowWorkspaceFallback === false) {
+  if (hasWorkspaceQualifiedExecutionSearchPath(sanitizedPath, context)) {
+    return true;
+  }
+
+  if (link.source === 'hardwrap') {
+    return true;
+  }
+
+  if (link.source !== 'fallback') {
     return false;
   }
 
@@ -634,11 +642,13 @@ function normalizeExecutionTerminalSearchLinkText(
   text = text.replace(/\.$/, '');
 
   const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
-  const pathSeparator = context.pathStyle === 'windows' ? '\\' : '/';
-  for (const workspaceFolder of workspaceFolders) {
-    if (text.substring(0, workspaceFolder.name.length + 1) === `${workspaceFolder.name}${pathSeparator}`) {
-      text = text.substring(workspaceFolder.name.length + 1);
-      break;
+  if (workspaceFolders.length <= 1) {
+    const pathSeparator = context.pathStyle === 'windows' ? '\\' : '/';
+    for (const workspaceFolder of workspaceFolders) {
+      if (text.substring(0, workspaceFolder.name.length + 1) === `${workspaceFolder.name}${pathSeparator}`) {
+        text = text.substring(workspaceFolder.name.length + 1);
+        break;
+      }
     }
   }
 
@@ -696,6 +706,10 @@ function trimWorkspacePrefixFromExecutionTerminalSearchText(
   pathStyle: ExecutionTerminalPathStyle
 ): string | undefined {
   const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  if (workspaceFolders.length > 1) {
+    return undefined;
+  }
+
   const pathSeparator = pathStyle === 'windows' ? '\\' : '/';
   for (const workspaceFolder of workspaceFolders) {
     if (candidate.substring(0, workspaceFolder.name.length + 1) === `${workspaceFolder.name}${pathSeparator}`) {
@@ -780,6 +794,24 @@ function isAbsoluteExecutionPath(
   return style === 'windows'
     ? path.win32.isAbsolute(candidate) || candidate.startsWith('\\\\')
     : path.posix.isAbsolute(candidate);
+}
+
+function isSameOrDescendantExecutionPath(
+  candidatePath: string,
+  rootPath: string,
+  style: ExecutionTerminalPathStyle
+): boolean {
+  const normalizedCandidate = normalizeComparableExecutionPath(candidatePath, style);
+  const normalizedRoot = normalizeComparableExecutionPath(rootPath, style).replace(/\/+$/, '');
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}/`);
+}
+
+function normalizeComparableExecutionPath(
+  value: string,
+  style: ExecutionTerminalPathStyle
+): string {
+  const normalized = normalizeExecutionPath(value, style).replace(/\\/g, '/').replace(/\/+$/, '');
+  return style === 'windows' ? normalized.toLowerCase() : normalized;
 }
 
 async function statExecutionLinkTarget(
@@ -872,10 +904,17 @@ async function resolveExecutionWorkspaceFallbackLink(
     return undefined;
   }
 
-  const exactMatches = await collectExecutionWorkspaceFallbackMatches(
+  const searchScope = resolveExecutionWorkspaceFallbackSearchScope(
     workspaceFolders,
     normalizedSearchPath,
-    false
+    context
+  );
+
+  const exactMatches = await collectExecutionWorkspaceFallbackMatches(
+    searchScope.workspaceFolders,
+    searchScope.normalizedSearchPath,
+    false,
+    { anchorToWorkspaceRoot: searchScope.anchorToWorkspaceRoot }
   );
   if (exactMatches.length === 1) {
     return statExecutionLinkTarget(exactMatches[0], link);
@@ -886,9 +925,10 @@ async function resolveExecutionWorkspaceFallbackLink(
   }
 
   const partialMatches = await collectExecutionWorkspaceFallbackMatches(
-    workspaceFolders,
-    normalizedSearchPath,
-    true
+    searchScope.workspaceFolders,
+    searchScope.normalizedSearchPath,
+    true,
+    { anchorToWorkspaceRoot: searchScope.anchorToWorkspaceRoot }
   );
   if (partialMatches.length !== 1) {
     return undefined;
@@ -897,15 +937,132 @@ async function resolveExecutionWorkspaceFallbackLink(
   return statExecutionLinkTarget(partialMatches[0], link);
 }
 
+function hasWorkspaceQualifiedExecutionSearchPath(
+  candidate: string,
+  context: ExecutionTerminalPathContext
+): boolean {
+  if (candidate.startsWith('file://') || isAbsoluteExecutionPath(candidate, context.pathStyle)) {
+    return false;
+  }
+
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  if (workspaceFolders.length <= 1) {
+    return false;
+  }
+
+  const normalizedSearchPath = normalizeWorkspaceSearchPath(candidate, context.pathStyle);
+  return Boolean(
+    normalizedSearchPath &&
+      resolveWorkspaceQualifiedExecutionSearchPath(normalizedSearchPath, workspaceFolders)
+  );
+}
+
+function resolveExecutionWorkspaceFallbackSearchScope(
+  workspaceFolders: readonly vscode.WorkspaceFolder[],
+  normalizedSearchPath: string,
+  context: ExecutionTerminalPathContext
+): {
+  workspaceFolders: readonly vscode.WorkspaceFolder[];
+  normalizedSearchPath: string;
+  anchorToWorkspaceRoot: boolean;
+} {
+  const workspaceQualifiedPath = resolveWorkspaceQualifiedExecutionSearchPath(
+    normalizedSearchPath,
+    workspaceFolders
+  );
+  if (workspaceQualifiedPath) {
+    return {
+      workspaceFolders: [workspaceQualifiedPath.workspaceFolder],
+      normalizedSearchPath: workspaceQualifiedPath.relativePath,
+      anchorToWorkspaceRoot: true
+    };
+  }
+
+  if (workspaceFolders.length <= 1) {
+    return {
+      workspaceFolders,
+      normalizedSearchPath,
+      anchorToWorkspaceRoot: false
+    };
+  }
+
+  const currentWorkspaceFolder = resolveExecutionWorkspaceFolderForCwd(workspaceFolders, context);
+  return {
+    workspaceFolders: currentWorkspaceFolder ? [currentWorkspaceFolder] : workspaceFolders,
+    normalizedSearchPath,
+    anchorToWorkspaceRoot: false
+  };
+}
+
+function resolveWorkspaceQualifiedExecutionSearchPath(
+  normalizedSearchPath: string,
+  workspaceFolders: readonly vscode.WorkspaceFolder[]
+): { workspaceFolder: vscode.WorkspaceFolder; relativePath: string } | undefined {
+  const segments = normalizedSearchPath.split('/').filter((segment) => segment.length > 0);
+  if (segments.length < 2) {
+    return undefined;
+  }
+
+  const candidateRootName = normalizeExecutionWorkspaceFolderSearchName(segments[0]);
+  if (!candidateRootName) {
+    return undefined;
+  }
+
+  const matchingFolders = workspaceFolders.filter(
+    (workspaceFolder) =>
+      normalizeExecutionWorkspaceFolderSearchName(workspaceFolder.name) === candidateRootName
+  );
+  if (matchingFolders.length !== 1) {
+    return undefined;
+  }
+
+  const relativePath = segments.slice(1).join('/');
+  if (!relativePath || relativePath === '.' || relativePath.startsWith('../')) {
+    return undefined;
+  }
+
+  return {
+    workspaceFolder: matchingFolders[0],
+    relativePath
+  };
+}
+
+function normalizeExecutionWorkspaceFolderSearchName(value: string | undefined): string {
+  return (value ?? '').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
+function resolveExecutionWorkspaceFolderForCwd(
+  workspaceFolders: readonly vscode.WorkspaceFolder[],
+  context: ExecutionTerminalPathContext
+): vscode.WorkspaceFolder | undefined {
+  const cwd = context.cwd.trim();
+  if (!cwd) {
+    return undefined;
+  }
+
+  return workspaceFolders
+    .filter((workspaceFolder) =>
+      isSameOrDescendantExecutionPath(cwd, workspaceFolder.uri.fsPath, context.pathStyle)
+    )
+    .sort(
+      (left, right) =>
+        normalizeComparableExecutionPath(right.uri.fsPath, context.pathStyle).length -
+        normalizeComparableExecutionPath(left.uri.fsPath, context.pathStyle).length
+    )[0];
+}
+
 async function collectExecutionWorkspaceFallbackMatches(
   workspaceFolders: readonly vscode.WorkspaceFolder[],
   normalizedSearchPath: string,
-  allowPartialBasenameMatch: boolean
+  allowPartialBasenameMatch: boolean,
+  options: { anchorToWorkspaceRoot?: boolean } = {}
 ): Promise<vscode.Uri[]> {
   const matches = new Map<string, vscode.Uri>();
-  const searchGlob = allowPartialBasenameMatch
-    ? `**/${escapeExecutionWorkspaceGlobSegment(path.posix.basename(normalizedSearchPath))}*`
-    : `**/${escapeExecutionWorkspaceGlobPath(normalizedSearchPath)}`;
+  const searchGlob = createExecutionWorkspaceFallbackSearchGlob(
+    normalizedSearchPath,
+    allowPartialBasenameMatch,
+    options
+  );
   const maxPerWorkspace = allowPartialBasenameMatch ? 2 : 64;
   for (const workspaceFolder of workspaceFolders) {
     const candidates = await vscode.workspace.findFiles(
@@ -919,8 +1076,12 @@ async function collectExecutionWorkspaceFallbackMatches(
         .split(path.sep)
         .join('/');
       const matchesSearch = allowPartialBasenameMatch
-        ? relativePathMatchesPartialFallbackSearch(relativePath, normalizedSearchPath)
-        : relativePathMatchesFallbackSearch(relativePath, normalizedSearchPath);
+        ? relativePathMatchesPartialFallbackSearch(
+            relativePath,
+            normalizedSearchPath,
+            options
+          )
+        : relativePathMatchesFallbackSearch(relativePath, normalizedSearchPath, options);
       if (!matchesSearch) {
         continue;
       }
@@ -933,6 +1094,28 @@ async function collectExecutionWorkspaceFallbackMatches(
   }
 
   return [...matches.values()];
+}
+
+function createExecutionWorkspaceFallbackSearchGlob(
+  normalizedSearchPath: string,
+  allowPartialBasenameMatch: boolean,
+  options: { anchorToWorkspaceRoot?: boolean } = {}
+): string {
+  const basenameGlob = `${escapeExecutionWorkspaceGlobSegment(path.posix.basename(normalizedSearchPath))}*`;
+  if (options.anchorToWorkspaceRoot) {
+    if (!allowPartialBasenameMatch) {
+      return escapeExecutionWorkspaceGlobPath(normalizedSearchPath);
+    }
+
+    const normalizedSearchDir = path.posix.dirname(normalizedSearchPath);
+    return normalizedSearchDir === '.'
+      ? basenameGlob
+      : `${escapeExecutionWorkspaceGlobPath(normalizedSearchDir)}/${basenameGlob}`;
+  }
+
+  return allowPartialBasenameMatch
+    ? `**/${basenameGlob}`
+    : `**/${escapeExecutionWorkspaceGlobPath(normalizedSearchPath)}`;
 }
 
 function classifyExecutionFileLinkTarget(
@@ -958,18 +1141,34 @@ function normalizeWorkspaceSearchPath(
   return normalized.replace(/^\/+/, '');
 }
 
-function relativePathMatchesFallbackSearch(relativePath: string, normalizedSearchPath: string): boolean {
+function relativePathMatchesFallbackSearch(
+  relativePath: string,
+  normalizedSearchPath: string,
+  options: { anchorToWorkspaceRoot?: boolean } = {}
+): boolean {
   const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+  if (options.anchorToWorkspaceRoot) {
+    return normalizedRelativePath === normalizedSearchPath;
+  }
+
   return (
     normalizedRelativePath === normalizedSearchPath ||
     normalizedRelativePath.endsWith(`/${normalizedSearchPath}`)
   );
 }
 
-function relativePathMatchesPartialFallbackSearch(relativePath: string, normalizedSearchPath: string): boolean {
+function relativePathMatchesPartialFallbackSearch(
+  relativePath: string,
+  normalizedSearchPath: string,
+  options: { anchorToWorkspaceRoot?: boolean } = {}
+): boolean {
   const normalizedRelativePath = relativePath.replace(/\\/g, '/');
   const normalizedRelativeDir = path.posix.dirname(normalizedRelativePath);
   const normalizedSearchDir = path.posix.dirname(normalizedSearchPath);
+  if (options.anchorToWorkspaceRoot && normalizedRelativeDir !== normalizedSearchDir) {
+    return false;
+  }
+
   if (
     normalizedSearchDir !== '.' &&
     normalizedRelativeDir !== normalizedSearchDir &&
