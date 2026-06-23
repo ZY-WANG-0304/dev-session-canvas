@@ -161,15 +161,16 @@ export async function resolveExecutionFileLink(
   }
 
   const resolvedCwd = await resolveExecutionLinkCwd(link, context);
+  const lineScopedContext: ExecutionTerminalPathContext = {
+    ...context,
+    cwd: resolvedCwd
+  };
   const directCandidates = new Map<string, vscode.Uri>();
   if (sanitizedPath.startsWith('file://')) {
     const uri = vscode.Uri.parse(sanitizedPath);
     directCandidates.set(uri.toString(), uri);
   } else {
-    const absolutePath = resolveAbsoluteExecutionPath(sanitizedPath, {
-      ...context,
-      cwd: resolvedCwd
-    });
+    const absolutePath = resolveAbsoluteExecutionPath(sanitizedPath, lineScopedContext);
     if (absolutePath) {
       const uri = vscode.Uri.file(absolutePath);
       directCandidates.set(uri.toString(), uri);
@@ -183,11 +184,11 @@ export async function resolveExecutionFileLink(
     }
   }
 
-  if (shouldResolveExecutionWorkspaceFallbackLink(sanitizedPath, link, context, options)) {
+  if (shouldResolveExecutionWorkspaceFallbackLink(sanitizedPath, link, lineScopedContext, options)) {
     const fallbackResolved = await resolveExecutionWorkspaceFallbackLinkWithCache(
       sanitizedPath,
       link,
-      context,
+      lineScopedContext,
       options
     );
     if (fallbackResolved) {
@@ -866,6 +867,8 @@ async function resolveExecutionWorkspaceFallbackLinkWithCache(
   const cacheKey = [
     sanitizedPath,
     context.pathStyle,
+    context.cwd,
+    getExecutionWorkspaceFallbackCacheScopeKey(),
     options.allowPartialBasenameWorkspaceMatch === true ? 'partial' : 'exact'
   ].join('\0');
   const cached = options.resolveCache.workspaceFallback.get(cacheKey);
@@ -882,6 +885,12 @@ async function resolveExecutionWorkspaceFallbackLinkWithCache(
   const request = resolveExecutionWorkspaceFallbackLink(sanitizedPath, link, context, options);
   options.resolveCache.workspaceFallback.set(cacheKey, request);
   return request;
+}
+
+function getExecutionWorkspaceFallbackCacheScopeKey(): string {
+  return (vscode.workspace.workspaceFolders ?? [])
+    .map((workspaceFolder) => `${workspaceFolder.name}:${workspaceFolder.uri.fsPath}`)
+    .join('\x1f');
 }
 
 async function resolveExecutionWorkspaceFallbackLink(
