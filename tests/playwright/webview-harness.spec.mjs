@@ -1515,6 +1515,93 @@ test('pane gallery fits the active root when entering thumbnail mode without a m
   expect(frontendMainViewport?.y).not.toBe(-3000);
 });
 
+test('pane gallery fit view centers visible root content instead of the workspace root frame', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'dynamic',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        overviewViewports: {
+          'workspace-root-frontend': {
+            x: 0,
+            y: 0,
+            zoom: 0.3
+          }
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  const frontendGroup = state.groups.find((group) => group.id === 'workspace-root-frontend');
+  frontendGroup.position = { x: 0, y: 0 };
+  frontendGroup.size = { width: 900, height: 2600 };
+  state.nodes.find((node) => node.id === 'workspace-root-frontend-note').position = { x: 120, y: 1840 };
+  state.nodes.find((node) => node.id === 'workspace-root-frontend-terminal').position = { x: 560, y: 1840 };
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('.react-flow__controls-fitview').click();
+
+  await expect
+    .poll(async () =>
+      frontendTile.evaluate((pane) => {
+        const shell = pane.querySelector('.pane-gallery-root-flow-shell');
+        const note = pane.querySelector('[data-node-id="workspace-root-frontend-note"]');
+        const terminal = pane.querySelector('[data-node-id="workspace-root-frontend-terminal"]');
+        if (!(shell instanceof HTMLElement) || !(note instanceof HTMLElement) || !(terminal instanceof HTMLElement)) {
+          return Number.POSITIVE_INFINITY;
+        }
+
+        const shellBox = shell.getBoundingClientRect();
+        const boxes = [note.getBoundingClientRect(), terminal.getBoundingClientRect()];
+        const top = Math.min(...boxes.map((box) => box.top));
+        const bottom = Math.max(...boxes.map((box) => box.bottom));
+        const contentCenterY = (top + bottom) / 2;
+        const shellCenterY = shellBox.top + shellBox.height / 2;
+        return Math.abs(contentCenterY - shellCenterY);
+      })
+    )
+    .toBeLessThan(18);
+});
+
+test('pane gallery fit view leaves an empty root viewport unchanged', async ({ page }) => {
+  const unchangedViewport = {
+    x: 123,
+    y: -45,
+    zoom: 0.75
+  };
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'dynamic',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        overviewViewports: {
+          'workspace-root-frontend': unchangedViewport
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  const frontendGroup = state.groups.find((group) => group.id === 'workspace-root-frontend');
+  frontendGroup.size = { width: 900, height: 2600 };
+  state.nodes = state.nodes.filter((node) => !node.id.startsWith('workspace-root-frontend-'));
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('.react-flow__controls-fitview').click();
+  await settleWebview(page, 4);
+
+  expect((await readPersistedUiState(page)).paneGallery?.overviewViewports?.['workspace-root-frontend']).toEqual(
+    unchangedViewport
+  );
+});
+
 test('pane gallery restores the saved main viewport when switching thumbnail roots', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -16011,8 +16098,8 @@ function createPaneGalleryCanvasState(options = {}) {
     },
     {
       ...createManualTerminalNode(`${group.id}-terminal`, {
-        x: group.position.x + 360,
-        y: group.position.y + 140
+        x: group.position.x + (options.hugeFirstRoot && index === 0 ? 8200 : 360),
+        y: group.position.y + (options.hugeFirstRoot && index === 0 ? 5600 : 140)
       }),
       title: `${group.title} Terminal`,
       status: index === 1 ? 'running' : 'draft',
