@@ -18,7 +18,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段；最新已发布基线是通过 GitHub Releases 发布并在 Open VSX 验证通过的 `0.18.1` Preview 里程碑，Visual Studio Marketplace 仍需等 public gallery 同时暴露主扩展与 notifier 后再解除 deferred。当前主要工作是准备 `0.18.2` Preview 补丁版本，并围绕后续 `0.18.x` 迭代持续回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段；最新已发布基线是通过 GitHub Releases 发布并在 Open VSX 验证通过的 `0.18.2` Preview 里程碑，Visual Studio Marketplace 仍需等 public gallery 同时暴露主扩展与 notifier 后再解除 deferred。当前主要工作是围绕后续 `0.18.x` 迭代持续回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](images/marketplace/canvas-overview.gif)
 
@@ -76,7 +76,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前 `0.18.2` 发布准备范围是一个补丁版本：窗格画廊缩略图 rail 排序、Webview 分组 resize 草稿清理、Webview 回归稳定性，以及 Marketplace listing 二维码移除后的发布口径。它保留 `0.18.1` 的侧栏会话历史分组控制、菜单选中态表达、画布布局整理空分组尺寸、窗格画廊视口记忆隔离、公开隐私 / 许可证元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前已发布的 `0.18.2` 基线是一个补丁版本：窗格画廊缩略图 rail 排序、Webview 分组 resize 草稿清理、Webview 回归稳定性，以及 Marketplace listing 二维码移除后的发布口径。它保留 `0.18.1` 的侧栏会话历史分组控制、菜单选中态表达、画布布局整理空分组尺寸、窗格画廊视口记忆隔离、公开隐私 / 许可证元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -84,7 +84,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
 - 公开发布主渠道目标仍以 `Visual Studio Marketplace` 为主，`Open VSX` 作为同版本补充渠道；`0.18.2` release-day 完成门禁继续允许在 Visual Studio Marketplace 仍不可见时，依赖 GitHub Release assets 加已验证的 Open VSX 完成本轮发布，并把 VSM 记录为 deferred channel。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.18.2` 发布准备验证重点覆盖版本 / 打包一致性、窗格画廊 root 排序、分组 resize 草稿清理、Webview 回归稳定性、Marketplace README 二维码移除检查、发布 workflow dry-run、打包和当前渠道可见性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.18.2` 发布验证覆盖版本 / 打包一致性、窗格画廊 root 排序、分组 resize 草稿清理、Webview 回归稳定性、Marketplace README 二维码移除检查、发布 workflow dry-run、打包、GitHub Release assets、Open VSX 验证和当前渠道可见性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
