@@ -250,7 +250,7 @@ template-package/
 
 包大小采用分层限制，而不是把早期 5MB 模板 JSON 限制整体放大。正式口径为：`template.json` 继续保持 5MB hard limit；`template-package.json` 64KB hard limit；`README.md` 512KB soft warning、1MB hard limit；`CHANGELOG.md` 256KB hard limit；`media/thumbnail.png` 1MB hard limit；单张图片 5MB hard limit；单个视频 30MB hard limit、最多 2 个；包内媒体总量 45MB hard limit；压缩包 50MB hard limit；解压后 100MB hard limit；文件总数 100 个 hard limit，媒体文件建议最多 20 个。官方精选模板若确实需要更大视频，后续通过管理员 override 单独设计，不作为普通发布默认能力。
 
-包内 `template.json` 仍然是当前本地模板的 `CanvasTemplateDocument`，只描述节点、边和静态配置；远端下载量、点赞、举报、发布者、安装来源和市场版本号都不写进它。`README.md` 是详情页主内容，`CHANGELOG.md` 是版本变更记录，`media/thumbnail.png` 是卡片和详情页缩略图。后续若要支持多张预览图、示例配置或附件，只能放入 `media/` 或 `assets/`，并通过 `template-package.json` 引用，不能临时新增散落字段。
+包内 `template.json` 仍然是当前本地模板的 `CanvasTemplateDocument`，只描述可复用的画布模板主体：Agent / Terminal / Note 节点、边、静态配置和用户创建的画布分组树。市场 schema 必须保留 `template.groups`、`template.nodes[].groupIndex` 和 `template.groups[].parentGroupIndex`，并拒绝节点引用不存在分组、父分组越界、自引用或循环父子关系；发布、包上传规范化、安装解析和缩略图生成都不得静默裁掉这些字段。主线新增的 `file` / `file-list` 节点以及多根 workspace root 分组仍不进入模板市场主体，因为它们表达的是当前工作区文件结构，不是可分发的模板行为。远端下载量、点赞、举报、发布者、安装来源和市场版本号都不写进 `template.json`。`README.md` 是详情页主内容，`CHANGELOG.md` 是版本变更记录，`media/thumbnail.png` 是卡片和详情页缩略图；自动生成缩略图应把分组框纳入布局 bounds 并在节点背后绘制，帮助消费者看出模板的组织结构。后续若要支持多张预览图、示例配置或附件，只能放入 `media/` 或 `assets/`，并通过 `template-package.json` 引用，不能临时新增散落字段。
 
 README 媒体只支持受控 Markdown 和包内相对资源。图片引用使用 `![说明](./media/screenshot.png)`；视频不允许作者写任意 HTML embed，先通过 `media.gallery` 声明，渲染时由市场前端生成受控 video card。相对路径只能指向包内 `media/` 或 `assets/`，禁止 `..`、绝对路径、`file:`、`data:`、`javascript:`、iframe、事件属性、脚本和不受控 style。外部 `https://` 图片或视频默认只显示为普通链接，不内嵌渲染，避免第三方追踪、CSP 例外和内容治理外溢。视频默认不 autoplay，使用 `preload="metadata"`，由用户点击后加载。浏览器端和 VSCode Webview 必须使用同一套 Markdown sanitizer 与资源 URL 映射规则。
 
@@ -298,7 +298,7 @@ GitHub OAuth App 只有单一 callback URL；因为预览环境使用 `*.workers
 
 ### 7.8 上传校验、治理与安全边界
 
-上传入口按顺序执行：认证、D1/R2 binding 可用性检查、用户封禁检查、请求大小限制、MIME / 扩展名检查、压缩包文件数量 / 路径穿越 / 解压后大小检查、包归档解压或 JSON body 组包、`template-package.json` parse、`CanvasTemplateDocument` / 模板包 manifest Zod schema 校验、节点/边业务规则校验、Provider 标注提取、关联 Markdown Note 内容模式与 workspace 相对路径校验、README / CHANGELOG / 描述 / 标签长度检查、缩略图和媒体类型 / 尺寸 / 数量检查、README 媒体引用解析和 sanitizer 检查、危险 URL / 控制字符检查、hash 计算、写入 R2、写入 D1。完整包上传必须先完成封禁检查再读取 multipart body，避免被封禁用户触发大包读取或解压。任一步失败都返回结构化错误码。自动化测试可以通过 `MARKETPLACE_ALLOW_TEST_AUTH=true` 启用 fake auth header，但 preview / production 不能开启该开关。
+上传入口按顺序执行：认证、D1/R2 binding 可用性检查、用户封禁检查、请求大小限制、MIME / 扩展名检查、压缩包文件数量 / 路径穿越 / 解压后大小检查、包归档解压或 JSON body 组包、`template-package.json` parse、`CanvasTemplateDocument` / 模板包 manifest Zod schema 校验、节点/边/分组引用业务规则校验、Provider 标注提取、关联 Markdown Note 内容模式与 workspace 相对路径校验、README / CHANGELOG / 描述 / 标签 / 分组标题长度检查、缩略图和媒体类型 / 尺寸 / 数量检查、README 媒体引用解析和 sanitizer 检查、危险 URL / 控制字符检查、hash 计算、写入 R2、写入 D1。完整包上传必须先完成封禁检查再读取 multipart body，避免被封禁用户触发大包读取或解压。任一步失败都返回结构化错误码。自动化测试可以通过 `MARKETPLACE_ALLOW_TEST_AUTH=true` 启用 fake auth header，但 preview / production 不能开启该开关。
 
 内容安全在 Phase 1-4 范围内只做确定性检查和举报治理，不把外部 AI 审核服务列为硬依赖。若后续需要接入第三方审核，应新增设计文档说明数据出境、误杀处理和人工复核流程。
 
