@@ -27,14 +27,14 @@ import {
 
 interface LoadState {
   templates: MarketplaceTemplateSummary[];
-  source: 'api' | 'seed-fallback';
+  source: 'api' | 'seed-fallback' | 'empty-fallback';
   storageMode: string;
   loading: boolean;
 }
 
 interface DetailState {
   template?: MarketplaceTemplateDetail;
-  source: 'api' | 'seed-fallback';
+  source: 'api' | 'seed-fallback' | 'empty-fallback';
   storageMode: string;
   loading: boolean;
 }
@@ -122,7 +122,7 @@ export function App(): JSX.Element {
   const isDetailPage = Boolean(detailSlug);
   const isSecondaryPage = isDetailPage || isPublishPage || isMyTemplatesPage || isAdminPage;
   const activeNavItem = isPublishPage ? 'publish' : isMyTemplatesPage ? 'mine' : isAdminPage ? 'admin' : 'templates';
-  const statusLabel = `${state.source === 'api' ? 'Worker API' : 'Seed fallback'} · Storage: ${state.storageMode}`;
+  const statusLabel = `${formatSourceLabel(state.source)} · Storage: ${state.storageMode}`;
 
   return (
     <main className="min-h-screen bg-canvas-mist text-canvas-ink">
@@ -285,6 +285,13 @@ export function App(): JSX.Element {
       </section>
     </main>
   );
+}
+
+function formatSourceLabel(source: LoadState['source']): string {
+  if (source === 'api') {
+    return 'Worker API';
+  }
+  return source === 'seed-fallback' ? 'Seed fallback' : 'Local fallback';
 }
 
 function collectVisibleTags(templates: MarketplaceTemplateSummary[], selectedTags: string[]): string[] {

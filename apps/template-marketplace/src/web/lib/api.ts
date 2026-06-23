@@ -33,13 +33,13 @@ export interface TemplateQueryState {
 export interface MarketplaceTemplateLoadResult {
   templates: MarketplaceTemplateSummary[];
   storageMode: string;
-  source: 'api' | 'seed-fallback';
+  source: 'api' | 'seed-fallback' | 'empty-fallback';
 }
 
 export interface MarketplaceTemplateDetailLoadResult {
   template?: MarketplaceTemplateDetail;
   storageMode: string;
-  source: 'api' | 'seed-fallback';
+  source: 'api' | 'seed-fallback' | 'empty-fallback';
 }
 
 export interface MarketplaceCurrentUser {
@@ -76,11 +76,11 @@ export async function loadMarketplaceTemplates(query: TemplateQueryState): Promi
       source: 'api'
     };
   } catch {
-    const fallback = listSeedTemplates({ q: normalizedQuery, sort: query.sort, tags: query.tags });
+    const fallback = shouldUseSeedFallback() ? listSeedTemplates({ q: normalizedQuery, sort: query.sort, tags: query.tags }) : buildEmptyMarketplaceList();
     return {
       templates: fallback.items,
       storageMode: fallback.storageMode,
-      source: 'seed-fallback'
+      source: fallback.storageMode === 'seed' ? 'seed-fallback' : 'empty-fallback'
     };
   }
 }
@@ -110,13 +110,37 @@ export async function loadMarketplaceTemplateDetail(templateIdOrSlug: string): P
       source: 'api'
     };
   } catch {
-    const template = getSeedTemplateDetail(templateIdOrSlug);
+    const template = shouldUseSeedFallback() ? getSeedTemplateDetail(templateIdOrSlug) : undefined;
     return {
       template,
-      storageMode: 'seed',
-      source: 'seed-fallback'
+      storageMode: template ? 'seed' : 'empty',
+      source: template ? 'seed-fallback' : 'empty-fallback'
     };
   }
+}
+
+function shouldUseSeedFallback(): boolean {
+  const configured = import.meta.env.VITE_MARKETPLACE_ENABLE_SEED_FALLBACK;
+  if (configured === 'true') {
+    return true;
+  }
+  if (configured === 'false') {
+    return false;
+  }
+  return import.meta.env.DEV;
+}
+
+function buildEmptyMarketplaceList(): MarketplaceListTemplatesResponse {
+  return {
+    items: [],
+    pagination: {
+      page: 1,
+      pageSize: 0,
+      total: 0,
+      hasMore: false
+    },
+    storageMode: 'empty'
+  };
 }
 
 async function readMarketplaceErrorCode(response: Response): Promise<string | undefined> {

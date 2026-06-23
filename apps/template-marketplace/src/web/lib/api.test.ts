@@ -25,6 +25,7 @@ import {
 describe('marketplace web api client', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('loads templates from the Worker API when available', async () => {
@@ -81,6 +82,7 @@ describe('marketplace web api client', () => {
 
   it('falls back to seed templates during local development', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
+    vi.stubEnv('VITE_MARKETPLACE_ENABLE_SEED_FALLBACK', 'true');
 
     const result = await loadMarketplaceTemplates({ q: 'review', sort: 'hot', tags: ['quality'] });
 
@@ -104,6 +106,17 @@ describe('marketplace web api client', () => {
     expect(requestUrl.searchParams.get('q')).toHaveLength(80);
     expect(result.source).toBe('seed-fallback');
     expect(result.templates).toHaveLength(0);
+  });
+
+  it('falls back to an empty production catalog when the API is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
+    vi.stubEnv('VITE_MARKETPLACE_ENABLE_SEED_FALLBACK', 'false');
+
+    const result = await loadMarketplaceTemplates({ q: 'review', sort: 'hot', tags: ['quality'] });
+
+    expect(result.source).toBe('empty-fallback');
+    expect(result.storageMode).toBe('empty');
+    expect(result.templates).toEqual([]);
   });
 
   it('normalizes search queries to the public schema limit', () => {
@@ -162,11 +175,23 @@ describe('marketplace web api client', () => {
 
   it('falls back to seed template detail during local development', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
+    vi.stubEnv('VITE_MARKETPLACE_ENABLE_SEED_FALLBACK', 'true');
 
     const result = await loadMarketplaceTemplateDetail('review-loop');
 
     expect(result.source).toBe('seed-fallback');
     expect(result.template?.slug).toBe('review-loop');
+  });
+
+  it('falls back to empty detail in production when the API is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
+    vi.stubEnv('VITE_MARKETPLACE_ENABLE_SEED_FALLBACK', 'false');
+
+    const result = await loadMarketplaceTemplateDetail('review-loop');
+
+    expect(result.source).toBe('empty-fallback');
+    expect(result.storageMode).toBe('empty');
+    expect(result.template).toBeUndefined();
   });
 
   it('does not fall back to seed detail when the Worker returns template_not_found', async () => {
