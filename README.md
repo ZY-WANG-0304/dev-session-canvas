@@ -74,6 +74,21 @@ The product has entered the public `Preview` phase. The latest published baselin
 - A trusted workspace
   - In an untrusted workspace, the canvas can still be opened, but execution entry points are disabled
 
+## Agent Provider Snapshot
+
+This README keeps the comparison user-facing and brief. The full technical checklist lives in [`docs/design-docs/agent-provider-capability-matrix.md`](docs/design-docs/agent-provider-capability-matrix.md).
+
+| Feature | Codex | Claude Code |
+| --- | --- | --- |
+| CLI Agent | ✅ `codex` | ✅ `claude` |
+| Launch presets | ✅ 5 modes | ✅ 5 modes |
+| Resume | ✅ Explicit | ✅ Explicit |
+| Fork | ✅ Native | ✅ Native |
+| Session history | ✅ Workspace | ✅ Workspace |
+| Notifications | ✅ Signals + errors | ✅ Signals + exits |
+| File activity | — | ✅ Hooks |
+| Notable limit | Windows history scroll | - |
+
 ## Project Status
 
 The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current published `0.18.2` baseline is a patch release for Pane Gallery thumbnail-rail ordering, Webview group resize draft cleanup, Webview regression stability, and Marketplace listing QR-removal follow-up. It preserves the `0.18.1` sidebar session-history grouping controls, menu selection-state clarity, canvas layout arrangement empty-group sizing, pane-gallery viewport memory isolation, public privacy / license metadata, installation topology, support boundaries, and Marketplace `Preview` positioning. The external version remains explicitly `Preview`, with no stable-release commitment.
