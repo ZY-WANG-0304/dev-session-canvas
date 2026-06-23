@@ -11454,6 +11454,200 @@ test('workspace root group title counter-scales like regular group titles below 
   expect(titleChrome.rootTitlebarWidth).toBeCloseTo(titleChrome.regularTitlebarWidth, 1);
 });
 
+test('workspace root group resize commit survives host refresh and follow-up selection without geometry drift', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'workspace-root-a',
+      selectedGroupIds: ['workspace-root-a'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note', { x: 260, y: 260 }),
+      size: { width: 220, height: 180 },
+      groupId: 'workspace-root-a'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-a',
+      title: 'Frontend Root',
+      position: { x: 120, y: 120 },
+      size: { width: 760, height: 560 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
+  const initialProbe = await requestWebviewProbe(page);
+  expect(initialProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    groupId: 'workspace-root-a',
+    role: 'workspace-root',
+    selected: true,
+    left: 120,
+    top: 120,
+    width: 760,
+    height: 560
+  });
+
+  const handle = rootFrame.locator('[data-group-resize-direction="bottom-right"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await clearPostedMessages(page);
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 180, handleBox.y + handleBox.height / 2 + 120, { steps: 5 });
+  await page.mouse.up();
+
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload).toMatchObject({
+    groupId: 'workspace-root-a',
+    position: { x: 120, y: 120 },
+    size: { width: 940, height: 680 }
+  });
+
+  state.groups[0] = {
+    ...state.groups[0],
+    position: message.payload.position,
+    size: message.payload.size
+  };
+  await updateHostState(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const committedGeometry = await readGroupCanvasGeometry(page, 'workspace-root-a');
+  expect(committedGeometry).toEqual({ x: 120, y: 120, width: 940, height: 680 });
+  const committedProbe = await requestWebviewProbe(page);
+  expect(committedProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    selected: true,
+    left: 120,
+    top: 120,
+    width: 940,
+    height: 680
+  });
+
+  await clearPostedMessages(page);
+  await rootFrame.locator('.canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await settleWebview(page, 3);
+
+  expect(await readGroupCanvasGeometry(page, 'workspace-root-a')).toEqual(committedGeometry);
+  const afterClickProbe = await requestWebviewProbe(page);
+  expect(afterClickProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    selected: true,
+    left: 120,
+    top: 120,
+    width: 940,
+    height: 680
+  });
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+});
+
+test('workspace root group resize draft is replaced by repaired host geometry after refresh', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      selectedGroupId: 'workspace-root-a',
+      selectedGroupIds: ['workspace-root-a'],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    {
+      ...createManualNoteNode('root-note', { x: 260, y: 260 }),
+      size: { width: 220, height: 180 },
+      groupId: 'workspace-root-a'
+    }
+  ];
+  state.groups = [
+    {
+      id: 'workspace-root-a',
+      title: 'Frontend Root',
+      position: { x: 120, y: 120 },
+      size: { width: 760, height: 560 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'workspace-root-b',
+      title: 'Backend Root',
+      position: { x: 1120, y: 120 },
+      size: { width: 760, height: 560 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/backend'
+    }
+  ];
+  await bootstrap(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
+  await clearPostedMessages(page);
+  const handle = rootFrame.locator('[data-group-resize-direction="bottom-right"]');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 180, handleBox.y + handleBox.height / 2 + 120, { steps: 5 });
+  await page.mouse.up();
+
+  const message = await waitForPostedMessageByType(page, 'webview/resizeGroup');
+  expect(message.payload).toMatchObject({
+    groupId: 'workspace-root-a',
+    position: { x: 120, y: 120 },
+    size: { width: 940, height: 680 }
+  });
+
+  state.groups[0] = {
+    ...state.groups[0],
+    position: { x: 96, y: 104 },
+    size: { width: 820, height: 620 }
+  };
+  await updateHostState(page, state, createRuntimeContext());
+  await settleWebview(page, 2);
+
+  expect(await readGroupCanvasGeometry(page, 'workspace-root-a')).toEqual({
+    x: 96,
+    y: 104,
+    width: 820,
+    height: 620
+  });
+  const repairedProbe = await requestWebviewProbe(page);
+  expect(repairedProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    selected: true,
+    left: 96,
+    top: 104,
+    width: 820,
+    height: 620
+  });
+
+  await clearPostedMessages(page);
+  await page.locator('[data-group-id="workspace-root-b"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await settleWebview(page, 2);
+  await rootFrame.locator('.canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await settleWebview(page, 3);
+
+  expect(await readGroupCanvasGeometry(page, 'workspace-root-a')).toEqual({
+    x: 96,
+    y: 104,
+    width: 820,
+    height: 620
+  });
+  const afterReselectProbe = await requestWebviewProbe(page);
+  expect(afterReselectProbe.groups.find((group) => group.groupId === 'workspace-root-a')).toMatchObject({
+    selected: true,
+    left: 96,
+    top: 104,
+    width: 820,
+    height: 620
+  });
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+});
+
 test('workspace root group selected title chrome keeps nodes inside body while zoomed out', async ({ page }) => {
   await openHarness(page, {
     persistedState: {

@@ -300,6 +300,73 @@ try {
   assert.ok(frontendAfterCreate.nodes.some((candidate) => candidate.id === 'note-created'));
   assert.deepEqual(frontendAfterCreate.nodes.find((candidate) => candidate.id === 'note-created').position, { x: 120, y: 140 });
 
+  const rootResizeBaseComposed = composeMultiRootCanvasState({
+    workspaceFolders: folders,
+    rootStates: [
+      { rootPath: frontendRoot, state: frontendState },
+      { rootPath: backendRoot, state: backendState }
+    ],
+    overlay: {
+      version: 1,
+      roots: [
+        { rootPath: frontendRoot, position: { x: 100, y: 200 }, size: { width: 900, height: 700 } },
+        { rootPath: backendRoot, position: { x: 1200, y: 200 }, size: { width: 720, height: 520 } }
+      ]
+    },
+    now: '2026-06-04T03:30:00.000Z'
+  });
+  verifyRootResizeRoundTripStability({
+    label: 'right/bottom expansion',
+    composedState: rootResizeBaseComposed,
+    workspaceFolders: folders,
+    previousRootStates: [
+      { rootPath: frontendRoot, state: frontendState },
+      { rootPath: backendRoot, state: backendState }
+    ],
+    targetRootPath: frontendRoot,
+    rootGroupId: frontendRootGroupId,
+    resize: (rootGroup) => ({
+      position: rootGroup.position,
+      size: { width: rootGroup.size.width + 240, height: rootGroup.size.height + 160 }
+    }),
+    composeMultiRootCanvasState,
+    decomposeMultiRootCanvasState
+  });
+  verifyRootResizeRoundTripStability({
+    label: 'left/top expansion',
+    composedState: rootResizeBaseComposed,
+    workspaceFolders: folders,
+    previousRootStates: [
+      { rootPath: frontendRoot, state: frontendState },
+      { rootPath: backendRoot, state: backendState }
+    ],
+    targetRootPath: frontendRoot,
+    rootGroupId: frontendRootGroupId,
+    resize: (rootGroup) => ({
+      position: { x: rootGroup.position.x - 180, y: rootGroup.position.y - 120 },
+      size: { width: rootGroup.size.width + 180, height: rootGroup.size.height + 120 }
+    }),
+    composeMultiRootCanvasState,
+    decomposeMultiRootCanvasState
+  });
+  verifyRootResizeRoundTripStability({
+    label: 'left/top clamp to natural size',
+    composedState: rootResizeBaseComposed,
+    workspaceFolders: folders,
+    previousRootStates: [
+      { rootPath: frontendRoot, state: frontendState },
+      { rootPath: backendRoot, state: backendState }
+    ],
+    targetRootPath: frontendRoot,
+    rootGroupId: frontendRootGroupId,
+    resize: (rootGroup) => ({
+      position: { x: rootGroup.position.x + 420, y: rootGroup.position.y + 320 },
+      size: { width: 180, height: 96 }
+    }),
+    composeMultiRootCanvasState,
+    decomposeMultiRootCanvasState
+  });
+
   const frontendComposedFileReference = {
     id: namespaceCanvasObjectId(frontendRoot, 'ref-1'),
     filePath: path.join(frontendRoot, 'src/a.ts'),
@@ -390,6 +457,81 @@ try {
   console.log('canvas multi-root composition tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+function verifyRootResizeRoundTripStability({
+  label,
+  composedState,
+  workspaceFolders,
+  previousRootStates,
+  targetRootPath,
+  rootGroupId,
+  resize,
+  composeMultiRootCanvasState,
+  decomposeMultiRootCanvasState
+}) {
+  const normalizedTargetRootPath = normalizeRootPathForTest(targetRootPath);
+  const beforeNodePositions = Object.fromEntries(
+    composedState.nodes
+      .filter((node) => node.id.startsWith(`${rootGroupId}:`))
+      .map((node) => [node.id, node.position])
+  );
+  const rootGroup = composedState.groups.find((candidate) => candidate.id === rootGroupId);
+  assert.ok(rootGroup, `${label}: target root group must exist.`);
+  const resizedRootGeometry = resize(rootGroup);
+  const resizedComposedState = {
+    ...composedState,
+    groups: composedState.groups.map((candidate) =>
+      candidate.id === rootGroupId
+        ? { ...candidate, ...resizedRootGeometry }
+        : candidate
+    )
+  };
+  const decomposed = decomposeMultiRootCanvasState({
+    composedState: resizedComposedState,
+    workspaceFolders,
+    previousRootStates,
+    now: '2026-06-04T03:45:00.000Z'
+  });
+  const recomposed = composeMultiRootCanvasState({
+    workspaceFolders,
+    rootStates: decomposed.rootStates,
+    overlay: decomposed.overlay,
+    now: '2026-06-04T03:46:00.000Z'
+  });
+  const secondDecomposed = decomposeMultiRootCanvasState({
+    composedState: recomposed,
+    workspaceFolders,
+    previousRootStates: decomposed.rootStates,
+    now: '2026-06-04T03:47:00.000Z'
+  });
+  const secondRecomposed = composeMultiRootCanvasState({
+    workspaceFolders,
+    rootStates: secondDecomposed.rootStates,
+    overlay: secondDecomposed.overlay,
+    now: '2026-06-04T03:48:00.000Z'
+  });
+
+  for (const [nodeId, position] of Object.entries(beforeNodePositions)) {
+    const nextNode = recomposed.nodes.find((candidate) => candidate.id === nodeId);
+    assert.ok(nextNode, `${label}: recomposed root-local node must exist.`);
+    assert.deepEqual(nextNode.position, position, `${label}: root resize must keep composed node positions stable.`);
+  }
+  assert.deepEqual(
+    secondRecomposed.groups.find((candidate) => candidate.id === rootGroupId),
+    recomposed.groups.find((candidate) => candidate.id === rootGroupId),
+    `${label}: root geometry must not drift after a second decompose/compose cycle.`
+  );
+  assert.deepEqual(
+    secondRecomposed.nodes.filter((node) => node.id.startsWith(`${rootGroupId}:`)).map((node) => [node.id, node.position]),
+    recomposed.nodes.filter((node) => node.id.startsWith(`${rootGroupId}:`)).map((node) => [node.id, node.position]),
+    `${label}: root-local node positions must not drift after a second decompose/compose cycle.`
+  );
+  assert.deepEqual(
+    secondDecomposed.overlay.roots.find((root) => root.rootPath === normalizedTargetRootPath),
+    decomposed.overlay.roots.find((root) => root.rootPath === normalizedTargetRootPath),
+    `${label}: persisted overlay root geometry must be stable.`
+  );
 }
 
 function normalizeRootPathForTest(rootPath) {
