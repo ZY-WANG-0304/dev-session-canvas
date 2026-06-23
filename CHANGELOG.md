@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.18.2 - Pane Gallery Root Order and Group Resize Fixes
+
+相对 `0.18.1`，`0.18.2` 是补丁版本，收口窗格画廊缩略图 rail 的 workspace root 稳定排序、workspace root / 分组 resize 后的 Webview 草稿清理，以及 Marketplace listing 交流二维码移除后的发布口径。
+
+### 本版本聚焦
+
+- 版本号从 `0.18.1` bump 到 `0.18.2`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 窗格画廊 `topThumbnails` / `sideThumbnails` 的缩略图 rail 现在稳定跟随 VS Code multi-root workspace folder 顺序；切换 active root 时只把当前 active root 从 rail 中移除，其余 root 不再与原主画板位置互换
+- 修复 workspace root 分组 resize 后，Host 已回写 / repair 但 Webview 残留旧 group draft 导致再次选中或刷新后几何漂移的问题
+- Webview 分组拖拽 / resize 增加 active interaction 标记与 pointer / blur 兜底，并补充 group move / resize、multi-root decompose 几何诊断
+- Webview Playwright 回归用例同步当前 UI 与交互时序，覆盖 Agent cwd context 截图基线、Edge IME 连线选择、Claude `Ctrl-Z` payload、硬换行文件链接和 Note Tab 缩进稳定性
+- Marketplace 专用 README 不再展示 Feishu / WeChat 交流群二维码；仓库根 README 的二维码资产仍作为源码仓库交流入口保留，继续排除出 VSIX 与 Marketplace listing 输入
+- Notifier companion 随主扩展版本对齐到 `0.18.2`，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略、Visual Studio Marketplace deferred 完成门禁或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.18.1` 升级到 `0.18.2` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.18.2` 后会继续沿用该明确选择
+
+### 回退建议
+
+- 若 `0.18.2` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.18.x` 修复版本
+
 ## 0.18.1 - Sidebar History Grouping and Canvas Layout Fixes
 
 相对 `0.18.0`，`0.18.1` 是补丁版本，收口侧栏会话历史分组控制、菜单选中态增强，以及画布布局整理的空分组尺寸规范化与窗格画廊视口记忆分离。
