@@ -691,6 +691,9 @@ function collectTemplateDocumentTextFields(
       fields.push({ path: `template.nodes[${index}].metadata.agent.argv[${argIndex}]`, value: arg });
     });
   });
+  document.template.groups?.forEach((group, index) => {
+    fields.push({ path: `template.groups[${index}].title`, value: group.title });
+  });
   document.template.edges.forEach((edge, index) => {
     if (edge.label) {
       fields.push({ path: `template.edges[${index}].label`, value: edge.label });

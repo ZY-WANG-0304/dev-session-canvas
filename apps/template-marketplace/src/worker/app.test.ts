@@ -949,6 +949,40 @@ describe('template marketplace worker api', () => {
     expect(body.error.message).toContain('metadata.note.relativePath');
   });
 
+  it('checks canvas group titles during content safety validation', async () => {
+    const request = buildPublishRequest();
+    request.templateDocument.template.groups = [
+      {
+        title: 'javascript:alert review lane',
+        position: { x: -32, y: -32 },
+        size: { width: 400, height: 260 }
+      }
+    ];
+    request.templateDocument.template.nodes[0].groupIndex = 0;
+
+    const response = await app.request(
+      'http://localhost/api/v1/templates',
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'publisher'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({})
+      }
+    );
+    const body = await response.json<{ error: { code: string; message: string } }>();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe('content_safety_failed');
+    expect(body.error.message).toContain('template.groups[0].title');
+  });
+
   it('rejects template JSON that exceeds the configured size limit', async () => {
     const response = await app.request(
       'http://localhost/api/v1/templates',
@@ -1401,6 +1435,7 @@ function buildPublishRequest(): {
         title: string;
         position: { x: number; y: number };
         size: { width: number; height: number };
+        groupIndex?: number;
         metadata: {
           note: {
             content: string;
@@ -1415,6 +1450,12 @@ function buildPublishRequest(): {
         sourceAnchor: 'right';
         targetAnchor: 'left';
         arrowMode: 'forward';
+      }>;
+      groups?: Array<{
+        title: string;
+        position: { x: number; y: number };
+        size: { width: number; height: number };
+        parentGroupIndex?: number;
       }>;
     };
   };

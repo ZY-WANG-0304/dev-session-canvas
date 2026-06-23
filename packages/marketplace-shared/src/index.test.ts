@@ -123,6 +123,47 @@ describe('marketplace shared seed repository', () => {
     expect(parsed.tags).toEqual(['Review', 'Quality']);
   });
 
+  it('preserves canvas template groups and node group membership in publish requests', () => {
+    const parsed = marketplacePublishTemplateRequestSchema.parse(buildGroupedPublishRequest());
+
+    expect(parsed.templateDocument.template.groups).toEqual([
+      {
+        title: 'Execution lane',
+        position: { x: -32, y: -32 },
+        size: { width: 760, height: 284 }
+      },
+      {
+        title: 'Review pod',
+        position: { x: 388, y: 4 },
+        size: { width: 360, height: 236 },
+        parentGroupIndex: 0
+      }
+    ]);
+    expect(parsed.templateDocument.template.nodes[0]?.groupIndex).toBe(0);
+    expect(parsed.templateDocument.template.nodes[1]?.groupIndex).toBe(1);
+  });
+
+  it('rejects grouped templates whose nodes point outside the group list', () => {
+    const request = buildGroupedPublishRequest();
+    request.templateDocument.template.nodes[0].groupIndex = 10;
+
+    expect(() => marketplacePublishTemplateRequestSchema.parse(request)).toThrow(/groupIndex/);
+  });
+
+  it('rejects grouped templates whose groups point to themselves as parents', () => {
+    const request = buildGroupedPublishRequest();
+    request.templateDocument.template.groups[0].parentGroupIndex = 0;
+
+    expect(() => marketplacePublishTemplateRequestSchema.parse(request)).toThrow(/parentGroupIndex/);
+  });
+
+  it('rejects grouped templates whose parent group graph contains a cycle', () => {
+    const request = buildGroupedPublishRequest();
+    request.templateDocument.template.groups[0].parentGroupIndex = 1;
+
+    expect(() => marketplacePublishTemplateRequestSchema.parse(request)).toThrow(/cycle/);
+  });
+
   it('validates template package manifests and normalizes package paths', () => {
     const parsed = marketplaceTemplatePackageManifestSchema.parse({
       schemaVersion: 1,
@@ -302,3 +343,60 @@ describe('marketplace shared seed repository', () => {
     expect(buildMarketplaceSlugFromName(' Review Loop 2026! ')).toBe('review-loop-2026');
   });
 });
+
+function buildGroupedPublishRequest() {
+  return {
+    name: 'Grouped Review Loop',
+    description: 'A repeatable review workflow with canvas groups.',
+    tags: ['grouped', 'review'],
+    templateDocument: {
+      version: 1 as const,
+      template: {
+        id: 'grouped-review-loop',
+        name: 'Grouped Review Loop',
+        category: 'user' as const,
+        createdAt: '2026-05-14T00:00:00.000Z',
+        updatedAt: '2026-05-14T00:00:00.000Z',
+        nodes: [
+          {
+            kind: 'agent' as const,
+            title: 'Implement change',
+            position: { x: 0, y: 0 },
+            size: { width: 320, height: 200 },
+            groupIndex: 0
+          },
+          {
+            kind: 'note' as const,
+            title: 'Review notes',
+            position: { x: 420, y: 40 },
+            size: { width: 320, height: 200 },
+            groupIndex: 1,
+            metadata: { note: { content: 'Track review comments.' } }
+          }
+        ],
+        edges: [
+          {
+            sourceNodeIndex: 0,
+            targetNodeIndex: 1,
+            sourceAnchor: 'right' as const,
+            targetAnchor: 'left' as const,
+            arrowMode: 'forward' as const
+          }
+        ],
+        groups: [
+          {
+            title: 'Execution lane',
+            position: { x: -32, y: -32 },
+            size: { width: 760, height: 284 }
+          },
+          {
+            title: 'Review pod',
+            position: { x: 388, y: 4 },
+            size: { width: 360, height: 236 },
+            parentGroupIndex: 0
+          }
+        ]
+      }
+    }
+  };
+}

@@ -111,6 +111,50 @@ describe('marketplace thumbnail generation', () => {
     expect(base64).not.toContain('data:image/png');
   });
 
+  it('renders canvas groups behind nodes and includes group bounds in layout', () => {
+    const grouped = generateMarketplaceTemplateThumbnailPngBytes({
+      template: {
+        name: 'Grouped Review Loop',
+        nodes: [
+          {
+            kind: 'agent',
+            title: 'Implement',
+            position: { x: 120, y: 80 },
+            size: { width: 320, height: 180 },
+            groupIndex: 0
+          }
+        ],
+        edges: [],
+        groups: [
+          {
+            title: 'Execution lane',
+            position: { x: 0, y: 0 },
+            size: { width: 600, height: 260 }
+          }
+        ]
+      }
+    });
+    const ungrouped = generateMarketplaceTemplateThumbnailPngBytes({
+      template: {
+        name: 'Grouped Review Loop',
+        nodes: [
+          {
+            kind: 'agent',
+            title: 'Implement',
+            position: { x: 120, y: 80 },
+            size: { width: 320, height: 180 }
+          }
+        ],
+        edges: []
+      }
+    });
+
+    const groupedRgba = decodeStoredPngRgba(grouped);
+    const ungroupedRgba = decodeStoredPngRgba(ungrouped);
+
+    expect(pixelAt(groupedRgba, 194, 125)).not.toEqual(pixelAt(ungroupedRgba, 194, 125));
+  });
+
   it('ignores note content metadata and renders associated Markdown templates from layout only', () => {
     const png = generateMarketplaceTemplateThumbnailPngBytes({
       template: {
