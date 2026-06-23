@@ -22,7 +22,7 @@ related_plans:
   - docs/exec-plans/completed/template-marketplace-phase3.md
   - docs/exec-plans/active/template-marketplace-phase4-governance.md
   - docs/exec-plans/active/template-package-repository-research.md
-updated_at: 2026-06-07
+updated_at: 2026-06-23
 ---
 
 # 模板市场技术选型
@@ -123,6 +123,7 @@ updated_at: 2026-06-07
 - **对象存储**：Cloudflare R2，保存模板 JSON、缩略图 PNG 和导出包。
 - **认证**：GitHub OAuth。浏览器走 OAuth authorization code + PKCE；VSCode 插件端优先使用 `vscode.authentication.getSession('github', scopes, { createIfNone: true })` 获取 GitHub session，再向 Worker 换取市场 session。
 - **合约与校验**：`packages/marketplace-shared` 导出 API request/response 类型、Drizzle schema、Zod 验证 schema 和模板格式定义；Worker 上传入口使用同一 schema 做服务端校验。
+- **预置数据边界**：3 个 seed / preview 模板只属于开发、测试和调试 fallback；生产市场的模板列表只能来自真实 D1/R2 发布记录。没有 D1 binding 且未显式开启 seed fallback 时，Worker 和浏览器前端都必须返回空市场，而不是把代码内 seed 模板暴露成正式内容。
 - **Next.js 边界**：Phase 1-4 正式路线不使用 Next.js。若后续 SEO、OpenGraph 或静态详情页成为核心目标，再单独做 PoC 比较 Next.js static export / OpenNext 与 VSCode Webview 本地 bundle 的兼容性。
 
 ### 7.2 仓库落点
@@ -131,7 +132,7 @@ updated_at: 2026-06-07
 
 - `apps/template-marketplace/`：市场 Web 与 Worker 应用。内部按 `src/web/`、`src/worker/`、`src/shared/` 组织，避免浏览器代码直接依赖 Worker binding。
 - `apps/template-marketplace/src/web/`：React + Vite Web 前端，包含浏览器端市场页面、VSCode Webview entry、host adapter、卡片、详情、发布表单、Dashboard 和管理后台组件。
-- `apps/template-marketplace/src/worker/`：Cloudflare Workers + Hono API 服务，包含路由、中间件、认证、上传校验和 D1/R2 操作。
+- `apps/template-marketplace/src/worker/`：Cloudflare Workers + Hono API 服务，包含路由、中间件、认证、上传校验和 D1/R2 操作；生产路径通过 `createProductionTemplateRepository()` 在无 D1 时返回空仓库，只有 `MARKETPLACE_ENABLE_SEED_TEMPLATES=true` 才进入 seed repository。
 - `packages/marketplace-shared/`：市场共享包。包含 Drizzle schema 定义、API request/response 类型、Zod 验证 schema、模板包 manifest 类型、错误码和分页类型。该包不能依赖 `vscode`、React、DOM 或 Cloudflare runtime binding；根入口保持浏览器安全，Drizzle schema 通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出，避免浏览器市场 bundle 引入 Drizzle runtime。
 - `src/panel/TemplateMarketplaceClient.ts`：Extension Host 侧市场 API client、安装模板写入、更新检查和认证换取逻辑。它只能通过宿主发起网络请求和写本地模板目录，不能让 Webview 自己写入文件系统。
 - `src/panel/CanvasTemplateMarketplacePanel.ts`：插件内独立 Webview Editor 的 HTML、CSP、资源 URI 和 message bridge。当前基础实现先用本地 Webview HTML 读取市场 API；命令入口每次都复位到当前扩展安装模式对应的默认来源：正式安装使用 `https://dscanvas.dev/templates`，调试 / 测试安装使用 preview / 本地调试来源，不继承上一次外部来源；从浏览器入口进入时必须先校验外部安装 URI 的可信 `source` 与当前安装模式一致，正式安装遇到调试来源、调试安装遇到正式来源都应报错提示；通过校验后，详情上下文沿用该 `source` origin，并通过 message passing 把浏览器侧下载到的模板 payload 交给 Extension Host 安装；后续应把它收敛到 `apps/template-marketplace/src/web/` 的共享 React 组件和 VSCode host adapter，避免长期维护两套 UI。
@@ -183,7 +184,9 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 
 匿名公开读取端点需要同时服务浏览器页面、workers.dev preview、自定义域名和 VSCode Webview。本方案允许 `/api/v1/*` 中的 GET / OPTIONS 公开 CORS 访问，并暴露下载响应所需的 `content-disposition`、`x-marketplace-storage-mode`、`x-marketplace-catalog-storage-mode`、`x-marketplace-template-id`、`x-marketplace-version-id` 和 `x-marketplace-sha256` 响应头。该策略只适用于不携带 cookie/token 的公开读取与下载；GitHub OAuth、发布、点赞、举报和治理后台写接口需要在实现时单独收紧 origin、credentials 与权限校验，不能默认继承匿名读取 CORS 策略。
 
-下载端点的响应语义分两层固定：正式 Worker 在存在 `TEMPLATE_BUCKET` R2 binding 时，先用 D1 / seed repository 解析模板版本元数据；`/download` 从 R2 读取 `package.zip` 并以 `Content-Disposition: attachment` 返回真实完整包，轻量导出接口从同一包派生的兼容 `template.json` 对象返回 JSON 文件。响应头携带 `x-marketplace-storage-mode: r2`、模板 id、版本 id 和 D1 中记录的 sha256；如果迁移期旧版本目录缺少 `package.zip` 但仍存在兼容 `template.json`，Worker 可用 D1 中的 README / CHANGELOG / 版本描述 / 缩略图即时生成一个最小完整包并返回 zip，响应以 `x-marketplace-package-source: generated-from-template-json` 标记，但仍不让浏览器主下载退回 JSON。该 fallback 只用于兼容历史调试数据和早期发布数据，后续 D1 显式 package key / hash 迁移完成后应收敛为真实 package 对象优先。当本地开发或测试环境没有 R2 binding 时，端点仍返回包含 `objectKey`、`sha256`、`sizeBytes` 和 `downloadUrl` 的显式元数据 JSON，完整包下载额外返回 `packageObjectKey` 和 `packageDownloadUrl`，作为 seed / D1 降级路径，不冒充真实对象下载。缩略图端点同样先通过 D1 / seed repository 解析版本，再读取该版本的 `thumbnailKey`；R2 对象存在时返回 `image/png` 和公开缓存头，不记录下载计数；无 R2 binding 时返回 seed SVG，前端仍保留渐变占位防止图片加载失败导致卡片空白。
+下载端点的响应语义分两层固定：正式 Worker 在存在 `TEMPLATE_BUCKET` R2 binding 时，先用 D1 repository 解析模板版本元数据；`/download` 从 R2 读取 `package.zip` 并以 `Content-Disposition: attachment` 返回真实完整包，轻量导出接口从同一包派生的兼容 `template.json` 对象返回 JSON 文件。响应头携带 `x-marketplace-storage-mode: r2`、模板 id、版本 id 和 D1 中记录的 sha256；如果迁移期旧版本目录缺少 `package.zip` 但仍存在兼容 `template.json`，Worker 可用 D1 中的 README / CHANGELOG / 版本描述 / 缩略图即时生成一个最小完整包并返回 zip，响应以 `x-marketplace-package-source: generated-from-template-json` 标记，但仍不让浏览器主下载退回 JSON。该 fallback 只用于兼容历史调试数据和早期发布数据，后续 D1 显式 package key / hash 迁移完成后应收敛为真实 package 对象优先。当本地开发或测试环境没有 R2 binding 时，端点仍返回包含 `objectKey`、`sha256`、`sizeBytes` 和 `downloadUrl` 的显式元数据 JSON，完整包下载额外返回 `packageObjectKey` 和 `packageDownloadUrl`，作为 D1 或显式 seed 调试降级路径，不冒充真实对象下载。缩略图端点同样先通过 D1 或显式 seed repository 解析版本，再读取该版本的 `thumbnailKey`；R2 对象存在时返回 `image/png` 和公开缓存头，不记录下载计数；无 R2 binding 且启用 seed fallback 时返回 seed SVG，前端仍保留渐变占位防止图片加载失败导致卡片空白；无 D1 且未启用 seed fallback 时返回空列表或 404。
+
+代码内 seed 目录、`apps/template-marketplace/seeds/0001_preview_templates.sql` 和 `packages/marketplace-shared` 中的 `marketplaceSeedTemplates` 是开发 / 调试夹具，不是生产内容管理机制。正式环境不得通过这些文件上架模板；模板必须由作者或管理员走发布 API 写入 D1/R2，再进入列表、详情、下载、统计和治理流程。`MARKETPLACE_ENABLE_SEED_TEMPLATES=true` 只允许用于本地开发、自动化测试、workers.dev preview 调试或手动降风险验证；生产环境不配置该变量。浏览器前端的 seed fallback 同样只在 Vite dev 或 `VITE_MARKETPLACE_ENABLE_SEED_FALLBACK=true` 时启用，生产构建在 API 不可用时显示空市场 / 错误状态，不能把打包进前端的 seed 数据当成正式目录。
 
 D1 在 Phase 1-4 范围内的核心表（通过 Drizzle ORM 定义在 `packages/marketplace-shared/src/schema.ts`）包括：
 

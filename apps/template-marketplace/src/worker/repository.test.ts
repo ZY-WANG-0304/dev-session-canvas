@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { D1TemplateRepository } from './repository';
+import { D1TemplateRepository, EmptyTemplateRepository } from './repository';
 import { createFakeD1Database, type FakeD1Run } from './testD1Database';
 
 describe('D1TemplateRepository', () => {
+  it('uses an empty catalog for production fallbacks without D1', async () => {
+    const repository = new EmptyTemplateRepository();
+
+    const listResponse = await repository.listTemplates({ q: 'review', tags: ['quality'] });
+
+    expect(listResponse.storageMode).toBe('empty');
+    expect(listResponse.items).toEqual([]);
+    await expect(repository.getTemplateDetail('review-loop')).resolves.toBeUndefined();
+    await expect(repository.buildDownloadResponse('review-loop')).resolves.toBeUndefined();
+    await expect(repository.isTemplateSlugAvailable('review-loop')).resolves.toBe(true);
+  });
+
   it('maps D1 rows into list responses', async () => {
     const repository = new D1TemplateRepository(createFakeD1Database());
 

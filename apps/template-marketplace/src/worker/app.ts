@@ -30,7 +30,7 @@ import {
   buildR2TemplatePackageFromJsonResponse,
   buildR2TemplateThumbnailResponse
 } from './download';
-import { MarketplaceRepositoryWriteError, buildMarketplaceUserId, createTemplateRepository } from './repository';
+import { MarketplaceRepositoryWriteError, buildMarketplaceUserId, createProductionTemplateRepository, createTemplateRepository } from './repository';
 import {
   MarketplacePublishValidationError,
   prepareMarketplacePublishTemplate,
@@ -60,6 +60,7 @@ export interface MarketplaceWorkerEnv extends MarketplaceAuthEnv {
   MARKETPLACE_MAX_PACKAGE_BYTES?: string;
   MARKETPLACE_ADMIN_GITHUB_IDS?: string;
   MARKETPLACE_ADMIN_GITHUB_LOGINS?: string;
+  MARKETPLACE_ENABLE_SEED_TEMPLATES?: string;
 }
 
 const PUBLIC_READ_CORS_HEADERS = {
@@ -114,7 +115,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     context.json({
       ok: true,
       service: 'template-marketplace',
-      storageMode: 'seed'
+      storageMode: createMarketplaceRepository(context.env).storageMode
     })
   );
 
@@ -127,7 +128,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     if (result instanceof Response) {
       return result;
     }
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     try {
       await repository.upsertUser(result.user, new Date().toISOString(), parseAdminBootstrapAllowlist(context.env));
     } catch {
@@ -156,7 +157,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     if (!user) {
       return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required.'), 401);
     }
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     return context.json(await repository.listTemplatesByPublisher(user));
   });
 
@@ -165,7 +166,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     if (!user) {
       return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required.'), 401);
     }
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     return context.json(await repository.listLikedTemplates(user));
   });
 
@@ -174,7 +175,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     if (!user) {
       return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required.'), 401);
     }
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     return context.json(await repository.getPublisherStats(user));
   });
 
@@ -184,7 +185,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to read template like state.'), 401);
     }
 
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     const result = await repository.getTemplateLikeState(context.req.param('id'), user);
     if (!result) {
       return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
@@ -197,7 +198,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     if (result instanceof Response) {
       return result;
     }
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     try {
       await repository.upsertUser(result.user, new Date().toISOString(), parseAdminBootstrapAllowlist(context.env));
     } catch {
@@ -208,7 +209,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
 
   app.get('/api/v1/templates', async (context) => {
     const query = parseListTemplatesQuery(new URL(context.req.url));
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     return context.json(await repository.listTemplates(query));
   });
 
@@ -217,7 +218,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     if (!slug || !MARKETPLACE_SLUG_PATTERN.test(slug)) {
       return context.json(makeMarketplaceApiError('template_slug_invalid', 'Slug must use lowercase words separated by hyphens.'), 400);
     }
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     return context.json({
       slug,
       available: await repository.isTemplateSlugAvailable(slug),
@@ -226,7 +227,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.get('/api/v1/templates/:id', async (context) => {
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     const detail = await repository.getTemplateDetail(context.req.param('id'));
     if (!detail) {
       return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
@@ -242,7 +243,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     if (!context.env?.MARKETPLACE_DB) {
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template likes require D1 storage.'), 503);
     }
-    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     if (await repository.isUserBanned(user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot like templates.'), 403);
     }
@@ -275,7 +276,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template reports require D1 storage.'), 503);
     }
 
-    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     if (await repository.isUserBanned(user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot report templates.'), 403);
     }
@@ -304,7 +305,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   app.get('/api/v1/templates/:id/package', async (context) => handleTemplatePackageDownload(context));
 
   app.get('/api/v1/templates/:id/template.json', async (context) => {
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     const response = await repository.buildDownloadResponse(context.req.param('id'), context.req.query('version'));
     if (!response) {
       return context.json(makeMarketplaceApiError('template_or_version_not_found', 'Template version was not found.'), 404);
@@ -321,7 +322,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.get('/api/v1/templates/:id/thumbnail', async (context) => {
-    const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     const detail = await repository.getTemplateDetail(context.req.param('id'));
     if (!detail) {
       return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
@@ -352,7 +353,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
     }
 
-    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     if (await repository.isUserBanned(user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot publish templates.'), 403);
     }
@@ -391,7 +392,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
     }
 
-    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     if (await repository.isUserBanned(user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot publish templates.'), 403);
     }
@@ -429,7 +430,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
     }
 
-    const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+    const repository = createMarketplaceRepository(context.env);
     if (await repository.isUserBanned(user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot publish template versions.'), 403);
     }
@@ -545,7 +546,7 @@ async function requireMarketplaceAdmin(context: Context<{ Bindings: MarketplaceW
   if (!context.env?.MARKETPLACE_DB) {
     return { response: context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Marketplace admin requires D1 storage.'), 503) };
   }
-  const repository = createTemplateRepository(context.env.MARKETPLACE_DB);
+  const repository = createMarketplaceRepository(context.env);
   const isAdmin = await repository.isAdminUser(user, parseAdminBootstrapAllowlist(context.env));
   if (!isAdmin) {
     return { response: context.json(makeMarketplaceApiError('admin_required', 'Marketplace admin permission is required.'), 403) };
@@ -741,7 +742,7 @@ function escapeSvgText(value: string): string {
 
 
 async function handleTemplatePackageDownload(context: Context<{ Bindings: MarketplaceWorkerEnv }>): Promise<Response> {
-  const repository = createTemplateRepository(context.env?.MARKETPLACE_DB);
+  const repository = createMarketplaceRepository(context.env);
   const templateIdOrSlug = context.req.param('id') ?? '';
   const versionId = context.req.query('version');
   const response = await repository.buildPackageDownloadResponse(templateIdOrSlug, versionId);
@@ -799,6 +800,13 @@ function parseCsvEnv(value: string | undefined): string[] {
     ?.split(',')
     .map((entry) => entry.trim())
     .filter(Boolean) ?? [];
+}
+
+function createMarketplaceRepository(env: MarketplaceWorkerEnv | undefined) {
+  if (env?.MARKETPLACE_ENABLE_SEED_TEMPLATES === 'true') {
+    return createTemplateRepository(env.MARKETPLACE_DB);
+  }
+  return createProductionTemplateRepository(env?.MARKETPLACE_DB);
 }
 
 async function readPackageZipUpload(request: Request): Promise<{ bytes: Uint8Array; response?: never } | { bytes?: never; response: Response }> {
