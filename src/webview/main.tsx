@@ -3373,9 +3373,10 @@ function App(): JSX.Element {
       groups,
       nodes,
       edges,
-      hostNodes
+      hostNodes,
+      workspaceFolders: runtimeContext.workspaceFolders ?? []
     }),
-    [edges, groups, hostNodes, nodes]
+    [edges, groups, hostNodes, nodes, runtimeContext.workspaceFolders]
   );
   const paneGalleryRootIds = paneGalleryRootModels.map((model) => model.rootGroup.id);
   const paneGalleryState = localUiState.paneGallery;
@@ -8956,6 +8957,7 @@ function buildPaneGalleryRootModels(params: {
   nodes: readonly CanvasFlowNode[];
   edges: readonly CanvasFlowEdge[];
   hostNodes: readonly CanvasNodeSummary[];
+  workspaceFolders: readonly CanvasRuntimeContext['workspaceFolders'][number][];
 }): PaneGalleryRootModel[] {
   const hostNodesById = new Map(params.hostNodes.map((node) => [node.id, node] as const));
   const nodeRootGroupIds = new Map<string, string>();
@@ -8966,7 +8968,9 @@ function buildPaneGalleryRootModels(params: {
     }
   }
 
-  return params.rootGroups.map((rootGroup) => {
+  const orderedRootGroups = sortPaneGalleryRootGroupsByWorkspaceOrder(params.rootGroups, params.workspaceFolders);
+
+  return orderedRootGroups.map((rootGroup) => {
     const subtreeGroupIds = collectGroupSubtreeIdsForWebview(params.groups, rootGroup.id);
     const paneNodes = params.nodes.filter((node) => nodeRootGroupIds.get(node.id) === rootGroup.id);
     const paneNodeIds = new Set(paneNodes.map((node) => node.id));
@@ -8990,6 +8994,59 @@ function buildPaneGalleryRootModels(params: {
       ).length
     };
   });
+}
+
+function sortPaneGalleryRootGroupsByWorkspaceOrder(
+  rootGroups: readonly CanvasGroupSummary[],
+  workspaceFolders: readonly CanvasRuntimeContext['workspaceFolders'][number][]
+): CanvasGroupSummary[] {
+  const originalIndexes = new Map(rootGroups.map((group, index) => [group.id, index] as const));
+  const workspaceRootIndexes = new Map<string, number>();
+  workspaceFolders.forEach((folder, index) => {
+    const normalizedPath = normalizePaneGalleryRootOrderPath(folder.path);
+    if (normalizedPath && !workspaceRootIndexes.has(normalizedPath)) {
+      workspaceRootIndexes.set(normalizedPath, index);
+    }
+  });
+
+  return [...rootGroups].sort((left, right) => {
+    const leftWorkspaceIndex = readPaneGalleryWorkspaceRootIndex(left, workspaceRootIndexes);
+    const rightWorkspaceIndex = readPaneGalleryWorkspaceRootIndex(right, workspaceRootIndexes);
+    if (leftWorkspaceIndex !== rightWorkspaceIndex) {
+      if (leftWorkspaceIndex === undefined) {
+        return 1;
+      }
+      if (rightWorkspaceIndex === undefined) {
+        return -1;
+      }
+      return leftWorkspaceIndex - rightWorkspaceIndex;
+    }
+
+    return (originalIndexes.get(left.id) ?? 0) - (originalIndexes.get(right.id) ?? 0);
+  });
+}
+
+function readPaneGalleryWorkspaceRootIndex(
+  group: CanvasGroupSummary,
+  workspaceRootIndexes: ReadonlyMap<string, number>
+): number | undefined {
+  const normalizedPath = normalizePaneGalleryRootOrderPath(group.workspaceRootPath);
+  return normalizedPath ? workspaceRootIndexes.get(normalizedPath) : undefined;
+}
+
+function normalizePaneGalleryRootOrderPath(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const slashNormalized = trimmed.replace(/\\/g, '/');
+  const normalized =
+    slashNormalized === '/' || /^[A-Za-z]:\/$/u.test(slashNormalized)
+      ? slashNormalized
+      : slashNormalized.replace(/\/+$/u, '');
+  const caseInsensitive = /^[A-Za-z]:\//u.test(slashNormalized) || trimmed.includes('\\');
+  return caseInsensitive ? normalized.toLowerCase() : normalized;
 }
 
 interface PaneGalleryProps {

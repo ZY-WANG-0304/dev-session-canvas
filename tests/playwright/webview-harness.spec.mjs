@@ -1195,6 +1195,88 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
   expect(topRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
 });
 
+test('pane gallery thumbnail rail follows workspace root order after switching active root', async ({ page }) => {
+  const state = createPaneGalleryCanvasState({ rootCount: 4 });
+  const groupsById = new Map(state.groups.map((group) => [group.id, group]));
+  state.groups = [
+    'workspace-root-tools',
+    'workspace-root-frontend',
+    'workspace-root-mobile',
+    'workspace-root-backend'
+  ].map((groupId) => {
+    const group = groupsById.get(groupId);
+    if (!group) {
+      throw new Error(`Missing fixture group: ${groupId}`);
+    }
+    return group;
+  });
+  const workspaceFolders = [
+    { name: 'Frontend', path: '/repo/frontend' },
+    { name: 'Backend', path: '/repo/backend' },
+    { name: 'Tools', path: '/repo/tools' },
+    { name: 'Mobile', path: '/repo/mobile' }
+  ];
+
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'sideThumbnails',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails'
+      }
+    }
+  });
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({
+      multiRootPresentationMode: 'paneGallery',
+      workspaceFolders
+    })
+  );
+  await settleWebview(page, 4);
+
+  const readThumbnailIds = async (layout) =>
+    page
+      .locator(`[data-pane-gallery-thumbnail-track="${layout}"] .pane-gallery-root-pane-thumbnail`)
+      .evaluateAll((entries) => entries.map((entry) => entry.getAttribute('data-pane-gallery-root-id')));
+
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  expect(await readThumbnailIds('sideThumbnails')).toEqual([
+    'workspace-root-backend',
+    'workspace-root-tools',
+    'workspace-root-mobile'
+  ]);
+
+  await page
+    .locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-tools"]')
+    .dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-tools'
+  );
+  expect(await readThumbnailIds('sideThumbnails')).toEqual([
+    'workspace-root-frontend',
+    'workspace-root-backend',
+    'workspace-root-mobile'
+  ]);
+
+  const mainPane = page.locator('.pane-gallery-root-pane-main');
+  await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
+  await mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
+  expect(await readThumbnailIds('topThumbnails')).toEqual([
+    'workspace-root-frontend',
+    'workspace-root-backend',
+    'workspace-root-mobile'
+  ]);
+});
+
 test('pane gallery clears transient selection before roots become thumbnails', async ({ page }) => {
   await openHarness(page);
   const state = createPaneGalleryCanvasState();
