@@ -488,6 +488,21 @@ export interface WebviewProbeSnapshot {
   nodes: WebviewProbeNodeSnapshot[];
   edgeCount: number;
   edges: WebviewProbeEdgeSnapshot[];
+  groupCount?: number;
+  groups?: WebviewProbeGroupSnapshot[];
+  selectedGroupIds?: string[];
+}
+
+export interface WebviewProbeGroupSnapshot {
+  groupId: string;
+  title: string | null;
+  role: CanvasGroupRole | 'user';
+  selected: boolean;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  bodyTopOffset: number;
 }
 
 export interface WebviewProbeEdgeSnapshot {
@@ -2800,7 +2815,32 @@ function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
     typeof value.edgeCount === 'number' &&
     Number.isInteger(value.edgeCount) &&
     Array.isArray(value.edges) &&
-    value.edges.every((edge) => isWebviewProbeEdgeSnapshot(edge))
+    value.edges.every((edge) => isWebviewProbeEdgeSnapshot(edge)) &&
+    (value.groupCount === undefined || (typeof value.groupCount === 'number' && Number.isInteger(value.groupCount))) &&
+    (value.groups === undefined ||
+      (Array.isArray(value.groups) && value.groups.every((group) => isWebviewProbeGroupSnapshot(group)))) &&
+    (value.selectedGroupIds === undefined ||
+      (Array.isArray(value.selectedGroupIds) && value.selectedGroupIds.every((groupId) => typeof groupId === 'string')))
+  );
+}
+
+function isWebviewProbeGroupSnapshot(value: unknown): value is WebviewProbeGroupSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.groupId === 'string' &&
+    isNullableString(value.title) &&
+    (value.role === 'user' || value.role === 'workspace-root') &&
+    typeof value.selected === 'boolean' &&
+    typeof value.left === 'number' &&
+    Number.isFinite(value.left) &&
+    typeof value.top === 'number' &&
+    Number.isFinite(value.top) &&
+    typeof value.width === 'number' &&
+    Number.isFinite(value.width) &&
+    typeof value.height === 'number' &&
+    Number.isFinite(value.height) &&
+    typeof value.bodyTopOffset === 'number' &&
+    Number.isFinite(value.bodyTopOffset)
   );
 }
 
