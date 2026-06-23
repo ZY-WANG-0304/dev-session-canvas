@@ -13928,6 +13928,91 @@ test('agent output drain reaches every live node when many nodes have pending ba
   }
 });
 
+test('agent attention final output is not starved behind flooded nodes', async ({ page }) => {
+  const state = createMultiLiveExecutionNodeState('agent', 6);
+  const nodeIds = state.nodes.map((node) => node.id);
+  const floodNodeIds = nodeIds.slice(0, 2);
+  const attentionNodeIds = nodeIds.slice(2);
+
+  for (const node of state.nodes) {
+    if (attentionNodeIds.includes(node.id)) {
+      node.metadata.agent.attentionPending = true;
+      node.status = 'waiting-input';
+      node.metadata.agent.lifecycle = 'waiting-input';
+    }
+  }
+
+  const floodEvents = floodNodeIds.map((nodeId, index) => ({
+    nodeId,
+    kind: 'agent',
+    chunk:
+      Array.from({ length: 12000 }, (_value, lineIndex) => {
+        return `BACKGROUND-FLOOD-${nodeId}-${String(lineIndex).padStart(5, '0')}`;
+      }).join('\r\n') + '\r\n',
+    executionSessionId: `attention-flood-session-${index + 1}`,
+    outputSequence: index + 1
+  }));
+  const finalEvents = attentionNodeIds.map((nodeId, index) => ({
+    nodeId,
+    kind: 'agent',
+    chunk: `ATTENTION-FINAL-OUTPUT-${nodeId}\r\n`,
+    executionSessionId: `attention-final-session-${index + 1}`,
+    outputSequence: index + 1,
+    exitMessage: `Attention final complete ${nodeId}`
+  }));
+
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, state);
+  for (const nodeId of nodeIds) {
+    await waitForExecutionTerminalReady(page, nodeId);
+  }
+
+  await page.evaluate(
+    ({ floodPayloads, finalPayloads }) => {
+      for (const payload of floodPayloads) {
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionOutput',
+          payload
+        });
+      }
+      for (const { exitMessage, ...payload } of finalPayloads) {
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionOutput',
+          payload
+        });
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionExit',
+          payload: {
+            nodeId: payload.nodeId,
+            kind: payload.kind,
+            message: exitMessage
+          }
+        });
+      }
+    },
+    { floodPayloads: floodEvents, finalPayloads: finalEvents }
+  );
+  await settleWebview(page, 18);
+
+  for (const nodeId of attentionNodeIds) {
+    const probeNode = await readProbeNode(page, nodeId, 0);
+    const visibleLines = probeNode?.terminalVisibleLines ?? [];
+    expect(probeNode?.attentionIndicatorVisible).toBe(true);
+    expect(visibleLines.some((line) => line.includes(`ATTENTION-FINAL-OUTPUT-${nodeId}`))).toBe(true);
+    expect(visibleLines.some((line) => line.includes(`[Dev Session Canvas] Attention final complete ${nodeId}`))).toBe(
+      true
+    );
+  }
+});
+
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} requests snapshot reset instead of replaying a huge restored backlog`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
