@@ -3,10 +3,18 @@ export type ExecutionTerminalClipboardPlatform = 'mac' | 'windows' | 'linux' | '
 export const EXECUTION_IMAGE_PASTE_MAX_BYTES = 10 * 1024 * 1024;
 export const EXECUTION_IMAGE_PASTE_MAX_BASE64_LENGTH =
   Math.ceil(EXECUTION_IMAGE_PASTE_MAX_BYTES / 3) * 4 + 4;
+export const EXECUTION_IMAGE_PASTE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const EXECUTION_IMAGE_PASTE_TEMP_FILE_TTL_MS = 24 * 60 * 60 * 1000;
+export const EXECUTION_IMAGE_PASTE_FILE_PREFIX = 'pasted-screenshot-';
 export const EXECUTION_IMAGE_PASTE_MIME_TYPES = [
   'image/png',
   'image/jpeg',
   'image/webp'
+] as const;
+export const EXECUTION_IMAGE_PASTE_CACHE_FILE_EXTENSIONS = [
+  '.png',
+  '.jpg',
+  '.webp'
 ] as const;
 
 export type ExecutionImagePasteMimeType = (typeof EXECUTION_IMAGE_PASTE_MIME_TYPES)[number];
@@ -16,6 +24,13 @@ export interface ExecutionImagePasteData {
   dataBase64: string;
   sizeBytes: number;
   name?: string;
+}
+
+export type ExecutionImagePasteCacheFileCleanupReason = 'expired-image' | 'expired-temp';
+
+export interface ExecutionImagePasteCacheFileCleanupDecision {
+  shouldDelete: boolean;
+  reason?: ExecutionImagePasteCacheFileCleanupReason;
 }
 
 export type ExecutionTerminalClipboardShortcutAction =
@@ -219,7 +234,7 @@ export function createExecutionImagePasteFileName(params: {
     : now.toISOString().replace(/[-:.]/g, '');
   const suffix = sanitizeExecutionImagePastePathSegment(params.randomSuffix ?? '', 'image')
     .slice(0, 24);
-  return `pasted-screenshot-${timestamp}-${suffix}.${getExecutionImagePasteFileExtension(params.mimeType)}`;
+  return `${EXECUTION_IMAGE_PASTE_FILE_PREFIX}${timestamp}-${suffix}.${getExecutionImagePasteFileExtension(params.mimeType)}`;
 }
 
 export function sanitizeExecutionImagePastePathSegment(value: string, fallback: string): string {
@@ -268,6 +283,52 @@ export function hasValidExecutionImagePasteSignature(
 
 export function formatExecutionImagePasteText(filePath: string): string {
   return `${shellQuoteExecutionImagePastePath(filePath)} `;
+}
+
+export function getExecutionImagePasteCacheFileCleanupDecision(params: {
+  fileName: string;
+  mtimeMs: number;
+  nowMs: number;
+  imageTtlMs?: number;
+  tempFileTtlMs?: number;
+}): ExecutionImagePasteCacheFileCleanupDecision {
+  const ageMs = params.nowMs - params.mtimeMs;
+  if (!Number.isFinite(ageMs) || ageMs < 0) {
+    return { shouldDelete: false };
+  }
+
+  if (isExecutionImagePasteTempFileName(params.fileName)) {
+    const tempFileTtlMs = params.tempFileTtlMs ?? EXECUTION_IMAGE_PASTE_TEMP_FILE_TTL_MS;
+    return ageMs > tempFileTtlMs
+      ? { shouldDelete: true, reason: 'expired-temp' }
+      : { shouldDelete: false };
+  }
+
+  if (!isExecutionImagePasteCacheFileName(params.fileName)) {
+    return { shouldDelete: false };
+  }
+
+  const imageTtlMs = params.imageTtlMs ?? EXECUTION_IMAGE_PASTE_CACHE_TTL_MS;
+  return ageMs > imageTtlMs
+    ? { shouldDelete: true, reason: 'expired-image' }
+    : { shouldDelete: false };
+}
+
+export function isExecutionImagePasteCacheFileName(fileName: string): boolean {
+  return (
+    fileName.startsWith(EXECUTION_IMAGE_PASTE_FILE_PREFIX) &&
+    EXECUTION_IMAGE_PASTE_CACHE_FILE_EXTENSIONS.some((extension) => fileName.endsWith(extension))
+  );
+}
+
+export function isExecutionImagePasteTempFileName(fileName: string): boolean {
+  return (
+    fileName.startsWith(EXECUTION_IMAGE_PASTE_FILE_PREFIX) &&
+    EXECUTION_IMAGE_PASTE_CACHE_FILE_EXTENSIONS.some((extension) =>
+      fileName.includes(`${extension}.`)
+    ) &&
+    fileName.endsWith('.tmp')
+  );
 }
 
 function normalizeClipboardShortcutKey(key: string): string {

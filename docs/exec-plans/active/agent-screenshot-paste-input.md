@@ -22,6 +22,7 @@
 - [x] (2026-06-23 22:28Z) 在 Webview 端从 `ClipboardEvent.clipboardData` 或 `navigator.clipboard.read()` 中读取 `image/*`，转成 base64 后发送 Host；没有图片或读取失败时回退现有文本粘贴路径。
 - [x] (2026-06-23 22:28Z) 在 Host 端校验 MIME、大小和 base64，写入扩展存储下的 `execution-image-pastes/<nodeId>/`，并把安全引用文本粘贴回 Agent。
 - [x] (2026-06-23 22:28Z) 补充协议、纯 helper 与 Playwright 回归测试，运行定向测试、类型检查和 `git diff --check`。
+- [x] (2026-06-24 07:20Z) 补充临时截图缓存后台维护方案：7 天 TTL、独立延迟调度、分片预算、budget 耗尽短延迟续跑、清理失败非阻塞错误提示，并补充清理 helper 测试。
 
 ## 意外与发现
 
@@ -36,6 +37,9 @@
 
 - 观察：Terminal 节点收到 image-only `paste` 事件时，xterm 默认 paste handler 会继续派发一个空字符串输入；如果不阻止该事件，会出现一次空 `webview/executionInput`。
   证据：首次运行 `npm run test:webview -- --grep "paste"` 时，新增 Terminal 图片剪贴板用例收到 `data: ""` 的 `webview/executionInput`，随后改为 image-only 且无 text/plain 时在 Webview 侧 `preventDefault()`。
+
+- 观察：临时截图缓存清理不适合绑定启动、panel 激活、截图粘贴或 Agent 退出；成熟后台清理更像独立维护器，按 TTL、预算和重试策略分片运行，并把失败以非阻塞方式暴露给用户。
+  证据：调研 `systemd-tmpfiles`、`git maintenance`、Kubernetes GC 与浏览器 storage eviction 后，当前设计采用独立低优先级维护器，而不是把清理塞进用户输入路径。
 
 ## 决策记录
 
@@ -55,9 +59,13 @@
   理由：扩展存储对 Host 与 Agent CLI 都可见，避免污染用户仓库；随机文件名降低冲突风险；MIME 与大小限制防止把任意二进制或过大 payload 通过 Webview 消息写入磁盘。
   日期/作者：2026-06-23 / Codex
 
+- 决策：临时截图缓存清理采用独立后台维护器，默认 7 天 TTL；不绑定启动、panel 激活、截图粘贴、粘贴后立即动作或 Agent 退出。
+  理由：启动和打开路径不应承担维护成本，截图粘贴是低延迟输入路径且不是可靠触发器，Agent 退出时图片仍可能被后续复盘引用；独立维护器能在低优先级窗口分片运行，并在失败时用非阻塞错误提示让用户感知。
+  日期/作者：2026-06-24 / Codex
+
 ## 结果与复盘
 
-本轮已完成设计、协议、Webview、Host、测试和文档同步。用户现在可以在 live `Agent` 节点中粘贴剪贴板截图，系统会把支持的 PNG / JPEG / WebP 图片保存到扩展存储的 `execution-image-pastes/<nodeId>/` 下，并把 shell-safe 图片路径文本插入 Agent 输入行；用户仍需自行补充提示并手动提交。`Terminal` 节点 image-only 粘贴不会写入 shell。已验证命令包括 `npm run test:execution-terminal-clipboard`、`npm run test:protocol-webview-messages`、`npm run typecheck`、`npm run test:webview -- --grep "paste"` 和 `git diff --check`。当前没有发现必须登记到 `docs/exec-plans/tech-debt-tracker.md` 的新增遗留债。
+本轮已完成设计、协议、Webview、Host、测试、临时缓存后台维护和文档同步。用户现在可以在 live `Agent` 节点中粘贴剪贴板截图，系统会把支持的 PNG / JPEG / WebP 图片保存到扩展存储的 `execution-image-pastes/<nodeId>/` 下，并把 shell-safe 图片路径文本插入 Agent 输入行；用户仍需自行补充提示并手动提交。`Terminal` 节点 image-only 粘贴不会写入 shell。过期截图缓存由独立后台维护器按 7 天 TTL 分片清理，清理失败会非阻塞提示用户但不影响当前交互。已验证命令包括 `npm run test:execution-terminal-clipboard`、`npm run test:protocol-webview-messages`、`npm run typecheck`、`npm run test:webview -- --grep "paste"` 和 `git diff --check`。当前没有发现必须登记到 `docs/exec-plans/tech-debt-tracker.md` 的新增遗留债。
 
 ## 上下文与定向
 
@@ -75,9 +83,9 @@
 
 接着实现 Webview。`setupExecutionTerminalNativeInteractions(...)` 增加 `onPasteImage` callback。paste 快捷键分支如果当前 `kind` 是 `agent`，先通过 `navigator.clipboard.read()` 尝试读取第一张支持的图片；如果读到图片，转换成 base64 并发送 Host，同时不再请求文本粘贴；如果没有读到图片或 API 不可用，继续调用现有 `onRequestPaste(...)`。同时在 `dropTarget` 上增加 `paste` 事件监听，优先处理 `event.clipboardData` 中的图片，以覆盖菜单粘贴或测试注入路径。
 
-再实现 Host。`CanvasPanelManager` 收到 `webview/pasteExecutionImage` 后，必须确认目标是 live `Agent` 会话，拒绝 `Terminal`。Host 校验 MIME 属于 `image/png`、`image/jpeg` 或 `image/webp`，解码 base64，校验字节大小和图片 magic number，保存到 `getExtensionStoragePath()/execution-image-pastes/<nodeId>/`。保存成功后按 provider 返回路径文本，例如 shell-safe 单引号包裹的绝对路径加一个尾随空格；不返回回车。失败时发 `host/executionPasteCancelled` 并通过 `host/error` 提示用户。
+再实现 Host。`CanvasPanelManager` 收到 `webview/pasteExecutionImage` 后，必须确认目标是 live `Agent` 会话，拒绝 `Terminal`。Host 校验 MIME 属于 `image/png`、`image/jpeg` 或 `image/webp`，解码 base64，校验字节大小和图片 magic number，保存到 `getExtensionStoragePath()/execution-image-pastes/<nodeId>/`。保存成功后按 provider 返回路径文本，例如 shell-safe 单引号包裹的绝对路径加一个尾随空格；不返回回车。失败时发 `host/executionPasteCancelled` 并通过 `host/error` 提示用户。临时截图缓存清理由独立后台维护器完成：扩展激活后延迟进入低优先级维护窗口，按 7 天 TTL 清理过期截图，按更短 TTL 清理 `.tmp`，并受文件数、扫描量和耗时预算约束；预算耗尽时短延迟续跑，清理失败时记录诊断并弹非阻塞错误提示。
 
-最后补测试。纯协议测试覆盖合法与非法图片消息；纯 helper 测试覆盖 MIME、文件扩展名、base64 解码、路径引用格式。Playwright 覆盖 Agent paste 事件携带 PNG 文件时发出 `webview/pasteExecutionImage`，Host 回包后进入 xterm 输入链路；同时确认现有文本粘贴测试仍通过。Host 写盘路径可通过新 helper 纯测试覆盖，真实 VS Code 手动验证如环境允许再记录。
+最后补测试。纯协议测试覆盖合法与非法图片消息；纯 helper 测试覆盖 MIME、文件扩展名、base64 解码、路径引用格式、TTL 删除资格、临时文件 TTL、清理预算和非截图文件保留。Playwright 覆盖 Agent paste 事件携带 PNG 文件时发出 `webview/pasteExecutionImage`，Host 回包后进入 xterm 输入链路；同时确认现有文本粘贴测试仍通过。真实 VS Code 手动验证如环境允许再记录。
 
 ## 具体步骤
 
@@ -95,11 +103,11 @@
 
 验收标准是用户在 live `Agent` 节点中粘贴截图时，图片不会被当作空文本吞掉，也不会直接提交执行。Webview 应发出 `webview/pasteExecutionImage`；Host 应保存图片并返回一段可见路径文本；Webview 应通过 `terminal.paste(text)` 注入当前 Agent 输入；用户随后可以继续输入“分析这张图”等文字并手动回车。
 
-必须保留现有文本粘贴能力：系统剪贴板只有文本时，仍走 `webview/requestExecutionPaste`，多行安全确认规则不变；`Ctrl+C` 打断规则不变；非 live Agent 粘贴图片时必须取消并提示；Terminal 节点粘贴图片不应写入 shell。
+必须保留现有文本粘贴能力：系统剪贴板只有文本时，仍走 `webview/requestExecutionPaste`，多行安全确认规则不变；`Ctrl+C` 打断规则不变；非 live Agent 粘贴图片时必须取消并提示；Terminal 节点粘贴图片不应写入 shell。临时截图缓存清理不应绑定用户输入路径；清理失败可以提示用户，但提示必须非阻塞且不影响当前 Agent 交互。
 
 ## 幂等性与恢复
 
-文档、协议和测试修改可以重复执行。图片落盘使用随机文件名，重复粘贴不会覆盖旧文件。若 Webview 图片读取失败，必须回退文本粘贴或给出轻量错误，而不是破坏终端输入。若 Host 校验失败，必须取消对应 `requestId`，避免 Webview pending request 泄漏。
+文档、协议和测试修改可以重复执行。图片落盘使用随机文件名，重复粘贴不会覆盖旧文件。后台维护器只删除 `execution-image-pastes` 命名空间中符合截图缓存命名且超过 TTL 的文件；单次预算耗尽时后续维护窗口继续，不一次性扫完整目录。若 Webview 图片读取失败，必须回退文本粘贴或给出轻量错误，而不是破坏终端输入。若 Host 校验失败，必须取消对应 `requestId`，避免 Webview pending request 泄漏。
 
 如果实现中发现 `navigator.clipboard.read()` 在部分 VS Code Webview 上不可用，paste 事件路径仍应保留；如果两条图片路径都不可用，功能可以降级为现有文本粘贴，并在设计文档中记录该环境限制。
 
@@ -142,7 +150,8 @@
 - `src/common/executionTerminalClipboard.ts`：新增图片粘贴 MIME、base64、文件名和路径引用 helper。
 - `src/webview/executionTerminalNativeInteractions.ts`：新增图片剪贴板读取和 paste 事件处理。
 - `src/webview/main.tsx`：新增图片 paste request 发送，并复用 pending paste response 路由。
-- `src/panel/CanvasPanelManager.ts`：处理图片粘贴消息、保存图片文件、返回路径文本。
+- `src/panel/CanvasPanelManager.ts`：处理图片粘贴消息、保存图片文件、返回路径文本，并调度临时截图缓存后台维护。
+- `src/panel/executionImagePasteCacheMaintenance.ts`：独立执行临时截图缓存 TTL 判断、分片扫描与删除预算。
 - `scripts/test/test-execution-terminal-clipboard.mts`、`scripts/test/test-protocol-webview-messages.mts`、`tests/playwright/webview-harness.spec.mjs`：补充自动化验证。
 
 本轮不引入新的 runtime 依赖。图片字节处理使用浏览器 `Blob` / `FileReader` 或 `arrayBuffer()`，Host 侧使用 Node `Buffer`、`fs` 和 `path`。
@@ -150,3 +159,5 @@
 本次更新说明：2026-06-23 创建计划，收口 Codex / Claude Code 支持情况、本仓库现有粘贴链路和截图粘贴正式实现路线。
 
 本次更新说明：2026-06-23 22:28Z，完成 Agent 截图粘贴实现、文档同步与自动化验证，记录 Terminal image-only paste 的空输入发现和修复。
+
+本次更新说明：2026-06-24 07:20Z，补充临时截图缓存独立后台维护策略与实现，避免把清理绑定到启动、panel 激活、截图粘贴或 Agent 退出，并记录非阻塞错误提示要求。
