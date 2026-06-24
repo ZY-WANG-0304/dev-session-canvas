@@ -15475,6 +15475,9 @@ function drainExecutionTerminalOutput(): void {
   let pendingOutputLength = 0;
   let processedControllerCount = 0;
   let queuedWriteBlockedControllerCount = 0;
+  const deferredControllers: ExecutionTerminalController[] = [];
+  const queuedWriteBlockedControllers: ExecutionTerminalController[] = [];
+  const processedControllersWithRemainingOutput: ExecutionTerminalController[] = [];
   const orderedControllers = lastExecutionInputNodeId
     ? [...controllers].sort((left, right) => {
         if (left.nodeId === lastExecutionInputNodeId && right.nodeId !== lastExecutionInputNodeId) {
@@ -15494,17 +15497,17 @@ function drainExecutionTerminalOutput(): void {
     }
     if (currentController.getQueuedWriteCount() >= EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER) {
       queuedWriteBlockedControllerCount += 1;
-      pendingExecutionTerminalDrains.add(currentController);
+      queuedWriteBlockedControllers.push(currentController);
       continue;
     }
     if (processedControllerCount >= maxControllersThisFrame) {
-      pendingExecutionTerminalDrains.add(currentController);
+      deferredControllers.push(currentController);
       continue;
     }
 
     const remainingFrameBudget = Math.max(0, maxCharsThisFrame - characters);
     if (remainingFrameBudget <= 0) {
-      pendingExecutionTerminalDrains.add(currentController);
+      deferredControllers.push(currentController);
       continue;
     }
 
@@ -15515,8 +15518,15 @@ function drainExecutionTerminalOutput(): void {
       flushedControllerCount += 1;
     }
     if (currentController.getPendingOutputLength() > 0 && !currentController.isOutputDrainBlocked()) {
-      pendingExecutionTerminalDrains.add(currentController);
+      processedControllersWithRemainingOutput.push(currentController);
     }
+  }
+  for (const controller of [
+    ...deferredControllers,
+    ...queuedWriteBlockedControllers,
+    ...processedControllersWithRemainingOutput
+  ]) {
+    pendingExecutionTerminalDrains.add(controller);
   }
   if (pendingExecutionTerminalDrains.size > 0) {
     scheduleExecutionTerminalDrainPump(flushedControllerCount === 0 && queuedWriteBlockedControllerCount > 0 ? 16 : 0);
