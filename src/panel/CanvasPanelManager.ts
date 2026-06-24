@@ -34,6 +34,7 @@ import {
 import {
   createExecutionImagePasteFileName,
   EXECUTION_IMAGE_PASTE_MAX_BYTES,
+  getExecutionImagePasteCacheFileCleanupDecision,
   formatExecutionImagePasteText,
   hasValidExecutionImagePasteSignature,
   isExecutionImagePasteSizeAllowed,
@@ -48,6 +49,7 @@ import {
   STORAGE_KEYS,
   VIEW_IDS
 } from '../common/extensionIdentity';
+import { cleanupExecutionImagePasteCache } from './executionImagePasteCacheMaintenance';
 import {
   selectPreferredExtensionStorageRecoverySource,
   type ExtensionStorageRecoverySourceSelection
@@ -1039,6 +1041,16 @@ type NoteMarkdownExistingDropChoice = 'create' | 'locate';
 const NOTE_MARKDOWN_RECOVERABLE_DRAFTS_STORAGE_DIRECTORY = 'note-markdown-drafts';
 const NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const EXECUTION_IMAGE_PASTE_STORAGE_DIRECTORY = 'execution-image-pastes';
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_INITIAL_DELAY_MS = 30 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_JITTER_MS = 5 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_REGULAR_DELAY_MS = 6 * 60 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_CONTINUE_DELAY_MS = 5 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_FAILURE_DELAY_MS = 60 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_RECENT_INPUT_GRACE_MS = 10 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_ERROR_NOTICE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_FILES_DELETED = 100;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_ENTRIES_SCANNED = 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_DURATION_MS = 200;
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
@@ -1134,6 +1146,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private pendingCanvasStatePersist: PendingCanvasStatePersist | undefined;
   private pendingCanvasStatePersistFlush: Promise<void> | undefined;
   private pendingCanvasStatePersistTimer: NodeJS.Timeout | undefined;
+  private executionImagePasteCacheMaintenanceTimer: NodeJS.Timeout | undefined;
+  private executionImagePasteCacheMaintenanceInProgress = false;
+  private lastExecutionImagePasteCacheMaintenanceErrorNoticeAtMs = 0;
   private hostEventLoopLagMonitorTimer: NodeJS.Timeout | undefined;
   private hostEventLoopLagMonitorExpectedAtMs = 0;
   private readonly scheduledExecutionOutputPosts = new Map<string, ScheduledExecutionOutputPost>();
@@ -1199,8 +1214,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     context.subscriptions.push(this.sidebarStateEmitter, this.templateCatalogEmitter);
     this.startHostEventLoopLagMonitor();
+    this.scheduleExecutionImagePasteCacheMaintenance('initial');
     context.subscriptions.push({
       dispose: () => {
+        if (this.executionImagePasteCacheMaintenanceTimer) {
+          clearTimeout(this.executionImagePasteCacheMaintenanceTimer);
+          this.executionImagePasteCacheMaintenanceTimer = undefined;
+        }
         if (this.hostEventLoopLagMonitorTimer) {
           clearTimeout(this.hostEventLoopLagMonitorTimer);
           this.hostEventLoopLagMonitorTimer = undefined;
@@ -15034,6 +15054,137 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     fs.writeFileSync(tempPath, imageBuffer);
     fs.renameSync(tempPath, imagePath);
     return imagePath;
+  }
+
+  private getExecutionImagePasteCacheRootPath(): string {
+    return path.join(this.getExtensionStoragePath(), EXECUTION_IMAGE_PASTE_STORAGE_DIRECTORY);
+  }
+
+  private scheduleExecutionImagePasteCacheMaintenance(
+    reason: 'initial' | 'regular' | 'continue' | 'retry',
+    delayMs?: number
+  ): void {
+    if (this.executionImagePasteCacheMaintenanceTimer) {
+      return;
+    }
+
+    const resolvedDelayMs = delayMs ?? this.getExecutionImagePasteCacheMaintenanceDelayMs(reason);
+    this.executionImagePasteCacheMaintenanceTimer = setTimeout(() => {
+      this.executionImagePasteCacheMaintenanceTimer = undefined;
+      void this.runExecutionImagePasteCacheMaintenance(reason);
+    }, resolvedDelayMs);
+    this.executionImagePasteCacheMaintenanceTimer.unref?.();
+  }
+
+  private getExecutionImagePasteCacheMaintenanceDelayMs(
+    reason: 'initial' | 'regular' | 'continue' | 'retry'
+  ): number {
+    if (reason === 'continue') {
+      return EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_CONTINUE_DELAY_MS;
+    }
+    if (reason === 'retry') {
+      return EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_FAILURE_DELAY_MS;
+    }
+    if (reason === 'initial') {
+      return (
+        EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_INITIAL_DELAY_MS +
+        Math.floor(Math.random() * EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_JITTER_MS)
+      );
+    }
+    return EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_REGULAR_DELAY_MS;
+  }
+
+  private scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun(
+    reason: 'regular' | 'continue' | 'retry'
+  ): void {
+    setTimeout(() => this.scheduleExecutionImagePasteCacheMaintenance(reason), 0);
+  }
+
+  private async runExecutionImagePasteCacheMaintenance(
+    reason: 'initial' | 'regular' | 'continue' | 'retry'
+  ): Promise<void> {
+    if (this.executionImagePasteCacheMaintenanceInProgress) {
+      this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun('continue');
+      return;
+    }
+
+    if (this.hasRecentExecutionInputPriority()) {
+      this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun('continue');
+      return;
+    }
+
+    const cacheRootPath = this.getExecutionImagePasteCacheRootPath();
+    this.executionImagePasteCacheMaintenanceInProgress = true;
+    try {
+      const result = cleanupExecutionImagePasteCache({
+        cacheRootPath,
+        shouldDeleteFile: getExecutionImagePasteCacheFileCleanupDecision,
+        maxFilesDeleted: EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_FILES_DELETED,
+        maxEntriesScanned: EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_ENTRIES_SCANNED,
+        maxDurationMs: EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_DURATION_MS
+      });
+
+      this.recordDiagnosticEvent('execution/imagePasteCacheMaintenance', {
+        reason,
+        cacheRootPath,
+        ...result
+      });
+
+      if (result.failedDeletes > 0 || result.errors.length > 0) {
+        this.notifyExecutionImagePasteCacheMaintenanceFailure(cacheRootPath, result.errors[0]);
+        this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun('retry');
+        return;
+      }
+
+      this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun(
+        result.budgetExhausted ? 'continue' : 'regular'
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.recordDiagnosticEvent('execution/imagePasteCacheMaintenanceFailed', {
+        reason,
+        cacheRootPath,
+        message
+      });
+      this.notifyExecutionImagePasteCacheMaintenanceFailure(cacheRootPath, message);
+      this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun('retry');
+    } finally {
+      this.executionImagePasteCacheMaintenanceInProgress = false;
+    }
+  }
+
+  private hasRecentExecutionInputPriority(): boolean {
+    return (
+      this.recentExecutionInputPriority !== undefined &&
+      Date.now() - this.recentExecutionInputPriority.receivedAtMs <
+        EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_RECENT_INPUT_GRACE_MS
+    );
+  }
+
+  private notifyExecutionImagePasteCacheMaintenanceFailure(
+    cacheRootPath: string,
+    detail: string | undefined
+  ): void {
+    const nowMs = Date.now();
+    if (
+      nowMs - this.lastExecutionImagePasteCacheMaintenanceErrorNoticeAtMs <
+      EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_ERROR_NOTICE_INTERVAL_MS
+    ) {
+      return;
+    }
+
+    this.lastExecutionImagePasteCacheMaintenanceErrorNoticeAtMs = nowMs;
+    const detailText = detail ? `：${detail}` : '';
+    void vscode.window
+      .showErrorMessage(
+        `清理 Agent 临时截图缓存失败${detailText}。这不会影响当前 Agent 输入。`,
+        '打开缓存目录'
+      )
+      .then((selection) => {
+        if (selection === '打开缓存目录') {
+          void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(cacheRootPath));
+        }
+      });
   }
 
   private postExecutionPasteCancelled(

@@ -119,6 +119,8 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 
 2026-06-24 补充：Agent 截图粘贴进入正式范围，但仅覆盖 `Agent` 节点。Codex 当前官方手册确认 CLI 支持 `--image/-i` 初始图片、交互 composer 支持粘贴图片、IDE 支持图片拖放；本轮源码调研还看到 Codex TUI composer 会把粘贴的图片路径识别为本地图片附件。Claude Code 文档确认可以把图片直接粘贴到 prompt、拖放图片，或提供图片路径；交互模式还定义了图片剪贴板快捷键并会插入 `[Image #N]` chip。基于这些证据，画布不尝试伪造 provider 原生 chip，而采用跨 provider 的文件路径文本方案：Webview 从 `ClipboardEvent.clipboardData` 或 `navigator.clipboard.read()` 读取第一张支持图片，发送 `webview/pasteExecutionImage`；`src/panel/CanvasPanelManager.ts` 校验 live Agent 会话、MIME、大小和图片 magic number，把图片写入 `getExtensionStoragePath()/execution-image-pastes/<nodeId>/`，再通过现有 `host/executionPasteText` 返回不带回车的图片路径引用文本；`src/webview/main.tsx` 仍调用 `terminal.paste(text)`。`Terminal` 节点粘贴图片不自动落盘或写入 shell，继续走文本粘贴或取消路径。该补充由 `docs/exec-plans/active/agent-screenshot-paste-input.md` 跟踪，已通过协议、Webview、Host 和 Playwright 定向回归验证。
 
+2026-06-24 清理策略补充：保存到 `execution-image-pastes` 的截图是临时附件缓存，不是用户资产，默认 7 天 TTL。清理采用独立后台维护器，而不是绑定启动、panel 激活、截图粘贴、粘贴后立即动作或 Agent 退出；维护器在扩展运行一段延迟后进入低优先级窗口，单实例运行，并按文件数、扫描量和耗时预算分片删除过期图片。若单次预算耗尽，维护器短延迟续跑以消化 backlog；若清理失败，Host 记录诊断并弹出非阻塞错误提示，提示用户可排查缓存目录，但当前 Agent 输入、粘贴、启动和画布交互不得被阻塞。写入中断残留的 `.tmp` 使用更短 TTL；删除路径必须限制在 `execution-image-pastes` 命名空间内，并只处理截图缓存命名的文件。
+
 ## 8. 验证方法
 
 实现时应同时覆盖纯规则测试、Webview DOM 测试和至少一条真实 VSCode smoke / 手动验证说明。
@@ -136,7 +138,7 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 2026-06-15 snapshot restore 抑制补充的验证口径是：协议 validator 接受 `restoreSuppressed` source；Playwright 在 Agent / Terminal 两类节点上通过 snapshot replay 触发 mouse tracking 与 OSC 52，断言 restore 窗口内没有原始 `mouseTrackingMode` / `osc52` / `selectionChange` 诊断，只保留聚合 `restoreSuppressed`；同一节点在 restore 之后收到 live OSC 52 output 时仍正常上报原始 `osc52` 诊断。
 
 
-2026-06-24 Agent 截图粘贴补充已通过 `npm run test:execution-terminal-clipboard`、`npm run test:protocol-webview-messages`、`npm run typecheck`、`npm run test:webview -- --grep "paste"` 和 `git diff --check` 验证。协议 validator 接受合法 `webview/pasteExecutionImage` 并拒绝非法 MIME / base64；纯 helper 测试覆盖 magic number、文件名和路径引用；Playwright 在 `Agent` 节点上模拟图片 paste 事件，断言 Webview 发送图片粘贴消息、Host 回包后图片路径文本进入 xterm 输入；同一组现有文本粘贴测试继续通过；`Terminal` 节点的图片剪贴板不向 shell 发送图片路径。
+2026-06-24 Agent 截图粘贴补充已通过 `npm run test:execution-terminal-clipboard`、`npm run test:protocol-webview-messages`、`npm run typecheck`、`npm run test:webview -- --grep "paste"` 和 `git diff --check` 验证。协议 validator 接受合法 `webview/pasteExecutionImage` 并拒绝非法 MIME / base64；纯 helper 测试覆盖 magic number、文件名、路径引用、7 天 TTL 清理资格、临时文件 TTL、清理预算和非截图文件保留；Playwright 在 `Agent` 节点上模拟图片 paste 事件，断言 Webview 发送图片粘贴消息、Host 回包后图片路径文本进入 xterm 输入；同一组现有文本粘贴测试继续通过；`Terminal` 节点的图片剪贴板不向 shell 发送图片路径。
 
 ## 9. 参考资料
 
