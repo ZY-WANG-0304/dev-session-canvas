@@ -268,6 +268,14 @@ async function assertWorkspaceFolderGroupActions(browser, html) {
       ['codicon-worktree', 'codicon-trash', 'codicon-close'],
       'Workspace-root group rows should use the dedicated worktree Codicon and separate remove icons.'
     );
+    assert.deepEqual(
+      rootGroupRow?.folderActionTitles.filter((title) => title.includes('移除')),
+      [
+        '移除 Worktree（默认清空画板，可保留画板）',
+        '从 Workspace 移除文件夹（可保留或清空画板）'
+      ],
+      'Workspace-root remove actions should announce the clear-vs-keep canvas choice before Host confirmation.'
+    );
     const regularGroupRow = snapshot.groupRows.find((row) => row.key === 'group-regular');
     assert.deepEqual(
       regularGroupRow?.folderActionTypes,
@@ -354,6 +362,9 @@ async function renderSidebarState(page, payload) {
         folderKindIconClass: row.getAttribute('data-sidebar-workspace-folder-kind-icon') || undefined,
         folderActionTypes: Array.from(row.querySelectorAll('[data-sidebar-folder-action]'))
           .map((action) => action.getAttribute('data-sidebar-folder-action'))
+          .filter(Boolean),
+        folderActionTitles: Array.from(row.querySelectorAll('[data-sidebar-folder-action]'))
+          .map((action) => action.getAttribute('title'))
           .filter(Boolean),
         folderActionIconClasses: Array.from(row.querySelectorAll('[data-sidebar-folder-action]'))
           .map((action) => action.getAttribute('data-sidebar-folder-action-icon'))

@@ -27,6 +27,7 @@ try {
   const {
     composeRootLocalCanvasStateIntoComposed,
     composeMultiRootCanvasState,
+    collectWorkspaceRootOwnedNodeIds,
     decomposeMultiRootCanvasState,
     createWorkspaceRootSectionId,
     namespaceCanvasObjectId,
@@ -78,6 +79,10 @@ try {
   assert.ok(composed.groups.find((candidate) => candidate.id === frontendRootGroupId && isWorkspaceRootGroup(candidate)));
   assert.ok(composed.groups.find((candidate) => candidate.id === backendRootGroupId && isWorkspaceRootGroup(candidate)));
   assert.equal(composed.nodes.length, 2);
+  assert.ok(
+    collectWorkspaceRootOwnedNodeIds(composed, frontendRoot, frontendRootGroupId).has(namespaceCanvasObjectId(frontendRoot, 'note-1')),
+    'Host root canvas clearing needs a shared helper to identify nodes owned by a workspace root.'
+  );
   assert.notEqual(composed.nodes[0].id, composed.nodes[1].id, '同名 root-local node id 必须命名空间化避免冲突。');
 
   const frontendComposedNode = composed.nodes.find((candidate) => candidate.id === namespaceCanvasObjectId(frontendRoot, 'note-1'));

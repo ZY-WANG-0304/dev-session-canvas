@@ -18,7 +18,7 @@ related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
   - docs/exec-plans/completed/sidebar-workspace-worktree-actions.md
-updated_at: 2026-06-22
+updated_at: 2026-06-25
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -123,7 +123,7 @@ updated_at: 2026-06-22
 - 多根 workspace 下的平铺展示不会完全抹平 root 归属，而是继续保留 workspace root 分组。若此时存在 attention 节点，顶部仍显示“待处理提醒”虚拟分组，并且该虚拟分组排在所有 root 分组之前；root 分组内仍保留各自节点，其中 attention 节点在对应 root 内排在普通节点前。
 - `节点` view 标题栏除了创建节点和显示模式切换外，还提供两个 workspace 操作入口：添加文件夹到当前 workspace，以及新建 git worktree 并添加到当前 workspace。添加文件夹走 VS Code `workspace.updateWorkspaceFolders(...)`；新建 worktree 由宿主读取 `HEAD` 和本地分支 refs 后展示 VS Code 风格 QuickPick，成功执行 `git -C <root> worktree add ...` 后再把目标目录作为 workspace folder 加入当前窗口。
 - 多根 workspace 下，如果用户从 `节点` view 标题栏点击全局新建 worktree，宿主必须先用 QuickPick 选择基准 folder，避免猜测要基于哪个仓库创建 worktree；单根 workspace 直接使用唯一 folder。选定 folder 后的第一层 QuickPick 使用 `Create Worktree (...path...) (1/2)` 标题，包含 `Create new branch...`、`Create new branch from...`、`HEAD` 和本地分支；`Create new branch from...` 进入第二层 `Create new branch from...` ref picker。创建新分支路径使用 `git worktree add -b <branch> <path> [startPoint]`，已有 ref 路径使用 `git worktree add [--detach] <path> <ref>`，其中 `HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。
-- workspace folder 分组行前置一个 folder kind 图标，用于区分普通 folder、git repository 和 linked git worktree：宿主读取 workspace root 下 `.git` 元数据，未发现 `.git` 视为普通 folder，目录型 `.git` 视为 repository，`gitdir:` 指向 `.git/worktrees/*` 的文件型 `.git` 视为 worktree，其他 `.git` 文件或读取失败时回退为 repository。workspace folder 分组行尾显示三个 folder 级 icon-only 操作，顺序为：基于该 folder 新建 worktree 并加入 workspace、移除 git worktree 并从 workspace 移除该 folder、从当前 workspace 移除该 folder。它们只出现在 `role === 'workspace-root'` 且存在 `workspaceRootPath` 的系统 workspace folder 分组行，不出现在普通用户分组、未分组或待处理提醒虚拟分组。新建 worktree 按钮使用 VS Code 专用 `worktree` Codicon；移除 folder 只调用 VS Code workspace folder 移除语义，不删除磁盘目录；移除 worktree 会先确认该 folder 是 linked git worktree，再执行 `git worktree remove`。
+- workspace folder 分组行前置一个 folder kind 图标，用于区分普通 folder、git repository 和 linked git worktree：宿主读取 workspace root 下 `.git` 元数据，未发现 `.git` 视为普通 folder，目录型 `.git` 视为 repository，`gitdir:` 指向 `.git/worktrees/*` 的文件型 `.git` 视为 worktree，其他 `.git` 文件或读取失败时回退为 repository。workspace folder 分组行尾显示三个 folder 级 icon-only 操作，顺序为：基于该 folder 新建 worktree 并加入 workspace、移除 git worktree 并从 workspace 移除该 folder、从当前 workspace 移除该 folder。它们只出现在 `role === 'workspace-root'` 且存在 `workspaceRootPath` 的系统 workspace folder 分组行，不出现在普通用户分组、未分组或待处理提醒虚拟分组。新建 worktree 按钮使用 VS Code 专用 `worktree` Codicon；移除 folder 会先弹确认选择框，让用户选择保留或清空对应 root-local canvas state；移除 worktree 会先验证该 folder 是 linked git worktree，再弹同类确认选择框。确认选择框采用纵向 QuickPick 和短句文案，默认动作排在第一项；取消由 Esc 或焦点离开完成，避免宿主默认 `Cancel` 挤在两个长动作按钮之间形成三等分布局。folder 保持“保留画板并移除”与“清空画板并移除”，默认保留画板；worktree 改为“移除 Worktree 并清空画板”与“移除 Worktree 但保留画板”，默认前者。Host 在 QuickPick 说明中展示清空路径会影响的节点、连线、分组数量，并标明会停止多少个 Agent / Terminal。移除 worktree 的两条路径都会执行 `git worktree remove`；区别只在是否先清空 root-local canvas state。主要实现落点是 `src/extension.ts` 的移除命令分支、`src/panel/CanvasPanelManager.ts` 的 `clearWorkspaceRootCanvas(...)` 和 `getWorkspaceRootCanvasRemovalImpact(...)`。
 - 点击节点项后，宿主会统一执行“打开/定位画布 -> 等待 Webview ready -> 下发 `host/focusNode`”，把节点滚入可见区域并选中。
 
 ### 6.2 会话历史使用最小 `WebviewView`
@@ -227,7 +227,7 @@ updated_at: 2026-06-22
 5. `节点` view 标题栏提供添加 workspace folder 与新建 worktree 的全局按钮；多根 workspace 下全局新建 worktree 先选择基准 folder。
 6. 新建 worktree 的第一层 QuickPick 包含创建新分支、从 ref 创建新分支和已有 ref 选择；第二层只在用户选择 `Create new branch from...` 时出现；已有 ref 创建不要求输入新分支名。
 7. workspace folder 分组行首只在系统 workspace folder 分组上显示 folder kind 图标，区分普通 folder、git repository 与 linked git worktree；行尾显示新建 worktree、移除 worktree 与移除 folder 三个 icon-only 操作；普通用户分组和虚拟分组不显示这组 folder 操作；新建 worktree 图标使用 `worktree` Codicon。
-8. workspace folder 行新建 worktree 成功后，新 worktree 目录被加入当前 workspace；workspace folder 行移除 folder 后，该 folder 从当前 workspace 中移除但磁盘目录不被删除；移除 worktree 会删除对应 git worktree 目录并从 workspace 移除该 folder。
+8. workspace folder 行新建 worktree 成功后，新 worktree 目录被加入当前 workspace；workspace folder 行移除 folder 后，确认选择框可选择“保留画板并移除”或在看到影响数量后“清空画板并移除”；workspace folder 行移除 worktree 后，若该 folder 是 linked git worktree，确认选择框可选择“移除 Worktree 并清空画板”或“移除 Worktree 但保留画板”，默认前者，两者都会执行 `git worktree remove` 并移除 folder。
 9. 会话历史中只出现当前 workspace 的 `Codex` / `Claude Code` 记录，默认按最近更新时间倒序。
 10. 搜索框输入关键词后，列表会即时过滤。
 11. `会话历史` view 标题右上角原生 `...` 菜单提供三个可多选分组开关；多根 root workspace 下按 root 分组默认开启，provider / 分级时间默认关闭；checked 菜单 variant 在标题左侧显示 `✓`；同时开启时按 root > provider > 时间层级呈现，时间标题是 `24小时内`、`一周内`、`更早`。
@@ -238,6 +238,8 @@ updated_at: 2026-06-22
 
 ## 9. 当前验证状态
 
+- 2026-06-25：根据真实 modal 截图反馈，workspace folder / worktree 移除确认选择框收短文案并统一术语：folder 保留“保留画板并移除 / 清空画板并移除”且默认保留画板；worktree 改为“移除 Worktree 并清空画板 / 移除 Worktree 但保留画板”且默认清空画板；改用纵向 QuickPick 选择，取消由 Esc/点击外部完成，避免三按钮布局中 `Cancel` 独立夹在两个动作按钮之间。清空路径展示节点、连线、分组和 Agent / Terminal 影响数量。已补源代码断言覆盖 impact 计算、QuickPick 顺序和取消行为，更新 sidebar action tooltip 文案；已复跑 `npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:sidebar-node-list`、`npm run test:extension-manifest`、`npm run test:canvas-multi-root-composition`、`npm run build` 与 `git diff --check`。
+- 2026-06-24：workspace folder 分组行的移除 folder / 移除 worktree 路径新增“清空对应 root 画板后移除”与“仅从 Workspace 移除”选择；宿主通过 `clearWorkspaceRootCanvas(...)` 在清空路径写空 root-local snapshot，工作区-only 路径保留 root-local snapshot。已复跑 `npm run typecheck`、`npm run test:extension-manifest`、`npm run test:canvas-multi-root-composition`、`npm run test:protocol-webview-messages`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:sidebar-list-colors`、`npm run build` 与 `git diff --check`。
 - 2026-06-22：维护者已在真实 `Extension Development Host` 中完成 `view/title` 原生 `...` 菜单视觉确认，确认 `会话历史` 的多选分组开关和 `节点` 的平铺 / 分组视图模式都能通过标题左侧 `✓` 稳定显示当前选中态；PR #187 中原记录的真实菜单视觉确认残余风险已收口。
 - 2026-06-19：会话历史 view title `...` 菜单新增三个可多选分组开关：多根 root workspace 下按 root 分组默认开启，按 provider 分组和按分级时间分组默认关闭；Webview 呈现层固定按 root > provider > 时间生成分组标题行，单根 workspace 下 root 开关不显示额外 root 标题；checked 菜单 variant 用标题左侧 `✓` 作为 `view/title` popup 的稳定可见 fallback，分组标题行支持折叠/展开。已补 `npm run test:extension-manifest` 覆盖菜单 contribution、checked title 与 commandPalette 隐藏，补 `npm run test:sidebar-session-history` 覆盖多根 root 归属、root/provider/time 层级、折叠行为和单根 root 退化，并已运行 `npm run typecheck`。
 - 2026-06-16：根据 VS Code Source Control 截图反馈，worktree 全局命令与 workspace folder 行按钮改用专用 `worktree` Codicon；新建 worktree 流程从单一分支名输入扩展为 `Create Worktree (...path...) (1/2)` + `Create new branch from...` 的 QuickPick ref 选择，可创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建；`HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。已复跑 `npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:sidebar-list-colors`、`npm run typecheck`、`npm run build` 与 `git diff --check`。

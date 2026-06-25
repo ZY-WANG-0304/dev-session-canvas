@@ -1635,7 +1635,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         const removeButton = createWorkspaceFolderActionButton({
           action: 'removeFolder',
           iconClass: 'codicon-close',
-          label: '从 workspace 移除此 folder',
+          label: '从 Workspace 移除文件夹（可保留或清空画板）',
           danger: true,
           onClick: () => {
             vscode.postMessage({
@@ -1651,7 +1651,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         const removeWorktreeButton = createWorkspaceFolderActionButton({
           action: 'removeWorktree',
           iconClass: 'codicon-trash',
-          label: '移除 worktree 并从 workspace 移除 folder',
+          label: '移除 Worktree（默认清空画板，可保留画板）',
           danger: true,
           onClick: () => {
             vscode.postMessage({

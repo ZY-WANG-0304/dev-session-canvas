@@ -309,6 +309,27 @@ assert.deepEqual(
   'Expected workspace and worktree commands to be contributed with stable Codicon entry points.'
 );
 assert.deepEqual(
+  manifest.contributes.commands
+    .filter((entry) =>
+      [
+        'devSessionCanvas.removeFolderFromWorkspace',
+        'devSessionCanvas.removeWorktreeFromWorkspace'
+      ].includes(entry.command)
+    )
+    .map((entry) => ({ command: entry.command, title: entry.title })),
+  [
+    {
+      command: 'devSessionCanvas.removeFolderFromWorkspace',
+      title: '%command.removeFolderFromWorkspace.title%'
+    },
+    {
+      command: 'devSessionCanvas.removeWorktreeFromWorkspace',
+      title: '%command.removeWorktreeFromWorkspace.title%'
+    }
+  ],
+  'Expected remove commands to keep localized titles so the clear-canvas option can be described in package.nls.json.'
+);
+assert.deepEqual(
   commandPaletteMenus.filter((item) =>
     [
       'devSessionCanvas.createWorktreeForRoot',

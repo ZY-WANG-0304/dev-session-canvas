@@ -1,7 +1,7 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-06-18
+updated_at: 2026-06-25
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
 related_plans:
@@ -56,9 +56,9 @@ related_plans:
 18. 全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 把所有系统 root 分组作为一等空间对象纳入；multi-root 下全局 fit view 默认包含所有 root 分组。
 19. 当 VSCode workspace folder 变化新增 root 时，如果该 root 在 multi-root overlay 中还没有位置，系统应以当前画布可见中心为锚点，选择离该中心最近且不与已有 root 分组重叠的可用位置；已有 overlay root 位置不被重新计算。
 20. 新增 root 分组进入 composed view 后，Host 应请求当前 Webview 聚焦该 workspace-root group；Webview 通过平移与缩放动画把该 root 分组移入视野，并在动画结束后持久化 viewport，同时向 Host 上报动画后的 `webview/updateViewportCenter`。
-21. `节点` sidebar section 可以调用 VS Code workspace folder API 添加文件夹或移除 folder；移除 folder 只影响当前 workspace folder 列表，不删除磁盘目录。
+21. `节点` sidebar section 可以调用 VS Code workspace folder API 添加文件夹或移除 folder；移除 folder 前必须让用户选择保留该 root 的画板状态并移除，或先清空该 root 的画板状态再移除。保留画板并移除不删除磁盘目录，也不删除 root-local canvas state；清空路径必须在确认文案中展示将影响的节点、连线、分组和运行中 Agent / Terminal 数量。
 22. `节点` sidebar section 可以基于某个现有本地 git folder 创建 worktree，并在 `git worktree add` 成功后把新 worktree 目录添加到当前 workspace。多根 workspace 下，如果入口不来自具体 workspace folder 分组，必须先让用户选择基准 folder；随后用 VS Code 风格 QuickPick 选择新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree；`HEAD` 或已被其他 worktree checkout 的分支会以 detached HEAD 创建。
-23. `节点` sidebar section 可以对 workspace folder 分组执行移除 worktree：宿主先确认该 folder 是 linked git worktree，再执行 `git worktree remove` 并从当前 workspace 移除对应 folder；若不是 git repository、不是 linked worktree、workspace 未受信任或找不到 `git`，必须弹窗说明具体原因。
+23. `节点` sidebar section 可以对 workspace folder 分组执行移除 worktree：宿主先确认该 folder 是 linked git worktree，再让用户选择“移除 Worktree 并清空画板”或“移除 Worktree 但保留画板”，默认选择前者。两条路径都会执行 `git worktree remove` 并从当前 workspace 移除对应 folder；保留画板路径不清空 root-local canvas state，清空路径必须在确认文案中展示将影响的节点、连线、分组和运行中 Agent / Terminal 数量；若不是 git repository、不是 linked worktree、workspace 未受信任或找不到 `git`，必须弹窗说明具体原因。
 24. `节点` sidebar section 的 workspace folder 分组行应在标题前用图标区分普通 folder、git repository 和 git worktree；行尾操作顺序为新建 worktree、移除 worktree、移除 folder。
 25. `paneGallery` 不改变 root-local storage、runtime binding、文件活动或 cross-root 限制；它只是多根呈现层。每个 root 窗格左上角只保留轻量 root 标签，显示 root 名称并在 tooltip 中保留完整路径；不在标签 subtitle 中常驻 nodes / waiting / attention 等汇总信息。界面不提供整条 paneGallery 顶部 toolbar，也不提供常驻 filter roots 搜索框，但保留主线画布右上角的使用提示入口。
 26. `paneGallery` 包含四个运行时布局状态：`dynamic` 把所有 root 窗格按可用区域弹性排列并允许不同窗格尺寸不一致但铺满画布区域，`grid` 使用规则宫格排列，二者都用于全览、状态观察和在任一 root 窗格内直接处理；`topThumbnails` 与 `sideThumbnails` 保留一个 active root 主画板，并分别把其他 root 放到顶部或右侧缩略图 rail。默认粗状态是 `dynamic` 与 `sideThumbnails`，四种布局以及上次使用的全览/缩略图具体模式都属于 Webview 局部 UI 状态，不写入 root-local state。
@@ -107,8 +107,8 @@ related_plans:
 - 在 multi-root workspace 中，空 root 分组没有节点时也会被全局 fit view 纳入；右下角 MiniMap 能看出多个 root 分组的相对布局。
 - 在 multi-root workspace 中添加第三个 folder 后，新 root 分组不使用远离当前视口的默认 index 网格位置，而是落在当前可见中心附近的最近可用空位，且不与已有 root 分组重叠；重载后该位置保持。
 - 在 `节点` sidebar section 添加 folder 或创建 worktree 并加入 workspace 后，新 root 分组与 VS Code 原生 Add Folder 一样进入 multi-root composed view，并按新增 root 聚焦规则移入视野。
-- 在 `节点` sidebar section 的 workspace folder 分组行点击移除 folder 后，该 folder 从当前 workspace 和 composed view 中消失，但对应磁盘目录不被删除，后续仍可重新添加。
-- 在 `节点` sidebar section 的 workspace folder 分组行点击移除 worktree 后，如果该 folder 是 linked git worktree，则 git worktree 目录被删除，该 folder 也从当前 workspace 和 composed view 中消失；如果该 folder 不是 git repository 或不是 linked worktree，用户会看到说明具体原因的弹窗。
+- 在 `节点` sidebar section 的 workspace folder 分组行点击移除 folder 后，用户可选择保留画板并移除，或在看到影响数量后清空对应 root 画板再移除。两条路径都会让该 folder 从当前 workspace 和 composed view 中消失；保留画板并移除会保留 root-local canvas state 和磁盘目录，后续重新添加仍可恢复画板。
+- 在 `节点` sidebar section 的 workspace folder 分组行点击移除 worktree 后，若该 folder 是 linked git worktree，用户可选择移除 Worktree 并清空画板，或移除 Worktree 但保留画板。两条路径都会删除磁盘 worktree 目录，并让该 folder 从当前 workspace 和 composed view 中消失；保留画板路径会保留 root-local canvas state，后续同路径重新创建/加入时仍可恢复画板；清空路径会先清空对应 root 画板。如果该 folder 不是 git repository 或不是 linked worktree，用户会看到说明具体原因的弹窗，且不会清空画板。
 - 在 `节点` sidebar section 的 workspace folder 分组行中，普通 folder、git repository 和 linked git worktree 分别使用不同前置图标；行尾按钮按新建 worktree、移除 worktree、移除 folder 的顺序出现。
 - 在 multi-root workspace 中通过全局新建 worktree 入口时，用户必须先选择基准 folder；通过 workspace folder 分组行新建 worktree 时，基准 folder 固定为该行对应 folder；两条路径随后都展示同一套 worktree ref QuickPick，并允许从 `HEAD`、本地分支或二级 base ref 创建。
 - 添加 folder 后当前画布通过短暂缩放平移动画移动到新增 root 分组，新增 root 分组可见并被选中。

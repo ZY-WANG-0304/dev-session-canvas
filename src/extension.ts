@@ -34,7 +34,11 @@ import {
   formatCanvasTemplateStats,
   sanitizeCanvasTemplateFileStem
 } from './common/canvasTemplates';
-import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
+import {
+  CanvasPanelManager,
+  type CanvasSurfaceLocation,
+  type WorkspaceRootCanvasRemovalImpact
+} from './panel/CanvasPanelManager';
 import { showCanvasTemplateSaveForm } from './panel/CanvasTemplateSaveFormPanel';
 import type { CanvasStoredTemplate } from './panel/CanvasTemplateStore';
 import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
@@ -445,7 +449,7 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      await removeFolderFromWorkspaceFromCommand(rootPath);
+      await removeFolderFromWorkspaceFromCommand(panelManager, rootPath);
     }),
     vscode.commands.registerCommand(COMMAND_IDS.removeWorktreeFromWorkspace, async (rootPath?: unknown) => {
       if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
@@ -453,7 +457,7 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      await removeWorktreeFromWorkspaceFromCommand(rootPath);
+      await removeWorktreeFromWorkspaceFromCommand(panelManager, rootPath);
     })
   );
 
@@ -1296,19 +1300,133 @@ async function addFolderToWorkspaceFromCommand(): Promise<void> {
   }
 }
 
-async function removeFolderFromWorkspaceFromCommand(rootPath: string): Promise<void> {
+interface WorkspaceRootRemovalChoice {
+  clearCanvas: boolean;
+}
+
+function formatWorkspaceRootCanvasRemovalImpact(impact: WorkspaceRootCanvasRemovalImpact | undefined): string {
+  if (!impact) {
+    return '画板影响暂无法计算';
+  }
+
+  if (impact.nodeCount === 0 && impact.groupCount === 0 && impact.edgeCount === 0) {
+    return '当前画板为空';
+  }
+
+  const parts = [`${impact.nodeCount} 个节点`, `${impact.edgeCount} 条连线`];
+  if (impact.groupCount > 0) {
+    parts.push(`${impact.groupCount} 个分组`);
+  }
+  if (impact.executionNodeCount > 0) {
+    parts.push(`会停止 ${impact.executionNodeCount} 个 Agent / Terminal`);
+  }
+
+  return parts.join('、');
+}
+
+function buildWorkspaceFolderRemovalDetail(options: {
+  impact: WorkspaceRootCanvasRemovalImpact | undefined;
+}): { keepCanvasDetail: string; clearDetail: string } {
+  return {
+    keepCanvasDetail: '仅从当前 Workspace 移除文件夹；磁盘文件和画板状态都会保留，重新加入后可恢复。',
+    clearDetail: `先清空此文件夹的画板（${formatWorkspaceRootCanvasRemovalImpact(options.impact)}），再从 Workspace 移除；磁盘文件不会删除，旧画板不会随重新加入恢复。`
+  };
+}
+
+function buildWorktreeRemovalDetail(options: {
+  impact: WorkspaceRootCanvasRemovalImpact | undefined;
+}): { keepCanvasDetail: string; clearDetail: string } {
+  return {
+    clearDetail: `先清空此 worktree 的画板（${formatWorkspaceRootCanvasRemovalImpact(options.impact)}），再执行 git worktree remove；worktree 目录会被删除，旧画板不会恢复。`,
+    keepCanvasDetail: '执行 git worktree remove 并从 Workspace 移除；画板快照按此路径保留，之后同路径重新加入时可恢复。'
+  };
+}
+
+interface WorkspaceRootRemovalQuickPickItem extends vscode.QuickPickItem {
+  clearCanvas: boolean;
+}
+
+async function promptWorkspaceRootRemovalChoice(options: {
+  title: string;
+  rootPath: string;
+  clearActionTitle: string;
+  keepCanvasActionTitle: string;
+  clearDetail: string;
+  keepCanvasDetail: string;
+  defaultChoice: 'clear-canvas' | 'keep-canvas';
+}): Promise<WorkspaceRootRemovalChoice | undefined> {
+  const clearItem: WorkspaceRootRemovalQuickPickItem = {
+    label: options.clearActionTitle,
+    description: options.defaultChoice === 'clear-canvas' ? '默认' : undefined,
+    detail: options.clearDetail,
+    clearCanvas: true
+  };
+  const keepCanvasItem: WorkspaceRootRemovalQuickPickItem = {
+    label: options.keepCanvasActionTitle,
+    description: options.defaultChoice === 'keep-canvas' ? '默认' : undefined,
+    detail: options.keepCanvasDetail,
+    clearCanvas: false
+  };
+  const items =
+    options.defaultChoice === 'clear-canvas'
+      ? [clearItem, keepCanvasItem]
+      : [keepCanvasItem, clearItem];
+  const selection = await vscode.window.showQuickPick(items, {
+    title: options.title,
+    placeHolder: `路径：${options.rootPath}`
+  });
+  if (!selection) {
+    return undefined;
+  }
+
+  return {
+    clearCanvas: selection.clearCanvas
+  };
+}
+
+async function clearWorkspaceRootCanvasIfRequested(
+  panelManager: CanvasPanelManager,
+  rootPath: string,
+  choice: WorkspaceRootRemovalChoice,
+  reason: string
+): Promise<boolean> {
+  if (!choice.clearCanvas) {
+    return true;
+  }
+
+  return panelManager.clearWorkspaceRootCanvas(rootPath, { reason });
+}
+
+async function removeFolderFromWorkspaceFromCommand(panelManager: CanvasPanelManager, rootPath: string): Promise<void> {
   const workspaceFolder = resolveWorkspaceFolderByFsPath(rootPath);
   if (!workspaceFolder) {
     await vscode.window.showWarningMessage('该 folder 已不在当前 workspace 中。');
     return;
   }
 
-  const confirmed = await vscode.window.showWarningMessage(
-    `从当前 workspace 移除 folder「${workspaceFolder.name}」？磁盘文件不会被删除。`,
-    { modal: true },
-    '移除 Folder'
+  const removalDetail = buildWorkspaceFolderRemovalDetail({
+    impact: panelManager.getWorkspaceRootCanvasRemovalImpact(workspaceFolder.uri.fsPath)
+  });
+  const removalChoice = await promptWorkspaceRootRemovalChoice({
+    title: `从 Workspace 移除文件夹「${workspaceFolder.name}」？`,
+    rootPath: workspaceFolder.uri.fsPath,
+    clearActionTitle: '清空画板并移除',
+    keepCanvasActionTitle: '保留画板并移除',
+    clearDetail: removalDetail.clearDetail,
+    keepCanvasDetail: removalDetail.keepCanvasDetail,
+    defaultChoice: 'keep-canvas'
+  });
+  if (!removalChoice) {
+    return;
+  }
+
+  const cleared = await clearWorkspaceRootCanvasIfRequested(
+    panelManager,
+    workspaceFolder.uri.fsPath,
+    removalChoice,
+    'workspace-folder-remove-clear-root-canvas'
   );
-  if (confirmed !== '移除 Folder') {
+  if (!cleared) {
     return;
   }
 
@@ -1320,7 +1438,7 @@ async function removeFolderFromWorkspaceFromCommand(rootPath: string): Promise<v
   }
 }
 
-async function removeWorktreeFromWorkspaceFromCommand(rootPath: string): Promise<void> {
+async function removeWorktreeFromWorkspaceFromCommand(panelManager: CanvasPanelManager, rootPath: string): Promise<void> {
   const workspaceFolder = resolveWorkspaceFolderByFsPath(rootPath);
   if (!workspaceFolder) {
     await vscode.window.showWarningMessage('该 worktree folder 已不在当前 workspace 中。');
@@ -1368,13 +1486,32 @@ async function removeWorktreeFromWorkspaceFromCommand(rootPath: string): Promise
     return;
   }
 
-  const confirmed = await vscode.window.showWarningMessage(
-    `移除 worktree「${workspaceFolder.name}」并从当前 workspace 移除该 folder？磁盘目录会被 git worktree remove 删除。`,
-    { modal: true, detail: workspaceFolder.uri.fsPath },
-    '移除 Worktree'
-  );
-  if (confirmed !== '移除 Worktree') {
+  const removalDetail = buildWorktreeRemovalDetail({
+    impact: panelManager.getWorkspaceRootCanvasRemovalImpact(workspaceFolder.uri.fsPath)
+  });
+  const removalChoice = await promptWorkspaceRootRemovalChoice({
+    title: `移除 Worktree「${workspaceFolder.name}」？`,
+    rootPath: workspaceFolder.uri.fsPath,
+    clearActionTitle: '移除 Worktree 并清空画板',
+    keepCanvasActionTitle: '移除 Worktree 但保留画板',
+    clearDetail: removalDetail.clearDetail,
+    keepCanvasDetail: removalDetail.keepCanvasDetail,
+    defaultChoice: 'clear-canvas'
+  });
+  if (!removalChoice) {
     return;
+  }
+
+  if (removalChoice.clearCanvas) {
+    const cleared = await clearWorkspaceRootCanvasIfRequested(
+      panelManager,
+      workspaceFolder.uri.fsPath,
+      removalChoice,
+      'workspace-worktree-remove-clear-root-canvas'
+    );
+    if (!cleared) {
+      return;
+    }
   }
 
   try {

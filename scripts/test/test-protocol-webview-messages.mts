@@ -363,7 +363,12 @@ assert.match(
 );
 
 const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
+const extensionSource = await readFile('src/extension.ts', 'utf8');
 const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
+const removalPromptSource = extensionSource.slice(
+  extensionSource.indexOf('async function promptWorkspaceRootRemovalChoice'),
+  extensionSource.indexOf('async function clearWorkspaceRootCanvasIfRequested')
+);
 assert.match(
   panelManagerSource,
   /isCurrentWebviewMessage\(sourceSurface, sourceWebview, lifecycle, parsedMessage\.type/u,
@@ -403,6 +408,51 @@ assert.match(
   panelManagerSource,
   /setPersistedStateForTest[\s\S]*const multiRootOverlay = this\.writeRootLocalCanvasSnapshotsForState\(this\.state\)[\s\S]*state: this\.state[\s\S]*multiRootOverlay[\s\S]*waitForPendingWorkspaceStateUpdates/u,
   'Expected seeded test state to update all persisted backends before later reloads choose root-local snapshots.'
+);
+assert.match(
+  panelManagerSource,
+  /public async clearWorkspaceRootCanvas[\s\S]*collectWorkspaceRootOwnedNodeIds[\s\S]*writeRootLocalCanvasSnapshot\(normalizedRootPath, emptyRootState\)[\s\S]*persistState\(\{ reason: options\.reason \?\? 'workspace-root-canvas-cleared' \}/u,
+  'Expected workspace root removal to have a host-owned clear path that updates root-local snapshots before removing the folder from the workspace.'
+);
+assert.match(
+  panelManagerSource,
+  /public getWorkspaceRootCanvasRemovalImpact[\s\S]*decomposeComposedCanvasStateForWorkspaceRoot[\s\S]*executionNodeCount/u,
+  'Expected workspace root removal choice to expose impact counts for clearer copy.'
+);
+assert.match(
+  removalPromptSource,
+  /options\.defaultChoice === 'clear-canvas'[\s\S]*\[clearItem, keepCanvasItem\][\s\S]*\[keepCanvasItem, clearItem\]/u,
+  'Expected workspace root removal confirmation to order the default choice first in the vertical picker.'
+);
+assert.match(
+  removalPromptSource,
+  /showQuickPick\(items,[\s\S]*placeHolder: `路径：\$\{options\.rootPath\}`/u,
+  'Expected workspace root removal confirmation to show the target path in the picker.'
+);
+assert.doesNotMatch(
+  removalPromptSource,
+  /ignoreFocusOut:\s*true/u,
+  'Expected workspace root removal confirmation to keep normal Esc/focus cancellation instead of trapping focus.'
+);
+assert.match(
+  extensionSource,
+  /removeFolderFromWorkspaceFromCommand[\s\S]*getWorkspaceRootCanvasRemovalImpact[\s\S]*清空画板并移除[\s\S]*保留画板并移除[\s\S]*defaultChoice: 'keep-canvas'[\s\S]*clearWorkspaceRootCanvasIfRequested[\s\S]*removeWorkspaceFolderByFsPath/u,
+  'Expected folder removal to show clearer keep-vs-clear choices before removing the workspace folder.'
+);
+assert.match(
+  extensionSource,
+  /removeWorktreeFromWorkspaceFromCommand[\s\S]*getWorkspaceRootCanvasRemovalImpact[\s\S]*移除 Worktree 并清空画板[\s\S]*移除 Worktree 但保留画板[\s\S]*defaultChoice: 'clear-canvas'[\s\S]*if \(removalChoice\.clearCanvas\)[\s\S]*clearWorkspaceRootCanvasIfRequested[\s\S]*execFileAsync\('git', \['-C', workspaceFolder\.uri\.fsPath, 'worktree', 'remove'/u,
+  'Expected worktree removal to default to removing the worktree and clearing canvas while still allowing the canvas snapshot to be kept.'
+);
+assert.match(
+  extensionSource,
+  /keepCanvasDetail: '执行 git worktree remove 并从 Workspace 移除；画板快照按此路径保留，之后同路径重新加入时可恢复。'/u,
+  'Expected the worktree keep-canvas choice to say that git worktree remove still runs while only preserving the canvas snapshot.'
+);
+assert.doesNotMatch(
+  extensionSource,
+  /removeWorktreeFromWorkspaceFromCommand[\s\S]*if \(!removalChoice\.clearCanvas\) \{[\s\S]*return;[\s\S]*execFileAsync\('git', \['-C', workspaceFolder\.uri\.fsPath, 'worktree', 'remove'/u,
+  'Expected the worktree keep-canvas path to still run git worktree remove instead of only removing the workspace folder.'
 );
 assert.match(
   panelManagerSource,
@@ -627,7 +677,6 @@ assert.match(
   'Expected the host lifecycle race diagnostic command id to be registered for smoke coverage.'
 );
 
-const extensionSource = await readFile('src/extension.ts', 'utf8');
 assert.match(
   extensionSource,
   /TEST_COMMAND_IDS\.runWebviewLifecycleRaceDiagnostics[\s\S]*runWebviewLifecycleRaceDiagnosticsForTest/u,
