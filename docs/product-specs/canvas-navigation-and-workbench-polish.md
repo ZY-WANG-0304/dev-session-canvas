@@ -1,6 +1,6 @@
 # 画布导航与工作台原生收口规格
 
-当前状态：已确认。2026-04-13 已按本文规格完成实现，并通过自动化验证覆盖默认 `panel` 主路径、标题栏双击聚焦、空白区右键快捷创建、`Agent` / `Terminal` 内嵌 `xterm` 跟随 VSCode 主题切换，以及相关 smoke 场景。2026-05-11 继续补齐全局动态概览缩放与概览模式配置：fit view 可在节点分散时缩到 `0.4` 以下；概览模式仅提供 `none` 与 `title` 两个选项，默认 `title` 会在节点内容区域显示节点标题，`none` 则无论缩放多小都不进入概览；概览触发倍率由 `devSessionCanvas.canvas.overviewZoomThreshold` 配置，默认 `0.2`。2026-05-15 补齐低倍率概览中的状态可读性：默认 `title` 概览在内容区域显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点追加状态标记。`panel` route 的实际工作台位置仍由 VSCode 原生维护。2026-06-04 补齐空间边界导航口径：全局 fit view、初始自动 fit、动态最小缩放和右下角 MiniMap 默认基于节点、普通用户分组和 multi-root workspace root section 的合并空间边界；multi-root 下全局 fit view 默认包含所有 root section。2026-06-06 明确 MiniMap 中普通 group 与 user group 不拆分颜色 token，分组区域 fill 与 stroke 使用相同的主画布分组边框 token `--vscode-panel-border`。
+当前状态：已确认。2026-04-13 已按本文规格完成实现，并通过自动化验证覆盖默认 `panel` 主路径、标题栏双击聚焦、空白区右键快捷创建、`Agent` / `Terminal` 内嵌 `xterm` 跟随 VSCode 主题切换，以及相关 smoke 场景。2026-05-11 继续补齐全局动态概览缩放与概览模式配置：fit view 可在节点分散时缩到 `0.4` 以下；概览模式仅提供 `none` 与 `title` 两个选项，默认 `title` 会在节点内容区域显示节点标题，`none` 则无论缩放多小都不进入概览；概览触发倍率由 `devSessionCanvas.canvas.overviewZoomThreshold` 配置，默认 `0.2`。2026-05-15 补齐低倍率概览中的状态可读性：默认 `title` 概览在内容区域显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点追加状态标记。`panel` route 的实际工作台位置仍由 VSCode 原生维护。2026-06-04 补齐空间边界导航口径：全局 fit view、初始自动 fit、动态最小缩放和右下角 MiniMap 默认基于节点、普通用户分组和 multi-root workspace root section 的合并空间边界；multi-root 下全局 fit view 默认包含所有 root section。2026-06-06 明确 MiniMap 中普通 group 与 user group 不拆分颜色 token，分组区域 fill 与 stroke 使用相同的主画布分组边框 token `--vscode-panel-border`。2026-06-25 明确 active 画布 Webview shell 在单根 workspace、multi-root `rootGroups` 与 `paneGallery` 下都不保留左右 padding / margin，画布内容应贴齐 VS Code Panel 内的 Webview 可用区域；standby 页面可继续使用自己的居中卡片 padding。
 
 ## 1. 用户问题
 
@@ -42,6 +42,7 @@
   - 扩展继续使用可移动的 VSCode view container 路线，而不是重新改回固定 `WebviewPanel`。
   - 用户可以按 VSCode 原生方式把该 view 留在底部 Panel，或移动到 Secondary Sidebar。
   - 扩展文案与说明必须承认这是“用户可移动并由 VSCode 记住的位置”，而不是误写成“永远固定在底部 Panel”。
+  - active 画布 Webview shell 不在 `html`、`body`、`#app` 或 `.canvas-shell` 上保留左右 padding / margin；单根 workspace、multi-root `rootGroups` 和 multi-root `paneGallery` 都应让画布区域贴齐当前 Panel 内的 Webview 可用区域。
 - 节点与地图视觉原生化：
   - 标题栏按钮、Agent provider 的只读副标题和状态标签统一收口为更接近 VSCode workbench 的低强调样式。
   - 节点外轮廓从偏白板的大圆角卡片收口到更接近 VSCode editor widget / panel 的小圆角边界。
@@ -116,6 +117,7 @@
 - 在默认设置下执行 `Dev Session Canvas: 打开画布` 时，主画布进入 `panel` route，而不是默认在编辑区打开。
 - 显式 `在编辑区打开画布` 命令仍能把主画布拉回编辑区。
 - 用户把 `panel` route 的 view 移到 Secondary Sidebar 后，再次执行默认打开或显式 `panel` 打开命令时，扩展不会把它错误描述成“固定在底部 Panel”。
+- active 画布在单根 workspace、multi-root `rootGroups` 与 multi-root `paneGallery` 下，`html`、`body`、`#app` 和 `.canvas-shell` 的左右 padding / margin 均为 0，画布区域左右边界与 Webview viewport 对齐。
 - 双击节点标题栏非交互区域后，节点会在视口中居中，并缩放到适合阅读的尺寸；双击标题输入框或按钮不会触发该动作。
 - 节点标题栏按钮和状态标签在视觉上更接近 VSCode workbench 的 toolbar / badge 语言，而不再是高圆角大胶囊。
 - 节点外轮廓和 minimap 的圆角、边框与阴影明显更接近 VSCode workbench widget，而不是白板式浮层卡片。

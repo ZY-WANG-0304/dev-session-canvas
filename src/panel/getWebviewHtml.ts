@@ -63,8 +63,14 @@ function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode
         box-sizing: border-box;
       }
 
-      body {
+      html,
+      body,
+      #app {
         margin: 0;
+        padding: 0;
+      }
+
+      body {
         min-height: 100vh;
         font-family: var(--vscode-font-family);
         color: var(--panel-fg);

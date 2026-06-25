@@ -291,6 +291,75 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
   });
 });
 
+test('canvas shell spans panel horizontal edges for single-root and multi-root layouts', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+
+  const assertPanelEdges = async (label, extraSelectors = []) => {
+    const shellSelectors = ['html', 'body', '#app', '.canvas-shell'];
+    const contract = await page.evaluate((selectors) => {
+      const readLayer = (selector) => {
+        const element = document.querySelector(selector);
+        if (!(element instanceof HTMLElement)) {
+          return null;
+        }
+
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          selector,
+          leftInset: Math.round(rect.left),
+          rightInset: Math.round(window.innerWidth - rect.right),
+          paddingLeft: style.paddingLeft,
+          paddingRight: style.paddingRight,
+          marginLeft: style.marginLeft,
+          marginRight: style.marginRight
+        };
+      };
+
+      return {
+        viewportWidth: window.innerWidth,
+        layers: selectors.map(readLayer)
+      };
+    }, [...shellSelectors, ...extraSelectors]);
+
+    expect(contract.viewportWidth, `${label} viewport width`).toBeGreaterThan(0);
+    for (const layer of contract.layers) {
+      expect(layer, `${label} layer should exist`).not.toBeNull();
+      expect(layer.leftInset, `${label} ${layer.selector} left inset`).toBe(0);
+      expect(layer.rightInset, `${label} ${layer.selector} right inset`).toBe(0);
+      expect(layer.marginLeft, `${label} ${layer.selector} left margin`).toBe('0px');
+      expect(layer.marginRight, `${label} ${layer.selector} right margin`).toBe('0px');
+      if (shellSelectors.includes(layer.selector)) {
+        expect(layer.paddingLeft, `${label} ${layer.selector} left padding`).toBe('0px');
+        expect(layer.paddingRight, `${label} ${layer.selector} right padding`).toBe('0px');
+      }
+    }
+  };
+
+  await bootstrap(page, createCanvasScreenshotState(), createRuntimeContext({ multiRootPresentationMode: 'rootGroups' }));
+  await settleWebview(page, 4);
+  await assertPanelEdges('single-root canvas', ['.react-flow']);
+
+  const multiRootState = createPaneGalleryCanvasState();
+  await bootstrap(page, multiRootState, createRuntimeContext({ multiRootPresentationMode: 'rootGroups' }));
+  await settleWebview(page, 4);
+  await assertPanelEdges('multi-root rootGroups canvas', ['.react-flow']);
+
+  await bootstrap(page, multiRootState, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+  await assertPanelEdges('multi-root paneGallery canvas', ['.pane-gallery', '[data-pane-gallery-grid="true"]']);
+
+  await page
+    .locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"] [data-pane-gallery-mode-trigger="true"]')
+    .click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await assertPanelEdges('multi-root paneGallery thumbnail canvas', [
+    '.pane-gallery',
+    '.pane-gallery-thumbnail-layout'
+  ]);
+});
+
 test('lifecycle identity acks bootstrap and ignores stale bootstrap frames', async ({ page }) => {
   await openHarness(page);
   const readyMessage = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });

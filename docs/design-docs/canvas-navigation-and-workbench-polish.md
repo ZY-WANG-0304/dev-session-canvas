@@ -20,7 +20,7 @@ related_plans:
   - docs/exec-plans/completed/canvas-dynamic-overview-zoom.md
   - docs/exec-plans/active/create-node-entry-availability-and-block-reasons.md
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
-updated_at: 2026-06-06
+updated_at: 2026-06-25
 ---
 
 # 画布导航与工作台原生收口设计
@@ -171,6 +171,7 @@ updated_at: 2026-06-06
 - 用户可以按 VSCode 原生工作台能力把它留在底部 Panel，或移动到 Secondary Sidebar。
 - 扩展文案、standby 页面和侧栏状态只承认“这是 `panel` route 的 view”，不把它误描述成“永远固定在底部 Panel”。
 - 不使用非公开 API 或内部存储 hack 强行改 Secondary Sidebar 默认落位。
+- active 画布 Webview 的宿主 shell 不承担视觉留白：`html`、`body`、`#app` 与 `.canvas-shell` 的左右 `padding` / `margin` 均归零，单根 workspace、multi-root `rootGroups` 与 multi-root `paneGallery` 都贴齐当前 Panel 内的 Webview 可用区域。`paneGallery` 内部用于 root pane 之间的 1px 分隔仍属于模式内部边界，不是 Panel 到画布区域的外侧 padding；standby 页面不是 active 画布，可继续使用居中说明卡片的内边距。
 
 ### 7.4 节点与 minimap 视觉继续收口到 workbench 语境
 
@@ -227,6 +228,7 @@ updated_at: 2026-06-06
 11. 在浏览器 harness 中验证 `devSessionCanvas.canvas.overviewZoomThreshold` 运行时变更会立即改变概览模式判定，例如当前 zoom 位于默认 `0.2` 与自定义 `0.5` 之间时，提高阈值会进入 `title` 概览，降回默认值会退出概览。
 12. 在浏览器 harness 中验证全局 fit view 包含普通用户分组和 workspace root section：空 root section 没有节点时仍能被 fit 到视口内，root section 大于内部节点时边界不会被裁掉。
 13. 在浏览器 harness 中验证 MiniMap 能显示 workspace root section、普通用户分组和节点，并且 attention 节点的 minimap flash / size pulse 仍保留。
+14. 在浏览器 harness 中验证即使测试宿主先模拟默认 `body` 左右 padding，active 画布加载后单根 workspace、multi-root `rootGroups`、multi-root `paneGallery` 动态布局与 thumbnail 布局的 `html`、`body`、`#app`、`.canvas-shell` 左右 inset 和 shell padding / margin 仍为 0。
 
 ## 9. 验证结果
 
@@ -242,3 +244,4 @@ updated_at: 2026-06-06
 - 2026-05-11 追加运行 `node scripts/test/run-playwright-webview.mjs -g "overview zoom threshold runtime config|fit view can zoom below|overview mode none"`，3 个 Playwright 用例通过；其中新增覆盖 `overviewZoomThreshold` 运行时从自定义 `0.5` 降回默认 `0.2` 后，当前画布可即时进入或退出 `title` 概览。
 - 2026-05-15 运行 `npm run typecheck`，通过。
 - 2026-05-15 运行 `npm run test:webview`，150 个 Playwright 用例全部通过；其中 `fit view can zoom below the comfort minimum and enters overview mode for distant nodes` 已覆盖低倍率 `title` 概览中 `Agent` 的 `.node-overview-status` 会显示当前状态文本与状态码，而 `Note` 不显示概览状态标记。
+- 2026-06-25 诊断确认浏览器 harness 中单根 workspace 与 multi-root `rootGroups` 的 `.canvas-shell` / `.react-flow` 左右 inset 为 0，`paneGallery` 的 `.pane-gallery` 也为 0；此前错误修改的是 root frame / pane 内部分隔线，而不是 Panel 到画布区域的外侧 padding。
