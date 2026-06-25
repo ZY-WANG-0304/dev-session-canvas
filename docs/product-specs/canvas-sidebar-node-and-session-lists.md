@@ -29,7 +29,7 @@
 4. 节点列表默认使用“按分组树展示节点”；用户通过 `节点` view 标题右上角的 VSCode 原生 `...` 更多菜单切换“平铺展示节点”和“按分组树展示节点”。按分组树展示时，分组标题按画布分组树缩进呈现，并可在侧栏中折叠/展开具体分组 section，但不折叠画布上的分组框，也不改变任何分组事实；若存在处于 attention 状态的节点，顶部额外显示一个“待处理提醒”虚拟分组汇总这些节点。
 5. 平铺展示在单根 workspace 下仍显示为普通列表；若存在处于 attention 状态的节点，这些节点排在普通节点前。多根 workspace 下的平铺展示仍保留 workspace root 分组；若存在处于 attention 状态的节点，顶部先显示“待处理提醒”虚拟分组，然后再显示各 root 分组。
 6. 当画布上的节点发生变化（新增、删除、状态更新）时，节点列表自动同步更新。
-7. 用户可以在 `节点` view 标题栏直接添加文件夹到当前 workspace，也可以进入 worktree 流程：既能新建 git worktree 并把新目录加入 workspace，也能从 `git worktree list` 中选择一个尚未加入当前 workspace 的已有 worktree 直接加入；多根 workspace 下全局 worktree 流程先选择基准 folder，再用 VS Code 风格 QuickPick 选择添加已有 worktree、创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree。
+7. 用户可以在 `节点` view 标题栏直接添加文件夹到当前 workspace，也可以进入 worktree 流程：既能新建 git worktree 并把新目录加入 workspace，也能从 `git worktree list` 中选择一个尚未加入当前 workspace 的已有 worktree 直接加入；多根 workspace 下全局 worktree 流程先按 git common dir 合并同一 repository 的 workspace folders，只有存在多个不同 git repository 时才选择基准 repository，再用 VS Code 风格 QuickPick 选择添加已有 worktree、创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree。
 8. 多根 workspace 的 workspace folder 分组行最前面用图标区分普通 folder、git repository 和 git worktree；行尾提供 folder 级操作：基于该 folder 新建 worktree 并加入 workspace、移除 git worktree 并从 workspace 移除该 folder，以及仅从当前 workspace 移除该 folder；新建 worktree 使用 VS Code 专用 `worktree` Codicon，普通移除 folder 不删除磁盘目录，移除 worktree 会执行 `git worktree remove`。
 
 ### 历史会话列表流程
@@ -188,7 +188,7 @@
 - 按分组树展示中，若存在 attention 节点，列表顶部显示“待处理提醒”虚拟分组，并汇总所有 attention 节点；这些节点仍保留在原分组树位置。
 - 多根 workspace 平铺展示中，列表保留 workspace root 分组；若存在 attention 节点，“待处理提醒”虚拟分组显示在所有 root 分组之前。
 - `节点` view 标题栏显示添加 workspace folder 与 worktree 的按钮；点击添加 folder 后，所选文件夹会进入当前 VS Code workspace。
-- 点击全局 worktree 入口时，单根 workspace 直接使用当前 folder；多根 workspace 先选择基准 folder；随后通过 VS Code 风格 QuickPick 选择添加已有 worktree，或创建新分支、从某个 ref 创建新分支、直接 checkout / detached checkout 已有 ref 并确认目标目录。
+- 点击全局 worktree 入口时，单根 workspace 直接使用当前 folder；多根 workspace 先按 git common dir 合并同一 repository 的 workspace folders，如果只剩一个 repository 则直接进入 worktree 动作选择，如果存在多个不同 repository 才选择基准 repository；随后通过 VS Code 风格 QuickPick 选择添加已有 worktree，或创建新分支、从某个 ref 创建新分支、直接 checkout / detached checkout 已有 ref 并确认目标目录。
 - 多根 workspace 的每个 workspace folder 分组行最前面显示 folder 类型图标，分别区分普通 folder、git repository 和 git worktree；行尾按新建 worktree、移除 worktree、移除 folder 的顺序显示 icon-only 操作；新建 worktree 使用专用 `worktree` Codicon；点击 workspace folder 行的 worktree 按钮直接基于该 folder 创建 worktree 或添加已有 worktree 并加入 workspace；点击移除 folder 只把该 folder 从当前 workspace 中移除；点击移除 worktree 会执行 `git worktree remove` 并从 workspace 移除该 folder。
 - 节点列表的视觉风格符合 VSCode 原生列表组件，不引入额外装饰。
 - 节点列表在浅色和深色主题下都能正常显示，颜色跟随主题。
@@ -233,4 +233,4 @@
 
 ## 9. 当前验证状态
 
-- 2026-06-25：`节点` section 的 worktree 流程新增 `Add existing worktree to workspace...` 分支，Host 通过 `git worktree list --porcelain` 列出当前 repository 已有 worktree，过滤已在当前 workspace 中、prunable、bare 或磁盘目录不可用的条目；选择后仅调用 VS Code workspace folder API 加入目录，不执行 `git worktree add`。已补 `npm run test:git-worktrees` 覆盖 porcelain 解析、分支入口和添加已有路径，并复跑 `npm run typecheck`、`npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle` 与 `git diff --check`。
+- 2026-06-25：`节点` section 的 worktree 流程新增 `Add existing worktree to workspace...` 分支，Host 通过 `git worktree list --porcelain` 列出当前 repository 已有 worktree，过滤已在当前 workspace 中、prunable、bare 或磁盘目录不可用的条目；选择后仅调用 VS Code workspace folder API 加入目录，不执行 `git worktree add`。同日修复全局 worktree 入口把同一 git repository 的多个 workspace folders / linked worktrees 重复当作多个 repository 的问题：选择前按 git common dir 合并，并优先使用主 repository root 作为代表。已补 `npm run test:git-worktrees` 覆盖 porcelain 解析、repository 去重、分支入口和添加已有路径，并复跑 `npm run typecheck`、`npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle` 与 `git diff --check`。

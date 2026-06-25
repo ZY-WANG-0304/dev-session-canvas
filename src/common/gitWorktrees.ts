@@ -8,6 +8,20 @@ export interface GitWorktreeListEntry {
   prunable: boolean;
 }
 
+export interface GitWorktreeRepositoryCandidate {
+  gitCommonDir: string;
+  isLinkedWorktree: boolean;
+  isRepositoryRoot: boolean;
+  workspaceFolderIndex: number;
+}
+
+export interface GitWorktreeRepositoryCandidateGroup<T extends GitWorktreeRepositoryCandidate> {
+  repositoryKey: string;
+  primary: T;
+  members: T[];
+  firstWorkspaceFolderIndex: number;
+}
+
 export function parseGitWorktreeListPorcelain(output: string): GitWorktreeListEntry[] {
   const entries: GitWorktreeListEntry[] = [];
   let current: GitWorktreeListEntry | undefined;
@@ -82,6 +96,54 @@ export function formatGitWorktreeListEntryRef(entry: Pick<GitWorktreeListEntry, 
   return entry.head ? entry.head.slice(0, 12) : 'unknown ref';
 }
 
+export function groupGitWorktreeRepositoryCandidates<T extends GitWorktreeRepositoryCandidate>(
+  candidates: readonly T[],
+  normalizeRepositoryKey: (filePath: string) => string = (filePath) => filePath
+): GitWorktreeRepositoryCandidateGroup<T>[] {
+  const groups: GitWorktreeRepositoryCandidateGroup<T>[] = [];
+  const groupByRepositoryKey = new Map<string, GitWorktreeRepositoryCandidateGroup<T>>();
+
+  for (const candidate of candidates) {
+    const repositoryKey = normalizeRepositoryKey(candidate.gitCommonDir);
+    const existingGroup = groupByRepositoryKey.get(repositoryKey);
+    if (!existingGroup) {
+      const group = {
+        repositoryKey,
+        primary: candidate,
+        members: [candidate],
+        firstWorkspaceFolderIndex: candidate.workspaceFolderIndex
+      };
+      groupByRepositoryKey.set(repositoryKey, group);
+      groups.push(group);
+      continue;
+    }
+
+    existingGroup.members.push(candidate);
+    existingGroup.firstWorkspaceFolderIndex = Math.min(
+      existingGroup.firstWorkspaceFolderIndex,
+      candidate.workspaceFolderIndex
+    );
+    if (shouldPreferGitWorktreeRepositoryCandidate(candidate, existingGroup.primary)) {
+      existingGroup.primary = candidate;
+    }
+  }
+
+  return groups.sort((a, b) => a.firstWorkspaceFolderIndex - b.firstWorkspaceFolderIndex);
+}
+
 function stripGitHeadsPrefix(value: string): string {
   return value.startsWith('refs/heads/') ? value.slice('refs/heads/'.length) : value;
+}
+
+function shouldPreferGitWorktreeRepositoryCandidate(
+  candidate: GitWorktreeRepositoryCandidate,
+  current: GitWorktreeRepositoryCandidate
+): boolean {
+  if (candidate.isRepositoryRoot !== current.isRepositoryRoot) {
+    return candidate.isRepositoryRoot;
+  }
+  if (candidate.isLinkedWorktree !== current.isLinkedWorktree) {
+    return !candidate.isLinkedWorktree;
+  }
+  return candidate.workspaceFolderIndex < current.workspaceFolderIndex;
 }

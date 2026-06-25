@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   formatGitWorktreeListEntryRef,
+  groupGitWorktreeRepositoryCandidates,
   parseGitWorktreeListPorcelain
 } from '../../src/common/gitWorktrees.ts';
 
@@ -79,6 +80,63 @@ assert.equal(
   'Expected detached worktree labels to include a short HEAD.'
 );
 
+const repositoryGroups = groupGitWorktreeRepositoryCandidates(
+  [
+    {
+      id: 'linked-a',
+      gitCommonDir: '/repo/main/.git',
+      isLinkedWorktree: true,
+      isRepositoryRoot: true,
+      workspaceFolderIndex: 2
+    },
+    {
+      id: 'main',
+      gitCommonDir: '/repo/main/.git',
+      isLinkedWorktree: false,
+      isRepositoryRoot: true,
+      workspaceFolderIndex: 0
+    },
+    {
+      id: 'nested-package',
+      gitCommonDir: '/repo/main/.git',
+      isLinkedWorktree: false,
+      isRepositoryRoot: false,
+      workspaceFolderIndex: 1
+    },
+    {
+      id: 'other',
+      gitCommonDir: '/repo/other/.git',
+      isLinkedWorktree: false,
+      isRepositoryRoot: true,
+      workspaceFolderIndex: 3
+    }
+  ],
+  (filePath) => filePath.toLowerCase()
+);
+assert.deepEqual(
+  repositoryGroups.map((group) => ({
+    repositoryKey: group.repositoryKey,
+    primaryId: group.primary.id,
+    memberIds: group.members.map((member) => member.id),
+    firstWorkspaceFolderIndex: group.firstWorkspaceFolderIndex
+  })),
+  [
+    {
+      repositoryKey: '/repo/main/.git',
+      primaryId: 'main',
+      memberIds: ['linked-a', 'main', 'nested-package'],
+      firstWorkspaceFolderIndex: 0
+    },
+    {
+      repositoryKey: '/repo/other/.git',
+      primaryId: 'other',
+      memberIds: ['other'],
+      firstWorkspaceFolderIndex: 3
+    }
+  ],
+  'Expected repository folder picker candidates to be grouped by git common dir and prefer the main root.'
+);
+
 const extensionSource = readFileSync(new URL('../../src/extension.ts', import.meta.url), 'utf8');
 assert.match(
   extensionSource,
@@ -94,6 +152,11 @@ assert.match(
   extensionSource,
   /target\.kind === 'create'[\s\S]*?buildGitWorktreeAddArgs/u,
   'Expected git worktree add to run only for the create branch, not when adding an existing worktree.'
+);
+assert.match(
+  extensionSource,
+  /groupGitWorktreeRepositoryCandidates\([\s\S]*?normalizeComparableFileSystemPath/u,
+  'Expected the global worktree root picker to collapse workspace folders that share the same git common dir.'
 );
 
 console.log('git worktree helper tests passed');

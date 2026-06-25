@@ -36,6 +36,7 @@ import {
 } from './common/canvasTemplates';
 import {
   formatGitWorktreeListEntryRef,
+  groupGitWorktreeRepositoryCandidates,
   parseGitWorktreeListPorcelain,
   type GitWorktreeListEntry
 } from './common/gitWorktrees';
@@ -150,6 +151,14 @@ interface ExplorerMarkdownNoteResource {
 
 interface WorkspaceRootQuickPickItem extends vscode.QuickPickItem {
   folder: vscode.WorkspaceFolder;
+}
+
+interface WorkspaceWorktreeRepositoryCandidate {
+  workspaceFolder: vscode.WorkspaceFolder;
+  gitCommonDir: string;
+  isLinkedWorktree: boolean;
+  isRepositoryRoot: boolean;
+  workspaceFolderIndex: number;
 }
 
 interface WorkspaceWorktreeRequest {
@@ -1502,9 +1511,13 @@ async function getGitWorktreeRepositoryInfo(rootPath: string): Promise<GitWorktr
   return {
     rootPath: path.resolve(rootPath),
     topLevelPath,
-    gitCommonDir,
+    gitCommonDir: realGitCommonDir,
     isLinkedWorktree: normalizeComparableFileSystemPath(realGitDir) !== normalizeComparableFileSystemPath(realGitCommonDir)
   };
+}
+
+function isGitRepositoryRoot(info: GitWorktreeRepositoryInfo): boolean {
+  return normalizeComparableFileSystemPath(info.rootPath) === normalizeComparableFileSystemPath(info.topLevelPath);
 }
 
 async function getGitWorktreeListEntries(rootPath: string): Promise<GitWorktreeListEntry[]> {
@@ -1898,6 +1911,51 @@ async function promptWorkspaceRootFolderForWorktree(): Promise<vscode.WorkspaceF
 
   if (workspaceFolders.length === 1) {
     return workspaceFolders[0];
+  }
+
+  const candidates = (
+    await Promise.all(
+      workspaceFolders.map(async (folder): Promise<WorkspaceWorktreeRepositoryCandidate | undefined> => {
+        try {
+          const repositoryInfo = await getGitWorktreeRepositoryInfo(folder.uri.fsPath);
+          return {
+            workspaceFolder: folder,
+            gitCommonDir: repositoryInfo.gitCommonDir,
+            isLinkedWorktree: repositoryInfo.isLinkedWorktree,
+            isRepositoryRoot: isGitRepositoryRoot(repositoryInfo),
+            workspaceFolderIndex: folder.index
+          };
+        } catch {
+          return undefined;
+        }
+      })
+    )
+  ).filter((candidate): candidate is WorkspaceWorktreeRepositoryCandidate => Boolean(candidate));
+
+  const repositoryGroups = groupGitWorktreeRepositoryCandidates(
+    candidates,
+    normalizeComparableFileSystemPath
+  );
+  if (repositoryGroups.length === 1) {
+    return repositoryGroups[0]?.primary.workspaceFolder;
+  }
+  if (repositoryGroups.length > 1) {
+    const picked = await vscode.window.showQuickPick<WorkspaceRootQuickPickItem>(
+      repositoryGroups.map((group) => ({
+        label: `$(repo) ${group.primary.workspaceFolder.name}`,
+        description: group.primary.workspaceFolder.uri.fsPath,
+        detail: group.members.length > 1 ? `${group.members.length} workspace folders in this git repository` : undefined,
+        folder: group.primary.workspaceFolder
+      })),
+      {
+        title: 'Select Git repository to create or add worktree from',
+        placeHolder: 'Choose the git repository that owns the worktree',
+        matchOnDescription: true,
+        matchOnDetail: true
+      }
+    );
+
+    return picked?.folder;
   }
 
   const picked = await vscode.window.showQuickPick<WorkspaceRootQuickPickItem>(
