@@ -4794,6 +4794,153 @@ for (const executionKind of ['agent', 'terminal']) {
       .toBe(pasteText);
   });
 
+  if (executionKind === 'agent') {
+    test('agent paste event sends clipboard screenshots to the host and routes returned image path through xterm', async ({
+      page
+    }) => {
+      const nodeId = 'agent-zoom';
+      const pasteText = "'/tmp/dev-session-canvas-paste/screenshot.png' ";
+
+      await openHarness(page);
+      await bootstrap(page, createLiveExecutionNodeState('agent'));
+      await waitForExecutionTerminalReady(page, nodeId);
+      await clearPostedMessages(page);
+
+      const pasteDispatch = await page.evaluate((nextNodeId) => {
+        const textarea = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-helper-textarea`);
+        if (!(textarea instanceof HTMLTextAreaElement)) {
+          throw new Error(`Execution terminal ${nextNodeId} has no xterm textarea.`);
+        }
+
+        const pngBytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const file = new File([pngBytes], 'clipboard-screenshot.png', { type: 'image/png' });
+        const clipboardData = {
+          files: [file],
+          items: [
+            {
+              kind: 'file',
+              type: 'image/png',
+              getAsFile: () => file
+            }
+          ],
+          types: ['Files'],
+          getData: () => '',
+          setData: () => {},
+          clearData: () => {},
+          dropEffect: 'copy',
+          effectAllowed: 'all'
+        };
+        const event = new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true
+        });
+        Object.defineProperty(event, 'clipboardData', {
+          configurable: true,
+          value: clipboardData
+        });
+
+        textarea.focus();
+        textarea.dispatchEvent(event);
+
+        return {
+          defaultPrevented: event.defaultPrevented
+        };
+      }, nodeId);
+
+      expect(pasteDispatch.defaultPrevented).toBe(true);
+
+      const imagePasteRequest = await waitForPostedMessageByType(page, 'webview/pasteExecutionImage');
+      expect(imagePasteRequest.payload).toMatchObject({
+        nodeId,
+        kind: 'agent',
+        mimeType: 'image/png',
+        dataBase64: 'iVBORw0KGgo=',
+        sizeBytes: 8,
+        name: 'clipboard-screenshot.png'
+      });
+
+      await page.evaluate(
+        ({ requestId, nextNodeId, nextPasteText }) => {
+          window.__devSessionCanvasHarness.dispatchHostMessage({
+            type: 'host/executionPasteText',
+            payload: {
+              requestId,
+              nodeId: nextNodeId,
+              kind: 'agent',
+              text: nextPasteText
+            }
+          });
+        },
+        {
+          requestId: imagePasteRequest.payload.requestId,
+          nextNodeId: nodeId,
+          nextPasteText: pasteText
+        }
+      );
+
+      await expect
+        .poll(async () => {
+          const message = await page.evaluate(() => {
+            return (
+              window.__devSessionCanvasHarness
+                .getPostedMessages()
+                .find((entry) => entry.type === 'webview/executionInput') ?? null
+            );
+          });
+          return message?.payload?.data ?? null;
+        })
+        .toBe(pasteText);
+    });
+  }
+
+  if (executionKind === 'terminal') {
+    test('terminal paste event ignores image-only clipboards instead of sending image paths to the shell', async ({
+      page
+    }) => {
+      const nodeId = 'terminal-zoom';
+
+      await openHarness(page);
+      await bootstrap(page, createLiveExecutionNodeState('terminal'));
+      await waitForExecutionTerminalReady(page, nodeId);
+      await clearPostedMessages(page);
+
+      await page.evaluate((nextNodeId) => {
+        const textarea = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-helper-textarea`);
+        if (!(textarea instanceof HTMLTextAreaElement)) {
+          throw new Error(`Execution terminal ${nextNodeId} has no xterm textarea.`);
+        }
+
+        const file = new File([Uint8Array.from([0x89, 0x50, 0x4e, 0x47])], 'terminal.png', { type: 'image/png' });
+        const event = new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true
+        });
+        Object.defineProperty(event, 'clipboardData', {
+          configurable: true,
+          value: {
+            files: [file],
+            items: [
+              {
+                kind: 'file',
+                type: 'image/png',
+                getAsFile: () => file
+              }
+            ],
+            types: ['Files'],
+            getData: () => ''
+          }
+        });
+        textarea.focus();
+        textarea.dispatchEvent(event);
+      }, nodeId);
+      await settleWebview(page, 3);
+
+      const messages = await page.evaluate(() => window.__devSessionCanvasHarness.getPostedMessages());
+      expect(messages.filter((entry) => entry.type === 'webview/pasteExecutionImage')).toEqual([]);
+      expect(messages.filter((entry) => entry.type === 'webview/executionInput')).toEqual([]);
+    });
+  }
+
   test(`${executionKind} terminal handles vi-style alternate screen without blocking input or node controls`, async ({
     page
   }) => {
