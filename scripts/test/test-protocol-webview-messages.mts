@@ -648,10 +648,19 @@ assert.match(
   /removeFolderFromWorkspaceFromCommand[\s\S]*getWorkspaceRootCanvasRemovalImpact[\s\S]*清空画板并移除[\s\S]*保留画板并移除[\s\S]*defaultChoice: 'keep-canvas'[\s\S]*clearWorkspaceRootCanvasIfRequested[\s\S]*removeWorkspaceFolderByFsPath/u,
   'Expected folder removal to offer native-modal keep/clear canvas choices and default to keeping the canvas.'
 );
+const worktreeRemovalCommandSource = extensionSource.slice(
+  extensionSource.indexOf('async function removeWorktreeFromWorkspaceFromCommand'),
+  extensionSource.indexOf('async function createWorktreeAndAddToWorkspaceFromCommand')
+);
 assert.match(
-  extensionSource,
-  /removeWorktreeFromWorkspaceFromCommand[\s\S]*getWorkspaceRootCanvasRemovalImpact[\s\S]*移除 Worktree 并清空画板[\s\S]*移除 Worktree 但保留画板[\s\S]*defaultChoice: 'clear-canvas'[\s\S]*if \(removalChoice\.clearCanvas\)[\s\S]*clearWorkspaceRootCanvasIfRequested[\s\S]*execFileAsync\('git', \['-C', workspaceFolder\.uri\.fsPath, 'worktree', 'remove'/u,
-  'Expected worktree removal to offer native-modal clear/keep canvas choices and default to clearing the canvas.'
+  worktreeRemovalCommandSource,
+  /getWorkspaceRootCanvasRemovalImpact[\s\S]*移除 Worktree 并清空画板[\s\S]*移除 Worktree 但保留画板[\s\S]*defaultChoice: 'clear-canvas'[\s\S]*execFileAsync\('git', \['-C', workspaceFolder\.uri\.fsPath, 'worktree', 'remove'[\s\S]*if \(removalChoice\.clearCanvas\)[\s\S]*clearWorkspaceRootCanvasIfRequested/u,
+  'Expected worktree removal to offer native-modal clear/keep canvas choices, default to clearing the canvas, and clear only after git worktree remove succeeds.'
+);
+assert.doesNotMatch(
+  worktreeRemovalCommandSource,
+  /if \(removalChoice\.clearCanvas\)[\s\S]*clearWorkspaceRootCanvasIfRequested[\s\S]*execFileAsync\('git', \['-C', workspaceFolder\.uri\.fsPath, 'worktree', 'remove'/u,
+  'Expected worktree canvas clearing not to happen before git worktree remove succeeds.'
 );
 const workspaceRootRemovalPromptSource = extensionSource.slice(
   extensionSource.indexOf('async function promptWorkspaceRootRemovalChoice'),

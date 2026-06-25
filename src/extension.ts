@@ -1418,7 +1418,7 @@ function buildWorktreeRemovalDetail(options: {
   impact: WorkspaceRootCanvasRemovalImpact | undefined;
 }): { keepCanvasDetail: string; clearDetail: string } {
   return {
-    clearDetail: `先清空此 worktree 的画板（${formatWorkspaceRootCanvasRemovalImpact(options.impact)}），再执行 git worktree remove；worktree 目录会被删除，旧画板不会恢复。`,
+    clearDetail: `执行 git worktree remove 成功后清空此 worktree 的画板（${formatWorkspaceRootCanvasRemovalImpact(options.impact)}）；worktree 目录会被删除，旧画板不会恢复。若 Git 拒绝移除，画板保持不变。`,
     keepCanvasDetail: '执行 git worktree remove 并从 Workspace 移除；画板快照按此路径保留，之后同路径重新加入时可恢复。'
   };
 }
@@ -1629,18 +1629,6 @@ async function removeWorktreeFromWorkspaceFromCommand(
     return;
   }
 
-  if (removalChoice.clearCanvas) {
-    const cleared = await clearWorkspaceRootCanvasIfRequested(
-      panelManager,
-      workspaceFolder.uri.fsPath,
-      removalChoice,
-      'workspace-worktree-remove-clear-root-canvas'
-    );
-    if (!cleared) {
-      return;
-    }
-  }
-
   try {
     await execFileAsync('git', ['-C', workspaceFolder.uri.fsPath, 'worktree', 'remove', workspaceFolder.uri.fsPath], {
       timeout: GIT_WORKTREE_COMMAND_TIMEOUT_MS,
@@ -1650,6 +1638,16 @@ async function removeWorktreeFromWorkspaceFromCommand(
   } catch (error) {
     await vscode.window.showErrorMessage(`移除 git worktree 失败：${formatExecErrorMessage(error)}`, { modal: true });
     return;
+  }
+
+  if (removalChoice.clearCanvas) {
+    // Git 已经移除 worktree；即使清空画板失败，也继续移除 stale workspace folder 入口。
+    await clearWorkspaceRootCanvasIfRequested(
+      panelManager,
+      workspaceFolder.uri.fsPath,
+      removalChoice,
+      'workspace-worktree-remove-clear-root-canvas'
+    );
   }
 
   const removalResult = removeWorkspaceFolderByFsPath(workspaceFolder.uri.fsPath);
