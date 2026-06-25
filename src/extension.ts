@@ -34,6 +34,11 @@ import {
   formatCanvasTemplateStats,
   sanitizeCanvasTemplateFileStem
 } from './common/canvasTemplates';
+import {
+  formatGitWorktreeListEntryRef,
+  parseGitWorktreeListPorcelain,
+  type GitWorktreeListEntry
+} from './common/gitWorktrees';
 import { CanvasPanelManager, type CanvasSurfaceLocation } from './panel/CanvasPanelManager';
 import { showCanvasTemplateSaveForm } from './panel/CanvasTemplateSaveFormPanel';
 import type { CanvasStoredTemplate } from './panel/CanvasTemplateStore';
@@ -160,7 +165,8 @@ type WorktreeUnavailableReasonCode =
   | 'git-unavailable'
   | 'unknown';
 
-interface WorkspaceWorktreeTarget {
+interface WorkspaceWorktreeCreationTarget {
+  kind: 'create';
   rootFolder: vscode.WorkspaceFolder;
   branchName?: string;
   checkoutRef?: string;
@@ -169,6 +175,16 @@ interface WorkspaceWorktreeTarget {
   displayName: string;
   targetPath: string;
 }
+
+interface ExistingWorkspaceWorktreeTarget {
+  kind: 'addExisting';
+  rootFolder: vscode.WorkspaceFolder;
+  targetPath: string;
+  displayName: string;
+  refLabel: string;
+}
+
+type WorkspaceWorktreeTarget = WorkspaceWorktreeCreationTarget | ExistingWorkspaceWorktreeTarget;
 
 interface GitWorktreeRef {
   name: string;
@@ -199,8 +215,17 @@ interface WorktreeCreationPlan {
   displayName: string;
 }
 
+interface WorktreeAddExistingPlan {
+  kind: 'addExisting';
+  targetPath: string;
+  displayName: string;
+  refLabel: string;
+}
+
+type WorktreeTargetPlan = WorktreeCreationPlan | WorktreeAddExistingPlan;
+
 interface WorktreeActionQuickPickItem extends vscode.QuickPickItem {
-  type: 'createNewBranch' | 'createNewBranchFrom';
+  type: 'createNewBranch' | 'createNewBranchFrom' | 'addExistingWorktree';
 }
 
 interface WorktreeRefQuickPickItem extends vscode.QuickPickItem {
@@ -209,6 +234,10 @@ interface WorktreeRefQuickPickItem extends vscode.QuickPickItem {
 }
 
 type WorktreeQuickPickItem = WorktreeActionQuickPickItem | WorktreeRefQuickPickItem;
+
+interface ExistingWorktreeQuickPickItem extends vscode.QuickPickItem {
+  entry: GitWorktreeListEntry;
+}
 
 function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
   return vscode.workspace.workspaceFile || (vscode.workspace.workspaceFolders?.length ?? 0) > 0
@@ -1412,40 +1441,48 @@ async function createWorktreeAndAddToWorkspaceFromCommand(request: WorkspaceWork
     return;
   }
 
+  const confirmationAction = target.kind === 'create' ? '创建 Worktree' : '添加 Worktree';
   const confirmed = await vscode.window.showInformationMessage(
     formatWorktreeConfirmationMessage(target),
     { modal: true, detail: target.targetPath },
-    '创建 Worktree'
+    confirmationAction
   );
-  if (confirmed !== '创建 Worktree') {
+  if (confirmed !== confirmationAction) {
     return;
   }
 
-  try {
-    await mkdir(path.dirname(target.targetPath), { recursive: true });
-    await execFileAsync(
-      'git',
-      buildGitWorktreeAddArgs(target),
-      {
-        timeout: GIT_WORKTREE_COMMAND_TIMEOUT_MS,
-        maxBuffer: GIT_COMMAND_MAX_BUFFER_BYTES,
-        encoding: 'utf8'
-      }
-    );
-  } catch (error) {
-    await vscode.window.showErrorMessage(`创建 git worktree 失败：${formatExecErrorMessage(error)}`);
-    return;
+  if (target.kind === 'create') {
+    try {
+      await mkdir(path.dirname(target.targetPath), { recursive: true });
+      await execFileAsync(
+        'git',
+        buildGitWorktreeAddArgs(target),
+        {
+          timeout: GIT_WORKTREE_COMMAND_TIMEOUT_MS,
+          maxBuffer: GIT_COMMAND_MAX_BUFFER_BYTES,
+          encoding: 'utf8'
+        }
+      );
+    } catch (error) {
+      await vscode.window.showErrorMessage(`创建 git worktree 失败：${formatExecErrorMessage(error)}`);
+      return;
+    }
   }
 
   const added = addWorkspaceFolderIfMissing(target.targetPath);
   if (!added) {
+    const actionLabel = target.kind === 'create' ? 'Worktree 已创建' : '已有 worktree 已选定';
     await vscode.window.showWarningMessage(
-      `Worktree 已创建，但无法自动加入当前 workspace。请手动添加：${target.targetPath}`
+      `${actionLabel}，但无法自动加入当前 workspace。请手动添加：${target.targetPath}`
     );
     return;
   }
 
-  await vscode.window.showInformationMessage(`已创建 worktree 并添加到 workspace：${target.displayName}`);
+  await vscode.window.showInformationMessage(
+    target.kind === 'create'
+      ? `已创建 worktree 并添加到 workspace：${target.displayName}`
+      : `已将已有 worktree 添加到 workspace：${target.displayName}`
+  );
 }
 
 async function getGitWorktreeRepositoryInfo(rootPath: string): Promise<GitWorktreeRepositoryInfo> {
@@ -1468,6 +1505,12 @@ async function getGitWorktreeRepositoryInfo(rootPath: string): Promise<GitWorktr
     gitCommonDir,
     isLinkedWorktree: normalizeComparableFileSystemPath(realGitDir) !== normalizeComparableFileSystemPath(realGitCommonDir)
   };
+}
+
+async function getGitWorktreeListEntries(rootPath: string): Promise<GitWorktreeListEntry[]> {
+  return parseGitWorktreeListPorcelain(
+    await execGit(rootPath, ['worktree', 'list', '--porcelain'])
+  );
 }
 
 async function promptWorkspaceWorktreeTarget(
@@ -1531,23 +1574,35 @@ async function promptWorkspaceWorktreeTarget(
     return undefined;
   }
 
-  const creationPlan = await promptWorktreeCreationPlan(rootFolder, refs);
-  if (!creationPlan) {
+  const targetPlan = await promptWorktreeCreationPlan(rootFolder, refs);
+  if (!targetPlan) {
     return undefined;
   }
-  const defaultTargetPath = buildDefaultWorktreeTargetPath(rootFolder.uri.fsPath, creationPlan.defaultPathName);
+
+  if (targetPlan.kind === 'addExisting') {
+    return {
+      kind: 'addExisting',
+      rootFolder,
+      displayName: targetPlan.displayName,
+      refLabel: targetPlan.refLabel,
+      targetPath: targetPlan.targetPath
+    };
+  }
+
+  const defaultTargetPath = buildDefaultWorktreeTargetPath(rootFolder.uri.fsPath, targetPlan.defaultPathName);
   const targetPath = await promptWorktreeTargetPath(defaultTargetPath);
   if (!targetPath) {
     return undefined;
   }
 
   return {
+    kind: 'create',
     rootFolder,
-    branchName: creationPlan.branchName,
-    checkoutRef: creationPlan.checkoutRef,
-    startPoint: creationPlan.startPoint,
-    detached: creationPlan.detached,
-    displayName: creationPlan.displayName,
+    branchName: targetPlan.branchName,
+    checkoutRef: targetPlan.checkoutRef,
+    startPoint: targetPlan.startPoint,
+    detached: targetPlan.detached,
+    displayName: targetPlan.displayName,
     targetPath
   };
 }
@@ -1615,9 +1670,15 @@ async function execGit(rootPath: string, args: string[]): Promise<string> {
 async function promptWorktreeCreationPlan(
   rootFolder: vscode.WorkspaceFolder,
   refs: GitWorktreeRef[]
-): Promise<WorktreeCreationPlan | undefined> {
+): Promise<WorktreeTargetPlan | undefined> {
   const picked = await vscode.window.showQuickPick<WorktreeQuickPickItem>(
     [
+      {
+        type: 'addExistingWorktree',
+        label: '$(worktree) Add existing worktree to workspace...',
+        description: 'Choose from git worktree list',
+        alwaysShow: true
+      },
       {
         type: 'createNewBranch',
         label: '$(add) Create new branch...',
@@ -1631,8 +1692,8 @@ async function promptWorktreeCreationPlan(
       ...refs.map(buildWorktreeRefQuickPickItem)
     ],
     {
-      title: `Create Worktree (${abbreviateWorktreeRootPath(rootFolder.uri.fsPath)}) (1/2)`,
-      placeHolder: 'Choose a branch to create a new worktree from',
+      title: `Create or Add Worktree (${abbreviateWorktreeRootPath(rootFolder.uri.fsPath)}) (1/2)`,
+      placeHolder: 'Create a new worktree or add an existing one to this workspace',
       matchOnDescription: true,
       matchOnDetail: true,
       ignoreFocusOut: true
@@ -1641,6 +1702,10 @@ async function promptWorktreeCreationPlan(
 
   if (!picked) {
     return undefined;
+  }
+
+  if (picked.type === 'addExistingWorktree') {
+    return await promptExistingWorktreeToAdd(rootFolder);
   }
 
   if (picked.type === 'createNewBranch') {
@@ -1684,6 +1749,77 @@ async function promptWorktreeCreationPlan(
     detached: picked.ref.kind === 'head' || picked.ref.isCheckedOutInWorktree,
     defaultPathName,
     displayName: picked.ref.name
+  };
+}
+
+async function promptExistingWorktreeToAdd(
+  rootFolder: vscode.WorkspaceFolder
+): Promise<WorktreeAddExistingPlan | undefined> {
+  let worktreeEntries: GitWorktreeListEntry[];
+  try {
+    worktreeEntries = await getGitWorktreeListEntries(rootFolder.uri.fsPath);
+  } catch (error) {
+    await showWorktreeUnavailableModal({
+      code: classifyWorktreeRepositoryError(error),
+      rootPath: rootFolder.uri.fsPath,
+      operation: 'create',
+      cause: error
+    });
+    return undefined;
+  }
+
+  const existingWorkspaceFolderPaths = new Set(
+    (vscode.workspace.workspaceFolders ?? [])
+      .filter((folder) => folder.uri.scheme === 'file')
+      .map((folder) => normalizeComparableFileSystemPath(folder.uri.fsPath))
+  );
+  const candidates = (
+    await Promise.all(
+      worktreeEntries.map(async (entry): Promise<ExistingWorktreeQuickPickItem | undefined> => {
+        const normalizedWorktreePath = normalizeComparableFileSystemPath(entry.worktreePath);
+        if (entry.bare || entry.prunable || existingWorkspaceFolderPaths.has(normalizedWorktreePath)) {
+          return undefined;
+        }
+        if (!(await isExistingDirectory(entry.worktreePath))) {
+          return undefined;
+        }
+
+        const refLabel = formatGitWorktreeListEntryRef(entry);
+        return {
+          entry,
+          label: `$(worktree) ${path.basename(entry.worktreePath) || entry.worktreePath}`,
+          description: refLabel,
+          detail: entry.worktreePath
+        };
+      })
+    )
+  ).filter((item): item is ExistingWorktreeQuickPickItem => Boolean(item));
+
+  if (candidates.length === 0) {
+    await vscode.window.showInformationMessage('没有可添加到当前 workspace 的已有 git worktree。');
+    return undefined;
+  }
+
+  const picked = await vscode.window.showQuickPick<ExistingWorktreeQuickPickItem>(
+    candidates,
+    {
+      title: `Add Existing Worktree (${abbreviateWorktreeRootPath(rootFolder.uri.fsPath)}) (2/2)`,
+      placeHolder: 'Choose an existing git worktree to add to this workspace',
+      matchOnDescription: true,
+      matchOnDetail: true,
+      ignoreFocusOut: true
+    }
+  );
+
+  if (!picked) {
+    return undefined;
+  }
+
+  return {
+    kind: 'addExisting',
+    targetPath: path.resolve(picked.entry.worktreePath),
+    displayName: path.basename(picked.entry.worktreePath) || picked.entry.worktreePath,
+    refLabel: formatGitWorktreeListEntryRef(picked.entry)
   };
 }
 
@@ -1771,7 +1907,7 @@ async function promptWorkspaceRootFolderForWorktree(): Promise<vscode.WorkspaceF
       folder
     })),
     {
-      title: 'Select Git repository to create worktree from',
+      title: 'Select Git repository to create or add worktree from',
       placeHolder: 'Choose the workspace folder that owns the git repository',
       matchOnDescription: true
     }
@@ -1813,7 +1949,7 @@ function validateWorktreeBranchName(value: string): string | undefined {
   return undefined;
 }
 
-function buildGitWorktreeAddArgs(target: WorkspaceWorktreeTarget): string[] {
+function buildGitWorktreeAddArgs(target: WorkspaceWorktreeCreationTarget): string[] {
   const args = ['-C', target.rootFolder.uri.fsPath, 'worktree', 'add'];
   if (target.branchName) {
     args.push('-b', target.branchName, target.targetPath);
@@ -1831,6 +1967,10 @@ function buildGitWorktreeAddArgs(target: WorkspaceWorktreeTarget): string[] {
 }
 
 function formatWorktreeConfirmationMessage(target: WorkspaceWorktreeTarget): string {
+  if (target.kind === 'addExisting') {
+    return `将已有 worktree「${target.displayName}」（${target.refLabel}）添加到当前 workspace。`;
+  }
+
   if (target.branchName) {
     const startPointText = target.startPoint ? `，起点为「${target.startPoint}」` : '';
     return `将基于 folder「${target.rootFolder.name}」创建 worktree 分支「${target.branchName}」${startPointText}，并添加到当前 workspace。`;
@@ -1916,6 +2056,15 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
+async function isExistingDirectory(filePath: string): Promise<boolean> {
+  try {
+    const fileStat = await stat(filePath);
+    return fileStat.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function isNodeErrorWithCode(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code;
 }
@@ -1952,7 +2101,7 @@ async function showWorktreeUnavailableModal(options: {
   detail?: string;
   cause?: unknown;
 }): Promise<void> {
-  const operationLabel = options.operation === 'create' ? '新建 worktree' : '移除 worktree';
+  const operationLabel = options.operation === 'create' ? '新建 / 添加 worktree' : '移除 worktree';
   const reason = formatWorktreeUnavailableReason(options);
   const rootDetail = options.rootPath ? `\n\n目标 folder：${options.rootPath}` : '';
   const causeDetail = options.cause ? `\n\n底层错误：${formatExecErrorMessage(options.cause)}` : '';
