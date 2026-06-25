@@ -7,8 +7,15 @@ body,
   height: 100%;
 }
 
-body {
+html,
+#app,
+body,
+.canvas-shell {
   margin: 0;
+  padding: 0;
+}
+
+body {
   color: var(--vscode-editor-foreground);
   font-family: var(--vscode-font-family);
 }
