@@ -207,6 +207,9 @@ updated_at: 2026-06-25
 - 风险：`Claude Code` 某些 transcript 文件可能没有稳定的 `cwd` 字段。
   当前缓解：扫描 transcript 前若干行里的显式 `cwd`；一旦仍无法确认，就直接 fail closed，不再把 lossy 的 project 目录名映射写成精确 workspace 事实。
 
+- 风险：历史会话记录里的 `cwd` 可能在恢复 / 分叉时已经被删除或移出当前 workspace。
+  当前缓解：恢复 / 分叉创建节点时透传原始 `cwd` 给统一创建链路，由现有执行目录校验 fail closed；暂不自动回退到所属 workspace root，后续体验策略登记到 `docs/exec-plans/tech-debt-tracker.md`。
+
 - 风险：provider transcript 里的第一条 user message 不一定就是用户自然输入，可能混入 Harness 上下文或 suggestion-mode 包装。
   当前缓解：会话标题提取采用 fail-closed 启发式，只跳过已确认的 synthetic 前缀；一旦无法确认真实用户指令，就回退到 `provider + 短 session id`，而不是猜测标题。
 
@@ -239,6 +242,7 @@ updated_at: 2026-06-25
 ## 9. 当前验证状态
 
 - 2026-06-22：维护者已在真实 `Extension Development Host` 中完成 `view/title` 原生 `...` 菜单视觉确认，确认 `会话历史` 的多选分组开关和 `节点` 的平铺 / 分组视图模式都能通过标题左侧 `✓` 稳定显示当前选中态；PR #187 中原记录的真实菜单视觉确认残余风险已收口。
+- 2026-06-25：会话历史恢复 / 分叉在多根 workspace 下开始透传历史项原始 `cwd`，使新 Agent 创建能按历史 cwd 解析目标 root；已通过 `npm run test:sidebar-session-history`、`npm run typecheck`、`npm run test:canvas-multi-root-composition` 与 `npm run test:canvas-execution-context` 验证。真实 VS Code multi-root 端到端 smoke 与失效历史 cwd 的体验策略仍作为技术债登记。
 - 2026-06-19：会话历史 view title `...` 菜单新增三个可多选分组开关：多根 root workspace 下按 root 分组默认开启，按 provider 分组和按分级时间分组默认关闭；Webview 呈现层固定按 root > provider > 时间生成分组标题行，单根 workspace 下 root 开关不显示额外 root 标题；checked 菜单 variant 用标题左侧 `✓` 作为 `view/title` popup 的稳定可见 fallback，分组标题行支持折叠/展开。已补 `npm run test:extension-manifest` 覆盖菜单 contribution、checked title 与 commandPalette 隐藏，补 `npm run test:sidebar-session-history` 覆盖多根 root 归属、root/provider/time 层级、折叠行为和单根 root 退化，并已运行 `npm run typecheck`。
 - 2026-06-25：`节点` section 的 worktree QuickPick 新增添加已有 worktree 分支，并修复同一 git repository 的多个 workspace folders / linked worktrees 在全局 worktree 入口中重复出现为多个 repository 的问题；实现落点为 `src/extension.ts` 的 `promptWorkspaceRootFolderForWorktree(...)`、`promptWorktreeCreationPlan(...)`、`promptExistingWorktreeToAdd(...)` 与 `src/common/gitWorktrees.ts`，已补 `npm run test:git-worktrees` 覆盖 porcelain 解析、repository 去重、分支入口和不执行 `git worktree add` 的添加已有路径，并复跑相关 sidebar / manifest 验证。
 - 2026-06-16：根据 VS Code Source Control 截图反馈，worktree 全局命令与 workspace folder 行按钮改用专用 `worktree` Codicon；新建 worktree 流程从单一分支名输入扩展为 `Create Worktree (...path...) (1/2)` + `Create new branch from...` 的 QuickPick ref 选择，可创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建；`HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。已复跑 `npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:sidebar-list-colors`、`npm run typecheck`、`npm run build` 与 `git diff --check`。
