@@ -10,16 +10,17 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.18.2 Highlights
+## 0.19.0 Highlights
 
-The public `0.18.2` release is a patch update for multi-root Pane Gallery and Webview group geometry. It stabilizes thumbnail-rail ordering by VS Code workspace-folder order, clears stale group resize drafts after Host updates, refreshes Webview regression coverage, and simplifies Marketplace support media inputs. It keeps all `0.18.1` capabilities: sidebar session-history grouping controls, menu selection-state polish, canvas layout arrangement empty-group size normalization, pane-gallery viewport memory isolation, public privacy / license metadata, dual-market distribution, and Preview support boundaries.
+The public `0.19.0` release is a new Preview milestone for visual Agent input and multi-root workflow polish. It adds image paste for live `Agent` nodes, lets the sidebar add existing git worktrees to the current workspace, keeps multi-root session-history restore anchored to the original cwd, and fixes several high-output, file-link, Pane Gallery, and panel-edge details. It keeps all `0.18.2` release boundaries: Preview positioning, notifier auto-install, GitHub Release assets plus verified Open VSX as the current completion gate, and Visual Studio Marketplace as a deferred channel until public visibility is confirmed.
 
-- Pane Gallery `topThumbnails` and `sideThumbnails` rails now preserve VS Code workspace-folder order when the active root changes; the clicked thumbnail no longer swaps position with the previous main canvas root
-- Workspace-root and ordinary group resize now clears stale Webview drafts after committed Host state updates, avoiding geometry drift when a group is selected or refreshed again
-- Webview regression coverage has been refreshed for Agent cwd context snapshots, Edge IME edge selection, Claude `Ctrl-Z` payload matching, hard-wrapped file links, and Note Tab indentation timing
-- Marketplace listing inputs now keep the support section to direct links only; repository-only community media stays outside the packaged VSIX and Marketplace README path
-- The notifier companion is version-aligned with the main extension and does not introduce notification-delivery behavior changes
-- The release keeps the same extension ID, Preview positioning, VS Code minimum version, notifier auto-install relationship, Open VSX mirroring strategy, VSM deferred completion gate, and support matrix
+- Live `Agent` nodes can now paste clipboard images. Supported PNG, JPEG, and WebP payloads are saved to extension storage and inserted as a file-path reference without auto-submitting the prompt
+- `Terminal` nodes ignore image-only paste instead of writing image paths or binary data into the shell; temporary Agent image-paste files are cleaned by a background TTL task
+- The sidebar `Nodes` worktree flow can add an existing git worktree to the current workspace, and the global picker now collapses multiple folders from the same repository by git common directory
+- Multi-root session-history restore and fork actions preserve the history item's original cwd so the new Agent resolves back to the intended workspace root
+- Root-qualified file links such as `workspace-b/src/file.ts` now resolve inside the named workspace root instead of falling through to the active execution cwd or sibling roots
+- Webview output draining is fairer across many active Agents, so later high-output nodes are not starved by the first few nodes in the queue
+- Pane Gallery status hints, fit-view bounds, and active canvas panel padding were tightened without changing the extension ID, VS Code minimum version, notifier relationship, or support matrix
 
 ## Core Capabilities
 
@@ -28,6 +29,7 @@ The public `0.18.2` release is a patch update for multi-root Pane Gallery and We
 - Drive `Agent` nodes through the `codex` or `claude` CLI
 - Run `Terminal` nodes through the embedded terminal surface
 - Let `Agent` and embedded `Terminal` nodes inherit a controlled shell environment, with diagnostics showing the current resolution path
+- Paste supported screenshots directly into live `Agent` nodes as temporary image-file references while preserving manual prompt submission
 - Create cwd-scoped `Terminal` or `Agent` nodes from workspace folders and files through File Explorer context menus
 - Write contextual notes with Markdown syntax inside `Note` nodes
 - Associate `Note` nodes with `.md` / `.markdown` files in the workspace, including YAML metadata popovers and safe Markdown image previews
@@ -41,7 +43,7 @@ The public `0.18.2` release is a patch update for multi-root Pane Gallery and We
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
 - View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore or fork a new `Agent` node from history
-- Manage workspace folders and git worktrees from the sidebar `Nodes` view, with explicit confirmations before removing folders or linked worktrees
+- Manage workspace folders and git worktrees from the sidebar `Nodes` view, including adding existing worktrees and explicit confirmations before removing folders or linked worktrees
 
 ## Best Fit
 
@@ -70,10 +72,11 @@ The public `0.18.2` release is a patch update for multi-root Pane Gallery and We
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.18.1` to `0.18.2` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- First-time installs and upgrades from `0.18.2` to `0.19.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
 - Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.18.2` preserves that explicit choice
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.19.0` preserves that explicit choice
+- Image paste files are temporary extension-storage attachments, not workspace files. They are retained long enough for Agent context reuse and then cleaned by the background TTL maintenance task
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
 
@@ -109,7 +112,7 @@ The public `0.18.2` release is a patch update for multi-root Pane Gallery and We
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.18.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.19.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 

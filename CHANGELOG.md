@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.19.0 - Agent Image Paste and Worktree Add Update
+
+相对 `0.18.2`，`0.19.0` 是新的公开 `Preview` 里程碑更新，重点补齐 Agent 截图粘贴输入、侧栏添加已有 git worktree、multi-root 会话历史恢复 cwd 归属，以及多 Agent 输出、公平渲染、root-qualified 文件链接和 paneGallery 细节修复。它保留 `0.18.2` 的窗格画廊缩略图 rail 稳定排序、分组 resize 草稿清理、Marketplace listing 二维码移除口径、GitHub Release assets + Open VSX 完成门禁、安装拓扑和 Preview 支持边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.18.2` bump 到 `0.19.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- live `Agent` 节点现在支持粘贴剪贴板图片：Webview 读取 `image/png`、`image/jpeg` 或 `image/webp`，Host 校验并保存到扩展存储的临时截图缓存，再把图片路径文本插入当前 Agent 输入行；不会自动发送回车，用户可继续补充提示词
+- `Terminal` 节点不会把 image-only 剪贴板写入 shell；截图缓存默认按 7 天 TTL 由独立后台维护器分片清理，清理失败只给非阻塞提示，不影响当前 Agent 交互
+- 侧栏 `节点` view 的 worktree 流程新增“添加已有 worktree 到 workspace”分支，并在多根 workspace 下按 git common dir 合并同一 repository 的多个 workspace folder / linked worktree，避免重复选择同一仓库
+- 多根 workspace 的侧栏会话历史恢复 / 分叉会透传历史项原始 `cwd`，让新 Agent 创建能按历史工作目录恢复 root 归属；失效 cwd 继续走现有执行目录校验并 fail closed
+- 修复 root-qualified 多根文件链接解析：`workspace-b/src/file.ts` 这类路径会先定位到对应 workspace root，再在该 root 内解析相对路径，不再误用当前执行节点 cwd 或 sibling root
+- Webview 多 Agent 输出 drain 调整重排策略，避免前几个持续高输出节点长期占满每帧预算，后续 Agent 的最新输出在有限帧内也能渲染出来
+- paneGallery 继续收口细节：root 标签弱背景提示 attention / running 状态，fit view 使用当前 root 的可见子图边界；active 画布 Webview 去除宿主左右 padding，让单根、`rootGroups` 和 `paneGallery` 都贴齐 Panel 可用区域
+- 依赖审计跟进更新锁定版本，不改变用户可见运行语义；Notifier companion 随主扩展版本对齐到 `0.19.0`，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略、Visual Studio Marketplace deferred 完成门禁或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.18.2` 升级到 `0.19.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.19.0` 后会继续沿用该明确选择
+- Agent 截图粘贴产生的临时图片保存在扩展存储目录，不写入用户仓库；如工作区包含敏感截图，仍建议在非关键环境先验证粘贴路径是否符合预期
+
+### 回退建议
+
+- 若 `0.19.0` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.19.x` 修复版本
+
 ## 0.18.2 - Pane Gallery Root Order and Group Resize Fixes
 
 相对 `0.18.1`，`0.18.2` 是补丁版本，收口窗格画廊缩略图 rail 的 workspace root 稳定排序、workspace root / 分组 resize 后的 Webview 草稿清理，以及 Marketplace listing 交流二维码移除后的发布口径。
