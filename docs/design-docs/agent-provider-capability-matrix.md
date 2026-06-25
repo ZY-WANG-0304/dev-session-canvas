@@ -18,8 +18,10 @@ related_specs:
   - docs/product-specs/canvas-sidebar-node-and-session-lists.md
   - docs/product-specs/canvas-graph-links-and-file-activity.md
   - docs/product-specs/canvas-node-notifications.md
-related_plans: []
-updated_at: 2026-06-19
+  - docs/product-specs/agent-terminal-clipboard-shortcuts.md
+related_plans:
+  - docs/exec-plans/active/agent-screenshot-paste-input.md
+updated_at: 2026-06-25
 ---
 
 # Agent Provider 能力对照表
@@ -127,6 +129,7 @@ updated_at: 2026-06-19
 | 实际 spawn 方式 | `node-pty.spawn(file, args)`，不经 shell 执行整串命令 | `node-pty.spawn(file, args)`，不经 shell 执行整串命令 | 必须保持结构化 `file + args[]`，避免 shell injection 和 UI/Host 双标 |
 | CLI cwd | 支持：使用节点 cwd / workspace cwd，不切到扩展私有目录 | 支持：使用节点 cwd / workspace cwd，不切到扩展私有目录 | 必须确认 provider 能在 repo cwd 直接运行，并继承用户现有认证 / 配置上下文 |
 | Shell env / PATH 继承 | 支持：复用 Agent execution env 与 resolver cache | 支持：复用 Agent execution env 与 resolver cache | 必须复用 `shellEnvironmentResolver` / `agentCliResolver` 路线，避免 resolver 找到但 spawn 失败 |
+| 图片输入 / Agent 截图粘贴 | 支持：Codex 官方支持 `--image/-i`、交互 composer 图片粘贴和图片文件上下文；当前画布以保存临时图片文件并回填 shell-safe 路径文本的跨 provider bridge 接入，自动化覆盖 Webview/Host 路径注入，不伪造 provider 原生附件 chip | 支持：Claude Code 官方支持拖放图片、图片剪贴板粘贴和图片路径输入；当前画布同样以临时图片路径 bridge 接入，不伪造 `[Image #N]` chip | 必须明确 provider 是否支持本地图片文件路径作为 prompt 上下文；若只支持 GUI 附件、私有 chip 或不可从 PTY 文本引用图片，则不能默认复用截图粘贴，必须新增 provider adapter 或禁用该能力 |
 | 运行态 `running` / `waiting-input` | 支持：当前以 PTY / attention signal / quiet period 启发式为主 | 支持：当前以 PTY / attention signal / quiet period 启发式为主 | 若 provider 有结构化事件，应优先接入；没有则只能作为 fallback 启发式 |
 | Stop 行为 | 支持：先单次 `Ctrl-C` graceful stop，等待 Codex resume hint / token usage，超时后 force kill | 支持：不发送普通 `Ctrl-C` 收尾，沿用直接终止信号路径 | 必须定义 provider-specific stop，不要假设所有 CLI 都能用同一种 Ctrl-C 语义 |
 | `Ctrl-Z` / job control | 普通输入路径，不走 Claude 专属阻断 | 支持阻断：Webview / Host / runtime supervisor 拒绝 Claude Agent `Ctrl-Z`，提示停止、重启或分叉 | 必须评估 direct-spawn CLI 是否支持 shell job table；不支持时不得承诺 `fg` 恢复 |
@@ -217,4 +220,5 @@ updated_at: 2026-06-19
 ## 9. 当前验证状态
 
 - 2026-06-19：本文首次整理当前 `Codex` / `Claude Code` provider 能力矩阵。能力事实来自当前设计文档与代码路径复核；本次为文档整理，不新增运行时代码。
+- 2026-06-25：补充图片输入 / Agent 截图粘贴能力。Codex 与 Claude Code 均有官方图片输入或图片路径入口；当前画布选择保存临时图片并回填路径文本作为跨 provider bridge，验证记录见 `docs/exec-plans/active/agent-screenshot-paste-input.md` 和 `docs/design-docs/execution-terminal-clipboard-shortcuts.md`。
 - 当前整体状态保持 `验证中`：`Codex` session id / history 仍依赖私有文件和启发式匹配，`Claude Code` history 仍依赖私有 transcript，provider 级真实 fork 仍建议在安装对应 CLI 的 Development Host 中人工确认。
