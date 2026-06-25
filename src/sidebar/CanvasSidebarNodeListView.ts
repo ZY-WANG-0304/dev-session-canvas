@@ -1619,7 +1619,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         const worktreeButton = createWorkspaceFolderActionButton({
           action: 'createWorktree',
           iconClass: 'codicon-worktree',
-          label: '为此 folder 新建 worktree 并加入 workspace',
+          label: '为此 folder 新建或添加 worktree 到 workspace',
           danger: false,
           onClick: () => {
             vscode.postMessage({
