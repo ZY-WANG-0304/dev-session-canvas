@@ -64,6 +64,20 @@ export interface SidebarNodeListTestGroupRowSnapshot {
 
 type SidebarWorkspaceFolderKind = 'folder' | 'repository' | 'worktree';
 
+export interface SidebarWorkspaceRootRemovalChoice {
+  clearCanvas: boolean;
+}
+
+export interface SidebarWorkspaceRootRemovalPromptOptions {
+  title: string;
+  rootPath: string;
+  clearActionTitle: string;
+  keepCanvasActionTitle: string;
+  clearDetail: string;
+  keepCanvasDetail: string;
+  defaultChoice: 'clear-canvas' | 'keep-canvas';
+}
+
 interface CanvasSidebarGroupSnapshot extends CanvasGroupSummary {
   workspaceFolderKind?: SidebarWorkspaceFolderKind;
 }
@@ -103,6 +117,10 @@ type SidebarNodeListInboundMessage =
       payload: SidebarWorkspaceFolderActionPayload;
     }
   | {
+      type: 'sidebarNodeList/workspaceRootRemovalPromptResult';
+      payload: SidebarWorkspaceRootRemovalPromptResultPayload;
+    }
+  | {
       type: 'sidebarNodeList/testActionResult';
       payload: {
         requestId: string;
@@ -116,6 +134,13 @@ interface SidebarWorkspaceFolderActionPayload {
   groupId?: string;
 }
 
+interface SidebarWorkspaceRootRemovalPromptResultPayload {
+  requestId: string;
+  clearCanvas?: boolean;
+  cancelled?: boolean;
+  errorMessage?: string;
+}
+
 type SidebarNodeListOutboundMessage =
   | {
       type: 'sidebarNodeList/state';
@@ -123,6 +148,13 @@ type SidebarNodeListOutboundMessage =
         items: CanvasSidebarNodeItemSnapshot[];
         groups: CanvasSidebarGroupSnapshot[];
         viewMode: SidebarNodeListViewMode;
+      };
+    }
+  | {
+      type: 'sidebarNodeList/workspaceRootRemovalPrompt';
+      payload: {
+        requestId: string;
+        options: SidebarWorkspaceRootRemovalPromptOptions;
       };
     }
   | {
@@ -145,6 +177,12 @@ interface PendingSidebarNodeListTestActionRequest {
   timer: NodeJS.Timeout;
 }
 
+interface PendingSidebarWorkspaceRootRemovalPromptRequest {
+  resolve: (choice: SidebarWorkspaceRootRemovalChoice | undefined) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
 export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly stateSubscription: vscode.Disposable;
   private view: vscode.WebviewView | undefined;
@@ -155,6 +193,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   private refreshTimer: NodeJS.Timeout | undefined;
   private readonly pendingReadyRequests = new Map<string, PendingSidebarNodeListReadyRequest>();
   private readonly pendingTestActionRequests = new Map<string, PendingSidebarNodeListTestActionRequest>();
+  private readonly pendingRemovalPromptRequests = new Map<string, PendingSidebarWorkspaceRootRemovalPromptRequest>();
 
   public constructor(
     private readonly panelManager: CanvasPanelManager,
@@ -178,6 +217,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
     }
     this.rejectPendingReadyRequests('侧栏节点列表视图已被释放。');
     this.rejectPendingTestActionRequests('侧栏节点列表视图已被释放。');
+    this.rejectPendingRemovalPromptRequests('侧栏节点列表移除确认已被释放。');
   }
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -195,6 +235,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
         this.isWebviewReady = false;
         this.rejectPendingReadyRequests('侧栏节点列表视图已被关闭。');
         this.rejectPendingTestActionRequests('侧栏节点列表视图已被关闭。');
+        this.rejectPendingRemovalPromptRequests('侧栏节点列表移除确认已被关闭。');
       }
     });
 
@@ -277,6 +318,71 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
             clearTimeout(pendingRequest.timer);
             this.pendingTestActionRequests.delete(requestId);
             pendingRequest.reject(error instanceof Error ? error : new Error('侧栏节点列表测试动作发送失败。'));
+          }
+        );
+    });
+  }
+
+  public canPromptWorkspaceRootRemovalChoice(): boolean {
+    return this.view !== undefined && this.isWebviewReady;
+  }
+
+  public async promptWorkspaceRootRemovalChoice(
+    options: SidebarWorkspaceRootRemovalPromptOptions,
+    timeoutMs = 300_000
+  ): Promise<SidebarWorkspaceRootRemovalChoice | undefined> {
+    await this.waitForReady(Math.min(timeoutMs, 5000));
+
+    const currentView = this.view;
+    if (!currentView) {
+      throw new Error('侧栏节点列表视图尚未创建。');
+    }
+
+    return new Promise<SidebarWorkspaceRootRemovalChoice | undefined>((resolve, reject) => {
+      const requestId = createNonce();
+      const timer = setTimeout(() => {
+        this.pendingRemovalPromptRequests.delete(requestId);
+        reject(new Error('等待侧栏移除确认超时。'));
+      }, timeoutMs);
+
+      this.pendingRemovalPromptRequests.set(requestId, {
+        resolve,
+        reject,
+        timer
+      });
+
+      void currentView.webview
+        .postMessage({
+          type: 'sidebarNodeList/workspaceRootRemovalPrompt',
+          payload: {
+            requestId,
+            options
+          }
+        } satisfies SidebarNodeListOutboundMessage)
+        .then(
+          (posted) => {
+            if (posted) {
+              return;
+            }
+
+            const pendingRequest = this.pendingRemovalPromptRequests.get(requestId);
+            if (!pendingRequest) {
+              return;
+            }
+
+            clearTimeout(pendingRequest.timer);
+            this.pendingRemovalPromptRequests.delete(requestId);
+            pendingRequest.reject(new Error('无法将侧栏移除确认发送给 Webview。'));
+          },
+          (error: unknown) => {
+            const pendingRequest = this.pendingRemovalPromptRequests.get(requestId);
+            if (!pendingRequest) {
+              return;
+            }
+
+            clearTimeout(pendingRequest.timer);
+            this.pendingRemovalPromptRequests.delete(requestId);
+            pendingRequest.reject(error instanceof Error ? error : new Error('侧栏移除确认发送失败。'));
           }
         );
     });
@@ -385,6 +491,9 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
           parsed.payload.groupId
         );
         return;
+      case 'sidebarNodeList/workspaceRootRemovalPromptResult':
+        this.resolvePendingRemovalPromptRequest(parsed.payload);
+        return;
       case 'sidebarNodeList/testActionResult':
         this.resolvePendingTestActionRequest(parsed.payload.requestId, parsed.payload.snapshot, parsed.payload.errorMessage);
         return;
@@ -437,6 +546,37 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
     for (const [requestId, pendingRequest] of this.pendingTestActionRequests.entries()) {
       clearTimeout(pendingRequest.timer);
       this.pendingTestActionRequests.delete(requestId);
+      pendingRequest.reject(new Error(message));
+    }
+  }
+
+  private resolvePendingRemovalPromptRequest(payload: SidebarWorkspaceRootRemovalPromptResultPayload): void {
+    const pendingRequest = this.pendingRemovalPromptRequests.get(payload.requestId);
+    if (!pendingRequest) {
+      return;
+    }
+
+    clearTimeout(pendingRequest.timer);
+    this.pendingRemovalPromptRequests.delete(payload.requestId);
+    if (payload.errorMessage) {
+      pendingRequest.reject(new Error(payload.errorMessage));
+      return;
+    }
+
+    if (payload.cancelled || typeof payload.clearCanvas !== 'boolean') {
+      pendingRequest.resolve(undefined);
+      return;
+    }
+
+    pendingRequest.resolve({
+      clearCanvas: payload.clearCanvas
+    });
+  }
+
+  private rejectPendingRemovalPromptRequests(message: string): void {
+    for (const [requestId, pendingRequest] of this.pendingRemovalPromptRequests.entries()) {
+      clearTimeout(pendingRequest.timer);
+      this.pendingRemovalPromptRequests.delete(requestId);
       pendingRequest.reject(new Error(message));
     }
   }
@@ -599,6 +739,19 @@ function parseSidebarNodeListMessage(message: unknown): SidebarNodeListInboundMe
         payload
       };
     }
+    case 'sidebarNodeList/workspaceRootRemovalPromptResult': {
+      const payload = parseSidebarWorkspaceRootRemovalPromptResultPayload(
+        'payload' in message ? message.payload : undefined
+      );
+      if (!payload) {
+        return null;
+      }
+
+      return {
+        type: 'sidebarNodeList/workspaceRootRemovalPromptResult',
+        payload
+      };
+    }
     case 'sidebarNodeList/testActionResult': {
       const payload = 'payload' in message ? message.payload : undefined;
       if (
@@ -647,6 +800,36 @@ function parseSidebarWorkspaceFolderActionPayload(value: unknown): SidebarWorksp
   return {
     rootPath,
     groupId
+  };
+}
+
+function parseSidebarWorkspaceRootRemovalPromptResultPayload(
+  value: unknown
+): SidebarWorkspaceRootRemovalPromptResultPayload | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const requestId = 'requestId' in value && typeof value.requestId === 'string' ? value.requestId.trim() : '';
+  if (!requestId) {
+    return null;
+  }
+
+  const clearCanvas = 'clearCanvas' in value && typeof value.clearCanvas === 'boolean' ? value.clearCanvas : undefined;
+  const cancelled = 'cancelled' in value && value.cancelled === true ? true : undefined;
+  const errorMessage =
+    'errorMessage' in value && typeof value.errorMessage === 'string' && value.errorMessage.trim()
+      ? value.errorMessage.trim()
+      : undefined;
+  if (typeof clearCanvas !== 'boolean' && !cancelled && !errorMessage) {
+    return null;
+  }
+
+  return {
+    requestId,
+    clearCanvas,
+    cancelled,
+    errorMessage
   };
 }
 
@@ -859,6 +1042,9 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         --list-inactive-fg: var(--vscode-list-inactiveSelectionForeground, var(--fg));
         --attention: var(--vscode-notificationsInfoIcon-foreground, var(--focus));
         --border: color-mix(in srgb, var(--vscode-panel-border, var(--focus)) 72%, transparent);
+        --modal-backdrop: rgba(0, 0, 0, 0.35);
+        --modal-surface: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+        --modal-shadow: 0 18px 40px rgba(0, 0, 0, 0.38);
       }
 
       * {
@@ -1175,11 +1361,103 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
       .empty-state.is-visible {
         display: block;
       }
+
+      .removal-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: var(--modal-backdrop);
+      }
+
+      .removal-modal {
+        width: min(760px, 100%);
+        max-height: calc(100vh - 32px);
+        display: grid;
+        gap: 12px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--modal-surface);
+        color: var(--fg);
+        box-shadow: var(--modal-shadow);
+        padding: 18px;
+      }
+
+      .removal-modal-title {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .removal-modal-detail {
+        display: grid;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .removal-modal-path {
+        overflow-wrap: anywhere;
+        color: var(--fg);
+      }
+
+      .removal-modal-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .removal-modal-action-group {
+        display: inline-flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .removal-modal-button {
+        min-height: 28px;
+        border: 1px solid var(--vscode-button-border, transparent);
+        border-radius: 3px;
+        padding: 4px 11px;
+        background: var(--vscode-button-secondaryBackground, transparent);
+        color: var(--vscode-button-secondaryForeground, var(--fg));
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .removal-modal-button.is-cancel {
+        color: var(--vscode-button-secondaryForeground, var(--fg));
+      }
+
+      .removal-modal-button.is-primary {
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+      }
+
+      .removal-modal-button:hover {
+        background: var(--vscode-button-secondaryHoverBackground, var(--list-hover));
+      }
+
+      .removal-modal-button.is-primary:hover {
+        background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+      }
+
+      .removal-modal-button:focus-visible {
+        outline: 1px solid var(--focus);
+        outline-offset: 2px;
+      }
     </style>
   </head>
   <body>
     <div id="list" class="list" role="listbox" aria-label="当前画布节点列表"></div>
     <div id="emptyState" class="empty-state" role="status" aria-live="polite"></div>
+    <div id="modalRoot"></div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const ATTENTION_GROUP_KEY = '__attention__';
@@ -1196,6 +1474,8 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
 
       const list = document.getElementById('list');
       const emptyState = document.getElementById('emptyState');
+      const modalRoot = document.getElementById('modalRoot');
+      let activeRemovalPrompt = undefined;
 
       function normalizeViewMode(value) {
         return value === 'flat' ? 'flat' : 'grouped';
@@ -1331,6 +1611,199 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
             nodeId: item.nodeId
           }
         });
+      }
+
+      function normalizeRemovalPromptOptions(options) {
+        if (!options || typeof options !== 'object') {
+          return undefined;
+        }
+        const title = typeof options.title === 'string' ? options.title : '';
+        const rootPath = typeof options.rootPath === 'string' ? options.rootPath : '';
+        const clearActionTitle = typeof options.clearActionTitle === 'string' ? options.clearActionTitle : '';
+        const keepCanvasActionTitle = typeof options.keepCanvasActionTitle === 'string' ? options.keepCanvasActionTitle : '';
+        const clearDetail = typeof options.clearDetail === 'string' ? options.clearDetail : '';
+        const keepCanvasDetail = typeof options.keepCanvasDetail === 'string' ? options.keepCanvasDetail : '';
+        const defaultChoice = options.defaultChoice === 'clear-canvas' ? 'clear-canvas' : 'keep-canvas';
+        if (!title || !rootPath || !clearActionTitle || !keepCanvasActionTitle || !clearDetail || !keepCanvasDetail) {
+          return undefined;
+        }
+        return {
+          title,
+          rootPath,
+          clearActionTitle,
+          keepCanvasActionTitle,
+          clearDetail,
+          keepCanvasDetail,
+          defaultChoice
+        };
+      }
+
+      function postRemovalPromptResult(requestId, result = {}) {
+        vscode.postMessage({
+          type: 'sidebarNodeList/workspaceRootRemovalPromptResult',
+          payload: {
+            requestId,
+            ...result
+          }
+        });
+      }
+
+      function closeRemovalPrompt(result = { cancelled: true }) {
+        if (!activeRemovalPrompt) {
+          return;
+        }
+
+        const { requestId, previousFocus } = activeRemovalPrompt;
+        activeRemovalPrompt = undefined;
+        modalRoot.replaceChildren();
+        postRemovalPromptResult(requestId, result);
+        if (previousFocus && typeof previousFocus.focus === 'function') {
+          previousFocus.focus();
+        }
+      }
+
+      function renderRemovalPrompt(requestId, options) {
+        const normalizedOptions = normalizeRemovalPromptOptions(options);
+        if (!normalizedOptions) {
+          postRemovalPromptResult(requestId, { errorMessage: '移除确认参数无效。' });
+          return;
+        }
+
+        if (activeRemovalPrompt) {
+          closeRemovalPrompt({ cancelled: true });
+        }
+
+        const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+        activeRemovalPrompt = {
+          requestId,
+          previousFocus
+        };
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'removal-modal-backdrop';
+
+        const dialog = document.createElement('section');
+        dialog.className = 'removal-modal';
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-labelledby', 'removalModalTitle');
+
+        const title = document.createElement('h2');
+        title.id = 'removalModalTitle';
+        title.className = 'removal-modal-title';
+        title.textContent = normalizedOptions.title;
+
+        const detail = document.createElement('div');
+        detail.className = 'removal-modal-detail';
+
+        const pathLine = createRemovalPromptDetailLine('路径：');
+        const pathValue = document.createElement('span');
+        pathValue.className = 'removal-modal-path';
+        pathValue.textContent = normalizedOptions.rootPath;
+        pathLine.appendChild(pathValue);
+
+        const defaultAction =
+          normalizedOptions.defaultChoice === 'clear-canvas'
+            ? normalizedOptions.clearActionTitle
+            : normalizedOptions.keepCanvasActionTitle;
+        const defaultLine = createRemovalPromptDetailLine('默认操作：');
+        defaultLine.append(document.createTextNode(defaultAction));
+
+        const clearLine = createRemovalPromptDetailLine(normalizedOptions.clearActionTitle + '：');
+        clearLine.append(document.createTextNode(normalizedOptions.clearDetail));
+
+        const keepLine = createRemovalPromptDetailLine(normalizedOptions.keepCanvasActionTitle + '：');
+        keepLine.append(document.createTextNode(normalizedOptions.keepCanvasDetail));
+
+        detail.append(pathLine, defaultLine, clearLine, keepLine);
+
+        const actions = document.createElement('div');
+        actions.className = 'removal-modal-actions';
+        const choiceGroup = document.createElement('div');
+        choiceGroup.className = 'removal-modal-action-group';
+
+        const clearButton = createRemovalPromptButton({
+          label: normalizedOptions.clearActionTitle,
+          action: 'clear-canvas',
+          primary: normalizedOptions.defaultChoice === 'clear-canvas',
+          onClick: () => closeRemovalPrompt({ clearCanvas: true })
+        });
+        const keepButton = createRemovalPromptButton({
+          label: normalizedOptions.keepCanvasActionTitle,
+          action: 'keep-canvas',
+          primary: normalizedOptions.defaultChoice === 'keep-canvas',
+          onClick: () => closeRemovalPrompt({ clearCanvas: false })
+        });
+        const cancelButton = createRemovalPromptButton({
+          label: '取消',
+          action: 'cancel',
+          primary: false,
+          cancel: true,
+          onClick: () => closeRemovalPrompt({ cancelled: true })
+        });
+
+        const orderedActionButtons =
+          normalizedOptions.defaultChoice === 'clear-canvas'
+            ? [keepButton, clearButton]
+            : [clearButton, keepButton];
+        choiceGroup.append(...orderedActionButtons);
+        actions.append(choiceGroup, cancelButton);
+        dialog.append(title, detail, actions);
+        backdrop.append(dialog);
+        modalRoot.replaceChildren(backdrop);
+
+        backdrop.addEventListener('click', (event) => {
+          if (event.target === backdrop) {
+            closeRemovalPrompt({ cancelled: true });
+          }
+        });
+
+        dialog.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            closeRemovalPrompt({ cancelled: true });
+            return;
+          }
+          if (event.key !== 'Tab') {
+            return;
+          }
+
+          const focusable = Array.from(dialog.querySelectorAll('button'));
+          if (focusable.length === 0) {
+            return;
+          }
+          const currentIndex = focusable.indexOf(document.activeElement);
+          const nextIndex = event.shiftKey
+            ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+            : (currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+          event.preventDefault();
+          focusable[nextIndex].focus();
+        });
+
+        const defaultButton = normalizedOptions.defaultChoice === 'clear-canvas' ? clearButton : keepButton;
+        defaultButton.focus();
+      }
+
+      function createRemovalPromptDetailLine(label) {
+        const line = document.createElement('div');
+        const strong = document.createElement('strong');
+        strong.textContent = label;
+        line.append(strong);
+        return line;
+      }
+
+      function createRemovalPromptButton(options) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className =
+          'removal-modal-button' +
+          (options.primary ? ' is-primary' : '') +
+          (options.cancel ? ' is-cancel' : '');
+        button.setAttribute('data-sidebar-removal-modal-button', options.action);
+        button.setAttribute('data-sidebar-removal-modal-primary', options.primary ? 'true' : 'false');
+        button.textContent = options.label;
+        button.addEventListener('click', options.onClick);
+        return button;
       }
 
       function captureTestSnapshot() {
@@ -1970,6 +2443,11 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
                 }
               });
             });
+          return;
+        }
+
+        if (message.type === 'sidebarNodeList/workspaceRootRemovalPrompt' && message.payload) {
+          renderRemovalPrompt(message.payload.requestId, message.payload.options);
           return;
         }
 

@@ -86,6 +86,7 @@ try {
     await assertGroupedViewAddsAttentionSection(browser, html);
     await assertMultiRootFlatViewKeepsRootGroups(browser, html);
     await assertWorkspaceFolderGroupActions(browser, html);
+    await assertWorkspaceRootRemovalPromptModal(browser, html);
   } finally {
     await browser.close();
   }
@@ -308,6 +309,145 @@ async function assertWorkspaceFolderGroupActions(browser, html) {
   }
 }
 
+async function assertWorkspaceRootRemovalPromptModal(browser, html) {
+  const page = await createSidebarPage(browser, html);
+  try {
+    await dispatchRemovalPrompt(page, {
+      requestId: 'remove-worktree-clear-default',
+      options: {
+        title: '移除 Worktree「linked」？',
+        rootPath: '/repo/main.worktrees/linked',
+        clearActionTitle: '移除 Worktree 并清空画板',
+        keepCanvasActionTitle: '移除 Worktree 但保留画板',
+        clearDetail: '先清空此 worktree 的画板（2 个节点），再执行 git worktree remove。',
+        keepCanvasDetail: '执行 git worktree remove 并从 Workspace 移除；画板快照按此路径保留。',
+        defaultChoice: 'clear-canvas'
+      }
+    });
+
+    assert.deepEqual(
+      await getRemovalPromptButtons(page),
+      [
+        { action: 'keep-canvas', label: '移除 Worktree 但保留画板', primary: false },
+        { action: 'clear-canvas', label: '移除 Worktree 并清空画板', primary: true },
+        { action: 'cancel', label: '取消', primary: false }
+      ],
+      'Worktree removal prompt should keep the two functional actions adjacent and put Cancel at the end.'
+    );
+    assert.equal(
+      await page.evaluate(
+        () => document.activeElement?.getAttribute('data-sidebar-removal-modal-button') === 'clear-canvas'
+      ),
+      true,
+      'Worktree removal should focus the default clear-canvas action.'
+    );
+    await page.click('[data-sidebar-removal-modal-button="clear-canvas"]');
+    assert.deepEqual(await lastSidebarMessage(page, 'sidebarNodeList/workspaceRootRemovalPromptResult'), {
+      type: 'sidebarNodeList/workspaceRootRemovalPromptResult',
+      payload: {
+        requestId: 'remove-worktree-clear-default',
+        clearCanvas: true
+      }
+    });
+
+    await dispatchRemovalPrompt(page, {
+      requestId: 'remove-folder-keep-default',
+      options: {
+        title: '从 Workspace 移除文件夹「frontend」？',
+        rootPath: '/repo/frontend',
+        clearActionTitle: '清空画板并移除',
+        keepCanvasActionTitle: '保留画板并移除',
+        clearDetail: '先清空此文件夹的画板（当前画板为空），再从 Workspace 移除。',
+        keepCanvasDetail: '仅从当前 Workspace 移除文件夹；磁盘文件和画板状态都会保留。',
+        defaultChoice: 'keep-canvas'
+      }
+    });
+
+    assert.deepEqual(
+      await getRemovalPromptButtons(page),
+      [
+        { action: 'clear-canvas', label: '清空画板并移除', primary: false },
+        { action: 'keep-canvas', label: '保留画板并移除', primary: true },
+        { action: 'cancel', label: '取消', primary: false }
+      ],
+      'Folder removal prompt should keep the two functional actions adjacent and put Cancel at the end.'
+    );
+    await page.click('[data-sidebar-removal-modal-button="keep-canvas"]');
+    assert.deepEqual(await lastSidebarMessage(page, 'sidebarNodeList/workspaceRootRemovalPromptResult'), {
+      type: 'sidebarNodeList/workspaceRootRemovalPromptResult',
+      payload: {
+        requestId: 'remove-folder-keep-default',
+        clearCanvas: false
+      }
+    });
+
+    await dispatchRemovalPrompt(page, {
+      requestId: 'remove-folder-cancel',
+      options: {
+        title: '从 Workspace 移除文件夹「backend」？',
+        rootPath: '/repo/backend',
+        clearActionTitle: '清空画板并移除',
+        keepCanvasActionTitle: '保留画板并移除',
+        clearDetail: '先清空此文件夹的画板（1 个节点），再从 Workspace 移除。',
+        keepCanvasDetail: '仅从当前 Workspace 移除文件夹；磁盘文件和画板状态都会保留。',
+        defaultChoice: 'keep-canvas'
+      }
+    });
+    await page.click('[data-sidebar-removal-modal-button="cancel"]');
+    assert.deepEqual(await lastSidebarMessage(page, 'sidebarNodeList/workspaceRootRemovalPromptResult'), {
+      type: 'sidebarNodeList/workspaceRootRemovalPromptResult',
+      payload: {
+        requestId: 'remove-folder-cancel',
+        cancelled: true
+      }
+    });
+
+    await dispatchRemovalPrompt(page, {
+      requestId: 'remove-worktree-escape',
+      options: {
+        title: '移除 Worktree「linked」？',
+        rootPath: '/repo/main.worktrees/linked',
+        clearActionTitle: '移除 Worktree 并清空画板',
+        keepCanvasActionTitle: '移除 Worktree 但保留画板',
+        clearDetail: '先清空此 worktree 的画板（2 个节点），再执行 git worktree remove。',
+        keepCanvasDetail: '执行 git worktree remove 并从 Workspace 移除；画板快照按此路径保留。',
+        defaultChoice: 'clear-canvas'
+      }
+    });
+    await page.keyboard.press('Escape');
+    assert.deepEqual(await lastSidebarMessage(page, 'sidebarNodeList/workspaceRootRemovalPromptResult'), {
+      type: 'sidebarNodeList/workspaceRootRemovalPromptResult',
+      payload: {
+        requestId: 'remove-worktree-escape',
+        cancelled: true
+      }
+    });
+
+    await dispatchRemovalPrompt(page, {
+      requestId: 'remove-folder-backdrop',
+      options: {
+        title: '从 Workspace 移除文件夹「scratch」？',
+        rootPath: '/repo/scratch',
+        clearActionTitle: '清空画板并移除',
+        keepCanvasActionTitle: '保留画板并移除',
+        clearDetail: '先清空此文件夹的画板（当前画板为空），再从 Workspace 移除。',
+        keepCanvasDetail: '仅从当前 Workspace 移除文件夹；磁盘文件和画板状态都会保留。',
+        defaultChoice: 'keep-canvas'
+      }
+    });
+    await page.click('.removal-modal-backdrop', { position: { x: 1, y: 1 } });
+    assert.deepEqual(await lastSidebarMessage(page, 'sidebarNodeList/workspaceRootRemovalPromptResult'), {
+      type: 'sidebarNodeList/workspaceRootRemovalPromptResult',
+      payload: {
+        requestId: 'remove-folder-backdrop',
+        cancelled: true
+      }
+    });
+  } finally {
+    await page.close();
+  }
+}
+
 async function createSidebarPage(browser, html) {
   const page = await browser.newPage({ viewport: { width: 320, height: 600 } });
   const testHtml = html.replace(
@@ -333,6 +473,28 @@ async function lastSidebarMessage(page, type) {
     const matchingMessages = window.__sidebarNodeListMessages.filter((message) => message.type === messageType);
     return matchingMessages[matchingMessages.length - 1];
   }, type);
+}
+
+async function dispatchRemovalPrompt(page, payload) {
+  await page.evaluate((nextPayload) => {
+    window.dispatchEvent(new MessageEvent('message', {
+      data: {
+        type: 'sidebarNodeList/workspaceRootRemovalPrompt',
+        payload: nextPayload
+      }
+    }));
+  }, payload);
+  await page.waitForSelector('[data-sidebar-removal-modal-button]');
+}
+
+async function getRemovalPromptButtons(page) {
+  return await page.$$eval('[data-sidebar-removal-modal-button]', (buttons) =>
+    buttons.map((button) => ({
+      action: button.getAttribute('data-sidebar-removal-modal-button') || '',
+      label: button.textContent || '',
+      primary: button.getAttribute('data-sidebar-removal-modal-primary') === 'true'
+    }))
+  );
 }
 
 async function renderSidebarState(page, payload) {

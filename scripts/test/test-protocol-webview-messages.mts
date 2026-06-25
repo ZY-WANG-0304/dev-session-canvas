@@ -364,10 +364,15 @@ assert.match(
 
 const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
 const extensionSource = await readFile('src/extension.ts', 'utf8');
+const sidebarNodeListSource = await readFile('src/sidebar/CanvasSidebarNodeListView.ts', 'utf8');
 const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
 const removalPromptSource = extensionSource.slice(
   extensionSource.indexOf('async function promptWorkspaceRootRemovalChoice'),
   extensionSource.indexOf('async function clearWorkspaceRootCanvasIfRequested')
+);
+const sidebarRemovalPromptSource = sidebarNodeListSource.slice(
+  sidebarNodeListSource.indexOf('public canPromptWorkspaceRootRemovalChoice'),
+  sidebarNodeListSource.indexOf('function captureTestSnapshot')
 );
 assert.match(
   panelManagerSource,
@@ -422,20 +427,40 @@ assert.match(
 assert.match(
   removalPromptSource,
   /showWarningMessage<WorkspaceRootRemovalModalItem>[\s\S]*modal: true[\s\S]*detail: buildWorkspaceRootRemovalModalDetail\(options\)/u,
-  'Expected workspace root removal confirmation to use a modal dialog with detailed copy instead of QuickPick.'
+  'Expected command-palette workspace root removal confirmation to keep a modal fallback with detailed copy instead of QuickPick.'
 );
 assert.match(
-  removalPromptSource,
-  /options\.defaultChoice === 'clear-canvas'[\s\S]*\[cancelItem, keepCanvasItem, clearItem\][\s\S]*\[cancelItem, clearItem, keepCanvasItem\]/u,
-  'Expected workspace root removal confirmation to keep Cancel on the left and place the default action on the right.'
+  extensionSource,
+  /promptWorkspaceRootRemovalChoiceWithPreferredSurface[\s\S]*sidebarPrompt\?\.canPromptWorkspaceRootRemovalChoice\(\)[\s\S]*sidebarPrompt\.promptWorkspaceRootRemovalChoice\(options\)[\s\S]*return promptWorkspaceRootRemovalChoice\(options\)/u,
+  'Expected sidebar-triggered workspace root removal to prefer the sidebar modal and fall back to the host modal.'
+);
+assert.match(
+  sidebarRemovalPromptSource,
+  /type: 'sidebarNodeList\/workspaceRootRemovalPrompt'[\s\S]*type: 'sidebarNodeList\/workspaceRootRemovalPromptResult'/u,
+  'Expected the sidebar node list Webview protocol to own a removal prompt request/result pair.'
+);
+assert.match(
+  sidebarRemovalPromptSource,
+  /choiceGroup\.append\(\.\.\.orderedActionButtons\)[\s\S]*actions\.append\(choiceGroup, cancelButton\)/u,
+  'Expected sidebar removal modal to keep the two functional actions adjacent and place Cancel at the end.'
+);
+assert.match(
+  sidebarRemovalPromptSource,
+  /normalizedOptions\.defaultChoice === 'clear-canvas'[\s\S]*\? \[keepButton, clearButton\][\s\S]*: \[clearButton, keepButton\]/u,
+  'Expected sidebar removal modal to place the default action after the alternative inside the functional action group.'
+);
+assert.match(
+  sidebarRemovalPromptSource,
+  /data-sidebar-removal-modal-button[\s\S]*data-sidebar-removal-modal-primary/u,
+  'Expected sidebar removal modal buttons to expose stable attributes for layout regression tests.'
 );
 assert.match(
   removalPromptSource,
   /isCloseAffordance: true[\s\S]*`路径：\$\{options\.rootPath\}`[\s\S]*`默认操作：\$\{defaultActionTitle\}`/u,
-  'Expected workspace root removal confirmation to keep a real cancel affordance and show path/default action in the modal detail.'
+  'Expected command-palette workspace root removal fallback to keep a real cancel affordance and show path/default action in the modal detail.'
 );
 assert.doesNotMatch(
-  removalPromptSource,
+  removalPromptSource + sidebarRemovalPromptSource,
   /showQuickPick/u,
   'Expected workspace root removal confirmation not to use QuickPick.'
 );

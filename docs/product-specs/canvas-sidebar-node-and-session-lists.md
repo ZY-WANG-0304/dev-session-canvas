@@ -30,7 +30,7 @@
 5. 平铺展示在单根 workspace 下仍显示为普通列表；若存在处于 attention 状态的节点，这些节点排在普通节点前。多根 workspace 下的平铺展示仍保留 workspace root 分组；若存在处于 attention 状态的节点，顶部先显示“待处理提醒”虚拟分组，然后再显示各 root 分组。
 6. 当画布上的节点发生变化（新增、删除、状态更新）时，节点列表自动同步更新。
 7. 用户可以在 `节点` view 标题栏直接添加文件夹到当前 workspace，也可以新建 git worktree 并把新目录加入 workspace；多根 workspace 下全局新建 worktree 先选择基准 folder，再用 VS Code 风格 QuickPick 选择创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree。
-8. 多根 workspace 的 workspace folder 分组行最前面用图标区分普通 folder、git repository 和 git worktree；行尾提供 folder 级操作：基于该 folder 新建 worktree 并加入 workspace、移除 git worktree 并从 workspace 移除该 folder，以及从当前 workspace 移除该 folder。点击移除 folder 后，用户必须先在确认选择框中选择保留画板或清空画板，默认保留画板；点击移除 worktree 时，宿主先确认该 folder 是可删除的 linked worktree，再在确认选择框中提供“移除 Worktree 并清空画板”和“移除 Worktree 但保留画板”，默认执行前者。确认选择框需要说明将影响的节点、连线、分组和运行中的 Agent / Terminal 数量。新建 worktree 使用 VS Code 专用 `worktree` Codicon，普通移除 folder 不删除磁盘目录，移除 worktree 的两条路径都会执行 `git worktree remove`，区别只在是否清空 root-local 画板。
+8. 多根 workspace 的 workspace folder 分组行最前面用图标区分普通 folder、git repository 和 git worktree；行尾提供 folder 级操作：基于该 folder 新建 worktree 并加入 workspace、移除 git worktree 并从 workspace 移除该 folder，以及从当前 workspace 移除该 folder。点击移除 folder 后，用户必须先在确认选择框中选择保留画板或清空画板，默认保留画板；点击移除 worktree 时，宿主先确认该 folder 是可删除的 linked worktree，再在确认选择框中提供“移除 Worktree 并清空画板”和“移除 Worktree 但保留画板”，默认执行前者。确认选择框需要说明将影响的节点、连线、分组和运行中的 Agent / Terminal 数量；来自 sidebar 的确认框必须让两个功能动作相邻，并把 `取消` 放在末尾，不能夹在两个功能动作之间。新建 worktree 使用 VS Code 专用 `worktree` Codicon，普通移除 folder 不删除磁盘目录，移除 worktree 的两条路径都会执行 `git worktree remove`，区别只在是否清空 root-local 画板。
 
 ### 历史会话列表流程
 
@@ -61,7 +61,7 @@
 - 新建 worktree 的宿主交互对齐 VS Code Source Control：先展示包含 `Create new branch...`、`Create new branch from...`、`HEAD` 和本地分支 refs 的 QuickPick；选择 `Create new branch from...` 后进入第二层 ref QuickPick；只有创建新分支路径需要输入分支名，已有 ref 路径直接确认目标目录；`HEAD` 或已被其他 worktree checkout 的分支会以 detached HEAD 创建，避免重复 checkout 同一分支失败。
 - 多根 workspace 下，workspace folder 分组行最前面提供 folder 类型图标：普通 folder 使用 `folder` Codicon，git repository 使用 `repo` Codicon，linked git worktree 使用 `worktree` Codicon；未发现 `.git` 时显示普通 folder，`.git` 文件读取失败或无法识别时保守显示 git repository。
 - 多根 workspace 下，workspace folder 分组行尾提供 `新建 worktree 并加入 workspace`、`移除 worktree 并从 workspace 移除 folder` 与 `从 workspace 移除 folder` 三个 icon-only 操作；workspace folder 行的新建 worktree 直接使用该 folder，不再额外要求用户选择基准 folder；worktree 按钮必须使用 bundled VSCode Codicon `worktree`。
-- 从 workspace 移除 folder 必须用确认选择框让用户先选择是否清空对应 root 的画板状态。选择清空时，宿主先清空该 root-local canvas state，再继续移除；folder 选择保留画板时，只调用 VS Code workspace folder 移除语义，不删除目录，并保留 root-local canvas state，后续重新加入该 folder 时可恢复。worktree 移除必须先确认该 folder 是 linked git worktree，再用确认选择框显式区分“移除 Worktree 并清空画板”和“移除 Worktree 但保留画板”，默认选择前者；两条 worktree 路径都会执行 `git worktree remove` 并从 workspace 移除对应 folder，区别只在是否清空 root-local canvas state。确认选择框文案必须短句化；清空路径需要展示将清空的节点、连线、分组数量，以及是否会停止 Agent / Terminal。
+- 从 workspace 移除 folder 必须用确认选择框让用户先选择是否清空对应 root 的画板状态。选择清空时，宿主先清空该 root-local canvas state，再继续移除；folder 选择保留画板时，只调用 VS Code workspace folder 移除语义，不删除目录，并保留 root-local canvas state，后续重新加入该 folder 时可恢复。worktree 移除必须先确认该 folder 是 linked git worktree，再用确认选择框显式区分“移除 Worktree 并清空画板”和“移除 Worktree 但保留画板”，默认选择前者；两条 worktree 路径都会执行 `git worktree remove` 并从 workspace 移除对应 folder，区别只在是否清空 root-local canvas state。确认选择框文案必须短句化；清空路径需要展示将清空的节点、连线、分组数量，以及是否会停止 Agent / Terminal；sidebar 内确认框必须按“非默认功能动作、默认功能动作、取消”排列，非 sidebar 入口可使用宿主 modal fallback。
 - 当 worktree 功能不可用时，必须通过 modal 明确提示具体原因，例如 workspace 未受信任、当前 folder 不是本地文件系统 folder、当前 folder 还不是 git repository、当前 folder 不是可移除的 linked worktree，或环境中找不到 `git`。
 - UI 风格符合 VSCode 原生 sidebar 内容列表风格，简洁克制，不加过多装饰和线条。
 
