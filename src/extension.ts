@@ -1342,8 +1342,9 @@ function buildWorktreeRemovalDetail(options: {
   };
 }
 
-interface WorkspaceRootRemovalQuickPickItem extends vscode.QuickPickItem {
-  clearCanvas: boolean;
+interface WorkspaceRootRemovalModalItem extends vscode.MessageItem {
+  clearCanvas?: boolean;
+  cancel?: boolean;
 }
 
 async function promptWorkspaceRootRemovalChoice(options: {
@@ -1355,33 +1356,61 @@ async function promptWorkspaceRootRemovalChoice(options: {
   keepCanvasDetail: string;
   defaultChoice: 'clear-canvas' | 'keep-canvas';
 }): Promise<WorkspaceRootRemovalChoice | undefined> {
-  const clearItem: WorkspaceRootRemovalQuickPickItem = {
-    label: options.clearActionTitle,
-    description: options.defaultChoice === 'clear-canvas' ? '默认' : undefined,
-    detail: options.clearDetail,
+  const cancelItem: WorkspaceRootRemovalModalItem = {
+    title: '取消',
+    isCloseAffordance: true,
+    cancel: true
+  };
+  const clearItem: WorkspaceRootRemovalModalItem = {
+    title: options.clearActionTitle,
     clearCanvas: true
   };
-  const keepCanvasItem: WorkspaceRootRemovalQuickPickItem = {
-    label: options.keepCanvasActionTitle,
-    description: options.defaultChoice === 'keep-canvas' ? '默认' : undefined,
-    detail: options.keepCanvasDetail,
+  const keepCanvasItem: WorkspaceRootRemovalModalItem = {
+    title: options.keepCanvasActionTitle,
     clearCanvas: false
   };
   const items =
     options.defaultChoice === 'clear-canvas'
-      ? [clearItem, keepCanvasItem]
-      : [keepCanvasItem, clearItem];
-  const selection = await vscode.window.showQuickPick(items, {
-    title: options.title,
-    placeHolder: `路径：${options.rootPath}`
-  });
-  if (!selection) {
+      ? [cancelItem, keepCanvasItem, clearItem]
+      : [cancelItem, clearItem, keepCanvasItem];
+  const selection = await vscode.window.showWarningMessage<WorkspaceRootRemovalModalItem>(
+    options.title,
+    {
+      modal: true,
+      detail: buildWorkspaceRootRemovalModalDetail(options)
+    },
+    ...items
+  );
+  if (!selection || selection.cancel) {
     return undefined;
   }
 
   return {
-    clearCanvas: selection.clearCanvas
+    clearCanvas: selection.clearCanvas === true
   };
+}
+
+function buildWorkspaceRootRemovalModalDetail(options: {
+  rootPath: string;
+  clearActionTitle: string;
+  keepCanvasActionTitle: string;
+  clearDetail: string;
+  keepCanvasDetail: string;
+  defaultChoice: 'clear-canvas' | 'keep-canvas';
+}): string {
+  const defaultActionTitle =
+    options.defaultChoice === 'clear-canvas'
+      ? options.clearActionTitle
+      : options.keepCanvasActionTitle;
+  return [
+    `路径：${options.rootPath}`,
+    '',
+    `默认操作：${defaultActionTitle}`,
+    '',
+    `${options.clearActionTitle}：${options.clearDetail}`,
+    '',
+    `${options.keepCanvasActionTitle}：${options.keepCanvasDetail}`
+  ].join('\n');
 }
 
 async function clearWorkspaceRootCanvasIfRequested(

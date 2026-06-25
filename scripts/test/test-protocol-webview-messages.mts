@@ -421,18 +421,23 @@ assert.match(
 );
 assert.match(
   removalPromptSource,
-  /options\.defaultChoice === 'clear-canvas'[\s\S]*\[clearItem, keepCanvasItem\][\s\S]*\[keepCanvasItem, clearItem\]/u,
-  'Expected workspace root removal confirmation to order the default choice first in the vertical picker.'
+  /showWarningMessage<WorkspaceRootRemovalModalItem>[\s\S]*modal: true[\s\S]*detail: buildWorkspaceRootRemovalModalDetail\(options\)/u,
+  'Expected workspace root removal confirmation to use a modal dialog with detailed copy instead of QuickPick.'
 );
 assert.match(
   removalPromptSource,
-  /showQuickPick\(items,[\s\S]*placeHolder: `路径：\$\{options\.rootPath\}`/u,
-  'Expected workspace root removal confirmation to show the target path in the picker.'
+  /options\.defaultChoice === 'clear-canvas'[\s\S]*\[cancelItem, keepCanvasItem, clearItem\][\s\S]*\[cancelItem, clearItem, keepCanvasItem\]/u,
+  'Expected workspace root removal confirmation to keep Cancel on the left and place the default action on the right.'
+);
+assert.match(
+  removalPromptSource,
+  /isCloseAffordance: true[\s\S]*`路径：\$\{options\.rootPath\}`[\s\S]*`默认操作：\$\{defaultActionTitle\}`/u,
+  'Expected workspace root removal confirmation to keep a real cancel affordance and show path/default action in the modal detail.'
 );
 assert.doesNotMatch(
   removalPromptSource,
-  /ignoreFocusOut:\s*true/u,
-  'Expected workspace root removal confirmation to keep normal Esc/focus cancellation instead of trapping focus.'
+  /showQuickPick/u,
+  'Expected workspace root removal confirmation not to use QuickPick.'
 );
 assert.match(
   extensionSource,
