@@ -31,7 +31,16 @@ import {
   type ExecutionAttentionSignalKind,
   type ExecutionAttentionSignalState
 } from '../common/executionAttentionSignals';
-import { prepareExecutionTerminalPasteText } from '../common/executionTerminalClipboard';
+import {
+  createExecutionImagePasteFileName,
+  EXECUTION_IMAGE_PASTE_MAX_BYTES,
+  getExecutionImagePasteCacheFileCleanupDecision,
+  formatExecutionImagePasteText,
+  hasValidExecutionImagePasteSignature,
+  isExecutionImagePasteSizeAllowed,
+  prepareExecutionTerminalPasteText,
+  type ExecutionImagePasteMimeType
+} from '../common/executionTerminalClipboard';
 import {
   COMMAND_IDS,
   CONTEXT_KEYS,
@@ -40,6 +49,7 @@ import {
   STORAGE_KEYS,
   VIEW_IDS
 } from '../common/extensionIdentity';
+import { cleanupExecutionImagePasteCache } from './executionImagePasteCacheMaintenance';
 import {
   selectPreferredExtensionStorageRecoverySource,
   type ExtensionStorageRecoverySourceSelection
@@ -1030,6 +1040,17 @@ type NoteMarkdownExistingDropChoice = 'create' | 'locate';
 // Keep the directory name stable so existing storage-backed drafts survive the field rename.
 const NOTE_MARKDOWN_RECOVERABLE_DRAFTS_STORAGE_DIRECTORY = 'note-markdown-drafts';
 const NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const EXECUTION_IMAGE_PASTE_STORAGE_DIRECTORY = 'execution-image-pastes';
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_INITIAL_DELAY_MS = 30 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_JITTER_MS = 5 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_REGULAR_DELAY_MS = 6 * 60 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_CONTINUE_DELAY_MS = 5 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_FAILURE_DELAY_MS = 60 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_RECENT_INPUT_GRACE_MS = 10 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_ERROR_NOTICE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_FILES_DELETED = 100;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_ENTRIES_SCANNED = 1000;
+const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_DURATION_MS = 200;
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
@@ -1125,6 +1146,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private pendingCanvasStatePersist: PendingCanvasStatePersist | undefined;
   private pendingCanvasStatePersistFlush: Promise<void> | undefined;
   private pendingCanvasStatePersistTimer: NodeJS.Timeout | undefined;
+  private executionImagePasteCacheMaintenanceTimer: NodeJS.Timeout | undefined;
+  private executionImagePasteCacheMaintenanceInProgress = false;
+  private lastExecutionImagePasteCacheMaintenanceErrorNoticeAtMs = 0;
   private hostEventLoopLagMonitorTimer: NodeJS.Timeout | undefined;
   private hostEventLoopLagMonitorExpectedAtMs = 0;
   private readonly scheduledExecutionOutputPosts = new Map<string, ScheduledExecutionOutputPost>();
@@ -1190,8 +1214,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     context.subscriptions.push(this.sidebarStateEmitter, this.templateCatalogEmitter);
     this.startHostEventLoopLagMonitor();
+    this.scheduleExecutionImagePasteCacheMaintenance('initial');
     context.subscriptions.push({
       dispose: () => {
+        if (this.executionImagePasteCacheMaintenanceTimer) {
+          clearTimeout(this.executionImagePasteCacheMaintenanceTimer);
+          this.executionImagePasteCacheMaintenanceTimer = undefined;
+        }
         if (this.hostEventLoopLagMonitorTimer) {
           clearTimeout(this.hostEventLoopLagMonitorTimer);
           this.hostEventLoopLagMonitorTimer = undefined;
@@ -11127,6 +11156,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           parsedMessage.payload.bracketedPasteMode
         );
         return;
+      case 'webview/pasteExecutionImage':
+        void this.handleExecutionImagePasteRequest(
+          sourceSurface,
+          parsedMessage.payload.kind,
+          parsedMessage.payload.nodeId,
+          parsedMessage.payload.requestId,
+          parsedMessage.payload.mimeType,
+          parsedMessage.payload.dataBase64,
+          parsedMessage.payload.sizeBytes,
+          parsedMessage.payload.name
+        );
+        return;
       case 'webview/dropExecutionResource':
         void this.handleDroppedExecutionResource(
           parsedMessage.payload.kind,
@@ -14863,6 +14904,287 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       bytes: Buffer.byteLength(pasteText, 'utf8'),
       preview: summarizeDiagnosticInput(pasteText)
     });
+  }
+
+  private async handleExecutionImagePasteRequest(
+    sourceSurface: CanvasSurfaceLocation,
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    requestId: string,
+    mimeType: ExecutionImagePasteMimeType,
+    dataBase64: string,
+    sizeBytes: number,
+    name?: string
+  ): Promise<void> {
+    if (kind !== 'agent') {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: 'Terminal 节点暂不支持直接粘贴截图。'
+        }
+      });
+      return;
+    }
+
+    const session = this.getExecutionSessions('agent').get(nodeId);
+    if (!session) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: '当前 Agent 没有可输入的运行中会话。'
+        }
+      });
+      return;
+    }
+
+    let imageBuffer: Buffer;
+    try {
+      imageBuffer = Buffer.from(dataBase64, 'base64');
+    } catch (error) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.recordDiagnosticEvent('execution/imagePasteRejected', {
+        kind,
+        nodeId,
+        requestId,
+        reason: 'decode-failed',
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: '读取截图数据失败。'
+        }
+      });
+      return;
+    }
+
+    if (
+      !isExecutionImagePasteSizeAllowed(sizeBytes) ||
+      imageBuffer.length !== sizeBytes ||
+      imageBuffer.length > EXECUTION_IMAGE_PASTE_MAX_BYTES ||
+      !hasValidExecutionImagePasteSignature(imageBuffer, mimeType)
+    ) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.recordDiagnosticEvent('execution/imagePasteRejected', {
+        kind,
+        nodeId,
+        requestId,
+        reason: 'invalid-image',
+        mimeType,
+        declaredBytes: sizeBytes,
+        decodedBytes: imageBuffer.length
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: '剪贴板中的图片格式不支持或文件过大。'
+        }
+      });
+      return;
+    }
+
+    try {
+      const imagePath = this.writeExecutionImagePasteFile(nodeId, mimeType, imageBuffer);
+      const pasteText = formatExecutionImagePasteText(imagePath);
+
+      if (!this.getExecutionSessions('agent').has(nodeId)) {
+        this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+        return;
+      }
+
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/executionPasteText',
+        payload: {
+          requestId,
+          nodeId,
+          kind,
+          text: pasteText
+        }
+      });
+      this.recordDiagnosticEvent('execution/imagePastePrepared', {
+        kind,
+        nodeId,
+        requestId,
+        provider: session.agentProvider ?? 'codex',
+        mimeType,
+        bytes: imageBuffer.length,
+        originalName: name,
+        imagePath
+      });
+    } catch (error) {
+      this.postExecutionPasteCancelled(sourceSurface, kind, nodeId, requestId);
+      this.recordDiagnosticEvent('execution/imagePasteWriteFailed', {
+        kind,
+        nodeId,
+        requestId,
+        mimeType,
+        bytes: imageBuffer.length,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.postMessageToSurface(sourceSurface, {
+        type: 'host/error',
+        payload: {
+          message: error instanceof Error ? error.message : '保存剪贴板截图失败。'
+        }
+      });
+    }
+  }
+
+  private writeExecutionImagePasteFile(
+    nodeId: string,
+    mimeType: ExecutionImagePasteMimeType,
+    imageBuffer: Buffer
+  ): string {
+    const nodeDirectory = path.join(
+      this.getExtensionStoragePath(),
+      EXECUTION_IMAGE_PASTE_STORAGE_DIRECTORY,
+      sanitizeExecutionImagePasteStorageSegment(nodeId)
+    );
+    fs.mkdirSync(nodeDirectory, {
+      recursive: true
+    });
+    const fileName = createExecutionImagePasteFileName({
+      mimeType,
+      randomSuffix: randomUUID().replace(/-/g, '').slice(0, 12)
+    });
+    const imagePath = path.join(nodeDirectory, fileName);
+    const tempPath = `${imagePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tempPath, imageBuffer);
+    fs.renameSync(tempPath, imagePath);
+    return imagePath;
+  }
+
+  private getExecutionImagePasteCacheRootPath(): string {
+    return path.join(this.getExtensionStoragePath(), EXECUTION_IMAGE_PASTE_STORAGE_DIRECTORY);
+  }
+
+  private scheduleExecutionImagePasteCacheMaintenance(
+    reason: 'initial' | 'regular' | 'continue' | 'retry',
+    delayMs?: number
+  ): void {
+    if (this.executionImagePasteCacheMaintenanceTimer) {
+      return;
+    }
+
+    const resolvedDelayMs = delayMs ?? this.getExecutionImagePasteCacheMaintenanceDelayMs(reason);
+    this.executionImagePasteCacheMaintenanceTimer = setTimeout(() => {
+      this.executionImagePasteCacheMaintenanceTimer = undefined;
+      void this.runExecutionImagePasteCacheMaintenance(reason);
+    }, resolvedDelayMs);
+    this.executionImagePasteCacheMaintenanceTimer.unref?.();
+  }
+
+  private getExecutionImagePasteCacheMaintenanceDelayMs(
+    reason: 'initial' | 'regular' | 'continue' | 'retry'
+  ): number {
+    if (reason === 'continue') {
+      return EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_CONTINUE_DELAY_MS;
+    }
+    if (reason === 'retry') {
+      return EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_FAILURE_DELAY_MS;
+    }
+    if (reason === 'initial') {
+      return (
+        EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_INITIAL_DELAY_MS +
+        Math.floor(Math.random() * EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_JITTER_MS)
+      );
+    }
+    return EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_REGULAR_DELAY_MS;
+  }
+
+  private scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun(
+    reason: 'regular' | 'continue' | 'retry'
+  ): void {
+    setTimeout(() => this.scheduleExecutionImagePasteCacheMaintenance(reason), 0);
+  }
+
+  private async runExecutionImagePasteCacheMaintenance(
+    reason: 'initial' | 'regular' | 'continue' | 'retry'
+  ): Promise<void> {
+    if (this.executionImagePasteCacheMaintenanceInProgress) {
+      this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun('continue');
+      return;
+    }
+
+    if (this.hasRecentExecutionInputPriority()) {
+      this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun('continue');
+      return;
+    }
+
+    const cacheRootPath = this.getExecutionImagePasteCacheRootPath();
+    this.executionImagePasteCacheMaintenanceInProgress = true;
+    try {
+      const result = cleanupExecutionImagePasteCache({
+        cacheRootPath,
+        shouldDeleteFile: getExecutionImagePasteCacheFileCleanupDecision,
+        maxFilesDeleted: EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_FILES_DELETED,
+        maxEntriesScanned: EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_ENTRIES_SCANNED,
+        maxDurationMs: EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_DURATION_MS
+      });
+
+      this.recordDiagnosticEvent('execution/imagePasteCacheMaintenance', {
+        reason,
+        cacheRootPath,
+        ...result
+      });
+
+      if (result.failedDeletes > 0 || result.errors.length > 0) {
+        this.notifyExecutionImagePasteCacheMaintenanceFailure(cacheRootPath, result.errors[0]);
+        this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun('retry');
+        return;
+      }
+
+      this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun(
+        result.budgetExhausted ? 'continue' : 'regular'
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.recordDiagnosticEvent('execution/imagePasteCacheMaintenanceFailed', {
+        reason,
+        cacheRootPath,
+        message
+      });
+      this.notifyExecutionImagePasteCacheMaintenanceFailure(cacheRootPath, message);
+      this.scheduleExecutionImagePasteCacheMaintenanceAfterCurrentRun('retry');
+    } finally {
+      this.executionImagePasteCacheMaintenanceInProgress = false;
+    }
+  }
+
+  private hasRecentExecutionInputPriority(): boolean {
+    return (
+      this.recentExecutionInputPriority !== undefined &&
+      Date.now() - this.recentExecutionInputPriority.receivedAtMs <
+        EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_RECENT_INPUT_GRACE_MS
+    );
+  }
+
+  private notifyExecutionImagePasteCacheMaintenanceFailure(
+    cacheRootPath: string,
+    detail: string | undefined
+  ): void {
+    const nowMs = Date.now();
+    if (
+      nowMs - this.lastExecutionImagePasteCacheMaintenanceErrorNoticeAtMs <
+      EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_ERROR_NOTICE_INTERVAL_MS
+    ) {
+      return;
+    }
+
+    this.lastExecutionImagePasteCacheMaintenanceErrorNoticeAtMs = nowMs;
+    const detailText = detail ? `：${detail}` : '';
+    void vscode.window
+      .showErrorMessage(
+        `清理 Agent 临时截图缓存失败${detailText}。这不会影响当前 Agent 输入。`,
+        '打开缓存目录'
+      )
+      .then((selection) => {
+        if (selection === '打开缓存目录') {
+          void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(cacheRootPath));
+        }
+      });
   }
 
   private postExecutionPasteCancelled(
@@ -21076,6 +21398,15 @@ function normalizeTrackedFilePath(filePath: string): string | undefined {
 function normalizeExecutionCwd(cwd: string): string | undefined {
   const trimmed = cwd.trim();
   return trimmed ? path.normalize(trimmed) : undefined;
+}
+
+function sanitizeExecutionImagePasteStorageSegment(value: string): string {
+  const sanitized = value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[. -]+|[. -]+$/g, '')
+    .slice(0, 80);
+  return sanitized || 'agent';
 }
 
 function areSameExecutionPath(left: string, right: string): boolean {

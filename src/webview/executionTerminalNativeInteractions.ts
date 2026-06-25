@@ -17,8 +17,11 @@ import type {
   ExecutionTerminalClipboardDiagnosticSource
 } from '../common/protocol';
 import {
+  EXECUTION_IMAGE_PASTE_MAX_BYTES,
   inferExecutionTerminalClipboardPlatform,
+  normalizeExecutionImagePasteMimeType,
   resolveExecutionTerminalClipboardShortcut,
+  type ExecutionImagePasteData,
   type ExecutionTerminalClipboardPlatform
 } from '../common/executionTerminalClipboard';
 import {
@@ -71,6 +74,11 @@ interface ExecutionTerminalNativeInteractionsOptions {
     nodeId: string,
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
+  ) => void;
+  onPasteImage: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    image: ExecutionImagePasteData
   ) => void;
   onClipboardDiagnostic?: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   resolveFileLinks: (
@@ -469,12 +477,50 @@ export function setupExecutionTerminalNativeInteractions(
     }
 
     if (action === 'paste') {
-      options.onRequestPaste(options.nodeId, options.kind, terminal.modes.bracketedPasteMode);
+      if (options.kind === 'agent') {
+        void tryPasteExecutionImageFromNavigator(options).then((handled) => {
+          if (!handled) {
+            options.onRequestPaste(options.nodeId, options.kind, terminal.modes.bracketedPasteMode);
+          }
+        });
+      } else {
+        options.onRequestPaste(options.nodeId, options.kind, terminal.modes.bracketedPasteMode);
+      }
       return false;
     }
 
     return false;
   });
+
+  const handlePaste = (event: ClipboardEvent): void => {
+    const image = readExecutionImageFromClipboardData(event.clipboardData);
+    if (!image) {
+      return;
+    }
+
+    if (options.kind !== 'agent') {
+      if (!hasExecutionClipboardText(event.clipboardData)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    void image
+      .then((resolvedImage) => {
+        if (!resolvedImage) {
+          return;
+        }
+
+        options.terminal.focus();
+        options.onPasteImage(options.nodeId, options.kind, resolvedImage);
+      })
+      .catch(() => {
+        // A failed image read should not fall through to xterm's text paste path.
+      });
+  };
 
   const handleDragEnter = (event: DragEvent): void => {
     if (!hasPotentialDroppedResource(event.dataTransfer)) {
@@ -595,6 +641,7 @@ export function setupExecutionTerminalNativeInteractions(
   dropTarget.addEventListener('dragleave', handleDragLeave);
   dropTarget.addEventListener('dragend', handleDragLeave);
   dropTarget.addEventListener('drop', handleDrop);
+  dropTarget.addEventListener('paste', handlePaste, true);
   dropTarget.addEventListener('mousedown', handleMouseDown);
   dropTarget.addEventListener('mouseup', handleMouseUp);
   dropTarget.addEventListener('contextmenu', handleContextMenu);
@@ -693,6 +740,7 @@ export function setupExecutionTerminalNativeInteractions(
       dropTarget.removeEventListener('dragleave', handleDragLeave);
       dropTarget.removeEventListener('dragend', handleDragLeave);
       dropTarget.removeEventListener('drop', handleDrop);
+      dropTarget.removeEventListener('paste', handlePaste, true);
       dropTarget.removeEventListener('mousedown', handleMouseDown);
       dropTarget.removeEventListener('mouseup', handleMouseUp);
       dropTarget.removeEventListener('contextmenu', handleContextMenu);
@@ -707,6 +755,115 @@ function detectExecutionTerminalClipboardPlatform(): ExecutionTerminalClipboardP
     platform: window.navigator.platform,
     userAgent: window.navigator.userAgent
   });
+}
+
+async function tryPasteExecutionImageFromNavigator(
+  options: ExecutionTerminalNativeInteractionsOptions
+): Promise<boolean> {
+  const clipboard = window.navigator.clipboard as
+    | (Clipboard & {
+        read?: () => Promise<ClipboardItem[]>;
+      })
+    | undefined;
+  if (!clipboard?.read) {
+    return false;
+  }
+
+  try {
+    const items = await clipboard.read();
+    for (const item of items) {
+      const mimeType = item.types
+        .map((type) => normalizeExecutionImagePasteMimeType(type))
+        .find((type) => type !== undefined);
+      if (!mimeType) {
+        continue;
+      }
+
+      const blob = await item.getType(mimeType);
+      const image = await executionImagePasteDataFromBlob(blob, mimeType);
+      if (!image) {
+        continue;
+      }
+
+      options.terminal.focus();
+      options.onPasteImage(options.nodeId, options.kind, image);
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+function readExecutionImageFromClipboardData(
+  clipboardData: DataTransfer | null
+): Promise<ExecutionImagePasteData | null> | null {
+  if (!clipboardData) {
+    return null;
+  }
+
+  const blobs: Array<{ blob: Blob; mimeType: ExecutionImagePasteData['mimeType']; name?: string }> = [];
+  for (const file of Array.from(clipboardData.files)) {
+    const mimeType = normalizeExecutionImagePasteMimeType(file.type);
+    if (mimeType) {
+      blobs.push({ blob: file, mimeType, name: file.name });
+    }
+  }
+
+  for (const item of Array.from(clipboardData.items)) {
+    if (item.kind !== 'file') {
+      continue;
+    }
+
+    const mimeType = normalizeExecutionImagePasteMimeType(item.type);
+    const file = item.getAsFile();
+    if (mimeType && file) {
+      blobs.push({ blob: file, mimeType, name: file.name });
+    }
+  }
+
+  const first = blobs.find((entry) => entry.blob.size > 0 && entry.blob.size <= EXECUTION_IMAGE_PASTE_MAX_BYTES);
+  if (!first) {
+    return null;
+  }
+
+  return executionImagePasteDataFromBlob(first.blob, first.mimeType, first.name);
+}
+
+function hasExecutionClipboardText(clipboardData: DataTransfer | null): boolean {
+  if (!clipboardData) {
+    return false;
+  }
+
+  try {
+    return clipboardData.getData('text/plain').length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function executionImagePasteDataFromBlob(
+  blob: Blob,
+  mimeType: ExecutionImagePasteData['mimeType'],
+  name?: string
+): Promise<ExecutionImagePasteData | null> {
+  if (blob.size <= 0 || blob.size > EXECUTION_IMAGE_PASTE_MAX_BYTES) {
+    return null;
+  }
+
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+
+  return {
+    mimeType,
+    dataBase64: window.btoa(binary),
+    sizeBytes: bytes.length,
+    name
+  };
 }
 
 function isExecutionClipboardShortcutCandidate(

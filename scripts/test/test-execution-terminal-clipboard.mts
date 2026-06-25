@@ -1,11 +1,22 @@
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 import {
+  createExecutionImagePasteFileName,
+  EXECUTION_IMAGE_PASTE_CACHE_TTL_MS,
+  EXECUTION_IMAGE_PASTE_TEMP_FILE_TTL_MS,
+  formatExecutionImagePasteText,
+  getExecutionImagePasteCacheFileCleanupDecision,
+  hasValidExecutionImagePasteSignature,
   inferExecutionTerminalClipboardPlatform,
   prepareExecutionTerminalPasteText,
-  resolveExecutionTerminalClipboardShortcut
+  resolveExecutionTerminalClipboardShortcut,
+  sanitizeExecutionImagePastePathSegment
 } from '../../src/common/executionTerminalClipboard.ts';
 import { parseWebviewMessage } from '../../src/common/protocol.ts';
+import { cleanupExecutionImagePasteCache } from '../../src/panel/executionImagePasteCacheMaintenance.ts';
 
 function event(key: string, modifiers: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) {
   return {
@@ -138,6 +149,152 @@ function runPastePreparationChecks(): void {
   );
 }
 
+function runImagePasteHelperChecks(): void {
+  assert.equal(
+    createExecutionImagePasteFileName({
+      mimeType: 'image/png',
+      now: new Date('2026-06-24T01:02:03.004Z'),
+      randomSuffix: 'abc/unsafe value'
+    }),
+    'pasted-screenshot-20260624T010203004Z-abc-unsafe-value.png',
+    '截图粘贴文件名应稳定包含时间、随机后缀和 MIME 扩展名。'
+  );
+  assert.equal(
+    sanitizeExecutionImagePastePathSegment(' ../agent:one? ', 'fallback'),
+    'agent-one',
+    '截图粘贴存储段应去除路径与 shell 危险字符。'
+  );
+  assert.equal(
+    formatExecutionImagePasteText("/tmp/path with 'quote'.png"),
+    "'/tmp/path with '\\''quote'\\''.png' ",
+    '粘贴给 Agent 的图片路径文本应使用 shell-safe 单引号并保留尾随空格。'
+  );
+  assert.equal(
+    hasValidExecutionImagePasteSignature(
+      Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      'image/png'
+    ),
+    true,
+    'PNG magic number 应被接受。'
+  );
+  assert.equal(
+    hasValidExecutionImagePasteSignature(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]), 'image/jpeg'),
+    true,
+    'JPEG magic number 应被接受。'
+  );
+  assert.equal(
+    hasValidExecutionImagePasteSignature(
+      Uint8Array.from([0x52, 0x49, 0x46, 0x46, 1, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]),
+      'image/webp'
+    ),
+    true,
+    'WebP RIFF/WEBP magic number 应被接受。'
+  );
+  assert.equal(
+    hasValidExecutionImagePasteSignature(Uint8Array.from([0x47, 0x49, 0x46]), 'image/png'),
+    false,
+    'MIME 与 magic number 不一致时应拒绝。'
+  );
+  assert.deepEqual(
+    getExecutionImagePasteCacheFileCleanupDecision({
+      fileName: 'pasted-screenshot-20260601T000000000Z-old.png',
+      mtimeMs: 1000,
+      nowMs: 1000 + EXECUTION_IMAGE_PASTE_CACHE_TTL_MS + 1
+    }),
+    { shouldDelete: true, reason: 'expired-image' },
+    '超过 7 天 TTL 的截图缓存应具备删除资格。'
+  );
+  assert.deepEqual(
+    getExecutionImagePasteCacheFileCleanupDecision({
+      fileName: 'pasted-screenshot-20260601T000000000Z-old.png',
+      mtimeMs: 1000,
+      nowMs: 1000 + EXECUTION_IMAGE_PASTE_CACHE_TTL_MS
+    }),
+    { shouldDelete: false },
+    '刚好达到 7 天 TTL 的截图缓存不应被急切删除。'
+  );
+  assert.deepEqual(
+    getExecutionImagePasteCacheFileCleanupDecision({
+      fileName: 'pasted-screenshot-20260601T000000000Z-old.png.123.tmp',
+      mtimeMs: 1000,
+      nowMs: 1000 + EXECUTION_IMAGE_PASTE_TEMP_FILE_TTL_MS + 1
+    }),
+    { shouldDelete: true, reason: 'expired-temp' },
+    '写入中断留下的临时截图文件应使用更短 TTL。'
+  );
+  assert.deepEqual(
+    getExecutionImagePasteCacheFileCleanupDecision({
+      fileName: 'unrelated.png',
+      mtimeMs: 1000,
+      nowMs: 1000 + EXECUTION_IMAGE_PASTE_CACHE_TTL_MS + 1
+    }),
+    { shouldDelete: false },
+    '清理器不应删除非截图缓存命名的文件。'
+  );
+}
+
+function runImagePasteCacheCleanupChecks(): void {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-session-canvas-image-paste-cache-'));
+  try {
+    const cacheRootPath = path.join(tempRoot, 'execution-image-pastes');
+    const nodeDirectory = path.join(cacheRootPath, 'agent-1');
+    fs.mkdirSync(nodeDirectory, { recursive: true });
+    const oldImage = path.join(nodeDirectory, 'pasted-screenshot-20260601T000000000Z-old.png');
+    const oldTemp = path.join(nodeDirectory, 'pasted-screenshot-20260601T000000000Z-old.jpg.123.tmp');
+    const freshImage = path.join(nodeDirectory, 'pasted-screenshot-20260624T000000000Z-fresh.png');
+    const unrelated = path.join(nodeDirectory, 'notes.png');
+    fs.writeFileSync(oldImage, 'old-image');
+    fs.writeFileSync(oldTemp, 'old-temp');
+    fs.writeFileSync(freshImage, 'fresh-image');
+    fs.writeFileSync(unrelated, 'unrelated');
+
+    const nowMs = Date.UTC(2026, 5, 24, 0, 0, 0);
+    const expiredImageDate = new Date(nowMs - EXECUTION_IMAGE_PASTE_CACHE_TTL_MS - 1000);
+    const expiredTempDate = new Date(nowMs - EXECUTION_IMAGE_PASTE_TEMP_FILE_TTL_MS - 1000);
+    fs.utimesSync(oldImage, expiredImageDate, expiredImageDate);
+    fs.utimesSync(oldTemp, expiredTempDate, expiredTempDate);
+    fs.utimesSync(freshImage, new Date(nowMs), new Date(nowMs));
+    fs.utimesSync(unrelated, expiredImageDate, expiredImageDate);
+
+    const result = cleanupExecutionImagePasteCache({
+      cacheRootPath,
+      shouldDeleteFile: getExecutionImagePasteCacheFileCleanupDecision,
+      nowMs,
+      maxFilesDeleted: 10,
+      maxEntriesScanned: 50,
+      maxDurationMs: 10_000
+    });
+
+    assert.equal(result.deletedFiles, 2, '清理器应删除过期图片和过期临时文件。');
+    assert.equal(fs.existsSync(oldImage), false, '过期图片应被删除。');
+    assert.equal(fs.existsSync(oldTemp), false, '过期临时文件应被删除。');
+    assert.equal(fs.existsSync(freshImage), true, '未过期图片应保留。');
+    assert.equal(fs.existsSync(unrelated), true, '非截图缓存命名文件应保留。');
+    assert.equal(result.budgetExhausted, false, '预算充足时不应标记 backlog。');
+
+    const budgetRoot = path.join(tempRoot, 'budget');
+    const budgetNodeDirectory = path.join(budgetRoot, 'agent-1');
+    fs.mkdirSync(budgetNodeDirectory, { recursive: true });
+    for (let index = 0; index < 3; index += 1) {
+      const filePath = path.join(budgetNodeDirectory, `pasted-screenshot-20260601T000000000Z-${index}.png`);
+      fs.writeFileSync(filePath, 'old-image');
+      fs.utimesSync(filePath, expiredImageDate, expiredImageDate);
+    }
+    const budgetResult = cleanupExecutionImagePasteCache({
+      cacheRootPath: budgetRoot,
+      shouldDeleteFile: getExecutionImagePasteCacheFileCleanupDecision,
+      nowMs,
+      maxFilesDeleted: 1,
+      maxEntriesScanned: 50,
+      maxDurationMs: 10_000
+    });
+    assert.equal(budgetResult.deletedFiles, 1, '单次清理应遵守删除文件数预算。');
+    assert.equal(budgetResult.budgetExhausted, true, '达到预算时应提示需要后续维护窗口继续。');
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
 function runProtocolChecks(): void {
   assert.deepEqual(
     parseWebviewMessage({
@@ -225,6 +382,49 @@ function runProtocolChecks(): void {
 
   assert.deepEqual(
     parseWebviewMessage({
+      type: 'webview/pasteExecutionImage',
+      payload: {
+        requestId: 'image-paste-1',
+        nodeId: 'agent-1',
+        kind: 'agent',
+        mimeType: 'image/png',
+        dataBase64: 'iVBORw0KGgo=',
+        sizeBytes: 8,
+        name: 'screenshot.png'
+      }
+    }),
+    {
+      type: 'webview/pasteExecutionImage',
+      payload: {
+        requestId: 'image-paste-1',
+        nodeId: 'agent-1',
+        kind: 'agent',
+        mimeType: 'image/png',
+        dataBase64: 'iVBORw0KGgo=',
+        sizeBytes: 8,
+        name: 'screenshot.png'
+      }
+    },
+    'pasteExecutionImage 协议应通过 validator。'
+  );
+  assert.equal(
+    parseWebviewMessage({
+      type: 'webview/pasteExecutionImage',
+      payload: {
+        requestId: 'image-paste-1',
+        nodeId: 'agent-1',
+        kind: 'agent',
+        mimeType: 'image/svg+xml',
+        dataBase64: 'PHN2Zz4=',
+        sizeBytes: 6
+      }
+    }),
+    null,
+    'pasteExecutionImage 应拒绝不在白名单内的 MIME。'
+  );
+
+  assert.deepEqual(
+    parseWebviewMessage({
       type: 'webview/executionClipboardDiagnostic',
       payload: {
         nodeId: 'agent-1',
@@ -293,5 +493,7 @@ function runProtocolChecks(): void {
 runShortcutMatrix();
 runRemotePlatformInferenceChecks();
 runPastePreparationChecks();
+runImagePasteHelperChecks();
+runImagePasteCacheCleanupChecks();
 runProtocolChecks();
 console.log('execution terminal clipboard tests passed');

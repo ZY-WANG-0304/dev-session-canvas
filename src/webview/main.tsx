@@ -126,6 +126,7 @@ import type {
   ExecutionTerminalFileLinkResolvePriority,
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
+import type { ExecutionImagePasteData } from '../common/executionTerminalClipboard';
 import {
   inferExecutionTerminalPathStyle,
   normalizeExecutionTerminalWordSeparators
@@ -515,6 +516,11 @@ interface CanvasNodeData {
     nodeId: string,
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
+  ) => void;
+  onPasteExecutionImage?: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    image: ExecutionImagePasteData
   ) => void;
   onExecutionClipboardDiagnostic?: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   onResizeExecution?: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
@@ -3163,6 +3169,7 @@ function App(): JSX.Element {
       }),
     onCopyExecutionSelection: copyExecutionSelection,
     onRequestExecutionPaste: requestExecutionPaste,
+    onPasteExecutionImage: pasteExecutionImage,
     onExecutionClipboardDiagnostic: reportExecutionClipboardDiagnostic,
     onResizeExecution: (nodeId, kind, cols, rows) =>
       postMessage({
@@ -5516,6 +5523,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
+      onPasteImage: (nodeId, kind, image) => data.onPasteExecutionImage?.(nodeId, kind, image),
       onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
@@ -6068,6 +6076,7 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
         data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
+      onPasteImage: (nodeId, kind, image) => data.onPasteExecutionImage?.(nodeId, kind, image),
       onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
@@ -13563,6 +13572,11 @@ function toFlowNodes(params: {
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
   ) => void;
+  onPasteExecutionImage: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    image: ExecutionImagePasteData
+  ) => void;
   onExecutionClipboardDiagnostic: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   onResizeExecution: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
@@ -13663,6 +13677,7 @@ function toFlowNodes(params: {
         onOpenExecutionLink: params.onOpenExecutionLink,
         onCopyExecutionSelection: params.onCopyExecutionSelection,
         onRequestExecutionPaste: params.onRequestExecutionPaste,
+        onPasteExecutionImage: params.onPasteExecutionImage,
         onExecutionClipboardDiagnostic: params.onExecutionClipboardDiagnostic,
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
@@ -18441,6 +18456,36 @@ function requestExecutionPaste(
       nodeId,
       kind,
       bracketedPasteMode
+    }
+  });
+}
+
+function pasteExecutionImage(
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  image: ExecutionImagePasteData
+): void {
+  if (kind !== 'agent') {
+    return;
+  }
+
+  const requestId = `execution-image-paste-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  pendingExecutionPasteRequests.set(requestId, {
+    nodeId,
+    kind
+  });
+
+  postMessage({
+    type: 'webview/pasteExecutionImage',
+    payload: {
+      requestId,
+      nodeId,
+      kind,
+      mimeType: image.mimeType,
+      dataBase64: image.dataBase64,
+      sizeBytes: image.sizeBytes,
+      name: image.name
     }
   });
 }
