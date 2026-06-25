@@ -667,7 +667,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(COMMAND_IDS.focusSidebarNode, focusNodeFromCommand),
     vscode.commands.registerCommand(
       COMMAND_IDS.restoreSidebarSessionHistoryEntry,
-      async (provider?: unknown, sessionId?: unknown, title?: unknown) => {
+      async (provider?: unknown, sessionId?: unknown, title?: unknown, cwd?: unknown) => {
         if (!isAgentProviderKind(provider) || typeof sessionId !== 'string' || sessionId.trim().length === 0) {
           return;
         }
@@ -675,6 +675,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const result = await panelManager.restoreAgentSessionFromHistory({
           provider,
           sessionId,
+          cwd: typeof cwd === 'string' && cwd.trim().length > 0 ? cwd : undefined,
           title: typeof title === 'string' ? title : undefined
         });
         if (!result.restored && result.errorMessage) {
@@ -2215,6 +2216,7 @@ interface SidebarNodeQuickPickItem extends vscode.QuickPickItem {
 interface SidebarSessionQuickPickItem extends vscode.QuickPickItem {
   provider: AgentProviderKind;
   sessionId: string;
+  cwd?: string;
   titleOverride?: string;
   action?: 'resume' | 'fork';
 }
@@ -2273,6 +2275,7 @@ async function showSessionHistoryQuickPick(
         detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
         provider: item.provider,
         sessionId: item.sessionId,
+        cwd: item.cwd,
         titleOverride: item.title,
         action: 'resume' as const
       },
@@ -2282,6 +2285,7 @@ async function showSessionHistoryQuickPick(
         detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
         provider: item.provider,
         sessionId: item.sessionId,
+        cwd: item.cwd,
         titleOverride: item.title,
         action: 'fork' as const
       }
@@ -2302,6 +2306,7 @@ async function showSessionHistoryQuickPick(
     const result = await panelManager.forkAgentSessionFromHistory({
       provider: picked.provider,
       sessionId: picked.sessionId,
+      cwd: picked.cwd,
       title: picked.titleOverride
     });
     if (!result.forked && result.errorMessage) {
@@ -2313,6 +2318,7 @@ async function showSessionHistoryQuickPick(
   const result = await panelManager.restoreAgentSessionFromHistory({
     provider: picked.provider,
     sessionId: picked.sessionId,
+    cwd: picked.cwd,
     title: picked.titleOverride
   });
   if (!result.restored && result.errorMessage) {

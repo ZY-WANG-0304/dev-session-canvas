@@ -240,6 +240,11 @@ try {
     'feature-a',
     'Expected multi-root session history items to use the deepest matching workspace root label.'
   );
+  assert.equal(
+    multiRootNestedSidebarItem?.cwd,
+    nestedWorkspace,
+    'Expected multi-root session history items to preserve the original cwd for restore/fork actions.'
+  );
   assert.ok(
     multiRootNestedSidebarItem?.tooltip.includes('Root：feature-a'),
     'Expected multi-root session history tooltip to include the matched workspace root label.'
@@ -403,6 +408,7 @@ async function assertSessionHistoryActionButtons(browser, html) {
       provider: 'codex',
       providerLabel: 'Codex',
       sessionId: 'history-action-session',
+      cwd: '/workspace/main/packages/app',
       title: '历史 action 按钮回归',
       timestampLabel: 'Codex · 刚刚 · history-action-session',
       tooltip: '历史 action 按钮回归',
@@ -452,8 +458,16 @@ async function assertSessionHistoryActionButtons(browser, html) {
     assert.deepEqual(
       postedMessages
         .filter((message) => message.type === 'sidebarSessionHistory/openSession' || message.type === 'sidebarSessionHistory/forkSession')
-        .map((message) => message.payload?.sessionId),
-      ['history-action-session', 'history-action-session', 'history-action-session']
+        .map((message) => ({
+          sessionId: message.payload?.sessionId,
+          cwd: message.payload?.cwd
+        })),
+      [
+        { sessionId: 'history-action-session', cwd: '/workspace/main/packages/app' },
+        { sessionId: 'history-action-session', cwd: '/workspace/main/packages/app' },
+        { sessionId: 'history-action-session', cwd: '/workspace/main/packages/app' }
+      ],
+      'Expected restore/fork action messages to preserve the history cwd so multi-root creates can resolve the target root.'
     );
   } finally {
     await page.close();
@@ -586,6 +600,7 @@ function createSidebarHistoryTestItem({ provider, sessionId, title, updatedAtMs,
     provider,
     providerLabel,
     sessionId,
+    cwd: workspaceRootPath,
     title,
     updatedAtMs,
     timestampLabel: `${providerLabel} · 刚刚 · ${sessionId}`,
