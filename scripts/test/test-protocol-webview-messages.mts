@@ -638,6 +638,42 @@ assert.match(
   /COMMAND_IDS\.dumpHostDiagnostics[\s\S]*webviewLifecycleStatus[\s\S]*webviewLifecycleSummaryPath[\s\S]*executionPerformanceDiagnosticsPath/u,
   'Expected the user-facing host diagnostics command to surface lifecycle and execution performance diagnostics paths.'
 );
+assert.match(
+  extensionSource,
+  /promptWorkspaceRootRemovalChoice[\s\S]*isCloseAffordance: true[\s\S]*showWarningMessage<WorkspaceRootRemovalModalItem>[\s\S]*modal: true[\s\S]*buildWorkspaceRootRemovalModalDetail/u,
+  'Expected workspace root removal to use VS Code native modal confirmation with a cancel close affordance.'
+);
+assert.match(
+  extensionSource,
+  /removeFolderFromWorkspaceFromCommand[\s\S]*getWorkspaceRootCanvasRemovalImpact[\s\S]*清空画板并移除[\s\S]*保留画板并移除[\s\S]*defaultChoice: 'keep-canvas'[\s\S]*clearWorkspaceRootCanvasIfRequested[\s\S]*removeWorkspaceFolderByFsPath/u,
+  'Expected folder removal to offer native-modal keep/clear canvas choices and default to keeping the canvas.'
+);
+assert.match(
+  extensionSource,
+  /removeWorktreeFromWorkspaceFromCommand[\s\S]*getWorkspaceRootCanvasRemovalImpact[\s\S]*移除 Worktree 并清空画板[\s\S]*移除 Worktree 但保留画板[\s\S]*defaultChoice: 'clear-canvas'[\s\S]*if \(removalChoice\.clearCanvas\)[\s\S]*clearWorkspaceRootCanvasIfRequested[\s\S]*execFileAsync\('git', \['-C', workspaceFolder\.uri\.fsPath, 'worktree', 'remove'/u,
+  'Expected worktree removal to offer native-modal clear/keep canvas choices and default to clearing the canvas.'
+);
+const workspaceRootRemovalPromptSource = extensionSource.slice(
+  extensionSource.indexOf('async function promptWorkspaceRootRemovalChoice'),
+  extensionSource.indexOf('function buildWorkspaceRootRemovalModalDetail')
+);
+assert.doesNotMatch(
+  workspaceRootRemovalPromptSource,
+  /showQuickPick/u,
+  'Expected workspace root removal confirmation not to use QuickPick.'
+);
+assert.doesNotMatch(
+  workspaceRootRemovalPromptSource,
+  /sidebarPrompt|workspaceRootRemovalPrompt|Webview/u,
+  'Expected workspace root removal confirmation not to use a sidebar Webview prompt.'
+);
+
+const sidebarNodeListSource = await readFile('src/sidebar/CanvasSidebarNodeListView.ts', 'utf8');
+assert.doesNotMatch(
+  sidebarNodeListSource,
+  /workspaceRootRemovalPrompt|removal-modal|data-sidebar-removal-modal/u,
+  'Expected sidebar node list not to self-render workspace root removal confirmation modals.'
+);
 
 const smokeSource = await readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
 assert.match(
