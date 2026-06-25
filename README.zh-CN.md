@@ -18,7 +18,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段；最新已发布基线是通过 GitHub Releases 发布并在 Open VSX 验证通过的 `0.18.2` Preview 里程碑，Visual Studio Marketplace 仍需等 public gallery 同时暴露主扩展与 notifier 后再解除 deferred。当前主要工作是围绕后续 `0.18.x` 迭代持续回归验证。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段；当前发布准备目标是 `0.19.0`，在发布准备分支完成 review、合并并正式发布之前，最新已发布基线仍是通过 GitHub Releases 发布并在 Open VSX 验证通过的 `0.18.2` Preview 里程碑。Visual Studio Marketplace 仍需等 public gallery 同时暴露主扩展与 notifier 后再解除 deferred。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](images/marketplace/canvas-overview.gif)
 
@@ -45,7 +45,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 画布右键菜单的一次性布局整理能力：尊重分组与 workspace root 边界，减少节点和分组重叠
 - `Agent` 与嵌入式 `Terminal` 的跨平台 shell 环境继承与可诊断启动路径
 - File Explorer 右键入口，可从 workspace 内目录或文件创建绑定 cwd 的 `Terminal` 或 `Agent` 节点
-- 执行终端复制粘贴快捷键，按本机平台保留复制、粘贴与 `Ctrl+C` 打断语义
+- 执行终端复制粘贴快捷键，按本机平台保留复制、粘贴与 `Ctrl+C` 打断语义，并支持 live `Agent` 节点截图粘贴
 - 执行终端链接识别覆盖原生风格 URL、文件路径、多行行号输出、高置信 TUI 硬换行 URL / 带样式文件片段、运行中输出的文件链接缓存刷新，以及点击时 fallback 搜索
 - 侧栏与命令面板中的 `Codex` / `Claude Code` CLI 选择、配置文件打开入口，以及停止后节点的 `新建` / `重启` 动作分流
 - Codex / Claude Code Agent 可从可信 session id `分叉` 出新 Agent 节点，并用 provider 原生 fork 语义启动
@@ -54,7 +54,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - `Restricted Mode` 下的有限能力声明
 - 面向 `Visual Studio Marketplace` 与 `Open VSX` 的公开 `Preview` 发布链路
 - 侧栏中的 `节点` 与 `会话历史` 列表，可快速定位当前画布节点并从历史恢复或分叉新 `Agent` 节点
-- 侧栏 workspace folder 操作：添加 folder、新建 git worktree、区分 repository / linked worktree root，并通过显式确认移除 workspace folder 或 linked worktree
+- 侧栏 workspace folder 操作：添加 folder、新建或添加 git worktree、区分 repository / linked worktree root，并通过显式确认移除 workspace folder 或 linked worktree
 
 ## Preview 不提供什么
 
@@ -76,15 +76,15 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前已发布的 `0.18.2` 基线是一个补丁版本：窗格画廊缩略图 rail 排序、Webview 分组 resize 草稿清理、Webview 回归稳定性，以及 Marketplace listing 二维码移除后的发布口径。它保留 `0.18.1` 的侧栏会话历史分组控制、菜单选中态表达、画布布局整理空分组尺寸、窗格画廊视口记忆隔离、公开隐私 / 许可证元数据、安装拓扑、支持边界和 Marketplace `Preview` 定位。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前发布准备目标是 `0.19.0`，范围包括 Agent 截图粘贴、添加已有 git worktree、多根会话历史 cwd 恢复、root-qualified 文件链接解析、多 Agent 输出公平性、pane-gallery 细节修复和 Panel 边缘视觉收口；在本发布准备分支完成 review、合并并正式发布前，最新已发布基线仍是 `0.18.2`。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
 - 版本定位为 `Preview`，尚未达到稳定正式版。
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
-- 公开发布主渠道目标仍以 `Visual Studio Marketplace` 为主，`Open VSX` 作为同版本补充渠道；`0.18.2` release-day 完成门禁继续允许在 Visual Studio Marketplace 仍不可见时，依赖 GitHub Release assets 加已验证的 Open VSX 完成本轮发布，并把 VSM 记录为 deferred channel。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.18.2` 发布验证覆盖版本 / 打包一致性、窗格画廊 root 排序、分组 resize 草稿清理、Webview 回归稳定性、Marketplace README 二维码移除检查、发布 workflow dry-run、打包、GitHub Release assets、Open VSX 验证和当前渠道可见性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- 公开发布主渠道目标仍以 `Visual Studio Marketplace` 为主，`Open VSX` 作为同版本补充渠道；`0.19.0` release-day 完成门禁继续允许在 Visual Studio Marketplace 仍不可见时，依赖 GitHub Release assets 加已验证的 Open VSX 完成本轮发布，并把 VSM 记录为 deferred channel。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.19.0` 发布准备验证预计覆盖版本 / 打包一致性、Agent 截图粘贴、worktree 添加、多根会话历史 cwd 恢复、文件链接解析、输出公平性、发布 workflow dry-run、打包和当前渠道可见性；Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
@@ -95,10 +95,10 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## Preview 分发
 
-对外分发目标是通过公开扩展市场发布；官方 VS Code 仍计划以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。`0.18.2` 中，GitHub Release assets 继续作为 release-day 工件镜像和手动安装兜底入口，Open VSX 是当前必须验证通过的 marketplace 完成门禁；Visual Studio Marketplace 仍会尝试发布，但 public visibility 若仍不可用，则作为 deferred channel 记录而不阻塞本轮完成。除此之外，`.vsix` 仍仅保留为构建工件和发布验证输入。
+对外分发目标是通过公开扩展市场发布；官方 VS Code 仍计划以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。`0.19.0` 中，GitHub Release assets 继续作为 release-day 工件镜像和手动安装兜底入口，Open VSX 是当前必须验证通过的 marketplace 完成门禁；Visual Studio Marketplace 仍会尝试发布，但 public visibility 若仍不可用，则作为 deferred channel 记录而不阻塞本轮完成。除此之外，`.vsix` 仍仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过当前宿主配置的扩展市场安装，而非手动分发 `.vsix`
-- `Visual Studio Marketplace` 仍是官方 VS Code 安装主路径目标，但只有在主扩展和 notifier 均公开可见后才对外宣称可用；`0.18.2` 可在 VSM deferred 的状态下，通过 GitHub Release assets 加已验证的 Open VSX 完成本轮发布
+- `Visual Studio Marketplace` 仍是官方 VS Code 安装主路径目标，但只有在主扩展和 notifier 均公开可见后才对外宣称可用；`0.19.0` 可在 VSM deferred 的状态下，通过 GitHub Release assets 加已验证的 Open VSX 完成本轮发布
 - `Open VSX` 不改变当前 VS Code 官方市场主路径，也不额外承诺所有兼容宿主的完整支持矩阵
 
 ## 桌面通知 companion（自动安装）
@@ -133,7 +133,7 @@ npm run build
 
 - 仍处于 `Preview`，不应按稳定生产工具看待。
 - 不支持 `Virtual Workspace`。
-- 公开 `Preview` 的分发主路径目标仍是 `Visual Studio Marketplace`，并补充 `Open VSX` 同版本发布；`0.18.1` 已在 Visual Studio Marketplace 可见性 deferred 时依赖 GitHub Release assets 加 Open VSX verified 完成；`0.18.2` 沿用同一完成门禁，后续 release-day 仍需手工执行与复核。
+- 公开 `Preview` 的分发主路径目标仍是 `Visual Studio Marketplace`，并补充 `Open VSX` 同版本发布；`0.18.2` 已在 Visual Studio Marketplace 可见性 deferred 时依赖 GitHub Release assets 加 Open VSX verified 完成；`0.19.0` 沿用同一完成门禁，后续 release-day 仍需手工执行与复核。
 - `Remote SSH` 主路径已验证可用，且仍是验证最充分的推荐路径；Linux、macOS、Windows 本地主路径也已完成功能可用性验证，但 Windows 下使用 `Codex` 时仍存在执行节点内历史无法向上翻页的已知问题。
 - `Note` Markdown 预览不支持原始 HTML 透传、任意 scheme 链接、越出 workspace 的文件链接、目录目标或富文本块编辑。
 - 模板当前只保存静态布局与配置，不保存运行中会话、终端输出、文件活动、缩略图、云同步或模板历史。
