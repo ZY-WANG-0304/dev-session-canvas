@@ -2965,6 +2965,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async restoreAgentSessionFromHistory(params: {
     provider: AgentProviderKind;
     sessionId: string;
+    cwd?: string;
     title?: string;
   }): Promise<{ restored: boolean; errorMessage?: string }> {
     const restoreBlockReason = this.getSessionHistoryRestoreBlockReason();
@@ -2996,6 +2997,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: params.provider,
       agentLaunchPreset: 'custom',
       agentCustomLaunchCommand: historyResumeCommandLine,
+      cwdOverride: params.cwd,
       titleOverride: params.title
     });
     if (!createdNode) {
@@ -3020,6 +3022,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async forkAgentSessionFromHistory(params: {
     provider: AgentProviderKind;
     sessionId: string;
+    cwd?: string;
     title?: string;
   }): Promise<{ forked: boolean; errorMessage?: string }> {
     const restoreBlockReason = this.getSessionHistoryRestoreBlockReason();
@@ -3054,6 +3057,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: params.provider,
       agentLaunchPreset: 'custom',
       agentCustomLaunchCommand: historyForkCommandLine,
+      cwdOverride: params.cwd,
       titleOverride: formatHistoryForkTitle(params.title)
     });
     if (!createdNode) {
