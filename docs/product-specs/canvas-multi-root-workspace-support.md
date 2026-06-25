@@ -1,7 +1,7 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-06-25
+updated_at: 2026-06-26
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
 related_plans:
@@ -58,7 +58,7 @@ related_plans:
 20. 新增 root 分组进入 composed view 后，Host 应请求当前 Webview 聚焦该 workspace-root group；Webview 通过平移与缩放动画把该 root 分组移入视野，并在动画结束后持久化 viewport，同时向 Host 上报动画后的 `webview/updateViewportCenter`。
 21. `节点` sidebar section 可以调用 VS Code workspace folder API 添加文件夹或移除 folder；移除 folder 使用 VS Code 原生 modal，可选择保留该 root 的画板快照或先清空对应画板再移除，默认保留画板；无论是否清空画板，都不删除磁盘目录。
 22. `节点` sidebar section 可以基于某个现有本地 git folder 创建 worktree，并在 `git worktree add` 成功后把新 worktree 目录添加到当前 workspace；也可以从同一个 repository 的 `git worktree list --porcelain` 中选择一个尚未加入当前 workspace 的已有 worktree，直接把该目录添加到 workspace。多根 workspace 下，如果入口不来自具体 workspace folder 分组，宿主必须先按 git common dir 合并同一 repository 的 workspace folders，只有存在多个不同 git repository 时才让用户选择基准 repository；随后用 VS Code 风格 QuickPick 选择添加已有 worktree、新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree；`HEAD` 或已被其他 worktree checkout 的分支会以 detached HEAD 创建。
-23. `节点` sidebar section 可以对 workspace folder 分组执行移除 worktree：宿主先确认该 folder 是 linked git worktree，再使用 VS Code 原生 modal 让用户选择先清空对应画板再移除或保留画板，默认清空画板；确认后执行 `git worktree remove` 并从当前 workspace 移除对应 folder。若不是 git repository、不是 linked worktree、workspace 未受信任或找不到 `git`，必须弹窗说明具体原因。
+23. `节点` sidebar section 可以对 workspace folder 分组执行移除 worktree：宿主先确认该 folder 是 linked git worktree，再使用 VS Code 原生 modal 让用户选择移除成功后清空对应画板或保留画板，默认清空画板；确认后先执行 `git worktree remove`，Git 成功后才按选择清空画板并从当前 workspace 移除对应 folder。若不是 git repository、不是 linked worktree、workspace 未受信任或找不到 `git`，必须弹窗说明具体原因。
 24. `节点` sidebar section 的 workspace folder 分组行应在标题前用图标区分普通 folder、git repository 和 git worktree；行尾操作顺序为新建 worktree、移除 worktree、移除 folder。
 25. `paneGallery` 不改变 root-local storage、runtime binding、文件活动或 cross-root 限制；它只是多根呈现层。每个 root 窗格左上角只保留轻量 root 标签，显示 root 名称并在 tooltip 中保留完整路径；不在标签 subtitle 中常驻 nodes / waiting / attention 等汇总信息。界面不提供整条 paneGallery 顶部 toolbar，也不提供常驻 filter roots 搜索框，但保留主线画布右上角的使用提示入口。
 26. `paneGallery` 包含四个运行时布局状态：`dynamic` 把所有 root 窗格按可用区域弹性排列并允许不同窗格尺寸不一致但铺满画布区域，`grid` 使用规则宫格排列，二者都用于全览、状态观察和在任一 root 窗格内直接处理；`topThumbnails` 与 `sideThumbnails` 保留一个 active root 主画板，并分别把其他 root 放到顶部或右侧缩略图 rail。默认粗状态是 `dynamic` 与 `sideThumbnails`，四种布局以及上次使用的全览/缩略图具体模式都属于 Webview 局部 UI 状态，不写入 root-local state。
@@ -108,7 +108,7 @@ related_plans:
 - 在 multi-root workspace 中添加第三个 folder 后，新 root 分组不使用远离当前视口的默认 index 网格位置，而是落在当前可见中心附近的最近可用空位，且不与已有 root 分组重叠；重载后该位置保持。
 - 在 `节点` sidebar section 添加 folder、创建 worktree 或添加已有 worktree 并加入 workspace 后，新 root 分组与 VS Code 原生 Add Folder 一样进入 multi-root composed view，并按新增 root 聚焦规则移入视野。
 - 在 `节点` sidebar section 的 workspace folder 分组行点击移除 folder 后，用户通过 VS Code 原生 modal 选择保留画板或先清空画板再移除；确认后该 folder 从当前 workspace 和 composed view 中消失，对应磁盘目录不被删除，后续仍可重新添加。
-- 在 `节点` sidebar section 的 workspace folder 分组行点击移除 worktree 后，如果该 folder 是 linked git worktree，用户通过 VS Code 原生 modal 选择先清空画板再移除或保留画板；确认后 git worktree 目录被删除，该 folder 也从当前 workspace 和 composed view 中消失；如果该 folder 不是 git repository 或不是 linked worktree，用户会看到说明具体原因的弹窗。
+- 在 `节点` sidebar section 的 workspace folder 分组行点击移除 worktree 后，如果该 folder 是 linked git worktree，用户通过 VS Code 原生 modal 选择移除成功后清空画板或保留画板；确认后先执行 `git worktree remove`，Git 成功后该 worktree 目录被删除，并按选择清空画板或保留快照，该 folder 也从当前 workspace 和 composed view 中消失；如果该 folder 不是 git repository、不是 linked worktree 或 Git 拒绝移除，用户会看到说明具体原因的弹窗，画板保持不变。
 - 在 `节点` sidebar section 的 workspace folder 分组行中，普通 folder、git repository 和 linked git worktree 分别使用不同前置图标；行尾按钮按新建 worktree、移除 worktree、移除 folder 的顺序出现。
 - 在 multi-root workspace 中通过全局 worktree 入口时，宿主先按 git common dir 合并同一 repository 的 workspace folders；只存在一个 repository 时直接进入 worktree QuickPick，存在多个不同 repository 时才让用户选择基准 repository；通过 workspace folder 分组行进入 worktree 流程时，基准 folder 固定为该行对应 folder；两条路径随后都展示同一套 worktree QuickPick，并允许添加已有 worktree、从 `HEAD`、本地分支或二级 base ref 创建。
 - 添加 folder 后当前画布通过短暂缩放平移动画移动到新增 root 分组，新增 root 分组可见并被选中。
