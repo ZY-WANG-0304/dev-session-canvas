@@ -10,7 +10,7 @@ import {
   type MarketplaceCurrentUser
 } from '../lib/api';
 import { buildTemplateDownloadHref, buildTemplateJsonExportHref } from '../lib/download';
-import { buildGithubSignInHref, getMarketplaceHomeHref } from '../lib/routing';
+import { buildGithubSignInHref, buildMarketplacePublishVersionHref, getMarketplaceHomeHref } from '../lib/routing';
 import { buildTemplateThumbnailHref } from '../lib/thumbnail';
 
 interface TemplateDetailViewProps {
@@ -299,6 +299,15 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
             <MetaItem label="Publisher" value={template.publisher.displayName || template.publisher.githubLogin} />
           </dl>
 
+          {likeState.user?.githubUserId && template.publisher.id === `github-${likeState.user.githubUserId}` ? (
+            <a
+              className="mt-5 inline-flex w-full justify-center border border-canvas-line bg-canvas-mist px-4 py-3 text-xs font-semibold text-canvas-ink transition hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
+              href={buildMarketplacePublishVersionHref(template.slug)}
+            >
+              Publish new version
+            </a>
+          ) : null}
+
           <div className="mt-5 border-t border-canvas-line pt-4">
             {likeState.user ? (
               <button
@@ -327,7 +336,7 @@ export function TemplateDetailView({ template, storageMode, source }: TemplateDe
             {likeState.errorMessage ? <p className="mt-2 text-xs leading-5 text-canvas-error">{likeState.errorMessage}</p> : null}
           </div>
 
-          <div className="mt-5 border-t border-canvas-line pt-4">
+          <div id="report" className="mt-5 scroll-mt-24 border-t border-canvas-line pt-4">
             <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-canvas-muted">Report</h3>
             {likeState.user ? (
               reportState.submitted ? (
