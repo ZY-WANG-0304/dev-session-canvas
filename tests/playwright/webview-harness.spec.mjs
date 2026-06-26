@@ -1758,6 +1758,7 @@ test('pane gallery keeps panes scrollable without fixed zoom floor and targets m
   const galleryMetrics = await page.locator('.pane-gallery-grid').evaluate((grid) => {
     const pane = grid.querySelector('[data-pane-gallery-root-id="workspace-root-frontend"]');
     const flowViewport = pane?.querySelector('.react-flow__viewport');
+    const gridBox = grid.getBoundingClientRect();
     const paneBox = pane instanceof HTMLElement ? pane.getBoundingClientRect() : null;
     const transform = flowViewport instanceof HTMLElement ? getComputedStyle(flowViewport).transform : '';
     const scale = transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).a : null;
@@ -1772,6 +1773,8 @@ test('pane gallery keeps panes scrollable without fixed zoom floor and targets m
       });
     return {
       scrolls: grid.scrollHeight > grid.clientHeight + 20,
+      firstPaneLeadingInset: paneBox ? Math.round(paneBox.left - gridBox.left) : Number.POSITIVE_INFINITY,
+      scrollbarGutter: getComputedStyle(grid).scrollbarGutter,
       paneWidth: paneBox?.width ?? 0,
       paneHeight: paneBox?.height ?? 0,
       scale,
@@ -1779,6 +1782,8 @@ test('pane gallery keeps panes scrollable without fixed zoom floor and targets m
     };
   });
   expect(galleryMetrics.scrolls).toBe(true);
+  expect(galleryMetrics.scrollbarGutter).not.toContain('both-edges');
+  expect(galleryMetrics.firstPaneLeadingInset).toBeLessThanOrEqual(4);
   expect(galleryMetrics.paneWidth).toBeGreaterThanOrEqual(420);
   expect(galleryMetrics.paneHeight).toBeGreaterThanOrEqual(320);
   expect(galleryMetrics.distinctPaneSizes).toBeGreaterThan(1);
