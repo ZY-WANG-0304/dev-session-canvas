@@ -121,7 +121,7 @@
 
 截至 `2026-06-24`，上一轮 `0.18.2` 已从最终 `main` release ref `0bba3f82c3de0f4a08ddb674ffbc3eef80a3f54d` 完成 GitHub Release assets + Open VSX 兜底发布；正式 `v0.18.2` tag 指向同一 ref，远端 `publish/v0.18.2` 临时 tag 已由 workflow 删除。GitHub Release `v0.18.2` 位于 `https://github.com/ZY-WANG-0304/dev-session-canvas/releases/tag/v0.18.2`，包含 `dev-session-canvas-0.18.2.vsix`、`dev-session-canvas-notifier-0.18.2.vsix` 与 `release-manifest-0.18.2.json`。Release manifest 记录 Open VSX 主扩展与 notifier `0.18.2` 均 verified，Visual Studio Marketplace 主扩展与 notifier 均为 `publish-failed` / deferred；因此 VSM 继续作为 deferred channel，不得对外宣称为已可用。
 
-`0.19.0` 当前发布准备输入来自 `v0.18.2` 之后合入 `origin/main` 的功能与修复：#201 paneGallery root 标签状态背景、#202 多根文件链接 root-qualified 解析、#203 多 Agent 输出公平渲染、#204 npm audit 依赖锁定跟进、#205 画布宿主左右 padding 收口、#207 Agent 截图粘贴输入与临时缓存清理、#209 添加已有 worktree 到 workspace、#210 多根历史会话恢复 cwd 归属；#185 的 Agent provider 能力对照文档是同阶段文档输入，不单独作为用户可见功能亮点。本轮发布准备分支只处理版本号、CHANGELOG、Marketplace / README 文案和发布手册，不把未合并的功能分支 head 直接当作发布输入。最终 release ref 以发布准备 MR 合入 `main` 后的 commit 为准。
+`0.19.0` 当前发布准备输入来自 `v0.18.2` 之后合入 `origin/main` 的功能与修复：#199 paneGallery fit view 子图边界修复、#201 paneGallery root 标签状态背景、#202 多根文件链接 root-qualified 解析、#203 多 Agent 输出公平渲染、#204 npm audit 依赖锁定跟进、#205 画布宿主左右 padding 收口、#207 Agent 截图粘贴输入与临时缓存清理、#209 添加已有 worktree 到 workspace、#210 多根历史会话恢复 cwd 归属；#185 的 Agent provider 能力对照文档是同阶段文档输入，不单独作为用户可见功能亮点。本轮发布准备分支只处理版本号、CHANGELOG、Marketplace / README 文案和发布手册，不把未合并的功能分支 head 直接当作发布输入。最终 release ref 以发布准备 MR 合入 `main` 后的 commit 为准。
 
 本轮发布准备分支已完成以下 repo-local 同步：
 
