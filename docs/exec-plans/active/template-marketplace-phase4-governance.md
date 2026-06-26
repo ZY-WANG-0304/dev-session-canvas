@@ -21,8 +21,9 @@ Phase 4 不进入付费模板、评论区、私有市场、推荐算法或外部
 - [x] (2026-06-07 01:40 +0800) 更新 workers.dev 调试服务成功，当前 URL 为 `https://dscanvas-template-marketplace.wzy0304.workers.dev`，Wrangler 当前版本 ID 为 `822333bb-8c0e-43c2-a180-e72593cc4fd0`。
 - [x] (2026-06-07 11:05 +0800) 修复详情页举报原因下拉切换时 React 合成事件被异步 updater 读取导致的空白页，并重新部署 workers.dev，Wrangler 当前版本 ID 为 `62cfd459-054b-478c-9d81-beacf5c04a94`。
 - [x] (2026-06-07 19:29 +0800) 从最新 `origin/feature/templates-marketplace` 切出 `feat-template-marketplace-phase4-admin-stats`，实现管理员全站统计面板的共享类型、Worker API、D1 聚合查询、Fake D1、Web API helper、`/templates/admin` 统计区和本地单元测试。
-- [ ] 实现 VSCode 安装侧 Phase 4：已安装模板更新提醒、手动更新到最新版本、安装历史版本和回滚。
-- [ ] 实现插件内举报入口。
+- [x] (2026-06-25 12:00 +0800) 实现 VSCode 安装侧 Phase 4：已安装市场模板侧栏更新徽章、手动更新到 latest、版本菜单历史版本安装/回滚，并用本地 fixture VSCode E2E 验证 sidecar 版本变化。
+- [x] (2026-06-25 12:00 +0800) 实现插件内举报入口：插件详情页和模板侧栏只提供跳转 Web 详情页 `#report` 的按钮，不在插件内重复实现举报表单。
+- [x] (2026-06-26 11:35 +0800) 实现发布者新版本完整用户入口：Web 作者详情/个人模板页进入 `/templates/publish/version?template=<slug>`；VSCode 详情页进入发布表单 version mode 并提交 `POST /api/v1/templates/:id/versions`。
 - [ ] 执行真实 GitHub OAuth smoke：普通用户举报、管理员处理、下架后公开隐藏、封禁后写接口拒绝。
 
 ## 意外与发现
@@ -47,6 +48,15 @@ Phase 4 不进入付费模板、评论区、私有市场、推荐算法或外部
 - 观察：管理员全站统计中的单模板发布次数不能复用 `templateSelectSql` 映射出的 `template.versions.length`。
   证据：`templateSelectSql` 只选择当前可公开的 latest published version；本轮为全站统计新增 `fetchAllPublishedVersionCounts()`，直接从 `template_versions` 按 `template_id` 聚合 `COUNT(*)`，并用测试断言 `d1-review-loop` 的 `publishCount` 为 2。
 
+- 观察：VSCode 插件市场详情页已有 split button 和版本列表基础，但旧实现只把所有非当前安装版本标为“安装/更新”，不能让用户明确区分回滚。
+  证据：本轮把历史低版本目标标记为“回滚到 vN”，并在 `tests/vscode-smoke/template-marketplace-tests.cjs` 中先安装 v1、更新到 v2、再回滚到 v1 验证 `.market.json` 的 `marketVersionId` 与 `installedVersionNumber`。
+
+- 观察：侧栏更新提醒需要访问远端详情接口，但不能让离线或网络慢阻塞本地模板使用。
+  证据：`TemplateMarketplaceClient.listInstalledTemplateUpdateStatuses()` 对每个已安装市场模板做 best-effort 详情读取，更新检查使用短超时并把失败收敛为 `updateCheckError`；侧栏仍渲染本地模板列表。
+
+- 观察：发布新版本成功后需要使 VSCode Webview 内详情缓存失效，否则版本菜单可能继续展示发布前的旧版本列表。
+  证据：本轮在 `marketplace/templatePublishResult` 成功分支删除对应 slug 的 `templateDetailsBySlug`、详情错误和版本菜单错误缓存，并在 fixture E2E 中发布 v3 后重新打开详情和版本菜单，断言出现 `更新到 v3`。
+
 ## 决策记录
 
 - 决策：Phase 4 第一切片先交付治理后端闭环，再做 Web 管理后台和 VSCode 更新/回滚 UI。
@@ -69,9 +79,21 @@ Phase 4 不进入付费模板、评论区、私有市场、推荐算法或外部
   理由：Phase 4 的目标是让管理员看到市场健康度、举报压力和治理动作数量；当前 `templates.download_count` / `like_count`、`template_daily_stats`、`template_versions`、`reports`、`users` 和 `admin_audit_logs` 已能支撑该面板。把 D1 扩展成原始事件仓库会增加写入压力和运维复杂度，超出本阶段边界。
   日期/作者：2026-06-07 / Codex
 
+- 决策：插件内举报入口只跳转到 Web 详情页 `#report`，不在 VSCode Webview 或侧栏内复制举报表单。
+  理由：Worker API 和 Web 详情页已经承载登录态、原因选择和提交反馈；插件侧复用浏览器登录和治理表单可以减少认证状态分叉，同时满足“插件内有举报入口”的用户需求。
+  日期/作者：2026-06-25 / Codex
+
+- 决策：侧栏更新提醒采用 best-effort 检查，失败不打断模板侧栏本地使用。
+  理由：模板应用的本地事实是完整包目录和 `.market.json` sidecar；远端详情只用于提醒和手动更新，不应让离线用户失去已安装模板。
+  日期/作者：2026-06-25 / Codex
+
+- 决策：发布者新版本入口复用现有 `POST /api/v1/templates/:id/versions`，Web 新增 `/templates/publish/version?template=<slug>`，VSCode 复用发布表单并切换为 version mode。
+  理由：版本发布的权限边界应继续由 Worker 作者校验强制执行；Web 可先做当前登录用户与发布者 id 的前端提示，VSCode 只做同名本地模板 guard 来降低误发风险。首版 version mode 只提交模板 JSON、CHANGELOG 和缩略图，名称、Slug、README、描述与标签沿用当前市场模板；listing revision / 仅展示信息编辑不在本切片实现。
+  日期/作者：2026-06-26 / Codex
+
 ## 结果与复盘
 
-Phase 4 已完成第一切片的本地代码闭环：共享类型、D1 repository、Worker 路由、Fake D1、API/Web 测试、详情页举报表单和 `/templates/admin` 最小后台已落地。第一切片证明治理权限和审计可以由 Worker 强制执行，而不是靠前端隐藏按钮。管理员全站统计面板也已在本地补齐，管理员打开 `/templates/admin` 时可看到模板、下载、点赞、举报、用户、发布者、版本发布数、Top templates、近期日聚合和审计日志计数。剩余缺口是 VSCode 安装侧更新提醒/手动更新/回滚、插件内举报入口，以及真实 preview OAuth smoke。
+Phase 4 已完成第一切片的本地代码闭环：共享类型、D1 repository、Worker 路由、Fake D1、API/Web 测试、详情页举报表单和 `/templates/admin` 最小后台已落地。第一切片证明治理权限和审计可以由 Worker 强制执行，而不是靠前端隐藏按钮。管理员全站统计面板也已在本地补齐，管理员打开 `/templates/admin` 时可看到模板、下载、点赞、举报、用户、发布者、版本发布数、Top templates、近期日聚合和审计日志计数。2026-06-25 又补齐 VSCode 安装侧更新提醒、手动更新、历史版本回滚和插件内举报跳转入口，并用本地 fixture VSCode E2E 验证。2026-06-26 补齐发布者新版本用户入口：Web 作者详情页和 My Templates 可进入新版本发布页，VSCode 详情页可进入 version mode 发布表单并发布 v3。剩余缺口是真实 preview OAuth smoke。
 
 ## 上下文与定向
 
@@ -89,7 +111,9 @@ Phase 4 已完成第一切片的本地代码闭环：共享类型、D1 repositor
 
 第三里程碑是管理员全站统计面板，已完成本地实现。共享包在 `packages/marketplace-shared/src/index.ts` 导出 `MarketplaceAdminStatsResponse`、`MarketplaceAdminStatsTotals` 和 `MarketplaceAdminStatsTemplate`。Repository 增加 `getAdminStats()`：D1 实现读取 `templates` 累计计数、`users` 总量和封禁数、`reports` 状态分布、`admin_audit_logs` 计数、`template_versions` 发布版本数、`template_daily_stats` 日聚合和 Top templates；seed 实现使用内置 seed catalog 作为只读降级。Worker 暴露 `GET /api/v1/admin/stats`，复用 `requireMarketplaceAdmin()`。Web API helper 和 `TemplateAdminView.tsx` 在加载举报队列时并行加载统计，并展示全站指标、Top templates 和最近 5 天日聚合。
 
-第四里程碑是 VSCode 更新与回滚。检查 `src/panel/TemplateMarketplaceClient.ts`、`src/panel/CanvasTemplateStore.ts` 和 `src/panel/CanvasTemplateMarketplacePanel.ts` 已有版本菜单与安装 sidecar 行为，补齐“已安装版本低于 latest 时显示更新徽章”“主按钮更新到 latest”“版本菜单选择历史版本回滚”的宿主测试。安装包仍以完整 `package.zip` 和 `.market.json` sidecar 为事实，不能把包内 `template.json` 当成市场管理对象。
+第四里程碑是 VSCode 更新与回滚，已完成本地实现。`src/panel/TemplateMarketplaceClient.ts` 负责读取已安装 sidecar、best-effort 检查远端 latest，并把已安装模板更新到 latest；`src/sidebar/CanvasSidebarTemplateView.ts` 在市场模板行显示 `可更新 vN` badge，并提供更新、打开市场详情/回滚和举报跳转动作；`src/panel/CanvasTemplateMarketplacePanel.ts` 的版本菜单把低于当前安装版本的目标标记为“回滚到 vN”。安装包仍以完整 `package.zip` 和 `.market.json` sidecar 为事实，不能把包内 `template.json` 当成市场管理对象。
+
+发布者新版本入口也已完成本地实现。浏览器端 `apps/template-marketplace/src/web/lib/routing.ts` 新增 `/templates/publish/version?template=<slug>` helper，`TemplatePublishVersionView.tsx` 读取当前登录用户和目标模板、提示非作者权限，并提交更新说明、模板 JSON 和可选缩略图到 `publishMarketplaceTemplateVersion()`。My Templates 和作者本人打开模板详情时显示 `Publish new version` 入口。VSCode 端 `src/panel/CanvasTemplateMarketplacePanel.ts` 在详情 sidebar 显示 `发布新版本`，打开复用发布表单的 version mode；version mode 隐藏名称、Slug、描述、标签、README，仅允许选择同名本地模板、确认 CHANGELOG 与 Template JSON，提交给 `TemplateMarketplaceClient.publishTemplateDraftVersion()`。宿主会使用当前详情 `sourceUrl` 换取同 origin marketplace token，先读取目标详情并做同名 guard，再调用 `POST /api/v1/templates/:id/versions`。首版不实现 listing revision 或仅展示字段更新。
 
 第五里程碑是文档和真实环境验证。同步产品规格 Phase 4 状态、设计文档 API 列表和验证状态、设计索引和产品索引。部署 preview 后做浏览器真实 OAuth smoke：普通用户举报，管理员查看队列和统计并下架，普通用户确认公开列表隐藏，被封禁用户写接口返回 403。
 
@@ -131,7 +155,7 @@ Web 管理后台完成时应满足：管理员打开 `/templates/admin` 能看�
 
 管理员全站统计完成时应满足：管理员调用 `GET /api/v1/admin/stats` 返回模板总量、published/delisted 数量、用户与封禁数、发布者数、下载与点赞累计数、已发布版本总数、举报状态分布、管理员审计动作数、Top templates 和按天聚合趋势；非管理员沿用管理员权限检查返回 403。Web 管理后台加载举报队列时应同时显示这些统计，Top templates 中的单模板 `publishCount` 必须来自 `template_versions` 聚合而不是 latest version 映射长度。
 
-VSCode 更新与回滚完成时应满足：安装旧版本市场模板后，如果远端 latest version 更高，侧栏显示更新徽章；点击更新安装 latest；通过版本菜单选择历史版本后，本地 sidecar 的 `marketVersionId` 和 `installedVersionNumber` 改为目标历史版本；应用模板仍读取包内 `template.json`，README、CHANGELOG 和缩略图继续保留。
+VSCode 更新与回滚完成时应满足：安装旧版本市场模板后，如果远端 latest version 更高，侧栏显示更新徽章；点击更新安装 latest；通过版本菜单选择历史版本后，本地 sidecar 的 `marketVersionId` 和 `installedVersionNumber` 改为目标历史版本；应用模板仍读取包内 `template.json`，README、CHANGELOG 和缩略图继续保留。本轮已用本地 fixture VSCode E2E 覆盖这些行为，真实 preview smoke 仍作为发布前验证项。
 
 ## 幂等性与恢复
 
@@ -216,6 +240,51 @@ VSCode 更新与回滚完成时应满足：安装旧版本市场模板后，如�
     git diff --check
     # 2026-06-07 19:34 +0800；通过，无 whitespace error
 
+    npm run typecheck
+    # 2026-06-25 12:00 +0800；tsc --noEmit 通过
+
+    npm run typecheck:marketplace
+    # 2026-06-25 12:00 +0800；marketplace-shared 与 template-marketplace typecheck 通过
+
+    npm run test:canvas-templates
+    # 2026-06-25 12:00 +0800；源码/模板回归脚本通过
+
+    npm run test:marketplace-web
+    # 2026-06-25 12:00 +0800；Test Files 6 passed; Tests 43 passed
+
+    npm run build
+    # 2026-06-25 12:00 +0800；扩展构建通过
+
+    npm run test:marketplace-vscode-fixture-e2e
+    # 2026-06-25 12:00 +0800；Template marketplace VS Code UI E2E passed；覆盖安装 v1、侧栏更新徽章、更新到 v2、回滚到 v1 和举报跳转
+
+    npm run typecheck:marketplace
+    # 2026-06-26 11:45 +0800；marketplace-shared 与 template-marketplace typecheck 通过
+
+    npm run typecheck
+    # 2026-06-26 11:45 +0800；tsc --noEmit 通过
+
+    npm run test:marketplace-web
+    # 2026-06-26 11:45 +0800；Test Files 6 passed; Tests 44 passed
+
+    npm run test:canvas-templates
+    # 2026-06-26 11:45 +0800；源码/模板回归脚本通过，覆盖 publish-version source assertions
+
+    npm run test:marketplace-vscode-fixture-e2e
+    # 2026-06-26 11:45 +0800；Template marketplace VS Code UI E2E passed；覆盖 VSCode 发布新版本 v3、token exchange、/versions 请求和详情版本菜单更新
+
+    npm run test:marketplace
+    # 2026-06-26 17:39 +0800；marketplace typecheck/shared/api/web/preflight/browser E2E/VSCode fixture E2E 全链路通过；浏览器 E2E 使用本地 mock API 并覆盖 Web publish-version，VSCode preview 真网验证未包含在该命令内
+
+    npm run build:marketplace
+    # 2026-06-26 17:39 +0800；template-marketplace typecheck 与 Vite production build 通过
+
+    npm run test:marketplace-vscode-preview-e2e
+    # 2026-06-26 17:28 +0800；未执行真实 preview 验证，preflight 因当前网络解析 / 连接超时而按脚本规则 skip：connect ETIMEDOUT 157.240.17.14:443 / ENETUNREACH IPv6
+
+    git diff --check
+    # 2026-06-26 17:39 +0800；通过，无 whitespace error
+
 ## 接口与依赖
 
 必须继续使用 Cloudflare Workers + Hono + D1 + R2 的既有模板市场栈。治理 API 不引入新的外部服务，不依赖前端隐藏按钮作为权限边界。
@@ -229,3 +298,7 @@ VSCode 更新与回滚完成时应满足：安装旧版本市场模板后，如�
 2026-06-07 / Codex：处理 PR review 中的两个 Medium 问题：完整包上传先查封禁再读取 multipart body；管理员 bootstrap 新增 `MARKETPLACE_ADMIN_GITHUB_IDS` 并保留 login 兼容。已同步设计/产品/计划文档和 `.dev.vars.example`。
 
 2026-06-07 / Codex：更新 Phase 4 ExecPlan，原因是本轮切到 `feat-template-marketplace-phase4-admin-stats` 后实现管理员全站统计面板，需要记录 API、聚合口径、验证标准和剩余 Phase 4 缺口。
+
+2026-06-25 / Codex：更新 Phase 4 ExecPlan，原因是 VSCode 安装侧更新/回滚和插件内举报跳转入口已完成本地实现并通过 fixture E2E，需要记录代码路径、验证证据和剩余 preview OAuth smoke。
+
+2026-06-26 / Codex：更新 Phase 4 ExecPlan，原因是发布者新版本 Web / VSCode 用户入口已完成本地实现并通过 fixture E2E，需要记录 Web 路由、VSCode version mode、缓存失效、验证证据和剩余真实 preview OAuth smoke。

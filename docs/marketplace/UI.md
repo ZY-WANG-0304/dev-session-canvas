@@ -1,5 +1,5 @@
 ---
-version: 2026-05-16
+version: 2026-06-26
 name: Template Marketplace UI
 description: 一个矩形、工作台语境优先的模板市场界面系统：浏览器端借鉴 Visual Studio Marketplace 的信息架构，但不继承其玫红品牌色；VSCode Webview 端则放弃固定市场色板，完全从当前 VSCode Color Theme 派生背景、文本、边框、控件、焦点、菜单和状态。两端共同强调 README-first / CHANGELOG-tabbed 详情页、紧凑安装上下文、矩形卡片、可见 focus 和非颜色状态文案。
 
@@ -261,7 +261,7 @@ Template Marketplace UI 是一个双宿主设计语言：公开浏览器市场�
 
 浏览器市场是一个 **rectangular catalog**。它对齐 Visual Studio Marketplace 的工具型信息布局：黑色品牌栏、单一 active Templates tab、居中标题、大号矩形搜索、Featured 网格、矩形卡片和 README 主导的详情页。品牌强调来自 DevSessionCanvas 蓝色（`{colors.market-accent}`）和绿色（`{colors.market-moss}`），而不是 Visual Studio Marketplace 的玫红色，也不是装饰性 hero 效果。
 
-VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vscode-*` token 跟随当前 VSCode Color Theme，使用紧凑单列 list row，而不是营销卡片墙；列表右侧主控件是 `安装 / 已安装 / 更新到 vN | 版本菜单` 的 split button，不把 `查看详情` 放在主操作区。它应该像编辑器里的工具面板，而不是把外部网页原样塞进 Webview。
+VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vscode-*` token 跟随当前 VSCode Color Theme，使用紧凑单列 list row，而不是营销卡片墙；列表右侧主控件是 `安装 / 已安装 / 更新到 vN / 回滚到 vN | 版本菜单` 的 split button，不把 `查看详情` 放在主操作区。详情侧栏允许提供 `举报模板` 次级按钮，但该按钮只跳转 Web 详情页的 `#report`，不在 VSCode 内复制举报表单。它应该像编辑器里的工具面板，而不是把外部网页原样塞进 Webview。
 
 **Key Characteristics:**
 - 两套 theme contract：浏览器端固定 `Light 2026` / `Dark 2026` token；VSCode Webview 端完全由宿主 token 派生。
@@ -269,8 +269,8 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 - 浏览器端只用一个 action blue（`{colors.market-accent}`）承载 Templates tab、搜索按钮、安装 CTA 和 focus ring tint。
 - 绿色（`{colors.market-moss}` / `{colors.market-moss-on-dark}`）只做 secondary semantic accent，用于 tag、link 和弱强调，不与主操作竞争。
 - 浏览器和 VSCode 详情页都是 README-first，但主内容区必须提供 README / CHANGELOG 两个 tab；CHANGELOG 使用版本列表呈现，不只藏在右侧版本历史中。
-- VSCode list row 在工作台密度下同时呈现缩略图、标题、发布者、详情文本动作、描述、标签、统计、安装目标、安装 split button 和已安装 badge。
-- 浏览器端可以提供 JSON 下载；VSCode 端不提供下载 JSON 控件，版本菜单只服务安装 / 更新。
+- VSCode list row 在工作台密度下同时呈现缩略图、标题、发布者、详情文本动作、描述、标签、统计、安装目标、安装 split button 和已安装 badge；模板侧栏中的已安装市场模板额外使用 `可更新 vN` badge 做被动提醒，并用 Codicon 行动作承载更新、版本管理/回滚与举报跳转。
+- 浏览器端可以提供 JSON 下载；VSCode 端不提供下载 JSON 控件，版本菜单只服务安装 / 更新 / 回滚。
 - 可访问性依赖可见 focus ring、文本按钮、aria label，以及对已安装、离线、错误、版本等状态的非颜色文案。
 
 ## Colors
@@ -437,7 +437,7 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 
 **`browser-global-nav`** -- 浏览器市场顶部的 persistent black brand bar。背景 `{colors.market-nav}`，文字 `{colors.market-nav-text}`，高度 48px。左侧 cluster 是 DevSessionCanvas brand、separator、Templates label；右侧 cluster 是非小屏显示的 GitHub link。它只属于浏览器端，不出现在 VSCode 面板。
 
-**`browser-tab-nav`** -- 品牌栏下方的单行导航。背景 `{colors.market-paper}` / `{colors.market-paper-on-dark}`，底部边框 `{colors.market-line}` / `{colors.market-line-on-dark}`。`Templates` 是矩形 `{colors.market-accent}` active block，水平 padding 40px、垂直 padding 16px；Phase 2 发布入口和发布者模板列表可以作为同一行的 muted text link `Publish` / `My Templates`，不要为 Canvas、Agents、Resources 等尚不存在的 section 创建 tab。
+**`browser-tab-nav`** -- 品牌栏下方的单行导航。背景 `{colors.market-paper}` / `{colors.market-paper-on-dark}`，底部边框 `{colors.market-line}` / `{colors.market-line-on-dark}`。`Templates` 是矩形 `{colors.market-accent}` active block，水平 padding 40px、垂直 padding 16px；Phase 2 发布入口和发布者模板列表可以作为同一行的 muted text link `Publish` / `My Templates`，作者在 My Templates 或本人模板详情中进入 `Publish new version`，目标路由为 `/templates/publish/version?template=<slug>`。不要为 Canvas、Agents、Resources 等尚不存在的 section 创建 tab。
 
 **`vscode-panel-header`** -- Webview 内的紧凑 workbench header。左侧是 `{typography.vscode-panel-title}` 的 `模板市场`；右侧是 secondary button cluster，包含带 `codicon-cloud-upload` 的 `发布自建模板` 和 `浏览器中打开`。下方说明用户可以选择安装位置并安装到本地模板库。不要使用浏览器 brand bar、tab 或 hero title。
 
@@ -463,15 +463,15 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 
 **`browser-detail-shell`** -- 单一矩形详情容器。Header 包含 back link、thumbnail、title、description 和 tags。Body 是 README / CHANGELOG tab column + right sidebar。README 是默认 tab；CHANGELOG tab 按版本倒序展示每个版本的 changelog。Downloads、likes、latest version、version history、integrity、install 和 download actions 都留在 sidebar。不要拆成多个 floating card。
 
-**`browser-publish-form`** -- 浏览器 Phase 2 发布页的单一矩形表单容器。Header 包含 `Publish` overline、标题、说明和轻量 GitHub login 状态；未登录状态只展示一个 GitHub sign-in 主按钮，登录完成后回到当前发布页；已登录状态可用小号矩形 secondary `Sign out` 清理市场 session。登录后主体按 `Template file`、`Marketplace details`、`Preview & publish` 组织：左侧完成 JSON 选择和公开元信息，右侧固定呈现生成/自定义 thumbnail 预览、发布状态摘要和主发布按钮。README、changelog 和 Template JSON preview 属于 optional advanced 区域，默认收敛到 details，不占据页面首屏主面积。成功和失败状态必须使用完整文本，不只靠颜色提示。
+**`browser-publish-form`** -- 浏览器 Phase 2 发布页的单一矩形表单容器。Header 包含 `Publish` overline、标题、说明和轻量 GitHub login 状态；未登录状态只展示一个 GitHub sign-in 主按钮，登录完成后回到当前发布页；已登录状态可用小号矩形 secondary `Sign out` 清理市场 session。登录后主体按 `Template file`、`Marketplace details`、`Preview & publish` 组织：左侧完成 JSON 选择和公开元信息，右侧固定呈现生成/自定义 thumbnail 预览、发布状态摘要和主发布按钮。README、changelog 和 Template JSON preview 属于 optional advanced 区域，默认收敛到 details，不占据页面首屏主面积。新版本发布页复用同一矩形表单语言，但标题为 `Publish new version`，目标摘要固定显示当前市场模板，主输入只保留更新后的 Template JSON、CHANGELOG 和可选 PNG thumbnail，名称/Slug/README/标签/描述沿用当前市场模板。成功和失败状态必须使用完整文本，不只靠颜色提示。
 
 **`browser-error-message`** -- 浏览器市场错误提示。使用 `{colors.market-error-bg}` / `{colors.market-error-bg-on-dark}`、`{colors.market-error}` / `{colors.market-error-on-dark}` 和 `{colors.market-error-line}` / `{colors.market-error-line-on-dark}`，保持矩形 `{rounded.none}`。错误信息必须放在触发错误的控件附近；表单级提交失败可以放在发布按钮附近，但字段校验和文件上传错误不能集中到右侧 publish summary。
 
 **`vscode-list-row`** -- 原生密度模板行。Grid area 保持左侧 thumbnail、中间文本、右侧 action rail。中间文本必须包含发布者信息，用于区分同名或相似模板；右侧 action rail 是同一个父容器，依次放安装位置选择器和安装 split button，与详情页的控件顺序一致，主控件必须是安装 split button，而不是 `查看详情`。Row 使用 bottom border 和可选 row hover background，不使用 card box。Installed badge 文案为 `已安装到 ... · vN`。
 
-**`vscode-detail-shell`** -- 工作台详情容器。Header 包含 `返回列表`、thumbnail、title、发布者、description 和 tags。Body 使用 README / CHANGELOG tab panel + 18rem sidebar。README 是默认 tab；CHANGELOG tab 按版本倒序展示每个版本的 changelog。Sidebar 集中放置 install target select、install split button、metrics 和 version history；完整性校验、source 等技术信息不在默认主布局中抢占正文空间。
+**`vscode-detail-shell`** -- 工作台详情容器。Header 包含 `返回列表`、thumbnail、title、发布者、description 和 tags。Body 使用 README / CHANGELOG tab panel + 18rem sidebar。README 是默认 tab；CHANGELOG tab 按版本倒序展示每个版本的 changelog。Sidebar 集中放置 install target select、install split button、`发布新版本` secondary action、`举报模板` secondary action、metrics 和 version history；完整性校验、source 等技术信息不在默认主布局中抢占正文空间。`举报模板` 只跳转 Web 详情页 `#report`，不在 VSCode 内打开举报表单。
 
-**`vscode-publish-form`** -- 插件市场内的发布确认表单。入口来自 header `发布自建模板`、侧栏自建模板行 action 或命令面板；画板右键菜单只保留保存模板，不直接发布。表单使用单一 workbench surface，不使用 QuickInput 串联多个字段。主体左侧依次是本地模板选择、名称 / Slug、描述、标签、README、CHANGELOG 和 Template JSON Preview；右侧是自动生成 thumbnail、节点/位置摘要、确认发布按钮和明确状态。Name / Slug 同一行必须保持 input 基线对齐，Slug 校验文本占用预留行高，不能把其中一个字段整体顶高或压低。发布成功后显示成功页，提供查看详情和返回市场列表入口，并刷新列表缓存。
+**`vscode-publish-form`** -- 插件市场内的发布确认表单。入口来自 header `发布自建模板`、侧栏自建模板行 action、命令面板或详情页 `发布新版本`；画板右键菜单只保留保存模板，不直接发布。表单使用单一 workbench surface，不使用 QuickInput 串联多个字段。普通发布模式左侧依次是本地模板选择、名称 / Slug、描述、标签、README、CHANGELOG 和 Template JSON Preview；右侧是自动生成 thumbnail、节点/位置摘要、确认发布按钮和明确状态。Name / Slug 同一行必须保持 input 基线对齐，Slug 校验文本占用预留行高，不能把其中一个字段整体顶高或压低。新版本模式标题为 `发布新版本`，目标市场模板摘要固定可见，只显示本地模板选择、CHANGELOG 和 Template JSON Preview，提交按钮为 `确认发布新版本`；名称、Slug、描述、标签和 README 不在 VSCode version mode 中编辑。发布成功后显示成功页，提供查看详情和返回市场列表入口，并刷新列表缓存。
 
 **`vscode-version-menu`** -- 依附在 split button 上的短生命周期 popover。它使用 `role="menu"`、4px padding、30px item height；当用户点击外部、按 Escape、改变 search/sort、切换 list/detail context 时关闭。
 
@@ -511,6 +511,7 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 - 模板列表中的上传/发布入口保持为 header 或 toolbar 内的短 CTA，不额外增加营销横幅或拖拽上传区。
 - VSCode 列表右侧主控件使用安装 split button；`查看详情` 只作为标题附近的文本动作出现。
 - VSCode 发布只在用户确认 `vscode-publish-form` 后提交；保存当前画布只是生成本地模板草稿，不等于直接发布到市场。
+- VSCode 新版本发布从详情页进入 `vscode-publish-form` 的 version mode，只提交模板 JSON、CHANGELOG 和缩略图；listing 文案编辑不在这个模式中处理。
 - 对 icon-only action 提供 visible focus、aria label，并为 installed、offline、loading、error、version 和 integrity 状态提供非颜色文本。
 - 点击外部、按 Escape、搜索/排序变化、list/detail 切换时关闭 version menu。
 

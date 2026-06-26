@@ -232,17 +232,17 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - [x] Web 端 Dashboard 展示发布者统计
 
 ### Phase 4：版本管理与治理
-当前状态：Phase 4 已启动，第一切片完成本地实现的是治理后端与浏览器治理入口：登录用户举报、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写接口拒绝和管理员审计日志均已有 Worker API 与本地自动化测试；Web 详情页举报表单与 `/templates/admin` 最小管理后台已接入。管理员全站数据统计已补齐 Worker API 与 Web 面板本地实现，统计读取累计计数、按天聚合、举报状态、用户封禁数、发布版本数和管理员审计数。VSCode 安装侧更新提醒、手动更新、历史版本回滚、插件内举报入口和真实 preview OAuth smoke 仍待完成。
+当前状态：Phase 4 已启动，治理后端与浏览器治理入口已完成本地实现：登录用户举报、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写接口拒绝和管理员审计日志均已有 Worker API 与本地自动化测试；Web 详情页举报表单与 `/templates/admin` 最小管理后台已接入。管理员全站数据统计已补齐 Worker API 与 Web 面板本地实现，统计读取累计计数、按天聚合、举报状态、用户封禁数、发布版本数和管理员审计数。VSCode 安装侧已完成侧栏更新徽章、手动更新到 latest、历史版本安装/回滚和插件内举报跳转入口；发布者新版本已补齐 Web `/templates/publish/version?template=<slug>` 入口、作者详情/My Templates 入口，以及 VSCode 详情页 version mode 发布表单，并通过本地 fixture E2E 验证。真实 preview OAuth smoke 仍待收口。
 
-- [ ] 发布者可发布新版本并附更新说明
-- [ ] 已安装模板有新版本时侧边栏显示更新徽章
-- [ ] 用户可手动更新到最新版本
-- [ ] 用户可回滚到历史版本
-- [ ] 用户可举报模板（选择原因；Web 详情页与 Worker API 已本地验证，插件内入口待补）
-- [ ] 管理后台可查看举报队列（Web 最小后台与 Worker API 已本地验证，preview OAuth smoke 待补）
-- [ ] 管理后台可下架/恢复模板（Worker API、Web 操作与审计日志已本地验证，preview smoke 待补）
-- [ ] 管理后台可封禁用户（Worker API、Web 操作与封禁写拒绝已本地验证，preview smoke 待补）
-- [ ] 管理后台可查看数据统计（Worker API 与 Web 面板已本地验证，preview OAuth smoke 待补）
+- [x] 发布者可发布新版本并附更新说明（Web 与 VSCode 用户入口已本地验证；真实 preview OAuth smoke 待补）
+- [x] 已安装模板有新版本时侧边栏显示更新徽章
+- [x] 用户可手动更新到最新版本
+- [x] 用户可回滚到历史版本
+- [x] 用户可举报模板（Web 详情页选择原因；插件内入口跳转 Web 详情页 `#report`）
+- [x] 管理后台可查看举报队列（Web 最小后台与 Worker API 已本地验证，preview OAuth smoke 待补）
+- [x] 管理后台可下架/恢复模板（Worker API、Web 操作与审计日志已本地验证，preview smoke 待补）
+- [x] 管理后台可封禁用户（Worker API、Web 操作与封禁写拒绝已本地验证，preview smoke 待补）
+- [x] 管理后台可查看数据统计（Worker API 与 Web 面板已本地验证，preview OAuth smoke 待补）
 
 管理员定义：正式权限边界是 D1 `admin_roles` 表；部署时可通过 Worker secret bootstrap 首个管理员。生产环境推荐配置稳定的 GitHub 数字 user id 到 `MARKETPLACE_ADMIN_GITHUB_IDS`，`MARKETPLACE_ADMIN_GITHUB_LOGINS` 只作为本地开发和临时配置的兼容入口。allowlist 只负责 bootstrap 已登录用户写入 `admin_roles`，已落库的管理员权限不应在每次请求时动态依赖 allowlist。
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildMarketplacePublishSuccessHref,
+  buildMarketplacePublishVersionHref,
   buildGithubSignInHref,
   buildSignOutHref,
   buildTemplateDetailHref,
@@ -12,7 +13,9 @@ import {
   isMarketplaceAdminPath,
   isMarketplaceMePath,
   isMarketplacePublishPath,
+  isMarketplacePublishVersionPath,
   isMarketplacePublishSuccessPath,
+  readPublishVersionTemplateSlug,
   readTemplateSlugFromPath
 } from './routing';
 
@@ -31,8 +34,11 @@ describe('marketplace web routing', () => {
   it('keeps the publish path out of template detail slug routing', () => {
     expect(readTemplateSlugFromPath('/templates/publish')).toBeUndefined();
     expect(readTemplateSlugFromPath('/templates/publish/success')).toBeUndefined();
+    expect(readTemplateSlugFromPath('/templates/publish/version')).toBeUndefined();
     expect(isMarketplacePublishPath('/templates/publish')).toBe(true);
     expect(isMarketplacePublishSuccessPath('/templates/publish/success')).toBe(true);
+    expect(isMarketplacePublishVersionPath('/templates/publish/version')).toBe(true);
+    expect(readPublishVersionTemplateSlug('?template=review-loop')).toBe('review-loop');
   });
 
   it('keeps the publisher dashboard path out of template detail slug routing', () => {
@@ -49,6 +55,7 @@ describe('marketplace web routing', () => {
     expect(getMarketplaceHomeHref()).toBe('/templates/');
     expect(getMarketplacePublishHref()).toBe('/templates/publish');
     expect(buildMarketplacePublishSuccessHref('review-loop')).toBe('/templates/publish/success?template=review-loop');
+    expect(buildMarketplacePublishVersionHref('review-loop')).toBe('/templates/publish/version?template=review-loop');
     expect(getMarketplaceMeHref()).toBe('/templates/me');
     expect(getMarketplaceAdminHref()).toBe('/templates/admin');
     expect(buildTemplateDetailHref('review-loop')).toBe('/templates/review-loop');

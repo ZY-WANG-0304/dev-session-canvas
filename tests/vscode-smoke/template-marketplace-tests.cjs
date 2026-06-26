@@ -11,6 +11,7 @@ const COMMAND_IDS = {
   testCaptureTemplateMarketplaceProbe: 'devSessionCanvas.__test.captureTemplateMarketplaceProbe',
   testPerformTemplateMarketplaceAction: 'devSessionCanvas.__test.performTemplateMarketplaceAction',
   testGetCanvasTemplateItems: 'devSessionCanvas.__test.getCanvasTemplateItems',
+  testGetSidebarTemplateItems: 'devSessionCanvas.__test.getSidebarTemplateItems',
   testSaveCanvasAsTemplate: 'devSessionCanvas.__test.saveCanvasAsTemplate',
   testCreateNode: 'devSessionCanvas.__test.createNode',
   testResetState: 'devSessionCanvas.__test.resetState'
@@ -80,6 +81,7 @@ async function verifyMarketplacePanelOperations(fixture) {
   assert.strictEqual(detailProbe.detailTitle, 'Panel Review Loop');
   assert.ok(detailProbe.publisherTexts.some((text) => /Codex Tester/u.test(text)), 'Expected detail view to expose publisher information.');
   assert.ok(!detailProbe.buttonTexts.some((text) => /下载 JSON/u.test(text)), 'Expected detail view to omit JSON download actions.');
+  assert.ok(detailProbe.buttonTexts.includes('举报模板'), 'Expected detail view to expose a report entry.');
   const changelogProbe = await performMarketplaceAction({ kind: 'selectDetailTab', tab: 'changelog' }, 10000);
   assert.strictEqual(changelogProbe.activeDetailTab, 'changelog');
   assert.match(changelogProbe.detailChangelogText || '', /Tighten panel detail controls/u);
@@ -92,6 +94,7 @@ async function verifyMarketplacePanelOperations(fixture) {
     menuProbe = await waitForMarketplaceProbe((probe) => probe.hasVersionMenu);
   }
   assert.ok(menuProbe.versionMenuItems.some((item) => /安装 v2/u.test(item)));
+  assert.ok(menuProbe.versionMenuItems.some((item) => /安装 v1/u.test(item)));
 
   const closedProbe = await performMarketplaceAction({ kind: 'clickOutside' }, 10000);
   assert.strictEqual(closedProbe.hasVersionMenu, false);
@@ -102,18 +105,62 @@ async function verifyMarketplacePanelOperations(fixture) {
   assert.deepStrictEqual(backProbe.visibleTemplateNames, ['Panel Review Loop']);
 
   await performMarketplaceAction({ kind: 'openDetail', slug: 'panel-review-loop' }, 10000);
-  await performMarketplaceAction({ kind: 'installActiveVersion', slug: 'panel-review-loop' }, 10000);
+  await performMarketplaceAction({ kind: 'installVersion', slug: 'panel-review-loop', versionNumber: 1 }, 10000);
 
-  const installedEntry = await waitForTemplateCatalogEntry((entry) =>
-    entry.marketplace?.marketTemplateSlug === 'panel-review-loop'
+  let installedEntry = await waitForTemplateCatalogEntry((entry) =>
+    entry.marketplace?.marketTemplateSlug === 'panel-review-loop' &&
+    entry.marketplace?.marketVersionId === 'ver-panel-review-1'
   );
-  assert.strictEqual(installedEntry.marketplace.marketVersionId, 'ver-panel-review-2');
-  assert.strictEqual(installedEntry.marketplace.installedVersionNumber, 2);
+  assert.strictEqual(installedEntry.marketplace.marketVersionId, 'ver-panel-review-1');
+  assert.strictEqual(installedEntry.marketplace.installedVersionNumber, 1);
   assert.strictEqual(installedEntry.marketplace.sourceUrl, `${fixture.sourceUrl}/panel-review-loop`);
   assert.ok(installedEntry.storageLocation?.id, 'Expected installed marketplace template to record its storage location.');
   assert.strictEqual(installedEntry.marketplace.templatePath, 'template.json');
   assert.ok(installedEntry.marketplace.packageSha256, 'Expected installed marketplace template to record package checksum.');
   assert.match(installedEntry.filePath, /marketplace[\\/]panel-review-loop[\\/]template\.json$/u);
+
+  const sidebarUpdateItem = await waitForSidebarTemplateItem((item) =>
+    item.marketplace?.marketTemplateSlug === 'panel-review-loop' &&
+    item.marketplace?.updateAvailable === true
+  );
+  assert.strictEqual(sidebarUpdateItem.marketplace.installedVersionNumber, 1);
+  assert.strictEqual(sidebarUpdateItem.marketplace.latestVersionNumber, 2);
+  assert.strictEqual(sidebarUpdateItem.canUpdateMarketplace, true);
+  assert.strictEqual(sidebarUpdateItem.canManageMarketplace, true);
+  assert.strictEqual(sidebarUpdateItem.canReportMarketplace, true);
+
+  await performMarketplaceAction({ kind: 'installActiveVersion', slug: 'panel-review-loop' }, 10000);
+  installedEntry = await waitForTemplateCatalogEntry((entry) =>
+    entry.marketplace?.marketTemplateSlug === 'panel-review-loop' &&
+    entry.marketplace?.marketVersionId === 'ver-panel-review-2'
+  );
+  assert.strictEqual(installedEntry.marketplace.installedVersionNumber, 2);
+  const updatedProbe = await waitForMarketplaceProbe((probe) =>
+    probe.buttonTexts.some((text) => /已安装 v2/u.test(text))
+  );
+  assert.ok(
+    updatedProbe.buttonTexts.some((text) => /已安装 v2/u.test(text)),
+    `Expected latest install action to update the installed state. Buttons: ${JSON.stringify(updatedProbe.buttonTexts)}`
+  );
+
+  menuProbe = await performMarketplaceAction({ kind: 'toggleInstallVersionMenu', slug: 'panel-review-loop' }, 10000);
+  if (!menuProbe.hasVersionMenu) {
+    menuProbe = await waitForMarketplaceProbe((probe) => probe.hasVersionMenu);
+  }
+  assert.ok(menuProbe.versionMenuItems.some((item) => /回滚到 v1/u.test(item)), 'Expected version menu to label older versions as rollback.');
+  await performMarketplaceAction({ kind: 'installVersion', slug: 'panel-review-loop', versionNumber: 1 }, 10000);
+  installedEntry = await waitForTemplateCatalogEntry((entry) =>
+    entry.marketplace?.marketTemplateSlug === 'panel-review-loop' &&
+    entry.marketplace?.marketVersionId === 'ver-panel-review-1'
+  );
+  assert.strictEqual(installedEntry.marketplace.installedVersionNumber, 1);
+
+  await withInterceptedExternalOpen(async (externalCalls) => {
+    await performMarketplaceAction({ kind: 'openReport', slug: 'panel-review-loop' }, 10000);
+    await waitForCondition(() => externalCalls.length === 1, 10000, () => `report external open. Calls: ${externalCalls.map(String).join(', ')}`);
+    assert.strictEqual(externalCalls.length, 1);
+    assert.strictEqual(String(externalCalls[0]), `${fixture.sourceUrl}/panel-review-loop#report`);
+  });
 }
 
 async function verifyMarketplacePanelPublish(fixture) {
@@ -208,6 +255,80 @@ async function verifyMarketplacePanelPublish(fixture) {
     backProbe.visibleTemplateNames.includes('VS Code Publish Smoke'),
     'Expected published template to appear after returning to marketplace list.'
   );
+
+  await verifyMarketplacePanelPublishVersion(fixture);
+}
+
+async function verifyMarketplacePanelPublishVersion(fixture) {
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'note');
+  const savedTemplate = await saveCanvasTemplateForTest('Panel Review Loop');
+
+  fixture.publishedVersionRequests.length = 0;
+  await withInterceptedAuthenticationSession(async (authCalls) => {
+    await withInterceptedInformationMessages(
+      async (informationCalls) => {
+        await performMarketplaceAction({ kind: 'openDetail', slug: 'panel-review-loop' }, 10000);
+        await performMarketplaceAction({ kind: 'publishVersion', slug: 'panel-review-loop' }, 10000);
+        const formProbe = await waitForMarketplaceProbe((probe) =>
+          probe.view === 'publish' &&
+          probe.publishMode === 'version' &&
+          probe.publishTemplateIdOrSlug === 'panel-review-loop' &&
+          probe.publishSelectedTemplateId === savedTemplate.template.id
+        );
+        assert.strictEqual(formProbe.publishVersionTargetName, 'Panel Review Loop');
+        assert.strictEqual(formProbe.publishForm.name, 'Panel Review Loop');
+        assert.match(formProbe.publishForm.templateJson, /Panel Review Loop/u);
+
+        await performMarketplaceAction(
+          {
+            kind: 'fillPublishForm',
+            fields: {
+              changelog: 'Add a VS Code publisher version from fixture E2E.'
+            }
+          },
+          10000
+        );
+        await performMarketplaceAction({ kind: 'submitPublishForm' }, 10000);
+        await waitForCondition(() => fixture.publishedVersionRequests.length === 1, 20000, 'publish version request');
+        assert.strictEqual(authCalls.length, 1);
+        assert.ok(
+          informationCalls.some((call) => String(call.message).includes('模板“Panel Review Loop”已发布到模板市场 v3。')),
+          'Expected publish-version success information message.'
+        );
+      },
+      () => undefined
+    );
+  });
+
+  const versionRequest = fixture.publishedVersionRequests[0];
+  assert.strictEqual(versionRequest.authorization, 'Bearer marketplace-e2e-token');
+  assert.strictEqual(versionRequest.templateIdOrSlug, 'panel-review-loop');
+  assert.strictEqual(versionRequest.body.changelog, 'Add a VS Code publisher version from fixture E2E.');
+  assert.ok(versionRequest.body.templateDocument?.template?.nodes?.length > 0);
+  assert.ok(typeof versionRequest.body.thumbnailPngBase64 === 'string' && versionRequest.body.thumbnailPngBase64.length > 0);
+
+  const successProbe = await waitForMarketplaceProbe((probe) =>
+    probe.view === 'publish' &&
+    probe.publishedTemplate?.slug === 'panel-review-loop' &&
+    probe.publishedTemplate?.versionNumber === 3 &&
+    /v3/u.test(probe.publishStatusText || '')
+  );
+  assert.strictEqual(successProbe.publishedTemplate.name, 'Panel Review Loop');
+
+  await performMarketplaceAction({ kind: 'openDetail', slug: 'panel-review-loop' }, 10000);
+  await performMarketplaceAction({ kind: 'toggleInstallVersionMenu', slug: 'panel-review-loop' }, 10000);
+  const detailProbe = await waitForMarketplaceProbe((probe) =>
+    probe.view === 'detail' &&
+    probe.activeTemplateSlug === 'panel-review-loop' &&
+    probe.versionMenuItems.some((text) => /更新到 v3/u.test(text))
+  );
+  assert.ok(
+    detailProbe.versionMenuItems.some((text) => /更新到 v3/u.test(text)),
+    `Expected version menu to mention v3. Items: ${JSON.stringify(detailProbe.versionMenuItems)}`
+  );
 }
 
 async function saveCanvasTemplateForTest(name) {
@@ -244,6 +365,15 @@ async function waitForTemplateCatalogEntry(predicate, timeoutMs = 20000) {
     return lastCatalog.templates.some(predicate);
   }, timeoutMs, () => `template catalog entry. Last catalog: ${JSON.stringify(lastCatalog)}`);
   return lastCatalog.templates.find(predicate);
+}
+
+async function waitForSidebarTemplateItem(predicate, timeoutMs = 20000) {
+  let lastItems;
+  await waitForCondition(async () => {
+    lastItems = await vscode.commands.executeCommand(COMMAND_IDS.testGetSidebarTemplateItems);
+    return Array.isArray(lastItems) && lastItems.some(predicate);
+  }, timeoutMs, () => `sidebar template item. Last items: ${JSON.stringify(lastItems)}`);
+  return lastItems.find(predicate);
 }
 
 async function waitForCondition(predicate, timeoutMs, label) {
@@ -324,6 +454,21 @@ async function withInterceptedInformationMessages(runIntercepted, resolveSelecti
     return await runIntercepted(calls);
   } finally {
     vscode.window.showInformationMessage = originalShowInformationMessage;
+  }
+}
+
+async function withInterceptedExternalOpen(runIntercepted) {
+  const originalOpenExternal = vscode.env.openExternal;
+  const calls = [];
+  vscode.env.openExternal = async (uri) => {
+    calls.push(uri);
+    return true;
+  };
+
+  try {
+    return await runIntercepted(calls);
+  } finally {
+    vscode.env.openExternal = originalOpenExternal;
   }
 }
 

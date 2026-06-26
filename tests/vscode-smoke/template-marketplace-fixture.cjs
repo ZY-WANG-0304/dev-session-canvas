@@ -44,6 +44,7 @@ function createMarketplaceFixture(port) {
     sourceUrl,
     requests: [],
     publishedRequests: [],
+    publishedVersionRequests: [],
     templates: [review, release],
     documentsByVersionId: new Map([
       ['ver-panel-review-2', reviewDocumentV2],
@@ -250,6 +251,34 @@ async function handleMarketplaceRequest(request, response, fixture) {
       fixture.documentsByVersionId.set(detail.latestVersion.id, document);
       fixture.publishedRequests.push({ authorization, body });
       writeJson(response, 201, { template: detail, storageMode: 'e2e' });
+      return;
+    }
+
+    const publishVersionMatch = url.pathname.match(/^\/api\/v1\/templates\/([^/]+)\/versions$/);
+    if (request.method === 'POST' && publishVersionMatch) {
+      const template = findTemplate(fixture, publishVersionMatch[1]);
+      if (!template) {
+        writeJson(response, 404, { error: { code: 'template_not_found', message: 'Template was not found.' } });
+        return;
+      }
+      const body = await readJsonBody(request);
+      const authorization = request.headers.authorization || '';
+      const document = body.templateDocument;
+      const nextVersionNumber = Math.max(...template.versions.map((version) => version.versionNumber), 0) + 1;
+      const version = createVersion({
+        id: `ver-${template.slug}-${nextVersionNumber}`,
+        templateId: template.id,
+        versionNumber: nextVersionNumber,
+        changelog: body.changelog || `Version ${nextVersionNumber}.`,
+        document
+      });
+      template.latestVersion = version;
+      template.versions = [version, ...template.versions];
+      template.updatedAt = '2026-05-15T01:00:00.000Z';
+      fixture.documentsByVersionId.set(version.id, document);
+      fixture.packagesByVersionId.set(version.id, createTemplatePackageZip(template, version, document));
+      fixture.publishedVersionRequests.push({ authorization, body, templateIdOrSlug: decodeURIComponent(publishVersionMatch[1]) });
+      writeJson(response, 201, { template, storageMode: 'e2e' });
       return;
     }
 

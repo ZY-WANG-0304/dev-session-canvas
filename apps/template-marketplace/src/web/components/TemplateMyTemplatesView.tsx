@@ -3,7 +3,14 @@ import { useEffect, useState } from 'react';
 import type { MarketplacePublisherStatsResponse, MarketplaceTemplateSummary } from '@dev-session-canvas/marketplace-shared';
 
 import { loadCurrentMarketplaceUser, loadMyMarketplaceStats, loadMyMarketplaceTemplates, type MarketplaceCurrentUser } from '../lib/api';
-import { buildGithubSignInHref, buildSignOutHref, getMarketplaceHomeHref, getMarketplaceMeHref, getMarketplacePublishHref } from '../lib/routing';
+import {
+  buildGithubSignInHref,
+  buildMarketplacePublishVersionHref,
+  buildSignOutHref,
+  getMarketplaceHomeHref,
+  getMarketplaceMeHref,
+  getMarketplacePublishHref
+} from '../lib/routing';
 import { TemplateCard } from './TemplateCard';
 
 interface MyTemplatesState {
@@ -118,7 +125,18 @@ export function TemplateMyTemplatesView(): JSX.Element {
                 <PublisherStatsPanel stats={state.stats} />
                 <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                   {state.templates.map((template) => (
-                    <TemplateCard key={template.id} template={template} />
+                    <TemplateCard
+                      key={template.id}
+                      template={template}
+                      footerAction={
+                        <a
+                          className="border border-canvas-line px-3 py-2 text-xs font-semibold text-canvas-ink transition hover:border-canvas-moss hover:text-canvas-moss focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
+                          href={buildMarketplacePublishVersionHref(template.slug)}
+                        >
+                          Publish new version
+                        </a>
+                      }
+                    />
                   ))}
                 </div>
               </>

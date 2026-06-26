@@ -13,6 +13,7 @@ import { TemplateAdminView } from './components/TemplateAdminView';
 import { TemplateCard } from './components/TemplateCard';
 import { TemplateMyTemplatesView } from './components/TemplateMyTemplatesView';
 import { TemplatePublishView } from './components/TemplatePublishView';
+import { TemplatePublishVersionView } from './components/TemplatePublishVersionView';
 import { loadMarketplaceTemplateDetail, loadMarketplaceTemplates } from './lib/api';
 import {
   getMarketplaceAdminHref,
@@ -22,6 +23,8 @@ import {
   isMarketplaceAdminPath,
   isMarketplaceMePath,
   isMarketplacePublishPath,
+  isMarketplacePublishVersionPath,
+  readPublishVersionTemplateSlug,
   readTemplateSlugFromPath
 } from './lib/routing';
 
@@ -44,7 +47,11 @@ export function App(): JSX.Element {
   const [sort, setSort] = useState<MarketplaceSort>('hot');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [detailSlug, setDetailSlug] = useState(() => readTemplateSlugFromPath(window.location.pathname));
+  const [publishVersionSlug, setPublishVersionSlug] = useState(() =>
+    isMarketplacePublishVersionPath(window.location.pathname) ? readPublishVersionTemplateSlug(window.location.search) : undefined
+  );
   const [isPublishPage, setIsPublishPage] = useState(() => isMarketplacePublishPath(window.location.pathname));
+  const [isPublishVersionPage, setIsPublishVersionPage] = useState(() => isMarketplacePublishVersionPath(window.location.pathname));
   const [isMyTemplatesPage, setIsMyTemplatesPage] = useState(() => isMarketplaceMePath(window.location.pathname));
   const [isAdminPage, setIsAdminPage] = useState(() => isMarketplaceAdminPath(window.location.pathname));
   const [state, setState] = useState<LoadState>({
@@ -62,7 +69,9 @@ export function App(): JSX.Element {
   useEffect(() => {
     const handlePopState = () => {
       setDetailSlug(readTemplateSlugFromPath(window.location.pathname));
+      setPublishVersionSlug(isMarketplacePublishVersionPath(window.location.pathname) ? readPublishVersionTemplateSlug(window.location.search) : undefined);
       setIsPublishPage(isMarketplacePublishPath(window.location.pathname));
+      setIsPublishVersionPage(isMarketplacePublishVersionPath(window.location.pathname));
       setIsMyTemplatesPage(isMarketplaceMePath(window.location.pathname));
       setIsAdminPage(isMarketplaceAdminPath(window.location.pathname));
     };
@@ -120,7 +129,7 @@ export function App(): JSX.Element {
   }, [detailSlug, isPublishPage, isMyTemplatesPage, isAdminPage]);
 
   const isDetailPage = Boolean(detailSlug);
-  const isSecondaryPage = isDetailPage || isPublishPage || isMyTemplatesPage || isAdminPage;
+  const isSecondaryPage = isDetailPage || isPublishPage || isPublishVersionPage || isMyTemplatesPage || isAdminPage;
   const activeNavItem = isPublishPage ? 'publish' : isMyTemplatesPage ? 'mine' : isAdminPage ? 'admin' : 'templates';
   const statusLabel = `${formatSourceLabel(state.source)} · Storage: ${state.storageMode}`;
 
@@ -157,7 +166,9 @@ export function App(): JSX.Element {
 
       <section className={`px-6 sm:px-8 ${isSecondaryPage ? 'py-8 lg:py-10' : 'py-16 lg:py-20'}`}>
         <div className={`mx-auto ${isSecondaryPage ? 'max-w-6xl' : 'max-w-7xl'}`}>
-          {isPublishPage ? (
+          {isPublishVersionPage ? (
+            <TemplatePublishVersionView templateSlug={publishVersionSlug} />
+          ) : isPublishPage ? (
             <TemplatePublishView />
           ) : isMyTemplatesPage ? (
             <TemplateMyTemplatesView />

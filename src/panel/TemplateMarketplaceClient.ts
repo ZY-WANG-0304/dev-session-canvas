@@ -29,6 +29,7 @@ const MAX_TEMPLATE_PACKAGE_UNZIPPED_BYTES = 100 * 1024 * 1024;
 const MAX_TEMPLATE_PACKAGE_FILES = 100;
 const MAX_REDIRECTS = 3;
 const MARKETPLACE_TOKEN_SECRET_KEY = 'devSessionCanvas.templateMarketplace.token';
+const MARKETPLACE_INSTALLED_UPDATE_CHECK_TIMEOUT_MS = 3500;
 
 const TRUSTED_MARKETPLACE_HOSTS = new Set([
   'dscanvas.dev',
@@ -73,6 +74,13 @@ export interface TemplateMarketplaceInstalledTemplateSummary {
   sourceUrl: string;
 }
 
+export interface TemplateMarketplaceInstalledTemplateUpdateSummary extends TemplateMarketplaceInstalledTemplateSummary {
+  latestVersionId?: string;
+  latestVersionNumber?: number;
+  updateAvailable: boolean;
+  updateCheckError?: string;
+}
+
 export interface TemplateMarketplaceInstallTargetSummary {
   id: string;
   label: string;
@@ -105,6 +113,7 @@ export interface TemplateMarketplacePublishDraft {
 
 export interface TemplateMarketplacePublishDraftRequest {
   templateId: string;
+  templateIdOrSlug?: string;
   slug?: string;
   name: string;
   description: string;
@@ -112,6 +121,8 @@ export interface TemplateMarketplacePublishDraftRequest {
   readme?: string;
   changelog?: string;
   templateJson: string;
+  publishMode?: 'template' | 'version';
+  sourceUrl?: string;
 }
 
 interface TemplateMarketplaceInstallRequest {
@@ -239,6 +250,39 @@ export class TemplateMarketplaceClient {
     });
   }
 
+  public async listInstalledTemplateUpdateStatuses(): Promise<TemplateMarketplaceInstalledTemplateUpdateSummary[]> {
+    const installedTemplates = await this.listInstalledTemplates();
+    return Promise.all(
+      installedTemplates.map(async (installedTemplate) => {
+        try {
+          const detail = await this.fetchInstalledTemplateDetail(installedTemplate, {
+            timeoutMs: MARKETPLACE_INSTALLED_UPDATE_CHECK_TIMEOUT_MS
+          });
+          return {
+            ...installedTemplate,
+            latestVersionId: detail.latestVersion.id,
+            latestVersionNumber: detail.latestVersion.versionNumber,
+            updateAvailable: isMarketplaceVersionNewer(installedTemplate, detail.latestVersion)
+          };
+        } catch (error) {
+          return {
+            ...installedTemplate,
+            updateAvailable: false,
+            updateCheckError: error instanceof Error ? error.message : String(error)
+          };
+        }
+      })
+    );
+  }
+
+  public async updateInstalledTemplateToLatest(localTemplateId: string): Promise<TemplateMarketplaceInstallResult> {
+    const installedTemplate = await this.findInstalledTemplateSummary(localTemplateId);
+    if (!installedTemplate) {
+      throw new Error('找不到要更新的市场模板。');
+    }
+    return this.installTemplateFromUri(buildMarketplaceInstallUriFromInstalledTemplate(installedTemplate));
+  }
+
   public async installTemplateFromInlinePayload(
     params: TemplateMarketplaceInlineInstallParams
   ): Promise<TemplateMarketplaceInstallResult> {
@@ -335,7 +379,10 @@ export class TemplateMarketplaceClient {
   }
 
   public async publishTemplateDraft(request: TemplateMarketplacePublishDraftRequest): Promise<TemplateMarketplacePublishResult> {
-    await this.findPublishableStoredTemplate(request.templateId);
+    const storedTemplate = await this.findPublishableStoredTemplate(request.templateId);
+    if (request.publishMode === 'version') {
+      return this.publishTemplateDraftVersion(storedTemplate, request);
+    }
     const name = request.name.trim();
     const description = request.description.trim();
     if (!name) {
@@ -345,7 +392,8 @@ export class TemplateMarketplaceClient {
       throw new Error('模板描述不能为空。');
     }
 
-    const token = await this.exchangeVSCodeMarketplaceToken();
+    const sourceUrl = request.sourceUrl ? parseTrustedMarketplaceSourceUrl(request.sourceUrl) : this.marketplaceSourceUrl;
+    const token = await this.exchangeVSCodeMarketplaceToken(sourceUrl);
     const templateDocument = parseMarketplaceTemplateDocumentJson(request.templateJson);
     const requestBody = {
       slug: request.slug?.trim() || undefined,
@@ -358,7 +406,7 @@ export class TemplateMarketplaceClient {
       thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
     };
     const response = await requestJson(
-      new URL('/api/v1/templates', this.marketplaceSourceUrl.origin),
+      new URL('/api/v1/templates', sourceUrl.origin),
       'POST',
       requestBody,
       token
@@ -367,14 +415,57 @@ export class TemplateMarketplaceClient {
       throw new Error(`发布模板失败：${extractMarketplaceErrorMessage(response.text, response.statusCode)}`);
     }
     const publishResponse = parseTemplatePublishResponse(JSON.parse(response.text));
-    const sourceUrl = new URL(`/templates/${encodeURIComponent(publishResponse.template.slug)}`, this.marketplaceSourceUrl.origin);
+    const publishedSourceUrl = new URL(`/templates/${encodeURIComponent(publishResponse.template.slug)}`, sourceUrl.origin);
     return {
       templateId: publishResponse.template.id,
       slug: publishResponse.template.slug,
       name: publishResponse.template.name,
       versionId: publishResponse.template.latestVersion.id,
       versionNumber: publishResponse.template.latestVersion.versionNumber,
-      sourceUrl: sourceUrl.toString()
+      sourceUrl: publishedSourceUrl.toString()
+    };
+  }
+
+  public async publishTemplateDraftVersion(
+    storedTemplate: CanvasStoredTemplate,
+    request: TemplateMarketplacePublishDraftRequest
+  ): Promise<TemplateMarketplacePublishResult> {
+    const templateIdOrSlug = request.templateIdOrSlug?.trim();
+    if (!templateIdOrSlug) {
+      throw new Error('发布新版本需要目标市场模板。');
+    }
+
+    const sourceUrl = request.sourceUrl ? parseTrustedMarketplaceSourceUrl(request.sourceUrl) : this.marketplaceSourceUrl;
+    const detail = await this.fetchTemplateDetailFromMarketplace(templateIdOrSlug, sourceUrl);
+    if (!isTemplateDraftLikelyMatchingMarketplaceTemplate(storedTemplate, detail)) {
+      throw new Error('本地模板名称与目标市场模板不匹配，已中止发布新版本。');
+    }
+
+    const token = await this.exchangeVSCodeMarketplaceToken(sourceUrl);
+    const templateDocument = parseMarketplaceTemplateDocumentJson(request.templateJson);
+    const requestBody = {
+      changelog: request.changelog?.trim() || `Version ${detail.latestVersion.versionNumber + 1}.`,
+      templateDocument,
+      thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
+    };
+    const response = await requestJson(
+      new URL(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/versions`, sourceUrl.origin),
+      'POST',
+      requestBody,
+      token
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(`发布模板新版本失败：${extractMarketplaceErrorMessage(response.text, response.statusCode)}`);
+    }
+    const publishResponse = parseTemplatePublishResponse(JSON.parse(response.text));
+    const publishedSourceUrl = new URL(`/templates/${encodeURIComponent(publishResponse.template.slug)}`, sourceUrl.origin);
+    return {
+      templateId: publishResponse.template.id,
+      slug: publishResponse.template.slug,
+      name: publishResponse.template.name,
+      versionId: publishResponse.template.latestVersion.id,
+      versionNumber: publishResponse.template.latestVersion.versionNumber,
+      sourceUrl: publishedSourceUrl.toString()
     };
   }
 
@@ -502,6 +593,48 @@ export class TemplateMarketplaceClient {
     });
   }
 
+  private async findInstalledTemplateSummary(localTemplateId: string): Promise<TemplateMarketplaceInstalledTemplateSummary | undefined> {
+    const normalizedTemplateId = localTemplateId.trim();
+    if (!normalizedTemplateId) {
+      return undefined;
+    }
+    const installedTemplates = await this.listInstalledTemplates();
+    return installedTemplates.find((installedTemplate) => installedTemplate.localTemplateId === normalizedTemplateId);
+  }
+
+  private async fetchInstalledTemplateDetail(
+    installedTemplate: TemplateMarketplaceInstalledTemplateSummary,
+    options: { timeoutMs?: number } = {}
+  ): Promise<MarketplaceTemplateDetailShape> {
+    const sourceUrl = parseTrustedMarketplaceSourceUrl(installedTemplate.sourceUrl);
+    const request: TemplateMarketplaceInstallRequest = {
+      templateIdOrSlug: installedTemplate.marketTemplateSlug ?? installedTemplate.marketTemplateId,
+      sourceUrl
+    };
+    const detailUrl = buildTemplateDetailApiUrl(request);
+    const detailResponse = await requestText(detailUrl, { timeoutMs: options.timeoutMs });
+    if (detailResponse.statusCode < 200 || detailResponse.statusCode >= 300) {
+      throw new Error(`获取模板详情失败：HTTP ${detailResponse.statusCode}。`);
+    }
+    return parseTemplateDetailResponse(JSON.parse(detailResponse.text)).template;
+  }
+
+  private async fetchTemplateDetailFromMarketplace(
+    templateIdOrSlug: string,
+    sourceUrl: URL = this.marketplaceSourceUrl,
+    options: { timeoutMs?: number } = {}
+  ): Promise<MarketplaceTemplateDetailShape> {
+    const request: TemplateMarketplaceInstallRequest = {
+      templateIdOrSlug,
+      sourceUrl
+    };
+    const detailResponse = await requestText(buildTemplateDetailApiUrl(request), { timeoutMs: options.timeoutMs });
+    if (detailResponse.statusCode < 200 || detailResponse.statusCode >= 300) {
+      throw new Error(`获取模板详情失败：${extractMarketplaceErrorMessage(detailResponse.text, detailResponse.statusCode)}`);
+    }
+    return parseTemplateDetailResponse(JSON.parse(detailResponse.text)).template;
+  }
+
   private resolveInstallTarget(targetStorageLocationId: string | undefined): ResolvedMarketplaceInstallTarget | undefined {
     const locations = this.panelManager.getCanvasTemplateStorageLocations();
     if (targetStorageLocationId) {
@@ -536,10 +669,10 @@ export class TemplateMarketplaceClient {
     return storedTemplate;
   }
 
-  private async exchangeVSCodeMarketplaceToken(): Promise<string> {
+  private async exchangeVSCodeMarketplaceToken(sourceUrl: URL = this.marketplaceSourceUrl): Promise<string> {
     const session = await vscode.authentication.getSession('github', ['read:user'], { createIfNone: true });
     const response = await requestJson(
-      new URL('/api/v1/auth/vscode/exchange', this.marketplaceSourceUrl.origin),
+      new URL('/api/v1/auth/vscode/exchange', sourceUrl.origin),
       'POST',
       { accessToken: session.accessToken },
       undefined
@@ -561,6 +694,31 @@ function resolveMarketplaceInstallOperation(
     return 'installed';
   }
   return existingTemplate.marketplace?.marketVersionId === metadata.marketVersionId ? 'reinstalled' : 'updated';
+}
+
+function isMarketplaceVersionNewer(
+  installedTemplate: TemplateMarketplaceInstalledTemplateSummary,
+  latestVersion: MarketplaceTemplateVersionShape
+): boolean {
+  return latestVersion.versionNumber > installedTemplate.installedVersionNumber;
+}
+
+function isTemplateDraftLikelyMatchingMarketplaceTemplate(
+  storedTemplate: CanvasStoredTemplate,
+  detail: MarketplaceTemplateDetailShape
+): boolean {
+  return storedTemplate.template.name.trim().toLowerCase() === detail.name.trim().toLowerCase();
+}
+
+function buildMarketplaceInstallUriFromInstalledTemplate(installedTemplate: TemplateMarketplaceInstalledTemplateSummary): vscode.Uri {
+  const params = new URLSearchParams({
+    template: installedTemplate.marketTemplateSlug ?? installedTemplate.marketTemplateId,
+    source: installedTemplate.sourceUrl
+  });
+  if (installedTemplate.storageLocationId) {
+    params.set('targetStorageLocationId', installedTemplate.storageLocationId);
+  }
+  return vscode.Uri.parse(`vscode://devsessioncanvas.dev-session-canvas/install-template?${params.toString()}`);
 }
 
 function resolveDefaultMarketplaceSourceUrl(extensionMode: vscode.ExtensionMode): URL {
@@ -954,7 +1112,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function requestText(url: URL, redirectCount = 0): Promise<HttpTextResponse> {
+async function requestText(
+  url: URL,
+  options: { maxBytes?: number; timeoutMs?: number } = {},
+  redirectCount = 0
+): Promise<HttpTextResponse> {
   return new Promise<HttpTextResponse>((resolve, reject) => {
     const request = (url.protocol === 'http:' ? http : https).get(
       url,
@@ -978,15 +1140,16 @@ async function requestText(url: URL, redirectCount = 0): Promise<HttpTextRespons
             reject(new Error('请求被重定向到不受信任的地址。'));
             return;
           }
-          void requestText(nextUrl, redirectCount + 1).then(resolve, reject);
+          void requestText(nextUrl, options, redirectCount + 1).then(resolve, reject);
           return;
         }
 
         const chunks: Buffer[] = [];
         let byteLength = 0;
+        const maxBytes = options.maxBytes ?? MAX_TEMPLATE_DOWNLOAD_BYTES;
         response.on('data', (chunk: Buffer) => {
           byteLength += chunk.length;
-          if (byteLength > MAX_TEMPLATE_DOWNLOAD_BYTES) {
+          if (byteLength > maxBytes) {
             request.destroy(new Error('模板文件超过大小限制。'));
             return;
           }
@@ -1001,7 +1164,7 @@ async function requestText(url: URL, redirectCount = 0): Promise<HttpTextRespons
       }
     );
 
-    request.setTimeout(30_000, () => {
+    request.setTimeout(options.timeoutMs ?? 30_000, () => {
       request.destroy(new Error('市场请求超时。'));
     });
     request.on('error', reject);

@@ -15,6 +15,7 @@ import {
   normalizeTemplateSearchQuery,
   publishMarketplaceTemplate,
   publishMarketplaceTemplatePackage,
+  publishMarketplaceTemplateVersion,
   reportMarketplaceTemplate,
   resolveMarketplaceAdminReport,
   setMarketplaceAdminTemplateStatus,
@@ -739,6 +740,79 @@ describe('marketplace web api client', () => {
     expect(requests[0]?.init?.method).toBe('POST');
     expect(requests[0]?.init?.body).toBeInstanceOf(FormData);
     expect((requests[0]?.init?.headers as Record<string, string>)['content-type']).toBeUndefined();
+  });
+
+  it('posts new template version requests to the Worker API', async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ input, init });
+        return new Response(
+          JSON.stringify({
+            template: {
+              id: 'tmpl-review',
+              slug: 'review-loop',
+              name: 'Review Loop',
+              description: 'Published from web.',
+              tags: ['review'],
+              publisher: { id: 'publisher', githubLogin: 'publisher', displayName: 'Publisher', avatarUrl: '' },
+              latestVersion: {
+                id: 'ver-review-2',
+                templateId: 'tmpl-review',
+                versionNumber: 2,
+                changelog: 'Second version.',
+                objectKey: 'templates/tmpl-review/versions/ver-review-2/template.json',
+                thumbnailKey: 'templates/tmpl-review/versions/ver-review-2/thumbnail.png',
+                sha256: 'sha',
+                sizeBytes: 1,
+                schemaVersion: 1,
+                status: 'published',
+                createdAt: '2026-06-26T00:00:00.000Z'
+              },
+              versions: [],
+              status: 'published',
+              downloadCount: 0,
+              likeCount: 0,
+              hotScore: 0,
+              createdAt: '2026-05-28T00:00:00.000Z',
+              updatedAt: '2026-06-26T00:00:00.000Z',
+              readme: 'Readme',
+              providerWarnings: []
+            },
+            storageMode: 'd1'
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } }
+        );
+      })
+    );
+
+    const result = await publishMarketplaceTemplateVersion('review-loop', {
+      changelog: 'Second version.',
+      templateDocument: {
+        version: 1,
+        template: {
+          id: 'review-loop',
+          name: 'Review Loop',
+          category: 'user',
+          nodes: [{ kind: 'note', title: 'Readme', position: { x: 0, y: 0 }, size: { width: 320, height: 200 } }],
+          edges: [],
+          createdAt: '2026-06-26T00:00:00.000Z',
+          updatedAt: '2026-06-26T00:00:00.000Z'
+        }
+      },
+      thumbnailPngBase64: 'png'
+    });
+
+    expect(result.template.latestVersion.versionNumber).toBe(2);
+    expect(requests[0]?.input).toBe('/api/v1/templates/review-loop/versions');
+    expect(requests[0]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual(
+      expect.objectContaining({
+        changelog: 'Second version.',
+        thumbnailPngBase64: 'png'
+      })
+    );
   });
 
   it('sends the provided rebuilt package zip bytes', async () => {
