@@ -743,7 +743,7 @@ function isNodeOwnedByWorkspaceRoot(
   );
 }
 
-function collectWorkspaceRootOwnedNodeIds(
+export function collectWorkspaceRootOwnedNodeIds(
   state: CanvasPrototypeState,
   rootPath: string,
   rootGroupId: string
