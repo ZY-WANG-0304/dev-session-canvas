@@ -14,6 +14,7 @@ import {
   type MarketplacePublisherStatsResponse,
   type MarketplacePublishTemplateRequest,
   type MarketplacePublishTemplateResponse,
+  type MarketplacePublishTemplateVersionRequest,
   type MarketplaceSort,
   type MarketplaceSlugAvailabilityResponse,
   type MarketplaceTemplateLikeResponse,
@@ -341,6 +342,21 @@ export async function publishMarketplaceTemplate(
     throw new Error(message);
   }
   return body as MarketplacePublishTemplateResponse;
+}
+
+export async function publishMarketplaceTemplateVersion(
+  templateIdOrSlug: string,
+  request: MarketplacePublishTemplateVersionRequest
+): Promise<MarketplacePublishTemplateResponse> {
+  const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/versions`, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(request)
+  });
+  return readMarketplaceJsonResponse<MarketplacePublishTemplateResponse>(response);
 }
 
 async function readMarketplaceJsonResponse<T extends object>(response: Response): Promise<T> {

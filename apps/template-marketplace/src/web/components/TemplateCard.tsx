@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { MarketplaceTemplateSummary } from '@dev-session-canvas/marketplace-shared';
 
 import { InstallInVSCodeLink } from './InstallInVSCodeLink';
@@ -7,9 +8,10 @@ import { buildTemplateThumbnailHref } from '../lib/thumbnail';
 
 interface TemplateCardProps {
   template: MarketplaceTemplateSummary;
+  footerAction?: ReactNode;
 }
 
-export function TemplateCard({ template }: TemplateCardProps): JSX.Element {
+export function TemplateCard({ template, footerAction }: TemplateCardProps): JSX.Element {
   const downloadHref = buildTemplateDownloadHref(template);
   const detailHref = buildTemplateDetailHref(template.slug);
   const thumbnailHref = buildTemplateThumbnailHref(template);
@@ -59,6 +61,7 @@ export function TemplateCard({ template }: TemplateCardProps): JSX.Element {
             <span>{template.likeCount.toLocaleString()} likes</span>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
+            {footerAction}
             <InstallInVSCodeLink
               className="bg-canvas-accent px-3 py-2 text-xs font-semibold text-canvas-accentText transition hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-canvas-accent/25"
               template={template}
