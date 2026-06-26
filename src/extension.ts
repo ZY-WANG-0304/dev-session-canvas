@@ -237,7 +237,12 @@ export function activate(context: vscode.ExtensionContext): void {
   activePanelManager = panelManager;
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
-  const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri);
+  const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri, {
+    client: templateMarketplaceClient,
+    openTemplateDetail: (templateIdOrSlug, versionId, sourceUrl, options) => {
+      templateMarketplacePanel.openTemplateDetail(templateIdOrSlug, versionId, sourceUrl, options);
+    }
+  });
   const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri, context.workspaceState);
   const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(
     panelManager,
@@ -330,7 +335,8 @@ export function activate(context: vscode.ExtensionContext): void {
   registerCommand(context, COMMAND_IDS.publishTemplateToMarketplace, async (templateId?: unknown) => {
     try {
       const explicitTemplateId = normalizeCanvasTemplateIdValue(templateId);
-      templateMarketplacePanel.openTemplatePublishForm(explicitTemplateId);
+      const templateIdOrSlug = readTemplatePublishVersionTarget(templateId);
+      templateMarketplacePanel.openTemplatePublishForm(explicitTemplateId, { templateIdOrSlug });
       return explicitTemplateId ? { templateId: explicitTemplateId } : undefined;
     } catch (error) {
       await showCanvasTemplateError('打开模板发布表单失败', error);
@@ -712,7 +718,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewPanelSerializer(CanvasPanelManager.viewType, panelManager)
   );
 
-  registerTestCommands(context, panelManager, templateMarketplacePanel, sidebarNodeListView, sidebarSessionHistoryView);
+  registerTestCommands(
+    context,
+    panelManager,
+    templateMarketplacePanel,
+    sidebarTemplateView,
+    sidebarNodeListView,
+    sidebarSessionHistoryView
+  );
 }
 
 export async function deactivate(): Promise<void> {
@@ -3039,6 +3052,12 @@ function normalizeCanvasTemplateIdValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function readTemplatePublishVersionTarget(value: unknown): string | undefined {
+  return isRecord(value) && typeof value.templateIdOrSlug === 'string' && value.templateIdOrSlug.trim().length > 0
+    ? value.templateIdOrSlug.trim()
+    : undefined;
+}
+
 function isTemplateCompatibleNodeKind(value: string): value is 'agent' | 'terminal' | 'note' {
   return value === 'agent' || value === 'terminal' || value === 'note';
 }
@@ -3051,6 +3070,7 @@ function registerTestCommands(
   context: vscode.ExtensionContext,
   panelManager: CanvasPanelManager,
   templateMarketplacePanel: CanvasTemplateMarketplacePanelController,
+  sidebarTemplateView: CanvasSidebarTemplateView,
   sidebarNodeListView: CanvasSidebarNodeListView,
   sidebarSessionHistoryView: CanvasSidebarSessionHistoryView
 ): void {
@@ -3069,6 +3089,10 @@ function registerTestCommands(
         panelManager.getWorkspaceFoldersForDisplay()
       )
     ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarTemplateItems, async () => {
+      const snapshot = await sidebarTemplateView.refresh();
+      return snapshot.items;
+    }),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.getSidebarSessionHistoryItems,
       async (homeDir?: unknown) =>

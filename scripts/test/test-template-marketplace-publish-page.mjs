@@ -68,6 +68,7 @@ try {
   await verifyListPage(page, localUrl);
   await verifyDetailPage(page, localUrl);
   await verifyMyTemplatesPage(page, localUrl);
+  await verifyPublishVersionPage(page, localUrl);
   await verifyPublishPage(page, localUrl);
 
   assert.deepEqual(diagnostics.pageErrors, [], 'Marketplace browser E2E should not throw page errors.');
@@ -157,6 +158,49 @@ async function verifyMyTemplatesPage(page, localUrl) {
   assert.equal(await page.locator('article').count(), 1);
   const publishHref = await page.getByRole('link', { name: 'Publish template' }).getAttribute('href');
   assert.equal(publishHref, '/templates/publish');
+  const publishVersionHref = await page.getByRole('link', { name: 'Publish new version' }).getAttribute('href');
+  assert.equal(publishVersionHref, '/templates/publish/version?template=review-loop');
+}
+
+async function verifyPublishVersionPage(page, localUrl) {
+  signedIn = false;
+  await page.goto(`${localUrl}publish/version?template=review-loop`, { waitUntil: 'networkidle' });
+  await assertVisibleText(page, 'GitHub sign-in required');
+  const signInHref = await page.getByRole('link', { name: 'Sign in with GitHub' }).getAttribute('href');
+  assert.equal(signInHref, '/api/v1/auth/github/start?return_to=%2Ftemplates%2Fpublish%2Fversion%3Ftemplate%3Dreview-loop');
+
+  signedIn = true;
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Publish a new version' }).waitFor();
+  await assertVisibleText(page, 'Signed in as codex-tester');
+  await assertVisibleText(page, 'Target listing');
+  await assertVisibleText(page, 'Review Loop');
+  await assertVisibleText(page, 'Current v2');
+  await assertVisibleText(page, 'Installed users see an update badge');
+  assert.equal(await page.getByRole('textbox', { name: 'Update notes' }).inputValue(), 'Version 3.');
+
+  await page.locator('input[accept="application/json,.json"]').setInputFiles({
+    name: 'invalid-version.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{not valid json', 'utf8')
+  });
+  await page.getByRole('alert').filter({ hasText: 'invalid-version.json: Template JSON is not valid JSON.' }).waitFor();
+
+  await page.locator('input[accept="application/json,.json"]').setInputFiles({
+    name: 'review-loop-v3.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(reviewTemplateDocument, null, 2), 'utf8')
+  });
+  await assertVisibleText(page, 'Generated from the selected template layout.');
+  await page.getByRole('textbox', { name: 'Update notes' }).fill('Browser publish-version smoke.');
+  await page.getByRole('button', { name: 'Publish v3' }).click();
+  await page.getByRole('status').filter({ hasText: 'Publishing new version...' }).waitFor();
+  await page.getByRole('status').filter({ hasText: 'Review Loop v3 was published.' }).waitFor();
+  assert.ok(requests.some((request) => request.method === 'POST' && request.url.endsWith('/api/v1/templates/review-loop/versions')));
+
+  await page.getByRole('link', { name: 'View template' }).click();
+  await page.getByRole('heading', { name: 'Review Loop' }).waitFor();
+  await assertVisibleText(page, 'v3');
 }
 
 async function verifyPublishPage(page, localUrl) {
@@ -357,6 +401,42 @@ async function installApiRoutes(page) {
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(document) });
   });
+  await page.route(/\/api\/v1\/templates\/[^/]+\/versions(?:\?.*)?$/u, async (route) => {
+    if (route.request().method() !== 'POST') {
+      return route.continue();
+    }
+    const slug = readSlugFromRoute(route.request().url(), '/versions');
+    const detail = fixtures.details.get(slug);
+    if (!detail) {
+      return fulfillJson(route, { error: { code: 'template_not_found', message: 'Template was not found.' } }, 404);
+    }
+    const payload = route.request().postDataJSON();
+    assert.equal(payload.changelog, 'Browser publish-version smoke.');
+    assert.ok(typeof payload.templateDocument === 'object');
+    assert.ok(typeof payload.thumbnailPngBase64 === 'string');
+    const nextVersionNumber = detail.latestVersion.versionNumber + 1;
+    const nextVersion = createVersion({
+      id: `ver-${slug}-${nextVersionNumber}`,
+      templateId: detail.id,
+      versionNumber: nextVersionNumber,
+      changelog: payload.changelog,
+      document: payload.templateDocument
+    });
+    const updated = {
+      ...detail,
+      latestVersion: nextVersion,
+      versions: [nextVersion, ...detail.versions],
+      updatedAt: '2026-06-26T00:00:00.000Z'
+    };
+    fixtures.details.set(slug, updated);
+    fixtures.documents.set(slug, payload.templateDocument);
+    const summaryIndex = fixtures.templates.findIndex((template) => template.slug === slug);
+    if (summaryIndex >= 0) {
+      fixtures.templates[summaryIndex] = toSummary(updated);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return fulfillJson(route, { template: updated, storageMode: 'd1' }, 201);
+  });
   await page.route(/\/api\/v1\/templates\/(?!(?:slug-availability|package)(?:\?|$))[^/]+(?:\?.*)?$/u, (route) => {
     if (route.request().method() !== 'GET') {
       return route.continue();
@@ -465,7 +545,7 @@ function createTemplateDetail({ id, slug, name, description, tags, readme, versi
     name,
     description,
     tags,
-    publisher: { id: 'publisher', githubLogin: 'codex-tester', displayName: 'Codex Tester', avatarUrl: '' },
+    publisher: { id: 'github-user-codex', githubLogin: 'codex-tester', displayName: 'Codex Tester', avatarUrl: '' },
     latestVersion,
     versions: versions
       ? versions.map((version) => createVersion({ ...version, templateId: id }))

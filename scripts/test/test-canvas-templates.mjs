@@ -837,6 +837,8 @@ try {
   assert.ok(packageManifest.contributes.commands.some((entry) => entry.command === 'devSessionCanvas.openTemplateMarketplace'));
   assert.ok(packageManifest.contributes.commands.some((entry) => entry.command === 'devSessionCanvas.publishTemplateToMarketplace'));
   assert.match(extensionSource, /new TemplateMarketplaceClient\(\s*panelManager,\s*context,\s*context\.extensionMode\s*\)/u);
+  assert.match(extensionSource, /new CanvasSidebarTemplateView\(\s*panelManager,\s*context\.extensionUri,\s*\{/u);
+  assert.match(extensionSource, /templateMarketplacePanel\.openTemplateDetail\(templateIdOrSlug, versionId, sourceUrl, options\)/u);
   assert.match(
     extensionSource,
     /new CanvasTemplateMarketplacePanelController\(\s*templateMarketplaceClient,\s*context\.extensionUri,\s*context\.extensionMode\s*\)/u
@@ -1109,6 +1111,15 @@ try {
   assert.match(sidebarTemplateViewSource, /text-overflow: ellipsis;/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /hintNote|hint-note|canSaveCurrentCanvas/u);
   assert.match(sidebarTemplateViewSource, /sourceKind: resolveCanvasSidebarTemplateSourceKind\(storedTemplate\)/u);
+  assert.match(sidebarTemplateViewSource, /canUpdateMarketplace: marketplace\?\.updateAvailable === true/u);
+  assert.match(sidebarTemplateViewSource, /sidebarTemplates\/updateMarketplaceTemplate/u);
+  assert.match(sidebarTemplateViewSource, /sidebarTemplates\/openMarketplaceTemplate/u);
+  assert.match(sidebarTemplateViewSource, /sidebarTemplates\/reportMarketplaceTemplate/u);
+  assert.match(sidebarTemplateViewSource, /codicon-sync/u);
+  assert.match(sidebarTemplateViewSource, /codicon-versions/u);
+  assert.match(sidebarTemplateViewSource, /codicon-warning/u);
+  assert.match(sidebarTemplateViewSource, /可更新 v/u);
+  assert.match(sidebarTemplateViewSource, /url\.hash = 'report'/u);
   assert.match(sidebarTemplateViewSource, /locationLabel: resolveCanvasSidebarTemplateLocationLabel\(storedTemplate\)/u);
   assert.match(sidebarTemplateViewSource, /canPublish: storedTemplate\.template\.category === 'user' && !storedTemplate\.marketplace/u);
   assert.match(sidebarTemplateViewSource, /sidebarTemplates\/publishTemplate/u);
@@ -1160,6 +1171,10 @@ try {
   const marketplaceWorkerAppTestSource = await readFile('apps/template-marketplace/src/worker/app.test.ts', 'utf8');
   const marketplaceDetailViewSource = await readFile('apps/template-marketplace/src/web/components/TemplateDetailView.tsx', 'utf8');
   const marketplacePublishViewSource = await readFile('apps/template-marketplace/src/web/components/TemplatePublishView.tsx', 'utf8');
+  const marketplacePublishVersionViewSource = await readFile('apps/template-marketplace/src/web/components/TemplatePublishVersionView.tsx', 'utf8');
+  const marketplaceMyTemplatesViewSource = await readFile('apps/template-marketplace/src/web/components/TemplateMyTemplatesView.tsx', 'utf8');
+  const marketplaceRoutingSource = await readFile('apps/template-marketplace/src/web/lib/routing.ts', 'utf8');
+  const marketplaceWebApiSource = await readFile('apps/template-marketplace/src/web/lib/api.ts', 'utf8');
   const vscodeSmokeRunnerSource = await readFile('scripts/smoke/vscode-smoke-runner.mjs', 'utf8');
   const marketplaceVscodePreviewE2eRunnerSource = await readFile('scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs', 'utf8');
   const marketplaceVscodeLocalPreviewE2eRunnerSource = await readFile('scripts/smoke/run-template-marketplace-vscode-local-preview-e2e.mjs', 'utf8');
@@ -1171,6 +1186,11 @@ try {
   assert.match(panelManagerSource, /preserveTemplateId\?: string/u);
   assert.match(panelManagerSource, /preserveCreatedAt\?: string/u);
   assert.match(marketplaceClientSource, /listInstalledTemplates/u);
+  assert.match(marketplaceClientSource, /listInstalledTemplateUpdateStatuses/u);
+  assert.match(marketplaceClientSource, /updateInstalledTemplateToLatest/u);
+  assert.match(marketplaceClientSource, /MARKETPLACE_INSTALLED_UPDATE_CHECK_TIMEOUT_MS/u);
+  assert.match(marketplaceClientSource, /publishTemplateDraftVersion/u);
+  assert.match(marketplaceClientSource, /\/api\/v1\/templates\/\$\{encodeURIComponent\(templateIdOrSlug\)\}\/versions/u);
   assert.match(marketplaceClientSource, /listInstallTargets/u);
   assert.match(marketplaceClientSource, /targetStorageLocationId/u);
   assert.match(marketplaceClientSource, /TemplateMarketplaceInstallOperation = 'installed' \| 'updated' \| 'reinstalled'/u);
@@ -1241,6 +1261,9 @@ try {
   assert.match(marketplacePanelSource, /marketplace\/openTemplatePublishForm/u);
   assert.match(marketplacePanelSource, /marketplace\/submitTemplatePublish/u);
   assert.match(marketplacePanelSource, /marketplace\/templatePublishResult/u);
+  assert.match(marketplacePanelSource, /publishMode: 'template'/u);
+  assert.match(marketplacePanelSource, /发布新版本/u);
+  assert.match(marketplacePanelSource, /templateIdOrSlug: state\.publishMode === 'version'/u);
   assert.match(marketplacePanelSource, /marketplace\/refreshInstalledTemplates/u);
   assert.match(marketplacePanelSource, /openTemplatePublishForm/u);
   assert.match(marketplacePanelSource, /publishTemplateButton/u);
@@ -1289,6 +1312,9 @@ try {
   assert.match(marketplacePanelSource, /operation: result\.operation/u);
   assert.match(marketplacePanelSource, /formatInstallResultStatus/u);
   assert.match(marketplacePanelSource, /更新到 v/u);
+  assert.match(marketplacePanelSource, /回滚到 v/u);
+  assert.match(marketplacePanelSource, /举报模板/u);
+  assert.match(marketplacePanelSource, /buildTemplateReportUrl/u);
   assert.match(marketplacePanelSource, /split-install/u);
   assert.match(marketplacePanelSource, /is-installed-split/u);
   assert.match(marketplacePanelSource, /切换安装版本/u);
@@ -1305,6 +1331,13 @@ try {
   assert.match(marketplacePanelSource, /buildTemplateThumbnailUrl/u);
   assert.doesNotMatch(marketplacePanelSource, /Button\.textContent = ['"][^'"]*应用到 Canvas/u);
   assert.doesNotMatch(marketplacePanelSource, /marketplace\/applyInstalledTemplate/u);
+  assert.match(marketplaceDetailViewSource, /buildMarketplacePublishVersionHref\(template\.slug\)/u);
+  assert.match(marketplaceMyTemplatesViewSource, /Publish new version/u);
+  assert.match(marketplaceRoutingSource, /TEMPLATE_PUBLISH_VERSION_PATH/u);
+  assert.match(marketplaceRoutingSource, /readPublishVersionTemplateSlug/u);
+  assert.match(marketplaceWebApiSource, /publishMarketplaceTemplateVersion/u);
+  assert.match(marketplacePublishVersionViewSource, /publishMarketplaceTemplateVersion/u);
+  assert.match(marketplacePublishVersionViewSource, /Install impact/u);
   assert.match(marketplacePanelSource, /installedTemplate\.storageLocationId === selectedInstallTargetId/u);
   assert.match(marketplacePanelSource, /normalizeInstalledTemplates/u);
   assert.match(marketplacePanelSource, /normalizePersistedState/u);
@@ -1340,7 +1373,7 @@ try {
   assert.match(marketplacePanelSource, /checkPublishSlugAvailability/u);
   assert.match(marketplacePanelSource, /marketplaceSourceUrl: marketplaceSourceUrl\.toString\(\)/u);
   assert.match(marketplacePanelSource, /setMarketplaceSourceUrl\(message\.payload && message\.payload\.sourceUrl\)/u);
-  assert.match(marketplacePanelSource, /sourceUrl: buildMarketplaceBrowserUrl\(\)/u);
+  assert.match(marketplacePanelSource, /sourceUrl: sourceUrl \|\| buildMarketplaceBrowserUrl\(\)/u);
   assert.match(marketplacePanelSource, /sourceUrl: buildTemplateSourceUrl\(template\.slug\)/u);
   assert.match(marketplacePanelSource, /this\.defaultMarketplaceSourceUrl = resolveDefaultMarketplaceSourceUrl\(extensionMode\);/u);
   assert.match(marketplacePanelSource, /this\.marketplaceSourceUrl = new URL\(this\.defaultMarketplaceSourceUrl\);/u);
@@ -1395,7 +1428,9 @@ try {
     'function closeVersionMenus(render = true) {'
   );
   assert.match(marketplaceInstallButtonSource, /安装/u);
-  assert.match(marketplaceInstallButtonSource, /更新到 v/u);
+  assert.match(marketplacePanelSource, /formatInstallVersionActionLabel/u);
+  assert.match(marketplacePanelSource, /更新到 v/u);
+  assert.match(marketplacePanelSource, /回滚到 v/u);
   assert.match(marketplaceInstallButtonSource, /已安装 v/u);
   assert.match(marketplaceInstallButtonSource, /切换安装版本/u);
 
@@ -1404,7 +1439,7 @@ try {
     "const controls = document.createElement('div');",
     "const metrics = document.createElement('dl');"
   );
-  assert.match(marketplaceDetailControlsSource, /controls\.append\(installTargetRow, installButtonGroup\);/u);
+  assert.match(marketplaceDetailControlsSource, /controls\.append\(installTargetRow, installButtonGroup, publishVersionButton, reportButton\);/u);
 
   const marketplaceDetailSource = sliceBetween(
     marketplacePanelSource,
