@@ -2,7 +2,11 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 
 import {
   makeMarketplaceApiError,
+  MARKETPLACE_API_VERSION,
+  MARKETPLACE_DEFAULT_MIN_SUPPORTED_EXTENSION_VERSION,
+  MARKETPLACE_DEFAULT_RECOMMENDED_EXTENSION_VERSION,
   MARKETPLACE_REPORT_REASON_VALUES,
+  MARKETPLACE_SERVICE_CAPABILITIES,
   MARKETPLACE_SLUG_PATTERN,
   MARKETPLACE_SORT_VALUES,
   MARKETPLACE_TEMPLATE_STATUS_VALUES,
@@ -11,7 +15,9 @@ import {
   type MarketplaceAdminTemplateStatusRequest,
   type MarketplaceAdminUserBanRequest,
   type MarketplaceListTemplatesRequest,
+  type MarketplaceMetaResponse,
   type MarketplaceReportReason,
+  type MarketplaceServiceCapability,
   type MarketplaceTemplateDetail,
   type MarketplaceTemplateVersion
 } from '@dev-session-canvas/marketplace-shared';
@@ -43,6 +49,7 @@ import {
 
 const PUBLIC_READ_CORS_ROUTES = [
   '/api/v1/health',
+  '/api/v1/meta',
   '/api/v1/templates',
   '/api/v1/templates/slug-availability',
   '/api/v1/templates/:id',
@@ -56,6 +63,11 @@ export interface MarketplaceWorkerEnv extends MarketplaceAuthEnv {
   ASSETS?: Fetcher;
   MARKETPLACE_DB?: D1Database;
   TEMPLATE_BUCKET?: R2Bucket;
+  VERSION_METADATA?: WorkerVersionMetadata;
+  MARKETPLACE_SERVICE_BUILD?: string;
+  MARKETPLACE_GIT_SHA?: string;
+  MARKETPLACE_MIN_SUPPORTED_EXTENSION_VERSION?: string;
+  MARKETPLACE_RECOMMENDED_EXTENSION_VERSION?: string;
   MARKETPLACE_MAX_TEMPLATE_BYTES?: string;
   MARKETPLACE_MAX_PACKAGE_BYTES?: string;
   MARKETPLACE_ADMIN_GITHUB_IDS?: string;
@@ -118,6 +130,8 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       storageMode: createMarketplaceRepository(context.env).storageMode
     })
   );
+
+  app.get('/api/v1/meta', (context) => context.json(buildMarketplaceMetaResponse(context.env)));
 
   app.get('/api/v1/auth/github/start', (context) => buildGithubOAuthStartResponse(context.req.raw, context.env));
 
@@ -807,6 +821,97 @@ function createMarketplaceRepository(env: MarketplaceWorkerEnv | undefined) {
     return createTemplateRepository(env.MARKETPLACE_DB);
   }
   return createProductionTemplateRepository(env?.MARKETPLACE_DB);
+}
+
+function buildMarketplaceMetaResponse(env: MarketplaceWorkerEnv | undefined): MarketplaceMetaResponse {
+  const repository = createMarketplaceRepository(env);
+  return {
+    service: 'template-marketplace',
+    serviceBuild: resolveMarketplaceServiceBuild(env),
+    gitSha: resolveMarketplaceGitSha(env),
+    apiVersion: MARKETPLACE_API_VERSION,
+    minSupportedExtensionVersion: resolveNonEmptyEnv(
+      env?.MARKETPLACE_MIN_SUPPORTED_EXTENSION_VERSION,
+      MARKETPLACE_DEFAULT_MIN_SUPPORTED_EXTENSION_VERSION
+    ),
+    recommendedExtensionVersion: resolveNonEmptyEnv(
+      env?.MARKETPLACE_RECOMMENDED_EXTENSION_VERSION,
+      MARKETPLACE_DEFAULT_RECOMMENDED_EXTENSION_VERSION
+    ),
+    capabilities: buildMarketplaceServiceCapabilities(env),
+    storageMode: repository.storageMode,
+    runtime: {
+      d1Configured: Boolean(env?.MARKETPLACE_DB),
+      r2Configured: Boolean(env?.TEMPLATE_BUCKET),
+      githubOAuthConfigured: Boolean(env?.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET && env.MARKETPLACE_SESSION_SECRET),
+      vscodeAuthExchangeConfigured: Boolean(env?.MARKETPLACE_TOKEN_SECRET),
+      seedTemplatesEnabled: env?.MARKETPLACE_ENABLE_SEED_TEMPLATES === 'true',
+      testAuthEnabled: env?.MARKETPLACE_ALLOW_TEST_AUTH === 'true'
+    }
+  };
+}
+
+function buildMarketplaceServiceCapabilities(env: MarketplaceWorkerEnv | undefined): MarketplaceServiceCapability[] {
+  const d1Configured = Boolean(env?.MARKETPLACE_DB);
+  const r2Configured = Boolean(env?.TEMPLATE_BUCKET);
+  const githubOAuthConfigured = Boolean(env?.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET && env.MARKETPLACE_SESSION_SECRET);
+  const vscodeAuthExchangeConfigured = Boolean(env?.MARKETPLACE_TOKEN_SECRET);
+  const testAuthEnabled = env?.MARKETPLACE_ALLOW_TEST_AUTH === 'true';
+  const writeAuthConfigured = githubOAuthConfigured || vscodeAuthExchangeConfigured || testAuthEnabled;
+  const capabilities = new Set<MarketplaceServiceCapability>([
+    'templates.read',
+    'templates.download-package',
+    'templates.export-template-json'
+  ]);
+
+  if (d1Configured && r2Configured && writeAuthConfigured) {
+    capabilities.add('templates.publish-json');
+    capabilities.add('templates.publish-package');
+    capabilities.add('templates.publish-version');
+  }
+  if (d1Configured && writeAuthConfigured) {
+    capabilities.add('templates.like');
+    capabilities.add('templates.report');
+    capabilities.add('admin.reports');
+    capabilities.add('admin.stats');
+  }
+  if (githubOAuthConfigured) {
+    capabilities.add('auth.github-oauth');
+  }
+  if (vscodeAuthExchangeConfigured) {
+    capabilities.add('auth.vscode-exchange');
+  }
+
+  return MARKETPLACE_SERVICE_CAPABILITIES.filter((capability) => capabilities.has(capability));
+}
+
+function resolveMarketplaceServiceBuild(env: MarketplaceWorkerEnv | undefined): string {
+  const configured = normalizeMetadataValue(env?.MARKETPLACE_SERVICE_BUILD);
+  if (configured) {
+    return configured;
+  }
+  return normalizeMetadataValue(env?.VERSION_METADATA?.id) ?? 'local';
+}
+
+function resolveMarketplaceGitSha(env: MarketplaceWorkerEnv | undefined): string {
+  const configured = normalizeMetadataValue(env?.MARKETPLACE_GIT_SHA);
+  if (configured) {
+    return configured;
+  }
+  const tag = normalizeMetadataValue(env?.VERSION_METADATA?.tag);
+  if (tag && /^[0-9a-f]{7,40}$/iu.test(tag)) {
+    return tag;
+  }
+  return 'unknown';
+}
+
+function resolveNonEmptyEnv(value: string | undefined, fallback: string): string {
+  return normalizeMetadataValue(value) ?? fallback;
+}
+
+function normalizeMetadataValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
 }
 
 async function readPackageZipUpload(request: Request): Promise<{ bytes: Uint8Array; response?: never } | { bytes?: never; response: Response }> {

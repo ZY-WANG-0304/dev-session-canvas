@@ -14,6 +14,9 @@ assert.match(productionEnvBlock, /workers_dev = false/u);
 assert.match(productionEnvBlock, /preview_urls = false/u);
 assert.match(productionEnvBlock, /dscanvas\.dev\/templates\*/u);
 assert.match(productionEnvBlock, /dscanvas\.dev\/api\/\*/u);
+assert.match(wranglerConfig, /\[version_metadata\]\s+binding = "VERSION_METADATA"/u);
+assert.match(wranglerConfig, /\[env\.preview\.version_metadata\]\s+binding = "VERSION_METADATA"/u);
+assert.match(wranglerConfig, /\[env\.production\.version_metadata\]\s+binding = "VERSION_METADATA"/u);
 
 const productionD1Block = extractBlock(wranglerConfig, '[[env.production.d1_databases]]');
 assert.match(productionD1Block, /binding = "MARKETPLACE_DB"/u);
@@ -29,9 +32,16 @@ assert.doesNotMatch(productionR2Block, /template-marketplace-preview/u);
 assert.equal(appPackageJson.scripts['db:migrate:production'], 'wrangler d1 execute template_marketplace_production --remote --env production --file=./migrations/0001_marketplace_core.sql');
 assert.match(appPackageJson.scripts['db:verify:production'], /template_marketplace_production/u);
 assert.match(appPackageJson.scripts['db:verify:production'], /--env production/u);
-assert.equal(appPackageJson.scripts['deploy:production'], 'npm run build && wrangler deploy --env production');
+assert.equal(appPackageJson.scripts['deploy:preview'], 'npm run build && node scripts/deploy-with-metadata.mjs');
+assert.equal(appPackageJson.scripts['deploy:production'], 'npm run build && node scripts/deploy-with-metadata.mjs --env production');
 assert.equal(rootPackageJson.scripts['deploy:marketplace:production'], 'npm run -w @dev-session-canvas/template-marketplace deploy:production');
 assert.equal(appPackageJson.scripts['db:seed:production'], undefined, 'Production must not have a seed script.');
+
+const deployMetadataScript = await readFile('apps/template-marketplace/scripts/deploy-with-metadata.mjs', 'utf8');
+assert.match(deployMetadataScript, /MARKETPLACE_GIT_SHA:/u);
+assert.match(deployMetadataScript, /GITHUB_SHA/u);
+assert.match(deployMetadataScript, /--keep-vars/u);
+assert.match(deployMetadataScript, /run\('git', \['rev-parse', 'HEAD'\]/u);
 
 console.log('template marketplace production config tests passed');
 

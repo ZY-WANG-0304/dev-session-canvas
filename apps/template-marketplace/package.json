@@ -15,10 +15,10 @@
     "db:seed:preview": "wrangler d1 execute template_marketplace_preview --remote --file=./seeds/0001_preview_templates.sql",
     "db:seed:preview:v2": "wrangler d1 execute template_marketplace_preview --remote --file=./seeds/0002_preview_review_loop_v2.sql",
     "db:verify:preview": "wrangler d1 execute template_marketplace_preview --remote --command=\"SELECT t.slug, v.object_key, v.sha256, v.size_bytes FROM templates t JOIN template_versions v ON v.id = t.latest_version_id ORDER BY t.slug\"",
-    "deploy:preview": "npm run build && wrangler deploy",
+    "deploy:preview": "npm run build && node scripts/deploy-with-metadata.mjs",
     "db:migrate:production": "wrangler d1 execute template_marketplace_production --remote --env production --file=./migrations/0001_marketplace_core.sql",
     "db:verify:production": "wrangler d1 execute template_marketplace_production --remote --env production --command=\"SELECT t.slug, v.object_key, v.sha256, v.size_bytes FROM templates t JOIN template_versions v ON v.id = t.latest_version_id ORDER BY t.slug\"",
-    "deploy:production": "npm run build && wrangler deploy --env production",
+    "deploy:production": "npm run build && node scripts/deploy-with-metadata.mjs --env production",
     "thumbnails:generate": "node scripts/generate-preview-thumbnails.mjs",
     "r2:seed:preview": "node scripts/seed-preview-r2.mjs",
     "r2:verify:preview": "node scripts/verify-preview-r2.mjs"
