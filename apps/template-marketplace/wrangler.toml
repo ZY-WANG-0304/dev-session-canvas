@@ -18,3 +18,34 @@ database_id = "0944dc87-a603-4a59-8a59-b75ab3a796c5"
 [[r2_buckets]]
 binding = "TEMPLATE_BUCKET"
 bucket_name = "template-marketplace-preview"
+
+[env.preview]
+name = "dscanvas-template-marketplace"
+workers_dev = true
+preview_urls = true
+
+[[env.preview.d1_databases]]
+binding = "MARKETPLACE_DB"
+database_name = "template_marketplace_preview"
+database_id = "0944dc87-a603-4a59-8a59-b75ab3a796c5"
+
+[[env.preview.r2_buckets]]
+binding = "TEMPLATE_BUCKET"
+bucket_name = "template-marketplace-preview"
+
+[env.production]
+name = "dscanvas-template-marketplace-production"
+workers_dev = false
+preview_urls = false
+routes = [
+  { pattern = "dscanvas.dev/templates*", zone_name = "dscanvas.dev" },
+  { pattern = "dscanvas.dev/api/*", zone_name = "dscanvas.dev" }
+]
+
+[[env.production.d1_databases]]
+binding = "MARKETPLACE_DB"
+database_name = "template_marketplace_production"
+
+[[env.production.r2_buckets]]
+binding = "TEMPLATE_BUCKET"
+bucket_name = "template-marketplace-production"
