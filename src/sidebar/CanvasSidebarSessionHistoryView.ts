@@ -34,6 +34,7 @@ export interface CanvasSidebarSessionHistoryItemSnapshot {
   provider: AgentProviderKind;
   providerLabel: string;
   sessionId: string;
+  cwd: string;
   title: string;
   updatedAtMs: number;
   timestampLabel: string;
@@ -91,6 +92,7 @@ type SidebarSessionHistoryInboundMessage =
       payload: {
         provider: AgentProviderKind;
         sessionId: string;
+        cwd?: string;
         title?: string;
       };
     }
@@ -99,6 +101,7 @@ type SidebarSessionHistoryInboundMessage =
       payload: {
         provider: AgentProviderKind;
         sessionId: string;
+        cwd?: string;
         title?: string;
       };
     }
@@ -455,6 +458,7 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
         const result = await this.panelManager.restoreAgentSessionFromHistory({
           provider: parsed.payload.provider,
           sessionId: parsed.payload.sessionId,
+          cwd: parsed.payload.cwd,
           title: parsed.payload.title
         });
         if (!result.restored && result.errorMessage) {
@@ -467,6 +471,7 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
         const result = await this.panelManager.forkAgentSessionFromHistory({
           provider: parsed.payload.provider,
           sessionId: parsed.payload.sessionId,
+          cwd: parsed.payload.cwd,
           title: parsed.payload.title
         });
         if (!result.forked && result.errorMessage) {
@@ -557,6 +562,7 @@ export function buildCanvasSidebarSessionHistoryItems(
       provider: entry.provider,
       providerLabel: providerLabel(entry.provider),
       sessionId: entry.sessionId,
+      cwd: entry.cwd,
       title,
       updatedAtMs: entry.updatedAtMs,
       timestampLabel,
@@ -800,6 +806,7 @@ function parseSidebarSessionHistoryMessage(message: unknown): SidebarSessionHist
         payload: {
           provider: payload.provider,
           sessionId: payload.sessionId,
+          cwd: 'cwd' in payload && typeof payload.cwd === 'string' ? payload.cwd : undefined,
           title: 'title' in payload && typeof payload.title === 'string' ? payload.title : undefined
         }
       };
@@ -822,6 +829,7 @@ function parseSidebarSessionHistoryMessage(message: unknown): SidebarSessionHist
         payload: {
           provider: payload.provider,
           sessionId: payload.sessionId,
+          cwd: 'cwd' in payload && typeof payload.cwd === 'string' ? payload.cwd : undefined,
           title: 'title' in payload && typeof payload.title === 'string' ? payload.title : undefined
         }
       };
@@ -1477,6 +1485,7 @@ export function buildSidebarSessionHistoryHtml(
           payload: {
             provider: item.provider,
             sessionId: item.sessionId,
+            cwd: item.cwd,
             title: item.title
           }
         });
