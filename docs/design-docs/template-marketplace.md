@@ -22,7 +22,7 @@ related_plans:
   - docs/exec-plans/completed/template-marketplace-phase3.md
   - docs/exec-plans/active/template-marketplace-phase4-governance.md
   - docs/exec-plans/active/template-package-repository-research.md
-updated_at: 2026-06-26
+updated_at: 2026-06-27
 ---
 
 # 模板市场技术选型
@@ -332,9 +332,41 @@ Phase 4 在本方案中的承载方式如下：
 
 退出条件也需要明确：如果 Phase 4 实测出现高频原始事件写入、复杂全文搜索/推荐、需要异步人工审核流水线、批量通知、实时协作或长时间任务，再在本设计文档新增决策记录，评估 Cloudflare Queues、Durable Objects、专用搜索/分析存储，或重新比较自建后端。只要需求仍停留在当前 Phase 1-4 的版本化市场与治理后台范围内，Workers + D1 + R2 是正式方案而不是临时 Phase 1 原型。
 
+
+### 7.11 生产服务部署与插件发布配合
+
+模板市场的生产服务部署版本、VSCode 插件版本、API 契约版本和模板内容版本是四条独立版本线，不能复用同一个版本号表达。插件版本继续遵循 `docs/workflows/VERSION.md` 的三段式 SemVer，并代表用户从 Visual Studio Marketplace / Open VSX 安装到本地的产品包版本；生产服务部署使用独立不可变 deploy tag 固定一次 Worker / 浏览器 SPA / D1 migration 相关代码输入；API 兼容性由 `/api/v1` 这类 URL 契约和 capability gate 管理；模板内容更新由 `template_versions` 和 `listing_revisions` 管理。
+
+生产服务部署 tag 使用独立命名空间：
+
+```text
+deploy/template-marketplace/prod/YYYY-MM-DD.N
+```
+
+其中 `N` 是同一天内的递增序号。该 tag 表示“以这个 git commit 作为生产服务部署输入”，不表示插件版本，也不能通过移动 `prod`、`latest`、`stable` 等可变 tag 表示当前线上状态。线上真实运行版本必须由 deploy tag、git sha、Cloudflare deployment id、D1 migration 列表、production smoke 结果和 deployment manifest 共同确认。
+
+生产服务部署覆盖这些对象：
+
+- `apps/template-marketplace/src/worker/` 中的 Worker API、认证、治理、下载和 D1/R2 访问逻辑。
+- `apps/template-marketplace/src/web/` 的浏览器市场 SPA 和 Cloudflare Workers Static Assets。
+- 与本次服务代码兼容的 D1 migration、R2 对象访问规则、Wrangler production env 非 secret 配置。
+- `/api/v1/meta` 暴露的 `serviceBuild`、`gitSha`、`apiVersion`、`minSupportedExtensionVersion`、`recommendedExtensionVersion` 和能力开关事实。
+
+生产服务部署不覆盖这些对象：
+
+- VSCode 插件包版本、Marketplace / Open VSX listing 版本和 VSIX 发布物。
+- 用户、管理员或官方精选模板通过正常发布 / 治理流程写入 D1/R2 的内容数据。
+- 管理员处理举报、模板上下架、用户封禁、统计修正、secret 轮换本身。
+
+插件与服务通过请求头和元信息接口协商兼容性。VSCode 插件调用市场 API 时应随请求传入当前插件版本、客户端类型和能力集合，例如 `X-DevSessionCanvas-Extension-Version`、`X-DevSessionCanvas-Client: vscode` 与 `X-DevSessionCanvas-Capabilities`。Worker 应通过 `/api/v1/meta` 返回当前服务构建、API 版本、最低支持插件版本、推荐插件版本和服务侧 capability。插件低于 `minSupportedExtensionVersion` 时，市场写操作和安装路径应降级或禁用并提示升级；低于 `recommendedExtensionVersion` 时可继续使用兼容路径并给出非阻断提醒；缺少 capability 时，服务和前端都不能假设新能力可用。
+
+服务-only 修复只打服务 deploy tag，不提升插件 SemVer。典型例子包括 Worker API bugfix、浏览器市场 UI 调整、治理后台修复、统计修复、生产配置修正和兼容字段新增。插件-only 修复只走插件发布流程，典型例子包括 Extension Host 安装逻辑、插件内 Webview UI、命令、配置、manifest、依赖或本地模板写入行为变化。服务和插件共同参与的新能力应先部署向后兼容的服务，再发布声明新 capability 的插件，最后由服务按插件版本 / capability 放量；破坏性接口变化不能直接改坏 `/api/v1`，必须新增 `/api/v2` 或显式提升最低支持插件版本，并保留旧插件的可解释降级路径。
+
+生产服务 deployment manifest 至少记录：deploy tag、git sha、Cloudflare deployment id、D1 migration 列表、R2 bucket / route、`minSupportedExtensionVersion`、`recommendedExtensionVersion`、production smoke 结果和 rollback target。部署成功后的人工或自动 smoke 应以 `/api/v1/meta`、`/api/v1/templates`、模板详情、完整包下载、登录/写操作和治理入口为核心验证点。tag 只能证明一次部署意图或发布输入，不能单独作为“当前线上正在运行该版本”的唯一事实源。
+
 ## 8. 验证方法
 
-技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析；2026-06-01 Phase 3 又完成点赞/取消点赞、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`、发布者 Dashboard 和本地 API/Web/typecheck 验证；2026-06-07 Phase 4 第一切片完成举报写接口、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写拒绝、管理员审计日志、Web 详情页举报表单和 `/templates/admin` 最小治理后台的本地 API/Web/typecheck 验证；同日管理员全站数据统计面板补齐 `GET /api/v1/admin/stats`、D1 聚合查询、Fake D1、Web API helper、管理后台统计区和本地 API/Web/typecheck 验证；2026-06-25 补齐 VSCode 安装侧更新提醒、手动更新、历史版本回滚和插件内举报跳转入口，并通过 `npm run test:marketplace-vscode-fixture-e2e` 本地 fixture 验证安装 v1、侧栏更新徽章、更新到 v2、回滚到 v1 和 `#report` 跳转；2026-06-26 补齐发布者新版本完整用户入口，并通过 `npm run typecheck:marketplace`、`npm run typecheck`、`npm run test:marketplace-web`、`npm run test:canvas-templates` 和 `npm run test:marketplace-vscode-fixture-e2e` 验证 Web route/API helper、VSCode version mode、`/versions` 请求、发布成功后详情缓存失效和 v3 版本菜单；2026-06-27 在合入 v0.19.0 后补齐 production Wrangler env、生产 deploy / migration / verify 脚本和生产配置回归，并用 `npm run test:canvas-templates` 覆盖完整包安装到 worktree 目标位置、市场模板目录扫描只按 sidecar 读取一个模板，以及模板捕获不会把执行截图粘贴缓存路径或 `pasted-screenshot-*` 运行时文件写入模板主体。真实 GitHub OAuth preview smoke 和共享 React Webview bundle 仍未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。生产资源分离已在 Wrangler env、生产 deploy / migration / verify 脚本和产品规格中收口，但生产 D1 `database_id`、Worker secrets、首次 migration、正式部署和生产 smoke 仍属于发布运维步骤，不写成已完成验证。后续应继续完成以下验证：
+技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析；2026-06-01 Phase 3 又完成点赞/取消点赞、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`、发布者 Dashboard 和本地 API/Web/typecheck 验证；2026-06-07 Phase 4 第一切片完成举报写接口、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写拒绝、管理员审计日志、Web 详情页举报表单和 `/templates/admin` 最小治理后台的本地 API/Web/typecheck 验证；同日管理员全站数据统计面板补齐 `GET /api/v1/admin/stats`、D1 聚合查询、Fake D1、Web API helper、管理后台统计区和本地 API/Web/typecheck 验证；2026-06-25 补齐 VSCode 安装侧更新提醒、手动更新、历史版本回滚和插件内举报跳转入口，并通过 `npm run test:marketplace-vscode-fixture-e2e` 本地 fixture 验证安装 v1、侧栏更新徽章、更新到 v2、回滚到 v1 和 `#report` 跳转；2026-06-26 补齐发布者新版本完整用户入口，并通过 `npm run typecheck:marketplace`、`npm run typecheck`、`npm run test:marketplace-web`、`npm run test:canvas-templates` 和 `npm run test:marketplace-vscode-fixture-e2e` 验证 Web route/API helper、VSCode version mode、`/versions` 请求、发布成功后详情缓存失效和 v3 版本菜单；2026-06-27 在合入 v0.19.0 后补齐 production Wrangler env、生产 deploy / migration / verify 脚本和生产配置回归，并用 `npm run test:canvas-templates` 覆盖完整包安装到 worktree 目标位置、市场模板目录扫描只按 sidecar 读取一个模板，以及模板捕获不会把执行截图粘贴缓存路径或 `pasted-screenshot-*` 运行时文件写入模板主体。真实 GitHub OAuth preview smoke 和共享 React Webview bundle 仍未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。生产资源分离已在 Wrangler env、生产 deploy / migration / verify 脚本和产品规格中收口；2026-06-27 又确认生产服务 deploy tag、插件 SemVer、API 契约和模板版本四线分离的发布管理口径。生产 D1 `database_id`、Worker secrets、首次 migration、正式部署、`/api/v1/meta` 实现和生产 smoke 仍属于发布运维 / 后续实现步骤，不写成已完成验证。后续应继续完成以下验证：
 
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。
