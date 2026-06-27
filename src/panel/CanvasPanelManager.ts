@@ -140,6 +140,7 @@ import {
 import {
   composeRootLocalCanvasStateIntoComposed,
   composeMultiRootCanvasState,
+  collectWorkspaceRootOwnedNodeIds,
   createEmptyCanvasState,
   denamespaceCanvasObjectId,
   decomposeComposedCanvasStateForWorkspaceRoot,
@@ -420,6 +421,14 @@ interface CreateNodeOptions {
   cwdOverride?: string;
   targetGroupId?: string;
   titleOverride?: string;
+}
+
+export interface WorkspaceRootCanvasRemovalImpact {
+  nodeCount: number;
+  groupCount: number;
+  edgeCount: number;
+  fileReferenceCount: number;
+  executionNodeCount: number;
 }
 
 type LiveRuntimeReconnectBlockReason = 'workspace-untrusted' | 'runtime-persistence-disabled';
@@ -3540,6 +3549,109 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       clearedAgentCliResolutionCache: options.clearAgentCliResolutionCache === true
     });
     this.postState('host/stateUpdated');
+  }
+
+  public async clearWorkspaceRootCanvas(
+    rootPath: string,
+    options: { reason?: string } = {}
+  ): Promise<boolean> {
+    const normalizedRootPath = normalizeWorkspaceRootPathForComposition(rootPath);
+    const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    if (!workspaceFolders.some((folder) => folder.path === normalizedRootPath)) {
+      await vscode.window.showWarningMessage('未找到要清空画板的 workspace root。');
+      return false;
+    }
+
+    const rootGroup = (this.state.groups ?? []).find((group) =>
+      isWorkspaceRootGroup(group) && resolveWorkspaceRootPathForGroup(group) === normalizedRootPath
+    );
+    if (workspaceFolders.length > 1 && !rootGroup) {
+      await vscode.window.showWarningMessage('未找到该 workspace root 对应的画板分组，已取消移除。');
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    const affectedNodeIds = rootGroup
+      ? collectWorkspaceRootOwnedNodeIds(this.state, normalizedRootPath, rootGroup.id)
+      : new Set(this.state.nodes.map((node) => node.id));
+    const affectedNodes = this.state.nodes.filter((node) => affectedNodeIds.has(node.id));
+    for (const node of affectedNodes) {
+      this.dropPendingTerminalInitialInput(node.id, 'workspace root 画板已清空，安装命令未写入。');
+      this.activeAssociatedNoteMarkdownEdits.delete(node.id);
+      if (!isExecutionNodeKind(node.kind)) {
+        continue;
+      }
+
+      this.invalidateExecutionSessionOperation(node.kind, node.id);
+      try {
+        await this.terminateExecutionNodeForDeletion(node);
+      } catch (error) {
+        await vscode.window.showErrorMessage(
+          error instanceof Error ? error.message : '清空 workspace root 画板时清理 live runtime 失败。',
+          { modal: true }
+        );
+        return false;
+      }
+    }
+
+    const emptyRootState = createEmptyCanvasState(now);
+    const nextState = rootGroup
+      ? finalizeCanvasGroupState(composeRootLocalCanvasStateIntoComposed(this.state, emptyRootState, rootGroup))
+      : emptyRootState;
+
+    try {
+      this.writeRootLocalCanvasSnapshot(normalizedRootPath, emptyRootState);
+    } catch (error) {
+      await vscode.window.showErrorMessage(
+        `清空 workspace root 画板状态失败：${formatUnknownError(error)}`,
+        { modal: true }
+      );
+      this.recordDiagnosticEvent('state/rootLocalClearFailed', {
+        rootPath: normalizedRootPath,
+        message: formatUnknownError(error)
+      });
+      return false;
+    }
+
+    this.state = this.reconcileCanvasFileArtifacts(nextState);
+    this.canvasTemplateInitialized = true;
+    this.persistState({ reason: options.reason ?? 'workspace-root-canvas-cleared' });
+    this.recordDiagnosticEvent('state/rootLocalCleared', {
+      rootPath: normalizedRootPath,
+      nodeCount: affectedNodes.length,
+      reason: options.reason
+    });
+    this.postState('host/stateUpdated');
+    this.notifySidebarStateChanged();
+    return true;
+  }
+
+  public getWorkspaceRootCanvasRemovalImpact(rootPath: string): WorkspaceRootCanvasRemovalImpact | undefined {
+    const normalizedRootPath = normalizeWorkspaceRootPathForComposition(rootPath);
+    const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    if (!workspaceFolders.some((folder) => folder.path === normalizedRootPath)) {
+      return undefined;
+    }
+
+    const rootGroup = (this.state.groups ?? []).find((group) =>
+      isWorkspaceRootGroup(group) && resolveWorkspaceRootPathForGroup(group) === normalizedRootPath
+    );
+    if (workspaceFolders.length > 1 && !rootGroup) {
+      return undefined;
+    }
+
+    const rootState = rootGroup
+      ? decomposeComposedCanvasStateForWorkspaceRoot(this.state, rootGroup)
+      : this.state;
+    const nodes = rootState.nodes ?? [];
+
+    return {
+      nodeCount: nodes.length,
+      groupCount: (rootState.groups ?? []).length,
+      edgeCount: (rootState.edges ?? []).length,
+      fileReferenceCount: (rootState.fileReferences ?? []).length,
+      executionNodeCount: nodes.filter((node) => isExecutionNodeKind(node.kind)).length
+    };
   }
 
   public async waitForCanvasReady(
