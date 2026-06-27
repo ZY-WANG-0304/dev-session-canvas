@@ -59,7 +59,7 @@ updated_at: 2026-06-26
 
 ## 4. 非目标
 
-- 不在本次选型中实现生产服务、数据库迁移或云资源创建。
+- 不在仓库源码中提交生产 secret，也不由功能分支直接执行生产云资源创建、首次 migration 或真实部署；这些步骤属于发布运维收口。
 - 不引入付费模板、私有市场、团队租户、模板评论区或实时协作能力。
 - 不把浏览器 Web 端做成完整独立工作台；它只负责市场发现、发布、管理与安装跳转。
 - 不在 Phase 1-4 范围内承诺高级全文搜索、个性化推荐、风控模型或海量实时榜单。
@@ -69,7 +69,7 @@ updated_at: 2026-06-26
 
 ### 5.1 Cloudflare Workers + D1 + R2 + React/Vite + Hono + Drizzle
 
-这个方案使用 Cloudflare Workers 承载 API，Workers Static Assets 或同一 Worker 资产绑定承载浏览器 SPA，D1 保存 SQL 元数据，R2 保存模板 JSON、缩略图和导出包。API 使用 Hono 作为轻量 TypeScript HTTP 框架，数据库访问层使用 Drizzle ORM，前端使用 React + Vite。
+这个方案使用 Cloudflare Workers 承载 API，Workers Static Assets 或同一 Worker 资产绑定承载浏览器 SPA，D1 保存 SQL 元数据，R2 保存完整 `package.zip`、兼容 `template.json`、缩略图和 manifest。API 使用 Hono 作为轻量 TypeScript HTTP 框架，数据库访问层使用 Drizzle ORM，前端使用 React + Vite。
 
 优点是 API、静态站点、SQL 元数据、对象存储和边缘缓存都能落在同一平台，部署和权限模型简单；D1 的 SQLite 语义适合模板、版本、用户、点赞、举报、管理员角色和审计日志这类关系型数据；R2 适合模板包和缩略图这类非结构化对象。对 Phase 4 来说，`template_versions` 能保存版本历史和更新说明，`reports`、`admin_roles`、`admin_audit_logs` 能支撑举报队列、用户封禁、模板下架/恢复与治理审计，`template_daily_stats` 能支撑统计面板，R2 不可变版本对象能支撑手动更新和回滚。Workers 与 Hono / React / Vite 的官方路径也直接覆盖“SPA + API”形态。Drizzle 能让 D1 schema、migration 和查询保持类型化。它与当前仓库已有 TypeScript / React / esbuild 经验接近，不要求把扩展代码迁移到全栈框架。
 
@@ -105,7 +105,7 @@ updated_at: 2026-06-26
 | 维度 | 选定方案 | 选型理由 |
 |------|----------|----------|
 | 后端基础设施 | Cloudflare Workers + D1 + R2 | 全栈单平台、低运维，覆盖 Phase 1-4 的公开读、认证写、版本管理、治理审计、对象下载和轻量统计 |
-| Web 前端框架 | React 18 + TypeScript + Vite | 同一套组件可同时产出浏览器 SPA 和 VSCode Webview 本地 bundle，避免 Next.js 在浏览器与 Webview 之间制造两套运行模型 |
+| Web 前端框架 | React 18 + TypeScript + Vite | 浏览器 SPA 已按 React/Vite 实现；后续插件内市场也应收敛到共享 React Webview bundle，避免 Next.js 在浏览器与 Webview 之间制造两套运行模型 |
 | API 框架 | Hono | Workers 原生、轻量中间件、TypeScript 友好，适合承载 `/api/v1` JSON API |
 | 数据库访问层 | Drizzle ORM | 支持 D1，schema、migration 和查询类型化，避免手写 SQL 散落在 Worker 路由中 |
 | UI 组件/样式 | Tailwind CSS + shadcn/ui 源码级组件 | 可快速搭建 Web 市场卡片、表单和后台；VSCode Webview 中必须通过 theme adapter 映射 `--vscode-*` token |
@@ -117,10 +117,10 @@ updated_at: 2026-06-26
 
 技术栈全貌：
 
-- **Web 前端**：React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui 源码级组件。浏览器端作为 SPA 部署到 Cloudflare Workers Static Assets；VSCode Webview 端由 Vite 产出独立本地 bundle。
+- **Web 前端**：React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui 源码级组件。浏览器端作为 SPA 部署到 Cloudflare Workers Static Assets；VSCode Webview 端当前仍是扩展内本地 Webview HTML，后续应由 Vite 产出共享 React Webview bundle。
 - **API 层**：Cloudflare Workers + Hono，全部 API 以 JSON over HTTPS 暴露，并统一使用 `/api/v1` 前缀。
 - **数据库**：Cloudflare D1 + Drizzle ORM，schema 定义在 `packages/marketplace-shared` 中；当前基础工程以手写 SQL migration 固化首版表结构，后续需要自动生成 migration 时再接 Drizzle Kit。
-- **对象存储**：Cloudflare R2，保存模板 JSON、缩略图 PNG 和导出包。
+- **对象存储**：Cloudflare R2，保存完整 `package.zip`、兼容 `template.json`、缩略图 PNG 和 manifest。
 - **认证**：GitHub OAuth。浏览器走 OAuth authorization code + PKCE；VSCode 插件端优先使用 `vscode.authentication.getSession('github', scopes, { createIfNone: true })` 获取 GitHub session，再向 Worker 换取市场 session。
 - **合约与校验**：`packages/marketplace-shared` 导出 API request/response 类型、Drizzle schema、Zod 验证 schema 和模板格式定义；Worker 上传入口使用同一 schema 做服务端校验。
 - **预置数据边界**：3 个 seed / preview 模板只属于开发、测试和调试 fallback；生产市场的模板列表只能来自真实 D1/R2 发布记录。没有 D1 binding 且未显式开启 seed fallback 时，Worker 和浏览器前端都必须返回空市场，而不是把代码内 seed 模板暴露成正式内容。
@@ -135,18 +135,20 @@ updated_at: 2026-06-26
 - `apps/template-marketplace/src/worker/`：Cloudflare Workers + Hono API 服务，包含路由、中间件、认证、上传校验和 D1/R2 操作；生产路径通过 `createProductionTemplateRepository()` 在无 D1 时返回空仓库，只有 `MARKETPLACE_ENABLE_SEED_TEMPLATES=true` 才进入 seed repository。
 - `packages/marketplace-shared/`：市场共享包。包含 Drizzle schema 定义、API request/response 类型、Zod 验证 schema、模板包 manifest 类型、错误码和分页类型。该包不能依赖 `vscode`、React、DOM 或 Cloudflare runtime binding；根入口保持浏览器安全，Drizzle schema 通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出，避免浏览器市场 bundle 引入 Drizzle runtime。
 - `src/panel/TemplateMarketplaceClient.ts`：Extension Host 侧市场 API client、安装模板写入、更新检查和认证换取逻辑。它只能通过宿主发起网络请求和写本地模板目录，不能让 Webview 自己写入文件系统。
-- `src/panel/CanvasTemplateMarketplacePanel.ts`：插件内独立 Webview Editor 的 HTML、CSP、资源 URI 和 message bridge。当前基础实现先用本地 Webview HTML 读取市场 API；命令入口每次都复位到当前扩展安装模式对应的默认来源：正式安装使用 `https://dscanvas.dev/templates`，调试 / 测试安装使用 preview / 本地调试来源，不继承上一次外部来源；从浏览器入口进入时必须先校验外部安装 URI 的可信 `source` 与当前安装模式一致，正式安装遇到调试来源、调试安装遇到正式来源都应报错提示；通过校验后，详情上下文沿用该 `source` origin，并通过 message passing 把浏览器侧下载到的模板 payload 交给 Extension Host 安装；后续应把它收敛到 `apps/template-marketplace/src/web/` 的共享 React 组件和 VSCode host adapter，避免长期维护两套 UI。
+- `src/panel/CanvasTemplateMarketplacePanel.ts`：插件内独立 Webview Editor 的 HTML、CSP、资源 URI 和 message bridge。当前基础实现先用本地 Webview HTML 读取市场 API；命令入口每次都复位到当前扩展安装模式对应的默认来源：正式安装使用 `https://dscanvas.dev/templates`，调试 / 测试安装使用 preview / 本地调试来源，不继承上一次外部来源；从浏览器入口进入时必须先校验外部安装 URI 的可信 `source` 与当前安装模式一致，正式安装遇到调试来源、调试安装遇到正式来源都应报错提示；通过校验后，详情上下文沿用该 `source` origin，Webview 只把模板 slug、版本和安装目标通过 message passing 交给 Extension Host；宿主再下载完整 `package.zip`、校验并写入本地模板库。插件内市场 UI 仍是本地 Webview HTML，后续应把它收敛到 `apps/template-marketplace/src/web/` 的共享 React 组件和 VSCode host adapter，避免长期维护两套 UI。
 - `src/common/canvasTemplates.ts`：继续作为本地模板语义来源；若需要共享到 `packages/marketplace-shared`，应通过提取纯类型/解析函数完成，不在这里直接引入远端 API 字段。
 - `src/panel/CanvasTemplateStore.ts`：安装市场模板时写入用户选择的本地或 workspace 模板目录的 `marketplace/` 子目录，并额外写入 market sidecar；本地模板 JSON 主体仍保持普通用户模板可离线应用。
 
 ### 7.3 前端运行模型
 
-浏览器市场页和 VSCode Webview 市场页共享 `MarketplaceApp`、数据 query hooks、卡片、详情页、发布表单、Dashboard 和管理后台组件，但由 Vite 产出两个 entry，并分别注入 host adapter：
+浏览器市场页和 VSCode Webview 市场页的目标模型是共享 `MarketplaceApp`、数据 query hooks、卡片、详情页、发布表单、Dashboard 和管理后台组件，并由 Vite 产出两个 entry、分别注入 host adapter。当前浏览器端已使用 React/Vite，插件内市场仍是 `CanvasTemplateMarketplacePanel.ts` 里的本地 Webview HTML；共享 React Webview bundle 已作为技术债记录，不把它写成当前已完成事实。
 
-- `BrowserMarketplaceHost` 使用浏览器 History 路由、cookie session、普通文件上传和公开安装深链接。当前浏览器安装链接格式固定为 `vscode://devsessioncanvas.dev-session-canvas/install-template?template=<slug>&version=<versionId>&source=<detailUrl>`；`source` 指向 `/templates/:slug` 详情页。外部 `vscode://` 安装链接不携带内联 payload；扩展端收到链接后先按当前安装模式校验 `source`：正式安装只接受正式市场来源，调试安装只接受 preview / 本地调试来源，来源不匹配时停止并给出错误提示。通过校验后，扩展端打开插件内模板详情页并预选对应版本，插件内详情页继续使用 `source` 所在 origin 读取详情、下载、缩略图、打开浏览器和写入 sidecar `sourceUrl`，安装动作在详情页继续确认。实际安装从受控 Webview message bridge 进入，由详情页从市场 API 下载模板 JSON 后把 inline payload 交给 Extension Host 校验并写入模板库，不能把 payload 放进外部 URI。
+- `BrowserMarketplaceHost` 使用浏览器 History 路由、cookie session、普通文件上传和公开安装深链接。当前浏览器安装链接格式固定为 `vscode://devsessioncanvas.dev-session-canvas/install-template?template=<slug>&version=<versionId>&source=<detailUrl>`；`source` 指向 `/templates/:slug` 详情页。外部 `vscode://` 安装链接不携带内联 payload；扩展端收到链接后先按当前安装模式校验 `source`：正式安装只接受正式市场来源，调试安装只接受 preview / 本地调试来源，来源不匹配时停止并给出错误提示。通过校验后，扩展端打开插件内模板详情页并预选对应版本，插件内详情页继续使用 `source` 所在 origin 读取详情、下载、缩略图、打开浏览器和写入 sidecar `sourceUrl`，安装动作在详情页继续确认。实际安装从受控 Webview message bridge 进入，由 Extension Host 调用市场 API 下载完整 `package.zip`，校验 manifest、`template.json` hash、路径和大小后写入完整模板目录，不能把 payload 放进外部 URI。
 - `VSCodeMarketplaceHost` 使用 Webview message passing、hash 或内存路由、扩展打包资源 URI、宿主触发的 GitHub 登录和宿主安装命令；市场列表中的模板行可以预选安装位置、在标题附近提供“查看详情”文本动作，并在右侧提供安装 / 更新 / 已安装 split button 与安装版本菜单。VSCode 内不提供下载 JSON 控件，浏览器市场才保留 JSON 下载入口。市场面板 header 可以提供上传/发布自建模板入口，但发布不再通过 QuickInput 直接提交；Webview 只展示由 Extension Host 准备好的本地自建模板草稿、公开字段编辑表单、Slug 即时检查、自动缩略图预览和最终确认按钮，提交时再通过 message bridge 调用 Extension Host 换取 GitHub 身份并发布。列表安装位置决定列表和详情安装动作的默认目标，详情页以 README / CHANGELOG tab 阅读、安装目标调整和版本选择为主。
 
 浏览器端正式入口计划为 `https://dscanvas.dev/templates`，预览入口继续使用 `*.workers.dev`。因此浏览器构建必须支持 `/templates/` base path，前端详情路径使用 `/templates/:slug`，模板详情分享链接和 Web 端安装入口也以该路径生成。这个决定只确认浏览器页面入口，不改变当前 `/api/v1` API 前缀；若后续希望把市场 API 也收敛到 `/templates/api/v1`，需要在实现前新增设计补充并同步产品规格。
+
+Cloudflare 部署配置必须显式区分 preview 与 production 环境。`env.preview` 继续使用 `dscanvas-template-marketplace` workers.dev 调试服务、D1 `template_marketplace_preview` 和 R2 `template-marketplace-preview`；`env.production` 使用独立 Worker `dscanvas-template-marketplace-production`、生产 D1 `template_marketplace_production`、生产 R2 `template-marketplace-production`，并只通过 `dscanvas.dev/templates*` 与 `dscanvas.dev/api/*` 路由公开。仓库只提交非 secret 的环境绑定和 deploy / migration / verify 脚本；生产 D1 的实际 `database_id`、OAuth secret、session secret、token secret、管理员 bootstrap allowlist 和首次部署 smoke 由发布运维步骤配置，不写入源码。
 
 Cloudflare Workers Static Assets 只负责浏览器 SPA 和静态资源 fallback；`/api/*`、`/templates` 和 `/templates/*` 必须通过 `assets.run_worker_first` 先进入 Worker。这样既能避免浏览器直接访问 `/api/v1/...` 且 `Accept: text/html` 时被 SPA fallback 返回 `index.html`，也能让 `/templates/assets/...` 被 Worker 重写到实际 Vite 产物路径 `/assets/...`。
 
@@ -332,7 +334,7 @@ Phase 4 在本方案中的承载方式如下：
 
 ## 8. 验证方法
 
-技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析；2026-06-01 Phase 3 又完成点赞/取消点赞、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`、发布者 Dashboard 和本地 API/Web/typecheck 验证；2026-06-07 Phase 4 第一切片完成举报写接口、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写拒绝、管理员审计日志、Web 详情页举报表单和 `/templates/admin` 最小治理后台的本地 API/Web/typecheck 验证；同日管理员全站数据统计面板补齐 `GET /api/v1/admin/stats`、D1 聚合查询、Fake D1、Web API helper、管理后台统计区和本地 API/Web/typecheck 验证；2026-06-25 补齐 VSCode 安装侧更新提醒、手动更新、历史版本回滚和插件内举报跳转入口，并通过 `npm run test:marketplace-vscode-fixture-e2e` 本地 fixture 验证安装 v1、侧栏更新徽章、更新到 v2、回滚到 v1 和 `#report` 跳转；2026-06-26 补齐发布者新版本完整用户入口，并通过 `npm run typecheck:marketplace`、`npm run typecheck`、`npm run test:marketplace-web`、`npm run test:canvas-templates` 和 `npm run test:marketplace-vscode-fixture-e2e` 验证 Web route/API helper、VSCode version mode、`/versions` 请求、发布成功后详情缓存失效和 v3 版本菜单。真实 GitHub OAuth preview smoke、共享 React Webview bundle和完整生产资源分离仍未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。后续应继续完成以下验证：
+技术路线已进入基础工程验证，`validation_status` 为 `验证中`。当前已通过 `packages/marketplace-shared`、`apps/template-marketplace` 的 seed repository、D1/Drizzle 核心 schema、D1 SQL migration、只读 D1 repository、Cloudflare preview D1 migration/seed、R2 `template.json` 与 `thumbnail.png` seed 对象写入和摘要校验、workers.dev 预览部署、Hono Worker API、公开读取 API CORS、Static Assets `/api/*` 与 `/templates*` Worker 优先路由、React + Vite 浏览器列表/详情构建、本地测试、下载计数写入、浏览器安装深链接与扩展端 sidecar 落盘、插件内独立 Webview 市场页匿名浏览/安装的真实 VSCode 宿主 smoke、插件内市场指定版本安装、重复安装覆盖和缩略图展示的源码/脚本与人工验证，以及本轮 `docs/marketplace/UI.md` 中 `Light 2026` / `Dark 2026` 浏览器主题变量和插件内 VSCode token 化样式的 build / typecheck / 代码扫描验证，证明 Phase 1 浏览与安装已在 preview 环境连通；2026-05-25 合并主线节点结构后，市场共享 schema 又补齐关联 Markdown Note 三种内容模式、workspace 相对路径安全校验、内容安全字段收集和 VSCode 发布入口 schema 解析；2026-06-01 Phase 3 又完成点赞/取消点赞、`GET /api/v1/me/likes`、`GET /api/v1/me/stats`、发布者 Dashboard 和本地 API/Web/typecheck 验证；2026-06-07 Phase 4 第一切片完成举报写接口、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写拒绝、管理员审计日志、Web 详情页举报表单和 `/templates/admin` 最小治理后台的本地 API/Web/typecheck 验证；同日管理员全站数据统计面板补齐 `GET /api/v1/admin/stats`、D1 聚合查询、Fake D1、Web API helper、管理后台统计区和本地 API/Web/typecheck 验证；2026-06-25 补齐 VSCode 安装侧更新提醒、手动更新、历史版本回滚和插件内举报跳转入口，并通过 `npm run test:marketplace-vscode-fixture-e2e` 本地 fixture 验证安装 v1、侧栏更新徽章、更新到 v2、回滚到 v1 和 `#report` 跳转；2026-06-26 补齐发布者新版本完整用户入口，并通过 `npm run typecheck:marketplace`、`npm run typecheck`、`npm run test:marketplace-web`、`npm run test:canvas-templates` 和 `npm run test:marketplace-vscode-fixture-e2e` 验证 Web route/API helper、VSCode version mode、`/versions` 请求、发布成功后详情缓存失效和 v3 版本菜单；2026-06-27 在合入 v0.19.0 后补齐 production Wrangler env、生产 deploy / migration / verify 脚本和生产配置回归，并用 `npm run test:canvas-templates` 覆盖完整包安装到 worktree 目标位置、市场模板目录扫描只按 sidecar 读取一个模板，以及模板捕获不会把执行截图粘贴缓存路径或 `pasted-screenshot-*` 运行时文件写入模板主体。真实 GitHub OAuth preview smoke 和共享 React Webview bundle 仍未完成，发布链路仍需真实 OAuth 与端到端 UI 验证，因此不能标为 `已验证`。生产资源分离已在 Wrangler env、生产 deploy / migration / verify 脚本和产品规格中收口，但生产 D1 `database_id`、Worker secrets、首次 migration、正式部署和生产 smoke 仍属于发布运维步骤，不写成已完成验证。后续应继续完成以下验证：
 
 1. 使用 Vitest + miniflare 在本地 Worker / D1 / R2 模拟环境中运行市场 API 集成测试，覆盖匿名列表、详情、下载、GitHub 登录换取、发布、点赞、举报和管理员下架。
 2. 对共享 `packages/marketplace-shared/` 执行 Drizzle schema round-trip 测试和 Zod 验证测试，证明现有 `resources/templates/*.json` 能作为合法市场模板包上传，并且损坏模板会被拒绝。
