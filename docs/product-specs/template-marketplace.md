@@ -179,7 +179,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 ## 7. 验收标准
 
 ### Phase 1：浏览与安装
-当前状态：preview 环境已验证通过的是既有兼容安装路径；完整模板包作为安装和本地管理事实的收口仍按后续包安装改造处理。生产域名与生产 D1/R2 资源分离仍按后续发布收口处理。生产模板市场不再预置代码内 seed 模板；无 D1 数据时默认展示空目录，3 个 seed / preview 模板仅供开发、测试和调试 fallback 使用。
+当前状态：VSCode 安装路径已改为下载完整 `package.zip`，并以完整模板目录和 `.market.json` sidecar 作为本地管理事实；本地 fixture E2E 已覆盖安装 v1、更新到 v2、回滚到 v1 和 sidecar 校验。生产域名与生产 D1/R2 资源分离已在 Wrangler env 配置和脚本层收口，实际生产 D1 `database_id`、Worker secrets、首次 migration / deploy / smoke 仍属于发布运维步骤。生产模板市场不再预置代码内 seed 模板；无 D1 数据时默认展示空目录，3 个 seed / preview 模板仅供开发、测试和调试 fallback 使用。
 
 - [x] 插件内可打开独立 Webview 市场页面
 - [x] Web 端可通过浏览器访问市场，模板有独立 URL
@@ -189,13 +189,14 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - [x] 可查看模板详情页；插件内市场列表和外部安装链接都先进入 VSCode 内详情页
 - [x] 模板详情页以 README 为主内容，不展示首页搜索、筛选、Featured 列表或模板网格，辅助信息收敛到紧凑侧栏和折叠区
 - [x] 可下载安装模板到本地（无需登录）
-- [ ] VSCode 安装路径改为下载完整 `package.zip`，并在目标模板库中保存为完整模板目录：目录内保留原始包、解压内容和 `.market.json` sidecar，侧栏应用模板时读取包内 `template.json`
+- [x] VSCode 安装路径改为下载完整 `package.zip`，并在目标模板库中保存为完整模板目录：目录内保留原始包、解压内容和 `.market.json` sidecar，侧栏应用模板时读取包内 `template.json`（本地 fixture E2E 已验证）
 - [x] 插件内列表行允许安装位置预选，并在右侧提供安装 / 更新 / 已安装 split button；查看详情作为标题附近的文本动作，VSCode 插件内不提供下载 JSON 控件
 - [x] 插件内详情页安装按钮采用 split button：主按钮安装/更新当前详情页选中的版本，下拉可安装特定版本
 - [x] 浏览器详情页保留 JSON 下载入口；VSCode 插件内详情页不提供下载 JSON 控件
 - [x] 安装后模板出现在侧边栏，标记为 `市场 · 本地` 或 `市场 · 工作区`
 - [x] Web 端点击安装可唤起 VSCode，并打开对应模板的插件内详情页继续安装动作
 - [x] 生产环境不预置代码内 seed 模板；官方精选模板如需上线，必须通过发布流程或受控运维流程写入 D1/R2
+- [x] Preview 与 production Cloudflare 资源在 Wrangler 配置中分离：preview 继续绑定 `template_marketplace_preview` / `template-marketplace-preview` / workers.dev，production 使用独立 Worker、`template_marketplace_production`、`template-marketplace-production` 和 `dscanvas.dev` 路由；生产 secrets 与首次部署验证不进入仓库
 - [x] 浏览器市场页使用 `Light 2026` / `Dark 2026` 主题变量，支持 `prefers-color-scheme` 和显式主题属性覆盖
 - [x] 浏览器市场页布局对齐 Visual Studio Marketplace 风格：顶部品牌栏、单一 Templates tab、居中标题、大号矩形搜索和矩形卡片
 - [x] 浏览器市场页主题色使用 DevSessionCanvas 图标中的蓝色和绿色，不使用 Visual Studio Marketplace 的玫红色
