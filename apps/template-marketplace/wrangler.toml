@@ -4,6 +4,9 @@ compatibility_date = "2026-05-10"
 workers_dev = true
 preview_urls = true
 
+[version_metadata]
+binding = "VERSION_METADATA"
+
 [assets]
 directory = "./dist/web"
 binding = "ASSETS"
@@ -24,6 +27,9 @@ name = "dscanvas-template-marketplace"
 workers_dev = true
 preview_urls = true
 
+[env.preview.version_metadata]
+binding = "VERSION_METADATA"
+
 [[env.preview.d1_databases]]
 binding = "MARKETPLACE_DB"
 database_name = "template_marketplace_preview"
@@ -41,6 +47,9 @@ routes = [
   { pattern = "dscanvas.dev/templates*", zone_name = "dscanvas.dev" },
   { pattern = "dscanvas.dev/api/*", zone_name = "dscanvas.dev" }
 ]
+
+[env.production.version_metadata]
+binding = "VERSION_METADATA"
 
 [[env.production.d1_databases]]
 binding = "MARKETPLACE_DB"

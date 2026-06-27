@@ -179,7 +179,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 ## 7. 验收标准
 
 ### Phase 1：浏览与安装
-当前状态：VSCode 安装路径已改为下载完整 `package.zip`，并以完整模板目录和 `.market.json` sidecar 作为本地管理事实；本地 fixture E2E 已覆盖安装 v1、更新到 v2、回滚到 v1 和 sidecar 校验。生产域名与生产 D1/R2 资源分离已在 Wrangler env 配置和脚本层收口，实际生产 D1 `database_id`、Worker secrets、首次 migration / deploy / smoke 仍属于发布运维步骤。生产模板市场不再预置代码内 seed 模板；无 D1 数据时默认展示空目录，3 个 seed / preview 模板仅供开发、测试和调试 fallback 使用。
+当前状态：VSCode 安装路径已改为下载完整 `package.zip`，并以完整模板目录和 `.market.json` sidecar 作为本地管理事实；本地 fixture E2E 已覆盖安装 v1、更新到 v2、回滚到 v1 和 sidecar 校验。生产域名与生产 D1/R2 资源分离已在 Wrangler env 配置和脚本层收口；`/api/v1/meta` 已提供服务构建、git sha、API 版本、插件最低/推荐版本、capability 与运行时配置摘要，并通过 deploy wrapper 注入当前 git sha。实际生产 D1 `database_id`、Worker secrets、首次 migration / deploy / smoke 仍属于发布运维步骤。生产模板市场不再预置代码内 seed 模板；无 D1 数据时默认展示空目录，3 个 seed / preview 模板仅供开发、测试和调试 fallback 使用。
 
 - [x] 插件内可打开独立 Webview 市场页面
 - [x] Web 端可通过浏览器访问市场，模板有独立 URL
@@ -313,7 +313,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - `GET /api/v1/templates/:id/download` — 下载完整 `package.zip`，支撑“下载完整模板”主动作（计数）
 - `GET /api/v1/templates/:id/template.json` — 兼容导出包内 `template.json`，作为轻量模板下载使用
 - `GET /api/v1/templates/:id/thumbnail` — 读取指定版本缩略图
-- `GET /api/v1/meta` — 读取当前服务构建、API 版本、最低支持插件版本、推荐插件版本和能力开关
+- `GET /api/v1/meta` — 读取当前服务构建、git sha、API 版本、最低支持插件版本、推荐插件版本、服务 capability 和运行时配置摘要
 - `POST /api/v1/templates` — 发布新模板（需认证）
 - `POST /api/v1/templates/:id/versions` — 发布新版本（需认证，仅作者）
 - `GET /api/v1/templates/:id/like` — 读取当前登录用户对单个模板的点赞状态（需认证）

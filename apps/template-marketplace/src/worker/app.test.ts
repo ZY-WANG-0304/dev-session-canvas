@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { unzipSync, zipSync } from 'fflate';
 
-import { buildMarketplacePackageObjectKey } from '@dev-session-canvas/marketplace-shared';
+import {
+  buildMarketplacePackageObjectKey,
+  MARKETPLACE_API_VERSION,
+  MARKETPLACE_DEFAULT_MIN_SUPPORTED_EXTENSION_VERSION,
+  MARKETPLACE_DEFAULT_RECOMMENDED_EXTENSION_VERSION,
+  type MarketplaceMetaResponse
+} from '@dev-session-canvas/marketplace-shared';
 import { createMarketplaceWorkerApp } from './app';
 import { createFakeD1Database, type FakeD1Run } from './testD1Database';
 import { createFakeR2Bucket } from './testR2Bucket';
@@ -18,6 +24,105 @@ describe('template marketplace worker api', () => {
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.storageMode).toBe('empty');
+  });
+
+  it('returns service metadata for production smoke and client compatibility checks', async () => {
+    const response = await app.request('http://localhost/api/v1/meta');
+    const body = await response.json<MarketplaceMetaResponse>();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(body).toEqual({
+      service: 'template-marketplace',
+      serviceBuild: 'local',
+      gitSha: 'unknown',
+      apiVersion: MARKETPLACE_API_VERSION,
+      minSupportedExtensionVersion: MARKETPLACE_DEFAULT_MIN_SUPPORTED_EXTENSION_VERSION,
+      recommendedExtensionVersion: MARKETPLACE_DEFAULT_RECOMMENDED_EXTENSION_VERSION,
+      capabilities: ['templates.read', 'templates.download-package', 'templates.export-template-json'],
+      storageMode: 'empty',
+      runtime: {
+        d1Configured: false,
+        r2Configured: false,
+        githubOAuthConfigured: false,
+        vscodeAuthExchangeConfigured: false,
+        seedTemplatesEnabled: false,
+        testAuthEnabled: false
+      }
+    });
+  });
+
+  it('reports configured storage, auth, versions, and service capabilities in metadata', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/meta',
+      {},
+      {
+        MARKETPLACE_DB: createFakeD1Database(),
+        TEMPLATE_BUCKET: createFakeR2Bucket({}),
+        VERSION_METADATA: {
+          id: 'worker-version-id',
+          tag: 'abcdef123456',
+          timestamp: '2026-06-27T00:00:00.000Z'
+        } as WorkerVersionMetadata,
+        GITHUB_CLIENT_ID: 'github-client-id',
+        GITHUB_CLIENT_SECRET: 'github-client-secret',
+        MARKETPLACE_SESSION_SECRET: 'session-secret',
+        MARKETPLACE_TOKEN_SECRET: 'token-secret',
+        MARKETPLACE_MIN_SUPPORTED_EXTENSION_VERSION: '0.18.0',
+        MARKETPLACE_RECOMMENDED_EXTENSION_VERSION: '0.19.0'
+      }
+    );
+    const body = await response.json<MarketplaceMetaResponse>();
+
+    expect(response.status).toBe(200);
+    expect(body.serviceBuild).toBe('worker-version-id');
+    expect(body.gitSha).toBe('abcdef123456');
+    expect(body.minSupportedExtensionVersion).toBe('0.18.0');
+    expect(body.recommendedExtensionVersion).toBe('0.19.0');
+    expect(body.storageMode).toBe('d1');
+    expect(body.runtime).toEqual({
+      d1Configured: true,
+      r2Configured: true,
+      githubOAuthConfigured: true,
+      vscodeAuthExchangeConfigured: true,
+      seedTemplatesEnabled: false,
+      testAuthEnabled: false
+    });
+    expect(body.capabilities).toEqual([
+      'templates.read',
+      'templates.download-package',
+      'templates.export-template-json',
+      'templates.publish-json',
+      'templates.publish-package',
+      'templates.publish-version',
+      'templates.like',
+      'templates.report',
+      'admin.reports',
+      'admin.stats',
+      'auth.github-oauth',
+      'auth.vscode-exchange'
+    ]);
+  });
+
+  it('lets explicit metadata vars override Worker version metadata', async () => {
+    const response = await app.request(
+      'http://localhost/api/v1/meta',
+      {},
+      {
+        MARKETPLACE_SERVICE_BUILD: 'manual-build',
+        MARKETPLACE_GIT_SHA: 'deadbeef',
+        VERSION_METADATA: {
+          id: 'worker-version-id',
+          tag: 'abcdef123456',
+          timestamp: '2026-06-27T00:00:00.000Z'
+        } as WorkerVersionMetadata
+      }
+    );
+    const body = await response.json<MarketplaceMetaResponse>();
+
+    expect(response.status).toBe(200);
+    expect(body.serviceBuild).toBe('manual-build');
+    expect(body.gitSha).toBe('deadbeef');
   });
 
   it('keeps the marketplace empty without D1 or explicit development seed fallback', async () => {
