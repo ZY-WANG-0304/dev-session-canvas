@@ -1633,6 +1633,8 @@ function App(): JSX.Element {
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData> | null>(null);
   const paneGalleryFlowRefs = useRef<Record<string, ReactFlowInstance<CanvasNodeData> | undefined>>({});
   const paneGalleryShellRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const hostMessageHandlerRef = useRef<(message: HostToWebviewMessage) => void>(() => undefined);
+  const pendingPaneGalleryMainNodeFitRootIdsRef = useRef<Set<string>>(new Set());
   const activeCanvasSurfaceRef = useRef<CanvasSurfaceBinding>({
     flow: reactFlowRef.current,
     shell: canvasShellRef.current,
@@ -1663,190 +1665,192 @@ function App(): JSX.Element {
     resolveCanvasOverviewTitleScale(initialPersistedState.viewport?.zoom ?? 1)
   );
 
-  useEffect(() => {
-    const listener = (event: MessageEvent<HostToWebviewMessage>) => {
-      const message = event.data;
-      const messageLifecycle = extractWebviewMessageLifecycle(message);
-      if (requiresHostMessageLifecycle(message.type) && !messageLifecycle) {
-        emitWebviewLifecycleDiagnostic(`ignore host message without lifecycle: ${message.type}`);
-        return;
-      }
+  hostMessageHandlerRef.current = (message: HostToWebviewMessage): void => {
+    const messageLifecycle = extractWebviewMessageLifecycle(message);
+    if (requiresHostMessageLifecycle(message.type) && !messageLifecycle) {
+      emitWebviewLifecycleDiagnostic(`ignore host message without lifecycle: ${message.type}`);
+      return;
+    }
 
-      if (messageLifecycle && !isCurrentWebviewLifecycleIdentity(messageLifecycle)) {
-        emitWebviewLifecycleDiagnostic(`ignore host message with mismatched lifecycle: ${message.type}`);
-        return;
-      }
+    if (messageLifecycle && !isCurrentWebviewLifecycleIdentity(messageLifecycle)) {
+      emitWebviewLifecycleDiagnostic(`ignore host message with mismatched lifecycle: ${message.type}`);
+      return;
+    }
 
-      switch (message.type) {
-        case 'host/bootstrap':
-        case 'host/stateUpdated':
+    switch (message.type) {
+      case 'host/bootstrap':
+      case 'host/stateUpdated':
+        {
+          const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
+          const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
+          hostStateRef.current = normalizedState;
+          latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
+          latestRuntimeContext = normalizedRuntime;
+          setHostState(normalizedState);
+          setRuntimeContext(normalizedRuntime);
+          setNodeLayoutDrafts((current) => {
+            // Host layout wins after a move/resize has been submitted.
+            const pendingNodeIds = pendingCommittedNodeLayoutDraftIdsRef.current;
+            if (pendingNodeIds.size === 0) {
+              return current;
+            }
+
+            const next = { ...current };
+            for (const nodeId of pendingNodeIds) {
+              delete next[nodeId];
+            }
+            pendingNodeIds.clear();
+            return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
+          });
+          setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
+          activeNodeResizeDraftsRef.current = {};
+          setGroupDrafts((current) => {
+            const activeGroupIds = activeGroupInteractionIdsRef.current;
+            const committedGroupIds = committedGroupDraftIdsRef.current;
+            const knownGroupIds = new Set(normalizedState.groups.map((group) => group.id));
+            for (const groupId of Array.from(activeGroupIds)) {
+              if (!knownGroupIds.has(groupId)) {
+                activeGroupIds.delete(groupId);
+              }
+            }
+
+            const next = Object.fromEntries(
+              Object.entries(current).filter(([groupId]) =>
+                knownGroupIds.has(groupId) &&
+                activeGroupIds.has(groupId) &&
+                !committedGroupIds.has(groupId)
+              )
+            );
+            committedGroupIds.clear();
+            return shallowEqualCanvasGroupDrafts(current, next) ? current : next;
+          });
+          applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
+          if (message.type === 'host/bootstrap') {
+            postMessage({ type: 'webview/bootstrapAck' });
+          }
+        }
+        scheduleEmbeddedTerminalAppearanceRefresh();
+        break;
+      case 'host/templateCatalogUpdated':
+        setTemplateMenuEntries(Array.isArray(message.payload.templates) ? message.payload.templates : []);
+        break;
+      case 'host/themeChanged':
+        scheduleEmbeddedTerminalAppearanceRefresh();
+        break;
+      case 'host/visibilityRestored':
+        scheduleExecutionTerminalVisibilityRestore();
+        if (message.payload?.restoreFocus !== false) {
+          scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
+        }
+        break;
+      case 'host/focusNode':
+        requestNodeFocus(message.payload.nodeId);
+        break;
+      case 'host/centerNode':
+        requestNodeCenter(message.payload.nodeId);
+        break;
+      case 'host/focusNodes':
+        requestNodeGroupFocus(message.payload.nodeIds);
+        break;
+      case 'host/focusGroup':
+        requestGroupFocus(message.payload.groupId);
+        break;
+      case 'host/executionSnapshot':
+        routeExecutionTerminalSnapshot({
+          type: 'snapshot',
+          nodeId: message.payload.nodeId,
+          kind: message.payload.kind,
+          output: message.payload.output,
+          cols: message.payload.cols,
+          rows: message.payload.rows,
+          liveSession: message.payload.liveSession,
+          requestId: message.payload.requestId,
+          executionSessionId: message.payload.executionSessionId,
+          outputSequence: message.payload.outputSequence,
+          serializedTerminalState: message.payload.serializedTerminalState
+        });
+        break;
+      case 'host/executionOutput':
+        queueExecutionTerminalOutput({
+          type: 'output',
+          nodeId: message.payload.nodeId,
+          kind: message.payload.kind,
+          chunk: message.payload.chunk,
+          executionSessionId: message.payload.executionSessionId,
+          persisted: message.payload.persisted,
+          outputSequence: message.payload.outputSequence
+        });
+        break;
+      case 'host/executionInputAck':
+        handleExecutionInputAck(message.payload);
+        break;
+      case 'host/executionExit':
+        routeExecutionTerminalExit({
+          type: 'exit',
+          nodeId: message.payload.nodeId,
+          kind: message.payload.kind,
+          message: message.payload.message
+        });
+        break;
+      case 'host/executionFileLinksResolved':
+        resolvePendingExecutionFileLinkResolutionRequest(
+          message.payload.requestId,
+          message.payload.resolvedLinks
+        );
+        break;
+      case 'host/executionPasteText':
+        routeExecutionPasteText(
+          message.payload.requestId,
+          message.payload.nodeId,
+          message.payload.kind,
+          message.payload.text
+        );
+        break;
+      case 'host/executionPasteCancelled':
+        clearPendingExecutionPasteRequest(
+          message.payload.requestId,
+          message.payload.nodeId,
+          message.payload.kind
+        );
+        break;
+      case 'host/error':
+        if (message.payload.createRequestId === pendingManualCreateRequestRef.current?.requestId) {
+          pendingManualCreateRequestRef.current = undefined;
+        }
+        showTransientCanvasError(message.payload.message);
+        break;
+      case 'host/requestCreateNode':
+        // Host commands have already passed workspace-trust validation; the host still rejects if trust changes.
+        createNode(
+          message.payload.kind,
+          undefined,
+          message.payload.targetGroupId,
+          message.payload.agentProvider,
+          message.payload.agentLaunchPreset,
+          message.payload.agentCustomLaunchCommand,
           {
-            const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
-            const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
-            hostStateRef.current = normalizedState;
-            latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
-            latestRuntimeContext = normalizedRuntime;
-            setHostState(normalizedState);
-            setRuntimeContext(normalizedRuntime);
-            setNodeLayoutDrafts((current) => {
-              // Host layout wins after a move/resize has been submitted.
-              const pendingNodeIds = pendingCommittedNodeLayoutDraftIdsRef.current;
-              if (pendingNodeIds.size === 0) {
-                return current;
-              }
+            skipWorkspaceTrustCheck: true,
+            cwd: message.payload.cwd,
+            useDefaultPlacement: Boolean(message.payload.targetGroupId || message.payload.cwd)
+          }
+        );
+        break;
+      case 'host/requestCreateGroupFromSelection':
+        createGroupFromCurrentSelectionRequest();
+        break;
+      case 'host/testProbeRequest':
+        void respondWithWebviewProbeSnapshot(message.payload.requestId, message.payload.delayMs);
+        break;
+      case 'host/testDomAction':
+        void performWebviewDomAction(message.payload.requestId, message.payload.action);
+        break;
+    }
+  };
 
-              const next = { ...current };
-              for (const nodeId of pendingNodeIds) {
-                delete next[nodeId];
-              }
-              pendingNodeIds.clear();
-              return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
-            });
-            setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
-            activeNodeResizeDraftsRef.current = {};
-            setGroupDrafts((current) => {
-              const activeGroupIds = activeGroupInteractionIdsRef.current;
-              const committedGroupIds = committedGroupDraftIdsRef.current;
-              const knownGroupIds = new Set(normalizedState.groups.map((group) => group.id));
-              for (const groupId of Array.from(activeGroupIds)) {
-                if (!knownGroupIds.has(groupId)) {
-                  activeGroupIds.delete(groupId);
-                }
-              }
-
-              const next = Object.fromEntries(
-                Object.entries(current).filter(([groupId]) =>
-                  knownGroupIds.has(groupId) &&
-                  activeGroupIds.has(groupId) &&
-                  !committedGroupIds.has(groupId)
-                )
-              );
-              committedGroupIds.clear();
-              return shallowEqualCanvasGroupDrafts(current, next) ? current : next;
-            });
-            applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
-            if (message.type === 'host/bootstrap') {
-              postMessage({ type: 'webview/bootstrapAck' });
-            }
-          }
-          scheduleEmbeddedTerminalAppearanceRefresh();
-          break;
-        case 'host/templateCatalogUpdated':
-          setTemplateMenuEntries(Array.isArray(message.payload.templates) ? message.payload.templates : []);
-          break;
-        case 'host/themeChanged':
-          scheduleEmbeddedTerminalAppearanceRefresh();
-          break;
-        case 'host/visibilityRestored':
-          scheduleExecutionTerminalVisibilityRestore();
-          if (message.payload?.restoreFocus !== false) {
-            scheduleCanvasShellFocusRestore(canvasShellRef.current, latestRuntimeContext.surfaceLocation);
-          }
-          break;
-        case 'host/focusNode':
-          requestNodeFocus(message.payload.nodeId);
-          break;
-        case 'host/centerNode':
-          requestNodeCenter(message.payload.nodeId);
-          break;
-        case 'host/focusNodes':
-          requestNodeGroupFocus(message.payload.nodeIds);
-          break;
-        case 'host/focusGroup':
-          requestGroupFocus(message.payload.groupId);
-          break;
-        case 'host/executionSnapshot':
-          routeExecutionTerminalSnapshot({
-            type: 'snapshot',
-            nodeId: message.payload.nodeId,
-            kind: message.payload.kind,
-            output: message.payload.output,
-            cols: message.payload.cols,
-            rows: message.payload.rows,
-            liveSession: message.payload.liveSession,
-            requestId: message.payload.requestId,
-            executionSessionId: message.payload.executionSessionId,
-            outputSequence: message.payload.outputSequence,
-            serializedTerminalState: message.payload.serializedTerminalState
-          });
-          break;
-        case 'host/executionOutput':
-          queueExecutionTerminalOutput({
-            type: 'output',
-            nodeId: message.payload.nodeId,
-            kind: message.payload.kind,
-            chunk: message.payload.chunk,
-            executionSessionId: message.payload.executionSessionId,
-            persisted: message.payload.persisted,
-            outputSequence: message.payload.outputSequence
-          });
-          break;
-        case 'host/executionInputAck':
-          handleExecutionInputAck(message.payload);
-          break;
-        case 'host/executionExit':
-          routeExecutionTerminalExit({
-            type: 'exit',
-            nodeId: message.payload.nodeId,
-            kind: message.payload.kind,
-            message: message.payload.message
-          });
-          break;
-        case 'host/executionFileLinksResolved':
-          resolvePendingExecutionFileLinkResolutionRequest(
-            message.payload.requestId,
-            message.payload.resolvedLinks
-          );
-          break;
-        case 'host/executionPasteText':
-          routeExecutionPasteText(
-            message.payload.requestId,
-            message.payload.nodeId,
-            message.payload.kind,
-            message.payload.text
-          );
-          break;
-        case 'host/executionPasteCancelled':
-          clearPendingExecutionPasteRequest(
-            message.payload.requestId,
-            message.payload.nodeId,
-            message.payload.kind
-          );
-          break;
-        case 'host/error':
-          if (message.payload.createRequestId === pendingManualCreateRequestRef.current?.requestId) {
-            pendingManualCreateRequestRef.current = undefined;
-          }
-          showTransientCanvasError(message.payload.message);
-          break;
-        case 'host/requestCreateNode':
-          // Host commands have already passed workspace-trust validation; the host still rejects if trust changes.
-          createNode(
-            message.payload.kind,
-            undefined,
-            message.payload.targetGroupId,
-            message.payload.agentProvider,
-            message.payload.agentLaunchPreset,
-            message.payload.agentCustomLaunchCommand,
-            {
-              skipWorkspaceTrustCheck: true,
-              cwd: message.payload.cwd,
-              useDefaultPlacement: Boolean(message.payload.targetGroupId || message.payload.cwd)
-            }
-          );
-          break;
-        case 'host/requestCreateGroupFromSelection':
-          createGroupFromCurrentSelectionRequest();
-          break;
-        case 'host/testProbeRequest':
-          void respondWithWebviewProbeSnapshot(message.payload.requestId, message.payload.delayMs);
-          break;
-        case 'host/testDomAction':
-          void performWebviewDomAction(message.payload.requestId, message.payload.action);
-          break;
-      }
+  useEffect(() => {
+    const listener = (event: MessageEvent<HostToWebviewMessage>): void => {
+      hostMessageHandlerRef.current(event.data);
     };
-
     window.addEventListener('message', listener);
     postMessage({ type: 'webview/ready' });
 
@@ -2376,17 +2380,22 @@ function App(): JSX.Element {
     rootGroupId: string,
     nodeIds: readonly string[],
     mode: NodeViewportFocusMode = 'fit',
-    viewportRole?: PaneGalleryViewportRole
+    viewportRole?: PaneGalleryViewportRole,
+    options: { onApplied?: () => void; onExpired?: () => void } = {}
   ): void => {
     let remainingAttempts = 6;
     const tryFit = (): void => {
       if (fitPaneGalleryNodesInViewport(rootGroupId, nodeIds, mode, NODE_FOCUS_ANIMATION_DURATION_MS, viewportRole)) {
+        options.onApplied?.();
         return;
       }
       remainingAttempts -= 1;
       if (remainingAttempts > 0) {
         window.setTimeout(tryFit, 50);
+        return;
       }
+
+      options.onExpired?.();
     };
 
     window.requestAnimationFrame(() => {
@@ -2495,8 +2504,16 @@ function App(): JSX.Element {
         return true;
       }
 
+      pendingPaneGalleryMainNodeFitRootIdsRef.current.add(rootGroupId);
       updatePaneGalleryLayout('sideThumbnails', rootGroupId, { fitRoot: false });
-      schedulePaneGalleryNodeFit(rootGroupId, [nodeId], mode, 'main');
+      schedulePaneGalleryNodeFit(rootGroupId, [nodeId], mode, 'main', {
+        onApplied: () => {
+          window.setTimeout(() => {
+            pendingPaneGalleryMainNodeFitRootIdsRef.current.delete(rootGroupId);
+          }, NODE_FOCUS_ANIMATION_DURATION_MS + NODE_FOCUS_VIEWPORT_SYNC_GRACE_MS);
+        },
+        onExpired: () => pendingPaneGalleryMainNodeFitRootIdsRef.current.delete(rootGroupId)
+      });
       return true;
     }
 
@@ -4133,6 +4150,12 @@ function App(): JSX.Element {
     return binding;
   };
 
+  const shouldSkipPaneGalleryInitialFit = (
+    rootGroupId: string,
+    viewportRole: PaneGalleryViewportRole
+  ): boolean =>
+    viewportRole === 'main' && pendingPaneGalleryMainNodeFitRootIdsRef.current.has(rootGroupId);
+
   const handlePaneGalleryPaneClick = (event: React.MouseEvent, rootGroupId: string): void => {
     bindPaneGallerySurface(rootGroupId);
     handlePaneClick(event);
@@ -4500,6 +4523,7 @@ function App(): JSX.Element {
       !isPaneGalleryPresentation ||
       !isPaneGalleryThumbnailLayout(normalizedPaneGalleryLayout) ||
       !activePaneGalleryRootId ||
+      pendingPaneGalleryMainNodeFitRootIdsRef.current.has(activePaneGalleryRootId) ||
       hasPaneGalleryMainViewport(activePaneGalleryRootId)
     ) {
       return;
@@ -4606,6 +4630,7 @@ function App(): JSX.Element {
             paneRefs={paneGalleryShellRefs}
             flowRefs={paneGalleryFlowRefs}
             onBindActiveSurface={bindPaneGallerySurface}
+            shouldSkipInitialFit={shouldSkipPaneGalleryInitialFit}
             onSetLayout={updatePaneGalleryLayout}
             onFitPane={fitPaneGalleryRoot}
             onSavePaneViewport={savePaneGalleryViewport}
@@ -9122,6 +9147,7 @@ interface PaneGalleryProps {
   paneRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
   flowRefs: React.MutableRefObject<Record<string, ReactFlowInstance<CanvasNodeData> | undefined>>;
   onBindActiveSurface: (rootGroupId: string, viewportRole?: PaneGalleryViewportRole) => CanvasSurfaceBinding;
+  shouldSkipInitialFit?: (rootGroupId: string, viewportRole: PaneGalleryViewportRole) => boolean;
   onSetLayout: (layout: PaneGalleryLayoutMode, activeRootGroupId?: string) => void;
   onFitPane: (
     rootGroupId: string,
@@ -9647,6 +9673,10 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
               bindSurface();
             }
             window.requestAnimationFrame(() => {
+              if (!defaultViewport && interactive && props.shouldSkipInitialFit?.(rootGroupId, viewportRole)) {
+                return;
+              }
+
               if (!defaultViewport || !interactive) {
                 fitLocalPane(instance);
               }

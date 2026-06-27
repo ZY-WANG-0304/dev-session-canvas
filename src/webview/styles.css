@@ -3604,7 +3604,7 @@ body {
   gap: 1px;
   padding: 1px;
   overflow: auto;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
 }
 
 .pane-gallery-grid-dynamic {

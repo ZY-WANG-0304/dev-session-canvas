@@ -1498,6 +1498,68 @@ test('pane gallery thumbnail hit layer blocks execution node attention acknowled
   expect(await readPostedMessagesByType(page, 'webview/selectNode')).toEqual([]);
 });
 
+test('pane gallery host center node promotes thumbnail root to main pane without selecting', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+  const state = createPaneGalleryCanvasState();
+  const backendTerminal = state.nodes.find((node) => node.id === 'workspace-root-backend-terminal');
+  backendTerminal.status = 'running';
+  backendTerminal.metadata.terminal.attentionPending = true;
+
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('[data-pane-gallery-mode-trigger="true"]').click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-frontend'
+  );
+  const beforeCenterState = await readPersistedUiState(page);
+  expect(beforeCenterState.selectedNodeId ?? null).not.toBe('workspace-root-backend-terminal');
+  expect(beforeCenterState.paneGallery?.mainViewports?.['workspace-root-backend']).toBeUndefined();
+
+  await page.evaluate(() => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/centerNode',
+      payload: {
+        nodeId: 'workspace-root-backend-terminal'
+      }
+    });
+  });
+
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.activeRootGroupId ?? null)
+    .toBe('workspace-root-backend');
+  await expect
+    .poll(async () => (await readPersistedUiState(page)).paneGallery?.mainViewports?.['workspace-root-backend'] ?? null)
+    .not.toBeNull();
+  await waitForNodeFocusAnimation(page);
+
+  const persistedState = await readPersistedUiState(page);
+  expect(persistedState.selectedNodeId ?? null).not.toBe('workspace-root-backend-terminal');
+  expect(persistedState.selectedNodeIds ?? []).not.toContain('workspace-root-backend-terminal');
+
+  const backendMainPane = page.locator('.pane-gallery-root-pane-main');
+  const backendTerminalNode = backendMainPane.locator('[data-node-id="workspace-root-backend-terminal"]');
+  await expect(backendTerminalNode.locator('[data-execution-attention-pending="true"]')).toHaveCount(1);
+  const backendTerminalProbe = await readProbeNode(page, 'workspace-root-backend-terminal', 20);
+  expect(backendTerminalProbe.selected).toBe(false);
+  expect(backendTerminalProbe.attentionIndicatorVisible).toBe(true);
+
+  const mainPaneBox = await backendMainPane.boundingBox();
+  const terminalBox = await backendTerminalNode.boundingBox();
+  expect(mainPaneBox).not.toBeNull();
+  expect(terminalBox).not.toBeNull();
+  expect(Math.abs(terminalBox.x + terminalBox.width / 2 - (mainPaneBox.x + mainPaneBox.width / 2))).toBeLessThanOrEqual(18);
+  expect(Math.abs(terminalBox.y + terminalBox.height / 2 - (mainPaneBox.y + mainPaneBox.height / 2))).toBeLessThanOrEqual(18);
+});
+
 test('pane gallery fits a root the first time it becomes the main thumbnail pane', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -1758,6 +1820,7 @@ test('pane gallery keeps panes scrollable without fixed zoom floor and targets m
   const galleryMetrics = await page.locator('.pane-gallery-grid').evaluate((grid) => {
     const pane = grid.querySelector('[data-pane-gallery-root-id="workspace-root-frontend"]');
     const flowViewport = pane?.querySelector('.react-flow__viewport');
+    const gridBox = grid.getBoundingClientRect();
     const paneBox = pane instanceof HTMLElement ? pane.getBoundingClientRect() : null;
     const transform = flowViewport instanceof HTMLElement ? getComputedStyle(flowViewport).transform : '';
     const scale = transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).a : null;
@@ -1772,6 +1835,8 @@ test('pane gallery keeps panes scrollable without fixed zoom floor and targets m
       });
     return {
       scrolls: grid.scrollHeight > grid.clientHeight + 20,
+      firstPaneLeadingInset: paneBox ? Math.round(paneBox.left - gridBox.left) : Number.POSITIVE_INFINITY,
+      scrollbarGutter: getComputedStyle(grid).scrollbarGutter,
       paneWidth: paneBox?.width ?? 0,
       paneHeight: paneBox?.height ?? 0,
       scale,
@@ -1779,6 +1844,8 @@ test('pane gallery keeps panes scrollable without fixed zoom floor and targets m
     };
   });
   expect(galleryMetrics.scrolls).toBe(true);
+  expect(galleryMetrics.scrollbarGutter).not.toContain('both-edges');
+  expect(galleryMetrics.firstPaneLeadingInset).toBeLessThanOrEqual(4);
   expect(galleryMetrics.paneWidth).toBeGreaterThanOrEqual(420);
   expect(galleryMetrics.paneHeight).toBeGreaterThanOrEqual(320);
   expect(galleryMetrics.distinctPaneSizes).toBeGreaterThan(1);
