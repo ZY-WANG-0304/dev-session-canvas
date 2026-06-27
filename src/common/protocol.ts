@@ -8,6 +8,7 @@ import type {
   ExecutionTerminalResolvedFileLink
 } from './executionTerminalLinks';
 import type { NoteContentSource } from './noteMarkdownFileAssociation';
+import type { ExecutionImagePasteMimeType } from './executionTerminalClipboard';
 
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
@@ -887,6 +888,18 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'webview/pasteExecutionImage';
+      payload: {
+        requestId: string;
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        mimeType: ExecutionImagePasteMimeType;
+        dataBase64: string;
+        sizeBytes: number;
+        name?: string;
+      };
+    }
+  | {
       type: 'webview/dropExecutionResource';
       payload: {
         nodeId: string;
@@ -1269,6 +1282,14 @@ const webviewClipboardTextSources: WebviewClipboardTextSource[] = [
   'note-markdown-subtitle',
   'note-markdown-metadata'
 ];
+const webviewExecutionImagePasteMimeTypes: ExecutionImagePasteMimeType[] = [
+  'image/png',
+  'image/jpeg',
+  'image/webp'
+];
+const WEBVIEW_EXECUTION_IMAGE_PASTE_MAX_BYTES = 10 * 1024 * 1024;
+const WEBVIEW_EXECUTION_IMAGE_PASTE_MAX_BASE64_LENGTH =
+  Math.ceil(WEBVIEW_EXECUTION_IMAGE_PASTE_MAX_BYTES / 3) * 4 + 4;
 const WEBVIEW_LIFECYCLE_FRAME_ID_MAX_LENGTH = 128;
 const WEBVIEW_LIFECYCLE_FRAME_ID_PATTERN = /^[A-Za-z0-9._:-]+$/u;
 
@@ -1347,6 +1368,38 @@ export function isWebviewClipboardTextSource(value: unknown): value is WebviewCl
   return (
     typeof value === 'string' &&
     webviewClipboardTextSources.includes(value as WebviewClipboardTextSource)
+  );
+}
+
+function normalizeWebviewExecutionImagePasteMimeType(
+  value: unknown
+): ExecutionImagePasteMimeType | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return webviewExecutionImagePasteMimeTypes.includes(normalized as ExecutionImagePasteMimeType)
+    ? (normalized as ExecutionImagePasteMimeType)
+    : undefined;
+}
+
+function isWebviewExecutionImagePasteSize(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    value <= WEBVIEW_EXECUTION_IMAGE_PASTE_MAX_BYTES
+  );
+}
+
+function isWebviewExecutionImagePasteBase64(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= WEBVIEW_EXECUTION_IMAGE_PASTE_MAX_BASE64_LENGTH &&
+    value.length % 4 === 0 &&
+    /^[A-Za-z0-9+/]*={0,2}$/u.test(value)
   );
 }
 
@@ -1750,6 +1803,36 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         nodeId: payload.nodeId,
         kind: payload.kind,
         bracketedPasteMode: payload.bracketedPasteMode
+      }
+    };
+  }
+
+  if (value.type === 'webview/pasteExecutionImage') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const mimeType = normalizeWebviewExecutionImagePasteMimeType(payload?.mimeType);
+    if (
+      !payload ||
+      typeof payload.requestId !== 'string' ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      !mimeType ||
+      !isWebviewExecutionImagePasteBase64(payload.dataBase64) ||
+      !isWebviewExecutionImagePasteSize(payload.sizeBytes) ||
+      (payload.name !== undefined && typeof payload.name !== 'string')
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/pasteExecutionImage',
+      payload: {
+        requestId: payload.requestId,
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        mimeType,
+        dataBase64: payload.dataBase64,
+        sizeBytes: payload.sizeBytes,
+        name: typeof payload.name === 'string' ? payload.name : undefined
       }
     };
   }

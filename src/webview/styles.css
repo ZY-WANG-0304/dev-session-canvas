@@ -7,8 +7,15 @@ body,
   height: 100%;
 }
 
-body {
+html,
+#app,
+body,
+.canvas-shell {
   margin: 0;
+  padding: 0;
+}
+
+body {
   color: var(--vscode-editor-foreground);
   font-family: var(--vscode-font-family);
 }
@@ -3650,7 +3657,40 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  --pane-gallery-root-header-background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
+  --pane-gallery-root-header-border-color: color-mix(in srgb, var(--vscode-panel-border) 72%, transparent);
   background: var(--vscode-editor-background);
+}
+
+.pane-gallery-root-pane[data-pane-gallery-status='running'] {
+  --pane-gallery-root-header-status-color: var(
+    --vscode-debugIcon-startForeground,
+    var(--vscode-debugIcon-restartForeground, var(--vscode-focusBorder))
+  );
+  --pane-gallery-root-header-background: color-mix(
+    in srgb,
+    var(--pane-gallery-root-header-status-color) 16%,
+    var(--vscode-editor-background) 84%
+  );
+  --pane-gallery-root-header-border-color: color-mix(
+    in srgb,
+    var(--pane-gallery-root-header-status-color) 38%,
+    var(--vscode-panel-border) 62%
+  );
+}
+
+.pane-gallery-root-pane[data-pane-gallery-status='attention'] {
+  --pane-gallery-root-header-status-color: var(--vscode-notificationsInfoIcon-foreground, var(--vscode-focusBorder));
+  --pane-gallery-root-header-background: color-mix(
+    in srgb,
+    var(--pane-gallery-root-header-status-color) 20%,
+    var(--vscode-editor-background) 80%
+  );
+  --pane-gallery-root-header-border-color: color-mix(
+    in srgb,
+    var(--pane-gallery-root-header-status-color) 48%,
+    var(--vscode-panel-border) 52%
+  );
 }
 
 .pane-gallery-root-pane:focus-within {
@@ -3671,10 +3711,10 @@ body {
   max-width: min(360px, 68%);
   min-width: 0;
   box-sizing: border-box;
-  border-right: 1px solid color-mix(in srgb, var(--vscode-panel-border) 72%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 72%, transparent);
+  border-right: 1px solid var(--pane-gallery-root-header-border-color);
+  border-bottom: 1px solid var(--pane-gallery-root-header-border-color);
   padding: 4px 8px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
+  background: var(--pane-gallery-root-header-background);
   color: var(--vscode-descriptionForeground);
 }
 

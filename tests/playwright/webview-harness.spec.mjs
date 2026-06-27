@@ -291,6 +291,75 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
   });
 });
 
+test('canvas shell spans panel horizontal edges for single-root and multi-root layouts', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+
+  const assertPanelEdges = async (label, extraSelectors = []) => {
+    const shellSelectors = ['html', 'body', '#app', '.canvas-shell'];
+    const contract = await page.evaluate((selectors) => {
+      const readLayer = (selector) => {
+        const element = document.querySelector(selector);
+        if (!(element instanceof HTMLElement)) {
+          return null;
+        }
+
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          selector,
+          leftInset: Math.round(rect.left),
+          rightInset: Math.round(window.innerWidth - rect.right),
+          paddingLeft: style.paddingLeft,
+          paddingRight: style.paddingRight,
+          marginLeft: style.marginLeft,
+          marginRight: style.marginRight
+        };
+      };
+
+      return {
+        viewportWidth: window.innerWidth,
+        layers: selectors.map(readLayer)
+      };
+    }, [...shellSelectors, ...extraSelectors]);
+
+    expect(contract.viewportWidth, `${label} viewport width`).toBeGreaterThan(0);
+    for (const layer of contract.layers) {
+      expect(layer, `${label} layer should exist`).not.toBeNull();
+      expect(layer.leftInset, `${label} ${layer.selector} left inset`).toBe(0);
+      expect(layer.rightInset, `${label} ${layer.selector} right inset`).toBe(0);
+      expect(layer.marginLeft, `${label} ${layer.selector} left margin`).toBe('0px');
+      expect(layer.marginRight, `${label} ${layer.selector} right margin`).toBe('0px');
+      if (shellSelectors.includes(layer.selector)) {
+        expect(layer.paddingLeft, `${label} ${layer.selector} left padding`).toBe('0px');
+        expect(layer.paddingRight, `${label} ${layer.selector} right padding`).toBe('0px');
+      }
+    }
+  };
+
+  await bootstrap(page, createCanvasScreenshotState(), createRuntimeContext({ multiRootPresentationMode: 'rootGroups' }));
+  await settleWebview(page, 4);
+  await assertPanelEdges('single-root canvas', ['.react-flow']);
+
+  const multiRootState = createPaneGalleryCanvasState();
+  await bootstrap(page, multiRootState, createRuntimeContext({ multiRootPresentationMode: 'rootGroups' }));
+  await settleWebview(page, 4);
+  await assertPanelEdges('multi-root rootGroups canvas', ['.react-flow']);
+
+  await bootstrap(page, multiRootState, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+  await assertPanelEdges('multi-root paneGallery canvas', ['.pane-gallery', '[data-pane-gallery-grid="true"]']);
+
+  await page
+    .locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"] [data-pane-gallery-mode-trigger="true"]')
+    .click();
+  await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
+  await assertPanelEdges('multi-root paneGallery thumbnail canvas', [
+    '.pane-gallery',
+    '.pane-gallery-thumbnail-layout'
+  ]);
+});
+
 test('lifecycle identity acks bootstrap and ignores stale bootstrap frames', async ({ page }) => {
   await openHarness(page);
   const readyMessage = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });
@@ -850,6 +919,7 @@ test('workspace root groups reject cross-root edge creation and reconnect', asyn
 
 test('pane gallery renders dynamic workspace roots with canvas controls and light labels', async ({ page }) => {
   await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
   const state = createPaneGalleryCanvasState();
   await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
   await settleWebview(page, 4);
@@ -868,6 +938,18 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
   await expect(backendPane.locator('.pane-gallery-root-meta')).toHaveCount(0);
   await expect(frontendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
   await expect(backendPane.locator('.pane-gallery-canvas-controls')).toBeVisible();
+  await expect(frontendPane).toHaveAttribute('data-pane-gallery-status', 'idle');
+  await expect(backendPane).toHaveAttribute('data-pane-gallery-status', 'running');
+  await expect(backendPane).toHaveAttribute('aria-label', /1 个节点正在运行/);
+  await expect(backendPane).toHaveAttribute('data-pane-gallery-running-count', '1');
+  await expect(backendPane).toHaveAttribute('data-pane-gallery-attention-count', '0');
+  await expect
+    .poll(async () =>
+      backendPane.locator('.pane-gallery-root-header').evaluate((header) => getComputedStyle(header).backgroundColor)
+    )
+    .not.toBe(
+      await frontendPane.locator('.pane-gallery-root-header').evaluate((header) => getComputedStyle(header).backgroundColor)
+    );
   await expect(page.locator('.canvas-help-panel .execution-help-trigger-canvas')).toBeVisible();
   await expect(frontendPane.locator('[data-group-background-role="workspace-root"]')).toHaveCount(0);
   await expect(frontendPane.locator('[data-root-name-watermark="true"]')).toHaveCount(0);
@@ -1350,6 +1432,7 @@ test('pane gallery clears transient selection before roots become thumbnails', a
 
 test('pane gallery thumbnail hit layer blocks execution node attention acknowledgement', async ({ page }) => {
   await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
   const state = createPaneGalleryCanvasState();
   const backendTerminal = state.nodes.find((node) => node.id === 'workspace-root-backend-terminal');
   backendTerminal.status = 'running';
@@ -1366,6 +1449,19 @@ test('pane gallery thumbnail hit layer blocks execution node attention acknowled
     '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
   );
   const backendTerminalNode = backendThumbnail.locator('[data-node-id="workspace-root-backend-terminal"]');
+  await expect(backendThumbnail).toHaveAttribute('data-pane-gallery-status', 'attention');
+  await expect(backendThumbnail).toHaveAttribute('data-pane-gallery-attention-count', '1');
+  await expect(backendThumbnail).toHaveAttribute('data-pane-gallery-running-count', '1');
+  await expect(backendThumbnail).toHaveAttribute('aria-label', /1 个节点需要关注，1 个节点正在运行/);
+  await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toHaveAttribute(
+    'title',
+    /1 个节点需要关注，1 个节点正在运行/
+  );
+  await expect
+    .poll(async () =>
+      backendThumbnail.locator('.pane-gallery-root-header').evaluate((header) => getComputedStyle(header).backgroundColor)
+    )
+    .not.toBe('rgba(0, 0, 0, 0)');
   await expect(backendTerminalNode.locator('[data-execution-attention-pending="true"]')).toHaveCount(1);
   await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toBeVisible();
   await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toHaveCSS(
@@ -1513,6 +1609,93 @@ test('pane gallery fits the active root when entering thumbnail mode without a m
   const frontendMainViewport = paneGalleryState?.mainViewports?.['workspace-root-frontend'];
   expect(frontendMainViewport?.x).not.toBe(5000);
   expect(frontendMainViewport?.y).not.toBe(-3000);
+});
+
+test('pane gallery fit view centers visible root content instead of the workspace root frame', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'dynamic',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        overviewViewports: {
+          'workspace-root-frontend': {
+            x: 0,
+            y: 0,
+            zoom: 0.3
+          }
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  const frontendGroup = state.groups.find((group) => group.id === 'workspace-root-frontend');
+  frontendGroup.position = { x: 0, y: 0 };
+  frontendGroup.size = { width: 900, height: 2600 };
+  state.nodes.find((node) => node.id === 'workspace-root-frontend-note').position = { x: 120, y: 1840 };
+  state.nodes.find((node) => node.id === 'workspace-root-frontend-terminal').position = { x: 560, y: 1840 };
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('.react-flow__controls-fitview').click();
+
+  await expect
+    .poll(async () =>
+      frontendTile.evaluate((pane) => {
+        const shell = pane.querySelector('.pane-gallery-root-flow-shell');
+        const note = pane.querySelector('[data-node-id="workspace-root-frontend-note"]');
+        const terminal = pane.querySelector('[data-node-id="workspace-root-frontend-terminal"]');
+        if (!(shell instanceof HTMLElement) || !(note instanceof HTMLElement) || !(terminal instanceof HTMLElement)) {
+          return Number.POSITIVE_INFINITY;
+        }
+
+        const shellBox = shell.getBoundingClientRect();
+        const boxes = [note.getBoundingClientRect(), terminal.getBoundingClientRect()];
+        const top = Math.min(...boxes.map((box) => box.top));
+        const bottom = Math.max(...boxes.map((box) => box.bottom));
+        const contentCenterY = (top + bottom) / 2;
+        const shellCenterY = shellBox.top + shellBox.height / 2;
+        return Math.abs(contentCenterY - shellCenterY);
+      })
+    )
+    .toBeLessThan(18);
+});
+
+test('pane gallery fit view leaves an empty root viewport unchanged', async ({ page }) => {
+  const unchangedViewport = {
+    x: 123,
+    y: -45,
+    zoom: 0.75
+  };
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'dynamic',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails',
+        overviewViewports: {
+          'workspace-root-frontend': unchangedViewport
+        }
+      }
+    }
+  });
+  const state = createPaneGalleryCanvasState();
+  const frontendGroup = state.groups.find((group) => group.id === 'workspace-root-frontend');
+  frontendGroup.size = { width: 900, height: 2600 };
+  state.nodes = state.nodes.filter((node) => !node.id.startsWith('workspace-root-frontend-'));
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+
+  const frontendTile = page.locator('.pane-gallery-root-pane-tile[data-pane-gallery-root-id="workspace-root-frontend"]');
+  await frontendTile.locator('.react-flow__controls-fitview').click();
+  await settleWebview(page, 4);
+
+  expect((await readPersistedUiState(page)).paneGallery?.overviewViewports?.['workspace-root-frontend']).toEqual(
+    unchangedViewport
+  );
 });
 
 test('pane gallery restores the saved main viewport when switching thumbnail roots', async ({ page }) => {
@@ -4679,6 +4862,153 @@ for (const executionKind of ['agent', 'terminal']) {
       })
       .toBe(pasteText);
   });
+
+  if (executionKind === 'agent') {
+    test('agent paste event sends clipboard screenshots to the host and routes returned image path through xterm', async ({
+      page
+    }) => {
+      const nodeId = 'agent-zoom';
+      const pasteText = "'/tmp/dev-session-canvas-paste/screenshot.png' ";
+
+      await openHarness(page);
+      await bootstrap(page, createLiveExecutionNodeState('agent'));
+      await waitForExecutionTerminalReady(page, nodeId);
+      await clearPostedMessages(page);
+
+      const pasteDispatch = await page.evaluate((nextNodeId) => {
+        const textarea = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-helper-textarea`);
+        if (!(textarea instanceof HTMLTextAreaElement)) {
+          throw new Error(`Execution terminal ${nextNodeId} has no xterm textarea.`);
+        }
+
+        const pngBytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const file = new File([pngBytes], 'clipboard-screenshot.png', { type: 'image/png' });
+        const clipboardData = {
+          files: [file],
+          items: [
+            {
+              kind: 'file',
+              type: 'image/png',
+              getAsFile: () => file
+            }
+          ],
+          types: ['Files'],
+          getData: () => '',
+          setData: () => {},
+          clearData: () => {},
+          dropEffect: 'copy',
+          effectAllowed: 'all'
+        };
+        const event = new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true
+        });
+        Object.defineProperty(event, 'clipboardData', {
+          configurable: true,
+          value: clipboardData
+        });
+
+        textarea.focus();
+        textarea.dispatchEvent(event);
+
+        return {
+          defaultPrevented: event.defaultPrevented
+        };
+      }, nodeId);
+
+      expect(pasteDispatch.defaultPrevented).toBe(true);
+
+      const imagePasteRequest = await waitForPostedMessageByType(page, 'webview/pasteExecutionImage');
+      expect(imagePasteRequest.payload).toMatchObject({
+        nodeId,
+        kind: 'agent',
+        mimeType: 'image/png',
+        dataBase64: 'iVBORw0KGgo=',
+        sizeBytes: 8,
+        name: 'clipboard-screenshot.png'
+      });
+
+      await page.evaluate(
+        ({ requestId, nextNodeId, nextPasteText }) => {
+          window.__devSessionCanvasHarness.dispatchHostMessage({
+            type: 'host/executionPasteText',
+            payload: {
+              requestId,
+              nodeId: nextNodeId,
+              kind: 'agent',
+              text: nextPasteText
+            }
+          });
+        },
+        {
+          requestId: imagePasteRequest.payload.requestId,
+          nextNodeId: nodeId,
+          nextPasteText: pasteText
+        }
+      );
+
+      await expect
+        .poll(async () => {
+          const message = await page.evaluate(() => {
+            return (
+              window.__devSessionCanvasHarness
+                .getPostedMessages()
+                .find((entry) => entry.type === 'webview/executionInput') ?? null
+            );
+          });
+          return message?.payload?.data ?? null;
+        })
+        .toBe(pasteText);
+    });
+  }
+
+  if (executionKind === 'terminal') {
+    test('terminal paste event ignores image-only clipboards instead of sending image paths to the shell', async ({
+      page
+    }) => {
+      const nodeId = 'terminal-zoom';
+
+      await openHarness(page);
+      await bootstrap(page, createLiveExecutionNodeState('terminal'));
+      await waitForExecutionTerminalReady(page, nodeId);
+      await clearPostedMessages(page);
+
+      await page.evaluate((nextNodeId) => {
+        const textarea = document.querySelector(`[data-node-id="${nextNodeId}"] .xterm-helper-textarea`);
+        if (!(textarea instanceof HTMLTextAreaElement)) {
+          throw new Error(`Execution terminal ${nextNodeId} has no xterm textarea.`);
+        }
+
+        const file = new File([Uint8Array.from([0x89, 0x50, 0x4e, 0x47])], 'terminal.png', { type: 'image/png' });
+        const event = new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true
+        });
+        Object.defineProperty(event, 'clipboardData', {
+          configurable: true,
+          value: {
+            files: [file],
+            items: [
+              {
+                kind: 'file',
+                type: 'image/png',
+                getAsFile: () => file
+              }
+            ],
+            types: ['Files'],
+            getData: () => ''
+          }
+        });
+        textarea.focus();
+        textarea.dispatchEvent(event);
+      }, nodeId);
+      await settleWebview(page, 3);
+
+      const messages = await page.evaluate(() => window.__devSessionCanvasHarness.getPostedMessages());
+      expect(messages.filter((entry) => entry.type === 'webview/pasteExecutionImage')).toEqual([]);
+      expect(messages.filter((entry) => entry.type === 'webview/executionInput')).toEqual([]);
+    });
+  }
 
   test(`${executionKind} terminal handles vi-style alternate screen without blocking input or node controls`, async ({
     page
@@ -13764,6 +14094,141 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 }
 
+test('agent output drain reaches every live node when many nodes have pending backlog', async ({ page }) => {
+  const state = createMultiLiveExecutionNodeState('agent', 6);
+  const nodeIds = state.nodes.map((node) => node.id);
+  const outputEvents = nodeIds.map((nodeId, index) => {
+    const marker = `AGENT-FAIR-DRAIN-${nodeId}`;
+    const chunk =
+      Array.from({ length: 12000 }, (_value, lineIndex) => {
+        return `${marker}-${String(lineIndex).padStart(4, '0')}`;
+      }).join('\r\n') + '\r\n';
+    return {
+      nodeId,
+      kind: 'agent',
+      chunk,
+      executionSessionId: `fair-drain-session-${index + 1}`,
+      outputSequence: index + 1
+    };
+  });
+
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, state);
+  for (const nodeId of nodeIds) {
+    await waitForExecutionTerminalReady(page, nodeId);
+  }
+
+  await page.evaluate((events) => {
+    for (const payload of events) {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionOutput',
+        payload
+      });
+    }
+  }, outputEvents);
+  await settleWebview(page, 12);
+
+  for (const nodeId of nodeIds) {
+    const probeNode = await readProbeNode(page, nodeId, 0);
+    expect(
+      probeNode?.terminalVisibleLines?.some((line) => line.includes(`AGENT-FAIR-DRAIN-${nodeId}`))
+    ).toBe(true);
+  }
+});
+
+test('agent attention final output is not starved behind flooded nodes', async ({ page }) => {
+  const state = createMultiLiveExecutionNodeState('agent', 6);
+  const nodeIds = state.nodes.map((node) => node.id);
+  const floodNodeIds = nodeIds.slice(0, 2);
+  const attentionNodeIds = nodeIds.slice(2);
+
+  for (const node of state.nodes) {
+    if (attentionNodeIds.includes(node.id)) {
+      node.metadata.agent.attentionPending = true;
+      node.status = 'waiting-input';
+      node.metadata.agent.lifecycle = 'waiting-input';
+    }
+  }
+
+  const floodEvents = floodNodeIds.map((nodeId, index) => ({
+    nodeId,
+    kind: 'agent',
+    chunk:
+      Array.from({ length: 12000 }, (_value, lineIndex) => {
+        return `BACKGROUND-FLOOD-${nodeId}-${String(lineIndex).padStart(5, '0')}`;
+      }).join('\r\n') + '\r\n',
+    executionSessionId: `attention-flood-session-${index + 1}`,
+    outputSequence: index + 1
+  }));
+  const finalEvents = attentionNodeIds.map((nodeId, index) => ({
+    nodeId,
+    kind: 'agent',
+    chunk: `ATTENTION-FINAL-OUTPUT-${nodeId}\r\n`,
+    executionSessionId: `attention-final-session-${index + 1}`,
+    outputSequence: index + 1,
+    exitMessage: `Attention final complete ${nodeId}`
+  }));
+
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+    }
+  });
+  await bootstrap(page, state);
+  for (const nodeId of nodeIds) {
+    await waitForExecutionTerminalReady(page, nodeId);
+  }
+
+  await page.evaluate(
+    ({ floodPayloads, finalPayloads }) => {
+      for (const payload of floodPayloads) {
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionOutput',
+          payload
+        });
+      }
+      for (const { exitMessage, ...payload } of finalPayloads) {
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionOutput',
+          payload
+        });
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionExit',
+          payload: {
+            nodeId: payload.nodeId,
+            kind: payload.kind,
+            message: exitMessage
+          }
+        });
+      }
+    },
+    { floodPayloads: floodEvents, finalPayloads: finalEvents }
+  );
+  await settleWebview(page, 18);
+
+  for (const nodeId of attentionNodeIds) {
+    const probeNode = await readProbeNode(page, nodeId, 0);
+    const visibleLines = probeNode?.terminalVisibleLines ?? [];
+    expect(probeNode?.attentionIndicatorVisible).toBe(true);
+    expect(visibleLines.some((line) => line.includes(`ATTENTION-FINAL-OUTPUT-${nodeId}`))).toBe(true);
+    expect(visibleLines.some((line) => line.includes(`[Dev Session Canvas] Attention final complete ${nodeId}`))).toBe(
+      true
+    );
+  }
+});
+
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} requests snapshot reset instead of replaying a huge restored backlog`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -16011,8 +16476,8 @@ function createPaneGalleryCanvasState(options = {}) {
     },
     {
       ...createManualTerminalNode(`${group.id}-terminal`, {
-        x: group.position.x + 360,
-        y: group.position.y + 140
+        x: group.position.x + (options.hugeFirstRoot && index === 0 ? 8200 : 360),
+        y: group.position.y + (options.hugeFirstRoot && index === 0 ? 5600 : 140)
       }),
       title: `${group.title} Terminal`,
       status: index === 1 ? 'running' : 'draft',

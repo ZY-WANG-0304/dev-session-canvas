@@ -126,6 +126,7 @@ import type {
   ExecutionTerminalFileLinkResolvePriority,
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
+import type { ExecutionImagePasteData } from '../common/executionTerminalClipboard';
 import {
   inferExecutionTerminalPathStyle,
   normalizeExecutionTerminalWordSeparators
@@ -515,6 +516,11 @@ interface CanvasNodeData {
     nodeId: string,
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
+  ) => void;
+  onPasteExecutionImage?: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    image: ExecutionImagePasteData
   ) => void;
   onExecutionClipboardDiagnostic?: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   onResizeExecution?: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
@@ -3166,6 +3172,7 @@ function App(): JSX.Element {
       }),
     onCopyExecutionSelection: copyExecutionSelection,
     onRequestExecutionPaste: requestExecutionPaste,
+    onPasteExecutionImage: pasteExecutionImage,
     onExecutionClipboardDiagnostic: reportExecutionClipboardDiagnostic,
     onResizeExecution: (nodeId, kind, cols, rows) =>
       postMessage({
@@ -4377,6 +4384,12 @@ function App(): JSX.Element {
       }
     }));
   };
+  const resolvePaneGalleryRootContentBounds = (
+    rootGroupId: string
+  ): CanvasMiniMapRect | undefined => {
+    const model = paneGalleryRootModels.find((candidate) => candidate.rootGroup.id === rootGroupId);
+    return model ? resolvePaneGalleryModelContentBounds(model) : undefined;
+  };
   const fitPaneGalleryRoot = (
     rootGroupId: string,
     instance = paneGalleryFlowRefs.current[rootGroupId],
@@ -4389,9 +4402,9 @@ function App(): JSX.Element {
         normalizePaneGalleryLayoutMode(localUiStateRef.current.paneGallery?.layout) ??
           PANE_GALLERY_DEFAULT_OVERVIEW_LAYOUT
       );
-    const rootGroup = groups.find((group) => group.id === rootGroupId);
+    const contentBounds = resolvePaneGalleryRootContentBounds(rootGroupId);
     const shell = paneGalleryShellRefs.current[rootGroupId];
-    if (!instance?.viewportInitialized || !rootGroup || !shell) {
+    if (!instance?.viewportInitialized || !contentBounds || !shell) {
       return false;
     }
     if (options.requirePaneMode) {
@@ -4405,12 +4418,7 @@ function App(): JSX.Element {
     }
 
     const viewport = getViewportForBounds(
-      {
-        x: rootGroup.position.x,
-        y: rootGroup.position.y,
-        width: Math.max(1, rootGroup.size.width),
-        height: Math.max(1, rootGroup.size.height)
-      },
+      contentBounds,
       Math.max(1, shell.clientWidth),
       Math.max(1, shell.clientHeight),
       PANE_GALLERY_MIN_ZOOM,
@@ -5518,6 +5526,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
+      onPasteImage: (nodeId, kind, image) => data.onPasteExecutionImage?.(nodeId, kind, image),
       onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
@@ -6070,6 +6079,7 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
         data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
+      onPasteImage: (nodeId, kind, image) => data.onPasteExecutionImage?.(nodeId, kind, image),
       onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
@@ -8954,6 +8964,50 @@ interface PaneGalleryRootModel {
   attentionCount: number;
 }
 
+type PaneGalleryPaneStatus = 'idle' | 'running' | 'attention';
+
+function paneGalleryNodeHasAttention(node: CanvasFlowNode): boolean {
+  return (
+    node.data?.metadata?.agent?.attentionPending === true ||
+    node.data?.metadata?.terminal?.attentionPending === true
+  );
+}
+
+function paneGalleryNodeIsRunning(node: CanvasNodeSummary): boolean {
+  switch (node.status) {
+    case 'launching':
+    case 'starting':
+    case 'resuming':
+    case 'reattaching':
+    case 'running':
+    case 'live':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function paneGalleryPaneStatusForModel(model: PaneGalleryRootModel): PaneGalleryPaneStatus {
+  if (model.attentionCount > 0) {
+    return 'attention';
+  }
+  if (model.runningCount > 0) {
+    return 'running';
+  }
+  return 'idle';
+}
+
+function paneGalleryPaneStatusDescription(model: PaneGalleryRootModel): string | undefined {
+  const fragments: string[] = [];
+  if (model.attentionCount > 0) {
+    fragments.push(`${model.attentionCount} 个节点需要关注`);
+  }
+  if (model.runningCount > 0) {
+    fragments.push(`${model.runningCount} 个节点正在运行`);
+  }
+  return fragments.length > 0 ? fragments.join('，') : undefined;
+}
+
 function buildPaneGalleryRootModels(params: {
   rootGroups: readonly CanvasGroupSummary[];
   groups: readonly CanvasGroupSummary[];
@@ -8988,15 +9042,16 @@ function buildPaneGalleryRootModels(params: {
       edges: paneEdges,
       groups: params.groups.filter((group) => group.id !== rootGroup.id && subtreeGroupIds.has(group.id)),
       nodeCount: paneNodes.length,
-      runningCount: paneHostNodes.filter((node) => node.status === 'running').length,
+      runningCount: paneHostNodes.filter((node) => paneGalleryNodeIsRunning(node)).length,
       errorCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-error').length,
       waitingCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-waiting').length,
-      attentionCount: paneNodes.filter((node) =>
-        node.data?.metadata?.agent?.attentionPending === true ||
-        node.data?.metadata?.terminal?.attentionPending === true
-      ).length
+      attentionCount: paneNodes.filter((node) => paneGalleryNodeHasAttention(node)).length
     };
   });
+}
+
+function resolvePaneGalleryModelContentBounds(model: PaneGalleryRootModel): CanvasMiniMapRect | undefined {
+  return resolveCanvasSpatialBounds(model.nodes, model.groups).bounds;
 }
 
 function sortPaneGalleryRootGroupsByWorkspaceOrder(
@@ -9390,6 +9445,9 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   const rootGroupId = model.rootGroup.id;
   const interactive = props.mode !== 'thumbnail';
   const viewportRole: PaneGalleryViewportRole = props.mode === 'main' ? 'main' : 'overview';
+  const paneStatus = paneGalleryPaneStatusForModel(model);
+  const paneStatusDescription = paneGalleryPaneStatusDescription(model);
+  const paneTitle = `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}${paneStatusDescription ? ` - ${paneStatusDescription}` : ''}`;
   const defaultViewport = interactive
     ? viewportRole === 'main'
       ? props.mainViewports[rootGroupId]
@@ -9435,17 +9493,13 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   };
   const fitLocalPane = (instance: ReactFlowInstance<CanvasNodeData> | undefined, duration = 0): boolean => {
     const shell = localPaneRef.current;
-    if (!instance?.viewportInitialized || !shell) {
+    const contentBounds = resolvePaneGalleryModelContentBounds(model);
+    if (!instance?.viewportInitialized || !shell || !contentBounds) {
       return false;
     }
 
     const viewport = getViewportForBounds(
-      {
-        x: model.rootGroup.position.x,
-        y: model.rootGroup.position.y,
-        width: Math.max(1, model.rootGroup.size.width),
-        height: Math.max(1, model.rootGroup.size.height)
-      },
+      contentBounds,
       Math.max(1, shell.clientWidth),
       Math.max(1, shell.clientHeight),
       PANE_GALLERY_MIN_ZOOM,
@@ -9526,10 +9580,13 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
       data-pane-gallery-root-id={rootGroupId}
       data-pane-gallery-root-mode={props.mode}
       data-pane-gallery-dynamic-slot={props.dynamicSlot}
+      data-pane-gallery-status={paneStatus}
+      data-pane-gallery-attention-count={model.attentionCount}
+      data-pane-gallery-running-count={model.runningCount}
       data-canvas-overview-mode={overviewState.active ? 'true' : 'false'}
       data-canvas-overview-config={props.overviewMode}
-      aria-label={`Workspace root ${model.rootGroup.title}`}
-      title={props.mode === 'thumbnail' ? `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}` : undefined}
+      aria-label={`Workspace root ${model.rootGroup.title}${paneStatusDescription ? `, ${paneStatusDescription}` : ''}`}
+      title={props.mode === 'thumbnail' ? paneTitle : undefined}
       style={{ '--canvas-overview-title-scale': overviewState.titleScale } as CSSProperties}
       onMouseEnter={interactive ? bindSurface : undefined}
       onFocusCapture={interactive ? bindSurface : undefined}
@@ -9712,7 +9769,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
             className="pane-gallery-thumbnail-hit-layer"
             data-pane-gallery-thumbnail-hit-layer="true"
             aria-hidden="true"
-            title={`${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}`}
+            title={paneTitle}
             onPointerDown={blockThumbnailPointerEvent}
             onPointerMove={blockThumbnailPointerEvent}
             onPointerUp={blockThumbnailPointerEvent}
@@ -13518,6 +13575,11 @@ function toFlowNodes(params: {
     kind: ExecutionNodeKind,
     bracketedPasteMode: boolean
   ) => void;
+  onPasteExecutionImage: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    image: ExecutionImagePasteData
+  ) => void;
   onExecutionClipboardDiagnostic: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   onResizeExecution: (nodeId: string, kind: ExecutionNodeKind, cols: number, rows: number) => void;
   onStopExecution: (nodeId: string, kind: ExecutionNodeKind) => void;
@@ -13618,6 +13680,7 @@ function toFlowNodes(params: {
         onOpenExecutionLink: params.onOpenExecutionLink,
         onCopyExecutionSelection: params.onCopyExecutionSelection,
         onRequestExecutionPaste: params.onRequestExecutionPaste,
+        onPasteExecutionImage: params.onPasteExecutionImage,
         onExecutionClipboardDiagnostic: params.onExecutionClipboardDiagnostic,
         onResizeExecution: params.onResizeExecution,
         onStopExecution: params.onStopExecution,
@@ -15430,6 +15493,9 @@ function drainExecutionTerminalOutput(): void {
   let pendingOutputLength = 0;
   let processedControllerCount = 0;
   let queuedWriteBlockedControllerCount = 0;
+  const deferredControllers: ExecutionTerminalController[] = [];
+  const queuedWriteBlockedControllers: ExecutionTerminalController[] = [];
+  const processedControllersWithRemainingOutput: ExecutionTerminalController[] = [];
   const orderedControllers = lastExecutionInputNodeId
     ? [...controllers].sort((left, right) => {
         if (left.nodeId === lastExecutionInputNodeId && right.nodeId !== lastExecutionInputNodeId) {
@@ -15449,17 +15515,17 @@ function drainExecutionTerminalOutput(): void {
     }
     if (currentController.getQueuedWriteCount() >= EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER) {
       queuedWriteBlockedControllerCount += 1;
-      pendingExecutionTerminalDrains.add(currentController);
+      queuedWriteBlockedControllers.push(currentController);
       continue;
     }
     if (processedControllerCount >= maxControllersThisFrame) {
-      pendingExecutionTerminalDrains.add(currentController);
+      deferredControllers.push(currentController);
       continue;
     }
 
     const remainingFrameBudget = Math.max(0, maxCharsThisFrame - characters);
     if (remainingFrameBudget <= 0) {
-      pendingExecutionTerminalDrains.add(currentController);
+      deferredControllers.push(currentController);
       continue;
     }
 
@@ -15470,8 +15536,15 @@ function drainExecutionTerminalOutput(): void {
       flushedControllerCount += 1;
     }
     if (currentController.getPendingOutputLength() > 0 && !currentController.isOutputDrainBlocked()) {
-      pendingExecutionTerminalDrains.add(currentController);
+      processedControllersWithRemainingOutput.push(currentController);
     }
+  }
+  for (const controller of [
+    ...deferredControllers,
+    ...queuedWriteBlockedControllers,
+    ...processedControllersWithRemainingOutput
+  ]) {
+    pendingExecutionTerminalDrains.add(controller);
   }
   if (pendingExecutionTerminalDrains.size > 0) {
     scheduleExecutionTerminalDrainPump(flushedControllerCount === 0 && queuedWriteBlockedControllerCount > 0 ? 16 : 0);
@@ -18386,6 +18459,36 @@ function requestExecutionPaste(
       nodeId,
       kind,
       bracketedPasteMode
+    }
+  });
+}
+
+function pasteExecutionImage(
+  nodeId: string,
+  kind: ExecutionNodeKind,
+  image: ExecutionImagePasteData
+): void {
+  if (kind !== 'agent') {
+    return;
+  }
+
+  const requestId = `execution-image-paste-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  pendingExecutionPasteRequests.set(requestId, {
+    nodeId,
+    kind
+  });
+
+  postMessage({
+    type: 'webview/pasteExecutionImage',
+    payload: {
+      requestId,
+      nodeId,
+      kind,
+      mimeType: image.mimeType,
+      dataBase64: image.dataBase64,
+      sizeBytes: image.sizeBytes,
+      name: image.name
     }
   });
 }

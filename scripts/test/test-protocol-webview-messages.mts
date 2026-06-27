@@ -214,6 +214,29 @@ styledOpenMessage.payload.link.path = 'foo.ts';
 styledOpenMessage.payload.link.source = 'styled';
 assert.deepEqual(parseWebviewMessage(styledOpenMessage), styledOpenMessage);
 
+const imagePasteMessage = {
+  type: 'webview/pasteExecutionImage',
+  payload: {
+    requestId: 'execution-image-paste-test',
+    nodeId: 'agent-test',
+    kind: 'agent',
+    mimeType: 'image/jpeg',
+    dataBase64: '/9j/',
+    sizeBytes: 3,
+    name: 'clipboard.jpg'
+  }
+};
+
+assert.deepEqual(parseWebviewMessage(imagePasteMessage), imagePasteMessage);
+
+const invalidImagePasteMessage = JSON.parse(JSON.stringify(imagePasteMessage));
+invalidImagePasteMessage.payload.dataBase64 = 'not base64!';
+assert.equal(
+  parseWebviewMessage(invalidImagePasteMessage),
+  null,
+  '图片粘贴 payload 必须是有界 base64。'
+);
+
 const branchAgentSessionMessage = {
   type: 'webview/branchAgentSession',
   payload: {
