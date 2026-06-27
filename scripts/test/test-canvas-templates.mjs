@@ -44,9 +44,11 @@ try {
 
   const builtinDir = path.join(tempDir, 'builtin');
   const workspaceUserDir = path.join(tempDir, 'workspace-user');
+  const worktreeUserDir = path.join(tempDir, 'workspace-user.worktrees', 'feature-a');
   const globalUserDir = path.join(tempDir, 'global-user');
   await mkdir(builtinDir, { recursive: true });
   await mkdir(workspaceUserDir, { recursive: true });
+  await mkdir(worktreeUserDir, { recursive: true });
   await mkdir(globalUserDir, { recursive: true });
 
   const builtinTemplateA = {
@@ -122,6 +124,12 @@ try {
       id: 'workspace',
       label: 'Workspace',
       rootPath: workspaceUserDir,
+      scope: 'workspace'
+    },
+    {
+      id: `workspace:${worktreeUserDir}`,
+      label: 'Workspace Worktree',
+      rootPath: worktreeUserDir,
       scope: 'workspace'
     },
     {
@@ -395,10 +403,53 @@ try {
   assert.deepStrictEqual(installedPackageTemplateDocument.groups, parsedPackageTemplateGroups);
   assert.strictEqual(installedPackageTemplateDocument.nodes[0].groupIndex, 1);
 
+  const savedWorktreePackageMarketTemplate = await store.writeMarketplaceTemplatePackage({
+    targetRootPath: worktreeUserDir,
+    packageDirectoryName: 'worktree-package-template',
+    packageBytes,
+    extractedFiles: packageEntries,
+    marketMetadata: {
+      marketTemplateId: 'tmpl-worktree-package-template',
+      marketTemplateSlug: 'worktree-package-template',
+      marketVersionId: 'ver-worktree-package-template-1',
+      installedVersionNumber: 1,
+      installedAt: '2026-06-27T10:00:00.000Z',
+      sourceUrl: 'https://dscanvas-template-marketplace.wzy0304.workers.dev/templates/worktree-package-template',
+      packageSha256: 'worktree-package-sha',
+      packageSizeBytes: packageBytes.byteLength,
+      manifestPath: 'template-package.json',
+      templatePath: 'template.json',
+      readmePath: 'README.md',
+      changelogPath: 'CHANGELOG.md',
+      thumbnailPath: 'media/thumbnail.png'
+    }
+  });
+  assert.strictEqual(savedWorktreePackageMarketTemplate.storageLocation?.id, `workspace:${worktreeUserDir}`);
+  assert.strictEqual(savedWorktreePackageMarketTemplate.storageLocation?.scope, 'workspace');
+  assert.ok(savedWorktreePackageMarketTemplate.filePath.startsWith(path.join(worktreeUserDir, 'marketplace', 'worktree-package-template')));
+  assert.ok(!savedWorktreePackageMarketTemplate.filePath.startsWith(globalUserDir));
+  assert.strictEqual(
+    JSON.parse(await readFile(buildCanvasTemplatePackageMarketMetadataPath(path.join(worktreeUserDir, 'marketplace', 'worktree-package-template')), 'utf8')).marketTemplateSlug,
+    'worktree-package-template'
+  );
+  const catalogWithWorktreePackageMarket = await store.listTemplates();
+  assert.strictEqual(
+    catalogWithWorktreePackageMarket.templates.find((entry) => entry.marketplace?.marketTemplateSlug === 'worktree-package-template')?.storageLocation?.id,
+    `workspace:${worktreeUserDir}`
+  );
+
   const exportPath = path.join(tempDir, 'exports', 'template-export.json');
   await store.exportTemplateToFile(userTemplate, exportPath);
   const exportedText = await readFile(exportPath, 'utf8');
   assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(exportedText)).document.template, userTemplate);
+
+  const runtimeScreenshotCachePath = path.join(
+    tempDir,
+    'global-storage',
+    'execution-image-pastes',
+    'agent-1',
+    'pasted-screenshot-runtime.png'
+  );
 
   const captureState = {
     version: 1,
@@ -409,11 +460,17 @@ try {
         kind: 'agent',
         title: 'Planner',
         status: 'running',
-        summary: 'summary',
+        summary: `summary ${runtimeScreenshotCachePath}`,
         position: { x: 100, y: 140 },
         size: { width: 520, height: 380 },
         groupId: 'group-inner',
-        metadata: { agent: { provider: 'claude', templateArgv: ['--model', 'sonnet'] } }
+        metadata: {
+          agent: {
+            provider: 'claude',
+            templateArgv: ['--model', 'sonnet'],
+            pastedImagePath: runtimeScreenshotCachePath
+          }
+        }
       },
       {
         id: 'terminal-1',
@@ -440,13 +497,13 @@ try {
       {
         id: 'file-1',
         kind: 'file',
-        title: 'ignore.ts',
+        title: 'pasted-screenshot-runtime.png',
         status: 'ready',
         summary: 'summary',
         position: { x: 1500, y: 300 },
         size: { width: 280, height: 120 },
         groupId: 'group-ignored-file',
-        metadata: { file: { filePath: 'src/ignore.ts', ownerNodeIds: ['agent-1'], accessMode: 'read' } }
+        metadata: { file: { filePath: runtimeScreenshotCachePath, ownerNodeIds: ['agent-1'], accessMode: 'read' } }
       }
     ],
     groups: [
@@ -510,6 +567,10 @@ try {
   assert.deepStrictEqual(capturedDefault.ignoredNodeIds, ['file-1']);
   assert.deepStrictEqual(capturedDefault.ignoredEdgeIds, ['edge-auto']);
   assert.strictEqual(capturedDefault.template.nodes.length, 3);
+  const capturedDefaultTemplateText = JSON.stringify(capturedDefault.template);
+  assert.ok(!capturedDefaultTemplateText.includes('execution-image-pastes'));
+  assert.ok(!capturedDefaultTemplateText.includes('pasted-screenshot-'));
+  assert.ok(!capturedDefaultTemplateText.includes(runtimeScreenshotCachePath));
   assert.deepStrictEqual(capturedDefault.template.nodes[0].position, { x: 0, y: 0 });
   assert.strictEqual(capturedDefault.template.nodes[0].metadata.agent.provider, 'default');
   assert.deepStrictEqual(capturedDefault.template.nodes[0].metadata.agent.argv, ['--model', 'sonnet']);
