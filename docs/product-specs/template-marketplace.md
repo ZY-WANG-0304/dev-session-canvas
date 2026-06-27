@@ -279,6 +279,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - ✅ README 媒体策略：只内嵌渲染包内相对资源；外部图片 / 视频默认作为普通链接；视频不 autoplay 并延迟加载；浏览器和 VSCode Webview 使用同一 sanitizer
 - ✅ 版本语义：区分 `template version` 与 `listing revision`；模板主体或行为变化才触发安装更新，README / 描述 / 标签 / 截图 / 视频等展示变更不触发已安装模板更新
 - ✅ 模板包用户教育：普通发布者不需要先理解包格式，发布页通过包结构预览、lint 结果和媒体规则提示渐进解释；高级作者再使用 starter package、schema、包上传、校验和作者文档
+- ✅ 生产服务与插件发布版本线分离：生产服务部署使用独立不可变 deploy tag（如 `deploy/template-marketplace/prod/YYYY-MM-DD.N`），插件继续使用 SemVer；二者只通过 `/api/v1` 契约、capability、`minSupportedExtensionVersion` 和 `recommendedExtensionVersion` 配合
 
 ### 8.2 待确认
 - ⏳ 市场品牌展示名 / 页面标题
@@ -302,6 +303,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 | OAuth App 环境 | GitHub OAuth App 只有单一 callback URL，预览 `*.workers.dev` 与生产 `dscanvas.dev` 建议分别创建 OAuth App，共用同一套登录实现 |
 | 测试 | Vitest + miniflare + Playwright |
 | Phase 4 承载 | D1 管理 `template_versions`、`listing_revisions`、`reports`、`admin_roles`、`admin_audit_logs`、`template_daily_stats`，R2 保存不可变版本对象，Worker 强制执行作者/管理员权限 |
+| 生产部署标识 | 服务部署使用独立 deploy tag 固定 Worker / 浏览器 SPA / migration 输入，插件发布继续使用 SemVer；线上真实版本由 deploy tag、git sha、Cloudflare deployment id、deployment manifest 和 `/api/v1/meta` 共同确认 |
 
 技术选型已确认，并以 Phase 4 的版本管理、治理后台、审计日志和统计面板为目标边界；详见 `docs/design-docs/template-marketplace.md`。
 
@@ -311,6 +313,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - `GET /api/v1/templates/:id/download` — 下载完整 `package.zip`，支撑“下载完整模板”主动作（计数）
 - `GET /api/v1/templates/:id/template.json` — 兼容导出包内 `template.json`，作为轻量模板下载使用
 - `GET /api/v1/templates/:id/thumbnail` — 读取指定版本缩略图
+- `GET /api/v1/meta` — 读取当前服务构建、API 版本、最低支持插件版本、推荐插件版本和能力开关
 - `POST /api/v1/templates` — 发布新模板（需认证）
 - `POST /api/v1/templates/:id/versions` — 发布新版本（需认证，仅作者）
 - `GET /api/v1/templates/:id/like` — 读取当前登录用户对单个模板的点赞状态（需认证）

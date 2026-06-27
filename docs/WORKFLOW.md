@@ -42,6 +42,10 @@
 3. 发布准备分支完成后，创建一个只包含发布收口内容的 MR 合回 `main`，并在 review 中明确发布输入、验证结果与残余风险。
 4. 只有在发布准备 MR 完成 review 并合并后，才在 `main` 上执行最终 publish 与 tag；不要在未合入 `main` 的发布准备分支 head 上直接发布或打 tag。
 
+## 生产服务部署流程
+
+模板市场生产服务部署与插件对外发布分开管理。Worker API、浏览器市场 SPA、D1 migration、R2 访问逻辑和治理后台修复使用 `docs/workflows/SERVICE_DEPLOY.md` 中定义的独立 deploy tag；插件 Marketplace / Open VSX 发布继续使用本文件的发布流程和 `docs/workflows/VERSION.md`。
+
 ## Code Review 流程
 
 1. 当进行 Code Review 工作时，按 `docs/workflows/CODE_REVIEW.md` 进行 Code Review，并把 findings、结论和 follow-up 以 MR 评论形式发布出来。
@@ -58,6 +62,7 @@
 - 分支命名规则见 `docs/workflows/BRANCH.md`。
 - commit 约定见 `docs/workflows/COMMIT.md`。
 - 版本号命名规则见 `docs/workflows/VERSION.md`。
+- 模板市场生产服务部署流程见 `docs/workflows/SERVICE_DEPLOY.md`。
 - Code Review 规则见 `docs/workflows/CODE_REVIEW.md`。
 - MR 描述内容与格式见 `docs/workflows/MR_CREATE.md`。
 - 执行 MR 合并的规则见 `docs/workflows/MR_MERGE.md`。

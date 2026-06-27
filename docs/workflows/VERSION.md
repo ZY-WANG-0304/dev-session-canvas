@@ -15,6 +15,7 @@
 - 当前 `Preview` 身份通过 `package.json` 中的 `preview: true`、Marketplace 文案与 release notes 表达，而不是通过版本字符串表达。
 - 在真正准备做稳定版承诺之前，默认停留在 `0.x.y`。
 - 当前默认不启用 Marketplace `pre-release` 双轨发布策略；若未来决定启用，需要单独更新本文件与发布流程文档。
+- 模板市场生产服务部署不复用插件 SemVer；服务部署使用 `docs/workflows/SERVICE_DEPLOY.md` 定义的独立 deploy tag。
 
 ## 命名格式
 
@@ -49,6 +50,16 @@ major.minor.patch
 - `0.1.1`：公开首发后的 bugfix 或发布收口修复。
 - `0.2.0`：下一轮明确的新能力里程碑。
 - `1.0.0`：首个稳定公开版。
+
+## 与生产服务部署的关系
+
+插件版本代表用户安装的 VSCode 产品包版本，只在扩展本地代码、Webview、Host 逻辑、manifest、依赖或 Marketplace 发布物变化时递增。模板市场生产服务的 Worker API、浏览器 SPA、D1 migration、R2 访问逻辑和治理后台修复使用独立 deploy tag 管理，例如：
+
+```text
+deploy/template-marketplace/prod/YYYY-MM-DD.N
+```
+
+服务-only 修复不提升插件版本；插件-only 修复不要求部署生产服务。两者共同参与的新能力通过 `/api/v1` 契约、capability、`minSupportedExtensionVersion` 和 `recommendedExtensionVersion` 配合，不能把服务部署 tag 写成插件版本，也不能把插件 `vX.Y.Z` tag 当成生产服务当前运行版本。
 
 ## 与发布文案的关系
 
