@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const MARKETPLACE_API_VERSION = 'v1' as const;
+export const MARKETPLACE_DEFAULT_MIN_SUPPORTED_EXTENSION_VERSION = '0.19.0';
+export const MARKETPLACE_DEFAULT_RECOMMENDED_EXTENSION_VERSION = '0.19.0';
 export const MARKETPLACE_DEFAULT_PAGE_SIZE = 12;
 export const MARKETPLACE_MAX_PAGE_SIZE = 50;
 export const MARKETPLACE_QUERY_MAX_LENGTH = 80;
@@ -32,6 +34,20 @@ export const MARKETPLACE_MAX_TAGS_PER_TEMPLATE = 10;
 export const MARKETPLACE_MAX_TAG_LENGTH = 32;
 export const MARKETPLACE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const MARKETPLACE_PACKAGE_MEDIA_TYPES = ['image', 'video'] as const;
+export const MARKETPLACE_SERVICE_CAPABILITIES = [
+  'templates.read',
+  'templates.download-package',
+  'templates.export-template-json',
+  'templates.publish-json',
+  'templates.publish-package',
+  'templates.publish-version',
+  'templates.like',
+  'templates.report',
+  'admin.reports',
+  'admin.stats',
+  'auth.github-oauth',
+  'auth.vscode-exchange'
+] as const;
 
 export type MarketplaceSort = (typeof MARKETPLACE_SORT_VALUES)[number];
 export type MarketplaceTemplateStatus = (typeof MARKETPLACE_TEMPLATE_STATUS_VALUES)[number];
@@ -43,6 +59,26 @@ export type MarketplaceTemplateNodeKind = (typeof MARKETPLACE_TEMPLATE_NODE_KIND
 export type MarketplaceTemplateAgentProviderKind = (typeof MARKETPLACE_TEMPLATE_AGENT_PROVIDERS)[number];
 export type MarketplaceTemplateNoteContentMode = (typeof MARKETPLACE_TEMPLATE_NOTE_CONTENT_MODES)[number];
 export type MarketplaceTemplatePackageMediaType = (typeof MARKETPLACE_PACKAGE_MEDIA_TYPES)[number];
+export type MarketplaceServiceCapability = (typeof MARKETPLACE_SERVICE_CAPABILITIES)[number];
+
+export interface MarketplaceMetaResponse {
+  service: 'template-marketplace';
+  serviceBuild: string;
+  gitSha: string;
+  apiVersion: typeof MARKETPLACE_API_VERSION;
+  minSupportedExtensionVersion: string;
+  recommendedExtensionVersion: string;
+  capabilities: MarketplaceServiceCapability[];
+  storageMode: MarketplaceStorageMode;
+  runtime: {
+    d1Configured: boolean;
+    r2Configured: boolean;
+    githubOAuthConfigured: boolean;
+    vscodeAuthExchangeConfigured: boolean;
+    seedTemplatesEnabled: boolean;
+    testAuthEnabled: boolean;
+  };
+}
 
 export interface MarketplacePublisherSummary {
   id: string;
