@@ -205,7 +205,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - [x] 插件内安装版本菜单在点击外部、搜索 / 排序变化、切换列表 / 详情或按 Escape 时关闭
 
 ### Phase 2：发布
-当前状态：Phase 2 发布能力已完成代码实现和本地自动化验证；真实 GitHub OAuth preview smoke 与端到端 UI smoke 作为后续发布前验证项继续执行。
+当前状态：Phase 2 发布能力已完成代码实现和本地自动化验证；真实 GitHub OAuth preview smoke 与端到端 UI smoke 作为后续发布前验证项继续执行，不作为 `feature/templates-marketplace` 合回 `main` 的门禁。
 
 - [x] 插件内可保存本地模板草稿并在专门发布表单中确认后发布到市场
 - [x] Web 端可发布模板
@@ -224,7 +224,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - [x] 文件大小超限时拒绝上传并提示
 
 ### Phase 3：社区互动与统计
-当前状态：Phase 3 已完成代码实现和本地自动化验证；真实 preview OAuth 登录后的点赞与 Dashboard smoke 仍作为后续发布前验证项继续执行。
+当前状态：Phase 3 已完成代码实现和本地自动化验证；真实 preview OAuth 登录后的点赞与 Dashboard smoke 仍作为后续发布前验证项继续执行，不作为 `feature/templates-marketplace` 合回 `main` 的门禁。
 
 - [x] 登录用户可点赞/取消点赞
 - [x] 下载量正确统计
@@ -233,7 +233,7 @@ VSCode 中安装的市场模板以完整模板目录为本地管理单元，而�
 - [x] Web 端 Dashboard 展示发布者统计
 
 ### Phase 4：版本管理与治理
-当前状态：Phase 4 已启动，治理后端与浏览器治理入口已完成本地实现：登录用户举报、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写接口拒绝和管理员审计日志均已有 Worker API 与本地自动化测试；Web 详情页举报表单与 `/templates/admin` 最小管理后台已接入。管理员全站数据统计已补齐 Worker API 与 Web 面板本地实现，统计读取累计计数、按天聚合、举报状态、用户封禁数、发布版本数和管理员审计数。VSCode 安装侧已完成侧栏更新徽章、手动更新到 latest、历史版本安装/回滚和插件内举报跳转入口；发布者新版本已补齐 Web `/templates/publish/version?template=<slug>` 入口、作者详情/My Templates 入口，以及 VSCode 详情页 version mode 发布表单，并通过本地 fixture E2E 验证。真实 preview OAuth smoke 仍待收口。
+当前状态：Phase 4 已启动，治理后端与浏览器治理入口已完成本地实现：登录用户举报、管理员举报队列、举报处理、模板下架/恢复、用户封禁/解封、封禁用户写接口拒绝和管理员审计日志均已有 Worker API 与本地自动化测试；Web 详情页举报表单与 `/templates/admin` 最小管理后台已接入。管理员全站数据统计已补齐 Worker API 与 Web 面板本地实现，统计读取累计计数、按天聚合、举报状态、用户封禁数、发布版本数和管理员审计数。VSCode 安装侧已完成侧栏更新徽章、手动更新到 latest、历史版本安装/回滚和插件内举报跳转入口；发布者新版本已补齐 Web `/templates/publish/version?template=<slug>` 入口、作者详情/My Templates 入口，以及 VSCode 详情页 version mode 发布表单，并通过本地 fixture E2E 验证。真实 preview OAuth smoke 仍待收口，但不作为 `feature/templates-marketplace` 合回 `main` 的门禁。
 
 - [x] 发布者可发布新版本并附更新说明（Web 与 VSCode 用户入口已本地验证；真实 preview OAuth smoke 待补）
 - [x] 已安装模板有新版本时侧边栏显示更新徽章
