@@ -28,19 +28,18 @@
   "categories": [
     "Visualization",
     "AI",
-    "Other"
+    "Machine Learning"
   ],
   "keywords": [
-    "ai",
-    "agent",
-    "canvas",
-    "workbench",
     "multi-agent",
+    "canvas",
+    "ai workflow",
     "terminal",
-    "note",
+    "session",
+    "agent",
+    "workbench",
     "collaboration",
-    "画布",
-    "协作"
+    "dscanvas"
   ],
   "icon": "images/icon.png",
   "galleryBanner": {
@@ -782,6 +781,24 @@
             "%configuration.notifications.strongTerminalAttentionReminder.both.description%"
           ]
         },
+        "devSessionCanvas.notifications.agentAbnormalOutputTextNotifications": {
+          "type": "string",
+          "enum": [
+            "off",
+            "codex"
+          ],
+          "enumItemLabels": [
+            "%configuration.notifications.agentAbnormalOutputTextNotifications.off.label%",
+            "%configuration.notifications.agentAbnormalOutputTextNotifications.codex.label%"
+          ],
+          "default": "off",
+          "scope": "window",
+          "markdownDescription": "%configuration.notifications.agentAbnormalOutputTextNotifications.description%",
+          "markdownEnumDescriptions": [
+            "%configuration.notifications.agentAbnormalOutputTextNotifications.off.description%",
+            "%configuration.notifications.agentAbnormalOutputTextNotifications.codex.description%"
+          ]
+        },
         "devSessionCanvas.terminal.shell": {
           "type": "string",
           "enum": [
@@ -875,6 +892,12 @@
           "default": "basename",
           "scope": "window",
           "markdownDescription": "%configuration.files.pathDisplayMode.description%"
+        },
+        "devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "markdownDescription": "%configuration.noteMarkdown.stripExtensionFromDroppedFileTitle.description%"
         }
       }
     }

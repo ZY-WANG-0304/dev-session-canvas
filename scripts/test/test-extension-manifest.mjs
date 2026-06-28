@@ -6,6 +6,17 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const manifest = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
 
+assert.deepEqual(
+  manifest.categories,
+  ['Visualization', 'AI', 'Machine Learning'],
+  'Expected Marketplace categories to preserve search discoverability metadata.'
+);
+assert.deepEqual(
+  manifest.keywords,
+  ['multi-agent', 'canvas', 'ai workflow', 'terminal', 'session', 'agent', 'workbench', 'collaboration', 'dscanvas'],
+  'Expected Marketplace keywords to preserve search discoverability metadata.'
+);
+
 const defaultSurface = manifest.contributes.configuration.properties['devSessionCanvas.canvas.defaultSurface'];
 assert.equal(defaultSurface.default, 'panel');
 
@@ -55,6 +66,38 @@ assert.deepEqual(
   ['bel', 'osc9', 'osc777', 'agentAbnormalExit', 'codexAbnormalOutputText'],
   'Expected all current attention signals to stay enabled by default.'
 );
+
+const agentAbnormalOutputTextNotifications =
+  manifest.contributes.configuration.properties['devSessionCanvas.notifications.agentAbnormalOutputTextNotifications'];
+assert.ok(
+  agentAbnormalOutputTextNotifications,
+  'Expected Agent abnormal output text notifications to be contributed as a configuration property.'
+);
+assert.deepEqual(
+  agentAbnormalOutputTextNotifications.enum,
+  ['off', 'codex'],
+  'Expected Agent abnormal output text notifications to remain explicit opt-in for Codex only.'
+);
+assert.equal(
+  agentAbnormalOutputTextNotifications.default,
+  'off',
+  'Expected Agent abnormal output text notifications to remain disabled by default.'
+);
+assert.equal(agentAbnormalOutputTextNotifications.scope, 'window');
+
+const noteMarkdownDroppedTitle =
+  manifest.contributes.configuration.properties['devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle'];
+assert.ok(
+  noteMarkdownDroppedTitle,
+  'Expected dropped Markdown Note title extension stripping to be contributed as a configuration property.'
+);
+assert.equal(noteMarkdownDroppedTitle.type, 'boolean');
+assert.equal(
+  noteMarkdownDroppedTitle.default,
+  false,
+  'Expected dropped Markdown Note titles to preserve the file extension by default.'
+);
+assert.equal(noteMarkdownDroppedTitle.scope, 'window');
 
 const panelViews = manifest.contributes.views.devSessionCanvasPanel;
 assert.ok(Array.isArray(panelViews), 'Expected devSessionCanvasPanel views contribution.');
@@ -471,6 +514,16 @@ assert.deepEqual(
 );
 
 const nls = JSON.parse(await readFile(path.join(repoRoot, 'package.nls.json'), 'utf8'));
+assert.deepEqual(
+  [
+    nls['configuration.notifications.agentAbnormalOutputTextNotifications.description']?.length > 0,
+    nls['configuration.notifications.agentAbnormalOutputTextNotifications.off.label']?.length > 0,
+    nls['configuration.notifications.agentAbnormalOutputTextNotifications.codex.label']?.length > 0,
+    nls['configuration.noteMarkdown.stripExtensionFromDroppedFileTitle.description']?.length > 0
+  ],
+  [true, true, true, true],
+  'Expected restored configuration properties to keep their package.nls entries.'
+);
 assert.deepEqual(
   [
     nls['command.setSidebarNodeListFlatView.checkedTitle'],
