@@ -6,6 +6,17 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const manifest = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
 
+assert.deepEqual(
+  manifest.categories,
+  ['Visualization', 'AI', 'Machine Learning'],
+  'Expected Marketplace categories to preserve search discoverability metadata.'
+);
+assert.deepEqual(
+  manifest.keywords,
+  ['multi-agent', 'canvas', 'ai workflow', 'terminal', 'session', 'agent', 'workbench', 'collaboration', 'dscanvas'],
+  'Expected Marketplace keywords to preserve search discoverability metadata.'
+);
+
 const defaultSurface = manifest.contributes.configuration.properties['devSessionCanvas.canvas.defaultSurface'];
 assert.equal(defaultSurface.default, 'panel');
 
