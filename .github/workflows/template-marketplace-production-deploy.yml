@@ -28,6 +28,7 @@ jobs:
       TRIGGER_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_tag || github.ref_name }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ZONE_NAME: dscanvas.dev
       MARKETPLACE_PRODUCTION_BASE_URL: ${{ vars.MARKETPLACE_PRODUCTION_BASE_URL || 'https://dscanvas.dev' }}
       DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT: /tmp/dsc-tm-vscode-e2e
       DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/dsc-tm-vscode-host-tmp
@@ -126,6 +127,89 @@ jobs:
           }
           NODE
 
+      - name: Ensure production DNS record
+        id: ensure_dns
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const zoneName = process.env.CLOUDFLARE_ZONE_NAME;
+          const baseUrl = process.env.MARKETPLACE_PRODUCTION_BASE_URL || 'https://dscanvas.dev';
+          const hostname = new URL(baseUrl).hostname;
+
+          if (!token) {
+            throw new Error('Missing CLOUDFLARE_API_TOKEN.');
+          }
+          if (!zoneName) {
+            throw new Error('Missing CLOUDFLARE_ZONE_NAME.');
+          }
+          if (hostname !== zoneName && !hostname.endsWith(`.${zoneName}`)) {
+            throw new Error(`Production host ${hostname} is not inside Cloudflare zone ${zoneName}.`);
+          }
+
+          async function cloudflare(path, init = {}) {
+            const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+              ...init,
+              headers: {
+                authorization: `Bearer ${token}`,
+                'content-type': 'application/json',
+                ...(init.headers ?? {})
+              }
+            });
+            const body = await response.json().catch(() => undefined);
+            if (!response.ok || body?.success === false) {
+              const errors = JSON.stringify(body?.errors ?? body ?? response.statusText);
+              throw new Error(`Cloudflare API request failed for ${path}: ${errors}`);
+            }
+            return body.result;
+          }
+
+          const zones = await cloudflare(`/zones?name=${encodeURIComponent(zoneName)}`);
+          const zone = zones?.[0];
+          if (!zone?.id) {
+            throw new Error(`Unable to find Cloudflare zone: ${zoneName}`);
+          }
+
+          const records = await cloudflare(`/zones/${zone.id}/dns_records?name=${encodeURIComponent(hostname)}&per_page=100`);
+          const routableRecords = records.filter((record) => ['A', 'AAAA', 'CNAME'].includes(record.type));
+          const proxiedRecord = routableRecords.find((record) => record.proxied);
+
+          if (proxiedRecord) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `dns_record_id=${proxiedRecord.id}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `dns_record_action=existing\n`);
+            console.log(`Production DNS host ${hostname} already has a proxied ${proxiedRecord.type} record.`);
+            process.exit(0);
+          }
+
+          if (routableRecords.length > 0) {
+            throw new Error(
+              `Production DNS host ${hostname} has routable records but none are proxied. ` +
+                'Refusing to rewrite existing origin DNS; configure a proxied Cloudflare DNS record manually.'
+            );
+          }
+
+          const created = await cloudflare(`/zones/${zone.id}/dns_records`, {
+            method: 'POST',
+            body: JSON.stringify({
+              type: 'A',
+              name: hostname,
+              content: '192.0.2.1',
+              ttl: 1,
+              proxied: true
+            })
+          });
+
+          if (!created?.id) {
+            throw new Error(`Cloudflare did not return an id for the created DNS record: ${hostname}`);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `dns_record_id=${created.id}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `dns_record_action=created\n`);
+          console.log(`Created proxied production DNS record for ${hostname}.`);
+          NODE
+
       - name: Install Playwright browsers
         id: install_playwright
         run: npx playwright install --with-deps chromium
@@ -171,9 +255,14 @@ jobs:
 
           const deployments = JSON.parse(fs.readFileSync('deployment-artifacts/cloudflare-deployments.json', 'utf8'));
           const versions = JSON.parse(fs.readFileSync('deployment-artifacts/cloudflare-versions.json', 'utf8'));
-          const deployment = deployments[0];
+          const deploymentMessage = `Template marketplace production deploy ${process.env.TRIGGER_TAG} (${process.env.DEPLOY_GIT_SHA})`;
+          const byCreatedDesc = (left, right) => Date.parse(right.created_on ?? 0) - Date.parse(left.created_on ?? 0);
+          const deployment =
+            deployments.filter((entry) => entry.annotations?.['workers/message'] === deploymentMessage).toSorted(byCreatedDesc)[0] ??
+            deployments.toSorted(byCreatedDesc)[0];
           const deploymentVersion = deployment?.versions?.find((version) => Number(version.percentage) === 100) ?? deployment?.versions?.[0];
-          const versionId = deploymentVersion?.version_id ?? versions[0]?.id;
+          const latestVersion = versions.toSorted((left, right) => (right.number ?? 0) - (left.number ?? 0))[0];
+          const versionId = deploymentVersion?.version_id ?? latestVersion?.id;
           if (!deployment?.id || !versionId) {
             console.error('Unable to resolve Cloudflare deployment id or Worker version id.');
             process.exit(1);
@@ -313,6 +402,7 @@ jobs:
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           DEPLOY_SECRETS_OUTCOME: ${{ steps.verify_deploy_secrets.outcome }}
           WORKER_SECRETS_OUTCOME: ${{ steps.verify_worker_secrets.outcome }}
+          DNS_OUTCOME: ${{ steps.ensure_dns.outcome }}
           MARKETPLACE_TEST_OUTCOME: ${{ steps.test_marketplace.outcome }}
           PRODUCTION_CONFIG_OUTCOME: ${{ steps.test_production_config.outcome }}
           MIGRATION_OUTCOME: ${{ steps.migrate.outcome }}
@@ -354,6 +444,7 @@ jobs:
               install: process.env.INSTALL_OUTCOME || 'skipped',
               deploySecrets: process.env.DEPLOY_SECRETS_OUTCOME || 'skipped',
               workerSecrets: process.env.WORKER_SECRETS_OUTCOME || 'skipped',
+              dns: process.env.DNS_OUTCOME || 'skipped',
               marketplaceTests: process.env.MARKETPLACE_TEST_OUTCOME || 'skipped',
               productionConfig: process.env.PRODUCTION_CONFIG_OUTCOME || 'skipped',
               migration: process.env.MIGRATION_OUTCOME || 'skipped',

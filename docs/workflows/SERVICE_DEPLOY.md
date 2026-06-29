@@ -74,7 +74,7 @@ git push origin deploy/template-marketplace/prod/YYYY-MM-DD.N
 
 workflow 运行前，GitHub Actions 侧必须具备：
 
-- `CLOUDFLARE_API_TOKEN`：需要能部署 Worker、读取/执行 D1、读取 R2 绑定，并有 `dscanvas.dev` zone 的 Worker Routes 编辑权限。
+- `CLOUDFLARE_API_TOKEN`：需要能部署 Worker、读取/执行 D1、读取 R2 绑定，并有 `dscanvas.dev` zone 的 Worker Routes 编辑权限和 DNS 记录读写权限；workflow 会确保生产入口 host 存在 proxied DNS 记录。
 - `CLOUDFLARE_ACCOUNT_ID`：可放 repository secret 或 variable。
 - 可选 `MARKETPLACE_PRODUCTION_BASE_URL` repository variable；默认是 `https://dscanvas.dev`。
 
@@ -90,10 +90,11 @@ Cloudflare Worker production 环境必须先配置 runtime secrets，workflow �
 
 1. checkout deploy tag 对应 commit。
 2. 安装依赖并运行市场测试与 production config 检查。
-3. 必要时执行 production D1 migration。
-4. 执行 `npm run deploy:marketplace:production`。
-5. 执行 production smoke。
-6. 生成 deployment manifest。
+3. 确保 `MARKETPLACE_PRODUCTION_BASE_URL` 对应 host 已有 proxied DNS 记录；如果没有 A/AAAA/CNAME 记录，workflow 可创建 proxied `A 192.0.2.1` 占位记录用于 Worker route；如果已有非 proxied origin DNS，workflow 不自动改写。
+4. 必要时执行 production D1 migration。
+5. 执行 `npm run deploy:marketplace:production`。
+6. 执行 production smoke。
+7. 生成 deployment manifest。
 
 ## Deployment Manifest
 
