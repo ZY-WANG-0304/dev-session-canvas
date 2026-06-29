@@ -45,7 +45,7 @@ assert.equal(checkoutStep.with['fetch-depth'], 0);
 
 const resolveStep = step('Resolve deploy ref');
 assert.equal(resolveStep.id, 'ref');
-assert.match(resolveStep.run, /git fetch origin main:refs\/remotes\/origin\/main --prune/u);
+assert.match(resolveStep.run, /git fetch --no-tags origin '\+refs\/heads\/main:refs\/remotes\/origin\/main'/u);
 assert.match(resolveStep.run, /git merge-base --is-ancestor "\$deploy_ref" origin\/main/u, 'deploy tag must point to a commit contained in main');
 assert.match(resolveStep.run, /echo "DEPLOY_GIT_SHA=\$deploy_ref" >> "\$GITHUB_ENV"/u);
 
