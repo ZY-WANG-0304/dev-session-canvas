@@ -126,6 +126,10 @@ jobs:
           }
           NODE
 
+      - name: Install Playwright browsers
+        id: install_playwright
+        run: npx playwright install --with-deps chromium
+
       - name: Run marketplace test suite
         id: test_marketplace
         run: npm run test:marketplace
