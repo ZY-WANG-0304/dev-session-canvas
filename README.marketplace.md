@@ -10,17 +10,18 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.19.0 Highlights
+## 0.20.0 Highlights
 
-The public `0.19.0` release is a new Preview milestone for visual Agent input and multi-root workflow polish. It adds image paste for live `Agent` nodes, lets the sidebar add existing git worktrees to the current workspace, keeps multi-root session-history restore anchored to the original cwd, and fixes several high-output, file-link, Pane Gallery, and panel-edge details. It keeps all `0.18.2` release boundaries: Preview positioning, notifier auto-install, GitHub Release assets plus verified Open VSX as the current completion gate, and Visual Studio Marketplace as a deferred channel until public visibility is confirmed.
+The public `0.20.0` release is a new Preview milestone for the Template Marketplace. It adds an in-extension marketplace panel, browser marketplace integration, full template-package install, update and rollback flows, publishing and version submission paths, report/admin governance surfaces, and production service deployment plumbing for `https://dscanvas.dev/templates`. It keeps all `0.19.0` release boundaries: Preview positioning, notifier auto-install, GitHub Release assets plus verified Open VSX as the current completion gate, and Visual Studio Marketplace as a deferred channel until public visibility is confirmed.
 
-- Live `Agent` nodes can now paste clipboard images. Supported PNG, JPEG, and WebP payloads are saved to extension storage and inserted as a file-path reference without auto-submitting the prompt
-- `Terminal` nodes ignore image-only paste instead of writing image paths or binary data into the shell; temporary Agent image-paste files are cleaned by a background TTL task
-- The sidebar `Nodes` worktree flow can add an existing git worktree to the current workspace, and the global picker now collapses multiple folders from the same repository by git common directory
-- Multi-root session-history restore and fork actions preserve the history item's original cwd so the new Agent resolves back to the intended workspace root
-- Root-qualified file links such as `workspace-b/src/file.ts` now resolve inside the named workspace root instead of falling through to the active execution cwd or sibling roots
-- Webview output draining is fairer across many active Agents, so later high-output nodes are not starved by the first few nodes in the queue
-- Pane Gallery status hints, fit-view bounds, and active canvas panel padding were tightened without changing the extension ID, VS Code minimum version, notifier relationship, or support matrix
+- The Templates sidebar and command palette can now open a Template Marketplace panel backed by trusted marketplace origins
+- Marketplace installs download a full `package.zip`, write a complete local template package directory, and store `.market.json` sidecar metadata for source, version, checksum, and install target tracking
+- Installed marketplace templates can show update badges, update to the latest version, reinstall the current version, or roll back to an older version from the split-button version menu
+- Publishers can submit saved local templates or new versions through the marketplace publishing flow; GitHub identity is exchanged for a short-lived marketplace token and is not written into templates or Webview state
+- The browser marketplace and Worker API cover search, sort, detail pages, README / CHANGELOG display, full-package download, `template.json` export, likes, publisher stats, reports, and the admin governance dashboard
+- Production marketplace service deployment is separated from plugin SemVer through `deploy/template-marketplace/prod/YYYY-MM-DD.N` tags, `/api/v1/meta`, service capability metadata, and Cloudflare Worker / D1 / R2 production resources
+- Sidebar root removal now uses a native modal confirmation and no longer clears canvas state when linked-worktree removal fails; Pane Gallery notification centering and left-gutter details were also tightened
+- The VSIX file-list guard keeps marketplace service source directories out of the extension package; the extension ID, VS Code minimum version, notifier relationship, Open VSX gate, and Preview support matrix stay unchanged
 
 ## Core Capabilities
 
@@ -44,6 +45,8 @@ The public `0.19.0` release is a new Preview milestone for visual Agent input an
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
 - View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore or fork a new `Agent` node from history
 - Manage workspace folders and git worktrees from the sidebar `Nodes` view, including adding existing worktrees and explicit confirmations before removing folders or linked worktrees
+- Browse the Template Marketplace, install complete template packages into user or workspace template libraries, and update or roll back installed marketplace templates
+- Publish saved local templates or new marketplace template versions when GitHub authentication and the marketplace service are available
 
 ## Best Fit
 
@@ -51,6 +54,7 @@ The public `0.19.0` release is a new Preview milestone for visual Agent input an
 - Environments where `codex` or `claude` CLI is already installed
 - Developers who want to observe multiple development sessions without switching constantly between terminal tabs
 - Users who want a canvas-shaped AI workbench rather than a single chat panel
+- Users who are comfortable trying a Preview marketplace whose production catalog may initially be empty until real templates are published
 
 ## Support Scope And Limits
 
@@ -60,6 +64,7 @@ The public `0.19.0` release is a new Preview milestone for visual Agent input an
 - The sidebar `Session History` list only shows records that can be explicitly attributed to the current workspace; older sessions without working-directory metadata are skipped conservatively
 - `Restricted Mode` allows the canvas to open, but disables execution entry points such as `Agent` and `Terminal`
 - `Virtual Workspace` is not supported yet
+- Template Marketplace browsing and installation require network access to the configured marketplace origin; publishing, likes, reports, and admin actions require GitHub authentication and remain Preview workflows
 - The extension is still in `Preview`, with no stable-release commitment
 
 ## Environment Requirements
@@ -72,10 +77,11 @@ The public `0.19.0` release is a new Preview milestone for visual Agent input an
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.18.2` to `0.19.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- First-time installs and upgrades from `0.19.0` to `0.20.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- The production Template Marketplace may start with an empty catalog. Production does not expose code-only seed templates; real templates must be published through the marketplace or a controlled operations flow
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
 - Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.19.0` preserves that explicit choice
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.20.0` preserves that explicit choice
 - Image paste files are temporary extension-storage attachments, not workspace files. They are retained long enough for Agent context reuse and then cleaned by the background TTL maintenance task
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
@@ -112,7 +118,7 @@ The public `0.19.0` release is a new Preview milestone for visual Agent input an
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.19.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.20.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
