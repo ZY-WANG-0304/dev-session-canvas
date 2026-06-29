@@ -257,7 +257,7 @@ components:
 
 ## Overview
 
-Template Marketplace UI 是一个双宿主设计语言：公开浏览器市场位于 `apps/template-marketplace/src/web/`，VSCode 工作台内市场面板位于 `src/panel/CanvasTemplateMarketplacePanel.ts`。两端共享同一套信息架构：搜索、排序、标签、模板摘要行/卡、README / CHANGELOG tabbed 详情页、安装动作、版本历史和完整性元数据；但两端不共享同一个 palette，浏览器端保留 JSON 下载入口，VSCode 端不提供 JSON 下载控件。
+Template Marketplace UI 是一个双宿主设计语言：公开浏览器市场位于 `apps/template-marketplace/src/web/`，VSCode 工作台内市场面板位于 `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts`。两端共享同一套信息架构：搜索、排序、标签、模板摘要行/卡、README / CHANGELOG tabbed 详情页、安装动作、版本历史和完整性元数据；但两端不共享同一个 palette，浏览器端保留 JSON 下载入口，VSCode 端不提供 JSON 下载控件。
 
 浏览器市场是一个 **rectangular catalog**。它对齐 Visual Studio Marketplace 的工具型信息布局：黑色品牌栏、单一 active Templates tab、居中标题、大号矩形搜索、Featured 网格、矩形卡片和 README 主导的详情页。品牌强调来自 DevSessionCanvas 蓝色（`{colors.market-accent}`）和绿色（`{colors.market-moss}`），而不是 Visual Studio Marketplace 的玫红色，也不是装饰性 hero 效果。
 
@@ -275,7 +275,7 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 
 ## Colors
 
-> **Source surfaces documented:** 浏览器市场首页、浏览器模板详情、VSCode 市场列表、VSCode 模板详情。浏览器 token 来源是 `apps/template-marketplace/src/web/styles.css`；VSCode token 来源是 `src/panel/CanvasTemplateMarketplacePanel.ts` 中的 inline Webview stylesheet。
+> **Source surfaces documented:** 浏览器市场首页、浏览器模板详情、VSCode 市场列表、VSCode 模板详情。浏览器 token 来源是 `apps/template-marketplace/src/web/styles.css`；VSCode token 来源是 `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts` 中的 inline Webview stylesheet。
 
 ### Brand & Accent
 - **Market Accent Blue** (`{colors.market-accent}` -- #4878f0): 浏览器市场的 primary interactive color。用于 Templates tab、搜索按钮、浏览器安装 CTA 和 focus-ring tint，也是连接 DevSessionCanvas 图标的视觉锚点。
@@ -423,7 +423,7 @@ VSCode 市场面板是一个 **native-density workbench surface**。它从 `--vs
 
 ### Generated Thumbnail Node Colors
 
-自动生成的 marketplace thumbnail 必须镜像插件画布节点类型主题色，而不是另起一套市场色板。`packages/marketplace-shared/src/thumbnail.ts` 中的 accent 色要和 `src/common/canvasNodeVisuals.ts`、`src/webview/styles.css` 中 `.canvas-node.kind-*` 的 `--canvas-node-color` 保持一致；body 只是在白底上的浅色 tint，border 和 text bars 使用同一 hue 的透明或深色变体。
+自动生成的 marketplace thumbnail 必须镜像插件画布节点类型主题色，而不是另起一套市场色板。`packages/marketplace-shared/src/thumbnail.ts` 中的 accent 色要和 `extensions/vscode/dev-session-canvas/src/common/canvasNodeVisuals.ts`、`extensions/vscode/dev-session-canvas/src/webview/styles.css` 中 `.canvas-node.kind-*` 的 `--canvas-node-color` 保持一致；body 只是在白底上的浅色 tint，border 和 text bars 使用同一 hue 的透明或深色变体。
 
 | Node kind | Canvas theme color | Thumbnail use |
 |---|---:|---|

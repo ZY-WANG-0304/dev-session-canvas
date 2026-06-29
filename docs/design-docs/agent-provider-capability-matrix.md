@@ -158,11 +158,11 @@ updated_at: 2026-06-25
 
 一个新 provider 如果要进入用户可见 `Agent` 创建入口，至少必须完成以下项目：
 
-1. 在 `src/common/protocol.ts` 中扩展 `AgentProviderKind`、provider 校验、launch defaults 与相关消息 payload。
-2. 在 `src/panel/agentCliSelection.ts` / `src/panel/agentCliResolver.ts` 路线上提供默认命令、显示名、安装 / 文档入口和可诊断解析失败路径。
-3. 在 `src/common/agentLaunchPresets.ts` 中定义 `default`、`resume`、`yolo`、`sandbox`、`custom` 的真实映射；没有等价语义时必须明确降级或不展示，不能借用其他 provider 的参数。
-4. 在 `src/panel/CanvasPanelManager.ts` fresh-start 路径中确认 provider 命令解析、cwd、env、runtime supervisor 参数、状态更新和错误文案。
-5. 在 `src/webview/main.tsx`、sidebar 与命令入口中补 provider label、图标、创建路径和受限 workspace 行为。
+1. 在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中扩展 `AgentProviderKind`、provider 校验、launch defaults 与相关消息 payload。
+2. 在 `extensions/vscode/dev-session-canvas/src/panel/agentCliSelection.ts` / `extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts` 路线上提供默认命令、显示名、安装 / 文档入口和可诊断解析失败路径。
+3. 在 `extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts` 中定义 `default`、`resume`、`yolo`、`sandbox`、`custom` 的真实映射；没有等价语义时必须明确降级或不展示，不能借用其他 provider 的参数。
+4. 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` fresh-start 路径中确认 provider 命令解析、cwd、env、runtime supervisor 参数、状态更新和错误文案。
+5. 在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx`、sidebar 与命令入口中补 provider label、图标、创建路径和受限 workspace 行为。
 6. 至少通过自动化覆盖：命令构造、协议 payload、Webview 创建消息、Host fresh-start fallback、Restricted Mode 拦截。
 
 如果新 provider 不满足显式 session id 恢复能力，仍可只作为“一次性 fresh-start Agent”接入，但必须同时禁用或隐藏以下能力：
@@ -189,17 +189,17 @@ updated_at: 2026-06-25
 
 新增或修改 provider 时，默认需要检查以下代码和文档：
 
-- `src/common/protocol.ts`：provider 枚举、metadata、消息 payload、runtime context。
-- `src/common/agentLaunchPresets.ts`：启动预设、resume / fork 命令、parser / validator、provider-specific 参数归一化。
-- `src/common/agentSessionHistory.ts`：历史扫描、workspace cwd 归属、标题提取。
-- `src/common/codexSessionIdLocator.ts`：当前名称历史遗留，承载 Codex / Claude session id 发现；新增 provider 时应考虑重命名或拆分，而不是继续扩大误导性命名。
-- `src/panel/agentCliSelection.ts`、`src/panel/agentCliResolver.ts`：CLI 发现、安装补救和错误提示。
-- `src/panel/agentSettingsFiles.ts`：provider 配置文件入口。
-- `src/panel/agentFileActivity.ts`：文件活动 adapter。
-- `src/panel/CanvasPanelManager.ts`：Host 权威状态、启动 / 停止 / 恢复 / 分叉 / 通知 / runtime supervisor 接线。
-- `src/supervisor/runtimeSupervisorMain.ts`：live-runtime 创建、输入阻断、resume hint、snapshot。
-- `src/webview/main.tsx`：创建菜单、节点标题栏动作、provider 图标 / 文案。
-- `src/sidebar/CanvasSidebarSessionHistoryView.ts`、`src/sidebar/CanvasSidebarNodeListView.ts`：侧栏展示与历史操作。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`：provider 枚举、metadata、消息 payload、runtime context。
+- `extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts`：启动预设、resume / fork 命令、parser / validator、provider-specific 参数归一化。
+- `extensions/vscode/dev-session-canvas/src/common/agentSessionHistory.ts`：历史扫描、workspace cwd 归属、标题提取。
+- `extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator.ts`：当前名称历史遗留，承载 Codex / Claude session id 发现；新增 provider 时应考虑重命名或拆分，而不是继续扩大误导性命名。
+- `extensions/vscode/dev-session-canvas/src/panel/agentCliSelection.ts`、`extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts`：CLI 发现、安装补救和错误提示。
+- `extensions/vscode/dev-session-canvas/src/panel/agentSettingsFiles.ts`：provider 配置文件入口。
+- `extensions/vscode/dev-session-canvas/src/panel/agentFileActivity.ts`：文件活动 adapter。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：Host 权威状态、启动 / 停止 / 恢复 / 分叉 / 通知 / runtime supervisor 接线。
+- `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts`：live-runtime 创建、输入阻断、resume hint、snapshot。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：创建菜单、节点标题栏动作、provider 图标 / 文案。
+- `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarSessionHistoryView.ts`、`extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts`：侧栏展示与历史操作。
 - `package.json`、`package.nls.json`：配置项、命令、文案。
 - `README.md`、`README.zh-CN.md`、`docs/support.md`：对外支持边界。
 - 本文与相关专项设计文档：同步 provider 能力事实和验证状态。

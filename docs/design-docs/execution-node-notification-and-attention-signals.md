@@ -26,8 +26,8 @@ updated_at: 2026-06-17
 
 当前仓库已经同时出现了两类“提醒用户注意”的机制，但它们还没有被正式分层：
 
-- VSCode 工作台通知：`src/extension.ts` 与 `src/panel/CanvasPanelManager.ts` 已经使用 `vscode.window.showInformationMessage` 和 `showWarningMessage` 处理重置确认、功能未启用提示与 reload 提示。
-- 终端 attention signal：`src/common/agentActivityHeuristics.ts` 已把 `OSC 9`、`OSC 777` 与 `BEL` 解析为启发式信号，并用于把 `Agent` 从 `running` 回退到 `waiting-input`。
+- VSCode 工作台通知：`extensions/vscode/dev-session-canvas/src/extension.ts` 与 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 已经使用 `vscode.window.showInformationMessage` 和 `showWarningMessage` 处理重置确认、功能未启用提示与 reload 提示。
+- 终端 attention signal：`extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts` 已把 `OSC 9`、`OSC 777` 与 `BEL` 解析为启发式信号，并用于把 `Agent` 从 `running` 回退到 `waiting-input`。
 
 这说明仓库已经接触到“通知 UI”与“通知协议”两条链路，但目前仍缺一个正式设计回答以下问题：
 
@@ -331,18 +331,18 @@ updated_at: 2026-06-17
 
 正式实现分层如下：
 
-- `src/common/executionAttentionSignals.ts`
+- `extensions/vscode/dev-session-canvas/src/common/executionAttentionSignals.ts`
   - 负责解析 `BEL`、`OSC 9`、`OSC 777`
   - 负责处理跨 chunk carryover
   - 输出结构化 signal 列表与原有启发式所需的 `notificationCount` / `bellCount`
   - 定义 `ExecutionAttentionSignalKind`、终端 signal 子集、默认启用信号列表、配置 normalization 与 allow-list 过滤工具
 
-- `src/common/agentActivityHeuristics.ts`
+- `extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts`
   - 继续消费这些计数
   - 仍只服务于 `waiting-input` 启发式
   - 不负责用户通知 UI
 
-- `src/panel/CanvasPanelManager.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
   - 负责读取 `enabledAttentionSignals` 并在终端信号、Agent 异常退出和 Codex 最终失败文本候选进入产品 attention 前执行 allow-list 过滤
   - 负责把启用且可通知的 signal 落成 execution node 的宿主权威 attention pending 状态
   - 负责在 bridge 打开时把同一条 signal 额外桥接成 VSCode 工作台通知
@@ -350,7 +350,7 @@ updated_at: 2026-06-17
   - 负责在用户点击节点时清除 attention pending
   - 工作台通知的 `查看节点` 动作与系统通知 companion 回跳都只把对应节点居中显示，不清除 attention pending；确认仍由用户点击节点完成
 
-- `src/webview/main.tsx` 与 `src/webview/styles.css`
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 与 `extensions/vscode/dev-session-canvas/src/webview/styles.css`
   - 负责把 execution node 的 attention pending 渲染成标题栏 icon 与 minimap 中对应节点的闪烁态
   - 负责在 `strongTerminalAttentionReminder` 为 `titleBar` 或 `both` 时把标题栏渲染为闪烁态
   - minimap 闪烁始终由 `attentionPending` 驱动，不受 `strongTerminalAttentionReminder` 配置限制

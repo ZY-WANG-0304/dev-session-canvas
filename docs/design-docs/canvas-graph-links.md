@@ -90,7 +90,7 @@ updated_at: 2026-04-20
 
 ### 7.1 共享协议新增正式 edge 模型
 
-`src/common/protocol.ts` 扩展画布权威状态，新增 `CanvasEdgeSummary`，至少包含以下信息：
+`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 扩展画布权威状态，新增 `CanvasEdgeSummary`，至少包含以下信息：
 
 - 连线 ID
 - 源节点 / 目标节点
@@ -107,7 +107,7 @@ updated_at: 2026-04-20
 
 ### 7.2 `CanvasPanelManager` 是连线权威入口
 
-`src/panel/CanvasPanelManager.ts` 负责：
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 负责：
 
 - 接收 Webview 回传的手工连线创建、更新和删除消息。
 - 把手工连线并入 workspace 绑定画布状态并持久化。
@@ -121,13 +121,13 @@ updated_at: 2026-04-20
 
 ### 7.3 Webview 只负责交互与呈现
 
-`src/webview/main.tsx` 使用 React Flow edge 模型承接交互，但不拥有最终状态。Webview 负责：
+`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 使用 React Flow edge 模型承接交互，但不拥有最终状态。Webview 负责：
 
 - 在所有可见节点边缘渲染四向 handles。
 - 处理拖拽建边、边选中、选中态轻量编辑台、双击标签原位编辑和连线两端重接。
 - 将连线的创建、箭头模式修改、颜色修改、标签修改、重接和删除动作统一回传宿主。
 
-`src/webview/styles.css` 保持所有连线走同一套视觉语言：
+`extensions/vscode/dev-session-canvas/src/webview/styles.css` 保持所有连线走同一套视觉语言：
 
 - 默认连线颜色与拖拽中的预览连线共用同一默认 token。
 - 选中与 hover 不通过主线换色区分，而是通过额外 outline、轻量编辑台和端点重接 handles 提示当前交互焦点。

@@ -51,7 +51,7 @@
 
 ## 上下文与定向
 
-当前模板市场已经有浏览、安装和发布能力。市场共享合约位于 `packages/marketplace-shared/src/index.ts`，其中 `MarketplacePublishTemplateRequest` 直接包含 `slug`、`name`、`description`、`tags`、`readme`、`changelog`、`templateDocument` 和 `thumbnailPngBase64`。Worker 发布准备逻辑位于 `apps/template-marketplace/src/worker/publish.ts`，它把 `templateDocument` 重新序列化为单个 `template.json`，同时把缩略图写成单独 `thumbnail.png`。D1 schema 位于 `packages/marketplace-shared/src/schema.ts`，其中 `templates` 表保存 `slug`、`name`、`description`、`readme` 等模板级元数据，`template_versions` 表保存 `changelog`、`objectKey`、`thumbnailKey`、`sha256` 和 `sizeBytes`。VSCode 端发布草稿位于 `src/panel/TemplateMarketplaceClient.ts` 和 `src/panel/CanvasTemplateMarketplacePanel.ts`，发布表单目前让用户逐项填写 README、CHANGELOG 和 Template JSON Preview。
+当前模板市场已经有浏览、安装和发布能力。市场共享合约位于 `packages/marketplace-shared/src/index.ts`，其中 `MarketplacePublishTemplateRequest` 直接包含 `slug`、`name`、`description`、`tags`、`readme`、`changelog`、`templateDocument` 和 `thumbnailPngBase64`。Worker 发布准备逻辑位于 `apps/template-marketplace/src/worker/publish.ts`，它把 `templateDocument` 重新序列化为单个 `template.json`，同时把缩略图写成单独 `thumbnail.png`。D1 schema 位于 `packages/marketplace-shared/src/schema.ts`，其中 `templates` 表保存 `slug`、`name`、`description`、`readme` 等模板级元数据，`template_versions` 表保存 `changelog`、`objectKey`、`thumbnailKey`、`sha256` 和 `sizeBytes`。VSCode 端发布草稿位于 `extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts` 和 `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts`，发布表单目前让用户逐项填写 README、CHANGELOG 和 Template JSON Preview。
 
 “模板包”在本计划中指一个可版本化、可离线校验、可由 CLI/表单/仓库共同编辑的目录或归档单位。它至少包含模板主体、包清单、README、CHANGELOG 和媒体资源，并能由发布 API 转换成现有市场列表、详情、下载和安装行为。
 
@@ -81,6 +81,6 @@
 
 ## 接口与依赖
 
-本研究不新增运行时接口。后续若实现模板包，应优先在 `packages/marketplace-shared/src/index.ts` 定义包 manifest 类型和解析函数，在 `apps/template-marketplace/src/worker/publish.ts` 接入包上传/展开，在 `src/panel/TemplateMarketplaceClient.ts` 和 `src/panel/CanvasTemplateMarketplacePanel.ts` 改造发布草稿和表单。
+本研究不新增运行时接口。后续若实现模板包，应优先在 `packages/marketplace-shared/src/index.ts` 定义包 manifest 类型和解析函数，在 `apps/template-marketplace/src/worker/publish.ts` 接入包上传/展开，在 `extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts` 和 `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts` 改造发布草稿和表单。
 
 - 2026-05-26 / Codex：创建设计研究计划，原因是模板包会影响发布 contract、存储和本地安装语义，需先完成可追溯调研。

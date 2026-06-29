@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createNoteBodyIndentEdit,
   createNoteBodyOutdentEdit
-} from '../../src/webview/noteBodyIndent.ts';
+} from '../../extensions/vscode/dev-session-canvas/src/webview/noteBodyIndent.ts';
 
 function run(): void {
   assert.deepStrictEqual(

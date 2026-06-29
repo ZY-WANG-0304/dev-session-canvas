@@ -84,7 +84,7 @@ updated_at: 2026-06-14
 
 ### 6.1 命令与菜单
 
-在 `src/common/extensionIdentity.ts` 的 `COMMAND_IDS` 中新增：
+在 `extensions/vscode/dev-session-canvas/src/common/extensionIdentity.ts` 的 `COMMAND_IDS` 中新增：
 
 - `createTerminalFromExplorerResource`: `devSessionCanvas.createTerminalFromExplorerResource`
 - `createAgentFromExplorerResource`: `devSessionCanvas.createAgentFromExplorerResource`
@@ -98,7 +98,7 @@ updated_at: 2026-06-14
 
 ### 6.2 URI 校验与目录解析
 
-`src/extension.ts` 新增宿主侧解析函数，负责把命令参数转成执行 cwd：
+`extensions/vscode/dev-session-canvas/src/extension.ts` 新增宿主侧解析函数，负责把命令参数转成执行 cwd：
 
 - 输入优先使用命令第一个参数 `vscode.Uri`；若没有参数，则拒绝创建并提示用户从 Explorer 的文件或文件夹右键触发。
 - 只接受 `uri.scheme === 'file'`。
@@ -113,14 +113,14 @@ updated_at: 2026-06-14
 
 ### 6.3 共享协议与节点 metadata
 
-`src/common/protocol.ts` 现有 `ExecutionSessionMetadata.cwd` 已经是 Agent / Terminal 共享字段，不需要新增持久化字段；需要扩展创建消息与宿主请求：
+`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 现有 `ExecutionSessionMetadata.cwd` 已经是 Agent / Terminal 共享字段，不需要新增持久化字段；需要扩展创建消息与宿主请求：
 
 - `WebviewToHostMessage` 的 `webview/createDemoNode.payload` 新增可选 `cwd?: string`。
 - `HostToWebviewMessage` 的 `host/requestCreateNode.payload` 新增可选 `cwd?: string`。
 - `CanvasRuntimeContext` 新增 `workspaceFolders: Array<{ name: string; path: string }>`，仅用于 Webview 显示 cwdLabel，不作为权限判断来源。
 - `cwdLabel` 不进入持久化权威状态；正式状态仍以 `metadata.*.cwd` 为准。
 
-`src/panel/CanvasPanelManager.ts` 的创建选项扩展为通用 `CreateNodeOptions`，至少包含 `cwdOverride?: string`、`titleOverride?: string`、现有 Agent provider / preset / custom command 字段，以及现有 `targetGroupId`、`requestId`、`bypassTrust`。
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的创建选项扩展为通用 `CreateNodeOptions`，至少包含 `cwdOverride?: string`、`titleOverride?: string`、现有 Agent provider / preset / custom command 字段，以及现有 `targetGroupId`、`requestId`、`bypassTrust`。
 
 `applyCreateNode(...)` 在构造 metadata 后，如果创建的是 `agent` 或 `terminal`，把 `cwdOverride` 写入对应 metadata 的 `cwd`。必须先通过宿主侧 `validateExecutionCwd(...)`：路径非空、绝对路径、存在、是目录、属于当前 workspace。校验失败时拒绝创建并通过 `host/error` 给出原因。
 
@@ -163,7 +163,7 @@ Explorer 命令的主流程为：
 
 - `Terminal` 标题副标题继续只显示 shell path，不额外拼接 `cwdLabel`。
 - `Agent` 标题栏把 `cwdLabel` 与启动命令拆成两个独立文本：`cwdLabel` 由 `metadata.agent.cwd` 和 runtime context 中的 workspace folder 列表派生，显示在标题上方；启动命令仍来自 `resolveAgentLaunchCommandLineForSubtitle(...)`，显示在标题下方副标题。完整 cwd 和完整启动命令分别进入各自文本的 hover title，避免窄节点下被截断后丢失上下文。
-- `src/sidebar/CanvasSidebarNodeListView.ts` 投影 Agent 节点时，第二行从 `provider · 状态` 改为 `cwdLabel · provider · 状态`；`cwdLabel` 同样由 `metadata.agent.cwd` 派生，并按单根 / 多根 workspace 规则缩短。Terminal / Note 节点列表项保持只显示状态。
+- `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts` 投影 Agent 节点时，第二行从 `provider · 状态` 改为 `cwdLabel · provider · 状态`；`cwdLabel` 同样由 `metadata.agent.cwd` 派生，并按单根 / 多根 workspace 规则缩短。Terminal / Note 节点列表项保持只显示状态。
 - `cwdLabel` 与完整 cwd tooltip 都追加目录尾缀，用最小字符区分“执行目录”和普通文件路径。显示分隔符保留 cwd 来源风格：来源路径含反斜杠时使用 `\`；否则使用 `/`。因此 `\\server\share\repo\src` 展示为 `src\`，`//server/share/repo/src` 继续展示为 `src/`，不会因 network path 形态被强制改写成反斜杠。
 - `terminal-overlay` / `agent overlay` 在未运行或启动失败时继续使用 `data.summary` / `lastExitMessage`，其中 cwd 不可用错误需要可读。
 

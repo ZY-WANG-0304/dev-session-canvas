@@ -123,7 +123,7 @@ updated_at: 2026-05-09
 当前正式方案如下：
 
 - CLI 定位发生在执行宿主侧，而不是 Webview 或 UI 侧。
-- `src/panel/CanvasPanelManager.ts` 必须通过统一的 execution env 入口同时服务“命令解析”和“真实 spawn”；`src/panel/shellEnvironmentResolver.ts` 负责把 Extension Host 基线环境升级成这份 execution env。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 必须通过统一的 execution env 入口同时服务“命令解析”和“真实 spawn”；`extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts` 负责把 Extension Host 基线环境升级成这份 execution env。
 - 命令解析优先级为：
   1. provider 对应的显式设置值。
   2. 同一 Extension Host 生命周期内、同一 shell authority 与同一 workspace `cwd` 下最近一次成功解析出的绝对路径缓存；前提是该路径仍存在且可执行。这里的缓存不写入 `globalState`，重载窗口后重新解析；shell authority 绑定当前实际生效的 Terminal shell 身份，workspace `cwd` 绑定当前 execution env 的目录身份，避免切换 shell、切换 repo 或窗口重载后继续复用旧工具链路径。
@@ -255,7 +255,7 @@ updated_at: 2026-05-09
 - OpenAI 官方 `Codex CLI` 文档已确认显式 `codex resume [SESSION_ID]` 入口，以及 `~/.codex/config.toml` / `<repo>/.codex/config.toml` 这两层正式配置。
 - 2026-04-12 已完成代码落地：`Codex` 新增一条明确标记为技术债务的 heuristic session-id fallback，会扫描 `~/.codex/sessions/.../rollout-*.jsonl` 并按 `cwd + 启动时间窗` 的唯一候选回填 session id；本地 PTY 与 runtime supervisor 两条链路都已接入。
 - 2026-04-12 已新增自动化覆盖：通过 test-only 命令和 smoke 用例验证 locator 在唯一命中、`cwd` 不匹配与候选歧义三种情况下的行为。
-- 2026-05-07 已完成桌面三平台 execution env 继承主线收口，2026-05-08 继续补齐非 Windows PowerShell 与缓存隔离回归：`src/panel/shellEnvironmentResolver.ts` 现在同时支持 POSIX 登录 shell、非 Windows `pwsh` / `powershell`、Windows PowerShell、Windows cmd，以及 Windows 下名称可判定为 POSIX 家族的 shell；`CanvasPanelManager` 会让 `resolveAgentCliCommand(...)`、`buildAgentLaunchSpec(...)` 与 runtime supervisor createSession 共用同一份 agent execution env，并在 Terminal shell 或 workspace root 变化时刷新 patch 与 CLI 解析缓存。
+- 2026-05-07 已完成桌面三平台 execution env 继承主线收口，2026-05-08 继续补齐非 Windows PowerShell 与缓存隔离回归：`extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts` 现在同时支持 POSIX 登录 shell、非 Windows `pwsh` / `powershell`、Windows PowerShell、Windows cmd，以及 Windows 下名称可判定为 POSIX 家族的 shell；`CanvasPanelManager` 会让 `resolveAgentCliCommand(...)`、`buildAgentLaunchSpec(...)` 与 runtime supervisor createSession 共用同一份 agent execution env，并在 Terminal shell 或 workspace root 变化时刷新 patch 与 CLI 解析缓存。
 - 2026-05-08/2026-05-09 已按 review 收口 `Terminal` launch 与相对 `terminal.shellPath` probe，并在同日继续按 VS Code 原生行为复盘后改为混合方案：Windows `Terminal` 不预应用 shell env patch，macOS / Linux `Terminal` 默认继承受控 shell env patch；同时 `resolveShellEnvironmentPatch(...)` 会透传 workspace `cwd`，使相对 `terminal.shellPath` 的 env probe 与配置检查使用同一套解析基准。
 - 2026-05-09 已落地短期/中期/后续优化组合的第一轮实现：新增 `devSessionCanvas.terminal.inheritEnv` 与 `devSessionCanvas.terminal.shellArgs`，`Terminal` target 现在 Windows 跳过 shell env patch、macOS / Linux 默认继承 shell env，POSIX `Terminal` 使用 login-only probe cache，`Agent` 继续使用 interactive-login probe cache。本轮验证已通过 `node scripts/test/test-shell-environment-resolver.mjs`、`node scripts/test/test-terminal-shell-configuration.mjs`、`npm run typecheck`、`npm run build`、`npm run test:agent-cli-resolver`、`node -c tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check`。
 - 当前设计状态更新为 `验证中`：显式 session identity 路线已经代码落地并有自动化覆盖，但 `Codex` 仍缺少正式 session identity 接口，真实 provider 端到端验证也尚未完成。

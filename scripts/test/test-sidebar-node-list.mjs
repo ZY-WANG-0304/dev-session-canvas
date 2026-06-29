@@ -13,7 +13,7 @@ try {
   const outfile = path.join(tempDir, 'sidebar-node-list.cjs');
   await esbuild.build({
     stdin: {
-      contents: "export { buildSidebarNodeListHtml } from './src/sidebar/CanvasSidebarNodeListView';",
+      contents: "export { buildSidebarNodeListHtml } from './extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView';",
       resolveDir: process.cwd(),
       sourcefile: 'sidebar-node-list-entry.ts'
     },

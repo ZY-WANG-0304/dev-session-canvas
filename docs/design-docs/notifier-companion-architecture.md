@@ -12,9 +12,9 @@ architecture_layers:
 related_specs:
   - docs/product-specs/canvas-node-notifications.md
 related_plans:
-  - docs/exec-plans/active/standard-monorepo-and-doc-knowledge-base.md
+  - docs/exec-plans/completed/standard-monorepo-and-doc-knowledge-base.md
   - docs/exec-plans/active/cross-plan-coordination.md
-updated_at: 2026-05-17
+updated_at: 2026-06-29
 ---
 
 # UI 侧 Notifier Companion 架构
@@ -25,7 +25,7 @@ updated_at: 2026-05-17
 
 已有设计文档 `docs/design-docs/execution-node-notification-and-attention-signals.md` 已经明确：如果后续要把执行节点注意力事件升级成真正的桌面系统通知，不应把 `notify-send`、`terminal-notifier` 或 Windows Toast 直接塞进当前 workspace 宿主，而应引入一个运行在本机 UI 侧的 notifier companion。
 
-本次设计要把这条方向从“未来建议”收口成可实现的第一版架构：主扩展仍留在仓库根目录；notifier companion 先落到 `extensions/vscode/dev-session-canvas-notifier/`；共享通知协议先落到 `packages/attention-protocol/`。用户当前可验证的结果不是“所有平台都已经有完整桌面通知”，而是：主扩展能够把执行节点 attention event 发送给 companion；companion 能在本机 UI 侧接收结构化请求；测试环境里能够验证这条链路会在点击回调后回到画布并把对应节点居中，同时不代替用户选中节点或清除 attention 状态。
+本设计已从“未来建议”收口成已落地架构：主扩展位于 `extensions/vscode/dev-session-canvas/`；notifier companion 位于 `extensions/vscode/dev-session-canvas-notifier/`；共享通知协议位于 `packages/attention-protocol/`。用户当前可验证的结果不是“所有平台都已经有完整桌面通知”，而是：主扩展能够把执行节点 attention event 发送给 companion；companion 能在本机 UI 侧接收结构化请求；测试环境里能够验证这条链路会在点击回调后回到画布并把对应节点居中，同时不代替用户选中节点或清除 attention 状态。
 
 ## 2. 问题定义
 
@@ -34,18 +34,18 @@ updated_at: 2026-05-17
 1. 主扩展与 companion 之间用什么结构化载荷通信，才能避免继续把“终端输出副作用”当协议。
 2. companion 在桌面场景里如何把结构化 attention event 变成本机系统通知，同时保持主扩展不依赖本地 OS 命令。
 3. 当用户点击系统通知时，如何安全地回到 VS Code，并只把对应节点居中显示，避免把“查看提醒”误当成用户已经确认该节点。
-4. 在 notifier 仍处于第一阶段验证时，怎样把代码先放到最终目录位置，而不要求主扩展同步迁移到 `extensions/vscode/dev-session-canvas/`。
+4. 在主扩展与 notifier 都位于 `extensions/vscode/` 后，怎样保持 workspace-side 主扩展与 UI-side companion 的运行边界不被目录同层关系混淆。
 
 ## 3. 目标
 
 - 形成一个独立的 UI-side companion extension，并把它放在计划中的最终目录：`extensions/vscode/dev-session-canvas-notifier/`。
 - 形成一个最小共享协议包：`packages/attention-protocol/`。
 - 让主扩展通过一个三级下拉配置统一控制 attention signal 的外部桥接面：`none` 不桥接、`workbench` 走 VS Code 工作台消息、`system` 优先把执行节点终端提醒投递给 companion，并在必要时回退到工作台消息。
-- 为后续主扩展迁移到完整 monorepo 提前收口接口和目录，而不是先做临时 `notifier/` 目录。
+- 在完整 monorepo 目录下保持接口、发布、调试和 smoke 装配路径清晰，而不是让根目录继续兼任主扩展包。
 
 ## 4. 非目标
 
-- 本轮不要求主扩展迁出仓库根目录。
+- notifier 架构本身不复制主扩展的画布权威状态；主扩展迁到 `extensions/vscode/dev-session-canvas/` 后，状态边界仍不变。
 - 本轮不要求 companion 已经覆盖所有 OS 的完整点击回调体验；第一版允许平台间存在“能力完整度不同”的现实差异，只要协议与回退链路明确。
 - 本轮不引入独立的第三个 extension pack 扩展包；用户安装路径改由“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”收口。
 - 本轮不把 JSON Schema 自动生成、跨 IntelliJ 复用或更大的跨平台共享层一并实现。
@@ -56,7 +56,7 @@ updated_at: 2026-05-17
 
 当前正式方案把 notifier 明确收口成“主扩展负责 workspace-side 权威状态，companion 负责 UI-side 本机桌面通知”的双扩展协作模型：
 
-- `src/extension.ts` 与 `src/panel/CanvasPanelManager.ts`：继续作为主扩展入口，负责解析执行节点 attention signal、维护 `attentionPending`、决定是否桥接提醒；工作台通知按钮与系统通知回跳都只居中节点，用户点击节点才负责确认并清除 attention。
+- `extensions/vscode/dev-session-canvas/src/extension.ts` 与 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：继续作为主扩展入口，负责解析执行节点 attention signal、维护 `attentionPending`、决定是否桥接提醒；工作台通知按钮与系统通知回跳都只居中节点，用户点击节点才负责确认并清除 attention。
 - `extensions/vscode/dev-session-canvas-notifier/src/extension.ts`：作为 UI-side companion 入口，负责校验结构化请求、选择本机通知后端、维护 pending focus token、注册 URI handler，并记录诊断输出。
 - `packages/attention-protocol/src/index.ts`：作为两侧共享协议单一真相，定义请求结构、回调动作、返回结果与测试命令约束。
 
@@ -77,16 +77,16 @@ updated_at: 2026-05-17
 - `devSessionCanvas.notifications.attentionSignalBridge=system` 时，只有 companion 缺失、平台不支持或调用失败才允许回退到工作台消息；一旦 companion 返回 `posted`，主扩展就不得再重复弹工作台通知。
 - 开发态主扩展单调试可以临时去掉 notifier 依赖，但该动作只能发生在 `.debug/vscode-extension-main-only/` 这类 debug-only 副本，不得回写正式 manifest。
 
-### 5.4 目录策略：先混合结构，notifier 直接放最终位置
+### 5.4 目录策略：VS Code 双扩展同层落位
 
 当前选定结构是：
 
-- 主扩展继续留在仓库根目录
-- notifier companion 落在 `extensions/vscode/dev-session-canvas-notifier/`
-- 共享通知协议落在 `packages/attention-protocol/`
-- 根 `package.json` 新增 `workspaces`，但根目录暂时仍保留主扩展 manifest 身份
+- 主扩展落在 `extensions/vscode/dev-session-canvas/`，该目录持有 VS Code manifest、源码、图标、Marketplace README、CHANGELOG、内置模板和运行时 hook。
+- notifier companion 落在 `extensions/vscode/dev-session-canvas-notifier/`，继续作为 UI-side companion 独立打包与发布。
+- 共享通知协议落在 `packages/attention-protocol/`，只承载两扩展之间的 attention request / result 纯数据协议。
+- 根 `package.json` 是 `private` npm workspace root，只负责编排脚本、workspace 依赖和跨包验证，不再兼任主扩展 manifest。
 
-这样做的好处是：notifier 不需要先经历“临时目录 -> 最终目录”的二次迁移；而主扩展目录大搬迁则可以延后到阶段 1.2 再做。
+这样做的结果是：notifier 与主扩展都位于 `extensions/vscode/` 下，仓库根目录只保留 monorepo 编排和根文档知识库；后续发布、调试和 smoke 脚本必须显式选择主扩展子包路径。
 
 ### 5.5 协议策略：显式结构化请求，而不是隐式 escape sequence
 
@@ -135,7 +135,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 当前选定的安装策略是：
 
-- 主扩展 `devsessioncanvas.dev-session-canvas` 在仓库根 `package.json` 中声明 `extensionPack: ["devsessioncanvas.dev-session-canvas-notifier"]`
+- 主扩展 `devsessioncanvas.dev-session-canvas` 在 `extensions/vscode/dev-session-canvas/package.json` 中声明 `extensionPack: ["devsessioncanvas.dev-session-canvas-notifier"]`
 - notifier companion 在 `extensions/vscode/dev-session-canvas-notifier/package.json` 中继续声明 `extensionDependencies: ["devsessioncanvas.dev-session-canvas"]`
 - 两个扩展都显式声明 `"api": "none"`，因为跨 host 协作只依赖异步 VS Code commands，而不依赖 `activate()` 导出的 JS API
 
@@ -155,7 +155,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 即使正式安装关系已经改成“主扩展 `extensionPack` + notifier 单向 `extensionDependencies`”，开发态 `Run Dev Session Canvas (Main Only)` 仍然会在启动前生成一份 debug-only 的临时主扩展目录，把安装期关系从调试副本中剥离，避免单调主扩展时把 notifier 的安装语义混入当前 Development Host：
 
 - 临时目录位于 `.debug/vscode-extension-main-only/`
-- 目录内容来自当前仓库根主扩展的开发产物与运行时资源
+- 目录内容来自 `extensions/vscode/dev-session-canvas/` 的开发产物与运行时资源
 - 临时 `package.json` 会移除 `extensionDependencies` / `extensionPack`
 
 因此，当前三类调试场景分别是：
@@ -186,14 +186,14 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 ## 6. 第一版实现分层
 
-### 6.1 根主扩展
+### 6.1 主扩展
 
 主扩展当前改动集中在：
 
-- `src/panel/CanvasPanelManager.ts`
-- `src/common/extensionIdentity.ts`
-- `src/extension.ts`
-- `src/sidebar/CanvasSidebarView.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
+- `extensions/vscode/dev-session-canvas/src/common/extensionIdentity.ts`
+- `extensions/vscode/dev-session-canvas/src/extension.ts`
+- `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts`
 
 职责如下：
 
@@ -249,8 +249,8 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - 风险：companion 与工作台通知同时弹出，导致噪音。
   当前缓解：只要 companion 返回 `posted`，主扩展就不再重复发 VS Code 工作台通知；只有 companion 不可用或失败时才回退。
 
-- 风险：主扩展还没迁到 `extensions/vscode/dev-session-canvas/`，仓库会出现一段“混合结构”。
-  当前缓解：这是当前阶段的显式决策；通过 `workspaces`、独立子包 README 和架构文档说明，把这种中间状态当作受控阶段，而不是无意的半成品。
+- 风险：主扩展迁入 `extensions/vscode/dev-session-canvas/` 后，notifier 的调试、依赖与发布脚本可能继续引用旧根路径。
+  当前缓解：主扩展已经作为 workspace package 落位；正式安装关系仍由主扩展 `extensionPack` 聚合 notifier、notifier 单向 `extensionDependencies` 回补主扩展表达，debug-only 主扩展副本由根脚本生成并剥离安装期依赖关系。
 
 ## 8. 验证方法
 

@@ -13,7 +13,7 @@ try {
   const outfile = path.join(tempDir, 'agentSessionHistory.cjs');
 
   await esbuild.build({
-    entryPoints: [path.resolve('src/common/agentSessionHistory.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/agentSessionHistory.ts')],
     bundle: true,
     format: 'cjs',
     outfile,
@@ -216,7 +216,7 @@ try {
 
   const bundledSidebarModule = path.join(tempDir, 'sidebarSessionHistoryView.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/sidebar/CanvasSidebarSessionHistoryView.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarSessionHistoryView.ts')],
     bundle: true,
     format: 'cjs',
     outfile: bundledSidebarModule,

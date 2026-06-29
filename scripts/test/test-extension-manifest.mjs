@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const manifest = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+const manifest = JSON.parse(await readFile(path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas', 'package.json'), 'utf8'));
 
 assert.deepEqual(
   manifest.categories,
@@ -513,7 +513,7 @@ assert.deepEqual(
   'Expected internal session history grouping variants to stay out of the global Command Palette.'
 );
 
-const nls = JSON.parse(await readFile(path.join(repoRoot, 'package.nls.json'), 'utf8'));
+const nls = JSON.parse(await readFile(path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas', 'package.nls.json'), 'utf8'));
 assert.deepEqual(
   [
     nls['configuration.notifications.agentAbnormalOutputTextNotifications.description']?.length > 0,

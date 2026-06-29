@@ -23,10 +23,10 @@
 
 ```text
 用户命令 / 侧栏动作
-  -> src/extension.ts
-  -> src/panel/CanvasPanelManager.ts
-  -> src/common/protocol.ts 定义的消息与状态
-  -> src/webview/main.tsx 渲染画布与节点
+  -> extensions/vscode/dev-session-canvas/src/extension.ts
+  -> extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+  -> extensions/vscode/dev-session-canvas/src/common/protocol.ts 定义的消息与状态
+  -> extensions/vscode/dev-session-canvas/src/webview/main.tsx 渲染画布与节点
   -> Webview 用户动作回传 Host
   -> Host 启停 Agent / Terminal、更新权威状态、按需持久化
   -> Host 再把最新状态广播回 Webview
@@ -63,32 +63,44 @@ CanvasPanelManager
 
 ## 3. 代码地图（Code Map）
 
-### 仓库总览
+### 仓库总览与 Monorepo 拓扑
+
+主扩展迁入 `extensions/vscode/dev-session-canvas/` 后，仓库根目录只负责 workspace 编排、根级脚本和正式文档，不再兼任 VS Code extension manifest。当前代码包拓扑如下图；图只做导航，正式边界仍以本文正文为准。
+
+![DevSessionCanvas monorepo topology](docs/diagrams/monorepo-topology.svg)
 
 当前最重要的运行时代码与验证目录可以先这样读：
 
 ```text
-src/
-  extension.ts          扩展入口
-  common/               跨边界共享模型、协议与纯工具
-  panel/                Extension Host 侧的画布编排与执行接线
-  sidebar/              VSCode Sidebar 只读投影
-  supervisor/           独立 runtime supervisor 进程
-  webview/              React / React Flow 画布前端
-tests/
-  vscode-smoke/         宿主级 smoke 与重开恢复验证
-  playwright/           Webview DOM 与交互回归
-extensions/vscode/
-  dev-session-canvas-notifier/
-                        UI-side notifier companion；负责本机桌面通知桥接
+extensions/vscode/dev-session-canvas/
+  package.json                  VS Code 主扩展 manifest 与局部脚本
+  src/
+    extension.ts                扩展入口
+    common/                     跨边界共享模型、协议与纯工具
+    panel/                      Extension Host 侧的画布编排与执行接线
+    sidebar/                    VSCode Sidebar 只读投影
+    supervisor/                 独立 runtime supervisor 进程
+    webview/                    React / React Flow 画布前端
+  resources/templates/          内置画布模板
+  images/                       主扩展图标、Marketplace 媒体与 README 资产
+  scripts/runtime/              打包后随扩展分发的运行时 hook
+extensions/vscode/dev-session-canvas-notifier/
+  src/                          UI-side notifier companion；负责本机桌面通知桥接
 packages/
-  attention-protocol/   主扩展与 notifier companion 之间的最小共享 attention 协议
-scripts/                build、打包、smoke、调试入口
+  attention-protocol/           主扩展与 notifier companion 之间的最小共享 attention 协议
+  marketplace-shared/           模板市场共享 schema 与服务端 / 前端通用逻辑
+apps/template-marketplace/      模板市场 Web 与 Worker 应用
+tests/
+  vscode-smoke/                 宿主级 smoke 与重开恢复验证
+  playwright/                   Webview DOM 与交互回归
+scripts/                        build、打包、smoke、调试入口
+docs/                           根目录正式文档知识库
 ```
 
-目录名和逻辑层不总是一一对应。尤其 `src/panel/` 现在既包含 panel surface 相关代码，也承载了 Extension Host 侧的大部分运行时编排与执行基础设施；读代码时应按职责分层理解，不要被目录名误导。
 
-### `src/extension.ts`
+目录名和逻辑层不总是一一对应。尤其 `extensions/vscode/dev-session-canvas/src/panel/` 现在既包含 panel surface 相关代码，也承载了 Extension Host 侧的大部分运行时编排与执行基础设施；读代码时应按职责分层理解，不要被目录名误导。
+
+### `extensions/vscode/dev-session-canvas/src/extension.ts`
 
 这是扩展运行时入口。
 
@@ -110,7 +122,7 @@ scripts/                build、打包、smoke、调试入口
 - 这里是 VSCode 激活入口，不承载画布业务规则细节。
 - 顶层命令应把具体状态变更委托给 `CanvasPanelManager`，而不是在入口处分叉维护状态。
 
-### `src/common/`
+### `extensions/vscode/dev-session-canvas/src/common/`
 
 这是跨 `Extension Host`、`Webview`、`Supervisor` 的共享契约层，也是当前最稳定的 API boundary。
 
@@ -139,11 +151,11 @@ scripts/                build、打包、smoke、调试入口
 
 架构不变量：
 
-- `src/common/` 不应依赖 `vscode`、React、DOM、`node-pty` 或具体 CLI provider。
+- `extensions/vscode/dev-session-canvas/src/common/` 不应依赖 `vscode`、React、DOM、`node-pty` 或具体 CLI provider。
 - `protocol.ts` 与 `runtimeSupervisorProtocol.ts` 的变更默认是跨边界变更，必须同时检查 Host / Webview / Supervisor 三侧。
 - workspace 绑定的权威状态可以由宿主持有，但它的可序列化表达必须能落在这里定义的共享模型上。
 
-### `src/panel/`
+### `extensions/vscode/dev-session-canvas/src/panel/`
 
 这是 Extension Host 侧的核心编排区。虽然目录名叫 `panel`，但它实际上承载的是“宿主里的画布与执行运行时中枢”。
 
@@ -186,7 +198,7 @@ scripts/                build、打包、smoke、调试入口
 - `runtimeSupervisorClient.ts` 只通过协议与 socket 和 supervisor 通信，不应假设与 supervisor 共享内存或共享对象实例。
 - trust、配置和恢复模式判断必须在宿主侧生效，不能只靠 Webview 隐藏按钮。
 
-### `src/sidebar/`
+### `extensions/vscode/dev-session-canvas/src/sidebar/`
 
 这是当前侧栏视图的只读投影层。
 
@@ -205,7 +217,7 @@ scripts/                build、打包、smoke、调试入口
 - 侧栏不维护独立业务状态；它只消费 `CanvasPanelManager` 派生出的 `CanvasSidebarState`。
 - 任何画布真实状态都不应只存在于 sidebar 内部。
 
-### `src/webview/`
+### `extensions/vscode/dev-session-canvas/src/webview/`
 
 这是 React / React Flow 画布前端，也是用户可见的大部分交互所在。
 
@@ -224,14 +236,20 @@ scripts/                build、打包、smoke、调试入口
 - 在节点内部承载富交互内容，包括标题编辑、Note 内容编辑和嵌入式终端前端。
 - 维护局部 UI 状态，例如当前选中节点、视口位置、上下文菜单和短生命周期输入态。
 
+架构不变量：
+
+- Webview 不直接访问 VSCode API、文件系统或 CLI 进程；所有宿主能力都经消息边界进入。
+- Webview 保存的是“局部 UI 状态”和“用户意图”，不是 workspace 绑定权威状态。
+- 终端前端可以持有 `xterm.js` 实例，但实际进程生命周期、持久化和恢复策略由宿主决定。
+
 ### `extensions/vscode/dev-session-canvas-notifier/`
 
-这是当前阶段新增的 UI-side notifier companion。
+这是 UI-side notifier companion extension package。
 
 关键命名实体：
 
-- `src/extension.ts`
-- `src/platformNotification.ts`
+- `extensions/vscode/dev-session-canvas-notifier/src/extension.ts`
+- `extensions/vscode/dev-session-canvas-notifier/src/platformNotification.ts`
 
 这里主要负责：
 
@@ -242,7 +260,7 @@ scripts/                build、打包、smoke、调试入口
 架构不变量：
 
 - companion 只负责本机通知投递与点击回调，不持有画布权威状态。
-- 主扩展是否设置 `attentionPending`、何时去重、何时清除 attention，仍由根主扩展裁决。
+- 主扩展是否设置 `attentionPending`、何时去重、何时清除 attention，仍由 `extensions/vscode/dev-session-canvas/` 中的主扩展裁决。
 
 ### `packages/attention-protocol/`
 
@@ -256,15 +274,9 @@ scripts/                build、打包、smoke、调试入口
 架构不变量：
 
 - 它只承载纯数据协议与无副作用 helper，不依赖 `vscode`、React 或具体桌面通知命令。
-- 通过 `acquireVsCodeApi()` 与宿主交换消息与 Webview 本地状态。
+- 当前只供 VS Code 主扩展和 notifier companion 复用，不承担跨 IDE 的通用协议治理。
 
-架构不变量：
-
-- Webview 不直接访问 VSCode API、文件系统或 CLI 进程；所有宿主能力都经消息边界进入。
-- Webview 保存的是“局部 UI 状态”和“用户意图”，不是 workspace 绑定权威状态。
-- 终端前端可以持有 `xterm.js` 实例，但实际进程生命周期、持久化和恢复策略由宿主决定。
-
-### `src/supervisor/`
+### `extensions/vscode/dev-session-canvas/src/supervisor/`
 
 这是 `live-runtime` 模式下的独立运行时监督进程。
 
@@ -309,23 +321,23 @@ scripts/                build、打包、smoke、调试入口
 为保持和 `docs/design-docs/` 一致，当前顶层问题域仍使用以下命名：
 
 - `VSCode 集成域`
-  - `src/extension.ts`
-  - `src/panel/CanvasPanelManager.ts`
-  - `src/sidebar/CanvasSidebarView.ts`
-  - `src/panel/getWebviewHtml.ts`
+  - `extensions/vscode/dev-session-canvas/src/extension.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
+  - `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts`
 - `画布交互域`
-  - `src/webview/main.tsx`
-  - `src/webview/styles.css`
-  - `src/webview/executionTerminalNativeInteractions.ts`
+  - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
+  - `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`
 - `协作对象域`
-  - `src/common/protocol.ts`
+  - `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
   - `CanvasNodeSummary` 及其 `agent / terminal / note` 元数据
 - `执行编排域`
-  - `src/panel/executionSessionBridge.ts`
-  - `src/panel/runtimeSupervisorClient.ts`
-  - `src/panel/runtimeHostBackend.ts`
-  - `src/supervisor/runtimeSupervisorMain.ts`
-  - `src/panel/agentCliResolver.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts`
+  - `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts`
 - `项目状态域`
   - `CanvasPrototypeState`
   - `serializedTerminalState.ts`
@@ -340,20 +352,20 @@ scripts/                build、打包、smoke、调试入口
 当前更适合按逻辑边界理解系统，而不是按目录名理解：
 
 - `宿主集成层`
-  - `src/extension.ts`
-  - `src/panel/CanvasPanelManager.ts`
-  - `src/sidebar/CanvasSidebarView.ts`
+  - `extensions/vscode/dev-session-canvas/src/extension.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
+  - `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts`
 - `画布呈现层`
-  - `src/webview/*`
+  - `extensions/vscode/dev-session-canvas/src/webview/*`
 - `共享模型与编排层`
-  - `src/common/protocol.ts`
-  - `src/common/runtimeSupervisorProtocol.ts`
-  - 其余 `src/common/*` 共享纯模型与纯工具
+  - `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
+  - `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts`
+  - 其余 `extensions/vscode/dev-session-canvas/src/common/*` 共享纯模型与纯工具
 - `适配与基础设施层`
-  - `src/panel/executionSessionBridge.ts`
-  - `src/panel/runtimeSupervisorClient.ts`
-  - `src/panel/runtimeHostBackend.ts`
-  - `src/supervisor/*`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts`
+  - `extensions/vscode/dev-session-canvas/src/supervisor/*`
   - 宿主侧路径、持久化与原生交互辅助
 
 允许的依赖方向如下：
@@ -368,9 +380,9 @@ scripts/                build、打包、smoke、调试入口
 
 默认视为架构违例的方向：
 
-- `src/common/` 反向依赖 `vscode`、React、DOM 或 `node-pty`
-- `src/webview/` 直接操作文件系统、CLI 进程或宿主存储
-- `src/sidebar/` 维护独立业务状态
+- `extensions/vscode/dev-session-canvas/src/common/` 反向依赖 `vscode`、React、DOM 或 `node-pty`
+- `extensions/vscode/dev-session-canvas/src/webview/` 直接操作文件系统、CLI 进程或宿主存储
+- `extensions/vscode/dev-session-canvas/src/sidebar/` 维护独立业务状态
 - UI 组件直接越过宿主协议去控制 supervisor 或执行进程
 
 ## 6. 当前最重要的架构不变量
@@ -384,7 +396,7 @@ scripts/                build、打包、smoke、调试入口
 ### 6.2 协议边界
 
 - `Webview <-> Host` 与 `Host <-> Supervisor` 都是显式协议边界。
-- 任何跨边界对象都应优先使用 `src/common/` 中的可序列化类型表达。
+- 任何跨边界对象都应优先使用 `extensions/vscode/dev-session-canvas/src/common/` 中的可序列化类型表达。
 - 协议一旦变化，默认需要同步消息发送方、接收方和对应测试。
 
 ### 6.3 执行边界
@@ -432,29 +444,29 @@ scripts/                build、打包、smoke、调试入口
 ## 8. 当你要改某类问题时，先去哪里找
 
 - 改命令注册、承载面打开方式、serializer、激活入口：
-  - `src/extension.ts`
-  - `src/panel/CanvasPanelManager.ts`
+  - `extensions/vscode/dev-session-canvas/src/extension.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
 - 改节点模型、消息类型、状态字段、跨边界载荷：
-  - `src/common/protocol.ts`
-  - `src/common/runtimeSupervisorProtocol.ts`
+  - `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
+  - `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts`
 - 改画布 UI、节点交互、标题/内容编辑、缩放与聚焦：
-  - `src/webview/main.tsx`
-  - `src/webview/styles.css`
+  - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
 - 改侧栏显示和快捷动作：
-  - `src/sidebar/CanvasSidebarView.ts`
+  - `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts`
 - 改 Agent / Terminal 启动、停止、恢复、输出桥：
-  - `src/panel/executionSessionBridge.ts`
-  - `src/panel/runtimeSupervisorClient.ts`
-  - `src/supervisor/runtimeSupervisorMain.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts`
+  - `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts`
 - 改 CLI 解析、shell 路径、运行时后端选择：
-  - `src/panel/agentCliResolver.ts`
-  - `src/panel/runtimeHostBackend.ts`
-  - `src/panel/configuration.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/configuration.ts`
 - 改持久化路径、storage slot、终端快照恢复：
-  - `src/common/extensionStoragePaths.ts`
-  - `src/common/runtimeSupervisorPaths.ts`
-  - `src/common/serializedTerminalState.ts`
-  - `src/panel/CanvasPanelManager.ts`
+  - `extensions/vscode/dev-session-canvas/src/common/extensionStoragePaths.ts`
+  - `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts`
+  - `extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
 - 补验证或定位回归：
   - `tests/vscode-smoke/*.cjs`
   - `tests/playwright/webview-harness.spec.mjs`

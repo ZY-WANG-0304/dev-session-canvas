@@ -37,7 +37,7 @@ try {
 
   await esbuild.build({
     stdin: {
-      contents: `export { ${exportedHelpers.join(', ')} } from './src/panel/CanvasPanelManager';`,
+      contents: `export { ${exportedHelpers.join(', ')} } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';`,
       resolveDir: process.cwd(),
       sourcefile: 'canvas-node-groups-entry.ts'
     },

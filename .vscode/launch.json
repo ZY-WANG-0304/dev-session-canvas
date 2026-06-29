@@ -17,13 +17,14 @@
         "**/resources/app/extensions/**"
       ],
       "outFiles": [
-        "${workspaceFolder}/dist/**/*.js",
+        "${workspaceFolder}/extensions/vscode/dev-session-canvas/dist/**/*.js",
         "${workspaceFolder}/.debug/vscode-extension-main-only/dist/**/*.js"
       ],
       "sourceMapPathOverrides": {
-        "../src/*": "${workspaceFolder}/src/*",
-        "../packages/*": "${workspaceFolder}/packages/*",
-        "../node_modules/*": "${workspaceFolder}/node_modules/*"
+        "../src/*": "${workspaceFolder}/extensions/vscode/dev-session-canvas/src/*",
+        "../../../../../packages/*": "${workspaceFolder}/packages/*",
+        "../../../../../node_modules/*": "${workspaceFolder}/node_modules/*",
+        "../../../node_modules/*": "${workspaceFolder}/node_modules/*"
       },
       "preLaunchTask": "build debug main-only extension"
     },
@@ -34,7 +35,7 @@
       "runtimeExecutable": "${execPath}",
       "args": [
         "--profile=Dev Session Canvas Notifier Extension Debug",
-        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode/dev-session-canvas",
         "--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode/dev-session-canvas-notifier"
       ],
       "skipFiles": [
@@ -44,7 +45,7 @@
         "**/resources/app/extensions/**"
       ],
       "outFiles": [
-        "${workspaceFolder}/dist/**/*.js",
+        "${workspaceFolder}/extensions/vscode/dev-session-canvas/dist/**/*.js",
         "${workspaceFolder}/extensions/vscode/dev-session-canvas-notifier/dist/**/*.js"
       ],
       "preLaunchTask": "build extension + notifier"
@@ -56,7 +57,7 @@
       "runtimeExecutable": "${execPath}",
       "args": [
         "--profile=Dev Session Canvas Notifier Extension Debug",
-        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode/dev-session-canvas",
         "--extensionDevelopmentPath=${input:devSessionCanvas.localRepoRoot}/extensions/vscode/dev-session-canvas-notifier"
       ],
       "skipFiles": [
@@ -66,7 +67,7 @@
         "**/resources/app/extensions/**"
       ],
       "outFiles": [
-        "${workspaceFolder}/dist/**/*.js",
+        "${workspaceFolder}/extensions/vscode/dev-session-canvas/dist/**/*.js",
         "${input:devSessionCanvas.localRepoRoot}/extensions/vscode/dev-session-canvas-notifier/dist/**/*.js"
       ],
       "preLaunchTask": "build extension"

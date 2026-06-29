@@ -72,7 +72,7 @@
   证据：2026-04-26 本地对 `shell-quote` 试跑 `C:\tools\codex.exe --yolo` 与 `codex --config "C:\Users\me\My Dir\"`，前者被解析成 `C:toolscodex.exe`，后者则把结尾 `\"` 吃成字面量双引号。
 
 - 观察：当默认启动参数本身已经包含 `--yolo` 或 `--sandbox ...` 这类模式 flag 时，Quick Input 第二步的“显式 YOLO / 沙盒”与“默认”可能生成同一条完整命令；如果创建时只靠最终字符串反推 preset，就会把用户刚刚显式选择的模式误写回 `default`。
-  证据：2026-04-29 本地复核 `src/extension.ts` 的第二步创建链路，确认它此前只把 QuickPick 选项改写为完整命令字符串，再由 `classifyAgentLaunchPreset(...)` 从字符串反推 metadata；而 `src/common/agentLaunchPresets.ts` 在 `default` 与显式 preset 命令相同时会优先命中 `default`。
+  证据：2026-04-29 本地复核 `extensions/vscode/dev-session-canvas/src/extension.ts` 的第二步创建链路，确认它此前只把 QuickPick 选项改写为完整命令字符串，再由 `classifyAgentLaunchPreset(...)` 从字符串反推 metadata；而 `extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts` 在 `default` 与显式 preset 命令相同时会优先命中 `default`。
 
 - 观察：当前本地 Codex CLI `0.137.0` 已提供稳定 `codex fork [SESSION_ID]` 子命令，帮助文本说明它会 fork 之前的 interactive session，并且该子命令支持与 `codex resume` 同类的 runtime flags。
   证据：2026-06-13 运行 `codex --version` 输出 `codex-cli 0.137.0`；运行 `codex fork --help` 输出 usage `codex fork [OPTIONS] [SESSION_ID] [PROMPT]`，并列出 `--model`、`--sandbox`、`--profile`、`--config` 等选项。
@@ -182,18 +182,18 @@
 - 已更新：Codex Agent 现在和 Claude Code 一样可以从可信 provider session id 执行 `Fork`。共享命令层新增 `buildAgentBranchCommandLine()` 与 Codex fork 参数剥离逻辑；Webview 的 `分叉` 按钮按 provider + resumeStrategy 判断显示，并用 provider 文案设置 aria/title；Host 的 `branchAgentSession()` 创建同 provider custom Agent 节点，并继续只在宿主侧读取可信 session id。自动化新增 Codex 命令层、Webview、Host smoke 覆盖。本轮已通过 `npm run test:agent-launch-presets`、`npm run test:protocol-webview-messages`、`npm run test:canvas-execution-context`、`node --check tests/vscode-smoke/extension-tests.cjs`、`node --check tests/playwright/webview-harness.spec.mjs`、`npm run typecheck`、`git diff --check`，以及 focused `npm run test:webview -- --grep "Agent Fork action|forked Agent"`（3 passed）。完整 trusted smoke 已尝试运行，但在进入新增 Codex Fork helper 前被既有 editor Webview DOM 动作超时阻塞，artifact 位于 `.debug/vscode-smoke/trusted/artifacts`；真实 provider 级新 thread / session id 仍需在安装对应 CLI 的 Development Host 中人工确认。
 - 已更新：按最新决策，Webview 不再识别或隐藏 fork launch 节点的标题栏状态胶囊，分叉节点停止态和运行态都会像普通 Agent 一样显示状态；`分叉` 按钮改为像 PR121 的重启动作按钮一样在按钮级别允许压缩/内部换行；标题栏 action cluster 保持 inline，避免整组换行破坏布局，同时也不再用移除状态来解决空间冲突。用户可见按钮、aria/title、Host 错误和自动派生标题同步中文化为 `分叉`，底层命令与技术语义仍保留 provider-native `fork`。
 - 已更新：继续修正上一次 UI follow-up 的可观察行为。之前按钮虽然允许 `white-space: normal`，但由于两个中文字符的 `min-content` 宽度很小且按钮本身没有被压到更窄，用户把节点拉到最小宽度仍不会看到两行。现在 Webview 根据 Agent 节点宽度给标题栏动作区设置 `compact-actions` 密度，CSS 对右上角所有动作按钮应用相同内部两行格式，不让整个 action cluster 换行；Playwright 也从“只检查 white-space”升级为检查所有动作按钮的内部 label 高宽比符合两行。
-- 已更新：分叉自动连线现在不再只有箭头。`src/panel/CanvasPanelManager.ts` 的分叉建边 helper 在创建来源 Agent 指向新 Agent 的普通 `user` 边时默认写入 `label: 'fork'`；VSCode smoke 对 Codex / Claude 两条 Host 分叉路径都补充断言：状态里的边标签为 `fork`，editor Webview probe 也应看到该标签。
+- 已更新：分叉自动连线现在不再只有箭头。`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的分叉建边 helper 在创建来源 Agent 指向新 Agent 的普通 `user` 边时默认写入 `label: 'fork'`；VSCode smoke 对 Codex / Claude 两条 Host 分叉路径都补充断言：状态里的边标签为 `fork`，editor Webview probe 也应看到该标签。
 - 已更新：PR159 review 指出的两个 blocker 已在文档和命令层收口。Codex 分叉命令现在会同时清理默认参数前缀与子命令尾部的旧选择参数，避免 `--last` 等参数覆盖当前可信 source session；旧 Claude-only active 计划已移到 completed 并在文件头标注历史状态，当前分叉范围只由本计划与正式规格/设计承载。
 
 ## 上下文与定向
 
 当前和本任务直接相关的代码主要在以下位置：
 
-- `src/extension.ts`：侧栏/命令面板“创建节点”入口，目前顶层 QuickPick 直接创建，不支持第二步完整命令编辑。
-- `src/panel/CanvasPanelManager.ts`：宿主权威状态、节点创建、Agent fresh-start / resume 执行路径。
-- `src/common/protocol.ts`：节点 metadata、runtime context 与 Host/Webview 消息协议。
-- `src/webview/main.tsx`：空白区右键菜单、Agent 节点标题栏动作、执行型节点的 Webview 行为。
-- `src/webview/styles.css`：右键菜单与标题栏按钮样式。
+- `extensions/vscode/dev-session-canvas/src/extension.ts`：侧栏/命令面板“创建节点”入口，目前顶层 QuickPick 直接创建，不支持第二步完整命令编辑。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：宿主权威状态、节点创建、Agent fresh-start / resume 执行路径。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`：节点 metadata、runtime context 与 Host/Webview 消息协议。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：空白区右键菜单、Agent 节点标题栏动作、执行型节点的 Webview 行为。
+- `extensions/vscode/dev-session-canvas/src/webview/styles.css`：右键菜单与标题栏按钮样式。
 - `tests/playwright/webview-harness.spec.mjs`：右键菜单、节点按钮等 Webview 回归。
 - `tests/vscode-smoke/extension-tests.cjs`：命令入口与宿主行为 smoke。
 
@@ -201,26 +201,26 @@
 
 ## 工作计划
 
-先在共享层引入 Agent 启动预设模型、命令字符串构造/解析/校验逻辑，并扩展 `protocol` 与 runtime context，让宿主、Webview、命令面板都能拿到统一的 provider 默认启动模板。然后在宿主层把节点创建、metadata 持久化和 Agent fresh-start 执行路径改成基于 `launchPreset/customLaunchCommand` 解析。Webview 侧接着扩展右键菜单三层 Agent 创建，并把停止后的单按钮改成 `新建 | 重启` 双按钮。最后再回到 `src/extension.ts` 重写 Agent 的 Quick Input 创建链路，并为测试保留脚本化 override。
+先在共享层引入 Agent 启动预设模型、命令字符串构造/解析/校验逻辑，并扩展 `protocol` 与 runtime context，让宿主、Webview、命令面板都能拿到统一的 provider 默认启动模板。然后在宿主层把节点创建、metadata 持久化和 Agent fresh-start 执行路径改成基于 `launchPreset/customLaunchCommand` 解析。Webview 侧接着扩展右键菜单三层 Agent 创建，并把停止后的单按钮改成 `新建 | 重启` 双按钮。最后再回到 `extensions/vscode/dev-session-canvas/src/extension.ts` 重写 Agent 的 Quick Input 创建链路，并为测试保留脚本化 override。
 
 ## 具体步骤
 
-1. 在 `src/common/` 中新增 Agent 启动预设模块，并扩展 `src/common/protocol.ts` 中的 metadata/runtime/message 类型。
-2. 在 `src/panel/CanvasPanelManager.ts` 中：
+1. 在 `extensions/vscode/dev-session-canvas/src/common/` 中新增 Agent 启动预设模块，并扩展 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中的 metadata/runtime/message 类型。
+2. 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中：
    - 扩展 `createNode` / `applyCreateNode` / metadata 正规化，持久化 Agent 启动预设。
    - 为 Agent fresh-start 解析完整命令，再接入现有 resolver 与 spawn 路径。
    - 扩展 runtime context，把 provider 默认启动参数下发到 Webview。
-3. 在 `src/webview/main.tsx` 与 `src/webview/styles.css` 中：
+3. 在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 与 `extensions/vscode/dev-session-canvas/src/webview/styles.css` 中：
    - 把右键菜单扩成 root/provider/launch-mode 三层。
    - 实现自定义启动输入与校验。
    - 实现停止后 `新建 | 重启` 双按钮。
-4. 在 `src/extension.ts` 中重写 Agent 创建 Quick Input 第二步，并更新 test override。
+4. 在 `extensions/vscode/dev-session-canvas/src/extension.ts` 中重写 Agent 创建 Quick Input 第二步，并更新 test override。
 5. 在 `tests/playwright/webview-harness.spec.mjs` 与 `tests/vscode-smoke/extension-tests.cjs` 中补回归，至少覆盖 `codex resume` / `claude --resume` 提示 parser，以及“无可信恢复上下文 => 标题栏只显示 `启动`”。
 6. 跑 `npm run typecheck`、`npm run test:webview`，再根据时间与稳定性决定是否补 `npm run test:smoke`。
-7. Codex Fork follow-up：在 `src/common/agentLaunchPresets.ts` 中新增 provider-neutral Fork command builder，Codex 分支生成 `codex fork <session-id>` 并剥离旧 `resume` / `fork` 选择目标；在 `src/webview/main.tsx` 中把分叉按钮从 Claude-only 改成 Codex / Claude Code provider-native 判断；在 `src/panel/CanvasPanelManager.ts` 中让 `branchAgentSession()` 根据来源节点 provider 创建同 provider 新节点；同步补命令层、Playwright 与 VSCode smoke 回归。
+7. Codex Fork follow-up：在 `extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts` 中新增 provider-neutral Fork command builder，Codex 分支生成 `codex fork <session-id>` 并剥离旧 `resume` / `fork` 选择目标；在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中把分叉按钮从 Claude-only 改成 Codex / Claude Code provider-native 判断；在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中让 `branchAgentSession()` 根据来源节点 provider 创建同 provider 新节点；同步补命令层、Playwright 与 VSCode smoke 回归。
 8. 分叉 UI follow-up：把用户可见按钮文案、派生标题与错误提示改为 `分叉`；移除 Webview 对 fork launch 节点隐藏标题栏状态的特判；更新 Playwright 覆盖，确认分叉节点在停止 / 运行状态均显示状态胶囊，且 `分叉` 按钮采用 PR121 式按钮级压缩/内部换行，action cluster 不整组换行。实现中应确保右上角所有动作按钮在接近最小宽度时真实呈现为按钮内部两行，而不是只在 CSS 上允许换行。
-9. 分叉边标签 follow-up：在 `src/panel/CanvasPanelManager.ts` 的分叉自动建边路径中默认写入 `label: 'fork'`；更新 VSCode smoke，确认 Codex / Claude 分叉后宿主状态和 Webview probe 都能看到 `fork` 标签；同步更新产品规格、设计文档与本计划。
-10. PR159 review follow-up：在 `src/common/agentLaunchPresets.ts` 中让 Codex 分叉命令对 leading args 和 subcommand args 使用同一套 fork selection stripping；在 `scripts/test/test-agent-launch-presets.mjs` 中补充 leading `--last`、`--all`、`--include-non-interactive` 与旧 positional target 的回归；将旧 `claude-agent-branch.md` 移入 completed，并在 active 计划中记录当前 Codex / Claude Code 分叉事实。
+9. 分叉边标签 follow-up：在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的分叉自动建边路径中默认写入 `label: 'fork'`；更新 VSCode smoke，确认 Codex / Claude 分叉后宿主状态和 Webview probe 都能看到 `fork` 标签；同步更新产品规格、设计文档与本计划。
+10. PR159 review follow-up：在 `extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts` 中让 Codex 分叉命令对 leading args 和 subcommand args 使用同一套 fork selection stripping；在 `scripts/test/test-agent-launch-presets.mjs` 中补充 leading `--last`、`--all`、`--include-non-interactive` 与旧 positional target 的回归；将旧 `claude-agent-branch.md` 移入 completed，并在 active 计划中记录当前 Codex / Claude Code 分叉事实。
 
 ## 验证与验收
 
@@ -283,22 +283,22 @@
 
 本次新增或修改的关键接口应包括：
 
-- `src/common/protocol.ts`
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
   - `AgentNodeMetadata.launchPreset`
   - `AgentNodeMetadata.customLaunchCommand`
   - `CanvasRuntimeContext.agentLaunchDefaults`
   - `webview/createDemoNode` 与 `host/requestCreateNode` 的 Agent 启动参数字段
-- `src/common/<new module>.ts`
+- `extensions/vscode/dev-session-canvas/src/common/<new module>.ts`
   - 构造 provider 预设命令
   - 解析完整命令字符串
   - 校验输入命令是否属于当前 provider
   - 从输入内容反推预设/自定义
   - 构造 provider-native Fork 命令：Codex 为 `codex fork <session-id>`，Claude Code 为 `claude --resume <session-id> --fork-session`
-- `src/panel/CanvasPanelManager.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
   - Agent fresh-start 路径新增“命令字符串 -> resolver -> spawn args”解析
-- `src/extension.ts`
+- `extensions/vscode/dev-session-canvas/src/extension.ts`
   - Agent 创建 Quick Input 第二步
-- `src/webview/main.tsx`
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
   - 右键菜单 launch-mode drill-in
   - Agent `新建 | 重启` 双按钮
 

@@ -26,7 +26,7 @@
 ## 意外与发现
 
 - 观察：当前代码里没有对 `defaultSurface` 或 `runtimePersistence.enabled` 的 `onDidChangeConfiguration` 热切换监听，真正的问题是这两个设置在多个运行时路径里被即时读取，导致“下一次动作按新配置走”，而不是“整个窗口 reload 后统一切换”。
-  证据：`src/panel/CanvasPanelManager.ts` 的配置监听只覆盖 `agent.defaultProvider`、`terminal.integrated.scrollback`、`editor.multiCursorModifier` 和 `terminal.integrated.wordSeparators`；但 `getConfiguredSurface()`、`isRuntimePersistenceEnabled()` 会在 reveal、启动执行会话、host-boundary reload 等路径中反复读取当前设置。
+  证据：`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的配置监听只覆盖 `agent.defaultProvider`、`terminal.integrated.scrollback`、`editor.multiCursorModifier` 和 `terminal.integrated.wordSeparators`；但 `getConfiguredSurface()`、`isRuntimePersistenceEnabled()` 会在 reveal、启动执行会话、host-boundary reload 等路径中反复读取当前设置。
 - 观察：VS Code 原生允许对 `contributes.views` 使用 `when` 条件；预激活阶段可以利用 `config.devSessionCanvas.canvas.defaultSurface == 'panel'` 让 Panel 入口可发现，但这只影响入口显隐，不代表主画布已被激活或热切换。
   证据：本轮实现通过 `package.json` 中的 `when: "(config.devSessionCanvas.canvas.defaultSurface == 'panel' && !devSessionCanvas.canvas.panelVisibilityManaged) || devSessionCanvas.canvas.panelViewVisible"` 达成两段式控制：扩展未激活时走配置 fallback；扩展激活后设置 `panelVisibilityManaged=true`，再由宿主 context key `panelViewVisible` 表达当前窗口已应用的承载面。
 - 观察：受限工作区下，带 `live-runtime` 元数据的节点在 reload 后不会保持 `reattaching` 状态，而是被 reconcile 成 `history-restored`，同时保留 `attachmentState=reattaching` 作为“理论上可重连但被策略阻断”的标记。
@@ -36,7 +36,7 @@
 - 观察：仅把 `defaultSurface` 固定成“启动时读取一次”还不够；如果持久化状态只记录旧的 `activeSurface`，restart / reload 时仍会让旧 surface 覆盖新的 startup `defaultSurface`。
   证据：用户在 `panel -> editor` 后重启，画布仍显示在底部 panel / 右侧 secondary side bar；代码上 `loadStoredSurface()` 只读取 `activeSurface`，而 `deserializeWebviewPanel()` / `attachPanelView()` 会继续让旧 surface 参与恢复与抢占。
 - 观察：runtime persistence 模式切换导致的整表 reset 也必须覆盖 surface 恢复元数据；否则虽然节点被清空，但旧 `canvasLastSurface` 仍会把窗口带回上次实际工作的 opposite surface。
-  证据：review 在 `src/panel/CanvasPanelManager.ts:1328` / `src/panel/CanvasPanelManager.ts:2922` 指出，`loadState()` 已把 `rawState` 置空，但构造函数和 `simulateRuntimeReloadForTest()` 仍会继续读取旧 `canvasLastSurface`。
+  证据：review 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:1328` / `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:2922` 指出，`loadState()` 已把 `rawState` 置空，但构造函数和 `simulateRuntimeReloadForTest()` 仍会继续读取旧 `canvasLastSurface`。
 
 ## 决策记录
 
@@ -73,7 +73,7 @@ PR80 review 进一步澄清了 `defaultSurface` 的两段式契约：扩展/画�
 验证结果如下。
 
 - `npm run build` 通过。
-- `npm run typecheck` 已通过；`src/webview/main.tsx` 里原有的 `isComposing` 类型报错已收口。
+- `npm run typecheck` 已通过；`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 里原有的 `isComposing` 类型报错已收口。
 - 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`；新增的 surface / runtime persistence 回归断言已进入当前 head，但整套 suite 仍在无关的 `verifyLegacyTaskFiltering` 断言处失败。
 - 本轮重新执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs`；新增的 surface / runtime persistence 回归断言已进入当前 head，但整套 suite 仍在无关的 `verifyRestrictedLiveRuntimeReconnectBlocked` 断言处失败。
 - 用户随后完成手动复验，确认 `panel -> editor` / `editor -> panel` 的 restart 行为均符合预期；因此 surface 设计文档现已恢复为 `已验证`，trusted smoke 的遗留阻塞继续作为独立测试债处理。
@@ -86,7 +86,7 @@ PR80 review 进一步澄清了 `defaultSurface` 的两段式契约：扩展/画�
 
 第一处是扩展清单 `package.json` 与 `package.nls.json`。这里定义了配置项、Panel view 注册和 Settings UI 中看到的文案。`defaultSurface` 与 `runtimePersistence.enabled` 都在这里声明，Panel 承载面的 tab 是否出现也由这里的 `contributes.views` / `contributes.viewsContainers` 决定。
 
-第二处是 `src/panel/CanvasPanelManager.ts`。这是宿主侧权威状态管理器，负责画布 surface 的 reveal、持久化状态装载、执行节点启动和 runtime supervisor 协调。改动前 `defaultSurface` 与 `runtimePersistence.enabled` 都通过运行时 helper 即时读取，因此即使没有专门的配置变更监听，设置也会在后续动作中悄悄生效；本轮已经把这两个配置的运行时行为收口到启动快照与显式 reload 边界，同时允许 `package.json` 在扩展未激活前先用配置表达式显示或隐藏 Panel 入口。
+第二处是 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`。这是宿主侧权威状态管理器，负责画布 surface 的 reveal、持久化状态装载、执行节点启动和 runtime supervisor 协调。改动前 `defaultSurface` 与 `runtimePersistence.enabled` 都通过运行时 helper 即时读取，因此即使没有专门的配置变更监听，设置也会在后续动作中悄悄生效；本轮已经把这两个配置的运行时行为收口到启动快照与显式 reload 边界，同时允许 `package.json` 在扩展未激活前先用配置表达式显示或隐藏 Panel 入口。
 
 第三处是正式设计文档。`docs/design-docs/canvas-surface-placement.md` 记录 `editor` / `panel` 双承载面的正式边界；`docs/design-docs/runtime-persistence-and-session-supervisor.md` 记录两档运行时持久化模式的正式语义。只要本轮形成新的正式结论，例如“surface 的默认值只在窗口初始化读取”“切换 runtime persistence 会在下次 reload 清空宿主状态”，都必须同步落到这些文档和 `docs/design-docs/index.md`。
 
@@ -117,8 +117,8 @@ PR80 review 进一步澄清了 `defaultSurface` 的两段式契约：扩展/画�
 
 3. 修改宿主配置快照、reload 提示与状态重置逻辑：
 
-    - `src/panel/CanvasPanelManager.ts`
-    - 如有必要，`src/common/extensionIdentity.ts` 或相关共享类型也同步更新。
+    - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
+    - 如有必要，`extensions/vscode/dev-session-canvas/src/common/extensionIdentity.ts` 或相关共享类型也同步更新。
 
 4. 更新任务记录与验证：
 
@@ -159,7 +159,7 @@ PR80 review 进一步澄清了 `defaultSurface` 的两段式契约：扩展/画�
   - `contributes.configuration.properties`
   - `contributes.views.devSessionCanvasPanel[*].when`
 
-- `src/panel/CanvasPanelManager.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
   - 构造函数中的启动配置读取
   - `revealOrCreate()`
   - `getSidebarState()`

@@ -122,7 +122,7 @@ updated_at: 2026-06-14
 核心思路：
 
 - 仅当当前 Agent 是 `Codex` provider 且节点持有可信 `codex-session-id`，或当前 Agent 是 `Claude Code` provider 且节点持有可信 `claude-session-id` 时，才允许分叉。
-- Webview 只发出“从这个节点分叉”的用户意图；宿主在 `src/panel/CanvasPanelManager.ts` 中读取当前节点 metadata 并重新校验 session id。
+- Webview 只发出“从这个节点分叉”的用户意图；宿主在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中读取当前节点 metadata 并重新校验 session id。
 - 宿主创建一个同 provider 的新 Agent 节点，启动预设为 `custom`，完整命令使用当前 provider 命令路径和原生 fork 参数：Codex 使用 `fork <session-id>`，Claude Code 使用 `--resume <session-id> --fork-session`。
 - 新节点立即启动；旧节点不停止、不改 metadata、不改变用户对“哪个是主分支”的自由理解。
 - 新节点标题只做弱提示，例如从原标题派生 `分叉` 后缀；画布不新增正式分支树。
@@ -177,7 +177,7 @@ updated_at: 2026-06-14
 
 ### 7.1 共享模型与宿主权威状态
 
-在 `src/common/protocol.ts` 中为 Agent metadata 增加长期启动偏好字段：
+在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中为 Agent metadata 增加长期启动偏好字段：
 
 - `launchPreset`：`default | resume | yolo | sandbox | custom`
 - `customLaunchCommand`：仅 `custom` 时保留完整命令字符串
@@ -227,7 +227,7 @@ updated_at: 2026-06-14
 
 ### 7.3 右键菜单
 
-`src/webview/main.tsx` 中的空白区右键菜单当前收口为两层：
+`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中的空白区右键菜单当前收口为两层：
 
 1. 根层：`Note / Terminal / provider 列表`
 2. 启动方式层：`快速启动 / Resume / YOLO / 沙盒 / 自定义启动`
@@ -246,7 +246,7 @@ updated_at: 2026-06-14
 
 ### 7.4 VSCode Quick Input
 
-`src/extension.ts` 中的 `Dev Session Canvas: 创建节点` 命令保持两层：
+`extensions/vscode/dev-session-canvas/src/extension.ts` 中的 `Dev Session Canvas: 创建节点` 命令保持两层：
 
 - 第一层：延续当前“创建对象 / 按类型创建 Agent”的分组与 provider 选择。
 - 第二层：只对 Agent 打开，输入框显示完整命令，列表第一项是 `使用自定义命令创建`，下方 `默认 / Resume / YOLO / 沙盒` 项是模式快捷替换器。
@@ -264,7 +264,7 @@ updated_at: 2026-06-14
 
 ### 7.5 宿主执行路径
 
-`src/panel/CanvasPanelManager.ts` 中的 Agent fresh-start 路径改成：
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中的 Agent fresh-start 路径改成：
 
 1. 从节点 metadata 取 `launchPreset/customLaunchCommand`
 2. 结合当前 provider 设置，重新校验并解析出“本次新会话要执行的完整命令”；若首个 token 不再属于当前 provider，或 `custom` 预设缺少有效命令，则直接拒绝启动
@@ -276,7 +276,7 @@ updated_at: 2026-06-14
 - 当用户点击停止后的 `重启` 按钮，且节点持有可信恢复上下文时，仍走当前显式 session resume 路径；这条路径恢复的是“当前节点前面停止的那条会话”，不依赖 `launchPreset`。
 - 当用户点击 `新建` 时，才走上面的 fresh-start 路径。
 - 若节点 `launchPreset = resume`，fresh-start 路径始终执行 provider 的“进入 resume 选择入口”预设命令，而不是偷偷替用户选择最近一条会话。
-- 若 fresh-start 期间 `resolveAgentCliCommand()` 抛出命令解析失败，或最终 `node-pty` / runtime supervisor 启动阶段返回 `ENOENT`，宿主在把节点更新为明确错误态之后，还要触发与侧栏概览 `Codex 命令` / `Claude Code 命令` 行相同的 CLI 选择命令（`devSessionCanvas.selectCodexCli` / `devSessionCanvas.selectClaudeCli`）。这条补救入口只针对真实用户会话启用，测试模式不自动打开 Quick Input，以免 smoke 中的失败路径被交互弹窗阻塞。CLI 选择命令继续复用 `src/extension.ts` 中的安装分流：未解析到候选 CLI 时先展示安装入口，再让用户选择命令行安装或 VS Code 插件安装。
+- 若 fresh-start 期间 `resolveAgentCliCommand()` 抛出命令解析失败，或最终 `node-pty` / runtime supervisor 启动阶段返回 `ENOENT`，宿主在把节点更新为明确错误态之后，还要触发与侧栏概览 `Codex 命令` / `Claude Code 命令` 行相同的 CLI 选择命令（`devSessionCanvas.selectCodexCli` / `devSessionCanvas.selectClaudeCli`）。这条补救入口只针对真实用户会话启用，测试模式不自动打开 Quick Input，以免 smoke 中的失败路径被交互弹窗阻塞。CLI 选择命令继续复用 `extensions/vscode/dev-session-canvas/src/extension.ts` 中的安装分流：未解析到候选 CLI 时先展示安装入口，再让用户选择命令行安装或 VS Code 插件安装。
 - 对 untrusted workspace 的创建限制，宿主同时暴露一条单独的“解释当前不可创建原因”路径，供 Quick Input 与 Webview 点击时复用；`applyCreateNode()` 本身仍保留 host error 兜底，专门拦 forged `webview/createDemoNode` 或其他绕过正常 UI 的请求。
 - 对 `Claude Code` 的 fresh-start，会在启动时继续传入候选 `--session-id`，并主动检查 `~/.claude/projects/.../<session-id>.jsonl` 是否已经出现；一旦文件存在，就把该 id 升级为可恢复上下文。停止时若再读到 `claude --resume <session-id>`，宿主会把它当作后续校验/更正信号；若两者都没有，才回退成不可恢复。停止按钮当前对 Claude 已回滚到更早的 provider-specific stop signal：不再发送 `Ctrl-C`，而是直接沿用此前的终止信号路径；Codex 才继续保留单次 `Ctrl-C` + 5 秒兜底的 graceful-stop 语义。
 - 若 Claude 的 fresh-start 命令里已经显式给出 `--session-id=<id>`、`--resume=<id>`、`--continue=<id>` 或等价的空格分隔写法，宿主与 runtime supervisor 都要把这条显式 session id 当作后续文件确认的候选值，而不是继续沿用自动生成的随机 UUID。只有显式 flag 不带 session id 时，才保留“等待 stop-time hint 再确认”的语义。
@@ -286,9 +286,9 @@ updated_at: 2026-06-14
 
 ### 7.6 当前 Codex / Claude Code Agent 的 `分叉` 动作
 
-在 `src/common/protocol.ts` 中新增一条 Webview 到宿主的用户意图消息，用于表达“从当前 Agent 节点分叉”。消息 payload 只需要携带当前节点 id；provider、session id、是否可信都必须由宿主在 `src/panel/CanvasPanelManager.ts` 中重新读取当前权威状态来判断，不能信任 Webview 传入的 session id。
+在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中新增一条 Webview 到宿主的用户意图消息，用于表达“从当前 Agent 节点分叉”。消息 payload 只需要携带当前节点 id；provider、session id、是否可信都必须由宿主在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中重新读取当前权威状态来判断，不能信任 Webview 传入的 session id。
 
-`src/webview/main.tsx` 的 Agent 节点标题栏新增 `分叉` 操作。该操作只对 provider 为 `codex` 且 metadata 已显示当前节点具备可信 `codex-session-id`，或 provider 为 `claude` 且 metadata 已显示当前节点具备可信 `claude-session-id` 的节点可见或可用；如果 UI 侧暂时无法完全判断，也必须让宿主拒绝 provider / resumeStrategy 不匹配、无 session id 或 workspace 未受信任场景，并给出明确提示。`分叉` 不取代 `新建 | 重启`：`新建` 是当前节点 fresh-start，`重启` 是当前节点恢复原会话，`分叉` 是创建另一个节点并用 provider 原生 fork 语义启动。
+`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 Agent 节点标题栏新增 `分叉` 操作。该操作只对 provider 为 `codex` 且 metadata 已显示当前节点具备可信 `codex-session-id`，或 provider 为 `claude` 且 metadata 已显示当前节点具备可信 `claude-session-id` 的节点可见或可用；如果 UI 侧暂时无法完全判断，也必须让宿主拒绝 provider / resumeStrategy 不匹配、无 session id 或 workspace 未受信任场景，并给出明确提示。`分叉` 不取代 `新建 | 重启`：`新建` 是当前节点 fresh-start，`重启` 是当前节点恢复原会话，`分叉` 是创建另一个节点并用 provider 原生 fork 语义启动。
 
 宿主侧的 `branchAgentSession()` 类似 `restoreAgentSessionFromHistory()`，但语义更窄：它从当前节点读取可信 `codex-session-id` 或 `claude-session-id`，调用共享命令层的 provider-native fork 命令构造逻辑生成完整命令，然后通过 `applyCreateNode('agent', ..., { agentProvider: metadata.provider, agentLaunchPreset: 'custom', agentCustomLaunchCommand, titleOverride })` 创建同 provider 新节点。新节点标题从原节点标题派生弱提示，例如追加 `分叉`；它会创建一条从原 Agent 指向新 Agent 的普通可编辑 `user` 边，边标签默认为 `fork`，但不写入正式父子分支树或机器可读 branch lineage，也不改变原节点状态。新节点标题栏继续显示状态胶囊，和 `启动/停止`、`删除` 等动作共同保持现有 inline 标题栏布局；标题栏动作按钮只在自身维度按 PR121 方式压缩/内部换行，不能让整个 action cluster 换行。实现上以 Agent 节点宽度驱动 `compact-actions` 密度：当节点宽度接近最小宽度时，`启动`、`停止`、`新建`、`重启`、`分叉`、`删除` 等右上角动作按钮都在按钮内部两行显示，同时保留 action cluster 的 `nowrap`。
 
@@ -301,7 +301,7 @@ updated_at: 2026-06-14
 
 ### 7.7 停止后的 `新建 | 重启` 动作
 
-在 `src/webview/main.tsx` 的 Agent 节点标题栏中，把停止后的下拉式 split restart 收口为两个并列按钮：
+在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 Agent 节点标题栏中，把停止后的下拉式 split restart 收口为两个并列按钮：
 
 - 左侧按钮：`新建`，启动新会话。
 - 右侧按钮：`重启`，恢复当前节点自己的原会话。

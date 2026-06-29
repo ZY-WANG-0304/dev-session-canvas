@@ -11,7 +11,7 @@ const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-execution-terminal-lin
 try {
   const outfile = path.join(tempDir, 'executionTerminalLineContextTracker.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/panel/executionTerminalLineContextTracker.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts')],
     bundle: true,
     format: 'cjs',
     outfile,

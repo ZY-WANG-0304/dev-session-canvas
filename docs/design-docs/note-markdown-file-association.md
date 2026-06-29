@@ -134,7 +134,7 @@ updated_at: 2026-06-08
 
 ### 7.1 节点模型：普通 Note 与 Markdown 文件 Note 共用 Note 类型
 
-`src/common/protocol.ts` 继续保留 `kind: 'note'`。本功能不新增独立 `markdown-note` 节点类型，而是在 `NoteNodeMetadata` 中增加内容来源信息：
+`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 继续保留 `kind: 'note'`。本功能不新增独立 `markdown-note` 节点类型，而是在 `NoteNodeMetadata` 中增加内容来源信息：
 
 ```ts
 interface NoteNodeMetadata {
@@ -178,10 +178,10 @@ interface NoteNodeMetadata {
 
 主要落点：
 
-- `src/common/protocol.ts`：扩展 `NoteNodeMetadata` 与跨边界消息 payload，包括关联文件重新加载请求，以及关联 Markdown 编辑开始/结束和草稿同步消息。
-- `src/panel/CanvasPanelManager.ts`：维护关联文件读取、写入、状态恢复、watcher、运行时 edit session 与文件不可用状态。
-- `src/webview/main.tsx`：根据 Note metadata 渲染 subtitle、文件不可用警告和拖拽创建入口。
-- `src/extension.ts` 与 `src/panel/CanvasPanelManager.ts`：处理 Explorer Markdown 文件右键创建关联 Note 的命令入口、Host 侧文件校验、去重确认和节点创建。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`：扩展 `NoteNodeMetadata` 与跨边界消息 payload，包括关联文件重新加载请求，以及关联 Markdown 编辑开始/结束和草稿同步消息。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：维护关联文件读取、写入、状态恢复、watcher、运行时 edit session 与文件不可用状态。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：根据 Note metadata 渲染 subtitle、文件不可用警告和拖拽创建入口。
+- `extensions/vscode/dev-session-canvas/src/extension.ts` 与 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：处理 Explorer Markdown 文件右键创建关联 Note 的命令入口、Host 侧文件校验、去重确认和节点创建。
 
 ### 7.2 普通 Note 转成 Markdown 文件 Note
 
@@ -294,7 +294,7 @@ VSCode File Explorer 需要为 Markdown 文件提供低成本创建入口：
 - 该入口对应 GitHub Issue #127 中“打开当前项目中已存在的 Markdown 文档”的需求；第一版用 Explorer 文件上下文收口，只负责从已选 Markdown 文件创建关联 `Note`。
 - `package.json` 在 `contributes.commands` 中登记 `devSessionCanvas.createNoteFromExplorerMarkdown`，标题为 `Dev Session Canvas: 在 Canvas 中创建关联 Note`，图标使用 `$(markdown)`。
 - `contributes.menus["explorer/context"]` 仅在 `resourceScheme == file && resourceExtname =~ /^\.(md|markdown)$/i` 时显示该入口；命令层仍必须二次校验 URI scheme、扩展名、资源存在性和普通文件类型。
-- `src/extension.ts` 的命令处理只负责解析 Explorer `vscode.Uri` 并打开/定位画布；打开/定位使用 `panelManager.revealOrCreateCurrentCanvasSurface()`，即优先复用当前窗口已经打开的主画布 surface，只有没有打开画布时才按默认承载面创建；实际 Note 创建交给 `CanvasPanelManager.createNoteFromMarkdownResource(...)`，避免在扩展入口复制关联 Markdown Note 的状态规则。
+- `extensions/vscode/dev-session-canvas/src/extension.ts` 的命令处理只负责解析 Explorer `vscode.Uri` 并打开/定位画布；打开/定位使用 `panelManager.revealOrCreateCurrentCanvasSurface()`，即优先复用当前窗口已经打开的主画布 surface，只有没有打开画布时才按默认承载面创建；实际 Note 创建交给 `CanvasPanelManager.createNoteFromMarkdownResource(...)`，避免在扩展入口复制关联 Markdown Note 的状态规则。
 - `CanvasPanelManager.createNoteFromMarkdownResource(...)` 复用现有 `readNoteMarkdownFile(...)`、`createAssociatedNoteMarkdownNode(...)`、`getAssociatedNoteMarkdownNodeIdsForResourceKey(...)` 和 `confirmExistingDroppedNoteMarkdownFile(...)`。因此右键创建与拖拽创建共享 title 规则、content revision、display path、watcher、已有 Note 定位/添加确认，以及删除节点不删除文件的语义。
 - 多根 workspace 下，如果画布已有 workspace root section，右键创建优先按文件所属 workspace folder 归入对应 root section；若当前可见视口已经在某个 root section 内，则优先保留视口附近落点和该 root 归属。
 - 该入口不是目录扫描器，也不扩大文件类型范围；目录、非 Markdown 文件、缺失或不可读文件均不创建节点，并给出明确提示。
@@ -407,7 +407,7 @@ Workspace Trust：
 追加验证记录（2026-06-07）：
 
 - `npm run test:extension-manifest` 通过，覆盖 Explorer Markdown Note 命令注册、`$(markdown)` 图标和 `resourceExtname` 右键菜单条件。
-- `npm run typecheck` 通过，覆盖 `src/extension.ts` 与 `src/panel/CanvasPanelManager.ts` 新增 Host 创建入口的类型一致性。
+- `npm run typecheck` 通过，覆盖 `extensions/vscode/dev-session-canvas/src/extension.ts` 与 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 新增 Host 创建入口的类型一致性。
 - `npm run test:note-markdown-file-association` 通过，复核关联 Markdown 文件准入与 title 规则。
 - `node --check tests/vscode-smoke/extension-tests.cjs` 通过，新增真实宿主 smoke 断言覆盖 Explorer Markdown 命令复用已有 Note 定位/添加确认、读取文件内容和 title 规则。
 - `git diff --check` 通过。

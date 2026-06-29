@@ -11,7 +11,7 @@ const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-agent-settings-files-'
 try {
   const outfile = path.join(tempDir, 'agentSettingsFiles.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/panel/agentSettingsFiles.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/panel/agentSettingsFiles.ts')],
     bundle: true,
     format: 'cjs',
     outfile,

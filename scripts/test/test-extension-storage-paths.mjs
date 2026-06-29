@@ -13,7 +13,7 @@ const storagePath = path.posix;
 try {
   const outfile = path.join(tempDir, 'extensionStoragePaths.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/common/extensionStoragePaths.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/extensionStoragePaths.ts')],
     bundle: true,
     format: 'cjs',
     outfile,

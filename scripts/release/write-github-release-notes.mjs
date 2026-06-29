@@ -30,7 +30,7 @@ try {
 
 function parseArgs(args) {
   const parsed = {
-    changelog: 'CHANGELOG.md',
+    changelog: 'extensions/vscode/dev-session-canvas/CHANGELOG.md',
     help: false,
     manifest: undefined,
     output: 'release-artifacts/github-release-notes.md',
@@ -274,7 +274,7 @@ function printHelp() {
 
 Options:
   --version X.Y.Z        要生成 Release notes 的版本
-  --changelog <path>     CHANGELOG 路径，默认 CHANGELOG.md
+  --changelog <path>     CHANGELOG 路径，默认 extensions/vscode/dev-session-canvas/CHANGELOG.md
   --manifest <path>      release manifest 路径；存在时写入渠道状态和证据
   --output <path>        输出 Markdown 路径，默认 release-artifacts/github-release-notes.md
   --help, -h             显示帮助
