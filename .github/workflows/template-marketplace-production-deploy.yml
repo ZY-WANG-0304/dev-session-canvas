@@ -1,0 +1,375 @@
+name: Deploy Template Marketplace Production
+
+on:
+  push:
+    tags:
+      - 'deploy/template-marketplace/prod/*'
+  workflow_dispatch:
+    inputs:
+      deploy_tag:
+        description: 'Production deploy tag, for example deploy/template-marketplace/prod/YYYY-MM-DD.N'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: template-marketplace-production-${{ github.event_name == 'workflow_dispatch' && inputs.deploy_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-production:
+    name: Deploy Template Marketplace Production
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.deleted != true && startsWith(github.ref, 'refs/tags/deploy/template-marketplace/prod/')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      TRIGGER_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_tag || github.ref_name }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      MARKETPLACE_PRODUCTION_BASE_URL: ${{ vars.MARKETPLACE_PRODUCTION_BASE_URL || 'https://dscanvas.dev' }}
+      DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT: /tmp/dsc-tm-vscode-e2e
+      DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/dsc-tm-vscode-host-tmp
+      DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH: /tmp/dsc-vscode-test
+    steps:
+      - name: Derive deploy metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$TRIGGER_TAG" =~ ^deploy/template-marketplace/prod/[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]+$ ]]; then
+            echo "TRIGGER_TAG must be deploy/template-marketplace/prod/YYYY-MM-DD.N, got: $TRIGGER_TAG" >&2
+            exit 1
+          fi
+          deploy_suffix="${TRIGGER_TAG##*/}"
+          manifest_path="deployment-artifacts/template-marketplace-production-${deploy_suffix}.json"
+          {
+            echo "deploy_suffix=$deploy_suffix"
+            echo "manifest_path=$manifest_path"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout deploy tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/tags/${{ env.TRIGGER_TAG }}
+
+      - name: Resolve deploy ref
+        id: ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          deploy_ref="$(git rev-parse HEAD)"
+          git fetch origin main:refs/remotes/origin/main --prune
+          if ! git merge-base --is-ancestor "$deploy_ref" origin/main; then
+            echo "Deploy tag $TRIGGER_TAG points to $deploy_ref, which is not contained in origin/main." >&2
+            exit 1
+          fi
+          {
+            echo "deploy_ref=$deploy_ref"
+            echo "DEPLOY_GIT_SHA=$deploy_ref"
+          } >> "$GITHUB_OUTPUT"
+          echo "DEPLOY_GIT_SHA=$deploy_ref" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        id: install
+        run: npm ci
+
+      - name: Verify Cloudflare deploy secrets
+        id: verify_deploy_secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            missing+=(CLOUDFLARE_API_TOKEN)
+          fi
+          if [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            missing+=(CLOUDFLARE_ACCOUNT_ID)
+          fi
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing GitHub Actions secret/variable(s): ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Verify production Worker runtime secrets
+        id: verify_worker_secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deployment-artifacts
+          trap 'rm -f deployment-artifacts/worker-secrets.json' EXIT
+          npx wrangler --cwd apps/template-marketplace secret list --env production --format json > deployment-artifacts/worker-secrets.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const secrets = JSON.parse(fs.readFileSync('deployment-artifacts/worker-secrets.json', 'utf8'));
+          const names = new Set(secrets.map((secret) => secret.name));
+          const required = [
+            'GITHUB_CLIENT_ID',
+            'GITHUB_CLIENT_SECRET',
+            'MARKETPLACE_SESSION_SECRET',
+            'MARKETPLACE_TOKEN_SECRET',
+            'MARKETPLACE_ADMIN_GITHUB_IDS'
+          ];
+          const missing = required.filter((name) => !names.has(name));
+          if (missing.length > 0) {
+            console.error(`Missing production Worker secret(s): ${missing.join(', ')}`);
+            process.exit(1);
+          }
+          NODE
+
+      - name: Run marketplace test suite
+        id: test_marketplace
+        run: npm run test:marketplace
+
+      - name: Run production config check
+        id: test_production_config
+        run: npm run test:marketplace-production-config
+
+      - name: Run production D1 migration
+        id: migrate
+        run: npm run -w @dev-session-canvas/template-marketplace db:migrate:production
+
+      - name: Verify production D1 data
+        id: db_verify
+        run: npm run -w @dev-session-canvas/template-marketplace db:verify:production
+
+      - name: Deploy production Worker
+        id: deploy
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run -w @dev-session-canvas/template-marketplace deploy:production -- \
+            --git-sha "$DEPLOY_GIT_SHA" \
+            --message "Template marketplace production deploy $TRIGGER_TAG ($DEPLOY_GIT_SHA)"
+
+      - name: Capture Cloudflare deployment metadata
+        id: cloudflare
+        if: always() && steps.deploy.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deployment-artifacts
+          npx wrangler --cwd apps/template-marketplace deployments list --env production --json > deployment-artifacts/cloudflare-deployments.json
+          npx wrangler --cwd apps/template-marketplace versions list --env production --json > deployment-artifacts/cloudflare-versions.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const deployments = JSON.parse(fs.readFileSync('deployment-artifacts/cloudflare-deployments.json', 'utf8'));
+          const versions = JSON.parse(fs.readFileSync('deployment-artifacts/cloudflare-versions.json', 'utf8'));
+          const deployment = deployments[0];
+          const deploymentVersion = deployment?.versions?.find((version) => Number(version.percentage) === 100) ?? deployment?.versions?.[0];
+          const versionId = deploymentVersion?.version_id ?? versions[0]?.id;
+          if (!deployment?.id || !versionId) {
+            console.error('Unable to resolve Cloudflare deployment id or Worker version id.');
+            process.exit(1);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `cloudflare_deployment_id=${deployment.id}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `cloudflare_version_id=${versionId}\n`);
+          NODE
+
+      - name: Run production smoke
+        id: smoke
+        if: always() && steps.deploy.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deployment-artifacts
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs/promises';
+
+          const baseUrl = (process.env.MARKETPLACE_PRODUCTION_BASE_URL || 'https://dscanvas.dev').replace(/\/+$/u, '');
+          const deployGitSha = process.env.DEPLOY_GIT_SHA;
+          const smoke = {
+            baseUrl,
+            gitSha: deployGitSha,
+            checkedAt: new Date().toISOString(),
+            checks: []
+          };
+
+          async function record(name, fn) {
+            const startedAt = Date.now();
+            try {
+              const details = await fn();
+              smoke.checks.push({ name, status: 'passed', durationMs: Date.now() - startedAt, ...details });
+            } catch (error) {
+              smoke.checks.push({
+                name,
+                status: 'failed',
+                durationMs: Date.now() - startedAt,
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
+          }
+
+          async function readJson(pathname) {
+            const response = await fetch(`${baseUrl}${pathname}`, { headers: { accept: 'application/json' } });
+            if (!response.ok) {
+              throw new Error(`${pathname} returned HTTP ${response.status}`);
+            }
+            return response.json();
+          }
+
+          await record('GET /api/v1/meta', async () => {
+            const meta = await readJson('/api/v1/meta');
+            if (meta.service !== 'template-marketplace') {
+              throw new Error(`Unexpected service: ${meta.service}`);
+            }
+            if (meta.apiVersion !== 'v1') {
+              throw new Error(`Unexpected apiVersion: ${meta.apiVersion}`);
+            }
+            if (meta.gitSha !== deployGitSha) {
+              throw new Error(`Expected gitSha ${deployGitSha}, got ${meta.gitSha}`);
+            }
+            if (meta.storageMode !== 'd1') {
+              throw new Error(`Expected D1 storageMode, got ${meta.storageMode}`);
+            }
+            if (!meta.runtime?.d1Configured || !meta.runtime?.r2Configured) {
+              throw new Error('Expected production D1 and R2 bindings to be configured.');
+            }
+            if (!meta.runtime?.githubOAuthConfigured || !meta.runtime?.vscodeAuthExchangeConfigured) {
+              throw new Error('Expected production GitHub OAuth and VSCode auth exchange to be configured.');
+            }
+            if (meta.runtime?.seedTemplatesEnabled) {
+              throw new Error('Production must not enable seed templates.');
+            }
+            const capabilities = new Set(meta.capabilities ?? []);
+            for (const capability of ['templates.read', 'auth.github-oauth', 'auth.vscode-exchange']) {
+              if (!capabilities.has(capability)) {
+                throw new Error(`Missing capability: ${capability}`);
+              }
+            }
+            smoke.meta = meta;
+            return { serviceBuild: meta.serviceBuild, storageMode: meta.storageMode };
+          });
+
+          await record('GET /api/v1/templates', async () => {
+            const list = await readJson('/api/v1/templates');
+            if (list.storageMode !== 'd1') {
+              throw new Error(`Expected templates storageMode d1, got ${list.storageMode}`);
+            }
+            if (!Array.isArray(list.items)) {
+              throw new Error('Expected templates response items array.');
+            }
+            smoke.templates = {
+              itemCount: list.items.length,
+              firstTemplateSlug: list.items[0]?.slug ?? null
+            };
+            return smoke.templates;
+          });
+
+          await record('GET /templates', async () => {
+            const response = await fetch(`${baseUrl}/templates`, { headers: { accept: 'text/html' } });
+            if (!response.ok) {
+              throw new Error(`/templates returned HTTP ${response.status}`);
+            }
+            const html = await response.text();
+            if (!html.includes('<div id="root"')) {
+              throw new Error('SPA shell did not contain the Vite root element.');
+            }
+            return { contentType: response.headers.get('content-type') };
+          });
+
+          if (smoke.templates?.firstTemplateSlug) {
+            const slug = encodeURIComponent(smoke.templates.firstTemplateSlug);
+            await record('GET /api/v1/templates/:slug', async () => {
+              const detail = await readJson(`/api/v1/templates/${slug}`);
+              if (detail.storageMode !== 'd1' || !detail.template?.latestVersion) {
+                throw new Error('Expected D1 template detail with latestVersion.');
+              }
+              return { slug: smoke.templates.firstTemplateSlug };
+            });
+          }
+
+          await fs.writeFile('deployment-artifacts/production-smoke.json', `${JSON.stringify(smoke, null, 2)}\n`, 'utf8');
+          if (smoke.checks.some((check) => check.status !== 'passed')) {
+            process.exit(1);
+          }
+          NODE
+
+      - name: Write deployment manifest
+        if: always()
+        shell: bash
+        env:
+          MANIFEST_PATH: ${{ steps.metadata.outputs.manifest_path }}
+          DEPLOY_REF: ${{ steps.ref.outputs.deploy_ref }}
+          CLOUDFLARE_DEPLOYMENT_ID: ${{ steps.cloudflare.outputs.cloudflare_deployment_id || '' }}
+          CLOUDFLARE_VERSION_ID: ${{ steps.cloudflare.outputs.cloudflare_version_id || '' }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          DEPLOY_SECRETS_OUTCOME: ${{ steps.verify_deploy_secrets.outcome }}
+          WORKER_SECRETS_OUTCOME: ${{ steps.verify_worker_secrets.outcome }}
+          MARKETPLACE_TEST_OUTCOME: ${{ steps.test_marketplace.outcome }}
+          PRODUCTION_CONFIG_OUTCOME: ${{ steps.test_production_config.outcome }}
+          MIGRATION_OUTCOME: ${{ steps.migrate.outcome }}
+          DB_VERIFY_OUTCOME: ${{ steps.db_verify.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p deployment-artifacts
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const smokePath = 'deployment-artifacts/production-smoke.json';
+          const smoke = fs.existsSync(smokePath) ? JSON.parse(fs.readFileSync(smokePath, 'utf8')) : undefined;
+          const manifest = {
+            service: 'template-marketplace',
+            environment: 'production',
+            deployTag: process.env.TRIGGER_TAG,
+            gitSha: process.env.DEPLOY_REF || process.env.DEPLOY_GIT_SHA || null,
+            cloudflareDeploymentId: process.env.CLOUDFLARE_DEPLOYMENT_ID || null,
+            cloudflareWorkerVersionId: process.env.CLOUDFLARE_VERSION_ID || null,
+            apiVersion: smoke?.meta?.apiVersion ?? 'v1',
+            minSupportedExtensionVersion: smoke?.meta?.minSupportedExtensionVersion ?? null,
+            recommendedExtensionVersion: smoke?.meta?.recommendedExtensionVersion ?? null,
+            migrations: ['0001_marketplace_core.sql'],
+            smoke: process.env.SMOKE_OUTCOME === 'success' ? 'passed' : 'failed',
+            productionBaseUrl: process.env.MARKETPLACE_PRODUCTION_BASE_URL,
+            generatedAt: new Date().toISOString(),
+            workflow: {
+              name: process.env.GITHUB_WORKFLOW,
+              repository: process.env.GITHUB_REPOSITORY,
+              runId: process.env.GITHUB_RUN_ID,
+              runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+              actor: process.env.GITHUB_ACTOR,
+              ref: process.env.GITHUB_REF,
+              sha: process.env.GITHUB_SHA
+            },
+            checks: {
+              install: process.env.INSTALL_OUTCOME || 'skipped',
+              deploySecrets: process.env.DEPLOY_SECRETS_OUTCOME || 'skipped',
+              workerSecrets: process.env.WORKER_SECRETS_OUTCOME || 'skipped',
+              marketplaceTests: process.env.MARKETPLACE_TEST_OUTCOME || 'skipped',
+              productionConfig: process.env.PRODUCTION_CONFIG_OUTCOME || 'skipped',
+              migration: process.env.MIGRATION_OUTCOME || 'skipped',
+              dbVerify: process.env.DB_VERIFY_OUTCOME || 'skipped',
+              deploy: process.env.DEPLOY_OUTCOME || 'skipped',
+              smoke: process.env.SMOKE_OUTCOME || 'skipped'
+            }
+          };
+          fs.writeFileSync(process.env.MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
+
+      - name: Upload deployment artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-marketplace-production-deployment-${{ steps.metadata.outputs.deploy_suffix }}-${{ github.run_id }}
+          path: deployment-artifacts/
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Fail production deploy when required checks failed
+        if: always() && (steps.deploy.outcome != 'success' || steps.cloudflare.outcome != 'success' || steps.smoke.outcome != 'success')
+        run: exit 1

@@ -14,8 +14,10 @@ import {
 
 const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
-const debugRoot = path.join(projectRoot, '.debug', 'template-marketplace-vscode-e2e');
-const hostTmpRoot = path.join(projectRoot, '.debug', 'template-marketplace-vscode-e2e-host-tmp');
+const debugRoot = process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT?.trim() || path.join(projectRoot, '.debug', 'template-marketplace-vscode-e2e');
+const hostTmpRoot =
+  process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT?.trim() ||
+  path.join(projectRoot, '.debug', 'template-marketplace-vscode-e2e-host-tmp');
 const smokeFixturesDir = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures');
 const fakeAgentProviderPath = path.join(smokeFixturesDir, 'fake-agent-provider');
 const missingAgentProviderPath = path.join(smokeFixturesDir, 'missing-agent-provider');
