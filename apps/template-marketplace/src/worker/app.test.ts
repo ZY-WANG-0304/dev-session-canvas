@@ -531,6 +531,7 @@ describe('template marketplace worker api', () => {
       expect(response.status).toBe(302);
       expect(response.headers.get('location')).toBe('https://marketplace.test/templates/publish');
       expect(response.headers.get('set-cookie')).toContain('dsc_marketplace_session=');
+      expect(response.headers.get('set-cookie')).toContain('dsc_marketplace_csrf=');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -647,6 +648,104 @@ describe('template marketplace worker api', () => {
 
     expect(response.status).toBe(401);
     expect(body.error.code).toBe('auth_required');
+  });
+
+  it('rejects cross-origin cookie-authenticated write requests before mutating state', async () => {
+    stubGithubOAuthFetch();
+    try {
+      const session = await createBrowserSessionCookieHeader(app, '/templates/d1-review-loop');
+      const runLog: FakeD1Run[] = [];
+      const response = await app.request(
+        'https://marketplace.test/api/v1/templates/d1-review-loop/like',
+        {
+          method: 'POST',
+          body: JSON.stringify({ liked: true }),
+          headers: {
+            cookie: session.cookieHeader,
+            origin: 'https://evil.example',
+            'sec-fetch-site': 'cross-site',
+            'content-type': 'application/json',
+            'x-dsc-marketplace-csrf': session.csrfToken
+          }
+        },
+        {
+          MARKETPLACE_SESSION_SECRET: 'session-secret',
+          MARKETPLACE_DB: createFakeD1Database(runLog, { viewerUserId: 'github-42' })
+        }
+      );
+      const body = await response.json<{ error: { code: string } }>();
+
+      expect(response.status).toBe(403);
+      expect(body.error.code).toBe('write_origin_forbidden');
+      expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_likes'))).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects same-origin cookie-authenticated writes without the CSRF token', async () => {
+    stubGithubOAuthFetch();
+    try {
+      const session = await createBrowserSessionCookieHeader(app, '/templates/d1-review-loop');
+      const runLog: FakeD1Run[] = [];
+      const response = await app.request(
+        'https://marketplace.test/api/v1/templates/d1-review-loop/like',
+        {
+          method: 'POST',
+          body: JSON.stringify({ liked: true }),
+          headers: {
+            cookie: session.cookieHeader,
+            origin: 'https://marketplace.test',
+            'sec-fetch-site': 'same-origin',
+            'content-type': 'application/json'
+          }
+        },
+        {
+          MARKETPLACE_SESSION_SECRET: 'session-secret',
+          MARKETPLACE_DB: createFakeD1Database(runLog, { viewerUserId: 'github-42' })
+        }
+      );
+      const body = await response.json<{ error: { code: string } }>();
+
+      expect(response.status).toBe(403);
+      expect(body.error.code).toBe('write_csrf_required');
+      expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_likes'))).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('allows same-origin cookie-authenticated writes with the CSRF token', async () => {
+    stubGithubOAuthFetch();
+    try {
+      const session = await createBrowserSessionCookieHeader(app, '/templates/d1-review-loop');
+      const runLog: FakeD1Run[] = [];
+      const response = await app.request(
+        'https://marketplace.test/api/v1/templates/d1-review-loop/like',
+        {
+          method: 'POST',
+          body: JSON.stringify({ liked: true }),
+          headers: {
+            cookie: session.cookieHeader,
+            origin: 'https://marketplace.test',
+            'sec-fetch-site': 'same-origin',
+            'content-type': 'application/json',
+            'x-dsc-marketplace-csrf': session.csrfToken
+          }
+        },
+        {
+          MARKETPLACE_SESSION_SECRET: 'session-secret',
+          MARKETPLACE_DB: createFakeD1Database(runLog, { viewerUserId: 'github-42' })
+        }
+      );
+      const body = await response.json<{ liked: boolean; likeCount: number }>();
+
+      expect(response.status).toBe(200);
+      expect(body.liked).toBe(true);
+      expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_likes'))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('rejects invalid like request bodies', async () => {
@@ -804,6 +903,46 @@ describe('template marketplace worker api', () => {
     );
 
     expect(response.status).toBe(201);
+  });
+
+  it('allows bearer-token writes without browser origin or CSRF headers', async () => {
+    const tokenResponse = await app.request(
+      'http://localhost/api/v1/auth/vscode/exchange',
+      {
+        method: 'POST',
+        body: JSON.stringify({ accessToken: 'test-token' }),
+        headers: {
+          'content-type': 'application/json',
+          'x-marketplace-test-github-login': 'community-user',
+          'x-marketplace-test-github-user-id': 'test-community-user'
+        }
+      },
+      {
+        MARKETPLACE_ALLOW_TEST_AUTH: 'true',
+        MARKETPLACE_TOKEN_SECRET: 'token-secret',
+        MARKETPLACE_DB: createFakeD1Database()
+      }
+    );
+    const tokenBody = await tokenResponse.json<{ token: string }>();
+    const runLog: FakeD1Run[] = [];
+    const response = await app.request(
+      'http://localhost/api/v1/templates/d1-review-loop/like',
+      {
+        method: 'POST',
+        body: JSON.stringify({ liked: true }),
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${tokenBody.token}`
+        }
+      },
+      {
+        MARKETPLACE_TOKEN_SECRET: 'token-secret',
+        MARKETPLACE_DB: createFakeD1Database(runLog, { viewerUserId: 'github-test-community-user' })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(runLog.some((entry) => entry.sql.includes('INSERT INTO template_likes'))).toBe(true);
   });
 
   it('requires authentication before publishing templates', async () => {
@@ -1534,6 +1673,30 @@ async function runGithubOAuthRoundTrip(
     },
     env
   );
+}
+
+async function createBrowserSessionCookieHeader(
+  app: ReturnType<typeof createMarketplaceWorkerApp>,
+  returnTo: string
+): Promise<{ cookieHeader: string; csrfToken: string }> {
+  const response = await runGithubOAuthRoundTrip(app, returnTo);
+  const setCookies = (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [response.headers.get('set-cookie') ?? ''];
+  const sessionCookie = getCookiePair(setCookies, 'dsc_marketplace_session');
+  const csrfCookie = getCookiePair(setCookies, 'dsc_marketplace_csrf');
+  if (!sessionCookie || !csrfCookie) {
+    throw new Error('OAuth callback response did not include session and CSRF cookies.');
+  }
+  return {
+    cookieHeader: `${sessionCookie}; ${csrfCookie}`,
+    csrfToken: decodeURIComponent(csrfCookie.split('=').slice(1).join('='))
+  };
+}
+
+function getCookiePair(setCookies: string[], name: string): string | undefined {
+  return setCookies
+    .flatMap((value) => value.split(/,\s*(?=[^;,]+=)/u))
+    .map((value) => value.split(';')[0])
+    .find((value) => value?.startsWith(`${name}=`));
 }
 
 function stubGithubOAuthFetch(): void {

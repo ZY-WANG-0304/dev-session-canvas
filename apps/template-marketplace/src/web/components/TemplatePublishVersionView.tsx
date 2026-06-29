@@ -8,7 +8,7 @@ import {
   type MarketplaceTemplateDocument
 } from '@dev-session-canvas/marketplace-shared';
 
-import { buildGithubSignInHref, buildSignOutHref, buildTemplateDetailHref, getMarketplaceMeHref, getMarketplacePublishHref } from '../lib/routing';
+import { buildGithubSignInHref, buildSignOutFormAction, buildTemplateDetailHref, getMarketplaceMeHref, getMarketplacePublishHref } from '../lib/routing';
 import {
   loadCurrentMarketplaceUser,
   loadMarketplaceTemplateDetail,
@@ -255,7 +255,7 @@ export function TemplatePublishVersionView({ templateSlug }: TemplatePublishVers
                 <span>
                   Signed in as <span className="font-semibold text-canvas-ink">{state.user.githubLogin}</span>
                 </span>
-                <form action={buildSignOutHref(window.location.pathname + window.location.search)} method="post">
+                <form action={buildSignOutFormAction(window.location.pathname + window.location.search)} method="post">
                   <button className="border border-canvas-line bg-canvas-paper px-3 py-1 font-semibold text-canvas-ink hover:border-canvas-moss" type="submit">
                     Sign out
                   </button>

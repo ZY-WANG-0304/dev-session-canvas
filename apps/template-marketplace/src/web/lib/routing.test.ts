@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  buildSignOutFormAction,
   buildMarketplacePublishSuccessHref,
   buildMarketplacePublishVersionHref,
   buildGithubSignInHref,
@@ -20,6 +21,10 @@ import {
 } from './routing';
 
 describe('marketplace web routing', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('reads template slugs from /templates detail paths', () => {
     expect(readTemplateSlugFromPath('/templates/review-loop')).toBe('review-loop');
     expect(readTemplateSlugFromPath('/templates/review%20loop')).toBe('review loop');
@@ -61,5 +66,11 @@ describe('marketplace web routing', () => {
     expect(buildTemplateDetailHref('review-loop')).toBe('/templates/review-loop');
     expect(buildGithubSignInHref('/templates/publish')).toBe('/api/v1/auth/github/start?return_to=%2Ftemplates%2Fpublish');
     expect(buildSignOutHref('/templates/me')).toBe('/api/v1/auth/logout?return_to=%2Ftemplates%2Fme');
+  });
+
+  it('adds the CSRF token to browser sign-out form actions when available', () => {
+    vi.stubGlobal('document', { cookie: 'dsc_marketplace_csrf=csrf-token' });
+
+    expect(buildSignOutFormAction('/templates/me')).toBe('/api/v1/auth/logout?return_to=%2Ftemplates%2Fme&csrf=csrf-token');
   });
 });

@@ -69,6 +69,16 @@ export function buildSignOutHref(returnTo: string): string {
   return `/api/v1/auth/logout?${params.toString()}`;
 }
 
+export function buildSignOutFormAction(returnTo: string): string {
+  const csrfToken = readCookieValue('dsc_marketplace_csrf');
+  const params = new URLSearchParams();
+  params.set('return_to', returnTo);
+  if (csrfToken) {
+    params.set('csrf', csrfToken);
+  }
+  return `/api/v1/auth/logout?${params.toString()}`;
+}
+
 export function isMarketplacePublishPath(pathname: string): boolean {
   return pathname === TEMPLATE_PUBLISH_PATH || pathname === `${TEMPLATE_PUBLISH_PATH}/` || pathname.startsWith(`${TEMPLATE_PUBLISH_PATH}/`);
 }
@@ -92,4 +102,17 @@ export function isMarketplaceMePath(pathname: string): boolean {
 
 export function isMarketplaceAdminPath(pathname: string): boolean {
   return pathname === TEMPLATE_ADMIN_PATH || pathname === `${TEMPLATE_ADMIN_PATH}/`;
+}
+
+function readCookieValue(name: string): string | undefined {
+  if (typeof document === 'undefined') {
+    return undefined;
+  }
+  for (const part of document.cookie.split(';')) {
+    const [rawName, ...rawValueParts] = part.split('=');
+    if (rawName?.trim() === name) {
+      return decodeURIComponent(rawValueParts.join('=').trim());
+    }
+  }
+  return undefined;
 }

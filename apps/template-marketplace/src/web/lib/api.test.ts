@@ -377,6 +377,7 @@ describe('marketplace web api client', () => {
 
   it('posts template like target states to the Worker API', async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal('document', { cookie: 'dsc_marketplace_csrf=csrf-token' });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -393,11 +394,13 @@ describe('marketplace web api client', () => {
     expect(result.liked).toBe(true);
     expect(requests[0]?.input).toBe('/api/v1/templates/review-loop/like');
     expect(requests[0]?.init?.method).toBe('POST');
+    expect((requests[0]?.init?.headers as Record<string, string>)['x-dsc-marketplace-csrf']).toBe('csrf-token');
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ liked: true });
   });
 
   it('posts template reports to the Worker API', async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal('document', { cookie: 'dsc_marketplace_csrf=csrf-token' });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -430,6 +433,7 @@ describe('marketplace web api client', () => {
     expect(result.report.reason).toBe('malicious');
     expect(requests[0]?.input).toBe('/api/v1/templates/review-loop/report');
     expect(requests[0]?.init?.method).toBe('POST');
+    expect((requests[0]?.init?.headers as Record<string, string>)['x-dsc-marketplace-csrf']).toBe('csrf-token');
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ reason: 'malicious' });
   });
 
@@ -513,6 +517,7 @@ describe('marketplace web api client', () => {
 
   it('posts admin moderation actions to the Worker API', async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal('document', { cookie: 'dsc_marketplace_csrf=csrf-token' });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -551,6 +556,7 @@ describe('marketplace web api client', () => {
     expect(result.report.status).toBe('resolved');
     expect(requests[0]?.input).toBe('/api/v1/admin/reports/report-1');
     expect(requests[0]?.init?.method).toBe('PATCH');
+    expect((requests[0]?.init?.headers as Record<string, string>)['x-dsc-marketplace-csrf']).toBe('csrf-token');
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
       status: 'resolved',
       resolution: 'Removed by admin.',
@@ -560,6 +566,7 @@ describe('marketplace web api client', () => {
 
   it('updates template status and user ban state through admin API helpers', async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal('document', { cookie: 'dsc_marketplace_csrf=csrf-token' });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -596,8 +603,10 @@ describe('marketplace web api client', () => {
     expect(templateResult.template.status).toBe('delisted');
     expect(userResult.user.bannedAt).toBe('2026-06-07T00:00:00.000Z');
     expect(requests[0]?.input).toBe('/api/v1/admin/templates/tmpl-review');
+    expect((requests[0]?.init?.headers as Record<string, string>)['x-dsc-marketplace-csrf']).toBe('csrf-token');
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ status: 'delisted' });
     expect(requests[1]?.input).toBe('/api/v1/admin/users/reporter');
+    expect((requests[1]?.init?.headers as Record<string, string>)['x-dsc-marketplace-csrf']).toBe('csrf-token');
     expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({ banned: true });
   });
 
@@ -622,6 +631,7 @@ describe('marketplace web api client', () => {
 
   it('posts publish requests to the Worker API', async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal('document', { cookie: 'dsc_marketplace_csrf=csrf-token' });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -686,10 +696,12 @@ describe('marketplace web api client', () => {
     expect(result.template.slug).toBe('published-template');
     expect(requests[0]?.input).toBe('/api/v1/templates');
     expect(requests[0]?.init?.method).toBe('POST');
+    expect((requests[0]?.init?.headers as Record<string, string>)['x-dsc-marketplace-csrf']).toBe('csrf-token');
   });
 
   it('posts package zip publish requests to the Worker API', async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal('document', { cookie: 'dsc_marketplace_csrf=csrf-token' });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -740,10 +752,12 @@ describe('marketplace web api client', () => {
     expect(requests[0]?.init?.method).toBe('POST');
     expect(requests[0]?.init?.body).toBeInstanceOf(FormData);
     expect((requests[0]?.init?.headers as Record<string, string>)['content-type']).toBeUndefined();
+    expect((requests[0]?.init?.headers as Record<string, string>)['x-dsc-marketplace-csrf']).toBe('csrf-token');
   });
 
   it('posts new template version requests to the Worker API', async () => {
     const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal('document', { cookie: 'dsc_marketplace_csrf=csrf-token' });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -807,6 +821,7 @@ describe('marketplace web api client', () => {
     expect(result.template.latestVersion.versionNumber).toBe(2);
     expect(requests[0]?.input).toBe('/api/v1/templates/review-loop/versions');
     expect(requests[0]?.init?.method).toBe('POST');
+    expect((requests[0]?.init?.headers as Record<string, string>)['x-dsc-marketplace-csrf']).toBe('csrf-token');
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual(
       expect.objectContaining({
         changelog: 'Second version.',
@@ -817,6 +832,7 @@ describe('marketplace web api client', () => {
 
   it('sends the provided rebuilt package zip bytes', async () => {
     let uploadedFile: File | undefined;
+    vi.stubGlobal('document', { cookie: 'dsc_marketplace_csrf=csrf-token' });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
