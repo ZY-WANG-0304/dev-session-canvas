@@ -27,7 +27,11 @@ import {
   buildMarketplaceLogoutResponse,
   exchangeVSCodeGithubToken,
   exchangeGithubOAuthCallback,
+  getMarketplaceAuthentication,
   getMarketplaceAuthenticatedUser,
+  getMarketplaceCsrfCookie,
+  MARKETPLACE_CSRF_HEADER_NAME,
+  type MarketplaceAuthenticatedUser,
   type MarketplaceAuthEnv
 } from './auth';
 import {
@@ -72,6 +76,7 @@ export interface MarketplaceWorkerEnv extends MarketplaceAuthEnv {
   MARKETPLACE_MAX_PACKAGE_BYTES?: string;
   MARKETPLACE_ADMIN_GITHUB_IDS?: string;
   MARKETPLACE_ADMIN_GITHUB_LOGINS?: string;
+  MARKETPLACE_ALLOWED_WRITE_ORIGINS?: string;
   MARKETPLACE_ENABLE_SEED_TEMPLATES?: string;
 }
 
@@ -135,7 +140,10 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
 
   app.get('/api/v1/auth/github/start', (context) => buildGithubOAuthStartResponse(context.req.raw, context.env));
 
-  app.post('/api/v1/auth/logout', (context) => buildMarketplaceLogoutResponse(context.req.raw));
+  app.post('/api/v1/auth/logout', (context) => {
+    const guardResponse = validateLogoutCsrfRequest(context.req.raw);
+    return guardResponse ?? buildMarketplaceLogoutResponse(context.req.raw);
+  });
 
   app.get('/api/v1/auth/github/callback', async (context) => {
     const result = await exchangeGithubOAuthCallback(context.req.raw, context.env);
@@ -153,6 +161,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
       headers: [
         ['location', result.redirectTo],
         ['set-cookie', result.sessionCookie],
+        ['set-cookie', result.csrfCookie],
         ['set-cookie', result.clearStateCookie]
       ]
     });
@@ -250,15 +259,15 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.post('/api/v1/templates/:id/like', async (context) => {
-    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
-    if (!user) {
-      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to like templates.'), 401);
+    const auth = await requireMarketplaceWriteUser(context, 'Authentication is required to like templates.');
+    if (auth.response) {
+      return auth.response;
     }
     if (!context.env?.MARKETPLACE_DB) {
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template likes require D1 storage.'), 503);
     }
     const repository = createMarketplaceRepository(context.env);
-    if (await repository.isUserBanned(user)) {
+    if (await repository.isUserBanned(auth.user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot like templates.'), 403);
     }
 
@@ -268,7 +277,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     }
 
     try {
-      const result = await repository.setTemplateLike(context.req.param('id'), user, requestedLike.liked);
+      const result = await repository.setTemplateLike(context.req.param('id'), auth.user, requestedLike.liked);
       if (!result) {
         return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
       }
@@ -282,16 +291,16 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.post('/api/v1/templates/:id/report', async (context) => {
-    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
-    if (!user) {
-      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to report templates.'), 401);
+    const auth = await requireMarketplaceWriteUser(context, 'Authentication is required to report templates.');
+    if (auth.response) {
+      return auth.response;
     }
     if (!context.env?.MARKETPLACE_DB) {
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template reports require D1 storage.'), 503);
     }
 
     const repository = createMarketplaceRepository(context.env);
-    if (await repository.isUserBanned(user)) {
+    if (await repository.isUserBanned(auth.user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot report templates.'), 403);
     }
 
@@ -301,7 +310,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     }
 
     try {
-      const result = await repository.createTemplateReport(context.req.param('id'), user, reportRequest.reason);
+      const result = await repository.createTemplateReport(context.req.param('id'), auth.user, reportRequest.reason);
       if (!result) {
         return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
       }
@@ -359,16 +368,16 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.post('/api/v1/templates', async (context) => {
-    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
-    if (!user) {
-      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to publish templates.'), 401);
+    const auth = await requireMarketplaceWriteUser(context, 'Authentication is required to publish templates.');
+    if (auth.response) {
+      return auth.response;
     }
     if (!context.env?.MARKETPLACE_DB || !context.env?.TEMPLATE_BUCKET) {
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
     }
 
     const repository = createMarketplaceRepository(context.env);
-    if (await repository.isUserBanned(user)) {
+    if (await repository.isUserBanned(auth.user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot publish templates.'), 403);
     }
 
@@ -380,7 +389,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     }
 
     try {
-      const prepared = await prepareMarketplacePublishTemplate(body, user, {
+      const prepared = await prepareMarketplacePublishTemplate(body, auth.user, {
         maxTemplateBytes: resolveMarketplaceMaxTemplateBytes(context.env.MARKETPLACE_MAX_TEMPLATE_BYTES)
       });
       if (!(await repository.isTemplateSlugAvailable(prepared.record.slug))) {
@@ -398,16 +407,16 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.post('/api/v1/templates/package', async (context) => {
-    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
-    if (!user) {
-      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to publish templates.'), 401);
+    const auth = await requireMarketplaceWriteUser(context, 'Authentication is required to publish templates.');
+    if (auth.response) {
+      return auth.response;
     }
     if (!context.env?.MARKETPLACE_DB || !context.env?.TEMPLATE_BUCKET) {
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
     }
 
     const repository = createMarketplaceRepository(context.env);
-    if (await repository.isUserBanned(user)) {
+    if (await repository.isUserBanned(auth.user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot publish templates.'), 403);
     }
 
@@ -417,7 +426,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
     }
 
     try {
-      const prepared = await prepareMarketplacePublishTemplatePackage(packageUpload.bytes, user, {
+      const prepared = await prepareMarketplacePublishTemplatePackage(packageUpload.bytes, auth.user, {
         maxTemplateBytes: resolveMarketplaceMaxTemplateBytes(context.env.MARKETPLACE_MAX_TEMPLATE_BYTES),
         maxPackageBytes: resolveMarketplaceMaxPackageBytes(context.env.MARKETPLACE_MAX_PACKAGE_BYTES)
       });
@@ -436,23 +445,23 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.post('/api/v1/templates/:id/versions', async (context) => {
-    const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
-    if (!user) {
-      return context.json(makeMarketplaceApiError('auth_required', 'Authentication is required to publish template versions.'), 401);
+    const auth = await requireMarketplaceWriteUser(context, 'Authentication is required to publish template versions.');
+    if (auth.response) {
+      return auth.response;
     }
     if (!context.env?.MARKETPLACE_DB || !context.env?.TEMPLATE_BUCKET) {
       return context.json(makeMarketplaceApiError('marketplace_writes_unavailable', 'Template publishing requires D1 and R2 bindings.'), 503);
     }
 
     const repository = createMarketplaceRepository(context.env);
-    if (await repository.isUserBanned(user)) {
+    if (await repository.isUserBanned(auth.user)) {
       return context.json(makeMarketplaceApiError('user_banned', 'Banned users cannot publish template versions.'), 403);
     }
     const detail = await repository.getTemplateDetail(context.req.param('id'));
     if (!detail) {
       return context.json(makeMarketplaceApiError('template_not_found', 'Template was not found.'), 404);
     }
-    if (detail.template.publisher.id !== buildMarketplaceUserId(user.githubUserId)) {
+    if (detail.template.publisher.id !== buildMarketplaceUserId(auth.user.githubUserId)) {
       return context.json(makeMarketplaceApiError('template_author_required', 'Only the template publisher can publish new versions.'), 403);
     }
 
@@ -500,7 +509,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.patch('/api/v1/admin/reports/:id', async (context) => {
-    const admin = await requireMarketplaceAdmin(context);
+    const admin = await requireMarketplaceAdmin(context, { write: true });
     if (admin.response) {
       return admin.response;
     }
@@ -516,7 +525,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.patch('/api/v1/admin/templates/:id', async (context) => {
-    const admin = await requireMarketplaceAdmin(context);
+    const admin = await requireMarketplaceAdmin(context, { write: true });
     if (admin.response) {
       return admin.response;
     }
@@ -532,7 +541,7 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   });
 
   app.patch('/api/v1/admin/users/:id', async (context) => {
-    const admin = await requireMarketplaceAdmin(context);
+    const admin = await requireMarketplaceAdmin(context, { write: true });
     if (admin.response) {
       return admin.response;
     }
@@ -552,8 +561,107 @@ export function createMarketplaceWorkerApp(): Hono<{ Bindings: MarketplaceWorker
   return app;
 }
 
-async function requireMarketplaceAdmin(context: Context<{ Bindings: MarketplaceWorkerEnv }>) {
-  const user = await getMarketplaceAuthenticatedUser(context.req.raw, context.env);
+async function requireMarketplaceWriteUser(
+  context: Context<{ Bindings: MarketplaceWorkerEnv }>,
+  authRequiredMessage: string
+): Promise<{ user: MarketplaceAuthenticatedUser; response?: never } | { user?: never; response: Response }> {
+  const auth = await getMarketplaceAuthentication(context.req.raw, context.env);
+  if (!auth) {
+    return { response: context.json(makeMarketplaceApiError('auth_required', authRequiredMessage), 401) };
+  }
+  if (auth.source !== 'cookie') {
+    return { user: auth.user };
+  }
+
+  const guardResponse = validateCookieWriteRequest(context.req.raw, context.env, auth.csrfToken);
+  if (guardResponse) {
+    return { response: guardResponse };
+  }
+  return { user: auth.user };
+}
+
+function validateCookieWriteRequest(request: Request, env: MarketplaceWorkerEnv | undefined, sessionCsrfToken: string | undefined): Response | undefined {
+  const origin = request.headers.get('origin')?.trim();
+  const originMode = origin ? resolveCookieWriteOrigin(origin, request, env) : undefined;
+  if (!originMode) {
+    return Response.json(makeMarketplaceApiError('write_origin_forbidden', 'Cookie-authenticated write requests must come from an allowed marketplace origin.'), {
+      status: 403
+    });
+  }
+
+  const secFetchSite = request.headers.get('sec-fetch-site')?.trim().toLowerCase();
+  if (secFetchSite === 'cross-site' && originMode !== 'allowlist') {
+    return Response.json(makeMarketplaceApiError('write_origin_forbidden', 'Cross-site cookie-authenticated write requests are not allowed.'), {
+      status: 403
+    });
+  }
+
+  const headerCsrfToken = request.headers.get(MARKETPLACE_CSRF_HEADER_NAME)?.trim();
+  const cookieCsrfToken = getMarketplaceCsrfCookie(request);
+  if (!sessionCsrfToken || !headerCsrfToken || !cookieCsrfToken || headerCsrfToken !== sessionCsrfToken || cookieCsrfToken !== sessionCsrfToken) {
+    return Response.json(makeMarketplaceApiError('write_csrf_required', 'Cookie-authenticated write requests require a valid CSRF token.'), {
+      status: 403
+    });
+  }
+
+  return undefined;
+}
+
+function validateLogoutCsrfRequest(request: Request): Response | undefined {
+  const cookieCsrfToken = getMarketplaceCsrfCookie(request);
+  if (!cookieCsrfToken) {
+    return undefined;
+  }
+  const urlCsrfToken = new URL(request.url).searchParams.get('csrf')?.trim();
+  const headerCsrfToken = request.headers.get(MARKETPLACE_CSRF_HEADER_NAME)?.trim();
+  if (urlCsrfToken === cookieCsrfToken || headerCsrfToken === cookieCsrfToken) {
+    return undefined;
+  }
+  return Response.json(makeMarketplaceApiError('write_csrf_required', 'Sign out requires a valid CSRF token.'), { status: 403 });
+}
+
+function resolveCookieWriteOrigin(origin: string, request: Request, env: MarketplaceWorkerEnv | undefined): 'same-origin' | 'loopback' | 'allowlist' | undefined {
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!normalizedOrigin) {
+    return undefined;
+  }
+
+  const requestOrigin = normalizeOrigin(new URL(request.url).origin);
+  if (normalizedOrigin === requestOrigin) {
+    return 'same-origin';
+  }
+
+  if (requestOrigin && isLoopbackOrigin(normalizedOrigin) && isLoopbackOrigin(requestOrigin)) {
+    return 'loopback';
+  }
+
+  return parseCsvEnv(env?.MARKETPLACE_ALLOWED_WRITE_ORIGINS).some((allowedOrigin) => normalizeOrigin(allowedOrigin) === normalizedOrigin)
+    ? 'allowlist'
+    : undefined;
+}
+
+function normalizeOrigin(origin: string): string | undefined {
+  try {
+    const url = new URL(origin);
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  const hostname = new URL(origin).hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+}
+
+async function requireMarketplaceAdmin(context: Context<{ Bindings: MarketplaceWorkerEnv }>, options: { write?: boolean } = {}) {
+  const auth = options.write
+    ? await requireMarketplaceWriteUser(context, 'Authentication is required for marketplace admin.')
+    : { user: await getMarketplaceAuthenticatedUser(context.req.raw, context.env) };
+  if ('response' in auth && auth.response) {
+    return { response: auth.response };
+  }
+  const user = auth.user;
   if (!user) {
     return { response: context.json(makeMarketplaceApiError('auth_required', 'Authentication is required for marketplace admin.'), 401) };
   }

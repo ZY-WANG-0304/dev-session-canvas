@@ -25,6 +25,9 @@ import {
   type MarketplaceTemplateSummary
 } from '@dev-session-canvas/marketplace-shared';
 
+const MARKETPLACE_CSRF_COOKIE_NAME = 'dsc_marketplace_csrf';
+const MARKETPLACE_CSRF_HEADER_NAME = 'x-dsc-marketplace-csrf';
+
 export interface TemplateQueryState {
   q: string;
   sort: MarketplaceSort;
@@ -221,10 +224,7 @@ export async function loadMarketplaceTemplateLikeState(templateIdOrSlug: string)
 export async function setMarketplaceTemplateLike(templateIdOrSlug: string, liked: boolean): Promise<MarketplaceTemplateLikeResponse> {
   const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/like`, {
     method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json'
-    },
+    headers: buildMarketplaceWriteHeaders({ json: true }),
     body: JSON.stringify({ liked })
   });
   const body = (await response.json()) as MarketplaceTemplateLikeResponse | { error?: { message?: string } };
@@ -241,10 +241,7 @@ export async function reportMarketplaceTemplate(
 ): Promise<MarketplaceTemplateReportResponse> {
   const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/report`, {
     method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json'
-    },
+    headers: buildMarketplaceWriteHeaders({ json: true }),
     body: JSON.stringify(request)
   });
   return readMarketplaceJsonResponse<MarketplaceTemplateReportResponse>(response);
@@ -275,10 +272,7 @@ export async function resolveMarketplaceAdminReport(
 ): Promise<MarketplaceTemplateReportResponse> {
   const response = await fetch(`/api/v1/admin/reports/${encodeURIComponent(reportId)}`, {
     method: 'PATCH',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json'
-    },
+    headers: buildMarketplaceWriteHeaders({ json: true }),
     body: JSON.stringify(request)
   });
   return readMarketplaceJsonResponse<MarketplaceTemplateReportResponse>(response);
@@ -290,10 +284,7 @@ export async function setMarketplaceAdminTemplateStatus(
 ): Promise<MarketplaceAdminTemplateStatusResponse> {
   const response = await fetch(`/api/v1/admin/templates/${encodeURIComponent(templateId)}`, {
     method: 'PATCH',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json'
-    },
+    headers: buildMarketplaceWriteHeaders({ json: true }),
     body: JSON.stringify(request)
   });
   return readMarketplaceJsonResponse<MarketplaceAdminTemplateStatusResponse>(response);
@@ -302,10 +293,7 @@ export async function setMarketplaceAdminTemplateStatus(
 export async function setMarketplaceAdminUserBan(userId: string, request: MarketplaceAdminUserBanRequest): Promise<MarketplaceAdminUserBanResponse> {
   const response = await fetch(`/api/v1/admin/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json'
-    },
+    headers: buildMarketplaceWriteHeaders({ json: true }),
     body: JSON.stringify(request)
   });
   return readMarketplaceJsonResponse<MarketplaceAdminUserBanResponse>(response);
@@ -330,10 +318,7 @@ export async function publishMarketplaceTemplate(
 ): Promise<MarketplacePublishTemplateResponse> {
   const response = await fetch('/api/v1/templates', {
     method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json'
-    },
+    headers: buildMarketplaceWriteHeaders({ json: true }),
     body: JSON.stringify(request)
   });
   const body = (await response.json()) as MarketplacePublishTemplateResponse | { error?: { message?: string } };
@@ -350,10 +335,7 @@ export async function publishMarketplaceTemplateVersion(
 ): Promise<MarketplacePublishTemplateResponse> {
   const response = await fetch(`/api/v1/templates/${encodeURIComponent(templateIdOrSlug)}/versions`, {
     method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json'
-    },
+    headers: buildMarketplaceWriteHeaders({ json: true }),
     body: JSON.stringify(request)
   });
   return readMarketplaceJsonResponse<MarketplacePublishTemplateResponse>(response);
@@ -373,9 +355,7 @@ export async function publishMarketplaceTemplatePackage(file: File): Promise<Mar
   formData.set('package', file);
   const response = await fetch('/api/v1/templates/package', {
     method: 'POST',
-    headers: {
-      accept: 'application/json'
-    },
+    headers: buildMarketplaceWriteHeaders(),
     body: formData
   });
   const body = (await response.json()) as MarketplacePublishTemplateResponse | { error?: { message?: string } };
@@ -384,4 +364,32 @@ export async function publishMarketplaceTemplatePackage(file: File): Promise<Mar
     throw new Error(message);
   }
   return body as MarketplacePublishTemplateResponse;
+}
+
+function buildMarketplaceWriteHeaders(options: { json?: boolean } = {}): Record<string, string> {
+  const headers: Record<string, string> = {
+    accept: 'application/json'
+  };
+  if (options.json) {
+    headers['content-type'] = 'application/json';
+  }
+
+  const csrfToken = readCookieValue(MARKETPLACE_CSRF_COOKIE_NAME);
+  if (csrfToken) {
+    headers[MARKETPLACE_CSRF_HEADER_NAME] = csrfToken;
+  }
+  return headers;
+}
+
+function readCookieValue(name: string): string | undefined {
+  if (typeof document === 'undefined') {
+    return undefined;
+  }
+  for (const part of document.cookie.split(';')) {
+    const [rawName, ...rawValueParts] = part.split('=');
+    if (rawName?.trim() === name) {
+      return decodeURIComponent(rawValueParts.join('=').trim());
+    }
+  }
+  return undefined;
 }

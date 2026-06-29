@@ -11,7 +11,7 @@ import {
   setMarketplaceAdminUserBan,
   type MarketplaceCurrentUser
 } from '../lib/api';
-import { buildGithubSignInHref, buildSignOutHref, buildTemplateDetailHref, getMarketplaceAdminHref, getMarketplaceHomeHref } from '../lib/routing';
+import { buildGithubSignInHref, buildSignOutFormAction, buildTemplateDetailHref, getMarketplaceAdminHref, getMarketplaceHomeHref } from '../lib/routing';
 
 interface AdminState {
   user?: MarketplaceCurrentUser;
@@ -168,7 +168,7 @@ export function TemplateAdminView(): JSX.Element {
               <span>
                 Signed in as <span className="font-semibold text-canvas-ink">{state.user.githubLogin}</span>
               </span>
-              <form action={buildSignOutHref(getMarketplaceAdminHref())} method="post">
+              <form action={buildSignOutFormAction(getMarketplaceAdminHref())} method="post">
                 <button className="border border-canvas-line bg-canvas-paper px-3 py-1 font-semibold text-canvas-ink hover:border-canvas-moss" type="submit">
                   Sign out
                 </button>

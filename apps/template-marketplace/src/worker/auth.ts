@@ -1,6 +1,8 @@
 import { makeMarketplaceApiError } from '@dev-session-canvas/marketplace-shared';
 
 const SESSION_COOKIE_NAME = 'dsc_marketplace_session';
+const CSRF_COOKIE_NAME = 'dsc_marketplace_csrf';
+export const MARKETPLACE_CSRF_HEADER_NAME = 'x-dsc-marketplace-csrf';
 const OAUTH_STATE_COOKIE_NAME = 'dsc_marketplace_oauth_state';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
 const OAUTH_STATE_MAX_AGE_SECONDS = 60 * 10;
@@ -25,6 +27,7 @@ export interface MarketplaceAuthenticatedUser {
 
 interface MarketplaceSessionPayload extends MarketplaceAuthenticatedUser {
   exp: number;
+  csrfToken?: string;
 }
 
 interface MarketplaceOAuthStatePayload {
@@ -40,6 +43,14 @@ export interface MarketplaceVSCodeTokenResponse {
   user: MarketplaceAuthenticatedUser;
 }
 
+export type MarketplaceAuthSource = 'test' | 'bearer' | 'cookie';
+
+export interface MarketplaceAuthentication {
+  source: MarketplaceAuthSource;
+  user: MarketplaceAuthenticatedUser;
+  csrfToken?: string;
+}
+
 interface GithubUserResponse {
   id: number;
   login: string;
@@ -51,14 +62,21 @@ export async function getMarketplaceAuthenticatedUser(
   request: Request,
   env: MarketplaceAuthEnv = {}
 ): Promise<MarketplaceAuthenticatedUser | undefined> {
+  return (await getMarketplaceAuthentication(request, env))?.user;
+}
+
+export async function getMarketplaceAuthentication(
+  request: Request,
+  env: MarketplaceAuthEnv = {}
+): Promise<MarketplaceAuthentication | undefined> {
   const testUser = getTestAuthenticatedUser(request, env);
   if (testUser) {
-    return testUser;
+    return { source: 'test', user: testUser };
   }
 
   const bearerUser = await getBearerAuthenticatedUser(request, env);
   if (bearerUser) {
-    return bearerUser;
+    return { source: 'bearer', user: bearerUser };
   }
 
   const sessionSecret = env.MARKETPLACE_SESSION_SECRET;
@@ -74,10 +92,14 @@ export async function getMarketplaceAuthenticatedUser(
     return undefined;
   }
   return {
-    githubUserId: payload.githubUserId,
-    githubLogin: payload.githubLogin,
-    displayName: payload.displayName,
-    avatarUrl: payload.avatarUrl
+    source: 'cookie',
+    csrfToken: payload.csrfToken,
+    user: {
+      githubUserId: payload.githubUserId,
+      githubLogin: payload.githubLogin,
+      displayName: payload.displayName,
+      avatarUrl: payload.avatarUrl
+    }
   };
 }
 
@@ -154,16 +176,23 @@ export async function buildGithubOAuthStartResponse(request: Request, env: Marke
 export function buildMarketplaceLogoutResponse(request: Request): Response {
   return new Response(null, {
     status: 302,
-    headers: {
-      location: new URL(normalizeOAuthReturnTo(new URL(request.url).searchParams.get('return_to')), request.url).toString(),
-      'set-cookie': serializeCookie(SESSION_COOKIE_NAME, '', {
+    headers: [
+      ['location', new URL(normalizeOAuthReturnTo(new URL(request.url).searchParams.get('return_to')), request.url).toString()],
+      ['set-cookie', serializeCookie(SESSION_COOKIE_NAME, '', {
         maxAge: 0,
         httpOnly: true,
         secure: isHttpsRequest(request),
         sameSite: 'Lax',
         path: '/'
-      })
-    }
+      })],
+      ['set-cookie', serializeCookie(CSRF_COOKIE_NAME, '', {
+        maxAge: 0,
+        httpOnly: false,
+        secure: isHttpsRequest(request),
+        sameSite: 'Lax',
+        path: '/'
+      })]
+    ]
   });
 }
 
@@ -174,6 +203,7 @@ export async function exchangeGithubOAuthCallback(
   | {
       user: MarketplaceAuthenticatedUser;
       sessionCookie: string;
+      csrfCookie: string;
       clearStateCookie: string;
       redirectTo: string;
     }
@@ -231,10 +261,12 @@ export async function exchangeGithubOAuthCallback(
   }
   const githubUser = (await userResponse.json()) as GithubUserResponse;
   const user = mapGithubUser(githubUser);
-  const sessionCookie = await buildMarketplaceSessionCookie(request, env, user);
+  const csrfToken = createRandomToken();
+  const sessionCookie = await buildMarketplaceSessionCookie(request, env, user, csrfToken);
   return {
     user,
     sessionCookie,
+    csrfCookie: buildMarketplaceCsrfCookie(request, csrfToken),
     clearStateCookie: serializeCookie(OAUTH_STATE_COOKIE_NAME, '', {
       maxAge: 0,
       httpOnly: true,
@@ -249,7 +281,8 @@ export async function exchangeGithubOAuthCallback(
 export async function buildMarketplaceSessionCookie(
   request: Request,
   env: MarketplaceAuthEnv,
-  user: MarketplaceAuthenticatedUser
+  user: MarketplaceAuthenticatedUser,
+  csrfToken: string
 ): Promise<string> {
   if (!env.MARKETPLACE_SESSION_SECRET) {
     throw new Error('MARKETPLACE_SESSION_SECRET is required to create a marketplace session.');
@@ -257,6 +290,7 @@ export async function buildMarketplaceSessionCookie(
   const signedSession = await signJson<MarketplaceSessionPayload>(
     {
       ...user,
+      csrfToken,
       exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS
     },
     env.MARKETPLACE_SESSION_SECRET
@@ -264,6 +298,20 @@ export async function buildMarketplaceSessionCookie(
   return serializeCookie(SESSION_COOKIE_NAME, signedSession, {
     maxAge: SESSION_MAX_AGE_SECONDS,
     httpOnly: true,
+    secure: isHttpsRequest(request),
+    sameSite: 'Lax',
+    path: '/'
+  });
+}
+
+export function getMarketplaceCsrfCookie(request: Request): string | undefined {
+  return parseCookies(request.headers.get('cookie'))[CSRF_COOKIE_NAME];
+}
+
+function buildMarketplaceCsrfCookie(request: Request, csrfToken: string): string {
+  return serializeCookie(CSRF_COOKIE_NAME, csrfToken, {
+    maxAge: SESSION_MAX_AGE_SECONDS,
+    httpOnly: false,
     secure: isHttpsRequest(request),
     sameSite: 'Lax',
     path: '/'

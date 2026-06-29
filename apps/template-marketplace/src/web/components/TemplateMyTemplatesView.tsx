@@ -6,7 +6,7 @@ import { loadCurrentMarketplaceUser, loadMyMarketplaceStats, loadMyMarketplaceTe
 import {
   buildGithubSignInHref,
   buildMarketplacePublishVersionHref,
-  buildSignOutHref,
+  buildSignOutFormAction,
   getMarketplaceHomeHref,
   getMarketplaceMeHref,
   getMarketplacePublishHref
@@ -112,7 +112,7 @@ export function TemplateMyTemplatesView(): JSX.Element {
               <span>
                 Signed in as <span className="font-semibold text-canvas-ink">{state.user.githubLogin}</span>
               </span>
-              <form action={buildSignOutHref(getMarketplaceMeHref())} method="post">
+              <form action={buildSignOutFormAction(getMarketplaceMeHref())} method="post">
                 <button className="border border-canvas-line bg-canvas-paper px-3 py-1 font-semibold text-canvas-ink hover:border-canvas-moss" type="submit">
                   Sign out
                 </button>
