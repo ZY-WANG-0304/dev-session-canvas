@@ -267,6 +267,11 @@ components:
 - 常驻 widget 只能服务导航、定位或当前状态理解。
 - 菜单、toolbar、tooltip 和编辑浮层应短生命周期、小面积、低装饰。
 
+### Feature-Specific Surfaces
+
+- 专属功能如果需要独立视觉系统，应放入对应功能文档，而不是扩写本文的通用 VSCode design-system 基线。
+- 模板市场的浏览器网站与插件内市场面板 UI 详见 `docs/marketplace/UI.md`；本文不维护其 palette、页面结构或业务动作语义。
+
 ### Sidebar Section
 
 Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 数量、功能范围或宿主 API 形态：

@@ -12,12 +12,16 @@ import {
 
 const originalElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
 const originalVscodeIpcHookCli = process.env.VSCODE_IPC_HOOK_CLI;
+const originalCloudflareApiToken = process.env.CLOUDFLARE_API_TOKEN;
+const originalCustomToolchainToken = process.env.CUSTOM_TOOLCHAIN_TOKEN;
 const originalSmokeDebugRoot = process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT;
 const originalPath = process.env.PATH;
 
 try {
   process.env.ELECTRON_RUN_AS_NODE = '1';
   process.env.VSCODE_IPC_HOOK_CLI = '/tmp/parent-hook.sock';
+  process.env.CLOUDFLARE_API_TOKEN = 'must-not-leak';
+  process.env.CUSTOM_TOOLCHAIN_TOKEN = 'must-not-leak';
   process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT = path.join(os.tmpdir(), 'dsc-smoke-debug-root');
   process.env.PATH = originalPath ?? '';
 
@@ -27,6 +31,8 @@ try {
 
   assert.strictEqual(env.ELECTRON_RUN_AS_NODE, undefined);
   assert.strictEqual(env.VSCODE_IPC_HOOK_CLI, undefined);
+  assert.strictEqual(env.CLOUDFLARE_API_TOKEN, undefined);
+  assert.strictEqual(env.CUSTOM_TOOLCHAIN_TOKEN, undefined);
   assert.strictEqual(env.DEV_SESSION_CANVAS_SMOKE_SCENARIO, 'real-reopen');
   assert.strictEqual(env.PATH, process.env.PATH);
 
@@ -75,10 +81,23 @@ try {
     process.env.VSCODE_IPC_HOOK_CLI = originalVscodeIpcHookCli;
   }
 
+  if (originalCloudflareApiToken === undefined) {
+    delete process.env.CLOUDFLARE_API_TOKEN;
+  } else {
+    process.env.CLOUDFLARE_API_TOKEN = originalCloudflareApiToken;
+  }
+
+  if (originalCustomToolchainToken === undefined) {
+    delete process.env.CUSTOM_TOOLCHAIN_TOKEN;
+  } else {
+    process.env.CUSTOM_TOOLCHAIN_TOKEN = originalCustomToolchainToken;
+  }
+
   if (originalSmokeDebugRoot === undefined) {
     delete process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT;
   } else {
     process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT = originalSmokeDebugRoot;
+  }
   }
 
   if (originalPath === undefined) {

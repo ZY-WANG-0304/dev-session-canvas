@@ -24,10 +24,11 @@
 | `docs/product-specs/canvas-sidebar-node-and-session-lists.md` | 画布侧栏节点列表与历史会话列表 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-sidebar-node-and-session-lists.md` | 2026-06-26 |
 | `docs/product-specs/runtime-persistence-modes.md` | `Agent` / `Terminal` 在关闭画布、关闭 VSCode 与重新打开后的两档运行时持久化模式 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/runtime-persistence-and-session-supervisor.md` | 2026-04-08 |
 | `docs/product-specs/canvas-template-feature.md` | Canvas 模板功能：默认模板机制、内置模板、自定义模板保存与分享、模板管理 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-template-feature.md` | 2026-05-15 |
+| `docs/product-specs/template-marketplace.md` | 模板市场：社区驱动的模板发现、发布、安装平台，含 Web 端、统计排名、版本管理与治理后台 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/product-specs/canvas-template-feature.md`、`docs/design-docs/template-marketplace.md`、`docs/marketplace/UI.md` | 2026-06-24 |
 
 ## 当前状态
 
-当前仓库已开始按主题拆分具体产品规格，而不是把所有需求堆入单一文档。涉及画布外层控件、侧栏承载面或已立项功能范围的后续讨论，应优先继续维护对应专项规格；跨功能 UI design-system 规则继续维护在 `docs/UI.md`。
+当前仓库已开始按主题拆分具体产品规格，而不是把所有需求堆入单一文档。涉及画布外层控件、侧栏承载面或已立项功能范围的后续讨论，应优先继续维护对应专项规格；跨功能 UI design-system 规则继续维护在 `docs/UI.md`，功能专属 UI 定义维护在对应功能文档，例如模板市场的 `docs/marketplace/UI.md`。
 
 ## 维护约定
 

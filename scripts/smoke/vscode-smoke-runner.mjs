@@ -7,6 +7,17 @@ import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 
 const BLOCKED_VSCODE_ENV_PREFIXES = ['VSCODE_'];
 const BLOCKED_VSCODE_ENV_KEYS = new Set(['ELECTRON_RUN_AS_NODE']);
+const BLOCKED_VSCODE_ENV_SECRET_PATTERNS = [
+  /TOKEN/iu,
+  /SECRET/iu,
+  /PASSWORD/iu,
+  /PASSWD/iu,
+  /CREDENTIAL/iu,
+  /API_KEY/iu,
+  /ACCESS_KEY/iu,
+  /PRIVATE_KEY/iu,
+  /AUTHORIZATION/iu
+];
 const STAGED_SMOKE_TESTS_ROOT = path.join('tests', 'vscode-smoke');
 
 export function shouldReRunInsideXvfb() {
@@ -518,7 +529,8 @@ export function buildVSCodeChildEnv(overrides = {}) {
   for (const key of Object.keys(env)) {
     if (
       BLOCKED_VSCODE_ENV_KEYS.has(key) ||
-      BLOCKED_VSCODE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
+      BLOCKED_VSCODE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix)) ||
+      BLOCKED_VSCODE_ENV_SECRET_PATTERNS.some((pattern) => pattern.test(key))
     ) {
       delete env[key];
     }

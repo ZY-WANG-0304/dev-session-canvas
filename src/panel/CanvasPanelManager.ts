@@ -174,6 +174,7 @@ import {
   encodeCanvasTemplateDocument,
   formatCanvasTemplateStats,
   normalizeCanvasTemplateWorkspaceRelativePath,
+  parseCanvasTemplateDocument,
   resolveCanvasTemplateAgentProvider,
   type CanvasTemplate,
   type CanvasTemplateAssociatedNoteSaveMode,
@@ -247,6 +248,7 @@ import {
   CanvasTemplateStore,
   type CanvasStoredTemplate,
   type CanvasTemplateCatalog,
+  type CanvasTemplateMarketMetadata,
   type CanvasTemplateStorageLocation
 } from './CanvasTemplateStore';
 import {
@@ -1829,6 +1831,63 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       filePath: overwriteTemplate?.filePath,
       targetRootPath: options?.targetRootPath,
       relativeDirectory: options?.relativeDirectory
+    });
+    this.notifyTemplateCatalogChanged();
+    return savedTemplate;
+  }
+
+  public async installMarketplaceTemplateDocument(
+    document: unknown,
+    metadata: CanvasTemplateMarketMetadata,
+    options?: {
+      targetRootPath?: string;
+      overwriteFilePath?: string;
+      preserveTemplateId?: string;
+      preserveCreatedAt?: string;
+      legacyTemplateFilePath?: string;
+    }
+  ): Promise<CanvasStoredTemplate> {
+    const parsedDocument = parseCanvasTemplateDocument(document, {
+      forceCategory: 'user'
+    });
+    const template = cloneCanvasTemplate(parsedDocument.document.template);
+    template.category = 'user';
+    template.id = options?.preserveTemplateId ?? `market-template-${randomUUID()}`;
+    if (options?.preserveCreatedAt) {
+      template.createdAt = options.preserveCreatedAt;
+    }
+
+    const savedTemplate = await this.canvasTemplateStore.writeUserTemplate(template, {
+      filePath: options?.overwriteFilePath,
+      targetRootPath: options?.targetRootPath,
+      relativeDirectory: 'marketplace',
+      marketMetadata: metadata
+    });
+    this.notifyTemplateCatalogChanged();
+    return savedTemplate;
+  }
+
+  public async installMarketplaceTemplatePackage(
+    packageBytes: Uint8Array,
+    extractedFiles: ReadonlyMap<string, Uint8Array>,
+    metadata: CanvasTemplateMarketMetadata,
+    options?: {
+      targetRootPath?: string;
+      packageDirectoryName: string;
+      preserveTemplateId?: string;
+      preserveCreatedAt?: string;
+      legacyTemplateFilePath?: string;
+    }
+  ): Promise<CanvasStoredTemplate> {
+    const savedTemplate = await this.canvasTemplateStore.writeMarketplaceTemplatePackage({
+      targetRootPath: options?.targetRootPath,
+      packageDirectoryName: options?.packageDirectoryName ?? metadata.marketTemplateSlug ?? metadata.marketTemplateId,
+      packageBytes,
+      extractedFiles,
+      marketMetadata: metadata,
+      preserveTemplateId: options?.preserveTemplateId,
+      preserveCreatedAt: options?.preserveCreatedAt,
+      legacyTemplateFilePath: options?.legacyTemplateFilePath
     });
     this.notifyTemplateCatalogChanged();
     return savedTemplate;
@@ -17009,9 +17068,9 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
     updatedAt: new Date().toISOString(),
     nodes: [],
     edges: [],
-    fileReferences: [],
     groups: [],
     nextGroupSequence: 1,
+    fileReferences: [],
     suppressedFileActivityEdgeIds: [],
     suppressedAutomaticFileArtifactNodeIds: []
   };
@@ -17823,21 +17882,23 @@ function applyCanvasTemplateToState(
     groupIdByTemplateIndex.set(index, groupId);
   }
   const parentGroupIndexByTemplateIndex = resolveTemplateGroupParentIndexesForApply(templateGroups);
-  const materializedGroups = templateGroups.map((templateGroup, index) => {
-    const groupId = groupIdByTemplateIndex.get(index);
-    if (!groupId) {
-      return undefined;
-    }
-    return materializeTemplateGroup(
-      groupId,
-      templateGroup,
-      bounds.origin,
-      resolvedTopLeft,
-      groupIdByTemplateIndex,
-      parentGroupIndexByTemplateIndex.get(index),
-      options.targetGroupId
-    );
-  }).filter((group): group is CanvasGroupSummary => Boolean(group));
+  const materializedGroups = templateGroups
+    .map((templateGroup, index) => {
+      const groupId = groupIdByTemplateIndex.get(index);
+      if (!groupId) {
+        return undefined;
+      }
+      return materializeTemplateGroup(
+        groupId,
+        templateGroup,
+        bounds.origin,
+        resolvedTopLeft,
+        groupIdByTemplateIndex,
+        parentGroupIndexByTemplateIndex.get(index),
+        options.targetGroupId
+      );
+    })
+    .filter((group): group is CanvasGroupSummary => Boolean(group));
   const nodeIdByTemplateIndex = new Map<number, string>();
   const materializedNodes = template.nodes.map((templateNode, index) => {
     const resolvedAgentProvider =
@@ -17925,6 +17986,7 @@ function resolveTemplatePlacementCenterInWorkspaceRoot(
     y: Math.round(templateBounds.height / 2)
   }, rootGroup);
 }
+
 
 function materializeTemplateGroup(
   groupId: string,
@@ -21658,7 +21720,6 @@ function normalizeState(
   const suppressedAutomaticFileArtifactNodeIds = Array.isArray(value.suppressedAutomaticFileArtifactNodeIds)
     ? value.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
     : [];
-
   const normalizedGroups = normalizeCanvasGroups(value.groups);
   const normalizedNodesWithGroups = normalizeCanvasNodeGroupMemberships(
     reconcileRuntimeNodesInArray(normalizedNodes),

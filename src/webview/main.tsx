@@ -1529,18 +1529,21 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
   const suppressedAutomaticFileArtifactNodeIds = state && Array.isArray(state.suppressedAutomaticFileArtifactNodeIds)
     ? state.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
     : [];
+  const rawGroups = state?.groups;
+  const groups = Array.isArray(rawGroups) ? rawGroups : [];
+  const nextGroupSequence = state?.nextGroupSequence;
 
   return {
     version: 1,
     updatedAt: typeof state?.updatedAt === 'string' ? state.updatedAt : new Date().toISOString(),
     nodes,
     edges,
-    fileReferences,
-    groups: Array.isArray(state?.groups) ? state?.groups ?? [] : [],
+    groups,
     nextGroupSequence:
-      typeof state?.nextGroupSequence === 'number' && Number.isInteger(state.nextGroupSequence) && state.nextGroupSequence > 0
-        ? state.nextGroupSequence
+      typeof nextGroupSequence === 'number' && Number.isInteger(nextGroupSequence) && nextGroupSequence > 0
+        ? nextGroupSequence
         : 1,
+    fileReferences,
     suppressedFileActivityEdgeIds,
     suppressedAutomaticFileArtifactNodeIds
   };
@@ -10350,7 +10353,7 @@ const CanvasContextMenu = React.forwardRef<
               <span className="canvas-context-menu-icon codicon codicon-save-as" aria-hidden="true" />
               <span className="canvas-context-menu-copy">
                 <strong>保存为模板</strong>
-                <span>把当前布局保存到用户模板目录</span>
+                <span>保存后可从模板侧栏或市场面板发布</span>
               </span>
             </button>
           </>

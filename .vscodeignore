@@ -23,6 +23,7 @@ scripts/shared/**
 scripts/smoke/**
 scripts/test/**
 extensions/**
+apps/**
 packages/**
 src/**
 tests/**

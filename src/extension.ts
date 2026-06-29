@@ -45,6 +45,8 @@ import {
   type CanvasSurfaceLocation,
   type WorkspaceRootCanvasRemovalImpact
 } from './panel/CanvasPanelManager';
+import { CanvasTemplateMarketplacePanelController } from './panel/CanvasTemplateMarketplacePanel';
+import { TemplateMarketplaceClient } from './panel/TemplateMarketplaceClient';
 import { showCanvasTemplateSaveForm } from './panel/CanvasTemplateSaveFormPanel';
 import type { CanvasStoredTemplate } from './panel/CanvasTemplateStore';
 import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
@@ -140,6 +142,11 @@ interface AgentCliInstallQuickPickItem extends vscode.QuickPickItem {
 
 interface CanvasTemplateQuickPickItem extends vscode.QuickPickItem {
   templateId: string;
+}
+
+interface CanvasTemplatePickOptions {
+  filter?: (template: CanvasStoredTemplate) => boolean;
+  emptyMessage?: string;
 }
 
 interface ExplorerExecutionResource {
@@ -264,10 +271,21 @@ function describeTerminalShellConfigurationTarget(target: vscode.ConfigurationTa
 
 export function activate(context: vscode.ExtensionContext): void {
   const panelManager = new CanvasPanelManager(context);
+  const templateMarketplaceClient = new TemplateMarketplaceClient(panelManager, context, context.extensionMode);
+  const templateMarketplacePanel = new CanvasTemplateMarketplacePanelController(
+    templateMarketplaceClient,
+    context.extensionUri,
+    context.extensionMode
+  );
   activePanelManager = panelManager;
   const sidebarSummaryView = new CanvasSidebarView(panelManager);
   const sidebarActionsView = new CanvasSidebarActionsView(panelManager);
-  const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri);
+  const sidebarTemplateView = new CanvasSidebarTemplateView(panelManager, context.extensionUri, {
+    client: templateMarketplaceClient,
+    openTemplateDetail: (templateIdOrSlug, versionId, sourceUrl, options) => {
+      templateMarketplacePanel.openTemplateDetail(templateIdOrSlug, versionId, sourceUrl, options);
+    }
+  });
   const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri, context.workspaceState);
   const sidebarSessionHistoryView = new CanvasSidebarSessionHistoryView(
     panelManager,
@@ -305,6 +323,7 @@ export function activate(context: vscode.ExtensionContext): void {
     sidebarTemplateView,
     sidebarNodeListView,
     sidebarSessionHistoryView,
+    templateMarketplacePanel,
     vscode.window.registerTreeDataProvider(VIEW_IDS.sidebarTree, sidebarSummaryView),
     vscode.window.registerWebviewViewProvider(VIEW_IDS.sidebarFilters, sidebarActionsView, {
       webviewOptions: {
@@ -328,6 +347,18 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      async handleUri(uri) {
+        try {
+          templateMarketplacePanel.openTemplateDetailFromUri(uri);
+        } catch (error) {
+          await showCanvasTemplateError('打开市场模板详情失败', error);
+        }
+      }
+    })
+  );
+
   registerCommand(context, COMMAND_IDS.openCanvas, async () => {
     await panelManager.revealOrCreate();
   });
@@ -338,6 +369,21 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.openCanvasInPanel, async () => {
     await panelManager.revealInPanel();
+  });
+
+  registerCommand(context, COMMAND_IDS.openTemplateMarketplace, async () => {
+    templateMarketplacePanel.reveal();
+  });
+
+  registerCommand(context, COMMAND_IDS.publishTemplateToMarketplace, async (templateId?: unknown) => {
+    try {
+      const explicitTemplateId = normalizeCanvasTemplateIdValue(templateId);
+      const templateIdOrSlug = readTemplatePublishVersionTarget(templateId);
+      templateMarketplacePanel.openTemplatePublishForm(explicitTemplateId, { templateIdOrSlug });
+      return explicitTemplateId ? { templateId: explicitTemplateId } : undefined;
+    } catch (error) {
+      await showCanvasTemplateError('打开模板发布表单失败', error);
+    }
   });
 
   registerCommand(context, COMMAND_IDS.openSettings, async () => {
@@ -746,7 +792,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewPanelSerializer(CanvasPanelManager.viewType, panelManager)
   );
 
-  registerTestCommands(context, panelManager, sidebarNodeListView, sidebarSessionHistoryView);
+  registerTestCommands(
+    context,
+    panelManager,
+    templateMarketplacePanel,
+    sidebarTemplateView,
+    sidebarNodeListView,
+    sidebarSessionHistoryView
+  );
 }
 
 export async function deactivate(): Promise<void> {
@@ -755,7 +808,11 @@ export async function deactivate(): Promise<void> {
   await panelManager?.prepareForDeactivation();
 }
 
-function registerCommand(context: vscode.ExtensionContext, commandId: string, handler: () => Promise<void>): void {
+function registerCommand(
+  context: vscode.ExtensionContext,
+  commandId: string,
+  handler: (...args: unknown[]) => Promise<unknown>
+): void {
   context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
 }
 
@@ -3116,17 +3173,24 @@ async function resetToTemplateFromCommand(
   }
 }
 
-async function saveCurrentCanvasAsTemplateFromCommand(panelManager: CanvasPanelManager): Promise<void> {
+async function saveCurrentCanvasAsTemplateFromCommand(
+  panelManager: CanvasPanelManager,
+  options: {
+    title?: string;
+    submitLabel?: string;
+    successMessage?: (savedTemplate: CanvasStoredTemplate) => string;
+  } = {}
+): Promise<CanvasStoredTemplate | undefined> {
   if (!panelManager.getCanvasNodes().some((node) => isTemplateCompatibleNodeKind(node.kind))) {
     await vscode.window.showInformationMessage('当前画布还没有可保存到模板的 Agent / Terminal / Note 节点。');
-    return;
+    return undefined;
   }
 
   const canvasNodes = panelManager.getCanvasNodes();
   const formResult = await showCanvasTemplateSaveForm({
     mode: 'save',
-    title: '保存当前画布为模板',
-    submitLabel: '保存模板',
+    title: options.title ?? '保存当前画布为模板',
+    submitLabel: options.submitLabel ?? '保存模板',
     storageLocations: panelManager.getCanvasTemplateStorageLocations(),
     associatedNoteNodes: panelManager.getCanvasTemplateAssociatedNoteSaveItems(),
     agentNodes: canvasNodes
@@ -3143,7 +3207,7 @@ async function saveCurrentCanvasAsTemplateFromCommand(panelManager: CanvasPanelM
       }))
   });
   if (!formResult) {
-    return;
+    return undefined;
   }
 
   const targetStorageLocation = panelManager
@@ -3157,7 +3221,10 @@ async function saveCurrentCanvasAsTemplateFromCommand(panelManager: CanvasPanelM
     targetRootPath: targetStorageLocation.rootPath,
     associatedNoteSaveModes: formResult.associatedNoteSaveModes
   });
-  await vscode.window.showInformationMessage(`已保存模板「${savedTemplate.template.name}」。`);
+  await vscode.window.showInformationMessage(
+    options.successMessage ? options.successMessage(savedTemplate) : `已保存模板「${savedTemplate.template.name}」。`
+  );
+  return savedTemplate;
 }
 
 async function importCanvasTemplateFromCommand(panelManager: CanvasPanelManager): Promise<void> {
@@ -3344,7 +3411,8 @@ async function setDefaultCanvasTemplateFromCommand(
 async function resolveCanvasTemplateFromCommand(
   panelManager: CanvasPanelManager,
   templateIdValue: unknown,
-  placeHolder: string
+  placeHolder: string,
+  options: CanvasTemplatePickOptions = {}
 ): Promise<CanvasStoredTemplate | undefined> {
   const explicitTemplateId = normalizeCanvasTemplateIdValue(templateIdValue);
   if (explicitTemplateId) {
@@ -3353,15 +3421,19 @@ async function resolveCanvasTemplateFromCommand(
     if (!selectedTemplate) {
       throw new Error('目标模板不存在。');
     }
+    if (options.filter && !options.filter(selectedTemplate)) {
+      throw new Error('目标模板不支持该操作。');
+    }
     return selectedTemplate;
   }
 
-  return pickCanvasTemplate(panelManager, placeHolder);
+  return pickCanvasTemplate(panelManager, placeHolder, options);
 }
 
 async function pickCanvasTemplate(
   panelManager: CanvasPanelManager,
-  placeHolder: string
+  placeHolder: string,
+  options: CanvasTemplatePickOptions = {}
 ): Promise<CanvasStoredTemplate | undefined> {
   const catalog = await panelManager.getCanvasTemplateCatalog();
   if (catalog.templates.length === 0) {
@@ -3370,10 +3442,15 @@ async function pickCanvasTemplate(
   }
 
   const defaultTemplateId = panelManager.getDefaultCanvasTemplateId();
+  const templates = options.filter ? catalog.templates.filter(options.filter) : catalog.templates;
+  if (templates.length === 0) {
+    await vscode.window.showInformationMessage(options.emptyMessage ?? '当前没有符合条件的模板。');
+    return undefined;
+  }
   const picked = await vscode.window.showQuickPick<CanvasTemplateQuickPickItem>(
-    catalog.templates.map((storedTemplate) => ({
+    templates.map((storedTemplate) => ({
       label: storedTemplate.template.name,
-      description: `${storedTemplate.template.category === 'builtin' ? '内置' : '用户'} · ${formatCanvasTemplateStats(storedTemplate.template)}${storedTemplate.template.id === defaultTemplateId ? ' · 默认' : ''}`,
+      description: `${formatCanvasTemplateSourceForQuickPick(storedTemplate)} · ${formatCanvasTemplateStats(storedTemplate.template)}${storedTemplate.template.id === defaultTemplateId ? ' · 默认' : ''}`,
       detail: storedTemplate.template.nodes.map((node) => `${humanizeNodeKind(node.kind)}: ${node.title}`).join(' / '),
       templateId: storedTemplate.template.id
     })),
@@ -3390,6 +3467,16 @@ async function pickCanvasTemplate(
   return catalog.templates.find((candidate) => candidate.template.id === picked.templateId);
 }
 
+function formatCanvasTemplateSourceForQuickPick(storedTemplate: CanvasStoredTemplate): string {
+  if (storedTemplate.template.category === 'builtin') {
+    return '内置';
+  }
+  if (storedTemplate.marketplace) {
+    return '市场';
+  }
+  return '自建';
+}
+
 async function showCanvasTemplateError(title: string, error: unknown): Promise<void> {
   await vscode.window.showErrorMessage(`${title}：${error instanceof Error ? error.message : String(error)}`);
 }
@@ -3400,6 +3487,12 @@ function normalizeCanvasTemplateIdValue(value: unknown): string | undefined {
   }
 
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readTemplatePublishVersionTarget(value: unknown): string | undefined {
+  return isRecord(value) && typeof value.templateIdOrSlug === 'string' && value.templateIdOrSlug.trim().length > 0
+    ? value.templateIdOrSlug.trim()
+    : undefined;
 }
 
 function isTemplateCompatibleNodeKind(value: string): value is 'agent' | 'terminal' | 'note' {
@@ -3413,6 +3506,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function registerTestCommands(
   context: vscode.ExtensionContext,
   panelManager: CanvasPanelManager,
+  templateMarketplacePanel: CanvasTemplateMarketplacePanelController,
+  sidebarTemplateView: CanvasSidebarTemplateView,
   sidebarNodeListView: CanvasSidebarNodeListView,
   sidebarSessionHistoryView: CanvasSidebarSessionHistoryView
 ): void {
@@ -3431,6 +3526,10 @@ function registerTestCommands(
         panelManager.getWorkspaceFoldersForDisplay()
       )
     ),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarTemplateItems, async () => {
+      const snapshot = await sidebarTemplateView.refresh();
+      return snapshot.items;
+    }),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.getSidebarSessionHistoryItems,
       async (homeDir?: unknown) =>
@@ -3567,6 +3666,16 @@ function registerTestCommands(
     ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.runWebviewLifecycleRaceDiagnostics, () =>
       panelManager.runWebviewLifecycleRaceDiagnosticsForTest()
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.captureTemplateMarketplaceProbe,
+      async (timeoutMs?: unknown) =>
+        templateMarketplacePanel.captureTestProbe(typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000)
+    ),
+    vscode.commands.registerCommand(
+      TEST_COMMAND_IDS.performTemplateMarketplaceAction,
+      async (action?: unknown, timeoutMs?: unknown) =>
+        templateMarketplacePanel.performTestAction(action, typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 5000)
     ),
     vscode.commands.registerCommand(
       TEST_COMMAND_IDS.performSidebarNodeListAction,

@@ -166,7 +166,7 @@
 ## 与其他文档的边界
 
 - 长期产品判断放在本文件。
-- 跨功能 UI design-system、视觉 token 与通用组件语言放在 `docs/UI.md`。
+- 跨功能 UI design-system、视觉 token 与通用组件语言放在 `docs/UI.md`；专项功能的独立 UI 系统放在对应功能文档，例如模板市场放在 `docs/marketplace/UI.md`。
 - 单个功能或需求范围、验收标准放在 `docs/product-specs/`。
 - 执行顺序和实施安排放在 `docs/PLANS.md` 或对应 `ExecPlan`。
 - 系统边界、运行时划分与稳定接口放在 `ARCHITECTURE.md`。
