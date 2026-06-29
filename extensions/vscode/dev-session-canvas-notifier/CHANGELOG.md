@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.0
+
+- 与主扩展 `0.20.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦模板市场 Preview 的浏览、安装、发布、版本更新 / 回滚、举报治理、生产服务部署链路，以及侧栏移除 root 与 paneGallery 细节修复；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.19.0
 
 - 与主扩展 `0.19.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 Agent 截图粘贴输入、侧栏添加已有 git worktree、多根会话历史恢复 cwd 归属、root-qualified 多根文件链接解析、多 Agent 输出公平渲染，以及 paneGallery / Panel 视觉细节收口；notifier companion 不引入新的通知投递行为变更。

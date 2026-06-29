@@ -18,7 +18,7 @@ English | [简体中文](README.zh-CN.md)
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase. The current release-prep target is `0.19.0`, with the last published baseline still `0.18.2` through GitHub Releases and verified Open VSX until the release-prep branch is reviewed, merged, and published. Visual Studio Marketplace remains deferred until the public gallery exposes both the main extension and notifier. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase. The current release-prep target is `0.20.0`, with the last published baseline still `0.19.0` through GitHub Releases and verified Open VSX until the release-prep branch is reviewed, merged, and published. Visual Studio Marketplace remains deferred until the public gallery exposes both the main extension and notifier. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](images/marketplace/canvas-overview.gif)
 
@@ -55,6 +55,7 @@ The product has entered the public `Preview` phase. The current release-prep tar
 - A public `Preview` release path targeting the `Visual Studio Marketplace` and `Open VSX`
 - Sidebar `Nodes` and `Session History` lists that let users jump to canvas nodes and restore or fork a new `Agent` node from history
 - Sidebar workspace-folder actions for adding folders, creating or adding git worktrees, distinguishing repository / linked-worktree roots, and removing workspace folders or linked worktrees through explicit confirmations
+- Template Marketplace Preview flows for browsing templates, installing complete template packages, updating or rolling back installed marketplace templates, and publishing saved local templates when GitHub authentication is available
 
 ## What The Preview Does Not Include
 
@@ -91,15 +92,15 @@ This README keeps the comparison user-facing and brief. The full technical check
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current release-prep target is `0.19.0`, covering Agent screenshot paste, existing git worktree add, multi-root session-history cwd restore, root-qualified file-link parsing, multi-Agent output fairness, pane-gallery detail fixes, and panel-edge visual polish. The last already published baseline remains `0.18.2` until this release-prep branch is reviewed, merged, and published. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current release-prep target is `0.20.0`, covering Template Marketplace browsing, complete package install, update / rollback, publishing, governance and production-service deployment plumbing, plus sidebar root-removal and Pane Gallery fixes. The last already published baseline remains `0.19.0` until this release-prep branch is reviewed, merged, and published. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
 - The current version is `Preview`, not a stable release.
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
-- The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; for the `0.19.0` release-day gate, GitHub Release assets plus verified Open VSX publication remain the allowed completion path while Visual Studio Marketplace visibility is still recorded as deferred.
-- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.19.0` release-prep validation is expected to cover version/package consistency, Agent image paste, worktree add flow, multi-root session-history cwd restore, file-link parsing, output fairness, release workflow dry-run checks, packaging, and marketplace channel visibility; Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; for the `0.20.0` release-day gate, GitHub Release assets plus verified Open VSX publication remain the allowed completion path while Visual Studio Marketplace visibility is still recorded as deferred.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.20.0` release-prep branch has completed repo-local version/package, build, audit, packaging, production-service smoke, and packaged-payload smoke validation; the final release-day pass still needs the clean final `main` ref, publish dry-run, channel visibility checks, and targeted Template Marketplace install/update/rollback/publish smoke. Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
@@ -110,10 +111,10 @@ Related entry points:
 
 ## Preview Distribution
 
-Public distribution is intended to happen through public extension registries. Official VS Code is still intended to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. During `0.19.0`, GitHub Release assets remain the release-day artifact mirror and manual-install fallback, and Open VSX is the required marketplace completion gate; Visual Studio Marketplace publication is still attempted, but if public visibility remains unavailable it is treated as a deferred channel rather than a release blocker. `.vsix` files are otherwise kept as build artifacts and release-verification inputs rather than ordinary distribution files.
+Public distribution is intended to happen through public extension registries. Official VS Code is still intended to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. During `0.20.0`, GitHub Release assets remain the release-day artifact mirror and manual-install fallback, and Open VSX is the required marketplace completion gate; Visual Studio Marketplace publication is still attempted, but if public visibility remains unavailable it is treated as a deferred channel rather than a release blocker. `.vsix` files are otherwise kept as build artifacts and release-verification inputs rather than ordinary distribution files.
 
 - Public `Preview` users should install through the extension registry configured by their host rather than by manually distributing a `.vsix`
-- `Visual Studio Marketplace` remains the intended official VS Code installation path, but it must not be announced as available until both the main extension and notifier are publicly visible there; for `0.19.0`, a deferred VSM state does not block completion through GitHub Release assets plus verified Open VSX
+- `Visual Studio Marketplace` remains the intended official VS Code installation path, but it must not be announced as available until both the main extension and notifier are publicly visible there; for `0.20.0`, a deferred VSM state does not block completion through GitHub Release assets plus verified Open VSX
 - `Open VSX` does not change the official VS Code Marketplace path and does not expand the compatibility-support matrix by itself
 
 ## Desktop Notification Companion (Auto-Installed)
@@ -148,7 +149,8 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 
 - The product is still in `Preview` and should not be treated as a stable production tool.
 - `Virtual Workspace` is not supported.
-- The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring. `0.18.2` completed through GitHub Release assets plus verified Open VSX while Visual Studio Marketplace visibility remains deferred; `0.19.0` keeps the same release-day completion gate unless VSM visibility recovers; future release-day publication still requires manual execution and review.
+- The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring. `0.19.0` completed through GitHub Release assets plus verified Open VSX while Visual Studio Marketplace visibility remains deferred; `0.20.0` keeps the same release-day completion gate unless VSM visibility recovers; future release-day publication still requires manual execution and review.
+- Template Marketplace remains a Preview capability. It may require network access to `https://dscanvas.dev`, GitHub authentication for write actions, and production catalog data created through the marketplace or a controlled operations flow.
 - The `Remote SSH` main path is validated and usable, and it remains the most strongly validated recommended path. Linux, macOS, and Windows local main paths also have functional validation now, but Windows still has a known limitation where embedded `Codex` history cannot page upward.
 - `Note` Markdown preview does not support raw HTML passthrough, arbitrary link schemes, file links outside the current workspace, directory targets, or rich-text block editing.
 - Templates currently save static layout and configuration only; they do not save running sessions, terminal output, file activity, thumbnails, cloud sync, or template history.
