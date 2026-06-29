@@ -28,7 +28,7 @@
 
 ## 意外与发现
 
-- 观察：当前本地模板模型已经把模板文件和运行态状态分开，`src/common/canvasTemplates.ts` 的 `CanvasTemplateDocument` 不包含远端统计、发布者或市场版本字段。
+- 观察：当前本地模板模型已经把模板文件和运行态状态分开，`extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts` 的 `CanvasTemplateDocument` 不包含远端统计、发布者或市场版本字段。
   证据：`CanvasTemplate` 当前只包含 `id`、`name`、`category`、`nodes`、`edges`、`createdAt`、`updatedAt`，节点只允许 `agent`、`terminal`、`note`。
 
 - 观察：VSCode Webview 市场页不能直接依赖远程 SSR app 或 localhost 服务；Remote/Codespaces 场景下，官方文档要求使用 Webview 资源 URI 和 message passing 规避本地/远程边界。
@@ -102,7 +102,7 @@
 
 ## 上下文与定向
 
-当前仓库是一款 VSCode workspace extension。顶层架构由 Extension Host、Webview 与可选 Runtime Supervisor 组成，宿主权威状态在 `src/panel/CanvasPanelManager.ts`，跨边界模型在 `src/common/`，Webview 呈现在 `src/webview/`。本地模板功能已经存在，主要路径是 `src/common/canvasTemplates.ts`、`src/panel/CanvasTemplateStore.ts`、`src/panel/CanvasPanelManager.ts` 和 `src/sidebar/CanvasSidebarTemplateView.ts`。
+当前仓库是一款 VSCode workspace extension。顶层架构由 Extension Host、Webview 与可选 Runtime Supervisor 组成，宿主权威状态在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`，跨边界模型在 `extensions/vscode/dev-session-canvas/src/common/`，Webview 呈现在 `extensions/vscode/dev-session-canvas/src/webview/`。本地模板功能已经存在，主要路径是 `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 和 `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts`。
 
 模板市场是本地模板能力的远端分发扩展。它需要新增浏览器 Web 端和插件内市场页，但不能把浏览器站点当作 VSCode Webview 的唯一实现，因为 Webview 有 CSP、本地资源、Remote/Codespaces 和宿主消息边界。它也需要新增后端服务，但在 Phase 1-4 范围内仍不需要自建长期运行进程或复杂集群。
 
@@ -164,4 +164,4 @@
 
 后续实现应新增 `apps/template-marketplace/`，使用 React + Vite 构建浏览器和 VSCode Webview 前端 entry，浏览器正式入口计划为 `https://dscanvas.dev/templates`，Vite browser build 需要支持 `/templates/` base path；使用 Hono 编写 Worker API，并通过 Wrangler 配置 D1、R2 和 Static Assets 绑定。Worker API 统一使用 `/api/v1` 前缀，除非后续另行决策把市场 API 收敛到 `/templates/api/v1`。
 
-后续 VSCode 宿主集成应新增 `src/panel/TemplateMarketplaceClient.ts` 和 `src/panel/CanvasTemplateMarketplacePanel.ts`。前者负责认证、API 调用、安装与更新检查；后者负责 Webview Editor HTML、CSP、资源 URI 和消息桥接。
+后续 VSCode 宿主集成应新增 `extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts` 和 `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts`。前者负责认证、API 调用、安装与更新检查；后者负责 Webview Editor HTML、CSP、资源 URI 和消息桥接。

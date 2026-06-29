@@ -60,7 +60,7 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 
 ## 7. 正式方案
 
-主要落点：`src/common/canvasLayoutArrangement.ts` 提供纯函数 `arrangeCanvasLayout(state, now)`；`src/common/protocol.ts` 增加 `webview/arrangeCanvasLayout` 消息；`src/webview/main.tsx` 在画布右键菜单发送该消息；`src/panel/CanvasPanelManager.ts` 在 Host 侧调用整理函数、执行现有文件活动 reconciliation、持久化并广播 `host/stateUpdated`。
+主要落点：`extensions/vscode/dev-session-canvas/src/common/canvasLayoutArrangement.ts` 提供纯函数 `arrangeCanvasLayout(state, now)`；`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 增加 `webview/arrangeCanvasLayout` 消息；`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 在画布右键菜单发送该消息；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 在 Host 侧调用整理函数、执行现有文件活动 reconciliation、持久化并广播 `host/stateUpdated`。
 
 布局按容器递归处理。容器可以是整张画布、workspace root section 或普通分组。每个容器只排列直接成员：直接节点和直接子分组。普通分组先整理内部，再作为父容器中的一个 block 参与排列；root section 内部独立整理，root section 本身只在外层参与 root-root 避让。所有节点和分组保持原有 `groupId` / `parentGroupId`，所以整理不会把对象搬入或搬出任何普通分组或 root。
 

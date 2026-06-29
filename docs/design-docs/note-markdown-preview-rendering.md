@@ -124,13 +124,13 @@ updated_at: 2026-06-13
 
 ### 7.1 正文权威数据保持原始 Markdown 文本
 
-- `src/common/protocol.ts` 的 `NoteNodeMetadata.content` 继续保存用户输入的原始字符串。
-- `src/panel/CanvasPanelManager.ts` 的 `updateNoteContent()`、恢复逻辑和摘要逻辑继续围绕这份原始文本工作。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 的 `NoteNodeMetadata.content` 继续保存用户输入的原始字符串。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `updateNoteContent()`、恢复逻辑和摘要逻辑继续围绕这份原始文本工作。
 - 本轮不新增 `renderedHtml`、块结构或额外 schema。
 
 ### 7.2 Webview 中把 Note 正文拆成阅读态与编辑态
 
-- `src/webview/main.tsx` 的 `NoteEditableNode` 继续持有本地 `content` 草稿与提交逻辑。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 `NoteEditableNode` 继续持有本地 `content` 草稿与提交逻辑。
 - 当正文未处于编辑态时，节点正文区渲染 Markdown 预览容器；用户单击时应能直接选中和复制预览内容，其中 `Ctrl/Cmd+A` 只应全选当前 Note 正文预览而不是整张画布，`Ctrl/Cmd+C` 则继续走宿主原生复制链路；只有双击普通正文区域时才切换到 `textarea` 并聚焦，展示原始 Markdown 文本。
 - 当用户失焦、按 `Ctrl/Cmd+Enter` 提交或结束当前编辑时，正文区回到预览态，并把最新内容写回宿主。
 - 阅读态与编辑态切换必须保持源文附近的视口连续性：从预览双击进入编辑时，`textarea` 不只设置 selection，还要滚动到该 selection 对应的源文行附近；从编辑态回到预览态时，应把当前编辑器顶部可见源文行映射回预览中最近的 `data-note-markdown-source-*` 元素，而不是重新从文档开头展示。由于 Markdown 预览与纯文本编辑器行高、折行和块间距不同，目标是保持源文局部连续，而不是逐像素同步。
@@ -150,7 +150,7 @@ updated_at: 2026-06-13
   - `highlight.js`：为 fenced code block 生成语法高亮 token；声明语言时优先按语言高亮，无法识别时回退到自动识别或纯文本。
   - `katex`：通过 Webview 内自有 `markdown-it` inline / block 规则识别 `$...$` 行内公式和 `$$...$$` 块级公式，并调用 `katex.renderToString({ trust: false, throwOnError: false })` 生成受控 HTML；不使用会透传 malformed math raw HTML 的第三方 Markdown 插件。
   - Markdown 图片语法：把 `![alt](src)` 渲染成只读图片预览；只允许 `https:`、受限 `data:image/*;base64` 和由宿主转换后的本地 workspace / 关联 Markdown 文件相对图片资源。
-- 最终视觉排版由 `src/webview/styles.css` 接管，继续遵循 VSCode 主题 token，而不是引入固定站点风格。
+- 最终视觉排版由 `extensions/vscode/dev-session-canvas/src/webview/styles.css` 接管，继续遵循 VSCode 主题 token，而不是引入固定站点风格。
 
 ### 7.4 任务列表可在预览态切换，链接通过宿主安全打开，图片只做安全预览
 
@@ -165,7 +165,7 @@ updated_at: 2026-06-13
   - 外部链接只允许 `http`、`https`、`mailto` 三类 scheme。
   - workspace 文件链接只允许当前 workspace 内文件，单根 workspace 支持纯相对路径，多根 workspace 要求 `workspace-folder/relative/path` 前缀。
 - 外部链接的打开容器由 `devSessionCanvas.canvas.linkOpenMode` 控制：默认 `editorPreview` 对 `http` / `https` 链接显式调用 VS Code 内置 Simple Browser 的 `simpleBrowser.api.open`，在 editor 区域预览打开；若链接指向 `localhost`、loopback IP 或 all-interface 本地服务，宿主会先用 `vscode.env.asExternalUri(...)` 解析成远程场景可访问的预览 URI。其它安全外部 scheme 继续通过 `vscode.open` 交给 VS Code opener 处理。`externalBrowser` 则通过 `vscode.env.openExternal` 交给系统默认浏览器或应用。这个设置只影响外部链接，不改变 workspace 文件链接始终在 VS Code 编辑器中打开的安全边界。
-- 链接安全边界必须在渲染层和宿主层双重 fail closed：`src/webview/main.tsx` 的 Markdown renderer 不应为 `command:`、未知 scheme、绝对路径、query 路径或 `..` 逃逸路径生成真实 `href`，宿主 `src/panel/CanvasPanelManager.ts` 仍在 `openNoteLink()` 中执行最终白名单和 workspace containment 校验。
+- 链接安全边界必须在渲染层和宿主层双重 fail closed：`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 Markdown renderer 不应为 `command:`、未知 scheme、绝对路径、query 路径或 `..` 逃逸路径生成真实 `href`，宿主 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 仍在 `openNoteLink()` 中执行最终白名单和 workspace containment 校验。
 - workspace 文件链接支持可选 `#L12`、`#L12C3` 行列 fragment；宿主会按当前画布 surface 语义打开文件并定位到对应行列。
 - 绝对路径、`..` 逃逸、目录目标和多根 workspace 下缺少根名前缀的歧义路径都必须 fail closed。
 - 交互式 checklist 只覆盖标准 Markdown task list 语法生成的 checkbox，包括无序列表、有序列表以及 blockquote / 嵌套场景中的版本；不支持原始 HTML 注入出的自定义 checkbox，也不在预览态直接编辑任务正文。
@@ -174,7 +174,7 @@ updated_at: 2026-06-13
 ### 7.5 双击预览进入编辑时使用 parser-position source map 定位光标
 
 - 双击普通预览文本进入编辑态时，textarea 光标应落在被双击可见字符对应的原始 Markdown 源码 offset，而不是默认落到正文开头或结尾。
-- 该能力不替换现有 Markdown 渲染栈：Webview 继续以 `markdown-it` 负责实际 HTML、安全链接、图片、task list、KaTeX 和代码高亮；新增 `src/common/noteMarkdownSourceMap.ts` 只用 `mdast-util-from-markdown`、GFM/math micromark 扩展和 mdast 扩展生成源码位置索引。
+- 该能力不替换现有 Markdown 渲染栈：Webview 继续以 `markdown-it` 负责实际 HTML、安全链接、图片、task list、KaTeX 和代码高亮；新增 `extensions/vscode/dev-session-canvas/src/common/noteMarkdownSourceMap.ts` 只用 `mdast-util-from-markdown`、GFM/math micromark 扩展和 mdast 扩展生成源码位置索引。
 - source map 使用原始 `NoteNodeMetadata.content` 的 UTF-16 offset。合法 YAML front matter 被隐藏时，解析 body 后必须把 `frontMatter.rawBlock.length` 加回所有 offset，确保 selection 仍指向完整 Markdown 文件中的真实位置。
 - 对稳定文本节点，source map 记录 `text` 和 `sourceOffsets`。`sourceOffsets` 长度为 rendered text 长度加一，第 N 项表示可见文本 offset N 对应的源码 offset。普通文本、标题、链接文本、列表续行、blockquote 内列表续行、inline code、强调/三重强调和 task item 文本都走这条路径。
 - `A &amp; B` 这类实体和反斜杠转义不能用 `node.position.start.offset + renderedOffset` 简单相加；实现必须把 mdast 的 rendered value 与 position 覆盖的源码切片逐字符对齐，遇到 HTML character reference 或 Markdown backslash escape 时把可见字符映射回对应源码 token 起点。
@@ -186,12 +186,12 @@ updated_at: 2026-06-13
 
 ### 7.6 测试、probe 与宿主协议继续围绕原始文本工作
 
-- `src/webview/main.tsx` 中的 probe 读取正文时，不能只依赖表单控件的 `.value`，而要在阅读态也能读取当前原始文本。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中的 probe 读取正文时，不能只依赖表单控件的 `.value`，而要在阅读态也能读取当前原始文本。
 - `setNodeTextField(field: 'body')` 的 test DOM action 继续在设置正文前先确保节点进入编辑态，再对真实 `textarea` 写值。
 - 真实 DOM / smoke 还需要一条专用 DOM action 来命中渲染后的 checklist checkbox，证明预览点击会走源文改写与宿主持久化主路径。
 - 阅读态与编辑态中的标准文本快捷键需要按语义分流：`Ctrl/Cmd+C`、`Ctrl/Cmd+X`、`Ctrl/Cmd+V` 不能被节点层 `keydown` 处理吞掉；`Ctrl/Cmd+A` 则必须在节点内本地收口为“只全选当前正文区域/输入框”，而不是继续冒泡成整张画布的 select-all。
 - 编辑态的 `Tab` / `Shift+Tab` 属于正文编辑器局部快捷键：由 Webview 在 `textarea` 的 `keydown` 中阻止浏览器焦点跳转并直接改写当前草稿，直到失焦或显式提交时再复用 `webview/updateNoteNode` 写回宿主。
-- `src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 需要新增一条专用于 `Note` 预览链接的消息链路，让链接打开不与编辑提交共用模糊语义。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 与 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 需要新增一条专用于 `Note` 预览链接的消息链路，让链接打开不与编辑提交共用模糊语义。
 - `tests/playwright/webview-harness.spec.mjs` 至少新增覆盖任务列表交互、链接点击、代码高亮和数学公式渲染的用例；如果补了纯函数级辅助逻辑，也应补对应脚本测试。
 
 ## 8. 验证方法
@@ -215,32 +215,32 @@ updated_at: 2026-06-13
 
 当前实现已经按上述方案落地：
 
-- `src/webview/main.tsx` 的 `noteMarkdownRenderer` 已接入 `markdown-it-task-lists`、`highlight.js`、自有安全 KaTeX 规则和受限图片渲染规则，并在预览点击时区分“切换 checklist”“打开链接”与“进入编辑”；malformed math 中的 raw HTML / `command:` 链接必须被 KaTeX 转义，不能生成真实标签。
-- `src/webview/main.tsx` 的 Markdown link renderer 已覆盖 `validateLink` 并在 `link_open` 中二次检查 `href`，不为 `command:` 等 unsafe 链接生成可激活 DOM；`src/panel/CanvasPanelManager.ts` 的 `enableCommandUris` 也收窄到画布 standby 页面需要的扩展命令白名单。
-- `src/common/noteMarkdownChecklist.ts` 已新增按源文行切换 Markdown checklist 标记的纯函数辅助逻辑，支持无序列表、有序列表和嵌套缩进场景。
-- `src/common/noteMarkdownLinks.ts`、`src/common/protocol.ts` 与 `src/panel/CanvasPanelManager.ts` 已新增 `Note` 预览链接的统一解析与宿主打开链路，覆盖外部链接白名单与 workspace 文件链接。
-- `src/common/protocol.ts`、`src/webview/main.tsx` 与 `tests/vscode-smoke/extension-tests.cjs` 已补齐真实 DOM action `toggleNoteChecklistItem`，用于在 smoke 中驱动真实 checkbox 点击并验证宿主状态回写。
-- `scripts/build/build.mjs` 已补齐 KaTeX 字体资源所需的 `.woff` / `.woff2` loader，`src/webview/styles.css` 已补齐任务列表、链接、图片预览、语法高亮与数学公式样式，并恢复 preview checklist 的真实命中能力。
-- `src/webview/main.tsx` 与 `src/webview/styles.css` 已把编辑态行号从固定逻辑行列表改成“隐藏 mirror 计算视觉行数 + gutter 续行空 row”：普通行继续显示一个 row，软换行后的长逻辑行会在 gutter 中保留空白续行 row，让后续行号按视觉行节奏对齐。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 `noteMarkdownRenderer` 已接入 `markdown-it-task-lists`、`highlight.js`、自有安全 KaTeX 规则和受限图片渲染规则，并在预览点击时区分“切换 checklist”“打开链接”与“进入编辑”；malformed math 中的 raw HTML / `command:` 链接必须被 KaTeX 转义，不能生成真实标签。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 Markdown link renderer 已覆盖 `validateLink` 并在 `link_open` 中二次检查 `href`，不为 `command:` 等 unsafe 链接生成可激活 DOM；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `enableCommandUris` 也收窄到画布 standby 页面需要的扩展命令白名单。
+- `extensions/vscode/dev-session-canvas/src/common/noteMarkdownChecklist.ts` 已新增按源文行切换 Markdown checklist 标记的纯函数辅助逻辑，支持无序列表、有序列表和嵌套缩进场景。
+- `extensions/vscode/dev-session-canvas/src/common/noteMarkdownLinks.ts`、`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 与 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 已新增 `Note` 预览链接的统一解析与宿主打开链路，覆盖外部链接白名单与 workspace 文件链接。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`、`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 与 `tests/vscode-smoke/extension-tests.cjs` 已补齐真实 DOM action `toggleNoteChecklistItem`，用于在 smoke 中驱动真实 checkbox 点击并验证宿主状态回写。
+- `scripts/build/build.mjs` 已补齐 KaTeX 字体资源所需的 `.woff` / `.woff2` loader，`extensions/vscode/dev-session-canvas/src/webview/styles.css` 已补齐任务列表、链接、图片预览、语法高亮与数学公式样式，并恢复 preview checklist 的真实命中能力。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 与 `extensions/vscode/dev-session-canvas/src/webview/styles.css` 已把编辑态行号从固定逻辑行列表改成“隐藏 mirror 计算视觉行数 + gutter 续行空 row”：普通行继续显示一个 row，软换行后的长逻辑行会在 gutter 中保留空白续行 row，让后续行号按视觉行节奏对齐。
 - `tests/playwright/webview-harness.spec.mjs` 已新增任务列表交互、链接点击、代码高亮和数学公式回归，并覆盖编辑态行号展示与 `Tab` / `Shift+Tab` 缩进不会把焦点移出正文输入框；`scripts/test/test-note-markdown-links.mts` 与 `scripts/test/test-note-markdown-checklists.mts` 已分别覆盖链接白名单与 checklist 源文改写逻辑。
 
 2026-05-21 双击源码定位重写追加实现：
 
-- `src/common/noteMarkdownSourceMap.ts` 已新增 parser-position source map，覆盖 GFM、math、entity/backslash 对齐、fenced code 与 indented code 的源码 offset 映射。
-- `src/webview/main.tsx` 已在 Markdown 预览 HTML 渲染后注入 text span offset map 和 block fallback range；`handlePreviewDoubleClick()` 会把 selection request 传给正文 textarea，普通文本落到点击字符，复杂块落到最近 Markdown 块源码末尾。
-- `src/common/protocol.ts`、`src/webview/main.tsx` 与 `tests/playwright/webview-harness.spec.mjs` 已补齐 `doubleClickNotePreviewText` / `doubleClickNotePreviewSelector` 测试 DOM action，用真实坐标覆盖浏览器 caret 与 fallback 行为。
+- `extensions/vscode/dev-session-canvas/src/common/noteMarkdownSourceMap.ts` 已新增 parser-position source map，覆盖 GFM、math、entity/backslash 对齐、fenced code 与 indented code 的源码 offset 映射。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 已在 Markdown 预览 HTML 渲染后注入 text span offset map 和 block fallback range；`handlePreviewDoubleClick()` 会把 selection request 传给正文 textarea，普通文本落到点击字符，复杂块落到最近 Markdown 块源码末尾。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`、`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 与 `tests/playwright/webview-harness.spec.mjs` 已补齐 `doubleClickNotePreviewText` / `doubleClickNotePreviewSelector` 测试 DOM action，用真实坐标覆盖浏览器 caret 与 fallback 行为。
 - `scripts/test/test-note-markdown-source-map.mts` 已新增纯函数回归，覆盖 list continuation、ordered list continuation、nested blockquote list continuation、triple emphasis、entity/backslash、fenced code、indented code、图片与 math block end。
 
 2026-05-22 预览 / 编辑切换滚动连续性追加实现：
 
-- `src/webview/main.tsx` 已在预览态和编辑态共享正文滚动状态，并移除双击进入编辑时把正文滚动重置到 0 的行为。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 已在预览态和编辑态共享正文滚动状态，并移除双击进入编辑时把正文滚动重置到 0 的行为。
 - 预览进入编辑时，编辑器会优先按 selection 所在源文行计算 `textarea.scrollTop`，让中后段内容进入编辑后仍显示在视口内。
 - 编辑回到预览时，Webview 会把当前编辑器顶部可见源文行映射到预览中最近的 source map 元素并恢复滚动位置；找不到局部 source 元素时才回落到保存的滚动值。
 - `tests/playwright/webview-harness.spec.mjs` 已新增滚动回归，覆盖“滚动后的预览双击进入编辑不回到源码开头”和“滚动后的编辑失焦回到预览不从头展示”。
 
 2026-05-22 display math 多块 fallback 追加实现：
 
-- `src/webview/main.tsx` 已将 math block range 只绑定到 `.note-markdown-math-display` 外层 wrapper，避免同一公式内层 `.katex-display` 参与同一 kind 候选序列并消费后续公式 range。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 已将 math block range 只绑定到 `.note-markdown-math-display` 外层 wrapper，避免同一公式内层 `.katex-display` 参与同一 kind 候选序列并消费后续公式 range。
 - `tests/playwright/webview-harness.spec.mjs` 已新增两段 display math 的回归，分别双击两段公式内部 KaTeX 内容并验证 fallback 落到各自 `$$...$$` Markdown 源码末尾。
 
 本轮验证结果：
@@ -258,7 +258,7 @@ updated_at: 2026-06-13
 
 2026-05-06 安全 KaTeX 追加验证：
 
-1. 移除存在 high severity XSS 的 `markdown-it-katex` 依赖，改为 `src/webview/main.tsx` 内自有 Markdown math 规则直接调用新版 `katex`。
+1. 移除存在 high severity XSS 的 `markdown-it-katex` 依赖，改为 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 内自有 Markdown math 规则直接调用新版 `katex`。
 2. 新增 Playwright 回归，验证 malformed math `$<a href="command:workbench.action.closeActiveEditor">run command</a>%$` 不会在预览态生成真实 `<a>` 标签。
 
 2026-05-07 链接渲染层追加验证：

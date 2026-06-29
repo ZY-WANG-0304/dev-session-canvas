@@ -132,7 +132,7 @@ updated_at: 2026-05-05
 - 用户也可以在当前 workspace 里单独覆盖。
 - 对于直接打开文件夹的单文件夹 workspace，VS Code 实际会把这类覆盖写到该目录下的 `.vscode/settings.json`；虽然底层表现为 folder settings，本仓库产品语义上仍把它视为“workspace 级覆盖”。
 
-实现上，`src/panel/configuration.ts` 不再逐个 `get('terminal.shell')` / `get('terminal.shellPath')` 后让 VS Code 自己按键合并，而是把这两个键作为一个配置组整体解析：只要 workspace 级对其中任意一项显式赋值，就整体采用 workspace 级组合，并把未赋值的另一项回退到 schema 默认值，而不是继续继承设备级的另一半配置。
+实现上，`extensions/vscode/dev-session-canvas/src/panel/configuration.ts` 不再逐个 `get('terminal.shell')` / `get('terminal.shellPath')` 后让 VS Code 自己按键合并，而是把这两个键作为一个配置组整体解析：只要 workspace 级对其中任意一项显式赋值，就整体采用 workspace 级组合，并把未赋值的另一项回退到 schema 默认值，而不是继续继承设备级的另一半配置。
 
 ### 7.2 动态探测来源
 

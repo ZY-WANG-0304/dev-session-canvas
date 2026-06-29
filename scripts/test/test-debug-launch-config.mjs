@@ -9,6 +9,7 @@ const workspaceFolder = '${workspaceFolder}';
 const localRepoRoot = '${input:devSessionCanvas.localRepoRoot}';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const mainExtensionRoot = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas');
 const launchJsonPath = path.join(repoRoot, '.vscode', 'launch.json');
 const tasksJsonPath = path.join(repoRoot, '.vscode', 'tasks.json');
 const launchJson = JSON.parse(await readFile(launchJsonPath, 'utf8'));
@@ -46,6 +47,7 @@ assert.deepEqual(
 );
 
 const mainOnlyExtensionPath = `${workspaceFolder}/.debug/vscode-extension-main-only`;
+const mainExtensionPath = `${workspaceFolder}/extensions/vscode/dev-session-canvas`;
 const notifierExtensionPath = `${workspaceFolder}/extensions/vscode/dev-session-canvas-notifier`;
 
 const runMainOnly = getConfiguration('Run Dev Session Canvas (Main Only)');
@@ -55,16 +57,17 @@ assertArgsContain(runMainOnly, [
   `--extensionDevelopmentPath=${mainOnlyExtensionPath}`
 ]);
 assert.deepEqual(runMainOnly.sourceMapPathOverrides, {
-  '../src/*': `${workspaceFolder}/src/*`,
-  '../packages/*': `${workspaceFolder}/packages/*`,
-  '../node_modules/*': `${workspaceFolder}/node_modules/*`
+  '../src/*': `${workspaceFolder}/extensions/vscode/dev-session-canvas/src/*`,
+  '../../../../../packages/*': `${workspaceFolder}/packages/*`,
+  '../../../../../node_modules/*': `${workspaceFolder}/node_modules/*`,
+  '../../../node_modules/*': `${workspaceFolder}/node_modules/*`
 });
 
 const runLocalNotifier = getConfiguration('Run Dev Session Canvas + Notifier (Local Window)');
 assert.equal(runLocalNotifier.preLaunchTask, 'build extension + notifier');
 assertArgsContain(runLocalNotifier, [
   '--profile=Dev Session Canvas Notifier Extension Debug',
-  `--extensionDevelopmentPath=${workspaceFolder}`,
+  `--extensionDevelopmentPath=${mainExtensionPath}`,
   `--extensionDevelopmentPath=${notifierExtensionPath}`
 ]);
 
@@ -72,7 +75,7 @@ const runRemoteNotifier = getConfiguration('Run Dev Session Canvas + Notifier (R
 assert.equal(runRemoteNotifier.preLaunchTask, 'build extension');
 assertArgsContain(runRemoteNotifier, [
   '--profile=Dev Session Canvas Notifier Extension Debug',
-  `--extensionDevelopmentPath=${workspaceFolder}`,
+  `--extensionDevelopmentPath=${mainExtensionPath}`,
   `--extensionDevelopmentPath=${localRepoRoot}/extensions/vscode/dev-session-canvas-notifier`
 ]);
 assert.equal(runRemoteNotifier.args.some((argument) => argument.startsWith('--remote=')), false);
@@ -96,8 +99,8 @@ assert.equal(buildNotifierTask.dependsOrder, 'sequence');
 assert.deepEqual(buildNotifierTask.dependsOn, ['install dependencies']);
 
 const preparedOutputDir = path.join(repoRoot, '.debug', 'test-vscode-extension-main-only');
-await prepareDebugMainOnlyExtension({ sourceRoot: repoRoot, outputDir: preparedOutputDir });
-const sourceManifest = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+await prepareDebugMainOnlyExtension({ outputDir: preparedOutputDir });
+const sourceManifest = JSON.parse(await readFile(path.join(mainExtensionRoot, 'package.json'), 'utf8'));
 const preparedManifest = JSON.parse(await readFile(path.join(preparedOutputDir, 'package.json'), 'utf8'));
 
 assert.equal(preparedManifest.name, sourceManifest.name);

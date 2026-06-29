@@ -287,19 +287,28 @@ process.exit(1);
 
 async function writeFixture(root, fixtureVersion) {
   await writeJson(path.join(root, 'package.json'), {
-    name: 'dev-session-canvas',
-    publisher: 'devsessioncanvas',
+    name: 'dev-session-canvas-workspace',
+    private: true,
     version: fixtureVersion,
     scripts: {
       'publish:marketplaces': 'node fake-publish-marketplaces.js'
     }
+  });
+  await writeJson(path.join(root, 'extensions', 'vscode', 'dev-session-canvas', 'package.json'), {
+    name: 'dev-session-canvas',
+    publisher: 'devsessioncanvas',
+    version: fixtureVersion
   });
   await writeJson(path.join(root, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'package.json'), {
     name: 'dev-session-canvas-notifier',
     publisher: 'devsessioncanvas',
     version: fixtureVersion
   });
-  await writeFile(path.join(root, 'CHANGELOG.md'), `# Changelog\n\n## ${fixtureVersion}\n\n- fixture\n`, 'utf8');
+  await writeFile(
+    path.join(root, 'extensions', 'vscode', 'dev-session-canvas', 'CHANGELOG.md'),
+    `# Changelog\n\n## ${fixtureVersion}\n\n- fixture\n`,
+    'utf8'
+  );
   await writeFile(
     path.join(root, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'CHANGELOG.md'),
     `# Changelog\n\n## ${fixtureVersion}\n\n- fixture\n`,

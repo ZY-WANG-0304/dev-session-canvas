@@ -31,7 +31,7 @@ updated_at: 2026-06-27
 
 `docs/product-specs/template-marketplace.md` 已把模板市场定义为社区驱动的公开发现、发布、安装平台，并明确需要插件内独立 Webview Editor、浏览器 Web 端、GitHub OAuth、统计排行、版本管理与治理后台。这个能力已经超出本地模板文件管理范围：它需要一个可公开访问的 Web 应用、一组市场 API、可下载的模板包与缩略图存储、用户身份和治理数据。
 
-当前仓库已经有本地模板模型，核心落点是 `src/common/canvasTemplates.ts`、`src/panel/CanvasTemplateStore.ts`、`src/panel/CanvasPanelManager.ts` 和 `src/sidebar/CanvasSidebarTemplateView.ts`。模板市场必须复用这套模板文件语义，而不是重新定义另一个不兼容的模板格式。技术选型工作的目的，是把 Web 前端、后端、存储、认证和 VSCode 集成边界写成可执行的正式方案，并记录为什么在 Phase 1-4 的完整目标下选择 React + Vite 而不是 Next.js、选择 Cloudflare Workers/D1/R2 而不是自建后端。
+当前仓库已经有本地模板模型，核心落点是 `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 和 `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts`。模板市场必须复用这套模板文件语义，而不是重新定义另一个不兼容的模板格式。技术选型工作的目的，是把 Web 前端、后端、存储、认证和 VSCode 集成边界写成可执行的正式方案，并记录为什么在 Phase 1-4 的完整目标下选择 React + Vite 而不是 Next.js、选择 Cloudflare Workers/D1/R2 而不是自建后端。
 
 ## 2. 问题定义
 
@@ -134,10 +134,10 @@ updated_at: 2026-06-27
 - `apps/template-marketplace/src/web/`：React + Vite Web 前端，包含浏览器端市场页面、VSCode Webview entry、host adapter、卡片、详情、发布表单、Dashboard 和管理后台组件。
 - `apps/template-marketplace/src/worker/`：Cloudflare Workers + Hono API 服务，包含路由、中间件、认证、上传校验和 D1/R2 操作；生产路径通过 `createProductionTemplateRepository()` 在无 D1 时返回空仓库，只有 `MARKETPLACE_ENABLE_SEED_TEMPLATES=true` 才进入 seed repository。
 - `packages/marketplace-shared/`：市场共享包。包含 Drizzle schema 定义、API request/response 类型、Zod 验证 schema、模板包 manifest 类型、错误码和分页类型。该包不能依赖 `vscode`、React、DOM 或 Cloudflare runtime binding；根入口保持浏览器安全，Drizzle schema 通过 `@dev-session-canvas/marketplace-shared/schema` 子路径导出，避免浏览器市场 bundle 引入 Drizzle runtime。
-- `src/panel/TemplateMarketplaceClient.ts`：Extension Host 侧市场 API client、安装模板写入、更新检查和认证换取逻辑。它只能通过宿主发起网络请求和写本地模板目录，不能让 Webview 自己写入文件系统。
-- `src/panel/CanvasTemplateMarketplacePanel.ts`：插件内独立 Webview Editor 的 HTML、CSP、资源 URI 和 message bridge。当前基础实现先用本地 Webview HTML 读取市场 API；命令入口每次都复位到当前扩展安装模式对应的默认来源：正式安装使用 `https://dscanvas.dev/templates`，调试 / 测试安装使用 preview / 本地调试来源，不继承上一次外部来源；从浏览器入口进入时必须先校验外部安装 URI 的可信 `source` 与当前安装模式一致，正式安装遇到调试来源、调试安装遇到正式来源都应报错提示；通过校验后，详情上下文沿用该 `source` origin，Webview 只把模板 slug、版本和安装目标通过 message passing 交给 Extension Host；宿主再下载完整 `package.zip`、校验并写入本地模板库。插件内市场 UI 仍是本地 Webview HTML，后续应把它收敛到 `apps/template-marketplace/src/web/` 的共享 React 组件和 VSCode host adapter，避免长期维护两套 UI。
-- `src/common/canvasTemplates.ts`：继续作为本地模板语义来源；若需要共享到 `packages/marketplace-shared`，应通过提取纯类型/解析函数完成，不在这里直接引入远端 API 字段。
-- `src/panel/CanvasTemplateStore.ts`：安装市场模板时写入用户选择的本地或 workspace 模板目录的 `marketplace/` 子目录，并额外写入 market sidecar；本地模板 JSON 主体仍保持普通用户模板可离线应用。
+- `extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts`：Extension Host 侧市场 API client、安装模板写入、更新检查和认证换取逻辑。它只能通过宿主发起网络请求和写本地模板目录，不能让 Webview 自己写入文件系统。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts`：插件内独立 Webview Editor 的 HTML、CSP、资源 URI 和 message bridge。当前基础实现先用本地 Webview HTML 读取市场 API；命令入口每次都复位到当前扩展安装模式对应的默认来源：正式安装使用 `https://dscanvas.dev/templates`，调试 / 测试安装使用 preview / 本地调试来源，不继承上一次外部来源；从浏览器入口进入时必须先校验外部安装 URI 的可信 `source` 与当前安装模式一致，正式安装遇到调试来源、调试安装遇到正式来源都应报错提示；通过校验后，详情上下文沿用该 `source` origin，Webview 只把模板 slug、版本和安装目标通过 message passing 交给 Extension Host；宿主再下载完整 `package.zip`、校验并写入本地模板库。插件内市场 UI 仍是本地 Webview HTML，后续应把它收敛到 `apps/template-marketplace/src/web/` 的共享 React 组件和 VSCode host adapter，避免长期维护两套 UI。
+- `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts`：继续作为本地模板语义来源；若需要共享到 `packages/marketplace-shared`，应通过提取纯类型/解析函数完成，不在这里直接引入远端 API 字段。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts`：安装市场模板时写入用户选择的本地或 workspace 模板目录的 `marketplace/` 子目录，并额外写入 market sidecar；本地模板 JSON 主体仍保持普通用户模板可离线应用。
 
 ### 7.3 前端运行模型
 
@@ -217,7 +217,7 @@ R2 对象按不可变版本组织，示例 key：
 
 调研到的代表模式如下：
 
-- VS Code 扩展以根目录 `package.json` 作为 manifest，`README.md` 作为 Marketplace 详情正文，`description` / `displayName` / icon / repository 等字段用于搜索和展示；`vsce` 负责打包、版本递增、`.vscodeignore` 过滤和发布前脚本。
+- VS Code 扩展以扩展包目录内的 `package.json` 作为 manifest，`README.md` 作为 Marketplace 详情正文，`description` / `displayName` / icon / repository 等字段用于搜索和展示；`vsce` 负责打包、版本递增、`.vscodeignore` 过滤和发布前脚本。DevSessionCanvas 当前主扩展对应 `extensions/vscode/dev-session-canvas/package.json`，发布脚本会先 staging 主扩展子包，再生成 VSIX。
 - Obsidian 插件要求仓库根目录包含 `README.md`、`LICENSE` 和 `manifest.json`；发布后，社区目录的 `community-plugins.json` 只记录 `id`、`name`、`author`、`description`、`repo` 这类索引字段，真实安装资产从 GitHub release 下载 `main.js`、`manifest.json` 和可选 `styles.css`。
 - Terraform Registry 推荐标准模块目录，根 README、`examples/` 和模块源码共同组成可复用包；工具可理解该目录并生成文档与索引。
 - Helm Chart 使用 `Chart.yaml`、`README.md`、`values.yaml`、`templates/` 等目录结构作为 chart 包，发布时生成 `.tgz`，仓库的 `index.yaml` 只保存名称、版本、描述、下载 URL 和 digest 等索引信息。
@@ -327,7 +327,7 @@ GitHub OAuth App 只有单一 callback URL；因为预览环境使用 `*.workers
 
 Phase 4 在本方案中的承载方式如下：
 
-- 版本历史、发布新版本、手动更新和回滚由 `template_versions`、`templates.latest_version_id`、安装 sidecar 与 R2 不可变模板包版本对象共同承载。Web 作者详情页和 My Templates 进入 `/templates/publish/version?template=<slug>` 发布新版本；VSCode 侧以 `src/panel/TemplateMarketplaceClient.ts` 检查已安装 sidecar 与远端 latest、发布新版本、刷新发布后详情缓存，`src/sidebar/CanvasSidebarTemplateView.ts` 显示更新徽章并提供手动更新、打开市场详情/回滚和举报跳转动作，`src/panel/CanvasTemplateMarketplacePanel.ts` 的版本菜单负责安装指定历史版本并把低版本动作标记为回滚。首版发布新版本不实现 listing revision：展示字段变更仍随版本发布一起处理，后续如果要允许 README / 标签 / 缩略图只改 listing 而不触发更新提醒，需要新增设计补充。
+- 版本历史、发布新版本、手动更新和回滚由 `template_versions`、`templates.latest_version_id`、安装 sidecar 与 R2 不可变模板包版本对象共同承载。Web 作者详情页和 My Templates 进入 `/templates/publish/version?template=<slug>` 发布新版本；VSCode 侧以 `extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts` 检查已安装 sidecar 与远端 latest、发布新版本、刷新发布后详情缓存，`extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts` 显示更新徽章并提供手动更新、打开市场详情/回滚和举报跳转动作，`extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts` 的版本菜单负责安装指定历史版本并把低版本动作标记为回滚。首版发布新版本不实现 listing revision：展示字段变更仍随版本发布一起处理，后续如果要允许 README / 标签 / 缩略图只改 listing 而不触发更新提醒，需要新增设计补充。
 - 举报队列、模板下架/恢复、用户封禁和管理员权限由 `reports`、`users.banned_at`、`admin_roles` 和 Worker 端权限中间件承载。插件内举报入口不重复实现表单，只跳转浏览器 Web 详情页 `#report`，由 Web 端登录态、原因选择和 Worker API 承担真实举报提交。
 - 治理审计由 `admin_audit_logs` 记录操作者、动作、目标对象、前后状态摘要和时间戳，前端管理后台只能展示这些 API 结果，不能成为权限边界。
 - 数据统计面板优先读取 `template_daily_stats` 与累计字段，避免把 D1 设计成原始事件仓库。

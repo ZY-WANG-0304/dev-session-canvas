@@ -13,7 +13,7 @@ import {
   resolveNoteMarkdownRefreshDraftRetention,
   sanitizeNoteMarkdownFileName,
   shouldShowNoteMarkdownRemoteAuthorityPrefixForDisplay
-} from '../../src/common/noteMarkdownFileAssociation.ts';
+} from '../../extensions/vscode/dev-session-canvas/src/common/noteMarkdownFileAssociation.ts';
 
 assert.equal(isSupportedNoteMarkdownFilePath('/workspace/docs/plan.md'), true);
 assert.equal(isSupportedNoteMarkdownFilePath('/workspace/docs/plan.markdown'), true);
@@ -224,8 +224,8 @@ assert.deepEqual(
   'Explicit reload should be the escape hatch that clears the stored draft and conflict status.'
 );
 
-const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-const packageNlsJson = JSON.parse(readFileSync(new URL('../../package.nls.json', import.meta.url), 'utf8'));
+const packageJson = JSON.parse(readFileSync(new URL('../../extensions/vscode/dev-session-canvas/package.json', import.meta.url), 'utf8'));
+const packageNlsJson = JSON.parse(readFileSync(new URL('../../extensions/vscode/dev-session-canvas/package.nls.json', import.meta.url), 'utf8'));
 const dropTitleConfig =
   packageJson.contributes.configuration.properties['devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle'];
 assert.equal(dropTitleConfig?.type, 'boolean');
@@ -237,7 +237,7 @@ assert.equal(
 );
 
 const panelManagerSource = readFileSync(
-  new URL('../../src/panel/CanvasPanelManager.ts', import.meta.url),
+  new URL('../../extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', import.meta.url),
   'utf8'
 );
 const currentRemoteAuthoritySource = sliceBetween(

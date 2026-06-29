@@ -5,7 +5,7 @@ import {
   formatGitWorktreeListEntryRef,
   groupGitWorktreeRepositoryCandidates,
   parseGitWorktreeListPorcelain
-} from '../../src/common/gitWorktrees.ts';
+} from '../../extensions/vscode/dev-session-canvas/src/common/gitWorktrees.ts';
 
 const porcelainOutput = [
   'worktree /repo/main',
@@ -137,7 +137,7 @@ assert.deepEqual(
   'Expected repository folder picker candidates to be grouped by git common dir and prefer the main root.'
 );
 
-const extensionSource = readFileSync(new URL('../../src/extension.ts', import.meta.url), 'utf8');
+const extensionSource = readFileSync(new URL('../../extensions/vscode/dev-session-canvas/src/extension.ts', import.meta.url), 'utf8');
 assert.match(
   extensionSource,
   /type:\s*'addExistingWorktree'[\s\S]*?Add existing worktree to workspace/u,

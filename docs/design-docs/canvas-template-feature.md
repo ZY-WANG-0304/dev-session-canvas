@@ -128,13 +128,13 @@ updated_at: 2026-06-15
 
 本方案的主要实现落点集中在：
 
-- `src/common/canvasTemplates.ts`：模板领域模型、版本校验、摘要和纯数据辅助函数。
-- `src/panel/CanvasTemplateStore.ts`：内置模板 / 用户模板文件的读取、写入、导入和删除。
-- `src/panel/CanvasPanelManager.ts`：默认模板首次应用、模板物化、Provider 校验、命令入口与宿主权威状态更新。
-- `src/panel/CanvasTemplateSaveFormPanel.ts`：保存模板时使用的表单式对话面板。
-- `src/sidebar/CanvasSidebarTemplateView.ts`：模板列表侧栏视图。
-- `src/extension.ts` / `package.json` / `package.nls.json`：命令、view contribution 和交互文案。
-- `src/webview/main.tsx` / `src/common/protocol.ts`：空白区右键菜单中的模板动作，以及视口中心信息回传。
+- `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts`：模板领域模型、版本校验、摘要和纯数据辅助函数。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts`：内置模板 / 用户模板文件的读取、写入、导入和删除。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：默认模板首次应用、模板物化、Provider 校验、命令入口与宿主权威状态更新。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts`：保存模板时使用的表单式对话面板。
+- `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts`：模板列表侧栏视图。
+- `extensions/vscode/dev-session-canvas/src/extension.ts` / `package.json` / `package.nls.json`：命令、view contribution 和交互文案。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` / `extensions/vscode/dev-session-canvas/src/common/protocol.ts`：空白区右键菜单中的模板动作，以及视口中心信息回传。
 - `resources/templates/*.json`：2 个内置模板的正式资产。
 
 ### 7.1 模板模型与版本边界
@@ -213,7 +213,7 @@ updated_at: 2026-06-15
   - 首次打开固定使用内置 `使用说明`，该模板不得携带 workspace 文件 `Note`；workspace 文件 `Note` 的创建或冲突处理只发生在用户显式应用 / 重置模板路径中。
 - 显式 `apply` / `reset` 成功后，宿主会把本次物化出的新节点 id 作为一组发送给 Webview；Webview 对这组节点执行组级 `fitView`，让用户视口自动追到新增模板节点，而不是只停留在发起操作前的画布位置。
 - Marketplace 预览媒体录制应运行在非测试模式的 VS Code Extension Development Host 中，并通过真实鼠标/键盘确认 `reset` 的宿主 modal；录制工具不为视频路径增加自动确认特例。
-- `src/panel/CanvasPanelManager.ts` 中的手工/模板节点 id 是对象身份，不再等同于可读编号：新建 `agent` / `terminal` / `note` 节点时，标题仍使用 `Agent 1`、`Terminal 2` 这类递增展示编号，但 `node.id` 会带随机 object identity 后缀。这样同一个模板被反复 reset 后，也会物化成新的 React Flow / 执行终端对象，不复用旧 Webview 节点实例或旧 xterm 缓冲区。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中的手工/模板节点 id 是对象身份，不再等同于可读编号：新建 `agent` / `terminal` / `note` 节点时，标题仍使用 `Agent 1`、`Terminal 2` 这类递增展示编号，但 `node.id` 会带随机 object identity 后缀。这样同一个模板被反复 reset 后，也会物化成新的 React Flow / 执行终端对象，不复用旧 Webview 节点实例或旧 xterm 缓冲区。
 - 为兼容已有 workspace 快照，宿主继续接受历史 `agent-1`、`terminal-2`、`note-3` 这类旧 id；计算下一个展示编号时只读取手工节点 id 中的展示编号前缀，不把自动文件节点或随机 identity 后缀当成编号来源。
 
 ### 7.5 模板落位规则

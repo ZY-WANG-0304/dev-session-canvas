@@ -15,8 +15,8 @@ try {
   await esbuild.build({
     stdin: {
       contents: `
-        export * from './src/common/canvasTemplates';
-        export * from './src/panel/CanvasTemplateStore';
+        export * from './extensions/vscode/dev-session-canvas/src/common/canvasTemplates';
+        export * from './extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore';
       `,
       resolveDir: process.cwd(),
       sourcefile: 'canvas-templates-entry.ts'
@@ -867,29 +867,30 @@ try {
     /不存在的分组索引/u
   );
 
-  const extensionSource = await readFile('src/extension.ts', 'utf8');
-  const packageManifest = JSON.parse(await readFile('package.json', 'utf8'));
-  assert.match(packageManifest.scripts.test, /npm run test:marketplace/u);
-  assert.match(packageManifest.scripts['test:marketplace'], /npm run typecheck:marketplace/u);
-  assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-shared/u);
-  assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-api/u);
-  assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-web/u);
-  assert.match(packageManifest.scripts['test:marketplace'], /npm run test:marketplace-vscode-preview-preflight/u);
-  assert.strictEqual(packageManifest.scripts['test:marketplace-vscode-e2e'], 'npm run test:marketplace-vscode-fixture-e2e');
+  const extensionSource = await readFile('extensions/vscode/dev-session-canvas/src/extension.ts', 'utf8');
+  const rootPackageManifest = JSON.parse(await readFile('package.json', 'utf8'));
+  const packageManifest = JSON.parse(await readFile('extensions/vscode/dev-session-canvas/package.json', 'utf8'));
+  assert.match(rootPackageManifest.scripts.test, /npm run test:marketplace/u);
+  assert.match(rootPackageManifest.scripts['test:marketplace'], /npm run typecheck:marketplace/u);
+  assert.match(rootPackageManifest.scripts['test:marketplace'], /npm run test:marketplace-shared/u);
+  assert.match(rootPackageManifest.scripts['test:marketplace'], /npm run test:marketplace-api/u);
+  assert.match(rootPackageManifest.scripts['test:marketplace'], /npm run test:marketplace-web/u);
+  assert.match(rootPackageManifest.scripts['test:marketplace'], /npm run test:marketplace-vscode-preview-preflight/u);
+  assert.strictEqual(rootPackageManifest.scripts['test:marketplace-vscode-e2e'], 'npm run test:marketplace-vscode-fixture-e2e');
   assert.strictEqual(
-    packageManifest.scripts['test:marketplace-vscode-fixture-e2e'],
+    rootPackageManifest.scripts['test:marketplace-vscode-fixture-e2e'],
     'npm run build && node scripts/smoke/run-template-marketplace-vscode-e2e.mjs'
   );
   assert.strictEqual(
-    packageManifest.scripts['test:marketplace-vscode-preview-preflight'],
+    rootPackageManifest.scripts['test:marketplace-vscode-preview-preflight'],
     'node scripts/test/test-template-marketplace-preview-preflight.mjs'
   );
   assert.strictEqual(
-    packageManifest.scripts['test:marketplace-vscode-preview-e2e'],
+    rootPackageManifest.scripts['test:marketplace-vscode-preview-e2e'],
     'npm run build && node scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs'
   );
   assert.strictEqual(
-    packageManifest.scripts['test:marketplace-vscode-local-preview-e2e'],
+    rootPackageManifest.scripts['test:marketplace-vscode-local-preview-e2e'],
     'npm run build && node scripts/smoke/run-template-marketplace-vscode-local-preview-e2e.mjs'
   );
   assert.ok(packageManifest.activationEvents.includes('onUri'));
@@ -969,7 +970,7 @@ try {
   );
   assert.doesNotMatch(resetTemplateCommandSource, /focusAppliedNodes: true/u);
 
-  const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
+  const panelManagerSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8');
   const exportTemplateMethodSource = sliceBetween(
     panelManagerSource,
     'public async exportCanvasTemplateById',
@@ -1103,16 +1104,16 @@ try {
   );
   assert.match(templateGroupFocusSource, /type: 'host\/focusNodes'/u);
 
-  const protocolSource = await readFile('src/common/protocol.ts', 'utf8');
+  const protocolSource = await readFile('extensions/vscode/dev-session-canvas/src/common/protocol.ts', 'utf8');
   assert.match(protocolSource, /type: 'host\/focusNodes'/u);
   assert.doesNotMatch(protocolSource, /webview\/publishCanvasTemplate/u);
   assert.doesNotMatch(panelManagerSource, /case 'webview\/publishCanvasTemplate':/u);
   assert.doesNotMatch(panelManagerSource, /publishCurrentCanvas/u);
   assert.match(protocolSource, /webview\/createMissingAssociatedNoteMarkdownFile/u);
 
-  const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
-  const webviewStylesSource = await readFile('src/webview/styles.css', 'utf8');
-  const canvasNodeVisualsSource = await readFile('src/common/canvasNodeVisuals.ts', 'utf8');
+  const webviewSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/main.tsx', 'utf8');
+  const webviewStylesSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/styles.css', 'utf8');
+  const canvasNodeVisualsSource = await readFile('extensions/vscode/dev-session-canvas/src/common/canvasNodeVisuals.ts', 'utf8');
   const thumbnailSource = await readFile('packages/marketplace-shared/src/thumbnail.ts', 'utf8');
   assert.match(webviewSource, /case 'host\/focusNodes':\s*requestNodeGroupFocus\(message\.payload\.nodeIds\);/u);
   assert.match(webviewSource, /创建空文件并关联/u);
@@ -1134,7 +1135,7 @@ try {
     assert.match(thumbnailSource, new RegExp(`${kind}: '${color}'`, 'u'));
   }
 
-  const saveFormSource = await readFile('src/panel/CanvasTemplateSaveFormPanel.ts', 'utf8');
+  const saveFormSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts', 'utf8');
   assert.match(saveFormSource, /associatedNoteNodes/u);
   assert.match(saveFormSource, /associatedNoteModes/u);
   assert.match(saveFormSource, /workspace-file-path-only/u);
@@ -1142,7 +1143,7 @@ try {
   assert.doesNotMatch(saveFormSource, /不保存此 Note/u);
   assert.ok(!saveFormSource.includes("['skip'"));
 
-  const sidebarTemplateViewSource = await readFile('src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
+  const sidebarTemplateViewSource = await readFile('extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
   const rowClickHandler = sliceBetween(
     sidebarTemplateViewSource,
     "row.addEventListener('click', () => {",
@@ -1202,13 +1203,13 @@ try {
   assert.match(sidebarTemplateViewSource, /item\.isDefault \? 'codicon-star-full' : 'codicon-star-empty'/u);
   assert.match(sidebarTemplateViewSource, /if \(item\.isDefault\) \{\s*return;\s*\}\s*postTemplateMessage\('sidebarTemplates\/setDefaultTemplate', item\.templateId\);/u);
 
-  const builtinResourceNames = (await readdir('resources/templates'))
+  const builtinResourceNames = (await readdir('extensions/vscode/dev-session-canvas/resources/templates'))
     .filter((fileName) => fileName.endsWith('.json'))
     .sort();
   assert.deepStrictEqual(builtinResourceNames, ['01-getting-started.json', '02-basic-workflow.json']);
   const builtinResourceTemplateNames = [];
   for (const fileName of builtinResourceNames) {
-    const document = JSON.parse(await readFile(path.join('resources/templates', fileName), 'utf8'));
+    const document = JSON.parse(await readFile(path.join('extensions/vscode/dev-session-canvas/resources/templates', fileName), 'utf8'));
     builtinResourceTemplateNames.push(document.template.name);
   }
   assert.deepStrictEqual(builtinResourceTemplateNames, ['使用说明', '示例模板']);
@@ -1225,8 +1226,8 @@ try {
   assert.doesNotMatch(templateProductSpecSource, /首次打开(?:画布)?时[^\n]*当前设置的默认模板/u);
   assert.doesNotMatch(templateDesignDocSource, /首次打开画布时[^\n]*当前默认模板/u);
 
-  const marketplacePanelSource = await readFile('src/panel/CanvasTemplateMarketplacePanel.ts', 'utf8');
-  const marketplaceClientSource = await readFile('src/panel/TemplateMarketplaceClient.ts', 'utf8');
+  const marketplacePanelSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts', 'utf8');
+  const marketplaceClientSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts', 'utf8');
   const marketplaceWorkerAppSource = await readFile('apps/template-marketplace/src/worker/app.ts', 'utf8');
   const marketplaceWorkerPublishSource = await readFile('apps/template-marketplace/src/worker/publish.ts', 'utf8');
   const marketplaceWorkerAppTestSource = await readFile('apps/template-marketplace/src/worker/app.test.ts', 'utf8');

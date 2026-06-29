@@ -13,7 +13,7 @@ const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-execution-session-brid
 try {
   const outfile = path.join(tempDir, 'executionSessionBridge.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/panel/executionSessionBridge.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts')],
     bundle: true,
     external: ['node-pty'],
     format: 'cjs',
@@ -26,7 +26,7 @@ try {
   const { resolveExecutionSessionSpawnSpec } = require(outfile);
 
   const bridgeSource = await import('node:fs/promises').then(({ readFile }) =>
-    readFile(path.resolve('src/panel/executionSessionBridge.ts'), 'utf8')
+    readFile(path.resolve('extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts'), 'utf8')
   );
   assert.doesNotMatch(
     bridgeSource,

@@ -11,9 +11,17 @@ const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-publish-marketplaces-'
 
 try {
   await writePackageJson(path.join(tempDir, 'package.json'), {
-    name: 'dev-session-canvas',
+    name: 'dev-session-canvas-workspace',
+    private: true,
     version: '0.10.0'
   });
+  await writePackageJson(
+    path.join(tempDir, 'extensions', 'vscode', 'dev-session-canvas', 'package.json'),
+    {
+      name: 'dev-session-canvas',
+      version: '0.10.0'
+    }
+  );
   await writePackageJson(
     path.join(tempDir, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'package.json'),
     {

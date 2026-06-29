@@ -343,10 +343,10 @@ type CanvasAgentAbnormalOutputTextNotificationMode = 'off' | 'codex';
 
 - `docs/PRODUCT_SENSE.md`：产品定位与核心价值主张
 - `ARCHITECTURE.md`：系统架构与模块划分
-- `src/common/executionAttentionSignals.ts`：终端注意力信号解析实现
-- `src/common/agentActivityHeuristics.ts`：Agent 活动启发式检测实现
-- `src/panel/CanvasPanelManager.ts`：通知配置管理与状态同步
-- `src/webview/main.tsx`：通知视觉效果实现
+- `extensions/vscode/dev-session-canvas/src/common/executionAttentionSignals.ts`：终端注意力信号解析实现
+- `extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts`：Agent 活动启发式检测实现
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：通知配置管理与状态同步
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：通知视觉效果实现
 - `package.nls.json`：配置项说明文案
 
 ## 10. 状态

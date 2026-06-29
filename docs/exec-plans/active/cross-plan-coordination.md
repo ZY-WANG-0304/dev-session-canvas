@@ -6,7 +6,7 @@
 - **优先级**: 高（影响两个关键计划）
 - **创建时间**: 2026-05-03
 - **相关计划**:
-  - [standard-monorepo-and-doc-knowledge-base.md](./standard-monorepo-and-doc-knowledge-base.md)
+  - [standard-monorepo-and-doc-knowledge-base.md](../completed/standard-monorepo-and-doc-knowledge-base.md)
   - [intellij-platform-plugin.md](./intellij-platform-plugin.md)
 
 ## 问题陈述
@@ -388,59 +388,57 @@ extensions/intellij/dev-session-canvas/
 
 > **⚠️ 已调整 (2026-05-03)**：根据团队决策，先完成 notifier，再考虑 IntelliJ。跨平台共享层延后到第二阶段。
 
-### 第一阶段：VSCode 生态完善（4-6 周）
+### 第一阶段：VSCode 生态完善（已完成主体落位）
 
-> **⚠️ 实施策略调整 (2026-05-03)**：先验证 notifier 可行性，再做目录迁移。
+> **2026-06-29 更新**：阶段 1.1 notifier 验证已完成，阶段 1.2 主扩展迁移已经从“可选”变为已执行事实。当前仓库根目录是 private npm workspace root；主扩展、notifier、共享 attention 协议、模板市场应用和 marketplace shared 包均处于 monorepo 包路径下。后续协调重点转为保持 VSCode 生态可发布，并把跨平台共享层留到第二阶段单独验证。
 
-#### 阶段 1.1：Notifier 开发与验证（2-3 周）
+#### 阶段 1.1：Notifier 开发与验证（已完成）
 
-**目标**：在最终位置开发 notifier，验证技术可行性
+**目标**：在最终位置开发 notifier，验证技术可行性。
 
-**策略**：混合结构，主扩展保持在根目录
+**当前事实**：
 ```
-当前混合结构
-├── src/                              # 主扩展（保持不动）
-├── extensions/
-│   └── vscode/
-│       └── dev-session-canvas-notifier/  # notifier 在最终位置
-├── packages/
-│   └── attention-protocol/           # 共享协议
-└── package.json                      # 配置 workspaces
+extensions/vscode/dev-session-canvas-notifier/  # notifier companion extension package
+packages/attention-protocol/                    # 主扩展与 notifier 的最小共享协议
 ```
 
-**任务**：
-1. 根目录 `package.json` 配置 workspaces
-2. 创建 `extensions/vscode/dev-session-canvas-notifier/`
-3. 创建 `packages/attention-protocol/`
-4. 实现 notifier 核心功能
-5. 验证跨扩展通信
-6. 收集用户反馈
+**已完成任务**：
+1. notifier companion 已位于 `extensions/vscode/dev-session-canvas-notifier/`。
+2. `packages/attention-protocol/` 已提供主扩展与 notifier 之间的最小 attention notification 协议。
+3. 正式安装关系保持为主扩展 `extensionPack` 聚合 notifier，notifier 单向 `extensionDependencies` 回补主扩展。
+4. 调试链路保留 main-only debug 副本和 remote window + notifier 验收路径。
 
 **交付物**：
-- Notifier 完整功能（在最终位置）
-- 最小 monorepo 结构（混合状态）
-- 用户反馈报告
+- Notifier companion 完整功能和发布包路径。
+- 主扩展到 notifier 的受控通知桥接。
+- notifier source tests、debug launch 和 smoke 验证入口。
 
-**决策点**：notifier 是否有价值？是否需要迁移主扩展？
+#### 阶段 1.2：主扩展迁移（已执行）
 
-#### 阶段 1.2：主扩展迁移（可选，1-2 周）
+**前置条件**：阶段 1.1 验证通过，且团队决定完成完整 monorepo 化。
 
-**前置条件**：✅ 阶段 1.1 验证通过，且团队决定完成完整 monorepo 化
+**目标**：将主扩展迁移到 `extensions/vscode/dev-session-canvas/`，并让根目录只承担 workspace 编排、根级脚本和正式文档知识库职责。
 
-**目标**：将主扩展迁移到 `extensions/vscode/dev-session-canvas/`
+**当前事实**：
+```
+extensions/vscode/dev-session-canvas/           # VSCode 主扩展 package
+extensions/vscode/dev-session-canvas-notifier/  # VSCode notifier package
+packages/attention-protocol/                    # VSCode attention 协议
+apps/template-marketplace/                      # 模板市场 Web / Worker 应用
+packages/marketplace-shared/                    # 模板市场共享 schema / 纯逻辑
+package.json                                    # private npm workspace root
+```
 
-**任务**：
-1. 迁移主扩展到 `extensions/vscode/dev-session-canvas/`
-2. 根目录 `package.json` 改为 private workspace root
-3. 更新构建脚本和测试入口
-4. 完成文档知识库收口
+**已完成任务**：
+1. 主扩展 manifest、源码、资源、Marketplace README、CHANGELOG、NLS、运行时 hook 和 `.vscodeignore` 已迁入 `extensions/vscode/dev-session-canvas/`。
+2. 根目录 `package.json` 已改为 private workspace root。
+3. 构建、typecheck、debug、smoke、media、release 和脚本级测试入口已更新为主扩展子包路径或 staged package。
+4. `ARCHITECTURE.md`、`docs/README.md`、`docs/design-docs/repository-monorepo-layout.md` 与本协调文档记录当前 monorepo 事实。
 
 **交付物**：
-- 标准 monorepo 结构
-- VSCode 扩展完整功能（含 notifier）
-- 统一文档体系
-
-**注意**：此阶段可选，如果团队认为混合结构已足够，可以保持现状。
+- 标准 monorepo 结构。
+- VSCode 扩展完整功能（含 notifier）。
+- 统一文档知识库和 monorepo 拓扑图。
 
 ---
 
@@ -492,17 +490,17 @@ extensions/intellij/dev-session-canvas/
 
 > **⚠️ 已调整 (2026-05-03)**：分为两个独立阶段，第二阶段可选。
 
-### 第一阶段：VSCode 生态（必须）
+### 第一阶段：VSCode 生态（主体已落位）
 
-> **⚠️ 已调整 (2026-05-03)**：先验证 notifier，再做 monorepo 重构。
+> **2026-06-29 更新**：notifier 与主扩展迁移已经完成主体落位，剩余只按各主题分支持续维护验证和发布脚本。
 
-| 阶段 | 工作量 | 人力 | 时间 | 风险 |
-|------|--------|------|------|------|
-| 阶段 1.1：Notifier 开发 | 2-3 周 | 1 人 | 2-3 周 | 低（直接在最终位置） |
-| 阶段 1.2：主扩展迁移 | 1-2 周 | 1 人 | 1-2 周 | 低（可选） |
-| **第一阶段总计** | **2-5 周** | **1 人** | **2-5 周** | - |
+| 阶段 | 状态 | 当前事实 |
+|------|------|----------|
+| 阶段 1.1：Notifier 开发 | 已完成 | notifier 位于 `extensions/vscode/dev-session-canvas-notifier/`，共享协议位于 `packages/attention-protocol/` |
+| 阶段 1.2：主扩展迁移 | 已完成主体落位 | 主扩展位于 `extensions/vscode/dev-session-canvas/`，根目录是 private workspace root |
+| **第一阶段总计** | **完成主体落位** | 后续只保留验证、发布和文档一致性维护 |
 
-**决策点**：阶段 1.1 完成后评估是否需要阶段 1.2
+**当前决策点**：不再讨论是否保持混合结构；若要引入 IntelliJ 或跨平台共享层，应在第二阶段新计划中独立验证。
 
 ### 第二阶段：跨平台扩展（可选，待第一阶段完成后决策）
 
@@ -517,22 +515,21 @@ extensions/intellij/dev-session-canvas/
 
 | 场景 | 工作量 | 说明 |
 |------|--------|------|
-| **只开发 notifier** | 2-3 周 | 混合结构，主扩展不动 |
-| **notifier + 主扩展迁移** | 3-5 周 | 完整 monorepo 结构 |
-| **+ IntelliJ** | 9-13 周 | 第二阶段，可选 |
+| **VSCode monorepo 主体** | 已完成主体落位 | 主扩展与 notifier 均在 `extensions/vscode/` 包路径下 |
+| **+ IntelliJ** | 6-8 周（待重新评估） | 第二阶段，可选，需新验证矩阵 |
 
 **对比原计划**：
 - Monorepo 计划：未明确工作量
 - IntelliJ 计划：5-7 周
-- **调整后**：
-  - 阶段 1.1（notifier）：2-3 周（直接在最终位置）
-  - 阶段 1.2（迁移）：1-2 周（可选）
-  - 第二阶段（IntelliJ）：6-8 周（可选）
+- **当前事实**：
+  - 阶段 1.1（notifier）：已完成主体落位。
+  - 阶段 1.2（迁移）：已完成主体落位，不再保持混合结构。
+  - 第二阶段（IntelliJ）：仍为可选后续阶段，需重新确认业务优先级和技术验证范围。
 
 **关键优势**：
-- notifier 直接在最终位置，无需二次迁移
-- 主扩展不受影响，风险最低
-- 可以保持混合结构，不强制完整 monorepo 化
+- notifier 与主扩展都处在明确的 `extensions/vscode/` 包路径下。
+- 根目录职责收敛为 workspace、脚本和正式文档知识库。
+- 跨平台共享层尚未混入 VSCode 发布主路径，避免把未验证能力写成既成事实。
 
 ## 风险与缓解
 
@@ -621,40 +618,21 @@ extensions/intellij/dev-session-canvas/
 ### 立即行动
 
 1. ✅ **已完成**：更新 Monorepo 计划文档
-   - 调整实施策略（先验证 notifier，再重构）
-   - 里程碑 5（跨平台共享层）标记为延后
-   - 优先完成 VSCode 生态
+   - 记录 notifier 与主扩展迁移后的当前事实
+   - 里程碑 5（跨平台共享层）继续标记为第二阶段
+   - 保持 VSCode 生态发布主路径可验证
 
 2. ✅ **已完成**：更新 IntelliJ 计划文档
    - 标记为低优先级/延后启动
-   - 明确前置依赖（等待第一阶段完成）
+   - 明确前置依赖（第一阶段主体已完成，但跨平台共享层未落地）
 
 3. ✅ **已完成**：更新跨计划协调文档
-   - 调整实施顺序（先验证，再重构）
-   - 降低第一阶段风险
+   - 把旧的混合结构和阶段 1.2 可选口径改为已完成主体落位
+   - 明确第二阶段不得默认复用尚未抽离的 VSCode Webview / 协议为跨平台单一真相
 
-4. **本周**：与团队确认第一阶段方案
-   - 确认资源分配（1 人，3-5 周）
-   - 确认 notifier 功能范围（最小可验证版本）
-   - 确认验证标准（什么算"验证通过"？）
+### 第二阶段决策点
 
-### 第一阶段启动（本周或下周）
-
-5. **启动 Notifier 开发**（阶段 1.1）
-   - 配置根目录 workspaces
-   - 创建 `extensions/vscode/dev-session-canvas-notifier/`
-   - 创建 `packages/attention-protocol/`
-   - 实现核心功能
-   - 收集用户反馈
-
-6. **决策点**（阶段 1.1 完成后）
-   - 评估 notifier 价值
-   - 决定是否需要迁移主扩展（阶段 1.2）
-   - 或保持混合结构
-
-### 第二阶段决策点（第一阶段完成后）
-
-5. **评估是否启动 IntelliJ 开发**
+4. **评估是否启动 IntelliJ 开发**
    - 评估 notifier 的用户反馈
    - 评估团队资源（是否有 Kotlin 开发者）
    - 评估业务优先级（Android 团队需求强度）
@@ -662,7 +640,7 @@ extensions/intellij/dev-session-canvas/
 
 ---
 
-**文档版本**: v2.0  
-**最后更新**: 2026-05-03（调整优先级）  
-**维护者**: 待定  
-**状态**: ✅ 已确认优先级（先 notifier，后 IntelliJ）
+**文档版本**: v2.1
+**最后更新**: 2026-06-29（同步 monorepo 阶段 1.2 已执行事实）
+**维护者**: 待定
+**状态**: ✅ VSCode 生态主体落位；IntelliJ / 跨平台共享层延后决策

@@ -103,9 +103,9 @@ updated_at: 2026-03-27
 
 方案说明本身应优先写入仓库内的真实路径、模块、类型或函数名，帮助协作者从设计结论直接定位到主要落点。例如：
 
-- `src/panel/CanvasPanelManager.ts`：宿主权威状态与消息编排入口
-- `src/common/protocol.ts`：共享消息与节点模型
-- `src/webview/main.tsx`：Webview 侧交互与呈现
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：宿主权威状态与消息编排入口
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`：共享消息与节点模型
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：Webview 侧交互与呈现
 
 当仅靠上述命名仍不足以避免歧义时，可以继续补充更细的代码锚点，例如关键函数、代码片段所在段落，或必要的行号引用，前提是这些引用直接服务于解释正式方案，而不是脱离方案正文孤立堆砌定位信息。
 

@@ -7,7 +7,7 @@ import {
   isWebviewDomAction,
   normalizeCanvasMultiRootPresentationMode,
   parseWebviewMessage
-} from '../../src/common/protocol.ts';
+} from '../../extensions/vscode/dev-session-canvas/src/common/protocol.ts';
 
 assert.equal(
   EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
@@ -330,7 +330,7 @@ const dropNoteMarkdownFilesInRootMessage = {
 };
 assert.deepEqual(parseWebviewMessage(dropNoteMarkdownFilesInRootMessage), dropNoteMarkdownFilesInRootMessage);
 
-const protocolSource = await readFile('src/common/protocol.ts', 'utf8');
+const protocolSource = await readFile('extensions/vscode/dev-session-canvas/src/common/protocol.ts', 'utf8');
 assert.match(
   protocolSource,
   /type: 'host\/requestCreateGroupFromSelection'/u,
@@ -362,8 +362,8 @@ assert.match(
   'Expected host/focusGroup to carry a workspace root group target for Add Folder viewport focus.'
 );
 
-const panelManagerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
-const webviewSource = await readFile('src/webview/main.tsx', 'utf8');
+const panelManagerSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8');
+const webviewSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/main.tsx', 'utf8');
 assert.match(
   panelManagerSource,
   /isCurrentWebviewMessage\(sourceSurface, sourceWebview, lifecycle, parsedMessage\.type/u,
@@ -606,28 +606,28 @@ assert.match(
   'Expected each terminal controller to expose queued xterm writes so drain can avoid parser queue buildup.'
 );
 
-const serializedTerminalStateSource = await readFile('src/common/serializedTerminalState.ts', 'utf8');
+const serializedTerminalStateSource = await readFile('extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts', 'utf8');
 assert.match(
   serializedTerminalStateSource,
   /SERIALIZED_TERMINAL_STATE_WRITE_BATCH_DELAY_MS[\s\S]*schedulePendingWriteDrain[\s\S]*SERIALIZED_TERMINAL_STATE_CACHE_REFRESH_INTERVAL_MS/u,
   'Expected Host terminal-state snapshots to batch headless xterm writes and avoid serializing on every output chunk.'
 );
 
-const lineContextTrackerSource = await readFile('src/panel/executionTerminalLineContextTracker.ts', 'utf8');
+const lineContextTrackerSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts', 'utf8');
 assert.match(
   lineContextTrackerSource,
   /LINE_CONTEXT_WRITE_BATCH_DELAY_MS[\s\S]*takePendingWriteData[\s\S]*drainWriteData/u,
   'Expected Host line-context tracking to batch headless xterm writes while preserving ordering before input and link lookup.'
 );
 
-const extensionIdentitySource = await readFile('src/common/extensionIdentity.ts', 'utf8');
+const extensionIdentitySource = await readFile('extensions/vscode/dev-session-canvas/src/common/extensionIdentity.ts', 'utf8');
 assert.match(
   extensionIdentitySource,
   /runWebviewLifecycleRaceDiagnostics: 'devSessionCanvas\.__test\.runWebviewLifecycleRaceDiagnostics'/u,
   'Expected the host lifecycle race diagnostic command id to be registered for smoke coverage.'
 );
 
-const extensionSource = await readFile('src/extension.ts', 'utf8');
+const extensionSource = await readFile('extensions/vscode/dev-session-canvas/src/extension.ts', 'utf8');
 assert.match(
   extensionSource,
   /TEST_COMMAND_IDS\.runWebviewLifecycleRaceDiagnostics[\s\S]*runWebviewLifecycleRaceDiagnosticsForTest/u,
@@ -677,7 +677,7 @@ assert.doesNotMatch(
   'Expected workspace root removal confirmation not to use a sidebar Webview prompt.'
 );
 
-const sidebarNodeListSource = await readFile('src/sidebar/CanvasSidebarNodeListView.ts', 'utf8');
+const sidebarNodeListSource = await readFile('extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts', 'utf8');
 assert.doesNotMatch(
   sidebarNodeListSource,
   /workspaceRootRemovalPrompt|removal-modal|data-sidebar-removal-modal/u,

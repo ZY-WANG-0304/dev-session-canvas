@@ -37,10 +37,10 @@
 ## 意外与发现
 
 - 观察：当前仓库的 Webview provider 顺序是显式 hyperlink + `file -> url -> search`，而不是 VSCode 原生 Terminal 的 `multiline -> local -> uri -> word` 顺序。
-  证据：`src/webview/executionTerminalNativeInteractions.ts` 中当前只注册 `createFileLinkProvider()`、`createUrlLinkProvider()` 与 `createSearchLinkProvider()`。
+  证据：`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 中当前只注册 `createFileLinkProvider()`、`createUrlLinkProvider()` 与 `createSearchLinkProvider()`。
 
 - 观察：当前仓库虽然已经有 line-scoped cwd tracker，但它服务的是自定义 file resolver，而不是原生 detector 顺序本身。
-  证据：`src/panel/executionTerminalLineContextTracker.ts` 负责维护 `buffer line -> cwd`，`src/panel/executionTerminalNativeHelpers.ts` 在 `resolveExecutionLinkCwd()` 中消费它。
+  证据：`extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts` 负责维护 `buffer line -> cwd`，`extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 在 `resolveExecutionLinkCwd()` 中消费它。
 
 - 观察：VSCode upstream 当前确实把显式 hyperlink、multiline、本地文件、URI 和 word/search 分成多组 detector / opener，并且 search opener 先 exact-open 再 Quick Access fallback。
   证据：2026-04-30 对照 `terminalLinkManager.ts`、`terminalMultiLineLinkDetector.ts`、`terminalLocalLinkDetector.ts`、`terminalUriLinkDetector.ts`、`terminalWordLinkDetector.ts` 与 `terminalLinkOpeners.ts`。
@@ -58,13 +58,13 @@
   证据：2026-05-02 运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过；对应调整位于 `tests/vscode-smoke/extension-tests.cjs` 的 trusted smoke 前置断言与 `verifyRealWebviewProbe()`。
 
 - 观察：review 暴露出两类此前被误写成“已完成”的差异：一类是 Host 侧 search opener 仍会丢掉 `contextLine` 的 `line[:column]` 后缀，另一类是 multiline/file resolve cache 只按当前 wrapped line 文本缓存，未在终端 clear / redraw 后失效。
-  证据：2026-05-01 的 review comment 直接点名 `src/panel/executionTerminalNativeHelpers.ts` 与 `src/webview/executionTerminalNativeInteractions.ts` 对应实现。
+  证据：2026-05-01 的 review comment 直接点名 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 与 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 对应实现。
 
 - 观察：上一轮把唯一 partial basename hit 做进共享 `resolveExecutionWorkspaceFallbackLink()` 后，local fallback candidate 也会复用这条路径，导致单独一行 `README` / `missing-target.ts` 在 workspace 存在唯一 `README.md` / `missing-target.tsx` 时被直接解析成 file link，而不是保留为 low-confidence search link。
-  证据：2026-05-02 的 review comment 直接点名 `src/panel/executionTerminalNativeHelpers.ts`、`src/webview/executionTerminalNativeInteractions.ts` 与 `src/common/executionTerminalLinks.ts` 的共享 fallback 路径。
+  证据：2026-05-02 的 review comment 直接点名 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts`、`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 与 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 的共享 fallback 路径。
 
 - 观察：Codex / Claude TUI 会把长 URL 或路径拆成多条非 `isWrapped` buffer 行，`xterm.js` 的 link range 不能把中间的缩进空白排除后表达成一个连续点击区域。
-  证据：2026-05-19 的实现改为在 `src/webview/executionTerminalNativeInteractions.ts` 中为每个可见片段各建一个 `ILink`，但这些片段共享同一个完整 URL 或 file target。
+  证据：2026-05-19 的实现改为在 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 中为每个可见片段各建一个 `ILink`，但这些片段共享同一个完整 URL 或 file target。
 
 - 观察：只凭“下一行有缩进且是 URL-safe 字符”会把完整 URL 与缩进说明误拼接。
   证据：新增 Playwright 用例 `hard-wrapped URL detector does not append indented prose` 覆盖 `https://example.com/docs` 后接缩进 `details` 的负例。
@@ -82,7 +82,7 @@
   证据：2026-05-19 PR review 提供的纯函数复现；本地在 PR head 上运行同样脚本，三类输入均返回 `[]`。
 
 - 观察：styled hard-wrap file collector 只按同一 ANSI style signature 查找后续 span，不检查首片段是否贴行尾、续片段是否从缩进后的行首开始、行内是否混入 prose；同色日志片段只要拼接后能被 path parser 和 Host workspace exact fallback 命中，就可能被错误升级成高置信 file link。
-  证据：2026-05-19 PR review 指出 `Error at <blue>src/webview/executionTerminalNativeInteractions.</blue> crashed` 与 `note: <blue>ts:1600:12</blue> elsewhere` 会被拼成真实可打开的 `src/webview/executionTerminalNativeInteractions.ts:1600:12`。
+  证据：2026-05-19 PR review 指出 `Error at <blue>extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.</blue> crashed` 与 `note: <blue>ts:1600:12</blue> elsewhere` 会被拼成真实可打开的 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts:1600:12`。
 
 - 观察：0.10.2 的 live output 负缓存刷新会反复刷新 fallback-only 普通文本。新增性能回归在修复前失败，agent 与 terminal 都收到 36 次 `webview/resolveExecutionFileLinks` fallback 请求，来源是 12 条普通文本负缓存乘以 3 次 live output。
   证据：2026-05-22 运行 `npm run build && node scripts/test/run-playwright-webview.mjs --grep "does not refresh fallback-only negative file links during live output"`，新增用例在 agent / terminal 均失败，收到值为 `36`，期望为 `0`。
@@ -169,19 +169,19 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 
 2026-06-11 第三轮诊断后继续降载：共享 gate 过滤 `旧源码里某个未发布/未同步版本`、`openai.com/policies`、`en/articles/...`、`Plus/Pro`、`build/plan`、`directory/project/`、`package/@earendil-works/pi-coding-agent` 和 `Dashboard/配置页/状态按钮很多不会按预期工作`；Host backstop 同步覆盖 `hardwrap`，避免 `@earendil-works/pi-coding-agent` 进入高置信 resolve；fallback 拒绝 `git+https://...` 这类非 file URI-like 字符串。对第三次 dump 离线回放，213 个候选中 182 个会被新 gate 过滤，保留 31 个明确路径；其中 100% 过滤了 `build/plan`、`openai.com/policies`、package 名、CJK prose 和泛化目录。Host 同一节点 file-link resolve 改成串行队列，避免同一节点 hover/cache refresh 重入把 filesystem probe 打满；summary 增加 `diagnosticsSchema.executionFileLinkResolve = 2` 作为下次现场校验标记。当前已通过 `npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run build`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "styled hard-wrapped non-links are not guessed as one link|unstyled hard-wrapped file fragments are not guessed as one link|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"` 与 `git diff --check`。
 
-同日第四轮诊断后转向交互机制：最新 dump 证明 hotfix 已把 file-link resolve 从 207 次 / 613.7s 降到 7 次 / 2.93s，输入 p50 17ms、p90 79ms，但候选也被压到只剩少量明确路径，继续静态收紧会牺牲链接可发现性。实现上，`src/webview/executionTerminalNativeInteractions.ts` 的 file / multiline / styled / hardwrap provider 现在只返回 pending file link；点击 pending link 时才调用 Host resolve，成功后立即打开 file，失败后降级 search。`src/webview/main.tsx` 和协议增加 `priority` 字段；`src/panel/CanvasPanelManager.ts` 记录 priority / cache 诊断，维护 30s resolve cache、in-flight dedupe、同节点串行和背景请求节流，`resolvedId` 也保存真实 resolved target，打开时优先复用已解析结果。`src/panel/executionTerminalNativeHelpers.ts` 在单次 candidate group 内复用 `stat` / workspace fallback promise，避免重复路径重复 filesystem probe。新增 / 更新测试覆盖 priority 协议、重复 stat 去重、fallback hover 不 eager resolve、fallback 点击才 interactive resolve、既有高置信 negative refresh 和 link activation 回归；已通过 `npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run test:protocol-webview-messages`、`npm run build` 和定向 `npm run test:webview -- --grep "link activation posts parsed file and URL targets|styled hard-wrapped file fragments resolve as one link|reuses file link resolution while live output continues|refreshes negative file link cache while live output continues|does not eagerly resolve fallback-only text during hover or live output|resolves fallback file links only on activation|keeps unresolved file link fallback stable while live output continues"`。
+同日第四轮诊断后转向交互机制：最新 dump 证明 hotfix 已把 file-link resolve 从 207 次 / 613.7s 降到 7 次 / 2.93s，输入 p50 17ms、p90 79ms，但候选也被压到只剩少量明确路径，继续静态收紧会牺牲链接可发现性。实现上，`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 的 file / multiline / styled / hardwrap provider 现在只返回 pending file link；点击 pending link 时才调用 Host resolve，成功后立即打开 file，失败后降级 search。`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 和协议增加 `priority` 字段；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 记录 priority / cache 诊断，维护 30s resolve cache、in-flight dedupe、同节点串行和背景请求节流，`resolvedId` 也保存真实 resolved target，打开时优先复用已解析结果。`extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 在单次 candidate group 内复用 `stat` / workspace fallback promise，避免重复路径重复 filesystem probe。新增 / 更新测试覆盖 priority 协议、重复 stat 去重、fallback hover 不 eager resolve、fallback 点击才 interactive resolve、既有高置信 negative refresh 和 link activation 回归；已通过 `npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run test:protocol-webview-messages`、`npm run build` 和定向 `npm run test:webview -- --grep "link activation posts parsed file and URL targets|styled hard-wrapped file fragments resolve as one link|reuses file link resolution while live output continues|refreshes negative file link cache while live output continues|does not eagerly resolve fallback-only text during hover or live output|resolves fallback file links only on activation|keeps unresolved file link fallback stable while live output continues"`。
 
 ## 上下文与定向
 
 这次改动横跨四个主要区域。
 
-第一块是 Webview 侧入口，位于 `src/webview/executionTerminalNativeInteractions.ts`。这里现在直接注册了 file、url、search 三个 xterm link provider，并使用自定义 tooltip 和自定义 file candidate refine 逻辑。若要对齐原生 Terminal，这里是 detector 顺序、hover 行为、显式 hyperlink 和测试入口的第一落点。
+第一块是 Webview 侧入口，位于 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`。这里现在直接注册了 file、url、search 三个 xterm link provider，并使用自定义 tooltip 和自定义 file candidate refine 逻辑。若要对齐原生 Terminal，这里是 detector 顺序、hover 行为、显式 hyperlink 和测试入口的第一落点。
 
-第二块是共享 parser / link model，主要位于 `src/common/executionTerminalLinks.ts`。这里定义了当前仓库自己的 `ExecutionTerminalOpenLink`、`ExecutionTerminalFileLinkCandidate`、path suffix parser、单行 path parser 与 fallback matcher。若本轮按原生 Terminal 对齐，这里的职责会从“定义产品规则”收缩为“承载等价 parser / 类型适配”。
+第二块是共享 parser / link model，主要位于 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts`。这里定义了当前仓库自己的 `ExecutionTerminalOpenLink`、`ExecutionTerminalFileLinkCandidate`、path suffix parser、单行 path parser 与 fallback matcher。若本轮按原生 Terminal 对齐，这里的职责会从“定义产品规则”收缩为“承载等价 parser / 类型适配”。
 
-第三块是 Host 侧 resolver 与 opener，位于 `src/panel/executionTerminalNativeHelpers.ts` 和 `src/panel/CanvasPanelManager.ts`。这里当前负责 file path sanitize、cwd resolve、workspace fallback、search quickOpen fallback 和 `vscode.open` / `showTextDocument` / `revealInExplorer` 等打开动作。若要对齐原生 Terminal，需要把 exact-open、search、allowed scheme 与 file/uri opener 语义重新对齐。
+第三块是 Host 侧 resolver 与 opener，位于 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 和 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`。这里当前负责 file path sanitize、cwd resolve、workspace fallback、search quickOpen fallback 和 `vscode.open` / `showTextDocument` / `revealInExplorer` 等打开动作。若要对齐原生 Terminal，需要把 exact-open、search、allowed scheme 与 file/uri opener 语义重新对齐。
 
-第四块是 line-scoped cwd tracker，位于 `src/panel/executionTerminalLineContextTracker.ts`。这是当前仓库没有 command detection capability 时最接近原生行级 cwd 的输入来源。后续 multiline / local / search opener 如需对齐原生 Terminal，都应优先消费这里的 `buffer line -> cwd`，而不是回退到节点级 cwd。
+第四块是 line-scoped cwd tracker，位于 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts`。这是当前仓库没有 command detection capability 时最接近原生行级 cwd 的输入来源。后续 multiline / local / search opener 如需对齐原生 Terminal，都应优先消费这里的 `buffer line -> cwd`，而不是回退到节点级 cwd。
 
 作为实现 oracle，需要持续参考 VSCode upstream 这几个文件的当前行为：
 
@@ -196,11 +196,11 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 
 ## 工作计划
 
-先收口 parser 与 detector 顺序。`src/webview/executionTerminalNativeInteractions.ts` 不能继续把 file、url、search 当成三条仓库私有逻辑独立维护，而应显式映射到原生 Terminal 的 detector 顺序：显式 hyperlink、multiline、本地路径、URI、word/search。这里优先做的是把“当前有哪些文本会成为 link”这件事对齐，而不是先追求 hover 细节。
+先收口 parser 与 detector 顺序。`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 不能继续把 file、url、search 当成三条仓库私有逻辑独立维护，而应显式映射到原生 Terminal 的 detector 顺序：显式 hyperlink、multiline、本地路径、URI、word/search。这里优先做的是把“当前有哪些文本会成为 link”这件事对齐，而不是先追求 hover 细节。
 
-然后收口共享 link model。`src/common/executionTerminalLinks.ts` 当前混合了承载协议类型、仓库私有 path parser 和自定义 fallback matcher 三类职责。实现时应把“消息与类型”保留下来，把“解析规则”替换成原生等价逻辑；如果发现某些 parser 更适合迁回 Webview / Host 层，也可以拆分，但最终要让读代码的人能直接看出“这些规则对应的是原生 Terminal 的哪一类 detector”。
+然后收口共享 link model。`extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 当前混合了承载协议类型、仓库私有 path parser 和自定义 fallback matcher 三类职责。实现时应把“消息与类型”保留下来，把“解析规则”替换成原生等价逻辑；如果发现某些 parser 更适合迁回 Webview / Host 层，也可以拆分，但最终要让读代码的人能直接看出“这些规则对应的是原生 Terminal 的哪一类 detector”。
 
-接着改 Host opener。`src/panel/executionTerminalNativeHelpers.ts` 当前已经有 prepare / resolve / open 分层，这是可以保留的；但 `resolveExecutionFileLink()`、`openExecutionTerminalSearchLink()` 与 URL opener 里的 scheme 处理，需要重新对齐原生 exact-open、Quick Access fallback、`file://` 特化和 allowed scheme 语义。若新增配置读取或提示逻辑，优先放在 Host，避免把安全判断留在 Webview。
+接着改 Host opener。`extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 当前已经有 prepare / resolve / open 分层，这是可以保留的；但 `resolveExecutionFileLink()`、`openExecutionTerminalSearchLink()` 与 URL opener 里的 scheme 处理，需要重新对齐原生 exact-open、Quick Access fallback、`file://` 特化和 allowed scheme 语义。若新增配置读取或提示逻辑，优先放在 Host，避免把安全判断留在 Webview。
 
 随后补 multiline 与 styled fallback。当前执行节点完全没有 multiline detector，这会直接导致 ripgrep / eslint / diff 输出与原生体验分叉。实现时应新增等价的 multiline detector，并补上 local detector 在普通 parser miss 后的 styled segment fallback，而不是继续扩张当前的 CJK refine。
 
@@ -214,7 +214,7 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
        docs/design-docs/index.md
        docs/exec-plans/active/execution-terminal-native-link-parity.md
 
-2. 在 `src/webview/executionTerminalNativeInteractions.ts` 中重构 detector 注册顺序：
+2. 在 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 中重构 detector 注册顺序：
 
        显式 hyperlink
        multiline detector
@@ -222,15 +222,15 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
        uri detector
        word/search detector
 
-   若现有文件过于拥挤，可把 detector 适配层拆到新的 `src/webview/` 或 `src/common/` 模块，但必须在计划和设计文档中同步更新落点。
+   若现有文件过于拥挤，可把 detector 适配层拆到新的 `extensions/vscode/dev-session-canvas/src/webview/` 或 `extensions/vscode/dev-session-canvas/src/common/` 模块，但必须在计划和设计文档中同步更新落点。
 
-3. 在 `src/common/executionTerminalLinks.ts` 中整理共享类型与 parser：
+3. 在 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 中整理共享类型与 parser：
 
        保留协议类型和后续 Host / Webview 都需要消费的纯数据结构；
        用原生等价逻辑替换当前仓库私有 parser；
        删除或降级不再属于正式产品语义的自定义 heuristics。
 
-4. 在 `src/panel/executionTerminalNativeHelpers.ts` 中对齐 opener 与 search 语义：
+4. 在 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 中对齐 opener 与 search 语义：
 
        文件 / 目录 opener
        file:// URI 特化
@@ -238,7 +238,7 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
        Quick Access fallback
        allowed scheme 检查与提示（若实现）
 
-5. 在 `src/panel/CanvasPanelManager.ts` 中仅保留上下文装配、缓存与消息转发，不把新的产品规则重新写散到 manager 中。
+5. 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中仅保留上下文装配、缓存与消息转发，不把新的产品规则重新写散到 manager 中。
 
 6. 在 `tests/playwright/webview-harness.spec.mjs` 与 `tests/vscode-smoke/extension-tests.cjs` 中新增或更新回归。至少添加：
 
@@ -284,20 +284,20 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 
 本轮优先复用现有依赖，不默认引入新的 parser 库。需要直接持续使用和对齐的仓库内接口包括：
 
-- `src/webview/executionTerminalNativeInteractions.ts`
+- `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`
   - `setupExecutionTerminalNativeInteractions(...)`
   - 各 detector provider 的创建与 hover / activate 入口
-- `src/common/executionTerminalLinks.ts`
+- `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts`
   - `ExecutionTerminalOpenLink`
   - `ExecutionTerminalFileLinkCandidate`
   - 原有 parser / fallback matcher 的替换落点
-- `src/panel/executionTerminalNativeHelpers.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts`
   - `resolveExecutionFileLink(...)`
   - `resolveExecutionTerminalFileLinkCandidates(...)`
   - `openExecutionTerminalLink(...)`
-- `src/panel/executionTerminalLineContextTracker.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts`
   - `getCwdForBufferLine(...)`
-- `src/panel/CanvasPanelManager.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
   - `handleResolveExecutionFileLinks(...)`
   - `handleOpenExecutionLink(...)`
 

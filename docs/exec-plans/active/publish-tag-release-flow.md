@@ -62,9 +62,9 @@
 
 ## 上下文与定向
 
-当前公开 VS Code 扩展发布涉及两个扩展：主扩展 `devsessioncanvas.dev-session-canvas`，manifest 位于仓库根 `package.json`；notifier companion `devsessioncanvas.dev-session-canvas-notifier`，manifest 位于 `extensions/vscode/dev-session-canvas-notifier/package.json`。两者必须保持同版本发布。
+当前公开 VS Code 扩展发布涉及两个扩展：主扩展 `devsessioncanvas.dev-session-canvas`，manifest 位于 `extensions/vscode/dev-session-canvas/package.json`；notifier companion `devsessioncanvas.dev-session-canvas-notifier`，manifest 位于 `extensions/vscode/dev-session-canvas-notifier/package.json`。仓库根 `package.json` 只是 private workspace root，不再是可发布 extension manifest。两者必须保持同版本发布。
 
-现有主扩展打包入口是 `npm run package:vsix`，其底层 `scripts/release/package-vsix.mjs` 会调用 `@vscode/vsce package`，并把 `README.marketplace.md` 中的相对媒体链接改写到 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` 或当前 `HEAD`。notifier 的打包入口是 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，底层脚本在临时目录 staged 子包后调用同一套 VSCE 命令解析。
+现有主扩展打包入口是 `npm run package:vsix`，其底层 `scripts/release/package-vsix.mjs` 会从 `extensions/vscode/dev-session-canvas/` staging 主扩展发布包、调用 `@vscode/vsce package`，并把主扩展子包内 `README.marketplace.md` 中的相对媒体链接改写到 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` 或当前 `HEAD`。notifier 的打包入口是 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，底层脚本在临时目录 staged 子包后调用同一套 VSCE 命令解析。
 
 现有双市场发布入口是 `npm run publish:marketplaces -- --yes`，底层 `scripts/release/publish-marketplaces.mjs` 默认重新打包两个 VSIX，先发 notifier、再发 main，并把每个扩展发布到 Visual Studio Marketplace 和 Open VSX。Open VSX helper 是 `scripts/release/openvsx-api.py`，当前默认 timeout 为 120 秒，0.14.1 发布时曾遇到 timeout 和 registry throttling，需要后续编排支持重试恢复。
 

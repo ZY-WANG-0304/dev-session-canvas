@@ -18,6 +18,7 @@ const NOTIFIER_EXTENSION_ID = 'devsessioncanvas.dev-session-canvas-notifier';
 const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
 const debugRoot = path.join(projectRoot, '.debug', 'vscode-smoke', 'notifier-companion');
+const mainExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas');
 const notifierExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'fake-agent-provider');
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
@@ -69,10 +70,11 @@ async function prepareSmokeHostExtension(root) {
   await fs.rm(smokeHostRoot, { recursive: true, force: true });
 
   await stageExtension({
-    sourceRoot: projectRoot,
+    sourceRoot: mainExtensionRoot,
     targetRoot: smokeHostRoot,
-    entries: ['package.json', 'package.nls.json', 'dist', 'images', 'resources', 'node_modules', 'scripts']
+    entries: ['package.json', 'package.nls.json', 'dist', 'images', 'resources', 'scripts']
   });
+  await copyPathRecursive(path.join(projectRoot, 'node_modules'), path.join(smokeHostRoot, 'node_modules'));
   await stageExtension({
     sourceRoot: notifierExtensionRoot,
     targetRoot: notifierRuntimeRoot,

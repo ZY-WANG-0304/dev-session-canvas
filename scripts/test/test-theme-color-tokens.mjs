@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const mainWebviewStyles = await readText('src/webview/styles.css');
-const mainWebviewSource = await readText('src/webview/main.tsx');
+const mainWebviewStyles = await readText('extensions/vscode/dev-session-canvas/src/webview/styles.css');
+const mainWebviewSource = await readText('extensions/vscode/dev-session-canvas/src/webview/main.tsx');
 const designSystemSource = await readText('docs/UI.md');
-const statusPresentationSource = await readText('src/common/canvasNodeStatusPresentation.ts');
+const statusPresentationSource = await readText('extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts');
 const notifierSidebarSource = await readText('extensions/vscode/dev-session-canvas-notifier/src/sidebarView.ts');
 
 async function readText(path) {

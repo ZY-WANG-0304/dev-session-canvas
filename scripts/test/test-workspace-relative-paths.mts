@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
-import { formatExecutionCwdLabel, formatExecutionCwdTooltip } from '../../src/common/executionCwdLabel.ts';
-import { resolveContainedWorkspaceRelativePath } from '../../src/common/workspaceRelativePath.ts';
+import { formatExecutionCwdLabel, formatExecutionCwdTooltip } from '../../extensions/vscode/dev-session-canvas/src/common/executionCwdLabel.ts';
+import { resolveContainedWorkspaceRelativePath } from '../../extensions/vscode/dev-session-canvas/src/common/workspaceRelativePath.ts';
 
 function run(): void {
   assert.equal(

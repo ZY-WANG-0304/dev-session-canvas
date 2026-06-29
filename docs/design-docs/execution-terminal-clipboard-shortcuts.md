@@ -13,7 +13,7 @@ updated_at: 2026-06-24
 
 ## 1. 背景
 
-`Agent` 与 `Terminal` 节点当前都使用 Webview 内的 `xterm.js` 承载终端前端，并通过 `webview/executionInput` 把输入交给 `src/panel/CanvasPanelManager.ts` 写入本地 PTY 或 live runtime。这个模型已经支持普通字符输入、终端输出、link 交互和缩放坐标修正，但还没有把 `Ctrl` / `Cmd` + `C`、`V` 这类高频剪贴板快捷键收口成正式行为。
+`Agent` 与 `Terminal` 节点当前都使用 Webview 内的 `xterm.js` 承载终端前端，并通过 `webview/executionInput` 把输入交给 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 写入本地 PTY 或 live runtime。这个模型已经支持普通字符输入、终端输出、link 交互和缩放坐标修正，但还没有把 `Ctrl` / `Cmd` + `C`、`V` 这类高频剪贴板快捷键收口成正式行为。
 
 调研 VSCode 原生 Terminal 后可以确认，复制粘贴不是简单把 `Ctrl+C` 和 `Ctrl+V` 都改成剪贴板操作。VSCode 原生 Terminal 把终端快捷键先放进 Workbench keybinding / command 体系，再用 `commandsToSkipShell`、终端选区状态和平台差异决定某次按键是给 VSCode 处理，还是继续交给 shell。`Ctrl+C` 的冲突处理尤其依赖“是否有终端选区”和“当前平台”。本设计把这些用户可观察规则移植到画布执行节点，但不要求内部类结构复刻 VSCode 源码。
 
@@ -56,7 +56,7 @@ updated_at: 2026-06-24
 
 ### 方案 B：在 Webview 内直接使用 `navigator.clipboard`
 
-这个方案由 `src/webview/executionTerminalNativeInteractions.ts` 在 xterm 上注册 keyboard handler：复制时读取 xterm 选区并调用 `navigator.clipboard.writeText`，粘贴时调用 `navigator.clipboard.readText` 后 `terminal.paste(text)`。它能最少改动现有 Host 协议，也让选区和 xterm paste 留在同一侧。
+这个方案由 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 在 xterm 上注册 keyboard handler：复制时读取 xterm 选区并调用 `navigator.clipboard.writeText`，粘贴时调用 `navigator.clipboard.readText` 后 `terminal.paste(text)`。它能最少改动现有 Host 协议，也让选区和 xterm paste 留在同一侧。
 
 主要风险是 VSCode Webview 的 clipboard 权限和失败反馈更难统一，粘贴前的多行安全确认也会被迫在 Webview 内自建 UI，和 VSCode 原生 Terminal 的 Workbench 弹窗体验分叉。未来如果要加 Host 诊断或测试替身，还需要再补一层协议。
 
@@ -66,7 +66,7 @@ updated_at: 2026-06-24
 
 这个方案把职责拆开：Webview 仍然拥有 xterm focus、selection、bracketed paste mode 与按键事件，因此它负责判断“这次按键是否应该拦截”和“复制的文本是什么”；Host 通过 `vscode.env.clipboard` 读写系统剪贴板，并在粘贴多行文本时执行与 VSCode 原生 Terminal `auto` 类似的安全处理。Host 返回可粘贴文本后，Webview 调用当前 xterm 实例的 paste 入口。
 
-它比方案 B 多一个 request / response 协议，但更符合当前架构：`src/common/protocol.ts` 承载跨边界消息，`src/panel/CanvasPanelManager.ts` 是 Host 侧权威入口，Webview 不直接承担平台剪贴板权限与 VSCode 弹窗策略。复制时 Host 可记录诊断；粘贴时 Host 可在读取剪贴板、剥离尾随换行、显示确认和取消之间保持单一决策点。
+它比方案 B 多一个 request / response 协议，但更符合当前架构：`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 承载跨边界消息，`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 是 Host 侧权威入口，Webview 不直接承担平台剪贴板权限与 VSCode 弹窗策略。复制时 Host 可记录诊断；粘贴时 Host 可在读取剪贴板、剥离尾随换行、显示确认和取消之间保持单一决策点。
 
 结论：选定。
 
@@ -82,9 +82,9 @@ updated_at: 2026-06-24
 
 正式方案采用“Webview 判定快捷键，Host 拥有系统剪贴板与粘贴安全，Webview 最终调用 xterm paste”的分层。Remote SSH 场景下，快捷键平台归属仍由本地 Webview / UI 侧判断，远端 Host 只负责接收已经判定好的 copy / paste request 和最终 PTY 输入。
 
-`src/webview/executionTerminalNativeInteractions.ts` 是执行节点终端交互入口。这里应新增一个 keyboard shortcut adapter，并由 `Agent` 与 `Terminal` 节点在创建 xterm 后共用。adapter 通过 `terminal.attachCustomKeyEventHandler` 在 xterm 处理按键前判断当前事件。只有事件目标属于当前 xterm、当前键是平台定义的复制 / 粘贴快捷键时才拦截；普通字符、无选区 `Ctrl+C`、shell 自有组合键和其他 Workbench 快捷键继续交给 xterm 或外层 VSCode 处理。adapter 不直接写 PTY；它只做三类动作：发送复制请求、发送粘贴请求、或返回 `true` 让 xterm 继续处理。
+`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 是执行节点终端交互入口。这里应新增一个 keyboard shortcut adapter，并由 `Agent` 与 `Terminal` 节点在创建 xterm 后共用。adapter 通过 `terminal.attachCustomKeyEventHandler` 在 xterm 处理按键前判断当前事件。只有事件目标属于当前 xterm、当前键是平台定义的复制 / 粘贴快捷键时才拦截；普通字符、无选区 `Ctrl+C`、shell 自有组合键和其他 Workbench 快捷键继续交给 xterm 或外层 VSCode 处理。adapter 不直接写 PTY；它只做三类动作：发送复制请求、发送粘贴请求、或返回 `true` 让 xterm 继续处理。
 
-`src/common/protocol.ts` 应新增最小跨边界消息，用于 Host 剪贴板操作和异步粘贴回包。推荐结构是：
+`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 应新增最小跨边界消息，用于 Host 剪贴板操作和异步粘贴回包。推荐结构是：
 
     webview/copyExecutionSelection
       payload: { nodeId, kind, text, clearSelectionAfterCopy }
@@ -100,7 +100,7 @@ updated_at: 2026-06-24
 
 复制不需要回包；如果 Host 写剪贴板失败，可走现有 `host/error`。粘贴必须回包，因为 Webview 需要在确认后调用本地 xterm paste。`requestId` 用于丢弃没有匹配请求的响应，`nodeId` 与 `kind` 用于确认目标仍是原节点；Webview 不应对等待 Host 多行粘贴确认的请求施加固定短超时，否则用户在模态确认框停留较久后点击继续会被误丢弃。
 
-`src/panel/CanvasPanelManager.ts` 是 Host 侧处理入口。收到 `webview/copyExecutionSelection` 后，Host 调用 `vscode.env.clipboard.writeText(text)`；如果 `clearSelectionAfterCopy` 为 true，Webview 可在发送请求后立即清选区，因为清选区只影响 xterm UI。收到 `webview/requestExecutionPaste` 后，Host 调用 `vscode.env.clipboard.readText()`，再按固定 `auto` 规则处理文本：空文本 no-op；单行文本直接返回；`bracketedPasteMode` 为 true 时直接返回；按 `CRLF`、裸 `CR` 或裸 `LF` 判断行分隔，若文本只有一条命令和尾随空白换行，剥离尾随空白换行后返回；其他多行文本必须通过 VSCode 原生确认后才返回，取消则发 `host/executionPasteCancelled`。
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 是 Host 侧处理入口。收到 `webview/copyExecutionSelection` 后，Host 调用 `vscode.env.clipboard.writeText(text)`；如果 `clearSelectionAfterCopy` 为 true，Webview 可在发送请求后立即清选区，因为清选区只影响 xterm UI。收到 `webview/requestExecutionPaste` 后，Host 调用 `vscode.env.clipboard.readText()`，再按固定 `auto` 规则处理文本：空文本 no-op；单行文本直接返回；`bracketedPasteMode` 为 true 时直接返回；按 `CRLF`、裸 `CR` 或裸 `LF` 判断行分隔，若文本只有一条命令和尾随空白换行，剥离尾随空白换行后返回；其他多行文本必须通过 VSCode 原生确认后才返回，取消则发 `host/executionPasteCancelled`。
 
 Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerminalRegistry` 中仍存活的对应 `Terminal` 实例，并调用 `terminal.paste(text)`，而不是发送 `webview/executionInput` 或直接调用 Host 写入输入。这样可以保留 xterm 的 bracketed paste、换行归一化、textarea focus 和本地状态一致性。若节点已经销毁、kind 不匹配或请求不是最新请求，应丢弃回包。
 
@@ -112,12 +112,12 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 
 这些规则只在 xterm focus 内生效。`Agent` 和 `Terminal` 使用同一套规则；差异只体现在 Host 写入的目标会话类型不同。对 Agent 来说，无选区 `Ctrl+C` 是发送给 provider CLI 的 interrupt，不等同于节点 stop。对 Terminal 来说，它就是 shell interrupt。非 live 节点可以复制已有 scrollback 选区，但粘贴必须在 Webview 或 Host 侧确认目标仍有可输入 live session；如果没有，应取消粘贴并可用 `host/error` 给出轻量反馈。
 
-2026-06-14 补充：为了定位“复制快捷键或右键复制没有生效”的现场原因，正式方案增加只读诊断，不改变复制行为。`src/webview/executionTerminalNativeInteractions.ts` 在执行节点 xterm 内上报 `webview/executionClipboardDiagnostic`，覆盖本地 Webview 平台推断、复制/粘贴快捷键判定、xterm selection 变化、TUI mouse tracking 模式变化、mouse tracking 下的拖选尝试、右键菜单触发时的选区状态，以及收到 OSC 52 时的目标、payload 类型和短预览。`src/panel/CanvasPanelManager.ts` 只把这些事件写入 `diagnostic-events.json`，并在 `summary.json.diagnostics.executionClipboardSummary` 汇总按 source / node 的计数和最新状态；Host 不因为该诊断写剪贴板，也不把 OSC 52 转成复制。`src/common/protocol.ts` 同步扩展 `WebviewProbeNodeSnapshot`，让 `panel-probe.json` 能直接看到 `terminalMouseTrackingMode`、`terminalBufferType` 和 `terminalHasFocus`，用于区分“没有 xterm 选区”“TUI mouse tracking 捕获了拖选”“平台快捷键推断错误”和“OSC 52 已出现但未桥接”等原因。
+2026-06-14 补充：为了定位“复制快捷键或右键复制没有生效”的现场原因，正式方案增加只读诊断，不改变复制行为。`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 在执行节点 xterm 内上报 `webview/executionClipboardDiagnostic`，覆盖本地 Webview 平台推断、复制/粘贴快捷键判定、xterm selection 变化、TUI mouse tracking 模式变化、mouse tracking 下的拖选尝试、右键菜单触发时的选区状态，以及收到 OSC 52 时的目标、payload 类型和短预览。`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 只把这些事件写入 `diagnostic-events.json`，并在 `summary.json.diagnostics.executionClipboardSummary` 汇总按 source / node 的计数和最新状态；Host 不因为该诊断写剪贴板，也不把 OSC 52 转成复制。`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 同步扩展 `WebviewProbeNodeSnapshot`，让 `panel-probe.json` 能直接看到 `terminalMouseTrackingMode`、`terminalBufferType` 和 `terminalHasFocus`，用于区分“没有 xterm 选区”“TUI mouse tracking 捕获了拖选”“平台快捷键推断错误”和“OSC 52 已出现但未桥接”等原因。
 
 2026-06-15 补充：snapshot restore 期间的 `terminal.reset()` 与 `terminal.write(snapshot)` 会触发 xterm 内部 selection、mouse tracking 和 OSC 52 parser 事件，这些属于程序化恢复副作用，不代表用户实际选择或复制。Webview 只在显式进入 snapshot restore 上下文时抑制 `selectionChange`、`mouseTrackingMode` 和 `osc52` 三类 clipboard 诊断，并在 restore 完成后的短帧窗口内继续吸收 xterm 延迟派发的同类事件，随后聚合上报一条 `restoreSuppressed`，其中包含 reason、generation、total 与按 source 的 counts；若下一次真实 output/input/exit 写入开始，会先刷新这条聚合诊断，避免抑制窗口跨越到用户路径。`shortcut`、`contextMenu`、`mouseSelection`、paste/copy 请求和 `environment` 诊断不进入抑制窗口；系统也不做“空选区同值去重/节流”，避免把真实用户现场误判为噪音。
 
 
-2026-06-24 补充：Agent 截图粘贴进入正式范围，但仅覆盖 `Agent` 节点。Codex 当前官方手册确认 CLI 支持 `--image/-i` 初始图片、交互 composer 支持粘贴图片、IDE 支持图片拖放；本轮源码调研还看到 Codex TUI composer 会把粘贴的图片路径识别为本地图片附件。Claude Code 文档确认可以把图片直接粘贴到 prompt、拖放图片，或提供图片路径；交互模式还定义了图片剪贴板快捷键并会插入 `[Image #N]` chip。基于这些证据，画布不尝试伪造 provider 原生 chip，而采用跨 provider 的文件路径文本方案：Webview 从 `ClipboardEvent.clipboardData` 或 `navigator.clipboard.read()` 读取第一张支持图片，发送 `webview/pasteExecutionImage`；`src/panel/CanvasPanelManager.ts` 校验 live Agent 会话、MIME、大小和图片 magic number，把图片写入 `getExtensionStoragePath()/execution-image-pastes/<nodeId>/`，再通过现有 `host/executionPasteText` 返回不带回车的图片路径引用文本；`src/webview/main.tsx` 仍调用 `terminal.paste(text)`。`Terminal` 节点粘贴图片不自动落盘或写入 shell，继续走文本粘贴或取消路径。该补充由 `docs/exec-plans/active/agent-screenshot-paste-input.md` 跟踪，已通过协议、Webview、Host 和 Playwright 定向回归验证。
+2026-06-24 补充：Agent 截图粘贴进入正式范围，但仅覆盖 `Agent` 节点。Codex 当前官方手册确认 CLI 支持 `--image/-i` 初始图片、交互 composer 支持粘贴图片、IDE 支持图片拖放；本轮源码调研还看到 Codex TUI composer 会把粘贴的图片路径识别为本地图片附件。Claude Code 文档确认可以把图片直接粘贴到 prompt、拖放图片，或提供图片路径；交互模式还定义了图片剪贴板快捷键并会插入 `[Image #N]` chip。基于这些证据，画布不尝试伪造 provider 原生 chip，而采用跨 provider 的文件路径文本方案：Webview 从 `ClipboardEvent.clipboardData` 或 `navigator.clipboard.read()` 读取第一张支持图片，发送 `webview/pasteExecutionImage`；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 校验 live Agent 会话、MIME、大小和图片 magic number，把图片写入 `getExtensionStoragePath()/execution-image-pastes/<nodeId>/`，再通过现有 `host/executionPasteText` 返回不带回车的图片路径引用文本；`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 仍调用 `terminal.paste(text)`。`Terminal` 节点粘贴图片不自动落盘或写入 shell，继续走文本粘贴或取消路径。该补充由 `docs/exec-plans/active/agent-screenshot-paste-input.md` 跟踪，已通过协议、Webview、Host 和 Playwright 定向回归验证。
 
 2026-06-24 清理策略补充：保存到 `execution-image-pastes` 的截图是临时附件缓存，不是用户资产，默认 7 天 TTL。清理采用独立后台维护器，而不是绑定启动、panel 激活、截图粘贴、粘贴后立即动作或 Agent 退出；维护器在扩展运行一段延迟后进入低优先级窗口，单实例运行，并按文件数、扫描量和耗时预算分片删除过期图片。若单次预算耗尽，维护器短延迟续跑以消化 backlog；若清理失败，Host 记录诊断并弹出非阻塞错误提示，提示用户可排查缓存目录，但当前 Agent 输入、粘贴、启动和画布交互不得被阻塞。写入中断残留的 `.tmp` 使用更短 TTL；删除路径必须限制在 `execution-image-pastes` 命名空间内，并只处理截图缓存命名的文件。
 

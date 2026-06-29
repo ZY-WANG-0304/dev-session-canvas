@@ -13,5 +13,8 @@
     "rootDir": ".",
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": [
+    "extensions/vscode/dev-session-canvas/src/**/*.ts",
+    "extensions/vscode/dev-session-canvas/src/**/*.tsx"
+  ]
 }

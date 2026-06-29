@@ -6,13 +6,13 @@
 
 - 统一公开发布时的版本号表达方式。
 - 避免把 `Preview`、`pre-release` 与稳定版语义混写。
-- 让 `package.json`、`CHANGELOG.md` 与 Marketplace 发布口径保持一致。
+- 让主扩展 / notifier 的 manifest、CHANGELOG 与 Marketplace 发布口径保持一致。
 
 ## 当前结论
 
 - 当前仓库对外发布默认使用单轨 `SemVer` 三段式版本号：`major.minor.patch`。
 - 当前阶段虽然是公开 `Preview`，但版本号本身不添加 `-preview`、`-beta`、日期或 git hash 后缀。
-- 当前 `Preview` 身份通过 `package.json` 中的 `preview: true`、Marketplace 文案与 release notes 表达，而不是通过版本字符串表达。
+- 当前 `Preview` 身份通过主扩展 manifest 中的 `preview: true`、Marketplace 文案与 release notes 表达，而不是通过版本字符串表达。
 - 在真正准备做稳定版承诺之前，默认停留在 `0.x.y`。
 - 当前默认不启用 Marketplace `pre-release` 双轨发布策略；若未来决定启用，需要单独更新本文件与发布流程文档。
 - 模板市场生产服务部署不复用插件 SemVer；服务部署使用 `docs/workflows/SERVICE_DEPLOY.md` 定义的独立 deploy tag。
@@ -63,8 +63,8 @@ deploy/template-marketplace/prod/YYYY-MM-DD.N
 
 ## 与发布文案的关系
 
-- `package.json` 中的 `version`、`CHANGELOG.md` 标题与 Marketplace 发布版本号必须一致。
-- `Preview` 身份应写在 `README.md`、`CHANGELOG.md`、Marketplace listing 和 release notes 中。
+- `extensions/vscode/dev-session-canvas/package.json` 中的 `version`、`extensions/vscode/dev-session-canvas/CHANGELOG.md` 标题与 Marketplace 发布版本号必须一致；notifier 发布时还必须同步 `extensions/vscode/dev-session-canvas-notifier/package.json` 与 notifier `CHANGELOG.md`。
+- `Preview` 身份应写在 `README.md`、主扩展 / notifier 对应的 `CHANGELOG.md`、Marketplace listing 和 release notes 中。
 - 如果版本号已经升级到 `1.x.y`，就不要继续把该版本表述为仅供试用的临时预览包。
 
 ## 例外处理

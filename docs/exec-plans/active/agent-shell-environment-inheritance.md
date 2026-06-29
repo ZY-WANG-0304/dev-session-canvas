@@ -37,7 +37,7 @@
 ## 意外与发现
 
 - 观察：本轮开始时，仓库虽然已经给 `Agent` 做了“命令发现”层的 POSIX 登录 shell 探测，但真正 spawn 进程时仍然直接使用 Extension Host 的 `process.env`。
-  证据：起步时的 `src/panel/agentCliResolver.ts` 会在 POSIX 上运行 `shell -lc 'command -v ...'`；而当时的 `CanvasPanelManager` 仍只基于 `process.env` 组装启动环境。
+  证据：起步时的 `extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts` 会在 POSIX 上运行 `shell -lc 'command -v ...'`；而当时的 `CanvasPanelManager` 仍只基于 `process.env` 组装启动环境。
 
 - 观察：VS Code 原生的 shell env 解析在官方实现里只在 macOS / Linux 上运行，并且会跳过 Windows 与 `VSCODE_CLI=1` 的场景。
   证据：`src/vs/platform/shell/node/shellEnv.ts` 当前主线实现里，`getResolvedShellEnv()` 会对 Windows 和 `isLaunchedFromCli(env)` 直接返回空结果。
@@ -58,10 +58,10 @@
   证据：2026-05-08 本机执行 `C:\msys64\usr\bin\bash.exe -i -l -c 'printf ok-msys2-bash'` 与 `C:\msys64\usr\bin\sh.exe -i -l -c 'printf ok-msys2-sh'` 均返回 `ok-*`，仅伴随预期的 job-control 提示。
 
 - 观察：Windows `Terminal` 如果先离线 probe 一次 PowerShell profile / `cmd.exe` AutoRun，再把得到的 env patch 注入到真正启动的 shell，会把 profile / AutoRun 的副作用重复应用两次。
-  证据：修复前 `CanvasPanelManager.resolveExecutionEnvironment()` 会对 `Agent` 与 `Terminal` 一视同仁地应用 `resolveShellEnvironmentPatch(...)` 结果；而 `src/panel/shellEnvironmentResolver.ts` 的 Windows 分支又明确会读取 PowerShell profile 与 `cmd.exe` AutoRun 导出的环境增量。
+  证据：修复前 `CanvasPanelManager.resolveExecutionEnvironment()` 会对 `Agent` 与 `Terminal` 一视同仁地应用 `resolveShellEnvironmentPatch(...)` 结果；而 `extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts` 的 Windows 分支又明确会读取 PowerShell profile 与 `cmd.exe` AutoRun 导出的环境增量。
 
 - 观察：`terminal.shellPath` 使用相对路径时，配置层与 env probe 的解析基准如果不一致，会出现 UI / 校验认定 shell 可用，但 probe 侧稳定 `ENOENT` 并静默回退到未补丁环境的分叉。
-  证据：`src/panel/terminalShellConfiguration.ts` 会按 workspace `cwd` 解析相对 shell 路径；修复前 `shellEnvironmentResolver.spawnAndCapture(...)` 直接拿原始相对路径 `spawn(...)` 且未传 `cwd`，因此与配置检查基准不一致。
+  证据：`extensions/vscode/dev-session-canvas/src/panel/terminalShellConfiguration.ts` 会按 workspace `cwd` 解析相对 shell 路径；修复前 `shellEnvironmentResolver.spawnAndCapture(...)` 直接拿原始相对路径 `spawn(...)` 且未传 `cwd`，因此与配置检查基准不一致。
 
 - 观察：如果把所有 host-only `PATH` 目录一律整体前置到 shell `PATH` 前面，shell 已经选定的 Node / Codex / pnpm / volta 工具链仍可能被 Extension Host 基线目录抢先命中，导致“受控 shell env patch 已应用但工具链 authority 仍回到 host”的假对齐。
   证据：review 给出的最小复现 `base=/usr/local/bin:/usr/bin`、`shell=/opt/homebrew/bin:/usr/bin` 会把旧实现合成为 `/usr/local/bin:/opt/homebrew/bin:/usr/bin`；修复前 `mergePathEnvironmentValue(...)` 也确实先收集全部 base-only 目录，再整体拼到 shell `PATH` 前面。
@@ -73,7 +73,7 @@
   证据：`tests/vscode-smoke/windows-real-codex-smoke.cjs` 会在每轮场景前后调用 `devSessionCanvas.__test.resetState`，而修复前 `CanvasPanelManager.resetState()` 不会触碰 `agentCliResolutionCache`；同一 smoke 断言又只要求 `resolvedCommand` 非空，没有要求 `resolutionSource` 脱离 `cache`。
 
 - 观察：非 Windows 上 `detectShellFamily(...)` 已经能把 `pwsh` / `powershell` 识别为 `powershell` family，但 `resolveShellEnvironment(...)` 先用 `platform !== 'win32'` 把所有非 Windows shell 直接送入 POSIX probe，导致 PowerShell 被传入只适用于 POSIX shell 的 `'<node>' -p ...` 命令串。
-  证据：修复前 `src/panel/shellEnvironmentResolver.ts` 中 `resolveShellEnvironment(...)` 的第一分支覆盖所有非 Windows 平台；本轮新增的 `scripts/test/test-shell-environment-resolver.mjs` 假 `pwsh` 回归会在收到 `-i` / `-l` / `-c` 时直接失败，修复后该测试通过并断言 `source === 'powershell'`。
+  证据：修复前 `extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts` 中 `resolveShellEnvironment(...)` 的第一分支覆盖所有非 Windows 平台；本轮新增的 `scripts/test/test-shell-environment-resolver.mjs` 假 `pwsh` 回归会在收到 `-i` / `-l` / `-c` 时直接失败，修复后该测试通过并断言 `source === 'powershell'`。
 
 - 观察：Agent CLI 解析缓存如果既写入 `globalState`，又让裸命令名 key 忽略 workspace `cwd`，那么 repo A 中由 direnv / Nix / repo-local shim 解析出的绝对 `codex` 路径，会在 repo B 或窗口重载后继续被 `source: cache` 命中。
   证据：修复前 `CanvasPanelManager` 构造函数从 `context.globalState` 读取 `agentCliResolutionCache`，`storeAgentCliResolution(...)` 再写回 `globalState`；同一文件的 `getAgentCliResolutionCacheKey(...)` 只在显式相对命令时加入 `workspaceCwd`，而 smoke 回归原本还断言 `requestedCommand: 'codex'` 在 workspace A/B 的 key 相等。
@@ -142,7 +142,7 @@
 
 ## 结果与复盘
 
-- 已完成：`src/panel/shellEnvironmentResolver.ts` 现在已经同时支持桌面 shell env 继承主路径：macOS / Linux 的 POSIX 登录 shell、非 Windows `pwsh` / `powershell` 的 PowerShell probe、Windows PowerShell / cmd，以及 Windows 下名称可判定为 POSIX 家族的 shell。它会统一产出受控 env patch，并在 Windows 上处理 `PATH` / `PATHEXT` 与环境变量大小写不敏感问题。
+- 已完成：`extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts` 现在已经同时支持桌面 shell env 继承主路径：macOS / Linux 的 POSIX 登录 shell、非 Windows `pwsh` / `powershell` 的 PowerShell probe、Windows PowerShell / cmd，以及 Windows 下名称可判定为 POSIX 家族的 shell。它会统一产出受控 env patch，并在 Windows 上处理 `PATH` / `PATHEXT` 与环境变量大小写不敏感问题。
 - 已完成：host diagnostics 现在会显式记录 shell env patch 来源、`shellFamily`、skip reason、shell 路径、应用到的 key 和错误摘要，后续排查 GUI 环境缺工具链时不再只能靠截图倒推。
 - 已完成：`CanvasPanelManager` 现在会把 shell env patch 显式绑定到当前配置/默认 Terminal shell，并在 `devSessionCanvas.terminal.shell`、`devSessionCanvas.terminal.shellPath` 或 `vscode.env.shell` 变化时刷新缓存；其中 `Agent` resolver、`Agent` spawn 与 runtime supervisor createSession 继续共用同一份 execution env。`Terminal` env inheritance 已改为平台感知：Windows 保留 base env，POSIX 默认继承 login-only shell env patch，并可通过 `devSessionCanvas.terminal.inheritEnv=false` 关闭。
 - 已完成：`resolveShellEnvironmentPatch(...)` 现在会接收并透传 workspace `cwd`；相对 `terminal.shellPath` 的 env probe 与 `terminalShellConfiguration` 的配置检查已共享同一套解析基准，不再因为 `spawn` 端漏传 `cwd` 而稳定 `ENOENT`。
@@ -156,10 +156,10 @@
 
 本任务同时影响“命令发现”和“命令启动”两条链路。关键文件如下：
 
-- `src/panel/agentCliResolver.ts`：宿主侧 Agent CLI 解析器，当前已经支持 `PATH`、POSIX 登录 shell 和 Windows 原生命令发现。
-- `src/panel/CanvasPanelManager.ts`：组装 `Agent` / `Terminal` 启动环境并调用本地 PTY 或 runtime supervisor 的主入口。
-- `src/panel/executionSessionBridge.ts`：把 `ExecutionSessionLaunchSpec` 交给 `node-pty.spawn(...)` 的统一桥接层。
-- `src/common/runtimeSupervisorProtocol.ts` 与 `src/supervisor/runtimeSupervisorMain.ts`：runtime supervisor 路径会序列化宿主侧 `launchSpec.env`，因此只要 host 构造出的 env 正确，supervisor 链路也会跟着受益。
+- `extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts`：宿主侧 Agent CLI 解析器，当前已经支持 `PATH`、POSIX 登录 shell 和 Windows 原生命令发现。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：组装 `Agent` / `Terminal` 启动环境并调用本地 PTY 或 runtime supervisor 的主入口。
+- `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts`：把 `ExecutionSessionLaunchSpec` 交给 `node-pty.spawn(...)` 的统一桥接层。
+- `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts` 与 `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts`：runtime supervisor 路径会序列化宿主侧 `launchSpec.env`，因此只要 host 构造出的 env 正确，supervisor 链路也会跟着受益。
 - `docs/design-docs/agent-cli-launch-context-and-resume.md`：定义 Agent CLI 启动上下文、命令发现与 provider 配置边界。
 - `docs/design-docs/execution-session-platform-compatibility.md`：记录 Linux/macOS/Windows 平台差异与 CLI 命令发现路线。
 - `docs/exec-plans/tech-debt-tracker.md`：登记本轮不会一起完成的 Windows 路线缺口。
@@ -168,20 +168,20 @@
 
 ## 工作计划
 
-现状已经完成 POSIX 与 Windows 的 Agent execution env 路线，本轮继续按混合方案收口 Terminal 侧语义。第一，`src/panel/shellEnvironmentResolver.ts` 必须保留 Agent 的 interactive-login probe，并新增 POSIX Terminal 专用 login-only probe mode，避免把后续真实交互 shell 自己会执行的 rc 尽量重复离线执行。第二，`src/panel/CanvasPanelManager.ts` 的 `resolveExecutionEnvironment(...)` 必须按 target、platform 与 `devSessionCanvas.terminal.inheritEnv` 做平台感知 gating：Agent 始终使用 shell env patch，Windows Terminal 始终跳过，POSIX Terminal 默认继承。第三，`Terminal` launch spec 必须从配置读取 `devSessionCanvas.terminal.shellArgs`，让 shell 启动参数与 env inheritance 分层表达。随后补脚本回归、正式设计文档和本计划记录。
+现状已经完成 POSIX 与 Windows 的 Agent execution env 路线，本轮继续按混合方案收口 Terminal 侧语义。第一，`extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts` 必须保留 Agent 的 interactive-login probe，并新增 POSIX Terminal 专用 login-only probe mode，避免把后续真实交互 shell 自己会执行的 rc 尽量重复离线执行。第二，`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `resolveExecutionEnvironment(...)` 必须按 target、platform 与 `devSessionCanvas.terminal.inheritEnv` 做平台感知 gating：Agent 始终使用 shell env patch，Windows Terminal 始终跳过，POSIX Terminal 默认继承。第三，`Terminal` launch spec 必须从配置读取 `devSessionCanvas.terminal.shellArgs`，让 shell 启动参数与 env inheritance 分层表达。随后补脚本回归、正式设计文档和本计划记录。
 
 ## 具体步骤
 
-1. 扩展 `src/panel/shellEnvironmentResolver.ts`：
+1. 扩展 `extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts`：
    - 保留现有 POSIX 登录 shell 解析；
    - 为 Windows 增加 PowerShell / cmd / Windows 下 POSIX shell 的环境快照读取；
    - 让 patch 过滤、`PATH` 合并和大小写处理兼容 Windows 的大小写不敏感环境变量；
    - 在成功 / 跳过 / 失败时继续产出可诊断元数据。
-2. 修改 `src/panel/CanvasPanelManager.ts`：
+2. 修改 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：
    - 让 shell env patch 解析显式依赖当前配置/默认 Terminal shell；
    - 在 Terminal shell 配置或 VS Code 默认 shell 变化时使缓存失效；
    - 保持 `resolveAgentCli(...)`、`buildAgentLaunchSpec(...)` 与 runtime supervisor 继续共用同一份 agent execution env，同时让 Windows `Terminal` 跳过预应用 patch、POSIX `Terminal` 默认继承 login-only patch。
-3. 必要时调整 `src/panel/agentCliResolver.ts`，确保 Windows 上对 `PATH` / `PATHEXT` 的读取能和新 execution env 对齐，而不是依赖大小写巧合。
+3. 必要时调整 `extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts`，确保 Windows 上对 `PATH` / `PATHEXT` 的读取能和新 execution env 对齐，而不是依赖大小写巧合。
 4. 新增脚本级回归，至少覆盖：
    - Windows shell env patch 会保留 `PATH` 外的工具链变量；
    - `USERPROFILE` / `HOME` / `PROMPT` / `TERM` 等禁用变量不会被 patch 覆盖；

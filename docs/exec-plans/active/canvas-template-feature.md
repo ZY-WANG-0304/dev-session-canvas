@@ -46,13 +46,13 @@
 ## 意外与发现
 
 - 观察：当前 `CanvasPanelManager.createNode()` 与 Webview 的 `host/requestCreateNode` 链路默认会把新建 `Agent` / `Terminal` 节点置成 `pendingLaunch=start`，随后在节点尺寸就绪后自动启动。
-  证据：`src/panel/CanvasPanelManager.ts` 的 `applyCreateNode()` 在 `agent` / `terminal` 分支里会把节点状态改成 `starting` / `launching` 并写入 `pendingLaunch`。
+  证据：`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `applyCreateNode()` 在 `agent` / `terminal` 分支里会把节点状态改成 `starting` / `launching` 并写入 `pendingLaunch`。
 
 - 观察：宿主当前没有关于视口中心的权威状态，只有 Webview 本地 `vscode.setState(localUiState)` 持久化；如果模板重置要把整组节点精确放到当前视口中心，需要补一条显式的 Webview -> Host 视口信息回传。
-  证据：`src/webview/main.tsx` 的 `handleMoveEnd()` 只更新本地 `localUiState.viewport`，`src/common/protocol.ts` 里没有现成的 `webview/updateViewport` 之类消息。
+  证据：`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 `handleMoveEnd()` 只更新本地 `localUiState.viewport`，`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 里没有现成的 `webview/updateViewport` 之类消息。
 
 - 观察：现有侧栏列表能力已经有“概览 TreeView + 多个最小 WebviewView”的模式，模板视图可以沿用同样的宿主承载方式，而无需重新发明一个画布内面板。
-  证据：`src/extension.ts` 已注册 `sidebarFilters`、`sidebarNodes`、`sidebarSessions` 三个独立视图，且 `CanvasSidebarNodeListView.ts` / `CanvasSidebarSessionHistoryView.ts` 已形成可复用模式。
+  证据：`extensions/vscode/dev-session-canvas/src/extension.ts` 已注册 `sidebarFilters`、`sidebarNodes`、`sidebarSessions` 三个独立视图，且 `CanvasSidebarNodeListView.ts` / `CanvasSidebarSessionHistoryView.ts` 已形成可复用模式。
 
 - 观察：模板 sidebar 是默认展开的 section，而节点 / 会话历史默认更常以折叠态出现；如果模板 view 首屏只等 Webview `ready` 回传后才开始真正刷新，一旦握手时序抖动，就更容易直接暴露成“模板区整块空白”的用户可见问题。
   证据：最新回归截图中，模板 section header 已显示但内容区没有模板列表；同时当前实现直到 `sidebarTemplates/ready` 或 visible 变化后才会稳定补发状态。
@@ -196,23 +196,23 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 
 第一处是正式文档层。产品规格位于 `docs/product-specs/canvas-template-feature.md`，当前还没有对应正式设计文档；本轮新增 `docs/design-docs/canvas-template-feature.md` 作为正式方案来源，并同步更新 `docs/design-docs/index.md`。
 
-第二处是宿主权威状态层。`src/panel/CanvasPanelManager.ts` 当前拥有画布节点图、持久化、命令接线和运行时生命周期，因此模板的默认首次应用、模板物化、Provider 校验、导入/导出和删除都必须从这里发起，不能让 Webview 自己持有模板真相。
+第二处是宿主权威状态层。`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 当前拥有画布节点图、持久化、命令接线和运行时生命周期，因此模板的默认首次应用、模板物化、Provider 校验、导入/导出和删除都必须从这里发起，不能让 Webview 自己持有模板真相。
 
 第三处是共享模型与文件存储层。当前仓库还没有模板领域模型，需要新增一个独立模块来定义模板文件格式、版本号、节点/边快照和摘要函数；同时需要一个宿主侧文件存储模块来读 `resources/templates/` 与 `globalStorageUri/templates/`。
 
-第四处是侧栏与命令入口。`src/extension.ts` 与 `package.json` 当前已经承载多个 sidebar section；模板功能需要在这里新增 view 和 command contribution，并把命令面板、侧栏按钮与 Webview 右键入口收敛到同一条宿主实现。
+第四处是侧栏与命令入口。`extensions/vscode/dev-session-canvas/src/extension.ts` 与 `package.json` 当前已经承载多个 sidebar section；模板功能需要在这里新增 view 和 command contribution，并把命令面板、侧栏按钮与 Webview 右键入口收敛到同一条宿主实现。
 
-第五处是 Webview 交互层。`src/webview/main.tsx` 当前的空白区右键菜单只负责新建节点，且视口中心只保留在本地状态里；模板功能需要在这里补模板动作入口，并把当前可见区域中心显式传回宿主，供模板组级落位使用。
+第五处是 Webview 交互层。`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 当前的空白区右键菜单只负责新建节点，且视口中心只保留在本地状态里；模板功能需要在这里补模板动作入口，并把当前可见区域中心显式传回宿主，供模板组级落位使用。
 
 ## 工作计划
 
 先补齐正式设计文档和执行计划，让模板模型、默认模板边界、侧栏承载方式以及“不自动启动执行节点”的关键规则先在文档中落定。否则后续代码很容易被现有 `createNode()` 自动启动链路牵着走，偏离产品规格。
 
-然后拆出模板领域模型与宿主文件存储。`src/common/canvasTemplates.ts` 负责定义版本化模板文档、节点/边快照、模板摘要和解析函数；`src/panel/CanvasTemplateStore.ts` 负责读写内置模板目录与用户模板目录，并暴露导入、导出、删除和模板列表刷新能力。这样既方便 `CanvasPanelManager` 编排，也方便单独做纯数据测试。
+然后拆出模板领域模型与宿主文件存储。`extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts` 负责定义版本化模板文档、节点/边快照、模板摘要和解析函数；`extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts` 负责读写内置模板目录与用户模板目录，并暴露导入、导出、删除和模板列表刷新能力。这样既方便 `CanvasPanelManager` 编排，也方便单独做纯数据测试。
 
 接着扩展 `CanvasPanelManager`。重点是新增四类宿主能力：一是首次打开时的内置 `使用说明` 自动应用与 workspace 初始化标记；二是模板保存与模板应用的状态转换，包括 Provider 校验和 restricted-mode 限制；三是模板列表刷新通知与默认模板持久化；四是重置到模板与追加模板的组级摆放算法。这里也要补一个最小的视口中心缓存结构，用来消费 Webview 回传的可见区域中心。
 
-随后接入交互面。`src/extension.ts`、`package.json`、`package.nls.json` 新增模板命令和模板 sidebar view；`src/sidebar/CanvasSidebarTemplateView.ts` 用最小 `WebviewViewProvider` 输出模板列表、默认标记、损坏文件状态与右侧轻量行内动作；`src/webview/main.tsx` 与 `src/common/protocol.ts` 新增模板右键菜单动作和视口中心消息。
+随后接入交互面。`extensions/vscode/dev-session-canvas/src/extension.ts`、`package.json`、`package.nls.json` 新增模板命令和模板 sidebar view；`extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts` 用最小 `WebviewViewProvider` 输出模板列表、默认标记、损坏文件状态与右侧轻量行内动作；`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 与 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 新增模板右键菜单动作和视口中心消息。
 
 最后补自动化验证。纯数据层至少要覆盖模板序列化/反序列化、冲突处理、模板摘要和组级落位算法；宿主 smoke 至少要覆盖首次默认模板、保存再应用不自动启动、设为默认后重置、导入冲突与 restricted note-only 路径。完成后更新本计划与设计文档的 `当前验证状态`。
 
@@ -226,24 +226,24 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 
 2. 模板领域模型与存储：
 
-   - 新增 `src/common/canvasTemplates.ts`
-   - 新增 `src/panel/CanvasTemplateStore.ts`
+   - 新增 `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts`
+   - 新增 `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts`
    - 新增 `resources/templates/*.json`
 
 3. 宿主编排与命令：
 
-   - 更新 `src/common/extensionIdentity.ts`
-   - 更新 `src/common/protocol.ts`
-   - 更新 `src/panel/CanvasPanelManager.ts`
-   - 更新 `src/extension.ts`
+   - 更新 `extensions/vscode/dev-session-canvas/src/common/extensionIdentity.ts`
+   - 更新 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
+   - 更新 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
+   - 更新 `extensions/vscode/dev-session-canvas/src/extension.ts`
    - 更新 `package.json`
    - 更新 `package.nls.json`
 
 4. 侧栏与 Webview：
 
-   - 新增 `src/sidebar/CanvasSidebarTemplateView.ts`
-   - 更新 `src/webview/main.tsx`
-   - 必要时更新 `src/webview/styles.css`
+   - 新增 `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts`
+   - 更新 `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
+   - 必要时更新 `extensions/vscode/dev-session-canvas/src/webview/styles.css`
 
 5. 测试与验证：
 
@@ -285,28 +285,28 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 
 本轮实现至少会触达以下接口与模块：
 
-- `src/common/canvasTemplates.ts`
+- `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts`
   - `CanvasTemplateDocument`
   - `CanvasTemplate`
   - `CanvasTemplateNodeSnapshot`
   - `CanvasTemplateEdgeSnapshot`
   - 模板解析、摘要和默认 Provider 归一化辅助函数
 
-- `src/panel/CanvasTemplateStore.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts`
   - 读取内置模板与用户模板目录
   - 保存、删除、导入、导出用户模板
 
-- `src/panel/CanvasPanelManager.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
   - 默认模板首次应用逻辑
   - 模板保存 / 应用 / 重置 / 删除 / 设为默认
   - 组级摆放算法
   - 模板列表变更事件
 
-- `src/webview/main.tsx`
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
   - 空白区右键菜单模板动作
   - 当前可见区域中心回传
 
-- `src/sidebar/CanvasSidebarTemplateView.ts`
+- `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts`
   - 模板列表渲染、tooltip、行内动作和刷新
 
 ---

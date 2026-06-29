@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="620" viewBox="0 0 980 620" role="img" aria-labelledby="title desc">
+  <title id="title">DevSessionCanvas Documentation Knowledge Base</title>
+  <desc id="desc">Documentation entry points route from README to docs README, then to architecture, workflow, design, product specs, execution plans, quality and reference inputs.</desc>
+  <style>
+    .bg{fill:#f7f8f5}.box{fill:#fff;stroke:#263238;stroke-width:2;rx:14}.entry{fill:#eef5fb}.rule{fill:#f1f7ee}.decision{fill:#fff6df}.risk{fill:#f9eeee}.input{fill:#f3f0f8}.t{font:700 16px sans-serif;fill:#17222d}.s{font:13px sans-serif;fill:#3f4c58}.arrow{stroke:#536171;stroke-width:2;fill:none;marker-end:url(#arrow)}
+  </style>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#536171"/></marker></defs>
+  <rect class="bg" width="980" height="620"/>
+  <rect class="box entry" x="345" y="32" width="290" height="76"/>
+  <text class="t" x="490" y="62" text-anchor="middle">README.md / README.zh-CN.md</text>
+  <text class="s" x="490" y="86" text-anchor="middle">external product and source entry</text>
+  <rect class="box entry" x="345" y="150" width="290" height="76"/>
+  <text class="t" x="490" y="180" text-anchor="middle">docs/README.md</text>
+  <text class="s" x="490" y="204" text-anchor="middle">knowledge-base router</text>
+
+  <rect class="box rule" x="55" y="300" width="230" height="76"/>
+  <text class="t" x="170" y="330" text-anchor="middle">ARCHITECTURE.md</text>
+  <text class="s" x="170" y="354" text-anchor="middle">current structure and boundaries</text>
+  <rect class="box rule" x="315" y="300" width="230" height="76"/>
+  <text class="t" x="430" y="330" text-anchor="middle">docs/WORKFLOW.md</text>
+  <text class="s" x="430" y="354" text-anchor="middle">collaboration workflow</text>
+  <rect class="box decision" x="575" y="300" width="230" height="76"/>
+  <text class="t" x="690" y="330" text-anchor="middle">docs/DESIGN.md</text>
+  <text class="s" x="690" y="354" text-anchor="middle">design-doc rules</text>
+
+  <rect class="box decision" x="55" y="460" width="230" height="76"/>
+  <text class="t" x="170" y="490" text-anchor="middle">design-docs/index.md</text>
+  <text class="s" x="170" y="514" text-anchor="middle">registered decisions</text>
+  <rect class="box decision" x="315" y="460" width="230" height="76"/>
+  <text class="t" x="430" y="490" text-anchor="middle">product-specs/index.md</text>
+  <text class="s" x="430" y="514" text-anchor="middle">requirements and acceptance</text>
+  <rect class="box decision" x="575" y="460" width="230" height="76"/>
+  <text class="t" x="690" y="490" text-anchor="middle">exec-plans/</text>
+  <text class="s" x="690" y="514" text-anchor="middle">active and completed plans</text>
+  <rect class="box risk" x="820" y="300" width="130" height="76"/>
+  <text class="t" x="885" y="330" text-anchor="middle">Quality</text>
+  <text class="s" x="885" y="354" text-anchor="middle">risk gates</text>
+  <rect class="box input" x="820" y="460" width="130" height="76"/>
+  <text class="t" x="885" y="490" text-anchor="middle">references/</text>
+  <text class="s" x="885" y="514" text-anchor="middle">inputs only</text>
+
+  <path class="arrow" d="M 490 108 L 490 150"/>
+  <path class="arrow" d="M 430 226 C 310 245 220 270 170 300"/>
+  <path class="arrow" d="M 470 226 C 445 250 435 275 430 300"/>
+  <path class="arrow" d="M 520 226 C 610 250 670 274 690 300"/>
+  <path class="arrow" d="M 560 226 C 760 250 850 275 885 300"/>
+  <path class="arrow" d="M 575 338 C 405 380 220 420 170 460"/>
+  <path class="arrow" d="M 490 226 C 470 320 440 405 430 460"/>
+  <path class="arrow" d="M 520 226 C 600 310 670 400 690 460"/>
+  <path class="arrow" d="M 610 226 C 790 310 875 400 885 460"/>
+</svg>

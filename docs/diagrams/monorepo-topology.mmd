@@ -1,0 +1,23 @@
+flowchart TB
+  root["Repository root\npackage.json: private workspace\nroot scripts + docs"]
+  docs["docs/\nformal knowledge base"]
+  arch["ARCHITECTURE.md\ncode map + boundaries"]
+  main["extensions/vscode/dev-session-canvas\nmain VS Code extension"]
+  notifier["extensions/vscode/dev-session-canvas-notifier\nUI-side notifier companion"]
+  attention["packages/attention-protocol\nnotification bridge protocol"]
+  marketShared["packages/marketplace-shared\ntemplate marketplace schema + shared logic"]
+  marketApp["apps/template-marketplace\nweb app + worker"]
+  tests["tests/ + scripts/\nsmoke, build, release, verification"]
+
+  root --> main
+  root --> notifier
+  root --> attention
+  root --> marketShared
+  root --> marketApp
+  root --> tests
+  root --> docs
+  root --> arch
+  main --> attention
+  notifier --> attention
+  main --> marketShared
+  marketApp --> marketShared

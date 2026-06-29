@@ -146,7 +146,7 @@
   证据：PR #138 review 复现了 `group A` 内 owner Agent 与其 file-list 一起拖到 `group B` 后，旧 `group A` 被扩张 / 挤走；本轮新增宿主回归测试断言旧 owner group 的 position / size 不因 stale file-list repair 改变。
 
 - 观察：两个源码字符串型测试已经落后于当前实现命名，导致它们不能稳定参与本轮回归验证。
-  证据：`test:canvas-templates` 原先期望 `await panelManager.revealOrCreate()`，但当前 `src/extension.ts` 使用 `await panelManager.revealOrCreateCurrentCanvasSurface()`；`test:protocol-webview-messages` 原先期望 `summarizeCanvasStateForDiagnostics(sanitizedRootState)`，但当前 `src/panel/CanvasPanelManager.ts` 使用 `runtimeSafeRootState` 作为 loaded-state summary。本轮已同步测试断言，随后两条测试均通过。
+  证据：`test:canvas-templates` 原先期望 `await panelManager.revealOrCreate()`，但当前 `extensions/vscode/dev-session-canvas/src/extension.ts` 使用 `await panelManager.revealOrCreateCurrentCanvasSurface()`；`test:protocol-webview-messages` 原先期望 `summarizeCanvasStateForDiagnostics(sanitizedRootState)`，但当前 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 使用 `runtimeSafeRootState` 作为 loaded-state summary。本轮已同步测试断言，随后两条测试均通过。
 
 ## 决策记录
 
@@ -218,11 +218,11 @@
 
 2026-06-08 本轮把 `file` / `file-list` 从“不建立稳定成员关系”的旧口径改为“owner Agent 推导的自动成员”。代码已让自动文件节点 / 文件列表节点在文件活动重建时按 owner Agent 最近公共父 group 写入 `groupId`，拖动这类节点只改变位置，所属 group 会像 resize-like repair 一样扩张容纳；Agent 移动、group move / resize / ungroup / keep-members 删除后会触发文件活动重建，避免 stale 自动成员继续影响旧边界。multi-root 下 root-local artifact 仍按 root namespace 分别重建，跨 root owner 不合并为共享 artifact。模板保存逻辑继续只捕获 `Agent`、`Terminal`、`Note` 与用户边 / 用户分组，`file` / `file-list` 不作为模板成员保存。
 
-2026-06-09 本轮舍弃了此前把双击理解为“调整分组几何”的错误方向，改为纯 Webview 视口聚焦：`src/webview/main.tsx` 对普通分组和 workspace root section 的标题 tab 非交互空白处、body 空白区处理双击，选中目标分组并调用 React Flow viewport 动画让现有分组居中；不会发送宿主分组创建 / resize / move 消息，也不会改变宿主权威几何。`tests/playwright/webview-harness.spec.mjs` 覆盖普通分组标题空白处、workspace root 标题空白处、body 空白区三条聚焦路径，以及标题输入框双击不改视口的保护路径。
+2026-06-09 本轮舍弃了此前把双击理解为“调整分组几何”的错误方向，改为纯 Webview 视口聚焦：`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 对普通分组和 workspace root section 的标题 tab 非交互空白处、body 空白区处理双击，选中目标分组并调用 React Flow viewport 动画让现有分组居中；不会发送宿主分组创建 / resize / move 消息，也不会改变宿主权威几何。`tests/playwright/webview-harness.spec.mjs` 覆盖普通分组标题空白处、workspace root 标题空白处、body 空白区三条聚焦路径，以及标题输入框双击不改视口的保护路径。
 
 ## 上下文与定向
 
-DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定义跨宿主和 Webview 的共享状态与消息；`CanvasPrototypeState` 保存 `nodes`、`edges`、`groups`、`nextGroupSequence`、文件引用和文件活动状态。`src/panel/CanvasPanelManager.ts` 是宿主权威状态中心，负责节点创建、移动、resize、删除、持久化和向 Webview 广播状态。`src/webview/main.tsx` 使用 React Flow 渲染画布和节点，维护局部选中态、拖动 UI、节点标题编辑、分组 frame 和上下文菜单。`src/webview/styles.css` 定义节点、连线、菜单和分组样式。`src/common/canvasTemplates.ts` 保存和应用模板。`src/sidebar/CanvasSidebarNodeListView.ts` 渲染侧栏节点列表。
+DevSessionCanvas 是 VSCode workspace extension。`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 定义跨宿主和 Webview 的共享状态与消息；`CanvasPrototypeState` 保存 `nodes`、`edges`、`groups`、`nextGroupSequence`、文件引用和文件活动状态。`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 是宿主权威状态中心，负责节点创建、移动、resize、删除、持久化和向 Webview 广播状态。`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 使用 React Flow 渲染画布和节点，维护局部选中态、拖动 UI、节点标题编辑、分组 frame 和上下文菜单。`extensions/vscode/dev-session-canvas/src/webview/styles.css` 定义节点、连线、菜单和分组样式。`extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts` 保存和应用模板。`extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts` 渲染侧栏节点列表。
 
 本计划使用以下普通术语：group 指画布分组框；直接成员节点指 `groupId` 指向该 group 的节点；直接子 group 指 `parentGroupId` 指向该 group 的 group；根级对象指没有父 group 的节点或 group；合法状态指 group 无环、对象最多一个直接父 group、同级 group 不交叉、直接成员节点与直接子 group 不交叉、直接子 group 之间不交叉、成员视觉上被所属 group 完整容纳。
 
@@ -232,7 +232,7 @@ DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定�
 
 第一阶段已经完成：阅读现有 `CanvasNodeSummary`、`CanvasPanelManager` 的 `moveNode` / `resizeNode` / `deleteNode`、Webview 消息分发、React Flow 节点拖动和标题编辑组件。确认现有节点坐标是绝对坐标，标题编辑可复用 `ChromeTitleEditor`，Playwright harness 加载的是 `dist/webview.js`，因此跑 Webview 测试前必须先 `npm run build`。
 
-第二阶段已经完成：`src/common/protocol.ts` 新增 `CanvasGroupSummary`，`CanvasNodeSummary.groupId?`，`CanvasPrototypeState.groups` 和 `nextGroupSequence`，以及 `webview/createEmptyGroup`、`webview/createGroupFromSelection`、`webview/updateGroupTitle`、`webview/moveGroup`、`webview/resizeGroup`、`webview/deleteGroup`、`webview/ungroup` 等消息。`webview/moveNode` 新增 `pointerPosition` 和 `selectedMoves`；单节点拖动用鼠标释放点表达归属意图，多选节点拖动用 `selectedMoves` 携带其他被选节点的最终位置，且所有被选节点共用主鼠标释放点作为临时整体移动的归属意图。
+第二阶段已经完成：`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 新增 `CanvasGroupSummary`，`CanvasNodeSummary.groupId?`，`CanvasPrototypeState.groups` 和 `nextGroupSequence`，以及 `webview/createEmptyGroup`、`webview/createGroupFromSelection`、`webview/updateGroupTitle`、`webview/moveGroup`、`webview/resizeGroup`、`webview/deleteGroup`、`webview/ungroup` 等消息。`webview/moveNode` 新增 `pointerPosition` 和 `selectedMoves`；单节点拖动用鼠标释放点表达归属意图，多选节点拖动用 `selectedMoves` 携带其他被选节点的最终位置，且所有被选节点共用主鼠标释放点作为临时整体移动的归属意图。
 
 第三阶段已经完成基础实现：`CanvasPanelManager.ts` 新增 group helper，包括创建空分组、从选择创建分组、更新标题、移动 group 子树、resize group、取消分组、删除分组保留成员、递归删除成员、normalize、几何收口和节点入组避让。`finalizeCanvasGroupState` 负责把宿主持久化状态收敛为基础合法状态；同父级 group 交叉以及直接成员节点与直接子 group 交叉由 `repairCanvasGroupGeometry` 按四向 spread repair 收口；`adjustMovedNodesAfterGroupDrop` 在本次移动节点进入新分组时按当前交互设计把移动节点簇整体平移避让已有同组节点，簇内部既有几何关系保护由 `preserveRepairTargetClusterWhileAvoidingSiblings` 承担。删除非空 group 通过 VS Code modal warning 让用户选择“删除内部所有节点与子分组”或“仅删除分组”；删除空 group 直接删除。
 
@@ -250,7 +250,7 @@ DevSessionCanvas 是 VSCode workspace extension。`src/common/protocol.ts` 定�
 定向阅读使用：
 
     rg -n "moveNode|resizeNode|deleteNode|CanvasPrototypeState|WebviewToHostMessage|HostToWebviewMessage" src
-    rg -n "contextmenu|title|rename|drag|resize|ReactFlow|onNodeDrag" src/webview tests/playwright
+    rg -n "contextmenu|title|rename|drag|resize|ReactFlow|onNodeDrag" extensions/vscode/dev-session-canvas/src/webview tests/playwright
 
 当前验证命令应按以下顺序运行。注意 Webview harness 读取构建产物，Playwright 前必须先 build：
 
@@ -528,7 +528,7 @@ Playwright 分组测试需要先执行 `npm run build`，因为 harness 页面�
 
 ## 接口与依赖
 
-在 `src/common/protocol.ts` 中必须存在以下可序列化类型：
+在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中必须存在以下可序列化类型：
 
     export interface CanvasGroupSummary {
       id: string;

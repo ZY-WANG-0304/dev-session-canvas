@@ -11,7 +11,7 @@ try {
   const outFile = path.join(tempDir, 'bundle.mjs');
   await writeFile(
     entry,
-    `export { selectExecutionOutputSchedulerEntries } from ${JSON.stringify(path.resolve('src/common/executionOutputScheduler.ts'))};\n`,
+    `export { selectExecutionOutputSchedulerEntries } from ${JSON.stringify(path.resolve('extensions/vscode/dev-session-canvas/src/common/executionOutputScheduler.ts'))};\n`,
     'utf8'
   );
   await build({
@@ -75,7 +75,7 @@ try {
   assert.equal(deferred.reason, 'input-window-deferred');
   assert.deepEqual(deferred.entries, []);
 
-  const source = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
+  const source = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8');
   assert.match(
     source,
     /source: 'host-input-received'[\s\S]*type: 'host\/executionInputAck'[\s\S]*hostAckPostEpochMs[\s\S]*pendingOutputLength/u,
