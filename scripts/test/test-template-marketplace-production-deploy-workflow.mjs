@@ -21,6 +21,7 @@ assert.equal(workflow.permissions.contents, 'read', 'production deploy workflow 
 assert.equal(job['timeout-minutes'], 90, 'production deploy should have a bounded timeout');
 assert.equal(job.env.CLOUDFLARE_API_TOKEN, '${{ secrets.CLOUDFLARE_API_TOKEN }}');
 assert.equal(job.env.CLOUDFLARE_ACCOUNT_ID, '${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}');
+assert.equal(job.env.CLOUDFLARE_ZONE_NAME, 'dscanvas.dev');
 assert.equal(job.env.MARKETPLACE_PRODUCTION_BASE_URL, "${{ vars.MARKETPLACE_PRODUCTION_BASE_URL || 'https://dscanvas.dev' }}");
 
 const step = (name) => {
@@ -73,6 +74,20 @@ for (const secretName of [
 }
 assert.match(workerSecretsStep.run, /rm -f deployment-artifacts\/worker-secrets\.json/u, 'workflow must not upload Worker secret names as artifacts');
 
+const dnsStep = step('Ensure production DNS record');
+assert.equal(dnsStep.id, 'ensure_dns');
+assert.match(dnsStep.run, /\/zones\?name=\$\{encodeURIComponent\(zoneName\)\}/u);
+assert.match(dnsStep.run, /\/dns_records\?name=\$\{encodeURIComponent\(hostname\)\}&per_page=100/u);
+assert.match(dnsStep.run, /record\.proxied/u, 'workflow must require a proxied production DNS record');
+assert.match(dnsStep.run, /Refusing to rewrite existing origin DNS/u, 'workflow must not rewrite existing non-proxied origin DNS automatically');
+assert.match(dnsStep.run, /type: 'A'/u);
+assert.match(dnsStep.run, /content: '192\.0\.2\.1'/u);
+assert.match(dnsStep.run, /proxied: true/u);
+assert.ok(
+  job.steps.indexOf(dnsStep) < job.steps.indexOf(step('Run production smoke')),
+  'workflow must ensure production DNS before smoke checks'
+);
+
 const playwrightStep = step('Install Playwright browsers');
 assert.equal(playwrightStep.id, 'install_playwright');
 assert.equal(playwrightStep.run, 'npx playwright install --with-deps chromium');
@@ -99,6 +114,10 @@ assert.equal(cloudflareStep.if, "always() && steps.deploy.outcome != 'skipped'")
 assert.equal(cloudflareStep['continue-on-error'], true, 'metadata capture should not prevent manifest creation');
 assert.match(cloudflareStep.run, /wrangler --cwd apps\/template-marketplace deployments list --env production --json/u);
 assert.match(cloudflareStep.run, /wrangler --cwd apps\/template-marketplace versions list --env production --json/u);
+assert.match(cloudflareStep.run, /deploymentMessage = `Template marketplace production deploy \$\{process\.env\.TRIGGER_TAG\} \(\$\{process\.env\.DEPLOY_GIT_SHA\}\)`/u);
+assert.match(cloudflareStep.run, /annotations\?\.\['workers\/message'\] === deploymentMessage/u);
+assert.match(cloudflareStep.run, /toSorted\(byCreatedDesc\)\[0\]/u, 'workflow must not assume Wrangler deployment list is newest first');
+assert.doesNotMatch(cloudflareStep.run, /const deployment = deployments\[0\]/u, 'workflow must select the current deployment instead of the first listed deployment');
 assert.match(cloudflareStep.run, /cloudflare_deployment_id=\$\{deployment\.id\}/u);
 assert.match(cloudflareStep.run, /cloudflare_version_id=\$\{versionId\}/u);
 
