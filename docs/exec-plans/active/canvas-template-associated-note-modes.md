@@ -35,7 +35,7 @@
 - 观察：rebase 到最新 `origin/main` 后重新执行完整 Webview 测试，之前的 baseline 差异已不再复现。
   证据：本轮 `npm run test:webview` 输出 `150 passed (4.2m)`。
 
-- 观察：执行 rebase 时 `src/webview/main.tsx` 出现一次冲突，冲突点是 `note-markdown-sync-rework` 新增的关联 Markdown 冲突草稿持久化逻辑与当前分支新增的 Note 视觉行测量逻辑相邻。
+- 观察：执行 rebase 时 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 出现一次冲突，冲突点是 `note-markdown-sync-rework` 新增的关联 Markdown 冲突草稿持久化逻辑与当前分支新增的 Note 视觉行测量逻辑相邻。
   证据：`git rebase --onto e31bed9962f449ed280753e089adcb8e0e25b6b2 6b36f72... HEAD` 在应用 `b5a08e6` 时冲突；已手动保留两边逻辑并继续 rebase。
 
 - 观察：关联文件缺失、文件移动/删除和无可恢复草稿的 `dirty-conflict` 都不能展示旧 Markdown 预览或进入普通编辑态，因此它们适合共享同一个“正文区域内的冲突卡片”视觉语言。
@@ -99,9 +99,9 @@
 
 ## 上下文与定向
 
-本仓库是 VS Code 扩展。画布状态中的节点类型定义在 `src/common/protocol.ts`，其中 `NoteNodeMetadata` 包含 `content` 和可选 `contentSource`。普通 `Note` 没有 `contentSource` 或 `contentSource.kind === 'embedded'`，正文权威数据存储在画布状态；关联 Markdown `Note` 使用 `contentSource.kind === 'markdown-file'`，`resourceUri` 指向真实 `.md` 或 `.markdown` 文件，`content` 只是宿主读取后发给 Webview 的展示和编辑缓冲。
+本仓库是 VS Code 扩展。画布状态中的节点类型定义在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`，其中 `NoteNodeMetadata` 包含 `content` 和可选 `contentSource`。普通 `Note` 没有 `contentSource` 或 `contentSource.kind === 'embedded'`，正文权威数据存储在画布状态；关联 Markdown `Note` 使用 `contentSource.kind === 'markdown-file'`，`resourceUri` 指向真实 `.md` 或 `.markdown` 文件，`content` 只是宿主读取后发给 Webview 的展示和编辑缓冲。
 
-模板功能的共享模型在 `src/common/canvasTemplates.ts`。当前模板节点只允许 `agent`、`terminal`、`note`，`Note` 模板只保存 `metadata.note.content`。模板保存入口在 `src/extension.ts` 的 `saveCurrentCanvasAsTemplateFromCommand()`，它打开 `src/panel/CanvasTemplateSaveFormPanel.ts` 中的保存表单，再调用 `CanvasPanelManager.saveCurrentCanvasAsTemplate()`。模板应用路径在 `src/panel/CanvasPanelManager.ts` 的 `applyCanvasTemplateRecord()`，它调用 `applyCanvasTemplateToState()` 和 `materializeTemplateNode()` 把模板节点重新物化成画布节点。
+模板功能的共享模型在 `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts`。当前模板节点只允许 `agent`、`terminal`、`note`，`Note` 模板只保存 `metadata.note.content`。模板保存入口在 `extensions/vscode/dev-session-canvas/src/extension.ts` 的 `saveCurrentCanvasAsTemplateFromCommand()`，它打开 `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts` 中的保存表单，再调用 `CanvasPanelManager.saveCurrentCanvasAsTemplate()`。模板应用路径在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `applyCanvasTemplateRecord()`，它调用 `applyCanvasTemplateToState()` 和 `materializeTemplateNode()` 把模板节点重新物化成画布节点。
 
 本次任务中，“workspace 相对路径”指相对于当前 VS Code workspace folder 的路径，例如单根 workspace 中的 `docs/plan.md`，或多根 workspace 中带 folder name 前缀的 `repo-a/docs/plan.md`。路径必须是相对路径，不能是绝对路径，不能包含 `..` 越出 workspace，且只能指向 `.md` 或 `.markdown` 文件。
 
@@ -109,7 +109,7 @@
 
 第一步更新正式文档。`docs/design-docs/canvas-template-feature.md` 的模板模型与保存语义需要说明关联 Markdown `Note` 的三种保存策略。`docs/design-docs/note-markdown-file-association.md` 需要说明关联 Markdown `Note` 在保存为模板时不再只有静默快照路径。`docs/product-specs/canvas-template-feature.md` 需要补充用户流程和模板内容范围。
 
-第二步扩展共享模板模型。在 `src/common/canvasTemplates.ts` 增加 `CanvasTemplateNoteContentMode`，允许 `metadata.note.templateContentMode` 为 `embedded-snapshot`、`workspace-file-path-only` 或 `workspace-file-with-content`。旧模板没有该字段时按 `embedded-snapshot` 解析。新增保存选择类型，允许宿主在捕获模板时按节点 id 传入 `embedded-snapshot`、`workspace-file-path-only` 或 `workspace-file-with-content`。
+第二步扩展共享模板模型。在 `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts` 增加 `CanvasTemplateNoteContentMode`，允许 `metadata.note.templateContentMode` 为 `embedded-snapshot`、`workspace-file-path-only` 或 `workspace-file-with-content`。旧模板没有该字段时按 `embedded-snapshot` 解析。新增保存选择类型，允许宿主在捕获模板时按节点 id 传入 `embedded-snapshot`、`workspace-file-path-only` 或 `workspace-file-with-content`。
 
 第三步扩展保存表单。`CanvasTemplateSaveFormPanel` 新增 `associatedNoteNodes` 输入，每个条目包含 node id、标题、显示路径、是否在 workspace 内、当前文件状态和默认策略。表单只在 save 模式且存在条目时显示“关联 Markdown Notes”区域。每行一个下拉框；workspace 内文件可选路径-only 和路径+内容，workspace 外文件只能选快照。提交 payload 增加 `associatedNoteModes`。
 
@@ -119,7 +119,7 @@
 
 第六步补测试。通过 `npm run test:canvas-templates` 运行模板回归，实际测试文件位于 `scripts/test/test-canvas-templates.mjs`；测试应覆盖：旧模板继续解析；关联 `Note` 快照模式、路径-only、路径+内容捕获；路径模式模板 JSON 不含 raw resource URI；应用内容冲突不再走 modal，而是生成 `dirty-conflict` materialization。保存表单源码断言应覆盖新增 section、payload 字段和不出现“不保存此 Note”。必要时补充 Webview harness 测试以确认表单 UI 不影响导入模式。
 
-第七步统一 Note 内关联文件异常的视觉表达。`src/webview/main.tsx` 中正文区域不可用分支继续负责缺失、不可读和无草稿 `dirty-conflict` 恢复态，但内容结构统一为 `.note-file-conflict-card`；`src/webview/styles.css` 让该卡片复用 `.note-edit-conflict-hint` 的边框、背景、字号、阴影和 `.note-edit-conflict-action` 按钮语言。缺失状态仍只提供“创建空文件并关联”，无草稿 `dirty-conflict` 仍只提供“重新加载”。
+第七步统一 Note 内关联文件异常的视觉表达。`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中正文区域不可用分支继续负责缺失、不可读和无草稿 `dirty-conflict` 恢复态，但内容结构统一为 `.note-file-conflict-card`；`extensions/vscode/dev-session-canvas/src/webview/styles.css` 让该卡片复用 `.note-edit-conflict-hint` 的边框、背景、字号、阴影和 `.note-edit-conflict-action` 按钮语言。缺失状态仍只提供“创建空文件并关联”，无草稿 `dirty-conflict` 仍只提供“重新加载”。
 
 ## 具体步骤
 
@@ -188,11 +188,11 @@ PR review blocker 修复的验证记录：
 
 ## 接口与依赖
 
-在 `src/common/canvasTemplates.ts` 中新增模板 note 内容模式和保存选择类型。`captureCanvasTemplateFromState()` 需要接受一个可选的关联 note 保存选择 map，并据此生成模板节点。`applyCanvasTemplateToState()` 需要接受一个可选的 note materialization map，让宿主传入已经解析好的关联文件内容和 `contentSource`。
+在 `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts` 中新增模板 note 内容模式和保存选择类型。`captureCanvasTemplateFromState()` 需要接受一个可选的关联 note 保存选择 map，并据此生成模板节点。`applyCanvasTemplateToState()` 需要接受一个可选的 note materialization map，让宿主传入已经解析好的关联文件内容和 `contentSource`。
 
-在 `src/panel/CanvasPanelManager.ts` 中新增 workspace 相对 Markdown 文件解析、读取、创建、冲突确认和 materialization 准备函数。这些函数必须复用现有 `readNoteMarkdownFile()`、`writeNoteMarkdownFile()`、`statNoteMarkdownFile()`、`formatNoteMarkdownDisplayPathInfo()` 和 `createNoteMarkdownFileStatRevision()`，避免新增第二套文件状态语义。
+在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中新增 workspace 相对 Markdown 文件解析、读取、创建、冲突确认和 materialization 准备函数。这些函数必须复用现有 `readNoteMarkdownFile()`、`writeNoteMarkdownFile()`、`statNoteMarkdownFile()`、`formatNoteMarkdownDisplayPathInfo()` 和 `createNoteMarkdownFileStatRevision()`，避免新增第二套文件状态语义。
 
-在 `src/panel/CanvasTemplateSaveFormPanel.ts` 中新增保存表单关联 `Note` section 和 message payload 字段。表单 JS 只负责收集用户选择，不直接读取文件或判断磁盘状态；所有文件 I/O 仍在 Extension Host 中完成。
+在 `extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts` 中新增保存表单关联 `Note` section 和 message payload 字段。表单 JS 只负责收集用户选择，不直接读取文件或判断磁盘状态；所有文件 I/O 仍在 Extension Host 中完成。
 
 
 修订记录：2026-05-14 / Codex：完成代码、文档与测试验证记录，补充 Webview screenshot 残余风险。

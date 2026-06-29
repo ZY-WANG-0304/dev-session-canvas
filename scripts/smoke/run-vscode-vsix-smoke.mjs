@@ -164,12 +164,17 @@ async function validatePackagedExtension(packagedExtensionPath) {
   const forbiddenPaths = [
     '.github',
     path.join('images', 'lark-group-qr.png'),
+    path.join('images', 'wechat-group-qr.png'),
     path.join('node_modules', 'node-pty', 'binding.gyp'),
     path.join('node_modules', 'node-pty', 'scripts'),
     path.join('node_modules', 'node-pty', 'src'),
     path.join('node_modules', 'node-pty', 'third_party'),
     path.join('node_modules', 'node-pty', 'typings'),
-    path.join('node_modules', 'node-pty', 'node_modules')
+    path.join('node_modules', 'node-pty', 'node_modules'),
+    path.join('node_modules', 'node-pty', 'prebuilds', 'win32-x64', 'conpty.pdb'),
+    path.join('node_modules', 'node-pty', 'prebuilds', 'win32-x64', 'conpty_console_list.pdb'),
+    path.join('node_modules', 'node-pty', 'prebuilds', 'win32-arm64', 'conpty.pdb'),
+    path.join('node_modules', 'node-pty', 'prebuilds', 'win32-arm64', 'conpty_console_list.pdb')
   ];
 
   for (const relativePath of forbiddenPaths) {

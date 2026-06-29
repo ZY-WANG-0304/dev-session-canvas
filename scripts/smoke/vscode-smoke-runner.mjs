@@ -19,6 +19,7 @@ const BLOCKED_VSCODE_ENV_SECRET_PATTERNS = [
   /AUTHORIZATION/iu
 ];
 const STAGED_SMOKE_TESTS_ROOT = path.join('tests', 'vscode-smoke');
+const MAIN_EXTENSION_RELATIVE_ROOT = path.join('extensions', 'vscode', 'dev-session-canvas');
 
 export function shouldReRunInsideXvfb() {
   return (
@@ -190,11 +191,15 @@ export async function prepareRuntime(options) {
 
 export async function prepareMainSmokeHostExtension(options) {
   const smokeHostRoot = options.targetRoot;
+  const sourceRoot = options.sourceRoot ?? path.join(options.projectRoot, MAIN_EXTENSION_RELATIVE_ROOT);
   await fs.rm(smokeHostRoot, { recursive: true, force: true });
   await fs.mkdir(smokeHostRoot, { recursive: true });
 
   for (const entry of ['package.json', 'package.nls.json', 'dist', 'images', 'resources', 'node_modules', 'scripts']) {
-    const sourcePath = path.join(options.projectRoot, entry);
+    const sourcePath =
+      entry === 'node_modules'
+        ? path.join(options.projectRoot, entry)
+        : path.join(sourceRoot, entry);
     const targetPath = path.join(smokeHostRoot, entry);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     await copyPathRecursive(sourcePath, targetPath);

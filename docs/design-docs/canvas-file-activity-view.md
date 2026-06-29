@@ -107,7 +107,7 @@ updated_at: 2026-06-08
 
 ### 7.1 `fileReferences` 是“文件功能开启时”的权威状态
 
-`src/common/protocol.ts` 在当前画布权威状态中新增 `CanvasFileReferenceSummary`，把“某个文件被哪些 Agent 以什么方向访问过”独立持久化。它只在 `devSessionCanvas.files.enabled = true` 的窗口会话中成立；当文件功能关闭并完成 reload 后，这部分状态会被宿主主动清空，而不是继续以隐藏真相的形式留在持久化层。其核心信息包括：
+`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 在当前画布权威状态中新增 `CanvasFileReferenceSummary`，把“某个文件被哪些 Agent 以什么方向访问过”独立持久化。它只在 `devSessionCanvas.files.enabled = true` 的窗口会话中成立；当文件功能关闭并完成 reload 后，这部分状态会被宿主主动清空，而不是继续以隐藏真相的形式留在持久化层。其核心信息包括：
 
 - 规范化文件路径
 - 相对所属 workspace folder 根目录的路径；若当前是多根 workspace，则额外带上 workspace folder 名称前缀；若文件不在任何 workspace 内，则该字段留空并回退到规范化绝对路径
@@ -123,7 +123,7 @@ updated_at: 2026-06-08
 
 ### 7.2 `CanvasPanelManager` 负责把文件活动投影成两种视图
 
-`src/panel/CanvasPanelManager.ts` 继续作为宿主权威状态入口，并新增一层“文件视图重建”：
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 继续作为宿主权威状态入口，并新增一层“文件视图重建”：
 
 - 默认配置 `files.presentationMode = lists` 时，宿主为每个 Agent 生成一个 `file-list` 节点；若有共享文件，则额外生成一个共享 `file-list` 节点。
 - 配置切到 `nodes` 时，宿主把每个文件引用投影成一个 `file` 节点，并自动生成 `Agent -> 文件` 关系线。
@@ -145,7 +145,7 @@ updated_at: 2026-06-08
 
 新增宿主适配层模块，用于把 provider 原生事件转换为统一的文件活动事件：
 
-- `src/panel/agentFileActivity.ts`：定义统一事件类型、session watcher 生命周期和宿主接收入口。
+- `extensions/vscode/dev-session-canvas/src/panel/agentFileActivity.ts`：定义统一事件类型、session watcher 生命周期和宿主接收入口。
 - `Claude` adapter：通过官方 `claude --settings <file>` 路线注入临时 hooks 配置，只监听 `Read`、`Edit`、`Write` 工具事件，并把结构化结果写入扩展存储目录下的 session 事件流。
 - `fake-agent-provider` adapter：通过环境变量指定事件流文件，供 smoke 测试稳定产出同形态事件。
 - `Codex` adapter：当前返回 no-op watcher。没有结构化事件，就不向宿主上报文件活动。
@@ -169,7 +169,7 @@ updated_at: 2026-06-08
 
 ### 7.5 Webview 只负责文件对象呈现与局部视图切换
 
-`src/webview/main.tsx` 新增两类前端文件呈现：
+`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 新增两类前端文件呈现：
 
 - `file` 节点渲染紧凑文件卡片，支持图标、路径模式与点击打开。
 - `file-list` 节点渲染文件条目列表，支持读写方向图标和点击打开。

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="620" viewBox="0 0 980 620" role="img" aria-labelledby="title desc">
+  <title id="title">DevSessionCanvas Monorepo Topology</title>
+  <desc id="desc">Repository root points to the main VS Code extension, notifier companion, shared packages, marketplace app, tests, scripts and root documentation knowledge base.</desc>
+  <style>
+    .bg{fill:#f8f7f2}.box{fill:#fff;stroke:#24313f;stroke-width:2;rx:14}.pkg{fill:#eef5f1}.app{fill:#f2f0fb}.doc{fill:#fff7e6}.tool{fill:#eef3fb}.t{font:700 17px sans-serif;fill:#16212d}.s{font:13px sans-serif;fill:#3d4a57}.arrow{stroke:#536171;stroke-width:2;fill:none;marker-end:url(#arrow)}
+  </style>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#536171"/></marker></defs>
+  <rect class="bg" width="980" height="620"/>
+  <rect class="box" x="350" y="34" width="280" height="82"/>
+  <text class="t" x="490" y="66" text-anchor="middle">Repository Root</text>
+  <text class="s" x="490" y="91" text-anchor="middle">private workspace, root scripts, docs</text>
+
+  <rect class="box pkg" x="58" y="180" width="270" height="96"/>
+  <text class="t" x="193" y="214" text-anchor="middle">Main VS Code Extension</text>
+  <text class="s" x="193" y="239" text-anchor="middle">extensions/vscode/dev-session-canvas</text>
+  <text class="s" x="193" y="259" text-anchor="middle">manifest, src, images, templates</text>
+
+  <rect class="box pkg" x="360" y="180" width="260" height="96"/>
+  <text class="t" x="490" y="214" text-anchor="middle">Notifier Companion</text>
+  <text class="s" x="490" y="239" text-anchor="middle">extensions/vscode/dev-session-canvas-notifier</text>
+  <text class="s" x="490" y="259" text-anchor="middle">UI-side desktop notifications</text>
+
+  <rect class="box pkg" x="660" y="180" width="260" height="96"/>
+  <text class="t" x="790" y="214" text-anchor="middle">Attention Protocol</text>
+  <text class="s" x="790" y="239" text-anchor="middle">packages/attention-protocol</text>
+  <text class="s" x="790" y="259" text-anchor="middle">pure notification request/result types</text>
+
+  <rect class="box app" x="58" y="350" width="270" height="96"/>
+  <text class="t" x="193" y="384" text-anchor="middle">Template Marketplace App</text>
+  <text class="s" x="193" y="409" text-anchor="middle">apps/template-marketplace</text>
+  <text class="s" x="193" y="429" text-anchor="middle">web app + worker</text>
+
+  <rect class="box pkg" x="360" y="350" width="260" height="96"/>
+  <text class="t" x="490" y="384" text-anchor="middle">Marketplace Shared</text>
+  <text class="s" x="490" y="409" text-anchor="middle">packages/marketplace-shared</text>
+  <text class="s" x="490" y="429" text-anchor="middle">schema + shared logic</text>
+
+  <rect class="box tool" x="660" y="350" width="260" height="96"/>
+  <text class="t" x="790" y="384" text-anchor="middle">Tests + Scripts</text>
+  <text class="s" x="790" y="409" text-anchor="middle">tests/ and scripts/</text>
+  <text class="s" x="790" y="429" text-anchor="middle">build, smoke, release validation</text>
+
+  <rect class="box doc" x="350" y="505" width="280" height="78"/>
+  <text class="t" x="490" y="536" text-anchor="middle">Root Knowledge Base</text>
+  <text class="s" x="490" y="561" text-anchor="middle">docs/ + ARCHITECTURE.md</text>
+
+  <path class="arrow" d="M 430 116 C 330 135 250 150 193 180"/>
+  <path class="arrow" d="M 490 116 L 490 180"/>
+  <path class="arrow" d="M 550 116 C 655 138 735 150 790 180"/>
+  <path class="arrow" d="M 430 116 C 230 160 190 260 193 350"/>
+  <path class="arrow" d="M 490 116 L 490 350"/>
+  <path class="arrow" d="M 550 116 C 725 168 790 260 790 350"/>
+  <path class="arrow" d="M 490 116 L 490 505"/>
+  <path class="arrow" d="M 328 228 L 660 228"/>
+  <path class="arrow" d="M 620 228 L 660 228"/>
+  <path class="arrow" d="M 328 398 L 360 398"/>
+  <path class="arrow" d="M 193 276 C 250 325 330 365 360 398"/>
+</svg>

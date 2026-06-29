@@ -13,7 +13,7 @@ try {
   const supervisorOutfile = path.join(tempDir, 'runtimeSupervisorMain.cjs');
   await Promise.all([
     esbuild.build({
-      entryPoints: [path.resolve('src/common/runtimeSupervisorProtocol.ts')],
+      entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts')],
       bundle: true,
       format: 'cjs',
       outfile: protocolOutfile,
@@ -21,7 +21,7 @@ try {
       target: 'node18'
     }),
     esbuild.build({
-      entryPoints: [path.resolve('src/supervisor/runtimeSupervisorMain.ts')],
+      entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts')],
       bundle: true,
       format: 'cjs',
       outfile: supervisorOutfile,
@@ -55,7 +55,7 @@ try {
   });
   assert.equal(createRuntimeSupervisorError(genericPayload).code, undefined);
 
-  const supervisorSource = await readFile(path.resolve('src/supervisor/runtimeSupervisorMain.ts'), 'utf8');
+  const supervisorSource = await readFile(path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts'), 'utf8');
   assert.match(
     supervisorSource,
     /private deleteSession\([\s\S]*?session\.live = false;[\s\S]*?this\.emitSessionState\(session\);[\s\S]*?this\.sessions\.delete\(params\.sessionId\);/u,

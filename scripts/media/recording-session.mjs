@@ -33,7 +33,7 @@ import { prepareDebugMainOnlyExtension } from '../shared/prepare-debug-main-only
 const projectRoot = process.cwd();
 const debugRoot = path.join(projectRoot, '.debug', 'marketplace-media');
 const sessionFile = path.join(debugRoot, 'recording-session.json');
-const outputDir = path.join(projectRoot, 'images', 'marketplace');
+const outputDir = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas', 'images', 'marketplace');
 const nativeInputScriptPath = path.join(projectRoot, 'scripts', 'media', 'x11-native-input.py');
 const GIF_WIDTH = 1180;
 const clipDir = path.join(debugRoot, 'clips');
@@ -107,7 +107,6 @@ async function cmdStart() {
   });
   const providerBinPath = await prepareRecordingProviderBin();
   const extensionDevelopmentPath = await prepareDebugMainOnlyExtension({
-    sourceRoot: projectRoot,
     outputDir: path.join(runtime.debugRoot, 'extension-main-only')
   });
   const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot);

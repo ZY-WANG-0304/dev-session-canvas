@@ -103,7 +103,7 @@ updated_at: 2026-04-06
 
 - 运行 `npm run typecheck` 与 `npm run build`，确认命名空间迁移后类型和构建都正常。
 - 检查 `package.json`，确认正式命令贡献、正式配置键、view/container/webview panel ID 与 `publisher` 都已切换。
-- 检查 `src/extension.ts`、`src/panel/CanvasPanelManager.ts`、`src/sidebar/CanvasSidebarView.ts` 和 `src/panel/getWebviewHtml.ts`，确认不再保留旧命名兼容入口。
+- 检查 `extensions/vscode/dev-session-canvas/src/extension.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`、`extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts` 和 `extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts`，确认不再保留旧命名兼容入口。
 - 检查 README、CONTRIBUTING 和当前设计/活计划文档，确认对外示例已切换到当前正式命名。
 
 当前验证结果：

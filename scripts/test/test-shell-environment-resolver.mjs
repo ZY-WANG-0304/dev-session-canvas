@@ -11,7 +11,7 @@ const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-shell-env-'));
 try {
   const outfile = path.join(tempDir, 'shellEnvironmentResolver.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/panel/shellEnvironmentResolver.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts')],
     bundle: true,
     format: 'cjs',
     outfile,

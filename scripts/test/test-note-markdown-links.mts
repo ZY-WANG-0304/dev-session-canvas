@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   normalizeOpenableNoteMarkdownHref,
   resolveNoteMarkdownLinkTarget
-} from '../../src/common/noteMarkdownLinks.ts';
+} from '../../extensions/vscode/dev-session-canvas/src/common/noteMarkdownLinks.ts';
 
 function run(): void {
   assert.equal(

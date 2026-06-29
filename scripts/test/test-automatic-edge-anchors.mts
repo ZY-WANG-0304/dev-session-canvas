@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { resolveHorizontalCanvasEdgeAnchors } from '../../src/common/protocol.ts';
+import { resolveHorizontalCanvasEdgeAnchors } from '../../extensions/vscode/dev-session-canvas/src/common/protocol.ts';
 
 function run(): void {
   assert.deepStrictEqual(

@@ -30,7 +30,7 @@ updated_at: 2026-06-11
 
 但现有实现还没有接入 provider 原生的 turn/session 信号，所以宿主只能靠 PTY 行为推断：
 
-- `src/panel/CanvasPanelManager.ts` 的 `writeExecutionInput()` 里，只要写入的数据包含回车或换行，就把状态切到 `running`。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `writeExecutionInput()` 里，只要写入的数据包含回车或换行，就把状态切到 `running`。
 - 同文件的 `handleSessionChunk()` 与 `queueAgentWaitingInput()` 会在输出 380ms 静默后，把 `running` 退回 `waiting-input`。
 
 这个方案能缓解“只要一有输入就一直是 running”的明显错误，但仍然不是成熟方案。它实际观察到的是“PTY 最近发生了什么”，不是“provider 自己认定当前回合处在什么阶段”。
@@ -216,7 +216,7 @@ updated_at: 2026-06-11
   - `Codex app-server` 的结构化 turn/thread 事件。
   - `Claude Code` 的 SDK、headless `stream-json` 与 hooks。
   - VS Code shell integration 的 prompt/command 边界。
-- 2026-04-13 已把共享启发式 helper 接入 `src/panel/CanvasPanelManager.ts` 与 `src/supervisor/runtimeSupervisorMain.ts`，统一本地 PTY 与 runtime supervisor 的 `running -> waiting-input` 回退规则。
+- 2026-04-13 已把共享启发式 helper 接入 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 与 `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts`，统一本地 PTY 与 runtime supervisor 的 `running -> waiting-input` 回退规则。
 - 2026-04-13 已新增 smoke 回归，覆盖 spinner/redraw 持续输出期间不应过早回退到 `waiting-input`。
 - 2026-06-10 曾补充 Claude Code `Ctrl-Z` 挂起输出识别；2026-06-11 已撤销该方向，不再把 suspend / `fg` 文案作为状态机输入。
 - 2026-06-11 已补充 Claude Agent `Ctrl-Z` 阻断验证：Webview 阻止 `\u001a` 发送到 host，host 与 runtime supervisor 也拒绝旧客户端绕过前端的写入请求；该逻辑不影响 Terminal 或 Codex Agent 输入。

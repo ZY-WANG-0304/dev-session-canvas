@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const mainExtensionRoot = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas');
 const defaultOutputDir = path.join(repoRoot, '.debug', 'vscode-extension-main-only');
 const copiedEntries = [
   'dist',
@@ -33,7 +34,7 @@ async function copyIfPresent(sourcePath, targetPath) {
 }
 
 export async function prepareDebugMainOnlyExtension({
-  sourceRoot = repoRoot,
+  sourceRoot = mainExtensionRoot,
   outputDir = defaultOutputDir
 } = {}) {
   const manifestPath = path.join(sourceRoot, 'package.json');

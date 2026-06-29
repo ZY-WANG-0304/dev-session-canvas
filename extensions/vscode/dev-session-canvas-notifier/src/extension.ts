@@ -13,8 +13,8 @@ import {
   type AttentionNotificationFocusAction,
   type AttentionNotificationRequest
 } from '../../../../packages/attention-protocol/src/index';
-import { COMMAND_IDS } from '../../../../src/common/extensionIdentity';
-import { isTestHarnessMode } from '../../../../src/common/testHarness';
+import { COMMAND_IDS } from '../../dev-session-canvas/src/common/extensionIdentity';
+import { isTestHarnessMode } from '../../dev-session-canvas/src/common/testHarness';
 import { postDesktopNotification } from './platformNotification';
 import { NotifierSidebarViewProvider, NOTIFIER_SIDEBAR_VIEW_IDS } from './sidebarView';
 import type { NotifierExtensionModeLabel } from './sidebarEnvironment';

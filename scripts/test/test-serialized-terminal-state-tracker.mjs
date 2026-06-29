@@ -11,7 +11,7 @@ const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-serialized-terminal-st
 try {
   const outfile = path.join(tempDir, 'serializedTerminalState.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/common/serializedTerminalState.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts')],
     bundle: true,
     format: 'cjs',
     outfile,

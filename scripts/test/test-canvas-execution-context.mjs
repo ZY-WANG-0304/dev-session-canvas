@@ -28,7 +28,7 @@ try {
 
   await esbuild.build({
     stdin: {
-      contents: `export { ${exportedHelpers.join(', ')} } from './src/panel/CanvasPanelManager';`,
+      contents: `export { ${exportedHelpers.join(', ')} } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';`,
       resolveDir: process.cwd(),
       sourcefile: 'canvas-execution-context-entry.ts'
     },
@@ -352,7 +352,7 @@ try {
     '缺少 runtimeStoragePath 的 Terminal 降级后不应继续参与 runtime cleanup 或后续 attach。'
   );
 
-  const managerSource = await readFile('src/panel/CanvasPanelManager.ts', 'utf8');
+  const managerSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8');
   const managerSourceWithoutProviderNativeSessionBranching = managerSource
     .replace(
       /  private async branchAgentSession\([\s\S]*?\n  public getSessionHistoryRestoreBlockReason\(\)/u,

@@ -101,10 +101,10 @@
 
 
 - 观察：VSCode 安装完整模板包时，校验用的 hash 仍应对包内 `template.json` 计算，而不是对整个 zip 计算。
-  证据：市场版本元数据中的 `sha256` 和 `sizeBytes` 当前来自 D1 `template_versions.object_key` 指向的兼容 `template.json`；`src/panel/TemplateMarketplaceClient.ts` 下载 `/download` 后用 `fflate.unzipSync()` 读取包内 `template.json`，以该文件 hash 与版本 `sha256` 比对，同时把完整 zip 的 `packageSha256` 另写入 `.market.json`。
+  证据：市场版本元数据中的 `sha256` 和 `sizeBytes` 当前来自 D1 `template_versions.object_key` 指向的兼容 `template.json`；`extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts` 下载 `/download` 后用 `fflate.unzipSync()` 读取包内 `template.json`，以该文件 hash 与版本 `sha256` 比对，同时把完整 zip 的 `packageSha256` 另写入 `.market.json`。
 
 - 观察：本地模板扫描必须把完整模板目录视为一个市场模板，否则 `template-package.json`、`template.json` 和旧 sidecar 相邻 JSON 会被递归扫描成多个用户模板或错误 issue。
-  证据：`src/panel/CanvasTemplateStore.ts` 先扫描 `marketplace/*/.market.json`，再从 sidecar 的 `templatePath` 读取包内 `template.json`；普通 JSON 扫描会跳过这些 package 目录。`npm run test:canvas-templates` 新增包目录 fixture 后通过。
+  证据：`extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts` 先扫描 `marketplace/*/.market.json`，再从 sidecar 的 `templatePath` 读取包内 `template.json`；普通 JSON 扫描会跳过这些 package 目录。`npm run test:canvas-templates` 新增包目录 fixture 后通过。
 
 - 观察：VSCode fixture E2E 安装失败的直接原因是测试 fixture 的版本 `sha256` 来自紧凑 JSON，而 `/download` 返回的包内 `template.json` 是 pretty JSON，导致宿主校验失败后不写入本地模板目录。
   证据：日志中能看到 `/api/v1/templates/panel-review-loop/download?version=ver-panel-review-2` 请求，但模板 catalog 始终没有 `panel-review-loop`；将 fixture 的 hash 和 zip 共同使用 `JSON.stringify(document, null, 2) + "\n"` 后，`npm run test:marketplace-vscode-fixture-e2e` 通过。
@@ -231,7 +231,7 @@
 
 模板市场浏览与安装能力已经在 `apps/template-marketplace/` 和 `packages/marketplace-shared/` 中落地。`packages/marketplace-shared/src/index.ts` 定义浏览列表、详情、下载响应和 seed 数据；`packages/marketplace-shared/src/schema.ts` 定义 D1/Drizzle 表，包括 `users`、`templates`、`template_versions`、`template_tags`、`template_daily_stats`、`reports`、`admin_roles` 和 `admin_audit_logs`。`apps/template-marketplace/src/worker/app.ts` 暴露 Hono Worker API，目前只有公开读取接口：健康检查、列表、详情、下载和缩略图。`apps/template-marketplace/src/worker/repository.ts` 通过 `SeedTemplateRepository` 与 `D1TemplateRepository` 封装读取 D1 / seed 的逻辑，后续发布写入也应进入这个边界，不要把 SQL 散落在路由里。
 
-“模板 JSON”指 `src/common/canvasTemplates.ts` 中 `CanvasTemplateDocument` 的序列化结果，格式是 `{ version: 1, template: { id, name, category, nodes, edges, createdAt, updatedAt } }`。产品上它是“轻量模板”的文件形态，只描述可应用到画布的主体内容。市场发布不能定义另一套不兼容模板主体格式，但也不能把单个 `template.json` 当作市场模板管理事实；JSON 上传路径必须由 Worker 组装成完整模板包。
+“模板 JSON”指 `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts` 中 `CanvasTemplateDocument` 的序列化结果，格式是 `{ version: 1, template: { id, name, category, nodes, edges, createdAt, updatedAt } }`。产品上它是“轻量模板”的文件形态，只描述可应用到画布的主体内容。市场发布不能定义另一套不兼容模板主体格式，但也不能把单个 `template.json` 当作市场模板管理事实；JSON 上传路径必须由 Worker 组装成完整模板包。
 
 “完整模板”指 R2 中的 `package.zip` 或用户下载后解压出的模板包目录，包内包含 `template-package.json`、`template.json`、`README.md`、`CHANGELOG.md`、`media/thumbnail.png` 以及可选 `media/` / `assets/`。市场浏览、下载、安装、回滚和审计都应以完整模板为准；`GET /api/v1/templates/:id/download` 应返回完整包，`Download template.json` 只作为兼容轻量模板导出。VSCode 中安装的市场模板也必须落成完整模板目录 `marketplace/{slug}/`，目录内保留 `package.zip`、解压内容和 `.market.json` sidecar；侧栏应用模板时读取包内 `template.json`。
 

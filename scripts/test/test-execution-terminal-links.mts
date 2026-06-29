@@ -7,7 +7,7 @@ import {
   isPlausibleExecutionTerminalStyledFilePath,
   shouldAllowExecutionTerminalDetectedPathLink,
   shouldSuppressExecutionTerminalWordLink
-} from '../../src/common/executionTerminalLinks.ts';
+} from '../../extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts';
 
 const designDocPath = 'docs/design-docs/execution-terminal-tui-hard-wrapped-links.md';
 const cjkProsePathLine = `我已经把这个判断补进了设计文档：${designDocPath}。`;

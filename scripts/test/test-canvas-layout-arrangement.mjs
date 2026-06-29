@@ -12,7 +12,7 @@ try {
   const outfile = path.join(tempDir, 'canvas-layout-arrangement.cjs');
   await esbuild.build({
     stdin: {
-      contents: "export { arrangeCanvasLayout } from './src/common/canvasLayoutArrangement';",
+      contents: "export { arrangeCanvasLayout } from './extensions/vscode/dev-session-canvas/src/common/canvasLayoutArrangement';",
       resolveDir: process.cwd(),
       sourcefile: 'canvas-layout-arrangement-entry.ts'
     },

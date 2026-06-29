@@ -4,14 +4,14 @@
 
 ## 当前发布素材
 
-- Marketplace listing 正文：`README.marketplace.md`（引用 `images/marketplace/canvas-overview.png` + `images/marketplace/canvas-overview.mp4`）
-- Marketplace listing 中文对应版：`README.marketplace.zh-CN.md`（仅作仓库内中文对应文案，不作为默认打包输入）
-- 仓库 README 默认英文：`README.md`（引用 `images/marketplace/canvas-overview.gif`）
-- 仓库 README 中文对应版：`README.zh-CN.md`（引用 `images/marketplace/canvas-overview.gif`）
-- release notes：`CHANGELOG.md`
-- 主扩展图标资产：`images/icon.png`
-- 圆形头像安全区图：`images/avatar.png`
-- 仓库根 README 交流二维码资产：`images/lark-group-qr.png`、`images/wechat-group-qr.png`（仅供 `README.md` / `README.zh-CN.md` 引用，继续排除出 VSIX 与 Marketplace listing 输入）
+- Marketplace listing 正文：`extensions/vscode/dev-session-canvas/README.marketplace.md`（引用主扩展子包内 `images/marketplace/canvas-overview.png` + `images/marketplace/canvas-overview.mp4`）
+- Marketplace listing 中文对应版：`extensions/vscode/dev-session-canvas/README.marketplace.zh-CN.md`（仅作仓库内中文对应文案，不作为默认打包输入）
+- 仓库 README 默认英文：`README.md`（引用 `extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif`）
+- 仓库 README 中文对应版：`README.zh-CN.md`（引用 `extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif`）
+- release notes：`extensions/vscode/dev-session-canvas/CHANGELOG.md`
+- 主扩展图标资产：`extensions/vscode/dev-session-canvas/images/icon.png`
+- 圆形头像安全区图：`extensions/vscode/dev-session-canvas/images/avatar.png`
+- 仓库根 README 交流二维码资产：`extensions/vscode/dev-session-canvas/images/lark-group-qr.png`、`extensions/vscode/dev-session-canvas/images/wechat-group-qr.png`（仅供根 `README.md` / `README.zh-CN.md` 引用，继续排除出 VSIX 与 Marketplace listing 输入）
 - Preview 支持边界：`docs/support.md`
 - 安全口径：`docs/SECURITY.md`
 - 发布判断与背景：`docs/design-docs/public-marketplace-release-readiness.md`
@@ -19,17 +19,17 @@
 
 ## Marketplace listing 定稿口径
 
-当前 listing 统一使用英文默认版 `README.marketplace.md`，不直接复用仓库根目录 `README.md`。`README.marketplace.zh-CN.md` 仅作为仓库内中文对应版本保留，不改变默认 Marketplace 打包入口。
+当前 listing 统一使用主扩展子包内英文默认版 `extensions/vscode/dev-session-canvas/README.marketplace.md`，不直接复用仓库根目录 `README.md`。`extensions/vscode/dev-session-canvas/README.marketplace.zh-CN.md` 仅作为仓库内中文对应版本保留，不改变默认 Marketplace 打包入口。
 
-当前 `npm run package:vsix` 会在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。打包脚本默认会把 README 相对资源改写到当前 `HEAD` 对应的 git ref；如果在没有 `.git` 元数据的 clean checkout、导出目录或 tarball 中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，否则不允许继续打包。
+当前 `npm run package:vsix` 会 staging 主扩展子包，并在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。打包脚本默认会把 README 相对资源改写到当前 `HEAD` 对应的 git ref；如果在没有 `.git` 元数据的 clean checkout、导出目录或 tarball 中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，否则不允许继续打包。
 
 本轮 listing 必须明确：模板市场是 `Preview` 能力，生产目录可能在真实模板发布前为空；浏览 / 安装需要可访问当前配置的市场来源，发布、点赞、举报和治理动作需要 GitHub 认证；生产服务部署版本与插件 SemVer 分离，不把 `deploy/template-marketplace/prod/*` 当作插件版本。
 
 ## release notes 定稿口径
 
-当前 `0.20.0` 的 release notes 统一以 `CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明，除非它改变安装、升级、回退或发布判断。
+当前 `0.20.0` 的 release notes 统一以 `extensions/vscode/dev-session-canvas/CHANGELOG.md` 为准；发布前只允许做事实性修订，不应再引入与版本范围无关的新能力描述。docs-only 变化不进入用户可见更新说明，除非它改变安装、升级、回退或发布判断。
 
-发布前应确认以下内容在 `CHANGELOG.md` 中保持一致：
+发布前应确认以下内容在 `extensions/vscode/dev-session-canvas/CHANGELOG.md` 中保持一致：
 
 - 顶部版本标题为 `0.20.0 - Template Marketplace Preview and Production Service Update`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
@@ -105,9 +105,9 @@
 
 5. 确认打包日志已经打印当前 README 改写 ref，且没有出现相对媒体 URL 校验失败。
 6. 复核以下文件与当前版本事实一致：
-   - `README.marketplace.md`
-   - `README.marketplace.zh-CN.md`
-   - `CHANGELOG.md`
+   - `extensions/vscode/dev-session-canvas/README.marketplace.md`
+   - `extensions/vscode/dev-session-canvas/README.marketplace.zh-CN.md`
+   - `extensions/vscode/dev-session-canvas/CHANGELOG.md`
    - `docs/support.md`
    - `docs/SECURITY.md`
    - `docs/product-specs/template-marketplace.md`
@@ -128,8 +128,8 @@
 本轮发布准备分支已完成以下 repo-local 同步：
 
 - 版本号同步：`package.json`、notifier manifest、`package-lock.json` 根版本、root package entry 与 notifier package entry 均更新为 `0.20.0`
-- release notes 同步：`CHANGELOG.md` 与 notifier changelog 已新增 `0.20.0` 顶部条目，并明确 notifier 不引入新的通知投递行为变更
-- Marketplace / README 文案同步：`README.marketplace.md`、`README.marketplace.zh-CN.md`、`README.md`、`README.zh-CN.md` 已更新为 `0.20.0` 发布准备口径，并保留 VSM deferred 约束
+- release notes 同步：`extensions/vscode/dev-session-canvas/CHANGELOG.md` 与 notifier changelog 已新增 `0.20.0` 顶部条目，并明确 notifier 不引入新的通知投递行为变更
+- Marketplace / README 文案同步：`extensions/vscode/dev-session-canvas/README.marketplace.md`、`extensions/vscode/dev-session-canvas/README.marketplace.zh-CN.md`、`README.md`、`README.zh-CN.md` 已更新为 `0.20.0` 发布准备口径，并保留 VSM deferred 约束
 - 发布手册同步：`docs/public-preview-release-playbook.md`、`docs/notifier-preview-release-playbook.md` 与 `docs/design-docs/public-marketplace-release-readiness.md` 已更新目标版本、发布输入、安装/升级、回退与 tag 命令
 - VSIX smoke wrapper 同步：`scripts/smoke/run-vscode-vsix-smoke.mjs` 现在把 notifier 作为独立 `extensionDevelopmentPath` staged extension 加载，并设置 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE=1`，避免 packaged-payload smoke 在同一个 wrapper extension context 内重复注册 URI handler
 
@@ -204,9 +204,9 @@ Release assets 上传后，workflow 会继续复用同一批 manifest / VSIX 分
 
     npm run release:publish-tag -- --trigger-tag publish/v0.20.0 --dry-run --package-only
 
-`release:publish-tag` 会校验 tag 名称、版本号、`CHANGELOG.md`、notifier 版本、当前 `HEAD`、`origin/main` 祖先关系和 clean working tree，并把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` / `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 都绑定到 `publish/v0.20.0` 指向的 commit。当前 workflow 在首次创建 Release assets 时会先打包两个 VSIX，生成 `release-artifacts/release-manifest-0.20.0.json` 并上传 GitHub Release assets；同一版本重跑时会下载并校验既有 Release assets。随后两种路径都会用 `--skip-package` 复用同一批 VSIX，分别发布并验证 Open VSX 与 Visual Studio Marketplace；脚本会保留既有 manifest 中已 verified 的渠道状态，避免已经完成的渠道被未完成渠道重跑覆盖。当前完成门禁只要求 Open VSX verified，Visual Studio Marketplace 可延期补发。
+`release:publish-tag` 会校验 tag 名称、版本号、主扩展 `CHANGELOG.md`、notifier 版本、当前 `HEAD`、`origin/main` 祖先关系和 clean working tree，并把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` / `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 都绑定到 `publish/v0.20.0` 指向的 commit。当前 workflow 在首次创建 Release assets 时会先打包两个 VSIX，生成 `release-artifacts/release-manifest-0.20.0.json` 并上传 GitHub Release assets；同一版本重跑时会下载并校验既有 Release assets。随后两种路径都会用 `--skip-package` 复用同一批 VSIX，分别发布并验证 Open VSX 与 Visual Studio Marketplace；脚本会保留既有 manifest 中已 verified 的渠道状态，避免已经完成的渠道被未完成渠道重跑覆盖。当前完成门禁只要求 Open VSX verified，Visual Studio Marketplace 可延期补发。
 
-release manifest 不提交回代码库。它记录发布后事实，包括 release ref、VSIX sha256、README doc ref、GitHub Release assets 状态、marketplace 发布 / 验证状态和 tag 状态，应作为 GitHub Release asset 保存；workflow 同时保留一份 Actions artifact 便于排障。GitHub Release notes 由 `CHANGELOG.md` 和当前 manifest 生成，必须在初次上传 assets 时和最终 manifest 上传时都同步更新，避免 Release 页面只有泛化模板而没有版本亮点和残余风险。
+release manifest 不提交回代码库。它记录发布后事实，包括 release ref、VSIX sha256、README doc ref、GitHub Release assets 状态、marketplace 发布 / 验证状态和 tag 状态，应作为 GitHub Release asset 保存；workflow 同时保留一份 Actions artifact 便于排障。GitHub Release notes 由主扩展 `CHANGELOG.md` 和当前 manifest 生成，必须在初次上传 assets 时和最终 manifest 上传时都同步更新，避免 Release 页面只有泛化模板而没有版本亮点和残余风险。
 
 若 GitHub Actions 中 Open VSX 失败，或后续需要补发 / 重跑 Visual Studio Marketplace，必须复用同一 release ref 的 manifest / VSIX，并显式走 marketplace 补发命令；不要重新执行 package 覆盖 GitHub Release VSIX assets，因为同一 checkout 的 VSIX 打包当前不保证 byte-for-byte 可复现：
 

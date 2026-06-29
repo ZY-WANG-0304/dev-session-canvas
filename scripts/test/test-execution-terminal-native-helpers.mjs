@@ -233,7 +233,7 @@ try {
   );
 
   await esbuild.build({
-    entryPoints: [path.resolve('src/panel/executionTerminalNativeHelpers.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts')],
     bundle: true,
     external: ['vscode'],
     format: 'cjs',

@@ -12,7 +12,7 @@ try {
   const outfile = path.join(tempDir, 'canvas-multi-root-composition.cjs');
   await esbuild.build({
     stdin: {
-      contents: `export * from './src/common/canvasMultiRootComposition';`,
+      contents: `export * from './extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition';`,
       resolveDir: process.cwd(),
       sourcefile: 'canvas-multi-root-composition-entry.ts'
     },

@@ -126,7 +126,7 @@ updated_at: 2026-06-24
 - 点击后文件、目录、URL、search 各自走哪条打开路径。
 - 哪些 path-like 文本必须等宿主验证后才可点击，哪些可以直接当 URI / search link。
 
-当前仓库仍保留 Webview 与 Host 分层：`src/webview/executionTerminalNativeInteractions.ts` 继续作为 xterm 交互入口，`src/panel/executionTerminalNativeHelpers.ts` 与 `src/panel/CanvasPanelManager.ts` 继续作为宿主解析 / 打开入口；但这些模块内部的规则应当向 VSCode 原生 Terminal 对齐，而不再长期维护仓库自定义的替代语义。
+当前仓库仍保留 Webview 与 Host 分层：`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 继续作为 xterm 交互入口，`extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 与 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 继续作为宿主解析 / 打开入口；但这些模块内部的规则应当向 VSCode 原生 Terminal 对齐，而不再长期维护仓库自定义的替代语义。
 
 ### 7.2 detector 顺序与 link taxonomy
 
@@ -148,7 +148,7 @@ updated_at: 2026-06-24
 
 ### 7.3 显式 hyperlink 语义
 
-`src/webview/executionTerminalNativeInteractions.ts` 中的显式 hyperlink 入口继续由 xterm `linkHandler` 承载，但其行为要对齐原生 Terminal：
+`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 中的显式 hyperlink 入口继续由 xterm `linkHandler` 承载，但其行为要对齐原生 Terminal：
 
 - 必须允许非 `http/https` 协议参与显式 hyperlink 检测。
 - `file://` URI 必须按文件 / 目录 opener 特化，而不是一律当成普通外链。
@@ -157,7 +157,7 @@ updated_at: 2026-06-24
 
 ### 7.4 本地文件与跨行链接解析
 
-`src/common/executionTerminalLinks.ts` 不再把当前仓库私有的简化 parser 当成最终产品语义来源。它要么被替换为基于原生 Terminal 规则的等价 parser，要么只保留当前仓库消息模型与适配层所必需的类型定义。
+`extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 不再把当前仓库私有的简化 parser 当成最终产品语义来源。它要么被替换为基于原生 Terminal 规则的等价 parser，要么只保留当前仓库消息模型与适配层所必需的类型定义。
 
 本轮文件 / 目录链接解析的正式规则如下：
 
@@ -167,7 +167,7 @@ updated_at: 2026-06-24
 - 跨行链接必须补齐原生 multiline detector 主路径，至少覆盖：
   - ripgrep / eslint 类“上一行路径、下一行 `16:5`”格式。
   - git diff hunk header 类原生已支持场景。
-- 本地路径解析必须继续使用当前仓库已有的 line-scoped cwd 语义；也就是 `src/panel/executionTerminalLineContextTracker.ts` 追踪出来的 `buffer line -> cwd` 结果，应作为原生 command detection 能力在当前仓库里的等价输入。
+- 本地路径解析必须继续使用当前仓库已有的 line-scoped cwd 语义；也就是 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts` 追踪出来的 `buffer line -> cwd` 结果，应作为原生 command detection 能力在当前仓库里的等价输入。
 - 多根 workspace 下，`workspace-folder/relative/path` 形式的相对 file link 是显式 root-qualified 路径，Host opener 必须保留 folder 前缀完成 root 定位，再只在该 root 内以去掉前缀后的相对路径做 exact / search fallback；不能先把前缀当作普通目录段或为了 search exact-open 统一裁掉。未带 root 前缀的相对路径继续按执行节点 line-scoped cwd 所属 root 优先解析，避免在 sibling root 中误命中。
 
 ### 7.5 URI 与 word/search 语义
@@ -183,7 +183,7 @@ updated_at: 2026-06-24
 
 ### 7.6 hover、修饰键与 opener 行为
 
-`src/webview/executionTerminalNativeInteractions.ts` 与 `src/panel/executionTerminalNativeHelpers.ts` 共同负责当前仓库中的 hover 与 opener。虽然实现层仍保留 Webview / Host 边界，但用户可见行为应按下列规则对齐：
+`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 与 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 共同负责当前仓库中的 hover 与 opener。虽然实现层仍保留 Webview / Host 边界，但用户可见行为应按下列规则对齐：
 
 - 激活修饰键继续遵循 `editor.multiCursorModifier`，行为与原生 Terminal 一致。
 - hover 文案和文案中的修饰键描述，应对齐原生 Terminal，而不是继续使用仓库自定义命名；但 `workbench.hover.delay` 不作为 Host -> Webview 运行时协议的一部分透传。
@@ -206,7 +206,7 @@ updated_at: 2026-06-24
 
 2026-05-18 的回归样例表明，执行节点不能把 `我已经把这个判断补进了设计文档：docs/foo.md。` 这类中文说明整句注册成高置信 file link，也不能把 `这里要么在demo/foo.py:159` 中的中文前缀吞进 path candidate。为保持可用性与误判控制，本轮把中文标点视为 path 边界。
 
-这条规则是当前 Webview link provider 对中文语境的边界适配：它不改变 Host opener 的安全模型，也不把无边界的中文前缀裁剪重新提升为 file link；只有已经被边界切分出来、且 Host 能验证存在的 `docs/foo.md` / `src/panel` 片段才会成为高置信 file link。低置信 word/search provider 会把中文标点也当成 word 边界，并跳过明显中文 prose，避免按住 Cmd/Ctrl 时整句中文说明被下划线；但不抑制整段中文 fallback，也不抑制 `docs/foo.md`、`文档/设计.md`、`设计.md` 这类 file-like 词条，它们仍应进入 file detector 或低置信 search fallback。为了避免误伤真实中文目录，`项目v2/docs/foo.md`、`第1章/src/index.ts`、`project文档/docs/foo.md` 这类中英文混合路径仍保持可检测；如果 CJK 标点出现在路径中间且后续文本继续呈现 path-like 形态，当前先丢弃被截断的 partial candidate，避免把 `文档/需求：方案.md` 错开成 `文档/需求`。
+这条规则是当前 Webview link provider 对中文语境的边界适配：它不改变 Host opener 的安全模型，也不把无边界的中文前缀裁剪重新提升为 file link；只有已经被边界切分出来、且 Host 能验证存在的 `docs/foo.md` / `extensions/vscode/dev-session-canvas/src/panel` 片段才会成为高置信 file link。低置信 word/search provider 会把中文标点也当成 word 边界，并跳过明显中文 prose，避免按住 Cmd/Ctrl 时整句中文说明被下划线；但不抑制整段中文 fallback，也不抑制 `docs/foo.md`、`文档/设计.md`、`设计.md` 这类 file-like 词条，它们仍应进入 file detector 或低置信 search fallback。为了避免误伤真实中文目录，`项目v2/docs/foo.md`、`第1章/src/index.ts`、`project文档/docs/foo.md` 这类中英文混合路径仍保持可检测；如果 CJK 标点出现在路径中间且后续文本继续呈现 path-like 形态，当前先丢弃被截断的 partial candidate，避免把 `文档/需求：方案.md` 错开成 `文档/需求`。
 
 中文语境新增的 start-boundary 过滤不能回归 VSCode 原生同类 git diff 文件链接。`--- a/src/foo.ts`、`+++ b/src/foo.ts` 与 `diff --git a/src/foo.ts b/src/foo.ts` 里的 `a/`、`b/` 是 diff metadata，不是路径正文；剥离这些前缀后的 `src/foo.ts` 应继续被视为合法 candidate。实现上这类 diff-prefix special case 需要在 boundary 检查前保留“起点已由 diff header 证明合法”的信息，而不是把剥离后的 `src` 前一个字符 `/` 当作普通无边界路径处理。
 

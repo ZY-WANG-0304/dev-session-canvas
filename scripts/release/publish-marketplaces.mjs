@@ -3,6 +3,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 
 const projectRoot = process.cwd();
+const mainExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas');
 const notifierRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const isWindows = process.platform === 'win32';
 
@@ -23,7 +24,7 @@ if (options.help) {
 process.exit(main());
 
 function main() {
-  const mainPackageJson = readJson(path.join(projectRoot, 'package.json'));
+  const mainPackageJson = readJson(path.join(mainExtensionRoot, 'package.json'));
   const notifierPackageJson = readJson(path.join(notifierRoot, 'package.json'));
   const releaseRefStatus = validateExpectedReleaseRef();
   if (releaseRefStatus !== 0) {

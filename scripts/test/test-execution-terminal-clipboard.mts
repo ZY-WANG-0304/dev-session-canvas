@@ -14,9 +14,9 @@ import {
   prepareExecutionTerminalPasteText,
   resolveExecutionTerminalClipboardShortcut,
   sanitizeExecutionImagePastePathSegment
-} from '../../src/common/executionTerminalClipboard.ts';
-import { parseWebviewMessage } from '../../src/common/protocol.ts';
-import { cleanupExecutionImagePasteCache } from '../../src/panel/executionImagePasteCacheMaintenance.ts';
+} from '../../extensions/vscode/dev-session-canvas/src/common/executionTerminalClipboard.ts';
+import { parseWebviewMessage } from '../../extensions/vscode/dev-session-canvas/src/common/protocol.ts';
+import { cleanupExecutionImagePasteCache } from '../../extensions/vscode/dev-session-canvas/src/panel/executionImagePasteCacheMaintenance.ts';
 
 function event(key: string, modifiers: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) {
   return {

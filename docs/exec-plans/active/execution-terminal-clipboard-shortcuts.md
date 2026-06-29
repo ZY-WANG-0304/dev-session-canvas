@@ -14,14 +14,14 @@
 
 - [x] (2026-05-09 02:41Z) 读取 `docs/WORKFLOW.md`、`docs/PLANS.md`、`docs/DESIGN.md`、`ARCHITECTURE.md`、`docs/FRONTEND.md`、产品规格索引与现有执行终端设计文档，确认本任务属于多步设计研究并需要 ExecPlan 与设计文档。
 - [x] (2026-05-09 02:41Z) 从最新 `origin/main` 新建主题分支 `agent-terminal-clipboard-shortcuts`，开始本轮交付性改动。
-- [x] (2026-05-09 02:41Z) 梳理当前实现：`src/webview/main.tsx` 直接把 `terminal.onData` 透传到 `webview/executionInput`，`src/panel/CanvasPanelManager.ts` 将输入写入本地 PTY 或 supervisor；当前没有专门处理复制、粘贴或 `Ctrl+C` 冲突的逻辑。
+- [x] (2026-05-09 02:41Z) 梳理当前实现：`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 直接把 `terminal.onData` 透传到 `webview/executionInput`，`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 将输入写入本地 PTY 或 supervisor；当前没有专门处理复制、粘贴或 `Ctrl+C` 冲突的逻辑。
 - [x] (2026-05-09 02:41Z) 调研 VSCode upstream Terminal clipboard / keybinding / paste safety 代码，确认原生行为依赖平台、终端选区、`commandsToSkipShell` 和 bracketed paste。
 - [x] (2026-05-09 02:41Z) 新增 `docs/product-specs/agent-terminal-clipboard-shortcuts.md`、`docs/design-docs/execution-terminal-clipboard-shortcuts.md`，并同步设计索引、产品规格索引与核心信念。
-- [x] (2026-05-09 04:01Z) 实现 `src/common/executionTerminalClipboard.ts` 纯规则 helper，覆盖本地 UI 平台推断、复制粘贴快捷键矩阵和 Host 粘贴文本预处理。
-- [x] (2026-05-09 04:01Z) 在 `src/common/protocol.ts` 增加 copy request、paste request、paste text response 和 paste cancelled response，并补齐 Webview 消息 validator。
-- [x] (2026-05-09 04:01Z) 在 `src/webview/executionTerminalNativeInteractions.ts` 中接入 xterm keyboard shortcut adapter，并让 Agent / Terminal 创建终端时共用同一入口。
-- [x] (2026-05-09 04:01Z) 在 `src/webview/main.tsx` 中接线复制 / 粘贴 callbacks、pending paste request 管理和 Host paste response 路由，最终通过 `terminal.paste(text)` 进入现有输入链路。
-- [x] (2026-05-09 04:01Z) 在 `src/panel/CanvasPanelManager.ts` 中接入 `vscode.env.clipboard`，粘贴前确认 live session、处理多行安全确认，并把错误和回包限制到来源 surface。
+- [x] (2026-05-09 04:01Z) 实现 `extensions/vscode/dev-session-canvas/src/common/executionTerminalClipboard.ts` 纯规则 helper，覆盖本地 UI 平台推断、复制粘贴快捷键矩阵和 Host 粘贴文本预处理。
+- [x] (2026-05-09 04:01Z) 在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 增加 copy request、paste request、paste text response 和 paste cancelled response，并补齐 Webview 消息 validator。
+- [x] (2026-05-09 04:01Z) 在 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 中接入 xterm keyboard shortcut adapter，并让 Agent / Terminal 创建终端时共用同一入口。
+- [x] (2026-05-09 04:01Z) 在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中接线复制 / 粘贴 callbacks、pending paste request 管理和 Host paste response 路由，最终通过 `terminal.paste(text)` 进入现有输入链路。
+- [x] (2026-05-09 04:01Z) 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中接入 `vscode.env.clipboard`，粘贴前确认 live session、处理多行安全确认，并把错误和回包限制到来源 surface。
 - [x] (2026-05-09 04:01Z) 补齐 `scripts/test/test-execution-terminal-clipboard.mts`、`package.json` 测试脚本和 `tests/playwright/webview-harness.spec.mjs` 的 copy / paste / interrupt 回归，并完成自动化验证。
 - [x] (2026-05-09 06:33Z) 处理 PR review blocker：把裸 `CR` 纳入粘贴行分隔 / 尾随换行安全处理，避免 `echo one\recho two` 绕过多行确认。
 - [x] (2026-05-09 06:33Z) 处理 PR review blocker：移除 Webview 端 paste request 的固定 30 秒清理，让等待 Host 模态确认的请求只在回包、取消或 Webview dispose 时清理。
@@ -37,7 +37,7 @@
   证据：2026-05-09 对照 `terminalClipboard.ts` 的 `shouldPasteTerminalText(...)`。
 
 - 观察：当前仓库输入桥没有区分“按键输入”和“粘贴输入”。`terminal.onData` 直接调用 `data.onExecutionInput`，Host 的 `writeExecutionInput(...)` 只接收字符串并写入 session。
-  证据：`src/webview/main.tsx` 中 Agent / Terminal 都使用 `terminal.onData((input) => data.onExecutionInput?.(..., input))`；`src/panel/CanvasPanelManager.ts` 的 `writeExecutionInput(...)` 只接受 `data: string`。
+  证据：`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中 Agent / Terminal 都使用 `terminal.onData((input) => data.onExecutionInput?.(..., input))`；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `writeExecutionInput(...)` 只接受 `data: string`。
 
 - 观察：设计阶段即可确定 UI 平台应作为快捷键判断依据，而不是 PTY / remote OS。否则 Remote SSH 到 Linux 的 macOS 用户会被迫使用 Linux 复制粘贴快捷键，和 VSCode Workbench 行为不一致。
   证据：VSCode 原生 keybinding 由 UI Workbench 解析，Host / PTY OS 不参与 `Cmd` / `Ctrl` 平台选择。
@@ -94,9 +94,9 @@
 
 ## 上下文与定向
 
-当前执行节点由三层共同完成。Webview 层在 `src/webview/main.tsx` 中创建 `new Terminal(createEmbeddedTerminalOptions())`，注册 native interaction，打开 xterm，然后通过 `terminal.onData(...)` 把输入回传给 Host。Host 层在 `src/panel/CanvasPanelManager.ts` 中解析 `webview/executionInput`，再由 `writeExecutionInput(...)` 写入 `ExecutionSessionProcess` 或 supervisor session。共享协议位于 `src/common/protocol.ts`，所有 Webview / Host 消息都需要在那里定义和验证。
+当前执行节点由三层共同完成。Webview 层在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中创建 `new Terminal(createEmbeddedTerminalOptions())`，注册 native interaction，打开 xterm，然后通过 `terminal.onData(...)` 把输入回传给 Host。Host 层在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中解析 `webview/executionInput`，再由 `writeExecutionInput(...)` 写入 `ExecutionSessionProcess` 或 supervisor session。共享协议位于 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`，所有 Webview / Host 消息都需要在那里定义和验证。
 
-已有 `src/webview/executionTerminalNativeInteractions.ts` 负责执行终端的 native-like link、拖拽、tooltip 和缩放坐标辅助。复制粘贴快捷键也属于 xterm native interaction，应优先进入这个模块，而不是分散写在 AgentNode / TerminalNode 两套 React effect 中。这样 `Agent` 和 `Terminal` 可以共享一套行为，后续也更容易测试。
+已有 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 负责执行终端的 native-like link、拖拽、tooltip 和缩放坐标辅助。复制粘贴快捷键也属于 xterm native interaction，应优先进入这个模块，而不是分散写在 AgentNode / TerminalNode 两套 React effect 中。这样 `Agent` 和 `Terminal` 可以共享一套行为，后续也更容易测试。
 
 VSCode 原生 Terminal 的行为 oracle 锚定到 2026-05-09 upstream commit `9300eb847eaf812841160885d4885ae6dd394d1c`。后续实现者只需要理解用户可观察规则，不需要复刻 VSCode 内部贡献点结构。关键事实是：copy / paste 命令属于 skipped shell command，xterm key handler 会在输入前判断 Workbench 是否应该接管；多行粘贴有安全确认；平台默认快捷键并不相同。
 
@@ -106,7 +106,7 @@ VSCode 原生 Terminal 的行为 oracle 锚定到 2026-05-09 upstream commit `93
 
 先实现规则纯函数。新增或放置在合适模块中的 helper 应接收 UI 平台、按键形状、是否有 xterm 选区，返回 `copy`、`copyAndClearSelection`、`paste`、`passThrough` 或 `noop`。所有平台差异先由测试锁住，避免直接写进 DOM handler 后难以验证。Remote SSH 下 Host 的 `process.platform` 可能是远端 Linux，不能作为该 helper 的平台输入；平台值应来自 Webview / UI 侧可观测环境或可测试注入。
 
-然后扩展协议。在 `src/common/protocol.ts` 中加入 copy request、paste request、paste text response 和 paste cancelled response。协议需要验证 `nodeId`、`kind`、`requestId`、`text` 和 `bracketedPasteMode`。Host-to-Webview 的 paste response 应能被现有 `window.message` 分发处理。
+然后扩展协议。在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中加入 copy request、paste request、paste text response 和 paste cancelled response。协议需要验证 `nodeId`、`kind`、`requestId`、`text` 和 `bracketedPasteMode`。Host-to-Webview 的 paste response 应能被现有 `window.message` 分发处理。
 
 接着接入 Webview。`setupExecutionTerminalNativeInteractions(...)` 增加 clipboard shortcut options，或直接在 options 中传入 `onCopySelection` / `onRequestPaste`。keyboard handler 只在 xterm 焦点内生效；复制时读取 `terminal.getSelection()`，粘贴时传当前 xterm 实例暴露的 bracketed paste mode 状态。收到 Host paste response 后从 `executionTerminalRegistry` 查找目标 terminal 并调用 `terminal.paste(text)`。
 
@@ -125,9 +125,9 @@ VSCode 原生 Terminal 的行为 oracle 锚定到 2026-05-09 upstream commit `93
        docs/design-docs/index.md
        docs/design-docs/core-beliefs.md
 
-2. 在 `src/webview/` 或 `src/common/` 中新增平台快捷键 helper。若放在 `src/common/`，不得依赖 DOM、React、xterm 或 `vscode`。
+2. 在 `extensions/vscode/dev-session-canvas/src/webview/` 或 `extensions/vscode/dev-session-canvas/src/common/` 中新增平台快捷键 helper。若放在 `extensions/vscode/dev-session-canvas/src/common/`，不得依赖 DOM、React、xterm 或 `vscode`。
 
-3. 更新 `src/common/protocol.ts`：
+3. 更新 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`：
 
        WebviewToHostMessage:
          webview/copyExecutionSelection
@@ -139,11 +139,11 @@ VSCode 原生 Terminal 的行为 oracle 锚定到 2026-05-09 upstream commit `93
 
    同步补齐 validator 和必要类型。
 
-4. 更新 `src/webview/executionTerminalNativeInteractions.ts`，把 keyboard handler 作为 setup 的一部分安装和 dispose。若已有 link / drag 逻辑变得过长，可将 clipboard adapter 拆成同目录小模块，但对外仍由 `setupExecutionTerminalNativeInteractions(...)` 统一接线。
+4. 更新 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`，把 keyboard handler 作为 setup 的一部分安装和 dispose。若已有 link / drag 逻辑变得过长，可将 clipboard adapter 拆成同目录小模块，但对外仍由 `setupExecutionTerminalNativeInteractions(...)` 统一接线。
 
-5. 更新 `src/webview/main.tsx`，让 Agent / Terminal 在注册 native interactions 时传入 copy / paste callbacks，并在 Host paste response 到达时调用对应 terminal 的 paste。
+5. 更新 `extensions/vscode/dev-session-canvas/src/webview/main.tsx`，让 Agent / Terminal 在注册 native interactions 时传入 copy / paste callbacks，并在 Host paste response 到达时调用对应 terminal 的 paste。
 
-6. 更新 `src/panel/CanvasPanelManager.ts`，在 message switch 中处理新消息，使用 `vscode.env.clipboard` 读写剪贴板，并实现多行粘贴安全逻辑。
+6. 更新 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`，在 message switch 中处理新消息，使用 `vscode.env.clipboard` 读写剪贴板，并实现多行粘贴安全逻辑。
 
 7. 补测试并运行：
 
@@ -226,10 +226,10 @@ macOS `Cmd+C` 无选区透传修复后的补充验证：
 
 需要修改或继续使用的仓库接口如下：
 
-- `src/common/protocol.ts`：新增剪贴板相关消息类型和 validator。
-- `src/webview/executionTerminalNativeInteractions.ts`：新增 xterm keyboard shortcut adapter，并在 dispose 时恢复。
-- `src/webview/main.tsx`：给 Agent / Terminal 传入复制 / 粘贴 callback，并处理 Host paste response。
-- `src/panel/CanvasPanelManager.ts`：处理剪贴板请求，调用 `vscode.env.clipboard` 与 VSCode 确认入口。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`：新增剪贴板相关消息类型和 validator。
+- `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`：新增 xterm keyboard shortcut adapter，并在 dispose 时恢复。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：给 Agent / Terminal 传入复制 / 粘贴 callback，并处理 Host paste response。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：处理剪贴板请求，调用 `vscode.env.clipboard` 与 VSCode 确认入口。
 - `tests/playwright/webview-harness.spec.mjs`：覆盖 Webview 侧 copy / paste / interrupt 行为。
 
 本轮不引入新 runtime 依赖。若后续为了测试拆出纯 helper，应优先使用现有 Node / Playwright 测试环境，不引入新的键盘事件库。

@@ -13,7 +13,7 @@ const posixPath = path.posix;
 try {
   const outfile = path.join(tempDir, 'runtimeSupervisorPaths.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/common/runtimeSupervisorPaths.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts')],
     bundle: true,
     format: 'cjs',
     outfile,

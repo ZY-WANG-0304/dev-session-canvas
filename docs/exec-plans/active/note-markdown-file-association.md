@@ -47,10 +47,10 @@
 ## 意外与发现
 
 - 观察：当前 `Note` 已经有 Markdown 预览、checklist、链接、安全 KaTeX 与宿主打开 workspace 文件链接的基础设施。
-  证据：`src/webview/main.tsx` 中 `createNoteMarkdownRenderer()` 负责受控 Markdown 渲染；`src/common/noteMarkdownLinks.ts` 和 `CanvasPanelManager.openNoteLink()` 已经负责 Note 预览链接的 Host 侧打开校验。
+  证据：`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中 `createNoteMarkdownRenderer()` 负责受控 Markdown 渲染；`extensions/vscode/dev-session-canvas/src/common/noteMarkdownLinks.ts` 和 `CanvasPanelManager.openNoteLink()` 已经负责 Note 预览链接的 Host 侧打开校验。
 
 - 观察：`NoteNodeMetadata` 当前只有 `content: string`，因此需要以向后兼容方式新增内容来源字段，不能让旧快照失效。
-  证据：`src/common/protocol.ts` 中 `export interface NoteNodeMetadata { content: string; }`，宿主 `createNoteMetadata()` / `ensureNoteMetadata()` 都围绕这一个字段工作。
+  证据：`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中 `export interface NoteNodeMetadata { content: string; }`，宿主 `createNoteMetadata()` / `ensureNoteMetadata()` 都围绕这一个字段工作。
 
 - 观察：用户希望关联 Markdown Note 严格以磁盘内容为权威来源，VS Code 中打开但未保存的 editor buffer 不应驱动节点刷新。
   证据：用户明确指出“Note 节点应该以硬盘上的文件内容为准”，因此 `onDidChangeTextDocument` 不能再被用作 Note 内容同步输入。
@@ -92,7 +92,7 @@
   证据：PR review 指出该路径会显示普通预览但禁止编辑，且 checklist 可能绕过显式恢复继续写回；本轮改为渲染恢复警告并补充直接以 `dirty-conflict` bootstrap 的 Playwright 回归。
 
 - 观察：在本轮补强前，`refreshAllAssociatedMarkdownNotes()` 会在 VSCode 窗口重新获得焦点时对所有关联 Markdown Note 执行刷新；如果节点已经是 `dirty-conflict`，原实现会重新读取文件并把状态改回 `ok`。
-  证据：`src/panel/CanvasPanelManager.ts` 的窗口焦点监听调用 `refreshAllAssociatedMarkdownNotes()`，而旧版 `refreshAssociatedMarkdownNote()` 在 `source.status !== 'ok'` 时仍会把 `readResult.status === 'ok'` 写回状态。这意味着用户未处理冲突时切换窗口可能错误清除冲突。
+  证据：`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的窗口焦点监听调用 `refreshAllAssociatedMarkdownNotes()`，而旧版 `refreshAssociatedMarkdownNote()` 在 `source.status !== 'ok'` 时仍会把 `readResult.status === 'ok'` 写回状态。这意味着用户未处理冲突时切换窗口可能错误清除冲突。
 
 - 观察：把草稿正文直接内联到 `metadata.note.contentSource.recoverableDraft.content` 会让大 Markdown 草稿进入 `canvas-state.json`、`workspaceState` 和 debug snapshot，虽然没有污染关联文件权威模型，但会放大画布状态并重新绕开普通 Note 8,000 字符上限的初衷。
   证据：用户指出此前讨论过“草稿放到 storageUri 下的 draft 文件，状态里只保存 draft id/base revision/remote revision/时间戳”的更稳妥方案；本轮代码改为写入 `note-markdown-drafts/<draftId>.md` 并在持久化前剥离 `recoverableDraft.content`。
@@ -196,11 +196,11 @@
 
 已落地内容：
 
-- `src/common/protocol.ts` 新增 `NoteNodeMetadata.contentSource` 与 Webview -> Host 消息：保存为 Markdown、打开关联文件、重新加载关联文件、拖拽 Markdown 文件创建 Note；关联 Markdown 写回携带编辑基线 `contentRevision`。
-- `src/common/protocol.ts` 继续扩展 Webview -> Host 消息：关联 Markdown 编辑开始/结束时登记运行时 edit session，编辑时上报/清理未提交 draft，使 Host 能在 Reload Window 或关闭 VSCode 后保留未解决冲突的草稿引用；冲突提示的 `复制草稿` 会发送 `webview/copyAssociatedNoteMarkdownDraft`。
-- `src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、Remote authority 人类可读前缀与内容来源类型；`NoteMarkdownRecoverableDraft` 支持 storage-backed `draftId` 与只面向 Webview hydration 的可选 `content`，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
-- `src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer；写回前冲突检测使用 `FileStat` 磁盘状态 revision，刷新展示在 revision 未变化时跳过完整内容读取；运行时 edit session 让 watcher/保存/焦点刷新可以在用户仍处于编辑态时发现外部落盘变化并生成 storage-backed `recoverableDraft`；普通焦点恢复和 watcher 刷新会保留未处理 `dirty-conflict`，只有显式重新加载或覆盖才清理 `recoverableDraft`。冲突草稿正文写入 `note-markdown-drafts/<draftId>.md`，持久化状态和 debug snapshot 会剥离 `content`，历史 `conflictDraft` 读取时迁移为 `recoverableDraft`，Host 给 Webview 广播状态时再读取 draft 文件 hydrate；复制草稿请求由 Host 写入系统剪贴板。
-- `src/webview/main.tsx`、`src/webview/styles.css` 和 `src/webview/droppedResources.ts` 实现关联文件 subtitle、布局溢出 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、带已 hydrate `recoverableDraft.content` 的 Host `dirty-conflict` 重新 bootstrap 草稿恢复、无草稿内容 `dirty-conflict` 的 reload-only 恢复警告、冲突时的 `复制草稿` 按钮，以及空白画布拖放 Markdown 文件创建关联 Note；冲突提示出现后 textarea 仍可编辑，但 blur / Ctrl+Enter 只同步草稿，不会静默提交；空白画布与终端拖拽共享潜在资源判断。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 新增 `NoteNodeMetadata.contentSource` 与 Webview -> Host 消息：保存为 Markdown、打开关联文件、重新加载关联文件、拖拽 Markdown 文件创建 Note；关联 Markdown 写回携带编辑基线 `contentRevision`。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 继续扩展 Webview -> Host 消息：关联 Markdown 编辑开始/结束时登记运行时 edit session，编辑时上报/清理未提交 draft，使 Host 能在 Reload Window 或关闭 VSCode 后保留未解决冲突的草稿引用；冲突提示的 `复制草稿` 会发送 `webview/copyAssociatedNoteMarkdownDraft`。
+- `extensions/vscode/dev-session-canvas/src/common/noteMarkdownFileAssociation.ts` 新增扩展名校验、默认文件名、安全文件名、Remote authority 人类可读前缀与内容来源类型；`NoteMarkdownRecoverableDraft` 支持 storage-backed `draftId` 与只面向 Webview hydration 的可选 `content`，旧 Note 仍通过缺省 `contentSource` 作为普通 Note 兼容。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 实现普通 Note 保存为 Markdown 并关联、Quick Input 路径导航、已有文件 modal 选择、关联文件读写、保存/文件系统刷新、缺失/不可读状态刷新、打开关联文件和本地文件监听；关联 Markdown 文件的读取与写回不受普通 Note 8,000 字符上限截断，并在 stale revision 写回时进入 `dirty-conflict`。同步规则只认磁盘落盘内容，不读 dirty buffer；写回前冲突检测使用 `FileStat` 磁盘状态 revision，刷新展示在 revision 未变化时跳过完整内容读取；运行时 edit session 让 watcher/保存/焦点刷新可以在用户仍处于编辑态时发现外部落盘变化并生成 storage-backed `recoverableDraft`；普通焦点恢复和 watcher 刷新会保留未处理 `dirty-conflict`，只有显式重新加载或覆盖才清理 `recoverableDraft`。冲突草稿正文写入 `note-markdown-drafts/<draftId>.md`，持久化状态和 debug snapshot 会剥离 `content`，历史 `conflictDraft` 读取时迁移为 `recoverableDraft`，Host 给 Webview 广播状态时再读取 draft 文件 hydrate；复制草稿请求由 Host 写入系统剪贴板。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`、`extensions/vscode/dev-session-canvas/src/webview/styles.css` 和 `extensions/vscode/dev-session-canvas/src/webview/droppedResources.ts` 实现关联文件 subtitle、布局溢出 tooltip、缺失警告、普通 Note 的保存入口、关联 Note 的打开文件入口、普通 Note 8,000 字符上限提示、关联 Markdown 编辑冲突提示、带已 hydrate `recoverableDraft.content` 的 Host `dirty-conflict` 重新 bootstrap 草稿恢复、无草稿内容 `dirty-conflict` 的 reload-only 恢复警告、冲突时的 `复制草稿` 按钮，以及空白画布拖放 Markdown 文件创建关联 Note；冲突提示出现后 textarea 仍可编辑，但 blur / Ctrl+Enter 只同步草稿，不会静默提交；空白画布与终端拖拽共享潜在资源判断。
 - `tests/playwright/webview-harness.spec.mjs`、`scripts/test/test-note-markdown-file-association.mts` 和 `tests/vscode-smoke/extension-tests.cjs` 覆盖了核心模型、Webview 呈现/消息、真实文件写回、打开但未保存的 editor buffer 不影响 Note 展示且保存后才刷新、编辑期外部刷新冲突、冲突提示后继续编辑草稿、关联 Markdown draft 上报、Host dirty-conflict 后保留草稿引用、带 hydrate 草稿的 Host dirty-conflict 重新 bootstrap 的恢复/覆盖入口、只有 draft 引用但无内容时的 reload-only 恢复入口、删除节点不删文件、缺失警告、拖拽创建、重复拖拽资源去重，以及已关联文件再次拖入时的添加/定位选择。
 
 验证结果：
@@ -289,17 +289,17 @@
 
 ## 上下文与定向
 
-本仓库是一个 VSCode workspace extension。`Extension Host` 持有画布权威状态，`Webview` 负责 React / React Flow 呈现和局部交互，二者通过 `src/common/protocol.ts` 中的消息协议通信。执行者需要始终记住：节点图和持久化真相在 Host 侧，Webview 只能请求操作和展示 Host 广播的状态。
+本仓库是一个 VSCode workspace extension。`Extension Host` 持有画布权威状态，`Webview` 负责 React / React Flow 呈现和局部交互，二者通过 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中的消息协议通信。执行者需要始终记住：节点图和持久化真相在 Host 侧，Webview 只能请求操作和展示 Host 广播的状态。
 
 当前与 `Note` 相关的主要路径如下。
 
-`src/common/protocol.ts` 定义跨边界模型。`CanvasNodeKind` 已包含 `note`，`NoteNodeMetadata` 当前只有 `content: string`。`WebviewToHostMessage` 已有 `webview/updateNoteNode`，payload 是 `nodeId` 和 `content`；也已有 `webview/openNoteLink` 给 Markdown 预览链接使用。
+`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 定义跨边界模型。`CanvasNodeKind` 已包含 `note`，`NoteNodeMetadata` 当前只有 `content: string`。`WebviewToHostMessage` 已有 `webview/updateNoteNode`，payload 是 `nodeId` 和 `content`；也已有 `webview/openNoteLink` 给 Markdown 预览链接使用。
 
-`src/panel/CanvasPanelManager.ts` 是 Host 侧状态中枢。它创建 Note、持久化画布状态、处理 `webview/updateNoteNode`，并且已经有 `openCanvasFile()` 与 `openNoteLink()` 可以把工作区文件或外部链接交给 VSCode 打开。新增 Markdown 文件关联能力应主要在这里编排，或者拆出 Host 侧 helper 模块再由这里调用。
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 是 Host 侧状态中枢。它创建 Note、持久化画布状态、处理 `webview/updateNoteNode`，并且已经有 `openCanvasFile()` 与 `openNoteLink()` 可以把工作区文件或外部链接交给 VSCode 打开。新增 Markdown 文件关联能力应主要在这里编排，或者拆出 Host 侧 helper 模块再由这里调用。
 
-`src/webview/main.tsx` 渲染节点。`NoteEditableNode` 维护本地正文草稿、编辑态 textarea 和阅读态 Markdown 预览，编辑提交后发送 `webview/updateNoteNode`。本轮需要让它支持 title 下方 subtitle、文件不可用警告，以及空白画布拖拽 Markdown 文件创建关联 Note 的消息。
+`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 渲染节点。`NoteEditableNode` 维护本地正文草稿、编辑态 textarea 和阅读态 Markdown 预览，编辑提交后发送 `webview/updateNoteNode`。本轮需要让它支持 title 下方 subtitle、文件不可用警告，以及空白画布拖拽 Markdown 文件创建关联 Note 的消息。
 
-`src/webview/styles.css` 定义 Note 表面样式。subtitle 与不可用警告应继续使用 VSCode 主题 token，保持低噪音工具型画布风格。
+`extensions/vscode/dev-session-canvas/src/webview/styles.css` 定义 Note 表面样式。subtitle 与不可用警告应继续使用 VSCode 主题 token，保持低噪音工具型画布风格。
 
 测试主要在 `tests/playwright/webview-harness.spec.mjs` 和 `tests/vscode-smoke/extension-tests.cjs`。Playwright harness 适合验证 Webview DOM 呈现、菜单、拖放和消息；VSCode smoke 适合验证 Host 文件系统、Quick Input / 命令、持久化恢复和真实工作区文件写入。纯函数测试通常放在 `scripts/test/test-*.mjs` 或 `scripts/test/test-*.mts` 中，并通过 `package.json` 脚本接入。
 
@@ -315,9 +315,9 @@
 
 第一步更新文档引用，把 `docs/design-docs/note-markdown-file-association.md` 的 `related_plans` 指向本文，并同步 `docs/design-docs/index.md` 的关联计划字段。这样设计结论与实施过程可以相互追踪。
 
-第二步盘点现有代码并补共享模型。先在 `src/common/protocol.ts` 为 `NoteNodeMetadata` 增加向后兼容的 `contentSource` 字段，并扩展或新增 Webview -> Host 消息：普通编辑继续使用 `webview/updateNoteNode`；保存为 Markdown、拖拽 Markdown 文件创建关联 Note、打开关联文件可以使用新消息。再新增一个 `src/common/noteMarkdownFileAssociation.ts` 纯函数模块，放置扩展名校验、文件名安全化、标题到默认文件名、URI/display path 的纯逻辑。纯函数要能被脚本测试直接覆盖。
+第二步盘点现有代码并补共享模型。先在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 为 `NoteNodeMetadata` 增加向后兼容的 `contentSource` 字段，并扩展或新增 Webview -> Host 消息：普通编辑继续使用 `webview/updateNoteNode`；保存为 Markdown、拖拽 Markdown 文件创建关联 Note、打开关联文件可以使用新消息。再新增一个 `extensions/vscode/dev-session-canvas/src/common/noteMarkdownFileAssociation.ts` 纯函数模块，放置扩展名校验、文件名安全化、标题到默认文件名、URI/display path 的纯逻辑。纯函数要能被脚本测试直接覆盖。
 
-第三步实现 Host 侧能力。优先在 `src/panel/CanvasPanelManager.ts` 中添加入口方法，必要时拆出 `src/panel/noteMarkdownFileAssociation.ts` 保存 Host 侧 IO helper。Host 需要完成：默认路径生成、Quick Input 导航、目标文件 stat、已有文件冲突选择、写入或读取文件、把节点 metadata 切换为 `markdown-file`、打开关联文件、监控文件变化、恢复时重新读取文件、文件不可用时设置状态。所有写入和读取都以磁盘落盘内容为准，打开但未保存的 dirty 文档不参与同步。
+第三步实现 Host 侧能力。优先在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中添加入口方法，必要时拆出 `extensions/vscode/dev-session-canvas/src/panel/noteMarkdownFileAssociation.ts` 保存 Host 侧 IO helper。Host 需要完成：默认路径生成、Quick Input 导航、目标文件 stat、已有文件冲突选择、写入或读取文件、把节点 metadata 切换为 `markdown-file`、打开关联文件、监控文件变化、恢复时重新读取文件、文件不可用时设置状态。所有写入和读取都以磁盘落盘内容为准，打开但未保存的 dirty 文档不参与同步。
 
 第四步实现 Webview 呈现与拖拽。`NoteEditableNode` 读取 metadata 后，如果是关联 Markdown Note，就在标题下方显示 subtitle；如果状态不是 `ok`，正文区显示不可用警告，不显示普通 Markdown 正文。编辑提交仍发送内容到 Host，由 Host 决定写入画布状态还是关联文件。画布空白区拖拽 `.md` / `.markdown` 文件时，Webview 把释放点和拖拽资源发给 Host；Host 创建一个或多个关联 Note，并在释放点附近轻微错位。
 
@@ -336,18 +336,18 @@
 2. 代码盘点。用以下命令确认当前 Note 相关路径：
 
        rg -n "NoteNodeMetadata|updateNoteNode|openNoteLink|kind === 'note'|createNoteMetadata|ensureNoteMetadata" src tests scripts
-       rg -n "drag|drop|dataTransfer|onDrop|dropped" src/webview/main.tsx src/panel/CanvasPanelManager.ts src/common/protocol.ts
+       rg -n "drag|drop|dataTransfer|onDrop|dropped" extensions/vscode/dev-session-canvas/src/webview/main.tsx extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts extensions/vscode/dev-session-canvas/src/common/protocol.ts
 
-   预期看到 `NoteNodeMetadata` 在 `src/common/protocol.ts`，Note 编辑提交在 `src/webview/main.tsx` 和 `src/panel/CanvasPanelManager.ts`，拖放已有能力主要服务执行节点资源输入。
+   预期看到 `NoteNodeMetadata` 在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`，Note 编辑提交在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 和 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`，拖放已有能力主要服务执行节点资源输入。
 
 3. 共享模型与纯函数。新增或更新：
 
-       src/common/protocol.ts
-       src/common/noteMarkdownFileAssociation.ts
+       extensions/vscode/dev-session-canvas/src/common/protocol.ts
+       extensions/vscode/dev-session-canvas/src/common/noteMarkdownFileAssociation.ts
        scripts/test/test-note-markdown-file-association.mjs 或 .mts
        package.json
 
-   在 `src/common/protocol.ts` 中引入类似以下模型，实际字段名可以根据实现调整，但必须保持设计文档的语义：
+   在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中引入类似以下模型，实际字段名可以根据实现调整，但必须保持设计文档的语义：
 
        export type NoteContentSource =
          | { kind: 'embedded' }
@@ -368,19 +368,19 @@
 
 4. Host 侧实现。更新或新增：
 
-       src/panel/CanvasPanelManager.ts
-       src/panel/noteMarkdownFileAssociation.ts
-       src/common/extensionIdentity.ts
+       extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+       extensions/vscode/dev-session-canvas/src/panel/noteMarkdownFileAssociation.ts
+       extensions/vscode/dev-session-canvas/src/common/extensionIdentity.ts
        package.json
        package.nls.json
-       src/extension.ts
+       extensions/vscode/dev-session-canvas/src/extension.ts
 
    命令和 UI 入口命名应遵循现有 `devSessionCanvas.*` 约定。保存为 Markdown 的流程必须由 Host 执行，因为只有 Host 能可靠访问 VSCode workspace、Quick Input、文件系统和 Remote URI。Quick Input 导航应展示当前目录子目录和 `.md` / `.markdown` 文件；如果完整复刻 VSCode 打开文件体验成本过高，第一版也必须满足“输入路径时可看到当前目录下可选目录和 Markdown 文件”的验收要求。
 
 5. Webview 实现。更新：
 
-       src/webview/main.tsx
-       src/webview/styles.css
+       extensions/vscode/dev-session-canvas/src/webview/main.tsx
+       extensions/vscode/dev-session-canvas/src/webview/styles.css
 
    `NoteEditableNode` 中 title 下方新增 subtitle 区域。关联文件状态不是 `ok` 时，正文区域显示警告文案。画布空白区的 drag/drop handler 只在没有命中节点交互区域时触发；现有执行节点拖放资源输入不能被破坏。
 
@@ -446,12 +446,12 @@
         M docs/design-docs/index.md
         M package.json
         M package.nls.json
-        M src/common/extensionIdentity.ts
-        M src/common/protocol.ts
-        M src/extension.ts
-        M src/panel/CanvasPanelManager.ts
-        M src/webview/main.tsx
-        M src/webview/styles.css
+        M extensions/vscode/dev-session-canvas/src/common/extensionIdentity.ts
+        M extensions/vscode/dev-session-canvas/src/common/protocol.ts
+        M extensions/vscode/dev-session-canvas/src/extension.ts
+        M extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+        M extensions/vscode/dev-session-canvas/src/webview/main.tsx
+        M extensions/vscode/dev-session-canvas/src/webview/styles.css
         M tests/playwright/webview-harness.spec.mjs
         M tests/vscode-smoke/extension-tests.cjs
        ?? docs/design-docs/note-markdown-file-association.md
@@ -459,14 +459,14 @@
        ?? image copy.png
        ?? image.png
        ?? scripts/test/test-note-markdown-file-association.mts
-       ?? src/common/noteMarkdownFileAssociation.ts
+       ?? extensions/vscode/dev-session-canvas/src/common/noteMarkdownFileAssociation.ts
        ?? xxxx.prompts.md
 
 ## 接口与依赖
 
-在 `src/common/protocol.ts` 中必须存在一个可序列化的 Note 内容来源模型。字段可以在实现中微调，但必须表达以下信息：普通内嵌来源、Markdown 文件来源、资源 URI、展示路径、文件状态和可选错误信息。
+在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中必须存在一个可序列化的 Note 内容来源模型。字段可以在实现中微调，但必须表达以下信息：普通内嵌来源、Markdown 文件来源、资源 URI、展示路径、文件状态和可选错误信息。
 
-在 `src/common/noteMarkdownFileAssociation.ts` 中应提供纯函数，至少覆盖：
+在 `extensions/vscode/dev-session-canvas/src/common/noteMarkdownFileAssociation.ts` 中应提供纯函数，至少覆盖：
 
        isSupportedNoteMarkdownFilePath(pathOrUri: string): boolean
        sanitizeNoteMarkdownFileName(title: string): string
@@ -475,7 +475,7 @@
 
 如果函数签名需要引入 workspace folder 或 URI 参数，可以调整，但调用者必须能用它们完成默认路径、扩展名校验和 subtitle 展示。
 
-在 `src/panel/CanvasPanelManager.ts` 或 `src/panel/noteMarkdownFileAssociation.ts` 中应提供 Host 侧流程函数，至少覆盖：普通 Note 转 Markdown 文件、关联文件读取、关联文件写入、关联文件 stat/status 刷新、拖拽资源创建关联 Note。
+在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 或 `extensions/vscode/dev-session-canvas/src/panel/noteMarkdownFileAssociation.ts` 中应提供 Host 侧流程函数，至少覆盖：普通 Note 转 Markdown 文件、关联文件读取、关联文件写入、关联文件 stat/status 刷新、拖拽资源创建关联 Note。
 
 Webview -> Host 消息必须通过 `parseWebviewToHostMessage()` 校验。任何拖拽资源、路径或 URI 都不能只靠 Webview 判断合法；Host 必须重新 stat/read/write 校验。
 

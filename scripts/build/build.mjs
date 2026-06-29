@@ -1,9 +1,22 @@
 import esbuild from 'esbuild';
 import { promises as fs } from 'fs';
 import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const require = createRequire(import.meta.url);
 const xtermBrowserMainEntryPath = require.resolve('@xterm/xterm/lib/xterm.js');
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const mainExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas');
+const mainExtensionDistRoot = path.join(mainExtensionRoot, 'dist');
+
+function fromMainExtensionRoot(relativePath) {
+  return path.join(mainExtensionRoot, relativePath);
+}
+
+function fromMainExtensionDist(relativePath) {
+  return path.join(mainExtensionDistRoot, relativePath);
+}
 
 const isWatch = process.argv.includes('--watch');
 const isProduction = process.argv.includes('--production');
@@ -17,46 +30,46 @@ const sharedConfig = {
 };
 
 const extensionConfig = {
-  entryPoints: ['src/extension.ts'],
+  entryPoints: [fromMainExtensionRoot('src/extension.ts')],
   bundle: true,
   ...sharedConfig,
   external: ['vscode', 'node-pty'],
   format: 'cjs',
-  outfile: 'dist/extension.js',
+  outfile: fromMainExtensionDist('extension.js'),
   platform: 'node',
   target: 'node18'
 };
 
 const supervisorConfig = {
-  entryPoints: ['src/supervisor/runtimeSupervisorMain.ts'],
+  entryPoints: [fromMainExtensionRoot('src/supervisor/runtimeSupervisorMain.ts')],
   bundle: true,
   ...sharedConfig,
   external: ['node-pty'],
   format: 'cjs',
-  outfile: 'dist/runtime-supervisor.js',
+  outfile: fromMainExtensionDist('runtime-supervisor.js'),
   platform: 'node',
   target: 'node18'
 };
 
 const supervisorLauncherConfig = {
-  entryPoints: ['src/supervisor/runtimeSupervisorLauncher.ts'],
+  entryPoints: [fromMainExtensionRoot('src/supervisor/runtimeSupervisorLauncher.ts')],
   bundle: true,
   ...sharedConfig,
   format: 'cjs',
-  outfile: 'dist/runtime-supervisor-launcher.js',
+  outfile: fromMainExtensionDist('runtime-supervisor-launcher.js'),
   platform: 'node',
   target: 'node18'
 };
 
 const webviewConfig = {
   entryPoints: {
-    webview: 'src/webview/main.tsx',
-    'sidebar-codicon': 'src/webview/sidebar-codicon.css'
+    webview: fromMainExtensionRoot('src/webview/main.tsx'),
+    'sidebar-codicon': fromMainExtensionRoot('src/webview/sidebar-codicon.css')
   },
   bundle: true,
   ...sharedConfig,
   format: 'iife',
-  outdir: 'dist',
+  outdir: mainExtensionDistRoot,
   entryNames: '[name]',
   platform: 'browser',
   target: 'es2020',
@@ -78,7 +91,7 @@ const webviewConfig = {
 };
 
 async function runBuild() {
-  await fs.rm('dist', { recursive: true, force: true });
+  await fs.rm(mainExtensionDistRoot, { recursive: true, force: true });
 
   if (!isWatch) {
     await Promise.all([
