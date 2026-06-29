@@ -16,7 +16,7 @@ const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-agent-cli-resolver-'))
 try {
   const outfile = path.join(tempDir, 'agentCliResolver.cjs');
   await esbuild.build({
-    entryPoints: [path.resolve('src/panel/agentCliResolver.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts')],
     bundle: true,
     format: 'cjs',
     outfile,

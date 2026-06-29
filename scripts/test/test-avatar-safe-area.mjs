@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 import { chromium } from 'playwright';
 
-const avatarPath = 'images/avatar.png';
+const avatarPath = 'extensions/vscode/dev-session-canvas/images/avatar.png';
 const avatarSize = 512;
 const safeCircleRadius = 244;
 const minUsefulRadius = 232;

@@ -13,7 +13,7 @@ try {
   const heuristicsOutfile = path.join(tempDir, 'agentActivityHeuristics.cjs');
 
   await esbuild.build({
-    entryPoints: [path.resolve('src/common/executionAttentionSignals.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/executionAttentionSignals.ts')],
     bundle: true,
     format: 'cjs',
     outfile: signalsOutfile,
@@ -21,7 +21,7 @@ try {
     target: 'node18'
   });
   await esbuild.build({
-    entryPoints: [path.resolve('src/common/agentActivityHeuristics.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts')],
     bundle: true,
     format: 'cjs',
     outfile: heuristicsOutfile,

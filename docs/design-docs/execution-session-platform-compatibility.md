@@ -96,8 +96,8 @@ updated_at: 2026-05-09
 - Linux、macOS、Windows 本地 workspace 现在都走统一 `node-pty` 主路径，并已完成功能可用性验证。
 - Windows 仍保留一条显式已知限制：使用 `Codex` 时，执行节点内历史当前无法向上翻页；这条差异必须继续写在对外文案与技术债中。
 - `Terminal` 与 `Agent` 共用同一个宿主会话 bridge；差别只在于启动命令和节点语义。
-- `src/panel/CanvasPanelManager.ts` 需要通过统一 execution env 入口为 `Agent` 与 `Terminal` 组装启动环境，而不是让 resolver、local PTY 与 runtime supervisor 各自直接读取 `process.env`；其中 `Agent` 继续复用 shell-derived execution env，`Terminal` 采用平台感知混合方案：Windows 保留 base env 让真实 shell 自己执行 profile / AutoRun，macOS / Linux 默认继承受控 shell env patch 并可通过 `devSessionCanvas.terminal.inheritEnv=false` 关闭。
-- `src/panel/shellEnvironmentResolver.ts` 当前已经为桌面三平台提供受控 shell env 继承：
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 需要通过统一 execution env 入口为 `Agent` 与 `Terminal` 组装启动环境，而不是让 resolver、local PTY 与 runtime supervisor 各自直接读取 `process.env`；其中 `Agent` 继续复用 shell-derived execution env，`Terminal` 采用平台感知混合方案：Windows 保留 base env 让真实 shell 自己执行 profile / AutoRun，macOS / Linux 默认继承受控 shell env patch 并可通过 `devSessionCanvas.terminal.inheritEnv=false` 关闭。
+- `extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts` 当前已经为桌面三平台提供受控 shell env 继承：
   - macOS / Linux：在 `VSCODE_CLI=1` 之外的 GUI 场景读取 shell 环境；POSIX family shell 走登录 shell probe，`pwsh` / `powershell` 走 PowerShell 专用 probe，避免把 PowerShell 误送入 POSIX `-i -l -c` 命令串。
   - Windows：以当前配置/默认 Terminal shell 为准；`powershell.exe` / `cmd.exe` 走各自环境快照解析，名称可判定为 `bash` / `zsh` / `sh` / `fish` 的 Windows shell 复用登录 shell 解析。这份 patch 供 `Agent` resolver / spawn 使用，同时保留给 host diagnostics 与排障。
 - 这份 shell env patch 不直接 wholesale 替换 Extension Host 环境；它只在保留宿主基线、`TERM`/`COLORTERM` 约束和少量显式注入目录的前提下，同步 `PATH`、`PATHEXT` 与工具链相关变量，并排除 `HOME`、`USERPROFILE`、`HOMEDRIVE`、`HOMEPATH`、`PWD`、`PROMPT`、`TERM`、`ELECTRON_*`、`VSCODE_*` 等不应被执行节点接管的键。`PATH` 合并需要保持 shell 导出的主体顺序优先：普通 host-only 目录追加在 shell `PATH` 之后，只有宿主显式注入且要求保优先级的目录（例如 test harness CLI 目录）可以继续排在前面。

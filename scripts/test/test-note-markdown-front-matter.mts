@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { parseNoteMarkdownFrontMatter } from '../../src/webview/noteMarkdownFrontMatter.ts';
+import { parseNoteMarkdownFrontMatter } from '../../extensions/vscode/dev-session-canvas/src/webview/noteMarkdownFrontMatter.ts';
 
 function run(): void {
   const frontMatterBlock = ['---', 'title: Note 与 Markdown 文件关联', 'domains:', '  - VSCode 集成域', '  - 画布', '---', ''].join('\n');

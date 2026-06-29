@@ -1,0 +1,21 @@
+flowchart TB
+  readme["README.md / README.zh-CN.md\nexternal product and source entry"]
+  docsReadme["docs/README.md\nknowledge-base router"]
+  architecture["ARCHITECTURE.md\ncurrent structure and boundaries"]
+  workflow["docs/WORKFLOW.md\ncollaboration workflow"]
+  design["docs/DESIGN.md\ndesign-doc rules"]
+  designIndex["docs/design-docs/index.md\ndesign registry"]
+  specs["docs/product-specs/index.md\nrequirements and acceptance"]
+  plans["docs/exec-plans/\nactive and completed ExecPlans"]
+  quality["QUALITY / RELIABILITY / SECURITY\nquality gates and risk checks"]
+  refs["docs/references/\ninputs only, not conclusions"]
+
+  readme --> docsReadme
+  docsReadme --> architecture
+  docsReadme --> workflow
+  docsReadme --> design
+  design --> designIndex
+  docsReadme --> specs
+  docsReadme --> plans
+  docsReadme --> quality
+  docsReadme --> refs

@@ -17,7 +17,7 @@ try {
 
   await esbuild.build({
     entryPoints: {
-      'sidebar-codicon': 'src/webview/sidebar-codicon.css'
+      'sidebar-codicon': 'extensions/vscode/dev-session-canvas/src/webview/sidebar-codicon.css'
     },
     bundle: true,
     format: 'iife',

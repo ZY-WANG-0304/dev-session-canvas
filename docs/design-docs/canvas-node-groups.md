@@ -222,7 +222,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 ### 8.1 状态模型
 
-在 `src/common/protocol.ts` 中扩展共享状态：
+在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中扩展共享状态：
 
     export interface CanvasGroupSummary {
       id: string;
@@ -271,7 +271,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 ### 8.2 宿主权威行为
 
-`src/panel/CanvasPanelManager.ts` 新增分组相关状态操作，保持宿主为唯一权威：
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 新增分组相关状态操作，保持宿主为唯一权威：
 
 #### 8.2.1 拖动 / resize 基础法则
 
@@ -302,7 +302,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 ### 8.3 Webview 交互
 
-`src/webview/main.tsx` 负责分组呈现和局部选中态，但不拥有最终成员关系：
+`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 负责分组呈现和局部选中态，但不拥有最终成员关系：
 
 - 分组背景 body 挂载到 React Flow viewport 内，保持在普通节点下方；可交互标题、边框、toolbar 和 resize 控制点挂载到 React Flow renderer 内，并跟随同一 viewport transform。分组 foreground 不挂载到 `.canvas-shell` 根层，避免画布放大后组框尺寸扩大 document / Webview scroll area，导致无限画布外层出现横向或纵向滚动条；React Flow wrapper / renderer / pane 必须裁切溢出，整体导航只通过画布 pan / zoom 表达。标题栏和边框可命中，body 不应挡住成员节点。双击分组标题 tab 的非交互空白处或未被节点覆盖的 body 空白区时，Webview 只选中并把这个已有分组居中 / 聚焦到当前视口，使用与节点标题栏双击聚焦一致的动画、padding 和视口持久化语义；该动作不创建新分组、不改变分组位置或尺寸，也不改变成员关系。真实 pointer 双击过程中产生的未移动标题栏 drag / resize 命中必须被视为导航前置点击，不向宿主提交 `webview/moveGroup` 或 `webview/resizeGroup`。标题输入框、toolbar 按钮、resize 控制点和其他交互控件继续保留自身语义，双击它们不触发分组聚焦。
 - 分组选中态与节点 / 边选中态互斥，选中 group 后在标题 tab 右侧显示双段按钮：左段执行取消分组，右段执行删除分组；重命名先复用现有手工节点标题栏编辑方式，用户单击 group 标题区域即可进入编辑，不单独要求双击或打开命名弹窗。未被节点覆盖的分组 body 空白区也可单击选中该分组；若存在嵌套分组，body 空白区命中按鼠标位置所在的最内层分组处理。body 空白区右键保留画布上下文菜单，并先把该分组作为当前选中分组；该菜单中的新增节点、创建空分组、从选择创建分组和应用模板等新增 / 创建类操作都以该分组作为目标父分组或成员分组。body 空白区左键拖动不作为 group 移动把手，而是沿用画布空白区的 pan 行为；group 移动只由标题 tab 和可命中边框触发。
@@ -320,7 +320,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 - `CanvasEdgeSummary` 不引用 group，连线仍连接具体节点。
 - 分组移动后，由于成员节点绝对坐标随之变化，连线端点自然跟随；不需要引入组级边锚点。
-- `src/common/canvasTemplates.ts` 保存模板时，应保存由模板兼容节点组成的 group 树，并在应用时重建 group id、`parentGroupId` 与成员 `groupId` 映射。
+- `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts` 保存模板时，应保存由模板兼容节点组成的 group 树，并在应用时重建 group id、`parentGroupId` 与成员 `groupId` 映射。
 - 自动文件活动节点按 owner Agent 推导 `groupId`，但保存模板时不保存 `file` / `file-list` 节点、自动文件活动边，也不把只由这类自动节点支撑的 group 成员关系作为模板事实。
 - 侧栏节点列表默认按分组树展示，且不在 Webview 内容区自绘更多按钮；显示模式切换使用 `节点` view 标题右上角的 VSCode 原生 `...` 更多菜单。按分组树展示时，分组和“未分组”在侧栏中呈现为可折叠 section；该折叠状态只改变侧栏列表呈现，不改变画布分组状态，也不表示画布分组支持折叠。
 
@@ -338,7 +338,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 方案已经收口为 `已选定`，但在把本文档验证状态改为 `已验证` 前，至少完成以下验证：
 
 1. 在 Webview harness 中做一个 group frame spike，确认分组标题栏 / 边框命中不会遮挡节点选择、连线选择、canvas pan 和 xterm 文本选择，并确认单击分组标题区域进入重命名编辑、标题编辑控件复用现有节点标题栏编辑方式、创建分组不强制弹窗命名、默认标题按独立分组创建序号递增、不按标题文本取最小可用编号、删除后不主动复用旧编号、用户重命名不影响后续默认编号、手动重命名允许重名、标题编辑清洗逻辑与现有节点一致且不设置分组专用最大长度限制，并确认标题不允许为空字符串。
-2. 在 `src/panel/CanvasPanelManager.ts` 层写纯状态测试，覆盖创建空分组、默认标题按独立分组创建序号递增且创建时不强制命名、删除后不主动复用旧编号、用户重命名不影响后续默认编号、单击标题区域重命名、标题编辑方式复用现有节点、手动重命名允许重名、标题编辑清洗逻辑与现有节点一致、不设置分组专用最大长度限制、空标题恢复原标题、从同一父级至少两个选中对象创建分组、单个选中对象禁止创建分组、跨父级选中对象禁止创建分组、同时选中分组及其后代对象时禁止创建分组、选中已有子树分组但未选中其后代对象时允许创建分组、嵌套分组、拖动 / resize 基础法则、同级交叉消解、resize 边界编辑、释放点归属命中、系统修正不推断新意图、合法状态、取消分组、删除分组两种模式、删除节点清理成员关系、空分组保留和旧状态 normalize。
+2. 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 层写纯状态测试，覆盖创建空分组、默认标题按独立分组创建序号递增且创建时不强制命名、删除后不主动复用旧编号、用户重命名不影响后续默认编号、单击标题区域重命名、标题编辑方式复用现有节点、手动重命名允许重名、标题编辑清洗逻辑与现有节点一致、不设置分组专用最大长度限制、空标题恢复原标题、从同一父级至少两个选中对象创建分组、单个选中对象禁止创建分组、跨父级选中对象禁止创建分组、同时选中分组及其后代对象时禁止创建分组、选中已有子树分组但未选中其后代对象时允许创建分组、嵌套分组、拖动 / resize 基础法则、同级交叉消解、resize 边界编辑、释放点归属命中、系统修正不推断新意图、合法状态、取消分组、删除分组两种模式、删除节点清理成员关系、空分组保留和旧状态 normalize。
 3. 在 Webview Playwright 中覆盖空白区右键创建空分组、默认标题按独立分组创建序号递增且创建时不强制命名、删除后不主动复用旧编号、用户重命名不影响后续默认编号、单击标题区域重命名、标题编辑方式复用现有节点、手动重命名允许重名、标题编辑清洗逻辑与现有节点一致、不设置分组专用最大长度限制、空标题恢复原标题、节点菜单不出现创建空分组入口、多选至少两个同一父级对象创建分组、单个选中对象不出现创建分组入口、跨父级选中对象禁用或拒绝创建分组、同时选中分组及其后代对象时禁用或拒绝创建分组、选中已有子树分组但未选中其后代对象时允许创建分组、分组拖动 draft、resize draft、释放点归属命中、宿主释放收口结果同步、删除分组确认对话框、取消分组、首版不注册默认分组快捷键。
 4. 在 VSCode smoke 中覆盖 reload 后 group 和成员关系恢复。
 5. 在模板测试中覆盖保存 / 应用包含 group 的模板，并确认重新物化后节点 ID 与 group ID 都更新。

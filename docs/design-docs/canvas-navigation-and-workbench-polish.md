@@ -201,14 +201,14 @@ updated_at: 2026-06-25
 
 ### 7.7 全局概览缩放使用动态最小倍率
 
-- `src/webview/main.tsx` 中的主 `<ReactFlow>` 不再把 `minZoom` 固定为 `0.4`。`0.4` 被保留为 `CANVAS_COMFORT_MIN_ZOOM`，表示日常编辑的舒适下限；真实传给 React Flow 的 `minZoom` 由当前画布空间边界、`.canvas-shell` 当前宽高与 `CANVAS_FIT_VIEW_PADDING` 共同计算。画布空间边界包含 flow nodes、普通用户分组和 `role = workspace-root` 的系统 root section。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中的主 `<ReactFlow>` 不再把 `minZoom` 固定为 `0.4`。`0.4` 被保留为 `CANVAS_COMFORT_MIN_ZOOM`，表示日常编辑的舒适下限；真实传给 React Flow 的 `minZoom` 由当前画布空间边界、`.canvas-shell` 当前宽高与 `CANVAS_FIT_VIEW_PADDING` 共同计算。画布空间边界包含 flow nodes、普通用户分组和 `role = workspace-root` 的系统 root section。
 - 动态下限规则为：若没有任何有效空间对象、空间 bounds 不可用或视口尺寸不可用，则使用 `0.4`；否则计算完整容纳全部空间对象所需倍率，并取 `Math.min(0.4, fitAllZoom)`。本轮不引入 `HARD_MIN_ZOOM` 或其他绝对下限。
 - 初始 fit view 与左下角全局 fit view 使用同一个动态 `minZoom` 和 `CANVAS_MAX_ZOOM = 1.8`，确保“回到全局视图”不会被旧的 `0.4` 下限卡住。由于 React Flow 原生 fit view 只理解 nodes，全局 fit view 改由 Webview 自行基于空间边界计算 viewport 并调用 React Flow viewport API。
 - 单节点聚焦和创建后追焦继续使用 `NODE_FOCUS_MIN_ZOOM = 0.55` 与 `NODE_FOCUS_MAX_ZOOM = 1.15`。这条路径服务节点阅读与定位，不跟全局概览共用动态下限，也不因为节点所在 root section 很大而强制缩到全局视角。
-- 概览模式由 `devSessionCanvas.canvas.overviewMode` 控制。`src/common/protocol.ts` 只接受 `none` 与 `title` 两个值，并通过 `CanvasRuntimeContext.overviewMode` 从 `src/panel/CanvasPanelManager.ts` 传到 `src/webview/main.tsx`；未知值统一归一为默认值 `title`。
+- 概览模式由 `devSessionCanvas.canvas.overviewMode` 控制。`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 只接受 `none` 与 `title` 两个值，并通过 `CanvasRuntimeContext.overviewMode` 从 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 传到 `extensions/vscode/dev-session-canvas/src/webview/main.tsx`；未知值统一归一为默认值 `title`。
 - 概览触发倍率由 `devSessionCanvas.canvas.overviewZoomThreshold` 控制，默认值来自 `DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.2`。`normalizeCanvasOverviewZoomThreshold` 将非有限数字回退到默认值，并把有效数字钳制在 `[0, 1]`；归一后的值通过 `CanvasRuntimeContext.overviewZoomThreshold` 下发给 Webview。修改 `overviewMode` 或 `overviewZoomThreshold` 都会触发 `CanvasPanelManager` 重新 post runtime state，当前画布无需重新加载即可更新概览判定。
 - `none` 表示无概览：即使当前 viewport `zoom < overviewZoomThreshold`，`CanvasOverviewModeBridge` 也不会给 `.canvas-shell` 加上 `.is-overview-mode`，节点继续按普通表面渲染。这个选项只关闭概览视觉收口，不改变动态 `minZoom`、fit view 或手动缩小能力。
-- `title` 表示标题概览：当当前 viewport `zoom < overviewZoomThreshold` 时，`CanvasOverviewModeBridge` 给 `.canvas-shell` 加上概览模式标记，并通过 `data-canvas-overview-config="title"` 与 `--canvas-overview-title-scale` 驱动 `src/webview/styles.css`；节点内容区内的 `.node-overview-title` 显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点显示状态标记，同时弱化 `Terminal` / `Agent` 的终端正文、Note 正文、文件节点内容和文件列表明细，隐藏主要操作按钮与次级文本，保留节点标题、必要状态、轮廓、连线和 minimap 作为低倍率导航线索。
+- `title` 表示标题概览：当当前 viewport `zoom < overviewZoomThreshold` 时，`CanvasOverviewModeBridge` 给 `.canvas-shell` 加上概览模式标记，并通过 `data-canvas-overview-config="title"` 与 `--canvas-overview-title-scale` 驱动 `extensions/vscode/dev-session-canvas/src/webview/styles.css`；节点内容区内的 `.node-overview-title` 显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点显示状态标记，同时弱化 `Terminal` / `Agent` 的终端正文、Note 正文、文件节点内容和文件列表明细，隐藏主要操作按钮与次级文本，保留节点标题、必要状态、轮廓、连线和 minimap 作为低倍率导航线索。
 - `NodeOverviewTitle` 是纯展示层叠加，覆盖 `Agent` / `Terminal` 的 `.terminal-frame`、Note 的 `.object-body`、File 的 `.file-node-action`、FileList 的 `.file-list-body` 以及 fallback card；`Agent` / `Terminal` 节点读取当前 `status`，用与常规状态胶囊一致的语义色和文本生成 `.node-overview-status`，`Note` / `File` / `FileList` 不额外显示状态，避免把默认 `ready` / `linked` 这类结构性值放大成概览结论。概览模式不销毁节点内的真实 `xterm`、Note 编辑器或文件列表 DOM，不改变宿主状态，也不重算 PTY 行列数。用户聚焦回某个节点后仍回到原有节点表面。
 
 ## 8. 验证方法

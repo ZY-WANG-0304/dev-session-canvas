@@ -59,20 +59,20 @@
 ## 意外与发现
 
 - 观察：当前权威状态只持有 `nodes`，React Flow 也固定传 `edges={[]}`，所以连线功能必须从共享协议层开始改，而不是只在 Webview 增加局部交互。
-  证据：`src/common/protocol.ts` 的 `CanvasPrototypeState` 目前只有 `nodes`；`src/webview/main.tsx` 固定把 `edges={[]}` 传给 React Flow。
+  证据：`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 的 `CanvasPrototypeState` 目前只有 `nodes`；`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 固定把 `edges={[]}` 传给 React Flow。
 - 观察：`Claude Code` 官方 hooks 和 `--settings` 路线可以为单次 CLI 启动注入结构化工具事件，不需要修改用户仓库里的 `.claude` 设置文件。
   证据：官方文档说明 hooks 可监听 `PreToolUse` / `PostToolUse`，CLI 同时支持 `--settings` 参数注入临时配置。
 - 观察：VSCode Webview 没有直接给任意 workspace 文件渲染当前 file icon theme 图标的单一 API。
   证据：当前仓库和公开 API 都只有 `TreeItem` / `ThemeIcon` 等宿主控件能力；Webview 侧仍需由宿主先把主题资源解析成可显示描述。
 - 观察：当前实现实际只提供少量基于扩展名的固定 `codicon` 映射，并没有完成“复用当前 VSCode File Icon Theme”的宿主解析层。
-  证据：`src/panel/CanvasPanelManager.ts` 当前只通过 `createDefaultFileIconDescriptor()` 对少量扩展名返回固定 `codicon`，没有读取 icon theme contribution 或主题 JSON。
+  证据：`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 当前只通过 `createDefaultFileIconDescriptor()` 对少量扩展名返回固定 `codicon`，没有读取 icon theme contribution 或主题 JSON。
 - 观察：文件活动 watcher 原先在 agent 退出时会立刻停掉 `fs.watch` / polling 并删除 session 临时目录；若 `Read` 事件刚 append 到 NDJSON 而 host 还未来得及 flush，就会在关闭路径里被直接吃掉，因此表现成“读不稳定、写更稳定”。
-  证据：`src/panel/agentFileActivity.ts` 旧实现里 `dispose()` 先停 watcher 再删目录；`src/panel/CanvasPanelManager.ts` 旧实现里本地 agent `onExit` 进入 `finalize()` 后立即调用 `disposeAgentFileActivitySession(nodeId)`。
+  证据：`extensions/vscode/dev-session-canvas/src/panel/agentFileActivity.ts` 旧实现里 `dispose()` 先停 watcher 再删目录；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 旧实现里本地 agent `onExit` 进入 `finalize()` 后立即调用 `disposeAgentFileActivitySession(nodeId)`。
 - 观察：即使在颜色、间距和 token 上尽量贴近 VSCode，整块自绘 sidebar `WebviewView` 仍然会和 Source Control、Run and Debug、Extensions 这些原生 sidebar section 形成明显观感断层。
   证据：2026-04-20 用户提供的参考图直接要求对齐常见 sidebar 风格；同日复查 VSCode 官方 `Sidebars` / `Views` / `Webviews` 指南后，也确认 sidebar 区域应优先使用原生 view / tree，而不是继续模拟宿主控件。
 - 观察：在遵循官方 Sidebar / Views 指南的前提下，如果产品要求 `include` / `exclude` 必须直接以内嵌输入框形式出现在 sidebar 中，那么只靠 `TreeView` 无法满足，因为扩展 API 没有提供可在 TreeView 里局部嵌入 textbox 的能力。
   证据：本轮实现检查中，现有扩展 API 仍只有 Tree item、view title actions、context actions 等原生入口；没有可用于 Search 视图那种 inline input 的 TreeView 扩展点。用户也明确拒绝继续使用“点击编辑后弹出菜单”的交互。
-- 观察：VS Code smoke 实际加载的是 `package.json#main` 指向的 `dist/extension.js`，而不是 `src/panel/CanvasPanelManager.ts`。当 `src` 已修正“风格切换复用旧位置”但未重新构建时，smoke 仍会执行旧版“碰撞或偏好不满足时重算位置”的逻辑，表现成文件节点在切换 `minimal -> card` 时漂移。
+- 观察：VS Code smoke 实际加载的是 `package.json#main` 指向的 `dist/extension.js`，而不是 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`。当 `src` 已修正“风格切换复用旧位置”但未重新构建时，smoke 仍会执行旧版“碰撞或偏好不满足时重算位置”的逻辑，表现成文件节点在切换 `minimal -> card` 时漂移。
   证据：`package.json` 的 `main` 指向 `./dist/extension.js`；失败时 `dist/extension.js` 的 `resolveAutomaticArtifactPosition()` 仍包含 `!doesPlacementCollide(...) && doesPlacementRespectPreference(...)` 判断，而重新执行 `npm run build` 后该逻辑与 `src` 同步，`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 恢复通过。
 
 ## 决策记录
@@ -153,11 +153,11 @@
 
 本轮会同时触达四个代码区域。
 
-第一处是 `src/common/protocol.ts`。这里定义跨宿主 / Webview 的共享状态和消息协议。连线、文件活动引用、文件节点 metadata、打开文件消息和展示模式配置都需要先在这里落类型。
+第一处是 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`。这里定义跨宿主 / Webview 的共享状态和消息协议。连线、文件活动引用、文件节点 metadata、打开文件消息和展示模式配置都需要先在这里落类型。
 
-第二处是 `src/panel/CanvasPanelManager.ts`。它是 workspace 绑定画布状态的唯一权威入口。本轮所有 edge 持久化、自动文件对象重建、provider 文件活动接线和“点击文件后打开编辑器”都必须经过这里。
+第二处是 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`。它是 workspace 绑定画布状态的唯一权威入口。本轮所有 edge 持久化、自动文件对象重建、provider 文件活动接线和“点击文件后打开编辑器”都必须经过这里。
 
-第三处是 `src/webview/main.tsx` 与 `src/webview/styles.css`。这里要补四向 handles、自定义 edge UI、文件节点 / 文件列表节点渲染、文件点击回传以及针对自动边与手工边的交互边界。
+第三处是 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 与 `extensions/vscode/dev-session-canvas/src/webview/styles.css`。这里要补四向 handles、自定义 edge UI、文件节点 / 文件列表节点渲染、文件点击回传以及针对自动边与手工边的交互边界。
 
 当前增量收口主要落在这两处文件活动 UI：`card` 风格保留现状；`minimal` 风格需要在不改动宿主文件活动真相的前提下，把文件节点收成贴内容边框，把文件列表节点收成接近 VSCode Source Control Changes 的单行列表，并在节点头部提供 `list/tree` 切换。
 
@@ -182,21 +182,21 @@
 
 2. 扩展共享协议与配置：
 
-    - `src/common/protocol.ts`
-    - `src/common/extensionIdentity.ts`
+    - `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
+    - `extensions/vscode/dev-session-canvas/src/common/extensionIdentity.ts`
     - `package.json`
     - `package.nls.json`
 
 3. 实现宿主状态与 provider 文件活动：
 
-    - `src/panel/CanvasPanelManager.ts`
+    - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
     - 新增 provider 文件活动模块
     - 如需独立 runtime 脚本，同步进入构建产物
 
 4. 实现 Webview 交互与样式：
 
-    - `src/webview/main.tsx`
-    - `src/webview/styles.css`
+    - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
+    - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
     - 补 `file list` 极简 `list/tree` 视图切换与本地状态持久化
 
 5. 更新测试与 fixture：
@@ -287,13 +287,13 @@
 
 本轮预期新增或修改以下接口：
 
-- `src/common/protocol.ts`
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
   - `CanvasEdgeSummary`
   - `CanvasFileReferenceSummary`
   - `CanvasFilePresentationMode`
   - 与 edge / file open 对应的新消息类型
 
-- `src/panel/CanvasPanelManager.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
   - state normalize / persist / reconcile 路径
   - webview message handler
   - provider session 启动路径

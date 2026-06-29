@@ -7,6 +7,7 @@ import https from 'https';
 import JSZip from 'jszip';
 
 const projectRoot = process.cwd();
+const mainExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas');
 const notifierRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const publisher = 'devsessioncanvas';
 const targetValues = ['all', 'visual-studio', 'open-vsx'];
@@ -36,7 +37,7 @@ main().then(
 
 async function main() {
   const context = buildReleaseContext(options);
-  const mainPackageJson = readJson(path.join(projectRoot, 'package.json'));
+  const mainPackageJson = readJson(path.join(mainExtensionRoot, 'package.json'));
   const notifierPackageJson = readJson(path.join(notifierRoot, 'package.json'));
   const extensions = buildExtensions(mainPackageJson, notifierPackageJson).filter(
     (extension) => options.extension === 'all' || options.extension === extension.id
@@ -232,7 +233,7 @@ function buildReleaseContext(parsedOptions) {
 
 function validateReleaseInputs({ context, mainPackageJson, notifierPackageJson }) {
   if (mainPackageJson.version !== context.version) {
-    throw new Error(`根 package.json 版本 ${mainPackageJson.version} 与 ${context.triggerTag} 不一致。`);
+    throw new Error(`主扩展 package.json 版本 ${mainPackageJson.version} 与 ${context.triggerTag} 不一致。`);
   }
   if (notifierPackageJson.version !== context.version) {
     throw new Error(`notifier package.json 版本 ${notifierPackageJson.version} 与 ${context.triggerTag} 不一致。`);
@@ -240,7 +241,11 @@ function validateReleaseInputs({ context, mainPackageJson, notifierPackageJson }
   if (mainPackageJson.version !== notifierPackageJson.version) {
     throw new Error(`主扩展版本 ${mainPackageJson.version} 与 notifier 版本 ${notifierPackageJson.version} 不一致。`);
   }
-  assertChangelogHasVersion(path.join(projectRoot, 'CHANGELOG.md'), context.version, '主扩展 CHANGELOG');
+  assertChangelogHasVersion(
+    path.join(mainExtensionRoot, 'CHANGELOG.md'),
+    context.version,
+    '主扩展 CHANGELOG'
+  );
   assertChangelogHasVersion(
     path.join(notifierRoot, 'CHANGELOG.md'),
     context.version,

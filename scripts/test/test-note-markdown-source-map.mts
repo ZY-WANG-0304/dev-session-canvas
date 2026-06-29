@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createNoteMarkdownSourceMap,
   type NoteMarkdownSourceMap
-} from '../../src/common/noteMarkdownSourceMap.ts';
+} from '../../extensions/vscode/dev-session-canvas/src/common/noteMarkdownSourceMap.ts';
 
 type ExpectedTextOffset = {
   text: string;

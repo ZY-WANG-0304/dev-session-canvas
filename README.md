@@ -20,7 +20,7 @@ DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. 
 
 The product has entered the public `Preview` phase. The current release-prep target is `0.20.0`, with the last published baseline still `0.19.0` through GitHub Releases and verified Open VSX until the release-prep branch is reviewed, merged, and published. Visual Studio Marketplace remains deferred until the public gallery exposes both the main extension and notifier. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
-![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](images/marketplace/canvas-overview.gif)
+![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif)
 
 ## Who It Is For
 
@@ -184,11 +184,11 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 - Security issues: `wzy0304@outlook.com`
 - Feishu discussion group:
 
-  <img src="images/lark-group-qr.png" alt="Dev Session Canvas Feishu Group" width="240" />
+  <img src="extensions/vscode/dev-session-canvas/images/lark-group-qr.png" alt="Dev Session Canvas Feishu Group" width="240" />
 
 - WeChat discussion group:
 
-  <img src="images/wechat-group-qr.png" alt="Dev Session Canvas WeChat Group" width="240" />
+  <img src="extensions/vscode/dev-session-canvas/images/wechat-group-qr.png" alt="Dev Session Canvas WeChat Group" width="240" />
 
 ## Development And Contribution
 

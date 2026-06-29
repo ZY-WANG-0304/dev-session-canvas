@@ -21,16 +21,16 @@
 ## 意外与发现
 
 - 观察：当前 restricted 语义并不是“入口可见但不可用”，而是直接把 `creatableKinds` 收窄为 `['note']`；因此 Quick Input、侧栏和右键菜单都共用了一条“隐藏执行型入口”的老策略。
-  证据：`src/extension.ts` 的 `createNode` 命令直接读 `panelManager.getSidebarState().creatableKinds`；`src/panel/CanvasPanelManager.ts` 与 `src/webview/main.tsx` 都在 untrusted 时只返回/渲染 `['note']`。
+  证据：`extensions/vscode/dev-session-canvas/src/extension.ts` 的 `createNode` 命令直接读 `panelManager.getSidebarState().creatableKinds`；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 与 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 都在 untrusted 时只返回/渲染 `['note']`。
 
 - 观察：宿主已经保留了“直接拒绝 untrusted execution create”的硬兜底，但目前只通过 `host/error` 返回 toast 文本，不会弹 modal。
-  证据：`src/panel/CanvasPanelManager.ts` 的 `applyCreateNode()` 在 untrusted 且 `kind` 为 `agent/terminal` 时直接 post `host/error`，文案为 `当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。`
+  证据：`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `applyCreateNode()` 在 untrusted 且 `kind` 为 `agent/terminal` 时直接 post `host/error`，文案为 `当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。`
 
 - 观察：如果把 modal 直接塞进 `applyCreateNode()` 的所有拒绝路径，会污染现有“伪造消息/测试直发 createDemoNode”的 smoke，因为这些路径目前依赖同步拒绝 + host error，而不是等待 UI 交互。
   证据：`tests/vscode-smoke/extension-tests.cjs` 的 restricted smoke 直接 `dispatchWebviewMessage({ type: 'webview/createDemoNode', ... })`，并断言 host error；这条路径不应因为新增 modal 而阻塞。
 
 - 观察：现有 `CanvasSidebarState.creatableKinds` 在代码里没有其他复杂语义消费，主要只服务 Quick Input 与状态快照，因此把它改成固定全集不会破坏其他子系统。
-  证据：仓库内 `rg "creatableKinds"` 仅命中 `src/extension.ts`、`src/panel/CanvasPanelManager.ts`、`src/webview/main.tsx` 与 restricted smoke 断言。
+  证据：仓库内 `rg "creatableKinds"` 仅命中 `extensions/vscode/dev-session-canvas/src/extension.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`、`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 与 restricted smoke 断言。
 
 - 观察：本地验证环境本身有两个与本次改动无关的外部阻塞。其一是依赖初始缺失，需要先用临时 npm cache 执行一次 `npm ci`；其二是 Playwright Chromium 在当前 macOS 环境里因 `bootstrap_check_in ... Permission denied (1100)` 直接崩溃，restricted smoke 进程也在当前机器上以 `SIGABRT` 结束，因此暂时无法在本机拿到完整 UI 自动化绿灯。
   证据：`npm run typecheck` 在安装依赖前报 `Cannot find module ...`；安装后 `typecheck` 通过。`npm run test:webview -- --grep ...` 输出 Chromium `mach_port_rendezvous` fatal；`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs` 返回 `SIGABRT`。
@@ -63,9 +63,9 @@
 
 这项工作会同时触达三个入口面：
 
-1. `src/webview/main.tsx`：空白区右键菜单的创建入口与点击行为。
-2. `src/extension.ts`：命令 `Dev Session Canvas: 创建节点` 的两层 Quick Input。
-3. `src/panel/CanvasPanelManager.ts`：宿主权威状态、`CanvasSidebarState`、受限原因判定、以及所有创建请求的最后兜底。
+1. `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：空白区右键菜单的创建入口与点击行为。
+2. `extensions/vscode/dev-session-canvas/src/extension.ts`：命令 `Dev Session Canvas: 创建节点` 的两层 Quick Input。
+3. `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：宿主权威状态、`CanvasSidebarState`、受限原因判定、以及所有创建请求的最后兜底。
 
 当前仓库里“可创建类型”由 `CanvasSidebarState.creatableKinds` 承担，但它同时被拿来表达“显示哪些入口”和“当前允许哪些类型真正创建”，导致 untrusted 时整条链路都只剩 `Note`。本次要把这个共享状态改成“展示全集”，并新增一条显式的“为什么当前不能创建 execution node”的宿主解释路径。
 
@@ -90,9 +90,9 @@
 
 1. 在宿主里抽出统一的“创建节点是否被阻止”判断与 modal 展示函数。这个逻辑至少先覆盖 `workspaceTrusted === false` 且 `kind` 为 `agent/terminal` 的场景。
 2. 把 `CanvasSidebarState.creatableKinds` 改成始终返回 `['agent', 'terminal', 'note']`，让 Quick Input 与侧栏入口恢复全集展示。
-3. 在 `src/extension.ts` 的 `createNode` 命令里，在 reveal/create 前检查 block reason；若存在则直接 `await` modal 并结束。
-4. 在 `src/common/protocol.ts` 新增一个 webview -> host 消息，用于“用户点了当前不可用的创建项，请宿主解释原因”。
-5. 在 `src/webview/main.tsx` 的 `createNode()` 里，当 `runtimeContext.workspaceTrusted === false` 且 `kind` 为 `agent/terminal` 时，不再 post `webview/createDemoNode`，改发新的解释消息；右键菜单仍照常展示这些入口。
+3. 在 `extensions/vscode/dev-session-canvas/src/extension.ts` 的 `createNode` 命令里，在 reveal/create 前检查 block reason；若存在则直接 `await` modal 并结束。
+4. 在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 新增一个 webview -> host 消息，用于“用户点了当前不可用的创建项，请宿主解释原因”。
+5. 在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 `createNode()` 里，当 `runtimeContext.workspaceTrusted === false` 且 `kind` 为 `agent/terminal` 时，不再 post `webview/createDemoNode`，改发新的解释消息；右键菜单仍照常展示这些入口。
 6. 保持 `applyCreateNode()` 对原始 `webview/createDemoNode` 的 untrusted 拒绝逻辑不变，继续作为 forged-message 兜底。
 
 测试分两层：
@@ -129,14 +129,14 @@
 
 当前已确认的旧行为基线：
 
-    src/extension.ts
+    extensions/vscode/dev-session-canvas/src/extension.ts
       createNode 命令直接读取 panelManager.getSidebarState().creatableKinds
 
-    src/panel/CanvasPanelManager.ts
+    extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
       getSidebarState(): untrusted => creatableKinds: ['note']
       applyCreateNode(): untrusted execution node => host/error
 
-    src/webview/main.tsx
+    extensions/vscode/dev-session-canvas/src/webview/main.tsx
       runtimeContext.workspaceTrusted 为 false 时，右键菜单 creatableKinds 只剩 ['note']
 
     tests/vscode-smoke/extension-tests.cjs
@@ -146,14 +146,14 @@
 
 本次实现会直接修改以下稳定接口：
 
-- `src/common/protocol.ts`
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
   - 扩展 `WebviewToHostMessage`，新增一个“解释创建不可用原因”的消息类型。
-- `src/panel/CanvasPanelManager.ts`
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
   - 新增 `getCreateNodeBlockReason(kind)` 与宿主 modal 展示函数。
   - `CanvasSidebarState.creatableKinds` 改为固定全集。
-- `src/extension.ts`
+- `extensions/vscode/dev-session-canvas/src/extension.ts`
   - `COMMAND_IDS.createNode` 的执行路径新增 blocked preflight。
-- `src/webview/main.tsx`
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
   - `createNode()` 在受限 execution kind 下不再 post `webview/createDemoNode`，而是 post 新的解释消息。
 
 本次计划新增文件：`docs/exec-plans/active/create-node-entry-availability-and-block-reasons.md`。新增原因：当前需求跨越产品语义、设计收口、宿主实现与测试回归，已经超出简单 bugfix 范围，必须有单独的执行计划承载过程和决策。

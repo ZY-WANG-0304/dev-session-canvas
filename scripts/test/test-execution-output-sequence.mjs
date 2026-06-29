@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const [supervisorSource, managerSource, protocolSource, webviewSource] = await Promise.all([
-  readFile('src/supervisor/runtimeSupervisorMain.ts', 'utf8'),
-  readFile('src/panel/CanvasPanelManager.ts', 'utf8'),
-  readFile('src/common/protocol.ts', 'utf8'),
-  readFile('src/webview/main.tsx', 'utf8')
+  readFile('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts', 'utf8'),
+  readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8'),
+  readFile('extensions/vscode/dev-session-canvas/src/common/protocol.ts', 'utf8'),
+  readFile('extensions/vscode/dev-session-canvas/src/webview/main.tsx', 'utf8')
 ]);
 
 assert.match(

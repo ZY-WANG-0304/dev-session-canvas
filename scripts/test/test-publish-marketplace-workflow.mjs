@@ -233,7 +233,7 @@ assert.equal(
 
 const notesTempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-release-notes-'));
 try {
-  const currentVersion = JSON.parse(await readFile('package.json', 'utf8')).version;
+  const currentVersion = JSON.parse(await readFile('extensions/vscode/dev-session-canvas/package.json', 'utf8')).version;
   const notesManifestPath = path.join(notesTempDir, 'manifest.json');
   const notesOutputPath = path.join(notesTempDir, 'notes.md');
   await writeFile(

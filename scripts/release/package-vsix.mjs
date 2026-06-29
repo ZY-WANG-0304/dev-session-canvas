@@ -1,9 +1,21 @@
 import { spawnSync } from 'child_process';
-import { existsSync, readFileSync } from 'fs';
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs';
+import os from 'os';
 import path from 'path';
 import { pathToFileURL } from 'url';
 
-const projectRoot = process.cwd();
+const projectRoot = resolveProjectRoot();
+const mainExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas');
+const mainExtensionRepoRelativePath = toPosixPath(path.relative(projectRoot, mainExtensionRoot));
 const isWindows = process.platform === 'win32';
 const isMainModule = process.argv[1]
   ? import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
@@ -13,8 +25,25 @@ if (isMainModule) {
   process.exit(main());
 }
 
+function resolveProjectRoot() {
+  const cwd = process.cwd();
+  if (existsSync(path.join(cwd, 'extensions', 'vscode', 'dev-session-canvas', 'package.json'))) {
+    return cwd;
+  }
+
+  const possibleRepoRoot = path.resolve(cwd, '..', '..', '..');
+  if (
+    existsSync(path.join(possibleRepoRoot, 'extensions', 'vscode', 'dev-session-canvas', 'package.json')) &&
+    path.resolve(possibleRepoRoot, 'extensions', 'vscode', 'dev-session-canvas') === cwd
+  ) {
+    return possibleRepoRoot;
+  }
+
+  return cwd;
+}
+
 export function main() {
-  const packageJsonPath = path.join(projectRoot, 'package.json');
+  const packageJsonPath = path.join(mainExtensionRoot, 'package.json');
   const vsceEntry = resolveVsceEntry(projectRoot);
   const gitValidationRoot =
     process.env.DEV_SESSION_CANVAS_VSCE_VALIDATE_GIT_ROOT?.trim() || projectRoot;
@@ -30,48 +59,65 @@ export function main() {
   const readmePath =
     process.env.DEV_SESSION_CANVAS_VSCE_README_PATH?.trim() || 'README.marketplace.md';
   const docBranch = resolveVsceDocRef(gitValidationRoot);
-  const baseUrls = resolveVsceBaseUrls(packageJson.homepage, docBranch);
+  const baseUrls = resolveVsceBaseUrls(
+    packageJson.homepage,
+    docBranch,
+    mainExtensionRepoRelativePath
+  );
   const packageArgs = ['package'];
 
   validateReadmeRewriteTargets({
-    projectRoot,
+    packageRoot: mainExtensionRoot,
+    repoRoot: projectRoot,
+    packageRepoRelativePath: mainExtensionRepoRelativePath,
     gitValidationRoot,
     readmePath,
     docBranch,
     baseUrls
   });
 
-  packageArgs.push('--readme-path', readmePath);
+  assertMainPackageInputsExist();
 
-  if (baseUrls?.contentUrl) {
-    packageArgs.push('--baseContentUrl', baseUrls.contentUrl);
-  }
+  const stageRoot = mkdtempSync(path.join(os.tmpdir(), 'dsc-main-vsix-'));
+  const stagePackageRoot = path.join(stageRoot, 'package');
+  mkdirSync(stagePackageRoot, { recursive: true });
 
-  if (baseUrls?.imagesUrl) {
-    packageArgs.push('--baseImagesUrl', baseUrls.imagesUrl);
-  }
+  try {
+    stageMainPackageFiles(stagePackageRoot, packageJson, readmePath);
 
-  const command = resolveCommand(vsceEntry, packageArgs);
+    packageArgs.push('--readme-path', readmePath);
 
-  const result = spawnSync(command.file, command.args, {
-    cwd: projectRoot,
-    env: buildCliToolEnv(),
-    stdio: 'inherit',
-    windowsVerbatimArguments: command.windowsVerbatimArguments
-  });
+    if (baseUrls?.contentUrl) {
+      packageArgs.push('--baseContentUrl', baseUrls.contentUrl);
+    }
 
-  if (result.status !== 0) {
+    if (baseUrls?.imagesUrl) {
+      packageArgs.push('--baseImagesUrl', baseUrls.imagesUrl);
+    }
+
+    const command = resolveCommand(vsceEntry, packageArgs);
+
+    const result = spawnSync(command.file, command.args, {
+      cwd: stagePackageRoot,
+      env: buildCliToolEnv(),
+      stdio: 'inherit',
+      windowsVerbatimArguments: command.windowsVerbatimArguments
+    });
+
     if (result.error) {
       throw result.error;
     }
+
+    if (result.status === 0) {
+      const vsixFilename = `${packageJson.name}-${packageJson.version}.vsix`;
+      copyFileSync(path.join(stagePackageRoot, vsixFilename), path.join(projectRoot, vsixFilename));
+      console.log(`已生成 ${path.join(projectRoot, vsixFilename)}`);
+    }
+
     return result.status === null ? 1 : result.status;
+  } finally {
+    rmSync(stageRoot, { recursive: true, force: true });
   }
-
-  if (result.error && result.status === null) {
-    throw result.error;
-  }
-
-  return 0;
 }
 
 function resolveVsceDocRef(gitRoot) {
@@ -116,14 +162,29 @@ function buildCliToolEnv() {
   return env;
 }
 
-function validateReadmeRewriteTargets({ projectRoot, gitValidationRoot, readmePath, docBranch, baseUrls }) {
-  const absoluteReadmePath = path.resolve(projectRoot, readmePath);
+function validateReadmeRewriteTargets({
+  packageRoot,
+  repoRoot,
+  packageRepoRelativePath,
+  gitValidationRoot,
+  readmePath,
+  docBranch,
+  baseUrls
+}) {
+  const absoluteReadmePath = path.resolve(packageRoot, readmePath);
   const readmeContent = readFileSync(absoluteReadmePath, 'utf8');
   const rewriteTargets = collectReadmeRewriteTargets(readmeContent);
   const resolvedTargets = [];
 
   for (const target of rewriteTargets) {
-    const resolvedTarget = resolveReadmeTarget(projectRoot, absoluteReadmePath, readmePath, target);
+    const resolvedTarget = resolveReadmeTarget(
+      packageRoot,
+      repoRoot,
+      packageRepoRelativePath,
+      absoluteReadmePath,
+      readmePath,
+      target
+    );
     if (!resolvedTarget) {
       continue;
     }
@@ -133,7 +194,11 @@ function validateReadmeRewriteTargets({ projectRoot, gitValidationRoot, readmePa
       throw new Error(`无法为 ${readmePath} 中的相对链接生成可发布 URL：仓库 homepage 或 VSCE base URL 配置缺失。`);
     }
 
-    const rewrittenUrl = buildRewrittenUrl(rewriteBaseUrl, resolvedTarget.repoRelativePath, resolvedTarget.suffix);
+    const rewrittenUrl = buildRewrittenUrl(
+      rewriteBaseUrl,
+      resolvedTarget.packageRelativePath,
+      resolvedTarget.suffix
+    );
     resolvedTargets.push({
       ...target,
       ...resolvedTarget,
@@ -141,11 +206,18 @@ function validateReadmeRewriteTargets({ projectRoot, gitValidationRoot, readmePa
     });
   }
 
-  const canValidateGitRef = Boolean(tryResolveGitRevision(gitValidationRoot, docBranch));
+  const explicitDocRef = Boolean(process.env.DEV_SESSION_CANVAS_VSCE_DOC_BRANCH?.trim());
+  const canValidateGitRef =
+    Boolean(tryResolveGitRevision(gitValidationRoot, docBranch)) &&
+    (explicitDocRef || isGitWorktreeClean(gitValidationRoot));
   if (canValidateGitRef) {
     for (const target of resolvedTargets) {
       assertGitPathExistsAtRef(gitValidationRoot, docBranch, readmePath, target);
     }
+  } else if (resolvedTargets.length > 0) {
+    console.log(
+      '当前 git 工作树不是 clean 状态，已仅校验 README 相对资源在文件系统中存在；发布打包必须显式传入 DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>。'
+    );
   }
 
   console.log(`VSCE README doc ref: ${docBranch}`);
@@ -189,15 +261,27 @@ function addRewriteTarget(rewriteTargets, kind, target) {
   }
 }
 
-function resolveReadmeTarget(projectRoot, absoluteReadmePath, readmePath, target) {
+function resolveReadmeTarget(
+  packageRoot,
+  repoRoot,
+  packageRepoRelativePath,
+  absoluteReadmePath,
+  readmePath,
+  target
+) {
   const { targetPath, suffix } = splitTargetSuffix(target.target);
   if (!isRelativeReadmeTarget(targetPath)) {
     return undefined;
   }
 
   const absoluteTargetPath = path.resolve(path.dirname(absoluteReadmePath), targetPath);
-  const relativeTargetPath = path.relative(projectRoot, absoluteTargetPath);
-  if (relativeTargetPath.startsWith('..') || path.isAbsolute(relativeTargetPath)) {
+  const packageRelativeTargetPath = path.relative(packageRoot, absoluteTargetPath);
+  if (packageRelativeTargetPath.startsWith('..') || path.isAbsolute(packageRelativeTargetPath)) {
+    throw new Error(`${readmePath} 中的相对路径 ${target.target} 超出了主扩展子包目录，无法作为子包 Marketplace README 资源。`);
+  }
+
+  const repoRelativeTargetPath = path.relative(repoRoot, absoluteTargetPath);
+  if (repoRelativeTargetPath.startsWith('..') || path.isAbsolute(repoRelativeTargetPath)) {
     throw new Error(`${readmePath} 中的相对路径 ${target.target} 超出了仓库根目录，无法作为 Marketplace README 资源。`);
   }
 
@@ -207,7 +291,8 @@ function resolveReadmeTarget(projectRoot, absoluteReadmePath, readmePath, target
 
   return {
     suffix,
-    repoRelativePath: toPosixPath(relativeTargetPath)
+    packageRelativePath: toPosixPath(packageRelativeTargetPath),
+    repoRelativePath: toPosixPath(path.join(packageRepoRelativePath, packageRelativeTargetPath))
   };
 }
 
@@ -234,9 +319,9 @@ function isRelativeReadmeTarget(targetPath) {
   return !/^[a-z][a-z0-9+.-]*:/i.test(targetPath);
 }
 
-function buildRewrittenUrl(baseUrl, repoRelativePath, suffix) {
+function buildRewrittenUrl(baseUrl, packageRelativePath, suffix) {
   const normalizedBaseUrl = `${baseUrl.replace(/\/+$/, '')}/`;
-  return new URL(`${repoRelativePath}${suffix}`, normalizedBaseUrl).toString();
+  return new URL(`${packageRelativePath}${suffix}`, normalizedBaseUrl).toString();
 }
 
 function assertGitPathExistsAtRef(gitRoot, gitRef, readmePath, target) {
@@ -254,11 +339,116 @@ function assertGitPathExistsAtRef(gitRoot, gitRef, readmePath, target) {
   }
 }
 
+function isGitWorktreeClean(gitRoot) {
+  const result = spawnSync('git', ['status', '--porcelain'], {
+    cwd: gitRoot,
+    encoding: 'utf8'
+  });
+
+  return result.status === 0 && result.stdout.trim() === '';
+}
+
 function toPosixPath(filePath) {
   return filePath.split(path.sep).join('/');
 }
 
-function resolveVsceBaseUrls(homepage, branch) {
+function assertMainPackageInputsExist() {
+  const requiredPaths = [
+    path.join(mainExtensionRoot, 'dist', 'extension.js'),
+    path.join(mainExtensionRoot, 'dist', 'webview.js'),
+    path.join(mainExtensionRoot, 'dist', 'webview.css'),
+    path.join(mainExtensionRoot, 'README.marketplace.md'),
+    path.join(mainExtensionRoot, 'CHANGELOG.md'),
+    path.join(mainExtensionRoot, 'LICENSE'),
+    path.join(mainExtensionRoot, 'package.nls.json'),
+    path.join(mainExtensionRoot, 'images', 'icon.png'),
+    path.join(mainExtensionRoot, 'scripts', 'runtime', 'claude-file-event-hook.cjs'),
+    path.join(projectRoot, 'node_modules', 'node-pty', 'package.json')
+  ];
+
+  for (const requiredPath of requiredPaths) {
+    if (!existsSync(requiredPath)) {
+      const relativePath = path.relative(projectRoot, requiredPath);
+      throw new Error(`主扩展打包缺少必需输入：${relativePath}`);
+    }
+  }
+}
+
+export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath) {
+  const stagedPackageJson = JSON.parse(JSON.stringify(packageJson));
+  delete stagedPackageJson.scripts;
+  stagedPackageJson.dependencies = packageJson.dependencies?.['node-pty']
+    ? {
+        'node-pty': packageJson.dependencies['node-pty']
+      }
+    : {};
+
+  writeFileSync(
+    path.join(stagePackageRoot, 'package.json'),
+    `${JSON.stringify(stagedPackageJson, null, 2)}\n`,
+    'utf8'
+  );
+
+  copyFileSync(path.join(mainExtensionRoot, readmePath), path.join(stagePackageRoot, readmePath));
+  copyFileSync(path.join(mainExtensionRoot, 'CHANGELOG.md'), path.join(stagePackageRoot, 'CHANGELOG.md'));
+  copyFileSync(path.join(mainExtensionRoot, 'LICENSE'), path.join(stagePackageRoot, 'LICENSE'));
+  copyFileSync(
+    path.join(mainExtensionRoot, 'package.nls.json'),
+    path.join(stagePackageRoot, 'package.nls.json')
+  );
+  copyFileSync(
+    path.join(mainExtensionRoot, '.vscodeignore'),
+    path.join(stagePackageRoot, '.vscodeignore')
+  );
+  cpSync(path.join(mainExtensionRoot, 'dist'), path.join(stagePackageRoot, 'dist'), { recursive: true });
+  cpSync(path.join(mainExtensionRoot, 'images'), path.join(stagePackageRoot, 'images'), { recursive: true });
+  cpSync(path.join(mainExtensionRoot, 'resources'), path.join(stagePackageRoot, 'resources'), { recursive: true });
+  cpSync(
+    path.join(mainExtensionRoot, 'scripts', 'runtime'),
+    path.join(stagePackageRoot, 'scripts', 'runtime'),
+    { recursive: true }
+  );
+  stageNodePtyRuntime(stagePackageRoot);
+}
+
+function stageNodePtyRuntime(stagePackageRoot) {
+  const sourceRoot = path.join(projectRoot, 'node_modules', 'node-pty');
+  const targetRoot = path.join(stagePackageRoot, 'node_modules', 'node-pty');
+  const entries = [
+    'package.json',
+    'LICENSE',
+    'lib',
+    path.join('prebuilds', 'linux-x64', 'pty.node'),
+    path.join('prebuilds', 'linux-arm64', 'pty.node'),
+    path.join('prebuilds', 'darwin-x64', 'pty.node'),
+    path.join('prebuilds', 'darwin-x64', 'spawn-helper'),
+    path.join('prebuilds', 'darwin-arm64', 'pty.node'),
+    path.join('prebuilds', 'darwin-arm64', 'spawn-helper'),
+    path.join('prebuilds', 'win32-x64', 'conpty.node'),
+    path.join('prebuilds', 'win32-x64', 'conpty_console_list.node'),
+    path.join('prebuilds', 'win32-x64', 'conpty', 'conpty.dll'),
+    path.join('prebuilds', 'win32-x64', 'conpty', 'OpenConsole.exe'),
+    path.join('prebuilds', 'win32-arm64', 'conpty.node'),
+    path.join('prebuilds', 'win32-arm64', 'conpty_console_list.node'),
+    path.join('prebuilds', 'win32-arm64', 'conpty', 'conpty.dll'),
+    path.join('prebuilds', 'win32-arm64', 'conpty', 'OpenConsole.exe'),
+    // Present only so vsce's npm dependency scan sees node-pty as installed.
+    // .vscodeignore keeps this build-time dependency out of the final VSIX.
+    path.join('node_modules', 'node-addon-api')
+  ];
+
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceRoot, entry);
+    if (!existsSync(sourcePath)) {
+      continue;
+    }
+    const targetPath = path.join(targetRoot, entry);
+    mkdirSync(path.dirname(targetPath), { recursive: true });
+    cpSync(sourcePath, targetPath, { recursive: true });
+  }
+}
+
+function resolveVsceBaseUrls(homepage, branch, packageRepoRelativePath = '') {
   const contentOverride = process.env.DEV_SESSION_CANVAS_VSCE_BASE_CONTENT_URL?.trim();
   const imagesOverride = process.env.DEV_SESSION_CANVAS_VSCE_BASE_IMAGES_URL?.trim();
 
@@ -276,14 +466,14 @@ function resolveVsceBaseUrls(homepage, branch) {
   const normalizedHomepage = homepage.trim().replace(/\/+$/, '');
   if (normalizedHomepage.includes('github.com/')) {
     return {
-      contentUrl: `${normalizedHomepage}/blob/${branch}`,
-      imagesUrl: `${normalizedHomepage}/raw/${branch}`
+      contentUrl: `${normalizedHomepage}/blob/${branch}/${packageRepoRelativePath}`,
+      imagesUrl: `${normalizedHomepage}/raw/${branch}/${packageRepoRelativePath}`
     };
   }
 
   return {
-    contentUrl: `${normalizedHomepage}/-/blob/${branch}`,
-    imagesUrl: `${normalizedHomepage}/-/raw/${branch}`
+    contentUrl: `${normalizedHomepage}/-/blob/${branch}/${packageRepoRelativePath}`,
+    imagesUrl: `${normalizedHomepage}/-/raw/${branch}/${packageRepoRelativePath}`
   };
 }
 

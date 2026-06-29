@@ -204,7 +204,7 @@ npm run test:webview -- --update-snapshots
 - `Run Dev Session Canvas (Main Only)` 不是命令面板命令，而是调试配置名称。
 - `Run Dev Session Canvas (Main Only)` 依赖专用 profile `Dev Session Canvas Extension Debug`；若该 profile 里缺少 `Remote Development`，请改用远端窗口配置而不是直接在远端窗口里运行它。
 - `Run Dev Session Canvas (Main Only)` 不会自动禁用扩展的已安装副本；正确做法是不要将其装入 debug profile。
-- `Run Dev Session Canvas (Main Only)` 调的是一份 runtime 临时生成的 debug-only 主扩展目录，不是直接把仓库根 `package.json` 原样加载进 Development Host；这正是它在保留正式安装真相“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”不变的前提下，仍能单独调主扩展的原因。
+- `Run Dev Session Canvas (Main Only)` 调的是一份 runtime 临时生成的 debug-only 主扩展目录，不是直接把 `extensions/vscode/dev-session-canvas/package.json` 这份正式主扩展 manifest 原样加载进 Development Host；这正是它在保留正式安装真相“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”不变的前提下，仍能单独调主扩展的原因。
 - `Run Dev Session Canvas + Notifier (Remote Window)` 不能从本地 clone 窗口启动；如果当前窗口的 `${workspaceFolder}` 是本机路径，这条配置会把本机目录误当成远端主扩展路径。
 - `Dev Session Canvas: 打开画布` 按默认承载面打开主画布；如需指定宿主区域，请使用显式的编辑区 / 面板打开命令。
 - 在仓库窗口的命令面板里搜索 `Run Dev Session Canvas (Main Only)` 通常找不到正确入口，因为它应从调试配置启动。

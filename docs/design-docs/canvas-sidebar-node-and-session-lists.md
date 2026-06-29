@@ -100,14 +100,14 @@ updated_at: 2026-06-26
 
 ## 6. 正式方案
 
-本方案当前涉及的主要实现落点集中在 `src/sidebar/CanvasSidebarNodeListView.ts`、`src/sidebar/CanvasSidebarSessionHistoryView.ts`、`src/common/agentSessionHistory.ts`、`src/common/canvasNodeVisuals.ts`、`src/common/agentActivityHeuristics.ts`、`src/panel/CanvasPanelManager.ts`、`src/extension.ts` 与 `package.json` 的 view/command contribution。
+本方案当前涉及的主要实现落点集中在 `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts`、`extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarSessionHistoryView.ts`、`extensions/vscode/dev-session-canvas/src/common/agentSessionHistory.ts`、`extensions/vscode/dev-session-canvas/src/common/canvasNodeVisuals.ts`、`extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`、`extensions/vscode/dev-session-canvas/src/extension.ts` 与 `package.json` 的 view/command contribution。
 
 ### 6.1 节点列表使用最小 `WebviewView`
 
 - 在现有 `Dev Session Canvas` sidebar container 中新增一个 `节点` section。
 - `节点` section 在 `package.json` 中使用 `images/dev-session-canvas-nodes-activitybar.svg` 作为专属 view icon；图标延续主 Dev Session Canvas activitybar glyph，并用右上角“三行节点圆点 + 文本线”badge 表达“节点列表”。这只是该 view section 在标题不可见或被用户拖到 Activity Bar 时的识别资产，不引入新的 Activity Bar 容器。
 - 它使用最小 `WebviewView`，数据直接来自 `CanvasPanelManager` 的权威 `CanvasPrototypeState.nodes`。
-- 宿主接线落在 `src/sidebar/CanvasSidebarNodeListView.ts` 与 `src/extension.ts`：前者负责把 `CanvasNodeSummary` 投影成节点列表快照并渲染最小 Webview，后者负责注册 `devSessionCanvas.sidebarNodes` view 与命令入口。
+- 宿主接线落在 `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts` 与 `extensions/vscode/dev-session-canvas/src/extension.ts`：前者负责把 `CanvasNodeSummary` 投影成节点列表快照并渲染最小 Webview，后者负责注册 `devSessionCanvas.sidebarNodes` view 与命令入口。
 - 只投影 `agent`、`terminal`、`note` 三类节点；`file` 与 `file-list` 不进入此列表。
 - 每个节点项显示：
   - 节点对应颜色的图标形圆点标记
@@ -131,7 +131,7 @@ updated_at: 2026-06-26
 - 在同一 sidebar container 中新增一个 `会话历史` section。
 - `会话历史` section 在 `package.json` 中使用 `images/dev-session-canvas-sessions-activitybar.svg` 作为专属 view icon；图标延续主 Dev Session Canvas activitybar glyph，并用右上角 badge 表达历史语义，badge 内部参考 VS Code Codicon `history` 的时钟指针部分，去掉外圈和回退箭头以保证 24px 下清晰。这只是该 view section 在标题不可见或被用户拖到 Activity Bar 时的识别资产，不引入新的 Activity Bar 容器。
 - 它使用最小 `WebviewView`，原因不是要做更复杂 UI，而是必须在同一区域内提供搜索框与双击恢复能力。
-- 具体承载文件是 `src/sidebar/CanvasSidebarSessionHistoryView.ts`；宿主只向 Webview 提供搜索前的 snapshot，搜索输入与双击行为都在这个最小视图内部完成。
+- 具体承载文件是 `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarSessionHistoryView.ts`；宿主只向 Webview 提供搜索前的 snapshot，搜索输入与双击行为都在这个最小视图内部完成。
 - 视图结构只保留两层：
   - 顶部一个搜索框
   - 下方一列结果列表
@@ -153,7 +153,7 @@ updated_at: 2026-06-26
 - `Codex`：扫描 `~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl`，读取首行 `session_meta` 中的 `sessionId`、`cwd` 与时间戳。
 - `Claude Code`：扫描 `~/.claude/projects/**/*.jsonl`。读取 transcript 前若干行中的显式 `cwd` 作为唯一 workspace 归属依据；若整段扫描窗口内都没有可确认的 `cwd`，则直接跳过该会话，不再把 project 目录名等价成精确 workspace 回退。
 
-对应实现集中在 `src/common/agentSessionHistory.ts`，并通过 `scripts/test/test-sidebar-session-history.mjs` 覆盖 workspace 过滤、去重、排序、Claude 跨行 `cwd` 提取、冲突目录 fail-closed，以及“跳过 provider 注入的 synthetic 首条 user message，提取第一条真实用户指令”。
+对应实现集中在 `extensions/vscode/dev-session-canvas/src/common/agentSessionHistory.ts`，并通过 `scripts/test/test-sidebar-session-history.mjs` 覆盖 workspace 过滤、去重、排序、Claude 跨行 `cwd` 提取、冲突目录 fail-closed，以及“跳过 provider 注入的 synthetic 首条 user message，提取第一条真实用户指令”。
 
 过滤规则如下：
 
@@ -188,7 +188,7 @@ updated_at: 2026-06-26
 - 新节点创建后，宿主会自动打开或定位画布，并聚焦到新节点。
 - 后续自动启动仍沿用现有 `Agent` 节点“等待尺寸就绪后自动启动”的宿主/前端链路，不再另开一套特殊恢复流程。
 
-这条链路收口在 `src/panel/CanvasPanelManager.ts` 的 `restoreAgentSessionFromHistory(...)`、`forkAgentSessionFromHistory(...)`、`focusNodeById(...)`、`buildHistoryResumeCommandLine(...)` 和 `buildAgentBranchCommandLine(...)`，并由 `src/extension.ts` 暴露给 sidebar 内部命令与 QuickPick 回退入口。
+这条链路收口在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `restoreAgentSessionFromHistory(...)`、`forkAgentSessionFromHistory(...)`、`focusNodeById(...)`、`buildHistoryResumeCommandLine(...)` 和 `buildAgentBranchCommandLine(...)`，并由 `extensions/vscode/dev-session-canvas/src/extension.ts` 暴露给 sidebar 内部命令与 QuickPick 回退入口。
 
 ### 6.6 侧栏不可见时，仍保留命令入口
 
@@ -244,7 +244,7 @@ updated_at: 2026-06-26
 - 2026-06-22：维护者已在真实 `Extension Development Host` 中完成 `view/title` 原生 `...` 菜单视觉确认，确认 `会话历史` 的多选分组开关和 `节点` 的平铺 / 分组视图模式都能通过标题左侧 `✓` 稳定显示当前选中态；PR #187 中原记录的真实菜单视觉确认残余风险已收口。
 - 2026-06-25：会话历史恢复 / 分叉在多根 workspace 下开始透传历史项原始 `cwd`，使新 Agent 创建能按历史 cwd 解析目标 root；已通过 `npm run test:sidebar-session-history`、`npm run typecheck`、`npm run test:canvas-multi-root-composition` 与 `npm run test:canvas-execution-context` 验证。真实 VS Code multi-root 端到端 smoke 与失效历史 cwd 的体验策略仍作为技术债登记。
 - 2026-06-19：会话历史 view title `...` 菜单新增三个可多选分组开关：多根 root workspace 下按 root 分组默认开启，按 provider 分组和按分级时间分组默认关闭；Webview 呈现层固定按 root > provider > 时间生成分组标题行，单根 workspace 下 root 开关不显示额外 root 标题；checked 菜单 variant 用标题左侧 `✓` 作为 `view/title` popup 的稳定可见 fallback，分组标题行支持折叠/展开。已补 `npm run test:extension-manifest` 覆盖菜单 contribution、checked title 与 commandPalette 隐藏，补 `npm run test:sidebar-session-history` 覆盖多根 root 归属、root/provider/time 层级、折叠行为和单根 root 退化，并已运行 `npm run typecheck`。
-- 2026-06-25：`节点` section 的 worktree QuickPick 新增添加已有 worktree 分支，并修复同一 git repository 的多个 workspace folders / linked worktrees 在全局 worktree 入口中重复出现为多个 repository 的问题；实现落点为 `src/extension.ts` 的 `promptWorkspaceRootFolderForWorktree(...)`、`promptWorktreeCreationPlan(...)`、`promptExistingWorktreeToAdd(...)` 与 `src/common/gitWorktrees.ts`，已补 `npm run test:git-worktrees` 覆盖 porcelain 解析、repository 去重、分支入口和不执行 `git worktree add` 的添加已有路径，并复跑相关 sidebar / manifest 验证。
+- 2026-06-25：`节点` section 的 worktree QuickPick 新增添加已有 worktree 分支，并修复同一 git repository 的多个 workspace folders / linked worktrees 在全局 worktree 入口中重复出现为多个 repository 的问题；实现落点为 `extensions/vscode/dev-session-canvas/src/extension.ts` 的 `promptWorkspaceRootFolderForWorktree(...)`、`promptWorktreeCreationPlan(...)`、`promptExistingWorktreeToAdd(...)` 与 `extensions/vscode/dev-session-canvas/src/common/gitWorktrees.ts`，已补 `npm run test:git-worktrees` 覆盖 porcelain 解析、repository 去重、分支入口和不执行 `git worktree add` 的添加已有路径，并复跑相关 sidebar / manifest 验证。
 - 2026-06-16：根据 VS Code Source Control 截图反馈，worktree 全局命令与 workspace folder 行按钮改用专用 `worktree` Codicon；新建 worktree 流程从单一分支名输入扩展为 `Create Worktree (...path...) (1/2)` + `Create new branch from...` 的 QuickPick ref 选择，可创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建；`HEAD` 或已被其他 worktree checkout 的分支会走 detached HEAD。已复跑 `npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:sidebar-list-colors`、`npm run typecheck`、`npm run build` 与 `git diff --check`。
 - 2026-06-16：workspace folder 分组行新增前置 kind 图标，普通 folder / git repository / linked worktree 分别使用 `folder` / `repo` / `worktree` Codicon；行尾操作顺序调整为新建 worktree、移除 worktree、移除 folder。已复跑 `npm run typecheck`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle`、`npm run test:extension-manifest`、`npm run test:sidebar-list-colors`、`npm run build` 与 `git diff --check`。
 - 2026-06-16：`节点` view 标题栏新增添加 workspace folder 与新建 worktree 入口，workspace folder 分组行尾新增 folder 级新建 worktree / 移除 folder / 移除 worktree 操作；已新增 `npm run test:sidebar-node-list` 覆盖 workspace folder 行 action 呈现和 Webview 消息，`npm run test:extension-manifest` 覆盖 sidebar title action 与 folder scoped 命令 contribution。真实 VS Code 中的文件夹 picker、`git worktree add`、`git worktree remove` 与 workspace folder 增删仍需人工验证。

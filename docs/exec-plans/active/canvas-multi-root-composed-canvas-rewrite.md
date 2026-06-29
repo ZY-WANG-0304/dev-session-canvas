@@ -29,7 +29,7 @@
 ## 意外与发现
 
 - 观察：`origin/main` 已经支持普通分组、分组内创建、模板应用到目标分组、Markdown 拖入和 Explorer cwd 创建执行节点，但 `CanvasGroupSummary` 还没有系统角色，`loadState()` / `persistState()` 仍只维护当前 workspace 的单份 state。
-  证据：`src/common/protocol.ts` 中 `CanvasGroupSummary` 只有 `id/title/position/size/parentGroupId`；`src/panel/CanvasPanelManager.ts` 的 `loadState()` 读取 `snapshot?.state ?? workspaceState`，`persistState()` 只写当前 `canvas-state.json`。
+  证据：`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中 `CanvasGroupSummary` 只有 `id/title/position/size/parentGroupId`；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `loadState()` 读取 `snapshot?.state ?? workspaceState`，`persistState()` 只写当前 `canvas-state.json`。
 
 - 观察：全量 `npm run test:webview` 当前失败 29 项，其中新增的 2 个 workspace root group Playwright 用例通过；失败主要来自现有截图/环境敏感断言，以及 Webview lifecycle identity 被加入消息后部分旧用例仍使用整对象相等断言。
   证据：`npm run test:webview` 结果为 224 passed / 29 failed；失败包含 `canvas-shell-baseline.png` 视觉差异、`minimal file nodes keep a content-fitting minimum size`、`agent subtitle shows cwd label...` 和多项 Note Markdown 消息整对象断言多出 `lifecycle` 字段。
@@ -53,10 +53,10 @@
   证据：最新 review 在 Windows 复核中指出 `npm run test:canvas-multi-root-composition` 会因 `.state` / `.position` 读取 `undefined` 失败；修复后测试中的期望 root path 改为 `normalizeRootPathForTest()`，与 production 的 Windows lower-case 规则一致。
 
 - 观察：runtime supervisor 后端并不要求单窗口独占 session；`attachSession()` 会把当前 socket 订阅到已有 session，输出事件会广播给订阅同一 session 的 socket。当前 multi-root 不能重连的根因是 Host 在 `getLiveRuntimeReconnectBlockReason()` 中把多根 workspace 整体 block，而不是后端进程所有权冲突。
-  证据：`src/supervisor/runtimeSupervisorMain.ts` 的 `attachSession()` 调用 `subscribeSocket()` 后返回 snapshot；`broadcastToSessionSubscribers()` 遍历所有订阅 socket 写入事件。
+  证据：`extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts` 的 `attachSession()` 调用 `subscribeSocket()` 后返回 snapshot；`broadcastToSessionSubscribers()` 遍历所有订阅 socket 写入事件。
 
 - 观察：shared runtime 下，delete 不只是当前窗口的本地删除；它会删除同一个 backend session，因此 supervisor 必须在删除 registry entry 前广播非 live 终态，让同一 session 的其他订阅窗口也退出 live 显示。
-  证据：`src/supervisor/runtimeSupervisorMain.ts` 的 `deleteSession()` 先把 session 标为非 live 并 `emitSessionState()`，再 `sessions.delete()`；`scripts/test/test-runtime-supervisor-protocol.mjs` 对该顺序做源码回归。
+  证据：`extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts` 的 `deleteSession()` 先把 session 标为非 live 并 `emitSessionState()`，再 `sessions.delete()`；`scripts/test/test-runtime-supervisor-protocol.mjs` 对该顺序做源码回归。
 
 - 观察：同一个 root 可能被 VS Code 分配多个 `workspaceStorage` slot；如果 runtime binding 或缺字段迁移只按 root path 推断，就可能把 slot A 的 root-local snapshot attach 到 slot B 的 supervisor。
   证据：已有 `test:smoke-storage-slot` 证明 live-runtime 会话必须继续绑定 source slot 的 `runtimeStoragePath`；本轮进一步让单根 root-local snapshot 缺少 `runtimeStoragePath` 时也显式降级，并在 real reopen smoke 中记录并校验重连后的 slot name 未变化。
@@ -67,8 +67,8 @@
   理由：这能直接满足“单根是局部视图，多根是组合视图”的用户心智；相比 multi-root fork 或独立画布，它能让用户在单根和多根之间看到同一 root 的同一批对象。
   日期/作者：2026-06-04 / Codex
 
-- 决策：本次重实现把组合与拆分逻辑放在 `src/common/canvasMultiRootComposition.ts`，把 VSCode 读写仍接在 `CanvasPanelManager`，但通过独立 helper 暴露 root identity、overlay 和归属转换。
-  理由：`src/common/` 不能依赖 VSCode API，适合承载可测试的纯数据规则；`CanvasPanelManager` 仍是宿主权威状态入口，第一轮不拆完整仓储类以避免一次性重构过大，但所有可纯化的规则必须从 Manager 移出。
+- 决策：本次重实现把组合与拆分逻辑放在 `extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition.ts`，把 VSCode 读写仍接在 `CanvasPanelManager`，但通过独立 helper 暴露 root identity、overlay 和归属转换。
+  理由：`extensions/vscode/dev-session-canvas/src/common/` 不能依赖 VSCode API，适合承载可测试的纯数据规则；`CanvasPanelManager` 仍是宿主权威状态入口，第一轮不拆完整仓储类以避免一次性重构过大，但所有可纯化的规则必须从 Manager 移出。
   日期/作者：2026-06-04 / Codex
 
 - 决策：新增 `composeRootLocalCanvasStateIntoComposed` 与 `decomposeComposedCanvasStateForWorkspaceRoot`，让 root-local 子图替换、创建回填和坐标转换也通过 common 纯函数完成。
@@ -113,11 +113,11 @@
 
 ## 上下文与定向
 
-Dev Session Canvas 是 VSCode extension。`src/panel/CanvasPanelManager.ts` 是宿主权威状态中心，负责加载、持久化、创建节点、处理 Webview 消息和启动执行会话。`src/common/protocol.ts` 定义 Host 与 Webview 共享的节点、分组和消息类型。`src/webview/main.tsx` 渲染 React Flow 画布，并把右键创建、拖拽、分组移动和 Markdown 文件拖入等交互发回宿主。
+Dev Session Canvas 是 VSCode extension。`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 是宿主权威状态中心，负责加载、持久化、创建节点、处理 Webview 消息和启动执行会话。`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 定义 Host 与 Webview 共享的节点、分组和消息类型。`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 渲染 React Flow 画布，并把右键创建、拖拽、分组移动和 Markdown 文件拖入等交互发回宿主。
 
 本计划使用几个普通语言术语。`root-local state` 是某一个 workspace folder 自己的 `CanvasPrototypeState`，它只保存这个 root 内的普通节点、用户分组、连线和文件活动。`composed view` 是 multi-root workspace 运行时把多个 root-local state 合成的一张画布，用户在 Webview 里看到的是它。`overlay` 是当前 multi-root workspace 自己的布局层，只保存 root section 的位置、尺寸、父分组关系，以及包含多个 root section 的外层普通分组，不保存 root 内节点内容。`workspace-root group` 是系统 root section，用 `CanvasGroupSummary.role === 'workspace-root'` 标记。
 
-实现涉及以下路径。`src/common/canvasMultiRootComposition.ts` 将新增纯函数和类型，用于 root id、命名空间、组合、拆分、overlay 归一化和 root-local 污染清洗。`src/common/protocol.ts` 将扩展 group role 与消息字段。`src/panel/CanvasPanelManager.ts` 将在 `loadState()` / `persistState()` 两侧调用组合模块，并在创建节点、模板、Markdown 拖入、分组操作中识别 root section。`src/webview/main.tsx` 将把 `targetGroupId` 透传给宿主，并让 root section 标题只读、隐藏删除/取消分组 toolbar。
+实现涉及以下路径。`extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition.ts` 将新增纯函数和类型，用于 root id、命名空间、组合、拆分、overlay 归一化和 root-local 污染清洗。`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 将扩展 group role 与消息字段。`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 将在 `loadState()` / `persistState()` 两侧调用组合模块，并在创建节点、模板、Markdown 拖入、分组操作中识别 root section。`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 将把 `targetGroupId` 透传给宿主，并让 root section 标题只读、隐藏删除/取消分组 toolbar。
 
 ## 工作计划
 
@@ -165,10 +165,10 @@ root-local snapshot 写入使用稳定 root path 派生的目录和原子临时�
     ?? "image copy.png"
     ?? image.png
 
-    rg -n "CanvasGroupSummary|loadState|persistState" src/common/protocol.ts src/panel/CanvasPanelManager.ts
-    src/common/protocol.ts:130:export interface CanvasGroupSummary
-    src/panel/CanvasPanelManager.ts:3943:  private loadState(): CanvasPrototypeState
-    src/panel/CanvasPanelManager.ts:4036:  private persistState(): void
+    rg -n "CanvasGroupSummary|loadState|persistState" extensions/vscode/dev-session-canvas/src/common/protocol.ts extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+    extensions/vscode/dev-session-canvas/src/common/protocol.ts:130:export interface CanvasGroupSummary
+    extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:3943:  private loadState(): CanvasPrototypeState
+    extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:4036:  private persistState(): void
 
 本轮验证记录如下：
 
@@ -326,7 +326,7 @@ Windows 复核 blocker 修复验证记录如下：
 
 ## 接口与依赖
 
-在 `src/common/protocol.ts` 中扩展：
+在 `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中扩展：
 
     export type CanvasGroupRole = 'user' | 'workspace-root';
     export interface CanvasGroupSummary {
@@ -334,7 +334,7 @@ Windows 复核 blocker 修复验证记录如下：
       workspaceRootPath?: string;
     }
 
-在 `src/common/canvasMultiRootComposition.ts` 中定义并导出：
+在 `extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition.ts` 中定义并导出：
 
     export interface CanvasMultiRootWorkspaceFolder { name: string; path: string; }
     export interface CanvasMultiRootOverlayRoot { rootPath: string; position: CanvasNodePosition; size?: CanvasNodeFootprint; parentGroupId?: string; }

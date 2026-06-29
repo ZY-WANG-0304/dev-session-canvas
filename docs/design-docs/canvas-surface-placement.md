@@ -187,9 +187,9 @@ updated_at: 2026-06-09
 
 ### 7.7 Webview 生命周期身份是 active surface 的消息边界
 
-- `src/panel/CanvasPanelManager.ts` 为每个 surface 维护 `surfaceLifecycle`，每次 active 或 standby HTML render 都递增 `generation`，并把 `surface`、`mode`、`generation` 传给 `src/panel/getWebviewHtml.ts`。
-- `src/panel/getWebviewHtml.ts` 只在 active HTML 中注入 `window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__`；`src/webview/main.tsx` 启动后再为当前前端 frame 生成唯一 `frameId`。
-- `src/common/protocol.ts` 定义 `CanvasSurfaceLocation`、`CanvasSurfaceMode`、`WebviewLifecycleIdentity` 和 `extractWebviewMessageLifecycle()`；共享 parser 仍接受历史无 lifecycle 的消息，但宿主对真实 Webview 发来的 ready、bootstrap ack、probe、DOM action 和 active mutation 会校验 lifecycle。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 为每个 surface 维护 `surfaceLifecycle`，每次 active 或 standby HTML render 都递增 `generation`，并把 `surface`、`mode`、`generation` 传给 `extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts`。
+- `extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts` 只在 active HTML 中注入 `window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__`；`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 启动后再为当前前端 frame 生成唯一 `frameId`。
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts` 定义 `CanvasSurfaceLocation`、`CanvasSurfaceMode`、`WebviewLifecycleIdentity` 和 `extractWebviewMessageLifecycle()`；共享 parser 仍接受历史无 lifecycle 的消息，但宿主对真实 Webview 发来的 ready、bootstrap ack、probe、DOM action 和 active mutation 会校验 lifecycle。
 - Host 接受 `webview/ready` 后只向同一 lifecycle 发送 `host/bootstrap`；Webview 应用 bootstrap 后发送 `webview/bootstrapAck`。Host 只有在 ack 后才向该 active frame 推送模板 catalog，避免旧 frame ready 让新 frame 错过初始化状态。
 - Host 会把 VS Code 当前 surface 对象与当前消息目标 frame 分开维护。`surfaceMessageWebview` 负责 Host->Webview 投递和来源校验；如果 Panel restore 双 attach 后较早 render 的 active frame 先发 ready，且当前 surface 尚未 ready，Host 可以把该已渲染 frame 提升为当前消息目标，再对它发送 bootstrap。
 - Host->Webview 消息会携带当前 surface lifecycle；Webview 收到带 lifecycle 的 host 消息时，如果 `surface`、`mode`、`generation` 或 `frameId` 与自身不一致，就忽略这条消息。

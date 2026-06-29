@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   canvasNodeStatusToneClass,
   humanizeCanvasNodeStatus
-} from '../../src/common/canvasNodeStatusPresentation.ts';
+} from '../../extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts';
 
 function markdownNote(contentStatus: string, nodeStatus = 'ready') {
   return {

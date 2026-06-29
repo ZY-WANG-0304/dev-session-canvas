@@ -12,7 +12,7 @@ try {
   const outfile = path.join(tempDir, 'agentLaunchPresets.cjs');
 
   await esbuild.build({
-    entryPoints: [path.resolve('src/common/agentLaunchPresets.ts')],
+    entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts')],
     bundle: true,
     format: 'cjs',
     outfile,

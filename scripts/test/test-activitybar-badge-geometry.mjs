@@ -15,19 +15,19 @@ const defaultContentGuide = 'Badge content guide: center 18.75,5.25; outer radiu
 const badgeIcons = [
   {
     label: 'templates',
-    path: 'images/dev-session-canvas-templates-activitybar.svg'
+    path: 'extensions/vscode/dev-session-canvas/images/dev-session-canvas-templates-activitybar.svg'
   },
   {
     label: 'nodes',
-    path: 'images/dev-session-canvas-nodes-activitybar.svg'
+    path: 'extensions/vscode/dev-session-canvas/images/dev-session-canvas-nodes-activitybar.svg'
   },
   {
     label: 'sessions',
-    path: 'images/dev-session-canvas-sessions-activitybar.svg'
+    path: 'extensions/vscode/dev-session-canvas/images/dev-session-canvas-sessions-activitybar.svg'
   },
   {
     label: 'notifier-draft',
-    path: 'images/dev-session-canvas-notifier-activitybar.svg'
+    path: 'extensions/vscode/dev-session-canvas/images/dev-session-canvas-notifier-activitybar.svg'
   },
   {
     label: 'notifier-companion',

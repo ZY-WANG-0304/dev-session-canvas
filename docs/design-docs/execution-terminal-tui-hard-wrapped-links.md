@@ -39,7 +39,7 @@ updated_at: 2026-06-14
 
 ## 当前实现证据
 
-- `src/webview/executionTerminalNativeInteractions.ts` 注册了 explicit hyperlink、multiline、file、URL、word/search 等 provider；URL provider 当前只对 `readWrappedLineContext(...)` 返回的单个上下文运行 `linkify-it`。
+- `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 注册了 explicit hyperlink、multiline、file、URL、word/search 等 provider；URL provider 当前只对 `readWrappedLineContext(...)` 返回的单个上下文运行 `linkify-it`。
 - `readWrappedLineContext(...)` 只沿着 `terminal.buffer.active.getLine(...).isWrapped` 向前后扩展上下文；TUI 主动输出的换行不会进入同一上下文。
 - 现有 `collectMultilineFileLinkCandidates(...)` 只覆盖“上一行 path + 当前行 line:col”和 git diff hunk header，不覆盖被缩进拆断的 URL 或 path 片段。
 - 现有 `collectStyledFileLinks(...)` 只能在当前 `readWrappedLineContext(...)` 覆盖的行内工作；它不会跨非 `isWrapped` 的硬换行续行重组文本。其底层 `readXtermRangesByAttr(...)` 也没有把 `IBufferCell.getFgColorMode()` / `getFgColor()` 纳入样式签名，因此单纯“蓝色但不加粗/不下划线”的片段当前不会被当成 styled segment。
@@ -85,7 +85,7 @@ updated_at: 2026-06-14
 
 ### 方案四：URL + 文件路径统一重组
 
-在方案二或方案三基础上，继续支持没有颜色或样式锚点的相对路径、绝对路径和带行列号路径硬换行重组。例如把 `src/webview/very/long/` 与下一行缩进后的 `file.ts:10:2` 拼成同一个 file link。
+在方案二或方案三基础上，继续支持没有颜色或样式锚点的相对路径、绝对路径和带行列号路径硬换行重组。例如把 `extensions/vscode/dev-session-canvas/src/webview/very/long/` 与下一行缩进后的 `file.ts:10:2` 拼成同一个 file link。
 
 这会显著增加误判风险，因为路径片段没有 URL scheme 作为强锚点，且普通缩进代码、Markdown 列表、日志字段和中文说明中都可能出现类似 `/`、`.`、`:` 的文本。Host 侧文件存在性验证可以降低打开错误目标的概率，但不能避免 hover / underline 噪音和解析请求增多。
 
@@ -99,11 +99,11 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 方案一无需实现，只有文档说明和已知限制记录。
 
-方案二预计是小到中等工作量。核心改动集中在 `src/webview/executionTerminalNativeInteractions.ts`：新增 hard-wrap URL candidate collector、片段 range 到完整 URL 的映射、provider 顺序和 cache key；补充 `tests/playwright/webview-harness.spec.mjs` 中 agent / terminal 双执行节点回归。若只覆盖明确 scheme URL，预计约 2 到 4 个开发日；若需要先录真实 Codex / Claude 输出作为 fixture，再补不同宽度、主题和缩放下的交互验证，预计约 4 到 6 个开发日。
+方案二预计是小到中等工作量。核心改动集中在 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`：新增 hard-wrap URL candidate collector、片段 range 到完整 URL 的映射、provider 顺序和 cache key；补充 `tests/playwright/webview-harness.spec.mjs` 中 agent / terminal 双执行节点回归。若只覆盖明确 scheme URL，预计约 2 到 4 个开发日；若需要先录真实 Codex / Claude 输出作为 fixture，再补不同宽度、主题和缩放下的交互验证，预计约 4 到 6 个开发日。
 
-方案三预计是中等工作量。需要在 `src/webview/executionTerminalNativeInteractions.ts` 中改造 styled range 读取，把前景色、背景色和文本样式纳入签名；新增跨硬换行的 styled fragments collector；为一个 logical file / URL link 映射多个 `ILink.range`；并补 agent / terminal 双节点 Playwright 回归。若只覆盖同色 ANSI 片段 + Host 可验证文件路径，预计约 3 到 5 个开发日；若要覆盖多种 TUI 主题色、真实 Codex / Claude fixture、snapshot redraw 和缩放 hover，预计约 5 到 7 个开发日。
+方案三预计是中等工作量。需要在 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 中改造 styled range 读取，把前景色、背景色和文本样式纳入签名；新增跨硬换行的 styled fragments collector；为一个 logical file / URL link 映射多个 `ILink.range`；并补 agent / terminal 双节点 Playwright 回归。若只覆盖同色 ANSI 片段 + Host 可验证文件路径，预计约 3 到 5 个开发日；若要覆盖多种 TUI 主题色、真实 Codex / Claude fixture、snapshot redraw 和缩放 hover，预计约 5 到 7 个开发日。
 
-方案四预计是中等到偏大工作量。除 Webview detector 外，还要调整 `src/common/executionTerminalLinks.ts` 的 candidate model，确保一个 logical link 可以由多个可见片段组成，并让 `src/panel/executionTerminalNativeHelpers.ts` 正确消费重组后的 path、line、column 与 `bufferStartLine`。预计约 1 到 2 周，并且需要更多 false-positive 回归样例。
+方案四预计是中等到偏大工作量。除 Webview detector 外，还要调整 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 的 candidate model，确保一个 logical link 可以由多个可见片段组成，并让 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 正确消费重组后的 path、line、column 与 `bufferStartLine`。预计约 1 到 2 周，并且需要更多 false-positive 回归样例。
 
 方案五预计是大工作量。它会触碰执行节点 terminal interaction 的核心边界，和既有缩放坐标补偿、选择、hover、scrollback redraw、snapshot restore 都有耦合。保守估计 2 到 4 周，且需要新的端到端验证矩阵；除非后续还要支持更多富交互 overlay，否则不建议仅为 TUI hard-wrap URL 走这条路。
 
@@ -122,13 +122,13 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 ## 正式方案
 
-当前第一阶段正式选择方案二和方案三的受控组合，而不是直接支持所有跨行 URL / path。主要实现落点是 `src/webview/executionTerminalNativeInteractions.ts`，继续复用现有 `xterm.registerLinkProvider`、`ExecutionTerminalOpenLink` 与 Host 侧 `resolveExecutionTerminalFileLinkCandidates(...)` / `openExecutionTerminalLink(...)` 边界。
+当前第一阶段正式选择方案二和方案三的受控组合，而不是直接支持所有跨行 URL / path。主要实现落点是 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`，继续复用现有 `xterm.registerLinkProvider`、`ExecutionTerminalOpenLink` 与 Host 侧 `resolveExecutionTerminalFileLinkCandidates(...)` / `openExecutionTerminalLink(...)` 边界。
 
 对普通长 URL，新增 hard-wrap URL detector。只有首片段包含明确 URL scheme，且续行去掉固定缩进后仍是无空格 URL 安全集合字符时，才把多个片段拼成一个完整 URL。每个可见片段各自注册为 `ILink`，但它们共享同一个完整 URL target。
 
 对文件路径，新增 style-assisted hard-wrap detector。它读取 `xterm.js` buffer cell 的前景色、背景色与文本属性，计算非默认 style signature；只有相邻硬换行上的片段拥有同一非默认 style signature，且整组片段同时满足明确 continuation 链结构时，才继续拼接并交给 path parser 与 Host 验证。文件 hard-wrap 的首片段必须贴到当前可见行尾；每个续行只能在允许缩进后立刻开始同样式片段。续行片段之后可以出现不参与链接的默认样式说明文字；但若后续同样式片段不是从缩进后的行首开始，或首片段后仍有说明文字，则不属于 hard-wrap continuation。满足这些结构约束、拼接后能被 path parser 识别，且 Host 验证目标存在时，才暴露高置信 file link。实现不能按“蓝色”判断，只能按 buffer 中稳定的 ANSI style signature 判断。Host 验证优先按执行节点当前 cwd 解析；若 hard-wrap candidate 是工作区相对路径且当前 cwd 无法命中，允许做一次 workspace exact fallback，但不启用 partial basename 猜测。由于 hard-wrap 文件 candidate 会跨 Webview -> Host 协议传输，`hardwrap` source 必须同时纳入 candidate resolve 与 open link 的协议 validator，否则真实 VSCode Host 会拒绝消息并把交互降级成不可点击。
 
-交互呈现上，hard-wrap link 继续保持“每个可见片段一个 `ILink`”的点击模型，但 hover 下划线由 `src/webview/executionTerminalNativeInteractions.ts` 的 grouped hover overlay 统一绘制。这样 hover 任一片段时，所有同组片段都会显示下划线，同时不把 TUI 缩进空白纳入 clickable range。overlay 只服务 hard-wrap 高置信链接；普通 link 继续使用 `xterm.js` 原生 hover underline。
+交互呈现上，hard-wrap link 继续保持“每个可见片段一个 `ILink`”的点击模型，但 hover 下划线由 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 的 grouped hover overlay 统一绘制。这样 hover 任一片段时，所有同组片段都会显示下划线，同时不把 TUI 缩进空白纳入 clickable range。overlay 只服务 hard-wrap 高置信链接；普通 link 继续使用 `xterm.js` 原生 hover underline。
 
 核心规则如下：
 
@@ -150,9 +150,9 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 
 2026-06-10 追加 fallback 降载规则：真实宿主诊断显示多个运行中 Agent 同时输出时，低置信 terminal file link fallback 会把 `• Working   6`、`• Ran gh --version`、`… +24 lines (ctrl + t to view transcript)`、`│ … +2 lines`、`Implement {feature}` 等普通 TUI 文本送到 Host 侧做 workspace fallback resolve，形成慢请求堆积。因此本阶段不引入强负缓存，而是先落地 A + B-lite + C 低风险部分：
 
-1. Webview / shared detector 的 `src/common/executionTerminalLinks.ts` 只保留路径形态足够明确的 fallback candidate：显式路径前缀、包含路径分隔符，或不含空白 / wrapper 文本的文件扩展名；明显 TUI 状态行、transcript 折叠提示、box drawing gutter、模板占位文本和中文 prose 前缀相对路径不再进入 fallback。
-2. Host 侧 `src/panel/executionTerminalNativeHelpers.ts` 对 `source: fallback` 再做同口径防线：明显低置信候选直接过滤；只有带 `./` / `../` 或路径分隔符的 fallback 才允许 workspace exact fallback；裸 basename 只尝试当前 cwd direct stat，不再触发 `workspace.findFiles('**/basename')`。
-3. Host 编排入口 `src/panel/CanvasPanelManager.ts` 对同一执行节点的 file-link resolve 做串行化，避免同一节点在 hover / link provider 重入时并发堆积多个 `stat` / `findFiles` resolve；诊断样本新增 `retainedCandidateCount`、`filteredCandidateCount`、`retainedSourceCounts`、`filteredSourceCounts` 与 `skippedReasonCounts`，用于确认 hotfix 后过滤量和串行化效果。
+1. Webview / shared detector 的 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 只保留路径形态足够明确的 fallback candidate：显式路径前缀、包含路径分隔符，或不含空白 / wrapper 文本的文件扩展名；明显 TUI 状态行、transcript 折叠提示、box drawing gutter、模板占位文本和中文 prose 前缀相对路径不再进入 fallback。
+2. Host 侧 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 对 `source: fallback` 再做同口径防线：明显低置信候选直接过滤；只有带 `./` / `../` 或路径分隔符的 fallback 才允许 workspace exact fallback；裸 basename 只尝试当前 cwd direct stat，不再触发 `workspace.findFiles('**/basename')`。
+3. Host 编排入口 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 对同一执行节点的 file-link resolve 做串行化，避免同一节点在 hover / link provider 重入时并发堆积多个 `stat` / `findFiles` resolve；诊断样本新增 `retainedCandidateCount`、`filteredCandidateCount`、`retainedSourceCounts`、`filteredSourceCounts` 与 `skippedReasonCounts`，用于确认 hotfix 后过滤量和串行化效果。
 4. 强负缓存仍暂缓：它可能让“刚生成的文件随后变成可点击”的路径短时间 stale，本次真实证据优先指向候选过宽与 Host fallback 过重，先通过候选准入和 host backstop 收口。
 
 同日追加 styled / detected 降载规则：二次宿主诊断显示新版本仍把 `›`、`· 1`、`tab to queue message`、`Improve documentation in @filename`、`2m 45`、`2026-06-10 04:05`、`time.sleep(max(0, 30` 等 ANSI styled TUI 片段以 `source: detected` 发送到 Host，且 400 条采样中 `resolvedCount = 0`。因此普通 styled span 不再直接升级为 `detected` 文件候选；Webview 必须先用共享 path plausibility gate 确认片段是明确文件形态，才以新的 `source: styled` 发送。保留的 styled 文件形态包括带路径分隔符的相对 / 绝对路径、带可信文件扩展名的 basename，以及 `foo.ts:10` / `File "foo.ts", line 3` 这类明确行号位置；明显 prompt glyph、bullet、TUI 状态文案、时间/日期、包名、纯数字比例和代码表达式不进入 Host resolve。Host 侧对 `source: detected` 与 `source: styled` 也执行同一准入防线，避免旧 Webview 或其他入口绕过 Webview 过滤；协议 validator 增加 `styled` source，以便后续诊断能区分来自 styled span 的候选，而不是全部混入 `detected`。
@@ -176,7 +176,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 7. `npm run typecheck` 与 targeted `npm run test:webview -- -g "link activation"` 通过；最终合并前再跑完整 `npm run test:webview`。
 8. 手动验证：在真实 Codex / Claude TUI 输出中确认长链接点击目标正确，并记录具体终端宽度、节点宽度、ANSI 样式和样例输出形态。
 9. fallback 性能回归：普通 TUI 状态行、transcript 折叠提示和模板占位文本不应生成 fallback file link candidate；Host 侧低置信 fallback 不应触发 workspace fallback 搜索；可接受的裸 basename fallback 只允许 cwd direct stat。
-10. styled / detected 性能回归：真实诊断中出现的 prompt glyph、bullet、状态文案、时间/日期、包名、纯数字比例、代码表达式、CJK prose 斜杠短语、domain path fragment、package name 和泛化目录短语不应进入 Host file resolve；保留 `event.ts`、`docs/readme.md`、`src/foo.ts:10`、`packages/app/src/index.ts`、`src/panel`、`file:///workspace/docs/readme.md` 与 `"foo", line 10` 等明确文件形态。
+10. styled / detected 性能回归：真实诊断中出现的 prompt glyph、bullet、状态文案、时间/日期、包名、纯数字比例、代码表达式、CJK prose 斜杠短语、domain path fragment、package name 和泛化目录短语不应进入 Host file resolve；保留 `event.ts`、`docs/readme.md`、`src/foo.ts:10`、`packages/app/src/index.ts`、`extensions/vscode/dev-session-canvas/src/panel`、`file:///workspace/docs/readme.md` 与 `"foo", line 10` 等明确文件形态。
 11. 交互优先回归：hover / link provider 枚举不应触发 fallback Host resolve；点击 pending file link 后才发送 `priority: interactive` resolve 并打开文件；高置信负缓存的 live-output 刷新应发送 `priority: background` 且不阻塞点击；重复 candidate / 重复路径应被 Webview cache 或 Host cache / in-flight dedupe 复用。
 12. activation fallback 回归：点击 pending file link 后若 Host resolve 超时或 reject，应打开 search fallback，不应成为 no-op；extensionless interactive fallback path 应在 hover 时不 resolve、点击时以 `priority: interactive` 发送候选，background / strict 路径仍不接收同样宽的候选。
 
@@ -217,7 +217,7 @@ Webview 不再完全依赖 `xterm.registerLinkProvider` 的连续 range 表达�
 - `npm run test:execution-terminal-links`
 - `npm run test:execution-terminal-native-helpers`
 - `npm run test:protocol-webview-messages`
-- `test-execution-terminal-links` 覆盖真实诊断中的 styled / detected 误判：`›`、`· 1`、`tab to queue message`、`Improve documentation in @filename`、`2m 45`、`2026-06-10 04:05`、`time.sleep(max(0, 30`、`20/60`、`@openai/codex`、`/model`、`旧源码里某个未发布/未同步版本`、`openai.com/policies`、`en/articles/...`、`Plus/Pro`、`build/plan`、`directory/project/`、`package/@earendil-works/pi-coding-agent` 和 `Dashboard/配置页/状态按钮很多不会按预期工作` 不再通过 styled / detected path gate；`event.ts`、`sql.ts`、`docs/readme.md`、`src/foo.ts:10`、`packages/opencode/src/cli/cmd/tui.ts`、`src/panel`、`file:///workspace/docs/readme.md`、`File "foo.ts", line 3` 仍保留。
+- `test-execution-terminal-links` 覆盖真实诊断中的 styled / detected 误判：`›`、`· 1`、`tab to queue message`、`Improve documentation in @filename`、`2m 45`、`2026-06-10 04:05`、`time.sleep(max(0, 30`、`20/60`、`@openai/codex`、`/model`、`旧源码里某个未发布/未同步版本`、`openai.com/policies`、`en/articles/...`、`Plus/Pro`、`build/plan`、`directory/project/`、`package/@earendil-works/pi-coding-agent` 和 `Dashboard/配置页/状态按钮很多不会按预期工作` 不再通过 styled / detected path gate；`event.ts`、`sql.ts`、`docs/readme.md`、`src/foo.ts:10`、`packages/opencode/src/cli/cmd/tui.ts`、`extensions/vscode/dev-session-canvas/src/panel`、`file:///workspace/docs/readme.md`、`File "foo.ts", line 3` 仍保留。
 - `test-execution-terminal-native-helpers` 覆盖 Host backstop：`source: detected` / `source: styled` / `source: hardwrap` 的低置信 TUI 文本、URL-like 片段、package 名和泛化目录短语会被过滤，明确路径、代码目录或 basename 才保留；`test-protocol-webview-messages` 覆盖 `styled` source 的 resolve / open 协议解析。
 - 2026-06-11 补充验证通过：`npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run build`、`npm run test:protocol-webview-messages`、定向 `npm run test:webview -- --grep "styled hard-wrapped non-links are not guessed as one link|unstyled hard-wrapped file fragments are not guessed as one link|treats CJK punctuation as a file-link boundary|keeps file-like words clickable across CJK punctuation boundaries|keeps Chinese file paths eligible for exact file links"` 与 `git diff --check`。
 - 同日补充交互优先回归：`test-protocol-webview-messages` 覆盖 `priority: background` / 非法 priority；`test-execution-terminal-native-helpers` 覆盖单次 candidate group 内重复 `stat` 只执行一次；Playwright 覆盖 `does not eagerly resolve fallback-only text during hover or live output`、`resolves fallback file links only on activation`、`keeps unresolved file link fallback stable while live output continues`、`link activation posts parsed file and URL targets`、`styled hard-wrapped file fragments resolve as one link`、`reuses file link resolution while live output continues` 与 `refreshes negative file link cache while live output continues`。

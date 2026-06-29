@@ -2,7 +2,7 @@
 
 ## 执行计划元信息
 
-> **⚠️ 重要更新 (2026-05-03)**：本计划需要与 [Monorepo 重构计划](./standard-monorepo-and-doc-knowledge-base.md) 协调。详见 [跨计划协调文档](./cross-plan-coordination.md)。
+> **⚠️ 重要更新 (2026-05-03)**：本计划需要与 [Monorepo 重构计划](../completed/standard-monorepo-and-doc-knowledge-base.md) 协调。详见 [跨计划协调文档](./cross-plan-coordination.md)。
 > 
 > **🔴 优先级调整 (2026-05-03)**：本计划延后到第二阶段，等待 notifier 开发完成后再决策是否启动。
 
@@ -13,7 +13,7 @@
 - **最后更新**: 2026-05-03（优先级调整）
 - **负责人**: 待定
 - **前置依赖**: 
-  - **硬依赖**: [Monorepo 重构计划](./standard-monorepo-and-doc-knowledge-base.md) 第一阶段完成（VSCode 生态）
+  - **硬依赖**: [Monorepo 重构计划](../completed/standard-monorepo-and-doc-knowledge-base.md) 第一阶段完成（VSCode 生态）
   - **硬依赖**: Notifier 开发完成并验证价值
   - **硬依赖**: 跨平台共享层落位（Monorepo 里程碑 5）
   - **决策依赖**: 团队评估是否有资源和业务需求启动 IntelliJ 开发
@@ -148,13 +148,13 @@ IntelliJ Plugin 架构
 
 **可直接复用（60-70%）**：
 
-1. **Webview 前端** (`src/webview/`)
+1. **Webview 前端** (`extensions/vscode/dev-session-canvas/src/webview/`)
    - React 组件
    - React Flow 画布
    - xterm.js 终端前端
    - 样式与交互逻辑
 
-2. **协议定义** (`src/common/protocol.ts`)
+2. **协议定义** (`extensions/vscode/dev-session-canvas/src/common/protocol.ts`)
    - 消息类型
    - 节点模型
    - 状态结构
@@ -682,8 +682,8 @@ packages/
 ### 内部文档
 
 - [ARCHITECTURE.md](../../ARCHITECTURE.md) - VSCode 扩展架构
-- [protocol.ts](../../src/common/protocol.ts) - 消息协议定义
-- [executionSessionBridge.ts](../../src/panel/executionSessionBridge.ts) - 执行会话管理
+- [protocol.ts](../../extensions/vscode/dev-session-canvas/src/common/protocol.ts) - 消息协议定义
+- [executionSessionBridge.ts](../../extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts) - 执行会话管理
 
 ## 附录
 

@@ -8,7 +8,7 @@ import {
   isAttentionNotificationDeliveryResult,
   type AttentionNotificationDeliveryResult,
   type AttentionNotificationRequest
-} from '../../packages/attention-protocol/src/index';
+} from '../../../../../packages/attention-protocol/src/index';
 
 import {
   AGENT_WAITING_INPUT_POLL_INTERVAL_MS,

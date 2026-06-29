@@ -22,7 +22,7 @@ function extractCssRuleBody(source, selector) {
 }
 
 const designSystemSource = await readText('docs/UI.md');
-const statusPresentationSource = await readText('src/common/canvasNodeStatusPresentation.ts');
+const statusPresentationSource = await readText('extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts');
 assert.match(
   designSystemSource,
   /Webview 自绘 sidebar 列表必须按 VSCode list 状态 token 成对绑定颜色/u,
@@ -31,15 +31,15 @@ assert.match(
 
 const sidebarListViews = [
   {
-    path: 'src/sidebar/CanvasSidebarTemplateView.ts',
+    path: 'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts',
     rowClass: 'template-row'
   },
   {
-    path: 'src/sidebar/CanvasSidebarNodeListView.ts',
+    path: 'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts',
     rowClass: 'node-row'
   },
   {
-    path: 'src/sidebar/CanvasSidebarSessionHistoryView.ts',
+    path: 'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarSessionHistoryView.ts',
     rowClass: 'session-row'
   }
 ];
@@ -74,7 +74,7 @@ for (const view of sidebarListViews) {
   );
 }
 
-const nodeListSource = await readText('src/sidebar/CanvasSidebarNodeListView.ts');
+const nodeListSource = await readText('extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts');
 const nodeRowStyles = extractCssRuleBody(nodeListSource, '.node-row');
 const sidebarStatusPillStyles = extractCssRuleBody(nodeListSource, '.status-pill');
 const sidebarStatusToneFunction = statusPresentationSource.slice(
