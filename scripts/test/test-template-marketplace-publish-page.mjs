@@ -9,7 +9,15 @@ import { unzipSync, zipSync } from 'fflate';
 
 const projectRoot = process.cwd();
 const appRoot = path.join(projectRoot, 'apps', 'template-marketplace');
-const templateFile = path.join(projectRoot, 'resources', 'templates', '01-getting-started.json');
+const templateFile = path.join(
+  projectRoot,
+  'extensions',
+  'vscode',
+  'dev-session-canvas',
+  'resources',
+  'templates',
+  '01-getting-started.json'
+);
 const runtimeTmpDir = path.join(projectRoot, '.debug', 'template-marketplace-e2e', 'tmp');
 process.env.TMPDIR = runtimeTmpDir;
 process.env.TMP = runtimeTmpDir;
