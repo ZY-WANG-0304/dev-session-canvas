@@ -73,6 +73,14 @@ for (const secretName of [
 }
 assert.match(workerSecretsStep.run, /rm -f deployment-artifacts\/worker-secrets\.json/u, 'workflow must not upload Worker secret names as artifacts');
 
+const playwrightStep = step('Install Playwright browsers');
+assert.equal(playwrightStep.id, 'install_playwright');
+assert.equal(playwrightStep.run, 'npx playwright install --with-deps chromium');
+assert.ok(
+  job.steps.indexOf(playwrightStep) < job.steps.indexOf(step('Run marketplace test suite')),
+  'workflow must install Playwright browsers before running marketplace E2E tests'
+);
+
 assert.equal(step('Run marketplace test suite').run, 'npm run test:marketplace');
 assert.equal(step('Run production config check').run, 'npm run test:marketplace-production-config');
 assert.equal(step('Run production D1 migration').run, 'npm run -w @dev-session-canvas/template-marketplace db:migrate:production');
