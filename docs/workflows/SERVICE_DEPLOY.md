@@ -70,6 +70,22 @@ git tag deploy/template-marketplace/prod/YYYY-MM-DD.N <sha>
 git push origin deploy/template-marketplace/prod/YYYY-MM-DD.N
 ```
 
+`.github/workflows/template-marketplace-production-deploy.yml` 会监听 `deploy/template-marketplace/prod/*` tag，也支持用 `workflow_dispatch` 输入同格式 `deploy_tag` 手动重跑同一 tag。workflow 会拒绝不属于 `origin/main` 历史的 tag，并把 deployment manifest 与 smoke 结果上传为 Actions artifact。
+
+workflow 运行前，GitHub Actions 侧必须具备：
+
+- `CLOUDFLARE_API_TOKEN`：需要能部署 Worker、读取/执行 D1、读取 R2 绑定，并有 `dscanvas.dev` zone 的 Worker Routes 编辑权限。
+- `CLOUDFLARE_ACCOUNT_ID`：可放 repository secret 或 variable。
+- 可选 `MARKETPLACE_PRODUCTION_BASE_URL` repository variable；默认是 `https://dscanvas.dev`。
+
+Cloudflare Worker production 环境必须先配置 runtime secrets，workflow 会在部署前检查：
+
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `MARKETPLACE_SESSION_SECRET`
+- `MARKETPLACE_TOKEN_SECRET`
+- `MARKETPLACE_ADMIN_GITHUB_IDS`
+
 生产部署 workflow 或人工 runbook 应执行：
 
 1. checkout deploy tag 对应 commit。
