@@ -49,6 +49,7 @@ const COMMAND_IDS = {
   editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
   testGetSidebarSummaryItems: 'devSessionCanvas.__test.getSidebarSummaryItems',
+  testGetSidebarTemplateItems: 'devSessionCanvas.__test.getSidebarTemplateItems',
   testGetSidebarNodeListItems: 'devSessionCanvas.__test.getSidebarNodeListItems',
   testGetSidebarSessionHistoryItems: 'devSessionCanvas.__test.getSidebarSessionHistoryItems',
   testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',

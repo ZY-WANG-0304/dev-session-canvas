@@ -9,19 +9,51 @@ import { COMMAND_IDS } from '../common/extensionIdentity';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
 import type { CanvasTemplateCatalog } from '../panel/CanvasTemplateStore';
+import type {
+  TemplateMarketplaceClient,
+  TemplateMarketplaceInstalledTemplateUpdateSummary
+} from '../panel/TemplateMarketplaceClient';
 
 const SIDEBAR_BUNDLED_CODICON_PATH_SEGMENTS = ['dist', 'sidebar-codicon.css'] as const;
+
+interface CanvasSidebarTemplateMarketplaceOptions {
+  client: TemplateMarketplaceClient;
+  openTemplateDetail: (
+    templateIdOrSlug: string,
+    versionId?: string,
+    sourceUrl?: URL,
+    options?: { refreshList?: boolean }
+  ) => void;
+}
+
+export interface CanvasSidebarMarketplaceTemplateSnapshot {
+  marketTemplateId: string;
+  marketTemplateSlug?: string;
+  marketVersionId: string;
+  installedVersionNumber: number;
+  latestVersionId?: string;
+  latestVersionNumber?: number;
+  updateAvailable: boolean;
+  updateCheckError?: string;
+  sourceUrl: string;
+}
 
 export interface CanvasSidebarTemplateItemSnapshot {
   id: string;
   templateId: string;
   name: string;
   category: CanvasTemplate['category'];
+  sourceKind: 'builtin' | 'user' | 'market';
   locationLabel: string;
   statsLabel: string;
   detailTooltip: string;
   isDefault: boolean;
   canDelete: boolean;
+  canPublish: boolean;
+  canManageMarketplace: boolean;
+  canUpdateMarketplace: boolean;
+  canReportMarketplace: boolean;
+  marketplace?: CanvasSidebarMarketplaceTemplateSnapshot;
 }
 
 interface CanvasSidebarTemplateStateSnapshot {
@@ -60,7 +92,31 @@ type SidebarTemplateInboundMessage =
       };
     }
   | {
+      type: 'sidebarTemplates/publishTemplate';
+      payload: {
+        templateId: string;
+      };
+    }
+  | {
       type: 'sidebarTemplates/deleteTemplate';
+      payload: {
+        templateId: string;
+      };
+    }
+  | {
+      type: 'sidebarTemplates/openMarketplaceTemplate';
+      payload: {
+        templateId: string;
+      };
+    }
+  | {
+      type: 'sidebarTemplates/updateMarketplaceTemplate';
+      payload: {
+        templateId: string;
+      };
+    }
+  | {
+      type: 'sidebarTemplates/reportMarketplaceTemplate';
       payload: {
         templateId: string;
       };
@@ -82,7 +138,8 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
 
   public constructor(
     private readonly panelManager: CanvasPanelManager,
-    private readonly extensionUri: vscode.Uri
+    private readonly extensionUri: vscode.Uri,
+    private readonly marketplace?: CanvasSidebarTemplateMarketplaceOptions
   ) {
     this.templateSubscription = this.panelManager.onDidChangeTemplateCatalog(() => {
       void this.refresh();
@@ -124,8 +181,9 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
     try {
       const catalog = await this.panelManager.getCanvasTemplateCatalog();
       const defaultTemplateId = this.panelManager.getDefaultCanvasTemplateId();
+      const marketplaceUpdateStatuses = await this.loadMarketplaceUpdateStatuses(catalog);
       this.state = {
-        items: getCanvasSidebarTemplateItems(catalog, defaultTemplateId),
+        items: getCanvasSidebarTemplateItems(catalog, defaultTemplateId, marketplaceUpdateStatuses),
         issueMessages: catalog.issues.map((issue) => `${issue.fileName}：${issue.message}`),
         isLoading: false
       };
@@ -175,53 +233,207 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
       case 'sidebarTemplates/exportTemplate':
         await vscode.commands.executeCommand(COMMAND_IDS.exportTemplate, parsed.payload.templateId);
         return;
+      case 'sidebarTemplates/publishTemplate':
+        await vscode.commands.executeCommand(COMMAND_IDS.publishTemplateToMarketplace, parsed.payload.templateId);
+        return;
       case 'sidebarTemplates/deleteTemplate':
         await vscode.commands.executeCommand(COMMAND_IDS.deleteTemplate, parsed.payload.templateId);
         return;
+      case 'sidebarTemplates/openMarketplaceTemplate':
+        this.openMarketplaceTemplate(parsed.payload.templateId);
+        return;
+      case 'sidebarTemplates/updateMarketplaceTemplate':
+        await this.updateMarketplaceTemplate(parsed.payload.templateId);
+        return;
+      case 'sidebarTemplates/reportMarketplaceTemplate':
+        await this.openMarketplaceReport(parsed.payload.templateId);
+        return;
+    }
+  }
+
+  private async loadMarketplaceUpdateStatuses(
+    catalog: CanvasTemplateCatalog
+  ): Promise<ReadonlyMap<string, TemplateMarketplaceInstalledTemplateUpdateSummary>> {
+    if (!this.marketplace || !catalog.templates.some((storedTemplate) => storedTemplate.marketplace)) {
+      return new Map();
+    }
+
+    try {
+      const statuses = await this.marketplace.client.listInstalledTemplateUpdateStatuses();
+      return new Map(statuses.map((status) => [status.localTemplateId, status]));
+    } catch {
+      return new Map();
+    }
+  }
+
+  private findMarketplaceSnapshot(templateId: string): CanvasSidebarMarketplaceTemplateSnapshot | undefined {
+    return this.state.items.find((item) => item.templateId === templateId)?.marketplace;
+  }
+
+  private openMarketplaceTemplate(templateId: string): void {
+    const marketplace = this.findMarketplaceSnapshot(templateId);
+    if (!marketplace || !this.marketplace) {
+      void vscode.window.showErrorMessage('找不到该市场模板的详情入口。');
+      return;
+    }
+
+    try {
+      this.marketplace.openTemplateDetail(
+        marketplace.marketTemplateSlug ?? marketplace.marketTemplateId,
+        marketplace.marketVersionId,
+        new URL(marketplace.sourceUrl),
+        { refreshList: true }
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      void vscode.window.showErrorMessage(`打开市场模板详情失败：${message}`);
+    }
+  }
+
+  private async updateMarketplaceTemplate(templateId: string): Promise<void> {
+    const marketplace = this.findMarketplaceSnapshot(templateId);
+    if (!marketplace || !this.marketplace) {
+      await vscode.window.showErrorMessage('找不到要更新的市场模板。');
+      return;
+    }
+
+    try {
+      const result = await this.marketplace.client.updateInstalledTemplateToLatest(templateId);
+      await this.refresh();
+      await vscode.window.showInformationMessage(
+        `已更新市场模板「${result.savedTemplate.template.name}」到 v${result.version.versionNumber}。`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await vscode.window.showErrorMessage(`更新市场模板失败：${message}`);
+    }
+  }
+
+  private async openMarketplaceReport(templateId: string): Promise<void> {
+    const marketplace = this.findMarketplaceSnapshot(templateId);
+    if (!marketplace) {
+      await vscode.window.showErrorMessage('找不到该市场模板的举报入口。');
+      return;
+    }
+
+    try {
+      await vscode.env.openExternal(vscode.Uri.parse(buildMarketplaceReportUrl(marketplace.sourceUrl)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await vscode.window.showErrorMessage(`打开举报页面失败：${message}`);
     }
   }
 }
 
 export function getCanvasSidebarTemplateItems(
   catalog: CanvasTemplateCatalog,
-  defaultTemplateId: string
+  defaultTemplateId: string,
+  marketplaceUpdateStatuses: ReadonlyMap<string, TemplateMarketplaceInstalledTemplateUpdateSummary> = new Map()
 ): CanvasSidebarTemplateItemSnapshot[] {
-  return catalog.templates.map((storedTemplate) => ({
-    id: `template/${storedTemplate.template.id}`,
-    templateId: storedTemplate.template.id,
-    name: storedTemplate.template.name,
-    category: storedTemplate.template.category,
-    locationLabel: resolveCanvasSidebarTemplateLocationLabel(storedTemplate),
-    statsLabel: formatCanvasTemplateStats(storedTemplate.template),
-    detailTooltip: buildCanvasTemplateTooltip(storedTemplate),
-    isDefault: storedTemplate.template.id === defaultTemplateId,
-    canDelete: storedTemplate.template.category === 'user'
-  }));
+  return catalog.templates.map((storedTemplate) => {
+    const marketplace = buildCanvasSidebarMarketplaceTemplateSnapshot(
+      storedTemplate,
+      marketplaceUpdateStatuses.get(storedTemplate.template.id)
+    );
+    return {
+      id: `template/${storedTemplate.template.id}`,
+      templateId: storedTemplate.template.id,
+      name: storedTemplate.template.name,
+      category: storedTemplate.template.category,
+      sourceKind: resolveCanvasSidebarTemplateSourceKind(storedTemplate),
+      locationLabel: resolveCanvasSidebarTemplateLocationLabel(storedTemplate),
+      statsLabel: formatCanvasTemplateStats(storedTemplate.template),
+      detailTooltip: buildCanvasTemplateTooltip(storedTemplate, marketplace),
+      isDefault: storedTemplate.template.id === defaultTemplateId,
+      canDelete: storedTemplate.template.category === 'user',
+      canPublish: storedTemplate.template.category === 'user' && !storedTemplate.marketplace,
+      canManageMarketplace: Boolean(marketplace),
+      canUpdateMarketplace: marketplace?.updateAvailable === true,
+      canReportMarketplace: Boolean(marketplace?.sourceUrl),
+      marketplace
+    };
+  });
+}
+
+function buildCanvasSidebarMarketplaceTemplateSnapshot(
+  storedTemplate: CanvasTemplateCatalog['templates'][number],
+  updateStatus: TemplateMarketplaceInstalledTemplateUpdateSummary | undefined
+): CanvasSidebarMarketplaceTemplateSnapshot | undefined {
+  const marketplace = storedTemplate.marketplace;
+  if (!marketplace) {
+    return undefined;
+  }
+
+  return {
+    marketTemplateId: marketplace.marketTemplateId,
+    marketTemplateSlug: marketplace.marketTemplateSlug,
+    marketVersionId: marketplace.marketVersionId,
+    installedVersionNumber: marketplace.installedVersionNumber,
+    latestVersionId: updateStatus?.latestVersionId,
+    latestVersionNumber: updateStatus?.latestVersionNumber,
+    updateAvailable: updateStatus?.updateAvailable === true,
+    updateCheckError: updateStatus?.updateCheckError,
+    sourceUrl: marketplace.sourceUrl
+  };
 }
 
 function resolveCanvasSidebarTemplateLocationLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
-    return '内置';
+    return resolveCanvasSidebarTemplateSourceLabel(storedTemplate);
   }
-
-  return storedTemplate.storageLocation?.scope === 'workspace' ? '工作区' : '用户';
+  return `${resolveCanvasSidebarTemplateSourceLabel(storedTemplate)} · ${resolveCanvasSidebarTemplatePositionLabel(storedTemplate)}`;
 }
 
-function buildCanvasTemplateTooltip(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
+function resolveCanvasSidebarTemplateSourceLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
+  if (storedTemplate.template.category === 'builtin') {
+    return '内置';
+  }
+  if (storedTemplate.marketplace) {
+    return '市场';
+  }
+  return '自建';
+}
+
+function resolveCanvasSidebarTemplatePositionLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
+  if (storedTemplate.template.category === 'builtin') {
+    return '';
+  }
+  return storedTemplate.storageLocation?.scope === 'workspace' ? '工作区' : '本地';
+}
+
+function resolveCanvasSidebarTemplateSourceKind(storedTemplate: CanvasTemplateCatalog['templates'][number]): 'builtin' | 'user' | 'market' {
+  if (storedTemplate.template.category === 'builtin') {
+    return 'builtin';
+  }
+  return storedTemplate.marketplace ? 'market' : 'user';
+}
+
+function buildCanvasTemplateTooltip(
+  storedTemplate: CanvasTemplateCatalog['templates'][number],
+  marketplace: CanvasSidebarMarketplaceTemplateSnapshot | undefined
+): string {
   const detailLines = buildCanvasTemplateNodeDetailLines(storedTemplate.template);
   const locationLine = buildCanvasTemplateLocationTooltipLine(storedTemplate);
-  return [...detailLines, '', locationLine].join('\n');
+  const marketLine = marketplace
+    ? `市场来源：${marketplace.marketTemplateSlug ?? marketplace.marketTemplateId} / v${marketplace.installedVersionNumber}`
+    : undefined;
+  const marketUpdateLine = marketplace?.updateAvailable && marketplace.latestVersionNumber
+    ? `市场更新：可更新到 v${marketplace.latestVersionNumber}`
+    : marketplace?.updateCheckError
+      ? `市场更新：暂时无法检查（${marketplace.updateCheckError}）`
+      : undefined;
+  return [...detailLines, '', locationLine, marketLine, marketUpdateLine].filter(Boolean).join('\n');
 }
 
 function buildCanvasTemplateLocationTooltipLine(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
     const builtinLayer = storedTemplate.relativeDirectory || '根目录';
-    return `模板所在层级：内置模板 / ${builtinLayer}`;
+    return `模板来源：内置；模板所在层级：${builtinLayer}`;
   }
 
   const locationLabel = storedTemplate.storageLocation?.label ?? '用户模板';
   const relativeDirectory = storedTemplate.relativeDirectory || '根目录';
-  return `模板所在层级：${locationLabel} / ${relativeDirectory}`;
+  return `模板来源：${resolveCanvasSidebarTemplateSourceLabel(storedTemplate)}；保存位置：${locationLabel} / ${relativeDirectory}`;
 }
 
 function parseSidebarTemplateMessage(message: unknown): SidebarTemplateInboundMessage | null {
@@ -240,7 +452,11 @@ function parseSidebarTemplateMessage(message: unknown): SidebarTemplateInboundMe
     message.type === 'sidebarTemplates/resetToTemplate' ||
     message.type === 'sidebarTemplates/setDefaultTemplate' ||
     message.type === 'sidebarTemplates/exportTemplate' ||
-    message.type === 'sidebarTemplates/deleteTemplate'
+    message.type === 'sidebarTemplates/publishTemplate' ||
+    message.type === 'sidebarTemplates/deleteTemplate' ||
+    message.type === 'sidebarTemplates/openMarketplaceTemplate' ||
+    message.type === 'sidebarTemplates/updateMarketplaceTemplate' ||
+    message.type === 'sidebarTemplates/reportMarketplaceTemplate'
   ) {
     const payload = isRecord(message.payload) ? message.payload : null;
     if (!payload || typeof payload.templateId !== 'string' || payload.templateId.trim().length === 0) {
@@ -256,6 +472,12 @@ function parseSidebarTemplateMessage(message: unknown): SidebarTemplateInboundMe
   }
 
   return null;
+}
+
+function buildMarketplaceReportUrl(sourceUrl: string): string {
+  const url = new URL(sourceUrl);
+  url.hash = 'report';
+  return url.toString();
 }
 
 function buildSidebarTemplateHtml(
@@ -457,6 +679,11 @@ function buildSidebarTemplateHtml(
         color: var(--badge-fg);
       }
 
+      .badge.is-update {
+        background: var(--warning-bg);
+        color: var(--warning-fg);
+      }
+
       .template-actions {
         display: flex;
         align-items: center;
@@ -584,7 +811,13 @@ function buildSidebarTemplateHtml(
         row.setAttribute('aria-selected', item.id === state.selectedId ? 'true' : 'false');
         row.setAttribute(
           'aria-label',
-          item.name + '，' + item.locationLabel + '模板，' + (item.isDefault ? '默认模板，' : '') + item.statsLabel
+          item.name +
+            '，' +
+            item.locationLabel +
+            '模板，' +
+            (item.isDefault ? '默认模板，' : '') +
+            (item.marketplace && item.marketplace.updateAvailable ? '有新版本，' : '') +
+            item.statsLabel
         );
         if (item.id === state.selectedId) {
           row.classList.add('is-selected');
@@ -610,7 +843,9 @@ function buildSidebarTemplateHtml(
         titleLine.className = 'template-title-line';
 
         const icon = document.createElement('span');
-        icon.className = 'template-icon codicon ' + (item.category === 'builtin' ? 'codicon-library' : 'codicon-file-code');
+        const iconName =
+          item.sourceKind === 'builtin' ? 'codicon-library' : item.sourceKind === 'market' ? 'codicon-cloud-download' : 'codicon-file-code';
+        icon.className = 'template-icon codicon ' + iconName;
         icon.setAttribute('aria-hidden', 'true');
 
         const title = document.createElement('div');
@@ -632,7 +867,14 @@ function buildSidebarTemplateHtml(
         locationBadge.className = 'badge';
         locationBadge.textContent = item.locationLabel;
 
-        meta.append(locationBadge, stats);
+        meta.append(locationBadge);
+        if (item.marketplace && item.marketplace.updateAvailable) {
+          const updateBadge = document.createElement('span');
+          updateBadge.className = 'badge is-update';
+          updateBadge.textContent = '可更新 v' + item.marketplace.latestVersionNumber;
+          meta.append(updateBadge);
+        }
+        meta.append(stats);
         main.append(meta);
 
         const actions = document.createElement('div');
@@ -689,6 +931,56 @@ function buildSidebarTemplateHtml(
           postTemplateMessage('sidebarTemplates/exportTemplate', item.templateId);
         });
 
+        const publishAction = document.createElement('button');
+        publishAction.className = 'row-action';
+        publishAction.type = 'button';
+        publishAction.title = '发布到模板市场';
+        publishAction.setAttribute('aria-label', publishAction.title);
+        publishAction.hidden = !item.canPublish;
+        publishAction.innerHTML = '<span class="codicon codicon-cloud-upload" aria-hidden="true"></span>';
+        publishAction.addEventListener('click', (event) => {
+          event.stopPropagation();
+          postTemplateMessage('sidebarTemplates/publishTemplate', item.templateId);
+        });
+
+        const manageMarketplaceAction = document.createElement('button');
+        manageMarketplaceAction.className = 'row-action';
+        manageMarketplaceAction.type = 'button';
+        manageMarketplaceAction.title = '打开市场详情 / 回滚版本';
+        manageMarketplaceAction.setAttribute('aria-label', manageMarketplaceAction.title);
+        manageMarketplaceAction.hidden = !item.canManageMarketplace;
+        manageMarketplaceAction.innerHTML = '<span class="codicon codicon-versions" aria-hidden="true"></span>';
+        manageMarketplaceAction.addEventListener('click', (event) => {
+          event.stopPropagation();
+          postTemplateMessage('sidebarTemplates/openMarketplaceTemplate', item.templateId);
+        });
+
+        const updateMarketplaceAction = document.createElement('button');
+        updateMarketplaceAction.className = 'row-action';
+        updateMarketplaceAction.type = 'button';
+        updateMarketplaceAction.title = item.marketplace && item.marketplace.latestVersionNumber
+          ? '更新到市场最新版本 v' + item.marketplace.latestVersionNumber
+          : '更新到市场最新版本';
+        updateMarketplaceAction.setAttribute('aria-label', updateMarketplaceAction.title);
+        updateMarketplaceAction.hidden = !item.canUpdateMarketplace;
+        updateMarketplaceAction.innerHTML = '<span class="codicon codicon-sync" aria-hidden="true"></span>';
+        updateMarketplaceAction.addEventListener('click', (event) => {
+          event.stopPropagation();
+          postTemplateMessage('sidebarTemplates/updateMarketplaceTemplate', item.templateId);
+        });
+
+        const reportMarketplaceAction = document.createElement('button');
+        reportMarketplaceAction.className = 'row-action';
+        reportMarketplaceAction.type = 'button';
+        reportMarketplaceAction.title = '举报市场模板';
+        reportMarketplaceAction.setAttribute('aria-label', reportMarketplaceAction.title);
+        reportMarketplaceAction.hidden = !item.canReportMarketplace;
+        reportMarketplaceAction.innerHTML = '<span class="codicon codicon-warning" aria-hidden="true"></span>';
+        reportMarketplaceAction.addEventListener('click', (event) => {
+          event.stopPropagation();
+          postTemplateMessage('sidebarTemplates/reportMarketplaceTemplate', item.templateId);
+        });
+
         const deleteAction = document.createElement('button');
         deleteAction.className = 'row-action is-danger';
         deleteAction.type = 'button';
@@ -701,7 +993,17 @@ function buildSidebarTemplateHtml(
           postTemplateMessage('sidebarTemplates/deleteTemplate', item.templateId);
         });
 
-        actions.append(defaultAction, applyAction, resetAction, exportAction, deleteAction);
+        actions.append(
+          defaultAction,
+          applyAction,
+          resetAction,
+          updateMarketplaceAction,
+          manageMarketplaceAction,
+          reportMarketplaceAction,
+          publishAction,
+          exportAction,
+          deleteAction
+        );
         titleLine.append(actions);
         row.append(main);
         return row;
@@ -722,7 +1024,7 @@ function buildSidebarTemplateHtml(
         renderStatusNote(currentState.issueMessages);
 
         if (currentState.isLoading) {
-          emptyState.textContent = '正在加载模板列表...';
+          emptyState.textContent = '正在加载...';
           emptyState.classList.add('is-visible');
           return;
         }
@@ -734,7 +1036,7 @@ function buildSidebarTemplateHtml(
         }
 
         if (items.length === 0) {
-          emptyState.textContent = '当前还没有可显示的模板。';
+          emptyState.textContent = '暂无模板。可从市场安装或手动保存画布为模板。';
           emptyState.classList.add('is-visible');
           return;
         }
