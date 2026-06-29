@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.20.0 - Template Marketplace Preview and Production Service Update
+
+相对 `0.19.0`，`0.20.0` 是新的公开 `Preview` 里程碑更新，重点引入模板市场 Preview 的浏览、安装、发布、版本更新 / 回滚、举报治理与生产服务部署链路，并收口侧栏移除 workspace root 与 paneGallery 细节修复。它保留 `0.19.0` 的 Agent 截图粘贴、多根历史 cwd 恢复、root-qualified 文件链接解析、多 Agent 输出公平渲染、安装拓扑、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
+
+### 本版本聚焦
+
+- 版本号从 `0.19.0` bump 到 `0.20.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 新增模板市场 Preview 入口：模板侧栏和命令面板可打开插件内市场面板，生产安装默认连接 `https://dscanvas.dev/templates`，调试 / 测试安装继续使用受信任的 preview 或本地调试来源
+- 模板市场支持完整模板包安装：从市场下载 `package.zip`，写入用户或 workspace 模板库的完整模板目录，并用 `.market.json` sidecar 记录来源、版本、校验和安装目标；侧栏可显示市场来源、更新徽章、更新到最新版本或回滚历史版本
+- 发布者可以从本地自建模板进入发布表单，浏览器端和插件端都支持发布新模板或发布新版本；市场服务使用 GitHub OAuth / VS Code GitHub session 换取短期市场 token，GitHub access token 不写入模板或 Webview 持久状态
+- 浏览器市场 SPA 与 Worker API 补齐搜索、排序、详情页、README / CHANGELOG、完整包下载、轻量 `template.json` 兼容导出、点赞、发布者统计、举报和管理员治理后台；生产环境不启用代码内 seed 模板，初始无数据时展示空目录
+- 模板市场生产服务部署与插件发布版本线分离：`dscanvas.dev/templates*` 与 `dscanvas.dev/api/*` 走独立 Cloudflare Worker / D1 / R2 生产资源，`/api/v1/meta` 暴露服务构建、git sha、API 版本、最低 / 推荐插件版本和 capability；生产服务部署使用 `deploy/template-marketplace/prod/YYYY-MM-DD.N` tag，不复用插件 SemVer
+- 修复侧栏移除 workspace root 的确认链路：改用原生 modal 收口风险，并避免 linked worktree 移除失败时提前清空画板状态
+- 修复 paneGallery 细节：移除 active 画布左侧滚动预留，并让通知定位在 paneGallery 缩略图场景下正确居中到目标节点
+- 打包守卫继续排除 `apps/`、`packages/`、`src/`、`docs/` 等源码目录，避免模板市场服务代码进入主扩展 VSIX；Notifier companion 随主扩展版本对齐到 `0.20.0`，不引入新的通知投递行为变更
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略、Visual Studio Marketplace deferred 完成门禁或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.19.0` 升级到 `0.20.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 模板市场浏览和安装需要当前环境可访问 `https://dscanvas.dev`；发布、点赞、举报和治理动作需要 GitHub 登录，并仍按 Preview 能力处理
+- 生产模板市场不会把代码内 seed 模板当作正式内容；若初始目录为空，这是当前受控生产状态，不代表扩展安装失败
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.20.0` 后会继续沿用该明确选择
+
+### 回退建议
+
+- 若 `0.20.0` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.20.x` 修复版本
+
 ## 0.19.0 - Agent Image Paste and Worktree Add Update
 
 相对 `0.18.2`，`0.19.0` 是新的公开 `Preview` 里程碑更新，重点补齐 Agent 截图粘贴输入、侧栏添加已有 git worktree、multi-root 会话历史恢复 cwd 归属，以及多 Agent 输出、公平渲染、root-qualified 文件链接和 paneGallery 细节修复。它保留 `0.18.2` 的窗格画廊缩略图 rail 稳定排序、分组 resize 草稿清理、Marketplace listing 二维码移除口径、GitHub Release assets + Open VSX 完成门禁、安装拓扑和 Preview 支持边界。
