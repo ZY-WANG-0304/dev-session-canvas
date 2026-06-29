@@ -20,7 +20,7 @@ const debugRoot = path.join(projectRoot, '.debug', 'vscode-vsix-smoke');
 const unpackRoot = path.join(debugRoot, 'packaged-extension');
 const notifierExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const marketplaceReadmeMarker = '<!-- dev-session-canvas-marketplace-readme -->';
-const NOTIFIER_EXTENSION_ID = 'devsessioncanvas.dev-session-canvas-notifier';
+const SMOKE_TEST_MODE_ENV_KEY = 'DEV_SESSION_CANVAS_SMOKE_TEST_MODE';
 
 async function main() {
   if (process.platform !== 'linux') {
@@ -42,7 +42,7 @@ async function main() {
 
   const packagedExtensionPath = path.join(unpackRoot, 'extension');
   await validatePackagedExtension(packagedExtensionPath);
-  const smokeHostRoot = await preparePackagedSmokeHostExtension({
+  const { smokeHostRoot, notifierRuntimeRoot } = await preparePackagedSmokeHostExtension({
     packagedExtensionPath,
     root: debugRoot
   });
@@ -53,10 +53,11 @@ async function main() {
     debugRoot: path.join(debugRoot, 'smoke-runtime'),
     runtimeDirName: 'dsc-vscode-vsix-smoke-runtime',
     workspacePath: projectRoot,
-    extensionDevelopmentPath: smokeHostRoot,
+    extensionDevelopmentPath: [smokeHostRoot, notifierRuntimeRoot],
     extensionTestsPath: packagedExtensionTestsPath,
     disableWorkspaceTrust: true,
     extensionTestsEnv: {
+      [SMOKE_TEST_MODE_ENV_KEY]: '1',
       DEV_SESSION_CANVAS_SMOKE_SCENARIO: 'trusted',
       DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
       DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath
@@ -85,7 +86,7 @@ async function preparePackagedSmokeHostExtension({ packagedExtensionPath, root }
   await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
   await fs.writeFile(path.join(smokeHostRoot, 'extension.js'), buildSmokeHostEntrySource(), 'utf8');
 
-  return smokeHostRoot;
+  return { smokeHostRoot, notifierRuntimeRoot };
 }
 
 async function stageNotifierExtension(targetRoot) {
@@ -103,61 +104,15 @@ async function stageNotifierExtension(targetRoot) {
 }
 
 function buildSmokeHostEntrySource() {
-  return `const path = require('path');
-const vscode = require('vscode');
-
-const mainExtension = require('./dist/extension.js');
-const notifierExtension = require('./notifier-extension/dist/extension.js');
-const notifierPackageJson = require('./notifier-extension/package.json');
-
-const NOTIFIER_EXTENSION_ID = ${JSON.stringify(NOTIFIER_EXTENSION_ID)};
+  return `const mainExtension = require('./dist/extension.js');
 
 exports.activate = async function activate(context) {
   await Promise.resolve(mainExtension.activate?.(context));
-  await Promise.resolve(notifierExtension.activate?.(createNotifierContext(context)));
 };
 
 exports.deactivate = async function deactivate() {
-  await Promise.resolve(notifierExtension.deactivate?.());
   await Promise.resolve(mainExtension.deactivate?.());
 };
-
-function createNotifierContext(baseContext) {
-  const extensionPath = path.join(baseContext.extensionPath, 'notifier-extension');
-  const extensionUri = vscode.Uri.file(extensionPath);
-  const packageJSON = notifierPackageJson;
-  const extension = {
-    id: NOTIFIER_EXTENSION_ID,
-    packageJSON,
-    extensionUri,
-    extensionPath,
-    isActive: true
-  };
-  const notifierContext = Object.create(baseContext);
-
-  Object.defineProperties(notifierContext, {
-    extension: {
-      value: extension,
-      enumerable: true
-    },
-    extensionUri: {
-      value: extensionUri,
-      enumerable: true
-    },
-    extensionPath: {
-      value: extensionPath,
-      enumerable: true
-    },
-    asAbsolutePath: {
-      value(relativePath) {
-        return path.join(extensionPath, relativePath);
-      },
-      enumerable: true
-    }
-  });
-
-  return notifierContext;
-}
 `;
 }
 
