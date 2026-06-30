@@ -1,0 +1,10 @@
+<idea-plugin>
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+            id="Dev Session Canvas"
+            anchor="bottom"
+            factoryClass="com.devsessioncanvas.intellij.toolwindow.CanvasToolWindowFactory"/>
+    </extensions>
+</idea-plugin>

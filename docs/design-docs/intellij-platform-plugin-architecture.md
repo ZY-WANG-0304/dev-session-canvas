@@ -1,7 +1,7 @@
 ---
 title: IntelliJ Platform 插件架构
 decision_status: 比较中
-validation_status: 未验证
+validation_status: 验证中
 domains:
   - 项目状态域
   - 画布交互域
@@ -24,7 +24,7 @@ updated_at: 2026-06-30
 
 ## 1. 背景
 
-DevSessionCanvas 当前正式运行形态是 VS Code workspace extension。主扩展位于 `extensions/vscode/dev-session-canvas/`，notifier companion 位于 `extensions/vscode/dev-session-canvas-notifier/`，当前还没有 IntelliJ 插件工程、跨 IDE 协议生成包或共享 Webview 包。现有 VS Code 版本已经验证了多会话画布、Note、Terminal、Agent、运行时持久化和 notifier companion 等核心能力，但这些能力都建立在 VS Code Webview、Extension Host、workspace storage 和命令系统之上。
+DevSessionCanvas 当前正式运行形态是 VS Code workspace extension。主扩展位于 `extensions/vscode/dev-session-canvas/`，notifier companion 位于 `extensions/vscode/dev-session-canvas-notifier/`。2026-06-30 起，仓库中已经新增 IntelliJ 插件工程 `extensions/intellij/dev-session-canvas/`，用于里程碑 1 的 Tool Window、JCEF 和 React Flow PoC；跨 IDE 协议生成包和共享 Webview 包仍不存在。现有 VS Code 版本已经验证了多会话画布、Note、Terminal、Agent、运行时持久化和 notifier companion 等核心能力，但这些能力都建立在 VS Code Webview、Extension Host、workspace storage 和命令系统之上。
 
 IntelliJ Platform 插件的目标是先把同一产品能力带到 Android Studio、IntelliJ IDEA 和 PyCharm。WebStorm、GoLand、CLion 等其他 JetBrains IDE 只作为后续兼容目标，除非完成对应 smoke 或 Plugin Verifier 证据，否则不能写成第一版已支持。JetBrains IDE 的宿主模型、UI 容器、持久化接口、测试工具和发布渠道都不同于 VS Code，因此不能把 VS Code 实现简单复制过去。本设计文档记录 IntelliJ 插件的初始架构比较和当前结论，供 `docs/exec-plans/active/intellij-platform-plugin.md` 后续实现推进时使用。
 
@@ -48,7 +48,7 @@ IntelliJ 第一阶段的目标是形成一个可运行、可验证、可继续�
 
 随后按增量顺序实现 Note 持久化、Terminal 节点、Agent 节点、Runtime Supervisor 和发布准备。Agent 节点在 Runtime Supervisor 之前落地时，只承诺当前 IDE 生命周期内的 execution 通道和 snapshot-only / 历史态表达，不承诺关闭 IDE 后真实进程继续存在。Runtime Supervisor 里程碑再决定并验证 `snapshot-only` 与 `live-runtime` 的正式边界。
 
-架构目标是保持仓库事实和文档事实一致：插件工程在 monorepo 内，但 JVM 构建链路独立；前端复用必须通过明确的 host bridge，而不是把 VS Code API 泄漏到 IntelliJ 代码；协议策略第一版接受 Kotlin 最小 DTO 子集，但必须有清晰边界和漂移防线；未验证的 IDE、build range 或运行时能力不能写成已支持。第一版兼容基线倾向从较新的 IntelliJ Platform 起步，具体 since-build / until-build 必须在 scaffold 前按官方文档和 Android Studio 对应基线复核。
+架构目标是保持仓库事实和文档事实一致：插件工程在 monorepo 内，但 JVM 构建链路独立；前端复用必须通过明确的 host bridge，而不是把 VS Code API 泄漏到 IntelliJ 代码；协议策略第一版接受 Kotlin 最小 DTO 子集，但必须有清晰边界和漂移防线；未验证的 IDE、build range 或运行时能力不能写成已支持。第一版兼容基线倾向从较新的 IntelliJ Platform 起步；里程碑 1 scaffold 已先选用 2024.3 / branch 243，Android Studio 对应的精确 build range 仍需按真实目标版本复核。
 
 ## 4. 非目标
 
@@ -68,7 +68,7 @@ IntelliJ 第一阶段的目标是形成一个可运行、可验证、可继续�
 
 方案 B 是独立仓库。它可以让 Gradle 工程更干净，但会造成文档分裂、协议漂移和共享前端同步成本上升。
 
-当前结论是选择方案 A 作为默认方向，仍需通过里程碑 1 的 scaffold 和根脚本边界验证实际维护成本。
+当前结论是选择方案 A。里程碑 1 已在 `extensions/intellij/dev-session-canvas/` 创建独立 Gradle / Kotlin 插件工程，根 npm workspace 不直接登记该 JVM 工程；React Flow PoC 的 Node 打包脚本暂时复用根 `npm ci` 后安装在 workspace root 的 `node_modules`。
 
 ### 5.2 画布前端复用
 
@@ -78,7 +78,7 @@ IntelliJ 第一阶段的目标是形成一个可运行、可验证、可继续�
 
 方案 C 是复制现有 VS Code `src/webview/` 后直接改。该方案短期看似最快，但会让两套前端快速分叉，当前不推荐。
 
-当前结论是采用方案 B 做里程碑 1，并已确认先证明 JCEF 能跑 React Flow，再决定是否抽共享包。React Flow bundle 加载 PoC 必须真实覆盖空画布、pan / zoom、创建测试 Note 和 state update 往返。PoC 通过后，里程碑 2 再决定抽共享包还是把 PoC 收敛成正式 host adapter。
+当前结论是采用方案 B 做里程碑 1，并已确认先证明 JCEF 能跑 React Flow，再决定是否抽共享包。2026-06-30 已创建 IntelliJ 专用 React Flow bundle，构建产物会被 Gradle 打进插件资源，并通过 `testWebviewBundle` 验证 host bridge、React Flow、测试 Note 消息和 CSS 标记存在。真实 JCEF 可见渲染、pan / zoom 和测试 Note 往返仍需在有图形环境的 `runIde` 中补验。PoC 通过后，里程碑 2 再决定抽共享包还是把 PoC 收敛成正式 host adapter。
 
 ### 5.3 协议同步
 
@@ -110,11 +110,13 @@ JCEF 风险是第一风险。最小 HTML 页面不能证明 React Flow 画布可
 
 ## 7. 当前结论
 
-当前设计处于比较中，尚未进入已选定状态。2026-06-30 已确认以下阶段性决策：目标 IDE 为 Android Studio、IntelliJ IDEA 和 PyCharm；第一版兼容基线倾向从较新的 IntelliJ Platform 起步；前端先证明 JCEF 能跑 React Flow，再决定是否抽共享包；协议第一版接受 Kotlin 最小 DTO 子集；Agent 第一版不承诺关闭 IDE 后继续运行；Runtime Supervisor 倾向复用现有 Node supervisor；第一版发布范围是内部/手动安装验证。
+当前设计整体仍处于比较中，因为 Note、Terminal、Agent、Runtime Supervisor、三类 IDE smoke 和完整发布准备还未落地。里程碑 1 的工程路线已经进入验证中：插件工程使用 IntelliJ Platform Gradle Plugin 2.17.0、Gradle wrapper 9.0.0、IC 2024.3、since-build 243、until-build 243.* 和 JVM 21 编译目标；插件 ID 使用 `com.devsessioncanvas.canvas`；Kotlin 包名继续使用 `com.devsessioncanvas.intellij`；插件包不分发 Kotlin stdlib，依赖目标 IDE 捆绑的 Kotlin 2.0.21 stdlib。
 
-IntelliJ 插件默认落在 `extensions/intellij/dev-session-canvas/`，使用独立 Gradle / Kotlin 构建链路。根 npm workspace 不直接承担 JVM 构建，但可以在后续增加根级脚本委托到 Gradle。
+2026-06-30 已确认以下阶段性决策：目标 IDE 为 Android Studio、IntelliJ IDEA 和 PyCharm；第一版兼容基线倾向从较新的 IntelliJ Platform 起步；前端先证明 JCEF 能跑 React Flow，再决定是否抽共享包；协议第一版接受 Kotlin 最小 DTO 子集；Agent 第一版不承诺关闭 IDE 后继续运行；Runtime Supervisor 倾向复用现有 Node supervisor；第一版发布范围是内部/手动安装验证。
 
-里程碑 1 不接受“最小 HTML 成功”作为完成标准。完成标准是 JCEF 中加载 React Flow bundle，并完成空画布渲染、pan / zoom、创建测试 Note 消息、Kotlin state update 回传和资源清理。
+IntelliJ 插件已落在 `extensions/intellij/dev-session-canvas/`，使用独立 Gradle / Kotlin 构建链路。根 npm workspace 不直接承担 JVM 构建，但 React Flow PoC 的打包脚本当前依赖根 `npm ci` 后可解析 `esbuild`、`react`、`react-dom` 和 `reactflow`。后续可以增加根级脚本委托到 Gradle，或在抽共享前端包时重新收口 Node 依赖边界。
+
+里程碑 1 不接受“最小 HTML 成功”作为完成标准。完成标准是 JCEF 中加载 React Flow bundle，并完成空画布渲染、pan / zoom、创建测试 Note 消息、Kotlin state update 回传和资源清理。当前已完成工程、bundle、构建和包结构验证；可见 JCEF UI smoke 因当前执行环境没有图形会话而待补。
 
 里程碑 2 负责把 PoC 收敛成正式 host adapter。VS Code 侧的 `acquireVsCodeApi()` 不能泄漏到 IntelliJ 前端；IntelliJ 侧也不应在业务组件里散落 JCEF 条件分支。
 
@@ -122,7 +124,7 @@ IntelliJ 插件默认落在 `extensions/intellij/dev-session-canvas/`，使用�
 
 Runtime Supervisor 不是 Agent 第一版的前置条件。Agent 可以先落地当前 IDE 生命周期内的启动、输入、输出、停止和失败语义；跨 IDE 生命周期恢复由 Runtime Supervisor 里程碑单独验证。Runtime Supervisor 的研究方向倾向复用现有 Node supervisor，但具体 JVM client、进程发现、socket 路径和打包分发方式仍需在里程碑 6 验证。
 
-仍待选定的内容包括：第一版精确 build range、JCEF fallback UI、共享 Webview 包抽离时间点、协议生成升级时机、PTY 后端依赖方式、Node supervisor 复用细节、内部手动安装包格式和后续 JetBrains Marketplace 发布 / 签名流程。
+仍待选定的内容包括：Android Studio 对应的精确 build range、真实 JCEF UI smoke 结果、共享 Webview 包抽离时间点、协议生成升级时机、PTY 后端依赖方式、Node supervisor 复用细节、完整 Plugin Verifier 矩阵、内部手动安装包格式和后续 JetBrains Marketplace 发布 / 签名流程。
 
 ## 8. 验证方法
 
@@ -132,7 +134,10 @@ Runtime Supervisor 不是 Agent 第一版的前置条件。Agent 可以先落地
 
     ./gradlew test
     ./gradlew buildPlugin
+    ./gradlew verifyPluginStructure
     ./gradlew runIde
+
+2026-06-30 已在本地通过 `./gradlew test buildPlugin verifyPluginStructure`，其中 `test` 会运行 `testWebviewBundle` 检查 React Flow PoC bundle 标记，`buildPlugin` 生成 `build/distributions/dev-session-canvas-intellij-0.1.0-internal.zip`，`verifyPluginStructure` 验证插件包结构。当前 `runIde` 因无 `DISPLAY` / `WAYLAND_DISPLAY` 失败，堆栈包含 `HeadlessException` 和 `No X11 DISPLAY variable was set`；`verifyPlugin` 已进入 IntelliJ Plugin Verifier，但因访问 JetBrains 文档页和 Marketplace 依赖解析时 `Connection reset` 失败，未作为里程碑 1 完成证据。
 
 人工或自动 smoke 记录必须包含：Tool Window 出现；JCEF 支持检查结果；React Flow bundle 无加载错误；空画布根节点存在；pan / zoom 后 viewport 变化；创建测试 Note 消息到达 Kotlin 宿主；Kotlin 回传 state update 后页面出现测试 Note；关闭 IDE 后 browser 和 bridge 被释放。
 

@@ -24,3 +24,9 @@ apps/template-marketplace/.dev.vars
 apps/template-marketplace/.dev.vars.*
 !apps/template-marketplace/.dev.vars.example
 release-artifacts/
+
+# IntelliJ Platform plugin / Gradle local outputs
+.gradle/
+extensions/intellij/**/.gradle/
+extensions/intellij/**/build/
+extensions/intellij/**/.intellijPlatform/
