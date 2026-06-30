@@ -16,6 +16,10 @@ const requiredJavascriptMarkers = [
   'devSessionCanvasPostMessage',
   'devSessionCanvasReceiveHostMessage',
   'webview/createNote',
+  'webview/updateNote',
+  'webview/updateNodePosition',
+  'webview/updateViewport',
+  'webview/deleteNode',
   'host/stateUpdated',
   'react-flow__container'
 ];

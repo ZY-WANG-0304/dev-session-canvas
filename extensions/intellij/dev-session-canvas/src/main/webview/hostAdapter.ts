@@ -1,21 +1,35 @@
 export type CanvasNode = {
   id: string;
+  type: 'note';
   title: string;
   body: string;
   x: number;
   y: number;
+  width: number;
+  height: number;
+};
+
+export type CanvasViewport = {
+  x: number;
+  y: number;
+  zoom: number;
 };
 
 export type HostMessage = {
   type: 'host/bootstrap' | 'host/stateUpdated';
   payload: {
     nodes: CanvasNode[];
+    viewport: CanvasViewport;
   };
 };
 
 export type WebviewMessage =
   | { type: 'webview/ready' }
-  | { type: 'webview/createNote' };
+  | { type: 'webview/createNote' }
+  | { type: 'webview/updateNote'; id: string; title?: string; body?: string; width?: number; height?: number }
+  | { type: 'webview/updateNodePosition'; id: string; x: number; y: number }
+  | { type: 'webview/updateViewport'; x: number; y: number; zoom: number }
+  | { type: 'webview/deleteNode'; id: string };
 
 declare global {
   interface Window {

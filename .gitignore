@@ -30,3 +30,4 @@ release-artifacts/
 extensions/intellij/**/.gradle/
 extensions/intellij/**/build/
 extensions/intellij/**/.intellijPlatform/
+extensions/intellij/**/.kotlin/

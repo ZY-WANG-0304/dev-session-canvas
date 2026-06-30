@@ -33,7 +33,8 @@
 - [ ] 完成里程碑 1 的真实 UI smoke。（已完成：`extensions/intellij/dev-session-canvas/` 工程、React Flow bundle、Kotlin bridge、构建和包结构验证；剩余：在有图形环境的 `runIde` 中目视验证 Tool Window、JCEF 控制台、空画布渲染、pan / zoom、测试 Note 往返和关闭清理。）
 - [x] (2026-06-30 12:58 +0800) 已推进里程碑 2 的工程首切片：新增 TypeScript `hostAdapter.ts`，把前端对全局 JCEF bridge 的直接依赖收口到 adapter；新增 Kotlin `CanvasProtocol` 最小 DTO / 编解码层，并用 Kotlin 单元测试覆盖消息识别和 host state JSON 转义。
 - [ ] 完成里程碑 2 的真实 UI smoke。（已完成：稳定 host adapter、`webview/createNote` 规范消息名、Kotlin 最小协议模型和自动化测试；剩余：在有图形环境的 `runIde` 中验证 adapter 后的 bootstrap、创建 Note 和 state update 可见行为。）
-- [ ] 完成 Note + 项目级持久化 MVP，并用 IntelliJ test framework 或可重复手动步骤验证关闭重开项目后状态恢复。
+- [x] (2026-06-30 14:15 +0800) 已完成里程碑 3 的工程首切片：`CanvasProjectStateService` 保存 Note 节点、尺寸和视口；前端 Note 支持标题/正文编辑、拖拽位置、resize、删除和视口同步；Kotlin/TypeScript 协议新增 `updateNote`、`updateNodePosition`、`updateViewport` 和 `deleteNode`。
+- [ ] 完成里程碑 3 的真实持久化 smoke。（已完成：项目级状态服务、bootstrap 恢复路径、Note mutation 协议、自动化测试和插件包结构验证；剩余：在有图形环境的 `runIde` 中创建/编辑/移动/缩放/删除 Note，关闭并重开同一项目后目视确认 Note 和视口恢复。）
 - [ ] 完成 Terminal 节点 PTY PoC，验证本地 shell 输入输出、窗口 resize、停止进程和项目关闭清理。
 - [ ] 完成 Agent 节点，明确第一版不承诺关闭 IDE 后继续运行，只承诺当前 IDE 生命周期内 execution 通道和 snapshot-only / 历史态表达。
 - [ ] 完成 Runtime Supervisor 接入方案，倾向复用现有 Node supervisor，并验证 IntelliJ 侧能注册、恢复和清理 runtime 会话。
@@ -76,6 +77,9 @@
 
 - 观察：引入 Kotlin 单元测试后，IntelliJ Platform Gradle Plugin 会初始化 IntelliJ test environment，单独引入 JUnit 5 不足以启动测试进程。
   证据：只添加 `kotlin("test-junit5")` 时，`:test` 失败并提示 `Could not start Gradle Test Executor 1: org/junit/rules/TestRule`；补充 `testImplementation("junit:junit:4.13.2")` 后 `./gradlew test buildPlugin verifyPluginStructure` 通过。该 JUnit 4 依赖只在 `testImplementation`，不进入插件运行包。
+
+- 观察：里程碑 3 的项目级持久化可以先用 IntelliJ `PersistentStateComponent` 的简单 JavaBean 形态验证，不必为了平面 Note payload 立即引入 JSON 库或完整协议生成。
+  证据：`CanvasProjectStateServiceTest` 能直接构造服务、`loadState()` 旧状态、创建新 Note，并验证 `nextNoteNumber` 归一化、标题/正文/位置/尺寸/视口更新和删除；`javap` 显示 `CanvasProjectState`、`CanvasPersistedNoteNode` 与 `CanvasPersistedViewport` 都保留无参构造和 getter/setter，可被 IntelliJ 状态序列化机制识别。
 
 ## 决策记录
 
@@ -159,6 +163,10 @@
   理由：当前真实 UI smoke 仍受图形环境限制，先把前端对 JCEF 全局函数的依赖隔离到 `hostAdapter.ts`，并用 `CanvasProtocol` 替换 Kotlin `contains` 字符串分发，可以降低后续 Note 持久化前的协议漂移风险，同时避免提前触碰 VS Code Webview 回归面。
   日期/作者：2026-06-30 / Codex
 
+- 决策：里程碑 3 先使用项目级 `PersistentStateComponent` 保存 Note 和视口，协议继续扩展最小 Kotlin DTO 子集，不引入新的 JSON 依赖。
+  理由：当前 Note mutation payload 仍是扁平字段，单元测试已经能覆盖字符串转义、数字解析、状态归一化和快照输出；立即引入 JSON 库或跨语言 schema 会扩大改动面。进入 Terminal / Agent 之前仍需重新评估协议生成，避免执行消息长期手写漂移。
+  日期/作者：2026-06-30 / Codex
+
 ## 结果与复盘
 
 文档收口阶段完成结果是：旧计划中已过期的“等待 notifier / Gradle 8 / 已存在共享协议和 webview 包”口径被替换为当前仓库事实；计划明确先做设计发现，再做可运行 PoC，最后逐步扩展到 Note、Terminal、Agent、Runtime Supervisor 和发布验证。正式设计文档 `docs/design-docs/intellij-platform-plugin-architecture.md` 已创建，目标 IDE、前端策略、协议策略、Agent / Runtime Supervisor 顺序和第一版发布范围已按用户确认写入计划。
@@ -167,7 +175,9 @@
 
 里程碑 2 工程首切片已经落地：前端新增 `extensions/intellij/dev-session-canvas/src/main/webview/hostAdapter.ts`，把 `devSessionCanvasPostMessage` / `devSessionCanvasReceiveHostMessage` 的全局 JCEF 接口隐藏在 adapter 后；Kotlin 侧新增 `extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/protocol/CanvasProtocol.kt`，用最小 DTO 子集表达 `webview/ready`、`webview/createNote`、`host/bootstrap`、`host/stateUpdated` 和 Note 节点状态。`CanvasBrowserBridge` 不再依赖裸字符串 `contains` 和内联 JSON 拼装，`testWebviewBundle` 与 `CanvasProtocolTest` 已覆盖 bundle marker、消息名、未知消息拒绝和 JSON 转义。
 
-剩余缺口是所有依赖真实图形环境和外部网络稳定性的验证：当前无 `DISPLAY` / `WAYLAND_DISPLAY`，`runIde` 无法打开 IDE；`verifyPlugin` 因访问 JetBrains 文档页和 Marketplace 依赖时 `Connection reset` 失败。精确 Android Studio build range、真实 JCEF 控制台、pan / zoom 行为、测试 Note 往返目视证据、三类目标 IDE smoke、共享前端抽离时机、Node supervisor 复用细节和后续 Marketplace 发布策略仍待确认。后续每个实现里程碑都必须同步测试证据和相关文档，不应把测试与文档都推迟到发布前。
+里程碑 3 工程首切片已经落地：`CanvasProjectStateService` 从占位 `schemaVersion` 扩展为项目级 Note / viewport 状态服务，Tool Window bootstrap 从服务快照恢复，创建、编辑、移动、resize、删除 Note 和视口变化都会通过最小协议写回项目状态。前端仍是 IntelliJ 专用 bundle，但 Note 节点已经从只读测试卡片升级为可编辑、可拖拽、可缩放的持久化节点；`CanvasProtocolTest`、`CanvasProjectStateServiceTest` 和 `testWebviewBundle` 覆盖新增消息与状态 helper。
+
+剩余缺口是所有依赖真实图形环境和外部网络稳定性的验证：当前无 `DISPLAY` / `WAYLAND_DISPLAY`，`runIde` 无法打开 IDE；`verifyPlugin` 因访问 JetBrains 文档页和 Marketplace 依赖时 `Connection reset` 失败。精确 Android Studio build range、真实 JCEF 控制台、pan / zoom 行为、Note mutation 往返和关闭重开恢复目视证据、三类目标 IDE smoke、共享前端抽离时机、Node supervisor 复用细节和后续 Marketplace 发布策略仍待确认。后续每个实现里程碑都必须同步测试证据和相关文档，不应把测试与文档都推迟到发布前。
 
 ## 上下文与定向
 
@@ -203,7 +213,7 @@
 
 当前里程碑 2 的工程切片不抽共享包，先在 IntelliJ 插件内新增 `hostAdapter.ts` 和 `CanvasProtocol.kt`。`hostAdapter.ts` 是前端唯一接触 `window.devSessionCanvasPostMessage` / `window.devSessionCanvasReceiveHostMessage` 的位置；业务组件只调用 `host.postMessage()` 和 `host.onMessage()`。`CanvasProtocol.kt` 是 Kotlin 侧最小消息模型和 JSON 编解码边界；`CanvasBrowserBridge` 只根据 `WebviewMessageType` 分发，不再直接搜索原始 JSON 字符串。后续 Note 持久化可以在这两个文件中扩展 `updateNote`、`deleteNode`、viewport 和尺寸字段。
 
-里程碑 3 是 Note 节点与项目级持久化。实现 Kotlin 侧的 `CanvasProjectStateService`，保存节点 ID、类型、标题、正文、位置、尺寸和视口。用户在 Tool Window 创建 Note、修改标题或正文、移动节点后，关闭并重开测试项目，应看到同一批 Note 和视口恢复。这个阶段不要求 Terminal、Runtime Supervisor 或 Agent。完成本里程碑时必须同步相关测试证据和设计文档状态。
+里程碑 3 是 Note 节点与项目级持久化。实现 Kotlin 侧的 `CanvasProjectStateService`，保存节点 ID、类型、标题、正文、位置、尺寸和视口。前端通过 `hostAdapter.ts` 发送 `webview/updateNote`、`webview/updateNodePosition`、`webview/updateViewport` 和 `webview/deleteNode`，Kotlin 侧只接受这些扁平 payload 并更新项目状态快照。用户在 Tool Window 创建 Note、修改标题或正文、移动、缩放或删除节点后，关闭并重开测试项目，应看到同一批 Note 和视口恢复。这个阶段不要求 Terminal、Runtime Supervisor 或 Agent。完成本里程碑时必须同步相关测试证据和设计文档状态。
 
 里程碑 4 是 Terminal 节点。引入 `pty4j`，实现 `ExecutionSessionManager`，支持在项目目录启动默认 shell、接收输入、推送输出、resize、停止进程和项目关闭清理。Webview 侧继续使用 xterm.js，但 bridge 必须支持高频输出分批和控制消息优先级，避免复刻已有 VS Code 版中“输出洪峰压过交互”的风险。完成本里程碑时必须同步终端相关测试证据、已知平台差异和设计文档状态。
 
@@ -285,6 +295,8 @@
 
 预期结果是 `testWebviewBundle` 输出 `Verified IntelliJ webview bundle markers in build/generated/webview`，Kotlin `CanvasProtocolTest` 随 `:test` 通过，`buildPlugin` 和 `verifyPluginStructure` 成功。
 
+里程碑 3 工程切片继续使用同一条主命令，但 `:test` 还应覆盖 `CanvasProjectStateServiceTest`。预期结果是 bundle marker 包含 `webview/updateNote`、`webview/updateNodePosition`、`webview/updateViewport` 和 `webview/deleteNode`，Kotlin 测试验证 Note 创建、编辑、位置、尺寸、视口、删除和 `loadState()` 后 ID 归一化，`buildPlugin` 和 `verifyPluginStructure` 成功。
+
 ## 验证与验收
 
 当前里程碑 1 工程切片的验收标准是：`extensions/intellij/dev-session-canvas/` 存在可构建的 Gradle / Kotlin 插件工程；`plugin.xml` 声明 `Dev Session Canvas` Tool Window；JCEF 可用路径加载内联 React Flow bundle，JCEF 不可用路径显示可解释 fallback；前端 bundle 包含 host bridge、React Flow 根元素、测试 Note 消息和 CSS 标记；`./gradlew test buildPlugin verifyPluginStructure` 通过并生成内部安装 ZIP；相关设计文档和本 `ExecPlan` 记录已验证内容和待补 UI smoke。当前变更还必须运行 `git diff --check` 验证没有尾随空白。
@@ -292,6 +304,8 @@
 当前仍未满足完整里程碑 1 验收的是 `runIde` 真实 UI smoke。当前执行环境没有图形会话，`runIde` 会失败并出现 `HeadlessException` / `No X11 DISPLAY variable was set`；因此 Tool Window 目视确认、JCEF 控制台、React Flow 可见渲染、pan / zoom 和测试 Note 往返必须在有 `DISPLAY` 或 `WAYLAND_DISPLAY` 的机器上补验。
 
 当前里程碑 2 工程切片的验收标准是：前端业务组件不再直接访问 JCEF 全局 bridge；创建按钮发送规范化的 `webview/createNote` 消息；Kotlin 侧通过 `CanvasProtocol.decodeWebviewMessage` 识别已知消息并拒绝未知消息；host state JSON 由 `CanvasProtocol.encodeHostMessage` 统一生成并有转义测试；`./gradlew test buildPlugin verifyPluginStructure` 通过。真实 UI smoke 仍需在有图形环境的 `runIde` 中补验。
+
+当前里程碑 3 工程切片的验收标准是：`CanvasProjectStateService` 以项目级状态保存 Note、尺寸和视口；bootstrap/stateUpdated 都从服务快照生成；前端 Note 节点可编辑标题和正文、拖拽后发送位置、选中后 resize 并发送尺寸、点击删除后发送删除消息；`CanvasProtocolTest` 覆盖新增 Webview 消息解码和 host state viewport 编码；`CanvasProjectStateServiceTest` 覆盖状态 helper；`./gradlew test buildPlugin verifyPluginStructure` 通过。完整里程碑 3 仍未满足的是关闭并重开同一项目后的真实 JCEF 恢复 smoke，因为当前执行环境没有图形会话。
 
 后续整份计划完成时，用户可观察验收标准如下：
 
@@ -374,6 +388,21 @@
     > Task :test
     BUILD SUCCESSFUL
 
+里程碑 3 工程切片的当前验证证据如下：
+
+    cd extensions/intellij/dev-session-canvas
+    JAVA_HOME=/tmp/devsession-jdk-21 GRADLE_OPTS='-Dhttps.proxyHost=10.79.2.115 -Dhttps.proxyPort=3128 -Dhttp.proxyHost=10.79.2.115 -Dhttp.proxyPort=3128' ./gradlew test buildPlugin verifyPluginStructure --no-daemon --stacktrace
+    > Task :testWebviewBundle
+    Verified IntelliJ webview bundle markers in build/generated/webview
+    > Task :test
+    BUILD SUCCESSFUL
+
+    javap -classpath extensions/intellij/dev-session-canvas/build/classes/kotlin/main com.devsessioncanvas.intellij.state.CanvasProjectState com.devsessioncanvas.intellij.state.CanvasPersistedNoteNode com.devsessioncanvas.intellij.state.CanvasPersistedViewport
+    public com.devsessioncanvas.intellij.state.CanvasProjectState();
+    public final java.util.List<com.devsessioncanvas.intellij.state.CanvasPersistedNoteNode> getNotes();
+    public com.devsessioncanvas.intellij.state.CanvasPersistedNoteNode();
+    public com.devsessioncanvas.intellij.state.CanvasPersistedViewport();
+
 本次更新依据的官方文档证据如下；这些是移动目标，后续调整 build range 或发布矩阵前必须再次复核：
 
 - JetBrains IntelliJ Platform Gradle Plugin 2.x 文档，页面构建时间为 2026-06-29，说明 2.x 是当前 Gradle 插件主线，并给出插件 ID、最低平台 / Gradle / Java 运行时要求。
@@ -396,12 +425,21 @@
       enum class WebviewMessageType
       enum class HostMessageType
       data class CanvasHostState
+      data class CanvasNoteNode
+      data class CanvasViewport
 
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/state/CanvasProjectStateService.kt
       class CanvasProjectStateService : PersistentStateComponent<CanvasProjectState>
+      fun snapshot(): CanvasHostState
+      fun createNote(projectName: String): CanvasHostState
+      fun updateNote(payload: WebviewUpdateNotePayload): CanvasHostState
+      fun updateNodePosition(payload: WebviewUpdateNodePositionPayload): CanvasHostState
+      fun updateViewport(viewport: CanvasViewport): CanvasHostState
+      fun deleteNode(id: String): CanvasHostState
 
     extensions/intellij/dev-session-canvas/src/main/webview/hostAdapter.ts
       function createCanvasHostAdapter(): CanvasHostAdapter
+      type WebviewMessage = ready/createNote/updateNote/updateNodePosition/updateViewport/deleteNode
 
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/execution/ExecutionSessionManager.kt
       class ExecutionSessionManager(project: Project) : Disposable

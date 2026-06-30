@@ -78,7 +78,7 @@ IntelliJ 第一阶段的目标是形成一个可运行、可验证、可继续�
 
 方案 C 是复制现有 VS Code `src/webview/` 后直接改。该方案短期看似最快，但会让两套前端快速分叉，当前不推荐。
 
-当前结论是采用方案 B 做里程碑 1，并已确认先证明 JCEF 能跑 React Flow，再决定是否抽共享包。2026-06-30 已创建 IntelliJ 专用 React Flow bundle，构建产物会被 Gradle 打进插件资源，并通过 `testWebviewBundle` 验证 host bridge、React Flow、测试 Note 消息和 CSS 标记存在。真实 JCEF 可见渲染、pan / zoom 和测试 Note 往返仍需在有图形环境的 `runIde` 中补验。里程碑 2 已先在 IntelliJ 插件内新增 `hostAdapter.ts`，把前端业务组件与 JCEF 全局函数隔离；是否抽共享 Webview 包仍留到真实 UI smoke 后再决定。
+当前结论是采用方案 B 做里程碑 1，并已确认先证明 JCEF 能跑 React Flow，再决定是否抽共享包。2026-06-30 已创建 IntelliJ 专用 React Flow bundle，构建产物会被 Gradle 打进插件资源，并通过 `testWebviewBundle` 验证 host bridge、React Flow、测试 Note 消息和 CSS 标记存在。真实 JCEF 可见渲染、pan / zoom 和测试 Note 往返仍需在有图形环境的 `runIde` 中补验。里程碑 2 已先在 IntelliJ 插件内新增 `hostAdapter.ts`，把前端业务组件与 JCEF 全局函数隔离；里程碑 3 又在同一 bundle 中补齐可编辑 Note、拖拽位置、resize、删除和视口同步。是否抽共享 Webview 包仍留到真实 UI smoke 后再决定，不能仅因 IntelliJ 专用 bundle 已能持久化 Note 就默认形成长期第二套前端。
 
 ### 5.3 协议同步
 
@@ -86,7 +86,7 @@ IntelliJ 第一阶段的目标是形成一个可运行、可验证、可继续�
 
 方案 B 是先维护 Kotlin 最小 DTO 子集，只覆盖当前里程碑需要的 bootstrap、state update、create / update / delete Note、execution input / output 等消息，并在每个里程碑扩展。它能让 PoC 更快，但必须有漂移防线。
 
-当前结论是：第一版接受 Kotlin 最小 DTO 子集。里程碑 2 已新增 `CanvasProtocol.kt`，当前只覆盖 `webview/ready`、`webview/createNote`、`host/bootstrap`、`host/stateUpdated` 和 Note 节点状态，并通过 `CanvasProtocolTest` 覆盖消息识别、未知消息拒绝和 JSON 转义。进入 Terminal 或 Agent 里程碑前，应重新评估是否启动方案 A，避免执行协议长期手写漂移。
+当前结论是：第一版接受 Kotlin 最小 DTO 子集。里程碑 2 已新增 `CanvasProtocol.kt`，覆盖 `webview/ready`、`webview/createNote`、`host/bootstrap`、`host/stateUpdated` 和 Note 节点状态；里程碑 3 扩展到 `webview/updateNote`、`webview/updateNodePosition`、`webview/updateViewport`、`webview/deleteNode`、Note 尺寸和 viewport。`CanvasProtocolTest` 覆盖消息识别、未知消息拒绝、扁平 payload 解码和 JSON 转义。进入 Terminal 或 Agent 里程碑前，应重新评估是否启动方案 A，避免执行协议长期手写漂移。
 
 ### 5.4 执行和运行时持久化
 
@@ -110,7 +110,7 @@ JCEF 风险是第一风险。最小 HTML 页面不能证明 React Flow 画布可
 
 ## 7. 当前结论
 
-当前设计整体仍处于比较中，因为 Note、Terminal、Agent、Runtime Supervisor、三类 IDE smoke 和完整发布准备还未落地。里程碑 1 的工程路线已经进入验证中：插件工程使用 IntelliJ Platform Gradle Plugin 2.17.0、Gradle wrapper 9.0.0、IC 2024.3、since-build 243、until-build 243.* 和 JVM 21 编译目标；插件 ID 使用 `com.devsessioncanvas.canvas`；Kotlin 包名继续使用 `com.devsessioncanvas.intellij`；插件包不分发 Kotlin stdlib，依赖目标 IDE 捆绑的 Kotlin 2.0.21 stdlib。
+当前设计整体仍处于比较中，因为 Terminal、Agent、Runtime Supervisor、三类 IDE smoke 和完整发布准备还未落地；Note 里程碑已有工程切片，但真实关闭重开项目的 JCEF smoke 仍待补。里程碑 1 的工程路线已经进入验证中：插件工程使用 IntelliJ Platform Gradle Plugin 2.17.0、Gradle wrapper 9.0.0、IC 2024.3、since-build 243、until-build 243.* 和 JVM 21 编译目标；插件 ID 使用 `com.devsessioncanvas.canvas`；Kotlin 包名继续使用 `com.devsessioncanvas.intellij`；插件包不分发 Kotlin stdlib，依赖目标 IDE 捆绑的 Kotlin 2.0.21 stdlib。
 
 2026-06-30 已确认以下阶段性决策：目标 IDE 为 Android Studio、IntelliJ IDEA 和 PyCharm；第一版兼容基线倾向从较新的 IntelliJ Platform 起步；前端先证明 JCEF 能跑 React Flow，再决定是否抽共享包；协议第一版接受 Kotlin 最小 DTO 子集；Agent 第一版不承诺关闭 IDE 后继续运行；Runtime Supervisor 倾向复用现有 Node supervisor；第一版发布范围是内部/手动安装验证。
 
@@ -120,11 +120,11 @@ IntelliJ 插件已落在 `extensions/intellij/dev-session-canvas/`，使用独�
 
 里程碑 2 负责把 PoC 收敛成正式 host adapter。VS Code 侧的 `acquireVsCodeApi()` 不能泄漏到 IntelliJ 前端；IntelliJ 侧也不应在业务组件里散落 JCEF 条件分支。当前工程切片已经把 IntelliJ 前端访问 JCEF 的位置收口到 `extensions/intellij/dev-session-canvas/src/main/webview/hostAdapter.ts`，业务组件只使用 `host.postMessage()` / `host.onMessage()`；Kotlin 侧把消息分发收口到 `CanvasProtocol.decodeWebviewMessage`，不再用裸字符串 `contains` 分发。
 
-里程碑 3 是 Note 与项目级持久化，里程碑 4 是 Terminal，里程碑 5 是 Agent，里程碑 6 是 Runtime Supervisor，里程碑 7 是发布准备。测试、设计文档和验证证据必须在里程碑 0 到 6 持续迭代，不能作为里程碑 7 的补债内容。
+里程碑 3 是 Note 与项目级持久化。当前工程切片使用项目级 `PersistentStateComponent`，在 `CanvasProjectStateService` 中保存 Note 节点 ID、类型、标题、正文、位置、尺寸、视口和 `nextNoteNumber`，Tool Window bootstrap 直接从服务快照恢复；前端通过 `hostAdapter.ts` 发出 Note mutation 和 viewport mutation。自动化测试已经覆盖 helper 行为与插件构建，真实 UI 关闭重开恢复仍待在有图形环境中验证。里程碑 4 是 Terminal，里程碑 5 是 Agent，里程碑 6 是 Runtime Supervisor，里程碑 7 是发布准备。测试、设计文档和验证证据必须在里程碑 0 到 6 持续迭代，不能作为里程碑 7 的补债内容。
 
 Runtime Supervisor 不是 Agent 第一版的前置条件。Agent 可以先落地当前 IDE 生命周期内的启动、输入、输出、停止和失败语义；跨 IDE 生命周期恢复由 Runtime Supervisor 里程碑单独验证。Runtime Supervisor 的研究方向倾向复用现有 Node supervisor，但具体 JVM client、进程发现、socket 路径和打包分发方式仍需在里程碑 6 验证。
 
-仍待选定的内容包括：Android Studio 对应的精确 build range、真实 JCEF UI smoke 结果、共享 Webview 包抽离时间点、协议生成升级时机、PTY 后端依赖方式、Node supervisor 复用细节、完整 Plugin Verifier 矩阵、内部手动安装包格式和后续 JetBrains Marketplace 发布 / 签名流程。
+仍待选定的内容包括：Android Studio 对应的精确 build range、真实 JCEF UI smoke 结果、Note 关闭重开恢复目视证据、共享 Webview 包抽离时间点、协议生成升级时机、PTY 后端依赖方式、Node supervisor 复用细节、完整 Plugin Verifier 矩阵、内部手动安装包格式和后续 JetBrains Marketplace 发布 / 签名流程。
 
 ## 8. 验证方法
 
@@ -137,10 +137,10 @@ Runtime Supervisor 不是 Agent 第一版的前置条件。Agent 可以先落地
     ./gradlew verifyPluginStructure
     ./gradlew runIde
 
-2026-06-30 已在本地通过 `./gradlew test buildPlugin verifyPluginStructure`，其中 `test` 会运行 `testWebviewBundle` 检查 React Flow PoC bundle 标记，并运行 `CanvasProtocolTest` 检查 Kotlin 最小协议模型；`buildPlugin` 生成 `build/distributions/dev-session-canvas-intellij-0.1.0-internal.zip`，`verifyPluginStructure` 验证插件包结构。当前 `runIde` 因无 `DISPLAY` / `WAYLAND_DISPLAY` 失败，堆栈包含 `HeadlessException` 和 `No X11 DISPLAY variable was set`；`verifyPlugin` 已进入 IntelliJ Plugin Verifier，但因访问 JetBrains 文档页和 Marketplace 依赖解析时 `Connection reset` 失败，未作为里程碑 1 / 2 完成证据。
+2026-06-30 已在本地通过 `./gradlew test buildPlugin verifyPluginStructure`，其中 `test` 会运行 `testWebviewBundle` 检查 React Flow bundle 标记，并运行 `CanvasProtocolTest` 与 `CanvasProjectStateServiceTest` 检查 Kotlin 最小协议模型和项目级状态 helper；`buildPlugin` 生成 `build/distributions/dev-session-canvas-intellij-0.1.0-internal.zip`，`verifyPluginStructure` 验证插件包结构。当前 `runIde` 因无 `DISPLAY` / `WAYLAND_DISPLAY` 失败，堆栈包含 `HeadlessException` 和 `No X11 DISPLAY variable was set`；`verifyPlugin` 已进入 IntelliJ Plugin Verifier，但因访问 JetBrains 文档页和 Marketplace 依赖解析时 `Connection reset` 失败，未作为里程碑 1 / 2 / 3 完成证据。
 
-人工或自动 smoke 记录必须包含：Tool Window 出现；JCEF 支持检查结果；React Flow bundle 无加载错误；空画布根节点存在；pan / zoom 后 viewport 变化；创建测试 Note 消息到达 Kotlin 宿主；Kotlin 回传 state update 后页面出现测试 Note；关闭 IDE 后 browser 和 bridge 被释放。
+人工或自动 smoke 记录必须包含：Tool Window 出现；JCEF 支持检查结果；React Flow bundle 无加载错误；空画布根节点存在；pan / zoom 后 viewport 变化；创建 Note 消息到达 Kotlin 宿主；Kotlin 回传 state update 后页面出现 Note；标题/正文编辑、拖拽、resize、删除和视口变化能写回宿主；关闭并重开同一项目后 Note、尺寸、位置和视口恢复；关闭 IDE 后 browser 和 bridge 被释放。
 
-后续里程碑都必须至少提供一种验证证据。Note 里程碑要证明项目重开后状态恢复。Terminal 里程碑要证明 PTY 输入输出、resize、停止和项目关闭清理。Agent 里程碑要证明 Codex / Claude Code CLI 在项目目录启动并输出回流。Runtime Supervisor 里程碑要证明 runtime identity 注册、重新查询或恢复、清理 / 保留语义，以及 `snapshot-only` / `live-runtime` 的用户可见差异。
+后续里程碑都必须至少提供一种验证证据。Note 里程碑的自动化证据已经覆盖状态 helper 和 bundle marker，但仍要补项目重开后状态恢复的真实 UI smoke。Terminal 里程碑要证明 PTY 输入输出、resize、停止和项目关闭清理。Agent 里程碑要证明 Codex / Claude Code CLI 在项目目录启动并输出回流。Runtime Supervisor 里程碑要证明 runtime identity 注册、重新查询或恢复、清理 / 保留语义，以及 `snapshot-only` / `live-runtime` 的用户可见差异。
 
 内部发布准备阶段再运行最终矩阵，包括 `./gradlew verifyPlugin`、目标 IDE build 的 Plugin Verifier、Android Studio / IntelliJ IDEA / PyCharm smoke、手动安装包检查和 release smoke。若某个 IDE 未验证，内部说明或后续发布文案不得写成已支持。JetBrains Marketplace listing、签名和公开发布流程留到后续发布计划。
