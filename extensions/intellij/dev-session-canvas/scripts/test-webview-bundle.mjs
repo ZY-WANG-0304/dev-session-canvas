@@ -15,7 +15,7 @@ const [javascript, stylesheet] = await Promise.all([
 const requiredJavascriptMarkers = [
   'devSessionCanvasPostMessage',
   'devSessionCanvasReceiveHostMessage',
-  'webview/createTestNote',
+  'webview/createNote',
   'host/stateUpdated',
   'react-flow__container'
 ];

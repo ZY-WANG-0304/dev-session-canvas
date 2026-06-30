@@ -31,6 +31,8 @@
 - [x] (2026-06-30 12:06 +0800) 已通过 `./gradlew test buildPlugin verifyPluginStructure`，生成内部 ZIP `extensions/intellij/dev-session-canvas/build/distributions/dev-session-canvas-intellij-0.1.0-internal.zip`。
 - [x] (2026-06-30 12:20 +0800) 已将 `docs/design-docs/intellij-platform-plugin-architecture.md` 与 `docs/design-docs/index.md` 的验证状态同步为“验证中”，表示里程碑 1 工程和包结构已验证但真实 JCEF UI smoke 仍待补。
 - [ ] 完成里程碑 1 的真实 UI smoke。（已完成：`extensions/intellij/dev-session-canvas/` 工程、React Flow bundle、Kotlin bridge、构建和包结构验证；剩余：在有图形环境的 `runIde` 中目视验证 Tool Window、JCEF 控制台、空画布渲染、pan / zoom、测试 Note 往返和关闭清理。）
+- [x] (2026-06-30 12:58 +0800) 已推进里程碑 2 的工程首切片：新增 TypeScript `hostAdapter.ts`，把前端对全局 JCEF bridge 的直接依赖收口到 adapter；新增 Kotlin `CanvasProtocol` 最小 DTO / 编解码层，并用 Kotlin 单元测试覆盖消息识别和 host state JSON 转义。
+- [ ] 完成里程碑 2 的真实 UI smoke。（已完成：稳定 host adapter、`webview/createNote` 规范消息名、Kotlin 最小协议模型和自动化测试；剩余：在有图形环境的 `runIde` 中验证 adapter 后的 bootstrap、创建 Note 和 state update 可见行为。）
 - [ ] 完成 Note + 项目级持久化 MVP，并用 IntelliJ test framework 或可重复手动步骤验证关闭重开项目后状态恢复。
 - [ ] 完成 Terminal 节点 PTY PoC，验证本地 shell 输入输出、窗口 resize、停止进程和项目关闭清理。
 - [ ] 完成 Agent 节点，明确第一版不承诺关闭 IDE 后继续运行，只承诺当前 IDE 生命周期内 execution 通道和 snapshot-only / 历史态表达。
@@ -71,6 +73,9 @@
 
 - 观察：`verifyPlugin` 当前失败点不是插件编译或包结构，而是 Plugin Verifier 运行期访问 JetBrains 网络资源和 Marketplace 依赖解析。
   证据：`./gradlew verifyPlugin` 已进入 IntelliJ Plugin Verifier 1.407，并读取本地插件 ZIP 与 IC 2024.3.7.1；随后因 `https://jb.gg/ij-api-changes-raw?flush_cache=true` 和 `Resolve dependency XPathView` 多次 `Connection reset` 失败。当前里程碑先使用 `verifyPluginStructure` 覆盖包结构，完整 `verifyPlugin` 留到网络稳定或配置离线依赖后重跑。
+
+- 观察：引入 Kotlin 单元测试后，IntelliJ Platform Gradle Plugin 会初始化 IntelliJ test environment，单独引入 JUnit 5 不足以启动测试进程。
+  证据：只添加 `kotlin("test-junit5")` 时，`:test` 失败并提示 `Could not start Gradle Test Executor 1: org/junit/rules/TestRule`；补充 `testImplementation("junit:junit:4.13.2")` 后 `./gradlew test buildPlugin verifyPluginStructure` 通过。该 JUnit 4 依赖只在 `testImplementation`，不进入插件运行包。
 
 ## 决策记录
 
@@ -150,11 +155,17 @@
   理由：目标平台 2024.3 已按 JetBrains Kotlin 支持文档捆绑 Kotlin 2.0.21 stdlib；`kotlin.stdlib.default.dependency=false` 后 ZIP 只包含插件 jar，避免和平台 bundled library 形成冲突。
   日期/作者：2026-06-30 / Codex
 
+- 决策：里程碑 2 先在 IntelliJ 插件内收口一个最小 host adapter 和 Kotlin 协议模型，不立即抽 `packages/webview/` 或 JSON Schema。
+  理由：当前真实 UI smoke 仍受图形环境限制，先把前端对 JCEF 全局函数的依赖隔离到 `hostAdapter.ts`，并用 `CanvasProtocol` 替换 Kotlin `contains` 字符串分发，可以降低后续 Note 持久化前的协议漂移风险，同时避免提前触碰 VS Code Webview 回归面。
+  日期/作者：2026-06-30 / Codex
+
 ## 结果与复盘
 
 文档收口阶段完成结果是：旧计划中已过期的“等待 notifier / Gradle 8 / 已存在共享协议和 webview 包”口径被替换为当前仓库事实；计划明确先做设计发现，再做可运行 PoC，最后逐步扩展到 Note、Terminal、Agent、Runtime Supervisor 和发布验证。正式设计文档 `docs/design-docs/intellij-platform-plugin-architecture.md` 已创建，目标 IDE、前端策略、协议策略、Agent / Runtime Supervisor 顺序和第一版发布范围已按用户确认写入计划。
 
 里程碑 1 工程首切片已经落地：`extensions/intellij/dev-session-canvas/` 下存在独立 Gradle / Kotlin 插件工程，`plugin.xml` 声明 `Dev Session Canvas` Tool Window，Kotlin 侧实现 JCEF 支持检查、JCEF 不可用 fallback、内联 HTML 资源加载、JBCefJSQuery bridge、测试 Note 状态回传和 content 生命周期清理；前端侧实现 IntelliJ 专用 React Flow PoC bundle，包含空画布、toolbar、viewport 读数、`Create Test Note` 按钮和 host state update 渲染。`./gradlew test buildPlugin verifyPluginStructure` 已通过，并生成内部 ZIP。
+
+里程碑 2 工程首切片已经落地：前端新增 `extensions/intellij/dev-session-canvas/src/main/webview/hostAdapter.ts`，把 `devSessionCanvasPostMessage` / `devSessionCanvasReceiveHostMessage` 的全局 JCEF 接口隐藏在 adapter 后；Kotlin 侧新增 `extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/protocol/CanvasProtocol.kt`，用最小 DTO 子集表达 `webview/ready`、`webview/createNote`、`host/bootstrap`、`host/stateUpdated` 和 Note 节点状态。`CanvasBrowserBridge` 不再依赖裸字符串 `contains` 和内联 JSON 拼装，`testWebviewBundle` 与 `CanvasProtocolTest` 已覆盖 bundle marker、消息名、未知消息拒绝和 JSON 转义。
 
 剩余缺口是所有依赖真实图形环境和外部网络稳定性的验证：当前无 `DISPLAY` / `WAYLAND_DISPLAY`，`runIde` 无法打开 IDE；`verifyPlugin` 因访问 JetBrains 文档页和 Marketplace 依赖时 `Connection reset` 失败。精确 Android Studio build range、真实 JCEF 控制台、pan / zoom 行为、测试 Note 往返目视证据、三类目标 IDE smoke、共享前端抽离时机、Node supervisor 复用细节和后续 Marketplace 发布策略仍待确认。后续每个实现里程碑都必须同步测试证据和相关文档，不应把测试与文档都推迟到发布前。
 
@@ -189,6 +200,8 @@
 里程碑 1 是插件骨架与 React Flow 画布加载 PoC。创建 `extensions/intellij/dev-session-canvas/`，使用 IntelliJ Platform Gradle Plugin 2.x、Kotlin、Gradle wrapper 和最小 `plugin.xml`。实现 `CanvasToolWindowFactory`，在 Tool Window 中创建 `JBCefBrowser`，并加载真实或足够等价的 React / React Flow bundle。实现过程中可以先用最小本地 HTML 排查 JCEF、资源 URL 和 bridge 注册，但该调试页面不算里程碑完成。里程碑 1 的完成条件是：JCEF 控制台没有 bundle 加载错误；空画布能渲染；pan / zoom 的 wheel 和 pointer 事件能改变 viewport；画布能发出 `createNote` 或等价测试消息；Kotlin 宿主能回传 state update，让页面出现一个测试 Note；关闭 IDE 时 browser 和 bridge 资源能被清理。
 
 里程碑 2 是前端 host adapter 与最小画布交互收口。基于里程碑 0 的设计结论，选择是抽离共享 Webview 包，还是在 IntelliJ 插件中先构建一个最小 canvas bundle。无论哪种方式，都要把 VS Code 专属的 `acquireVsCodeApi()` 包成可替换的 host bridge，而不是在 IntelliJ 版里到处写条件分支。完成后，`runIde` 中的画布不再只是 PoC，而是使用稳定 host adapter 接收 bootstrap state、发送创建 Note 请求、接收 state update，并为后续 Note 持久化使用同一条协议路径。
+
+当前里程碑 2 的工程切片不抽共享包，先在 IntelliJ 插件内新增 `hostAdapter.ts` 和 `CanvasProtocol.kt`。`hostAdapter.ts` 是前端唯一接触 `window.devSessionCanvasPostMessage` / `window.devSessionCanvasReceiveHostMessage` 的位置；业务组件只调用 `host.postMessage()` 和 `host.onMessage()`。`CanvasProtocol.kt` 是 Kotlin 侧最小消息模型和 JSON 编解码边界；`CanvasBrowserBridge` 只根据 `WebviewMessageType` 分发，不再直接搜索原始 JSON 字符串。后续 Note 持久化可以在这两个文件中扩展 `updateNote`、`deleteNode`、viewport 和尺寸字段。
 
 里程碑 3 是 Note 节点与项目级持久化。实现 Kotlin 侧的 `CanvasProjectStateService`，保存节点 ID、类型、标题、正文、位置、尺寸和视口。用户在 Tool Window 创建 Note、修改标题或正文、移动节点后，关闭并重开测试项目，应看到同一批 Note 和视口恢复。这个阶段不要求 Terminal、Runtime Supervisor 或 Agent。完成本里程碑时必须同步相关测试证据和设计文档状态。
 
@@ -265,11 +278,20 @@
 
 如果 `verifyPlugin` 需要下载多个 IDE 或依赖网络，应在计划和 MR 说明中记录环境前提、验证的 IDE build、失败日志位置和可重跑命令。
 
+里程碑 2 工程切片的验证仍从插件目录执行同一条主命令：
+
+    cd extensions/intellij/dev-session-canvas
+    JAVA_HOME=/tmp/devsession-jdk-21 GRADLE_OPTS='-Dhttps.proxyHost=10.79.2.115 -Dhttps.proxyPort=3128 -Dhttp.proxyHost=10.79.2.115 -Dhttp.proxyPort=3128' ./gradlew test buildPlugin verifyPluginStructure --no-daemon --stacktrace
+
+预期结果是 `testWebviewBundle` 输出 `Verified IntelliJ webview bundle markers in build/generated/webview`，Kotlin `CanvasProtocolTest` 随 `:test` 通过，`buildPlugin` 和 `verifyPluginStructure` 成功。
+
 ## 验证与验收
 
 当前里程碑 1 工程切片的验收标准是：`extensions/intellij/dev-session-canvas/` 存在可构建的 Gradle / Kotlin 插件工程；`plugin.xml` 声明 `Dev Session Canvas` Tool Window；JCEF 可用路径加载内联 React Flow bundle，JCEF 不可用路径显示可解释 fallback；前端 bundle 包含 host bridge、React Flow 根元素、测试 Note 消息和 CSS 标记；`./gradlew test buildPlugin verifyPluginStructure` 通过并生成内部安装 ZIP；相关设计文档和本 `ExecPlan` 记录已验证内容和待补 UI smoke。当前变更还必须运行 `git diff --check` 验证没有尾随空白。
 
 当前仍未满足完整里程碑 1 验收的是 `runIde` 真实 UI smoke。当前执行环境没有图形会话，`runIde` 会失败并出现 `HeadlessException` / `No X11 DISPLAY variable was set`；因此 Tool Window 目视确认、JCEF 控制台、React Flow 可见渲染、pan / zoom 和测试 Note 往返必须在有 `DISPLAY` 或 `WAYLAND_DISPLAY` 的机器上补验。
+
+当前里程碑 2 工程切片的验收标准是：前端业务组件不再直接访问 JCEF 全局 bridge；创建按钮发送规范化的 `webview/createNote` 消息；Kotlin 侧通过 `CanvasProtocol.decodeWebviewMessage` 识别已知消息并拒绝未知消息；host state JSON 由 `CanvasProtocol.encodeHostMessage` 统一生成并有转义测试；`./gradlew test buildPlugin verifyPluginStructure` 通过。真实 UI smoke 仍需在有图形环境的 `runIde` 中补验。
 
 后续整份计划完成时，用户可观察验收标准如下：
 
@@ -343,6 +365,15 @@
     java.awt.HeadlessException:
     No X11 DISPLAY variable was set,
 
+里程碑 2 工程切片的当前验证证据如下：
+
+    cd extensions/intellij/dev-session-canvas
+    JAVA_HOME=/tmp/devsession-jdk-21 GRADLE_OPTS='-Dhttps.proxyHost=10.79.2.115 -Dhttps.proxyPort=3128 -Dhttp.proxyHost=10.79.2.115 -Dhttp.proxyPort=3128' ./gradlew test buildPlugin verifyPluginStructure --no-daemon --stacktrace
+    > Task :testWebviewBundle
+    Verified IntelliJ webview bundle markers in build/generated/webview
+    > Task :test
+    BUILD SUCCESSFUL
+
 本次更新依据的官方文档证据如下；这些是移动目标，后续调整 build range 或发布矩阵前必须再次复核：
 
 - JetBrains IntelliJ Platform Gradle Plugin 2.x 文档，页面构建时间为 2026-06-29，说明 2.x 是当前 Gradle 插件主线，并给出插件 ID、最低平台 / Gradle / Java 运行时要求。
@@ -360,8 +391,17 @@
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/toolwindow/CanvasBrowserBridge.kt
       class CanvasBrowserBridge(project: Project, browser: JBCefBrowser) : Disposable
 
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/protocol/CanvasProtocol.kt
+      object CanvasProtocol
+      enum class WebviewMessageType
+      enum class HostMessageType
+      data class CanvasHostState
+
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/state/CanvasProjectStateService.kt
       class CanvasProjectStateService : PersistentStateComponent<CanvasProjectState>
+
+    extensions/intellij/dev-session-canvas/src/main/webview/hostAdapter.ts
+      function createCanvasHostAdapter(): CanvasHostAdapter
 
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/execution/ExecutionSessionManager.kt
       class ExecutionSessionManager(project: Project) : Disposable
@@ -408,3 +448,5 @@ Kotlin 侧消息模型在第一版只能覆盖当前里程碑需要的最小子�
 补充更新说明：2026-06-30 09:00 +0800，记录用户确认的七项阶段性决策：目标 IDE 为 Android Studio / IntelliJ IDEA / PyCharm；兼容基线倾向较新 IntelliJ Platform；先验证 JCEF + React Flow；协议接受 Kotlin 最小 DTO 子集；Agent 第一版不承诺关闭 IDE 后继续运行；Runtime Supervisor 倾向复用现有 Node supervisor；第一版仅做内部/手动安装验证。
 
 补充更新说明：2026-06-30 12:20 +0800，记录里程碑 1 工程切片落地：新增 IntelliJ Gradle / Kotlin 插件工程、JCEF Tool Window bridge、React Flow PoC bundle 和 bundle marker 测试；同步设计文档验证状态为“验证中”，并明确当前环境无法完成真实 `runIde` UI smoke。
+
+补充更新说明：2026-06-30 12:58 +0800，记录里程碑 2 工程切片落地：新增 IntelliJ 前端 host adapter、Kotlin 最小协议 DTO / 编解码层和 `CanvasProtocolTest`；将创建测试 Note 的消息名收口为 `webview/createNote`，并保留旧 `webview/createTestNote` 的兼容解析。

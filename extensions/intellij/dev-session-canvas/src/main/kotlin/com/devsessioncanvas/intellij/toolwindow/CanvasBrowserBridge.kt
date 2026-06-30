@@ -1,5 +1,10 @@
 package com.devsessioncanvas.intellij.toolwindow
 
+import com.devsessioncanvas.intellij.protocol.CanvasHostState
+import com.devsessioncanvas.intellij.protocol.CanvasNoteNode
+import com.devsessioncanvas.intellij.protocol.CanvasProtocol
+import com.devsessioncanvas.intellij.protocol.HostMessageType
+import com.devsessioncanvas.intellij.protocol.WebviewMessageType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
@@ -12,7 +17,7 @@ class CanvasBrowserBridge(
     private val browser: JBCefBrowser
 ) : Disposable {
     private val query = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    private val notes = mutableListOf<TestNote>()
+    private val notes = mutableListOf<CanvasNoteNode>()
 
     init {
         query.addHandler { request ->
@@ -28,37 +33,31 @@ class CanvasBrowserBridge(
     }
 
     private fun handleWebviewMessage(request: String) {
-        when {
-            request.contains("\"type\":\"webview/ready\"") -> sendBootstrap()
-            request.contains("\"type\":\"webview/createTestNote\"") -> createTestNote()
+        when (CanvasProtocol.decodeWebviewMessage(request)?.type) {
+            WebviewMessageType.Ready -> sendBootstrap()
+            WebviewMessageType.CreateNote -> createTestNote()
+            null -> Unit
         }
     }
 
     private fun sendBootstrap() {
-        sendToWebview(hostMessage("host/bootstrap"))
+        sendToWebview(hostMessage(HostMessageType.Bootstrap))
     }
 
     private fun createTestNote() {
         val noteNumber = notes.size + 1
-        notes += TestNote(
+        notes += CanvasNoteNode(
             id = "intellij-note-$noteNumber",
             title = "IntelliJ Test Note $noteNumber",
             body = "Created inside ${project.name} through the JCEF bridge.",
             x = 80.0 + (noteNumber - 1) * 260.0,
             y = 80.0
         )
-        sendToWebview(hostMessage("host/stateUpdated"))
+        sendToWebview(hostMessage(HostMessageType.StateUpdated))
     }
 
-    private fun hostMessage(type: String): String {
-        return """
-            {
-              "type": ${jsonText(type)},
-              "payload": {
-                "nodes": [${notes.joinToString(",") { it.toJson() }}]
-              }
-            }
-        """.trimIndent()
+    private fun hostMessage(type: HostMessageType): String {
+        return CanvasProtocol.encodeHostMessage(type, CanvasHostState(notes.toList()))
     }
 
     private fun sendToWebview(json: String) {
@@ -69,42 +68,5 @@ class CanvasBrowserBridge(
                 0
             )
         }
-    }
-
-    private data class TestNote(
-        val id: String,
-        val title: String,
-        val body: String,
-        val x: Double,
-        val y: Double
-    ) {
-        fun toJson(): String {
-            return """
-                {
-                  "id": ${jsonText(id)},
-                  "title": ${jsonText(title)},
-                  "body": ${jsonText(body)},
-                  "x": $x,
-                  "y": $y
-                }
-            """.trimIndent()
-        }
-    }
-}
-
-private fun jsonText(value: String): String {
-    return buildString {
-        append('"')
-        value.forEach { char ->
-            when (char) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> append(char)
-            }
-        }
-        append('"')
     }
 }

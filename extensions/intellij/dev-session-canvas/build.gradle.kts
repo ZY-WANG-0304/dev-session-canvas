@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.api.tasks.testing.Test
 
 plugins {
     id("org.jetbrains.kotlin.jvm") version "2.0.21"
@@ -22,6 +23,9 @@ dependencies {
             providers.gradleProperty("platformVersion")
         )
     }
+    testImplementation(kotlin("test-junit5"))
+    testImplementation("junit:junit:4.13.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 kotlin {
@@ -36,6 +40,7 @@ val buildWebview by tasks.registering(Exec::class) {
     commandLine("node", "scripts/build-webview.mjs")
     inputs.files(
         file("src/main/webview/main.tsx"),
+        file("src/main/webview/hostAdapter.ts"),
         file("src/main/webview/styles.css"),
         file("scripts/build-webview.mjs")
     )
@@ -59,7 +64,8 @@ tasks.processResources {
     }
 }
 
-tasks.named("test") {
+tasks.named<Test>("test") {
+    useJUnitPlatform()
     dependsOn(testWebviewBundle)
 }
 

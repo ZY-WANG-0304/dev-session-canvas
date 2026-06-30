@@ -11,38 +11,12 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './styles.css';
+import { createCanvasHostAdapter } from './hostAdapter';
+import type { CanvasNode } from './hostAdapter';
 
-type HostNode = {
-  id: string;
-  title: string;
-  body: string;
-  x: number;
-  y: number;
-};
+const host = createCanvasHostAdapter();
 
-type HostMessage = {
-  type: 'host/bootstrap' | 'host/stateUpdated';
-  payload: {
-    nodes: HostNode[];
-  };
-};
-
-type WebviewMessage =
-  | { type: 'webview/ready' }
-  | { type: 'webview/createTestNote' };
-
-declare global {
-  interface Window {
-    devSessionCanvasPostMessage?: (message: WebviewMessage) => void;
-    devSessionCanvasReceiveHostMessage?: (message: HostMessage) => void;
-  }
-}
-
-function postMessage(message: WebviewMessage): void {
-  window.devSessionCanvasPostMessage?.(message);
-}
-
-function toFlowNode(node: HostNode): Node<HostNode> {
+function toFlowNode(node: CanvasNode): Node<CanvasNode> {
   return {
     id: node.id,
     type: 'note',
@@ -51,7 +25,7 @@ function toFlowNode(node: HostNode): Node<HostNode> {
   };
 }
 
-function NoteNode({ data }: NodeProps<HostNode>): JSX.Element {
+function NoteNode({ data }: NodeProps<CanvasNode>): JSX.Element {
   return (
     <div className="dsc-note-node" data-dsc-note-id={data.id}>
       <strong>{data.title}</strong>
@@ -61,21 +35,19 @@ function NoteNode({ data }: NodeProps<HostNode>): JSX.Element {
 }
 
 function CanvasApp(): JSX.Element {
-  const [nodes, setNodes, onNodesChange] = useNodesState<HostNode>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([]);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
 
   const nodeTypes = useMemo(() => ({ note: NoteNode }), []);
 
   useEffect(() => {
-    window.devSessionCanvasReceiveHostMessage = (message: HostMessage): void => {
+    const dispose = host.onMessage((message): void => {
       if (message.type === 'host/bootstrap' || message.type === 'host/stateUpdated') {
         setNodes(message.payload.nodes.map(toFlowNode));
       }
-    };
-    postMessage({ type: 'webview/ready' });
-    return () => {
-      delete window.devSessionCanvasReceiveHostMessage;
-    };
+    });
+    host.postMessage({ type: 'webview/ready' });
+    return dispose;
   }, [setNodes]);
 
   useEffect(() => {
@@ -91,7 +63,7 @@ function CanvasApp(): JSX.Element {
     <div className="dsc-root" data-dsc-root="intellij-react-flow-poc">
       <div className="dsc-toolbar">
         <strong>Dev Session Canvas - IntelliJ PoC</strong>
-        <button type="button" onClick={() => postMessage({ type: 'webview/createTestNote' })}>
+        <button type="button" onClick={() => host.postMessage({ type: 'webview/createNote' })}>
           Create Test Note
         </button>
         <span className="dsc-viewport-readout">

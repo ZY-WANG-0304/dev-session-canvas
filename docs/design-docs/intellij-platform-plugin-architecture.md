@@ -78,7 +78,7 @@ IntelliJ 第一阶段的目标是形成一个可运行、可验证、可继续�
 
 方案 C 是复制现有 VS Code `src/webview/` 后直接改。该方案短期看似最快，但会让两套前端快速分叉，当前不推荐。
 
-当前结论是采用方案 B 做里程碑 1，并已确认先证明 JCEF 能跑 React Flow，再决定是否抽共享包。2026-06-30 已创建 IntelliJ 专用 React Flow bundle，构建产物会被 Gradle 打进插件资源，并通过 `testWebviewBundle` 验证 host bridge、React Flow、测试 Note 消息和 CSS 标记存在。真实 JCEF 可见渲染、pan / zoom 和测试 Note 往返仍需在有图形环境的 `runIde` 中补验。PoC 通过后，里程碑 2 再决定抽共享包还是把 PoC 收敛成正式 host adapter。
+当前结论是采用方案 B 做里程碑 1，并已确认先证明 JCEF 能跑 React Flow，再决定是否抽共享包。2026-06-30 已创建 IntelliJ 专用 React Flow bundle，构建产物会被 Gradle 打进插件资源，并通过 `testWebviewBundle` 验证 host bridge、React Flow、测试 Note 消息和 CSS 标记存在。真实 JCEF 可见渲染、pan / zoom 和测试 Note 往返仍需在有图形环境的 `runIde` 中补验。里程碑 2 已先在 IntelliJ 插件内新增 `hostAdapter.ts`，把前端业务组件与 JCEF 全局函数隔离；是否抽共享 Webview 包仍留到真实 UI smoke 后再决定。
 
 ### 5.3 协议同步
 
@@ -86,7 +86,7 @@ IntelliJ 第一阶段的目标是形成一个可运行、可验证、可继续�
 
 方案 B 是先维护 Kotlin 最小 DTO 子集，只覆盖当前里程碑需要的 bootstrap、state update、create / update / delete Note、execution input / output 等消息，并在每个里程碑扩展。它能让 PoC 更快，但必须有漂移防线。
 
-当前结论是：第一版接受 Kotlin 最小 DTO 子集。里程碑 1 和 2 可以采用方案 B，但必须把子集边界写在本设计和 ExecPlan 中；进入 Terminal 或 Agent 里程碑前，应重新评估是否启动方案 A，避免执行协议长期手写漂移。
+当前结论是：第一版接受 Kotlin 最小 DTO 子集。里程碑 2 已新增 `CanvasProtocol.kt`，当前只覆盖 `webview/ready`、`webview/createNote`、`host/bootstrap`、`host/stateUpdated` 和 Note 节点状态，并通过 `CanvasProtocolTest` 覆盖消息识别、未知消息拒绝和 JSON 转义。进入 Terminal 或 Agent 里程碑前，应重新评估是否启动方案 A，避免执行协议长期手写漂移。
 
 ### 5.4 执行和运行时持久化
 
@@ -118,7 +118,7 @@ IntelliJ 插件已落在 `extensions/intellij/dev-session-canvas/`，使用独�
 
 里程碑 1 不接受“最小 HTML 成功”作为完成标准。完成标准是 JCEF 中加载 React Flow bundle，并完成空画布渲染、pan / zoom、创建测试 Note 消息、Kotlin state update 回传和资源清理。当前已完成工程、bundle、构建和包结构验证；可见 JCEF UI smoke 因当前执行环境没有图形会话而待补。
 
-里程碑 2 负责把 PoC 收敛成正式 host adapter。VS Code 侧的 `acquireVsCodeApi()` 不能泄漏到 IntelliJ 前端；IntelliJ 侧也不应在业务组件里散落 JCEF 条件分支。
+里程碑 2 负责把 PoC 收敛成正式 host adapter。VS Code 侧的 `acquireVsCodeApi()` 不能泄漏到 IntelliJ 前端；IntelliJ 侧也不应在业务组件里散落 JCEF 条件分支。当前工程切片已经把 IntelliJ 前端访问 JCEF 的位置收口到 `extensions/intellij/dev-session-canvas/src/main/webview/hostAdapter.ts`，业务组件只使用 `host.postMessage()` / `host.onMessage()`；Kotlin 侧把消息分发收口到 `CanvasProtocol.decodeWebviewMessage`，不再用裸字符串 `contains` 分发。
 
 里程碑 3 是 Note 与项目级持久化，里程碑 4 是 Terminal，里程碑 5 是 Agent，里程碑 6 是 Runtime Supervisor，里程碑 7 是发布准备。测试、设计文档和验证证据必须在里程碑 0 到 6 持续迭代，不能作为里程碑 7 的补债内容。
 
@@ -137,7 +137,7 @@ Runtime Supervisor 不是 Agent 第一版的前置条件。Agent 可以先落地
     ./gradlew verifyPluginStructure
     ./gradlew runIde
 
-2026-06-30 已在本地通过 `./gradlew test buildPlugin verifyPluginStructure`，其中 `test` 会运行 `testWebviewBundle` 检查 React Flow PoC bundle 标记，`buildPlugin` 生成 `build/distributions/dev-session-canvas-intellij-0.1.0-internal.zip`，`verifyPluginStructure` 验证插件包结构。当前 `runIde` 因无 `DISPLAY` / `WAYLAND_DISPLAY` 失败，堆栈包含 `HeadlessException` 和 `No X11 DISPLAY variable was set`；`verifyPlugin` 已进入 IntelliJ Plugin Verifier，但因访问 JetBrains 文档页和 Marketplace 依赖解析时 `Connection reset` 失败，未作为里程碑 1 完成证据。
+2026-06-30 已在本地通过 `./gradlew test buildPlugin verifyPluginStructure`，其中 `test` 会运行 `testWebviewBundle` 检查 React Flow PoC bundle 标记，并运行 `CanvasProtocolTest` 检查 Kotlin 最小协议模型；`buildPlugin` 生成 `build/distributions/dev-session-canvas-intellij-0.1.0-internal.zip`，`verifyPluginStructure` 验证插件包结构。当前 `runIde` 因无 `DISPLAY` / `WAYLAND_DISPLAY` 失败，堆栈包含 `HeadlessException` 和 `No X11 DISPLAY variable was set`；`verifyPlugin` 已进入 IntelliJ Plugin Verifier，但因访问 JetBrains 文档页和 Marketplace 依赖解析时 `Connection reset` 失败，未作为里程碑 1 / 2 完成证据。
 
 人工或自动 smoke 记录必须包含：Tool Window 出现；JCEF 支持检查结果；React Flow bundle 无加载错误；空画布根节点存在；pan / zoom 后 viewport 变化；创建测试 Note 消息到达 Kotlin 宿主；Kotlin 回传 state update 后页面出现测试 Note；关闭 IDE 后 browser 和 bridge 被释放。
 
