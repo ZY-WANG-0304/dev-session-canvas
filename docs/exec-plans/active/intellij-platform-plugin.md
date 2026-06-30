@@ -1,807 +1,337 @@
-# IntelliJ 平台插件开发计划
-
-## 执行计划元信息
-
-> **⚠️ 重要更新 (2026-05-03)**：本计划需要与 [Monorepo 重构计划](../completed/standard-monorepo-and-doc-knowledge-base.md) 协调。详见 [跨计划协调文档](./cross-plan-coordination.md)。
-> 
-> **🔴 优先级调整 (2026-05-03)**：本计划延后到第二阶段，等待 notifier 开发完成后再决策是否启动。
-
-- **状态**: 延后启动（等待第一阶段完成）
-- **优先级**: 低（第二阶段，可选）
-- **预计工作量**: 6-8 周（1-2 名开发者）**[第二阶段独立工作量]**
-- **创建时间**: 2026-05-02
-- **最后更新**: 2026-05-03（优先级调整）
-- **负责人**: 待定
-- **前置依赖**: 
-  - **硬依赖**: [Monorepo 重构计划](../completed/standard-monorepo-and-doc-knowledge-base.md) 第一阶段完成（VSCode 生态）
-  - **硬依赖**: Notifier 开发完成并验证价值
-  - **硬依赖**: 跨平台共享层落位（Monorepo 里程碑 5）
-  - **决策依赖**: 团队评估是否有资源和业务需求启动 IntelliJ 开发
-- **相关文档**: 
-  - [ARCHITECTURE.md](../../ARCHITECTURE.md)
-  - [技术债务追踪](../tech-debt-tracker.md)
-  - [跨计划协调文档](./cross-plan-coordination.md) ⭐ **必读**
-
-## 背景与动机
-
-### 业务需求
-
-团队中有大量 Android 开发者依赖 Android Studio 进行日常开发，他们也需要 DevSessionCanvas 提供的多会话协作画布能力。
-
-### 技术机会
-
-Android Studio 基于 IntelliJ Platform 构建，而 JetBrains 全家桶（PyCharm、WebStorm、GoLand、PhpStorm、Rider、CLion 等）都基于同一平台。这意味着：
-
-- **一次开发，覆盖 10+ IDE**
-- **用户基础扩大 10-20 倍**
-- **投入产出比远超预期**
-
-### 当前状态
-
-- ✅ VSCode 扩展已完成并发布 Preview 版本
-- ✅ 核心架构已验证（画布、Agent、Terminal、Note 节点）
-- ✅ Webview 前端代码可复用（React + React Flow）
-- ❌ 尚未启动 IntelliJ 平台适配
-- ⏳ **等待 Monorepo 重构完成**（2026-05-03 识别依赖）
-
-## 目标与范围
-
-### 核心目标
-
-为 IntelliJ Platform 开发插件，使 DevSessionCanvas 能在以下 IDE 中运行：
-
-| IDE | 主要用户群 | 优先级 |
-|-----|----------|--------|
-| Android Studio | Android 开发者 | 🔴 高（业务驱动） |
-| PyCharm | Python 开发者 | 🔴 高（AI/ML 场景） |
-| IntelliJ IDEA | Java/Kotlin 开发者 | 🟡 中 |
-| WebStorm | 前端开发者 | 🟡 中 |
-| GoLand | Go 开发者 | 🟢 低 |
-| 其他 JetBrains IDE | 各语言开发者 | 🟢 低 |
-
-### 功能范围
-
-**阶段 1 - MVP（必须）**：
-- ✅ 画布基础交互（缩放、拖拽、选择）
-- ✅ Note 节点（纯前端，最简单）
-- ✅ Terminal 节点（使用 pty4j）
-- ✅ 基础持久化（项目级别状态）
-
-**阶段 2 - 完整功能（应该）**：
-- ✅ Agent 节点（codex/claude CLI 集成）
-- ✅ Runtime Supervisor 集成
-- ✅ 跨 IDE 重启恢复
-- ✅ Settings 配置页面
-
-**阶段 3 - 增强特性（可选）**：
-- ⭕ 与 IDE 原生工具集成（Run Configuration、Debug）
-- ⭕ 平台特定优化（Android Studio 的 Logcat 集成等）
-- ⭕ 性能优化与大规模节点支持
-
-### 非目标
-
-- ❌ 不支持 Fleet（新架构，需单独适配）
-- ❌ 不重写 VSCode 扩展（保持两个独立实现）
-- ❌ 不追求 100% 功能对等（优先核心场景）
-
-## 技术方案
-
-### 架构设计
-
-#### 整体架构
-
-```
-IntelliJ Plugin 架构
-┌─────────────────────────────────────────────────────┐
-│  IntelliJ Platform (Java/Kotlin)                    │
-│  ┌───────────────────────────────────────────────┐  │
-│  │  Plugin Entry (plugin.xml + CanvasPlugin.kt) │  │
-│  └───────────────────────────────────────────────┘  │
-│                        │                             │
-│  ┌─────────────────────┴─────────────────────────┐  │
-│  │  ToolWindow (CanvasToolWindowFactory)         │  │
-│  │  ┌─────────────────────────────────────────┐  │  │
-│  │  │  JBCefBrowser (Chromium)                │  │  │
-│  │  │  ┌───────────────────────────────────┐  │  │  │
-│  │  │  │  React App (复用 VSCode webview) │  │  │  │
-│  │  │  │  - Canvas (React Flow)           │  │  │  │
-│  │  │  │  - Node Components               │  │  │  │
-│  │  │  │  - Terminal Frontend (xterm.js)  │  │  │  │
-│  │  │  └───────────────────────────────────┘  │  │  │
-│  │  └─────────────────────────────────────────┘  │  │
-│  └─────────────────────────────────────────────────┘  │
-│                        │                             │
-│  ┌─────────────────────┴─────────────────────────┐  │
-│  │  JavaScript Bridge (CefMessageRouter)         │  │
-│  └─────────────────────────────────────────────────┘  │
-│                        │                             │
-│  ┌─────────────────────┴─────────────────────────┐  │
-│  │  Canvas State Manager (Kotlin)                │  │
-│  │  - Node lifecycle                             │  │
-│  │  - Persistence (PersistentStateComponent)     │  │
-│  │  - Message routing                            │  │
-│  └─────────────────────────────────────────────────┘  │
-│                        │                             │
-│  ┌─────────────────────┴─────────────────────────┐  │
-│  │  Execution Manager (Kotlin)                   │  │
-│  │  - ProcessBuilder / pty4j                     │  │
-│  │  - Output capture & forwarding                │  │
-│  │  - Session lifecycle                          │  │
-│  └─────────────────────────────────────────────────┘  │
-│                        │                             │
-│  ┌─────────────────────┴─────────────────────────┐  │
-│  │  Runtime Supervisor Client (Kotlin)           │  │
-│  │  - Socket communication                       │  │
-│  │  - Session persistence                        │  │
-│  └─────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────┐
-│  Runtime Supervisor (Node.js or Kotlin)             │
-│  - 独立进程，跨 IDE 生命周期                          │
-│  - 会话注册表与持久化                                │
-└─────────────────────────────────────────────────────┘
-```
-
-#### 代码复用策略
-
-**可直接复用（60-70%）**：
-
-1. **Webview 前端** (`extensions/vscode/dev-session-canvas/src/webview/`)
-   - React 组件
-   - React Flow 画布
-   - xterm.js 终端前端
-   - 样式与交互逻辑
-
-2. **协议定义** (`extensions/vscode/dev-session-canvas/src/common/protocol.ts`)
-   - 消息类型
-   - 节点模型
-   - 状态结构
-
-3. **业务逻辑**
-   - Agent CLI 解析
-   - 终端状态管理
-   - 注意力信号检测
-
-**需要重写（30-40%）**：
-
-1. **宿主集成层**
-   - Plugin 入口与生命周期
-   - ToolWindow 管理
-   - Settings 配置
-
-2. **执行层**
-   - 进程启动（ProcessBuilder/pty4j）
-   - 输出捕获
-   - 会话管理
-
-3. **持久化层**
-   - PersistentStateComponent
-   - 项目级别存储
-
-### 技术栈选型
-
-| 组件 | VSCode 实现 | IntelliJ 实现 | 说明 |
-|------|------------|--------------|------|
-| 插件语言 | TypeScript | **Kotlin** | JetBrains 官方推荐 |
-| UI 容器 | Webview | **JBCefBrowser** | 内嵌 Chromium |
-| 前端框架 | React | **React（复用）** | 无需改动 |
-| 画布库 | React Flow | **React Flow（复用）** | 无需改动 |
-| 终端前端 | xterm.js | **xterm.js（复用）** | 无需改动 |
-| 终端后端 | node-pty | **pty4j** | JetBrains 官方库 |
-| 进程管理 | child_process | **ProcessBuilder** | Java 标准库 |
-| 持久化 | WorkspaceState | **PersistentStateComponent** | IntelliJ 标准 API |
-| 构建工具 | esbuild | **Gradle** | IntelliJ 标准构建 |
-
-### 关键技术点
-
-#### 1. JBCefBrowser 集成
-
-```kotlin
-class CanvasToolWindowFactory : ToolWindowFactory {
-    override fun createToolWindowContent(
-        project: Project,
-        toolWindow: ToolWindow
-    ) {
-        val browser = JBCefBrowser()
-        
-        // 加载 React 应用
-        val htmlContent = loadWebviewHtml(project)
-        browser.loadHTML(htmlContent)
-        
-        // 设置消息桥接
-        val bridge = CanvasMessageBridge(project, browser)
-        bridge.setupMessageRouter()
-        
-        // 添加到 ToolWindow
-        val content = ContentFactory.getInstance()
-            .createContent(browser.component, "", false)
-        toolWindow.contentManager.addContent(content)
-    }
-}
-```
-
-#### 2. JavaScript Bridge
-
-> **⚠️ 已更新 (2026-05-03)**：使用从 JSON Schema 生成的 Kotlin 协议定义。
-
-```kotlin
-// 使用共享协议定义（从 packages/protocol/kotlin/ 导入）
-import com.devsessioncanvas.protocol.WebviewToHostMessage
-import com.devsessioncanvas.protocol.HostToWebviewMessage
-
-class CanvasMessageBridge(
-    private val project: Project,
-    private val browser: JBCefBrowser
-) {
-    fun setupMessageRouter() {
-        val router = CefMessageRouter.create()
-        
-        router.addHandler(object : CefMessageRouterHandlerAdapter() {
-            override fun onQuery(
-                browser: CefBrowser,
-                frame: CefFrame,
-                queryId: Long,
-                request: String,
-                persistent: Boolean,
-                callback: CefQueryCallback
-            ): Boolean {
-                // 处理来自 Webview 的消息
-                handleWebviewMessage(request, callback)
-                return true
-            }
-        }, true)
-        
-        browser.jbCefClient.cefClient.addMessageRouter(router)
-    }
-    
-    private fun handleWebviewMessage(
-        message: String,
-        callback: CefQueryCallback
-    ) {
-        // 使用自动生成的协议定义
-        val msg = Json.decodeFromString<WebviewToHostMessage>(message)
-        when (msg.type) {
-            "createNode" -> handleCreateNode(msg, callback)
-            "deleteNode" -> handleDeleteNode(msg, callback)
-            // ...
-        }
-    }
-    
-    fun sendToWebview(message: HostToWebviewMessage) {
-        val json = Json.encodeToString(message)
-        browser.cefBrowser.executeJavaScript(
-            "window.receiveHostMessage($json)",
-            browser.cefBrowser.url,
-            0
-        )
-    }
-}
-```
-
-#### 3. pty4j 终端集成
-
-```kotlin
-class ExecutionSessionManager(private val project: Project) {
-    fun startTerminal(
-        command: String,
-        workingDir: String
-    ): ExecutionSession {
-        val pty = PtyProcessBuilder()
-            .setCommand(arrayOf(getShellPath(), "-c", command))
-            .setDirectory(workingDir)
-            .setEnvironment(getEnvironment())
-            .start()
-        
-        val session = ExecutionSession(
-            id = UUID.randomUUID().toString(),
-            process = pty,
-            outputBuffer = StringBuilder()
-        )
-        
-        // 启动输出读取线程
-        startOutputReader(session)
-        
-        return session
-    }
-    
-    private fun startOutputReader(session: ExecutionSession) {
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val reader = BufferedReader(
-                InputStreamReader(session.process.inputStream)
-            )
-            reader.forEachLine { line ->
-                session.outputBuffer.append(line).append("\n")
-                notifyWebview(session.id, line)
-            }
-        }
-    }
-}
-```
-
-#### 4. 持久化
-
-```kotlin
-@State(
-    name = "DevSessionCanvasState",
-    storages = [Storage("devSessionCanvas.xml")]
-)
-class CanvasStateService : PersistentStateComponent<CanvasState> {
-    private var state = CanvasState()
-    
-    override fun getState(): CanvasState = state
-    
-    override fun loadState(state: CanvasState) {
-        this.state = state
-    }
-    
-    companion object {
-        fun getInstance(project: Project): CanvasStateService {
-            return project.service()
-        }
-    }
-}
-
-data class CanvasState(
-    var nodes: List<CanvasNodeSummary> = emptyList(),
-    var viewport: ViewportState = ViewportState(),
-    var sessions: Map<String, SessionSnapshot> = emptyMap()
-)
-```
-
-### 项目结构
-
-> **⚠️ 已更新 (2026-05-03)**：项目位置调整为 monorepo 结构，协议和 Webview 使用共享包。
-
-```
-# 在 monorepo 中的位置
-extensions/intellij/dev-session-canvas/
-├── build.gradle.kts                    # Gradle 构建配置
-├── gradle.properties
-├── settings.gradle.kts
-├── src/
-│   ├── main/
-│   │   ├── kotlin/
-│   │   │   └── com/devsessioncanvas/intellij/
-│   │   │       ├── CanvasPlugin.kt                 # 插件入口
-│   │   │       ├── toolwindow/
-│   │   │       │   ├── CanvasToolWindowFactory.kt
-│   │   │       │   └── CanvasMessageBridge.kt
-│   │   │       ├── state/
-│   │   │       │   ├── CanvasStateService.kt
-│   │   │       │   └── CanvasState.kt
-│   │   │       ├── execution/
-│   │   │       │   ├── ExecutionSessionManager.kt
-│   │   │       │   ├── ExecutionSession.kt
-│   │   │       │   └── AgentCliResolver.kt
-│   │   │       ├── supervisor/
-│   │   │       │   └── RuntimeSupervisorClient.kt
-│   │   │       ├── actions/
-│   │   │       │   ├── OpenCanvasAction.kt
-│   │   │       │   ├── CreateNodeAction.kt
-│   │   │       │   └── ResetStateAction.kt
-│   │   │       └── settings/
-│   │   │           ├── CanvasSettings.kt
-│   │   │           └── CanvasConfigurable.kt
-│   │   └── resources/
-│   │       ├── META-INF/
-│   │       │   └── plugin.xml                      # 插件配置
-│   │       # webview 资源通过构建时从 packages/webview/dist/intellij/ 复制
-│   └── test/
-│       └── kotlin/
-│           └── com/devsessioncanvas/intellij/
-│               ├── ExecutionSessionManagerTest.kt
-│               └── CanvasStateServiceTest.kt
-├── README.md
-└── CHANGELOG.md
-
-# 依赖的共享包（在 monorepo 根目录）
-packages/
-  protocol/kotlin/                      # 【依赖】Kotlin 协议定义（从 JSON Schema 生成）
-  webview/dist/intellij/                # 【依赖】构建好的 React 应用
-```
-
-### plugin.xml 配置
-
-```xml
-<idea-plugin>
-    <id>com.devsessioncanvas.intellij</id>
-    <name>Dev Session Canvas</name>
-    <vendor email="wzy0304@outlook.com" url="https://github.com/ZY-WANG-0304/dev-session-canvas">
-        Dev Session Canvas
-    </vendor>
-    
-    <description><![CDATA[
-        多会话协作画布，支持 Agent、Terminal 和 Note 节点的可视化管理。
-    ]]></description>
-    
-    <!-- 兼容所有 IntelliJ 平台产品 -->
-    <depends>com.intellij.modules.platform</depends>
-    
-    <!-- 可选：Android Studio 特定功能 -->
-    <depends optional="true" config-file="android-studio.xml">
-        com.intellij.modules.androidstudio
-    </depends>
-    
-    <!-- 可选：Python 特定功能 -->
-    <depends optional="true" config-file="pycharm.xml">
-        com.intellij.modules.python
-    </depends>
-    
-    <extensions defaultExtensionNs="com.intellij">
-        <!-- ToolWindow -->
-        <toolWindow
-            id="Dev Session Canvas"
-            anchor="bottom"
-            factoryClass="com.devsessioncanvas.intellij.toolwindow.CanvasToolWindowFactory"
-            icon="/icons/canvas.svg"/>
-        
-        <!-- Settings -->
-        <projectConfigurable
-            instance="com.devsessioncanvas.intellij.settings.CanvasConfigurable"
-            displayName="Dev Session Canvas"/>
-        
-        <!-- State Service -->
-        <projectService
-            serviceImplementation="com.devsessioncanvas.intellij.state.CanvasStateService"/>
-    </extensions>
-    
-    <actions>
-        <action
-            id="DevSessionCanvas.OpenCanvas"
-            class="com.devsessioncanvas.intellij.actions.OpenCanvasAction"
-            text="Open Canvas"
-            description="Open Dev Session Canvas"
-            icon="AllIcons.Actions.Execute">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-        </action>
-        
-        <action
-            id="DevSessionCanvas.CreateNode"
-            class="com.devsessioncanvas.intellij.actions.CreateNodeAction"
-            text="Create Node"
-            description="Create a new canvas node">
-        </action>
-    </actions>
-</idea-plugin>
-```
-
-## 实施计划
-
-### 阶段划分
-
-#### 阶段 0：准备与验证（1 周）
-
-> **⚠️ 已更新 (2026-05-03)**：本阶段需要等待 Monorepo 重构完成。
-
-**前置条件**：
-- ✅ Monorepo 重构完成至里程碑 2（VSCode 扩展迁移到新结构）
-- ✅ 跨平台共享层建设完成（里程碑 5）
-
-**目标**：技术可行性验证
-
-**任务**：
-- [ ] 在 `extensions/intellij/` 下创建插件项目骨架
-- [ ] 配置 Gradle 依赖共享包（`packages/protocol/kotlin/`、`packages/webview/`）
-- [ ] 验证 JBCefBrowser 加载共享的 React 应用
-- [ ] 验证 JavaScript Bridge 双向通信（使用生成的协议定义）
-- [ ] 验证 pty4j 启动终端进程
-- [ ] 评估团队 Kotlin 技能
-
-**交付物**：
-- PoC 项目（可运行的最小 Demo，位于 monorepo 中）
-- 技术验证报告（包含共享代码复用验证）
-- 风险评估文档
-
-#### 阶段 1：MVP 开发（3 周）
-
-**目标**：基础画布 + Note + Terminal 节点
-
-**Week 1：基础框架**
-- [ ] 完成项目结构搭建
-- [ ] 实现 ToolWindow 与 JBCefBrowser 集成
-- [ ] 实现 JavaScript Bridge
-- [ ] 复用并适配 Webview 前端代码
-- [ ] 实现基础消息协议
-
-**Week 2：节点实现**
-- [ ] 实现 Note 节点（纯前端）
-- [ ] 实现 Terminal 节点（pty4j 集成）
-- [ ] 实现节点 CRUD 操作
-- [ ] 实现画布交互（缩放、拖拽、选择）
-
-**Week 3：持久化与测试**
-- [ ] 实现 PersistentStateComponent
-- [ ] 实现项目级别状态存储
-- [ ] 实现跨 IDE 重启恢复
-- [ ] 编写单元测试
-- [ ] 内部测试与 Bug 修复
-
-**交付物**：
-- 可运行的 MVP 插件
-- 支持 Note 和 Terminal 节点
-- 基础持久化功能
-
-#### 阶段 2：Agent 集成（2 周）
-
-**目标**：Agent 节点 + Runtime Supervisor
-
-**Week 4：Agent 节点**
-- [ ] 移植 AgentCliResolver 逻辑
-- [ ] 实现 Agent 进程启动
-- [ ] 实现输出捕获与转发
-- [ ] 实现 Agent 节点 UI
-
-**Week 5：Supervisor 集成**
-- [ ] 决策：复用 Node.js 实现 or Kotlin 重写
-- [ ] 实现 RuntimeSupervisorClient
-- [ ] 实现会话持久化
-- [ ] 测试跨生命周期恢复
-
-**交付物**：
-- 完整功能的插件
-- 支持 Agent、Terminal、Note 三类节点
-- Runtime Supervisor 集成
-
-#### 阶段 3：完善与发布（1 周）
-
-**目标**：Settings、文档、发布
-
-**Week 6：完善**
-- [ ] 实现 Settings 配置页面
-- [ ] 实现 Actions 与快捷键
-- [ ] 编写用户文档
-- [ ] 编写开发者文档
-- [ ] 性能优化
-
-**Week 7：发布准备**
-- [ ] 完整测试（Android Studio、PyCharm、IntelliJ IDEA）
-- [ ] 准备 Marketplace 发布材料
-- [ ] 发布到 JetBrains Marketplace
-- [ ] 收集早期用户反馈
-
-**交付物**：
-- 发布版本插件
-- 完整文档
-- Marketplace 页面
-
-### 里程碑
-
-| 里程碑 | 时间 | 标志 |
-|--------|------|------|
-| M0: PoC 完成 | Week 1 | JBCefBrowser 加载 React 画布 |
-| M1: MVP 完成 | Week 3 | Note + Terminal 节点可用 |
-| M2: 功能完整 | Week 5 | Agent 节点可用 |
-| M3: 发布就绪 | Week 7 | Marketplace 发布 |
-
-### 资源需求
-
-**人力**：
-- 1-2 名 Kotlin 开发者（全职）
-- 1 名前端开发者（兼职，适配 Webview）
-- 1 名测试工程师（兼职）
-
-**技能要求**：
-- 必须：Kotlin、IntelliJ Platform SDK
-- 优先：React、TypeScript、pty4j
-- 加分：VSCode 扩展开发经验
-
-**工具与环境**：
-- IntelliJ IDEA Ultimate（开发）
-- Android Studio（测试）
-- PyCharm（测试）
-- Gradle 8.x
-- JDK 17+
-
-## 风险与挑战
-
-### 技术风险
-
-| 风险 | 影响 | 概率 | 缓解措施 |
-|------|------|------|----------|
-| JBCefBrowser 性能问题 | 高 | 中 | 阶段 0 验证，必要时降级到 Swing |
-| pty4j 兼容性问题 | 中 | 低 | 参考 IntelliJ Terminal 插件实现 |
-| Supervisor 跨平台问题 | 中 | 中 | 优先 Kotlin 重写，避免 Node.js 依赖 |
-| 消息协议不兼容 | 低 | 低 | 严格遵循 VSCode 协议定义 |
-
-### 团队风险
-
-| 风险 | 影响 | 概率 | 缓解措施 |
-|------|------|------|----------|
-| Kotlin 技能不足 | 高 | 中 | 提前培训，参考官方文档 |
-| IntelliJ SDK 不熟悉 | 中 | 高 | 学习官方示例，参考开源插件 |
-| 人力不足 | 高 | 中 | 调整阶段划分，优先 MVP |
-
-### 业务风险
-
-| 风险 | 影响 | 概率 | 缓解措施 |
-|------|------|------|----------|
-| 用户接受度低 | 高 | 低 | 早期用户测试，快速迭代 |
-| 与 VSCode 版本功能差异 | 中 | 高 | 明确非目标，管理预期 |
-| Marketplace 审核不通过 | 中 | 低 | 提前研究审核标准 |
-
-## 成功标准
-
-### 功能标准
-
-- ✅ 支持 Android Studio、PyCharm、IntelliJ IDEA
-- ✅ 支持 Agent、Terminal、Note 三类节点
-- ✅ 支持画布基础交互（缩放、拖拽、选择）
-- ✅ 支持项目级别持久化
-- ✅ 支持跨 IDE 重启恢复
-
-### 质量标准
-
-- ✅ 无 P0/P1 Bug
-- ✅ 核心功能测试覆盖率 > 80%
-- ✅ 启动时间 < 2s
-- ✅ 内存占用 < 200MB（空画布）
-
-### 用户标准
-
-- ✅ 早期用户测试通过（10+ 用户）
-- ✅ Marketplace 评分 > 4.0
-- ✅ 用户文档完整
-
-## 后续计划
-
-### 短期（3 个月）
-
-- 收集用户反馈，快速迭代
-- 修复 Bug，优化性能
-- 补充平台特定功能（Android Logcat 集成等）
-
-### 中期（6 个月）
-
-- 与 IDE 原生工具深度集成
-- 支持更多节点类型（Database、HTTP Client 等）
-- 性能优化，支持大规模节点
-
-### 长期（1 年）
-
-- 探索跨 IDE 协作（VSCode ↔ IntelliJ）
-- 云端同步与团队协作
-- 插件生态（第三方节点类型）
+# IntelliJ Platform 插件设计与开发计划
+
+本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
+
+本文位于 `docs/exec-plans/active/intellij-platform-plugin.md`，必须按 `docs/PLANS.md` 的要求持续维护。当前仓库已结束 MVP 验证阶段；本计划后续按正式 IntelliJ Platform 插件工程推进，不把交付物当成一次性原型。
+
+## 目标与全局图景
+
+这项工作要让 DevSessionCanvas 不只运行在 VS Code 中，也能在 IntelliJ Platform 系列 IDE 中打开一张多会话协作画布。完成后，Android Studio、PyCharm、IntelliJ IDEA 等用户可以从 IDE 的 Tool Window 打开 Dev Session Canvas，看到与当前项目绑定的画布，并逐步使用 Note、Terminal、Agent 三类节点管理开发会话。
+
+第一批可观察成功结果不是“写出一套 Kotlin 代码”，而是：在 `extensions/intellij/dev-session-canvas/` 下存在可运行插件工程；从该目录执行 `./gradlew runIde` 后，测试 IDE 能显示 `Dev Session Canvas` Tool Window；Tool Window 内的 JCEF 能加载 React Flow 画布 bundle；画布能完成一次创建测试 Note 的 Kotlin 往返。后续里程碑再把持久化、终端 PTY、Agent CLI、Runtime Supervisor、设置页和内部手动安装验证补齐；公开 Marketplace 发布留到后续发布计划。
+
+当前计划的首要目标是把过期的 2026-05 口径收口到 2026-06-30 的仓库事实：monorepo 和 notifier companion 已经落地；`extensions/intellij/`、跨 IDE 协议生成包和共享 Webview 包尚未落地；正式实现前必须先补 IntelliJ 插件架构设计文档，并把待定方案写成待验证假设，而不是伪装成已确认结论。
+
+## 进度
+
+- [x] (2026-06-30 07:19 +0800) 已重读 `docs/WORKFLOW.md` 与 `docs/PLANS.md`，确认本任务属于交付性文档更新，且后续正式实现必须使用本 `ExecPlan` 跟踪。
+- [x] (2026-06-30 07:24 +0800) 已复核当前仓库拓扑：主 VS Code 扩展位于 `extensions/vscode/dev-session-canvas/`，notifier companion 位于 `extensions/vscode/dev-session-canvas-notifier/`，当前没有 `extensions/intellij/`、`packages/protocol/` 或 `packages/webview/`。
+- [x] (2026-06-30 07:30 +0800) 已复核 JetBrains 官方文档当前基线：IntelliJ Platform Gradle Plugin 2.x 是当前主线；JCEF 使用前必须检查运行 IDE 是否支持；build number 范围和 Plugin Verifier 会影响 Marketplace 审核。
+- [x] (2026-06-30 07:45 +0800) 已将本计划从“延后启动、等待 notifier”更新为“设计发现可启动、实现尚未开始”，并补齐 `PLANS.md` 要求的活文档章节。
+- [x] (2026-06-30 08:25 +0800) 已根据讨论修正里程碑边界：里程碑 1 必须直接加载 React Flow bundle；最小本地 HTML 只作为调试子步骤，不作为独立验收里程碑。
+- [x] (2026-06-30 08:37 +0800) 已根据讨论修正后段里程碑：里程碑 5 是 Agent 节点，里程碑 6 是 Runtime Supervisor，原发布准备改为里程碑 7。
+- [x] (2026-06-30 08:45 +0800) 已创建正式设计文档 `docs/design-docs/intellij-platform-plugin-architecture.md` 并同步 `docs/design-docs/index.md`，当前状态为“比较中 / 未验证”。
+- [x] (2026-06-30 09:00 +0800) 已确认第一版目标 IDE 为 Android Studio、IntelliJ IDEA、PyCharm；兼容基线倾向从较新的 IntelliJ Platform 起步，精确 build range 待 scaffold 前复核。
+- [x] (2026-06-30 09:00 +0800) 已确认前端策略：先证明 JCEF 能跑 React Flow，再决定是否抽共享 Webview 包。
+- [x] (2026-06-30 09:00 +0800) 已确认协议策略：第一版接受 Kotlin 最小 DTO 子集。
+- [ ] 搭建 `extensions/intellij/dev-session-canvas/` 插件骨架，完成 Tool Window + JCEF + React Flow bundle 加载 PoC。
+- [ ] 完成 Note + 项目级持久化 MVP，并用 IntelliJ test framework 或可重复手动步骤验证关闭重开项目后状态恢复。
+- [ ] 完成 Terminal 节点 PTY PoC，验证本地 shell 输入输出、窗口 resize、停止进程和项目关闭清理。
+- [ ] 完成 Agent 节点，明确第一版不承诺关闭 IDE 后继续运行，只承诺当前 IDE 生命周期内 execution 通道和 snapshot-only / 历史态表达。
+- [ ] 完成 Runtime Supervisor 接入方案，倾向复用现有 Node supervisor，并验证 IntelliJ 侧能注册、恢复和清理 runtime 会话。
+- [ ] 完成内部/手动安装验证准备，包括 `./gradlew test`、`./gradlew buildPlugin`、`./gradlew verifyPlugin`、三类目标 IDE smoke 和手动安装说明。
+
+## 意外与发现
+
+- 观察：旧计划把 `packages/protocol/kotlin/` 和 `packages/webview/dist/intellij/` 写成已规划依赖，但当前仓库并不存在这些路径。
+  证据：`find extensions packages -maxdepth 3 -type d` 只显示 `extensions/vscode/...`、`packages/attention-protocol/` 和 `packages/marketplace-shared/`，没有 `extensions/intellij/`、`packages/protocol/` 或 `packages/webview/`。
+
+- 观察：旧计划的“等待 Monorepo 重构与 notifier”前置条件已经部分过期。monorepo 阶段 1.2 已归档，notifier companion 架构文档也标记为已验证；但跨 IDE 共享层仍未创建。
+  证据：`docs/exec-plans/completed/standard-monorepo-and-doc-knowledge-base.md` 明确本轮完成范围不包含 IntelliJ、跨 IDE JSON Schema 协议生成和共享 Webview 包；`docs/design-docs/notifier-companion-architecture.md` 的 `validation_status` 为 `已验证`。
+
+- 观察：当前 VS Code Webview 前端并不能“直接复制到 IntelliJ”。它在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中直接调用 `acquireVsCodeApi()`，并依赖 `window.message`、VS Code Webview lifecycle identity、宿主消息类型和 CSP 资源规则。
+  证据：`rg -n "acquireVsCodeApi|postMessage|message" extensions/vscode/dev-session-canvas/src/webview` 显示消息桥和 VS Code API 调用集中在 `main.tsx`，需要先抽象 host bridge 或做适配层。
+
+- 观察：官方 IntelliJ Platform 文档在 2026-06-29 构建的页面中已经把 Gradle 插件 2.x、JCEF 支持检查、build number 合法性和 `verifyPlugin` 任务作为当前实现必须关注的基础约束；旧计划中的“Gradle 8.x / JDK 17+”不能作为 2026-06-30 的直接执行基线。
+  证据：本次通过 JetBrains 官方文档复核了 IntelliJ Platform Gradle Plugin 2.x、Embedded Browser JCEF、Testing Overview 和 Build Number Ranges 页面；具体链接保留在 `参考资料`。
+
+- 观察：当前工作树处于 detached HEAD 状态，不是具名主题分支。
+  证据：`git status --short --branch` 输出 `## HEAD (no branch)`。本次只更新计划文档；后续实现前应按 `docs/WORKFLOW.md` 从合适目标分支切出主题分支。
+
+- 观察：加载一个最小本地 HTML 页面和加载当前 React Flow 画布之间存在显著风险差距，不能放在同一个“JCEF 已验证”结论里。
+  证据：最小 HTML 只覆盖 Swing/JCEF 容器、资源 URL 和一条消息往返；React Flow 画布还会引入 Vite/esbuild bundle、CSS 和字体资源、`@xyflow/react` 事件系统、wheel / pointer / keyboard 输入、VS Code host bridge 替换、base URL / CSP 差异、source map 调试、高频消息和真实空画布渲染。
+
+## 决策记录
+
+- 决策：把本计划状态从“延后启动（等待第一阶段完成）”改为“设计发现可启动，正式实现未启动”。
+  理由：monorepo 与 notifier 的主要前置已经落地，继续写成等待 notifier 会误导后续协作者；但共享 Webview、跨语言协议和 IntelliJ 架构设计仍未确认，不能直接进入实现。
+  日期/作者：2026-06-30 / Codex
+
+- 决策：正式实现前先创建 `docs/design-docs/intellij-platform-plugin-architecture.md`，并在设计索引登记；本 `ExecPlan` 负责推进，不能替代正式设计结论。
+  理由：IntelliJ 插件会影响平台边界、共享前端、协议生成、运行时持久化和发布矩阵，属于需要设计文档收口的复杂跨平台能力。
+  日期/作者：2026-06-30 / Codex
+
+- 决策：IntelliJ 插件仍放在当前 monorepo 的 `extensions/intellij/dev-session-canvas/`，而不是另起仓库。
+  理由：DevSessionCanvas 的产品、协议、文档和发布证据需要保持 repo-local；独立仓库会放大协议漂移、共享前端同步和文档分裂风险。当前这是执行默认方向，正式方案仍需写入设计文档后确认。
+  日期/作者：2026-06-30 / Codex
+
+- 决策：第一轮工程 PoC 必须证明 Tool Window 中的 JCEF 能加载 React Flow 画布 bundle，而不是停在最小 HTML。
+  理由：最小 HTML 只是一条排障子步骤，不能覆盖当前画布真正依赖的 React / React Flow bundle、CSS 资源、host bridge 替换和输入事件。把 React Flow 加载放进里程碑 1，可以防止后续把过弱 smoke 误判成画布风险已解除。
+  日期/作者：2026-06-30 / Codex
+
+- 决策：不设置中间里程碑，把 React Flow bundle 加载 PoC 直接作为里程碑 1 的完成条件。
+  理由：插件骨架如果只到静态 HTML，交付价值和风险消减都太弱。里程碑 1 应当以“JCEF 承载真实或等价 React Flow 画布并完成一次创建消息往返”为验收边界；最小 HTML 只允许作为实现过程中的临时调试页面。
+  日期/作者：2026-06-30 / Codex
+
+- 决策：当前不手写完整 Kotlin 版 `protocol.ts` 镜像；正式实现前必须先决定“生成 Kotlin DTO”还是“维护最小 Kotlin 消息子集”。
+  理由：现有协议已经覆盖多 root、文件活动、执行性能诊断、生命周期和测试 probe，手写镜像容易漂移；但一开始就抽完整 JSON Schema 也可能过重，需要在设计阶段比较。
+  日期/作者：2026-06-30 / Codex
+
+- 决策：IntelliJ 构建链路以 JetBrains 官方 IntelliJ Platform Gradle Plugin 2.x 为默认研究方向，并在 scaffold 前再次复核官方文档。
+  理由：官方文档显示 1.x 插件已不是当前主线；Marketplace 兼容性、`patchPluginXml`、`verifyPlugin` 和 `runIde` 都围绕 2.x 工具链维护。
+  日期/作者：2026-06-30 / Codex
+
+- 决策：后段顺序调整为 Agent 节点先落地，Runtime Supervisor 后接入，发布准备作为里程碑 7。
+  理由：当前功能分层应先证明 IntelliJ 版能启动和交互 Agent，再把跨 IDE 生命周期的 runtime 持久化作为后续增强；因此 Agent 里程碑只能承诺当前 IDE 生命周期内的 execution 通道，不能提前承诺 live runtime。
+  日期/作者：2026-06-30 / Codex
+
+- 决策：第一版目标 IDE 确认为 Android Studio、IntelliJ IDEA 和 PyCharm；其他 JetBrains IDE 不写成已支持。
+  理由：这三类 IDE 覆盖 Android、JVM/Kotlin 和 Python 用户主路径，验证范围足够明确；其他 IDE 只有完成对应 smoke 或 Plugin Verifier 后才能扩展支持口径。
+  日期/作者：2026-06-30 / 用户、Codex
+
+- 决策：第一版兼容基线倾向从较新的 IntelliJ Platform 起步，精确 build range 在 scaffold 前复核官方文档和 Android Studio 对应基线。
+  理由：较新平台能降低 JCEF、Gradle 插件、Kotlin runtime 和 Plugin Verifier 兼容成本；但具体 since-build / until-build 必须使用真实 build number。
+  日期/作者：2026-06-30 / 用户、Codex
+
+- 决策：前端先证明 JCEF 能跑 React Flow，再决定是否抽共享 Webview 包。
+  理由：React Flow 在 JCEF 中的资源加载、输入事件和 bridge 行为是最大未知项；先验证真实风险，再决定长期抽包，避免提前大规模重构。
+  日期/作者：2026-06-30 / 用户、Codex
+
+- 决策：第一版协议接受 Kotlin 最小 DTO 子集。
+  理由：早期里程碑只需要 bootstrap、state update 和少量节点消息；完整 JSON Schema / 代码生成可在协议面扩大前再评估，但 DTO 子集必须有漂移防线。
+  日期/作者：2026-06-30 / 用户、Codex
+
+- 决策：Agent 第一版明确不承诺关闭 IDE 后继续运行。
+  理由：Runtime Supervisor 排在 Agent 之后，Agent 第一版只能承诺当前 IDE 生命周期内的 execution 通道和 snapshot-only / 历史态表达，不能伪装成 live runtime。
+  日期/作者：2026-06-30 / 用户、Codex
+
+- 决策：Runtime Supervisor 倾向复用现有 Node supervisor。
+  理由：现有 supervisor 已承载 VS Code live runtime 语义，复用能减少双实现漂移；IntelliJ 侧需要验证 JVM client、进程发现、socket 路径和打包分发方式。
+  日期/作者：2026-06-30 / 用户、Codex
+
+- 决策：第一版发布范围是内部/手动安装验证，不默认 JetBrains Marketplace 发布。
+  理由：IntelliJ 插件第一版仍需验证 JCEF、IDE 矩阵、Agent 和 runtime 语义；内部安装包和手动验证能先降低风险，公开 Marketplace 发布留到后续发布计划。
+  日期/作者：2026-06-30 / 用户、Codex
+
+## 结果与复盘
+
+本次更新只收口计划文档，没有新增代码或插件工程。完成结果是：旧计划中已过期的“等待 notifier / Gradle 8 / 已存在共享协议和 webview 包”口径被替换为当前仓库事实；计划现在明确先做设计发现，再做可运行 PoC，最后逐步扩展到 Note、Terminal、Agent、Runtime Supervisor 和发布验证。
+
+正式设计文档 `docs/design-docs/intellij-platform-plugin-architecture.md` 已创建，但仍处于“比较中 / 未验证”。目标 IDE 已确认是 Android Studio、IntelliJ IDEA 和 PyCharm；第一版倾向较新 IntelliJ Platform；前端先验证 JCEF + React Flow；协议先用 Kotlin 最小 DTO 子集；Agent 第一版不承诺关闭 IDE 后继续运行；Runtime Supervisor 倾向复用现有 Node supervisor；第一版发布范围是内部/手动安装验证。精确 build range、JCEF fallback、共享前端抽离时机、Node supervisor 复用细节和后续 Marketplace 发布策略仍待确认。后续每个实现里程碑都必须同步测试证据和相关文档，不应把测试与文档都推迟到发布前。
+
+## 上下文与定向
+
+当前仓库根目录是 private npm workspace root。根 `package.json` 负责编排 VS Code 主扩展、notifier companion、attention protocol、模板市场和 marketplace shared 包。正式文档位于根目录 `docs/`、`ARCHITECTURE.md`、`README.md` 和 `README.zh-CN.md`。
+
+当前与 IntelliJ 插件最相关的代码路径如下：
+
+- `extensions/vscode/dev-session-canvas/src/common/protocol.ts`：VS Code Host 与 Webview 之间的消息、节点模型、运行时上下文和测试 probe 类型。它是跨平台协议设计的输入，但还不是跨语言单一真相。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：React / React Flow 画布前端。它包含真实 UI 能力，也包含大量 VS Code Webview API 和生命周期假设。
+- `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：VS Code Extension Host 侧的画布权威状态、消息编排、持久化、节点创建和执行接线入口。
+- `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts`：VS Code 侧执行会话桥，处理 Terminal / Agent 输出、输入和状态回流。
+- `extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts`：Agent CLI 命令发现逻辑，后续 IntelliJ 版需要复用语义但不能直接依赖 VS Code API。
+- `extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts` 与 `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts`：live runtime supervisor 客户端与进程入口，后续要决定 IntelliJ 版复用 Node supervisor 还是另做 JVM 客户端。
+- `packages/attention-protocol/`：当前只服务 VS Code 主扩展与 notifier companion 的桌面通知协议，不应误写成 IntelliJ 通用画布协议。
+
+本计划使用几个 IntelliJ Platform 术语：
+
+- IntelliJ Platform 插件：运行在 JetBrains IDE 内的 JVM 插件，通常用 Kotlin 或 Java 写，通过 `plugin.xml` 声明扩展点、Action、Tool Window 和服务。
+- Tool Window：JetBrains IDE 侧边或底部工具窗口，类似用户可长期停靠的功能面板。DevSessionCanvas 的第一版主入口应是一个 Tool Window。
+- JCEF / `JBCefBrowser`：JetBrains IDE 内嵌 Chromium 浏览器的 Java 包装，用于在 Swing UI 中显示 HTML / React 页面。运行前要检查 `JBCefApp.isSupported()`，因为某些 JDK 或 IDE 组合可能不支持。
+- Bridge：浏览器中的 JavaScript 与 Kotlin 宿主之间的消息通道。VS Code 用 `acquireVsCodeApi().postMessage`，IntelliJ 需要用 JCEF 的消息或查询机制适配成同样的 host bridge 语义。
+- `PersistentStateComponent`：IntelliJ 平台保存项目级或应用级状态的标准接口。第一版画布状态应先使用项目级持久化。
+- `pty4j`：JetBrains 生态常用的伪终端进程库，用于让插件启动可交互 shell。Terminal 节点不应退化为普通 `ProcessBuilder` 文本管道，除非设计文档明确记录降级边界。
+- Runtime Supervisor：当前 VS Code 版本中用于在编辑器生命周期之外托管执行会话的独立运行时。IntelliJ 版是否复用它仍待设计。
+
+## 工作计划
+
+里程碑 0 是设计发现与可行性收口。先新增 `docs/design-docs/intellij-platform-plugin-architecture.md`，并登记到 `docs/design-docs/index.md`。这份设计文档必须写清问题定义、目标 IDE 矩阵、目标 build range、JCEF 与 Swing fallback、前端复用方式、协议生成方式、Terminal / Agent 运行时边界、测试矩阵和 Marketplace 发布边界。完成后，读者应能知道哪些内容已经选定，哪些只是待验证假设。
+
+里程碑 1 是插件骨架与 React Flow 画布加载 PoC。创建 `extensions/intellij/dev-session-canvas/`，使用 IntelliJ Platform Gradle Plugin 2.x、Kotlin、Gradle wrapper 和最小 `plugin.xml`。实现 `CanvasToolWindowFactory`，在 Tool Window 中创建 `JBCefBrowser`，并加载真实或足够等价的 React / React Flow bundle。实现过程中可以先用最小本地 HTML 排查 JCEF、资源 URL 和 bridge 注册，但该调试页面不算里程碑完成。里程碑 1 的完成条件是：JCEF 控制台没有 bundle 加载错误；空画布能渲染；pan / zoom 的 wheel 和 pointer 事件能改变 viewport；画布能发出 `createNote` 或等价测试消息；Kotlin 宿主能回传 state update，让页面出现一个测试 Note；关闭 IDE 时 browser 和 bridge 资源能被清理。
+
+里程碑 2 是前端 host adapter 与最小画布交互收口。基于里程碑 0 的设计结论，选择是抽离共享 Webview 包，还是在 IntelliJ 插件中先构建一个最小 canvas bundle。无论哪种方式，都要把 VS Code 专属的 `acquireVsCodeApi()` 包成可替换的 host bridge，而不是在 IntelliJ 版里到处写条件分支。完成后，`runIde` 中的画布不再只是 PoC，而是使用稳定 host adapter 接收 bootstrap state、发送创建 Note 请求、接收 state update，并为后续 Note 持久化使用同一条协议路径。
+
+里程碑 3 是 Note 节点与项目级持久化。实现 Kotlin 侧的 `CanvasProjectStateService`，保存节点 ID、类型、标题、正文、位置、尺寸和视口。用户在 Tool Window 创建 Note、修改标题或正文、移动节点后，关闭并重开测试项目，应看到同一批 Note 和视口恢复。这个阶段不要求 Terminal、Runtime Supervisor 或 Agent。完成本里程碑时必须同步相关测试证据和设计文档状态。
+
+里程碑 4 是 Terminal 节点。引入 `pty4j`，实现 `ExecutionSessionManager`，支持在项目目录启动默认 shell、接收输入、推送输出、resize、停止进程和项目关闭清理。Webview 侧继续使用 xterm.js，但 bridge 必须支持高频输出分批和控制消息优先级，避免复刻已有 VS Code 版中“输出洪峰压过交互”的风险。完成本里程碑时必须同步终端相关测试证据、已知平台差异和设计文档状态。
+
+里程碑 5 是 Agent 节点。移植 Agent CLI 命令发现语义并接入 Codex / Claude Code。Agent 启动必须优先继承用户现有 CLI 配置和项目目录，不把 provider home 改写到插件私有目录；输出、输入、停止和失败状态先走已经验证过的 execution 通道。这个里程碑不承诺关闭 IDE 后真实进程继续存在；如果还没有 Runtime Supervisor，Agent 重开后的表现只能是历史态、失败态或明确的 snapshot-only 恢复入口。完成本里程碑时必须同步 Agent 相关测试证据和设计文档状态。
+
+里程碑 6 是 Runtime Supervisor 接入。Runtime Supervisor 倾向复用现有 Node supervisor；本里程碑要验证 IntelliJ 侧 JVM client、进程发现、socket 路径、打包分发和会话协议是否可行。插件需要能为 Terminal / Agent 会话注册 runtime identity、在 IDE / Tool Window 重开后重新查询或恢复状态、在项目关闭时按所选模式清理或保留进程，并把 backend 与 guarantee 写入日志或诊断。任何“关闭 IDE 后进程继续存在”的承诺，都必须和 `docs/product-specs/runtime-persistence-modes.md` 的 `snapshot-only` / `live-runtime` 语义对齐。完成本里程碑时必须同步 runtime 相关设计、测试和残余风险。
+
+里程碑 7 只做内部/手动安装验证准备。测试和文档不是发布前的一次性收尾，而是里程碑 0 到 6 的持续完成条件；到里程碑 7 时，只允许补齐可手动安装的插件包、版本号、changelog、内部安装说明、最终 Plugin Verifier 矩阵和 release smoke 记录。JetBrains Marketplace listing、签名和公开发布凭据不属于第一版默认范围，留到后续发布计划。发布准备不得混入功能开发分支；需要按 `docs/WORKFLOW.md` 的发布流程单独收口。
+
+## 具体步骤
+
+当前计划更新已经执行或应复核的命令如下，均从仓库根目录运行：
+
+    sed -n '1,220p' docs/WORKFLOW.md
+    sed -n '1,260p' docs/PLANS.md
+    find extensions packages -maxdepth 3 -type d | sort
+    rg -n "acquireVsCodeApi|postMessage|message" extensions/vscode/dev-session-canvas/src/webview
+    git status --short --branch
+    git diff --check
+
+进入里程碑 0 时，从仓库根目录执行：
+
+    test -f docs/DESIGN.md
+    test -f docs/design-docs/index.md
+    test -f docs/product-specs/index.md
+
+然后新增设计文档并同步索引。设计文档至少应包含以下待决策点：
+
+    目标 IDE 为 Android Studio / IntelliJ IDEA / PyCharm，精确 build range 待复核
+    JCEF 支持检查与 fallback
+    前端复用 / 抽离策略
+    TypeScript 与 Kotlin 协议同步策略
+    Tool Window 生命周期与项目级状态边界
+    Terminal PTY 与进程清理边界
+    Runtime Supervisor 主路径与 Agent CLI 边界
+    三类目标 IDE 测试矩阵、内部手动安装验证与后续 Marketplace 边界
+
+进入里程碑 1 时，在主题分支上创建插件目录。不要依赖当前机器已安装全局 Gradle；应在插件目录中提交 Gradle wrapper 或明确通过仓库脚本生成 wrapper。目标目录结构先按以下形态收口，后续根据设计文档调整：
+
+    extensions/intellij/dev-session-canvas/
+      build.gradle.kts
+      settings.gradle.kts
+      gradle.properties
+      gradlew
+      gradlew.bat
+      gradle/wrapper/
+      src/main/kotlin/com/devsessioncanvas/intellij/
+      src/main/resources/META-INF/plugin.xml
+      src/test/kotlin/com/devsessioncanvas/intellij/
+
+里程碑 1 的最小验证命令从插件目录执行：
+
+    cd extensions/intellij/dev-session-canvas
+    ./gradlew test
+    ./gradlew buildPlugin
+    ./gradlew runIde
+
+当 `runIde` 打开测试 IDE 后，人工验证应记录：Tool Window 是否出现、JCEF 是否支持、React Flow bundle 是否无加载错误、空画布根节点是否存在、pan / zoom 后 viewport 数值是否变化、点击测试入口后 Kotlin 宿主是否收到创建消息、Kotlin 宿主回传 state update 后页面是否出现测试 Note、关闭 IDE 是否清理 browser 和 bridge 资源。若 JCEF 不支持，插件必须显示可解释的降级 UI，而不是空白或崩溃；若只完成最小 HTML bootstrap 而没有 React Flow 画布证据，不能进入 Note 持久化实现。
+
+里程碑 2 之后，每个可观察功能都应有至少一种自动化或可重复手动验证。示例命令如下，具体任务名以实际 Gradle 配置为准：
+
+    cd extensions/intellij/dev-session-canvas
+    ./gradlew test
+    ./gradlew buildPlugin
+    ./gradlew verifyPlugin
+
+如果 `verifyPlugin` 需要下载多个 IDE 或依赖网络，应在计划和 MR 说明中记录环境前提、验证的 IDE build、失败日志位置和可重跑命令。
+
+## 验证与验收
+
+本次文档更新的验收标准是：`docs/exec-plans/active/intellij-platform-plugin.md` 符合 `docs/PLANS.md` 的活文档结构，准确反映当前仓库没有 IntelliJ 插件工程、没有跨 IDE 协议生成包、没有共享 Webview 包，并明确后续实现前需要正式设计文档。当前变更至少运行 `git diff --check` 验证 Markdown 没有尾随空白。
+
+后续整份计划完成时，用户可观察验收标准如下：
+
+1. 从 `extensions/intellij/dev-session-canvas/` 执行 `./gradlew runIde`，测试 IDE 打开后能看到 `Dev Session Canvas` Tool Window。
+2. Tool Window 中的页面能和 Kotlin 宿主完成 bootstrap 往返，并在 JCEF 不可用时显示明确降级信息。
+3. JCEF 中加载的 React Flow 画布能渲染空画布，pan / zoom 有可观察 viewport 变化，且一次测试创建消息能从画布发到 Kotlin 宿主并回传 state update。
+4. 用户能创建、编辑、移动、删除 Note 节点；关闭并重开项目后，Note、位置、尺寸和视口恢复。
+5. 用户能创建 Terminal 节点，在节点内输入 shell 命令并看到实时输出；停止节点或关闭项目时，进程被清理或按已记录的持久化模式处理。
+6. 用户能创建 Agent 节点，插件能按当前项目目录启动 Codex 或 Claude Code CLI，输出回流到节点，失败时显示可解释错误。
+7. Runtime Supervisor 路径已明确并可观察验证：插件能注册 runtime 会话、重新查询或恢复状态，并正确表达 `snapshot-only` / `live-runtime` 的保证差异。
+8. IntelliJ 版不会把 snapshot-only 恢复伪装成 live-runtime；如果没有 supervisor 或 provider 原生恢复身份，就明确展示历史态或中断态。
+9. `./gradlew test`、`./gradlew buildPlugin` 和 `./gradlew verifyPlugin` 在记录的目标 IDE build 上通过，失败项必须登记为 blocker 或技术债。
+10. Android Studio、IntelliJ IDEA 和 PyCharm 至少完成一轮基础 smoke；未验证的 IDE 不得在内部说明、README 或后续 Marketplace 文案中写成已支持。
+11. 每个实现里程碑的相关正式文档、设计文档、产品规格和本 `ExecPlan` 已持续同步；未确认内容仍标为待定或待验证。
+12. 里程碑 7 只包含内部/手动安装准备材料与最终发布验证，不再承接本应在功能实现阶段完成的测试或文档债务。
+
+## 幂等性与恢复
+
+文档阶段的修改可以安全重复执行：重读 `docs/WORKFLOW.md`、`docs/PLANS.md`、`docs/DESIGN.md` 和当前计划不会改变工作树。`git diff --check` 也可重复运行。
+
+创建 IntelliJ 插件工程时，应避免把一次性本机 IDE 缓存提交进仓库。Gradle 下载缓存、IDE sandbox、构建产物和测试日志应由 `.gitignore` 或插件子目录的 ignore 规则排除。`./gradlew clean` 可以重复执行，但不要用 `git reset --hard` 或 `git checkout --` 清理用户改动。
+
+如果里程碑 1 失败，先区分是 JCEF 容器 / bridge 失败，还是 React Flow bundle / 输入事件失败。前者优先检查运行 IDE 是否支持 JCEF、是否使用 JetBrains Runtime、资源 URL 是否可访问、bridge handler 是否注册和 disposal 是否过早；后者优先检查 bundle base URL、CSS 和字体资源、浏览器控制台错误、host bridge adapter、wheel / pointer 事件。不要在这两层证据补齐前进入 Note 持久化或 Terminal 功能。
+
+如果协议生成方案失败，可以退回到“最小 Kotlin DTO 子集”继续 PoC，但必须在 `意外与发现` 和设计文档中记录原因、丢弃条件和后续收口方式，不能让临时 DTO 漂移成长期事实来源。
+
+如果 Runtime Supervisor 接入失败，不要在 Agent 节点上宣称完整恢复能力。可以把第一版明确降级为 `snapshot-only`，但必须先更新设计文档、验收标准和用户可见状态语义，再继续后续发布准备。
+
+## 证据与备注
+
+本次更新依据的仓库证据如下：
+
+    git status --short --branch
+    ## HEAD (no branch)
+
+    find extensions packages -maxdepth 3 -type d | sort
+    extensions/vscode
+    extensions/vscode/dev-session-canvas
+    extensions/vscode/dev-session-canvas-notifier
+    packages/attention-protocol
+    packages/marketplace-shared
+
+    rg -n "export type WebviewToHostMessage|export type HostToWebviewMessage" extensions/vscode/dev-session-canvas/src/common/protocol.ts
+    671:export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
+    1106:export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
+
+    rg -n "acquireVsCodeApi" extensions/vscode/dev-session-canvas/src/webview/main.tsx
+    159:declare function acquireVsCodeApi<T>(): {
+    813:const vscode = acquireVsCodeApi<LocalUiState>();
+
+本次更新依据的官方文档证据如下；这些是移动目标，后续 scaffold 前必须再次复核：
+
+- JetBrains IntelliJ Platform Gradle Plugin 2.x 文档，页面构建时间为 2026-06-29，说明 2.x 是当前 Gradle 插件主线，并给出插件 ID、最低平台 / Gradle / Java 运行时要求。
+- JetBrains Embedded Browser JCEF 文档，页面构建时间为 2026-06-29，说明使用 JCEF 前应检查 `JBCefApp.isSupported()`，并用 `JBCefBrowser` 把浏览器组件加入 Swing UI。
+- JetBrains Build Number Ranges 文档，页面构建时间为 2026-06-29，说明 `since-build` / `until-build` 必须使用真实 build number，违规会被 verifier / Marketplace 拒绝。
+- JetBrains Gradle Plugin Tasks 文档，页面构建时间为 2026-06-29，列出 `runIde`、`buildPlugin`、`verifyPlugin` 等后续必须纳入验证的任务。
+
+## 接口与依赖
+
+后续实现应优先形成这些稳定路径和类型。名称可在设计文档中调整，但调整后必须同步本计划：
+
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/toolwindow/CanvasToolWindowFactory.kt
+      class CanvasToolWindowFactory : ToolWindowFactory
+
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/toolwindow/CanvasBrowserBridge.kt
+      class CanvasBrowserBridge(project: Project, browser: JBCefBrowser) : Disposable
+
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/state/CanvasProjectStateService.kt
+      class CanvasProjectStateService : PersistentStateComponent<CanvasProjectState>
+
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/execution/ExecutionSessionManager.kt
+      class ExecutionSessionManager(project: Project) : Disposable
+
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/execution/AgentCliResolver.kt
+      class AgentCliResolver(project: Project)
+
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/supervisor/RuntimeSupervisorClient.kt
+      class RuntimeSupervisorClient(project: Project) : Disposable
+
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/agent/AgentNodeManager.kt
+      class AgentNodeManager(project: Project) : Disposable
+
+Kotlin 侧消息模型在第一版只能覆盖当前里程碑需要的最小子集，例如 bootstrap、stateUpdated、createNote、updateNote、deleteNode。完整 `WebviewToHostMessage` / `HostToWebviewMessage` 镜像必须等协议生成或 DTO 子集方案明确后再扩展。Agent 节点可以先于 Runtime Supervisor 落地，但只能承诺当前 IDE 生命周期内的 execution 通道；Runtime Supervisor 落地前，Agent 节点不能私自发明另一套跨 IDE 生命周期恢复或进程托管语义。
+
+构建依赖的默认研究方向如下：
+
+- IntelliJ Platform Gradle Plugin 2.x：插件构建、`runIde`、`buildPlugin`、`verifyPlugin` 和 `patchPluginXml` 主路径。
+- Kotlin JVM：插件主要实现语言。Kotlin 标准库和 coroutines 版本必须按目标 IntelliJ Platform 的 bundled library 策略处理，避免无意打包冲突版本。
+- JCEF / `JBCefBrowser`：第一版画布 UI 容器，必须提供 unsupported fallback。
+- `pty4j`：Terminal 节点 PTY 后端候选，正式使用前需要验证目标 IDE / OS 矩阵。
+- `kotlinx.serialization` 或等价 JSON 库：Kotlin 侧消息解析候选，最终选择要和协议生成策略一致。
+- 现有 Node Runtime Supervisor：Agent / Terminal live runtime 候选依赖，当前倾向复用；不得在 JVM client、进程发现、socket 路径和打包分发验证前写成 IntelliJ 已支持。
 
 ## 参考资料
 
-### 官方文档
+- IntelliJ Platform SDK: https://plugins.jetbrains.com/docs/intellij/
+- IntelliJ Platform Gradle Plugin 2.x: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
+- Gradle Plugin Tasks: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-tasks.html
+- Embedded Browser JCEF: https://plugins.jetbrains.com/docs/intellij/embedded-browser-jcef.html
+- Testing Overview: https://plugins.jetbrains.com/docs/intellij/testing-plugins.html
+- Build Number Ranges: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html
+- Kotlin Support: https://plugins.jetbrains.com/docs/intellij/using-kotlin.html
 
-- [IntelliJ Platform SDK](https://plugins.jetbrains.com/docs/intellij/)
-- [JBCefBrowser 文档](https://plugins.jetbrains.com/docs/intellij/jcef.html)
-- [pty4j GitHub](https://github.com/JetBrains/pty4j)
-- [Kotlin 官方文档](https://kotlinlang.org/docs/)
+本次更新说明：2026-06-30，按当前 monorepo 事实和 JetBrains 官方文档复核结果重写本计划，移除已过期的“等待 notifier / 已存在跨 IDE 共享层”口径，补齐 `PLANS.md` 要求的活文档章节，并把下一步收口到正式 IntelliJ 架构设计文档与 React Flow 画布加载 PoC。
 
-### 示例插件
+补充更新说明：2026-06-30 08:25 +0800，根据讨论把“最小本地 HTML”降级为调试子步骤，把“React Flow 画布加载”直接提升为里程碑 1 的验收边界，避免后续把 JCEF smoke 误判为真实画布风险已解除。
 
-- [IntelliJ Terminal 插件](https://github.com/JetBrains/intellij-community/tree/master/plugins/terminal)
-- [Database Tools 插件](https://github.com/JetBrains/intellij-community/tree/master/plugins/database)
-- [Markdown 插件](https://github.com/JetBrains/intellij-community/tree/master/plugins/markdown)
+补充更新说明：2026-06-30 08:37 +0800，根据讨论把后段顺序调整为里程碑 5 Agent 节点、里程碑 6 Runtime Supervisor、里程碑 7 发布准备；测试和文档继续作为各实现里程碑的持续完成条件。
 
-### 内部文档
+补充更新说明：2026-06-30 08:45 +0800，新增 `docs/design-docs/intellij-platform-plugin-architecture.md` 并同步设计索引，把 IntelliJ 插件架构从 ExecPlan 推进内容沉淀到正式设计文档。
 
-- [ARCHITECTURE.md](../../ARCHITECTURE.md) - VSCode 扩展架构
-- [protocol.ts](../../extensions/vscode/dev-session-canvas/src/common/protocol.ts) - 消息协议定义
-- [executionSessionBridge.ts](../../extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts) - 执行会话管理
-
-## 附录
-
-### A. VSCode vs IntelliJ API 对照表
-
-| 功能 | VSCode API | IntelliJ API |
-|------|-----------|--------------|
-| 插件入口 | `activate(context)` | `plugin.xml` + `Plugin` interface |
-| UI 容器 | `vscode.window.createWebviewPanel()` | `ToolWindowFactory` + `JBCefBrowser` |
-| 命令注册 | `vscode.commands.registerCommand()` | `<action>` in plugin.xml |
-| 配置读取 | `vscode.workspace.getConfiguration()` | `PropertiesComponent` |
-| 持久化 | `context.workspaceState` | `PersistentStateComponent` |
-| 文件系统 | `vscode.workspace.fs` | `VirtualFileSystem` |
-| 进程启动 | `child_process.spawn()` | `ProcessBuilder` / `pty4j` |
-| 异步执行 | `Promise` / `async/await` | `ApplicationManager.executeOnPooledThread()` |
-
-### B. 协议转换示例
-
-> **⚠️ 已更新 (2026-05-03)**：使用 JSON Schema 作为单一真相来源，自动生成 TypeScript 和 Kotlin。
-
-**JSON Schema (单一真相来源)**:
-```json
-// packages/protocol/schema/protocol.json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "definitions": {
-    "CanvasNodeSummary": {
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "kind": { "$ref": "#/definitions/CanvasNodeKind" },
-        "position": { "$ref": "#/definitions/Position" },
-        "size": { "$ref": "#/definitions/Size" },
-        "metadata": { "$ref": "#/definitions/NodeMetadata" }
-      },
-      "required": ["id", "kind", "position", "size", "metadata"]
-    },
-    "Position": {
-      "type": "object",
-      "properties": {
-        "x": { "type": "number" },
-        "y": { "type": "number" }
-      },
-      "required": ["x", "y"]
-    }
-  }
-}
-```
-
-**TypeScript (自动生成)**:
-```typescript
-// packages/protocol/typescript/protocol.ts
-// 从 JSON Schema 自动生成
-interface CanvasNodeSummary {
-  id: string;
-  kind: CanvasNodeKind;
-  position: { x: number; y: number };
-  size: { width: number; height: number };
-  metadata: AgentMetadata | TerminalMetadata | NoteMetadata;
-}
-```
-
-**Kotlin (自动生成)**:
-```kotlin
-// packages/protocol/kotlin/Protocol.kt
-// 从 JSON Schema 自动生成
-@Serializable
-data class CanvasNodeSummary(
-    val id: String,
-    val kind: CanvasNodeKind,
-    val position: Position,
-    val size: Size,
-    val metadata: NodeMetadata
-)
-
-@Serializable
-data class Position(val x: Double, val y: Double)
-
-@Serializable
-data class Size(val width: Double, val height: Double)
-
-@Serializable
-sealed class NodeMetadata {
-    @Serializable
-    data class Agent(val provider: String, val status: String) : NodeMetadata()
-    
-    @Serializable
-    data class Terminal(val command: String, val exitCode: Int?) : NodeMetadata()
-    
-    @Serializable
-    data class Note(val content: String) : NodeMetadata()
-}
-```
-
-**生成工具链**:
-```bash
-# 从 TypeScript 生成 JSON Schema
-npm run generate:schema
-
-# 从 JSON Schema 生成 Kotlin
-cd extensions/intellij/dev-session-canvas
-./gradlew generateKotlinFromSchema
-```
-
-### C. 学习资源
-
-**Kotlin 学习**：
-- [Kotlin Koans](https://play.kotlinlang.org/koans/)
-- [Kotlin for Java Developers](https://www.coursera.org/learn/kotlin-for-java-developers)
-
-**IntelliJ Platform 学习**：
-- [IntelliJ Platform Plugin SDK](https://plugins.jetbrains.com/docs/intellij/welcome.html)
-- [IntelliJ Platform Explorer](https://plugins.jetbrains.com/intellij-platform-explorer/)
-- [Plugin Development Forum](https://intellij-support.jetbrains.com/hc/en-us/community/topics/200366979-IntelliJ-IDEA-Open-API-and-Plugin-Development)
-
----
-
-**文档版本**: v1.0  
-**最后更新**: 2026-05-02  
-**维护者**: 待定  
-**状态**: 📋 待启动
+补充更新说明：2026-06-30 09:00 +0800，记录用户确认的七项阶段性决策：目标 IDE 为 Android Studio / IntelliJ IDEA / PyCharm；兼容基线倾向较新 IntelliJ Platform；先验证 JCEF + React Flow；协议接受 Kotlin 最小 DTO 子集；Agent 第一版不承诺关闭 IDE 后继续运行；Runtime Supervisor 倾向复用现有 Node supervisor；第一版仅做内部/手动安装验证。
