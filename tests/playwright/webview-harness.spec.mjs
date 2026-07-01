@@ -4602,6 +4602,7 @@ for (const executionKind of ['agent', 'terminal']) {
     const readyProbe = await waitForExecutionTerminalReady(page, nodeId);
     expect(readyProbe.terminalMouseTrackingMode).toBe('none');
     expect(readyProbe.terminalBufferType).toBe('normal');
+    await focusExecutionTerminal(page, nodeId);
 
     await dispatchExecutionSnapshot(page, {
       nodeId,
@@ -4693,6 +4694,7 @@ for (const executionKind of ['agent', 'terminal']) {
     });
 
     await clearPostedMessages(page);
+    await focusExecutionTerminal(page, nodeId);
     await dispatchExecutionOutput(page, {
       nodeId,
       kind: executionKind,
@@ -4707,7 +4709,19 @@ for (const executionKind of ['agent', 'terminal']) {
     expect(diagnostic.payload.detail).toMatchObject({
       target: 'c',
       dataKind: 'base64',
-      decodedPreview: osc52Text
+      decodedPreview: osc52Text,
+      terminalHasFocus: true,
+      bridgedToHostClipboard: true
+    });
+
+    const copyMessage = await waitForPostedMessageByType(page, 'webview/copyTextToClipboard');
+    expect(copyMessage).toMatchObject({
+      type: 'webview/copyTextToClipboard',
+      payload: {
+        text: osc52Text,
+        source: 'execution-osc52',
+        nodeId
+      }
     });
   });
 
@@ -4746,6 +4760,8 @@ for (const executionKind of ['agent', 'terminal']) {
     expect(
       diagnostics.filter((entry) => ['selectionChange', 'mouseTrackingMode', 'osc52'].includes(entry.payload.source))
     ).toHaveLength(0);
+    const restoreCopyMessages = await readPostedMessagesByType(page, 'webview/copyTextToClipboard');
+    expect(restoreCopyMessages).toHaveLength(0);
     const suppressionDiagnostic = diagnostics.find((entry) => entry.payload.source === 'restoreSuppressed');
     expect(suppressionDiagnostic.payload).toMatchObject({
       nodeId,
@@ -4761,6 +4777,7 @@ for (const executionKind of ['agent', 'terminal']) {
     });
 
     await clearPostedMessages(page);
+    await focusExecutionTerminal(page, nodeId);
     await dispatchExecutionOutput(page, {
       nodeId,
       kind: executionKind,
@@ -4771,6 +4788,12 @@ for (const executionKind of ['agent', 'terminal']) {
       nodeId,
       kind: executionKind,
       source: 'osc52'
+    });
+    const liveCopyMessage = await waitForPostedMessageByType(page, 'webview/copyTextToClipboard');
+    expect(liveCopyMessage.payload).toMatchObject({
+      text: 'live osc52 diagnostic',
+      source: 'execution-osc52',
+      nodeId
     });
   });
 
