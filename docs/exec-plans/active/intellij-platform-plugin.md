@@ -12,6 +12,8 @@
 
 当前计划已经完成 2026-06-30 的文档收口和里程碑 1 工程首切片：`extensions/intellij/dev-session-canvas/` 插件工程已创建，React Flow PoC bundle 可以编译进插件包，Kotlin Tool Window / JCEF bridge 已能通过构建验证。2026-07-01 用户在真实 IDE 中补充手动截图：IntelliJ IDEA 与 PyCharm 能打开 Tool Window、渲染 JCEF React Flow 画布并显示 Note 卡片；Android Studio `AI-253.30387.90` 能安装插件但显示 JCEF unsupported fallback。随后用户确认 Android Studio 升级版本并安装/启用 JCEF 后也可以打开，说明 Android Studio 的 blocker 已从“插件不可安装 / JCEF 一定不可用”收敛为“需记录可用 Android Studio build 与 JCEF 安装路径”。当前执行环境仍没有 `DISPLAY` / `WAYLAND_DISPLAY`，无法本机运行 `runIde` 补充 JCEF 控制台、关闭清理和完整持久化 smoke，因此里程碑 1 记为“三类目标 IDE 基础可见 smoke 有人工证据，完整诊断证据和精确 build 号待补”。
 
+2026-07-01 进入里程碑 4 后，当前工程切片把 Terminal 节点接入同一条 Kotlin bridge 和 React Flow 画布：前端用 xterm.js 呈现终端，Kotlin 侧用 IntelliJ Platform 随 IDE 携带的 `pty4j` 启动项目目录下的默认 shell，并把输入、输出、resize、停止和最近输出快照纳入项目级状态。这个切片仍只承诺当前 IDE 生命周期内的 PTY 会话；Runtime Supervisor 仍在里程碑 6，不能把关闭 IDE 后继续运行写成已支持。
+
 ## 进度
 
 - [x] (2026-06-30 07:19 +0800) 已重读 `docs/WORKFLOW.md` 与 `docs/PLANS.md`，确认本任务属于交付性文档更新，且后续正式实现必须使用本 `ExecPlan` 跟踪。
@@ -38,7 +40,8 @@
 - [x] (2026-07-01 16:49 +0800) 已根据用户在 Android Studio `AI-253.30387.90` 的安装反馈移除内部验证包的 `until-build` 上限，用于覆盖当前和后续 IDE 的手动安装 smoke；这不是公开兼容承诺，仍需真实 UI smoke 和后续 Plugin Verifier 矩阵验证。
 - [x] (2026-07-01 17:49 +0800) 已记录用户手动 smoke 结果：IntelliJ IDEA 与 PyCharm 中 React Flow 画布和 Note 节点可见；Android Studio `AI-253.30387.90` 中进入 JCEF unsupported fallback，说明安装门禁已解除但该 Android Studio runtime 的 JCEF 能力不可用。
 - [x] (2026-07-01 19:36 +0800) 已记录用户更新后的 Android Studio smoke：升级 Android Studio 并安装/启用 JCEF 后可以打开 Dev Session Canvas；精确 Android Studio build、JCEF 安装方式和完整 Note / 持久化 checklist 仍待补。
-- [ ] 完成 Terminal 节点 PTY PoC，验证本地 shell 输入输出、窗口 resize、停止进程和项目关闭清理。
+- [x] (2026-07-01 20:35 +0800) 已推进里程碑 4 的工程首切片：协议和状态模型支持 `note` / `terminal` 节点；前端新增 xterm.js Terminal 节点、输入 / resize / stop 消息和最近输出恢复；Kotlin 侧新增 `ExecutionSessionManager` 与 `ShellCommandResolver`，通过平台随附 `pty4j` 在项目目录启动默认 shell。
+- [ ] 完成里程碑 4 的真实 PTY smoke。（已完成：协议 / 状态 / PTY session manager / shell 解析 / webview bundle marker 自动化测试；剩余：在有图形环境的 IntelliJ IDEA、PyCharm、Android Studio 中创建 Terminal，输入命令观察实时输出，验证 resize、Stop、Delete 和项目关闭清理。）
 - [ ] 完成 Agent 节点，明确第一版不承诺关闭 IDE 后继续运行，只承诺当前 IDE 生命周期内 execution 通道和 snapshot-only / 历史态表达。
 - [ ] 完成 Runtime Supervisor 接入方案，倾向复用现有 Node supervisor，并验证 IntelliJ 侧能注册、恢复和清理 runtime 会话。
 - [ ] 完成内部/手动安装验证准备，包括 `./gradlew test`、`./gradlew buildPlugin`、`./gradlew verifyPlugin`、三类目标 IDE smoke 和手动安装说明。
@@ -86,6 +89,15 @@
 
 - 观察：移除 `until-build` 后，IntelliJ IDEA 与 PyCharm 的手动安装和 JCEF React Flow 画布 smoke 已通过；Android Studio `AI-253.30387.90` 能进入 Tool Window，但 `JBCefApp.isSupported()` 返回不可用并显示 fallback。用户升级 Android Studio 并安装/启用 JCEF 后，Android Studio 也可以打开 Dev Session Canvas。
   证据：用户提供的 2026-07-01 截图中，IntelliJ IDEA / PyCharm 的 `Dev Session Canvas` Tool Window 显示 React Flow 背景、toolbar、viewport 和 Note 卡片；此前 Android Studio 截图显示 `Dev Session Canvas needs JCEF, but this IDE runtime does not support it.`；随后用户确认更新版本并安装 JCEF 后 Android Studio 也可以打开。
+
+- 观察：IntelliJ Platform 2024.3 的平台库已经包含 `com.pty4j`，Terminal 里程碑不需要额外引入外部 pty4j Maven 依赖。
+  证据：`javap -classpath /tmp/devsession-gradle-home/caches/9.0.0/transforms/.../ideaIC-2024.3/lib/util.jar com.pty4j.PtyProcess com.pty4j.PtyProcessBuilder com.pty4j.WinSize` 显示 `PtyProcessBuilder.setInitialColumns()`、`setInitialRows()`、`setRedirectErrorStream()`、`start()` 和 `PtyProcess.setWinSize(WinSize)` 可用。
+
+- 观察：当前沙箱下 Kotlin daemon 和 IntelliJ test environment 会尝试写用户 home，导致测试在只读 home 上失败；需要把 Kotlin 编译切到 in-process，并把 Java Preferences 写入 build 目录。
+  证据：未配置前 `./gradlew test` 报 `Could not connect to Kotlin compile daemon`，原因包含 `/home/users/ziyang01.wang-al/.local/share/kotlin/... Read-only file system`；测试进程还因 `java.util.prefs.BackingStoreException: Couldn't get file lock` 初始化 `ThreadLeakTracker` 失败。加入 `kotlin.compiler.execution.strategy=in-process` 和测试 JVM `java.util.prefs.userRoot=build/test-prefs` 后，`./gradlew test` 通过。
+
+- 观察：Terminal 输出同时走即时 `host/terminalOutput` 和状态快照 `recentOutput`，前端必须避免重复写入或因状态刷新重建 xterm 实例。
+  证据：`main.tsx` 中 `TerminalNode` 的创建 effect 只依赖节点 ID，使用 `lastRecentOutput` 对比状态快照增量；即时输出会先写入 xterm 并更新同一 recent-output 游标，避免后续 `stateUpdated` 再追加相同文本。
 
 ## 决策记录
 
@@ -177,6 +189,14 @@
   理由：同一插件 ZIP 已能在 IntelliJ IDEA、PyCharm 和升级后的 Android Studio 中打开 JCEF 画布路径；但 Android Studio 需要记录精确 build、JCEF 安装方式和完整 smoke checklist，不能把旧 `AI-253.30387.90` fallback 或升级后的一句确认泛化成所有 Android Studio 版本都支持。
   日期/作者：2026-07-01 / 用户、Codex
 
+- 决策：里程碑 4 的 Terminal PTY 后端先使用 IntelliJ Platform 随 IDE 携带的 `pty4j`，不新增独立 Maven 依赖；前端 xterm.js 依赖暂时复用根 workspace 已安装的 `@xterm/xterm` 和 `@xterm/addon-fit`。
+  理由：平台 `util.jar` 已提供当前切片需要的 PTY builder、初始行列、stderr 合流和 resize API，额外声明 pty4j 版本会引入与 IDE bundled library 冲突的风险；xterm 已由现有 VS Code 扩展依赖安装在根 `node_modules`，在抽共享 Webview 包前复用它能避免扩大 npm workspace 结构改动。
+  日期/作者：2026-07-01 / Codex
+
+- 决策：里程碑 4 的 Terminal 只承诺当前 IDE 生命周期内运行，最近输出作为项目状态快照保存；关闭 IDE 后继续运行仍留给里程碑 6 Runtime Supervisor。
+  理由：用户已确认 Runtime Supervisor 排在 Agent 之后；Terminal PTY 首切片应先证明 IntelliJ 内输入输出、resize 和清理可行，不能提前引入另一套后台进程托管语义或把 snapshot-only 恢复伪装成 live runtime。
+  日期/作者：2026-07-01 / Codex
+
 ## 结果与复盘
 
 文档收口阶段完成结果是：旧计划中已过期的“等待 notifier / Gradle 8 / 已存在共享协议和 webview 包”口径被替换为当前仓库事实；计划明确先做设计发现，再做可运行 PoC，最后逐步扩展到 Note、Terminal、Agent、Runtime Supervisor 和发布验证。正式设计文档 `docs/design-docs/intellij-platform-plugin-architecture.md` 已创建，目标 IDE、前端策略、协议策略、Agent / Runtime Supervisor 顺序和第一版发布范围已按用户确认写入计划。
@@ -186,6 +206,8 @@
 里程碑 2 工程首切片已经落地：前端新增 `extensions/intellij/dev-session-canvas/src/main/webview/hostAdapter.ts`，把 `devSessionCanvasPostMessage` / `devSessionCanvasReceiveHostMessage` 的全局 JCEF 接口隐藏在 adapter 后；Kotlin 侧新增 `extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/protocol/CanvasProtocol.kt`，用最小 DTO 子集表达 `webview/ready`、`webview/createNote`、`host/bootstrap`、`host/stateUpdated` 和 Note 节点状态。`CanvasBrowserBridge` 不再依赖裸字符串 `contains` 和内联 JSON 拼装，`testWebviewBundle` 与 `CanvasProtocolTest` 已覆盖 bundle marker、消息名、未知消息拒绝和 JSON 转义。
 
 里程碑 3 工程首切片已经落地：`CanvasProjectStateService` 从占位 `schemaVersion` 扩展为项目级 Note / viewport 状态服务，Tool Window bootstrap 从服务快照恢复，创建、编辑、移动、resize、删除 Note 和视口变化都会通过最小协议写回项目状态。前端仍是 IntelliJ 专用 bundle，但 Note 节点已经从只读测试卡片升级为可编辑、可拖拽、可缩放的持久化节点；`CanvasProtocolTest`、`CanvasProjectStateServiceTest` 和 `testWebviewBundle` 覆盖新增消息与状态 helper。
+
+里程碑 4 工程首切片已经落地：协议模型从单一 Note 扩展为 `CanvasNode`，Terminal 节点拥有 `status`、`cwd`、`shellPath`、最近输出和 PTY 行列；`CanvasProjectStateService` 保存 Terminal 的位置、尺寸、状态、最近输出和行列；`ExecutionSessionManager` 使用平台 `pty4j` 启动项目目录下的默认 shell，支持输入、输出泵、resize、stop 和 dispose 清理；前端在 React Flow 内新增 xterm.js Terminal 节点和 `Create Terminal` 入口。`CanvasProtocolTest`、`CanvasProjectStateServiceTest`、`ShellCommandResolverTest`、`ExecutionSessionManagerTest` 和 `testWebviewBundle` 覆盖当前非图形环境可验证的协议、状态和 PTY manager 行为。
 
 剩余缺口是精确 IDE/JCEF 矩阵、持久化完整手动验证以及外部网络稳定性：当前执行环境无 `DISPLAY` / `WAYLAND_DISPLAY`，`runIde` 仍无法在本机打开 IDE；用户已在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中确认 Dev Session Canvas 可打开，但 Android Studio 旧 `AI-253.30387.90` 仍保留为 JCEF unsupported 反例；`verifyPlugin` 因访问 JetBrains 文档页和 Marketplace 依赖时 `Connection reset` 失败。后续仍需补三类目标 IDE 的精确 build 号、Android Studio JCEF 安装方式、Note mutation 往返和关闭重开恢复目视证据、共享前端抽离时机、Node supervisor 复用细节和后续 Marketplace 发布策略。后续每个实现里程碑都必须同步测试证据和相关文档，不应把测试与文档都推迟到发布前。
 
@@ -225,7 +247,7 @@
 
 里程碑 3 是 Note 节点与项目级持久化。实现 Kotlin 侧的 `CanvasProjectStateService`，保存节点 ID、类型、标题、正文、位置、尺寸和视口。前端通过 `hostAdapter.ts` 发送 `webview/updateNote`、`webview/updateNodePosition`、`webview/updateViewport` 和 `webview/deleteNode`，Kotlin 侧只接受这些扁平 payload 并更新项目状态快照。用户在 Tool Window 创建 Note、修改标题或正文、移动、缩放或删除节点后，关闭并重开测试项目，应看到同一批 Note 和视口恢复。这个阶段不要求 Terminal、Runtime Supervisor 或 Agent。完成本里程碑时必须同步相关测试证据和设计文档状态。
 
-里程碑 4 是 Terminal 节点。引入 `pty4j`，实现 `ExecutionSessionManager`，支持在项目目录启动默认 shell、接收输入、推送输出、resize、停止进程和项目关闭清理。Webview 侧继续使用 xterm.js，但 bridge 必须支持高频输出分批和控制消息优先级，避免复刻已有 VS Code 版中“输出洪峰压过交互”的风险。完成本里程碑时必须同步终端相关测试证据、已知平台差异和设计文档状态。
+里程碑 4 是 Terminal 节点。使用 IntelliJ Platform 随 IDE 携带的 `pty4j`，实现 `ExecutionSessionManager`，支持在项目目录启动默认 shell、接收输入、推送输出、resize、停止进程和 Tool Window disposal / 项目关闭清理。Webview 侧继续使用 xterm.js，但 bridge 必须把高频输出和状态快照分开处理，避免即时输出与 `recentOutput` 状态刷新重复写入。当前工程切片的主要落点是 `execution/ExecutionSessionManager.kt`、`execution/ShellCommandResolver.kt`、`CanvasProtocol.kt`、`CanvasProjectStateService.kt`、`CanvasBrowserBridge.kt`、`hostAdapter.ts` 和 `main.tsx`。完成本里程碑时必须同步终端相关测试证据、已知平台差异和设计文档状态；在 Runtime Supervisor 之前，Terminal 只承诺当前 IDE 生命周期内运行和 snapshot-only 最近输出恢复。
 
 里程碑 5 是 Agent 节点。移植 Agent CLI 命令发现语义并接入 Codex / Claude Code。Agent 启动必须优先继承用户现有 CLI 配置和项目目录，不把 provider home 改写到插件私有目录；输出、输入、停止和失败状态先走已经验证过的 execution 通道。这个里程碑不承诺关闭 IDE 后真实进程继续存在；如果还没有 Runtime Supervisor，Agent 重开后的表现只能是历史态、失败态或明确的 snapshot-only 恢复入口。完成本里程碑时必须同步 Agent 相关测试证据和设计文档状态。
 
@@ -309,6 +331,11 @@
 
 里程碑 3 工程切片继续使用同一条主命令，但 `:test` 还应覆盖 `CanvasProjectStateServiceTest`。预期结果是 bundle marker 包含 `webview/updateNote`、`webview/updateNodePosition`、`webview/updateViewport` 和 `webview/deleteNode`，Kotlin 测试验证 Note 创建、编辑、位置、尺寸、视口、删除和 `loadState()` 后 ID 归一化，`buildPlugin` 和 `verifyPluginStructure` 成功。
 
+里程碑 4 工程切片继续使用同一条主命令，但在当前沙箱中还需要把 `GRADLE_USER_HOME` 指向可写目录。`gradle.properties` 已设置 `kotlin.compiler.execution.strategy=in-process`，`build.gradle.kts` 已把测试用 Java Preferences 写入 `build/test-prefs`，用于避免 Kotlin daemon 和 IntelliJ `ThreadLeakTracker` 写只读 home。预期结果是 `testWebviewBundle` 包含 `webview/createTerminal`、`webview/terminalInput`、`webview/terminalResize`、`webview/updateTerminalSize`、`host/terminalOutput`、`host/terminalExit` 和 xterm 标记；Kotlin 测试覆盖 Terminal 协议、项目状态、shell 解析和 fake PTY session manager。
+
+    cd extensions/intellij/dev-session-canvas
+    JAVA_HOME=/tmp/devsession-jdk-21 GRADLE_USER_HOME=/tmp/devsession-gradle-home GRADLE_OPTS='-Dhttps.proxyHost=10.79.2.115 -Dhttps.proxyPort=3128 -Dhttp.proxyHost=10.79.2.115 -Dhttp.proxyPort=3128' ./gradlew test buildPlugin verifyPluginStructure --no-daemon --stacktrace
+
 ## 验证与验收
 
 当前里程碑 1 工程切片的验收标准是：`extensions/intellij/dev-session-canvas/` 存在可构建的 Gradle / Kotlin 插件工程；`plugin.xml` 声明 `Dev Session Canvas` Tool Window；JCEF 可用路径加载内联 React Flow bundle，JCEF 不可用路径显示可解释 fallback；前端 bundle 包含 host bridge、React Flow 根元素、测试 Note 消息和 CSS 标记；`./gradlew test buildPlugin verifyPluginStructure` 通过并生成内部安装 ZIP；相关设计文档和本 `ExecPlan` 记录已验证内容和待补 UI smoke。当前变更还必须运行 `git diff --check` 验证没有尾随空白。
@@ -318,6 +345,8 @@
 当前里程碑 2 工程切片的验收标准是：前端业务组件不再直接访问 JCEF 全局 bridge；创建按钮发送规范化的 `webview/createNote` 消息；Kotlin 侧通过 `CanvasProtocol.decodeWebviewMessage` 识别已知消息并拒绝未知消息；host state JSON 由 `CanvasProtocol.encodeHostMessage` 统一生成并有转义测试；`./gradlew test buildPlugin verifyPluginStructure` 通过。用户已在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中补充真实可见 smoke；仍需补 bootstrap / state update 诊断日志、关闭清理和精确 build 矩阵。
 
 当前里程碑 3 工程切片的验收标准是：`CanvasProjectStateService` 以项目级状态保存 Note、尺寸和视口；bootstrap/stateUpdated 都从服务快照生成；前端 Note 节点可编辑标题和正文、拖拽后发送位置、选中后 resize 并发送尺寸、点击删除后发送删除消息；`CanvasProtocolTest` 覆盖新增 Webview 消息解码和 host state viewport 编码；`CanvasProjectStateServiceTest` 覆盖状态 helper；`./gradlew test buildPlugin verifyPluginStructure` 通过。不设置 `until-build` 只用于解除 Android Studio `AI-253.30387.90` 的安装门禁。用户已在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中确认基础可见 smoke；完整里程碑 3 仍未满足的是关闭并重开同一项目后的真实恢复 smoke、Android Studio 精确 build 和 JCEF 安装路径。
+
+当前里程碑 4 工程切片的验收标准是：点击 `Create Terminal` 后宿主创建 Terminal 节点并启动项目目录 shell；xterm 节点把输入发送为 `webview/terminalInput`，Kotlin 用 `pty4j` 写入 PTY；PTY 输出通过 `host/terminalOutput` 即时回流，并把有限最近输出写入项目状态；节点 resize 更新像素尺寸和 PTY 行列；Stop / Delete / dispose 会停止当前 session；`ExecutionSessionManagerTest` 用 fake PTY 覆盖启动、输入、resize、输出、自然退出、停止和启动失败；`ShellCommandResolverTest` 覆盖默认 shell / cwd 选择；`./gradlew test buildPlugin verifyPluginStructure` 通过。当前执行环境仍无法验证真实 JCEF UI 与真实 PTY smoke，剩余验收是在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中手动创建 Terminal、输入 `pwd` / `echo` 等命令、拖拽 resize、Stop、Delete 并关闭项目确认进程清理。
 
 后续整份计划完成时，用户可观察验收标准如下：
 
@@ -424,6 +453,33 @@
     IntelliJ IDEA 与 PyCharm 中 Tool Window 可见，JCEF React Flow 画布、toolbar、viewport readout 和 Note 卡片可见；
     Android Studio AI-253.30387.90 中 Tool Window 可见，但显示 JCEF unsupported fallback；随后用户确认升级 Android Studio 并安装/启用 JCEF 后也可以打开。
 
+里程碑 4 工程切片的当前验证证据如下：
+
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/execution/ExecutionSessionManager.kt
+    class ExecutionSessionManager(
+        private val listener: TerminalSessionListener,
+        private val processFactory: PtyProcessFactory = DefaultPtyProcessFactory()
+    ) : Disposable
+
+    extensions/intellij/dev-session-canvas/src/main/webview/main.tsx
+    <button type="button" onClick={() => host.postMessage({ type: 'webview/createTerminal' })}>
+      Create Terminal
+    </button>
+
+    cd extensions/intellij/dev-session-canvas
+    JAVA_HOME=/tmp/devsession-jdk-21 GRADLE_USER_HOME=/tmp/devsession-gradle-home GRADLE_OPTS='-Dhttps.proxyHost=10.79.2.115 -Dhttps.proxyPort=3128 -Dhttp.proxyHost=10.79.2.115 -Dhttp.proxyPort=3128' ./gradlew test buildPlugin verifyPluginStructure --no-daemon --stacktrace
+    > Task :testWebviewBundle
+    Verified IntelliJ webview bundle markers in build/generated/webview
+    > Task :buildPlugin
+    > Task :verifyPluginStructure
+    BUILD SUCCESSFUL
+
+    javap -classpath /tmp/devsession-gradle-home/caches/9.0.0/transforms/.../ideaIC-2024.3/lib/util.jar com.pty4j.PtyProcess com.pty4j.PtyProcessBuilder com.pty4j.WinSize
+    public com.pty4j.PtyProcessBuilder setInitialColumns(java.lang.Integer);
+    public com.pty4j.PtyProcessBuilder setInitialRows(java.lang.Integer);
+    public com.pty4j.PtyProcess start() throws java.io.IOException;
+    public abstract void setWinSize(com.pty4j.WinSize);
+
 本次更新依据的官方文档证据如下；这些是移动目标，后续调整 build range 或发布矩阵前必须再次复核：
 
 - JetBrains IntelliJ Platform Gradle Plugin 2.x 文档，页面构建时间为 2026-06-29，说明 2.x 是当前 Gradle 插件主线，并给出插件 ID、最低平台 / Gradle / Java 运行时要求。
@@ -446,24 +502,37 @@
       enum class WebviewMessageType
       enum class HostMessageType
       data class CanvasHostState
-      data class CanvasNoteNode
+      data class CanvasNode
       data class CanvasViewport
+      data class TerminalOutputPayload
+      data class TerminalExitPayload
 
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/state/CanvasProjectStateService.kt
       class CanvasProjectStateService : PersistentStateComponent<CanvasProjectState>
       fun snapshot(): CanvasHostState
       fun createNote(projectName: String): CanvasHostState
+      fun createTerminal(cwd: String, shellPath: String): CanvasTerminalCreation
       fun updateNote(payload: WebviewUpdateNotePayload): CanvasHostState
       fun updateNodePosition(payload: WebviewUpdateNodePositionPayload): CanvasHostState
       fun updateViewport(viewport: CanvasViewport): CanvasHostState
+      fun appendTerminalOutput(id: String, text: String): CanvasHostState
+      fun updateTerminalPtySize(id: String, cols: Int, rows: Int): CanvasHostState
+      fun updateTerminalSize(payload: WebviewTerminalSizePayload): CanvasHostState
       fun deleteNode(id: String): CanvasHostState
 
     extensions/intellij/dev-session-canvas/src/main/webview/hostAdapter.ts
       function createCanvasHostAdapter(): CanvasHostAdapter
-      type WebviewMessage = ready/createNote/updateNote/updateNodePosition/updateViewport/deleteNode
+      type WebviewMessage = ready/createNote/createTerminal/updateNote/updateNodePosition/updateViewport/deleteNode/terminalInput/terminalResize/updateTerminalSize/stopTerminal
 
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/execution/ExecutionSessionManager.kt
-      class ExecutionSessionManager(project: Project) : Disposable
+      class ExecutionSessionManager(listener: TerminalSessionListener, processFactory: PtyProcessFactory = DefaultPtyProcessFactory()) : Disposable
+      interface TerminalSessionListener
+      interface PtyProcessFactory
+
+    extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/execution/ShellCommandResolver.kt
+      object ShellCommandResolver
+      fun defaultShellPath(environment: Map<String, String> = System.getenv(), osName: String = System.getProperty("os.name")): String
+      fun defaultWorkingDirectory(basePath: String?): String
 
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/execution/AgentCliResolver.kt
       class AgentCliResolver(project: Project)
@@ -474,17 +543,17 @@
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/agent/AgentNodeManager.kt
       class AgentNodeManager(project: Project) : Disposable
 
-Kotlin 侧消息模型在第一版只能覆盖当前里程碑需要的最小子集，例如 bootstrap、stateUpdated、createNote、updateNote、deleteNode。完整 `WebviewToHostMessage` / `HostToWebviewMessage` 镜像必须等协议生成或 DTO 子集方案明确后再扩展。Agent 节点可以先于 Runtime Supervisor 落地，但只能承诺当前 IDE 生命周期内的 execution 通道；Runtime Supervisor 落地前，Agent 节点不能私自发明另一套跨 IDE 生命周期恢复或进程托管语义。
+Kotlin 侧消息模型在第一版只能覆盖当前里程碑需要的最小子集，例如 bootstrap、stateUpdated、createNote、updateNote、deleteNode、createTerminal、terminalInput、terminalResize、terminalOutput 和 terminalExit。完整 `WebviewToHostMessage` / `HostToWebviewMessage` 镜像必须等协议生成或 DTO 子集方案明确后再扩展。Agent 节点可以先于 Runtime Supervisor 落地，但只能承诺当前 IDE 生命周期内的 execution 通道；Runtime Supervisor 落地前，Agent 节点和 Terminal 节点都不能私自发明另一套跨 IDE 生命周期恢复或进程托管语义。
 
 构建依赖的默认研究方向如下：
 
 - IntelliJ Platform Gradle Plugin 2.x：插件构建、`runIde`、`buildPlugin`、`verifyPlugin` 和 `patchPluginXml` 主路径。
 - Kotlin JVM：插件主要实现语言。Kotlin 标准库和 coroutines 版本必须按目标 IntelliJ Platform 的 bundled library 策略处理，避免无意打包冲突版本。
 - JCEF / `JBCefBrowser`：第一版画布 UI 容器，必须提供 unsupported fallback。
-- `pty4j`：Terminal 节点 PTY 后端候选，正式使用前需要验证目标 IDE / OS 矩阵。
+- IntelliJ Platform bundled `pty4j`：Terminal 节点 PTY 后端，当前通过目标 IDE 平台库提供，不额外打包外部版本；仍需验证目标 IDE / OS 矩阵。
 - `kotlinx.serialization` 或等价 JSON 库：Kotlin 侧消息解析候选，最终选择要和协议生成策略一致。
 - 现有 Node Runtime Supervisor：Agent / Terminal live runtime 候选依赖，当前倾向复用；不得在 JVM client、进程发现、socket 路径和打包分发验证前写成 IntelliJ 已支持。
-- `esbuild`、`react`、`react-dom`、`reactflow`：里程碑 1 IntelliJ 专用 bundle 的前端依赖，当前通过根 `npm ci` 后的 `node_modules` 解析。后续抽共享 Webview 包或独立前端包时，必须重新收口这些依赖的安装边界。
+- `esbuild`、`react`、`react-dom`、`reactflow`、`@xterm/xterm`、`@xterm/addon-fit`：IntelliJ 专用 bundle 的前端依赖，当前通过根 `npm ci` 后的 `node_modules` 解析。后续抽共享 Webview 包或独立前端包时，必须重新收口这些依赖的安装边界。
 
 ## 参考资料
 
@@ -513,3 +582,5 @@ Kotlin 侧消息模型在第一版只能覆盖当前里程碑需要的最小子�
 补充更新说明：2026-07-01 17:49 +0800，记录内部验证包移除 `until-build` 上限后的三 IDE 手动 smoke 结果：IntelliJ IDEA 与 PyCharm 已能显示 JCEF React Flow 画布和 Note 卡片；Android Studio `AI-253.30387.90` 能安装但显示 JCEF unsupported fallback，因此当时不能仅凭 IDEA / PyCharm 结果把 Android Studio 写成已支持。
 
 补充更新说明：2026-07-01 19:36 +0800，记录用户确认升级 Android Studio 并安装/启用 JCEF 后也可以打开 Dev Session Canvas；旧 `AI-253.30387.90` fallback 作为 runtime / 配置差异保留，后续仍需补精确 build、JCEF 安装方式和完整 smoke checklist。
+
+补充更新说明：2026-07-01 20:35 +0800，记录里程碑 4 Terminal PTY 工程首切片：使用平台 bundled `pty4j` 和 xterm.js 实现 Terminal 节点协议、状态、前端呈现与 session manager；当前仅承诺 IDE 生命周期内运行，真实三 IDE PTY smoke 仍待有图形环境验证。

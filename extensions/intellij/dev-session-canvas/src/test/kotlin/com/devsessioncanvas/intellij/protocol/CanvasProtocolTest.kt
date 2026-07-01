@@ -10,9 +10,11 @@ class CanvasProtocolTest {
     fun decodesKnownWebviewMessagesWithWhitespace() {
         val ready = CanvasProtocol.decodeWebviewMessage("""{ "type" : "webview/ready" }""")
         val createNote = CanvasProtocol.decodeWebviewMessage("""{"type":"webview/createNote","payload":{}}""")
+        val createTerminal = CanvasProtocol.decodeWebviewMessage("""{"type":"webview/createTerminal"}""")
 
         assertEquals(WebviewMessageType.Ready, ready?.type)
         assertEquals(WebviewMessageType.CreateNote, createNote?.type)
+        assertEquals(WebviewMessageType.CreateTerminal, createTerminal?.type)
     }
 
     @Test
@@ -52,11 +54,40 @@ class CanvasProtocolTest {
     }
 
     @Test
+    fun decodesTerminalMessages() {
+        val input = CanvasProtocol.decodeWebviewMessage(
+            """{"type":"webview/terminalInput","id":"terminal-1","text":"echo hi\r"}"""
+        )
+        val resize = CanvasProtocol.decodeWebviewMessage(
+            """{"type":"webview/terminalResize","id":"terminal-1","cols":120,"rows":32}"""
+        )
+        val size = CanvasProtocol.decodeWebviewMessage(
+            """{"type":"webview/updateTerminalSize","id":"terminal-1","width":640,"height":360}"""
+        )
+        val stop = CanvasProtocol.decodeWebviewMessage(
+            """{"type":"webview/stopTerminal","id":"terminal-1"}"""
+        )
+
+        assertEquals(WebviewMessageType.TerminalInput, input?.type)
+        assertEquals("terminal-1", input?.terminalInput?.id)
+        assertEquals("echo hi\r", input?.terminalInput?.text)
+        assertEquals(WebviewMessageType.TerminalResize, resize?.type)
+        assertEquals(120, resize?.terminalResize?.cols)
+        assertEquals(32, resize?.terminalResize?.rows)
+        assertEquals(WebviewMessageType.UpdateTerminalSize, size?.type)
+        assertEquals(640.0, size?.terminalSize?.width)
+        assertEquals(360.0, size?.terminalSize?.height)
+        assertEquals(WebviewMessageType.StopTerminal, stop?.type)
+        assertEquals("terminal-1", stop?.nodeId)
+    }
+
+    @Test
     fun rejectsUnknownWebviewMessages() {
         assertNull(CanvasProtocol.decodeWebviewMessage("""{"type":"webview/unknown"}"""))
         assertNull(CanvasProtocol.decodeWebviewMessage("{}"))
         assertNull(CanvasProtocol.decodeWebviewMessage("""{"type":"webview/updateNodePosition","id":"note-1","x":12.5}"""))
         assertNull(CanvasProtocol.decodeWebviewMessage("""{"type":"webview/deleteNode"}"""))
+        assertNull(CanvasProtocol.decodeWebviewMessage("""{"type":"webview/terminalResize","id":"terminal-1","cols":80}"""))
     }
 
     @Test
@@ -65,14 +96,30 @@ class CanvasProtocolTest {
             HostMessageType.StateUpdated,
             CanvasHostState(
                 nodes = listOf(
-                    CanvasNoteNode(
+                    CanvasNode(
                         id = "note-1",
+                        type = "note",
                         title = "Quoted \"title\"",
                         body = "line 1\nline 2",
                         x = 12.5,
                         y = 42.0,
                         width = 320.0,
                         height = 210.0
+                    ),
+                    CanvasNode(
+                        id = "terminal-1",
+                        type = "terminal",
+                        title = "Terminal",
+                        x = 100.0,
+                        y = 240.0,
+                        width = 560.0,
+                        height = 320.0,
+                        status = "running",
+                        cwd = "/tmp/project",
+                        shellPath = "/bin/bash",
+                        recentOutput = "hello\n",
+                        lastCols = 100,
+                        lastRows = 30
                     )
                 ),
                 viewport = CanvasViewport(x = -100.0, y = 24.0, zoom = 1.25)
@@ -81,13 +128,28 @@ class CanvasProtocolTest {
 
         assertContains(json, "\"type\": \"host/stateUpdated\"")
         assertContains(json, "\"type\": \"note\"")
+        assertContains(json, "\"type\": \"terminal\"")
         assertContains(json, "\"title\": \"Quoted \\\"title\\\"\"")
         assertContains(json, "\"body\": \"line 1\\nline 2\"")
-        assertContains(json, "\"x\": 12.5")
-        assertContains(json, "\"y\": 42.0")
-        assertContains(json, "\"width\": 320.0")
-        assertContains(json, "\"height\": 210.0")
+        assertContains(json, "\"status\": \"running\"")
+        assertContains(json, "\"shellPath\": \"/bin/bash\"")
+        assertContains(json, "\"lastCols\": 100")
+        assertContains(json, "\"lastRows\": 30")
         assertContains(json, "\"viewport\"")
         assertContains(json, "\"zoom\": 1.25")
+    }
+
+    @Test
+    fun encodesTerminalOutputAndExitMessages() {
+        val output = CanvasProtocol.encodeTerminalOutput(TerminalOutputPayload(id = "terminal-1", text = "line 1\n"))
+        val exit = CanvasProtocol.encodeTerminalExit(
+            TerminalExitPayload(id = "terminal-1", status = "closed", exitCode = 0, message = "done")
+        )
+
+        assertContains(output, "\"type\": \"host/terminalOutput\"")
+        assertContains(output, "\"text\": \"line 1\\n\"")
+        assertContains(exit, "\"type\": \"host/terminalExit\"")
+        assertContains(exit, "\"exitCode\": 0")
+        assertContains(exit, "\"message\": \"done\"")
     }
 }

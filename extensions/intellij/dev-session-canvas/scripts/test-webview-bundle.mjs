@@ -16,17 +16,26 @@ const requiredJavascriptMarkers = [
   'devSessionCanvasPostMessage',
   'devSessionCanvasReceiveHostMessage',
   'webview/createNote',
+  'webview/createTerminal',
   'webview/updateNote',
   'webview/updateNodePosition',
   'webview/updateViewport',
   'webview/deleteNode',
+  'webview/terminalInput',
+  'webview/terminalResize',
+  'webview/updateTerminalSize',
+  'webview/stopTerminal',
+  'host/terminalOutput',
+  'host/terminalExit',
   'host/stateUpdated',
-  'react-flow__container'
+  'react-flow__container',
+  'xterm'
 ];
 const requiredStylesheetMarkers = [
   '.react-flow',
   '.dsc-root',
-  '.dsc-note-node'
+  '.dsc-note-node',
+  '.dsc-terminal-node'
 ];
 
 const missing = [];

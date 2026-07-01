@@ -42,7 +42,8 @@ val buildWebview by tasks.registering(Exec::class) {
         file("src/main/webview/main.tsx"),
         file("src/main/webview/hostAdapter.ts"),
         file("src/main/webview/styles.css"),
-        file("scripts/build-webview.mjs")
+        file("scripts/build-webview.mjs"),
+        file("../../../node_modules/@xterm/xterm/css/xterm.css")
     )
     outputs.dir(layout.buildDirectory.dir("generated/webview"))
 }
@@ -67,6 +68,7 @@ tasks.processResources {
 tasks.named<Test>("test") {
     useJUnitPlatform()
     dependsOn(testWebviewBundle)
+    systemProperty("java.util.prefs.userRoot", layout.buildDirectory.dir("test-prefs").get().asFile.absolutePath)
 }
 
 intellijPlatform {
