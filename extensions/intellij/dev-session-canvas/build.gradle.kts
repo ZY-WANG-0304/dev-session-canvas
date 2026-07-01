@@ -77,7 +77,6 @@ intellijPlatform {
         description = "Internal IntelliJ Platform proof of concept for Dev Session Canvas."
         ideaVersion {
             sinceBuild = providers.gradleProperty("pluginSinceBuild")
-            untilBuild = providers.gradleProperty("pluginUntilBuild")
         }
         vendor {
             name = "Dev Session Canvas"

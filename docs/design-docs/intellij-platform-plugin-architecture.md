@@ -17,7 +17,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/intellij-platform-plugin.md
-updated_at: 2026-06-30
+updated_at: 2026-07-01
 ---
 
 # IntelliJ Platform 插件架构
@@ -78,7 +78,7 @@ IntelliJ 第一阶段的目标是形成一个可运行、可验证、可继续�
 
 方案 C 是复制现有 VS Code `src/webview/` 后直接改。该方案短期看似最快，但会让两套前端快速分叉，当前不推荐。
 
-当前结论是采用方案 B 做里程碑 1，并已确认先证明 JCEF 能跑 React Flow，再决定是否抽共享包。2026-06-30 已创建 IntelliJ 专用 React Flow bundle，构建产物会被 Gradle 打进插件资源，并通过 `testWebviewBundle` 验证 host bridge、React Flow、测试 Note 消息和 CSS 标记存在。真实 JCEF 可见渲染、pan / zoom 和测试 Note 往返仍需在有图形环境的 `runIde` 中补验。里程碑 2 已先在 IntelliJ 插件内新增 `hostAdapter.ts`，把前端业务组件与 JCEF 全局函数隔离；里程碑 3 又在同一 bundle 中补齐可编辑 Note、拖拽位置、resize、删除和视口同步。是否抽共享 Webview 包仍留到真实 UI smoke 后再决定，不能仅因 IntelliJ 专用 bundle 已能持久化 Note 就默认形成长期第二套前端。
+当前结论是采用方案 B 做里程碑 1，并已确认先证明 JCEF 能跑 React Flow，再决定是否抽共享包。2026-06-30 已创建 IntelliJ 专用 React Flow bundle，构建产物会被 Gradle 打进插件资源，并通过 `testWebviewBundle` 验证 host bridge、React Flow、测试 Note 消息和 CSS 标记存在。2026-07-01 用户在 IntelliJ IDEA 与 PyCharm 中补充真实截图，确认 JCEF React Flow 画布和 Note 卡片可见；同一内部包在 Android Studio `AI-253.30387.90` 中只能进入 JCEF unsupported fallback。里程碑 2 已先在 IntelliJ 插件内新增 `hostAdapter.ts`，把前端业务组件与 JCEF 全局函数隔离；里程碑 3 又在同一 bundle 中补齐可编辑 Note、拖拽位置、resize、删除和视口同步。是否抽共享 Webview 包仍留到三 IDE 差异和复用收益更清楚后再决定，不能仅因 IntelliJ 专用 bundle 已能持久化 Note 就默认形成长期第二套前端。
 
 ### 5.3 协议同步
 
@@ -110,13 +110,13 @@ JCEF 风险是第一风险。最小 HTML 页面不能证明 React Flow 画布可
 
 ## 7. 当前结论
 
-当前设计整体仍处于比较中，因为 Terminal、Agent、Runtime Supervisor、三类 IDE smoke 和完整发布准备还未落地；Note 里程碑已有工程切片，但真实关闭重开项目的 JCEF smoke 仍待补。里程碑 1 的工程路线已经进入验证中：插件工程使用 IntelliJ Platform Gradle Plugin 2.17.0、Gradle wrapper 9.0.0、IC 2024.3、since-build 243、until-build 243.* 和 JVM 21 编译目标；插件 ID 使用 `com.devsessioncanvas.canvas`；Kotlin 包名继续使用 `com.devsessioncanvas.intellij`；插件包不分发 Kotlin stdlib，依赖目标 IDE 捆绑的 Kotlin 2.0.21 stdlib。
+当前设计整体仍处于比较中，因为 Terminal、Agent、Runtime Supervisor、完整三 IDE smoke 和完整发布准备还未落地；Note 里程碑已有工程切片，但真实关闭重开项目的恢复 smoke 仍待补。里程碑 1 的工程路线已经进入验证中：插件工程使用 IntelliJ Platform Gradle Plugin 2.17.0、Gradle wrapper 9.0.0、IC 2024.3、since-build 243、不设置 until-build 上限和 JVM 21 编译目标；插件 ID 使用 `com.devsessioncanvas.canvas`；Kotlin 包名继续使用 `com.devsessioncanvas.intellij`；插件包不分发 Kotlin stdlib，依赖目标 IDE 捆绑的 Kotlin 2.0.21 stdlib。不设置 `until-build` 是为 Android Studio `AI-253.30387.90` 及后续内部手动 smoke 解除安装门禁，不代表未来 IDE 已完成公开兼容验证。2026-07-01 用户手动 smoke 显示 IntelliJ IDEA 与 PyCharm 可以渲染 JCEF React Flow 画布并创建 Note；Android Studio `AI-253.30387.90` 可以安装但进入 JCEF unsupported fallback。
 
 2026-06-30 已确认以下阶段性决策：目标 IDE 为 Android Studio、IntelliJ IDEA 和 PyCharm；第一版兼容基线倾向从较新的 IntelliJ Platform 起步；前端先证明 JCEF 能跑 React Flow，再决定是否抽共享包；协议第一版接受 Kotlin 最小 DTO 子集；Agent 第一版不承诺关闭 IDE 后继续运行；Runtime Supervisor 倾向复用现有 Node supervisor；第一版发布范围是内部/手动安装验证。
 
 IntelliJ 插件已落在 `extensions/intellij/dev-session-canvas/`，使用独立 Gradle / Kotlin 构建链路。根 npm workspace 不直接承担 JVM 构建，但 React Flow PoC 的打包脚本当前依赖根 `npm ci` 后可解析 `esbuild`、`react`、`react-dom` 和 `reactflow`。后续可以增加根级脚本委托到 Gradle，或在抽共享前端包时重新收口 Node 依赖边界。
 
-里程碑 1 不接受“最小 HTML 成功”作为完成标准。完成标准是 JCEF 中加载 React Flow bundle，并完成空画布渲染、pan / zoom、创建测试 Note 消息、Kotlin state update 回传和资源清理。当前已完成工程、bundle、构建和包结构验证；可见 JCEF UI smoke 因当前执行环境没有图形会话而待补。
+里程碑 1 不接受“最小 HTML 成功”作为完成标准。完成标准是 JCEF 中加载 React Flow bundle，并完成空画布渲染、pan / zoom、创建测试 Note 消息、Kotlin state update 回传和资源清理。当前已完成工程、bundle、构建和包结构验证；用户已在 IntelliJ IDEA 与 PyCharm 中补充可见 JCEF React Flow 画布和 Note 创建截图。Android Studio `AI-253.30387.90` 仍是 JCEF unsupported，不能算 React Flow 画布已通过。
 
 里程碑 2 负责把 PoC 收敛成正式 host adapter。VS Code 侧的 `acquireVsCodeApi()` 不能泄漏到 IntelliJ 前端；IntelliJ 侧也不应在业务组件里散落 JCEF 条件分支。当前工程切片已经把 IntelliJ 前端访问 JCEF 的位置收口到 `extensions/intellij/dev-session-canvas/src/main/webview/hostAdapter.ts`，业务组件只使用 `host.postMessage()` / `host.onMessage()`；Kotlin 侧把消息分发收口到 `CanvasProtocol.decodeWebviewMessage`，不再用裸字符串 `contains` 分发。
 
@@ -124,7 +124,7 @@ IntelliJ 插件已落在 `extensions/intellij/dev-session-canvas/`，使用独�
 
 Runtime Supervisor 不是 Agent 第一版的前置条件。Agent 可以先落地当前 IDE 生命周期内的启动、输入、输出、停止和失败语义；跨 IDE 生命周期恢复由 Runtime Supervisor 里程碑单独验证。Runtime Supervisor 的研究方向倾向复用现有 Node supervisor，但具体 JVM client、进程发现、socket 路径和打包分发方式仍需在里程碑 6 验证。
 
-仍待选定的内容包括：Android Studio 对应的精确 build range、真实 JCEF UI smoke 结果、Note 关闭重开恢复目视证据、共享 Webview 包抽离时间点、协议生成升级时机、PTY 后端依赖方式、Node supervisor 复用细节、完整 Plugin Verifier 矩阵、内部手动安装包格式和后续 JetBrains Marketplace 发布 / 签名流程。
+仍待选定的内容包括：Android Studio `AI-253.30387.90` 的 JCEF unsupported 解决路径或非 JCEF fallback、Note 关闭重开恢复目视证据、共享 Webview 包抽离时间点、协议生成升级时机、PTY 后端依赖方式、Node supervisor 复用细节、完整 Plugin Verifier 矩阵、内部手动安装包格式和后续 JetBrains Marketplace 发布 / 签名流程。
 
 ## 8. 验证方法
 
@@ -137,9 +137,9 @@ Runtime Supervisor 不是 Agent 第一版的前置条件。Agent 可以先落地
     ./gradlew verifyPluginStructure
     ./gradlew runIde
 
-2026-06-30 已在本地通过 `./gradlew test buildPlugin verifyPluginStructure`，其中 `test` 会运行 `testWebviewBundle` 检查 React Flow bundle 标记，并运行 `CanvasProtocolTest` 与 `CanvasProjectStateServiceTest` 检查 Kotlin 最小协议模型和项目级状态 helper；`buildPlugin` 生成 `build/distributions/dev-session-canvas-intellij-0.1.0-internal.zip`，`verifyPluginStructure` 验证插件包结构。当前 `runIde` 因无 `DISPLAY` / `WAYLAND_DISPLAY` 失败，堆栈包含 `HeadlessException` 和 `No X11 DISPLAY variable was set`；`verifyPlugin` 已进入 IntelliJ Plugin Verifier，但因访问 JetBrains 文档页和 Marketplace 依赖解析时 `Connection reset` 失败，未作为里程碑 1 / 2 / 3 完成证据。
+2026-06-30 至 2026-07-01 已在本地通过 `./gradlew test buildPlugin verifyPluginStructure`，其中 `test` 会运行 `testWebviewBundle` 检查 React Flow bundle 标记，并运行 `CanvasProtocolTest` 与 `CanvasProjectStateServiceTest` 检查 Kotlin 最小协议模型和项目级状态 helper；`buildPlugin` 生成 `build/distributions/dev-session-canvas-intellij-0.1.0-internal.zip`，`verifyPluginStructure` 验证插件包结构。2026-07-01 用户在 Android Studio `AI-253.30387.90` 安装时发现原 `until-build 243.*` 过窄，因此内部验证包已移除 `until-build` 上限；随后用户截图确认 IntelliJ IDEA 与 PyCharm 中 JCEF React Flow 画布和 Note 创建可见，Android Studio `AI-253.30387.90` 中显示 JCEF unsupported fallback。当前 `runIde` 因无 `DISPLAY` / `WAYLAND_DISPLAY` 失败，堆栈包含 `HeadlessException` 和 `No X11 DISPLAY variable was set`；`verifyPlugin` 已进入 IntelliJ Plugin Verifier，但因访问 JetBrains 文档页和 Marketplace 依赖解析时 `Connection reset` 失败，未作为里程碑 1 / 2 / 3 完成证据。
 
-人工或自动 smoke 记录必须包含：Tool Window 出现；JCEF 支持检查结果；React Flow bundle 无加载错误；空画布根节点存在；pan / zoom 后 viewport 变化；创建 Note 消息到达 Kotlin 宿主；Kotlin 回传 state update 后页面出现 Note；标题/正文编辑、拖拽、resize、删除和视口变化能写回宿主；关闭并重开同一项目后 Note、尺寸、位置和视口恢复；关闭 IDE 后 browser 和 bridge 被释放。
+人工或自动 smoke 记录必须包含：Tool Window 出现；JCEF 支持检查结果；React Flow bundle 无加载错误；空画布根节点存在；pan / zoom 后 viewport 变化；创建 Note 消息到达 Kotlin 宿主；Kotlin 回传 state update 后页面出现 Note；标题/正文编辑、拖拽、resize、删除和视口变化能写回宿主；关闭并重开同一项目后 Note、尺寸、位置和视口恢复；关闭 IDE 后 browser 和 bridge 被释放。当前已有 IntelliJ IDEA / PyCharm 的画布与 Note 可见截图；Android Studio 只有 fallback 截图，仍需单独解决。
 
 后续里程碑都必须至少提供一种验证证据。Note 里程碑的自动化证据已经覆盖状态 helper 和 bundle marker，但仍要补项目重开后状态恢复的真实 UI smoke。Terminal 里程碑要证明 PTY 输入输出、resize、停止和项目关闭清理。Agent 里程碑要证明 Codex / Claude Code CLI 在项目目录启动并输出回流。Runtime Supervisor 里程碑要证明 runtime identity 注册、重新查询或恢复、清理 / 保留语义，以及 `snapshot-only` / `live-runtime` 的用户可见差异。
 
