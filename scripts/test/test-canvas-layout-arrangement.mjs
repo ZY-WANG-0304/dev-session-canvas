@@ -347,6 +347,40 @@ try {
   }
 
   {
+    const original = state({
+      nodes: [
+        note('target-root-note-a', { x: 90, y: 90 }, { groupId: 'target-root' }),
+        note('target-root-note-b', { x: 100, y: 100 }, { groupId: 'target-root' }),
+        note('other-root-note-a', { x: 910, y: 90 }, { groupId: 'other-root' }),
+        note('other-root-note-b', { x: 920, y: 100 }, { groupId: 'other-root' })
+      ],
+      groups: [
+        group('target-root', { x: 0, y: 0 }, { width: 720, height: 520 }, { role: 'workspace-root', workspaceRootPath: '/repo/target' }),
+        group('other-root', { x: 820, y: 0 }, { width: 720, height: 520 }, { role: 'workspace-root', workspaceRootPath: '/repo/other' })
+      ]
+    });
+    const arranged = arrangeCanvasLayout(original, '2026-07-02T00:00:00.000Z', {
+      targetGroupId: 'target-root'
+    });
+
+    assert.equal(
+      paddedOverlap(rect(byId(arranged.nodes, 'target-root-note-a')), rect(byId(arranged.nodes, 'target-root-note-b')), 40),
+      false,
+      '指定 workspace root 时应整理该 root 内部对象。'
+    );
+    assert.deepEqual(
+      byId(arranged.nodes, 'other-root-note-a').position,
+      byId(original.nodes, 'other-root-note-a').position,
+      '指定 workspace root 时不应移动其他 root 内节点。'
+    );
+    assert.deepEqual(
+      byId(arranged.groups, 'other-root').position,
+      byId(original.groups, 'other-root').position,
+      '指定 workspace root 时不应重排其他 root 分组。'
+    );
+  }
+
+  {
     const arranged = arrangeCanvasLayout(state({
       nodes: [
         note('solo-note', { x: 320, y: 240 }, { groupId: 'group-solo' })

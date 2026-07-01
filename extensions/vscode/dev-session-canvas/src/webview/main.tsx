@@ -647,7 +647,12 @@ type CanvasNodeResizeDirection =
   | 'top-right'
   | 'bottom-left'
   | 'bottom-right';
-type CanvasContextMenuView = 'root' | 'agent-launch-mode' | 'apply-template' | 'reset-template';
+type CanvasContextMenuView =
+  | 'root'
+  | 'agent-launch-mode'
+  | 'apply-template'
+  | 'reset-template'
+  | 'arrange-layout-scope';
 interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
@@ -3419,6 +3424,20 @@ function App(): JSX.Element {
     runtimeContext.multiRootPresentationMode === 'paneGallery' && paneGalleryRootModels.length > 1;
   const selectedGroupIds = resolveSelectedGroupIds(localUiState);
   const workspaceRootGroupCount = groups.filter((group) => isWorkspaceRootCanvasGroupRole(group.role)).length;
+  const resolveArrangeLayoutRootGroupId = (targetGroupId?: string): string | undefined => {
+    const targetGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : undefined;
+    if (!targetGroup) {
+      return undefined;
+    }
+
+    return isWorkspaceRootCanvasGroupRole(targetGroup.role)
+      ? targetGroup.id
+      : resolveContainingWorkspaceRootGroupIdForWebview(groups, targetGroup.id);
+  };
+  const shouldOfferWorkspaceArrangeLayoutScope = (targetGroupId?: string): boolean =>
+    workspaceRootGroupCount > 1 &&
+    runtimeContext.multiRootPresentationMode === 'rootGroups' &&
+    Boolean(resolveArrangeLayoutRootGroupId(targetGroupId));
   const resolveTemplateResetTargetRootGroupId = (targetGroupId?: string): string | undefined => {
     const targetGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : undefined;
     if (!targetGroup) {
@@ -4805,6 +4824,7 @@ function App(): JSX.Element {
           agentLaunchDefaults={runtimeContext.agentLaunchDefaults}
           canSaveCurrentCanvas={hostState?.nodes.some((node) => isTemplateCompatibleNodeKind(node.kind)) ?? false}
           canCreateGroupFromSelection={contextMenu.canCreateGroupFromSelection === true}
+          canArrangeWorkspaceLayoutScope={shouldOfferWorkspaceArrangeLayoutScope(contextMenu.targetGroupId)}
           onCreateEmptyGroup={() => {
             handleCreateEmptyGroup(contextMenu.flowAnchor, contextMenu.targetGroupId);
             closePaneContextMenu();
@@ -4857,6 +4877,17 @@ function App(): JSX.Element {
               );
             }
           }
+          onShowArrangeLayoutScope={() =>
+            setContextMenu((current) =>
+              current
+                ? {
+                    ...current,
+                    view: 'arrange-layout-scope',
+                    selectedAgentProvider: undefined
+                  }
+                : current
+            )
+          }
           onApplyDefaultTemplate={() => {
             postMessage({
               type: 'webview/applyDefaultTemplate',
@@ -4888,9 +4919,18 @@ function App(): JSX.Element {
             });
             closePaneContextMenu();
           }}
-          onArrangeCanvasLayout={() => {
+          onArrangeCanvasLayout={(scope) => {
+            const targetGroupId =
+              scope === 'target' ? resolveArrangeLayoutRootGroupId(contextMenu.targetGroupId) : undefined;
             postMessage({
-              type: 'webview/arrangeCanvasLayout'
+              type: 'webview/arrangeCanvasLayout',
+              ...(targetGroupId
+                ? {
+                    payload: {
+                      targetGroupId
+                    }
+                  }
+                : {})
             });
             closePaneContextMenu();
           }}
@@ -10096,6 +10136,7 @@ const CanvasContextMenu = React.forwardRef<
     agentLaunchDefaults: AgentLaunchDefaultsByProvider;
     canSaveCurrentCanvas: boolean;
     canCreateGroupFromSelection: boolean;
+    canArrangeWorkspaceLayoutScope: boolean;
     onCreate: (
       kind: CanvasCreatableNodeKind,
       agentProvider?: AgentProviderKind,
@@ -10104,9 +10145,10 @@ const CanvasContextMenu = React.forwardRef<
     ) => void;
     onShowAgentLaunchModes: (provider: AgentProviderKind) => void;
     onShowTemplatePicker: (view: 'apply-template' | 'reset-template') => void;
+    onShowArrangeLayoutScope: () => void;
     onApplyDefaultTemplate: () => void;
     onResetToDefaultTemplate: () => void;
-    onArrangeCanvasLayout: () => void;
+    onArrangeCanvasLayout: (scope: 'target' | 'workspace') => void;
     onApplyTemplate: (templateId: string, reset: boolean) => void;
     onSaveCanvasAsTemplate: () => void;
     onCreateEmptyGroup: () => void;
@@ -10224,17 +10266,21 @@ const CanvasContextMenu = React.forwardRef<
               ? '画布操作'
               : props.view === 'agent-launch-mode'
                 ? `选择启动方式 - ${providerLabel(selectedAgentProvider)}`
-                : isResetTemplatePicker
-                  ? '重置为模板'
-                  : '应用模板'}
+                : props.view === 'arrange-layout-scope'
+                  ? '整理画布布局'
+                  : isResetTemplatePicker
+                    ? '重置为模板'
+                    : '应用模板'}
           </strong>
           {props.view === 'root' ? null : (
             <span>
               {props.view === 'agent-launch-mode'
                 ? '选择启动方式'
-                : isResetTemplatePicker
-                  ? '选择一个模板，清空当前画布后套用'
-                  : '选择一个模板，追加到当前画布'}
+                : props.view === 'arrange-layout-scope'
+                  ? '选择整理范围'
+                  : isResetTemplatePicker
+                    ? '选择一个模板，清空当前画布后套用'
+                    : '选择一个模板，追加到当前画布'}
             </span>
           )}
         </div>
@@ -10334,18 +10380,48 @@ const CanvasContextMenu = React.forwardRef<
                 </span>
               </button>
             ) : null}
-            <button
-              type="button"
-              className="canvas-context-menu-item"
-              data-context-menu-action="arrange-canvas-layout"
-              onClick={props.onArrangeCanvasLayout}
-            >
-              <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
-              <span className="canvas-context-menu-copy">
-                <strong>整理画布布局</strong>
-                <span>按关系靠近对象并自动避让重叠</span>
-              </span>
-            </button>
+            {props.canArrangeWorkspaceLayoutScope ? (
+              <div className="canvas-context-menu-split-item" data-context-menu-arrange-group="layout">
+                <button
+                  type="button"
+                  className="canvas-context-menu-item"
+                  data-context-menu-action="arrange-canvas-layout"
+                  onClick={() => props.onArrangeCanvasLayout('target')}
+                >
+                  <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
+                  <span className="canvas-context-menu-copy">
+                    <strong>整理画布布局</strong>
+                    <span>整理当前 root 内的节点</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="canvas-context-menu-item-secondary"
+                  data-context-menu-action="show-arrange-layout-scope"
+                  onClick={props.onShowArrangeLayoutScope}
+                  aria-label="选择整理整个 workspace 的画布"
+                  title="选择整理整个 workspace 的画布"
+                >
+                  <span
+                    className="canvas-context-menu-icon codicon codicon-chevron-right"
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-action="arrange-canvas-layout"
+                onClick={() => props.onArrangeCanvasLayout('target')}
+              >
+                <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
+                <span className="canvas-context-menu-copy">
+                  <strong>整理画布布局</strong>
+                  <span>按关系靠近对象并自动避让重叠</span>
+                </span>
+              </button>
+            )}
             <div className="canvas-context-menu-separator" aria-hidden="true" />
             <div className="canvas-context-menu-split-item" data-context-menu-template-group="apply">
               <button
@@ -10422,6 +10498,21 @@ const CanvasContextMenu = React.forwardRef<
               <span className="canvas-context-menu-copy">
                 <strong>保存为模板</strong>
                 <span>保存后可从模板侧栏或市场面板发布</span>
+              </span>
+            </button>
+          </>
+        ) : props.view === 'arrange-layout-scope' ? (
+          <>
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="arrange-workspace-canvas-layout"
+              onClick={() => props.onArrangeCanvasLayout('workspace')}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-globe" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>整理整个 workspace 的画布</strong>
+                <span>整理所有 root 分组和画布对象</span>
               </span>
             </button>
           </>
