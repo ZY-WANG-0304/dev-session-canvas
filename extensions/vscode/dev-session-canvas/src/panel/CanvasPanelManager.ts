@@ -5170,10 +5170,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return undefined;
       }
 
-      const [, ...filePartsInNamedRoot] =
-        workspaceFolders.length > 1 && parts[0] === targetWorkspaceFolder.name ? parts : ['', ...parts];
-      const targetParts = filePartsInNamedRoot.length > 0 ? filePartsInNamedRoot : parts;
-      return targetParts.length > 0 ? vscode.Uri.joinPath(targetWorkspaceFolder.uri, ...targetParts) : undefined;
+      return vscode.Uri.joinPath(targetWorkspaceFolder.uri, ...parts);
     }
 
     if (workspaceFolders.length === 1) {
