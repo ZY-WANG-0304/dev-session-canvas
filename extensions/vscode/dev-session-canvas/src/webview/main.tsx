@@ -3418,6 +3418,25 @@ function App(): JSX.Element {
   const isPaneGalleryPresentation =
     runtimeContext.multiRootPresentationMode === 'paneGallery' && paneGalleryRootModels.length > 1;
   const selectedGroupIds = resolveSelectedGroupIds(localUiState);
+  const workspaceRootGroupCount = groups.filter((group) => isWorkspaceRootCanvasGroupRole(group.role)).length;
+  const resolveTemplateResetTargetRootGroupId = (targetGroupId?: string): string | undefined => {
+    const targetGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : undefined;
+    if (!targetGroup) {
+      return undefined;
+    }
+
+    return isWorkspaceRootCanvasGroupRole(targetGroup.role)
+      ? targetGroup.id
+      : resolveContainingWorkspaceRootGroupIdForWebview(groups, targetGroup.id);
+  };
+  const shouldPromptForRootGroupTemplateReset = (targetGroupId?: string): boolean =>
+    !isPaneGalleryPresentation &&
+    workspaceRootGroupCount > 1 &&
+    !resolveTemplateResetTargetRootGroupId(targetGroupId);
+  const promptForRootGroupTemplateResetTarget = (): void => {
+    showTransientCanvasError('多根 workspace 中请在目标 root section 内重置为模板。');
+    closePaneContextMenu();
+  };
 
   useEffect(() => {
     if (paneGalleryRootIds.length === 0) {
@@ -4821,15 +4840,22 @@ function App(): JSX.Element {
             )
           }
           onShowTemplatePicker={(view) =>
-            setContextMenu((current) =>
-              current
-                ? {
-                    ...current,
-                    view,
-                    selectedAgentProvider: undefined
-                  }
-                : current
-            )
+            {
+              if (view === 'reset-template' && shouldPromptForRootGroupTemplateReset(contextMenu.targetGroupId)) {
+                promptForRootGroupTemplateResetTarget();
+                return;
+              }
+
+              setContextMenu((current) =>
+                current
+                  ? {
+                      ...current,
+                      view,
+                      selectedAgentProvider: undefined
+                    }
+                  : current
+              );
+            }
           }
           onApplyDefaultTemplate={() => {
             postMessage({
@@ -4845,6 +4871,11 @@ function App(): JSX.Element {
             closePaneContextMenu();
           }}
           onResetToDefaultTemplate={() => {
+            if (shouldPromptForRootGroupTemplateReset(contextMenu.targetGroupId)) {
+              promptForRootGroupTemplateResetTarget();
+              return;
+            }
+
             postMessage({
               type: 'webview/resetToDefaultTemplate',
               payload: {
@@ -4864,6 +4895,11 @@ function App(): JSX.Element {
             closePaneContextMenu();
           }}
           onApplyTemplate={(templateId, reset) => {
+            if (reset && shouldPromptForRootGroupTemplateReset(contextMenu.targetGroupId)) {
+              promptForRootGroupTemplateResetTarget();
+              return;
+            }
+
             postMessage({
               type: reset ? 'webview/resetToTemplate' : 'webview/applyTemplate',
               payload: {
