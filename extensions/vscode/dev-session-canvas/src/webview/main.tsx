@@ -9028,6 +9028,7 @@ interface PaneGalleryRootModel {
   groups: CanvasGroupSummary[];
   nodeCount: number;
   runningCount: number;
+  runningScanLineCount: number;
   errorCount: number;
   waitingCount: number;
   attentionCount: number;
@@ -9055,6 +9056,10 @@ function paneGalleryNodeIsRunning(node: CanvasNodeSummary): boolean {
     default:
       return false;
   }
+}
+
+function paneGalleryNodeShowsRunningScanLine(node: CanvasNodeSummary): boolean {
+  return node.status === 'running';
 }
 
 function paneGalleryPaneStatusForModel(model: PaneGalleryRootModel): PaneGalleryPaneStatus {
@@ -9115,6 +9120,7 @@ function buildPaneGalleryRootModels(params: {
       groups: params.groups.filter((group) => group.id !== rootGroup.id && subtreeGroupIds.has(group.id)),
       nodeCount: paneNodes.length,
       runningCount: paneHostNodes.filter((node) => paneGalleryNodeIsRunning(node)).length,
+      runningScanLineCount: paneHostNodes.filter((node) => paneGalleryNodeShowsRunningScanLine(node)).length,
       errorCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-error').length,
       waitingCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-waiting').length,
       attentionCount,
@@ -9523,6 +9529,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   const paneStatus = paneGalleryPaneStatusForModel(model);
   const paneStatusDescription = paneGalleryPaneStatusDescription(model);
   const attentionTitleBarFlashing = model.attentionTitleBarFlashing;
+  const rootRunningScanLine = model.runningScanLineCount > 0 && model.attentionCount === 0;
   const paneTitle = `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}${paneStatusDescription ? ` - ${paneStatusDescription}` : ''}`;
   const defaultViewport = interactive
     ? viewportRole === 'main'
@@ -9686,8 +9693,15 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
       }
     >
       <header
-        className={`pane-gallery-root-header ${attentionTitleBarFlashing ? 'is-attention-flashing' : ''}`.trim()}
+        className={[
+          'pane-gallery-root-header',
+          attentionTitleBarFlashing ? 'is-attention-flashing' : '',
+          rootRunningScanLine ? 'is-pane-gallery-root-running-scanline' : ''
+        ]
+          .filter(Boolean)
+          .join(' ')}
         data-pane-gallery-root-header-attention-flashing={attentionTitleBarFlashing ? 'true' : 'false'}
+        data-pane-gallery-root-running-scanline={rootRunningScanLine ? 'true' : 'false'}
       >
         <div className="pane-gallery-root-title-block">
           <span className="pane-gallery-root-title" title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}>
