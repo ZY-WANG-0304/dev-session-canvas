@@ -44,6 +44,7 @@
 - [x] (2026-06-14) 分叉创建的自动 `user` 边现在默认写入 `fork` 标签，并补充 Host smoke 断言，覆盖宿主状态与 Webview probe 都应看到该标签。
 - [x] (2026-06-14) 根据 PR159 review 收口 Codex 分叉参数清理：`buildCodexBranchArgv()` 现在同时清理 `fork` / `resume` 子命令之前与之后的旧选择参数，再追加当前可信 session id。
 - [x] (2026-06-14) 根据 PR159 review 将旧 Claude-only 分叉计划从 `docs/exec-plans/active/claude-agent-branch.md` 移入 `docs/exec-plans/completed/claude-agent-branch.md`，当前 active scope 统一指向本计划。
+- [x] (2026-07-01) 明确显式 `Resume / Fork` 的冲突与不冲突配置清单，并实现当前节点 `重启` / 历史恢复复用共享 history resume 命令构造，避免丢失 model、sandbox、approval、profile、config、cwd 等非冲突配置。
 
 ## 意外与发现
 
@@ -76,6 +77,9 @@
 
 - 观察：当前本地 Codex CLI `0.137.0` 已提供稳定 `codex fork [SESSION_ID]` 子命令，帮助文本说明它会 fork 之前的 interactive session，并且该子命令支持与 `codex resume` 同类的 runtime flags。
   证据：2026-06-13 运行 `codex --version` 输出 `codex-cli 0.137.0`；运行 `codex fork --help` 输出 usage `codex fork [OPTIONS] [SESSION_ID] [PROMPT]`，并列出 `--model`、`--sandbox`、`--profile`、`--config` 等选项。
+
+- 观察：当前节点停止后点击 `重启` 的宿主路径此前只显示并执行裸 `codex resume <session-id>` / `claude --resume <session-id>`，没有复用 `buildAgentHistoryResumeCommandLine(...)`，因此和历史恢复 / Fork 命令层不一致。
+  证据：2026-07-01 复核 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `buildAgentDisplayLaunchCommandLine(...)` 与 `buildAgentLaunchSpec(...)` 后确认，`launchMode === 'resume'` 时默认忽略 provider 默认参数，只追加裸 resume 参数。
 
 ## 决策记录
 
@@ -171,6 +175,10 @@
   理由：该旧计划的目标、职责和验证段落包含当时的 Claude-only 当前态描述，继续留在 active 目录会误导后续协作者；移动到 completed 并标注历史状态，比在两个 active 计划里同时维护分叉事实更可追踪。
   日期/作者：2026-06-14 / Codex
 
+- 决策：显式 `Resume / Fork` 只剥离“目标选择”配置，保留运行配置；当前节点 `重启` 与历史恢复都通过共享 history resume 命令构造生成完整命令，再交给现有 resolver / launch spec。
+  理由：用户意图是保持其他不冲突参数，例如 model、sandbox、approval、profile、config、cwd；真正冲突的是旧 session id、最近会话选择、picker 范围和旧 fork 标记。把当前节点 `重启` 也接到共享命令层，可以让节点内 resume、历史 resume 与 Fork 遵循同一份白名单边界。
+  日期/作者：2026-07-01 / Codex
+
 ## 结果与复盘
 
 - 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。同时，命令面板 / 侧栏 `创建节点` 第二步 Quick Input 的行为也重新和规格对齐：点击 `默认 / Resume / YOLO / 沙盒` 只会改写顶部完整命令输入，必须显式按 Enter 才会真正创建节点；脚本化 QuickPick override 不再把“仅选择预设”误当成创建。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
@@ -184,6 +192,7 @@
 - 已更新：继续修正上一次 UI follow-up 的可观察行为。之前按钮虽然允许 `white-space: normal`，但由于两个中文字符的 `min-content` 宽度很小且按钮本身没有被压到更窄，用户把节点拉到最小宽度仍不会看到两行。现在 Webview 根据 Agent 节点宽度给标题栏动作区设置 `compact-actions` 密度，CSS 对右上角所有动作按钮应用相同内部两行格式，不让整个 action cluster 换行；Playwright 也从“只检查 white-space”升级为检查所有动作按钮的内部 label 高宽比符合两行。
 - 已更新：分叉自动连线现在不再只有箭头。`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的分叉建边 helper 在创建来源 Agent 指向新 Agent 的普通 `user` 边时默认写入 `label: 'fork'`；VSCode smoke 对 Codex / Claude 两条 Host 分叉路径都补充断言：状态里的边标签为 `fork`，editor Webview probe 也应看到该标签。
 - 已更新：PR159 review 指出的两个 blocker 已在文档和命令层收口。Codex 分叉命令现在会同时清理默认参数前缀与子命令尾部的旧选择参数，避免 `--last` 等参数覆盖当前可信 source session；旧 Claude-only active 计划已移到 completed 并在文件头标注历史状态，当前分叉范围只由本计划与正式规格/设计承载。
+- 已更新：2026-07-01 本轮把“Fork / Resume 会话时保留其他不冲突参数配置”收口为明确清单并落地。共享命令层现在会在 Codex 显式 resume 中同时清理 leading 与子命令尾部的旧目标选择参数，同时继续保留 model、sandbox、approval、profile、config 等运行配置；Claude Code 显式 resume/fork 会清理旧 session-target 与旧 `--fork-session`，保留非 session-target 参数。Host 侧当前节点 `重启` 也复用 history resume 命令构造，并在已有完整 argv 时不再重复追加裸 resume 参数。已通过 `npm run test:agent-launch-presets` 与 `npm run test:canvas-execution-context`。
 
 ## 上下文与定向
 
@@ -321,3 +330,5 @@
 本次验证说明：2026-06-14 已完成分叉边标签 follow-up 的 helper 级回归、执行上下文脚本回归、typecheck、Playwright / VSCode smoke 语法检查、focused Webview 连线标签渲染回归与 diff whitespace 检查；完整 VSCode smoke 未重新运行，继续沿用既有 Development Host 阻塞记录。
 本次更新说明：2026-06-14 按 PR159 review 收口 Codex 分叉命令的参数边界，并将旧 Claude-only 分叉 ExecPlan 从 active 移入 completed；当前 Codex / Claude Code 分叉事实只在本 active 计划和正式规格/设计文档中维护。
 本次验证说明：2026-06-14 已完成命令层、协议、执行上下文、节点分组、typecheck、Playwright / VSCode smoke 语法检查、focused 标题栏按钮 Webview 回归、conflict marker 搜索与 diff whitespace 检查。
+
+本次更新说明：2026-07-01 明确并实现显式 `Resume / Fork` 的冲突/不冲突配置继承清单，原因是用户要求 fork/resume 会话时保留其他不冲突参数配置。

@@ -599,14 +599,16 @@ function stripCodexExecutionModeArgs(baseArgs: readonly string[]): string[] {
 
 function buildCodexResumeArgv(baseArgs: readonly string[], explicitSessionId?: string): string[] {
   const { leadingArgs, resumeArgs } = splitCodexResumeArgs(baseArgs);
+  const stripOptions = {
+    explicitTarget: explicitSessionId !== undefined
+  };
+  const normalizedLeadingArgs = stripCodexResumeSelectionArgs(leadingArgs, stripOptions);
   const normalizedResumeArgs = resumeArgs
-    ? stripCodexResumeSelectionArgs(resumeArgs, {
-        explicitTarget: explicitSessionId !== undefined
-      })
+    ? stripCodexResumeSelectionArgs(resumeArgs, stripOptions)
     : [];
   return explicitSessionId
-    ? ['resume', ...leadingArgs, ...normalizedResumeArgs, explicitSessionId]
-    : ['resume', ...leadingArgs, ...normalizedResumeArgs];
+    ? ['resume', ...normalizedLeadingArgs, ...normalizedResumeArgs, explicitSessionId]
+    : ['resume', ...normalizedLeadingArgs, ...normalizedResumeArgs];
 }
 
 function splitCodexResumeArgs(baseArgs: readonly string[]): {
@@ -803,6 +805,8 @@ function stripClaudeResumeTargetArgs(baseArgs: readonly string[]): string[] {
     const token = baseArgs[index];
 
     if (
+      token === '--fork-session' ||
+      token.startsWith('--fork-session=') ||
       token.startsWith('--session-id=') ||
       token.startsWith('--resume=') ||
       token.startsWith('--continue=') ||

@@ -67,6 +67,13 @@ try {
     }),
     'codex fork --profile prod --sandbox workspace-write codex-branch-session-003'
   );
+  assert.equal(
+    buildCodexBranchCommandLine('codex-branch-session-003b', {
+      command: 'codex',
+      defaultArgs: '--last --all --include-non-interactive --model gpt-5.2 fork old-session --sandbox workspace-write'
+    }),
+    'codex fork --model gpt-5.2 --sandbox workspace-write codex-branch-session-003b'
+  );
 
   assert.equal(
     buildCodexBranchCommandLine('codex-branch-session-004', {
@@ -111,6 +118,13 @@ try {
       defaultArgs: '--session-id old-session --continue older-session --dangerously-skip-permissions'
     }),
     'claude --resume claude-branch-session-789 --fork-session --dangerously-skip-permissions'
+  );
+  assert.equal(
+    buildClaudeBranchCommandLine('claude-branch-session-790', {
+      command: 'claude',
+      defaultArgs: '--fork-session --resume old-session --session-id older-session --model sonnet'
+    }),
+    'claude --resume claude-branch-session-790 --fork-session --model sonnet'
   );
 
   assert.throws(
@@ -384,6 +398,17 @@ try {
       'resume'
     ),
     'codex resume --model gpt-5.2 --all --include-non-interactive --sandbox workspace-write'
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--last --model gpt-5.2 resume session-123 --sandbox workspace-write'
+      },
+      'resume'
+    ),
+    'codex resume --model gpt-5.2 --sandbox workspace-write'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -977,6 +1002,17 @@ try {
       }
     ),
     'codex resume --model gpt-5.2 --sandbox workspace-write session-codex-789'
+  );
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'codex',
+      'session-codex-790',
+      {
+        command: 'codex',
+        defaultArgs: '--last --all --include-non-interactive --model gpt-5.2 resume session-old --sandbox workspace-write --ask-for-approval on-request'
+      }
+    ),
+    'codex resume --model gpt-5.2 --sandbox workspace-write --ask-for-approval on-request session-codex-790'
   );
   assert.equal(
     buildAgentHistoryResumeCommandLine(
