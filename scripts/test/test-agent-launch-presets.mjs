@@ -268,10 +268,10 @@ try {
   assert.deepEqual(
     classifyAgentLaunchPreset(
       'codex',
-      'codex --foo ""',
+      'codex --config ""',
       {
         command: 'codex',
-        defaultArgs: '--foo ""'
+        defaultArgs: '--config ""'
       }
     ),
     {
@@ -379,6 +379,53 @@ try {
         'default'
       ),
     defaultArgsConflictPattern
+  );
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'codex',
+        {
+          command: 'codex',
+          defaultArgs: '--search old-session'
+        },
+        'default'
+      ),
+    defaultArgsConflictPattern
+  );
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'codex',
+        {
+          command: 'codex',
+          defaultArgs: '--no-alt-screen old-session'
+        },
+        'default'
+      ),
+    defaultArgsConflictPattern
+  );
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'codex',
+        {
+          command: 'codex',
+          defaultArgs: '--strict-config old-session'
+        },
+        'default'
+      ),
+    defaultArgsConflictPattern
+  );
+  assert.equal(
+    buildAgentPresetCommandLine(
+      'codex',
+      {
+        command: 'codex',
+        defaultArgs: '--search --model gpt-5.2'
+      },
+      'default'
+    ),
+    'codex --search --model gpt-5.2'
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -808,11 +855,11 @@ try {
     'codex',
     {
       command: 'codex',
-      defaultArgs: String.raw`--prompt '\" a'`
+      defaultArgs: String.raw`--config '\" a'`
     },
     'default'
   );
-  assert.equal(escapedPromptPresetCommandLine, String.raw`codex --prompt '\" a'`);
+  assert.equal(escapedPromptPresetCommandLine, String.raw`codex --config '\" a'`);
   const escapedPromptPresetValidation = validateAgentCommandLine(
     escapedPromptPresetCommandLine,
     'codex',
@@ -823,7 +870,7 @@ try {
   );
   assert.equal(escapedPromptPresetValidation.valid, true);
   assert.equal(escapedPromptPresetValidation.parsed.command, 'codex');
-  assert.deepEqual(escapedPromptPresetValidation.parsed.args, ['--prompt', escapedPromptToken]);
+  assert.deepEqual(escapedPromptPresetValidation.parsed.args, ['--config', escapedPromptToken]);
 
   assert.deepEqual(parseCommandLine('codex --prompt "say \\"hi\\""'), {
     argv: ['codex', '--prompt', 'say "hi"']
@@ -836,11 +883,11 @@ try {
       'codex',
       {
         command: 'codex',
-        defaultArgs: String.raw`--prompt "a '\" "`
+        defaultArgs: String.raw`--config "a '\"b"`
       },
       'default'
     ),
-    String.raw`codex --prompt "a '\" "`
+    String.raw`codex --config "a '\"b"`
   );
 
   assert.throws(
@@ -964,6 +1011,18 @@ try {
         {
           command: 'codex',
           defaultArgs: '--last --all --include-non-interactive --model gpt-5.2 resume session-old --sandbox workspace-write --ask-for-approval on-request'
+        }
+      ),
+    defaultArgsConflictPattern
+  );
+  assert.throws(
+    () =>
+      buildAgentHistoryResumeCommandLine(
+        'codex',
+        'session-codex-791',
+        {
+          command: 'codex',
+          defaultArgs: '--search old-session --model gpt-5.2'
         }
       ),
     defaultArgsConflictPattern
