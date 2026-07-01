@@ -863,6 +863,7 @@ body {
 
 .window-chrome {
   --window-chrome-background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
+  position: relative;
   display: flex;
   justify-content: space-between;
   gap: 10px;
@@ -874,6 +875,31 @@ body {
     background-color 140ms ease,
     border-color 140ms ease,
     box-shadow 140ms ease;
+}
+
+.window-chrome.is-agent-running-titleline {
+  --agent-running-titleline-color: var(--canvas-node-color);
+  --agent-running-titleline-glint: color-mix(
+    in srgb,
+    var(--agent-running-titleline-color) 52%,
+    var(--vscode-panel-border, transparent) 48%
+  );
+}
+
+.window-chrome.is-agent-running-titleline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: auto;
+  bottom: -1px;
+  width: 28%;
+  height: 3px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: var(--agent-running-titleline-glint);
+  transform: translateX(-112%);
+  animation: execution-agent-running-titleline 3.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform, opacity;
 }
 
 .window-chrome.has-attention {
@@ -1270,6 +1296,24 @@ body {
   }
 }
 
+@keyframes execution-agent-running-titleline {
+  0% {
+    transform: translateX(-112%);
+    opacity: 0;
+  }
+
+  12%,
+  68% {
+    opacity: 0.72;
+  }
+
+  84%,
+  100% {
+    transform: translateX(470%);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .canvas-shell .canvas-minimap .react-flow__minimap-node.is-attention-flashing {
     animation: none;
@@ -1292,6 +1336,11 @@ body {
 
   .pane-gallery-root-header.is-attention-flashing {
     box-shadow: var(--execution-attention-reduced-shadow);
+  }
+
+  .window-chrome.is-agent-running-titleline::after {
+    animation: none;
+    opacity: 0;
   }
 }
 

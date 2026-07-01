@@ -43,8 +43,8 @@
 
 ### 运动与反馈
 
-- 动画只用于 attention、hover / focus transition、菜单显隐和轻量反馈。
-- attention 动画必须支持 `prefers-reduced-motion`，并在降级后保留非动画视觉提示。
+- 动画只用于 attention、Agent `running` 标题栏活性细线、hover / focus transition、菜单显隐和轻量反馈。
+- attention 与 Agent `running` 活性动画必须支持 `prefers-reduced-motion`，并在降级后保留非动画视觉提示。
 - 不使用大范围页面入场动画、粒子动效或持续背景运动。
 
 ### 文档分流

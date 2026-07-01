@@ -5459,10 +5459,12 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
   const attentionPending = agentMetadata.attentionPending === true;
   const attentionFlashing =
     attentionPending && strongTerminalAttentionReminderShowsTitleBar(data.strongTerminalAttentionReminderMode);
+  const runningTitleLine = displayStatus === 'running' && !attentionPending;
   const chromeClassName = [
     'window-chrome',
     attentionPending ? 'has-attention' : '',
-    attentionFlashing ? 'is-attention-flashing' : ''
+    attentionFlashing ? 'is-attention-flashing' : '',
+    runningTitleLine ? 'is-agent-running-titleline' : ''
   ]
     .filter(Boolean)
     .join(' ');
@@ -5845,6 +5847,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         className={chromeClassName}
         data-execution-attention-pending={attentionPending ? 'true' : 'false'}
         data-execution-attention-flashing={attentionFlashing ? 'true' : 'false'}
+        data-agent-running-titleline={runningTitleLine ? 'true' : 'false'}
         onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}
       >
         <ChromeTitleEditor

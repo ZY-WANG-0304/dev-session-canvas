@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/agent-running-state-detection.md
   - docs/exec-plans/completed/claude-agent-ctrl-z-containment.md
-updated_at: 2026-06-11
+updated_at: 2026-07-01
 ---
 
 # Agent 运行态判定与等待输入信号设计
@@ -139,7 +139,7 @@ updated_at: 2026-06-11
 - 风险：如果没有明确信号优先级，新的 provider 事件和旧的 PTY 启发式可能互相打架。
   当前缓解：正式优先级固定为“provider 原生事件 > provider 结构化输出/hooks/SDK > shell integration > PTY 启发式”，低优先级只能在高优先级缺失时生效。
 
-## 7. 当前结论
+## 7. 正式方案
 
 ### 7.1 正式语义
 
@@ -199,6 +199,13 @@ updated_at: 2026-06-11
 - 若最近输出呈现 spinner 或 redraw 特征，例如 `\r` 覆写、退格或光标移动控制序列，则会延长回退窗口，避免 Agent 仍在工作时被过早判回 `waiting-input`。
 
 这一版仍然属于 `heuristic` / `best-effort`，只是把误判窗口从“固定静默时间”收紧为“多信号综合判断”。
+
+
+### 7.6 Webview 状态呈现
+
+`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 `AgentSessionNode` 只在节点 `status` 精确等于 `running` 且 `metadata.agent.attentionPending` 不为 `true` 时，为标题栏添加 `is-agent-running-titleline` 与 `data-agent-running-titleline="true"`。`live`、`starting`、`resuming`、`reattaching`、`waiting-input` 等状态即使表示执行节点仍可附着或处在生命周期过渡中，也不得触发这条运行活性线；这些状态继续依靠状态胶囊文本与既有状态色表达。
+
+`extensions/vscode/dev-session-canvas/src/webview/styles.css` 的 `execution-agent-running-titleline` 只移动标题栏底部的短纯色段，并使用 `--canvas-node-color` 派生的 Agent 节点类型色，而不是 `tone-running` 或 VSCode running 状态色。非移动区域继续使用标题栏原有 1px `border-bottom`，不额外铺一条静态状态色底线；只有移动段可加粗，不使用渐变尾部，避免 running 视觉覆盖普通标题栏分隔语义。这样该动效表达的是“这个 Agent 对象正在处理当前回合”，不是新的全局 running 状态色体系；当 attention pending 存在时，attention 提醒优先，运行细线隐藏，避免弱活性提示和强提醒同时竞争。`prefers-reduced-motion: reduce` 下关闭高光位移，仅保留标题栏原有底部分隔线。
 
 ## 8. 验证方法
 
