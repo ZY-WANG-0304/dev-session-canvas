@@ -10913,6 +10913,125 @@ test('canvas context menu can request layout arrangement without a completion to
     });
 });
 
+test('multi-root rootGroups template reset requires a root section target', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createMultiRootResetMenuState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'rootGroups' }));
+  await clearPostedMessages(page);
+
+  await page.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 40,
+      y: 40
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-action="reset-default-template"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveText(
+    '多根 workspace 中请在目标 root section 内重置为模板。'
+  );
+  await expect
+    .poll(async () => (await readPostedMessagesByType(page, 'webview/resetToDefaultTemplate')).length)
+    .toBe(0);
+});
+
+test('multi-root rootGroups template reset posts target root from root section body', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createMultiRootResetMenuState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'rootGroups' }));
+  await clearPostedMessages(page);
+
+  await page.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 700,
+      y: 560
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-action="reset-default-template"]').click();
+
+  await expect(menu).toBeHidden();
+  const resetMessages = await readPostedMessagesByType(page, 'webview/resetToDefaultTemplate');
+  expect(resetMessages).toHaveLength(1);
+  expect(resetMessages[0].payload.targetGroupId).toBe('workspace-root-frontend');
+  expect(Number.isFinite(resetMessages[0].payload.visibleCenter.x)).toBe(true);
+  expect(Number.isFinite(resetMessages[0].payload.visibleCenter.y)).toBe(true);
+});
+
+test('multi-root rootGroups template reset accepts nested group inside a root section', async ({ page }) => {
+  await openHarness(page, {
+    persistedState: {
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }
+  });
+  const state = createMultiRootResetMenuState({
+    frontendNestedGroup: true
+  });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'rootGroups' }));
+  await clearPostedMessages(page);
+
+  await page.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 420,
+      y: 360
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-action="reset-default-template"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveCount(0);
+  const resetMessages = await readPostedMessagesByType(page, 'webview/resetToDefaultTemplate');
+  expect(resetMessages).toHaveLength(1);
+  expect(resetMessages[0].payload.targetGroupId).toBe('frontend-feature-group');
+});
+
+test('paneGallery template reset uses the interactive root pane as target', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+  await clearPostedMessages(page);
+
+  const backendPane = page.locator('[data-pane-gallery-root-id="workspace-root-backend"]');
+  await backendPane.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 120,
+      y: 150
+    }
+  });
+
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  await menu.locator('[data-context-menu-action="reset-default-template"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect(page.locator('[data-toast-kind="error"]')).toHaveCount(0);
+  const resetMessages = await readPostedMessagesByType(page, 'webview/resetToDefaultTemplate');
+  expect(resetMessages).toHaveLength(1);
+  expect(resetMessages[0].payload.targetGroupId).toBe('workspace-root-backend');
+});
+
 test('right-click create menu still shows execution entries in untrusted mode and asks host for reason', async ({ page }) => {
   await openHarness(page, {
     persistedState: {
@@ -16571,6 +16690,58 @@ function createEmptyCanvasState() {
     version: 1,
     updatedAt: '2026-04-06T00:00:00.000Z',
     nodes: []
+  };
+}
+
+function createMultiRootResetMenuState(options = {}) {
+  const groups = [
+    {
+      id: 'workspace-root-frontend',
+      title: 'Frontend',
+      position: { x: 120, y: 100 },
+      size: { width: 720, height: 520 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/frontend'
+    },
+    {
+      id: 'workspace-root-backend',
+      title: 'Backend',
+      position: { x: 1080, y: 100 },
+      size: { width: 720, height: 520 },
+      role: 'workspace-root',
+      workspaceRootPath: '/repo/backend'
+    }
+  ];
+  if (options.frontendNestedGroup) {
+    groups.push({
+      id: 'frontend-feature-group',
+      title: 'Feature Area',
+      position: { x: 300, y: 240 },
+      size: { width: 280, height: 220 },
+      parentGroupId: 'workspace-root-frontend'
+    });
+  }
+
+  return {
+    version: 1,
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    nodes: [
+      {
+        ...createManualNoteNode(
+          'frontend-note',
+          options.frontendNestedGroup ? { x: 640, y: 220 } : { x: 200, y: 200 }
+        ),
+        title: 'Frontend Note',
+        groupId: 'workspace-root-frontend'
+      },
+      {
+        ...createManualNoteNode('backend-note', { x: 1160, y: 200 }),
+        title: 'Backend Note',
+        groupId: 'workspace-root-backend'
+      }
+    ],
+    groups,
+    edges: []
   };
 }
 

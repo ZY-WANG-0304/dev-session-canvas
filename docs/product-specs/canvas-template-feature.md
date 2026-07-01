@@ -107,7 +107,7 @@
 - **内置模板**：全部使用 `default` Provider（不限制用户的 provider 选择）
 
 ### 4.3 应用模板的位置策略
-- **重置为模板**：清空画布后，将模板放置在当前视口中心
+- **重置为模板**：清空画布后，将模板放置在当前视口中心；multi-root workspace 中只清空当前/目标 root 的 root-local 画布并套用模板，不清空其他 root
 - **新增模板节点**：自动选择合适位置避免与现有节点重叠（具体算法见设计文档）
 - **应用后追焦**：显式应用或重置模板后，画布视口自动 `fitView` 到本次新增的模板节点组；首次打开时的"使用说明"初始化仍交给初始 `fitView` 处理，不额外触发追焦
 
@@ -202,6 +202,8 @@
   - "应用模板" 与 "重置为模板" 的一级点击都应支持对默认模板的快速操作
   - "应用模板" 与 "重置为模板" 还应支持展开二级菜单，选择具体模板
   - "重置为模板" 对所选模板执行清空后应用
+  - multi-root `rootGroups` 下，用户必须在目标 root section 内或其内部用户分组中执行"重置为模板"；如果在所有 root section 外部触发，界面提示用户到目标 root section 内重置且不发送 reset 操作
+  - multi-root `paneGallery` 下，"应用模板"和"重置为模板"的目标 root 由当前可交互 pane 或 active root 主画板决定
 - **命令面板**：通过 VSCode 命令面板快速访问
   - "Canvas: 应用默认模板"
   - "Canvas: 重置为默认模板"
@@ -231,6 +233,7 @@
 - ❌ Agent 的 command 配置（不保存到模板）
 - ❌ 运行时状态（terminal 会话、agent 状态等）
 - ❌ 文件引用和文件活动边
+- ❌ 跨 root 模板捕获、跨 root 模板应用或把 multi-root 组合视图整体重置为同一个模板；multi-root 只支持针对单个目标 root 的模板应用/重置
 
 以下能力已拆分至 `docs/product-specs/template-marketplace.md`，不在本规格范围内：
 
@@ -311,6 +314,9 @@ interface CanvasTemplateEdgeSnapshot {
 - [ ] 新增模板节点时，自动避免与现有节点重叠
 - [ ] 显式应用或重置模板后，画布自动追焦到本次新增的整组模板节点
 - [ ] 模板内节点的相对位置关系保持一致
+- [ ] multi-root workspace 中重置为模板只影响目标 root；其他 root 的节点、分组和运行时不被清空
+- [ ] multi-root `rootGroups` 中从 root section 外部触发重置为模板时，界面提示用户在目标 root section 内重置且不发送 reset 请求；从 root 内部用户分组触发时 Host 解析到所属 root 并只重置该 root
+- [ ] multi-root `paneGallery` 中从可交互 root pane 触发重置为模板时，请求携带该 pane 对应的 root 身份
 
 ### 7.4 Agent Provider
 - [ ] 保存模板时会列出当前画布中的 Agent 节点
