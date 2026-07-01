@@ -30,12 +30,198 @@ type TerminalBinding = {
   lastRecentOutput: string;
 };
 
+type DisposableLike = {
+  dispose(): void;
+};
+
 const MAX_RECENT_OUTPUT_CHARS = 12000;
 const terminalBindings = new Map<string, TerminalBinding>();
 const pendingTerminalOutput = new Map<string, string>();
 
 function retainRecentOutput(value: string): string {
   return value.length <= MAX_RECENT_OUTPUT_CHARS ? value : value.slice(-MAX_RECENT_OUTPUT_CHARS);
+}
+
+function normalizeTerminalInput(value: string): string {
+  // JCEF on macOS can surface stray C1 controls from keyboard events; xterm special keys use C0/ESC.
+  return value.replace(/[\u0080-\u009f]/g, '');
+}
+
+function isPlainKeyboardTextEvent(event: KeyboardEvent): boolean {
+  return event.key.length === 1
+    && !event.altKey
+    && !event.ctrlKey
+    && !event.metaKey
+    && !event.isComposing;
+}
+
+function shouldLetKeypressHandlePlainText(event: KeyboardEvent): boolean {
+  const charCode = event.key.length === 1 ? event.key.charCodeAt(0) : 0;
+  return event.keyCode < 48 || (charCode >= 65 && charCode <= 90);
+}
+
+function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean): DisposableLike {
+  // JetBrains JCEF can deliver both xterm keydown/keypress data and textarea input for one key.
+  const textarea = terminal.textarea;
+  if (!textarea || !isJcefHost) {
+    return { dispose: () => undefined };
+  }
+
+  const inputEventTarget = terminal.element ?? textarea.parentElement;
+  let compositionActive = false;
+  let compositionKeyPending = false;
+  let suppressNextInsertText = false;
+  let suppressNextKeypress = false;
+  let trackNextKeypressInput = false;
+  let resetTimer: number | undefined;
+
+  const clearResetTimer = (): void => {
+    if (resetTimer !== undefined) {
+      window.clearTimeout(resetTimer);
+      resetTimer = undefined;
+    }
+  };
+
+  const scheduleSuppressionReset = (): void => {
+    clearResetTimer();
+    resetTimer = window.setTimeout(() => {
+      compositionKeyPending = false;
+      suppressNextInsertText = false;
+      suppressNextKeypress = false;
+      trackNextKeypressInput = false;
+      resetTimer = undefined;
+    }, 0);
+  };
+
+  const handleKeydown = (event: KeyboardEvent): void => {
+    if (compositionActive) {
+      compositionKeyPending = false;
+      suppressNextInsertText = false;
+      suppressNextKeypress = false;
+      trackNextKeypressInput = false;
+      return;
+    }
+    if (event.keyCode === 229) {
+      compositionKeyPending = true;
+      suppressNextInsertText = false;
+      suppressNextKeypress = false;
+      trackNextKeypressInput = false;
+      scheduleSuppressionReset();
+      return;
+    }
+    if (!isPlainKeyboardTextEvent(event)) {
+      compositionKeyPending = false;
+      suppressNextInsertText = false;
+      suppressNextKeypress = false;
+      trackNextKeypressInput = false;
+      return;
+    }
+    compositionKeyPending = false;
+    if (shouldLetKeypressHandlePlainText(event)) {
+      suppressNextInsertText = false;
+      suppressNextKeypress = false;
+      trackNextKeypressInput = true;
+      scheduleSuppressionReset();
+      return;
+    }
+    suppressNextInsertText = true;
+    suppressNextKeypress = true;
+    trackNextKeypressInput = false;
+    scheduleSuppressionReset();
+  };
+
+  const suppressKeypressBeforeXterm = (event: KeyboardEvent): void => {
+    if (!suppressNextKeypress) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    suppressNextKeypress = false;
+  };
+
+  const trackKeypressAfterXterm = (): void => {
+    if (!trackNextKeypressInput) {
+      return;
+    }
+    trackNextKeypressInput = false;
+    suppressNextInsertText = true;
+    scheduleSuppressionReset();
+  };
+
+  const handleBeforeInput = (event: InputEvent): void => {
+    if (event.inputType !== 'insertText' || event.isComposing) {
+      return;
+    }
+    if (compositionKeyPending) {
+      return;
+    }
+    if (!suppressNextInsertText) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    suppressNextInsertText = false;
+    if (suppressNextKeypress) {
+      scheduleSuppressionReset();
+    } else {
+      clearResetTimer();
+    }
+  };
+
+  const handleInput = (event: Event): void => {
+    if (!(event instanceof InputEvent) || event.inputType !== 'insertText' || event.isComposing) {
+      return;
+    }
+    if (!compositionKeyPending && !suppressNextInsertText) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (suppressNextInsertText && !compositionKeyPending) {
+      textarea.value = '';
+    }
+    compositionKeyPending = false;
+    suppressNextInsertText = false;
+    suppressNextKeypress = false;
+    trackNextKeypressInput = false;
+    clearResetTimer();
+  };
+
+  const handleCompositionStart = (): void => {
+    compositionActive = true;
+    compositionKeyPending = false;
+    suppressNextInsertText = false;
+    suppressNextKeypress = false;
+    trackNextKeypressInput = false;
+    clearResetTimer();
+  };
+
+  const handleCompositionEnd = (): void => {
+    window.setTimeout(() => {
+      compositionActive = false;
+    }, 0);
+  };
+
+  textarea.addEventListener('keydown', handleKeydown, true);
+  textarea.addEventListener('keypress', trackKeypressAfterXterm, true);
+  textarea.addEventListener('beforeinput', handleBeforeInput, true);
+  textarea.addEventListener('compositionstart', handleCompositionStart, true);
+  textarea.addEventListener('compositionend', handleCompositionEnd, true);
+  inputEventTarget?.addEventListener('keypress', suppressKeypressBeforeXterm, true);
+  inputEventTarget?.addEventListener('input', handleInput, true);
+
+  return {
+    dispose: (): void => {
+      clearResetTimer();
+      textarea.removeEventListener('keydown', handleKeydown, true);
+      textarea.removeEventListener('keypress', trackKeypressAfterXterm, true);
+      textarea.removeEventListener('beforeinput', handleBeforeInput, true);
+      textarea.removeEventListener('compositionstart', handleCompositionStart, true);
+      textarea.removeEventListener('compositionend', handleCompositionEnd, true);
+      inputEventTarget?.removeEventListener('keypress', suppressKeypressBeforeXterm, true);
+      inputEventTarget?.removeEventListener('input', handleInput, true);
+    }
+  };
 }
 
 function appendTerminalOutput(binding: TerminalBinding, text: string): void {
@@ -176,8 +362,12 @@ function TerminalNode({ data, selected }: NodeProps<CanvasNode>): JSX.Element {
       }
       pendingTerminalOutput.delete(data.id);
     }
+    const inputGuardDisposable = installJcefTerminalInputGuard(terminal, Boolean(window.devSessionCanvasPostMessage));
     const dataDisposable = terminal.onData((text) => {
-      host.postMessage({ type: 'webview/terminalInput', id: data.id, text });
+      const normalizedText = normalizeTerminalInput(text);
+      if (normalizedText.length > 0) {
+        host.postMessage({ type: 'webview/terminalInput', id: data.id, text: normalizedText });
+      }
     });
     const resizeObserver = new ResizeObserver(() => fitAndReport());
     resizeObserver.observe(container);
@@ -186,6 +376,7 @@ function TerminalNode({ data, selected }: NodeProps<CanvasNode>): JSX.Element {
     return () => {
       resizeObserver.disconnect();
       dataDisposable.dispose();
+      inputGuardDisposable.dispose();
       terminalBindings.delete(data.id);
       terminal.dispose();
     };

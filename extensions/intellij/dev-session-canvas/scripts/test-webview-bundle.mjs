@@ -15,6 +15,8 @@ const [javascript, stylesheet] = await Promise.all([
 const requiredJavascriptMarkers = [
   'devSessionCanvasPostMessage',
   'devSessionCanvasReceiveHostMessage',
+  'normalizeTerminalInput',
+  'installJcefTerminalInputGuard',
   'webview/createNote',
   'webview/createTerminal',
   'webview/updateNote',

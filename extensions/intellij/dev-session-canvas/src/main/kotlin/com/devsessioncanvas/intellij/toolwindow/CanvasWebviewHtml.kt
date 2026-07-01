@@ -20,7 +20,7 @@ object CanvasWebviewHtml {
               <title>Dev Session Canvas</title>
               <style>$stylesheet</style>
               <script>
-                // Keep raw DEL/C1 controls, such as xterm Backspace, intact through JBCefJSQuery.
+                // Keep JSON control escapes intact through JBCefJSQuery; terminal input filters stray C1 first.
                 function escapeDevSessionCanvasBridgePayload(json) {
                   return json.replace(/[\u007f-\u009f]/g, function(character) {
                     return "\\u" + character.charCodeAt(0).toString(16).padStart(4, "0");
