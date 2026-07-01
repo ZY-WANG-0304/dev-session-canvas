@@ -945,10 +945,24 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
   await expect(backendPane).toHaveAttribute('data-pane-gallery-attention-count', '0');
   await expect
     .poll(async () =>
-      backendPane.locator('.pane-gallery-root-header').evaluate((header) => getComputedStyle(header).backgroundColor)
+      backendPane.locator('.pane-gallery-root-header').evaluate((header) => {
+        const styles = getComputedStyle(header);
+        return {
+          backgroundColor: styles.backgroundColor,
+          borderBottomColor: styles.borderBottomColor,
+          animationName: styles.animationName
+        };
+      })
     )
-    .not.toBe(
-      await frontendPane.locator('.pane-gallery-root-header').evaluate((header) => getComputedStyle(header).backgroundColor)
+    .toEqual(
+      await frontendPane.locator('.pane-gallery-root-header').evaluate((header) => {
+        const styles = getComputedStyle(header);
+        return {
+          backgroundColor: styles.backgroundColor,
+          borderBottomColor: styles.borderBottomColor,
+          animationName: styles.animationName
+        };
+      })
     );
   await expect(page.locator('.canvas-help-panel .execution-help-trigger-canvas')).toBeVisible();
   await expect(frontendPane.locator('[data-group-background-role="workspace-root"]')).toHaveCount(0);
@@ -1457,11 +1471,46 @@ test('pane gallery thumbnail hit layer blocks execution node attention acknowled
     'title',
     /1 个节点需要关注，1 个节点正在运行/
   );
+  const backendHeader = backendThumbnail.locator('.pane-gallery-root-header');
   await expect
     .poll(async () =>
-      backendThumbnail.locator('.pane-gallery-root-header').evaluate((header) => getComputedStyle(header).backgroundColor)
+      backendHeader.evaluate((header) => getComputedStyle(header).backgroundColor)
     )
     .not.toBe('rgba(0, 0, 0, 0)');
+  await expect(backendThumbnail).toHaveAttribute('data-pane-gallery-attention-flashing', 'true');
+  await expect(backendHeader).toHaveAttribute('data-pane-gallery-root-header-attention-flashing', 'true');
+  await expect
+    .poll(async () =>
+      backendHeader.evaluate((header) => getComputedStyle(header).animationName)
+    )
+    .toBe('execution-attention-flash');
+  const headerAttentionColor = await backendHeader.evaluate((header) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--execution-node-attention-color)';
+    header.append(probe);
+    const attentionColor = getComputedStyle(probe).color;
+    const borderBottomColor = getComputedStyle(header).borderBottomColor;
+    probe.remove();
+    return { attentionColor, borderBottomColor };
+  });
+  expect(headerAttentionColor.attentionColor).toBe(headerAttentionColor.borderBottomColor);
+  const headerFlashTreatment = await backendHeader.evaluate((header) => {
+    const styles = getComputedStyle(header);
+    return {
+      peakShadow: styles.getPropertyValue('--execution-attention-flash-peak-shadow'),
+      reducedShadow: styles.getPropertyValue('--execution-attention-reduced-shadow')
+    };
+  });
+  expect(headerFlashTreatment.peakShadow).toContain('0 0 0 2px');
+  expect(headerFlashTreatment.peakShadow).toContain('0 0 12px');
+  expect(headerFlashTreatment.reducedShadow).toContain('0 0 0 2px');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect
+    .poll(async () =>
+      backendHeader.evaluate((header) => getComputedStyle(header).animationName)
+    )
+    .toBe('none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(backendTerminalNode.locator('[data-execution-attention-pending="true"]')).toHaveCount(1);
   await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toBeVisible();
   await expect(backendThumbnail.locator('[data-pane-gallery-thumbnail-hit-layer="true"]')).toHaveCSS(

@@ -1,7 +1,7 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-06-26
+updated_at: 2026-07-01
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
 related_plans:
@@ -66,7 +66,7 @@ related_plans:
 28. `paneGallery` 的每个可交互 root pane 拥有独立 viewport。首次进入或 pane 尺寸变化时，默认按该 root 的子图做 fit-to-pane，缩放比例与概览触发都遵循主线单一画板的 fit/overview 语义，不在 paneGallery 中额外设置下限，也不因为进入 paneGallery 就强制所有节点进入概览状态；root 内容过大时 pane 允许内部 pan/zoom。四种布局下的 pane viewport 属于 Webview local UI state，不写入 root-local state 或 multi-root overlay。
 29. 当 workspace root 很多时，`paneGallery` 不把所有 root 无限压缩到同屏。布局应优先保证 pane 的最小可交互尺寸；超过当前可用区域后使用可滚动/虚拟化 gallery，并依靠稳定排序、缩略图模式和后续快速跳转入口定位 root；本轮不提供 filter roots。thumbnail rail 可以比 `dynamic` / `grid` pane 更小，但仍以画板 fit view 呈现；顶部缩略图 rail 内的缩略图在未横向溢出时横向居中，右侧缩略图 rail 内的缩略图在未纵向溢出时纵向居中；一旦 rail 内容溢出，滚动起点必须对齐第一张缩略图，滚动终点必须能访问最后一张缩略图。
 30. 在 `paneGallery` 的 `dynamic` / `grid` root pane 或 thumbnail 模式 active root 主画板内创建节点、拖入 Markdown、应用模板或启动执行节点时，目标 root 由窗格身份直接确定；跨 root 连线、跨 root 拖拽迁移和静默改写 `cwd` 仍不支持。
-31. `paneGallery` 的视觉语言只借鉴多人会议的“gallery / thumbnails”布局模型，不引入视频会议风格头像、强装饰背景或多人实时协作语义；所有颜色、边框、状态和字体继续跟随 VSCode theme token 与 `docs/UI.md`。paneGallery 子画板天然用窗格身份区分 folder，不渲染 `rootGroups` 模式下的 workspace-root 分组框或水印；除子画板自身的画板内边界外，root 画板之间只使用最简单的 VSCode 原生 border line 宽度。模式切换入口不在右上角，而是放入可交互画板左下角的画板控制按钮区域：全览模式下入口使用 `eye` 图标，点击后把当前 root 作为 thumbnail 模式主画板，并进入上次选择的 `topThumbnails` 或 `sideThumbnails`，首次默认 `sideThumbnails`；thumbnail 模式下入口使用 `globe` 图标，点击后返回上次选择的 `dynamic` 或 `grid`，首次默认 `dynamic`。无论当前处于全览还是 thumbnail，hover 都向右展开四个具体模式选项；动态、宫格、顶部缩略图与右侧缩略图选项分别使用 `layout`、`table`、`split-vertical` 和 `split-horizontal` 图标，并且菜单样式对齐左下角画板控制按钮。
+31. `paneGallery` 的视觉语言只借鉴多人会议的“gallery / thumbnails”布局模型，不引入视频会议风格头像、强装饰背景或多人实时协作语义；所有颜色、边框、状态和字体继续跟随 VSCode theme token 与 `docs/UI.md`。paneGallery 子画板天然用窗格身份区分 folder，不渲染 `rootGroups` 模式下的 workspace-root 分组框或水印；除子画板自身的画板内边界外，root 画板之间只使用最简单的 VSCode 原生 border line 宽度。paneGallery root 标签常态不再用 running / attention 的静态状态背景或边框色表达聚合状态；root 内存在待确认 attention 时，左上角 root 标签除可访问文本外，还应在 `strongTerminalAttentionReminder` 包含标题栏闪烁时复用执行节点标题栏闪烁动画；闪烁峰值与 reduced motion 静态高亮使用 root 标签当前 border color；动画峰值应通过更高占比背景混色、内外描边和轻量 halo 明确强于常态 chrome，并支持 `prefers-reduced-motion` 静态退化。模式切换入口不在右上角，而是放入可交互画板左下角的画板控制按钮区域：全览模式下入口使用 `eye` 图标，点击后把当前 root 作为 thumbnail 模式主画板，并进入上次选择的 `topThumbnails` 或 `sideThumbnails`，首次默认 `sideThumbnails`；thumbnail 模式下入口使用 `globe` 图标，点击后返回上次选择的 `dynamic` 或 `grid`，首次默认 `dynamic`。无论当前处于全览还是 thumbnail，hover 都向右展开四个具体模式选项；动态、宫格、顶部缩略图与右侧缩略图选项分别使用 `layout`、`table`、`split-vertical` 和 `split-horizontal` 图标，并且菜单样式对齐左下角画板控制按钮。
 
 ## 非目标
 
@@ -86,7 +86,7 @@ related_plans:
 - 在单根 `frontend` workspace 中创建一个 Note，关闭后打开包含 `frontend` 与 `backend` 的 multi-root workspace，能在 `frontend` root 分组中看到该 Note。
 - `devSessionCanvas.canvas.multiRootPresentationMode` 默认为 `rootGroups`；切到 `paneGallery` 后，多根 workspace 不改变 root-local 内容，只改变多根呈现方式。
 - 在 `rootGroups` 中，每个 workspace folder 都显示一个系统 root 分组，标题对应 folder 名称。
-- 在 `paneGallery` 的 `dynamic` / `grid` 布局中，每个 workspace folder 都显示为一个独立且可交互的 root 窗格；窗格左上角轻量标签显示 folder 名称，tooltip 保留完整路径，不常驻 nodes / waiting / attention 汇总 subtitle，并可在该 root 内创建、移动、输入和拖入内容。
+- 在 `paneGallery` 的 `dynamic` / `grid` 布局中，每个 workspace folder 都显示为一个独立且可交互的 root 窗格；窗格左上角轻量标签显示 folder 名称，tooltip 保留完整路径，不常驻 nodes / waiting / attention 汇总 subtitle，并可在该 root 内创建、移动、输入和拖入内容；root 标签 title 区域常态不使用 running / attention 静态状态色；存在待确认 attention 且增强提醒模式包含标题栏闪烁时才同步闪烁，闪烁取色使用 root 标签当前 border color，并通过更高占比背景混色、内外描边和轻量 halo 强化峰值，reduced motion 下改为同色系静态高亮。
 - `paneGallery` 的 `dynamic` / `grid` root pane 默认 fit 当前 root 子图，且不额外限制缩放比例；root 内容过大时，用户可以在 pane 内 pan/zoom 查看。
 - 当 workspace root 数量超过同屏可交互容量时，`paneGallery` 使用可滚动/虚拟化 gallery 或等价机制保留 pane 最小可交互尺寸，并通过稳定排序、缩略图模式或后续快速跳转访问所有 root；本轮不提供 filter roots。
 - 在 `paneGallery` 的 `topThumbnails` / `sideThumbnails` 布局中，一个 active root 以主画板展示；主画板右下角显示与单一画板一致的 MiniMap；其他 root 以不可交互的画板缩略图保留在顶部或右侧 rail，缩略图复用左上角轻量 root 标签而不使用外部卡片标题；rail 未溢出时保持居中，溢出时从第一张缩略图开始滚动且滚动终点可访问最后一张缩略图；单击不切换 active root，双击才切换 active root。`dynamic` / `grid` 的多 root 子画板不显示 MiniMap。
