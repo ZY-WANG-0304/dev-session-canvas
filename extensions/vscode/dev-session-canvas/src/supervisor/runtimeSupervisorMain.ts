@@ -22,7 +22,10 @@ import {
   type TerminalNodeStatus
 } from '../common/protocol';
 import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
-import { SerializedTerminalStateTracker } from '../common/serializedTerminalState';
+import {
+  SerializedTerminalStateTracker,
+  type SerializedTerminalState
+} from '../common/serializedTerminalState';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   deserializeExecutionSessionLaunchSpec,
@@ -64,6 +67,10 @@ const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
 
 function normalizeRuntimeSupervisorOutputSequence(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function normalizeRuntimeSupervisorOptionalOutputSequence(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 interface SupervisorRegistry {
@@ -199,7 +206,7 @@ class RuntimeSupervisorServer {
           });
           return;
         case 'createSession': {
-          const snapshot = this.createSession(socket, request.params);
+          const snapshot = await this.createSession(socket, request.params);
           this.writeMessage(socket, {
             type: 'response',
             id: request.id,
@@ -209,7 +216,7 @@ class RuntimeSupervisorServer {
           return;
         }
         case 'attachSession': {
-          const snapshot = this.attachSession(socket, request.params);
+          const snapshot = await this.attachSession(socket, request.params);
           this.writeMessage(socket, {
             type: 'response',
             id: request.id,
@@ -249,10 +256,10 @@ class RuntimeSupervisorServer {
     }
   }
 
-  private createSession(
+  private async createSession(
     socket: net.Socket,
     params: RuntimeSupervisorCreateSessionParams
-  ): RuntimeSupervisorSessionSnapshot {
+  ): Promise<RuntimeSupervisorSessionSnapshot> {
     const sessionId = params.sessionId?.trim() || randomUUID();
     if (this.sessions.has(sessionId)) {
       throw new Error(`runtime session ${sessionId} 已存在。`);
@@ -337,20 +344,20 @@ class RuntimeSupervisorServer {
     }
 
     this.schedulePersist();
-    return this.toSnapshot(session);
+    return this.toFreshSnapshot(session);
   }
 
-  private attachSession(
+  private async attachSession(
     socket: net.Socket,
     params: RuntimeSupervisorAttachSessionParams
-  ): RuntimeSupervisorSessionSnapshot {
+  ): Promise<RuntimeSupervisorSessionSnapshot> {
     const session = this.sessions.get(params.sessionId);
     if (!session) {
       throw new Error(`未找到 runtime session ${params.sessionId}。`);
     }
 
     this.subscribeSocket(socket, params.sessionId);
-    return this.toSnapshot(session);
+    return this.toFreshSnapshot(session);
   }
 
   private writeInput(params: RuntimeSupervisorWriteInputParams): void {
@@ -452,8 +459,11 @@ class RuntimeSupervisorServer {
         return;
       }
 
+      session.outputSequence += 1;
       session.output = appendOutputTail(session.output, chunk);
-      session.terminalStateTracker.write(chunk);
+      session.terminalStateTracker.write(chunk, {
+        outputSequence: session.outputSequence
+      });
       if (session.kind === 'agent') {
         this.maybeSyncAgentResumeSessionIdFromOutput(session, {
           allowOverwriteExisting: session.stopRequested,
@@ -737,7 +747,6 @@ class RuntimeSupervisorServer {
   }
 
   private emitSessionOutput(session: SupervisorSession, chunk: string): void {
-    session.outputSequence += 1;
     const message: RuntimeSupervisorEvent = {
       type: 'event',
       event: 'sessionOutput',
@@ -811,7 +820,29 @@ class RuntimeSupervisorServer {
     }, AGENT_WAITING_INPUT_POLL_INTERVAL_MS);
   }
 
-  private toSnapshot(session: SupervisorSession): RuntimeSupervisorSessionSnapshot {
+  private async toFreshSnapshot(session: SupervisorSession): Promise<RuntimeSupervisorSessionSnapshot> {
+    const serializedTerminalState = await session.terminalStateTracker
+      .flush()
+      .catch(() => undefined);
+    return this.toSnapshot(session, serializedTerminalState);
+  }
+
+  private getFreshSerializedTerminalState(
+    session: SupervisorSession,
+    serializedTerminalState: SerializedTerminalState | undefined
+  ): SerializedTerminalState | undefined {
+    const stateOutputSequence = normalizeRuntimeSupervisorOptionalOutputSequence(
+      serializedTerminalState?.outputSequence
+    );
+    return stateOutputSequence !== undefined && stateOutputSequence === session.outputSequence
+      ? serializedTerminalState
+      : undefined;
+  }
+
+  private toSnapshot(
+    session: SupervisorSession,
+    serializedTerminalState = session.terminalStateTracker.getSerializedState()
+  ): RuntimeSupervisorSessionSnapshot {
     return {
       sessionId: session.sessionId,
       kind: session.kind,
@@ -827,7 +858,7 @@ class RuntimeSupervisorServer {
       scrollback: session.scrollback,
       output: session.output,
       outputSequence: session.outputSequence,
-      serializedTerminalState: session.terminalStateTracker.getSerializedState(),
+      serializedTerminalState: this.getFreshSerializedTerminalState(session, serializedTerminalState),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
       provider: session.provider,
@@ -992,7 +1023,8 @@ class RuntimeSupervisorServer {
       terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
         scrollback,
         initialState: snapshot.serializedTerminalState,
-        initialOutput: snapshot.output
+        initialOutput: snapshot.output,
+        initialOutputSequence: normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence)
       }),
       process: undefined,
       outputSubscription: undefined,
