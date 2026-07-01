@@ -140,7 +140,7 @@
 - release notes 同步：`extensions/vscode/dev-session-canvas/CHANGELOG.md` 与 notifier changelog 已新增 `0.21.0` 顶部条目，并明确 notifier 不引入新的通知投递行为变更
 - Marketplace / README 文案同步：`extensions/vscode/dev-session-canvas/README.marketplace.md`、`extensions/vscode/dev-session-canvas/README.marketplace.zh-CN.md`、`README.md`、`README.zh-CN.md` 已更新为 `0.21.0` 发布准备口径，并保留 VSM deferred 约束
 - 发布手册同步：`docs/public-preview-release-playbook.md`、`docs/notifier-preview-release-playbook.md` 与 `docs/design-docs/public-marketplace-release-readiness.md` 已更新目标版本、发布输入、安装/升级、回退与 tag 命令
-- 发布验证 harness 同步：`tests/vscode-smoke/extension-tests.cjs` 已对齐当前模板 reset 警告文案、执行 snapshot 新鲜度等待，以及 live-runtime scrollback smoke 的 6000 字符 output tail 边界；该调整只修正测试断言，不改变扩展运行时行为
+- 发布验证 harness 同步：`tests/vscode-smoke/extension-tests.cjs` 已对齐当前模板 reset 警告文案、执行 snapshot 新鲜度等待，以及 live-runtime scrollback smoke 的 6000 字符 output tail 与初始 scrollback 容量边界；该调整只修正测试断言，不改变扩展运行时行为
 
 本轮发布准备分支的自动化验证结果记录如下；这些结果只能证明当前发布准备分支的 repo-local 状态，不能替代发布准备 MR 合入后的最终 `main` release ref 验证。
 
@@ -154,7 +154,7 @@
 
 当前 repo-local 打包结果为：主扩展 `dev-session-canvas-0.21.0.vsix`（`115` files，约 `3.6 MB`），notifier `extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.21.0.vsix`（`10` files，约 `145.83 KB` / filesystem `146K`）。主扩展打包日志在当前发布准备分支上打印 `VSCE README doc ref: 5b01fdaee13916e2075cf7e26617af909e0746ba`，但由于工作树包含尚未提交的发布准备改动，日志也明确提示“当前 git 工作树不是 clean 状态，已仅校验 README 相对资源在文件系统中存在”；最终发布必须在发布准备 MR 合入后的 clean `main` ref 上重跑，或显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`。
 
-`npm run test:vsix-smoke` 在本轮发布准备中先暴露三处测试断言与当前实现事实不一致：模板 reset 警告文案已经从“workspace 绑定的画布对象”收口为“当前画布对象”；PTY robustness smoke 曾读取到输出产生前的旧 snapshot；live-runtime scrollback smoke 原本输出 `120` 行 marker，超过 supervisor `6000` 字符 output tail 后无法断言 `-001` 仍被恢复。上述测试 harness 已改为等待带 `xterm-serialize-v1` 的新鲜 snapshot，并把 live-runtime marker 行数收口到 `90` 行，随后 `npm run test:vsix-smoke` 通过，日志位于 `.debug/release-prep/test-vsix-smoke-0.21.0.log`。
+`npm run test:vsix-smoke` 在本轮发布准备中先暴露三处测试断言与当前实现事实不一致：模板 reset 警告文案已经从“workspace 绑定的画布对象”收口为“当前画布对象”；PTY robustness smoke 曾读取到输出产生前的旧 snapshot；live-runtime scrollback smoke 原本输出 `220` 行长 marker，超过 supervisor `6000` 字符 output tail 后无法断言 `-001` 仍被恢复。上述测试 harness 已改为等待带 `xterm-serialize-v1` 的新鲜 snapshot，并把 live-runtime marker 缩短为 `DSC_LRSP`、保留 `220` 行输出，以同时低于 supervisor output tail 且高于初始 scrollback + viewport 容量；随后 `npm run test:vsix-smoke` 通过，最新重跑日志位于 `.debug/release-prep/test-vsix-smoke-0.21.0-review-fix.log`。
 
 生产服务 smoke 已单独复核当前线上事实：`https://dscanvas.dev/api/v1/meta` 返回 git sha `6ff3d3ccecabbe6b8019143ada0f57c099c6e32f`、`minSupportedExtensionVersion: 0.19.0`、`recommendedExtensionVersion: 0.19.0`、storage 为 `d1`、seed disabled、test auth disabled；`https://dscanvas.dev/api/v1/templates?limit=3` 返回空目录（`total: 0`）。这属于模板市场服务部署事实，不等同于插件 `0.21.0` release ref；本轮发布准备不自动把服务侧 min / recommended extension version 从 `0.19.0` 改到 `0.21.0`。
 
