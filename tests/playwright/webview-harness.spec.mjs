@@ -345,6 +345,7 @@ test('canvas shell spans panel horizontal edges for single-root and multi-root l
   await bootstrap(page, multiRootState, createRuntimeContext({ multiRootPresentationMode: 'rootGroups' }));
   await settleWebview(page, 4);
   await assertPanelEdges('multi-root rootGroups canvas', ['.react-flow']);
+  await expect(page.locator('[data-pane-gallery-root-running-scanline]')).toHaveCount(0);
 
   await bootstrap(page, multiRootState, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
   await settleWebview(page, 4);
@@ -943,27 +944,87 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
   await expect(backendPane).toHaveAttribute('aria-label', /1 个节点正在运行/);
   await expect(backendPane).toHaveAttribute('data-pane-gallery-running-count', '1');
   await expect(backendPane).toHaveAttribute('data-pane-gallery-attention-count', '0');
+  const frontendHeader = frontendPane.locator('.pane-gallery-root-header');
+  const backendHeader = backendPane.locator('.pane-gallery-root-header');
+  await expect(frontendHeader).toHaveAttribute('data-pane-gallery-root-running-scanline', 'false');
+  await expect(frontendHeader).not.toHaveClass(/is-pane-gallery-root-running-scanline/);
+  await expect(backendHeader).toHaveAttribute('data-pane-gallery-root-running-scanline', 'true');
+  await expect(backendHeader).toHaveClass(/is-pane-gallery-root-running-scanline/);
   await expect
     .poll(async () =>
-      backendPane.locator('.pane-gallery-root-header').evaluate((header) => {
-        const styles = getComputedStyle(header);
-        return {
-          backgroundColor: styles.backgroundColor,
-          borderBottomColor: styles.borderBottomColor,
-          animationName: styles.animationName
-        };
-      })
+      backendHeader.evaluate((header) => getComputedStyle(header, '::after').animationName)
     )
-    .toEqual(
-      await frontendPane.locator('.pane-gallery-root-header').evaluate((header) => {
-        const styles = getComputedStyle(header);
-        return {
-          backgroundColor: styles.backgroundColor,
-          borderBottomColor: styles.borderBottomColor,
-          animationName: styles.animationName
-        };
-      })
-    );
+    .toBe('pane-gallery-root-running-scanline');
+  await expect
+    .poll(async () =>
+      backendHeader.evaluate((header) => ({
+        scanLineBorderWidth: getComputedStyle(header, '::after').borderLeftWidth,
+        scanLineBackgroundImage: getComputedStyle(header, '::after').backgroundImage,
+        scanLineAnimationDuration: getComputedStyle(header, '::after').animationDuration,
+        scanLineFilter: getComputedStyle(header, '::after').filter,
+        scanLineWidthToken: getComputedStyle(header).getPropertyValue('--pane-gallery-root-running-scanline-width').trim(),
+        scanLineOpacityToken: getComputedStyle(header).getPropertyValue('--pane-gallery-root-running-scanline-opacity').trim(),
+        scanLineTravel: getComputedStyle(header).getPropertyValue('--pane-gallery-root-running-scanline-travel').trim(),
+        scanLineAngle: getComputedStyle(header).getPropertyValue('--pane-gallery-root-running-scanline-angle').trim(),
+        scanLineClipped: getComputedStyle(header).overflow === 'hidden',
+        scanLineExtendsAboveHeader: Number.parseFloat(getComputedStyle(header, '::after').top) < 0,
+        scanLineExtendsBelowHeader: Number.parseFloat(getComputedStyle(header, '::after').bottom) < 0,
+        staticLineContent: getComputedStyle(header, '::before').content,
+        titlebarBorderWidth: getComputedStyle(header).borderBottomWidth,
+        titlebarBorderStyle: getComputedStyle(header).borderBottomStyle
+      }))
+    )
+    .toEqual({
+      scanLineBorderWidth: '16px',
+      scanLineBackgroundImage: 'none',
+      scanLineAnimationDuration: '3s',
+      scanLineFilter: 'none',
+      scanLineWidthToken: '16px',
+      scanLineOpacityToken: '0.82',
+      scanLineTravel: '100%',
+      scanLineAngle: '18deg',
+      scanLineClipped: true,
+      scanLineExtendsAboveHeader: true,
+      scanLineExtendsBelowHeader: true,
+      staticLineContent: 'none',
+      titlebarBorderWidth: '1px',
+      titlebarBorderStyle: 'solid'
+    });
+  const scanlineColors = await backendHeader.evaluate((header) => {
+    const scanlineProbe = document.createElement('span');
+    scanlineProbe.style.color = 'var(--pane-gallery-root-running-scanline-color)';
+    header.append(scanlineProbe);
+    const scanlineColor = getComputedStyle(scanlineProbe).color;
+    scanlineProbe.remove();
+
+    return {
+      borderBottomColor: getComputedStyle(header).borderBottomColor,
+      scanlineColor
+    };
+  });
+  expect(scanlineColors.scanlineColor).toBe(scanlineColors.borderBottomColor);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect
+    .poll(async () =>
+      backendHeader.evaluate((header) => getComputedStyle(header, '::after').animationName)
+    )
+    .toBe('none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  for (const status of ['launching', 'live', 'starting', 'resuming', 'reattaching']) {
+    const lifecycleState = createPaneGalleryCanvasState();
+    const lifecycleBackendTerminal = lifecycleState.nodes.find((node) => node.id === 'workspace-root-backend-terminal');
+    lifecycleBackendTerminal.status = status;
+    await bootstrap(page, lifecycleState, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+    await settleWebview(page, 4);
+    const lifecycleBackendPane = page.locator('[data-pane-gallery-root-id="workspace-root-backend"]');
+    const lifecycleBackendHeader = lifecycleBackendPane.locator('.pane-gallery-root-header');
+    await expect(lifecycleBackendPane).toHaveAttribute('data-pane-gallery-status', 'running');
+    await expect(lifecycleBackendHeader).toHaveAttribute('data-pane-gallery-root-running-scanline', 'false');
+    await expect(lifecycleBackendHeader).not.toHaveClass(/is-pane-gallery-root-running-scanline/);
+  }
+
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
   await expect(page.locator('.canvas-help-panel .execution-help-trigger-canvas')).toBeVisible();
   await expect(frontendPane.locator('[data-group-background-role="workspace-root"]')).toHaveCount(0);
   await expect(frontendPane.locator('[data-root-name-watermark="true"]')).toHaveCount(0);
@@ -1479,6 +1540,8 @@ test('pane gallery thumbnail hit layer blocks execution node attention acknowled
     .not.toBe('rgba(0, 0, 0, 0)');
   await expect(backendThumbnail).toHaveAttribute('data-pane-gallery-attention-flashing', 'true');
   await expect(backendHeader).toHaveAttribute('data-pane-gallery-root-header-attention-flashing', 'true');
+  await expect(backendHeader).toHaveAttribute('data-pane-gallery-root-running-scanline', 'false');
+  await expect(backendHeader).not.toHaveClass(/is-pane-gallery-root-running-scanline/);
   await expect
     .poll(async () =>
       backendHeader.evaluate((header) => getComputedStyle(header).animationName)
@@ -4194,6 +4257,97 @@ test('execution node chrome hides runtime diagnostics and keeps agent waiting-in
   await expect(terminalNode).not.toContainText('best-effort');
   await expect(terminalNode).not.toContainText('systemd-user');
   await expect(terminalNode).not.toContainText('detached');
+});
+
+test('Agent running state shows a titleline flow using the Agent node color', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+
+  const runningState = createLiveExecutionNodeState('agent');
+  await bootstrap(page, runningState);
+  await waitForExecutionTerminalReady(page, 'agent-zoom');
+
+  const agentNode = nodeById(page, 'agent-zoom');
+  const agentChrome = agentNode.locator('.window-chrome');
+  await expect(agentChrome).toHaveAttribute('data-agent-running-titleline', 'true');
+  await expect(agentChrome).toHaveClass(/is-agent-running-titleline/);
+  await expect
+    .poll(async () =>
+      agentChrome.evaluate((chrome) => getComputedStyle(chrome, '::after').animationName)
+    )
+    .toBe('execution-agent-running-titleline');
+  await expect
+    .poll(async () =>
+      agentChrome.evaluate((chrome) => ({
+        scanLineWidth: getComputedStyle(chrome, '::after').height,
+        scanLineBackgroundImage: getComputedStyle(chrome, '::after').backgroundImage,
+        staticLineContent: getComputedStyle(chrome, '::before').content,
+        titlebarBorderWidth: getComputedStyle(chrome).borderBottomWidth,
+        titlebarBorderStyle: getComputedStyle(chrome).borderBottomStyle
+      }))
+    )
+    .toEqual({
+      scanLineWidth: '3px',
+      scanLineBackgroundImage: 'none',
+      staticLineContent: 'none',
+      titlebarBorderWidth: '1px',
+      titlebarBorderStyle: 'solid'
+    });
+
+  const scanlineColors = await agentChrome.evaluate((chrome) => {
+    const node = chrome.closest('.canvas-node');
+    if (!(node instanceof HTMLElement)) {
+      throw new Error('Agent node shell was not rendered.');
+    }
+
+    const scanlineProbe = document.createElement('span');
+    scanlineProbe.style.color = 'var(--agent-running-titleline-color)';
+    chrome.append(scanlineProbe);
+    const scanlineColor = getComputedStyle(scanlineProbe).color;
+    scanlineProbe.remove();
+
+    const nodeColorProbe = document.createElement('span');
+    nodeColorProbe.style.color = 'var(--canvas-node-color)';
+    node.append(nodeColorProbe);
+    const nodeColor = getComputedStyle(nodeColorProbe).color;
+    nodeColorProbe.remove();
+
+    return {
+      nodeColor,
+      scanlineColor
+    };
+  });
+  expect(scanlineColors.scanlineColor).toBe(scanlineColors.nodeColor);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect
+    .poll(async () =>
+      agentChrome.evaluate((chrome) => getComputedStyle(chrome, '::after').animationName)
+    )
+    .toBe('none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+  const attentionState = createLiveExecutionNodeState('agent');
+  attentionState.nodes[0].metadata.agent.attentionPending = true;
+  await bootstrap(page, attentionState);
+  await expect(agentChrome).toHaveAttribute('data-agent-running-titleline', 'false');
+  await expect(agentChrome).not.toHaveClass(/is-agent-running-titleline/);
+  await expect(agentChrome).toHaveAttribute('data-execution-attention-pending', 'true');
+
+  for (const status of ['live', 'starting', 'resuming', 'reattaching', 'waiting-input']) {
+    const state = createLiveExecutionNodeState('agent');
+    state.nodes[0].status = status;
+    state.nodes[0].metadata.agent.lifecycle = status;
+    await bootstrap(page, state);
+    await expect(agentChrome).toHaveAttribute('data-agent-running-titleline', 'false');
+    await expect(agentChrome).not.toHaveClass(/is-agent-running-titleline/);
+  }
+
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  await waitForExecutionTerminalReady(page, 'terminal-zoom');
+  const terminalChrome = nodeById(page, 'terminal-zoom').locator('.window-chrome');
+  await expect(terminalChrome).not.toHaveAttribute('data-agent-running-titleline');
+  await expect(terminalChrome).not.toHaveClass(/is-agent-running-titleline/);
 });
 
 test('canvas renders a shared execution help entry with tooltip text', async ({ page }) => {
