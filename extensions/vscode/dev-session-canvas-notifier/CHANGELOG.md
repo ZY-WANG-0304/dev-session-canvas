@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0
+
+- 与主扩展 `0.21.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦主扩展子包化后的发布包布局、执行终端 OSC 52 复制桥接、serialized terminal state 新鲜度、Agent 显式恢复 / 分叉参数边界、多根模板重置，以及 paneGallery root 级运行 / 关注提示；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.20.0
 
 - 与主扩展 `0.20.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦模板市场 Preview 的浏览、安装、发布、版本更新 / 回滚、举报治理、生产服务部署链路，以及侧栏移除 root 与 paneGallery 细节修复；notifier companion 不引入新的通知投递行为变更。

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.21.0 - Monorepo Packaging and Execution Reliability Update
+
+相对 `0.20.0`，`0.21.0` 是新的公开 `Preview` 里程碑更新，重点收口主扩展子包化后的发布包布局、执行终端 OSC 52 复制桥接、serialized terminal state 新鲜度、Agent 显式恢复 / 分叉参数边界、多根模板重置，以及 paneGallery root 级运行 / 关注提示。它保留 `0.20.0` 的模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
+
+### 本版本聚焦
+
+- 版本号从 `0.20.0` bump 到 `0.21.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 主扩展源码、Marketplace listing、CHANGELOG、图标和运行时资源已收口到 `extensions/vscode/dev-session-canvas/` 子包；仓库根 `package.json` 作为 workspace 编排入口保留，VSIX 打包继续从主扩展子包 staging，并保持扩展 ID、publisher、最低 VS Code 版本和 notifier 自动安装关系不变
+- 执行终端支持 OSC 52 复制桥接：当聚焦的 `Agent` / `Terminal` TUI 通过 clipboard target `c` 或空 target 发出 OSC 52 时，Webview 会解码文本并通过 Host 剪贴板路径写入系统剪贴板；snapshot restore、未聚焦终端和非 clipboard target 仍只记录诊断，避免后台输出污染剪贴板
+- serialized terminal state 现在携带并校验 `outputSequence`；Host / runtime supervisor / Webview 会拒绝序号缺失或落后的 terminal state，并从 raw output 重建，避免 Codex / Claude Code TUI 最终画面已在 raw output 中但恢复画面仍停留在旧状态，直到用户 resize 才被动修正
+- Agent 默认启动参数边界进一步收紧：显式恢复和分叉会保留 model、sandbox、profile、config、extra dir 等非冲突配置，同时拒绝把 `resume`、`fork`、`--last`、`--resume`、`--session-id`、`--fork-session` 等一次性会话目标写入 provider 默认参数，避免默认配置覆盖本次显式目标
+- 多根模板操作支持按目标 root 重置：`rootGroups` root section、`paneGallery` 可交互 root pane 和 active root 主画板都会把模板 apply / reset 定位到对应 root；多根 root 重置不再清空其他 root，关联 Markdown Note 的 workspace 相对路径也会按目标 root 解析
+- paneGallery root 标签增强运行态可见性：待确认 attention 会在 root 标签标题区域使用更明确的闪烁提示；root 内存在精确 running 执行节点且没有 attention 时，会显示轻量标题栏扫描线，帮助用户在多 root gallery 中快速发现正在工作的 root
+- 打包、测试和 smoke wrapper 已同步主扩展子包布局，继续守住 VSIX 文件列表边界，避免 `apps/`、`packages/`、源码目录或服务代码进入主扩展 VSIX
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略、Visual Studio Marketplace deferred 完成门禁或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.20.0` 升级到 `0.21.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 若此前把会话目标类参数写进 `devSessionCanvas.agent.codexDefaultArgs` 或 `devSessionCanvas.agent.claudeDefaultArgs`，升级后相关 Agent 启动、恢复或分叉会显式报错；请把这类一次性目标改走创建前 `Resume`、节点 `重启`、节点 `分叉`、历史恢复入口，或写入单次自定义启动命令
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.21.0` 后会继续沿用该明确选择
+- 模板市场仍是 Preview 能力；生产服务版本、插件 SemVer 和模板包版本继续分开管理
+
+### 回退建议
+
+- 若 `0.21.0` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.21.x` 修复版本
+
 ## 0.20.0 - Template Marketplace Preview and Production Service Update
 
 相对 `0.19.0`，`0.20.0` 是新的公开 `Preview` 里程碑更新，重点引入模板市场 Preview 的浏览、安装、发布、版本更新 / 回滚、举报治理与生产服务部署链路，并收口侧栏移除 workspace root 与 paneGallery 细节修复。它保留 `0.19.0` 的 Agent 截图粘贴、多根历史 cwd 恢复、root-qualified 文件链接解析、多 Agent 输出公平渲染、安装拓扑、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
