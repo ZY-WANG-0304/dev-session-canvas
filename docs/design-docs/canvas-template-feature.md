@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/active/canvas-template-feature.md
   - docs/exec-plans/active/canvas-template-associated-note-modes.md
-updated_at: 2026-06-15
+updated_at: 2026-07-01
 ---
 
 # 画布模板功能设计
@@ -195,11 +195,15 @@ updated_at: 2026-06-15
 模板应用分成两类：
 
 1. `apply`：把模板节点追加到现有画布。
-2. `reset`：先清空当前 workspace 绑定画布及运行中会话，再应用模板。
+2. `reset`：先清空当前 workspace 绑定画布及运行中会话，再应用模板；在 multi-root workspace 中，它只清空目标 root 的 root-local 画布及该 root 内运行中会话，不清空其他 root。
 
 两条路径都由宿主 `CanvasPanelManager` 负责，Webview 只负责提供当前可见区域中心点或右键位置等定位线索。应用时遵循以下不变量：
 
 - 所有新节点都重新分配宿主节点 id，边也生成新的 edge id。
+- 当前模板文件不表达跨 root 内容。multi-root 中的 `apply` 与 `reset` 都必须解析出目标 workspace root：`rootGroups` 的 root section 或其内部用户分组、`paneGallery` 的可交互 root pane / active root 主画板都可以提供目标 root；命令面板、侧栏或其他无法从位置推断 root 的入口由 Host 通过 QuickPick 让用户选择目标 root。
+- multi-root `reset` 以目标 root 的空 root-local state 作为模板应用基底，再通过 `composeRootLocalCanvasStateIntoComposed()` 写回组合画布；Host 只调用 `prepareWorkspaceRootCanvasForTemplateReset()` 终止目标 root 内执行节点和待写入初始输入，不调用全局 `prepareForHostBoundary()` 清理其他 root。
+- 在 `rootGroups` 中，如果用户从任意 root section 外部打开右键菜单并点击“重置为模板”或进入“重置为模板”二级菜单，Webview 直接提示“多根 workspace 中请在目标 root section 内重置为模板。”，不发送 reset 消息给 Host；这样避免把 root-local reset 误理解为整个 multi-root 组合视图 reset。
+- `paneGallery` 的 `dynamic` / `grid` 可交互 root pane 与 thumbnail 模式 active root 主画板中，重置模板的目标 root 由当前 pane 身份确定；缩略图仍不承载 reset / apply / create 等用户写操作。
 - `Agent` 与 `Terminal` 模板节点被物化成 idle 节点，不自动启动。
 - `Agent` 模板节点的 Provider 先按模板值解析：
   - `default` -> 当前配置的默认 Provider。
@@ -218,8 +222,9 @@ updated_at: 2026-06-15
 
 ### 7.5 模板落位规则
 
-- 首次打开或 `reset`：模板 bounding box 的中心对齐到“当前可见区域中心”；若当前还没有 Webview 可见区域信息，则以画布原点附近为基准，让初始 `fitView` 接管居中表现。
+- 首次打开或 `reset`：模板 bounding box 的中心对齐到“当前可见区域中心”；若当前还没有 Webview 可见区域信息，则以画布原点附近为基准，让初始 `fitView` 接管居中表现。multi-root `reset` 会先把可见中心转换成目标 root 的 root-local 坐标；如果右键来自 `rootGroups` 的 root section body 且当前视口中心不在该 section 内，则以模板自身尺寸在该 root 内容区内生成可见落点，避免节点落到其他 root 或 root section 外。
 - `apply`：以当前可见区域中心作为首选锚点，把整组模板节点视作一个矩形簇执行“组级避碰搜索”。宿主复用现有节点摆放的网格步长思路，但碰撞检测改为模板组内所有节点与现有节点逐一比较；找到第一个无碰撞位置后整组平移落位。
+- multi-root `apply` 继续在目标 root-local state 内做组级避碰；multi-root `reset` 因基底为空，不保留旧用户分组作为模板父分组，模板内容直接落在目标 root 下。
 - 若首选区域始终碰撞，则 fallback 到当前画布 bounding box 右下方空区，仍保持模板内部相对位置不变。
 - 落位完成后的追焦同样以“本次新增节点组”为单位，而不是任选其中一个节点。这样当避碰把模板放到当前视野外侧时，用户仍会看到整组模板的相对布局；首次打开自动应用 `使用说明` 不走这条显式追焦路径，继续由 Webview 初始 `fitView` 保持启动体验稳定。
 - 命令面板和 sidebar 入口会先完成模板应用 / 重置并拿到新增节点 id，再 reveal 到最终承载面后发起组级追焦；避免当前 active surface 与配置默认 surface 不一致时，把 `host/focusNodes` 发送给即将被切走或 dispose 的旧 Webview。
@@ -247,6 +252,7 @@ updated_at: 2026-06-15
 - 画布空白区右键菜单的根层只保留标题和操作项，不额外显示“先创建节点，再执行模板操作”这类说明文案。
 - 右键菜单中的模板分组包含三个一级动作：`应用模板`、`重置为模板`、`保存为模板`。前两个动作的一级点击分别对默认模板执行快速追加 / 快速重置，同时提供二级展开入口，列出全部可用模板供用户显式选择。
 - 右键菜单里的“应用模板”对所选模板执行追加语义；“重置为模板”对所选模板执行清空后应用。它们与侧栏 / 命令面板共用同一条宿主模板应用实现。
+- 多根 `rootGroups` 下，右键菜单的“重置为模板”必须从目标 root section 内发起；如果在所有 root section 外部触发，只展示短暂错误提示并关闭菜单。`paneGallery` 不展示 workspace-root 分组框，重置目标由可交互 pane 身份承担。
 
 ### 7.7 默认模板与删除保护
 
@@ -277,6 +283,7 @@ updated_at: 2026-06-15
 ## 9. 当前验证状态
 
 - 当前处于 `已验证`：`npm run typecheck`、`npm run build`、`npm run test:canvas-templates`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=restricted node scripts/smoke/run-vscode-smoke.mjs` 已于 2026-05-06 完成通过。
+- 2026-07-01 补充：multi-root 中 `reset` 已从“不支持”改为“重置当前/目标 root”。Host 侧通过 `prepareWorkspaceRootCanvasForTemplateReset()` 只清理目标 root 的节点与执行会话，并以空 root-local state 物化模板后写回 composed state；Webview 侧在 `rootGroups` 的 root section 外部拦截 reset 并提示用户到目标 root section 内执行，`paneGallery` 继续用可交互 pane 身份提供目标 root。本轮执行 `npm run typecheck`、`npm run test:canvas-templates`、`npm run build && node scripts/test/run-playwright-webview.mjs -g "template reset"`，均通过。
 - 模板 sidebar 改回 `WebviewView`、并按 `节点` / `会话历史` section 的扁平列表风格与首屏渲染模式重写后，再次执行 `npm run typecheck`、`npm run build`、`npm run test:canvas-templates`、trusted smoke 与 restricted smoke，均通过。
 - 模板 sidebar 继续微调为“`内置 / 用户` 标签前置 + 行尾补充追加 / 重置快捷按钮”后，再次执行 `npm run typecheck`、`npm run build` 与 `npm run test:canvas-templates`，均通过。
 - 模板 sidebar 再次微调为“`内置 / 用户` 标签移到第二行摘要前、`默认` 标签保留在第一行标题后”后，再次执行 `npm run typecheck` 与 `npm run build`，均通过。

@@ -1990,7 +1990,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('当前没有可用的默认模板。');
     }
 
-    if (!(await this.confirmCanvasTemplateReset('当前默认模板'))) {
+    if (!(await this.confirmCanvasTemplateReset('当前默认模板', options))) {
       return undefined;
     }
 
@@ -2015,7 +2015,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('目标模板不存在。');
     }
 
-    if (!(await this.confirmCanvasTemplateReset(`模板「${storedTemplate.template.name}」`))) {
+    if (!(await this.confirmCanvasTemplateReset(`模板「${storedTemplate.template.name}」`, options))) {
       return undefined;
     }
 
@@ -4866,6 +4866,36 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return defaultTemplateId;
   }
 
+  private async prepareWorkspaceRootCanvasForTemplateReset(
+    rootGroup: CanvasGroupSummary,
+    rootPath: string
+  ): Promise<void> {
+    const affectedNodeIds = collectWorkspaceRootOwnedNodeIds(this.state, rootPath, rootGroup.id);
+    const affectedNodes = this.state.nodes.filter((node) => affectedNodeIds.has(node.id));
+
+    for (const node of affectedNodes) {
+      this.dropPendingTerminalInitialInput(node.id, 'workspace root 已重置为模板，安装命令未写入。');
+      this.activeAssociatedNoteMarkdownEdits.delete(node.id);
+      if (!isExecutionNodeKind(node.kind)) {
+        continue;
+      }
+
+      this.invalidateExecutionSessionOperation(node.kind, node.id);
+      try {
+        await this.terminateExecutionNodeForDeletion(node);
+      } catch (error) {
+        throw new Error(
+          error instanceof Error ? error.message : '重置 workspace root 模板时清理 live runtime 失败。'
+        );
+      }
+    }
+
+    this.recordDiagnosticEvent('template/rootResetPrepared', {
+      rootPath,
+      nodeCount: affectedNodes.length
+    });
+  }
+
   private async resolveFirstOpenCanvasTemplateRecord(): Promise<CanvasStoredTemplate | undefined> {
     const catalog = await this.getCanvasTemplateCatalog();
     return findCanvasTemplateById(catalog.templates, DEFAULT_BUILTIN_CANVAS_TEMPLATE_ID);
@@ -4882,78 +4912,83 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   ): Promise<string[]> {
     const isMultiRootWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 1;
-    if (isMultiRootWorkspace && options?.reset) {
-      throw new Error('多根 workspace 中暂不支持重置模板；请单独打开目标 root 后重置，或在 root section 内追加模板。');
-    }
-
     const resolvedAgentProviders = await this.validateCanvasTemplateForApply(storedTemplate.template);
-    const noteMaterializations = await this.resolveCanvasTemplateNoteMaterializations(storedTemplate.template, {
-      quiet: options?.quietOnFailure === true
-    });
-    const nextBaseState = options?.reset
-      ? createDefaultState(this.getAgentCliConfig().defaultProvider)
-      : this.state;
-    let targetGroupId = options?.reset
+    let targetGroupId = options?.reset && !isMultiRootWorkspace
       ? undefined
-      : resolveValidTargetGroupId(nextBaseState.groups ?? [], options?.targetGroupId);
+      : resolveValidTargetGroupId(this.state.groups ?? [], options?.targetGroupId);
     if (isMultiRootWorkspace && !targetGroupId) {
       targetGroupId = await this.pickWorkspaceRootGroupId('模板所属 root');
       if (!targetGroupId) {
-        throw new Error('多根 workspace 中应用模板需要选择目标 root。');
+        throw new Error(`多根 workspace 中${options?.reset ? '重置' : '应用'}模板需要选择目标 root。`);
       }
     }
     let targetGroup = targetGroupId
-      ? (nextBaseState.groups ?? []).find((group) => group.id === targetGroupId)
+      ? (this.state.groups ?? []).find((group) => group.id === targetGroupId)
       : undefined;
     let targetRootGroupId = targetGroup
       ? isWorkspaceRootGroup(targetGroup)
         ? targetGroup.id
-        : resolveContainingWorkspaceRootGroupId(nextBaseState.groups ?? [], targetGroup.id)
+        : resolveContainingWorkspaceRootGroupId(this.state.groups ?? [], targetGroup.id)
       : undefined;
     let targetRootGroup = targetRootGroupId
-      ? (nextBaseState.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
+      ? (this.state.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
       : undefined;
     if (isMultiRootWorkspace && !targetRootGroup) {
       targetGroupId = await this.pickWorkspaceRootGroupId('模板所属 root');
       if (!targetGroupId) {
-        throw new Error('多根 workspace 中应用模板需要选择目标 root。');
+        throw new Error(`多根 workspace 中${options?.reset ? '重置' : '应用'}模板需要选择目标 root。`);
       }
-      targetGroup = (nextBaseState.groups ?? []).find((group) => group.id === targetGroupId);
+      targetGroup = (this.state.groups ?? []).find((group) => group.id === targetGroupId);
       targetRootGroupId = targetGroup
         ? isWorkspaceRootGroup(targetGroup)
           ? targetGroup.id
-          : resolveContainingWorkspaceRootGroupId(nextBaseState.groups ?? [], targetGroup.id)
+          : resolveContainingWorkspaceRootGroupId(this.state.groups ?? [], targetGroup.id)
         : undefined;
       targetRootGroup = targetRootGroupId
-        ? (nextBaseState.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
+        ? (this.state.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
         : undefined;
       if (!targetRootGroup) {
-        throw new Error('多根 workspace 中应用模板需要选择目标 root。');
+        throw new Error(`多根 workspace 中${options?.reset ? '重置' : '应用'}模板需要选择目标 root。`);
       }
     }
     const targetWorkspaceRootPath = targetRootGroup ? resolveWorkspaceRootPathForGroup(targetRootGroup) : undefined;
+    const noteMaterializations = await this.resolveCanvasTemplateNoteMaterializations(storedTemplate.template, {
+      quiet: options?.quietOnFailure === true,
+      targetWorkspaceRootPath
+    });
+    const nextBaseState = options?.reset
+      ? createDefaultState(this.getAgentCliConfig().defaultProvider)
+      : this.state;
     const rawPreferredCenter = this.resolvePreferredTemplatePlacementCenter(options?.visibleCenter);
     const preferredCenterInComposedState = targetGroup && isWorkspaceRootGroup(targetGroup)
       ? resolveTemplatePlacementCenterInWorkspaceRoot(targetGroup, storedTemplate.template, rawPreferredCenter)
       : rawPreferredCenter;
     const applyBaseState = targetRootGroup
-      ? this.prepareStateForWorkspaceRootLocalCreate(targetRootGroup)
+      ? options?.reset
+        ? createDefaultState(this.getAgentCliConfig().defaultProvider)
+        : this.prepareStateForWorkspaceRootLocalCreate(targetRootGroup)
       : nextBaseState;
     const preferredCenter = preferredCenterInComposedState && targetRootGroup
       ? translateComposedCanvasPositionToRootLocal(preferredCenterInComposedState, targetRootGroup)
       : preferredCenterInComposedState;
     const targetGroupIdForApply = targetRootGroup
-      ? targetGroup && !isWorkspaceRootGroup(targetGroup)
+      ? options?.reset
+        ? undefined
+        : targetGroup && !isWorkspaceRootGroup(targetGroup)
         ? denamespaceCanvasObjectId(targetWorkspaceRootPath ?? '', targetGroup.id) ?? targetGroup.id
         : undefined
       : targetGroupId;
 
     if (options?.reset) {
-      await this.prepareForHostBoundary({
-        preserveLiveRuntime: false,
-        allowRuntimeSupervisorRestart: false,
-        invalidatePendingExecutionOperations: true
-      });
+      if (targetRootGroup && targetWorkspaceRootPath) {
+        await this.prepareWorkspaceRootCanvasForTemplateReset(targetRootGroup, targetWorkspaceRootPath);
+      } else {
+        await this.prepareForHostBoundary({
+          preserveLiveRuntime: false,
+          allowRuntimeSupervisorRestart: false,
+          invalidatePendingExecutionOperations: true
+        });
+      }
     }
 
     const applyResult = applyCanvasTemplateToState(applyBaseState, storedTemplate.template, {
@@ -4977,7 +5012,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       templateName: storedTemplate.template.name,
       reset: options?.reset === true,
       nodeCount: storedTemplate.template.nodes.length,
-      edgeCount: storedTemplate.template.edges.length
+      edgeCount: storedTemplate.template.edges.length,
+      targetWorkspaceRootPath
     });
     this.postState('host/stateUpdated');
     if (options?.focusAppliedNodes === true) {
@@ -4986,13 +5022,45 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return appliedNodeIds;
   }
 
-  private async confirmCanvasTemplateReset(targetLabel: string): Promise<boolean> {
+  private async confirmCanvasTemplateReset(
+    targetLabel: string,
+    options?: { targetGroupId?: string }
+  ): Promise<boolean> {
     const confirmed = await vscode.window.showWarningMessage(
-      `重置会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话，然后套用${targetLabel}。`,
+      this.buildCanvasTemplateResetConfirmationMessage(targetLabel, options),
       { modal: true },
       '继续重置'
     );
     return confirmed === '继续重置';
+  }
+
+  private buildCanvasTemplateResetConfirmationMessage(
+    targetLabel: string,
+    options?: { targetGroupId?: string }
+  ): string {
+    if ((vscode.workspace.workspaceFolders?.length ?? 0) <= 1) {
+      return `重置会清空当前画布对象，并终止运行中的 Agent / Terminal 会话，然后套用${targetLabel}。`;
+    }
+
+    const targetRootGroup = this.resolveCanvasTemplateResetConfirmationRootGroup(options?.targetGroupId);
+    if (targetRootGroup) {
+      return `重置会清空目标 root「${targetRootGroup.title}」内的画布对象，并终止该 root 内运行中的 Agent / Terminal 会话，然后套用${targetLabel}。`;
+    }
+
+    return `重置会清空所选 workspace root 内的画布对象，并终止该 root 内运行中的 Agent / Terminal 会话，然后套用${targetLabel}。`;
+  }
+
+  private resolveCanvasTemplateResetConfirmationRootGroup(targetGroupId?: string): CanvasGroupSummary | undefined {
+    const groups = this.state.groups ?? [];
+    const targetGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : undefined;
+    const targetRootGroupId = targetGroup
+      ? isWorkspaceRootGroup(targetGroup)
+        ? targetGroup.id
+        : resolveContainingWorkspaceRootGroupId(groups, targetGroup.id)
+      : undefined;
+    return targetRootGroupId
+      ? groups.find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
+      : undefined;
   }
 
   private async validateCanvasTemplateForApply(template: CanvasTemplate): Promise<Map<number, AgentProviderKind>> {
@@ -5032,7 +5100,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async resolveCanvasTemplateNoteMaterializations(
     template: CanvasTemplate,
-    options: { quiet: boolean }
+    options: { quiet: boolean; targetWorkspaceRootPath?: string }
   ): Promise<Map<number, CanvasTemplateNoteMaterialization>> {
     const materializations = new Map<number, CanvasTemplateNoteMaterialization>();
 
@@ -5052,7 +5120,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         throw new Error(`模板「${template.name}」中的 Note「${node.title}」缺少合法 workspace 相对路径。`);
       }
 
-      const uri = this.resolveCanvasTemplateWorkspaceRelativeMarkdownUri(relativePath);
+      const uri = this.resolveCanvasTemplateWorkspaceRelativeMarkdownUri(
+        relativePath,
+        options.targetWorkspaceRootPath
+      );
       if (!uri) {
         throw new Error(`当前 workspace 无法解析模板 Note「${node.title}」的相对路径：${relativePath}`);
       }
@@ -5073,7 +5144,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return materializations;
   }
 
-  private resolveCanvasTemplateWorkspaceRelativeMarkdownUri(relativePath: string): vscode.Uri | undefined {
+  private resolveCanvasTemplateWorkspaceRelativeMarkdownUri(
+    relativePath: string,
+    targetWorkspaceRootPath?: string
+  ): vscode.Uri | undefined {
     const normalizedPath = normalizeCanvasTemplateWorkspaceRelativePath(relativePath);
     if (!normalizedPath || !isSupportedNoteMarkdownFilePath(normalizedPath)) {
       return undefined;
@@ -5085,6 +5159,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const parts = normalizedPath.split('/');
+    const normalizedTargetRootPath = targetWorkspaceRootPath
+      ? normalizeWorkspaceRootPathForComposition(targetWorkspaceRootPath)
+      : undefined;
+    if (normalizedTargetRootPath) {
+      const targetWorkspaceFolder = workspaceFolders.find(
+        (folder) => normalizeWorkspaceRootPathForComposition(folder.uri.fsPath) === normalizedTargetRootPath
+      );
+      if (!targetWorkspaceFolder) {
+        return undefined;
+      }
+
+      return vscode.Uri.joinPath(targetWorkspaceFolder.uri, ...parts);
+    }
+
     if (workspaceFolders.length === 1) {
       return vscode.Uri.joinPath(workspaceFolders[0].uri, ...parts);
     }
