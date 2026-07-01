@@ -4196,6 +4196,97 @@ test('execution node chrome hides runtime diagnostics and keeps agent waiting-in
   await expect(terminalNode).not.toContainText('detached');
 });
 
+test('Agent running state shows a titleline flow using the Agent node color', async ({ page }) => {
+  await openHarness(page);
+  await applyWorkbenchTheme(page, 'dark');
+
+  const runningState = createLiveExecutionNodeState('agent');
+  await bootstrap(page, runningState);
+  await waitForExecutionTerminalReady(page, 'agent-zoom');
+
+  const agentNode = nodeById(page, 'agent-zoom');
+  const agentChrome = agentNode.locator('.window-chrome');
+  await expect(agentChrome).toHaveAttribute('data-agent-running-titleline', 'true');
+  await expect(agentChrome).toHaveClass(/is-agent-running-titleline/);
+  await expect
+    .poll(async () =>
+      agentChrome.evaluate((chrome) => getComputedStyle(chrome, '::after').animationName)
+    )
+    .toBe('execution-agent-running-titleline');
+  await expect
+    .poll(async () =>
+      agentChrome.evaluate((chrome) => ({
+        movingLineHeight: getComputedStyle(chrome, '::after').height,
+        movingLineBackgroundImage: getComputedStyle(chrome, '::after').backgroundImage,
+        staticLineContent: getComputedStyle(chrome, '::before').content,
+        titlebarBorderWidth: getComputedStyle(chrome).borderBottomWidth,
+        titlebarBorderStyle: getComputedStyle(chrome).borderBottomStyle
+      }))
+    )
+    .toEqual({
+      movingLineHeight: '3px',
+      movingLineBackgroundImage: 'none',
+      staticLineContent: 'none',
+      titlebarBorderWidth: '1px',
+      titlebarBorderStyle: 'solid'
+    });
+
+  const titlelineColors = await agentChrome.evaluate((chrome) => {
+    const node = chrome.closest('.canvas-node');
+    if (!(node instanceof HTMLElement)) {
+      throw new Error('Agent node shell was not rendered.');
+    }
+
+    const titlelineProbe = document.createElement('span');
+    titlelineProbe.style.color = 'var(--agent-running-titleline-color)';
+    chrome.append(titlelineProbe);
+    const titlelineColor = getComputedStyle(titlelineProbe).color;
+    titlelineProbe.remove();
+
+    const nodeColorProbe = document.createElement('span');
+    nodeColorProbe.style.color = 'var(--canvas-node-color)';
+    node.append(nodeColorProbe);
+    const nodeColor = getComputedStyle(nodeColorProbe).color;
+    nodeColorProbe.remove();
+
+    return {
+      nodeColor,
+      titlelineColor
+    };
+  });
+  expect(titlelineColors.titlelineColor).toBe(titlelineColors.nodeColor);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect
+    .poll(async () =>
+      agentChrome.evaluate((chrome) => getComputedStyle(chrome, '::after').animationName)
+    )
+    .toBe('none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+  const attentionState = createLiveExecutionNodeState('agent');
+  attentionState.nodes[0].metadata.agent.attentionPending = true;
+  await bootstrap(page, attentionState);
+  await expect(agentChrome).toHaveAttribute('data-agent-running-titleline', 'false');
+  await expect(agentChrome).not.toHaveClass(/is-agent-running-titleline/);
+  await expect(agentChrome).toHaveAttribute('data-execution-attention-pending', 'true');
+
+  for (const status of ['live', 'starting', 'resuming', 'reattaching', 'waiting-input']) {
+    const state = createLiveExecutionNodeState('agent');
+    state.nodes[0].status = status;
+    state.nodes[0].metadata.agent.lifecycle = status;
+    await bootstrap(page, state);
+    await expect(agentChrome).toHaveAttribute('data-agent-running-titleline', 'false');
+    await expect(agentChrome).not.toHaveClass(/is-agent-running-titleline/);
+  }
+
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  await waitForExecutionTerminalReady(page, 'terminal-zoom');
+  const terminalChrome = nodeById(page, 'terminal-zoom').locator('.window-chrome');
+  await expect(terminalChrome).not.toHaveAttribute('data-agent-running-titleline');
+  await expect(terminalChrome).not.toHaveClass(/is-agent-running-titleline/);
+});
+
 test('canvas renders a shared execution help entry with tooltip text', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createRuntimeChromeState());
