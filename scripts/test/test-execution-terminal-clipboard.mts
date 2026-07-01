@@ -360,6 +360,26 @@ function runProtocolChecks(): void {
 
   assert.deepEqual(
     parseWebviewMessage({
+      type: 'webview/copyTextToClipboard',
+      payload: {
+        text: 'OSC 52 copied text',
+        source: 'execution-osc52',
+        nodeId: 'agent-1'
+      }
+    }),
+    {
+      type: 'webview/copyTextToClipboard',
+      payload: {
+        text: 'OSC 52 copied text',
+        source: 'execution-osc52',
+        nodeId: 'agent-1'
+      }
+    },
+    'OSC 52 剪贴板来源应通过 validator。'
+  );
+
+  assert.deepEqual(
+    parseWebviewMessage({
       type: 'webview/requestExecutionPaste',
       payload: {
         requestId: 'paste-1',
