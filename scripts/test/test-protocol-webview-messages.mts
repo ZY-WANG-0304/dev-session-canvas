@@ -144,7 +144,32 @@ assert.deepEqual(
   {
     type: 'webview/arrangeCanvasLayout'
   },
-  '画布布局整理消息不携带 payload，Host 侧按当前权威状态整理并持久化。'
+  '未指定范围时画布布局整理消息按当前权威状态整理整个画布并持久化。'
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/arrangeCanvasLayout',
+    payload: {
+      targetGroupId: 'workspace-root-frontend'
+    }
+  }),
+  {
+    type: 'webview/arrangeCanvasLayout',
+    payload: {
+      targetGroupId: 'workspace-root-frontend'
+    }
+  },
+  '画布布局整理消息可携带 targetGroupId，由 Host 限定到目标 workspace root。'
+);
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/arrangeCanvasLayout',
+    payload: {
+      targetGroupId: 42
+    }
+  }),
+  null,
+  'webview/arrangeCanvasLayout.targetGroupId 必须是字符串。'
 );
 assert.deepEqual(extractWebviewMessageLifecycle(lifecycleMessage), lifecycleMessage.lifecycle);
 assert.equal(extractWebviewMessageLifecycle({ type: 'webview/ready' }), undefined);

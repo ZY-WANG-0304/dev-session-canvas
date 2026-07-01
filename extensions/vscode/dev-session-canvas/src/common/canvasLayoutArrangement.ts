@@ -107,10 +107,19 @@ interface LayoutConstraint {
 
 export function arrangeCanvasLayout(
   state: CanvasPrototypeState,
-  now = new Date().toISOString()
+  now = new Date().toISOString(),
+  options: {
+    targetGroupId?: string;
+  } = {}
 ): CanvasPrototypeState {
   const context = new LayoutContext(state);
-  context.arrangeContainer(undefined);
+  const targetGroup = options.targetGroupId
+    ? (state.groups ?? []).find((group) => group.id === options.targetGroupId)
+    : undefined;
+  if (options.targetGroupId && !targetGroup) {
+    return state;
+  }
+  context.arrangeContainer(targetGroup?.id);
   const nextState = context.toState(now);
 
   return geometryEqual(state, nextState) ? state : nextState;

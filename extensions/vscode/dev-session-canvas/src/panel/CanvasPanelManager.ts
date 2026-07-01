@@ -11240,6 +11240,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  private resolveCanvasLayoutArrangementTargetGroupId(requestedTargetGroupId?: string): string | undefined {
+    if (!requestedTargetGroupId) {
+      return undefined;
+    }
+
+    const groups = this.state.groups ?? [];
+    const targetGroup = groups.find((group) => group.id === requestedTargetGroupId);
+    if (!targetGroup) {
+      return undefined;
+    }
+
+    return isWorkspaceRootGroup(targetGroup)
+      ? targetGroup.id
+      : resolveContainingWorkspaceRootGroupId(groups, targetGroup.id);
+  }
+
   private handleActiveWebviewMessage(
     sourceSurface: CanvasSurfaceLocation,
     parsedMessage: WebviewToHostMessage
@@ -11253,14 +11269,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/selectNode':
         this.acknowledgeExecutionAttentionForNode(parsedMessage.payload.nodeId);
         return;
-      case 'webview/arrangeCanvasLayout':
+      case 'webview/arrangeCanvasLayout': {
+        const requestedTargetGroupId = parsedMessage.payload?.targetGroupId;
+        const targetGroupId = this.resolveCanvasLayoutArrangementTargetGroupId(requestedTargetGroupId);
+        if (requestedTargetGroupId && !targetGroupId) {
+          return;
+        }
+        const arrangedState = arrangeCanvasLayout(this.state, undefined, {
+          targetGroupId: targetGroupId ?? undefined
+        });
         this.state = this.reconcileCanvasFileArtifacts(
-          finalizeCanvasGroupState(arrangeCanvasLayout(this.state))
+          targetGroupId ? arrangedState : finalizeCanvasGroupState(arrangedState)
         );
         this.canvasTemplateInitialized = true;
         this.persistState();
         this.postState('host/stateUpdated');
         return;
+      }
       case 'webview/createDemoNode':
         this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
           requestId: parsedMessage.payload.requestId,
