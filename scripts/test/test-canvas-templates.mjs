@@ -1073,6 +1073,22 @@ try {
   assert.match(rootTemplateResetPrepareSource, /terminateExecutionNodeForDeletion/u);
   assert.match(rootTemplateResetPrepareSource, /template\/rootResetPrepared/u);
   assert.doesNotMatch(rootTemplateResetPrepareSource, /prepareForHostBoundary/u);
+  const workspaceRelativeMarkdownUriResolverSource = sliceBetween(
+    panelManagerSource,
+    'private resolveCanvasTemplateWorkspaceRelativeMarkdownUri',
+    'private async resolvePathOnlyCanvasTemplateNoteMaterialization'
+  );
+  assert.match(
+    workspaceRelativeMarkdownUriResolverSource,
+    /if \(normalizedTargetRootPath\) \{[\s\S]*return vscode\.Uri\.joinPath\(targetWorkspaceFolder\.uri, \.\.\.parts\);[\s\S]*if \(workspaceFolders\.length === 1\)/u,
+    '已解析 target root 时，模板 Markdown relativePath 必须按 root-local 路径处理。'
+  );
+  assert.doesNotMatch(
+    workspaceRelativeMarkdownUriResolverSource,
+    /parts\[0\] === targetWorkspaceFolder\.name/u,
+    '不能仅因 relativePath 首段等于目标 root 名称就剥掉该目录段。'
+  );
+  assert.doesNotMatch(workspaceRelativeMarkdownUriResolverSource, /filePartsInNamedRoot/u);
   const pathOnlyNoteMaterializationSource = sliceBetween(
     panelManagerSource,
     'private async resolvePathOnlyCanvasTemplateNoteMaterialization',
