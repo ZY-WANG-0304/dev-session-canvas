@@ -71,6 +71,12 @@ class CanvasProtocolTest {
         assertEquals(WebviewMessageType.TerminalInput, input?.type)
         assertEquals("terminal-1", input?.terminalInput?.id)
         assertEquals("echo hi\r", input?.terminalInput?.text)
+
+        val backspace = CanvasProtocol.decodeWebviewMessage(
+            """{"type":"webview/terminalInput","id":"terminal-1","text":"\u007f"}"""
+        )
+        assertEquals("\u007f", backspace?.terminalInput?.text)
+
         assertEquals(WebviewMessageType.TerminalResize, resize?.type)
         assertEquals(120, resize?.terminalResize?.cols)
         assertEquals(32, resize?.terminalResize?.rows)

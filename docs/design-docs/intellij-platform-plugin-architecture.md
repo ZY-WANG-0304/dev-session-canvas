@@ -104,7 +104,7 @@ JCEF 风险是第一风险。最小 HTML 页面不能证明 React Flow 画布可
 
 协议漂移风险很高。Kotlin 最小 DTO 子集只适合早期里程碑，不能在没有测试和生成策略的情况下扩展到完整执行协议。每次新增消息都必须有 TypeScript / Kotlin 对照、测试或 schema 记录。
 
-PTY 平台差异风险需要持续记录。当前 Terminal 切片依赖目标 IDE bundled `pty4j`，避免额外打包外部版本；但真实 shell、ConPTY、登录 shell、编码和 resize 行为仍会随 OS、IDE runtime 和 Android Studio JCEF 配置不同而变化，不能只凭 Linux 单元测试写成三平台已验证。
+PTY 平台差异风险需要持续记录。当前 Terminal 切片依赖目标 IDE bundled `pty4j`，避免额外打包外部版本；但真实 shell、ConPTY、登录 shell、编码、特殊键和 resize 行为仍会随 OS、IDE runtime 和 Android Studio JCEF 配置不同而变化，不能只凭 Linux 单元测试写成三平台已验证。2026-07-01 首轮真实 smoke 显示 Terminal 节点可以创建且普通输入可达，但 Backspace 出现空格或乱码；当前修复选择在 JCEF bridge 层把 U+007F 到 U+009F 控制字符转为 ASCII `\u00xx` 后再交给 `JBCefJSQuery`，保留 xterm / PTY 的原始按键语义，不先强行把 DEL 改成 BS，也不先用 `stty erase` 改 shell 行规。
 
 运行时承诺风险很高。Agent 节点先于 Runtime Supervisor 落地时，只能承诺当前 IDE 生命周期内的执行。没有 supervisor 或 provider 显式恢复身份时，重开后的状态必须表达为历史态、中断态或 snapshot-only 恢复入口，不得写成 live runtime。
 
@@ -124,7 +124,7 @@ IntelliJ 插件已落在 `extensions/intellij/dev-session-canvas/`，使用独�
 
 里程碑 3 是 Note 与项目级持久化。当前工程切片使用项目级 `PersistentStateComponent`，在 `CanvasProjectStateService` 中保存 Note 节点 ID、类型、标题、正文、位置、尺寸、视口和 `nextNoteNumber`，Tool Window bootstrap 直接从服务快照恢复；前端通过 `hostAdapter.ts` 发出 Note mutation 和 viewport mutation。自动化测试已经覆盖 helper 行为与插件构建，真实 UI 关闭重开恢复仍待在有图形环境中验证。
 
-里程碑 4 是 Terminal。当前工程切片在 `CanvasProjectStateService` 中保存 Terminal 节点状态、cwd、shellPath、最近输出、节点尺寸和 PTY 行列；`CanvasBrowserBridge` 负责创建 Terminal、发送 state update、转发输入、resize 和停止；`ExecutionSessionManager` 用平台 `pty4j` 启动和管理 PTY；`ShellCommandResolver` 选择默认 shell 和工作目录；`main.tsx` 使用 xterm.js 渲染 Terminal 节点并维护 `recentOutput` 增量同步。这个切片不承诺关闭 IDE 后继续运行，只把有限最近输出作为 snapshot-only 状态恢复输入。里程碑 5 是 Agent，里程碑 6 是 Runtime Supervisor，里程碑 7 是发布准备。测试、设计文档和验证证据必须在里程碑 0 到 6 持续迭代，不能作为里程碑 7 的补债内容。
+里程碑 4 是 Terminal。当前工程切片在 `CanvasProjectStateService` 中保存 Terminal 节点状态、cwd、shellPath、最近输出、节点尺寸和 PTY 行列；`CanvasBrowserBridge` 负责创建 Terminal、发送 state update、转发输入、resize 和停止；`ExecutionSessionManager` 用平台 `pty4j` 启动和管理 PTY；`ShellCommandResolver` 选择默认 shell 和工作目录；`main.tsx` 使用 xterm.js 渲染 Terminal 节点并维护 `recentOutput` 增量同步；`CanvasWebviewHtml` 在 JCEF query 前转义 C1 控制字符，避免 Backspace 等特殊键在 bridge 传输中被错误解释。这个切片不承诺关闭 IDE 后继续运行，只把有限最近输出作为 snapshot-only 状态恢复输入。里程碑 5 是 Agent，里程碑 6 是 Runtime Supervisor，里程碑 7 是发布准备。测试、设计文档和验证证据必须在里程碑 0 到 6 持续迭代，不能作为里程碑 7 的补债内容。
 
 Runtime Supervisor 不是 Agent 第一版的前置条件。Agent 可以先落地当前 IDE 生命周期内的启动、输入、输出、停止和失败语义；跨 IDE 生命周期恢复由 Runtime Supervisor 里程碑单独验证。Runtime Supervisor 的研究方向倾向复用现有 Node supervisor，但具体 JVM client、进程发现、socket 路径和打包分发方式仍需在里程碑 6 验证。
 
@@ -145,6 +145,6 @@ Runtime Supervisor 不是 Agent 第一版的前置条件。Agent 可以先落地
 
 人工或自动 smoke 记录必须包含：Tool Window 出现；JCEF 支持检查结果；React Flow bundle 无加载错误；空画布根节点存在；pan / zoom 后 viewport 变化；创建 Note 消息到达 Kotlin 宿主；Kotlin 回传 state update 后页面出现 Note；标题/正文编辑、拖拽、resize、删除和视口变化能写回宿主；关闭并重开同一项目后 Note、尺寸、位置和视口恢复；关闭 IDE 后 browser 和 bridge 被释放。当前已有 IntelliJ IDEA / PyCharm 的画布与 Note 可见截图；Android Studio 旧版本有 fallback 截图，升级并安装/启用 JCEF 后已有可打开确认，但仍需补精确 build、JCEF 安装方式和完整 checklist。
 
-后续里程碑都必须至少提供一种验证证据。Note 里程碑的自动化证据已经覆盖状态 helper 和 bundle marker，但仍要补项目重开后状态恢复的真实 UI smoke。Terminal 里程碑的自动化证据已经覆盖协议、状态和 fake PTY manager，但仍要在真实 IDE 中证明 PTY 输入输出、resize、停止和项目关闭清理。Agent 里程碑要证明 Codex / Claude Code CLI 在项目目录启动并输出回流。Runtime Supervisor 里程碑要证明 runtime identity 注册、重新查询或恢复、清理 / 保留语义，以及 `snapshot-only` / `live-runtime` 的用户可见差异。
+后续里程碑都必须至少提供一种验证证据。Note 里程碑的自动化证据已经覆盖状态 helper 和 bundle marker，但仍要补项目重开后状态恢复的真实 UI smoke。Terminal 里程碑的自动化证据已经覆盖协议、状态、bridge HTML 控制字符转义和 fake PTY manager；用户已确认 Terminal 可创建且普通输入可达，但修复后的 Backspace 仍需安装新 ZIP 复验，并仍要在真实 IDE 中证明 PTY 输入输出、resize、停止和项目关闭清理。Agent 里程碑要证明 Codex / Claude Code CLI 在项目目录启动并输出回流。Runtime Supervisor 里程碑要证明 runtime identity 注册、重新查询或恢复、清理 / 保留语义，以及 `snapshot-only` / `live-runtime` 的用户可见差异。
 
 内部发布准备阶段再运行最终矩阵，包括 `./gradlew verifyPlugin`、目标 IDE build 的 Plugin Verifier、Android Studio / IntelliJ IDEA / PyCharm smoke、手动安装包检查和 release smoke。若某个 IDE 未验证，内部说明或后续发布文案不得写成已支持。JetBrains Marketplace listing、签名和公开发布流程留到后续发布计划。

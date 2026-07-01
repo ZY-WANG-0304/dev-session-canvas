@@ -6,6 +6,10 @@ object CanvasWebviewHtml {
         val stylesheet = readResource("/webview/webview.css")
         val bridgeScript = bridge.postMessageScript("payload")
 
+        return renderDocument(javascript = javascript, stylesheet = stylesheet, bridgeScript = bridgeScript)
+    }
+
+    internal fun renderDocument(javascript: String, stylesheet: String, bridgeScript: String): String {
         return """
             <!doctype html>
             <html lang="en">
@@ -16,8 +20,15 @@ object CanvasWebviewHtml {
               <title>Dev Session Canvas</title>
               <style>$stylesheet</style>
               <script>
+                // Keep raw DEL/C1 controls, such as xterm Backspace, intact through JBCefJSQuery.
+                function escapeDevSessionCanvasBridgePayload(json) {
+                  return json.replace(/[\u007f-\u009f]/g, function(character) {
+                    return "\\u" + character.charCodeAt(0).toString(16).padStart(4, "0");
+                  });
+                }
+
                 window.devSessionCanvasPostMessage = function(message) {
-                  const payload = JSON.stringify(message);
+                  const payload = escapeDevSessionCanvasBridgePayload(JSON.stringify(message));
                   $bridgeScript
                 };
               </script>
