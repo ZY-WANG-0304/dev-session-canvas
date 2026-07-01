@@ -612,6 +612,16 @@ assert.match(
   /SERIALIZED_TERMINAL_STATE_WRITE_BATCH_DELAY_MS[\s\S]*schedulePendingWriteDrain[\s\S]*SERIALIZED_TERMINAL_STATE_CACHE_REFRESH_INTERVAL_MS/u,
   'Expected Host terminal-state snapshots to batch headless xterm writes and avoid serializing on every output chunk.'
 );
+assert.match(
+  serializedTerminalStateSource,
+  /outputSequence\?: number;[\s\S]*initialOutputSequence\?: number;[\s\S]*canTrustInitialState[\s\S]*normalizedInitialState\.outputSequence[\s\S]*initialOutputSequence/u,
+  'Expected serialized terminal snapshots to carry outputSequence freshness metadata and reject stale initial states.'
+);
+assert.match(
+  webviewSource,
+  /serializedTerminalStateOutputSequence === snapshotOutputSequence[\s\S]*terminal\.write\(serializedTerminalState\.data/u,
+  'Expected Webview snapshot restore to trust serialized terminal state only when its outputSequence matches the snapshot boundary.'
+);
 
 const lineContextTrackerSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts', 'utf8');
 assert.match(

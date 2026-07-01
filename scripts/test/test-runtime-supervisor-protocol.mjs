@@ -68,6 +68,26 @@ try {
   );
   assert.match(
     supervisorSource,
+    /private async createSession\([\s\S]*return this\.toFreshSnapshot\(session\);[\s\S]*private async attachSession\([\s\S]*return this\.toFreshSnapshot\(session\);/u,
+    'runtime supervisor create/attach snapshot 必须先 flush headless terminal，不能发布 stale serializedTerminalState。'
+  );
+  assert.match(
+    supervisorSource,
+    /session\.outputSequence \+= 1;[\s\S]*session\.terminalStateTracker\.write\(chunk, \{[\s\S]*outputSequence: session\.outputSequence/u,
+    'runtime supervisor 写入 terminal state 前必须先递增并标记 outputSequence。'
+  );
+  assert.match(
+    supervisorSource,
+    /private getFreshSerializedTerminalState\([\s\S]*serializedTerminalState\?\.outputSequence[\s\S]*stateOutputSequence === session\.outputSequence[\s\S]*serializedTerminalState[\s\S]*undefined/u,
+    'runtime supervisor snapshot 只能携带 outputSequence 对齐的 serializedTerminalState。'
+  );
+  assert.match(
+    supervisorSource,
+    /initialState: snapshot\.serializedTerminalState,[\s\S]*initialOutput: snapshot\.output,[\s\S]*initialOutputSequence: normalizeRuntimeSupervisorOutputSequence\(snapshot\.outputSequence\)/u,
+    'runtime supervisor registry 恢复必须把 raw output sequence 传入 terminal state tracker，用于拒绝 stale serialized state。'
+  );
+  assert.match(
+    supervisorSource,
     /session\.kind === 'agent' && session\.provider === 'claude' && containsTerminalSuspendInput\(params\.data\)[\s\S]*Claude Agent 节点不支持 Ctrl-Z\/fg/u,
     'runtime supervisor 必须拒绝 Claude Agent Ctrl-Z 输入，避免进入不可恢复的伪挂起态。'
   );
