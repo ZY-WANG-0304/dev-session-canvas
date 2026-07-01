@@ -863,6 +863,7 @@ body {
 
 .window-chrome {
   --window-chrome-background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
+  position: relative;
   display: flex;
   justify-content: space-between;
   gap: 10px;
@@ -874,6 +875,31 @@ body {
     background-color 140ms ease,
     border-color 140ms ease,
     box-shadow 140ms ease;
+}
+
+.window-chrome.is-agent-running-titleline {
+  --agent-running-titleline-color: var(--canvas-node-color);
+  --agent-running-titleline-glint: color-mix(
+    in srgb,
+    var(--agent-running-titleline-color) 52%,
+    var(--vscode-panel-border, transparent) 48%
+  );
+}
+
+.window-chrome.is-agent-running-titleline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: auto;
+  bottom: -1px;
+  width: 28%;
+  height: 3px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: var(--agent-running-titleline-glint);
+  transform: translateX(-112%);
+  animation: execution-agent-running-titleline 3.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform, opacity;
 }
 
 .window-chrome.has-attention {
@@ -1270,6 +1296,42 @@ body {
   }
 }
 
+@keyframes execution-agent-running-titleline {
+  0% {
+    transform: translateX(-112%);
+    opacity: 0;
+  }
+
+  12%,
+  68% {
+    opacity: 0.72;
+  }
+
+  84%,
+  100% {
+    transform: translateX(470%);
+    opacity: 0;
+  }
+}
+
+@keyframes pane-gallery-root-running-scanline {
+  0% {
+    transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
+    opacity: 0;
+  }
+
+  5%,
+  82% {
+    opacity: var(--pane-gallery-root-running-scanline-opacity);
+  }
+
+  96%,
+  100% {
+    transform: translateX(var(--pane-gallery-root-running-scanline-travel)) rotate(var(--pane-gallery-root-running-scanline-angle));
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .canvas-shell .canvas-minimap .react-flow__minimap-node.is-attention-flashing {
     animation: none;
@@ -1292,6 +1354,11 @@ body {
 
   .pane-gallery-root-header.is-attention-flashing {
     box-shadow: var(--execution-attention-reduced-shadow);
+  }
+
+  .window-chrome.is-agent-running-titleline::after {
+    animation: none;
+    opacity: 0;
   }
 }
 
@@ -3728,6 +3795,41 @@ body {
   --execution-attention-reduced-shadow:
     inset 0 0 0 2px color-mix(in srgb, var(--execution-node-attention-color) 88%, transparent),
     0 0 0 2px color-mix(in srgb, var(--execution-node-attention-color) 68%, transparent);
+}
+
+.pane-gallery-root-header.is-pane-gallery-root-running-scanline {
+  --pane-gallery-root-running-scanline-color: var(--pane-gallery-root-header-border-color);
+  --pane-gallery-root-running-scanline-travel: 100%;
+  --pane-gallery-root-running-scanline-angle: 18deg;
+  --pane-gallery-root-running-scanline-width: 16px;
+  --pane-gallery-root-running-scanline-opacity: 0.82;
+  overflow: hidden;
+}
+
+.pane-gallery-root-header.is-pane-gallery-root-running-scanline::after {
+  content: "";
+  position: absolute;
+  top: -22%;
+  bottom: -22%;
+  left: -28px;
+  right: auto;
+  width: calc(100% + 56px);
+  pointer-events: none;
+  border-left: var(--pane-gallery-root-running-scanline-width) solid var(--pane-gallery-root-running-scanline-color);
+  background: transparent;
+  opacity: 0;
+  filter: none;
+  transform-origin: left center;
+  transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
+  animation: pane-gallery-root-running-scanline 3s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-gallery-root-header.is-pane-gallery-root-running-scanline::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .pane-gallery-root-title-block {

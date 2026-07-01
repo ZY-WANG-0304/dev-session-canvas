@@ -5459,10 +5459,12 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
   const attentionPending = agentMetadata.attentionPending === true;
   const attentionFlashing =
     attentionPending && strongTerminalAttentionReminderShowsTitleBar(data.strongTerminalAttentionReminderMode);
+  const runningTitleLine = displayStatus === 'running' && !attentionPending;
   const chromeClassName = [
     'window-chrome',
     attentionPending ? 'has-attention' : '',
-    attentionFlashing ? 'is-attention-flashing' : ''
+    attentionFlashing ? 'is-attention-flashing' : '',
+    runningTitleLine ? 'is-agent-running-titleline' : ''
   ]
     .filter(Boolean)
     .join(' ');
@@ -5845,6 +5847,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         className={chromeClassName}
         data-execution-attention-pending={attentionPending ? 'true' : 'false'}
         data-execution-attention-flashing={attentionFlashing ? 'true' : 'false'}
+        data-agent-running-titleline={runningTitleLine ? 'true' : 'false'}
         onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}
       >
         <ChromeTitleEditor
@@ -9025,6 +9028,7 @@ interface PaneGalleryRootModel {
   groups: CanvasGroupSummary[];
   nodeCount: number;
   runningCount: number;
+  runningScanLineCount: number;
   errorCount: number;
   waitingCount: number;
   attentionCount: number;
@@ -9052,6 +9056,10 @@ function paneGalleryNodeIsRunning(node: CanvasNodeSummary): boolean {
     default:
       return false;
   }
+}
+
+function paneGalleryNodeShowsRunningScanLine(node: CanvasNodeSummary): boolean {
+  return node.status === 'running';
 }
 
 function paneGalleryPaneStatusForModel(model: PaneGalleryRootModel): PaneGalleryPaneStatus {
@@ -9112,6 +9120,7 @@ function buildPaneGalleryRootModels(params: {
       groups: params.groups.filter((group) => group.id !== rootGroup.id && subtreeGroupIds.has(group.id)),
       nodeCount: paneNodes.length,
       runningCount: paneHostNodes.filter((node) => paneGalleryNodeIsRunning(node)).length,
+      runningScanLineCount: paneHostNodes.filter((node) => paneGalleryNodeShowsRunningScanLine(node)).length,
       errorCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-error').length,
       waitingCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-waiting').length,
       attentionCount,
@@ -9520,6 +9529,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   const paneStatus = paneGalleryPaneStatusForModel(model);
   const paneStatusDescription = paneGalleryPaneStatusDescription(model);
   const attentionTitleBarFlashing = model.attentionTitleBarFlashing;
+  const rootRunningScanLine = model.runningScanLineCount > 0 && model.attentionCount === 0;
   const paneTitle = `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}${paneStatusDescription ? ` - ${paneStatusDescription}` : ''}`;
   const defaultViewport = interactive
     ? viewportRole === 'main'
@@ -9683,8 +9693,15 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
       }
     >
       <header
-        className={`pane-gallery-root-header ${attentionTitleBarFlashing ? 'is-attention-flashing' : ''}`.trim()}
+        className={[
+          'pane-gallery-root-header',
+          attentionTitleBarFlashing ? 'is-attention-flashing' : '',
+          rootRunningScanLine ? 'is-pane-gallery-root-running-scanline' : ''
+        ]
+          .filter(Boolean)
+          .join(' ')}
         data-pane-gallery-root-header-attention-flashing={attentionTitleBarFlashing ? 'true' : 'false'}
+        data-pane-gallery-root-running-scanline={rootRunningScanLine ? 'true' : 'false'}
       >
         <div className="pane-gallery-root-title-block">
           <span className="pane-gallery-root-title" title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}>
