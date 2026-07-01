@@ -3401,9 +3401,10 @@ function App(): JSX.Element {
       nodes,
       edges,
       hostNodes,
-      workspaceFolders: runtimeContext.workspaceFolders ?? []
+      workspaceFolders: runtimeContext.workspaceFolders ?? [],
+      strongTerminalAttentionReminderMode: runtimeContext.strongTerminalAttentionReminderMode
     }),
-    [edges, groups, hostNodes, nodes, runtimeContext.workspaceFolders]
+    [edges, groups, hostNodes, nodes, runtimeContext.workspaceFolders, runtimeContext.strongTerminalAttentionReminderMode]
   );
   const paneGalleryRootIds = paneGalleryRootModels.map((model) => model.rootGroup.id);
   const paneGalleryState = localUiState.paneGallery;
@@ -8991,6 +8992,7 @@ interface PaneGalleryRootModel {
   errorCount: number;
   waitingCount: number;
   attentionCount: number;
+  attentionTitleBarFlashing: boolean;
 }
 
 type PaneGalleryPaneStatus = 'idle' | 'running' | 'attention';
@@ -9044,6 +9046,7 @@ function buildPaneGalleryRootModels(params: {
   edges: readonly CanvasFlowEdge[];
   hostNodes: readonly CanvasNodeSummary[];
   workspaceFolders: readonly CanvasRuntimeContext['workspaceFolders'][number][];
+  strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
 }): PaneGalleryRootModel[] {
   const hostNodesById = new Map(params.hostNodes.map((node) => [node.id, node] as const));
   const nodeRootGroupIds = new Map<string, string>();
@@ -9065,6 +9068,7 @@ function buildPaneGalleryRootModels(params: {
       const hostNode = hostNodesById.get(node.id);
       return hostNode ? [hostNode] : [];
     });
+    const attentionCount = paneNodes.filter((node) => paneGalleryNodeHasAttention(node)).length;
     return {
       rootGroup,
       nodes: paneNodes,
@@ -9074,7 +9078,9 @@ function buildPaneGalleryRootModels(params: {
       runningCount: paneHostNodes.filter((node) => paneGalleryNodeIsRunning(node)).length,
       errorCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-error').length,
       waitingCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-waiting').length,
-      attentionCount: paneNodes.filter((node) => paneGalleryNodeHasAttention(node)).length
+      attentionCount,
+      attentionTitleBarFlashing:
+        attentionCount > 0 && strongTerminalAttentionReminderShowsTitleBar(params.strongTerminalAttentionReminderMode)
     };
   });
 }
@@ -9477,6 +9483,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   const viewportRole: PaneGalleryViewportRole = props.mode === 'main' ? 'main' : 'overview';
   const paneStatus = paneGalleryPaneStatusForModel(model);
   const paneStatusDescription = paneGalleryPaneStatusDescription(model);
+  const attentionTitleBarFlashing = model.attentionTitleBarFlashing;
   const paneTitle = `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}${paneStatusDescription ? ` - ${paneStatusDescription}` : ''}`;
   const defaultViewport = interactive
     ? viewportRole === 'main'
@@ -9613,6 +9620,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
       data-pane-gallery-status={paneStatus}
       data-pane-gallery-attention-count={model.attentionCount}
       data-pane-gallery-running-count={model.runningCount}
+      data-pane-gallery-attention-flashing={attentionTitleBarFlashing ? 'true' : 'false'}
       data-canvas-overview-mode={overviewState.active ? 'true' : 'false'}
       data-canvas-overview-config={props.overviewMode}
       aria-label={`Workspace root ${model.rootGroup.title}${paneStatusDescription ? `, ${paneStatusDescription}` : ''}`}
@@ -9638,7 +9646,10 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
           : undefined
       }
     >
-      <header className="pane-gallery-root-header">
+      <header
+        className={`pane-gallery-root-header ${attentionTitleBarFlashing ? 'is-attention-flashing' : ''}`.trim()}
+        data-pane-gallery-root-header-attention-flashing={attentionTitleBarFlashing ? 'true' : 'false'}
+      >
         <div className="pane-gallery-root-title-block">
           <span className="pane-gallery-root-title" title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}>
             {model.rootGroup.title}

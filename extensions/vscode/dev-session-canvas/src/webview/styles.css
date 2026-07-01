@@ -880,7 +880,8 @@ body {
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--execution-node-attention-color) 72%, transparent);
 }
 
-.window-chrome.is-attention-flashing {
+.window-chrome.is-attention-flashing,
+.pane-gallery-root-header.is-attention-flashing {
   animation:
     execution-attention-flash
     var(--execution-attention-flash-duration)
@@ -1252,15 +1253,20 @@ body {
 @keyframes execution-attention-flash {
   0%,
   100% {
-    background: var(--window-chrome-background);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--execution-node-attention-color) 58%, transparent);
+    background: var(--execution-attention-flash-rest-background, var(--window-chrome-background));
+    box-shadow: var(
+      --execution-attention-flash-rest-shadow,
+      inset 0 1px 0 color-mix(in srgb, var(--execution-node-attention-color) 58%, transparent)
+    );
   }
 
   50% {
-    background: var(--execution-node-attention-color);
-    box-shadow:
+    background: var(--execution-attention-flash-peak-background, var(--execution-node-attention-color));
+    box-shadow: var(
+      --execution-attention-flash-peak-shadow,
       inset 0 0 0 1px var(--execution-node-attention-color),
-      0 0 0 1px var(--vscode-contrastActiveBorder, transparent);
+      0 0 0 1px var(--vscode-contrastActiveBorder, transparent)
+    );
   }
 }
 
@@ -1275,9 +1281,17 @@ body {
       brightness(1.08);
   }
 
-  .window-chrome.is-attention-flashing {
+  .window-chrome.is-attention-flashing,
+  .pane-gallery-root-header.is-attention-flashing {
     animation: none;
-    background: color-mix(in srgb, var(--window-chrome-background) 48%, var(--execution-node-attention-color) 52%);
+    background: var(
+      --execution-attention-reduced-background,
+      color-mix(in srgb, var(--window-chrome-background) 48%, var(--execution-node-attention-color) 52%)
+    );
+  }
+
+  .pane-gallery-root-header.is-attention-flashing {
+    box-shadow: var(--execution-attention-reduced-shadow);
   }
 }
 
@@ -3662,37 +3676,6 @@ body {
   background: var(--vscode-editor-background);
 }
 
-.pane-gallery-root-pane[data-pane-gallery-status='running'] {
-  --pane-gallery-root-header-status-color: var(
-    --vscode-debugIcon-startForeground,
-    var(--vscode-debugIcon-restartForeground, var(--vscode-focusBorder))
-  );
-  --pane-gallery-root-header-background: color-mix(
-    in srgb,
-    var(--pane-gallery-root-header-status-color) 16%,
-    var(--vscode-editor-background) 84%
-  );
-  --pane-gallery-root-header-border-color: color-mix(
-    in srgb,
-    var(--pane-gallery-root-header-status-color) 38%,
-    var(--vscode-panel-border) 62%
-  );
-}
-
-.pane-gallery-root-pane[data-pane-gallery-status='attention'] {
-  --pane-gallery-root-header-status-color: var(--vscode-notificationsInfoIcon-foreground, var(--vscode-focusBorder));
-  --pane-gallery-root-header-background: color-mix(
-    in srgb,
-    var(--pane-gallery-root-header-status-color) 20%,
-    var(--vscode-editor-background) 80%
-  );
-  --pane-gallery-root-header-border-color: color-mix(
-    in srgb,
-    var(--pane-gallery-root-header-status-color) 48%,
-    var(--vscode-panel-border) 52%
-  );
-}
-
 .pane-gallery-root-pane:focus-within {
   box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
 }
@@ -3703,6 +3686,7 @@ body {
 }
 
 .pane-gallery-root-header {
+  --window-chrome-background: var(--pane-gallery-root-header-background);
   position: absolute;
   top: 0;
   left: 0;
@@ -3716,6 +3700,34 @@ body {
   padding: 4px 8px;
   background: var(--pane-gallery-root-header-background);
   color: var(--vscode-descriptionForeground);
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pane-gallery-root-header.is-attention-flashing {
+  --execution-node-attention-color: var(--pane-gallery-root-header-border-color, var(--vscode-panel-border));
+  --execution-attention-flash-rest-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--execution-node-attention-color) 78%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--execution-node-attention-color) 36%, transparent);
+  --execution-attention-flash-peak-background: color-mix(
+    in srgb,
+    var(--window-chrome-background) 18%,
+    var(--execution-node-attention-color) 82%
+  );
+  --execution-attention-flash-peak-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--execution-node-attention-color) 92%, var(--vscode-editor-foreground) 8%),
+    0 0 0 2px color-mix(in srgb, var(--execution-node-attention-color) 82%, transparent),
+    0 0 12px color-mix(in srgb, var(--execution-node-attention-color) 52%, transparent);
+  --execution-attention-reduced-background: color-mix(
+    in srgb,
+    var(--window-chrome-background) 28%,
+    var(--execution-node-attention-color) 72%
+  );
+  --execution-attention-reduced-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--execution-node-attention-color) 88%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--execution-node-attention-color) 68%, transparent);
 }
 
 .pane-gallery-root-title-block {
