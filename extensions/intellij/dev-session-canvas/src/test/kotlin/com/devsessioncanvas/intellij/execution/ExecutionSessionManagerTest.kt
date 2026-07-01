@@ -58,6 +58,47 @@ class ExecutionSessionManagerTest {
     }
 
     @Test
+    fun addsUtf8LocaleWhenHostEnvironmentDoesNotProvideOne() {
+        val fakeProcess = FakePtyProcess()
+        val factory = RecordingPtyProcessFactory(fakeProcess)
+        val manager = ExecutionSessionManager(
+            listener = RecordingTerminalSessionListener(),
+            processFactory = factory,
+            environmentProvider = { mapOf("PATH" to "/usr/bin") }
+        )
+
+        try {
+            manager.startTerminal(id = "terminal-1", cwd = "/tmp/project", shellPath = "/bin/sh", cols = 80, rows = 24)
+
+            assertEquals("xterm-256color", factory.environment?.get("TERM"))
+            assertTrue(factory.environment?.get("LC_CTYPE")?.contains("UTF-8") == true)
+        } finally {
+            manager.dispose()
+        }
+    }
+
+    @Test
+    fun keepsExistingUtf8Locale() {
+        val fakeProcess = FakePtyProcess()
+        val factory = RecordingPtyProcessFactory(fakeProcess)
+        val manager = ExecutionSessionManager(
+            listener = RecordingTerminalSessionListener(),
+            processFactory = factory,
+            environmentProvider = { mapOf("LANG" to "en_US.UTF-8", "TERM" to "screen-256color") }
+        )
+
+        try {
+            manager.startTerminal(id = "terminal-1", cwd = "/tmp/project", shellPath = "/bin/sh", cols = 80, rows = 24)
+
+            assertEquals("screen-256color", factory.environment?.get("TERM"))
+            assertEquals("en_US.UTF-8", factory.environment?.get("LANG"))
+            assertEquals(null, factory.environment?.get("LC_CTYPE"))
+        } finally {
+            manager.dispose()
+        }
+    }
+
+    @Test
     fun pumpsOutputAndReportsNaturalExit() {
         val fakeProcess = FakePtyProcess()
         val listener = RecordingTerminalSessionListener()
@@ -76,6 +117,27 @@ class ExecutionSessionManagerTest {
             val exit = listener.exits.single { it.id == "terminal-1" }
             assertEquals(0, exit.exitCode)
             assertContains(exit.message, "code 0")
+        } finally {
+            manager.dispose()
+        }
+    }
+
+    @Test
+    fun decodesUtf8OutputAcrossReadChunks() {
+        val fakeProcess = FakePtyProcess()
+        val listener = RecordingTerminalSessionListener()
+        val manager = ExecutionSessionManager(
+            listener = listener,
+            processFactory = RecordingPtyProcessFactory(fakeProcess)
+        )
+
+        try {
+            manager.startTerminal(id = "terminal-1", cwd = "/tmp/project", shellPath = "/bin/sh", cols = 80, rows = 24)
+            fakeProcess.emitBytes("你".toByteArray(Charsets.UTF_8).copyOfRange(0, 1))
+            Thread.sleep(20)
+            fakeProcess.emitBytes("你".toByteArray(Charsets.UTF_8).copyOfRange(1, 3))
+
+            assertTrue(waitUntil { listener.joinedOutput() == "你" })
         } finally {
             manager.dispose()
         }
@@ -152,6 +214,12 @@ private class RecordingTerminalSessionListener : TerminalSessionListener {
             exits.add(TerminalExitRecord(id = id, status = status, exitCode = exitCode, message = message))
         }
     }
+
+    fun joinedOutput(): String {
+        synchronized(this) {
+            return outputs.joinToString("") { it.second }
+        }
+    }
 }
 
 private data class TerminalExitRecord(
@@ -164,6 +232,7 @@ private data class TerminalExitRecord(
 private class RecordingPtyProcessFactory(private val process: PtyProcess) : PtyProcessFactory {
     var command: Array<String>? = null
     var cwd: String? = null
+    var environment: Map<String, String>? = null
     var cols: Int? = null
     var rows: Int? = null
 
@@ -176,6 +245,7 @@ private class RecordingPtyProcessFactory(private val process: PtyProcess) : PtyP
     ): PtyProcess {
         this.command = command
         this.cwd = cwd
+        this.environment = environment
         this.cols = cols
         this.rows = rows
         return process
@@ -246,7 +316,11 @@ private class FakePtyProcess : PtyProcess() {
     override fun getWinSize(): WinSize = lastWinSize
 
     fun emit(text: String) {
-        processOutput.write(text.toByteArray(Charsets.UTF_8))
+        emitBytes(text.toByteArray(Charsets.UTF_8))
+    }
+
+    fun emitBytes(bytes: ByteArray) {
+        processOutput.write(bytes)
         processOutput.flush()
     }
 

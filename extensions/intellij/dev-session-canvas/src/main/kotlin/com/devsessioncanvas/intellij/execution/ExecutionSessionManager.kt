@@ -14,7 +14,8 @@ import java.util.concurrent.TimeUnit
 
 class ExecutionSessionManager(
     private val listener: TerminalSessionListener,
-    private val processFactory: PtyProcessFactory = DefaultPtyProcessFactory()
+    private val processFactory: PtyProcessFactory = DefaultPtyProcessFactory(),
+    private val environmentProvider: () -> Map<String, String> = { System.getenv() }
 ) : Disposable {
     private val executor: ExecutorService = Executors.newCachedThreadPool { runnable ->
         Thread(runnable, "DevSessionCanvas IntelliJ terminal").apply { isDaemon = true }
@@ -27,7 +28,7 @@ class ExecutionSessionManager(
             val process = processFactory.start(
                 command = arrayOf(shellPath),
                 cwd = cwd,
-                environment = System.getenv(),
+                environment = terminalEnvironment(environmentProvider()),
                 cols = CanvasProjectStateService.normalizeTerminalCols(cols),
                 rows = CanvasProjectStateService.normalizeTerminalRows(rows)
             )
@@ -82,17 +83,18 @@ class ExecutionSessionManager(
 
     private fun pumpOutput(session: TerminalSession) {
         executor.execute {
-            val buffer = ByteArray(8192)
+            val buffer = CharArray(8192)
             try {
+                val reader = session.process.inputStream.reader(StandardCharsets.UTF_8)
                 while (!session.closedByHost) {
-                    val read = session.process.inputStream.read(buffer)
+                    val read = reader.read(buffer)
                     if (read < 0) {
                         break
                     }
                     if (read > 0) {
                         listener.onTerminalOutput(
                             session.id,
-                            String(buffer, 0, read, StandardCharsets.UTF_8)
+                            String(buffer, 0, read)
                         )
                     }
                 }
@@ -119,6 +121,25 @@ class ExecutionSessionManager(
     private fun describeStartError(shellPath: String, cwd: String, error: Throwable): String {
         val message = error.message ?: error.javaClass.simpleName
         return "Unable to start terminal shell $shellPath in $cwd: $message"
+    }
+
+    private fun terminalEnvironment(baseEnvironment: Map<String, String>): Map<String, String> {
+        val environment = baseEnvironment.toMutableMap()
+        environment.putIfAbsent("TERM", "xterm-256color")
+        if (!hasUtf8Locale(environment)) {
+            environment["LC_CTYPE"] = if (isMacOs()) "UTF-8" else "C.UTF-8"
+        }
+        return environment
+    }
+
+    private fun hasUtf8Locale(environment: Map<String, String>): Boolean {
+        return listOf("LC_ALL", "LC_CTYPE", "LANG")
+            .mapNotNull(environment::get)
+            .any { value -> value.contains("UTF-8", ignoreCase = true) || value.contains("UTF8", ignoreCase = true) }
+    }
+
+    private fun isMacOs(): Boolean {
+        return System.getProperty("os.name").contains("Mac", ignoreCase = true)
     }
 }
 
