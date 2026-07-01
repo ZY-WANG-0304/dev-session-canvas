@@ -980,6 +980,15 @@ try {
   assert.match(exportTemplateMethodSource, /encodeCanvasTemplateDocument/u);
   assert.match(panelManagerSource, /private async confirmCanvasTemplateReset/u);
   assert.match(panelManagerSource, /vscode\.window\.showWarningMessage/u);
+  assert.doesNotMatch(panelManagerSource, /当前 workspace 绑定的画布对象/u);
+  const resetConfirmationMessageSource = sliceBetween(
+    panelManagerSource,
+    'private buildCanvasTemplateResetConfirmationMessage',
+    'private resolveCanvasTemplateResetConfirmationRootGroup'
+  );
+  assert.match(resetConfirmationMessageSource, /当前画布对象/u);
+  assert.match(resetConfirmationMessageSource, /目标 root「\$\{targetRootGroup\.title\}」内的画布对象/u);
+  assert.match(resetConfirmationMessageSource, /所选 workspace root 内的画布对象/u);
   assert.match(panelManagerSource, /public focusCanvasTemplateNodeGroup\(nodeIds: readonly string\[\]\): void/u);
   const resetDefaultTemplateMethodSource = sliceBetween(
     panelManagerSource,
@@ -1050,7 +1059,36 @@ try {
   assert.match(applyTemplateMethodSource, /resolveCanvasTemplateNoteMaterializations/u);
   assert.match(applyTemplateMethodSource, /noteMaterializations/u);
   assert.match(applyTemplateMethodSource, /requestTemplateNodeGroupFocus\(appliedNodeIds\)/u);
-  assert.match(applyTemplateMethodSource, /多根 workspace 中暂不支持重置模板/u);
+  const legacyMultiRootResetBlockPattern = new RegExp('多根 workspace 中暂不支持' + '重置模板', 'u');
+  assert.doesNotMatch(applyTemplateMethodSource, legacyMultiRootResetBlockPattern);
+  assert.match(applyTemplateMethodSource, /prepareWorkspaceRootCanvasForTemplateReset/u);
+  assert.match(applyTemplateMethodSource, /options\?\.reset[\s\S]*createDefaultState\(this\.getAgentCliConfig\(\)\.defaultProvider\)[\s\S]*this\.prepareStateForWorkspaceRootLocalCreate/u);
+  assert.match(applyTemplateMethodSource, /targetWorkspaceRootPath/u);
+  const rootTemplateResetPrepareSource = sliceBetween(
+    panelManagerSource,
+    'private async prepareWorkspaceRootCanvasForTemplateReset',
+    'private async resolveFirstOpenCanvasTemplateRecord'
+  );
+  assert.match(rootTemplateResetPrepareSource, /collectWorkspaceRootOwnedNodeIds/u);
+  assert.match(rootTemplateResetPrepareSource, /terminateExecutionNodeForDeletion/u);
+  assert.match(rootTemplateResetPrepareSource, /template\/rootResetPrepared/u);
+  assert.doesNotMatch(rootTemplateResetPrepareSource, /prepareForHostBoundary/u);
+  const workspaceRelativeMarkdownUriResolverSource = sliceBetween(
+    panelManagerSource,
+    'private resolveCanvasTemplateWorkspaceRelativeMarkdownUri',
+    'private async resolvePathOnlyCanvasTemplateNoteMaterialization'
+  );
+  assert.match(
+    workspaceRelativeMarkdownUriResolverSource,
+    /if \(normalizedTargetRootPath\) \{[\s\S]*return vscode\.Uri\.joinPath\(targetWorkspaceFolder\.uri, \.\.\.parts\);[\s\S]*if \(workspaceFolders\.length === 1\)/u,
+    '已解析 target root 时，模板 Markdown relativePath 必须按 root-local 路径处理。'
+  );
+  assert.doesNotMatch(
+    workspaceRelativeMarkdownUriResolverSource,
+    /parts\[0\] === targetWorkspaceFolder\.name/u,
+    '不能仅因 relativePath 首段等于目标 root 名称就剥掉该目录段。'
+  );
+  assert.doesNotMatch(workspaceRelativeMarkdownUriResolverSource, /filePartsInNamedRoot/u);
   const pathOnlyNoteMaterializationSource = sliceBetween(
     panelManagerSource,
     'private async resolvePathOnlyCanvasTemplateNoteMaterialization',
@@ -1118,6 +1156,11 @@ try {
   assert.match(webviewSource, /case 'host\/focusNodes':\s*requestNodeGroupFocus\(message\.payload\.nodeIds\);/u);
   assert.match(webviewSource, /创建空文件并关联/u);
   assert.match(webviewSource, /const knownNodeIds = latestHostNodeIdsRef\.current;/u);
+  assert.match(webviewSource, /shouldPromptForRootGroupTemplateReset/u);
+  assert.match(webviewSource, /resolveTemplateResetTargetRootGroupId/u);
+  assert.match(webviewSource, /resolveContainingWorkspaceRootGroupIdForWebview\(groups, targetGroup\.id\)/u);
+  assert.match(webviewSource, /多根 workspace 中请在目标 root section 内重置为模板/u);
+  assert.match(webviewSource, /view === 'reset-template' && shouldPromptForRootGroupTemplateReset/u);
   assert.match(webviewSource, /nodes: targetNodeIds\.map\(\(id\) => \(\{ id \}\)\)/u);
   assert.match(webviewSource, /schedulePendingNodeGroupViewportRetry\(\);/u);
   assert.doesNotMatch(webviewSource, /webview\/publishCanvasTemplate/u);

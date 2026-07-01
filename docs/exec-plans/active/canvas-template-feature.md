@@ -8,7 +8,7 @@
 
 这次变更要让 Canvas 具备正式的模板能力。完成后，用户第一次打开新 workspace 的画布时，会自动看到默认的“使用说明”模板；之后可以在侧栏模板视图中应用内置模板、把任意模板设为默认模板、把当前画布保存成用户模板、导入/导出模板文件，并在画布空白区右键菜单和命令面板里走同一套模板操作入口。
 
-用户可观察到的关键变化有三条：第一，空画布不再只能从零开始，而会先以默认模板起步；第二，模板应用只会恢复布局和静态内容，不会自动启动 `Agent` / `Terminal`；第三，模板新增到现有画布时会整体避开现有节点，而不是简单重叠。
+用户可观察到的关键变化有四条：第一，空画布不再只能从零开始，而会先以默认模板起步；第二，模板应用只会恢复布局和静态内容，不会自动启动 `Agent` / `Terminal`；第三，模板新增到现有画布时会整体避开现有节点，而不是简单重叠；第四，在 multi-root workspace 中，重置为模板只重置当前或目标 root，不再要求用户单独打开该 root。
 
 ## 进度
 
@@ -42,6 +42,7 @@
 - [x] (2026-05-09 01:17 +0800) 修复 PR review 反馈：首次打开默认模板因为 untrusted workspace 或 Provider 暂不可用而应用失败时，只临时回退到内置 `使用说明`，不再改写用户全局默认模板偏好；同时把 smoke acceptance 的内置模板数量收口为 2 个。后续口径已进一步收敛为首次打开固定使用内置 `使用说明`，不再先尝试用户默认模板。
 - [x] (2026-05-09 06:25 +0800) 修复 PR review 反馈：smoke 中“使用说明”模板断言同步为当前 1 个 Note；Webview ready/bootstrap 前统一执行首次 `使用说明` 模板初始化，覆盖 VS Code 直接打开 Panel view 与恢复 Editor webview 的路径。
 - [x] (2026-05-09 07:00 +0800) 修复 PR review 反馈：smoke 直接注入 `webview/resetToTemplate` 时显式模拟“继续重置”确认；命令面板与 sidebar 模板入口改为应用后拿到新增节点 id，reveal 到最终承载面后再发起组级追焦，避免跨 surface 时追焦旧 Webview。
+- [x] (2026-07-01 14:13 +0800) 按 multi-root 最新需求把“重置为模板”从“不支持多根”改为 root-scoped reset：Host 只清理目标 root 并写回 root-local state，Webview 在 `rootGroups` 的 root section 外部拦截 reset 并提示用户，在 root section / 内部用户分组 / `paneGallery` 可交互 pane 中携带目标 root。同步更新模板与多根产品规格、设计文档和索引，并补充静态测试与 Playwright 回归。
 
 ## 意外与发现
 
@@ -68,6 +69,9 @@
 
 - 观察：内置模板资产已收口为 `resources/templates/01-getting-started.json` 与 `resources/templates/02-basic-workflow.json` 两个文件，第二个模板名称是“示例模板”，但部分正式文档仍保留旧三模板口径。
   证据：`resources/templates/` 当前只有两个 JSON；`docs/product-specs/canvas-template-feature.md` 原 4.5 节仍有已移除的第三模板小节。
+
+- 观察：multi-root composed state 已经有按 root 替换局部子图的组合函数，因此重置为模板不需要清空整个 Host。
+  证据：`composeRootLocalCanvasStateIntoComposed()` 会用 `collectWorkspaceRootOwnedNodeIds()` 移除当前 root 拥有的节点 / 分组 / 边，再把 root-local state namespace 回 composed state；这允许 `prepareWorkspaceRootCanvasForTemplateReset()` 只终止目标 root 内执行节点。
 
 ## 决策记录
 
@@ -139,6 +143,14 @@
   理由：当前资源资产已经只发布两份内置模板，文档应描述实际可见产品事实，不能把已移除模板继续写成验收口径。
   日期/作者：2026-05-09 / Codex
 
+- 决策：multi-root 中的模板应用与重置在跨 root 模板正式设计前只作用于单个目标 root。
+  理由：当前模板格式不表达 root 边界或跨 root overlay；把整张 multi-root composed view 当成模板重置目标会误清空其他 root。root-scoped reset 复用现有 root-local composition 语义，能满足用户“当前 root 重置为模板”的需求，也保留未来跨 root 模板的设计空间。
+  日期/作者：2026-07-01 / Codex
+
+- 决策：`rootGroups` 中从所有 root section 外部触发“重置为模板”时由 Webview 直接提示并阻止发送 reset 消息；root section 内部用户分组仍视为有效目标，由 Host 解析到所属 workspace root。
+  理由：root section 外部没有明确目标 root，继续弹 Host QuickPick 会让用户误以为这是整张 multi-root 组合画布 reset；内部用户分组则已经属于某个 root，应允许作为入口但 reset 结果清空整个所属 root。
+  日期/作者：2026-07-01 / Codex
+
 ## 结果与复盘
 
 本轮已完成画布模板功能的正式交付：首次打开自动应用内置 `使用说明`、模板侧栏与命令入口、导入导出与默认模板管理、组级避碰落位、restricted note-only 限制，以及 Agent `argv` 的保存与回放链路均已落地。随后又按最新交互要求把空白区右键菜单调整为“先节点创建、后横线分组的模板操作”，并让“应用模板 / 重置为模板”同时支持一级默认模板快速操作与二级具体模板选择菜单；模板 sidebar 最终保持 `WebviewView`，但在布局、间距、title actions 与行级交互上向 `节点` / `会话历史` section 收口，同时继续保留修掉 blank bug 所需的首屏 loading + 主动 refresh 机制。
@@ -163,6 +175,8 @@
 
 PR review 后继续修复两处一致性问题：第一，Webview 右键菜单的重置模板入口现在不再直接调用 `reset: true` 应用路径，而是复用宿主侧 modal 确认方法，用户取消时不会清空画布或终止会话；第二，产品规格、设计文档和本计划中的内置模板数量统一为当前实际的 2 个模板，不再保留已移除第三模板的旧口径。
 
+2026-07-01 本轮继续补齐 multi-root 重置语义：多根 workspace 中的“重置为模板”会先解析目标 root，然后只终止该 root 内执行节点、丢弃该 root 内待写入初始输入和关联 Note 编辑草稿，并用空 root-local state 套用模板后写回 composed state；其他 root 的节点、分组、overlay 和 live runtime 不被清空。`rootGroups` 下如果右键菜单来自所有 root section 外部，Webview 直接显示“多根 workspace 中请在目标 root section 内重置为模板。”并且不发送 reset 请求；来自 root section body 或内部用户分组时继续发送目标 group；`paneGallery` 来自可交互 pane 时发送 pane 对应 workspace-root group。
+
 本轮验证结果如下：
 
 - `npm run typecheck` 通过。
@@ -184,6 +198,7 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 - 模板应用后组级追焦补齐后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖宿主返回新增节点 id、发送 `host/focusNodes`，以及 Webview 对该节点组执行 `fitView`。
 - 组级追焦延后一拍修复后，再次执行 `npm run typecheck` 与 `npm run test:canvas-templates`，均通过；`test:canvas-templates` 已补充静态断言覆盖 Webview 使用 `latestHostNodeIdsRef` 判定目标节点，并在首次 `fitView` 失败时调度追焦重试。
 - Webview 重置确认与跨 surface 命令追焦修复后，再次执行 `git diff --check`、`npm run typecheck`、`npm run build`、`npm run test:canvas-templates` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs`，均通过；`test:canvas-templates` 已补充静态断言覆盖命令入口在 reveal 最终承载面后再触发组级追焦。
+- multi-root root-scoped reset 补齐后，执行 `npm run typecheck`、`npm run test:canvas-templates`、`npm run build && node scripts/test/run-playwright-webview.mjs -g "template reset"`，均通过；静态断言覆盖 Host 不再阻断 multi-root reset、目标 root 局部准备函数不调用全局 host boundary，Playwright 覆盖 root section 外部提示、root section body reset、内部用户分组 reset 与 `paneGallery` pane reset。
 
 剩余取舍与已知边界：
 
@@ -261,13 +276,15 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 
 第一，第一次打开新 workspace 的画布时，会直接出现内置“使用说明”模板，而不是空白画布；即使用户已经把别的模板设为默认，首次打开仍固定使用“使用说明”。用户默认模板只影响显式的“应用默认模板”和“重置为默认模板”，并继续保留用户的全局默认模板设置。
 
-第二，用户从当前画布保存模板后，再从侧栏或命令面板应用该模板时，节点标题、相对布局、Note 内容和边样式会被重建，但 `Agent` / `Terminal` 仍保持 idle，不会自动启动。
+第二，用户从当前画布保存模板后，再从侧栏或命令面板应用该模板时，节点标题、相对布局、Note 内容和边样式会被重建，但 `Agent` / `Terminal` 仍保持 idle，不会自动启动；在 multi-root workspace 中应用或重置模板必须落到单个目标 root。
 
-第三，在当前画布已有节点的情况下追加模板，整组模板节点会整体避开现有节点，而不是打散或重叠。
+第三，在当前画布已有节点的情况下追加模板，整组模板节点会整体避开现有节点，而不是打散或重叠；multi-root 中追加模板只在目标 root-local state 内避碰。
 
 第四，模板侧栏可以看到 2 个内置模板和新增的用户模板，能执行应用、设为默认、导出、删除等动作；删除当前默认用户模板后，会自动回退到“使用说明”。
 
 第五，导入无效 JSON、导入同名模板、应用不可用 Provider 模板时，宿主会给出明确提示，并阻止不安全操作。
+
+第六，在 multi-root workspace 中，从目标 root 内执行“重置为模板”只替换该 root；从 `rootGroups` 的所有 root section 外部执行重置时只出现提示，不清空任何画布。
 
 ## 幂等性与恢复
 
@@ -299,11 +316,13 @@ PR review 后继续修复两处一致性问题：第一，Webview 右键菜单�
 - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`
   - 默认模板首次应用逻辑
   - 模板保存 / 应用 / 重置 / 删除 / 设为默认
+  - multi-root root-scoped 模板 reset 的目标 root 解析与目标 root runtime 清理
   - 组级摆放算法
   - 模板列表变更事件
 
 - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
   - 空白区右键菜单模板动作
+  - `rootGroups` 外部 reset 提示与 `paneGallery` pane 目标 root 透传
   - 当前可见区域中心回传
 
 - `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts`
