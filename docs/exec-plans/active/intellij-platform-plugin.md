@@ -10,7 +10,7 @@
 
 第一批可观察成功结果不是“写出一套 Kotlin 代码”，而是：在 `extensions/intellij/dev-session-canvas/` 下存在可运行插件工程；从该目录执行 `./gradlew runIde` 后，测试 IDE 能显示 `Dev Session Canvas` Tool Window；Tool Window 内的 JCEF 能加载 React Flow 画布 bundle；画布能完成一次创建测试 Note 的 Kotlin 往返。后续里程碑再把持久化、终端 PTY、Agent CLI、Runtime Supervisor、设置页和内部手动安装验证补齐；公开 Marketplace 发布留到后续发布计划。
 
-当前计划已经完成 2026-06-30 的文档收口和里程碑 1 工程首切片：`extensions/intellij/dev-session-canvas/` 插件工程已创建，React Flow PoC bundle 可以编译进插件包，Kotlin Tool Window / JCEF bridge 已能通过构建验证。2026-07-01 用户在真实 IDE 中补充手动截图：IntelliJ IDEA 与 PyCharm 能打开 Tool Window、渲染 JCEF React Flow 画布并显示 Note 卡片；Android Studio `AI-253.30387.90` 能安装插件但显示 JCEF unsupported fallback。当前执行环境仍没有 `DISPLAY` / `WAYLAND_DISPLAY`，无法本机运行 `runIde` 补充 JCEF 控制台、关闭清理和完整持久化 smoke，因此里程碑 1 记为“IDEA / PyCharm 可见 UI 已通过，Android Studio JCEF 能力与完整诊断证据待补”。
+当前计划已经完成 2026-06-30 的文档收口和里程碑 1 工程首切片：`extensions/intellij/dev-session-canvas/` 插件工程已创建，React Flow PoC bundle 可以编译进插件包，Kotlin Tool Window / JCEF bridge 已能通过构建验证。2026-07-01 用户在真实 IDE 中补充手动截图：IntelliJ IDEA 与 PyCharm 能打开 Tool Window、渲染 JCEF React Flow 画布并显示 Note 卡片；Android Studio `AI-253.30387.90` 能安装插件但显示 JCEF unsupported fallback。随后用户确认 Android Studio 升级版本并安装/启用 JCEF 后也可以打开，说明 Android Studio 的 blocker 已从“插件不可安装 / JCEF 一定不可用”收敛为“需记录可用 Android Studio build 与 JCEF 安装路径”。当前执行环境仍没有 `DISPLAY` / `WAYLAND_DISPLAY`，无法本机运行 `runIde` 补充 JCEF 控制台、关闭清理和完整持久化 smoke，因此里程碑 1 记为“三类目标 IDE 基础可见 smoke 有人工证据，完整诊断证据和精确 build 号待补”。
 
 ## 进度
 
@@ -30,13 +30,14 @@
 - [x] (2026-06-30 12:04 +0800) 已实现 IntelliJ 专用 React Flow PoC bundle 和 `testWebviewBundle` 轻量验证，确保 bundle 中包含 host bridge、React Flow、`Create Test Note` 消息、state update 和 CSS 标记。
 - [x] (2026-06-30 12:06 +0800) 已通过 `./gradlew test buildPlugin verifyPluginStructure`，生成内部 ZIP `extensions/intellij/dev-session-canvas/build/distributions/dev-session-canvas-intellij-0.1.0-internal.zip`。
 - [x] (2026-06-30 12:20 +0800) 已将 `docs/design-docs/intellij-platform-plugin-architecture.md` 与 `docs/design-docs/index.md` 的验证状态同步为“验证中”，表示里程碑 1 工程和包结构已验证但真实 JCEF UI smoke 仍待补。
-- [ ] 完成里程碑 1 的真实 UI smoke。（已完成：`extensions/intellij/dev-session-canvas/` 工程、React Flow bundle、Kotlin bridge、构建和包结构验证；用户已在 IntelliJ IDEA 与 PyCharm 中目视确认 Tool Window、JCEF React Flow 画布和 Note 创建可见；Android Studio `AI-253.30387.90` 能安装但显示 JCEF unsupported fallback。剩余：补 IDE build 号、JCEF 控制台、关闭清理和 Android Studio JCEF 可用路径或替代方案。）
+- [ ] 完成里程碑 1 的真实 UI smoke。（已完成：`extensions/intellij/dev-session-canvas/` 工程、React Flow bundle、Kotlin bridge、构建和包结构验证；用户已在 IntelliJ IDEA 与 PyCharm 中目视确认 Tool Window、JCEF React Flow 画布和 Note 创建可见；Android Studio `AI-253.30387.90` 曾显示 JCEF unsupported fallback，但用户后续确认升级 Android Studio 并安装/启用 JCEF 后也可以打开。剩余：补三类 IDE build 号、Android Studio JCEF 安装路径、JCEF 控制台、pan / zoom、关闭清理和完整持久化 smoke。）
 - [x] (2026-06-30 12:58 +0800) 已推进里程碑 2 的工程首切片：新增 TypeScript `hostAdapter.ts`，把前端对全局 JCEF bridge 的直接依赖收口到 adapter；新增 Kotlin `CanvasProtocol` 最小 DTO / 编解码层，并用 Kotlin 单元测试覆盖消息识别和 host state JSON 转义。
-- [ ] 完成里程碑 2 的真实 UI smoke。（已完成：稳定 host adapter、`webview/createNote` 规范消息名、Kotlin 最小协议模型和自动化测试；用户已在 IntelliJ IDEA 与 PyCharm 中目视确认 adapter 后的 React Flow 画布与创建 Note 可见。剩余：补 bootstrap / state update 诊断证据、关闭清理和 Android Studio 路径。）
+- [ ] 完成里程碑 2 的真实 UI smoke。（已完成：稳定 host adapter、`webview/createNote` 规范消息名、Kotlin 最小协议模型和自动化测试；用户已在 IntelliJ IDEA 与 PyCharm 中目视确认 adapter 后的 React Flow 画布与创建 Note 可见，并确认升级后的 Android Studio 安装/启用 JCEF 后也可以打开。剩余：补 bootstrap / state update 诊断证据、关闭清理、Android Studio 精确 build 和 JCEF 安装路径。）
 - [x] (2026-06-30 14:15 +0800) 已完成里程碑 3 的工程首切片：`CanvasProjectStateService` 保存 Note 节点、尺寸和视口；前端 Note 支持标题/正文编辑、拖拽位置、resize、删除和视口同步；Kotlin/TypeScript 协议新增 `updateNote`、`updateNodePosition`、`updateViewport` 和 `deleteNode`。
 - [ ] 完成里程碑 3 的真实持久化 smoke。（已完成：项目级状态服务、bootstrap 恢复路径、Note mutation 协议、自动化测试和插件包结构验证；用户已在 IntelliJ IDEA 与 PyCharm 中目视确认创建 Note 可见。剩余：在有图形环境的 IDE 中创建/编辑/移动/缩放/删除 Note，关闭并重开同一项目后目视确认 Note 和视口恢复。）
 - [x] (2026-07-01 16:49 +0800) 已根据用户在 Android Studio `AI-253.30387.90` 的安装反馈移除内部验证包的 `until-build` 上限，用于覆盖当前和后续 IDE 的手动安装 smoke；这不是公开兼容承诺，仍需真实 UI smoke 和后续 Plugin Verifier 矩阵验证。
-- [x] (2026-07-01 17:49 +0800) 已记录用户手动 smoke 结果：IntelliJ IDEA 与 PyCharm 中 React Flow 画布和 Note 节点可见；Android Studio `AI-253.30387.90` 中进入 JCEF unsupported fallback，说明安装门禁已解除但 Android Studio 的 JCEF 能力仍是 blocker / 待设计项。
+- [x] (2026-07-01 17:49 +0800) 已记录用户手动 smoke 结果：IntelliJ IDEA 与 PyCharm 中 React Flow 画布和 Note 节点可见；Android Studio `AI-253.30387.90` 中进入 JCEF unsupported fallback，说明安装门禁已解除但该 Android Studio runtime 的 JCEF 能力不可用。
+- [x] (2026-07-01 19:36 +0800) 已记录用户更新后的 Android Studio smoke：升级 Android Studio 并安装/启用 JCEF 后可以打开 Dev Session Canvas；精确 Android Studio build、JCEF 安装方式和完整 Note / 持久化 checklist 仍待补。
 - [ ] 完成 Terminal 节点 PTY PoC，验证本地 shell 输入输出、窗口 resize、停止进程和项目关闭清理。
 - [ ] 完成 Agent 节点，明确第一版不承诺关闭 IDE 后继续运行，只承诺当前 IDE 生命周期内 execution 通道和 snapshot-only / 历史态表达。
 - [ ] 完成 Runtime Supervisor 接入方案，倾向复用现有 Node supervisor，并验证 IntelliJ 侧能注册、恢复和清理 runtime 会话。
@@ -83,8 +84,8 @@
 - 观察：里程碑 3 的项目级持久化可以先用 IntelliJ `PersistentStateComponent` 的简单 JavaBean 形态验证，不必为了平面 Note payload 立即引入 JSON 库或完整协议生成。
   证据：`CanvasProjectStateServiceTest` 能直接构造服务、`loadState()` 旧状态、创建新 Note，并验证 `nextNoteNumber` 归一化、标题/正文/位置/尺寸/视口更新和删除；`javap` 显示 `CanvasProjectState`、`CanvasPersistedNoteNode` 与 `CanvasPersistedViewport` 都保留无参构造和 getter/setter，可被 IntelliJ 状态序列化机制识别。
 
-- 观察：移除 `until-build` 后，IntelliJ IDEA 与 PyCharm 的手动安装和 JCEF React Flow 画布 smoke 已通过；Android Studio `AI-253.30387.90` 能进入 Tool Window，但 `JBCefApp.isSupported()` 返回不可用并显示 fallback。
-  证据：用户提供的 2026-07-01 截图中，IntelliJ IDEA / PyCharm 的 `Dev Session Canvas` Tool Window 显示 React Flow 背景、toolbar、viewport 和 Note 卡片；此前 Android Studio 截图显示 `Dev Session Canvas needs JCEF, but this IDE runtime does not support it.`。
+- 观察：移除 `until-build` 后，IntelliJ IDEA 与 PyCharm 的手动安装和 JCEF React Flow 画布 smoke 已通过；Android Studio `AI-253.30387.90` 能进入 Tool Window，但 `JBCefApp.isSupported()` 返回不可用并显示 fallback。用户升级 Android Studio 并安装/启用 JCEF 后，Android Studio 也可以打开 Dev Session Canvas。
+  证据：用户提供的 2026-07-01 截图中，IntelliJ IDEA / PyCharm 的 `Dev Session Canvas` Tool Window 显示 React Flow 背景、toolbar、viewport 和 Note 卡片；此前 Android Studio 截图显示 `Dev Session Canvas needs JCEF, but this IDE runtime does not support it.`；随后用户确认更新版本并安装 JCEF 后 Android Studio 也可以打开。
 
 ## 决策记录
 
@@ -172,8 +173,8 @@
   理由：当前 Note mutation payload 仍是扁平字段，单元测试已经能覆盖字符串转义、数字解析、状态归一化和快照输出；立即引入 JSON 库或跨语言 schema 会扩大改动面。进入 Terminal / Agent 之前仍需重新评估协议生成，避免执行消息长期手写漂移。
   日期/作者：2026-06-30 / Codex
 
-- 决策：Android Studio 仍保留为第一版目标 IDE，但当前 `AI-253.30387.90` 的 JCEF unsupported 结果必须作为 blocker / 兼容差异跟踪，不能把 IntelliJ IDEA 和 PyCharm 的 JCEF smoke 泛化成 Android Studio 已支持。
-  理由：同一插件 ZIP 已能在 IntelliJ IDEA 与 PyCharm 渲染 React Flow，但 Android Studio 的运行时返回 JCEF 不可用；第一版要么找到 Android Studio 可用 JCEF 运行时/配置，要么为 Android Studio 设计非 JCEF fallback，否则只能在内部说明中明确 Android Studio 暂不可用。
+- 决策：Android Studio 仍保留为第一版目标 IDE；`AI-253.30387.90` 的 JCEF unsupported 结果记录为旧 runtime / 配置差异，而升级后的 Android Studio 安装/启用 JCEF 后可作为可用路径继续验证。
+  理由：同一插件 ZIP 已能在 IntelliJ IDEA、PyCharm 和升级后的 Android Studio 中打开 JCEF 画布路径；但 Android Studio 需要记录精确 build、JCEF 安装方式和完整 smoke checklist，不能把旧 `AI-253.30387.90` fallback 或升级后的一句确认泛化成所有 Android Studio 版本都支持。
   日期/作者：2026-07-01 / 用户、Codex
 
 ## 结果与复盘
@@ -186,7 +187,7 @@
 
 里程碑 3 工程首切片已经落地：`CanvasProjectStateService` 从占位 `schemaVersion` 扩展为项目级 Note / viewport 状态服务，Tool Window bootstrap 从服务快照恢复，创建、编辑、移动、resize、删除 Note 和视口变化都会通过最小协议写回项目状态。前端仍是 IntelliJ 专用 bundle，但 Note 节点已经从只读测试卡片升级为可编辑、可拖拽、可缩放的持久化节点；`CanvasProtocolTest`、`CanvasProjectStateServiceTest` 和 `testWebviewBundle` 覆盖新增消息与状态 helper。
 
-剩余缺口是 Android Studio JCEF 能力、持久化完整手动验证以及外部网络稳定性：当前执行环境无 `DISPLAY` / `WAYLAND_DISPLAY`，`runIde` 仍无法在本机打开 IDE；用户已在 IntelliJ IDEA 与 PyCharm 中确认 React Flow 画布和 Note 创建可见，但 Android Studio `AI-253.30387.90` 显示 JCEF unsupported fallback；`verifyPlugin` 因访问 JetBrains 文档页和 Marketplace 依赖时 `Connection reset` 失败。后续仍需补 Android Studio JCEF 路径或替代方案、Note mutation 往返和关闭重开恢复目视证据、三类目标 IDE smoke 的 build 号、共享前端抽离时机、Node supervisor 复用细节和后续 Marketplace 发布策略。后续每个实现里程碑都必须同步测试证据和相关文档，不应把测试与文档都推迟到发布前。
+剩余缺口是精确 IDE/JCEF 矩阵、持久化完整手动验证以及外部网络稳定性：当前执行环境无 `DISPLAY` / `WAYLAND_DISPLAY`，`runIde` 仍无法在本机打开 IDE；用户已在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中确认 Dev Session Canvas 可打开，但 Android Studio 旧 `AI-253.30387.90` 仍保留为 JCEF unsupported 反例；`verifyPlugin` 因访问 JetBrains 文档页和 Marketplace 依赖时 `Connection reset` 失败。后续仍需补三类目标 IDE 的精确 build 号、Android Studio JCEF 安装方式、Note mutation 往返和关闭重开恢复目视证据、共享前端抽离时机、Node supervisor 复用细节和后续 Marketplace 发布策略。后续每个实现里程碑都必须同步测试证据和相关文档，不应把测试与文档都推迟到发布前。
 
 ## 上下文与定向
 
@@ -312,11 +313,11 @@
 
 当前里程碑 1 工程切片的验收标准是：`extensions/intellij/dev-session-canvas/` 存在可构建的 Gradle / Kotlin 插件工程；`plugin.xml` 声明 `Dev Session Canvas` Tool Window；JCEF 可用路径加载内联 React Flow bundle，JCEF 不可用路径显示可解释 fallback；前端 bundle 包含 host bridge、React Flow 根元素、测试 Note 消息和 CSS 标记；`./gradlew test buildPlugin verifyPluginStructure` 通过并生成内部安装 ZIP；相关设计文档和本 `ExecPlan` 记录已验证内容和待补 UI smoke。当前变更还必须运行 `git diff --check` 验证没有尾随空白。
 
-当前仍未满足完整里程碑 1 验收的是三类 IDE 的完整诊断型 UI smoke。当前执行环境没有图形会话，`runIde` 会失败并出现 `HeadlessException` / `No X11 DISPLAY variable was set`；用户已在 IntelliJ IDEA 与 PyCharm 中补充 Tool Window、React Flow 可见渲染和 Note 卡片截图，但仍需补 IDE build 号、JCEF 控制台、pan / zoom 行为、关闭清理，以及 Android Studio `AI-253.30387.90` 的 JCEF 可用路径或非 JCEF fallback 方案。
+当前仍未满足完整里程碑 1 验收的是三类 IDE 的完整诊断型 UI smoke。当前执行环境没有图形会话，`runIde` 会失败并出现 `HeadlessException` / `No X11 DISPLAY variable was set`；用户已在 IntelliJ IDEA 与 PyCharm 中补充 Tool Window、React Flow 可见渲染和 Note 卡片截图，并确认升级后的 Android Studio 安装/启用 JCEF 后也可以打开。但仍需补三类 IDE build 号、Android Studio JCEF 安装路径、JCEF 控制台、pan / zoom 行为和关闭清理。
 
-当前里程碑 2 工程切片的验收标准是：前端业务组件不再直接访问 JCEF 全局 bridge；创建按钮发送规范化的 `webview/createNote` 消息；Kotlin 侧通过 `CanvasProtocol.decodeWebviewMessage` 识别已知消息并拒绝未知消息；host state JSON 由 `CanvasProtocol.encodeHostMessage` 统一生成并有转义测试；`./gradlew test buildPlugin verifyPluginStructure` 通过。用户已在 IntelliJ IDEA 与 PyCharm 中补充真实可见 smoke；仍需补 bootstrap / state update 诊断日志、关闭清理和 Android Studio 路径。
+当前里程碑 2 工程切片的验收标准是：前端业务组件不再直接访问 JCEF 全局 bridge；创建按钮发送规范化的 `webview/createNote` 消息；Kotlin 侧通过 `CanvasProtocol.decodeWebviewMessage` 识别已知消息并拒绝未知消息；host state JSON 由 `CanvasProtocol.encodeHostMessage` 统一生成并有转义测试；`./gradlew test buildPlugin verifyPluginStructure` 通过。用户已在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中补充真实可见 smoke；仍需补 bootstrap / state update 诊断日志、关闭清理和精确 build 矩阵。
 
-当前里程碑 3 工程切片的验收标准是：`CanvasProjectStateService` 以项目级状态保存 Note、尺寸和视口；bootstrap/stateUpdated 都从服务快照生成；前端 Note 节点可编辑标题和正文、拖拽后发送位置、选中后 resize 并发送尺寸、点击删除后发送删除消息；`CanvasProtocolTest` 覆盖新增 Webview 消息解码和 host state viewport 编码；`CanvasProjectStateServiceTest` 覆盖状态 helper；`./gradlew test buildPlugin verifyPluginStructure` 通过。不设置 `until-build` 只用于解除 Android Studio `AI-253.30387.90` 的安装门禁。用户已在 IntelliJ IDEA 与 PyCharm 中确认画布和 Note 可见；完整里程碑 3 仍未满足的是关闭并重开同一项目后的真实恢复 smoke，以及 Android Studio JCEF unsupported 的解决方案。
+当前里程碑 3 工程切片的验收标准是：`CanvasProjectStateService` 以项目级状态保存 Note、尺寸和视口；bootstrap/stateUpdated 都从服务快照生成；前端 Note 节点可编辑标题和正文、拖拽后发送位置、选中后 resize 并发送尺寸、点击删除后发送删除消息；`CanvasProtocolTest` 覆盖新增 Webview 消息解码和 host state viewport 编码；`CanvasProjectStateServiceTest` 覆盖状态 helper；`./gradlew test buildPlugin verifyPluginStructure` 通过。不设置 `until-build` 只用于解除 Android Studio `AI-253.30387.90` 的安装门禁。用户已在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中确认基础可见 smoke；完整里程碑 3 仍未满足的是关闭并重开同一项目后的真实恢复 smoke、Android Studio 精确 build 和 JCEF 安装路径。
 
 后续整份计划完成时，用户可观察验收标准如下：
 
@@ -329,7 +330,7 @@
 7. Runtime Supervisor 路径已明确并可观察验证：插件能注册 runtime 会话、重新查询或恢复状态，并正确表达 `snapshot-only` / `live-runtime` 的保证差异。
 8. IntelliJ 版不会把 snapshot-only 恢复伪装成 live-runtime；如果没有 supervisor 或 provider 原生恢复身份，就明确展示历史态或中断态。
 9. `./gradlew test`、`./gradlew buildPlugin` 和 `./gradlew verifyPlugin` 在记录的目标 IDE build 上通过，失败项必须登记为 blocker 或技术债。
-10. Android Studio、IntelliJ IDEA 和 PyCharm 至少完成一轮基础 smoke；当前 IntelliJ IDEA 与 PyCharm 已有人工截图证据，Android Studio `AI-253.30387.90` 仅验证到安装成功和 JCEF unsupported fallback，不能写成已支持。
+10. Android Studio、IntelliJ IDEA 和 PyCharm 至少完成一轮基础 smoke；当前 IntelliJ IDEA 与 PyCharm 已有人工截图证据，Android Studio 也已由用户确认在升级并安装/启用 JCEF 后可以打开，但三类 IDE 的精确 build、诊断日志和完整持久化 smoke 仍待补。
 11. 每个实现里程碑的相关正式文档、设计文档、产品规格和本 `ExecPlan` 已持续同步；未确认内容仍标为待定或待验证。
 12. 里程碑 7 只包含内部/手动安装准备材料与最终发布验证，不再承接本应在功能实现阶段完成的测试或文档债务。
 
@@ -421,7 +422,7 @@
 
     用户手动 smoke 截图，2026-07-01：
     IntelliJ IDEA 与 PyCharm 中 Tool Window 可见，JCEF React Flow 画布、toolbar、viewport readout 和 Note 卡片可见；
-    Android Studio AI-253.30387.90 中 Tool Window 可见，但显示 JCEF unsupported fallback。
+    Android Studio AI-253.30387.90 中 Tool Window 可见，但显示 JCEF unsupported fallback；随后用户确认升级 Android Studio 并安装/启用 JCEF 后也可以打开。
 
 本次更新依据的官方文档证据如下；这些是移动目标，后续调整 build range 或发布矩阵前必须再次复核：
 
@@ -509,4 +510,6 @@ Kotlin 侧消息模型在第一版只能覆盖当前里程碑需要的最小子�
 
 补充更新说明：2026-06-30 12:58 +0800，记录里程碑 2 工程切片落地：新增 IntelliJ 前端 host adapter、Kotlin 最小协议 DTO / 编解码层和 `CanvasProtocolTest`；将创建测试 Note 的消息名收口为 `webview/createNote`，并保留旧 `webview/createTestNote` 的兼容解析。
 
-补充更新说明：2026-07-01 17:49 +0800，记录内部验证包移除 `until-build` 上限后的三 IDE 手动 smoke 结果：IntelliJ IDEA 与 PyCharm 已能显示 JCEF React Flow 画布和 Note 卡片；Android Studio `AI-253.30387.90` 能安装但显示 JCEF unsupported fallback，后续不能把 Android Studio 写成已支持。
+补充更新说明：2026-07-01 17:49 +0800，记录内部验证包移除 `until-build` 上限后的三 IDE 手动 smoke 结果：IntelliJ IDEA 与 PyCharm 已能显示 JCEF React Flow 画布和 Note 卡片；Android Studio `AI-253.30387.90` 能安装但显示 JCEF unsupported fallback，因此当时不能仅凭 IDEA / PyCharm 结果把 Android Studio 写成已支持。
+
+补充更新说明：2026-07-01 19:36 +0800，记录用户确认升级 Android Studio 并安装/启用 JCEF 后也可以打开 Dev Session Canvas；旧 `AI-253.30387.90` fallback 作为 runtime / 配置差异保留，后续仍需补精确 build、JCEF 安装方式和完整 smoke checklist。
