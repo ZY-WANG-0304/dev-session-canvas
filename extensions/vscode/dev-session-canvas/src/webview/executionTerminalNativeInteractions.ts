@@ -80,6 +80,11 @@ interface ExecutionTerminalNativeInteractionsOptions {
     kind: ExecutionNodeKind,
     image: ExecutionImagePasteData
   ) => void;
+  onCopyOsc52Text: (
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    text: string
+  ) => void;
   onClipboardDiagnostic?: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   resolveFileLinks: (
     nodeId: string,
@@ -204,6 +209,7 @@ const EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LIMIT = 3;
 const EXECUTION_CLIPBOARD_DIAGNOSTIC_VISIBLE_LINE_LENGTH_LIMIT = 160;
 const EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT = 2048;
 const EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_DECODED_PREVIEW_LIMIT = 120;
+const EXECUTION_CLIPBOARD_OSC52_COPY_BASE64_LIMIT = 2 * 1024 * 1024;
 const EXECUTION_RESTORE_CLIPBOARD_DIAGNOSTIC_GRACE_FRAMES = 3;
 const EXECUTION_RESTORE_SUPPRESSED_CLIPBOARD_DIAGNOSTIC_SOURCES: ReadonlySet<ExecutionTerminalClipboardDiagnosticSource> =
   new Set(['selectionChange', 'mouseTrackingMode', 'osc52']);
@@ -421,7 +427,28 @@ export function setupExecutionTerminalNativeInteractions(
     emitClipboardDiagnostic('selectionChange', () => readExecutionSelectionDiagnosticDetail(terminal));
   });
   const osc52DiagnosticDisposable = terminal.parser.registerOscHandler(52, (data) => {
-    emitClipboardDiagnostic('osc52', () => readExecutionOsc52DiagnosticDetail(data));
+    const restoreSuppressionActive =
+      isExecutionClipboardRestoreDiagnosticSuppressionActive(restoreSuppressionState);
+    if (restoreSuppressionActive) {
+      emitClipboardDiagnostic('osc52');
+      return false;
+    }
+
+    const osc52 = readExecutionOsc52DiagnosticDetail(data);
+    const terminalHasFocus = terminal.textarea === document.activeElement;
+    const copyText = osc52.copyText;
+    const shouldBridgeToHostClipboard = copyText !== undefined && terminalHasFocus;
+    emitClipboardDiagnostic('osc52', () => ({
+      ...osc52.detail,
+      terminalHasFocus,
+      bridgedToHostClipboard: shouldBridgeToHostClipboard,
+      ...(copyText !== undefined && !shouldBridgeToHostClipboard
+        ? { bridgeSkippedReason: 'terminal-not-focused' }
+        : {})
+    }));
+    if (shouldBridgeToHostClipboard) {
+      options.onCopyOsc52Text(options.nodeId, options.kind, copyText);
+    }
     return false;
   });
 
@@ -906,7 +933,7 @@ function createExecutionClipboardDiagnosticEmitter(
 
     try {
       const restoreSuppressionActive =
-        restoreSuppressionState.depth > 0 || restoreSuppressionState.releaseFrame !== undefined;
+        isExecutionClipboardRestoreDiagnosticSuppressionActive(restoreSuppressionState);
       if (restoreSuppressionActive && EXECUTION_RESTORE_SUPPRESSED_CLIPBOARD_DIAGNOSTIC_SOURCES.has(source)) {
         recordSuppressedExecutionClipboardDiagnostic(restoreSuppressionState, source);
         return;
@@ -941,6 +968,12 @@ function createExecutionClipboardRestoreSuppressionState(): ExecutionClipboardRe
     startedAtMs: 0,
     suppressedCounts: {}
   };
+}
+
+function isExecutionClipboardRestoreDiagnosticSuppressionActive(
+  state: ExecutionClipboardRestoreSuppressionState
+): boolean {
+  return state.depth > 0 || state.releaseFrame !== undefined;
 }
 
 function beginExecutionClipboardRestoreDiagnosticSuppression(
@@ -1113,7 +1146,10 @@ function readExecutionSelectionDiagnosticDetail(terminal: Terminal): Record<stri
   };
 }
 
-function readExecutionOsc52DiagnosticDetail(data: string): Record<string, unknown> {
+function readExecutionOsc52DiagnosticDetail(data: string): {
+  detail: Record<string, unknown>;
+  copyText?: string;
+} {
   const separatorIndex = data.indexOf(';');
   const target = separatorIndex >= 0 ? data.slice(0, separatorIndex) : '';
   const payload = separatorIndex >= 0 ? data.slice(separatorIndex + 1) : data;
@@ -1125,15 +1161,19 @@ function readExecutionOsc52DiagnosticDetail(data: string): Record<string, unknow
 
   if (payload.length === 0) {
     return {
-      ...baseDetail,
-      dataKind: 'empty'
+      detail: {
+        ...baseDetail,
+        dataKind: 'empty'
+      }
     };
   }
 
   if (payload === '?') {
     return {
-      ...baseDetail,
-      dataKind: 'query'
+      detail: {
+        ...baseDetail,
+        dataKind: 'query'
+      }
     };
   }
 
@@ -1141,8 +1181,10 @@ function readExecutionOsc52DiagnosticDetail(data: string): Record<string, unknow
   const base64Like = /^[A-Za-z0-9+/]*={0,2}$/u.test(normalizedPayload);
   if (!base64Like) {
     return {
-      ...baseDetail,
-      dataKind: 'non-base64'
+      detail: {
+        ...baseDetail,
+        dataKind: 'non-base64'
+      }
     };
   }
 
@@ -1155,7 +1197,18 @@ function readExecutionOsc52DiagnosticDetail(data: string): Record<string, unknow
   };
 
   if (normalizedPayload.length > EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT) {
-    return detail;
+    detail.decodedPreviewSkippedReason = 'payload-too-large';
+  }
+
+  const clipboardTarget = shouldBridgeExecutionOsc52ClipboardTarget(target);
+  if (!clipboardTarget) {
+    detail.copySuppressedReason = 'target-not-clipboard';
+  }
+  if (normalizedPayload.length > EXECUTION_CLIPBOARD_OSC52_COPY_BASE64_LIMIT) {
+    if (clipboardTarget) {
+      detail.copySuppressedReason = 'payload-too-large';
+    }
+    return { detail };
   }
 
   try {
@@ -1165,20 +1218,33 @@ function readExecutionOsc52DiagnosticDetail(data: string): Record<string, unknow
       bytes[index] = binary.charCodeAt(index);
     }
     const decodedText = new TextDecoder().decode(bytes);
-    return {
+    const decodedDetail: Record<string, unknown> = {
       ...detail,
-      decodedBytes: bytes.byteLength,
-      decodedPreview: summarizeExecutionDiagnosticText(
+      decodedBytes: bytes.byteLength
+    };
+    if (normalizedPayload.length <= EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_BASE64_LIMIT) {
+      decodedDetail.decodedPreview = summarizeExecutionDiagnosticText(
         decodedText,
         EXECUTION_CLIPBOARD_DIAGNOSTIC_OSC52_DECODED_PREVIEW_LIMIT
-      )
+      );
+    }
+    return {
+      detail: decodedDetail,
+      copyText: clipboardTarget ? decodedText : undefined
     };
   } catch (error) {
     return {
-      ...detail,
-      decodeError: error instanceof Error ? error.message : String(error)
+      detail: {
+        ...detail,
+        decodeError: error instanceof Error ? error.message : String(error)
+      }
     };
   }
+}
+
+function shouldBridgeExecutionOsc52ClipboardTarget(target: string): boolean {
+  const normalizedTargets = target.trim();
+  return normalizedTargets.length === 0 || normalizedTargets === 'c';
 }
 
 function readExecutionTerminalVisibleLinePreview(terminal: Terminal): string[] {

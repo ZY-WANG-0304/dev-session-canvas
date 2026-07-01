@@ -5552,6 +5552,8 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
       onPasteImage: (nodeId, kind, image) => data.onPasteExecutionImage?.(nodeId, kind, image),
+      onCopyOsc52Text: (nodeId, _kind, text) =>
+        data.onCopyTextToClipboard?.(text, 'execution-osc52', nodeId),
       onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
@@ -6105,6 +6107,8 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
       onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
         data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
       onPasteImage: (nodeId, kind, image) => data.onPasteExecutionImage?.(nodeId, kind, image),
+      onCopyOsc52Text: (nodeId, _kind, text) =>
+        data.onCopyTextToClipboard?.(text, 'execution-osc52', nodeId),
       onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
       resolveFileLinks: resolveExecutionTerminalFileLinks
     });
