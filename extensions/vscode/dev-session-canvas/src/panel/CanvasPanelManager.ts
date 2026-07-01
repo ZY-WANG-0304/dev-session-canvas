@@ -14983,8 +14983,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.recordDiagnosticEvent('clipboard/textCopied', {
         source: detail.source,
         nodeId: detail.nodeId,
-        bytes: Buffer.byteLength(text, 'utf8'),
-        preview: summarizeDiagnosticInput(text)
+        ...summarizeClipboardTextCopyDiagnostic(text, detail.source)
       });
     } catch (error) {
       this.recordDiagnosticEvent('clipboard/textCopyFailed', {
@@ -17543,6 +17542,22 @@ function summarizeDiagnosticInput(data: string): string {
   }
 
   return `${normalized.slice(0, 117)}...`;
+}
+
+function summarizeClipboardTextCopyDiagnostic(
+  data: string,
+  source: WebviewClipboardTextSource
+): Record<string, unknown> {
+  const detail: Record<string, unknown> = {
+    bytes: Buffer.byteLength(data, 'utf8')
+  };
+  if (source === 'execution-osc52') {
+    detail.previewRedacted = true;
+    return detail;
+  }
+
+  detail.preview = summarizeDiagnosticInput(data);
+  return detail;
 }
 
 function createNextState(

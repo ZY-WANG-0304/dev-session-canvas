@@ -165,7 +165,10 @@ export interface CanvasGroupSummary {
 export type TerminalBackendKind = 'node-pty';
 export type AgentProviderKind = 'codex' | 'claude';
 export type AgentLaunchPresetKind = 'default' | 'resume' | 'yolo' | 'sandbox' | 'custom';
-export type WebviewClipboardTextSource = 'note-markdown-subtitle' | 'note-markdown-metadata';
+export type WebviewClipboardTextSource =
+  | 'note-markdown-subtitle'
+  | 'note-markdown-metadata'
+  | 'execution-osc52';
 export type PendingExecutionLaunch = 'start' | 'resume';
 export type RuntimePersistenceMode = 'snapshot-only' | 'live-runtime';
 export type RuntimeAttachmentState = 'attached-live' | 'reattaching' | 'history-restored';
@@ -1280,7 +1283,8 @@ const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
 const agentLaunchPresetKinds: AgentLaunchPresetKind[] = ['default', 'resume', 'yolo', 'sandbox', 'custom'];
 const webviewClipboardTextSources: WebviewClipboardTextSource[] = [
   'note-markdown-subtitle',
-  'note-markdown-metadata'
+  'note-markdown-metadata',
+  'execution-osc52'
 ];
 const webviewExecutionImagePasteMimeTypes: ExecutionImagePasteMimeType[] = [
   'image/png',

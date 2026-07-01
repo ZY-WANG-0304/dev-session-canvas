@@ -1,6 +1,6 @@
 # Agent / Terminal 复制粘贴快捷键规格
 
-当前状态：已确认，已实现并通过自动化验证。本文收口画布内 `Agent` / `Terminal` 执行节点在终端焦点下处理复制、文本粘贴、Agent 截图粘贴和 `Ctrl+C` 打断冲突的产品口径；原文本粘贴实现由 `docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md` 跟踪，Agent 截图粘贴实现由 `docs/exec-plans/active/agent-screenshot-paste-input.md` 跟踪。
+当前状态：已确认，已实现并通过自动化验证。本文收口画布内 `Agent` / `Terminal` 执行节点在终端焦点下处理复制、OSC 52 复制桥接、文本粘贴、Agent 截图粘贴和 `Ctrl+C` 打断冲突的产品口径；原文本粘贴实现由 `docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md` 跟踪，Agent 截图粘贴实现由 `docs/exec-plans/active/agent-screenshot-paste-input.md` 跟踪。
 
 ## 1. 用户问题
 
@@ -17,7 +17,8 @@
 3. 用户没有终端选区时按 `Ctrl+C`，按原生 Terminal 语义把打断字符发送给当前 PTY，而不是触发节点停止、删除或画布级复制。
 4. 用户按平台对应的粘贴快捷键，系统剪贴板中的文本输入当前执行会话；多行或带尾随换行的文本按安全规则处理，避免未经确认立即执行。
 5. 用户在 live `Agent` 节点聚焦时复制一张截图后粘贴，系统把截图保存成当前 Agent CLI 可读取的图片文件，并把图片路径文本插入 Agent 输入行；用户可以继续补充文字并手动提交。
-6. 用户焦点在 Note、标题输入框、画布空白区或 VSCode 工作台其他区域时，不套用执行节点终端快捷键。
+6. 用户在 Claude Code 等 TUI 内触发复制时，如果 TUI 因 mouse tracking / alternate buffer 无法形成普通终端选区而改用 OSC 52，系统仍把该次复制写入系统剪贴板。
+7. 用户焦点在 Note、标题输入框、画布空白区或 VSCode 工作台其他区域时，不套用执行节点终端快捷键，也不让后台终端输出污染剪贴板。
 
 ## 4. 在范围内
 
@@ -31,6 +32,7 @@
 - `Agent` 节点支持从剪贴板粘贴 `image/png`、`image/jpeg`、`image/webp` 截图或图片；Webview 读取图片字节，Host 校验并保存到扩展存储，再把图片路径文本粘贴回当前 Agent 输入行。
 - Agent 截图文件是临时附件缓存，不是用户资产；默认 7 天 TTL，由独立后台维护任务在低优先级窗口分片清理。清理不绑定启动、panel 激活、截图粘贴、粘贴后立即动作或 Agent 退出；清理失败可以用非阻塞错误提示让用户感知并排查，但不得阻塞或影响当前输入、粘贴、启动或画布交互。
 - Agent 截图粘贴不自动提交回车；用户仍需自行补充问题并提交，避免截图一粘贴就触发不可撤销或高成本请求。
+- 执行节点内 TUI 发出的 OSC 52 剪贴板序列属于复制主路径：当当前终端有焦点、序列目标是 clipboard（`c` 或空 target）且不处于 snapshot restore 时，系统把解码后的文本写入系统剪贴板。
 - `Terminal` 节点不把图片剪贴板转成 shell 输入；如果同一次粘贴没有文本内容，应取消或提示，而不是向 PTY 写入图片路径。
 
 ## 5. 不在范围内
@@ -40,6 +42,7 @@
 - 不把 `Ctrl+C` 映射为“停止 Agent / Terminal 节点”；节点停止仍通过标题栏按钮或已有 Host 停止入口完成。
 - 不在 Linux 默认支持 `Ctrl+V` 粘贴，因为 VSCode 原生 Terminal 默认把 Linux 粘贴放在 `Ctrl+Shift+V`，以避免和 shell 输入语义冲突。
 - 不承诺 HTML 富文本复制、选择剪贴板 middle-click paste、右键 `copyPaste` 行为或通用文件资源剪贴板 fallback。
+- 不桥接非 clipboard target 的 OSC 52，不在 snapshot restore、未聚焦终端或超出大小上限时写系统剪贴板。
 - 不把截图粘贴实现成 Codex / Claude Code 原生 `[Image #N]` chip；第一版以保存图片文件并粘贴路径文本作为跨 provider 最小能力。
 - 不在粘贴截图时自动发送 Enter，也不自动替用户生成具体任务提示词。
 - 不把截图保存到用户仓库目录或自动纳入版本控制；图片只作为当前 Agent 输入的临时上下文文件。
@@ -55,6 +58,7 @@
 - 图片剪贴板：Webview 能从 `ClipboardEvent.clipboardData` 或浏览器剪贴板富内容 API 读取到的 `image/*` 数据；Host 只接受白名单 MIME、有限大小和可识别 magic number 的图片。
 - 图片路径文本：Host 保存截图后返回给 xterm 的本地绝对路径引用；它不包含自动提交回车，并且应尽量 shell-safe，使 Agent CLI 能把它识别为图片路径或普通路径上下文。
 - 临时截图缓存维护：后台维护任务只扫描 `execution-image-pastes` 命名空间，按 7 天 TTL 删除过期截图，按更短 TTL 删除中断写入留下的 `.tmp` 文件；单次运行受文件数、扫描量和耗时预算约束，若预算耗尽则短延迟续跑，不把 backlog 拖到固定日频窗口。
+- OSC 52 复制请求：由终端输出中的 `OSC 52 ; <target> ; <base64>` 表达；Webview 解码后只通过 Host 剪贴板路径写入系统剪贴板，不把文本回写到 PTY，也不自动粘贴到当前输入行。
 
 ## 7. 验收标准
 
@@ -67,6 +71,7 @@
 - 在 live `Agent` 节点中粘贴支持的截图时，Webview 发出图片粘贴请求，Host 保存图片并返回图片路径文本，最终该路径通过 xterm paste 进入 Agent 输入行；用户没有确认提交前不会自动发送回车。
 - 在 `Terminal` 节点中粘贴只有图片的剪贴板时，不应向 shell 写入路径或二进制数据；现有文本粘贴回归仍通过。
 - 临时截图缓存清理在后台分片运行；过期文件会被清理，未过期文件和非截图缓存命名文件会保留；清理失败时用户能收到非阻塞错误提示，当前 Agent 交互不受影响。
+- Claude Code 等 TUI 在 mouse tracking 下通过 OSC 52 复制文本时，画布节点应更新系统剪贴板；随后用户在其他输入框粘贴应得到刚复制的文本，而不是旧剪贴板内容。
 
 ## 8. 开放问题
 
