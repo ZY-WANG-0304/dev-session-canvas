@@ -16,6 +16,8 @@ const requiredJavascriptMarkers = [
   'devSessionCanvasPostMessage',
   'devSessionCanvasReceiveHostMessage',
   'normalizeTerminalInput',
+  'isStrayTerminalInputCodePoint',
+  'last diagnostics',
   'installTerminalDiagnosticsProbe',
   'installJcefTerminalInputGuard',
   'webview/setTerminalDiagnostics',

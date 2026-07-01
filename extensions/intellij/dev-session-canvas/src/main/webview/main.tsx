@@ -86,8 +86,17 @@ function postTerminalDiagnostic(id: string | undefined, record: TerminalDiagnost
 }
 
 function normalizeTerminalInput(value: string): string {
-  // JCEF on macOS can surface stray C1 controls from keyboard events; xterm special keys use C0/ESC.
-  return value.replace(/[\u0080-\u009f]/g, '');
+  // JCEF can surface stray C1 controls or Unicode noncharacters; xterm special keys use C0/ESC.
+  return Array.from(value)
+    .filter((character) => !isStrayTerminalInputCodePoint(character.codePointAt(0) ?? 0))
+    .join('');
+}
+
+function isStrayTerminalInputCodePoint(codePoint: number): boolean {
+  return (codePoint >= 0x80 && codePoint <= 0x9f)
+    || (codePoint >= 0xd800 && codePoint <= 0xdfff)
+    || (codePoint >= 0xfdd0 && codePoint <= 0xfdef)
+    || (codePoint & 0xfffe) === 0xfffe;
 }
 
 function isPlainKeyboardTextEvent(event: KeyboardEvent): boolean {
@@ -656,6 +665,10 @@ function CanvasApp(): JSX.Element {
     host.postMessage({ type: 'webview/setTerminalDiagnostics', enabled: !terminalDiagnostics.enabled });
   }, [terminalDiagnostics.enabled]);
 
+  const terminalDiagnosticsReadout = terminalDiagnostics.path
+    ? `${terminalDiagnostics.enabled ? 'diagnostics' : 'last diagnostics'}: ${terminalDiagnostics.path}`
+    : terminalDiagnostics.message;
+
   return (
     <div className="dsc-root" data-dsc-root="intellij-react-flow-poc">
       <div className="dsc-toolbar">
@@ -673,7 +686,7 @@ function CanvasApp(): JSX.Element {
           x {viewport.x.toFixed(1)} | y {viewport.y.toFixed(1)} | z {viewport.zoom.toFixed(2)}
         </span>
         <span className="dsc-diagnostics-readout" title={terminalDiagnostics.path || terminalDiagnostics.message}>
-          {terminalDiagnostics.enabled ? `diagnostics: ${terminalDiagnostics.path}` : terminalDiagnostics.message}
+          {terminalDiagnosticsReadout}
         </span>
       </div>
       <ReactFlow
