@@ -13,12 +13,14 @@ export interface SerializedTerminalState {
   format: typeof SERIALIZED_TERMINAL_STATE_FORMAT;
   data: string;
   viewportY?: number;
+  outputSequence?: number;
 }
 
 export interface SerializedTerminalStateTrackerOptions {
   scrollback?: number;
   initialState?: SerializedTerminalState;
   initialOutput?: string;
+  initialOutputSequence?: number;
 }
 
 export function normalizeSerializedTerminalState(value: unknown): SerializedTerminalState | undefined {
@@ -33,6 +35,13 @@ export function normalizeSerializedTerminalState(value: unknown): SerializedTerm
     'viewportY' in value && typeof value.viewportY === 'number' && Number.isInteger(value.viewportY) && value.viewportY >= 0
       ? value.viewportY
       : undefined;
+  const outputSequence =
+    'outputSequence' in value &&
+    typeof value.outputSequence === 'number' &&
+    Number.isInteger(value.outputSequence) &&
+    value.outputSequence >= 0
+      ? value.outputSequence
+      : undefined;
   if (!format || data === undefined || data.length > MAX_SERIALIZED_TERMINAL_STATE_DATA_LENGTH) {
     return undefined;
   }
@@ -40,7 +49,8 @@ export function normalizeSerializedTerminalState(value: unknown): SerializedTerm
   return {
     format,
     data,
-    viewportY
+    viewportY,
+    outputSequence
   };
 }
 
@@ -54,7 +64,8 @@ export function cloneSerializedTerminalState(
   return {
     format: value.format,
     data: value.data,
-    viewportY: value.viewportY
+    viewportY: value.viewportY,
+    outputSequence: value.outputSequence
   };
 }
 
@@ -64,6 +75,8 @@ export class SerializedTerminalStateTracker {
   private scrollback: number;
   private operationChain: Promise<void> = Promise.resolve();
   private pendingWriteData = '';
+  private pendingWriteOutputSequence: number | undefined;
+  private outputSequence: number | undefined;
   private pendingWriteDrainTimer: ReturnType<typeof setTimeout> | undefined;
   private cachedStateDirty = false;
   private lastCachedStateRefreshAtMs = Date.now();
@@ -81,7 +94,21 @@ export class SerializedTerminalStateTracker {
     this.refreshCachedState();
 
     const normalizedInitialState = normalizeSerializedTerminalState(options.initialState);
-    if (normalizedInitialState) {
+    const initialOutput = options.initialOutput;
+    const initialOutputSequence = normalizeSerializedTerminalOutputSequence(options.initialOutputSequence);
+    this.outputSequence = initialOutputSequence;
+    this.refreshCachedState();
+    const hasInitialOutput = initialOutput !== undefined;
+    const canTrustInitialState =
+      normalizedInitialState !== undefined &&
+      (!hasInitialOutput ||
+        (
+          normalizedInitialState.outputSequence !== undefined &&
+          initialOutputSequence !== undefined &&
+          normalizedInitialState.outputSequence === initialOutputSequence
+        ));
+
+    if (canTrustInitialState && normalizedInitialState) {
       this.cachedState = cloneSerializedTerminalState(normalizedInitialState) ?? this.cachedState;
       if (normalizedInitialState.data) {
         this.enqueueOperation(() => this.writeInternal(normalizedInitialState.data));
@@ -89,19 +116,43 @@ export class SerializedTerminalStateTracker {
       return;
     }
 
-    const initialOutput = options.initialOutput;
     if (initialOutput) {
-      this.enqueueOperation(() => this.writeInternal(initialOutput));
+      this.enqueueOperation(() => this.drainWriteData(initialOutput, true, initialOutputSequence));
+      return;
     }
+
   }
 
-  public write(chunk: string): void {
+  public write(chunk: string, options: { outputSequence?: number } = {}): void {
     if (!chunk || this.disposed) {
       return;
     }
 
     this.pendingWriteData += chunk;
+    this.pendingWriteOutputSequence = maxSerializedTerminalOutputSequence(
+      this.pendingWriteOutputSequence,
+      options.outputSequence
+    );
     this.schedulePendingWriteDrain();
+  }
+
+  public markOutputSequence(outputSequence: number | undefined): void {
+    if (this.disposed) {
+      return;
+    }
+
+    const wasDirty = this.cachedStateDirty;
+    const hasPendingWrite = this.pendingWriteData.length > 0;
+    const changed = this.applyOutputSequence(outputSequence);
+    if (!changed || wasDirty || hasPendingWrite) {
+      return;
+    }
+
+    this.cachedState = {
+      ...this.cachedState,
+      outputSequence: this.outputSequence
+    };
+    this.cachedStateDirty = false;
   }
 
   public resize(cols: number, rows: number): void {
@@ -110,9 +161,9 @@ export class SerializedTerminalStateTracker {
     }
 
     this.clearPendingWriteDrainTimer();
-    const pendingWriteData = this.takePendingWriteData();
+    const pendingWriteBatch = this.takePendingWriteBatch();
     this.enqueueOperation(async () => {
-      await this.drainWriteData(pendingWriteData, true);
+      await this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence);
       this.terminal.resize(cols, rows);
       this.refreshCachedState();
     });
@@ -131,16 +182,16 @@ export class SerializedTerminalStateTracker {
     const normalizedScrollback = normalizeTerminalScrollback(scrollback, DEFAULT_TERMINAL_SCROLLBACK);
     if (normalizedScrollback === this.scrollback) {
       this.clearPendingWriteDrainTimer();
-      const pendingWriteData = this.takePendingWriteData();
-      this.enqueueOperation(() => this.drainWriteData(pendingWriteData, true));
+      const pendingWriteBatch = this.takePendingWriteBatch();
+      this.enqueueOperation(() => this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence));
       await this.operationChain;
       return;
     }
 
     this.clearPendingWriteDrainTimer();
-    const pendingWriteData = this.takePendingWriteData();
+    const pendingWriteBatch = this.takePendingWriteBatch();
     this.enqueueOperation(async () => {
-      await this.drainWriteData(pendingWriteData, true);
+      await this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence);
       const currentState = this.serializeState();
       const cols = this.terminal.cols;
       const rows = this.terminal.rows;
@@ -165,8 +216,8 @@ export class SerializedTerminalStateTracker {
     }
 
     this.clearPendingWriteDrainTimer();
-    const pendingWriteData = this.takePendingWriteData();
-    this.enqueueOperation(() => this.drainWriteData(pendingWriteData, true));
+    const pendingWriteBatch = this.takePendingWriteBatch();
+    this.enqueueOperation(() => this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence));
     await this.operationChain;
     if (this.cachedStateDirty) {
       this.refreshCachedState();
@@ -182,6 +233,7 @@ export class SerializedTerminalStateTracker {
     this.disposed = true;
     this.clearPendingWriteDrainTimer();
     this.pendingWriteData = '';
+    this.pendingWriteOutputSequence = undefined;
     this.disposeRuntime();
   }
 
@@ -208,8 +260,8 @@ export class SerializedTerminalStateTracker {
 
     this.pendingWriteDrainTimer = setTimeout(() => {
       this.pendingWriteDrainTimer = undefined;
-      const pendingWriteData = this.takePendingWriteData();
-      this.enqueueOperation(() => this.drainWriteData(pendingWriteData, false));
+      const pendingWriteBatch = this.takePendingWriteBatch();
+      this.enqueueOperation(() => this.drainWriteData(pendingWriteBatch.data, false, pendingWriteBatch.outputSequence));
     }, SERIALIZED_TERMINAL_STATE_WRITE_BATCH_DELAY_MS);
   }
 
@@ -222,14 +274,23 @@ export class SerializedTerminalStateTracker {
     this.pendingWriteDrainTimer = undefined;
   }
 
-  private takePendingWriteData(): string {
-    const data = this.pendingWriteData;
+  private takePendingWriteBatch(): { data: string; outputSequence?: number } {
+    const batch = {
+      data: this.pendingWriteData,
+      outputSequence: this.pendingWriteOutputSequence
+    };
     this.pendingWriteData = '';
-    return data;
+    this.pendingWriteOutputSequence = undefined;
+    return batch;
   }
 
-  private async drainWriteData(data: string, forceRefresh: boolean): Promise<void> {
+  private async drainWriteData(
+    data: string,
+    forceRefresh: boolean,
+    outputSequence?: number
+  ): Promise<void> {
     let remainingData = data;
+    let refreshedDuringDrain = false;
     while (remainingData && !this.disposed) {
       const chunk = remainingData.slice(0, SERIALIZED_TERMINAL_STATE_WRITE_CHUNK_CHARS);
       remainingData = remainingData.slice(chunk.length);
@@ -239,15 +300,36 @@ export class SerializedTerminalStateTracker {
       this.cachedStateDirty = true;
       if (forceRefresh || Date.now() - this.lastCachedStateRefreshAtMs >= SERIALIZED_TERMINAL_STATE_CACHE_REFRESH_INTERVAL_MS) {
         this.refreshCachedState();
+        refreshedDuringDrain = true;
       }
       if (remainingData) {
         await delay(0);
       }
     }
 
-    if (forceRefresh && this.cachedStateDirty) {
+    this.applyOutputSequence(outputSequence);
+    if ((forceRefresh || refreshedDuringDrain) && this.cachedStateDirty) {
       this.refreshCachedState();
     }
+  }
+
+  private applyOutputSequence(outputSequence: number | undefined): boolean {
+    const normalizedOutputSequence = normalizeSerializedTerminalOutputSequence(outputSequence);
+    if (normalizedOutputSequence === undefined) {
+      return false;
+    }
+
+    const nextOutputSequence =
+      this.outputSequence === undefined
+        ? normalizedOutputSequence
+        : Math.max(this.outputSequence, normalizedOutputSequence);
+    if (nextOutputSequence === this.outputSequence) {
+      return false;
+    }
+
+    this.outputSequence = nextOutputSequence;
+    this.cachedStateDirty = true;
+    return true;
   }
 
   private async writeInternal(
@@ -329,9 +411,24 @@ export class SerializedTerminalStateTracker {
         excludeAltBuffer: false,
         excludeModes: false
       }),
-      viewportY: this.terminal.buffer.active.viewportY >= 0 ? this.terminal.buffer.active.viewportY : undefined
+      viewportY: this.terminal.buffer.active.viewportY >= 0 ? this.terminal.buffer.active.viewportY : undefined,
+      outputSequence: this.outputSequence
     };
   }
+}
+
+function normalizeSerializedTerminalOutputSequence(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+function maxSerializedTerminalOutputSequence(...values: unknown[]): number | undefined {
+  return values.reduce<number | undefined>((currentMax, value) => {
+    const normalized = normalizeSerializedTerminalOutputSequence(value);
+    if (normalized === undefined) {
+      return currentMax;
+    }
+    return currentMax === undefined ? normalized : Math.max(currentMax, normalized);
+  }, undefined);
 }
 
 function delay(timeoutMs: number): Promise<void> {

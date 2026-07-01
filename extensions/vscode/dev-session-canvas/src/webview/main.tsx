@@ -16364,8 +16364,21 @@ function restoreExecutionTerminalSnapshot(
     });
   };
 
-  if (detail.serializedTerminalState) {
-    terminal.write(detail.serializedTerminalState.data, () => {
+  const snapshotOutputSequence = normalizeTerminalSnapshotOutputSequence(detail.outputSequence);
+  const serializedTerminalStateOutputSequence = normalizeTerminalSnapshotOutputSequence(
+    detail.serializedTerminalState?.outputSequence
+  );
+  const serializedTerminalState =
+    detail.serializedTerminalState !== undefined &&
+    (
+      snapshotOutputSequence === undefined ||
+      serializedTerminalStateOutputSequence === snapshotOutputSequence
+    )
+      ? detail.serializedTerminalState
+      : undefined;
+
+  if (serializedTerminalState) {
+    terminal.write(serializedTerminalState.data, () => {
       finishRestore();
       onRestored?.();
     });
@@ -16382,6 +16395,10 @@ function restoreExecutionTerminalSnapshot(
 
   finishRestore();
   onRestored?.();
+}
+
+function normalizeTerminalSnapshotOutputSequence(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
 }
 
 function scheduleExecutionTerminalVisibilityRestore(): void {
