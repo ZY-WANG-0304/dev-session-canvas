@@ -1314,6 +1314,24 @@ body {
   }
 }
 
+@keyframes pane-gallery-root-running-scanline {
+  0% {
+    transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
+    opacity: 0;
+  }
+
+  5%,
+  82% {
+    opacity: var(--pane-gallery-root-running-scanline-opacity);
+  }
+
+  96%,
+  100% {
+    transform: translateX(var(--pane-gallery-root-running-scanline-travel)) rotate(var(--pane-gallery-root-running-scanline-angle));
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .canvas-shell .canvas-minimap .react-flow__minimap-node.is-attention-flashing {
     animation: none;
@@ -3777,6 +3795,41 @@ body {
   --execution-attention-reduced-shadow:
     inset 0 0 0 2px color-mix(in srgb, var(--execution-node-attention-color) 88%, transparent),
     0 0 0 2px color-mix(in srgb, var(--execution-node-attention-color) 68%, transparent);
+}
+
+.pane-gallery-root-header.is-pane-gallery-root-running-scanline {
+  --pane-gallery-root-running-scanline-color: var(--pane-gallery-root-header-border-color);
+  --pane-gallery-root-running-scanline-travel: 100%;
+  --pane-gallery-root-running-scanline-angle: 18deg;
+  --pane-gallery-root-running-scanline-width: 16px;
+  --pane-gallery-root-running-scanline-opacity: 0.82;
+  overflow: hidden;
+}
+
+.pane-gallery-root-header.is-pane-gallery-root-running-scanline::after {
+  content: "";
+  position: absolute;
+  top: -22%;
+  bottom: -22%;
+  left: -28px;
+  right: auto;
+  width: calc(100% + 56px);
+  pointer-events: none;
+  border-left: var(--pane-gallery-root-running-scanline-width) solid var(--pane-gallery-root-running-scanline-color);
+  background: transparent;
+  opacity: 0;
+  filter: none;
+  transform-origin: left center;
+  transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
+  animation: pane-gallery-root-running-scanline 3s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-gallery-root-header.is-pane-gallery-root-running-scanline::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .pane-gallery-root-title-block {
