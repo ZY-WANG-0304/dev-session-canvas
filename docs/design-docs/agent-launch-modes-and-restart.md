@@ -205,27 +205,27 @@ updated_at: 2026-07-01
 
 之所以要把边界收得这么窄，是因为右键菜单的启动方式层和 Quick Input 第二层的目标只是提供一组仓库内定义、可预测的快捷预设，而不是替不同 provider 的全部 CLI 语义兜底。否则一旦把未知参数也纳入“同类模式参数”的模糊概念里，后续实现者和 reviewer 很容易误以为这里应该继续扩展成通用参数重写器。
 
-相反，`Codex` 的 `resume` 子命令及其参数（例如 `resume --last`、`resume <session-id>`），以及 `Claude Code` 的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 及其参数，都属于“恢复哪条会话”的语义，不应被当成与这些执行策略互斥的 owned flags 去剥离。
+Default args 的配置边界也在同一层收口：它只能承载稳定的 runtime/configuration 参数，不能承载一次性的会话目标、picker 范围、Fork 标记，或 Codex 里会与 `resume` / `fork` 目标位置混淆的裸 positional prompt/session。原因是 Default args 会同时喂给快速启动、预设展示、自定义启动预填、历史恢复、当前节点 `重启` 与 `分叉`；如果把 `resume`、`fork`、`--last`、`--resume <id>` 或 `--fork-session` 这类目标选择写成全局默认值，后续显式 `Resume / Fork` 动作只能在启动时“猜测并清理”用户真正想表达的目标，既不可见也不可维护。因此共享命令层应在读取默认启动参数时就 fail closed：`Codex` 默认启动参数中禁止 `resume`、`fork`、`--last`、`--all`、`--include-non-interactive`、`--` 和不属于 option value 的裸 positional token；`Claude Code` 默认启动参数中禁止 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 与 `--fork-session`，包括 `--flag=value` 与空格分隔形式。用户如果确实需要这些一次性目标，应走创建前 `Resume` / 节点 `重启` / `分叉` / 历史恢复入口，或把它们写入本次自定义启动命令，而不是写入 Default args。
 
-同一个共享层里，`Resume` 预设本身还要单独走另一套归一化：它不是“保留默认参数里已有的定向 resume 目标”，而是强制收口到 provider 自己的 resume 入口。因此若默认启动参数已经写了 `resume --last`、`resume <session-id>`、`--resume <session-id>`、`-r <session-id>`、`--continue <session-id>`、`-c <session-id>` 或 `--session-id <session-id>`，命令层在应用 `Resume` 预设前要先剥离这些更定向的会话选择片段，再回填通用的 `codex resume` / `claude --resume`。
+同一个共享层里，`Resume` 预设本身还要单独走另一套构造：它不是“保留默认参数里已有的定向 resume 目标”，而是强制收口到 provider 自己的 resume 入口。由于 Default args 已经禁止会话目标类参数，应用 `Resume` 预设时不再静默清理这类冲突配置；如果默认启动参数已经含有它们，菜单、Quick Input 与宿主 fresh-start 都必须显式报错并要求用户改配置。
 
-这里还要继续细分两类场景：一类是“没有显式目标 session-id 的 Resume 预设”，它进入 provider 自己的 picker / resume 入口，因此像 `Codex --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数仍可保留；另一类是“已经持有明确 session-id 的显式恢复命令”，例如侧栏历史会话恢复或停止后对当前节点点击 `重启`。这时命令层不能再把上述选择阶段参数继续带到 `codex resume <session-id>` 后面，否则会把“已明确目标的恢复”错误混成“仍在影响 picker 行为”的命令。显式目标恢复在 Codex 侧应只保留 `--model`、`--sandbox`、`--ask-for-approval` 等对 `resume <session-id>` 本身仍有效的参数，同时剥离 `--all`、`--include-non-interactive`、`--last` 与旧的目标 session 片段。
+这里还要继续细分两类场景：一类是“没有显式目标 session-id 的 Resume 预设”，它进入 provider 自己的 picker / resume 入口；另一类是“已经持有明确 session-id 的显式恢复命令”，例如侧栏历史会话恢复或停止后对当前节点点击 `重启`。由于 `--last`、`--all`、`--include-non-interactive` 这类选择阶段参数已经不允许进入 Default args，显式目标恢复不会再把它们作为可清理默认值继续带入；显式目标恢复在 Codex 侧只保留 `--model`、`--sandbox`、`--ask-for-approval` 等对 `resume <session-id>` 本身仍有效的参数。
 
 显式 `Resume / Fork` 的冲突与非冲突配置清单固定如下：
 
 - Provider 命令路径不冲突：`devSessionCanvas.agent.codexCommand` / `devSessionCanvas.agent.claudeCommand` 继续决定首个命令 token；宿主仍通过 resolver 找到实际可执行文件。
 - Agent 工作目录不冲突：当前节点 `metadata.agent.cwd` 或历史记录里的 `cwd` 继续作为 PTY `cwd`，不会因 resume/fork 被替换成 provider home 或扩展 storage。
-- Codex 显式目标 `resume` 的冲突项包括旧的 `resume` / `fork` 目标片段、旧 positional session/prompt、`--last`、`--all`、`--include-non-interactive`，无论它们写在子命令之前还是之后都必须剥离；不冲突项包括 `--model` / `-m`、`--sandbox` / `-s`、`--ask-for-approval` / `-a`、`--profile` / `-p`、`--config` / `-c`、`--cd` / `-C`、`--add-dir`、`--image` / `-i`、`--local-provider`、`--enable`、`--disable`、`--remote`、`--remote-auth-token-env`，以及不需要额外 value 的单 token option。
-- Codex 显式目标 `fork` 的冲突项同样包括旧的 `resume` / `fork` 目标片段、旧 positional session/prompt、`--last`、`--all`、`--include-non-interactive`；不冲突项沿用 Codex 显式 resume 的 runtime/configuration option 列表。
-- Claude Code 显式目标 `resume` 的冲突项包括旧的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 与 `--fork-session`（含 `--flag=value` 和空格分隔两种形式）；不冲突项包括 `--model`、`--permission-mode`、`--dangerously-skip-permissions`、MCP / tool / output 等其他非 session-target 参数，以及普通 positional prompt。
-- Claude Code 显式目标 `fork` 的冲突项同样包括旧的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 与旧 `--fork-session`；不冲突项沿用 Claude Code 显式 resume 的非 session-target 参数。最终命令只能由本次动作写入一个新的 `--resume <source-session-id> --fork-session`，并在启动时由宿主为新 fork 节点补独立 `--session-id <candidate>`。
+- Codex 显式目标 `resume` 的 Default args 不冲突项包括 `--model` / `-m`、`--sandbox` / `-s`、`--ask-for-approval` / `-a`、`--profile` / `-p`、`--config` / `-c`、`--cd` / `-C`、`--add-dir`、`--image` / `-i`、`--local-provider`、`--enable`、`--disable`、`--remote`、`--remote-auth-token-env`，以及不需要额外 value 的单 token option；`resume` / `fork` 目标片段、旧 positional session/prompt、`--last`、`--all`、`--include-non-interactive` 不适合进入 Default args，若出现应在默认参数解析阶段报错。
+- Codex 显式目标 `fork` 的 Default args 不冲突项沿用 Codex 显式 resume 的 runtime/configuration option 列表；`resume` / `fork` 目标片段、旧 positional session/prompt、`--last`、`--all`、`--include-non-interactive` 同样在默认参数解析阶段报错，而不是在分叉时静默清理。
+- Claude Code 显式目标 `resume` 的 Default args 不冲突项包括 `--model`、`--permission-mode`、`--dangerously-skip-permissions`、MCP / tool / output 等其他非 session-target 参数；`--resume` / `-r`、`--continue` / `-c`、`--session-id`、`--fork-session` 不适合进入 Default args，若出现应在默认参数解析阶段报错。
+- Claude Code 显式目标 `fork` 的 Default args 不冲突项沿用 Claude Code 显式 resume 的非 session-target 参数。最终命令只能由本次动作写入一个新的 `--resume <source-session-id> --fork-session`，并在启动时由宿主为新 fork 节点补独立 `--session-id <candidate>`；旧 session-target 与旧 `--fork-session` 不允许作为 Default args 残留。
 
 这里的“允许命令集合”不是只看裸字符串 `codex / claude`，也不是接受“任意 basename 一样的可执行文件”；它只接受当前设置值本身，以及 provider 的标准别名。这样当测试环境或用户设置把 provider 命令指向绝对路径脚本时，自定义输入仍然可以使用该精确路径，同时不会把 `/tmp/evil/claude` 这类同 basename 的其他二进制误判成合法命令。
 
 同一层 parser 还要显式承担两条约束：
 
 - 反斜杠不能再被当成“通用 escape”。在 Windows 路径 `C:\tools\codex.exe`、`"C:\Program Files\Codex\codex.exe"` 这类输入里，`\` 默认按字面值保留；即使是用户自然输入的 `"C:\Users\me\My Dir\"`、`"My Dir\"`、`"C:My Dir\"` 这种“带空格且以反斜杠结尾”的 quoted path，也必须被当成合法路径而不是未闭合引号。只有对引号本身或未加引号的空白分隔才做最小限度转义。
-- `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 若存在未闭合引号等 parse error，必须把错误显式抛给 Webview、Quick Input 和宿主启动链路，而不是偷偷把默认参数整段丢掉后继续执行。
+- `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 若存在未闭合引号等 parse error，或包含上文定义的 Resume / Fork 冲突项，必须把错误显式抛给 Webview、Quick Input 和宿主启动链路，而不是偷偷把默认参数整段丢掉或清理后继续执行。
 
 命令层的正式收口方式也要明确：
 
@@ -306,7 +306,7 @@ updated_at: 2026-07-01
     codex fork <session-id>
     claude --resume <session-id> --fork-session
 
-这里的 `<session-id>` 来自当前节点可信 metadata，而不是 provider 的最近会话。Codex 命令构造应把默认参数中已有的 `resume` / `fork` 选择目标、`--last`、`--all`、`--include-non-interactive` 和旧 session id 剥离，只保留 `--model`、`--sandbox`、`--profile`、`--config` 等对 `codex fork <session-id>` 仍有效的运行参数。这个剥离要同时作用于 `resume` / `fork` 子命令之前的 leading args 和子命令之后的 args：例如 `agent.codexDefaultArgs = "--last --model gpt-5.2"` 也必须生成 `codex fork --model gpt-5.2 <session-id>`，不能把 `--last` 带进显式分叉命令。Claude Code 命令构造应和现有历史恢复命令一样保留对显式 resume 仍适用的默认参数，但必须避免残留旧的 `--resume`、`--continue`、`--session-id` 目标，最终命令只能有一个明确 resume 目标并追加 `--fork-session`。点击后新节点立即启动，用户不需要再点一次 `启动`。
+这里的 `<session-id>` 来自当前节点可信 metadata，而不是 provider 的最近会话。Codex 命令构造只从 Default args 继承 `--model`、`--sandbox`、`--profile`、`--config` 等对 `codex fork <session-id>` 仍有效的运行参数；`resume` / `fork` 选择目标、`--last`、`--all`、`--include-non-interactive` 和旧 session id 不适合写入 Default args，若用户配置了这些参数，应在创建菜单、Quick Input 或宿主启动阶段明确报错，而不是在分叉时静默剥离。Claude Code 命令构造应和现有历史恢复命令一样保留对显式 resume 仍适用的默认参数，但 Default args 里不能残留旧的 `--resume`、`--continue`、`--session-id` 目标或旧 `--fork-session`；最终命令只能有一个明确 resume 目标并追加 `--fork-session`。点击后新节点立即启动，用户不需要再点一次 `启动`。
 
 ### 7.7 停止后的 `新建 | 重启` 动作
 
@@ -368,4 +368,5 @@ updated_at: 2026-07-01
 - 2026-06-14：PR159 review 指出的 Codex 分叉参数清理已收口：`buildCodexBranchArgv()` 对默认参数中 `fork` / `resume` 子命令之前和之后的参数都执行 fork selection stripping，新增命令层回归覆盖 leading `--last`、`--all`、`--include-non-interactive` 与旧 positional target。旧 Claude-only ExecPlan 已从 active 移入 completed，当前 Codex / Claude Code 分叉事实统一由 `docs/exec-plans/active/agent-launch-modes-and-restart.md` 与本文维护。
 - 2026-06-14：修正标题栏动作按钮内部换行的触发口径：之前仅允许按钮 `white-space: normal`，但两个中文字符在 `min-content` 保护下即使拉到最小节点宽度也不一定会实际换成两行。现在 Agent 节点接近最小宽度时会给 action cluster 标记 `compact-actions` 密度，并把右上角所有动作按钮文案包在按钮内按两行显示；action cluster 仍保持 `nowrap`，不会回到整组换行破坏布局。已运行 focused Webview 回归确认所有动作按钮采用相同内部两行格式，并确认标题栏状态仍可见。
 - 2026-07-01：补齐显式 `Resume / Fork` 的参数继承边界：当前节点 `重启` 与历史恢复现在复用共享 history resume 命令构造，保留 `--model`、sandbox / approval、profile / config、cwd 等不冲突配置；Codex 会同时剥离 leading 与子命令尾部的旧 `--last`、`--all`、`--include-non-interactive` 和旧 session/prompt 目标，Claude Code 会剥离旧 session-target 与旧 `--fork-session`。已新增命令层与宿主源检查回归。
+- 2026-07-01：继续按反馈把 Default args 的边界前移：会与 `Resume / Fork` 冲突的一次性会话目标不适合进入默认启动参数。共享命令层现在对 `agent.codexDefaultArgs` 中的 `resume`、`fork`、`--last`、`--all`、`--include-non-interactive`、`--` 与裸 positional token，以及 `agent.claudeDefaultArgs` 中的 `--resume` / `-r`、`--continue` / `-c`、`--session-id`、`--fork-session` 显式报错；设置描述、规格与命令层回归已同步更新。
 - 2026-06-07：已补充 Fork 可见时 Agent 标题栏动作区的布局回归，确认 `停止`、`Fork`、`删除` 不再被 flex 收缩挤占；已运行 targeted `npm run test:webview -- --grep "agent restart actions render inline without a dropdown|Claude Agent Fork action posts a branchAgentSession message|Claude Agent Fork action keeps live title actions readable|Agent Fork action is hidden outside resumable Claude sessions|agent restart action falls back to start button when no resumable session exists"`（5 passed）与 `npm run typecheck`，均通过。随后补齐 Webview posted-message `lifecycle` 测试兼容、smoke 短 debug root 与 macOS `--password-store=basic` 启动参数，并修复真实 PTY 行号漂移导致 multiline 执行链接误回退到 Quick Open 的 smoke 阻塞；相关验证 `npm run test:vscode-smoke-runner-env`、`node scripts/test/test-execution-terminal-line-context-tracker.mjs`、`node scripts/test/test-execution-terminal-native-helpers.mjs`、multiline execution-link targeted Webview 测试均通过。当前 `DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT=/tmp/dsc-smoke DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 已越过 VS Code socket/keychain 与执行链接阶段，新的剩余阻塞为后续侧栏节点列表测试动作超时；整体验证状态继续保持 `验证中`。

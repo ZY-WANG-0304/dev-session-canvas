@@ -81,6 +81,9 @@
 - 观察：当前节点停止后点击 `重启` 的宿主路径此前只显示并执行裸 `codex resume <session-id>` / `claude --resume <session-id>`，没有复用 `buildAgentHistoryResumeCommandLine(...)`，因此和历史恢复 / Fork 命令层不一致。
   证据：2026-07-01 复核 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `buildAgentDisplayLaunchCommandLine(...)` 与 `buildAgentLaunchSpec(...)` 后确认，`launchMode === 'resume'` 时默认忽略 provider 默认参数，只追加裸 resume 参数。
 
+- 观察：与 `Resume / Fork` 冲突的一次性会话目标不适合放入 Default args；如果只在显式恢复 / 分叉时自动清理，用户会在设置层看不到真实失效原因，也会让快速启动、预设展示、自定义启动预填、历史恢复和节点重启对同一段默认参数产生不同解释。
+  证据：2026-07-01 用户明确反馈“其中会跟 fork 和 resume 冲突的参数, 也不适合放在 Default args 中”；同日复核 `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 的调用面，确认它们被右键菜单、Quick Input、fresh-start、history resume 与 branch command line 共用。
+
 ## 决策记录
 
 - 决策：先新增新的产品规格与设计文档，把 `tmp_feature_uiux.md` 中的需求沉淀到正式 docs，再开始落代码。
@@ -179,6 +182,10 @@
   理由：用户意图是保持其他不冲突参数，例如 model、sandbox、approval、profile、config、cwd；真正冲突的是旧 session id、最近会话选择、picker 范围和旧 fork 标记。把当前节点 `重启` 也接到共享命令层，可以让节点内 resume、历史 resume 与 Fork 遵循同一份白名单边界。
   日期/作者：2026-07-01 / Codex
 
+- 决策：Default args 本身 fail closed 拒绝会话目标类冲突项，而不是在 `Resume / Fork` 时继续静默清理。`Codex` 默认参数中禁止 `resume`、`fork`、`--last`、`--all`、`--include-non-interactive`、`--` 和裸 positional token；`Claude Code` 默认参数中禁止 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 与 `--fork-session`。
+  理由：Default args 是长期配置，只适合承载 model、sandbox、approval、profile、config、cwd 等稳定 runtime/configuration 参数；一次性会话目标应由创建前 `Resume`、当前节点 `重启`、历史恢复、分叉入口或自定义启动命令表达。Codex 的裸 positional token 在 `resume` / `fork` 语境下也会变成目标或 prompt，因此同样不适合作为 Default args。前移校验能避免同一段默认参数在不同入口被隐式改写成不同命令。
+  日期/作者：2026-07-01 / Codex
+
 ## 结果与复盘
 
 - 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。同时，命令面板 / 侧栏 `创建节点` 第二步 Quick Input 的行为也重新和规格对齐：点击 `默认 / Resume / YOLO / 沙盒` 只会改写顶部完整命令输入，必须显式按 Enter 才会真正创建节点；脚本化 QuickPick override 不再把“仅选择预设”误当成创建。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
@@ -193,6 +200,7 @@
 - 已更新：分叉自动连线现在不再只有箭头。`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的分叉建边 helper 在创建来源 Agent 指向新 Agent 的普通 `user` 边时默认写入 `label: 'fork'`；VSCode smoke 对 Codex / Claude 两条 Host 分叉路径都补充断言：状态里的边标签为 `fork`，editor Webview probe 也应看到该标签。
 - 已更新：PR159 review 指出的两个 blocker 已在文档和命令层收口。Codex 分叉命令现在会同时清理默认参数前缀与子命令尾部的旧选择参数，避免 `--last` 等参数覆盖当前可信 source session；旧 Claude-only active 计划已移到 completed 并在文件头标注历史状态，当前分叉范围只由本计划与正式规格/设计承载。
 - 已更新：2026-07-01 本轮把“Fork / Resume 会话时保留其他不冲突参数配置”收口为明确清单并落地。共享命令层现在会在 Codex 显式 resume 中同时清理 leading 与子命令尾部的旧目标选择参数，同时继续保留 model、sandbox、approval、profile、config 等运行配置；Claude Code 显式 resume/fork 会清理旧 session-target 与旧 `--fork-session`，保留非 session-target 参数。Host 侧当前节点 `重启` 也复用 history resume 命令构造，并在已有完整 argv 时不再重复追加裸 resume 参数。已通过 `npm run test:agent-launch-presets` 与 `npm run test:canvas-execution-context`。
+- 已更新：2026-07-01 继续把 Default args 的配置边界前移。共享命令层现在在解析 `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 时就拒绝会与 `Resume / Fork` 冲突的一次性会话目标，并把错误传给右键菜单、Quick Input 与宿主 fresh-start / history resume / branch command line；VSCode 设置描述、产品规格、设计文档、侧栏历史恢复文档与命令层测试已同步更新。
 
 ## 上下文与定向
 
@@ -287,6 +295,7 @@
 - 2026-06-14：标题栏动作按钮内部换行修正已运行 `npm run test:webview -- --grep "Agent Fork action|forked Agent|Agent title action buttons"`（4 passed）、`node --check tests/playwright/webview-harness.spec.mjs`、`npm run typecheck`、`npm run test:agent-launch-presets`、`npm run test:canvas-execution-context`、`node --check tests/vscode-smoke/extension-tests.cjs` 与 `git diff --check`，均通过。
 - 2026-06-14：分叉边标签 follow-up 已运行 `npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`node --check tests/playwright/webview-harness.spec.mjs`、focused `npm run test:webview -- --grep "manual edges can be created, selected, edited, and deleted|edge label text color follows the rendered edge color"` 与 `git diff --check`，均通过。本轮未重新跑完整 `npm run test:smoke`；VSCode smoke 文件已补 Codex / Claude 分叉边标签断言，实际 Development Host 端到端仍沿用既有完整 smoke 阻塞记录。
 - 2026-06-14：PR159 review follow-up 已运行 `npm run test:agent-launch-presets`、`npm run test:protocol-webview-messages`、`npm run test:canvas-execution-context`、`npm run test:canvas-node-groups`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`node --check tests/playwright/webview-harness.spec.mjs`、focused `npm run test:webview -- --grep "Agent title action buttons"`、conflict marker 搜索与 diff whitespace 检查，均通过。
+- 2026-07-01：Default args 会话目标冲突前置校验已运行 `npm run test:agent-launch-presets`，通过；新增/调整回归覆盖 Codex `resume` / `fork` / `--last` / positional token 与 Claude `--resume` / `--continue` / `--session-id` / `--fork-session` 被默认参数解析拒绝，同时保留 model、sandbox、approval、profile、permission-mode 等非冲突配置。
 
 ## 接口与依赖
 

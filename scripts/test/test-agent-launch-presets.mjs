@@ -43,6 +43,7 @@ try {
     command: '/tmp/providers/claude-custom',
     defaultArgs: ''
   };
+  const defaultArgsConflictPattern = /默认启动参数不能包含与 Resume \/ Fork 冲突/u;
 
   assert.equal(
     buildAgentBranchCommandLine('codex', 'codex-branch-session-001', {
@@ -53,42 +54,38 @@ try {
   );
 
   assert.equal(
-    buildCodexBranchCommandLine(' codex-branch-session-002 ', {
+    buildCodexBranchCommandLine('codex-branch-session-002', {
       command: 'codex',
-      defaultArgs: '--model gpt-5.2 resume --all --include-non-interactive old-session --sandbox workspace-write'
+      defaultArgs: '--profile prod --sandbox workspace-write --ask-for-approval on-request'
     }),
-    'codex fork --model gpt-5.2 --sandbox workspace-write codex-branch-session-002'
+    'codex fork --profile prod --sandbox workspace-write --ask-for-approval on-request codex-branch-session-002'
   );
 
-  assert.equal(
-    buildCodexBranchCommandLine('codex-branch-session-003', {
-      command: 'codex',
-      defaultArgs: '--profile prod fork --last --all old-session --sandbox workspace-write'
-    }),
-    'codex fork --profile prod --sandbox workspace-write codex-branch-session-003'
-  );
-  assert.equal(
-    buildCodexBranchCommandLine('codex-branch-session-003b', {
-      command: 'codex',
-      defaultArgs: '--last --all --include-non-interactive --model gpt-5.2 fork old-session --sandbox workspace-write'
-    }),
-    'codex fork --model gpt-5.2 --sandbox workspace-write codex-branch-session-003b'
+  assert.throws(
+    () =>
+      buildCodexBranchCommandLine('codex-branch-session-003', {
+        command: 'codex',
+        defaultArgs: '--model gpt-5.2 resume --all --include-non-interactive old-session --sandbox workspace-write'
+      }),
+    defaultArgsConflictPattern
   );
 
-  assert.equal(
-    buildCodexBranchCommandLine('codex-branch-session-004', {
-      command: 'codex',
-      defaultArgs: '--last --model gpt-5.2'
-    }),
-    'codex fork --model gpt-5.2 codex-branch-session-004'
+  assert.throws(
+    () =>
+      buildCodexBranchCommandLine('codex-branch-session-004', {
+        command: 'codex',
+        defaultArgs: '--profile prod fork --last --all old-session --sandbox workspace-write'
+      }),
+    defaultArgsConflictPattern
   );
 
-  assert.equal(
-    buildCodexBranchCommandLine('codex-branch-session-005', {
-      command: 'codex',
-      defaultArgs: '--all --include-non-interactive old-session --profile prod'
-    }),
-    'codex fork --profile prod codex-branch-session-005'
+  assert.throws(
+    () =>
+      buildCodexBranchCommandLine('codex-branch-session-005', {
+        command: 'codex',
+        defaultArgs: '--last --model gpt-5.2'
+      }),
+    defaultArgsConflictPattern
   );
 
   assert.throws(
@@ -107,24 +104,26 @@ try {
   assert.equal(
     buildClaudeBranchCommandLine(' claude-branch-session-456 ', {
       command: 'claude',
-      defaultArgs: '--model opus --resume old-session --permission-mode plan'
+      defaultArgs: '--model opus --permission-mode plan'
     }),
     'claude --resume claude-branch-session-456 --fork-session --model opus --permission-mode plan'
   );
 
-  assert.equal(
-    buildClaudeBranchCommandLine('claude-branch-session-789', {
-      command: 'claude',
-      defaultArgs: '--session-id old-session --continue older-session --dangerously-skip-permissions'
-    }),
-    'claude --resume claude-branch-session-789 --fork-session --dangerously-skip-permissions'
+  assert.throws(
+    () =>
+      buildClaudeBranchCommandLine('claude-branch-session-789', {
+        command: 'claude',
+        defaultArgs: '--session-id old-session --continue older-session --dangerously-skip-permissions'
+      }),
+    defaultArgsConflictPattern
   );
-  assert.equal(
-    buildClaudeBranchCommandLine('claude-branch-session-790', {
-      command: 'claude',
-      defaultArgs: '--fork-session --resume old-session --session-id older-session --model sonnet'
-    }),
-    'claude --resume claude-branch-session-790 --fork-session --model sonnet'
+  assert.throws(
+    () =>
+      buildClaudeBranchCommandLine('claude-branch-session-790', {
+        command: 'claude',
+        defaultArgs: '--fork-session --resume old-session --session-id older-session --model sonnet'
+      }),
+    defaultArgsConflictPattern
   );
 
   assert.throws(
@@ -316,28 +315,6 @@ try {
       'codex',
       {
         command: 'codex',
-        defaultArgs: 'resume --last'
-      },
-      'yolo'
-    ),
-    'codex --yolo resume --last'
-  );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'codex',
-      {
-        command: 'codex',
-        defaultArgs: '--model gpt-5.2 resume session-123'
-      },
-      'yolo'
-    ),
-    'codex --yolo --model gpt-5.2 resume session-123'
-  );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'codex',
-      {
-        command: 'codex',
         defaultArgs: '--model gpt-5.2 --sandbox workspace-write --ask-for-approval on-request'
       },
       'yolo'
@@ -355,71 +332,53 @@ try {
     ),
     'codex --yolo --model gpt-5.2'
   );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'codex',
-      {
-        command: 'codex',
-        defaultArgs: 'resume --last'
-      },
-      'resume'
-    ),
-    'codex resume'
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'codex',
+        {
+          command: 'codex',
+          defaultArgs: 'resume --last'
+        },
+        'yolo'
+      ),
+    defaultArgsConflictPattern
   );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'codex',
-      {
-        command: 'codex',
-        defaultArgs: 'resume --last --sandbox workspace-write'
-      },
-      'resume'
-    ),
-    'codex resume --sandbox workspace-write'
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'codex',
+        {
+          command: 'codex',
+          defaultArgs: '--model gpt-5.2 resume session-123'
+        },
+        'resume'
+      ),
+    defaultArgsConflictPattern
   );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'codex',
-      {
-        command: 'codex',
-        defaultArgs: '--model gpt-5.2 resume session-123'
-      },
-      'resume'
-    ),
-    'codex resume --model gpt-5.2'
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'codex',
+        {
+          command: 'codex',
+          defaultArgs: '--last --model gpt-5.2'
+        },
+        'default'
+      ),
+    defaultArgsConflictPattern
   );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'codex',
-      {
-        command: 'codex',
-        defaultArgs: '--model gpt-5.2 resume --all --include-non-interactive session-123 --sandbox workspace-write'
-      },
-      'resume'
-    ),
-    'codex resume --model gpt-5.2 --all --include-non-interactive --sandbox workspace-write'
-  );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'codex',
-      {
-        command: 'codex',
-        defaultArgs: '--last --model gpt-5.2 resume session-123 --sandbox workspace-write'
-      },
-      'resume'
-    ),
-    'codex resume --model gpt-5.2 --sandbox workspace-write'
-  );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'codex',
-      {
-        command: 'codex',
-        defaultArgs: '--local-provider ollama resume --last'
-      },
-      'resume'
-    ),
-    'codex resume --local-provider ollama'
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'codex',
+        {
+          command: 'codex',
+          defaultArgs: '--model gpt-5.2 --'
+        },
+        'default'
+      ),
+    defaultArgsConflictPattern
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -463,60 +422,53 @@ try {
     buildAgentPresetCommandLine('claude', claudeModeConflictDefaults, 'yolo'),
     'claude --dangerously-skip-permissions --model sonnet'
   );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'claude',
-      {
-        command: 'claude',
-        defaultArgs: '--model sonnet --resume session-123 --permission-mode acceptEdits'
-      },
-      'yolo'
-    ),
-    'claude --dangerously-skip-permissions --model sonnet --resume session-123'
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'claude',
+        {
+          command: 'claude',
+          defaultArgs: '--model sonnet --resume session-123 --permission-mode acceptEdits'
+        },
+        'yolo'
+      ),
+    defaultArgsConflictPattern
   );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'claude',
-      {
-        command: 'claude',
-        defaultArgs: '--model sonnet --continue session-123 --dangerously-skip-permissions'
-      },
-      'sandbox'
-    ),
-    'claude --permission-mode plan --model sonnet --continue session-123'
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'claude',
+        {
+          command: 'claude',
+          defaultArgs: '--model sonnet --continue session-123 --dangerously-skip-permissions'
+        },
+        'sandbox'
+      ),
+    defaultArgsConflictPattern
   );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'claude',
-      {
-        command: 'claude',
-        defaultArgs: '--model sonnet --resume session-123'
-      },
-      'resume'
-    ),
-    'claude --resume --model sonnet'
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'claude',
+        {
+          command: 'claude',
+          defaultArgs: '-r session-123'
+        },
+        'resume'
+      ),
+    defaultArgsConflictPattern
   );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'claude',
-      {
-        command: 'claude',
-        defaultArgs: '-r session-123'
-      },
-      'resume'
-    ),
-    'claude --resume'
-  );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'claude',
-      {
-        command: 'claude',
-        defaultArgs: '-c'
-      },
-      'resume'
-    ),
-    'claude --resume'
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'claude',
+        {
+          command: 'claude',
+          defaultArgs: '--fork-session --model sonnet'
+        },
+        'default'
+      ),
+    defaultArgsConflictPattern
   );
   assert.equal(
     buildAgentPresetCommandLine(
@@ -569,10 +521,10 @@ try {
   assert.equal(
     matchesAgentCommandLinePreset(
       'codex',
-      'codex --model gpt-5.2 resume',
+      'codex resume --model gpt-5.2',
       {
         command: 'codex',
-        defaultArgs: '--model gpt-5.2 resume session-old'
+        defaultArgs: '--model gpt-5.2'
       },
       'resume'
     ),
@@ -581,10 +533,10 @@ try {
   assert.equal(
     matchesAgentCommandLinePreset(
       'claude',
-      'claude --model sonnet --resume',
+      'claude --resume --model sonnet',
       {
         command: 'claude',
-        defaultArgs: '--model sonnet --resume session-old'
+        defaultArgs: '--model sonnet'
       },
       'resume'
     ),
@@ -732,16 +684,17 @@ try {
     ),
     "codex --config 'My Dir\\'"
   );
-  assert.equal(
-    buildAgentPresetCommandLine(
-      'codex',
-      {
-        command: 'codex',
-        defaultArgs: '"My Dir\\"'
-      },
-      'default'
-    ),
-    "codex 'My Dir\\'"
+  assert.throws(
+    () =>
+      buildAgentPresetCommandLine(
+        'codex',
+        {
+          command: 'codex',
+          defaultArgs: '"My Dir\\"'
+        },
+        'default'
+      ),
+    defaultArgsConflictPattern
   );
   const relativeTrailingSlashNoSpaceConfigPath = '.venv\\';
   const naturalRelativeTrailingSlashNoSpaceCommandLine = 'codex --config ".venv\\"';
@@ -998,21 +951,22 @@ try {
       'session-codex-789',
       {
         command: 'codex',
-        defaultArgs: '--model gpt-5.2 resume --all --include-non-interactive session-old --sandbox workspace-write'
+        defaultArgs: '--model gpt-5.2 --sandbox workspace-write --ask-for-approval on-request'
       }
     ),
-    'codex resume --model gpt-5.2 --sandbox workspace-write session-codex-789'
+    'codex resume --model gpt-5.2 --sandbox workspace-write --ask-for-approval on-request session-codex-789'
   );
-  assert.equal(
-    buildAgentHistoryResumeCommandLine(
-      'codex',
-      'session-codex-790',
-      {
-        command: 'codex',
-        defaultArgs: '--last --all --include-non-interactive --model gpt-5.2 resume session-old --sandbox workspace-write --ask-for-approval on-request'
-      }
-    ),
-    'codex resume --model gpt-5.2 --sandbox workspace-write --ask-for-approval on-request session-codex-790'
+  assert.throws(
+    () =>
+      buildAgentHistoryResumeCommandLine(
+        'codex',
+        'session-codex-790',
+        {
+          command: 'codex',
+          defaultArgs: '--last --all --include-non-interactive --model gpt-5.2 resume session-old --sandbox workspace-write --ask-for-approval on-request'
+        }
+      ),
+    defaultArgsConflictPattern
   );
   assert.equal(
     buildAgentHistoryResumeCommandLine(
@@ -1025,16 +979,17 @@ try {
     ),
     '/opt/claude --resume session-claude-456 --model sonnet --permission-mode plan'
   );
-  assert.equal(
-    buildAgentHistoryResumeCommandLine(
-      'claude',
-      'session-claude-789',
-      {
-        command: 'claude',
-        defaultArgs: '--resume session-old --permission-mode plan'
-      }
-    ),
-    'claude --resume session-claude-789 --permission-mode plan'
+  assert.throws(
+    () =>
+      buildAgentHistoryResumeCommandLine(
+        'claude',
+        'session-claude-789',
+        {
+          command: 'claude',
+          defaultArgs: '--resume session-old --permission-mode plan'
+        }
+      ),
+    defaultArgsConflictPattern
   );
   assert.throws(
     () =>
