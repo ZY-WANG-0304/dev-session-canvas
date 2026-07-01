@@ -936,7 +936,7 @@ async function verifyCanvasTemplatesTrusted() {
         20000
       );
       assert.strictEqual(warningCalls.length, 1);
-      assert.match(String(warningCalls[0].message), /重置会清空当前 workspace 绑定的画布对象/);
+      assert.match(String(warningCalls[0].message), /重置会清空当前画布对象/);
     },
     ({ items }) => items.find((item) => item === '继续重置')
   );
@@ -8749,18 +8749,39 @@ async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
   assert.ok(findNodeById(snapshot, agentNodeId).metadata.agent.recentOutput.includes('[fake-agent] hello concurrency'));
   assert.ok(findNodeById(snapshot, terminalNodeId).metadata.terminal.recentOutput.includes('TERMINAL_CONCURRENCY'));
 
-  const hostMessages = await getHostMessages();
+  await clearHostMessages();
+  await requestExecutionSnapshot('agent', agentNodeId);
+  await requestExecutionSnapshot('terminal', terminalNodeId);
+  const hostMessages = await waitForHostMessages((messages) => {
+    const hasAgentSnapshot = messages.some(
+      (message) =>
+        message.type === 'host/executionSnapshot' &&
+        message.payload.nodeId === agentNodeId &&
+        message.payload.kind === 'agent' &&
+        message.payload.serializedTerminalState?.format === 'xterm-serialize-v1'
+    );
+    const hasTerminalSnapshot = messages.some(
+      (message) =>
+        message.type === 'host/executionSnapshot' &&
+        message.payload.nodeId === terminalNodeId &&
+        message.payload.kind === 'terminal' &&
+        message.payload.serializedTerminalState?.format === 'xterm-serialize-v1'
+    );
+    return hasAgentSnapshot && hasTerminalSnapshot;
+  });
   const agentSnapshotMessage = hostMessages.find(
     (message) =>
       message.type === 'host/executionSnapshot' &&
       message.payload.nodeId === agentNodeId &&
-      message.payload.kind === 'agent'
+      message.payload.kind === 'agent' &&
+      message.payload.serializedTerminalState?.format === 'xterm-serialize-v1'
   );
   const terminalSnapshotMessage = hostMessages.find(
     (message) =>
       message.type === 'host/executionSnapshot' &&
       message.payload.nodeId === terminalNodeId &&
-      message.payload.kind === 'terminal'
+      message.payload.kind === 'terminal' &&
+      message.payload.serializedTerminalState?.format === 'xterm-serialize-v1'
   );
   assert.ok(agentSnapshotMessage);
   assert.ok(terminalSnapshotMessage);
@@ -9851,6 +9872,11 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
   const originalScrollback = terminalConfiguration.get('scrollback', 1000);
   const initialScrollback = originalScrollback === 80 ? 60 : 80;
   const configuredScrollback = originalScrollback === 240 ? 320 : 240;
+  // Keep the marker output under the live-runtime supervisor output tail while
+  // still exceeding the initial scrollback value, so the test covers reconfig.
+  const markerLineCount = 90;
+  const earliestMarker = `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`;
+  const latestMarker = `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-${String(markerLineCount).padStart(3, '0')}`;
 
   await setRuntimePersistenceEnabled(true);
   await clearHostMessages();
@@ -9925,7 +9951,7 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
           // Keep each line shorter than the embedded terminal width used by
           // the smoke harness so scrollback assertions do not become wrap-dependent.
           data:
-            'i=1; while [ $i -le 220 ]; do printf \'' +
+            `i=1; while [ $i -le ${markerLineCount} ]; do printf '` +
             `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-%03d\\r\\n` +
             '\' "$i"; i=$((i+1)); done\r'
         }
@@ -9937,29 +9963,29 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
       const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
       return Boolean(
         currentNode?.metadata?.terminal?.recentOutput?.includes(
-          `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
+          latestMarker
         )
       );
     }, 20000);
     terminalNode = findNodeById(snapshot, terminalNodeId);
     assert.ok(
       terminalNode.metadata.terminal.recentOutput.includes(
-        `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
+        latestMarker
       )
     );
 
+    await sleep(500);
     const runtimeState = await waitForRuntimeSupervisorState((currentRuntimeState) => {
       return listRuntimeSupervisorSessions(currentRuntimeState).some(
         (session) =>
           session.sessionId === runtimeSessionId &&
           session.scrollback === configuredScrollback &&
+          typeof session.output === 'string' &&
+          session.output.includes(latestMarker) &&
+          session.serializedTerminalState?.outputSequence === session.outputSequence &&
           typeof session.serializedTerminalState?.data === 'string' &&
-          session.serializedTerminalState.data.includes(
-            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`
-          ) &&
-          session.serializedTerminalState.data.includes(
-            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
-          )
+          session.serializedTerminalState.data.includes(earliestMarker) &&
+          session.serializedTerminalState.data.includes(latestMarker)
       );
     }, 20000);
     assert.ok(
@@ -9967,13 +9993,12 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
         (session) =>
           session.sessionId === runtimeSessionId &&
           session.scrollback === configuredScrollback &&
+          typeof session.output === 'string' &&
+          session.output.includes(latestMarker) &&
+          session.serializedTerminalState?.outputSequence === session.outputSequence &&
           typeof session.serializedTerminalState?.data === 'string' &&
-          session.serializedTerminalState.data.includes(
-            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`
-          ) &&
-          session.serializedTerminalState.data.includes(
-            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
-          )
+          session.serializedTerminalState.data.includes(earliestMarker) &&
+          session.serializedTerminalState.data.includes(latestMarker)
       ),
       'Expected runtime supervisor snapshots to retain the updated terminal scrollback history.'
     );
@@ -9989,23 +10014,19 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
           currentNode.metadata.terminal.attachmentState === 'attached-live' &&
           currentNode.metadata.terminal.runtimeSessionId === runtimeSessionId &&
           typeof currentNode.metadata.terminal.serializedTerminalState?.data === 'string' &&
-          currentNode.metadata.terminal.serializedTerminalState.data.includes(
-            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`
-          ) &&
-          currentNode.metadata.terminal.serializedTerminalState.data.includes(
-            `${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`
-          )
+          currentNode.metadata.terminal.serializedTerminalState.data.includes(earliestMarker) &&
+          currentNode.metadata.terminal.serializedTerminalState.data.includes(latestMarker)
       );
     }, 20000);
 
     terminalNode = findNodeById(snapshot, terminalNodeId);
     const serializedData = terminalNode.metadata.terminal.serializedTerminalState?.data ?? '';
     assert.ok(
-      serializedData.includes(`${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-001`),
+      serializedData.includes(earliestMarker),
       'Reloaded live-runtime terminal should keep the earliest line allowed by the updated scrollback.'
     );
     assert.ok(
-      serializedData.includes(`${LIVE_RUNTIME_TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`),
+      serializedData.includes(latestMarker),
       'Reloaded live-runtime terminal should keep the latest line after scrollback reconfiguration.'
     );
 

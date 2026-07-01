@@ -10,18 +10,18 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.20.0 版本亮点
+## 0.21.0 版本亮点
 
-当前公开的 `0.20.0` 版本是模板市场的一轮新 `Preview` 里程碑：新增插件内模板市场面板、浏览器市场集成、完整模板包安装、更新 / 回滚、发布与新版本提交、举报 / 管理治理入口，以及 `https://dscanvas.dev/templates` 生产服务部署链路。它保留 `0.19.0` 的发布边界：Preview 定位、notifier 自动安装、GitHub Release assets + Open VSX verified 完成门禁，以及 Visual Studio Marketplace public visibility 确认前的 deferred 口径。
+当前公开的 `0.21.0` 版本是发布包、执行可靠性和多根体验的一轮新 `Preview` 里程碑：完成主扩展子包化发布布局，新增 TUI OSC 52 剪贴板桥接，收紧 serialized terminal state 新鲜度，明确 Agent 恢复 / 分叉参数边界，支持多根 workspace 中按目标 root 重置模板，并增强 Pane Gallery root 级运行 / 关注提示。它保留 `0.20.0` 的模板市场 Preview 与当前发布边界：Preview 定位、notifier 自动安装、GitHub Release assets + Open VSX verified 完成门禁，以及 Visual Studio Marketplace public visibility 确认前的 deferred 口径。
 
-- 模板侧栏和命令面板现在可以打开由受信任市场来源驱动的模板市场面板
-- 市场安装会下载完整 `package.zip`，写入完整本地模板包目录，并用 `.market.json` sidecar 记录来源、版本、校验和安装目标
-- 已安装的市场模板可显示更新徽章，支持更新到最新版本、重装当前版本或从 split button 版本菜单回滚到历史版本
-- 发布者可以通过市场发布流程提交已保存的本地模板或新版本；GitHub 身份只换取短期市场 token，不写入模板或 Webview 状态
-- 浏览器市场和 Worker API 覆盖搜索、排序、详情页、README / CHANGELOG、完整包下载、`template.json` 导出、点赞、发布者统计、举报和管理员治理后台
-- 模板市场生产服务部署与插件 SemVer 分离，通过 `deploy/template-marketplace/prod/YYYY-MM-DD.N` tag、`/api/v1/meta`、服务 capability 元数据和 Cloudflare Worker / D1 / R2 生产资源管理
-- 侧栏移除 root 改用原生 modal 确认，linked worktree 移除失败时不再提前清空画布状态；Pane Gallery 通知居中和左侧留白细节也已收口
-- VSIX 文件列表守卫会继续阻止市场服务源码目录进入扩展包；扩展 ID、最低 VS Code 版本、notifier 关系、Open VSX 完成门禁和 Preview 支持矩阵保持不变
+- 主扩展现在从 `extensions/vscode/dev-session-canvas/` 子包打包，仓库根继续作为 monorepo 编排入口；扩展 ID、publisher、最低 VS Code 版本和 notifier 关系保持不变
+- 聚焦的 `Agent` / `Terminal` TUI 现在可以把 OSC 52 剪贴板序列桥接到系统剪贴板，让 mouse tracking / alternate screen 工具里的复制不再留下旧剪贴板内容
+- 终端快照现在携带 `outputSequence` 新鲜度元数据；过期或 legacy serialized terminal state 会被拒绝并从 raw output 重建，避免恢复旧 TUI 画面直到 resize 才偶然修正
+- Agent 默认参数会对一次性会话目标 fail closed，例如 `resume`、`fork`、`--last`、`--resume`、`--session-id` 和 `--fork-session`；这些目标应由显式 Resume、重启、分叉、历史恢复或本次自定义启动命令表达
+- 多根模板 apply / reset 现在会定位到 root section、Pane Gallery 可交互 pane 或 active root 主画板对应的目标 root；关联 Markdown Note 路径也按目标 root 解析
+- Pane Gallery root 标签更容易发现活动：attention 优先使用更明确的 root 标题闪烁，正在运行执行节点的 root 会显示轻量标题栏扫描线
+- VSIX 打包与 smoke harness 已同步子包布局，并继续阻止服务源码目录、monorepo 包和源码树进入扩展包
+- 扩展 ID、最低 VS Code 版本、notifier 自动安装关系、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径和 Preview 支持矩阵保持不变
 
 ## 核心功能
 
@@ -77,11 +77,11 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.19.0` 升级到 `0.20.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
+- 首次安装与从 `0.20.0` 升级到 `0.21.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
 - 生产模板市场可能以空目录启动。生产环境不会把代码内 seed 模板暴露为正式内容；真实模板必须通过发布流程或受控运维流程入库
 - 窗格画廊只改变多根呈现；单根 workspace 继续显示普通画布，`rootGroups` 仍是默认多根模式和保守回退路径
 - 布局整理是一次性显式操作，不提供撤销、不持续自动重排，也不跨普通分组或跨 root 搬移节点
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.20.0` 后会继续沿用该明确选择
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.21.0` 后会继续沿用该明确选择
 - 截图粘贴文件是扩展存储中的临时附件，不是 workspace 文件；它们会保留一段时间以便 Agent 上下文复用，之后由后台 TTL 维护任务清理
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
@@ -116,7 +116,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续更高的 `0.20.x` 修复版本，而非尝试手动降级
+- 优先等待后续更高的 `0.21.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 
