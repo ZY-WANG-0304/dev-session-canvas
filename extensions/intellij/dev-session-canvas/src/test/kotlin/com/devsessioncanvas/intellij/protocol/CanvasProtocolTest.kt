@@ -67,6 +67,12 @@ class CanvasProtocolTest {
         val stop = CanvasProtocol.decodeWebviewMessage(
             """{"type":"webview/stopTerminal","id":"terminal-1"}"""
         )
+        val diagnosticsEnabled = CanvasProtocol.decodeWebviewMessage(
+            """{"type":"webview/setTerminalDiagnostics","enabled":true}"""
+        )
+        val diagnosticEntry = CanvasProtocol.decodeWebviewMessage(
+            """{"type":"webview/terminalDiagnostic","id":"terminal-1","entry":"{\"event\":\"keydown\"}"}"""
+        )
 
         assertEquals(WebviewMessageType.TerminalInput, input?.type)
         assertEquals("terminal-1", input?.terminalInput?.id)
@@ -85,6 +91,11 @@ class CanvasProtocolTest {
         assertEquals(360.0, size?.terminalSize?.height)
         assertEquals(WebviewMessageType.StopTerminal, stop?.type)
         assertEquals("terminal-1", stop?.nodeId)
+        assertEquals(WebviewMessageType.SetTerminalDiagnostics, diagnosticsEnabled?.type)
+        assertEquals(true, diagnosticsEnabled?.terminalDiagnosticsEnabled)
+        assertEquals(WebviewMessageType.TerminalDiagnostic, diagnosticEntry?.type)
+        assertEquals("terminal-1", diagnosticEntry?.terminalDiagnostic?.id)
+        assertEquals("""{"event":"keydown"}""", diagnosticEntry?.terminalDiagnostic?.entry)
     }
 
     @Test
@@ -94,6 +105,8 @@ class CanvasProtocolTest {
         assertNull(CanvasProtocol.decodeWebviewMessage("""{"type":"webview/updateNodePosition","id":"note-1","x":12.5}"""))
         assertNull(CanvasProtocol.decodeWebviewMessage("""{"type":"webview/deleteNode"}"""))
         assertNull(CanvasProtocol.decodeWebviewMessage("""{"type":"webview/terminalResize","id":"terminal-1","cols":80}"""))
+        assertNull(CanvasProtocol.decodeWebviewMessage("""{"type":"webview/setTerminalDiagnostics"}"""))
+        assertNull(CanvasProtocol.decodeWebviewMessage("""{"type":"webview/terminalDiagnostic","id":"terminal-1"}"""))
     }
 
     @Test
@@ -157,5 +170,20 @@ class CanvasProtocolTest {
         assertContains(exit, "\"type\": \"host/terminalExit\"")
         assertContains(exit, "\"exitCode\": 0")
         assertContains(exit, "\"message\": \"done\"")
+    }
+
+    @Test
+    fun encodesTerminalDiagnosticsStatusAndEscapesC1() {
+        val status = CanvasProtocol.encodeTerminalDiagnosticsStatus(
+            TerminalDiagnosticsStatusPayload(enabled = true, path = "/tmp/terminal.jsonl", message = "ready")
+        )
+        val c1Output = CanvasProtocol.encodeTerminalOutput(
+            TerminalOutputPayload(id = "terminal-1", text = "\u0098")
+        )
+
+        assertContains(status, "\"type\": \"host/terminalDiagnosticsStatus\"")
+        assertContains(status, "\"enabled\": true")
+        assertContains(status, "\"path\": \"/tmp/terminal.jsonl\"")
+        assertContains(c1Output, "\"text\": \"\\u0098\"")
     }
 }

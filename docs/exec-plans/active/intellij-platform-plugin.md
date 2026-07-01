@@ -43,7 +43,9 @@
 - [x] (2026-07-01 20:35 +0800) 已推进里程碑 4 的工程首切片：协议和状态模型支持 `note` / `terminal` 节点；前端新增 xterm.js Terminal 节点、输入 / resize / stop 消息和最近输出恢复；Kotlin 侧新增 `ExecutionSessionManager` 与 `ShellCommandResolver`，通过平台随附 `pty4j` 在项目目录启动默认 shell。
 - [x] (2026-07-01 21:01 +0800) 已处理首轮真实 PTY smoke 暴露的特殊键输入问题：用户确认 Terminal 节点可以创建且普通输入可达，但 Backspace 表现为空格或乱码；当前修复在 JCEF bridge 进入 `JBCefJSQuery` 前把 `JSON.stringify` 保留的 U+007F 到 U+009F 控制字符转为 ASCII `\u00xx`，并用 Kotlin 测试覆盖 `\u007f` 解码。
 - [x] (2026-07-02 01:08 +0800) 已根据用户复测截图重新分析 Terminal 输入根因：上一轮 bridge 转义只保证 JSON transport 不吞 DEL/C1，但截图中 `<0098>`、`<0096>`、`<0099>` 等仍说明 JCEF/xterm 输入事件本身产生了异常 C1 控制字符；英文输入“每输入一个键还带着一个键”说明 JCEF Chromium 在 keydown/keypress 与 input 事件之间可能重复提交同一普通字符。当前修复在前端 `onData` 过滤 U+0080 到 U+009F，并仅在 JCEF host 中安装 Terminal input guard，阻止普通键后续 `beforeinput` / `input` 事件再次进入 xterm，同时保留 IME composition 路径。
-- [ ] 完成里程碑 4 的真实 PTY smoke。（已完成：协议 / 状态 / PTY session manager / shell 解析 / webview bundle marker 自动化测试；用户已确认 Terminal 节点可创建且普通输入可达；已修复 Backspace bridge 转义风险，并新增 JCEF 普通键重复输入 guard 与 C1 过滤。剩余：安装新 ZIP 后复验 Backspace 不再变成空格或乱码、英文输入不再重复带键、中文/英文 IME 切换不丢字，并在有图形环境的 IntelliJ IDEA、PyCharm、Android Studio 中验证 resize、Stop、Delete 和项目关闭清理。）
+- [x] (2026-07-02 02:11 +0800) 已提交上一轮输入 guard 修复为 `abd756a fix(intellij): 修复 JCEF Terminal 重复输入`；用户复测反馈普通英文输入正常、中文/英文 IME 切换正常，但 Backspace 仍异常，且 Enter 以外的 Tab、Ctrl+C、方向键仍异常。当前停止继续猜测键位映射，新增宿主诊断落盘：前端可通过 `Record Terminal Diagnostics` 开关记录 `keydown` / `keypress` / `beforeinput` / `input` / composition / xterm `onData` 和 guard 动作，Kotlin 宿主通过 `TerminalDiagnosticsRecorder` 把 webview 事件、host 收到的 terminal input/output 码点和 PTY 生命周期写到 IDE log 目录 `dev-session-canvas/terminal-input-*.jsonl`。
+- [x] (2026-07-02 02:18 +0800) 已验证宿主诊断落盘切片：`JAVA_HOME=/tmp/devsession-jdk-21 GRADLE_USER_HOME=/tmp/devsession-gradle-home GRADLE_OPTS='-Dhttps.proxyHost=10.79.2.115 -Dhttps.proxyPort=3128 -Dhttp.proxyHost=10.79.2.115 -Dhttp.proxyPort=3128' ./gradlew test buildPlugin verifyPluginStructure --no-daemon --stacktrace` 通过，`testWebviewBundle` 检查诊断消息 marker，`CanvasProtocolTest` 覆盖诊断消息编解码，`TerminalDiagnosticsRecorderTest` 覆盖 JSONL 写入和 C1 / DEL 码点记录。
+- [ ] 完成里程碑 4 的真实 PTY smoke。（已完成：协议 / 状态 / PTY session manager / shell 解析 / webview bundle marker 自动化测试；用户已确认 Terminal 节点可创建且普通输入可达；已修复 Backspace bridge 转义风险，并新增 JCEF 普通键重复输入 guard、C1 过滤和宿主诊断落盘。剩余：安装新诊断 ZIP 后录制 Backspace、Tab、Ctrl+C、方向键的 JSONL；基于日志决定是否调整 xterm key handling、JCEF event guard 或 PTY 行规；并在有图形环境的 IntelliJ IDEA、PyCharm、Android Studio 中验证 resize、Stop、Delete 和项目关闭清理。）
 - [ ] 完成 Agent 节点，明确第一版不承诺关闭 IDE 后继续运行，只承诺当前 IDE 生命周期内 execution 通道和 snapshot-only / 历史态表达。
 - [ ] 完成 Runtime Supervisor 接入方案，倾向复用现有 Node supervisor，并验证 IntelliJ 侧能注册、恢复和清理 runtime 会话。
 - [ ] 完成内部/手动安装验证准备，包括 `./gradlew test`、`./gradlew buildPlugin`、`./gradlew verifyPlugin`、三类目标 IDE smoke 和手动安装说明。
@@ -106,6 +108,9 @@
 
 - 观察：2026-07-02 的复测截图把根因范围从“bridge 传输控制字符”缩小到“JCEF / xterm 输入事件异常”。截图中 shell 行内显示 `<0098>`、`<0096>`、`<0099>` 和替换符样式的字符，这些是 C1 控制区码位，不是 shell 命令输出，也不是中文 UTF-8 正常字符；用户同时反馈切换英文后每个输入键还会带一个额外键，符合 xterm 在 JCEF 中同时从 keydown/keypress 与 input/composition 分支收到同一按键的重复输入模式。
   证据：上一轮 `CanvasWebviewHtml` 已经把 U+007F 到 U+009F 转成 ASCII JSON escape 后再进入 `JBCefJSQuery`，说明这些 C1 不再是 query transport 吞字导致，而是更早由浏览器输入事件进入 `terminal.onData`。`main.tsx` 现在在 `onData` 发送宿主前剥离 U+0080 到 U+009F，并在 JCEF host 中对普通文本键安装 `keydown` / `keypress` / `beforeinput` / `input` guard；composition 期间不拦截，避免破坏中文 IME 提交。
+
+- 观察：上一轮 JCEF input guard 已把普通英文重复输入和中文/英文 IME 切换风险降下来，但特殊键仍集中异常，说明需要区分“浏览器事件没有进入 xterm”“xterm 生成的序列不符合 shell 期待”“bridge / Kotlin / PTY 写入变形”和“shell 行规解释差异”四类路径。
+  证据：用户 2026-07-02 反馈测试项中 1 正常、2 不正常、3 正常、4 中 Enter 正常但其他都不正常；结合前文测试项，普通英文输入和中文/英文 IME 切换可用，而 Backspace、Tab、Ctrl+C、方向键仍有问题。当前新增 `TerminalDiagnosticsRecorder` 与前端诊断 probe，记录原始键盘事件、输入事件、xterm `onData` 码点、guard 抑制动作、宿主收到的输入码点、PTY 输出码点和 session 生命周期，避免继续凭截图盲改特殊键。
 
 ## 决策记录
 
@@ -213,6 +218,10 @@
   理由：用户 2026-07-02 截图显示的 `<0098>` 等 C1 控制字符已经出现在 shell 行编辑区，说明污染发生在 PTY 输入之前；英文模式每键带额外键则更像 Chromium/JCEF 输入事件重复，而不是 PTY 输出解码。过滤 U+0080..U+009F 可以去除非法键盘输入，同时保留 U+007F Backspace、C0 控制键和 ESC 序列；guard 只拦截普通文本键的重复 `beforeinput` / `input`，并跳过 composition，降低对中文 IME 的影响。
   日期/作者：2026-07-02 / Codex
 
+- 决策：在继续修特殊键前先实现可开关的 Terminal 诊断落盘，不再继续凭截图推断 Backspace、Tab、Ctrl+C 和方向键映射。
+  理由：用户复测已经证明普通文本和 IME 主路径正常，剩余问题集中在特殊键；特殊键可能在 JCEF keyboard event、xterm key handler、bridge payload、Kotlin decode、PTY write 或 shell line discipline 任一层变形。诊断开关默认关闭，不影响普通用户；开启后把 webview 与 host 两侧码点写入 IDE log 目录的 JSONL，可直接比较“按键事件是什么”“xterm 发了什么”“宿主收到并写了什么”“shell 回显了什么”。
+  日期/作者：2026-07-02 / Codex
+
 ## 结果与复盘
 
 文档收口阶段完成结果是：旧计划中已过期的“等待 notifier / Gradle 8 / 已存在共享协议和 webview 包”口径被替换为当前仓库事实；计划明确先做设计发现，再做可运行 PoC，最后逐步扩展到 Note、Terminal、Agent、Runtime Supervisor 和发布验证。正式设计文档 `docs/design-docs/intellij-platform-plugin-architecture.md` 已创建，目标 IDE、前端策略、协议策略、Agent / Runtime Supervisor 顺序和第一版发布范围已按用户确认写入计划。
@@ -223,7 +232,7 @@
 
 里程碑 3 工程首切片已经落地：`CanvasProjectStateService` 从占位 `schemaVersion` 扩展为项目级 Note / viewport 状态服务，Tool Window bootstrap 从服务快照恢复，创建、编辑、移动、resize、删除 Note 和视口变化都会通过最小协议写回项目状态。前端仍是 IntelliJ 专用 bundle，但 Note 节点已经从只读测试卡片升级为可编辑、可拖拽、可缩放的持久化节点；`CanvasProtocolTest`、`CanvasProjectStateServiceTest` 和 `testWebviewBundle` 覆盖新增消息与状态 helper。
 
-里程碑 4 工程首切片已经落地：协议模型从单一 Note 扩展为 `CanvasNode`，Terminal 节点拥有 `status`、`cwd`、`shellPath`、最近输出和 PTY 行列；`CanvasProjectStateService` 保存 Terminal 的位置、尺寸、状态、最近输出和行列；`ExecutionSessionManager` 使用平台 `pty4j` 启动项目目录下的默认 shell，支持输入、输出泵、resize、stop 和 dispose 清理；前端在 React Flow 内新增 xterm.js Terminal 节点和 `Create Terminal` 入口。首轮真实 smoke 显示 Terminal 可以创建且普通输入可达，同时暴露 Backspace 控制字符在 JCEF bridge 中可能被错误解释；当前已在 `CanvasWebviewHtml` 对 U+007F 到 U+009F 做 query 前 ASCII 转义，并新增 `CanvasWebviewHtmlTest` / `CanvasProtocolTest` 覆盖这条传输假设。2026-07-02 复测又暴露 C1 控制字符和英文重复键，当前在 `main.tsx` 增加 JCEF-only input guard 与 `onData` C1 过滤，`testWebviewBundle` 覆盖 bundle marker。`CanvasProtocolTest`、`CanvasProjectStateServiceTest`、`ShellCommandResolverTest`、`ExecutionSessionManagerTest`、`CanvasWebviewHtmlTest` 和 `testWebviewBundle` 覆盖当前非图形环境可验证的协议、状态、bridge HTML 和 PTY manager 行为。
+里程碑 4 工程首切片已经落地：协议模型从单一 Note 扩展为 `CanvasNode`，Terminal 节点拥有 `status`、`cwd`、`shellPath`、最近输出和 PTY 行列；`CanvasProjectStateService` 保存 Terminal 的位置、尺寸、状态、最近输出和行列；`ExecutionSessionManager` 使用平台 `pty4j` 启动项目目录下的默认 shell，支持输入、输出泵、resize、stop 和 dispose 清理；前端在 React Flow 内新增 xterm.js Terminal 节点和 `Create Terminal` 入口。首轮真实 smoke 显示 Terminal 可以创建且普通输入可达，同时暴露 Backspace 控制字符在 JCEF bridge 中可能被错误解释；当前已在 `CanvasWebviewHtml` 对 U+007F 到 U+009F 做 query 前 ASCII 转义，并新增 `CanvasWebviewHtmlTest` / `CanvasProtocolTest` 覆盖这条传输假设。2026-07-02 复测又暴露 C1 控制字符和英文重复键，当前在 `main.tsx` 增加 JCEF-only input guard 与 `onData` C1 过滤，`testWebviewBundle` 覆盖 bundle marker；用户随后确认普通英文和中文/英文 IME 切换正常，但 Backspace、Tab、Ctrl+C 和方向键仍异常，当前又新增 `Record Terminal Diagnostics` 开关与 `TerminalDiagnosticsRecorder`，用于把 webview 输入事件、xterm `onData`、host 收到的输入 / 输出码点写入 JSONL。`CanvasProtocolTest`、`CanvasProjectStateServiceTest`、`ShellCommandResolverTest`、`ExecutionSessionManagerTest`、`CanvasWebviewHtmlTest`、`TerminalDiagnosticsRecorderTest` 和 `testWebviewBundle` 覆盖当前非图形环境可验证的协议、状态、bridge HTML、诊断落盘和 PTY manager 行为。
 
 剩余缺口是精确 IDE/JCEF 矩阵、持久化完整手动验证以及外部网络稳定性：当前执行环境无 `DISPLAY` / `WAYLAND_DISPLAY`，`runIde` 仍无法在本机打开 IDE；用户已在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中确认 Dev Session Canvas 可打开，但 Android Studio 旧 `AI-253.30387.90` 仍保留为 JCEF unsupported 反例；`verifyPlugin` 因访问 JetBrains 文档页和 Marketplace 依赖时 `Connection reset` 失败。后续仍需补三类目标 IDE 的精确 build 号、Android Studio JCEF 安装方式、Note mutation 往返和关闭重开恢复目视证据、共享前端抽离时机、Node supervisor 复用细节和后续 Marketplace 发布策略。后续每个实现里程碑都必须同步测试证据和相关文档，不应把测试与文档都推迟到发布前。
 
@@ -607,3 +616,5 @@ Kotlin 侧消息模型在第一版只能覆盖当前里程碑需要的最小子�
 补充更新说明：2026-07-01 21:01 +0800，记录首轮 Terminal 真实 smoke 暴露的 Backspace 特殊键问题，并把修复路线写入计划和设计文档：JCEF bridge 先转义 U+007F 到 U+009F 控制字符，保留 xterm / PTY 原始输入语义，等待新安装包复验。
 
 补充更新说明：2026-07-02 01:08 +0800，记录 Terminal 输入二次根因分析：截图中的 `<0098>` 等是输入侧 C1 控制字符，英文每键带额外键指向 JCEF/xterm keydown/keypress/input 重复路径；当前实现改为前端发送前过滤 U+0080..U+009F，并在 JCEF host 安装普通键重复输入 guard，仍需用户安装新 ZIP 做真实 IDE 复验。
+
+补充更新说明：2026-07-02 02:18 +0800，记录 Terminal 特殊键改为诊断先行：普通英文和中文/英文 IME 切换已由用户确认正常，但 Backspace、Tab、Ctrl+C、方向键仍异常；当前新增前端诊断开关与 Kotlin `TerminalDiagnosticsRecorder`，把 webview 输入事件、xterm `onData`、host input/output 码点和 PTY 生命周期写入 IDE log 下的 JSONL，并通过 `./gradlew test buildPlugin verifyPluginStructure` 验证。

@@ -11,7 +11,9 @@ enum class WebviewMessageType(val wireName: String) {
     TerminalInput("webview/terminalInput"),
     TerminalResize("webview/terminalResize"),
     UpdateTerminalSize("webview/updateTerminalSize"),
-    StopTerminal("webview/stopTerminal")
+    StopTerminal("webview/stopTerminal"),
+    SetTerminalDiagnostics("webview/setTerminalDiagnostics"),
+    TerminalDiagnostic("webview/terminalDiagnostic")
 }
 
 data class WebviewMessage(
@@ -22,7 +24,9 @@ data class WebviewMessage(
     val updateViewport: CanvasViewport? = null,
     val terminalInput: WebviewTerminalInputPayload? = null,
     val terminalResize: WebviewTerminalResizePayload? = null,
-    val terminalSize: WebviewTerminalSizePayload? = null
+    val terminalSize: WebviewTerminalSizePayload? = null,
+    val terminalDiagnosticsEnabled: Boolean? = null,
+    val terminalDiagnostic: WebviewTerminalDiagnosticPayload? = null
 )
 
 data class WebviewUpdateNotePayload(
@@ -56,11 +60,17 @@ data class WebviewTerminalSizePayload(
     val height: Double
 )
 
+data class WebviewTerminalDiagnosticPayload(
+    val id: String? = null,
+    val entry: String
+)
+
 enum class HostMessageType(val wireName: String) {
     Bootstrap("host/bootstrap"),
     StateUpdated("host/stateUpdated"),
     TerminalOutput("host/terminalOutput"),
-    TerminalExit("host/terminalExit")
+    TerminalExit("host/terminalExit"),
+    TerminalDiagnosticsStatus("host/terminalDiagnosticsStatus")
 }
 
 data class CanvasHostState(
@@ -103,6 +113,12 @@ data class TerminalExitPayload(
     val message: String = ""
 )
 
+data class TerminalDiagnosticsStatusPayload(
+    val enabled: Boolean,
+    val path: String = "",
+    val message: String = ""
+)
+
 object CanvasProtocol {
     private val typePattern = Regex(""""type"\s*:\s*"([^"]+)"""")
 
@@ -121,6 +137,8 @@ object CanvasProtocol {
             WebviewMessageType.TerminalResize.wireName -> decodeTerminalResize(rawJson)
             WebviewMessageType.UpdateTerminalSize.wireName -> decodeTerminalSize(rawJson)
             WebviewMessageType.StopTerminal.wireName -> decodeStopTerminal(rawJson)
+            WebviewMessageType.SetTerminalDiagnostics.wireName -> decodeSetTerminalDiagnostics(rawJson)
+            WebviewMessageType.TerminalDiagnostic.wireName -> decodeTerminalDiagnostic(rawJson)
             else -> null
         }
     }
@@ -155,6 +173,19 @@ object CanvasProtocol {
                 "id": ${jsonText(payload.id)},
                 "status": ${jsonText(payload.status)},
                 "exitCode": $exitCode,
+                "message": ${jsonText(payload.message)}
+              }
+            }
+        """.trimIndent()
+    }
+
+    fun encodeTerminalDiagnosticsStatus(payload: TerminalDiagnosticsStatusPayload): String {
+        return """
+            {
+              "type": ${jsonText(HostMessageType.TerminalDiagnosticsStatus.wireName)},
+              "payload": {
+                "enabled": ${payload.enabled},
+                "path": ${jsonText(payload.path)},
                 "message": ${jsonText(payload.message)}
               }
             }
@@ -274,6 +305,22 @@ object CanvasProtocol {
         return WebviewMessage(type = WebviewMessageType.StopTerminal, nodeId = id)
     }
 
+    private fun decodeSetTerminalDiagnostics(rawJson: String): WebviewMessage? {
+        val enabled = booleanProperty(rawJson, "enabled") ?: return null
+        return WebviewMessage(type = WebviewMessageType.SetTerminalDiagnostics, terminalDiagnosticsEnabled = enabled)
+    }
+
+    private fun decodeTerminalDiagnostic(rawJson: String): WebviewMessage? {
+        val entry = stringProperty(rawJson, "entry") ?: return null
+        return WebviewMessage(
+            type = WebviewMessageType.TerminalDiagnostic,
+            terminalDiagnostic = WebviewTerminalDiagnosticPayload(
+                id = stringProperty(rawJson, "id"),
+                entry = entry
+            )
+        )
+    }
+
     private fun stringProperty(rawJson: String, propertyName: String): String? {
         val pattern = Regex(""""${Regex.escape(propertyName)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
         return pattern.find(rawJson)?.groupValues?.getOrNull(1)?.let(::unescapeJsonText)
@@ -286,6 +333,11 @@ object CanvasProtocol {
 
     private fun intProperty(rawJson: String, propertyName: String): Int? {
         return numberProperty(rawJson, propertyName)?.toInt()
+    }
+
+    private fun booleanProperty(rawJson: String, propertyName: String): Boolean? {
+        val pattern = Regex(""""${Regex.escape(propertyName)}"\s*:\s*(true|false)""")
+        return pattern.find(rawJson)?.groupValues?.getOrNull(1)?.toBooleanStrictOrNull()
     }
 
     private fun unescapeJsonText(value: String): String {
@@ -339,7 +391,7 @@ object CanvasProtocol {
                     '\r' -> append("\\r")
                     '\t' -> append("\\t")
                     else -> {
-                        if (char.code < 0x20) {
+                        if (char.code < 0x20 || char.code in 0x7F..0x9F) {
                             append("\\u")
                             append(char.code.toString(16).padStart(4, '0'))
                         } else {

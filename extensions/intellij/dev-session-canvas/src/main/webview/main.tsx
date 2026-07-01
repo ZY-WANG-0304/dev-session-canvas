@@ -34,12 +34,55 @@ type DisposableLike = {
   dispose(): void;
 };
 
+type TerminalDiagnosticsStatus = {
+  enabled: boolean;
+  path: string;
+  message: string;
+};
+
+type TerminalDiagnosticRecord = Record<string, string | number | boolean | null | undefined>;
+
 const MAX_RECENT_OUTPUT_CHARS = 12000;
 const terminalBindings = new Map<string, TerminalBinding>();
 const pendingTerminalOutput = new Map<string, string>();
+let terminalDiagnosticsEnabled = false;
 
 function retainRecentOutput(value: string): string {
   return value.length <= MAX_RECENT_OUTPUT_CHARS ? value : value.slice(-MAX_RECENT_OUTPUT_CHARS);
+}
+
+function describeText(value: string): string {
+  return Array.from(value)
+    .map((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+    })
+    .join(' ');
+}
+
+function sanitizeDiagnosticValue(value: string | number | boolean | null | undefined): string | number | boolean | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string' || value.length <= 160) {
+    return value;
+  }
+  return `${value.slice(0, 160)}...`;
+}
+
+function postTerminalDiagnostic(id: string | undefined, record: TerminalDiagnosticRecord): void {
+  if (!terminalDiagnosticsEnabled) {
+    return;
+  }
+  const normalizedRecord: TerminalDiagnosticRecord = {};
+  for (const [key, value] of Object.entries(record)) {
+    normalizedRecord[key] = sanitizeDiagnosticValue(value);
+  }
+  const entry = JSON.stringify({
+    time: new Date().toISOString(),
+    ...normalizedRecord
+  });
+  host.postMessage({ type: 'webview/terminalDiagnostic', id, entry });
 }
 
 function normalizeTerminalInput(value: string): string {
@@ -60,7 +103,72 @@ function shouldLetKeypressHandlePlainText(event: KeyboardEvent): boolean {
   return event.keyCode < 48 || (charCode >= 65 && charCode <= 90);
 }
 
-function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean): DisposableLike {
+function recordTerminalKeyboardEvent(id: string, event: KeyboardEvent): void {
+  postTerminalDiagnostic(id, {
+    event: event.type,
+    key: event.key,
+    code: event.code,
+    keyCode: event.keyCode,
+    which: event.which,
+    altKey: event.altKey,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+    shiftKey: event.shiftKey,
+    repeat: event.repeat,
+    isComposing: event.isComposing,
+    defaultPrevented: event.defaultPrevented
+  });
+}
+
+function recordTerminalInputEvent(id: string, event: Event): void {
+  if (event instanceof InputEvent) {
+    postTerminalDiagnostic(id, {
+      event: event.type,
+      inputType: event.inputType,
+      data: event.data,
+      dataCodes: event.data ? describeText(event.data) : '',
+      isComposing: event.isComposing,
+      defaultPrevented: event.defaultPrevented
+    });
+    return;
+  }
+  postTerminalDiagnostic(id, { event: event.type });
+}
+
+function installTerminalDiagnosticsProbe(terminal: Terminal, id: string, isJcefHost: boolean): DisposableLike {
+  const textarea = terminal.textarea;
+  if (!textarea || !isJcefHost) {
+    return { dispose: () => undefined };
+  }
+
+  const listeners: Array<{ target: EventTarget; type: string; listener: EventListener }> = [];
+  const addListener = (target: EventTarget | null | undefined, type: string, listener: EventListener): void => {
+    if (!target) {
+      return;
+    }
+    target.addEventListener(type, listener, true);
+    listeners.push({ target, type, listener });
+  };
+
+  addListener(textarea, 'keydown', (event) => recordTerminalKeyboardEvent(id, event as KeyboardEvent));
+  addListener(textarea, 'keypress', (event) => recordTerminalKeyboardEvent(id, event as KeyboardEvent));
+  addListener(textarea, 'keyup', (event) => recordTerminalKeyboardEvent(id, event as KeyboardEvent));
+  addListener(textarea, 'beforeinput', (event) => recordTerminalInputEvent(id, event));
+  addListener(textarea, 'input', (event) => recordTerminalInputEvent(id, event));
+  addListener(textarea, 'compositionstart', (event) => recordTerminalInputEvent(id, event));
+  addListener(textarea, 'compositionupdate', (event) => recordTerminalInputEvent(id, event));
+  addListener(textarea, 'compositionend', (event) => recordTerminalInputEvent(id, event));
+
+  return {
+    dispose: (): void => {
+      for (const listener of listeners) {
+        listener.target.removeEventListener(listener.type, listener.listener, true);
+      }
+    }
+  };
+}
+
+function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean, id: string): DisposableLike {
   // JetBrains JCEF can deliver both xterm keydown/keypress data and textarea input for one key.
   const textarea = terminal.textarea;
   if (!textarea || !isJcefHost) {
@@ -95,6 +203,7 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
 
   const handleKeydown = (event: KeyboardEvent): void => {
     if (compositionActive) {
+      postTerminalDiagnostic(id, { event: 'guard.keydown', action: 'composition-active', key: event.key, code: event.code });
       compositionKeyPending = false;
       suppressNextInsertText = false;
       suppressNextKeypress = false;
@@ -102,6 +211,7 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
       return;
     }
     if (event.keyCode === 229) {
+      postTerminalDiagnostic(id, { event: 'guard.keydown', action: 'composition-key-pending', key: event.key, code: event.code });
       compositionKeyPending = true;
       suppressNextInsertText = false;
       suppressNextKeypress = false;
@@ -110,6 +220,7 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
       return;
     }
     if (!isPlainKeyboardTextEvent(event)) {
+      postTerminalDiagnostic(id, { event: 'guard.keydown', action: 'non-plain-key', key: event.key, code: event.code });
       compositionKeyPending = false;
       suppressNextInsertText = false;
       suppressNextKeypress = false;
@@ -118,12 +229,14 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
     }
     compositionKeyPending = false;
     if (shouldLetKeypressHandlePlainText(event)) {
+      postTerminalDiagnostic(id, { event: 'guard.keydown', action: 'track-keypress', key: event.key, code: event.code });
       suppressNextInsertText = false;
       suppressNextKeypress = false;
       trackNextKeypressInput = true;
       scheduleSuppressionReset();
       return;
     }
+    postTerminalDiagnostic(id, { event: 'guard.keydown', action: 'suppress-keypress-and-input', key: event.key, code: event.code });
     suppressNextInsertText = true;
     suppressNextKeypress = true;
     trackNextKeypressInput = false;
@@ -134,6 +247,7 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
     if (!suppressNextKeypress) {
       return;
     }
+    postTerminalDiagnostic(id, { event: 'guard.keypress', action: 'suppressed-before-xterm', key: event.key, code: event.code });
     event.preventDefault();
     event.stopPropagation();
     suppressNextKeypress = false;
@@ -143,6 +257,7 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
     if (!trackNextKeypressInput) {
       return;
     }
+    postTerminalDiagnostic(id, { event: 'guard.keypress', action: 'tracked-after-xterm' });
     trackNextKeypressInput = false;
     suppressNextInsertText = true;
     scheduleSuppressionReset();
@@ -158,6 +273,13 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
     if (!suppressNextInsertText) {
       return;
     }
+    postTerminalDiagnostic(id, {
+      event: 'guard.beforeinput',
+      action: 'suppressed',
+      inputType: event.inputType,
+      data: event.data,
+      dataCodes: event.data ? describeText(event.data) : ''
+    });
     event.preventDefault();
     event.stopPropagation();
     suppressNextInsertText = false;
@@ -175,6 +297,13 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
     if (!compositionKeyPending && !suppressNextInsertText) {
       return;
     }
+    postTerminalDiagnostic(id, {
+      event: 'guard.input',
+      action: 'suppressed',
+      inputType: event.inputType,
+      data: event.data,
+      dataCodes: event.data ? describeText(event.data) : ''
+    });
     event.preventDefault();
     event.stopPropagation();
     if (suppressNextInsertText && !compositionKeyPending) {
@@ -188,6 +317,7 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
   };
 
   const handleCompositionStart = (): void => {
+    postTerminalDiagnostic(id, { event: 'guard.compositionstart', action: 'composition-active' });
     compositionActive = true;
     compositionKeyPending = false;
     suppressNextInsertText = false;
@@ -197,6 +327,7 @@ function installJcefTerminalInputGuard(terminal: Terminal, isJcefHost: boolean):
   };
 
   const handleCompositionEnd = (): void => {
+    postTerminalDiagnostic(id, { event: 'guard.compositionend', action: 'composition-finished' });
     window.setTimeout(() => {
       compositionActive = false;
     }, 0);
@@ -307,6 +438,7 @@ function NoteNode({ data, selected }: NodeProps<CanvasNode>): JSX.Element {
 
 function TerminalNode({ data, selected }: NodeProps<CanvasNode>): JSX.Element {
   const terminalElement = useRef<HTMLDivElement | null>(null);
+  const isJcefHost = Boolean(window.devSessionCanvasPostMessage);
 
   const fitAndReport = useCallback((): void => {
     const binding = terminalBindings.get(data.id);
@@ -362,9 +494,24 @@ function TerminalNode({ data, selected }: NodeProps<CanvasNode>): JSX.Element {
       }
       pendingTerminalOutput.delete(data.id);
     }
-    const inputGuardDisposable = installJcefTerminalInputGuard(terminal, Boolean(window.devSessionCanvasPostMessage));
+    const diagnosticsProbeDisposable = installTerminalDiagnosticsProbe(terminal, data.id, isJcefHost);
+    const inputGuardDisposable = installJcefTerminalInputGuard(terminal, isJcefHost, data.id);
     const dataDisposable = terminal.onData((text) => {
+      postTerminalDiagnostic(data.id, {
+        event: 'xterm.onData',
+        length: text.length,
+        codes: describeText(text),
+        text
+      });
       const normalizedText = normalizeTerminalInput(text);
+      if (normalizedText !== text) {
+        postTerminalDiagnostic(data.id, {
+          event: 'xterm.onData.normalized',
+          beforeCodes: describeText(text),
+          afterCodes: describeText(normalizedText),
+          text: normalizedText
+        });
+      }
       if (normalizedText.length > 0) {
         host.postMessage({ type: 'webview/terminalInput', id: data.id, text: normalizedText });
       }
@@ -377,10 +524,11 @@ function TerminalNode({ data, selected }: NodeProps<CanvasNode>): JSX.Element {
       resizeObserver.disconnect();
       dataDisposable.dispose();
       inputGuardDisposable.dispose();
+      diagnosticsProbeDisposable.dispose();
       terminalBindings.delete(data.id);
       terminal.dispose();
     };
-  }, [data.id, fitAndReport]);
+  }, [data.id, fitAndReport, isJcefHost]);
 
   useEffect(() => {
     const binding = terminalBindings.get(data.id);
@@ -438,6 +586,11 @@ function CanvasApp(): JSX.Element {
   const reactFlow = useReactFlow<CanvasNode>();
   const [nodes, setNodes] = useNodesState<CanvasNode>([]);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  const [terminalDiagnostics, setTerminalDiagnostics] = useState<TerminalDiagnosticsStatus>({
+    enabled: false,
+    path: '',
+    message: ''
+  });
 
   const nodeTypes = useMemo(() => ({ note: NoteNode, terminal: TerminalNode }), []);
 
@@ -461,6 +614,10 @@ function CanvasApp(): JSX.Element {
       if (message.type === 'host/terminalExit') {
         document.documentElement.dataset.dscLastTerminalExit = `${message.payload.id}:${message.payload.status}:${message.payload.exitCode ?? ''}`;
       }
+      if (message.type === 'host/terminalDiagnosticsStatus') {
+        terminalDiagnosticsEnabled = message.payload.enabled;
+        setTerminalDiagnostics(message.payload);
+      }
     });
     host.postMessage({ type: 'webview/ready' });
     return dispose;
@@ -470,7 +627,8 @@ function CanvasApp(): JSX.Element {
     document.documentElement.dataset.dscViewport = `${viewport.x.toFixed(1)},${viewport.y.toFixed(1)},${viewport.zoom.toFixed(3)}`;
     document.documentElement.dataset.dscNodeCount = String(nodes.length);
     document.documentElement.dataset.dscTerminalCount = String(nodes.filter((node) => node.data.type === 'terminal').length);
-  }, [nodes, viewport]);
+    document.documentElement.dataset.dscTerminalDiagnostics = terminalDiagnostics.enabled ? terminalDiagnostics.path : 'disabled';
+  }, [nodes, terminalDiagnostics, viewport]);
 
   const onMove = useCallback<OnMove>((_, nextViewport) => {
     setViewport(nextViewport);
@@ -494,6 +652,10 @@ function CanvasApp(): JSX.Element {
     });
   }, []);
 
+  const toggleTerminalDiagnostics = useCallback((): void => {
+    host.postMessage({ type: 'webview/setTerminalDiagnostics', enabled: !terminalDiagnostics.enabled });
+  }, [terminalDiagnostics.enabled]);
+
   return (
     <div className="dsc-root" data-dsc-root="intellij-react-flow-poc">
       <div className="dsc-toolbar">
@@ -504,8 +666,14 @@ function CanvasApp(): JSX.Element {
         <button type="button" onClick={() => host.postMessage({ type: 'webview/createTerminal' })}>
           Create Terminal
         </button>
+        <button type="button" onClick={toggleTerminalDiagnostics}>
+          {terminalDiagnostics.enabled ? 'Stop Terminal Diagnostics' : 'Record Terminal Diagnostics'}
+        </button>
         <span className="dsc-viewport-readout">
           x {viewport.x.toFixed(1)} | y {viewport.y.toFixed(1)} | z {viewport.zoom.toFixed(2)}
+        </span>
+        <span className="dsc-diagnostics-readout" title={terminalDiagnostics.path || terminalDiagnostics.message}>
+          {terminalDiagnostics.enabled ? `diagnostics: ${terminalDiagnostics.path}` : terminalDiagnostics.message}
         </span>
       </div>
       <ReactFlow

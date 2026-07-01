@@ -30,7 +30,8 @@ export type HostMessage =
       };
     }
   | { type: 'host/terminalOutput'; payload: { id: string; text: string } }
-  | { type: 'host/terminalExit'; payload: { id: string; status: string; exitCode: number | null; message: string } };
+  | { type: 'host/terminalExit'; payload: { id: string; status: string; exitCode: number | null; message: string } }
+  | { type: 'host/terminalDiagnosticsStatus'; payload: { enabled: boolean; path: string; message: string } };
 
 export type WebviewMessage =
   | { type: 'webview/ready' }
@@ -43,7 +44,9 @@ export type WebviewMessage =
   | { type: 'webview/terminalInput'; id: string; text: string }
   | { type: 'webview/terminalResize'; id: string; cols: number; rows: number }
   | { type: 'webview/updateTerminalSize'; id: string; width: number; height: number }
-  | { type: 'webview/stopTerminal'; id: string };
+  | { type: 'webview/stopTerminal'; id: string }
+  | { type: 'webview/setTerminalDiagnostics'; enabled: boolean }
+  | { type: 'webview/terminalDiagnostic'; id?: string; entry: string };
 
 declare global {
   interface Window {

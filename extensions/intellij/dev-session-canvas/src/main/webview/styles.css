@@ -59,6 +59,16 @@ body,
   font-size: 11px;
 }
 
+.dsc-diagnostics-readout {
+  max-width: 360px;
+  overflow: hidden;
+  color: #fde68a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dsc-note-node {
   position: relative;
   box-sizing: border-box;

@@ -1,5 +1,6 @@
 package com.devsessioncanvas.intellij.toolwindow
 
+import com.devsessioncanvas.intellij.diagnostics.TerminalDiagnosticsRecorder
 import com.devsessioncanvas.intellij.execution.ExecutionSessionManager
 import com.devsessioncanvas.intellij.execution.ShellCommandResolver
 import com.devsessioncanvas.intellij.execution.TerminalSessionListener
@@ -10,6 +11,7 @@ import com.devsessioncanvas.intellij.protocol.WebviewMessage
 import com.devsessioncanvas.intellij.protocol.WebviewMessageType
 import com.devsessioncanvas.intellij.protocol.TerminalExitPayload
 import com.devsessioncanvas.intellij.protocol.TerminalOutputPayload
+import com.devsessioncanvas.intellij.protocol.TerminalDiagnosticsStatusPayload
 import com.devsessioncanvas.intellij.state.CanvasProjectStateService
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -25,10 +27,12 @@ class CanvasBrowserBridge(
 ) : Disposable {
     private val query = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val stateService = project.service<CanvasProjectStateService>()
+    private val diagnosticsRecorder = TerminalDiagnosticsRecorder()
     @Volatile private var disposed = false
     private val executionManager = ExecutionSessionManager(
         object : TerminalSessionListener {
             override fun onTerminalStarted(id: String) {
+                diagnosticsRecorder.recordHostEvent("terminal.started", id)
                 sendStateUpdated(stateService.updateTerminalStatus(id, "running"))
             }
 
@@ -36,6 +40,7 @@ class CanvasBrowserBridge(
                 if (!stateService.isTerminalNode(id)) {
                     return
                 }
+                diagnosticsRecorder.recordHostText("terminal.output", id, text)
                 stateService.appendTerminalOutput(id, text)
                 sendToWebview(CanvasProtocol.encodeTerminalOutput(TerminalOutputPayload(id = id, text = text)))
             }
@@ -44,6 +49,11 @@ class CanvasBrowserBridge(
                 if (!stateService.isTerminalNode(id)) {
                     return
                 }
+                diagnosticsRecorder.recordHostEvent(
+                    "terminal.exit",
+                    id,
+                    mapOf("status" to status, "exitCode" to (exitCode?.toString() ?: ""), "message" to message)
+                )
                 sendStateUpdated(stateService.updateTerminalStatus(id, status, message))
                 sendToWebview(
                     CanvasProtocol.encodeTerminalExit(
@@ -66,6 +76,7 @@ class CanvasBrowserBridge(
     override fun dispose() {
         disposed = true
         executionManager.dispose()
+        diagnosticsRecorder.dispose()
         query.dispose()
     }
 
@@ -78,7 +89,10 @@ class CanvasBrowserBridge(
 
     private fun handleMessage(message: WebviewMessage) {
         when (message.type) {
-            WebviewMessageType.Ready -> sendBootstrap()
+            WebviewMessageType.Ready -> {
+                sendBootstrap()
+                sendTerminalDiagnosticsStatus(diagnosticsRecorder.status())
+            }
             WebviewMessageType.CreateNote -> sendStateUpdated(stateService.createNote(project.name))
             WebviewMessageType.CreateTerminal -> createTerminal()
             WebviewMessageType.UpdateNote -> message.updateNote?.let {
@@ -97,9 +111,15 @@ class CanvasBrowserBridge(
                 sendStateUpdated(stateService.deleteNode(it))
             }
             WebviewMessageType.TerminalInput -> message.terminalInput?.let {
+                diagnosticsRecorder.recordHostText("terminal.input.host-received", it.id, it.text)
                 executionManager.sendInput(it.id, it.text)
             }
             WebviewMessageType.TerminalResize -> message.terminalResize?.let {
+                diagnosticsRecorder.recordHostEvent(
+                    "terminal.resize",
+                    it.id,
+                    mapOf("cols" to it.cols.toString(), "rows" to it.rows.toString())
+                )
                 stateService.updateTerminalPtySize(it.id, it.cols, it.rows)
                 executionManager.resizeTerminal(it.id, it.cols, it.rows)
             }
@@ -107,7 +127,14 @@ class CanvasBrowserBridge(
                 sendStateUpdated(stateService.updateTerminalSize(it))
             }
             WebviewMessageType.StopTerminal -> message.nodeId?.let {
+                diagnosticsRecorder.recordHostEvent("terminal.stop-requested", it)
                 executionManager.stopTerminal(it)
+            }
+            WebviewMessageType.SetTerminalDiagnostics -> message.terminalDiagnosticsEnabled?.let {
+                sendTerminalDiagnosticsStatus(diagnosticsRecorder.setEnabled(it))
+            }
+            WebviewMessageType.TerminalDiagnostic -> message.terminalDiagnostic?.let {
+                diagnosticsRecorder.recordWebviewEntry(it.id, it.entry)
             }
         }
     }
@@ -132,6 +159,10 @@ class CanvasBrowserBridge(
 
     private fun sendStateUpdated(state: CanvasHostState) {
         sendToWebview(CanvasProtocol.encodeHostMessage(HostMessageType.StateUpdated, state))
+    }
+
+    private fun sendTerminalDiagnosticsStatus(payload: TerminalDiagnosticsStatusPayload) {
+        sendToWebview(CanvasProtocol.encodeTerminalDiagnosticsStatus(payload))
     }
 
     private fun sendToWebview(json: String) {
