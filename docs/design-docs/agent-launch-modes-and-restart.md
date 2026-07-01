@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-06-14
+updated_at: 2026-07-01
 ---
 
 # Agent 启动方式与重启交互设计
@@ -209,7 +209,16 @@ updated_at: 2026-06-14
 
 同一个共享层里，`Resume` 预设本身还要单独走另一套归一化：它不是“保留默认参数里已有的定向 resume 目标”，而是强制收口到 provider 自己的 resume 入口。因此若默认启动参数已经写了 `resume --last`、`resume <session-id>`、`--resume <session-id>`、`-r <session-id>`、`--continue <session-id>`、`-c <session-id>` 或 `--session-id <session-id>`，命令层在应用 `Resume` 预设前要先剥离这些更定向的会话选择片段，再回填通用的 `codex resume` / `claude --resume`。
 
-这里还要继续细分两类场景：一类是“没有显式目标 session-id 的 Resume 预设”，它进入 provider 自己的 picker / resume 入口，因此像 `Codex --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数仍可保留；另一类是“已经持有明确 session-id 的显式恢复命令”，例如侧栏历史会话恢复。这时命令层不能再把上述选择阶段参数继续带到 `codex resume <session-id>` 后面，否则会把“已明确目标的恢复”错误混成“仍在影响 picker 行为”的命令。显式目标恢复在 Codex 侧应只保留 `--model`、`--sandbox`、`--ask-for-approval` 等对 `resume <session-id>` 本身仍有效的参数，同时剥离 `--all`、`--include-non-interactive`、`--last` 与旧的目标 session 片段。
+这里还要继续细分两类场景：一类是“没有显式目标 session-id 的 Resume 预设”，它进入 provider 自己的 picker / resume 入口，因此像 `Codex --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数仍可保留；另一类是“已经持有明确 session-id 的显式恢复命令”，例如侧栏历史会话恢复或停止后对当前节点点击 `重启`。这时命令层不能再把上述选择阶段参数继续带到 `codex resume <session-id>` 后面，否则会把“已明确目标的恢复”错误混成“仍在影响 picker 行为”的命令。显式目标恢复在 Codex 侧应只保留 `--model`、`--sandbox`、`--ask-for-approval` 等对 `resume <session-id>` 本身仍有效的参数，同时剥离 `--all`、`--include-non-interactive`、`--last` 与旧的目标 session 片段。
+
+显式 `Resume / Fork` 的冲突与非冲突配置清单固定如下：
+
+- Provider 命令路径不冲突：`devSessionCanvas.agent.codexCommand` / `devSessionCanvas.agent.claudeCommand` 继续决定首个命令 token；宿主仍通过 resolver 找到实际可执行文件。
+- Agent 工作目录不冲突：当前节点 `metadata.agent.cwd` 或历史记录里的 `cwd` 继续作为 PTY `cwd`，不会因 resume/fork 被替换成 provider home 或扩展 storage。
+- Codex 显式目标 `resume` 的冲突项包括旧的 `resume` / `fork` 目标片段、旧 positional session/prompt、`--last`、`--all`、`--include-non-interactive`，无论它们写在子命令之前还是之后都必须剥离；不冲突项包括 `--model` / `-m`、`--sandbox` / `-s`、`--ask-for-approval` / `-a`、`--profile` / `-p`、`--config` / `-c`、`--cd` / `-C`、`--add-dir`、`--image` / `-i`、`--local-provider`、`--enable`、`--disable`、`--remote`、`--remote-auth-token-env`，以及不需要额外 value 的单 token option。
+- Codex 显式目标 `fork` 的冲突项同样包括旧的 `resume` / `fork` 目标片段、旧 positional session/prompt、`--last`、`--all`、`--include-non-interactive`；不冲突项沿用 Codex 显式 resume 的 runtime/configuration option 列表。
+- Claude Code 显式目标 `resume` 的冲突项包括旧的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 与 `--fork-session`（含 `--flag=value` 和空格分隔两种形式）；不冲突项包括 `--model`、`--permission-mode`、`--dangerously-skip-permissions`、MCP / tool / output 等其他非 session-target 参数，以及普通 positional prompt。
+- Claude Code 显式目标 `fork` 的冲突项同样包括旧的 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 与旧 `--fork-session`；不冲突项沿用 Claude Code 显式 resume 的非 session-target 参数。最终命令只能由本次动作写入一个新的 `--resume <source-session-id> --fork-session`，并在启动时由宿主为新 fork 节点补独立 `--session-id <candidate>`。
 
 这里的“允许命令集合”不是只看裸字符串 `codex / claude`，也不是接受“任意 basename 一样的可执行文件”；它只接受当前设置值本身，以及 provider 的标准别名。这样当测试环境或用户设置把 provider 命令指向绝对路径脚本时，自定义输入仍然可以使用该精确路径，同时不会把 `/tmp/evil/claude` 这类同 basename 的其他二进制误判成合法命令。
 
@@ -358,4 +367,5 @@ updated_at: 2026-06-14
 - 2026-06-14：分叉自动连线继续收口为可见语义：宿主创建来源 Agent 指向新 Agent 的普通 `user` 边时，默认写入 `fork` 标签，让画布上的分叉关系不只依赖连线方向。已运行 `npm run test:canvas-node-groups`、`npm run test:canvas-execution-context`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`node --check tests/playwright/webview-harness.spec.mjs`、focused Webview 连线标签渲染回归与 `git diff --check`，均通过；完整 VSCode smoke 未重新运行，继续沿用既有 Development Host 阻塞记录。
 - 2026-06-14：PR159 review 指出的 Codex 分叉参数清理已收口：`buildCodexBranchArgv()` 对默认参数中 `fork` / `resume` 子命令之前和之后的参数都执行 fork selection stripping，新增命令层回归覆盖 leading `--last`、`--all`、`--include-non-interactive` 与旧 positional target。旧 Claude-only ExecPlan 已从 active 移入 completed，当前 Codex / Claude Code 分叉事实统一由 `docs/exec-plans/active/agent-launch-modes-and-restart.md` 与本文维护。
 - 2026-06-14：修正标题栏动作按钮内部换行的触发口径：之前仅允许按钮 `white-space: normal`，但两个中文字符在 `min-content` 保护下即使拉到最小节点宽度也不一定会实际换成两行。现在 Agent 节点接近最小宽度时会给 action cluster 标记 `compact-actions` 密度，并把右上角所有动作按钮文案包在按钮内按两行显示；action cluster 仍保持 `nowrap`，不会回到整组换行破坏布局。已运行 focused Webview 回归确认所有动作按钮采用相同内部两行格式，并确认标题栏状态仍可见。
+- 2026-07-01：补齐显式 `Resume / Fork` 的参数继承边界：当前节点 `重启` 与历史恢复现在复用共享 history resume 命令构造，保留 `--model`、sandbox / approval、profile / config、cwd 等不冲突配置；Codex 会同时剥离 leading 与子命令尾部的旧 `--last`、`--all`、`--include-non-interactive` 和旧 session/prompt 目标，Claude Code 会剥离旧 session-target 与旧 `--fork-session`。已新增命令层与宿主源检查回归。
 - 2026-06-07：已补充 Fork 可见时 Agent 标题栏动作区的布局回归，确认 `停止`、`Fork`、`删除` 不再被 flex 收缩挤占；已运行 targeted `npm run test:webview -- --grep "agent restart actions render inline without a dropdown|Claude Agent Fork action posts a branchAgentSession message|Claude Agent Fork action keeps live title actions readable|Agent Fork action is hidden outside resumable Claude sessions|agent restart action falls back to start button when no resumable session exists"`（5 passed）与 `npm run typecheck`，均通过。随后补齐 Webview posted-message `lifecycle` 测试兼容、smoke 短 debug root 与 macOS `--password-store=basic` 启动参数，并修复真实 PTY 行号漂移导致 multiline 执行链接误回退到 Quick Open 的 smoke 阻塞；相关验证 `npm run test:vscode-smoke-runner-env`、`node scripts/test/test-execution-terminal-line-context-tracker.mjs`、`node scripts/test/test-execution-terminal-native-helpers.mjs`、multiline execution-link targeted Webview 测试均通过。当前 `DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT=/tmp/dsc-smoke DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 已越过 VS Code socket/keychain 与执行链接阶段，新的剩余阻塞为后续侧栏节点列表测试动作超时；整体验证状态继续保持 `验证中`。

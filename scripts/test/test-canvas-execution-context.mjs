@@ -435,6 +435,21 @@ try {
   );
   assert.match(
     managerSource,
+    /launchMode === 'resume'[\s\S]*resumeContext\.strategy !== 'fake-provider'[\s\S]*this\.resolveAgentHistoryResumeLaunch\([\s\S]*provider,[\s\S]*resumeContext\.sessionId/u,
+    'Codex / Claude 显式恢复当前节点原会话时必须复用 history resume 命令构造，保留非冲突默认启动参数。'
+  );
+  assert.match(
+    managerSource,
+    /const explicitLaunchCommandLine = params\.freshLaunchCommandLine\?\.trim\(\);[\s\S]*if \(explicitLaunchCommandLine\) \{[\s\S]*return explicitLaunchCommandLine;/u,
+    'Agent resume/fork 的标题副标题和诊断命令必须显示完整显式命令，而不是只显示裸 resume 目标。'
+  );
+  assert.match(
+    managerSource,
+    /const hasExplicitLaunchArgs = launchArgs\.length > 0;[\s\S]*launchMode === 'resume' && resumeContext\.sessionId && !hasExplicitLaunchArgs[\s\S]*launchMode === 'resume' && !hasExplicitLaunchArgs/u,
+    'Agent 显式恢复命令已包含 argv 时，buildAgentLaunchSpec 不应再次追加裸 resume 参数。'
+  );
+  assert.match(
+    managerSource,
     /composeMultiRootCanvasState/u,
     'CanvasPanelManager 必须使用 root-local multi-root composition，而不是 fork 画布状态。'
   );
