@@ -18,7 +18,7 @@ related_plans:
   - docs/exec-plans/completed/canvas-sidebar-node-and-session-lists.md
   - docs/exec-plans/completed/canvas-sidebar-node-list-webview-conversion.md
   - docs/exec-plans/completed/sidebar-workspace-worktree-actions.md
-updated_at: 2026-06-26
+updated_at: 2026-07-01
 ---
 
 # 画布侧栏节点列表与会话历史设计
@@ -183,7 +183,7 @@ updated_at: 2026-06-26
   - `claude --resume <session-id> <当前仍有效的默认参数...>`
   - `codex fork <当前仍有效的默认参数...> <session-id>`（实现上命令层把 `fork` 尽量前置，session id 保持在命令尾部）
   - `claude --resume <session-id> --fork-session <当前仍有效的默认参数...>`
-- 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复或分叉后面；若默认参数里已含 `Codex resume --all`、`--include-non-interactive` 这类只影响 picker / `--last` 选择范围的参数，历史恢复 / 分叉时要先剥离这些选择阶段参数，再写入目标 `session-id`。与之相对，`--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` / `fork <session-id>` 仍有效的参数继续保留；而 `resume` / `fork` / `--resume` 这类模式 argv 本身则尽量前置到命令前部。
+- 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复或分叉后面；默认参数只应包含 `--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` / `fork <session-id>` 仍有效的 runtime/configuration 参数。`resume` / `fork` / `--resume`、`--last`、`--all`、`--include-non-interactive`、`--session-id`、`--fork-session` 等一次性目标或选择范围参数不适合放入默认启动参数，若出现应在默认参数解析阶段显式报错。
 - 历史分叉节点标题使用原会话标题加 `分叉` 后缀作为弱提示；从历史列表发起时没有现有画布来源节点，因此不自动创建 `fork` 连线。
 - 新节点创建后，宿主会自动打开或定位画布，并聚焦到新节点。
 - 后续自动启动仍沿用现有 `Agent` 节点“等待尺寸就绪后自动启动”的宿主/前端链路，不再另开一套特殊恢复流程。

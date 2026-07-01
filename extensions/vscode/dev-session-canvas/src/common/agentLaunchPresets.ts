@@ -23,6 +23,10 @@ export interface ClaudeCommandSessionFlag {
 
 const WINDOWS_EXECUTABLE_SUFFIX = /\.(exe|cmd|bat|com)$/i;
 type DoubleQuotedBackslashMode = 'unknown' | 'legacy' | 'literal';
+type AgentDefaultArgsConflict = {
+  token: string;
+  description: string;
+};
 
 export function buildAgentPresetCommandLine(
   provider: AgentProviderKind,
@@ -599,14 +603,16 @@ function stripCodexExecutionModeArgs(baseArgs: readonly string[]): string[] {
 
 function buildCodexResumeArgv(baseArgs: readonly string[], explicitSessionId?: string): string[] {
   const { leadingArgs, resumeArgs } = splitCodexResumeArgs(baseArgs);
+  const stripOptions = {
+    explicitTarget: explicitSessionId !== undefined
+  };
+  const normalizedLeadingArgs = stripCodexResumeSelectionArgs(leadingArgs, stripOptions);
   const normalizedResumeArgs = resumeArgs
-    ? stripCodexResumeSelectionArgs(resumeArgs, {
-        explicitTarget: explicitSessionId !== undefined
-      })
+    ? stripCodexResumeSelectionArgs(resumeArgs, stripOptions)
     : [];
   return explicitSessionId
-    ? ['resume', ...leadingArgs, ...normalizedResumeArgs, explicitSessionId]
-    : ['resume', ...leadingArgs, ...normalizedResumeArgs];
+    ? ['resume', ...normalizedLeadingArgs, ...normalizedResumeArgs, explicitSessionId]
+    : ['resume', ...normalizedLeadingArgs, ...normalizedResumeArgs];
 }
 
 function splitCodexResumeArgs(baseArgs: readonly string[]): {
@@ -803,6 +809,8 @@ function stripClaudeResumeTargetArgs(baseArgs: readonly string[]): string[] {
     const token = baseArgs[index];
 
     if (
+      token === '--fork-session' ||
+      token.startsWith('--fork-session=') ||
       token.startsWith('--session-id=') ||
       token.startsWith('--resume=') ||
       token.startsWith('--continue=') ||
@@ -831,7 +839,7 @@ function stripClaudeResumeTargetArgs(baseArgs: readonly string[]): string[] {
 
 function skipOwnedFlagValue(baseArgs: readonly string[], index: number): number {
   const nextToken = baseArgs[index + 1];
-  if (nextToken && !isOptionLikeCommandToken(nextToken)) {
+  if (nextToken !== undefined && !isOptionLikeCommandToken(nextToken)) {
     return index + 1;
   }
 
@@ -1275,9 +1283,92 @@ function parseAgentDefaultArgs(
     };
   }
 
+  const conflict = findAgentDefaultArgsConflict(provider, parsed.argv);
+  if (conflict) {
+    return {
+      error: `${providerLabel(provider)} 默认启动参数不能包含与 Resume / Fork 冲突的${conflict.description} ${quoteCommandToken(conflict.token)}；请从 Default args 移除，改用 Resume / 分叉入口，或把一次性的会话目标写入自定义启动命令。`
+    };
+  }
+
   return {
     args: parsed.argv
   };
+}
+
+function findAgentDefaultArgsConflict(
+  provider: AgentProviderKind,
+  args: readonly string[]
+): AgentDefaultArgsConflict | undefined {
+  return provider === 'claude'
+    ? findClaudeDefaultArgsConflict(args)
+    : findCodexDefaultArgsConflict(args);
+}
+
+function findCodexDefaultArgsConflict(args: readonly string[]): AgentDefaultArgsConflict | undefined {
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+
+    if (token === '--') {
+      return {
+        token,
+        description: '位置参数分隔符'
+      };
+    }
+
+    if (isCodexSessionSelectionFlag(token)) {
+      return {
+        token,
+        description: '会话选择参数'
+      };
+    }
+
+    if (!isOptionLikeCommandToken(token)) {
+      return {
+        token,
+        description: token === 'resume' || token === 'fork'
+          ? '会话目标子命令'
+          : '位置参数（prompt/session）'
+      };
+    }
+
+    if (codexOptionConsumesFollowingValue(token)) {
+      index = skipOwnedFlagValue(args, index);
+      continue;
+    }
+  }
+
+  return undefined;
+}
+
+function isCodexSessionSelectionFlag(token: string): boolean {
+  return (
+    token === '--last' ||
+    token === '--all' ||
+    token === '--include-non-interactive' ||
+    token.startsWith('--last=') ||
+    token.startsWith('--all=') ||
+    token.startsWith('--include-non-interactive=')
+  );
+}
+
+function findClaudeDefaultArgsConflict(args: readonly string[]): AgentDefaultArgsConflict | undefined {
+  for (const token of args) {
+    if (token === '--fork-session' || token.startsWith('--fork-session=')) {
+      return {
+        token,
+        description: 'Fork 标记参数'
+      };
+    }
+
+    if (matchClaudeCommandSessionFlag(token)) {
+      return {
+        token,
+        description: '会话目标参数'
+      };
+    }
+  }
+
+  return undefined;
 }
 
 function getAgentDefaultArgsParseError(

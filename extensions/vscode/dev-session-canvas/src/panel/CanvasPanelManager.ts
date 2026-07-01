@@ -13165,6 +13165,49 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       currentMetadata,
       freshLaunch?.launchArgs ?? []
     );
+    if (
+      launchMode === 'resume' &&
+      resumeContext.strategy !== 'fake-provider' &&
+      resumeContext.sessionId
+    ) {
+      try {
+        freshLaunch = this.resolveAgentHistoryResumeLaunch(
+          provider,
+          resumeContext.sessionId,
+          currentMetadata.launchPreset
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '无法解析 Agent 恢复命令。';
+        this.recordDiagnosticEvent('execution/startRejected', {
+          kind: 'agent',
+          nodeId,
+          reason: 'invalid-resume-command',
+          message
+        });
+        this.state = updateAgentNode(this.state, nodeId, {
+          status: 'resume-failed',
+          summary: message,
+          metadata: buildAgentMetadataPatch(this.state, nodeId, {
+            provider,
+            lifecycle: 'resume-failed',
+            liveSession: false,
+            pendingLaunch: undefined,
+            lastResumeError: message,
+            lastExitMessage: message,
+            lastRuntimeError: message
+          })
+        });
+        this.persistState();
+        this.postState('host/stateUpdated');
+        this.postMessage({
+          type: 'host/error',
+          payload: {
+            message
+          }
+        });
+        return;
+      }
+    }
     const displayLaunchCommandLine = this.buildAgentDisplayLaunchCommandLine({
       provider,
       requestedCommand: configuredCliSpec.requestedCommand,
@@ -13766,8 +13809,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     freshLaunchCommandLine?: string;
     resumeContext: AgentResumeContext;
   }): string {
+    const explicitLaunchCommandLine = params.freshLaunchCommandLine?.trim();
+    if (explicitLaunchCommandLine) {
+      return explicitLaunchCommandLine;
+    }
+
     if (params.launchMode === 'start') {
-      return params.freshLaunchCommandLine?.trim() || params.requestedCommand.trim();
+      return params.requestedCommand.trim();
     }
 
     if (params.provider === 'claude') {
@@ -13783,6 +13831,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ? [params.requestedCommand, 'resume', params.resumeContext.sessionId]
         : [params.requestedCommand, 'resume']
     );
+  }
+
+  private resolveAgentHistoryResumeLaunch(
+    provider: AgentProviderKind,
+    sessionId: string,
+    launchPreset: AgentLaunchPresetKind
+  ): {
+    commandLine: string;
+    requestedCommand: string;
+    launchArgs: string[];
+    launchPreset: AgentLaunchPresetKind;
+  } {
+    const commandLine = this.buildHistoryResumeCommandLine(provider, sessionId);
+    const validation = validateAgentCommandLine(commandLine, provider, this.getAgentLaunchDefaults(provider));
+    if (!validation.valid || !validation.parsed) {
+      throw new Error(validation.error ?? '无法解析 Agent 恢复命令。');
+    }
+
+    return {
+      commandLine,
+      requestedCommand: validation.parsed.command,
+      launchArgs: validation.parsed.args,
+      launchPreset
+    };
   }
 
   private buildHistoryResumeCommandLine(provider: AgentProviderKind, sessionId: string): string {
@@ -14167,7 +14239,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     resumeContext: AgentResumeContext,
     fileActivitySession?: AgentFileActivitySession
   ): ExecutionSessionLaunchSpec {
-    const args: string[] = launchMode === 'start' ? [...launchArgs] : [];
+    const hasExplicitLaunchArgs = launchArgs.length > 0;
+    const args: string[] = hasExplicitLaunchArgs || launchMode === 'start' ? [...launchArgs] : [];
 
     if (looksLikeFakeAgentProviderCommand(spec.command)) {
       env[FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY] = spec.provider;
@@ -14180,7 +14253,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (resumeContext.storagePath) {
         env[FAKE_PROVIDER_STORAGE_PATH_ENV_KEY] = resumeContext.storagePath;
       }
-      if (launchMode === 'resume') {
+      if (launchMode === 'resume' && !hasExplicitLaunchArgs) {
         args.push('resume');
         if (resumeContext.sessionId) {
           args.push(resumeContext.sessionId);
@@ -14188,14 +14261,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     } else if (spec.provider === 'claude') {
       const hasExplicitClaudeSessionFlag = Boolean(extractClaudeCommandRuntimeSessionFlag(launchArgs));
-      if (launchMode === 'resume' && resumeContext.sessionId) {
+      if (launchMode === 'resume' && resumeContext.sessionId && !hasExplicitLaunchArgs) {
         args.push('--resume', resumeContext.sessionId);
       } else if (resumeContext.sessionId && isClaudeForkSessionLaunch(launchArgs) && !hasExplicitClaudeSessionFlag) {
         args.push('--session-id', resumeContext.sessionId);
-      } else if (resumeContext.sessionId && !hasExplicitClaudeSessionFlag) {
+      } else if (resumeContext.sessionId && !hasExplicitClaudeSessionFlag && launchMode === 'start') {
         args.push('--session-id', resumeContext.sessionId);
       }
-    } else if (launchMode === 'resume') {
+    } else if (launchMode === 'resume' && !hasExplicitLaunchArgs) {
       if (!resumeContext.sessionId) {
         throw new Error('缺少可恢复的 Codex 会话标识。');
       }
