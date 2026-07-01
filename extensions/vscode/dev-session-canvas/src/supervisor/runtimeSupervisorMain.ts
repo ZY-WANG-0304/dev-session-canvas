@@ -22,7 +22,10 @@ import {
   type TerminalNodeStatus
 } from '../common/protocol';
 import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
-import { SerializedTerminalStateTracker } from '../common/serializedTerminalState';
+import {
+  SerializedTerminalStateTracker,
+  type SerializedTerminalState
+} from '../common/serializedTerminalState';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   deserializeExecutionSessionLaunchSpec,
@@ -64,6 +67,10 @@ const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
 
 function normalizeRuntimeSupervisorOutputSequence(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function normalizeRuntimeSupervisorOptionalOutputSequence(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 interface SupervisorRegistry {
@@ -110,6 +117,7 @@ class RuntimeSupervisorServer {
   private readonly connections = new Set<net.Socket>();
   private readonly subscriptions = new Map<net.Socket, Set<string>>();
   private persistTimer: NodeJS.Timeout | undefined;
+  private persistRegistryWriteSequence = 0;
   private idleShutdownTimer: NodeJS.Timeout | undefined;
   private server: net.Server | undefined;
 
@@ -199,7 +207,7 @@ class RuntimeSupervisorServer {
           });
           return;
         case 'createSession': {
-          const snapshot = this.createSession(socket, request.params);
+          const snapshot = await this.createSession(socket, request.params);
           this.writeMessage(socket, {
             type: 'response',
             id: request.id,
@@ -209,7 +217,7 @@ class RuntimeSupervisorServer {
           return;
         }
         case 'attachSession': {
-          const snapshot = this.attachSession(socket, request.params);
+          const snapshot = await this.attachSession(socket, request.params);
           this.writeMessage(socket, {
             type: 'response',
             id: request.id,
@@ -235,7 +243,7 @@ class RuntimeSupervisorServer {
           this.writeOkResponse(socket, request.id);
           return;
         case 'deleteSession':
-          this.deleteSession(request.params);
+          await this.deleteSession(request.params);
           this.writeOkResponse(socket, request.id);
           return;
       }
@@ -249,10 +257,10 @@ class RuntimeSupervisorServer {
     }
   }
 
-  private createSession(
+  private async createSession(
     socket: net.Socket,
     params: RuntimeSupervisorCreateSessionParams
-  ): RuntimeSupervisorSessionSnapshot {
+  ): Promise<RuntimeSupervisorSessionSnapshot> {
     const sessionId = params.sessionId?.trim() || randomUUID();
     if (this.sessions.has(sessionId)) {
       throw new Error(`runtime session ${sessionId} 已存在。`);
@@ -337,20 +345,20 @@ class RuntimeSupervisorServer {
     }
 
     this.schedulePersist();
-    return this.toSnapshot(session);
+    return this.toFreshSnapshot(session);
   }
 
-  private attachSession(
+  private async attachSession(
     socket: net.Socket,
     params: RuntimeSupervisorAttachSessionParams
-  ): RuntimeSupervisorSessionSnapshot {
+  ): Promise<RuntimeSupervisorSessionSnapshot> {
     const session = this.sessions.get(params.sessionId);
     if (!session) {
       throw new Error(`未找到 runtime session ${params.sessionId}。`);
     }
 
     this.subscribeSocket(socket, params.sessionId);
-    return this.toSnapshot(session);
+    return this.toFreshSnapshot(session);
   }
 
   private writeInput(params: RuntimeSupervisorWriteInputParams): void {
@@ -428,7 +436,7 @@ class RuntimeSupervisorServer {
     session.process?.kill();
   }
 
-  private deleteSession(params: RuntimeSupervisorDeleteSessionParams): void {
+  private async deleteSession(params: RuntimeSupervisorDeleteSessionParams): Promise<void> {
     const session = this.requireSession(params.sessionId);
     const wasLive = session.live;
     if (wasLive) {
@@ -437,7 +445,7 @@ class RuntimeSupervisorServer {
       session.lastExitMessage = session.kind === 'agent' ? 'Agent 会话已删除。' : '终端会话已删除。';
     }
     session.live = false;
-    this.emitSessionState(session);
+    await this.emitFreshSessionState(session);
     this.disposeSession(session, {
       terminateProcess: wasLive
     });
@@ -452,8 +460,11 @@ class RuntimeSupervisorServer {
         return;
       }
 
+      session.outputSequence += 1;
       session.output = appendOutputTail(session.output, chunk);
-      session.terminalStateTracker.write(chunk);
+      session.terminalStateTracker.write(chunk, {
+        outputSequence: session.outputSequence
+      });
       if (session.kind === 'agent') {
         this.maybeSyncAgentResumeSessionIdFromOutput(session, {
           allowOverwriteExisting: session.stopRequested,
@@ -483,11 +494,11 @@ class RuntimeSupervisorServer {
     });
 
     session.exitSubscription = session.process?.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
-      this.finalizeSession(session.sessionId, exitCode, signal);
+      void this.finalizeSession(session.sessionId, exitCode, signal);
     });
   }
 
-  private finalizeSession(sessionId: string, exitCode: number, signal?: string): void {
+  private async finalizeSession(sessionId: string, exitCode: number, signal?: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return;
@@ -533,7 +544,7 @@ class RuntimeSupervisorServer {
 
     session.lastExitCode = exitCode;
     session.lastExitSignal = normalizeSignal(signal);
-    this.emitSessionState(session);
+    await this.emitFreshSessionState(session);
     this.schedulePersist();
     this.scheduleIdleShutdownIfNeeded();
   }
@@ -737,7 +748,6 @@ class RuntimeSupervisorServer {
   }
 
   private emitSessionOutput(session: SupervisorSession, chunk: string): void {
-    session.outputSequence += 1;
     const message: RuntimeSupervisorEvent = {
       type: 'event',
       event: 'sessionOutput',
@@ -756,6 +766,16 @@ class RuntimeSupervisorServer {
       type: 'event',
       event: 'sessionState',
       payload: this.toSnapshot(session)
+    };
+    this.broadcastToSessionSubscribers(session.sessionId, message);
+    this.schedulePersist();
+  }
+
+  private async emitFreshSessionState(session: SupervisorSession): Promise<void> {
+    const message: RuntimeSupervisorEvent = {
+      type: 'event',
+      event: 'sessionState',
+      payload: await this.toFreshSnapshot(session)
     };
     this.broadcastToSessionSubscribers(session.sessionId, message);
     this.schedulePersist();
@@ -811,7 +831,29 @@ class RuntimeSupervisorServer {
     }, AGENT_WAITING_INPUT_POLL_INTERVAL_MS);
   }
 
-  private toSnapshot(session: SupervisorSession): RuntimeSupervisorSessionSnapshot {
+  private async toFreshSnapshot(session: SupervisorSession): Promise<RuntimeSupervisorSessionSnapshot> {
+    const serializedTerminalState = await session.terminalStateTracker
+      .flush()
+      .catch(() => undefined);
+    return this.toSnapshot(session, serializedTerminalState);
+  }
+
+  private getFreshSerializedTerminalState(
+    session: SupervisorSession,
+    serializedTerminalState: SerializedTerminalState | undefined
+  ): SerializedTerminalState | undefined {
+    const stateOutputSequence = normalizeRuntimeSupervisorOptionalOutputSequence(
+      serializedTerminalState?.outputSequence
+    );
+    return stateOutputSequence !== undefined && stateOutputSequence === session.outputSequence
+      ? serializedTerminalState
+      : undefined;
+  }
+
+  private toSnapshot(
+    session: SupervisorSession,
+    serializedTerminalState = session.terminalStateTracker.getSerializedState()
+  ): RuntimeSupervisorSessionSnapshot {
     return {
       sessionId: session.sessionId,
       kind: session.kind,
@@ -827,7 +869,7 @@ class RuntimeSupervisorServer {
       scrollback: session.scrollback,
       output: session.output,
       outputSequence: session.outputSequence,
-      serializedTerminalState: session.terminalStateTracker.getSerializedState(),
+      serializedTerminalState: this.getFreshSerializedTerminalState(session, serializedTerminalState),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
       provider: session.provider,
@@ -930,14 +972,26 @@ class RuntimeSupervisorServer {
 
     this.persistTimer = setTimeout(() => {
       this.persistTimer = undefined;
-      this.persistRegistry();
+      void this.persistRegistry();
     }, 120);
   }
 
-  private persistRegistry(): void {
+  private async persistRegistry(): Promise<void> {
+    const writeSequence = ++this.persistRegistryWriteSequence;
+    const sessionEntries = Array.from(this.sessions.values());
+    const snapshots = await Promise.all(
+      sessionEntries.map(async (session) => {
+        const snapshot = await this.toFreshSnapshot(session);
+        return this.sessions.get(session.sessionId) === session ? snapshot : undefined;
+      })
+    );
+    if (writeSequence !== this.persistRegistryWriteSequence) {
+      return;
+    }
+
     const registry: SupervisorRegistry = {
       version: 1,
-      sessions: Array.from(this.sessions.values()).map((session) => this.toSnapshot(session))
+      sessions: snapshots.filter((snapshot): snapshot is RuntimeSupervisorSessionSnapshot => snapshot !== undefined)
     };
     const tempPath = `${this.paths.registryPath}.tmp`;
     fs.writeFileSync(tempPath, JSON.stringify(registry, null, 2), 'utf8');
@@ -992,7 +1046,8 @@ class RuntimeSupervisorServer {
       terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
         scrollback,
         initialState: snapshot.serializedTerminalState,
-        initialOutput: snapshot.output
+        initialOutput: snapshot.output,
+        initialOutputSequence: normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence)
       }),
       process: undefined,
       outputSubscription: undefined,
