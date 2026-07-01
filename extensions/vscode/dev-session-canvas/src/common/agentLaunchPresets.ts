@@ -1335,10 +1335,6 @@ function findCodexDefaultArgsConflict(args: readonly string[]): AgentDefaultArgs
       index = skipOwnedFlagValue(args, index);
       continue;
     }
-
-    if (!token.includes('=')) {
-      index = skipUnknownFlagValue(args, index);
-    }
   }
 
   return undefined;
@@ -1373,20 +1369,6 @@ function findClaudeDefaultArgsConflict(args: readonly string[]): AgentDefaultArg
   }
 
   return undefined;
-}
-
-function skipUnknownFlagValue(baseArgs: readonly string[], index: number): number {
-  const nextToken = baseArgs[index + 1];
-  if (
-    nextToken !== undefined &&
-    !isOptionLikeCommandToken(nextToken) &&
-    nextToken !== 'resume' &&
-    nextToken !== 'fork'
-  ) {
-    return index + 1;
-  }
-
-  return index;
 }
 
 function getAgentDefaultArgsParseError(
