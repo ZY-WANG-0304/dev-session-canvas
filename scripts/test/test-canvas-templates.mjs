@@ -1374,15 +1374,16 @@ try {
   assert.match(marketplacePanelSource, /marketplace\/submitTemplatePublish/u);
   assert.match(marketplacePanelSource, /marketplace\/templatePublishResult/u);
   assert.match(marketplacePanelSource, /publishMode: 'template'/u);
-  assert.match(marketplacePanelSource, /发布新版本/u);
+  assert.match(marketplacePanelSource, /buildTemplateMarketplacePanelCopy/u);
+  assert.match(marketplacePanelSource, /vscode\.l10n\.t\('Publish new version'\)/u);
   assert.match(marketplacePanelSource, /templateIdOrSlug: state\.publishMode === 'version'/u);
   assert.match(marketplacePanelSource, /marketplace\/refreshInstalledTemplates/u);
   assert.match(marketplacePanelSource, /openTemplatePublishForm/u);
   assert.match(marketplacePanelSource, /publishTemplateButton/u);
-  assert.match(marketplacePanelSource, /发布自建模板/u);
+  assert.match(marketplacePanelSource, /vscode\.l10n\.t\('Publish custom template'\)/u);
   assert.match(marketplacePanelSource, /codicon-cloud-upload/u);
-  assert.match(marketplacePanelSource, /选择安装位置后可安装模板；进入详情页可查看 README、CHANGELOG 和版本历史。/u);
-  assert.match(marketplacePanelSource, /查看详情/u);
+  assert.match(marketplacePanelSource, /Select an install location before installing a template/u);
+  assert.match(marketplacePanelSource, /copy\.viewDetails/u);
   assert.match(marketplacePanelSource, /detail-view/u);
   assert.match(marketplacePanelSource, /getVersionedWebviewResourceUri/u);
   assert.match(marketplacePanelSource, /MARKETPLACE_BUNDLED_CODICON_PATH_SEGMENTS/u);
@@ -1405,7 +1406,7 @@ try {
   assert.match(marketplacePanelSource, /\.publish-field-textarea textarea\.publish-readme[\s\S]*min-height: 140px;/u);
   assert.match(marketplacePanelSource, /\.publish-field-textarea textarea\.publish-changelog[\s\S]*min-height: 96px;/u);
   assert.match(marketplacePanelSource, /\.publish-json[\s\S]*min-height: 220px;/u);
-  assert.match(marketplacePanelSource, /createPublishInput\('name', '名称', state\.publishForm\.name, \{ required: true, reserveNote: true \}\)/u);
+  assert.match(marketplacePanelSource, /createPublishInput\('name', copy\.name, state\.publishForm\.name, \{ required: true, reserveNote: true \}\)/u);
   assert.match(marketplacePanelSource, /\.publish-field-note[\s\S]*overflow: hidden;[\s\S]*min-height: 18px;/u);
   assert.match(marketplacePanelSource, /wrapper\.append\(labelText, input\);/u);
   assert.match(marketplacePanelSource, /wrapper\.append\(labelText, textarea\);/u);
@@ -1423,13 +1424,13 @@ try {
   assert.match(marketplacePanelSource, /targetStorageLocationId: targetId/u);
   assert.match(marketplacePanelSource, /operation: result\.operation/u);
   assert.match(marketplacePanelSource, /formatInstallResultStatus/u);
-  assert.match(marketplacePanelSource, /更新到 v/u);
-  assert.match(marketplacePanelSource, /回滚到 v/u);
-  assert.match(marketplacePanelSource, /举报模板/u);
+  assert.match(marketplacePanelSource, /copy\.updateToVersion/u);
+  assert.match(marketplacePanelSource, /copy\.rollbackToVersion/u);
+  assert.match(marketplacePanelSource, /copy\.reportTemplate/u);
   assert.match(marketplacePanelSource, /buildTemplateReportUrl/u);
   assert.match(marketplacePanelSource, /split-install/u);
   assert.match(marketplacePanelSource, /is-installed-split/u);
-  assert.match(marketplacePanelSource, /切换安装版本/u);
+  assert.match(marketplacePanelSource, /copy\.switchInstallVersion/u);
   assert.match(marketplacePanelSource, /loadTemplateDetail/u);
   assert.match(marketplacePanelSource, /collectInstallableVersions/u);
   assert.match(marketplacePanelSource, /installTemplateVersion\(template, version\)/u);
@@ -1456,19 +1457,19 @@ try {
   assert.match(marketplacePanelSource, /persistState/u);
   assert.match(marketplacePanelSource, /renderLoadErrorCard/u);
   assert.match(marketplacePanelSource, /renderOfflineInstalledTemplateCard/u);
-  assert.match(marketplacePanelSource, /网络请求失败，可能无法访问模板市场 API 或代理阻断/u);
-  assert.match(marketplacePanelSource, /请到模板侧栏应用到 Canvas/u);
-  assert.match(marketplacePanelSource, /已安装到/u);
-  assert.match(marketplacePanelSource, /本地 ·/u);
-  assert.match(marketplacePanelSource, /当前workspace/u);
-  assert.match(marketplacePanelSource, /已安装 v/u);
+  assert.match(marketplacePanelSource, /Network request failed; the Template Marketplace API may be unreachable or blocked by a proxy\./u);
+  assert.match(marketplacePanelSource, /Apply it to Canvas from the Templates sidebar\./u);
+  assert.match(marketplacePanelSource, /copy\.installedBadge/u);
+  assert.match(marketplacePanelSource, /vscode\.l10n\.t\('Local - \{label\}'\)/u);
+  assert.match(marketplacePanelSource, /vscode\.l10n\.t\('Current workspace'\)/u);
+  assert.match(marketplacePanelSource, /copy\.installedVersion/u);
   assert.match(marketplacePanelSource, /MARKETPLACE_OFFICIAL_SOURCE_URL/u);
   assert.match(marketplacePanelSource, /MARKETPLACE_DEBUG_SOURCE_URL/u);
   assert.match(marketplacePanelSource, /resolveDefaultMarketplaceSourceUrl/u);
   assert.match(marketplacePanelSource, /vscode\.ExtensionMode\.Production/u);
   assert.match(marketplacePanelSource, /resolveCompatibleMarketplaceSourceUrl/u);
   assert.match(marketplacePanelSource, /formatMarketplaceSourceMismatchError/u);
-  assert.match(marketplacePanelSource, /当前扩展为\$\{expectedInstall\}/u);
+  assert.match(marketplacePanelSource, /The current extension is a \{expectedInstall\}/u);
   assert.match(marketplacePanelSource, /MARKETPLACE_LOCAL_DEVELOPMENT_SOURCES/u);
   assert.match(marketplacePanelSource, /'http:\/\/\[::1\]:\*'/u);
   assert.match(marketplacePanelSource, /'https:\/\/\[::1\]:\*'/u);
@@ -1539,12 +1540,12 @@ try {
     'function createInstallSplitButton(template, installedTemplate, preferredVersionId) {',
     'function closeVersionMenus(render = true) {'
   );
-  assert.match(marketplaceInstallButtonSource, /安装/u);
+  assert.match(marketplaceInstallButtonSource, /copy\.install/u);
   assert.match(marketplacePanelSource, /formatInstallVersionActionLabel/u);
-  assert.match(marketplacePanelSource, /更新到 v/u);
-  assert.match(marketplacePanelSource, /回滚到 v/u);
-  assert.match(marketplaceInstallButtonSource, /已安装 v/u);
-  assert.match(marketplaceInstallButtonSource, /切换安装版本/u);
+  assert.match(marketplacePanelSource, /copy\.updateToVersion/u);
+  assert.match(marketplacePanelSource, /copy\.rollbackToVersion/u);
+  assert.match(marketplaceInstallButtonSource, /copy\.installedVersion/u);
+  assert.match(marketplaceInstallButtonSource, /copy\.switchInstallVersion/u);
 
   const marketplaceDetailControlsSource = sliceBetween(
     marketplacePanelSource,

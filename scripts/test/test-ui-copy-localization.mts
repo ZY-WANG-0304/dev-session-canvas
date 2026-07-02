@@ -12,6 +12,7 @@ import {
 const hostRuntimeSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/extension.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts',
   'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarActionsView.ts',
   'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts',
@@ -21,6 +22,10 @@ const hostRuntimeSourceFiles = [
 ];
 const webviewMainSource = readFileSync(
   path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/webview/main.tsx'),
+  'utf8'
+);
+const templateMarketplacePanelSource = readFileSync(
+  path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts'),
   'utf8'
 );
 const extensionHostSource = hostRuntimeSourceFiles
@@ -78,6 +83,12 @@ for (const key of webviewSourceKeys) {
 for (const finding of findUnexpectedWebviewMainChineseLines(webviewMainSource)) {
   assert.fail(
     `Unexpected hard-coded Chinese in main Webview source at line ${finding.lineNumber}: ${finding.line}`
+  );
+}
+
+for (const finding of findUnexpectedTemplateMarketplacePanelChineseLines(templateMarketplacePanelSource)) {
+  assert.fail(
+    `Unexpected hard-coded Chinese in Template Marketplace panel source at line ${finding.lineNumber}: ${finding.line}`
   );
 }
 
@@ -142,4 +153,13 @@ function findUnexpectedWebviewMainChineseLines(
     .map((line, index) => ({ lineNumber: index + 1, line }))
     .filter(({ line }) => /[\p{Script=Han}]/u.test(line))
     .filter(({ line }) => !allowedPatterns.some((pattern) => pattern.test(line)));
+}
+
+function findUnexpectedTemplateMarketplacePanelChineseLines(
+  source: string
+): Array<{ lineNumber: number; line: string }> {
+  return source
+    .split(/\r?\n/u)
+    .map((line, index) => ({ lineNumber: index + 1, line }))
+    .filter(({ line }) => /[\p{Script=Han}]|zh-CN/u.test(line));
 }
