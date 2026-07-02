@@ -56,6 +56,7 @@ import {
   type AgentCliCandidate,
   type AgentCliCandidateSource
 } from './panel/agentCliSelection';
+import { localizeAgentLaunchMessageDescriptor } from './panel/agentLaunchLocalization';
 import {
   createRestrictedLocalAgentSettingsFile,
   getAgentSettingsFileDescriptor,
@@ -3004,7 +3005,9 @@ function promptAgentLaunchRequestWithQuickPick(
 
     const updateTitle = (): void => {
       const validation = validateAgentCommandLine(quickPick.value, provider, launchDefaults);
-      quickPick.title = validation.valid ? baseTitle : `${baseTitle} · ${validation.error}`;
+      quickPick.title = validation.valid
+        ? baseTitle
+        : `${baseTitle} · ${localizeAgentLaunchMessageDescriptor(validation.errorDescriptor, validation.error)}`;
     };
 
     const focusCustomCreateItem = (): void => {

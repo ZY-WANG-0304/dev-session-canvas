@@ -109,8 +109,12 @@ import {
   buildAgentPresetCommandLine,
   classifyAgentLaunchPreset,
   createDefaultAgentLaunchDefaults,
+  formatAgentLaunchMessageDescriptor,
   formatCommandLine,
-  validateAgentCommandLine
+  getAgentLaunchErrorDescriptor,
+  validateAgentCommandLine,
+  type AgentLaunchConflictDescriptionId,
+  type AgentLaunchMessageDescriptor
 } from '../common/agentLaunchPresets';
 import { CANVAS_ATTENTION_INDICATOR_ICON_ID } from '../common/canvasAttentionVisuals';
 import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
@@ -817,6 +821,72 @@ function t(key: WebviewI18nKey, params?: Record<string, string | number>): strin
 }
 function tCount(oneKey: WebviewI18nKey, otherKey: WebviewI18nKey, count: number): string {
   return t(count === 1 ? oneKey : otherKey, { count });
+}
+function tAgentLaunchMessage(
+  descriptor: AgentLaunchMessageDescriptor | undefined,
+  fallback?: string
+): string {
+  if (!descriptor) {
+    return fallback ?? t('agentLaunchPreset.agentCommandParseError');
+  }
+
+  const params = descriptor.params ?? {};
+  switch (descriptor.id) {
+    case 'resumeSessionIdEmpty':
+      return t('agentLaunch.error.resumeSessionIdEmpty');
+    case 'forkSessionIdEmpty':
+      return t('agentLaunch.error.forkSessionIdEmpty');
+    case 'launchCommandEmpty':
+      return t('agentLaunch.error.launchCommandEmpty');
+    case 'claudeCommandMismatch':
+      return t('agentLaunch.error.claudeCommandMismatch');
+    case 'codexCommandMismatch':
+      return t('agentLaunch.error.codexCommandMismatch');
+    case 'doubleQuoteUnclosed':
+      return t('agentLaunch.error.doubleQuoteUnclosed');
+    case 'singleQuoteUnclosed':
+      return t('agentLaunch.error.singleQuoteUnclosed');
+    case 'defaultArgsParseError':
+      return t('agentLaunch.error.defaultArgsParseError', {
+        provider: params.provider ?? 'Agent',
+        message: descriptor.cause
+          ? tAgentLaunchMessage(descriptor.cause)
+          : params.message ?? ''
+      });
+    case 'defaultArgsConflict':
+      return t('agentLaunch.error.defaultArgsConflict', {
+        provider: params.provider ?? 'Agent',
+        description: tAgentLaunchConflictDescription(
+          params.descriptionId as AgentLaunchConflictDescriptionId | undefined,
+          params.description
+        ),
+        token: params.token ?? ''
+      });
+    default:
+      return fallback ?? formatAgentLaunchMessageDescriptor(descriptor);
+  }
+}
+
+function tAgentLaunchConflictDescription(
+  id: AgentLaunchConflictDescriptionId | undefined,
+  fallback?: string
+): string {
+  switch (id) {
+    case 'positionalArgumentSeparator':
+      return t('agentLaunch.conflict.positionalArgumentSeparator');
+    case 'sessionSelectionArgument':
+      return t('agentLaunch.conflict.sessionSelectionArgument');
+    case 'sessionTargetSubcommand':
+      return t('agentLaunch.conflict.sessionTargetSubcommand');
+    case 'positionalArgument':
+      return t('agentLaunch.conflict.positionalArgument');
+    case 'forkFlagArgument':
+      return t('agentLaunch.conflict.forkFlagArgument');
+    case 'sessionTargetArgument':
+      return t('agentLaunch.conflict.sessionTargetArgument');
+    default:
+      return fallback ?? t('agentLaunch.conflict.argument');
+  }
 }
 const NOTE_BODY_PLACEHOLDER = t('note.body.placeholder');
 const EMBEDDED_NOTE_BODY_PLACEHOLDER = t('note.body.embeddedPlaceholder', {
@@ -10796,7 +10866,9 @@ const CanvasContextMenu = React.forwardRef<
                   {t('action.confirm')}
                 </button>
                 {!customValidation.valid ? (
-                  <span className="canvas-context-menu-inline-error">{customValidation.error}</span>
+                  <span className="canvas-context-menu-inline-error">
+                    {tAgentLaunchMessage(customValidation.errorDescriptor, customValidation.error)}
+                  </span>
                 ) : null}
               </div>
             ) : null}
@@ -14690,7 +14762,10 @@ function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): 
       latestRuntimeContext.agentLaunchDefaults[provider]
     );
   } catch (error) {
-    return error instanceof Error ? error.message : t('agentLaunchPreset.agentCommandParseError');
+    return tAgentLaunchMessage(
+      getAgentLaunchErrorDescriptorForWebview(error),
+      error instanceof Error ? error.message : t('agentLaunchPreset.agentCommandParseError')
+    );
   }
 }
 
@@ -14708,9 +14783,16 @@ function tryBuildAgentPresetCommandLine(
     };
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : t('agentLaunchPreset.agentCommandParseError')
+      error: tAgentLaunchMessage(
+        getAgentLaunchErrorDescriptorForWebview(error),
+        error instanceof Error ? error.message : t('agentLaunchPreset.agentCommandParseError')
+      )
     };
   }
+}
+
+function getAgentLaunchErrorDescriptorForWebview(error: unknown): AgentLaunchMessageDescriptor | undefined {
+  return getAgentLaunchErrorDescriptor(error);
 }
 
 function fallbackAgentCommandLine(
