@@ -71,7 +71,7 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 
 整理后分组尺寸按直接成员 bounds 收缩或扩展到最小尺寸与成员内边距；root 使用 root section 最小尺寸与 root 内容 inset，普通分组使用现有普通分组标题 / padding inset。普通分组即使只有一个直接成员也会执行内部整理，因此单成员分组会把成员移动到内容内边距附近，而不是保留整理前的大块空白。普通空分组没有内容 bounds 可参考，整理时先把尺寸规范化为创建空分组的默认尺寸 `360 x 240`，再作为普通 `group` block 参与父容器排列；嵌套空分组同样适用该规则，并会触发外层分组按规范化后的空子分组 bounds 收口。workspace root section 不适用普通空分组默认尺寸；空 root section 仍规范化到 workspace root 最小尺寸，不因内容少而收缩到普通分组大小。
 
-Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，并走现有 `persistState()`。如果消息携带 `targetGroupId`，Host 只接受当前存在的 workspace root 或其内部用户分组，并把内部用户分组提升为所属 workspace root 后再调用目标分组整理；如果目标不存在则忽略该消息，避免 Webview 旧菜单误整理整个画布。在 multi-root `rootGroups` 中，命中 root section 或其内部用户分组时，主菜单“整理画布布局”默认携带所属 workspace-root group id，因此只整理该 root 内部对象；同一行右侧 `>` 二级菜单中的“整理整个 workspace 的画布”发送不带目标的消息，才按整张组合画布整理 root 分组、外层分组和节点。在 multi-root workspace 下，后续既有 decompose / root-local storage / overlay 持久化继续负责把 root-local 坐标和 root section overlay 写回对应存储，因此 reload 与重开 VSCode 后保持整理结果。
+Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，并走现有 `persistState()`。如果消息携带 `targetGroupId`，Host 只接受当前存在的 workspace root 或其内部用户分组，并把内部用户分组提升为所属 workspace root 后再调用目标分组整理；如果目标不存在则忽略该消息，避免 Webview 旧菜单误整理整个画布。在 multi-root `rootGroups` 中，命中 root section 或其内部用户分组时，主菜单“整理画布布局”默认携带所属 workspace-root group id，因此只整理该 root 内部对象；同一行右侧 `>` 二级菜单中的“整理整个 workspace 的画布”发送不带目标的消息，才按整张组合画布整理 root 分组、外层分组和节点。目标 root 整理后的文件活动 reconciliation 继续重建自动文件节点，但其几何修复使用 scoped repair：非目标 root 与 workspace-level overlay 保持原坐标；若目标 root 因尺寸变化与其他 root 冲突，只平移目标 root 子树到最近非重叠位置，避免后续全局 finalize 泄漏成全 workspace 重排。在 multi-root workspace 下，后续既有 decompose / root-local storage / overlay 持久化继续负责把 root-local 坐标和 root section overlay 写回对应存储，因此 reload 与重开 VSCode 后保持整理结果。
 
 ## 8. 验证方法
 
@@ -83,4 +83,4 @@ Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，�
 
 截至 2026-06-21，补充普通空分组尺寸规范化回归：`npm run test:canvas-layout-arrangement` 覆盖普通空分组归一到 `360 x 240` 后参与同级避让、嵌套空分组归一后驱动父分组收口，以及空 workspace root section 继续使用 root 最小尺寸。
 
-截至 2026-07-02，补充 multi-root rootGroups 右键范围收口：root 分组内主菜单“整理画布布局”默认携带所属 workspace-root group id，Host 只整理当前 root；同一项右侧 `>` 二级菜单保留“整理整个 workspace 的画布”全局路径。新增 `npm run test:canvas-layout-arrangement` 覆盖 target root 不移动其他 root，`npm run test:protocol-webview-messages` 覆盖 `targetGroupId` 协议，Playwright 定向用例覆盖菜单文案、默认消息 payload 和二级菜单全 workspace 消息。
+截至 2026-07-02，补充 multi-root rootGroups 右键范围收口：root 分组内主菜单“整理画布布局”默认携带所属 workspace-root group id，Host 只整理当前 root；同一项右侧 `>` 二级菜单保留“整理整个 workspace 的画布”全局路径。新增 `npm run test:canvas-layout-arrangement` 覆盖 target root 不移动其他 root，`npm run test:canvas-node-groups` 覆盖 target root 整理后进入文件活动 reconciliation 与 scoped geometry repair 时只平移目标 root 子树且最终 root 不重叠，`npm run test:protocol-webview-messages` 覆盖 `targetGroupId` 协议，Playwright 定向用例覆盖菜单文案、默认消息 payload 和二级菜单全 workspace 消息。

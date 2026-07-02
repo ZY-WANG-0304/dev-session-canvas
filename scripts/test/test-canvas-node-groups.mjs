@@ -1373,6 +1373,79 @@ try {
     [`${namespacedFrontendRootId}:file-${liveFileReferenceId}`],
     'Namespaced suppression ids for live file activity should survive root-scoped artifact rebuild.'
   );
+  const rootScopedGeometryRepairState = rebuildCanvasFileArtifacts(
+    state({
+      nodes: [
+        agent('scoped-agent', { x: 80, y: 120 }, { groupId: 'workspace-root-target' }),
+        note('scoped-wide-note', { x: 1080, y: 120 }, { groupId: 'workspace-root-target' }),
+        note('fixed-root-note', { x: 980, y: 120 }, { groupId: 'workspace-root-fixed' }),
+        note('fixed-overlay-note', { x: 0, y: 980 })
+      ],
+      groups: [
+        group('workspace-root-target', { x: 0, y: 0 }, { width: 920, height: 520 }, {
+          role: 'workspace-root',
+          workspaceRootPath: '/repo/scoped-target'
+        }),
+        group('workspace-root-fixed', { x: 900, y: 0 }, { width: 720, height: 520 }, {
+          role: 'workspace-root',
+          workspaceRootPath: '/repo/scoped-fixed'
+        }),
+        group('fixed-overlay-group', { x: 0, y: 700 }, { width: 360, height: 240 })
+      ],
+      fileReferences: [
+        {
+          id: 'workspace-root-target:file-ref-scoped',
+          filePath: '/repo/scoped-target/src/scoped.ts',
+          relativePath: 'src/scoped.ts',
+          updatedAt: '2026-07-02T00:00:00.000Z',
+          owners: [
+            { nodeId: 'scoped-agent', accessMode: 'write', updatedAt: '2026-07-02T00:00:00.000Z' }
+          ]
+        }
+      ]
+    }),
+    {
+      view: { enabled: true, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
+      preserveAutomaticFileNodeSizes: true,
+      geometryRepairOptions: { repairTargetGroupIds: ['workspace-root-target'] }
+    }
+  );
+  const repairedScopedTargetRoot = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'workspace-root-target');
+  const unchangedFixedRoot = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'workspace-root-fixed');
+  const unchangedOverlayGroup = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'fixed-overlay-group');
+  assert.deepStrictEqual(
+    unchangedFixedRoot.position,
+    { x: 900, y: 0 },
+    'Scoped file-artifact reconciliation must not move non-target workspace roots.'
+  );
+  assert.deepStrictEqual(
+    rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-root-note').position,
+    { x: 980, y: 120 },
+    'Scoped file-artifact reconciliation must not move non-target root subtrees.'
+  );
+  assert.deepStrictEqual(
+    unchangedOverlayGroup.position,
+    { x: 0, y: 700 },
+    'Scoped file-artifact reconciliation must not move workspace-level overlay groups.'
+  );
+  assert.deepStrictEqual(
+    rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-overlay-note').position,
+    { x: 0, y: 980 },
+    'Scoped file-artifact reconciliation must not move workspace-level overlay nodes.'
+  );
+  assert.ok(
+    rootScopedGeometryRepairState.nodes.some((candidate) => candidate.id === 'workspace-root-target:file-file-ref-scoped'),
+    'Regression must include the file-artifact rebuild path before scoped geometry repair.'
+  );
+  assert.notDeepStrictEqual(
+    repairedScopedTargetRoot.position,
+    { x: 0, y: 0 },
+    'When the target root collides after artifact reconciliation, only the target root subtree should translate.'
+  );
+  assert.ok(!rectsOverlapForTest(
+    rectForTestGroup(repairedScopedTargetRoot),
+    rectForTestGroup(unchangedFixedRoot)
+  ), 'Scoped file-artifact reconciliation should leave workspace root siblings non-overlapping.');
 
   const spreadInsertedGroupBetweenSiblings = createEmptyCanvasGroup(
     state({
