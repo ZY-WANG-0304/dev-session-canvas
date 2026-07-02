@@ -263,23 +263,28 @@ assert.match(
 );
 assert.match(
   paneGalleryRunningScanlineRule,
-  /--pane-gallery-root-running-scanline-edge-offset:\s*28px;[\s\S]*--pane-gallery-root-running-scanline-travel:\s*100%;/u,
-  'Pane Gallery root running scanline should keep its original travel distance and expose the off-header edge offset.'
+  /--pane-gallery-root-running-scanline-edge-offset:\s*28px;[\s\S]*--pane-gallery-root-running-scanline-travel:\s*100%;[\s\S]*isolation:\s*isolate;/u,
+  'Pane Gallery root running scanline should keep its original travel distance, expose the off-header edge offset, and isolate its layer stack.'
 );
 assert.match(
   paneGalleryRunningScanlineLayerRule,
-  /left:\s*calc\(0px - var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*width:\s*calc\(100% \+ var\(--pane-gallery-root-running-scanline-edge-offset\) \+ var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
-  'Pane Gallery root running scanline layer should start outside the header, fully leave it, and keep the original timing curve.'
+  /left:\s*calc\(0px - var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*width:\s*calc\(100% \+ var\(--pane-gallery-root-running-scanline-edge-offset\) \+ var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*z-index:\s*0;[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  'Pane Gallery root running scanline layer should start outside the header, fully leave it, stay behind title text, and keep the original timing curve.'
+);
+assert.match(
+  extractCssRuleBody(mainWebviewStyles, '.pane-gallery-root-title-block'),
+  /position:\s*relative;[\s\S]*z-index:\s*1;/u,
+  'Pane Gallery root title text should render above the running scanline background.'
 );
 assert.match(
   multiRootDesignSource,
-  /两次扫描之间不保留空档/u,
-  'Multi-root design doc should record the continuous Pane Gallery root running scanline behavior.'
+  /两次扫描之间不保留空档[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root design doc should record the continuous Pane Gallery root running scanline as a text-safe background.'
 );
 assert.match(
   multiRootSpecSource,
-  /两次扫描之间不保留空档/u,
-  'Multi-root product spec should record the continuous Pane Gallery root running scanline behavior.'
+  /两次扫描之间不保留空档[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root product spec should record the continuous Pane Gallery root running scanline as a text-safe background.'
 );
 
 assert.match(
