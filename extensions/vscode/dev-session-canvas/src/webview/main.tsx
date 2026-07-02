@@ -9346,9 +9346,7 @@ function paneGalleryCoarseToggleTarget(
 function PaneGallery(props: PaneGalleryProps): JSX.Element {
   const activeModel = props.allModels.find((model) => model.rootGroup.id === props.activeRootGroupId) ?? props.allModels[0];
   const isThumbnailLayout = isPaneGalleryThumbnailLayout(props.layout);
-  const railModels = isThumbnailLayout && activeModel
-    ? props.allModels.filter((model) => model.rootGroup.id !== activeModel.rootGroup.id)
-    : [];
+  const railModels = isThumbnailLayout && activeModel ? props.allModels : [];
 
   return (
     <div
@@ -9432,24 +9430,88 @@ function PaneGalleryThumbnailRail(props: PaneGalleryProps & {
   return (
     <div
       className={`pane-gallery-thumbnail-rail pane-gallery-thumbnail-rail-${props.layout}`}
-      aria-label="Other workspace roots"
+      aria-label="Workspace root thumbnails"
       data-pane-gallery-thumbnail-rail={props.layout}
     >
       <div
         className={`pane-gallery-thumbnail-track pane-gallery-thumbnail-track-${props.layout}`}
         data-pane-gallery-thumbnail-track={props.layout}
       >
-        {props.models.map((model) => (
-          <PaneGalleryRootPane
-            {...props}
-            key={model.rootGroup.id}
-            model={model}
-            mode="thumbnail"
-            onThumbnailActivate={props.onActivate}
-          />
-        ))}
+        {props.models.map((model) =>
+          model.rootGroup.id === props.activeRootGroupId ? (
+            <PaneGalleryActiveRootPlaceholder
+              key={model.rootGroup.id}
+              model={model}
+            />
+          ) : (
+            <PaneGalleryRootPane
+              {...props}
+              key={model.rootGroup.id}
+              model={model}
+              mode="thumbnail"
+              onThumbnailActivate={props.onActivate}
+            />
+          )
+        )}
       </div>
     </div>
+  );
+}
+
+function paneGalleryRootPaneTitle(model: PaneGalleryRootModel, statusDescription?: string): string {
+  return `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}${statusDescription ? ` - ${statusDescription}` : ''}`;
+}
+
+function PaneGalleryActiveRootPlaceholder(props: { model: PaneGalleryRootModel }): JSX.Element {
+  const { model } = props;
+  const paneStatus = paneGalleryPaneStatusForModel(model);
+  const paneStatusDescription = paneGalleryPaneStatusDescription(model);
+  const paneTitle = `${paneGalleryRootPaneTitle(model, paneStatusDescription)} - 正在主画板`;
+  const ariaLabel = `Workspace root ${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? `, ${model.rootGroup.workspaceRootPath}` : ''}, 正在主画板显示${paneStatusDescription ? `, ${paneStatusDescription}` : ''}`;
+  const blockPlaceholderEvent = (event: React.SyntheticEvent): void => {
+    event.preventDefault();
+    stopCanvasEvent(event);
+  };
+
+  return (
+    <section
+      className="pane-gallery-root-pane pane-gallery-root-pane-active-placeholder"
+      data-pane-gallery-active-placeholder="true"
+      data-pane-gallery-root-id={model.rootGroup.id}
+      data-pane-gallery-root-mode="active-placeholder"
+      data-pane-gallery-status={paneStatus}
+      data-pane-gallery-attention-count={model.attentionCount}
+      data-pane-gallery-running-count={model.runningCount}
+      data-pane-gallery-attention-flashing="false"
+      aria-label={ariaLabel}
+      title={paneTitle}
+      onPointerDown={blockPlaceholderEvent}
+      onPointerMove={blockPlaceholderEvent}
+      onPointerUp={blockPlaceholderEvent}
+      onPointerCancel={blockPlaceholderEvent}
+      onWheel={blockPlaceholderEvent}
+      onClick={blockPlaceholderEvent}
+      onDoubleClick={blockPlaceholderEvent}
+      onContextMenu={blockPlaceholderEvent}
+      onDragStart={blockPlaceholderEvent}
+      onDragOver={blockPlaceholderEvent}
+      onDrop={blockPlaceholderEvent}
+    >
+      <header
+        className="pane-gallery-root-header"
+        data-pane-gallery-root-header-attention-flashing="false"
+        data-pane-gallery-root-running-scanline="false"
+      >
+        <div className="pane-gallery-root-title-block">
+          <span className="pane-gallery-root-title" title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}>
+            {model.rootGroup.title}
+          </span>
+        </div>
+      </header>
+      <div className="pane-gallery-active-placeholder-body" aria-hidden="true">
+        <span className="pane-gallery-active-placeholder-label">正在主画板</span>
+      </div>
+    </section>
   );
 }
 
@@ -9587,7 +9649,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   const paneStatusDescription = paneGalleryPaneStatusDescription(model);
   const attentionTitleBarFlashing = model.attentionTitleBarFlashing;
   const rootRunningScanLine = model.runningScanLineCount > 0 && model.attentionCount === 0;
-  const paneTitle = `${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? ` - ${model.rootGroup.workspaceRootPath}` : ''}${paneStatusDescription ? ` - ${paneStatusDescription}` : ''}`;
+  const paneTitle = paneGalleryRootPaneTitle(model, paneStatusDescription);
   const defaultViewport = interactive
     ? viewportRole === 'main'
       ? props.mainViewports[rootGroupId]
