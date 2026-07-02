@@ -20,7 +20,6 @@ import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import type { CanvasPanelManager, CanvasSidebarNodeListSnapshot } from '../panel/CanvasPanelManager';
 
 const SIDEBAR_NODE_DANGLING_CSI_FRAGMENT_PATTERN = /(?:^|\s)\[\?[0-9;:<>=$]*[ -/]*[@-~](?=\s|$)/g;
-const SIDEBAR_NODE_ATTENTION_TOOLTIP = '该节点当前有待处理的通知提醒。';
 const SIDEBAR_NODE_LIST_REFRESH_DEBOUNCE_MS = 75;
 const SIDEBAR_BUNDLED_CODICON_PATH_SEGMENTS = ['dist', 'sidebar-codicon.css'] as const;
 
@@ -146,6 +145,23 @@ interface PendingSidebarNodeListTestActionRequest {
   timer: NodeJS.Timeout;
 }
 
+interface SidebarNodeListCopy {
+  currentCanvasNodeList: string;
+  currentCanvasNodeGroupTree: string;
+  pendingAttention: string;
+  unnamedGroup: string;
+  folder: string;
+  expanded: string;
+  collapsed: string;
+  currentNotificationAlert: string;
+  createWorktreeForFolder: string;
+  removeFolderFromWorkspace: string;
+  removeWorktreeFromWorkspace: string;
+  terminalPendingNotification: string;
+  ungrouped: string;
+  noLocatableNodes: string;
+}
+
 export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly stateSubscription: vscode.Disposable;
   private view: vscode.WebviewView | undefined;
@@ -177,8 +193,8 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
       clearTimeout(this.refreshTimer);
       this.refreshTimer = undefined;
     }
-    this.rejectPendingReadyRequests('侧栏节点列表视图已被释放。');
-    this.rejectPendingTestActionRequests('侧栏节点列表视图已被释放。');
+    this.rejectPendingReadyRequests('Sidebar node list view was disposed.');
+    this.rejectPendingTestActionRequests('Sidebar node list view was disposed.');
   }
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -194,8 +210,8 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
       if (this.view === webviewView) {
         this.view = undefined;
         this.isWebviewReady = false;
-        this.rejectPendingReadyRequests('侧栏节点列表视图已被关闭。');
-        this.rejectPendingTestActionRequests('侧栏节点列表视图已被关闭。');
+        this.rejectPendingReadyRequests('Sidebar node list view was closed.');
+        this.rejectPendingTestActionRequests('Sidebar node list view was closed.');
       }
     });
 
@@ -213,7 +229,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
       const requestId = createNonce();
       const timer = setTimeout(() => {
         this.pendingReadyRequests.delete(requestId);
-        reject(new Error('等待侧栏节点列表视图就绪超时。'));
+        reject(new Error('Timed out waiting for the sidebar node list view to become ready.'));
       }, timeoutMs);
 
       this.pendingReadyRequests.set(requestId, {
@@ -230,14 +246,14 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
 
     const currentView = this.view;
     if (!currentView) {
-      throw new Error('侧栏节点列表视图尚未创建。');
+      throw new Error('Sidebar node list view has not been created yet.');
     }
 
     return new Promise<SidebarNodeListTestSnapshot>((resolve, reject) => {
       const requestId = createNonce();
       const timer = setTimeout(() => {
         this.pendingTestActionRequests.delete(requestId);
-        reject(new Error('等待侧栏节点列表测试动作完成超时。'));
+        reject(new Error('Timed out waiting for the sidebar node list test action to complete.'));
       }, timeoutMs);
 
       this.pendingTestActionRequests.set(requestId, {
@@ -267,7 +283,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
 
             clearTimeout(pendingRequest.timer);
             this.pendingTestActionRequests.delete(requestId);
-            pendingRequest.reject(new Error('无法将侧栏节点列表测试动作发送给 Webview。'));
+            pendingRequest.reject(new Error('Could not send the sidebar node list test action to the Webview.'));
           },
           (error: unknown) => {
             const pendingRequest = this.pendingTestActionRequests.get(requestId);
@@ -277,7 +293,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
 
             clearTimeout(pendingRequest.timer);
             this.pendingTestActionRequests.delete(requestId);
-            pendingRequest.reject(error instanceof Error ? error : new Error('侧栏节点列表测试动作发送失败。'));
+            pendingRequest.reject(error instanceof Error ? error : new Error('Sidebar node list test action failed to send.'));
           }
         );
     });
@@ -362,7 +378,9 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
       case 'sidebarNodeList/focusNode': {
         const focused = await this.panelManager.focusNodeById(parsed.payload.nodeId);
         if (!focused) {
-          await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
+          await vscode.window.showWarningMessage(
+            vscode.l10n.t('The target node no longer exists, or it cannot be located on the Canvas right now.')
+          );
         }
         return;
       }
@@ -428,7 +446,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
     }
 
     if (!snapshot) {
-      pendingRequest.reject(new Error('侧栏节点列表测试动作没有返回快照。'));
+      pendingRequest.reject(new Error('Sidebar node list test action did not return a snapshot.'));
       return;
     }
 
@@ -466,10 +484,10 @@ export function getCanvasSidebarNodeListItems(
       if (summary) {
         tooltipLines.push(summary);
       } else {
-        tooltipLines.push('当前节点没有可显示的副标题。');
+        tooltipLines.push(vscode.l10n.t('This node has no visible subtitle.'));
       }
       if (attentionPending) {
-        tooltipLines.push(SIDEBAR_NODE_ATTENTION_TOOLTIP);
+        tooltipLines.push(vscode.l10n.t('This node has a pending notification alert.'));
       }
 
       return {
@@ -503,7 +521,7 @@ function resolveSidebarNodeGroupPath(
     visited.add(currentGroup.id);
     path.unshift({
       id: currentGroup.id,
-      title: currentGroup.title.trim() || '未命名分组'
+      title: currentGroup.title.trim() || vscode.l10n.t('Unnamed group')
     });
     currentGroup = currentGroup.parentGroupId ? groupsById.get(currentGroup.parentGroupId) : undefined;
   }
@@ -855,6 +873,7 @@ function normalizeSidebarNodeListViewMode(value: unknown): SidebarNodeListViewMo
 
 export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const nonce = createNonce();
+  const copy = buildSidebarNodeListCopy();
   const codiconCssUri = getVersionedWebviewResourceUri(
     webview,
     extensionUri,
@@ -862,7 +881,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
   );
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${resolveWebviewHtmlLang()}">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -1205,12 +1224,13 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
     </style>
   </head>
   <body>
-    <div id="list" class="list" role="listbox" aria-label="当前画布节点列表"></div>
+    <div id="list" class="list" role="listbox" aria-label="${copy.currentCanvasNodeList}"></div>
     <div id="emptyState" class="empty-state" role="status" aria-live="polite"></div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const copy = ${serializeForInlineScript(copy)};
       const ATTENTION_GROUP_KEY = '__attention__';
-      const ATTENTION_GROUP_LABEL = '待处理提醒';
+      const ATTENTION_GROUP_LABEL = copy.pendingAttention;
       const UNGROUPED_GROUP_KEY = '__ungrouped__';
       const WORKSPACE_ROOT_GROUP_ROLE = 'workspace-root';
       const state = {
@@ -1229,7 +1249,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
       }
 
       function normalizeGroupTitle(group) {
-        return typeof group.title === 'string' && group.title.trim() ? group.title.trim() : '未命名分组';
+        return typeof group.title === 'string' && group.title.trim() ? group.title.trim() : copy.unnamedGroup;
       }
 
       function normalizeGroupIds(item) {
@@ -1271,7 +1291,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         if (kind === 'repository') {
           return 'Git repository';
         }
-        return '普通 folder';
+        return copy.folder;
       }
 
       function getWorkspaceRootGroups() {
@@ -1621,7 +1641,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         row.setAttribute('role', 'treeitem');
         row.setAttribute('aria-level', String(options.depth + 1));
         row.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-        row.setAttribute('aria-label', options.label + (isExpanded ? '，已展开' : '，已折叠'));
+        row.setAttribute('aria-label', options.label + (isExpanded ? ', ' + copy.expanded : ', ' + copy.collapsed));
 
         const twistie = document.createElement('span');
         twistie.className = 'node-group-twistie codicon ' + (isExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right');
@@ -1672,7 +1692,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         const worktreeButton = createWorkspaceFolderActionButton({
           action: 'createWorktree',
           iconClass: 'codicon-worktree',
-          label: '为此 folder 新建或添加 worktree 到 workspace',
+          label: copy.createWorktreeForFolder,
           danger: false,
           onClick: () => {
             vscode.postMessage({
@@ -1688,7 +1708,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         const removeButton = createWorkspaceFolderActionButton({
           action: 'removeFolder',
           iconClass: 'codicon-close',
-          label: '从 workspace 移除此 folder，可选择保留或清空画板',
+          label: copy.removeFolderFromWorkspace,
           danger: true,
           onClick: () => {
             vscode.postMessage({
@@ -1704,7 +1724,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         const removeWorktreeButton = createWorkspaceFolderActionButton({
           action: 'removeWorktree',
           iconClass: 'codicon-trash',
-          label: '移除 worktree 并从 workspace 移除 folder，默认清空画板',
+          label: copy.removeWorktreeFromWorkspace,
           danger: true,
           onClick: () => {
             vscode.postMessage({
@@ -1768,7 +1788,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         row.setAttribute('aria-selected', item.id === state.selectedId ? 'true' : 'false');
         row.setAttribute(
           'aria-label',
-          item.label + '，' + item.status + (item.attentionPending ? '，当前有通知提醒' : '')
+          item.label + ', ' + item.status + (item.attentionPending ? ', ' + copy.currentNotificationAlert : '')
         );
         if (isTreeRenderMode()) {
           row.classList.add('is-grouped');
@@ -1842,7 +1862,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
           const attention = document.createElement('span');
           attention.className = 'node-attention codicon codicon-bell';
           attention.setAttribute('aria-hidden', 'true');
-          attention.title = '终端有待处理的通知';
+          attention.title = copy.terminalPendingNotification;
           row.append(attention);
         }
 
@@ -1894,7 +1914,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         if (root.items.length > 0) {
           renderGroupRow({
             key: UNGROUPED_GROUP_KEY,
-            label: '未分组',
+            label: copy.ungrouped,
             depth: 0,
             totalItemCount: root.items.length
           });
@@ -1965,7 +1985,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         if (root.items.length > 0) {
           renderGroupRow({
             key: UNGROUPED_GROUP_KEY,
-            label: '未分组',
+            label: copy.ungrouped,
             depth: 0,
             totalItemCount: root.items.length
           });
@@ -1985,7 +2005,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
 
         list.replaceChildren();
         list.setAttribute('role', isTreeRenderMode() ? 'tree' : 'listbox');
-        list.setAttribute('aria-label', isTreeRenderMode() ? '当前画布节点分组树' : '当前画布节点列表');
+        list.setAttribute('aria-label', isTreeRenderMode() ? copy.currentCanvasNodeGroupTree : copy.currentCanvasNodeList);
 
         if (state.viewMode === 'grouped') {
           renderGroupedTree();
@@ -1998,7 +2018,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         }
 
         if (state.items.length === 0 && state.groups.length === 0) {
-          emptyState.textContent = '当前画布还没有可定位的非文件节点。';
+          emptyState.textContent = copy.noLocatableNodes;
           emptyState.classList.add('is-visible');
           return;
         }
@@ -2060,6 +2080,33 @@ function createNonce(): string {
     value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
   }
   return value;
+}
+
+function buildSidebarNodeListCopy(): SidebarNodeListCopy {
+  return {
+    currentCanvasNodeList: vscode.l10n.t('Current Canvas node list'),
+    currentCanvasNodeGroupTree: vscode.l10n.t('Current Canvas node group tree'),
+    pendingAttention: vscode.l10n.t('Pending attention'),
+    unnamedGroup: vscode.l10n.t('Unnamed group'),
+    folder: vscode.l10n.t('Folder'),
+    expanded: vscode.l10n.t('expanded'),
+    collapsed: vscode.l10n.t('collapsed'),
+    currentNotificationAlert: vscode.l10n.t('current notification alert'),
+    createWorktreeForFolder: vscode.l10n.t('Create or add a worktree for this folder to the workspace'),
+    removeFolderFromWorkspace: vscode.l10n.t('Remove this folder from the workspace; choose whether to keep or clear the Canvas'),
+    removeWorktreeFromWorkspace: vscode.l10n.t('Remove this worktree and remove the folder from the workspace; clears the Canvas by default'),
+    terminalPendingNotification: vscode.l10n.t('Terminal has a pending notification'),
+    ungrouped: vscode.l10n.t('Ungrouped'),
+    noLocatableNodes: vscode.l10n.t('The current Canvas has no locatable non-file nodes yet.')
+  };
+}
+
+function serializeForInlineScript(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+}
+
+function resolveWebviewHtmlLang(): string {
+  return (vscode.env?.language || 'en').replace(/"/g, '');
 }
 
 function canvasNodeAttentionPending(metadata: CanvasNodeMetadata | undefined): boolean {
