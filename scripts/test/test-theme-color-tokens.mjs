@@ -268,8 +268,8 @@ assert.match(
 );
 assert.match(
   paneGalleryRunningScanlineLayerRule,
-  /left:\s*0;[\s\S]*width:\s*calc\(100% \+ 56px\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
-  'Pane Gallery root running scanline layer should let the scan block fully leave the header while keeping the original timing curve.'
+  /left:\s*-28px;[\s\S]*width:\s*calc\(100% \+ 56px\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  'Pane Gallery root running scanline layer should start outside the header, fully leave it, and keep the original timing curve.'
 );
 assert.match(
   multiRootDesignSource,
