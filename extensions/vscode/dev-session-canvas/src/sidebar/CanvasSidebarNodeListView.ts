@@ -66,6 +66,7 @@ type SidebarWorkspaceFolderKind = 'folder' | 'repository' | 'worktree';
 
 interface CanvasSidebarGroupSnapshot extends CanvasGroupSummary {
   workspaceFolderKind?: SidebarWorkspaceFolderKind;
+  workspaceRootOrderIndex?: number;
 }
 
 export type SidebarNodeListTestAction =
@@ -284,8 +285,9 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
 
   public async refresh(): Promise<CanvasSidebarNodeItemSnapshot[]> {
     const snapshot = this.panelManager.getCanvasSidebarNodeListSnapshot();
-    this.groups = await resolveSidebarGroupSnapshots(snapshot.groups);
-    this.items = getCanvasSidebarNodeListItems(snapshot, this.panelManager.getWorkspaceFoldersForDisplay());
+    const workspaceFolders = this.panelManager.getWorkspaceFoldersForDisplay();
+    this.groups = await resolveSidebarGroupSnapshots(snapshot.groups, workspaceFolders);
+    this.items = getCanvasSidebarNodeListItems(snapshot, workspaceFolders);
     await this.postState();
     return this.items;
   }
@@ -730,7 +732,11 @@ function isSidebarWorkspaceFolderKind(value: unknown): value is SidebarWorkspace
   return value === 'folder' || value === 'repository' || value === 'worktree';
 }
 
-async function resolveSidebarGroupSnapshots(groups: CanvasGroupSummary[]): Promise<CanvasSidebarGroupSnapshot[]> {
+async function resolveSidebarGroupSnapshots(
+  groups: CanvasGroupSummary[],
+  workspaceFolders: Parameters<typeof formatExecutionCwdLabel>[1] = []
+): Promise<CanvasSidebarGroupSnapshot[]> {
+  const workspaceRootOrderIndexes = buildSidebarWorkspaceRootOrderIndexes(workspaceFolders);
   return await Promise.all(
     groups.map(async (group): Promise<CanvasSidebarGroupSnapshot> => {
       if (!isWorkspaceRootGroupSummary(group) || typeof group.workspaceRootPath !== 'string') {
@@ -739,6 +745,7 @@ async function resolveSidebarGroupSnapshots(groups: CanvasGroupSummary[]): Promi
 
       return {
         ...group,
+        workspaceRootOrderIndex: readSidebarWorkspaceRootOrderIndex(group.workspaceRootPath, workspaceRootOrderIndexes),
         workspaceFolderKind: await classifyWorkspaceFolderKind(group.workspaceRootPath)
       };
     })
@@ -796,6 +803,26 @@ function isMissingSidebarFileSystemEntryError(error: unknown): boolean {
 function normalizeComparableSidebarFileSystemPath(filePath: string): string {
   const resolvedPath = path.resolve(filePath);
   return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
+function buildSidebarWorkspaceRootOrderIndexes(
+  workspaceFolders: Parameters<typeof formatExecutionCwdLabel>[1]
+): Map<string, number> {
+  const indexes = new Map<string, number>();
+  for (const [index, workspaceFolder] of (workspaceFolders ?? []).entries()) {
+    const normalizedPath = normalizeComparableSidebarFileSystemPath(workspaceFolder.path);
+    if (!indexes.has(normalizedPath)) {
+      indexes.set(normalizedPath, index);
+    }
+  }
+  return indexes;
+}
+
+function readSidebarWorkspaceRootOrderIndex(
+  workspaceRootPath: string,
+  workspaceRootOrderIndexes: ReadonlyMap<string, number>
+): number | undefined {
+  return workspaceRootOrderIndexes.get(normalizeComparableSidebarFileSystemPath(workspaceRootPath));
 }
 
 export function isSidebarNodeListTestAction(value: unknown): value is SidebarNodeListTestAction {
@@ -1455,12 +1482,36 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
           workspaceRootPath: isWorkspaceRootGroup(group) && typeof group.workspaceRootPath === 'string'
             ? group.workspaceRootPath
             : undefined,
+          workspaceRootOrderIndex: isWorkspaceRootGroup(group) && Number.isSafeInteger(group.workspaceRootOrderIndex)
+            ? group.workspaceRootOrderIndex
+            : undefined,
           workspaceFolderKind: isWorkspaceRootGroup(group) ? normalizeWorkspaceFolderKind(group.workspaceFolderKind) : undefined,
           childGroups: [],
           items: [],
           depth: 0,
+          originalIndex: 0,
           totalItemCount: 0
         };
+      }
+
+      function compareWorkspaceRootAwareGroups(left, right) {
+        const leftIsWorkspaceRoot = typeof left.workspaceRootPath === 'string';
+        const rightIsWorkspaceRoot = typeof right.workspaceRootPath === 'string';
+        if (leftIsWorkspaceRoot !== rightIsWorkspaceRoot) {
+          return leftIsWorkspaceRoot ? -1 : 1;
+        }
+
+        if (leftIsWorkspaceRoot && rightIsWorkspaceRoot) {
+          const leftOrderIndex = Number.isSafeInteger(left.workspaceRootOrderIndex)
+            ? left.workspaceRootOrderIndex
+            : Number.MAX_SAFE_INTEGER;
+          const rightOrderIndex = Number.isSafeInteger(right.workspaceRootOrderIndex)
+            ? right.workspaceRootOrderIndex
+            : Number.MAX_SAFE_INTEGER;
+          return leftOrderIndex - rightOrderIndex || left.originalIndex - right.originalIndex;
+        }
+
+        return left.label.localeCompare(right.label, 'zh-CN') || left.id.localeCompare(right.id, 'zh-CN');
       }
 
       function buildGroupedTree() {
@@ -1470,11 +1521,13 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
           totalItemCount: 0
         };
         const groupNodesById = new Map();
-        for (const group of state.groups) {
+        for (const [index, group] of state.groups.entries()) {
           if (!group || typeof group.id !== 'string') {
             continue;
           }
-          groupNodesById.set(group.id, createGroupTreeNode(group));
+          const groupNode = createGroupTreeNode(group);
+          groupNode.originalIndex = index;
+          groupNodesById.set(group.id, groupNode);
         }
 
         for (const groupNode of groupNodesById.values()) {
@@ -1498,7 +1551,7 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
         }
 
         const sortGroups = (groups) => {
-          groups.sort((left, right) => left.label.localeCompare(right.label, 'zh-CN') || left.id.localeCompare(right.id, 'zh-CN'));
+          groups.sort(compareWorkspaceRootAwareGroups);
         };
         const visit = (groupNode, depth) => {
           groupNode.depth = depth;
@@ -1857,7 +1910,18 @@ export function buildSidebarNodeListHtml(webview: vscode.Webview, extensionUri: 
       }
 
       function renderFlatRootGroups() {
-        const workspaceRootGroups = getWorkspaceRootGroups();
+        const workspaceRootGroups = getWorkspaceRootGroups().map((group, index) => ({
+          group,
+          originalIndex: index
+        })).sort((left, right) => {
+          const leftOrderIndex = Number.isSafeInteger(left.group.workspaceRootOrderIndex)
+            ? left.group.workspaceRootOrderIndex
+            : Number.MAX_SAFE_INTEGER;
+          const rightOrderIndex = Number.isSafeInteger(right.group.workspaceRootOrderIndex)
+            ? right.group.workspaceRootOrderIndex
+            : Number.MAX_SAFE_INTEGER;
+          return leftOrderIndex - rightOrderIndex || left.originalIndex - right.originalIndex;
+        }).map((entry) => entry.group);
         const workspaceRootGroupIds = new Set(workspaceRootGroups.map((group) => group.id));
         const itemsByRootGroupId = new Map(workspaceRootGroups.map((group) => [group.id, []]));
         const unrootedItems = [];

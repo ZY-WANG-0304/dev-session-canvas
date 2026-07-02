@@ -85,6 +85,7 @@ try {
     await assertFlatViewPromotesAttentionRows(browser, html);
     await assertGroupedViewAddsAttentionSection(browser, html);
     await assertMultiRootFlatViewKeepsRootGroups(browser, html);
+    await assertRootGroupsFollowWorkspaceOrder(browser, html);
     await assertWorkspaceFolderGroupActions(browser, html);
   } finally {
     await browser.close();
@@ -197,6 +198,67 @@ async function assertMultiRootFlatViewKeepsRootGroups(browser, html) {
       snapshot.visibleItemIds,
       ['node/backend-attention', 'node/frontend-normal', 'node/backend-attention', 'node/backend-normal'],
       'Multi-root flat view should show attention rows in the virtual section before root groups and keep root-local rows grouped.'
+    );
+  } finally {
+    await page.close();
+  }
+}
+
+async function assertRootGroupsFollowWorkspaceOrder(browser, html) {
+  const page = await createSidebarPage(browser, html);
+  try {
+    const groups = [
+      group('workspace-root-alpha', 'Alpha Root', {
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/alpha',
+        workspaceRootOrderIndex: 1
+      }),
+      group('workspace-root-zeta', 'Zeta Root', {
+        role: 'workspace-root',
+        workspaceRootPath: '/repo/zeta',
+        workspaceRootOrderIndex: 0
+      })
+    ];
+    const items = [
+      item('alpha-note', {
+        label: 'Alpha Note',
+        groupPath: ['Alpha Root'],
+        groupPathIds: ['workspace-root-alpha']
+      }),
+      item('zeta-note', {
+        label: 'Zeta Note',
+        groupPath: ['Zeta Root'],
+        groupPathIds: ['workspace-root-zeta']
+      })
+    ];
+
+    const groupedSnapshot = await renderSidebarState(page, {
+      viewMode: 'grouped',
+      groups,
+      items
+    });
+
+    assert.deepEqual(
+      groupedSnapshot.groupRows.map((row) => row.key),
+      ['workspace-root-zeta', 'workspace-root-alpha'],
+      'Grouped sidebar root groups should follow the workspace folder order instead of label order.'
+    );
+
+    const flatSnapshot = await renderSidebarState(page, {
+      viewMode: 'flat',
+      groups,
+      items
+    });
+
+    assert.deepEqual(
+      flatSnapshot.groupRows.map((row) => row.key),
+      ['workspace-root-zeta', 'workspace-root-alpha'],
+      'Flat multi-root sidebar root groups should follow the workspace folder order instead of label order.'
+    );
+    assert.deepEqual(
+      flatSnapshot.visibleItemIds,
+      ['node/zeta-note', 'node/alpha-note'],
+      'Flat multi-root sidebar items should render under workspace-ordered root groups.'
     );
   } finally {
     await page.close();
@@ -392,6 +454,7 @@ function group(id, title, options = {}) {
     parentGroupId: options.parentGroupId,
     role: options.role,
     workspaceRootPath: options.workspaceRootPath,
+    workspaceRootOrderIndex: options.workspaceRootOrderIndex,
     workspaceFolderKind: options.workspaceFolderKind
   };
 }
