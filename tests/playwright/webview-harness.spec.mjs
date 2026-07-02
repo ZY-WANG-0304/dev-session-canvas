@@ -11117,9 +11117,35 @@ test('multi-root rootGroups arrange menu defaults to current root and offers wor
   menu = page.locator('[data-context-menu="true"]');
   await menu.locator('[data-context-menu-action="show-arrange-layout-scope"]').click();
   await expect(menu.locator('.canvas-context-menu-header-copy')).toContainText('整理画布布局');
+  await expect(menu.locator('[data-context-menu-action="arrange-current-root-canvas-layout"]')).toContainText(
+    '整理当前 root 内的节点'
+  );
   await expect(menu.locator('[data-context-menu-action="arrange-workspace-canvas-layout"]')).toContainText(
     '整理整个 workspace 的画布'
   );
+  await menu.locator('[data-context-menu-action="arrange-current-root-canvas-layout"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => readPostedMessagesByType(page, 'webview/arrangeCanvasLayout'))
+    .toContainEqual({
+      type: 'webview/arrangeCanvasLayout',
+      payload: {
+        targetGroupId: 'workspace-root-frontend'
+      }
+    });
+
+  await clearPostedMessages(page);
+  await page.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 700,
+      y: 560
+    }
+  });
+
+  menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-action="show-arrange-layout-scope"]').click();
   await menu.locator('[data-context-menu-action="arrange-workspace-canvas-layout"]').click();
 
   await expect(menu).toBeHidden();
@@ -11167,6 +11193,7 @@ test('multi-root rootGroups arrange menu infers the root from the section chrome
 
   menu = page.locator('[data-context-menu="true"]');
   await menu.locator('[data-context-menu-action="show-arrange-layout-scope"]').click();
+  await expect(menu.locator('[data-context-menu-action="arrange-current-root-canvas-layout"]')).toBeVisible();
   await expect(menu.locator('[data-context-menu-action="arrange-workspace-canvas-layout"]')).toBeVisible();
 });
 
@@ -11216,7 +11243,33 @@ test('paneGallery arrange menu defaults to current root and offers workspace sco
 
   menu = page.locator('[data-context-menu="true"]');
   await menu.locator('[data-context-menu-action="show-arrange-layout-scope"]').click();
+  await expect(menu.locator('[data-context-menu-action="arrange-current-root-canvas-layout"]')).toContainText(
+    '整理当前 root 内的节点'
+  );
   await expect(menu.locator('[data-context-menu-action="arrange-workspace-canvas-layout"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="arrange-current-root-canvas-layout"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => readPostedMessagesByType(page, 'webview/arrangeCanvasLayout'))
+    .toContainEqual({
+      type: 'webview/arrangeCanvasLayout',
+      payload: {
+        targetGroupId: 'workspace-root-backend'
+      }
+    });
+
+  await clearPostedMessages(page);
+  await backendPane.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 120,
+      y: 150
+    }
+  });
+
+  menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-action="show-arrange-layout-scope"]').click();
   await menu.locator('[data-context-menu-action="arrange-workspace-canvas-layout"]').click();
 
   await expect(menu).toBeHidden();
