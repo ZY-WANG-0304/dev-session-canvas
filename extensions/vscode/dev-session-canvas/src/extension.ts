@@ -266,7 +266,9 @@ function resolveTerminalShellConfigurationTarget(): vscode.ConfigurationTarget {
 }
 
 function describeTerminalShellConfigurationTarget(target: vscode.ConfigurationTarget): string {
-  return target === vscode.ConfigurationTarget.Workspace ? '当前 workspace' : '当前设备';
+  return target === vscode.ConfigurationTarget.Workspace
+    ? vscode.l10n.t('the current workspace')
+    : vscode.l10n.t('the current device');
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -835,7 +837,7 @@ async function promptTerminalShellSelection(): Promise<void> {
       resolvedConfiguredShell.resolutionSource === 'default-shell'
     ),
     {
-      placeHolder: '选择嵌入式 Terminal 要使用的 shell'
+      placeHolder: vscode.l10n.t('Select the shell for embedded Terminal')
     }
   );
 
@@ -847,8 +849,20 @@ async function promptTerminalShellSelection(): Promise<void> {
     await configuration.update(CONFIG_KEYS.terminalShell, 'default', configurationTarget);
     await configuration.update(CONFIG_KEYS.terminalShellPath, '', configurationTarget);
     const defaultShellPath = detectedShells.find((shell) => shell.isDefault)?.resolvedPath ?? vscode.env.shell.trim();
-    const detail = defaultShellPath ? `：${defaultShellPath}` : '';
-    await vscode.window.showInformationMessage(`已将${targetLabel}的嵌入式 Terminal 改为跟随当前默认 shell${detail}`);
+    if (defaultShellPath) {
+      await vscode.window.showInformationMessage(
+        vscode.l10n.t('Changed the embedded Terminal shell for {target} to follow the current default shell: {path}', {
+          target: targetLabel,
+          path: defaultShellPath
+        })
+      );
+    } else {
+      await vscode.window.showInformationMessage(
+        vscode.l10n.t('Changed the embedded Terminal shell for {target} to follow the current default shell', {
+          target: targetLabel
+        })
+      );
+    }
     return;
   }
 
@@ -875,13 +889,27 @@ async function promptTerminalShellSelection(): Promise<void> {
     persistedSelection.configuredPath,
     configurationTarget
   );
-  const configuredShellDetail =
-    persistedSelection.configuredShell === 'default'
-      ? ''
-      : `（类型：${persistedSelection.configuredShell}；实际启动优先使用该路径）`;
-  await vscode.window.showInformationMessage(
-    `已将${targetLabel}的嵌入式 Terminal shell 更新为 ${picked.label}：${persistedSelection.configuredPath}${configuredShellDetail}`
-  );
+  if (persistedSelection.configuredShell === 'default') {
+    await vscode.window.showInformationMessage(
+      vscode.l10n.t('Updated the embedded Terminal shell for {target} to {label}: {path}', {
+        target: targetLabel,
+        label: picked.label,
+        path: persistedSelection.configuredPath
+      })
+    );
+  } else {
+    await vscode.window.showInformationMessage(
+      vscode.l10n.t(
+        'Updated the embedded Terminal shell for {target} to {label}: {path} (type: {shell}; this path is preferred when launching)',
+        {
+          target: targetLabel,
+          label: picked.label,
+          path: persistedSelection.configuredPath,
+          shell: persistedSelection.configuredShell
+        }
+      )
+    );
+  }
 }
 
 async function openAgentSettingsFile(kind: AgentSettingsFileKind, panelManager: CanvasPanelManager): Promise<void> {
@@ -952,7 +980,7 @@ async function promptAgentCliSelection(provider: AgentProviderKind, panelManager
     extensionRoots: vscode.extensions.all.map((extension) => extension.extensionPath)
   });
   const picked = await vscode.window.showQuickPick(buildAgentCliQuickPickItems(provider, candidates, configuredCommand), {
-    placeHolder: `选择 ${providerLabelText} CLI 命令或路径`
+    placeHolder: vscode.l10n.t('Select {provider} CLI command or path', { provider: providerLabelText })
   });
 
   if (!picked) {
@@ -973,7 +1001,12 @@ async function promptAgentCliSelection(provider: AgentProviderKind, panelManager
 
   const configKey = provider === 'claude' ? CONFIG_KEYS.agentClaudeCommand : CONFIG_KEYS.agentCodexCommand;
   await configuration.update(configKey, selectedCommand, vscode.ConfigurationTarget.Global);
-  await vscode.window.showInformationMessage(`已将当前设备的 ${providerLabelText} CLI 更新为：${selectedCommand}`);
+  await vscode.window.showInformationMessage(
+    vscode.l10n.t('Updated {provider} CLI for the current device: {command}', {
+      provider: providerLabelText,
+      command: selectedCommand
+    })
+  );
 }
 
 async function promptAgentCliInstallation(
@@ -982,7 +1015,7 @@ async function promptAgentCliInstallation(
 ): Promise<void> {
   const installationInfo = getAgentCliInstallationInfo(provider);
   const picked = await vscode.window.showQuickPick(buildAgentCliInstallQuickPickItems(installationInfo), {
-    placeHolder: `选择 ${installationInfo.label} 的安装方式`
+    placeHolder: vscode.l10n.t('Select how to install {provider}', { provider: installationInfo.label })
   });
 
   if (!picked) {
@@ -991,11 +1024,14 @@ async function promptAgentCliInstallation(
 
   if (picked.installMethod === 'command-line') {
     const result = await panelManager.createTerminalAndRunCommand(installationInfo.cliInstallCommand, {
-      titleOverride: `安装 ${installationInfo.label}`
+      titleOverride: vscode.l10n.t('Install {provider}', { provider: installationInfo.label })
     });
     if (!result.created) {
       await vscode.window.showWarningMessage(
-        result.errorMessage ?? `无法在画布 Terminal 中执行 ${installationInfo.label} 安装命令。`
+        result.errorMessage ??
+          vscode.l10n.t('Could not run the {provider} install command in a Canvas Terminal.', {
+            provider: installationInfo.label
+          })
       );
       return;
     }
@@ -1003,13 +1039,22 @@ async function promptAgentCliInstallation(
     if (!result.commandDispatched) {
       await vscode.window.showWarningMessage(
         result.errorMessage ??
-          `已创建画布 Terminal，但尚未确认 ${installationInfo.label} 安装命令已输入；请检查 Terminal 节点状态。`
+          vscode.l10n.t(
+            'Created a Canvas Terminal, but could not confirm that the {provider} install command was sent. Check the Terminal node status.',
+            { provider: installationInfo.label }
+          )
       );
       return;
     }
 
     await vscode.window.showInformationMessage(
-      `已在画布 Terminal 中输入并执行：${installationInfo.cliInstallCommand}。安装完成后请重新点击 ${installationInfo.label} 命令并选择 CLI。`
+      vscode.l10n.t(
+        'Sent and ran in a Canvas Terminal: {command}. After installation finishes, run the {provider} command again and select the CLI.',
+        {
+          command: installationInfo.cliInstallCommand,
+          provider: installationInfo.label
+        }
+      )
     );
     return;
   }
@@ -1022,15 +1067,17 @@ function buildAgentCliInstallQuickPickItems(
 ): AgentCliInstallQuickPickItem[] {
   return [
     {
-      label: 'npm 全局安装',
+      label: vscode.l10n.t('Install globally with npm'),
       description: installationInfo.cliInstallCommand,
-      detail: `在画布 Terminal 中执行安装命令。`,
+      detail: vscode.l10n.t('Run the install command in a Canvas Terminal.'),
       installMethod: 'command-line'
     },
     {
-      label: '安装 VS Code 插件',
+      label: vscode.l10n.t('Install VS Code extension'),
       description: installationInfo.vscodeExtensionId,
-      detail: `跳转到 ${installationInfo.label} 扩展安装页，点击 Install 完成安装。`,
+      detail: vscode.l10n.t('Open the {provider} extension page, then click Install.', {
+        provider: installationInfo.label
+      }),
       installMethod: 'vscode-extension'
     }
   ];
@@ -1046,11 +1093,19 @@ async function openAgentVsCodeExtensionInstallPage(
       await vscode.commands.executeCommand('workbench.extensions.search', `@id:${installationInfo.vscodeExtensionId}`);
     }
     await vscode.window.showInformationMessage(
-      `已打开 ${installationInfo.label} VS Code 插件页面，请在扩展页点击 Install 完成安装。`
+      vscode.l10n.t('Opened the {provider} VS Code extension page. Click Install in the Extensions view.', {
+        provider: installationInfo.label
+      })
     );
   } catch {
     await vscode.window.showWarningMessage(
-      `无法自动打开 ${installationInfo.label} VS Code 插件页面；请在扩展面板手动搜索 ${installationInfo.vscodeExtensionId}。`
+      vscode.l10n.t(
+        'Could not open the {provider} VS Code extension page automatically; search for {extensionId} in the Extensions view.',
+        {
+          provider: installationInfo.label,
+          extensionId: installationInfo.vscodeExtensionId
+        }
+      )
     );
   }
 }
@@ -1067,10 +1122,12 @@ async function promptManualAgentCliCommand(
 ): Promise<string | undefined> {
   const providerLabelText = getAgentCliDisplayName(provider);
   const value = await vscode.window.showInputBox({
-    title: `选择 ${providerLabelText} CLI`,
-    prompt: `输入 ${providerLabelText} CLI 的命令名或绝对路径。`,
+    title: vscode.l10n.t('Select {provider} CLI', { provider: providerLabelText }),
+    prompt: vscode.l10n.t('Enter the command name or absolute path for {provider} CLI.', {
+      provider: providerLabelText
+    }),
     value: currentCommand,
-    validateInput: (input) => (input.trim().length > 0 ? undefined : 'CLI 命令不能为空。')
+    validateInput: (input) => (input.trim().length > 0 ? undefined : vscode.l10n.t('CLI command cannot be empty.'))
   });
   return value?.trim() || undefined;
 }
@@ -1086,9 +1143,9 @@ function buildAgentCliQuickPickItems(
 
   if (shouldOfferAgentCliInstallation(candidates)) {
     items.push({
-      label: `安装 ${providerLabelText}...`,
-      description: '系统中未检测到',
-      detail: `通过 npm 全局安装 CLI，或安装对应的 VS Code 插件。`,
+      label: vscode.l10n.t('Install {provider}...', { provider: providerLabelText }),
+      description: vscode.l10n.t('Not detected on this system'),
+      detail: vscode.l10n.t('Install the CLI globally with npm, or install the matching VS Code extension.'),
       install: true
     });
     items.push({
@@ -1102,7 +1159,7 @@ function buildAgentCliQuickPickItems(
     const isCurrent = agentCliCommandValuesEqual(candidate.command, currentCommand);
     return {
       label: candidate.command,
-      description: isCurrent ? `${sourceLabel} · 当前` : sourceLabel,
+      description: isCurrent ? vscode.l10n.t('{source} · Current', { source: sourceLabel }) : sourceLabel,
       detail: buildAgentCliCandidateDetail(candidate),
       command: candidate.command
     } satisfies AgentCliQuickPickItem;
@@ -1116,9 +1173,12 @@ function buildAgentCliQuickPickItems(
   }
 
   items.push({
-    label: '手动输入命令或路径...',
-    description: '自定义',
-    detail: `输入命令名（如 ${getAgentCliDefaultCommand(provider)}）或 CLI 可执行文件的绝对路径。`,
+    label: vscode.l10n.t('Enter command or path manually...'),
+    description: vscode.l10n.t('Custom'),
+    detail: vscode.l10n.t(
+      'Enter a command name such as {command}, or the absolute path to the CLI executable.',
+      { command: getAgentCliDefaultCommand(provider) }
+    ),
     manualInput: true
   });
 
@@ -1128,31 +1188,31 @@ function buildAgentCliQuickPickItems(
 function formatAgentCliCandidateSource(source: AgentCliCandidateSource): string {
   switch (source) {
     case 'configured':
-      return '当前配置';
+      return vscode.l10n.t('Current configuration');
     case 'default-command':
-      return '默认命令';
+      return vscode.l10n.t('Default command');
     case 'path-env':
       return 'PATH';
     case 'login-shell':
-      return '登录 shell';
+      return vscode.l10n.t('Login shell');
     case 'extension-bundled':
-      return '扩展内置';
+      return vscode.l10n.t('Bundled with extension');
     case 'common-location':
-      return '常见位置';
+      return vscode.l10n.t('Common location');
   }
 }
 
 function buildAgentCliCandidateDetail(candidate: AgentCliCandidate): string {
-  const lines = [`命令：${candidate.command}`];
+  const lines = [vscode.l10n.t('Command: {command}', { command: candidate.command })];
   if (candidate.resolvedPath && !agentCliCommandValuesEqual(candidate.resolvedPath, candidate.command)) {
-    lines.push(`实际路径：${candidate.resolvedPath}`);
+    lines.push(vscode.l10n.t('Resolved path: {path}', { path: candidate.resolvedPath }));
   }
   if (!candidate.resolvedPath) {
-    lines.push('未找到可执行文件，可能需要安装或配置 PATH。');
+    lines.push(vscode.l10n.t('Executable not found. Install the CLI or configure PATH.'));
   }
   if (candidate.extensionRoot) {
-    lines.push(`扩展目录：${candidate.extensionRoot}`);
-    lines.push('注意：路径可能随扩展更新而变化。');
+    lines.push(vscode.l10n.t('Extension directory: {path}', { path: candidate.extensionRoot }));
+    lines.push(vscode.l10n.t('Note: this path may change when the extension updates.'));
   }
   return lines.join('\n');
 }
@@ -1172,9 +1232,9 @@ function buildTerminalShellQuickPickItems(
   const normalizedResolvedConfiguredShellPath = resolvedConfiguredShellPath.trim();
   const items: TerminalShellQuickPickItem[] = [
     {
-      label: '跟随当前默认 shell',
-      description: isFollowingDefaultShell ? '当前' : undefined,
-      detail: normalizedResolvedConfiguredShellPath || '未检测到默认 shell 路径',
+      label: vscode.l10n.t('Follow current default shell'),
+      description: isFollowingDefaultShell ? vscode.l10n.t('Current') : undefined,
+      detail: normalizedResolvedConfiguredShellPath || vscode.l10n.t('No default shell path detected'),
       useDefault: true
     }
   ];
@@ -1195,9 +1255,10 @@ function buildTerminalShellQuickPickItems(
   }
 
   if (shouldShowCurrentConfiguredShell) {
+    const shellDisplayName = path.basename(normalizedResolvedConfiguredShellPath) || normalizedResolvedConfiguredShellPath;
     items.push({
-      label: `当前配置 (${path.basename(normalizedResolvedConfiguredShellPath) || normalizedResolvedConfiguredShellPath})`,
-      description: currentConfiguredShellPath ? '当前' : '当前（兼容旧配置）',
+      label: vscode.l10n.t('Current configuration ({shell})', { shell: shellDisplayName }),
+      description: currentConfiguredShellPath ? vscode.l10n.t('Current') : vscode.l10n.t('Current (legacy setting)'),
       detail: normalizedResolvedConfiguredShellPath,
       resolvedPath: normalizedResolvedConfiguredShellPath,
       shellName: path.basename(normalizedResolvedConfiguredShellPath).toLowerCase()
@@ -1209,9 +1270,9 @@ function buildTerminalShellQuickPickItems(
       label: shell.label,
       description: !isFollowingDefaultShell &&
         shellPathsEqual(shell.resolvedPath, normalizedResolvedConfiguredShellPath)
-        ? '当前'
+        ? vscode.l10n.t('Current')
         : shell.isDefault
-          ? '默认 shell'
+          ? vscode.l10n.t('Default shell')
           : undefined,
       detail: shell.detail,
       resolvedPath: shell.resolvedPath,
@@ -1235,7 +1296,7 @@ async function promptCreateNodeRequest(
     const picked = await showQuickPickWithTestOverride(
       buildCreateNodeQuickPickItems(creatableKinds, getDefaultAgentProvider()),
       {
-        placeHolder: '选择要创建的对象或 Agent 类型'
+        placeHolder: vscode.l10n.t('Select the object or Agent type to create')
       }
     );
 
@@ -1291,7 +1352,9 @@ async function resolveExplorerMarkdownNoteResource(
 }
 
 async function showExplorerMarkdownNoteResourceWarning(): Promise<void> {
-  await vscode.window.showWarningMessage('请选择 Markdown 文件（.md / .markdown）来创建关联 Note。');
+  await vscode.window.showWarningMessage(
+    vscode.l10n.t('Select a Markdown file (.md / .markdown) to create an associated Note.')
+  );
 }
 
 async function resolveExplorerExecutionResource(resource: unknown): Promise<ExplorerExecutionResource | undefined> {
@@ -2509,7 +2572,7 @@ async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): P
     panelManager.getWorkspaceFoldersForDisplay()
   );
   if (items.length === 0) {
-    await vscode.window.showInformationMessage('当前画布还没有可定位的非文件节点。');
+    await vscode.window.showInformationMessage(vscode.l10n.t('The current Canvas has no locatable non-file nodes.'));
     return;
   }
 
@@ -2521,7 +2584,7 @@ async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): P
       nodeId: item.nodeId
     })),
     {
-      placeHolder: '选择一个节点并定位到画布',
+      placeHolder: vscode.l10n.t('Select a node to locate it on the Canvas'),
       matchOnDescription: true,
       matchOnDetail: true
     }
@@ -2532,7 +2595,9 @@ async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): P
 
   const focused = await panelManager.focusNodeById(picked.nodeId);
   if (!focused) {
-    await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
+    await vscode.window.showWarningMessage(
+      vscode.l10n.t('The target node no longer exists, or it cannot be located on the Canvas right now.')
+    );
   }
 }
 
@@ -2639,9 +2704,9 @@ function buildCreateNodeQuickPickItems(
   const directCreateItems: CreateNodeQuickPickItem[] = [];
   if (creatableKinds.includes('agent')) {
     directCreateItems.push({
-      label: `Agent（默认：${providerLabel(defaultAgentProvider)}）`,
-      description: '创建对象',
-      detail: '下一步确认完整启动命令，并按默认 provider 创建 Agent',
+      label: vscode.l10n.t('Agent (default: {provider})', { provider: providerLabel(defaultAgentProvider) }),
+      description: vscode.l10n.t('Create object'),
+      detail: vscode.l10n.t('Review the full launch command next, then create an Agent with the default provider.'),
       selectionId: 'create-agent-default',
       request: {
         kind: 'agent',
@@ -2652,7 +2717,7 @@ function buildCreateNodeQuickPickItems(
   if (creatableKinds.includes('terminal')) {
     directCreateItems.push({
       label: 'Terminal',
-      description: '创建对象',
+      description: vscode.l10n.t('Create object'),
       detail: describeNodeKind('terminal'),
       selectionId: 'create-terminal',
       request: {
@@ -2663,7 +2728,7 @@ function buildCreateNodeQuickPickItems(
   if (creatableKinds.includes('note')) {
     directCreateItems.push({
       label: 'Note',
-      description: '创建对象',
+      description: vscode.l10n.t('Create object'),
       detail: describeNodeKind('note'),
       selectionId: 'create-note',
       request: {
@@ -2674,7 +2739,7 @@ function buildCreateNodeQuickPickItems(
 
   if (directCreateItems.length > 0) {
     items.push({
-      label: '创建对象',
+      label: vscode.l10n.t('Create object'),
       kind: vscode.QuickPickItemKind.Separator
     });
     items.push(...directCreateItems);
@@ -2682,14 +2747,19 @@ function buildCreateNodeQuickPickItems(
 
   if (creatableKinds.includes('agent')) {
     items.push({
-      label: '按类型创建 Agent',
+      label: vscode.l10n.t('Create Agent by provider'),
       kind: vscode.QuickPickItemKind.Separator
     });
     for (const provider of ['codex', 'claude'] as const) {
       items.push({
-        label: provider === defaultAgentProvider ? `${providerLabel(provider)}（默认）` : providerLabel(provider),
-        description: '按类型创建 Agent',
-        detail: `下一步确认完整启动命令，并创建一个 ${providerLabel(provider)} 会话窗口`,
+        label:
+          provider === defaultAgentProvider
+            ? vscode.l10n.t('{provider} (default)', { provider: providerLabel(provider) })
+            : providerLabel(provider),
+        description: vscode.l10n.t('Create Agent by provider'),
+        detail: vscode.l10n.t('Review the full launch command next, then create a {provider} session window.', {
+          provider: providerLabel(provider)
+        }),
         selectionId: provider === 'claude' ? 'create-agent-claude' : 'create-agent-codex',
         request: {
           kind: 'agent',
@@ -3053,11 +3123,11 @@ function humanizeNodeKind(kind: CanvasCreatableNodeKind): string {
 function describeNodeKind(kind: CanvasCreatableNodeKind): string {
   switch (kind) {
     case 'agent':
-      return '画布中的 Codex / Claude Code 会话窗口';
+      return vscode.l10n.t('Canvas session window for Codex / Claude Code.');
     case 'terminal':
-      return '画布中的嵌入式终端窗口';
+      return vscode.l10n.t('Embedded terminal window on the Canvas.');
     case 'note':
-      return '可编辑的笔记节点';
+      return vscode.l10n.t('Editable note node.');
   }
 }
 

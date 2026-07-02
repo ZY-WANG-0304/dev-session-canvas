@@ -13,6 +13,7 @@ architecture_layers:
 related_specs: []
 related_plans:
   - docs/exec-plans/completed/ui-copy-localization-foundation.md
+  - docs/exec-plans/completed/ui-copy-localization-host-sidebar.md
 updated_at: 2026-07-02
 ---
 
@@ -66,7 +67,7 @@ DevSessionCanvas 采用三层本地化边界。
 
 第一层是 VS Code manifest 静态贡献点。`extensions/vscode/dev-session-canvas/package.nls.json` 是英文默认文案，覆盖 `package.json` 中所有 `%key%` 引用；`extensions/vscode/dev-session-canvas/package.nls.zh-cn.json` 是简体中文翻译，必须和默认文件保持相同 key 集。这里承载 command title、view title、configuration description、configuration enum label、workspace trust 和 virtual workspace description。命令文案遵循 VS Code 命令面板语义：默认英文文案以产品名前缀开头以保持可搜索性，短小的内部 view/title 切换命令可以继续使用动词短语和可见勾选符号。后续若引入 `category` 字段缩短 title，应作为单独 UI 方案记录。
 
-第二层是 Extension Host 运行时文案。`extensions/vscode/dev-session-canvas/src/extension.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 和 sidebar provider 中由扩展宿主弹出的通知、QuickPick、确认框、错误提示，应逐步迁移到 `vscode.l10n.t(...)`。扩展 manifest 需要声明 `l10n` bundle 目录，运行时简体中文翻译放在 `extensions/vscode/dev-session-canvas/l10n/bundle.l10n.zh-cn.json`。协议层文件，例如 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`，不得新增自然语言文案；跨边界只传递结构化状态、枚举和必要事实。
+第二层是 Extension Host 运行时文案。`extensions/vscode/dev-session-canvas/src/extension.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 和 sidebar provider 中由扩展宿主弹出的通知、QuickPick、确认框、错误提示，应逐步迁移到 `vscode.l10n.t(...)`。扩展 manifest 需要声明 `l10n` bundle 目录，运行时简体中文翻译放在 `extensions/vscode/dev-session-canvas/l10n/bundle.l10n.zh-cn.json`。第二批已迁移 Terminal shell、Agent CLI、创建节点、sidebar node-list 和 Explorer Markdown 校验相关的低风险 Host 入口；session history QuickPick、CanvasPanelManager 生命周期与执行状态文案仍保持分批迁移，避免破坏现有 smoke baseline。协议层文件，例如 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`，不得新增自然语言文案；跨边界只传递结构化状态、枚举和必要事实。
 
 第三层是 Webview 文案。Webview 不能直接依赖 `vscode.l10n.t`，因此在 `extensions/vscode/dev-session-canvas/src/webview/i18n/` 下维护 typed dictionary。英文为默认字典，简体中文为覆盖字典，二者在 TypeScript 类型上共享同一 key 集。`extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts` 根据 `vscode.env.language` 选择 `en` 或 `zh-CN`，把 locale 与字典通过 CSP nonce 保护的 bootstrap script 注入为 `window.__DEV_SESSION_CANVAS_I18N__`。`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 通过 `t('key', params)` 读取文案；插值只允许命名参数，避免中英文语序差异被字符串拼接固化。
 
@@ -76,6 +77,6 @@ Webview standby HTML 也归第三层管理，但它由 Host 生成，首批实�
 
 ## 8. 验证方法
 
-自动验证包含四类。运行 `npm run test:extension-manifest`，预期所有 `package.json` 中 `%key%` 引用都能在 `package.nls.json` 中找到，且 `package.nls.zh-cn.json` 与默认文件 key 完全一致。运行新增或扩展后的 i18n 测试，预期 Webview 英文和中文字典 key 完全一致，中文覆盖不缺项。运行 `npm run typecheck`，预期 Webview 字典与 Host 注入类型可通过 TypeScript 检查。运行 `npm run test:package-vsix-file-list`，预期 staged VSIX 文件包含 `package.nls.zh-cn.json` 和 `l10n/bundle.l10n.zh-cn.json`，且没有额外源码目录泄漏。
+自动验证包含四类。运行 `npm run test:extension-manifest`，预期所有 `package.json` 中 `%key%` 引用都能在 `package.nls.json` 中找到，且 `package.nls.zh-cn.json` 与默认文件 key 完全一致。运行新增或扩展后的 i18n 测试，预期 Webview 英文和中文字典 key 完全一致，中文覆盖不缺项，并且 `extension.ts` 中已经使用 `vscode.l10n.t` 的 Host 英文源字符串都能在 zh-cn runtime bundle 中找到非空翻译。运行 `npm run typecheck`，预期 Webview 字典与 Host 注入类型可通过 TypeScript 检查。运行 `npm run test:package-vsix-file-list`，预期 staged VSIX 文件包含 `package.nls.zh-cn.json` 和 `l10n/bundle.l10n.zh-cn.json`，且没有额外源码目录泄漏。
 
 手动验证在英文 VS Code 和简体中文 VS Code 环境中分别打开扩展。英文环境应看到英文 command title、设置说明、view title 和已迁移 Webview 文案；简体中文环境应看到中文对应文案。若只完成首批基础设施，未迁移的大型 Webview 组件可以记录为后续工作，但不能把它们描述为已完成本地化。
