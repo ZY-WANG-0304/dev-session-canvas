@@ -12,6 +12,7 @@ import {
 const hostRuntimeSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/extension.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts',
   'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarActionsView.ts',
@@ -26,6 +27,10 @@ const webviewMainSource = readFileSync(
 );
 const templateMarketplacePanelSource = readFileSync(
   path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts'),
+  'utf8'
+);
+const templateMarketplaceClientSource = readFileSync(
+  path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts'),
   'utf8'
 );
 const extensionHostSource = hostRuntimeSourceFiles
@@ -89,6 +94,12 @@ for (const finding of findUnexpectedWebviewMainChineseLines(webviewMainSource)) 
 for (const finding of findUnexpectedTemplateMarketplacePanelChineseLines(templateMarketplacePanelSource)) {
   assert.fail(
     `Unexpected hard-coded Chinese in Template Marketplace panel source at line ${finding.lineNumber}: ${finding.line}`
+  );
+}
+
+for (const finding of findUnexpectedTemplateMarketplaceClientChineseLines(templateMarketplaceClientSource)) {
+  assert.fail(
+    `Unexpected hard-coded Chinese in Template Marketplace client source at line ${finding.lineNumber}: ${finding.line}`
   );
 }
 
@@ -156,6 +167,15 @@ function findUnexpectedWebviewMainChineseLines(
 }
 
 function findUnexpectedTemplateMarketplacePanelChineseLines(
+  source: string
+): Array<{ lineNumber: number; line: string }> {
+  return source
+    .split(/\r?\n/u)
+    .map((line, index) => ({ lineNumber: index + 1, line }))
+    .filter(({ line }) => /[\p{Script=Han}]|zh-CN/u.test(line));
+}
+
+function findUnexpectedTemplateMarketplaceClientChineseLines(
   source: string
 ): Array<{ lineNumber: number; line: string }> {
   return source

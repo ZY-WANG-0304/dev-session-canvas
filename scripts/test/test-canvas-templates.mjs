@@ -1300,8 +1300,10 @@ try {
   assert.match(marketplaceClientSource, /listInstalledTemplates/u);
   assert.match(marketplaceClientSource, /listInstalledTemplateUpdateStatuses/u);
   assert.match(marketplaceClientSource, /updateInstalledTemplateToLatest/u);
+  assert.match(marketplaceClientSource, /vscode\.l10n\.t\('Could not find the marketplace template to update\.'\)/u);
   assert.match(marketplaceClientSource, /MARKETPLACE_INSTALLED_UPDATE_CHECK_TIMEOUT_MS/u);
   assert.match(marketplaceClientSource, /publishTemplateDraftVersion/u);
+  assert.match(marketplaceClientSource, /vscode\.l10n\.t\('Failed to publish a new template version: \{message\}'/u);
   assert.match(marketplaceClientSource, /\/api\/v1\/templates\/\$\{encodeURIComponent\(templateIdOrSlug\)\}\/versions/u);
   assert.match(marketplaceClientSource, /listInstallTargets/u);
   assert.match(marketplaceClientSource, /targetStorageLocationId/u);
@@ -1309,6 +1311,8 @@ try {
   assert.match(marketplaceClientSource, /export function parseTrustedMarketplaceSourceUrl/u);
   assert.match(marketplaceClientSource, /saveMarketplaceTemplatePackage/u);
   assert.match(marketplaceClientSource, /parseMarketplaceTemplatePackageForInstall/u);
+  assert.match(marketplaceClientSource, /class MarketplaceTemplatePackageError extends Error/u);
+  assert.match(marketplaceClientSource, /error instanceof MarketplaceTemplatePackageError/u);
   assert.match(marketplaceClientSource, /requestBuffer\(downloadUrl, \{ accept: 'application\/zip' \}\)/u);
   assert.match(marketplaceClientSource, /findInstalledMarketplaceTemplate/u);
   assert.match(marketplaceClientSource, /resolveInstallTarget/u);
@@ -1323,6 +1327,8 @@ try {
   assert.match(marketplaceClientSource, /thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64\(templateDocument\)/u);
   assert.match(marketplaceClientSource, /vscode\.authentication\.getSession\('github', \['read:user'\], \{ createIfNone: true \}\)/u);
   assert.match(marketplaceClientSource, /context\.secrets\.store\(MARKETPLACE_TOKEN_SECRET_KEY, tokenResponse\.token\)/u);
+  assert.match(marketplaceClientSource, /vscode\.l10n\.t\('Failed to exchange GitHub identity for a marketplace token: \{message\}'/u);
+  assert.doesNotMatch(marketplaceClientSource, /[\u4e00-\u9fff]|zh-CN/u);
   assert.match(vscodeSmokeRunnerSource, /BLOCKED_VSCODE_ENV_SECRET_PATTERNS/u);
   assert.match(vscodeSmokeRunnerSource, /pattern\.test\(key\)/u);
   assert.match(marketplaceClientSource, /findPublishableStoredTemplate/u);
