@@ -21,12 +21,26 @@ export interface ClaudeCommandSessionFlag {
   sessionId?: string;
 }
 
+export interface AgentLaunchIntentOptions {
+  launchPreset?: AgentLaunchPresetKind;
+  customLaunchCommand?: string;
+  templateArgv?: readonly string[];
+}
+
 const WINDOWS_EXECUTABLE_SUFFIX = /\.(exe|cmd|bat|com)$/i;
 type DoubleQuotedBackslashMode = 'unknown' | 'legacy' | 'literal';
 type AgentDefaultArgsConflict = {
   token: string;
   description: string;
 };
+type AgentLaunchArgConflictKey =
+  | 'codex-execution-mode'
+  | 'codex-model'
+  | 'codex-profile'
+  | 'codex-cwd'
+  | 'codex-local-provider'
+  | 'claude-execution-mode'
+  | 'claude-model';
 
 export function buildAgentPresetCommandLine(
   provider: AgentProviderKind,
@@ -54,7 +68,8 @@ export function buildFreshAgentCommandLine(
 export function buildAgentHistoryResumeCommandLine(
   provider: AgentProviderKind,
   sessionId: string,
-  defaults: AgentProviderLaunchDefaults
+  defaults: AgentProviderLaunchDefaults,
+  launchIntent?: AgentLaunchIntentOptions
 ): string {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
@@ -62,7 +77,7 @@ export function buildAgentHistoryResumeCommandLine(
   }
 
   const command = defaults.command.trim() || provider;
-  const baseArgs = assertAgentDefaultArgsParsable(provider, defaults);
+  const baseArgs = resolveAgentResumeForkBaseArgs(provider, defaults, launchIntent);
   return formatCommandLine([
     command,
     ...buildAgentResumeArgv(provider, baseArgs, normalizedSessionId)
@@ -72,16 +87,18 @@ export function buildAgentHistoryResumeCommandLine(
 export function buildAgentBranchCommandLine(
   provider: AgentProviderKind,
   sessionId: string,
-  defaults: AgentProviderLaunchDefaults
+  defaults: AgentProviderLaunchDefaults,
+  launchIntent?: AgentLaunchIntentOptions
 ): string {
   return provider === 'claude'
-    ? buildClaudeBranchCommandLine(sessionId, defaults)
-    : buildCodexBranchCommandLine(sessionId, defaults);
+    ? buildClaudeBranchCommandLine(sessionId, defaults, launchIntent)
+    : buildCodexBranchCommandLine(sessionId, defaults, launchIntent);
 }
 
 export function buildCodexBranchCommandLine(
   sessionId: string,
-  defaults: AgentProviderLaunchDefaults
+  defaults: AgentProviderLaunchDefaults,
+  launchIntent?: AgentLaunchIntentOptions
 ): string {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
@@ -89,7 +106,7 @@ export function buildCodexBranchCommandLine(
   }
 
   const command = defaults.command.trim() || 'codex';
-  const baseArgs = assertAgentDefaultArgsParsable('codex', defaults);
+  const baseArgs = resolveAgentResumeForkBaseArgs('codex', defaults, launchIntent);
   return formatCommandLine([
     command,
     ...buildCodexBranchArgv(baseArgs, normalizedSessionId)
@@ -98,7 +115,8 @@ export function buildCodexBranchCommandLine(
 
 export function buildClaudeBranchCommandLine(
   sessionId: string,
-  defaults: AgentProviderLaunchDefaults
+  defaults: AgentProviderLaunchDefaults,
+  launchIntent?: AgentLaunchIntentOptions
 ): string {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
@@ -106,7 +124,7 @@ export function buildClaudeBranchCommandLine(
   }
 
   const command = defaults.command.trim() || 'claude';
-  const baseArgs = assertAgentDefaultArgsParsable('claude', defaults);
+  const baseArgs = resolveAgentResumeForkBaseArgs('claude', defaults, launchIntent);
   return formatCommandLine([
     command,
     ...buildClaudeBranchArgv(baseArgs, normalizedSessionId)
@@ -501,6 +519,228 @@ function applyAgentPresetArgs(
   }
 }
 
+function resolveAgentResumeForkBaseArgs(
+  provider: AgentProviderKind,
+  defaults: AgentProviderLaunchDefaults,
+  launchIntent?: AgentLaunchIntentOptions
+): string[] {
+  const defaultArgs = assertAgentDefaultArgsParsable(provider, defaults);
+  if (!launchIntent) {
+    return defaultArgs;
+  }
+
+  const launchPreset = launchIntent.launchPreset ?? 'default';
+  const intentArgs = resolveAgentLaunchIntentArgs(provider, defaults, launchIntent);
+  return mergeAgentLaunchIntentWithDefaultArgs(provider, defaultArgs, intentArgs, launchPreset);
+}
+
+function resolveAgentLaunchIntentArgs(
+  provider: AgentProviderKind,
+  defaults: AgentProviderLaunchDefaults,
+  launchIntent: AgentLaunchIntentOptions
+): string[] {
+  const launchPreset = launchIntent.launchPreset ?? 'default';
+  if (launchIntent.templateArgv !== undefined) {
+    return [...launchIntent.templateArgv];
+  }
+
+  if (launchPreset === 'custom') {
+    const customLaunchCommand = launchIntent.customLaunchCommand?.trim();
+    if (!customLaunchCommand) {
+      return [];
+    }
+
+    const validation = validateAgentCommandLine(customLaunchCommand, provider, defaults);
+    if (!validation.valid || !validation.parsed) {
+      throw new Error(validation.error ?? '无法解析 Agent 启动命令。');
+    }
+    return validation.parsed.args;
+  }
+
+  if (launchPreset === 'yolo') {
+    return provider === 'claude' ? ['--dangerously-skip-permissions'] : ['--yolo'];
+  }
+
+  if (launchPreset === 'sandbox') {
+    return provider === 'claude' ? ['--permission-mode', 'plan'] : ['--sandbox', 'workspace-write'];
+  }
+
+  return [];
+}
+
+function mergeAgentLaunchIntentWithDefaultArgs(
+  provider: AgentProviderKind,
+  defaultArgs: readonly string[],
+  intentArgs: readonly string[],
+  launchPreset: AgentLaunchPresetKind
+): string[] {
+  if (intentArgs.length === 0) {
+    return [...defaultArgs];
+  }
+
+  const cleanedIntentArgs = stripProviderSessionTargetArgs(provider, intentArgs);
+  if (cleanedIntentArgs.length === 0) {
+    return [...defaultArgs];
+  }
+  const normalizedDefaultArgs = stripDefaultArgsConflictingWithIntent(provider, defaultArgs, cleanedIntentArgs);
+
+  if (launchPreset === 'default' || launchPreset === 'custom') {
+    return [...normalizedDefaultArgs, ...cleanedIntentArgs];
+  }
+
+  return [...cleanedIntentArgs, ...normalizedDefaultArgs];
+}
+
+function stripProviderSessionTargetArgs(provider: AgentProviderKind, args: readonly string[]): string[] {
+  return provider === 'claude' ? stripClaudeResumeTargetArgs(args) : stripCodexResumeForkTargetArgs(args);
+}
+
+function stripDefaultArgsConflictingWithIntent(
+  provider: AgentProviderKind,
+  defaultArgs: readonly string[],
+  intentArgs: readonly string[]
+): string[] {
+  const conflictKeys = collectAgentLaunchIntentConflictKeys(provider, intentArgs);
+  if (conflictKeys.size === 0) {
+    return [...defaultArgs];
+  }
+
+  return provider === 'claude'
+    ? stripClaudeArgsByConflictKeys(defaultArgs, conflictKeys)
+    : stripCodexArgsByConflictKeys(defaultArgs, conflictKeys);
+}
+
+function collectAgentLaunchIntentConflictKeys(
+  provider: AgentProviderKind,
+  args: readonly string[]
+): Set<AgentLaunchArgConflictKey> {
+  const conflictKeys = new Set<AgentLaunchArgConflictKey>();
+  for (const token of args) {
+    const conflictKey = provider === 'claude'
+      ? getClaudeArgConflictKey(token)
+      : getCodexArgConflictKey(token);
+    if (conflictKey) {
+      conflictKeys.add(conflictKey);
+    }
+  }
+
+  return conflictKeys;
+}
+
+function stripCodexArgsByConflictKeys(
+  args: readonly string[],
+  conflictKeys: ReadonlySet<AgentLaunchArgConflictKey>
+): string[] {
+  const normalizedArgs: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    const conflictKey = getCodexArgConflictKey(token);
+    if (conflictKey && conflictKeys.has(conflictKey)) {
+      if (codexConflictArgConsumesFollowingValue(token)) {
+        index = skipOwnedFlagValue(args, index);
+      }
+      continue;
+    }
+
+    normalizedArgs.push(token);
+  }
+
+  return normalizedArgs;
+}
+
+function stripClaudeArgsByConflictKeys(
+  args: readonly string[],
+  conflictKeys: ReadonlySet<AgentLaunchArgConflictKey>
+): string[] {
+  const normalizedArgs: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    const conflictKey = getClaudeArgConflictKey(token);
+    if (conflictKey && conflictKeys.has(conflictKey)) {
+      if (claudeConflictArgConsumesFollowingValue(token)) {
+        index = skipOwnedFlagValue(args, index);
+      }
+      continue;
+    }
+
+    normalizedArgs.push(token);
+  }
+
+  return normalizedArgs;
+}
+
+function getCodexArgConflictKey(token: string): AgentLaunchArgConflictKey | undefined {
+  if (
+    token === '--yolo' ||
+    token === '--full-auto' ||
+    token === '--dangerously-bypass-approvals-and-sandbox' ||
+    token === '--sandbox' ||
+    token === '-s' ||
+    token === '--ask-for-approval' ||
+    token === '-a' ||
+    token.startsWith('--sandbox=') ||
+    token.startsWith('-s=') ||
+    token.startsWith('--ask-for-approval=') ||
+    token.startsWith('-a=')
+  ) {
+    return 'codex-execution-mode';
+  }
+
+  if (token === '--model' || token === '-m' || token.startsWith('--model=') || token.startsWith('-m=')) {
+    return 'codex-model';
+  }
+
+  if (token === '--profile' || token === '-p' || token.startsWith('--profile=') || token.startsWith('-p=')) {
+    return 'codex-profile';
+  }
+
+  if (token === '--cd' || token === '-C' || token.startsWith('--cd=') || token.startsWith('-C=')) {
+    return 'codex-cwd';
+  }
+
+  if (token === '--local-provider' || token.startsWith('--local-provider=')) {
+    return 'codex-local-provider';
+  }
+
+  return undefined;
+}
+
+function getClaudeArgConflictKey(token: string): AgentLaunchArgConflictKey | undefined {
+  if (
+    token === '--dangerously-skip-permissions' ||
+    token === '--permission-mode' ||
+    token.startsWith('--permission-mode=')
+  ) {
+    return 'claude-execution-mode';
+  }
+
+  if (token === '--model' || token.startsWith('--model=')) {
+    return 'claude-model';
+  }
+
+  return undefined;
+}
+
+function codexConflictArgConsumesFollowingValue(token: string): boolean {
+  return (
+    token === '--sandbox' ||
+    token === '-s' ||
+    token === '--ask-for-approval' ||
+    token === '-a' ||
+    token === '--model' ||
+    token === '-m' ||
+    token === '--profile' ||
+    token === '-p' ||
+    token === '--cd' ||
+    token === '-C' ||
+    token === '--local-provider'
+  );
+}
+
+function claudeConflictArgConsumesFollowingValue(token: string): boolean {
+  return token === '--permission-mode' || token === '--model';
+}
+
 function buildAgentPresetArgv(
   provider: AgentProviderKind,
   defaults: AgentProviderLaunchDefaults,
@@ -744,6 +984,14 @@ function stripCodexResumeSelectionArgs(
   }
 
   return normalizedArgs;
+}
+
+function stripCodexResumeForkTargetArgs(args: readonly string[]): string[] {
+  const { leadingArgs, subcommandArgs } = splitCodexSessionSubcommandArgs(args, ['fork', 'resume']);
+  return [
+    ...stripCodexForkSelectionArgs(leadingArgs),
+    ...(subcommandArgs ? stripCodexForkSelectionArgs(subcommandArgs) : [])
+  ];
 }
 
 function stripCodexForkSelectionArgs(forkArgs: readonly string[]): string[] {
