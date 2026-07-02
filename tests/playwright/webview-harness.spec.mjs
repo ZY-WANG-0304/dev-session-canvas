@@ -1102,7 +1102,9 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await expect(page.locator('.pane-gallery-root-pane-main .pane-gallery-canvas-controls')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-main .canvas-minimap')).toHaveCount(1);
   await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
+  await expect(page.locator('.pane-gallery-root-pane-active-placeholder')).toHaveCount(1);
   await expect(page.locator('.pane-gallery-root-pane-thumbnail .react-flow')).toHaveCount(2);
+  await expect(page.locator('.pane-gallery-root-pane-active-placeholder .react-flow')).toHaveCount(0);
   await expect(page.locator('.pane-gallery-thumbnail-preview svg')).toHaveCount(0);
   await expect(page.locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"] .pane-gallery-root-title')).toHaveText('Backend');
   await expect(page.locator('.pane-gallery-root-pane-thumbnail .pane-gallery-root-meta')).toHaveCount(0);
@@ -1140,6 +1142,27 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await expect
     .poll(async () => (await readPersistedUiState(page)).paneGallery?.activeRootGroupId)
     .toBe('workspace-root-backend');
+  expect(await readPostedMessagesByType(page, 'webview/createDemoNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveNode')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
+
+  const backendPlaceholder = page.locator('.pane-gallery-root-pane-active-placeholder[data-pane-gallery-root-id="workspace-root-backend"]');
+  await expect(backendPlaceholder).toBeVisible();
+  await expect(backendPlaceholder.locator('.pane-gallery-active-placeholder-label')).toHaveText('正在主画板');
+  await expect(backendPlaceholder).toHaveAttribute('title', /Backend - \/repo\/backend - 1 个节点正在运行 - 正在主画板/);
+  await expect(backendPlaceholder).toHaveAttribute('aria-label', /Workspace root Backend, \/repo\/backend, 正在主画板显示, 1 个节点正在运行/);
+  await expect(backendPlaceholder.locator('.react-flow')).toHaveCount(0);
+  await expect(backendPlaceholder.locator('.pane-gallery-thumbnail-hit-layer')).toHaveCount(0);
+  await expect
+    .poll(async () => backendPlaceholder.evaluate((placeholder) => getComputedStyle(placeholder).backgroundImage))
+    .toContain('repeating-linear-gradient');
+  await clearPostedMessages(page);
+  await backendPlaceholder.click();
+  await backendPlaceholder.dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
+    'data-pane-gallery-root-id',
+    'workspace-root-backend'
+  );
   expect(await readPostedMessagesByType(page, 'webview/createDemoNode')).toEqual([]);
   expect(await readPostedMessagesByType(page, 'webview/moveNode')).toEqual([]);
   expect(await readPostedMessagesByType(page, 'webview/dropNoteMarkdownFiles')).toEqual([]);
@@ -1190,6 +1213,7 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
     .click();
   await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-thumbnail')).toHaveCount(2);
+  await expect(page.locator('.pane-gallery-root-pane-active-placeholder')).toHaveCount(1);
   const rememberedTopTrackAlignment = await page.locator('.pane-gallery-thumbnail-rail-topThumbnails').evaluate((rail) => {
     const track = rail.querySelector('.pane-gallery-thumbnail-track');
     const railRect = rail.getBoundingClientRect();
@@ -1228,8 +1252,8 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
 test('pane gallery overflowing thumbnail rails keep first and last roots reachable', async ({ page }) => {
   const state = createPaneGalleryCanvasState({ rootCount: 16 });
   const activeRootId = state.groups[0].id;
-  const firstThumbnailRootId = state.groups[1].id;
-  const lastThumbnailRootId = state.groups.at(-1).id;
+  const firstRailRootId = state.groups[0].id;
+  const lastRailRootId = state.groups.at(-1).id;
 
   await openHarness(page, {
     persistedState: {
@@ -1252,7 +1276,7 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
       (railElement, { firstRootId, lastRootId, scrollAxis }) => {
         const collect = () => {
           const railRect = railElement.getBoundingClientRect();
-          const entries = [...railElement.querySelectorAll('.pane-gallery-root-pane-thumbnail')]
+          const entries = [...railElement.querySelectorAll('.pane-gallery-root-pane-thumbnail, .pane-gallery-root-pane-active-placeholder')]
             .filter((entry) => entry instanceof HTMLElement)
             .map((entry) => {
               const rect = entry.getBoundingClientRect();
@@ -1318,7 +1342,7 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
           end
         };
       },
-      { firstRootId: firstThumbnailRootId, lastRootId: lastThumbnailRootId, scrollAxis: axis }
+      { firstRootId: firstRailRootId, lastRootId: lastRailRootId, scrollAxis: axis }
     );
   };
 
@@ -1328,10 +1352,10 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
   expect(sideRailMetrics.railAlignContent).not.toBe('center');
   expect(sideRailMetrics.scrollMax).toBeGreaterThan(0);
   expect(sideRailMetrics.start.firstFullyVisible).toBe(true);
-  expect(sideRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
+  expect(sideRailMetrics.start.visibleIds[0]).toBe(firstRailRootId);
   expect(sideRailMetrics.start.firstOffset).toBeGreaterThanOrEqual(-1);
   expect(sideRailMetrics.end.lastFullyVisible).toBe(true);
-  expect(sideRailMetrics.end.visibleIds).toContain(lastThumbnailRootId);
+  expect(sideRailMetrics.end.visibleIds).toContain(lastRailRootId);
   expect(sideRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
 
   const mainPane = page.locator('.pane-gallery-root-pane-main');
@@ -1345,10 +1369,10 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
   expect(topRailMetrics.railJustifyContent).not.toBe('center');
   expect(topRailMetrics.scrollMax).toBeGreaterThan(0);
   expect(topRailMetrics.start.firstFullyVisible).toBe(true);
-  expect(topRailMetrics.start.visibleIds[0]).toBe(firstThumbnailRootId);
+  expect(topRailMetrics.start.visibleIds[0]).toBe(firstRailRootId);
   expect(topRailMetrics.start.firstOffset).toBeGreaterThanOrEqual(-1);
   expect(topRailMetrics.end.lastFullyVisible).toBe(true);
-  expect(topRailMetrics.end.visibleIds).toContain(lastThumbnailRootId);
+  expect(topRailMetrics.end.visibleIds).toContain(lastRailRootId);
   expect(topRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
 });
 
@@ -1394,20 +1418,26 @@ test('pane gallery thumbnail rail follows workspace root order after switching a
   );
   await settleWebview(page, 4);
 
-  const readThumbnailIds = async (layout) =>
+  const readRailEntries = async (layout) =>
     page
-      .locator(`[data-pane-gallery-thumbnail-track="${layout}"] .pane-gallery-root-pane-thumbnail`)
-      .evaluateAll((entries) => entries.map((entry) => entry.getAttribute('data-pane-gallery-root-id')));
+      .locator(`[data-pane-gallery-thumbnail-track="${layout}"] :is(.pane-gallery-root-pane-thumbnail, .pane-gallery-root-pane-active-placeholder)`)
+      .evaluateAll((entries) =>
+        entries.map((entry) => ({
+          id: entry.getAttribute('data-pane-gallery-root-id'),
+          mode: entry.getAttribute('data-pane-gallery-root-mode')
+        }))
+      );
 
   await expect(page.locator('[data-pane-gallery-layout="sideThumbnails"]')).toBeVisible();
   await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute(
     'data-pane-gallery-root-id',
     'workspace-root-frontend'
   );
-  expect(await readThumbnailIds('sideThumbnails')).toEqual([
-    'workspace-root-backend',
-    'workspace-root-tools',
-    'workspace-root-mobile'
+  expect(await readRailEntries('sideThumbnails')).toEqual([
+    { id: 'workspace-root-frontend', mode: 'active-placeholder' },
+    { id: 'workspace-root-backend', mode: 'thumbnail' },
+    { id: 'workspace-root-tools', mode: 'thumbnail' },
+    { id: 'workspace-root-mobile', mode: 'thumbnail' }
   ]);
 
   await page
@@ -1417,20 +1447,22 @@ test('pane gallery thumbnail rail follows workspace root order after switching a
     'data-pane-gallery-root-id',
     'workspace-root-tools'
   );
-  expect(await readThumbnailIds('sideThumbnails')).toEqual([
-    'workspace-root-frontend',
-    'workspace-root-backend',
-    'workspace-root-mobile'
+  expect(await readRailEntries('sideThumbnails')).toEqual([
+    { id: 'workspace-root-frontend', mode: 'thumbnail' },
+    { id: 'workspace-root-backend', mode: 'thumbnail' },
+    { id: 'workspace-root-tools', mode: 'active-placeholder' },
+    { id: 'workspace-root-mobile', mode: 'thumbnail' }
   ]);
 
   const mainPane = page.locator('.pane-gallery-root-pane-main');
   await mainPane.locator('[data-pane-gallery-mode-trigger="true"]').hover();
   await mainPane.locator('[data-pane-gallery-mode-option="topThumbnails"]').click();
   await expect(page.locator('[data-pane-gallery-layout="topThumbnails"]')).toBeVisible();
-  expect(await readThumbnailIds('topThumbnails')).toEqual([
-    'workspace-root-frontend',
-    'workspace-root-backend',
-    'workspace-root-mobile'
+  expect(await readRailEntries('topThumbnails')).toEqual([
+    { id: 'workspace-root-frontend', mode: 'thumbnail' },
+    { id: 'workspace-root-backend', mode: 'thumbnail' },
+    { id: 'workspace-root-tools', mode: 'active-placeholder' },
+    { id: 'workspace-root-mobile', mode: 'thumbnail' }
   ]);
 });
 

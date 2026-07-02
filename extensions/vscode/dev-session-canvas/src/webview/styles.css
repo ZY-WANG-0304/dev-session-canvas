@@ -3754,9 +3754,54 @@ body {
   box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
 }
 
-.pane-gallery-root-pane-thumbnail {
+.pane-gallery-root-pane-thumbnail,
+.pane-gallery-root-pane-active-placeholder {
   width: 100%;
   min-height: 0;
+}
+
+.pane-gallery-root-pane-active-placeholder {
+  --pane-gallery-active-placeholder-stripe: color-mix(in srgb, var(--vscode-descriptionForeground, #8a8a8a) 8%, transparent);
+  --pane-gallery-active-placeholder-label-background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 90%, transparent);
+  display: grid;
+  place-items: center;
+  border: 1px dashed color-mix(in srgb, var(--pane-gallery-root-header-border-color) 74%, transparent);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0,
+      transparent 9px,
+      var(--pane-gallery-active-placeholder-stripe) 9px,
+      var(--pane-gallery-active-placeholder-stripe) 10px
+    ),
+    color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, var(--vscode-sideBar-background, #252526) 6%);
+  color: var(--vscode-descriptionForeground);
+  cursor: default;
+  user-select: none;
+}
+
+.pane-gallery-active-placeholder-body {
+  display: grid;
+  min-width: 0;
+  place-items: center;
+  padding: 24px;
+  pointer-events: none;
+}
+
+.pane-gallery-active-placeholder-label {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 74%, transparent);
+  border-radius: var(--canvas-widget-radius-sm);
+  padding: 3px 8px;
+  background: var(--pane-gallery-active-placeholder-label-background);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editor-background) 72%, transparent);
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pane-gallery-root-header {
