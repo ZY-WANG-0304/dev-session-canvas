@@ -2,6 +2,103 @@ import type { CanvasNodeSummary } from './protocol';
 
 type CanvasStatusPresentationNode = Pick<CanvasNodeSummary, 'kind' | 'status' | 'metadata'>;
 
+export type CanvasStatusLabelId =
+  | 'status.linked'
+  | 'status.idle'
+  | 'status.starting'
+  | 'status.waitingInput'
+  | 'status.resuming'
+  | 'status.resumeReady'
+  | 'status.reattaching'
+  | 'status.resumeFailed'
+  | 'status.stopping'
+  | 'status.stopped'
+  | 'status.suspended'
+  | 'status.running'
+  | 'status.draft'
+  | 'status.ready'
+  | 'status.live'
+  | 'status.closed'
+  | 'status.error'
+  | 'status.interrupted'
+  | 'status.historyRestored'
+  | 'status.missing'
+  | 'status.notFile'
+  | 'status.unsupportedExtension'
+  | 'status.unreadable'
+  | 'status.dirtyConflict'
+  | 'status.noteAssociatedFile'
+  | 'status.notePlain';
+
+export const CANVAS_STATUS_LABEL_IDS: readonly CanvasStatusLabelId[] = [
+  'status.linked',
+  'status.idle',
+  'status.starting',
+  'status.waitingInput',
+  'status.resuming',
+  'status.resumeReady',
+  'status.reattaching',
+  'status.resumeFailed',
+  'status.stopping',
+  'status.stopped',
+  'status.suspended',
+  'status.running',
+  'status.draft',
+  'status.ready',
+  'status.live',
+  'status.closed',
+  'status.error',
+  'status.interrupted',
+  'status.historyRestored',
+  'status.missing',
+  'status.notFile',
+  'status.unsupportedExtension',
+  'status.unreadable',
+  'status.dirtyConflict',
+  'status.noteAssociatedFile',
+  'status.notePlain'
+];
+
+export type CanvasStatusLabelDescriptor =
+  | {
+      kind: 'localized';
+      id: CanvasStatusLabelId;
+      defaultMessage: string;
+    }
+  | {
+      kind: 'raw';
+      value: string;
+    };
+
+const CANVAS_STATUS_LABEL_DEFAULT_MESSAGES: Record<CanvasStatusLabelId, string> = {
+  'status.linked': 'Linked',
+  'status.idle': 'Not started',
+  'status.starting': 'Starting',
+  'status.waitingInput': 'Waiting for input',
+  'status.resuming': 'Resuming',
+  'status.resumeReady': 'Resumable',
+  'status.reattaching': 'Reconnecting',
+  'status.resumeFailed': 'Resume failed',
+  'status.stopping': 'Stopping',
+  'status.stopped': 'Stopped',
+  'status.suspended': 'Suspended',
+  'status.running': 'Running',
+  'status.draft': 'Draft',
+  'status.ready': 'Ready',
+  'status.live': 'Live',
+  'status.closed': 'Session closed',
+  'status.error': 'Failed',
+  'status.interrupted': 'Interrupted',
+  'status.historyRestored': 'History restored',
+  'status.missing': 'File missing',
+  'status.notFile': 'Not a file',
+  'status.unsupportedExtension': 'Unsupported format',
+  'status.unreadable': 'Unreadable',
+  'status.dirtyConflict': 'Edit conflict',
+  'status.noteAssociatedFile': 'File linked',
+  'status.notePlain': 'Plain Note'
+};
+
 export function canvasNodeStatusToneClass(node: CanvasStatusPresentationNode): string {
   const contentSource = node.kind === 'note' ? node.metadata?.note?.contentSource : undefined;
   if (contentSource?.kind === 'markdown-file') {
@@ -50,81 +147,110 @@ export function canvasStatusToneClass(status: string): string {
   }
 }
 
-export function humanizeCanvasNodeStatus(node: CanvasStatusPresentationNode): string {
+export function canvasNodeStatusLabelDescriptor(node: CanvasStatusPresentationNode): CanvasStatusLabelDescriptor {
   if (node.kind === 'note') {
-    return humanizeNoteStatus(node);
+    return canvasNoteStatusLabelDescriptor(node);
   }
 
-  return humanizeCanvasStatus(node.status);
+  return canvasStatusLabelDescriptor(node.status);
 }
 
-function humanizeNoteStatus(node: CanvasStatusPresentationNode): string {
+function canvasNoteStatusLabelDescriptor(node: CanvasStatusPresentationNode): CanvasStatusLabelDescriptor {
   const contentSource = node.metadata?.note?.contentSource;
   if (contentSource?.kind === 'markdown-file') {
-    return contentSource.status === 'ok' ? '已关联文件' : humanizeCanvasStatus(contentSource.status);
+    return contentSource.status === 'ok'
+      ? localizedCanvasStatusLabel('status.noteAssociatedFile')
+      : canvasStatusLabelDescriptor(contentSource.status);
   }
 
   if (node.status === 'ready') {
-    return '普通笔记';
+    return localizedCanvasStatusLabel('status.notePlain');
   }
 
-  return humanizeCanvasStatus(node.status);
+  return canvasStatusLabelDescriptor(node.status);
+}
+
+export function canvasStatusLabelDescriptor(status: string): CanvasStatusLabelDescriptor {
+  switch (status) {
+    case 'linked':
+      return localizedCanvasStatusLabel('status.linked');
+    case 'idle':
+      return localizedCanvasStatusLabel('status.idle');
+    case 'launching':
+    case 'starting':
+      return localizedCanvasStatusLabel('status.starting');
+    case 'waiting-input':
+      return localizedCanvasStatusLabel('status.waitingInput');
+    case 'resuming':
+      return localizedCanvasStatusLabel('status.resuming');
+    case 'resume-ready':
+      return localizedCanvasStatusLabel('status.resumeReady');
+    case 'reattaching':
+      return localizedCanvasStatusLabel('status.reattaching');
+    case 'resume-failed':
+      return localizedCanvasStatusLabel('status.resumeFailed');
+    case 'stopping':
+      return localizedCanvasStatusLabel('status.stopping');
+    case 'stopped':
+      return localizedCanvasStatusLabel('status.stopped');
+    case 'suspended':
+      return localizedCanvasStatusLabel('status.suspended');
+    case 'running':
+      return localizedCanvasStatusLabel('status.running');
+    case 'draft':
+      return localizedCanvasStatusLabel('status.draft');
+    case 'ready':
+      return localizedCanvasStatusLabel('status.ready');
+    case 'live':
+      return localizedCanvasStatusLabel('status.live');
+    case 'closed':
+      return localizedCanvasStatusLabel('status.closed');
+    case 'error':
+      return localizedCanvasStatusLabel('status.error');
+    case 'cancelled':
+      return localizedCanvasStatusLabel('status.stopped');
+    case 'interrupted':
+      return localizedCanvasStatusLabel('status.interrupted');
+    case 'history-restored':
+      return localizedCanvasStatusLabel('status.historyRestored');
+    case 'missing':
+      return localizedCanvasStatusLabel('status.missing');
+    case 'not-file':
+      return localizedCanvasStatusLabel('status.notFile');
+    case 'unsupported-extension':
+      return localizedCanvasStatusLabel('status.unsupportedExtension');
+    case 'unreadable':
+      return localizedCanvasStatusLabel('status.unreadable');
+    case 'dirty-conflict':
+      return localizedCanvasStatusLabel('status.dirtyConflict');
+    default:
+      return {
+        kind: 'raw',
+        value: status
+      };
+  }
+}
+
+export function canvasStatusLabelDefaultMessage(id: CanvasStatusLabelId): string {
+  return CANVAS_STATUS_LABEL_DEFAULT_MESSAGES[id];
+}
+
+export function humanizeCanvasNodeStatus(node: CanvasStatusPresentationNode): string {
+  return humanizeCanvasStatusLabelDescriptor(canvasNodeStatusLabelDescriptor(node));
 }
 
 export function humanizeCanvasStatus(status: string): string {
-  switch (status) {
-    case 'linked':
-      return '已关联';
-    case 'idle':
-      return '未启动';
-    case 'launching':
-    case 'starting':
-      return '启动中';
-    case 'waiting-input':
-      return '等待输入';
-    case 'resuming':
-      return '恢复中';
-    case 'resume-ready':
-      return '可恢复';
-    case 'reattaching':
-      return '重连中';
-    case 'resume-failed':
-      return '恢复失败';
-    case 'stopping':
-      return '停止中';
-    case 'stopped':
-      return '已停止';
-    case 'suspended':
-      return '已挂起';
-    case 'running':
-      return '运行中';
-    case 'draft':
-      return '草稿';
-    case 'ready':
-      return '就绪';
-    case 'live':
-      return '活动';
-    case 'closed':
-      return '已关闭';
-    case 'error':
-      return '失败';
-    case 'cancelled':
-      return '已停止';
-    case 'interrupted':
-      return '已中断';
-    case 'history-restored':
-      return '历史恢复';
-    case 'missing':
-      return '文件缺失';
-    case 'not-file':
-      return '不是文件';
-    case 'unsupported-extension':
-      return '格式不支持';
-    case 'unreadable':
-      return '无法读取';
-    case 'dirty-conflict':
-      return '编辑冲突';
-    default:
-      return status;
-  }
+  return humanizeCanvasStatusLabelDescriptor(canvasStatusLabelDescriptor(status));
+}
+
+function localizedCanvasStatusLabel(id: CanvasStatusLabelId): CanvasStatusLabelDescriptor {
+  return {
+    kind: 'localized',
+    id,
+    defaultMessage: canvasStatusLabelDefaultMessage(id)
+  };
+}
+
+function humanizeCanvasStatusLabelDescriptor(label: CanvasStatusLabelDescriptor): string {
+  return label.kind === 'localized' ? label.defaultMessage : label.value;
 }

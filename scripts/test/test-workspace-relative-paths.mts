@@ -49,6 +49,30 @@ function run(): void {
   );
 
   assert.equal(
+    formatExecutionCwdLabel(undefined, [{ name: 'workspace', path: '/workspace' }]),
+    'Unknown cwd',
+    '缺失 cwd 时公共 helper 应使用英文默认文案，避免 common 层固化中文。'
+  );
+
+  assert.equal(
+    formatExecutionCwdLabel(undefined, [{ name: 'workspace', path: '/workspace' }], 'cwd 未知'),
+    'cwd 未知',
+    '缺失 cwd 时调用边界可以注入已本地化 fallback。'
+  );
+
+  assert.equal(
+    formatExecutionCwdTooltip(undefined),
+    'Unknown cwd',
+    '缺失 cwd tooltip 应使用同一英文默认 fallback。'
+  );
+
+  assert.equal(
+    formatExecutionCwdTooltip(undefined, 'cwd 未知'),
+    'cwd 未知',
+    '缺失 cwd tooltip 应优先使用调用方传入的本地化 fallback。'
+  );
+
+  assert.equal(
     formatExecutionCwdLabel('/workspace/src', [{ name: 'workspace', path: '/workspace' }]),
     'src/',
     '单根 workspace 下执行 cwd 标签应省略 workspace folder 前缀，并保留目录尾缀。'

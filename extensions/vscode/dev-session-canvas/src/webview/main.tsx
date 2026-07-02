@@ -114,7 +114,11 @@ import {
 } from '../common/agentLaunchPresets';
 import { CANVAS_ATTENTION_INDICATOR_ICON_ID } from '../common/canvasAttentionVisuals';
 import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
-import { canvasStatusToneClass as statusToneClass } from '../common/canvasNodeStatusPresentation';
+import {
+  canvasNodeStatusLabelDescriptor,
+  canvasStatusLabelDescriptor,
+  canvasStatusToneClass as statusToneClass
+} from '../common/canvasNodeStatusPresentation';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type {
   ExecutionTerminalFileLinkCandidate,
@@ -5538,7 +5542,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     .filter(Boolean)
     .join(' ');
   const launchCommandSubtitle = resolveAgentLaunchCommandLineForSubtitle(agentMetadata);
-  const cwdLabel = formatExecutionCwdLabel(agentMetadata.cwd, data.workspaceFolders);
+  const cwdLabel = formatExecutionCwdLabel(agentMetadata.cwd, data.workspaceFolders, t('execution.cwd.unknown'));
   const cwdTooltip = formatExecutionCwdTooltip(agentMetadata.cwd, cwdLabel);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -14574,77 +14578,15 @@ function executionAttentionPendingFromMetadata(metadata: CanvasNodeMetadata | un
 function webviewHumanizeCanvasNodeStatus(
   node: Pick<CanvasNodeData, 'kind' | 'status' | 'metadata'>
 ): string {
-  if (node.kind === 'note') {
-    const contentSource = node.metadata?.note?.contentSource;
-    if (contentSource?.kind === 'markdown-file') {
-      return contentSource.status === 'ok'
-        ? t('status.noteAssociatedFile')
-        : webviewHumanizeCanvasStatus(contentSource.status);
-    }
-
-    if (node.status === 'ready') {
-      return t('status.notePlain');
-    }
-  }
-
-  return webviewHumanizeCanvasStatus(node.status);
+  return webviewFormatCanvasStatusLabel(canvasNodeStatusLabelDescriptor(node));
 }
 
 function webviewHumanizeCanvasStatus(status: string): string {
-  switch (status) {
-    case 'linked':
-      return t('status.linked');
-    case 'idle':
-      return t('status.idle');
-    case 'launching':
-    case 'starting':
-      return t('status.starting');
-    case 'waiting-input':
-      return t('status.waitingInput');
-    case 'resuming':
-      return t('status.resuming');
-    case 'resume-ready':
-      return t('status.resumeReady');
-    case 'reattaching':
-      return t('status.reattaching');
-    case 'resume-failed':
-      return t('status.resumeFailed');
-    case 'stopping':
-      return t('status.stopping');
-    case 'stopped':
-    case 'cancelled':
-      return t('status.stopped');
-    case 'suspended':
-      return t('status.suspended');
-    case 'running':
-      return t('status.running');
-    case 'draft':
-      return t('status.draft');
-    case 'ready':
-      return t('status.ready');
-    case 'live':
-      return t('status.live');
-    case 'closed':
-      return t('status.closed');
-    case 'error':
-      return t('status.error');
-    case 'interrupted':
-      return t('status.interrupted');
-    case 'history-restored':
-      return t('status.historyRestored');
-    case 'missing':
-      return t('status.missing');
-    case 'not-file':
-      return t('status.notFile');
-    case 'unsupported-extension':
-      return t('status.unsupportedExtension');
-    case 'unreadable':
-      return t('status.unreadable');
-    case 'dirty-conflict':
-      return t('status.dirtyConflict');
-    default:
-      return status;
-  }
+  return webviewFormatCanvasStatusLabel(canvasStatusLabelDescriptor(status));
+}
+
+function webviewFormatCanvasStatusLabel(label: ReturnType<typeof canvasStatusLabelDescriptor>): string {
+  return label.kind === 'localized' ? t(label.id) : label.value;
 }
 
 function humanizeNodeKind(kind: CanvasNodeKind): string {

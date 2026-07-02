@@ -33,6 +33,14 @@ const templateMarketplaceClientSource = readFileSync(
   path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts'),
   'utf8'
 );
+const sharedPresentationSourceFiles = [
+  'extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts',
+  'extensions/vscode/dev-session-canvas/src/common/executionCwdLabel.ts'
+];
+const sharedPresentationSources = sharedPresentationSourceFiles.map((filePath) => ({
+  filePath,
+  source: readFileSync(path.join(process.cwd(), filePath), 'utf8')
+}));
 const extensionHostSource = hostRuntimeSourceFiles
   .map((filePath) => readFileSync(path.join(process.cwd(), filePath), 'utf8'))
   .join('\n');
@@ -101,6 +109,12 @@ for (const finding of findUnexpectedTemplateMarketplaceClientChineseLines(templa
   assert.fail(
     `Unexpected hard-coded Chinese in Template Marketplace client source at line ${finding.lineNumber}: ${finding.line}`
   );
+}
+
+for (const { filePath, source } of sharedPresentationSources) {
+  for (const finding of findUnexpectedSharedPresentationChineseLines(source)) {
+    assert.fail(`Unexpected hard-coded Chinese in ${filePath} at line ${finding.lineNumber}: ${finding.line}`);
+  }
 }
 
 const hostRuntimeSourceStrings = extractHostRuntimeL10nSourceStrings(extensionHostSource);
@@ -176,6 +190,15 @@ function findUnexpectedTemplateMarketplacePanelChineseLines(
 }
 
 function findUnexpectedTemplateMarketplaceClientChineseLines(
+  source: string
+): Array<{ lineNumber: number; line: string }> {
+  return source
+    .split(/\r?\n/u)
+    .map((line, index) => ({ lineNumber: index + 1, line }))
+    .filter(({ line }) => /[\p{Script=Han}]|zh-CN/u.test(line));
+}
+
+function findUnexpectedSharedPresentationChineseLines(
   source: string
 ): Array<{ lineNumber: number; line: string }> {
   return source
