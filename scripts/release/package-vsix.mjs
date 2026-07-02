@@ -361,6 +361,8 @@ function assertMainPackageInputsExist() {
     path.join(mainExtensionRoot, 'CHANGELOG.md'),
     path.join(mainExtensionRoot, 'LICENSE'),
     path.join(mainExtensionRoot, 'package.nls.json'),
+    path.join(mainExtensionRoot, 'package.nls.zh-cn.json'),
+    path.join(mainExtensionRoot, 'l10n', 'bundle.l10n.zh-cn.json'),
     path.join(mainExtensionRoot, 'images', 'icon.png'),
     path.join(mainExtensionRoot, 'scripts', 'runtime', 'claude-file-event-hook.cjs'),
     path.join(projectRoot, 'node_modules', 'node-pty', 'package.json')
@@ -397,10 +399,15 @@ export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath)
     path.join(stagePackageRoot, 'package.nls.json')
   );
   copyFileSync(
+    path.join(mainExtensionRoot, 'package.nls.zh-cn.json'),
+    path.join(stagePackageRoot, 'package.nls.zh-cn.json')
+  );
+  copyFileSync(
     path.join(mainExtensionRoot, '.vscodeignore'),
     path.join(stagePackageRoot, '.vscodeignore')
   );
   cpSync(path.join(mainExtensionRoot, 'dist'), path.join(stagePackageRoot, 'dist'), { recursive: true });
+  cpSync(path.join(mainExtensionRoot, 'l10n'), path.join(stagePackageRoot, 'l10n'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'images'), path.join(stagePackageRoot, 'images'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'resources'), path.join(stagePackageRoot, 'resources'), { recursive: true });
   cpSync(

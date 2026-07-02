@@ -930,5 +930,6 @@
   "api": "none",
   "extensionPack": [
     "devsessioncanvas.dev-session-canvas-notifier"
-  ]
+  ],
+  "l10n": "./l10n"
 }

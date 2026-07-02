@@ -10,6 +10,8 @@ const copiedEntries = [
   'images',
   'resources',
   'package.nls.json',
+  'package.nls.zh-cn.json',
+  'l10n',
   path.join('scripts', 'runtime', 'claude-file-event-hook.cjs')
 ];
 

@@ -153,6 +153,12 @@ import {
 } from './droppedResources';
 import { createNoteBodyIndentEdit, createNoteBodyOutdentEdit } from './noteBodyIndent';
 import { parseNoteMarkdownFrontMatter, type NoteMarkdownFrontMatter } from './noteMarkdownFrontMatter';
+import {
+  formatWebviewMessage,
+  resolveWebviewI18n,
+  type WebviewI18nBootstrap,
+  type WebviewI18nKey
+} from './i18n/webviewI18n';
 
 type CanvasGroupRole = CanvasGroupSummary['role'];
 
@@ -165,6 +171,7 @@ declare function acquireVsCodeApi<T>(): {
 declare global {
   interface Window {
     __DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__?: WebviewLifecycleIdentity;
+    __DEV_SESSION_CANVAS_I18N__?: WebviewI18nBootstrap;
   }
 }
 
@@ -818,6 +825,10 @@ interface XtermCoreWithMouseInternals {
 const vscode = acquireVsCodeApi<LocalUiState>();
 const reportedRuntimeDiagnostics = new Set<string>();
 const initialPersistedState = vscode.getState() ?? {};
+const webviewI18n = window.__DEV_SESSION_CANVAS_I18N__ ?? resolveWebviewI18n(navigator.language);
+function t(key: WebviewI18nKey, params?: Record<string, string | number>): string {
+  return formatWebviewMessage(webviewI18n.messages, key, params);
+}
 const injectedWebviewLifecycleIdentity = extractWebviewMessageLifecycle({
   lifecycle: window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__
 });
@@ -4808,8 +4819,8 @@ function App(): JSX.Element {
             <button
               type="button"
               className="react-flow__controls-button react-flow__controls-fitview"
-              title="fit view"
-              aria-label="fit view"
+              title={t('canvas.fitView')}
+              aria-label={t('canvas.fitView')}
               onClick={() => {
                 fitCanvasView(NODE_FOCUS_ANIMATION_DURATION_MS);
               }}
@@ -6640,11 +6651,11 @@ function CanvasMiniMap(props: {
         height={CANVAS_MINIMAP_HEIGHT}
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
         role="img"
-        aria-label="Canvas minimap"
+        aria-label={t('canvas.minimap')}
         onPointerDown={handlePointerDown}
         onWheel={handleWheel}
       >
-        <title>Canvas minimap</title>
+        <title>{t('canvas.minimap')}</title>
         <g className="canvas-minimap-groups" aria-hidden="true">
           {props.groups.map((group) => (
             <rect
@@ -9540,8 +9551,8 @@ function PaneGalleryControls(props: {
       <button
         type="button"
         className="react-flow__controls-button react-flow__controls-fitview"
-        title="fit view"
-        aria-label="fit view"
+        title={t('canvas.fitView')}
+        aria-label={t('canvas.fitView')}
         onClick={(event) => {
           stopCanvasEvent(event);
           props.onFitView();

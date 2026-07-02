@@ -43,6 +43,17 @@ try {
     .map((line) => line.trim().replace(/\\/g, '/'))
     .filter(Boolean);
 
+  for (const expectedFile of [
+    'package.nls.json',
+    'package.nls.zh-cn.json',
+    'l10n/bundle.l10n.zh-cn.json'
+  ]) {
+    assert.ok(
+      packagedFiles.includes(expectedFile),
+      `Expected VSIX file list to include localization resource ${expectedFile}.`
+    );
+  }
+
   const forbiddenPrefixes = [
     'apps/',
     'packages/',
