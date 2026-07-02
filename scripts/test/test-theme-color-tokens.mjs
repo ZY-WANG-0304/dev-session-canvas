@@ -263,13 +263,13 @@ assert.match(
 );
 assert.match(
   paneGalleryRunningScanlineRule,
-  /--pane-gallery-root-running-scanline-travel:\s*calc\(100% - var\(--pane-gallery-root-running-scanline-width\)\);/u,
-  'Pane Gallery root running scanline travel should wrap without leaving an end-of-loop gap.'
+  /--pane-gallery-root-running-scanline-travel:\s*100%;/u,
+  'Pane Gallery root running scanline should keep its original travel distance.'
 );
 assert.match(
   paneGalleryRunningScanlineLayerRule,
-  /left:\s*0;[\s\S]*width:\s*100%;[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s linear infinite;/u,
-  'Pane Gallery root running scanline layer should fill the header and use linear continuous motion.'
+  /left:\s*0;[\s\S]*width:\s*calc\(100% \+ 56px\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  'Pane Gallery root running scanline layer should let the scan block fully leave the header while keeping the original timing curve.'
 );
 assert.match(
   multiRootDesignSource,
