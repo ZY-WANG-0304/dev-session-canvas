@@ -30,10 +30,7 @@ import {
   matchesAgentCommandLinePreset,
   validateAgentCommandLine
 } from './common/agentLaunchPresets';
-import {
-  formatCanvasTemplateStats,
-  sanitizeCanvasTemplateFileStem
-} from './common/canvasTemplates';
+import { sanitizeCanvasTemplateFileStem, type CanvasTemplate } from './common/canvasTemplates';
 import {
   formatGitWorktreeListEntryRef,
   groupGitWorktreeRepositoryCandidates,
@@ -297,15 +294,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
     const dumpResult = await panelManager.dumpCurrentHostDiagnostics();
-    const revealAction = '在资源管理器中显示';
-    const openLifecycleSummaryAction = '打开 lifecycle 摘要';
-    const openPerformanceDiagnosticsAction = '打开性能诊断';
+    const revealAction = vscode.l10n.t('Reveal in File Explorer');
+    const openLifecycleSummaryAction = vscode.l10n.t('Open lifecycle summary');
+    const openPerformanceDiagnosticsAction = vscode.l10n.t('Open performance diagnostics');
     const lifecycleStatus = formatWebviewLifecycleDumpStatus(dumpResult.webviewLifecycleStatus);
     const panelRestoreHint = dumpResult.webviewLifecyclePanelRestoreLikelyAffected
-      ? '；Panel restore 可能仍受 lifecycle 阻塞'
+      ? vscode.l10n.t('; panel restore may still be blocked by lifecycle state')
       : '';
     const selection = await vscode.window.showInformationMessage(
-      `当前宿主诊断已写入 ${dumpResult.outputDir}。Webview lifecycle：${lifecycleStatus}${panelRestoreHint}`,
+      vscode.l10n.t('Host diagnostics were written to {outputDir}. Webview lifecycle: {status}{hint}', {
+        outputDir: dumpResult.outputDir,
+        status: lifecycleStatus,
+        hint: panelRestoreHint
+      }),
       openLifecycleSummaryAction,
       openPerformanceDiagnosticsAction,
       revealAction
@@ -355,7 +356,7 @@ export function activate(context: vscode.ExtensionContext): void {
         try {
           templateMarketplacePanel.openTemplateDetailFromUri(uri);
         } catch (error) {
-          await showCanvasTemplateError('打开市场模板详情失败', error);
+          await showCanvasTemplateError(vscode.l10n.t('Failed to open marketplace template details'), error);
         }
       }
     })
@@ -384,7 +385,7 @@ export function activate(context: vscode.ExtensionContext): void {
       templateMarketplacePanel.openTemplatePublishForm(explicitTemplateId, { templateIdOrSlug });
       return explicitTemplateId ? { templateId: explicitTemplateId } : undefined;
     } catch (error) {
-      await showCanvasTemplateError('打开模板发布表单失败', error);
+      await showCanvasTemplateError(vscode.l10n.t('Failed to open template publish form'), error);
     }
   });
 
@@ -400,7 +401,7 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         await applyTemplateFromCommand(panelManager, templateId);
       } catch (error) {
-        await showCanvasTemplateError('应用模板失败', error);
+        await showCanvasTemplateError(vscode.l10n.t('Failed to apply template'), error);
       }
     }),
     vscode.commands.registerCommand(COMMAND_IDS.applyDefaultTemplate, async () => {
@@ -409,14 +410,14 @@ export function activate(context: vscode.ExtensionContext): void {
         await panelManager.revealOrCreateCurrentCanvasSurface();
         panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
       } catch (error) {
-        await showCanvasTemplateError('应用默认模板失败', error);
+        await showCanvasTemplateError(vscode.l10n.t('Failed to apply default template'), error);
       }
     }),
     vscode.commands.registerCommand(COMMAND_IDS.resetToTemplate, async (templateId?: unknown) => {
       try {
         await resetToTemplateFromCommand(panelManager, templateId);
       } catch (error) {
-        await showCanvasTemplateError('重置为模板失败', error);
+        await showCanvasTemplateError(vscode.l10n.t('Failed to reset to template'), error);
       }
     }),
     vscode.commands.registerCommand(COMMAND_IDS.resetToDefaultTemplate, async () => {
@@ -427,42 +428,42 @@ export function activate(context: vscode.ExtensionContext): void {
           panelManager.focusCanvasTemplateNodeGroup(appliedNodeIds);
         }
       } catch (error) {
-        await showCanvasTemplateError('重置为默认模板失败', error);
+        await showCanvasTemplateError(vscode.l10n.t('Failed to reset to default template'), error);
       }
     }),
     vscode.commands.registerCommand(COMMAND_IDS.saveCanvasAsTemplate, async () => {
       try {
         await saveCurrentCanvasAsTemplateFromCommand(panelManager);
       } catch (error) {
-        await showCanvasTemplateError('保存模板失败', error);
+        await showCanvasTemplateError(vscode.l10n.t('Failed to save template'), error);
       }
     }),
     vscode.commands.registerCommand(COMMAND_IDS.importTemplate, async () => {
       try {
         await importCanvasTemplateFromCommand(panelManager);
       } catch (error) {
-        await showCanvasTemplateError('导入模板失败', error);
+        await showCanvasTemplateError(vscode.l10n.t('Failed to import template'), error);
       }
     }),
     vscode.commands.registerCommand(COMMAND_IDS.exportTemplate, async (templateId?: unknown) => {
       try {
         await exportCanvasTemplateFromCommand(panelManager, templateId);
       } catch (error) {
-        await showCanvasTemplateError('导出模板失败', error);
+        await showCanvasTemplateError(vscode.l10n.t('Failed to export template'), error);
       }
     }),
     vscode.commands.registerCommand(COMMAND_IDS.deleteTemplate, async (templateId?: unknown) => {
       try {
         await deleteCanvasTemplateFromCommand(panelManager, templateId);
       } catch (error) {
-        await showCanvasTemplateError('删除模板失败', error);
+        await showCanvasTemplateError(vscode.l10n.t('Failed to delete template'), error);
       }
     }),
     vscode.commands.registerCommand(COMMAND_IDS.setDefaultTemplate, async (templateId?: unknown) => {
       try {
         await setDefaultCanvasTemplateFromCommand(panelManager, templateId);
       } catch (error) {
-        await showCanvasTemplateError('设置默认模板失败', error);
+        await showCanvasTemplateError(vscode.l10n.t('Failed to set default template'), error);
       }
     })
   );
@@ -533,7 +534,7 @@ export function activate(context: vscode.ExtensionContext): void {
       COMMAND_IDS.removeFolderFromWorkspace,
       async (rootPath?: unknown, groupIdOrClearCanvas?: unknown, clearCanvas?: unknown) => {
         if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
-          await vscode.window.showWarningMessage('未找到要从 workspace 移除的 folder。');
+          await vscode.window.showWarningMessage(vscode.l10n.t('No folder was found to remove from the workspace.'));
           return;
         }
 
@@ -556,7 +557,7 @@ export function activate(context: vscode.ExtensionContext): void {
       COMMAND_IDS.removeWorktreeFromWorkspace,
       async (rootPath?: unknown, groupIdOrClearCanvas?: unknown, clearCanvas?: unknown) => {
         if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
-          await vscode.window.showWarningMessage('未找到要移除的 worktree folder。');
+          await vscode.window.showWarningMessage(vscode.l10n.t('No worktree folder was found to remove.'));
           return;
         }
 
@@ -641,13 +642,17 @@ export function activate(context: vscode.ExtensionContext): void {
     try {
       await panelManager.waitForCanvasReady(undefined, 15000);
     } catch {
-      await vscode.window.showInformationMessage('请先打开画布并选中至少两个同一父级的节点或分组。');
+      await vscode.window.showInformationMessage(
+        vscode.l10n.t('Open the Canvas and select at least two nodes or groups under the same parent first.')
+      );
       return;
     }
 
     const requested = panelManager.createGroupFromSelectionFromCommand();
     if (!requested) {
-      await vscode.window.showInformationMessage('请先打开画布并选中至少两个同一父级的节点或分组。');
+      await vscode.window.showInformationMessage(
+        vscode.l10n.t('Open the Canvas and select at least two nodes or groups under the same parent first.')
+      );
     }
   });
 
@@ -708,12 +713,15 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   registerCommand(context, COMMAND_IDS.resetCanvasState, async () => {
+    const resetCanvasAction = vscode.l10n.t('Continue clearing');
     const confirmed = await vscode.window.showWarningMessage(
-      '清空画板会清空当前 workspace 绑定的画布对象，并终止运行中的 Agent / Terminal 会话。',
+      vscode.l10n.t(
+        'Clearing the Canvas removes Canvas objects bound to the current workspace and stops running Agent / Terminal sessions.'
+      ),
       { modal: true },
-      '继续清空'
+      resetCanvasAction
     );
-    if (confirmed !== '继续清空') {
+    if (confirmed !== resetCanvasAction) {
       return;
     }
 
@@ -727,7 +735,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const focused = await panelManager.focusNodeById(nodeId);
     if (!focused) {
-      await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
+      await vscode.window.showWarningMessage(
+        vscode.l10n.t('The target node no longer exists, or it cannot be located on the Canvas right now.')
+      );
     }
   };
 
@@ -738,7 +748,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const centered = await panelManager.centerAttentionNodeById(nodeId);
     if (!centered) {
-      await vscode.window.showWarningMessage('目标节点已不存在，或当前无法定位到画布中的该节点。');
+      await vscode.window.showWarningMessage(
+        vscode.l10n.t('The target node no longer exists, or it cannot be located on the Canvas right now.')
+      );
     }
   };
 
@@ -917,7 +929,11 @@ async function openAgentSettingsFile(kind: AgentSettingsFileKind, panelManager: 
   const settingsEnvironment = await panelManager.resolveAgentSettingsFileEnvironment();
   const filePath = resolveAgentSettingsFilePath(kind, settingsEnvironment);
   if (!filePath) {
-    await vscode.window.showWarningMessage(`无法定位当前执行宿主的配置目录，暂时不能打开 ${descriptor.label}。`);
+    await vscode.window.showWarningMessage(
+      vscode.l10n.t('Could not locate the current execution host configuration directory, so {label} cannot be opened yet.', {
+        label: descriptor.label
+      })
+    );
     return;
   }
 
@@ -925,7 +941,12 @@ async function openAgentSettingsFile(kind: AgentSettingsFileKind, panelManager: 
   try {
     const status = await getLocalAgentSettingsFileStatus(filePath);
     if (status === 'directory') {
-      await vscode.window.showWarningMessage(`${descriptor.label} 指向的是目录，不能作为配置文件打开：${filePath}`);
+      await vscode.window.showWarningMessage(
+        vscode.l10n.t('{label} points to a directory and cannot be opened as a configuration file: {path}', {
+          label: descriptor.label,
+          path: filePath
+        })
+      );
       return;
     }
 
@@ -940,7 +961,10 @@ async function openAgentSettingsFile(kind: AgentSettingsFileKind, panelManager: 
     await vscode.window.showTextDocument(document, { preview: false });
   } catch (error) {
     await vscode.window.showErrorMessage(
-      `打开 ${descriptor.label} 失败：${error instanceof Error ? error.message : String(error)}`
+      vscode.l10n.t('Failed to open {label}: {message}', {
+        label: descriptor.label,
+        message: error instanceof Error ? error.message : String(error)
+      })
     );
   }
 }
@@ -949,12 +973,16 @@ async function createMissingAgentSettingsFileIfRequested(
   descriptor: AgentSettingsFileDescriptor,
   filePath: string
 ): Promise<boolean> {
+  const createAndOpenAction = vscode.l10n.t('Create and open');
   const picked = await vscode.window.showWarningMessage(
-    `未找到 ${descriptor.label}：${filePath}。是否创建后打开？`,
+    vscode.l10n.t('{label} was not found: {path}. Create it and open it?', {
+      label: descriptor.label,
+      path: filePath
+    }),
     { modal: true },
-    '创建并打开'
+    createAndOpenAction
   );
-  if (picked !== '创建并打开') {
+  if (picked !== createAndOpenAction) {
     return false;
   }
 
@@ -1413,7 +1441,9 @@ async function resolveExplorerExecutionResource(resource: unknown): Promise<Expl
 }
 
 async function showExplorerExecutionResourceWarning(): Promise<void> {
-  await vscode.window.showWarningMessage('请选择当前 workspace 内的文件夹或普通文件来创建画布 Terminal / Agent。');
+  await vscode.window.showWarningMessage(
+    vscode.l10n.t('Select a folder or regular file inside the current workspace to create a Canvas Terminal / Agent.')
+  );
 }
 
 function resolveExplorerExecutionWorkspaceFolder(cwdUri: vscode.Uri): vscode.WorkspaceFolder | undefined {
@@ -1450,7 +1480,7 @@ async function addFolderToWorkspaceFromCommand(): Promise<void> {
     canSelectFiles: false,
     canSelectFolders: true,
     canSelectMany: true,
-    openLabel: '添加到 Workspace'
+    openLabel: vscode.l10n.t('Add to Workspace')
   });
   if (!selectedUris || selectedUris.length === 0) {
     return;
@@ -1475,7 +1505,7 @@ async function addFolderToWorkspaceFromCommand(): Promise<void> {
   }
 
   if (foldersToAdd.length === 0) {
-    await vscode.window.showInformationMessage('所选文件夹已经在当前 workspace 中。');
+    await vscode.window.showInformationMessage(vscode.l10n.t('The selected folders are already in the current workspace.'));
     return;
   }
 
@@ -1485,7 +1515,7 @@ async function addFolderToWorkspaceFromCommand(): Promise<void> {
     ...foldersToAdd
   );
   if (!inserted) {
-    await vscode.window.showWarningMessage('无法将所选文件夹添加到当前 workspace。');
+    await vscode.window.showWarningMessage(vscode.l10n.t('Could not add the selected folders to the current workspace.'));
   }
 }
 
@@ -1504,33 +1534,43 @@ interface WorkspaceRootRemovalModalItem extends vscode.MessageItem {
 
 function formatWorkspaceRootCanvasRemovalImpact(impact: WorkspaceRootCanvasRemovalImpact | undefined): string {
   if (!impact) {
-    return '画板影响暂无法计算';
+    return vscode.l10n.t('Canvas impact could not be calculated yet');
   }
 
   if (impact.nodeCount === 0 && impact.groupCount === 0 && impact.edgeCount === 0) {
-    return '当前画板为空';
+    return vscode.l10n.t('Current Canvas is empty');
   }
 
-  const parts = [`${impact.nodeCount} 个节点`, `${impact.edgeCount} 条连线`];
+  const parts = [
+    vscode.l10n.t('{count} nodes', { count: impact.nodeCount }),
+    vscode.l10n.t('{count} edges', { count: impact.edgeCount })
+  ];
   if (impact.groupCount > 0) {
-    parts.push(`${impact.groupCount} 个分组`);
+    parts.push(vscode.l10n.t('{count} groups', { count: impact.groupCount }));
   }
   if (impact.fileReferenceCount > 0) {
-    parts.push(`${impact.fileReferenceCount} 条文件活动记录`);
+    parts.push(vscode.l10n.t('{count} file activity records', { count: impact.fileReferenceCount }));
   }
   if (impact.executionNodeCount > 0) {
-    parts.push(`会停止 ${impact.executionNodeCount} 个 Agent / Terminal`);
+    parts.push(vscode.l10n.t('will stop {count} Agent / Terminal sessions', {
+      count: impact.executionNodeCount
+    }));
   }
 
-  return parts.join('、');
+  return parts.join(vscode.l10n.t(', '));
 }
 
 function buildWorkspaceFolderRemovalDetail(options: {
   impact: WorkspaceRootCanvasRemovalImpact | undefined;
 }): { keepCanvasDetail: string; clearDetail: string } {
   return {
-    keepCanvasDetail: '仅从当前 Workspace 移除 folder；磁盘文件和该 root 的画板快照都会保留，重新加入后可恢复。',
-    clearDetail: `先清空此 folder 的画板（${formatWorkspaceRootCanvasRemovalImpact(options.impact)}），再从 Workspace 移除；磁盘文件不会删除，旧画板不会随重新加入恢复。`
+    keepCanvasDetail: vscode.l10n.t(
+      "Remove the folder from the current Workspace only; disk files and this root's Canvas snapshot are kept and can be restored when re-added."
+    ),
+    clearDetail: vscode.l10n.t(
+      'Clear this folder Canvas first ({impact}), then remove it from Workspace; disk files are not deleted, and the old Canvas will not be restored when re-added.',
+      { impact: formatWorkspaceRootCanvasRemovalImpact(options.impact) }
+    )
   };
 }
 
@@ -1538,8 +1578,13 @@ function buildWorktreeRemovalDetail(options: {
   impact: WorkspaceRootCanvasRemovalImpact | undefined;
 }): { keepCanvasDetail: string; clearDetail: string } {
   return {
-    clearDetail: `执行 git worktree remove 成功后清空此 worktree 的画板（${formatWorkspaceRootCanvasRemovalImpact(options.impact)}）；worktree 目录会被删除，旧画板不会恢复。若 Git 拒绝移除，画板保持不变。`,
-    keepCanvasDetail: '执行 git worktree remove 并从 Workspace 移除；画板快照按此路径保留，之后同路径重新加入时可恢复。'
+    clearDetail: vscode.l10n.t(
+      "After git worktree remove succeeds, clear this worktree Canvas ({impact}); the worktree directory is deleted, and the old Canvas will not be restored. If Git refuses removal, the Canvas stays unchanged.",
+      { impact: formatWorkspaceRootCanvasRemovalImpact(options.impact) }
+    ),
+    keepCanvasDetail: vscode.l10n.t(
+      'Run git worktree remove and remove it from Workspace; the Canvas snapshot is kept at this path and can be restored if the same path is re-added.'
+    )
   };
 }
 
@@ -1568,7 +1613,7 @@ async function promptWorkspaceRootRemovalChoice(
     clearCanvas: false
   };
   const cancelItem: WorkspaceRootRemovalModalItem = {
-    title: '取消',
+    title: vscode.l10n.t('Cancel'),
     isCloseAffordance: true,
     cancel: true
   };
@@ -1607,13 +1652,19 @@ function buildWorkspaceRootRemovalModalDetail(options: {
       ? options.clearActionTitle
       : options.keepCanvasActionTitle;
   return [
-    `路径：${options.rootPath}`,
+    vscode.l10n.t('Path: {path}', { path: options.rootPath }),
     '',
-    `默认操作：${defaultActionTitle}`,
+    vscode.l10n.t('Default action: {action}', { action: defaultActionTitle }),
     '',
-    `${options.clearActionTitle}：${options.clearDetail}`,
+    vscode.l10n.t('{action}: {detail}', {
+      action: options.clearActionTitle,
+      detail: options.clearDetail
+    }),
     '',
-    `${options.keepCanvasActionTitle}：${options.keepCanvasDetail}`
+    vscode.l10n.t('{action}: {detail}', {
+      action: options.keepCanvasActionTitle,
+      detail: options.keepCanvasDetail
+    })
   ].join('\n');
 }
 
@@ -1637,7 +1688,7 @@ async function removeFolderFromWorkspaceFromCommand(
 ): Promise<void> {
   const workspaceFolder = resolveWorkspaceFolderByFsPath(rootPath);
   if (!workspaceFolder) {
-    await vscode.window.showWarningMessage('该 folder 已不在当前 workspace 中。');
+    await vscode.window.showWarningMessage(vscode.l10n.t('That folder is no longer in the current workspace.'));
     return;
   }
 
@@ -1646,10 +1697,10 @@ async function removeFolderFromWorkspaceFromCommand(
   });
   const removalChoice = await promptWorkspaceRootRemovalChoice(
     {
-      title: `从 Workspace 移除文件夹「${workspaceFolder.name}」？`,
+      title: vscode.l10n.t('Remove folder "{name}" from Workspace?', { name: workspaceFolder.name }),
       rootPath: workspaceFolder.uri.fsPath,
-      clearActionTitle: '清空画板并移除',
-      keepCanvasActionTitle: '保留画板并移除',
+      clearActionTitle: vscode.l10n.t('Clear Canvas and remove'),
+      keepCanvasActionTitle: vscode.l10n.t('Keep Canvas and remove'),
       clearDetail: removalDetail.clearDetail,
       keepCanvasDetail: removalDetail.keepCanvasDetail,
       defaultChoice: 'keep-canvas'
@@ -1672,9 +1723,13 @@ async function removeFolderFromWorkspaceFromCommand(
 
   const removalResult = removeWorkspaceFolderByFsPath(workspaceFolder.uri.fsPath);
   if (removalResult === 'missing') {
-    await vscode.window.showWarningMessage('该 folder 已不在当前 workspace 中。');
+    await vscode.window.showWarningMessage(vscode.l10n.t('That folder is no longer in the current workspace.'));
   } else if (removalResult === 'failed') {
-    await vscode.window.showWarningMessage(`无法从当前 workspace 移除 folder：${workspaceFolder.name}`);
+    await vscode.window.showWarningMessage(
+      vscode.l10n.t('Could not remove folder from the current workspace: {folder}', {
+        folder: workspaceFolder.name
+      })
+    );
   }
 }
 
@@ -1685,7 +1740,7 @@ async function removeWorktreeFromWorkspaceFromCommand(
 ): Promise<void> {
   const workspaceFolder = resolveWorkspaceFolderByFsPath(rootPath);
   if (!workspaceFolder) {
-    await vscode.window.showWarningMessage('该 worktree folder 已不在当前 workspace 中。');
+    await vscode.window.showWarningMessage(vscode.l10n.t('That worktree folder is no longer in the current workspace.'));
     return;
   }
 
@@ -1725,7 +1780,9 @@ async function removeWorktreeFromWorkspaceFromCommand(
       code: 'not-linked-worktree',
       rootPath: workspaceFolder.uri.fsPath,
       operation: 'remove',
-      detail: '当前 folder 是 git 主工作区或普通文件夹，不是可通过 git worktree remove 删除的 linked worktree。'
+      detail: vscode.l10n.t(
+        'The current folder is the main git worktree or a regular folder, not a linked worktree removable with git worktree remove.'
+      )
     });
     return;
   }
@@ -1735,10 +1792,10 @@ async function removeWorktreeFromWorkspaceFromCommand(
   });
   const removalChoice = await promptWorkspaceRootRemovalChoice(
     {
-      title: `移除 Worktree「${workspaceFolder.name}」？`,
+      title: vscode.l10n.t('Remove Worktree "{name}"?', { name: workspaceFolder.name }),
       rootPath: workspaceFolder.uri.fsPath,
-      clearActionTitle: '移除 Worktree 并清空画板',
-      keepCanvasActionTitle: '移除 Worktree 但保留画板',
+      clearActionTitle: vscode.l10n.t('Remove Worktree and clear Canvas'),
+      keepCanvasActionTitle: vscode.l10n.t('Remove Worktree but keep Canvas'),
       clearDetail: removalDetail.clearDetail,
       keepCanvasDetail: removalDetail.keepCanvasDetail,
       defaultChoice: 'clear-canvas'
@@ -1756,12 +1813,17 @@ async function removeWorktreeFromWorkspaceFromCommand(
       encoding: 'utf8'
     });
   } catch (error) {
-    await vscode.window.showErrorMessage(`移除 git worktree 失败：${formatExecErrorMessage(error)}`, { modal: true });
+    await vscode.window.showErrorMessage(
+      vscode.l10n.t('Failed to remove git worktree: {message}', {
+        message: formatExecErrorMessage(error)
+      }),
+      { modal: true }
+    );
     return;
   }
 
   if (removalChoice.clearCanvas) {
-    // Git 已经移除 worktree；即使清空画板失败，也继续移除 stale workspace folder 入口。
+    // Git already removed the worktree; remove the stale workspace folder even if Canvas cleanup fails.
     await clearWorkspaceRootCanvasIfRequested(
       panelManager,
       workspaceFolder.uri.fsPath,
@@ -1773,7 +1835,9 @@ async function removeWorktreeFromWorkspaceFromCommand(
   const removalResult = removeWorkspaceFolderByFsPath(workspaceFolder.uri.fsPath);
   if (removalResult === 'failed') {
     await vscode.window.showWarningMessage(
-      `Worktree 已移除，但无法自动从当前 workspace 移除 folder：${workspaceFolder.name}`,
+      vscode.l10n.t('Removed worktree but could not remove folder from the current workspace automatically: {folder}', {
+        folder: workspaceFolder.name
+      }),
       { modal: true }
     );
   }
@@ -1794,7 +1858,9 @@ async function createWorktreeAndAddToWorkspaceFromCommand(request: WorkspaceWork
     return;
   }
 
-  const confirmationAction = target.kind === 'create' ? '创建 Worktree' : '添加 Worktree';
+  const confirmationAction = target.kind === 'create'
+    ? vscode.l10n.t('Create Worktree')
+    : vscode.l10n.t('Add Worktree');
   const confirmed = await vscode.window.showInformationMessage(
     formatWorktreeConfirmationMessage(target),
     { modal: true, detail: target.targetPath },
@@ -1817,24 +1883,33 @@ async function createWorktreeAndAddToWorkspaceFromCommand(request: WorkspaceWork
         }
       );
     } catch (error) {
-      await vscode.window.showErrorMessage(`创建 git worktree 失败：${formatExecErrorMessage(error)}`);
+      await vscode.window.showErrorMessage(
+        vscode.l10n.t('Failed to create git worktree: {message}', {
+          message: formatExecErrorMessage(error)
+        })
+      );
       return;
     }
   }
 
   const added = addWorkspaceFolderIfMissing(target.targetPath);
   if (!added) {
-    const actionLabel = target.kind === 'create' ? 'Worktree 已创建' : '已有 worktree 已选定';
     await vscode.window.showWarningMessage(
-      `${actionLabel}，但无法自动加入当前 workspace。请手动添加：${target.targetPath}`
+      target.kind === 'create'
+        ? vscode.l10n.t('Worktree was created, but could not be added to the current workspace automatically. Add it manually: {path}', {
+            path: target.targetPath
+          })
+        : vscode.l10n.t('Existing worktree was selected, but could not be added to the current workspace automatically. Add it manually: {path}', {
+            path: target.targetPath
+          })
     );
     return;
   }
 
   await vscode.window.showInformationMessage(
     target.kind === 'create'
-      ? `已创建 worktree 并添加到 workspace：${target.displayName}`
-      : `已将已有 worktree 添加到 workspace：${target.displayName}`
+      ? vscode.l10n.t('Created worktree and added it to the workspace: {name}', { name: target.displayName })
+      : vscode.l10n.t('Added existing worktree to the workspace: {name}', { name: target.displayName })
   );
 }
 
@@ -1882,8 +1957,8 @@ async function promptWorkspaceWorktreeTarget(
       rootPath: request.rootPath,
       operation: 'create',
       detail: request.rootPath
-        ? '指定的 folder 已不在当前 workspace 中。'
-        : '当前窗口没有可用于创建 worktree 的本地 workspace folder。'
+        ? vscode.l10n.t('The specified folder is no longer in the current workspace.')
+        : vscode.l10n.t('The current window has no local workspace folder available for creating a worktree.')
     });
     return undefined;
   }
@@ -1926,7 +2001,7 @@ async function promptWorkspaceWorktreeTarget(
       code: 'no-git-refs',
       rootPath: rootFolder.uri.fsPath,
       operation: 'create',
-      detail: '当前 git repository 还没有可用于创建 worktree 的 commit 或本地 ref。'
+      detail: vscode.l10n.t('The current git repository has no commits or local refs available for creating a worktree.')
     });
     return undefined;
   }
@@ -2032,25 +2107,27 @@ async function promptWorktreeCreationPlan(
     [
       {
         type: 'addExistingWorktree',
-        label: '$(worktree) Add existing worktree to workspace...',
-        description: 'Choose from git worktree list',
+        label: `$(worktree) ${vscode.l10n.t('Add existing worktree to workspace...')}`,
+        description: vscode.l10n.t('Choose from git worktree list'),
         alwaysShow: true
       },
       {
         type: 'createNewBranch',
-        label: '$(add) Create new branch...',
+        label: `$(add) ${vscode.l10n.t('Create new branch...')}`,
         alwaysShow: true
       },
       {
         type: 'createNewBranchFrom',
-        label: '$(git-branch-create) Create new branch from...',
+        label: `$(git-branch-create) ${vscode.l10n.t('Create new branch from...')}`,
         alwaysShow: true
       },
       ...refs.map(buildWorktreeRefQuickPickItem)
     ],
     {
-      title: `Create or Add Worktree (${abbreviateWorktreeRootPath(rootFolder.uri.fsPath)}) (1/2)`,
-      placeHolder: 'Create a new worktree or add an existing one to this workspace',
+      title: vscode.l10n.t('Create or add Worktree ({root}) (1/2)', {
+        root: abbreviateWorktreeRootPath(rootFolder.uri.fsPath)
+      }),
+      placeHolder: vscode.l10n.t('Create a new worktree or add an existing one to this workspace'),
       matchOnDescription: true,
       matchOnDetail: true,
       ignoreFocusOut: true
@@ -2153,15 +2230,19 @@ async function promptExistingWorktreeToAdd(
   ).filter((item): item is ExistingWorktreeQuickPickItem => Boolean(item));
 
   if (candidates.length === 0) {
-    await vscode.window.showInformationMessage('没有可添加到当前 workspace 的已有 git worktree。');
+    await vscode.window.showInformationMessage(
+      vscode.l10n.t('No existing git worktrees are available to add to the current workspace.')
+    );
     return undefined;
   }
 
   const picked = await vscode.window.showQuickPick<ExistingWorktreeQuickPickItem>(
     candidates,
     {
-      title: `Add Existing Worktree (${abbreviateWorktreeRootPath(rootFolder.uri.fsPath)}) (2/2)`,
-      placeHolder: 'Choose an existing git worktree to add to this workspace',
+      title: vscode.l10n.t('Add existing Worktree ({root}) (2/2)', {
+        root: abbreviateWorktreeRootPath(rootFolder.uri.fsPath)
+      }),
+      placeHolder: vscode.l10n.t('Choose an existing git worktree to add to this workspace'),
       matchOnDescription: true,
       matchOnDetail: true,
       ignoreFocusOut: true
@@ -2184,8 +2265,8 @@ async function promptWorktreeBaseRef(refs: GitWorktreeRef[]): Promise<GitWorktre
   const picked = await vscode.window.showQuickPick<WorktreeRefQuickPickItem>(
     refs.map(buildWorktreeRefQuickPickItem),
     {
-      title: 'Create new branch from...',
-      placeHolder: 'Choose a reference to create new branch from',
+      title: vscode.l10n.t('Create new branch from...'),
+      placeHolder: vscode.l10n.t('Choose a reference to create new branch from'),
       matchOnDescription: true,
       matchOnDetail: true,
       ignoreFocusOut: true
@@ -2198,10 +2279,10 @@ async function promptWorktreeBaseRef(refs: GitWorktreeRef[]): Promise<GitWorktre
 function buildWorktreeRefQuickPickItem(ref: GitWorktreeRef): WorktreeRefQuickPickItem {
   const descriptionParts =
     ref.kind === 'head'
-      ? ['Current commit hash']
+      ? [vscode.l10n.t('Current commit hash')]
       : [ref.shortSha, ref.relativeDate].filter((part): part is string => Boolean(part));
   if (ref.isCheckedOutInWorktree) {
-    descriptionParts.push('worktree');
+    descriptionParts.push(vscode.l10n.t('worktree'));
   }
 
   return {
@@ -2224,20 +2305,22 @@ function buildDefaultWorktreeTargetPath(rootPath: string, pathName: string): str
 
 async function promptWorktreeTargetPath(defaultTargetPath: string): Promise<string | undefined> {
   const targetPathInput = await vscode.window.showInputBox({
-    title: '选择 worktree 目录',
+    title: vscode.l10n.t('Select worktree directory'),
     value: defaultTargetPath,
     valueSelection: [defaultTargetPath.length, defaultTargetPath.length],
-    prompt: '输入新 worktree 的本地目录；目录不能已经存在。',
+    prompt: vscode.l10n.t('Enter the local directory for the new worktree; the directory must not already exist.'),
     ignoreFocusOut: true,
     validateInput: async (value) => {
       const normalizedValue = value.trim();
       if (!normalizedValue) {
-        return '请输入 worktree 目录。';
+        return vscode.l10n.t('Enter a worktree directory.');
       }
       if (!path.isAbsolute(normalizedValue)) {
-        return '请输入绝对路径。';
+        return vscode.l10n.t('Enter an absolute path.');
       }
-      return await pathExists(normalizedValue) ? '该路径已存在，请选择一个尚不存在的目录。' : undefined;
+      return await pathExists(normalizedValue)
+        ? vscode.l10n.t('That path already exists. Choose a directory that does not exist yet.')
+        : undefined;
     }
   });
   if (!targetPathInput) {
@@ -2288,12 +2371,14 @@ async function promptWorkspaceRootFolderForWorktree(): Promise<vscode.WorkspaceF
       repositoryGroups.map((group) => ({
         label: `$(repo) ${group.primary.workspaceFolder.name}`,
         description: group.primary.workspaceFolder.uri.fsPath,
-        detail: group.members.length > 1 ? `${group.members.length} workspace folders in this git repository` : undefined,
+        detail: group.members.length > 1
+          ? vscode.l10n.t('{count} workspace folders in this git repository', { count: group.members.length })
+          : undefined,
         folder: group.primary.workspaceFolder
       })),
       {
-        title: 'Select Git repository to create or add worktree from',
-        placeHolder: 'Choose the git repository that owns the worktree',
+        title: vscode.l10n.t('Select Git repository to create or add worktree from'),
+        placeHolder: vscode.l10n.t('Choose the git repository that owns the worktree'),
         matchOnDescription: true,
         matchOnDetail: true
       }
@@ -2309,8 +2394,8 @@ async function promptWorkspaceRootFolderForWorktree(): Promise<vscode.WorkspaceF
       folder
     })),
     {
-      title: 'Select Git repository to create or add worktree from',
-      placeHolder: 'Choose the workspace folder that owns the git repository',
+      title: vscode.l10n.t('Select Git repository to create or add worktree from'),
+      placeHolder: vscode.l10n.t('Choose the workspace folder that owns the git repository'),
       matchOnDescription: true
     }
   );
@@ -2323,8 +2408,10 @@ async function promptWorktreeBranchName(
   startPoint?: string
 ): Promise<string | undefined> {
   const branchName = await vscode.window.showInputBox({
-    title: startPoint ? `Create new branch from ${startPoint}` : `Create new branch (${rootFolder.name})`,
-    prompt: '输入要创建的新分支名。将执行 git worktree add -b <branch>。',
+    title: startPoint
+      ? vscode.l10n.t('Create new branch from {ref}', { ref: startPoint })
+      : vscode.l10n.t('Create new branch ({folder})', { folder: rootFolder.name }),
+    prompt: vscode.l10n.t('Enter the new branch name to create. This runs git worktree add -b <branch>.'),
     placeHolder: 'feature/my-worktree',
     ignoreFocusOut: true,
     validateInput: (value) => validateWorktreeBranchName(value)
@@ -2335,7 +2422,7 @@ async function promptWorktreeBranchName(
 function validateWorktreeBranchName(value: string): string | undefined {
   const branchName = value.trim();
   if (!branchName) {
-    return '请输入分支名。';
+    return vscode.l10n.t('Enter a branch name.');
   }
   if (
     branchName.startsWith('/') ||
@@ -2345,7 +2432,9 @@ function validateWorktreeBranchName(value: string): string | undefined {
     !WORKTREE_BRANCH_NAME_PATTERN.test(branchName) ||
     /[\\~^:?*[\]\s]/u.test(branchName)
   ) {
-    return '分支名只能包含字母、数字、点、下划线、短横线和斜杠，且不能包含空格、.. 或特殊 git ref 字符。';
+    return vscode.l10n.t(
+      'Branch names can only contain letters, numbers, dots, underscores, hyphens, and slashes, and cannot contain spaces, .., or special git ref characters.'
+    );
   }
 
   return undefined;
@@ -2370,16 +2459,35 @@ function buildGitWorktreeAddArgs(target: WorkspaceWorktreeCreationTarget): strin
 
 function formatWorktreeConfirmationMessage(target: WorkspaceWorktreeTarget): string {
   if (target.kind === 'addExisting') {
-    return `将已有 worktree「${target.displayName}」（${target.refLabel}）添加到当前 workspace。`;
+    return vscode.l10n.t('Add existing worktree "{name}" ({ref}) to the current workspace.', {
+      name: target.displayName,
+      ref: target.refLabel
+    });
   }
 
   if (target.branchName) {
-    const startPointText = target.startPoint ? `，起点为「${target.startPoint}」` : '';
-    return `将基于 folder「${target.rootFolder.name}」创建 worktree 分支「${target.branchName}」${startPointText}，并添加到当前 workspace。`;
+    return target.startPoint
+      ? vscode.l10n.t('Create worktree branch "{branch}" from folder "{folder}" at start point "{startPoint}", then add it to the current workspace.', {
+          branch: target.branchName,
+          folder: target.rootFolder.name,
+          startPoint: target.startPoint
+        })
+      : vscode.l10n.t('Create worktree branch "{branch}" from folder "{folder}", then add it to the current workspace.', {
+          branch: target.branchName,
+          folder: target.rootFolder.name
+        });
   }
 
-  const detachedText = target.detached ? '（detached HEAD）' : '';
-  return `将基于 folder「${target.rootFolder.name}」为引用「${target.checkoutRef ?? target.displayName}」创建 worktree${detachedText}，并添加到当前 workspace。`;
+  const ref = target.checkoutRef ?? target.displayName;
+  return target.detached
+    ? vscode.l10n.t('Create a detached HEAD worktree for ref "{ref}" from folder "{folder}", then add it to the current workspace.', {
+        ref,
+        folder: target.rootFolder.name
+      })
+    : vscode.l10n.t('Create a worktree for ref "{ref}" from folder "{folder}", then add it to the current workspace.', {
+        ref,
+        folder: target.rootFolder.name
+      });
 }
 
 function abbreviateWorktreeRootPath(rootPath: string): string {
@@ -2503,13 +2611,25 @@ async function showWorktreeUnavailableModal(options: {
   detail?: string;
   cause?: unknown;
 }): Promise<void> {
-  const operationLabel = options.operation === 'create' ? '新建 / 添加 worktree' : '移除 worktree';
+  const operationLabel = options.operation === 'create'
+    ? vscode.l10n.t('Create / add worktree')
+    : vscode.l10n.t('Remove worktree');
   const reason = formatWorktreeUnavailableReason(options);
-  const rootDetail = options.rootPath ? `\n\n目标 folder：${options.rootPath}` : '';
-  const causeDetail = options.cause ? `\n\n底层错误：${formatExecErrorMessage(options.cause)}` : '';
+  const rootDetail = options.rootPath
+    ? `\n\n${vscode.l10n.t('Target folder: {path}', { path: options.rootPath })}`
+    : '';
+  const causeDetail = options.cause
+    ? `\n\n${vscode.l10n.t('Underlying error: {message}', { message: formatExecErrorMessage(options.cause) })}`
+    : '';
   const customDetail = options.detail ? `\n\n${options.detail}` : '';
   await vscode.window.showWarningMessage(
-    `${operationLabel} 不可用：${reason}${rootDetail}${customDetail}${causeDetail}`,
+    vscode.l10n.t('{operation} unavailable: {reason}{rootDetail}{customDetail}{causeDetail}', {
+      operation: operationLabel,
+      reason,
+      rootDetail,
+      customDetail,
+      causeDetail
+    }),
     { modal: true }
   );
 }
@@ -2520,21 +2640,21 @@ function formatWorktreeUnavailableReason(options: {
 }): string {
   switch (options.code) {
     case 'workspace-untrusted':
-      return '当前 workspace 未受信任。请先信任 workspace 后再执行 git worktree 操作。';
+      return vscode.l10n.t('The current workspace is not trusted. Trust the workspace before running git worktree operations.');
     case 'not-file-root':
-      return '当前没有本地文件系统 folder。git worktree 只能作用于本地 folder。';
+      return vscode.l10n.t('There is no local file-system folder. git worktree can only operate on local folders.');
     case 'not-git-repository':
       return options.operation === 'create'
-        ? '当前 folder 还不是 git repository。请先初始化为 repository，或选择已有 git repository folder。'
-        : '当前 folder 还不是 git repository。请先选择一个 git repository folder。';
+        ? vscode.l10n.t('The current folder is not a git repository yet. Initialize it as a repository, or choose an existing git repository folder.')
+        : vscode.l10n.t('The current folder is not a git repository yet. Choose a git repository folder first.');
     case 'no-git-refs':
-      return '当前 git repository 还没有可用于创建 worktree 的 commit 或本地 ref。请先完成初始提交，或选择已有 commit 的 repository。';
+      return vscode.l10n.t('The current git repository has no commits or local refs available for creating a worktree. Make an initial commit first, or choose a repository with commits.');
     case 'not-linked-worktree':
-      return '当前 folder 不是可移除的 linked git worktree。请确认它是通过 git worktree 创建的 folder。';
+      return vscode.l10n.t('The current folder is not a removable linked git worktree. Confirm it was created with git worktree.');
     case 'git-unavailable':
-      return '当前环境无法找到 git 命令。请先安装 git 并确保 VS Code extension host 能访问 git。';
+      return vscode.l10n.t('The current environment cannot find the git command. Install git and make sure the VS Code extension host can access it.');
     case 'unknown':
-      return '无法确认当前 folder 是否支持 git worktree。';
+      return vscode.l10n.t('Could not confirm whether the current folder supports git worktree.');
   }
 }
 
@@ -2579,7 +2699,9 @@ async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): P
   const picked = await vscode.window.showQuickPick<SidebarNodeQuickPickItem>(
     items.map((item) => ({
       label: item.label,
-      description: item.attentionPending ? `${item.description} · 有提醒` : item.description,
+      description: item.attentionPending
+        ? vscode.l10n.t('{description} · Attention', { description: item.description })
+        : item.description,
       detail: buildSidebarNodeQuickPickDetail(nodesById.get(item.nodeId)),
       nodeId: item.nodeId
     })),
@@ -2608,7 +2730,9 @@ async function showSessionHistoryQuickPick(
   const restoreBlockReason = panelManager.getSessionHistoryRestoreBlockReason();
   const items = await sidebarSessionHistoryView.getSessionHistoryItems();
   if (items.length === 0) {
-    await vscode.window.showInformationMessage('当前 workspace 还没有可恢复的 Codex / Claude Code 会话。');
+    await vscode.window.showInformationMessage(
+      vscode.l10n.t('No recoverable Codex / Claude Code sessions in the current workspace.')
+    );
     return;
   }
 
@@ -2616,7 +2740,7 @@ async function showSessionHistoryQuickPick(
     items.flatMap((item) => [
       {
         label: item.title,
-        description: '恢复',
+        description: vscode.l10n.t('Resume'),
         detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
         provider: item.provider,
         sessionId: item.sessionId,
@@ -2626,7 +2750,7 @@ async function showSessionHistoryQuickPick(
       },
       {
         label: item.title,
-        description: '分叉',
+        description: vscode.l10n.t('Fork'),
         detail: buildSidebarSessionQuickPickDetail(item.timestampLabel),
         provider: item.provider,
         sessionId: item.sessionId,
@@ -2638,8 +2762,8 @@ async function showSessionHistoryQuickPick(
     {
       title: restoreBlockReason,
       placeHolder: restoreBlockReason
-        ? '当前为只读查看模式；可浏览历史会话，但不能恢复或分叉为新 Agent 节点'
-        : '选择一条历史会话并恢复或分叉为新节点',
+        ? vscode.l10n.t('Read-only mode: you can browse session history, but cannot resume or fork sessions into new Agent nodes')
+        : vscode.l10n.t('Select a session and resume or fork it into a new node'),
       matchOnDetail: true
     }
   );
@@ -2787,7 +2911,11 @@ async function promptAgentLaunchRequest(
     presetCommandLines = buildAgentLaunchPresetCommandLines(provider, launchDefaults);
   } catch (error) {
     await vscode.window.showErrorMessage(
-      error instanceof Error ? error.message : `无法读取 ${providerLabel(provider)} 默认启动参数。`
+      error instanceof Error
+        ? error.message
+        : vscode.l10n.t('Could not read default launch arguments for {provider}.', {
+            provider: providerLabel(provider)
+          })
     );
     return undefined;
   }
@@ -2857,7 +2985,9 @@ function promptAgentLaunchRequestWithQuickPick(
     const customCreateItem = items.find((item) => item.action === 'create-custom');
     const presetItems = items.filter((item) => item.launchPreset);
     const defaultPresetItem = presetItems.find((item) => item.launchPreset === 'default');
-    const baseTitle = `配置 ${providerLabel(provider)} 启动命令`;
+    const baseTitle = vscode.l10n.t('Configure {provider} launch command', {
+      provider: providerLabel(provider)
+    });
     let resolved = false;
     let explicitPresetSelection: Exclude<AgentLaunchPresetKind, 'custom'> = 'default';
     let presetValueChange: Exclude<AgentLaunchPresetKind, 'custom'> | undefined = 'default';
@@ -2906,7 +3036,7 @@ function promptAgentLaunchRequestWithQuickPick(
     });
 
     quickPick.title = baseTitle;
-    quickPick.placeholder = '编辑完整启动命令；手动编辑后使用自定义命令创建';
+    quickPick.placeholder = vscode.l10n.t('Edit the full launch command; manual edits create a custom command');
     quickPick.matchOnDescription = true;
     quickPick.matchOnDetail = true;
     quickPick.value = presetCommandLines.default;
@@ -2977,20 +3107,20 @@ function buildAgentLaunchQuickPickItems(
 ): AgentLaunchQuickPickItem[] {
   return [
     {
-      label: '使用自定义命令创建',
+      label: vscode.l10n.t('Create with custom command'),
       description: 'Enter',
-      detail: '按输入框当前命令创建自定义 Agent',
+      detail: vscode.l10n.t('Create a custom Agent from the current command in the input box'),
       selectionId: 'agent-launch-accept-current',
       action: 'create-custom',
       alwaysShow: true
     },
     {
-      label: '快捷替换启动命令',
+      label: vscode.l10n.t('Quickly replace launch command'),
       kind: vscode.QuickPickItemKind.Separator,
       alwaysShow: true
     },
     {
-      label: '默认',
+      label: vscode.l10n.t('Default'),
       detail: presetCommandLines.default,
       selectionId: 'agent-launch-apply-default',
       launchPreset: 'default',
@@ -3011,7 +3141,7 @@ function buildAgentLaunchQuickPickItems(
       alwaysShow: true
     },
     {
-      label: '沙盒',
+      label: vscode.l10n.t('Sandbox'),
       detail: presetCommandLines.sandbox,
       selectionId: 'agent-launch-apply-sandbox',
       launchPreset: 'sandbox',
@@ -3153,12 +3283,15 @@ async function updateCanvasFileFilterFromCommand(
   const currentState = panelManager.getCanvasFileFilterState();
   const currentGlobs = kind === 'include' ? currentState.includeGlobs : currentState.excludeGlobs;
   const input = await vscode.window.showInputBox({
-    title: `${EXTENSION_DISPLAY_NAME}: 编辑文件 ${kind === 'include' ? 'Include' : 'Exclude'} 过滤`,
+    title: vscode.l10n.t('{name}: Edit file {kind} filter', {
+      name: EXTENSION_DISPLAY_NAME,
+      kind: kind === 'include' ? 'Include' : 'Exclude'
+    }),
     prompt:
       kind === 'include'
-        ? '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不过滤。该过滤只影响文件对象投影，不修改文件引用。'
-        : '按 VSCode 搜索视图的写法，用逗号分隔 glob；留空表示不排除。该过滤只影响文件对象投影，不修改文件引用。',
-    placeHolder: kind === 'include' ? '例如 src/**/*.ts, docs/**/*.md' : '例如 **/dist/**, **/*.snap',
+        ? vscode.l10n.t('Use VS Code Search glob syntax, separated by commas; leave empty to include everything. This filter only affects file object projection and does not modify file references.')
+        : vscode.l10n.t('Use VS Code Search glob syntax, separated by commas; leave empty to exclude nothing. This filter only affects file object projection and does not modify file references.'),
+    placeHolder: kind === 'include' ? 'e.g. src/**/*.ts, docs/**/*.md' : 'e.g. **/dist/**, **/*.snap',
     value: currentGlobs.join(', ')
   });
   if (input === undefined) {
@@ -3174,7 +3307,9 @@ async function ensureFilesFeatureEnabled(panelManager: CanvasPanelManager): Prom
   }
 
   await vscode.window.showInformationMessage(
-    '文件功能当前已关闭；重新加载窗口并启用 `devSessionCanvas.files.enabled` 后才能使用文件活动与文件过滤。'
+    vscode.l10n.t(
+      'Files are currently disabled. Reload the window and enable `devSessionCanvas.files.enabled` before using file activity and file filters.'
+    )
   );
   return false;
 }
@@ -3212,7 +3347,7 @@ async function applyTemplateFromCommand(
   const selectedTemplate = await resolveCanvasTemplateFromCommand(
     panelManager,
     templateIdValue,
-    '选择一个模板并应用到当前画布'
+    vscode.l10n.t('Select a template and apply it to the current Canvas')
   );
   if (!selectedTemplate) {
     return;
@@ -3230,7 +3365,7 @@ async function resetToTemplateFromCommand(
   const selectedTemplate = await resolveCanvasTemplateFromCommand(
     panelManager,
     templateIdValue,
-    '选择一个模板并重置当前画布'
+    vscode.l10n.t('Select a template and reset the current Canvas')
   );
   if (!selectedTemplate) {
     return;
@@ -3252,15 +3387,17 @@ async function saveCurrentCanvasAsTemplateFromCommand(
   } = {}
 ): Promise<CanvasStoredTemplate | undefined> {
   if (!panelManager.getCanvasNodes().some((node) => isTemplateCompatibleNodeKind(node.kind))) {
-    await vscode.window.showInformationMessage('当前画布还没有可保存到模板的 Agent / Terminal / Note 节点。');
+    await vscode.window.showInformationMessage(
+      vscode.l10n.t('The current Canvas has no Agent / Terminal / Note nodes that can be saved as a template.')
+    );
     return undefined;
   }
 
   const canvasNodes = panelManager.getCanvasNodes();
   const formResult = await showCanvasTemplateSaveForm({
     mode: 'save',
-    title: options.title ?? '保存当前画布为模板',
-    submitLabel: options.submitLabel ?? '保存模板',
+    title: options.title ?? vscode.l10n.t('Save current Canvas as template'),
+    submitLabel: options.submitLabel ?? vscode.l10n.t('Save template'),
     storageLocations: panelManager.getCanvasTemplateStorageLocations(),
     associatedNoteNodes: panelManager.getCanvasTemplateAssociatedNoteSaveItems(),
     agentNodes: canvasNodes
@@ -3284,7 +3421,7 @@ async function saveCurrentCanvasAsTemplateFromCommand(
     .getCanvasTemplateStorageLocations()
     .find((location) => location.id === formResult.targetStorageLocationId);
   if (!targetStorageLocation) {
-    throw new Error('目标模板保存位置不存在。');
+    throw new Error(vscode.l10n.t('Target template storage location does not exist.'));
   }
 
   const savedTemplate = await panelManager.saveCurrentCanvasAsTemplate(formResult.name, formResult.agentProviderSelection, {
@@ -3292,7 +3429,9 @@ async function saveCurrentCanvasAsTemplateFromCommand(
     associatedNoteSaveModes: formResult.associatedNoteSaveModes
   });
   await vscode.window.showInformationMessage(
-    options.successMessage ? options.successMessage(savedTemplate) : `已保存模板「${savedTemplate.template.name}」。`
+    options.successMessage
+      ? options.successMessage(savedTemplate)
+      : vscode.l10n.t('Saved template "{name}".', { name: savedTemplate.template.name })
   );
   return savedTemplate;
 }
@@ -3305,7 +3444,7 @@ async function importCanvasTemplateFromCommand(panelManager: CanvasPanelManager)
     filters: {
       JSON: ['json']
     },
-    openLabel: '导入模板'
+    openLabel: vscode.l10n.t('Import template')
   });
   const selectedUri = selectedUris?.[0];
   if (!selectedUri) {
@@ -3324,8 +3463,8 @@ async function importCanvasTemplateFromCommand(panelManager: CanvasPanelManager)
   while (true) {
     const formResult = await showCanvasTemplateSaveForm({
       mode: 'import',
-      title: '导入模板',
-      submitLabel: '导入模板',
+      title: vscode.l10n.t('Import template'),
+      submitLabel: vscode.l10n.t('Import template'),
       initialName: draftFormState?.name ?? importedTemplate.template.name,
       initialTargetStorageLocationId: draftFormState?.targetStorageLocationId,
       storageLocations,
@@ -3337,7 +3476,7 @@ async function importCanvasTemplateFromCommand(panelManager: CanvasPanelManager)
 
     const targetStorageLocation = storageLocations.find((location) => location.id === formResult.targetStorageLocationId);
     if (!targetStorageLocation) {
-      throw new Error('目标模板保存位置不存在。');
+      throw new Error(vscode.l10n.t('Target template storage location does not exist.'));
     }
 
     const catalog = await panelManager.getCanvasTemplateCatalog();
@@ -3351,22 +3490,28 @@ async function importCanvasTemplateFromCommand(panelManager: CanvasPanelManager)
     };
 
     if (builtinConflict) {
+      const backToFormAction = vscode.l10n.t('Return to form and edit name');
       const action = await vscode.window.showWarningMessage(
-        `模板名「${formResult.name}」已被内置模板占用，不能覆盖内置模板。`,
-        '返回表单修改名称'
+        vscode.l10n.t('Template name "{name}" is already used by a built-in template and cannot overwrite it.', {
+          name: formResult.name
+        }),
+        backToFormAction
       );
-      if (action === '返回表单修改名称') {
+      if (action === backToFormAction) {
         continue;
       }
       return;
     }
 
     if (userConflicts.length > 1) {
+      const backToFormAction = vscode.l10n.t('Return to form and edit name');
       const action = await vscode.window.showWarningMessage(
-        `当前已有多个同名用户模板「${formResult.name}」。请返回表单修改名称后再导入。`,
-        '返回表单修改名称'
+        vscode.l10n.t('Multiple user templates named "{name}" already exist. Return to the form and edit the name before importing.', {
+          name: formResult.name
+        }),
+        backToFormAction
       );
-      if (action === '返回表单修改名称') {
+      if (action === backToFormAction) {
         continue;
       }
       return;
@@ -3375,17 +3520,24 @@ async function importCanvasTemplateFromCommand(panelManager: CanvasPanelManager)
     let overwriteTemplateId: string | undefined;
     if (userConflicts.length === 1) {
       const overwriteConflict = userConflicts[0];
+      const overwriteAction = vscode.l10n.t('Overwrite existing template');
+      const backToFormAction = vscode.l10n.t('Return to form and edit name');
       const action = await vscode.window.showWarningMessage(
-        `模板名「${formResult.name}」已存在。你可以覆盖已有用户模板，或返回表单修改名称。`,
-        '覆盖现有模板',
-        '返回表单修改名称'
+        vscode.l10n.t('Template name "{name}" already exists. You can overwrite the existing user template, or return to the form and edit the name.', {
+          name: formResult.name
+        }),
+        overwriteAction,
+        backToFormAction
       );
       if (!action) {
         return;
       }
 
-      if (action === '返回表单修改名称') {
+      if (action === backToFormAction) {
         continue;
+      }
+      if (action !== overwriteAction) {
+        return;
       }
       overwriteTemplateId = overwriteConflict.template.id;
     }
@@ -3395,7 +3547,9 @@ async function importCanvasTemplateFromCommand(panelManager: CanvasPanelManager)
       nameOverride: formResult.name,
       targetRootPath: targetStorageLocation.rootPath
     });
-    await vscode.window.showInformationMessage(`已导入模板「${savedTemplate.template.name}」。`);
+    await vscode.window.showInformationMessage(
+      vscode.l10n.t('Imported template "{name}".', { name: savedTemplate.template.name })
+    );
     return;
   }
 }
@@ -3407,7 +3561,7 @@ async function exportCanvasTemplateFromCommand(
   const selectedTemplate = await resolveCanvasTemplateFromCommand(
     panelManager,
     templateIdValue,
-    '选择一个模板并导出为 JSON'
+    vscode.l10n.t('Select a template and export it as JSON')
   );
   if (!selectedTemplate) {
     return;
@@ -3418,7 +3572,7 @@ async function exportCanvasTemplateFromCommand(
     selectedTemplate.template.id
   )}.json`;
   const targetUri = await vscode.window.showSaveDialog({
-    saveLabel: '导出模板',
+    saveLabel: vscode.l10n.t('Export template'),
     defaultUri: vscode.Uri.file(path.join(panelManager.getUserCanvasTemplateDirectoryPath(), defaultFileName)),
     filters: {
       JSON: ['json']
@@ -3429,7 +3583,9 @@ async function exportCanvasTemplateFromCommand(
   }
 
   await panelManager.exportCanvasTemplateById(selectedTemplate.template.id, targetUri);
-  await vscode.window.showInformationMessage(`已导出模板「${selectedTemplate.template.name}」。`);
+  await vscode.window.showInformationMessage(
+    vscode.l10n.t('Exported template "{name}".', { name: selectedTemplate.template.name })
+  );
 }
 
 async function deleteCanvasTemplateFromCommand(
@@ -3439,26 +3595,31 @@ async function deleteCanvasTemplateFromCommand(
   const selectedTemplate = await resolveCanvasTemplateFromCommand(
     panelManager,
     templateIdValue,
-    '选择一个用户模板并删除'
+    vscode.l10n.t('Select a user template and delete it')
   );
   if (!selectedTemplate) {
     return;
   }
   if (selectedTemplate.template.category !== 'user') {
-    throw new Error('内置模板不能删除。');
+    throw new Error(vscode.l10n.t('Built-in templates cannot be deleted.'));
   }
 
+  const deleteTemplateAction = vscode.l10n.t('Continue deleting');
   const confirmed = await vscode.window.showWarningMessage(
-    `删除模板「${selectedTemplate.template.name}」后将无法恢复该用户模板文件。`,
+    vscode.l10n.t('After deleting template "{name}", the user template file cannot be restored.', {
+      name: selectedTemplate.template.name
+    }),
     { modal: true },
-    '继续删除'
+    deleteTemplateAction
   );
-  if (confirmed !== '继续删除') {
+  if (confirmed !== deleteTemplateAction) {
     return;
   }
 
   await panelManager.deleteCanvasTemplateById(selectedTemplate.template.id);
-  await vscode.window.showInformationMessage(`已删除模板「${selectedTemplate.template.name}」。`);
+  await vscode.window.showInformationMessage(
+    vscode.l10n.t('Deleted template "{name}".', { name: selectedTemplate.template.name })
+  );
 }
 
 async function setDefaultCanvasTemplateFromCommand(
@@ -3468,14 +3629,16 @@ async function setDefaultCanvasTemplateFromCommand(
   const selectedTemplate = await resolveCanvasTemplateFromCommand(
     panelManager,
     templateIdValue,
-    '选择一个模板设为默认模板'
+    vscode.l10n.t('Select a template and set it as the default template')
   );
   if (!selectedTemplate) {
     return;
   }
 
   await panelManager.setDefaultCanvasTemplateById(selectedTemplate.template.id);
-  await vscode.window.showInformationMessage(`已将默认模板设置为「${selectedTemplate.template.name}」。`);
+  await vscode.window.showInformationMessage(
+    vscode.l10n.t('Set "{name}" as the default template.', { name: selectedTemplate.template.name })
+  );
 }
 
 async function resolveCanvasTemplateFromCommand(
@@ -3489,10 +3652,10 @@ async function resolveCanvasTemplateFromCommand(
     const catalog = await panelManager.getCanvasTemplateCatalog();
     const selectedTemplate = catalog.templates.find((candidate) => candidate.template.id === explicitTemplateId);
     if (!selectedTemplate) {
-      throw new Error('目标模板不存在。');
+      throw new Error(vscode.l10n.t('Target template does not exist.'));
     }
     if (options.filter && !options.filter(selectedTemplate)) {
-      throw new Error('目标模板不支持该操作。');
+      throw new Error(vscode.l10n.t('Target template does not support this operation.'));
     }
     return selectedTemplate;
   }
@@ -3507,20 +3670,20 @@ async function pickCanvasTemplate(
 ): Promise<CanvasStoredTemplate | undefined> {
   const catalog = await panelManager.getCanvasTemplateCatalog();
   if (catalog.templates.length === 0) {
-    await vscode.window.showInformationMessage('当前还没有可用模板。');
+    await vscode.window.showInformationMessage(vscode.l10n.t('No templates are currently available.'));
     return undefined;
   }
 
   const defaultTemplateId = panelManager.getDefaultCanvasTemplateId();
   const templates = options.filter ? catalog.templates.filter(options.filter) : catalog.templates;
   if (templates.length === 0) {
-    await vscode.window.showInformationMessage(options.emptyMessage ?? '当前没有符合条件的模板。');
+    await vscode.window.showInformationMessage(options.emptyMessage ?? vscode.l10n.t('No templates currently match the criteria.'));
     return undefined;
   }
   const picked = await vscode.window.showQuickPick<CanvasTemplateQuickPickItem>(
     templates.map((storedTemplate) => ({
       label: storedTemplate.template.name,
-      description: `${formatCanvasTemplateSourceForQuickPick(storedTemplate)} · ${formatCanvasTemplateStats(storedTemplate.template)}${storedTemplate.template.id === defaultTemplateId ? ' · 默认' : ''}`,
+      description: `${formatCanvasTemplateSourceForQuickPick(storedTemplate)} · ${formatCanvasTemplateStatsForQuickPick(storedTemplate.template)}${storedTemplate.template.id === defaultTemplateId ? ` · ${vscode.l10n.t('Default')}` : ''}`,
       detail: storedTemplate.template.nodes.map((node) => `${humanizeNodeKind(node.kind)}: ${node.title}`).join(' / '),
       templateId: storedTemplate.template.id
     })),
@@ -3539,16 +3702,46 @@ async function pickCanvasTemplate(
 
 function formatCanvasTemplateSourceForQuickPick(storedTemplate: CanvasStoredTemplate): string {
   if (storedTemplate.template.category === 'builtin') {
-    return '内置';
+    return vscode.l10n.t('Built-in');
   }
   if (storedTemplate.marketplace) {
-    return '市场';
+    return vscode.l10n.t('Marketplace');
   }
-  return '自建';
+  return vscode.l10n.t('User');
+}
+
+function formatCanvasTemplateStatsForQuickPick(template: Pick<CanvasTemplate, 'nodes'>): string {
+  const counts = template.nodes.reduce(
+    (stats, node) => {
+      stats[node.kind] += 1;
+      return stats;
+    },
+    {
+      agent: 0,
+      terminal: 0,
+      note: 0
+    }
+  );
+  const parts: string[] = [];
+  if (counts.agent > 0) {
+    parts.push(vscode.l10n.t('{count} Agent', { count: counts.agent }));
+  }
+  if (counts.terminal > 0) {
+    parts.push(vscode.l10n.t('{count} Terminal', { count: counts.terminal }));
+  }
+  if (counts.note > 0) {
+    parts.push(vscode.l10n.t('{count} Note', { count: counts.note }));
+  }
+  return parts.join(vscode.l10n.t(', ')) || vscode.l10n.t('0 Node');
 }
 
 async function showCanvasTemplateError(title: string, error: unknown): Promise<void> {
-  await vscode.window.showErrorMessage(`${title}：${error instanceof Error ? error.message : String(error)}`);
+  await vscode.window.showErrorMessage(
+    vscode.l10n.t('{title}: {message}', {
+      title,
+      message: error instanceof Error ? error.message : String(error)
+    })
+  );
 }
 
 function normalizeCanvasTemplateIdValue(value: unknown): string | undefined {
@@ -3971,16 +4164,16 @@ function parseCanvasSurfaceLocation(value: unknown): CanvasSurfaceLocation | und
 function formatWebviewLifecycleDumpStatus(status: WebviewLifecycleDumpStatus): string {
   switch (status) {
     case 'healthy':
-      return '健康';
+      return vscode.l10n.t('Healthy');
     case 'standby':
-      return '非活动承载面';
+      return vscode.l10n.t('Standby surface');
     case 'initializing':
-      return '初始化中';
+      return vscode.l10n.t('Initializing');
     case 'attention':
-      return '有可追踪线索';
+      return vscode.l10n.t('Has traceable clues');
     case 'blocked':
-      return '可能阻塞';
+      return vscode.l10n.t('Possibly blocked');
     case 'not-attached':
-      return '未 attached';
+      return vscode.l10n.t('Not attached');
   }
 }

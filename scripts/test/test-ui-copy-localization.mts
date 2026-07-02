@@ -9,10 +9,13 @@ import {
   resolveWebviewI18n
 } from '../../extensions/vscode/dev-session-canvas/src/webview/i18n/webviewI18n.ts';
 
-const extensionHostSource = readFileSync(
-  path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/extension.ts'),
-  'utf8'
-);
+const hostRuntimeSourceFiles = [
+  'extensions/vscode/dev-session-canvas/src/extension.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts'
+];
+const extensionHostSource = hostRuntimeSourceFiles
+  .map((filePath) => readFileSync(path.join(process.cwd(), filePath), 'utf8'))
+  .join('\n');
 const runtimeChineseBundle = JSON.parse(
   readFileSync(
     path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/l10n/bundle.l10n.zh-cn.json'),
@@ -45,7 +48,7 @@ assert.equal(
 const hostRuntimeSourceStrings = extractHostRuntimeL10nSourceStrings(extensionHostSource);
 assert.ok(
   hostRuntimeSourceStrings.length > 0,
-  'Expected extension.ts to contain Host runtime vscode.l10n.t source strings.'
+  'Expected Host runtime source files to contain vscode.l10n.t source strings.'
 );
 
 for (const source of hostRuntimeSourceStrings) {
