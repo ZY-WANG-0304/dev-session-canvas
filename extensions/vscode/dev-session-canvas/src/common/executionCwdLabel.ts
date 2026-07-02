@@ -3,6 +3,8 @@ export interface ExecutionWorkspaceFolderLabelSource {
   path: string;
 }
 
+export const UNKNOWN_EXECUTION_CWD_LABEL = 'Unknown cwd';
+
 interface NormalizedExecutionPath {
   raw: string;
   normalized: string;
@@ -13,11 +15,12 @@ interface NormalizedExecutionPath {
 
 export function formatExecutionCwdLabel(
   cwd: string | undefined,
-  workspaceFolders: readonly ExecutionWorkspaceFolderLabelSource[] | undefined
+  workspaceFolders: readonly ExecutionWorkspaceFolderLabelSource[] | undefined,
+  unknownLabel?: string
 ): string {
   const normalizedCwd = normalizeExecutionPath(cwd);
   if (!normalizedCwd) {
-    return 'cwd 未知';
+    return resolveUnknownExecutionCwdLabel(unknownLabel);
   }
 
   const normalizedFolders = (workspaceFolders ?? [])
@@ -67,13 +70,17 @@ export function formatExecutionCwdLabel(
 export function formatExecutionCwdTooltip(cwd: string | undefined, fallbackLabel?: string): string {
   const normalizedCwd = normalizeExecutionPath(cwd);
   if (!normalizedCwd) {
-    return fallbackLabel?.trim() || 'cwd 未知';
+    return resolveUnknownExecutionCwdLabel(fallbackLabel);
   }
 
   return appendDirectoryIndicator(
     formatExecutionDisplayPath(normalizedCwd.normalized, normalizedCwd.displaySeparator),
     normalizedCwd.displaySeparator
   );
+}
+
+function resolveUnknownExecutionCwdLabel(value: string | undefined): string {
+  return value?.trim() || UNKNOWN_EXECUTION_CWD_LABEL;
 }
 
 function appendDirectoryIndicator(value: string, separator: '/' | '\\'): string {

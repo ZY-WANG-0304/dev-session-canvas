@@ -346,7 +346,7 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 状态胶囊的文本与圆点一样属于状态指示，不按普通正文文本处理；背景使用状态 accent 的 18%，边框使用状态 accent 的 42% 与 panel border 混合。
 - 状态胶囊的 `tone-*` 只负责替换 accent；`idle` 和 `error` 也复用同一套 18% 背景与 42% 边框强度，不再单独回退到特殊背景/边框 token。
 - `Agent` / `Terminal` 标题栏状态胶囊、概览态执行节点状态胶囊、sidebar 节点列表中的状态胶囊都应复用同一套状态 accent、背景和边框推导规则；尺寸可以按承载面缩放，但颜色体系不能分叉。
-- `Note` 状态文案必须使用共享映射：关联 Markdown 的 `contentSource.status = ok` 展示为 `已关联文件`，普通内嵌 `ready` 展示为 `普通笔记`；异常关联状态使用 `tone-error`。
+- `Note` 状态文案必须使用共享 label id 映射，并在 Host / Webview 本地化边界翻译：关联 Markdown 的 `contentSource.status = ok` 必须使用共享 label id `status.noteAssociatedFile`，普通内嵌 `ready` 必须使用 `status.notePlain`；异常关联状态使用 `tone-error`。
 - 提醒态不等于错误态；视觉上应和错误态区分，具体提醒链路由 `docs/product-specs/canvas-node-notifications.md` 与 `docs/design-docs/index.md` 中的通知相关设计文档定义。
 - `Agent` 节点处于精确 `running` 状态时，标题栏底部可显示低强度往返移动细线作为运行活性提示；该细线使用 Agent 节点类型色与 panel border 混合后的低饱和纯色移动段，在标题栏底部分隔线区域内左右往返移动，只加粗移动段到 3px，非移动区域保留标题栏原有 1px 底部分隔线，不替代状态胶囊文本，也不泛化到 `launching`、`live`、`starting`、`resuming`、`reattaching` 或 `waiting-input`。
 - `paneGallery` 的 root 标签可在 root 内存在精确 `running` 执行节点且无 attention 时显示一个 `|` 形竖向纯色色块在 root title 所在的小框区域内左右往返运动；thumbnail 模式 active root 占位卡片的左上角 root 标签也遵循同一状态动效规则；该动效只属于 `paneGallery` root 标签，不用于 `rootGroups` 系统 root 分组，颜色取 root 标签当前 border color，采用类似 Codex Working 状态的扁平活性提示：色块宽度为 16px、透明度为 0.82、无渐变和外发光；运动必须裁切在 root title 所在的小框区域内，title 文本保持在色块上方，标题栏原有 1px 底部分隔线保持不变。

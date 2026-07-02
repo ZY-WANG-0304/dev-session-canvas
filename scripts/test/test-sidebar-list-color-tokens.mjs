@@ -105,13 +105,13 @@ assert.ok(
 );
 assert.match(
   nodeListSource,
-  /humanizeCanvasNodeStatus\(node\)[\s\S]*canvasNodeStatusToneClass\(node\)/u,
-  'Sidebar node list should use the shared status text and tone mapping.'
+  /localizeCanvasNodeStatus\(node\)[\s\S]*canvasNodeStatusToneClass\(node\)/u,
+  'Sidebar node list should use the shared status descriptor and tone mapping.'
 );
 assert.doesNotMatch(
   nodeListSource,
   /function (?:humanizeNodeStatus|humanizeNoteStatus|humanizeStatus|statusToneClassForNode|statusToneClass)\(/u,
-  'Sidebar node list should not keep local status text or tone mappings that can drift.'
+  'Sidebar node list should not keep local status text mapping names or tone mappings that can drift.'
 );
 assert.match(
   sidebarStatusToneFunction,
@@ -120,17 +120,17 @@ assert.match(
 );
 assert.match(
   statusPresentationSource,
-  /case 'idle':\s*return '未启动';/u,
-  'Sidebar node list should use the same idle status label as the canvas.'
+  /case 'idle':\s*return localizedCanvasStatusLabel\('status\.idle'\);/u,
+  'Sidebar node list should use the same idle status label id as the canvas.'
 );
 assert.match(
   statusPresentationSource,
-  /contentSource\.status === 'ok' \? '已关联文件' : humanizeCanvasStatus\(contentSource\.status\)/u,
-  'Sidebar node list should label ok associated Markdown notes as linked-file notes.'
+  /contentSource\.status === 'ok'[\s\S]*?localizedCanvasStatusLabel\('status\.noteAssociatedFile'\)[\s\S]*?canvasStatusLabelDescriptor\(contentSource\.status\)/u,
+  'Sidebar node list should label ok associated Markdown notes with the linked-file label id.'
 );
 assert.ok(
-  statusPresentationSource.includes("return '普通笔记';"),
-  'Sidebar node list should label embedded ready notes as ordinary notes.'
+  statusPresentationSource.includes("localizedCanvasStatusLabel('status.notePlain')"),
+  'Sidebar node list should label embedded ready notes with the plain Note label id.'
 );
 
 console.log('sidebar list color token tests passed');

@@ -6,7 +6,8 @@ import { stripTerminalControlSequences } from '../common/agentActivityHeuristics
 import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
 import {
   canvasNodeStatusToneClass,
-  humanizeCanvasNodeStatus
+  canvasNodeStatusLabelDescriptor,
+  type CanvasStatusLabelId
 } from '../common/canvasNodeStatusPresentation';
 import {
   COMMAND_IDS,
@@ -473,7 +474,7 @@ export function getCanvasSidebarNodeListItems(
     .filter((node) => node.kind !== 'file' && node.kind !== 'file-list')
     .map((node) => {
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
-      const statusLabel = humanizeCanvasNodeStatus(node);
+      const statusLabel = localizeCanvasNodeStatus(node);
       const groupPath = resolveSidebarNodeGroupPath(node.groupId, groupsById);
       const subtitlePrefix = buildSidebarNodeSubtitlePrefix(node, workspaceFolders);
       const secondLine = buildSidebarNodeSecondaryText(subtitlePrefix, statusLabel);
@@ -542,8 +543,74 @@ function buildSidebarNodeSubtitlePrefix(
 
   const agentMetadata = node.metadata?.agent;
   const providerLabel = humanizeAgentProvider(agentMetadata?.provider);
-  const cwdLabel = formatExecutionCwdLabel(agentMetadata?.cwd, workspaceFolders);
+  const cwdLabel = formatExecutionCwdLabel(agentMetadata?.cwd, workspaceFolders, vscode.l10n.t('Unknown cwd'));
   return `${cwdLabel} · ${providerLabel}`;
+}
+
+function localizeCanvasNodeStatus(node: CanvasNodeSummary): string {
+  const descriptor = canvasNodeStatusLabelDescriptor(node);
+  if (descriptor.kind === 'raw') {
+    return descriptor.value;
+  }
+
+  return localizeCanvasStatusLabel(descriptor.id);
+}
+
+function localizeCanvasStatusLabel(id: CanvasStatusLabelId): string {
+  switch (id) {
+    case 'status.linked':
+      return vscode.l10n.t('Linked');
+    case 'status.idle':
+      return vscode.l10n.t('Not started');
+    case 'status.starting':
+      return vscode.l10n.t('Starting');
+    case 'status.waitingInput':
+      return vscode.l10n.t('Waiting for input');
+    case 'status.resuming':
+      return vscode.l10n.t('Resuming');
+    case 'status.resumeReady':
+      return vscode.l10n.t('Resumable');
+    case 'status.reattaching':
+      return vscode.l10n.t('Reconnecting');
+    case 'status.resumeFailed':
+      return vscode.l10n.t('Resume failed');
+    case 'status.stopping':
+      return vscode.l10n.t('Stopping');
+    case 'status.stopped':
+      return vscode.l10n.t('Stopped');
+    case 'status.suspended':
+      return vscode.l10n.t('Suspended');
+    case 'status.running':
+      return vscode.l10n.t('Running');
+    case 'status.draft':
+      return vscode.l10n.t('Draft');
+    case 'status.ready':
+      return vscode.l10n.t('Ready');
+    case 'status.live':
+      return vscode.l10n.t('Live');
+    case 'status.closed':
+      return vscode.l10n.t('Session closed');
+    case 'status.error':
+      return vscode.l10n.t('Failed');
+    case 'status.interrupted':
+      return vscode.l10n.t('Interrupted');
+    case 'status.historyRestored':
+      return vscode.l10n.t('History restored');
+    case 'status.missing':
+      return vscode.l10n.t('File missing');
+    case 'status.notFile':
+      return vscode.l10n.t('Not a file');
+    case 'status.unsupportedExtension':
+      return vscode.l10n.t('Unsupported format');
+    case 'status.unreadable':
+      return vscode.l10n.t('Unreadable');
+    case 'status.dirtyConflict':
+      return vscode.l10n.t('Edit conflict');
+    case 'status.noteAssociatedFile':
+      return vscode.l10n.t('File linked');
+    case 'status.notePlain':
+      return vscode.l10n.t('Plain Note');
+  }
 }
 
 function humanizeNodeKind(kind: CanvasNodeKind): string {
