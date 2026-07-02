@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 const mainWebviewStyles = await readText('extensions/vscode/dev-session-canvas/src/webview/styles.css');
 const mainWebviewSource = await readText('extensions/vscode/dev-session-canvas/src/webview/main.tsx');
 const designSystemSource = await readText('docs/UI.md');
+const multiRootDesignSource = await readText('docs/design-docs/canvas-multi-root-workspace-support.md');
+const multiRootSpecSource = await readText('docs/product-specs/canvas-multi-root-workspace-support.md');
 const statusPresentationSource = await readText('extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts');
 const notifierSidebarSource = await readText('extensions/vscode/dev-session-canvas-notifier/src/sidebarView.ts');
 
@@ -234,6 +236,55 @@ assert.doesNotMatch(
   fileAccessStyles,
   /#[0-9A-Fa-f]{3,8}/u,
   'File access badges and indicators should not use fixed hex colors.'
+);
+
+const paneGalleryRunningScanlineKeyframes = extractCssRange(
+  mainWebviewStyles,
+  '@keyframes pane-gallery-root-running-scanline',
+  '@media (prefers-reduced-motion: reduce)'
+);
+const paneGalleryRunningScanlineRule = extractCssRuleBody(
+  mainWebviewStyles,
+  '.pane-gallery-root-header.is-pane-gallery-root-running-scanline'
+);
+const paneGalleryRunningScanlineLayerRule = extractCssRuleBody(
+  mainWebviewStyles,
+  '.pane-gallery-root-header.is-pane-gallery-root-running-scanline::after'
+);
+assert.doesNotMatch(
+  paneGalleryRunningScanlineKeyframes,
+  /opacity:\s*0\b/u,
+  'Pane Gallery root running scanline should not fade out between animation loops.'
+);
+assert.match(
+  paneGalleryRunningScanlineKeyframes,
+  /0%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation-timing-function:\s*linear;[\s\S]*2%\s*\{[\s\S]*var\(--pane-gallery-root-running-scanline-edge-offset\)[\s\S]*animation-timing-function:\s*cubic-bezier\(0\.45, 0, 0\.25, 1\);[\s\S]*98%\s*\{[\s\S]*calc\(var\(--pane-gallery-root-running-scanline-travel\) - var\(--pane-gallery-root-running-scanline-edge-offset\)\)[\s\S]*animation-timing-function:\s*linear;[\s\S]*100%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);/u,
+  'Pane Gallery root running scanline should keep visible opacity and compress off-header entry/exit into short keyframe ranges.'
+);
+assert.match(
+  paneGalleryRunningScanlineRule,
+  /--pane-gallery-root-running-scanline-edge-offset:\s*28px;[\s\S]*--pane-gallery-root-running-scanline-travel:\s*100%;[\s\S]*isolation:\s*isolate;/u,
+  'Pane Gallery root running scanline should keep its original travel distance, expose the off-header edge offset, and isolate its layer stack.'
+);
+assert.match(
+  paneGalleryRunningScanlineLayerRule,
+  /left:\s*calc\(0px - var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*width:\s*calc\(100% \+ var\(--pane-gallery-root-running-scanline-edge-offset\) \+ var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*z-index:\s*0;[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  'Pane Gallery root running scanline layer should start outside the header, fully leave it, stay behind title text, and keep the original timing curve.'
+);
+assert.match(
+  extractCssRuleBody(mainWebviewStyles, '.pane-gallery-root-title-block'),
+  /position:\s*relative;[\s\S]*z-index:\s*1;/u,
+  'Pane Gallery root title text should render above the running scanline background.'
+);
+assert.match(
+  multiRootDesignSource,
+  /两次扫描之间不保留空档[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root design doc should record the continuous Pane Gallery root running scanline as a text-safe background.'
+);
+assert.match(
+  multiRootSpecSource,
+  /两次扫描之间不保留空档[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root product spec should record the continuous Pane Gallery root running scanline as a text-safe background.'
 );
 
 assert.match(
