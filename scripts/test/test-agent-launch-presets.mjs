@@ -60,6 +60,35 @@ try {
     }),
     'codex fork --profile prod --sandbox workspace-write --ask-for-approval on-request codex-branch-session-002'
   );
+  assert.equal(
+    buildAgentBranchCommandLine(
+      'codex',
+      'codex-branch-session-yolo',
+      {
+        command: '/tmp/providers/codex-custom',
+        defaultArgs: '--model gpt-5.2 --sandbox workspace-write --ask-for-approval on-request --profile prod'
+      },
+      {
+        launchPreset: 'yolo'
+      }
+    ),
+    '/tmp/providers/codex-custom fork --yolo --model gpt-5.2 --profile prod codex-branch-session-yolo'
+  );
+  assert.equal(
+    buildAgentBranchCommandLine(
+      'codex',
+      'codex-branch-session-custom',
+      {
+        command: 'codex',
+        defaultArgs: '--model default-model --sandbox workspace-write --ask-for-approval on-request --profile prod'
+      },
+      {
+        launchPreset: 'custom',
+        customLaunchCommand: 'codex --yolo --model custom-model -c feature=on --search'
+      }
+    ),
+    'codex fork --profile prod --yolo --model custom-model -c feature=on --search codex-branch-session-custom'
+  );
 
   assert.throws(
     () =>
@@ -107,6 +136,20 @@ try {
       defaultArgs: '--model opus --permission-mode plan'
     }),
     'claude --resume claude-branch-session-456 --fork-session --model opus --permission-mode plan'
+  );
+  assert.equal(
+    buildAgentBranchCommandLine(
+      'claude',
+      'claude-branch-session-yolo',
+      {
+        command: 'claude',
+        defaultArgs: '--model sonnet --permission-mode plan'
+      },
+      {
+        launchPreset: 'yolo'
+      }
+    ),
+    'claude --resume claude-branch-session-yolo --fork-session --dangerously-skip-permissions --model sonnet'
   );
 
   assert.throws(
@@ -1003,6 +1046,35 @@ try {
     ),
     'codex resume --model gpt-5.2 --sandbox workspace-write --ask-for-approval on-request session-codex-789'
   );
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'codex',
+      'session-codex-yolo',
+      {
+        command: 'codex',
+        defaultArgs: '--config experimental=true --search --sandbox workspace-write --ask-for-approval on-request'
+      },
+      {
+        launchPreset: 'yolo'
+      }
+    ),
+    'codex resume --yolo --config experimental=true --search session-codex-yolo'
+  );
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'codex',
+      'session-codex-template',
+      {
+        command: 'codex',
+        defaultArgs: '--model default-model --sandbox workspace-write'
+      },
+      {
+        launchPreset: 'default',
+        templateArgv: ['--yolo', '--model', 'template-model', 'resume', 'old-session', '--last']
+      }
+    ),
+    'codex resume --yolo --model template-model session-codex-template'
+  );
   assert.throws(
     () =>
       buildAgentHistoryResumeCommandLine(
@@ -1037,6 +1109,20 @@ try {
       }
     ),
     '/opt/claude --resume session-claude-456 --model sonnet --permission-mode plan'
+  );
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'claude',
+      'session-claude-yolo',
+      {
+        command: 'claude',
+        defaultArgs: '--model sonnet --permission-mode plan'
+      },
+      {
+        launchPreset: 'yolo'
+      }
+    ),
+    'claude --resume session-claude-yolo --dangerously-skip-permissions --model sonnet'
   );
   assert.throws(
     () =>

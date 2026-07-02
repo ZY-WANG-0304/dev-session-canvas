@@ -165,6 +165,7 @@ import {
   buildAgentHistoryResumeCommandLine,
   extractClaudeCommandRuntimeSessionFlag,
   formatCommandLine,
+  type AgentLaunchIntentOptions,
   validateAgentCommandLine
 } from '../common/agentLaunchPresets';
 import {
@@ -3181,7 +3182,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     let branchCommandLine: string;
     try {
-      branchCommandLine = this.buildAgentBranchCommandLine(metadata.provider, sessionId);
+      branchCommandLine = this.buildAgentBranchCommandLine(
+        metadata.provider,
+        sessionId,
+        this.buildAgentLaunchIntent(metadata)
+      );
     } catch (error) {
       const message = error instanceof Error
         ? error.message
@@ -13400,7 +13405,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         freshLaunch = this.resolveAgentHistoryResumeLaunch(
           provider,
           resumeContext.sessionId,
-          currentMetadata.launchPreset
+          currentMetadata.launchPreset,
+          this.buildAgentLaunchIntent(currentMetadata)
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : '无法解析 Agent 恢复命令。';
@@ -14029,6 +14035,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  private buildAgentLaunchIntent(metadata: AgentNodeMetadata): AgentLaunchIntentOptions {
+    return {
+      launchPreset: metadata.launchPreset,
+      customLaunchCommand: metadata.customLaunchCommand,
+      templateArgv: metadata.templateArgv
+    };
+  }
+
   private buildAgentDisplayLaunchCommandLine(params: {
     provider: AgentProviderKind;
     requestedCommand: string;
@@ -14063,14 +14077,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private resolveAgentHistoryResumeLaunch(
     provider: AgentProviderKind,
     sessionId: string,
-    launchPreset: AgentLaunchPresetKind
+    launchPreset: AgentLaunchPresetKind,
+    launchIntent?: AgentLaunchIntentOptions
   ): {
     commandLine: string;
     requestedCommand: string;
     launchArgs: string[];
     launchPreset: AgentLaunchPresetKind;
   } {
-    const commandLine = this.buildHistoryResumeCommandLine(provider, sessionId);
+    const commandLine = this.buildHistoryResumeCommandLine(provider, sessionId, launchIntent);
     const validation = validateAgentCommandLine(commandLine, provider, this.getAgentLaunchDefaults(provider));
     if (!validation.valid || !validation.parsed) {
       throw new Error(validation.error ?? '无法解析 Agent 恢复命令。');
@@ -14084,19 +14099,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private buildHistoryResumeCommandLine(provider: AgentProviderKind, sessionId: string): string {
+  private buildHistoryResumeCommandLine(
+    provider: AgentProviderKind,
+    sessionId: string,
+    launchIntent?: AgentLaunchIntentOptions
+  ): string {
     return buildAgentHistoryResumeCommandLine(
       provider,
       sessionId,
-      this.getAgentLaunchDefaults(provider)
+      this.getAgentLaunchDefaults(provider),
+      launchIntent
     );
   }
 
-  private buildAgentBranchCommandLine(provider: AgentProviderKind, sessionId: string): string {
+  private buildAgentBranchCommandLine(
+    provider: AgentProviderKind,
+    sessionId: string,
+    launchIntent?: AgentLaunchIntentOptions
+  ): string {
     return buildAgentProviderBranchCommandLine(
       provider,
       sessionId,
-      this.getAgentLaunchDefaults(provider)
+      this.getAgentLaunchDefaults(provider),
+      launchIntent
     );
   }
 

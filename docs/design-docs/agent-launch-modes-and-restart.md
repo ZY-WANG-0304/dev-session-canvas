@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-07-01
+updated_at: 2026-07-02
 ---
 
 # Agent 启动方式与重启交互设计
@@ -220,6 +220,10 @@ Default args 的配置边界也在同一层收口：它只能承载稳定的 run
 - Claude Code 显式目标 `resume` 的 Default args 不冲突项包括 `--model`、`--permission-mode`、`--dangerously-skip-permissions`、MCP / tool / output 等其他非 session-target 参数；`--resume` / `-r`、`--continue` / `-c`、`--session-id`、`--fork-session` 不适合进入 Default args，若出现应在默认参数解析阶段报错。
 - Claude Code 显式目标 `fork` 的 Default args 不冲突项沿用 Claude Code 显式 resume 的非 session-target 参数。最终命令只能由本次动作写入一个新的 `--resume <source-session-id> --fork-session`，并在启动时由宿主为新 fork 节点补独立 `--session-id <candidate>`；旧 session-target 与旧 `--fork-session` 不允许作为 Default args 残留。
 
+当前节点的显式 `Resume / Fork` 还需要额外继承节点自己的启动意图，而不是只继承当前 Default args。宿主在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中把当前 `AgentNodeMetadata.launchPreset`、`customLaunchCommand` 与模板落地的 `templateArgv` 组装为 `AgentLaunchIntentOptions`，并传给 `extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts` 的 `buildAgentHistoryResumeCommandLine(...)` / `buildAgentBranchCommandLine(...)`。共享命令层先把启动意图解析成 argv：`YOLO / 沙盒` 只贡献对应 provider-owned mode flag，自定义启动使用自定义命令里的参数，模板节点使用保存的 `templateArgv`；随后剥离这些 argv 中已有的 `resume` / `fork` / `--resume` / `--session-id` 等目标选择，按冲突键移除当前 Default args 中会被启动意图覆盖的 model、execution mode、profile、cwd、local-provider 等参数，再由本次动作写入唯一的显式 `session-id` 目标。这样从 `--yolo` Codex 节点点击 `重启` 会生成带 `resume --yolo ... <session-id>` 的命令，从同一节点点击 `分叉` 会生成带 `fork --yolo ... <session-id>` 的命令，而不是退回当前 Default args。
+
+历史会话入口故意不走这条节点启动意图继承。`extensions/vscode/dev-session-canvas/src/common/agentSessionHistory.ts` 从 Codex `~/.codex/sessions/.../rollout-*.jsonl` 和 Claude `~/.claude/projects/**/*.jsonl` 能可靠提取的是 provider、session id、cwd、时间和首条真实用户指令；provider 历史文件没有稳定暴露原始 argv / command line。因此 `restoreAgentSessionFromHistory(...)` 与 `forkAgentSessionFromHistory(...)` 只把历史项的显式 session id / cwd 与当前 provider 命令、当前 Default args 组合，不伪造“继承历史启动参数”的能力。
+
 这里的“允许命令集合”不是只看裸字符串 `codex / claude`，也不是接受“任意 basename 一样的可执行文件”；它只接受当前设置值本身，以及 provider 的标准别名。这样当测试环境或用户设置把 provider 命令指向绝对路径脚本时，自定义输入仍然可以使用该精确路径，同时不会把 `/tmp/evil/claude` 这类同 basename 的其他二进制误判成合法命令。
 
 同一层 parser 还要显式承担两条约束：
@@ -282,7 +286,8 @@ Default args 的配置边界也在同一层收口：它只能承载稳定的 run
 
 边界如下：
 
-- 当用户点击停止后的 `重启` 按钮，且节点持有可信恢复上下文时，仍走当前显式 session resume 路径；这条路径恢复的是“当前节点前面停止的那条会话”，不依赖 `launchPreset`。
+- 当用户点击停止后的 `重启` 按钮，且节点持有可信恢复上下文时，仍走当前显式 session resume 路径；这条路径恢复的是“当前节点前面停止的那条会话”，不依赖 `launchPreset` 决定恢复目标。
+- 但这条显式 session resume 路径必须把 `launchPreset/customLaunchCommand/templateArgv` 当作当前节点启动意图继承下来；`launchPreset` 不决定恢复哪条会话，只决定恢复时继续带上哪些非目标选择参数。
 - 当用户点击 `新建` 时，才走上面的 fresh-start 路径。
 - 若节点 `launchPreset = resume`，fresh-start 路径始终执行 provider 的“进入 resume 选择入口”预设命令，而不是偷偷替用户选择最近一条会话。
 - 若 fresh-start 期间 `resolveAgentCliCommand()` 抛出命令解析失败，或最终 `node-pty` / runtime supervisor 启动阶段返回 `ENOENT`，宿主在把节点更新为明确错误态之后，还要触发与侧栏概览 `Codex 命令` / `Claude Code 命令` 行相同的 CLI 选择命令（`devSessionCanvas.selectCodexCli` / `devSessionCanvas.selectClaudeCli`）。这条补救入口只针对真实用户会话启用，测试模式不自动打开 Quick Input，以免 smoke 中的失败路径被交互弹窗阻塞。CLI 选择命令继续复用 `extensions/vscode/dev-session-canvas/src/extension.ts` 中的安装分流：未解析到候选 CLI 时先展示安装入口，再让用户选择命令行安装或 VS Code 插件安装。
@@ -308,6 +313,8 @@ Default args 的配置边界也在同一层收口：它只能承载稳定的 run
 
 这里的 `<session-id>` 来自当前节点可信 metadata，而不是 provider 的最近会话。Codex 命令构造只从 Default args 继承 `--model`、`--sandbox`、`--profile`、`--config` 等对 `codex fork <session-id>` 仍有效的运行参数；`resume` / `fork` 选择目标、`--last`、`--all`、`--include-non-interactive` 和旧 session id 不适合写入 Default args，若用户配置了这些参数，应在创建菜单、Quick Input 或宿主启动阶段明确报错，而不是在分叉时静默剥离。Claude Code 命令构造应和现有历史恢复命令一样保留对显式 resume 仍适用的默认参数，但 Default args 里不能残留旧的 `--resume`、`--continue`、`--session-id` 目标或旧 `--fork-session`；最终命令只能有一个明确 resume 目标并追加 `--fork-session`。点击后新节点立即启动，用户不需要再点一次 `启动`。
 
+当前节点分叉还会继承来源节点启动意图：`branchAgentSession()` 不只传入 `metadata.provider` 与 `resumeSessionId`，还会把来源节点的 `launchPreset/customLaunchCommand/templateArgv` 传入共享命令层。历史分叉则仍只调用不带启动意图的 `buildAgentBranchCommandLine(params.provider, sessionId)`，因为历史项不是当前节点，没有可读取的节点启动意图。
+
 ### 7.7 停止后的 `新建 | 重启` 动作
 
 在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 的 Agent 节点标题栏中，把停止后的下拉式 split restart 收口为两个并列按钮：
@@ -321,6 +328,7 @@ Default args 的配置边界也在同一层收口：它只能承载稳定的 run
 - 若节点没有可恢复上下文，标题栏直接退化为单个 `启动` 按钮；不会再显示 disabled 的双按钮。
 - `新建` 始终按节点 metadata 的 fresh-start 配置执行。
 - `重启` 始终恢复当前节点自己刚停止的会话，不退化为 provider 的最近一次全局会话。
+- `重启` 同时继承当前节点启动意图；历史恢复入口不继承，因为历史记录没有可靠原始启动参数。
 - Webview 只表达用户意图；真正是否能 resume 仍由宿主以当前 metadata 判断。
 
 ## 8. 验证方法
@@ -369,4 +377,5 @@ Default args 的配置边界也在同一层收口：它只能承载稳定的 run
 - 2026-06-14：修正标题栏动作按钮内部换行的触发口径：之前仅允许按钮 `white-space: normal`，但两个中文字符在 `min-content` 保护下即使拉到最小节点宽度也不一定会实际换成两行。现在 Agent 节点接近最小宽度时会给 action cluster 标记 `compact-actions` 密度，并把右上角所有动作按钮文案包在按钮内按两行显示；action cluster 仍保持 `nowrap`，不会回到整组换行破坏布局。已运行 focused Webview 回归确认所有动作按钮采用相同内部两行格式，并确认标题栏状态仍可见。
 - 2026-07-01：补齐显式 `Resume / Fork` 的参数继承边界：当前节点 `重启` 与历史恢复现在复用共享 history resume 命令构造，保留 `--model`、sandbox / approval、profile / config、cwd 等不冲突配置；Codex 会同时剥离 leading 与子命令尾部的旧 `--last`、`--all`、`--include-non-interactive` 和旧 session/prompt 目标，Claude Code 会剥离旧 session-target 与旧 `--fork-session`。已新增命令层与宿主源检查回归。
 - 2026-07-01：继续按反馈把 Default args 的边界前移：会与 `Resume / Fork` 冲突的一次性会话目标不适合进入默认启动参数。共享命令层现在对 `agent.codexDefaultArgs` 中的 `resume`、`fork`、`--last`、`--all`、`--include-non-interactive`、`--` 与裸 positional token，以及 `agent.claudeDefaultArgs` 中的 `--resume` / `-r`、`--continue` / `-c`、`--session-id`、`--fork-session` 显式报错；设置描述、规格与命令层回归已同步更新。
+- 2026-07-02：补齐当前节点 `重启` / `分叉` 对节点启动意图的继承：宿主现在只在当前节点动作中传递 `launchPreset/customLaunchCommand/templateArgv`，历史恢复 / 历史分叉仍不传意图；命令层新增启动意图与 Default args 的冲突合并回归，覆盖 Codex / Claude 的 `YOLO`、自定义命令和模板 argv 场景。
 - 2026-06-07：已补充 Fork 可见时 Agent 标题栏动作区的布局回归，确认 `停止`、`Fork`、`删除` 不再被 flex 收缩挤占；已运行 targeted `npm run test:webview -- --grep "agent restart actions render inline without a dropdown|Claude Agent Fork action posts a branchAgentSession message|Claude Agent Fork action keeps live title actions readable|Agent Fork action is hidden outside resumable Claude sessions|agent restart action falls back to start button when no resumable session exists"`（5 passed）与 `npm run typecheck`，均通过。随后补齐 Webview posted-message `lifecycle` 测试兼容、smoke 短 debug root 与 macOS `--password-store=basic` 启动参数，并修复真实 PTY 行号漂移导致 multiline 执行链接误回退到 Quick Open 的 smoke 阻塞；相关验证 `npm run test:vscode-smoke-runner-env`、`node scripts/test/test-execution-terminal-line-context-tracker.mjs`、`node scripts/test/test-execution-terminal-native-helpers.mjs`、multiline execution-link targeted Webview 测试均通过。当前 `DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT=/tmp/dsc-smoke DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 已越过 VS Code socket/keychain 与执行链接阶段，新的剩余阻塞为后续侧栏节点列表测试动作超时；整体验证状态继续保持 `验证中`。
