@@ -7,6 +7,11 @@ import type {
   WebviewLifecycleIdentity
 } from '../common/protocol';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
+import {
+  formatWebviewMessage,
+  resolveWebviewI18n,
+  type WebviewI18nBootstrap
+} from '../webview/i18n/webviewI18n';
 
 interface CanvasWebviewHtmlOptions {
   mode: CanvasSurfaceMode;
@@ -23,22 +28,23 @@ export function getWebviewHtml(
   const scriptUri = getVersionedWebviewResourceUri(webview, extensionUri, 'dist', 'webview.js');
   const styleUri = getVersionedWebviewResourceUri(webview, extensionUri, 'dist', 'webview.css');
   const nonce = createNonce();
-  const shell = getSharedShell(webview, nonce, styleUri);
+  const i18n = resolveWebviewI18n(vscode.env.language);
+  const shell = getSharedShell(webview, nonce, styleUri, i18n.locale);
 
   if (options.mode === 'standby') {
-    return buildStandbyHtml(shell, options);
+    return buildStandbyHtml(shell, options, i18n);
   }
 
   if (!options.lifecycle) {
     throw new Error('Active canvas webview HTML requires a lifecycle identity.');
   }
 
-  return buildActiveHtml(shell, scriptUri, nonce, options.lifecycle);
+  return buildActiveHtml(shell, scriptUri, nonce, options.lifecycle, i18n);
 }
 
-function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode.Uri): string {
+function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode.Uri, locale: string): string {
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${locale}">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -157,39 +163,41 @@ function buildActiveHtml(
   shell: string,
   scriptUri: vscode.Uri,
   nonce: string,
-  lifecycle: WebviewLifecycleIdentity
+  lifecycle: WebviewLifecycleIdentity,
+  i18n: WebviewI18nBootstrap
 ): string {
   return `${shell}
   <body>
     <div id="app"></div>
     <script nonce="${nonce}">
       window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__ = ${escapeHtmlScriptJson(lifecycle)};
+      window.__DEV_SESSION_CANVAS_I18N__ = ${escapeHtmlScriptJson(i18n)};
     </script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;
 }
 
-function buildStandbyHtml(shell: string, options: CanvasWebviewHtmlOptions): string {
+function buildStandbyHtml(shell: string, options: CanvasWebviewHtmlOptions, i18n: WebviewI18nBootstrap): string {
   const targetCommand =
     options.surface === 'editor'
       ? `command:${COMMAND_IDS.openCanvasInEditor}`
       : `command:${COMMAND_IDS.openCanvasInPanel}`;
-  const activeSurface = options.activeSurface ? humanizeSurfaceLocation(options.activeSurface) : '另一个宿主承载面';
+  const activeSurface = options.activeSurface
+    ? humanizeSurfaceLocation(options.activeSurface, i18n)
+    : formatWebviewMessage(i18n.messages, 'surface.other');
+  const targetSurface = humanizeSurfaceLocation(options.surface, i18n);
 
   return `${shell}
   <body>
     <div class="surface-standby">
       <div class="surface-standby-card">
         <p class="surface-standby-eyebrow">${EXTENSION_DISPLAY_NAME}</p>
-        <h1>当前主画布正在${activeSurface}中运行</h1>
-        <p>
-          ${EXTENSION_DISPLAY_NAME} 当前采用单主 surface 模型。为了避免同一个 Agent 或 Terminal 会话被两个宿主区域重复附着，
-          这里仅保留切换入口，不再渲染第二个可交互画布。
-        </p>
+        <h1>${escapeHtml(formatWebviewMessage(i18n.messages, 'standby.heading', { surface: activeSurface }))}</h1>
+        <p>${escapeHtml(formatWebviewMessage(i18n.messages, 'standby.description'))}</p>
         <div class="surface-standby-actions">
-          <a class="surface-standby-link" href="${targetCommand}">切换到${humanizeSurfaceLocation(options.surface)}</a>
-          <a class="surface-standby-link is-secondary" href="command:${COMMAND_IDS.openCanvas}">按默认位置打开</a>
+          <a class="surface-standby-link" href="${targetCommand}">${escapeHtml(formatWebviewMessage(i18n.messages, 'standby.switch', { surface: targetSurface }))}</a>
+          <a class="surface-standby-link is-secondary" href="command:${COMMAND_IDS.openCanvas}">${escapeHtml(formatWebviewMessage(i18n.messages, 'standby.openDefault'))}</a>
         </div>
       </div>
     </div>
@@ -197,8 +205,25 @@ function buildStandbyHtml(shell: string, options: CanvasWebviewHtmlOptions): str
 </html>`;
 }
 
-function humanizeSurfaceLocation(surface: CanvasSurfaceLocation): string {
-  return surface === 'panel' ? '工作台视图' : '编辑区';
+function humanizeSurfaceLocation(surface: CanvasSurfaceLocation, i18n: WebviewI18nBootstrap): string {
+  return formatWebviewMessage(i18n.messages, surface === 'panel' ? 'surface.panel' : 'surface.editor');
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"]/gu, (character) => {
+    switch (character) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      default:
+        return character;
+    }
+  });
 }
 
 function escapeHtmlScriptJson(value: unknown): string {
