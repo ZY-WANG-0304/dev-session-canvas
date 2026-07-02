@@ -10008,6 +10008,65 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  private canPreserveTrustedSupervisorSessionForSnapshot(
+    session: ManagedExecutionSession | undefined,
+    snapshot: RuntimeSupervisorSessionSnapshot,
+    runtimeStoragePath: string,
+    freshSnapshotState: SerializedTerminalState | undefined
+  ): session is SupervisorExecutionSession {
+    return (
+      freshSnapshotState === undefined &&
+      session?.owner === 'supervisor' &&
+      session.terminalStateTrusted &&
+      session.runtimeSessionId === snapshot.sessionId &&
+      session.runtimeBackend === snapshot.runtimeBackend &&
+      this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
+    );
+  }
+
+  private updateSupervisorExecutionSessionFromSnapshot(
+    session: SupervisorExecutionSession,
+    snapshot: RuntimeSupervisorSessionSnapshot,
+    runtimeStoragePath: string
+  ): void {
+    session.runtimeBackend = snapshot.runtimeBackend;
+    session.runtimeGuarantee = snapshot.runtimeGuarantee;
+    session.runtimeStoragePath = runtimeStoragePath;
+    session.runtimeSessionId = snapshot.sessionId;
+    session.shellPath = snapshot.shellPath;
+    session.cwd = snapshot.cwd;
+    session.displayLabel = snapshot.displayLabel;
+    session.lifecycleStatus = snapshot.lifecycle;
+    session.launchMode = snapshot.launchMode;
+    session.preSuspendLifecycleStatus = snapshot.preSuspendLifecycle;
+    session.lastSuspendReason = snapshot.lastSuspendReason;
+    session.lastSuspendMessage = snapshot.lastSuspendMessage;
+    session.lastReactivateError = snapshot.lastReactivateError;
+    if (session.cols !== snapshot.cols || session.rows !== snapshot.rows) {
+      session.cols = snapshot.cols;
+      session.rows = snapshot.rows;
+      session.terminalStateTracker.resize(snapshot.cols, snapshot.rows);
+      session.lineContextTracker.resize(snapshot.cols, snapshot.rows);
+    }
+    session.resumePhaseActive =
+      snapshot.kind === 'agent'
+        ? typeof snapshot.resumePhaseActive === 'boolean'
+          ? snapshot.resumePhaseActive
+          : snapshot.launchMode === 'resume' &&
+            isAgentResumePhaseActive(snapshot.lifecycle as AgentNodeStatus)
+        : false;
+    session.agentProvider = snapshot.provider;
+    session.agentResume =
+      snapshot.kind === 'agent'
+        ? {
+            supported: doesAgentResumeStrategyRequireSupport(snapshot.resumeStrategy ?? 'none'),
+            strategy: snapshot.resumeStrategy ?? 'none',
+            sessionId: snapshot.resumeSessionId,
+            storagePath: snapshot.resumeStoragePath
+          }
+        : undefined;
+  }
+
   private createExecutionTerminalLineContextTracker(
     cols: number,
     rows: number,
@@ -10191,57 +10250,80 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const existingSession = this.getExecutionSessions(kind).get(nodeId);
       const outputSequenceFloor =
         maxExecutionOutputSequence(existingRuntimeMetadata.outputSequence, existingSession?.outputSequence) ?? 0;
-      this.disposeManagedExecutionSession(existingSession);
-      const session = this.createSupervisorExecutionSession(snapshot, runtimeStoragePath, {
-        outputSequenceFloor
-      });
-      this.getExecutionSessions(kind).set(nodeId, session);
+      const snapshotOutputSequence = normalizeExecutionOutputSequence(snapshot.outputSequence);
+      const sessionOutputSequence = Math.max(snapshotOutputSequence ?? 0, outputSequenceFloor);
+      const freshSupervisorSerializedTerminalState = cloneFreshSerializedTerminalState(
+        snapshot.serializedTerminalState,
+        sessionOutputSequence
+      );
+      // Current supervisors can emit lifecycle state before their batched tracker write is flushable.
+      const preservedTrustedSupervisorSession = this.canPreserveTrustedSupervisorSessionForSnapshot(
+        existingSession,
+        snapshot,
+        runtimeStoragePath,
+        freshSupervisorSerializedTerminalState
+      )
+        ? existingSession
+        : undefined;
+      const session =
+        preservedTrustedSupervisorSession ??
+        this.createSupervisorExecutionSession(snapshot, runtimeStoragePath, {
+          outputSequenceFloor
+        });
+      if (preservedTrustedSupervisorSession) {
+        this.updateSupervisorExecutionSessionFromSnapshot(session, snapshot, runtimeStoragePath);
+      } else {
+        this.disposeManagedExecutionSession(existingSession);
+        this.getExecutionSessions(kind).set(nodeId, session);
+      }
+      const sessionBuffer = session.buffer;
+      const sessionSerializedTerminalState = session.terminalStateTrusted
+        ? getFreshExecutionSessionSerializedTerminalState(session) ??
+          cloneFreshSerializedTerminalState(existingRuntimeMetadata.serializedTerminalState, session.outputSequence)
+        : undefined;
       this.state = updateExecutionNode(this.state, nodeId, kind, {
-        status: snapshot.lifecycle,
+        status: session.lifecycleStatus,
         summary:
           kind === 'agent'
-            ? summarizeAgentSessionOutput(snapshot.output, snapshot.lifecycle as AgentNodeStatus, snapshot.displayLabel)
-            : summarizeEmbeddedTerminalOutput(snapshot.output, snapshot.lifecycle as TerminalNodeStatus),
+            ? summarizeAgentSessionOutput(sessionBuffer, session.lifecycleStatus as AgentNodeStatus, session.displayLabel)
+            : summarizeEmbeddedTerminalOutput(sessionBuffer, session.lifecycleStatus as TerminalNodeStatus),
         metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
           persistenceMode: 'live-runtime',
           attachmentState: 'attached-live',
-          runtimeBackend: snapshot.runtimeBackend,
-          runtimeGuarantee: snapshot.runtimeGuarantee,
+          runtimeBackend: session.runtimeBackend,
+          runtimeGuarantee: session.runtimeGuarantee,
           runtimeStoragePath,
           liveSession: true,
-          runtimeSessionId: snapshot.sessionId,
+          runtimeSessionId: session.runtimeSessionId,
           lastRuntimeError: undefined,
-          shellPath: snapshot.shellPath,
-          cwd: snapshot.cwd,
+          shellPath: session.shellPath,
+          cwd: session.cwd,
           outputSequence: session.outputSequence,
-          recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || undefined,
-          lastCols: snapshot.cols,
-          lastRows: snapshot.rows,
-          serializedTerminalState: cloneFreshSerializedTerminalState(
-            snapshot.serializedTerminalState,
-            session.outputSequence
-          ),
+          recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(sessionBuffer)) || undefined,
+          lastCols: session.cols,
+          lastRows: session.rows,
+          serializedTerminalState: sessionSerializedTerminalState,
           lastExitCode: snapshot.lastExitCode,
           lastExitSignal: snapshot.lastExitSignal,
           lastExitMessage: snapshot.lastExitMessage,
           ...(kind === 'agent'
             ? {
-                lifecycle: snapshot.lifecycle as AgentNodeStatus,
-                provider: snapshot.provider ?? existingAgentMetadata?.provider,
+                lifecycle: session.lifecycleStatus as AgentNodeStatus,
+                provider: session.agentProvider ?? existingAgentMetadata?.provider,
                 resumeSupported: doesAgentResumeStrategyRequireSupport(
-                  snapshot.resumeStrategy ?? existingAgentMetadata?.resumeStrategy ?? 'none'
+                  session.agentResume?.strategy ?? existingAgentMetadata?.resumeStrategy ?? 'none'
                 ),
-                resumeStrategy: snapshot.resumeStrategy,
-                resumeSessionId: snapshot.resumeSessionId,
-                resumeStoragePath: snapshot.resumeStoragePath,
-                preSuspendLifecycle: snapshot.preSuspendLifecycle,
-                lastSuspendReason: snapshot.lastSuspendReason,
-                lastSuspendMessage: snapshot.lastSuspendMessage,
-                lastReactivateError: snapshot.lastReactivateError,
-                lastBackendLabel: snapshot.displayLabel
+                resumeStrategy: session.agentResume?.strategy,
+                resumeSessionId: session.agentResume?.sessionId,
+                resumeStoragePath: session.agentResume?.storagePath,
+                preSuspendLifecycle: session.preSuspendLifecycleStatus,
+                lastSuspendReason: session.lastSuspendReason,
+                lastSuspendMessage: session.lastSuspendMessage,
+                lastReactivateError: session.lastReactivateError,
+                lastBackendLabel: session.displayLabel
               }
             : {
-                lifecycle: snapshot.lifecycle as TerminalNodeStatus
+                lifecycle: session.lifecycleStatus as TerminalNodeStatus
               })
         })
       });
