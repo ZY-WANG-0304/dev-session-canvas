@@ -19491,7 +19491,7 @@ function finalizeCanvasGroupState(
   const groups = removeMissingGroupNodeMemberships(state.groups ?? [], state.nodes);
   const nodes = normalizeCanvasNodeGroupMemberships(state.nodes, groups);
   const repairedState = repairCanvasGroupGeometry(groups, nodes, options);
-  const finalGroups = expandGroupsToContainDirectMembers(repairedState.groups, repairedState.nodes);
+  const finalGroups = expandGroupsToContainDirectMembers(repairedState.groups, repairedState.nodes, options);
 
   return {
     ...state,
@@ -19502,13 +19502,19 @@ function finalizeCanvasGroupState(
 
 function expandGroupsToContainDirectMembers(
   groups: readonly CanvasGroupSummary[],
-  nodes: readonly CanvasNodeSummary[]
+  nodes: readonly CanvasNodeSummary[],
+  options: CanvasGroupGeometryRepairOptions = {}
 ): CanvasGroupSummary[] {
   let nextGroups = groups.map((group) => ({ ...group }));
+  const expandableGroupIds = resolveScopedGeometryTargetSubtreeGroupIds(nextGroups, options);
 
   for (let pass = 0; pass < Math.max(1, nextGroups.length + 1); pass += 1) {
     let didChange = false;
     nextGroups = nextGroups.map((group) => {
+      if (expandableGroupIds && !expandableGroupIds.has(group.id)) {
+        return group;
+      }
+
       const memberRects = [
         ...nodes
           .filter((node) => node.groupId === group.id)
@@ -19551,11 +19557,11 @@ function repairCanvasGroupGeometry(
   nodes: readonly CanvasNodeSummary[],
   options: CanvasGroupGeometryRepairOptions = {}
 ): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[] } {
-  let nextGroups = expandGroupsToContainDirectMembers(groups, nodes);
+  let nextGroups = expandGroupsToContainDirectMembers(groups, nodes, options);
   let nextNodes = nodes.map((node) => ({ ...node }));
 
   for (let pass = 0; pass < Math.max(1, nextGroups.length * nextGroups.length + nextGroups.length + 1); pass += 1) {
-    const expandedGroups = expandGroupsToContainDirectMembers(nextGroups, nextNodes);
+    const expandedGroups = expandGroupsToContainDirectMembers(nextGroups, nextNodes, options);
     const repairedState = repairOneIllegalSiblingGeometry(expandedGroups, nextNodes, options);
     nextGroups = repairedState.groups;
     nextNodes = repairedState.nodes;
@@ -19575,10 +19581,13 @@ function repairOneIllegalSiblingGeometry(
 ): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[]; didRepair: boolean } {
   const siblingCollections = collectSiblingGeometryCollections(groups, nodes);
   for (const collection of siblingCollections) {
-    const scopedRepairGroupIds = resolveScopedRepairTargetGroupIds(collection.items, options);
-    const scopedRepairGroupIdSet = scopedRepairGroupIds.length > 0
-      ? new Set(scopedRepairGroupIds)
-      : undefined;
+    const scopedCollection = resolveScopedRepairCollection(groups, collection, options);
+    if (scopedCollection.skip) {
+      continue;
+    }
+
+    const scopedRepairGroupIds = scopedCollection.repairTargetGroupIds;
+    const scopedRepairGroupIdSet = scopedCollection.repairTargetGroupIdSet;
     const overlappingGroups = findFirstOverlappingSiblingGroups(collection.items, scopedRepairGroupIdSet);
     if (overlappingGroups) {
       const repairGroups = scopedRepairGroupIds.length > 0
@@ -19642,6 +19651,65 @@ function resolveScopedRepairTargetGroupIds(
 
   const itemIds = new Set(items.map((item) => item.id));
   return [...new Set(repairTargetGroupIds)].filter((groupId) => itemIds.has(groupId));
+}
+
+function resolveScopedGeometryTargetSubtreeGroupIds(
+  groups: readonly CanvasGroupSummary[],
+  options: CanvasGroupGeometryRepairOptions
+): Set<string> | undefined {
+  const repairTargetGroupIds = options.repairTargetGroupIds ?? [];
+  if (repairTargetGroupIds.length === 0) {
+    return undefined;
+  }
+
+  const groupIds = new Set(groups.map((group) => group.id));
+  const targetSubtreeGroupIds = new Set<string>();
+  for (const groupId of new Set(repairTargetGroupIds)) {
+    if (!groupIds.has(groupId)) {
+      continue;
+    }
+    for (const subtreeGroupId of collectGroupSubtreeIds(groups, groupId)) {
+      targetSubtreeGroupIds.add(subtreeGroupId);
+    }
+  }
+
+  return targetSubtreeGroupIds.size > 0 ? targetSubtreeGroupIds : undefined;
+}
+
+function resolveScopedRepairCollection(
+  groups: readonly CanvasGroupSummary[],
+  collection: { parentGroupId?: string; items: readonly SiblingGeometryItem[] },
+  options: CanvasGroupGeometryRepairOptions
+): { skip: boolean; repairTargetGroupIds: string[]; repairTargetGroupIdSet?: ReadonlySet<string> } {
+  const scopedTargetGroupIds = resolveScopedGeometryTargetSubtreeGroupIds(groups, options);
+  if (!scopedTargetGroupIds) {
+    return { skip: false, repairTargetGroupIds: [], repairTargetGroupIdSet: undefined };
+  }
+
+  const directScopedRepairGroupIds = resolveScopedRepairTargetGroupIds(collection.items, options);
+  if (directScopedRepairGroupIds.length > 0) {
+    return {
+      skip: false,
+      repairTargetGroupIds: directScopedRepairGroupIds,
+      repairTargetGroupIdSet: new Set(directScopedRepairGroupIds)
+    };
+  }
+
+  const collectionContainsScopedSubtree = collection.items.some(
+    (item) => item.kind === 'group' && scopedTargetGroupIds.has(item.id)
+  );
+  if (!collectionContainsScopedSubtree) {
+    return { skip: true, repairTargetGroupIds: [], repairTargetGroupIdSet: undefined };
+  }
+
+  const subtreeRepairGroupIds = collection.items
+    .filter((item) => item.kind === 'group' && scopedTargetGroupIds.has(item.id))
+    .map((item) => item.id);
+  return {
+    skip: false,
+    repairTargetGroupIds: subtreeRepairGroupIds,
+    repairTargetGroupIdSet: new Set(subtreeRepairGroupIds)
+  };
 }
 
 function filterRepairTargetGroupIdsForOverlap(
