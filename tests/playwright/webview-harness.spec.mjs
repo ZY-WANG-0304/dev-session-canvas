@@ -3111,7 +3111,7 @@ test('file list nodes expose a delete button that posts deleteNode', async ({ pa
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
     nodeId: 'file-list-shared',
-    label: '删除'
+    action: 'delete'
   });
 
   const message = await waitForPostedMessageByType(page, 'webview/deleteNode');
@@ -3545,7 +3545,7 @@ test('agent start button posts a startExecutionSession message', async ({ page }
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
     nodeId: 'agent-1',
-    label: '启动'
+    action: 'start'
   });
 
   await expect
@@ -4081,7 +4081,7 @@ test('agent restart action falls back to start button when no resumable session 
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
     nodeId: 'agent-1',
-    label: '启动'
+    action: 'start'
   });
 
   await expect
@@ -11023,7 +11023,7 @@ test('deleting a note posts deleteNode', async ({ page }) => {
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
     nodeId: 'note-1',
-    label: '删除'
+    action: 'delete'
   });
 
   await expect
@@ -14501,7 +14501,7 @@ test('agent start message uses the node metadata provider', async ({ page }) => 
   await performTestDomAction(page, {
     kind: 'clickNodeActionButton',
     nodeId: 'agent-1',
-    label: '启动'
+    action: 'start'
   });
 
   await expect
