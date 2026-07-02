@@ -692,6 +692,9 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
     }
   | {
       type: 'webview/arrangeCanvasLayout';
+      payload?: {
+        targetGroupId?: string;
+      };
     }
   | {
       type: 'webview/createDemoNode';
@@ -1416,10 +1419,28 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     value.type === 'webview/ready' ||
     value.type === 'webview/bootstrapAck' ||
     value.type === 'webview/resetDemoState' ||
-    value.type === 'webview/arrangeCanvasLayout' ||
     value.type === 'webview/saveCanvasAsTemplate'
   ) {
     return { type: value.type };
+  }
+
+  if (value.type === 'webview/arrangeCanvasLayout') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (payload && payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') {
+      return null;
+    }
+
+    const targetGroupId = typeof payload?.targetGroupId === 'string' ? payload.targetGroupId : undefined;
+    return targetGroupId
+      ? {
+          type: 'webview/arrangeCanvasLayout',
+          payload: {
+            targetGroupId
+          }
+        }
+      : {
+          type: 'webview/arrangeCanvasLayout'
+        };
   }
 
   if (value.type === 'webview/updateViewportCenter') {

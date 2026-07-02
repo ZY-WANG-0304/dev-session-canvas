@@ -647,7 +647,12 @@ type CanvasNodeResizeDirection =
   | 'top-right'
   | 'bottom-left'
   | 'bottom-right';
-type CanvasContextMenuView = 'root' | 'agent-launch-mode' | 'apply-template' | 'reset-template';
+type CanvasContextMenuView =
+  | 'root'
+  | 'agent-launch-mode'
+  | 'apply-template'
+  | 'reset-template'
+  | 'arrange-layout-scope';
 interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
@@ -3419,6 +3424,31 @@ function App(): JSX.Element {
     runtimeContext.multiRootPresentationMode === 'paneGallery' && paneGalleryRootModels.length > 1;
   const selectedGroupIds = resolveSelectedGroupIds(localUiState);
   const workspaceRootGroupCount = groups.filter((group) => isWorkspaceRootCanvasGroupRole(group.role)).length;
+  const resolveArrangeLayoutRootGroupId = (
+    targetGroupId?: string,
+    fallbackFlowAnchor?: CanvasNodePosition
+  ): string | undefined => {
+    const targetGroup = targetGroupId
+      ? groups.find((group) => group.id === targetGroupId)
+      : fallbackFlowAnchor
+        ? findInnermostCanvasGroupFrameAtFlowPoint(groups, fallbackFlowAnchor)
+        : undefined;
+    if (!targetGroup) {
+      return undefined;
+    }
+
+    return isWorkspaceRootCanvasGroupRole(targetGroup.role)
+      ? targetGroup.id
+      : resolveContainingWorkspaceRootGroupIdForWebview(groups, targetGroup.id);
+  };
+  const shouldOfferWorkspaceArrangeLayoutScope = (
+    targetGroupId?: string,
+    fallbackFlowAnchor?: CanvasNodePosition
+  ): boolean =>
+    workspaceRootGroupCount > 1 &&
+    (runtimeContext.multiRootPresentationMode === 'rootGroups' ||
+      runtimeContext.multiRootPresentationMode === 'paneGallery') &&
+    Boolean(resolveArrangeLayoutRootGroupId(targetGroupId, fallbackFlowAnchor));
   const resolveTemplateResetTargetRootGroupId = (targetGroupId?: string): string | undefined => {
     const targetGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : undefined;
     if (!targetGroup) {
@@ -4748,6 +4778,7 @@ function App(): JSX.Element {
             onSelectGroupBody={selectGroup}
             onFocusGroupInViewport={focusGroupInViewport}
             onGroupBodyContextMenu={handlePaneContextMenu}
+            onGroupContextMenu={handlePaneContextMenu}
             onSelectGroup={selectGroup}
             onDraftGroup={updateGroupDraft}
             onGroupInteractionStart={handleGroupInteractionStart}
@@ -4805,6 +4836,10 @@ function App(): JSX.Element {
           agentLaunchDefaults={runtimeContext.agentLaunchDefaults}
           canSaveCurrentCanvas={hostState?.nodes.some((node) => isTemplateCompatibleNodeKind(node.kind)) ?? false}
           canCreateGroupFromSelection={contextMenu.canCreateGroupFromSelection === true}
+          canArrangeWorkspaceLayoutScope={shouldOfferWorkspaceArrangeLayoutScope(
+            contextMenu.targetGroupId,
+            contextMenu.flowAnchor
+          )}
           onCreateEmptyGroup={() => {
             handleCreateEmptyGroup(contextMenu.flowAnchor, contextMenu.targetGroupId);
             closePaneContextMenu();
@@ -4857,6 +4892,17 @@ function App(): JSX.Element {
               );
             }
           }
+          onShowArrangeLayoutScope={() =>
+            setContextMenu((current) =>
+              current
+                ? {
+                    ...current,
+                    view: 'arrange-layout-scope',
+                    selectedAgentProvider: undefined
+                  }
+                : current
+            )
+          }
           onApplyDefaultTemplate={() => {
             postMessage({
               type: 'webview/applyDefaultTemplate',
@@ -4888,9 +4934,20 @@ function App(): JSX.Element {
             });
             closePaneContextMenu();
           }}
-          onArrangeCanvasLayout={() => {
+          onArrangeCanvasLayout={(scope) => {
+            const targetGroupId =
+              scope === 'target'
+                ? resolveArrangeLayoutRootGroupId(contextMenu.targetGroupId, contextMenu.flowAnchor)
+                : undefined;
             postMessage({
-              type: 'webview/arrangeCanvasLayout'
+              type: 'webview/arrangeCanvasLayout',
+              ...(targetGroupId
+                ? {
+                    payload: {
+                      targetGroupId
+                    }
+                  }
+                : {})
             });
             closePaneContextMenu();
           }}
@@ -9820,6 +9877,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
               props.onFocusGroupInViewport(groupId);
             }}
             onGroupBodyContextMenu={(event, groupId) => props.onPaneContextMenu(event, rootGroupId, groupId)}
+            onGroupContextMenu={(event, groupId) => props.onPaneContextMenu(event, rootGroupId, groupId)}
             onSelectGroup={(groupId, event) => {
               bindSurface();
               props.onSelectGroup(groupId, event);
@@ -10096,6 +10154,7 @@ const CanvasContextMenu = React.forwardRef<
     agentLaunchDefaults: AgentLaunchDefaultsByProvider;
     canSaveCurrentCanvas: boolean;
     canCreateGroupFromSelection: boolean;
+    canArrangeWorkspaceLayoutScope: boolean;
     onCreate: (
       kind: CanvasCreatableNodeKind,
       agentProvider?: AgentProviderKind,
@@ -10104,9 +10163,10 @@ const CanvasContextMenu = React.forwardRef<
     ) => void;
     onShowAgentLaunchModes: (provider: AgentProviderKind) => void;
     onShowTemplatePicker: (view: 'apply-template' | 'reset-template') => void;
+    onShowArrangeLayoutScope: () => void;
     onApplyDefaultTemplate: () => void;
     onResetToDefaultTemplate: () => void;
-    onArrangeCanvasLayout: () => void;
+    onArrangeCanvasLayout: (scope: 'target' | 'workspace') => void;
     onApplyTemplate: (templateId: string, reset: boolean) => void;
     onSaveCanvasAsTemplate: () => void;
     onCreateEmptyGroup: () => void;
@@ -10224,17 +10284,21 @@ const CanvasContextMenu = React.forwardRef<
               ? '画布操作'
               : props.view === 'agent-launch-mode'
                 ? `选择启动方式 - ${providerLabel(selectedAgentProvider)}`
-                : isResetTemplatePicker
-                  ? '重置为模板'
-                  : '应用模板'}
+                : props.view === 'arrange-layout-scope'
+                  ? '整理画布布局'
+                  : isResetTemplatePicker
+                    ? '重置为模板'
+                    : '应用模板'}
           </strong>
           {props.view === 'root' ? null : (
             <span>
               {props.view === 'agent-launch-mode'
                 ? '选择启动方式'
-                : isResetTemplatePicker
-                  ? '选择一个模板，清空当前画布后套用'
-                  : '选择一个模板，追加到当前画布'}
+                : props.view === 'arrange-layout-scope'
+                  ? '选择整理范围'
+                  : isResetTemplatePicker
+                    ? '选择一个模板，清空当前画布后套用'
+                    : '选择一个模板，追加到当前画布'}
             </span>
           )}
         </div>
@@ -10334,18 +10398,48 @@ const CanvasContextMenu = React.forwardRef<
                 </span>
               </button>
             ) : null}
-            <button
-              type="button"
-              className="canvas-context-menu-item"
-              data-context-menu-action="arrange-canvas-layout"
-              onClick={props.onArrangeCanvasLayout}
-            >
-              <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
-              <span className="canvas-context-menu-copy">
-                <strong>整理画布布局</strong>
-                <span>按关系靠近对象并自动避让重叠</span>
-              </span>
-            </button>
+            {props.canArrangeWorkspaceLayoutScope ? (
+              <div className="canvas-context-menu-split-item" data-context-menu-arrange-group="layout">
+                <button
+                  type="button"
+                  className="canvas-context-menu-item"
+                  data-context-menu-action="arrange-canvas-layout"
+                  onClick={() => props.onArrangeCanvasLayout('target')}
+                >
+                  <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
+                  <span className="canvas-context-menu-copy">
+                    <strong>整理画布布局</strong>
+                    <span>整理当前 root 内的节点</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="canvas-context-menu-item-secondary"
+                  data-context-menu-action="show-arrange-layout-scope"
+                  onClick={props.onShowArrangeLayoutScope}
+                  aria-label="选择整理范围"
+                  title="选择整理范围"
+                >
+                  <span
+                    className="canvas-context-menu-icon codicon codicon-chevron-right"
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-action="arrange-canvas-layout"
+                onClick={() => props.onArrangeCanvasLayout('target')}
+              >
+                <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
+                <span className="canvas-context-menu-copy">
+                  <strong>整理画布布局</strong>
+                  <span>按关系靠近对象并自动避让重叠</span>
+                </span>
+              </button>
+            )}
             <div className="canvas-context-menu-separator" aria-hidden="true" />
             <div className="canvas-context-menu-split-item" data-context-menu-template-group="apply">
               <button
@@ -10422,6 +10516,33 @@ const CanvasContextMenu = React.forwardRef<
               <span className="canvas-context-menu-copy">
                 <strong>保存为模板</strong>
                 <span>保存后可从模板侧栏或市场面板发布</span>
+              </span>
+            </button>
+          </>
+        ) : props.view === 'arrange-layout-scope' ? (
+          <>
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="arrange-current-root-canvas-layout"
+              onClick={() => props.onArrangeCanvasLayout('target')}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>整理当前 root 内的节点</strong>
+                <span>只整理当前 root 内的节点和分组</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="arrange-workspace-canvas-layout"
+              onClick={() => props.onArrangeCanvasLayout('workspace')}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-globe" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>整理整个 workspace 的画布</strong>
+                <span>整理所有 root 分组和画布对象</span>
               </span>
             </button>
           </>
@@ -12066,6 +12187,7 @@ function CanvasGroupsViewportLayer(props: {
   ) => void;
   onFocusGroupInViewport: (groupId: string) => void;
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
+  onGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
   onSelectGroup: (
     groupId: string,
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
@@ -12245,6 +12367,7 @@ function CanvasGroupLayer(props: {
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
   onFocusGroupInViewport: (groupId: string) => void;
+  onGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onGroupInteractionStart: (groupId: string) => void;
   onGroupInteractionEnd: (groupId: string) => void;
@@ -12285,6 +12408,7 @@ function CanvasGroupLayer(props: {
           zoom={props.viewport.zoom}
           onSelectGroup={props.onSelectGroup}
           onFocusGroupInViewport={props.onFocusGroupInViewport}
+          onGroupContextMenu={props.onGroupContextMenu}
           onDraftGroup={props.onDraftGroup}
           onGroupInteractionStart={props.onGroupInteractionStart}
           onGroupInteractionEnd={props.onGroupInteractionEnd}
@@ -12362,6 +12486,19 @@ function findInnermostCanvasGroupBodyAtFlowPoint(
     .at(0);
 }
 
+function findInnermostCanvasGroupFrameAtFlowPoint(
+  groups: readonly CanvasGroupSummary[],
+  flowPoint: CanvasPoint
+): CanvasGroupSummary | undefined {
+  return [...groups]
+    .filter((group) => isCanvasPointInsideGroupFrame(flowPoint, group))
+    .sort((left, right) => {
+      const depthDelta = groupDepthForWebview(groups, right.id) - groupDepthForWebview(groups, left.id);
+      return depthDelta !== 0 ? depthDelta : groupAreaForWebview(left) - groupAreaForWebview(right);
+    })
+    .at(0);
+}
+
 function readCanvasViewportTransform(viewportElement: HTMLElement): Viewport {
   const match = viewportElement.style.transform.match(
     /translate\((-?\d+(?:\.\d+)?)px,\s*(-?\d+(?:\.\d+)?)px\)\s+scale\((-?\d+(?:\.\d+)?)\)/u
@@ -12404,6 +12541,14 @@ function isCanvasPointInsideGroupBody(
 ): boolean {
   const left = group.position.x;
   const top = group.position.y + bodyTopOffset;
+  const right = group.position.x + group.size.width;
+  const bottom = group.position.y + group.size.height;
+  return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
+}
+
+function isCanvasPointInsideGroupFrame(point: CanvasPoint, group: CanvasGroupSummary): boolean {
+  const left = group.position.x;
+  const top = group.position.y;
   const right = group.position.x + group.size.width;
   const bottom = group.position.y + group.size.height;
   return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
@@ -12833,6 +12978,7 @@ function CanvasGroupFrame(props: {
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
   onFocusGroupInViewport: (groupId: string) => void;
+  onGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onGroupInteractionStart: (groupId: string) => void;
   onGroupInteractionEnd: (groupId: string) => void;
@@ -13259,6 +13405,10 @@ function CanvasGroupFrame(props: {
     handleGroupChromeDoubleClick(event, props.group.id, props.onFocusGroupInViewport);
   };
 
+  const handleContextMenu = (event: React.MouseEvent): void => {
+    props.onGroupContextMenu(event, props.group.id);
+  };
+
   return (
     <div
       className={`canvas-group-frame nodrag nopan${props.selected ? ' is-selected' : ''}`}
@@ -13280,6 +13430,7 @@ function CanvasGroupFrame(props: {
         }
         selectGroup();
       }}
+      onContextMenu={handleContextMenu}
       onPointerMove={(event) => {
         handleDragMove(event);
         handleResizeMove(event);
