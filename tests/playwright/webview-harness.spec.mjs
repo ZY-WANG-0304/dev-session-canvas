@@ -11170,6 +11170,63 @@ test('multi-root rootGroups arrange menu infers the root from the section chrome
   await expect(menu.locator('[data-context-menu-action="arrange-workspace-canvas-layout"]')).toBeVisible();
 });
 
+test('paneGallery arrange menu defaults to current root and offers workspace scope', async ({ page }) => {
+  await openHarness(page);
+  const state = createPaneGalleryCanvasState();
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await settleWebview(page, 4);
+  await clearPostedMessages(page);
+
+  const backendPane = page.locator('[data-pane-gallery-root-id="workspace-root-backend"]');
+  await backendPane.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 120,
+      y: 150
+    }
+  });
+
+  let menu = page.locator('[data-context-menu="true"]');
+  const arrangeGroup = menu.locator('[data-context-menu-arrange-group="layout"]');
+  await expect(arrangeGroup).toBeVisible();
+  await expect(arrangeGroup.locator('[data-context-menu-action="arrange-canvas-layout"]')).toContainText(
+    '整理当前 root 内的节点'
+  );
+  await expect(arrangeGroup.locator('[data-context-menu-action="show-arrange-layout-scope"]')).toBeVisible();
+  await arrangeGroup.locator('[data-context-menu-action="arrange-canvas-layout"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => readPostedMessagesByType(page, 'webview/arrangeCanvasLayout'))
+    .toContainEqual({
+      type: 'webview/arrangeCanvasLayout',
+      payload: {
+        targetGroupId: 'workspace-root-backend'
+      }
+    });
+
+  await clearPostedMessages(page);
+  await backendPane.locator('.react-flow__pane').click({
+    button: 'right',
+    position: {
+      x: 120,
+      y: 150
+    }
+  });
+
+  menu = page.locator('[data-context-menu="true"]');
+  await menu.locator('[data-context-menu-action="show-arrange-layout-scope"]').click();
+  await expect(menu.locator('[data-context-menu-action="arrange-workspace-canvas-layout"]')).toBeVisible();
+  await menu.locator('[data-context-menu-action="arrange-workspace-canvas-layout"]').click();
+
+  await expect(menu).toBeHidden();
+  await expect
+    .poll(async () => readPostedMessagesByType(page, 'webview/arrangeCanvasLayout'))
+    .toContainEqual({
+      type: 'webview/arrangeCanvasLayout'
+    });
+});
+
 test('multi-root rootGroups template reset requires a root section target', async ({ page }) => {
   await openHarness(page, {
     persistedState: {

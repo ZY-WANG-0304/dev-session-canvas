@@ -3446,7 +3446,8 @@ function App(): JSX.Element {
     fallbackFlowAnchor?: CanvasNodePosition
   ): boolean =>
     workspaceRootGroupCount > 1 &&
-    runtimeContext.multiRootPresentationMode === 'rootGroups' &&
+    (runtimeContext.multiRootPresentationMode === 'rootGroups' ||
+      runtimeContext.multiRootPresentationMode === 'paneGallery') &&
     Boolean(resolveArrangeLayoutRootGroupId(targetGroupId, fallbackFlowAnchor));
   const resolveTemplateResetTargetRootGroupId = (targetGroupId?: string): string | undefined => {
     const targetGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : undefined;
