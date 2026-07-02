@@ -450,17 +450,17 @@ async function verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope() {
       const [warningCall] = warningCalls;
       assert.match(warningCall.message, /Delete Parent/u);
       assert.ok(
-        warningCall.items.some((item) => /内部所有节点与子分组/.test(item.title) && /2 个节点/.test(item.title) && /1 个子分组/.test(item.title)),
+        warningCall.items.some((item) => /Delete all contained nodes and subgroups/.test(item.title) && /2 nodes/.test(item.title) && /1 subgroups/.test(item.title)),
         `Expected destructive action title to disclose recursive counts. Items: ${JSON.stringify(warningCall.items)}`
       );
       assert.ok(
-        warningCall.items.some((item) => item.title === '仅删除分组框并保留内部对象'),
+        warningCall.items.some((item) => item.title === 'Delete Group Frame Only and Keep Contents'),
         `Expected keep-members action title to disclose preservation. Items: ${JSON.stringify(warningCall.items)}`
       );
-      assert.match(warningCall.options?.detail ?? '', /递归删除内部 2 个节点和 1 个子分组/u);
-      assert.match(warningCall.options?.detail ?? '', /1 个执行节点会先终止并清理运行会话/u);
+      assert.match(warningCall.options?.detail ?? '', /recursively deletes 2 nodes and 1 subgroups/u);
+      assert.match(warningCall.options?.detail ?? '', /1 execution nodes will be stopped and their runtime sessions cleaned up first/u);
     },
-    ({ items }) => items.find((item) => /内部所有节点与子分组/.test(item.title))
+    ({ items }) => items.find((item) => /Delete all contained nodes and subgroups/.test(item.title))
   );
 }
 
@@ -935,9 +935,9 @@ async function verifyCanvasTemplatesTrusted() {
         20000
       );
       assert.strictEqual(warningCalls.length, 1);
-      assert.match(String(warningCalls[0].message), /重置会清空当前画布对象/);
+      assert.match(String(warningCalls[0].message), /Resetting will clear the current Canvas objects/);
     },
-    ({ items }) => items.find((item) => item === '继续重置')
+    ({ items }) => items.find((item) => item === 'Continue Reset')
   );
   assert.strictEqual(snapshot.state.nodes.filter((node) => node.kind === 'note').length, 1);
 
@@ -1713,7 +1713,7 @@ async function verifyCodexAgentBranchFromCurrentNode() {
         (node) =>
           node.kind === 'agent' &&
           node.id !== sourceNode.id &&
-          node.title.includes('分叉') &&
+          node.title.includes('Fork') &&
           node.metadata?.agent?.provider === 'codex' &&
           node.metadata.agent.launchPreset === 'custom' &&
           typeof node.metadata.agent.customLaunchCommand === 'string' &&
@@ -1897,7 +1897,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
         (node) =>
           node.kind === 'agent' &&
           node.id !== sourceNode.id &&
-          node.title.includes('分叉') &&
+          node.title.includes('Fork') &&
           node.metadata?.agent?.provider === 'claude' &&
           node.metadata.agent.launchPreset === 'custom' &&
           typeof node.metadata.agent.customLaunchCommand === 'string' &&
@@ -2267,7 +2267,7 @@ async function verifySidebarSessionHistoryForkActionUi() {
       return currentSnapshot.state.nodes.some(
         (node) =>
           node.kind === 'agent' &&
-          node.title === `${codexItem.title} 分叉` &&
+          node.title === `${codexItem.title} Fork` &&
           node.metadata?.agent?.provider === 'codex' &&
           typeof node.metadata?.agent?.customLaunchCommand === 'string' &&
           node.metadata.agent.customLaunchCommand.includes(`fork ${codexSessionId}`)
@@ -4458,7 +4458,7 @@ async function runRestrictedSmoke() {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。'
+        message.payload.message === 'The current workspace is not trusted. Agent / Terminal node creation is disabled.'
     )
   );
 
@@ -4469,7 +4469,7 @@ async function runRestrictedSmoke() {
     assert.strictEqual(warningCalls.length, 1, 'Expected restricted Quick Input terminal create to show one modal.');
     assert.strictEqual(
       warningCalls[0].message,
-      '当前 workspace 未受信任，暂时不能创建 Terminal 节点。请先信任当前工作区，再创建执行型节点。'
+      'The current workspace is not trusted, so Terminal nodes cannot be created right now. Trust the current workspace before creating execution nodes.'
     );
     assert.strictEqual(warningCalls[0].options?.modal, true);
   });
@@ -4487,7 +4487,7 @@ async function runRestrictedSmoke() {
     assert.strictEqual(warningCalls.length, 1, 'Expected restricted Quick Input agent create to show one modal.');
     assert.strictEqual(
       warningCalls[0].message,
-      '当前 workspace 未受信任，暂时不能创建 Agent 节点。请先信任当前工作区，再创建执行型节点。'
+      'The current workspace is not trusted, so Agent nodes cannot be created right now. Trust the current workspace before creating execution nodes.'
     );
     assert.strictEqual(warningCalls[0].options?.modal, true);
   });
@@ -9423,7 +9423,7 @@ async function verifyPendingWebviewRequestFaultInjection(noteNodeId) {
   );
   await sleep(150);
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-  await assert.rejects(pendingDomAction, /编辑区 Webview 已被关闭/);
+  await assert.rejects(pendingDomAction, /Editor Webview was closed/);
 
   snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.surfaceReady.editor === false);
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
@@ -9453,7 +9453,7 @@ async function verifyPendingWebviewRequestFaultInjection(noteNodeId) {
   );
   await sleep(150);
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-  await assert.rejects(pendingProbe, /编辑区 Webview 已被关闭/);
+  await assert.rejects(pendingProbe, /Editor Webview was closed/);
 
   snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.surfaceReady.editor === false);
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);

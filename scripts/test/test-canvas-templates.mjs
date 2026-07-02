@@ -986,9 +986,9 @@ try {
     'private buildCanvasTemplateResetConfirmationMessage',
     'private resolveCanvasTemplateResetConfirmationRootGroup'
   );
-  assert.match(resetConfirmationMessageSource, /当前画布对象/u);
-  assert.match(resetConfirmationMessageSource, /目标 root「\$\{targetRootGroup\.title\}」内的画布对象/u);
-  assert.match(resetConfirmationMessageSource, /所选 workspace root 内的画布对象/u);
+  assert.match(resetConfirmationMessageSource, /Resetting will clear the current Canvas objects/u);
+  assert.match(resetConfirmationMessageSource, /Canvas objects in target root/u);
+  assert.match(resetConfirmationMessageSource, /Canvas objects in the selected workspace root/u);
   assert.match(panelManagerSource, /public focusCanvasTemplateNodeGroup\(nodeIds: readonly string\[\]\): void/u);
   const resetDefaultTemplateMethodSource = sliceBetween(
     panelManagerSource,
@@ -1125,7 +1125,7 @@ try {
   );
   assert.match(
     saveCurrentCanvasTemplateSource,
-    /多根 workspace 中暂不支持保存整个组合视图为模板/u,
+    /Saving the full composed view as a template is not supported in multi-root workspaces yet/u,
     '多根组合视图不能直接保存为跨 root 模板。'
   );
   const nodeSequenceSource = sliceBetween(
@@ -1356,7 +1356,7 @@ try {
   assert.doesNotMatch(extensionSource, /保存当前画布为市场模板草稿/u);
   assert.doesNotMatch(extensionSource, /保存并打开发布表单/u);
   assert.doesNotMatch(extensionSource, /publishStoredTemplate/u);
-  assert.match(extensionSource, /打开市场模板详情失败/u);
+  assert.match(extensionSource, /Failed to open marketplace template details/u);
   assert.doesNotMatch(extensionSource, /installTemplateFromUri\(uri\)/u);
   assert.match(marketplacePanelSource, /marketplace\/installedTemplates/u);
   assert.match(marketplacePanelSource, /marketplace\/installedTemplatesError/u);
