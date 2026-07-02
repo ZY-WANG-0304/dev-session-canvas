@@ -258,17 +258,17 @@ assert.doesNotMatch(
 );
 assert.match(
   paneGalleryRunningScanlineKeyframes,
-  /0%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*100%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);/u,
-  'Pane Gallery root running scanline should keep the moving segment visible at both loop boundaries.'
+  /0%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation-timing-function:\s*linear;[\s\S]*2%\s*\{[\s\S]*var\(--pane-gallery-root-running-scanline-edge-offset\)[\s\S]*animation-timing-function:\s*cubic-bezier\(0\.45, 0, 0\.25, 1\);[\s\S]*98%\s*\{[\s\S]*calc\(var\(--pane-gallery-root-running-scanline-travel\) - var\(--pane-gallery-root-running-scanline-edge-offset\)\)[\s\S]*animation-timing-function:\s*linear;[\s\S]*100%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);/u,
+  'Pane Gallery root running scanline should keep visible opacity and compress off-header entry/exit into short keyframe ranges.'
 );
 assert.match(
   paneGalleryRunningScanlineRule,
-  /--pane-gallery-root-running-scanline-travel:\s*100%;/u,
-  'Pane Gallery root running scanline should keep its original travel distance.'
+  /--pane-gallery-root-running-scanline-edge-offset:\s*28px;[\s\S]*--pane-gallery-root-running-scanline-travel:\s*100%;/u,
+  'Pane Gallery root running scanline should keep its original travel distance and expose the off-header edge offset.'
 );
 assert.match(
   paneGalleryRunningScanlineLayerRule,
-  /left:\s*-28px;[\s\S]*width:\s*calc\(100% \+ 56px\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  /left:\s*calc\(0px - var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*width:\s*calc\(100% \+ var\(--pane-gallery-root-running-scanline-edge-offset\) \+ var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
   'Pane Gallery root running scanline layer should start outside the header, fully leave it, and keep the original timing curve.'
 );
 assert.match(
