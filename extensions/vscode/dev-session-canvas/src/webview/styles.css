@@ -3795,7 +3795,7 @@ body {
   --pane-gallery-root-running-scanline-color: var(--pane-gallery-root-header-border-color);
   --pane-gallery-root-running-scanline-angle: 18deg;
   --pane-gallery-root-running-scanline-width: 16px;
-  --pane-gallery-root-running-scanline-travel: calc(100% - var(--pane-gallery-root-running-scanline-width));
+  --pane-gallery-root-running-scanline-travel: 100%;
   --pane-gallery-root-running-scanline-opacity: 0.82;
   overflow: hidden;
 }
@@ -3808,7 +3808,7 @@ body {
   left: 0;
   right: auto;
   box-sizing: border-box;
-  width: 100%;
+  width: calc(100% + 56px);
   pointer-events: none;
   border-left: var(--pane-gallery-root-running-scanline-width) solid var(--pane-gallery-root-running-scanline-color);
   background: transparent;
@@ -3816,7 +3816,7 @@ body {
   filter: none;
   transform-origin: left center;
   transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
-  animation: pane-gallery-root-running-scanline 3s linear infinite;
+  animation: pane-gallery-root-running-scanline 3s cubic-bezier(0.45, 0, 0.25, 1) infinite;
   will-change: transform, opacity;
 }
 
