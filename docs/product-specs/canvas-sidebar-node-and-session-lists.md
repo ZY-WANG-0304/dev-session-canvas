@@ -27,7 +27,7 @@
 2. 节点列表显示当前画布上的所有非文件类型节点，每个节点显示：节点对应颜色的图标形圆点标记、节点标题、第二行状态信息；其中 `Agent` 节点的第二行显示 `cwdLabel · provider · 状态`，其他节点继续只显示状态；当节点正处于 notification 提醒中时，该项最右侧显示通知图标。
 3. 用户点击列表中的某个节点项，画布自动定位到该节点位置（类似大纲视图的跳转行为）。
 4. 节点列表默认使用“按分组树展示节点”；用户通过 `节点` view 标题右上角的 VSCode 原生 `...` 更多菜单切换“平铺展示节点”和“按分组树展示节点”。按分组树展示时，分组标题按画布分组树缩进呈现，并可在侧栏中折叠/展开具体分组 section，但不折叠画布上的分组框，也不改变任何分组事实；若存在处于 attention 状态的节点，顶部额外显示一个“待处理提醒”虚拟分组汇总这些节点。
-5. 平铺展示在单根 workspace 下仍显示为普通列表；若存在处于 attention 状态的节点，这些节点排在普通节点前。多根 workspace 下的平铺展示仍保留 workspace root 分组；若存在处于 attention 状态的节点，顶部先显示“待处理提醒”虚拟分组，然后再显示各 root 分组。
+5. 平铺展示在单根 workspace 下仍显示为普通列表；若存在处于 attention 状态的节点，这些节点排在普通节点前。多根 workspace 下的平铺展示仍保留 workspace root 分组；若存在处于 attention 状态的节点，顶部先显示“待处理提醒”虚拟分组，然后再显示各 root 分组。多根 workspace 下所有系统 workspace root 分组均按当前 VS Code workspace folder 顺序排列，不按 root 标题字母序或画布空间位置重排。
 6. 当画布上的节点发生变化（新增、删除、状态更新）时，节点列表自动同步更新。
 7. 用户可以在 `节点` view 标题栏直接添加文件夹到当前 workspace，也可以进入 worktree 流程：既能新建 git worktree 并把新目录加入 workspace，也能从 `git worktree list` 中选择一个尚未加入当前 workspace 的已有 worktree 直接加入；多根 workspace 下全局 worktree 流程先按 git common dir 合并同一 repository 的 workspace folders，只有存在多个不同 git repository 时才选择基准 repository，再用 VS Code 风格 QuickPick 选择添加已有 worktree、创建新分支、从指定 ref 创建新分支或直接基于已有 ref 创建 worktree。
 8. 多根 workspace 的 workspace folder 分组行最前面用图标区分普通 folder、git repository 和 git worktree；行尾提供 folder 级操作：基于该 folder 新建 worktree 并加入 workspace、移除 git worktree 并从 workspace 移除该 folder，以及仅从当前 workspace 移除该 folder；新建 worktree 使用 VS Code 专用 `worktree` Codicon。两个移除入口都使用 VS Code 原生 modal 而不是 QuickPick 或 sidebar 自绘确认：移除 folder 可选择保留画板或先清空画板再移除，默认保留画板且不删除磁盘目录；移除 worktree 可选择移除成功后清空画板或保留画板，默认清空画板，并先执行 `git worktree remove`，Git 成功后才清空对应画板。
@@ -57,6 +57,7 @@
 - 节点列表默认按分组树展示，也支持切回平铺展示。按分组树展示时，每个分组 section 按当前画布分组层级缩进，并可独立折叠/展开；未分组节点进入一个同样可折叠的“未分组”section。该折叠状态只属于侧栏呈现，不持久化为画布分组折叠，也不影响画布分组内容。
 - 当存在处于 attention 状态的节点时，平铺展示把这些节点排在普通节点前；按分组树展示在顶部显示“待处理提醒”虚拟分组汇总这些节点，同时保留节点在原分组树中的位置。
 - 多根 workspace 下，即使用户切到平铺展示，节点列表也保留 workspace root 分组；此时若存在处于 attention 状态的节点，顶部仍显示“待处理提醒”虚拟分组，并且这个虚拟分组排在 root 分组之前。
+- 多根 workspace 下，按分组树展示与平铺 root 分组展示都必须按当前 VS Code workspace folder 顺序排列系统 workspace root 分组；root 标题字母序、节点数量、attention 状态和画布中的 root 分组位置都不能改变这个顺序。若旧快照中的 root 无法匹配当前 workspace folder，才保留快照相对顺序作为兜底。
 - `节点` view 标题栏提供添加 workspace folder 与 worktree 的全局入口；worktree 流程的第一层 QuickPick 先提供 `Add existing worktree to workspace...` 分支，再提供新建 worktree 分支；新建成功后必须把新 worktree 目录加入当前 workspace，添加已有分支不得执行 `git worktree add`，只把已存在且尚未在当前 workspace 中的 worktree 目录加入当前 workspace。
 - 新建 worktree 的宿主交互对齐 VS Code Source Control：第一层 QuickPick 除添加已有 worktree 外，还展示 `Create new branch...`、`Create new branch from...`、`HEAD` 和本地分支 refs；选择 `Create new branch from...` 后进入第二层 ref QuickPick；只有创建新分支路径需要输入分支名，已有 ref 路径直接确认目标目录；`HEAD` 或已被其他 worktree checkout 的分支会以 detached HEAD 创建，避免重复 checkout 同一分支失败。
 - 多根 workspace 下，workspace folder 分组行最前面提供 folder 类型图标：普通 folder 使用 `folder` Codicon，git repository 使用 `repo` Codicon，linked git worktree 使用 `worktree` Codicon；未发现 `.git` 时显示普通 folder，`.git` 文件读取失败或无法识别时保守显示 git repository。
@@ -124,6 +125,7 @@
   - 单根平铺展示中，attention 节点排在非 attention 节点前
   - 按分组树展示中，attention 节点进入顶部“待处理提醒”虚拟分组，同时保留原分组位置
   - 多根 workspace 平铺展示中，保留 workspace root 分组，并把“待处理提醒”虚拟分组放在所有 root 分组之前
+  - 多根 workspace 下，系统 workspace root 分组按 VS Code workspace folder 顺序排列；普通用户分组仍按标题排序
 - **交互行为**：
   - 点击跳转到画布中的节点位置
   - `节点` view 标题栏可以添加 workspace folder、新建 worktree 或添加已有 worktree
@@ -187,6 +189,7 @@
 - 单根平铺展示中，若存在 attention 节点，attention 节点显示在普通节点前。
 - 按分组树展示中，若存在 attention 节点，列表顶部显示“待处理提醒”虚拟分组，并汇总所有 attention 节点；这些节点仍保留在原分组树位置。
 - 多根 workspace 平铺展示中，列表保留 workspace root 分组；若存在 attention 节点，“待处理提醒”虚拟分组显示在所有 root 分组之前。
+- 多根 workspace 下，按分组树展示和平铺展示中的系统 workspace root 分组都按当前 VS Code workspace folder 顺序排列；root 标题字母序和画布空间位置不会影响侧栏 root 顺序。
 - `节点` view 标题栏显示添加 workspace folder 与 worktree 的按钮；点击添加 folder 后，所选文件夹会进入当前 VS Code workspace。
 - 点击全局 worktree 入口时，单根 workspace 直接使用当前 folder；多根 workspace 先按 git common dir 合并同一 repository 的 workspace folders，如果只剩一个 repository 则直接进入 worktree 动作选择，如果存在多个不同 repository 才选择基准 repository；随后通过 VS Code 风格 QuickPick 选择添加已有 worktree，或创建新分支、从某个 ref 创建新分支、直接 checkout / detached checkout 已有 ref 并确认目标目录。
 - 多根 workspace 的每个 workspace folder 分组行最前面显示 folder 类型图标，分别区分普通 folder、git repository 和 git worktree；行尾按新建 worktree、移除 worktree、移除 folder 的顺序显示 icon-only 操作；新建 worktree 使用专用 `worktree` Codicon；点击 workspace folder 行的 worktree 按钮直接基于该 folder 创建 worktree 或添加已有 worktree 并加入 workspace；点击移除 folder 后通过 VS Code 原生 modal 选择保留或清空画板，默认保留画板且只把该 folder 从当前 workspace 中移除；点击移除 worktree 后通过 VS Code 原生 modal 选择移除成功后清空或保留画板，默认清空画板，确认后先执行 `git worktree remove`，Git 成功后才按选择清空画板并从 workspace 移除该 folder。
@@ -233,4 +236,5 @@
 
 ## 9. 当前验证状态
 
+- 2026-07-02：节点列表新增 root 分组排序回归：Host 根据当前 workspace folder 顺序为系统 workspace root 分组补排序索引，Webview 的按分组树展示和平铺 root 分组展示都优先按该索引排列。已补 `npm run test:sidebar-node-list` 覆盖 root 标题字母序与 workspace 顺序相反时仍按 workspace 顺序呈现，并复跑 `npm run typecheck`。
 - 2026-06-25：`节点` section 的 worktree 流程新增 `Add existing worktree to workspace...` 分支，Host 通过 `git worktree list --porcelain` 列出当前 repository 已有 worktree，过滤已在当前 workspace 中、prunable、bare 或磁盘目录不可用的条目；选择后仅调用 VS Code workspace folder API 加入目录，不执行 `git worktree add`。同日修复全局 worktree 入口把同一 git repository 的多个 workspace folders / linked worktrees 重复当作多个 repository 的问题：选择前按 git common dir 合并，并优先使用主 repository root 作为代表。已补 `npm run test:git-worktrees` 覆盖 porcelain 解析、repository 去重、分支入口和添加已有路径，并复跑 `npm run typecheck`、`npm run test:extension-manifest`、`npm run test:sidebar-node-list`、`npm run test:sidebar-codicon-bundle` 与 `git diff --check`。
