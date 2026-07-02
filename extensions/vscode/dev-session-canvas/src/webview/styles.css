@@ -1317,18 +1317,12 @@ body {
 @keyframes pane-gallery-root-running-scanline {
   0% {
     transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
-    opacity: 0;
-  }
-
-  5%,
-  82% {
     opacity: var(--pane-gallery-root-running-scanline-opacity);
   }
 
-  96%,
   100% {
     transform: translateX(var(--pane-gallery-root-running-scanline-travel)) rotate(var(--pane-gallery-root-running-scanline-angle));
-    opacity: 0;
+    opacity: var(--pane-gallery-root-running-scanline-opacity);
   }
 }
 
@@ -3799,9 +3793,9 @@ body {
 
 .pane-gallery-root-header.is-pane-gallery-root-running-scanline {
   --pane-gallery-root-running-scanline-color: var(--pane-gallery-root-header-border-color);
-  --pane-gallery-root-running-scanline-travel: 100%;
   --pane-gallery-root-running-scanline-angle: 18deg;
   --pane-gallery-root-running-scanline-width: 16px;
+  --pane-gallery-root-running-scanline-travel: calc(100% - var(--pane-gallery-root-running-scanline-width));
   --pane-gallery-root-running-scanline-opacity: 0.82;
   overflow: hidden;
 }
@@ -3811,17 +3805,18 @@ body {
   position: absolute;
   top: -22%;
   bottom: -22%;
-  left: -28px;
+  left: 0;
   right: auto;
-  width: calc(100% + 56px);
+  box-sizing: border-box;
+  width: 100%;
   pointer-events: none;
   border-left: var(--pane-gallery-root-running-scanline-width) solid var(--pane-gallery-root-running-scanline-color);
   background: transparent;
-  opacity: 0;
+  opacity: var(--pane-gallery-root-running-scanline-opacity);
   filter: none;
   transform-origin: left center;
   transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
-  animation: pane-gallery-root-running-scanline 3s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  animation: pane-gallery-root-running-scanline 3s linear infinite;
   will-change: transform, opacity;
 }
 
