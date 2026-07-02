@@ -11,7 +11,12 @@ import {
 
 const hostRuntimeSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/extension.ts',
-  'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts'
+  'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
+  'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarActionsView.ts',
+  'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts',
+  'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarSessionHistoryView.ts',
+  'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts',
+  'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts'
 ];
 const webviewMainSource = readFileSync(
   path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/webview/main.tsx'),

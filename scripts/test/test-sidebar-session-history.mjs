@@ -226,7 +226,11 @@ try {
   });
   const vscodeStubDir = path.join(tempDir, 'node_modules', 'vscode');
   await mkdir(vscodeStubDir, { recursive: true });
-  await writeFile(path.join(vscodeStubDir, 'index.js'), 'module.exports = {};', 'utf8');
+  await writeFile(
+    path.join(vscodeStubDir, 'index.js'),
+    "module.exports = { env: { language: 'en' }, l10n: { t: (message, args) => typeof args === 'object' && args ? Object.entries(args).reduce((value, [key, arg]) => value.split('{' + key + '}').join(String(arg)), message) : message } };",
+    'utf8'
+  );
   const { buildCanvasSidebarSessionHistoryItems, buildSidebarSessionHistoryHtml } = require(bundledSidebarModule);
   const multiRootWorkspaceFolders = [
     { name: 'main-root', path: workspaceRoot },
@@ -246,13 +250,13 @@ try {
     'Expected multi-root session history items to preserve the original cwd for restore/fork actions.'
   );
   assert.ok(
-    multiRootNestedSidebarItem?.tooltip.includes('Root：feature-a'),
+    multiRootNestedSidebarItem?.tooltip.includes('Root: feature-a'),
     'Expected multi-root session history tooltip to include the matched workspace root label.'
   );
   const claudeRootSidebarItem = sidebarItems.find((entry) => entry.sessionId === 'claude-session-root');
   assert.ok(claudeRootSidebarItem, 'Expected the sidebar session history builder to include the Claude root entry.');
   assert.ok(
-    claudeRootSidebarItem.tooltip.includes('目录：工作区根目录/'),
+    claudeRootSidebarItem.tooltip.includes('Directory: Workspace root/'),
     'Expected root session history tooltip cwd to include a POSIX directory suffix.'
   );
   assert.ok(
@@ -262,7 +266,7 @@ try {
   const claudeNestedSidebarItem = sidebarItems.find((entry) => entry.sessionId === 'claude-session-nested');
   assert.ok(claudeNestedSidebarItem, 'Expected the sidebar session history builder to include the nested Claude entry.');
   assert.ok(
-    claudeNestedSidebarItem.tooltip.includes('目录：packages/feature-a/'),
+    claudeNestedSidebarItem.tooltip.includes('Directory: packages/feature-a/'),
     'Expected nested session history tooltip cwd to use POSIX separators and a directory suffix.'
   );
   const windowsSidebarItem = buildCanvasSidebarSessionHistoryItems(
@@ -279,7 +283,7 @@ try {
     'C:\\workspace'
   )[0];
   assert.ok(
-    windowsSidebarItem?.tooltip.includes('目录：packages\\feature-a\\'),
+    windowsSidebarItem?.tooltip.includes('Directory: packages\\feature-a\\'),
     'Expected Windows session history tooltip cwd to use native separators and a directory suffix.'
   );
   const slashStyleNetworkSidebarItem = buildCanvasSidebarSessionHistoryItems(
@@ -296,7 +300,7 @@ try {
     '//server/share/workspace'
   )[0];
   assert.ok(
-    slashStyleNetworkSidebarItem?.tooltip.includes('目录：packages/feature-a/'),
+    slashStyleNetworkSidebarItem?.tooltip.includes('Directory: packages/feature-a/'),
     'Expected slash-style network session history tooltip cwd to preserve slash separators and a directory suffix.'
   );
   const backslashUncSidebarItem = buildCanvasSidebarSessionHistoryItems(
@@ -313,7 +317,7 @@ try {
     '\\\\server\\share\\workspace'
   )[0];
   assert.ok(
-    backslashUncSidebarItem?.tooltip.includes('目录：packages\\feature-a\\'),
+    backslashUncSidebarItem?.tooltip.includes('Directory: packages\\feature-a\\'),
     'Expected backslash UNC session history tooltip cwd to preserve backslash separators and a directory suffix.'
   );
   const longerInstructionWithinLimit = 'long-session-title-segment-'.repeat(5);
@@ -410,7 +414,7 @@ async function assertSessionHistoryActionButtons(browser, html) {
       sessionId: 'history-action-session',
       cwd: '/workspace/main/packages/app',
       title: '历史 action 按钮回归',
-      timestampLabel: 'Codex · 刚刚 · history-action-session',
+      timestampLabel: 'Codex · just now · history-action-session',
       tooltip: '历史 action 按钮回归',
       searchText: '历史 action 按钮回归 codex history-action-session'
     };
@@ -433,8 +437,8 @@ async function assertSessionHistoryActionButtons(browser, html) {
       'Expected each sidebar session history row to render resume and fork action buttons.'
     );
     for (const button of buttons) {
-      assert.match(button.ariaLabel ?? '', /历史会话/u, 'Expected icon-only session actions to expose an accessible label.');
-      assert.match(button.title ?? '', /历史会话/u, 'Expected icon-only session actions to expose a title tooltip.');
+      assert.match(button.ariaLabel ?? '', /history session/u, 'Expected icon-only session actions to expose an accessible label.');
+      assert.match(button.title ?? '', /history session/u, 'Expected icon-only session actions to expose a title tooltip.');
       assert.ok(button.width >= 24 && button.height >= 24, 'Expected session action buttons to keep at least a 24px hit target.');
       assert.match(button.iconClassName, /\bcodicon\b/u, 'Expected session action buttons to use VSCode Codicon icons.');
     }
@@ -530,12 +534,12 @@ async function assertSessionHistoryGrouping(browser, html) {
       [
         '0:main-root',
         '1:Codex',
-        '2:24小时内',
+        '2:Within 24 hours',
         '0:feature-root',
         '1:Claude Code',
-        '2:一周内',
+        '2:Within a week',
         '1:Codex',
-        '2:更早'
+        '2:Older'
       ],
       'Expected multi-selected session history grouping to render in root > provider > time order.'
     );
@@ -603,7 +607,7 @@ function createSidebarHistoryTestItem({ provider, sessionId, title, updatedAtMs,
     cwd: workspaceRootPath,
     title,
     updatedAtMs,
-    timestampLabel: `${providerLabel} · 刚刚 · ${sessionId}`,
+    timestampLabel: `${providerLabel} · just now · ${sessionId}`,
     workspaceRootLabel,
     workspaceRootPath,
     tooltip: title,
