@@ -4066,7 +4066,7 @@ async function verifyFileActivityViewsAndOpenFiles() {
       {
         kind: 'clickNodeActionButton',
         nodeId: sharedListNode.id,
-        label: '删除'
+        action: 'delete'
       },
       'panel',
       10000
@@ -5574,7 +5574,7 @@ async function verifyNoteMarkdownFileAssociation() {
     {
       kind: 'clickNodeActionButton',
       nodeId: associatedNote.id,
-      label: '重新加载'
+      action: 'reload'
     },
     'editor',
     10000
@@ -11072,7 +11072,7 @@ async function verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNodeId, t
     await performWebviewDomAction({
       kind: 'clickNodeActionButton',
       nodeId: agentNodeId,
-      label: '删除'
+      action: 'delete'
     });
 
     snapshot = await waitForSnapshot(
@@ -11096,7 +11096,7 @@ async function verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime(agentNodeId, t
     await performWebviewDomAction({
       kind: 'clickNodeActionButton',
       nodeId: terminalNodeId,
-      label: '删除'
+      action: 'delete'
     });
 
     snapshot = await waitForSnapshot(
@@ -11129,7 +11129,7 @@ async function verifyRealDeleteButton(noteNodeId) {
   await performWebviewDomAction({
     kind: 'clickNodeActionButton',
     nodeId: noteNodeId,
-    label: '删除'
+    action: 'delete'
   });
 
   const snapshot = await waitForSnapshot(
