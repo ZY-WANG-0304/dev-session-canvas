@@ -47,7 +47,8 @@
 - [x] (2026-07-02 02:18 +0800) 已验证宿主诊断落盘切片：`JAVA_HOME=/tmp/devsession-jdk-21 GRADLE_USER_HOME=/tmp/devsession-gradle-home GRADLE_OPTS='-Dhttps.proxyHost=10.79.2.115 -Dhttps.proxyPort=3128 -Dhttp.proxyHost=10.79.2.115 -Dhttp.proxyPort=3128' ./gradlew test buildPlugin verifyPluginStructure --no-daemon --stacktrace` 通过，`testWebviewBundle` 检查诊断消息 marker，`CanvasProtocolTest` 覆盖诊断消息编解码，`TerminalDiagnosticsRecorderTest` 覆盖 JSONL 写入和 C1 / DEL 码点记录。
 - [x] (2026-07-02 03:35 +0800) 已分析用户提供的 Android Studio 诊断日志 `.debug/terminal-input-20260701-191621-255.jsonl`：Backspace 的 xterm `onData` 为 U+007F 且宿主收到 U+007F，Tab 为 U+0009 且宿主收到 U+0009，说明 bridge/Kotlin 未吞特殊键；中文输入宿主收到正确 Unicode 码点，但 PTY 输出中出现 U+FFFD 和 `<009a>` 等坏字符。当前已把 PTY 输出从按 byte chunk 构造 `String` 改为 UTF-8 reader 流式解码，并在 PTY 环境缺少 UTF-8 locale 时补 `LC_CTYPE`，同时默认补 `TERM=xterm-256color`；`ExecutionSessionManagerTest` 覆盖跨 read chunk 的 UTF-8 解码和环境注入。
 - [x] (2026-07-02 04:03 +0800) 已分析第二份 Android Studio 诊断日志 `.debug/terminal-input-20260701-195803-911.jsonl`：中文输出“机”已无 U+FFFD，说明流式 UTF-8 解码生效；Backspace 仍以 U+007F 到达宿主，PTY 回 `U+0008 U+0020 U+0008` 等擦除序列，问题已从输入传输转为 xterm 渲染/光标态复验；Tab 到达 PTY 后回 BEL，符合无补全或 shell 上下文拒绝的行为。日志同时暴露 xterm 在某个 KeyA 事件产生 U+FFFF 非字符并被发送到 PTY；当前把 Terminal 输入过滤从 C1 扩展到 Unicode 非字符/孤立 surrogate，并在诊断 UI 停止后继续显示 last diagnostics 路径。
-- [ ] 完成里程碑 4 的真实 PTY smoke。（已完成：协议 / 状态 / PTY session manager / shell 解析 / webview bundle marker 自动化测试；用户已确认 Terminal 节点可创建且普通输入可达；已修复 Backspace bridge 转义风险，并新增 JCEF 普通键重复输入 guard、C1 / Unicode 非字符过滤、宿主诊断落盘、PTY UTF-8 流式输出解码和基础 TERM / UTF-8 环境注入。剩余：安装新 ZIP 后复验 U+FFFF 不再进入 shell；复验 Backspace 视觉擦除、Ctrl+C 和方向键；如果 Backspace 仍视觉异常，优先检查 xterm 渲染/光标状态而不是 bridge/Kotlin 输入传输；并在有图形环境的 IntelliJ IDEA、PyCharm、Android Studio 中验证 resize、Stop、Delete 和项目关闭清理。）
+- [x] (2026-07-02 22:47 +0800) 用户安装含非字符过滤和 last diagnostics 展示的新 ZIP 后反馈“这些问题修复了”，按前一轮复验清单记录为：U+FFFF 不再进入 shell、Backspace 视觉擦除、Ctrl+C 和方向键在该 Android Studio 手动 smoke 中已恢复。该结论只覆盖用户本次真实 IDE 复验，不扩展为三 IDE / 全 OS 兼容承诺。
+- [ ] 完成里程碑 4 的真实 PTY smoke。（已完成：协议 / 状态 / PTY session manager / shell 解析 / webview bundle marker 自动化测试；用户已确认 Terminal 节点可创建且普通输入可达；已修复 Backspace bridge 转义风险，并新增 JCEF 普通键重复输入 guard、C1 / Unicode 非字符过滤、宿主诊断落盘、PTY UTF-8 流式输出解码和基础 TERM / UTF-8 环境注入；用户已在升级后安装/启用 JCEF 的 Android Studio 中确认 U+FFFF、Backspace、Ctrl+C 和方向键问题修复。剩余：在有图形环境的 IntelliJ IDEA、PyCharm、Android Studio 中补完整 resize、Stop、Delete、项目关闭清理、精确 IDE build 和 JCEF 安装方式记录。）
 - [ ] 完成 Agent 节点，明确第一版不承诺关闭 IDE 后继续运行，只承诺当前 IDE 生命周期内 execution 通道和 snapshot-only / 历史态表达。
 - [ ] 完成 Runtime Supervisor 接入方案，倾向复用现有 Node supervisor，并验证 IntelliJ 侧能注册、恢复和清理 runtime 会话。
 - [ ] 完成内部/手动安装验证准备，包括 `./gradlew test`、`./gradlew buildPlugin`、`./gradlew verifyPlugin`、三类目标 IDE smoke 和手动安装说明。
@@ -119,6 +120,9 @@
 
 - 观察：第二份诊断日志显示 UTF-8 输出修复有效，同时把剩余异常缩小到前端输入过滤和真实终端渲染复验。
   证据：`.debug/terminal-input-20260701-195803-911.jsonl` 中中文输入“机”的 `terminal.output` 是 `U+673A`，不再出现 U+FFFD；Backspace 的 `xterm.onData` / host input 仍为 U+007F，PTY output 多数为 `U+0008 U+0020 U+0008` 或多列擦除序列，说明 shell 已在执行擦除；Tab 的 `xterm.onData` / host input 为 U+0009，PTY output 为 BEL。该日志还出现一次 `xterm.onData` / host input 为 U+FFFF 且 shell 回显 `<ffff>`，这是 Unicode 非字符，不应作为 Terminal 输入发送给 PTY。
+
+- 观察：用户复验确认上一轮 Terminal 输入问题已修复，但该结论仍是一次真实 IDE 手动 smoke 证据，不是完整兼容矩阵。
+  证据：2026-07-02 22:47 +0800 用户反馈“这些问题修复了”，对应上一轮要求复验的 U+FFFF、Backspace 视觉擦除、Ctrl+C 和方向键。当前没有新增 JSONL、IDE build 号或三 IDE 全量 checklist，因此只能作为 Android Studio 当前环境中的问题修复证据；完整里程碑 4 仍需补 resize、Stop、Delete 和项目关闭清理。
 
 ## 决策记录
 
@@ -387,7 +391,7 @@
 
 当前里程碑 3 工程切片的验收标准是：`CanvasProjectStateService` 以项目级状态保存 Note、尺寸和视口；bootstrap/stateUpdated 都从服务快照生成；前端 Note 节点可编辑标题和正文、拖拽后发送位置、选中后 resize 并发送尺寸、点击删除后发送删除消息；`CanvasProtocolTest` 覆盖新增 Webview 消息解码和 host state viewport 编码；`CanvasProjectStateServiceTest` 覆盖状态 helper；`./gradlew test buildPlugin verifyPluginStructure` 通过。不设置 `until-build` 只用于解除 Android Studio `AI-253.30387.90` 的安装门禁。用户已在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中确认基础可见 smoke；完整里程碑 3 仍未满足的是关闭并重开同一项目后的真实恢复 smoke、Android Studio 精确 build 和 JCEF 安装路径。
 
-当前里程碑 4 工程切片的验收标准是：点击 `Create Terminal` 后宿主创建 Terminal 节点并启动项目目录 shell；xterm 节点把输入发送为 `webview/terminalInput`，Kotlin 用 `pty4j` 写入 PTY；JCEF bridge 不把 Backspace 的 DEL 控制字符传输成空格或乱码；JCEF 输入 guard 不让普通英文键重复提交，且不会破坏中文/英文 IME 切换；PTY 输出通过 `host/terminalOutput` 即时回流，并把有限最近输出写入项目状态；节点 resize 更新像素尺寸和 PTY 行列；Stop / Delete / dispose 会停止当前 session；`ExecutionSessionManagerTest` 用 fake PTY 覆盖启动、输入、resize、输出、自然退出、停止和启动失败；`ShellCommandResolverTest` 覆盖默认 shell / cwd 选择；`CanvasWebviewHtmlTest` 和 `CanvasProtocolTest` 覆盖特殊键控制字符的 bridge 转义与协议解码；`testWebviewBundle` 覆盖 Terminal input guard 和 C1 filter bundle marker；`./gradlew test buildPlugin verifyPluginStructure` 通过。当前执行环境仍无法验证真实 JCEF UI 与真实 PTY smoke，剩余验收是在 IntelliJ IDEA、PyCharm 和升级后安装/启用 JCEF 的 Android Studio 中手动创建 Terminal、输入 `pwd` / `echo` 等命令、复验 Backspace、英文输入、中文/英文 IME 切换、拖拽 resize、Stop、Delete 并关闭项目确认进程清理。
+当前里程碑 4 工程切片的验收标准是：点击 `Create Terminal` 后宿主创建 Terminal 节点并启动项目目录 shell；xterm 节点把输入发送为 `webview/terminalInput`，Kotlin 用 `pty4j` 写入 PTY；JCEF bridge 不把 Backspace 的 DEL 控制字符传输成空格或乱码；JCEF 输入 guard 不让普通英文键重复提交，且不会破坏中文/英文 IME 切换；PTY 输出通过 `host/terminalOutput` 即时回流，并把有限最近输出写入项目状态；节点 resize 更新像素尺寸和 PTY 行列；Stop / Delete / dispose 会停止当前 session；`ExecutionSessionManagerTest` 用 fake PTY 覆盖启动、输入、resize、输出、自然退出、停止和启动失败；`ShellCommandResolverTest` 覆盖默认 shell / cwd 选择；`CanvasWebviewHtmlTest` 和 `CanvasProtocolTest` 覆盖特殊键控制字符的 bridge 转义与协议解码；`testWebviewBundle` 覆盖 Terminal input guard 和 C1 / 非字符 filter bundle marker；`./gradlew test buildPlugin verifyPluginStructure` 通过。用户已在升级后安装/启用 JCEF 的 Android Studio 中确认普通输入、中文/英文 IME、U+FFFF 过滤、Backspace、Ctrl+C 和方向键问题修复。当前执行环境仍无法验证真实 JCEF UI 与真实 PTY smoke；剩余验收是在 IntelliJ IDEA、PyCharm 和 Android Studio 中补精确 build、拖拽 resize、Stop、Delete 并关闭项目确认进程清理。
 
 后续整份计划完成时，用户可观察验收标准如下：
 
@@ -494,7 +498,7 @@
     IntelliJ IDEA 与 PyCharm 中 Tool Window 可见，JCEF React Flow 画布、toolbar、viewport readout 和 Note 卡片可见；
     Android Studio AI-253.30387.90 中 Tool Window 可见，但显示 JCEF unsupported fallback；随后用户确认升级 Android Studio 并安装/启用 JCEF 后也可以打开。
 
-里程碑 4 工程切片的当前验证证据如下：
+里程碑 4 工程切片的当前验证证据如下。除自动化验证外，2026-07-02 用户已在升级后安装/启用 JCEF 的 Android Studio 中确认 U+FFFF、Backspace、Ctrl+C 和方向键问题修复：
 
     extensions/intellij/dev-session-canvas/src/main/kotlin/com/devsessioncanvas/intellij/execution/ExecutionSessionManager.kt
     class ExecutionSessionManager(
@@ -638,3 +642,5 @@ Kotlin 侧消息模型在第一版只能覆盖当前里程碑需要的最小子�
 补充更新说明：2026-07-02 03:35 +0800，记录首份 Android Studio Terminal 诊断日志结论：Backspace / Tab 已正确穿过 webview 与 Kotlin bridge，中文输出乱码来自宿主按 byte chunk 解码 UTF-8 的明确 bug；当前改为流式 UTF-8 reader，并给 PTY 环境补 `TERM=xterm-256color` 与缺失 UTF-8 locale 时的 `LC_CTYPE`，已通过 `./gradlew test buildPlugin verifyPluginStructure`。
 
 补充更新说明：2026-07-02 04:03 +0800，记录第二份 Android Studio Terminal 诊断日志结论：流式 UTF-8 输出解码已让中文输出不再出现 U+FFFD；Backspace/Tab 已继续证明能到达 PTY，Backspace 回显为擦除控制序列；当前新增 Terminal 输入非字符过滤，避免 U+FFFF 污染 shell，并让诊断 UI 停止后显示 last diagnostics 路径。
+
+补充更新说明：2026-07-02 22:47 +0800，记录用户安装新 ZIP 后的 Terminal 手动复验结论：上一轮复验清单中的 U+FFFF、Backspace 视觉擦除、Ctrl+C 和方向键问题已修复；该结论仅覆盖用户当前 Android Studio 环境，完整里程碑 4 仍需补精确 IDE build、resize、Stop、Delete 和项目关闭清理。
