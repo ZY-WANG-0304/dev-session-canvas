@@ -6407,10 +6407,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private reconcileCanvasFileArtifacts(state: CanvasPrototypeState): CanvasPrototypeState {
+  private reconcileCanvasFileArtifacts(
+    state: CanvasPrototypeState,
+    options: {
+      geometryRepairOptions?: CanvasGroupGeometryRepairOptions;
+    } = {}
+  ): CanvasPrototypeState {
     return rebuildCanvasFileArtifacts(state, {
       view: this.getCanvasFileViewConfiguration(),
-      preserveAutomaticFileNodeSizes: true
+      preserveAutomaticFileNodeSizes: true,
+      geometryRepairOptions: options.geometryRepairOptions
     });
   }
 
@@ -11279,7 +11285,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: targetGroupId ?? undefined
         });
         this.state = this.reconcileCanvasFileArtifacts(
-          targetGroupId ? arrangedState : finalizeCanvasGroupState(arrangedState)
+          targetGroupId ? arrangedState : finalizeCanvasGroupState(arrangedState),
+          targetGroupId
+            ? {
+                geometryRepairOptions: {
+                  repairTargetGroupIds: [targetGroupId]
+                }
+              }
+            : undefined
         );
         this.canvasTemplateInitialized = true;
         this.persistState();
@@ -19562,23 +19575,30 @@ function repairOneIllegalSiblingGeometry(
 ): { groups: CanvasGroupSummary[]; nodes: CanvasNodeSummary[]; didRepair: boolean } {
   const siblingCollections = collectSiblingGeometryCollections(groups, nodes);
   for (const collection of siblingCollections) {
-    const overlappingGroups = findFirstOverlappingSiblingGroups(collection.items);
+    const scopedRepairGroupIds = resolveScopedRepairTargetGroupIds(collection.items, options);
+    const scopedRepairGroupIdSet = scopedRepairGroupIds.length > 0
+      ? new Set(scopedRepairGroupIds)
+      : undefined;
+    const overlappingGroups = findFirstOverlappingSiblingGroups(collection.items, scopedRepairGroupIdSet);
     if (overlappingGroups) {
-      const repairGroups = collection.items
-        .filter((item) => item.kind === 'group')
-        .map((item) => item.id);
+      const repairGroups = scopedRepairGroupIds.length > 0
+        ? filterRepairTargetGroupIdsForOverlap(scopedRepairGroupIds, overlappingGroups)
+        : collection.items
+            .filter((item) => item.kind === 'group')
+            .map((item) => item.id);
       return {
         ...applySpreadRepair(groups, nodes, collection.items, repairGroups, overlappingGroups, options),
         didRepair: true
       };
     }
 
-    const nodeGroupOverlap = findFirstNodeGroupOverlap(collection.items);
+    const nodeGroupOverlap = findFirstNodeGroupOverlap(collection.items, scopedRepairGroupIdSet);
     if (nodeGroupOverlap) {
-      const preferredRepairIds =
-        isPinnedCanvasGroupRepairTarget(options, nodeGroupOverlap.secondId)
-          ? [nodeGroupOverlap.firstId]
-          : [nodeGroupOverlap.secondId];
+      const preferredRepairIds = scopedRepairGroupIds.length > 0
+        ? filterRepairTargetGroupIdsForOverlap(scopedRepairGroupIds, nodeGroupOverlap)
+        : isPinnedCanvasGroupRepairTarget(options, nodeGroupOverlap.secondId)
+            ? [nodeGroupOverlap.firstId]
+            : [nodeGroupOverlap.secondId];
       return {
         ...applySpreadRepair(groups, nodes, collection.items, preferredRepairIds, nodeGroupOverlap, options),
         didRepair: true
@@ -19604,10 +19624,31 @@ interface IllegalGeometryOverlap {
 interface CanvasGroupGeometryRepairOptions {
   pinnedGroupId?: string;
   pinnedGroupIds?: readonly string[];
+  repairTargetGroupIds?: readonly string[];
 }
 
 function collectPinnedCanvasGroupRepairTargetIds(options: CanvasGroupGeometryRepairOptions): Set<string> {
   return new Set([options.pinnedGroupId, ...(options.pinnedGroupIds ?? [])].filter((id): id is string => Boolean(id)));
+}
+
+function resolveScopedRepairTargetGroupIds(
+  items: readonly SiblingGeometryItem[],
+  options: CanvasGroupGeometryRepairOptions
+): string[] {
+  const repairTargetGroupIds = options.repairTargetGroupIds ?? [];
+  if (repairTargetGroupIds.length === 0) {
+    return [];
+  }
+
+  const itemIds = new Set(items.map((item) => item.id));
+  return [...new Set(repairTargetGroupIds)].filter((groupId) => itemIds.has(groupId));
+}
+
+function filterRepairTargetGroupIdsForOverlap(
+  repairTargetGroupIds: readonly string[],
+  overlap: IllegalGeometryOverlap
+): string[] {
+  return repairTargetGroupIds.filter((groupId) => groupId === overlap.firstId || groupId === overlap.secondId);
 }
 
 function isPinnedCanvasGroupRepairTarget(options: CanvasGroupGeometryRepairOptions, groupId: string): boolean {
@@ -19639,12 +19680,18 @@ function collectSiblingGeometryCollections(
   }));
 }
 
-function findFirstOverlappingSiblingGroups(items: readonly SiblingGeometryItem[]): IllegalGeometryOverlap | undefined {
+function findFirstOverlappingSiblingGroups(
+  items: readonly SiblingGeometryItem[],
+  repairTargetIds?: ReadonlySet<string>
+): IllegalGeometryOverlap | undefined {
   const groupItems = items.filter((item) => item.kind === 'group');
   for (let leftIndex = 0; leftIndex < groupItems.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < groupItems.length; rightIndex += 1) {
       const left = groupItems[leftIndex];
       const right = groupItems[rightIndex];
+      if (repairTargetIds && !repairTargetIds.has(left.id) && !repairTargetIds.has(right.id)) {
+        continue;
+      }
       if (shouldTreatSiblingGeometryAsConflict(left, right, false)) {
         return { firstId: left.id, secondId: right.id };
       }
@@ -19654,10 +19701,16 @@ function findFirstOverlappingSiblingGroups(items: readonly SiblingGeometryItem[]
   return undefined;
 }
 
-function findFirstNodeGroupOverlap(items: readonly SiblingGeometryItem[]): IllegalGeometryOverlap | undefined {
+function findFirstNodeGroupOverlap(
+  items: readonly SiblingGeometryItem[],
+  repairTargetIds?: ReadonlySet<string>
+): IllegalGeometryOverlap | undefined {
   const nodeItems = items.filter((item) => item.kind === 'node');
   const groupItems = items.filter((item) => item.kind === 'group');
   for (const group of groupItems) {
+    if (repairTargetIds && !repairTargetIds.has(group.id)) {
+      continue;
+    }
     const node = nodeItems.find((candidate) => rectsIntersect(candidate.rect, group.rect));
     if (node) {
       return { firstId: node.id, secondId: group.id };
@@ -19732,6 +19785,16 @@ function buildSpreadRepairCandidates(
     candidateKeys.add(key);
     candidates.push(uniqueIds);
   };
+
+  const scopedRepairIds = resolveScopedRepairTargetGroupIds(items, options);
+  if (scopedRepairIds.length > 0) {
+    const scopedOverlapIds = scopedRepairIds.filter((id) => overlapMovableIds.includes(id));
+    addCandidate(scopedOverlapIds.length > 0 ? scopedOverlapIds : scopedRepairIds);
+    for (const id of scopedOverlapIds) {
+      addCandidate([id]);
+    }
+    return candidates;
+  }
 
   addCandidate(preferredIds);
   addCandidate(overlapMovableIds);
@@ -19815,10 +19878,18 @@ function resolveSpreadRepairPlan(
       rect: target.rect
     }))
   ];
+  const scopedRepairIds = resolveScopedRepairTargetGroupIds(items, options);
   for (let leftIndex = 0; leftIndex < finalItems.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < finalItems.length; rightIndex += 1) {
       const left = finalItems[leftIndex];
       const right = finalItems[rightIndex];
+      if (
+        scopedRepairIds.length > 0 &&
+        !repairTargetIdSet.has(left.id) &&
+        !repairTargetIdSet.has(right.id)
+      ) {
+        continue;
+      }
       if (shouldTreatSiblingGeometryAsConflict(left.item, right.item, false)) {
         return undefined;
       }
@@ -20383,6 +20454,7 @@ function rebuildCanvasFileArtifacts(
   options: {
     view: CanvasFileViewConfiguration;
     preserveAutomaticFileNodeSizes: boolean;
+    geometryRepairOptions?: CanvasGroupGeometryRepairOptions;
   }
 ): CanvasPrototypeState {
   const workspaceRootGroups = state.groups.filter(isWorkspaceRootGroup);
@@ -20397,7 +20469,7 @@ function rebuildCanvasFileArtifacts(
           namespaceId: undefined
         }
       );
-  return finalizeCanvasGroupState(rebuiltState);
+  return finalizeCanvasGroupState(rebuiltState, options.geometryRepairOptions);
 }
 
 function rebuildMultiRootCanvasFileArtifacts(
