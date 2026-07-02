@@ -3225,7 +3225,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public getSessionHistoryRestoreBlockReason(): string | undefined {
-    return vscode.workspace.isTrusted ? undefined : '当前 workspace 未受信任，只能查看历史会话，不能恢复或分叉为新 Agent 节点。';
+    return vscode.workspace.isTrusted
+      ? undefined
+      : vscode.l10n.t(
+          'The current workspace is not trusted. You can browse session history, but cannot resume or fork sessions into new Agent nodes.'
+        );
   }
 
   public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {

@@ -11,7 +11,7 @@ const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
 const EXPLICIT_CLAUDE_SESSION_ID = 'session-explicit-123456789';
 const RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE =
-  '当前 workspace 未受信任，只能查看历史会话，不能恢复或分叉为新 Agent 节点。';
+  'The current workspace is not trusted. You can browse session history, but cannot resume or fork sessions into new Agent nodes.';
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
 const COMMAND_IDS = {
@@ -2366,10 +2366,10 @@ async function verifyRestrictedSessionHistoryRestoreIsDisabled() {
           assert.strictEqual(quickPickCall.options?.title, RESTRICTED_SESSION_HISTORY_RESTORE_MESSAGE);
           assert.match(
             quickPickCall.options?.placeHolder ?? '',
-            /只读查看模式/,
+            /Read-only mode/i,
             'Expected restricted session history QuickPick to explain the read-only mode.'
           );
-          assert.strictEqual(quickPickItem.description, '恢复');
+          assert.strictEqual(quickPickItem.description, 'Resume');
           assert.match(quickPickItem.detail ?? '', /^Codex · .+ · restricted-sidebar-history-123$/);
           assert.deepStrictEqual(
             warningCalls.map((call) => call.message),
@@ -2831,7 +2831,7 @@ async function verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits()
       assert.ok(customCreateItem, 'Expected the Agent launch QuickPick to include a custom command creation item.');
       assert.strictEqual(
         customCreateItem.label,
-        '使用自定义命令创建',
+        'Create with custom command',
         'Expected the first Agent launch QuickPick item to create from a custom command.'
       );
 
@@ -12494,7 +12494,7 @@ function formatExpectedSidebarNodeQuickPickDescription(sidebarItem) {
     return undefined;
   }
 
-  return sidebarItem.attentionPending ? `${sidebarItem.description} · 有提醒` : sidebarItem.description;
+  return sidebarItem.attentionPending ? `${sidebarItem.description} · Attention` : sidebarItem.description;
 }
 
 function buildExpectedSidebarNodeQuickPickDetail(node, options = {}) {
