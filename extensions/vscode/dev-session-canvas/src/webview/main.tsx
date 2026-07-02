@@ -3424,8 +3424,15 @@ function App(): JSX.Element {
     runtimeContext.multiRootPresentationMode === 'paneGallery' && paneGalleryRootModels.length > 1;
   const selectedGroupIds = resolveSelectedGroupIds(localUiState);
   const workspaceRootGroupCount = groups.filter((group) => isWorkspaceRootCanvasGroupRole(group.role)).length;
-  const resolveArrangeLayoutRootGroupId = (targetGroupId?: string): string | undefined => {
-    const targetGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : undefined;
+  const resolveArrangeLayoutRootGroupId = (
+    targetGroupId?: string,
+    fallbackFlowAnchor?: CanvasNodePosition
+  ): string | undefined => {
+    const targetGroup = targetGroupId
+      ? groups.find((group) => group.id === targetGroupId)
+      : fallbackFlowAnchor
+        ? findInnermostCanvasGroupFrameAtFlowPoint(groups, fallbackFlowAnchor)
+        : undefined;
     if (!targetGroup) {
       return undefined;
     }
@@ -3434,10 +3441,13 @@ function App(): JSX.Element {
       ? targetGroup.id
       : resolveContainingWorkspaceRootGroupIdForWebview(groups, targetGroup.id);
   };
-  const shouldOfferWorkspaceArrangeLayoutScope = (targetGroupId?: string): boolean =>
+  const shouldOfferWorkspaceArrangeLayoutScope = (
+    targetGroupId?: string,
+    fallbackFlowAnchor?: CanvasNodePosition
+  ): boolean =>
     workspaceRootGroupCount > 1 &&
     runtimeContext.multiRootPresentationMode === 'rootGroups' &&
-    Boolean(resolveArrangeLayoutRootGroupId(targetGroupId));
+    Boolean(resolveArrangeLayoutRootGroupId(targetGroupId, fallbackFlowAnchor));
   const resolveTemplateResetTargetRootGroupId = (targetGroupId?: string): string | undefined => {
     const targetGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : undefined;
     if (!targetGroup) {
@@ -4767,6 +4777,7 @@ function App(): JSX.Element {
             onSelectGroupBody={selectGroup}
             onFocusGroupInViewport={focusGroupInViewport}
             onGroupBodyContextMenu={handlePaneContextMenu}
+            onGroupContextMenu={handlePaneContextMenu}
             onSelectGroup={selectGroup}
             onDraftGroup={updateGroupDraft}
             onGroupInteractionStart={handleGroupInteractionStart}
@@ -4824,7 +4835,10 @@ function App(): JSX.Element {
           agentLaunchDefaults={runtimeContext.agentLaunchDefaults}
           canSaveCurrentCanvas={hostState?.nodes.some((node) => isTemplateCompatibleNodeKind(node.kind)) ?? false}
           canCreateGroupFromSelection={contextMenu.canCreateGroupFromSelection === true}
-          canArrangeWorkspaceLayoutScope={shouldOfferWorkspaceArrangeLayoutScope(contextMenu.targetGroupId)}
+          canArrangeWorkspaceLayoutScope={shouldOfferWorkspaceArrangeLayoutScope(
+            contextMenu.targetGroupId,
+            contextMenu.flowAnchor
+          )}
           onCreateEmptyGroup={() => {
             handleCreateEmptyGroup(contextMenu.flowAnchor, contextMenu.targetGroupId);
             closePaneContextMenu();
@@ -4921,7 +4935,9 @@ function App(): JSX.Element {
           }}
           onArrangeCanvasLayout={(scope) => {
             const targetGroupId =
-              scope === 'target' ? resolveArrangeLayoutRootGroupId(contextMenu.targetGroupId) : undefined;
+              scope === 'target'
+                ? resolveArrangeLayoutRootGroupId(contextMenu.targetGroupId, contextMenu.flowAnchor)
+                : undefined;
             postMessage({
               type: 'webview/arrangeCanvasLayout',
               ...(targetGroupId
@@ -9860,6 +9876,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
               props.onFocusGroupInViewport(groupId);
             }}
             onGroupBodyContextMenu={(event, groupId) => props.onPaneContextMenu(event, rootGroupId, groupId)}
+            onGroupContextMenu={(event, groupId) => props.onPaneContextMenu(event, rootGroupId, groupId)}
             onSelectGroup={(groupId, event) => {
               bindSurface();
               props.onSelectGroup(groupId, event);
@@ -12157,6 +12174,7 @@ function CanvasGroupsViewportLayer(props: {
   ) => void;
   onFocusGroupInViewport: (groupId: string) => void;
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
+  onGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
   onSelectGroup: (
     groupId: string,
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
@@ -12336,6 +12354,7 @@ function CanvasGroupLayer(props: {
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
   onFocusGroupInViewport: (groupId: string) => void;
+  onGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onGroupInteractionStart: (groupId: string) => void;
   onGroupInteractionEnd: (groupId: string) => void;
@@ -12376,6 +12395,7 @@ function CanvasGroupLayer(props: {
           zoom={props.viewport.zoom}
           onSelectGroup={props.onSelectGroup}
           onFocusGroupInViewport={props.onFocusGroupInViewport}
+          onGroupContextMenu={props.onGroupContextMenu}
           onDraftGroup={props.onDraftGroup}
           onGroupInteractionStart={props.onGroupInteractionStart}
           onGroupInteractionEnd={props.onGroupInteractionEnd}
@@ -12453,6 +12473,19 @@ function findInnermostCanvasGroupBodyAtFlowPoint(
     .at(0);
 }
 
+function findInnermostCanvasGroupFrameAtFlowPoint(
+  groups: readonly CanvasGroupSummary[],
+  flowPoint: CanvasPoint
+): CanvasGroupSummary | undefined {
+  return [...groups]
+    .filter((group) => isCanvasPointInsideGroupFrame(flowPoint, group))
+    .sort((left, right) => {
+      const depthDelta = groupDepthForWebview(groups, right.id) - groupDepthForWebview(groups, left.id);
+      return depthDelta !== 0 ? depthDelta : groupAreaForWebview(left) - groupAreaForWebview(right);
+    })
+    .at(0);
+}
+
 function readCanvasViewportTransform(viewportElement: HTMLElement): Viewport {
   const match = viewportElement.style.transform.match(
     /translate\((-?\d+(?:\.\d+)?)px,\s*(-?\d+(?:\.\d+)?)px\)\s+scale\((-?\d+(?:\.\d+)?)\)/u
@@ -12495,6 +12528,14 @@ function isCanvasPointInsideGroupBody(
 ): boolean {
   const left = group.position.x;
   const top = group.position.y + bodyTopOffset;
+  const right = group.position.x + group.size.width;
+  const bottom = group.position.y + group.size.height;
+  return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
+}
+
+function isCanvasPointInsideGroupFrame(point: CanvasPoint, group: CanvasGroupSummary): boolean {
+  const left = group.position.x;
+  const top = group.position.y;
   const right = group.position.x + group.size.width;
   const bottom = group.position.y + group.size.height;
   return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
@@ -12924,6 +12965,7 @@ function CanvasGroupFrame(props: {
     event?: Pick<React.MouseEvent | React.PointerEvent | MouseEvent, 'ctrlKey' | 'metaKey'>
   ) => void;
   onFocusGroupInViewport: (groupId: string) => void;
+  onGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
   onDraftGroup: (groupId: string, draft: CanvasGroupDraft | null) => void;
   onGroupInteractionStart: (groupId: string) => void;
   onGroupInteractionEnd: (groupId: string) => void;
@@ -13350,6 +13392,10 @@ function CanvasGroupFrame(props: {
     handleGroupChromeDoubleClick(event, props.group.id, props.onFocusGroupInViewport);
   };
 
+  const handleContextMenu = (event: React.MouseEvent): void => {
+    props.onGroupContextMenu(event, props.group.id);
+  };
+
   return (
     <div
       className={`canvas-group-frame nodrag nopan${props.selected ? ' is-selected' : ''}`}
@@ -13371,6 +13417,7 @@ function CanvasGroupFrame(props: {
         }
         selectGroup();
       }}
+      onContextMenu={handleContextMenu}
       onPointerMove={(event) => {
         handleDragMove(event);
         handleResizeMove(event);
