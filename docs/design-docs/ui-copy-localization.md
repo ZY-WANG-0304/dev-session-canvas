@@ -15,6 +15,7 @@ related_plans:
   - docs/exec-plans/completed/ui-copy-localization-foundation.md
   - docs/exec-plans/completed/ui-copy-localization-host-sidebar.md
   - docs/exec-plans/completed/ui-copy-localization-extension-host-completion.md
+  - docs/exec-plans/completed/ui-copy-localization-canvas-panel-manager.md
 updated_at: 2026-07-02
 ---
 
@@ -68,7 +69,7 @@ DevSessionCanvas 采用三层本地化边界。
 
 第一层是 VS Code manifest 静态贡献点。`extensions/vscode/dev-session-canvas/package.nls.json` 是英文默认文案，覆盖 `package.json` 中所有 `%key%` 引用；`extensions/vscode/dev-session-canvas/package.nls.zh-cn.json` 是简体中文翻译，必须和默认文件保持相同 key 集。这里承载 command title、view title、configuration description、configuration enum label、workspace trust 和 virtual workspace description。命令文案遵循 VS Code 命令面板语义：默认英文文案以产品名前缀开头以保持可搜索性，短小的内部 view/title 切换命令可以继续使用动词短语和可见勾选符号。后续若引入 `category` 字段缩短 title，应作为单独 UI 方案记录。
 
-第二层是 Extension Host 运行时文案。`extensions/vscode/dev-session-canvas/src/extension.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 和 sidebar provider 中由扩展宿主弹出的通知、QuickPick、确认框、错误提示，应逐步迁移到 `vscode.l10n.t(...)`。扩展 manifest 需要声明 `l10n` bundle 目录，运行时简体中文翻译放在 `extensions/vscode/dev-session-canvas/l10n/bundle.l10n.zh-cn.json`。第二批已迁移 Terminal shell、Agent CLI、创建节点、sidebar node-list 和 Explorer Markdown 校验相关的低风险 Host 入口；第三批已完成 `extension.ts` 中剩余用户可见 Host UI 文案，包括 diagnostics 通知、workspace/worktree 流程、session history QuickPick、Agent launch QuickPick、文件过滤和模板命令入口，并把 untrusted session history 标题迁移到 `CanvasPanelManager.getSessionHistoryRestoreBlockReason()`。`extension.ts` 中仍保留的中文只限 test-only 命令错误；`CanvasPanelManager` 其他生命周期、执行状态、模板与权限文案仍按后续组件批次迁移。协议层文件，例如 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`，不得新增自然语言文案；跨边界只传递结构化状态、枚举和必要事实。
+第二层是 Extension Host 运行时文案。`extensions/vscode/dev-session-canvas/src/extension.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 和 sidebar provider 中由扩展宿主弹出的通知、QuickPick、确认框、错误提示，应逐步迁移到 `vscode.l10n.t(...)`。扩展 manifest 需要声明 `l10n` bundle 目录，运行时简体中文翻译放在 `extensions/vscode/dev-session-canvas/l10n/bundle.l10n.zh-cn.json`。第二批已迁移 Terminal shell、Agent CLI、创建节点、sidebar node-list 和 Explorer Markdown 校验相关的低风险 Host 入口；第三批已完成 `extension.ts` 中剩余用户可见 Host UI 文案，包括 diagnostics 通知、workspace/worktree 流程、session history QuickPick、Agent launch QuickPick、文件过滤和模板命令入口，并把 untrusted session history 标题迁移到 `CanvasPanelManager.getSessionHistoryRestoreBlockReason()`；第四批已完成 `CanvasPanelManager.ts` 中产品拥有的 Host UI 文案，包括模板保存/重置、Markdown Note 关联、历史恢复/分叉、执行节点启动/输入/停止/删除、settings reload、Webview lifecycle diagnostics、attention 通知和 host/error payload。`extension.ts` 与 `CanvasPanelManager.ts` 中仍保留的中文限 test-only 命令错误、内部注释、legacy migration sentinel、旧 snapshot placeholder 比较或外部错误探测；sidebar Webview、主画布 Webview 和模板市场 panel/Webview 仍按后续组件批次迁移。协议层文件，例如 `extensions/vscode/dev-session-canvas/src/common/protocol.ts`，不得新增自然语言文案；跨边界只传递结构化状态、枚举和必要事实。
 
 第三层是 Webview 文案。Webview 不能直接依赖 `vscode.l10n.t`，因此在 `extensions/vscode/dev-session-canvas/src/webview/i18n/` 下维护 typed dictionary。英文为默认字典，简体中文为覆盖字典，二者在 TypeScript 类型上共享同一 key 集。`extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts` 根据 `vscode.env.language` 选择 `en` 或 `zh-CN`，把 locale 与字典通过 CSP nonce 保护的 bootstrap script 注入为 `window.__DEV_SESSION_CANVAS_I18N__`。`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 通过 `t('key', params)` 读取文案；插值只允许命名参数，避免中英文语序差异被字符串拼接固化。
 

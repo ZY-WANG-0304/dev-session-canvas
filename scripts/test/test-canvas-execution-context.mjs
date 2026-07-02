@@ -74,6 +74,16 @@ try {
                 TreeItem,
                 TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
                 Uri,
+                l10n: {
+                  t: (message, args) => {
+                    if (!args || typeof args !== 'object') {
+                      return message;
+                    }
+                    return String(message).replace(/\{([A-Za-z0-9_]+)\}/g, (_, key) =>
+                      Object.prototype.hasOwnProperty.call(args, key) ? String(args[key]) : '{' + key + '}'
+                    );
+                  }
+                },
                 ViewColumn: { One: 1, Beside: -2 },
                 commands: { executeCommand: async () => undefined, registerCommand: () => new Disposable() },
                 env: { appName: 'VS Code Test', remoteName: undefined, shell: '/bin/bash' },
@@ -355,12 +365,18 @@ try {
   const managerSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8');
   const managerSourceWithoutProviderNativeSessionBranching = managerSource
     .replace(
-      /  private async branchAgentSession\([\s\S]*?\n  public getSessionHistoryRestoreBlockReason\(\)/u,
+      /  public async forkAgentSessionFromHistory\([\s\S]*?\n  public getSessionHistoryRestoreBlockReason\(\)/u,
       '\n  public getSessionHistoryRestoreBlockReason()'
+    )
+    .replace(
+      /The current workspace is not trusted\. You can browse session history, but cannot resume or fork sessions into new Agent nodes\./gu,
+      'Session history restore is unavailable.'
     )
     .replace(/\nfunction createBranchAgentUserEdge\([\s\S]*?\n\}/u, '\n')
     .replace(/\nfunction isClaudeForkSessionLaunch\([\s\S]*?\n\}/u, '\n')
-    .replace(/Claude Agent 节点不支持 Ctrl-Z\/fg；请使用停止、重启或分叉。/gu, 'Claude Agent Ctrl-Z unsupported');
+    .replace(/\nfunction formatForkTitle\([\s\S]*?\n\}/u, '\n')
+    .replace(/\nfunction formatHistoryForkTitle\([\s\S]*?\n\}/u, '\n')
+    .replace(/Claude Agent nodes do not support Ctrl-Z\/fg\. Use stop, restart, or fork instead\./gu, 'Claude Agent Ctrl-Z unsupported');
   const runtimeBindingKeyFunction = managerSource.match(
     /private buildRuntimeSessionBindingKey\([\s\S]*?\n  \}/u
   )?.[0] ?? '';
@@ -495,7 +511,7 @@ try {
   );
   assert.match(
     managerSource,
-    /session\.agentProvider === 'claude' && containsTerminalSuspendInput\(data\)[\s\S]*claude-agent-ctrl-z-unsupported[\s\S]*Claude Agent 节点不支持 Ctrl-Z\/fg/u,
+    /session\.agentProvider === 'claude' && containsTerminalSuspendInput\(data\)[\s\S]*claude-agent-ctrl-z-unsupported[\s\S]*Claude Agent nodes do not support Ctrl-Z\/fg/u,
     '宿主输入路径必须拒绝 Claude Agent Ctrl-Z，避免 Webview 或旧客户端绕过前端拦截。'
   );
   assert.doesNotMatch(
