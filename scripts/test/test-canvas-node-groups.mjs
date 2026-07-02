@@ -1379,7 +1379,9 @@ try {
         agent('scoped-agent', { x: 80, y: 120 }, { groupId: 'workspace-root-target' }),
         note('scoped-wide-note', { x: 1080, y: 120 }, { groupId: 'workspace-root-target' }),
         note('fixed-root-note', { x: 980, y: 120 }, { groupId: 'workspace-root-fixed' }),
-        note('fixed-overlay-note', { x: 0, y: 980 })
+        note('fixed-root-overlap-note', { x: 980, y: 120 }, { groupId: 'workspace-root-fixed' }),
+        note('fixed-overlay-note', { x: 0, y: 980 }),
+        note('fixed-overlay-overlap-note', { x: 30, y: 760 }, { groupId: 'fixed-overlay-group' })
       ],
       groups: [
         group('workspace-root-target', { x: 0, y: 0 }, { width: 920, height: 520 }, {
@@ -1390,7 +1392,13 @@ try {
           role: 'workspace-root',
           workspaceRootPath: '/repo/scoped-fixed'
         }),
-        group('fixed-overlay-group', { x: 0, y: 700 }, { width: 360, height: 240 })
+        group('fixed-root-overlap-group', { x: 960, y: 80 }, { width: 220, height: 180 }, {
+          parentGroupId: 'workspace-root-fixed'
+        }),
+        group('fixed-overlay-group', { x: 0, y: 700 }, { width: 360, height: 240 }),
+        group('fixed-overlay-overlap-group', { x: 20, y: 730 }, { width: 220, height: 180 }, {
+          parentGroupId: 'fixed-overlay-group'
+        })
       ],
       fileReferences: [
         {
@@ -1412,11 +1420,28 @@ try {
   );
   const repairedScopedTargetRoot = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'workspace-root-target');
   const unchangedFixedRoot = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'workspace-root-fixed');
+  const unchangedFixedRootOverlapGroup = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'fixed-root-overlap-group');
   const unchangedOverlayGroup = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'fixed-overlay-group');
+  const unchangedOverlayOverlapGroup = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'fixed-overlay-overlap-group');
   assert.deepStrictEqual(
     unchangedFixedRoot.position,
     { x: 900, y: 0 },
     'Scoped file-artifact reconciliation must not move non-target workspace roots.'
+  );
+  assert.deepStrictEqual(
+    unchangedFixedRoot.size,
+    { width: 720, height: 520 },
+    'Scoped file-artifact reconciliation must not resize non-target workspace roots.'
+  );
+  assert.deepStrictEqual(
+    unchangedFixedRootOverlapGroup.position,
+    { x: 960, y: 80 },
+    'Scoped file-artifact reconciliation must not repair existing non-target root child overlaps.'
+  );
+  assert.deepStrictEqual(
+    unchangedFixedRootOverlapGroup.size,
+    { width: 220, height: 180 },
+    'Scoped file-artifact reconciliation must not resize existing non-target root child groups.'
   );
   assert.deepStrictEqual(
     rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-root-note').position,
@@ -1424,14 +1449,39 @@ try {
     'Scoped file-artifact reconciliation must not move non-target root subtrees.'
   );
   assert.deepStrictEqual(
+    rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-root-overlap-note').position,
+    { x: 980, y: 120 },
+    'Scoped file-artifact reconciliation must leave non-target root node/group overlaps untouched.'
+  );
+  assert.deepStrictEqual(
     unchangedOverlayGroup.position,
     { x: 0, y: 700 },
     'Scoped file-artifact reconciliation must not move workspace-level overlay groups.'
   );
   assert.deepStrictEqual(
+    unchangedOverlayGroup.size,
+    { width: 360, height: 240 },
+    'Scoped file-artifact reconciliation must not resize workspace-level overlay groups.'
+  );
+  assert.deepStrictEqual(
+    unchangedOverlayOverlapGroup.position,
+    { x: 20, y: 730 },
+    'Scoped file-artifact reconciliation must not repair existing workspace-level overlay child overlaps.'
+  );
+  assert.deepStrictEqual(
+    unchangedOverlayOverlapGroup.size,
+    { width: 220, height: 180 },
+    'Scoped file-artifact reconciliation must not resize existing workspace-level overlay child groups.'
+  );
+  assert.deepStrictEqual(
     rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-overlay-note').position,
     { x: 0, y: 980 },
     'Scoped file-artifact reconciliation must not move workspace-level overlay nodes.'
+  );
+  assert.deepStrictEqual(
+    rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-overlay-overlap-note').position,
+    { x: 30, y: 760 },
+    'Scoped file-artifact reconciliation must leave workspace-level overlay node/group overlaps untouched.'
   );
   assert.ok(
     rootScopedGeometryRepairState.nodes.some((candidate) => candidate.id === 'workspace-root-target:file-file-ref-scoped'),
