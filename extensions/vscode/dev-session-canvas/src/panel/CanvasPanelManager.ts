@@ -230,6 +230,11 @@ import {
   type AgentCliResolutionSource
 } from './agentCliResolver';
 import {
+  localizeAgentCliResolutionErrorMessage,
+  localizeAgentLaunchError,
+  localizeAgentLaunchMessageDescriptor
+} from './agentLaunchLocalization';
+import {
   applyShellEnvironmentPatch,
   resolveShellEnvironmentPatch,
   shouldResolveShellEnvironmentPatchForExecutionTarget,
@@ -3101,9 +3106,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } catch (error) {
       return {
         restored: false,
-        errorMessage: error instanceof Error
+        errorMessage: localizeAgentLaunchError(
+          error,
+          vscode.l10n.t('Could not parse the Agent launch command for session history restore.')
+        ) ?? (error instanceof Error
           ? error.message
-          : vscode.l10n.t('Could not parse the Agent launch command for session history restore.')
+          : vscode.l10n.t('Could not parse the Agent launch command for session history restore.'))
       };
     }
 
@@ -3165,11 +3173,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return {
         forked: false,
         errorMessage:
-          error instanceof Error
+          localizeAgentLaunchError(
+            error,
+            vscode.l10n.t('Could not parse the {provider} launch command for session history fork.', {
+              provider: agentProviderDisplayLabel(params.provider)
+            })
+          ) ?? (error instanceof Error
             ? error.message
             : vscode.l10n.t('Could not parse the {provider} launch command for session history fork.', {
                 provider: agentProviderDisplayLabel(params.provider)
-              })
+              }))
       };
     }
 
@@ -3243,11 +3256,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.buildAgentLaunchIntent(metadata)
       );
     } catch (error) {
-      const message = error instanceof Error
+      const message = localizeAgentLaunchError(
+        error,
+        vscode.l10n.t('Could not parse the {provider} fork launch command.', {
+          provider: agentProviderDisplayLabel(metadata.provider)
+        })
+      ) ?? (error instanceof Error
         ? error.message
         : vscode.l10n.t('Could not parse the {provider} fork launch command.', {
             provider: agentProviderDisplayLabel(metadata.provider)
-          });
+          }));
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
@@ -13585,7 +13603,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       try {
         freshLaunch = this.resolveAgentFreshLaunch(provider, currentMetadata);
       } catch (error) {
-        const message = error instanceof Error ? error.message : vscode.l10n.t('Could not parse the Agent launch command.');
+        const message = localizeAgentLaunchError(
+          error,
+          vscode.l10n.t('Could not parse the Agent launch command.')
+        ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not parse the Agent launch command.'));
         this.recordDiagnosticEvent('execution/startRejected', {
           kind: 'agent',
           nodeId,
@@ -13640,7 +13661,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.buildAgentLaunchIntent(currentMetadata)
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : vscode.l10n.t('Could not parse the Agent resume command.');
+        const message = localizeAgentLaunchError(
+          error,
+          vscode.l10n.t('Could not parse the Agent resume command.')
+        ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not parse the Agent resume command.'));
         this.recordDiagnosticEvent('execution/startRejected', {
           kind: 'agent',
           nodeId,
@@ -14231,7 +14255,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : buildFreshAgentCommandLine(provider, launchPreset, customLaunchCommand, defaults);
     const validation = validateAgentCommandLine(commandLine, provider, defaults);
     if (!validation.valid || !validation.parsed) {
-      throw new Error(validation.error ?? vscode.l10n.t('Could not parse the Agent launch command.'));
+      throw new Error(
+        localizeAgentLaunchMessageDescriptor(
+          validation.errorDescriptor,
+          validation.error ?? vscode.l10n.t('Could not parse the Agent launch command.')
+        )
+      );
     }
 
     return {
@@ -14319,7 +14348,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const commandLine = this.buildHistoryResumeCommandLine(provider, sessionId, launchIntent);
     const validation = validateAgentCommandLine(commandLine, provider, this.getAgentLaunchDefaults(provider));
     if (!validation.valid || !validation.parsed) {
-      throw new Error(validation.error ?? vscode.l10n.t('Could not parse the Agent resume command.'));
+      throw new Error(
+        localizeAgentLaunchMessageDescriptor(
+          validation.errorDescriptor,
+          validation.error ?? vscode.l10n.t('Could not parse the Agent resume command.')
+        )
+      );
     }
 
     return {
@@ -17186,7 +17220,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.getAgentLaunchDefaults(agentProvider)
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : vscode.l10n.t('Could not create Agent node.');
+        const message = localizeAgentLaunchError(
+          error,
+          vscode.l10n.t('Could not create Agent node.')
+        ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not create Agent node.'));
         this.recordDiagnosticEvent('node/createRejected', {
           kind,
           provider: agentProvider,
@@ -25846,7 +25883,7 @@ function summarizeAgentSessionOutput(output: string, status: AgentNodeStatus, la
 
 function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): string {
   if (isAgentCliResolutionError(error)) {
-    return error.message;
+    return localizeAgentCliResolutionErrorMessage(error);
   }
 
   if (isIncompatibleNodePtyRuntimeError(error)) {
@@ -25896,7 +25933,7 @@ function isAgentCliCommandNotFoundLaunchError(error: unknown): boolean {
 
 function describeAgentResumeSpawnError(spec: AgentCliSpec, error: unknown): string {
   if (isAgentCliResolutionError(error)) {
-    return error.message;
+    return localizeAgentCliResolutionErrorMessage(error);
   }
 
   if (isIncompatibleNodePtyRuntimeError(error)) {

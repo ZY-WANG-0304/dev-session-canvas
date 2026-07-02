@@ -12,6 +12,7 @@ import {
 const hostRuntimeSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/extension.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/agentLaunchLocalization.ts',
   'extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts',
@@ -34,8 +35,10 @@ const templateMarketplaceClientSource = readFileSync(
   'utf8'
 );
 const sharedPresentationSourceFiles = [
+  'extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts',
   'extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts',
-  'extensions/vscode/dev-session-canvas/src/common/executionCwdLabel.ts'
+  'extensions/vscode/dev-session-canvas/src/common/executionCwdLabel.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts'
 ];
 const sharedPresentationSources = sharedPresentationSourceFiles.map((filePath) => ({
   filePath,
