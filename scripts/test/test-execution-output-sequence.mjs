@@ -30,6 +30,11 @@ assert.match(
 );
 assert.match(
   managerSource,
+  /canPreserveTrustedSupervisorSessionForSnapshot\([\s\S]*?freshSnapshotState === undefined[\s\S]*?session\?\.owner === 'supervisor'[\s\S]*?session\.terminalStateTrusted[\s\S]*?session\.runtimeSessionId === snapshot\.sessionId[\s\S]*?this\.resolveRuntimeStoragePath\(session\.runtimeStoragePath\) === runtimeStoragePath[\s\S]*?applyRuntimeSupervisorSnapshot\([\s\S]*?freshSupervisorSerializedTerminalState = cloneFreshSerializedTerminalState\([\s\S]*?preservedTrustedSupervisorSession = this\.canPreserveTrustedSupervisorSessionForSnapshot\([\s\S]*?existingSession,[\s\S]*?snapshot,[\s\S]*?runtimeStoragePath,[\s\S]*?freshSupervisorSerializedTerminalState[\s\S]*?this\.updateSupervisorExecutionSessionFromSnapshot\(session, snapshot, runtimeStoragePath\)[\s\S]*?this\.disposeManagedExecutionSession\(existingSession\)/u,
+  'Host 收到当前 supervisor 的 transient stale sessionState 时必须保留同一 live runtime 的可信 tracker，不得降级成旧 raw-tail fallback。'
+);
+assert.match(
+  managerSource,
   /postExecutionSnapshot\([\s\S]*?options\.executionSessionId === session\.sessionId[\s\S]*?options\.minOutputSequence > session\.outputSequence[\s\S]*?session\.outputSequence = options\.minOutputSequence/u,
   'Host 只能在同一 executionSessionId 下用 Webview minOutputSequence 对齐 snapshot reset 边界。'
 );
