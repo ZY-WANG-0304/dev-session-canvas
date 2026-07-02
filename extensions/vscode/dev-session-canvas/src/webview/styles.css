@@ -1317,18 +1317,25 @@ body {
 @keyframes pane-gallery-root-running-scanline {
   0% {
     transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
-    opacity: 0;
-  }
-
-  5%,
-  82% {
     opacity: var(--pane-gallery-root-running-scanline-opacity);
+    animation-timing-function: linear;
   }
 
-  96%,
+  2% {
+    transform: translateX(var(--pane-gallery-root-running-scanline-edge-offset)) rotate(var(--pane-gallery-root-running-scanline-angle));
+    opacity: var(--pane-gallery-root-running-scanline-opacity);
+    animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1);
+  }
+
+  98% {
+    transform: translateX(calc(var(--pane-gallery-root-running-scanline-travel) - var(--pane-gallery-root-running-scanline-edge-offset))) rotate(var(--pane-gallery-root-running-scanline-angle));
+    opacity: var(--pane-gallery-root-running-scanline-opacity);
+    animation-timing-function: linear;
+  }
+
   100% {
     transform: translateX(var(--pane-gallery-root-running-scanline-travel)) rotate(var(--pane-gallery-root-running-scanline-angle));
-    opacity: 0;
+    opacity: var(--pane-gallery-root-running-scanline-opacity);
   }
 }
 
@@ -3799,10 +3806,12 @@ body {
 
 .pane-gallery-root-header.is-pane-gallery-root-running-scanline {
   --pane-gallery-root-running-scanline-color: var(--pane-gallery-root-header-border-color);
-  --pane-gallery-root-running-scanline-travel: 100%;
   --pane-gallery-root-running-scanline-angle: 18deg;
   --pane-gallery-root-running-scanline-width: 16px;
+  --pane-gallery-root-running-scanline-edge-offset: 28px;
+  --pane-gallery-root-running-scanline-travel: 100%;
   --pane-gallery-root-running-scanline-opacity: 0.82;
+  isolation: isolate;
   overflow: hidden;
 }
 
@@ -3811,14 +3820,16 @@ body {
   position: absolute;
   top: -22%;
   bottom: -22%;
-  left: -28px;
+  left: calc(0px - var(--pane-gallery-root-running-scanline-edge-offset));
   right: auto;
-  width: calc(100% + 56px);
+  box-sizing: border-box;
+  width: calc(100% + var(--pane-gallery-root-running-scanline-edge-offset) + var(--pane-gallery-root-running-scanline-edge-offset));
   pointer-events: none;
   border-left: var(--pane-gallery-root-running-scanline-width) solid var(--pane-gallery-root-running-scanline-color);
   background: transparent;
-  opacity: 0;
+  opacity: var(--pane-gallery-root-running-scanline-opacity);
   filter: none;
+  z-index: 0;
   transform-origin: left center;
   transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
   animation: pane-gallery-root-running-scanline 3s cubic-bezier(0.45, 0, 0.25, 1) infinite;
@@ -3833,6 +3844,8 @@ body {
 }
 
 .pane-gallery-root-title-block {
+  position: relative;
+  z-index: 1;
   display: grid;
   min-width: 0;
 }
