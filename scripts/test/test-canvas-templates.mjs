@@ -1150,6 +1150,7 @@ try {
   assert.match(protocolSource, /webview\/createMissingAssociatedNoteMarkdownFile/u);
 
   const webviewSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/main.tsx', 'utf8');
+  const webviewI18nSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/i18n/webviewI18n.ts', 'utf8');
   const webviewStylesSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/styles.css', 'utf8');
   const canvasNodeVisualsSource = await readFile('extensions/vscode/dev-session-canvas/src/common/canvasNodeVisuals.ts', 'utf8');
   const thumbnailSource = await readFile('packages/marketplace-shared/src/thumbnail.ts', 'utf8');
@@ -1159,14 +1160,16 @@ try {
   assert.match(webviewSource, /shouldPromptForRootGroupTemplateReset/u);
   assert.match(webviewSource, /resolveTemplateResetTargetRootGroupId/u);
   assert.match(webviewSource, /resolveContainingWorkspaceRootGroupIdForWebview\(groups, targetGroup\.id\)/u);
-  assert.match(webviewSource, /多根 workspace 中请在目标 root section 内重置为模板/u);
+  assert.match(webviewSource, /t\('canvas\.error\.multiRootTemplateReset'\)/u);
+  assert.match(webviewI18nSource, /'canvas\.error\.multiRootTemplateReset': 'In a multi-root workspace, reset templates inside the target root section\.'/u);
   assert.match(webviewSource, /view === 'reset-template' && shouldPromptForRootGroupTemplateReset/u);
   assert.match(webviewSource, /nodes: targetNodeIds\.map\(\(id\) => \(\{ id \}\)\)/u);
   assert.match(webviewSource, /schedulePendingNodeGroupViewportRetry\(\);/u);
   assert.doesNotMatch(webviewSource, /webview\/publishCanvasTemplate/u);
   assert.doesNotMatch(webviewSource, /data-context-menu-action="publish-canvas-template"/u);
   assert.doesNotMatch(webviewSource, /onPublishCanvasTemplate/u);
-  assert.match(webviewSource, /保存后可从模板侧栏或市场面板发布/u);
+  assert.match(webviewSource, /t\('contextMenu\.saveTemplate\.description'\)/u);
+  assert.match(webviewI18nSource, /'contextMenu\.saveTemplate\.description': 'After saving, publish it from the template sidebar or marketplace panel'/u);
   assert.doesNotMatch(webviewSource, /codicon-cloud-upload/u);
   for (const [kind, color] of [
     ['agent', '#22c55e'],
@@ -1183,7 +1186,10 @@ try {
   assert.match(saveFormSource, /associatedNoteModes/u);
   assert.match(saveFormSource, /workspace-file-path-only/u);
   assert.match(saveFormSource, /workspace-file-with-content/u);
+  assert.match(saveFormSource, /buildCanvasTemplateSaveFormCopy/u);
+  assert.match(saveFormSource, /vscode\.l10n\.t\('Save as a regular Note content snapshot'\)/u);
   assert.doesNotMatch(saveFormSource, /不保存此 Note/u);
+  assert.doesNotMatch(saveFormSource, /[\p{Script=Han}]/u);
   assert.ok(!saveFormSource.includes("['skip'"));
 
   const sidebarTemplateViewSource = await readFile('extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
@@ -1223,7 +1229,8 @@ try {
   assert.match(sidebarTemplateViewSource, /codicon-sync/u);
   assert.match(sidebarTemplateViewSource, /codicon-versions/u);
   assert.match(sidebarTemplateViewSource, /codicon-warning/u);
-  assert.match(sidebarTemplateViewSource, /可更新 v/u);
+  assert.match(sidebarTemplateViewSource, /updateAvailablePrefix: vscode\.l10n\.t\('Update available'\)/u);
+  assert.match(sidebarTemplateViewSource, /updateToMarketplaceLatestVersion: vscode\.l10n\.t\('Update to the latest marketplace version v\{version\}'/u);
   assert.match(sidebarTemplateViewSource, /url\.hash = 'report'/u);
   assert.match(sidebarTemplateViewSource, /locationLabel: resolveCanvasSidebarTemplateLocationLabel\(storedTemplate\)/u);
   assert.match(sidebarTemplateViewSource, /canPublish: storedTemplate\.template\.category === 'user' && !storedTemplate\.marketplace/u);
@@ -1233,15 +1240,15 @@ try {
   assert.match(sidebarTemplateViewSource, /codicon-cloud-upload/u);
   assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplateSourceLabel/u);
   assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplatePositionLabel/u);
-  assert.match(sidebarTemplateViewSource, /return '内置';/u);
-  assert.match(sidebarTemplateViewSource, /return '自建';/u);
-  assert.match(sidebarTemplateViewSource, /return '市场';/u);
+  assert.match(sidebarTemplateViewSource, /return vscode\.l10n\.t\('Built-in'\);/u);
+  assert.match(sidebarTemplateViewSource, /return vscode\.l10n\.t\('User-created'\);/u);
+  assert.match(sidebarTemplateViewSource, /return vscode\.l10n\.t\('Marketplace'\);/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /插件内置|用户保存\/导入|市场下载|扩展内/u);
-  assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? '工作区' : '本地'/u);
+  assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? vscode\.l10n\.t\('Workspace'\) : vscode\.l10n\.t\('Local'\)/u);
   assert.match(sidebarTemplateViewSource, /codicon-cloud-download/u);
   assert.match(sidebarTemplateViewSource, /locationBadge\.textContent = item\.locationLabel;/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /textContent = item\.category === 'builtin' \? '内置' : '用户';/u);
-  assert.match(sidebarTemplateViewSource, /title\.textContent = item\.isDefault \? '\(默认\) ' \+ item\.name : item\.name;/u);
+  assert.match(sidebarTemplateViewSource, /title\.textContent = item\.isDefault \? copy\.defaultPrefix \+ ' ' \+ item\.name : item\.name;/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /defaultBadge|badge is-default|defaultAction\.hidden = item\.isDefault/u);
   assert.match(sidebarTemplateViewSource, /item\.isDefault \? 'codicon-star-full' : 'codicon-star-empty'/u);
   assert.match(sidebarTemplateViewSource, /if \(item\.isDefault\) \{\s*return;\s*\}\s*postTemplateMessage\('sidebarTemplates\/setDefaultTemplate', item\.templateId\);/u);

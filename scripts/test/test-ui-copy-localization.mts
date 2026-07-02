@@ -12,6 +12,7 @@ import {
 const hostRuntimeSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/extension.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts',
   'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarActionsView.ts',
   'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts',
   'extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarSessionHistoryView.ts',
