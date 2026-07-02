@@ -3805,7 +3805,7 @@ body {
   position: absolute;
   top: -22%;
   bottom: -22%;
-  left: 0;
+  left: -28px;
   right: auto;
   box-sizing: border-box;
   width: calc(100% + 56px);
