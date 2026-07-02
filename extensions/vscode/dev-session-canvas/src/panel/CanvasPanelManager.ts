@@ -451,6 +451,7 @@ interface ManagedExecutionSessionBase {
   lifecycleTimer: NodeJS.Timeout | undefined;
   pendingOutput: string;
   outputSequence: number;
+  terminalStateTrusted: boolean;
   outputFlushTimer: NodeJS.Timeout | undefined;
   displayLabel: string;
   lifecycleStatus: AgentNodeStatus | TerminalNodeStatus;
@@ -2783,6 +2784,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       lifecycleTimer: undefined,
       pendingOutput: '',
       outputSequence: 0,
+      terminalStateTrusted: true,
       outputFlushTimer: undefined,
       displayLabel: agentProviderDisplayLabel(provider),
       lifecycleStatus: 'running',
@@ -3822,6 +3824,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       bufferLength: session.buffer.length,
       pendingOutputLength: session.pendingOutput.length,
       outputSequence: session.outputSequence,
+      terminalStateTrusted: session.terminalStateTrusted,
       runtimeBackend: session.runtimeBackend,
       runtimeGuarantee: session.runtimeGuarantee,
       runtimeSessionId: session.runtimeSessionId,
@@ -9930,6 +9933,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const snapshotOutputSequence = normalizeExecutionOutputSequence(snapshot.outputSequence);
     const outputSequenceFloor = normalizeExecutionOutputSequence(options.outputSequenceFloor) ?? 0;
     const sessionOutputSequence = Math.max(snapshotOutputSequence ?? 0, outputSequenceFloor);
+    const freshSupervisorSerializedTerminalState = cloneFreshSerializedTerminalState(
+      snapshot.serializedTerminalState,
+      sessionOutputSequence
+    );
+    const canTrustSupervisorTerminalState =
+      freshSupervisorSerializedTerminalState !== undefined ||
+      (sessionOutputSequence === 0 && snapshot.output.length === 0);
 
     return {
       sessionId: snapshot.sessionId,
@@ -9946,8 +9956,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       buffer: snapshot.output,
       terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
         scrollback: snapshot.scrollback,
-        initialState: snapshot.serializedTerminalState,
-        initialOutput: snapshot.output,
+        // Legacy supervisors only have a raw output tail; it may start mid-ANSI and must not become trusted state.
+        initialState: freshSupervisorSerializedTerminalState,
+        initialOutput: freshSupervisorSerializedTerminalState ? snapshot.output : undefined,
         initialOutputSequence: sessionOutputSequence
       }),
       lineContextTracker: this.createExecutionTerminalLineContextTracker(
@@ -9968,6 +9979,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       lifecycleTimer: undefined,
       pendingOutput: '',
       outputSequence: sessionOutputSequence,
+      terminalStateTrusted: canTrustSupervisorTerminalState,
       outputFlushTimer: undefined,
       displayLabel: snapshot.displayLabel,
       lifecycleStatus: snapshot.lifecycle,
@@ -10047,9 +10059,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputSequence += 1;
     }
     session.buffer = appendTerminalBuffer(session.buffer, event.chunk);
-    session.terminalStateTracker.write(event.chunk, {
-      outputSequence: session.outputSequence
-    });
+    if (session.terminalStateTrusted) {
+      session.terminalStateTracker.write(event.chunk, {
+        outputSequence: session.outputSequence
+      });
+    }
     session.lineContextTracker.write(event.chunk);
     void this.bridgeExecutionAttentionSignals(binding.kind, binding.nodeId, session, event.chunk);
     if (binding.kind === 'agent') {
@@ -10275,7 +10289,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     const serializedTerminalState =
       cloneFreshSerializedTerminalState(snapshot.serializedTerminalState, outputSequence) ??
-      cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, outputSequence);
+      (existingSession?.terminalStateTrusted === false
+        ? undefined
+        : cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, outputSequence));
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: snapshot.lifecycle,
       summary:
@@ -10366,7 +10382,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     const serializedTerminalState =
       cloneFreshSerializedTerminalState(snapshot?.serializedTerminalState, outputSequence) ??
-      cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, outputSequence);
+      (existingSession?.terminalStateTrusted === false
+        ? undefined
+        : cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, outputSequence));
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: 'history-restored',
       summary,
@@ -13435,6 +13453,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lifecycleTimer: undefined,
         pendingOutput: '',
         outputSequence: 0,
+        terminalStateTrusted: true,
         outputFlushTimer: undefined,
         displayLabel: cliSpec.label,
         lifecycleStatus,
@@ -14567,6 +14586,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lifecycleTimer: undefined,
         pendingOutput: '',
         outputSequence: 0,
+        terminalStateTrusted: true,
         outputFlushTimer: undefined,
         displayLabel: shellPath,
         lifecycleStatus: 'launching',
@@ -15600,7 +15620,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     session.cols = normalizedCols;
     session.rows = normalizedRows;
-    session.terminalStateTracker.resize(normalizedCols, normalizedRows);
+    if (session.terminalStateTrusted) {
+      session.terminalStateTracker.resize(normalizedCols, normalizedRows);
+    }
     session.lineContextTracker.resize(normalizedCols, normalizedRows);
     if (session.owner === 'local') {
       session.process.resize(normalizedCols, normalizedRows);
@@ -16497,10 +16519,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    await this.getExecutionSessions(kind)
-      .get(nodeId)
-      ?.terminalStateTracker.flush()
-      .catch(() => undefined);
+    const session = this.getExecutionSessions(kind).get(nodeId);
+    if (session?.terminalStateTrusted) {
+      await session.terminalStateTracker.flush().catch(() => undefined);
+    }
     this.flushExecutionStateSyncTimer(kind, nodeId);
     this.flushLiveExecutionState(kind, nodeId, {
       persistMode: 'immediate',
@@ -16608,10 +16630,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.minOutputSequence > session.outputSequence
     ) {
       session.outputSequence = options.minOutputSequence;
-      session.terminalStateTracker.markOutputSequence(session.outputSequence);
+      if (session.terminalStateTrusted) {
+        session.terminalStateTracker.markOutputSequence(session.outputSequence);
+      }
     }
     const executionSessionId = session?.sessionId;
-    const serializedTerminalState = session
+    const serializedTerminalState = session?.terminalStateTrusted
       ? await session.terminalStateTracker.flush().catch(() => session.terminalStateTracker.getSerializedState())
       : undefined;
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
@@ -16625,8 +16649,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           : undefined;
     const outputSequence = session?.outputSequence ?? metadata?.outputSequence;
     const freshSerializedTerminalState =
-      cloneFreshSerializedTerminalState(serializedTerminalState, outputSequence) ??
-      cloneFreshSerializedTerminalState(metadata?.serializedTerminalState, outputSequence);
+      session?.terminalStateTrusted === false
+        ? undefined
+        : cloneFreshSerializedTerminalState(serializedTerminalState, outputSequence) ??
+          cloneFreshSerializedTerminalState(metadata?.serializedTerminalState, outputSequence);
 
     this.postMessage({
       type: 'host/executionSnapshot',
@@ -23043,6 +23069,10 @@ function cloneFreshSerializedTerminalState(
 function getFreshExecutionSessionSerializedTerminalState(
   session: ManagedExecutionSession
 ): SerializedTerminalState | undefined {
+  if (!session.terminalStateTrusted) {
+    return undefined;
+  }
+
   return cloneFreshSerializedTerminalState(session.terminalStateTracker.getSerializedState(), session.outputSequence);
 }
 
