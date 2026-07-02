@@ -34,7 +34,7 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 - 使用用户连线、文件活动 owner 和同 cwd 执行节点关系，让 Agent、Terminal、关联文件和连线对象尽量靠近。
 - 普通分组内部先单独整理；普通分组在父容器中作为整体参与排列。
 - workspace root section 作为硬边界；只整理 root 内部对象，root 之间只在外层避让重叠。
-- 在 multi-root `rootGroups` 或 `paneGallery` 中从某个 root 内触发整理时，默认只整理当前 root；整理整个 workspace 需要进入右侧 `>` 二级菜单。
+- 在 multi-root `rootGroups` 或 `paneGallery` 中从某个 root 内触发整理时，主菜单默认只整理当前 root；右侧 `>` 二级菜单提供当前 root 与整个 workspace 两个整理范围。
 - 整理后写回 `CanvasPrototypeState`，通过既有 Host 持久化在 reload / 重开后保持。
 
 ## 4. 非目标
@@ -71,11 +71,11 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 
 整理后分组尺寸按直接成员 bounds 收缩或扩展到最小尺寸与成员内边距；root 使用 root section 最小尺寸与 root 内容 inset，普通分组使用现有普通分组标题 / padding inset。普通分组即使只有一个直接成员也会执行内部整理，因此单成员分组会把成员移动到内容内边距附近，而不是保留整理前的大块空白。普通空分组没有内容 bounds 可参考，整理时先把尺寸规范化为创建空分组的默认尺寸 `360 x 240`，再作为普通 `group` block 参与父容器排列；嵌套空分组同样适用该规则，并会触发外层分组按规范化后的空子分组 bounds 收口。workspace root section 不适用普通空分组默认尺寸；空 root section 仍规范化到 workspace root 最小尺寸，不因内容少而收缩到普通分组大小。
 
-Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，并走现有 `persistState()`。如果消息携带 `targetGroupId`，Host 只接受当前存在的 workspace root 或其内部用户分组，并把内部用户分组提升为所属 workspace root 后再调用目标分组整理；如果目标不存在则忽略该消息，避免 Webview 旧菜单误整理整个画布。在 multi-root `rootGroups` 中，命中 root section 的 title/body/chrome 或其内部用户分组时，主菜单“整理画布布局”默认携带所属 workspace-root group id；在 `paneGallery` 可交互 root pane 中，主菜单默认携带该 pane 对应的 workspace-root group id；上述路径都只整理当前 root 内部对象。同一行右侧 `>` 二级菜单中的“整理整个 workspace 的画布”发送不带目标的消息，才按整张组合画布整理 root 分组、外层分组和节点。目标 root 整理后的文件活动 reconciliation 继续重建自动文件节点，但其几何修复使用 scoped repair：非目标 root 与 workspace-level overlay 保持原坐标；若目标 root 因尺寸变化与其他 root 冲突，只平移目标 root 子树到最近非重叠位置，避免后续全局 finalize 泄漏成全 workspace 重排。在 multi-root workspace 下，后续既有 decompose / root-local storage / overlay 持久化继续负责把 root-local 坐标和 root section overlay 写回对应存储，因此 reload 与重开 VSCode 后保持整理结果。
+Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，并走现有 `persistState()`。如果消息携带 `targetGroupId`，Host 只接受当前存在的 workspace root 或其内部用户分组，并把内部用户分组提升为所属 workspace root 后再调用目标分组整理；如果目标不存在则忽略该消息，避免 Webview 旧菜单误整理整个画布。在 multi-root `rootGroups` 中，命中 root section 的 title/body/chrome 或其内部用户分组时，主菜单“整理画布布局”默认携带所属 workspace-root group id；在 `paneGallery` 可交互 root pane 中，主菜单默认携带该 pane 对应的 workspace-root group id；上述路径都只整理当前 root 内部对象。同一行右侧 `>` 二级菜单同时提供“整理当前 root 内的节点”和“整理整个 workspace 的画布”：当前 root 选项继续发送携带目标 group 的消息，整个 workspace 选项发送不带目标的消息，后者才按整张组合画布整理 root 分组、外层分组和节点。目标 root 整理后的文件活动 reconciliation 继续重建自动文件节点，但其几何修复使用 scoped repair：非目标 root 与 workspace-level overlay 保持原坐标；若目标 root 因尺寸变化与其他 root 冲突，只平移目标 root 子树到最近非重叠位置，避免后续全局 finalize 泄漏成全 workspace 重排。在 multi-root workspace 下，后续既有 decompose / root-local storage / overlay 持久化继续负责把 root-local 坐标和 root section overlay 写回对应存储，因此 reload 与重开 VSCode 后保持整理结果。
 
 ## 8. 验证方法
 
-自动化验证包括：`npm run test:canvas-layout-arrangement` 覆盖节点避让、关系靠近、普通分组内部整理、root hard boundary、指定 root 整理不移动其他 root、语义不变；`npm run test:protocol-webview-messages` 覆盖消息解析；`npm run test:webview` 覆盖右键菜单入口、消息发送和无完成 toast，并覆盖 multi-root rootGroups 下默认 root-scoped 整理与 `>` 二级菜单全 workspace 整理。最终交付前还应运行 `npm run typecheck`、`npm run build` 和 `git diff --check`。
+自动化验证包括：`npm run test:canvas-layout-arrangement` 覆盖节点避让、关系靠近、普通分组内部整理、root hard boundary、指定 root 整理不移动其他 root、语义不变；`npm run test:protocol-webview-messages` 覆盖消息解析；`npm run test:webview` 覆盖右键菜单入口、消息发送和无完成 toast，并覆盖 multi-root rootGroups / paneGallery 下默认 root-scoped 整理与 `>` 二级菜单中的当前 root / 全 workspace 两个范围。最终交付前还应运行 `npm run typecheck`、`npm run build` 和 `git diff --check`。
 
 截至 2026-06-17，本设计已完成布局纯函数测试、协议解析测试、右键菜单定向 Playwright 测试、可信工作区 smoke 持久化测试、`typecheck` 和 `git diff --check`。可信工作区 smoke 覆盖整理后写入持久化快照并 reload 保持位置。完整 `test:webview` 在本轮曾出现 4 个既有或波动失败，新增右键菜单用例在完整运行和定向运行中均通过；因此当前验证状态保持为“验证中”，后续若完整 Webview 回归也清洁通过，可再升级为“已验证”。
 
@@ -83,4 +83,4 @@ Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，�
 
 截至 2026-06-21，补充普通空分组尺寸规范化回归：`npm run test:canvas-layout-arrangement` 覆盖普通空分组归一到 `360 x 240` 后参与同级避让、嵌套空分组归一后驱动父分组收口，以及空 workspace root section 继续使用 root 最小尺寸。
 
-截至 2026-07-02，补充 multi-root rootGroups / paneGallery 右键范围收口：root 分组或可交互 root pane 内主菜单“整理画布布局”默认携带所属 workspace-root group id，Host 只整理当前 root；同一项右侧 `>` 二级菜单保留“整理整个 workspace 的画布”全局路径。随后补齐 root section 标题/边框 chrome 右键的 Webview 命中路径，避免选中 root 后标题栏只出现单项整理入口。新增 `npm run test:canvas-layout-arrangement` 覆盖 target root 不移动其他 root，`npm run test:canvas-node-groups` 覆盖 target root 整理后进入文件活动 reconciliation 与 scoped geometry repair 时只平移目标 root 子树且最终 root 不重叠，`npm run test:protocol-webview-messages` 覆盖 `targetGroupId` 协议，Playwright 定向用例覆盖菜单文案、默认消息 payload、root section chrome 右键、paneGallery root pane 右键和二级菜单全 workspace 消息。
+截至 2026-07-02，补充 multi-root rootGroups / paneGallery 右键范围收口：root 分组或可交互 root pane 内主菜单“整理画布布局”默认携带所属 workspace-root group id，Host 只整理当前 root；同一项右侧 `>` 二级菜单提供“整理当前 root 内的节点”和“整理整个 workspace 的画布”两个明确范围。随后补齐 root section 标题/边框 chrome 右键的 Webview 命中路径，避免选中 root 后标题栏只出现单项整理入口。新增 `npm run test:canvas-layout-arrangement` 覆盖 target root 不移动其他 root，`npm run test:canvas-node-groups` 覆盖 target root 整理后进入文件活动 reconciliation 与 scoped geometry repair 时只平移目标 root 子树且最终 root 不重叠，`npm run test:protocol-webview-messages` 覆盖 `targetGroupId` 协议，Playwright 定向用例覆盖菜单文案、默认消息 payload、root section chrome 右键、paneGallery root pane 右键和二级菜单当前 root / 全 workspace 消息。

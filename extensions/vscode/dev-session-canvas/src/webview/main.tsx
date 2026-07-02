@@ -10417,8 +10417,8 @@ const CanvasContextMenu = React.forwardRef<
                   className="canvas-context-menu-item-secondary"
                   data-context-menu-action="show-arrange-layout-scope"
                   onClick={props.onShowArrangeLayoutScope}
-                  aria-label="选择整理整个 workspace 的画布"
-                  title="选择整理整个 workspace 的画布"
+                  aria-label="选择整理范围"
+                  title="选择整理范围"
                 >
                   <span
                     className="canvas-context-menu-icon codicon codicon-chevron-right"
@@ -10521,6 +10521,18 @@ const CanvasContextMenu = React.forwardRef<
           </>
         ) : props.view === 'arrange-layout-scope' ? (
           <>
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="arrange-current-root-canvas-layout"
+              onClick={() => props.onArrangeCanvasLayout('target')}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>整理当前 root 内的节点</strong>
+                <span>只整理当前 root 内的节点和分组</span>
+              </span>
+            </button>
             <button
               type="button"
               className="canvas-context-menu-item"
