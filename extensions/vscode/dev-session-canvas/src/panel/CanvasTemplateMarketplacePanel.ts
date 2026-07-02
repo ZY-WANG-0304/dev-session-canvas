@@ -170,6 +170,139 @@ interface PendingMarketplaceTestRequest {
   timeout: NodeJS.Timeout;
 }
 
+interface TemplateMarketplacePanelCopy {
+  panelTitle: string;
+  publishTemplate: string;
+  openBrowser: string;
+  panelNote: string;
+  toolbarAriaLabel: string;
+  searchPlaceholder: string;
+  sortAriaLabel: string;
+  sortLabels: Readonly<Record<'hot' | 'downloads' | 'likes' | 'newest' | 'updated', string>>;
+  loading: string;
+  templateListAriaLabel: string;
+  templateDetailAriaLabel: string;
+  publishTemplateAriaLabel: string;
+  installedTemplatesError: string;
+  unknownError: string;
+  templatePublishedStatus: string;
+  publishFailed: string;
+  installFailed: string;
+  testMissingTemplateToOpen: string;
+  testPublishFormNotOpen: string;
+  testUnsupportedAction: string;
+  testMissingActionTemplate: string;
+  notSpecified: string;
+  testMissingActionVersion: string;
+  refreshFailed: string;
+  marketplaceConnectionFailed: string;
+  templateCount: string;
+  noMatchingTemplates: string;
+  publishDefaultStatus: string;
+  loadErrorTitle: string;
+  loadErrorBody: string;
+  errorInfoLabel: string;
+  errorInfo: string;
+  retry: string;
+  openPublishFormFailed: string;
+  backToList: string;
+  publishNewVersion: string;
+  publishCustomTemplate: string;
+  publishVersionDescription: string;
+  publishTemplateDescription: string;
+  noPublishableDrafts: string;
+  localTemplate: string;
+  publishDraftOption: string;
+  publishDraftOptionWithLocation: string;
+  publishVersionHelp: string;
+  publishTemplateHelp: string;
+  targetMarketplaceTemplate: string;
+  name: string;
+  description: string;
+  tags: string;
+  templateJsonPreview: string;
+  previewAndConfirm: string;
+  generatedThumbnailAlt: string;
+  mode: string;
+  newVersion: string;
+  target: string;
+  nodes: string;
+  location: string;
+  publishing: string;
+  confirmPublishNewVersion: string;
+  confirmPublish: string;
+  publishSuccessTitle: string;
+  publishSuccessDescription: string;
+  publishSuccessMessage: string;
+  viewTemplateDetails: string;
+  returnToMarketplaceList: string;
+  publishingVersionStatus: string;
+  publishingTemplateStatus: string;
+  selectLocalTemplate: string;
+  missingTargetMarketplaceTemplate: string;
+  nameRequired: string;
+  descriptionRequired: string;
+  slugLowercaseError: string;
+  resolveSlugIssue: string;
+  templateJsonInvalid: string;
+  fixTemplateJson: string;
+  slugChecking: string;
+  slugAvailable: string;
+  slugUnavailable: string;
+  detailLoadingTitle: string;
+  detailLoadingDescription: string;
+  loadingEllipsis: string;
+  details: string;
+  detailLoadingSidebarText: string;
+  detailErrorTitle: string;
+  detailErrorDescription: string;
+  retryHint: string;
+  reportTemplate: string;
+  downloads: string;
+  likes: string;
+  latestVersion: string;
+  versionHistory: string;
+  current: string;
+  detailContentAriaLabel: string;
+  readmeMissing: string;
+  changelogMissing: string;
+  versionChangelogMissing: string;
+  detailLoadingStatus: string;
+  installed: string;
+  offlineInstalledDescription: string;
+  openInBrowser: string;
+  viewDetails: string;
+  cardMeta: string;
+  install: string;
+  installing: string;
+  selectLocationFirst: string;
+  installedVersion: string;
+  installVersion: string;
+  switchInstallVersion: string;
+  loadingVersions: string;
+  loadVersionsFailed: string;
+  rollbackToVersion: string;
+  updateToVersion: string;
+  unrecognizedApiData: string;
+  loadFailed: string;
+  installingStatus: string;
+  installingTargetSuffix: string;
+  installStartFailed: string;
+  installLocation: string;
+  loadingInstallLocations: string;
+  localTargetLabel: string;
+  authorLabel: string;
+  unknownPublisher: string;
+  installedBadge: string;
+  currentWorkspace: string;
+  currentDevice: string;
+  installedTemplateUpdated: string;
+  installedTemplateReinstalled: string;
+  installedTemplateInstalled: string;
+  installResultStatus: string;
+  networkFetchFailed: string;
+}
+
 export class CanvasTemplateMarketplacePanelController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private readonly disposables: vscode.Disposable[] = [];
@@ -237,7 +370,7 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
   }
 
   public dispose(): void {
-    this.rejectPendingTestRequests(new Error('模板市场面板已关闭。'));
+    this.rejectPendingTestRequests(new Error(vscode.l10n.t('Template Marketplace panel has been closed.')));
     this.panel?.dispose();
     this.panel = undefined;
     this.pendingDetailRequest = undefined;
@@ -249,14 +382,14 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
 
   public async captureTestProbe(timeoutMs = 5000): Promise<unknown> {
     if (!this.testHarnessEnabled) {
-      throw new Error('captureTestProbe 仅在测试模式下可用。');
+      throw new Error(vscode.l10n.t('captureTestProbe is only available in test mode.'));
     }
     return this.sendTestRequest('marketplace/testProbeRequest', this.pendingTestProbeRequests, undefined, timeoutMs);
   }
 
   public async performTestAction(action: unknown, timeoutMs = 5000): Promise<unknown> {
     if (!this.testHarnessEnabled) {
-      throw new Error('performTestAction 仅在测试模式下可用。');
+      throw new Error(vscode.l10n.t('performTestAction is only available in test mode.'));
     }
     return this.sendTestRequest('marketplace/testAction', this.pendingTestActionRequests, action, timeoutMs);
   }
@@ -270,7 +403,7 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
 
     const panel = vscode.window.createWebviewPanel(
       MARKETPLACE_PANEL_VIEW_TYPE,
-      '模板市场',
+      vscode.l10n.t('Template Marketplace'),
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -284,7 +417,7 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
     }, undefined, this.disposables);
     panel.onDidDispose(() => {
       this.panel = undefined;
-      this.rejectPendingTestRequests(new Error('模板市场面板已关闭。'));
+      this.rejectPendingTestRequests(new Error(vscode.l10n.t('Template Marketplace panel has been closed.')));
     }, undefined, this.disposables);
     void this.postInstalledTemplates();
   }
@@ -298,13 +431,15 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
     this.revealPanel();
     const panel = this.panel;
     if (!panel) {
-      throw new Error('模板市场面板尚未打开。');
+      throw new Error(vscode.l10n.t('Template Marketplace panel is not open yet.'));
     }
     const requestId = `marketplace-test-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     return new Promise<unknown>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pendingRequests.delete(requestId);
-        reject(new Error(`等待模板市场测试动作返回超时（${timeoutMs}ms）。`));
+        reject(new Error(vscode.l10n.t('Timed out waiting for the Template Marketplace test action response ({timeoutMs} ms).', {
+          timeoutMs
+        })));
       }, timeoutMs);
       pendingRequests.set(requestId, { resolve, reject, timeout });
       void panel.webview.postMessage({
@@ -349,7 +484,9 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
           await vscode.env.openExternal(vscode.Uri.parse(this.marketplaceSourceUrl.toString()));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          await vscode.window.showErrorMessage(`打开模板市场失败：${message}`);
+          await vscode.window.showErrorMessage(vscode.l10n.t('Failed to open Template Marketplace: {message}', {
+            message
+          }));
         }
         return;
       case 'marketplace/installTemplate':
@@ -386,7 +523,7 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
     pendingRequests.delete(requestId);
     clearTimeout(pendingRequest.timeout);
     if (message.type === 'marketplace/testActionResult' && message.payload.ok === false) {
-      pendingRequest.reject(new Error(message.payload.message ?? '模板市场测试动作失败。'));
+      pendingRequest.reject(new Error(message.payload.message ?? vscode.l10n.t('Template Marketplace test action failed.')));
       return;
     }
     pendingRequest.resolve(message.payload.probe);
@@ -414,7 +551,11 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
       } satisfies MarketplacePanelOutboundMessage);
       const actionLabel = formatMarketplaceInstallOperationLabel(result.operation);
       await vscode.window.showInformationMessage(
-        `${actionLabel}市场模板「${result.savedTemplate.template.name}」v${result.version.versionNumber}，可在模板侧栏应用到 Canvas。`
+        vscode.l10n.t('{operation} marketplace template "{name}" v{version}. Apply it to Canvas from the Templates sidebar.', {
+          operation: actionLabel,
+          name: result.savedTemplate.template.name,
+          version: result.version.versionNumber
+        })
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -425,7 +566,9 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
           message
         }
       } satisfies MarketplacePanelOutboundMessage);
-      await vscode.window.showErrorMessage(`安装市场模板失败：${message}`);
+      await vscode.window.showErrorMessage(vscode.l10n.t('Failed to install marketplace template: {message}', {
+        message
+      }));
     }
   }
 
@@ -517,7 +660,9 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
           error: message
         }
       } satisfies MarketplacePanelOutboundMessage);
-      await vscode.window.showErrorMessage(`打开模板发布表单失败：${message}`);
+      await vscode.window.showErrorMessage(vscode.l10n.t('Failed to open template publish form: {message}', {
+        message
+      }));
     }
   }
 
@@ -537,7 +682,10 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
           sourceUrl: result.sourceUrl
         }
       } satisfies MarketplacePanelOutboundMessage);
-      await vscode.window.showInformationMessage(`模板“${result.name}”已发布到模板市场 v${result.versionNumber}。`);
+      await vscode.window.showInformationMessage(vscode.l10n.t('Template "{name}" has been published to Template Marketplace v{version}.', {
+        name: result.name,
+        version: result.versionNumber
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.panel?.webview.postMessage({
@@ -547,7 +695,9 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
           message
         }
       } satisfies MarketplacePanelOutboundMessage);
-      await vscode.window.showErrorMessage(`发布模板到市场失败：${message}`);
+      await vscode.window.showErrorMessage(vscode.l10n.t('Failed to publish template to marketplace: {message}', {
+        message
+      }));
     }
   }
 }
@@ -644,21 +794,28 @@ function formatMarketplaceSourceMismatchError(
   actualFlavor: MarketplaceSourceFlavor | undefined
 ): string {
   const expectedInstall = expectedFlavor === 'official'
-    ? '正式版'
+    ? vscode.l10n.t('production build')
     : expectedFlavor === 'debug'
-      ? '调试版'
-      : '当前版本';
+      ? vscode.l10n.t('debug build')
+      : vscode.l10n.t('current build');
   const expectedMarket = expectedFlavor === 'official'
-    ? '正式市场'
+    ? vscode.l10n.t('production marketplace')
     : expectedFlavor === 'debug'
-      ? '调试市场'
-      : '对应市场';
+      ? vscode.l10n.t('debug marketplace')
+      : vscode.l10n.t('matching marketplace');
   const actualMarket = actualFlavor === 'official'
-    ? '正式市场'
+    ? vscode.l10n.t('production marketplace')
     : actualFlavor === 'debug'
-      ? '调试市场'
-      : '未知来源';
-  return `当前扩展为${expectedInstall}，仅支持${expectedMarket}链接；该链接来自${actualMarket}，请从对应市场重新打开。`;
+      ? vscode.l10n.t('debug marketplace')
+      : vscode.l10n.t('unknown source');
+  return vscode.l10n.t(
+    'The current extension is a {expectedInstall} and only supports {expectedMarket} links; this link came from {actualMarket}. Reopen it from the matching marketplace.',
+    {
+      expectedInstall,
+      expectedMarket,
+      actualMarket
+    }
+  );
 }
 
 function isLocalDevelopmentHost(hostname: string): boolean {
@@ -673,12 +830,12 @@ function isLocalDevelopmentHost(hostname: string): boolean {
 
 function formatMarketplaceInstallOperationLabel(operation: 'installed' | 'updated' | 'reinstalled'): string {
   if (operation === 'updated') {
-    return '已更新';
+    return vscode.l10n.t('Updated');
   }
   if (operation === 'reinstalled') {
-    return '已重新安装';
+    return vscode.l10n.t('Reinstalled');
   }
-  return '已安装';
+  return vscode.l10n.t('Installed');
 }
 
 function parseMarketplacePanelMessage(message: unknown): MarketplacePanelInboundMessage | null {
@@ -800,7 +957,7 @@ function parseMarketplacePanelTestResultMessage(message: unknown): MarketplacePa
 
 function parseMarketplaceTemplateDetailRequest(uri: vscode.Uri): MarketplaceTemplateDetailRequest {
   if (uri.path !== '/install-template') {
-    throw new Error('不支持的市场链接路径。');
+    throw new Error(vscode.l10n.t('Unsupported marketplace link path.'));
   }
 
   const params = new URLSearchParams(uri.query);
@@ -815,7 +972,7 @@ function parseMarketplaceTemplateDetailRequest(uri: vscode.Uri): MarketplaceTemp
 function readRequiredQueryParam(params: URLSearchParams, key: string): string {
   const value = readOptionalString(params.get(key));
   if (!value) {
-    throw new Error(`市场链接缺少必要参数 ${key}。`);
+    throw new Error(vscode.l10n.t('Marketplace link is missing required parameter {key}.', { key }));
   }
   return value;
 }
@@ -831,13 +988,15 @@ function buildTemplateMarketplaceHtml(
     extensionUri,
     ...MARKETPLACE_BUNDLED_CODICON_PATH_SEGMENTS
   );
-  const stateJson = JSON.stringify({
+  const stateJson = serializeForInlineScript({
     apiOrigin: marketplaceSourceUrl.origin,
     marketplaceSourceUrl: marketplaceSourceUrl.toString()
   });
+  const copy = buildTemplateMarketplacePanelCopy();
+  const copyJson = serializeForInlineScript(copy);
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${resolveWebviewHtmlLang()}">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -1845,38 +2004,39 @@ function buildTemplateMarketplaceHtml(
     <main class="shell">
       <section class="panel-header">
         <div class="panel-title-row">
-          <h1>模板市场</h1>
+          <h1>${escapeHtml(copy.panelTitle)}</h1>
           <div class="header-actions">
             <button class="open-browser publish-template" id="publishTemplateButton" type="button">
               <span class="codicon codicon-cloud-upload" aria-hidden="true"></span>
-              <span>发布自建模板</span>
+              <span>${escapeHtml(copy.publishTemplate)}</span>
             </button>
-            <button class="open-browser" id="openBrowserButton" type="button">浏览器中打开</button>
+            <button class="open-browser" id="openBrowserButton" type="button">${escapeHtml(copy.openBrowser)}</button>
           </div>
         </div>
-        <p class="panel-note">选择安装位置后可安装模板；进入详情页可查看 README、CHANGELOG 和版本历史。</p>
+        <p class="panel-note">${escapeHtml(copy.panelNote)}</p>
       </section>
 
-      <section class="toolbar" id="marketplaceToolbar" aria-label="模板市场筛选">
-        <input id="searchInput" type="search" placeholder="搜索模板名称、标签或关键词..." />
-        <select id="sortSelect" aria-label="排序">
-          <option value="hot">热度</option>
-          <option value="downloads">下载</option>
-          <option value="likes">点赞</option>
-          <option value="newest">最新</option>
-          <option value="updated">最近更新</option>
+      <section class="toolbar" id="marketplaceToolbar" aria-label="${escapeHtml(copy.toolbarAriaLabel)}">
+        <input id="searchInput" type="search" placeholder="${escapeHtml(copy.searchPlaceholder)}" />
+        <select id="sortSelect" aria-label="${escapeHtml(copy.sortAriaLabel)}">
+          <option value="hot">${escapeHtml(copy.sortLabels.hot)}</option>
+          <option value="downloads">${escapeHtml(copy.sortLabels.downloads)}</option>
+          <option value="likes">${escapeHtml(copy.sortLabels.likes)}</option>
+          <option value="newest">${escapeHtml(copy.sortLabels.newest)}</option>
+          <option value="updated">${escapeHtml(copy.sortLabels.updated)}</option>
         </select>
       </section>
 
-      <p class="status" id="status">正在加载...</p>
-      <section class="grid" id="templateGrid" aria-label="模板列表"></section>
-      <section class="detail-view" id="detailView" aria-label="模板详情" hidden></section>
-      <section class="publish-view" id="publishView" aria-label="发布模板" hidden></section>
+      <p class="status" id="status">${escapeHtml(copy.loading)}</p>
+      <section class="grid" id="templateGrid" aria-label="${escapeHtml(copy.templateListAriaLabel)}"></section>
+      <section class="detail-view" id="detailView" aria-label="${escapeHtml(copy.templateDetailAriaLabel)}" hidden></section>
+      <section class="publish-view" id="publishView" aria-label="${escapeHtml(copy.publishTemplateAriaLabel)}" hidden></section>
     </main>
 
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const initialState = ${stateJson};
+      const copy = ${copyJson};
       let apiOrigin = normalizeApiOrigin(initialState.apiOrigin, initialState.marketplaceSourceUrl);
       const persistedState = normalizePersistedState(vscode.getState && vscode.getState());
       const initialInstallTargets = normalizeInstallTargets(initialState.installTargets);
@@ -1980,7 +2140,9 @@ function buildTemplateMarketplaceHtml(
         }
 
         if (message.type === 'marketplace/installedTemplatesError') {
-          statusElement.textContent = '读取已安装状态失败：' + (message.payload && message.payload.message ? message.payload.message : '未知错误') + '。浏览不受影响，已安装模板可从侧栏使用。';
+          statusElement.textContent = formatCopy(copy.installedTemplatesError, {
+            message: message.payload && message.payload.message ? message.payload.message : copy.unknownError
+          });
           return;
         }
 
@@ -2037,7 +2199,10 @@ function buildTemplateMarketplaceHtml(
             };
             state.publishStatus = {
               kind: 'success',
-              message: '模板“' + message.payload.templateName + '”已发布到模板市场 v' + message.payload.versionNumber + '。'
+              message: formatCopy(copy.templatePublishedStatus, {
+                name: message.payload.templateName,
+                version: message.payload.versionNumber
+              })
             };
             searchInput.value = '';
             sortSelect.value = 'updated';
@@ -2046,7 +2211,9 @@ function buildTemplateMarketplaceHtml(
           } else {
             state.publishStatus = {
               kind: 'error',
-              message: '发布失败：' + (message.payload && message.payload.message ? message.payload.message : '未知错误')
+              message: formatCopy(copy.publishFailed, {
+                message: message.payload && message.payload.message ? message.payload.message : copy.unknownError
+              })
             };
           }
           renderTemplates();
@@ -2062,7 +2229,9 @@ function buildTemplateMarketplaceHtml(
           syncInstallTargets(normalizeInstallTargets(message.payload.installTargets));
           statusElement.textContent = formatInstallResultStatus(message.payload);
         } else {
-          statusElement.textContent = '安装失败：' + (message.payload && message.payload.message ? message.payload.message : '未知错误') + '。模板未写入本地，请确认安装位置后重试。';
+          statusElement.textContent = formatCopy(copy.installFailed, {
+            message: message.payload && message.payload.message ? message.payload.message : copy.unknownError
+          });
         }
         renderTemplates();
       });
@@ -2126,7 +2295,7 @@ function buildTemplateMarketplaceHtml(
         if (kind === 'openDetail') {
           const slug = readString(action && action.slug) || state.templates[0]?.slug;
           if (!slug) {
-            throw new Error('缺少要打开的模板。');
+            throw new Error(copy.testMissingTemplateToOpen);
           }
           openTemplateDetail(slug, readString(action.versionId));
           if (!state.templateDetailsBySlug[slug]) {
@@ -2185,7 +2354,7 @@ function buildTemplateMarketplaceHtml(
         }
         if (kind === 'fillPublishForm') {
           if (state.activeView !== 'publish' || !state.publishForm) {
-            throw new Error('发布表单尚未打开。');
+            throw new Error(copy.testPublishFormNotOpen);
           }
           const fields = action && typeof action.fields === 'object' && action.fields ? action.fields : {};
           for (const field of ['name', 'slug', 'description', 'tags', 'readme', 'changelog', 'templateJson']) {
@@ -2199,19 +2368,19 @@ function buildTemplateMarketplaceHtml(
         }
         if (kind === 'submitPublishForm') {
           if (state.activeView !== 'publish' || !state.publishForm) {
-            throw new Error('发布表单尚未打开。');
+            throw new Error(copy.testPublishFormNotOpen);
           }
           submitPublishForm();
           return;
         }
-        throw new Error('不支持的模板市场测试动作：' + kind);
+        throw new Error(formatCopy(copy.testUnsupportedAction, { kind }));
       }
 
       function resolveTestActionTemplate(action) {
         const slug = readString(action && action.slug) || state.activeTemplateSlug || state.templates[0]?.slug;
         const template = state.templateDetailsBySlug[slug] || state.templates.find((candidate) => candidate.slug === slug || candidate.id === slug);
         if (!template) {
-          throw new Error('找不到测试动作目标模板：' + (slug || '未指定'));
+          throw new Error(formatCopy(copy.testMissingActionTemplate, { slug: slug || copy.notSpecified }));
         }
         return template;
       }
@@ -2234,7 +2403,7 @@ function buildTemplateMarketplaceHtml(
             return byNumber;
           }
         }
-        throw new Error('找不到测试动作目标版本。');
+        throw new Error(copy.testMissingActionVersion);
       }
 
       function collectTestProbe() {
@@ -2263,7 +2432,7 @@ function buildTemplateMarketplaceHtml(
           versionMenuItems,
           reportLinks: Array.from(document.querySelectorAll('button'))
             .map((element) => element.textContent || '')
-            .filter((text) => /举报模板/u.test(text)),
+            .filter((text) => text === copy.reportTemplate),
           publisherTexts: Array.from(document.querySelectorAll('.publisher, .detail-publisher'))
             .map((element) => element.textContent || '')
             .filter(Boolean),
@@ -2357,7 +2526,7 @@ function buildTemplateMarketplaceHtml(
           params.set('q', query);
         }
         params.set('sort', sortSelect.value);
-        statusElement.textContent = '正在加载...';
+        statusElement.textContent = copy.loading;
         try {
           const response = await fetch(apiOrigin + '/api/v1/templates?' + params.toString(), {
             headers: { accept: 'application/json' }
@@ -2386,14 +2555,14 @@ function buildTemplateMarketplaceHtml(
 
         if (state.loadError) {
           statusElement.textContent = state.templates.length > 0
-            ? '刷新失败，显示上次结果：' + state.loadError
-            : '无法连接市场：' + state.loadError + '。已安装模板可从侧栏使用。';
+            ? formatCopy(copy.refreshFailed, { message: state.loadError })
+            : formatCopy(copy.marketplaceConnectionFailed, { message: state.loadError });
           return;
         }
 
         statusElement.textContent = state.templates.length > 0
-          ? '共 ' + state.templates.length + ' 个模板'
-          : '没有匹配的模板，试试其他关键词。';
+          ? formatCopy(copy.templateCount, { count: state.templates.length })
+          : copy.noMatchingTemplates;
       }
 
       function renderTemplates() {
@@ -2454,7 +2623,7 @@ function buildTemplateMarketplaceHtml(
         templateGrid.hidden = true;
         detailViewElement.hidden = true;
         publishViewElement.hidden = false;
-        statusElement.textContent = state.publishStatus.message || '发布前请确认模板名称、Slug、描述、README、CHANGELOG 和模板 JSON。';
+        statusElement.textContent = state.publishStatus.message || copy.publishDefaultStatus;
 
         if (state.publishedTemplate) {
           publishViewElement.replaceChildren(buildPublishSuccessShell(state.publishedTemplate));
@@ -2468,24 +2637,24 @@ function buildTemplateMarketplaceHtml(
         const article = document.createElement('article');
         article.className = 'card notice-card';
         const title = document.createElement('h2');
-        title.textContent = '无法连接市场';
+        title.textContent = copy.loadErrorTitle;
         const body = document.createElement('p');
-        body.textContent = '请检查网络连接或代理设置。已安装模板仍可从侧栏应用到画布。';
+        body.textContent = copy.loadErrorBody;
         const detail = document.createElement('p');
-        detail.textContent = state.loadError ? '错误信息：' + state.loadError : '';
+        detail.textContent = state.loadError ? formatCopy(copy.errorInfo, { message: state.loadError }) : '';
         const actions = document.createElement('div');
         actions.className = 'actions';
         const retryButton = document.createElement('button');
         retryButton.className = 'primary';
         retryButton.type = 'button';
-        retryButton.textContent = '重试';
+        retryButton.textContent = copy.retry;
         retryButton.addEventListener('click', () => {
           void loadTemplates();
         });
         const browserButton = document.createElement('button');
         browserButton.className = 'secondary';
         browserButton.type = 'button';
-        browserButton.textContent = '浏览器中打开';
+        browserButton.textContent = copy.openBrowser;
         browserButton.addEventListener('click', () => {
           postOpenInBrowserMessage();
         });
@@ -2517,7 +2686,7 @@ function buildTemplateMarketplaceHtml(
           state.publishVersionTargetName = readString(detail && detail.name) || state.publishTemplateIdOrSlug;
         }
         state.publishStatus = errorMessage
-          ? { kind: 'error', message: '无法打开发布表单：' + errorMessage }
+          ? { kind: 'error', message: formatCopy(copy.openPublishFormFailed, { message: errorMessage }) }
           : { kind: 'idle' };
         const selectedDraft = state.publishMode === 'version'
           ? selectPublishDraftForVersion(state.publishVersionTargetName, selectedTemplateId) || state.publishDrafts[0]
@@ -2542,19 +2711,19 @@ function buildTemplateMarketplaceHtml(
         const backButton = document.createElement('button');
         backButton.className = 'detail-back';
         backButton.type = 'button';
-        backButton.textContent = '← 返回列表';
+        backButton.textContent = copy.backToList;
         backButton.addEventListener('click', () => {
           showTemplateList();
           void loadTemplates();
         });
         const title = document.createElement('h2');
         title.className = 'detail-title';
-        title.textContent = state.publishMode === 'version' ? '发布新版本' : '发布自建模板';
+        title.textContent = state.publishMode === 'version' ? copy.publishNewVersion : copy.publishCustomTemplate;
         const description = document.createElement('p');
         description.className = 'detail-description';
         description.textContent = state.publishMode === 'version'
-          ? '选择同名自建模板作为新版本内容，填写更新说明后提交到目标市场模板。'
-          : '先选择已保存的本地模板，再确认公开展示内容，最后提交到当前模板市场。';
+          ? copy.publishVersionDescription
+          : copy.publishTemplateDescription;
         header.append(backButton, title, description);
 
         if (!state.publishForm) {
@@ -2562,7 +2731,7 @@ function buildTemplateMarketplaceHtml(
           emptyBody.className = 'publish-main';
           const message = document.createElement('p');
           message.className = 'publish-message is-error';
-          message.textContent = state.publishStatus.message || '当前没有可发布的自建模板。请先在 VSCode 中保存一个自建模板。';
+          message.textContent = state.publishStatus.message || copy.noPublishableDrafts;
           emptyBody.append(message);
           shell.append(header, emptyBody);
           return shell;
@@ -2589,14 +2758,23 @@ function buildTemplateMarketplaceHtml(
         templateSection.className = 'publish-section';
         const templateLabel = document.createElement('label');
         templateLabel.className = 'publish-field';
-        templateLabel.textContent = '本地模板';
+        templateLabel.textContent = copy.localTemplate;
         const templateSelect = document.createElement('select');
         templateSelect.id = 'publishTemplateSelect';
         templateSelect.value = state.activePublishTemplateId || '';
         for (const draft of state.publishDrafts) {
           const option = document.createElement('option');
           option.value = draft.templateId;
-          option.textContent = draft.templateName + ' · ' + draft.nodeCount + ' 个节点' + (draft.storageLocationLabel ? ' · ' + draft.storageLocationLabel : '');
+          option.textContent = draft.storageLocationLabel
+            ? formatCopy(copy.publishDraftOptionWithLocation, {
+                name: draft.templateName,
+                count: draft.nodeCount,
+                location: draft.storageLocationLabel
+              })
+            : formatCopy(copy.publishDraftOption, {
+                name: draft.templateName,
+                count: draft.nodeCount
+              });
           templateSelect.append(option);
         }
         templateSelect.addEventListener('change', () => {
@@ -2606,8 +2784,8 @@ function buildTemplateMarketplaceHtml(
         const templateHelp = document.createElement('p');
         templateHelp.className = 'publish-help';
         templateHelp.textContent = state.publishMode === 'version'
-          ? '发布新版本只使用模板 JSON 和 CHANGELOG；名称、Slug、README、标签和描述沿用当前市场模板。'
-          : '这里不会直接写入市场；提交前可以编辑市场内容和 JSON 预览。';
+          ? copy.publishVersionHelp
+          : copy.publishTemplateHelp;
         templateSection.append(templateLabel, templateHelp);
 
         const detailSection = document.createElement('section');
@@ -2615,13 +2793,15 @@ function buildTemplateMarketplaceHtml(
         if (state.publishMode === 'version') {
           const targetSummary = document.createElement('p');
           targetSummary.className = 'publish-help';
-          targetSummary.textContent = '目标市场模板：' + (state.publishTemplateIdOrSlug || '未指定');
+          targetSummary.textContent = formatCopy(copy.targetMarketplaceTemplate, {
+            target: state.publishTemplateIdOrSlug || copy.notSpecified
+          });
           detailSection.append(targetSummary);
         } else {
           const detailGrid = document.createElement('div');
           detailGrid.className = 'publish-field-grid';
           detailGrid.append(
-            createPublishInput('name', '名称', state.publishForm.name, { required: true, reserveNote: true }),
+            createPublishInput('name', copy.name, state.publishForm.name, { required: true, reserveNote: true }),
             createPublishInput('slug', 'Slug', state.publishForm.slug, {
               noteId: 'publishSlugCheck',
               note: formatPublishSlugCheckMessage(),
@@ -2630,8 +2810,8 @@ function buildTemplateMarketplaceHtml(
           );
           detailSection.append(detailGrid);
           detailSection.append(
-            createPublishInput('description', '描述', state.publishForm.description, { required: true }),
-            createPublishInput('tags', '标签', state.publishForm.tags, { placeholder: 'review, quality, agent' })
+            createPublishInput('description', copy.description, state.publishForm.description, { required: true }),
+            createPublishInput('tags', copy.tags, state.publishForm.tags, { placeholder: 'review, quality, agent' })
           );
         }
 
@@ -2650,7 +2830,7 @@ function buildTemplateMarketplaceHtml(
             className: 'publish-changelog',
             rows: 5
           }),
-          createPublishTextarea('templateJson', 'Template JSON Preview', state.publishForm.templateJson, {
+          createPublishTextarea('templateJson', copy.templateJsonPreview, state.publishForm.templateJson, {
             className: 'publish-json',
             rows: 10,
             note: state.publishFieldErrors.templateJson
@@ -2663,10 +2843,10 @@ function buildTemplateMarketplaceHtml(
         side.className = 'publish-side';
         const sideTitle = document.createElement('h3');
         sideTitle.className = 'detail-section-title';
-        sideTitle.textContent = '预览与确认';
+        sideTitle.textContent = copy.previewAndConfirm;
         const thumbnail = document.createElement('img');
         thumbnail.className = 'publish-thumbnail';
-        thumbnail.alt = '自动生成的模板缩略图';
+        thumbnail.alt = copy.generatedThumbnailAlt;
         thumbnail.src = toPngPreviewSrc(state.publishForm.thumbnailPngBase64);
 
         const stats = document.createElement('dl');
@@ -2674,15 +2854,15 @@ function buildTemplateMarketplaceHtml(
         const activeDraft = getActivePublishDraft();
         if (state.publishMode === 'version') {
           stats.append(
-            createDetailMetricItem('模式', '新版本'),
-            createDetailMetricItem('目标', state.publishTemplateIdOrSlug || '未指定'),
-            createDetailMetricItem('节点', String(activeDraft ? activeDraft.nodeCount : 0)),
-            createDetailMetricItem('位置', activeDraft?.storageLocationLabel || '本地模板')
+            createDetailMetricItem(copy.mode, copy.newVersion),
+            createDetailMetricItem(copy.target, state.publishTemplateIdOrSlug || copy.notSpecified),
+            createDetailMetricItem(copy.nodes, String(activeDraft ? activeDraft.nodeCount : 0)),
+            createDetailMetricItem(copy.location, activeDraft?.storageLocationLabel || copy.localTemplate)
           );
         } else {
           stats.append(
-            createDetailMetricItem('节点', String(activeDraft ? activeDraft.nodeCount : 0)),
-            createDetailMetricItem('位置', activeDraft?.storageLocationLabel || '本地模板')
+            createDetailMetricItem(copy.nodes, String(activeDraft ? activeDraft.nodeCount : 0)),
+            createDetailMetricItem(copy.location, activeDraft?.storageLocationLabel || copy.localTemplate)
           );
         }
 
@@ -2692,10 +2872,10 @@ function buildTemplateMarketplaceHtml(
         submitButton.className = 'primary';
         submitButton.type = 'submit';
         submitButton.textContent = state.publishingTemplate
-          ? '发布中...'
+          ? copy.publishing
           : state.publishMode === 'version'
-            ? '确认发布新版本'
-            : '确认发布';
+            ? copy.confirmPublishNewVersion
+            : copy.confirmPublish;
         submitButton.disabled = state.publishingTemplate;
         actions.append(submitButton);
 
@@ -2717,23 +2897,23 @@ function buildTemplateMarketplaceHtml(
         header.className = 'publish-header';
         const title = document.createElement('h2');
         title.className = 'detail-title';
-        title.textContent = '发布成功';
+        title.textContent = copy.publishSuccessTitle;
         const description = document.createElement('p');
         description.className = 'detail-description';
-        description.textContent = '模板“' + publishedTemplate.name + '”已发布到当前模板市场。';
+        description.textContent = formatCopy(copy.publishSuccessDescription, { name: publishedTemplate.name });
         header.append(title, description);
 
         const body = document.createElement('div');
         body.className = 'publish-main';
         const message = document.createElement('p');
         message.className = 'publish-message is-success';
-        message.textContent = '你可以继续查看详情，或返回列表确认新模板已经出现在市场中。';
+        message.textContent = copy.publishSuccessMessage;
         const actions = document.createElement('div');
         actions.className = 'publish-actions';
         const detailButton = document.createElement('button');
         detailButton.className = 'primary';
         detailButton.type = 'button';
-        detailButton.textContent = '查看模板详情';
+        detailButton.textContent = copy.viewTemplateDetails;
         detailButton.addEventListener('click', () => {
           openTemplateDetail(publishedTemplate.slug, publishedTemplate.versionId);
           void loadTemplateDetail(publishedTemplate.slug);
@@ -2741,7 +2921,7 @@ function buildTemplateMarketplaceHtml(
         const listButton = document.createElement('button');
         listButton.className = 'secondary';
         listButton.type = 'button';
-        listButton.textContent = '返回市场列表';
+        listButton.textContent = copy.returnToMarketplaceList;
         listButton.addEventListener('click', () => {
           showTemplateList();
           void loadTemplates();
@@ -2828,7 +3008,7 @@ function buildTemplateMarketplaceHtml(
         state.publishingTemplate = true;
         state.publishStatus = {
           kind: 'loading',
-          message: state.publishMode === 'version' ? '正在发布模板新版本...' : '正在发布模板...'
+          message: state.publishMode === 'version' ? copy.publishingVersionStatus : copy.publishingTemplateStatus
         };
         renderTemplates();
         vscode.postMessage({
@@ -2853,36 +3033,36 @@ function buildTemplateMarketplaceHtml(
         state.publishFieldErrors = {};
         state.publishStatus = { kind: 'idle' };
         if (!state.activePublishTemplateId) {
-          state.publishStatus = { kind: 'error', message: '请选择要发布的本地模板。' };
+          state.publishStatus = { kind: 'error', message: copy.selectLocalTemplate };
           return false;
         }
         if (state.publishMode === 'version' && !readString(state.publishTemplateIdOrSlug)) {
-          state.publishStatus = { kind: 'error', message: '缺少目标市场模板，无法发布新版本。' };
+          state.publishStatus = { kind: 'error', message: copy.missingTargetMarketplaceTemplate };
           return false;
         }
         if (state.publishMode !== 'version' && !state.publishForm.name.trim()) {
-          state.publishStatus = { kind: 'error', message: '名称不能为空。' };
+          state.publishStatus = { kind: 'error', message: copy.nameRequired };
           return false;
         }
         if (state.publishMode !== 'version' && !state.publishForm.description.trim()) {
-          state.publishStatus = { kind: 'error', message: '描述不能为空。' };
+          state.publishStatus = { kind: 'error', message: copy.descriptionRequired };
           return false;
         }
         const slug = state.publishForm.slug.trim();
         if (state.publishMode !== 'version' && slug && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-          state.publishStatus = { kind: 'error', message: 'Slug 只能使用小写单词和连字符。' };
-          state.publishSlugCheck = { kind: 'invalid', message: 'Slug 只能使用小写单词和连字符。' };
+          state.publishStatus = { kind: 'error', message: copy.slugLowercaseError };
+          state.publishSlugCheck = { kind: 'invalid', message: copy.slugLowercaseError };
           return false;
         }
         if (state.publishMode !== 'version' && isPublishSlugCheckBlocking()) {
-          state.publishStatus = { kind: 'error', message: '请先解决 Slug 唯一性问题。' };
+          state.publishStatus = { kind: 'error', message: copy.resolveSlugIssue };
           return false;
         }
         try {
           JSON.parse(state.publishForm.templateJson);
         } catch {
-          state.publishFieldErrors.templateJson = 'Template JSON 不是合法 JSON。';
-          state.publishStatus = { kind: 'error', message: '请修正 Template JSON 后再发布。' };
+          state.publishFieldErrors.templateJson = copy.templateJsonInvalid;
+          state.publishStatus = { kind: 'error', message: copy.fixTemplateJson };
           return false;
         }
         return true;
@@ -2935,10 +3115,10 @@ function buildTemplateMarketplaceHtml(
           return;
         }
         if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-          state.publishSlugCheck = { kind: 'invalid', message: 'Slug 只能使用小写单词和连字符。' };
+          state.publishSlugCheck = { kind: 'invalid', message: copy.slugLowercaseError };
           return;
         }
-        state.publishSlugCheck = { kind: 'checking', message: '正在检查 Slug 是否可用...' };
+        state.publishSlugCheck = { kind: 'checking', message: copy.slugChecking };
         state.publishSlugCheckTimer = window.setTimeout(() => {
           void checkPublishSlugAvailability(slug);
         }, 300);
@@ -2959,8 +3139,8 @@ function buildTemplateMarketplaceHtml(
             return;
           }
           state.publishSlugCheck = body.available
-            ? { kind: 'available', message: 'Slug 可用。' }
-            : { kind: 'unavailable', message: 'Slug 已被其他模板使用。' };
+            ? { kind: 'available', message: copy.slugAvailable }
+            : { kind: 'unavailable', message: copy.slugUnavailable };
         } catch (error) {
           if (!state.publishForm || state.publishForm.slug.trim() !== slug) {
             return;
@@ -3070,16 +3250,16 @@ function buildTemplateMarketplaceHtml(
         const backButton = document.createElement('button');
         backButton.className = 'detail-back';
         backButton.type = 'button';
-        backButton.textContent = '← 返回列表';
+        backButton.textContent = copy.backToList;
         backButton.addEventListener('click', closeTemplateDetail);
 
         const loadingTitle = document.createElement('h2');
         loadingTitle.className = 'detail-title';
-        loadingTitle.textContent = '正在加载模板详情...';
+        loadingTitle.textContent = copy.detailLoadingTitle;
 
         const loadingDescription = document.createElement('p');
         loadingDescription.className = 'detail-description';
-        loadingDescription.textContent = '正在获取 ' + templateIdOrSlug + ' 的信息。';
+        loadingDescription.textContent = formatCopy(copy.detailLoadingDescription, { template: templateIdOrSlug });
 
         header.append(backButton, loadingTitle, loadingDescription);
 
@@ -3093,7 +3273,7 @@ function buildTemplateMarketplaceHtml(
         loadingReadmeTitle.textContent = 'README';
         const loadingReadmeBody = document.createElement('div');
         loadingReadmeBody.className = 'detail-readme-body';
-        loadingReadmeBody.textContent = '加载中...';
+        loadingReadmeBody.textContent = copy.loadingEllipsis;
         loadingReadme.append(loadingReadmeTitle, loadingReadmeBody);
 
         const loadingSidebar = document.createElement('aside');
@@ -3102,10 +3282,10 @@ function buildTemplateMarketplaceHtml(
         loadingSidebarBody.className = 'detail-section';
         const loadingSidebarTitle = document.createElement('h3');
         loadingSidebarTitle.className = 'detail-section-title';
-        loadingSidebarTitle.textContent = '详情';
+        loadingSidebarTitle.textContent = copy.details;
         const loadingSidebarText = document.createElement('p');
         loadingSidebarText.className = 'detail-section-body';
-        loadingSidebarText.textContent = '加载完成后将显示安装位置、安装和版本信息。';
+        loadingSidebarText.textContent = copy.detailLoadingSidebarText;
         loadingSidebarBody.append(loadingSidebarTitle, loadingSidebarText);
         loadingSidebar.append(loadingSidebarBody);
 
@@ -3124,16 +3304,16 @@ function buildTemplateMarketplaceHtml(
         const backButton = document.createElement('button');
         backButton.className = 'detail-back';
         backButton.type = 'button';
-        backButton.textContent = '← 返回列表';
+        backButton.textContent = copy.backToList;
         backButton.addEventListener('click', closeTemplateDetail);
 
         const title = document.createElement('h2');
         title.className = 'detail-title';
-        title.textContent = '加载模板详情失败';
+        title.textContent = copy.detailErrorTitle;
 
         const description = document.createElement('p');
         description.className = 'detail-description';
-        description.textContent = '无法获取 ' + templateIdOrSlug + ' 的详情信息。';
+        description.textContent = formatCopy(copy.detailErrorDescription, { template: templateIdOrSlug });
 
         header.append(backButton, title, description);
 
@@ -3144,7 +3324,7 @@ function buildTemplateMarketplaceHtml(
         readme.className = 'detail-readme';
         const readmeTitle = document.createElement('h3');
         readmeTitle.className = 'detail-readme-title';
-        readmeTitle.textContent = '错误信息';
+        readmeTitle.textContent = copy.errorInfoLabel;
         const readmeBody = document.createElement('div');
         readmeBody.className = 'detail-readme-body';
         readmeBody.textContent = errorMessage;
@@ -3155,7 +3335,7 @@ function buildTemplateMarketplaceHtml(
         const retryButton = document.createElement('button');
         retryButton.className = 'primary';
         retryButton.type = 'button';
-        retryButton.textContent = '重试';
+        retryButton.textContent = copy.retry;
         retryButton.addEventListener('click', () => {
           delete state.detailLoadErrorsBySlug[templateIdOrSlug];
           renderTemplates();
@@ -3163,7 +3343,7 @@ function buildTemplateMarketplaceHtml(
         });
         const backHint = document.createElement('p');
         backHint.className = 'detail-section-body';
-        backHint.textContent = '多次失败时，可返回列表后重新打开。';
+        backHint.textContent = copy.retryHint;
         sidebar.append(retryButton, backHint);
 
         body.append(readme, sidebar);
@@ -3182,7 +3362,7 @@ function buildTemplateMarketplaceHtml(
         const backButton = document.createElement('button');
         backButton.className = 'detail-back';
         backButton.type = 'button';
-        backButton.textContent = '← 返回列表';
+        backButton.textContent = copy.backToList;
         backButton.addEventListener('click', closeTemplateDetail);
 
         const summary = document.createElement('div');
@@ -3245,7 +3425,7 @@ function buildTemplateMarketplaceHtml(
         const publishVersionButton = document.createElement('button');
         publishVersionButton.className = 'secondary detail-report';
         publishVersionButton.type = 'button';
-        publishVersionButton.textContent = '发布新版本';
+        publishVersionButton.textContent = copy.publishNewVersion;
         publishVersionButton.addEventListener('click', () => {
           vscode.postMessage({
             type: 'marketplace/publishTemplate',
@@ -3258,7 +3438,7 @@ function buildTemplateMarketplaceHtml(
         const reportButton = document.createElement('button');
         reportButton.className = 'secondary detail-report';
         reportButton.type = 'button';
-        reportButton.textContent = '举报模板';
+        reportButton.textContent = copy.reportTemplate;
         reportButton.addEventListener('click', () => {
           postOpenInBrowserMessage(buildTemplateReportUrl(template.slug));
         });
@@ -3267,16 +3447,16 @@ function buildTemplateMarketplaceHtml(
         const metrics = document.createElement('dl');
         metrics.className = 'detail-metrics';
         metrics.append(
-          createDetailMetricItem('下载', (template.downloadCount || 0).toLocaleString()),
-          createDetailMetricItem('点赞', (template.likeCount || 0).toLocaleString()),
-          createDetailMetricItem('最新版本', 'v' + template.latestVersion.versionNumber)
+          createDetailMetricItem(copy.downloads, (template.downloadCount || 0).toLocaleString()),
+          createDetailMetricItem(copy.likes, (template.likeCount || 0).toLocaleString()),
+          createDetailMetricItem(copy.latestVersion, 'v' + template.latestVersion.versionNumber)
         );
 
         const versionSection = document.createElement('section');
         versionSection.className = 'detail-section';
         const versionTitle = document.createElement('h3');
         versionTitle.className = 'detail-section-title';
-        versionTitle.textContent = '版本历史';
+        versionTitle.textContent = copy.versionHistory;
         const versionBody = document.createElement('div');
         versionBody.className = 'detail-section-body';
         const versionList = document.createElement('ol');
@@ -3293,7 +3473,7 @@ function buildTemplateMarketplaceHtml(
           status.className = 'detail-version-status';
           const isSelectedVersion = selectedVersion.id === version.id;
           status.textContent = isSelectedVersion
-            ? '当前'
+            ? copy.current
             : version.status;
           row.append(label, status);
           const changelog = document.createElement('p');
@@ -3315,7 +3495,7 @@ function buildTemplateMarketplaceHtml(
         const tabs = document.createElement('div');
         tabs.className = 'detail-tabs';
         tabs.setAttribute('role', 'tablist');
-        tabs.setAttribute('aria-label', '模板详情内容');
+        tabs.setAttribute('aria-label', copy.detailContentAriaLabel);
         tabs.append(
           createDetailTabButton('readme', 'README', activeTab),
           createDetailTabButton('changelog', 'CHANGELOG', activeTab)
@@ -3357,7 +3537,7 @@ function buildTemplateMarketplaceHtml(
 
         const readmeBody = document.createElement('div');
         readmeBody.className = 'detail-readme-body';
-        readmeBody.textContent = (template.readme || '').trim() || '未提供 README。';
+        readmeBody.textContent = (template.readme || '').trim() || copy.readmeMissing;
         panel.append(readmeBody);
         return panel;
       }
@@ -3367,7 +3547,7 @@ function buildTemplateMarketplaceHtml(
         changelogBody.className = 'detail-changelog-body';
         const versions = collectInstallableVersions(template);
         if (versions.length === 0) {
-          changelogBody.textContent = '未提供 CHANGELOG。';
+          changelogBody.textContent = copy.changelogMissing;
           return changelogBody;
         }
 
@@ -3383,12 +3563,12 @@ function buildTemplateMarketplaceHtml(
           label.textContent = 'v' + version.versionNumber;
           const status = document.createElement('span');
           status.className = 'detail-version-status';
-          status.textContent = selectedVersion && selectedVersion.id === version.id ? '当前' : version.status;
+          status.textContent = selectedVersion && selectedVersion.id === version.id ? copy.current : version.status;
           row.append(label, status);
 
           const changelog = document.createElement('p');
           changelog.className = 'detail-version-changelog';
-          changelog.textContent = version.changelog || '未提供该版本 CHANGELOG。';
+          changelog.textContent = version.changelog || copy.versionChangelogMissing;
           item.append(row, changelog);
           list.append(item);
         }
@@ -3412,7 +3592,7 @@ function buildTemplateMarketplaceHtml(
         const cachedDetail = state.templateDetailsBySlug[templateIdOrSlug];
         statusElement.textContent = cachedDetail
           ? cachedDetail.name
-          : '加载中：' + templateIdOrSlug;
+          : formatCopy(copy.detailLoadingStatus, { template: templateIdOrSlug });
         renderTemplates();
         if (!cachedDetail) {
           void loadTemplateDetail(templateIdOrSlug);
@@ -3464,14 +3644,16 @@ function buildTemplateMarketplaceHtml(
         const thumb = document.createElement('div');
         thumb.className = 'thumb';
         const eyebrow = document.createElement('p');
-        eyebrow.textContent = '已安装';
+        eyebrow.textContent = copy.installed;
         const title = document.createElement('h2');
         title.textContent = installedTemplate.localTemplateName || installedTemplate.marketTemplateSlug || installedTemplate.marketTemplateId;
         thumb.append(eyebrow, title);
 
         const description = document.createElement('p');
         description.className = 'description';
-        description.textContent = '已安装到' + formatInstalledTemplateLocationLabel(installedTemplate) + '，可在侧栏模板列表中应用到画布。';
+        description.textContent = formatCopy(copy.offlineInstalledDescription, {
+          location: formatInstalledTemplateLocationLabel(installedTemplate)
+        });
 
         const badge = document.createElement('div');
         badge.className = 'installed-badge';
@@ -3483,7 +3665,7 @@ function buildTemplateMarketplaceHtml(
           const detailButton = document.createElement('button');
           detailButton.className = 'secondary detail-link';
           detailButton.type = 'button';
-          detailButton.textContent = '在浏览器查看';
+          detailButton.textContent = copy.openInBrowser;
           detailButton.addEventListener('click', () => {
             window.open(installedTemplate.sourceUrl, '_blank', 'noopener');
           });
@@ -3520,7 +3702,7 @@ function buildTemplateMarketplaceHtml(
         const detailButton = document.createElement('button');
         detailButton.className = 'secondary detail-link';
         detailButton.type = 'button';
-        detailButton.textContent = '查看详情';
+        detailButton.textContent = copy.viewDetails;
         detailButton.addEventListener('click', () => {
           openTemplateDetail(template.slug, template.latestVersion.id);
         });
@@ -3545,7 +3727,11 @@ function buildTemplateMarketplaceHtml(
 
         const meta = document.createElement('div');
         meta.className = 'meta';
-        meta.textContent = (template.downloadCount || 0).toLocaleString() + ' 次下载 · ' + (template.likeCount || 0).toLocaleString() + ' 次点赞 · v' + template.latestVersion.versionNumber;
+        meta.textContent = formatCopy(copy.cardMeta, {
+          downloads: (template.downloadCount || 0).toLocaleString(),
+          likes: (template.likeCount || 0).toLocaleString(),
+          version: template.latestVersion.versionNumber
+        });
 
         const installedTemplate = findInstalledTemplate(template);
         const installedBadge = document.createElement('div');
@@ -3589,19 +3775,19 @@ function buildTemplateMarketplaceHtml(
         const installButton = document.createElement('button');
         installButton.className = 'primary split-primary';
         installButton.type = 'button';
-        let installButtonLabel = '安装';
+        let installButtonLabel = copy.install;
         if (state.installingSlug === template.slug) {
-          installButtonLabel = '安装中...';
+          installButtonLabel = copy.installing;
         } else if (!resolveTemplateInstallTargetId(template)) {
-          installButtonLabel = '请先选择位置';
+          installButtonLabel = copy.selectLocationFirst;
         } else if (isPreferredVersionInstalled) {
-          installButtonLabel = '已安装 v' + installedTemplate.installedVersionNumber;
+          installButtonLabel = formatCopy(copy.installedVersion, { version: installedTemplate.installedVersionNumber });
         } else if (installedTemplate) {
           installButtonLabel = formatInstallVersionActionLabel(installedTemplate, installVersion);
         } else if (installVersion.versionNumber === template.latestVersion.versionNumber) {
-          installButtonLabel = '安装';
+          installButtonLabel = copy.install;
         } else {
-          installButtonLabel = '安装 v' + installVersion.versionNumber;
+          installButtonLabel = formatCopy(copy.installVersion, { version: installVersion.versionNumber });
         }
         installButton.textContent = installButtonLabel;
         installButton.disabled = state.installingSlug === template.slug || isPreferredVersionInstalled || !resolveTemplateInstallTargetId(template);
@@ -3616,7 +3802,7 @@ function buildTemplateMarketplaceHtml(
         const versionButton = document.createElement('button');
         versionButton.className = 'primary split-toggle';
         versionButton.type = 'button';
-        versionButton.setAttribute('aria-label', '切换安装版本');
+        versionButton.setAttribute('aria-label', copy.switchInstallVersion);
         versionButton.append(createDropdownChevronIcon());
         versionButton.disabled = state.installingSlug === template.slug || !resolveTemplateInstallTargetId(template);
         versionButton.addEventListener('click', () => {
@@ -3674,7 +3860,7 @@ function buildTemplateMarketplaceHtml(
         if (state.loadingVersionMenuSlug === key) {
           const note = document.createElement('div');
           note.className = 'version-menu-note';
-          note.textContent = '正在加载版本列表...';
+          note.textContent = copy.loadingVersions;
           menu.append(note);
           return menu;
         }
@@ -3683,7 +3869,7 @@ function buildTemplateMarketplaceHtml(
         if (error) {
           const note = document.createElement('div');
           note.className = 'version-menu-note';
-          note.textContent = '加载版本失败：' + error;
+          note.textContent = formatCopy(copy.loadVersionsFailed, { message: error });
           menu.append(note);
           return menu;
         }
@@ -3697,10 +3883,10 @@ function buildTemplateMarketplaceHtml(
           const installedTemplate = findInstalledTemplate(template);
           const isInstalledVersion = Boolean(installedTemplate && installedTemplate.marketVersionId === version.id);
           item.textContent = isInstalledVersion
-            ? '已安装 v' + version.versionNumber
+            ? formatCopy(copy.installedVersion, { version: version.versionNumber })
             : installedTemplate
               ? formatInstallVersionActionLabel(installedTemplate, version)
-              : '安装 v' + version.versionNumber;
+              : formatCopy(copy.installVersion, { version: version.versionNumber });
           item.disabled = state.installingSlug === template.slug || isInstalledVersion || !resolveTemplateInstallTargetId(template);
           item.addEventListener('click', () => {
             state.openInstallVersionMenuSlug = undefined;
@@ -3713,11 +3899,11 @@ function buildTemplateMarketplaceHtml(
 
       function formatInstallVersionActionLabel(installedTemplate, version) {
         if (!installedTemplate || typeof installedTemplate.installedVersionNumber !== 'number') {
-          return '安装 v' + version.versionNumber;
+          return formatCopy(copy.installVersion, { version: version.versionNumber });
         }
         return version.versionNumber < installedTemplate.installedVersionNumber
-          ? '回滚到 v' + version.versionNumber
-          : '更新到 v' + version.versionNumber;
+          ? formatCopy(copy.rollbackToVersion, { version: version.versionNumber })
+          : formatCopy(copy.updateToVersion, { version: version.versionNumber });
       }
 
       async function loadTemplateDetail(templateOrSlug) {
@@ -3731,7 +3917,7 @@ function buildTemplateMarketplaceHtml(
           }
           const body = await response.json();
           if (!body || typeof body !== 'object' || !body.template) {
-            throw new Error('接口返回了无法识别的数据');
+            throw new Error(copy.unrecognizedApiData);
           }
           state.templateDetailsBySlug[key] = body.template;
           delete state.detailLoadErrorsBySlug[key];
@@ -3744,7 +3930,7 @@ function buildTemplateMarketplaceHtml(
           state.detailLoadErrorsBySlug[key] = message;
           state.versionMenuErrorsBySlug[key] = message;
           if (state.activeTemplateSlug === key) {
-            statusElement.textContent = '加载失败：' + message;
+            statusElement.textContent = formatCopy(copy.loadFailed, { message });
           }
         } finally {
           if (state.loadingVersionMenuSlug === key) {
@@ -3770,7 +3956,11 @@ function buildTemplateMarketplaceHtml(
         const targetId = resolveTemplateInstallTargetId(template);
         const target = resolveInstallTargetById(targetId);
         state.installingSlug = template.slug;
-        statusElement.textContent = '正在下载并安装 ' + template.name + ' v' + version.versionNumber + (target ? ' 到 ' + formatInstallTargetLabel(target) : '') + '...';
+        statusElement.textContent = formatCopy(copy.installingStatus, {
+          name: template.name,
+          version: version.versionNumber,
+          target: target ? formatCopy(copy.installingTargetSuffix, { target: formatInstallTargetLabel(target) }) : ''
+        });
         renderTemplates();
         try {
           vscode.postMessage({
@@ -3789,7 +3979,9 @@ function buildTemplateMarketplaceHtml(
           });
         } catch (error) {
           state.installingSlug = undefined;
-          statusElement.textContent = '安装失败：无法开始下载完整模板包（' + formatErrorMessage(error) + '）。请检查网络和当前安装位置后重试。';
+          statusElement.textContent = formatCopy(copy.installStartFailed, {
+            message: formatErrorMessage(error)
+          });
           renderTemplates();
         }
       }
@@ -3827,7 +4019,7 @@ function buildTemplateMarketplaceHtml(
         row.className = 'install-target-row';
         const label = document.createElement('span');
         label.className = 'install-target-label';
-        label.textContent = '安装位置';
+        label.textContent = copy.installLocation;
         row.append(label, createInstallTargetSelect(template));
         return row;
       }
@@ -3839,11 +4031,11 @@ function buildTemplateMarketplaceHtml(
       function createInstallTargetSelect(template) {
         const select = document.createElement('select');
         select.className = 'install-target';
-        select.setAttribute('aria-label', '安装位置');
+        select.setAttribute('aria-label', copy.installLocation);
         if (state.installTargets.length === 0) {
           const option = document.createElement('option');
           option.value = '';
-          option.textContent = '正在读取安装位置...';
+          option.textContent = copy.loadingInstallLocations;
           select.replaceChildren(option);
           select.disabled = true;
           return select;
@@ -3900,37 +4092,54 @@ function buildTemplateMarketplaceHtml(
         if (target.scope === 'workspace') {
           return formatWorkspaceLocationLabel(target.label);
         }
-        return '本地 · ' + target.label;
+        return formatCopy(copy.localTargetLabel, { label: target.label });
       }
 
       function formatTemplatePublisherLabel(template) {
         const publisher = template && template.publisher ? template.publisher : undefined;
         const displayName = readString(publisher && publisher.displayName) || readString(publisher && publisher.githubLogin);
-        return '作者 ' + (displayName || '未知');
+        return formatCopy(copy.authorLabel, { name: displayName || copy.unknownPublisher });
       }
 
       function formatInstalledTemplateBadge(installedTemplate) {
-        return '已安装到 ' + formatInstalledTemplateLocationLabel(installedTemplate) + ' · v' + installedTemplate.installedVersionNumber;
+        return formatCopy(copy.installedBadge, {
+          location: formatInstalledTemplateLocationLabel(installedTemplate),
+          version: installedTemplate.installedVersionNumber
+        });
       }
 
       function formatInstalledTemplateLocationLabel(installedTemplate) {
         if (installedTemplate.storageScope === 'workspace') {
-          return formatWorkspaceLocationLabel(installedTemplate.storageLocationLabel || '当前workspace');
+          return formatWorkspaceLocationLabel(installedTemplate.storageLocationLabel || copy.currentWorkspace);
         }
-        return '本地 · ' + (installedTemplate.storageLocationLabel || '当前设备');
+        return formatCopy(copy.localTargetLabel, { label: installedTemplate.storageLocationLabel || copy.currentDevice });
       }
 
       function formatWorkspaceLocationLabel(label) {
-        return (label || '当前workspace').replace(/^当前 workspace(?:\\s*·\\s*)?/, (match) => match.includes('·') ? '当前workspace · ' : '当前workspace');
+        const normalized = label || copy.currentWorkspace;
+        return normalized
+          .replace(/^\\u5f53\\u524d workspace(?:\\s*\\u00b7\\s*)?/, (match) => match.includes('\\u00b7') ? copy.currentWorkspace + ' - ' : copy.currentWorkspace)
+          .replace(/^Current workspace(?:\\s*\\u00b7\\s*)?/, (match) => match.includes('\\u00b7') ? copy.currentWorkspace + ' - ' : copy.currentWorkspace);
       }
 
       function formatInstallResultStatus(payload) {
         const actionLabel = payload.operation === 'updated'
-          ? '已更新模板：'
+          ? copy.installedTemplateUpdated
           : payload.operation === 'reinstalled'
-            ? '已重新安装模板：'
-            : '已安装模板：';
-        return actionLabel + payload.templateName + ' v' + payload.versionNumber + '。请到模板侧栏应用到 Canvas。';
+            ? copy.installedTemplateReinstalled
+            : copy.installedTemplateInstalled;
+        return formatCopy(copy.installResultStatus, {
+          operation: actionLabel,
+          name: payload.templateName,
+          version: payload.versionNumber
+        });
+      }
+
+      function formatCopy(template, params = {}) {
+        return String(template || '').replace(/\\{([A-Za-z0-9_]+)\\}/g, (match, key) => {
+          const value = params[key];
+          return value === undefined || value === null ? '' : String(value);
+        });
       }
 
       function persistState() {
@@ -3968,9 +4177,9 @@ function buildTemplateMarketplaceHtml(
       }
 
       function formatErrorMessage(error) {
-        const message = String(error && error.message ? error.message : error || '未知错误');
+        const message = String(error && error.message ? error.message : error || copy.unknownError);
         if (/Failed to fetch/i.test(message)) {
-          return '网络请求失败，可能无法访问模板市场 API 或代理阻断';
+          return copy.networkFetchFailed;
         }
         return message;
       }
@@ -4037,6 +4246,169 @@ function buildTemplateMarketplaceHtml(
     </script>
   </body>
 </html>`;
+}
+
+function buildTemplateMarketplacePanelCopy(): TemplateMarketplacePanelCopy {
+  return {
+    panelTitle: vscode.l10n.t('Template Marketplace'),
+    publishTemplate: vscode.l10n.t('Publish custom template'),
+    openBrowser: vscode.l10n.t('Open in browser'),
+    panelNote: vscode.l10n.t('Select an install location before installing a template. Open details to view README, CHANGELOG, and version history.'),
+    toolbarAriaLabel: vscode.l10n.t('Template Marketplace filters'),
+    searchPlaceholder: vscode.l10n.t('Search template names, tags, or keywords...'),
+    sortAriaLabel: vscode.l10n.t('Sort'),
+    sortLabels: {
+      hot: vscode.l10n.t('Hot'),
+      downloads: vscode.l10n.t('Downloads'),
+      likes: vscode.l10n.t('Likes'),
+      newest: vscode.l10n.t('Newest'),
+      updated: vscode.l10n.t('Recently updated')
+    },
+    loading: vscode.l10n.t('Loading...'),
+    templateListAriaLabel: vscode.l10n.t('Template list'),
+    templateDetailAriaLabel: vscode.l10n.t('Template details'),
+    publishTemplateAriaLabel: vscode.l10n.t('Publish template'),
+    installedTemplatesError: vscode.l10n.t('Failed to read installed template state: {message}. Browsing is not affected, and installed templates remain available from the sidebar.'),
+    unknownError: vscode.l10n.t('Unknown error'),
+    templatePublishedStatus: vscode.l10n.t('Template "{name}" has been published to Template Marketplace v{version}.'),
+    publishFailed: vscode.l10n.t('Publish failed: {message}'),
+    installFailed: vscode.l10n.t('Install failed: {message}. The template was not written locally. Confirm the install location and try again.'),
+    testMissingTemplateToOpen: vscode.l10n.t('Missing template to open.'),
+    testPublishFormNotOpen: vscode.l10n.t('Publish form is not open yet.'),
+    testUnsupportedAction: vscode.l10n.t('Unsupported Template Marketplace test action: {kind}'),
+    testMissingActionTemplate: vscode.l10n.t('Could not find the test action target template: {slug}'),
+    notSpecified: vscode.l10n.t('not specified'),
+    testMissingActionVersion: vscode.l10n.t('Could not find the test action target version.'),
+    refreshFailed: vscode.l10n.t('Refresh failed; showing the last result: {message}'),
+    marketplaceConnectionFailed: vscode.l10n.t('Could not connect to the marketplace: {message}. Installed templates remain available from the sidebar.'),
+    templateCount: vscode.l10n.t('{count} templates'),
+    noMatchingTemplates: vscode.l10n.t('No matching templates. Try a different keyword.'),
+    publishDefaultStatus: vscode.l10n.t('Before publishing, confirm the template name, slug, description, README, CHANGELOG, and template JSON.'),
+    loadErrorTitle: vscode.l10n.t('Could not connect to marketplace'),
+    loadErrorBody: vscode.l10n.t('Check your network connection or proxy settings. Installed templates can still be applied to Canvas from the sidebar.'),
+    errorInfoLabel: vscode.l10n.t('Error information'),
+    errorInfo: vscode.l10n.t('Error information: {message}'),
+    retry: vscode.l10n.t('Retry'),
+    openPublishFormFailed: vscode.l10n.t('Could not open publish form: {message}'),
+    backToList: vscode.l10n.t('Back to list'),
+    publishNewVersion: vscode.l10n.t('Publish new version'),
+    publishCustomTemplate: vscode.l10n.t('Publish custom template'),
+    publishVersionDescription: vscode.l10n.t('Select a custom template with the same name as the new version content, then add release notes and submit it to the target marketplace template.'),
+    publishTemplateDescription: vscode.l10n.t('Select a saved local template, confirm its public listing content, then submit it to the current template marketplace.'),
+    noPublishableDrafts: vscode.l10n.t('There are no publishable custom templates. Save a custom template in VS Code first.'),
+    localTemplate: vscode.l10n.t('Local template'),
+    publishDraftOption: vscode.l10n.t('{name} - {count} nodes'),
+    publishDraftOptionWithLocation: vscode.l10n.t('{name} - {count} nodes - {location}'),
+    publishVersionHelp: vscode.l10n.t('Publishing a new version uses only Template JSON and CHANGELOG; name, slug, README, tags, and description stay with the current marketplace template.'),
+    publishTemplateHelp: vscode.l10n.t('Nothing is written to the marketplace until you submit. You can edit the listing content and JSON preview first.'),
+    targetMarketplaceTemplate: vscode.l10n.t('Target marketplace template: {target}'),
+    name: vscode.l10n.t('Name'),
+    description: vscode.l10n.t('Description'),
+    tags: vscode.l10n.t('Tags'),
+    templateJsonPreview: vscode.l10n.t('Template JSON Preview'),
+    previewAndConfirm: vscode.l10n.t('Preview and confirm'),
+    generatedThumbnailAlt: vscode.l10n.t('Auto-generated template thumbnail'),
+    mode: vscode.l10n.t('Mode'),
+    newVersion: vscode.l10n.t('New version'),
+    target: vscode.l10n.t('Target'),
+    nodes: vscode.l10n.t('Nodes'),
+    location: vscode.l10n.t('Location'),
+    publishing: vscode.l10n.t('Publishing...'),
+    confirmPublishNewVersion: vscode.l10n.t('Confirm new version publish'),
+    confirmPublish: vscode.l10n.t('Confirm publish'),
+    publishSuccessTitle: vscode.l10n.t('Publish succeeded'),
+    publishSuccessDescription: vscode.l10n.t('Template "{name}" has been published to the current template marketplace.'),
+    publishSuccessMessage: vscode.l10n.t('You can continue to view details, or return to the list to confirm the new template appears in the marketplace.'),
+    viewTemplateDetails: vscode.l10n.t('View template details'),
+    returnToMarketplaceList: vscode.l10n.t('Return to marketplace list'),
+    publishingVersionStatus: vscode.l10n.t('Publishing template new version...'),
+    publishingTemplateStatus: vscode.l10n.t('Publishing template...'),
+    selectLocalTemplate: vscode.l10n.t('Select a local template to publish.'),
+    missingTargetMarketplaceTemplate: vscode.l10n.t('Missing target marketplace template; cannot publish a new version.'),
+    nameRequired: vscode.l10n.t('Name is required.'),
+    descriptionRequired: vscode.l10n.t('Description is required.'),
+    slugLowercaseError: vscode.l10n.t('Slug can only use lowercase words and hyphens.'),
+    resolveSlugIssue: vscode.l10n.t('Resolve the slug uniqueness issue first.'),
+    templateJsonInvalid: vscode.l10n.t('Template JSON is not valid JSON.'),
+    fixTemplateJson: vscode.l10n.t('Fix Template JSON before publishing.'),
+    slugChecking: vscode.l10n.t('Checking whether the slug is available...'),
+    slugAvailable: vscode.l10n.t('Slug is available.'),
+    slugUnavailable: vscode.l10n.t('Slug is already used by another template.'),
+    detailLoadingTitle: vscode.l10n.t('Loading template details...'),
+    detailLoadingDescription: vscode.l10n.t('Fetching information for {template}.'),
+    loadingEllipsis: vscode.l10n.t('Loading...'),
+    details: vscode.l10n.t('Details'),
+    detailLoadingSidebarText: vscode.l10n.t('Install location, install state, and version information appear after loading completes.'),
+    detailErrorTitle: vscode.l10n.t('Failed to load template details'),
+    detailErrorDescription: vscode.l10n.t('Could not fetch details for {template}.'),
+    retryHint: vscode.l10n.t('If this keeps failing, return to the list and reopen the template.'),
+    reportTemplate: vscode.l10n.t('Report template'),
+    downloads: vscode.l10n.t('Downloads'),
+    likes: vscode.l10n.t('Likes'),
+    latestVersion: vscode.l10n.t('Latest version'),
+    versionHistory: vscode.l10n.t('Version history'),
+    current: vscode.l10n.t('Current'),
+    detailContentAriaLabel: vscode.l10n.t('Template detail content'),
+    readmeMissing: vscode.l10n.t('No README provided.'),
+    changelogMissing: vscode.l10n.t('No CHANGELOG provided.'),
+    versionChangelogMissing: vscode.l10n.t('No CHANGELOG provided for this version.'),
+    detailLoadingStatus: vscode.l10n.t('Loading: {template}'),
+    installed: vscode.l10n.t('Installed'),
+    offlineInstalledDescription: vscode.l10n.t('Installed to {location}. Apply it to Canvas from the sidebar template list.'),
+    openInBrowser: vscode.l10n.t('View in browser'),
+    viewDetails: vscode.l10n.t('View details'),
+    cardMeta: vscode.l10n.t('{downloads} downloads - {likes} likes - v{version}'),
+    install: vscode.l10n.t('Install'),
+    installing: vscode.l10n.t('Installing...'),
+    selectLocationFirst: vscode.l10n.t('Select a location first'),
+    installedVersion: vscode.l10n.t('Installed v{version}'),
+    installVersion: vscode.l10n.t('Install v{version}'),
+    switchInstallVersion: vscode.l10n.t('Switch install version'),
+    loadingVersions: vscode.l10n.t('Loading version list...'),
+    loadVersionsFailed: vscode.l10n.t('Failed to load versions: {message}'),
+    rollbackToVersion: vscode.l10n.t('Roll back to v{version}'),
+    updateToVersion: vscode.l10n.t('Update to v{version}'),
+    unrecognizedApiData: vscode.l10n.t('The API returned unrecognized data.'),
+    loadFailed: vscode.l10n.t('Load failed: {message}'),
+    installingStatus: vscode.l10n.t('Downloading and installing {name} v{version}{target}...'),
+    installingTargetSuffix: vscode.l10n.t(' to {target}'),
+    installStartFailed: vscode.l10n.t('Install failed: could not start downloading the full template package ({message}). Check your network and current install location, then try again.'),
+    installLocation: vscode.l10n.t('Install location'),
+    loadingInstallLocations: vscode.l10n.t('Reading install locations...'),
+    localTargetLabel: vscode.l10n.t('Local - {label}'),
+    authorLabel: vscode.l10n.t('Author {name}'),
+    unknownPublisher: vscode.l10n.t('Unknown'),
+    installedBadge: vscode.l10n.t('Installed to {location} - v{version}'),
+    currentWorkspace: vscode.l10n.t('Current workspace'),
+    currentDevice: vscode.l10n.t('Current device'),
+    installedTemplateUpdated: vscode.l10n.t('Updated template:'),
+    installedTemplateReinstalled: vscode.l10n.t('Reinstalled template:'),
+    installedTemplateInstalled: vscode.l10n.t('Installed template:'),
+    installResultStatus: vscode.l10n.t('{operation} {name} v{version}. Apply it to Canvas from the Templates sidebar.'),
+    networkFetchFailed: vscode.l10n.t('Network request failed; the Template Marketplace API may be unreachable or blocked by a proxy.')
+  };
+}
+
+function serializeForInlineScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+function resolveWebviewHtmlLang(): string {
+  return (vscode.env?.language || 'en').replace(/"/g, '');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function readOptionalString(value: unknown): string | undefined {
