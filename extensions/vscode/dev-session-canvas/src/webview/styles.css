@@ -1314,28 +1314,22 @@ body {
   }
 }
 
-@keyframes pane-gallery-root-running-scanline {
+@keyframes pane-gallery-root-running-title-block {
   0% {
-    transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
-    opacity: var(--pane-gallery-root-running-scanline-opacity);
-    animation-timing-function: linear;
-  }
-
-  2% {
-    transform: translateX(var(--pane-gallery-root-running-scanline-edge-offset)) rotate(var(--pane-gallery-root-running-scanline-angle));
-    opacity: var(--pane-gallery-root-running-scanline-opacity);
+    transform: translateX(0);
+    opacity: var(--pane-gallery-root-running-title-block-opacity);
     animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1);
   }
 
-  98% {
-    transform: translateX(calc(var(--pane-gallery-root-running-scanline-travel) - var(--pane-gallery-root-running-scanline-edge-offset))) rotate(var(--pane-gallery-root-running-scanline-angle));
-    opacity: var(--pane-gallery-root-running-scanline-opacity);
-    animation-timing-function: linear;
+  50% {
+    transform: translateX(100%);
+    opacity: var(--pane-gallery-root-running-title-block-opacity);
+    animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1);
   }
 
   100% {
-    transform: translateX(var(--pane-gallery-root-running-scanline-travel)) rotate(var(--pane-gallery-root-running-scanline-angle));
-    opacity: var(--pane-gallery-root-running-scanline-opacity);
+    transform: translateX(0);
+    opacity: var(--pane-gallery-root-running-title-block-opacity);
   }
 }
 
@@ -3849,40 +3843,38 @@ body {
     0 0 0 2px color-mix(in srgb, var(--execution-node-attention-color) 68%, transparent);
 }
 
-.pane-gallery-root-header.is-pane-gallery-root-running-scanline {
-  --pane-gallery-root-running-scanline-color: var(--pane-gallery-root-header-border-color);
-  --pane-gallery-root-running-scanline-angle: 18deg;
-  --pane-gallery-root-running-scanline-width: 16px;
-  --pane-gallery-root-running-scanline-edge-offset: 28px;
-  --pane-gallery-root-running-scanline-travel: 100%;
-  --pane-gallery-root-running-scanline-opacity: 0.82;
+.pane-gallery-root-header.is-pane-gallery-root-running-title-block {
+  --pane-gallery-root-running-title-block-color: var(--pane-gallery-root-header-border-color);
+  --pane-gallery-root-running-title-block-width: 5px;
+  --pane-gallery-root-running-title-block-opacity: 0.82;
+}
+
+.pane-gallery-root-header.is-pane-gallery-root-running-title-block .pane-gallery-root-title-block {
   isolation: isolate;
   overflow: hidden;
 }
 
-.pane-gallery-root-header.is-pane-gallery-root-running-scanline::after {
+.pane-gallery-root-header.is-pane-gallery-root-running-title-block .pane-gallery-root-title-block::before {
   content: "";
   position: absolute;
-  top: -22%;
-  bottom: -22%;
-  left: calc(0px - var(--pane-gallery-root-running-scanline-edge-offset));
-  right: auto;
+  top: 0;
+  bottom: 0;
+  left: 0;
   box-sizing: border-box;
-  width: calc(100% + var(--pane-gallery-root-running-scanline-edge-offset) + var(--pane-gallery-root-running-scanline-edge-offset));
+  width: calc(100% - var(--pane-gallery-root-running-title-block-width));
   pointer-events: none;
-  border-left: var(--pane-gallery-root-running-scanline-width) solid var(--pane-gallery-root-running-scanline-color);
+  border-left: var(--pane-gallery-root-running-title-block-width) solid var(--pane-gallery-root-running-title-block-color);
   background: transparent;
-  opacity: var(--pane-gallery-root-running-scanline-opacity);
+  opacity: var(--pane-gallery-root-running-title-block-opacity);
   filter: none;
   z-index: 0;
-  transform-origin: left center;
-  transform: translateX(0) rotate(var(--pane-gallery-root-running-scanline-angle));
-  animation: pane-gallery-root-running-scanline 3s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  transform: translateX(0);
+  animation: pane-gallery-root-running-title-block 2.6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
   will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pane-gallery-root-header.is-pane-gallery-root-running-scanline::after {
+  .pane-gallery-root-header.is-pane-gallery-root-running-title-block .pane-gallery-root-title-block::before {
     animation: none;
     opacity: 0;
   }
@@ -3896,6 +3888,8 @@ body {
 }
 
 .pane-gallery-root-title {
+  position: relative;
+  z-index: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

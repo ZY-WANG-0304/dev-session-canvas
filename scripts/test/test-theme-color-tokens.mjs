@@ -238,53 +238,67 @@ assert.doesNotMatch(
   'File access badges and indicators should not use fixed hex colors.'
 );
 
-const paneGalleryRunningScanlineKeyframes = extractCssRange(
+const paneGalleryRunningTitleBlockKeyframes = extractCssRange(
   mainWebviewStyles,
-  '@keyframes pane-gallery-root-running-scanline',
+  '@keyframes pane-gallery-root-running-title-block',
   '@media (prefers-reduced-motion: reduce)'
 );
-const paneGalleryRunningScanlineRule = extractCssRuleBody(
+const paneGalleryRunningTitleBlockRule = extractCssRuleBody(
   mainWebviewStyles,
-  '.pane-gallery-root-header.is-pane-gallery-root-running-scanline'
+  '.pane-gallery-root-header.is-pane-gallery-root-running-title-block'
 );
-const paneGalleryRunningScanlineLayerRule = extractCssRuleBody(
+const paneGalleryRunningTitleBlockContainerRule = extractCssRuleBody(
   mainWebviewStyles,
-  '.pane-gallery-root-header.is-pane-gallery-root-running-scanline::after'
+  '.pane-gallery-root-header.is-pane-gallery-root-running-title-block .pane-gallery-root-title-block'
+);
+const paneGalleryRunningTitleBlockLayerRule = extractCssRuleBody(
+  mainWebviewStyles,
+  '.pane-gallery-root-header.is-pane-gallery-root-running-title-block .pane-gallery-root-title-block::before'
 );
 assert.doesNotMatch(
-  paneGalleryRunningScanlineKeyframes,
+  paneGalleryRunningTitleBlockKeyframes,
   /opacity:\s*0\b/u,
-  'Pane Gallery root running scanline should not fade out between animation loops.'
+  'Pane Gallery root running title block should not fade out while it is moving.'
 );
 assert.match(
-  paneGalleryRunningScanlineKeyframes,
-  /0%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation-timing-function:\s*linear;[\s\S]*2%\s*\{[\s\S]*var\(--pane-gallery-root-running-scanline-edge-offset\)[\s\S]*animation-timing-function:\s*cubic-bezier\(0\.45, 0, 0\.25, 1\);[\s\S]*98%\s*\{[\s\S]*calc\(var\(--pane-gallery-root-running-scanline-travel\) - var\(--pane-gallery-root-running-scanline-edge-offset\)\)[\s\S]*animation-timing-function:\s*linear;[\s\S]*100%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);/u,
-  'Pane Gallery root running scanline should keep visible opacity and compress off-header entry/exit into short keyframe ranges.'
+  paneGalleryRunningTitleBlockKeyframes,
+  /0%\s*\{[\s\S]*transform:\s*translateX\(0\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-title-block-opacity\);[\s\S]*50%\s*\{[\s\S]*transform:\s*translateX\(100%\);[\s\S]*100%\s*\{[\s\S]*transform:\s*translateX\(0\);/u,
+  'Pane Gallery root running title block should move back and forth within the title area.'
 );
 assert.match(
-  paneGalleryRunningScanlineRule,
-  /--pane-gallery-root-running-scanline-edge-offset:\s*28px;[\s\S]*--pane-gallery-root-running-scanline-travel:\s*100%;[\s\S]*isolation:\s*isolate;/u,
-  'Pane Gallery root running scanline should keep its original travel distance, expose the off-header edge offset, and isolate its layer stack.'
+  paneGalleryRunningTitleBlockRule,
+  /--pane-gallery-root-running-title-block-color:\s*var\(--pane-gallery-root-header-border-color\);[\s\S]*--pane-gallery-root-running-title-block-width:\s*5px;[\s\S]*--pane-gallery-root-running-title-block-opacity:\s*0\.82;/u,
+  'Pane Gallery root running title block should use a narrow vertical block derived from the root label border color.'
 );
 assert.match(
-  paneGalleryRunningScanlineLayerRule,
-  /left:\s*calc\(0px - var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*width:\s*calc\(100% \+ var\(--pane-gallery-root-running-scanline-edge-offset\) \+ var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*z-index:\s*0;[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
-  'Pane Gallery root running scanline layer should start outside the header, fully leave it, stay behind title text, and keep the original timing curve.'
+  paneGalleryRunningTitleBlockContainerRule,
+  /isolation:\s*isolate;[\s\S]*overflow:\s*hidden;/u,
+  'Pane Gallery root running title block should be clipped by the title text area rather than the full root label.'
 );
 assert.match(
-  extractCssRuleBody(mainWebviewStyles, '.pane-gallery-root-title-block'),
+  paneGalleryRunningTitleBlockLayerRule,
+  /top:\s*0;[\s\S]*bottom:\s*0;[\s\S]*left:\s*0;[\s\S]*width:\s*calc\(100% - var\(--pane-gallery-root-running-title-block-width\)\);[\s\S]*border-left:\s*var\(--pane-gallery-root-running-title-block-width\) solid var\(--pane-gallery-root-running-title-block-color\);[\s\S]*background:\s*transparent;[\s\S]*animation:\s*pane-gallery-root-running-title-block 2\.6s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  'Pane Gallery root running title block layer should be a vertical block moving inside the title area without gradient fill.'
+);
+assert.match(
+  extractCssRuleBody(mainWebviewStyles, '\n.pane-gallery-root-title-block'),
   /position:\s*relative;[\s\S]*z-index:\s*1;/u,
-  'Pane Gallery root title text should render above the running scanline background.'
+  'Pane Gallery root title area should establish the moving block containing layer.'
+);
+assert.match(
+  extractCssRuleBody(mainWebviewStyles, '\n.pane-gallery-root-title'),
+  /position:\s*relative;[\s\S]*z-index:\s*1;/u,
+  'Pane Gallery root title text should render above the running title block.'
 );
 assert.match(
   multiRootDesignSource,
-  /两次扫描之间不保留空档[\s\S]*不覆盖 root title 文字/u,
-  'Multi-root design doc should record the continuous Pane Gallery root running scanline as a text-safe background.'
+  /竖向色块[\s\S]*在 root title 区域内左右往返运动[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root design doc should record the Pane Gallery root running title block as a text-safe in-title animation.'
 );
 assert.match(
   multiRootSpecSource,
-  /两次扫描之间不保留空档[\s\S]*不覆盖 root title 文字/u,
-  'Multi-root product spec should record the continuous Pane Gallery root running scanline as a text-safe background.'
+  /竖向色块[\s\S]*在 root title 区域内左右往返运动[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root product spec should record the Pane Gallery root running title block as a text-safe in-title animation.'
 );
 
 assert.match(

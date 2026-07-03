@@ -43,8 +43,8 @@
 
 ### 运动与反馈
 
-- 动画只用于 attention、Agent `running` 标题栏活性细线、`paneGallery` root `running` 聚合标题区域 `/` 形斜线扫描、hover / focus transition、菜单显隐和轻量反馈。
-- attention、Agent `running` 与 `paneGallery` root `running` 活性动画必须支持 `prefers-reduced-motion`；运行扫描线在降级后关闭动画层并保留标题栏原有底部分隔线，attention 在降级后保留静态高亮。
+- 动画只用于 attention、Agent `running` 标题栏活性细线、`paneGallery` root `running` 聚合 title 区域 `|` 形色块往返运动、hover / focus transition、菜单显隐和轻量反馈。
+- attention、Agent `running` 与 `paneGallery` root `running` 活性动画必须支持 `prefers-reduced-motion`；root running 色块在降级后关闭动画层并保留标题栏原有底部分隔线，attention 在降级后保留静态高亮。
 - 不使用大范围页面入场动画、粒子动效或持续背景运动。
 
 ### 文档分流

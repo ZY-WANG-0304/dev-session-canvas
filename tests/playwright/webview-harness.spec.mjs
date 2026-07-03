@@ -345,7 +345,7 @@ test('canvas shell spans panel horizontal edges for single-root and multi-root l
   await bootstrap(page, multiRootState, createRuntimeContext({ multiRootPresentationMode: 'rootGroups' }));
   await settleWebview(page, 4);
   await assertPanelEdges('multi-root rootGroups canvas', ['.react-flow']);
-  await expect(page.locator('[data-pane-gallery-root-running-scanline]')).toHaveCount(0);
+  await expect(page.locator('[data-pane-gallery-root-running-title-block]')).toHaveCount(0);
 
   await bootstrap(page, multiRootState, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
   await settleWebview(page, 4);
@@ -946,67 +946,91 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
   await expect(backendPane).toHaveAttribute('data-pane-gallery-attention-count', '0');
   const frontendHeader = frontendPane.locator('.pane-gallery-root-header');
   const backendHeader = backendPane.locator('.pane-gallery-root-header');
-  await expect(frontendHeader).toHaveAttribute('data-pane-gallery-root-running-scanline', 'false');
-  await expect(frontendHeader).not.toHaveClass(/is-pane-gallery-root-running-scanline/);
-  await expect(backendHeader).toHaveAttribute('data-pane-gallery-root-running-scanline', 'true');
-  await expect(backendHeader).toHaveClass(/is-pane-gallery-root-running-scanline/);
+  await expect(frontendHeader).toHaveAttribute('data-pane-gallery-root-running-title-block', 'false');
+  await expect(frontendHeader).not.toHaveClass(/is-pane-gallery-root-running-title-block/);
+  await expect(backendHeader).toHaveAttribute('data-pane-gallery-root-running-title-block', 'true');
+  await expect(backendHeader).toHaveClass(/is-pane-gallery-root-running-title-block/);
   await expect
     .poll(async () =>
-      backendHeader.evaluate((header) => getComputedStyle(header, '::after').animationName)
+      backendHeader.evaluate((header) => {
+        const titleBlock = header.querySelector('.pane-gallery-root-title-block');
+        if (!(titleBlock instanceof HTMLElement)) {
+          return null;
+        }
+        return getComputedStyle(titleBlock, '::before').animationName;
+      })
     )
-    .toBe('pane-gallery-root-running-scanline');
+    .toBe('pane-gallery-root-running-title-block');
   await expect
     .poll(async () =>
-      backendHeader.evaluate((header) => ({
-        scanLineBorderWidth: getComputedStyle(header, '::after').borderLeftWidth,
-        scanLineBackgroundImage: getComputedStyle(header, '::after').backgroundImage,
-        scanLineAnimationDuration: getComputedStyle(header, '::after').animationDuration,
-        scanLineFilter: getComputedStyle(header, '::after').filter,
-        scanLineWidthToken: getComputedStyle(header).getPropertyValue('--pane-gallery-root-running-scanline-width').trim(),
-        scanLineOpacityToken: getComputedStyle(header).getPropertyValue('--pane-gallery-root-running-scanline-opacity').trim(),
-        scanLineTravel: getComputedStyle(header).getPropertyValue('--pane-gallery-root-running-scanline-travel').trim(),
-        scanLineAngle: getComputedStyle(header).getPropertyValue('--pane-gallery-root-running-scanline-angle').trim(),
-        scanLineClipped: getComputedStyle(header).overflow === 'hidden',
-        scanLineExtendsAboveHeader: Number.parseFloat(getComputedStyle(header, '::after').top) < 0,
-        scanLineExtendsBelowHeader: Number.parseFloat(getComputedStyle(header, '::after').bottom) < 0,
-        staticLineContent: getComputedStyle(header, '::before').content,
-        titlebarBorderWidth: getComputedStyle(header).borderBottomWidth,
-        titlebarBorderStyle: getComputedStyle(header).borderBottomStyle
-      }))
+      backendHeader.evaluate((header) => {
+        const titleBlock = header.querySelector('.pane-gallery-root-title-block');
+        const title = header.querySelector('.pane-gallery-root-title');
+        if (!(titleBlock instanceof HTMLElement) || !(title instanceof HTMLElement)) {
+          return null;
+        }
+
+        return {
+          titleBlockBorderWidth: getComputedStyle(titleBlock, '::before').borderLeftWidth,
+          titleBlockBackgroundImage: getComputedStyle(titleBlock, '::before').backgroundImage,
+          titleBlockAnimationDuration: getComputedStyle(titleBlock, '::before').animationDuration,
+          titleBlockFilter: getComputedStyle(titleBlock, '::before').filter,
+          titleBlockWidthToken: getComputedStyle(header)
+            .getPropertyValue('--pane-gallery-root-running-title-block-width')
+            .trim(),
+          titleBlockOpacityToken: getComputedStyle(header)
+            .getPropertyValue('--pane-gallery-root-running-title-block-opacity')
+            .trim(),
+          titleBlockClipped: getComputedStyle(titleBlock).overflow === 'hidden',
+          titleBlockTop: getComputedStyle(titleBlock, '::before').top,
+          titleBlockBottom: getComputedStyle(titleBlock, '::before').bottom,
+          titleBlockPositioning: getComputedStyle(titleBlock, '::before').left,
+          titleZIndex: getComputedStyle(title).zIndex,
+          staticLineContent: getComputedStyle(header, '::before').content,
+          titlebarBorderWidth: getComputedStyle(header).borderBottomWidth,
+          titlebarBorderStyle: getComputedStyle(header).borderBottomStyle
+        };
+      })
     )
     .toEqual({
-      scanLineBorderWidth: '16px',
-      scanLineBackgroundImage: 'none',
-      scanLineAnimationDuration: '3s',
-      scanLineFilter: 'none',
-      scanLineWidthToken: '16px',
-      scanLineOpacityToken: '0.82',
-      scanLineTravel: '100%',
-      scanLineAngle: '18deg',
-      scanLineClipped: true,
-      scanLineExtendsAboveHeader: true,
-      scanLineExtendsBelowHeader: true,
+      titleBlockBorderWidth: '5px',
+      titleBlockBackgroundImage: 'none',
+      titleBlockAnimationDuration: '2.6s',
+      titleBlockFilter: 'none',
+      titleBlockWidthToken: '5px',
+      titleBlockOpacityToken: '0.82',
+      titleBlockClipped: true,
+      titleBlockTop: '0px',
+      titleBlockBottom: '0px',
+      titleBlockPositioning: '0px',
+      titleZIndex: '1',
       staticLineContent: 'none',
       titlebarBorderWidth: '1px',
       titlebarBorderStyle: 'solid'
     });
-  const scanlineColors = await backendHeader.evaluate((header) => {
-    const scanlineProbe = document.createElement('span');
-    scanlineProbe.style.color = 'var(--pane-gallery-root-running-scanline-color)';
-    header.append(scanlineProbe);
-    const scanlineColor = getComputedStyle(scanlineProbe).color;
-    scanlineProbe.remove();
+  const titleBlockColors = await backendHeader.evaluate((header) => {
+    const titleBlockProbe = document.createElement('span');
+    titleBlockProbe.style.color = 'var(--pane-gallery-root-running-title-block-color)';
+    header.append(titleBlockProbe);
+    const titleBlockColor = getComputedStyle(titleBlockProbe).color;
+    titleBlockProbe.remove();
 
     return {
       borderBottomColor: getComputedStyle(header).borderBottomColor,
-      scanlineColor
+      titleBlockColor
     };
   });
-  expect(scanlineColors.scanlineColor).toBe(scanlineColors.borderBottomColor);
+  expect(titleBlockColors.titleBlockColor).toBe(titleBlockColors.borderBottomColor);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect
     .poll(async () =>
-      backendHeader.evaluate((header) => getComputedStyle(header, '::after').animationName)
+      backendHeader.evaluate((header) => {
+        const titleBlock = header.querySelector('.pane-gallery-root-title-block');
+        if (!(titleBlock instanceof HTMLElement)) {
+          return null;
+        }
+        return getComputedStyle(titleBlock, '::before').animationName;
+      })
     )
     .toBe('none');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -1019,8 +1043,8 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
     const lifecycleBackendPane = page.locator('[data-pane-gallery-root-id="workspace-root-backend"]');
     const lifecycleBackendHeader = lifecycleBackendPane.locator('.pane-gallery-root-header');
     await expect(lifecycleBackendPane).toHaveAttribute('data-pane-gallery-status', 'running');
-    await expect(lifecycleBackendHeader).toHaveAttribute('data-pane-gallery-root-running-scanline', 'false');
-    await expect(lifecycleBackendHeader).not.toHaveClass(/is-pane-gallery-root-running-scanline/);
+    await expect(lifecycleBackendHeader).toHaveAttribute('data-pane-gallery-root-running-title-block', 'false');
+    await expect(lifecycleBackendHeader).not.toHaveClass(/is-pane-gallery-root-running-title-block/);
   }
 
   await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
@@ -1572,8 +1596,8 @@ test('pane gallery thumbnail hit layer blocks execution node attention acknowled
     .not.toBe('rgba(0, 0, 0, 0)');
   await expect(backendThumbnail).toHaveAttribute('data-pane-gallery-attention-flashing', 'true');
   await expect(backendHeader).toHaveAttribute('data-pane-gallery-root-header-attention-flashing', 'true');
-  await expect(backendHeader).toHaveAttribute('data-pane-gallery-root-running-scanline', 'false');
-  await expect(backendHeader).not.toHaveClass(/is-pane-gallery-root-running-scanline/);
+  await expect(backendHeader).toHaveAttribute('data-pane-gallery-root-running-title-block', 'false');
+  await expect(backendHeader).not.toHaveClass(/is-pane-gallery-root-running-title-block/);
   await expect
     .poll(async () =>
       backendHeader.evaluate((header) => getComputedStyle(header).animationName)
