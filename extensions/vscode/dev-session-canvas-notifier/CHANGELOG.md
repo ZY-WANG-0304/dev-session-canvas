@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.1
+
+- 与主扩展 `0.21.1` 对齐：本轮主扩展是 `0.21.x` Preview 线内的修复版本，聚焦多根布局整理默认限定当前 root、paneGallery active root 缩略图占位和运行扫描连续化、serialized terminal supervisor snapshot 新鲜度、侧栏 root 顺序，以及当前 Agent 恢复 / 分叉启动意图继承；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.21.0
 
 - 与主扩展 `0.21.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦主扩展子包化后的发布包布局、执行终端 OSC 52 复制桥接、serialized terminal state 新鲜度、Agent 显式恢复 / 分叉参数边界、多根模板重置，以及 paneGallery root 级运行 / 关注提示；notifier companion 不引入新的通知投递行为变更。
