@@ -13,6 +13,7 @@ const hostRuntimeSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/extension.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
   'extensions/vscode/dev-session-canvas/src/panel/agentLaunchLocalization.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/canvasTemplateLocalization.ts',
   'extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorLocalization.ts',
   'extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts',
@@ -37,11 +38,13 @@ const templateMarketplaceClientSource = readFileSync(
 );
 const sharedPresentationSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts',
+  'extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts',
   'extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts',
   'extensions/vscode/dev-session-canvas/src/common/executionCwdLabel.ts',
   'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts',
   'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts',
-  'extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts'
+  'extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts'
 ];
 const runtimeSupervisorSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts',

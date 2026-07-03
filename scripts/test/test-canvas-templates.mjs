@@ -36,7 +36,9 @@ try {
     buildCanvasTemplatePackageMarketMetadataPath,
     captureCanvasTemplateFromState,
     encodeCanvasTemplateDocument,
+    formatCanvasTemplateMessageDescriptor,
     formatCanvasTemplateStats,
+    getCanvasTemplateErrorDescriptor,
     normalizeCanvasTemplateWorkspaceRelativePath,
     parseCanvasTemplateDocument,
     sanitizeCanvasTemplateFileStem
@@ -164,6 +166,8 @@ try {
   );
   assert.strictEqual(catalog.issues.length, 1);
   assert.match(catalog.issues[0].message, /JSON/);
+  assert.strictEqual(catalog.issues[0].messageDescriptor?.id, 'templateJsonInvalid');
+  assert.match(formatCanvasTemplateMessageDescriptor(catalog.issues[0].messageDescriptor), /not valid JSON/u);
   assert.strictEqual(formatCanvasTemplateStats(builtinTemplateB), '1 Agent, 1 Terminal');
 
   const marketTemplate = {
@@ -660,8 +664,8 @@ try {
 
   assert.strictEqual(normalizeCanvasTemplateWorkspaceRelativePath(' ./docs/a.md '), 'docs/a.md');
   assert.strictEqual(normalizeCanvasTemplateWorkspaceRelativePath('../secret.md'), undefined);
-  assert.throws(
-    () => parseCanvasTemplateDocument({
+  try {
+    parseCanvasTemplateDocument({
       version: 1,
       template: {
         ...capturedPathOnlyNote.template,
@@ -677,9 +681,12 @@ try {
           }
         ]
       }
-    }),
-    /缺少合法 workspace 相对 Markdown 路径/u
-  );
+    });
+    assert.fail('Expected invalid associated Markdown relative path to throw.');
+  } catch (error) {
+    assert.strictEqual(getCanvasTemplateErrorDescriptor(error)?.id, 'noteRelativePathInvalid');
+    assert.match(error instanceof Error ? error.message : String(error), /workspace-relative Markdown path/u);
+  }
 
   const objectAgentId = 'agent-7-11111111-1111-4111-8111-111111111111';
   const objectTerminalId = 'terminal-8-22222222-2222-4222-8222-222222222222';
@@ -766,6 +773,29 @@ try {
 
   const roundTripText = encodeCanvasTemplateDocument(userTemplate);
   assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(roundTripText)).document.template, userTemplate);
+  const terminalMetadataWarningParse = parseCanvasTemplateDocument({
+    version: 1,
+    template: {
+      ...userTemplate,
+      nodes: [
+        {
+          kind: 'terminal',
+          title: 'Terminal With Ignored Metadata',
+          position: { x: 0, y: 0 },
+          size: { width: 320, height: 240 },
+          metadata: {
+            agent: { provider: 'codex' },
+            note: { content: 'ignored' }
+          }
+        }
+      ]
+    }
+  });
+  assert.deepStrictEqual(
+    terminalMetadataWarningParse.warningDescriptors.map((descriptor) => descriptor.id),
+    ['nonAgentMetadataIgnored', 'nonNoteMetadataIgnored']
+  );
+  assert.match(terminalMetadataWarningParse.warnings[0], /not an Agent/u);
   const groupedTemplateRoundTrip = parseCanvasTemplateDocument({
     version: 1,
     template: packageTemplate
@@ -785,7 +815,7 @@ try {
         ]
       }
     }),
-    /分组索引/u
+    /group index/u
   );
   assert.throws(
     () => parseCanvasTemplateDocument({
@@ -804,7 +834,7 @@ try {
         ]
       }
     }),
-    /循环父子关系/u
+    /cyclic parent-child relationship/u
   );
 
   assert.throws(
@@ -818,7 +848,7 @@ try {
         ]
       }
     }),
-    /循环父子关系/u
+    /cyclic parent-child relationship/u
   );
   assert.throws(
     () => parseCanvasTemplateDocument({
@@ -830,7 +860,7 @@ try {
         ]
       }
     }),
-    /不存在的父分组索引/u
+    /missing parent group index/u
   );
   assert.throws(
     () => parseCanvasTemplateDocument({
@@ -842,7 +872,7 @@ try {
         ]
       }
     }),
-    /不能引用自身作为父分组/u
+    /cannot reference itself/u
   );
   assert.throws(
     () => parseCanvasTemplateDocument({
@@ -864,7 +894,7 @@ try {
         ]
       }
     }),
-    /不存在的分组索引/u
+    /missing group index/u
   );
 
   const extensionSource = await readFile('extensions/vscode/dev-session-canvas/src/extension.ts', 'utf8');

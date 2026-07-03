@@ -44,6 +44,7 @@ import {
 } from './panel/CanvasPanelManager';
 import { CanvasTemplateMarketplacePanelController } from './panel/CanvasTemplateMarketplacePanel';
 import { TemplateMarketplaceClient } from './panel/TemplateMarketplaceClient';
+import { localizeCanvasTemplateError } from './panel/canvasTemplateLocalization';
 import { showCanvasTemplateSaveForm } from './panel/CanvasTemplateSaveFormPanel';
 import type { CanvasStoredTemplate } from './panel/CanvasTemplateStore';
 import { getConfiguredTerminalShell, getEffectiveTerminalShellConfiguration } from './panel/configuration';
@@ -3739,10 +3740,11 @@ function formatCanvasTemplateStatsForQuickPick(template: Pick<CanvasTemplate, 'n
 }
 
 async function showCanvasTemplateError(title: string, error: unknown): Promise<void> {
+  const message = localizeCanvasTemplateError(error) ?? (error instanceof Error ? error.message : String(error));
   await vscode.window.showErrorMessage(
     vscode.l10n.t('{title}: {message}', {
       title,
-      message: error instanceof Error ? error.message : String(error)
+      message
     })
   );
 }
