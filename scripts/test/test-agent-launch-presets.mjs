@@ -89,6 +89,21 @@ try {
     ),
     'codex fork --profile prod --yolo --model custom-model -c feature=on --search codex-branch-session-custom'
   );
+  assert.equal(
+    buildAgentBranchCommandLine(
+      'codex',
+      'codex-branch-session-selection-assignment',
+      {
+        command: 'codex',
+        defaultArgs: '--model default-model --sandbox workspace-write'
+      },
+      {
+        launchPreset: 'custom',
+        customLaunchCommand: 'codex --yolo --last=true --all=false --include-non-interactive=true old-session'
+      }
+    ),
+    'codex fork --model default-model --yolo codex-branch-session-selection-assignment'
+  );
 
   assert.throws(
     () =>
@@ -1074,6 +1089,30 @@ try {
       }
     ),
     'codex resume --yolo --model template-model session-codex-template'
+  );
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'codex',
+      'session-codex-assignment-selection',
+      {
+        command: 'codex',
+        defaultArgs: '--model default-model --sandbox workspace-write'
+      },
+      {
+        launchPreset: 'default',
+        templateArgv: [
+          '--yolo',
+          '--model',
+          'template-model',
+          'resume',
+          'old-session',
+          '--last=true',
+          '--all=false',
+          '--include-non-interactive=true'
+        ]
+      }
+    ),
+    'codex resume --yolo --model template-model session-codex-assignment-selection'
   );
   assert.throws(
     () =>

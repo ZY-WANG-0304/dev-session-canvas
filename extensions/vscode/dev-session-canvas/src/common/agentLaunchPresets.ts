@@ -1011,7 +1011,7 @@ function stripCodexForkSelectionArgs(forkArgs: readonly string[]): string[] {
       break;
     }
 
-    if (token === '--last' || token === '--all' || token === '--include-non-interactive') {
+    if (isCodexSessionSelectionFlag(token)) {
       continue;
     }
 
