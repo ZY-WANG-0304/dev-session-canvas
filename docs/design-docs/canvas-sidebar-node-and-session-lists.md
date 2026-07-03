@@ -185,6 +185,7 @@ updated_at: 2026-07-02
   - `codex fork <当前仍有效的默认参数...> <session-id>`（实现上命令层把 `fork` 尽量前置，session id 保持在命令尾部）
   - `claude --resume <session-id> --fork-session <当前仍有效的默认参数...>`
 - 这里的“沿用默认启动参数”不是盲目把默认字符串原样拼到显式目标恢复或分叉后面；默认参数只应包含 `--model`、`--sandbox`、`--ask-for-approval` 等对显式 `resume <session-id>` / `fork <session-id>` 仍有效的 runtime/configuration 参数。`resume` / `fork` / `--resume`、`--last`、`--all`、`--include-non-interactive`、`--session-id`、`--fork-session` 等一次性目标或选择范围参数不适合放入默认启动参数，若出现应在默认参数解析阶段显式报错。
+- 历史记录当前不包含原始启动 argv / command line；历史恢复 / 分叉不能继承这条历史会话当初的 `YOLO`、沙盒或自定义启动意图。只有从当前画布节点发起的 `重启` / `分叉` 才读取该节点 metadata 中的启动意图。
 - 历史分叉节点标题使用原会话标题加 `分叉` 后缀作为弱提示；从历史列表发起时没有现有画布来源节点，因此不自动创建 `fork` 连线。
 - 新节点创建后，宿主会自动打开或定位画布，并聚焦到新节点。
 - 后续自动启动仍沿用现有 `Agent` 节点“等待尺寸就绪后自动启动”的宿主/前端链路，不再另开一套特殊恢复流程。

@@ -435,8 +435,23 @@ try {
   );
   assert.match(
     managerSource,
-    /launchMode === 'resume'[\s\S]*resumeContext\.strategy !== 'fake-provider'[\s\S]*this\.resolveAgentHistoryResumeLaunch\([\s\S]*provider,[\s\S]*resumeContext\.sessionId/u,
-    'Codex / Claude 显式恢复当前节点原会话时必须复用 history resume 命令构造，保留非冲突默认启动参数。'
+    /launchMode === 'resume'[\s\S]*resumeContext\.strategy !== 'fake-provider'[\s\S]*this\.resolveAgentHistoryResumeLaunch\([\s\S]*provider,[\s\S]*resumeContext\.sessionId,[\s\S]*currentMetadata\.launchPreset,[\s\S]*this\.buildAgentLaunchIntent\(currentMetadata\)/u,
+    'Codex / Claude 显式恢复当前节点原会话时必须复用 history resume 命令构造，并传入当前节点启动意图以保留 YOLO / 沙盒 / 自定义等偏好。'
+  );
+  assert.match(
+    managerSource,
+    /branchCommandLine = this\.buildAgentBranchCommandLine\([\s\S]*metadata\.provider,[\s\S]*sessionId,[\s\S]*this\.buildAgentLaunchIntent\(metadata\)/u,
+    '当前节点分叉必须传入当前节点启动意图，不能只继承当前 Default args。'
+  );
+  assert.match(
+    managerSource,
+    /historyResumeCommandLine = this\.buildHistoryResumeCommandLine\(params\.provider, sessionId\);/u,
+    '历史会话恢复只能使用历史项 session id 与当前 Default args；provider 历史未提供原始启动意图。'
+  );
+  assert.match(
+    managerSource,
+    /historyForkCommandLine = this\.buildAgentBranchCommandLine\(params\.provider, sessionId\);/u,
+    '历史会话分叉只能使用历史项 session id 与当前 Default args；不能误用当前节点启动意图。'
   );
   assert.match(
     managerSource,
