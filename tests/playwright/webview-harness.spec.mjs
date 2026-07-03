@@ -952,39 +952,32 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
   await expect(backendHeader).toHaveClass(/is-pane-gallery-root-running-title-block/);
   await expect
     .poll(async () =>
-      backendHeader.evaluate((header) => {
-        const titleBlock = header.querySelector('.pane-gallery-root-title-block');
-        if (!(titleBlock instanceof HTMLElement)) {
-          return null;
-        }
-        return getComputedStyle(titleBlock, '::before').animationName;
-      })
+      backendHeader.evaluate((header) => getComputedStyle(header, '::after').animationName)
     )
     .toBe('pane-gallery-root-running-title-block');
   await expect
     .poll(async () =>
       backendHeader.evaluate((header) => {
-        const titleBlock = header.querySelector('.pane-gallery-root-title-block');
         const title = header.querySelector('.pane-gallery-root-title');
-        if (!(titleBlock instanceof HTMLElement) || !(title instanceof HTMLElement)) {
+        if (!(title instanceof HTMLElement)) {
           return null;
         }
 
         return {
-          titleBlockBorderWidth: getComputedStyle(titleBlock, '::before').borderLeftWidth,
-          titleBlockBackgroundImage: getComputedStyle(titleBlock, '::before').backgroundImage,
-          titleBlockAnimationDuration: getComputedStyle(titleBlock, '::before').animationDuration,
-          titleBlockFilter: getComputedStyle(titleBlock, '::before').filter,
+          titleBlockBorderWidth: getComputedStyle(header, '::after').borderLeftWidth,
+          titleBlockBackgroundImage: getComputedStyle(header, '::after').backgroundImage,
+          titleBlockAnimationDuration: getComputedStyle(header, '::after').animationDuration,
+          titleBlockFilter: getComputedStyle(header, '::after').filter,
           titleBlockWidthToken: getComputedStyle(header)
             .getPropertyValue('--pane-gallery-root-running-title-block-width')
             .trim(),
           titleBlockOpacityToken: getComputedStyle(header)
             .getPropertyValue('--pane-gallery-root-running-title-block-opacity')
             .trim(),
-          titleBlockClipped: getComputedStyle(titleBlock).overflow === 'hidden',
-          titleBlockTop: getComputedStyle(titleBlock, '::before').top,
-          titleBlockBottom: getComputedStyle(titleBlock, '::before').bottom,
-          titleBlockPositioning: getComputedStyle(titleBlock, '::before').left,
+          titleBlockClipped: getComputedStyle(header).overflow === 'hidden',
+          titleBlockTop: getComputedStyle(header, '::after').top,
+          titleBlockBottom: getComputedStyle(header, '::after').bottom,
+          titleBlockPositioning: getComputedStyle(header, '::after').left,
           titleZIndex: getComputedStyle(title).zIndex,
           staticLineContent: getComputedStyle(header, '::before').content,
           titlebarBorderWidth: getComputedStyle(header).borderBottomWidth,
@@ -993,11 +986,11 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
       })
     )
     .toEqual({
-      titleBlockBorderWidth: '5px',
+      titleBlockBorderWidth: '16px',
       titleBlockBackgroundImage: 'none',
-      titleBlockAnimationDuration: '2.6s',
+      titleBlockAnimationDuration: '3s',
       titleBlockFilter: 'none',
-      titleBlockWidthToken: '5px',
+      titleBlockWidthToken: '16px',
       titleBlockOpacityToken: '0.82',
       titleBlockClipped: true,
       titleBlockTop: '0px',
@@ -1024,13 +1017,7 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect
     .poll(async () =>
-      backendHeader.evaluate((header) => {
-        const titleBlock = header.querySelector('.pane-gallery-root-title-block');
-        if (!(titleBlock instanceof HTMLElement)) {
-          return null;
-        }
-        return getComputedStyle(titleBlock, '::before').animationName;
-      })
+      backendHeader.evaluate((header) => getComputedStyle(header, '::after').animationName)
     )
     .toBe('none');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
