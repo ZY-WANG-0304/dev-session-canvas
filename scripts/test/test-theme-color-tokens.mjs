@@ -238,6 +238,41 @@ assert.doesNotMatch(
   'File access badges and indicators should not use fixed hex colors.'
 );
 
+const agentRunningTitlelineKeyframes = extractCssRange(
+  mainWebviewStyles,
+  '@keyframes execution-agent-running-titleline',
+  '@keyframes pane-gallery-root-running-title-block'
+);
+const agentRunningTitlelineLayerRule = extractCssRuleBody(
+  mainWebviewStyles,
+  '.window-chrome.is-agent-running-titleline::after'
+);
+assert.doesNotMatch(
+  agentRunningTitlelineKeyframes,
+  /opacity:\s*0\s*;/u,
+  'Agent running titleline should not fade out while it is moving.'
+);
+assert.doesNotMatch(
+  agentRunningTitlelineKeyframes,
+  /translateX\(-|translateX\(470%/u,
+  'Agent running titleline should not sweep one-way from outside the titlebar.'
+);
+assert.match(
+  agentRunningTitlelineKeyframes,
+  /0%\s*\{[\s\S]*transform:\s*translateX\(0\);[\s\S]*50%\s*\{[\s\S]*transform:\s*translateX\(257\.1429%\);[\s\S]*100%\s*\{[\s\S]*transform:\s*translateX\(0\);/u,
+  'Agent running titleline should move back and forth within the titlebar.'
+);
+assert.match(
+  agentRunningTitlelineLayerRule,
+  /bottom:\s*-1px;[\s\S]*width:\s*28%;[\s\S]*height:\s*3px;[\s\S]*background:\s*var\(--agent-running-titleline-glint\);[\s\S]*transform:\s*translateX\(0\);[\s\S]*animation:\s*execution-agent-running-titleline 3\.4s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  'Agent running titleline layer should keep the same segment size and titlebar position.'
+);
+assert.match(
+  designSystemSource,
+  /`Agent` 节点处于精确 `running` 状态时，标题栏底部可显示低强度往返移动细线/u,
+  'docs/UI.md should record the Agent running titleline as a back-and-forth titlebar animation.'
+);
+
 const paneGalleryRunningTitleBlockKeyframes = extractCssRange(
   mainWebviewStyles,
   '@keyframes pane-gallery-root-running-title-block',
