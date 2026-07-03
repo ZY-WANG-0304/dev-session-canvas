@@ -4302,7 +4302,7 @@ test('execution node chrome hides runtime diagnostics and keeps agent waiting-in
   await expect(terminalNode).not.toContainText('detached');
 });
 
-test('Agent running state shows a titleline flow using the Agent node color', async ({ page }) => {
+test('Agent running state moves the titleline back and forth using the Agent node color', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
 
@@ -4322,32 +4322,36 @@ test('Agent running state shows a titleline flow using the Agent node color', as
   await expect
     .poll(async () =>
       agentChrome.evaluate((chrome) => ({
-        scanLineWidth: getComputedStyle(chrome, '::after').height,
-        scanLineBackgroundImage: getComputedStyle(chrome, '::after').backgroundImage,
+        titleLineHeight: getComputedStyle(chrome, '::after').height,
+        titleLineBackgroundImage: getComputedStyle(chrome, '::after').backgroundImage,
+        titleLineAnimationDuration: getComputedStyle(chrome, '::after').animationDuration,
+        titleLineOpacity: getComputedStyle(chrome, '::after').opacity,
         staticLineContent: getComputedStyle(chrome, '::before').content,
         titlebarBorderWidth: getComputedStyle(chrome).borderBottomWidth,
         titlebarBorderStyle: getComputedStyle(chrome).borderBottomStyle
       }))
     )
     .toEqual({
-      scanLineWidth: '3px',
-      scanLineBackgroundImage: 'none',
+      titleLineHeight: '3px',
+      titleLineBackgroundImage: 'none',
+      titleLineAnimationDuration: '3.4s',
+      titleLineOpacity: '0.72',
       staticLineContent: 'none',
       titlebarBorderWidth: '1px',
       titlebarBorderStyle: 'solid'
     });
 
-  const scanlineColors = await agentChrome.evaluate((chrome) => {
+  const titleLineColors = await agentChrome.evaluate((chrome) => {
     const node = chrome.closest('.canvas-node');
     if (!(node instanceof HTMLElement)) {
       throw new Error('Agent node shell was not rendered.');
     }
 
-    const scanlineProbe = document.createElement('span');
-    scanlineProbe.style.color = 'var(--agent-running-titleline-color)';
-    chrome.append(scanlineProbe);
-    const scanlineColor = getComputedStyle(scanlineProbe).color;
-    scanlineProbe.remove();
+    const titleLineProbe = document.createElement('span');
+    titleLineProbe.style.color = 'var(--agent-running-titleline-color)';
+    chrome.append(titleLineProbe);
+    const titleLineColor = getComputedStyle(titleLineProbe).color;
+    titleLineProbe.remove();
 
     const nodeColorProbe = document.createElement('span');
     nodeColorProbe.style.color = 'var(--canvas-node-color)';
@@ -4357,10 +4361,10 @@ test('Agent running state shows a titleline flow using the Agent node color', as
 
     return {
       nodeColor,
-      scanlineColor
+      titleLineColor
     };
   });
-  expect(scanlineColors.scanlineColor).toBe(scanlineColors.nodeColor);
+  expect(titleLineColors.titleLineColor).toBe(titleLineColors.nodeColor);
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect

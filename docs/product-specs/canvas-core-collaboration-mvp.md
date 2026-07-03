@@ -47,7 +47,7 @@
   - 自动恢复只能使用 provider 原生显式 session identity；如果没有该 identity，节点不能伪装成可自动恢复
   - 用户直接在 Agent 节点内和当前 runtime 交互，而不是通过独立 prompt 调用
   - 节点至少保留启动中、等待输入、处理中、恢复中、恢复失败、已停止、失败和最近输出摘要
-  - 当 Agent 主状态精确为 `running` 且没有待处理 attention 时，节点标题栏底部可显示低强度流动细线作为运行活性提示；该细线使用 Agent 节点类型色，不使用 running 状态色，也不扩展到 `live`、`starting`、`resuming`、`reattaching` 或 `waiting-input`
+  - 当 Agent 主状态精确为 `running` 且没有待处理 attention 时，节点标题栏底部可显示低强度往返移动细线作为运行活性提示；该细线使用 Agent 节点类型色，不使用 running 状态色，也不扩展到 `live`、`starting`、`resuming`、`reattaching` 或 `waiting-input`
 - `waiting-input` 与 `处理中` 的细粒度差异应在节点状态中真实保留；只要会话仍在等待用户继续输入，节点主状态就应保持 `waiting-input`
 - 终端对象的最小真实主路径：
   - 用户新建 `Terminal` 节点后，节点会自动进入启动流程并拉起嵌入式终端
@@ -154,7 +154,7 @@
 - 用户在清空画板后会回到空画布，而不是看到自动生成的示例节点。
 - 用户可以删除核心执行对象；删除运行中的执行型对象时，会话会同步结束，且对象在 reload 后不会无声恢复。
 - 用户可以在多个 `Agent` 与终端同时存在时识别每个对象的基本状态，而不必逐个打开独立 panel 才理解当前情况。
-- 运行中的 `Agent` 节点可以通过标题栏底部的低强度流动细线被扫视到；attention、非 `running` Agent 和 `Terminal` 节点不会显示这条 Agent running 细线。
+- 运行中的 `Agent` 节点可以通过标题栏底部的低强度往返移动细线被扫视到；attention、非 `running` Agent 和 `Terminal` 节点不会显示这条 Agent running 细线。
 - `Agent` 与 `Terminal` 可以展示不同的状态集合；系统不把它们都压成同一套“未运行 / 运行中”语义。
 - 左下角缩放控件与基础导航区域不应被固定说明浮层遮挡。
 - 右侧固定区域不再保留选中节点的辅助概况区；当前主路径需要暴露的信息应直接留在节点本体中，原先右侧承载的 richer metadata 当前不要求继续展示。

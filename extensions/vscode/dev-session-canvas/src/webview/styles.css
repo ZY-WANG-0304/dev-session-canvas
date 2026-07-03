@@ -897,7 +897,7 @@ body {
   border-radius: 999px;
   pointer-events: none;
   background: var(--agent-running-titleline-glint);
-  transform: translateX(-112%);
+  transform: translateX(0);
   animation: execution-agent-running-titleline 3.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
   will-change: transform, opacity;
 }
@@ -1298,19 +1298,20 @@ body {
 
 @keyframes execution-agent-running-titleline {
   0% {
-    transform: translateX(-112%);
-    opacity: 0;
-  }
-
-  12%,
-  68% {
+    transform: translateX(0);
     opacity: 0.72;
+    animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1);
   }
 
-  84%,
+  50% {
+    transform: translateX(257.1429%);
+    opacity: 0.72;
+    animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1);
+  }
+
   100% {
-    transform: translateX(470%);
-    opacity: 0;
+    transform: translateX(0);
+    opacity: 0.72;
   }
 }
 
