@@ -9085,7 +9085,7 @@ interface PaneGalleryRootModel {
   groups: CanvasGroupSummary[];
   nodeCount: number;
   runningCount: number;
-  runningScanLineCount: number;
+  runningTitleBlockCount: number;
   errorCount: number;
   waitingCount: number;
   attentionCount: number;
@@ -9115,7 +9115,7 @@ function paneGalleryNodeIsRunning(node: CanvasNodeSummary): boolean {
   }
 }
 
-function paneGalleryNodeShowsRunningScanLine(node: CanvasNodeSummary): boolean {
+function paneGalleryNodeShowsRunningTitleBlock(node: CanvasNodeSummary): boolean {
   return node.status === 'running';
 }
 
@@ -9177,7 +9177,7 @@ function buildPaneGalleryRootModels(params: {
       groups: params.groups.filter((group) => group.id !== rootGroup.id && subtreeGroupIds.has(group.id)),
       nodeCount: paneNodes.length,
       runningCount: paneHostNodes.filter((node) => paneGalleryNodeIsRunning(node)).length,
-      runningScanLineCount: paneHostNodes.filter((node) => paneGalleryNodeShowsRunningScanLine(node)).length,
+      runningTitleBlockCount: paneHostNodes.filter((node) => paneGalleryNodeShowsRunningTitleBlock(node)).length,
       errorCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-error').length,
       waitingCount: paneHostNodes.filter((node) => statusToneClass(node.status) === 'tone-waiting').length,
       attentionCount,
@@ -9468,6 +9468,8 @@ function PaneGalleryActiveRootPlaceholder(props: { model: PaneGalleryRootModel }
   const paneStatusDescription = paneGalleryPaneStatusDescription(model);
   const paneTitle = `${paneGalleryRootPaneTitle(model, paneStatusDescription)} - 正在主画板`;
   const ariaLabel = `Workspace root ${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? `, ${model.rootGroup.workspaceRootPath}` : ''}, 正在主画板显示${paneStatusDescription ? `, ${paneStatusDescription}` : ''}`;
+  const attentionTitleBarFlashing = model.attentionTitleBarFlashing;
+  const rootRunningTitleBlock = model.runningTitleBlockCount > 0 && model.attentionCount === 0;
   const blockPlaceholderEvent = (event: React.SyntheticEvent): void => {
     event.preventDefault();
     stopCanvasEvent(event);
@@ -9482,7 +9484,7 @@ function PaneGalleryActiveRootPlaceholder(props: { model: PaneGalleryRootModel }
       data-pane-gallery-status={paneStatus}
       data-pane-gallery-attention-count={model.attentionCount}
       data-pane-gallery-running-count={model.runningCount}
-      data-pane-gallery-attention-flashing="false"
+      data-pane-gallery-attention-flashing={attentionTitleBarFlashing ? 'true' : 'false'}
       aria-label={ariaLabel}
       title={paneTitle}
       onPointerDown={blockPlaceholderEvent}
@@ -9498,9 +9500,15 @@ function PaneGalleryActiveRootPlaceholder(props: { model: PaneGalleryRootModel }
       onDrop={blockPlaceholderEvent}
     >
       <header
-        className="pane-gallery-root-header"
-        data-pane-gallery-root-header-attention-flashing="false"
-        data-pane-gallery-root-running-scanline="false"
+        className={[
+          'pane-gallery-root-header',
+          attentionTitleBarFlashing ? 'is-attention-flashing' : '',
+          rootRunningTitleBlock ? 'is-pane-gallery-root-running-title-block' : ''
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        data-pane-gallery-root-header-attention-flashing={attentionTitleBarFlashing ? 'true' : 'false'}
+        data-pane-gallery-root-running-title-block={rootRunningTitleBlock ? 'true' : 'false'}
       >
         <div className="pane-gallery-root-title-block">
           <span className="pane-gallery-root-title" title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}>
@@ -9648,7 +9656,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
   const paneStatus = paneGalleryPaneStatusForModel(model);
   const paneStatusDescription = paneGalleryPaneStatusDescription(model);
   const attentionTitleBarFlashing = model.attentionTitleBarFlashing;
-  const rootRunningScanLine = model.runningScanLineCount > 0 && model.attentionCount === 0;
+  const rootRunningTitleBlock = model.runningTitleBlockCount > 0 && model.attentionCount === 0;
   const paneTitle = paneGalleryRootPaneTitle(model, paneStatusDescription);
   const defaultViewport = interactive
     ? viewportRole === 'main'
@@ -9815,12 +9823,12 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
         className={[
           'pane-gallery-root-header',
           attentionTitleBarFlashing ? 'is-attention-flashing' : '',
-          rootRunningScanLine ? 'is-pane-gallery-root-running-scanline' : ''
+          rootRunningTitleBlock ? 'is-pane-gallery-root-running-title-block' : ''
         ]
           .filter(Boolean)
           .join(' ')}
         data-pane-gallery-root-header-attention-flashing={attentionTitleBarFlashing ? 'true' : 'false'}
-        data-pane-gallery-root-running-scanline={rootRunningScanLine ? 'true' : 'false'}
+        data-pane-gallery-root-running-title-block={rootRunningTitleBlock ? 'true' : 'false'}
       >
         <div className="pane-gallery-root-title-block">
           <span className="pane-gallery-root-title" title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}>

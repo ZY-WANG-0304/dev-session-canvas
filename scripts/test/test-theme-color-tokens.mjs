@@ -238,53 +238,93 @@ assert.doesNotMatch(
   'File access badges and indicators should not use fixed hex colors.'
 );
 
-const paneGalleryRunningScanlineKeyframes = extractCssRange(
+const agentRunningTitlelineKeyframes = extractCssRange(
   mainWebviewStyles,
-  '@keyframes pane-gallery-root-running-scanline',
-  '@media (prefers-reduced-motion: reduce)'
+  '@keyframes execution-agent-running-titleline',
+  '@keyframes pane-gallery-root-running-title-block'
 );
-const paneGalleryRunningScanlineRule = extractCssRuleBody(
+const agentRunningTitlelineLayerRule = extractCssRuleBody(
   mainWebviewStyles,
-  '.pane-gallery-root-header.is-pane-gallery-root-running-scanline'
-);
-const paneGalleryRunningScanlineLayerRule = extractCssRuleBody(
-  mainWebviewStyles,
-  '.pane-gallery-root-header.is-pane-gallery-root-running-scanline::after'
+  '.window-chrome.is-agent-running-titleline::after'
 );
 assert.doesNotMatch(
-  paneGalleryRunningScanlineKeyframes,
+  agentRunningTitlelineKeyframes,
+  /opacity:\s*0\s*;/u,
+  'Agent running titleline should not fade out while it is moving.'
+);
+assert.doesNotMatch(
+  agentRunningTitlelineKeyframes,
+  /translateX\(-|translateX\(470%/u,
+  'Agent running titleline should not sweep one-way from outside the titlebar.'
+);
+assert.match(
+  agentRunningTitlelineKeyframes,
+  /0%\s*\{[\s\S]*transform:\s*translateX\(0\);[\s\S]*50%\s*\{[\s\S]*transform:\s*translateX\(257\.1429%\);[\s\S]*100%\s*\{[\s\S]*transform:\s*translateX\(0\);/u,
+  'Agent running titleline should move back and forth within the titlebar.'
+);
+assert.match(
+  agentRunningTitlelineLayerRule,
+  /bottom:\s*-1px;[\s\S]*width:\s*28%;[\s\S]*height:\s*3px;[\s\S]*background:\s*var\(--agent-running-titleline-glint\);[\s\S]*transform:\s*translateX\(0\);[\s\S]*animation:\s*execution-agent-running-titleline 3\.4s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  'Agent running titleline layer should keep the same segment size and titlebar position.'
+);
+assert.match(
+  designSystemSource,
+  /`Agent` 节点处于精确 `running` 状态时，标题栏底部可显示低强度往返移动细线/u,
+  'docs/UI.md should record the Agent running titleline as a back-and-forth titlebar animation.'
+);
+
+const paneGalleryRunningTitleBlockKeyframes = extractCssRange(
+  mainWebviewStyles,
+  '@keyframes pane-gallery-root-running-title-block',
+  '@media (prefers-reduced-motion: reduce)'
+);
+const paneGalleryRunningTitleBlockRule = extractCssRuleBody(
+  mainWebviewStyles,
+  '.pane-gallery-root-header.is-pane-gallery-root-running-title-block'
+);
+const paneGalleryRunningTitleBlockLayerRule = extractCssRuleBody(
+  mainWebviewStyles,
+  '.pane-gallery-root-header.is-pane-gallery-root-running-title-block::after'
+);
+assert.doesNotMatch(
+  paneGalleryRunningTitleBlockKeyframes,
   /opacity:\s*0\b/u,
-  'Pane Gallery root running scanline should not fade out between animation loops.'
+  'Pane Gallery root running title block should not fade out while it is moving.'
 );
 assert.match(
-  paneGalleryRunningScanlineKeyframes,
-  /0%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*animation-timing-function:\s*linear;[\s\S]*2%\s*\{[\s\S]*var\(--pane-gallery-root-running-scanline-edge-offset\)[\s\S]*animation-timing-function:\s*cubic-bezier\(0\.45, 0, 0\.25, 1\);[\s\S]*98%\s*\{[\s\S]*calc\(var\(--pane-gallery-root-running-scanline-travel\) - var\(--pane-gallery-root-running-scanline-edge-offset\)\)[\s\S]*animation-timing-function:\s*linear;[\s\S]*100%\s*\{[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);/u,
-  'Pane Gallery root running scanline should keep visible opacity and compress off-header entry/exit into short keyframe ranges.'
+  paneGalleryRunningTitleBlockKeyframes,
+  /0%\s*\{[\s\S]*transform:\s*translateX\(0\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-title-block-opacity\);[\s\S]*50%\s*\{[\s\S]*transform:\s*translateX\(100%\);[\s\S]*100%\s*\{[\s\S]*transform:\s*translateX\(0\);/u,
+  'Pane Gallery root running title block should move back and forth within the root label frame.'
 );
 assert.match(
-  paneGalleryRunningScanlineRule,
-  /--pane-gallery-root-running-scanline-edge-offset:\s*28px;[\s\S]*--pane-gallery-root-running-scanline-travel:\s*100%;[\s\S]*isolation:\s*isolate;/u,
-  'Pane Gallery root running scanline should keep its original travel distance, expose the off-header edge offset, and isolate its layer stack.'
+  paneGalleryRunningTitleBlockRule,
+  /--pane-gallery-root-running-title-block-color:\s*var\(--pane-gallery-root-header-border-color\);[\s\S]*--pane-gallery-root-running-title-block-width:\s*16px;[\s\S]*--pane-gallery-root-running-title-block-opacity:\s*0\.82;[\s\S]*isolation:\s*isolate;[\s\S]*overflow:\s*hidden;/u,
+  'Pane Gallery root running title block should match the old scanline width and be clipped by the root label frame.'
 );
 assert.match(
-  paneGalleryRunningScanlineLayerRule,
-  /left:\s*calc\(0px - var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*width:\s*calc\(100% \+ var\(--pane-gallery-root-running-scanline-edge-offset\) \+ var\(--pane-gallery-root-running-scanline-edge-offset\)\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-scanline-opacity\);[\s\S]*z-index:\s*0;[\s\S]*animation:\s*pane-gallery-root-running-scanline 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
-  'Pane Gallery root running scanline layer should start outside the header, fully leave it, stay behind title text, and keep the original timing curve.'
+  paneGalleryRunningTitleBlockLayerRule,
+  /top:\s*0;[\s\S]*bottom:\s*0;[\s\S]*left:\s*0;[\s\S]*width:\s*calc\(100% - var\(--pane-gallery-root-running-title-block-width\)\);[\s\S]*border-left:\s*var\(--pane-gallery-root-running-title-block-width\) solid var\(--pane-gallery-root-running-title-block-color\);[\s\S]*background:\s*transparent;[\s\S]*animation:\s*pane-gallery-root-running-title-block 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  'Pane Gallery root running title block layer should be a vertical block moving inside the root label frame without gradient fill.'
 );
 assert.match(
-  extractCssRuleBody(mainWebviewStyles, '.pane-gallery-root-title-block'),
+  extractCssRuleBody(mainWebviewStyles, '\n.pane-gallery-root-title-block'),
   /position:\s*relative;[\s\S]*z-index:\s*1;/u,
-  'Pane Gallery root title text should render above the running scanline background.'
+  'Pane Gallery root title area should stay above the moving block layer.'
+);
+assert.match(
+  extractCssRuleBody(mainWebviewStyles, '\n.pane-gallery-root-title'),
+  /position:\s*relative;[\s\S]*z-index:\s*1;/u,
+  'Pane Gallery root title text should render above the running title block.'
 );
 assert.match(
   multiRootDesignSource,
-  /两次扫描之间不保留空档[\s\S]*不覆盖 root title 文字/u,
-  'Multi-root design doc should record the continuous Pane Gallery root running scanline as a text-safe background.'
+  /竖向色块[\s\S]*在 root title 所在的小框区域内左右往返运动[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root design doc should record the Pane Gallery root running title block as a text-safe root-label animation.'
 );
 assert.match(
   multiRootSpecSource,
-  /两次扫描之间不保留空档[\s\S]*不覆盖 root title 文字/u,
-  'Multi-root product spec should record the continuous Pane Gallery root running scanline as a text-safe background.'
+  /竖向色块[\s\S]*在 root title 所在的小框区域内左右往返运动[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root product spec should record the Pane Gallery root running title block as a text-safe root-label animation.'
 );
 
 assert.match(
