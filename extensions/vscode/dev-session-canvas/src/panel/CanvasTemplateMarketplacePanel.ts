@@ -11,6 +11,7 @@ import {
 } from './TemplateMarketplaceClient';
 import { isTestHarnessMode } from '../common/testHarness';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
+import { localizeCanvasTemplateError } from './canvasTemplateLocalization';
 
 const MARKETPLACE_OFFICIAL_ORIGIN = 'https://dscanvas.dev';
 const MARKETPLACE_DEBUG_ORIGIN = 'https://dscanvas-template-marketplace.wzy0304.workers.dev';
@@ -558,7 +559,7 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
         })
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = localizeCanvasTemplateError(error) ?? (error instanceof Error ? error.message : String(error));
       await this.panel?.webview.postMessage({
         type: 'marketplace/installResult',
         payload: {
@@ -588,7 +589,7 @@ export class CanvasTemplateMarketplacePanelController implements vscode.Disposab
         }
       } satisfies MarketplacePanelOutboundMessage);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = localizeCanvasTemplateError(error) ?? (error instanceof Error ? error.message : String(error));
       await this.panel.webview.postMessage({
         type: 'marketplace/installedTemplatesError',
         payload: {

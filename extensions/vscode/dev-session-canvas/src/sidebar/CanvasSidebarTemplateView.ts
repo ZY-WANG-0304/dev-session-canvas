@@ -8,6 +8,7 @@ import {
 import { COMMAND_IDS } from '../common/extensionIdentity';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
+import { localizeCanvasTemplateStoreIssue } from '../panel/canvasTemplateLocalization';
 import type { CanvasTemplateCatalog } from '../panel/CanvasTemplateStore';
 import type {
   TemplateMarketplaceClient,
@@ -206,7 +207,7 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
       const marketplaceUpdateStatuses = await this.loadMarketplaceUpdateStatuses(catalog);
       this.state = {
         items: getCanvasSidebarTemplateItems(catalog, defaultTemplateId, marketplaceUpdateStatuses),
-        issueMessages: catalog.issues.map((issue) => `${issue.fileName}：${issue.message}`),
+        issueMessages: catalog.issues.map(localizeCanvasTemplateStoreIssue),
         isLoading: false
       };
     } catch (error) {

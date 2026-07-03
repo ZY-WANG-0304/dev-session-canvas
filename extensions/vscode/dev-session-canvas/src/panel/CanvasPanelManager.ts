@@ -183,6 +183,7 @@ import {
   type CanvasTemplateCaptureResult,
   type CanvasTemplateSaveAgentProviderSelection
 } from '../common/canvasTemplates';
+import { localizeCanvasTemplateError } from './canvasTemplateLocalization';
 import {
   SerializedTerminalStateTracker,
   cloneSerializedTerminalState,
@@ -11966,10 +11967,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: parsedMessage.payload?.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
+          const message = localizeCanvasTemplateError(error) ?? formatUnknownError(error);
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: formatUnknownError(error)
+              message
             }
           });
         });
@@ -11980,10 +11982,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: parsedMessage.payload.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
+          const message = localizeCanvasTemplateError(error) ?? formatUnknownError(error);
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: formatUnknownError(error)
+              message
             }
           });
         });
@@ -11994,10 +11997,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: parsedMessage.payload?.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
+          const message = localizeCanvasTemplateError(error) ?? formatUnknownError(error);
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: formatUnknownError(error)
+              message
             }
           });
         });
@@ -12008,10 +12012,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: parsedMessage.payload.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
+          const message = localizeCanvasTemplateError(error) ?? formatUnknownError(error);
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: formatUnknownError(error)
+              message
             }
           });
         });
