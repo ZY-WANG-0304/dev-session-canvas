@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.21.1 - Multi-root Arrangement and Resume Reliability Patch
+
+相对 `0.21.0`，`0.21.1` 是同一公开 `Preview` 线内的修复版本，重点收口多根布局整理默认范围、paneGallery 缩略图与 root 运行扫描细节、serialized terminal supervisor snapshot 新鲜度，以及当前 Agent 恢复 / 分叉时启动意图继承。它保留 `0.21.0` 的主扩展子包化发布布局、OSC 52 剪贴板桥接、模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
+
+### 本版本聚焦
+
+- 版本号从 `0.21.0` bump 到 `0.21.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 多根 workspace 中的“整理画布布局”默认限定当前 root：`rootGroups` root section、root 标题区和 `paneGallery` 可交互 pane 会把整理请求定位到目标 root，并在菜单中保留“整理整个 workspace”的显式范围选择；Host 只修复目标 root 几何，避免一次整理意外移动其他 root
+- `paneGallery` thumbnail 模式保留 active root 在原 workspace 顺序槽位的斜纹占位，不再把 active root 从缩略图 rail 移除；占位不挂载第二份真实 `ReactFlow`，也不响应切换或写操作，减少 root 顺序跳动和重复画板副作用
+- `paneGallery` root 运行扫描线进一步平滑：扫描线保持在标题文字下方、连续循环且减少边缘空档，用于更稳定地提示 root 内存在精确 running 执行节点
+- serialized terminal supervisor snapshot 进一步收紧：旧 supervisor 只有 raw output tail 时不再把它当作可信 terminal state；当 lifecycle snapshot 先于 tracker 写入 flush 到达时，Host 会保留已有可信 supervisor tracker，避免 live-runtime 恢复画面被较旧快照回退
+- 侧栏 `节点` view 的 workspace root 分组现在按 VS Code workspace folder 顺序展示，不再受 root 标题字母序影响，与 paneGallery root 顺序保持一致
+- 当前 Agent 节点的显式恢复 / 分叉会继承节点自身的启动意图：`YOLO`、沙盒、自定义命令和模板 argv 中的非目标参数会继续参与新命令，同时由本次动作写入唯一的 resume / fork session target；历史会话入口仍只使用历史 session id / cwd 与当前默认参数，不伪造历史 argv
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略、Visual Studio Marketplace deferred 完成门禁、模板市场服务版本线或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 修复更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.21.0` 升级到 `0.21.1` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.21.1` 后会继续沿用该明确选择
+- 模板市场仍是 Preview 能力；生产服务版本、插件 SemVer 和模板包版本继续分开管理
+
+### 回退建议
+
+- 若 `0.21.1` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.21.x` 修复版本
+
 ## 0.21.0 - Monorepo Packaging and Execution Reliability Update
 
 相对 `0.20.0`，`0.21.0` 是新的公开 `Preview` 里程碑更新，重点收口主扩展子包化后的发布包布局、执行终端 OSC 52 复制桥接、serialized terminal state 新鲜度、Agent 显式恢复 / 分叉参数边界、多根模板重置，以及 paneGallery root 级运行 / 关注提示。它保留 `0.20.0` 的模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
