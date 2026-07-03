@@ -260,10 +260,15 @@ import {
 } from './CanvasTemplateStore';
 import {
   serializeExecutionSessionLaunchSpec,
+  RUNTIME_SUPERVISOR_ERROR_CODES,
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorEvent,
   type RuntimeSupervisorSessionSnapshot
 } from '../common/runtimeSupervisorProtocol';
+import {
+  localizeRuntimeSupervisorError,
+  localizeRuntimeSupervisorSnapshotExitMessage
+} from './runtimeSupervisorLocalization';
 import {
   extractClaudeResumeSessionId,
   extractCodexResumeSessionId,
@@ -9786,11 +9791,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
 
+      const message = localizeRuntimeSupervisorError(
+        error,
+        error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.')
+      ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.'));
       if (
         kind === 'agent' &&
         this.maybeFallbackAgentLiveRuntimeToResume(
           nodeId,
-          error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.')
+          message
         )
       ) {
         return;
@@ -9799,7 +9808,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.markExecutionNodeAsHistoryRestored(
         nodeId,
         kind,
-        error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.')
+        message
       );
     }
   }
@@ -9869,7 +9878,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       try {
         client = await this.getRuntimeSupervisorClientForKind(backendKind, {}, runtimeStoragePath);
       } catch (error) {
-        const message = error instanceof Error ? error.message : vscode.l10n.t('Could not connect to the runtime supervisor.');
+        const message = localizeRuntimeSupervisorError(
+          error,
+          error instanceof Error ? error.message : vscode.l10n.t('Could not connect to the runtime supervisor.')
+        ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not connect to the runtime supervisor.'));
         for (const node of nodes) {
           if (
             node.kind === 'agent' &&
@@ -10018,7 +10030,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private isMissingRuntimeSupervisorSessionError(error: unknown): boolean {
-    return formatUnknownError(error).includes('未找到 runtime session');
+    return isRecord(error) && error.code === RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound;
   }
 
   private async deleteRuntimeSupervisorSessionStrict(
@@ -10389,17 +10401,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
 
     if (wasLive && !snapshot.live) {
+      const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
       await this.postExecutionExitWithFinalSnapshot(
         binding.kind,
         binding.nodeId,
-        snapshot.lastExitMessage ?? vscode.l10n.t('Session ended.')
+        snapshotExitMessage ?? vscode.l10n.t('Session ended.')
       );
       if (binding.kind === 'agent' && previousSession && snapshot.lifecycle === 'error') {
         await this.markAndNotifyAgentAbnormalInterruption(
           binding.nodeId,
           previousSession,
           snapshot.lifecycle,
-          snapshot.lastExitMessage ?? vscode.l10n.t('Agent session exited unexpectedly.'),
+          snapshotExitMessage ?? vscode.l10n.t('Agent session exited unexpectedly.'),
           {
             exitCode: snapshot.lastExitCode ?? null,
             signal: snapshot.lastExitSignal ?? null,
@@ -10416,7 +10429,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postMessage({
           type: 'host/error',
           payload: {
-            message: snapshot.lastExitMessage ?? vscode.l10n.t('Session exited unexpectedly.')
+            message: snapshotExitMessage ?? vscode.l10n.t('Session exited unexpectedly.')
           }
         });
       }
@@ -10458,6 +10471,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     snapshot: RuntimeSupervisorSessionSnapshot,
     options: { postSnapshot: boolean; historyOnUnavailable: boolean }
   ): void {
+    const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
     if (snapshot.live) {
       const existingNode = this.requireNode(nodeId, kind);
       const existingAgentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : undefined;
@@ -10524,7 +10538,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           serializedTerminalState: sessionSerializedTerminalState,
           lastExitCode: snapshot.lastExitCode,
           lastExitSignal: snapshot.lastExitSignal,
-          lastExitMessage: snapshot.lastExitMessage,
+          lastExitMessage: snapshotExitMessage,
           ...(kind === 'agent'
             ? {
                 lifecycle: session.lifecycleStatus as AgentNodeStatus,
@@ -10557,7 +10571,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (options.historyOnUnavailable) {
-      this.markExecutionNodeAsHistoryRestored(nodeId, kind, snapshot.lastExitMessage, snapshot);
+      this.markExecutionNodeAsHistoryRestored(nodeId, kind, snapshotExitMessage, snapshot);
       return;
     }
 
@@ -10588,6 +10602,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       existingSession?.outputSequence,
       currentMetadata.outputSequence
     );
+    const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
     const serializedTerminalState =
       cloneFreshSerializedTerminalState(snapshot.serializedTerminalState, outputSequence) ??
       (existingSession?.terminalStateTrusted === false
@@ -10596,7 +10611,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: snapshot.lifecycle,
       summary:
-        snapshot.lastExitMessage ||
+        snapshotExitMessage ||
         (kind === 'agent'
           ? summarizeAgentSessionOutput(snapshot.output, snapshot.lifecycle as AgentNodeStatus, snapshot.displayLabel)
           : summarizeEmbeddedTerminalOutput(snapshot.output, snapshot.lifecycle as TerminalNodeStatus)),
@@ -10615,7 +10630,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         outputSequence,
         lastExitCode: snapshot.lastExitCode,
         lastExitSignal: snapshot.lastExitSignal,
-        lastExitMessage: snapshot.lastExitMessage,
+        lastExitMessage: snapshotExitMessage,
         lastCols: snapshot.cols,
         lastRows: snapshot.rows,
         serializedTerminalState,
@@ -10673,6 +10688,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : ensureTerminalMetadata(existingNode).lifecycle);
     const summary =
       reason?.trim() ||
+      (snapshot ? localizeRuntimeSupervisorSnapshotExitMessage(snapshot) : undefined) ||
       (kind === 'agent'
         ? vscode.l10n.t('Could not reattach to the original Agent live runtime, so history results were restored.')
         : vscode.l10n.t('Could not reattach to the original Terminal live runtime, so history results were restored.'));
@@ -10705,7 +10721,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         outputSequence,
         lastExitCode: snapshot?.lastExitCode ?? currentMetadata.lastExitCode,
         lastExitSignal: snapshot?.lastExitSignal ?? currentMetadata.lastExitSignal,
-        lastExitMessage: snapshot?.lastExitMessage ?? currentMetadata.lastExitMessage ?? summary,
+        lastExitMessage:
+          (snapshot ? localizeRuntimeSupervisorSnapshotExitMessage(snapshot) : undefined) ??
+          currentMetadata.lastExitMessage ??
+          summary,
         lastCols: snapshot?.cols ?? currentMetadata.lastCols,
         lastRows: snapshot?.rows ?? currentMetadata.lastRows,
         serializedTerminalState,
@@ -15513,7 +15532,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       inputWriteSucceeded = true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : vscode.l10n.t('Failed to write input to live runtime.');
+      const message = localizeRuntimeSupervisorError(
+        error,
+        error instanceof Error ? error.message : vscode.l10n.t('Failed to write input to live runtime.')
+      ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Failed to write input to live runtime.'));
       this.recordExecutionPerformanceDiagnostics({
         timestamp: new Date().toISOString(),
         source: 'host-input-write',
@@ -16071,10 +16093,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             })
           )
           .catch((error) => {
+            const message = localizeRuntimeSupervisorError(
+              error,
+              error instanceof Error ? error.message : vscode.l10n.t('Failed to resize live runtime.')
+            ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Failed to resize live runtime.'));
             this.postMessage({
               type: 'host/error',
               payload: {
-                message: error instanceof Error ? error.message : vscode.l10n.t('Failed to resize live runtime.')
+                message
               }
             });
           })
@@ -16141,10 +16167,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         sessionId: session.runtimeSessionId
       });
     } catch (error) {
+      const message = localizeRuntimeSupervisorError(
+        error,
+        error instanceof Error ? error.message : vscode.l10n.t('Failed to stop live runtime.')
+      ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Failed to stop live runtime.'));
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: error instanceof Error ? error.message : vscode.l10n.t('Failed to stop live runtime.')
+          message
         }
       });
     }
@@ -25897,6 +25927,11 @@ function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): str
     return vscode.l10n.t('Missing node-pty runtime dependency. Run npm install in the repository root, then try again.');
   }
 
+  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
+  if (runtimeSupervisorMessage) {
+    return runtimeSupervisorMessage;
+  }
+
   if (isRecord(error) && error.code === 'ENOENT') {
     const suffix =
       process.platform === 'win32'
@@ -25945,6 +25980,11 @@ function describeAgentResumeSpawnError(spec: AgentCliSpec, error: unknown): stri
 
   if (isMissingNodePtyDependencyError(error)) {
     return vscode.l10n.t('Missing node-pty runtime dependency. Run npm install in the repository root, then try again.');
+  }
+
+  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
+  if (runtimeSupervisorMessage) {
+    return runtimeSupervisorMessage;
   }
 
   if (isRecord(error) && error.code === 'ENOENT') {
@@ -26113,6 +26153,11 @@ function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): 
 
   if (isMissingNodePtyDependencyError(error)) {
     return vscode.l10n.t('Missing node-pty runtime dependency. Run npm install in the repository root, then try again.');
+  }
+
+  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
+  if (runtimeSupervisorMessage) {
+    return runtimeSupervisorMessage;
   }
 
   if (isRecord(error) && error.code === 'ENOENT') {
