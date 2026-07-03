@@ -1164,6 +1164,15 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await expect(backendPlaceholder).toHaveAttribute('aria-label', /Workspace root Backend, \/repo\/backend, 正在主画板显示, 1 个节点正在运行/);
   await expect(backendPlaceholder.locator('.react-flow')).toHaveCount(0);
   await expect(backendPlaceholder.locator('.pane-gallery-thumbnail-hit-layer')).toHaveCount(0);
+  const backendPlaceholderHeader = backendPlaceholder.locator('.pane-gallery-root-header');
+  await expect(backendPlaceholder).toHaveAttribute('data-pane-gallery-attention-flashing', 'false');
+  await expect(backendPlaceholderHeader).toHaveAttribute('data-pane-gallery-root-running-title-block', 'true');
+  await expect(backendPlaceholderHeader).toHaveClass(/is-pane-gallery-root-running-title-block/);
+  await expect
+    .poll(async () =>
+      backendPlaceholderHeader.evaluate((header) => getComputedStyle(header, '::after').animationName)
+    )
+    .toBe('pane-gallery-root-running-title-block');
   await expect
     .poll(async () => backendPlaceholder.evaluate((placeholder) => getComputedStyle(placeholder).backgroundImage))
     .toContain('repeating-linear-gradient');
@@ -1650,6 +1659,21 @@ test('pane gallery thumbnail hit layer blocks execution node attention acknowled
     'data-pane-gallery-root-id',
     'workspace-root-backend'
   );
+  const backendPlaceholder = page.locator(
+    '.pane-gallery-root-pane-active-placeholder[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+  const backendPlaceholderHeader = backendPlaceholder.locator('.pane-gallery-root-header');
+  await expect(backendPlaceholder).toHaveAttribute('data-pane-gallery-status', 'attention');
+  await expect(backendPlaceholder).toHaveAttribute('data-pane-gallery-attention-flashing', 'true');
+  await expect(backendPlaceholderHeader).toHaveAttribute('data-pane-gallery-root-header-attention-flashing', 'true');
+  await expect(backendPlaceholderHeader).toHaveAttribute('data-pane-gallery-root-running-title-block', 'false');
+  await expect(backendPlaceholderHeader).toHaveClass(/is-attention-flashing/);
+  await expect(backendPlaceholderHeader).not.toHaveClass(/is-pane-gallery-root-running-title-block/);
+  await expect
+    .poll(async () =>
+      backendPlaceholderHeader.evaluate((header) => getComputedStyle(header).animationName)
+    )
+    .toBe('execution-attention-flash');
   expect(await readPostedMessagesByType(page, 'webview/selectNode')).toEqual([]);
 });
 

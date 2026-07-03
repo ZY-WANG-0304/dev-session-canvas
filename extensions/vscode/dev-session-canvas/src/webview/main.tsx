@@ -9468,6 +9468,8 @@ function PaneGalleryActiveRootPlaceholder(props: { model: PaneGalleryRootModel }
   const paneStatusDescription = paneGalleryPaneStatusDescription(model);
   const paneTitle = `${paneGalleryRootPaneTitle(model, paneStatusDescription)} - 正在主画板`;
   const ariaLabel = `Workspace root ${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? `, ${model.rootGroup.workspaceRootPath}` : ''}, 正在主画板显示${paneStatusDescription ? `, ${paneStatusDescription}` : ''}`;
+  const attentionTitleBarFlashing = model.attentionTitleBarFlashing;
+  const rootRunningTitleBlock = model.runningTitleBlockCount > 0 && model.attentionCount === 0;
   const blockPlaceholderEvent = (event: React.SyntheticEvent): void => {
     event.preventDefault();
     stopCanvasEvent(event);
@@ -9482,7 +9484,7 @@ function PaneGalleryActiveRootPlaceholder(props: { model: PaneGalleryRootModel }
       data-pane-gallery-status={paneStatus}
       data-pane-gallery-attention-count={model.attentionCount}
       data-pane-gallery-running-count={model.runningCount}
-      data-pane-gallery-attention-flashing="false"
+      data-pane-gallery-attention-flashing={attentionTitleBarFlashing ? 'true' : 'false'}
       aria-label={ariaLabel}
       title={paneTitle}
       onPointerDown={blockPlaceholderEvent}
@@ -9498,9 +9500,15 @@ function PaneGalleryActiveRootPlaceholder(props: { model: PaneGalleryRootModel }
       onDrop={blockPlaceholderEvent}
     >
       <header
-        className="pane-gallery-root-header"
-        data-pane-gallery-root-header-attention-flashing="false"
-        data-pane-gallery-root-running-title-block="false"
+        className={[
+          'pane-gallery-root-header',
+          attentionTitleBarFlashing ? 'is-attention-flashing' : '',
+          rootRunningTitleBlock ? 'is-pane-gallery-root-running-title-block' : ''
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        data-pane-gallery-root-header-attention-flashing={attentionTitleBarFlashing ? 'true' : 'false'}
+        data-pane-gallery-root-running-title-block={rootRunningTitleBlock ? 'true' : 'false'}
       >
         <div className="pane-gallery-root-title-block">
           <span className="pane-gallery-root-title" title={model.rootGroup.workspaceRootPath ?? model.rootGroup.title}>
