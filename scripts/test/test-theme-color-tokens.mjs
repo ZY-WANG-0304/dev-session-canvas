@@ -247,13 +247,9 @@ const paneGalleryRunningTitleBlockRule = extractCssRuleBody(
   mainWebviewStyles,
   '.pane-gallery-root-header.is-pane-gallery-root-running-title-block'
 );
-const paneGalleryRunningTitleBlockContainerRule = extractCssRuleBody(
-  mainWebviewStyles,
-  '.pane-gallery-root-header.is-pane-gallery-root-running-title-block .pane-gallery-root-title-block'
-);
 const paneGalleryRunningTitleBlockLayerRule = extractCssRuleBody(
   mainWebviewStyles,
-  '.pane-gallery-root-header.is-pane-gallery-root-running-title-block .pane-gallery-root-title-block::before'
+  '.pane-gallery-root-header.is-pane-gallery-root-running-title-block::after'
 );
 assert.doesNotMatch(
   paneGalleryRunningTitleBlockKeyframes,
@@ -263,27 +259,22 @@ assert.doesNotMatch(
 assert.match(
   paneGalleryRunningTitleBlockKeyframes,
   /0%\s*\{[\s\S]*transform:\s*translateX\(0\);[\s\S]*opacity:\s*var\(--pane-gallery-root-running-title-block-opacity\);[\s\S]*50%\s*\{[\s\S]*transform:\s*translateX\(100%\);[\s\S]*100%\s*\{[\s\S]*transform:\s*translateX\(0\);/u,
-  'Pane Gallery root running title block should move back and forth within the title area.'
+  'Pane Gallery root running title block should move back and forth within the root label frame.'
 );
 assert.match(
   paneGalleryRunningTitleBlockRule,
-  /--pane-gallery-root-running-title-block-color:\s*var\(--pane-gallery-root-header-border-color\);[\s\S]*--pane-gallery-root-running-title-block-width:\s*5px;[\s\S]*--pane-gallery-root-running-title-block-opacity:\s*0\.82;/u,
-  'Pane Gallery root running title block should use a narrow vertical block derived from the root label border color.'
-);
-assert.match(
-  paneGalleryRunningTitleBlockContainerRule,
-  /isolation:\s*isolate;[\s\S]*overflow:\s*hidden;/u,
-  'Pane Gallery root running title block should be clipped by the title text area rather than the full root label.'
+  /--pane-gallery-root-running-title-block-color:\s*var\(--pane-gallery-root-header-border-color\);[\s\S]*--pane-gallery-root-running-title-block-width:\s*16px;[\s\S]*--pane-gallery-root-running-title-block-opacity:\s*0\.82;[\s\S]*isolation:\s*isolate;[\s\S]*overflow:\s*hidden;/u,
+  'Pane Gallery root running title block should match the old scanline width and be clipped by the root label frame.'
 );
 assert.match(
   paneGalleryRunningTitleBlockLayerRule,
-  /top:\s*0;[\s\S]*bottom:\s*0;[\s\S]*left:\s*0;[\s\S]*width:\s*calc\(100% - var\(--pane-gallery-root-running-title-block-width\)\);[\s\S]*border-left:\s*var\(--pane-gallery-root-running-title-block-width\) solid var\(--pane-gallery-root-running-title-block-color\);[\s\S]*background:\s*transparent;[\s\S]*animation:\s*pane-gallery-root-running-title-block 2\.6s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
-  'Pane Gallery root running title block layer should be a vertical block moving inside the title area without gradient fill.'
+  /top:\s*0;[\s\S]*bottom:\s*0;[\s\S]*left:\s*0;[\s\S]*width:\s*calc\(100% - var\(--pane-gallery-root-running-title-block-width\)\);[\s\S]*border-left:\s*var\(--pane-gallery-root-running-title-block-width\) solid var\(--pane-gallery-root-running-title-block-color\);[\s\S]*background:\s*transparent;[\s\S]*animation:\s*pane-gallery-root-running-title-block 3s cubic-bezier\(0\.45, 0, 0\.25, 1\) infinite;/u,
+  'Pane Gallery root running title block layer should be a vertical block moving inside the root label frame without gradient fill.'
 );
 assert.match(
   extractCssRuleBody(mainWebviewStyles, '\n.pane-gallery-root-title-block'),
   /position:\s*relative;[\s\S]*z-index:\s*1;/u,
-  'Pane Gallery root title area should establish the moving block containing layer.'
+  'Pane Gallery root title area should stay above the moving block layer.'
 );
 assert.match(
   extractCssRuleBody(mainWebviewStyles, '\n.pane-gallery-root-title'),
@@ -292,13 +283,13 @@ assert.match(
 );
 assert.match(
   multiRootDesignSource,
-  /竖向色块[\s\S]*在 root title 区域内左右往返运动[\s\S]*不覆盖 root title 文字/u,
-  'Multi-root design doc should record the Pane Gallery root running title block as a text-safe in-title animation.'
+  /竖向色块[\s\S]*在 root title 所在的小框区域内左右往返运动[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root design doc should record the Pane Gallery root running title block as a text-safe root-label animation.'
 );
 assert.match(
   multiRootSpecSource,
-  /竖向色块[\s\S]*在 root title 区域内左右往返运动[\s\S]*不覆盖 root title 文字/u,
-  'Multi-root product spec should record the Pane Gallery root running title block as a text-safe in-title animation.'
+  /竖向色块[\s\S]*在 root title 所在的小框区域内左右往返运动[\s\S]*不覆盖 root title 文字/u,
+  'Multi-root product spec should record the Pane Gallery root running title block as a text-safe root-label animation.'
 );
 
 assert.match(
