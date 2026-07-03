@@ -3785,6 +3785,9 @@ function registerTestCommands(
 
   context.subscriptions.push(
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getDebugState, () => panelManager.getDebugSnapshot()),
+    vscode.commands.registerCommand(TEST_COMMAND_IDS.getWebviewHtmlSnapshot, () =>
+      panelManager.getWebviewHtmlSnapshotForTest()
+    ),
     vscode.commands.registerCommand(TEST_COMMAND_IDS.getSidebarSummaryItems, () =>
       getCanvasSidebarSummaryItems(panelManager.getSidebarState())
     ),

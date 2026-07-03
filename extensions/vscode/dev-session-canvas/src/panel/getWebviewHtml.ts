@@ -42,6 +42,41 @@ export function getWebviewHtml(
   return buildActiveHtml(shell, scriptUri, nonce, options.lifecycle, i18n);
 }
 
+export function getWebviewHtmlSnapshotForTest(
+  language: string | undefined,
+  options: {
+    mode: CanvasSurfaceMode;
+    surface: CanvasSurfaceLocation;
+    activeSurface?: CanvasSurfaceLocation;
+  }
+): {
+  locale: WebviewI18nBootstrap['locale'];
+  standbyHeading?: string;
+  standbyDescription?: string;
+  standbySwitch?: string;
+  standbyOpenDefault?: string;
+} {
+  const i18n = resolveWebviewI18n(language);
+  if (options.mode !== 'standby') {
+    return {
+      locale: i18n.locale
+    };
+  }
+
+  const activeSurface = options.activeSurface
+    ? humanizeSurfaceLocation(options.activeSurface, i18n)
+    : formatWebviewMessage(i18n.messages, 'surface.other');
+  const targetSurface = humanizeSurfaceLocation(options.surface, i18n);
+
+  return {
+    locale: i18n.locale,
+    standbyHeading: formatWebviewMessage(i18n.messages, 'standby.heading', { surface: activeSurface }),
+    standbyDescription: formatWebviewMessage(i18n.messages, 'standby.description'),
+    standbySwitch: formatWebviewMessage(i18n.messages, 'standby.switch', { surface: targetSurface }),
+    standbyOpenDefault: formatWebviewMessage(i18n.messages, 'standby.openDefault')
+  };
+}
+
 function getSharedShell(webview: vscode.Webview, nonce: string, styleUri: vscode.Uri, locale: string): string {
   return `<!DOCTYPE html>
 <html lang="${locale}">

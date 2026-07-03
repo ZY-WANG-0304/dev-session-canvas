@@ -249,7 +249,7 @@ import {
   getConfiguredTerminalShellArgs,
   inspectCurrentConfiguredTerminalShellInCwd
 } from './configuration';
-import { getWebviewHtml } from './getWebviewHtml';
+import { getWebviewHtml, getWebviewHtmlSnapshotForTest as buildWebviewHtmlSnapshotForTest } from './getWebviewHtml';
 import { openCanvasExternalLink } from './linkOpenMode';
 import { RuntimeSupervisorClient } from './runtimeSupervisorClient';
 import {
@@ -2075,6 +2075,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       surfaceReady: cloneJsonValue(this.surfaceReady),
       surfaceLifecycle: cloneJsonValue(this.surfaceLifecycle)
     };
+  }
+
+  public getWebviewHtmlSnapshotForTest(): ReturnType<typeof buildWebviewHtmlSnapshotForTest> {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
+      throw new Error('getWebviewHtmlSnapshotForTest is only available in test harness mode.');
+    }
+
+    const standbySurface: CanvasSurfaceLocation = this.activeSurface === 'editor' ? 'panel' : 'editor';
+    return buildWebviewHtmlSnapshotForTest(vscode.env.language, {
+      mode: 'standby',
+      surface: standbySurface,
+      activeSurface: this.activeSurface ?? this.getConfiguredSurface()
+    });
   }
 
   public getRuntimeSupervisorStateForTest(): RuntimeSupervisorDebugStateForTest {

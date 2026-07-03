@@ -72,6 +72,7 @@
     "test:workspace-relative-paths": "node --no-warnings --experimental-transform-types scripts/test/test-workspace-relative-paths.mts",
     "test:vscode-smoke-runner-env": "node scripts/test/test-vscode-smoke-runner-env.mjs",
     "test:smoke": "npm run build && npm run build:notifier && node scripts/smoke/run-vscode-smoke.mjs",
+    "test:ui-copy-locale-smoke": "npm run build && node scripts/smoke/run-vscode-ui-copy-locale-smoke.mjs",
     "test:smoke:windows-real-codex": "npm run build && npm run build:notifier && node scripts/smoke/run-windows-real-codex-smoke.mjs",
     "test:smoke-storage-slot": "npm run build && npm run build:notifier && node scripts/smoke/run-vscode-storage-slot-smoke.mjs",
     "validate:clean-checkout:vsix": "node scripts/release/run-clean-checkout-vsix-validation.mjs",
