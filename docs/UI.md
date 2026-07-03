@@ -1,5 +1,5 @@
 ---
-version: 2026-07-02
+version: 2026-07-03
 name: DevSessionCanvas UI
 description: DevSessionCanvas 的跨功能 UI design-system 基线。本文只记录 UI token、组件表面语言和通用 Do / Don't；产品判断、功能规格、具体设计方案和前端实现检查清单分别进入对应正式文档。
 colors:
@@ -348,8 +348,8 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - `Agent` / `Terminal` 标题栏状态胶囊、概览态执行节点状态胶囊、sidebar 节点列表中的状态胶囊都应复用同一套状态 accent、背景和边框推导规则；尺寸可以按承载面缩放，但颜色体系不能分叉。
 - `Note` 状态文案必须使用共享映射：关联 Markdown 的 `contentSource.status = ok` 展示为 `已关联文件`，普通内嵌 `ready` 展示为 `普通笔记`；异常关联状态使用 `tone-error`。
 - 提醒态不等于错误态；视觉上应和错误态区分，具体提醒链路由 `docs/product-specs/canvas-node-notifications.md` 与 `docs/design-docs/index.md` 中的通知相关设计文档定义。
-- `Agent` 节点处于精确 `running` 状态时，标题栏底部可显示低强度流动细线作为运行活性提示；该细线使用 Agent 节点类型色与 panel border 混合后的低饱和纯色移动段，只加粗移动段到 3px，非移动区域保留标题栏原有 1px 底部分隔线，不替代状态胶囊文本，也不泛化到 `launching`、`live`、`starting`、`resuming`、`reattaching` 或 `waiting-input`。
-- `paneGallery` 的 root 标签可在 root 内存在精确 `running` 执行节点且无 attention 时显示一条 `/` 形纯色斜线扫过整个 root 标题栏区域；该动效只属于 `paneGallery` root 标签，不用于 `rootGroups` 系统 root 分组，颜色取 root 标签当前 border color 的纯色扫描线，并采用类似 Codex Working 状态的扁平扫光质感：使用 16px 宽移动段且透明度为 0.82、无渐变和外发光；速度比上一版更慢但循环空档更短；扫描线必须裁切在 root 标题栏区域内，标题栏原有 1px 底部分隔线保持不变。
+- `Agent` 节点处于精确 `running` 状态时，标题栏底部可显示低强度往返移动细线作为运行活性提示；该细线使用 Agent 节点类型色与 panel border 混合后的低饱和纯色移动段，在标题栏底部分隔线区域内左右往返移动，只加粗移动段到 3px，非移动区域保留标题栏原有 1px 底部分隔线，不替代状态胶囊文本，也不泛化到 `launching`、`live`、`starting`、`resuming`、`reattaching` 或 `waiting-input`。
+- `paneGallery` 的 root 标签可在 root 内存在精确 `running` 执行节点且无 attention 时显示一个 `|` 形竖向纯色色块在 root title 所在的小框区域内左右往返运动；thumbnail 模式 active root 占位卡片的左上角 root 标签也遵循同一状态动效规则；该动效只属于 `paneGallery` root 标签，不用于 `rootGroups` 系统 root 分组，颜色取 root 标签当前 border color，采用类似 Codex Working 状态的扁平活性提示：色块宽度为 16px、透明度为 0.82、无渐变和外发光；运动必须裁切在 root title 所在的小框区域内，title 文本保持在色块上方，标题栏原有 1px 底部分隔线保持不变。
 - 动画型状态不能作为唯一反馈；motion 实现检查清单见 `docs/FRONTEND.md`。
 
 ## Do's and Don'ts
