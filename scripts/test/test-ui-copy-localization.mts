@@ -13,6 +13,7 @@ const hostRuntimeSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/extension.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
   'extensions/vscode/dev-session-canvas/src/panel/agentLaunchLocalization.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorLocalization.ts',
   'extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts',
@@ -38,9 +39,22 @@ const sharedPresentationSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts',
   'extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts',
   'extensions/vscode/dev-session-canvas/src/common/executionCwdLabel.ts',
+  'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts',
+  'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts',
   'extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts'
 ];
+const runtimeSupervisorSourceFiles = [
+  'extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts',
+  'extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorLauncher.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts',
+  'extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorLocalization.ts'
+];
 const sharedPresentationSources = sharedPresentationSourceFiles.map((filePath) => ({
+  filePath,
+  source: readFileSync(path.join(process.cwd(), filePath), 'utf8')
+}));
+const runtimeSupervisorSources = runtimeSupervisorSourceFiles.map((filePath) => ({
   filePath,
   source: readFileSync(path.join(process.cwd(), filePath), 'utf8')
 }));
@@ -116,6 +130,12 @@ for (const finding of findUnexpectedTemplateMarketplaceClientChineseLines(templa
 
 for (const { filePath, source } of sharedPresentationSources) {
   for (const finding of findUnexpectedSharedPresentationChineseLines(source)) {
+    assert.fail(`Unexpected hard-coded Chinese in ${filePath} at line ${finding.lineNumber}: ${finding.line}`);
+  }
+}
+
+for (const { filePath, source } of runtimeSupervisorSources) {
+  for (const finding of findUnexpectedRuntimeSupervisorChineseLines(source)) {
     assert.fail(`Unexpected hard-coded Chinese in ${filePath} at line ${finding.lineNumber}: ${finding.line}`);
   }
 }
@@ -202,6 +222,15 @@ function findUnexpectedTemplateMarketplaceClientChineseLines(
 }
 
 function findUnexpectedSharedPresentationChineseLines(
+  source: string
+): Array<{ lineNumber: number; line: string }> {
+  return source
+    .split(/\r?\n/u)
+    .map((line, index) => ({ lineNumber: index + 1, line }))
+    .filter(({ line }) => /[\p{Script=Han}]|zh-CN/u.test(line));
+}
+
+function findUnexpectedRuntimeSupervisorChineseLines(
   source: string
 ): Array<{ lineNumber: number; line: string }> {
   return source
