@@ -654,7 +654,7 @@ function resolveAgentLaunchIntentArgs(
 
     const validation = validateAgentCommandLine(customLaunchCommand, provider, defaults);
     if (!validation.valid || !validation.parsed) {
-      throw new Error(validation.error ?? '无法解析 Agent 启动命令。');
+      throw new AgentLaunchPresetError(validation.errorDescriptor ?? { id: 'launchCommandEmpty' });
     }
     return validation.parsed.args;
   }
