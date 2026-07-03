@@ -47,9 +47,10 @@ try {
     extensionsDir: '/tmp/dsc-smoke/trusted/extensions',
     extensionTestsPath: '/workspace/project/tests/vscode-smoke/extension-tests.cjs',
     extensionDevelopmentPath: '/workspace/project',
-    extraLaunchArgs: []
+    extraLaunchArgs: ['--locale=zh-cn']
   });
   assert.ok(args.includes('--password-store=basic'));
+  assert.ok(args.includes('--locale=zh-cn'));
 
   const debugRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-smoke-runner-env-'));
   try {
@@ -97,7 +98,6 @@ try {
     delete process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT;
   } else {
     process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT = originalSmokeDebugRoot;
-  }
   }
 
   if (originalPath === undefined) {
