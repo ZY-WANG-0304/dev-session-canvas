@@ -9252,7 +9252,7 @@ function paneGalleryPaneStatusDescription(model: PaneGalleryRootModel): string |
   if (model.runningCount > 0) {
     fragments.push(tCount('paneGallery.count.running.one', 'paneGallery.count.running.other', model.runningCount));
   }
-  return fragments.length > 0 ? fragments.join(webviewI18n.locale === 'zh-CN' ? '，' : ', ') : undefined;
+  return fragments.length > 0 ? fragments.join(t('paneGallery.statusSeparator')) : undefined;
 }
 
 function buildPaneGalleryRootModels(params: {
@@ -17452,49 +17452,19 @@ async function queryNodeTextField(
     }
   }
 
-  throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是文本输入控件。`);
+  throw new Error(`Node ${nodeId} field ${fieldName} is not a text input control.`);
 }
 
 function queryNodeActionButton(nodeId: string, action: Extract<WebviewDomAction, { kind: 'clickNodeActionButton' }>): HTMLButtonElement {
   const nodeRoot = queryNodeRoot(nodeId);
-  const actionId = action.action ?? legacyNodeActionIdFromLabel(action.label);
-  const button = Array.from(nodeRoot.querySelectorAll('button')).find((candidate) =>
-    actionId
-      ? candidate.dataset.nodeActionId === actionId
-      : candidate.textContent?.trim() === action.label
+  const button = Array.from(nodeRoot.querySelectorAll('button')).find(
+    (candidate) => candidate.dataset.nodeActionId === action.action
   );
   if (!(button instanceof HTMLButtonElement)) {
-    throw new Error(`未找到节点 ${nodeId} 上动作 ${actionId ?? action.label} 对应的按钮。`);
+    throw new Error(`Could not find action button ${action.action} on node ${nodeId}.`);
   }
 
   return button;
-}
-
-function legacyNodeActionIdFromLabel(label: string | undefined): WebviewNodeActionId | undefined {
-  switch (label) {
-    case '删除':
-      return 'delete';
-    case '启动':
-      return 'start';
-    case '停止':
-      return 'stop';
-    case '新建':
-      return 'new-session';
-    case '重启':
-      return 'restart';
-    case '恢复':
-      return 'resume';
-    case '重新加载':
-      return 'reload';
-    case '复制草稿':
-      return 'copy-draft';
-    case '覆盖文件':
-      return 'overwrite-file';
-    case '创建空文件并关联':
-      return 'create-missing-associated-markdown-file';
-    default:
-      return undefined;
-  }
 }
 
 function queryNodeSelectionTarget(nodeId: string): HTMLElement {
@@ -17508,7 +17478,7 @@ function queryNodeSelectionTarget(nodeId: string): HTMLElement {
 function queryNodeField(nodeId: string, fieldName: string): Element {
   const field = queryNodeRoot(nodeId).querySelector(`[data-probe-field="${fieldName}"]`);
   if (!field) {
-    throw new Error(`未找到节点 ${nodeId} 的 ${fieldName} 字段。`);
+    throw new Error(`Could not find field ${fieldName} on node ${nodeId}.`);
   }
 
   return field;
@@ -17517,7 +17487,7 @@ function queryNodeField(nodeId: string, fieldName: string): Element {
 function queryEdgeSelectionTarget(edgeId: string): Element {
   const edge = document.querySelector(`[data-edge-hitbox="true"][data-edge-id="${edgeId}"]`);
   if (!edge) {
-    throw new Error(`未找到连线 ${edgeId}。`);
+    throw new Error(`Could not find edge ${edgeId}.`);
   }
 
   return edge;
@@ -17529,7 +17499,7 @@ function queryFileEntryButton(nodeId: string, filePath: string): HTMLElement {
     (candidate) => candidate.dataset.fileEntryPath === filePath
   );
   if (!target) {
-    throw new Error(`未找到节点 ${nodeId} 上对应 ${filePath} 的文件条目。`);
+    throw new Error(`Could not find file entry ${filePath} on node ${nodeId}.`);
   }
 
   return target;
@@ -17541,7 +17511,7 @@ function queryNoteChecklistInput(nodeId: string, lineNumber: number): HTMLInputE
     `${NOTE_MARKDOWN_CHECKLIST_SELECTOR}[data-note-markdown-task-line="${lineNumber}"]`
   );
   if (!(target instanceof HTMLInputElement)) {
-    throw new Error(`未找到节点 ${nodeId} 上第 ${lineNumber} 行的 Note checklist。`);
+    throw new Error(`Could not find Note checklist for line ${lineNumber} on node ${nodeId}.`);
   }
 
   return target;
@@ -17554,12 +17524,12 @@ function queryNotePreviewTextPoint(
 ): { element: Element; x: number; y: number } {
   const preview = queryNodeRoot(nodeId).querySelector<HTMLElement>('.note-markdown-preview');
   if (!preview) {
-    throw new Error(`节点 ${nodeId} 当前没有 Note 预览。`);
+    throw new Error(`Node ${nodeId} does not currently have a Note preview.`);
   }
 
   const textNode = findTextNodeContaining(preview, text);
   if (!textNode) {
-    throw new Error(`节点 ${nodeId} 的 Note 预览中未找到文本 ${text}。`);
+    throw new Error(`Could not find text ${text} in the Note preview for node ${nodeId}.`);
   }
 
   const clampedOffset = Math.min(Math.max(0, offset), text.length);
@@ -17593,12 +17563,12 @@ function findTextNodeContaining(root: HTMLElement, text: string): Text | null {
 function queryNotePreviewSelectorTarget(nodeId: string, selector: string): HTMLElement {
   const preview = queryNodeRoot(nodeId).querySelector<HTMLElement>('.note-markdown-preview');
   if (!preview) {
-    throw new Error(`节点 ${nodeId} 当前没有 Note 预览。`);
+    throw new Error(`Node ${nodeId} does not currently have a Note preview.`);
   }
 
   const target = preview.querySelector<HTMLElement>(selector);
   if (!target) {
-    throw new Error(`节点 ${nodeId} 的 Note 预览中未找到 selector ${selector}。`);
+    throw new Error(`Could not find selector ${selector} in the Note preview for node ${nodeId}.`);
   }
 
   return target;
@@ -17616,7 +17586,7 @@ function readElementCenterPoint(element: Element): { x: number; y: number } {
 function queryNodeRoot(nodeId: string): HTMLElement {
   const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
   if (!nodeRoot) {
-    throw new Error(`未找到节点 ${nodeId}。`);
+    throw new Error(`Could not find node ${nodeId}.`);
   }
 
   return nodeRoot;
@@ -17625,7 +17595,7 @@ function queryNodeRoot(nodeId: string): HTMLElement {
 function queryExecutionTerminalElement(nodeId: string): HTMLElement {
   const terminal = queryNodeRoot(nodeId).querySelector<HTMLElement>('.xterm');
   if (!terminal) {
-    throw new Error(`未找到节点 ${nodeId} 的执行终端。`);
+    throw new Error(`Could not find the execution terminal for node ${nodeId}.`);
   }
 
   return terminal;

@@ -1397,7 +1397,7 @@ assert.equal(
     kind: 'clickNodeActionButton',
     nodeId: 'note-1',
     action: 'not-a-real-action',
-    label: '删除'
+    label: 'Delete'
   }),
   false,
   'test DOM action 出现 action 字段时必须是稳定 action id，避免无效 action 回退到本地化 label。'

@@ -37,6 +37,7 @@ const templateMarketplaceClientSource = readFileSync(
   'utf8'
 );
 const sharedPresentationSourceFiles = [
+  'extensions/vscode/dev-session-canvas/src/common/protocol.ts',
   'extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts',
   'extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts',
   'extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts',
@@ -193,17 +194,10 @@ function extractWebviewI18nKeys(source: string): Array<keyof typeof enWebviewMes
 function findUnexpectedWebviewMainChineseLines(
   source: string
 ): Array<{ lineNumber: number; line: string }> {
-  const allowedPatterns = [
-    /^\s*throw new Error\(`节点 \$\{nodeId\}/u,
-    /^\s*throw new Error\(`未找到节点 \$\{nodeId\}/u,
-    /^\s*throw new Error\(`未找到连线 \$\{edgeId\}。`\);$/u,
-    /^\s*case '(?:删除|启动|停止|新建|重启|恢复|重新加载|复制草稿|覆盖文件|创建空文件并关联)':$/u
-  ];
   return source
     .split(/\r?\n/u)
     .map((line, index) => ({ lineNumber: index + 1, line }))
-    .filter(({ line }) => /[\p{Script=Han}]/u.test(line))
-    .filter(({ line }) => !allowedPatterns.some((pattern) => pattern.test(line)));
+    .filter(({ line }) => /[\p{Script=Han}]/u.test(line));
 }
 
 function findUnexpectedTemplateMarketplacePanelChineseLines(
