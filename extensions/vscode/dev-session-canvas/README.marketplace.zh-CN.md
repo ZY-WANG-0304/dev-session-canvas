@@ -10,18 +10,18 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.21.0 版本亮点
+## 0.21.1 版本亮点
 
-当前公开的 `0.21.0` 版本是发布包、执行可靠性和多根体验的一轮新 `Preview` 里程碑：完成主扩展子包化发布布局，新增 TUI OSC 52 剪贴板桥接，收紧 serialized terminal state 新鲜度，明确 Agent 恢复 / 分叉参数边界，支持多根 workspace 中按目标 root 重置模板，并增强 Pane Gallery root 级运行 / 关注提示。它保留 `0.20.0` 的模板市场 Preview 与当前发布边界：Preview 定位、notifier 自动安装、GitHub Release assets + Open VSX verified 完成门禁，以及 Visual Studio Marketplace public visibility 确认前的 deferred 口径。
+当前公开的 `0.21.1` 版本是同一 Preview 线内的修复更新，聚焦多根布局整理安全性、Pane Gallery 细节、终端恢复可靠性，以及 Agent 恢复 / 分叉时保留当前节点启动意图。它保留 `0.21.0` 的主扩展子包化发布布局、OSC 52 剪贴板桥接、模板市场 Preview、notifier 自动安装关系、GitHub Release assets + Open VSX verified 完成门禁，以及 Visual Studio Marketplace deferred 口径。
 
-- 主扩展现在从 `extensions/vscode/dev-session-canvas/` 子包打包，仓库根继续作为 monorepo 编排入口；扩展 ID、publisher、最低 VS Code 版本和 notifier 关系保持不变
-- 聚焦的 `Agent` / `Terminal` TUI 现在可以把 OSC 52 剪贴板序列桥接到系统剪贴板，让 mouse tracking / alternate screen 工具里的复制不再留下旧剪贴板内容
-- 终端快照现在携带 `outputSequence` 新鲜度元数据；过期或 legacy serialized terminal state 会被拒绝并从 raw output 重建，避免恢复旧 TUI 画面直到 resize 才偶然修正
-- Agent 默认参数会对一次性会话目标 fail closed，例如 `resume`、`fork`、`--last`、`--resume`、`--session-id` 和 `--fork-session`；这些目标应由显式 Resume、重启、分叉、历史恢复或本次自定义启动命令表达
-- 多根模板 apply / reset 现在会定位到 root section、Pane Gallery 可交互 pane 或 active root 主画板对应的目标 root；关联 Markdown Note 路径也按目标 root 解析
-- Pane Gallery root 标签更容易发现活动：attention 优先使用更明确的 root 标题闪烁，正在运行执行节点的 root 会显示轻量标题栏扫描线
-- VSIX 打包与 smoke harness 已同步子包布局，并继续阻止服务源码目录、monorepo 包和源码树进入扩展包
-- 扩展 ID、最低 VS Code 版本、notifier 自动安装关系、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径和 Preview 支持矩阵保持不变
+- 多根 workspace 的“整理画布布局”默认限定当前 root；root section、root 标题区与 Pane Gallery 可交互 pane 会优先整理当前 root，菜单仍保留显式整理整个 workspace 的范围选择
+- Pane Gallery thumbnail 模式会在原 workspace 顺序槽位保留 active root 的等尺寸斜纹占位，避免 root 顺序跳动，也避免同一 root 同时挂载第二份真实 `ReactFlow`
+- Pane Gallery running 提示更连续且更克制：root 标题扫描线保持在标题文字下方、连续循环并减少边缘空档，同时仍只表示 root 内存在精确 running 执行节点
+- runtime supervisor 恢复进一步收紧：legacy raw-output-only snapshot 不再被当作可信 terminal state；当 lifecycle snapshot 早于 tracker 写入 flush 到达时，Host 会保留已有可信 supervisor tracker
+- 侧栏 `节点` root 分组现在按 VS Code workspace folder 顺序排列，与 Pane Gallery root 顺序一致，不再按标题字母序重排
+- 当前 Agent 节点的显式 Resume / Fork 会继承节点自身启动意图：`YOLO`、沙盒、自定义命令参数和模板 argv 中的非目标参数会被保留，同时由本次动作写入唯一的 resume / fork session target
+- 历史会话恢复 / 分叉仍保持保守：只使用历史 session id / cwd 和当前 provider 默认参数，因为 provider 历史文件不能稳定提供原始 argv
+- 扩展 ID、最低 VS Code 版本、notifier 自动安装关系、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线和 Preview 支持矩阵保持不变
 
 ## 核心功能
 
@@ -77,11 +77,11 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.20.0` 升级到 `0.21.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
+- 首次安装与从 `0.21.0` 升级到 `0.21.1` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
 - 生产模板市场可能以空目录启动。生产环境不会把代码内 seed 模板暴露为正式内容；真实模板必须通过发布流程或受控运维流程入库
 - 窗格画廊只改变多根呈现；单根 workspace 继续显示普通画布，`rootGroups` 仍是默认多根模式和保守回退路径
 - 布局整理是一次性显式操作，不提供撤销、不持续自动重排，也不跨普通分组或跨 root 搬移节点
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.21.0` 后会继续沿用该明确选择
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.21.1` 后会继续沿用该明确选择
 - 截图粘贴文件是扩展存储中的临时附件，不是 workspace 文件；它们会保留一段时间以便 Agent 上下文复用，之后由后台 TTL 维护任务清理
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
