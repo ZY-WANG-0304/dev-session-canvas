@@ -59,11 +59,11 @@
   - 当前已知冲突集合仅包括：`Codex` 的 `--yolo` / `--full-auto` / `--dangerously-bypass-approvals-and-sandbox` / `--sandbox` / `-s` / `--ask-for-approval` / `-a`（以及这些长短选项的 `--flag=value` 形式），以及 `Claude Code` 的 `--dangerously-skip-permissions` / `--permission-mode`。
   - 上述有限覆盖只作用于执行策略本身；“恢复哪条会话”的语义不属于 Default args。若用户需要一次性指定 `resume --last`、`resume <session-id>`、`--resume <session-id>`、`--continue <session-id>`、`--session-id <id>` 或 Fork 标记，应改走 `Resume / 分叉` 入口或本次自定义启动命令，而不是写入默认启动参数。
   - 当用户显式选择创建前的 `Resume` 预设时，本次 fresh-start 仍统一收口为 provider 自己的 resume 选择入口：`Codex` 生成 `codex resume`，`Claude Code` 生成 `claude --resume`；如果默认启动参数已经含上述会话目标类冲突项，扩展必须先报错并拒绝启动，不能静默替换后继续执行。
-  - 若恢复路径已经持有明确的目标 `session-id`（例如历史会话列表恢复或停止后点击当前节点 `重启`），生成的显式 resume 命令只继承对显式 resume 仍有效的默认参数，例如 `--model`、`--sandbox`、`--ask-for-approval`、`--profile`、`--config`、`--cd`、`--add-dir`。`--last`、`--all`、`--include-non-interactive` 与旧 positional session/prompt 不应出现在 Default args；若出现应显式报错。
-  - 当前节点的 `重启` / `分叉` 还必须继承该节点的启动意图：`launchPreset`、`customLaunchCommand` 与模板落地的 `templateArgv` 都属于节点自己的启动偏好；命令层会剥离其中的旧 session-target / fork-target，再与当前 Default args 的非冲突配置合并，避免 `--yolo`、沙盒模式或自定义模型等偏好在恢复原会话 / 分叉时丢失。
+  - 若恢复路径来自侧栏历史会话且已经持有明确的目标 `session-id`，生成的显式 resume 命令只继承对显式 resume 仍有效的默认参数，例如 `--model`、`--sandbox`、`--ask-for-approval`、`--profile`、`--config`、`--cd`、`--add-dir`。`--last`、`--all`、`--include-non-interactive` 与旧 positional session/prompt 不应出现在 Default args；若出现应显式报错。
+  - 当前节点的 `重启` / `分叉` 必须只继承该节点的启动意图，不与当前 Default args 合并，也不能因为当前 Default args 含会话目标而被拦截。节点启动意图优先采用该节点最近一次实际启动命令；若尚无最近启动命令，再退回 `launchPreset`、`customLaunchCommand` 与模板落地的 `templateArgv`。解析最近启动命令时只提取 argv，首个命令 token 仍由当前 provider 命令设置决定。命令层会剥离其中的旧 session-target / fork-target，再由本次动作写入唯一目标 `session-id`。
   - 侧栏历史恢复 / 历史分叉不能宣称继承历史会话原始启动参数：当前 provider 历史扫描只能可靠拿到 `provider`、`sessionId`、`cwd`、时间和首条用户指令，不能拿到原始 argv / command line；因此历史入口只使用历史项 session id / cwd 与当前 provider 命令、当前 Default args。
-  - `Fork` / 显式 `Resume` 的配置继承以“目标选择冲突”为边界：provider 命令路径、执行 `cwd`、model、sandbox / approval、profile / config、额外目录、image、local-provider 等 runtime/configuration 参数属于不冲突配置，应继续保留；旧 session target、最近会话选择、picker 范围、旧 fork 标记属于冲突配置，不适合进入 Default args，必须由本次动作的显式 `session-id` 表达。
-  - Claude Code 显式 `Resume / Fork` 只继承 `--model`、`--permission-mode`、`--dangerously-skip-permissions`、MCP / tool / output 等非 session-target 参数；旧 `--resume` / `-r`、`--continue` / `-c`、`--session-id` 与旧 `--fork-session` 不适合进入 Default args，若出现应显式报错。
+  - `Fork` / 显式 `Resume` 的目标选择以本次动作的显式 `session-id` 为准。历史入口可以继续使用当前 Default args 中合法的 runtime/configuration 参数；当前节点入口则只使用节点自己的启动意图，避免用户修改 Default args 后改写已有节点的重启 / 分叉行为。
+  - Claude Code 历史显式 `Resume / Fork` 只继承 Default args 中的 `--model`、`--permission-mode`、`--dangerously-skip-permissions`、MCP / tool / output 等非 session-target 参数；当前节点 `重启` / `分叉` 同样只继承节点启动意图，不额外合并 Default args。
   - 若某个 provider 的默认启动参数本身无法被命令行 parser 正常解析，或包含与 `Resume / Fork` 冲突的会话目标类参数，右键菜单、Quick Input 与宿主 fresh-start 都必须显式报错，不能静默清空或清理这段参数后继续启动。
 - Agent 停止后的 `新建 | 重启` 动作：
   - `新建` 按钮启动新会话，沿用节点 metadata 中的 fresh-start 配置。
@@ -76,8 +76,8 @@
   - Codex 的可信 session id 来源沿用现有 Codex 恢复上下文确认规则；Claude Code 的可信 session id 来源沿用现有 Claude Code 恢复上下文确认规则。
   - 点击 `分叉` 后，宿主创建一个同 provider 的新 Agent 节点并立即启动，不要求用户再点一次 `启动`。
   - 新节点启动命令必须使用对应 provider 原生 fork 语义：Codex 使用 `codex fork <session-id>`，Claude Code 使用 `claude --resume <session-id> --fork-session`；它们都不是普通 resume。
-  - 当前节点 `分叉` 和当前节点 `重启` 共享同一条启动意图继承规则；例如从 `YOLO` Codex 节点分叉时，新分叉命令应包含 `fork --yolo ... <session-id>`，而不是只使用当前 Default args。
-  - Codex 分叉命令生成必须只信任当前节点的显式 session id；默认参数只能贡献 `--model`、`--sandbox`、`--profile`、`--config` 等非会话目标配置，不能包含 `fork` / `resume`、`--last`、`--all`、`--include-non-interactive` 或旧 positional target。
+  - 当前节点 `分叉` 和当前节点 `重启` 共享同一条启动意图继承规则；例如从 `YOLO` Codex 节点分叉时，新分叉命令应包含 `fork --yolo ... <session-id>`，而不是只使用或合并当前 Default args。
+  - Codex 当前节点分叉命令生成必须只信任当前节点的显式 session id 和节点启动意图；Default args 不参与当前节点分叉。历史分叉仍会使用当前 Default args 中合法的非会话目标配置，并拒绝 `fork` / `resume`、`--last`、`--all`、`--include-non-interactive` 或旧 positional target。
   - 旧节点保持不变，用户仍可继续在旧节点对话；新节点通过标题弱提示来源，并自动创建一条普通可编辑 `user` 边，边标签默认为 `fork`；这条边不表示正式父子边、分支树或强持久化分支关系。
   - 新分叉节点和普通 Agent 节点一样在标题栏显示状态胶囊；窄节点下沿用 PR121 的局部压缩规则：标题栏整体仍保持一行主结构，只有可压缩的动作按钮自身按内容收缩或内部换行，不让整组动作区换行打散布局，也不通过隐藏状态来腾空间。当前 Agent 节点接近最小宽度时，标题栏右上角所有动作按钮统一切换为按钮内部两行显示，避免短中文文案因为浏览器 `min-content` 宽度保护而永远看不到可见换行。
 - 自定义启动输入约束：
@@ -152,11 +152,11 @@
 - 当副标题中的启动指令超出可见宽度时，鼠标悬停副标题区域会显示完整启动指令；未截断时不额外显示 hover 文案。
 - 即使用户把 Agent 节点拖得更宽，标题与副标题仍维持固定可读宽度上限，不会跟着无限拉长。
 - 停止后的 Agent 节点标题栏显示并列的 `新建 | 重启` 按钮；`新建` 直接启动新会话，`重启` 恢复当前节点原会话。
-- 如果当前节点的启动意图是 `YOLO / 沙盒 / 自定义启动 / 模板 argv`，点击 `重启` 或 `分叉` 后的实际启动命令仍保留这些非目标选择参数；侧栏历史恢复 / 分叉不做这类继承，因为历史记录没有可靠原始启动参数。
+- 如果当前节点的启动意图是 `YOLO / 沙盒 / 自定义启动 / 模板 argv`，点击 `重启` 或 `分叉` 后的实际启动命令仍保留这些非目标选择参数，并且不合并当前 Default args；侧栏历史恢复 / 分叉不做这类继承，因为历史记录没有可靠原始启动参数。
 - 当节点缺少可恢复上下文时，标题栏只显示单个 `启动` 按钮，不再显示 disabled 的 `新建 | 重启` 双按钮；也不会偷偷改成恢复 provider 的最近会话。
 - 对 `Claude Code` 的 fresh-start，如果启动后已根据候选 `session-id` 确认 provider 会话文件存在，即使 stop-time 没再额外打印 resume 提示，节点也应继续保留“恢复原会话”入口；只有既没有文件确认也没有 stop-time 提示时，才退化为单个 `启动` 按钮。
 - 对持有可信 `codex-session-id` 的 Codex Agent 或可信 `claude-session-id` 的 Claude Code Agent，标题栏提供 `分叉` 动作；点击后创建同 provider 的新 Agent 节点并立即启动，Codex 启动命令包含 `fork <session-id>`，Claude Code 启动命令包含 `--resume <session-id> --fork-session`，原节点状态不变化。
-- Codex `分叉` 启动命令不会继承默认参数中的旧目标选择：如果 `--last`、`--all`、`--include-non-interactive` 或旧 session id 写在默认参数里，扩展会先报错要求用户修正 Default args；合法启动时最终命令只以当前节点可信 session id 作为分叉目标。
+- Codex 当前节点 `分叉` 启动命令不会合并 Default args；合法启动时最终命令只以当前节点可信 session id 作为分叉目标，并继承当前节点启动意图。历史分叉若遇到 Default args 中包含 `--last`、`--all`、`--include-non-interactive` 或旧 session id，扩展会先报错要求用户修正 Default args。
 - 新分叉节点标题弱提示来源，例如以当前节点标题加 `分叉` 后缀表达；画布自动创建来源 Agent 指向新 Agent 的普通可编辑 `user` 边，并默认显示 `fork` 标签，但不新增正式父子边，也不要求用户区分哪个节点是“主分支”。
 - 新分叉节点标题栏继续显示状态胶囊，并在 `启动/停止`、`删除` 等动作旁保持和普通 Agent 节点一致的状态反馈；窄宽度时应采用 PR121 式的按钮级压缩/内部换行，标题栏 action cluster 本身保持 inline，不应整组换行破坏布局，也不应隐藏状态。当前 Agent 节点接近最小宽度时，右上角所有动作按钮都应实际呈现为按钮内部两行，而不是只声明允许换行。
 - 缺少可信 session id、provider 与 resume strategy 不匹配，或其他未支持 provider 的 Agent 不会误触发分叉启动。
