@@ -680,7 +680,7 @@ assert.match(
 );
 assert.match(
   extensionSource,
-  /removeFolderFromWorkspaceFromCommand[\s\S]*getWorkspaceRootCanvasRemovalImpact[\s\S]*清空画板并移除[\s\S]*保留画板并移除[\s\S]*defaultChoice: 'keep-canvas'[\s\S]*clearWorkspaceRootCanvasIfRequested[\s\S]*removeWorkspaceFolderByFsPath/u,
+  /removeFolderFromWorkspaceFromCommand[\s\S]*getWorkspaceRootCanvasRemovalImpact[\s\S]*Clear Canvas and remove[\s\S]*Keep Canvas and remove[\s\S]*defaultChoice: 'keep-canvas'[\s\S]*clearWorkspaceRootCanvasIfRequested[\s\S]*removeWorkspaceFolderByFsPath/u,
   'Expected folder removal to offer native-modal keep/clear canvas choices and default to keeping the canvas.'
 );
 const worktreeRemovalCommandSource = extensionSource.slice(
@@ -689,7 +689,7 @@ const worktreeRemovalCommandSource = extensionSource.slice(
 );
 assert.match(
   worktreeRemovalCommandSource,
-  /getWorkspaceRootCanvasRemovalImpact[\s\S]*移除 Worktree 并清空画板[\s\S]*移除 Worktree 但保留画板[\s\S]*defaultChoice: 'clear-canvas'[\s\S]*execFileAsync\('git', \['-C', workspaceFolder\.uri\.fsPath, 'worktree', 'remove'[\s\S]*if \(removalChoice\.clearCanvas\)[\s\S]*clearWorkspaceRootCanvasIfRequested/u,
+  /getWorkspaceRootCanvasRemovalImpact[\s\S]*Remove Worktree and clear Canvas[\s\S]*Remove Worktree but keep Canvas[\s\S]*defaultChoice: 'clear-canvas'[\s\S]*execFileAsync\('git', \['-C', workspaceFolder\.uri\.fsPath, 'worktree', 'remove'[\s\S]*if \(removalChoice\.clearCanvas\)[\s\S]*clearWorkspaceRootCanvasIfRequested/u,
   'Expected worktree removal to offer native-modal clear/keep canvas choices, default to clearing the canvas, and clear only after git worktree remove succeeds.'
 );
 assert.doesNotMatch(
@@ -1380,6 +1380,27 @@ assert.equal(
   }),
   null,
   'execution performance diagnostic kind 必须是执行节点类型。'
+);
+
+assert.equal(
+  isWebviewDomAction({
+    kind: 'clickNodeActionButton',
+    nodeId: 'note-1',
+    action: 'reload'
+  }),
+  true,
+  'test DOM action 应允许使用稳定 action id 点击节点按钮，避免依赖本地化后的可见文案。'
+);
+
+assert.equal(
+  isWebviewDomAction({
+    kind: 'clickNodeActionButton',
+    nodeId: 'note-1',
+    action: 'not-a-real-action',
+    label: 'Delete'
+  }),
+  false,
+  'test DOM action 出现 action 字段时必须是稳定 action id，避免无效 action 回退到本地化 label。'
 );
 
 assert.equal(

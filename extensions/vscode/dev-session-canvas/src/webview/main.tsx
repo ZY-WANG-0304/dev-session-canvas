@@ -81,6 +81,7 @@ import type {
   FileListNodeEntrySummary,
   HostToWebviewMessage,
   WebviewDomAction,
+  WebviewNodeActionId,
   WebviewClipboardTextSource,
   WebviewLifecycleIdentity,
   ExecutionPerformanceDiagnosticPayload,
@@ -108,15 +109,19 @@ import {
   buildAgentPresetCommandLine,
   classifyAgentLaunchPreset,
   createDefaultAgentLaunchDefaults,
+  formatAgentLaunchMessageDescriptor,
   formatCommandLine,
-  validateAgentCommandLine
+  getAgentLaunchErrorDescriptor,
+  validateAgentCommandLine,
+  type AgentLaunchConflictDescriptionId,
+  type AgentLaunchMessageDescriptor
 } from '../common/agentLaunchPresets';
 import { CANVAS_ATTENTION_INDICATOR_ICON_ID } from '../common/canvasAttentionVisuals';
 import { colorForCanvasNodeKind } from '../common/canvasNodeVisuals';
 import {
-  canvasStatusToneClass as statusToneClass,
-  humanizeCanvasNodeStatus,
-  humanizeCanvasStatus as humanizeStatus
+  canvasNodeStatusLabelDescriptor,
+  canvasStatusLabelDescriptor,
+  canvasStatusToneClass as statusToneClass
 } from '../common/canvasNodeStatusPresentation';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type {
@@ -153,6 +158,12 @@ import {
 } from './droppedResources';
 import { createNoteBodyIndentEdit, createNoteBodyOutdentEdit } from './noteBodyIndent';
 import { parseNoteMarkdownFrontMatter, type NoteMarkdownFrontMatter } from './noteMarkdownFrontMatter';
+import {
+  formatWebviewMessage,
+  resolveWebviewI18n,
+  type WebviewI18nBootstrap,
+  type WebviewI18nKey
+} from './i18n/webviewI18n';
 
 type CanvasGroupRole = CanvasGroupSummary['role'];
 
@@ -165,6 +176,7 @@ declare function acquireVsCodeApi<T>(): {
 declare global {
   interface Window {
     __DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__?: WebviewLifecycleIdentity;
+    __DEV_SESSION_CANVAS_I18N__?: WebviewI18nBootstrap;
   }
 }
 
@@ -594,9 +606,6 @@ interface NoteMarkdownResolvedImageResource {
 }
 const FILE_TREE_BASE_PADDING_PX = 8;
 const FILE_TREE_DEPTH_STEP_PX = 12;
-const NOTE_BODY_PLACEHOLDER = '直接在画布上记录思路、上下文、待确认点或下一轮要回来的线索。';
-const EMBEDDED_NOTE_BODY_PLACEHOLDER =
-  `${NOTE_BODY_PLACEHOLDER} 最多 ${NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符。更长内容可保存为 Markdown 文件。`;
 const NOTE_DOCUMENT_FALLBACK_LINE_HEIGHT_PX = 21;
 const NOTE_MARKDOWN_RENDERABLE_EXTERNAL_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const NOTE_MARKDOWN_LINK_SELECTOR = 'a[data-note-markdown-link="true"]';
@@ -719,18 +728,6 @@ interface FloatingTooltipPosition {
 }
 type ExecutionHelpTriggerVariant = 'canvas' | 'inline';
 
-const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
-  title: '执行节点使用提示',
-  items: [
-    '拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径',
-    'Panel 模式下可拖拽画板标签页在底部面板与右侧辅助侧栏之间切换位置',
-    '在设置中开启 devSessionCanvas.runtimePersistence.enabled 可持久化会话（会启动额外后台进程）',
-    '如需让 Agent 完成后主动提醒，请先在对应的 Agent CLI（Claude Code 或 Codex）中启用通知。',
-    'Windows 环境下如果执行节点受 PowerShell 策略影响，请按系统安全要求完成对应设置后再重试。',
-    '多根 workspace 可通过 devSessionCanvas.canvas.multiRootPresentationMode 在 rootGroups 单张组合画布和 paneGallery 窗格画廊之间切换。'
-  ]
-};
-const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
 const EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS = 1000;
 const AGENT_TITLE_ACTION_COMPACT_WIDTH = 440;
 let nextExecutionNodeHelpTooltipId = 0;
@@ -818,6 +815,95 @@ interface XtermCoreWithMouseInternals {
 const vscode = acquireVsCodeApi<LocalUiState>();
 const reportedRuntimeDiagnostics = new Set<string>();
 const initialPersistedState = vscode.getState() ?? {};
+const webviewI18n = window.__DEV_SESSION_CANVAS_I18N__ ?? resolveWebviewI18n(navigator.language);
+function t(key: WebviewI18nKey, params?: Record<string, string | number>): string {
+  return formatWebviewMessage(webviewI18n.messages, key, params);
+}
+function tCount(oneKey: WebviewI18nKey, otherKey: WebviewI18nKey, count: number): string {
+  return t(count === 1 ? oneKey : otherKey, { count });
+}
+function tAgentLaunchMessage(
+  descriptor: AgentLaunchMessageDescriptor | undefined,
+  fallback?: string
+): string {
+  if (!descriptor) {
+    return fallback ?? t('agentLaunchPreset.agentCommandParseError');
+  }
+
+  const params = descriptor.params ?? {};
+  switch (descriptor.id) {
+    case 'resumeSessionIdEmpty':
+      return t('agentLaunch.error.resumeSessionIdEmpty');
+    case 'forkSessionIdEmpty':
+      return t('agentLaunch.error.forkSessionIdEmpty');
+    case 'launchCommandEmpty':
+      return t('agentLaunch.error.launchCommandEmpty');
+    case 'claudeCommandMismatch':
+      return t('agentLaunch.error.claudeCommandMismatch');
+    case 'codexCommandMismatch':
+      return t('agentLaunch.error.codexCommandMismatch');
+    case 'doubleQuoteUnclosed':
+      return t('agentLaunch.error.doubleQuoteUnclosed');
+    case 'singleQuoteUnclosed':
+      return t('agentLaunch.error.singleQuoteUnclosed');
+    case 'defaultArgsParseError':
+      return t('agentLaunch.error.defaultArgsParseError', {
+        provider: params.provider ?? 'Agent',
+        message: descriptor.cause
+          ? tAgentLaunchMessage(descriptor.cause)
+          : params.message ?? ''
+      });
+    case 'defaultArgsConflict':
+      return t('agentLaunch.error.defaultArgsConflict', {
+        provider: params.provider ?? 'Agent',
+        description: tAgentLaunchConflictDescription(
+          params.descriptionId as AgentLaunchConflictDescriptionId | undefined,
+          params.description
+        ),
+        token: params.token ?? ''
+      });
+    default:
+      return fallback ?? formatAgentLaunchMessageDescriptor(descriptor);
+  }
+}
+
+function tAgentLaunchConflictDescription(
+  id: AgentLaunchConflictDescriptionId | undefined,
+  fallback?: string
+): string {
+  switch (id) {
+    case 'positionalArgumentSeparator':
+      return t('agentLaunch.conflict.positionalArgumentSeparator');
+    case 'sessionSelectionArgument':
+      return t('agentLaunch.conflict.sessionSelectionArgument');
+    case 'sessionTargetSubcommand':
+      return t('agentLaunch.conflict.sessionTargetSubcommand');
+    case 'positionalArgument':
+      return t('agentLaunch.conflict.positionalArgument');
+    case 'forkFlagArgument':
+      return t('agentLaunch.conflict.forkFlagArgument');
+    case 'sessionTargetArgument':
+      return t('agentLaunch.conflict.sessionTargetArgument');
+    default:
+      return fallback ?? t('agentLaunch.conflict.argument');
+  }
+}
+const NOTE_BODY_PLACEHOLDER = t('note.body.placeholder');
+const EMBEDDED_NOTE_BODY_PLACEHOLDER = t('note.body.embeddedPlaceholder', {
+  max: NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()
+});
+const EXECUTION_NODE_HELP_TIPS: ExecutionNodeHelpContent = {
+  title: t('execution.help.title'),
+  items: [
+    t('execution.help.dragPath'),
+    t('execution.help.panelSurface'),
+    t('execution.help.runtimePersistence'),
+    t('execution.help.notifications'),
+    t('execution.help.windowsPowerShell'),
+    t('execution.help.multiRootPresentation')
+  ]
+};
+const EXECUTION_TERMINAL_HELP_TOOLTIP = formatExecutionNodeHelpTooltip(EXECUTION_NODE_HELP_TIPS);
 const injectedWebviewLifecycleIdentity = extractWebviewMessageLifecycle({
   lifecycle: window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__
 });
@@ -3464,7 +3550,7 @@ function App(): JSX.Element {
     workspaceRootGroupCount > 1 &&
     !resolveTemplateResetTargetRootGroupId(targetGroupId);
   const promptForRootGroupTemplateResetTarget = (): void => {
-    showTransientCanvasError('多根 workspace 中请在目标 root section 内重置为模板。');
+    showTransientCanvasError(t('canvas.error.multiRootTemplateReset'));
     closePaneContextMenu();
   };
 
@@ -3715,7 +3801,7 @@ function App(): JSX.Element {
     const parentGroupId = resolveSelectedObjectParentGroupId(currentHostState, nodeIds, groupIds);
 
     if (!canCreateCanvasGroupFromSelection(currentHostState, nodeIds, groupIds, parentGroupId)) {
-      showTransientCanvasError('请先选中至少两个同一父级的节点或分组。');
+      showTransientCanvasError(t('canvas.error.createGroupFromSelection'));
       return;
     }
 
@@ -4808,8 +4894,8 @@ function App(): JSX.Element {
             <button
               type="button"
               className="react-flow__controls-button react-flow__controls-fitview"
-              title="fit view"
-              aria-label="fit view"
+              title={t('canvas.fitView')}
+              aria-label={t('canvas.fitView')}
               onClick={() => {
                 fitCanvasView(NODE_FOCUS_ANIMATION_DURATION_MS);
               }}
@@ -5526,7 +5612,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     .filter(Boolean)
     .join(' ');
   const launchCommandSubtitle = resolveAgentLaunchCommandLineForSubtitle(agentMetadata);
-  const cwdLabel = formatExecutionCwdLabel(agentMetadata.cwd, data.workspaceFolders);
+  const cwdLabel = formatExecutionCwdLabel(agentMetadata.cwd, data.workspaceFolders, t('execution.cwd.unknown'));
   const cwdTooltip = formatExecutionCwdTooltip(agentMetadata.cwd, cwdLabel);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -5771,7 +5857,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     const dataDisposable = terminal.onData((input) => {
       nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
       if (terminalFlagsRef.current.blockCtrlZInput && containsTerminalSuspendInput(input)) {
-        data.onShowTransientError?.('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。');
+        data.onShowTransientError?.(t('execution.error.claudeCtrlZUnsupported'));
         return;
       }
       reportExecutionInputDispatch(id, 'agent', input, (metadata) =>
@@ -5914,7 +6000,7 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           subtitle={launchCommandSubtitle}
           subtitleTooltip={launchCommandSubtitle}
           subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
-          placeholder="Agent 标题"
+          placeholder={t('agent.title.placeholder')}
           className="agent-window-title"
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
@@ -5930,7 +6016,8 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           />
           {agentMetadata.liveSession ? (
             <ActionButton
-              label="停止"
+              label={t('action.stop')}
+              actionId="stop"
               onClick={stopAgent}
               tone="primary"
               disabled={actionDisabled}
@@ -5941,7 +6028,8 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           ) : showRestartActions ? (
             <div className="action-button-group agent-restart-action-group nodrag nopan" data-node-interactive="true">
               <ActionButton
-                label="新建"
+                label={t('action.newSession')}
+                actionId="new-session"
                 tone="primary"
                 disabled={actionDisabled}
                 className="compact nodrag nopan"
@@ -5951,13 +6039,14 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
                   startAgent(false);
                 }}
                 buttonProps={{
-                  title: '启动新会话',
-                  'aria-label': '启动新会话',
+                  title: t('agent.action.startNewSession.title'),
+                  'aria-label': t('agent.action.startNewSession.title'),
                   'data-agent-restart-action': 'new-session'
                 }}
               />
               <ActionButton
-                label="重启"
+                label={t('action.restart')}
+                actionId="restart"
                 tone="primary"
                 disabled={actionDisabled || !canResumeOriginalSession}
                 className="compact nodrag nopan"
@@ -5967,15 +6056,20 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
                   startAgent(true);
                 }}
                 buttonProps={{
-                  title: !canResumeOriginalSession ? '无可恢复的会话' : '恢复原会话',
-                  'aria-label': !canResumeOriginalSession ? '重启（无可恢复的会话）' : '重启并恢复原会话',
+                  title: !canResumeOriginalSession
+                    ? t('agent.action.resume.disabledTitle')
+                    : t('agent.action.resume.title'),
+                  'aria-label': !canResumeOriginalSession
+                    ? t('agent.action.resume.disabledAria')
+                    : t('agent.action.resume.aria'),
                   'data-agent-restart-action': 'resume'
                 }}
               />
             </div>
           ) : (
             <ActionButton
-              label="启动"
+              label={t('action.start')}
+              actionId="start"
               onClick={() => startAgent(false)}
               tone="primary"
               disabled={actionDisabled}
@@ -5986,7 +6080,8 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
           )}
           {showBranchAction ? (
             <ActionButton
-              label="分叉"
+              label={t('action.branch')}
+              actionId="branch"
               tone="primary"
               disabled={actionDisabled}
               className="agent-branch-action-button nodrag nopan compact"
@@ -5994,14 +6089,15 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               onFocus={() => data.onSelectNode?.(id)}
               onClick={branchAgent}
               buttonProps={{
-                title: `分叉当前 ${providerLabel(provider)} 会话`,
-                'aria-label': `分叉当前 ${providerLabel(provider)} 会话`,
+                title: t('agent.action.branchCurrentSession', { provider: providerLabel(provider) }),
+                'aria-label': t('agent.action.branchCurrentSession', { provider: providerLabel(provider) }),
                 'data-agent-branch-action': 'true'
               }}
             />
           ) : null}
           <ActionButton
-            label="删除"
+            label={t('action.delete')}
+            actionId="delete"
             tone="danger"
             onClick={deleteAgent}
             className="nodrag nopan compact"
@@ -6034,22 +6130,22 @@ function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
             <div className="terminal-overlay">
               <strong>
                 {executionBlocked
-                    ? 'Restricted Mode'
+                    ? t('execution.overlay.restrictedMode')
                     : reattaching
-                      ? 'Agent 重连中'
+                      ? t('agent.overlay.reattaching')
                       : displayStatus === 'history-restored'
-                        ? '历史恢复'
+                        ? t('agent.overlay.historyRestored')
                     : lifecycle === 'resume-ready'
-                      ? 'Agent 可恢复'
+                      ? t('agent.overlay.resumeReady')
                       : lifecycle === 'resume-failed'
-                        ? 'Agent 恢复失败'
+                        ? t('agent.overlay.resumeFailed')
                     : agentMetadata.lastExitMessage
-                      ? 'Agent 当前未运行'
-                      : 'Agent 尚未启动'}
+                      ? t('agent.overlay.notRunning')
+                      : t('agent.overlay.notStarted')}
               </strong>
               <span>
                 {executionBlocked
-                    ? '当前 workspace 未受信任，Agent 会话入口已禁用。'
+                    ? t('agent.overlay.restricted')
                     : reattaching
                       ? data.summary
                       : displayStatus === 'history-restored'
@@ -6443,7 +6539,7 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
           value={data.title}
           subtitle={terminalMetadata.shellPath}
           subtitleAccessory={<ExecutionHelpTrigger help={EXECUTION_NODE_HELP_TIPS} variant="inline" />}
-          placeholder="Terminal 标题"
+          placeholder={t('terminal.title.placeholder')}
           className="terminal-window-title"
           onSelectNode={() => data.onSelectNode?.(id)}
           onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
@@ -6454,7 +6550,14 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
             attentionPending={attentionPending}
           />
           <ActionButton
-            label={terminalMetadata.liveSession ? '停止' : terminalMetadata.lastExitMessage ? '重启' : '启动'}
+            label={
+              terminalMetadata.liveSession
+                ? t('action.stop')
+                : terminalMetadata.lastExitMessage
+                  ? t('action.restart')
+                  : t('action.start')
+            }
+            actionId={terminalMetadata.liveSession ? 'stop' : terminalMetadata.lastExitMessage ? 'restart' : 'start'}
             onClick={() => (terminalMetadata.liveSession ? stopTerminal() : startTerminal())}
             tone="primary"
             disabled={executionBlocked || reattaching}
@@ -6463,7 +6566,8 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
             onFocus={() => data.onSelectNode?.(id)}
           />
           <ActionButton
-            label="删除"
+            label={t('action.delete')}
+            actionId="delete"
             tone="danger"
             onClick={deleteTerminal}
             className="nodrag nopan compact"
@@ -6496,20 +6600,20 @@ function TerminalSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>
             <div className="terminal-overlay">
               <strong>
                 {executionBlocked
-                  ? 'Restricted Mode'
+                  ? t('execution.overlay.restrictedMode')
                   : reattaching
-                    ? '终端重连中'
+                    ? t('terminal.overlay.reattaching')
                     : displayStatus === 'history-restored'
-                      ? '历史恢复'
+                      ? t('terminal.overlay.historyRestored')
                   : lifecycle === 'interrupted'
-                    ? '终端已中断'
+                    ? t('terminal.overlay.interrupted')
                   : terminalMetadata.lastExitMessage
-                    ? '终端当前未运行'
-                    : '终端尚未启动'}
+                    ? t('terminal.overlay.notRunning')
+                    : t('terminal.overlay.notStarted')}
               </strong>
               <span>
                 {executionBlocked
-                  ? '当前 workspace 未受信任，嵌入式终端入口已禁用。'
+                  ? t('terminal.overlay.restricted')
                   : reattaching
                     ? data.summary
                     : displayStatus === 'history-restored'
@@ -6539,12 +6643,12 @@ function ExecutionAttentionStatus(props: {
         <span
           className={`execution-attention-indicator codicon codicon-${CANVAS_ATTENTION_INDICATOR_ICON_ID}`}
           data-attention-indicator="true"
-          aria-label="未确认终端提醒"
-          title="未确认终端提醒"
+          aria-label={t('execution.attention.unacknowledgedTerminal')}
+          title={t('execution.attention.unacknowledgedTerminal')}
         />
       ) : null}
       <span className={`status-pill ${statusToneClass(props.status)}`}>
-        {humanizeStatus(props.status)}
+        {webviewHumanizeCanvasStatus(props.status)}
       </span>
     </div>
   );
@@ -6640,11 +6744,11 @@ function CanvasMiniMap(props: {
         height={CANVAS_MINIMAP_HEIGHT}
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
         role="img"
-        aria-label="Canvas minimap"
+        aria-label={t('canvas.minimap')}
         onPointerDown={handlePointerDown}
         onWheel={handleWheel}
       >
-        <title>Canvas minimap</title>
+        <title>{t('canvas.minimap')}</title>
         <g className="canvas-minimap-groups" aria-hidden="true">
           {props.groups.map((group) => (
             <rect
@@ -6787,7 +6891,7 @@ function NodeOverviewTitle(props: { title: string; status?: string }): JSX.Eleme
           data-overview-status={props.status}
         >
           <span className="node-overview-status-dot" />
-          <span>{humanizeStatus(props.status)}</span>
+          <span>{webviewHumanizeCanvasStatus(props.status)}</span>
         </span>
       ) : null}
     </div>
@@ -7103,7 +7207,7 @@ function NodeResizeAffordance({
           type="button"
           className={`canvas-node-resize-control canvas-node-resize-${direction} nodrag nopan`}
           data-node-resize-direction={direction}
-          aria-label={`向 ${direction} 调整节点 ${data.title} 尺寸`}
+          aria-label={t('canvas.resizeNode', { direction, title: data.title })}
           style={{ cursor: canvasNodeResizeCursorForDirection(direction) }}
           onPointerDown={(event) => beginResize(event, direction)}
           onPointerMove={handleResizeMove}
@@ -7244,7 +7348,7 @@ function FileNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Elem
         ) : !isMinimalStyle ? (
           <span className="file-node-copy file-node-copy-icon-only">
             <strong>{ownerCount}</strong>
-            <span>引用</span>
+            <span>{t('file.references')}</span>
           </span>
         ) : null}
       </button>
@@ -7299,7 +7403,7 @@ function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.
         </div>
         {isMinimalStyle ? (
           <div className="file-list-minimal-toolbar">
-            <div className="file-list-view-toggle" role="group" aria-label="文件列表视图">
+            <div className="file-list-view-toggle" role="group" aria-label={t('fileList.viewToggle')}>
               <button
                 type="button"
                 className={`file-list-view-toggle-button nodrag nopan ${
@@ -7318,9 +7422,7 @@ function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.
                   data.onSelectNode?.(id);
                   data.onSetFileListViewMode?.(id, 'list');
                 }}
-              >
-                列表视图
-              </button>
+              >{t('fileList.view.list')}</button>
               <button
                 type="button"
                 className={`file-list-view-toggle-button nodrag nopan ${
@@ -7339,12 +7441,11 @@ function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.
                   data.onSelectNode?.(id);
                   data.onSetFileListViewMode?.(id, 'tree');
                 }}
-              >
-                树形视图
-              </button>
+              >{t('fileList.view.tree')}</button>
             </div>
             <ActionButton
-              label="删除"
+              label={t('action.delete')}
+              actionId="delete"
               tone="danger"
               onClick={deleteFileList}
               className="nodrag nopan compact"
@@ -7354,9 +7455,10 @@ function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.
           </div>
         ) : (
           <div className="window-chrome-actions">
-            <span className={`status-pill ${statusToneClass(data.status)}`}>{humanizeStatus(data.status)}</span>
+            <span className={`status-pill ${statusToneClass(data.status)}`}>{webviewHumanizeCanvasStatus(data.status)}</span>
             <ActionButton
-              label="删除"
+              label={t('action.delete')}
+              actionId="delete"
               tone="danger"
               onClick={deleteFileList}
               className="nodrag nopan compact"
@@ -7373,7 +7475,7 @@ function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.
       >
         <NodeOverviewTitle title={data.title} />
         {fileListMetadata.entries.length === 0 ? (
-          <div className="file-list-empty">当前还没有可显示的文件活动。</div>
+          <div className="file-list-empty">{t('fileList.empty')}</div>
         ) : !isMinimalStyle ? (
           <div className="file-list-entries">
             {fileListMetadata.entries.map((entry) => {
@@ -7802,10 +7904,10 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
     Boolean(associatedMarkdownFile) && !hasAssociatedMarkdownMissingFile;
   const associatedMarkdownWarningTitle =
     hasAssociatedMarkdownHostConflict
-      ? '关联文件存在编辑冲突'
+      ? t('note.associated.warning.dirtyConflict')
       : hasAssociatedMarkdownMissingFile
-        ? '关联文件缺失'
-        : '关联文件不可用';
+        ? t('note.associated.warning.missing')
+        : t('note.associated.warning.unavailable');
   const isEmbeddedNote = !associatedMarkdownFile;
   const bodyPlaceholder = isEmbeddedNote ? EMBEDDED_NOTE_BODY_PLACEHOLDER : NOTE_BODY_PLACEHOLDER;
   const [content, setContent] = useState(noteMetadata.content);
@@ -7832,21 +7934,21 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
   const showAssociatedMarkdownUnavailablePanel =
     !associatedMarkdownFileAvailable && !associatedMarkdownDraftRecovery;
   const associatedMarkdownFilePanelTitle = showAssociatedMarkdownRecoverableDraftPanel
-    ? '发现未提交的本地草稿'
+    ? t('note.associated.warning.unsavedDraft')
     : associatedMarkdownWarningTitle;
   const associatedMarkdownFilePanelDetail = showAssociatedMarkdownRecoverableDraftPanel
     ? associatedMarkdownStatus === 'ok'
-      ? '草稿正文暂不可读取。请重新加载以丢弃草稿并恢复磁盘内容。'
-      : `${associatedMarkdownFile?.lastError ?? '关联文件当前不可用。'} 草稿正文暂不可读取。请重新加载以丢弃草稿并重新检查关联文件。`
-    : associatedMarkdownFile?.lastError ?? '文件可能已被移动、删除，或当前环境无权访问。';
+      ? t('note.associated.draftUnreadableClean')
+      : t('note.associated.draftUnreadableUnavailable', {
+          reason: associatedMarkdownFile?.lastError ?? t('note.associated.fileUnavailable')
+        })
+    : associatedMarkdownFile?.lastError ?? t('note.associated.unavailableDetail');
   const associatedMarkdownDraftRecoveryHint =
     associatedMarkdownDraftRecovery?.kind === 'recoverable-draft'
-      ? '发现未提交的本地草稿；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。'
+      ? t('note.associated.recoverableDraftHint')
       : associatedMarkdownDraftRecovery?.kind === 'unavailable-draft'
-        ? `${associatedMarkdownWarningTitle}；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。`
-      : associatedMarkdownFile?.lastError?.startsWith('模板')
-        ? '模板内容与现有文件不同；你可以继续编辑模板草稿，或选择重新加载 / 覆盖文件。'
-        : '关联文件已在外部更新；你可以继续编辑草稿，或选择重新加载 / 覆盖文件。';
+        ? t('note.associated.unavailableDraftHint', { title: associatedMarkdownWarningTitle })
+        : t('note.associated.externalUpdateHint');
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
   const [bodyVisualLineCounts, setBodyVisualLineCounts] = useState<number[]>(() =>
     createFallbackVisualLineCounts(splitTextLines(noteMetadata.content).length)
@@ -8731,7 +8833,7 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
       <div className="window-chrome" onDoubleClick={(event) => handleNodeChromeDoubleClick(event, id, data)}>
         <ChromeTitleEditor
           value={data.title}
-          placeholder="Note 标题"
+          placeholder={t('note.title.placeholder')}
           className="note-window-title"
           subtitle={associatedMarkdownSubtitle}
           subtitleAccessory={
@@ -8739,8 +8841,8 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               <>
                 {associatedMarkdownSubtitle ? (
                   <SubtitleCopyButton
-                    label="复制 Markdown 路径"
-                    copiedLabel="已复制 Markdown 路径"
+                    label={t('action.copyMarkdownPath')}
+                    copiedLabel={t('action.copiedMarkdownPath')}
                     onCopy={copyAssociatedMarkdownSubtitlePath}
                     onFocus={() => data.onSelectNode?.(id)}
                   />
@@ -8749,7 +8851,9 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
                   <NoteMarkdownMetadataTrigger
                     frontMatter={markdownFrontMatter}
                     sourceLabel={
-                      associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict ? '来自当前草稿' : undefined
+                      associatedMarkdownDraftRecovery || hasAssociatedMarkdownHostConflict
+                        ? t('note.associated.currentDraftSource')
+                        : undefined
                     }
                     onCopyMetadata={copyNoteMarkdownMetadata}
                     onFocus={() => data.onSelectNode?.(id)}
@@ -8764,7 +8868,8 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         <div className="window-chrome-actions">
           {canOpenAssociatedMarkdownFile ? (
             <ActionButton
-              label="打开文件"
+              label={t('action.openFile')}
+              actionId="open-associated-markdown-file"
               tone="secondary"
               onClick={openAssociatedMarkdownFile}
               className="nodrag nopan compact"
@@ -8773,7 +8878,8 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
             />
           ) : associatedMarkdownFile ? null : (
             <ActionButton
-              label="保存为 Markdown"
+              label={t('action.saveAsMarkdown')}
+              actionId="save-as-markdown"
               tone="secondary"
               onClick={saveAsMarkdownFile}
               className="nodrag nopan compact"
@@ -8782,7 +8888,8 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
             />
           )}
           <ActionButton
-            label="删除"
+            label={t('action.delete')}
+            actionId="delete"
             tone="danger"
             onClick={deleteNote}
             className="nodrag nopan compact"
@@ -8823,11 +8930,12 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
                     className="note-edit-conflict-action nodrag nopan"
                     data-node-interactive="true"
                     data-note-conflict-action="true"
+                    data-node-action-id="reload"
                     onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
                     onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
                     onClick={handleReloadAssociatedMarkdownDraftClick}
                   >
-                    重新加载
+                    {t('action.reload')}
                   </button>
                 ) : hasAssociatedMarkdownMissingFile ? (
                   <button
@@ -8835,11 +8943,12 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
                     className="note-edit-conflict-action nodrag nopan"
                     data-node-interactive="true"
                     data-note-conflict-action="true"
+                    data-node-action-id="create-missing-associated-markdown-file"
                     onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
                     onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
                     onClick={handleCreateMissingAssociatedMarkdownFileClick}
                   >
-                    创建空文件并关联
+                    {t('action.createEmptyAndAssociate')}
                   </button>
                 ) : null}
               </div>
@@ -8924,7 +9033,7 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               />
               {isEmbeddedLimitNoticeVisible ? (
                 <div className="note-limit-hint" role="status">
-                  已达 {NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString()} 字符上限，更长内容请保存为 Markdown 文件。
+                  {t('note.body.limitReached', { max: NOTE_EMBEDDED_CONTENT_MAX_LENGTH.toLocaleString() })}
                 </div>
               ) : null}
               {associatedMarkdownDraftRecovery ? (
@@ -8935,33 +9044,36 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
                     className="note-edit-conflict-action nodrag nopan"
                     data-node-interactive="true"
                     data-note-conflict-action="true"
+                    data-node-action-id="reload"
                     onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
                     onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
                     onClick={handleReloadAssociatedMarkdownDraftClick}
                   >
-                    重新加载
+                    {t('action.reload')}
                   </button>
                   <button
                     type="button"
                     className="note-edit-conflict-action nodrag nopan"
                     data-node-interactive="true"
                     data-note-conflict-action="true"
+                    data-node-action-id="copy-draft"
                     onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
                     onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
                     onClick={handleCopyAssociatedMarkdownDraftClick}
                   >
-                    {associatedMarkdownDraftCopied ? '已复制' : '复制草稿'}
+                    {associatedMarkdownDraftCopied ? t('action.copied') : t('action.copyDraft')}
                   </button>
                   <button
                     type="button"
                     className="note-edit-conflict-action is-danger nodrag nopan"
                     data-node-interactive="true"
                     data-note-conflict-action="true"
+                    data-node-action-id="overwrite-file"
                     onPointerDown={handleAssociatedMarkdownConflictActionPointerDown}
                     onMouseDown={handleAssociatedMarkdownConflictActionMouseDown}
                     onClick={handleOverwriteAssociatedMarkdownFileClick}
                   >
-                    覆盖文件
+                    {t('action.overwriteFile')}
                   </button>
                 </div>
               ) : null}
@@ -8975,7 +9087,7 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               data-probe-value={content}
               tabIndex={overviewInteractionsDisabled ? -1 : 0}
               aria-hidden={overviewInteractionsDisabled ? true : undefined}
-              aria-label="Note 正文预览，按 Enter 或双击开始编辑"
+              aria-label={t('note.preview.ariaLabel')}
               onFocus={(event) => {
                 if (overviewInteractionsDisabled) {
                   event.currentTarget.blur();
@@ -9034,25 +9146,28 @@ function CompactCanvasCardNodeContent({ id, data, position, zoom }: Pick<NodePro
         <strong>{data.title}</strong>
         <span>{data.kind}</span>
       </div>
-      <div className="node-status">状态：{humanizeCanvasNodeStatus(data)}</div>
+      <div className="node-status">
+        {t('compact.status', { status: webviewHumanizeCanvasNodeStatus(data) })}
+      </div>
       {data.kind === 'agent' && agentMetadata ? (
         <div className="node-hint">
           {agentMetadata.liveSession
-            ? `${providerLabel(agentMetadata.provider)} 会话正在运行`
+            ? t('agent.compact.running', { provider: providerLabel(agentMetadata.provider) })
             : agentMetadata.recentOutput
-              ? '已保留最近输出摘要'
-              : 'Agent 未运行，可在节点内启动'}
+              ? t('agent.compact.recentOutput')
+              : t('agent.compact.notRunning')}
         </div>
       ) : null}
       {data.kind === 'terminal' && terminalMetadata ? (
         <div className="node-hint">
-          {terminalMetadata.liveSession ? '节点内终端正在运行' : '终端未运行，可在节点内启动'}
+          {terminalMetadata.liveSession ? t('terminal.compact.running') : t('terminal.compact.notRunning')}
         </div>
       ) : null}
       <p>{data.summary}</p>
       <div className="action-row compact-node-actions">
         <ActionButton
-          label="删除"
+          label={t('action.delete')}
+          actionId="delete"
           tone="danger"
           onClick={() => data.onDeleteNode?.(id)}
           className="compact nodrag nopan"
@@ -9132,12 +9247,12 @@ function paneGalleryPaneStatusForModel(model: PaneGalleryRootModel): PaneGallery
 function paneGalleryPaneStatusDescription(model: PaneGalleryRootModel): string | undefined {
   const fragments: string[] = [];
   if (model.attentionCount > 0) {
-    fragments.push(`${model.attentionCount} 个节点需要关注`);
+    fragments.push(tCount('paneGallery.count.attention.one', 'paneGallery.count.attention.other', model.attentionCount));
   }
   if (model.runningCount > 0) {
-    fragments.push(`${model.runningCount} 个节点正在运行`);
+    fragments.push(tCount('paneGallery.count.running.one', 'paneGallery.count.running.other', model.runningCount));
   }
-  return fragments.length > 0 ? fragments.join('，') : undefined;
+  return fragments.length > 0 ? fragments.join(t('paneGallery.statusSeparator')) : undefined;
 }
 
 function buildPaneGalleryRootModels(params: {
@@ -9316,13 +9431,13 @@ interface PaneGalleryProps {
 
 const PANE_GALLERY_LAYOUT_OPTIONS: ReadonlyArray<{
   layout: PaneGalleryLayoutMode;
-  label: string;
+  labelKey: WebviewI18nKey;
   icon: string;
 }> = [
-  { layout: 'dynamic', label: '动态', icon: 'layout' },
-  { layout: 'grid', label: '宫格', icon: 'table' },
-  { layout: 'topThumbnails', label: '顶部缩略图', icon: 'split-vertical' },
-  { layout: 'sideThumbnails', label: '右侧缩略图', icon: 'split-horizontal' }
+  { layout: 'dynamic', labelKey: 'paneGallery.layout.dynamic', icon: 'layout' },
+  { layout: 'grid', labelKey: 'paneGallery.layout.grid', icon: 'table' },
+  { layout: 'topThumbnails', labelKey: 'paneGallery.layout.topThumbnails', icon: 'split-vertical' },
+  { layout: 'sideThumbnails', labelKey: 'paneGallery.layout.sideThumbnails', icon: 'split-horizontal' }
 ];
 
 const PANE_GALLERY_FIT_VIEW_ICON = (
@@ -9430,7 +9545,7 @@ function PaneGalleryThumbnailRail(props: PaneGalleryProps & {
   return (
     <div
       className={`pane-gallery-thumbnail-rail pane-gallery-thumbnail-rail-${props.layout}`}
-      aria-label="Workspace root thumbnails"
+      aria-label={t('paneGallery.otherWorkspaceRoots')}
       data-pane-gallery-thumbnail-rail={props.layout}
     >
       <div
@@ -9466,8 +9581,14 @@ function PaneGalleryActiveRootPlaceholder(props: { model: PaneGalleryRootModel }
   const { model } = props;
   const paneStatus = paneGalleryPaneStatusForModel(model);
   const paneStatusDescription = paneGalleryPaneStatusDescription(model);
-  const paneTitle = `${paneGalleryRootPaneTitle(model, paneStatusDescription)} - 正在主画板`;
-  const ariaLabel = `Workspace root ${model.rootGroup.title}${model.rootGroup.workspaceRootPath ? `, ${model.rootGroup.workspaceRootPath}` : ''}, 正在主画板显示${paneStatusDescription ? `, ${paneStatusDescription}` : ''}`;
+  const paneTitle = `${paneGalleryRootPaneTitle(model, paneStatusDescription)} - ${t('paneGallery.activeRoot.titleSuffix')}`;
+  const ariaLabel = t('paneGallery.activeRoot.aria', {
+    title: model.rootGroup.title,
+    path: model.rootGroup.workspaceRootPath
+      ? t('paneGallery.activeRoot.aria.path', { path: model.rootGroup.workspaceRootPath })
+      : '',
+    status: paneStatusDescription ? t('paneGallery.activeRoot.aria.status', { status: paneStatusDescription }) : ''
+  });
   const attentionTitleBarFlashing = model.attentionTitleBarFlashing;
   const rootRunningTitleBlock = model.runningTitleBlockCount > 0 && model.attentionCount === 0;
   const blockPlaceholderEvent = (event: React.SyntheticEvent): void => {
@@ -9517,7 +9638,7 @@ function PaneGalleryActiveRootPlaceholder(props: { model: PaneGalleryRootModel }
         </div>
       </header>
       <div className="pane-gallery-active-placeholder-body" aria-hidden="true">
-        <span className="pane-gallery-active-placeholder-label">正在主画板</span>
+        <span className="pane-gallery-active-placeholder-label">{t('paneGallery.activeRoot.label')}</span>
       </div>
     </section>
   );
@@ -9540,8 +9661,8 @@ function PaneGalleryControls(props: {
       <button
         type="button"
         className="react-flow__controls-button react-flow__controls-fitview"
-        title="fit view"
-        aria-label="fit view"
+        title={t('canvas.fitView')}
+        aria-label={t('canvas.fitView')}
         onClick={(event) => {
           stopCanvasEvent(event);
           props.onFitView();
@@ -9571,7 +9692,7 @@ function PaneGalleryModeControl(props: {
   const thumbnailLayout = isPaneGalleryThumbnailLayout(props.layout);
   const targetOptions = paneGalleryControlTargetOptions();
   const controlIcon = thumbnailLayout ? 'globe' : 'eye';
-  const controlLabel = thumbnailLayout ? '返回全览模式' : '切换到缩略图模式';
+  const controlLabel = thumbnailLayout ? t('paneGallery.mode.returnOverview') : t('paneGallery.mode.switchThumbnails');
   const coarseTargetLayout = paneGalleryCoarseToggleTarget(
     props.layout,
     props.lastOverviewLayout,
@@ -9634,7 +9755,7 @@ function PaneGalleryModeControl(props: {
               }}
             >
               <span className={`codicon codicon-${option.icon}`} aria-hidden="true" />
-              <span>{option.label}</span>
+              <span>{t(option.labelKey)}</span>
             </button>
           ))}
         </div>
@@ -10034,7 +10155,7 @@ function ExecutionHelpTrigger(props: {
   const [focused, setFocused] = useState(false);
   const [position, setPosition] = useState<FloatingTooltipPosition | null>(null);
   const visible = !overviewInteractionsDisabled && (hovered || focused);
-  const label = props.variant === 'canvas' ? '使用提示' : undefined;
+  const label = props.variant === 'canvas' ? t('execution.help.trigger') : undefined;
   const showGlyph = props.variant === 'inline';
 
   if (!tooltipIdRef.current) {
@@ -10161,6 +10282,7 @@ function ExecutionHelpTrigger(props: {
 
 function ActionButton(props: {
   label: React.ReactNode;
+  actionId?: WebviewNodeActionId;
   onClick: () => void;
   tone?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
@@ -10186,6 +10308,7 @@ function ActionButton(props: {
     <button
       type="button"
       {...props.buttonProps}
+      data-node-action-id={props.actionId ?? props.buttonProps?.['data-node-action-id']}
       data-node-interactive={props.interactive ? 'true' : undefined}
       className={`action-button ${toneClass} ${props.className ?? ''}`.trim()}
       disabled={disabled}
@@ -10339,8 +10462,8 @@ const CanvasContextMenu = React.forwardRef<
             className="canvas-context-menu-header-back"
             data-context-menu-back="true"
             onClick={props.onBack}
-            aria-label="返回上一级"
-            title="返回上一级"
+            aria-label={t('contextMenu.back')}
+            title={t('contextMenu.back')}
           >
             <span
               className="canvas-context-menu-icon codicon codicon-chevron-left"
@@ -10351,24 +10474,24 @@ const CanvasContextMenu = React.forwardRef<
         <div className="canvas-context-menu-header-copy">
           <strong>
             {props.view === 'root'
-              ? '画布操作'
+              ? t('contextMenu.header.canvasActions')
               : props.view === 'agent-launch-mode'
-                ? `选择启动方式 - ${providerLabel(selectedAgentProvider)}`
+                ? t('contextMenu.header.selectLaunchMode', { provider: providerLabel(selectedAgentProvider) })
                 : props.view === 'arrange-layout-scope'
-                  ? '整理画布布局'
+                  ? t('contextMenu.header.arrangeLayoutScope')
                   : isResetTemplatePicker
-                    ? '重置为模板'
-                    : '应用模板'}
+                    ? t('contextMenu.header.resetTemplate')
+                    : t('contextMenu.header.applyTemplate')}
           </strong>
           {props.view === 'root' ? null : (
             <span>
               {props.view === 'agent-launch-mode'
-                ? '选择启动方式'
+                ? t('contextMenu.subtitle.selectLaunchMode')
                 : props.view === 'arrange-layout-scope'
-                  ? '选择整理范围'
+                  ? t('contextMenu.subtitle.arrangeLayoutScope')
                   : isResetTemplatePicker
-                    ? '选择一个模板，清空当前画布后套用'
-                    : '选择一个模板，追加到当前画布'}
+                    ? t('contextMenu.subtitle.resetTemplate')
+                    : t('contextMenu.subtitle.applyTemplate')}
             </span>
           )}
         </div>
@@ -10419,7 +10542,7 @@ const CanvasContextMenu = React.forwardRef<
                       <span className="canvas-context-menu-copy">
                         <strong>
                           {provider === props.defaultAgentProvider
-                            ? `${providerLabel(provider)}（默认）`
+                            ? t('contextMenu.providerDefault', { provider: providerLabel(provider) })
                             : providerLabel(provider)}
                         </strong>
                         <span>{describeAgentProviderContextMenu(provider)}</span>
@@ -10430,8 +10553,8 @@ const CanvasContextMenu = React.forwardRef<
                       className="canvas-context-menu-item-secondary"
                       data-context-menu-provider-action="show-launch-modes"
                       onClick={() => props.onShowAgentLaunchModes(provider)}
-                      aria-label={`选择 ${providerLabel(provider)} 启动方式`}
-                      title={`选择 ${providerLabel(provider)} 启动方式`}
+                      aria-label={t('contextMenu.selectProviderLaunchMode', { provider: providerLabel(provider) })}
+                      title={t('contextMenu.selectProviderLaunchMode', { provider: providerLabel(provider) })}
                     >
                       <span
                         className="canvas-context-menu-icon codicon codicon-chevron-right"
@@ -10450,8 +10573,8 @@ const CanvasContextMenu = React.forwardRef<
             >
               <span className="canvas-context-menu-icon codicon codicon-symbol-array" aria-hidden="true" />
               <span className="canvas-context-menu-copy">
-                <strong>创建分组</strong>
-                <span>在当前位置创建空白分组</span>
+                <strong>{t('contextMenu.createGroup.title')}</strong>
+                <span>{t('contextMenu.createGroup.description')}</span>
               </span>
             </button>
             {props.canCreateGroupFromSelection ? (
@@ -10463,8 +10586,8 @@ const CanvasContextMenu = React.forwardRef<
               >
                 <span className="canvas-context-menu-icon codicon codicon-group-by-ref-type" aria-hidden="true" />
                 <span className="canvas-context-menu-copy">
-                  <strong>从选中项创建分组</strong>
-                  <span>将当前选中的节点归入新分组</span>
+                  <strong>{t('contextMenu.createGroupFromSelection.title')}</strong>
+                  <span>{t('contextMenu.createGroupFromSelection.description')}</span>
                 </span>
               </button>
             ) : null}
@@ -10478,8 +10601,8 @@ const CanvasContextMenu = React.forwardRef<
                 >
                   <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
                   <span className="canvas-context-menu-copy">
-                    <strong>整理画布布局</strong>
-                    <span>整理当前 root 内的节点</span>
+                    <strong>{t('contextMenu.arrangeCanvas.title')}</strong>
+                    <span>{t('contextMenu.arrangeCanvas.currentRootDescription')}</span>
                   </span>
                 </button>
                 <button
@@ -10487,8 +10610,8 @@ const CanvasContextMenu = React.forwardRef<
                   className="canvas-context-menu-item-secondary"
                   data-context-menu-action="show-arrange-layout-scope"
                   onClick={props.onShowArrangeLayoutScope}
-                  aria-label="选择整理范围"
-                  title="选择整理范围"
+                  aria-label={t('contextMenu.arrangeCanvas.chooseScope')}
+                  title={t('contextMenu.arrangeCanvas.chooseScope')}
                 >
                   <span
                     className="canvas-context-menu-icon codicon codicon-chevron-right"
@@ -10505,8 +10628,8 @@ const CanvasContextMenu = React.forwardRef<
               >
                 <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
                 <span className="canvas-context-menu-copy">
-                  <strong>整理画布布局</strong>
-                  <span>按关系靠近对象并自动避让重叠</span>
+                  <strong>{t('contextMenu.arrangeCanvas.title')}</strong>
+                  <span>{t('contextMenu.arrangeCanvas.description')}</span>
                 </span>
               </button>
             )}
@@ -10520,11 +10643,11 @@ const CanvasContextMenu = React.forwardRef<
               >
                 <span className="canvas-context-menu-icon codicon codicon-library" aria-hidden="true" />
                 <span className="canvas-context-menu-copy">
-                  <strong>应用模板</strong>
+                  <strong>{t('contextMenu.applyTemplate.title')}</strong>
                   <span>
                     {defaultTemplateEntry
-                      ? `快速追加默认模板「${defaultTemplateEntry.name}」`
-                      : '快速追加当前默认模板'}
+                      ? t('contextMenu.applyTemplate.defaultWithName', { name: defaultTemplateEntry.name })
+                      : t('contextMenu.applyTemplate.default')}
                   </span>
                 </span>
               </button>
@@ -10534,8 +10657,8 @@ const CanvasContextMenu = React.forwardRef<
                 data-context-menu-action="show-apply-template-picker"
                 disabled={props.templateEntries.length === 0}
                 onClick={() => props.onShowTemplatePicker('apply-template')}
-                aria-label="选择具体模板追加到当前画布"
-                title="选择具体模板追加到当前画布"
+                aria-label={t('contextMenu.applyTemplate.choose')}
+                title={t('contextMenu.applyTemplate.choose')}
               >
                 <span
                   className="canvas-context-menu-icon codicon codicon-chevron-right"
@@ -10552,11 +10675,11 @@ const CanvasContextMenu = React.forwardRef<
               >
                 <span className="canvas-context-menu-icon codicon codicon-discard" aria-hidden="true" />
                 <span className="canvas-context-menu-copy">
-                  <strong>重置为模板</strong>
+                  <strong>{t('contextMenu.resetTemplate.title')}</strong>
                   <span>
                     {defaultTemplateEntry
-                      ? `快速重置为默认模板「${defaultTemplateEntry.name}」`
-                      : '快速重置为当前默认模板'}
+                      ? t('contextMenu.resetTemplate.defaultWithName', { name: defaultTemplateEntry.name })
+                      : t('contextMenu.resetTemplate.default')}
                   </span>
                 </span>
               </button>
@@ -10566,8 +10689,8 @@ const CanvasContextMenu = React.forwardRef<
                 data-context-menu-action="show-reset-template-picker"
                 disabled={props.templateEntries.length === 0}
                 onClick={() => props.onShowTemplatePicker('reset-template')}
-                aria-label="选择具体模板并清空后套用"
-                title="选择具体模板并清空后套用"
+                aria-label={t('contextMenu.resetTemplate.choose')}
+                title={t('contextMenu.resetTemplate.choose')}
               >
                 <span
                   className="canvas-context-menu-icon codicon codicon-chevron-right"
@@ -10584,8 +10707,8 @@ const CanvasContextMenu = React.forwardRef<
             >
               <span className="canvas-context-menu-icon codicon codicon-save-as" aria-hidden="true" />
               <span className="canvas-context-menu-copy">
-                <strong>保存为模板</strong>
-                <span>保存后可从模板侧栏或市场面板发布</span>
+                <strong>{t('contextMenu.saveTemplate.title')}</strong>
+                <span>{t('contextMenu.saveTemplate.description')}</span>
               </span>
             </button>
           </>
@@ -10599,8 +10722,8 @@ const CanvasContextMenu = React.forwardRef<
             >
               <span className="canvas-context-menu-icon codicon codicon-type-hierarchy-sub" aria-hidden="true" />
               <span className="canvas-context-menu-copy">
-                <strong>整理当前 root 内的节点</strong>
-                <span>只整理当前 root 内的节点和分组</span>
+                <strong>{t('contextMenu.arrangeCanvas.currentRoot.title')}</strong>
+                <span>{t('contextMenu.arrangeCanvas.currentRoot.description')}</span>
               </span>
             </button>
             <button
@@ -10611,8 +10734,8 @@ const CanvasContextMenu = React.forwardRef<
             >
               <span className="canvas-context-menu-icon codicon codicon-globe" aria-hidden="true" />
               <span className="canvas-context-menu-copy">
-                <strong>整理整个 workspace 的画布</strong>
-                <span>整理所有 root 分组和画布对象</span>
+                <strong>{t('contextMenu.arrangeCanvas.workspace.title')}</strong>
+                <span>{t('contextMenu.arrangeCanvas.workspace.description')}</span>
               </span>
             </button>
           </>
@@ -10688,10 +10811,10 @@ const CanvasContextMenu = React.forwardRef<
                 aria-hidden="true"
               />
               <span className="canvas-context-menu-copy">
-                <strong>自定义启动</strong>
+                <strong>{t('contextMenu.customLaunch.title')}</strong>
                 <OverflowAwareText
                   className="canvas-context-menu-copy-detail"
-                  text="输入自定义命令"
+                  text={t('contextMenu.customLaunch.description')}
                 />
               </span>
             </button>
@@ -10731,7 +10854,7 @@ const CanvasContextMenu = React.forwardRef<
                     event.preventDefault();
                     createAgentWithCustomCommand();
                   }}
-                  aria-label={`${providerLabel(selectedAgentProvider)} 自定义启动命令`}
+                  aria-label={t('contextMenu.customLaunch.aria', { provider: providerLabel(selectedAgentProvider) })}
                 />
                 <button
                   type="button"
@@ -10740,10 +10863,12 @@ const CanvasContextMenu = React.forwardRef<
                   disabled={!customValidation.valid}
                   onClick={createAgentWithCustomCommand}
                 >
-                  确定
+                  {t('action.confirm')}
                 </button>
                 {!customValidation.valid ? (
-                  <span className="canvas-context-menu-inline-error">{customValidation.error}</span>
+                  <span className="canvas-context-menu-inline-error">
+                    {tAgentLaunchMessage(customValidation.errorDescriptor, customValidation.error)}
+                  </span>
                 ) : null}
               </div>
             ) : null}
@@ -10768,17 +10893,17 @@ const CanvasContextMenu = React.forwardRef<
                   />
                   <span className="canvas-context-menu-copy">
                     <strong>
-                      {templateEntry.isDefault ? `${templateEntry.name}（默认）` : templateEntry.name}
+                      {templateEntry.isDefault ? t('contextMenu.templateDefault', { name: templateEntry.name }) : templateEntry.name}
                     </strong>
                     <span className="canvas-context-menu-copy-detail">
-                      {`${templateEntry.category === 'builtin' ? '内置' : '用户'} · ${templateEntry.statsLabel}`}
+                      {`${templateEntry.category === 'builtin' ? t('contextMenu.templateCategory.builtin') : t('contextMenu.templateCategory.user')} · ${templateEntry.statsLabel}`}
                     </span>
                   </span>
                 </button>
               ))}
             </>
           ) : (
-            <div className="canvas-context-menu-inline-error">当前没有可用模板。</div>
+            <div className="canvas-context-menu-inline-error">{t('contextMenu.noTemplates')}</div>
           )
         ) : null}
       </div>
@@ -10788,56 +10913,56 @@ const CanvasContextMenu = React.forwardRef<
 
 const CANVAS_EDGE_ARROW_MENU_ITEMS: ReadonlyArray<{
   arrowMode: CanvasEdgeArrowMode;
-  label: string;
+  labelKey: WebviewI18nKey;
   icon: string;
 }> = [
   {
     arrowMode: 'none',
-    label: '无箭头',
+    labelKey: 'edge.arrow.none',
     icon: 'remove'
   },
   {
     arrowMode: 'forward',
-    label: '单向箭头',
+    labelKey: 'edge.arrow.forward',
     icon: 'arrow-right'
   },
   {
     arrowMode: 'both',
-    label: '双向箭头',
+    labelKey: 'edge.arrow.both',
     icon: 'arrow-both'
   }
 ];
 
 const CANVAS_EDGE_COLOR_MENU_ITEMS: ReadonlyArray<{
   color?: CanvasEdgeColor;
-  label: string;
+  labelKey: WebviewI18nKey;
 }> = [
   {
-    label: '默认颜色'
+    labelKey: 'edge.color.default'
   },
   {
     color: '1',
-    label: '红色'
+    labelKey: 'edge.color.red'
   },
   {
     color: '2',
-    label: '橙色'
+    labelKey: 'edge.color.orange'
   },
   {
     color: '3',
-    label: '黄色'
+    labelKey: 'edge.color.yellow'
   },
   {
     color: '4',
-    label: '绿色'
+    labelKey: 'edge.color.green'
   },
   {
     color: '5',
-    label: '青色'
+    labelKey: 'edge.color.cyan'
   },
   {
     color: '6',
-    label: '紫色'
+    labelKey: 'edge.color.purple'
   }
 ];
 
@@ -11750,7 +11875,7 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
                     onClick={() => props.data?.onSetArrowMode?.(item.arrowMode)}
                   >
                     <span className={`canvas-edge-toolbar-icon codicon codicon-${item.icon}`} aria-hidden="true" />
-                    <span>{item.label}</span>
+                    <span>{t(item.labelKey)}</span>
                   </button>
                 ))}
               </div>
@@ -11777,7 +11902,7 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
                         aria-hidden="true"
                         style={createCanvasEdgeOverlayStyle('none', itemStrokeColor)}
                       />
-                      <span>{item.label}</span>
+                      <span>{t(item.labelKey)}</span>
                     </button>
                   );
                 })}
@@ -11791,8 +11916,8 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
               <button
                 type="button"
                 className={`canvas-edge-toolbar-button ${isArrowMenuOpen ? 'is-active' : ''}`}
-                title="切换箭头模式"
-                aria-label="切换箭头模式"
+                title={t('edge.toolbar.arrowMode')}
+                aria-label={t('edge.toolbar.arrowMode')}
                 aria-haspopup="menu"
                 aria-expanded={isArrowMenuOpen}
                 onClick={() => props.data?.onToggleArrowMenu?.()}
@@ -11802,8 +11927,8 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
               <button
                 type="button"
                 className={`canvas-edge-toolbar-button ${isColorMenuOpen ? 'is-active' : ''}`}
-                title="设置颜色"
-                aria-label="设置颜色"
+                title={t('edge.toolbar.color')}
+                aria-label={t('edge.toolbar.color')}
                 aria-haspopup="menu"
                 aria-expanded={isColorMenuOpen}
                 onClick={() => props.data?.onToggleColorMenu?.()}
@@ -11817,8 +11942,8 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
               <button
                 type="button"
                 className="canvas-edge-toolbar-button"
-                title="编辑标签"
-                aria-label="编辑标签"
+                title={t('edge.toolbar.editLabel')}
+                aria-label={t('edge.toolbar.editLabel')}
                 onClick={() => props.data?.onStartLabelEdit?.()}
               >
                 <span className="canvas-edge-toolbar-icon codicon codicon-edit" aria-hidden="true" />
@@ -11826,8 +11951,8 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
               <button
                 type="button"
                 className="canvas-edge-toolbar-button danger"
-                title="删除连线"
-                aria-label="删除连线"
+                title={t('edge.toolbar.delete')}
+                aria-label={t('edge.toolbar.delete')}
                 onClick={() => props.data?.onDeleteEdge?.()}
               >
                 <span className="canvas-edge-toolbar-icon codicon codicon-trash" aria-hidden="true" />
@@ -11849,7 +11974,7 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
             }}
           >
             <span ref={labelEditorMeasureRef} className="canvas-edge-label-editor-measure" aria-hidden="true">
-              {labelDraft || '添加关系标签'}
+              {labelDraft || t('edge.label.placeholder')}
             </span>
             <input
               ref={inputRef}
@@ -11858,7 +11983,7 @@ function CanvasEdge(props: EdgeProps<CanvasEdgeData>): JSX.Element {
               data-edge-label-editor="true"
               data-edge-label-editor-edge-id={props.id}
               value={labelDraft}
-              placeholder="添加关系标签"
+              placeholder={t('edge.label.placeholder')}
               maxLength={120}
               style={labelEditorWidth ? { width: `${labelEditorWidth}px` } : undefined}
               onCompositionStart={() => setIsComposing(true)}
@@ -12006,9 +12131,9 @@ function NoteMarkdownMetadataTrigger(props: {
   const [position, setPosition] = useState<FloatingTooltipPosition | null>(null);
   const [copied, setCopied] = useState(false);
   const isInvalid = props.frontMatter.kind === 'invalid';
-  const title = isInvalid ? 'Metadata parse failed' : 'Metadata';
-  const buttonLabel = isInvalid ? '查看 Markdown metadata 解析问题' : '查看 Markdown metadata';
-  const copyLabel = copied ? '已复制 Metadata' : '复制 Metadata';
+  const title = isInvalid ? t('note.metadata.parseFailed') : t('note.metadata.title');
+  const buttonLabel = isInvalid ? t('note.metadata.viewIssue') : t('note.metadata.view');
+  const copyLabel = copied ? t('note.metadata.copied') : t('note.metadata.copy');
 
   if (!popoverIdRef.current) {
     popoverIdRef.current = `note-markdown-metadata-popover-${nextNoteMarkdownMetadataPopoverId++}`;
@@ -12232,7 +12357,7 @@ function NoteMarkdownMetadataTrigger(props: {
                       </div>
                     ))
                   ) : (
-                    <p className="note-metadata-popover-empty">没有可显示的 metadata 字段。</p>
+                    <p className="note-metadata-popover-empty">{t('note.metadata.empty')}</p>
                   )
                 ) : (
                   <p className="note-metadata-popover-error">{props.frontMatter.error}</p>
@@ -13523,7 +13648,7 @@ function CanvasGroupFrame(props: {
       >
         <ChromeTitleEditor
           value={props.group.title}
-          placeholder="分组标题"
+          placeholder={t('group.title.placeholder')}
           className="canvas-group-title"
           tooltip={isWorkspaceRootGroup ? props.group.workspaceRootPath ?? props.group.title : undefined}
           readOnly={isWorkspaceRootGroup}
@@ -13551,7 +13676,7 @@ function CanvasGroupFrame(props: {
               className={`canvas-group-resize-control canvas-group-resize-${direction} nodrag nopan`}
               data-group-resize-direction={direction}
               data-resize-direction={direction}
-              aria-label={`向 ${direction} 调整分组 ${props.group.title} 尺寸`}
+              aria-label={t('canvas.resizeGroup', { direction, title: props.group.title })}
               style={{ cursor: canvasNodeResizeCursorForDirection(direction) }}
               onPointerDown={(event) => beginResize(event, direction)}
             />
@@ -13576,7 +13701,7 @@ function CanvasGroupFrame(props: {
               props.onUngroup(props.group.id);
             }}
           >
-            取消分组
+            {t('group.action.ungroup')}
           </button>
           <button
             type="button"
@@ -13586,7 +13711,7 @@ function CanvasGroupFrame(props: {
               props.onDeleteGroup(props.group.id);
             }}
           >
-            删除分组
+            {t('group.action.delete')}
           </button>
         </div>
       ) : null}
@@ -14522,53 +14647,67 @@ function executionAttentionPendingFromMetadata(metadata: CanvasNodeMetadata | un
   return metadata?.agent?.attentionPending === true || metadata?.terminal?.attentionPending === true;
 }
 
+function webviewHumanizeCanvasNodeStatus(
+  node: Pick<CanvasNodeData, 'kind' | 'status' | 'metadata'>
+): string {
+  return webviewFormatCanvasStatusLabel(canvasNodeStatusLabelDescriptor(node));
+}
+
+function webviewHumanizeCanvasStatus(status: string): string {
+  return webviewFormatCanvasStatusLabel(canvasStatusLabelDescriptor(status));
+}
+
+function webviewFormatCanvasStatusLabel(label: ReturnType<typeof canvasStatusLabelDescriptor>): string {
+  return label.kind === 'localized' ? t(label.id) : label.value;
+}
+
 function humanizeNodeKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
-      return 'Agent';
+      return t('nodeKind.agent');
     case 'terminal':
-      return 'Terminal';
+      return t('nodeKind.terminal');
     case 'note':
-      return 'Note';
+      return t('nodeKind.note');
     case 'file':
-      return 'File';
+      return t('nodeKind.file');
     case 'file-list':
-      return 'File List';
+      return t('nodeKind.fileList');
   }
 }
 
 function describeContextMenuKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
-      return '新建一个可运行的 Agent 会话窗口';
+      return t('contextMenu.kind.agent.description');
     case 'terminal':
-      return '新建一个嵌入式终端窗口';
+      return t('contextMenu.kind.terminal.description');
     case 'note':
-      return '新建一个可编辑的笔记节点';
+      return t('contextMenu.kind.note.description');
     case 'file':
-      return '自动生成的文件节点';
+      return t('contextMenu.kind.file.description');
     case 'file-list':
-      return '自动生成的文件列表节点';
+      return t('contextMenu.kind.fileList.description');
   }
 }
 
 function describeAgentProviderContextMenu(provider: AgentProviderKind): string {
-  return `创建一个 ${providerLabel(provider)} Agent 会话窗口`;
+  return t('contextMenu.provider.description', { provider: providerLabel(provider) });
 }
 
 function labelForAgentLaunchPreset(preset: AgentLaunchPresetKind): string {
   switch (preset) {
     case 'resume':
-      return 'Resume 模式';
+      return t('agentLaunchPreset.resume.label');
     case 'yolo':
-      return 'YOLO 模式';
+      return t('agentLaunchPreset.yolo.label');
     case 'sandbox':
-      return '沙盒模式';
+      return t('agentLaunchPreset.sandbox.label');
     case 'custom':
-      return '自定义启动';
+      return t('agentLaunchPreset.custom.label');
     case 'default':
     default:
-      return '快速启动';
+      return t('agentLaunchPreset.default.label');
   }
 }
 
@@ -14579,18 +14718,18 @@ function describeAgentLaunchPreset(
 ): string {
   const commandLine = tryBuildAgentPresetCommandLine(provider, defaults, preset);
   if (!commandLine.commandLine) {
-    return commandLine.error ?? '无法解析启动命令。';
+    return commandLine.error ?? t('agentLaunchPreset.parseError');
   }
   switch (preset) {
     case 'resume':
-      return `选择历史会话：${commandLine.commandLine}`;
+      return t('agentLaunchPreset.resume.description', { commandLine: commandLine.commandLine });
     case 'yolo':
-      return `自动批准执行模式：${commandLine.commandLine}`;
+      return t('agentLaunchPreset.yolo.description', { commandLine: commandLine.commandLine });
     case 'sandbox':
-      return `受限权限安全模式：${commandLine.commandLine}`;
+      return t('agentLaunchPreset.sandbox.description', { commandLine: commandLine.commandLine });
     case 'default':
     default:
-      return `使用默认配置：${commandLine.commandLine}`;
+      return t('agentLaunchPreset.default.description', { commandLine: commandLine.commandLine });
   }
 }
 
@@ -14623,7 +14762,10 @@ function resolveAgentLaunchCommandLineForSubtitle(metadata: AgentNodeMetadata): 
       latestRuntimeContext.agentLaunchDefaults[provider]
     );
   } catch (error) {
-    return error instanceof Error ? error.message : '无法解析 Agent 启动命令。';
+    return tAgentLaunchMessage(
+      getAgentLaunchErrorDescriptorForWebview(error),
+      error instanceof Error ? error.message : t('agentLaunchPreset.agentCommandParseError')
+    );
   }
 }
 
@@ -14641,9 +14783,16 @@ function tryBuildAgentPresetCommandLine(
     };
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : '无法解析 Agent 启动命令。'
+      error: tAgentLaunchMessage(
+        getAgentLaunchErrorDescriptorForWebview(error),
+        error instanceof Error ? error.message : t('agentLaunchPreset.agentCommandParseError')
+      )
     };
   }
+}
+
+function getAgentLaunchErrorDescriptorForWebview(error: unknown): AgentLaunchMessageDescriptor | undefined {
+  return getAgentLaunchErrorDescriptor(error);
 }
 
 function fallbackAgentCommandLine(
@@ -14689,11 +14838,11 @@ function canForkAgentFromMetadataForWebview(metadata: AgentNodeMetadata): boolea
 function humanizeFileAccessMode(accessMode: FileListNodeEntrySummary['accessMode']): string {
   switch (accessMode) {
     case 'read':
-      return '读';
+      return t('fileList.access.read');
     case 'write':
-      return '写';
+      return t('fileList.access.write');
     case 'read-write':
-      return '读写';
+      return t('fileList.access.readWrite');
   }
 }
 
@@ -17075,7 +17224,7 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         break;
       }
       case 'clickNodeActionButton': {
-        const button = queryNodeActionButton(action.nodeId, action.label);
+        const button = queryNodeActionButton(action.nodeId, action);
         button.focus();
         button.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
         dispatchSyntheticMouseClick(button);
@@ -17303,29 +17452,16 @@ async function queryNodeTextField(
     }
   }
 
-  throw new Error(`节点 ${nodeId} 的 ${fieldName} 字段不是文本输入控件。`);
+  throw new Error(`Node ${nodeId} field ${fieldName} is not a text input control.`);
 }
 
-function queryNodeActionButton(
-  nodeId: string,
-  label:
-    | '删除'
-    | '启动'
-    | '停止'
-    | '新建'
-    | '重启'
-    | '恢复'
-    | '重新加载'
-    | '复制草稿'
-    | '覆盖文件'
-    | '创建空文件并关联'
-): HTMLButtonElement {
+function queryNodeActionButton(nodeId: string, action: Extract<WebviewDomAction, { kind: 'clickNodeActionButton' }>): HTMLButtonElement {
   const nodeRoot = queryNodeRoot(nodeId);
   const button = Array.from(nodeRoot.querySelectorAll('button')).find(
-    (candidate) => candidate.textContent?.trim() === label
+    (candidate) => candidate.dataset.nodeActionId === action.action
   );
   if (!(button instanceof HTMLButtonElement)) {
-    throw new Error(`未找到节点 ${nodeId} 上标签为 ${label} 的按钮。`);
+    throw new Error(`Could not find action button ${action.action} on node ${nodeId}.`);
   }
 
   return button;
@@ -17342,7 +17478,7 @@ function queryNodeSelectionTarget(nodeId: string): HTMLElement {
 function queryNodeField(nodeId: string, fieldName: string): Element {
   const field = queryNodeRoot(nodeId).querySelector(`[data-probe-field="${fieldName}"]`);
   if (!field) {
-    throw new Error(`未找到节点 ${nodeId} 的 ${fieldName} 字段。`);
+    throw new Error(`Could not find field ${fieldName} on node ${nodeId}.`);
   }
 
   return field;
@@ -17351,7 +17487,7 @@ function queryNodeField(nodeId: string, fieldName: string): Element {
 function queryEdgeSelectionTarget(edgeId: string): Element {
   const edge = document.querySelector(`[data-edge-hitbox="true"][data-edge-id="${edgeId}"]`);
   if (!edge) {
-    throw new Error(`未找到连线 ${edgeId}。`);
+    throw new Error(`Could not find edge ${edgeId}.`);
   }
 
   return edge;
@@ -17363,7 +17499,7 @@ function queryFileEntryButton(nodeId: string, filePath: string): HTMLElement {
     (candidate) => candidate.dataset.fileEntryPath === filePath
   );
   if (!target) {
-    throw new Error(`未找到节点 ${nodeId} 上对应 ${filePath} 的文件条目。`);
+    throw new Error(`Could not find file entry ${filePath} on node ${nodeId}.`);
   }
 
   return target;
@@ -17375,7 +17511,7 @@ function queryNoteChecklistInput(nodeId: string, lineNumber: number): HTMLInputE
     `${NOTE_MARKDOWN_CHECKLIST_SELECTOR}[data-note-markdown-task-line="${lineNumber}"]`
   );
   if (!(target instanceof HTMLInputElement)) {
-    throw new Error(`未找到节点 ${nodeId} 上第 ${lineNumber} 行的 Note checklist。`);
+    throw new Error(`Could not find Note checklist for line ${lineNumber} on node ${nodeId}.`);
   }
 
   return target;
@@ -17388,12 +17524,12 @@ function queryNotePreviewTextPoint(
 ): { element: Element; x: number; y: number } {
   const preview = queryNodeRoot(nodeId).querySelector<HTMLElement>('.note-markdown-preview');
   if (!preview) {
-    throw new Error(`节点 ${nodeId} 当前没有 Note 预览。`);
+    throw new Error(`Node ${nodeId} does not currently have a Note preview.`);
   }
 
   const textNode = findTextNodeContaining(preview, text);
   if (!textNode) {
-    throw new Error(`节点 ${nodeId} 的 Note 预览中未找到文本 ${text}。`);
+    throw new Error(`Could not find text ${text} in the Note preview for node ${nodeId}.`);
   }
 
   const clampedOffset = Math.min(Math.max(0, offset), text.length);
@@ -17427,12 +17563,12 @@ function findTextNodeContaining(root: HTMLElement, text: string): Text | null {
 function queryNotePreviewSelectorTarget(nodeId: string, selector: string): HTMLElement {
   const preview = queryNodeRoot(nodeId).querySelector<HTMLElement>('.note-markdown-preview');
   if (!preview) {
-    throw new Error(`节点 ${nodeId} 当前没有 Note 预览。`);
+    throw new Error(`Node ${nodeId} does not currently have a Note preview.`);
   }
 
   const target = preview.querySelector<HTMLElement>(selector);
   if (!target) {
-    throw new Error(`节点 ${nodeId} 的 Note 预览中未找到 selector ${selector}。`);
+    throw new Error(`Could not find selector ${selector} in the Note preview for node ${nodeId}.`);
   }
 
   return target;
@@ -17450,7 +17586,7 @@ function readElementCenterPoint(element: Element): { x: number; y: number } {
 function queryNodeRoot(nodeId: string): HTMLElement {
   const nodeRoot = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
   if (!nodeRoot) {
-    throw new Error(`未找到节点 ${nodeId}。`);
+    throw new Error(`Could not find node ${nodeId}.`);
   }
 
   return nodeRoot;
@@ -17459,7 +17595,7 @@ function queryNodeRoot(nodeId: string): HTMLElement {
 function queryExecutionTerminalElement(nodeId: string): HTMLElement {
   const terminal = queryNodeRoot(nodeId).querySelector<HTMLElement>('.xterm');
   if (!terminal) {
-    throw new Error(`未找到节点 ${nodeId} 的执行终端。`);
+    throw new Error(`Could not find the execution terminal for node ${nodeId}.`);
   }
 
   return terminal;
@@ -17903,7 +18039,9 @@ function createNoteMarkdownRenderer(): MarkdownIt {
       const lineNumber = token.map[0] + 1 + noteMarkdownLineOffset;
       checkboxChild.content = injectNoteMarkdownCheckboxAttributes(checkboxChild.content, {
         'data-note-markdown-task-line': String(lineNumber),
-        'aria-label': checkboxChild.content.includes('checked=""') ? '取消待办完成状态' : '标记待办为已完成'
+        'aria-label': checkboxChild.content.includes('checked=""')
+          ? t('note.markdown.checklist.unmarkComplete')
+          : t('note.markdown.checklist.markComplete')
       });
     }
   });
@@ -17938,7 +18076,7 @@ function createNoteMarkdownRenderer(): MarkdownIt {
     const src = token.attrGet('src');
     const resolvedSrc = src ? resolveRenderableNoteMarkdownImageSrc(src, env) : null;
     if (!resolvedSrc) {
-      const altText = token.content.trim() || src || '图片';
+      const altText = token.content.trim() || src || t('note.markdown.imageFallback');
       return `<span class="note-markdown-image-fallback" role="img" aria-label="${escapeHtml(altText)}">${escapeHtml(
         altText
       )}</span>`;

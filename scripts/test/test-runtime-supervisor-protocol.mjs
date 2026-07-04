@@ -37,6 +37,9 @@ try {
   const require = createRequire(import.meta.url);
   const {
     createRuntimeSupervisorError,
+    createRuntimeSupervisorProtocolError,
+    formatRuntimeSupervisorMessageDescriptor,
+    getRuntimeSupervisorErrorDescriptor,
     serializeRuntimeSupervisorError
   } = require(protocolOutfile);
 
@@ -57,6 +60,36 @@ try {
     message: 'generic failure'
   });
   assert.equal(createRuntimeSupervisorError(genericPayload).code, undefined);
+
+  const sessionNotFoundDescriptor = {
+    id: 'sessionNotFound',
+    params: {
+      sessionId: 'missing-session'
+    }
+  };
+  const typedError = createRuntimeSupervisorProtocolError(
+    sessionNotFoundDescriptor,
+    'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND'
+  );
+  const typedPayload = serializeRuntimeSupervisorError(typedError);
+  assert.deepEqual(typedPayload, {
+    message: 'Runtime session missing-session was not found.',
+    code: 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND',
+    descriptor: sessionNotFoundDescriptor
+  });
+  const restoredTypedError = createRuntimeSupervisorError(typedPayload);
+  assert.equal(restoredTypedError.message, 'Runtime session missing-session was not found.');
+  assert.equal(restoredTypedError.code, 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND');
+  assert.deepEqual(getRuntimeSupervisorErrorDescriptor(restoredTypedError), sessionNotFoundDescriptor);
+  assert.equal(
+    formatRuntimeSupervisorMessageDescriptor({
+      id: 'agentSessionStopped',
+      params: {
+        label: 'Codex'
+      }
+    }),
+    'Stopped Codex session.'
+  );
 
   const supervisorSource = await readFile(path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts'), 'utf8');
   assert.match(
@@ -101,7 +134,7 @@ try {
   );
   assert.match(
     supervisorSource,
-    /session\.kind === 'agent' && session\.provider === 'claude' && containsTerminalSuspendInput\(params\.data\)[\s\S]*Claude Agent 节点不支持 Ctrl-Z\/fg/u,
+    /session\.kind === 'agent' && session\.provider === 'claude' && containsTerminalSuspendInput\(params\.data\)[\s\S]*claudeAgentCtrlZUnsupported/u,
     'runtime supervisor 必须拒绝 Claude Agent Ctrl-Z 输入，避免进入不可恢复的伪挂起态。'
   );
   assert.doesNotMatch(
@@ -208,6 +241,18 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       new RegExp(marker, 'u'),
       'final sessionState serialized terminal state should include output written immediately before exit.'
     );
+    assert.equal(
+      finalState.payload.lastExitMessage,
+      'Terminal session ended.',
+      'final sessionState should keep an English fallback exit message.'
+    );
+    assert.deepEqual(
+      finalState.payload.lastExitMessageDescriptor,
+      {
+        id: 'terminalSessionEnded'
+      },
+      'final sessionState should carry a stable exit message descriptor for Host localization.'
+    );
 
     const storedSession = await waitForRuntimeSupervisorRegistrySession(
       registryPath,
@@ -222,6 +267,13 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       storedSession.serializedTerminalState?.data ?? '',
       new RegExp(marker, 'u'),
       'registry serialized terminal state should include output written immediately before exit.'
+    );
+    assert.deepEqual(
+      storedSession.lastExitMessageDescriptor,
+      {
+        id: 'terminalSessionEnded'
+      },
+      'registry snapshot should persist the stable exit message descriptor.'
     );
   } finally {
     socket?.destroy();

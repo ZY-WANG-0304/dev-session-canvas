@@ -72,7 +72,7 @@ async function prepareSmokeHostExtension(root) {
   await stageExtension({
     sourceRoot: mainExtensionRoot,
     targetRoot: smokeHostRoot,
-    entries: ['package.json', 'package.nls.json', 'dist', 'images', 'resources', 'scripts']
+    entries: ['package.json', 'package.nls.json', 'package.nls.zh-cn.json', 'l10n', 'dist', 'images', 'resources', 'scripts']
   });
   await copyPathRecursive(path.join(projectRoot, 'node_modules'), path.join(smokeHostRoot, 'node_modules'));
   await stageExtension({

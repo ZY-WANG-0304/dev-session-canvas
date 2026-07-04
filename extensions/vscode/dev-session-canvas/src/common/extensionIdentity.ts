@@ -64,6 +64,7 @@ export const COMMAND_IDS = {
 
 export const TEST_COMMAND_IDS = {
   getDebugState: 'devSessionCanvas.__test.getDebugState',
+  getWebviewHtmlSnapshot: 'devSessionCanvas.__test.getWebviewHtmlSnapshot',
   getSidebarSummaryItems: 'devSessionCanvas.__test.getSidebarSummaryItems',
   getSidebarTemplateItems: 'devSessionCanvas.__test.getSidebarTemplateItems',
   getSidebarNodeListItems: 'devSessionCanvas.__test.getSidebarNodeListItems',

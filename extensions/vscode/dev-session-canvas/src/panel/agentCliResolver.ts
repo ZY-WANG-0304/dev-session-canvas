@@ -23,6 +23,22 @@ export type AgentCliResolutionSource =
   | 'windows-where'
   | 'windows-powershell';
 
+export type AgentCliResolutionAttemptId =
+  | 'raw'
+  | 'empty-configured-value'
+  | 'configured-absolute'
+  | 'configured-relative'
+  | 'cache'
+  | 'path-env'
+  | 'windows-where'
+  | 'windows-powershell'
+  | 'posix-login-shell';
+
+export interface AgentCliResolutionAttemptDescriptor {
+  id: AgentCliResolutionAttemptId;
+  value?: string;
+}
+
 export interface AgentCliResolutionCacheEntry {
   requestedCommand: string;
   resolvedCommand: string;
@@ -42,18 +58,24 @@ export interface ResolveAgentCliCommandResult {
   resolvedCommand: string;
   source: AgentCliResolutionSource;
   attempts: string[];
+  attemptDescriptors: AgentCliResolutionAttemptDescriptor[];
 }
 
 export class AgentCliResolutionError extends Error {
   public readonly code = AGENT_CLI_RESOLUTION_ERROR_CODE;
+  public readonly attemptDescriptors: AgentCliResolutionAttemptDescriptor[];
 
   public constructor(
     public readonly label: string,
     public readonly requestedCommand: string,
-    public readonly attempts: string[]
+    public readonly attempts: string[],
+    attemptDescriptors?: readonly AgentCliResolutionAttemptDescriptor[]
   ) {
     super(buildAgentCliResolutionErrorMessage(label, requestedCommand, attempts));
     this.name = 'AgentCliResolutionError';
+    this.attemptDescriptors = attemptDescriptors
+      ? [...attemptDescriptors]
+      : attempts.map((attempt) => ({ id: 'raw', value: attempt }));
   }
 }
 
@@ -66,21 +88,33 @@ export async function resolveAgentCliCommand(
 ): Promise<ResolveAgentCliCommandResult> {
   const requestedCommand = options.requestedCommand.trim();
   const attempts: string[] = [];
+  const attemptDescriptors: AgentCliResolutionAttemptDescriptor[] = [];
+  const pushAttempt = (descriptor: AgentCliResolutionAttemptDescriptor): void => {
+    attemptDescriptors.push(descriptor);
+    attempts.push(formatAgentCliResolutionAttemptDescriptor(descriptor));
+  };
 
   if (!requestedCommand) {
-    throw new AgentCliResolutionError(options.label, requestedCommand || '<empty>', ['配置值为空']);
+    const descriptor: AgentCliResolutionAttemptDescriptor = { id: 'empty-configured-value' };
+    throw new AgentCliResolutionError(
+      options.label,
+      requestedCommand || '<empty>',
+      [formatAgentCliResolutionAttemptDescriptor(descriptor)],
+      [descriptor]
+    );
   }
 
   const expandedConfiguredCommand = expandUserHome(requestedCommand, options.env);
   if (path.isAbsolute(expandedConfiguredCommand)) {
-    attempts.push(`设置绝对路径: ${expandedConfiguredCommand}`);
+    pushAttempt({ id: 'configured-absolute', value: expandedConfiguredCommand });
     const resolvedAbsoluteCommand = await resolveExplicitCommandCandidate(expandedConfiguredCommand, options.env);
     if (resolvedAbsoluteCommand) {
       return {
         requestedCommand,
         resolvedCommand: resolvedAbsoluteCommand,
         source: 'configured-absolute',
-        attempts
+        attempts,
+        attemptDescriptors
       };
     }
   }
@@ -88,14 +122,15 @@ export async function resolveAgentCliCommand(
   if (isExplicitRelativePath(expandedConfiguredCommand)) {
     const relativeCandidates = buildRelativePathCandidates(expandedConfiguredCommand, options.workspaceCwd, options.env);
     for (const candidate of relativeCandidates) {
-      attempts.push(`设置相对路径: ${candidate}`);
+      pushAttempt({ id: 'configured-relative', value: candidate });
       const resolvedRelativeCommand = await resolveExplicitCommandCandidate(candidate, options.env);
       if (resolvedRelativeCommand) {
         return {
           requestedCommand,
           resolvedCommand: resolvedRelativeCommand,
           source: 'configured-relative',
-          attempts
+          attempts,
+          attemptDescriptors
         };
       }
     }
@@ -103,7 +138,7 @@ export async function resolveAgentCliCommand(
 
   const cachedResolvedCommand = options.cachedResolvedCommand?.trim();
   if (cachedResolvedCommand) {
-    attempts.push(`成功缓存: ${cachedResolvedCommand}`);
+    pushAttempt({ id: 'cache', value: cachedResolvedCommand });
     const normalizedCachedResolvedCommand = await normalizeResolvedCommandCandidate(
       cachedResolvedCommand,
       options.env
@@ -113,58 +148,90 @@ export async function resolveAgentCliCommand(
         requestedCommand,
         resolvedCommand: normalizedCachedResolvedCommand,
         source: 'cache',
-        attempts
+        attempts,
+        attemptDescriptors
       };
     }
   }
 
   const envResolvedCommand = await resolveCommandFromPathEnv(expandedConfiguredCommand, options.env);
-  attempts.push(`PATH 解析: ${expandedConfiguredCommand}`);
+  pushAttempt({ id: 'path-env', value: expandedConfiguredCommand });
   if (envResolvedCommand) {
     return {
       requestedCommand,
       resolvedCommand: envResolvedCommand,
       source: 'path-env',
-      attempts
+      attempts,
+      attemptDescriptors
     };
   }
 
   if (process.platform === 'win32') {
     const whereResolvedCommand = await resolveCommandViaWindowsWhere(expandedConfiguredCommand, options.env);
-    attempts.push(`where.exe 探测: ${expandedConfiguredCommand}`);
+    pushAttempt({ id: 'windows-where', value: expandedConfiguredCommand });
     if (whereResolvedCommand) {
       return {
         requestedCommand,
         resolvedCommand: whereResolvedCommand,
         source: 'windows-where',
-        attempts
+        attempts,
+        attemptDescriptors
       };
     }
 
     const powerShellResolvedCommand = await resolveCommandViaWindowsPowerShell(expandedConfiguredCommand, options.env);
-    attempts.push(`Get-Command 探测: ${expandedConfiguredCommand}`);
+    pushAttempt({ id: 'windows-powershell', value: expandedConfiguredCommand });
     if (powerShellResolvedCommand) {
       return {
         requestedCommand,
         resolvedCommand: powerShellResolvedCommand,
         source: 'windows-powershell',
-        attempts
+        attempts,
+        attemptDescriptors
       };
     }
   } else {
     const shellResolvedCommand = await resolveCommandViaPosixLoginShell(expandedConfiguredCommand, options.env);
-    attempts.push(`登录 shell 探测: ${expandedConfiguredCommand}`);
+    pushAttempt({ id: 'posix-login-shell', value: expandedConfiguredCommand });
     if (shellResolvedCommand) {
       return {
         requestedCommand,
         resolvedCommand: shellResolvedCommand,
         source: 'posix-login-shell',
-        attempts
+        attempts,
+        attemptDescriptors
       };
     }
   }
 
-  throw new AgentCliResolutionError(options.label, requestedCommand, attempts);
+  throw new AgentCliResolutionError(options.label, requestedCommand, attempts, attemptDescriptors);
+}
+
+export function formatAgentCliResolutionAttemptDescriptor(
+  descriptor: AgentCliResolutionAttemptDescriptor
+): string {
+  const value = descriptor.value ?? '';
+  switch (descriptor.id) {
+    case 'empty-configured-value':
+      return 'Empty configured value';
+    case 'configured-absolute':
+      return `Configured absolute path: ${value}`;
+    case 'configured-relative':
+      return `Configured relative path: ${value}`;
+    case 'cache':
+      return `Cached resolution: ${value}`;
+    case 'path-env':
+      return `PATH lookup: ${value}`;
+    case 'windows-where':
+      return `where.exe probe: ${value}`;
+    case 'windows-powershell':
+      return `Get-Command probe: ${value}`;
+    case 'posix-login-shell':
+      return `Login shell probe: ${value}`;
+    case 'raw':
+    default:
+      return value;
+  }
 }
 
 function buildAgentCliResolutionErrorMessage(
@@ -172,12 +239,12 @@ function buildAgentCliResolutionErrorMessage(
   requestedCommand: string,
   attempts: string[]
 ): string {
-  const summary = attempts.length > 0 ? `已尝试：${attempts.join('；')}。` : '';
+  const summary = attempts.length > 0 ? `Tried: ${attempts.join('; ')}. ` : '';
   const suffix =
     process.platform === 'win32'
-      ? '请确认它已安装到当前执行宿主，并通过设置项显式指定 .exe / .cmd 路径，或让登录 shell / PATH 能解析到它。'
-      : '请确认它已安装到当前执行宿主，并通过设置项显式指定命令路径，或让登录 shell / PATH 能解析到它。';
-  return `没有找到 ${label} 命令 ${requestedCommand}。${summary}${suffix}`;
+      ? 'Make sure it is installed in the current execution host, configure the .exe / .cmd path explicitly in settings, or make it available to the login shell / PATH.'
+      : 'Make sure it is installed in the current execution host, configure the command path explicitly in settings, or make it available to the login shell / PATH.';
+  return `Could not find ${label} command ${requestedCommand}. ${summary}${suffix}`;
 }
 
 function buildRelativePathCandidates(

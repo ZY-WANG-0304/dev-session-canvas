@@ -183,6 +183,7 @@ import {
   type CanvasTemplateCaptureResult,
   type CanvasTemplateSaveAgentProviderSelection
 } from '../common/canvasTemplates';
+import { localizeCanvasTemplateError } from './canvasTemplateLocalization';
 import {
   SerializedTerminalStateTracker,
   cloneSerializedTerminalState,
@@ -230,6 +231,11 @@ import {
   type AgentCliResolutionSource
 } from './agentCliResolver';
 import {
+  localizeAgentCliResolutionErrorMessage,
+  localizeAgentLaunchError,
+  localizeAgentLaunchMessageDescriptor
+} from './agentLaunchLocalization';
+import {
   applyShellEnvironmentPatch,
   resolveShellEnvironmentPatch,
   shouldResolveShellEnvironmentPatchForExecutionTarget,
@@ -243,7 +249,7 @@ import {
   getConfiguredTerminalShellArgs,
   inspectCurrentConfiguredTerminalShellInCwd
 } from './configuration';
-import { getWebviewHtml } from './getWebviewHtml';
+import { getWebviewHtml, getWebviewHtmlSnapshotForTest as buildWebviewHtmlSnapshotForTest } from './getWebviewHtml';
 import { openCanvasExternalLink } from './linkOpenMode';
 import { RuntimeSupervisorClient } from './runtimeSupervisorClient';
 import {
@@ -255,10 +261,15 @@ import {
 } from './CanvasTemplateStore';
 import {
   serializeExecutionSessionLaunchSpec,
+  RUNTIME_SUPERVISOR_ERROR_CODES,
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorEvent,
   type RuntimeSupervisorSessionSnapshot
 } from '../common/runtimeSupervisorProtocol';
+import {
+  localizeRuntimeSupervisorError,
+  localizeRuntimeSupervisorSnapshotExitMessage
+} from './runtimeSupervisorLocalization';
 import {
   extractClaudeResumeSessionId,
   extractCodexResumeSessionId,
@@ -351,7 +362,6 @@ const EXECUTION_FILE_LINK_BACKGROUND_RESOLVE_MIN_INTERVAL_MS = 150;
 const EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT = 140;
 const EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS = 4000;
 const EXECUTION_ATTENTION_BELL_NOTIFICATION_COOLDOWN_MS = 8000;
-const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
 const EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS = 20000;
 const WORKSPACE_ROOT_FOCUS_REPLAY_WINDOW_MS = 1500;
 const TERMINAL_INITIAL_INPUT_DISPATCH_TIMEOUT_MS = 20000;
@@ -363,7 +373,6 @@ const CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY = 'devSessionCanvas.canvas.def
 const ROOT_LOCAL_CANVAS_STORAGE_DIRECTORY = 'root-local-canvas';
 const FAKE_PROVIDER_STORAGE_PATH_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH';
 const FAKE_PROVIDER_STOP_HINT_STYLE_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_PROVIDER_STOP_HINT_STYLE';
-const RELOAD_WINDOW_ACTION_LABEL = '重新加载窗口';
 
 interface AgentCliConfig {
   defaultProvider: AgentProviderKind;
@@ -1651,7 +1660,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   ): Promise<CanvasStoredTemplate> {
     if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1) {
-      throw new Error('多根 workspace 中暂不支持保存整个组合视图为模板；请单独打开目标 root 后保存模板。');
+      throw new Error(
+        vscode.l10n.t(
+          'Saving the full composed view as a template is not supported in multi-root workspaces yet. Open the target root separately, then save the template.'
+        )
+      );
     }
 
     const catalog = await this.getCanvasTemplateCatalog();
@@ -1659,7 +1672,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ? findCanvasTemplateById(catalog.templates, options.overwriteTemplateId)
       : undefined;
     if (overwriteTemplate && overwriteTemplate.template.category !== 'user') {
-      throw new Error('内置模板不能被覆盖。');
+      throw new Error(vscode.l10n.t('Built-in templates cannot be overwritten.'));
     }
 
     const now = new Date().toISOString();
@@ -1744,7 +1757,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (mode === 'embedded-snapshot') {
         if (content.length > NOTE_EMBEDDED_CONTENT_MAX_LENGTH) {
           throw new Error(
-            `关联 Markdown Note「${node.title}」的内容超过普通 Note 8,000 字符上限，请改选“保留 workspace 相对路径和文件内容”（仅 workspace 内文件可用）或先调整关联文件。`
+            vscode.l10n.t(
+              'Associated Markdown Note "{title}" exceeds the 8,000-character limit for regular Notes. Choose "Keep workspace-relative path and file content" instead (workspace files only), or adjust the associated file first.',
+              { title: node.title }
+            )
           );
         }
         selection[nodeId] = { mode, content };
@@ -1768,13 +1784,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<string> {
     if (source.status !== 'ok' || source.recoverableDraft) {
       throw new Error(
-        `关联 Markdown Note「${node.title}」当前不是可保存状态（${source.status}），请先恢复关联文件后再保存模板。`
+        vscode.l10n.t(
+          'Associated Markdown Note "{title}" is not currently in a saveable state ({status}). Restore the associated file before saving the template.',
+          { title: node.title, status: source.status }
+        )
       );
     }
 
     const uri = this.parseCurrentHostNoteMarkdownUri(source.resourceUri);
     if (!uri) {
-      throw new Error(`关联 Markdown Note「${node.title}」的文件 URI 无法解析。`);
+      throw new Error(
+        vscode.l10n.t('The file URI for associated Markdown Note "{title}" could not be parsed.', {
+          title: node.title
+        })
+      );
     }
 
     if (mode === 'workspace-file-with-content') {
@@ -1784,7 +1807,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const readResult = await this.readNoteMarkdownFile(uri);
     if (readResult.status !== 'ok') {
       throw new Error(
-        `无法读取关联 Markdown Note「${node.title}」的落盘内容：${readResult.lastError ?? readResult.status}`
+        vscode.l10n.t('Could not read the saved content for associated Markdown Note "{title}": {message}', {
+          title: node.title,
+          message: readResult.lastError ?? readResult.status
+        })
       );
     }
 
@@ -1797,7 +1823,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): string {
     const relativePath = this.resolveCanvasTemplateRelativePathForAssociatedNoteSource(source);
     if (!relativePath) {
-      throw new Error(`关联 Markdown Note「${node.title}」不在当前 workspace 内，不能保存为 workspace 相对文件关联。`);
+      throw new Error(
+        vscode.l10n.t(
+          'Associated Markdown Note "{title}" is outside the current workspace and cannot be saved as a workspace-relative file association.',
+          { title: node.title }
+        )
+      );
     }
     return relativePath;
   }
@@ -1819,7 +1850,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ? findCanvasTemplateById(catalog.templates, options.overwriteTemplateId)
       : undefined;
     if (overwriteTemplate && overwriteTemplate.template.category !== 'user') {
-      throw new Error('内置模板不能被覆盖。');
+      throw new Error(vscode.l10n.t('Built-in templates cannot be overwritten.'));
     }
 
     const now = new Date().toISOString();
@@ -1906,7 +1937,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const catalog = await this.getCanvasTemplateCatalog();
     const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
     if (!storedTemplate) {
-      throw new Error('目标模板不存在。');
+      throw new Error(vscode.l10n.t('Target template does not exist.'));
     }
 
     if (typeof target === 'string') {
@@ -1925,10 +1956,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const catalog = await this.getCanvasTemplateCatalog();
     const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
     if (!storedTemplate) {
-      throw new Error('目标模板不存在。');
+      throw new Error(vscode.l10n.t('Target template does not exist.'));
     }
     if (storedTemplate.template.category !== 'user') {
-      throw new Error('内置模板不能删除。');
+      throw new Error(vscode.l10n.t('Built-in templates cannot be deleted.'));
     }
 
     await this.canvasTemplateStore.deleteUserTemplate(storedTemplate.filePath);
@@ -1940,7 +1971,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const catalog = await this.getCanvasTemplateCatalog();
     const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
     if (!storedTemplate) {
-      throw new Error('目标模板不存在。');
+      throw new Error(vscode.l10n.t('Target template does not exist.'));
     }
 
     await this.context.globalState.update(CANVAS_DEFAULT_TEMPLATE_ID_GLOBAL_STATE_KEY, storedTemplate.template.id);
@@ -1956,7 +1987,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }): Promise<string[]> {
     const defaultTemplate = await this.resolveDefaultCanvasTemplateRecord();
     if (!defaultTemplate) {
-      throw new Error('当前没有可用的默认模板。');
+      throw new Error(vscode.l10n.t('No default template is currently available.'));
     }
 
     return this.applyCanvasTemplateRecord(defaultTemplate, options);
@@ -1975,7 +2006,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const catalog = await this.getCanvasTemplateCatalog();
     const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
     if (!storedTemplate) {
-      throw new Error('目标模板不存在。');
+      throw new Error(vscode.l10n.t('Target template does not exist.'));
     }
 
     return this.applyCanvasTemplateRecord(storedTemplate, options);
@@ -1989,10 +2020,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }): Promise<string[] | undefined> {
     const defaultTemplate = await this.resolveDefaultCanvasTemplateRecord();
     if (!defaultTemplate) {
-      throw new Error('当前没有可用的默认模板。');
+      throw new Error(vscode.l10n.t('No default template is currently available.'));
     }
 
-    if (!(await this.confirmCanvasTemplateReset('当前默认模板', options))) {
+    if (!(await this.confirmCanvasTemplateReset(vscode.l10n.t('the current default template'), options))) {
       return undefined;
     }
 
@@ -2014,10 +2045,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const catalog = await this.getCanvasTemplateCatalog();
     const storedTemplate = findCanvasTemplateById(catalog.templates, templateId);
     if (!storedTemplate) {
-      throw new Error('目标模板不存在。');
+      throw new Error(vscode.l10n.t('Target template does not exist.'));
     }
 
-    if (!(await this.confirmCanvasTemplateReset(`模板「${storedTemplate.template.name}」`, options))) {
+    if (!(await this.confirmCanvasTemplateReset(
+      vscode.l10n.t('template "{name}"', { name: storedTemplate.template.name }),
+      options
+    ))) {
       return undefined;
     }
 
@@ -2041,6 +2075,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       surfaceReady: cloneJsonValue(this.surfaceReady),
       surfaceLifecycle: cloneJsonValue(this.surfaceLifecycle)
     };
+  }
+
+  public getWebviewHtmlSnapshotForTest(): ReturnType<typeof buildWebviewHtmlSnapshotForTest> {
+    if (!isTestHarnessMode(this.context.extensionMode)) {
+      throw new Error('getWebviewHtmlSnapshotForTest is only available in test harness mode.');
+    }
+
+    const standbySurface: CanvasSurfaceLocation = this.activeSurface === 'editor' ? 'panel' : 'editor';
+    return buildWebviewHtmlSnapshotForTest(vscode.env.language, {
+      mode: 'standby',
+      surface: standbySurface,
+      activeSurface: this.activeSurface ?? this.getConfiguredSurface()
+    });
   }
 
   public getRuntimeSupervisorStateForTest(): RuntimeSupervisorDebugStateForTest {
@@ -2288,15 +2335,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       )
     );
     const panelSummary = surfaces.find((surface) => surface.surface === 'panel');
+    const panelMissingReadyAfterRender = Boolean(
+      panelSummary?.attached &&
+        panelSummary.interactive &&
+        !panelSummary.ready &&
+        panelSummary.events.rendered > 0
+    );
+    const panelProbeFailedAfterReady = Boolean(panelSummary?.ready && panelSummary.probe.error);
+    const panelMissingBootstrapAckAfterReady = Boolean(panelSummary?.ready && !panelSummary.bootstrapAck);
     const panelRestore = {
       likelyAffected: Boolean(
         panelSummary?.status === 'blocked' ||
           (
             panelSummary?.attachRenderBurst.detected &&
             (
-              panelSummary.issues.some((issue) => issue.includes('尚未 ready')) ||
-              panelSummary.issues.some((issue) => issue.includes('bootstrapAck')) ||
-              panelSummary.issues.some((issue) => issue.includes('probe 失败')) ||
+              panelMissingReadyAfterRender ||
+              panelMissingBootstrapAckAfterReady ||
+              panelProbeFailedAfterReady ||
               panelSummary.events.staleMessageIgnored > 0
             )
           )
@@ -2304,14 +2359,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       consecutiveAttachRender: panelSummary?.attachRenderBurst.detected ?? false,
       readyPromotionObserved: (panelSummary?.events.readyWebviewPromoted ?? 0) > 0,
       staleMessageIgnoredCount: panelSummary?.events.staleMessageIgnored ?? 0,
-      probeFailedAfterReady: Boolean(panelSummary?.ready && panelSummary.probe.error),
-      missingReadyAfterRender: Boolean(
-        panelSummary?.attached &&
-          panelSummary.interactive &&
-          !panelSummary.ready &&
-          panelSummary.events.rendered > 0
-      ),
-      missingBootstrapAckAfterReady: Boolean(panelSummary?.ready && !panelSummary.bootstrapAck)
+      probeFailedAfterReady: panelProbeFailedAfterReady,
+      missingReadyAfterRender: panelMissingReadyAfterRender,
+      missingBootstrapAckAfterReady: panelMissingBootstrapAckAfterReady
     };
 
     return {
@@ -2558,9 +2608,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async pickWorkspaceRootGroupIdForCreate(kind: CanvasCreatableNodeKind): Promise<string | undefined> {
-    return this.pickWorkspaceRootGroupId(
-      `${kind === 'agent' ? 'Agent' : kind === 'terminal' ? 'Terminal' : 'Note'} 所属 root`
-    );
+    return this.pickWorkspaceRootGroupId(vscode.l10n.t('{kind} root', { kind: formatCreatableNodeKind(kind) }));
   }
 
   private async pickWorkspaceRootGroupId(title: string): Promise<string | undefined> {
@@ -2576,8 +2624,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         group
       })),
       {
-        title: `选择 ${title}`,
-        placeHolder: '选择新节点要放入的 workspace folder'
+        title: vscode.l10n.t('Select {title}', { title }),
+        placeHolder: vscode.l10n.t('Select the workspace folder for the new node')
       }
     );
     return selected?.group.id;
@@ -2605,7 +2653,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async createEmptyGroupAfterWorkspaceRootSelection(): Promise<void> {
-    const targetGroupId = await this.pickWorkspaceRootGroupId('分组所属 root');
+    const targetGroupId = await this.pickWorkspaceRootGroupId(vscode.l10n.t('group root'));
     if (!targetGroupId) {
       return;
     }
@@ -2648,14 +2696,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!trimmedCommandLine) {
       return {
         created: false,
-        errorMessage: '安装命令不能为空。'
+        errorMessage: vscode.l10n.t('Install command cannot be empty.')
       };
     }
 
     if (!vscode.workspace.isTrusted) {
       return {
         created: false,
-        errorMessage: '当前 workspace 未受信任，不能在画布中启动 Terminal 执行安装命令。'
+        errorMessage: vscode.l10n.t(
+          'The current workspace is not trusted. A Canvas Terminal cannot run the install command.'
+        )
       };
     }
 
@@ -2665,17 +2715,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } catch (error) {
       return {
         created: false,
-        errorMessage: error instanceof Error ? error.message : '无法打开画布 Terminal。'
+        errorMessage: error instanceof Error ? error.message : vscode.l10n.t('Could not open a Canvas Terminal.')
       };
     }
 
     const targetGroupId = (vscode.workspace.workspaceFolders?.length ?? 0) > 1
-      ? await this.pickWorkspaceRootGroupId('Terminal 所属 root')
+      ? await this.pickWorkspaceRootGroupId(vscode.l10n.t('Terminal root'))
       : undefined;
     if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1 && !targetGroupId) {
       return {
         created: false,
-        errorMessage: '已取消选择 Terminal 所属 root。'
+        errorMessage: vscode.l10n.t('Terminal root selection was canceled.')
       };
     }
 
@@ -2686,7 +2736,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!createdNode) {
       return {
         created: false,
-        errorMessage: '无法创建用于安装的 Terminal 节点。'
+        errorMessage: vscode.l10n.t('Could not create a Terminal node for installation.')
       };
     }
 
@@ -2707,7 +2757,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         commandDispatched: false,
         errorMessage:
           completedDispatch.errorMessage ??
-          '已创建画布 Terminal，但尚未确认安装命令已输入；请检查 Terminal 节点状态。'
+          vscode.l10n.t(
+            'Created a Canvas Terminal, but could not confirm that the install command was sent. Check the Terminal node status.'
+          )
       };
     }
 
@@ -2823,23 +2875,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(targetUri))) {
-      await vscode.window.showWarningMessage('只能关联 Markdown 文件（.md / .markdown）。');
+      await vscode.window.showWarningMessage(
+        vscode.l10n.t('Only Markdown files (.md / .markdown) can be associated.')
+      );
       return;
     }
 
     const targetStatus = await this.statNoteMarkdownTarget(targetUri);
     if (targetStatus === 'directory') {
-      await vscode.window.showWarningMessage('选择的路径是目录，请指定一个 Markdown 文件。');
+      await vscode.window.showWarningMessage(
+        vscode.l10n.t('The selected path is a directory. Specify a Markdown file.')
+      );
       return;
     }
 
     if (targetStatus === 'missing-parent') {
-      await vscode.window.showWarningMessage('所选目录不存在，无法保存文件。');
+      await vscode.window.showWarningMessage(
+        vscode.l10n.t('The selected directory does not exist, so the file cannot be saved.')
+      );
       return;
     }
 
     if (targetStatus === 'other') {
-      await vscode.window.showWarningMessage('所选路径不是有效文件，无法保存。');
+      await vscode.window.showWarningMessage(vscode.l10n.t('The selected path is not a valid file and cannot be saved.'));
       return;
     }
 
@@ -2855,7 +2913,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (choice === 'keep') {
         const readResult = await this.readNoteMarkdownFile(targetUri);
         if (readResult.status !== 'ok') {
-          await vscode.window.showWarningMessage(readResult.lastError ?? '无法读取 Markdown 文件。');
+          await vscode.window.showWarningMessage(readResult.lastError ?? vscode.l10n.t('Could not read the Markdown file.'));
           return;
         }
         nextContent = readResult.content;
@@ -2895,21 +2953,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     if (!admission.uri) {
       await vscode.window.showWarningMessage(
-        admission.rejectionReason ?? '请选择 Markdown 文件（.md / .markdown）来创建关联 Note。'
+        admission.rejectionReason ??
+          vscode.l10n.t('Select a Markdown file (.md / .markdown) to create an associated Note.')
       );
       return undefined;
     }
 
     const noteUri = admission.uri;
     if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(noteUri))) {
-      await vscode.window.showWarningMessage('只能关联 Markdown 文件（.md / .markdown）。');
+      await vscode.window.showWarningMessage(
+        vscode.l10n.t('Only Markdown files (.md / .markdown) can be associated.')
+      );
       return undefined;
     }
 
     const readResult = await this.readNoteMarkdownFile(noteUri);
     if (readResult.status !== 'ok') {
       await vscode.window.showWarningMessage(
-        readResult.lastError ?? `无法读取 ${this.formatNoteMarkdownUriForMessage(noteUri)}。`
+        readResult.lastError ??
+          vscode.l10n.t('Could not read {path}.', { path: this.formatNoteMarkdownUriForMessage(noteUri) })
       );
       return undefined;
     }
@@ -2937,7 +2999,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       placement.targetGroupId
     );
     if (!createdNode) {
-      await vscode.window.showWarningMessage('多根 workspace 中请从目标 root section 内创建关联 Note。');
+      await vscode.window.showWarningMessage(
+        vscode.l10n.t('In multi-root workspaces, create the associated Note inside the target root section.')
+      );
       return undefined;
     }
 
@@ -3061,7 +3125,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } catch (error) {
       return {
         restored: false,
-        errorMessage: error instanceof Error ? error.message : '无法解析历史恢复的 Agent 启动命令。'
+        errorMessage: localizeAgentLaunchError(
+          error,
+          vscode.l10n.t('Could not parse the Agent launch command for session history restore.')
+        ) ?? (error instanceof Error
+          ? error.message
+          : vscode.l10n.t('Could not parse the Agent launch command for session history restore.'))
       };
     }
 
@@ -3084,7 +3153,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         restored: true
       };
     } catch {
-      void vscode.window.showWarningMessage(`历史会话节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+      void vscode.window.showWarningMessage(
+        vscode.l10n.t('The session history node was created, but "{title}" cannot be located automatically right now.', {
+          title: createdNode.title
+        })
+      );
       return {
         restored: true
       };
@@ -3119,9 +3192,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return {
         forked: false,
         errorMessage:
-          error instanceof Error
+          localizeAgentLaunchError(
+            error,
+            vscode.l10n.t('Could not parse the {provider} launch command for session history fork.', {
+              provider: agentProviderDisplayLabel(params.provider)
+            })
+          ) ?? (error instanceof Error
             ? error.message
-            : `无法解析 ${agentProviderDisplayLabel(params.provider)} 历史分叉启动命令。`
+            : vscode.l10n.t('Could not parse the {provider} launch command for session history fork.', {
+                provider: agentProviderDisplayLabel(params.provider)
+              }))
       };
     }
 
@@ -3144,7 +3224,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         forked: true
       };
     } catch {
-      void vscode.window.showWarningMessage(`历史会话分叉节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+      void vscode.window.showWarningMessage(
+        vscode.l10n.t(
+          'The session history fork node was created, but "{title}" cannot be located automatically right now.',
+          { title: createdNode.title }
+        )
+      );
       return {
         forked: true
       };
@@ -3152,30 +3237,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async branchAgentSession(nodeId: string): Promise<{ branched: boolean; errorMessage?: string }> {
-    if (!this.assertExecutionAllowed('当前 workspace 未受信任，已禁止分叉 Agent 会话。')) {
+    if (!this.assertExecutionAllowed(vscode.l10n.t('The current workspace is not trusted. Agent session forking is disabled.'))) {
       return {
         branched: false,
-        errorMessage: '当前 workspace 未受信任，不能分叉 Agent 会话。'
+        errorMessage: vscode.l10n.t('The current workspace is not trusted. Agent sessions cannot be forked.')
       };
     }
 
     const sourceNode = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === 'agent');
     if (!sourceNode) {
-      const message = '未找到可分叉的 Agent 节点。';
+      const message = vscode.l10n.t('No forkable Agent node was found.');
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
 
     const metadata = ensureAgentMetadata(sourceNode);
     if (!isAgentProviderBranchSupported(metadata.provider, metadata.resumeStrategy)) {
-      const message = '只有持有可信会话的 Codex / Claude Code Agent 才能分叉。';
+      const message = vscode.l10n.t('Only Codex / Claude Code Agents with trusted sessions can be forked.');
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
 
     const sessionId = metadata.resumeSessionId?.trim();
     if (!sessionId) {
-      const message = `当前 ${agentProviderDisplayLabel(metadata.provider)} Agent 尚未确认可分叉的会话标识。`;
+      const message = vscode.l10n.t('The current {provider} Agent does not have a confirmed forkable session ID yet.', {
+        provider: agentProviderDisplayLabel(metadata.provider)
+      });
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
@@ -3188,9 +3275,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.buildAgentLaunchIntent(metadata)
       );
     } catch (error) {
-      const message = error instanceof Error
+      const message = localizeAgentLaunchError(
+        error,
+        vscode.l10n.t('Could not parse the {provider} fork launch command.', {
+          provider: agentProviderDisplayLabel(metadata.provider)
+        })
+      ) ?? (error instanceof Error
         ? error.message
-        : `无法解析 ${agentProviderDisplayLabel(metadata.provider)} 分叉启动命令。`;
+        : vscode.l10n.t('Could not parse the {provider} fork launch command.', {
+            provider: agentProviderDisplayLabel(metadata.provider)
+          }));
       this.postMessage({ type: 'host/error', payload: { message } });
       return { branched: false, errorMessage: message };
     }
@@ -3204,7 +3298,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: metadata.provider,
       agentLaunchPreset: 'custom',
       agentCustomLaunchCommand: branchCommandLine,
-      titleOverride: `${sourceNode.title} 分叉`,
+      titleOverride: formatForkTitle(sourceNode.title),
       cwdOverride: metadata.cwd
     });
     if (!createdNode) {
@@ -3218,14 +3312,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     try {
       await this.focusNodeInCanvas(createdNode.id);
     } catch {
-      void vscode.window.showWarningMessage(`分叉节点已创建，但暂时无法自动定位到「${createdNode.title}」。`);
+      void vscode.window.showWarningMessage(
+        vscode.l10n.t('The fork node was created, but "{title}" cannot be located automatically right now.', {
+          title: createdNode.title
+        })
+      );
     }
 
     return { branched: true };
   }
 
   public getSessionHistoryRestoreBlockReason(): string | undefined {
-    return vscode.workspace.isTrusted ? undefined : '当前 workspace 未受信任，只能查看历史会话，不能恢复或分叉为新 Agent 节点。';
+    return vscode.workspace.isTrusted
+      ? undefined
+      : vscode.l10n.t(
+          'The current workspace is not trusted. You can browse session history, but cannot resume or fork sessions into new Agent nodes.'
+        );
   }
 
   public async startExecutionSessionForTest(params: StartExecutionSessionForTestParams): Promise<CanvasDebugSnapshot> {
@@ -3524,7 +3626,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     this.agentSessions.clear();
     this.terminalSessions.clear();
-    this.clearPendingTerminalInitialInputs('扩展宿主正在切换，安装命令未写入。');
+    this.clearPendingTerminalInitialInputs(
+      vscode.l10n.t('The extension host is switching, so the install command was not sent.')
+    );
     this.runtimeSessionBindings.clear();
 
     if (persistedRuntimeSessions.length > 0) {
@@ -3566,7 +3670,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const normalizedRootPath = normalizeWorkspaceRootPathForComposition(rootPath);
     const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
     if (!workspaceFolders.some((folder) => folder.path === normalizedRootPath)) {
-      await vscode.window.showWarningMessage('未找到要清空画板的 workspace root。');
+      await vscode.window.showWarningMessage(vscode.l10n.t('No workspace root was found to clear from the Canvas.'));
       return false;
     }
 
@@ -3574,7 +3678,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       isWorkspaceRootGroup(group) && resolveWorkspaceRootPathForGroup(group) === normalizedRootPath
     );
     if (workspaceFolders.length > 1 && !rootGroup) {
-      await vscode.window.showWarningMessage('未找到该 workspace root 对应的画板分组，已取消移除。');
+      await vscode.window.showWarningMessage(
+        vscode.l10n.t('No Canvas group was found for that workspace root, so removal was canceled.')
+      );
       return false;
     }
 
@@ -3584,7 +3690,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : new Set(this.state.nodes.map((node) => node.id));
     const affectedNodes = this.state.nodes.filter((node) => affectedNodeIds.has(node.id));
     for (const node of affectedNodes) {
-      this.dropPendingTerminalInitialInput(node.id, 'workspace root 画板已清空，安装命令未写入。');
+      this.dropPendingTerminalInitialInput(
+        node.id,
+        vscode.l10n.t('The workspace root Canvas was cleared, so the install command was not sent.')
+      );
       this.activeAssociatedNoteMarkdownEdits.delete(node.id);
       if (!isExecutionNodeKind(node.kind)) {
         continue;
@@ -3595,7 +3704,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         await this.terminateExecutionNodeForDeletion(node);
       } catch (error) {
         await vscode.window.showErrorMessage(
-          error instanceof Error ? error.message : '清空 workspace root 画板时清理 live runtime 失败。',
+          error instanceof Error
+            ? error.message
+            : vscode.l10n.t('Failed to clean up live runtime while clearing the workspace root Canvas.'),
           { modal: true }
         );
         return false;
@@ -3611,7 +3722,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.writeRootLocalCanvasSnapshot(normalizedRootPath, emptyRootState);
     } catch (error) {
       await vscode.window.showErrorMessage(
-        `清空 workspace root 画板状态失败：${formatUnknownError(error)}`,
+        vscode.l10n.t('Failed to clear the workspace root Canvas state: {message}', {
+          message: formatUnknownError(error)
+        }),
         { modal: true }
       );
       this.recordDiagnosticEvent('state/rootLocalClearFailed', {
@@ -3678,7 +3791,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const targetLabel = surface ?? this.activeSurface ?? 'active surface';
-    throw new Error(`等待 ${targetLabel} 画布完成 ready 超时（${timeoutMs}ms）。`);
+    throw new Error(vscode.l10n.t('Timed out waiting for the {target} Canvas to become ready ({timeoutMs}ms).', {
+      target: targetLabel,
+      timeoutMs
+    }));
   }
 
   public async captureWebviewProbeForTest(
@@ -3695,11 +3811,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (!this.isInteractiveSurface(surface)) {
-      throw new Error(`当前 ${surface} 不是可交互的主画布承载面。`);
+      throw new Error(vscode.l10n.t('{surface} is not the interactive main Canvas surface.', { surface }));
     }
 
     if (!this.surfaceReady[surface]) {
-      throw new Error(`当前 ${surface} 画布尚未完成 ready。`);
+      throw new Error(vscode.l10n.t('{surface} Canvas is not ready yet.', { surface }));
     }
 
     const requestId = `probe-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -3709,7 +3825,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return new Promise<WebviewProbeSnapshot>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingWebviewProbeRequests.delete(requestId);
-        reject(new Error(`等待 ${surface} Webview probe 返回超时（${timeoutMs}ms）。`));
+        reject(new Error(vscode.l10n.t(
+          'Timed out waiting for the {surface} Webview probe to return ({timeoutMs}ms).',
+          { surface, timeoutMs }
+        )));
       }, timeoutMs);
 
       this.pendingWebviewProbeRequests.set(requestId, {
@@ -3743,7 +3862,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return new Promise<WebviewProbeSnapshot>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingWebviewProbeRequests.delete(requestId);
-        reject(new Error(`等待 ${surface} Webview probe 返回超时（${timeoutMs}ms）。`));
+        reject(new Error(vscode.l10n.t(
+          'Timed out waiting for the {surface} Webview probe to return ({timeoutMs}ms).',
+          { surface, timeoutMs }
+        )));
       }, timeoutMs);
 
       this.pendingWebviewProbeRequests.set(requestId, {
@@ -3865,11 +3987,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (!this.isInteractiveSurface(surface)) {
-      throw new Error(`当前 ${surface} 不是可交互的主画布承载面。`);
+      throw new Error(vscode.l10n.t('{surface} is not the interactive main Canvas surface.', { surface }));
     }
 
     if (!this.surfaceReady[surface]) {
-      throw new Error(`当前 ${surface} 画布尚未完成 ready。`);
+      throw new Error(vscode.l10n.t('{surface} Canvas is not ready yet.', { surface }));
     }
 
     const requestId = `dom-action-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -3879,7 +4001,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingWebviewDomActionRequests.delete(requestId);
-        reject(new Error(`等待 ${surface} Webview DOM 动作返回超时（${timeoutMs}ms）。`));
+        reject(new Error(vscode.l10n.t(
+          'Timed out waiting for the {surface} Webview DOM action to return ({timeoutMs}ms).',
+          { surface, timeoutMs }
+        )));
       }, timeoutMs);
 
       this.pendingWebviewDomActionRequests.set(requestId, {
@@ -4507,8 +4632,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const wasMessageWebview = this.surfaceMessageWebview.editor === editorWebview;
         if (wasMessageWebview) {
           this.bindSurfaceMessageWebview('editor', undefined, 'dispose');
-          this.rejectPendingWebviewProbeRequests('editor', '编辑区 Webview 已被关闭。');
-          this.rejectPendingWebviewDomActionRequests('editor', '编辑区 Webview 已被关闭。');
+          this.rejectPendingWebviewProbeRequests('editor', vscode.l10n.t('Editor Webview was closed.'));
+          this.rejectPendingWebviewDomActionRequests('editor', vscode.l10n.t('Editor Webview was closed.'));
           if (this.editorPanel !== panel) {
             this.recoverSurfaceAfterMessageWebviewDisposed('editor');
           }
@@ -4579,8 +4704,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const wasMessageWebview = this.surfaceMessageWebview.panel === panelWebview;
         if (wasMessageWebview) {
           this.bindSurfaceMessageWebview('panel', undefined, 'dispose');
-          this.rejectPendingWebviewProbeRequests('panel', '面板 Webview 已被关闭。');
-          this.rejectPendingWebviewDomActionRequests('panel', '面板 Webview 已被关闭。');
+          this.rejectPendingWebviewProbeRequests('panel', vscode.l10n.t('Panel Webview was closed.'));
+          this.rejectPendingWebviewDomActionRequests('panel', vscode.l10n.t('Panel Webview was closed.'));
           if (this.panelView !== webviewView) {
             this.recoverSurfaceAfterMessageWebviewDisposed('panel');
           }
@@ -4882,7 +5007,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const affectedNodes = this.state.nodes.filter((node) => affectedNodeIds.has(node.id));
 
     for (const node of affectedNodes) {
-      this.dropPendingTerminalInitialInput(node.id, 'workspace root 已重置为模板，安装命令未写入。');
+      this.dropPendingTerminalInitialInput(
+        node.id,
+        vscode.l10n.t('The workspace root was reset to a template, so the install command was not sent.')
+      );
       this.activeAssociatedNoteMarkdownEdits.delete(node.id);
       if (!isExecutionNodeKind(node.kind)) {
         continue;
@@ -4893,7 +5021,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         await this.terminateExecutionNodeForDeletion(node);
       } catch (error) {
         throw new Error(
-          error instanceof Error ? error.message : '重置 workspace root 模板时清理 live runtime 失败。'
+          error instanceof Error
+            ? error.message
+            : vscode.l10n.t('Failed to clean up live runtime while resetting the workspace root template.')
         );
       }
     }
@@ -4921,13 +5051,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<string[]> {
     const isMultiRootWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 1;
     const resolvedAgentProviders = await this.validateCanvasTemplateForApply(storedTemplate.template);
+    const operationLabel = options?.reset ? vscode.l10n.t('reset') : vscode.l10n.t('apply');
     let targetGroupId = options?.reset && !isMultiRootWorkspace
       ? undefined
       : resolveValidTargetGroupId(this.state.groups ?? [], options?.targetGroupId);
     if (isMultiRootWorkspace && !targetGroupId) {
-      targetGroupId = await this.pickWorkspaceRootGroupId('模板所属 root');
+      targetGroupId = await this.pickWorkspaceRootGroupId(vscode.l10n.t('template root'));
       if (!targetGroupId) {
-        throw new Error(`多根 workspace 中${options?.reset ? '重置' : '应用'}模板需要选择目标 root。`);
+        throw new Error(
+          vscode.l10n.t('In multi-root workspaces, template {operation} requires selecting a target root.', {
+            operation: operationLabel
+          })
+        );
       }
     }
     let targetGroup = targetGroupId
@@ -4942,9 +5077,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ? (this.state.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
       : undefined;
     if (isMultiRootWorkspace && !targetRootGroup) {
-      targetGroupId = await this.pickWorkspaceRootGroupId('模板所属 root');
+      targetGroupId = await this.pickWorkspaceRootGroupId(vscode.l10n.t('template root'));
       if (!targetGroupId) {
-        throw new Error(`多根 workspace 中${options?.reset ? '重置' : '应用'}模板需要选择目标 root。`);
+        throw new Error(
+          vscode.l10n.t('In multi-root workspaces, template {operation} requires selecting a target root.', {
+            operation: operationLabel
+          })
+        );
       }
       targetGroup = (this.state.groups ?? []).find((group) => group.id === targetGroupId);
       targetRootGroupId = targetGroup
@@ -4956,7 +5095,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ? (this.state.groups ?? []).find((group) => group.id === targetRootGroupId && isWorkspaceRootGroup(group))
         : undefined;
       if (!targetRootGroup) {
-        throw new Error(`多根 workspace 中${options?.reset ? '重置' : '应用'}模板需要选择目标 root。`);
+        throw new Error(
+          vscode.l10n.t('In multi-root workspaces, template {operation} requires selecting a target root.', {
+            operation: operationLabel
+          })
+        );
       }
     }
     const targetWorkspaceRootPath = targetRootGroup ? resolveWorkspaceRootPathForGroup(targetRootGroup) : undefined;
@@ -5034,12 +5177,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     targetLabel: string,
     options?: { targetGroupId?: string }
   ): Promise<boolean> {
+    const confirmAction = vscode.l10n.t('Continue Reset');
     const confirmed = await vscode.window.showWarningMessage(
       this.buildCanvasTemplateResetConfirmationMessage(targetLabel, options),
       { modal: true },
-      '继续重置'
+      confirmAction
     );
-    return confirmed === '继续重置';
+    return confirmed === confirmAction;
   }
 
   private buildCanvasTemplateResetConfirmationMessage(
@@ -5047,15 +5191,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options?: { targetGroupId?: string }
   ): string {
     if ((vscode.workspace.workspaceFolders?.length ?? 0) <= 1) {
-      return `重置会清空当前画布对象，并终止运行中的 Agent / Terminal 会话，然后套用${targetLabel}。`;
+      return vscode.l10n.t(
+        'Resetting will clear the current Canvas objects, stop running Agent / Terminal sessions, then apply {target}.',
+        { target: targetLabel }
+      );
     }
 
     const targetRootGroup = this.resolveCanvasTemplateResetConfirmationRootGroup(options?.targetGroupId);
     if (targetRootGroup) {
-      return `重置会清空目标 root「${targetRootGroup.title}」内的画布对象，并终止该 root 内运行中的 Agent / Terminal 会话，然后套用${targetLabel}。`;
+      return vscode.l10n.t(
+        'Resetting will clear Canvas objects in target root "{root}", stop Agent / Terminal sessions in that root, then apply {target}.',
+        { root: targetRootGroup.title, target: targetLabel }
+      );
     }
 
-    return `重置会清空所选 workspace root 内的画布对象，并终止该 root 内运行中的 Agent / Terminal 会话，然后套用${targetLabel}。`;
+    return vscode.l10n.t(
+      'Resetting will clear Canvas objects in the selected workspace root, stop Agent / Terminal sessions in that root, then apply {target}.',
+      { target: targetLabel }
+    );
   }
 
   private resolveCanvasTemplateResetConfirmationRootGroup(targetGroupId?: string): CanvasGroupSummary | undefined {
@@ -5077,7 +5230,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const containsExecutionNode = template.nodes.some((node) => node.kind === 'agent' || node.kind === 'terminal');
 
     if (containsExecutionNode && !vscode.workspace.isTrusted) {
-      throw new Error('当前 workspace 未受信任，只有纯 Note 模板可以应用。');
+      throw new Error(vscode.l10n.t('The current workspace is not trusted. Only Note-only templates can be applied.'));
     }
 
     for (const [index, node] of template.nodes.entries()) {
@@ -5098,7 +5251,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         await this.resolveAgentCli(provider);
       } catch (error) {
         throw new Error(
-          `模板「${template.name}」要求使用 ${agentProviderDisplayLabel(provider)}，但当前环境不可用：${formatUnknownError(error)}`
+          vscode.l10n.t(
+            'Template "{template}" requires {provider}, but it is not available in the current environment: {message}',
+            {
+              template: template.name,
+              provider: agentProviderDisplayLabel(provider),
+              message: formatUnknownError(error)
+            }
+          )
         );
       }
     }
@@ -5125,7 +5285,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       const relativePath = normalizeCanvasTemplateWorkspaceRelativePath(note?.relativePath ?? '');
       if (!relativePath) {
-        throw new Error(`模板「${template.name}」中的 Note「${node.title}」缺少合法 workspace 相对路径。`);
+        throw new Error(
+          vscode.l10n.t('Note "{note}" in template "{template}" is missing a valid workspace-relative path.', {
+            note: node.title,
+            template: template.name
+          })
+        );
       }
 
       const uri = this.resolveCanvasTemplateWorkspaceRelativeMarkdownUri(
@@ -5133,7 +5298,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         options.targetWorkspaceRootPath
       );
       if (!uri) {
-        throw new Error(`当前 workspace 无法解析模板 Note「${node.title}」的相对路径：${relativePath}`);
+        throw new Error(
+          vscode.l10n.t('The current workspace cannot resolve the relative path for template Note "{note}": {path}', {
+            note: node.title,
+            path: relativePath
+          })
+        );
       }
 
       const materialization =
@@ -5219,7 +5389,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       status: 'missing',
       lastError:
         readResult.lastError ??
-        `模板「${templateName}」中的 Note「${noteTitle}」只保留了路径，但当前 workspace 中没有 ${relativePath}。`
+        vscode.l10n.t(
+          'Note "{note}" in template "{template}" only keeps a path, but {path} does not exist in the current workspace.',
+          { note: noteTitle, template: templateName, path: relativePath }
+        )
     });
   }
 
@@ -5236,7 +5409,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (readResult.status !== 'ok') {
-      throw new Error(`无法为模板「${templateName}」应用 Note「${noteTitle}」：${readResult.lastError ?? readResult.status}`);
+      throw new Error(
+        vscode.l10n.t('Could not apply Note "{note}" for template "{template}": {message}', {
+          note: noteTitle,
+          template: templateName,
+          message: readResult.lastError ?? readResult.status
+        })
+      );
     }
 
     if (readResult.content === templateContent) {
@@ -5254,7 +5433,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.createCanvasTemplateAssociatedNoteMaterialization(uri, readResult.content, {
       status: 'dirty-conflict',
       contentRevision: readResult.contentRevision,
-      lastError: `模板「${templateName}」中的 Note「${noteTitle}」与现有文件 ${relativePath} 内容不同。请在节点内重新加载现有文件或覆盖为模板内容。`,
+      lastError: vscode.l10n.t(
+        'Note "{note}" in template "{template}" differs from the existing file {path}. Reload the existing file in the node or overwrite it with the template content.',
+        { note: noteTitle, template: templateName, path: relativePath }
+      ),
       recoverableDraft: {
         ...recoverableDraft,
         content: templateContent
@@ -5459,7 +5641,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       draftId && NOTE_MARKDOWN_RECOVERABLE_DRAFT_ID_PATTERN.test(draftId) ? draftId : randomUUID();
     const draftPath = this.getNoteMarkdownRecoverableDraftPath(nextDraftId);
     if (!draftPath) {
-      throw new Error('无法生成关联 Markdown 草稿文件路径。');
+      throw new Error(vscode.l10n.t('Could not generate the associated Markdown draft file path.'));
     }
 
     fs.mkdirSync(path.dirname(draftPath), {
@@ -6285,7 +6467,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): CanvasPrototypeState {
     const result = downgradeLiveRuntimeNodesMissingRuntimeStoragePath(
       state,
-      'root-local live runtime 缺少 runtimeStoragePath，已恢复为历史结果以避免连接到错误 supervisor。'
+      vscode.l10n.t(
+        'Root-local live runtime is missing runtimeStoragePath, so history results were restored to avoid connecting to the wrong supervisor.'
+      )
     );
     if (result.downgradedCount > 0) {
       this.recordDiagnosticEvent('runtime/missingRuntimeStoragePathDowngraded', {
@@ -6788,23 +6972,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (options.runtimePersistenceChanged || options.filesFeatureEnabledChanged) {
       const changedSettings = [
-        options.defaultSurfaceChanged ? '默认承载面' : undefined,
-        options.runtimePersistenceChanged ? '运行时持久化' : undefined,
-        options.filesFeatureEnabledChanged ? '文件功能开关' : undefined
+        options.defaultSurfaceChanged ? vscode.l10n.t('Default Surface') : undefined,
+        options.runtimePersistenceChanged ? vscode.l10n.t('Runtime persistence') : undefined,
+        options.filesFeatureEnabledChanged ? vscode.l10n.t('Files feature switch') : undefined
       ].filter((label): label is string => Boolean(label));
-      const changeSummary =
-        changedSettings.length > 1
-          ? `${changedSettings.slice(0, -1).join('、')}和${changedSettings[changedSettings.length - 1]}`
-          : changedSettings[0];
+      const changeSummary = formatLocalizedList(changedSettings);
       const followUps = [
-        options.runtimePersistenceChanged ? '切换运行时持久化会在下次加载时清空当前工作区的画布宿主状态。' : undefined,
+        options.runtimePersistenceChanged
+          ? vscode.l10n.t(
+              'Changing runtime persistence will clear the Canvas host state for the current workspace on the next load.'
+            )
+          : undefined,
         options.filesFeatureEnabledChanged
-          ? '切换文件功能开关会在下次加载时清空文件活动状态、文件对象、自动文件关系和文件过滤状态。'
+          ? vscode.l10n.t(
+              'Changing the files feature switch will clear file activity state, file objects, automatic file relationships, and file filter state on the next load.'
+            )
           : undefined
       ].filter((message): message is string => Boolean(message));
-      const message = `${changeSummary}的更改会在重新加载窗口后生效；${followUps.join('')}`;
-      const selection = await vscode.window.showWarningMessage(message, RELOAD_WINDOW_ACTION_LABEL);
-      if (selection === RELOAD_WINDOW_ACTION_LABEL) {
+      const message = vscode.l10n.t('{settings} changes will take effect after reloading the window. {followUps}', {
+        settings: changeSummary,
+        followUps: followUps.join(' ')
+      });
+      const reloadWindowAction = vscode.l10n.t('Reload Window');
+      const selection = await vscode.window.showWarningMessage(message, reloadWindowAction);
+      if (selection === reloadWindowAction) {
         await vscode.commands.executeCommand('workbench.action.reloadWindow');
       }
       return;
@@ -6814,11 +7005,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    const reloadWindowAction = vscode.l10n.t('Reload Window');
     const selection = await vscode.window.showInformationMessage(
-      'Default Surface 的更改会在重新加载窗口后生效。',
-      RELOAD_WINDOW_ACTION_LABEL
+      vscode.l10n.t('Default Surface changes will take effect after reloading the window.'),
+      reloadWindowAction
     );
-    if (selection === RELOAD_WINDOW_ACTION_LABEL) {
+    if (selection === reloadWindowAction) {
       await vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
   }
@@ -6841,8 +7033,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     this.lastUnavailableConfiguredTerminalShellWarningKey = warningKey;
 
-    const selectShellAction = '选择可用 Shell';
-    const openSettingsAction = '打开 Terminal 设置';
+    const selectShellAction = vscode.l10n.t('Select Available Shell');
+    const openSettingsAction = vscode.l10n.t('Open Terminal Settings');
     const selection = await vscode.window.showWarningMessage(
       describeUnavailableConfiguredTerminalShell(inspectedShell),
       selectShellAction,
@@ -6961,7 +7153,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postMessage({
           type: 'host/error',
           payload: {
-            message: error instanceof Error ? error.message : '同步运行中终端 scrollback 配置失败。'
+            message: error instanceof Error
+              ? error.message
+              : vscode.l10n.t('Failed to synchronize running Terminal scrollback configuration.')
           }
         });
         return;
@@ -7146,12 +7340,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         admissionRejectionReason: admission?.rejectionReason ?? null
       });
       if (!uri) {
-        rejectedReasons.push(admission?.rejectionReason ?? '无法识别拖拽资源。');
+        rejectedReasons.push(admission?.rejectionReason ?? vscode.l10n.t('Could not recognize the dragged resource.'));
         continue;
       }
 
       if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
-        rejectedReasons.push(`${this.formatNoteMarkdownUriForMessage(uri)} 不是 Markdown 文件。`);
+        rejectedReasons.push(vscode.l10n.t('{path} is not a Markdown file.', {
+          path: this.formatNoteMarkdownUriForMessage(uri)
+        }));
         continue;
       }
 
@@ -7181,7 +7377,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         const readResult = await this.readNoteMarkdownFile(uri);
         if (readResult.status !== 'ok') {
-          rejectedReasons.push(readResult.lastError ?? `无法读取 ${this.formatNoteMarkdownUriForMessage(uri)}。`);
+          rejectedReasons.push(
+            readResult.lastError ??
+              vscode.l10n.t('Could not read {path}.', { path: this.formatNoteMarkdownUriForMessage(uri) })
+          );
           continue;
         }
 
@@ -7213,7 +7412,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           createdNodeIds.push(createdNode.id);
           offsetIndex += 1;
         } else if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1 && !targetGroupId) {
-          rejectedReasons.push('多根 workspace 中请把 Markdown 文件拖到目标 root section 内。');
+          rejectedReasons.push(
+            vscode.l10n.t('In multi-root workspaces, drop Markdown files inside the target root section.')
+          );
         }
       } finally {
         this.noteMarkdownDropResourceKeysInProgress.delete(resourceKey);
@@ -7228,7 +7429,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: rejectedReasons[0] ?? '没有可创建关联 Note 的 Markdown 文件。'
+          message: rejectedReasons[0] ?? vscode.l10n.t('There are no Markdown files that can create associated Notes.')
         }
       });
       return;
@@ -7792,7 +7993,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state = updateAssociatedNoteMarkdownFileStatus(this.state, payload.nodeId, {
         ...noteMetadata.contentSource,
         status: 'unreadable',
-        lastError: '关联 Markdown 文件 URI 无法解析。'
+        lastError: vscode.l10n.t('The associated Markdown file URI could not be parsed.')
       }, noteMetadata.content);
       this.persistState();
       this.postState('host/stateUpdated');
@@ -7833,7 +8034,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           ...this.formatNoteMarkdownDisplayPathInfo(uri),
           contentRevision: currentReadResult.contentRevision ?? currentRevision,
           status: 'dirty-conflict',
-          lastError: '关联文件在编辑期间被外部修改。请重新加载或覆盖。',
+          lastError: vscode.l10n.t(
+            'The associated file was modified externally while editing. Reload or overwrite it.'
+          ),
           recoverableDraft
         }, currentContent);
         this.persistState();
@@ -7950,7 +8153,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ...source,
       status: isDraftConflict ? 'dirty-conflict' : source.status,
       lastError: isDraftConflict
-        ? '关联文件在编辑期间被外部修改。请重新加载或覆盖。'
+        ? vscode.l10n.t('The associated file was modified externally while editing. Reload or overwrite it.')
         : source.lastError,
       recoverableDraft: this.createStoredNoteMarkdownRecoverableDraft(
         payload.content,
@@ -8023,7 +8226,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         bytes: Buffer.byteLength(content, 'utf8')
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : '复制关联 Markdown 草稿失败。';
+      const message = error instanceof Error ? error.message : vscode.l10n.t('Failed to copy the associated Markdown draft.');
       this.recordDiagnosticEvent('noteMarkdownDraft/copyFailed', {
         nodeId,
         message
@@ -8076,7 +8279,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
         ...source,
         status: 'unreadable',
-        lastError: '关联 Markdown 文件 URI 无法解析。'
+        lastError: vscode.l10n.t('The associated Markdown file URI could not be parsed.')
       }, noteMetadata.content);
       this.persistState();
       this.postState('host/stateUpdated');
@@ -8219,7 +8422,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       (node) => node.kind === 'note' && ensureNoteMetadata(node).contentSource?.kind !== 'markdown-file'
     );
     if (noteNodes.length === 0) {
-      await vscode.window.showInformationMessage('当前画布没有可保存为 Markdown 的 Note。');
+      await vscode.window.showInformationMessage(
+        vscode.l10n.t('The current Canvas has no Notes that can be saved as Markdown.')
+      );
       return undefined;
     }
 
@@ -8230,8 +8435,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         node
       })),
       {
-        title: '保存为 Markdown',
-        placeHolder: '选择 Note'
+        title: vscode.l10n.t('Save as Markdown'),
+        placeHolder: vscode.l10n.t('Select a Note')
       }
     );
     return selected?.node;
@@ -8266,7 +8471,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const items: NoteMarkdownFileQuickPickItem[] = [
           {
             itemKind: 'use-input',
-            label: '$(check) 使用此路径',
+            label: `$(check) ${vscode.l10n.t('Use this path')}`,
             description: inputPath,
             alwaysShow: true
           }
@@ -8301,8 +8506,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         quickPick.items = items;
       };
 
-      quickPick.title = '保存为关联 Markdown 文件';
-      quickPick.placeholder = '输入或选择 Markdown 文件路径';
+      quickPick.title = vscode.l10n.t('Save as Associated Markdown File');
+      quickPick.placeholder = vscode.l10n.t('Enter or select a Markdown file path');
       quickPick.value = initialPath;
       quickPick.matchOnDescription = true;
       quickPick.ignoreFocusOut = true;
@@ -8375,10 +8580,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async confirmExistingNoteMarkdownFile(
     uri: vscode.Uri
   ): Promise<NoteMarkdownExistingFileChoice | undefined> {
-    const overwrite = '覆盖并关联';
-    const keep = '保留并关联';
+    const overwrite = vscode.l10n.t('Overwrite and Associate');
+    const keep = vscode.l10n.t('Keep and Associate');
     const selected = await vscode.window.showWarningMessage(
-      `${this.formatNoteMarkdownUriForMessage(uri)} 已存在。覆盖文件内容，还是保留现有内容直接关联？`,
+      vscode.l10n.t(
+        '{path} already exists. Overwrite the file content, or keep the existing content and associate it directly?',
+        { path: this.formatNoteMarkdownUriForMessage(uri) }
+      ),
       { modal: true },
       overwrite,
       keep
@@ -8396,13 +8604,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     uri: vscode.Uri,
     existingNodeCount: number
   ): Promise<NoteMarkdownExistingDropChoice | undefined> {
-    const create = '添加新 Note';
-    const locate = '定位已有 Note';
+    const create = vscode.l10n.t('Add New Note');
+    const locate = vscode.l10n.t('Locate Existing Note');
     const countText = existingNodeCount > 1
-      ? `已关联到 ${existingNodeCount} 个 Note`
-      : '已关联到一个 Note';
+      ? vscode.l10n.t('associated with {count} Notes', { count: existingNodeCount })
+      : vscode.l10n.t('associated with one Note');
     const selected = await vscode.window.showWarningMessage(
-      `${this.formatNoteMarkdownUriForMessage(uri)} ${countText}。添加新的关联 Note，还是定位到已有的？`,
+      vscode.l10n.t('{path} is already {countText}. Add a new associated Note, or locate the existing one?', {
+        path: this.formatNoteMarkdownUriForMessage(uri),
+        countText
+      }),
       { modal: true },
       create,
       locate
@@ -8420,7 +8631,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
       return {
         status: 'unsupported-extension',
-        lastError: '只能关联 Markdown 文件（.md / .markdown）。'
+        lastError: vscode.l10n.t('Only Markdown files (.md / .markdown) can be associated.')
       };
     }
 
@@ -8430,20 +8641,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } catch {
       return {
         status: 'missing',
-        lastError: `关联文件不可用：${this.formatNoteMarkdownUriForMessage(uri)}`
+        lastError: vscode.l10n.t('Associated file is unavailable: {path}', {
+          path: this.formatNoteMarkdownUriForMessage(uri)
+        })
       };
     }
 
     if (stat.type === vscode.FileType.Directory) {
       return {
         status: 'not-file',
-        lastError: `所选路径是目录：${this.formatNoteMarkdownUriForMessage(uri)}`
+        lastError: vscode.l10n.t('The selected path is a directory: {path}', {
+          path: this.formatNoteMarkdownUriForMessage(uri)
+        })
       };
     }
     if (stat.type !== vscode.FileType.File) {
       return {
         status: 'unreadable',
-        lastError: `所选路径不是有效文件：${this.formatNoteMarkdownUriForMessage(uri)}`
+        lastError: vscode.l10n.t('The selected path is not a valid file: {path}', {
+          path: this.formatNoteMarkdownUriForMessage(uri)
+        })
       };
     }
 
@@ -8512,7 +8729,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         status: 'unreadable',
         content: '',
         contentRevision: statResult.contentRevision,
-        lastError: error instanceof Error ? error.message : `无法读取 ${this.formatNoteMarkdownUriForMessage(uri)}`
+        lastError: error instanceof Error
+          ? error.message
+          : vscode.l10n.t('Could not read {path}.', { path: this.formatNoteMarkdownUriForMessage(uri) })
       };
     }
   }
@@ -8524,7 +8743,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!isSupportedNoteMarkdownFilePath(noteMarkdownUriPathLike(uri))) {
       return {
         ok: false,
-        errorMessage: '只能关联 Markdown 文件（.md / .markdown）。'
+        errorMessage: vscode.l10n.t('Only Markdown files (.md / .markdown) can be associated.')
       };
     }
 
@@ -8538,7 +8757,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } catch (error) {
       return {
         ok: false,
-        errorMessage: error instanceof Error ? error.message : `无法写入 ${this.formatNoteMarkdownUriForMessage(uri)}`
+        errorMessage: error instanceof Error
+          ? error.message
+          : vscode.l10n.t('Could not write {path}.', { path: this.formatNoteMarkdownUriForMessage(uri) })
       };
     }
   }
@@ -8726,7 +8947,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
         ...source,
         status: 'unreadable',
-        lastError: '关联 Markdown 文件 URI 无法解析。'
+        lastError: vscode.l10n.t('The associated Markdown file URI could not be parsed.')
       }, ensureNoteMetadata(node).content);
       this.persistState();
       this.postState('host/stateUpdated');
@@ -8817,7 +9038,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : undefined;
     const nextStatus = draftRetention.markDirtyConflict ? 'dirty-conflict' : readResult.status;
     const nextLastError = draftRetention.markDirtyConflict
-      ? (latestSource.lastError ?? '关联文件在编辑期间被外部修改。请重新加载或覆盖。')
+      ? (latestSource.lastError ?? vscode.l10n.t('The associated file was modified externally while editing. Reload or overwrite it.'))
       : readResult.lastError;
     const nextState = updateAssociatedNoteMarkdownFileStatus(this.state, nodeId, {
       ...latestSource,
@@ -9404,7 +9625,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     }
 
-    throw lastError ?? new Error('无法连接 runtime supervisor。');
+    throw lastError ?? new Error(vscode.l10n.t('Could not connect to the runtime supervisor.'));
   }
 
   private getExecutionSessionOperationKey(kind: ExecutionNodeKind, nodeId: string): string {
@@ -9557,7 +9778,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.markExecutionNodeAsHistoryRestored(
           nodeId,
           kind,
-          `runtime session 类型不匹配：期望 ${kind}，实际 ${snapshot.kind}。`
+          vscode.l10n.t('Runtime session type mismatch: expected {expected}, got {actual}.', {
+            expected: kind,
+            actual: snapshot.kind
+          })
         );
         return;
       }
@@ -9581,9 +9805,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
 
+      const message = localizeRuntimeSupervisorError(
+        error,
+        error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.')
+      ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.'));
       if (
         kind === 'agent' &&
-        this.maybeFallbackAgentLiveRuntimeToResume(nodeId, error instanceof Error ? error.message : '重新附着 live runtime 失败。')
+        this.maybeFallbackAgentLiveRuntimeToResume(
+          nodeId,
+          message
+        )
       ) {
         return;
       }
@@ -9591,7 +9822,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.markExecutionNodeAsHistoryRestored(
         nodeId,
         kind,
-        error instanceof Error ? error.message : '重新附着 live runtime 失败。'
+        message
       );
     }
   }
@@ -9661,7 +9892,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       try {
         client = await this.getRuntimeSupervisorClientForKind(backendKind, {}, runtimeStoragePath);
       } catch (error) {
-        const message = error instanceof Error ? error.message : '无法连接 runtime supervisor。';
+        const message = localizeRuntimeSupervisorError(
+          error,
+          error instanceof Error ? error.message : vscode.l10n.t('Could not connect to the runtime supervisor.')
+        ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not connect to the runtime supervisor.'));
         for (const node of nodes) {
           if (
             node.kind === 'agent' &&
@@ -9810,7 +10044,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private isMissingRuntimeSupervisorSessionError(error: unknown): boolean {
-    return formatUnknownError(error).includes('未找到 runtime session');
+    return isRecord(error) && error.code === RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound;
   }
 
   private async deleteRuntimeSupervisorSessionStrict(
@@ -10181,17 +10415,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
 
     if (wasLive && !snapshot.live) {
+      const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
       await this.postExecutionExitWithFinalSnapshot(
         binding.kind,
         binding.nodeId,
-        snapshot.lastExitMessage ?? '会话已结束。'
+        snapshotExitMessage ?? vscode.l10n.t('Session ended.')
       );
       if (binding.kind === 'agent' && previousSession && snapshot.lifecycle === 'error') {
         await this.markAndNotifyAgentAbnormalInterruption(
           binding.nodeId,
           previousSession,
           snapshot.lifecycle,
-          snapshot.lastExitMessage ?? 'Agent 会话异常退出。',
+          snapshotExitMessage ?? vscode.l10n.t('Agent session exited unexpectedly.'),
           {
             exitCode: snapshot.lastExitCode ?? null,
             signal: snapshot.lastExitSignal ?? null,
@@ -10208,7 +10443,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postMessage({
           type: 'host/error',
           payload: {
-            message: snapshot.lastExitMessage ?? '会话异常退出。'
+            message: snapshotExitMessage ?? vscode.l10n.t('Session exited unexpectedly.')
           }
         });
       }
@@ -10250,6 +10485,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     snapshot: RuntimeSupervisorSessionSnapshot,
     options: { postSnapshot: boolean; historyOnUnavailable: boolean }
   ): void {
+    const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
     if (snapshot.live) {
       const existingNode = this.requireNode(nodeId, kind);
       const existingAgentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : undefined;
@@ -10316,7 +10552,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           serializedTerminalState: sessionSerializedTerminalState,
           lastExitCode: snapshot.lastExitCode,
           lastExitSignal: snapshot.lastExitSignal,
-          lastExitMessage: snapshot.lastExitMessage,
+          lastExitMessage: snapshotExitMessage,
           ...(kind === 'agent'
             ? {
                 lifecycle: session.lifecycleStatus as AgentNodeStatus,
@@ -10349,7 +10585,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (options.historyOnUnavailable) {
-      this.markExecutionNodeAsHistoryRestored(nodeId, kind, snapshot.lastExitMessage, snapshot);
+      this.markExecutionNodeAsHistoryRestored(nodeId, kind, snapshotExitMessage, snapshot);
       return;
     }
 
@@ -10380,6 +10616,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       existingSession?.outputSequence,
       currentMetadata.outputSequence
     );
+    const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
     const serializedTerminalState =
       cloneFreshSerializedTerminalState(snapshot.serializedTerminalState, outputSequence) ??
       (existingSession?.terminalStateTrusted === false
@@ -10388,7 +10625,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: snapshot.lifecycle,
       summary:
-        snapshot.lastExitMessage ||
+        snapshotExitMessage ||
         (kind === 'agent'
           ? summarizeAgentSessionOutput(snapshot.output, snapshot.lifecycle as AgentNodeStatus, snapshot.displayLabel)
           : summarizeEmbeddedTerminalOutput(snapshot.output, snapshot.lifecycle as TerminalNodeStatus)),
@@ -10407,7 +10644,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         outputSequence,
         lastExitCode: snapshot.lastExitCode,
         lastExitSignal: snapshot.lastExitSignal,
-        lastExitMessage: snapshot.lastExitMessage,
+        lastExitMessage: snapshotExitMessage,
         lastCols: snapshot.cols,
         lastRows: snapshot.rows,
         serializedTerminalState,
@@ -10465,9 +10702,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : ensureTerminalMetadata(existingNode).lifecycle);
     const summary =
       reason?.trim() ||
+      (snapshot ? localizeRuntimeSupervisorSnapshotExitMessage(snapshot) : undefined) ||
       (kind === 'agent'
-        ? '未能重新附着到原 Agent live runtime，已恢复为历史结果。'
-        : '未能重新附着到原终端 live runtime，已恢复为历史结果。');
+        ? vscode.l10n.t('Could not reattach to the original Agent live runtime, so history results were restored.')
+        : vscode.l10n.t('Could not reattach to the original Terminal live runtime, so history results were restored.'));
     const outputSequence = maxExecutionOutputSequence(
       snapshot?.outputSequence,
       existingSession?.outputSequence,
@@ -10497,7 +10735,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         outputSequence,
         lastExitCode: snapshot?.lastExitCode ?? currentMetadata.lastExitCode,
         lastExitSignal: snapshot?.lastExitSignal ?? currentMetadata.lastExitSignal,
-        lastExitMessage: snapshot?.lastExitMessage ?? currentMetadata.lastExitMessage ?? summary,
+        lastExitMessage:
+          (snapshot ? localizeRuntimeSupervisorSnapshotExitMessage(snapshot) : undefined) ??
+          currentMetadata.lastExitMessage ??
+          summary,
         lastCols: snapshot?.cols ?? currentMetadata.lastCols,
         lastRows: snapshot?.rows ?? currentMetadata.lastRows,
         serializedTerminalState,
@@ -10556,7 +10797,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.state = updateAgentNode(this.state, nodeId, {
       status: 'resume-ready',
-      summary: '原 Agent live runtime 已断开，将改用可恢复会话继续。',
+      summary: vscode.l10n.t('The original Agent live runtime disconnected. A resumable session will be used instead.'),
       metadata: buildAgentMetadataPatch(this.state, nodeId, {
         lifecycle: 'resume-ready',
         provider: metadata.provider,
@@ -10599,7 +10840,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private requireNode(nodeId: string, kind: ExecutionNodeKind): CanvasNodeSummary {
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
     if (!node) {
-      throw new Error(`未找到 ${kind} 节点 ${nodeId}。`);
+      throw new Error(vscode.l10n.t('Could not find {kind} node {nodeId}.', { kind, nodeId }));
     }
 
     return node;
@@ -10677,8 +10918,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private invalidateSurfaceLifecycle(surface: CanvasSurfaceLocation, mode?: CanvasSurfaceMode): void {
-    this.rejectPendingWebviewProbeRequests(surface, `${formatSurfaceForDiagnostics(surface)} Webview 生命周期已失效。`);
-    this.rejectPendingWebviewDomActionRequests(surface, `${formatSurfaceForDiagnostics(surface)} Webview 生命周期已失效。`);
+    this.rejectPendingWebviewProbeRequests(
+      surface,
+      vscode.l10n.t('{surface} Webview lifecycle is no longer valid.', {
+        surface: formatSurfaceForDiagnostics(surface)
+      })
+    );
+    this.rejectPendingWebviewDomActionRequests(
+      surface,
+      vscode.l10n.t('{surface} Webview lifecycle is no longer valid.', {
+        surface: formatSurfaceForDiagnostics(surface)
+      })
+    );
     this.clearPendingBootstrapHostMessages(surface);
     this.surfaceMode[surface] = mode;
     this.surfaceReady[surface] = false;
@@ -10694,8 +10945,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     surface: CanvasSurfaceLocation,
     mode: CanvasSurfaceMode
   ): WebviewLifecycleIdentity {
-    this.rejectPendingWebviewProbeRequests(surface, `${formatSurfaceForDiagnostics(surface)} Webview 正在重新渲染。`);
-    this.rejectPendingWebviewDomActionRequests(surface, `${formatSurfaceForDiagnostics(surface)} Webview 正在重新渲染。`);
+    this.rejectPendingWebviewProbeRequests(
+      surface,
+      vscode.l10n.t('{surface} Webview is rerendering.', { surface: formatSurfaceForDiagnostics(surface) })
+    );
+    this.rejectPendingWebviewDomActionRequests(
+      surface,
+      vscode.l10n.t('{surface} Webview is rerendering.', { surface: formatSurfaceForDiagnostics(surface) })
+    );
     this.clearPendingBootstrapHostMessages(surface);
     const generation = this.surfaceLifecycle[surface].generation + 1;
     this.surfaceMode[surface] = mode;
@@ -11076,7 +11333,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       // Ignore and fall through to the explicit hint below.
     }
 
-    void vscode.window.showInformationMessage(`请从 Panel 中打开 ${EXTENSION_DISPLAY_NAME} 视图。`);
+    void vscode.window.showInformationMessage(
+      vscode.l10n.t('Open the {name} view from the Panel.', { name: EXTENSION_DISPLAY_NAME })
+    );
   }
 
   private handleWebviewMessage(
@@ -11099,7 +11358,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postMessageToSurface(sourceSurface, {
           type: 'host/error',
           payload: {
-            message: '收到无法识别的消息，已忽略。'
+            message: vscode.l10n.t('Received an unrecognized message and ignored it.')
           }
         });
       }
@@ -11721,10 +11980,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: parsedMessage.payload?.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
+          const message = localizeCanvasTemplateError(error) ?? formatUnknownError(error);
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: formatUnknownError(error)
+              message
             }
           });
         });
@@ -11735,10 +11995,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: parsedMessage.payload.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
+          const message = localizeCanvasTemplateError(error) ?? formatUnknownError(error);
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: formatUnknownError(error)
+              message
             }
           });
         });
@@ -11749,10 +12010,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: parsedMessage.payload?.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
+          const message = localizeCanvasTemplateError(error) ?? formatUnknownError(error);
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: formatUnknownError(error)
+              message
             }
           });
         });
@@ -11763,10 +12025,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           targetGroupId: parsedMessage.payload.targetGroupId,
           focusAppliedNodes: true
         }).catch((error) => {
+          const message = localizeCanvasTemplateError(error) ?? formatUnknownError(error);
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: formatUnknownError(error)
+              message
             }
           });
         });
@@ -12627,8 +12890,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     message: string
   ): Promise<void> {
-    const selection = await vscode.window.showInformationMessage(message, EXECUTION_ATTENTION_FOCUS_ACTION_LABEL);
-    if (selection !== EXECUTION_ATTENTION_FOCUS_ACTION_LABEL) {
+    const focusAction = vscode.l10n.t('View Node');
+    const selection = await vscode.window.showInformationMessage(message, focusAction);
+    if (selection !== focusAction) {
       return;
     }
 
@@ -12638,7 +12902,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async centerExecutionAttentionNode(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === kind);
     if (!node) {
-      void vscode.window.showWarningMessage('通知对应的节点已不存在，无法定位。');
+      void vscode.window.showWarningMessage(
+        vscode.l10n.t('The node for this notification no longer exists and cannot be located.')
+      );
       return;
     }
 
@@ -12646,7 +12912,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       await this.centerNodeInCanvas(nodeId);
     } catch {
       void vscode.window.showWarningMessage(
-        `${kind === 'agent' ? 'Agent' : 'Terminal'}「${trimStoredTerminalText(node.title).trim() || nodeId}」暂时无法定位。`
+        vscode.l10n.t('{kind} "{title}" cannot be located right now.', {
+          kind: formatExecutionNodeKind(kind),
+          title: trimStoredTerminalText(node.title).trim() || nodeId
+        })
       );
     }
   }
@@ -12799,7 +13068,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     signal: ExecutionAttentionSignal
   ): string {
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId);
-    const executionLabel = kind === 'agent' ? 'Agent' : 'Terminal';
+    const executionLabel = formatExecutionNodeKind(kind);
     const nodeLabel = trimStoredTerminalText(node?.title || session.displayLabel || '').trim();
     const displayLabel = nodeLabel || executionLabel;
     const signalMessage = trimStoredTerminalText(signal.message ?? '').trim();
@@ -12813,8 +13082,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return signal.kind === 'bel'
-      ? `${executionLabel}「${displayLabel}」发出终端提醒。`
-      : `${executionLabel}「${displayLabel}」发出终端通知。`;
+      ? vscode.l10n.t('{kind} "{title}" sent a terminal alert.', {
+          kind: executionLabel,
+          title: displayLabel
+        })
+      : vscode.l10n.t('{kind} "{title}" sent a terminal notification.', {
+          kind: executionLabel,
+          title: displayLabel
+        });
   }
 
   private buildAgentAbnormalInterruptionNotificationMessage(
@@ -12832,14 +13107,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       .trim();
 
     if (!normalizedMessage) {
-      return `${providerLabel} Agent「${nodeLabel}」异常中断。`;
+      return vscode.l10n.t('{provider} Agent "{title}" was interrupted unexpectedly.', {
+        provider: providerLabel,
+        title: nodeLabel
+      });
     }
 
     const clippedMessage =
       normalizedMessage.length > EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT
         ? `${normalizedMessage.slice(0, EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT)}...`
         : normalizedMessage;
-    return `${providerLabel} Agent「${nodeLabel}」异常中断：${clippedMessage}`;
+    return vscode.l10n.t('{provider} Agent "{title}" was interrupted unexpectedly: {message}', {
+      provider: providerLabel,
+      title: nodeLabel,
+      message: clippedMessage
+    });
   }
 
   private buildAgentAbnormalStreamInterruptionNotificationMessage(
@@ -12858,7 +13140,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       normalizedMessage.length > EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT
         ? `${normalizedMessage.slice(0, EXECUTION_ATTENTION_NOTIFICATION_TEXT_LIMIT)}...`
         : normalizedMessage;
-    return `${providerLabel} Agent「${nodeLabel}」输出流异常：${clippedMessage}`;
+    return vscode.l10n.t('{provider} Agent "{title}" output stream was interrupted: {message}', {
+      provider: providerLabel,
+      title: nodeLabel,
+      message: clippedMessage
+    });
   }
 
   private recordAgentOutputHeuristicsAndNotifyAbnormalStream(
@@ -13252,7 +13538,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
 
-    if (!options.bypassTrust && !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止 Agent 运行。')) {
+    if (!options.bypassTrust && !this.assertExecutionAllowed(vscode.l10n.t('The current workspace is not trusted. Agent runs are disabled.'))) {
       const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'agent');
       if (blockedNode) {
         this.state = updateAgentNode(this.state, nodeId, {
@@ -13285,7 +13571,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '未找到可启动的 Agent 节点。'
+          message: vscode.l10n.t('No launchable Agent node was found.')
         }
       });
       return;
@@ -13301,7 +13587,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '该 Agent 已在运行中。'
+          message: vscode.l10n.t('This Agent is already running.')
         }
       });
       this.attachExecutionSession('agent', nodeId);
@@ -13354,7 +13640,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       try {
         freshLaunch = this.resolveAgentFreshLaunch(provider, currentMetadata);
       } catch (error) {
-        const message = error instanceof Error ? error.message : '无法解析 Agent 启动命令。';
+        const message = localizeAgentLaunchError(
+          error,
+          vscode.l10n.t('Could not parse the Agent launch command.')
+        ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not parse the Agent launch command.'));
         this.recordDiagnosticEvent('execution/startRejected', {
           kind: 'agent',
           nodeId,
@@ -13409,7 +13698,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.buildAgentLaunchIntent(currentMetadata)
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : '无法解析 Agent 恢复命令。';
+        const message = localizeAgentLaunchError(
+          error,
+          vscode.l10n.t('Could not parse the Agent resume command.')
+        ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not parse the Agent resume command.'));
         this.recordDiagnosticEvent('execution/startRejected', {
           kind: 'agent',
           nodeId,
@@ -13751,12 +14043,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputSubscription = session.process.onData(handleSessionChunk);
       session.exitSubscription = session.process.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
         if (session.stopRequested) {
-          void finalize('stopped', `已停止 ${cliSpec.label} 会话。`, exitCode, signal);
+          void finalize('stopped', vscode.l10n.t('Stopped {label} session.', { label: cliSpec.label }), exitCode, signal);
           return;
         }
 
         if (exitCode === 0) {
-          void finalize('stopped', `${cliSpec.label} 会话已结束。`, exitCode, signal);
+          void finalize('stopped', vscode.l10n.t('{label} session ended.', { label: cliSpec.label }), exitCode, signal);
           return;
         }
 
@@ -13991,7 +14283,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     launchArgs: string[];
   } {
     if (launchPreset === 'custom' && !customLaunchCommand?.trim() && templateArgv === undefined) {
-      throw new Error('自定义启动命令不能为空。');
+      throw new Error(vscode.l10n.t('Custom launch command cannot be empty.'));
     }
 
     const commandLine =
@@ -14000,7 +14292,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : buildFreshAgentCommandLine(provider, launchPreset, customLaunchCommand, defaults);
     const validation = validateAgentCommandLine(commandLine, provider, defaults);
     if (!validation.valid || !validation.parsed) {
-      throw new Error(validation.error ?? '无法解析 Agent 启动命令。');
+      throw new Error(
+        localizeAgentLaunchMessageDescriptor(
+          validation.errorDescriptor,
+          validation.error ?? vscode.l10n.t('Could not parse the Agent launch command.')
+        )
+      );
     }
 
     return {
@@ -14088,7 +14385,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const commandLine = this.buildHistoryResumeCommandLine(provider, sessionId, launchIntent);
     const validation = validateAgentCommandLine(commandLine, provider, this.getAgentLaunchDefaults(provider));
     if (!validation.valid || !validation.parsed) {
-      throw new Error(validation.error ?? '无法解析 Agent 恢复命令。');
+      throw new Error(
+        localizeAgentLaunchMessageDescriptor(
+          validation.errorDescriptor,
+          validation.error ?? vscode.l10n.t('Could not parse the Agent resume command.')
+        )
+      );
     }
 
     return {
@@ -14522,7 +14824,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     } else if (launchMode === 'resume' && !hasExplicitLaunchArgs) {
       if (!resumeContext.sessionId) {
-        throw new Error('缺少可恢复的 Codex 会话标识。');
+        throw new Error(vscode.l10n.t('Missing resumable Codex session ID.'));
       }
       args.push('resume', resumeContext.sessionId);
     }
@@ -14550,7 +14852,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     const normalizedCols = normalizeTerminalCols(cols);
     const normalizedRows = normalizeTerminalRows(rows);
-    if (!options.bypassTrust && !this.assertExecutionAllowed('当前 workspace 未受信任，已禁止终端操作。')) {
+    if (!options.bypassTrust && !this.assertExecutionAllowed(vscode.l10n.t('The current workspace is not trusted. Terminal operations are disabled.'))) {
       const blockedNode = this.state.nodes.find((node) => node.id === nodeId && node.kind === 'terminal');
       if (blockedNode) {
         this.state = updateTerminalNode(this.state, nodeId, {
@@ -14570,7 +14872,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         reason: 'workspace-untrusted'
       });
-      this.dropPendingTerminalInitialInput(nodeId, '当前 workspace 未受信任，安装命令未写入。');
+      this.dropPendingTerminalInitialInput(
+        nodeId,
+        vscode.l10n.t('The current workspace is not trusted, so the install command was not sent.')
+      );
       return;
     }
 
@@ -14584,10 +14889,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '未找到可启动的终端节点。'
+          message: vscode.l10n.t('No launchable Terminal node was found.')
         }
       });
-      this.dropPendingTerminalInitialInput(nodeId, '未找到可启动的终端节点，安装命令未写入。');
+      this.dropPendingTerminalInitialInput(
+        nodeId,
+        vscode.l10n.t('No launchable Terminal node was found, so the install command was not sent.')
+      );
       return;
     }
 
@@ -14600,11 +14908,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '该终端已在运行中。'
+          message: vscode.l10n.t('This Terminal is already running.')
         }
       });
       this.attachExecutionSession('terminal', nodeId);
-      this.dropPendingTerminalInitialInput(nodeId, '该终端已在运行中，安装命令未写入。');
+      this.dropPendingTerminalInitialInput(
+        nodeId,
+        vscode.l10n.t('This Terminal is already running, so the install command was not sent.')
+      );
       return;
     }
 
@@ -14868,12 +15179,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputSubscription = session.process.onData(handleTerminalChunk);
       session.exitSubscription = session.process.onExit(({ exitCode, signal }: ExecutionSessionExitEvent) => {
         if (session.stopRequested) {
-          void finalize('closed', '终端已停止。', exitCode, signal);
+          void finalize('closed', vscode.l10n.t('Terminal stopped.'), exitCode, signal);
           return;
         }
 
         if (exitCode === 0) {
-          void finalize('closed', '终端会话已结束。', exitCode, signal);
+          void finalize('closed', vscode.l10n.t('Terminal session ended.'), exitCode, signal);
           return;
         }
 
@@ -15002,7 +15313,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         });
         resolve({
           dispatched: false,
-          errorMessage: '已创建画布 Terminal，但尚未确认安装命令已输入；请检查 Terminal 节点状态。'
+          errorMessage: vscode.l10n.t(
+            'Created a Canvas Terminal, but could not confirm that the install command was sent. Check the Terminal node status.'
+          )
         });
       }, TERMINAL_INITIAL_INPUT_DISPATCH_TIMEOUT_MS);
 
@@ -15065,7 +15378,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       this.completePendingTerminalInitialInputDispatch(nodeId, {
         dispatched: false,
-        errorMessage: 'Terminal 会话未成功启动，安装命令未写入。'
+        errorMessage: vscode.l10n.t('The Terminal session did not start successfully, so the install command was not sent.')
       });
       return;
     }
@@ -15073,7 +15386,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const inputWritten = await this.writeExecutionInput('terminal', nodeId, input);
     this.completePendingTerminalInitialInputDispatch(nodeId, {
       dispatched: inputWritten,
-      errorMessage: inputWritten ? undefined : 'Terminal 已启动，但安装命令未能写入。'
+      errorMessage: inputWritten
+        ? undefined
+        : vscode.l10n.t('The Terminal started, but the install command could not be sent.')
     });
   }
 
@@ -15138,7 +15453,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (
       !this.assertExecutionAllowed(
-        kind === 'agent' ? '当前 workspace 未受信任，已禁止 Agent 输入。' : '当前 workspace 未受信任，已禁止终端输入。'
+        kind === 'agent'
+          ? vscode.l10n.t('The current workspace is not trusted. Agent input is disabled.')
+          : vscode.l10n.t('The current workspace is not trusted. Terminal input is disabled.')
       )
     ) {
       this.recordDiagnosticEvent('execution/inputRejected', {
@@ -15166,7 +15483,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: 'Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。'
+          message: vscode.l10n.t('Claude Agent nodes do not support Ctrl-Z/fg. Use stop, restart, or fork instead.')
         }
       });
       return false;
@@ -15181,7 +15498,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: 'Claude Code 已挂起，请点击“停止”结束会话后重启。'
+          message: vscode.l10n.t('Claude Code is suspended. Click "Stop" to end the session, then restart.')
         }
       });
       return false;
@@ -15233,7 +15550,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       inputWriteSucceeded = true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : '向 live runtime 写入输入失败。';
+      const message = localizeRuntimeSupervisorError(
+        error,
+        error instanceof Error ? error.message : vscode.l10n.t('Failed to write input to live runtime.')
+      ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Failed to write input to live runtime.'));
       this.recordExecutionPerformanceDiagnostics({
         timestamp: new Date().toISOString(),
         source: 'host-input-write',
@@ -15314,7 +15634,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(sourceSurface, {
         type: 'host/error',
         payload: {
-          message: error instanceof Error ? error.message : '复制终端选区失败。'
+          message: error instanceof Error ? error.message : vscode.l10n.t('Failed to copy the Terminal selection.')
         }
       });
     }
@@ -15344,7 +15664,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(sourceSurface, {
         type: 'host/error',
         payload: {
-          message: error instanceof Error ? error.message : '复制到剪贴板失败。'
+          message: error instanceof Error ? error.message : vscode.l10n.t('Failed to copy to the clipboard.')
         }
       });
     }
@@ -15362,7 +15682,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(sourceSurface, {
         type: 'host/error',
         payload: {
-          message: kind === 'agent' ? '当前 Agent 没有可输入的运行中会话。' : '当前 Terminal 没有可输入的运行中会话。'
+          message: kind === 'agent'
+            ? vscode.l10n.t('The current Agent has no running session that can receive input.')
+            : vscode.l10n.t('The current Terminal has no running session that can receive input.')
         }
       });
       return;
@@ -15381,7 +15703,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(sourceSurface, {
         type: 'host/error',
         payload: {
-          message: error instanceof Error ? error.message : '读取剪贴板失败。'
+          message: error instanceof Error ? error.message : vscode.l10n.t('Failed to read the clipboard.')
         }
       });
       return;
@@ -15394,9 +15716,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (preparedPaste.kind === 'confirm') {
-      const pasteAction = '继续粘贴';
+      const pasteAction = vscode.l10n.t('Continue Paste');
       const selection = await vscode.window.showWarningMessage(
-        `确定要向当前${kind === 'agent' ? ' Agent' : ' Terminal'}粘贴 ${preparedPaste.lineCount} 行文本吗？`,
+        vscode.l10n.t('Paste {count} lines of text into the current {kind}?', {
+          count: preparedPaste.lineCount,
+          kind: formatExecutionNodeKind(kind)
+        }),
         { modal: true },
         pasteAction
       );
@@ -15445,7 +15770,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(sourceSurface, {
         type: 'host/error',
         payload: {
-          message: 'Terminal 节点暂不支持直接粘贴截图。'
+          message: vscode.l10n.t('Terminal nodes do not support direct screenshot paste yet.')
         }
       });
       return;
@@ -15457,7 +15782,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(sourceSurface, {
         type: 'host/error',
         payload: {
-          message: '当前 Agent 没有可输入的运行中会话。'
+          message: vscode.l10n.t('The current Agent has no running session that can receive input.')
         }
       });
       return;
@@ -15478,7 +15803,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(sourceSurface, {
         type: 'host/error',
         payload: {
-          message: '读取截图数据失败。'
+          message: vscode.l10n.t('Failed to read screenshot data.')
         }
       });
       return;
@@ -15503,7 +15828,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(sourceSurface, {
         type: 'host/error',
         payload: {
-          message: '剪贴板中的图片格式不支持或文件过大。'
+          message: vscode.l10n.t('The clipboard image format is unsupported or the file is too large.')
         }
       });
       return;
@@ -15550,7 +15875,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessageToSurface(sourceSurface, {
         type: 'host/error',
         payload: {
-          message: error instanceof Error ? error.message : '保存剪贴板截图失败。'
+          message: error instanceof Error ? error.message : vscode.l10n.t('Failed to save the clipboard screenshot.')
         }
       });
     }
@@ -15698,14 +16023,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.lastExecutionImagePasteCacheMaintenanceErrorNoticeAtMs = nowMs;
-    const detailText = detail ? `：${detail}` : '';
+    const detailText = detail ? vscode.l10n.t(': {detail}', { detail }) : '';
+    const openCacheDirectoryAction = vscode.l10n.t('Open Cache Directory');
     void vscode.window
       .showErrorMessage(
-        `清理 Agent 临时截图缓存失败${detailText}。这不会影响当前 Agent 输入。`,
-        '打开缓存目录'
+        vscode.l10n.t('Failed to clean up Agent temporary screenshot cache{detail}. This will not affect current Agent input.', {
+          detail: detailText
+        }),
+        openCacheDirectoryAction
       )
       .then((selection) => {
-        if (selection === '打开缓存目录') {
+        if (selection === openCacheDirectoryAction) {
           void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(cacheRootPath));
         }
       });
@@ -15783,10 +16111,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             })
           )
           .catch((error) => {
+            const message = localizeRuntimeSupervisorError(
+              error,
+              error instanceof Error ? error.message : vscode.l10n.t('Failed to resize live runtime.')
+            ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Failed to resize live runtime.'));
             this.postMessage({
               type: 'host/error',
               payload: {
-                message: error instanceof Error ? error.message : '调整 live runtime 尺寸失败。'
+                message
               }
             });
           })
@@ -15806,7 +16138,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: kind === 'agent' ? '当前没有可停止的 Agent 会话。' : '当前没有可停止的终端会话。'
+          message: kind === 'agent'
+            ? vscode.l10n.t('There is no Agent session to stop.')
+            : vscode.l10n.t('There is no Terminal session to stop.')
         }
       });
       return;
@@ -15851,10 +16185,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         sessionId: session.runtimeSessionId
       });
     } catch (error) {
+      const message = localizeRuntimeSupervisorError(
+        error,
+        error instanceof Error ? error.message : vscode.l10n.t('Failed to stop live runtime.')
+      ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Failed to stop live runtime.'));
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: error instanceof Error ? error.message : '停止 live runtime 失败。'
+          message
         }
       });
     }
@@ -15914,7 +16252,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '未找到可删除的分组。'
+          message: vscode.l10n.t('No deletable group was found.')
         }
       });
       return;
@@ -15923,7 +16261,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '系统 root section 不能删除；如需从 workspace 移除 folder，请使用 VSCode workspace folder 管理。'
+          message: vscode.l10n.t(
+            'System root sections cannot be deleted. To remove a folder from the workspace, use VS Code workspace folder management.'
+          )
         }
       });
       return;
@@ -15942,12 +16282,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       isWorkspaceRootGroup(groupsById.get(impactGroupId))
     );
     if (containsWorkspaceRootGroup) {
-      const keepRootSectionsAction = { title: '仅删除外层分组并保留 root section' };
+      const keepRootSectionsAction = { title: vscode.l10n.t('Delete Outer Group Only and Keep Root Sections') };
       const selection = await vscode.window.showWarningMessage(
-        `删除分组「${group.title}」？`,
+        vscode.l10n.t('Delete group "{title}"?', { title: group.title }),
         {
           modal: true,
-          detail: '该分组包含系统 root section。root section 不能被删除；删除操作只会移除当前外层分组并保留内部 root。'
+          detail: vscode.l10n.t(
+            'This group contains system root sections. Root sections cannot be deleted; this operation only removes the current outer group and keeps the roots inside.'
+          )
         },
         keepRootSectionsAction
       );
@@ -15963,11 +16305,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const deleteMembersAction = {
-      title: `一并删除内部所有节点与子分组（${deleteImpact.nodeIds.length} 个节点，${Math.max(0, deleteImpact.groupIds.size - 1)} 个子分组）`
+      title: vscode.l10n.t('Delete all contained nodes and subgroups ({nodeCount} nodes, {groupCount} subgroups)', {
+        nodeCount: deleteImpact.nodeIds.length,
+        groupCount: Math.max(0, deleteImpact.groupIds.size - 1)
+      })
     };
-    const keepMembersAction = { title: '仅删除分组框并保留内部对象' };
+    const keepMembersAction = { title: vscode.l10n.t('Delete Group Frame Only and Keep Contents') };
     const selection = await vscode.window.showWarningMessage(
-      `删除分组「${group.title}」？`,
+      vscode.l10n.t('Delete group "{title}"?', { title: group.title }),
       {
         modal: true,
         detail: formatCanvasGroupDeleteImpactDetail(deleteImpact)
@@ -15997,7 +16342,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         continue;
       }
 
-      this.dropPendingTerminalInitialInput(nodeId, '节点已删除，安装命令未写入。');
+      this.dropPendingTerminalInitialInput(
+        nodeId,
+        vscode.l10n.t('The node was deleted, so the install command was not sent.')
+      );
       this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
       if (isExecutionNodeKind(node.kind)) {
         this.invalidateExecutionSessionOperation(node.kind, nodeId);
@@ -16007,7 +16355,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.postMessage({
             type: 'host/error',
             payload: {
-              message: error instanceof Error ? error.message : '删除执行节点时清理 live runtime 失败。'
+              message: error instanceof Error
+                ? error.message
+                : vscode.l10n.t('Failed to clean up live runtime while deleting the execution node.')
             }
           });
           return;
@@ -16053,13 +16403,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '未找到可删除的节点。'
+          message: vscode.l10n.t('No deletable node was found.')
         }
       });
       return;
     }
 
-    this.dropPendingTerminalInitialInput(nodeId, '节点已删除，安装命令未写入。');
+    this.dropPendingTerminalInitialInput(
+      nodeId,
+      vscode.l10n.t('The node was deleted, so the install command was not sent.')
+    );
     this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
 
     if (isExecutionNodeKind(node.kind)) {
@@ -16070,7 +16423,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postMessage({
           type: 'host/error',
           payload: {
-            message: error instanceof Error ? error.message : '删除执行节点时清理 live runtime 失败。'
+            message: error instanceof Error
+              ? error.message
+              : vscode.l10n.t('Failed to clean up live runtime while deleting the execution node.')
           }
         });
         return;
@@ -16859,7 +17214,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '当前 workspace 未受信任，已禁止创建 Agent / Terminal 节点。',
+          message: vscode.l10n.t('The current workspace is not trusted. Agent / Terminal node creation is disabled.'),
           createRequestId: options?.requestId
         }
       });
@@ -16895,7 +17250,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: '多根 workspace 中请在目标 root section 内创建节点，或从 Explorer 资源入口创建执行节点。',
+          message: vscode.l10n.t(
+            'In multi-root workspaces, create nodes inside the target root section, or create execution nodes from Explorer resources.'
+          ),
           createRequestId: options?.requestId
         }
       });
@@ -16911,7 +17268,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.getAgentLaunchDefaults(agentProvider)
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : '无法创建 Agent 节点。';
+        const message = localizeAgentLaunchError(
+          error,
+          vscode.l10n.t('Could not create Agent node.')
+        ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not create Agent node.'));
         this.recordDiagnosticEvent('node/createRejected', {
           kind,
           provider: agentProvider,
@@ -16975,7 +17335,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (createdNode && createdNode.kind === 'agent') {
       this.state = updateAgentNode(nextStateWithOverrides, createdNode.id, {
         status: 'starting',
-        summary: '正在等待节点尺寸就绪后启动 Agent 会话。',
+        summary: vscode.l10n.t('Waiting for node size before starting the Agent session.'),
         metadata: buildAgentMetadataPatch(composedNextState, createdNode.id, {
           lifecycle: 'starting',
           pendingLaunch: 'start',
@@ -16995,7 +17355,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } else if (createdNode && createdNode.kind === 'terminal') {
       this.state = updateTerminalNode(nextStateWithOverrides, createdNode.id, {
         status: 'launching',
-        summary: '正在等待节点尺寸就绪后启动嵌入式终端。',
+        summary: vscode.l10n.t('Waiting for node size before starting the embedded Terminal.'),
         metadata: buildTerminalMetadataPatch(composedNextState, createdNode.id, {
           lifecycle: 'launching',
           pendingLaunch: 'start',
@@ -17081,22 +17441,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): { valid: true; cwd: string } | { valid: false; message: string } {
     const normalizedCwd = normalizeExecutionCwd(cwd);
     if (!normalizedCwd) {
-      return { valid: false, message: '执行目录不能为空。' };
+      return { valid: false, message: vscode.l10n.t('Execution directory cannot be empty.') };
     }
 
     if (!path.isAbsolute(normalizedCwd)) {
-      return { valid: false, message: `执行目录必须是绝对路径：${normalizedCwd}` };
+      return {
+        valid: false,
+        message: vscode.l10n.t('Execution directory must be an absolute path: {cwd}', { cwd: normalizedCwd })
+      };
     }
 
     let stat: fs.Stats;
     try {
       stat = fs.statSync(normalizedCwd);
     } catch {
-      return { valid: false, message: `执行目录不存在或不可访问：${normalizedCwd}` };
+      return {
+        valid: false,
+        message: vscode.l10n.t('Execution directory does not exist or cannot be accessed: {cwd}', { cwd: normalizedCwd })
+      };
     }
 
     if (!stat.isDirectory()) {
-      return { valid: false, message: `执行目录不是文件夹：${normalizedCwd}` };
+      return {
+        valid: false,
+        message: vscode.l10n.t('Execution directory is not a folder: {cwd}', { cwd: normalizedCwd })
+      };
     }
 
     const workspaceFolder = this.resolveExecutionWorkspaceFolder(normalizedCwd);
@@ -17110,7 +17479,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return { valid: true, cwd: workspaceRoot };
         }
       }
-      return { valid: false, message: `执行目录必须位于当前 workspace 内：${normalizedCwd}` };
+      return {
+        valid: false,
+        message: vscode.l10n.t('Execution directory must be inside the current workspace: {cwd}', { cwd: normalizedCwd })
+      };
     }
 
     return { valid: true, cwd: normalizedCwd };
@@ -17130,7 +17502,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private describeUnavailableExecutionCwd(cwd: string): string | undefined {
     const validation = this.validateExecutionCwd(cwd, { allowLegacyDefaultCwd: true });
-    return validation.valid ? undefined : `启动执行节点失败：${validation.message}`;
+    return validation.valid
+      ? undefined
+      : vscode.l10n.t('Failed to start execution node: {message}', { message: validation.message });
   }
 
   private recordHostMessage(
@@ -17305,7 +17679,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (pendingRequest.surface !== surface) {
       clearTimeout(pendingRequest.timeout);
       this.pendingWebviewProbeRequests.delete(requestId);
-      pendingRequest.reject(new Error(`收到来自 ${surface} 的 probe 结果，但请求原本发往 ${pendingRequest.surface}。`));
+      pendingRequest.reject(
+        new Error(vscode.l10n.t(
+          'Received a probe result from {actualSurface}, but the request was originally sent to {expectedSurface}.',
+          { actualSurface: surface, expectedSurface: pendingRequest.surface }
+        ))
+      );
       return;
     }
 
@@ -17364,7 +17743,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       clearTimeout(pendingRequest.timeout);
       this.pendingWebviewDomActionRequests.delete(requestId);
       pendingRequest.reject(
-        new Error(`收到来自 ${surface} 的 DOM 动作结果，但请求原本发往 ${pendingRequest.surface}。`)
+        new Error(vscode.l10n.t(
+          'Received a DOM action result from {actualSurface}, but the request was originally sent to {expectedSurface}.',
+          { actualSurface: surface, expectedSurface: pendingRequest.surface }
+        ))
       );
       return;
     }
@@ -17372,7 +17754,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     clearTimeout(pendingRequest.timeout);
     this.pendingWebviewDomActionRequests.delete(requestId);
     if (!ok) {
-      pendingRequest.reject(new Error(errorMessage || '真实 Webview DOM 动作执行失败。'));
+      pendingRequest.reject(new Error(errorMessage || vscode.l10n.t('Real Webview DOM action failed.')));
       return;
     }
 
@@ -17955,15 +18337,15 @@ function createNextState(
 function defaultSummaryForKind(kind: CanvasNodeKind): string {
   switch (kind) {
     case 'agent':
-      return '尚未启动 Agent 会话。';
+      return vscode.l10n.t('No Agent session has been started yet.');
     case 'terminal':
-      return '尚未启动嵌入式终端。';
+      return vscode.l10n.t('No embedded Terminal has been started yet.');
     case 'note':
-      return '等待记录笔记内容。';
+      return vscode.l10n.t('Waiting for note content.');
     case 'file':
-      return '最近被 Agent 访问的文件。';
+      return vscode.l10n.t('Files recently accessed by Agents.');
     case 'file-list':
-      return '按 Agent 聚合的文件活动列表。';
+      return vscode.l10n.t('File activity list grouped by Agent.');
   }
 }
 
@@ -18461,8 +18843,8 @@ function materializeTemplateNode(
       ? associatedSource.status === 'ok'
         ? summarizeNoteNode(content)
         : associatedSource.status === 'dirty-conflict'
-          ? '关联文件存在编辑冲突。'
-          : '关联文件不可用。'
+          ? vscode.l10n.t('The associated file has an edit conflict.')
+          : vscode.l10n.t('The associated file is unavailable.')
       : summarizeNoteNode(content);
     return {
       ...baseNode,
@@ -19400,12 +19782,19 @@ function collectCanvasGroupDeleteImpact(state: CanvasPrototypeState, groupId: st
 function formatCanvasGroupDeleteImpactDetail(impact: CanvasGroupDeleteImpact): string {
   const childGroupCount = Math.max(0, impact.groupIds.size - 1);
   const parts = [
-    `一并删除会递归删除内部 ${impact.nodeIds.length} 个节点和 ${childGroupCount} 个子分组。`,
-    '仅删除分组框会保留内部对象并提升到当前父级。'
+    vscode.l10n.t('Deleting all contents recursively deletes {nodeCount} nodes and {groupCount} subgroups inside.', {
+      nodeCount: impact.nodeIds.length,
+      groupCount: childGroupCount
+    }),
+    vscode.l10n.t('Deleting only the group frame keeps the contents and promotes them to the current parent.')
   ];
 
   if (impact.executionNodeCount > 0) {
-    parts.push(`其中 ${impact.executionNodeCount} 个执行节点会先终止并清理运行会话。`);
+    parts.push(
+      vscode.l10n.t('{count} execution nodes will be stopped and their runtime sessions cleaned up first.', {
+        count: impact.executionNodeCount
+      })
+    );
   }
 
   return parts.join(' ');
@@ -21332,9 +21721,9 @@ function buildAutomaticFileListArtifacts(
     const fileListNode: CanvasNodeSummary = {
       id: nodeId,
       kind: 'file-list',
-      title: `${agentNode.title} 文件`,
+      title: vscode.l10n.t('{title} Files', { title: agentNode.title }),
       status: 'linked',
-      summary: `共 ${entries.length} 个文件`,
+      summary: vscode.l10n.t('{count} files', { count: entries.length }),
       position,
       size: existingNode?.size ?? estimatedCanvasNodeFootprint('file-list'),
       metadata: {
@@ -21369,9 +21758,9 @@ function buildAutomaticFileListArtifacts(
     const sharedNode: CanvasNodeSummary = {
       id: sharedNodeId,
       kind: 'file-list',
-      title: '共享文件',
+      title: vscode.l10n.t('Shared Files'),
       status: 'linked',
-      summary: `共 ${sharedEntries.length} 个共享文件`,
+      summary: vscode.l10n.t('{count} shared files', { count: sharedEntries.length }),
       position,
       size: existingNode?.size ?? estimatedCanvasNodeFootprint('file-list'),
       metadata: {
@@ -22732,7 +23121,7 @@ function isBootstrapAckGatedHostMessage(type: HostToWebviewMessage['type']): boo
 }
 
 function formatSurfaceForDiagnostics(surface: CanvasSurfaceLocation): string {
-  return surface === 'panel' ? '面板' : '编辑区';
+  return surface === 'panel' ? vscode.l10n.t('Panel') : vscode.l10n.t('Editor');
 }
 
 function summarizeDiagnosticHostMessages(
@@ -22978,46 +23367,72 @@ function buildWebviewLifecycleSurfaceIssues(args: {
   const surfaceLabel = formatSurfaceForDiagnostics(args.surface);
 
   if (!args.attached) {
-    issues.push(`${surfaceLabel} Webview 当前未 attached。`);
+    issues.push(vscode.l10n.t('{surface} Webview is not attached.', { surface: surfaceLabel }));
     return issues;
   }
 
   if (args.active && !args.interactive) {
-    issues.push(`${surfaceLabel} 是 active surface，但当前 mode 不是 active。`);
+    issues.push(vscode.l10n.t('{surface} is the active surface, but its current mode is not active.', { surface: surfaceLabel }));
   }
   if (args.interactive && !args.ready && args.events.rendered > 0) {
-    issues.push(`${surfaceLabel} active Webview 已渲染但尚未 ready。`);
+    issues.push(vscode.l10n.t('{surface} active Webview has rendered but is not ready yet.', { surface: surfaceLabel }));
   }
   if (args.ready && !args.bootstrapAck) {
-    issues.push(`${surfaceLabel} ready 后尚未收到 bootstrapAck。`);
+    issues.push(vscode.l10n.t('{surface} has not received bootstrapAck after ready.', { surface: surfaceLabel }));
   }
   if (args.ready && !args.bootstrapAck && args.hostMessages.bootstrapCount === 0) {
-    issues.push(`${surfaceLabel} ready 后未记录 host/bootstrap 投递。`);
+    issues.push(vscode.l10n.t('{surface} has no recorded host/bootstrap delivery after ready.', { surface: surfaceLabel }));
   }
   if (args.probeError) {
-    issues.push(`${surfaceLabel} probe 失败：${args.probeError}`);
+    issues.push(vscode.l10n.t('{surface} probe failed: {message}', {
+      surface: surfaceLabel,
+      message: args.probeError
+    }));
   }
   if (args.pendingBootstrapHostMessageCount > 0) {
-    issues.push(`${surfaceLabel} 仍有 ${args.pendingBootstrapHostMessageCount} 条消息等待 bootstrapAck flush。`);
+    issues.push(vscode.l10n.t(
+      '{surface} still has {count} messages waiting for bootstrapAck flush.',
+      { surface: surfaceLabel, count: args.pendingBootstrapHostMessageCount }
+    ));
   }
   if (args.attachRenderBurst.detected) {
     issues.push(
-      `${surfaceLabel} 近期 ${args.attachRenderBurst.windowMs ?? '未知'}ms 内出现 ${args.attachRenderBurst.eventCount} 次 attach/render。`
+      vscode.l10n.t(
+        '{surface} had {count} attach/render events within the recent {windowMs}ms window.',
+        {
+          surface: surfaceLabel,
+          count: args.attachRenderBurst.eventCount,
+          windowMs: args.attachRenderBurst.windowMs ?? vscode.l10n.t('unknown')
+        }
+      )
     );
   }
   if (args.events.readyWebviewPromoted > 0) {
-    issues.push(`${surfaceLabel} 已触发 ready Webview promotion。`);
+    issues.push(vscode.l10n.t('{surface} triggered ready Webview promotion.', { surface: surfaceLabel }));
   }
   if (args.events.staleMessageIgnored > 0) {
-    issues.push(`${surfaceLabel} 已忽略 ${args.events.staleMessageIgnored} 条 stale Webview 消息。`);
+    issues.push(vscode.l10n.t('{surface} ignored {count} stale Webview messages.', {
+      surface: surfaceLabel,
+      count: args.events.staleMessageIgnored
+    }));
   }
   if (args.events.staleProbeResultIgnored > 0 || args.events.staleDomActionResultIgnored > 0) {
     issues.push(
-      `${surfaceLabel} 已忽略 stale probe/DOM action 结果：probe=${args.events.staleProbeResultIgnored}, dom=${args.events.staleDomActionResultIgnored}。`
+      vscode.l10n.t(
+        '{surface} ignored stale probe/DOM action results: probe={probeCount}, dom={domCount}.',
+        {
+          surface: surfaceLabel,
+          probeCount: args.events.staleProbeResultIgnored,
+          domCount: args.events.staleDomActionResultIgnored
+        }
+      )
     );
   }
   if (args.events.invalidLifecycleIgnored > 0) {
-    issues.push(`${surfaceLabel} 已忽略 ${args.events.invalidLifecycleIgnored} 条非法 lifecycle 消息。`);
+    issues.push(vscode.l10n.t('{surface} ignored {count} invalid lifecycle messages.', {
+      surface: surfaceLabel,
+      count: args.events.invalidLifecycleIgnored
+    }));
   }
 
   return issues;
@@ -23032,40 +23447,58 @@ function buildWebviewLifecycleRecommendedNextSteps(
   const surfaceLabel = formatSurfaceForDiagnostics(surface);
   if (status === 'blocked') {
     return [
-      `保持 ${surfaceLabel} 空白现场，不要切换承载面；直接分享本次 ${capturedAt} dump 目录。`,
-      '优先查看 webview-lifecycle-summary.json、diagnostic-events.json、host-messages.json 和 panel-probe.json。',
-      '若 ready=false 或 bootstrapAck=false，继续按 Panel restore 路径复验 attach/render/ready 顺序。'
+      vscode.l10n.t(
+        'Keep the blank {surface} scene unchanged, do not switch surfaces, and share the dump directory captured at {capturedAt}.',
+        { surface: surfaceLabel, capturedAt }
+      ),
+      vscode.l10n.t('Check webview-lifecycle-summary.json, diagnostic-events.json, host-messages.json, and panel-probe.json first.'),
+      vscode.l10n.t('If ready=false or bootstrapAck=false, keep validating the attach/render/ready order on the Panel restore path.')
     ];
   }
 
   if (status === 'initializing') {
     return [
-      `${surfaceLabel} 仍在初始化；等待 2-3 秒后再次执行“落盘当前宿主诊断”。`,
-      '如果下一份诊断仍停在 initializing，把两份 dump 目录一起对比。'
+      vscode.l10n.t(
+        '{surface} is still initializing; wait 2-3 seconds, then run "Write Host Diagnostics to Disk" again.',
+        { surface: surfaceLabel }
+      ),
+      vscode.l10n.t('If the next diagnostics still stay at initializing, compare both dump directories together.')
     ];
   }
 
   if (status === 'attention') {
     return [
-      `${surfaceLabel} 当前生命周期已可用，但近期出现过 ${issues.length} 条 lifecycle 线索。`,
-      '如果画布仍空白，下一步应从 Webview runtimeDiagnostic 或前端渲染状态继续排查。'
+      vscode.l10n.t(
+        '{surface} lifecycle is currently usable, but {count} lifecycle clues appeared recently.',
+        { surface: surfaceLabel, count: issues.length }
+      ),
+      vscode.l10n.t('If the Canvas is still blank, investigate Webview runtimeDiagnostic or frontend render state next.')
     ];
   }
 
   if (status === 'healthy') {
     return [
-      `${surfaceLabel} lifecycle 当前健康；如果用户仍看到空白，优先排查前端渲染或节点过滤。`
+      vscode.l10n.t(
+        '{surface} lifecycle is currently healthy; if the user still sees a blank Canvas, investigate frontend rendering or node filtering first.',
+        { surface: surfaceLabel }
+      )
     ];
   }
 
   if (status === 'standby') {
     return [
-      `${surfaceLabel} 当前不是可交互主 surface；如需验证它，请先显式切到该承载面。`
+      vscode.l10n.t(
+        '{surface} is not the interactive main surface right now. Switch to it explicitly before validating it.',
+        { surface: surfaceLabel }
+      )
     ];
   }
 
   return [
-    `${surfaceLabel} Webview 当前未 attached；如需验证它，请先打开对应画布承载面。`
+    vscode.l10n.t(
+      '{surface} Webview is not attached. Open the matching Canvas surface before validating it.',
+      { surface: surfaceLabel }
+    )
   ];
 }
 
@@ -23930,7 +24363,7 @@ function reconcileAgentNodesInArray(
       metadata.runtimeSessionId &&
       (metadata.liveSession || metadata.attachmentState === 'reattaching')
     ) {
-      if (!options.allowLiveRuntimeReconnect) {
+    if (!options.allowLiveRuntimeReconnect) {
         const liveRuntimeReconnectBlockReason =
           options.liveRuntimeReconnectBlockReason ?? 'runtime-persistence-disabled';
         return {
@@ -23955,7 +24388,7 @@ function reconcileAgentNodesInArray(
       return {
         ...node,
         status: 'reattaching',
-        summary: '正在重新连接原 Agent live runtime。',
+        summary: vscode.l10n.t('Reconnecting to the original Agent live runtime.'),
         metadata: {
           ...node.metadata,
           agent: {
@@ -23973,7 +24406,9 @@ function reconcileAgentNodesInArray(
       return {
         ...node,
         status: canResume ? 'resume-ready' : 'interrupted',
-        summary: canResume ? '检测到可恢复的 Agent 会话，正在等待恢复。' : '上一次 Agent 会话在扩展重载后未恢复，可重新启动。',
+        summary: canResume
+          ? vscode.l10n.t('Detected a resumable Agent session and waiting to resume.')
+          : vscode.l10n.t('The previous Agent session was not restored after extension reload. It can be restarted.'),
         metadata: {
           ...node.metadata,
           agent: {
@@ -23991,7 +24426,7 @@ function reconcileAgentNodesInArray(
         return {
           ...node,
           status: 'resume-ready',
-          summary: '检测到可恢复的 Agent 会话，正在等待恢复。',
+          summary: vscode.l10n.t('Detected a resumable Agent session and waiting to resume.'),
           metadata: {
             ...node.metadata,
             agent: {
@@ -24132,7 +24567,7 @@ function reconcileTerminalNodesInArray(
       return {
         ...node,
         status: 'reattaching',
-        summary: '正在重新连接原终端 live runtime。',
+        summary: vscode.l10n.t('Reconnecting to the original Terminal live runtime.'),
         metadata: {
           terminal: {
             ...metadata,
@@ -24148,7 +24583,7 @@ function reconcileTerminalNodesInArray(
       return {
         ...node,
         status: 'interrupted',
-        summary: '上一次嵌入式终端在扩展重载后未恢复，可重新启动。',
+        summary: vscode.l10n.t('The previous embedded Terminal was not restored after extension reload. It can be restarted.'),
         metadata: {
           terminal: {
             ...metadata,
@@ -24500,8 +24935,8 @@ function updateAssociatedNoteMarkdownFileStatus(
     source.status === 'ok'
       ? summarizeNoteNode(nextContent)
       : source.status === 'dirty-conflict'
-        ? '关联文件存在编辑冲突。'
-      : '关联文件不可用。';
+        ? vscode.l10n.t('The associated file has an edit conflict.')
+      : vscode.l10n.t('The associated file is unavailable.');
 
   const nextNodes = state.nodes.map((candidate) =>
     candidate.id === nodeId
@@ -24705,7 +25140,9 @@ function resolveExplorerNoteMarkdownAdmission(
   if (uri.scheme !== 'file') {
     return {
       kind: 'unsupported-scheme',
-      rejectionReason: `不支持关联 ${uri.scheme}: Markdown 资源。`
+      rejectionReason: vscode.l10n.t('Associating {scheme}: Markdown resources is not supported.', {
+        scheme: uri.scheme
+      })
     };
   }
 
@@ -24736,7 +25173,9 @@ function resolveDroppedNoteMarkdownCurrentHostUri(
   if (uri.scheme !== 'vscode-remote') {
     return {
       kind: 'unsupported-scheme',
-      rejectionReason: `不支持关联 ${uri.scheme}: Markdown 资源。`
+      rejectionReason: vscode.l10n.t('Associating {scheme}: Markdown resources is not supported.', {
+        scheme: uri.scheme
+      })
     };
   }
 
@@ -24744,14 +25183,18 @@ function resolveDroppedNoteMarkdownCurrentHostUri(
   if (!normalizedCurrentRemoteAuthority) {
     return {
       kind: 'unknown-current-host',
-      rejectionReason: '无法确认拖拽的 Remote Markdown 文件是否属于当前设备，请等待画板就绪后重试。'
+      rejectionReason: vscode.l10n.t(
+        'Could not confirm whether the dragged Remote Markdown file belongs to the current device. Wait for the Canvas to become ready, then try again.'
+      )
     };
   }
 
   if (normalizeNoteMarkdownAuthority(uri.authority) !== normalizedCurrentRemoteAuthority) {
     return {
       kind: 'foreign-host',
-      rejectionReason: '拖拽的 Markdown 文件来自其他 Remote 设备，未创建关联 Note。'
+      rejectionReason: vscode.l10n.t(
+        'The dragged Markdown file comes from another Remote device, so no associated Note was created.'
+      )
     };
   }
 
@@ -25298,9 +25741,44 @@ function agentProviderDisplayLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
 }
 
+function formatCreatableNodeKind(kind: CanvasCreatableNodeKind): string {
+  if (kind === 'agent') {
+    return 'Agent';
+  }
+  if (kind === 'terminal') {
+    return 'Terminal';
+  }
+  return 'Note';
+}
+
+function formatExecutionNodeKind(kind: ExecutionNodeKind): string {
+  return kind === 'agent' ? 'Agent' : 'Terminal';
+}
+
+function formatLocalizedList(items: readonly string[]): string {
+  if (items.length === 0) {
+    return '';
+  }
+  if (items.length === 1) {
+    return items[0];
+  }
+  if (items.length === 2) {
+    return vscode.l10n.t('{first} and {second}', { first: items[0], second: items[1] });
+  }
+
+  return vscode.l10n.t('{head}, and {last}', {
+    head: items.slice(0, -1).join(vscode.l10n.t(', ')),
+    last: items[items.length - 1]
+  });
+}
+
+function formatForkTitle(title: string): string {
+  return vscode.l10n.t('{title} Fork', { title });
+}
+
 function formatHistoryForkTitle(title: string | undefined): string {
   const baseTitle = title?.trim();
-  return baseTitle ? `${baseTitle} 分叉` : '历史会话分叉';
+  return baseTitle ? formatForkTitle(baseTitle) : vscode.l10n.t('Session History Fork');
 }
 
 function describeCreateNodeBlockReason(
@@ -25308,11 +25786,14 @@ function describeCreateNodeBlockReason(
   blockReason: CreateNodeBlockReason
 ): string {
   if (blockReason === 'workspace-untrusted') {
-    const kindLabel = kind === 'agent' ? 'Agent' : kind === 'terminal' ? 'Terminal' : 'Note';
-    return `当前 workspace 未受信任，暂时不能创建 ${kindLabel} 节点。请先信任当前工作区，再创建执行型节点。`;
+    const kindLabel = formatCreatableNodeKind(kind);
+    return vscode.l10n.t(
+      'The current workspace is not trusted, so {kind} nodes cannot be created right now. Trust the current workspace before creating execution nodes.',
+      { kind: kindLabel }
+    );
   }
 
-  return '当前无法创建该节点。';
+  return vscode.l10n.t('This node cannot be created right now.');
 }
 
 function normalizeExecutionExitSignal(signal: string | undefined): string | undefined {
@@ -25339,7 +25820,7 @@ function normalizeTerminalRows(value: number | undefined): number {
 function summarizeNoteNode(content: string): string {
   const normalizedContent = content.replace(/\s+/g, ' ').trim();
   if (!normalizedContent) {
-    return '等待记录笔记内容。';
+    return vscode.l10n.t('Waiting for note content.');
   }
 
   return normalizedContent.length > 140 ? `${normalizedContent.slice(0, 140)}...` : normalizedContent;
@@ -25391,17 +25872,17 @@ function summarizeEmbeddedTerminalOutput(output: string, status: TerminalNodeSta
   if (!lastLine) {
     switch (status) {
       case 'launching':
-        return '正在启动嵌入式终端。';
+        return vscode.l10n.t('Starting embedded Terminal.');
       case 'stopping':
-        return '正在停止终端会话。';
+        return vscode.l10n.t('Stopping Terminal session.');
       case 'closed':
-        return '终端会话已结束。';
+        return vscode.l10n.t('Terminal session ended.');
       case 'error':
-        return '终端会话异常退出。';
+        return vscode.l10n.t('Terminal session exited unexpectedly.');
       case 'interrupted':
-        return '上一次嵌入式终端在扩展重载后未恢复。';
+        return vscode.l10n.t('The previous embedded Terminal was not restored after extension reload.');
       default:
-        return '嵌入式终端已启动，等待输入。';
+        return vscode.l10n.t('Embedded Terminal is running and waiting for input.');
     }
   }
 
@@ -25419,29 +25900,29 @@ function summarizeAgentSessionOutput(output: string, status: AgentNodeStatus, la
   if (!lastLine) {
     switch (status) {
       case 'starting':
-        return `正在启动 ${label} 会话。`;
+        return vscode.l10n.t('Starting {label} session.', { label });
       case 'resuming':
-        return `正在恢复 ${label} 会话。`;
+        return vscode.l10n.t('Resuming {label} session.', { label });
       case 'running':
-        return `${label} 正在处理输入。`;
+        return vscode.l10n.t('{label} is processing input.', { label });
       case 'waiting-input':
-        return `${label} 已就绪，等待输入。`;
+        return vscode.l10n.t('{label} is ready and waiting for input.', { label });
       case 'stopping':
-        return `正在停止 ${label} 会话。`;
+        return vscode.l10n.t('Stopping {label} session.', { label });
       case 'suspended':
-        return `${label} 已挂起。请点击“停止”结束会话后重启。`;
+        return vscode.l10n.t('{label} is suspended. Click "Stop" to end the session, then restart.', { label });
       case 'resume-ready':
-        return `检测到可恢复的 ${label} 会话。`;
+        return vscode.l10n.t('Detected a resumable {label} session.', { label });
       case 'resume-failed':
-        return `${label} 会话恢复失败。`;
+        return vscode.l10n.t('{label} session resume failed.', { label });
       case 'stopped':
-        return `${label} 会话已结束。`;
+        return vscode.l10n.t('{label} session ended.', { label });
       case 'error':
-        return `${label} 会话异常退出。`;
+        return vscode.l10n.t('{label} session exited unexpectedly.', { label });
       case 'interrupted':
-        return `${label} 会话在扩展重载后未恢复。`;
+        return vscode.l10n.t('{label} session was not restored after extension reload.', { label });
       default:
-        return `${label} 会话尚未启动。`;
+        return vscode.l10n.t('{label} session has not started yet.', { label });
     }
   }
 
@@ -25450,32 +25931,53 @@ function summarizeAgentSessionOutput(output: string, status: AgentNodeStatus, la
 
 function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): string {
   if (isAgentCliResolutionError(error)) {
-    return error.message;
+    return localizeAgentCliResolutionErrorMessage(error);
   }
 
   if (isIncompatibleNodePtyRuntimeError(error)) {
-    return `当前 node-pty 运行时与 VS Code 扩展宿主不兼容，已阻止启动 ${spec.label} 以避免插件崩溃。请重新执行 npm install，或升级到兼容当前 VS Code 版本的依赖后重试。`;
+    return vscode.l10n.t(
+      'The current node-pty runtime is incompatible with the VS Code extension host, so {label} launch was blocked to avoid crashing the extension. Run npm install again, or upgrade dependencies to versions compatible with the current VS Code version, then try again.',
+      { label: spec.label }
+    );
   }
 
   if (isMissingNodePtyDependencyError(error)) {
-    return '缺少 node-pty 运行时依赖，请在仓库根目录执行 npm install 后重试。';
+    return vscode.l10n.t('Missing node-pty runtime dependency. Run npm install in the repository root, then try again.');
+  }
+
+  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
+  if (runtimeSupervisorMessage) {
+    return runtimeSupervisorMessage;
   }
 
   if (isRecord(error) && error.code === 'ENOENT') {
     const suffix =
       process.platform === 'win32'
-        ? '请确认它在 Extension Host 的 PATH 中，或通过设置项显式指定 .exe / .cmd 命令路径。'
-        : '请确认它在 Extension Host 的 PATH 中，或通过设置项显式指定命令路径。';
+        ? vscode.l10n.t(
+            'Make sure it is in the Extension Host PATH, or explicitly configure the .exe / .cmd command path in settings.'
+          )
+        : vscode.l10n.t(
+            'Make sure it is in the Extension Host PATH, or explicitly configure the command path in settings.'
+          );
     const commandLabel =
-      spec.command !== spec.requestedCommand ? `${spec.requestedCommand}（解析结果 ${spec.command}）` : spec.command;
-    return `没有找到 ${spec.label} 命令 ${commandLabel}。${suffix}`;
+      spec.command !== spec.requestedCommand
+        ? vscode.l10n.t('{requested} (resolved to {resolved})', {
+            requested: spec.requestedCommand,
+            resolved: spec.command
+          })
+        : spec.command;
+    return vscode.l10n.t('Could not find {label} command {command}. {suffix}', {
+      label: spec.label,
+      command: commandLabel,
+      suffix
+    });
   }
 
   if (error instanceof Error && error.message) {
-    return `启动 ${spec.label} 失败：${error.message}`;
+    return vscode.l10n.t('Failed to start {label}: {message}', { label: spec.label, message: error.message });
   }
 
-  return `启动 ${spec.label} 失败。`;
+  return vscode.l10n.t('Failed to start {label}.', { label: spec.label });
 }
 
 function isAgentCliCommandNotFoundLaunchError(error: unknown): boolean {
@@ -25483,8 +25985,54 @@ function isAgentCliCommandNotFoundLaunchError(error: unknown): boolean {
 }
 
 function describeAgentResumeSpawnError(spec: AgentCliSpec, error: unknown): string {
-  const message = describeAgentSessionSpawnError(spec, error);
-  return message.replace(/^启动/, '恢复');
+  if (isAgentCliResolutionError(error)) {
+    return localizeAgentCliResolutionErrorMessage(error);
+  }
+
+  if (isIncompatibleNodePtyRuntimeError(error)) {
+    return vscode.l10n.t(
+      'The current node-pty runtime is incompatible with the VS Code extension host, so {label} resume was blocked to avoid crashing the extension. Run npm install again, or upgrade dependencies to versions compatible with the current VS Code version, then try again.',
+      { label: spec.label }
+    );
+  }
+
+  if (isMissingNodePtyDependencyError(error)) {
+    return vscode.l10n.t('Missing node-pty runtime dependency. Run npm install in the repository root, then try again.');
+  }
+
+  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
+  if (runtimeSupervisorMessage) {
+    return runtimeSupervisorMessage;
+  }
+
+  if (isRecord(error) && error.code === 'ENOENT') {
+    const suffix =
+      process.platform === 'win32'
+        ? vscode.l10n.t(
+            'Make sure it is in the Extension Host PATH, or explicitly configure the .exe / .cmd command path in settings.'
+          )
+        : vscode.l10n.t(
+            'Make sure it is in the Extension Host PATH, or explicitly configure the command path in settings.'
+          );
+    const commandLabel =
+      spec.command !== spec.requestedCommand
+        ? vscode.l10n.t('{requested} (resolved to {resolved})', {
+            requested: spec.requestedCommand,
+            resolved: spec.command
+          })
+        : spec.command;
+    return vscode.l10n.t('Could not find {label} command {command}. {suffix}', {
+      label: spec.label,
+      command: commandLabel,
+      suffix
+    });
+  }
+
+  if (error instanceof Error && error.message) {
+    return vscode.l10n.t('Failed to resume {label}: {message}', { label: spec.label, message: error.message });
+  }
+
+  return vscode.l10n.t('Failed to resume {label}.', { label: spec.label });
 }
 
 function describeAgentSessionExit(
@@ -25494,18 +26042,27 @@ function describeAgentSessionExit(
   output: string
 ): string {
   const summary = summarizeAgentSessionOutput(output, 'stopped', spec.label);
-  const suffix = summary === `${spec.label} 会话已结束。` ? '' : ` ${summary}`;
+  const defaultEndedSummary = vscode.l10n.t('{label} session ended.', { label: spec.label });
+  const suffix = summary === defaultEndedSummary ? '' : ` ${summary}`;
   const normalizedSignal = normalizeExecutionExitSignal(signal);
 
   if (normalizedSignal) {
-    return `${spec.label} 因信号 ${normalizedSignal} 退出。${suffix}`.trim();
+    return vscode.l10n.t('{label} exited due to signal {signal}.{suffix}', {
+      label: spec.label,
+      signal: normalizedSignal,
+      suffix
+    }).trim();
   }
 
   if (typeof code === 'number') {
-    return `${spec.label} 以退出码 ${code} 结束。${suffix}`.trim();
+    return vscode.l10n.t('{label} ended with exit code {code}.{suffix}', {
+      label: spec.label,
+      code,
+      suffix
+    }).trim();
   }
 
-  return `${spec.label} 提前结束。${suffix}`.trim();
+  return vscode.l10n.t('{label} ended early.{suffix}', { label: spec.label, suffix }).trim();
 }
 
 function describeAgentResumeFailure(
@@ -25515,32 +26072,41 @@ function describeAgentResumeFailure(
   output: string
 ): string {
   const summary = summarizeAgentSessionOutput(output, 'resume-failed', spec.label);
-  const suffix = summary === `${spec.label} 会话恢复失败。` ? '' : ` ${summary}`;
+  const defaultResumeFailedSummary = vscode.l10n.t('{label} session resume failed.', { label: spec.label });
+  const suffix = summary === defaultResumeFailedSummary ? '' : ` ${summary}`;
   const normalizedSignal = normalizeExecutionExitSignal(signal);
 
   if (normalizedSignal) {
-    return `恢复 ${spec.label} 时收到信号 ${normalizedSignal}。${suffix}`.trim();
+    return vscode.l10n.t('Received signal {signal} while resuming {label}.{suffix}', {
+      signal: normalizedSignal,
+      label: spec.label,
+      suffix
+    }).trim();
   }
 
   if (typeof code === 'number') {
-    return `恢复 ${spec.label} 时进程以退出码 ${code} 结束。${suffix}`.trim();
+    return vscode.l10n.t('Process ended with exit code {code} while resuming {label}.{suffix}', {
+      code,
+      label: spec.label,
+      suffix
+    }).trim();
   }
 
-  return `恢复 ${spec.label} 失败。${suffix}`.trim();
+  return vscode.l10n.t('Failed to resume {label}.{suffix}', { label: spec.label, suffix }).trim();
 }
 
 function describeBlockedAgentLiveRuntimeSummary(blockReason: LiveRuntimeReconnectBlockReason): string {
   if (blockReason === 'workspace-untrusted') {
-    return '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。';
+    return vscode.l10n.t('The current workspace is not trusted. The original Agent live runtime will not reconnect, and only history results are shown.');
   }
-  return '运行时持久化已关闭，原 Agent live runtime 已恢复为历史结果。';
+  return vscode.l10n.t('Runtime persistence is disabled. The original Agent live runtime was restored as history results.');
 }
 
 function describeBlockedTerminalLiveRuntimeSummary(blockReason: LiveRuntimeReconnectBlockReason): string {
   if (blockReason === 'workspace-untrusted') {
-    return '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。';
+    return vscode.l10n.t('The current workspace is not trusted. The original Terminal live runtime will not reconnect, and only history results are shown.');
   }
-  return '运行时持久化已关闭，原终端 live runtime 已恢复为历史结果。';
+  return vscode.l10n.t('Runtime persistence is disabled. The original Terminal live runtime was restored as history results.');
 }
 
 function normalizeOptionalAgentLifecycle(value: unknown): AgentNodeStatus | undefined {
@@ -25577,34 +26143,53 @@ function isAgentInstructionSubmission(data: string): boolean {
 
 function describeUnavailableConfiguredTerminalShell(shell: InspectedConfiguredTerminalShell): string {
   if (shell.resolutionSource === 'path') {
-    return `当前配置的 Terminal shell 路径不可用：${shell.configuredPath || shell.resolvedPath}。新的嵌入式 Terminal 启动可能失败；请改成当前设备实际可用的 shell。`;
+    return vscode.l10n.t(
+      'The configured Terminal shell path is unavailable: {path}. New embedded Terminals may fail to start. Change it to a shell that is available on the current device.',
+      { path: shell.configuredPath || shell.resolvedPath }
+    );
   }
 
   if (shell.resolutionSource === 'named-shell') {
-    return `当前设备上未找到设置项 \`devSessionCanvas.terminal.shell=${shell.configuredShell}\` 对应的可用 shell。新的嵌入式 Terminal 启动可能失败；请改选当前设备实际支持的 shell。`;
+    return vscode.l10n.t(
+      'No available shell matching `devSessionCanvas.terminal.shell={shell}` was found on the current device. New embedded Terminals may fail to start. Select a shell supported by the current device.',
+      { shell: shell.configuredShell }
+    );
   }
 
-  return `当前设备的默认 shell 暂不可用：${shell.resolvedPath || '未解析到路径'}。新的嵌入式 Terminal 启动可能失败；请检查宿主环境，或手动指定可用 shell。`;
+  return vscode.l10n.t(
+    'The current device default shell is unavailable: {path}. New embedded Terminals may fail to start. Check the host environment, or manually specify an available shell.',
+    { path: shell.resolvedPath || vscode.l10n.t('no path resolved') }
+  );
 }
 
 function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): string {
   if (isIncompatibleNodePtyRuntimeError(error)) {
-    return '当前 node-pty 运行时与 VS Code 扩展宿主不兼容，已阻止启动嵌入式终端以避免插件崩溃。请重新执行 npm install，或升级到兼容当前 VS Code 版本的依赖后重试。';
+    return vscode.l10n.t(
+      'The current node-pty runtime is incompatible with the VS Code extension host, so embedded Terminal launch was blocked to avoid crashing the extension. Run npm install again, or upgrade dependencies to versions compatible with the current VS Code version, then try again.'
+    );
   }
 
   if (isMissingNodePtyDependencyError(error)) {
-    return '缺少 node-pty 运行时依赖，请在仓库根目录执行 npm install 后重试。';
+    return vscode.l10n.t('Missing node-pty runtime dependency. Run npm install in the repository root, then try again.');
+  }
+
+  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
+  if (runtimeSupervisorMessage) {
+    return runtimeSupervisorMessage;
   }
 
   if (isRecord(error) && error.code === 'ENOENT') {
-    return `没有找到启动嵌入式终端所需的 shell 或命令：${shellPath}。请检查终端 shell 路径配置，或确认当前平台可正常加载 node-pty 运行时。`;
+    return vscode.l10n.t(
+      'Could not find the shell or command required to start the embedded Terminal: {shell}. Check the Terminal shell path setting, or confirm that node-pty can load on the current platform.',
+      { shell: shellPath }
+    );
   }
 
   if (error instanceof Error && error.message) {
-    return `启动嵌入式终端失败：${error.message}`;
+    return vscode.l10n.t('Failed to start embedded Terminal: {message}', { message: error.message });
   }
 
-  return '启动嵌入式终端失败。';
+  return vscode.l10n.t('Failed to start embedded Terminal.');
 }
 
 function describeEmbeddedTerminalExit(
@@ -25614,18 +26199,27 @@ function describeEmbeddedTerminalExit(
   output: string
 ): string {
   const summary = summarizeEmbeddedTerminalOutput(output, 'closed');
-  const suffix = summary === '终端会话已结束。' ? '' : ` ${summary}`;
+  const defaultClosedSummary = vscode.l10n.t('Terminal session ended.');
+  const suffix = summary === defaultClosedSummary ? '' : ` ${summary}`;
   const normalizedSignal = normalizeExecutionExitSignal(signal);
 
   if (normalizedSignal) {
-    return `终端 shell ${shellPath} 因信号 ${normalizedSignal} 退出。${suffix}`.trim();
+    return vscode.l10n.t('Terminal shell {shell} exited due to signal {signal}.{suffix}', {
+      shell: shellPath,
+      signal: normalizedSignal,
+      suffix
+    }).trim();
   }
 
   if (typeof code === 'number') {
-    return `终端 shell ${shellPath} 以退出码 ${code} 结束。${suffix}`.trim();
+    return vscode.l10n.t('Terminal shell {shell} ended with exit code {code}.{suffix}', {
+      shell: shellPath,
+      code,
+      suffix
+    }).trim();
   }
 
-  return `终端 shell ${shellPath} 已结束。${suffix}`.trim();
+  return vscode.l10n.t('Terminal shell {shell} ended.{suffix}', { shell: shellPath, suffix }).trim();
 }
 
 function isLegacyPlaceholderTerminal(node: CanvasNodeSummary): boolean {
@@ -25643,14 +26237,14 @@ function buildCanvasTemplateStorageLocations(context: vscode.ExtensionContext): 
       ?.filter((folder) => folder.uri.scheme === 'file')
       .map<CanvasTemplateStorageLocation>((folder) => ({
         id: `workspace:${folder.uri.fsPath}`,
-        label: `当前 workspace · ${folder.name}`,
+        label: vscode.l10n.t('Current workspace · {name}', { name: folder.name }),
         rootPath: path.join(folder.uri.fsPath, '.dev-session-canvas', 'templates'),
         scope: 'workspace'
       })) ?? [];
 
   const globalLocation: CanvasTemplateStorageLocation = {
     id: 'global',
-    label: '当前设备',
+    label: vscode.l10n.t('Current device'),
     rootPath: path.join(context.globalStorageUri.fsPath, 'templates'),
     scope: 'global'
   };

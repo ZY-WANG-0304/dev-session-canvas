@@ -101,6 +101,7 @@ export interface CanvasTemplateDocument {
 export interface ParsedCanvasTemplateDocument {
   document: CanvasTemplateDocument;
   warnings: string[];
+  warningDescriptors: CanvasTemplateMessageDescriptor[];
 }
 
 export interface CanvasTemplateSortMetadata {
@@ -117,6 +118,214 @@ export interface CanvasTemplateCaptureResult {
   template: CanvasTemplate;
   ignoredNodeIds: string[];
   ignoredEdgeIds: string[];
+}
+
+export type CanvasTemplateMessageId =
+  | 'documentNotObject'
+  | 'unsupportedVersion'
+  | 'missingVersion'
+  | 'missingTemplateBody'
+  | 'emptyTemplate'
+  | 'noCompatibleNodesForSave'
+  | 'associatedNoteRelativePathInvalid'
+  | 'nodesNotArray'
+  | 'nodeKindInvalid'
+  | 'nodeGroupIndexMissing'
+  | 'noteContentModeUnsupported'
+  | 'noteRelativePathInvalid'
+  | 'nonAgentMetadataIgnored'
+  | 'nonNoteMetadataIgnored'
+  | 'groupsNotArray'
+  | 'groupInvalidObject'
+  | 'groupParentIndexMissing'
+  | 'groupParentSelf'
+  | 'groupParentCycle'
+  | 'edgesNotArray'
+  | 'edgeInvalidObject'
+  | 'edgeNodeIndexMissing'
+  | 'edgeAnchorMissing'
+  | 'templateNameEmpty'
+  | 'positionMissing'
+  | 'sizeMissing'
+  | 'templateJsonInvalid'
+  | 'marketplacePackageTemplatePathUnsafe'
+  | 'marketplacePackageTemplateMissing'
+  | 'marketplacePackageEntryPathUnsafe'
+  | 'userTemplatePathOutsideDirectory'
+  | 'marketplacePackageSidecarInvalid'
+  | 'marketplacePackageSidecarTemplatePathUnsafe'
+  | 'templateHierarchyDotSegment'
+  | 'templateHierarchyIllegalPathCharacter'
+  | 'utf8Invalid';
+
+export interface CanvasTemplateMessageDescriptor {
+  id: CanvasTemplateMessageId;
+  params?: Record<string, string>;
+}
+
+const CANVAS_TEMPLATE_MESSAGE_IDS = new Set<string>([
+  'documentNotObject',
+  'unsupportedVersion',
+  'missingVersion',
+  'missingTemplateBody',
+  'emptyTemplate',
+  'noCompatibleNodesForSave',
+  'associatedNoteRelativePathInvalid',
+  'nodesNotArray',
+  'nodeKindInvalid',
+  'nodeGroupIndexMissing',
+  'noteContentModeUnsupported',
+  'noteRelativePathInvalid',
+  'nonAgentMetadataIgnored',
+  'nonNoteMetadataIgnored',
+  'groupsNotArray',
+  'groupInvalidObject',
+  'groupParentIndexMissing',
+  'groupParentSelf',
+  'groupParentCycle',
+  'edgesNotArray',
+  'edgeInvalidObject',
+  'edgeNodeIndexMissing',
+  'edgeAnchorMissing',
+  'templateNameEmpty',
+  'positionMissing',
+  'sizeMissing',
+  'templateJsonInvalid',
+  'marketplacePackageTemplatePathUnsafe',
+  'marketplacePackageTemplateMissing',
+  'marketplacePackageEntryPathUnsafe',
+  'userTemplatePathOutsideDirectory',
+  'marketplacePackageSidecarInvalid',
+  'marketplacePackageSidecarTemplatePathUnsafe',
+  'templateHierarchyDotSegment',
+  'templateHierarchyIllegalPathCharacter',
+  'utf8Invalid'
+]);
+
+export class CanvasTemplateError extends Error {
+  public readonly code = 'DEV_SESSION_CANVAS_TEMPLATE_ERROR';
+
+  public constructor(public readonly descriptor: CanvasTemplateMessageDescriptor) {
+    super(formatCanvasTemplateMessageDescriptor(descriptor));
+    this.name = 'CanvasTemplateError';
+  }
+}
+
+export function createCanvasTemplateError(descriptor: CanvasTemplateMessageDescriptor): CanvasTemplateError {
+  return new CanvasTemplateError(descriptor);
+}
+
+export function getCanvasTemplateErrorDescriptor(error: unknown): CanvasTemplateMessageDescriptor | undefined {
+  if (!isCanvasTemplateError(error)) {
+    return undefined;
+  }
+
+  const descriptor = error.descriptor;
+  return isCanvasTemplateMessageDescriptor(descriptor) ? descriptor : undefined;
+}
+
+export function formatCanvasTemplateMessageDescriptor(descriptor: CanvasTemplateMessageDescriptor): string {
+  const params = descriptor.params ?? {};
+  switch (descriptor.id) {
+    case 'documentNotObject':
+      return 'Template file is not a valid JSON object.';
+    case 'unsupportedVersion':
+      return `Template version ${params.version ?? '<unknown>'} is not compatible with the current extension.`;
+    case 'missingVersion':
+      return 'Template file is missing a supported version field.';
+    case 'missingTemplateBody':
+      return 'Template file is missing the template body.';
+    case 'emptyTemplate':
+      return 'Template must contain at least one node.';
+    case 'noCompatibleNodesForSave':
+      return 'The current Canvas has no Agent / Terminal / Note nodes that can be saved as a template.';
+    case 'associatedNoteRelativePathInvalid':
+      return `Associated Markdown Note "${params.title ?? '<unknown>'}" is missing a valid workspace-relative path.`;
+    case 'nodesNotArray':
+      return 'Template nodes field must be an array.';
+    case 'nodeKindInvalid':
+      return `Template node ${params.index ?? '<unknown>'} is missing a valid kind.`;
+    case 'nodeGroupIndexMissing':
+      return `Template node ${params.index ?? '<unknown>'} references a missing group index.`;
+    case 'noteContentModeUnsupported':
+      return `Template node "${params.title ?? '<unknown>'}" uses an unsupported Note content mode.`;
+    case 'noteRelativePathInvalid':
+      return `Template node "${params.title ?? '<unknown>'}" is missing a valid workspace-relative Markdown path.`;
+    case 'nonAgentMetadataIgnored':
+      return `Template node "${params.title ?? '<unknown>'}" is not an Agent, so agent metadata was ignored.`;
+    case 'nonNoteMetadataIgnored':
+      return `Template node "${params.title ?? '<unknown>'}" is not a Note, so note metadata was ignored.`;
+    case 'groupsNotArray':
+      return 'Template groups field must be an array.';
+    case 'groupInvalidObject':
+      return `Template group ${params.index ?? '<unknown>'} is not a valid object.`;
+    case 'groupParentIndexMissing':
+      return `Template group ${params.index ?? '<unknown>'} references a missing parent group index.`;
+    case 'groupParentSelf':
+      return `Template group ${params.index ?? '<unknown>'} cannot reference itself as its parent group.`;
+    case 'groupParentCycle':
+      return `Template group ${params.index ?? '<unknown>'} creates a cyclic parent-child relationship.`;
+    case 'edgesNotArray':
+      return 'Template edges field must be an array.';
+    case 'edgeInvalidObject':
+      return `Template edge ${params.index ?? '<unknown>'} is not a valid object.`;
+    case 'edgeNodeIndexMissing':
+      return `Template edge ${params.index ?? '<unknown>'} references a missing node index.`;
+    case 'edgeAnchorMissing':
+      return `Template edge ${params.index ?? '<unknown>'} is missing a valid anchor.`;
+    case 'templateNameEmpty':
+      return 'Template name cannot be empty.';
+    case 'positionMissing':
+      return `${formatCanvasTemplateMessageSubject(params)} is missing a valid position.`;
+    case 'sizeMissing':
+      return `${formatCanvasTemplateMessageSubject(params)} is missing a valid size.`;
+    case 'templateJsonInvalid':
+      return `Template file is not valid JSON: ${params.message ?? '<unknown>'}`;
+    case 'marketplacePackageTemplatePathUnsafe':
+      return `Full template package path is unsafe: ${params.path ?? '<unknown>'}`;
+    case 'marketplacePackageTemplateMissing':
+      return `Full template package is missing ${params.path ?? '<unknown>'}.`;
+    case 'marketplacePackageEntryPathUnsafe':
+      return `Full template package path is unsafe: ${params.path ?? '<unknown>'}`;
+    case 'userTemplatePathOutsideDirectory':
+      return `User template path is outside the template directory: ${params.path ?? '<unknown>'}`;
+    case 'marketplacePackageSidecarInvalid':
+      return 'Marketplace template package sidecar could not be recognized.';
+    case 'marketplacePackageSidecarTemplatePathUnsafe':
+      return `templatePath in the marketplace template package sidecar is unsafe: ${params.path ?? '<unknown>'}`;
+    case 'templateHierarchyDotSegment':
+      return 'Template hierarchy cannot contain . or .. segments.';
+    case 'templateHierarchyIllegalPathCharacter':
+      return `Template hierarchy "${params.segment ?? '<unknown>'}" contains invalid path characters.`;
+    case 'utf8Invalid':
+      return `${params.path ?? '<unknown>'} is not valid UTF-8 text.`;
+    default:
+      return 'Canvas template operation failed.';
+  }
+}
+
+function isCanvasTemplateError(error: unknown): error is CanvasTemplateError {
+  return error instanceof CanvasTemplateError ||
+    (isRecord(error) && error.code === 'DEV_SESSION_CANVAS_TEMPLATE_ERROR');
+}
+
+function isCanvasTemplateMessageDescriptor(value: unknown): value is CanvasTemplateMessageDescriptor {
+  if (!isRecord(value) || typeof value.id !== 'string' || !CANVAS_TEMPLATE_MESSAGE_IDS.has(value.id)) {
+    return false;
+  }
+
+  return value.params === undefined || isStringRecord(value.params);
+}
+
+function formatCanvasTemplateMessageSubject(params: Record<string, string>): string {
+  switch (params.subjectId) {
+    case 'templateNode':
+      return `Template node "${params.title ?? params.index ?? '<unknown>'}"`;
+    case 'templateGroup':
+      return `Template group ${params.index ?? '<unknown>'}`;
+    default:
+      return params.label ?? 'Template item';
+  }
 }
 
 export function isCanvasTemplateCategory(value: unknown): value is CanvasTemplateCategory {
@@ -166,31 +375,35 @@ export function parseCanvasTemplateDocument(
   } = {}
 ): ParsedCanvasTemplateDocument {
   if (!isRecord(value)) {
-    throw new Error('模板文件不是有效的 JSON 对象。');
+    throw createCanvasTemplateError({ id: 'documentNotObject' });
   }
 
   if (value.version !== CANVAS_TEMPLATE_DOCUMENT_VERSION) {
-    throw new Error(
+    throw createCanvasTemplateError(
       typeof value.version === 'number'
-        ? `模板版本 ${value.version} 与当前扩展不兼容。`
-        : '模板文件缺少受支持的 version 字段。'
+        ? {
+            id: 'unsupportedVersion',
+            params: { version: String(value.version) }
+          }
+        : { id: 'missingVersion' }
     );
   }
 
   const templateValue = isRecord(value.template) ? value.template : null;
   if (!templateValue) {
-    throw new Error('模板文件缺少 template 主体。');
+    throw createCanvasTemplateError({ id: 'missingTemplateBody' });
   }
 
   const warnings: string[] = [];
+  const warningDescriptors: CanvasTemplateMessageDescriptor[] = [];
   const category = options.forceCategory ?? resolveTemplateCategory(templateValue.category, options.defaultCategory);
   const now = new Date().toISOString();
   const groups = parseTemplateGroups(templateValue.groups);
-  const nodes = parseTemplateNodes(templateValue.nodes, warnings, groups.length);
+  const nodes = parseTemplateNodes(templateValue.nodes, warnings, warningDescriptors, groups.length);
   const edges = parseTemplateEdges(templateValue.edges, nodes.length);
 
   if (nodes.length === 0) {
-    throw new Error('模板至少需要包含一个节点。');
+    throw createCanvasTemplateError({ id: 'emptyTemplate' });
   }
 
   const template: CanvasTemplate = {
@@ -206,7 +419,8 @@ export function parseCanvasTemplateDocument(
 
   return {
     document: buildCanvasTemplateDocument(template),
-    warnings
+    warnings,
+    warningDescriptors
   };
 }
 
@@ -328,7 +542,7 @@ export function captureCanvasTemplateFromState(params: {
       isCanvasTemplateCompatibleNode(node)
   );
   if (compatibleNodes.length === 0) {
-    throw new Error('当前画布没有可保存到模板的 Agent / Terminal / Note 节点。');
+    throw createCanvasTemplateError({ id: 'noCompatibleNodesForSave' });
   }
 
   const ignoredNodeIds = params.state.nodes
@@ -481,7 +695,10 @@ function buildCanvasTemplateNoteMetadata(
 
   const relativePath = normalizeCanvasTemplateWorkspaceRelativePath(selection.relativePath ?? '');
   if (!relativePath) {
-    throw new Error(`关联 Markdown Note「${node.title}」缺少合法 workspace 相对路径。`);
+    throw createCanvasTemplateError({
+      id: 'associatedNoteRelativePathInvalid',
+      params: { title: node.title }
+    });
   }
 
   if (selection.mode === 'workspace-file-path-only') {
@@ -536,32 +753,41 @@ function isCanvasTemplateCompatibleNode(
 function parseTemplateNodes(
   value: unknown,
   warnings: string[],
+  warningDescriptors: CanvasTemplateMessageDescriptor[],
   groupCount: number
 ): CanvasTemplateNodeSnapshot[] {
   if (!Array.isArray(value)) {
-    throw new Error('模板 nodes 字段不是数组。');
+    throw createCanvasTemplateError({ id: 'nodesNotArray' });
   }
 
-  return value.map((node, index) => parseTemplateNode(node, index, warnings, groupCount));
+  return value.map((node, index) => parseTemplateNode(node, index, warnings, warningDescriptors, groupCount));
 }
 
 function parseTemplateNode(
   value: unknown,
   index: number,
   warnings: string[],
+  warningDescriptors: CanvasTemplateMessageDescriptor[],
   groupCount: number
 ): CanvasTemplateNodeSnapshot {
   if (!isRecord(value) || !isCanvasTemplateNodeKind(value.kind)) {
-    throw new Error(`模板第 ${index + 1} 个节点缺少合法 kind。`);
+    throw createCanvasTemplateError({
+      id: 'nodeKindInvalid',
+      params: { index: String(index + 1) }
+    });
   }
 
   const title = typeof value.title === 'string' && value.title.trim().length > 0 ? value.title.trim() : `${humanizeTemplateNodeKind(value.kind)} ${index + 1}`;
-  const position = parseTemplatePosition(value.position, `模板节点 ${title}`);
-  const size = parseTemplateSize(value.size, `模板节点 ${title}`);
+  const subject = { subjectId: 'templateNode', title };
+  const position = parseTemplatePosition(value.position, subject);
+  const size = parseTemplateSize(value.size, subject);
   const metadataRecord = isRecord(value.metadata) ? value.metadata : undefined;
   const groupIndex = normalizeTemplateGroupIndex(value.groupIndex);
   if (groupIndex !== undefined && groupIndex >= groupCount) {
-    throw new Error(`模板第 ${index + 1} 个节点引用了不存在的分组索引。`);
+    throw createCanvasTemplateError({
+      id: 'nodeGroupIndexMissing',
+      params: { index: String(index + 1) }
+    });
   }
 
   if (value.kind === 'note') {
@@ -573,7 +799,10 @@ function parseTemplateNode(
         ? contentModeValue
         : undefined;
     if (!templateContentMode) {
-      throw new Error(`模板节点 ${title} 的 Note 内容模式不受支持。`);
+      throw createCanvasTemplateError({
+        id: 'noteContentModeUnsupported',
+        params: { title }
+      });
     }
 
     const relativePath =
@@ -581,7 +810,10 @@ function parseTemplateNode(
         ? undefined
         : normalizeCanvasTemplateWorkspaceRelativePath(typeof noteRecord?.relativePath === 'string' ? noteRecord.relativePath : '');
     if (templateContentMode !== 'embedded-snapshot' && !relativePath) {
-      throw new Error(`模板节点 ${title} 缺少合法 workspace 相对 Markdown 路径。`);
+      throw createCanvasTemplateError({
+        id: 'noteRelativePathInvalid',
+        params: { title }
+      });
     }
 
     const content = typeof noteRecord?.content === 'string' ? noteRecord.content : '';
@@ -625,11 +857,17 @@ function parseTemplateNode(
   }
 
   if (metadataRecord && 'agent' in metadataRecord) {
-    warnings.push(`模板节点 ${title} 不是 Agent，已忽略 agent metadata。`);
+    pushCanvasTemplateWarning(warnings, warningDescriptors, {
+      id: 'nonAgentMetadataIgnored',
+      params: { title }
+    });
   }
 
   if (metadataRecord && 'note' in metadataRecord) {
-    warnings.push(`模板节点 ${title} 不是 Note，已忽略 note metadata。`);
+    pushCanvasTemplateWarning(warnings, warningDescriptors, {
+      id: 'nonNoteMetadataIgnored',
+      params: { title }
+    });
   }
 
   return {
@@ -655,7 +893,7 @@ function parseTemplateGroups(value: unknown): CanvasTemplateGroupSnapshot[] {
   }
 
   if (!Array.isArray(value)) {
-    throw new Error('模板 groups 字段不是数组。');
+    throw createCanvasTemplateError({ id: 'groupsNotArray' });
   }
 
   const groups = value.map((group, index) => parseTemplateGroup(group, index, value.length));
@@ -665,21 +903,30 @@ function parseTemplateGroups(value: unknown): CanvasTemplateGroupSnapshot[] {
 
 function parseTemplateGroup(value: unknown, index: number, groupCount: number): CanvasTemplateGroupSnapshot {
   if (!isRecord(value)) {
-    throw new Error(`模板第 ${index + 1} 个分组不是有效对象。`);
+    throw createCanvasTemplateError({
+      id: 'groupInvalidObject',
+      params: { index: String(index + 1) }
+    });
   }
 
   const parentGroupIndex = normalizeTemplateGroupIndex(value.parentGroupIndex);
   if (parentGroupIndex !== undefined && parentGroupIndex >= groupCount) {
-    throw new Error(`模板第 ${index + 1} 个分组引用了不存在的父分组索引。`);
+    throw createCanvasTemplateError({
+      id: 'groupParentIndexMissing',
+      params: { index: String(index + 1) }
+    });
   }
   if (parentGroupIndex === index) {
-    throw new Error(`模板第 ${index + 1} 个分组不能引用自身作为父分组。`);
+    throw createCanvasTemplateError({
+      id: 'groupParentSelf',
+      params: { index: String(index + 1) }
+    });
   }
 
   return {
     title: typeof value.title === 'string' && value.title.trim() ? value.title.trim() : `Group ${index + 1}`,
-    position: parseTemplatePosition(value.position, `模板分组 ${index + 1}`),
-    size: parseTemplateSize(value.size, `模板分组 ${index + 1}`),
+    position: parseTemplatePosition(value.position, { subjectId: 'templateGroup', index: String(index + 1) }),
+    size: parseTemplateSize(value.size, { subjectId: 'templateGroup', index: String(index + 1) }),
     parentGroupIndex
   };
 }
@@ -691,7 +938,10 @@ function assertTemplateGroupParentGraphIsAcyclic(groups: readonly CanvasTemplate
 
     while (nextParentIndex !== undefined) {
       if (visited.has(nextParentIndex)) {
-        throw new Error(`模板第 ${index + 1} 个分组形成了循环父子关系。`);
+        throw createCanvasTemplateError({
+          id: 'groupParentCycle',
+          params: { index: String(index + 1) }
+        });
       }
 
       visited.add(nextParentIndex);
@@ -706,7 +956,7 @@ function parseTemplateEdges(value: unknown, nodeCount: number): CanvasTemplateEd
   }
 
   if (!Array.isArray(value)) {
-    throw new Error('模板 edges 字段不是数组。');
+    throw createCanvasTemplateError({ id: 'edgesNotArray' });
   }
 
   return value.map((edge, index) => parseTemplateEdge(edge, index, nodeCount));
@@ -714,7 +964,10 @@ function parseTemplateEdges(value: unknown, nodeCount: number): CanvasTemplateEd
 
 function parseTemplateEdge(value: unknown, index: number, nodeCount: number): CanvasTemplateEdgeSnapshot {
   if (!isRecord(value)) {
-    throw new Error(`模板第 ${index + 1} 条边不是有效对象。`);
+    throw createCanvasTemplateError({
+      id: 'edgeInvalidObject',
+      params: { index: String(index + 1) }
+    });
   }
 
   const sourceNodeIndex = typeof value.sourceNodeIndex === 'number' ? Math.trunc(value.sourceNodeIndex) : NaN;
@@ -727,11 +980,17 @@ function parseTemplateEdge(value: unknown, index: number, nodeCount: number): Ca
     sourceNodeIndex >= nodeCount ||
     targetNodeIndex >= nodeCount
   ) {
-    throw new Error(`模板第 ${index + 1} 条边引用了不存在的节点索引。`);
+    throw createCanvasTemplateError({
+      id: 'edgeNodeIndexMissing',
+      params: { index: String(index + 1) }
+    });
   }
 
   if (!isCanvasEdgeAnchor(value.sourceAnchor) || !isCanvasEdgeAnchor(value.targetAnchor)) {
-    throw new Error(`模板第 ${index + 1} 条边缺少合法 anchor。`);
+    throw createCanvasTemplateError({
+      id: 'edgeAnchorMissing',
+      params: { index: String(index + 1) }
+    });
   }
 
   return {
@@ -747,14 +1006,26 @@ function parseTemplateEdge(value: unknown, index: number, nodeCount: number): Ca
 
 function parseTemplateName(value: unknown): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error('模板名称不能为空。');
+    throw createCanvasTemplateError({ id: 'templateNameEmpty' });
   }
   return value.trim();
 }
 
-function parseTemplatePosition(value: unknown, label: string): CanvasNodePosition {
+function pushCanvasTemplateWarning(
+  warnings: string[],
+  warningDescriptors: CanvasTemplateMessageDescriptor[],
+  descriptor: CanvasTemplateMessageDescriptor
+): void {
+  warningDescriptors.push(descriptor);
+  warnings.push(formatCanvasTemplateMessageDescriptor(descriptor));
+}
+
+function parseTemplatePosition(value: unknown, subject: Record<string, string>): CanvasNodePosition {
   if (!isRecord(value) || typeof value.x !== 'number' || typeof value.y !== 'number') {
-    throw new Error(`${label} 缺少合法 position。`);
+    throw createCanvasTemplateError({
+      id: 'positionMissing',
+      params: subject
+    });
   }
   return {
     x: Math.round(value.x),
@@ -762,9 +1033,12 @@ function parseTemplatePosition(value: unknown, label: string): CanvasNodePositio
   };
 }
 
-function parseTemplateSize(value: unknown, label: string): CanvasNodeFootprint {
+function parseTemplateSize(value: unknown, subject: Record<string, string>): CanvasNodeFootprint {
   if (!isRecord(value) || typeof value.width !== 'number' || typeof value.height !== 'number') {
-    throw new Error(`${label} 缺少合法 size。`);
+    throw createCanvasTemplateError({
+      id: 'sizeMissing',
+      params: subject
+    });
   }
   return {
     width: Math.max(120, Math.round(value.width)),
@@ -790,4 +1064,8 @@ function isCanvasEdgeAnchor(value: unknown): value is CanvasEdgeAnchor {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === 'string');
 }

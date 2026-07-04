@@ -31,7 +31,9 @@ try {
     classifyAgentLaunchPreset,
     extractClaudeCommandRuntimeSessionFlag,
     extractClaudeCommandSessionFlag,
+    formatAgentLaunchMessageDescriptor,
     formatCommandLine,
+    getAgentLaunchErrorDescriptor,
     hasAnyCommandLineFlag,
     hasCodexForkSubcommand,
     matchesAgentCommandLinePreset,
@@ -43,7 +45,7 @@ try {
     command: '/tmp/providers/claude-custom',
     defaultArgs: ''
   };
-  const defaultArgsConflictPattern = /默认启动参数不能包含与 Resume \/ Fork 冲突/u;
+  const defaultArgsConflictPattern = /default launch arguments cannot include/u;
 
   assert.equal(
     buildAgentBranchCommandLine('codex', 'codex-branch-session-001', {
@@ -134,7 +136,7 @@ try {
 
   assert.throws(
     () => buildCodexBranchCommandLine('   ', { command: 'codex', defaultArgs: '' }),
-    /分叉会话标识不能为空。/
+    /Fork session id cannot be empty\./
   );
 
   assert.equal(hasCodexForkSubcommand(['--profile', 'prod', 'fork', 'session-123']), true);
@@ -186,7 +188,7 @@ try {
 
   assert.throws(
     () => buildClaudeBranchCommandLine('   ', claudeDefaults),
-    /分叉会话标识不能为空。/
+    /Fork session id cannot be empty\./
   );
 
   assert.deepEqual(
@@ -260,7 +262,8 @@ try {
     }
   );
   assert.equal(basenameOnlyPathValidation.valid, false);
-  assert.equal(basenameOnlyPathValidation.error, '命令必须以当前 Claude Code 命令或 claude 开头。');
+  assert.equal(basenameOnlyPathValidation.error, 'Command must start with the current Claude Code command or claude.');
+  assert.equal(basenameOnlyPathValidation.errorDescriptor?.id, 'claudeCommandMismatch');
 
   const invalidProviderValidation = validateAgentCommandLine(
     'node -e "process.stdout.write(\'provider-bypass\')"',
@@ -268,7 +271,8 @@ try {
     claudeDefaults
   );
   assert.equal(invalidProviderValidation.valid, false);
-  assert.equal(invalidProviderValidation.error, '命令必须以当前 Claude Code 命令或 claude 开头。');
+  assert.equal(invalidProviderValidation.error, 'Command must start with the current Claude Code command or claude.');
+  assert.equal(invalidProviderValidation.errorDescriptor?.id, 'claudeCommandMismatch');
 
   const windowsCodexValidation = validateAgentCommandLine(
     'C:\\tools\\codex.exe --yolo',
@@ -958,7 +962,7 @@ try {
         },
         'default'
     ),
-    /Codex 默认启动参数无法解析：双引号未闭合。/
+    /Codex default launch arguments could not be parsed: Double quote is not closed\./
   );
 
   assert.throws(
@@ -972,7 +976,7 @@ try {
           defaultArgs: '--model "o3'
         }
       ),
-    /Codex 默认启动参数无法解析：双引号未闭合。/
+    /Codex default launch arguments could not be parsed: Double quote is not closed\./
   );
   const invalidDefaultsCustomValidation = validateAgentCommandLine(
     'codex --yolo',
@@ -983,7 +987,9 @@ try {
     }
   );
   assert.equal(invalidDefaultsCustomValidation.valid, false);
-  assert.equal(invalidDefaultsCustomValidation.error, 'Codex 默认启动参数无法解析：双引号未闭合。');
+  assert.equal(invalidDefaultsCustomValidation.error, 'Codex default launch arguments could not be parsed: Double quote is not closed.');
+  assert.equal(invalidDefaultsCustomValidation.errorDescriptor?.id, 'defaultArgsParseError');
+  assert.equal(invalidDefaultsCustomValidation.errorDescriptor?.cause?.id, 'doubleQuoteUnclosed');
 
   assert.deepEqual(
     classifyAgentLaunchPreset(
@@ -1175,20 +1181,33 @@ try {
       ),
     defaultArgsConflictPattern
   );
-  assert.throws(
-    () =>
-      buildAgentHistoryResumeCommandLine(
-        'codex',
-        '   ',
-        {
-          command: 'codex',
-          defaultArgs: ''
-        }
-      ),
-    /恢复会话标识不能为空。/
+  const emptyResumeError = captureError(() =>
+    buildAgentHistoryResumeCommandLine(
+      'codex',
+      '   ',
+      {
+        command: 'codex',
+        defaultArgs: ''
+      }
+    )
+  );
+  assert.match(emptyResumeError.message, /Resume session id cannot be empty\./);
+  assert.equal(getAgentLaunchErrorDescriptor(emptyResumeError)?.id, 'resumeSessionIdEmpty');
+  assert.equal(
+    formatAgentLaunchMessageDescriptor(getAgentLaunchErrorDescriptor(emptyResumeError)),
+    'Resume session id cannot be empty.'
   );
 
   console.log('agentLaunchPresets tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+function captureError(fn) {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  assert.fail('Expected function to throw.');
 }

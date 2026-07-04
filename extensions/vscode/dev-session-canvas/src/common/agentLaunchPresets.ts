@@ -10,9 +10,35 @@ export interface ParsedAgentCommandLine {
   args: string[];
 }
 
+export type AgentLaunchMessageId =
+  | 'resumeSessionIdEmpty'
+  | 'forkSessionIdEmpty'
+  | 'launchCommandEmpty'
+  | 'claudeCommandMismatch'
+  | 'codexCommandMismatch'
+  | 'doubleQuoteUnclosed'
+  | 'singleQuoteUnclosed'
+  | 'defaultArgsParseError'
+  | 'defaultArgsConflict';
+
+export type AgentLaunchConflictDescriptionId =
+  | 'positionalArgumentSeparator'
+  | 'sessionSelectionArgument'
+  | 'sessionTargetSubcommand'
+  | 'positionalArgument'
+  | 'forkFlagArgument'
+  | 'sessionTargetArgument';
+
+export interface AgentLaunchMessageDescriptor {
+  id: AgentLaunchMessageId;
+  params?: Record<string, string>;
+  cause?: AgentLaunchMessageDescriptor;
+}
+
 export interface AgentCommandValidationResult {
   valid: boolean;
   error?: string;
+  errorDescriptor?: AgentLaunchMessageDescriptor;
   parsed?: ParsedAgentCommandLine;
 }
 
@@ -31,7 +57,7 @@ const WINDOWS_EXECUTABLE_SUFFIX = /\.(exe|cmd|bat|com)$/i;
 type DoubleQuotedBackslashMode = 'unknown' | 'legacy' | 'literal';
 type AgentDefaultArgsConflict = {
   token: string;
-  description: string;
+  descriptionId: AgentLaunchConflictDescriptionId;
 };
 type AgentLaunchArgConflictKey =
   | 'codex-execution-mode'
@@ -41,6 +67,85 @@ type AgentLaunchArgConflictKey =
   | 'codex-local-provider'
   | 'claude-execution-mode'
   | 'claude-model';
+
+export class AgentLaunchPresetError extends Error {
+  public readonly code = 'DEV_SESSION_CANVAS_AGENT_LAUNCH_PRESET_ERROR';
+
+  public constructor(public readonly descriptor: AgentLaunchMessageDescriptor) {
+    super(formatAgentLaunchMessageDescriptor(descriptor));
+    this.name = 'AgentLaunchPresetError';
+  }
+}
+
+export function isAgentLaunchPresetError(error: unknown): error is AgentLaunchPresetError {
+  return error instanceof AgentLaunchPresetError ||
+    (isRecord(error) && error.code === 'DEV_SESSION_CANVAS_AGENT_LAUNCH_PRESET_ERROR');
+}
+
+export function getAgentLaunchErrorDescriptor(error: unknown): AgentLaunchMessageDescriptor | undefined {
+  if (!isAgentLaunchPresetError(error)) {
+    return undefined;
+  }
+
+  const descriptor = error.descriptor;
+  return isAgentLaunchMessageDescriptor(descriptor) ? descriptor : undefined;
+}
+
+export function formatAgentLaunchMessageDescriptor(descriptor: AgentLaunchMessageDescriptor): string {
+  const params = descriptor.params ?? {};
+  switch (descriptor.id) {
+    case 'resumeSessionIdEmpty':
+      return 'Resume session id cannot be empty.';
+    case 'forkSessionIdEmpty':
+      return 'Fork session id cannot be empty.';
+    case 'launchCommandEmpty':
+      return 'Launch command cannot be empty.';
+    case 'claudeCommandMismatch':
+      return 'Command must start with the current Claude Code command or claude.';
+    case 'codexCommandMismatch':
+      return 'Command must start with the current Codex command or codex.';
+    case 'doubleQuoteUnclosed':
+      return 'Double quote is not closed.';
+    case 'singleQuoteUnclosed':
+      return 'Single quote is not closed.';
+    case 'defaultArgsParseError': {
+      const message = descriptor.cause
+        ? formatAgentLaunchMessageDescriptor(descriptor.cause)
+        : params.message ?? '';
+      return `${params.provider ?? 'Agent'} default launch arguments could not be parsed: ${message}`;
+    }
+    case 'defaultArgsConflict': {
+      const descriptionId = params.descriptionId as AgentLaunchConflictDescriptionId | undefined;
+      const description = descriptionId
+        ? formatAgentLaunchConflictDescription(descriptionId)
+        : params.description ?? 'argument';
+      return `${params.provider ?? 'Agent'} default launch arguments cannot include ${description} ${
+        params.token ?? ''
+      } because it conflicts with Resume / Fork. Remove it from Default args, use the Resume / Fork entry instead, or put one-time session targets in a custom launch command.`;
+    }
+    default:
+      return 'Unable to parse the Agent launch command.';
+  }
+}
+
+export function formatAgentLaunchConflictDescription(id: AgentLaunchConflictDescriptionId): string {
+  switch (id) {
+    case 'positionalArgumentSeparator':
+      return 'positional argument separator';
+    case 'sessionSelectionArgument':
+      return 'session selection argument';
+    case 'sessionTargetSubcommand':
+      return 'session target subcommand';
+    case 'positionalArgument':
+      return 'positional argument (prompt/session)';
+    case 'forkFlagArgument':
+      return 'Fork flag argument';
+    case 'sessionTargetArgument':
+      return 'session target argument';
+    default:
+      return 'argument';
+  }
+}
 
 export function buildAgentPresetCommandLine(
   provider: AgentProviderKind,
@@ -73,7 +178,7 @@ export function buildAgentHistoryResumeCommandLine(
 ): string {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
-    throw new Error('恢复会话标识不能为空。');
+    throw new AgentLaunchPresetError({ id: 'resumeSessionIdEmpty' });
   }
 
   const command = defaults.command.trim() || provider;
@@ -102,7 +207,7 @@ export function buildCodexBranchCommandLine(
 ): string {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
-    throw new Error('分叉会话标识不能为空。');
+    throw new AgentLaunchPresetError({ id: 'forkSessionIdEmpty' });
   }
 
   const command = defaults.command.trim() || 'codex';
@@ -120,7 +225,7 @@ export function buildClaudeBranchCommandLine(
 ): string {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
-    throw new Error('分叉会话标识不能为空。');
+    throw new AgentLaunchPresetError({ id: 'forkSessionIdEmpty' });
   }
 
   const command = defaults.command.trim() || 'claude';
@@ -136,38 +241,30 @@ export function validateAgentCommandLine(
   provider: AgentProviderKind,
   defaults: AgentProviderLaunchDefaults
 ): AgentCommandValidationResult {
-  const defaultArgsError = getAgentDefaultArgsParseError(provider, defaults);
-  if (defaultArgsError) {
-    return {
-      valid: false,
-      error: defaultArgsError
-    };
+  const defaultArgsErrorDescriptor = getAgentDefaultArgsParseErrorDescriptor(provider, defaults);
+  if (defaultArgsErrorDescriptor) {
+    return invalidAgentCommandValidationResult(defaultArgsErrorDescriptor);
   }
 
   const parsed = parseCommandLine(commandLine);
   if (parsed.error) {
-    return {
-      valid: false,
-      error: parsed.error
-    };
+    return invalidAgentCommandValidationResult(
+      parsed.errorDescriptor ?? {
+        id: 'launchCommandEmpty',
+        params: { message: parsed.error }
+      }
+    );
   }
 
   if (parsed.argv.length === 0) {
-    return {
-      valid: false,
-      error: '启动命令不能为空。'
-    };
+    return invalidAgentCommandValidationResult({ id: 'launchCommandEmpty' });
   }
 
   const [command, ...args] = parsed.argv;
   if (!isProviderCommandMatch(command, provider, defaults.command)) {
-    return {
-      valid: false,
-      error:
-        provider === 'claude'
-          ? '命令必须以当前 Claude Code 命令或 claude 开头。'
-          : '命令必须以当前 Codex 命令或 codex 开头。'
-    };
+    return invalidAgentCommandValidationResult({
+      id: provider === 'claude' ? 'claudeCommandMismatch' : 'codexCommandMismatch'
+    });
   }
 
   return {
@@ -223,7 +320,7 @@ export function classifyAgentLaunchPreset(
 export function parseFullAgentCommandLine(commandLine: string): ParsedAgentCommandLine {
   const parsed = parseCommandLine(commandLine);
   if (parsed.error || parsed.argv.length === 0) {
-    throw new Error(parsed.error ?? '启动命令不能为空。');
+    throw new AgentLaunchPresetError(parsed.errorDescriptor ?? { id: 'launchCommandEmpty' });
   }
 
   const [command, ...args] = parsed.argv;
@@ -358,6 +455,7 @@ export function quoteCommandToken(value: string): string {
 export function parseCommandLine(commandLine: string): {
   argv: string[];
   error?: string;
+  errorDescriptor?: AgentLaunchMessageDescriptor;
 } {
   const argv: string[] = [];
   let current = '';
@@ -481,9 +579,13 @@ export function parseCommandLine(commandLine: string): {
   }
 
   if (quote) {
+    const errorDescriptor: AgentLaunchMessageDescriptor = {
+      id: quote === 'double' ? 'doubleQuoteUnclosed' : 'singleQuoteUnclosed'
+    };
     return {
       argv: [],
-      error: quote === 'double' ? '双引号未闭合。' : '单引号未闭合。'
+      error: formatAgentLaunchMessageDescriptor(errorDescriptor),
+      errorDescriptor
     };
   }
 
@@ -552,7 +654,7 @@ function resolveAgentLaunchIntentArgs(
 
     const validation = validateAgentCommandLine(customLaunchCommand, provider, defaults);
     if (!validation.valid || !validation.parsed) {
-      throw new Error(validation.error ?? '无法解析 Agent 启动命令。');
+      throw new AgentLaunchPresetError(validation.errorDescriptor ?? { id: 'launchCommandEmpty' });
     }
     return validation.parsed.args;
   }
@@ -1523,18 +1625,38 @@ function parseAgentDefaultArgs(
 ): {
   args?: string[];
   error?: string;
+  errorDescriptor?: AgentLaunchMessageDescriptor;
 } {
   const parsed = parseCommandLine(defaults.defaultArgs);
   if (parsed.error) {
+    const errorDescriptor: AgentLaunchMessageDescriptor = {
+      id: 'defaultArgsParseError',
+      params: {
+        provider: providerLabel(provider),
+        message: parsed.error
+      },
+      cause: parsed.errorDescriptor
+    };
     return {
-      error: `${providerLabel(provider)} 默认启动参数无法解析：${parsed.error}`
+      error: formatAgentLaunchMessageDescriptor(errorDescriptor),
+      errorDescriptor
     };
   }
 
   const conflict = findAgentDefaultArgsConflict(provider, parsed.argv);
   if (conflict) {
+    const token = quoteCommandToken(conflict.token);
+    const errorDescriptor: AgentLaunchMessageDescriptor = {
+      id: 'defaultArgsConflict',
+      params: {
+        provider: providerLabel(provider),
+        descriptionId: conflict.descriptionId,
+        token
+      }
+    };
     return {
-      error: `${providerLabel(provider)} 默认启动参数不能包含与 Resume / Fork 冲突的${conflict.description} ${quoteCommandToken(conflict.token)}；请从 Default args 移除，改用 Resume / 分叉入口，或把一次性的会话目标写入自定义启动命令。`
+      error: formatAgentLaunchMessageDescriptor(errorDescriptor),
+      errorDescriptor
     };
   }
 
@@ -1559,23 +1681,23 @@ function findCodexDefaultArgsConflict(args: readonly string[]): AgentDefaultArgs
     if (token === '--') {
       return {
         token,
-        description: '位置参数分隔符'
+        descriptionId: 'positionalArgumentSeparator'
       };
     }
 
     if (isCodexSessionSelectionFlag(token)) {
       return {
         token,
-        description: '会话选择参数'
+        descriptionId: 'sessionSelectionArgument'
       };
     }
 
     if (!isOptionLikeCommandToken(token)) {
       return {
         token,
-        description: token === 'resume' || token === 'fork'
-          ? '会话目标子命令'
-          : '位置参数（prompt/session）'
+        descriptionId: token === 'resume' || token === 'fork'
+          ? 'sessionTargetSubcommand'
+          : 'positionalArgument'
       };
     }
 
@@ -1604,14 +1726,14 @@ function findClaudeDefaultArgsConflict(args: readonly string[]): AgentDefaultArg
     if (token === '--fork-session' || token.startsWith('--fork-session=')) {
       return {
         token,
-        description: 'Fork 标记参数'
+        descriptionId: 'forkFlagArgument'
       };
     }
 
     if (matchClaudeCommandSessionFlag(token)) {
       return {
         token,
-        description: '会话目标参数'
+        descriptionId: 'sessionTargetArgument'
       };
     }
   }
@@ -1619,11 +1741,11 @@ function findClaudeDefaultArgsConflict(args: readonly string[]): AgentDefaultArg
   return undefined;
 }
 
-function getAgentDefaultArgsParseError(
+function getAgentDefaultArgsParseErrorDescriptor(
   provider: AgentProviderKind,
   defaults: AgentProviderLaunchDefaults
-): string | undefined {
-  return parseAgentDefaultArgs(provider, defaults).error;
+): AgentLaunchMessageDescriptor | undefined {
+  return parseAgentDefaultArgs(provider, defaults).errorDescriptor;
 }
 
 function assertAgentDefaultArgsParsable(
@@ -1631,8 +1753,8 @@ function assertAgentDefaultArgsParsable(
   defaults: AgentProviderLaunchDefaults
 ): string[] {
   const parsed = parseAgentDefaultArgs(provider, defaults);
-  if (parsed.error) {
-    throw new Error(parsed.error);
+  if (parsed.errorDescriptor) {
+    throw new AgentLaunchPresetError(parsed.errorDescriptor);
   }
 
   return parsed.args ?? [];
@@ -1640,4 +1762,22 @@ function assertAgentDefaultArgsParsable(
 
 function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+function invalidAgentCommandValidationResult(
+  descriptor: AgentLaunchMessageDescriptor
+): AgentCommandValidationResult {
+  return {
+    valid: false,
+    error: formatAgentLaunchMessageDescriptor(descriptor),
+    errorDescriptor: descriptor
+  };
+}
+
+function isAgentLaunchMessageDescriptor(value: unknown): value is AgentLaunchMessageDescriptor {
+  return isRecord(value) && typeof value.id === 'string';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
 }

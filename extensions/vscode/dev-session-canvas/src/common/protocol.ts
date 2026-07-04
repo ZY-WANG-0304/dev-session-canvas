@@ -568,6 +568,21 @@ export interface ExecutionPerformanceDiagnosticPayload {
   success?: boolean;
 }
 
+export type WebviewNodeActionId =
+  | 'delete'
+  | 'start'
+  | 'stop'
+  | 'new-session'
+  | 'restart'
+  | 'resume'
+  | 'branch'
+  | 'reload'
+  | 'copy-draft'
+  | 'overwrite-file'
+  | 'create-missing-associated-markdown-file'
+  | 'open-associated-markdown-file'
+  | 'save-as-markdown';
+
 export type WebviewDomAction =
   | {
       kind: 'selectNode';
@@ -584,17 +599,7 @@ export type WebviewDomAction =
   | {
       kind: 'clickNodeActionButton';
       nodeId: string;
-      label:
-        | '删除'
-        | '启动'
-        | '停止'
-        | '新建'
-        | '重启'
-        | '恢复'
-        | '重新加载'
-        | '复制草稿'
-        | '覆盖文件'
-        | '创建空文件并关联';
+      action: WebviewNodeActionId;
       delayMs?: number;
     }
   | {
@@ -2597,6 +2602,24 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
+function isWebviewNodeActionId(value: unknown): value is WebviewNodeActionId {
+  return (
+    value === 'delete' ||
+    value === 'start' ||
+    value === 'stop' ||
+    value === 'new-session' ||
+    value === 'restart' ||
+    value === 'resume' ||
+    value === 'branch' ||
+    value === 'reload' ||
+    value === 'copy-draft' ||
+    value === 'overwrite-file' ||
+    value === 'create-missing-associated-markdown-file' ||
+    value === 'open-associated-markdown-file' ||
+    value === 'save-as-markdown'
+  );
+}
+
 function isCanvasNodePosition(value: unknown): value is CanvasNodePosition {
   return (
     isRecord(value) &&
@@ -2660,18 +2683,7 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
   }
 
   if (value.kind === 'clickNodeActionButton') {
-      return (
-        value.label === '删除' ||
-        value.label === '启动' ||
-        value.label === '停止' ||
-        value.label === '新建' ||
-        value.label === '重启' ||
-        value.label === '恢复' ||
-        value.label === '重新加载' ||
-        value.label === '复制草稿' ||
-        value.label === '覆盖文件' ||
-        value.label === '创建空文件并关联'
-      );
+    return isWebviewNodeActionId(value.action);
   }
 
   if (value.kind === 'scrollTerminalViewport') {
