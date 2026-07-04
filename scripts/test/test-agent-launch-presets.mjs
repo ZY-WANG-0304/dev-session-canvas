@@ -74,7 +74,7 @@ try {
         launchPreset: 'yolo'
       }
     ),
-    '/tmp/providers/codex-custom fork --yolo --model gpt-5.2 --profile prod codex-branch-session-yolo'
+    '/tmp/providers/codex-custom fork --yolo codex-branch-session-yolo'
   );
   assert.equal(
     buildAgentBranchCommandLine(
@@ -89,7 +89,37 @@ try {
         customLaunchCommand: 'codex --yolo --model custom-model -c feature=on --search'
       }
     ),
-    'codex fork --profile prod --yolo --model custom-model -c feature=on --search codex-branch-session-custom'
+    'codex fork --yolo --model custom-model -c feature=on --search codex-branch-session-custom'
+  );
+  assert.equal(
+    buildAgentBranchCommandLine(
+      'codex',
+      'codex-branch-session-refork',
+      {
+        command: 'codex',
+        defaultArgs: '-c sandbox_workspace_write.network_access=true --search'
+      },
+      {
+        launchPreset: 'custom',
+        customLaunchCommand: 'codex fork --yolo -c sandbox_workspace_write.network_access=true --search old-session'
+      }
+    ),
+    'codex fork --yolo -c sandbox_workspace_write.network_access=true --search codex-branch-session-refork'
+  );
+  assert.equal(
+    buildAgentBranchCommandLine(
+      'codex',
+      'codex-branch-session-last-launch',
+      {
+        command: 'codex',
+        defaultArgs: '-c sandbox_workspace_write.network_access=true --search'
+      },
+      {
+        launchPreset: 'default',
+        sourceLaunchCommandLine: 'codex --yolo -c sandbox_workspace_write.network_access=true --search'
+      }
+    ),
+    'codex fork --yolo -c sandbox_workspace_write.network_access=true --search codex-branch-session-last-launch'
   );
   assert.equal(
     buildAgentBranchCommandLine(
@@ -104,7 +134,7 @@ try {
         customLaunchCommand: 'codex --yolo --last=true --all=false --include-non-interactive=true old-session'
       }
     ),
-    'codex fork --model default-model --yolo codex-branch-session-selection-assignment'
+    'codex fork --yolo codex-branch-session-selection-assignment'
   );
 
   assert.throws(
@@ -166,7 +196,7 @@ try {
         launchPreset: 'yolo'
       }
     ),
-    'claude --resume claude-branch-session-yolo --fork-session --dangerously-skip-permissions --model sonnet'
+    'claude --resume claude-branch-session-yolo --fork-session --dangerously-skip-permissions'
   );
 
   assert.throws(
@@ -1079,7 +1109,37 @@ try {
         launchPreset: 'yolo'
       }
     ),
-    'codex resume --yolo --config experimental=true --search session-codex-yolo'
+    'codex resume --yolo session-codex-yolo'
+  );
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'codex',
+      'session-codex-reforked',
+      {
+        command: 'codex',
+        defaultArgs: '-c sandbox_workspace_write.network_access=true --search'
+      },
+      {
+        launchPreset: 'custom',
+        customLaunchCommand: 'codex fork --yolo -c sandbox_workspace_write.network_access=true --search old-session'
+      }
+    ),
+    'codex resume --yolo -c sandbox_workspace_write.network_access=true --search session-codex-reforked'
+  );
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'codex',
+      'session-codex-last-launch',
+      {
+        command: 'codex',
+        defaultArgs: '-c sandbox_workspace_write.network_access=true --search'
+      },
+      {
+        launchPreset: 'default',
+        sourceLaunchCommandLine: 'codex --yolo -c sandbox_workspace_write.network_access=true --search'
+      }
+    ),
+    'codex resume --yolo -c sandbox_workspace_write.network_access=true --search session-codex-last-launch'
   );
   assert.equal(
     buildAgentHistoryResumeCommandLine(
@@ -1167,7 +1227,7 @@ try {
         launchPreset: 'yolo'
       }
     ),
-    'claude --resume session-claude-yolo --dangerously-skip-permissions --model sonnet'
+    'claude --resume session-claude-yolo --dangerously-skip-permissions'
   );
   assert.throws(
     () =>

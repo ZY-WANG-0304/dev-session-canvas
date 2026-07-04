@@ -14336,7 +14336,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return {
       launchPreset: metadata.launchPreset,
       customLaunchCommand: metadata.customLaunchCommand,
-      templateArgv: metadata.templateArgv
+      templateArgv: metadata.templateArgv,
+      sourceLaunchCommandLine: metadata.lastLaunchCommandLine
     };
   }
 
