@@ -92,6 +92,9 @@
 - 观察：当前节点 `重启` / `分叉` 若继续把节点启动意图与当前 Default args 合并，会让已存在节点在用户修改 Default args 后改变行为；当 fork 节点本身的最近启动命令和 Default args 都包含 `--search` / `-c sandbox_workspace_write.network_access=true` 时，再次 fork 会生成重复 `--search` 并被 Codex CLI 拒绝。
   证据：2026-07-04 宿主诊断 `.debug/current-host-diagnostics/2026-07-04T05-33-09-120Z/persisted-canvas-snapshot.json` 中失败节点命令为 `codex fork -c sandbox_workspace_write.network_access=true --search --yolo -c sandbox_workspace_write.network_access=true --search <session-id>`，输出为 `error: the argument '--search' cannot be used multiple times`。
 
+- 观察：即使命令构造层已经不合并 Default args，宿主当前节点 `重启` / `分叉` 后续校验仍可能被当前 Default args 拦截；最近启动命令若保存了旧 provider 命令路径，也不能要求它继续等于当前 provider command 设置。
+  证据：2026-07-04 PR245 review 指出当前节点 `重启` 在生成显式 resume 命令后仍用当前 defaults 调 `validateAgentCommandLine(...)`，当前节点 `分叉` 创建的 custom fork 节点也会走 fresh-start 校验；同时 `lastLaunchCommandLine` 用当前 command-only defaults 校验会拒绝 `/old/bin/codex --yolo`。
+
 ## 决策记录
 
 - 决策：先新增新的产品规格与设计文档，把 `tmp_feature_uiux.md` 中的需求沉淀到正式 docs，再开始落代码。
@@ -200,6 +203,10 @@
 
 - 决策：当前节点 `重启` / `分叉` 只使用当前节点启动意图，不再合并当前 Default args；启动意图优先来自 `lastLaunchCommandLine`，缺失时再退回 `launchPreset/customLaunchCommand/templateArgv`。
   理由：画布上的节点已经有自己的启动历史和长期启动偏好，用户修改 Default args 不应改写已有节点的恢复 / 分叉行为；真实诊断也证明“节点意图 + Default args”会把 `--search` / `-c` 等 singleton/runtime 参数重复拼入。历史恢复 / 历史分叉没有节点意图，仍使用当前 Default args 作为历史入口启动基线。
+  日期/作者：2026-07-04 / Codex
+
+- 决策：当前节点 `重启` / `分叉` 的宿主校验也必须使用 command-only defaults；解析 `lastLaunchCommandLine` 与节点 custom launch intent 时只提取 argv，不用当前 provider command 设置验证旧命令 token。
+  理由：节点启动意图的职责是继承运行参数，而不是冻结旧 provider command；当前 provider command 仍决定最终命令首个 token。Default args 的 fail-closed 只保留在 fresh-start、创建菜单、Quick Input、历史恢复 / 历史分叉路径，不能反向拦截已有节点的当前会话恢复 / 分叉。
   日期/作者：2026-07-04 / Codex
 
 ## 结果与复盘
@@ -367,4 +374,4 @@
 
 本次更新说明：2026-07-04 根据真实 fork 失败诊断修正当前节点启动意图边界：当前节点 `重启` / `分叉` 只使用节点最近一次实际启动命令或节点长期启动偏好，不再合并当前 Default args；历史恢复 / 分叉仍只使用当前 Default args。
 
-本次验证说明：2026-07-04 已完成 `npm run test:agent-launch-presets`、`npm run typecheck` 与 `git diff --check`，覆盖再次 fork 已 fork Codex 节点时不会重复拼入 Default args 中的 `--search` / `-c`。
+本次验证说明：2026-07-04 已完成 `npm run test:agent-launch-presets`、`npm run test:canvas-execution-context`、`npm run typecheck` 与 `git diff --check`，覆盖再次 fork 已 fork Codex 节点时不会重复拼入 Default args 中的 `--search` / `-c`，并覆盖当前节点 `重启` / `分叉` 不会被当前 Default args 或旧 provider 命令路径拦截。

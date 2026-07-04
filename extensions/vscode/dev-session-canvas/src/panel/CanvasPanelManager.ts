@@ -429,6 +429,7 @@ interface CreateNodeOptions {
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
+  agentSkipFreshLaunchDefaultArgsValidation?: boolean;
   cwdOverride?: string;
   targetGroupId?: string;
   titleOverride?: string;
@@ -2569,6 +2570,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: options?.agentProvider,
       agentLaunchPreset: options?.agentLaunchPreset,
       agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
+      agentSkipFreshLaunchDefaultArgsValidation: options?.agentSkipFreshLaunchDefaultArgsValidation,
       cwdOverride: options?.cwdOverride,
       targetGroupId: options?.targetGroupId,
       titleOverride: options?.titleOverride
@@ -2602,6 +2604,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: options?.agentProvider,
       agentLaunchPreset: options?.agentLaunchPreset,
       agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
+      agentSkipFreshLaunchDefaultArgsValidation: options?.agentSkipFreshLaunchDefaultArgsValidation,
       targetGroupId,
       titleOverride: options?.titleOverride
     });
@@ -2784,6 +2787,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: options?.agentProvider,
       agentLaunchPreset: options?.agentLaunchPreset,
       agentCustomLaunchCommand: options?.agentCustomLaunchCommand,
+      agentSkipFreshLaunchDefaultArgsValidation: options?.agentSkipFreshLaunchDefaultArgsValidation,
       cwdOverride: options?.cwdOverride,
       titleOverride: options?.titleOverride
     });
@@ -3298,6 +3302,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentProvider: metadata.provider,
       agentLaunchPreset: 'custom',
       agentCustomLaunchCommand: branchCommandLine,
+      agentSkipFreshLaunchDefaultArgsValidation: true,
       titleOverride: formatForkTitle(sourceNode.title),
       cwdOverride: metadata.cwd
     });
@@ -14276,7 +14281,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     launchPreset: AgentLaunchPresetKind,
     customLaunchCommand: string | undefined,
     defaults: AgentProviderLaunchDefaults,
-    templateArgv?: readonly string[]
+    templateArgv?: readonly string[],
+    options: { skipDefaultArgsValidation?: boolean } = {}
   ): {
     commandLine: string;
     requestedCommand: string;
@@ -14289,8 +14295,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const commandLine =
       templateArgv !== undefined
         ? formatCommandLine([defaults.command.trim() || provider, ...normalizeStoredAgentTemplateArgv(templateArgv)])
-        : buildFreshAgentCommandLine(provider, launchPreset, customLaunchCommand, defaults);
-    const validation = validateAgentCommandLine(commandLine, provider, defaults);
+        : options.skipDefaultArgsValidation && launchPreset === 'custom' && customLaunchCommand?.trim()
+          ? customLaunchCommand.trim()
+          : buildFreshAgentCommandLine(provider, launchPreset, customLaunchCommand, defaults);
+    const validationDefaults = options.skipDefaultArgsValidation
+      ? { command: defaults.command, defaultArgs: '' }
+      : defaults;
+    const validation = validateAgentCommandLine(commandLine, provider, validationDefaults);
     if (!validation.valid || !validation.parsed) {
       throw new Error(
         localizeAgentLaunchMessageDescriptor(
@@ -14322,7 +14333,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       metadata.launchPreset,
       metadata.customLaunchCommand,
       defaults,
-      metadata.templateArgv
+      metadata.templateArgv,
+      {
+        skipDefaultArgsValidation: metadata.customLaunchCommandDefaultArgsPolicy === 'command-only'
+      }
     );
     return {
       commandLine: parsed.commandLine,
@@ -14384,7 +14398,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     launchPreset: AgentLaunchPresetKind;
   } {
     const commandLine = this.buildHistoryResumeCommandLine(provider, sessionId, launchIntent);
-    const validation = validateAgentCommandLine(commandLine, provider, this.getAgentLaunchDefaults(provider));
+    const defaults = this.getAgentLaunchDefaults(provider);
+    const validationDefaults = launchIntent
+      ? { command: defaults.command, defaultArgs: '' }
+      : defaults;
+    const validation = validateAgentCommandLine(commandLine, provider, validationDefaults);
     if (!validation.valid || !validation.parsed) {
       throw new Error(
         localizeAgentLaunchMessageDescriptor(
@@ -17226,6 +17244,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const agentLaunchPreset = options?.agentLaunchPreset ?? 'default';
     const agentCustomLaunchCommand =
       agentLaunchPreset === 'custom' ? options?.agentCustomLaunchCommand : undefined;
+    const agentCustomLaunchCommandDefaultArgsPolicy =
+      agentLaunchPreset === 'custom' && options?.agentSkipFreshLaunchDefaultArgsValidation
+        ? 'command-only'
+        : undefined;
     const cwdOverride = isExecutionNodeKind(kind) && options?.cwdOverride
       ? this.validateExecutionCwdForCreate(kind, options.cwdOverride, options?.requestId)
       : undefined;
@@ -17266,7 +17288,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           agentProvider,
           agentLaunchPreset,
           agentCustomLaunchCommand,
-          this.getAgentLaunchDefaults(agentProvider)
+          this.getAgentLaunchDefaults(agentProvider),
+          undefined,
+          {
+            skipDefaultArgsValidation: options?.agentSkipFreshLaunchDefaultArgsValidation === true
+          }
         );
       } catch (error) {
         const message = localizeAgentLaunchError(
@@ -17278,6 +17304,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           provider: agentProvider,
           launchPreset: agentLaunchPreset,
           commandLine: agentCustomLaunchCommand ?? null,
+          defaultArgsPolicy: agentCustomLaunchCommandDefaultArgsPolicy ?? 'inherit',
           message
         });
         this.postMessage({
@@ -17345,6 +17372,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           launchPreset: agentLaunchPreset,
           customLaunchCommand:
             agentLaunchPreset === 'custom' ? agentCustomLaunchCommand?.trim() || undefined : undefined,
+          customLaunchCommandDefaultArgsPolicy: agentCustomLaunchCommandDefaultArgsPolicy,
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
@@ -23942,6 +23970,10 @@ function normalizeMetadata(
         customLaunchCommand:
           launchPreset === 'custom' && typeof agent.customLaunchCommand === 'string'
             ? agent.customLaunchCommand.trim() || undefined
+            : undefined,
+        customLaunchCommandDefaultArgsPolicy:
+          agent.customLaunchCommandDefaultArgsPolicy === 'command-only'
+            ? 'command-only'
             : undefined,
         templateArgv: Array.isArray(agent.templateArgv)
           ? normalizeStoredAgentTemplateArgv(agent.templateArgv)

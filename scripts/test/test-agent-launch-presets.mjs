@@ -124,6 +124,21 @@ try {
   assert.equal(
     buildAgentBranchCommandLine(
       'codex',
+      'codex-branch-session-old-command',
+      {
+        command: '/new/bin/codex',
+        defaultArgs: 'fork old-default-session --search'
+      },
+      {
+        launchPreset: 'default',
+        sourceLaunchCommandLine: '/old/bin/codex --yolo --search'
+      }
+    ),
+    '/new/bin/codex fork --yolo --search codex-branch-session-old-command'
+  );
+  assert.equal(
+    buildAgentBranchCommandLine(
+      'codex',
       'codex-branch-session-selection-assignment',
       {
         command: 'codex',
@@ -1140,6 +1155,21 @@ try {
       }
     ),
     'codex resume --yolo -c sandbox_workspace_write.network_access=true --search session-codex-last-launch'
+  );
+  assert.equal(
+    buildAgentHistoryResumeCommandLine(
+      'codex',
+      'session-codex-old-command',
+      {
+        command: '/new/bin/codex',
+        defaultArgs: 'fork old-default-session --search'
+      },
+      {
+        launchPreset: 'default',
+        sourceLaunchCommandLine: '/old/bin/codex --yolo --search'
+      }
+    ),
+    '/new/bin/codex resume --yolo --search session-codex-old-command'
   );
   assert.equal(
     buildAgentHistoryResumeCommandLine(

@@ -456,8 +456,23 @@ try {
   );
   assert.match(
     managerSource,
+    /const validationDefaults = launchIntent[\s\S]*\{ command: defaults\.command, defaultArgs: '' \}[\s\S]*: defaults;[\s\S]*validateAgentCommandLine\(commandLine, provider, validationDefaults\)/u,
+    '当前节点显式恢复传入启动意图后，命令校验必须跳过当前 Default args 解析，避免 Default args 中的会话目标拦截当前节点重启。'
+  );
+  assert.match(
+    managerSource,
     /branchCommandLine = this\.buildAgentBranchCommandLine\([\s\S]*metadata\.provider,[\s\S]*sessionId,[\s\S]*this\.buildAgentLaunchIntent\(metadata\)/u,
     '当前节点分叉必须传入当前节点启动意图，不能只继承当前 Default args。'
+  );
+  assert.match(
+    managerSource,
+    /agentSkipFreshLaunchDefaultArgsValidation: true/u,
+    '当前节点分叉创建出的 custom fork 节点必须记录 command-only 校验策略，不能在 applyCreateNode 或自动启动时被当前 Default args 拦截。'
+  );
+  assert.match(
+    managerSource,
+    /skipDefaultArgsValidation: metadata\.customLaunchCommandDefaultArgsPolicy === 'command-only'/u,
+    '当前节点分叉创建出的 custom fork 节点自动启动时必须复用 command-only 校验策略。'
   );
   assert.match(
     managerSource,
