@@ -175,9 +175,12 @@ async function runOwnerWindow() {
     const currentAgent = findOptionalNodeById(currentSnapshot, agentNode.id);
     return Boolean(
       currentAgent &&
+        currentAgent.status === 'stopped' &&
+        currentAgent.metadata?.agent?.lifecycle === 'stopped' &&
+        currentAgent.metadata.agent.persistenceMode === 'snapshot-only' &&
+        currentAgent.metadata.agent.attachmentState === 'history-restored' &&
         currentAgent.metadata?.agent?.liveSession === false &&
-        currentAgent.metadata.agent.runtimeSessionId === undefined &&
-        currentAgent.metadata.agent.lastExitMessage?.includes('Agent 会话已删除')
+        currentAgent.metadata.agent.runtimeSessionId === undefined
     );
   }, 30000);
   await writeJsonFile(sharedPath('owner-saw-agent-delete.json'), {
