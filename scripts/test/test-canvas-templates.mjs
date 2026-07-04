@@ -1185,7 +1185,10 @@ try {
   const canvasNodeVisualsSource = await readFile('extensions/vscode/dev-session-canvas/src/common/canvasNodeVisuals.ts', 'utf8');
   const thumbnailSource = await readFile('packages/marketplace-shared/src/thumbnail.ts', 'utf8');
   assert.match(webviewSource, /case 'host\/focusNodes':\s*requestNodeGroupFocus\(message\.payload\.nodeIds\);/u);
-  assert.match(webviewSource, /创建空文件并关联/u);
+  assert.match(webviewSource, /data-node-action-id="create-missing-associated-markdown-file"/u);
+  assert.match(webviewSource, /t\('action\.createEmptyAndAssociate'\)/u);
+  assert.match(webviewI18nSource, /'action\.createEmptyAndAssociate': 'Create empty file and associate'/u);
+  assert.match(webviewI18nSource, /'action\.createEmptyAndAssociate': '创建空文件并关联'/u);
   assert.match(webviewSource, /const knownNodeIds = latestHostNodeIdsRef\.current;/u);
   assert.match(webviewSource, /shouldPromptForRootGroupTemplateReset/u);
   assert.match(webviewSource, /resolveTemplateResetTargetRootGroupId/u);
