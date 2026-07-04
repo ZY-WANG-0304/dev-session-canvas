@@ -206,6 +206,13 @@ interface ResolvedMarketplaceInstallTarget {
   rootPath: string;
 }
 
+class MarketplaceTemplatePackageError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = 'MarketplaceTemplatePackageError';
+  }
+}
+
 export class TemplateMarketplaceClient {
   private readonly marketplaceSourceUrl: URL;
 
@@ -278,7 +285,7 @@ export class TemplateMarketplaceClient {
   public async updateInstalledTemplateToLatest(localTemplateId: string): Promise<TemplateMarketplaceInstallResult> {
     const installedTemplate = await this.findInstalledTemplateSummary(localTemplateId);
     if (!installedTemplate) {
-      throw new Error('找不到要更新的市场模板。');
+      throw new Error(vscode.l10n.t('Could not find the marketplace template to update.'));
     }
     return this.installTemplateFromUri(buildMarketplaceInstallUriFromInstalledTemplate(installedTemplate));
   }
@@ -310,7 +317,9 @@ export class TemplateMarketplaceClient {
     const detailUrl = buildTemplateDetailApiUrl(request);
     const detailResponse = await requestText(detailUrl);
     if (detailResponse.statusCode < 200 || detailResponse.statusCode >= 300) {
-      throw new Error(`获取模板详情失败：HTTP ${detailResponse.statusCode}。`);
+      throw new Error(vscode.l10n.t('Failed to fetch template details: HTTP {status}.', {
+        status: detailResponse.statusCode
+      }));
     }
 
     const detail = parseTemplateDetailResponse(JSON.parse(detailResponse.text)).template;
@@ -318,14 +327,16 @@ export class TemplateMarketplaceClient {
     const downloadUrl = buildTemplateDownloadApiUrl(request, version.id);
     const downloadResponse = await requestBuffer(downloadUrl, { accept: 'application/zip' });
     if (downloadResponse.statusCode < 200 || downloadResponse.statusCode >= 300) {
-      throw new Error(`下载完整模板包失败：HTTP ${downloadResponse.statusCode}。`);
+      throw new Error(vscode.l10n.t('Failed to download the full template package: HTTP {status}.', {
+        status: downloadResponse.statusCode
+      }));
     }
 
     const packagePayload = parseMarketplaceTemplatePackageForInstall(downloadResponse.body);
     const packageSha256 = createHash('sha256').update(downloadResponse.body).digest('hex');
     const templateSha256 = createHash('sha256').update(packagePayload.extractedFiles.get(packagePayload.templatePath) ?? new Uint8Array()).digest('hex');
     if (version.sha256 && templateSha256 !== version.sha256) {
-      throw new Error('模板包校验失败（template.json SHA-256 不匹配），已中止安装。');
+      throw new Error(vscode.l10n.t('Template package verification failed (template.json SHA-256 mismatch), so installation was stopped.'));
     }
 
     const metadata: CanvasTemplateMarketMetadata = {
@@ -386,10 +397,10 @@ export class TemplateMarketplaceClient {
     const name = request.name.trim();
     const description = request.description.trim();
     if (!name) {
-      throw new Error('模板名称不能为空。');
+      throw new Error(vscode.l10n.t('Template name cannot be empty.'));
     }
     if (!description) {
-      throw new Error('模板描述不能为空。');
+      throw new Error(vscode.l10n.t('Template description cannot be empty.'));
     }
 
     const sourceUrl = request.sourceUrl ? parseTrustedMarketplaceSourceUrl(request.sourceUrl) : this.marketplaceSourceUrl;
@@ -401,7 +412,7 @@ export class TemplateMarketplaceClient {
       description,
       tags: request.tags,
       readme: request.readme?.trim() || buildTemplatePublishReadme(name, description),
-      changelog: request.changelog?.trim() || 'Initial marketplace version.',
+      changelog: request.changelog?.trim() || vscode.l10n.t('Initial marketplace version.'),
       templateDocument,
       thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
     };
@@ -412,7 +423,9 @@ export class TemplateMarketplaceClient {
       token
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw new Error(`发布模板失败：${extractMarketplaceErrorMessage(response.text, response.statusCode)}`);
+      throw new Error(vscode.l10n.t('Failed to publish template: {message}', {
+        message: extractMarketplaceErrorMessage(response.text, response.statusCode)
+      }));
     }
     const publishResponse = parseTemplatePublishResponse(JSON.parse(response.text));
     const publishedSourceUrl = new URL(`/templates/${encodeURIComponent(publishResponse.template.slug)}`, sourceUrl.origin);
@@ -432,19 +445,21 @@ export class TemplateMarketplaceClient {
   ): Promise<TemplateMarketplacePublishResult> {
     const templateIdOrSlug = request.templateIdOrSlug?.trim();
     if (!templateIdOrSlug) {
-      throw new Error('发布新版本需要目标市场模板。');
+      throw new Error(vscode.l10n.t('Publishing a new version requires a target marketplace template.'));
     }
 
     const sourceUrl = request.sourceUrl ? parseTrustedMarketplaceSourceUrl(request.sourceUrl) : this.marketplaceSourceUrl;
     const detail = await this.fetchTemplateDetailFromMarketplace(templateIdOrSlug, sourceUrl);
     if (!isTemplateDraftLikelyMatchingMarketplaceTemplate(storedTemplate, detail)) {
-      throw new Error('本地模板名称与目标市场模板不匹配，已中止发布新版本。');
+      throw new Error(vscode.l10n.t('The local template name does not match the target marketplace template, so publishing a new version was stopped.'));
     }
 
     const token = await this.exchangeVSCodeMarketplaceToken(sourceUrl);
     const templateDocument = parseMarketplaceTemplateDocumentJson(request.templateJson);
     const requestBody = {
-      changelog: request.changelog?.trim() || `Version ${detail.latestVersion.versionNumber + 1}.`,
+      changelog: request.changelog?.trim() || vscode.l10n.t('Version {version}.', {
+        version: detail.latestVersion.versionNumber + 1
+      }),
       templateDocument,
       thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
     };
@@ -455,7 +470,9 @@ export class TemplateMarketplaceClient {
       token
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw new Error(`发布模板新版本失败：${extractMarketplaceErrorMessage(response.text, response.statusCode)}`);
+      throw new Error(vscode.l10n.t('Failed to publish a new template version: {message}', {
+        message: extractMarketplaceErrorMessage(response.text, response.statusCode)
+      }));
     }
     const publishResponse = parseTemplatePublishResponse(JSON.parse(response.text));
     const publishedSourceUrl = new URL(`/templates/${encodeURIComponent(publishResponse.template.slug)}`, sourceUrl.origin);
@@ -475,7 +492,7 @@ export class TemplateMarketplaceClient {
     const actualSha256 = createHash('sha256').update(request.inlineTemplateJson ?? '').digest('hex');
     const expectedSha256 = request.inlineSha256 ?? request.sha256;
     if (expectedSha256 && actualSha256 !== expectedSha256) {
-      throw new Error('内联模板校验失败（SHA-256 不匹配），已中止安装。');
+      throw new Error(vscode.l10n.t('Inline template verification failed (SHA-256 mismatch), so installation was stopped.'));
     }
 
     const document = JSON.parse(request.inlineTemplateJson ?? '') as unknown;
@@ -614,7 +631,9 @@ export class TemplateMarketplaceClient {
     const detailUrl = buildTemplateDetailApiUrl(request);
     const detailResponse = await requestText(detailUrl, { timeoutMs: options.timeoutMs });
     if (detailResponse.statusCode < 200 || detailResponse.statusCode >= 300) {
-      throw new Error(`获取模板详情失败：HTTP ${detailResponse.statusCode}。`);
+      throw new Error(vscode.l10n.t('Failed to fetch template details: HTTP {status}.', {
+        status: detailResponse.statusCode
+      }));
     }
     return parseTemplateDetailResponse(JSON.parse(detailResponse.text)).template;
   }
@@ -630,7 +649,9 @@ export class TemplateMarketplaceClient {
     };
     const detailResponse = await requestText(buildTemplateDetailApiUrl(request), { timeoutMs: options.timeoutMs });
     if (detailResponse.statusCode < 200 || detailResponse.statusCode >= 300) {
-      throw new Error(`获取模板详情失败：${extractMarketplaceErrorMessage(detailResponse.text, detailResponse.statusCode)}`);
+      throw new Error(vscode.l10n.t('Failed to fetch template details: {message}', {
+        message: extractMarketplaceErrorMessage(detailResponse.text, detailResponse.statusCode)
+      }));
     }
     return parseTemplateDetailResponse(JSON.parse(detailResponse.text)).template;
   }
@@ -640,7 +661,7 @@ export class TemplateMarketplaceClient {
     if (targetStorageLocationId) {
       const explicitLocation = locations.find((location) => location.id === targetStorageLocationId);
       if (!explicitLocation) {
-        throw new Error('指定的安装位置不存在。');
+        throw new Error(vscode.l10n.t('The selected install location does not exist.'));
       }
       return {
         id: explicitLocation.id,
@@ -661,10 +682,10 @@ export class TemplateMarketplaceClient {
     const catalog = await this.panelManager.getCanvasTemplateCatalog();
     const storedTemplate = catalog.templates.find((candidate) => candidate.template.id === templateId);
     if (!storedTemplate) {
-      throw new Error('找不到要发布的模板。');
+      throw new Error(vscode.l10n.t('Could not find the template to publish.'));
     }
     if (storedTemplate.template.category !== 'user' || storedTemplate.marketplace) {
-      throw new Error('目前只能发布自建模板，不能直接发布内置模板或已安装的市场模板。');
+      throw new Error(vscode.l10n.t('Only custom templates can be published right now. Built-in templates and installed marketplace templates cannot be published directly.'));
     }
     return storedTemplate;
   }
@@ -678,7 +699,9 @@ export class TemplateMarketplaceClient {
       undefined
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw new Error(`GitHub 身份换取市场 token 失败：${extractMarketplaceErrorMessage(response.text, response.statusCode)}`);
+      throw new Error(vscode.l10n.t('Failed to exchange GitHub identity for a marketplace token: {message}', {
+        message: extractMarketplaceErrorMessage(response.text, response.statusCode)
+      }));
     }
     const tokenResponse = parseMarketplaceTokenResponse(JSON.parse(response.text));
     await this.context.secrets.store(MARKETPLACE_TOKEN_SECRET_KEY, tokenResponse.token);
@@ -747,7 +770,9 @@ function isPublishableStoredTemplate(storedTemplate: CanvasStoredTemplate): bool
 function buildPublishDraft(storedTemplate: CanvasStoredTemplate): TemplateMarketplacePublishDraft {
   const templateDocument = parseMarketplaceTemplateDocumentJson(encodeCanvasTemplateDocument(storedTemplate.template));
   const defaultName = storedTemplate.template.name;
-  const defaultDescription = `${defaultName} template for Dev Session Canvas.`;
+  const defaultDescription = vscode.l10n.t('{name} template for Dev Session Canvas.', {
+    name: defaultName
+  });
   return {
     templateId: storedTemplate.template.id,
     templateName: storedTemplate.template.name,
@@ -758,7 +783,7 @@ function buildPublishDraft(storedTemplate: CanvasStoredTemplate): TemplateMarket
     defaultDescription,
     defaultTags: ['workflow'],
     defaultReadme: buildTemplatePublishReadme(defaultName, defaultDescription),
-    defaultChangelog: 'Initial marketplace version.',
+    defaultChangelog: vscode.l10n.t('Initial marketplace version.'),
     templateJson: JSON.stringify(templateDocument, null, 2),
     thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64(templateDocument)
   };
@@ -770,13 +795,15 @@ function parseMarketplaceTemplateDocumentJson(value: string): MarketplaceTemplat
 }
 
 function buildTemplatePublishReadme(name: string, description: string): string {
-  const trimmedDescription = description.trim() || `${name} template for Dev Session Canvas.`;
+  const trimmedDescription = description.trim() || vscode.l10n.t('{name} template for Dev Session Canvas.', {
+    name
+  });
   return `# ${name}\n\n${trimmedDescription}\n`;
 }
 
 function parseMarketplaceTokenResponse(value: unknown): MarketplaceVSCodeTokenResponseShape {
   if (!isRecord(value)) {
-    throw new Error('市场 token 接口返回了无法识别的数据格式。');
+    throw new Error(vscode.l10n.t('The marketplace token API returned unrecognized data.'));
   }
   return {
     token: readRequiredString(value.token, 'token'),
@@ -787,7 +814,7 @@ function parseMarketplaceTokenResponse(value: unknown): MarketplaceVSCodeTokenRe
 
 function parseAuthenticatedUser(value: unknown): MarketplaceAuthenticatedUserShape {
   if (!isRecord(value)) {
-    throw new Error('市场 token 接口缺少用户信息。');
+    throw new Error(vscode.l10n.t('The marketplace token API response is missing user information.'));
   }
   return {
     githubUserId: readRequiredString(value.githubUserId, 'user.githubUserId'),
@@ -803,7 +830,7 @@ function parseTemplatePublishResponse(value: unknown): { template: MarketplaceTe
 
 function parseInstallUri(uri: vscode.Uri): TemplateMarketplaceInstallRequest {
   if (uri.path !== MARKETPLACE_INSTALL_URI_PATH) {
-    throw new Error('不支持的安装链接路径。');
+    throw new Error(vscode.l10n.t('Unsupported install link path.'));
   }
 
   const params = new URLSearchParams(uri.query);
@@ -811,9 +838,9 @@ function parseInstallUri(uri: vscode.Uri): TemplateMarketplaceInstallRequest {
   const versionId = readOptionalQueryParam(params, 'version');
   const inlinePayload = readOptionalQueryParam(params, 'payload');
   const inlinePayloadSha256 = readOptionalQueryParam(params, 'payloadSha256');
-  // 外部 vscode:// 安装链接不接受内联 payload；inline 安装只允许从 Webview message bridge 进入。
+  // External vscode:// install links cannot carry inline payloads; inline installs only come through the Webview message bridge.
   if (inlinePayload || inlinePayloadSha256) {
-    throw new Error('外部安装链接不支持内联 payload，请从市场页面重新操作。');
+    throw new Error(vscode.l10n.t('External install links do not support inline payloads. Try again from the marketplace page.'));
   }
   const sourceUrl = parseTrustedMarketplaceSourceUrl(
     readOptionalQueryParam(params, 'source') ?? `${DEFAULT_MARKETPLACE_SOURCE_ORIGIN}/templates/${encodeURIComponent(templateIdOrSlug)}`
@@ -835,7 +862,9 @@ function parseInstallUri(uri: vscode.Uri): TemplateMarketplaceInstallRequest {
 function readRequiredQueryParam(params: URLSearchParams, key: string): string {
   const value = readOptionalQueryParam(params, key);
   if (!value) {
-    throw new Error(`安装链接缺少必要参数 ${key}。`);
+    throw new Error(vscode.l10n.t('The install link is missing required parameter {key}.', {
+      key
+    }));
   }
   return value;
 }
@@ -882,11 +911,11 @@ export function parseTrustedMarketplaceSourceUrl(value: string): URL {
   try {
     url = new URL(value);
   } catch {
-    throw new Error('市场来源地址无效。');
+    throw new Error(vscode.l10n.t('Marketplace source URL is invalid.'));
   }
 
   if (!isTrustedMarketplaceUrl(url)) {
-    throw new Error('市场来源不在允许的域名列表内。');
+    throw new Error(vscode.l10n.t('Marketplace source is not on the allowed host list.'));
   }
   return url;
 }
@@ -920,7 +949,7 @@ function buildTemplateDownloadApiUrl(request: TemplateMarketplaceInstallRequest,
 
 function parseMarketplaceTemplatePackageForInstall(packageBytes: Buffer): MarketplaceTemplatePackageInstallPayload {
   if (packageBytes.byteLength > MAX_TEMPLATE_PACKAGE_DOWNLOAD_BYTES) {
-    throw new Error('完整模板包超过大小限制。');
+    throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package exceeds the size limit.'));
   }
 
   let totalUnzippedBytes = 0;
@@ -932,20 +961,22 @@ function parseMarketplaceTemplatePackageForInstall(packageBytes: Buffer): Market
           return true;
         }
         if (!normalizeMarketplacePackagePath(file.name)) {
-          throw new Error(`完整模板包路径不安全：${file.name}`);
+          throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package contains an unsafe path: {path}', {
+            path: file.name
+          }));
         }
         totalUnzippedBytes += file.originalSize;
         if (totalUnzippedBytes > MAX_TEMPLATE_PACKAGE_UNZIPPED_BYTES) {
-          throw new Error('完整模板包解压后超过大小限制。');
+          throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package exceeds the unzipped size limit.'));
         }
         return true;
       }
     });
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('完整模板包')) {
+    if (error instanceof MarketplaceTemplatePackageError) {
       throw error;
     }
-    throw new Error('完整模板包不是有效的 zip 文件。');
+    throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package is not a valid zip file.'));
   }
 
   const extractedFiles = new Map<string, Uint8Array>();
@@ -955,19 +986,21 @@ function parseMarketplaceTemplatePackageForInstall(packageBytes: Buffer): Market
     }
     const normalizedPath = normalizeMarketplacePackagePath(entryPath);
     if (!normalizedPath) {
-      throw new Error(`完整模板包路径不安全：${entryPath}`);
+      throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package contains an unsafe path: {path}', {
+        path: entryPath
+      }));
     }
     extractedFiles.set(normalizedPath, bytes);
   }
 
   if (extractedFiles.size > MAX_TEMPLATE_PACKAGE_FILES) {
-    throw new Error('完整模板包文件数量超过限制。');
+    throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package contains too many files.'));
   }
 
   const manifestPath = 'template-package.json';
   const manifestBytes = extractedFiles.get(manifestPath);
   if (!manifestBytes) {
-    throw new Error('完整模板包缺少 template-package.json。');
+    throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package is missing template-package.json.'));
   }
 
   let manifest: ReturnType<typeof marketplaceTemplatePackageManifestSchema.parse>;
@@ -975,7 +1008,9 @@ function parseMarketplaceTemplatePackageForInstall(packageBytes: Buffer): Market
     manifest = marketplaceTemplatePackageManifestSchema.parse(JSON.parse(decodeUtf8(manifestBytes, manifestPath)));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`完整模板包 manifest 无效：${message}`);
+    throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package manifest is invalid: {message}', {
+      message
+    }));
   }
 
   const templateBytes = requirePackageEntryForInstall(extractedFiles, manifest.template);
@@ -988,7 +1023,9 @@ function parseMarketplaceTemplatePackageForInstall(packageBytes: Buffer): Market
     marketplaceTemplateDocumentSchema.parse(templateDocument);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`完整模板包 template.json 无效：${message}`);
+    throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package template.json is invalid: {message}', {
+      message
+    }));
   }
 
   return {
@@ -1006,11 +1043,15 @@ function parseMarketplaceTemplatePackageForInstall(packageBytes: Buffer): Market
 function requirePackageEntryForInstall(entries: ReadonlyMap<string, Uint8Array>, entryPath: string): Uint8Array {
   const normalizedPath = normalizeMarketplacePackagePath(entryPath);
   if (!normalizedPath) {
-    throw new Error(`完整模板包路径不安全：${entryPath}`);
+    throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package contains an unsafe path: {path}', {
+      path: entryPath
+    }));
   }
   const bytes = entries.get(normalizedPath);
   if (!bytes) {
-    throw new Error(`完整模板包缺少 ${normalizedPath}。`);
+    throw new MarketplaceTemplatePackageError(vscode.l10n.t('The full template package is missing {path}.', {
+      path: normalizedPath
+    }));
   }
   return bytes;
 }
@@ -1019,7 +1060,9 @@ function decodeUtf8(bytes: Uint8Array, fileName: string): string {
   try {
     return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
-    throw new Error(`${fileName} 不是有效 UTF-8 文本。`);
+    throw new MarketplaceTemplatePackageError(vscode.l10n.t('{fileName} is not valid UTF-8 text.', {
+      fileName
+    }));
   }
 }
 
@@ -1033,7 +1076,7 @@ function sanitizeMarketplacePackageDirectoryName(value: string): string {
 
 function parseTemplateDetailResponse(value: unknown): MarketplaceTemplateDetailResponseShape {
   if (!isRecord(value) || !isRecord(value.template)) {
-    throw new Error('详情接口返回了无法识别的数据格式。');
+    throw new Error(vscode.l10n.t('The detail API returned unrecognized data.'));
   }
   return {
     template: parseTemplateDetail(value.template)
@@ -1059,7 +1102,7 @@ function parseTemplateDetail(value: Record<string, unknown>): MarketplaceTemplat
 
 function parsePublisher(value: unknown): MarketplacePublisherShape {
   if (!isRecord(value)) {
-    throw new Error('详情接口缺少发布者信息。');
+    throw new Error(vscode.l10n.t('The detail API response is missing publisher information.'));
   }
   return {
     id: readRequiredString(value.id, 'publisher.id'),
@@ -1071,7 +1114,9 @@ function parsePublisher(value: unknown): MarketplacePublisherShape {
 
 function parseVersion(value: unknown, fieldName: string): MarketplaceTemplateVersionShape {
   if (!isRecord(value)) {
-    throw new Error(`详情接口缺少字段 ${fieldName}。`);
+    throw new Error(vscode.l10n.t('The detail API response is missing field {fieldName}.', {
+      fieldName
+    }));
   }
   return {
     id: readRequiredString(value.id, `${fieldName}.id`),
@@ -1089,21 +1134,25 @@ function resolveTemplateVersion(detail: MarketplaceTemplateDetailShape, versionI
 
   const version = detail.versions.find((entry) => entry.id === versionId) ?? (detail.latestVersion.id === versionId ? detail.latestVersion : undefined);
   if (!version) {
-    throw new Error('详情接口未返回指定版本。');
+    throw new Error(vscode.l10n.t('The detail API response did not include the requested version.'));
   }
   return version;
 }
 
 function readRequiredString(value: unknown, fieldName: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`详情接口缺少字段 ${fieldName}。`);
+    throw new Error(vscode.l10n.t('The detail API response is missing field {fieldName}.', {
+      fieldName
+    }));
   }
   return value.trim();
 }
 
 function readRequiredNumber(value: unknown, fieldName: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`详情接口缺少字段 ${fieldName}。`);
+    throw new Error(vscode.l10n.t('The detail API response is missing field {fieldName}.', {
+      fieldName
+    }));
   }
   return value;
 }
@@ -1132,12 +1181,12 @@ async function requestText(
         if (location && isRedirectStatus(statusCode)) {
           response.resume();
           if (redirectCount >= MAX_REDIRECTS) {
-            reject(new Error('请求重定向次数过多。'));
+            reject(new Error(vscode.l10n.t('Too many request redirects.')));
             return;
           }
           const nextUrl = new URL(location, url);
           if (!isTrustedMarketplaceUrl(nextUrl) && !isTrustedApiUrl(nextUrl, url)) {
-            reject(new Error('请求被重定向到不受信任的地址。'));
+            reject(new Error(vscode.l10n.t('The request was redirected to an untrusted URL.')));
             return;
           }
           void requestText(nextUrl, options, redirectCount + 1).then(resolve, reject);
@@ -1150,7 +1199,7 @@ async function requestText(
         response.on('data', (chunk: Buffer) => {
           byteLength += chunk.length;
           if (byteLength > maxBytes) {
-            request.destroy(new Error('模板文件超过大小限制。'));
+            request.destroy(new Error(vscode.l10n.t('The template file exceeds the size limit.')));
             return;
           }
           chunks.push(chunk);
@@ -1165,7 +1214,7 @@ async function requestText(
     );
 
     request.setTimeout(options.timeoutMs ?? 30_000, () => {
-      request.destroy(new Error('市场请求超时。'));
+      request.destroy(new Error(vscode.l10n.t('Marketplace request timed out.')));
     });
     request.on('error', reject);
   });
@@ -1192,12 +1241,12 @@ async function requestBuffer(
         if (location && isRedirectStatus(statusCode)) {
           response.resume();
           if (redirectCount >= MAX_REDIRECTS) {
-            reject(new Error('请求重定向次数过多。'));
+            reject(new Error(vscode.l10n.t('Too many request redirects.')));
             return;
           }
           const nextUrl = new URL(location, url);
           if (!isTrustedMarketplaceUrl(nextUrl) && !isTrustedApiUrl(nextUrl, url)) {
-            reject(new Error('请求被重定向到不受信任的地址。'));
+            reject(new Error(vscode.l10n.t('The request was redirected to an untrusted URL.')));
             return;
           }
           void requestBuffer(nextUrl, options, redirectCount + 1).then(resolve, reject);
@@ -1210,7 +1259,7 @@ async function requestBuffer(
         response.on('data', (chunk: Buffer) => {
           byteLength += chunk.length;
           if (byteLength > maxBytes) {
-            request.destroy(new Error('完整模板包超过大小限制。'));
+            request.destroy(new Error(vscode.l10n.t('The full template package exceeds the size limit.')));
             return;
           }
           chunks.push(chunk);
@@ -1225,7 +1274,7 @@ async function requestBuffer(
     );
 
     request.setTimeout(30_000, () => {
-      request.destroy(new Error('市场请求超时。'));
+      request.destroy(new Error(vscode.l10n.t('Marketplace request timed out.')));
     });
     request.on('error', reject);
   });
@@ -1252,7 +1301,7 @@ async function requestJson(url: URL, method: 'POST', body: unknown, bearerToken:
         response.on('data', (chunk: Buffer) => {
           byteLength += chunk.length;
           if (byteLength > MAX_TEMPLATE_DOWNLOAD_BYTES) {
-            request.destroy(new Error('市场响应超过大小限制。'));
+            request.destroy(new Error(vscode.l10n.t('Marketplace response exceeds the size limit.')));
             return;
           }
           chunks.push(chunk);
@@ -1267,7 +1316,7 @@ async function requestJson(url: URL, method: 'POST', body: unknown, bearerToken:
     );
 
     request.setTimeout(30_000, () => {
-      request.destroy(new Error('市场请求超时。'));
+      request.destroy(new Error(vscode.l10n.t('Marketplace request timed out.')));
     });
     request.on('error', reject);
     request.end(payload);

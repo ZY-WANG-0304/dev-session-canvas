@@ -1,15 +1,24 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
 
+import {
+  RUNTIME_SUPERVISOR_ERROR_CODES,
+  createRuntimeSupervisorProtocolError
+} from '../common/runtimeSupervisorProtocol';
+
 async function main(): Promise<void> {
   const supervisorScriptPath = readCliPathFlag('--supervisor-script');
   const storageDir = readCliPathFlag('--storage-dir');
   if (!supervisorScriptPath) {
-    throw new Error('runtime supervisor launcher 启动失败：缺少 --supervisor-script 参数。');
+    throw createRuntimeSupervisorProtocolError({
+      id: 'launcherMissingSupervisorScript'
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.launcherMissingSupervisorScript);
   }
 
   if (!storageDir) {
-    throw new Error('runtime supervisor launcher 启动失败：缺少 --storage-dir 参数。');
+    throw createRuntimeSupervisorProtocolError({
+      id: 'launcherMissingStorageDir'
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.launcherMissingStorageDir);
   }
 
   const args = [supervisorScriptPath, '--storage-dir', storageDir];

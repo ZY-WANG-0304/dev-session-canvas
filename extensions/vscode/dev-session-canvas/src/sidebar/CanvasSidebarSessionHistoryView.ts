@@ -146,6 +146,24 @@ interface PendingSidebarSessionHistoryTestActionRequest {
   timer: NodeJS.Timeout;
 }
 
+interface SidebarSessionHistoryCopy {
+  searchPlaceholder: string;
+  clearSearch: string;
+  currentWorkspaceSessionHistory: string;
+  currentWorkspaceSessionHistoryGroups: string;
+  workspaceRoot: string;
+  within24h: string;
+  withinWeek: string;
+  older: string;
+  noMatchingSessions: string;
+  noRestorableSessions: string;
+  expanded: string;
+  collapsed: string;
+  resume: string;
+  fork: string;
+  historySessionAction: string;
+}
+
 export interface SidebarSessionHistoryWorkspaceRoot {
   name: string;
   path: string;
@@ -186,8 +204,8 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
       clearTimeout(this.refreshTimer);
       this.refreshTimer = undefined;
     }
-    this.rejectPendingReadyRequests('侧栏会话历史视图已被释放。');
-    this.rejectPendingTestActionRequests('侧栏会话历史视图已被释放。');
+    this.rejectPendingReadyRequests('Sidebar session history view was disposed.');
+    this.rejectPendingTestActionRequests('Sidebar session history view was disposed.');
   }
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -208,8 +226,8 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
       if (this.view === webviewView) {
         this.view = undefined;
         this.isWebviewReady = false;
-        this.rejectPendingReadyRequests('侧栏会话历史视图已被关闭。');
-        this.rejectPendingTestActionRequests('侧栏会话历史视图已被关闭。');
+        this.rejectPendingReadyRequests('Sidebar session history view was closed.');
+        this.rejectPendingTestActionRequests('Sidebar session history view was closed.');
       }
     });
     webviewView.onDidChangeVisibility(() => {
@@ -232,7 +250,7 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
         this.errorMessage = undefined;
       } catch (error) {
         this.items = [];
-        this.errorMessage = error instanceof Error ? error.message : '无法读取当前 workspace 的会话历史。';
+        this.errorMessage = error instanceof Error ? error.message : vscode.l10n.t('Could not read session history for the current workspace.');
       }
 
       this.actionErrorMessage = undefined;
@@ -277,7 +295,7 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
       const requestId = createNonce();
       const timer = setTimeout(() => {
         this.pendingReadyRequests.delete(requestId);
-        reject(new Error('等待侧栏会话历史视图就绪超时。'));
+        reject(new Error('Timed out waiting for the sidebar session history view to become ready.'));
       }, timeoutMs);
 
       this.pendingReadyRequests.set(requestId, {
@@ -297,14 +315,14 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
 
     const currentView = this.view;
     if (!currentView) {
-      throw new Error('侧栏会话历史视图尚未创建。');
+      throw new Error('Sidebar session history view has not been created yet.');
     }
 
     return new Promise<SidebarSessionHistoryTestSnapshot>((resolve, reject) => {
       const requestId = createNonce();
       const timer = setTimeout(() => {
         this.pendingTestActionRequests.delete(requestId);
-        reject(new Error('等待侧栏会话历史测试动作完成超时。'));
+        reject(new Error('Timed out waiting for the sidebar session history test action to complete.'));
       }, timeoutMs);
 
       this.pendingTestActionRequests.set(requestId, {
@@ -333,7 +351,7 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
 
           clearTimeout(pendingRequest.timer);
           this.pendingTestActionRequests.delete(requestId);
-          pendingRequest.reject(new Error('无法将侧栏会话历史测试动作发送给 Webview。'));
+          pendingRequest.reject(new Error('Could not send the sidebar session history test action to the Webview.'));
         }, (error: unknown) => {
           const pendingRequest = this.pendingTestActionRequests.get(requestId);
           if (!pendingRequest) {
@@ -342,7 +360,7 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
 
           clearTimeout(pendingRequest.timer);
           this.pendingTestActionRequests.delete(requestId);
-          pendingRequest.reject(error instanceof Error ? error : new Error('侧栏会话历史测试动作发送失败。'));
+          pendingRequest.reject(error instanceof Error ? error : new Error('Sidebar session history test action failed to send.'));
         });
     });
   }
@@ -521,7 +539,7 @@ export class CanvasSidebarSessionHistoryView implements vscode.WebviewViewProvid
     }
 
     if (!snapshot) {
-      pendingRequest.reject(new Error('侧栏会话历史测试动作没有返回快照。'));
+      pendingRequest.reject(new Error('Sidebar session history test action did not return a snapshot.'));
       return;
     }
 
@@ -548,12 +566,12 @@ export function buildCanvasSidebarSessionHistoryItems(
     const workspaceRootLabel =
       workspaceRoot?.name?.trim() ||
       basenameForDisplayPath(workspaceRootPath) ||
-      '工作区根目录';
+      vscode.l10n.t('Workspace root');
     const relativeCwd = resolveWorkspaceRelativeCwd(entry.cwd, workspaceRootPath);
     const title = formatSessionHistoryTitle(entry);
     const timestampLabel = [
       providerLabel(entry.provider),
-      formatRelativeTimestamp(entry.updatedAtMs).replace(/\s+/g, ''),
+      formatRelativeTimestamp(entry.updatedAtMs),
       entry.sessionId
     ].join(' · ');
 
@@ -571,10 +589,10 @@ export function buildCanvasSidebarSessionHistoryItems(
       tooltip: [
         title,
         `${providerLabel(entry.provider)} · ${entry.sessionId}`,
-        `Root：${workspaceRootLabel}`,
-        `目录：${relativeCwd}`,
-        `创建：${formatTimestamp(entry.createdAtMs)}`,
-        `更新：${formatTimestamp(entry.updatedAtMs)}`
+        vscode.l10n.t('Root: {root}', { root: workspaceRootLabel }),
+        vscode.l10n.t('Directory: {cwd}', { cwd: relativeCwd }),
+        vscode.l10n.t('Created: {time}', { time: formatTimestamp(entry.createdAtMs) }),
+        vscode.l10n.t('Updated: {time}', { time: formatTimestamp(entry.updatedAtMs) })
       ]
         .filter((line): line is string => typeof line === 'string' && line.length > 0)
         .join('\n'),
@@ -634,7 +652,7 @@ function normalizeSidebarSessionHistoryWorkspaceRoots(
   if (typeof workspaceRoots === 'string') {
     return [
       {
-        name: basenameForDisplayPath(workspaceRoots) || '工作区根目录',
+        name: basenameForDisplayPath(workspaceRoots) || vscode.l10n.t('Workspace root'),
         path: workspaceRoots
       }
     ];
@@ -642,7 +660,7 @@ function normalizeSidebarSessionHistoryWorkspaceRoots(
 
   return workspaceRoots
     .map((workspaceRoot) => ({
-      name: workspaceRoot.name.trim() || basenameForDisplayPath(workspaceRoot.path) || '工作区根目录',
+      name: workspaceRoot.name.trim() || basenameForDisplayPath(workspaceRoot.path) || vscode.l10n.t('Workspace root'),
       path: workspaceRoot.path
     }))
     .filter((workspaceRoot) => workspaceRoot.path.trim().length > 0);
@@ -682,7 +700,7 @@ function resolveWorkspaceRelativeCwd(cwd: string, workspaceRoot: string): string
   const displaySeparator = inferCwdDisplaySeparator(cwd);
   const relativePath = pathApi.relative(pathApi.resolve(workspaceRoot), pathApi.resolve(cwd));
   if (!relativePath || relativePath === '.') {
-    return appendDirectoryIndicator('工作区根目录', displaySeparator);
+    return appendDirectoryIndicator(vscode.l10n.t('Workspace root'), displaySeparator);
   }
 
   return appendDirectoryIndicator(
@@ -746,7 +764,7 @@ function providerLabel(provider: AgentProviderKind): string {
 }
 
 function formatTimestamp(timestampMs: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(resolveSessionHistoryIntlLocale(), {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -758,7 +776,7 @@ function formatTimestamp(timestampMs: number): string {
 function formatRelativeTimestamp(timestampMs: number): string {
   const elapsedMs = Date.now() - timestampMs;
   if (elapsedMs <= 0) {
-    return '刚刚';
+    return vscode.l10n.t('just now');
   }
 
   const minuteMs = 60 * 1000;
@@ -766,16 +784,16 @@ function formatRelativeTimestamp(timestampMs: number): string {
   const dayMs = 24 * hourMs;
 
   if (elapsedMs < minuteMs) {
-    return '刚刚';
+    return vscode.l10n.t('just now');
   }
   if (elapsedMs < hourMs) {
-    return `${Math.max(1, Math.floor(elapsedMs / minuteMs))} 分钟前`;
+    return vscode.l10n.t('{count} min ago', { count: Math.max(1, Math.floor(elapsedMs / minuteMs)) });
   }
   if (elapsedMs < dayMs) {
-    return `${Math.max(1, Math.floor(elapsedMs / hourMs))} 小时前`;
+    return vscode.l10n.t('{count} hr ago', { count: Math.max(1, Math.floor(elapsedMs / hourMs)) });
   }
 
-  return `${Math.max(1, Math.floor(elapsedMs / dayMs))} 天前`;
+  return vscode.l10n.t('{count} days ago', { count: Math.max(1, Math.floor(elapsedMs / dayMs)) });
 }
 
 function parseSidebarSessionHistoryMessage(message: unknown): SidebarSessionHistoryInboundMessage | null {
@@ -980,12 +998,13 @@ export function buildSidebarSessionHistoryHtml(
   codiconCssUri?: string
 ): string {
   const nonce = createNonce();
+  const copy = buildSidebarSessionHistoryCopy();
   const providerIconsJson = JSON.stringify(SIDEBAR_SESSION_PROVIDER_ICON_SVGS);
   const actionCodiconsJson = JSON.stringify(SIDEBAR_SESSION_ACTION_CODICONS);
   const codiconLink = codiconCssUri ? `\n    <link rel="stylesheet" href="${escapeHtmlAttribute(codiconCssUri)}" />` : '';
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${resolveWebviewHtmlLang()}">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -1359,17 +1378,18 @@ export function buildSidebarSessionHistoryHtml(
             class="search-input"
             type="text"
             spellcheck="false"
-            placeholder="搜索标题、Session ID 或 provider"
+            placeholder="${copy.searchPlaceholder}"
           />
-          <button id="searchClearButton" class="search-clear" type="button" aria-label="清空会话搜索" hidden>&times;</button>
+          <button id="searchClearButton" class="search-clear" type="button" aria-label="${copy.clearSearch}" hidden>&times;</button>
         </div>
       </div>
       <div id="statusNote" class="status-note" role="status" aria-live="polite"></div>
-      <div id="list" class="list" role="listbox" aria-label="当前 workspace 会话历史"></div>
+      <div id="list" class="list" role="listbox" aria-label="${copy.currentWorkspaceSessionHistory}"></div>
       <div id="emptyState" class="empty-state" role="status" aria-live="polite"></div>
     </div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const copy = ${serializeForInlineScript(copy)};
       const providerIcons = ${providerIconsJson};
       const actionCodicons = ${actionCodiconsJson};
       const state = {
@@ -1424,7 +1444,7 @@ export function buildSidebarSessionHistoryHtml(
 
       function getGroupMeta(level, item) {
         if (level === 'root') {
-          const label = item.workspaceRootLabel || '工作区根目录';
+          const label = item.workspaceRootLabel || copy.workspaceRoot;
           return {
             key: 'root:' + (item.workspaceRootPath || label),
             label
@@ -1449,12 +1469,12 @@ export function buildSidebarSessionHistoryHtml(
         const dayMs = 24 * 60 * 60 * 1000;
         const weekMs = 7 * dayMs;
         if (elapsedMs <= dayMs) {
-          return { key: 'within-24h', label: '24小时内' };
+          return { key: 'within-24h', label: copy.within24h };
         }
         if (elapsedMs <= weekMs) {
-          return { key: 'within-week', label: '一周内' };
+          return { key: 'within-week', label: copy.withinWeek };
         }
-        return { key: 'older', label: '更早' };
+        return { key: 'older', label: copy.older };
       }
 
       function syncRenderedSelection() {
@@ -1659,8 +1679,8 @@ export function buildSidebarSessionHistoryHtml(
 
         if (visibleItems.length === 0) {
           emptyState.textContent = state.query.trim()
-            ? '没有匹配的会话。'
-            : '当前 workspace 还没有可恢复的 Codex / Claude Code 会话。';
+            ? copy.noMatchingSessions
+            : copy.noRestorableSessions;
           emptyState.classList.add('is-visible');
           return;
         }
@@ -1672,7 +1692,7 @@ export function buildSidebarSessionHistoryHtml(
       function renderItems(items, groupingLevels, interactionBlocked) {
         if (groupingLevels.length === 0) {
           list.setAttribute('role', 'listbox');
-          list.setAttribute('aria-label', '当前 workspace 会话历史');
+          list.setAttribute('aria-label', copy.currentWorkspaceSessionHistory);
           for (const item of items) {
             appendSessionRow(item, interactionBlocked);
           }
@@ -1682,7 +1702,7 @@ export function buildSidebarSessionHistoryHtml(
         const validGroupKeys = collectGroupKeys(items, groupingLevels, 0, 'session-history');
         pruneCollapsedGroupKeys(validGroupKeys);
         list.setAttribute('role', 'tree');
-        list.setAttribute('aria-label', '当前 workspace 会话历史分组');
+        list.setAttribute('aria-label', copy.currentWorkspaceSessionHistoryGroups);
         appendGroupedItems(items, groupingLevels, 0, 'session-history');
       }
 
@@ -1729,7 +1749,7 @@ export function buildSidebarSessionHistoryHtml(
         groupRow.setAttribute('role', 'treeitem');
         groupRow.setAttribute('aria-level', String(depth + 1));
         groupRow.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        groupRow.setAttribute('aria-label', label + (expanded ? '，已展开' : '，已折叠'));
+        groupRow.setAttribute('aria-label', label + (expanded ? ', ' + copy.expanded : ', ' + copy.collapsed));
         groupRow.setAttribute('data-session-history-group-key', key);
         groupRow.setAttribute('data-session-history-group-label', label);
         groupRow.setAttribute('data-session-history-group-depth', String(depth));
@@ -1878,8 +1898,10 @@ export function buildSidebarSessionHistoryHtml(
         icon.className = 'session-action-icon codicon codicon-' + resolveActionCodicon(action);
         icon.setAttribute('aria-hidden', 'true');
         button.append(icon);
-        const actionLabel = action === 'fork' ? '分叉' : '恢复';
-        const label = actionLabel + '历史会话：' + item.title;
+        const actionLabel = action === 'fork' ? copy.fork : copy.resume;
+        const label = copy.historySessionAction
+          .replace('{action}', actionLabel)
+          .replace('{title}', item.title);
         button.setAttribute('aria-label', label);
         button.title = label;
         if (disabled) {
@@ -1980,6 +2002,41 @@ function readBundledProviderIconSvg(fileName: string, fallbackSvg: string): stri
 
 function escapeHtmlAttribute(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function buildSidebarSessionHistoryCopy(): SidebarSessionHistoryCopy {
+  return {
+    searchPlaceholder: vscode.l10n.t('Search title, Session ID, or provider'),
+    clearSearch: vscode.l10n.t('Clear session search'),
+    currentWorkspaceSessionHistory: vscode.l10n.t('Current workspace session history'),
+    currentWorkspaceSessionHistoryGroups: vscode.l10n.t('Current workspace session history groups'),
+    workspaceRoot: vscode.l10n.t('Workspace root'),
+    within24h: vscode.l10n.t('Within 24 hours'),
+    withinWeek: vscode.l10n.t('Within a week'),
+    older: vscode.l10n.t('Older'),
+    noMatchingSessions: vscode.l10n.t('No matching sessions.'),
+    noRestorableSessions: vscode.l10n.t('The current workspace has no restorable Codex / Claude Code sessions yet.'),
+    expanded: vscode.l10n.t('expanded'),
+    collapsed: vscode.l10n.t('collapsed'),
+    resume: vscode.l10n.t('Resume'),
+    fork: vscode.l10n.t('Fork'),
+    historySessionAction: vscode.l10n.t('{action} history session: {title}', {
+      action: '{action}',
+      title: '{title}'
+    })
+  };
+}
+
+function serializeForInlineScript(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+}
+
+function resolveWebviewHtmlLang(): string {
+  return (vscode.env?.language || 'en').replace(/"/g, '');
+}
+
+function resolveSessionHistoryIntlLocale(): string {
+  return vscode.env?.language || 'en';
 }
 
 function createNonce(): string {

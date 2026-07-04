@@ -95,6 +95,17 @@ try {
   assert.equal(windowsPaths.socketLocation, 'named-pipe');
   assert.equal(windowsPaths.socketPath, `\\\\.\\pipe\\dev-session-canvas-${digest}`);
 
+  assert.throws(
+    () =>
+      resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(longStorageDir, {
+        platform: 'win32'
+      }),
+    (error) =>
+      error?.code === 'DEV_SESSION_CANVAS_RUNTIME_SYSTEMD_USER_UNSUPPORTED_ON_WINDOWS' &&
+      error?.descriptor?.id === 'systemdUserUnsupportedOnWindows' &&
+      error?.message === 'The systemd-user backend does not support Windows.'
+  );
+
   const systemdPaths = resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(longStorageDir, {
     platform: 'linux',
     env: {},

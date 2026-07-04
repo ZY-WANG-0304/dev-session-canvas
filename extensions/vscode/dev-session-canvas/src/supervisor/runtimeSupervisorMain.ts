@@ -28,12 +28,16 @@ import {
 } from '../common/serializedTerminalState';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
+  RUNTIME_SUPERVISOR_ERROR_CODES,
   deserializeExecutionSessionLaunchSpec,
+  createRuntimeSupervisorProtocolError,
+  formatRuntimeSupervisorMessageDescriptor,
   serializeRuntimeSupervisorError,
   type RuntimeSupervisorAttachSessionParams,
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorDeleteSessionParams,
   type RuntimeSupervisorEvent,
+  type RuntimeSupervisorMessageDescriptor,
   type RuntimeSupervisorMessage,
   type RuntimeSupervisorPaths,
   type RuntimeSupervisorRequest,
@@ -104,6 +108,7 @@ interface SupervisorSession {
   lastExitCode?: number;
   lastExitSignal?: string;
   lastExitMessage?: string;
+  lastExitMessageDescriptor?: RuntimeSupervisorMessageDescriptor;
   stopRequested: boolean;
   agentActivity?: AgentActivityHeuristicState;
   process?: ExecutionSessionProcess;
@@ -167,7 +172,13 @@ class RuntimeSupervisorServer {
               void this.handleRequest(socket, message);
             }
           } catch (error) {
-            this.writeMessage(socket, createErrorResponse('parse-error', error instanceof Error ? error.message : '消息解析失败。'));
+            const message = error instanceof Error ? error.message : 'Invalid JSON message.';
+            this.writeMessage(socket, createErrorResponse('parse-error', {
+              id: 'parseError',
+              params: {
+                message
+              }
+            }, RUNTIME_SUPERVISOR_ERROR_CODES.parseError));
           }
         }
       });
@@ -263,7 +274,12 @@ class RuntimeSupervisorServer {
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     const sessionId = params.sessionId?.trim() || randomUUID();
     if (this.sessions.has(sessionId)) {
-      throw new Error(`runtime session ${sessionId} 已存在。`);
+      throw createRuntimeSupervisorProtocolError({
+        id: 'sessionAlreadyExists',
+        params: {
+          sessionId
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionAlreadyExists);
     }
 
     const lifecycle: AgentNodeStatus | TerminalNodeStatus =
@@ -354,7 +370,12 @@ class RuntimeSupervisorServer {
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     const session = this.sessions.get(params.sessionId);
     if (!session) {
-      throw new Error(`未找到 runtime session ${params.sessionId}。`);
+      throw createRuntimeSupervisorProtocolError({
+        id: 'sessionNotFound',
+        params: {
+          sessionId: params.sessionId
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound);
     }
 
     this.subscribeSocket(socket, params.sessionId);
@@ -364,11 +385,15 @@ class RuntimeSupervisorServer {
   private writeInput(params: RuntimeSupervisorWriteInputParams): void {
     const session = this.requireLiveSession(params.sessionId);
     if (session.kind === 'agent' && session.provider === 'claude' && containsTerminalSuspendInput(params.data)) {
-      throw new Error('Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。');
+      throw createRuntimeSupervisorProtocolError({
+        id: 'claudeAgentCtrlZUnsupported'
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.claudeCtrlZUnsupported);
     }
 
     if (session.kind === 'agent' && session.lifecycle === 'suspended') {
-      throw new Error('Claude Code 已挂起，请点击“停止”结束会话后重启。');
+      throw createRuntimeSupervisorProtocolError({
+        id: 'claudeCodeSuspended'
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.claudeSuspended);
     }
 
     if (session.kind === 'agent') {
@@ -442,7 +467,9 @@ class RuntimeSupervisorServer {
     if (wasLive) {
       session.stopRequested = true;
       session.lifecycle = session.kind === 'agent' ? 'stopped' : 'closed';
-      session.lastExitMessage = session.kind === 'agent' ? 'Agent 会话已删除。' : '终端会话已删除。';
+      setSessionLastExitMessage(session, {
+        id: session.kind === 'agent' ? 'agentSessionDeleted' : 'terminalSessionDeleted'
+      });
     }
     session.live = false;
     await this.emitFreshSessionState(session);
@@ -520,26 +547,43 @@ class RuntimeSupervisorServer {
       this.finalizeAgentResumeSessionIdFromOutput(session);
       if (session.stopRequested) {
         session.lifecycle = 'stopped';
-        session.lastExitMessage = `已停止 ${session.displayLabel} 会话。`;
+        setSessionLastExitMessage(session, {
+          id: 'agentSessionStopped',
+          params: {
+            label: session.displayLabel
+          }
+        });
       } else if (exitCode === 0) {
         session.lifecycle = 'stopped';
-        session.lastExitMessage = `${session.displayLabel} 会话已结束。`;
+        setSessionLastExitMessage(session, {
+          id: 'agentSessionEnded',
+          params: {
+            label: session.displayLabel
+          }
+        });
       } else if (session.resumePhaseActive) {
         session.lifecycle = 'resume-failed';
-        session.lastExitMessage = describeAgentResumeFailure(session.displayLabel, exitCode, signal, session.output);
+        setSessionLastExitMessage(
+          session,
+          describeAgentResumeFailure(session.displayLabel, exitCode, signal, session.output)
+        );
       } else {
         session.lifecycle = 'error';
-        session.lastExitMessage = describeAgentExit(session.displayLabel, exitCode, signal, session.output);
+        setSessionLastExitMessage(session, describeAgentExit(session.displayLabel, exitCode, signal, session.output));
       }
     } else if (session.stopRequested) {
       session.lifecycle = 'closed';
-      session.lastExitMessage = '终端已停止。';
+      setSessionLastExitMessage(session, {
+        id: 'terminalStopped'
+      });
     } else if (exitCode === 0) {
       session.lifecycle = 'closed';
-      session.lastExitMessage = '终端会话已结束。';
+      setSessionLastExitMessage(session, {
+        id: 'terminalSessionEnded'
+      });
     } else {
       session.lifecycle = 'error';
-      session.lastExitMessage = describeTerminalExit(session.shellPath, exitCode, signal, session.output);
+      setSessionLastExitMessage(session, describeTerminalExit(session.shellPath, exitCode, signal, session.output));
     }
 
     session.lastExitCode = exitCode;
@@ -879,13 +923,19 @@ class RuntimeSupervisorServer {
       lastExitCode: session.lastExitCode,
       lastExitSignal: session.lastExitSignal,
       lastExitMessage: session.lastExitMessage,
+      lastExitMessageDescriptor: session.lastExitMessageDescriptor,
     };
   }
 
   private requireSession(sessionId: string): SupervisorSession {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      throw new Error(`未找到 runtime session ${sessionId}。`);
+      throw createRuntimeSupervisorProtocolError({
+        id: 'sessionNotFound',
+        params: {
+          sessionId
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound);
     }
 
     return session;
@@ -894,7 +944,12 @@ class RuntimeSupervisorServer {
   private requireLiveSession(sessionId: string): SupervisorSession {
     const session = this.requireSession(sessionId);
     if (!session.live || !session.process) {
-      throw new Error(`runtime session ${sessionId} 当前不处于 live 状态。`);
+      throw createRuntimeSupervisorProtocolError({
+        id: 'sessionNotLive',
+        params: {
+          sessionId
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotLive);
     }
 
     return session;
@@ -1020,9 +1075,15 @@ class RuntimeSupervisorServer {
       snapshot.kind === 'agent'
         ? normalizeRecoveredAgentLifecycle(snapshot.lifecycle as AgentNodeStatus)
         : normalizeRecoveredTerminalLifecycle(snapshot.lifecycle as TerminalNodeStatus);
+    const recoveryDescriptor: RuntimeSupervisorMessageDescriptor = {
+      id: 'recoveredHistoryOnly'
+    };
+    const lastExitMessageDescriptor = snapshot.lastExitMessageDescriptor ?? (
+      snapshot.lastExitMessage ? undefined : recoveryDescriptor
+    );
     const lastExitMessage =
       snapshot.lastExitMessage ||
-      '会话监督器未保留原 live runtime，已仅恢复历史结果。';
+      formatRuntimeSupervisorMessageDescriptor(recoveryDescriptor);
     const scrollback = normalizeTerminalScrollback(snapshot.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
 
     return {
@@ -1039,6 +1100,7 @@ class RuntimeSupervisorServer {
             snapshot.launchMode === 'resume' &&
             isAgentResumePhaseActive(snapshot.lifecycle as AgentNodeStatus),
       lastExitMessage,
+      lastExitMessageDescriptor,
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
       scrollback,
@@ -1109,31 +1171,93 @@ function summarizeLastLine(value: string): string {
   return lastLine.length > 140 ? `${lastLine.slice(0, 140)}...` : lastLine;
 }
 
-function describeAgentExit(label: string, code: number, signal: string | undefined, output: string): string {
-  const suffix = summarizeLastLine(output);
-  if (signal) {
-    return [`${label} 因信号 ${signal} 退出。`, suffix].filter(Boolean).join(' ');
-  }
-
-  return [`${label} 以退出码 ${code} 结束。`, suffix].filter(Boolean).join(' ');
+function setSessionLastExitMessage(session: SupervisorSession, descriptor: RuntimeSupervisorMessageDescriptor): void {
+  session.lastExitMessageDescriptor = descriptor;
+  session.lastExitMessage = formatRuntimeSupervisorMessageDescriptor(descriptor);
 }
 
-function describeAgentResumeFailure(label: string, code: number, signal: string | undefined, output: string): string {
+function describeAgentExit(
+  label: string,
+  code: number,
+  signal: string | undefined,
+  output: string
+): RuntimeSupervisorMessageDescriptor {
   const suffix = summarizeLastLine(output);
   if (signal) {
-    return [`恢复 ${label} 时收到信号 ${signal}。`, suffix].filter(Boolean).join(' ');
+    return {
+      id: 'agentExitedSignal',
+      params: {
+        label,
+        signal,
+        suffix
+      }
+    };
   }
 
-  return [`恢复 ${label} 时进程以退出码 ${code} 结束。`, suffix].filter(Boolean).join(' ');
+  return {
+    id: 'agentExitedCode',
+    params: {
+      label,
+      code: String(code),
+      suffix
+    }
+  };
 }
 
-function describeTerminalExit(shellPath: string, code: number, signal: string | undefined, output: string): string {
+function describeAgentResumeFailure(
+  label: string,
+  code: number,
+  signal: string | undefined,
+  output: string
+): RuntimeSupervisorMessageDescriptor {
   const suffix = summarizeLastLine(output);
   if (signal) {
-    return [`终端 ${shellPath} 因信号 ${signal} 退出。`, suffix].filter(Boolean).join(' ');
+    return {
+      id: 'agentResumeFailedSignal',
+      params: {
+        label,
+        signal,
+        suffix
+      }
+    };
   }
 
-  return [`终端 ${shellPath} 以退出码 ${code} 结束。`, suffix].filter(Boolean).join(' ');
+  return {
+    id: 'agentResumeFailedCode',
+    params: {
+      label,
+      code: String(code),
+      suffix
+    }
+  };
+}
+
+function describeTerminalExit(
+  shellPath: string,
+  code: number,
+  signal: string | undefined,
+  output: string
+): RuntimeSupervisorMessageDescriptor {
+  const suffix = summarizeLastLine(output);
+  if (signal) {
+    return {
+      id: 'terminalExitedSignal',
+      params: {
+        shellPath,
+        signal,
+        suffix
+      }
+    };
+  }
+
+  return {
+    id: 'terminalExitedCode',
+    params: {
+      shellPath,
+      code: String(code),
+      suffix
+    }
+  };
 }
 
 function normalizeRecoveredAgentLifecycle(status: AgentNodeStatus): AgentNodeStatus {
@@ -1178,13 +1302,19 @@ function normalizeRecoveredTerminalLifecycle(status: TerminalNodeStatus): Termin
   return status;
 }
 
-function createErrorResponse(id: string, message: string): RuntimeSupervisorMessage {
+function createErrorResponse(
+  id: string,
+  descriptor: RuntimeSupervisorMessageDescriptor,
+  code: string
+): RuntimeSupervisorMessage {
   return {
     type: 'response',
     id,
     ok: false,
     error: {
-      message
+      message: formatRuntimeSupervisorMessageDescriptor(descriptor),
+      code,
+      descriptor
     }
   };
 }
@@ -1216,7 +1346,9 @@ function shouldRestrictSocketDirectory(paths: RuntimeSupervisorPaths): boolean {
 async function main(): Promise<void> {
   const storageDir = readCliPathFlag('--storage-dir');
   if (!storageDir) {
-    throw new Error('runtime supervisor 启动失败：缺少 --storage-dir 参数。');
+    throw createRuntimeSupervisorProtocolError({
+      id: 'supervisorMissingStorageDir'
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.supervisorMissingStorageDir);
   }
 
   const resolvedPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(storageDir);

@@ -51,6 +51,8 @@ try {
                 EventEmitter,
                 Uri,
                 commands: { executeCommand: async () => undefined },
+                env: { language: 'en' },
+                l10n: { t: (message) => message },
                 window: { showWarningMessage: async () => undefined }
               };
             `
@@ -146,7 +148,7 @@ async function assertGroupedViewAddsAttentionSection(browser, html) {
       ['__attention__', '__ungrouped__', 'group-feature', 'group-frontend'],
       'Grouped view should render a top virtual attention section before regular and ungrouped sections.'
     );
-    assert.equal(snapshot.groupRows[0]?.label, '待处理提醒');
+    assert.equal(snapshot.groupRows[0]?.label, 'Pending attention');
     assert.equal(snapshot.groupRows[0]?.virtualKind, 'attention');
     assert.equal(snapshot.visibleItemIds[0], 'node/agent-attention');
     assert.equal(

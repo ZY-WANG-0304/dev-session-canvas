@@ -4,12 +4,15 @@ import * as path from 'node:path';
 
 import {
   cloneCanvasTemplate,
+  createCanvasTemplateError,
   encodeCanvasTemplateDocument,
+  getCanvasTemplateErrorDescriptor,
   parseCanvasTemplateDocument,
   sanitizeCanvasTemplateFileStem,
   sortCanvasTemplates,
   type CanvasTemplate,
-  type CanvasTemplateCategory
+  type CanvasTemplateCategory,
+  type CanvasTemplateMessageDescriptor
 } from '../common/canvasTemplates';
 
 export interface CanvasStoredTemplate {
@@ -39,6 +42,7 @@ export interface CanvasTemplateStoreIssue {
   filePath: string;
   fileName: string;
   message: string;
+  messageDescriptor?: CanvasTemplateMessageDescriptor;
 }
 
 export interface CanvasTemplateMarketMetadata {
@@ -83,7 +87,7 @@ export class CanvasTemplateStore {
         ? [
             {
               id: 'global',
-              label: '当前设备',
+              label: 'Current device',
               rootPath: path.normalize(userTemplateDirOrLocations),
               scope: 'global'
             }
@@ -135,7 +139,10 @@ export class CanvasTemplateStore {
     try {
       parsedJson = JSON.parse(text);
     } catch (error) {
-      throw new Error(`模板文件不是有效 JSON：${formatUnknownError(error)}`);
+      throw createCanvasTemplateError({
+        id: 'templateJsonInvalid',
+        params: { message: formatUnknownError(error) }
+      });
     }
 
     const parsedDocument = parseCanvasTemplateDocument(parsedJson, {
@@ -210,15 +217,31 @@ export class CanvasTemplateStore {
     const normalizedTemplateKey = normalizeMarketplacePackageEntryKey(templatePath);
     const normalizedTemplatePath = normalizedTemplateKey ? normalizedTemplateKey.replace(/\//g, path.sep) : undefined;
     if (!normalizedTemplateKey || !normalizedTemplatePath) {
-      throw new Error(`完整模板包路径不安全：${templatePath}`);
+      throw createCanvasTemplateError({
+        id: 'marketplacePackageTemplatePathUnsafe',
+        params: { path: templatePath }
+      });
     }
     const safeTemplatePath = normalizedTemplateKey;
     const templateEntry = options.extractedFiles.get(normalizedTemplateKey);
     if (!templateEntry) {
-      throw new Error(`完整模板包缺少 ${templatePath}。`);
+      throw createCanvasTemplateError({
+        id: 'marketplacePackageTemplateMissing',
+        params: { path: templatePath }
+      });
     }
 
-    const parsedDocument = parseCanvasTemplateDocument(JSON.parse(decodeUtf8(templateEntry, templatePath)), {
+    const templateText = decodeUtf8(templateEntry, templatePath);
+    let parsedTemplateJson: unknown;
+    try {
+      parsedTemplateJson = JSON.parse(templateText);
+    } catch (error) {
+      throw createCanvasTemplateError({
+        id: 'templateJsonInvalid',
+        params: { message: formatUnknownError(error) }
+      });
+    }
+    const parsedDocument = parseCanvasTemplateDocument(parsedTemplateJson, {
       forceCategory: 'user'
     });
     const template = cloneCanvasTemplate(parsedDocument.document.template);
@@ -240,7 +263,10 @@ export class CanvasTemplateStore {
     for (const [entryPath, bytes] of options.extractedFiles) {
       const normalizedEntryPath = normalizeMarketplacePackageEntryPath(entryPath);
       if (!normalizedEntryPath) {
-        throw new Error(`完整模板包路径不安全：${entryPath}`);
+        throw createCanvasTemplateError({
+          id: 'marketplacePackageEntryPathUnsafe',
+          params: { path: entryPath }
+        });
       }
       const outputPath = path.join(packageDirectoryPath, normalizedEntryPath);
       await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
@@ -302,7 +328,7 @@ export class CanvasTemplateStore {
           category,
           filePath: metadataPath,
           fileName: path.basename(metadataPath),
-          message: error instanceof Error ? error.message : String(error)
+          ...buildCanvasTemplateStoreIssueMessage(error)
         });
       }
     }
@@ -327,7 +353,7 @@ export class CanvasTemplateStore {
           category,
           filePath,
           fileName,
-          message: error instanceof Error ? error.message : String(error)
+          ...buildCanvasTemplateStoreIssueMessage(error)
         });
       }
     }
@@ -344,7 +370,10 @@ export class CanvasTemplateStore {
       normalizedPath.startsWith(ensureTrailingSeparator(path.normalize(entry.rootPath)))
     );
     if (!location) {
-      throw new Error(`用户模板路径超出模板目录：${candidatePath}`);
+      throw createCanvasTemplateError({
+        id: 'userTemplatePathOutsideDirectory',
+        params: { path: candidatePath }
+      });
     }
     return { ...location };
   }
@@ -432,13 +461,16 @@ async function readMarketplacePackageTemplate(
   const packageDirectoryPath = path.dirname(metadataPath);
   const marketplace = await readMarketplacePackageMarketMetadata(packageDirectoryPath);
   if (!marketplace) {
-    throw new Error('市场模板包 sidecar 无法识别。');
+    throw createCanvasTemplateError({ id: 'marketplacePackageSidecarInvalid' });
   }
 
   const templatePath = marketplace.templatePath ?? 'template.json';
   const normalizedTemplatePath = normalizeMarketplacePackageEntryPath(templatePath);
   if (!normalizedTemplatePath) {
-    throw new Error(`市场模板包 sidecar 中的 templatePath 不安全：${templatePath}`);
+    throw createCanvasTemplateError({
+      id: 'marketplacePackageSidecarTemplatePathUnsafe',
+      params: { path: templatePath }
+    });
   }
   const templateFilePath = path.join(packageDirectoryPath, normalizedTemplatePath);
   const text = await fs.promises.readFile(templateFilePath, 'utf8');
@@ -446,7 +478,10 @@ async function readMarketplacePackageTemplate(
   try {
     parsedJson = JSON.parse(text);
   } catch (error) {
-    throw new Error(`模板文件不是有效 JSON：${formatUnknownError(error)}`);
+    throw createCanvasTemplateError({
+      id: 'templateJsonInvalid',
+      params: { message: formatUnknownError(error) }
+    });
   }
 
   const parsedDocument = parseCanvasTemplateDocument(parsedJson, {
@@ -597,6 +632,14 @@ function cloneMarketMetadata(metadata: CanvasTemplateMarketMetadata): CanvasTemp
   return JSON.parse(JSON.stringify(metadata)) as CanvasTemplateMarketMetadata;
 }
 
+function buildCanvasTemplateStoreIssueMessage(error: unknown): Pick<CanvasTemplateStoreIssue, 'message' | 'messageDescriptor'> {
+  const descriptor = getCanvasTemplateErrorDescriptor(error);
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    messageDescriptor: descriptor
+  };
+}
+
 function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
@@ -621,11 +664,14 @@ function normalizeUserTemplateRelativeDirectory(value: string | undefined): stri
 
   for (const segment of segments) {
     if (segment === '.' || segment === '..') {
-      throw new Error('模板层级不能包含 . 或 ..。');
+      throw createCanvasTemplateError({ id: 'templateHierarchyDotSegment' });
     }
 
     if (/[<>:"|?*\x00-\x1F]/.test(segment)) {
-      throw new Error(`模板层级「${segment}」包含非法路径字符。`);
+      throw createCanvasTemplateError({
+        id: 'templateHierarchyIllegalPathCharacter',
+        params: { segment }
+      });
     }
   }
 
@@ -698,7 +744,10 @@ function decodeUtf8(bytes: Uint8Array, filePath: string): string {
   try {
     return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
-    throw new Error(`${filePath} 不是有效 UTF-8 文本。`);
+    throw createCanvasTemplateError({
+      id: 'utf8Invalid',
+      params: { path: filePath }
+    });
   }
 }
 

@@ -12,7 +12,11 @@ import {
   resolveLegacyRuntimeSupervisorPaths,
   resolveSystemdUserRuntimeSupervisorPaths
 } from '../common/runtimeSupervisorPaths';
-import type { RuntimeSupervisorPaths } from '../common/runtimeSupervisorProtocol';
+import {
+  RUNTIME_SUPERVISOR_ERROR_CODES,
+  createRuntimeSupervisorProtocolError,
+  type RuntimeSupervisorPaths
+} from '../common/runtimeSupervisorProtocol';
 
 const execFileAsync = promisify(execFile);
 const SYSTEMD_COMMAND_TIMEOUT_MS = 4000;
@@ -145,7 +149,9 @@ async function startSystemdUserSupervisor(
   const unitFilePath = backend.paths.unitFilePath;
   const controlDir = backend.paths.controlDir;
   if (!unitName || !unitFilePath || !controlDir) {
-    throw new Error('systemd-user backend 缺少 unit 或 controlDir 路径。');
+    throw createRuntimeSupervisorProtocolError({
+      id: 'systemdBackendMissingPaths'
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.systemdBackendMissingPaths);
   }
 
   await fs.mkdir(backend.paths.storageDir, { recursive: true });
@@ -183,7 +189,12 @@ async function runSystemdUserCommand(args: string[]): Promise<void> {
 function normalizeSystemdCommandError(args: string[], error: unknown): Error {
   const commandLabel = `systemctl --user ${args.join(' ')}`;
   if (!(error instanceof Error)) {
-    return new Error(`${commandLabel} 失败。`);
+    return createRuntimeSupervisorProtocolError({
+      id: 'systemdCommandFailed',
+      params: {
+        command: commandLabel
+      }
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.systemdCommandFailed);
   }
 
   const stderr =
@@ -195,7 +206,13 @@ function normalizeSystemdCommandError(args: string[], error: unknown): Error {
       ? (error as Error & { stdout?: string }).stdout?.trim()
       : '';
   const detail = stderr || stdout || error.message;
-  return new Error(`${commandLabel} 失败：${detail || '未知错误。'}`);
+  return createRuntimeSupervisorProtocolError({
+    id: 'systemdCommandFailed',
+    params: {
+      command: commandLabel,
+      detail: detail || 'Unknown error.'
+    }
+  }, RUNTIME_SUPERVISOR_ERROR_CODES.systemdCommandFailed);
 }
 
 function renderSystemdUserUnit(params: {

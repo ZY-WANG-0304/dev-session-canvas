@@ -4,7 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const manifest = JSON.parse(await readFile(path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas', 'package.json'), 'utf8'));
+const manifestPath = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas', 'package.json');
+const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 
 assert.deepEqual(
   manifest.categories,
@@ -513,7 +514,10 @@ assert.deepEqual(
   'Expected internal session history grouping variants to stay out of the global Command Palette.'
 );
 
-const nls = JSON.parse(await readFile(path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas', 'package.nls.json'), 'utf8'));
+const nlsPath = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas', 'package.nls.json');
+const zhCnNlsPath = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas', 'package.nls.zh-cn.json');
+const nls = JSON.parse(await readFile(nlsPath, 'utf8'));
+const zhCnNls = JSON.parse(await readFile(zhCnNlsPath, 'utf8'));
 assert.deepEqual(
   [
     nls['configuration.notifications.agentAbnormalOutputTextNotifications.description']?.length > 0,
@@ -533,13 +537,37 @@ assert.deepEqual(
     nls['command.sidebarSessionHistoryTimeGrouping.checkedTitle']
   ],
   [
-    '✓ 平铺视图',
-    '✓ 分组视图',
-    '✓ 按 Workspace Root 分组',
-    '✓ 按 Provider 分组',
-    '✓ 按时间分组'
+    '✓ Flat View',
+    '✓ Grouped View',
+    '✓ Group by Workspace Root',
+    '✓ Group by Provider',
+    '✓ Group by Time'
   ],
   'Expected checked sidebar view/title menu variants to make the active state visible in popup menus.'
+);
+
+
+assert.equal(manifest.l10n, './l10n', 'Expected the main extension to declare the VS Code l10n bundle directory.');
+assert.deepEqual(
+  Object.keys(zhCnNls).sort(),
+  Object.keys(nls).sort(),
+  'Expected package.nls.zh-cn.json to have the same keys as the English default package.nls.json.'
+);
+
+const manifestText = await readFile(manifestPath, 'utf8');
+const referencedNlsKeys = Array.from(manifestText.matchAll(/%([^%]+)%/gu), (match) => match[1]);
+const missingNlsKeys = referencedNlsKeys.filter((key) => typeof nls[key] !== 'string' || nls[key].length === 0);
+assert.deepEqual(missingNlsKeys, [], 'Expected every package.json %key% reference to resolve in package.nls.json.');
+
+assert.equal(
+  zhCnNls['command.openCanvas.title'],
+  'Dev Session Canvas: 打开/定位画布',
+  'Expected the Simplified Chinese package.nls file to preserve localized command titles.'
+);
+assert.equal(
+  nls['command.openCanvas.title'],
+  'Dev Session Canvas: Open or Focus Canvas',
+  'Expected the default package.nls file to use English command titles.'
 );
 
 console.log('extension manifest tests passed');

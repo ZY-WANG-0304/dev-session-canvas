@@ -161,8 +161,8 @@ assert.match(
 );
 assert.match(
   designSystemSource,
-  /关联 Markdown 的 `contentSource\.status = ok` 展示为 `已关联文件`，普通内嵌 `ready` 展示为 `普通笔记`/u,
-  'docs/UI.md should document the shared Note status label mapping.'
+  /关联 Markdown 的 `contentSource\.status = ok` 必须使用共享 label id `status\.noteAssociatedFile`，普通内嵌 `ready` 必须使用 `status\.notePlain`/u,
+  'docs/UI.md should document the shared localizable Note status label mapping.'
 );
 
 const statusToneFunction = extractCssRange(
@@ -172,18 +172,18 @@ const statusToneFunction = extractCssRange(
 );
 const noteStatusFunction = extractCssRange(
   statusPresentationSource,
-  'function humanizeNoteStatus',
-  'export function humanizeCanvasStatus'
+  'function canvasNoteStatusLabelDescriptor',
+  'export function canvasStatusLabelDescriptor'
 );
 assert.match(
   mainWebviewSource,
-  /canvasStatusToneClass as statusToneClass[\s\S]*humanizeCanvasNodeStatus[\s\S]*humanizeCanvasStatus as humanizeStatus/u,
-  'Main webview should use the shared canvas node status presentation mapping.'
+  /canvasNodeStatusLabelDescriptor[\s\S]*canvasStatusLabelDescriptor[\s\S]*canvasStatusToneClass as statusToneClass/u,
+  'Main webview should use the shared canvas node status presentation descriptors.'
 );
 assert.doesNotMatch(
   mainWebviewSource,
-  /function (?:humanizeCanvasNodeStatus|humanizeNoteStatus|humanizeStatus|statusToneClass)\(/u,
-  'Main webview should not keep local status text or tone mappings that can drift.'
+  /function (?:canvasNoteStatusLabelDescriptor|canvasStatusLabelDescriptor|statusToneClass)\(/u,
+  'Main webview should not keep local status descriptor or tone mappings that can drift.'
 );
 assert.match(
   statusToneFunction,
@@ -212,13 +212,13 @@ assert.match(
 );
 assert.match(
   noteStatusFunction,
-  /contentSource\?\.kind === 'markdown-file'[\s\S]*?contentSource\.status === 'ok' \? '已关联文件' : humanizeCanvasStatus\(contentSource\.status\)/u,
+  /contentSource\?\.kind === 'markdown-file'[\s\S]*?contentSource\.status === 'ok'[\s\S]*?localizedCanvasStatusLabel\('status\.noteAssociatedFile'\)[\s\S]*?canvasStatusLabelDescriptor\(contentSource\.status\)/u,
   'Associated Markdown notes should use their content source status as the presentation source of truth.'
 );
 assert.match(
   noteStatusFunction,
-  /node\.status === 'ready'[\s\S]*?return '普通笔记';/u,
-  'Embedded ready notes should display as ordinary notes.'
+  /node\.status === 'ready'[\s\S]*?localizedCanvasStatusLabel\('status\.notePlain'\)/u,
+  'Embedded ready notes should use the plain Note label id.'
 );
 
 const fileAccessStyles = extractCssRange(mainWebviewStyles, '.file-access-badge', '.file-list-tree');

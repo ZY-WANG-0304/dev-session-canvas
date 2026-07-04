@@ -75,83 +75,91 @@ export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasS
   return [
     {
       id: 'summary/workspace-trust',
-      label: '工作区信任',
-      description: state.workspaceTrusted ? '已信任' : '受限模式',
+      label: vscode.l10n.t('Workspace Trust'),
+      description: state.workspaceTrusted ? vscode.l10n.t('Trusted') : vscode.l10n.t('Restricted Mode'),
       tooltip: state.workspaceTrusted
-        ? '当前工作区已受信任，执行型对象可按各自能力创建和运行。'
-        : '当前工作区处于受限模式；执行型对象会降级，仅保留安全的侧栏与画布浏览能力。'
+        ? vscode.l10n.t('The current workspace is trusted. Execution objects can be created and run according to their capabilities.')
+        : vscode.l10n.t('The current workspace is in Restricted Mode. Execution objects are downgraded, leaving only safe sidebar and Canvas browsing.')
     },
     {
       id: 'summary/canvas-surface',
-      label: '画布状态',
+      label: vscode.l10n.t('Canvas State'),
       description: formatCanvasSurfaceSummary(state),
       tooltip: buildCanvasSurfaceTooltip(state)
     },
     {
       id: 'summary/runtime-persistence',
-      label: '运行时持久化',
-      description: state.runtimePersistenceEnabled ? '已开启' : '已关闭',
+      label: vscode.l10n.t('Runtime Persistence'),
+      description: state.runtimePersistenceEnabled ? vscode.l10n.t('Enabled') : vscode.l10n.t('Disabled'),
       tooltip: state.runtimePersistenceEnabled
-        ? '当前窗口已启用运行时持久化；Agent 与 Terminal 会优先由独立 runtime host backend 持有。'
-        : '当前窗口未启用运行时持久化；Agent 与 Terminal 不会保留 live runtime host。'
+        ? vscode.l10n.t('Runtime persistence is enabled for this window. Agent and Terminal sessions are held by the dedicated runtime host backend when possible.')
+        : vscode.l10n.t('Runtime persistence is disabled for this window. Agent and Terminal sessions will not keep a live runtime host.')
     },
     {
       id: 'summary/notification-mode',
-      label: '通知模式',
+      label: vscode.l10n.t('Notification Mode'),
       description: formatNotificationModeSummary(state),
       tooltip: buildNotificationModeTooltip(state)
     },
     {
       id: 'summary/files-feature',
-      label: '文件功能',
+      label: vscode.l10n.t('Files'),
       description: formatFilesFeatureSummary(state),
       tooltip: buildFileViewTooltip(state)
     },
     {
       id: 'summary/node-count',
-      label: '节点总数',
+      label: vscode.l10n.t('Total Nodes'),
       description: String(state.nodeCount),
-      tooltip: `当前画布中共有 ${state.nodeCount} 个节点。`
+      tooltip: vscode.l10n.t('There are {count} nodes on the current Canvas.', { count: state.nodeCount })
     },
     {
       id: 'summary/running-executions',
-      label: '运行中会话',
+      label: vscode.l10n.t('Running Sessions'),
       description: String(state.runningExecutionCount),
-      tooltip: `当前正在运行的 Agent / Terminal 会话总数：${state.runningExecutionCount}。`
+      tooltip: vscode.l10n.t('Total running Agent / Terminal sessions: {count}.', {
+        count: state.runningExecutionCount
+      })
     },
     {
       id: 'summary/terminal-shell',
-      label: '终端',
+      label: vscode.l10n.t('Terminal'),
       description: formatConfigSummaryValue(state.terminalShellPath),
       tooltip: [
-        '点击选择嵌入式 Terminal shell。',
-        `配置值：${state.terminalShellConfiguredValue}`,
-        `实际路径：${state.terminalShellPath || '未解析'}`
+        vscode.l10n.t('Click to select the embedded Terminal shell.'),
+        vscode.l10n.t('Configured value: {value}', { value: state.terminalShellConfiguredValue }),
+        vscode.l10n.t('Resolved path: {path}', { path: state.terminalShellPath || vscode.l10n.t('not resolved') })
       ].join('\n'),
       command: {
         command: COMMAND_IDS.selectTerminalShell,
-        title: '选择 Terminal shell'
+        title: vscode.l10n.t('Select Terminal shell')
       }
     },
     {
       id: 'summary/codex-cli',
-      label: 'Codex 命令',
+      label: vscode.l10n.t('Codex Command'),
       description: formatConfigSummaryValue(state.agentCodexCommand),
-      tooltip: ['点击选择或安装 Codex 命令。', `当前配置：${state.agentCodexCommand}`].join('\n'),
+      tooltip: [
+        vscode.l10n.t('Click to select or install the Codex command.'),
+        vscode.l10n.t('Current configuration: {value}', { value: state.agentCodexCommand })
+      ].join('\n'),
       command: {
         command: COMMAND_IDS.selectCodexCli,
-        title: '选择 Codex CLI'
+        title: vscode.l10n.t('Select Codex CLI')
       },
       contextValue: 'codexCliConfig'
     },
     {
       id: 'summary/claude-cli',
-      label: 'Claude Code 命令',
+      label: vscode.l10n.t('Claude Code Command'),
       description: formatConfigSummaryValue(state.agentClaudeCommand),
-      tooltip: ['点击选择或安装 Claude Code 命令。', `当前配置：${state.agentClaudeCommand}`].join('\n'),
+      tooltip: [
+        vscode.l10n.t('Click to select or install the Claude Code command.'),
+        vscode.l10n.t('Current configuration: {value}', { value: state.agentClaudeCommand })
+      ].join('\n'),
       command: {
         command: COMMAND_IDS.selectClaudeCli,
-        title: '选择 Claude Code CLI'
+        title: vscode.l10n.t('Select Claude Code CLI')
       },
       contextValue: 'claudeCliConfig'
     }
@@ -159,18 +167,18 @@ export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasS
 }
 
 function formatConfigSummaryValue(value: string): string {
-  return shortenMiddle(value.trim() || '未配置');
+  return shortenMiddle(value.trim() || vscode.l10n.t('Not configured'));
 }
 
 function formatCanvasSurfaceSummary(state: CanvasSidebarState): string {
   const canvasSurfaceLabel = (() => {
     switch (state.canvasSurface) {
       case 'closed':
-        return '未打开';
+        return vscode.l10n.t('Closed');
       case 'hidden':
-        return '已打开';
+        return vscode.l10n.t('Open');
       case 'visible':
-        return '已打开';
+        return vscode.l10n.t('Open');
     }
   })();
 
@@ -178,21 +186,30 @@ function formatCanvasSurfaceSummary(state: CanvasSidebarState): string {
 }
 
 function buildCanvasSurfaceTooltip(state: CanvasSidebarState): string {
-  const defaultSurfaceLine = buildSurfaceLocationLine('当前默认承载面', state.configuredSurface);
+  const defaultSurfaceLine = buildSurfaceLocationLine(vscode.l10n.t('Default surface'), state.configuredSurface);
   const currentSurfaceLine =
     state.canvasSurface === 'closed' || state.surfaceLocation === state.configuredSurface
       ? undefined
-      : buildSurfaceLocationLine('当前实例承载面', state.surfaceLocation);
+      : buildSurfaceLocationLine(vscode.l10n.t('Current instance surface'), state.surfaceLocation);
 
   switch (state.canvasSurface) {
     case 'closed':
-      return `当前还没有打开画布；执行“打开画布”时会按默认承载面 ${formatSurfaceLabel(state.configuredSurface)} 打开。\n${defaultSurfaceLine}`;
+      return [
+        vscode.l10n.t('No Canvas is open yet. Running "Open Canvas" will open it on the default surface {surface}.', {
+          surface: formatSurfaceLabel(state.configuredSurface)
+        }),
+        defaultSurfaceLine
+      ].join('\n');
     case 'hidden':
-      return ['画布已经打开，但当前不在前台；可执行“定位画布”回到当前实例。', currentSurfaceLine, defaultSurfaceLine]
+      return [
+        vscode.l10n.t('The Canvas is open but not in front. Run "Reveal Canvas" to return to the current instance.'),
+        currentSurfaceLine,
+        defaultSurfaceLine
+      ]
         .filter((line): line is string => typeof line === 'string')
         .join('\n');
     case 'visible':
-      return ['画布当前已经打开，并显示在前台。', currentSurfaceLine, defaultSurfaceLine]
+      return [vscode.l10n.t('The Canvas is open and visible in front.'), currentSurfaceLine, defaultSurfaceLine]
         .filter((line): line is string => typeof line === 'string')
         .join('\n');
   }
@@ -210,12 +227,12 @@ function buildSurfaceLocationLine(
   label: string,
   surface: CanvasSidebarState['surfaceLocation']
 ): string {
-  const prefix = `${label}：${formatSurfaceLabel(surface)}。`;
+  const prefix = vscode.l10n.t('{label}: {surface}.', { label, surface: formatSurfaceLabel(surface) });
   if (surface !== 'panel') {
     return prefix;
   }
 
-  return `${prefix} Panel 路线的实际工作台位置由 VS Code 记住，可能位于底部 Panel 或 Secondary Sidebar。`;
+  return `${prefix} ${vscode.l10n.t('VS Code remembers the actual workbench location for the Panel route; it may be in the bottom Panel or the Secondary Sidebar.')}`;
 }
 
 function formatNotificationModeSummary(state: CanvasSidebarState): string {
@@ -225,48 +242,48 @@ function formatNotificationModeSummary(state: CanvasSidebarState): string {
 
 function buildNotificationModeTooltip(state: CanvasSidebarState): string {
   return [
-    '执行节点只有收到已启用的 attention signal 时，才会进入节点提醒 icon 与 minimap 闪烁。',
-    `启用的 attention signal：${formatAttentionSignalsTooltip(state)}。`,
+    vscode.l10n.t('Execution nodes show the alert icon and minimap pulse only after receiving an enabled attention signal.'),
+    vscode.l10n.t('Enabled attention signals: {signals}.', { signals: formatAttentionSignalsTooltip(state) }),
     formatNotificationBridgeTooltip(state),
-    `增强提醒模式：${formatStrongReminderModeLabel(state)}。`,
-    `异常文本提醒：${formatAgentAbnormalOutputTextModeLabel(state)}。`,
+    vscode.l10n.t('Strong reminder mode: {mode}.', { mode: formatStrongReminderModeLabel(state) }),
+    vscode.l10n.t('Abnormal text alerts: {mode}.', { mode: formatAgentAbnormalOutputTextModeLabel(state) }),
     '',
-    '💡 通知功能依赖于 Agent CLI（Claude Code 或 Codex）配置开启通知功能。',
-    '• Claude Code：需设置 preferredNotifChannel: "iterm2"',
-    '• Codex：需在 [tui] 设置 notifications = true、notification_method = "osc9"、notification_condition = "always"'
+    vscode.l10n.t('Tip: notifications depend on the Agent CLI (Claude Code or Codex) being configured to emit notifications.'),
+    vscode.l10n.t('Claude Code: set preferredNotifChannel: "iterm2"'),
+    vscode.l10n.t('Codex: set notifications = true, notification_method = "osc9", notification_condition = "always" under [tui]')
   ].join('\n');
 }
 
 function formatNotificationBridgeStatus(state: CanvasSidebarState): string {
   switch (state.notificationBridgeMode) {
     case 'none':
-      return '不桥接通知';
+      return vscode.l10n.t('No bridge');
     case 'workbench':
-      return '工作台消息';
+      return vscode.l10n.t('Workbench messages');
     case 'system':
-      return '系统通知';
+      return vscode.l10n.t('System notifications');
   }
 }
 
 function formatNotificationBridgeTooltip(state: CanvasSidebarState): string {
   switch (state.notificationBridgeMode) {
     case 'none':
-      return '当前不额外桥接工作台消息或系统通知，只保留节点内 attention 提示。';
+      return vscode.l10n.t('No additional workbench messages or system notifications are bridged; only in-node attention remains.');
     case 'workbench':
-      return '当前会把 attention signal 桥接为 VS Code 工作台消息。';
+      return vscode.l10n.t('Attention signals are bridged to VS Code workbench messages.');
     case 'system':
-      return '当前优先通过本机 Notifier companion 发送系统通知；若 companion 不可用或投递失败，则回退到 VS Code 工作台消息。';
+      return vscode.l10n.t('System notifications are sent through the local Notifier companion first; if the companion is unavailable or delivery fails, VS Code workbench messages are used as fallback.');
   }
 }
 
 function formatAttentionSignalsLabel(state: CanvasSidebarState): string {
   const enabledSignals = state.enabledAttentionSignals;
   if (enabledSignals.length === 0) {
-    return 'attention 关闭';
+    return vscode.l10n.t('attention off');
   }
 
   if (enabledSignals.length === 5) {
-    return '全部 attention';
+    return vscode.l10n.t('all attention');
   }
 
   if (
@@ -275,7 +292,7 @@ function formatAttentionSignalsLabel(state: CanvasSidebarState): string {
     enabledSignals.includes('osc9') &&
     enabledSignals.includes('osc777')
   ) {
-    return '全部终端信号';
+    return vscode.l10n.t('all terminal signals');
   }
 
   return enabledSignals.map(formatAttentionSignalName).join('+');
@@ -283,8 +300,8 @@ function formatAttentionSignalsLabel(state: CanvasSidebarState): string {
 
 function formatAttentionSignalsTooltip(state: CanvasSidebarState): string {
   return state.enabledAttentionSignals.length === 0
-    ? '无'
-    : state.enabledAttentionSignals.map(formatAttentionSignalName).join('、');
+    ? vscode.l10n.t('none')
+    : state.enabledAttentionSignals.map(formatAttentionSignalName).join(', ');
 }
 
 function formatAttentionSignalName(signal: CanvasSidebarState['enabledAttentionSignals'][number]): string {
@@ -296,9 +313,9 @@ function formatAttentionSignalName(signal: CanvasSidebarState['enabledAttentionS
     case 'osc777':
       return 'OSC 777';
     case 'agentAbnormalExit':
-      return 'Agent 异常退出';
+      return vscode.l10n.t('Agent abnormal exit');
     case 'codexAbnormalOutputText':
-      return 'Codex 文本异常';
+      return vscode.l10n.t('Codex abnormal text');
   }
 }
 
@@ -307,15 +324,15 @@ function formatStrongReminderSurfaceSummary(state: CanvasSidebarState): string |
   const pulsesMinimap = strongTerminalAttentionReminderPulsesMinimap(state.notificationStrongReminderMode);
 
   if (flashesTitleBar && pulsesMinimap) {
-    return '标题栏+Minimap 增强';
+    return vscode.l10n.t('Title Bar + Minimap boost');
   }
 
   if (flashesTitleBar) {
-    return '标题栏增强';
+    return vscode.l10n.t('Title Bar boost');
   }
 
   if (pulsesMinimap) {
-    return 'Minimap 增强';
+    return vscode.l10n.t('Minimap boost');
   }
 
   return undefined;
@@ -323,11 +340,13 @@ function formatStrongReminderSurfaceSummary(state: CanvasSidebarState): string |
 
 function formatStrongReminderModeLabel(state: CanvasSidebarState): string {
   const strongReminderSurface = formatStrongReminderSurfaceSummary(state);
-  return strongReminderSurface ?? '普通提醒';
+  return strongReminderSurface ?? vscode.l10n.t('Standard alert');
 }
 
 function formatAgentAbnormalOutputTextModeLabel(state: CanvasSidebarState): string {
-  return state.agentAbnormalOutputTextNotificationMode === 'codex' ? 'Codex 文本异常' : '文本异常关闭';
+  return state.agentAbnormalOutputTextNotificationMode === 'codex'
+    ? vscode.l10n.t('Codex abnormal text')
+    : vscode.l10n.t('Text abnormal alerts off');
 }
 
 function formatFileViewSummary(state: CanvasSidebarState): string {
@@ -335,35 +354,39 @@ function formatFileViewSummary(state: CanvasSidebarState): string {
 }
 
 function formatFilesFeatureSummary(state: CanvasSidebarState): string {
-  return `${state.filesFeatureEnabled ? '已开启' : '已关闭'} · ${formatFileViewSummary(state)}`;
+  return `${state.filesFeatureEnabled ? vscode.l10n.t('Enabled') : vscode.l10n.t('Disabled')} · ${formatFileViewSummary(state)}`;
 }
 
 function buildFileViewTooltip(state: CanvasSidebarState): string {
   return [
     state.filesFeatureEnabled
-      ? '文件功能当前已开启；以下配置会直接影响当前窗口里的文件对象投影。'
-      : '文件功能当前已关闭；以下配置会在重新启用并完成 reload 后生效。',
-    `文件节点类型：${formatFilePresentationLabel(state)}。`,
-    `显示模式：${formatFileDisplayModeLabel(state)}。`,
-    `显示风格：${formatFileNodeDisplayStyleLabel(state.fileNodeDisplayStyle)}。`
+      ? vscode.l10n.t('Files are enabled. The settings below directly affect file object projections in the current window.')
+      : vscode.l10n.t('Files are disabled. The settings below take effect after files are re-enabled and the window reloads.'),
+    vscode.l10n.t('File node type: {type}.', { type: formatFilePresentationLabel(state) }),
+    vscode.l10n.t('Display mode: {mode}.', { mode: formatFileDisplayModeLabel(state) }),
+    vscode.l10n.t('Display style: {style}.', { style: formatFileNodeDisplayStyleLabel(state.fileNodeDisplayStyle) })
   ].join('\n');
 }
 
 function formatFilePresentationLabel(state: CanvasSidebarState): string {
-  return state.filePresentationMode === 'lists' ? '列表节点' : '独立节点';
+  return state.filePresentationMode === 'lists' ? vscode.l10n.t('List nodes') : vscode.l10n.t('Standalone nodes');
 }
 
 function formatFileDisplayModeLabel(state: CanvasSidebarState): string {
   switch (state.fileNodeDisplayMode) {
     case 'icon-only':
-      return '仅图标';
+      return vscode.l10n.t('Icon only');
     case 'path-only':
-      return state.filePathDisplayMode === 'relative-path' ? '仅相对路径' : '仅文件名';
+      return state.filePathDisplayMode === 'relative-path'
+        ? vscode.l10n.t('Relative path only')
+        : vscode.l10n.t('File name only');
     case 'icon-path':
-      return state.filePathDisplayMode === 'relative-path' ? '图标+相对路径' : '图标+文件名';
+      return state.filePathDisplayMode === 'relative-path'
+        ? vscode.l10n.t('Icon + relative path')
+        : vscode.l10n.t('Icon + file name');
   }
 }
 
 function formatFileNodeDisplayStyleLabel(style: CanvasSidebarState['fileNodeDisplayStyle']): string {
-  return style === 'card' ? '卡片' : '极简';
+  return style === 'card' ? vscode.l10n.t('Card') : vscode.l10n.t('Minimal');
 }

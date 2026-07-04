@@ -6,11 +6,6 @@ import path from 'node:path';
 
 import esbuild from 'esbuild';
 
-if (process.platform !== 'win32') {
-  console.log('agentCliResolver tests skipped on non-Windows platform');
-  process.exit(0);
-}
-
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-agent-cli-resolver-'));
 
 try {
@@ -30,53 +25,71 @@ try {
   await writeFile(commandCmdPath, '@echo off\r\nexit /b 0\r\n', 'utf8');
 
   const require = createRequire(import.meta.url);
-  const { resolveAgentCliCommand } = require(outfile);
+  const {
+    formatAgentCliResolutionAttemptDescriptor,
+    resolveAgentCliCommand
+  } = require(outfile);
 
-  const cachedResolution = await resolveAgentCliCommand({
-    provider: 'codex',
-    label: 'Codex',
-    requestedCommand: 'codex',
-    workspaceCwd: tempDir,
-    env: {
+  assert.equal(
+    formatAgentCliResolutionAttemptDescriptor({
+      id: 'configured-absolute',
+      value: commandBasePath
+    }),
+    `Configured absolute path: ${commandBasePath}`
+  );
+
+  if (process.platform !== 'win32') {
+    console.log('agentCliResolver Windows resolution tests skipped on non-Windows platform');
+  } else {
+    const cachedResolution = await resolveAgentCliCommand({
+      provider: 'codex',
+      label: 'Codex',
+      requestedCommand: 'codex',
+      workspaceCwd: tempDir,
+      env: {
+        ...process.env,
+        PATH: tempDir,
+        PATHEXT: '.COM;.EXE;.BAT;.CMD'
+      },
+      cachedResolvedCommand: commandBasePath
+    });
+    assert.equal(cachedResolution.source, 'cache');
+    assert.equal(cachedResolution.resolvedCommand.toLowerCase(), commandCmdPath.toLowerCase());
+    assert.equal(cachedResolution.attemptDescriptors.some((attempt) => attempt.id === 'cache'), true);
+
+    const absoluteResolution = await resolveAgentCliCommand({
+      provider: 'codex',
+      label: 'Codex',
+      requestedCommand: commandBasePath,
+      workspaceCwd: tempDir,
+      env: {
+        ...process.env,
+        PATH: tempDir,
+        PATHEXT: '.COM;.EXE;.BAT;.CMD'
+      }
+    });
+    assert.equal(absoluteResolution.source, 'configured-absolute');
+    assert.equal(absoluteResolution.resolvedCommand.toLowerCase(), commandCmdPath.toLowerCase());
+    assert.equal(absoluteResolution.attemptDescriptors[0]?.id, 'configured-absolute');
+
+    const envWithOnlyPath = {
       ...process.env,
-      PATH: tempDir,
+      Path: tempDir,
       PATHEXT: '.COM;.EXE;.BAT;.CMD'
-    },
-    cachedResolvedCommand: commandBasePath
-  });
-  assert.equal(cachedResolution.source, 'cache');
-  assert.equal(cachedResolution.resolvedCommand.toLowerCase(), commandCmdPath.toLowerCase());
+    };
+    delete envWithOnlyPath.PATH;
 
-  const absoluteResolution = await resolveAgentCliCommand({
-    provider: 'codex',
-    label: 'Codex',
-    requestedCommand: commandBasePath,
-    workspaceCwd: tempDir,
-    env: {
-      ...process.env,
-      PATH: tempDir,
-      PATHEXT: '.COM;.EXE;.BAT;.CMD'
-    }
-  });
-  assert.equal(absoluteResolution.source, 'configured-absolute');
-  assert.equal(absoluteResolution.resolvedCommand.toLowerCase(), commandCmdPath.toLowerCase());
-
-  const envWithOnlyPath = {
-    ...process.env,
-    Path: tempDir,
-    PATHEXT: '.COM;.EXE;.BAT;.CMD'
-  };
-  delete envWithOnlyPath.PATH;
-
-  const pathCaseInsensitiveResolution = await resolveAgentCliCommand({
-    provider: 'codex',
-    label: 'Codex',
-    requestedCommand: 'codex',
-    workspaceCwd: tempDir,
-    env: envWithOnlyPath
-  });
-  assert.equal(pathCaseInsensitiveResolution.source, 'path-env');
-  assert.equal(pathCaseInsensitiveResolution.resolvedCommand.toLowerCase(), commandCmdPath.toLowerCase());
+    const pathCaseInsensitiveResolution = await resolveAgentCliCommand({
+      provider: 'codex',
+      label: 'Codex',
+      requestedCommand: 'codex',
+      workspaceCwd: tempDir,
+      env: envWithOnlyPath
+    });
+    assert.equal(pathCaseInsensitiveResolution.source, 'path-env');
+    assert.equal(pathCaseInsensitiveResolution.resolvedCommand.toLowerCase(), commandCmdPath.toLowerCase());
+    assert.equal(pathCaseInsensitiveResolution.attemptDescriptors.some((attempt) => attempt.id === 'path-env'), true);
+  }
 
   console.log('agentCliResolver tests passed');
 } finally {

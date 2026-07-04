@@ -56,6 +56,25 @@ interface CanvasTemplateSaveFormInlineState {
   storageLocations: CanvasTemplateStorageLocation[];
 }
 
+interface CanvasTemplateSaveFormCopy {
+  nameLabel: string;
+  namePlaceholder: string;
+  saveLocationLabel: string;
+  saveLocationHelp: string;
+  agentsLabel: string;
+  setAllDefault: string;
+  restoreCurrentProviders: string;
+  agentEmptyNote: string;
+  associatedNotesLabel: string;
+  associatedNotesHelp: string;
+  cancel: string;
+  defaultProviderOption: string;
+  embeddedSnapshotOption: string;
+  workspacePathOnlyOption: string;
+  workspaceFileWithContentOption: string;
+  associatedNoteStatusLabels: Readonly<Record<string, string>>;
+}
+
 type SaveTemplateFormInboundMessage =
   | {
       type: 'saveTemplateForm/cancel';
@@ -170,24 +189,24 @@ class CanvasTemplateSaveFormPanel implements vscode.Disposable {
 
     const name = parsed.payload.name.trim();
     if (name.length === 0) {
-      await this.postError('模板名称不能为空。');
+      await this.postError(vscode.l10n.t('Template name is required.'));
       return;
     }
 
     if (!this.storageLocationsById.has(parsed.payload.targetStorageLocationId)) {
-      await this.postError('请选择有效的模板保存位置。');
+      await this.postError(vscode.l10n.t('Select a valid template save location.'));
       return;
     }
 
     const agentProviderSelection = buildAgentProviderSelection(parsed.payload.agentProviders);
     if (!agentProviderSelection) {
-      await this.postError('存在无效的 Agent Provider 选择。');
+      await this.postError(vscode.l10n.t('Invalid Agent Provider selection.'));
       return;
     }
 
     const associatedNoteSaveModes = buildAssociatedNoteModeSelection(parsed.payload.associatedNoteModes);
     if (!associatedNoteSaveModes) {
-      await this.postError('存在无效的关联 Markdown Note 处理方式。');
+      await this.postError(vscode.l10n.t('Invalid associated Markdown Note handling mode.'));
       return;
     }
 
@@ -313,10 +332,12 @@ function parseSaveTemplateFormMessage(message: unknown): SaveTemplateFormInbound
 
 function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasTemplateSaveFormInlineState): string {
   const nonce = createNonce();
-  const initialStateJson = serializeStateForInlineScript(state);
+  const initialStateJson = serializeForInlineScript(state);
+  const copy = buildCanvasTemplateSaveFormCopy();
+  const copyJson = serializeForInlineScript(copy);
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${resolveWebviewHtmlLang()}">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -641,13 +662,13 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
           <div id="errorMessage" class="error-message" role="alert"></div>
 
           <div class="field">
-            <label for="nameInput" class="field-label">名称:</label>
+            <label for="nameInput" class="field-label">${escapeHtml(copy.nameLabel)}</label>
             <div class="field-control">
               <input
                 id="nameInput"
                 class="text-input"
                 type="text"
-                placeholder="例如：我的日常开发工作流"
+                placeholder="${escapeHtml(copy.namePlaceholder)}"
                 autocomplete="off"
                 spellcheck="false"
               />
@@ -655,29 +676,29 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
           </div>
 
           <div class="field">
-            <label for="storageLocationSelect" class="field-label">保存位置:</label>
+            <label for="storageLocationSelect" class="field-label">${escapeHtml(copy.saveLocationLabel)}</label>
             <div class="field-control">
               <select id="storageLocationSelect" class="select-input"></select>
-              <div class="field-help">先选择模板库根位置；可在当前 workspace 和当前设备之间切换。</div>
+              <div class="field-help">${escapeHtml(copy.saveLocationHelp)}</div>
             </div>
           </div>
 
           <div id="agentField" class="field">
-            <div class="field-label">Agents:</div>
+            <div class="field-label">${escapeHtml(copy.agentsLabel)}</div>
             <div class="field-control">
               <div id="agentToolbar" class="agent-toolbar" hidden>
-                <button id="setAllDefaultButton" type="button" class="mini-button">全部设为 default</button>
-                <button id="restoreCurrentProvidersButton" type="button" class="mini-button">按当前 Provider 填充</button>
+                <button id="setAllDefaultButton" type="button" class="mini-button">${escapeHtml(copy.setAllDefault)}</button>
+                <button id="restoreCurrentProvidersButton" type="button" class="mini-button">${escapeHtml(copy.restoreCurrentProviders)}</button>
               </div>
               <div id="agentList" class="agent-list" hidden></div>
-              <div id="agentEmptyNote" class="empty-note" hidden>当前画布没有 Agent 节点，本次只会保存 Terminal / Note 节点。</div>
+              <div id="agentEmptyNote" class="empty-note" hidden>${escapeHtml(copy.agentEmptyNote)}</div>
             </div>
           </div>
 
           <div id="associatedNoteField" class="field">
-            <div class="field-label">关联 Note:</div>
+            <div class="field-label">${escapeHtml(copy.associatedNotesLabel)}</div>
             <div class="field-control">
-              <div class="field-help">为关联 Markdown 文件的 Note 选择模板保存方式；workspace 外文件不能保留相对路径关联。</div>
+              <div class="field-help">${escapeHtml(copy.associatedNotesHelp)}</div>
               <div id="associatedNoteList" class="associated-note-list" hidden></div>
             </div>
           </div>
@@ -685,7 +706,7 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
 
         <div class="actions">
           <button id="submitButton" type="submit" form="templateForm" class="action-button primary">${escapeHtml(state.submitLabel)}</button>
-          <button id="cancelButton" type="button" class="action-button secondary">取消</button>
+          <button id="cancelButton" type="button" class="action-button secondary">${escapeHtml(copy.cancel)}</button>
         </div>
       </div>
     </div>
@@ -693,6 +714,7 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const state = ${initialStateJson};
+      const copy = ${copyJson};
       const nameInput = document.getElementById('nameInput');
       const storageLocationSelect = document.getElementById('storageLocationSelect');
       const agentField = document.getElementById('agentField');
@@ -747,6 +769,13 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
         return option;
       }
 
+      function buildSelectOption(value, label) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        return option;
+      }
+
       function buildAgentRow(agent) {
         const row = document.createElement('div');
         row.className = 'agent-row';
@@ -760,11 +789,11 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
 
         const select = document.createElement('select');
         select.className = 'select-input agent-provider-select';
-        select.innerHTML = [
-          '<option value="default">default（跟随当前默认 Provider）</option>',
-          '<option value="codex">codex</option>',
-          '<option value="claude">claude</option>'
-        ].join('');
+        select.replaceChildren(
+          buildSelectOption('default', copy.defaultProviderOption),
+          buildSelectOption('codex', 'codex'),
+          buildSelectOption('claude', 'claude')
+        );
         select.value = agent.currentProvider;
         select.addEventListener('change', () => {
           renderError('');
@@ -788,19 +817,20 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
 
         const path = document.createElement('div');
         path.className = 'associated-note-path';
-        path.textContent = String(note.displayPath || '') + (note.status && note.status !== 'ok' ? ' · ' + note.status : '');
+        const statusLabel = formatAssociatedNoteStatus(note.status);
+        path.textContent = String(note.displayPath || '') + (statusLabel ? ' · ' + statusLabel : '');
         path.title = path.textContent;
         meta.append(path);
 
         const select = document.createElement('select');
         select.className = 'select-input associated-note-mode-select';
         const options = [
-          ['embedded-snapshot', '保存为普通 Note 内容快照']
+          ['embedded-snapshot', copy.embeddedSnapshotOption]
         ];
         if (note.isWorkspaceRelative) {
           options.push(
-            ['workspace-file-path-only', '仅保留 workspace 相对路径'],
-            ['workspace-file-with-content', '保留相对路径和文件内容']
+            ['workspace-file-path-only', copy.workspacePathOnlyOption],
+            ['workspace-file-with-content', copy.workspaceFileWithContentOption]
           );
         }
         select.replaceChildren(...options.map(([value, label]) => {
@@ -819,6 +849,14 @@ function buildCanvasTemplateSaveFormHtml(webview: vscode.Webview, state: CanvasT
 
         row.append(meta, select);
         return row;
+      }
+
+      function formatAssociatedNoteStatus(status) {
+        if (typeof status !== 'string' || status.length === 0 || status === 'ok') {
+          return '';
+        }
+
+        return copy.associatedNoteStatusLabels[status] || status;
       }
 
       function renderAgentSection() {
@@ -946,13 +984,50 @@ function isCanvasTemplateAgentProviderKind(value: unknown): value is CanvasTempl
   return value === 'default' || value === 'codex' || value === 'claude';
 }
 
-function serializeStateForInlineScript(state: CanvasTemplateSaveFormInlineState): string {
-  return JSON.stringify(state)
+function buildCanvasTemplateSaveFormCopy(): CanvasTemplateSaveFormCopy {
+  return {
+    nameLabel: vscode.l10n.t('Name:'),
+    namePlaceholder: vscode.l10n.t('e.g. Daily development workflow'),
+    saveLocationLabel: vscode.l10n.t('Save location:'),
+    saveLocationHelp: vscode.l10n.t(
+      'Choose the template library root first; you can switch between the current workspace and the current device.'
+    ),
+    agentsLabel: vscode.l10n.t('Agents:'),
+    setAllDefault: vscode.l10n.t('Set all to default'),
+    restoreCurrentProviders: vscode.l10n.t('Use current Providers'),
+    agentEmptyNote: vscode.l10n.t(
+      'The current Canvas has no Agent nodes. This template will only save Terminal / Note nodes.'
+    ),
+    associatedNotesLabel: vscode.l10n.t('Associated Notes:'),
+    associatedNotesHelp: vscode.l10n.t(
+      'Choose how to save Notes linked to Markdown files. Files outside the workspace cannot keep a relative path link.'
+    ),
+    cancel: vscode.l10n.t('Cancel'),
+    defaultProviderOption: vscode.l10n.t('default (follow the current default Provider)'),
+    embeddedSnapshotOption: vscode.l10n.t('Save as a regular Note content snapshot'),
+    workspacePathOnlyOption: vscode.l10n.t('Keep workspace-relative path only'),
+    workspaceFileWithContentOption: vscode.l10n.t('Keep relative path and file content'),
+    associatedNoteStatusLabels: {
+      missing: vscode.l10n.t('File missing'),
+      'not-file': vscode.l10n.t('Not a file'),
+      'unsupported-extension': vscode.l10n.t('Unsupported format'),
+      unreadable: vscode.l10n.t('Unreadable'),
+      'dirty-conflict': vscode.l10n.t('Edit conflict')
+    }
+  };
+}
+
+function serializeForInlineScript(value: unknown): string {
+  return JSON.stringify(value)
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026')
     .replace(/\\u2028/g, '\\u2028')
     .replace(/\\u2029/g, '\\u2029');
+}
+
+function resolveWebviewHtmlLang(): string {
+  return (vscode.env?.language || 'en').replace(/"/g, '');
 }
 
 function createNonce(): string {

@@ -8,6 +8,7 @@ import {
 import { COMMAND_IDS } from '../common/extensionIdentity';
 import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
+import { localizeCanvasTemplateStoreIssue } from '../panel/canvasTemplateLocalization';
 import type { CanvasTemplateCatalog } from '../panel/CanvasTemplateStore';
 import type {
   TemplateMarketplaceClient,
@@ -61,6 +62,28 @@ interface CanvasSidebarTemplateStateSnapshot {
   issueMessages: string[];
   isLoading: boolean;
   loadErrorMessage?: string;
+}
+
+interface SidebarTemplateCopy {
+  templateList: string;
+  template: string;
+  defaultTemplate: string;
+  hasNewVersion: string;
+  defaultPrefix: string;
+  updateAvailablePrefix: string;
+  applyTemplate: string;
+  resetToTemplate: string;
+  alreadyDefaultTemplate: string;
+  setAsDefaultTemplate: string;
+  exportTemplate: string;
+  publishToMarketplace: string;
+  openMarketplaceDetails: string;
+  updateToMarketplaceLatest: string;
+  updateToMarketplaceLatestVersion: string;
+  reportMarketplaceTemplate: string;
+  deleteTemplate: string;
+  loading: string;
+  noTemplates: string;
 }
 
 type SidebarTemplateInboundMessage =
@@ -184,7 +207,7 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
       const marketplaceUpdateStatuses = await this.loadMarketplaceUpdateStatuses(catalog);
       this.state = {
         items: getCanvasSidebarTemplateItems(catalog, defaultTemplateId, marketplaceUpdateStatuses),
-        issueMessages: catalog.issues.map((issue) => `${issue.fileName}：${issue.message}`),
+        issueMessages: catalog.issues.map(localizeCanvasTemplateStoreIssue),
         isLoading: false
       };
     } catch (error) {
@@ -273,7 +296,7 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
   private openMarketplaceTemplate(templateId: string): void {
     const marketplace = this.findMarketplaceSnapshot(templateId);
     if (!marketplace || !this.marketplace) {
-      void vscode.window.showErrorMessage('找不到该市场模板的详情入口。');
+      void vscode.window.showErrorMessage(vscode.l10n.t('Could not find the details entry for this marketplace template.'));
       return;
     }
 
@@ -286,14 +309,14 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      void vscode.window.showErrorMessage(`打开市场模板详情失败：${message}`);
+      void vscode.window.showErrorMessage(vscode.l10n.t('Failed to open marketplace template details: {message}', { message }));
     }
   }
 
   private async updateMarketplaceTemplate(templateId: string): Promise<void> {
     const marketplace = this.findMarketplaceSnapshot(templateId);
     if (!marketplace || !this.marketplace) {
-      await vscode.window.showErrorMessage('找不到要更新的市场模板。');
+      await vscode.window.showErrorMessage(vscode.l10n.t('Could not find the marketplace template to update.'));
       return;
     }
 
@@ -301,18 +324,21 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
       const result = await this.marketplace.client.updateInstalledTemplateToLatest(templateId);
       await this.refresh();
       await vscode.window.showInformationMessage(
-        `已更新市场模板「${result.savedTemplate.template.name}」到 v${result.version.versionNumber}。`
+        vscode.l10n.t('Updated marketplace template {name} to v{version}.', {
+          name: result.savedTemplate.template.name,
+          version: result.version.versionNumber
+        })
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await vscode.window.showErrorMessage(`更新市场模板失败：${message}`);
+      await vscode.window.showErrorMessage(vscode.l10n.t('Failed to update marketplace template: {message}', { message }));
     }
   }
 
   private async openMarketplaceReport(templateId: string): Promise<void> {
     const marketplace = this.findMarketplaceSnapshot(templateId);
     if (!marketplace) {
-      await vscode.window.showErrorMessage('找不到该市场模板的举报入口。');
+      await vscode.window.showErrorMessage(vscode.l10n.t('Could not find the report entry for this marketplace template.'));
       return;
     }
 
@@ -320,7 +346,7 @@ export class CanvasSidebarTemplateView implements vscode.WebviewViewProvider, vs
       await vscode.env.openExternal(vscode.Uri.parse(buildMarketplaceReportUrl(marketplace.sourceUrl)));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await vscode.window.showErrorMessage(`打开举报页面失败：${message}`);
+      await vscode.window.showErrorMessage(vscode.l10n.t('Failed to open the report page: {message}', { message }));
     }
   }
 }
@@ -386,19 +412,19 @@ function resolveCanvasSidebarTemplateLocationLabel(storedTemplate: CanvasTemplat
 
 function resolveCanvasSidebarTemplateSourceLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
-    return '内置';
+    return vscode.l10n.t('Built-in');
   }
   if (storedTemplate.marketplace) {
-    return '市场';
+    return vscode.l10n.t('Marketplace');
   }
-  return '自建';
+  return vscode.l10n.t('User-created');
 }
 
 function resolveCanvasSidebarTemplatePositionLabel(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
     return '';
   }
-  return storedTemplate.storageLocation?.scope === 'workspace' ? '工作区' : '本地';
+  return storedTemplate.storageLocation?.scope === 'workspace' ? vscode.l10n.t('Workspace') : vscode.l10n.t('Local');
 }
 
 function resolveCanvasSidebarTemplateSourceKind(storedTemplate: CanvasTemplateCatalog['templates'][number]): 'builtin' | 'user' | 'market' {
@@ -415,25 +441,36 @@ function buildCanvasTemplateTooltip(
   const detailLines = buildCanvasTemplateNodeDetailLines(storedTemplate.template);
   const locationLine = buildCanvasTemplateLocationTooltipLine(storedTemplate);
   const marketLine = marketplace
-    ? `市场来源：${marketplace.marketTemplateSlug ?? marketplace.marketTemplateId} / v${marketplace.installedVersionNumber}`
+    ? vscode.l10n.t('Marketplace source: {source} / v{version}', {
+        source: marketplace.marketTemplateSlug ?? marketplace.marketTemplateId,
+        version: marketplace.installedVersionNumber
+      })
     : undefined;
   const marketUpdateLine = marketplace?.updateAvailable && marketplace.latestVersionNumber
-    ? `市场更新：可更新到 v${marketplace.latestVersionNumber}`
+    ? vscode.l10n.t('Marketplace update: v{version} is available', {
+        version: marketplace.latestVersionNumber
+      })
     : marketplace?.updateCheckError
-      ? `市场更新：暂时无法检查（${marketplace.updateCheckError}）`
+      ? vscode.l10n.t('Marketplace update: cannot check right now ({message})', {
+          message: marketplace.updateCheckError
+        })
       : undefined;
   return [...detailLines, '', locationLine, marketLine, marketUpdateLine].filter(Boolean).join('\n');
 }
 
 function buildCanvasTemplateLocationTooltipLine(storedTemplate: CanvasTemplateCatalog['templates'][number]): string {
   if (storedTemplate.template.category === 'builtin') {
-    const builtinLayer = storedTemplate.relativeDirectory || '根目录';
-    return `模板来源：内置；模板所在层级：${builtinLayer}`;
+    const builtinLayer = storedTemplate.relativeDirectory || vscode.l10n.t('root directory');
+    return vscode.l10n.t('Template source: Built-in; template layer: {layer}', { layer: builtinLayer });
   }
 
-  const locationLabel = storedTemplate.storageLocation?.label ?? '用户模板';
-  const relativeDirectory = storedTemplate.relativeDirectory || '根目录';
-  return `模板来源：${resolveCanvasSidebarTemplateSourceLabel(storedTemplate)}；保存位置：${locationLabel} / ${relativeDirectory}`;
+  const locationLabel = storedTemplate.storageLocation?.label ?? vscode.l10n.t('User templates');
+  const relativeDirectory = storedTemplate.relativeDirectory || vscode.l10n.t('root directory');
+  return vscode.l10n.t('Template source: {source}; saved location: {location} / {directory}', {
+    source: resolveCanvasSidebarTemplateSourceLabel(storedTemplate),
+    location: locationLabel,
+    directory: relativeDirectory
+  });
 }
 
 function parseSidebarTemplateMessage(message: unknown): SidebarTemplateInboundMessage | null {
@@ -474,6 +511,32 @@ function parseSidebarTemplateMessage(message: unknown): SidebarTemplateInboundMe
   return null;
 }
 
+function buildSidebarTemplateCopy(): SidebarTemplateCopy {
+  return {
+    templateList: vscode.l10n.t('Template list'),
+    template: vscode.l10n.t('template'),
+    defaultTemplate: vscode.l10n.t('Default template'),
+    hasNewVersion: vscode.l10n.t('Has new version'),
+    defaultPrefix: vscode.l10n.t('(Default)'),
+    updateAvailablePrefix: vscode.l10n.t('Update available'),
+    applyTemplate: vscode.l10n.t('Append template to the current Canvas'),
+    resetToTemplate: vscode.l10n.t('Reset the current Canvas to this template'),
+    alreadyDefaultTemplate: vscode.l10n.t('Already the default template'),
+    setAsDefaultTemplate: vscode.l10n.t('Set as default template'),
+    exportTemplate: vscode.l10n.t('Export template'),
+    publishToMarketplace: vscode.l10n.t('Publish to Template Marketplace'),
+    openMarketplaceDetails: vscode.l10n.t('Open marketplace details / roll back version'),
+    updateToMarketplaceLatest: vscode.l10n.t('Update to the latest marketplace version'),
+    updateToMarketplaceLatestVersion: vscode.l10n.t('Update to the latest marketplace version v{version}', {
+      version: '{version}'
+    }),
+    reportMarketplaceTemplate: vscode.l10n.t('Report marketplace template'),
+    deleteTemplate: vscode.l10n.t('Delete template'),
+    loading: vscode.l10n.t('Loading...'),
+    noTemplates: vscode.l10n.t('No templates yet. Install one from the marketplace or save the Canvas as a template manually.')
+  };
+}
+
 function buildMarketplaceReportUrl(sourceUrl: string): string {
   const url = new URL(sourceUrl);
   url.hash = 'report';
@@ -486,6 +549,7 @@ function buildSidebarTemplateHtml(
   initialState: CanvasSidebarTemplateStateSnapshot
 ): string {
   const nonce = createNonce();
+  const copy = buildSidebarTemplateCopy();
   const codiconCssUri = getVersionedWebviewResourceUri(
     webview,
     extensionUri,
@@ -494,7 +558,7 @@ function buildSidebarTemplateHtml(
   const initialStateJson = serializeSidebarTemplateStateForInlineScript(initialState);
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${resolveWebviewHtmlLang()}">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -742,11 +806,12 @@ function buildSidebarTemplateHtml(
   <body>
       <div class="shell">
         <div id="statusNote" class="status-note" role="status" aria-live="polite"></div>
-        <div id="list" class="list" role="listbox" aria-label="模板列表"></div>
+        <div id="list" class="list" role="listbox" aria-label="${copy.templateList}"></div>
         <div id="emptyState" class="empty-state" role="status" aria-live="polite"></div>
       </div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const copy = ${serializeSidebarTemplateStateForInlineScript(copy)};
       const state = {
         data: ${initialStateJson},
         selectedId: undefined
@@ -811,13 +876,13 @@ function buildSidebarTemplateHtml(
         row.setAttribute('aria-selected', item.id === state.selectedId ? 'true' : 'false');
         row.setAttribute(
           'aria-label',
-          item.name +
-            '，' +
-            item.locationLabel +
-            '模板，' +
-            (item.isDefault ? '默认模板，' : '') +
-            (item.marketplace && item.marketplace.updateAvailable ? '有新版本，' : '') +
+          [
+            item.name,
+            item.locationLabel + ' ' + copy.template,
+            item.isDefault ? copy.defaultTemplate : '',
+            item.marketplace && item.marketplace.updateAvailable ? copy.hasNewVersion : '',
             item.statsLabel
+          ].filter(Boolean).join(', ')
         );
         if (item.id === state.selectedId) {
           row.classList.add('is-selected');
@@ -850,7 +915,7 @@ function buildSidebarTemplateHtml(
 
         const title = document.createElement('div');
         title.className = 'template-title';
-        title.textContent = item.isDefault ? '(默认) ' + item.name : item.name;
+        title.textContent = item.isDefault ? copy.defaultPrefix + ' ' + item.name : item.name;
 
         titleLine.replaceChildren(icon, title);
 
@@ -871,7 +936,7 @@ function buildSidebarTemplateHtml(
         if (item.marketplace && item.marketplace.updateAvailable) {
           const updateBadge = document.createElement('span');
           updateBadge.className = 'badge is-update';
-          updateBadge.textContent = '可更新 v' + item.marketplace.latestVersionNumber;
+          updateBadge.textContent = copy.updateAvailablePrefix + ' v' + item.marketplace.latestVersionNumber;
           meta.append(updateBadge);
         }
         meta.append(stats);
@@ -883,7 +948,7 @@ function buildSidebarTemplateHtml(
         const applyAction = document.createElement('button');
         applyAction.className = 'row-action';
         applyAction.type = 'button';
-        applyAction.title = '追加模板到当前画布';
+        applyAction.title = copy.applyTemplate;
         applyAction.setAttribute('aria-label', applyAction.title);
         applyAction.innerHTML = '<span class="codicon codicon-run" aria-hidden="true"></span>';
         applyAction.addEventListener('click', (event) => {
@@ -894,7 +959,7 @@ function buildSidebarTemplateHtml(
         const resetAction = document.createElement('button');
         resetAction.className = 'row-action';
         resetAction.type = 'button';
-        resetAction.title = '重置当前画布为此模板';
+        resetAction.title = copy.resetToTemplate;
         resetAction.setAttribute('aria-label', resetAction.title);
         resetAction.innerHTML = '<span class="codicon codicon-discard" aria-hidden="true"></span>';
         resetAction.addEventListener('click', (event) => {
@@ -905,7 +970,7 @@ function buildSidebarTemplateHtml(
         const defaultAction = document.createElement('button');
         defaultAction.className = 'row-action';
         defaultAction.type = 'button';
-        defaultAction.title = item.isDefault ? '当前已是默认模板' : '设为默认模板';
+        defaultAction.title = item.isDefault ? copy.alreadyDefaultTemplate : copy.setAsDefaultTemplate;
         defaultAction.setAttribute('aria-label', defaultAction.title);
         defaultAction.innerHTML =
           '<span class="codicon ' +
@@ -923,7 +988,7 @@ function buildSidebarTemplateHtml(
         const exportAction = document.createElement('button');
         exportAction.className = 'row-action';
         exportAction.type = 'button';
-        exportAction.title = '导出模板';
+        exportAction.title = copy.exportTemplate;
         exportAction.setAttribute('aria-label', exportAction.title);
         exportAction.innerHTML = '<span class="codicon codicon-export" aria-hidden="true"></span>';
         exportAction.addEventListener('click', (event) => {
@@ -934,7 +999,7 @@ function buildSidebarTemplateHtml(
         const publishAction = document.createElement('button');
         publishAction.className = 'row-action';
         publishAction.type = 'button';
-        publishAction.title = '发布到模板市场';
+        publishAction.title = copy.publishToMarketplace;
         publishAction.setAttribute('aria-label', publishAction.title);
         publishAction.hidden = !item.canPublish;
         publishAction.innerHTML = '<span class="codicon codicon-cloud-upload" aria-hidden="true"></span>';
@@ -946,7 +1011,7 @@ function buildSidebarTemplateHtml(
         const manageMarketplaceAction = document.createElement('button');
         manageMarketplaceAction.className = 'row-action';
         manageMarketplaceAction.type = 'button';
-        manageMarketplaceAction.title = '打开市场详情 / 回滚版本';
+        manageMarketplaceAction.title = copy.openMarketplaceDetails;
         manageMarketplaceAction.setAttribute('aria-label', manageMarketplaceAction.title);
         manageMarketplaceAction.hidden = !item.canManageMarketplace;
         manageMarketplaceAction.innerHTML = '<span class="codicon codicon-versions" aria-hidden="true"></span>';
@@ -959,8 +1024,8 @@ function buildSidebarTemplateHtml(
         updateMarketplaceAction.className = 'row-action';
         updateMarketplaceAction.type = 'button';
         updateMarketplaceAction.title = item.marketplace && item.marketplace.latestVersionNumber
-          ? '更新到市场最新版本 v' + item.marketplace.latestVersionNumber
-          : '更新到市场最新版本';
+          ? copy.updateToMarketplaceLatestVersion.replace('{version}', item.marketplace.latestVersionNumber)
+          : copy.updateToMarketplaceLatest;
         updateMarketplaceAction.setAttribute('aria-label', updateMarketplaceAction.title);
         updateMarketplaceAction.hidden = !item.canUpdateMarketplace;
         updateMarketplaceAction.innerHTML = '<span class="codicon codicon-sync" aria-hidden="true"></span>';
@@ -972,7 +1037,7 @@ function buildSidebarTemplateHtml(
         const reportMarketplaceAction = document.createElement('button');
         reportMarketplaceAction.className = 'row-action';
         reportMarketplaceAction.type = 'button';
-        reportMarketplaceAction.title = '举报市场模板';
+        reportMarketplaceAction.title = copy.reportMarketplaceTemplate;
         reportMarketplaceAction.setAttribute('aria-label', reportMarketplaceAction.title);
         reportMarketplaceAction.hidden = !item.canReportMarketplace;
         reportMarketplaceAction.innerHTML = '<span class="codicon codicon-warning" aria-hidden="true"></span>';
@@ -984,7 +1049,7 @@ function buildSidebarTemplateHtml(
         const deleteAction = document.createElement('button');
         deleteAction.className = 'row-action is-danger';
         deleteAction.type = 'button';
-        deleteAction.title = '删除模板';
+        deleteAction.title = copy.deleteTemplate;
         deleteAction.setAttribute('aria-label', deleteAction.title);
         deleteAction.hidden = !item.canDelete;
         deleteAction.innerHTML = '<span class="codicon codicon-trash" aria-hidden="true"></span>';
@@ -1024,7 +1089,7 @@ function buildSidebarTemplateHtml(
         renderStatusNote(currentState.issueMessages);
 
         if (currentState.isLoading) {
-          emptyState.textContent = '正在加载...';
+          emptyState.textContent = copy.loading;
           emptyState.classList.add('is-visible');
           return;
         }
@@ -1036,7 +1101,7 @@ function buildSidebarTemplateHtml(
         }
 
         if (items.length === 0) {
-          emptyState.textContent = '暂无模板。可从市场安装或手动保存画布为模板。';
+          emptyState.textContent = copy.noTemplates;
           emptyState.classList.add('is-visible');
           return;
         }
@@ -1066,13 +1131,17 @@ function buildSidebarTemplateHtml(
 </html>`;
 }
 
-function serializeSidebarTemplateStateForInlineScript(state: CanvasSidebarTemplateStateSnapshot): string {
+function serializeSidebarTemplateStateForInlineScript(state: unknown): string {
   return JSON.stringify(state)
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026')
     .replace(/\\u2028/g, '\\u2028')
     .replace(/\\u2029/g, '\\u2029');
+}
+
+function resolveWebviewHtmlLang(): string {
+  return (vscode.env?.language || 'en').replace(/"/g, '');
 }
 
 function createNonce(): string {

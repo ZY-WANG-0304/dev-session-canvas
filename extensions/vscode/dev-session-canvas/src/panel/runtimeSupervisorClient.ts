@@ -1,7 +1,11 @@
 import { randomUUID } from 'crypto';
 import * as net from 'net';
 
-import { createRuntimeSupervisorError } from '../common/runtimeSupervisorProtocol';
+import {
+  RUNTIME_SUPERVISOR_ERROR_CODES,
+  createRuntimeSupervisorError,
+  createRuntimeSupervisorProtocolError
+} from '../common/runtimeSupervisorProtocol';
 import type {
   RuntimeSupervisorAttachSessionParams,
   RuntimeSupervisorClientEventHandlers,
@@ -41,7 +45,9 @@ export class RuntimeSupervisorClient {
 
   public async ensureConnected(options: { allowRestart?: boolean } = {}): Promise<void> {
     if (this.disposed) {
-      throw new Error('RuntimeSupervisorClient 已释放。');
+      throw createRuntimeSupervisorProtocolError({
+        id: 'clientDisposed'
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.clientDisposed);
     }
 
     if (this.socket && !this.socket.destroyed) {
@@ -100,7 +106,9 @@ export class RuntimeSupervisorClient {
       this.socket.destroy();
     }
     this.socket = undefined;
-    this.rejectAllPending(new Error('RuntimeSupervisorClient 已断开。'));
+    this.rejectAllPending(createRuntimeSupervisorProtocolError({
+      id: 'clientDisconnected'
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.clientDisconnected));
   }
 
   private async request<T>(
@@ -128,7 +136,9 @@ export class RuntimeSupervisorClient {
     await this.ensureConnected();
     const socket = this.socket;
     if (!socket || socket.destroyed) {
-      throw new Error('无法连接 runtime supervisor。');
+      throw createRuntimeSupervisorProtocolError({
+        id: 'clientNotConnected'
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.clientNotConnected);
     }
 
     const id = randomUUID();
@@ -174,7 +184,9 @@ export class RuntimeSupervisorClient {
 
   private async connectSocket(): Promise<void> {
     if (this.disposed) {
-      throw new Error('RuntimeSupervisorClient 已释放。');
+      throw createRuntimeSupervisorProtocolError({
+        id: 'clientDisposed'
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.clientDisposed);
     }
 
     await new Promise<void>((resolve, reject) => {
@@ -210,9 +222,15 @@ export class RuntimeSupervisorClient {
       this.drainBufferedMessages();
     });
     socket.on('close', () => {
-      const error = this.disposed ? undefined : new Error('runtime supervisor 连接已关闭。');
+      const error = this.disposed
+        ? undefined
+        : createRuntimeSupervisorProtocolError({
+            id: 'clientConnectionClosed'
+          }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed);
       this.socket = undefined;
-      this.rejectAllPending(error ?? new Error('runtime supervisor 连接已关闭。'));
+      this.rejectAllPending(error ?? createRuntimeSupervisorProtocolError({
+        id: 'clientConnectionClosed'
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed));
       if (!this.disposed) {
         this.options.onDisconnected?.(error);
       }
@@ -311,7 +329,9 @@ export class RuntimeSupervisorClient {
       await delay(80);
     }
 
-    throw lastError ?? new Error('等待 runtime supervisor 启动超时。');
+    throw lastError ?? createRuntimeSupervisorProtocolError({
+      id: 'clientReadyTimeout'
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.clientReadyTimeout);
   }
 }
 

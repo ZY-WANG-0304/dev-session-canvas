@@ -36,7 +36,9 @@ try {
     buildCanvasTemplatePackageMarketMetadataPath,
     captureCanvasTemplateFromState,
     encodeCanvasTemplateDocument,
+    formatCanvasTemplateMessageDescriptor,
     formatCanvasTemplateStats,
+    getCanvasTemplateErrorDescriptor,
     normalizeCanvasTemplateWorkspaceRelativePath,
     parseCanvasTemplateDocument,
     sanitizeCanvasTemplateFileStem
@@ -164,6 +166,8 @@ try {
   );
   assert.strictEqual(catalog.issues.length, 1);
   assert.match(catalog.issues[0].message, /JSON/);
+  assert.strictEqual(catalog.issues[0].messageDescriptor?.id, 'templateJsonInvalid');
+  assert.match(formatCanvasTemplateMessageDescriptor(catalog.issues[0].messageDescriptor), /not valid JSON/u);
   assert.strictEqual(formatCanvasTemplateStats(builtinTemplateB), '1 Agent, 1 Terminal');
 
   const marketTemplate = {
@@ -660,8 +664,8 @@ try {
 
   assert.strictEqual(normalizeCanvasTemplateWorkspaceRelativePath(' ./docs/a.md '), 'docs/a.md');
   assert.strictEqual(normalizeCanvasTemplateWorkspaceRelativePath('../secret.md'), undefined);
-  assert.throws(
-    () => parseCanvasTemplateDocument({
+  try {
+    parseCanvasTemplateDocument({
       version: 1,
       template: {
         ...capturedPathOnlyNote.template,
@@ -677,9 +681,12 @@ try {
           }
         ]
       }
-    }),
-    /缺少合法 workspace 相对 Markdown 路径/u
-  );
+    });
+    assert.fail('Expected invalid associated Markdown relative path to throw.');
+  } catch (error) {
+    assert.strictEqual(getCanvasTemplateErrorDescriptor(error)?.id, 'noteRelativePathInvalid');
+    assert.match(error instanceof Error ? error.message : String(error), /workspace-relative Markdown path/u);
+  }
 
   const objectAgentId = 'agent-7-11111111-1111-4111-8111-111111111111';
   const objectTerminalId = 'terminal-8-22222222-2222-4222-8222-222222222222';
@@ -766,6 +773,29 @@ try {
 
   const roundTripText = encodeCanvasTemplateDocument(userTemplate);
   assert.deepStrictEqual(parseCanvasTemplateDocument(JSON.parse(roundTripText)).document.template, userTemplate);
+  const terminalMetadataWarningParse = parseCanvasTemplateDocument({
+    version: 1,
+    template: {
+      ...userTemplate,
+      nodes: [
+        {
+          kind: 'terminal',
+          title: 'Terminal With Ignored Metadata',
+          position: { x: 0, y: 0 },
+          size: { width: 320, height: 240 },
+          metadata: {
+            agent: { provider: 'codex' },
+            note: { content: 'ignored' }
+          }
+        }
+      ]
+    }
+  });
+  assert.deepStrictEqual(
+    terminalMetadataWarningParse.warningDescriptors.map((descriptor) => descriptor.id),
+    ['nonAgentMetadataIgnored', 'nonNoteMetadataIgnored']
+  );
+  assert.match(terminalMetadataWarningParse.warnings[0], /not an Agent/u);
   const groupedTemplateRoundTrip = parseCanvasTemplateDocument({
     version: 1,
     template: packageTemplate
@@ -785,7 +815,7 @@ try {
         ]
       }
     }),
-    /分组索引/u
+    /group index/u
   );
   assert.throws(
     () => parseCanvasTemplateDocument({
@@ -804,7 +834,7 @@ try {
         ]
       }
     }),
-    /循环父子关系/u
+    /cyclic parent-child relationship/u
   );
 
   assert.throws(
@@ -818,7 +848,7 @@ try {
         ]
       }
     }),
-    /循环父子关系/u
+    /cyclic parent-child relationship/u
   );
   assert.throws(
     () => parseCanvasTemplateDocument({
@@ -830,7 +860,7 @@ try {
         ]
       }
     }),
-    /不存在的父分组索引/u
+    /missing parent group index/u
   );
   assert.throws(
     () => parseCanvasTemplateDocument({
@@ -842,7 +872,7 @@ try {
         ]
       }
     }),
-    /不能引用自身作为父分组/u
+    /cannot reference itself/u
   );
   assert.throws(
     () => parseCanvasTemplateDocument({
@@ -864,7 +894,7 @@ try {
         ]
       }
     }),
-    /不存在的分组索引/u
+    /missing group index/u
   );
 
   const extensionSource = await readFile('extensions/vscode/dev-session-canvas/src/extension.ts', 'utf8');
@@ -986,9 +1016,9 @@ try {
     'private buildCanvasTemplateResetConfirmationMessage',
     'private resolveCanvasTemplateResetConfirmationRootGroup'
   );
-  assert.match(resetConfirmationMessageSource, /当前画布对象/u);
-  assert.match(resetConfirmationMessageSource, /目标 root「\$\{targetRootGroup\.title\}」内的画布对象/u);
-  assert.match(resetConfirmationMessageSource, /所选 workspace root 内的画布对象/u);
+  assert.match(resetConfirmationMessageSource, /Resetting will clear the current Canvas objects/u);
+  assert.match(resetConfirmationMessageSource, /Canvas objects in target root/u);
+  assert.match(resetConfirmationMessageSource, /Canvas objects in the selected workspace root/u);
   assert.match(panelManagerSource, /public focusCanvasTemplateNodeGroup\(nodeIds: readonly string\[\]\): void/u);
   const resetDefaultTemplateMethodSource = sliceBetween(
     panelManagerSource,
@@ -1125,7 +1155,7 @@ try {
   );
   assert.match(
     saveCurrentCanvasTemplateSource,
-    /多根 workspace 中暂不支持保存整个组合视图为模板/u,
+    /Saving the full composed view as a template is not supported in multi-root workspaces yet/u,
     '多根组合视图不能直接保存为跨 root 模板。'
   );
   const nodeSequenceSource = sliceBetween(
@@ -1150,23 +1180,29 @@ try {
   assert.match(protocolSource, /webview\/createMissingAssociatedNoteMarkdownFile/u);
 
   const webviewSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/main.tsx', 'utf8');
+  const webviewI18nSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/i18n/webviewI18n.ts', 'utf8');
   const webviewStylesSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/styles.css', 'utf8');
   const canvasNodeVisualsSource = await readFile('extensions/vscode/dev-session-canvas/src/common/canvasNodeVisuals.ts', 'utf8');
   const thumbnailSource = await readFile('packages/marketplace-shared/src/thumbnail.ts', 'utf8');
   assert.match(webviewSource, /case 'host\/focusNodes':\s*requestNodeGroupFocus\(message\.payload\.nodeIds\);/u);
-  assert.match(webviewSource, /创建空文件并关联/u);
+  assert.match(webviewSource, /data-node-action-id="create-missing-associated-markdown-file"/u);
+  assert.match(webviewSource, /t\('action\.createEmptyAndAssociate'\)/u);
+  assert.match(webviewI18nSource, /'action\.createEmptyAndAssociate': 'Create empty file and associate'/u);
+  assert.match(webviewI18nSource, /'action\.createEmptyAndAssociate': '创建空文件并关联'/u);
   assert.match(webviewSource, /const knownNodeIds = latestHostNodeIdsRef\.current;/u);
   assert.match(webviewSource, /shouldPromptForRootGroupTemplateReset/u);
   assert.match(webviewSource, /resolveTemplateResetTargetRootGroupId/u);
   assert.match(webviewSource, /resolveContainingWorkspaceRootGroupIdForWebview\(groups, targetGroup\.id\)/u);
-  assert.match(webviewSource, /多根 workspace 中请在目标 root section 内重置为模板/u);
+  assert.match(webviewSource, /t\('canvas\.error\.multiRootTemplateReset'\)/u);
+  assert.match(webviewI18nSource, /'canvas\.error\.multiRootTemplateReset': 'In a multi-root workspace, reset templates inside the target root section\.'/u);
   assert.match(webviewSource, /view === 'reset-template' && shouldPromptForRootGroupTemplateReset/u);
   assert.match(webviewSource, /nodes: targetNodeIds\.map\(\(id\) => \(\{ id \}\)\)/u);
   assert.match(webviewSource, /schedulePendingNodeGroupViewportRetry\(\);/u);
   assert.doesNotMatch(webviewSource, /webview\/publishCanvasTemplate/u);
   assert.doesNotMatch(webviewSource, /data-context-menu-action="publish-canvas-template"/u);
   assert.doesNotMatch(webviewSource, /onPublishCanvasTemplate/u);
-  assert.match(webviewSource, /保存后可从模板侧栏或市场面板发布/u);
+  assert.match(webviewSource, /t\('contextMenu\.saveTemplate\.description'\)/u);
+  assert.match(webviewI18nSource, /'contextMenu\.saveTemplate\.description': 'After saving, publish it from the template sidebar or marketplace panel'/u);
   assert.doesNotMatch(webviewSource, /codicon-cloud-upload/u);
   for (const [kind, color] of [
     ['agent', '#22c55e'],
@@ -1183,7 +1219,10 @@ try {
   assert.match(saveFormSource, /associatedNoteModes/u);
   assert.match(saveFormSource, /workspace-file-path-only/u);
   assert.match(saveFormSource, /workspace-file-with-content/u);
+  assert.match(saveFormSource, /buildCanvasTemplateSaveFormCopy/u);
+  assert.match(saveFormSource, /vscode\.l10n\.t\('Save as a regular Note content snapshot'\)/u);
   assert.doesNotMatch(saveFormSource, /不保存此 Note/u);
+  assert.doesNotMatch(saveFormSource, /[\p{Script=Han}]/u);
   assert.ok(!saveFormSource.includes("['skip'"));
 
   const sidebarTemplateViewSource = await readFile('extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts', 'utf8');
@@ -1223,7 +1262,8 @@ try {
   assert.match(sidebarTemplateViewSource, /codicon-sync/u);
   assert.match(sidebarTemplateViewSource, /codicon-versions/u);
   assert.match(sidebarTemplateViewSource, /codicon-warning/u);
-  assert.match(sidebarTemplateViewSource, /可更新 v/u);
+  assert.match(sidebarTemplateViewSource, /updateAvailablePrefix: vscode\.l10n\.t\('Update available'\)/u);
+  assert.match(sidebarTemplateViewSource, /updateToMarketplaceLatestVersion: vscode\.l10n\.t\('Update to the latest marketplace version v\{version\}'/u);
   assert.match(sidebarTemplateViewSource, /url\.hash = 'report'/u);
   assert.match(sidebarTemplateViewSource, /locationLabel: resolveCanvasSidebarTemplateLocationLabel\(storedTemplate\)/u);
   assert.match(sidebarTemplateViewSource, /canPublish: storedTemplate\.template\.category === 'user' && !storedTemplate\.marketplace/u);
@@ -1233,15 +1273,15 @@ try {
   assert.match(sidebarTemplateViewSource, /codicon-cloud-upload/u);
   assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplateSourceLabel/u);
   assert.match(sidebarTemplateViewSource, /resolveCanvasSidebarTemplatePositionLabel/u);
-  assert.match(sidebarTemplateViewSource, /return '内置';/u);
-  assert.match(sidebarTemplateViewSource, /return '自建';/u);
-  assert.match(sidebarTemplateViewSource, /return '市场';/u);
+  assert.match(sidebarTemplateViewSource, /return vscode\.l10n\.t\('Built-in'\);/u);
+  assert.match(sidebarTemplateViewSource, /return vscode\.l10n\.t\('User-created'\);/u);
+  assert.match(sidebarTemplateViewSource, /return vscode\.l10n\.t\('Marketplace'\);/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /插件内置|用户保存\/导入|市场下载|扩展内/u);
-  assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? '工作区' : '本地'/u);
+  assert.match(sidebarTemplateViewSource, /storageLocation\?\.scope === 'workspace' \? vscode\.l10n\.t\('Workspace'\) : vscode\.l10n\.t\('Local'\)/u);
   assert.match(sidebarTemplateViewSource, /codicon-cloud-download/u);
   assert.match(sidebarTemplateViewSource, /locationBadge\.textContent = item\.locationLabel;/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /textContent = item\.category === 'builtin' \? '内置' : '用户';/u);
-  assert.match(sidebarTemplateViewSource, /title\.textContent = item\.isDefault \? '\(默认\) ' \+ item\.name : item\.name;/u);
+  assert.match(sidebarTemplateViewSource, /title\.textContent = item\.isDefault \? copy\.defaultPrefix \+ ' ' \+ item\.name : item\.name;/u);
   assert.doesNotMatch(sidebarTemplateViewSource, /defaultBadge|badge is-default|defaultAction\.hidden = item\.isDefault/u);
   assert.match(sidebarTemplateViewSource, /item\.isDefault \? 'codicon-star-full' : 'codicon-star-empty'/u);
   assert.match(sidebarTemplateViewSource, /if \(item\.isDefault\) \{\s*return;\s*\}\s*postTemplateMessage\('sidebarTemplates\/setDefaultTemplate', item\.templateId\);/u);
@@ -1293,8 +1333,10 @@ try {
   assert.match(marketplaceClientSource, /listInstalledTemplates/u);
   assert.match(marketplaceClientSource, /listInstalledTemplateUpdateStatuses/u);
   assert.match(marketplaceClientSource, /updateInstalledTemplateToLatest/u);
+  assert.match(marketplaceClientSource, /vscode\.l10n\.t\('Could not find the marketplace template to update\.'\)/u);
   assert.match(marketplaceClientSource, /MARKETPLACE_INSTALLED_UPDATE_CHECK_TIMEOUT_MS/u);
   assert.match(marketplaceClientSource, /publishTemplateDraftVersion/u);
+  assert.match(marketplaceClientSource, /vscode\.l10n\.t\('Failed to publish a new template version: \{message\}'/u);
   assert.match(marketplaceClientSource, /\/api\/v1\/templates\/\$\{encodeURIComponent\(templateIdOrSlug\)\}\/versions/u);
   assert.match(marketplaceClientSource, /listInstallTargets/u);
   assert.match(marketplaceClientSource, /targetStorageLocationId/u);
@@ -1302,6 +1344,8 @@ try {
   assert.match(marketplaceClientSource, /export function parseTrustedMarketplaceSourceUrl/u);
   assert.match(marketplaceClientSource, /saveMarketplaceTemplatePackage/u);
   assert.match(marketplaceClientSource, /parseMarketplaceTemplatePackageForInstall/u);
+  assert.match(marketplaceClientSource, /class MarketplaceTemplatePackageError extends Error/u);
+  assert.match(marketplaceClientSource, /error instanceof MarketplaceTemplatePackageError/u);
   assert.match(marketplaceClientSource, /requestBuffer\(downloadUrl, \{ accept: 'application\/zip' \}\)/u);
   assert.match(marketplaceClientSource, /findInstalledMarketplaceTemplate/u);
   assert.match(marketplaceClientSource, /resolveInstallTarget/u);
@@ -1316,6 +1360,8 @@ try {
   assert.match(marketplaceClientSource, /thumbnailPngBase64: generateMarketplaceTemplateThumbnailPngBase64\(templateDocument\)/u);
   assert.match(marketplaceClientSource, /vscode\.authentication\.getSession\('github', \['read:user'\], \{ createIfNone: true \}\)/u);
   assert.match(marketplaceClientSource, /context\.secrets\.store\(MARKETPLACE_TOKEN_SECRET_KEY, tokenResponse\.token\)/u);
+  assert.match(marketplaceClientSource, /vscode\.l10n\.t\('Failed to exchange GitHub identity for a marketplace token: \{message\}'/u);
+  assert.doesNotMatch(marketplaceClientSource, /[\u4e00-\u9fff]|zh-CN/u);
   assert.match(vscodeSmokeRunnerSource, /BLOCKED_VSCODE_ENV_SECRET_PATTERNS/u);
   assert.match(vscodeSmokeRunnerSource, /pattern\.test\(key\)/u);
   assert.match(marketplaceClientSource, /findPublishableStoredTemplate/u);
@@ -1356,7 +1402,7 @@ try {
   assert.doesNotMatch(extensionSource, /保存当前画布为市场模板草稿/u);
   assert.doesNotMatch(extensionSource, /保存并打开发布表单/u);
   assert.doesNotMatch(extensionSource, /publishStoredTemplate/u);
-  assert.match(extensionSource, /打开市场模板详情失败/u);
+  assert.match(extensionSource, /Failed to open marketplace template details/u);
   assert.doesNotMatch(extensionSource, /installTemplateFromUri\(uri\)/u);
   assert.match(marketplacePanelSource, /marketplace\/installedTemplates/u);
   assert.match(marketplacePanelSource, /marketplace\/installedTemplatesError/u);
@@ -1367,15 +1413,16 @@ try {
   assert.match(marketplacePanelSource, /marketplace\/submitTemplatePublish/u);
   assert.match(marketplacePanelSource, /marketplace\/templatePublishResult/u);
   assert.match(marketplacePanelSource, /publishMode: 'template'/u);
-  assert.match(marketplacePanelSource, /发布新版本/u);
+  assert.match(marketplacePanelSource, /buildTemplateMarketplacePanelCopy/u);
+  assert.match(marketplacePanelSource, /vscode\.l10n\.t\('Publish new version'\)/u);
   assert.match(marketplacePanelSource, /templateIdOrSlug: state\.publishMode === 'version'/u);
   assert.match(marketplacePanelSource, /marketplace\/refreshInstalledTemplates/u);
   assert.match(marketplacePanelSource, /openTemplatePublishForm/u);
   assert.match(marketplacePanelSource, /publishTemplateButton/u);
-  assert.match(marketplacePanelSource, /发布自建模板/u);
+  assert.match(marketplacePanelSource, /vscode\.l10n\.t\('Publish custom template'\)/u);
   assert.match(marketplacePanelSource, /codicon-cloud-upload/u);
-  assert.match(marketplacePanelSource, /选择安装位置后可安装模板；进入详情页可查看 README、CHANGELOG 和版本历史。/u);
-  assert.match(marketplacePanelSource, /查看详情/u);
+  assert.match(marketplacePanelSource, /Select an install location before installing a template/u);
+  assert.match(marketplacePanelSource, /copy\.viewDetails/u);
   assert.match(marketplacePanelSource, /detail-view/u);
   assert.match(marketplacePanelSource, /getVersionedWebviewResourceUri/u);
   assert.match(marketplacePanelSource, /MARKETPLACE_BUNDLED_CODICON_PATH_SEGMENTS/u);
@@ -1398,7 +1445,7 @@ try {
   assert.match(marketplacePanelSource, /\.publish-field-textarea textarea\.publish-readme[\s\S]*min-height: 140px;/u);
   assert.match(marketplacePanelSource, /\.publish-field-textarea textarea\.publish-changelog[\s\S]*min-height: 96px;/u);
   assert.match(marketplacePanelSource, /\.publish-json[\s\S]*min-height: 220px;/u);
-  assert.match(marketplacePanelSource, /createPublishInput\('name', '名称', state\.publishForm\.name, \{ required: true, reserveNote: true \}\)/u);
+  assert.match(marketplacePanelSource, /createPublishInput\('name', copy\.name, state\.publishForm\.name, \{ required: true, reserveNote: true \}\)/u);
   assert.match(marketplacePanelSource, /\.publish-field-note[\s\S]*overflow: hidden;[\s\S]*min-height: 18px;/u);
   assert.match(marketplacePanelSource, /wrapper\.append\(labelText, input\);/u);
   assert.match(marketplacePanelSource, /wrapper\.append\(labelText, textarea\);/u);
@@ -1416,13 +1463,13 @@ try {
   assert.match(marketplacePanelSource, /targetStorageLocationId: targetId/u);
   assert.match(marketplacePanelSource, /operation: result\.operation/u);
   assert.match(marketplacePanelSource, /formatInstallResultStatus/u);
-  assert.match(marketplacePanelSource, /更新到 v/u);
-  assert.match(marketplacePanelSource, /回滚到 v/u);
-  assert.match(marketplacePanelSource, /举报模板/u);
+  assert.match(marketplacePanelSource, /copy\.updateToVersion/u);
+  assert.match(marketplacePanelSource, /copy\.rollbackToVersion/u);
+  assert.match(marketplacePanelSource, /copy\.reportTemplate/u);
   assert.match(marketplacePanelSource, /buildTemplateReportUrl/u);
   assert.match(marketplacePanelSource, /split-install/u);
   assert.match(marketplacePanelSource, /is-installed-split/u);
-  assert.match(marketplacePanelSource, /切换安装版本/u);
+  assert.match(marketplacePanelSource, /copy\.switchInstallVersion/u);
   assert.match(marketplacePanelSource, /loadTemplateDetail/u);
   assert.match(marketplacePanelSource, /collectInstallableVersions/u);
   assert.match(marketplacePanelSource, /installTemplateVersion\(template, version\)/u);
@@ -1449,19 +1496,19 @@ try {
   assert.match(marketplacePanelSource, /persistState/u);
   assert.match(marketplacePanelSource, /renderLoadErrorCard/u);
   assert.match(marketplacePanelSource, /renderOfflineInstalledTemplateCard/u);
-  assert.match(marketplacePanelSource, /网络请求失败，可能无法访问模板市场 API 或代理阻断/u);
-  assert.match(marketplacePanelSource, /请到模板侧栏应用到 Canvas/u);
-  assert.match(marketplacePanelSource, /已安装到/u);
-  assert.match(marketplacePanelSource, /本地 ·/u);
-  assert.match(marketplacePanelSource, /当前workspace/u);
-  assert.match(marketplacePanelSource, /已安装 v/u);
+  assert.match(marketplacePanelSource, /Network request failed; the Template Marketplace API may be unreachable or blocked by a proxy\./u);
+  assert.match(marketplacePanelSource, /Apply it to Canvas from the Templates sidebar\./u);
+  assert.match(marketplacePanelSource, /copy\.installedBadge/u);
+  assert.match(marketplacePanelSource, /vscode\.l10n\.t\('Local - \{label\}'\)/u);
+  assert.match(marketplacePanelSource, /vscode\.l10n\.t\('Current workspace'\)/u);
+  assert.match(marketplacePanelSource, /copy\.installedVersion/u);
   assert.match(marketplacePanelSource, /MARKETPLACE_OFFICIAL_SOURCE_URL/u);
   assert.match(marketplacePanelSource, /MARKETPLACE_DEBUG_SOURCE_URL/u);
   assert.match(marketplacePanelSource, /resolveDefaultMarketplaceSourceUrl/u);
   assert.match(marketplacePanelSource, /vscode\.ExtensionMode\.Production/u);
   assert.match(marketplacePanelSource, /resolveCompatibleMarketplaceSourceUrl/u);
   assert.match(marketplacePanelSource, /formatMarketplaceSourceMismatchError/u);
-  assert.match(marketplacePanelSource, /当前扩展为\$\{expectedInstall\}/u);
+  assert.match(marketplacePanelSource, /The current extension is a \{expectedInstall\}/u);
   assert.match(marketplacePanelSource, /MARKETPLACE_LOCAL_DEVELOPMENT_SOURCES/u);
   assert.match(marketplacePanelSource, /'http:\/\/\[::1\]:\*'/u);
   assert.match(marketplacePanelSource, /'https:\/\/\[::1\]:\*'/u);
@@ -1532,12 +1579,12 @@ try {
     'function createInstallSplitButton(template, installedTemplate, preferredVersionId) {',
     'function closeVersionMenus(render = true) {'
   );
-  assert.match(marketplaceInstallButtonSource, /安装/u);
+  assert.match(marketplaceInstallButtonSource, /copy\.install/u);
   assert.match(marketplacePanelSource, /formatInstallVersionActionLabel/u);
-  assert.match(marketplacePanelSource, /更新到 v/u);
-  assert.match(marketplacePanelSource, /回滚到 v/u);
-  assert.match(marketplaceInstallButtonSource, /已安装 v/u);
-  assert.match(marketplaceInstallButtonSource, /切换安装版本/u);
+  assert.match(marketplacePanelSource, /copy\.updateToVersion/u);
+  assert.match(marketplacePanelSource, /copy\.rollbackToVersion/u);
+  assert.match(marketplaceInstallButtonSource, /copy\.installedVersion/u);
+  assert.match(marketplaceInstallButtonSource, /copy\.switchInstallVersion/u);
 
   const marketplaceDetailControlsSource = sliceBetween(
     marketplacePanelSource,

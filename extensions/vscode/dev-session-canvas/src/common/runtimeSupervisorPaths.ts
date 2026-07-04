@@ -2,7 +2,11 @@ import { createHash } from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { RuntimeSupervisorPaths } from './runtimeSupervisorProtocol';
+import {
+  RUNTIME_SUPERVISOR_ERROR_CODES,
+  createRuntimeSupervisorProtocolError,
+  type RuntimeSupervisorPaths
+} from './runtimeSupervisorProtocol';
 
 const MAX_UNIX_SOCKET_PATH_BYTES = 104;
 const STORAGE_SOCKET_FILE_NAME = 'supervisor.sock';
@@ -113,7 +117,9 @@ export function resolveLegacyRuntimeSupervisorPathsFromStorageDir(
     }
   }
 
-  throw new Error('无法为 legacy runtime supervisor 生成符合 Unix socket 限制的路径。');
+  throw createRuntimeSupervisorProtocolError({
+    id: 'legacySocketPathUnavailable'
+  }, RUNTIME_SUPERVISOR_ERROR_CODES.legacySocketPathUnavailable);
 }
 
 export function resolveSystemdUserRuntimeSupervisorPaths(
@@ -132,7 +138,9 @@ export function resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(
 ): RuntimeSupervisorPaths {
   const platform = options.platform ?? process.platform;
   if (platform === 'win32') {
-    throw new Error('systemd-user backend 不支持 Windows。');
+    throw createRuntimeSupervisorProtocolError({
+      id: 'systemdUserUnsupportedOnWindows'
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.systemdUserUnsupportedOnWindows);
   }
 
   const pathModule = resolveRuntimeSupervisorPathModule(platform);
@@ -147,12 +155,12 @@ export function resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(
     controlDir: controlPath.controlDir,
     socketPath: controlPath.socketPath,
     registryPath,
-      socketLocation: 'control-dir',
-      unitName: `${SYSTEMD_USER_SERVICE_PREFIX}${digest}.service`,
-      unitFilePath: pathModule.join(
-        configHome,
-        'systemd',
-        'user',
+    socketLocation: 'control-dir',
+    unitName: `${SYSTEMD_USER_SERVICE_PREFIX}${digest}.service`,
+    unitFilePath: pathModule.join(
+      configHome,
+      'systemd',
+      'user',
       `${SYSTEMD_USER_SERVICE_PREFIX}${digest}.service`
     )
   };
@@ -247,7 +255,9 @@ function resolveSystemdControlPath(
     };
   }
 
-  throw new Error('无法为 systemd-user backend 生成符合 Unix socket 限制的控制路径。');
+  throw createRuntimeSupervisorProtocolError({
+    id: 'systemdControlPathUnavailable'
+  }, RUNTIME_SUPERVISOR_ERROR_CODES.systemdControlPathUnavailable);
 }
 
 function resolveHomeDirectory(options: RuntimeSupervisorPathResolutionOptions, pathModule: PathModuleLike): string {
@@ -258,7 +268,9 @@ function resolveHomeDirectory(options: RuntimeSupervisorPathResolutionOptions, p
 
   const homeDir = normalizeAbsoluteDirectory(os.homedir(), pathModule);
   if (!homeDir) {
-    throw new Error('无法解析当前用户目录，无法初始化 runtime host backend。');
+    throw createRuntimeSupervisorProtocolError({
+      id: 'homeDirectoryUnavailable'
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.homeDirectoryUnavailable);
   }
 
   return homeDir;
