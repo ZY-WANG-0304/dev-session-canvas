@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.22.0 - UI Localization and Agent Fork Reliability Update
+
+相对 `0.21.1`，`0.22.0` 是新的公开 `Preview` 里程碑更新，重点收口产品自有 UI 文案的英文默认版与简体中文版、真实 VS Code locale smoke、Pane Gallery running 标题动效，以及当前 Agent 节点恢复 / 分叉的启动参数继承边界。它保留 `0.21.1` 的主扩展子包化发布布局、模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
+
+### 本版本聚焦
+
+- 版本号从 `0.21.1` bump 到 `0.22.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 产品自有 UI 文案现在以英文作为默认体验，并提供简体中文本地化：manifest command / view / setting 文案、Extension Host 通知与 QuickPick、主画布 Webview、侧栏、模板保存表单、模板市场面板、Agent 启动错误、runtime supervisor 摘要和模板解析 / 存储错误均进入受控本地化边界；用户节点标题、Note 正文、路径、终端输出、Agent/provider 原始错误和模板内容保持原样
+- 新增真实 VS Code locale smoke：英文与简体中文宿主分别验证 manifest 本地化、Host runtime 文案、standby HTML 与 active Webview 代表性路径，降低发布前本地化资源缺失或 staging 漏拷贝风险
+- VSIX staging 和打包守卫已纳入 `package.nls.zh-cn.json` 与 `l10n/bundle.l10n.zh-cn.json`，避免主扩展发布包缺少本地化资源
+- `paneGallery` root running 提示从斜向扫描线改为 Codex Working 风格的竖向色块，在 root title 小框区域内左右往返运动；thumbnail 模式 active root 占位继续显示 root title 的 attention / running 动效，简体中文占位文案对齐为“正在主画板”，但仍不挂载第二份真实画板
+- Agent running 标题线也改为标题栏内往返运动，不改变原有尺寸、取色和 reduced motion 降级
+- Codex 当前节点恢复 / 分叉会清理 `--last=...`、`--all=...`、`--include-non-interactive=...` 等赋值形式会话选择参数，避免旧 picker / selection 语义污染本次显式 session target
+- 当前 Agent 节点 `重启` / `分叉` 只继承节点自身最近一次实际启动命令或长期启动偏好，不再合并当前 Default args；历史恢复 / 历史分叉因没有可靠原始 argv，仍继续使用当前合法 Default args
+- 不改变扩展身份、最低 VS Code 版本、companion 自动安装关系、通知桥接默认值、Open VSX 同版本同步策略、Visual Studio Marketplace deferred 完成门禁、模板市场服务版本线或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.21.1` 升级到 `0.22.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- UI 语言跟随 VS Code locale；本版本不新增独立语言设置，也不会翻译用户内容、路径、终端输出或 provider 原始输出
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.22.0` 后会继续沿用该明确选择
+- 模板市场仍是 Preview 能力；生产服务版本、插件 SemVer 和模板包版本继续分开管理
+
+### 回退建议
+
+- 若 `0.22.0` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.22.x` 修复版本
+
 ## 0.21.1 - Multi-root Arrangement and Resume Reliability Patch
 
 相对 `0.21.0`，`0.21.1` 是同一公开 `Preview` 线内的修复版本，重点收口多根布局整理默认范围、paneGallery 缩略图与 root 运行扫描细节、serialized terminal supervisor snapshot 新鲜度，以及当前 Agent 恢复 / 分叉时启动意图继承。它保留 `0.21.0` 的主扩展子包化发布布局、OSC 52 剪贴板桥接、模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
