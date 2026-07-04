@@ -623,31 +623,17 @@ function resolveAgentResumeForkBaseArgs(
     return assertAgentDefaultArgsParsable(provider, defaults);
   }
 
-  const intentArgs = resolveAgentLaunchIntentArgs(provider, createAgentCommandOnlyDefaults(defaults), launchIntent);
+  const intentArgs = resolveAgentLaunchIntentArgs(provider, launchIntent);
   return stripProviderSessionTargetArgs(provider, intentArgs);
-}
-
-function createAgentCommandOnlyDefaults(
-  defaults: AgentProviderLaunchDefaults
-): AgentProviderLaunchDefaults {
-  return {
-    command: defaults.command,
-    defaultArgs: ''
-  };
 }
 
 function resolveAgentLaunchIntentArgs(
   provider: AgentProviderKind,
-  defaults: AgentProviderLaunchDefaults,
   launchIntent: AgentLaunchIntentOptions
 ): string[] {
   const sourceLaunchCommandLine = launchIntent.sourceLaunchCommandLine?.trim();
   if (sourceLaunchCommandLine) {
-    const validation = validateAgentCommandLine(sourceLaunchCommandLine, provider, defaults);
-    if (!validation.valid || !validation.parsed) {
-      throw new Error(validation.error ?? '无法解析 Agent 最近启动命令。');
-    }
-    return validation.parsed.args;
+    return parseFullAgentCommandLine(sourceLaunchCommandLine).args;
   }
 
   const launchPreset = launchIntent.launchPreset ?? 'default';
@@ -661,11 +647,7 @@ function resolveAgentLaunchIntentArgs(
       return [];
     }
 
-    const validation = validateAgentCommandLine(customLaunchCommand, provider, defaults);
-    if (!validation.valid || !validation.parsed) {
-      throw new AgentLaunchPresetError(validation.errorDescriptor ?? { id: 'launchCommandEmpty' });
-    }
-    return validation.parsed.args;
+    return parseFullAgentCommandLine(customLaunchCommand).args;
   }
 
   if (launchPreset === 'yolo') {

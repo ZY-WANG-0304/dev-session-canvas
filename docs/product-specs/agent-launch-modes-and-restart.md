@@ -60,7 +60,7 @@
   - 上述有限覆盖只作用于执行策略本身；“恢复哪条会话”的语义不属于 Default args。若用户需要一次性指定 `resume --last`、`resume <session-id>`、`--resume <session-id>`、`--continue <session-id>`、`--session-id <id>` 或 Fork 标记，应改走 `Resume / 分叉` 入口或本次自定义启动命令，而不是写入默认启动参数。
   - 当用户显式选择创建前的 `Resume` 预设时，本次 fresh-start 仍统一收口为 provider 自己的 resume 选择入口：`Codex` 生成 `codex resume`，`Claude Code` 生成 `claude --resume`；如果默认启动参数已经含上述会话目标类冲突项，扩展必须先报错并拒绝启动，不能静默替换后继续执行。
   - 若恢复路径来自侧栏历史会话且已经持有明确的目标 `session-id`，生成的显式 resume 命令只继承对显式 resume 仍有效的默认参数，例如 `--model`、`--sandbox`、`--ask-for-approval`、`--profile`、`--config`、`--cd`、`--add-dir`。`--last`、`--all`、`--include-non-interactive` 与旧 positional session/prompt 不应出现在 Default args；若出现应显式报错。
-  - 当前节点的 `重启` / `分叉` 必须只继承该节点的启动意图，不与当前 Default args 合并。节点启动意图优先采用该节点最近一次实际启动命令；若尚无最近启动命令，再退回 `launchPreset`、`customLaunchCommand` 与模板落地的 `templateArgv`。命令层会剥离其中的旧 session-target / fork-target，再由本次动作写入唯一目标 `session-id`。
+  - 当前节点的 `重启` / `分叉` 必须只继承该节点的启动意图，不与当前 Default args 合并，也不能因为当前 Default args 含会话目标而被拦截。节点启动意图优先采用该节点最近一次实际启动命令；若尚无最近启动命令，再退回 `launchPreset`、`customLaunchCommand` 与模板落地的 `templateArgv`。解析最近启动命令时只提取 argv，首个命令 token 仍由当前 provider 命令设置决定。命令层会剥离其中的旧 session-target / fork-target，再由本次动作写入唯一目标 `session-id`。
   - 侧栏历史恢复 / 历史分叉不能宣称继承历史会话原始启动参数：当前 provider 历史扫描只能可靠拿到 `provider`、`sessionId`、`cwd`、时间和首条用户指令，不能拿到原始 argv / command line；因此历史入口只使用历史项 session id / cwd 与当前 provider 命令、当前 Default args。
   - `Fork` / 显式 `Resume` 的目标选择以本次动作的显式 `session-id` 为准。历史入口可以继续使用当前 Default args 中合法的 runtime/configuration 参数；当前节点入口则只使用节点自己的启动意图，避免用户修改 Default args 后改写已有节点的重启 / 分叉行为。
   - Claude Code 历史显式 `Resume / Fork` 只继承 Default args 中的 `--model`、`--permission-mode`、`--dangerously-skip-permissions`、MCP / tool / output 等非 session-target 参数；当前节点 `重启` / `分叉` 同样只继承节点启动意图，不额外合并 Default args。
