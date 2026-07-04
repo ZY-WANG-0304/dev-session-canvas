@@ -46,6 +46,7 @@
 - [x] (2026-06-14) 根据 PR159 review 将旧 Claude-only 分叉计划从 `docs/exec-plans/active/claude-agent-branch.md` 移入 `docs/exec-plans/completed/claude-agent-branch.md`，当前 active scope 统一指向本计划。
 - [x] (2026-07-01) 明确显式 `Resume / Fork` 的冲突与不冲突配置清单，并实现当前节点 `重启` / 历史恢复复用共享 history resume 命令构造，避免丢失 model、sandbox、approval、profile、config、cwd 等非冲突配置。
 - [x] (2026-07-02) 针对当前节点 `重启` / `分叉` 补齐启动意图继承：宿主传入 `launchPreset/customLaunchCommand/templateArgv`，历史恢复 / 历史分叉继续只使用历史 session id 与当前 Default args。
+- [x] (2026-07-04) 根据真实 fork 失败诊断修正当前节点启动意图边界：当前节点 `重启` / `分叉` 只继承节点最近一次实际启动命令或节点长期启动偏好，不再合并当前 Default args；历史恢复 / 历史分叉继续使用当前 Default args。
 
 ## 意外与发现
 
@@ -87,6 +88,9 @@
 
 - 观察：provider 历史扫描不能可靠拿到历史会话原始启动参数，因此只有“当前节点”的 `重启` / `分叉` 能继承节点启动意图；侧栏历史恢复 / 分叉只能继承当前 Default args。
   证据：2026-07-02 复核 `extensions/vscode/dev-session-canvas/src/common/agentSessionHistory.ts`，Codex 只从 `session_meta` 提取 `id/cwd/timestamp`，Claude 只从 transcript / 文件名提取 `cwd/sessionId`；两者都没有稳定原始 argv / command line 字段。
+
+- 观察：当前节点 `重启` / `分叉` 若继续把节点启动意图与当前 Default args 合并，会让已存在节点在用户修改 Default args 后改变行为；当 fork 节点本身的最近启动命令和 Default args 都包含 `--search` / `-c sandbox_workspace_write.network_access=true` 时，再次 fork 会生成重复 `--search` 并被 Codex CLI 拒绝。
+  证据：2026-07-04 宿主诊断 `.debug/current-host-diagnostics/2026-07-04T05-33-09-120Z/persisted-canvas-snapshot.json` 中失败节点命令为 `codex fork -c sandbox_workspace_write.network_access=true --search --yolo -c sandbox_workspace_write.network_access=true --search <session-id>`，输出为 `error: the argument '--search' cannot be used multiple times`。
 
 ## 决策记录
 
@@ -194,6 +198,10 @@
   理由：当前节点 metadata 里有 `launchPreset/customLaunchCommand/templateArgv`，可以在剥离 session-target 后安全合并；历史会话记录只提供 provider、session id、cwd、时间和首条用户指令，若宣称继承原始 argv 会把不可确认事实写成能力。
   日期/作者：2026-07-02 / Codex
 
+- 决策：当前节点 `重启` / `分叉` 只使用当前节点启动意图，不再合并当前 Default args；启动意图优先来自 `lastLaunchCommandLine`，缺失时再退回 `launchPreset/customLaunchCommand/templateArgv`。
+  理由：画布上的节点已经有自己的启动历史和长期启动偏好，用户修改 Default args 不应改写已有节点的恢复 / 分叉行为；真实诊断也证明“节点意图 + Default args”会把 `--search` / `-c` 等 singleton/runtime 参数重复拼入。历史恢复 / 历史分叉没有节点意图，仍使用当前 Default args 作为历史入口启动基线。
+  日期/作者：2026-07-04 / Codex
+
 ## 结果与复盘
 
 - 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。同时，命令面板 / 侧栏 `创建节点` 第二步 Quick Input 的行为也重新和规格对齐：点击 `默认 / Resume / YOLO / 沙盒` 只会改写顶部完整命令输入，必须显式按 Enter 才会真正创建节点；脚本化 QuickPick override 不再把“仅选择预设”误当成创建。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
@@ -209,7 +217,8 @@
 - 已更新：PR159 review 指出的两个 blocker 已在文档和命令层收口。Codex 分叉命令现在会同时清理默认参数前缀与子命令尾部的旧选择参数，避免 `--last` 等参数覆盖当前可信 source session；旧 Claude-only active 计划已移到 completed 并在文件头标注历史状态，当前分叉范围只由本计划与正式规格/设计承载。
 - 已更新：2026-07-01 本轮把“Fork / Resume 会话时保留其他不冲突参数配置”收口为明确清单并落地。共享命令层现在会在 Codex 显式 resume 中同时清理 leading 与子命令尾部的旧目标选择参数，同时继续保留 model、sandbox、approval、profile、config 等运行配置；Claude Code 显式 resume/fork 会清理旧 session-target 与旧 `--fork-session`，保留非 session-target 参数。Host 侧当前节点 `重启` 也复用 history resume 命令构造，并在已有完整 argv 时不再重复追加裸 resume 参数。已通过 `npm run test:agent-launch-presets` 与 `npm run test:canvas-execution-context`。
 - 已更新：2026-07-01 继续把 Default args 的配置边界前移。共享命令层现在在解析 `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 时就拒绝会与 `Resume / Fork` 冲突的一次性会话目标，并把错误传给右键菜单、Quick Input 与宿主 fresh-start / history resume / branch command line；VSCode 设置描述、产品规格、设计文档、侧栏历史恢复文档与命令层测试已同步更新。
-- 已更新：2026-07-02 本轮把当前节点 `重启` / `分叉` 从“只用当前 Default args”升级为“Default args + 节点启动意图”的合并模型。共享命令层新增 `AgentLaunchIntentOptions`，会从 `YOLO / 沙盒 / 自定义启动 / templateArgv` 中剥离旧 session target，并按冲突键移除 Default args 中被节点意图覆盖的 mode/model/profile/cwd/local-provider 参数；Host 只在当前节点 resume/fork 路径传入该意图，历史恢复 / 历史分叉保持不传。已通过命令层、宿主源检查和 typecheck。
+- 已更新：2026-07-02 本轮把当前节点 `重启` / `分叉` 从“只用当前 Default args”升级为“节点启动意图”。共享命令层新增 `AgentLaunchIntentOptions`，会从 `YOLO / 沙盒 / 自定义启动 / templateArgv` 中剥离旧 session target；Host 只在当前节点 resume/fork 路径传入该意图，历史恢复 / 历史分叉保持不传。已通过命令层、宿主源检查和 typecheck。
+- 已更新：2026-07-04 根据真实 fork 失败诊断继续修正：当前节点 `重启` / `分叉` 不再把当前 Default args 合入节点启动意图，并优先从 `lastLaunchCommandLine` 继承该节点最近一次实际启动参数。命令层新增再次 fork 已 fork Codex 节点的回归，确保不会重复拼入 Default args 中的 `--search` / `-c sandbox_workspace_write.network_access=true`；历史恢复 / 历史分叉仍使用当前 Default args。
 
 ## 上下文与定向
 
@@ -355,3 +364,7 @@
 本次更新说明：2026-07-01 明确并实现显式 `Resume / Fork` 的冲突/不冲突配置继承清单，原因是用户要求 fork/resume 会话时保留其他不冲突参数配置。
 
 本次更新说明：2026-07-02 补齐当前节点 `重启` / `分叉` 对节点启动意图的继承，同时明确历史会话记录没有原始 argv，历史恢复 / 分叉仍只使用当前 Default args。
+
+本次更新说明：2026-07-04 根据真实 fork 失败诊断修正当前节点启动意图边界：当前节点 `重启` / `分叉` 只使用节点最近一次实际启动命令或节点长期启动偏好，不再合并当前 Default args；历史恢复 / 分叉仍只使用当前 Default args。
+
+本次验证说明：2026-07-04 已完成 `npm run test:agent-launch-presets`、`npm run typecheck` 与 `git diff --check`，覆盖再次 fork 已 fork Codex 节点时不会重复拼入 Default args 中的 `--search` / `-c`。

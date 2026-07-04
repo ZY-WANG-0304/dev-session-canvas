@@ -51,6 +51,7 @@ export interface AgentLaunchIntentOptions {
   launchPreset?: AgentLaunchPresetKind;
   customLaunchCommand?: string;
   templateArgv?: readonly string[];
+  sourceLaunchCommandLine?: string;
 }
 
 const WINDOWS_EXECUTABLE_SUFFIX = /\.(exe|cmd|bat|com)$/i;
@@ -59,14 +60,6 @@ type AgentDefaultArgsConflict = {
   token: string;
   descriptionId: AgentLaunchConflictDescriptionId;
 };
-type AgentLaunchArgConflictKey =
-  | 'codex-execution-mode'
-  | 'codex-model'
-  | 'codex-profile'
-  | 'codex-cwd'
-  | 'codex-local-provider'
-  | 'claude-execution-mode'
-  | 'claude-model';
 
 export class AgentLaunchPresetError extends Error {
   public readonly code = 'DEV_SESSION_CANVAS_AGENT_LAUNCH_PRESET_ERROR';
@@ -626,14 +619,21 @@ function resolveAgentResumeForkBaseArgs(
   defaults: AgentProviderLaunchDefaults,
   launchIntent?: AgentLaunchIntentOptions
 ): string[] {
-  const defaultArgs = assertAgentDefaultArgsParsable(provider, defaults);
   if (!launchIntent) {
-    return defaultArgs;
+    return assertAgentDefaultArgsParsable(provider, defaults);
   }
 
-  const launchPreset = launchIntent.launchPreset ?? 'default';
-  const intentArgs = resolveAgentLaunchIntentArgs(provider, defaults, launchIntent);
-  return mergeAgentLaunchIntentWithDefaultArgs(provider, defaultArgs, intentArgs, launchPreset);
+  const intentArgs = resolveAgentLaunchIntentArgs(provider, createAgentCommandOnlyDefaults(defaults), launchIntent);
+  return stripProviderSessionTargetArgs(provider, intentArgs);
+}
+
+function createAgentCommandOnlyDefaults(
+  defaults: AgentProviderLaunchDefaults
+): AgentProviderLaunchDefaults {
+  return {
+    command: defaults.command,
+    defaultArgs: ''
+  };
 }
 
 function resolveAgentLaunchIntentArgs(
@@ -641,6 +641,15 @@ function resolveAgentLaunchIntentArgs(
   defaults: AgentProviderLaunchDefaults,
   launchIntent: AgentLaunchIntentOptions
 ): string[] {
+  const sourceLaunchCommandLine = launchIntent.sourceLaunchCommandLine?.trim();
+  if (sourceLaunchCommandLine) {
+    const validation = validateAgentCommandLine(sourceLaunchCommandLine, provider, defaults);
+    if (!validation.valid || !validation.parsed) {
+      throw new Error(validation.error ?? '无法解析 Agent 最近启动命令。');
+    }
+    return validation.parsed.args;
+  }
+
   const launchPreset = launchIntent.launchPreset ?? 'default';
   if (launchIntent.templateArgv !== undefined) {
     return [...launchIntent.templateArgv];
@@ -670,177 +679,8 @@ function resolveAgentLaunchIntentArgs(
   return [];
 }
 
-function mergeAgentLaunchIntentWithDefaultArgs(
-  provider: AgentProviderKind,
-  defaultArgs: readonly string[],
-  intentArgs: readonly string[],
-  launchPreset: AgentLaunchPresetKind
-): string[] {
-  if (intentArgs.length === 0) {
-    return [...defaultArgs];
-  }
-
-  const cleanedIntentArgs = stripProviderSessionTargetArgs(provider, intentArgs);
-  if (cleanedIntentArgs.length === 0) {
-    return [...defaultArgs];
-  }
-  const normalizedDefaultArgs = stripDefaultArgsConflictingWithIntent(provider, defaultArgs, cleanedIntentArgs);
-
-  if (launchPreset === 'default' || launchPreset === 'custom') {
-    return [...normalizedDefaultArgs, ...cleanedIntentArgs];
-  }
-
-  return [...cleanedIntentArgs, ...normalizedDefaultArgs];
-}
-
 function stripProviderSessionTargetArgs(provider: AgentProviderKind, args: readonly string[]): string[] {
   return provider === 'claude' ? stripClaudeResumeTargetArgs(args) : stripCodexResumeForkTargetArgs(args);
-}
-
-function stripDefaultArgsConflictingWithIntent(
-  provider: AgentProviderKind,
-  defaultArgs: readonly string[],
-  intentArgs: readonly string[]
-): string[] {
-  const conflictKeys = collectAgentLaunchIntentConflictKeys(provider, intentArgs);
-  if (conflictKeys.size === 0) {
-    return [...defaultArgs];
-  }
-
-  return provider === 'claude'
-    ? stripClaudeArgsByConflictKeys(defaultArgs, conflictKeys)
-    : stripCodexArgsByConflictKeys(defaultArgs, conflictKeys);
-}
-
-function collectAgentLaunchIntentConflictKeys(
-  provider: AgentProviderKind,
-  args: readonly string[]
-): Set<AgentLaunchArgConflictKey> {
-  const conflictKeys = new Set<AgentLaunchArgConflictKey>();
-  for (const token of args) {
-    const conflictKey = provider === 'claude'
-      ? getClaudeArgConflictKey(token)
-      : getCodexArgConflictKey(token);
-    if (conflictKey) {
-      conflictKeys.add(conflictKey);
-    }
-  }
-
-  return conflictKeys;
-}
-
-function stripCodexArgsByConflictKeys(
-  args: readonly string[],
-  conflictKeys: ReadonlySet<AgentLaunchArgConflictKey>
-): string[] {
-  const normalizedArgs: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const token = args[index];
-    const conflictKey = getCodexArgConflictKey(token);
-    if (conflictKey && conflictKeys.has(conflictKey)) {
-      if (codexConflictArgConsumesFollowingValue(token)) {
-        index = skipOwnedFlagValue(args, index);
-      }
-      continue;
-    }
-
-    normalizedArgs.push(token);
-  }
-
-  return normalizedArgs;
-}
-
-function stripClaudeArgsByConflictKeys(
-  args: readonly string[],
-  conflictKeys: ReadonlySet<AgentLaunchArgConflictKey>
-): string[] {
-  const normalizedArgs: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const token = args[index];
-    const conflictKey = getClaudeArgConflictKey(token);
-    if (conflictKey && conflictKeys.has(conflictKey)) {
-      if (claudeConflictArgConsumesFollowingValue(token)) {
-        index = skipOwnedFlagValue(args, index);
-      }
-      continue;
-    }
-
-    normalizedArgs.push(token);
-  }
-
-  return normalizedArgs;
-}
-
-function getCodexArgConflictKey(token: string): AgentLaunchArgConflictKey | undefined {
-  if (
-    token === '--yolo' ||
-    token === '--full-auto' ||
-    token === '--dangerously-bypass-approvals-and-sandbox' ||
-    token === '--sandbox' ||
-    token === '-s' ||
-    token === '--ask-for-approval' ||
-    token === '-a' ||
-    token.startsWith('--sandbox=') ||
-    token.startsWith('-s=') ||
-    token.startsWith('--ask-for-approval=') ||
-    token.startsWith('-a=')
-  ) {
-    return 'codex-execution-mode';
-  }
-
-  if (token === '--model' || token === '-m' || token.startsWith('--model=') || token.startsWith('-m=')) {
-    return 'codex-model';
-  }
-
-  if (token === '--profile' || token === '-p' || token.startsWith('--profile=') || token.startsWith('-p=')) {
-    return 'codex-profile';
-  }
-
-  if (token === '--cd' || token === '-C' || token.startsWith('--cd=') || token.startsWith('-C=')) {
-    return 'codex-cwd';
-  }
-
-  if (token === '--local-provider' || token.startsWith('--local-provider=')) {
-    return 'codex-local-provider';
-  }
-
-  return undefined;
-}
-
-function getClaudeArgConflictKey(token: string): AgentLaunchArgConflictKey | undefined {
-  if (
-    token === '--dangerously-skip-permissions' ||
-    token === '--permission-mode' ||
-    token.startsWith('--permission-mode=')
-  ) {
-    return 'claude-execution-mode';
-  }
-
-  if (token === '--model' || token.startsWith('--model=')) {
-    return 'claude-model';
-  }
-
-  return undefined;
-}
-
-function codexConflictArgConsumesFollowingValue(token: string): boolean {
-  return (
-    token === '--sandbox' ||
-    token === '-s' ||
-    token === '--ask-for-approval' ||
-    token === '-a' ||
-    token === '--model' ||
-    token === '-m' ||
-    token === '--profile' ||
-    token === '-p' ||
-    token === '--cd' ||
-    token === '-C' ||
-    token === '--local-provider'
-  );
-}
-
-function claudeConflictArgConsumesFollowingValue(token: string): boolean {
-  return token === '--permission-mode' || token === '--model';
 }
 
 function buildAgentPresetArgv(
