@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.0
+
+- 与主扩展 `0.22.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 UI 文案英文默认版与简体中文本地化、真实 VS Code locale smoke、paneGallery running 标题动效，以及当前 Agent 节点恢复 / 分叉启动参数继承边界；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.21.1
 
 - 与主扩展 `0.21.1` 对齐：本轮主扩展是 `0.21.x` Preview 线内的修复版本，聚焦多根布局整理默认限定当前 root、paneGallery active root 缩略图占位和运行扫描连续化、serialized terminal supervisor snapshot 新鲜度、侧栏 root 顺序，以及当前 Agent 恢复 / 分叉启动意图继承；notifier companion 不引入新的通知投递行为变更。
