@@ -103,7 +103,7 @@ const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_BODY =
 const REAL_DOM_NOTE_MARKDOWN_ASSOCIATION_UPDATED_BODY =
   `# Associated Note\n\n- updated from canvas\n\n${REAL_DOM_NOTE_MARKDOWN_LARGE_TAIL}\nupdated tail`;
 const DISPOSED_EDITOR_NOTE_BODY = 'This note update should never commit after the editor closes.';
-const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = '查看节点';
+const EXECUTION_ATTENTION_FOCUS_ACTION_LABEL = 'View Node';
 const DEFAULT_ATTENTION_SIGNALS = [
   'bel',
   'osc9',
@@ -111,7 +111,7 @@ const DEFAULT_ATTENTION_SIGNALS = [
   'agentAbnormalExit',
   'codexAbnormalOutputText'
 ];
-const UNKNOWN_WEBVIEW_MESSAGE_ERROR = '收到无法识别的消息，已忽略。';
+const UNKNOWN_WEBVIEW_MESSAGE_ERROR = 'Received an unrecognized message and ignored it.';
 const WEBVIEW_FAULT_INJECTION_DELAY_MS = 1500;
 const AGENT_STOP_RACE_SLEEP_SECONDS = 5;
 const HOST_BOUNDARY_FLUSH_AGENT_MARKER = 'HOST_BOUNDARY_AGENT_FLUSH';
@@ -979,7 +979,7 @@ async function verifyCanvasTemplatesRestricted() {
 
   await assert.rejects(
     () => applyCanvasTemplateForTest('builtin-basic-workflow'),
-    /只有纯 Note 模板可以应用/
+    /Only Note-only templates can be applied/
   );
 
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
@@ -1034,17 +1034,17 @@ async function runTrustedSmoke() {
   assert.strictEqual(findSidebarSummaryItem(sidebarSummaryItems, 'summary/codex-cli').contextValue, 'codexCliConfig');
   assert.strictEqual(findSidebarSummaryItem(sidebarSummaryItems, 'summary/claude-cli').contextValue, 'claudeCliConfig');
   const canvasSurfaceSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/canvas-surface');
-  assert.strictEqual(canvasSurfaceSummaryItem.description, '已打开 · Editor');
-  assert.match(canvasSurfaceSummaryItem.tooltip, /当前实例承载面：Editor。/);
-  assert.match(canvasSurfaceSummaryItem.tooltip, /当前默认承载面：Panel。/);
+  assert.strictEqual(canvasSurfaceSummaryItem.description, 'Open · Editor');
+  assert.match(canvasSurfaceSummaryItem.tooltip, /Current instance surface: Editor\./);
+  assert.match(canvasSurfaceSummaryItem.tooltip, /Default surface: Panel\./);
   const notificationModeSummaryItem = findSidebarSummaryItem(sidebarSummaryItems, 'summary/notification-mode');
   assert.strictEqual(
     notificationModeSummaryItem.description,
-    '系统通知 · 全部 attention · 标题栏+Minimap 增强 · 文本异常关闭'
+    'System notifications · all attention · Title Bar + Minimap boost · Text abnormal alerts off'
   );
   assert.match(
     notificationModeSummaryItem.tooltip,
-    /启用的 attention signal：BEL、OSC 9、OSC 777、Agent 异常退出、Codex 文本异常。/
+    /Enabled attention signals: BEL, OSC 9, OSC 777, Agent abnormal exit, Codex abnormal text\./
   );
 
   await verifyCanvasTemplatesTrusted();
@@ -1303,7 +1303,7 @@ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   );
   assert.match(
     sanitizedAgentItem.status,
-    / · (Codex|Claude Code) · 等待输入$/,
+    / · (Codex|Claude Code) · Waiting for input$/,
     'Expected sanitized Agent sidebar rows to keep cwd, provider and status in the second line.'
   );
   assert.ok(
@@ -1513,7 +1513,7 @@ async function verifySidebarNodeGroupedTreeUi(agentNodeId) {
       'Expected grouped sidebar mode to render the nested group as an expanded tree row.'
     );
     assert.ok(
-      groupedSnapshot.groupRows.some((row) => row.key === '__ungrouped__' && row.label === '未分组'),
+      groupedSnapshot.groupRows.some((row) => row.key === '__ungrouped__' && row.label === 'Ungrouped'),
       'Expected grouped sidebar mode to keep ungrouped nodes in a collapsible section.'
     );
     assert.ok(
@@ -1599,11 +1599,12 @@ async function verifySidebarSessionHistoryRestore() {
     );
     assert.strictEqual(codexItem.title, firstUserInstruction);
     assert.match(codexItem.timestampLabel, new RegExp(`^Codex · .+ · ${codexSessionId}$`));
+    const relativeTimeLabel = codexItem.timestampLabel.split(' · ')[1] ?? '';
     assert.ok(
-      !(codexItem.timestampLabel.split(' · ')[1] ?? '').includes(' '),
-      'Expected sidebar session history items to use the compact relative time label in the secondary line.'
+      /^(?:just now|\d+ min ago|\d+ hr ago|\d+ days ago|刚刚|\d+ 分钟前|\d+ 小时前|\d+ 天前)$/.test(relativeTimeLabel),
+      'Expected sidebar session history items to use the localized relative time label in the secondary line.'
     );
-    assert.ok(!codexItem.tooltip.includes('节点副标题：'));
+    assert.ok(!/(?:Node subtitle|节点副标题)/u.test(codexItem.tooltip));
     assert.ok(
       codexItem.searchText.includes(firstUserInstruction.toLowerCase()),
       'Expected sidebar session history search text to include the displayed session title.'
@@ -4547,28 +4548,28 @@ async function runRestrictedSmoke() {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '当前 workspace 未受信任，已禁止 Agent 运行。'
+        message.payload.message === 'The current workspace is not trusted. Agent runs are disabled.'
     )
   );
   assert.ok(
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '当前 workspace 未受信任，已禁止终端操作。'
+        message.payload.message === 'The current workspace is not trusted. Terminal operations are disabled.'
     )
   );
   assert.ok(
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '当前 workspace 未受信任，已禁止 Agent 输入。'
+        message.payload.message === 'The current workspace is not trusted. Agent input is disabled.'
     )
   );
   assert.ok(
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '当前 workspace 未受信任，已禁止终端输入。'
+        message.payload.message === 'The current workspace is not trusted. Terminal input is disabled.'
     )
   );
 
@@ -4585,10 +4586,10 @@ async function runRestrictedSmoke() {
         currentProbe.hasReactFlow &&
         currentAgent &&
         currentAgent.overlayTitle === 'Restricted Mode' &&
-        currentAgent.overlayMessage === '当前 workspace 未受信任，Agent 会话入口已禁用。' &&
+        currentAgent.overlayMessage === 'The current workspace is untrusted, so Agent session actions are disabled.' &&
         currentTerminal &&
         currentTerminal.overlayTitle === 'Restricted Mode' &&
-        currentTerminal.overlayMessage === '当前 workspace 未受信任，嵌入式终端入口已禁用。'
+        currentTerminal.overlayMessage === 'The current workspace is untrusted, so embedded Terminal actions are disabled.'
     );
   });
 
@@ -4881,7 +4882,7 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   assert.strictEqual(agentNode.status, 'stopped');
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.strictEqual(agentNode.metadata.agent.lastExitCode, 0);
-  assert.match(agentNode.summary, /Codex 会话已结束/);
+  assert.match(agentNode.summary, /Codex session ended/);
 
   await clearHostMessages();
   await dispatchWebviewMessage({
@@ -4912,7 +4913,7 @@ async function verifyAgentExecutionFlow(agentNodeId) {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '该 Agent 已在运行中。'
+        message.payload.message === 'This Agent is already running.'
     )
   );
 
@@ -4931,7 +4932,7 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.strictEqual(agentNode.status, 'stopped');
-  assert.match(agentNode.summary, /已停止 Codex 会话/);
+  assert.match(agentNode.summary, /Stopped Codex session/);
 }
 
 async function verifyPersistedStateFiltersLegacyTaskNodes() {
@@ -5697,7 +5698,7 @@ async function verifyNoteMarkdownFileAssociation() {
         10000
       );
       assert.strictEqual(warningCalls.length, 1, 'Expected dropping an already associated Markdown file to confirm.');
-      assert.match(String(warningCalls[0].message), /已关联到一个 Note/);
+      assert.match(String(warningCalls[0].message), /associated with one Note/);
       assert.ok(
         String(warningCalls[0].message).includes(associatedNote.metadata.note.contentSource.displayPath),
         'Expected the existing-file drop confirmation to use the same display path as the Note subtitle.'
@@ -5707,15 +5708,15 @@ async function verifyNoteMarkdownFileAssociation() {
         'Expected the existing-file drop confirmation not to show the absolute file path.'
       );
       assert.ok(
-        warningCalls[0].items.includes('定位已有 Note'),
+        warningCalls[0].items.includes('Locate Existing Note'),
         'Expected the existing-file drop confirmation to offer locating the associated Note.'
       );
       assert.ok(
-        !warningCalls[0].items.includes('取消'),
+        !warningCalls[0].items.includes('Cancel'),
         'Expected the existing-file drop confirmation to rely on the modal default cancel button.'
       );
     },
-    ({ items }) => items.find((item) => item === '定位已有 Note')
+    ({ items }) => items.find((item) => item === 'Locate Existing Note')
   );
   snapshot = await getDebugSnapshot();
   assert.strictEqual(
@@ -5742,15 +5743,15 @@ async function verifyNoteMarkdownFileAssociation() {
       );
       assert.strictEqual(warningCalls.length, 1, 'Expected adding another associated Note to confirm.');
       assert.ok(
-        warningCalls[0].items.includes('添加新 Note'),
+        warningCalls[0].items.includes('Add New Note'),
         'Expected the existing-file drop confirmation to offer creating another associated Note.'
       );
       assert.ok(
-        !warningCalls[0].items.includes('取消'),
+        !warningCalls[0].items.includes('Cancel'),
         'Expected the existing-file drop confirmation not to duplicate the modal cancel button.'
       );
     },
-    ({ items }) => items.find((item) => item === '添加新 Note')
+    ({ items }) => items.find((item) => item === 'Add New Note')
   );
   const duplicateAssociatedNote = snapshot.state.nodes.find(
     (node) =>
@@ -5797,11 +5798,11 @@ async function verifyNoteMarkdownFileAssociation() {
         'Expected Explorer Markdown command to confirm before locating an existing associated Note.'
       );
       assert.ok(
-        warningCalls[0].items.includes('定位已有 Note'),
+        warningCalls[0].items.includes('Locate Existing Note'),
         'Expected Explorer Markdown command to offer locating the associated Note.'
       );
     },
-    ({ items }) => items.find((item) => item === '定位已有 Note')
+    ({ items }) => items.find((item) => item === 'Locate Existing Note')
   );
   snapshot = await getDebugSnapshot();
   assert.strictEqual(
@@ -5837,11 +5838,11 @@ async function verifyNoteMarkdownFileAssociation() {
         'Expected Explorer Markdown command to confirm before adding a duplicate associated Note.'
       );
       assert.ok(
-        warningCalls[0].items.includes('添加新 Note'),
+        warningCalls[0].items.includes('Add New Note'),
         'Expected Explorer Markdown command to offer adding another associated Note.'
       );
     },
-    ({ items }) => items.find((item) => item === '添加新 Note')
+    ({ items }) => items.find((item) => item === 'Add New Note')
   );
   assert.strictEqual(
     snapshot.activeSurface,
@@ -5904,7 +5905,7 @@ async function verifyNoteMarkdownFileAssociation() {
   );
   assert.match(
     String(conflictNote.metadata.note.contentSource.lastError),
-    /编辑期间被外部修改/,
+    /modified externally while editing/,
     'Expected stale associated Markdown draft submission to explain the edit conflict.'
   );
   assert.strictEqual(
@@ -6226,7 +6227,7 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '该终端已在运行中。'
+        message.payload.message === 'This Terminal is already running.'
     )
   );
 
@@ -6263,7 +6264,7 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   terminalNode = findNodeById(snapshot, terminalNodeId);
   assert.strictEqual(terminalNode.status, 'closed');
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
-  assert.match(terminalNode.summary, /终端/);
+  assert.match(terminalNode.summary, /Terminal/);
 
   snapshot = await dispatchWebviewMessage({
     type: 'webview/resizeExecutionSession',
@@ -6459,7 +6460,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
         );
         await clearAttentionByClick();
 
-        const expectedBelMessage = `Agent「${agentLabel}」发出终端提醒。`;
+        const expectedBelMessage = `Agent "${agentLabel}" sent a terminal alert.`;
         await ensureAttentionNotificationBridgeMode('workbench');
         await ensureEnabledAttentionSignals(['osc9', 'osc777']);
         calls.length = 0;
@@ -6915,7 +6916,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       await waitForInterceptedInformationMessage(
         calls,
         (call) =>
-          /Codex Agent「Codex Crash Smoke」异常中断/.test(call.message) &&
+          /Codex Agent \"Codex Crash Smoke\" was interrupted unexpectedly/.test(call.message) &&
           call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
         'Expected a Codex abnormal exit to surface a workbench attention notification.'
       );
@@ -6977,7 +6978,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         'Expected disabling agentAbnormalExit to suppress Agent abnormal-exit attention.'
       );
       assert.ok(
-        !calls.some((call) => /异常中断/.test(call.message)),
+        !calls.some((call) => /was interrupted unexpectedly/.test(call.message)),
         'Expected disabled agentAbnormalExit not to surface a workbench notification.'
       );
 
@@ -7005,7 +7006,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         'Expected Codex stream text not to notify while abnormal text matching is off by default.'
       );
       assert.ok(
-        !calls.some((call) => /输出流异常/.test(call.message)),
+        !calls.some((call) => /output stream was interrupted/.test(call.message)),
         'Expected default-off Codex stream text not to surface a workbench notification.'
       );
 
@@ -7050,7 +7051,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         'Expected disabling codexAbnormalOutputText to suppress Codex abnormal text attention.'
       );
       assert.ok(
-        !calls.some((call) => /输出流异常/.test(call.message)),
+        !calls.some((call) => /output stream was interrupted/.test(call.message)),
         'Expected disabled codexAbnormalOutputText not to surface a workbench notification for Codex final-failure text.'
       );
 
@@ -7094,7 +7095,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       await waitForInterceptedInformationMessage(
         calls,
         (call) =>
-          /Codex Agent「Codex Crash Smoke」输出流异常/.test(call.message) &&
+          /Codex Agent \"Codex Crash Smoke\" output stream was interrupted/.test(call.message) &&
           /stream disconnected before completion/.test(call.message) &&
           call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
         'Expected tail Codex square-marker stream-disconnected output to surface a supplemental workbench notification.'
@@ -7141,7 +7142,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       );
       assert.ok(
         !calls.some(
-          (call) => /输出流异常/.test(call.message) && /stream disconnected before completion/.test(call.message)
+          (call) => /output stream was interrupted/.test(call.message) && /stream disconnected before completion/.test(call.message)
         ),
         'Expected Codex reconnecting tree output not to surface a workbench notification.'
       );
@@ -7184,7 +7185,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       await waitForInterceptedInformationMessage(
         calls,
         (call) =>
-          /Codex Agent「Codex Crash Smoke」输出流异常/.test(call.message) &&
+          /Codex Agent \"Codex Crash Smoke\" output stream was interrupted/.test(call.message) &&
           /Internal server error/.test(call.message) &&
           call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
         'Expected Codex internal-server-error output to surface a supplemental workbench attention notification.'
@@ -7222,7 +7223,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         'Expected Claude stream-disconnected-like text not to notify even when Codex text matching is enabled.'
       );
       assert.ok(
-        !calls.some((call) => /输出流异常/.test(call.message)),
+        !calls.some((call) => /output stream was interrupted/.test(call.message)),
         'Expected Claude stream-disconnected-like text not to surface a workbench notification.'
       );
 
@@ -7251,7 +7252,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         'Expected a stale stream-disconnected line already present in the buffer not to notify on the next turn.'
       );
       assert.ok(
-        !calls.some((call) => /输出流异常/.test(call.message)),
+        !calls.some((call) => /output stream was interrupted/.test(call.message)),
         'Expected stale buffered stream text not to surface a workbench notification.'
       );
 
@@ -7326,7 +7327,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       await waitForInterceptedInformationMessage(
         calls,
         (call) =>
-          /Claude Code Agent「Claude Crash Smoke」异常中断/.test(call.message) &&
+          /Claude Code Agent \"Claude Crash Smoke\" was interrupted unexpectedly/.test(call.message) &&
           call.items.includes(EXECUTION_ATTENTION_FOCUS_ACTION_LABEL),
         'Expected a Claude abnormal exit to surface a workbench attention notification.'
       );
@@ -7435,7 +7436,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
           'Expected a Claude resume startup failure not to post a supplemental attention notification diagnostic.'
         );
         assert.ok(
-          !calls.some((call) => /Claude Code Agent「Claude Resume Failure Smoke」/.test(call.message)),
+          !calls.some((call) => /Claude Code Agent "Claude Resume Failure Smoke"/.test(call.message)),
           'Expected a Claude resume startup failure not to surface a supplemental workbench notification.'
         );
 
@@ -8460,7 +8461,7 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'error');
   assert.strictEqual(agentNode.metadata.agent.lastExitCode, 19);
-  assert.match(agentNode.summary, /退出码 19/);
+  assert.match(agentNode.summary, /exit(?:ed with code| code) 19/);
 
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
@@ -8658,7 +8659,7 @@ async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
   });
   let agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.metadata.agent.lastExitCode, 17);
-  assert.match(agentNode.summary, /退出码 17/);
+  assert.match(agentNode.summary, /exit(?:ed with code| code) 17/);
 
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
@@ -9075,7 +9076,8 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   assert.ok(claudeAgentNode, 'Expected failure-path setup to create a Claude agent node.');
   let agentNode = findNodeById(snapshot, claudeAgentNode.id);
   assert.ok(
-    /没有找到 Claude Code 命令/.test(agentNode.summary) ||
+    /Could not find Claude Code command/.test(agentNode.summary) ||
+      /Claude Code command was not found/.test(agentNode.summary) ||
       /Claude Code .*No such file or directory/.test(agentNode.summary)
   );
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
@@ -9096,7 +9098,8 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        (/没有找到 Claude Code 命令/.test(message.payload.message) ||
+        (/Could not find Claude Code command/.test(message.payload.message) ||
+          /Claude Code command was not found/.test(message.payload.message) ||
           /Claude Code .*No such file or directory/.test(message.payload.message))
     )
   );
@@ -9130,7 +9133,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
+        message.payload.message === 'Command must start with the current Claude Code command or claude.'
     ),
     'Expected host-side create validation to reject cross-provider custom launch commands.'
   );
@@ -9150,7 +9153,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
     id: invalidLaunchNodeId,
     title: 'Agent Invalid Custom Launch',
     status: 'idle',
-    summary: '尚未启动 Agent 会话。',
+    summary: 'No Agent session has been started yet.',
     position: {
       x: invalidLaunchBaselineNode.position.x + 340,
       y: invalidLaunchBaselineNode.position.y + 260
@@ -9210,7 +9213,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(invalidLaunchNodeAfterStart.status, 'error');
   assert.strictEqual(
     invalidLaunchNodeAfterStart.summary,
-    '命令必须以当前 Claude Code 命令或 claude 开头。'
+    'Command must start with the current Claude Code command or claude.'
   );
   assert.strictEqual(invalidLaunchNodeAfterStart.metadata.agent.liveSession, false);
   assert.strictEqual(invalidLaunchNodeAfterStart.metadata.agent.pendingLaunch, undefined);
@@ -9220,7 +9223,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
+        message.payload.message === 'Command must start with the current Claude Code command or claude.'
     ),
     'Expected host-side runtime validation to reject the invalid custom launch command restored from seeded persisted state.'
   );
@@ -9233,7 +9236,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
       (event) =>
         event.kind === 'execution/startRejected' &&
         event.detail?.reason === 'invalid-launch-command' &&
-        event.detail?.message === '命令必须以当前 Claude Code 命令或 claude 开头。'
+        event.detail?.message === 'Command must start with the current Claude Code command or claude.'
     ),
     'Expected invalid custom commands to be rejected before the host resolves or executes them.'
   );
@@ -9276,21 +9279,21 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '未找到可启动的 Agent 节点。'
+        message.payload.message === 'No launchable Agent node was found.'
     )
   );
   assert.ok(
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '未找到可启动的终端节点。'
+        message.payload.message === 'No launchable Terminal node was found.'
     )
   );
   assert.ok(
     hostMessages.some(
       (message) =>
         message.type === 'host/error' &&
-        message.payload.message === '未找到可删除的节点。'
+        message.payload.message === 'No deletable node was found.'
     )
   );
 
@@ -9524,7 +9527,7 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
   const agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'stopped');
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
-  assert.match(agentNode.summary, /已停止 Codex 会话/);
+  assert.match(agentNode.summary, /Stopped Codex session/);
   assert.match(agentNode.metadata.agent.recentOutput ?? '', /Token usage:/);
   assert.match(agentNode.metadata.agent.recentOutput ?? '', /codex resume/);
 
@@ -10131,7 +10134,7 @@ async function verifyLiveRuntimeResumeExitClassification(agentNodeId) {
     agentNode = findNodeById(snapshot, agentNodeId);
     assert.strictEqual(agentNode.status, 'error');
     assert.strictEqual(agentNode.metadata.agent.lastExitCode, 23);
-    assert.match(agentNode.summary, /退出码 23/);
+    assert.match(agentNode.summary, /exit(?:ed with code| code) 23/);
   } finally {
     await setRuntimePersistenceEnabled(false);
   }
@@ -10163,7 +10166,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
         {
           ...agentNode,
           status: 'reattaching',
-          summary: '正在重新连接原 Agent live runtime。',
+          summary: 'Reconnecting to the original Agent live runtime.',
           metadata: {
             ...agentNode.metadata,
             agent: {
@@ -10189,7 +10192,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
         {
           ...terminalNode,
           status: 'reattaching',
-          summary: '正在重新连接原终端 live runtime。',
+          summary: 'Reconnecting to the original Terminal live runtime.',
           metadata: {
             ...terminalNode.metadata,
             terminal: {
@@ -10251,12 +10254,12 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
     );
     assert.match(
       restoredTerminal.summary,
-      /runtime session/,
+      /runtime session/i,
       'Expected runtime projection to explain that the seeded terminal live runtime could not be reattached.'
     );
     assert.match(
       restoredTerminal.metadata.terminal.lastRuntimeError ?? '',
-      /runtime session/,
+      /runtime session/i,
       'Expected runtime projection to preserve the terminal runtime-reattach failure reason derived from seeded state.'
     );
 
@@ -10331,7 +10334,7 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
         {
           ...agentNode,
           status: 'history-restored',
-          summary: '原 Agent live runtime 已断开，将等待恢复。',
+          summary: 'The original Agent live runtime disconnected. A resumable session will be used instead.',
           metadata: {
             ...agentNode.metadata,
             agent: {
@@ -10349,7 +10352,7 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
               resumeSessionId: fallbackSessionId,
               resumeStoragePath: fakeStorageDir,
               pendingLaunch: 'resume',
-              lastRuntimeError: '未找到 runtime session old-runtime-session。',
+              lastRuntimeError: 'Runtime session old-runtime-session was not found.',
               lastResumeError: undefined
             }
           }
@@ -10724,7 +10727,7 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
           kind: 'agent',
           title: 'Agent 1',
           status: 'reattaching',
-          summary: '正在重新连接原 Agent live runtime。',
+          summary: 'Reconnecting to the original Agent live runtime.',
           position: { x: 0, y: 0 },
           size: { width: 560, height: 430 },
           metadata: {
@@ -10743,10 +10746,12 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
               runtimeGuarantee: 'best-effort',
               liveSession: false,
               runtimeSessionId: 'restricted-agent-live-session',
+              outputSequence: 1,
               lastCols: 67,
               lastRows: 22,
               serializedTerminalState: createSerializedTerminalStateFixture(
-                RESTRICTED_AGENT_SERIALIZED_MARKER
+                RESTRICTED_AGENT_SERIALIZED_MARKER,
+                1
               ),
               lastBackendLabel: 'Codex'
             }
@@ -10757,7 +10762,7 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
           kind: 'terminal',
           title: 'Terminal 2',
           status: 'reattaching',
-          summary: '正在重新连接原终端 live runtime。',
+          summary: 'Reconnecting to the original Terminal live runtime.',
           position: { x: 680, y: 0 },
           size: { width: 540, height: 420 },
           metadata: {
@@ -10772,10 +10777,12 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
               runtimeGuarantee: 'best-effort',
               liveSession: false,
               runtimeSessionId: 'restricted-terminal-live-session',
+              outputSequence: 1,
               lastCols: 68,
               lastRows: 23,
               serializedTerminalState: createSerializedTerminalStateFixture(
-                RESTRICTED_TERMINAL_SERIALIZED_MARKER
+                RESTRICTED_TERMINAL_SERIALIZED_MARKER,
+                1
               )
             }
           }
@@ -10804,7 +10811,7 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
     );
     assert.strictEqual(
       findNodeById(snapshot, agentNodeId).summary,
-      '当前 workspace 未受信任，暂不重新连接原 Agent live runtime，仅展示历史结果。',
+      'The current workspace is not trusted. The original Agent live runtime will not reconnect, and only history results are shown.',
       'Expected runtime projection to explain why the seeded reattaching agent stays history-only in an untrusted workspace.'
     );
     assert.strictEqual(
@@ -10814,7 +10821,7 @@ async function verifyRestrictedLiveRuntimeReconnectBlocked() {
     );
     assert.strictEqual(
       findNodeById(snapshot, terminalNodeId).summary,
-      '当前 workspace 未受信任，暂不重新连接原终端 live runtime，仅展示历史结果。',
+      'The current workspace is not trusted. The original Terminal live runtime will not reconnect, and only history results are shown.',
       'Expected runtime projection to explain why the seeded reattaching terminal stays history-only in an untrusted workspace.'
     );
     assert.strictEqual(
@@ -12090,10 +12097,11 @@ async function requestExecutionSnapshot(kind, nodeId, surface) {
   );
 }
 
-function createSerializedTerminalStateFixture(marker) {
+function createSerializedTerminalStateFixture(marker, outputSequence) {
   return {
     format: 'xterm-serialize-v1',
-    data: `${marker}\r\n${marker} restored snapshot\r\n`
+    data: `${marker}\r\n${marker} restored snapshot\r\n`,
+    outputSequence
   };
 }
 
