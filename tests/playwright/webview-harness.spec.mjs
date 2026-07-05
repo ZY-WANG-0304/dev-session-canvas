@@ -1161,7 +1161,7 @@ test('pane gallery lower-left mode control switches layouts and canvas thumbnail
   await expect(backendPlaceholder).toBeVisible();
   await expect(backendPlaceholder.locator('.pane-gallery-active-placeholder-label')).toHaveText('正在主画板');
   await expect(backendPlaceholder).toHaveAttribute('title', /Backend - \/repo\/backend - 1 个节点正在运行 - 正在主画板/);
-  await expect(backendPlaceholder).toHaveAttribute('aria-label', /Workspace root Backend, \/repo\/backend, 正在主画板显示, 1 个节点正在运行/);
+  await expect(backendPlaceholder).toHaveAttribute('aria-label', /workspace root Backend，\/repo\/backend，正在主画板显示，1 个节点正在运行/);
   await expect(backendPlaceholder.locator('.react-flow')).toHaveCount(0);
   await expect(backendPlaceholder.locator('.pane-gallery-thumbnail-hit-layer')).toHaveCount(0);
   const backendPlaceholderHeader = backendPlaceholder.locator('.pane-gallery-root-header');
