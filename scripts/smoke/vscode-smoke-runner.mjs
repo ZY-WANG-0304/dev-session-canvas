@@ -20,6 +20,7 @@ const BLOCKED_VSCODE_ENV_SECRET_PATTERNS = [
 ];
 const STAGED_SMOKE_TESTS_ROOT = path.join('tests', 'vscode-smoke');
 const MAIN_EXTENSION_RELATIVE_ROOT = path.join('extensions', 'vscode', 'dev-session-canvas');
+const LINUX_HEADLESS_STABILITY_ARGS = ['--disable-gpu', '--disable-dev-shm-usage'];
 
 export function shouldReRunInsideXvfb() {
   return (
@@ -336,6 +337,7 @@ export function buildVSCodeArgs(options) {
     `--extensions-dir=${options.extensionsDir}`,
     '--no-sandbox',
     '--disable-gpu-sandbox',
+    ...resolveVSCodeSmokeStabilityArgs(),
     '--password-store=basic',
     '--disable-updates',
     '--skip-welcome',
@@ -360,6 +362,14 @@ export function buildVSCodeArgs(options) {
     args.push(`--extensionDevelopmentPath=${extensionDevelopmentPath}`);
   }
   return args;
+}
+
+function resolveVSCodeSmokeStabilityArgs() {
+  if (process.platform !== 'linux') {
+    return [];
+  }
+
+  return LINUX_HEADLESS_STABILITY_ARGS;
 }
 
 function resolveVSCodeTestCachePath(projectRoot) {

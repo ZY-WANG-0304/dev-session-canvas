@@ -8216,6 +8216,11 @@ async function verifyPanelTerminalTabSwitchPreservesViewport(terminalNodeId) {
   const baselineVisibleLines = readProbeTerminalVisibleLines(baselineProbe, terminalNodeId);
   assert.ok(baselineVisibleLines.some((line) => line.includes(`${PANEL_TAB_SWITCH_TERMINAL_MARKER}-01`)));
   assert.ok(baselineVisibleLines.some((line) => line.includes(`${PANEL_TAB_SWITCH_TERMINAL_MARKER}-18`)));
+  const baselineMarkerLines = readTerminalViewportMarkerLines(
+    baselineVisibleLines,
+    PANEL_TAB_SWITCH_TERMINAL_MARKER
+  );
+  assert.deepStrictEqual(baselineMarkerLines, buildTerminalViewportMarkerLines(PANEL_TAB_SWITCH_TERMINAL_MARKER));
 
   await clearHostMessages();
   const diagnosticStartIndex = (await getDiagnosticEvents()).length;
@@ -8255,7 +8260,10 @@ async function verifyPanelTerminalTabSwitchPreservesViewport(terminalNodeId) {
     return visibleLines.some((line) => line.includes(`${PANEL_TAB_SWITCH_TERMINAL_MARKER}-01`));
   }, 10000);
   const restoredVisibleLines = readProbeTerminalVisibleLines(restoredProbe, terminalNodeId);
-  assert.deepStrictEqual(restoredVisibleLines, baselineVisibleLines);
+  assert.deepStrictEqual(
+    readTerminalViewportMarkerLines(restoredVisibleLines, PANEL_TAB_SWITCH_TERMINAL_MARKER),
+    baselineMarkerLines
+  );
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const terminalNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
@@ -8307,6 +8315,11 @@ async function verifyEditorTerminalTabSwitchPreservesViewport(terminalNodeId) {
   const baselineVisibleLines = readProbeTerminalVisibleLines(baselineProbe, terminalNodeId);
   assert.ok(baselineVisibleLines.some((line) => line.includes(`${EDITOR_TAB_SWITCH_TERMINAL_MARKER}-01`)));
   assert.ok(baselineVisibleLines.some((line) => line.includes(`${EDITOR_TAB_SWITCH_TERMINAL_MARKER}-18`)));
+  const baselineMarkerLines = readTerminalViewportMarkerLines(
+    baselineVisibleLines,
+    EDITOR_TAB_SWITCH_TERMINAL_MARKER
+  );
+  assert.deepStrictEqual(baselineMarkerLines, buildTerminalViewportMarkerLines(EDITOR_TAB_SWITCH_TERMINAL_MARKER));
 
   await clearHostMessages();
   const diagnosticStartIndex = (await getDiagnosticEvents()).length;
@@ -8354,7 +8367,10 @@ async function verifyEditorTerminalTabSwitchPreservesViewport(terminalNodeId) {
     return visibleLines.some((line) => line.includes(`${EDITOR_TAB_SWITCH_TERMINAL_MARKER}-01`));
   }, 10000);
   const restoredVisibleLines = readProbeTerminalVisibleLines(restoredProbe, terminalNodeId);
-  assert.deepStrictEqual(restoredVisibleLines, baselineVisibleLines);
+  assert.deepStrictEqual(
+    readTerminalViewportMarkerLines(restoredVisibleLines, EDITOR_TAB_SWITCH_TERMINAL_MARKER),
+    baselineMarkerLines
+  );
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const terminalNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
@@ -12769,6 +12785,17 @@ function hasRenderedNodeSize(probe, nodeId, targetSize, tolerance = 8) {
 function readProbeTerminalVisibleLines(probe, nodeId) {
   const node = probe.nodes.find((currentNode) => currentNode.nodeId === nodeId);
   return Array.isArray(node?.terminalVisibleLines) ? node.terminalVisibleLines : [];
+}
+
+function readTerminalViewportMarkerLines(visibleLines, marker) {
+  return visibleLines.filter((line) => line.includes(marker));
+}
+
+function buildTerminalViewportMarkerLines(marker) {
+  return Array.from(
+    { length: 18 },
+    (_, index) => `${marker}-${String(index + 1).padStart(2, '0')} viewport restore verification`
+  );
 }
 
 function sleep(timeoutMs) {
