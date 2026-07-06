@@ -18,7 +18,7 @@ related_specs:
   - docs/product-specs/template-marketplace.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans: []
-updated_at: 2026-07-05
+updated_at: 2026-07-06
 ---
 
 # DevSessionCanvas 外部控制面：MCP、SKILL 与 CLI 边界
@@ -124,6 +124,9 @@ DevSessionCanvas 当前主形态是 VSCode workspace extension。画布状态、
 
 - 风险：外部 Agent 通过 MCP tool 间接启动 Agent / Terminal，用户误以为只是整理画布。
   当前缓解：将 tools 分为 read-only、低风险写入和高风险执行三档；首版只默认开放 read-only 和少量低风险写入，高风险动作必须显式确认、记录目标 root，并继续受 workspace trust 限制。
+
+- 风险：外部 Agent 通过“追加模板”间接写入 workspace 文件或引入执行节点，但工具描述却被归类为低风险。
+  当前缓解：`devsessioncanvas_apply_template_append` 不按默认低风险处理，而是条件型模板变更。Host 必须先检查模板 manifest / `template.json`，识别 `workspace-file-with-content` Note、workspace 文件路径、Agent / Terminal 节点、固定 provider、`argv` 和目标 root；只有确认无 workspace 文件写入、无执行节点、无 provider 约束且目标 root 明确时，才可以走低风险授权。否则必须升级为需要用户确认的高风险操作，并记录模板 id / 来源 / 版本、目标 root、预期副作用和执行结果。
 
 - 风险：CLI 直接改 `.dev-session-canvas/` 或 VSCode storage，绕过 Extension Host 的迁移、multi-root 和运行时清理逻辑。
   当前缓解：CLI-first 只覆盖离线模板文件、模板包、doctor 和市场预检；live CLI 首版只保留 `mcp serve`、bridge 诊断和只读 smoke，不公开完整 live 写操作。
@@ -251,9 +254,9 @@ Low-risk write tools
 - devsessioncanvas_create_note
 - devsessioncanvas_update_note
 - devsessioncanvas_create_group
-- devsessioncanvas_apply_template_append
 
-High-risk write tools
+Conditional / high-risk write tools
+- devsessioncanvas_apply_template_append
 - devsessioncanvas_reset_root_to_template
 - devsessioncanvas_create_agent
 - devsessioncanvas_create_terminal
@@ -261,7 +264,12 @@ High-risk write tools
 - devsessioncanvas_stop_session
 ```
 
-当前倾向是：read-only tools 与 resources 可以先实现；低风险写入必须先有 Host bridge；高风险写入只在明确确认、审计和测试后再启用。
+当前倾向是：read-only tools 与 resources 可以先实现；低风险写入必须先有 Host bridge；条件型和高风险写入只在明确 preflight、确认、审计和测试后再启用。
+
+`devsessioncanvas_apply_template_append` 必须保留既有模板应用副作用边界，不能因为它是 append 而默认视为低风险。它应采用两阶段语义：
+
+1. `preflight`：Host bridge 调用 `CanvasPanelManager` 侧模板读取 / 校验逻辑，解析模板来源、模板版本或 digest、目标 root、节点种类、Agent provider / `argv`、关联 Markdown Note 模式、可能创建或写入的 workspace 相对路径，以及是否需要 provider CLI 可用性检查。
+2. `apply`：只有在 preflight 结果明确且调用方持有对应授权后才执行。若模板包含 `workspace-file-with-content` Note、会创建 workspace 文件、包含 `agent` / `terminal` 节点、固定 provider、`argv`，或 workspace 未受信任，则必须沿用 `docs/design-docs/canvas-template-feature.md` 的规则：需要明确目标 root、Host 侧 workspace trust / provider 校验、用户确认或拒绝路径，以及审计记录。仅包含普通 `note` / group / edge 且不会写 workspace 文件的模板追加，才可以作为低风险写入执行。
 
 模板相关 MCP tools 不属于首版必要能力。若后续有 MCP-only client 需要模板校验或打包，可补可选 adapter，例如：
 
