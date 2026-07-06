@@ -50,6 +50,10 @@ try {
     extraLaunchArgs: ['--locale=zh-cn']
   });
   assert.ok(args.includes('--password-store=basic'));
+  if (process.platform === 'linux') {
+    assert.ok(args.includes('--disable-gpu'));
+    assert.ok(args.includes('--disable-dev-shm-usage'));
+  }
   assert.ok(args.includes('--locale=zh-cn'));
 
   const debugRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-smoke-runner-env-'));
