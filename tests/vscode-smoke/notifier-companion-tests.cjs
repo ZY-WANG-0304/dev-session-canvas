@@ -3,6 +3,7 @@ const path = require('path');
 const vscode = require('vscode');
 
 const MAIN_EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
+const NOTIFIER_EXTENSION_ID = 'devsessioncanvas.dev-session-canvas-notifier';
 const MAIN_COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
@@ -31,8 +32,10 @@ module.exports = {
 
 async function run() {
   const mainExtension = await waitForVisibleExtension(MAIN_EXTENSION_ID);
+  const notifierExtension = await waitForVisibleExtension(NOTIFIER_EXTENSION_ID);
 
   await mainExtension.activate();
+  await notifierExtension.activate();
 
   await waitForCommand(MAIN_COMMAND_IDS.testResetState);
   await waitForCommand(NOTIFIER_TEST_COMMAND_IDS.clearPostedNotifications);

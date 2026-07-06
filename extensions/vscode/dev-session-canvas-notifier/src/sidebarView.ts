@@ -96,6 +96,14 @@ export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, 
     this.disposables.splice(0).forEach((d) => d.dispose());
   }
 
+  public getRenderedSectionHtml(section: NotifierSidebarSection): string | undefined {
+    return this.sectionViews.get(section)?.webview.html;
+  }
+
+  public getVisibleSections(): NotifierSidebarSection[] {
+    return [...this.sectionViews.keys()];
+  }
+
   private async refreshSection(section: NotifierSidebarSection): Promise<void> {
     if (!this.sectionViews.has(section)) {
       return;

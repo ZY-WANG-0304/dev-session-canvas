@@ -15,10 +15,17 @@ import {
 import { COMMAND_IDS } from '../../dev-session-canvas/src/common/extensionIdentity';
 import { isTestHarnessMode } from '../../dev-session-canvas/src/common/testHarness';
 import { buildManualNotificationMessage } from './manualNotificationCopy.ts';
-import { resolveNotifierLocale } from './notifierLocalization.ts';
+import { notifierHtmlLang, resolveNotifierLocale } from './notifierLocalization.ts';
 import { postDesktopNotification } from './platformNotification.ts';
-import { NotifierSidebarViewProvider, NOTIFIER_SIDEBAR_VIEW_IDS } from './sidebarView.ts';
-import type { NotifierExtensionModeLabel } from './sidebarEnvironment.ts';
+import {
+  NotifierSidebarViewProvider,
+  NOTIFIER_SIDEBAR_VIEW_IDS,
+  type NotifierSidebarSection
+} from './sidebarView.ts';
+import {
+  probeNotifierEnvironmentSnapshot,
+  type NotifierExtensionModeLabel
+} from './sidebarEnvironment.ts';
 
 const FOCUS_URI_PATH = '/focus';
 const MAX_DEBUG_RECORDS = 20;
@@ -55,9 +62,17 @@ interface StoredPendingFocusAction {
   createdAt: string;
 }
 
+interface WorkbenchPromptRecord {
+  kind: 'information' | 'warning';
+  message: string;
+  actions: string[];
+  selectedAction?: string;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const postedNotifications: AttentionNotificationDebugRecord[] = [];
   const manualNotificationAttempts = new Map<string, ManualNotificationAttempt>();
+  let lastWorkbenchPrompt: WorkbenchPromptRecord | undefined;
   const pendingFocusActions = restorePendingFocusActions(context.globalState);
   const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
   const sidebarViewProvider = new NotifierSidebarViewProvider({
@@ -248,8 +263,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
     appendOutputLine(outputChannel, `manual notification activated requestId=${normalizedRequestId}`);
     void sidebarViewProvider.refresh();
+    lastWorkbenchPrompt = {
+      kind: 'information',
+      message: vscode.l10n.t('Dev Session Canvas Notifier received the test notification click callback.'),
+      actions: []
+    };
     void vscode.window.showInformationMessage(
-      vscode.l10n.t('Dev Session Canvas Notifier received the test notification click callback.')
+      lastWorkbenchPrompt.message
     );
   };
 
@@ -266,15 +286,58 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const actions = [vscode.l10n.t('Open Output')];
     const message = buildManualNotificationMessage(outcome.result, localizeNotifierMessage);
-    const selectedAction =
-      outcome.result.status === 'posted'
-        ? await vscode.window.showInformationMessage(message, ...actions)
-        : await vscode.window.showWarningMessage(message, ...actions);
+    const promptKind = outcome.result.status === 'posted' ? 'information' : 'warning';
+    const selectedAction = await showManualNotificationPrompt(promptKind, message, actions);
 
     if (selectedAction === actions[0]) {
       outputChannel.show(true);
       logPlatformSnapshot(outputChannel, postedNotifications.at(-1), readPlaySoundEnabled());
     }
+  };
+
+  const showManualNotificationPrompt = async (
+    kind: WorkbenchPromptRecord['kind'],
+    message: string,
+    actions: string[]
+  ): Promise<string | undefined> => {
+    lastWorkbenchPrompt = {
+      kind,
+      message,
+      actions: actions.slice()
+    };
+
+    const promptPromise =
+      kind === 'information'
+        ? vscode.window.showInformationMessage(message, ...actions)
+        : vscode.window.showWarningMessage(message, ...actions);
+
+    if (isTestHarnessMode(context.extensionMode)) {
+      void promptPromise.then(
+        (selectedAction) => {
+          if (lastWorkbenchPrompt?.message === message) {
+            lastWorkbenchPrompt = {
+              kind,
+              message,
+              actions: actions.slice(),
+              selectedAction
+            };
+          }
+        },
+        () => {
+          // Test smoke must not hang on VS Code notification lifetime.
+        }
+      );
+      return undefined;
+    }
+
+    const selectedAction = await promptPromise;
+    lastWorkbenchPrompt = {
+      kind,
+      message,
+      actions: actions.slice(),
+      selectedAction
+    };
+    return selectedAction;
   };
 
   const openDiagnosticOutput = (): void => {
@@ -334,9 +397,150 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         return handleFocusUri(vscode.Uri.parse(lastRecord.callbackUri));
-      })
+      }),
+      vscode.commands.registerCommand(NOTIFIER_TEST_COMMAND_IDS.getLocalizationSnapshot, async () =>
+        buildNotifierLocalizationSnapshot(
+          context,
+          sidebarViewProvider,
+          getExtensionModeLabel(context.extensionMode),
+          readPlaySoundEnabled(),
+          localizeNotifierMessage
+        )
+      ),
+      vscode.commands.registerCommand(NOTIFIER_TEST_COMMAND_IDS.getLastWorkbenchPrompt, () =>
+        lastWorkbenchPrompt
+          ? {
+              ...lastWorkbenchPrompt,
+              actions: lastWorkbenchPrompt.actions.slice()
+            }
+          : undefined
+      )
     );
   }
+}
+
+async function buildNotifierLocalizationSnapshot(
+  context: vscode.ExtensionContext,
+  sidebarViewProvider: NotifierSidebarViewProvider,
+  modeLabel: NotifierExtensionModeLabel,
+  playSoundEnabled: boolean,
+  localize: typeof localizeNotifierMessage
+): Promise<Record<string, unknown>> {
+  return {
+    language: vscode.env.language,
+    manifest: buildNotifierManifestLocalizationSnapshot(context.extension.packageJSON),
+    sidebar: await buildNotifierSidebarLocalizationSnapshot(modeLabel, playSoundEnabled, localize),
+    renderedSidebar: buildRenderedSidebarSnapshot(sidebarViewProvider),
+    manualNotification: buildManualNotificationMessage(
+      {
+        status: 'posted',
+        backend: 'test',
+        activationMode: 'test-replay'
+      },
+      localize
+    ),
+    actionLabel: vscode.l10n.t('View Node'),
+    openOutputAction: vscode.l10n.t('Open Output'),
+    callbackMessage: vscode.l10n.t('Dev Session Canvas Notifier received the test notification click callback.')
+  };
+}
+
+async function buildNotifierSidebarLocalizationSnapshot(
+  modeLabel: NotifierExtensionModeLabel,
+  playSoundEnabled: boolean,
+  localize: typeof localizeNotifierMessage
+): Promise<Record<string, string>> {
+  const snapshot = await probeNotifierEnvironmentSnapshot(
+    process.platform,
+    modeLabel,
+    playSoundEnabled,
+    localize
+  );
+  return {
+    htmlLang: notifierHtmlLang(resolveNotifierLocale(vscode.env.language)),
+    currentRouteLabel: snapshot.currentRouteLabel,
+    activationLabel: snapshot.activationLabel,
+    soundLabel: snapshot.soundLabel,
+    note: snapshot.notes[0] ?? '',
+    platformGuideStatusLabel: snapshot.platformGuides.find((guide) => guide.platformLabel === snapshot.platformLabel)?.statusLabel ?? '',
+    agentGuideDetail: snapshot.agentConfigurationGuides[0]?.detail ?? ''
+  };
+}
+
+function buildRenderedSidebarSnapshot(
+  sidebarViewProvider: NotifierSidebarViewProvider
+): Record<string, string | string[] | undefined> {
+  const sections: Partial<Record<NotifierSidebarSection, string>> = {};
+  const visibleSections = sidebarViewProvider.getVisibleSections();
+  for (const section of visibleSections) {
+    sections[section] = sidebarViewProvider.getRenderedSectionHtml(section);
+  }
+
+  return {
+    visibleSections,
+    statusHtml: sections.status,
+    notesHtml: sections.notes,
+    codexHtml: sections.codex
+  };
+}
+
+function buildNotifierManifestLocalizationSnapshot(packageJSON: unknown): Record<string, string | undefined> {
+  if (!isRecord(packageJSON)) {
+    return {};
+  }
+
+  const contributes = isRecord(packageJSON.contributes) ? packageJSON.contributes : {};
+  const commands = Array.isArray(contributes.commands) ? contributes.commands : [];
+  const views = isRecord(contributes.views) ? contributes.views : {};
+  const notifierViews = Array.isArray(views.devSessionCanvasNotifier) ? views.devSessionCanvasNotifier : [];
+  const configuration = isRecord(contributes.configuration) ? contributes.configuration : {};
+  const properties = isRecord(configuration.properties) ? configuration.properties : {};
+  const playSoundConfiguration = isRecord(properties[CONFIGURATION_KEYS.playSound])
+    ? properties[CONFIGURATION_KEYS.playSound]
+    : {};
+
+  return {
+    displayName: typeof packageJSON.displayName === 'string' ? packageJSON.displayName : undefined,
+    description: typeof packageJSON.description === 'string' ? packageJSON.description : undefined,
+    statusViewName: getManifestContributionString(
+      notifierViews.find((view) => isRecord(view) && view.id === NOTIFIER_SIDEBAR_VIEW_IDS.status),
+      'name'
+    ),
+    notesViewName: getManifestContributionString(
+      notifierViews.find((view) => isRecord(view) && view.id === NOTIFIER_SIDEBAR_VIEW_IDS.notes),
+      'name'
+    ),
+    sendTestCommandTitle: getManifestContributionString(
+      commands.find((command) => isRecord(command) && command.command === MANUAL_COMMAND_IDS.sendTestNotification),
+      'title'
+    ),
+    diagnosticCommandTitle: getManifestContributionString(
+      commands.find((command) => isRecord(command) && command.command === MANUAL_COMMAND_IDS.openDiagnosticOutput),
+      'title'
+    ),
+    configurationTitle: typeof configuration.title === 'string' ? configuration.title : undefined,
+    playSoundDescription:
+      typeof playSoundConfiguration.markdownDescription === 'string'
+        ? playSoundConfiguration.markdownDescription
+        : undefined
+  };
+}
+
+function getManifestContributionString(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const candidate = value[key];
+  if (typeof candidate === 'string') {
+    return candidate;
+  }
+
+  if (isRecord(candidate) && typeof candidate.value === 'string') {
+    return candidate.value;
+  }
+
+  return undefined;
 }
 
 export function deactivate(): void {
