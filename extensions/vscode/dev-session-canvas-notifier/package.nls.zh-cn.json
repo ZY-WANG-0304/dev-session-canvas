@@ -1,0 +1,17 @@
+{
+  "extension.displayName": "Dev Session Canvas Notifier",
+  "extension.description": "在本机 UI 侧为 Dev Session Canvas 投递桌面系统通知的 companion extension。",
+  "viewsContainer.notifier.title": "Dev Session Canvas Notifier",
+  "view.status.name": "概览",
+  "view.notes.name": "注意事项",
+  "view.macOS.name": "macOS",
+  "view.linux.name": "Linux",
+  "view.windows.name": "Windows",
+  "view.codex.name": "Codex",
+  "view.claudeCode.name": "Claude Code",
+  "command.sendTestNotification.title": "Dev Session Canvas Notifier: 发送测试桌面通知",
+  "command.openDiagnosticOutput.title": "Dev Session Canvas Notifier: 打开通知诊断输出",
+  "command.openSettings.title": "Dev Session Canvas Notifier: 打开配置",
+  "configuration.title": "Dev Session Canvas Notifier",
+  "configuration.notifications.playSound.description": "控制 notifier companion 在当前本机 UI 侧投递桌面通知时，是否请求系统播放提示音。关闭后会尽量走静音路径；实际是否完全静音取决于平台后端与系统通知服务。"
+}

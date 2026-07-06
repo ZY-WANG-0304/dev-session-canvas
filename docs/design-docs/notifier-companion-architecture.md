@@ -14,7 +14,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/standard-monorepo-and-doc-knowledge-base.md
   - docs/exec-plans/active/cross-plan-coordination.md
-updated_at: 2026-06-29
+updated_at: 2026-07-06
 ---
 
 # UI 侧 Notifier Companion 架构
@@ -137,6 +137,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 
 - 主扩展 `devsessioncanvas.dev-session-canvas` 在 `extensions/vscode/dev-session-canvas/package.json` 中声明 `extensionPack: ["devsessioncanvas.dev-session-canvas-notifier"]`
 - notifier companion 在 `extensions/vscode/dev-session-canvas-notifier/package.json` 中继续声明 `extensionDependencies: ["devsessioncanvas.dev-session-canvas"]`
+- notifier companion 同时声明 `l10n: "./l10n"`，并用 `package.nls.json` / `package.nls.zh-cn.json` 承载 manifest 静态文案；默认 Marketplace 与 manifest 文案使用英文，简体中文通过 VS Code locale 本地化资源提供
 - 两个扩展都显式声明 `"api": "none"`，因为跨 host 协作只依赖异步 VS Code commands，而不依赖 `activate()` 导出的 JS API
 
 这样做的原因是：
@@ -210,8 +211,10 @@ companion 当前放在 `extensions/vscode/dev-session-canvas-notifier/`，职责
 - 注册命令 `devSessionCanvasNotifier.postSystemNotification`
 - 注册人工验收辅助命令 `Dev Session Canvas Notifier: 发送测试桌面通知` 与 `Dev Session Canvas Notifier: 打开通知诊断输出`
 - 其中手动测试桌面通知的标题固定为 `DSCanvas · Notifier`，与执行 attention 通知的 `DSCanvas` 前缀保持一致
-- 把 notifier sidebar 拆成 `概览`、`注意事项`、`macOS`、`Linux`、`Windows`、`Codex`、`Claude Code` 七个独立 view section
+- 把 notifier sidebar 拆成 `Overview` / `概览`、`Notes` / `注意事项`、`macOS`、`Linux`、`Windows`、`Codex`、`Claude Code` 七个独立 view section，view title 由 `package.nls*` 跟随 VS Code locale
 - 各 section 的正文区域统一走受控 Markdown preview 渲染，支持段落、标题、无序/有序列表与 fenced code block；保留测试按钮这类交互控件为原生 Webview button，而不是把交互行为塞进 Markdown
+- sidebar HTML 由 Extension Host 生成，不引入 Webview 侧 i18n 框架；`extensions/vscode/dev-session-canvas-notifier/src/sidebarEnvironment.ts` 通过注入的本地化函数生成平台说明、Agent 配置指引和注意事项，`src/sidebarView.ts` 渲染时把 `<html lang>` 设置为 `en` 或 `zh-CN`
+- notifier 的手动测试通知、工作台提示、Linux `notify-send` action label 和设置/诊断入口均使用 `vscode.l10n.t(...)`，用户/环境事实如平台名、命令、路径、backend、activationMode、配置片段保持原样
 - 只在承载通知状态、测试按钮和诊断入口的 `概览` view title 尾部暴露 `settings-gear` 快捷入口，执行 `devSessionCanvasNotifier.openSettings` 并跳转到 companion 自身配置
 - 校验共享协议请求
 - 为通知点击生成 callback URI
@@ -262,9 +265,11 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 4. `npm run build:notifier`
 5. `npm run test:attention-protocol`
 6. `npm run test:notifier-source`
-7. `npm run test:notifier-smoke`
+7. `npm run test:extension-manifest`
+8. `npm run test:package-vsix-file-list`
+9. `npm run test:notifier-smoke`
 
-第 7 条是当前最关键的验证：它需要在同一个 VS Code Development Host 内同时加载主扩展和 notifier companion，验证“主扩展发 companion 请求 -> companion 记录请求 -> companion 回放 callback -> 主扩展发送 `host/centerNode` 且保留 attention 状态”这一整条链路。2026-05-07 起，这条 smoke 已改为通过 staged smoke host + notifier wrapper 同时装配两侧扩展，并借助 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE` 继续暴露测试命令，latest head 可稳定复现通过。
+第 9 条是当前最关键的端到端验证：它需要在同一个 VS Code Development Host 内同时加载主扩展和 notifier companion，验证“主扩展发 companion 请求 -> companion 记录请求 -> companion 回放 callback -> 主扩展发送 `host/centerNode` 且保留 attention 状态”这一整条链路。2026-05-07 起，这条 smoke 已改为通过 staged smoke host + notifier wrapper 同时装配两侧扩展，并借助 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE` 继续暴露测试命令，latest head 可稳定复现通过。
 
 真实桌面通知的人工验收，则统一使用 companion 自带命令：
 
@@ -292,6 +297,8 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - `npm run build:notifier`
 - `npm run test:attention-protocol`
 - `npm run test:notifier-source`
+- `npm run test:extension-manifest`
+- `npm run test:package-vsix-file-list`
 - `npm run test:notifier-smoke`
 - `npm run test:smoke-storage-slot`
 - `npm run test:vsix-smoke`
@@ -310,4 +317,4 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - 用户已完成 `Remote Main + Local Notifier` 联调拓扑人工验收，确认 workspace-side 主扩展与 UI-side notifier companion 可在同一 Development Host 中协同工作
 - 当前 staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此它们验证的是“功能链路已打通”，而不是“Marketplace / VSIX 自动补齐安装关系已被 repo-local 自动化直接覆盖”
 
-因此，本设计现从 `验证中` 调整为 `已验证`：notifier companion 的协议分层、桌面通知点击回调、跨平台本机通知路径，以及“远端主扩展 + 本机 UI notifier”的联调拓扑都已获得自动化与人工证据闭环。正式安装策略现已落成“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，也有人工安装证据，但真实 Marketplace / VSIX 自动补齐路径目前还没有被 repo-local smoke 直接覆盖。是否额外引入独立 extension pack 扩展包仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。
+因此，本设计现保持 `已验证`：notifier companion 的协议分层、桌面通知点击回调、跨平台本机通知路径、“远端主扩展 + 本机 UI notifier”的联调拓扑，以及 notifier manifest / runtime / sidebar 的英文默认与简体中文本地化资源，都已获得自动化或人工证据闭环。正式安装策略现已落成“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，也有人工安装证据，但真实 Marketplace / VSIX 自动补齐路径目前还没有被 repo-local smoke 直接覆盖。是否额外引入独立 extension pack 扩展包仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。

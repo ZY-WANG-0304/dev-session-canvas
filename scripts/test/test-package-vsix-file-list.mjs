@@ -10,9 +10,11 @@ import {
   resolveVsceEntry,
   stageMainPackageFiles
 } from '../release/package-vsix.mjs';
+import { stagePackageFiles as stageNotifierPackageFiles } from '../../extensions/vscode/dev-session-canvas-notifier/scripts/package-vsix.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const mainExtensionRoot = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas');
+const notifierExtensionRoot = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const vsceEntry = resolveVsceEntry(repoRoot);
 
 assert.ok(
@@ -81,6 +83,40 @@ try {
     [],
     `VSIX file list contains non-runtime source directories:\n${forbiddenFiles.join('\n')}`
   );
+
+  const notifierPackageJson = JSON.parse(
+    readFileSync(path.join(notifierExtensionRoot, 'package.json'), 'utf8')
+  );
+  const notifierStageRoot = mkdtempSync(path.join(os.tmpdir(), 'dsc-notifier-vsix-list-'));
+  try {
+    stageNotifierPackageFiles(notifierStageRoot, notifierPackageJson, 'README.marketplace.md');
+    const notifierResult = spawnSync(command.file, command.args, {
+      cwd: notifierStageRoot,
+      encoding: 'utf8',
+      maxBuffer: 20 * 1024 * 1024,
+      windowsVerbatimArguments: command.windowsVerbatimArguments
+    });
+
+    assert.equal(notifierResult.status, 0, notifierResult.stderr || notifierResult.stdout);
+
+    const notifierPackagedFiles = notifierResult.stdout
+      .split(/\r?\n/u)
+      .map((line) => line.trim().replace(/\\/g, '/'))
+      .filter(Boolean);
+
+    for (const expectedFile of [
+      'package.nls.json',
+      'package.nls.zh-cn.json',
+      'l10n/bundle.l10n.zh-cn.json'
+    ]) {
+      assert.ok(
+        notifierPackagedFiles.includes(expectedFile),
+        `Expected notifier VSIX file list to include localization resource ${expectedFile}.`
+      );
+    }
+  } finally {
+    rmSync(notifierStageRoot, { recursive: true, force: true });
+  }
 
   console.log('package-vsix file-list tests passed');
 } finally {

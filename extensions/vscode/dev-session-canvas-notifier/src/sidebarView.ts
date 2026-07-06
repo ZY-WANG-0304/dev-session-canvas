@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 
 import type { AttentionNotificationDebugRecord } from '../../../../packages/attention-protocol/src/index';
 import {
@@ -9,21 +9,24 @@ import {
   type NotifierInstallRequirement,
   type NotifierPlatformGuide,
   type NotifierPlatformGuideSection
-} from './sidebarEnvironment';
+} from './sidebarEnvironment.ts';
+import { notifierHtmlLang, type NotifierLocale, type NotifierLocalize } from './notifierLocalization.ts';
 import {
   detectSidebarCodeLanguage,
   renderSidebarMarkdown
-} from './sidebarRichText';
-import { activationModeSupportsCallback, resolveSidebarActivationMode } from './sidebarStatus';
+} from './sidebarRichText.ts';
+import { activationModeSupportsCallback, resolveSidebarActivationMode } from './sidebarStatus.ts';
 
 export interface NotifierSidebarLatestAttempt {
   requestedAt: string;
   activatedAt?: string;
 }
 
-interface NotifierSidebarCallbacks {
+export interface NotifierSidebarCallbacks {
   getModeLabel: () => NotifierExtensionModeLabel;
   getPlaySoundEnabled: () => boolean;
+  getLocale: () => NotifierLocale;
+  localize: NotifierLocalize;
   getLatestRecord: () => AttentionNotificationDebugRecord | undefined;
   getLatestManualAttempt: () => NotifierSidebarLatestAttempt | undefined;
   sendTestNotification: () => Promise<void>;
@@ -109,7 +112,9 @@ export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, 
     }
     view.webview.html = renderSectionHtml(view.webview, section, snapshot, {
       latestRecord: this.callbacks.getLatestRecord(),
-      latestManualAttempt: this.callbacks.getLatestManualAttempt()
+      latestManualAttempt: this.callbacks.getLatestManualAttempt(),
+      locale: this.callbacks.getLocale(),
+      localize: this.callbacks.localize
     });
   }
 
@@ -117,7 +122,8 @@ export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, 
     return probeNotifierEnvironmentSnapshot(
       process.platform,
       this.callbacks.getModeLabel(),
-      this.callbacks.getPlaySoundEnabled()
+      this.callbacks.getPlaySoundEnabled(),
+      this.callbacks.localize
     );
   }
 
@@ -134,6 +140,8 @@ export class NotifierSidebarViewProvider implements vscode.WebviewViewProvider, 
 interface SectionRenderContext {
   latestRecord: AttentionNotificationDebugRecord | undefined;
   latestManualAttempt: NotifierSidebarLatestAttempt | undefined;
+  locale: NotifierLocale;
+  localize: NotifierLocalize;
 }
 
 interface SidebarSectionAction {
@@ -158,7 +166,7 @@ interface SidebarSectionContent {
   callout?: SidebarSectionCallout;
 }
 
-function renderSectionHtml(
+export function renderSectionHtml(
   webview: vscode.Webview,
   section: NotifierSidebarSection,
   snapshot: NotifierEnvironmentSnapshot,
@@ -168,7 +176,7 @@ function renderSectionHtml(
   const content = resolveSectionContent(section, snapshot, ctx);
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${notifierHtmlLang(ctx.locale)}">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
@@ -199,17 +207,17 @@ function resolveSectionContent(
     case 'status':
       return buildStatusSectionContent(snapshot, ctx);
     case 'notes':
-      return buildNotesSectionContent(snapshot);
+      return buildNotesSectionContent(snapshot, ctx);
     case 'macOS':
-      return buildPlatformSectionContent(snapshot, 'macOS');
+      return buildPlatformSectionContent(snapshot, 'macOS', ctx);
     case 'linux':
-      return buildPlatformSectionContent(snapshot, 'Linux');
+      return buildPlatformSectionContent(snapshot, 'Linux', ctx);
     case 'windows':
-      return buildPlatformSectionContent(snapshot, 'Windows');
+      return buildPlatformSectionContent(snapshot, 'Windows', ctx);
     case 'codex':
-      return buildAgentSectionContent(snapshot, 'Codex');
+      return buildAgentSectionContent(snapshot, 'Codex', ctx);
     case 'claudeCode':
-      return buildAgentSectionContent(snapshot, 'Claude Code');
+      return buildAgentSectionContent(snapshot, 'Claude Code', ctx);
   }
 }
 
@@ -267,41 +275,41 @@ function buildStatusSectionContent(
   if (!hasRecentTest) {
     calloutTone = 'warning';
     statusIcon = svgWarning;
-    statusTitle = '尚未测试';
-    statusDetail = '点击下方按钮发送一次测试通知，验证当前环境是否正常工作。';
+    statusTitle = ctx.localize('Not tested yet');
+    statusDetail = ctx.localize('Use the button below to send one test notification and verify this environment.');
   } else if (!notificationPosted) {
     calloutTone = 'warning';
     statusIcon = svgWarning;
-    statusTitle = '通知发送失败';
-    statusDetail = ctx.latestRecord?.result.detail || '通知未能成功发送，请查看诊断日志了解详情。';
+    statusTitle = ctx.localize('Notification failed');
+    statusDetail = ctx.latestRecord?.result.detail || ctx.localize('The notification could not be sent. Open the diagnostic log for details.');
   } else if (supportsCallback && !callbackActivated) {
     statusIcon = svgSuccess;
-    statusTitle = '通知已发送';
-    statusDetail = '桌面通知已弹出。点击通知可验证回跳功能是否正常。';
+    statusTitle = ctx.localize('Notification sent');
+    statusDetail = ctx.localize('The desktop notification appeared. Click it to verify the callback path.');
   } else {
     statusIcon = svgSuccess;
-    statusTitle = '通知功能正常';
+    statusTitle = ctx.localize('Notifications are working');
     statusDetail = supportsCallback && callbackActivated
-      ? '通知发送与点击回跳均已验证通过。'
-      : '通知已成功发送。当前环境不支持点击回跳。';
+      ? ctx.localize('Notification delivery and click callback have both been verified.')
+      : ctx.localize('The notification was sent successfully. This environment does not support click callbacks.');
   }
 
   return {
-    markdown: buildStatusSummaryMarkdown(snapshot),
+    markdown: buildStatusSummaryMarkdown(snapshot, ctx),
     markdownClassName: 'is-prominent',
-    actionsMarkdown: buildStatusActionsMarkdown(),
+    actionsMarkdown: buildStatusActionsMarkdown(ctx),
     actions: [
       {
         command: 'send-test-notification',
-        label: '发送测试通知'
+        label: ctx.localize('Send Test Notification')
       },
       {
         command: 'open-diagnostic-output',
-        label: '查看诊断日志',
+        label: ctx.localize('View Diagnostic Log'),
         tone: 'secondary'
       }
     ],
-    calloutHeadingMarkdown: buildStatusResultHeadingMarkdown(),
+    calloutHeadingMarkdown: buildStatusResultHeadingMarkdown(ctx),
     callout: {
       iconSvg: statusIcon,
       markdown: buildStatusCardMarkdown(statusTitle, statusDetail),
@@ -311,42 +319,44 @@ function buildStatusSectionContent(
   };
 }
 
-function buildNotesSectionContent(snapshot: NotifierEnvironmentSnapshot): SidebarSectionContent {
+function buildNotesSectionContent(snapshot: NotifierEnvironmentSnapshot, ctx: SectionRenderContext): SidebarSectionContent {
   return {
-    markdown: snapshot.notes.length > 0 ? buildNotesMarkdown(snapshot.notes) : '暂无注意事项。',
+    markdown: snapshot.notes.length > 0 ? buildNotesMarkdown(snapshot.notes) : ctx.localize('No notes yet.'),
     markdownClassName: 'is-flush-list'
   };
 }
 
 function buildPlatformSectionContent(
   snapshot: NotifierEnvironmentSnapshot,
-  platformLabel: string
+  platformLabel: string,
+  ctx: SectionRenderContext
 ): SidebarSectionContent {
   const guide = snapshot.platformGuides.find((g) => g.platformLabel === platformLabel);
   if (!guide) {
     return {
-      markdown: '无平台信息。'
+      markdown: ctx.localize('No platform information.')
     };
   }
 
   return {
-    markdown: buildPlatformGuideMarkdown(snapshot, guide, guide.statusLabel === '当前平台')
+    markdown: buildPlatformGuideMarkdown(snapshot, guide, guide.platformLabel === snapshot.platformLabel, ctx)
   };
 }
 
 function buildAgentSectionContent(
   snapshot: NotifierEnvironmentSnapshot,
-  agentLabel: string
+  agentLabel: string,
+  ctx: SectionRenderContext
 ): SidebarSectionContent {
   const guide = snapshot.agentConfigurationGuides.find((g) => g.agentLabel === agentLabel);
   if (!guide) {
     return {
-      markdown: '无配置信息。'
+      markdown: ctx.localize('No configuration information.')
     };
   }
 
   return {
-    markdown: buildAgentGuideMarkdown(guide)
+    markdown: buildAgentGuideMarkdown(guide, ctx)
   };
 }
 
@@ -364,14 +374,14 @@ function buildNotesMarkdown(notes: string[]): string {
   return buildBulletListMarkdown(notes);
 }
 
-function buildStatusSummaryMarkdown(snapshot: NotifierEnvironmentSnapshot): string {
+function buildStatusSummaryMarkdown(snapshot: NotifierEnvironmentSnapshot, ctx: SectionRenderContext): string {
   return [
-    '### 当前环境',
+    `### ${ctx.localize('Current environment')}`,
     '',
-    `- **平台：** ${snapshot.platformLabel}`,
-    `- **通知方式：** ${snapshot.currentRouteLabel}`,
-    `- **点击回跳：** ${snapshot.activationLabel}`,
-    `- **声音提醒：** ${snapshot.soundLabel}`
+    `- **${ctx.localize('Platform')}:** ${snapshot.platformLabel}`,
+    `- **${ctx.localize('Notification route')}:** ${snapshot.currentRouteLabel}`,
+    `- **${ctx.localize('Click callback')}:** ${snapshot.activationLabel}`,
+    `- **${ctx.localize('Sound alert')}:** ${snapshot.soundLabel}`
   ].join('\n');
 }
 
@@ -379,23 +389,24 @@ function buildStatusCardMarkdown(statusTitle: string, statusDetail: string): str
   return [`**${statusTitle}**`, '', statusDetail].join('\n');
 }
 
-function buildStatusActionsMarkdown(): string {
-  return '### 调试通知';
+function buildStatusActionsMarkdown(ctx: SectionRenderContext): string {
+  return `### ${ctx.localize('Test notification')}`;
 }
 
-function buildStatusResultHeadingMarkdown(): string {
-  return '### 调试结果';
+function buildStatusResultHeadingMarkdown(ctx: SectionRenderContext): string {
+  return `### ${ctx.localize('Test result')}`;
 }
 
 function buildPlatformGuideMarkdown(
   snapshot: NotifierEnvironmentSnapshot,
   guide: NotifierPlatformGuide,
-  isCurrent: boolean
+  isCurrent: boolean,
+  ctx: SectionRenderContext
 ): string {
   if (isCurrent) {
-    const sections = ['**当前平台**'];
+    const sections = [`**${ctx.localize('Current platform')}**`];
     for (const requirement of snapshot.installRequirements) {
-      sections.push(buildInstallRequirementMarkdown(requirement));
+      sections.push(buildInstallRequirementMarkdown(requirement, ctx));
     }
     return sections.join('\n\n');
   }
@@ -412,8 +423,8 @@ function buildPlatformGuideMarkdown(
   return sections.join('\n\n');
 }
 
-function buildInstallRequirementMarkdown(req: NotifierInstallRequirement): string {
-  const sections = [`### ${req.name}`, '', `**状态：** ${req.statusLabel}`, '', req.detail];
+function buildInstallRequirementMarkdown(req: NotifierInstallRequirement, ctx: SectionRenderContext): string {
+  const sections = [`### ${req.name}`, '', `**${ctx.localize('Status')}:** ${req.statusLabel}`, '', req.detail];
   if (req.hints?.length) {
     sections.push('', buildBulletListMarkdown(req.hints));
   }
@@ -428,9 +439,9 @@ function buildPlatformGuideSectionMarkdown(section: NotifierPlatformGuideSection
   return parts.join('\n');
 }
 
-function buildAgentGuideMarkdown(guide: NotifierAgentConfigurationGuide): string {
+function buildAgentGuideMarkdown(guide: NotifierAgentConfigurationGuide, ctx: SectionRenderContext): string {
   const language = detectSidebarCodeLanguage(guide.recommendedSnippet);
-  const parts = [guide.detail, '', `配置路径：\`${guide.configPath}\``, ''];
+  const parts = [guide.detail, '', `${ctx.localize('Config path')}: \`${guide.configPath}\``, ''];
   if (language) {
     parts.push(`\`\`\`${language}`);
   } else {
