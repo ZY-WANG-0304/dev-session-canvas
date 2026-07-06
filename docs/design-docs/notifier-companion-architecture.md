@@ -14,7 +14,8 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/standard-monorepo-and-doc-knowledge-base.md
   - docs/exec-plans/active/cross-plan-coordination.md
-updated_at: 2026-07-06
+  - docs/exec-plans/active/notifier-bilingual-support-cleanup.md
+updated_at: 2026-07-07
 ---
 
 # UI 侧 Notifier Companion 架构
@@ -66,7 +67,7 @@ updated_at: 2026-07-06
 
 - 本方案适用于 VS Code 的 local / remote 双 host 运行模型，尤其是 workspace-side 主扩展与 UI-side companion 分居两侧的 `Remote SSH`、WSL、Dev Container 场景；不覆盖 IntelliJ 插件或仓库外的泛用桌面通知框架。
 - notifier companion 只负责 best-effort 地把 attention 事件投递到本机系统通知，并在平台能力允许时触发回跳；`attentionPending` 的权威状态、节点聚焦语义和去重冷却规则仍只归主扩展所有。
-- repo-local staged smoke / VSIX smoke 可能为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`；这些自动化验证“功能链路是否打通”，不直接等价于 Marketplace / VSIX 正式安装时的自动补齐链路证据。
+- repo-local staged smoke / VSIX smoke 可能为了装配 development host 或 packaged payload 临时移除 `extensionDependencies` / `extensionPack`；这些自动化验证“功能链路是否打通”，不直接等价于 Marketplace / VSIX 正式安装时的自动补齐链路证据。
 - 第一版允许不同平台在点击回调能力上存在 `direct-action`、`protocol`、`none` 三种能力差异；平台退化需要被显式暴露，而不是被伪装成“所有平台都已完整支持”。
 
 ### 5.3 核心规则与不变量
@@ -149,7 +150,7 @@ Linux `notify-send --action --wait` 这一类后端，当前实现会在本地 c
 - 避免 `A -> B -> A` 的 manifest 环，防止 Development Host / 已安装扩展在解析依赖时直接把两个扩展一起禁用
 - 在 `Remote SSH` / Dev Container 一类跨 host 场景里，也继续符合 VS Code 对“安装期 pack + 运行期 commands 协作 + 必要时单向依赖”的能力边界
 
-需要单独说明的是：repo-local 的 smoke host / VSIX smoke 为了在同一个 Development Host 中装配 wrapper，会在 staged 测试副本里临时移除 `extensionDependencies` / `extensionPack`。这不改变正式 manifest 的安装策略，但意味着“真实安装时是否自动补齐依赖”仍应通过 clean profile / Marketplace / VSIX 安装步骤单独复核，而不是把 staged smoke 当成直接证据。
+需要单独说明的是：repo-local 的 smoke host / VSIX smoke 为了在同一个 Development Host 中装配开发态扩展或 packaged payload，会在 staged 测试副本里临时移除 `extensionDependencies` / `extensionPack`。这不改变正式 manifest 的安装策略，但意味着“真实安装时是否自动补齐依赖”仍应通过 clean profile / Marketplace / VSIX 安装步骤单独复核，而不是把 staged smoke 当成直接证据。
 
 ### 5.9 开发态调试策略：用 debug-only 主扩展目录隔离 notifier 依赖
 
@@ -220,7 +221,7 @@ companion 当前放在 `extensions/vscode/dev-session-canvas-notifier/`，职责
 - 为通知点击生成 callback URI
 - 在桌面平台上把请求投递给本地系统通知后端
 - 在输出面板里记录实际使用的通知后端、`activationMode` 与最近一次人工验收结果
-- 在测试模式下使用 in-memory backend 记录已投递请求，并暴露 `__test` 命令用于 smoke 验证
+- 在测试模式下使用 in-memory backend 记录已投递请求，并暴露 `__test` 命令用于 smoke 验证；locale smoke 还会读取已渲染 sidebar HTML 和最近一次工作台提示记录，但这些 test-only 入口不参与正式用户功能
 
 ### 6.3 平台通知后端
 
@@ -268,8 +269,9 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 7. `npm run test:extension-manifest`
 8. `npm run test:package-vsix-file-list`
 9. `npm run test:notifier-smoke`
+10. `npm run test:notifier-locale-smoke`
 
-第 9 条是当前最关键的端到端验证：它需要在同一个 VS Code Development Host 内同时加载主扩展和 notifier companion，验证“主扩展发 companion 请求 -> companion 记录请求 -> companion 回放 callback -> 主扩展发送 `host/centerNode` 且保留 attention 状态”这一整条链路。2026-05-07 起，这条 smoke 已改为通过 staged smoke host + notifier wrapper 同时装配两侧扩展，并借助 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE` 继续暴露测试命令，latest head 可稳定复现通过。
+第 9 条是当前最关键的端到端验证：它需要在同一个 VS Code Development Host 内同时加载主扩展和 notifier companion，验证“主扩展发 companion 请求 -> companion 记录请求 -> companion 回放 callback -> 主扩展发送 `host/centerNode` 且保留 attention 状态”这一整条链路。2026-07-07 起，这条 smoke 已从 wrapper 手动激活改为两条真实 `extensionDevelopmentPath`，主扩展和 notifier 各自拥有真实 `ExtensionContext`，避免 VS Code 1.117 下 URI handler 重复注册；同时借助 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE` 继续暴露测试命令。第 10 条是 notifier 本地化的真实宿主 smoke：它分别用 `--locale=en` 与 `--locale=zh-cn` 启动 VS Code，打开 notifier sidebar，验证 manifest view/title/setting、sidebar HTML、手动测试通知、工作台提示、action label 和 callback 提示跟随 locale。
 
 真实桌面通知的人工验收，则统一使用 companion 自带命令：
 
@@ -289,7 +291,7 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 
 ## 9. 当前验证状态
 
-截至 2026-05-05，本设计对应的第一版实现已确认以下仓库内验证：
+截至 2026-07-07，本设计对应的第一版实现与本地化补充 smoke 已确认以下仓库内验证：
 
 - `npm run typecheck`
 - `npm run typecheck:notifier`
@@ -300,11 +302,12 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - `npm run test:extension-manifest`
 - `npm run test:package-vsix-file-list`
 - `npm run test:notifier-smoke`
+- `npm run test:notifier-locale-smoke`
 - `npm run test:smoke-storage-slot`
 - `npm run test:vsix-smoke`
 - `npm run test:smoke`
 
-其中，`npm run test:notifier-smoke` 在 2026-05-05 的 latest head 复核里已恢复通过。此前 `tests/vscode-smoke/notifier-companion-tests.cjs:32` 暴露的 `Missing extension devsessioncanvas.dev-session-canvas.` 问题，确认来自旧的 extension test host 拓扑：主扩展与 notifier companion 拆成两条 development path 后，测试宿主既拿不到主扩展 manifest，也不会把 `ExtensionMode.Test` 传给 staged 运行时。当前已通过 staged smoke host、wrapper 激活入口与统一 test harness mode 收口这条验证链路。
+其中，`npm run test:notifier-smoke` 在 2026-07-07 复核里已恢复通过。此前 staged smoke 依赖 wrapper 手动激活主扩展和 notifier；VS Code 1.117 下该 wrapper 会让 notifier 以主扩展的 `ExtensionContext` 注册 URI handler，触发 `Protocol handler already registered for extension [object Object]`。当前已改为 staged smoke host 下的两条真实 development extension，并显式激活 notifier，因此测试宿主既能看到主扩展 manifest，也能让 notifier 使用自己的 manifest、`package.nls*` 与 `l10n` 资源。`npm run test:notifier-locale-smoke` 同日补齐，已用英文和简体中文真实宿主覆盖 notifier 本地化代表路径。
 
 同时，本轮已补齐人工验收支撑：
 
@@ -315,6 +318,6 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 - 远端联调场景收口为 `Run Dev Session Canvas + Notifier (Remote Window)`，把 `Remote SSH` / WSL / Dev Container 下的 workspace 主扩展与本机 UI notifier 明确拆成两条开发态路径；从远端仓库窗口发起时只要求输入 `localRepoRoot`
 - 用户已在 macOS、Windows、Linux 三类本机环境完成真实桌面通知人工验收；其中 macOS 先确认过 `macos-osascript + activationMode=none` 退化路径，随后在安装 `terminal-notifier` 后完成 `macos-terminal-notifier + protocol` 主路径验证
 - 用户已完成 `Remote Main + Local Notifier` 联调拓扑人工验收，确认 workspace-side 主扩展与 UI-side notifier companion 可在同一 Development Host 中协同工作
-- 当前 staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此它们验证的是“功能链路已打通”，而不是“Marketplace / VSIX 自动补齐安装关系已被 repo-local 自动化直接覆盖”
+- 当前 staged smoke / VSIX smoke 会为了装配 development host 或 packaged payload 临时移除 `extensionDependencies` / `extensionPack`，因此它们验证的是“功能链路已打通”，而不是“Marketplace / VSIX 自动补齐安装关系已被 repo-local 自动化直接覆盖”
 
-因此，本设计现保持 `已验证`：notifier companion 的协议分层、桌面通知点击回调、跨平台本机通知路径、“远端主扩展 + 本机 UI notifier”的联调拓扑，以及 notifier manifest / runtime / sidebar 的英文默认与简体中文本地化资源，都已获得自动化或人工证据闭环。正式安装策略现已落成“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，也有人工安装证据，但真实 Marketplace / VSIX 自动补齐路径目前还没有被 repo-local smoke 直接覆盖。是否额外引入独立 extension pack 扩展包仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。
+因此，本设计现保持 `已验证`：notifier companion 的协议分层、桌面通知点击回调、跨平台本机通知路径、“远端主扩展 + 本机 UI notifier”的联调拓扑，以及 notifier manifest / runtime / sidebar 的英文默认与简体中文本地化资源，都已获得自动化或人工证据闭环。2026-07-07 新增的 notifier locale smoke 已把“真实英文 / 简体中文 VS Code 宿主里打开 notifier sidebar 并触发测试通知”的本地化代表路径纳入自动化；真实 OS 通知弹出、系统 shell action 和点击回跳仍按平台人工验收处理。正式安装策略现已落成“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，也有人工安装证据，但真实 Marketplace / VSIX 自动补齐路径目前还没有被 repo-local smoke 直接覆盖。是否额外引入独立 extension pack 扩展包仍可继续在其他计划中演进，但它不再阻塞本设计的架构正确性判断。
