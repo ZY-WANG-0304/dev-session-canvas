@@ -35,6 +35,11 @@
 - 模板市场集成分支登记为 `feature/templates-marketplace`。该集成分支首次创建时，以本分支策略合入后的 `origin/main` 为基线创建远端 `origin/feature/templates-marketplace`；远端分支存在前，不把子主题 MR 目标设为该分支。
 - `feature/templates-marketplace` 创建后定期通过 merge 追赶最新 `main`；个人或短生命周期子主题分支可以 rebase 到最新 `feature/templates-marketplace`。
 
+## 技术债清理流程
+
+1. 技术债登记、拆解和修复按 `docs/workflows/TECH_DEBT.md` 执行；复杂或跨模块技术债仍按 `docs/PLANS.md` 使用 `ExecPlan`。
+2. 修复技术债时，变更范围只服务于当前要修复的技术债；允许分批缩小大技术债，但不得混入顺手修复或引入新的技术债。
+
 ## 发布流程
 
 1. 当准备一次对外发布时，先确认当前版本对应的 feature 均已经合入 `main`；不要把尚未合并的功能分支 head 直接当成发布输入。
@@ -61,6 +66,7 @@
 
 - 分支命名规则见 `docs/workflows/BRANCH.md`。
 - commit 约定见 `docs/workflows/COMMIT.md`。
+- 技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 - 版本号命名规则见 `docs/workflows/VERSION.md`。
 - 模板市场生产服务部署流程见 `docs/workflows/SERVICE_DEPLOY.md`。
 - Code Review 规则见 `docs/workflows/CODE_REVIEW.md`。
