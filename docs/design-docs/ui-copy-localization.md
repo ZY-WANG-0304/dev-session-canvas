@@ -27,7 +27,7 @@ related_plans:
   - docs/exec-plans/completed/ui-copy-localization-template-core.md
   - docs/exec-plans/completed/ui-copy-localization-webview-test-compat.md
   - docs/exec-plans/completed/ui-copy-localization-locale-smoke.md
-  - docs/exec-plans/active/notifier-bilingual-support-cleanup.md
+  - docs/exec-plans/completed/notifier-bilingual-support-cleanup.md
 updated_at: 2026-07-07
 ---
 
