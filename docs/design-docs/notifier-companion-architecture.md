@@ -14,7 +14,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/standard-monorepo-and-doc-knowledge-base.md
   - docs/exec-plans/active/cross-plan-coordination.md
-  - docs/exec-plans/active/notifier-bilingual-support-cleanup.md
+  - docs/exec-plans/completed/notifier-bilingual-support-cleanup.md
 updated_at: 2026-07-07
 ---
 

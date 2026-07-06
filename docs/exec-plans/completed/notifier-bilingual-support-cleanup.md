@@ -203,3 +203,5 @@ notifier companion 是 UI 侧 VS Code extension，目录为 `extensions/vscode/d
 变更记录：2026-07-06 记录验证结果和剩余真实宿主抽查边界，原因是代码、文档与打包资源已完成并通过定向自动化。
 
 变更记录：2026-07-07 补充真实宿主 locale smoke 与 notifier smoke harness 修复，原因是用户反馈 source / manifest / VSIX file-list 不能替代真实 VS Code 英文 / 简体中文宿主覆盖，且既有 `test:notifier-smoke` 在 VS Code 1.117 下因 wrapper 重复 URI handler 失效。
+
+变更记录：2026-07-07 根据 PR review 将计划从 `docs/exec-plans/active/` 归档到 `docs/exec-plans/completed/`，原因是实现、文档同步与真实宿主 locale smoke 验证均已完成，继续留在 active 目录会误导后续协作者。
