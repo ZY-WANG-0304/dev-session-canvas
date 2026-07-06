@@ -1,0 +1,17 @@
+{
+  "extension.displayName": "Dev Session Canvas Notifier",
+  "extension.description": "Local UI-side companion extension that delivers desktop system notifications for Dev Session Canvas.",
+  "viewsContainer.notifier.title": "Dev Session Canvas Notifier",
+  "view.status.name": "Overview",
+  "view.notes.name": "Notes",
+  "view.macOS.name": "macOS",
+  "view.linux.name": "Linux",
+  "view.windows.name": "Windows",
+  "view.codex.name": "Codex",
+  "view.claudeCode.name": "Claude Code",
+  "command.sendTestNotification.title": "Dev Session Canvas Notifier: Send Test Desktop Notification",
+  "command.openDiagnosticOutput.title": "Dev Session Canvas Notifier: Open Notification Diagnostic Output",
+  "command.openSettings.title": "Dev Session Canvas Notifier: Open Settings",
+  "configuration.title": "Dev Session Canvas Notifier",
+  "configuration.notifications.playSound.description": "Controls whether the notifier companion requests an alert sound when it delivers desktop notifications from the current local UI side. When disabled, it requests a silent path where possible; whether the notification is completely silent still depends on the platform backend and system notification service."
+}

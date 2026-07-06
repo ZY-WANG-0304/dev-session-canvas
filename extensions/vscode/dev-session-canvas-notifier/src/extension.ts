@@ -7,7 +7,6 @@ import {
   NOTIFIER_TEST_COMMAND_IDS,
   isAttentionNotificationFocusAction,
   parseAttentionNotificationRequest,
-  type AttentionNotificationActivationMode,
   type AttentionNotificationDebugRecord,
   type AttentionNotificationDeliveryResult,
   type AttentionNotificationFocusAction,
@@ -15,9 +14,11 @@ import {
 } from '../../../../packages/attention-protocol/src/index';
 import { COMMAND_IDS } from '../../dev-session-canvas/src/common/extensionIdentity';
 import { isTestHarnessMode } from '../../dev-session-canvas/src/common/testHarness';
-import { postDesktopNotification } from './platformNotification';
-import { NotifierSidebarViewProvider, NOTIFIER_SIDEBAR_VIEW_IDS } from './sidebarView';
-import type { NotifierExtensionModeLabel } from './sidebarEnvironment';
+import { buildManualNotificationMessage } from './manualNotificationCopy.ts';
+import { resolveNotifierLocale } from './notifierLocalization.ts';
+import { postDesktopNotification } from './platformNotification.ts';
+import { NotifierSidebarViewProvider, NOTIFIER_SIDEBAR_VIEW_IDS } from './sidebarView.ts';
+import type { NotifierExtensionModeLabel } from './sidebarEnvironment.ts';
 
 const FOCUS_URI_PATH = '/focus';
 const MAX_DEBUG_RECORDS = 20;
@@ -62,6 +63,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const sidebarViewProvider = new NotifierSidebarViewProvider({
     getModeLabel: () => getExtensionModeLabel(context.extensionMode),
     getPlaySoundEnabled: () => readPlaySoundEnabled(),
+    getLocale: () => resolveNotifierLocale(vscode.env.language),
+    localize: (message, args) => localizeNotifierMessage(message, args),
     getLatestRecord: () => postedNotifications.at(-1),
     getLatestManualAttempt: () => getLatestManualNotificationAttempt(manualNotificationAttempts),
     sendTestNotification: async () => sendTestNotification(),
@@ -202,7 +205,8 @@ export function activate(context: vscode.ExtensionContext): void {
             request: normalizedRequest,
             callbackUri,
             onDidActivate: () => executeFocusAction(focusAction),
-            playSound
+            playSound,
+            actionLabel: vscode.l10n.t('View Node')
           });
 
     recordDebugNotification(postedNotifications, {
@@ -244,7 +248,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     appendOutputLine(outputChannel, `manual notification activated requestId=${normalizedRequestId}`);
     void sidebarViewProvider.refresh();
-    void vscode.window.showInformationMessage('Dev Session Canvas Notifier 已收到测试通知点击回调。');
+    void vscode.window.showInformationMessage(
+      vscode.l10n.t('Dev Session Canvas Notifier received the test notification click callback.')
+    );
   };
 
   const sendTestNotification = async (): Promise<void> => {
@@ -258,14 +264,14 @@ export function activate(context: vscode.ExtensionContext): void {
       requestedAt: new Date().toISOString()
     });
 
-    const actions = ['打开输出'];
-    const message = buildManualNotificationMessage(outcome.result);
+    const actions = [vscode.l10n.t('Open Output')];
+    const message = buildManualNotificationMessage(outcome.result, localizeNotifierMessage);
     const selectedAction =
       outcome.result.status === 'posted'
         ? await vscode.window.showInformationMessage(message, ...actions)
         : await vscode.window.showWarningMessage(message, ...actions);
 
-    if (selectedAction === '打开输出') {
+    if (selectedAction === actions[0]) {
       outputChannel.show(true);
       logPlatformSnapshot(outputChannel, postedNotifications.at(-1), readPlaySoundEnabled());
     }
@@ -337,6 +343,10 @@ export function deactivate(): void {
   // No-op.
 }
 
+function localizeNotifierMessage(message: string, args?: Record<string, string | number | boolean>): string {
+  return args ? vscode.l10n.t(message, args) : vscode.l10n.t(message);
+}
+
 async function buildFocusCallbackUri(
   context: vscode.ExtensionContext,
   registerPendingFocusAction: (action: AttentionNotificationFocusAction) => Promise<string>,
@@ -386,7 +396,10 @@ function buildManualNotificationRequest(requestId: string): AttentionNotificatio
     version: ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
     kind: 'execution-attention',
     title: 'DSCanvas · Notifier',
-    message: `测试桌面通知 ${createdAtLabel}；若当前后端支持点击回调，应回到 VS Code 并写入诊断输出。`,
+    message: vscode.l10n.t(
+      'Test desktop notification {time}. If the current backend supports click callbacks, it should return to VS Code and write diagnostic output.',
+      { time: createdAtLabel }
+    ),
     dedupeKey: `manual-test:${requestId}`,
     focusAction: {
       command: MANUAL_COMMAND_IDS.acknowledgeTestNotification,
@@ -536,20 +549,6 @@ function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value) && typeof value === 'object';
 }
 
-function buildManualNotificationMessage(result: AttentionNotificationDeliveryResult): string {
-  if (result.status !== 'posted') {
-    return `测试桌面通知发送失败（backend=${result.backend}）。${result.detail ?? '请打开诊断输出查看原因。'}`;
-  }
-
-  if (result.activationMode === 'none') {
-    return `测试桌面通知已发出（backend=${result.backend}），但当前后端只保证通知出现，不支持点击回到 VS Code。`;
-  }
-
-  return `测试桌面通知已发出（backend=${result.backend}，activation=${describeActivationMode(
-    result.activationMode
-  )}）。请点击系统通知完成人工验收。`;
-}
-
 function logPlatformSnapshot(
   outputChannel: vscode.OutputChannel,
   lastRecord: AttentionNotificationDebugRecord | undefined,
@@ -618,22 +617,6 @@ function formatLocalClock(value: Date): string {
   const minutes = String(value.getMinutes()).padStart(2, '0');
   const seconds = String(value.getSeconds()).padStart(2, '0');
   return `${hours}:${minutes}:${seconds}`;
-}
-
-function describeActivationMode(mode: AttentionNotificationActivationMode): string {
-  if (mode === 'direct-action') {
-    return 'direct-action';
-  }
-
-  if (mode === 'protocol') {
-    return 'protocol';
-  }
-
-  if (mode === 'test-replay') {
-    return 'test-replay';
-  }
-
-  return 'none';
 }
 
 function getExtensionModeLabel(mode: vscode.ExtensionMode): NotifierExtensionModeLabel {

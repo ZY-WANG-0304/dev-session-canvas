@@ -6,7 +6,8 @@
 
 ## 当前发布素材
 
-- Marketplace listing 正文：`extensions/vscode/dev-session-canvas-notifier/README.marketplace.md`
+- Marketplace listing 英文默认正文：`extensions/vscode/dev-session-canvas-notifier/README.marketplace.md`
+- Marketplace listing 中文对应版：`extensions/vscode/dev-session-canvas-notifier/README.marketplace.zh-CN.md`（仅作仓库内中文对应文案，不作为默认打包输入）
 - release notes：`extensions/vscode/dev-session-canvas-notifier/CHANGELOG.md`
 - 图标资产：`extensions/vscode/dev-session-canvas-notifier/images/icon.png`
 - 图标矢量源：`extensions/vscode/dev-session-canvas-notifier/images/icon.svg`
@@ -18,6 +19,7 @@
 ## Marketplace 定稿口径
 
 - notifier 不是独立替代品；对外文案必须继续明确“主扩展负责画布、节点执行与 attention 判定，notifier 负责本机 UI 侧桌面通知投递”。
+- 默认 Marketplace listing 使用英文，命令、视图、设置、sidebar 和手动测试通知文案跟随 VS Code locale 提供英文默认与简体中文本地化；中文 listing 对应版只保存在仓库内。
 - 安装说明统一写成：
   1. 安装 `Dev Session Canvas Notifier`
   2. 若当前尚未安装主扩展，VS Code 会自动补齐 `Dev Session Canvas`
@@ -45,7 +47,11 @@
    - `extensions/vscode/dev-session-canvas-notifier/CHANGELOG.md`
    - `package-lock.json`
 4. 复核以下发布素材已经定稿，且没有引用仓库外或子包目录外的相对路径：
-   - `extensions/vscode/dev-session-canvas-notifier/README.marketplace.md`
+   - `extensions/vscode/dev-session-canvas-notifier/README.marketplace.md`（英文默认）
+   - `extensions/vscode/dev-session-canvas-notifier/README.marketplace.zh-CN.md`（中文对应版）
+   - `extensions/vscode/dev-session-canvas-notifier/package.nls.json`
+   - `extensions/vscode/dev-session-canvas-notifier/package.nls.zh-cn.json`
+   - `extensions/vscode/dev-session-canvas-notifier/l10n/bundle.l10n.zh-cn.json`
    - `extensions/vscode/dev-session-canvas-notifier/LICENSE`
    - `extensions/vscode/dev-session-canvas-notifier/images/icon.png`
 5. 在最终 release checkout 中执行：
@@ -102,13 +108,14 @@ workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起�
    - 只安装 `Dev Session Canvas Notifier`，确认 VS Code 会自动补齐 `Dev Session Canvas`
    - 卸载后只安装 `Dev Session Canvas`，确认 VS Code 会自动补齐 `Dev Session Canvas Notifier`
 4. 确认主扩展设置里的 `devSessionCanvas.notifications.attentionSignalBridge` 默认值是 `system`。
-5. 运行 `Dev Session Canvas Notifier: 发送测试桌面通知`，确认系统通知出现，并在支持平台上验证点击后是否能回到 VS Code。
-6. 运行 `Dev Session Canvas Notifier: 打开通知诊断输出`，确认 `backend`、`activationMode` 与最近一次投递结果符合当前平台预期。
+5. 英文 locale 下运行 `Dev Session Canvas Notifier: Send Test Desktop Notification`，简体中文 locale 下运行 `Dev Session Canvas Notifier: 发送测试桌面通知`，确认命令标题、sidebar 文案、系统通知 action label 和工作台提示跟随 locale，并确认系统通知出现；在支持平台上验证点击后是否能回到 VS Code。
+6. 英文 locale 下运行 `Dev Session Canvas Notifier: Open Notification Diagnostic Output`，简体中文 locale 下运行 `Dev Session Canvas Notifier: 打开通知诊断输出`，确认 `backend`、`activationMode` 与最近一次投递结果符合当前平台预期。
 
 ## 当前验证备注
 
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
+- notifier 现在与主扩展一样使用英文默认 + 简体中文本地化资源；发布前必须确认 VSIX file list 包含 `package.nls.json`、`package.nls.zh-cn.json` 与 `l10n/bundle.l10n.zh-cn.json`。
 - `0.21.1` 已从最终 `main` release ref `6cfdb958d1f9bb579ec73c99ee28660864b582c4` 完成 GitHub Release assets + Open VSX 兜底发布；GitHub Release `v0.21.1` 已包含 notifier VSIX、主扩展 VSIX 与 release manifest assets。Release manifest 记录 Open VSX notifier `0.21.1` 与主扩展 `0.21.1` 均 verified，Visual Studio Marketplace public gallery / 发布状态仍为 deferred / `publish-failed`，因此 notifier 的 VSM 页面不得宣称为已可用。
 - `0.22.0` 发布准备分支已同步 notifier manifest、notifier changelog 与本手册中的目标版本；notifier 本轮继续只随主扩展对齐版本，不引入新的通知投递行为变更。repo-local 验证已通过 `npm run build:notifier`、`npm run test:notifier-source`、`npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix` 与 `npm run test:vsix-smoke` 中的 companion staged runtime 加载；当前 notifier VSIX 为 `dev-session-canvas-notifier-0.22.0.vsix`（`10` files，`146.01 KB` / `149,515 bytes`，`sha256=7a42ab441442db5b19dd52bed7897dd64157d0e772d20c7f163307607a3ceb9f`）。最终发布前仍需在发布准备 MR 合入后的 clean `main` ref 上重跑 clean-checkout VSIX / packaged-payload smoke 与 `publish/v0.22.0` dry-run；当前不把发布准备分支内产物写作最终 Release assets。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 wrapper 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 wrapper smoke 直接当成这条结论的自动化证据。
