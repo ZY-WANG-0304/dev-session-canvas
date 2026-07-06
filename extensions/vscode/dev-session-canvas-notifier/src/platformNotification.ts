@@ -12,6 +12,7 @@ export interface DesktopNotificationOptions {
   callbackUri?: string;
   onDidActivate?: () => void | Promise<void>;
   playSound?: boolean;
+  actionLabel?: string;
 }
 
 export interface ShellInvocation {
@@ -77,7 +78,7 @@ function buildLinuxNotifySendArgs(options: DesktopNotificationOptions, includeAc
 
   if (options.callbackUri) {
     if (includeActionArgs) {
-      args.push('--action=view=查看节点', '--wait');
+      args.push(`--action=view=${options.actionLabel ?? 'View Node'}`, '--wait');
     }
   }
   args.push(options.request.title, options.request.message);

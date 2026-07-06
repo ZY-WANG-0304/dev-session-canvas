@@ -570,4 +570,60 @@ assert.equal(
   'Expected the default package.nls file to use English command titles.'
 );
 
+
+const notifierManifestPath = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'package.json');
+const notifierManifest = JSON.parse(await readFile(notifierManifestPath, 'utf8'));
+const notifierNlsPath = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'package.nls.json');
+const notifierZhCnNlsPath = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'package.nls.zh-cn.json');
+const notifierRuntimeL10nPath = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'l10n', 'bundle.l10n.zh-cn.json');
+const notifierNls = JSON.parse(await readFile(notifierNlsPath, 'utf8'));
+const notifierZhCnNls = JSON.parse(await readFile(notifierZhCnNlsPath, 'utf8'));
+const notifierRuntimeL10n = JSON.parse(await readFile(notifierRuntimeL10nPath, 'utf8'));
+assert.equal(
+  notifierManifest.displayName,
+  '%extension.displayName%',
+  'Expected notifier manifest displayName to use package.nls indirection.'
+);
+assert.equal(
+  notifierManifest.description,
+  '%extension.description%',
+  'Expected notifier manifest description to use package.nls indirection.'
+);
+assert.equal(notifierManifest.l10n, './l10n', 'Expected notifier extension to declare the VS Code l10n bundle directory.');
+assert.deepEqual(
+  Object.keys(notifierZhCnNls).sort(),
+  Object.keys(notifierNls).sort(),
+  'Expected notifier package.nls.zh-cn.json to have the same keys as the English default package.nls.json.'
+);
+const notifierManifestText = await readFile(notifierManifestPath, 'utf8');
+const notifierReferencedNlsKeys = Array.from(notifierManifestText.matchAll(/%([^%]+)%/gu), (match) => match[1]);
+const notifierMissingNlsKeys = notifierReferencedNlsKeys.filter(
+  (key) => typeof notifierNls[key] !== 'string' || notifierNls[key].length === 0
+);
+assert.deepEqual(
+  notifierMissingNlsKeys,
+  [],
+  'Expected every notifier package.json %key% reference to resolve in package.nls.json.'
+);
+assert.equal(
+  notifierNls['command.sendTestNotification.title'],
+  'Dev Session Canvas Notifier: Send Test Desktop Notification',
+  'Expected notifier default package.nls file to use English command titles.'
+);
+assert.equal(
+  notifierZhCnNls['command.sendTestNotification.title'],
+  'Dev Session Canvas Notifier: 发送测试桌面通知',
+  'Expected notifier Simplified Chinese package.nls file to localize command titles.'
+);
+assert.equal(
+  notifierRuntimeL10n['Send Test Notification'],
+  '发送测试通知',
+  'Expected notifier runtime zh-cn bundle to include sidebar button translations.'
+);
+assert.equal(
+  notifierRuntimeL10n['View Node'],
+  '查看节点',
+  'Expected notifier runtime zh-cn bundle to include desktop action label translations.'
+);
+
 console.log('extension manifest tests passed');

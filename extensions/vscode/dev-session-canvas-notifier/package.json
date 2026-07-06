@@ -1,7 +1,7 @@
 {
   "name": "dev-session-canvas-notifier",
-  "displayName": "Dev Session Canvas Notifier",
-  "description": "在本机 UI 侧为 Dev Session Canvas 投递桌面系统通知的 companion extension。",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
   "version": "0.22.0",
   "publisher": "devsessioncanvas",
   "license": "Apache-2.0",
@@ -33,7 +33,11 @@
     "CHANGELOG.md",
     "LICENSE",
     "README.marketplace.md",
-    "package.json"
+    "package.json",
+    "package.nls.json",
+    "package.nls.zh-cn.json",
+    "l10n/**",
+    "README.marketplace.zh-CN.md"
   ],
   "extensionKind": [
     "ui"
@@ -57,7 +61,7 @@
       "activitybar": [
         {
           "id": "devSessionCanvasNotifier",
-          "title": "Dev Session Canvas Notifier",
+          "title": "%viewsContainer.notifier.title%",
           "icon": "images/activitybar.svg"
         }
       ]
@@ -66,37 +70,37 @@
       "devSessionCanvasNotifier": [
         {
           "id": "devSessionCanvasNotifier.status",
-          "name": "概览",
+          "name": "%view.status.name%",
           "type": "webview"
         },
         {
           "id": "devSessionCanvasNotifier.notes",
-          "name": "注意事项",
+          "name": "%view.notes.name%",
           "type": "webview"
         },
         {
           "id": "devSessionCanvasNotifier.macOS",
-          "name": "macOS",
+          "name": "%view.macOS.name%",
           "type": "webview"
         },
         {
           "id": "devSessionCanvasNotifier.linux",
-          "name": "Linux",
+          "name": "%view.linux.name%",
           "type": "webview"
         },
         {
           "id": "devSessionCanvasNotifier.windows",
-          "name": "Windows",
+          "name": "%view.windows.name%",
           "type": "webview"
         },
         {
           "id": "devSessionCanvasNotifier.codex",
-          "name": "Codex",
+          "name": "%view.codex.name%",
           "type": "webview"
         },
         {
           "id": "devSessionCanvasNotifier.claudeCode",
-          "name": "Claude Code",
+          "name": "%view.claudeCode.name%",
           "type": "webview"
         }
       ]
@@ -113,26 +117,26 @@
     "commands": [
       {
         "command": "devSessionCanvasNotifier.sendTestNotification",
-        "title": "Dev Session Canvas Notifier: 发送测试桌面通知"
+        "title": "%command.sendTestNotification.title%"
       },
       {
         "command": "devSessionCanvasNotifier.openDiagnosticOutput",
-        "title": "Dev Session Canvas Notifier: 打开通知诊断输出"
+        "title": "%command.openDiagnosticOutput.title%"
       },
       {
         "command": "devSessionCanvasNotifier.openSettings",
-        "title": "Dev Session Canvas Notifier: 打开配置",
+        "title": "%command.openSettings.title%",
         "icon": "$(settings-gear)"
       }
     ],
     "configuration": {
-      "title": "Dev Session Canvas Notifier",
+      "title": "%configuration.title%",
       "properties": {
         "devSessionCanvasNotifier.notifications.playSound": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "markdownDescription": "控制 notifier companion 在当前本机 UI 侧投递桌面通知时，是否请求系统播放提示音。关闭后会尽量走静音路径；实际是否完全静音取决于平台后端与系统通知服务。"
+          "markdownDescription": "%configuration.notifications.playSound.description%"
         }
       }
     }
@@ -144,5 +148,6 @@
     "package:vsix": "npm run package && node ./scripts/package-vsix.mjs",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "vscode:prepublish": "npm run package"
-  }
+  },
+  "l10n": "./l10n"
 }
