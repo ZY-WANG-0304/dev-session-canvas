@@ -1,72 +1,76 @@
 # Dev Session Canvas Notifier
 
-`Dev Session Canvas Notifier` 是 `Dev Session Canvas` 的本机 UI 侧 companion extension，用于把执行节点的 attention event 投递成桌面系统通知。
+`Dev Session Canvas Notifier` is the local UI-side companion extension for `Dev Session Canvas`. It receives structured execution-node attention events from the main extension and delivers best-effort desktop system notifications from the machine that is showing VS Code.
 
-它不是独立替代品：画布、节点执行与 attention 判定仍由主扩展 `Dev Session Canvas` 负责；notifier 负责在当前本机 UI 环境中接收结构化通知请求，并尽量把它们变成可见、可诊断、在支持平台上可点击回到 VS Code 的桌面通知。
+English (default) | [简体中文](README.marketplace.zh-CN.md)
 
-## 适用场景
+It is not a standalone replacement for the main extension. Canvas state, node execution, and attention detection still belong to `Dev Session Canvas`; the notifier focuses on turning those requests into visible, diagnosable desktop notifications and, where the platform supports it, a click path back into the relevant VS Code window.
 
-- 主扩展运行在 `Remote SSH`、WSL、Dev Container 等远端 workspace，需要把提醒带回本机桌面
-- 本地 workspace 中希望在切出 VS Code 后仍收到系统通知
-- 想区分“VS Code 工作台通知”和“本机桌面通知”，并在支持的平台上点击后回到对应节点
+## When It Helps
 
-## 当前能力
+- The main extension runs in `Remote SSH`, WSL, or a Dev Container, but the alert should appear on your local desktop.
+- You use a local workspace and still want desktop notifications when VS Code is not in the foreground.
+- You want a clear separation between VS Code workbench messages and operating-system desktop notifications.
+- You want the notification click path, on supported platforms, to return to the relevant canvas node without clearing the node attention state.
 
-- 在本机 UI 侧按平台选择合适后端：
-  - macOS：`terminal-notifier`，或回退到 `osascript`
-  - Linux：`notify-send`
-  - Windows：Toast Notification
-- 显式区分通知回调能力：支持点击回到 VS Code 的完整路径，与“只保证通知出现”的退化路径不会混写
-- 提供独立 sidebar，拆成 `概览`、`注意事项`、平台说明与 Agent 配置多个 section；可在 `概览` 标题行通过齿轮直接打开配置
-- 提供两条人工验收命令：
-  - `Dev Session Canvas Notifier: 发送测试桌面通知`
-  - `Dev Session Canvas Notifier: 打开通知诊断输出`
+## Current Capabilities
 
-## 安装与启用
+- Chooses a local UI-side backend per platform:
+  - macOS: `terminal-notifier`, with `osascript` fallback
+  - Linux: `notify-send`
+  - Windows: Toast Notification through PowerShell
+- Explicitly reports whether the current backend supports click callbacks or only guarantees that the notification appears.
+- Provides a dedicated sidebar with `Overview`, `Notes`, platform guidance, and Agent configuration sections.
+- Provides command-palette actions:
+  - `Dev Session Canvas Notifier: Send Test Desktop Notification`
+  - `Dev Session Canvas Notifier: Open Notification Diagnostic Output`
+  - `Dev Session Canvas Notifier: Open Settings`
+- Follows the VS Code locale for product-owned UI copy: English is the default, with Simplified Chinese localization included.
 
-1. 安装本扩展 `Dev Session Canvas Notifier`
-2. 若当前尚未安装主扩展，VS Code 会自动补齐 `Dev Session Canvas`
-3. 如果你是从主扩展页面安装，VS Code 也会自动带上本扩展，无需额外单独安装
-4. 主扩展默认已将 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `system`；如需改回工作台消息或关闭桥接，可在设置中调整
-5. 如需关闭提示音请求，可将 `devSessionCanvasNotifier.notifications.playSound` 设为 `false`
+## Installation And Enablement
 
-`system` 模式会优先把 attention signal 交给本扩展；若 companion 缺失、当前平台不支持或本次投递失败，主扩展会自动回退到 VS Code 工作台消息。
+1. Install `Dev Session Canvas Notifier`.
+2. If `Dev Session Canvas` is not installed yet, VS Code installs the main extension through the notifier dependency.
+3. If you install from the main `Dev Session Canvas` page first, VS Code also installs this companion through the main extension pack.
+4. The main extension defaults `devSessionCanvas.notifications.attentionSignalBridge` to `system`; switch it to `workbench` or `none` in settings if you prefer a different bridge.
+5. To request silent desktop notifications where supported, set `devSessionCanvasNotifier.notifications.playSound` to `false`.
 
-如果你主要使用 `Codex` provider，请确认你的 `Codex` 环境会输出 attention signal；当前仓库内的常见配置键是 `notification_method` 与 `notification_condition`。不同 `Codex` 版本支持的具体取值可能不同；若默认没有发出提醒，可优先检查这两项配置。
+In `system` mode, the main extension sends attention signals to this companion first. If the companion is unavailable, unsupported, or fails to deliver a notification, the main extension falls back to a VS Code workbench message.
 
-## 本机系统环境配置
+If you mainly use the `Codex` provider, confirm that the Codex environment emits attention signals. The common configuration keys used by this repository are `notification_method` and `notification_condition`. Supported values can vary across Codex versions, so check those settings first if no signal is emitted.
 
-无论你的 workspace / Agent 跑在本地、`Remote SSH`、WSL 还是 Dev Container，`Dev Session Canvas Notifier` 和桌面通知后端都应安装在当前 VS Code 的本机 UI 环境，而不是远端宿主。
+## Local Desktop Environment Setup
+
+Whether your workspace or Agent runs locally, in `Remote SSH`, in WSL, or in a Dev Container, `Dev Session Canvas Notifier` and the desktop notification backend should be installed on the local UI side that displays VS Code, not on the remote host.
 
 ### macOS
 
-- 如需点击系统通知后回到 VS Code，建议预装 `terminal-notifier`
-- 常用安装命令：`brew install terminal-notifier`
-- 若未安装，notifier 会回退到系统自带的 `osascript display notification`，只保证通知出现，不承诺点击回跳
+- Install `terminal-notifier` if you need clicking a notification to return to VS Code.
+- Common command: `brew install terminal-notifier`
+- Without it, the notifier falls back to the built-in `osascript display notification` path. That fallback only guarantees notification display and does not promise click callbacks.
 
 ### Linux
 
-- 需要 `notify-send` 才能发送桌面通知
-- 常见安装命令：
-  - Debian / Ubuntu：`sudo apt install libnotify-bin`
-  - Fedora：`sudo dnf install libnotify`
-  - Arch：`sudo pacman -S libnotify`
-- 是否支持点击回跳取决于桌面环境与通知服务是否支持 `notify-send --action --wait`
+- Install `notify-send` before sending desktop notifications.
+- Common install commands:
+  - Debian / Ubuntu: `sudo apt install libnotify-bin`
+  - Fedora: `sudo dnf install libnotify`
+  - Arch: `sudo pacman -S libnotify`
+- Click callback support depends on whether the desktop environment and notification service support `notify-send --action --wait`.
 
 ### Windows
 
-- 通常不需要额外安装通知 CLI
-- 需要确认系统通知权限、通知中心和 Focus Assist / 勿扰模式没有拦截 VS Code Toast
-- 如果通知未出现，优先检查 `Windows 设置 -> 系统 -> 通知` 中是否允许 VS Code 发出通知
+- Usually no extra notification CLI is required.
+- Confirm that system notification permissions, Notification Center, and Focus Assist / Do Not Disturb are not blocking VS Code Toasts.
+- If a notification does not appear, first check `Windows Settings -> System -> Notifications` and make sure VS Code notifications are allowed.
 
-## Provider / Agent 运行宿主配置
+## Provider / Agent Host Configuration
 
-桌面通知 companion 只负责把提醒送到本机桌面；要让不同 Provider 真正发出 attention signal，还需要在 Agent 实际运行的宿主上完成各自的 CLI 配置。  
-如果 Agent 跑在远端机器，这些 Provider 配置也应该写在远端宿主，而不是本机 UI 侧。
+The companion only delivers notifications to the local desktop. To make each provider emit an attention signal, configure the CLI on the host where the Agent actually runs. If the Agent runs remotely, these provider settings belong on the remote host, not on the local UI machine.
 
 ### Codex
 
-推荐在 Agent 运行宿主上的 `~/.codex/config.toml` 中开启通知：
+Recommended `~/.codex/config.toml` on the Agent host:
 
 ```toml
 [tui]
@@ -75,12 +79,12 @@ notification_method = "osc9"
 notification_condition = "always"
 ```
 
-- 如果文件里已有其它模型、审批或 sandbox 配置，只补 `[tui]` 相关项即可
-- 若你使用主扩展生成默认模板，这几项通知配置通常已默认带入
+- If the file already has model, approval, or sandbox settings, only add the `[tui]` keys.
+- Agents created from the built-in default template usually include these notification settings already.
 
 ### Claude Code
 
-推荐在 Agent 运行宿主上的 `~/.claude/settings.json` 中启用 iTerm2 风格通知通道：
+Recommended `~/.claude/settings.json` on the Agent host:
 
 ```json
 {
@@ -88,17 +92,18 @@ notification_condition = "always"
 }
 ```
 
-- 如果 `settings.json` 已有其它字段，只合并 `preferredNotifChannel`，不要整文件替换
-- 若你使用主扩展生成默认模板，这项配置通常已默认带入，无需额外 hooks
+- If `settings.json` already has other fields, merge `preferredNotifChannel` instead of replacing the file.
+- Agents created from the built-in default template usually include this setting already and do not need extra hooks.
 
-## Preview 边界
+## Preview Boundaries
 
-- 当前仍为 `Preview` companion extension，不承诺所有平台都具备完全一致的通知点击体验
-- 缺少主扩展时，本扩展不会单独提供画布或执行节点能力
-- 当前更推荐与 `Dev Session Canvas` 的公开 `Preview` 版本一起使用，而不是与历史实验包混搭
+- This is still a `Preview` companion extension, and platform click behavior is intentionally best-effort.
+- Without the main extension, this companion does not provide canvas or execution-node capabilities by itself.
+- Use it with the matching public `Preview` version of `Dev Session Canvas`; mixing it with older experimental packages is not recommended.
+- UI language follows the VS Code locale. User-owned data, file paths, terminal output, provider output, configuration snippets, and diagnostic facts remain unchanged.
 
-## 反馈与支持
+## Feedback And Support
 
-- Issue 反馈：<https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
-- 仓库主页：<https://github.com/ZY-WANG-0304/dev-session-canvas>
-- 安全问题：<https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/docs/SECURITY.md>
+- Issues: <https://github.com/ZY-WANG-0304/dev-session-canvas/issues>
+- Repository: <https://github.com/ZY-WANG-0304/dev-session-canvas>
+- Security: <https://github.com/ZY-WANG-0304/dev-session-canvas/blob/main/docs/SECURITY.md>

@@ -103,8 +103,12 @@ function assertPackageInputsExist() {
   const requiredPaths = [
     path.join(packageRoot, 'dist', 'extension.js'),
     path.join(packageRoot, 'README.marketplace.md'),
+    path.join(packageRoot, 'README.marketplace.zh-CN.md'),
     path.join(packageRoot, 'CHANGELOG.md'),
     path.join(packageRoot, 'LICENSE'),
+    path.join(packageRoot, 'package.nls.json'),
+    path.join(packageRoot, 'package.nls.zh-cn.json'),
+    path.join(packageRoot, 'l10n', 'bundle.l10n.zh-cn.json'),
     path.join(packageRoot, 'images', 'icon.png'),
     path.join(packageRoot, 'images', 'activitybar.svg')
   ];
@@ -116,7 +120,7 @@ function assertPackageInputsExist() {
   }
 }
 
-function stagePackageFiles(stagePackageRoot, packageJson, readmePath) {
+export function stagePackageFiles(stagePackageRoot, packageJson, readmePath) {
   const stagedPackageJson = JSON.parse(JSON.stringify(packageJson));
   delete stagedPackageJson.scripts;
 
@@ -127,8 +131,15 @@ function stagePackageFiles(stagePackageRoot, packageJson, readmePath) {
   );
 
   copyFileSync(path.join(packageRoot, readmePath), path.join(stagePackageRoot, readmePath));
+  copyFileSync(
+    path.join(packageRoot, 'README.marketplace.zh-CN.md'),
+    path.join(stagePackageRoot, 'README.marketplace.zh-CN.md')
+  );
   copyFileSync(path.join(packageRoot, 'CHANGELOG.md'), path.join(stagePackageRoot, 'CHANGELOG.md'));
   copyFileSync(path.join(packageRoot, 'LICENSE'), path.join(stagePackageRoot, 'LICENSE'));
+  copyFileSync(path.join(packageRoot, 'package.nls.json'), path.join(stagePackageRoot, 'package.nls.json'));
+  copyFileSync(path.join(packageRoot, 'package.nls.zh-cn.json'), path.join(stagePackageRoot, 'package.nls.zh-cn.json'));
+  cpSync(path.join(packageRoot, 'l10n'), path.join(stagePackageRoot, 'l10n'), { recursive: true });
   cpSync(path.join(packageRoot, 'dist'), path.join(stagePackageRoot, 'dist'), { recursive: true });
   cpSync(path.join(packageRoot, 'images'), path.join(stagePackageRoot, 'images'), { recursive: true });
 }
@@ -155,7 +166,7 @@ function tryResolveGitRevision(rootDir, revision) {
     encoding: 'utf8'
   });
 
-  if (result.error || result.status !== 0) {
+  if (result.status !== 0) {
     return undefined;
   }
 
@@ -210,11 +221,18 @@ function validateReadmeRewriteTargets({
     });
   }
 
-  const canValidateGitRef = Boolean(tryResolveGitRevision(gitValidationRoot, docBranch));
+  const explicitDocRef = Boolean(process.env.DEV_SESSION_CANVAS_VSCE_DOC_BRANCH?.trim());
+  const canValidateGitRef =
+    Boolean(tryResolveGitRevision(gitValidationRoot, docBranch)) &&
+    (explicitDocRef || isGitWorktreeClean(gitValidationRoot));
   if (canValidateGitRef) {
     for (const target of resolvedTargets) {
       assertGitPathExistsAtRef(gitValidationRoot, docBranch, readmePath, target);
     }
+  } else if (resolvedTargets.length > 0) {
+    console.log(
+      '当前 git 工作树不是 clean 状态，已仅校验 README 相对资源在文件系统中存在；发布打包必须显式传入 DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>。'
+    );
   }
 
   console.log(`VSCE README doc ref: ${docBranch}`);
@@ -326,15 +344,23 @@ function assertGitPathExistsAtRef(gitRoot, gitRef, readmePath, target) {
     cwd: gitRoot
   });
 
-  if (result.error) {
-    throw result.error;
-  }
-
   if (result.status !== 0) {
+    if (result.error) {
+      throw result.error;
+    }
     throw new Error(
       `${readmePath} 中的相对路径 ${target.target} 会被改写为 ${target.rewrittenUrl}，但该路径在 git ref ${gitRef} 上不存在。请改用最终发布 ref，或显式传入 DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref> 后重试。`
     );
   }
+}
+
+function isGitWorktreeClean(gitRoot) {
+  const result = spawnSync('git', ['status', '--porcelain'], {
+    cwd: gitRoot,
+    encoding: 'utf8'
+  });
+
+  return result.status === 0 && result.stdout.trim() === '';
 }
 
 function resolveVsceBaseUrls(homepage, branch, packageRepoRelativePath) {

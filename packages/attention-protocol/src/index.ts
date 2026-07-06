@@ -7,7 +7,9 @@ export const NOTIFIER_COMMAND_IDS = {
 export const NOTIFIER_TEST_COMMAND_IDS = {
   getPostedNotifications: 'devSessionCanvasNotifier.__test.getPostedNotifications',
   clearPostedNotifications: 'devSessionCanvasNotifier.__test.clearPostedNotifications',
-  replayLastFocusAction: 'devSessionCanvasNotifier.__test.replayLastFocusAction'
+  replayLastFocusAction: 'devSessionCanvasNotifier.__test.replayLastFocusAction',
+  getLocalizationSnapshot: 'devSessionCanvasNotifier.__test.getLocalizationSnapshot',
+  getLastWorkbenchPrompt: 'devSessionCanvasNotifier.__test.getLastWorkbenchPrompt'
 } as const;
 
 export type AttentionNotificationKind = 'execution-attention';

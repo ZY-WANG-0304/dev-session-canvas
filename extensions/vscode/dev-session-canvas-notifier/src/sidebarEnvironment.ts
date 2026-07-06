@@ -1,6 +1,11 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import {
+  identityNotifierLocalize,
+  type NotifierLocalize
+} from './notifierLocalization.ts';
+
 const execFileAsync = promisify(execFile);
 
 export type NotifierExtensionModeLabel = 'development' | 'test' | 'production';
@@ -61,48 +66,53 @@ interface NotifierEnvironmentSnapshotInput {
 export async function probeNotifierEnvironmentSnapshot(
   platform: NodeJS.Platform,
   modeLabel: NotifierExtensionModeLabel,
-  playSoundEnabled: boolean
+  playSoundEnabled: boolean,
+  l10n: NotifierLocalize = identityNotifierLocalize
 ): Promise<NotifierEnvironmentSnapshot> {
   const terminalNotifierAvailable = platform === 'darwin' ? await isCommandAvailable('terminal-notifier', platform) : false;
   const notifySendAvailable = platform === 'linux' ? await isCommandAvailable('notify-send', platform) : false;
-  return buildNotifierEnvironmentSnapshot({
-    platform,
-    modeLabel,
-    playSoundEnabled,
-    terminalNotifierAvailable,
-    notifySendAvailable
-  });
+  return buildNotifierEnvironmentSnapshot(
+    {
+      platform,
+      modeLabel,
+      playSoundEnabled,
+      terminalNotifierAvailable,
+      notifySendAvailable
+    },
+    l10n
+  );
 }
 
 export function buildNotifierEnvironmentSnapshot(
-  input: NotifierEnvironmentSnapshotInput
+  input: NotifierEnvironmentSnapshotInput,
+  l10n: NotifierLocalize = identityNotifierLocalize
 ): NotifierEnvironmentSnapshot {
-  const agentConfigurationGuides = buildAgentConfigurationGuides();
-  const platformGuides = buildPlatformGuides(input.platform);
+  const agentConfigurationGuides = buildAgentConfigurationGuides(l10n);
+  const platformGuides = buildPlatformGuides(input.platform, l10n);
   const notes = [
-    '通知后端需安装在本机 UI 端，而不是 Remote SSH、WSL、Dev Container 等远端。',
-    'Agent 通知配置写在 Agent 实际运行宿主上；远端 Agent 改远端配置。',
-    '测试通知只验证 companion 本机桌面链路；Agent 是否发出信号取决于 CLI 配置。',
-    '声音开关默认开启，实际响铃取决于系统通知设置。'
+    l10n('Install the notification backend on the local UI side, not inside Remote SSH, WSL, Dev Container, or another remote host.'),
+    l10n('Configure Agent notifications on the host where the Agent actually runs; remote Agents need remote CLI configuration.'),
+    l10n('The test notification only validates the companion desktop path; whether an Agent emits a signal depends on CLI configuration.'),
+    l10n('Sound is requested by default, but the actual alert sound still depends on system notification settings.')
   ];
 
   if (input.modeLabel === 'test') {
     return {
       platformLabel: getPlatformLabel(input.platform),
       modeLabel: input.modeLabel,
-      currentRouteLabel: '内存测试后端',
-      currentRouteDetail: 'Extension Test 模式，通知不会发送到系统，仅记录测试结果',
+      currentRouteLabel: l10n('In-memory test backend'),
+      currentRouteDetail: l10n('Extension Test mode records notifications in memory and does not send them to the operating system.'),
       activationKind: 'test-replay',
-      activationLabel: '测试回放',
-      activationDetail: '通过回放 callback URI 验证回跳到画布并居中节点的功能',
-      soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
-      soundDetail: '测试模式不会播放系统声音，此处仅显示配置值',
+      activationLabel: l10n('Test replay'),
+      activationDetail: l10n('Replays the callback URI to verify that VS Code can return to the canvas and center the node.'),
+      soundLabel: formatSoundLabel(input.playSoundEnabled, l10n),
+      soundDetail: l10n('Test mode does not play system sounds; this value only reflects the current setting.'),
       installRequirements: [
         {
-          name: '桌面通知后端',
-          statusLabel: '无需安装',
-          detail: '测试模式仅验证协议与回调链路，不依赖系统通知命令',
-          hints: ['真实桌面通知与工具安装请回到 Development / Production 模式再验证。']
+          name: l10n('Desktop notification backend'),
+          statusLabel: l10n('No install needed'),
+          detail: l10n('Test mode validates the protocol and callback path without relying on system notification commands.'),
+          hints: [l10n('Switch back to Development or Production mode before validating real desktop notifications and tool installation.')]
         }
       ],
       platformGuides,
@@ -117,29 +127,29 @@ export function buildNotifierEnvironmentSnapshot(
         platformLabel: 'macOS',
         modeLabel: input.modeLabel,
         currentRouteLabel: 'terminal-notifier',
-        currentRouteDetail: '使用 terminal-notifier 发送通知，支持点击回跳到 VS Code',
+        currentRouteDetail: l10n('Uses terminal-notifier to send notifications and supports clicking back into VS Code.'),
         activationKind: 'protocol',
-        activationLabel: '协议回跳',
-        activationDetail: '点击通知后通过 VS Code URI handler 回到画布',
-        soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+        activationLabel: l10n('Protocol callback'),
+        activationDetail: l10n('Clicking the notification returns to the canvas through the VS Code URI handler.'),
+        soundLabel: formatSoundLabel(input.playSoundEnabled, l10n),
         soundDetail:
           input.playSoundEnabled === false
-            ? '已关闭提示音，terminal-notifier 将静音发送通知'
-            : '将播放默认通知声音',
+            ? l10n('Sound is disabled; terminal-notifier will request a silent notification.')
+            : l10n('The default notification sound will be requested.'),
         installRequirements: [
           {
             name: 'terminal-notifier',
-            statusLabel: '已安装',
-            detail: '当前主路径可点击通知并回到 VS Code。',
+            statusLabel: l10n('Installed'),
+            detail: l10n('The current primary path can click notifications and return to VS Code.'),
             hints: [
-              '新机器可执行 `brew install terminal-notifier` 保持同样主路径。',
-              '若仅需要通知显示，macOS 自带的 osascript 回退无需额外安装。'
+              l10n('On a new machine, run `brew install terminal-notifier` to keep the same primary path.'),
+              l10n('If you only need the notification to appear, the built-in macOS osascript fallback needs no extra installation.')
             ]
           },
           {
             name: 'osascript',
-            statusLabel: '系统自带',
-            detail: 'macOS 自带回退路径，无需额外安装；只保证通知显示，不支持点击回跳。'
+            statusLabel: l10n('Built in'),
+            detail: l10n('macOS includes this fallback path; it only guarantees that notifications appear and does not support click callbacks.')
           }
         ],
         platformGuides,
@@ -152,29 +162,29 @@ export function buildNotifierEnvironmentSnapshot(
       platformLabel: 'macOS',
       modeLabel: input.modeLabel,
       currentRouteLabel: 'osascript',
-      currentRouteDetail: '使用 osascript 发送通知，仅保证通知显示',
+      currentRouteDetail: l10n('Uses osascript to send notifications and only guarantees that they appear.'),
       activationKind: 'none',
-      activationLabel: '不支持回跳',
-      activationDetail: '点击通知后无法自动回到 VS Code',
-      soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+      activationLabel: l10n('No callback support'),
+      activationDetail: l10n('Clicking the notification cannot automatically return to VS Code.'),
+      soundLabel: formatSoundLabel(input.playSoundEnabled, l10n),
       soundDetail:
         input.playSoundEnabled === false
-          ? '已关闭提示音，不会播放系统提示音'
-          : '将尝试播放系统提示音',
+          ? l10n('Sound is disabled; no system alert sound will be requested.')
+          : l10n('A system alert sound will be requested when possible.'),
       installRequirements: [
         {
           name: 'terminal-notifier',
-          statusLabel: '建议安装',
-          detail: '需要安装 terminal-notifier 才能支持点击回跳功能',
+          statusLabel: l10n('Recommended'),
+          detail: l10n('Install terminal-notifier to support click callbacks.'),
           hints: [
-            '推荐命令：`brew install terminal-notifier`。',
-            '如果暂时不安装，companion 会回退到 macOS 自带的 osascript，只保证通知显示。'
+            l10n('Recommended command: `brew install terminal-notifier`.'),
+            l10n('Without it, the companion falls back to the built-in macOS osascript path and only guarantees that notifications appear.')
           ]
         },
         {
           name: 'osascript',
-          statusLabel: '当前回退',
-          detail: 'macOS 系统自带回退路径，无需额外安装；当前只保证通知显示，不支持点击回跳。'
+          statusLabel: l10n('Current fallback'),
+          detail: l10n('This built-in macOS fallback needs no extra installation, but it only guarantees that notifications appear and does not support click callbacks.')
         }
       ],
       platformGuides,
@@ -189,30 +199,26 @@ export function buildNotifierEnvironmentSnapshot(
         platformLabel: 'Linux',
         modeLabel: input.modeLabel,
         currentRouteLabel: 'notify-send',
-        currentRouteDetail: '使用 notify-send 发送桌面通知',
+        currentRouteDetail: l10n('Uses notify-send to send desktop notifications.'),
         activationKind: 'direct-action',
-        activationLabel: '取决于桌面环境',
-        activationDetail: '是否支持点击回跳取决于桌面环境对 --action --wait 的支持',
-        soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+        activationLabel: l10n('Depends on desktop environment'),
+        activationDetail: l10n('Click callback support depends on whether the desktop environment supports `notify-send --action --wait`.'),
+        soundLabel: formatSoundLabel(input.playSoundEnabled, l10n),
         soundDetail:
           input.playSoundEnabled === false
-            ? '已请求静音，实际效果取决于桌面环境'
-            : '已请求播放提示音，实际效果取决于桌面环境',
+            ? l10n('Silent delivery is requested; the actual behavior depends on the desktop environment.')
+            : l10n('A notification sound is requested; the actual behavior depends on the desktop environment.'),
         installRequirements: [
           {
             name: 'notify-send',
-            statusLabel: '已安装',
-            detail: '当前本机 UI 环境已具备 Linux 桌面通知能力。',
-            hints: [
-              'Debian / Ubuntu：`sudo apt install libnotify-bin`',
-              'Fedora：`sudo dnf install libnotify`',
-              'Arch：`sudo pacman -S libnotify`'
-            ]
+            statusLabel: l10n('Installed'),
+            detail: l10n('The current local UI environment has Linux desktop notification support.'),
+            hints: buildLinuxInstallHints(l10n)
           },
           {
-            name: '桌面环境支持',
-            statusLabel: '请确认',
-            detail: '是否支持点击回跳取决于桌面环境能否处理 notify-send 的 `--action --wait`。'
+            name: l10n('Desktop environment support'),
+            statusLabel: l10n('Confirm manually'),
+            detail: l10n('Click callbacks depend on whether the desktop environment can handle `notify-send --action --wait`.')
           }
         ],
         platformGuides,
@@ -224,23 +230,19 @@ export function buildNotifierEnvironmentSnapshot(
     return {
       platformLabel: 'Linux',
       modeLabel: input.modeLabel,
-      currentRouteLabel: '缺少 notify-send',
-      currentRouteDetail: '缺少 notify-send，无法发送桌面通知',
+      currentRouteLabel: l10n('Missing notify-send'),
+      currentRouteDetail: l10n('notify-send is missing, so desktop notifications cannot be sent.'),
       activationKind: 'none',
-      activationLabel: '不可用',
-      activationDetail: '需要安装 notify-send 才能启用桌面通知功能',
-      soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
-      soundDetail: '缺少桌面通知命令，声音设置暂不生效',
+      activationLabel: l10n('Unavailable'),
+      activationDetail: l10n('Install notify-send before enabling desktop notifications.'),
+      soundLabel: formatSoundLabel(input.playSoundEnabled, l10n),
+      soundDetail: l10n('The desktop notification command is missing, so the sound setting has no effect yet.'),
       installRequirements: [
         {
           name: 'notify-send',
-          statusLabel: '未安装',
-          detail: 'Linux 桌面通知依赖 notify-send',
-          hints: [
-            'Debian / Ubuntu：`sudo apt install libnotify-bin`',
-            'Fedora：`sudo dnf install libnotify`',
-            'Arch：`sudo pacman -S libnotify`'
-          ]
+          statusLabel: l10n('Not installed'),
+          detail: l10n('Linux desktop notifications depend on notify-send.'),
+          hints: buildLinuxInstallHints(l10n)
         }
       ],
       platformGuides,
@@ -254,23 +256,23 @@ export function buildNotifierEnvironmentSnapshot(
       platformLabel: 'Windows',
       modeLabel: input.modeLabel,
       currentRouteLabel: 'PowerShell Toast',
-      currentRouteDetail: '通过 PowerShell 生成 Windows Toast 通知',
+      currentRouteDetail: l10n('Uses PowerShell to create Windows Toast notifications.'),
       activationKind: 'protocol',
-      activationLabel: '协议回跳',
-      activationDetail: '点击通知后通过 VS Code URI handler 回到画布',
-      soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
+      activationLabel: l10n('Protocol callback'),
+      activationDetail: l10n('Clicking the notification returns to the canvas through the VS Code URI handler.'),
+      soundLabel: formatSoundLabel(input.playSoundEnabled, l10n),
       soundDetail:
         input.playSoundEnabled === false
-          ? '已在 Toast XML 中请求静音'
-          : '已在 Toast XML 中请求默认通知声音，实际效果取决于系统通知策略',
+          ? l10n('The Toast XML requests silent delivery.')
+          : l10n('The Toast XML requests the default notification sound, subject to system notification policy.'),
       installRequirements: [
         {
-          name: '额外 CLI',
-          statusLabel: '无需安装',
-          detail: '无需额外安装通知 CLI，请确保系统通知权限与专注助手未拦截通知',
+          name: l10n('Extra CLI'),
+          statusLabel: l10n('No install needed'),
+          detail: l10n('No extra notification CLI is required; make sure system notification permissions and Focus Assist do not block the toast.'),
           hints: [
-            'Windows 设置 -> 系统 -> 通知：确认 VS Code 与系统通知没有被禁用。',
-            '如果通知未弹出，请再检查专注助手 / 勿扰模式和通知中心。'
+            l10n('Windows Settings -> System -> Notifications: confirm that VS Code and system notifications are allowed.'),
+            l10n('If the notification does not appear, also check Focus Assist / Do Not Disturb and Notification Center.')
           ]
         }
       ],
@@ -283,18 +285,18 @@ export function buildNotifierEnvironmentSnapshot(
   return {
     platformLabel: getPlatformLabel(input.platform),
     modeLabel: input.modeLabel,
-    currentRouteLabel: '不支持',
-    currentRouteDetail: '当前平台暂不支持桌面通知',
+    currentRouteLabel: l10n('Unsupported'),
+    currentRouteDetail: l10n('The current platform is not supported for desktop notifications.'),
     activationKind: 'none',
-    activationLabel: '不可用',
-    activationDetail: '当前环境无法发送桌面通知',
-    soundLabel: input.playSoundEnabled ? '已开启' : '已关闭',
-    soundDetail: '当前平台不支持桌面通知，声音设置不生效',
+    activationLabel: l10n('Unavailable'),
+    activationDetail: l10n('This environment cannot send desktop notifications.'),
+    soundLabel: formatSoundLabel(input.playSoundEnabled, l10n),
+    soundDetail: l10n('The current platform does not support desktop notifications, so the sound setting has no effect.'),
     installRequirements: [
       {
-        name: '平台支持',
-        statusLabel: '不支持',
-        detail: `平台 ${input.platform} 暂不在支持列表内`
+        name: l10n('Platform support'),
+        statusLabel: l10n('Unsupported'),
+        detail: l10n('Platform {platform} is not currently supported.', { platform: input.platform })
       }
     ],
     platformGuides,
@@ -303,76 +305,84 @@ export function buildNotifierEnvironmentSnapshot(
   };
 }
 
-function buildAgentConfigurationGuides(): NotifierAgentConfigurationGuide[] {
+function buildAgentConfigurationGuides(l10n: NotifierLocalize): NotifierAgentConfigurationGuide[] {
   return [
     {
       agentLabel: 'Codex',
       configPath: '~/.codex/config.toml',
-      detail: '在 Agent 实际运行宿主上的 Codex TUI 配置里开启通知，才能稳定输出 OSC 9 并被画布 attention bridge 捕获。',
+      detail: l10n('Enable notifications in the Codex TUI configuration on the host where the Agent actually runs so it can emit OSC 9 and enter the canvas attention bridge.'),
       recommendedSnippet: ['[tui]', 'notifications = true', 'notification_method = "osc9"', 'notification_condition = "always"'].join(
         '\n'
       ),
       hints: [
-        '如果文件已存在，只补 `[tui]` 相关项即可，不必覆盖其它模型、审批或 sandbox 配置。',
-        '若使用主扩展生成默认模板，这三项通知配置已默认带入。'
+        l10n('If the file already exists, only add the `[tui]` keys; do not overwrite model, approval, or sandbox settings.'),
+        l10n('When you create Agents from the built-in default template, these notification settings are already included by default.')
       ]
     },
     {
       agentLabel: 'Claude Code',
       configPath: '~/.claude/settings.json',
-      detail: '在 Agent 实际运行宿主上的 Claude Code settings 中启用 iTerm2 风格通知通道，让 CLI 进入同一条 attention signal 桥接链路。',
+      detail: l10n('Enable the iTerm2-style notification channel in Claude Code settings on the host where the Agent actually runs so it enters the same attention signal bridge.'),
       recommendedSnippet: ['{', '  "preferredNotifChannel": "iterm2"', '}'].join('\n'),
       hints: [
-        '如果 `settings.json` 已有其它字段，只合并 `preferredNotifChannel`，不要整文件替换。',
-        '若使用主扩展生成默认模板，这一项已默认带入；无需额外 hooks。'
+        l10n('If `settings.json` already has other fields, merge `preferredNotifChannel` instead of replacing the whole file.'),
+        l10n('When you create Agents from the built-in default template, this setting is already included; no extra hooks are required.')
       ]
     }
   ];
 }
 
-function buildPlatformGuides(currentPlatform: NodeJS.Platform): NotifierPlatformGuide[] {
+function buildPlatformGuides(currentPlatform: NodeJS.Platform, l10n: NotifierLocalize): NotifierPlatformGuide[] {
   const currentPlatformLabel = getPlatformLabel(currentPlatform);
   return [
     {
       platformLabel: 'macOS',
-      statusLabel: currentPlatformLabel === 'macOS' ? '当前平台' : '参考',
-      detail: '推荐安装 terminal-notifier 以支持点击通知后回到 VS Code；未安装时回退到系统自带的 osascript，只保证通知显示。',
+      statusLabel: currentPlatformLabel === 'macOS' ? l10n('Current platform') : l10n('Reference'),
+      detail: l10n('Install terminal-notifier to support clicking a notification back into VS Code; without it, the companion falls back to the built-in osascript path and only guarantees notification display.'),
       hints: [
-        '推荐命令：`brew install terminal-notifier`',
-        '仅需通知显示时无需额外 CLI，macOS 自带 osascript 回退。'
+        l10n('Recommended command: `brew install terminal-notifier`'),
+        l10n('If you only need notifications to appear, the built-in macOS osascript fallback needs no extra CLI.')
       ],
       sections: [
         {
           title: 'terminal-notifier',
-          detail: '推荐主路径；支持点击通知后通过 VS Code URI handler 回到画布。',
-          hints: ['安装命令：`brew install terminal-notifier`。']
+          detail: l10n('Recommended primary path; supports clicking notifications back into the canvas through the VS Code URI handler.'),
+          hints: [l10n('Install command: `brew install terminal-notifier`.')]
         },
         {
           title: 'osascript',
-          detail: 'macOS 系统自带回退路径；无需安装额外 CLI，但只保证通知显示，不支持点击回跳。'
+          detail: l10n('Built-in macOS fallback; needs no extra CLI, but only guarantees that notifications appear and does not support click callbacks.')
         }
       ]
     },
     {
       platformLabel: 'Linux',
-      statusLabel: currentPlatformLabel === 'Linux' ? '当前平台' : '参考',
-      detail: '需要 notify-send 才能发送桌面通知；点击回跳是否可用取决于桌面环境对 `--action --wait` 的支持。',
-      hints: [
-        'Debian / Ubuntu：`sudo apt install libnotify-bin`',
-        'Fedora：`sudo dnf install libnotify`',
-        'Arch：`sudo pacman -S libnotify`'
-      ]
+      statusLabel: currentPlatformLabel === 'Linux' ? l10n('Current platform') : l10n('Reference'),
+      detail: l10n('Requires notify-send to send desktop notifications; click callback availability depends on desktop environment support for `--action --wait`.'),
+      hints: buildLinuxInstallHints(l10n)
     },
     {
       platformLabel: 'Windows',
-      statusLabel: currentPlatformLabel === 'Windows' ? '当前平台' : '参考',
-      detail: '无需额外安装通知 CLI；确认系统通知权限、专注助手 / 勿扰模式和通知中心没有拦截 VS Code Toast。',
+      statusLabel: currentPlatformLabel === 'Windows' ? l10n('Current platform') : l10n('Reference'),
+      detail: l10n('No extra notification CLI is required; confirm that system notification permissions, Focus Assist / Do Not Disturb, and Notification Center are not blocking VS Code Toasts.'),
       hints: [
-        'Windows 设置 -> 系统 -> 通知：确认 VS Code 与系统通知处于允许状态。',
-        '若通知未出现，请先检查专注助手 / 勿扰模式和通知中心。'
+        l10n('Windows Settings -> System -> Notifications: confirm that VS Code and system notifications are allowed.'),
+        l10n('If the notification does not appear, check Focus Assist / Do Not Disturb and Notification Center first.')
       ]
     }
   ];
+}
+
+function buildLinuxInstallHints(l10n: NotifierLocalize): string[] {
+  return [
+    l10n('Debian / Ubuntu: `sudo apt install libnotify-bin`'),
+    l10n('Fedora: `sudo dnf install libnotify`'),
+    l10n('Arch: `sudo pacman -S libnotify`')
+  ];
+}
+
+function formatSoundLabel(playSoundEnabled: boolean, l10n: NotifierLocalize): string {
+  return playSoundEnabled ? l10n('On') : l10n('Off');
 }
 
 async function isCommandAvailable(command: string, platform: NodeJS.Platform): Promise<boolean> {

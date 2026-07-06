@@ -6,90 +6,105 @@ const source = await readFile('extensions/vscode/dev-session-canvas-notifier/src
 assert.match(
   source,
   /resolveSectionContent\(section, snapshot, ctx\)/u,
-  '各 section 的正文内容应先收口成统一的 section content 模型。'
+  'Each section should first resolve through the shared section content model.'
 );
 assert.match(
   source,
   /renderSectionContentBody\(content\)/u,
-  '统一的 section content 模型应通过通用 Markdown body renderer 输出。'
+  'The shared section content model should render through the common Markdown body renderer.'
 );
 assert.match(
   source,
-  /markdown:\s*buildStatusSummaryMarkdown\(snapshot\),\s*\n\s*markdownClassName:\s*'is-prominent',\s*\n\s*actionsMarkdown:\s*buildStatusActionsMarkdown\(\)/u,
-  '概览 section 的摘要与调试通知标题都应以 Markdown 文档字段提供。'
+  /markdown:\s*buildStatusSummaryMarkdown\(snapshot, ctx\),\s*\n\s*markdownClassName:\s*'is-prominent',\s*\n\s*actionsMarkdown:\s*buildStatusActionsMarkdown\(ctx\)/u,
+  'Status summary and test-notification heading should remain Markdown document fields and use localized copy.'
 );
 assert.match(
   source,
-  /calloutHeadingMarkdown:\s*buildStatusResultHeadingMarkdown\(\)/u,
-  '概览 section 的调试结果标题也应以 Markdown 文档字段提供。'
+  /calloutHeadingMarkdown:\s*buildStatusResultHeadingMarkdown\(ctx\)/u,
+  'The status result heading should remain a Markdown document field and use localized copy.'
 );
 assert.match(
   source,
-  /markdown:\s*snapshot\.notes\.length > 0 \? buildNotesMarkdown\(snapshot\.notes\) : '暂无注意事项。',\s*\n\s*markdownClassName:\s*'is-flush-list'/u,
-  '注意事项 section 应直接返回 Markdown 文档内容，并把根列表收口为 0 级缩进。'
+  /markdown:\s*snapshot\.notes\.length > 0 \? buildNotesMarkdown\(snapshot\.notes\) : ctx\.localize\('No notes yet\.'\),\s*\n\s*markdownClassName:\s*'is-flush-list'/u,
+  'Notes should render Markdown content while the empty state comes from localized copy.'
 );
 assert.match(
   source,
-  /markdown:\s*buildPlatformGuideMarkdown\(snapshot, guide, guide\.statusLabel === '当前平台'\)/u,
-  '平台 section 应直接返回 Markdown 文档内容。'
+  /markdown:\s*buildPlatformGuideMarkdown\(snapshot, guide, guide\.platformLabel === snapshot\.platformLabel, ctx\)/u,
+  'Platform sections should return Markdown document content and determine the current platform from stable labels.'
 );
 assert.match(
   source,
-  /markdown:\s*buildAgentGuideMarkdown\(guide\)/u,
-  'Agent section 应直接返回 Markdown 文档内容。'
+  /markdown:\s*buildAgentGuideMarkdown\(guide, ctx\)/u,
+  'Agent sections should return Markdown document content with localized surrounding copy.'
+);
+assert.match(
+  source,
+  /<html lang="\$\{notifierHtmlLang\(ctx\.locale\)\}">/u,
+  'Notifier sidebar HTML lang should follow the resolved locale instead of being hard-coded to zh-CN.'
+);
+assert.match(
+  source,
+  /label:\s*ctx\.localize\('Send Test Notification'\)/u,
+  'The send-test-notification button label should be localized.'
+);
+assert.match(
+  source,
+  /label:\s*ctx\.localize\('View Diagnostic Log'\)/u,
+  'The diagnostic-output button label should be localized.'
 );
 assert.match(
   source,
   /function renderSectionCallout\(callout: SidebarSectionCallout\): string \{\s*const toneClassName = callout\.tone === 'warning' \? ' warning' : '';\s*return `\s*<div class="status-card\$\{toneClassName\}">\s*<div class="status-card-body">\s*\$\{callout\.iconSvg\}\s*\$\{renderMarkdownPreview\(callout\.markdown, callout\.markdownClassName\)\}/u,
-  '概览状态卡应让图标与 Markdown 文案保持同一层级。'
+  'Status cards should keep the icon and Markdown copy at the same level.'
 );
 assert.match(
   source,
-  /function buildStatusSummaryMarkdown\(snapshot: NotifierEnvironmentSnapshot\): string \{\s*return \[\s*'### 当前环境'/u,
-  '概览摘要 Markdown 应先给出“当前环境”标题。'
+  /function buildStatusSummaryMarkdown\(snapshot: NotifierEnvironmentSnapshot, ctx: SectionRenderContext\): string \{\s*return \[\s*`### \$\{ctx\.localize\('Current environment'\)\}`/u,
+  'The status summary Markdown should start with a localized Current environment heading.'
 );
 assert.match(
   source,
-  /function buildStatusActionsMarkdown\(\): string \{\s*return '### 调试通知';/u,
-  '调试按钮区域前应有“调试通知”标题。'
+  /function buildStatusActionsMarkdown\(ctx: SectionRenderContext\): string \{\s*return `### \$\{ctx\.localize\('Test notification'\)\}`;/u,
+  'The debug button area should have a localized Test notification heading.'
 );
 assert.match(
   source,
-  /function buildStatusResultHeadingMarkdown\(\): string \{\s*return '### 调试结果';/u,
-  '调试结果区域前应有“调试结果”标题。'
+  /function buildStatusResultHeadingMarkdown\(ctx: SectionRenderContext\): string \{\s*return `### \$\{ctx\.localize\('Test result'\)\}`;/u,
+  'The debug result area should have a localized Test result heading.'
 );
 assert.match(
   source,
   /function buildNotesMarkdown\(notes: string\[\]\): string \{\s*return buildBulletListMarkdown\(notes\);/u,
-  '注意事项 section 应通过 Markdown 列表而不是手写 ul\/li 生成内容。'
+  'The notes section should be generated as a Markdown list rather than handwritten ul/li HTML.'
 );
 assert.doesNotMatch(
   source,
   /function buildNotesSectionContent[\s\S]*?<div class="content">/u,
-  'section 内容构造函数不应再手写 HTML 片段。'
+  'Section content builders should not handwrite HTML fragments.'
 );
 assert.match(
   source,
   /\.sidebar-markdown > ul,\s*\n\s*\.sidebar-markdown > ol\s*\{\s*\n\s*padding-left:\s*12px;/u,
-  '一级 Markdown 列表应比嵌套列表更浅，避免看起来像第二层。'
+  'Top-level Markdown lists should use a shallower indent than nested lists.'
 );
 assert.match(
   source,
   /\.sidebar-markdown\.is-flush-list > ul,\s*\n\s*\.sidebar-markdown\.is-flush-list > ol\s*\{\s*\n\s*padding-left:\s*0;/u,
-  '注意事项 section 的根列表应允许退到 0 级缩进。'
+  'The notes section root list should be able to flush to zero indent.'
 );
 assert.match(
   source,
   /\.sidebar-markdown ul ul,\s*\n\s*\.sidebar-markdown ul ol,\s*\n\s*\.sidebar-markdown ol ul,\s*\n\s*\.sidebar-markdown ol ol\s*\{\s*\n\s*padding-left:\s*16px;/u,
-  '嵌套 Markdown 列表应继续保留更深的缩进层级。'
+  'Nested Markdown lists should keep a deeper indentation level.'
 );
 assert.match(
   source,
   /\.sidebar-markdown pre\s*\{\s*\n\s*margin:\s*8px 0 0 0;\s*\n\s*padding:\s*10px 12px;/u,
-  'sidebar 代码块应按标准 Markdown pre 结构样式化。'
+  'Sidebar code blocks should use the standard Markdown pre structure.'
 );
-assert.doesNotMatch(source, /snippet-block/u, 'sidebar 代码块不应继续使用自定义 snippet-block 结构。');
-assert.doesNotMatch(source, /notes-list/u, 'notifier sidebar 不应继续依赖旧的 notes-list 手写列表结构。');
-assert.doesNotMatch(source, /hint-list/u, 'notifier sidebar 不应继续依赖旧的 hint-list 手写列表结构。');
+assert.doesNotMatch(source, /snippet-block/u, 'Sidebar code blocks should not use the old custom snippet-block structure.');
+assert.doesNotMatch(source, /notes-list/u, 'Notifier sidebar should not depend on the old notes-list handwritten list structure.');
+assert.doesNotMatch(source, /hint-list/u, 'Notifier sidebar should not depend on the old hint-list handwritten list structure.');
 
 console.log('notifier sidebar view source tests passed');

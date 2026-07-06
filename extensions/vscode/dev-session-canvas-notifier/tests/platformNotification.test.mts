@@ -10,6 +10,11 @@ import {
   launchShellInvocation
 } from '../src/platformNotification.ts';
 import { buildNotifierEnvironmentSnapshot } from '../src/sidebarEnvironment.ts';
+import { formatNotifierLocalizedMessage, type NotifierLocalize } from '../src/notifierLocalization.ts';
+
+const zhCnBundle = (await import('../l10n/bundle.l10n.zh-cn.json', { with: { type: 'json' } })).default as Record<string, string>;
+const zhCnLocalize: NotifierLocalize = (message, args) =>
+  formatNotifierLocalizedMessage(zhCnBundle[message] ?? message, args);
 
 const request = {
   version: ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
@@ -33,7 +38,16 @@ const linuxInvocation = buildLinuxNotifySendInvocation({
 assert.equal(linuxInvocation.command, 'notify-send');
 assert.equal(linuxInvocation.activationMode, 'direct-action');
 assert.ok(linuxInvocation.args.includes('--wait'));
-assert.ok(linuxInvocation.args.includes('--action=view=查看节点'));
+assert.ok(linuxInvocation.args.includes('--action=view=View Node'));
+
+const localizedLinuxInvocation = buildLinuxNotifySendInvocation({
+  request,
+  callbackUri,
+  onDidActivate: () => undefined,
+  playSound: true,
+  actionLabel: '查看节点'
+});
+assert.ok(localizedLinuxInvocation.args.includes('--action=view=查看节点'));
 assert.ok(linuxInvocation.args.includes('--hint=string:sound-name:message-new-instant'));
 
 const silentLinuxInvocation = buildLinuxNotifySendInvocation({
@@ -99,9 +113,9 @@ const sidebarSnapshot = buildNotifierEnvironmentSnapshot({
   modeLabel: 'development',
   playSoundEnabled: false,
   terminalNotifierAvailable: true
-});
+}, zhCnLocalize);
 assert.equal(sidebarSnapshot.soundLabel, '已关闭');
-assert.match(sidebarSnapshot.soundDetail, /静音发送/);
+assert.match(sidebarSnapshot.soundDetail, /静音通知/);
 assert.equal(sidebarSnapshot.activationKind, 'protocol');
 assert.equal(sidebarSnapshot.installRequirements[0]?.statusLabel, '已安装');
 assert.match(sidebarSnapshot.installRequirements[0]?.hints?.join('\n') ?? '', /brew install terminal-notifier/);
@@ -121,7 +135,7 @@ const linuxSnapshot = buildNotifierEnvironmentSnapshot({
   modeLabel: 'production',
   playSoundEnabled: true,
   notifySendAvailable: false
-});
+}, zhCnLocalize);
 assert.equal(linuxSnapshot.activationKind, 'none');
 assert.equal(linuxSnapshot.installRequirements[0]?.statusLabel, '未安装');
 assert.match(linuxSnapshot.installRequirements[0]?.hints?.join('\n') ?? '', /libnotify-bin/);
@@ -132,7 +146,7 @@ const macOSFallbackSnapshot = buildNotifierEnvironmentSnapshot({
   modeLabel: 'production',
   playSoundEnabled: true,
   terminalNotifierAvailable: false
-});
+}, zhCnLocalize);
 assert.equal(macOSFallbackSnapshot.currentRouteLabel, 'osascript');
 assert.equal(macOSFallbackSnapshot.installRequirements[0]?.name, 'terminal-notifier');
 assert.equal(macOSFallbackSnapshot.installRequirements[1]?.name, 'osascript');
@@ -170,7 +184,7 @@ const downgradedLinuxResult = await launchShellInvocation(
     backend: 'linux-notify-send',
     activationMode: 'direct-action',
     command: 'notify-send',
-    args: ['--action=view=查看节点', '--wait']
+    args: ['--action=view=View Node', '--wait']
   },
   {
     settlePostedOnSpawn: true,
