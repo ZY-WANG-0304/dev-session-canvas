@@ -675,6 +675,26 @@ assert.match(
 );
 assert.match(
   extensionSource,
+  /COMMAND_IDS\.resetCanvasState[\s\S]*workspace\.workspaceFolders\?\.length[\s\S]*Clearing the Canvas removes Canvas objects in every workspace root in the current multi-root workspace, keeps the system root sections visible[\s\S]*panelManager\.resetState/u,
+  'Expected Clear Canvas to warn multi-root users that every root is cleared while system root sections stay visible.'
+);
+assert.match(
+  panelManagerSource,
+  /public async resetState[\s\S]*workspaceFolders\.length > 1[\s\S]*clearAllWorkspaceRootCanvases[\s\S]*composeEmptyMultiRootCanvasState[\s\S]*persistState\(\{ reason: 'state-reset' \}\)/u,
+  'Expected multi-root Clear Canvas to clear root-local contents while rebuilding an empty composed view with root sections.'
+);
+assert.match(
+  panelManagerSource,
+  /private async clearAllWorkspaceRootCanvases[\s\S]*terminateExecutionNodeForDeletion[\s\S]*writeRootLocalCanvasSnapshot\(folder\.path, emptyRootState\)[\s\S]*state\/rootLocalAllCleared/u,
+  'Expected multi-root Clear Canvas to terminate affected execution sessions and write empty root-local snapshots for each root.'
+);
+assert.match(
+  panelManagerSource,
+  /private composeEmptyMultiRootCanvasState[\s\S]*isWorkspaceRootGroup[\s\S]*composeMultiRootCanvasState[\s\S]*rootStates[\s\S]*overlay[\s\S]*previousRootGroup\.position/u,
+  'Expected multi-root Clear Canvas to keep or recreate system workspace-root sections after clearing contents.'
+);
+assert.match(
+  extensionSource,
   /promptWorkspaceRootRemovalChoice[\s\S]*isCloseAffordance: true[\s\S]*showWarningMessage<WorkspaceRootRemovalModalItem>[\s\S]*modal: true[\s\S]*buildWorkspaceRootRemovalModalDetail/u,
   'Expected workspace root removal to use VS Code native modal confirmation with a cancel close affordance.'
 );
