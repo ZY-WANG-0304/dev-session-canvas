@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.23.0 - Notifier Localization and Smoke Stability Update
+
+相对 `0.22.0`，`0.23.0` 是新的公开 `Preview` 里程碑更新，重点收口 `Dev Session Canvas Notifier` 的英文默认版与简体中文本地化、真实 VS Code notifier locale smoke，以及 VS Code smoke 宿主稳定性。它保留 `0.22.0` 的主画布本地化、模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
+
+### 本版本聚焦
+
+- 版本号从 `0.22.0` bump 到 `0.23.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- Notifier companion 现在提供英文默认与简体中文本地化：manifest command / view / setting、sidebar、手动测试通知、工作台提示、Linux `notify-send` action label 和 callback 提示均进入受控本地化边界；backend 名称、路径、配置片段、诊断事实和用户环境数据保持原样
+- Notifier Marketplace 包新增 `package.nls.json`、`package.nls.zh-cn.json`、`l10n/bundle.l10n.zh-cn.json` 与仓库内中文 listing 对应版，发布包文件列表守卫同步覆盖这些本地化资源
+- 新增真实 VS Code notifier locale smoke：英文与简体中文宿主分别验证 notifier manifest 文案、已打开的 sidebar HTML、手动测试通知、工作台提示、action label 和 callback 提示随 locale 切换
+- Notifier companion smoke 改为在同一 staged host 中以两条真实 development extension 加载主扩展与 notifier，保留各自 `ExtensionContext`、manifest、`package.nls*` 与 `l10n` 资源，避免 VS Code 1.117 下 URI handler 重复注册
+- Linux VS Code smoke 启动参数增加 headless 稳定性选项；live-runtime scrollback / terminal viewport 恢复断言改为比较 marker lines，减少终端 padding 或宿主渲染差异导致的 flaky
+- 不改变扩展身份、最低 VS Code 版本、通知协议、桌面通知后端选择、点击回跳语义、companion 自动安装关系、Open VSX 同版本同步策略、Visual Studio Marketplace deferred 完成门禁、模板市场服务版本线或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.22.0` 升级到 `0.23.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- UI 语言跟随 VS Code locale；本版本继续不新增独立语言设置，也不会翻译用户内容、路径、终端输出、provider 原始输出或市场模板数据
+- 若此前显式配置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.23.0` 后会继续沿用该明确选择
+- 模板市场仍是 Preview 能力；生产服务版本、插件 SemVer 和模板包版本继续分开管理
+
+### 回退建议
+
+- 若 `0.23.0` 阻塞当前工作流，建议先禁用或卸载扩展，优先等待后续 `0.23.x` 修复版本
+
 ## 0.22.0 - UI Localization and Agent Fork Reliability Update
 
 相对 `0.21.1`，`0.22.0` 是新的公开 `Preview` 里程碑更新，重点收口产品自有 UI 文案的英文默认版与简体中文版、真实 VS Code locale smoke、Pane Gallery running 标题动效，以及当前 Agent 节点恢复 / 分叉的启动参数继承边界。它保留 `0.21.1` 的主扩展子包化发布布局、模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
