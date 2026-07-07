@@ -661,7 +661,9 @@ type CanvasContextMenuView =
   | 'agent-launch-mode'
   | 'apply-template'
   | 'reset-template'
-  | 'arrange-layout-scope';
+  | 'arrange-layout-scope'
+  | 'clear-canvas-scope';
+type CanvasClearCanvasTargetKind = 'workspace-root' | 'group';
 interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
@@ -3527,6 +3529,44 @@ function App(): JSX.Element {
       ? targetGroup.id
       : resolveContainingWorkspaceRootGroupIdForWebview(groups, targetGroup.id);
   };
+  const resolveClearCanvasTargetGroup = (
+    targetGroupId?: string,
+    fallbackFlowAnchor?: CanvasNodePosition
+  ): CanvasGroupSummary | undefined => {
+    const targetGroup = targetGroupId
+      ? groups.find((group) => group.id === targetGroupId)
+      : fallbackFlowAnchor
+        ? findInnermostCanvasGroupFrameAtFlowPoint(groups, fallbackFlowAnchor)
+        : undefined;
+    if (!targetGroup) {
+      return undefined;
+    }
+
+    if (isWorkspaceRootCanvasGroupRole(targetGroup.role)) {
+      return targetGroup;
+    }
+
+    const containingRootGroupId = resolveContainingWorkspaceRootGroupIdForWebview(groups, targetGroup.id);
+    if (containingRootGroupId || workspaceRootGroupCount <= 1) {
+      return targetGroup;
+    }
+
+    return undefined;
+  };
+  const resolveClearCanvasTargetGroupId = (
+    targetGroupId?: string,
+    fallbackFlowAnchor?: CanvasNodePosition
+  ): string | undefined => resolveClearCanvasTargetGroup(targetGroupId, fallbackFlowAnchor)?.id;
+  const resolveClearCanvasTargetKind = (
+    targetGroupId?: string,
+    fallbackFlowAnchor?: CanvasNodePosition
+  ): CanvasClearCanvasTargetKind | undefined => {
+    const targetGroup = resolveClearCanvasTargetGroup(targetGroupId, fallbackFlowAnchor);
+    if (!targetGroup) {
+      return undefined;
+    }
+    return isWorkspaceRootCanvasGroupRole(targetGroup.role) ? 'workspace-root' : 'group';
+  };
   const shouldOfferWorkspaceArrangeLayoutScope = (
     targetGroupId?: string,
     fallbackFlowAnchor?: CanvasNodePosition
@@ -3535,6 +3575,14 @@ function App(): JSX.Element {
     (runtimeContext.multiRootPresentationMode === 'rootGroups' ||
       runtimeContext.multiRootPresentationMode === 'paneGallery') &&
     Boolean(resolveArrangeLayoutRootGroupId(targetGroupId, fallbackFlowAnchor));
+  const shouldOfferWorkspaceClearCanvasScope = (
+    targetGroupId?: string,
+    fallbackFlowAnchor?: CanvasNodePosition
+  ): boolean =>
+    workspaceRootGroupCount > 1 &&
+    (runtimeContext.multiRootPresentationMode === 'rootGroups' ||
+      runtimeContext.multiRootPresentationMode === 'paneGallery') &&
+    Boolean(resolveClearCanvasTargetGroupId(targetGroupId, fallbackFlowAnchor));
   const resolveTemplateResetTargetRootGroupId = (targetGroupId?: string): string | undefined => {
     const targetGroup = targetGroupId ? groups.find((group) => group.id === targetGroupId) : undefined;
     if (!targetGroup) {
@@ -4926,6 +4974,14 @@ function App(): JSX.Element {
             contextMenu.targetGroupId,
             contextMenu.flowAnchor
           )}
+          canClearWorkspaceCanvasScope={shouldOfferWorkspaceClearCanvasScope(
+            contextMenu.targetGroupId,
+            contextMenu.flowAnchor
+          )}
+          clearCanvasTargetKind={resolveClearCanvasTargetKind(
+            contextMenu.targetGroupId,
+            contextMenu.flowAnchor
+          )}
           onCreateEmptyGroup={() => {
             handleCreateEmptyGroup(contextMenu.flowAnchor, contextMenu.targetGroupId);
             closePaneContextMenu();
@@ -4989,6 +5045,17 @@ function App(): JSX.Element {
                 : current
             )
           }
+          onShowClearCanvasScope={() =>
+            setContextMenu((current) =>
+              current
+                ? {
+                    ...current,
+                    view: 'clear-canvas-scope',
+                    selectedAgentProvider: undefined
+                  }
+                : current
+            )
+          }
           onApplyDefaultTemplate={() => {
             postMessage({
               type: 'webview/applyDefaultTemplate',
@@ -5027,6 +5094,23 @@ function App(): JSX.Element {
                 : undefined;
             postMessage({
               type: 'webview/arrangeCanvasLayout',
+              ...(targetGroupId
+                ? {
+                    payload: {
+                      targetGroupId
+                    }
+                  }
+                : {})
+            });
+            closePaneContextMenu();
+          }}
+          onClearCanvas={(scope) => {
+            const targetGroupId =
+              scope === 'target'
+                ? resolveClearCanvasTargetGroupId(contextMenu.targetGroupId, contextMenu.flowAnchor)
+                : undefined;
+            postMessage({
+              type: 'webview/clearCanvas',
               ...(targetGroupId
                 ? {
                     payload: {
@@ -10348,6 +10432,8 @@ const CanvasContextMenu = React.forwardRef<
     canSaveCurrentCanvas: boolean;
     canCreateGroupFromSelection: boolean;
     canArrangeWorkspaceLayoutScope: boolean;
+    canClearWorkspaceCanvasScope: boolean;
+    clearCanvasTargetKind?: CanvasClearCanvasTargetKind;
     onCreate: (
       kind: CanvasCreatableNodeKind,
       agentProvider?: AgentProviderKind,
@@ -10357,9 +10443,11 @@ const CanvasContextMenu = React.forwardRef<
     onShowAgentLaunchModes: (provider: AgentProviderKind) => void;
     onShowTemplatePicker: (view: 'apply-template' | 'reset-template') => void;
     onShowArrangeLayoutScope: () => void;
+    onShowClearCanvasScope: () => void;
     onApplyDefaultTemplate: () => void;
     onResetToDefaultTemplate: () => void;
     onArrangeCanvasLayout: (scope: 'target' | 'workspace') => void;
+    onClearCanvas: (scope: 'target' | 'workspace') => void;
     onApplyTemplate: (templateId: string, reset: boolean) => void;
     onSaveCanvasAsTemplate: () => void;
     onCreateEmptyGroup: () => void;
@@ -10479,9 +10567,11 @@ const CanvasContextMenu = React.forwardRef<
                 ? t('contextMenu.header.selectLaunchMode', { provider: providerLabel(selectedAgentProvider) })
                 : props.view === 'arrange-layout-scope'
                   ? t('contextMenu.header.arrangeLayoutScope')
-                  : isResetTemplatePicker
-                    ? t('contextMenu.header.resetTemplate')
-                    : t('contextMenu.header.applyTemplate')}
+                  : props.view === 'clear-canvas-scope'
+                    ? t('contextMenu.header.clearCanvasScope')
+                    : isResetTemplatePicker
+                      ? t('contextMenu.header.resetTemplate')
+                      : t('contextMenu.header.applyTemplate')}
           </strong>
           {props.view === 'root' ? null : (
             <span>
@@ -10489,9 +10579,11 @@ const CanvasContextMenu = React.forwardRef<
                 ? t('contextMenu.subtitle.selectLaunchMode')
                 : props.view === 'arrange-layout-scope'
                   ? t('contextMenu.subtitle.arrangeLayoutScope')
-                  : isResetTemplatePicker
-                    ? t('contextMenu.subtitle.resetTemplate')
-                    : t('contextMenu.subtitle.applyTemplate')}
+                  : props.view === 'clear-canvas-scope'
+                    ? t('contextMenu.subtitle.clearCanvasScope')
+                    : isResetTemplatePicker
+                      ? t('contextMenu.subtitle.resetTemplate')
+                      : t('contextMenu.subtitle.applyTemplate')}
             </span>
           )}
         </div>
@@ -10633,6 +10725,58 @@ const CanvasContextMenu = React.forwardRef<
                 </span>
               </button>
             )}
+            {props.canClearWorkspaceCanvasScope ? (
+              <div className="canvas-context-menu-split-item" data-context-menu-clear-group="canvas">
+                <button
+                  type="button"
+                  className="canvas-context-menu-item"
+                  data-context-menu-action="clear-canvas"
+                  onClick={() => props.onClearCanvas('target')}
+                >
+                  <span className="canvas-context-menu-icon codicon codicon-trash" aria-hidden="true" />
+                  <span className="canvas-context-menu-copy">
+                    <strong>{t('contextMenu.clearCanvas.title')}</strong>
+                    <span>
+                      {props.clearCanvasTargetKind === 'group'
+                        ? t('contextMenu.clearCanvas.currentGroupDescription')
+                        : t('contextMenu.clearCanvas.currentRootDescription')}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="canvas-context-menu-item-secondary"
+                  data-context-menu-action="show-clear-canvas-scope"
+                  onClick={props.onShowClearCanvasScope}
+                  aria-label={t('contextMenu.clearCanvas.chooseScope')}
+                  title={t('contextMenu.clearCanvas.chooseScope')}
+                >
+                  <span
+                    className="canvas-context-menu-icon codicon codicon-chevron-right"
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="canvas-context-menu-item"
+                data-context-menu-action="clear-canvas"
+                onClick={() => props.onClearCanvas('target')}
+              >
+                <span className="canvas-context-menu-icon codicon codicon-trash" aria-hidden="true" />
+                <span className="canvas-context-menu-copy">
+                  <strong>{t('contextMenu.clearCanvas.title')}</strong>
+                  <span>
+                    {props.clearCanvasTargetKind === 'group'
+                      ? t('contextMenu.clearCanvas.currentGroupDescription')
+                      : props.clearCanvasTargetKind === 'workspace-root'
+                        ? t('contextMenu.clearCanvas.currentRootDescription')
+                        : t('contextMenu.clearCanvas.description')}
+                  </span>
+                </span>
+              </button>
+            )}
             <div className="canvas-context-menu-separator" aria-hidden="true" />
             <div className="canvas-context-menu-split-item" data-context-menu-template-group="apply">
               <button
@@ -10736,6 +10880,41 @@ const CanvasContextMenu = React.forwardRef<
               <span className="canvas-context-menu-copy">
                 <strong>{t('contextMenu.arrangeCanvas.workspace.title')}</strong>
                 <span>{t('contextMenu.arrangeCanvas.workspace.description')}</span>
+              </span>
+            </button>
+          </>
+        ) : props.view === 'clear-canvas-scope' ? (
+          <>
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="clear-current-canvas"
+              onClick={() => props.onClearCanvas('target')}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-trash" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>
+                  {props.clearCanvasTargetKind === 'group'
+                    ? t('contextMenu.clearCanvas.currentGroup.title')
+                    : t('contextMenu.clearCanvas.currentRoot.title')}
+                </strong>
+                <span>
+                  {props.clearCanvasTargetKind === 'group'
+                    ? t('contextMenu.clearCanvas.currentGroup.description')
+                    : t('contextMenu.clearCanvas.currentRoot.description')}
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="canvas-context-menu-item"
+              data-context-menu-action="clear-workspace-canvas"
+              onClick={() => props.onClearCanvas('workspace')}
+            >
+              <span className="canvas-context-menu-icon codicon codicon-globe" aria-hidden="true" />
+              <span className="canvas-context-menu-copy">
+                <strong>{t('contextMenu.clearCanvas.workspace.title')}</strong>
+                <span>{t('contextMenu.clearCanvas.workspace.description')}</span>
               </span>
             </button>
           </>

@@ -1030,5 +1030,11 @@
   "{path} is not valid UTF-8 text.": "{path} 不是有效 UTF-8 文本。",
   "Template node \"{title}\"": "模板节点「{title}」",
   "Template group {index}": "模板分组 {index}",
-  "Template item": "模板项目"
+  "Template item": "模板项目",
+  "Clearing the current root Canvas removes Canvas objects in \"{root}\", keeps that root section visible, and stops running Agent / Terminal sessions in that root.": "清空当前 root 画板会移除「{root}」中的画布对象，保留该 root section 可见，并终止该 root 内运行中的 Agent / Terminal 会话。",
+  "Clearing group \"{group}\" removes all nodes and subgroups inside it, keeps the group frame visible, and stops running Agent / Terminal sessions in that group.": "清空分组「{group}」会移除其中所有节点和子分组，保留该分组框可见，并终止该分组内运行中的 Agent / Terminal 会话。",
+  "Failed to clean up live runtime while clearing the Canvas group.": "清空画布分组时清理 live runtime 失败。",
+  "No Canvas group was found to clear.": "未找到要清空的画布分组。",
+  "No Canvas scope was found to clear.": "未找到要清空的画布范围。",
+  "The Canvas group was cleared, so the install command was not sent.": "画布分组已清空，因此未发送安装命令。"
 }
