@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.0
+
+- 与主扩展 `0.23.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 `Dev Session Canvas Notifier` 的英文默认 / 简体中文本地化、真实 VS Code notifier locale smoke，以及 VS Code smoke 宿主稳定性；notifier companion 本轮新增本地化资源与 smoke 覆盖，但不改变通知协议、后端选择或点击回跳语义。
+- Notifier manifest command / view / setting、sidebar、手动测试通知、工作台提示、Linux action label 和 callback 提示现在随 VS Code locale 切换；backend 名称、路径、配置片段和诊断事实保持原样。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致。
+
 ## 0.22.0
 
 - 与主扩展 `0.22.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 UI 文案英文默认版与简体中文本地化、真实 VS Code locale smoke、paneGallery running 标题动效，以及当前 Agent 节点恢复 / 分叉启动参数继承边界；notifier companion 不引入新的通知投递行为变更。

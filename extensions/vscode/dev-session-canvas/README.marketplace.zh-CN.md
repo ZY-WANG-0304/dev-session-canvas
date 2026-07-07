@@ -10,19 +10,17 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.22.0 版本亮点
+## 0.23.0 版本亮点
 
-当前公开的 `0.22.0` 版本是新的 Preview 里程碑，聚焦 UI 文案本地化、真实 VS Code locale smoke 验证、Pane Gallery running 动效，以及当前 Agent 重启 / 分叉启动参数可靠性。它保留 `0.21.1` 的主扩展子包化发布布局、模板市场 Preview、notifier 自动安装关系、GitHub Release assets + Open VSX verified 完成门禁，以及 Visual Studio Marketplace deferred 口径。
+当前公开的 `0.23.0` 版本是新的 Preview 里程碑，聚焦 Dev Session Canvas Notifier 本地化与发布 smoke 稳定性。它保留 `0.22.0` 的主画布本地化、模板市场 Preview、notifier 自动安装关系、GitHub Release assets + Open VSX verified 完成门禁，以及 Visual Studio Marketplace deferred 口径。
 
-- 产品自有 UI 文案现在默认使用英文，并为 manifest 命令、view、设置、Extension Host 消息、QuickPick 流程、侧栏、主画布 Webview、模板面板、Agent 启动错误、runtime supervisor 摘要和模板解析 / 存储错误提供简体中文本地化
-- 用户内容保持事实原样：节点标题、Note 正文、文件路径、终端输出、Agent/provider 原始输出、模板 README/CHANGELOG 和市场数据不会被扩展翻译
-- 新增真实 VS Code locale smoke：分别启动英文与简体中文 Extension Development Host，并检查 manifest 本地化、Host runtime 文案、standby HTML 和 active Webview 代表性文案
-- VSIX staging 和文件列表守卫已包含 `package.nls.zh-cn.json` 与 `l10n/bundle.l10n.zh-cn.json`，降低发布包遗漏本地化资源的风险
-- Pane Gallery root running 提示改为 Codex Working 风格竖向色块，在 root title 小框区域内左右往返运动；active root 缩略图占位继续显示同一套 attention / running 状态动效，但不挂载第二份真实画布
-- Agent running 标题线也改为标题栏内往返运动，并保留既有尺寸、取色和 reduced motion 降级
-- Codex 当前节点 Resume / Fork 会清理 `--last=...`、`--all=...`、`--include-non-interactive=...` 等赋值形式会话选择参数，再写入本次显式 session target
-- 当前 Agent 节点 `重启` / `分叉` 只继承该节点最近一次实际启动命令或长期启动偏好，不再合并当前 Default args；历史恢复 / 历史分叉因 provider 历史无法可靠提供原始 argv，仍继续使用当前合法 Default args
-- 扩展 ID、最低 VS Code 版本、notifier 自动安装关系、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线和 Preview 支持矩阵保持不变
+- Notifier companion 现在为 manifest、命令、视图、设置、sidebar、工作台提示、手动测试通知、action label 和 callback 文案提供英文默认与简体中文本地化，并通过 VS Code locale 资源切换
+- Notifier sidebar 的 `Overview` / `Notes`、平台指引和 Agent 配置说明会随 locale 切换；backend 名称、路径、配置片段、诊断事实和用户环境数据保持原样
+- Notifier Marketplace 包现在包含 `package.nls.json`、`package.nls.zh-cn.json`、`l10n/bundle.l10n.zh-cn.json` 以及仅保留在仓库内的中文 listing 对应版
+- 新增真实 VS Code notifier locale smoke：英文与简体中文 Extension Development Host 会分别验证 notifier manifest 文案、已打开 sidebar HTML、手动测试通知、工作台提示、action label 和 callback 提示
+- Notifier companion smoke 现在把主扩展和 notifier 作为两条真实 development extension 加载，保留各自的 `ExtensionContext`、manifest、`package.nls*` 与 `l10n` 资源
+- Linux VS Code smoke 增加 headless 稳定性参数；终端 viewport 恢复断言改为比较 marker lines，避免受终端 padding 影响
+- 扩展 ID、最低 VS Code 版本、通知协议、后端选择、点击回跳语义、notifier 自动安装关系、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线和 Preview 支持边界均保持不变
 
 ## 核心功能
 
@@ -79,12 +77,12 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.21.1` 升级到 `0.22.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
+- 首次安装与从 `0.22.0` 升级到 `0.23.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
 - UI 语言跟随 VS Code locale。本版本不新增扩展自己的语言设置，也不会翻译用户内容、终端输出、provider 输出或市场模板数据
 - 生产模板市场可能以空目录启动。生产环境不会把代码内 seed 模板暴露为正式内容；真实模板必须通过发布流程或受控运维流程入库
 - 窗格画廊只改变多根呈现；单根 workspace 继续显示普通画布，`rootGroups` 仍是默认多根模式和保守回退路径
 - 布局整理是一次性显式操作，不提供撤销、不持续自动重排，也不跨普通分组或跨 root 搬移节点
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.22.0` 后会继续沿用该明确选择
+- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.23.0` 后会继续沿用该明确选择
 - 截图粘贴文件是扩展存储中的临时附件，不是 workspace 文件；它们会保留一段时间以便 Agent 上下文复用，之后由后台 TTL 维护任务清理
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
@@ -119,7 +117,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续更高的 `0.22.x` 修复版本，而非尝试手动降级
+- 优先等待后续更高的 `0.23.x` 修复版本，而非尝试手动降级
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 
