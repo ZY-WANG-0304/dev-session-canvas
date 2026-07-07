@@ -703,6 +703,12 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'webview/clearCanvas';
+      payload?: {
+        targetGroupId?: string;
+      };
+    }
+  | {
       type: 'webview/createDemoNode';
       payload: {
         requestId?: string;
@@ -1430,7 +1436,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     return { type: value.type };
   }
 
-  if (value.type === 'webview/arrangeCanvasLayout') {
+  if (value.type === 'webview/arrangeCanvasLayout' || value.type === 'webview/clearCanvas') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (payload && payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') {
       return null;
@@ -1439,13 +1445,13 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const targetGroupId = typeof payload?.targetGroupId === 'string' ? payload.targetGroupId : undefined;
     return targetGroupId
       ? {
-          type: 'webview/arrangeCanvasLayout',
+          type: value.type,
           payload: {
             targetGroupId
           }
         }
       : {
-          type: 'webview/arrangeCanvasLayout'
+          type: value.type
         };
   }
 
