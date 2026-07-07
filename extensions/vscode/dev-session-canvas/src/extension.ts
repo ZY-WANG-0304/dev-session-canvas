@@ -716,10 +716,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommand(context, COMMAND_IDS.resetCanvasState, async () => {
     const resetCanvasAction = vscode.l10n.t('Continue clearing');
-    const confirmed = await vscode.window.showWarningMessage(
-      vscode.l10n.t(
+    const resetCanvasMessage = (vscode.workspace.workspaceFolders?.length ?? 0) > 1
+      ? vscode.l10n.t(
+        'Clearing the Canvas removes Canvas objects in every workspace root in the current multi-root workspace, keeps the system root sections visible, and stops running Agent / Terminal sessions.'
+      )
+      : vscode.l10n.t(
         'Clearing the Canvas removes Canvas objects bound to the current workspace and stops running Agent / Terminal sessions.'
-      ),
+      );
+    const confirmed = await vscode.window.showWarningMessage(
+      resetCanvasMessage,
       { modal: true },
       resetCanvasAction
     );

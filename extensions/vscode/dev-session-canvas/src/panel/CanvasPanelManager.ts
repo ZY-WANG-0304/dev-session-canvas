@@ -3650,22 +3650,139 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public async resetState(options: { clearAgentCliResolutionCache?: boolean } = {}): Promise<void> {
     const previousNodeCount = this.state.nodes.length;
-    await this.prepareForHostBoundary({
-      preserveLiveRuntime: false,
-      allowRuntimeSupervisorRestart: false,
-      invalidatePendingExecutionOperations: true
-    });
+    const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    if (workspaceFolders.length > 1) {
+      const cleared = await this.clearAllWorkspaceRootCanvases({
+        reason: 'state-reset'
+      });
+      if (!cleared) {
+        return;
+      }
+    } else {
+      await this.prepareForHostBoundary({
+        preserveLiveRuntime: false,
+        allowRuntimeSupervisorRestart: false,
+        invalidatePendingExecutionOperations: true
+      });
+    }
     if (options.clearAgentCliResolutionCache) {
       this.clearAgentCliResolutionCache();
     }
-    this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
+    if (workspaceFolders.length > 1) {
+      this.state = this.composeEmptyMultiRootCanvasState(workspaceFolders);
+      this.lastLoadedRootLocalStates = workspaceFolders.map((folder) => ({
+        rootPath: folder.path,
+        state: createDefaultState(this.getAgentCliConfig().defaultProvider)
+      }));
+    } else {
+      this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
+    }
     this.canvasTemplateInitialized = true;
     this.persistState({ reason: 'state-reset' });
     this.recordDiagnosticEvent('state/reset', {
       previousNodeCount,
-      clearedAgentCliResolutionCache: options.clearAgentCliResolutionCache === true
+      clearedAgentCliResolutionCache: options.clearAgentCliResolutionCache === true,
+      clearedWorkspaceRootCount: workspaceFolders.length > 1 ? workspaceFolders.length : undefined
     });
     this.postState('host/stateUpdated');
+    this.notifySidebarStateChanged();
+  }
+
+  private async clearAllWorkspaceRootCanvases(options: { reason?: string } = {}): Promise<boolean> {
+    const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    if (workspaceFolders.length === 0) {
+      return true;
+    }
+
+    const affectedNodes = this.state.nodes.slice();
+    for (const node of affectedNodes) {
+      this.dropPendingTerminalInitialInput(
+        node.id,
+        vscode.l10n.t('The Canvas was cleared, so the install command was not sent.')
+      );
+      this.activeAssociatedNoteMarkdownEdits.delete(node.id);
+      if (!isExecutionNodeKind(node.kind)) {
+        continue;
+      }
+
+      this.invalidateExecutionSessionOperation(node.kind, node.id);
+      try {
+        await this.terminateExecutionNodeForDeletion(node);
+      } catch (error) {
+        await vscode.window.showErrorMessage(
+          error instanceof Error
+            ? error.message
+            : vscode.l10n.t('Failed to clean up live runtime while clearing the Canvas.'),
+          { modal: true }
+        );
+        return false;
+      }
+    }
+    this.clearPendingTerminalInitialInputs(
+      vscode.l10n.t('The Canvas was cleared, so the install command was not sent.')
+    );
+
+    const emptyRootState = createEmptyCanvasState(new Date().toISOString());
+    for (const folder of workspaceFolders) {
+      try {
+        this.writeRootLocalCanvasSnapshot(folder.path, emptyRootState);
+      } catch (error) {
+        await vscode.window.showErrorMessage(
+          vscode.l10n.t('Failed to clear the workspace root Canvas state: {message}', {
+            message: formatUnknownError(error)
+          }),
+          { modal: true }
+        );
+        this.recordDiagnosticEvent('state/rootLocalClearFailed', {
+          rootPath: folder.path,
+          message: formatUnknownError(error),
+          reason: options.reason
+        });
+        return false;
+      }
+    }
+
+    this.recordDiagnosticEvent('state/rootLocalAllCleared', {
+      rootCount: workspaceFolders.length,
+      nodeCount: affectedNodes.length,
+      reason: options.reason
+    });
+    return true;
+  }
+
+  private composeEmptyMultiRootCanvasState(
+    workspaceFolders: readonly CanvasMultiRootWorkspaceFolder[]
+  ): CanvasPrototypeState {
+    const previousRootGroupsByPath = new Map<string, CanvasGroupSummary>();
+    for (const group of this.state.groups ?? []) {
+      if (!isWorkspaceRootGroup(group)) {
+        continue;
+      }
+      const rootPath = resolveWorkspaceRootPathForGroup(group);
+      if (rootPath) {
+        previousRootGroupsByPath.set(rootPath, group);
+      }
+    }
+    const now = new Date().toISOString();
+    return composeMultiRootCanvasState({
+      workspaceFolders,
+      rootStates: workspaceFolders.map((folder) => ({
+        rootPath: folder.path,
+        state: createEmptyCanvasState(now)
+      })),
+      overlay: {
+        version: 1,
+        roots: workspaceFolders.flatMap((folder) => {
+          const previousRootGroup = previousRootGroupsByPath.get(folder.path);
+          return previousRootGroup ? [{
+            rootPath: folder.path,
+            position: previousRootGroup.position,
+            size: previousRootGroup.size
+          }] : [];
+        })
+      },
+      now
+    });
   }
 
   public async clearWorkspaceRootCanvas(
