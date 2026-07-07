@@ -171,6 +171,40 @@ assert.equal(
   null,
   'webview/arrangeCanvasLayout.targetGroupId 必须是字符串。'
 );
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/clearCanvas'
+  }),
+  {
+    type: 'webview/clearCanvas'
+  },
+  '未指定范围时右键清空画板消息按全局清空路径处理，并由 Host 弹出确认。'
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/clearCanvas',
+    payload: {
+      targetGroupId: 'workspace-root-frontend'
+    }
+  }),
+  {
+    type: 'webview/clearCanvas',
+    payload: {
+      targetGroupId: 'workspace-root-frontend'
+    }
+  },
+  '右键清空画板消息可携带 targetGroupId，由 Host 确认后限定到 root 或用户分组。'
+);
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/clearCanvas',
+    payload: {
+      targetGroupId: 42
+    }
+  }),
+  null,
+  'webview/clearCanvas.targetGroupId 必须是字符串。'
+);
 assert.deepEqual(extractWebviewMessageLifecycle(lifecycleMessage), lifecycleMessage.lifecycle);
 assert.equal(extractWebviewMessageLifecycle({ type: 'webview/ready' }), undefined);
 assert.equal(
@@ -680,13 +714,43 @@ assert.match(
 );
 assert.match(
   panelManagerSource,
-  /public async resetState[\s\S]*workspaceFolders\.length > 1[\s\S]*clearAllWorkspaceRootCanvases[\s\S]*composeEmptyMultiRootCanvasState[\s\S]*persistState\(\{ reason: 'state-reset' \}\)/u,
+  /public async resetState[\s\S]*workspaceFolders\.length > 1[\s\S]*clearAllWorkspaceRootCanvases[\s\S]*composeEmptyMultiRootCanvasState[\s\S]*persistState\(\{ reason: options\.reason \?\? 'state-reset' \}\)/u,
   'Expected multi-root Clear Canvas to clear root-local contents while rebuilding an empty composed view with root sections.'
 );
 assert.match(
   panelManagerSource,
   /private async clearAllWorkspaceRootCanvases[\s\S]*terminateExecutionNodeForDeletion[\s\S]*writeRootLocalCanvasSnapshot\(folder\.path, emptyRootState\)[\s\S]*state\/rootLocalAllCleared/u,
   'Expected multi-root Clear Canvas to terminate affected execution sessions and write empty root-local snapshots for each root.'
+);
+assert.match(
+  webviewSource,
+  /canClearWorkspaceCanvasScope[\s\S]*view: 'clear-canvas-scope'[\s\S]*type: 'webview\/clearCanvas'/u,
+  'Expected the canvas context menu to expose scoped Clear Canvas choices and send a dedicated clear message.'
+);
+assert.match(
+  webviewSource,
+  /resolveClearCanvasTargetGroup[\s\S]*isWorkspaceRootCanvasGroupRole[\s\S]*resolveContainingWorkspaceRootGroupIdForWebview/u,
+  'Expected right-click Clear Canvas target resolution to keep workspace-root targets and normal group targets distinct.'
+);
+assert.match(
+  panelManagerSource,
+  /case 'webview\/clearCanvas':[\s\S]*clearCanvasWithConfirmation\(parsedMessage\.payload\?\.targetGroupId\)/u,
+  'Expected Host to route right-click Clear Canvas through the confirmation path.'
+);
+assert.match(
+  panelManagerSource,
+  /clearCanvasWithConfirmation[\s\S]*confirmClearCanvasTarget[\s\S]*clearWorkspaceRootCanvas[\s\S]*clearCanvasGroupContents[\s\S]*resetState\(\{ reason: 'context-menu-clear-workspace-canvas' \}\)/u,
+  'Expected scoped Clear Canvas to reuse root clear, group clear, or global reset depending on target.'
+);
+assert.match(
+  panelManagerSource,
+  /confirmClearCanvasTarget[\s\S]*Continue clearing[\s\S]*showWarningMessage\([\s\S]*\{ modal: true \}/u,
+  'Expected every right-click Clear Canvas path to use a modal confirmation before deleting objects.'
+);
+assert.match(
+  panelManagerSource,
+  /clearCanvasGroupContents[\s\S]*collectGroupDescendantIds[\s\S]*filter\(\(currentGroup\) => !childGroupIdsToDelete\.has\(currentGroup\.id\)\)[\s\S]*state\/groupCleared/u,
+  'Expected group-scoped Clear Canvas to delete descendants while preserving the target group frame.'
 );
 assert.match(
   panelManagerSource,

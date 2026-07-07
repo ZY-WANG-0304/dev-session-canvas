@@ -559,6 +559,11 @@ interface CanvasTestDiagnosticEvent {
   detail?: Record<string, unknown>;
 }
 
+type CanvasClearTarget =
+  | { kind: 'workspace' }
+  | { kind: 'workspace-root'; group: CanvasGroupSummary; rootPath: string }
+  | { kind: 'group'; group: CanvasGroupSummary };
+
 interface CanvasHostMessageDiagnosticRecord {
   timestamp: string;
   surface: CanvasSurfaceLocation | 'active';
@@ -3648,12 +3653,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.waitForPendingWorkspaceStateUpdates();
   }
 
-  public async resetState(options: { clearAgentCliResolutionCache?: boolean } = {}): Promise<void> {
+  public async resetState(options: { clearAgentCliResolutionCache?: boolean; reason?: string } = {}): Promise<void> {
     const previousNodeCount = this.state.nodes.length;
     const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
     if (workspaceFolders.length > 1) {
       const cleared = await this.clearAllWorkspaceRootCanvases({
-        reason: 'state-reset'
+        reason: options.reason ?? 'state-reset'
       });
       if (!cleared) {
         return;
@@ -3678,11 +3683,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
     }
     this.canvasTemplateInitialized = true;
-    this.persistState({ reason: 'state-reset' });
+    this.persistState({ reason: options.reason ?? 'state-reset' });
     this.recordDiagnosticEvent('state/reset', {
       previousNodeCount,
       clearedAgentCliResolutionCache: options.clearAgentCliResolutionCache === true,
-      clearedWorkspaceRootCount: workspaceFolders.length > 1 ? workspaceFolders.length : undefined
+      clearedWorkspaceRootCount: workspaceFolders.length > 1 ? workspaceFolders.length : undefined,
+      reason: options.reason
     });
     this.postState('host/stateUpdated');
     this.notifySidebarStateChanged();
@@ -11648,6 +11654,98 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : resolveContainingWorkspaceRootGroupId(groups, targetGroup.id);
   }
 
+  private resolveCanvasClearTarget(
+    requestedTargetGroupId?: string
+  ): CanvasClearTarget | undefined {
+    if (!requestedTargetGroupId) {
+      return { kind: 'workspace' };
+    }
+
+    const groups = this.state.groups ?? [];
+    const targetGroup = groups.find((group) => group.id === requestedTargetGroupId);
+    if (!targetGroup) {
+      return undefined;
+    }
+
+    if (isWorkspaceRootGroup(targetGroup)) {
+      const rootPath = resolveWorkspaceRootPathForGroup(targetGroup);
+      return rootPath
+        ? {
+            kind: 'workspace-root',
+            group: targetGroup,
+            rootPath
+          }
+        : undefined;
+    }
+
+    if (resolveContainingWorkspaceRootGroupId(groups, targetGroup.id) || !groups.some(isWorkspaceRootGroup)) {
+      return {
+        kind: 'group',
+        group: targetGroup
+      };
+    }
+
+    return undefined;
+  }
+
+  private async clearCanvasWithConfirmation(targetGroupId?: string): Promise<void> {
+    const target = this.resolveCanvasClearTarget(targetGroupId);
+    if (!target) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: vscode.l10n.t('No Canvas scope was found to clear.')
+        }
+      });
+      return;
+    }
+
+    if (!(await this.confirmClearCanvasTarget(target))) {
+      return;
+    }
+
+    if (target.kind === 'workspace-root') {
+      await this.clearWorkspaceRootCanvas(target.rootPath, { reason: 'context-menu-clear-root-canvas' });
+      return;
+    }
+
+    if (target.kind === 'group') {
+      await this.clearCanvasGroupContents(target.group.id, { reason: 'context-menu-clear-group-canvas' });
+      return;
+    }
+
+    await this.resetState({ reason: 'context-menu-clear-workspace-canvas' });
+  }
+
+  private async confirmClearCanvasTarget(
+    target: CanvasClearTarget
+  ): Promise<boolean> {
+    const clearCanvasAction = vscode.l10n.t('Continue clearing');
+    const message = target.kind === 'workspace-root'
+      ? vscode.l10n.t(
+          'Clearing the current root Canvas removes Canvas objects in "{root}", keeps that root section visible, and stops running Agent / Terminal sessions in that root.',
+          { root: target.group.title }
+        )
+      : target.kind === 'group'
+        ? vscode.l10n.t(
+            'Clearing group "{group}" removes all nodes and subgroups inside it, keeps the group frame visible, and stops running Agent / Terminal sessions in that group.',
+            { group: target.group.title }
+          )
+        : (this.getMultiRootWorkspaceFoldersForComposition().length > 1
+            ? vscode.l10n.t(
+                'Clearing the Canvas removes Canvas objects in every workspace root in the current multi-root workspace, keeps the system root sections visible, and stops running Agent / Terminal sessions.'
+              )
+            : vscode.l10n.t(
+                'Clearing the Canvas removes Canvas objects bound to the current workspace and stops running Agent / Terminal sessions.'
+              ));
+    const confirmed = await vscode.window.showWarningMessage(
+      message,
+      { modal: true },
+      clearCanvasAction
+    );
+    return confirmed === clearCanvasAction;
+  }
+
   private handleActiveWebviewMessage(
     sourceSurface: CanvasSurfaceLocation,
     parsedMessage: WebviewToHostMessage
@@ -11685,6 +11783,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       }
+      case 'webview/clearCanvas':
+        void this.clearCanvasWithConfirmation(parsedMessage.payload?.targetGroupId).catch((error) => {
+          this.postMessage({
+            type: 'host/error',
+            payload: {
+              message: formatUnknownError(error)
+            }
+          });
+        });
+        return;
       case 'webview/createDemoNode':
         this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
           requestId: parsedMessage.payload.requestId,
@@ -16531,6 +16639,104 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.state = this.reconcileCanvasFileArtifacts(finalizeCanvasGroupState(nextState));
     this.persistState();
     this.postState('host/stateUpdated');
+  }
+
+  private async clearCanvasGroupContents(
+    groupId: string,
+    options: { reason?: string } = {}
+  ): Promise<void> {
+    const group = (this.state.groups ?? []).find((currentGroup) => currentGroup.id === groupId);
+    if (!group || isWorkspaceRootGroup(group)) {
+      this.postMessage({
+        type: 'host/error',
+        payload: {
+          message: vscode.l10n.t('No Canvas group was found to clear.')
+        }
+      });
+      return;
+    }
+
+    const deleteImpact = collectCanvasGroupDeleteImpact(this.state, groupId);
+    const childGroupIdsToDelete = collectGroupDescendantIds(this.state.groups ?? [], groupId);
+    const nodeIdsToDelete = deleteImpact.nodeIds;
+
+    for (const nodeId of nodeIdsToDelete) {
+      const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
+      if (!node) {
+        continue;
+      }
+
+      this.dropPendingTerminalInitialInput(
+        nodeId,
+        vscode.l10n.t('The Canvas group was cleared, so the install command was not sent.')
+      );
+      this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
+      if (!isExecutionNodeKind(node.kind)) {
+        continue;
+      }
+
+      this.invalidateExecutionSessionOperation(node.kind, nodeId);
+      try {
+        await this.terminateExecutionNodeForDeletion(node);
+      } catch (error) {
+        await vscode.window.showErrorMessage(
+          error instanceof Error
+            ? error.message
+            : vscode.l10n.t('Failed to clean up live runtime while clearing the Canvas group.'),
+          { modal: true }
+        );
+        return;
+      }
+    }
+
+    const deletedNodeIds = new Set(nodeIdsToDelete);
+    let nextState: CanvasPrototypeState = {
+      ...this.state,
+      updatedAt: new Date().toISOString(),
+      nodes: this.state.nodes.filter((node) => !deletedNodeIds.has(node.id)),
+      edges: this.state.edges.filter(
+        (edge) => !deletedNodeIds.has(edge.sourceNodeId) && !deletedNodeIds.has(edge.targetNodeId)
+      ),
+      groups: (this.state.groups ?? []).filter((currentGroup) => !childGroupIdsToDelete.has(currentGroup.id))
+    };
+
+    for (const nodeId of nodeIdsToDelete) {
+      const deletedNode = this.state.nodes.find((node) => node.id === nodeId);
+      if (deletedNode?.kind === 'agent') {
+        nextState = removeAgentFileReferences(nextState, nodeId);
+      } else if (deletedNode?.kind === 'file' || deletedNode?.kind === 'file-list') {
+        nextState = {
+          ...nextState,
+          suppressedAutomaticFileArtifactNodeIds: ensureSuppressedAutomaticFileArtifactNodeId(
+            nextState.suppressedAutomaticFileArtifactNodeIds,
+            nodeId
+          )
+        };
+      }
+    }
+
+    const repairTargetGroupIds = [
+      groupId,
+      resolveContainingWorkspaceRootGroupId(this.state.groups ?? [], groupId)
+    ].filter((id): id is string => Boolean(id));
+    const geometryRepairOptions = repairTargetGroupIds.length > 0
+      ? {
+          repairTargetGroupIds
+        }
+      : undefined;
+    this.state = this.reconcileCanvasFileArtifacts(finalizeCanvasGroupState(nextState, geometryRepairOptions), {
+      geometryRepairOptions
+    });
+    this.canvasTemplateInitialized = true;
+    this.persistState({ reason: options.reason ?? 'canvas-group-cleared' });
+    this.recordDiagnosticEvent('state/groupCleared', {
+      groupId,
+      nodeCount: nodeIdsToDelete.length,
+      groupCount: childGroupIdsToDelete.size,
+      reason: options.reason
+    });
+    this.postState('host/stateUpdated');
+    this.notifySidebarStateChanged();
   }
 
   private async deleteNode(nodeId: string): Promise<void> {
