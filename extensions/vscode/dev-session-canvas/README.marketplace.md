@@ -10,19 +10,17 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.22.0 Highlights
+## 0.23.0 Highlights
 
-The public `0.22.0` release is a Preview milestone for UI localization, real VS Code locale smoke validation, Pane Gallery running animation polish, and current-Agent restart / fork launch-argument reliability. It keeps the `0.21.1` packaging layout, Template Marketplace Preview, notifier auto-install relationship, GitHub Release assets plus verified Open VSX completion gate, and Visual Studio Marketplace deferred stance.
+The public `0.23.0` release is a Preview milestone for Dev Session Canvas Notifier localization and release-smoke stability. It keeps the `0.22.0` main-canvas localization, Template Marketplace Preview, notifier auto-install relationship, GitHub Release assets plus verified Open VSX completion gate, and Visual Studio Marketplace deferred stance.
 
-- Product-owned UI copy now defaults to English and includes Simplified Chinese localization for manifest commands, views, settings, Extension Host messages, QuickPick flows, sidebar surfaces, the main canvas Webview, template panels, Agent launch errors, runtime supervisor summaries, and template parse / storage errors
-- User content remains factual and unlocalized: node titles, Note bodies, file paths, terminal output, Agent/provider raw output, template README/CHANGELOG, and marketplace data stay as provided
-- Real VS Code locale smoke now launches English and Simplified Chinese Extension Development Hosts and checks manifest localization, Host runtime text, standby HTML, and representative active Webview text
-- VSIX staging and file-list guards now include `package.nls.zh-cn.json` and `l10n/bundle.l10n.zh-cn.json`, reducing the risk of publishing a localized build without its localization resources
-- Pane Gallery root running hints now use a Codex Working-style vertical bar that moves back and forth inside the root-title chip; the active-root thumbnail placeholder keeps the same attention / running state animation without mounting a second live canvas
-- Agent running title lines also move back and forth inside the title bar, while keeping the existing size, color, and reduced-motion behavior
-- Codex current-node Resume / Fork strips assignment-form session-selection flags such as `--last=...`, `--all=...`, and `--include-non-interactive=...` before writing the explicit session target for the current action
-- Current Agent node Restart / Fork now inherits only that node's most recent launch command or persistent launch intent, and no longer merges the current Default args; history restore / fork still uses current valid Default args because provider history does not reliably expose original argv
-- The extension ID, VS Code minimum version, notifier auto-install relationship, Open VSX gate, Visual Studio Marketplace deferred stance, Template Marketplace service version line, and Preview support matrix stay unchanged
+- The notifier companion now uses English-default manifest, command, view, setting, sidebar, workbench prompt, manual test-notification, action-label, and callback text, with Simplified Chinese localization included through VS Code locale resources
+- Notifier sidebar sections now localize `Overview`, `Notes`, platform guidance, and Agent configuration copy while leaving backend names, paths, configuration snippets, diagnostic facts, and user environment data unchanged
+- The notifier Marketplace package now includes `package.nls.json`, `package.nls.zh-cn.json`, `l10n/bundle.l10n.zh-cn.json`, and the repository-only Simplified Chinese listing counterpart
+- A real VS Code notifier locale smoke launches English and Simplified Chinese Extension Development Hosts and checks notifier manifest text, opened sidebar HTML, manual test notifications, workbench prompts, action labels, and callback prompts
+- Notifier companion smoke now loads the main extension and notifier as two real development extensions, keeping each extension's own `ExtensionContext`, manifest, `package.nls*`, and `l10n` resources intact
+- Linux VS Code smoke runs with additional headless stability flags, and terminal viewport restore assertions now compare marker lines instead of incidental terminal padding
+- The extension ID, VS Code minimum version, notification protocol, backend selection, click callback semantics, notifier auto-install relationship, Open VSX gate, Visual Studio Marketplace deferred stance, Template Marketplace service version line, and Preview support matrix stay unchanged
 
 ## Core Capabilities
 
@@ -79,12 +77,12 @@ The public `0.22.0` release is a Preview milestone for UI localization, real VS 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.21.1` to `0.22.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- First-time installs and upgrades from `0.22.0` to `0.23.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
 - UI language follows the VS Code locale. This release does not add an extension-specific language setting and does not translate user-owned content, terminal output, provider output, or marketplace template data
 - The production Template Marketplace may start with an empty catalog. Production does not expose code-only seed templates; real templates must be published through the marketplace or a controlled operations flow
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
 - Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.22.0` preserves that explicit choice
+- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.23.0` preserves that explicit choice
 - Image paste files are temporary extension-storage attachments, not workspace files. They are retained long enough for Agent context reuse and then cleaned by the background TTL maintenance task
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
@@ -121,7 +119,7 @@ The public `0.22.0` release is a Preview milestone for UI localization, real VS 
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.22.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.23.x` fix release rather than trying to downgrade manually
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
