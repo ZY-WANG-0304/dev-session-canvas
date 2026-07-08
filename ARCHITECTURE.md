@@ -242,6 +242,12 @@ docs/                           根目录正式文档知识库
   - Note Markdown 阅读态渲染、source map DOM 标注、安全链接 / 图片规则和 checklist DOM helper
 - `noteEditingSurface.ts`
   - Note 编辑态行号、scroll/source offset 同步、preview 双击定位和 Tab indent glue
+- `canvasMiniMap.tsx`
+  - Canvas minimap、spatial bounds、viewport helper 和 overview mode bridge
+- `canvasUiSurface.tsx`
+  - Webview UI 共享 surface，包括 overview inert context、标题编辑器、overflow 文本、编辑快捷键和选择/删除命中 helper
+- `canvasGroupLayers.tsx`
+  - Canvas group 背景/前景层、workspace root watermark、group frame chrome、分组命中排序与拖拽/缩放几何
 - `canvasGroupFrameStyles.ts`
   - 分组框 chrome CSS 变量、workspace root watermark SVG pattern 和 workspace-root role 判断
 - `styles.css`
