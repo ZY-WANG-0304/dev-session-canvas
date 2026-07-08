@@ -224,8 +224,13 @@ docs/                           根目录正式文档知识库
 关键命名实体：
 
 - `main.tsx`
-  - React 应用入口
-  - 维护节点渲染、选择、视口、节点编辑和内嵌终端前端
+  - React 应用组合入口
+  - 维护 App 状态机、React Flow 装配、选择、视口、消息边界、执行终端 controller 与测试 bridge
+- `executionSessionNodes.tsx`
+  - `AgentSessionNode` / `TerminalSessionNode` 渲染与节点内 xterm mount / resize / restore glue
+  - 通过依赖注入复用 `main.tsx` 持有的执行终端 registry、controller factory、runtime context 与消息函数
+- `executionTerminalTypes.ts`
+  - Webview 执行终端 Host event、controller、registry entry 与 xterm 私有 mouse / selection 适配类型
 - `executionTerminalNativeInteractions.ts`
   - `xterm.js` 在缩放、拖拽、选择和原生交互上的前端适配
 - `canvasTypes.ts`
@@ -255,7 +260,7 @@ docs/                           根目录正式文档知识库
 这里主要负责：
 
 - 渲染画布、节点、缩放与导航。
-- 在节点内部承载富交互内容，包括标题编辑、Note 内容编辑和嵌入式终端前端。
+- 在节点内部承载富交互内容，包括标题编辑、Note 内容编辑和嵌入式终端前端；执行节点组件已收敛在 `executionSessionNodes.tsx`，入口只负责组合依赖。
 - 维护局部 UI 状态，例如当前选中节点、视口位置、上下文菜单和短生命周期输入态。
 
 架构不变量：
