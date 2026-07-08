@@ -225,7 +225,10 @@ docs/                           根目录正式文档知识库
 
 - `main.tsx`
   - React 应用组合入口
-  - 维护 App 状态机、React Flow 装配、选择、视口、消息边界、执行终端 controller 与测试 bridge
+  - 维护 App 状态机、主 React Flow 装配、选择、视口、消息边界、执行终端 controller 与测试 bridge
+- `paneGallerySurface.tsx`
+  - 多 workspace root 的 paneGallery root model helper 与 UI surface
+  - 承载 paneGallery pane、thumbnail rail、controls 和内嵌 React Flow 渲染；状态、refs、viewport 保存和消息边界仍由 `main.tsx` 传入
 - `executionSessionNodes.tsx`
   - `AgentSessionNode` / `TerminalSessionNode` 渲染与节点内 xterm mount / resize / restore glue
   - 通过依赖注入复用 `main.tsx` 持有的执行终端 registry、controller factory、runtime context 与消息函数
@@ -354,6 +357,7 @@ docs/                           根目录正式文档知识库
   - `extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts`
 - `画布交互域`
   - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/paneGallerySurface.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
   - `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`
 - `协作对象域`
