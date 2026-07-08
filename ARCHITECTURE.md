@@ -229,6 +229,9 @@ docs/                           根目录正式文档知识库
 - `paneGallerySurface.tsx`
   - 多 workspace root 的 paneGallery root model helper 与 UI surface
   - 承载 paneGallery pane、thumbnail rail、controls 和内嵌 React Flow 渲染；状态、refs、viewport 保存和消息边界仍由 `main.tsx` 传入
+- `fileNoteNodes.tsx`
+  - `FileNode` / `FileListNode` / `NoteEditableNode` 渲染与 File/Note 专属局部 UI helper
+  - 通过依赖注入复用 `main.tsx` 持有的通用节点 chrome、resize affordance、handles、action button 和 fallback card
 - `executionSessionNodes.tsx`
   - `AgentSessionNode` / `TerminalSessionNode` 渲染与节点内 xterm mount / resize / restore glue
   - 通过依赖注入复用 `main.tsx` 持有的执行终端 registry、controller factory、runtime context 与消息函数
@@ -358,6 +361,7 @@ docs/                           根目录正式文档知识库
 - `画布交互域`
   - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/paneGallerySurface.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/fileNoteNodes.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
   - `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`
 - `协作对象域`
@@ -482,6 +486,7 @@ docs/                           根目录正式文档知识库
   - `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts`
 - 改画布 UI、节点交互、标题/内容编辑、缩放与聚焦：
   - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/fileNoteNodes.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
 - 改侧栏显示和快捷动作：
   - `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts`
