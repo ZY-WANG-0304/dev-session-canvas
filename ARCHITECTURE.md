@@ -228,10 +228,20 @@ docs/                           根目录正式文档知识库
   - 维护节点渲染、选择、视口、节点编辑和内嵌终端前端
 - `executionTerminalNativeInteractions.ts`
   - `xterm.js` 在缩放、拖拽、选择和原生交互上的前端适配
+- `canvasTypes.ts`
+  - Webview 内部共享类型，包括 React Flow 节点 / 边 data、本地 UI 状态、paneGallery root model 与几何辅助类型
+- `canvasEdges.tsx`
+  - Canvas edge 几何、渲染、label 编辑、arrow / color toolbar 和 edge stroke 展示规则
+- `canvasGraphRules.ts`
+  - Webview 侧分组选择、模板兼容节点、workspace-root containment 和连线端点约束
+- `canvasDomEvents.ts`
+  - Webview 内共享的事件冒泡阻断与 IME composing 判断
 - `paneGalleryLocalState.ts`
   - 多根窗格画廊的 Webview 本地布局模式、active root 与视口缓存规范化
 - `noteMarkdownPreview.ts`
   - Note Markdown 阅读态渲染、source map DOM 标注、安全链接 / 图片规则和 checklist DOM helper
+- `noteEditingSurface.ts`
+  - Note 编辑态行号、scroll/source offset 同步、preview 双击定位和 Tab indent glue
 - `canvasGroupFrameStyles.ts`
   - 分组框 chrome CSS 变量、workspace root watermark SVG pattern 和 workspace-root role 判断
 - `styles.css`
