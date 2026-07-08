@@ -228,6 +228,12 @@ docs/                           根目录正式文档知识库
   - 维护节点渲染、选择、视口、节点编辑和内嵌终端前端
 - `executionTerminalNativeInteractions.ts`
   - `xterm.js` 在缩放、拖拽、选择和原生交互上的前端适配
+- `paneGalleryLocalState.ts`
+  - 多根窗格画廊的 Webview 本地布局模式、active root 与视口缓存规范化
+- `noteMarkdownPreview.ts`
+  - Note Markdown 阅读态渲染、source map DOM 标注、安全链接 / 图片规则和 checklist DOM helper
+- `canvasGroupFrameStyles.ts`
+  - 分组框 chrome CSS 变量、workspace root watermark SVG pattern 和 workspace-root role 判断
 - `styles.css`
 
 这里主要负责：
