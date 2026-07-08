@@ -231,7 +231,10 @@ docs/                           根目录正式文档知识库
   - 承载 paneGallery pane、thumbnail rail、controls 和内嵌 React Flow 渲染；状态、refs、viewport 保存和消息边界仍由 `main.tsx` 传入
 - `fileNoteNodes.tsx`
   - `FileNode` / `FileListNode` / `NoteEditableNode` 渲染与 File/Note 专属局部 UI helper
-  - 通过依赖注入复用 `main.tsx` 持有的通用节点 chrome、resize affordance、handles、action button 和 fallback card
+  - 通过依赖注入复用 `canvasNodeChrome.tsx` 暴露的通用节点 chrome、resize affordance、handles、action button 和 fallback card
+- `canvasNodeChrome.tsx`
+  - 共享节点 chrome surface，包括 action button、React Flow handles、节点 resize affordance、overview title、compact fallback card 和 execution attention status
+  - 不持有 Host/Webview 消息状态；由 `main.tsx` 注入本地化、状态文案、provider label 和最小 footprint helper
 - `executionSessionNodes.tsx`
   - `AgentSessionNode` / `TerminalSessionNode` 渲染与节点内 xterm mount / resize / restore glue
   - 通过依赖注入复用 `main.tsx` 持有的执行终端 registry、controller factory、runtime context 与消息函数
@@ -362,6 +365,7 @@ docs/                           根目录正式文档知识库
   - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/paneGallerySurface.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/fileNoteNodes.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/canvasNodeChrome.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
   - `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`
 - `协作对象域`
@@ -486,6 +490,7 @@ docs/                           根目录正式文档知识库
   - `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts`
 - 改画布 UI、节点交互、标题/内容编辑、缩放与聚焦：
   - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/canvasNodeChrome.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/fileNoteNodes.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
 - 改侧栏显示和快捷动作：
