@@ -419,4 +419,3 @@ function findNotePreviewFallbackSourceEnd(target: globalThis.Node | null, previe
 
   return readNoteMarkdownSourceEnd(preview);
 }
-
