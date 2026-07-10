@@ -224,16 +224,52 @@ docs/                           根目录正式文档知识库
 关键命名实体：
 
 - `main.tsx`
-  - React 应用入口
-  - 维护节点渲染、选择、视口、节点编辑和内嵌终端前端
+  - React 应用组合入口
+  - 维护 App 状态机、主 React Flow 装配、选择、视口、消息边界、执行终端 controller 与测试 bridge
+- `paneGallerySurface.tsx`
+  - 多 workspace root 的 paneGallery root model helper 与 UI surface
+  - 承载 paneGallery pane、thumbnail rail、controls 和内嵌 React Flow 渲染；状态、refs、viewport 保存和消息边界仍由 `main.tsx` 传入
+- `fileNoteNodes.tsx`
+  - `FileNode` / `FileListNode` / `NoteEditableNode` 渲染与 File/Note 专属局部 UI helper
+  - 通过依赖注入复用 `canvasNodeChrome.tsx` 暴露的通用节点 chrome、resize affordance、handles、action button 和 fallback card
+- `canvasNodeChrome.tsx`
+  - 共享节点 chrome surface，包括 action button、React Flow handles、节点 resize affordance、overview title、compact fallback card 和 execution attention status
+  - 不持有 Host/Webview 消息状态；由 `main.tsx` 注入本地化、状态文案、provider label 和最小 footprint helper
+- `executionSessionNodes.tsx`
+  - `AgentSessionNode` / `TerminalSessionNode` 渲染与节点内 xterm mount / resize / restore glue
+  - 通过依赖注入复用 `main.tsx` 持有的执行终端 registry、controller factory、runtime context 与消息函数
+- `executionTerminalTypes.ts`
+  - Webview 执行终端 Host event、controller、registry entry 与 xterm 私有 mouse / selection 适配类型
 - `executionTerminalNativeInteractions.ts`
   - `xterm.js` 在缩放、拖拽、选择和原生交互上的前端适配
+- `canvasTypes.ts`
+  - Webview 内部共享类型，包括 React Flow 节点 / 边 data、本地 UI 状态、paneGallery root model 与几何辅助类型
+- `canvasEdges.tsx`
+  - Canvas edge 几何、渲染、label 编辑、arrow / color toolbar 和 edge stroke 展示规则
+- `canvasGraphRules.ts`
+  - Webview 侧分组选择、模板兼容节点、workspace-root containment 和连线端点约束
+- `canvasDomEvents.ts`
+  - Webview 内共享的事件冒泡阻断与 IME composing 判断
+- `paneGalleryLocalState.ts`
+  - 多根窗格画廊的 Webview 本地布局模式、active root 与视口缓存规范化
+- `noteMarkdownPreview.ts`
+  - Note Markdown 阅读态渲染、source map DOM 标注、安全链接 / 图片规则和 checklist DOM helper
+- `noteEditingSurface.ts`
+  - Note 编辑态行号、scroll/source offset 同步、preview 双击定位和 Tab indent glue
+- `canvasMiniMap.tsx`
+  - Canvas minimap、spatial bounds、viewport helper 和 overview mode bridge
+- `canvasUiSurface.tsx`
+  - Webview UI 共享 surface，包括 overview inert context、标题编辑器、overflow 文本、编辑快捷键和选择/删除命中 helper
+- `canvasGroupLayers.tsx`
+  - Canvas group 背景/前景层、workspace root watermark、group frame chrome、分组命中排序与拖拽/缩放几何
+- `canvasGroupFrameStyles.ts`
+  - 分组框 chrome CSS 变量、workspace root watermark SVG pattern 和 workspace-root role 判断
 - `styles.css`
 
 这里主要负责：
 
 - 渲染画布、节点、缩放与导航。
-- 在节点内部承载富交互内容，包括标题编辑、Note 内容编辑和嵌入式终端前端。
+- 在节点内部承载富交互内容，包括标题编辑、Note 内容编辑和嵌入式终端前端；执行节点组件已收敛在 `executionSessionNodes.tsx`，入口只负责组合依赖。
 - 维护局部 UI 状态，例如当前选中节点、视口位置、上下文菜单和短生命周期输入态。
 
 架构不变量：
@@ -327,6 +363,9 @@ docs/                           根目录正式文档知识库
   - `extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts`
 - `画布交互域`
   - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/paneGallerySurface.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/fileNoteNodes.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/canvasNodeChrome.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
   - `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`
 - `协作对象域`
@@ -451,6 +490,8 @@ docs/                           根目录正式文档知识库
   - `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts`
 - 改画布 UI、节点交互、标题/内容编辑、缩放与聚焦：
   - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/canvasNodeChrome.tsx`
+  - `extensions/vscode/dev-session-canvas/src/webview/fileNoteNodes.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/styles.css`
 - 改侧栏显示和快捷动作：
   - `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts`
