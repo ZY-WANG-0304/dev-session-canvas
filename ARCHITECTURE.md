@@ -140,6 +140,7 @@ docs/                           根目录正式文档知识库
   - `RuntimeSupervisorRequest` / `RuntimeSupervisorEvent`
 - `serializedTerminalState.ts`
 - `terminalSessionStream.ts`
+- `terminalProjectionRefreshScheduler.ts`
 - `runtimeSupervisorPaths.ts`
 - `extensionStoragePaths.ts`
 - `executionTerminalLinks.ts`
@@ -147,7 +148,7 @@ docs/                           根目录正式文档知识库
 
 这里主要负责：
 
-- 定义节点模型、消息协议、终端快照格式和 supervisor 协议。
+- 定义节点模型、消息协议、终端快照格式、周期投影刷新调度和 supervisor 协议。
 - 放置宿主与前端都会用到的纯逻辑和纯数据工具。
 - 统一当前系统对“节点”“执行会话”“恢复快照”“终端链接”的命名。
 
@@ -190,6 +191,8 @@ docs/                           根目录正式文档知识库
 - 持有宿主权威状态，并把它同步到一个或两个 Webview surface。
 - 决定哪些状态进入 `workspaceState` / `storageUri`，哪些只留在 Webview 本地。
 - 启动和停止 Agent / Terminal，校验并调度会话输出、同步节点状态、重连和协调 supervisor；Host 不为 `live-runtime` 补造 revision 或终端历史。
+- 在 Webview xterm 真正完成终端操作后按 surface 校验 applied-revision，并把 panel/editor 两个消费水位分别转发给 supervisor。
+- 对健康 authority session 的 Host 恢复缓存执行 capability-gated、确定性错峰的周期刷新；刷新失败或生命周期变化时保留旧健康缓存并清理 stale timer。
 - 对 workspace trust、配置、恢复模式和远程宿主差异做最终裁决。
 
 架构不变量：
@@ -330,16 +333,18 @@ docs/                           根目录正式文档知识库
 这里主要负责：
 
 - 在宿主之外维持执行会话存活。
-- 通过 `runtimeSupervisorProtocol.ts` 提供 create / attach / subscribe / write / resize / scrollback / stop / delete 等请求。
+- 通过 `runtimeSupervisorProtocol.ts` 提供 create / attach / get snapshot / subscribe / applied-revision ACK / write / resize / scrollback / stop / delete 等请求。
 - 为每个新会话分配稳定 authority，按同一连续 revision 记录 output、resize 与 scrollback。
 - 完整保留分段 journal；checkpoint 只作为恢复加速缓存，不删除旧 journal segment。
 - 以静态 checkpoint+journal 和延迟订阅的两阶段切点补齐 Host attach 间隙，再切换到 live event。
+- 按 `socket + session + consumerId` 分别保存 panel/editor 的 applied-revision 水位；该水位不推进 authority revision，也不触发 journal compact。
 
 架构不变量：
 
 - supervisor 不依赖 `vscode` 或 Webview。
 - supervisor 只知道执行会话和协议，不知道 React Flow 节点、侧栏结构或具体 UI 细节。
 - `live-runtime` terminal revision 只能由 supervisor 在实际记录事件时推进；Host/Webview 只能验证和投影。
+- 缺少 `terminalSessionStreamV1` capability 的旧 Supervisor 只能继续承载既有只读会话；Host 不向它发送新协议 RPC，不创建新会话，并在最后一个已知旧会话结束或最后一条旧 attach 引用失效后释放 client 等待 idle shutdown。
 - journal 损坏或持久化失败必须 fail closed，不能用任意 raw tail 或净化 transcript 冒充可继续交互的终端状态。
 - `live-runtime` 是执行持久化增强层，不是所有执行路径的前提；系统必须在没有 supervisor 的情况下仍可运行。
 
@@ -446,6 +451,7 @@ docs/                           根目录正式文档知识库
 - `Webview <-> Host` 与 `Host <-> Supervisor` 都是显式协议边界。
 - 任何跨边界对象都应优先使用 `extensions/vscode/dev-session-canvas/src/common/` 中的可序列化类型表达。
 - 协议一旦变化，默认需要同步消息发送方、接收方和对应测试。
+- applied-revision 只在 xterm write callback 或保序 terminal control 操作完成后推进；它是消费证据，不是 authority revision 或 checkpoint 覆盖证明。
 
 ### 6.3 执行边界
 
@@ -469,7 +475,7 @@ docs/                           根目录正式文档知识库
 
 ### 恢复与持久化
 
-当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、完整 terminal journal 和 checkpoint cache。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。
+当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、完整 terminal journal 和 checkpoint cache。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。Host 的 `terminalStream` 只是恢复缓存：新投影 attach 前和无 attach 的 10–12 秒错峰周期内可通过只读 snapshot RPC 收敛，并把 RPC 期间的连续 live tail 无损合并；任何失败都保留旧健康缓存，不能按大小丢弃事件。
 
 ### Remote / Local 拓扑
 

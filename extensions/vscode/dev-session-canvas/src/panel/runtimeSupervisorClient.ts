@@ -8,6 +8,8 @@ import {
 } from '../common/runtimeSupervisorProtocol';
 import type {
   RuntimeSupervisorAttachSessionParams,
+  RuntimeSupervisorAckSessionRevisionParams,
+  RuntimeSupervisorAckSessionRevisionResult,
   RuntimeSupervisorClientEventHandlers,
   RuntimeSupervisorCreateSessionParams,
   RuntimeSupervisorDeleteSessionParams,
@@ -78,6 +80,14 @@ export class RuntimeSupervisorClient {
     return this.helloResult?.capabilities?.terminalProjectionSnapshotV1 === true;
   }
 
+  public supportsTerminalSessionStream(): boolean {
+    return this.helloResult?.capabilities?.terminalSessionStreamV1 === true;
+  }
+
+  public supportsTerminalAppliedRevisionAck(): boolean {
+    return this.helloResult?.capabilities?.terminalAppliedRevisionAckV1 === true;
+  }
+
   public async createSession(
     params: RuntimeSupervisorCreateSessionParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
@@ -100,6 +110,12 @@ export class RuntimeSupervisorClient {
     params: RuntimeSupervisorSubscribeSessionParams
   ): Promise<RuntimeSupervisorSubscribeSessionResult> {
     return this.request('subscribeSession', params);
+  }
+
+  public async ackSessionRevision(
+    params: RuntimeSupervisorAckSessionRevisionParams
+  ): Promise<RuntimeSupervisorAckSessionRevisionResult> {
+    return this.request('ackSessionRevision', params);
   }
 
   public async writeInput(params: RuntimeSupervisorWriteInputParams): Promise<void> {
@@ -143,6 +159,7 @@ export class RuntimeSupervisorClient {
       | 'attachSession'
       | 'getSessionSnapshot'
       | 'subscribeSession'
+      | 'ackSessionRevision'
       | 'writeInput'
       | 'resizeSession'
       | 'updateSessionScrollback'
@@ -153,6 +170,7 @@ export class RuntimeSupervisorClient {
       | RuntimeSupervisorAttachSessionParams
       | RuntimeSupervisorGetSessionSnapshotParams
       | RuntimeSupervisorSubscribeSessionParams
+      | RuntimeSupervisorAckSessionRevisionParams
       | RuntimeSupervisorWriteInputParams
       | RuntimeSupervisorResizeSessionParams
       | RuntimeSupervisorUpdateSessionScrollbackParams

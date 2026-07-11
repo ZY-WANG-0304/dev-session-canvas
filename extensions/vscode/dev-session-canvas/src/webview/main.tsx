@@ -442,6 +442,7 @@ const EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS = 32;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS = 96;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS = 480;
 const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 256 * 1024;
+const EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS = 40;
 const EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS = 500;
 const EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS = 120;
 const executionPerformanceDiagnosticSamples: ExecutionPerformanceDiagnosticPayload[] = [];
@@ -7076,6 +7077,15 @@ function createExecutionTerminalController(
   let lastAppliedSnapshotSequence = 0;
   let currentTerminalAuthorityId: string | undefined;
   let currentTerminalRevision = 0;
+  let pendingOutputRevisionBoundaries: Array<{
+    remainingCharacters: number;
+    revision: number;
+  }> = [];
+  let appliedTerminalAuthorityId: string | undefined;
+  let appliedTerminalRevision = 0;
+  let lastAcknowledgedTerminalRevision = 0;
+  let pendingTerminalAppliedAckRevision: number | undefined;
+  let terminalAppliedAckTimer: number | undefined;
   let hasAppliedSnapshot = false;
   let terminalStreamRecoveryRequested = false;
   let terminalStreamRecoveryEpoch = 0;
@@ -7084,7 +7094,7 @@ function createExecutionTerminalController(
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
 
   const queueTerminalWrite = (
-    writer: (done: () => void, markStarted?: () => void) => void,
+    writer: (done: (applied?: boolean) => void, markStarted?: () => void) => void,
     detail?: {
       reason: string;
       characters?: number;
@@ -7094,7 +7104,7 @@ function createExecutionTerminalController(
       checkpointRevision?: number;
       targetRevision?: number;
     },
-    onComplete?: () => void
+    onComplete?: (applied: boolean) => void
   ): void => {
     const generation = writeGeneration;
     queuedWriteCount += 1;
@@ -7105,7 +7115,7 @@ function createExecutionTerminalController(
           new Promise<void>((resolve) => {
             if (disposed || generation !== writeGeneration) {
               queuedWriteCount = Math.max(0, queuedWriteCount - 1);
-              onComplete?.();
+              onComplete?.(false);
               resolve();
               return;
             }
@@ -7114,7 +7124,7 @@ function createExecutionTerminalController(
             const markStarted = (): void => {
               startedAt = readPerformanceNow();
             };
-            writer(() => {
+            writer((applied = true) => {
               queuedWriteCount = Math.max(0, queuedWriteCount - 1);
               reportExecutionPerformanceDiagnostic(
                 {
@@ -7137,11 +7147,79 @@ function createExecutionTerminalController(
                   minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
                 }
               );
-              onComplete?.();
+              onComplete?.(applied);
               resolve();
             }, markStarted);
           })
       );
+  };
+
+  const cancelTerminalAppliedAckTimer = (): void => {
+    if (terminalAppliedAckTimer !== undefined) {
+      window.clearTimeout(terminalAppliedAckTimer);
+      terminalAppliedAckTimer = undefined;
+    }
+  };
+
+  const flushTerminalAppliedAck = (): void => {
+    cancelTerminalAppliedAckTimer();
+    const revision = pendingTerminalAppliedAckRevision;
+    pendingTerminalAppliedAckRevision = undefined;
+    if (
+      revision === undefined ||
+      !currentExecutionSessionId ||
+      !appliedTerminalAuthorityId ||
+      appliedTerminalAuthorityId !== currentTerminalAuthorityId ||
+      revision <= lastAcknowledgedTerminalRevision ||
+      revision > appliedTerminalRevision
+    ) {
+      return;
+    }
+
+    lastAcknowledgedTerminalRevision = revision;
+    postMessage({
+      type: 'webview/executionTerminalApplied',
+      payload: {
+        nodeId,
+        kind,
+        executionSessionId: currentExecutionSessionId,
+        authorityId: appliedTerminalAuthorityId,
+        revision
+      }
+    });
+  };
+
+  const markTerminalRevisionApplied = (
+    authorityId: string,
+    revision: number,
+    options: { immediate?: boolean } = {}
+  ): void => {
+    if (disposed || authorityId !== currentTerminalAuthorityId || revision > currentTerminalRevision) {
+      return;
+    }
+    if (appliedTerminalAuthorityId !== authorityId) {
+      cancelTerminalAppliedAckTimer();
+      appliedTerminalAuthorityId = authorityId;
+      appliedTerminalRevision = 0;
+      lastAcknowledgedTerminalRevision = 0;
+      pendingTerminalAppliedAckRevision = undefined;
+    }
+    if (revision < appliedTerminalRevision) {
+      return;
+    }
+
+    appliedTerminalRevision = revision;
+    pendingTerminalAppliedAckRevision = Math.max(pendingTerminalAppliedAckRevision ?? 0, revision);
+    if (options.immediate) {
+      flushTerminalAppliedAck();
+      return;
+    }
+    if (terminalAppliedAckTimer === undefined) {
+      terminalAppliedAckTimer = window.setTimeout(
+        flushTerminalAppliedAck,
+        EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS
+      );
+    }
   };
 
   const queueExitWrite = (message: string): void => {
@@ -7234,14 +7312,27 @@ function createExecutionTerminalController(
 
       if (sessionChanged) {
         pendingOutput = '';
+        pendingOutputRevisionBoundaries = [];
         pendingPersistBarrier = false;
         pendingExitMessage = undefined;
         removePendingExecutionTerminalDrain(controller);
         writeGeneration += 1;
         lastAppliedSnapshotSequence = 0;
+        cancelTerminalAppliedAckTimer();
+        appliedTerminalAuthorityId = undefined;
+        appliedTerminalRevision = 0;
+        lastAcknowledgedTerminalRevision = 0;
+        pendingTerminalAppliedAckRevision = undefined;
       }
       currentExecutionSessionId = detail.executionSessionId ?? currentExecutionSessionId;
       if (terminalStream) {
+        if (currentTerminalAuthorityId !== terminalStream.authorityId) {
+          cancelTerminalAppliedAckTimer();
+          appliedTerminalAuthorityId = undefined;
+          appliedTerminalRevision = 0;
+          lastAcknowledgedTerminalRevision = 0;
+          pendingTerminalAppliedAckRevision = undefined;
+        }
         currentTerminalAuthorityId = terminalStream.authorityId;
         currentTerminalRevision = terminalStream.revision;
       } else if (sessionChanged || !hasAppliedSnapshot) {
@@ -7266,14 +7357,14 @@ function createExecutionTerminalController(
         (done, markStarted) => {
           const snapshotWriteGeneration = writeGeneration;
           let finished = false;
-          const finishSnapshotWrite = (snapshotDone?: () => void): void => {
+          const finishSnapshotWrite = (snapshotDone?: () => void, applied = true): void => {
             if (finished) {
               snapshotDone?.();
               return;
             }
             finished = true;
             snapshotDone?.();
-            done();
+            done(applied);
           };
           scheduleExecutionTerminalSnapshotWrite({
             nodeId,
@@ -7281,7 +7372,7 @@ function createExecutionTerminalController(
             queuedAtMs: readPerformanceNow(),
             run: (snapshotDone) => {
               if (disposed || snapshotWriteGeneration !== writeGeneration) {
-                finishSnapshotWrite(snapshotDone);
+                finishSnapshotWrite(snapshotDone, false);
                 return;
               }
               markStarted?.();
@@ -7295,7 +7386,7 @@ function createExecutionTerminalController(
                 finishSnapshotWrite(snapshotDone);
               });
             },
-            cancel: finishSnapshotWrite
+            cancel: () => finishSnapshotWrite(undefined, false)
           });
         },
         {
@@ -7306,6 +7397,13 @@ function createExecutionTerminalController(
           replayOutputCharacters,
           checkpointRevision: terminalStream?.checkpoint.revision,
           targetRevision: terminalStream?.revision
+        },
+        (applied) => {
+          if (applied && terminalStream) {
+            markTerminalRevisionApplied(terminalStream.authorityId, terminalStream.revision, {
+              immediate: true
+            });
+          }
         }
       );
     },
@@ -7332,6 +7430,12 @@ function createExecutionTerminalController(
           currentTerminalAuthorityId = undefined;
           currentTerminalRevision = 0;
           hasAppliedSnapshot = false;
+          pendingOutputRevisionBoundaries = [];
+          cancelTerminalAppliedAckTimer();
+          appliedTerminalAuthorityId = undefined;
+          appliedTerminalRevision = 0;
+          lastAcknowledgedTerminalRevision = 0;
+          pendingTerminalAppliedAckRevision = undefined;
         }
         currentExecutionSessionId = outputExecutionSessionId;
       }
@@ -7366,6 +7470,12 @@ function createExecutionTerminalController(
 
       if (chunk) {
         pendingOutput += chunk;
+        if (terminalAuthorityId && terminalRevision !== undefined) {
+          pendingOutputRevisionBoundaries.push({
+            remainingCharacters: chunk.length,
+            revision: terminalRevision
+          });
+        }
         options?.onContentWillChange?.('output');
       }
       if (outputOptions?.persisted === false) {
@@ -7423,6 +7533,10 @@ function createExecutionTerminalController(
         done();
       }, {
         reason: terminalEvent.type
+      }, (applied) => {
+        if (applied) {
+          markTerminalRevisionApplied(detail.authorityId, terminalEvent.revision);
+        }
       });
     },
     showExit(message) {
@@ -7465,6 +7579,19 @@ function createExecutionTerminalController(
           : pendingOutput.length;
       const chunk = pendingOutput.slice(0, chunkLength);
       pendingOutput = pendingOutput.slice(chunkLength);
+      let remainingRevisionCharacters = chunk.length;
+      let completedRevision: number | undefined;
+      while (remainingRevisionCharacters > 0 && pendingOutputRevisionBoundaries.length > 0) {
+        const boundary = pendingOutputRevisionBoundaries[0];
+        const consumedCharacters = Math.min(remainingRevisionCharacters, boundary.remainingCharacters);
+        boundary.remainingCharacters -= consumedCharacters;
+        remainingRevisionCharacters -= consumedCharacters;
+        if (boundary.remainingCharacters === 0) {
+          completedRevision = boundary.revision;
+          pendingOutputRevisionBoundaries.shift();
+        }
+      }
+      const outputAuthorityId = currentTerminalAuthorityId;
       // Keep the host message callback lightweight by deferring real terminal writes
       // to a batched drain step. xterm will continue to apply its own async parser queue.
       queueTerminalWrite((done) => {
@@ -7472,6 +7599,10 @@ function createExecutionTerminalController(
       }, {
         reason: 'output',
         characters: chunk.length
+      }, (applied) => {
+        if (applied && outputAuthorityId && completedRevision !== undefined) {
+          markTerminalRevisionApplied(outputAuthorityId, completedRevision);
+        }
       });
       flushDeferredExitIfReady();
       return chunk.length;
@@ -7488,6 +7619,7 @@ function createExecutionTerminalController(
     dispose() {
       disposed = true;
       pendingOutput = '';
+      pendingOutputRevisionBoundaries = [];
       pendingPersistBarrier = false;
       pendingExitMessage = undefined;
       for (let index = pendingExecutionTerminalSnapshotWrites.length - 1; index >= 0; index -= 1) {
@@ -7503,6 +7635,8 @@ function createExecutionTerminalController(
         snapshotWrite.finishQueue?.();
       }
       writeGeneration += 1;
+      cancelTerminalAppliedAckTimer();
+      pendingTerminalAppliedAckRevision = undefined;
       queuedWriteCount = 0;
       writeChain = Promise.resolve();
       removePendingExecutionTerminalDrain(controller);

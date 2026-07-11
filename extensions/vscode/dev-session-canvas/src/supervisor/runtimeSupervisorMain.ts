@@ -44,6 +44,8 @@ import {
   formatRuntimeSupervisorMessageDescriptor,
   serializeRuntimeSupervisorError,
   type RuntimeSupervisorAttachSessionParams,
+  type RuntimeSupervisorAckSessionRevisionParams,
+  type RuntimeSupervisorAckSessionRevisionResult,
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorDeleteSessionParams,
   type RuntimeSupervisorEvent,
@@ -142,6 +144,10 @@ class RuntimeSupervisorServer {
   private readonly connections = new Set<net.Socket>();
   private readonly subscriptions = new Map<net.Socket, Map<string, SupervisorSubscriptionMode>>();
   private readonly deferredSubscriptionRevisions = new Map<net.Socket, Map<string, number>>();
+  private readonly appliedRevisionAcks = new Map<
+    net.Socket,
+    Map<string, RuntimeSupervisorAckSessionRevisionResult>
+  >();
   private persistTimer: NodeJS.Timeout | undefined;
   private persistRegistryChain: Promise<void> = Promise.resolve();
   private persistRegistryError: Error | undefined;
@@ -171,6 +177,7 @@ class RuntimeSupervisorServer {
       this.connections.add(socket);
       this.subscriptions.set(socket, new Map());
       this.deferredSubscriptionRevisions.set(socket, new Map());
+      this.appliedRevisionAcks.set(socket, new Map());
       this.clearIdleShutdownTimer();
       socket.setEncoding('utf8');
       let buffer = '';
@@ -239,7 +246,8 @@ class RuntimeSupervisorServer {
               runtimeGuarantee: this.runtimeGuarantee,
               capabilities: {
                 terminalSessionStreamV1: true,
-                terminalProjectionSnapshotV1: true
+                terminalProjectionSnapshotV1: true,
+                terminalAppliedRevisionAckV1: true
               }
             }
           });
@@ -276,6 +284,16 @@ class RuntimeSupervisorServer {
         }
         case 'subscribeSession': {
           const result = this.subscribeSession(socket, request.params);
+          this.writeMessage(socket, {
+            type: 'response',
+            id: request.id,
+            ok: true,
+            result
+          });
+          return;
+        }
+        case 'ackSessionRevision': {
+          const result = this.ackSessionRevision(socket, request.params);
           this.writeMessage(socket, {
             type: 'response',
             id: request.id,
@@ -541,6 +559,69 @@ class RuntimeSupervisorServer {
       authorityId: session.terminalAuthorityId,
       revision: journal.getRevision()
     };
+  }
+
+  private ackSessionRevision(
+    socket: net.Socket,
+    params: RuntimeSupervisorAckSessionRevisionParams
+  ): RuntimeSupervisorAckSessionRevisionResult {
+    const session = this.requireSession(params.sessionId);
+    const journal = session.terminalJournal;
+    if (session.terminalJournalError || !journal || !session.terminalAuthorityId) {
+      throw createRuntimeSupervisorProtocolError({
+        id: 'terminalJournalUnavailable',
+        params: {
+          sessionId: params.sessionId
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalJournalUnavailable);
+    }
+    if (params.authorityId !== session.terminalAuthorityId) {
+      throw createRuntimeSupervisorProtocolError({
+        id: 'terminalAuthorityMismatch',
+        params: {
+          sessionId: params.sessionId
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalAuthorityMismatch);
+    }
+
+    const revision = normalizeTerminalStreamRevision(params.revision);
+    const consumerId = params.consumerId === 'editor' || params.consumerId === 'panel'
+      ? params.consumerId
+      : undefined;
+    if (
+      revision === undefined ||
+      consumerId === undefined ||
+      revision > journal.getRevision()
+    ) {
+      throw createRuntimeSupervisorProtocolError({
+        id: 'terminalRevisionInvalid',
+        params: {
+          sessionId: params.sessionId,
+          revision: String(params.revision)
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
+    }
+    const socketAcks = this.appliedRevisionAcks.get(socket);
+    const consumerKey = JSON.stringify([params.sessionId, consumerId]);
+    const previous = socketAcks?.get(consumerKey);
+    if (previous?.authorityId === params.authorityId && revision < previous.appliedRevision) {
+      throw createRuntimeSupervisorProtocolError({
+        id: 'terminalRevisionInvalid',
+        params: {
+          sessionId: params.sessionId,
+          revision: String(params.revision)
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
+    }
+
+    const result: RuntimeSupervisorAckSessionRevisionResult = {
+      sessionId: params.sessionId,
+      authorityId: params.authorityId,
+      consumerId,
+      appliedRevision: revision
+    };
+    socketAcks?.set(consumerKey, result);
+    return result;
   }
 
   private writeInput(params: RuntimeSupervisorWriteInputParams): void {
@@ -1306,6 +1387,13 @@ class RuntimeSupervisorServer {
     for (const deferredRevisions of this.deferredSubscriptionRevisions.values()) {
       deferredRevisions.delete(sessionId);
     }
+    for (const appliedRevisions of this.appliedRevisionAcks.values()) {
+      for (const [consumerKey, appliedRevision] of appliedRevisions) {
+        if (appliedRevision.sessionId === sessionId) {
+          appliedRevisions.delete(consumerKey);
+        }
+      }
+    }
   }
 
   private releaseTerminalJournalMemoryThroughCheckpoint(session: SupervisorSession): void {
@@ -1360,6 +1448,7 @@ class RuntimeSupervisorServer {
     this.connections.delete(socket);
     this.subscriptions.delete(socket);
     this.deferredSubscriptionRevisions.delete(socket);
+    this.appliedRevisionAcks.delete(socket);
     for (const sessionId of deferredSessionIds) {
       const session = this.sessions.get(sessionId);
       if (session) {

@@ -11,7 +11,7 @@ try {
   const outFile = path.join(tempDir, 'bundle.mjs');
   await writeFile(
     entry,
-    `export { selectExecutionOutputSchedulerEntries, selectExecutionTerminalDrainEntries } from ${JSON.stringify(path.resolve('extensions/vscode/dev-session-canvas/src/common/executionOutputScheduler.ts'))};\n`,
+    `export { selectExecutionOutputSchedulerEntries, selectExecutionTerminalDrainEntries } from ${JSON.stringify(path.resolve('extensions/vscode/dev-session-canvas/src/common/executionOutputScheduler.ts'))};\nexport { TerminalProjectionRefreshScheduler, resolveTerminalProjectionRefreshDelayMs } from ${JSON.stringify(path.resolve('extensions/vscode/dev-session-canvas/src/common/terminalProjectionRefreshScheduler.ts'))};\n`,
     'utf8'
   );
   await build({
@@ -22,9 +22,12 @@ try {
     format: 'esm',
     logLevel: 'silent'
   });
-  const { selectExecutionOutputSchedulerEntries, selectExecutionTerminalDrainEntries } = await import(
-    pathToFileURL(outFile).href
-  );
+  const {
+    TerminalProjectionRefreshScheduler,
+    resolveTerminalProjectionRefreshDelayMs,
+    selectExecutionOutputSchedulerEntries,
+    selectExecutionTerminalDrainEntries
+  } = await import(pathToFileURL(outFile).href);
   const entries = [
     { key: 'agent:old', kind: 'agent', nodeId: 'old', queuedAtMs: 1000 },
     { key: 'agent:current', kind: 'agent', nodeId: 'current', queuedAtMs: 1010 },
@@ -156,6 +159,59 @@ try {
   );
   assert.equal(backgroundOnly.reason, 'input-background');
   assert.deepEqual(backgroundOnly.entries.map((entry) => entry.key), ['agent:1']);
+
+  let nextTimerId = 1;
+  const scheduledTimers = [];
+  const scheduleTimeout = (callback, delayMs) => {
+    const timer = { id: nextTimerId, callback, delayMs, cancelled: false };
+    nextTimerId += 1;
+    scheduledTimers.push(timer);
+    return timer;
+  };
+  const refreshScheduler = new TerminalProjectionRefreshScheduler({
+    intervalMs: 10_000,
+    spreadMs: 2_000,
+    scheduleTimeout,
+    cancelTimeout: (timer) => {
+      timer.cancelled = true;
+    }
+  });
+  let refreshCount = 0;
+  assert.equal(refreshScheduler.schedule('agent:a:session-a', () => refreshCount += 1), true);
+  assert.equal(refreshScheduler.schedule('agent:a:session-a', () => refreshCount += 1), false);
+  assert.equal(refreshScheduler.schedule('agent:b:session-b', () => refreshCount += 1), true);
+  assert.equal(scheduledTimers.length, 2, '同一 session 只能保留一个周期 refresh timer。');
+  assert.equal(
+    scheduledTimers[0].delayMs,
+    resolveTerminalProjectionRefreshDelayMs('agent:a:session-a', 10_000, 2_000)
+  );
+  assert.ok(
+    scheduledTimers.every((timer) => timer.delayMs >= 10_000 && timer.delayMs < 12_000),
+    '周期 refresh 必须落在固定周期后的确定性错峰窗口内。'
+  );
+
+  refreshScheduler.clearMatching((key) => key.startsWith('agent:a:'));
+  assert.equal(scheduledTimers[0].cancelled, true);
+  scheduledTimers[0].callback();
+  assert.equal(refreshCount, 0, '被 session replacement 清理的 stale timer 不得执行 refresh。');
+  scheduledTimers[1].callback();
+  assert.equal(refreshCount, 1, '未被清理的 session timer 必须正常执行。');
+  assert.equal(refreshScheduler.has('agent:b:session-b'), false);
+
+  let rescheduleAfterRefresh;
+  assert.equal(
+    refreshScheduler.schedule('terminal:c:session-c', () => {
+      rescheduleAfterRefresh = () => refreshScheduler.schedule('terminal:c:session-c', () => undefined);
+    }),
+    true
+  );
+  scheduledTimers.at(-1).callback();
+  refreshScheduler.dispose();
+  assert.equal(
+    rescheduleAfterRefresh(),
+    false,
+    'Host dispose 后，即使 in-flight refresh 完成也不得重新创建周期 timer。'
+  );
 
   const source = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8');
   assert.match(
