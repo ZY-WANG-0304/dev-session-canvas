@@ -16,12 +16,12 @@ related_specs:
   - docs/product-specs/agent-launch-modes-and-restart.md
 related_plans:
   - docs/exec-plans/completed/agent-node-creation-provider-selection-implementation.md
-updated_at: 2026-04-24
+updated_at: 2026-07-11
 ---
 
 # Agent 节点创建前 provider 选择设计
 
-2026-04-24 补充：本文继续定义创建链路的第一步“先决定要创建哪种 provider 的 Agent”。凡是进入任一 Agent 入口之后的第二步完整命令确认、启动预设、自定义启动、默认启动参数，以及停止后 `重启 / 新会话` 分流，统一以 `docs/design-docs/agent-launch-modes-and-restart.md` 为准。
+2026-04-24 起，本文继续定义创建链路的第一步“先决定要创建哪种 provider 的 Agent”。2026-07-11 按当前动作名称更新：凡是进入任一 Agent 入口之后的第二步完整命令确认、启动预设、自定义启动、默认启动参数，以及停止后 `恢复 / 新会话` 分流，统一以 `docs/design-docs/agent-launch-modes-and-restart.md` 为准。
 
 ## 1. 背景
 
@@ -162,7 +162,7 @@ updated_at: 2026-04-24
 - 取舍：创建协议需要新增 `agentProvider` 初始值，而不是继续沿用“create 后再 update provider”。
   原因：这能避免错误的首次自动启动，也避免宿主权威状态出现一个短暂但错误的默认 provider 节点。
 
-## 7. 当前结论
+## 7. 正式方案
 
 ### 7.1 正式语义
 
