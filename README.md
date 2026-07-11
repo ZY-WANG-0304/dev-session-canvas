@@ -47,7 +47,7 @@ The product has entered the public `Preview` phase. The current release-prep tar
 - File Explorer context-menu entries that create cwd-scoped `Terminal` or `Agent` nodes from workspace folders or files
 - Execution-terminal copy / paste shortcuts that preserve platform-native copy, paste, and `Ctrl+C` interrupt semantics, plus screenshot paste for live `Agent` nodes
 - Execution-terminal link detection for native-style URLs, file paths, multiline line-number output, high-confidence TUI hard-wrapped URL / styled-file fragments, live-output file-link cache refresh, and click-time fallback search
-- Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands, opening their config files, and separating stopped-node `New` versus `Restart` actions
+- Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands, opening their config files, and separating stopped-node `New` versus `Resume` actions
 - Codex / Claude Code Agent `Fork` from a trusted session id into a new Agent node that starts with provider-native fork semantics
 - Automatic CLI selection / installation recovery when an `Agent` launch cannot resolve the requested CLI
 - Multi-section desktop-notification companion sidebar with platform onboarding and `Codex` / `Claude Code` notification-configuration guidance

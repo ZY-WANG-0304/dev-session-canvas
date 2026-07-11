@@ -21,7 +21,7 @@ related_specs:
   - docs/product-specs/agent-terminal-clipboard-shortcuts.md
 related_plans:
   - docs/exec-plans/active/agent-screenshot-paste-input.md
-updated_at: 2026-06-25
+updated_at: 2026-07-11
 ---
 
 # Agent Provider 能力对照表
@@ -132,12 +132,12 @@ updated_at: 2026-06-25
 | 图片输入 / Agent 截图粘贴 | 支持：Codex 官方支持 `--image/-i`、交互 composer 图片粘贴和图片文件上下文；当前画布以保存临时图片文件并回填 shell-safe 路径文本的跨 provider bridge 接入，自动化覆盖 Webview/Host 路径注入，不伪造 provider 原生附件 chip | 支持：Claude Code 官方支持拖放图片、图片剪贴板粘贴和图片路径输入；当前画布同样以临时图片路径 bridge 接入，不伪造 `[Image #N]` chip | 必须明确 provider 是否支持本地图片文件路径作为 prompt 上下文；若只支持 GUI 附件、私有 chip 或不可从 PTY 文本引用图片，则不能默认复用截图粘贴，必须新增 provider adapter 或禁用该能力 |
 | 运行态 `running` / `waiting-input` | 支持：当前以 PTY / attention signal / quiet period 启发式为主 | 支持：当前以 PTY / attention signal / quiet period 启发式为主 | 若 provider 有结构化事件，应优先接入；没有则只能作为 fallback 启发式 |
 | Stop 行为 | 支持：先单次 `Ctrl-C` graceful stop，等待 Codex resume hint / token usage，超时后 force kill | 支持：不发送普通 `Ctrl-C` 收尾，沿用直接终止信号路径 | 必须定义 provider-specific stop，不要假设所有 CLI 都能用同一种 Ctrl-C 语义 |
-| `Ctrl-Z` / job control | 普通输入路径，不走 Claude 专属阻断 | 支持阻断：Webview / Host / runtime supervisor 拒绝 Claude Agent `Ctrl-Z`，提示停止、重启或分叉 | 必须评估 direct-spawn CLI 是否支持 shell job table；不支持时不得承诺 `fg` 恢复 |
+| `Ctrl-Z` / job control | 普通输入路径，不走 Claude 专属阻断 | 支持阻断：Webview / Host / runtime supervisor 拒绝 Claude Agent `Ctrl-Z`，提示停止、恢复或分叉 | 必须评估 direct-spawn CLI 是否支持 shell job table；不支持时不得承诺 `fg` 恢复 |
 | 显式 session resume 命令 | `codex resume <session-id>` | `claude --resume <session-id>` | 必须有 provider 原生显式 session id 恢复入口；否则不能进入正式自动恢复 / 历史恢复主路径 |
 | Fresh start session id 获取 | 支持（技术债）：扫描 `~/.codex/sessions/.../rollout-*.jsonl` 首行 `session_meta`，按 cwd + 启动时间窗唯一匹配；停止输出 hint 可补充 | 支持：可注入 / 识别 `--session-id`、`--resume`、`--continue` 候选，并用 `~/.claude/projects/.../<session-id>.jsonl` 文件确认；停止输出 hint 可更正 | 必须明确 session id 来源是否可信。仅扫描私有文件或按时间猜测时，只能标技术债 / fail closed |
 | 自动恢复资格 | 支持（技术债）：只有拿到可信 `codex-session-id` 时才可恢复；否则 `interrupted` / history restored | 支持：只有确认 `claude-session-id` 时才可恢复；否则 fail closed | 必须实现 `AgentResumeStrategy`，并定义何时可进入 `resume-ready` |
 | 停止后 `新建` | 支持：按节点 `launchPreset/customLaunchCommand` fresh start | 支持：按节点 `launchPreset/customLaunchCommand` fresh start | 必须区分 fresh start 与恢复原会话 |
-| 停止后 `重启` | 支持：持有可信 session id 时恢复当前节点原会话 | 支持：持有可信 session id 时恢复当前节点原会话 | 必须只恢复当前节点绑定 session，不允许退化成 provider 最近会话 |
+| 停止后 `恢复` | 支持：持有可信 session id 时恢复当前节点原会话 | 支持：持有可信 session id 时恢复当前节点原会话 | 必须只恢复当前节点绑定 session，不允许退化成 provider 最近会话 |
 | 当前节点 Fork | 支持：`codex fork <session-id>`，创建同 provider 新节点并自动连 `fork` 用户边 | 支持：`claude --resume <session-id> --fork-session`，创建同 provider 新节点并自动连 `fork` 用户边 | 必须有 provider 原生 fork 语义；普通 resume 不能包装成 Fork |
 | 历史会话 Fork | 支持：从历史 session id 创建新 Agent，执行 `codex fork <session-id>`；无来源节点，不自动连线 | 支持：从历史 session id 创建新 Agent，执行 `claude --resume <session-id> --fork-session`；无来源节点，不自动连线 | 必须复用 provider-native fork；没有原生 fork 时隐藏或禁用历史分叉 |
 | 会话历史来源 | 支持（技术债）：扫描 `~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl` | 支持（技术债）：扫描 `~/.claude/projects/**/*.jsonl`，只接受 transcript 内显式 cwd | 必须提供 workspace 归属依据；无法确认 cwd 时 fail closed，不展示为当前 workspace 会话 |
@@ -167,7 +167,7 @@ updated_at: 2026-06-25
 
 如果新 provider 不满足显式 session id 恢复能力，仍可只作为“一次性 fresh-start Agent”接入，但必须同时禁用或隐藏以下能力：
 
-- 停止后 `重启` 恢复原会话
+- 停止后 `恢复` 原会话
 - 当前节点 `分叉`
 - 历史恢复
 - 历史分叉

@@ -588,7 +588,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
                   }}
                 />
                 <deps.ActionButton
-                  label={deps.t('action.restart')}
+                  label={deps.t('action.resume')}
                   actionId="restart"
                   tone="primary"
                   disabled={actionDisabled || !canResumeOriginalSession}
