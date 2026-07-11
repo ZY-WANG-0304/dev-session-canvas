@@ -54,6 +54,11 @@ export interface TerminalStreamAttachPayload {
   events: TerminalStreamEvent[];
 }
 
+export interface TerminalStreamProjectionMergeResult {
+  payload: TerminalStreamAttachPayload;
+  preservedLiveTailEventCount: number;
+}
+
 export function normalizeTerminalStreamRevision(value: unknown): TerminalStreamRevision | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
@@ -236,6 +241,37 @@ export function buildTerminalStreamAttachPayload(options: {
     checkpoint: options.checkpoint,
     events: options.events
   });
+}
+
+export function mergeTerminalStreamProjectionWithLiveTail(
+  freshValue: unknown,
+  currentValue: unknown
+): TerminalStreamProjectionMergeResult | undefined {
+  const fresh = normalizeTerminalStreamAttachPayload(freshValue);
+  const current = normalizeTerminalStreamAttachPayload(currentValue);
+  if (
+    !fresh ||
+    !current ||
+    fresh.sessionId !== current.sessionId ||
+    fresh.authorityId !== current.authorityId
+  ) {
+    return undefined;
+  }
+
+  const liveTail = current.events.filter((event) => event.revision > fresh.revision);
+  const payload = buildTerminalStreamAttachPayload({
+    sessionId: fresh.sessionId,
+    authorityId: fresh.authorityId,
+    revision: Math.max(fresh.revision, current.revision),
+    checkpoint: fresh.checkpoint,
+    events: [...fresh.events, ...liveTail]
+  });
+  return payload
+    ? {
+        payload,
+        preservedLiveTailEventCount: liveTail.length
+      }
+    : undefined;
 }
 
 function normalizeIdentity(value: unknown): string | undefined {

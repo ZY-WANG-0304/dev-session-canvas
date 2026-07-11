@@ -30,8 +30,13 @@
 - [x] (2026-07-11 09:25 +0800) 删除 Webview 稳态 backlog snapshot replacement 与增量丢弃路径；checkpoint 只创建新投影，output coalescing 保留连续 revision range，resize/scrollback 前先 flush output。
 - [x] (2026-07-11 09:32 +0800) 定向单测、Webview checkpoint/journal/gap 用例、`trusted` Reload Window 和 `real-reopen` 真实窗口重开通过。
 - [x] (2026-07-11 10:09 +0800) 补齐 checkpoint geometry 切点与中文 journal 错误文案；10 个 Webview 无损/新投影定向用例通过，并完成一次 334 用例的 Webview 基线审计。
+- [x] (2026-07-11 12:18 +0800) 分析 Pane Gallery 现场诊断，确认缩略图与主画板是两个 xterm 投影；主画板空白来自 Host 发送旧 checkpoint 后数千个 events、Webview 每 revision 一个宏任务，以及旧输入节点抢占 hydrate 顺序，而非 Supervisor journal 缺失。
+- [x] (2026-07-11 13:02 +0800) 新增 capability-gated 只读 `getSessionSnapshot`；健康 authority session 在 Webview attach 前从 Supervisor 刷新 checkpoint，并把 RPC 期间已到 Host 的连续尾部 revision 无损合并，同 session 并发刷新共享一个请求。
+- [x] (2026-07-11 13:13 +0800) Webview 对连续 journal output 做目标上限 256 Ki 个 UTF-16 code unit 的批量回放（单个 event 不拆分）；新激活主 Pane hydrate 优先于旧输入节点，并补充 4000-event 完整尾部与 Pane Gallery 激活顺序回归。
+- [x] (2026-07-11 13:29 +0800) 重新执行完整 `trusted` VS Code smoke 并通过，覆盖 live runtime Reload Window 后从最新行滚动回首行；前一次同场景滚动动作未生效，但原样复跑未复现，未据此改变无损恢复语义。
+- [x] (2026-07-11 14:21 +0800) 用户使用最新 Supervisor 手动复测 Pane Gallery 缩略图切换主画板场景，未再发现输出延迟补全、显示不完整或其他新问题。
 - [ ] 实现唯一输入节点优先且所有 controller 无损、有序、有界公平的 live 调度。
-- [ ] 把旧 supervisor 显式只读降级/迁移、Host checkpoint refresh/ACK 与长期内存预算收口；新 authority session 的连续重新附着已完成。
+- [ ] 把旧 supervisor 显式只读降级/迁移、applied-revision ACK、无 attach 时的周期性 Host cache 收敛与长期内存预算收口；新 authority session 的连续重新附着和按投影 attach 刷新已完成。
 - [ ] 完成 10 Agent 容量基准和完整 `npm test`，并把已知 Webview 环境基线失败与本次回归分开记录。
 
 ## 意外与发现
@@ -74,6 +79,12 @@
 
 - 观察：checkpoint 的 revision 与 terminal geometry 也必须取自同一个事件循环切点。
   证据：若先等待 tracker `flush()`、再读取 `session.cols/rows/scrollback`，等待期间到达的 resize/scrollback 会把较早 revision 的 serialized state 与较新 geometry 拼进同一 checkpoint。当前实现先固定 geometry，再开始 flush；并用源码回归保护该顺序。
+
+- 观察：Pane Gallery 缩略图内容正常不能证明双击后的主画板已具备相同内容；`PaneGalleryRootPane` 的 ReactFlow key 包含 `mode`，从 thumbnail 切到 main 会销毁旧 xterm 并创建空投影。
+  证据：`2026-07-11T04-30-09-595Z` 诊断中，目标节点缩略图已正常显示，但新主画板 xterm 仍为全空；一次仅统计 22,911 个 checkpoint 字符的 hydrate 实际耗时 8.731 秒。
+
+- 观察：Supervisor checkpoint 本身已经足够新，慢点在 Host 投影缓存和 Webview replay 粒度。Host 在纯 output 期间持续向旧 `terminalStream.events` 追加，Webview 又在每个 output revision 后 `setTimeout(0)`，数千 revision 被放大为数秒空屏。
+  证据：现场 Supervisor checkpoint 后通常只有 0–2 个 event；实现只读 projection refresh 和目标上限 256 Ki 个 UTF-16 code unit 的连续 output batching 后，4000 个 event、276,000 个 replay 字符的 Webview 回归在一次 snapshot write 中约 112 ms 完成。
 
 - 观察：完整仓库/Webview 基线当前包含多项与本轮终端内容链路无关的既有失败，不能只概括为最初观察到的三项。
   证据：`npm test` 先后被 Marketplace E2E 中只接受中文按钮而实际 probe 为英文、已拆分源码仍扫描 `main.tsx` 的静态正则、缺少 `vscode.l10n` mock 等基线问题中断。一次完整 Webview 运行结果为 319/334 通过；其中两个同 session snapshot-redraw 用例和一个要求 final snapshot 丢弃 live backlog 的用例与新不变量冲突，已改为新 projection/无损 final backlog 语义并定向通过。其余截图、右键菜单、帮助文案、Ctrl-Z 与拖拽失败均不在本轮代码改动区域，产物保存在 `.debug/playwright/results/`。
@@ -124,6 +135,14 @@
   理由：geometry 本身也是 terminal event 的派生状态，不能与 serialized state 使用不同 revision 切点，否则即使 revision 连续也可能恢复出尺寸不一致的 xterm 投影。
   日期/作者：2026-07-11 / Codex
 
+- 决策：Webview 新投影 attach 使用独立、只读、capability-gated 的 Supervisor snapshot RPC，不复用会撤销 socket subscription 并建立 deferred pin 的 `attachSession`。
+  理由：刷新 Host 投影缓存不能改变现有 live subscription；旧 Supervisor 没有新 capability 时必须跳过 RPC，避免未知 method 永久悬挂。刷新响应与当前 Host cache 通过连续 revision 校验合并，失败时保留原健康缓存而不丢内容。
+  日期/作者：2026-07-11 / Codex
+
+- 决策：连续 output journal event 允许字节等价批量写入 xterm；resize/scrollback 仍是批次边界。Pane Gallery 新激活主 Pane 使用独立优先级，排在历史 `lastExecutionInputNodeId` 之前。
+  理由：事件边界不是 output 字节语义边界，每 revision 一个宏任务只制造恢复延迟；主 Pane 是用户当前选择的显示投影，但不能改写“最近输入节点”的业务语义或丢弃后台内容。
+  日期/作者：2026-07-11 / Codex
+
 ## 结果与复盘
 
 本轮已完成用户指定的前三项实现。新 `live-runtime` session 的 terminal revision 只由 Runtime Supervisor 在 journal append 时分配；磁盘完整保存 output、resize、scrollback，checkpoint 只是同 authority 上的恢复缓存。Supervisor 重启时会校验 manifest、segment 字节、连续 revision 与 checksum chain；checkpoint 缺失则从 journal 起点重建，journal 损坏则拒绝 raw-tail fallback。
@@ -132,7 +151,9 @@ Host 与 Webview 已改为 authority projection：Host coalescing 保留 revisio
 
 当前证据包括类型检查、journal/protocol/sequence/tracker/scheduler/localization 单测、10 个无损 backlog/新投影/checkpoint+journal/gap 定向 Webview 用例、完整 trusted smoke 与 real-reopen smoke。完整 `npm test` 受上述仓库基线失败阻断，10 Agent 容量基准和旧 supervisor 显式迁移仍未完成，因此本 ExecPlan 保持 active；不能把新 authority 路径已通过误写成所有旧会话和长期容量都已验证。
 
-已知下一项实现债是 Host `terminalStream.events` 的 checkpoint refresh/ACK。Supervisor 内存和磁盘策略已经分离，但 Host 仍可能为 Webview recreate 长期缓存 checkpoint 后的所有事件。该问题不会允许丢内容，后续应通过权威 checkpoint refresh 收敛，而不是恢复 snapshot replacement 或设置丢弃阈值。
+Pane Gallery 新投影恢复问题已收口：Host 在健康 authority attach 前拉取 Supervisor 最新 checkpoint，RPC 期间到达的 Host 尾部事件按 revision 合并；Webview 连续 output 以 256 Ki 个 UTF-16 code unit 为批次目标上限回放（单个 event 不拆分），resize/scrollback 保持顺序边界；新激活主 Pane hydrate 排在旧输入节点之前。该实现不改变 live subscription，不把 Host 变成 authority，也不丢弃任何 journal event。
+
+剩余债务是 applied-revision ACK 和无 Webview attach 时的周期性 Host cache 收敛。当前方案会在每次新投影 attach 时把 Host `terminalStream.events` 收敛到新 checkpoint，但一个长期运行且从不重建投影的纯输出会话，Host 内存缓存仍可继续增长。后续只能继续通过权威 checkpoint/ACK 收敛，不能恢复 snapshot replacement 或设置丢弃阈值。
 
 ## 上下文与定向
 
@@ -226,8 +247,8 @@ PR #152 的 `docs/exec-plans/active/execution-input-responsiveness.md` 记录了
 
 ## 接口与依赖
 
-第一阶段新增 `terminalSessionStreamV1` capability、`sessionId + authorityId + revision` 事件模型、`deferSubscription`、`subscribeSession(afterRevision)` 与 `sessionTerminalEvent`。`host/executionOutput` 为 authority output 携带 revision range，resize/scrollback 通过 `host/executionTerminalEvent` 保序投影。共享结构定义在 `terminalSessionStream.ts`、`protocol.ts` 与 `runtimeSupervisorProtocol.ts`；Host 和 Webview 不隐式补造 revision。
+第一阶段新增 `terminalSessionStreamV1` capability、`sessionId + authorityId + revision` 事件模型、`deferSubscription`、`subscribeSession(afterRevision)` 与 `sessionTerminalEvent`。本次现场修复再新增 `terminalProjectionSnapshotV1` 和只读 `getSessionSnapshot(sessionId)`；它不修改 socket subscription。`host/executionOutput` 为 authority output 携带 revision range，resize/scrollback 通过 `host/executionTerminalEvent` 保序投影。共享结构定义在 `terminalSessionStream.ts`、`protocol.ts` 与 `runtimeSupervisorProtocol.ts`；Host 和 Webview 不隐式补造 revision。
 
 ---
 
-最后更新说明：2026-07-10 建立第一轮历史诊断并根据用户确认，将无损 live 增量、唯一输入节点优先级和 Host 非后台 Agent 恢复权威写为硬性边界。2026-07-11 从最新 `origin/main` 新建 `agent-terminal-lossless-io-redesign`，选定并实现 supervisor 唯一 authority、完整非压缩 journal、checkpoint cache 和两阶段 attach；trusted 与 real-reopen 已通过。ExecPlan 继续保留旧 supervisor 迁移、Host checkpoint refresh 和容量验证，避免把尚未完成的范围写成结论。
+最后更新说明：2026-07-10 建立第一轮历史诊断并根据用户确认，将无损 live 增量、唯一输入节点优先级和 Host 非后台 Agent 恢复权威写为硬性边界。2026-07-11 从最新 `origin/main` 新建 `agent-terminal-lossless-io-redesign`，选定并实现 supervisor 唯一 authority、完整非压缩 journal、checkpoint cache 和两阶段 attach；trusted 与 real-reopen 已通过。针对 Pane Gallery 主画板空白，又完成按 attach 的权威 checkpoint refresh、无损 Host tail 合并、Webview 批量 replay 和激活投影优先级。ExecPlan 继续保留旧 supervisor 迁移、周期性 cache/ACK 与容量验证，避免把尚未完成的范围写成结论。

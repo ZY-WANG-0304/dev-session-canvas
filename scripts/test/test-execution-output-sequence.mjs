@@ -54,6 +54,11 @@ assert.match(
   'Host 检测到 authority/revision gap 后必须让 Webview fail closed，并从 supervisor 重新附着。'
 );
 assert.match(
+  managerSource,
+  /supportsTerminalProjectionSnapshot\(\)[\s\S]*?client\.getSessionSnapshot\([\s\S]*?mergeTerminalStreamProjectionWithLiveTail\(freshStream, currentStream\)/u,
+  '健康 authority projection attach 必须刷新 Supervisor checkpoint，并无损合并刷新期间到达 Host 的连续尾部事件。'
+);
+assert.match(
   protocolSource,
   /terminalAuthorityId\?: string;\s*terminalStartRevision\?: number;\s*terminalRevision\?: number;/u,
   'Host/Webview output 协议必须携带 authority 与连续 revision range。'
@@ -72,6 +77,16 @@ assert.doesNotMatch(
   webviewSource,
   /resetBacklogForSnapshot|pendingSnapshotReset|deferred-output-budget-reset/u,
   'Webview 不得保留会丢弃增量内容的 snapshot reset 路径。'
+);
+assert.match(
+  webviewSource,
+  /while \(index < events\.length\)[\s\S]*?outputBatch \+= outputEvent\.data;[\s\S]*?terminal\.write\(outputBatch/u,
+  'Webview snapshot hydrate 必须批量回放连续 output，不能为每个 revision 单独调度一次 xterm write。'
+);
+assert.match(
+  webviewSource,
+  /activationPriorityIndex[\s\S]*?activationPriorityIndex >= 0 \? activationPriorityIndex : inputNodeIndex/u,
+  '新激活主 Pane 的 snapshot hydrate 优先级必须高于旧的最近输入节点。'
 );
 
 console.log('execution output sequence tests passed');

@@ -13,6 +13,7 @@ let runtimeSupervisorRequestSequence = 0;
 
 try {
   const protocolOutfile = path.join(tempDir, 'runtimeSupervisorProtocol.cjs');
+  const terminalSessionStreamOutfile = path.join(tempDir, 'terminalSessionStream.cjs');
   const supervisorOutfile = path.join(tempDir, 'runtimeSupervisorMain.cjs');
   await Promise.all([
     esbuild.build({
@@ -20,6 +21,14 @@ try {
       bundle: true,
       format: 'cjs',
       outfile: protocolOutfile,
+      platform: 'node',
+      target: 'node18'
+    }),
+    esbuild.build({
+      entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/terminalSessionStream.ts')],
+      bundle: true,
+      format: 'cjs',
+      outfile: terminalSessionStreamOutfile,
       platform: 'node',
       target: 'node18'
     }),
@@ -42,6 +51,9 @@ try {
     getRuntimeSupervisorErrorDescriptor,
     serializeRuntimeSupervisorError
   } = require(protocolOutfile);
+  const { mergeTerminalStreamProjectionWithLiveTail } = require(terminalSessionStreamOutfile);
+
+  assertTerminalProjectionMergePreservesConcurrentLiveTail(mergeTerminalStreamProjectionWithLiveTail);
 
   const spawnError = new Error('spawn /missing/codex ENOENT');
   spawnError.code = 'ENOENT';
@@ -218,11 +230,15 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       }
     });
 
+    const hello = await sendRuntimeSupervisorRequest(socket, messages, 'hello');
+    assert.equal(hello.capabilities?.terminalSessionStreamV1, true);
+    assert.equal(hello.capabilities?.terminalProjectionSnapshotV1, true);
+
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
     const gapMarker = `attach-gap-marker-${Date.now()}`;
     await writeFile(
       echoScriptPath,
-      `process.stdin.setEncoding('utf8');\nprocess.stdin.once('data', () => process.stdout.write(${JSON.stringify(`${gapMarker}\r\n`)}));\nsetInterval(() => undefined, 1000);\n`,
+      `process.stdin.setEncoding('utf8');\nlet inputCount = 0;\nprocess.stdin.on('data', (data) => {\n  inputCount += 1;\n  process.stdout.write(inputCount === 1 ? ${JSON.stringify(`${gapMarker}\r\n`)} : data);\n});\nsetInterval(() => undefined, 1000);\n`,
       'utf8'
     );
     const attachGapSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
@@ -298,6 +314,31 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       'output produced between attach and subscribe must be replayed exactly once.'
     );
 
+    const refreshLiveMarker = `projection-refresh-live-marker-${Date.now()}`;
+    const projectionSnapshotPromise = sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: 'attach-gap-terminal' }
+    );
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'attach-gap-terminal',
+      data: `${refreshLiveMarker}\n`
+    });
+    const projectionSnapshot = await projectionSnapshotPromise;
+    assertTerminalStreamSnapshot(projectionSnapshot, 'projection refresh snapshot');
+    const refreshLiveEvent = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionTerminalEvent' &&
+        message.payload?.sessionId === 'attach-gap-terminal' &&
+        message.payload.event?.type === 'output' &&
+        message.payload.event.data.includes(refreshLiveMarker),
+      'projection refresh live event'
+    );
+    assert.equal(refreshLiveEvent.payload.authorityId, attachGapSnapshot.terminalAuthorityId);
+
     await sendRuntimeSupervisorRequest(socket, messages, 'resizeSession', {
       sessionId: 'attach-gap-terminal',
       cols: 101,
@@ -312,7 +353,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
         message.payload.event?.type === 'resize',
       'terminal resize event'
     );
-    assert.equal(resizeEvent.payload.event.revision, subscribeResult.revision + 1);
+    assert.equal(resizeEvent.payload.event.revision, refreshLiveEvent.payload.event.revision + 1);
     await sendRuntimeSupervisorRequest(socket, messages, 'updateSessionScrollback', {
       sessionId: 'attach-gap-terminal',
       scrollback: 2000
@@ -433,6 +474,61 @@ function assertTerminalStreamSnapshot(snapshot, label) {
     expectedRevision += 1;
   }
   assert.equal(expectedRevision, snapshot.terminalStream.revision + 1);
+}
+
+function assertTerminalProjectionMergePreservesConcurrentLiveTail(mergeProjection) {
+  const createCheckpoint = (revision) => ({
+    version: 1,
+    sessionId: 'projection-merge-session',
+    authorityId: 'projection-merge-authority',
+    revision,
+    cols: 80,
+    rows: 24,
+    scrollback: 1000,
+    createdAtMs: revision,
+    serializedState: {
+      format: 'xterm-serialize-v1',
+      data: `checkpoint-${revision}`,
+      outputSequence: revision
+    }
+  });
+  const createEvents = (startRevision, endRevision, source) =>
+    Array.from({ length: endRevision - startRevision + 1 }, (_value, index) => {
+      const revision = startRevision + index;
+      return {
+        type: 'output',
+        revision,
+        createdAtMs: revision,
+        data: `${source}-${revision}`
+      };
+    });
+  const fresh = {
+    version: 1,
+    sessionId: 'projection-merge-session',
+    authorityId: 'projection-merge-authority',
+    revision: 6,
+    checkpoint: createCheckpoint(5),
+    events: createEvents(6, 6, 'fresh')
+  };
+  const current = {
+    version: 1,
+    sessionId: 'projection-merge-session',
+    authorityId: 'projection-merge-authority',
+    revision: 8,
+    checkpoint: createCheckpoint(1),
+    events: createEvents(2, 8, 'current')
+  };
+
+  const merged = mergeProjection(fresh, current);
+  assert.equal(merged?.preservedLiveTailEventCount, 2);
+  assert.equal(merged?.payload.checkpoint.revision, 5);
+  assert.equal(merged?.payload.revision, 8);
+  assert.deepEqual(merged?.payload.events.map((event) => event.revision), [6, 7, 8]);
+  assert.deepEqual(merged?.payload.events.map((event) => event.data), ['fresh-6', 'current-7', 'current-8']);
+
+  const gappedCurrent = structuredClone(current);
+  gappedCurrent.events.splice(5, 1);
+  assert.equal(mergeProjection(fresh, gappedCurrent), undefined);
 }
 
 async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, tempDir, marker) {
@@ -589,7 +685,7 @@ async function sendRuntimeSupervisorRequest(socket, messages, method, params) {
     type: 'request',
     id,
     method,
-    params
+    ...(params === undefined ? {} : { params })
   })}\n`);
   const response = await waitForRuntimeSupervisorMessage(
     messages,

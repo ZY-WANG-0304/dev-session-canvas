@@ -50,7 +50,7 @@ updated_at: 2026-07-11
 1. 同一时刻只有一个节点处于用户输入状态。输入优化应把该节点的输入、控制消息和真实回显设为最高调度优先级，而不是以牺牲其他节点的内容完整性换取手感。
 2. live 输出链路不得丢弃任何尚未被消费的增量内容，也不得把 snapshot replacement 当作输入性能优化。后台节点可以延后渲染，但内容必须保序保存并最终交付。
 3. Extension Host 与 Webview 都会在 Reload Window 时重建，因此 Host snapshot 不能成为可跨 reload 的 Agent 恢复权威。对于 VS Code 关闭后仍继续运行的 Agent，新 Host 必须重新连接到生命周期更长的执行权威，并恢复 Host 离线期间产生的输出。
-4. checkpoint、日志或其他恢复表示的具体格式仍待比较；但权威的生命周期必须覆盖后台 Agent，Host 在这条路径上只能充当转发、缓存和投影协调者，不能用自身快照声明后台输出历史完整。
+4. 在确认这些约束时，checkpoint、日志或其他恢复表示的具体格式仍待比较；权威的生命周期必须覆盖后台 Agent，Host 在这条路径上只能充当转发、缓存和投影协调者，不能用自身快照声明后台输出历史完整。后续选定结果见第 10 节。
 
 ## 3. 目标
 
@@ -67,7 +67,7 @@ updated_at: 2026-07-11
 - 本文不决定是否把 Agent 改成 transcript/composer UI；当前正式产品主路径仍是节点内 provider CLI 会话窗口。
 - 本文不承诺对任意尺寸变化无损恢复 xterm alternate buffer；该问题仍登记在技术债追踪中。
 - 本文不把旧 live runtime 无法重建的历史伪装成可恢复。没有权威 checkpoint 时，可以明确降级，但不能伪造完整终端。
-- 本文不把具体 scheduler 常量、缓存上限或序列化格式写成已选定方案。
+- 除第 10 节已选定的协议与 replay 批次边界外，本文不预先承诺其他 scheduler 常量、缓存上限或 compact 格式。
 
 ## 5. 术语与当前内容表示
 
@@ -75,9 +75,9 @@ updated_at: 2026-07-11
 | --- | --- | --- | --- | --- |
 | PTY raw output | `node-pty` 或 runtime supervisor | Host/supervisor tracker、输出队列 | 按单一生产路径观察到的终端字节流 | 被截断后不能从任意位置重放成终端状态 |
 | `ManagedExecutionSession.buffer` / supervisor `output` | Host / supervisor | snapshot fallback、摘要、诊断 | 最近约 6000 字符 | 不保证从 ANSI 序列边界开始，也不保留完整 scrollback |
-| `SerializedTerminalState` | Host / supervisor 的 headless xterm tracker | 持久化、snapshot、Webview hydrate | 某次 tracker 序列化时的终端投影 | 当前仅靠外部 sequence 不能自证覆盖了哪些 raw output |
-| Host output scheduler entry | `CanvasPanelManager` | Webview message bridge | 合并后准备投递的增量 output | 不是持久化日志，snapshot 前可被清空 |
-| Webview `pendingOutput` | `host/executionOutput` 消费端 | xterm drain | Webview 已收到但尚未写入 xterm 的增量 | 达到阈值时会被主动丢弃 |
+| `SerializedTerminalState` | Host / supervisor 的 headless xterm tracker | 持久化、snapshot、Webview hydrate | authority checkpoint 内可证明覆盖到特定 revision 的终端投影 | 单独脱离 session、authority、revision 后不能自证覆盖范围 |
+| Host output scheduler entry | `CanvasPanelManager` | Webview message bridge | 合并后准备投递的增量 output，并保留 authority revision range | 不是持久化日志；完整恢复仍依赖 Supervisor journal |
+| Webview `pendingOutput` | `host/executionOutput` 消费端 | xterm drain | Webview 已收到但尚未写入 xterm 的无损增量 | Webview dispose 后不再存在；新投影必须从 authority 恢复 |
 | Webview live xterm buffer | 用户当前可见 Webview | 用户 | 当前实例真实显示内容 | Webview dispose 后不再存在，也不是宿主持久化真源 |
 | sanitized transcript | 未合入提交 `0bcb3b0` | degraded xterm 显示 | 可读的最近纯文本片段 | 不是终端状态，不能承接后续 TUI cursor/mode 语义 |
 
@@ -285,7 +285,7 @@ Extension Host
           v
 Webview xterm
   - 新建显示投影
-  - hydrate checkpoint、连续应用 events、回报 applied revision
+  - hydrate checkpoint、连续应用 events、本地校验 applied revision
 ```
 
 attach 必须在同一 authority 内完成原子切点：返回 checkpoint 与历史事件时，新的 live output 要么已经包含在截止 revision `R` 内，要么从 `R + 1` 开始进入 live stream，不能落在两者之间。Host/Webview 活着时仍走无损 live 增量，不因已有 checkpoint 清空 backlog；只有 Webview 或 Host 已经重建、旧投影不存在时，才使用 checkpoint 创建新投影。
@@ -300,7 +300,7 @@ journal 不能因为达到内存阈值直接丢弃。第一阶段完整保留从
 
 ### 10.2 唯一 authority 与 revision
 
-`extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts` 为每个新 live-runtime session 创建稳定 `authorityId`。同一 session 的 output、resize 与 scrollback 变化都由 supervisor 按一个连续 revision 序列记录；只有 supervisor 在实际接收事件时能推进 revision。`CanvasPanelManager` 与 Webview 只能验证、转发、排队和回报 applied revision，不得再用 metadata floor、`minOutputSequence` 或无数据 `markOutputSequence()` 提高 supervisor revision。
+`extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts` 为每个新 live-runtime session 创建稳定 `authorityId`。同一 session 的 output、resize 与 scrollback 变化都由 supervisor 按一个连续 revision 序列记录；只有 supervisor 在实际接收事件时能推进 revision。`CanvasPanelManager` 与 Webview 只能验证、转发、排队和本地追踪 applied revision，不得再用 metadata floor、`minOutputSequence` 或无数据 `markOutputSequence()` 提高 supervisor revision。跨进程 applied-revision ACK 尚未实现，不能写成当前事实。
 
 新协议字段保持可选，以便识别旧 supervisor。缺少 authority/journal capability 的旧会话继续走明确的 legacy/历史恢复路径，但不能把 6000 字符 tail 升级成新 checkpoint，也不能为它补造过去的 journal。
 
@@ -322,7 +322,17 @@ checkpoint 正常时，attach 返回 checkpoint `C`、journal `C+1...R` 和 targ
 
 Webview 只在新投影 attach 时 reset 并 hydrate checkpoint；随后按序应用 output/resize/scrollback event。已有 live xterm 的 backlog 不因 checkpoint 存在而清空。authority 不匹配、revision gap、重复跨 session 数据或 checkpoint+journal 不连续时必须 fail closed 并重新 attach，不能写 raw tail 或 sanitized transcript 冒充终端状态。
 
-### 10.6 阶段退出条件
+### 10.6 新显示投影的 checkpoint 刷新与回放调度
+
+Pane Gallery 的 thumbnail 与 main、Webview recreate 后的节点都是独立 xterm 投影。它们不能复用旧实例的 buffer；健康 authority session 收到 `webview/attachExecutionSession` 时，Host 必须先通过 `terminalProjectionSnapshotV1` 的只读 `getSessionSnapshot(sessionId)` 从 Supervisor 获取新鲜 checkpoint，再向新投影发布 snapshot。该 RPC 不撤销或切换当前 socket subscription，也不建立 deferred pin；旧 Supervisor 未声明 capability 时 Host 不发送未知 method。
+
+Supervisor 刷新 checkpoint 期间，live subscription 仍可把更晚 revision 送到 Host。Host 以 fresh payload 的 revision 为切点，保留当前缓存中严格更新且连续的尾部 events，并用 `buildTerminalStreamAttachPayload()` 重新验证 `sessionId + authorityId + revision` 全区间。authority 不同、尾部不连续或会话已经替换时，不覆盖原健康缓存；不能为了得到较短 payload 丢弃并发增量。同一节点和 session 的并发 attach 共享一次 refresh。
+
+Webview hydrate checkpoint 后，连续 output events 可以通过直接拼接 payload 等价合并；单批目标上限为 256 Ki 个 JavaScript UTF-16 code unit，且不会拆分单个 event，因此超大单 event 可以超过该目标。resize 和 scrollback 是硬顺序边界，必须等前一 output write 完成再应用。批量回放不改变 event 顺序或 revision，只消除“每 revision 一个 `setTimeout(0)`”的恢复放大。诊断分别记录 checkpoint 字符数、replay event 数、replay output 字符数、checkpoint revision 和 target revision。
+
+用户从缩略图切换到主画板时，新激活 root 下的执行节点获得独立 snapshot hydrate 优先级，高于历史 `lastExecutionInputNodeId`；该优先级不改写最近输入节点语义，也不抢占已经开始的 hydrate。其他 controller 继续按原队列推进，不允许因主 Pane 优先而丢内容。
+
+### 10.7 阶段退出条件
 
 本阶段完成必须证明：journal segment 轮转后逐 record 校验通过；checkpoint 缺失时完整 journal 能重建相同 xterm；Host attach 间隙产生的 output 被补偿且只显示一次；Reload Window 期间 Agent 输出连续；Host 不再推进 supervisor revision；旧 supervisor 被明确识别；10 个并发 Agent 的 journal 写入不会破坏当前输入节点响应。compact、永久 transcript 和完整生命周期 retention 不属于本阶段完成条件。
 
@@ -378,12 +388,14 @@ Webview 只在新投影 attach 时 reset 并 hydrate checkpoint；随后按序�
 - supervisor registry 保存 checkpoint cache；checkpoint 缺失时从 journal 起点重建，journal checksum/revision 损坏时拒绝 raw-tail fallback，并进入明确错误态。checkpoint 超过当前 serialized-state 格式上限时保留上一 checkpoint 与其后的完整事件，不 compact journal。
 - create/attach 使用静态 payload 与 `subscribeSession(afterRevision)` 两阶段切换。deferred attach revision 在订阅完成前被 pin，避免并发 checkpoint 刷新提前释放补偿区间；同一 socket 的旧订阅会先撤销。
 - Host/Webview 以 authority 和 revision range 校验 coalesced output，在 resize/scrollback 前 flush 旧 output；gap 或 authority 变化会 fail closed 并重新 attach。Webview 已删除 backlog 阈值触发的 snapshot replacement，健康 live backlog 不再被 checkpoint 清空。
+- 健康 authority 的新 Webview 投影 attach 前会通过只读 `getSessionSnapshot` 刷新 Supervisor checkpoint；刷新期间到达 Host 的 live 尾部按连续 revision 无损合并。该方法受 `terminalProjectionSnapshotV1` capability 保护，不改变当前 subscription。
+- Webview 将连续 output journal events 合并为目标上限 256 Ki 个 UTF-16 code unit 的 xterm write（单个 event 不拆分），resize/scrollback 保持批次边界；Pane Gallery 新激活主 Pane 的 hydrate 优先于旧输入节点。诊断已覆盖 checkpoint/replay 字符数、事件数和 revision 区间。
 
-当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；checkpoint geometry 与 tracker flush 使用同一切点；final/registry checkpoint 覆盖 final revision；Webview checkpoint+journal 顺序 hydrate、live revision gap 恢复、健康/结束态 snapshot 不替换既有 backlog；真实 `trusted` Reload Window 与 `real-reopen` 均通过。
+当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；projection refresh 不撤销 live subscription；checkpoint geometry 与 tracker flush 使用同一切点；final/registry checkpoint 覆盖 final revision；Webview checkpoint+journal 顺序 hydrate、4000 个连续 output event 批量回放后尾部完整、live revision gap 恢复、健康/结束态 snapshot 不替换既有 backlog；Pane Gallery 新主画板 hydrate 先于旧输入节点；真实 `trusted` Reload Window 与 `real-reopen` 均通过。用户随后使用最新 Supervisor 手动复测缩略图切换主画板，未再发现输出延迟补全、显示不完整或其他新问题。
 
 以下仍未写成已完成结论：
 
-- Host 为 Webview recreate 缓存的 `terminalStream.events` 只会在收到新的 supervisor lifecycle snapshot 时换成较新 checkpoint；纯输出、长时间无生命周期变化的会话仍可能让这份 Host 内存缓存持续增长。磁盘 journal 与 supervisor 内存已受 checkpoint 控制，但 Host 还需要专门的 checkpoint refresh/ACK 协议。
+- Host 已在新投影 attach 前主动刷新 checkpoint，因此 Pane Gallery/Webview recreate 不再必然携带旧 checkpoint 后的全部历史事件；但纯输出、长期没有新 attach 的会话仍会让 Host 缓存增长。周期性 refresh、applied-revision ACK 与长期内存预算尚未完成。
 - 旧 supervisor 没有 authority/journal 时仍只具备 legacy 保证；显式只读降级、升级迁移和旧 raw-tail UI 的最终退出策略尚未完成。
 - 10 个并发 Agent 的总量/输入延迟基准、alternate screen、OSC、CJK/emoji 边界与长期 retention 仍需单独验证；不能用当前定向测试代替这些容量结论。
 - local PTY 的独立恢复语义、journal compact、永久 transcript 与 Agent 结构化内容投影不属于本次前三项实现。
