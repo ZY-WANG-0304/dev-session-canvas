@@ -246,7 +246,7 @@
   "Changing runtime persistence will clear the Canvas host state for the current workspace on the next load.": "切换运行时持久化会在下次加载时清空当前 workspace 的画布宿主状态。",
   "Changing the files feature switch will clear file activity state, file objects, automatic file relationships, and file filter state on the next load.": "切换文件功能开关会在下次加载时清空文件活动状态、文件对象、自动文件关系和文件过滤状态。",
   "Check webview-lifecycle-summary.json, diagnostic-events.json, host-messages.json, and panel-probe.json first.": "优先查看 webview-lifecycle-summary.json、diagnostic-events.json、host-messages.json 和 panel-probe.json。",
-  "Claude Agent nodes do not support Ctrl-Z/fg. Use stop, restart, or fork instead.": "Claude Agent 节点不支持 Ctrl-Z/fg。请使用停止、重启或分叉。",
+  "Claude Agent nodes do not support Ctrl-Z/fg. Use stop, resume, or fork instead.": "Claude Agent 节点不支持 Ctrl-Z/fg。请使用停止、恢复或分叉。",
   "Claude Code is suspended. Click \"Stop\" to end the session, then restart.": "Claude Code 已挂起。点击“停止”结束会话后再重新启动。",
   "Continue Paste": "继续粘贴",
   "Continue Reset": "继续重置",

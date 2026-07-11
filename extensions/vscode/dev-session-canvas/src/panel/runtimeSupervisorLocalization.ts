@@ -57,7 +57,7 @@ export function localizeRuntimeSupervisorMessageDescriptor(
         sessionId: params.sessionId ?? vscode.l10n.t('<unknown>')
       });
     case 'claudeAgentCtrlZUnsupported':
-      return vscode.l10n.t('Claude Agent nodes do not support Ctrl-Z/fg. Use stop, restart, or fork instead.');
+      return vscode.l10n.t('Claude Agent nodes do not support Ctrl-Z/fg. Use stop, resume, or fork instead.');
     case 'claudeCodeSuspended':
       return vscode.l10n.t('Claude Code is suspended. Click "Stop" to end the session, then restart.');
     case 'agentSessionDeleted':

@@ -101,6 +101,15 @@ assert.equal(
   formatWebviewMessage(chinese.messages, 'agent.overlay.notStarted'),
   'Agent 尚未启动'
 );
+assert.equal(formatWebviewMessage(english.messages, 'action.resume'), 'Resume');
+assert.equal(formatWebviewMessage(chinese.messages, 'action.resume'), '恢复');
+assert.equal(formatWebviewMessage(english.messages, 'action.restart'), 'Restart');
+assert.equal(formatWebviewMessage(chinese.messages, 'action.restart'), '重启');
+assert.equal(
+  formatWebviewMessage(english.messages, 'agent.action.resume.aria'),
+  'Resume original session'
+);
+assert.equal(formatWebviewMessage(chinese.messages, 'agent.action.resume.aria'), '恢复原会话');
 
 const webviewSourceKeys = extractWebviewI18nKeys(webviewMainSource);
 assert.ok(
