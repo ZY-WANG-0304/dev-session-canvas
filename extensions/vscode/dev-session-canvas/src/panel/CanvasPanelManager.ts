@@ -15727,7 +15727,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postMessage({
         type: 'host/error',
         payload: {
-          message: vscode.l10n.t('Claude Agent nodes do not support Ctrl-Z/fg. Use stop, restart, or fork instead.')
+          message: vscode.l10n.t('Claude Agent nodes do not support Ctrl-Z/fg. Use stop, resume, or fork instead.')
         }
       });
       return false;

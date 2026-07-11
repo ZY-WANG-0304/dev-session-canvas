@@ -1,4 +1,4 @@
-# Agent 启动方式与重启交互
+# Agent 启动方式与会话恢复交互
 
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘` 这几个章节。
 
@@ -6,7 +6,7 @@
 
 ## 目标与全局图景
 
-完成后，用户可以在右键菜单或命令面板创建 Agent 时明确选择 provider 与启动方式，必要时输入完整启动命令；停止后的 Agent 也能在“恢复原会话”和“新会话”之间清楚分流。用户能直接在 VSCode 里看到：右键菜单出现三层 Agent 创建、命令面板 Agent 入口变成两步 Quick Input、已停止 Agent 显示 `新建 | 重启` 双按钮。
+完成后，用户可以在右键菜单或命令面板创建 Agent 时明确选择 provider 与启动方式，必要时输入完整启动命令；停止后的 Agent 也能在“恢复原会话”和“新会话”之间清楚分流。用户能直接在 VSCode 里看到：右键菜单出现三层 Agent 创建、命令面板 Agent 入口变成两步 Quick Input、已停止 Agent 显示 `新建 | 恢复` 双按钮，英文对应 `New | Resume`。
 
 ## 进度
 
@@ -47,6 +47,7 @@
 - [x] (2026-07-01) 明确显式 `Resume / Fork` 的冲突与不冲突配置清单，并实现当前节点 `重启` / 历史恢复复用共享 history resume 命令构造，避免丢失 model、sandbox、approval、profile、config、cwd 等非冲突配置。
 - [x] (2026-07-02) 针对当前节点 `重启` / `分叉` 补齐启动意图继承：宿主传入 `launchPreset/customLaunchCommand/templateArgv`，历史恢复 / 历史分叉继续只使用历史 session id 与当前 Default args。
 - [x] (2026-07-04) 根据真实 fork 失败诊断修正当前节点启动意图边界：当前节点 `重启` / `分叉` 只继承节点最近一次实际启动命令或节点长期启动偏好，不再合并当前 Default args；历史恢复 / 历史分叉继续使用当前 Default args。
+- [x] (2026-07-11) 把 Agent 原会话动作从 `Restart / 重启` 改为 `Resume / 恢复`，保留 Terminal 的 `Restart / 重启`，并同步可访问性文案、Claude `Ctrl-Z` 引导、正式规格、设计和定向回归；本地化、执行上下文、runtime supervisor 协议、typecheck 与 focused Webview 8 条用例均通过。
 
 ## 意外与发现
 
@@ -94,6 +95,9 @@
 
 - 观察：即使命令构造层已经不合并 Default args，宿主当前节点 `重启` / `分叉` 后续校验仍可能被当前 Default args 拦截；最近启动命令若保存了旧 provider 命令路径，也不能要求它继续等于当前 provider command 设置。
   证据：2026-07-04 PR245 review 指出当前节点 `重启` 在生成显式 resume 命令后仍用当前 defaults 调 `validateAgentCommandLine(...)`，当前节点 `分叉` 创建的 custom fork 节点也会走 fresh-start 校验；同时 `lastLaunchCommandLine` 用当前 command-only defaults 校验会拒绝 `/old/bin/codex --yolo`。
+
+- 观察：Agent 标题栏按钮已经调用 `startAgent(true)`，data attribute、tooltip 和现有本地化键也都使用 `resume`，但可见标签仍复用了 Terminal 的 `action.restart`；这让按钮名称与真实会话语义、可访问性说明不一致。
+  证据：2026-07-11 复核 `extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx`，确认 Agent 和 Terminal 都读取 `action.restart`，而 Agent 按钮的 title 已是 `Resume original session`，仓库也已经存在独立 `action.resume`。
 
 ## 决策记录
 
@@ -209,6 +213,10 @@
   理由：节点启动意图的职责是继承运行参数，而不是冻结旧 provider command；当前 provider command 仍决定最终命令首个 token。Default args 的 fail-closed 只保留在 fresh-start、创建菜单、Quick Input、历史恢复 / 历史分叉路径，不能反向拦截已有节点的当前会话恢复 / 分叉。
   日期/作者：2026-07-04 / Codex
 
+- 决策：停止后恢复当前 Agent 原会话的按钮使用 `Resume / 恢复`，与 `New / 新建` 并列；Terminal 退出后的进程重启动作继续使用 `Restart / 重启`。
+  理由：用户需要区分“开一条新会话”和“延续这条原会话”。`Resume` 直接表达上下文连续性，也与按钮实际调用、tooltip 和 provider 命令一致；全局替换 `action.restart` 会错误改变 Terminal 语义，因此 Agent 复用现有 `action.resume` 独立收口。
+  日期/作者：2026-07-11 / Codex
+
 ## 结果与复盘
 
 - 已更新：需求已从临时文件迁入正式 docs；本轮又按新增反馈把创建前 `Resume` 改成 provider 自带 resume 选择入口，并保留“停止后重启 = 恢复当前节点上一条会话”的语义。针对 Codex 停止后重启不稳的问题，当前实现已改回“启动后继续扫文件”，并让停止路径先发 `Ctrl-C`、等待 `Token usage` / `codex resume <session-id>` 输出，再用它补充或校验 session id；Claude 先前则改成停止后必须看到 `claude --resume <session-id>` 才算真正可恢复，否则标题栏直接回退成单个 `启动` 按钮。针对“live 节点 stop 时尾部提示不显示、reload 后才出现”的问题，又补上了 host final snapshot + Webview 顺序化 terminal 写入的组合修复，并新增 Playwright 用例覆盖“尾部输出先于 exit banner”和“final snapshot 先于 exit banner”的回归场景。随后 stop 语义继续收口：已完成的 live-runtime 会话在宿主状态里会降级成 `snapshot-only`，使 reload 后继续显示 `stopped/closed`，而不是误导性的 `history-restored`；resume metadata 发现链路也继续细化成“Codex 在运行态再次回到 `waiting-input` 且仍未拿到 session id 时补扫 `~/.codex/sessions`，Claude 则新增 `~/.claude/projects/.../<session-id>.jsonl` 文件确认”。当前 stop 行为再次回到 provider-specific：Codex 标题栏停止按钮发送单次 `Ctrl-C` 并保留 5 秒 graceful-stop 兜底，Claude 则恢复更早版本的直接终止信号路径，不再发送 `Ctrl-C`。同时，命令面板 / 侧栏 `创建节点` 第二步 Quick Input 的行为也重新和规格对齐：点击 `默认 / Resume / YOLO / 沙盒` 只会改写顶部完整命令输入，必须显式按 Enter 才会真正创建节点；脚本化 QuickPick override 不再把“仅选择预设”误当成创建。当前已经完成 `npm run typecheck`、`npm run build`、`node --check tests/vscode-smoke/extension-tests.cjs`、`bash -n tests/vscode-smoke/fixtures/fake-agent-provider`；更大范围 end-to-end smoke 仍待条件允许时补跑。
@@ -226,6 +234,7 @@
 - 已更新：2026-07-01 继续把 Default args 的配置边界前移。共享命令层现在在解析 `agent.codexDefaultArgs` / `agent.claudeDefaultArgs` 时就拒绝会与 `Resume / Fork` 冲突的一次性会话目标，并把错误传给右键菜单、Quick Input 与宿主 fresh-start / history resume / branch command line；VSCode 设置描述、产品规格、设计文档、侧栏历史恢复文档与命令层测试已同步更新。
 - 已更新：2026-07-02 本轮把当前节点 `重启` / `分叉` 从“只用当前 Default args”升级为“节点启动意图”。共享命令层新增 `AgentLaunchIntentOptions`，会从 `YOLO / 沙盒 / 自定义启动 / templateArgv` 中剥离旧 session target；Host 只在当前节点 resume/fork 路径传入该意图，历史恢复 / 历史分叉保持不传。已通过命令层、宿主源检查和 typecheck。
 - 已更新：2026-07-04 根据真实 fork 失败诊断继续修正：当前节点 `重启` / `分叉` 不再把当前 Default args 合入节点启动意图，并优先从 `lastLaunchCommandLine` 继承该节点最近一次实际启动参数。命令层新增再次 fork 已 fork Codex 节点的回归，确保不会重复拼入 Default args 中的 `--search` / `-c sandbox_workspace_write.network_access=true`；历史恢复 / 历史分叉仍使用当前 Default args。
+- 已更新：2026-07-11 Agent 标题栏用 `Resume / 恢复` 表达“继续当前节点原会话”，与 `New / 新建` 形成清楚分流；Terminal 仍以 `Restart / 重启` 表达退出后启动新 shell 进程。实现只切换 Agent 的可见 i18n key 与相关 aria/title，不改变 resume 协议、命令构造和持久化结构；Claude `Ctrl-Z` 的三层拦截提示也同步改为停止、恢复或分叉。
 
 ## 上下文与定向
 
@@ -234,7 +243,8 @@
 - `extensions/vscode/dev-session-canvas/src/extension.ts`：侧栏/命令面板“创建节点”入口，目前顶层 QuickPick 直接创建，不支持第二步完整命令编辑。
 - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：宿主权威状态、节点创建、Agent fresh-start / resume 执行路径。
 - `extensions/vscode/dev-session-canvas/src/common/protocol.ts`：节点 metadata、runtime context 与 Host/Webview 消息协议。
-- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：空白区右键菜单、Agent 节点标题栏动作、执行型节点的 Webview 行为。
+- `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：空白区右键菜单与 Webview 组合入口。
+- `extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx`：Agent / Terminal 标题栏动作；Agent 使用 `New | Resume`，Terminal 继续使用 `Start / Restart`。
 - `extensions/vscode/dev-session-canvas/src/webview/styles.css`：右键菜单与标题栏按钮样式。
 - `tests/playwright/webview-harness.spec.mjs`：右键菜单、节点按钮等 Webview 回归。
 - `tests/vscode-smoke/extension-tests.cjs`：命令入口与宿主行为 smoke。
@@ -243,7 +253,7 @@
 
 ## 工作计划
 
-先在共享层引入 Agent 启动预设模型、命令字符串构造/解析/校验逻辑，并扩展 `protocol` 与 runtime context，让宿主、Webview、命令面板都能拿到统一的 provider 默认启动模板。然后在宿主层把节点创建、metadata 持久化和 Agent fresh-start 执行路径改成基于 `launchPreset/customLaunchCommand` 解析。Webview 侧接着扩展右键菜单三层 Agent 创建，并把停止后的单按钮改成 `新建 | 重启` 双按钮。最后再回到 `extensions/vscode/dev-session-canvas/src/extension.ts` 重写 Agent 的 Quick Input 创建链路，并为测试保留脚本化 override。
+先在共享层引入 Agent 启动预设模型、命令字符串构造/解析/校验逻辑，并扩展 `protocol` 与 runtime context，让宿主、Webview、命令面板都能拿到统一的 provider 默认启动模板。然后在宿主层把节点创建、metadata 持久化和 Agent fresh-start 执行路径改成基于 `launchPreset/customLaunchCommand` 解析。Webview 侧接着扩展右键菜单三层 Agent 创建，并把停止后的单按钮改成 `新建 | 恢复` 双按钮。最后再回到 `extensions/vscode/dev-session-canvas/src/extension.ts` 重写 Agent 的 Quick Input 创建链路，并为测试保留脚本化 override。2026-07-11 的文案 follow-up 只改变用户可见标签与引导，不改 resume 协议、命令构造或持久化字段。
 
 ## 具体步骤
 
@@ -255,7 +265,7 @@
 3. 在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 与 `extensions/vscode/dev-session-canvas/src/webview/styles.css` 中：
    - 把右键菜单扩成 root/provider/launch-mode 三层。
    - 实现自定义启动输入与校验。
-   - 实现停止后 `新建 | 重启` 双按钮。
+   - 实现停止后 `新建 | 恢复` 双按钮。
 4. 在 `extensions/vscode/dev-session-canvas/src/extension.ts` 中重写 Agent 创建 Quick Input 第二步，并更新 test override。
 5. 在 `tests/playwright/webview-harness.spec.mjs` 与 `tests/vscode-smoke/extension-tests.cjs` 中补回归，至少覆盖 `codex resume` / `claude --resume` 提示 parser，以及“无可信恢复上下文 => 标题栏只显示 `启动`”。
 6. 跑 `npm run typecheck`、`npm run test:webview`，再根据时间与稳定性决定是否补 `npm run test:smoke`。
@@ -264,11 +274,12 @@
 9. 分叉边标签 follow-up：在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的分叉自动建边路径中默认写入 `label: 'fork'`；更新 VSCode smoke，确认 Codex / Claude 分叉后宿主状态和 Webview probe 都能看到 `fork` 标签；同步更新产品规格、设计文档与本计划。
 10. PR159 review follow-up：在 `extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts` 中让 Codex 分叉命令对 leading args 和 subcommand args 使用同一套 fork selection stripping；在 `scripts/test/test-agent-launch-presets.mjs` 中补充 leading `--last`、`--all`、`--include-non-interactive` 与旧 positional target 的回归；将旧 `claude-agent-branch.md` 移入 completed，并在 active 计划中记录当前 Codex / Claude Code 分叉事实。
 11. 当前节点启动意图继承 follow-up：在 `extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts` 中让显式 resume/fork builders 接受可选 `AgentLaunchIntentOptions`；在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中仅对当前节点 `重启` / `分叉` 传入 metadata 启动意图；补 `scripts/test/test-agent-launch-presets.mjs` 与 `scripts/test/test-canvas-execution-context.mjs` 回归，确认历史入口不误继承。
+12. Agent 恢复文案 follow-up：在 `executionSessionNodes.tsx` 中让 Agent 按钮读取 `action.resume`，同步英文 `Resume`、中文“恢复”和 aria/title；Terminal 继续读取 `action.restart`。更新本地化与 Playwright 回归，明确锁定两类动作不互相串词。
 
 ## 验证与验收
 
 - 运行 `npm run typecheck`，预期通过。
-- 运行 `npm run test:webview`，预期新增的右键菜单、`新建 | 重启` 双按钮，以及“不可恢复时退化为启动按钮”用例通过。
+- 运行 `npm run test:webview`，预期新增的右键菜单、`新建 | 恢复` 双按钮，以及“不可恢复时退化为启动按钮”用例通过。
 - 如果 smoke 可跑，运行 `npm run test:smoke`，至少确认命令面板的 Agent 两步创建链路通过。
 - 若 smoke 因既有不稳定项受阻，需要在 `结果与复盘` 与最终交付说明中明确写清阻塞点和已验证范围。
 - Codex Fork follow-up 已运行 `npm run test:agent-launch-presets`、`npm run test:protocol-webview-messages`、`npm run test:canvas-execution-context`、`npm run typecheck`，以及 focused `npm run test:webview -- --grep "Agent Fork action|forked Agent"`；VSCode smoke 已新增 Codex Fork helper 覆盖 Host 创建、user edge 和 `execution/started.launchArgs`，但完整 trusted smoke 当前被既有 editor Webview DOM 动作超时阻塞，未进入该 helper。
@@ -276,6 +287,7 @@
 - 分叉边标签 follow-up 需要通过 `scripts/test/test-canvas-node-groups.mjs` 的 helper 级断言、`tests/vscode-smoke/extension-tests.cjs` 的 Codex / Claude Host 分叉断言、`npm run typecheck` 与 diff whitespace 检查；若完整 smoke 不跑全，必须说明本次只更新了现有 helper 与 smoke 断言，未额外重新跑完整 Development Host。
 - PR159 review follow-up 需要通过 `npm run test:agent-launch-presets` 验证新增 leading 参数清理回归，并至少补跑 `npm run test:canvas-execution-context`、`npm run test:canvas-node-groups`、`npm run typecheck`、Playwright / VSCode smoke 语法检查、focused `Agent title action buttons` Webview 回归、conflict marker 搜索与 diff whitespace 检查。
 - 当前节点启动意图继承 follow-up 需要通过 `npm run test:agent-launch-presets`、`npm run test:canvas-execution-context`、`npm run typecheck` 与 `git diff --check`；若未跑真实 provider CLI，最终说明中应明确真实 `codex fork` / `claude --fork-session` 的 provider 级效果仍沿用既有人工验证口径。
+- Agent 恢复文案 follow-up 需要通过 `npm run test:ui-copy-localization`、`npm run test:canvas-execution-context`、focused `npm run test:webview -- --grep "agent session actions|agent new and resume actions|agent resume action|Agent title action buttons"`、`npm run typecheck` 与 `git diff --check`。验收时 Agent 显示 `New | Resume` / `新建 | 恢复`，Terminal 的 `Restart / 重启` 保持不变。
 
 ## 幂等性与恢复
 
@@ -324,6 +336,7 @@
 - 2026-06-14：PR159 review follow-up 已运行 `npm run test:agent-launch-presets`、`npm run test:protocol-webview-messages`、`npm run test:canvas-execution-context`、`npm run test:canvas-node-groups`、`npm run typecheck`、`node --check tests/vscode-smoke/extension-tests.cjs`、`node --check tests/playwright/webview-harness.spec.mjs`、focused `npm run test:webview -- --grep "Agent title action buttons"`、conflict marker 搜索与 diff whitespace 检查，均通过。
 - 2026-07-01：Default args 会话目标冲突前置校验已运行 `npm run test:agent-launch-presets`，通过；新增/调整回归覆盖 Codex `resume` / `fork` / `--last` / positional token 与 Claude `--resume` / `--continue` / `--session-id` / `--fork-session` 被默认参数解析拒绝，同时保留 model、sandbox、approval、profile、permission-mode 等非冲突配置。
 - 2026-07-02：当前节点启动意图继承已运行 `npm run test:agent-launch-presets`、`npm run test:canvas-execution-context` 与 `npm run typecheck`，均通过；新增回归覆盖 Codex / Claude `YOLO` 当前节点 resume/fork、自定义 Codex 命令覆盖默认 model/mode、模板 argv 清理旧 resume target，以及历史恢复 / 历史分叉不传节点意图的宿主源检查。
+- 2026-07-11：Agent 恢复文案 follow-up 已运行 `npm run test:ui-copy-localization`、`npm run test:canvas-execution-context`、`npm run test:runtime-supervisor-protocol`、`npm run typecheck`、focused `npm run test:webview -- --grep "agent session actions|agent new and resume actions|terminal restart action|agent resume action|Agent title action buttons|Claude Agent Ctrl-Z"` 与 `git diff --check`；focused Webview 结果为 `8 passed`，覆盖 Agent 恢复标签与 aria、Terminal 重启标签、紧凑标题栏、不可恢复降级和 Claude `Ctrl-Z` 引导。
 
 ## 接口与依赖
 
@@ -346,7 +359,9 @@
   - Agent 创建 Quick Input 第二步
 - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
   - 右键菜单 launch-mode drill-in
-  - Agent `新建 | 重启` 双按钮
+- `extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx`
+  - Agent `新建 | 恢复`（`New | Resume`）双按钮
+  - Terminal `重启`（`Restart`）动作保持不变
 
 本次更新说明：2026-04-29 补记“显式预设覆盖默认模式参数 + Quick Input 保留显式 preset 意图”的实现收口、决策与验证证据，避免右键三级菜单与 QuickPick 在冲突默认参数下继续漂移。
 
@@ -375,3 +390,7 @@
 本次更新说明：2026-07-04 根据真实 fork 失败诊断修正当前节点启动意图边界：当前节点 `重启` / `分叉` 只使用节点最近一次实际启动命令或节点长期启动偏好，不再合并当前 Default args；历史恢复 / 分叉仍只使用当前 Default args。
 
 本次验证说明：2026-07-04 已完成 `npm run test:agent-launch-presets`、`npm run test:canvas-execution-context`、`npm run typecheck` 与 `git diff --check`，覆盖再次 fork 已 fork Codex 节点时不会重复拼入 Default args 中的 `--search` / `-c`，并覆盖当前节点 `重启` / `分叉` 不会被当前 Default args 或旧 provider 命令路径拦截。
+
+本次更新说明：2026-07-11 将停止后 Agent 原会话动作从 `Restart / 重启` 收口为 `Resume / 恢复`，避免与 Terminal 的进程重启混淆；底层 resume 行为与内部协议保持不变。
+
+本次验证说明：2026-07-11 已完成本地化、执行上下文、runtime supervisor 协议、typecheck、focused Webview 8 条用例与 diff whitespace 检查，确认 Agent / Terminal 文案分流和 Claude `Ctrl-Z` 引导一致。

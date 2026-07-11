@@ -376,7 +376,7 @@ try {
     .replace(/\nfunction isClaudeForkSessionLaunch\([\s\S]*?\n\}/u, '\n')
     .replace(/\nfunction formatForkTitle\([\s\S]*?\n\}/u, '\n')
     .replace(/\nfunction formatHistoryForkTitle\([\s\S]*?\n\}/u, '\n')
-    .replace(/Claude Agent nodes do not support Ctrl-Z\/fg\. Use stop, restart, or fork instead\./gu, 'Claude Agent Ctrl-Z unsupported');
+    .replace(/Claude Agent nodes do not support Ctrl-Z\/fg\. Use stop, resume, or fork instead\./gu, 'Claude Agent Ctrl-Z unsupported');
   const runtimeBindingKeyFunction = managerSource.match(
     /private buildRuntimeSessionBindingKey\([\s\S]*?\n  \}/u
   )?.[0] ?? '';

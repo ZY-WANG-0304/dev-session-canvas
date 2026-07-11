@@ -18,7 +18,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/completed/explorer-resource-create-execution-node-implementation.md
-updated_at: 2026-06-14
+updated_at: 2026-07-11
 ---
 
 # File Explorer 资源右键创建执行节点设计
@@ -146,7 +146,7 @@ Explorer 命令的主流程为：
 - `startAgentSession(...)` 使用 `ensureAgentMetadata(agentNode).cwd` 作为 fresh-start、resume、CLI resolver、file activity session 和 diagnostic `cwd`。
 - `resolveAgentCli(...)`、`resolveExecutionEnvironment(...)`、`getResolvedShellEnvironmentPatch(...)` 等 cwd-sensitive helper 需要接收目标 cwd 参数；缓存 key 必须包含目标 cwd。
 - live-runtime supervisor 的 createSession request 同样使用节点 cwd；reattach snapshot 继续以 supervisor snapshot 的 cwd 为准。
-- 节点停止后点击 `Terminal` 的“重启”、Agent 的“新建”或“重启恢复原会话”都继续使用该节点 metadata 中的 cwd。不要在后续启动时回退到当前 workspace 根目录。
+- 节点停止后点击 `Terminal` 的“重启”、Agent 的“新建”或“恢复”都继续使用该节点 metadata 中的 cwd。不要在后续启动时回退到当前 workspace 根目录。
 - Terminal 的进程 cwd 与 shell 可执行文件解析使用不同基准：进程 cwd 始终使用节点 metadata cwd；`devSessionCanvas.terminal.shellPath` 中显式相对路径先按当前 workspace/configuration cwd 解析成绝对 shell path，再传入 shell env probe、local PTY 与 runtime supervisor，避免 Explorer cwd 改变 repo-local shell wrapper 的解析位置。
 - 新建 Agent / Terminal metadata 的默认 cwd 使用同一 canonical 执行 cwd：优先当前第一个 workspace folder，否则回退宿主 HOME。旧持久化节点中历史 HOME 默认 cwd 仅在它不属于当前 workspace 时迁移到 canonical cwd，以保持预启动 `cwdLabel` 与启动时 cwd 一致。
 - workspace folders 变化时，宿主必须重新发布 `host/stateUpdated` 和侧栏状态，即使 terminal shell metadata 没有变化；Webview 的 `runtime.workspaceFolders` 是 cwdLabel 的显示上下文，不能依赖 shell metadata 变化间接刷新。

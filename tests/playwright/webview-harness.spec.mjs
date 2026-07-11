@@ -3581,7 +3581,7 @@ test('agent start button posts a startExecutionSession message', async ({ page }
     );
 });
 
-test('agent restart actions can start a new session and resume the original session', async ({ page }) => {
+test('agent session actions can start a new session and resume the original session', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
   await clearPostedMessages(page);
@@ -3636,7 +3636,7 @@ test('agent restart actions can start a new session and resume the original sess
     );
 });
 
-test('agent restart actions render inline without a dropdown', async ({ page }) => {
+test('agent new and resume actions render inline without a dropdown', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: true }));
 
@@ -3644,12 +3644,30 @@ test('agent restart actions render inline without a dropdown', async ({ page }) 
   await expect(agentNode.locator('[data-agent-restart-toggle="true"]')).toHaveCount(0);
   await expect(agentNode.locator('.action-split-button-menu')).toHaveCount(0);
   await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toBeVisible();
-  await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toBeVisible();
+  const resumeAction = agentNode.locator('[data-agent-restart-action="resume"]');
+  await expect(resumeAction).toBeVisible();
+  await expect(resumeAction).toHaveAttribute('title', '恢复原会话');
+  await expect(resumeAction).toHaveAttribute('aria-label', '恢复原会话');
 
   const actionLabels = await agentNode.locator('.action-button-group .action-button').evaluateAll((buttons) =>
     buttons.map((button) => button.textContent?.trim() ?? '')
   );
-  expect(actionLabels).toEqual(['新建', '重启']);
+  expect(actionLabels).toEqual(['新建', '恢复']);
+});
+
+test('terminal restart action keeps the restart label', async ({ page }) => {
+  await openHarness(page);
+  const state = createEmptyCanvasState();
+  const terminal = createManualTerminalNode('terminal-1', { x: 80, y: 80 });
+  terminal.status = 'stopped';
+  terminal.summary = 'Terminal 已退出。';
+  terminal.metadata.terminal.lastExitMessage = 'Process exited with code 0';
+  state.nodes.push(terminal);
+  await bootstrap(page, state);
+
+  const restartAction = nodeById(page, 'terminal-1').getByRole('button', { name: '重启', exact: true });
+  await expect(restartAction).toBeVisible();
+  await expect(restartAction).toHaveText('重启');
 });
 
 test('Agent Fork action posts a branchAgentSession message for supported providers', async ({ page }) => {
@@ -3805,7 +3823,7 @@ test('Agent title action buttons wrap before pushing delete outside compact chro
   await expect(agentNode.locator('.window-chrome .status-pill')).toHaveText('已停止');
   await expect(agentNode.getByRole('button', { name: '删除' })).toBeVisible();
 
-  await expectForkedAgentActionsToBeReadable(agentNode, ['新建', '重启', '分叉', '删除'], {
+  await expectForkedAgentActionsToBeReadable(agentNode, ['新建', '恢复', '分叉', '删除'], {
     minActionsGap: -80,
     expectBranchActionWrap: true,
     expectCompactActions: true,
@@ -3997,7 +4015,7 @@ test('Agent Fork action is hidden outside supported resumable sessions', async (
   await expect(nodeById(page, 'agent-1').locator('[data-agent-branch-action="true"]')).toHaveCount(0);
 });
 
-test('agent restart actions wrap before pushing delete outside compact chrome', async ({ page }) => {
+test('agent session actions wrap before pushing delete outside compact chrome', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
 
@@ -4067,14 +4085,14 @@ test('agent restart actions wrap before pushing delete outside compact chrome', 
   expect(layout.resumeButtonWhiteSpace).toBe('normal');
 });
 
-test('agent restart action falls back to start button when no resumable session exists', async ({ page }) => {
+test('agent resume action falls back to start button when no resumable session exists', async ({ page }) => {
   await openHarness(page);
   await bootstrap(page, createStoppedAgentNodeState({ resumable: false }));
   await clearPostedMessages(page);
 
   const agentNode = nodeById(page, 'agent-1');
   await expect(agentNode.locator('button:has-text("启动")')).toBeVisible();
-  await expect(agentNode.locator('button:has-text("重启")')).toHaveCount(0);
+  await expect(agentNode.locator('button:has-text("恢复")')).toHaveCount(0);
   await expect(agentNode.locator('[data-agent-restart-action="new-session"]')).toHaveCount(0);
   await expect(agentNode.locator('[data-agent-restart-action="resume"]')).toHaveCount(0);
 
@@ -4470,7 +4488,7 @@ test('Claude Agent Ctrl-Z is blocked before execution input reaches the host', a
   });
 
   await expect(page.locator('[data-toast-kind="error"]')).toHaveText(
-    'Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、重启或分叉。'
+    'Claude Agent 节点不支持 Ctrl-Z/fg；请使用停止、恢复或分叉。'
   );
   const inputMessages = await page.evaluate(() =>
     window.__devSessionCanvasHarness

@@ -389,7 +389,7 @@ export function formatRuntimeSupervisorMessageDescriptor(
     case 'sessionNotLive':
       return `Runtime session ${params.sessionId ?? '<unknown>'} is not live.`;
     case 'claudeAgentCtrlZUnsupported':
-      return 'Claude Agent nodes do not support Ctrl-Z/fg. Use stop, restart, or fork instead.';
+      return 'Claude Agent nodes do not support Ctrl-Z/fg. Use stop, resume, or fork instead.';
     case 'claudeCodeSuspended':
       return 'Claude Code is suspended. Click "Stop" to end the session, then restart.';
     case 'agentSessionDeleted':
