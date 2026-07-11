@@ -12,6 +12,7 @@ import type {
   RuntimeSupervisorCreateSessionParams,
   RuntimeSupervisorDeleteSessionParams,
   RuntimeSupervisorEvent,
+  RuntimeSupervisorGetSessionSnapshotParams,
   RuntimeSupervisorHelloResult,
   RuntimeSupervisorMessage,
   RuntimeSupervisorResizeSessionParams,
@@ -41,6 +42,7 @@ export class RuntimeSupervisorClient {
   private connectPromise: Promise<void> | undefined;
   private disposed = false;
   private buffer = '';
+  private helloResult: RuntimeSupervisorHelloResult | undefined;
   private readonly pendingRequests = new Map<string, PendingSupervisorRequest<unknown>>();
 
   public constructor(private readonly options: RuntimeSupervisorClientOptions) {}
@@ -67,7 +69,13 @@ export class RuntimeSupervisorClient {
   }
 
   public async hello(): Promise<RuntimeSupervisorHelloResult> {
-    return this.request('hello');
+    const result = await this.request<RuntimeSupervisorHelloResult>('hello');
+    this.helloResult = result;
+    return result;
+  }
+
+  public supportsTerminalProjectionSnapshot(): boolean {
+    return this.helloResult?.capabilities?.terminalProjectionSnapshotV1 === true;
   }
 
   public async createSession(
@@ -80,6 +88,12 @@ export class RuntimeSupervisorClient {
     params: RuntimeSupervisorAttachSessionParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     return this.request('attachSession', params);
+  }
+
+  public async getSessionSnapshot(
+    params: RuntimeSupervisorGetSessionSnapshotParams
+  ): Promise<RuntimeSupervisorSessionSnapshot> {
+    return this.request('getSessionSnapshot', params);
   }
 
   public async subscribeSession(
@@ -114,6 +128,7 @@ export class RuntimeSupervisorClient {
       this.socket.destroy();
     }
     this.socket = undefined;
+    this.helloResult = undefined;
     this.rejectAllPending(createRuntimeSupervisorProtocolError({
       id: 'clientDisconnected'
     }, RUNTIME_SUPERVISOR_ERROR_CODES.clientDisconnected));
@@ -126,6 +141,7 @@ export class RuntimeSupervisorClient {
     method:
       | 'createSession'
       | 'attachSession'
+      | 'getSessionSnapshot'
       | 'subscribeSession'
       | 'writeInput'
       | 'resizeSession'
@@ -135,6 +151,7 @@ export class RuntimeSupervisorClient {
     params:
       | RuntimeSupervisorCreateSessionParams
       | RuntimeSupervisorAttachSessionParams
+      | RuntimeSupervisorGetSessionSnapshotParams
       | RuntimeSupervisorSubscribeSessionParams
       | RuntimeSupervisorWriteInputParams
       | RuntimeSupervisorResizeSessionParams
@@ -226,6 +243,7 @@ export class RuntimeSupervisorClient {
   private attachSocket(socket: net.Socket): void {
     this.socket = socket;
     this.buffer = '';
+    this.helloResult = undefined;
     socket.setEncoding('utf8');
     socket.on('data', (chunk) => {
       this.buffer += chunk;
@@ -238,6 +256,7 @@ export class RuntimeSupervisorClient {
             id: 'clientConnectionClosed'
           }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed);
       this.socket = undefined;
+      this.helloResult = undefined;
       this.rejectAllPending(error ?? createRuntimeSupervisorProtocolError({
         id: 'clientConnectionClosed'
       }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed));

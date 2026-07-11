@@ -556,6 +556,11 @@ export interface ExecutionPerformanceDiagnosticPayload {
   requestId?: string;
   executionSessionId?: string;
   characters?: number;
+  checkpointCharacters?: number;
+  replayEventCount?: number;
+  replayOutputCharacters?: number;
+  checkpointRevision?: number;
+  targetRevision?: number;
   bytes?: number;
   controllerCount?: number;
   flushedControllerCount?: number;
@@ -2533,6 +2538,21 @@ function normalizeExecutionPerformanceDiagnosticPayload(
     requestId: typeof value.requestId === 'string' ? value.requestId : undefined,
     executionSessionId: typeof value.executionSessionId === 'string' ? value.executionSessionId : undefined,
     characters: normalizeNonNegativeInteger(value.characters),
+    ...(value.checkpointCharacters !== undefined
+      ? { checkpointCharacters: normalizeNonNegativeInteger(value.checkpointCharacters) }
+      : {}),
+    ...(value.replayEventCount !== undefined
+      ? { replayEventCount: normalizeNonNegativeInteger(value.replayEventCount) }
+      : {}),
+    ...(value.replayOutputCharacters !== undefined
+      ? { replayOutputCharacters: normalizeNonNegativeInteger(value.replayOutputCharacters) }
+      : {}),
+    ...(value.checkpointRevision !== undefined
+      ? { checkpointRevision: normalizeNonNegativeInteger(value.checkpointRevision) }
+      : {}),
+    ...(value.targetRevision !== undefined
+      ? { targetRevision: normalizeNonNegativeInteger(value.targetRevision) }
+      : {}),
     bytes: normalizeNonNegativeInteger(value.bytes),
     controllerCount: normalizeNonNegativeInteger(value.controllerCount),
     flushedControllerCount: normalizeNonNegativeInteger(value.flushedControllerCount),

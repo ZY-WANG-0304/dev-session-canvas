@@ -438,6 +438,7 @@ const EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER = 1;
 const EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS = 32;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS = 96;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS = 480;
+const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 256 * 1024;
 const EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS = 500;
 const EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS = 120;
 const executionPerformanceDiagnosticSamples: ExecutionPerformanceDiagnosticPayload[] = [];
@@ -678,6 +679,21 @@ function normalizeExecutionPerformanceDiagnosticForWebview(
     requestId: payload.requestId,
     executionSessionId: payload.executionSessionId,
     characters: normalizeDiagnosticInteger(payload.characters),
+    ...(payload.checkpointCharacters !== undefined
+      ? { checkpointCharacters: normalizeDiagnosticInteger(payload.checkpointCharacters) }
+      : {}),
+    ...(payload.replayEventCount !== undefined
+      ? { replayEventCount: normalizeDiagnosticInteger(payload.replayEventCount) }
+      : {}),
+    ...(payload.replayOutputCharacters !== undefined
+      ? { replayOutputCharacters: normalizeDiagnosticInteger(payload.replayOutputCharacters) }
+      : {}),
+    ...(payload.checkpointRevision !== undefined
+      ? { checkpointRevision: normalizeDiagnosticInteger(payload.checkpointRevision) }
+      : {}),
+    ...(payload.targetRevision !== undefined
+      ? { targetRevision: normalizeDiagnosticInteger(payload.targetRevision) }
+      : {}),
     bytes: normalizeDiagnosticInteger(payload.bytes),
     controllerCount: normalizeDiagnosticInteger(payload.controllerCount),
     flushedControllerCount: normalizeDiagnosticInteger(payload.flushedControllerCount),
@@ -810,11 +826,14 @@ interface PendingExecutionTerminalSnapshotWrite {
   nodeId: string;
   kind: ExecutionNodeKind;
   queuedAtMs: number;
+  activationPriorityGeneration?: number;
   run: (done: () => void) => void;
   cancel: () => void;
   finishQueue?: () => void;
 }
 const pendingExecutionTerminalSnapshotWrites: PendingExecutionTerminalSnapshotWrite[] = [];
+const pendingExecutionTerminalActivationPriorities = new Map<string, number>();
+let executionTerminalActivationPriorityGeneration = 0;
 let executionTerminalSnapshotWriteFrame: number | undefined;
 let executionTerminalSnapshotWriteTimer: number | undefined;
 let executionTerminalSnapshotWriteInFlight = false;
@@ -4144,6 +4163,14 @@ function App(): JSX.Element {
       activeRootGroupId !== currentActiveRootGroupId;
     if (enteringThumbnailLayout || switchingThumbnailMainPane) {
       clearCanvasTransientInteractionState();
+      const activeRootModel = paneGalleryRootModels.find((model) => model.rootGroup.id === activeRootGroupId);
+      prioritizeExecutionTerminalSnapshots(
+        activeRootModel?.nodes.flatMap((node) =>
+          node.data.kind === 'agent' || node.data.kind === 'terminal'
+            ? [{ nodeId: node.id, kind: node.data.kind }]
+            : []
+        ) ?? []
+      );
     }
 
     const lastOverviewLayout =
@@ -6642,6 +6669,12 @@ function routeExecutionTerminalExit(detail: Extract<ExecutionHostEvent, { type: 
 }
 
 function scheduleExecutionTerminalSnapshotWrite(entry: PendingExecutionTerminalSnapshotWrite): void {
+  const activationPriorityKey = buildExecutionTerminalSnapshotPriorityKey(entry.nodeId, entry.kind);
+  const activationPriorityGeneration = pendingExecutionTerminalActivationPriorities.get(activationPriorityKey);
+  if (activationPriorityGeneration !== undefined) {
+    entry.activationPriorityGeneration = activationPriorityGeneration;
+    pendingExecutionTerminalActivationPriorities.delete(activationPriorityKey);
+  }
   pendingExecutionTerminalSnapshotWrites.push(entry);
   const now = readPerformanceNow();
   const recentInput = now - lastExecutionInputAtMs < EXECUTION_TERMINAL_INPUT_OUTPUT_YIELD_MS;
@@ -6658,9 +6691,41 @@ function scheduleExecutionTerminalSnapshotWrite(entry: PendingExecutionTerminalS
       force: true
     }
   );
+  const hasActivationPriority = isCurrentExecutionTerminalActivationPriority(entry);
+  if (hasActivationPriority && executionTerminalSnapshotWriteTimer !== undefined) {
+    window.clearTimeout(executionTerminalSnapshotWriteTimer);
+    executionTerminalSnapshotWriteTimer = undefined;
+  }
   scheduleExecutionTerminalSnapshotWritePump(
-    recentInput ? EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS : EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS
+    hasActivationPriority
+      ? 0
+      : recentInput
+        ? EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS
+        : EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS
   );
+}
+
+function buildExecutionTerminalSnapshotPriorityKey(nodeId: string, kind: ExecutionNodeKind): string {
+  return `${kind}:${nodeId}`;
+}
+
+function prioritizeExecutionTerminalSnapshots(
+  entries: readonly { nodeId: string; kind: ExecutionNodeKind }[]
+): void {
+  executionTerminalActivationPriorityGeneration += 1;
+  pendingExecutionTerminalActivationPriorities.clear();
+  for (const entry of entries) {
+    pendingExecutionTerminalActivationPriorities.set(
+      buildExecutionTerminalSnapshotPriorityKey(entry.nodeId, entry.kind),
+      executionTerminalActivationPriorityGeneration
+    );
+  }
+}
+
+function isCurrentExecutionTerminalActivationPriority(
+  entry: PendingExecutionTerminalSnapshotWrite
+): boolean {
+  return entry.activationPriorityGeneration === executionTerminalActivationPriorityGeneration;
 }
 
 function scheduleExecutionTerminalSnapshotWritePump(delayMs = 0): void {
@@ -6709,7 +6774,11 @@ function drainExecutionTerminalSnapshotWrites(): void {
     (oldestAgeMs, entry) => Math.max(oldestAgeMs, now - entry.queuedAtMs),
     0
   );
+  const hasActivationPriority = pendingExecutionTerminalSnapshotWrites.some(
+    isCurrentExecutionTerminalActivationPriority
+  );
   if (
+    !hasActivationPriority &&
     inputAgeMs >= 0 &&
     inputAgeMs < EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS &&
     oldestSnapshotQueuedAgeMs < EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS
@@ -6774,7 +6843,10 @@ function takeNextExecutionTerminalSnapshotWrite(): PendingExecutionTerminalSnaps
     lastExecutionInputNodeId === undefined
       ? -1
       : pendingExecutionTerminalSnapshotWrites.findIndex((entry) => entry.nodeId === lastExecutionInputNodeId);
-  const index = inputNodeIndex >= 0 ? inputNodeIndex : 0;
+  const activationPriorityIndex = pendingExecutionTerminalSnapshotWrites.findIndex(
+    isCurrentExecutionTerminalActivationPriority
+  );
+  const index = activationPriorityIndex >= 0 ? activationPriorityIndex : inputNodeIndex >= 0 ? inputNodeIndex : 0;
   const [entry] = pendingExecutionTerminalSnapshotWrites.splice(index, 1);
   return entry;
 }
@@ -6968,6 +7040,11 @@ function createExecutionTerminalController(
     detail?: {
       reason: string;
       characters?: number;
+      checkpointCharacters?: number;
+      replayEventCount?: number;
+      replayOutputCharacters?: number;
+      checkpointRevision?: number;
+      targetRevision?: number;
     },
     onComplete?: () => void
   ): void => {
@@ -6999,6 +7076,11 @@ function createExecutionTerminalController(
                   reason: detail?.reason,
                   durationMs: readPerformanceNow() - startedAt,
                   characters: detail?.characters,
+                  checkpointCharacters: detail?.checkpointCharacters,
+                  replayEventCount: detail?.replayEventCount,
+                  replayOutputCharacters: detail?.replayOutputCharacters,
+                  checkpointRevision: detail?.checkpointRevision,
+                  targetRevision: detail?.targetRevision,
                   queuedWriteCount,
                   bufferLength: terminal.buffer.active.length
                 },
@@ -7123,6 +7205,15 @@ function createExecutionTerminalController(
       const recoveryEpoch = terminalStreamRecoveryEpoch;
       options?.onContentWillChange?.('snapshot');
       options?.onSnapshotApplied?.(detail);
+      const checkpointCharacters =
+        terminalStream?.checkpoint.serializedState.data.length ??
+        detail.serializedTerminalState?.data.length ??
+        detail.output.length;
+      const replayEventCount = terminalStream?.events.length;
+      const replayOutputCharacters = terminalStream?.events.reduce(
+        (total, event) => total + (event.type === 'output' ? event.data.length : 0),
+        0
+      );
       queueTerminalWrite(
         (done, markStarted) => {
           const snapshotWriteGeneration = writeGeneration;
@@ -7161,10 +7252,12 @@ function createExecutionTerminalController(
         },
         {
           reason: 'snapshot',
-          characters:
-            terminalStream?.checkpoint.serializedState.data.length ??
-            detail.serializedTerminalState?.data.length ??
-            detail.output.length
+          characters: checkpointCharacters + (replayOutputCharacters ?? 0),
+          checkpointCharacters,
+          replayEventCount,
+          replayOutputCharacters,
+          checkpointRevision: terminalStream?.checkpoint.revision,
+          targetRevision: terminalStream?.revision
         }
       );
     },
@@ -7409,8 +7502,23 @@ function restoreExecutionTerminalSnapshot(
       while (index < events.length) {
         const event = events[index];
         if (event.type === 'output') {
+          let outputBatch = '';
+          while (index < events.length) {
+            const outputEvent = events[index];
+            if (outputEvent.type !== 'output') {
+              break;
+            }
+            if (
+              outputBatch.length > 0 &&
+              outputBatch.length + outputEvent.data.length > EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS
+            ) {
+              break;
+            }
+            outputBatch += outputEvent.data;
+            index += 1;
+          }
           // Resize/options changes must run after xterm leaves its parser callback.
-          terminal.write(event.data, () => window.setTimeout(() => applyEvent(index + 1), 0));
+          terminal.write(outputBatch, () => window.setTimeout(() => applyEvent(index), 0));
           return;
         }
         if (event.type === 'resize') {

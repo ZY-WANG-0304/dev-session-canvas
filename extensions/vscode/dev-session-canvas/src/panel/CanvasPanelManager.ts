@@ -195,6 +195,7 @@ import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../com
 import {
   cloneTerminalStreamAttachPayload,
   cloneTerminalStreamEvent,
+  mergeTerminalStreamProjectionWithLiveTail,
   normalizeTerminalStreamAttachPayload,
   type TerminalStreamAttachPayload,
   type TerminalStreamEvent
@@ -1198,6 +1199,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     { nodeId: string; kind: ExecutionNodeKind; resolved?: ResolvedExecutionFileLink }
   >();
   private readonly pendingRuntimeSupervisorOperations = new Set<Promise<unknown>>();
+  private readonly pendingTerminalProjectionRefreshes = new Map<string, Promise<void>>();
   private readonly executionSessionOperationTokens = new Map<string, number>();
   private pendingWorkspaceStateUpdate: Promise<void> = Promise.resolve();
   private pendingCanvasStatePersist: PendingCanvasStatePersist | undefined;
@@ -15862,6 +15864,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
     const activeSession = this.getExecutionSessions(kind).get(nodeId);
+    if (activeSession?.owner === 'supervisor' && activeSession.terminalStreamHealthy) {
+      const operation = this.refreshExecutionTerminalProjection(kind, nodeId, activeSession)
+        .catch((error) => {
+          this.recordDiagnosticEvent('runtime/terminalProjectionRefreshFailed', {
+            kind,
+            nodeId,
+            sessionId: activeSession.runtimeSessionId,
+            message: formatUnknownError(error)
+          });
+        })
+        .then(() => this.postExecutionSnapshot(kind, nodeId, options));
+      this.trackRuntimeSupervisorOperation(operation);
+      return;
+    }
     if (
       activeSession?.owner === 'supervisor' &&
       !activeSession.terminalStreamHealthy &&
@@ -15916,6 +15932,115 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.postExecutionSnapshot(kind, nodeId, options);
+  }
+
+  private refreshExecutionTerminalProjection(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    expectedSession: SupervisorExecutionSession
+  ): Promise<void> {
+    const refreshKey = `${kind}:${nodeId}:${expectedSession.runtimeSessionId}`;
+    const pendingRefresh = this.pendingTerminalProjectionRefreshes.get(refreshKey);
+    if (pendingRefresh) {
+      return pendingRefresh;
+    }
+
+    const refresh = this.performExecutionTerminalProjectionRefresh(kind, nodeId, expectedSession).finally(() => {
+      if (this.pendingTerminalProjectionRefreshes.get(refreshKey) === refresh) {
+        this.pendingTerminalProjectionRefreshes.delete(refreshKey);
+      }
+    });
+    this.pendingTerminalProjectionRefreshes.set(refreshKey, refresh);
+    return refresh;
+  }
+
+  private async performExecutionTerminalProjectionRefresh(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    expectedSession: SupervisorExecutionSession
+  ): Promise<void> {
+    const backendKind = normalizeRuntimeHostBackendKind(expectedSession.runtimeBackend) ?? 'legacy-detached';
+    const client = await this.getRuntimeSupervisorClientForKind(
+      backendKind,
+      {},
+      expectedSession.runtimeStoragePath
+    );
+    if (!client.supportsTerminalProjectionSnapshot()) {
+      this.recordDiagnosticEvent('runtime/terminalProjectionRefreshSkipped', {
+        kind,
+        nodeId,
+        sessionId: expectedSession.runtimeSessionId,
+        reason: 'unsupported-supervisor'
+      });
+      return;
+    }
+
+    const snapshot = await client.getSessionSnapshot({
+      sessionId: expectedSession.runtimeSessionId
+    });
+    const freshStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
+    const currentSession = this.getExecutionSessions(kind).get(nodeId);
+    if (
+      currentSession !== expectedSession ||
+      currentSession.owner !== 'supervisor' ||
+      !currentSession.terminalStreamHealthy
+    ) {
+      return;
+    }
+
+    const currentStream = normalizeTerminalStreamAttachPayload(currentSession.terminalStream);
+    if (
+      snapshot.kind !== kind ||
+      snapshot.sessionId !== currentSession.runtimeSessionId ||
+      !freshStream ||
+      freshStream.sessionId !== currentSession.runtimeSessionId ||
+      freshStream.authorityId !== currentSession.terminalAuthorityId ||
+      freshStream.authorityId !== snapshot.terminalAuthorityId ||
+      freshStream.revision !== snapshot.terminalRevision ||
+      !currentStream ||
+      currentStream.sessionId !== freshStream.sessionId ||
+      currentStream.authorityId !== freshStream.authorityId
+    ) {
+      this.recordDiagnosticEvent('runtime/terminalProjectionRefreshRejected', {
+        kind,
+        nodeId,
+        sessionId: currentSession.runtimeSessionId,
+        reason: 'invalid-authority-snapshot'
+      });
+      return;
+    }
+
+    // Events can arrive on the live subscription while the Supervisor flushes its
+    // checkpoint. Preserve the contiguous Host tail newer than that checkpoint cut.
+    const mergeResult = mergeTerminalStreamProjectionWithLiveTail(freshStream, currentStream);
+    if (!mergeResult) {
+      this.recordDiagnosticEvent('runtime/terminalProjectionRefreshRejected', {
+        kind,
+        nodeId,
+        sessionId: currentSession.runtimeSessionId,
+        reason: 'non-contiguous-live-tail',
+        freshRevision: freshStream.revision,
+        currentRevision: currentStream.revision,
+        hostTailEventCount: currentStream.events.filter((event) => event.revision > freshStream.revision).length
+      });
+      return;
+    }
+
+    const mergedStream = mergeResult.payload;
+    const previousCheckpointRevision = currentStream.checkpoint.revision;
+    currentSession.terminalStream = cloneTerminalStreamAttachPayload(mergedStream);
+    currentSession.terminalAuthorityId = mergedStream.authorityId;
+    currentSession.outputSequence = mergedStream.revision;
+    this.recordDiagnosticEvent('runtime/terminalProjectionRefreshed', {
+      kind,
+      nodeId,
+      sessionId: currentSession.runtimeSessionId,
+      previousCheckpointRevision,
+      checkpointRevision: mergedStream.checkpoint.revision,
+      revision: mergedStream.revision,
+      replayEventCount: mergedStream.events.length,
+      preservedHostTailEventCount: mergeResult.preservedLiveTailEventCount
+    });
   }
 
   private async writeExecutionInput(

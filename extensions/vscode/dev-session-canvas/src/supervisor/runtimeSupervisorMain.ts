@@ -47,6 +47,7 @@ import {
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorDeleteSessionParams,
   type RuntimeSupervisorEvent,
+  type RuntimeSupervisorGetSessionSnapshotParams,
   type RuntimeSupervisorMessageDescriptor,
   type RuntimeSupervisorMessage,
   type RuntimeSupervisorPaths,
@@ -237,7 +238,8 @@ class RuntimeSupervisorServer {
               runtimeBackend: this.runtimeBackend,
               runtimeGuarantee: this.runtimeGuarantee,
               capabilities: {
-                terminalSessionStreamV1: true
+                terminalSessionStreamV1: true,
+                terminalProjectionSnapshotV1: true
               }
             }
           });
@@ -254,6 +256,16 @@ class RuntimeSupervisorServer {
         }
         case 'attachSession': {
           const snapshot = await this.attachSession(socket, request.params);
+          this.writeMessage(socket, {
+            type: 'response',
+            id: request.id,
+            ok: true,
+            result: snapshot
+          });
+          return;
+        }
+        case 'getSessionSnapshot': {
+          const snapshot = await this.getSessionSnapshot(request.params);
           this.writeMessage(socket, {
             type: 'response',
             id: request.id,
@@ -461,6 +473,12 @@ class RuntimeSupervisorServer {
     this.clearDeferredSubscription(socket, params.sessionId);
     this.subscribeSocket(socket, params.sessionId, 'legacy');
     return this.toFreshSnapshot(session);
+  }
+
+  private getSessionSnapshot(
+    params: RuntimeSupervisorGetSessionSnapshotParams
+  ): Promise<RuntimeSupervisorSessionSnapshot> {
+    return this.toFreshSnapshot(this.requireSession(params.sessionId));
   }
 
   private subscribeSession(

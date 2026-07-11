@@ -14826,6 +14826,119 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 }
 
+test('pane gallery prioritizes the newly activated main terminal over stale input priority', async ({ page }) => {
+  const state = createPaneGalleryCanvasState();
+  const frontendNodeId = 'workspace-root-frontend-terminal';
+  const backendNodeId = 'workspace-root-backend-terminal';
+  for (const node of state.nodes) {
+    if (node.kind !== 'terminal') {
+      continue;
+    }
+    node.status = 'live';
+    node.metadata.terminal.liveSession = true;
+    node.metadata.terminal.lifecycle = 'live';
+  }
+
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'topThumbnails',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'topThumbnails'
+      }
+    }
+  });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await waitForExecutionTerminalReady(page, frontendNodeId);
+  await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/attachExecutionSession',
+    (messages) => [frontendNodeId, backendNodeId].every((nodeId) =>
+      messages.some((message) => message.payload.nodeId === nodeId)
+    )
+  );
+
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+
+  await page.evaluate((nodeId) => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/testDomAction',
+      payload: {
+        requestId: 'pane-gallery-stale-input-priority',
+        action: {
+          kind: 'sendExecutionInput',
+          nodeId,
+          data: 'i'
+        }
+      }
+    });
+  }, frontendNodeId);
+  await waitForPostedMessageByType(page, 'webview/executionInput');
+  await clearPostedMessages(page);
+  await backendThumbnail.dblclick();
+  const mainPane = page.locator('.pane-gallery-root-pane-main');
+  await expect(mainPane).toHaveAttribute('data-pane-gallery-root-id', 'workspace-root-backend');
+  await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/attachExecutionSession',
+    (messages) => [frontendNodeId, backendNodeId].every((nodeId) =>
+      messages.some((message) => message.payload.nodeId === nodeId)
+    )
+  );
+  await clearPostedMessages(page);
+
+  const snapshot = {
+    format: 'xterm-serialize-v1',
+    data: `${'x'.repeat(40 * 1024)}\r\nPANE-SNAPSHOT\r\n`,
+    outputSequence: 2
+  };
+  for (const nodeId of [frontendNodeId, backendNodeId]) {
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: 'terminal',
+      output: '',
+      executionSessionId: `${nodeId}-session`,
+      outputSequence: 2,
+      serializedTerminalState: snapshot
+    });
+  }
+
+  const startedDiagnostics = await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionPerformanceDiagnostic',
+    (messages) =>
+      messages.filter(
+        (message) =>
+          message.payload.source === 'webview-snapshot-restore-queue' &&
+          message.payload.reason === 'started'
+      ).length >= 2
+  );
+  const startedNodeIds = startedDiagnostics
+    .filter(
+      (message) =>
+        message.payload.source === 'webview-snapshot-restore-queue' &&
+        message.payload.reason === 'started'
+    )
+    .map((message) => message.payload.nodeId);
+
+  expect(startedNodeIds[0]).toBe(backendNodeId);
+  await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionPerformanceDiagnostic',
+    (messages) => messages.some(
+      (message) =>
+        message.payload.source === 'webview-terminal-write' &&
+        message.payload.reason === 'snapshot' &&
+        message.payload.nodeId === backendNodeId
+    )
+  );
+  const mainProbe = await readProbeNode(page, backendNodeId, 0);
+  expect(mainProbe.terminalVisibleLines.some((line) => line.includes('PANE-SNAPSHOT'))).toBe(true);
+});
+
 test('agent output drain reaches every live node when many nodes have pending backlog', async ({ page }) => {
   const state = createMultiLiveExecutionNodeState('agent', 6);
   const nodeIds = state.nodes.map((node) => node.id);
@@ -15200,6 +15313,74 @@ for (const executionKind of ['agent', 'terminal']) {
     expect(recoveredText).not.toContain('RAW-RECOVERY-TAIL-MUST-NOT-WRITE');
   });
 }
+
+test('terminal batches thousands of contiguous journal events without losing the tail', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  const executionSessionId = 'terminal-large-journal-session';
+  const authorityId = 'terminal-large-journal-authority';
+  const eventCount = 4000;
+  const events = Array.from({ length: eventCount }, (_value, index) => ({
+    type: 'output',
+    revision: index + 2,
+    data: `JOURNAL-EVENT-${String(index).padStart(4, '0')}-${'x'.repeat(48)}\r\n`
+  }));
+  const replayOutputCharacters = events.reduce((total, event) => total + event.data.length, 0);
+
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+  const terminalStream = await createTerminalStreamPayload({
+    sessionId: executionSessionId,
+    authorityId,
+    checkpointOutput: 'LARGE-JOURNAL-CHECKPOINT\r\n',
+    checkpointRevision: 1,
+    checkpointCols: readyTerminal.terminalCols,
+    checkpointRows: readyTerminal.terminalRows,
+    checkpointScrollback: eventCount + 100,
+    events
+  });
+  await clearPostedMessages(page);
+  await dispatchExecutionSnapshot(page, {
+    nodeId,
+    kind: 'terminal',
+    output: '',
+    executionSessionId,
+    outputSequence: terminalStream.revision,
+    terminalStream
+  });
+
+  const diagnostics = await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionPerformanceDiagnostic',
+    (messages) =>
+      messages.some(
+        (message) =>
+          message.payload.source === 'webview-terminal-write' &&
+          message.payload.reason === 'snapshot' &&
+          message.payload.replayEventCount === eventCount
+      )
+  );
+  const snapshotDiagnostic = diagnostics.find(
+    (message) =>
+      message.payload.source === 'webview-terminal-write' &&
+      message.payload.reason === 'snapshot' &&
+      message.payload.replayEventCount === eventCount
+  );
+  expect(snapshotDiagnostic?.payload).toMatchObject({
+    replayEventCount: eventCount,
+    replayOutputCharacters,
+    checkpointRevision: 1,
+    targetRevision: eventCount + 1
+  });
+  expect(snapshotDiagnostic?.payload.checkpointCharacters).toBeGreaterThan(0);
+  expect(snapshotDiagnostic?.payload.characters).toBe(
+    snapshotDiagnostic.payload.checkpointCharacters + replayOutputCharacters
+  );
+  const finalMarker = `JOURNAL-EVENT-${String(eventCount - 1).padStart(4, '0')}`;
+  const finalProbe = await readProbeNode(page, nodeId, 0);
+  expect(finalProbe.terminalVisibleLines.some((line) => line.includes(finalMarker))).toBe(true);
+  expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
+});
 
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} xterm selection stays aligned under zoomed React Flow`, async ({ page }) => {

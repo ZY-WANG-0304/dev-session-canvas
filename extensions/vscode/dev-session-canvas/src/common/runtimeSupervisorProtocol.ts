@@ -30,6 +30,7 @@ export interface RuntimeSupervisorHelloResult {
   runtimeGuarantee: RuntimePersistenceGuarantee;
   capabilities?: {
     terminalSessionStreamV1?: true;
+    terminalProjectionSnapshotV1?: true;
   };
 }
 
@@ -170,6 +171,10 @@ export interface RuntimeSupervisorAttachSessionParams {
   deferSubscription?: boolean;
 }
 
+export interface RuntimeSupervisorGetSessionSnapshotParams {
+  sessionId: string;
+}
+
 export interface RuntimeSupervisorSubscribeSessionParams {
   sessionId: string;
   authorityId: string;
@@ -223,6 +228,12 @@ export type RuntimeSupervisorRequest =
       id: string;
       method: 'attachSession';
       params: RuntimeSupervisorAttachSessionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'getSessionSnapshot';
+      params: RuntimeSupervisorGetSessionSnapshotParams;
     }
   | {
       type: 'request';
