@@ -125,6 +125,43 @@ assert.deepEqual(
   },
   'legacy attach 请求继续保留 requestId、session 与 minOutputSequence；新 authority revision 不由该字段推进。'
 );
+const terminalAppliedMessage = {
+  type: 'webview/executionTerminalApplied' as const,
+  payload: {
+    nodeId: 'agent-1',
+    kind: 'agent' as const,
+    executionSessionId: 'agent-session-1',
+    authorityId: 'terminal-authority-1',
+    revision: 42
+  }
+};
+assert.deepEqual(
+  parseWebviewMessage(terminalAppliedMessage),
+  terminalAppliedMessage,
+  'applied revision ACK 必须保留 session、authority 与非负整数 revision。'
+);
+assert.equal(
+  parseWebviewMessage({
+    ...terminalAppliedMessage,
+    payload: {
+      ...terminalAppliedMessage.payload,
+      revision: 42.5
+    }
+  }),
+  null,
+  'applied revision ACK 不接受小数 revision。'
+);
+assert.equal(
+  parseWebviewMessage({
+    ...terminalAppliedMessage,
+    payload: {
+      ...terminalAppliedMessage.payload,
+      authorityId: ''
+    }
+  }),
+  null,
+  'applied revision ACK 必须携带非空 authority。'
+);
 
 const terminalStream = {
   version: 1 as const,

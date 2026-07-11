@@ -9752,6 +9752,10 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
 
   try {
     await clearHostMessages();
+    // Fresh execution nodes auto-start after their terminal sizes are known. Wait for
+    // that launch before replacing it with the explicitly-sized persistence session.
+    await waitForAgentLive(agentNodeId);
+    await waitForTerminalLive(terminalNodeId);
     await ensureAgentStopped(agentNodeId);
     await ensureTerminalStopped(terminalNodeId);
 
@@ -10055,16 +10059,26 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
       'Reloaded live-runtime terminal should render the latest journaled line.'
     );
 
-    await performWebviewDomAction({
-      kind: 'scrollTerminalViewport',
-      nodeId: terminalNodeId,
-      lines: -10000
-    });
-    terminalProbe = await waitForWebviewProbe(
-      (currentProbe) =>
-        readProbeTerminalVisibleLines(currentProbe, terminalNodeId).some((line) => line.includes(earliestMarker)),
-      20000
-    );
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await performWebviewDomAction({
+        kind: 'scrollTerminalViewport',
+        nodeId: terminalNodeId,
+        lines: -10000
+      });
+      try {
+        terminalProbe = await waitForWebviewProbe(
+          (currentProbe) =>
+            readProbeTerminalVisibleLines(currentProbe, terminalNodeId).some((line) => line.includes(earliestMarker)),
+          attempt === 2 ? 20000 : 3000
+        );
+        break;
+      } catch (error) {
+        if (attempt === 2) {
+          throw error;
+        }
+        // A trailing shell prompt can restore follow mode after the marker is visible.
+      }
+    }
     assert.ok(
       readProbeTerminalVisibleLines(terminalProbe, terminalNodeId).some((line) => line.includes(earliestMarker)),
       'Reloaded live-runtime terminal should render the earliest line allowed by the updated scrollback.'

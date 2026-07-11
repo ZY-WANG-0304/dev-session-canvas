@@ -31,6 +31,7 @@ export interface RuntimeSupervisorHelloResult {
   capabilities?: {
     terminalSessionStreamV1?: true;
     terminalProjectionSnapshotV1?: true;
+    terminalAppliedRevisionAckV1?: true;
   };
 }
 
@@ -187,6 +188,20 @@ export interface RuntimeSupervisorSubscribeSessionResult {
   revision: number;
 }
 
+export interface RuntimeSupervisorAckSessionRevisionParams {
+  sessionId: string;
+  authorityId: string;
+  consumerId: 'editor' | 'panel';
+  revision: number;
+}
+
+export interface RuntimeSupervisorAckSessionRevisionResult {
+  sessionId: string;
+  authorityId: string;
+  consumerId: 'editor' | 'panel';
+  appliedRevision: number;
+}
+
 export interface RuntimeSupervisorWriteInputParams {
   sessionId: string;
   data: string;
@@ -244,6 +259,12 @@ export type RuntimeSupervisorRequest =
   | {
       type: 'request';
       id: string;
+      method: 'ackSessionRevision';
+      params: RuntimeSupervisorAckSessionRevisionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
       method: 'writeInput';
       params: RuntimeSupervisorWriteInputParams;
     }
@@ -281,6 +302,7 @@ export type RuntimeSupervisorResponse =
         | RuntimeSupervisorHelloResult
         | RuntimeSupervisorSessionSnapshot
         | RuntimeSupervisorSubscribeSessionResult
+        | RuntimeSupervisorAckSessionRevisionResult
         | {
             ok: true;
           };

@@ -30,7 +30,7 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /canPreserveTerminalStream \|\| \(freshSnapshotState === undefined && session\.terminalStateTrusted\)/u,
+  /terminalProjectionMode === 'legacy-read-only' \|\|[\s\S]*?canPreserveTerminalStream \|\|[\s\S]*?freshSnapshotState === undefined && session\.terminalStateTrusted/u,
   '同一 authority 的 sessionState 必须保留现有 Host live queue，不能因 fresh checkpoint 到达而替换并丢弃 pending output。'
 );
 assert.match(
@@ -57,6 +57,46 @@ assert.match(
   managerSource,
   /supportsTerminalProjectionSnapshot\(\)[\s\S]*?client\.getSessionSnapshot\([\s\S]*?mergeTerminalStreamProjectionWithLiveTail\(freshStream, currentStream\)/u,
   '健康 authority projection attach 必须刷新 Supervisor checkpoint，并无损合并刷新期间到达 Host 的连续尾部事件。'
+);
+assert.match(
+  managerSource,
+  /supportsTerminalSessionStream\(\)[\s\S]*?deferSubscription: true[\s\S]*?terminalProjectionMode: terminalStreamSupported \? 'terminal-stream-v1' : 'legacy-read-only'/u,
+  '旧 Supervisor attach 必须按 capability 分流，不能发送未知的 deferred stream 协议。'
+);
+assert.match(
+  managerSource,
+  /subscribeRuntimeSupervisorTerminalStream[\s\S]*?!client\.supportsTerminalSessionStream\(\)[\s\S]*?client\.subscribeSession/u,
+  'Host 发送 subscribeSession 前必须再次检查 terminal stream capability。'
+);
+assert.match(
+  managerSource,
+  /legacySupervisorCreateRejected[\s\S]*?retireLegacyRuntimeSupervisorClientIfUnused/u,
+  '旧 Supervisor 必须拒绝创建新 session，并在没有旧 live session 时进入安全退役。'
+);
+assert.match(
+  managerSource,
+  /finally \{\s*options\.onSettled\?\.\(\);\s*\}[\s\S]*?onSettled: \(\) => this\.retireLegacyRuntimeSupervisorClientIfUnused/u,
+  '旧 Supervisor attach 无论成功、失败或被忽略，都必须在 settled 边界重新检查 client 退役条件。'
+);
+assert.match(
+  managerSource,
+  /const legacyReadOnly = session\.terminalProjectionMode === 'legacy-read-only';[\s\S]*?if \(!legacyReadOnly\) \{[\s\S]*?this\.queueExecutionOutput/u,
+  '旧 Supervisor raw output 只能更新只读 tail，不能进入可交互 xterm output 队列。'
+);
+assert.match(
+  managerSource,
+  /revision-regression[\s\S]*?terminalAppliedRevisionRejected[\s\S]*?terminalAppliedRevisionAccepted[\s\S]*?client\.ackSessionRevision[\s\S]*?consumerId: surface/u,
+  'Host 必须按 surface 单调校验 Webview applied revision，并以独立 consumer 向声明 capability 的 Supervisor 转发。'
+);
+assert.match(
+  managerSource,
+  /EXECUTION_TERMINAL_PROJECTION_CACHE_REFRESH_INTERVAL_MS[\s\S]*?checkpoint\.revision < currentStream\.revision[\s\S]*?refreshExecutionTerminalProjection[\s\S]*?scheduleExecutionTerminalProjectionRefresh/u,
+  'Host 必须周期刷新有增量的 authority cache，并在成功或失败后继续调度。'
+);
+assert.match(
+  managerSource,
+  /terminalProjectionRefreshScheduler\.dispose[\s\S]*?clearExecutionTerminalProjectionRefreshTimers[\s\S]*?terminalProjectionRefreshScheduler\.clearMatching/u,
+  'Host 必须在 session replacement/dispose 时清理周期 refresh timer。'
 );
 assert.match(
   protocolSource,
@@ -87,6 +127,21 @@ assert.match(
   webviewSource,
   /activationPriorityIndex[\s\S]*?activationPriorityIndex >= 0 \? activationPriorityIndex : inputNodeIndex/u,
   '新激活主 Pane 的 snapshot hydrate 优先级必须高于旧的最近输入节点。'
+);
+assert.match(
+  webviewSource,
+  /restoreExecutionTerminalSnapshot\([\s\S]*?markTerminalRevisionApplied\(terminalStream\.authorityId, terminalStream\.revision,[\s\S]*?immediate: true/u,
+  'snapshot applied ACK 必须等 checkpoint 和 replay 全部写入 xterm 后再推进 target revision。'
+);
+assert.match(
+  webviewSource,
+  /pendingOutputRevisionBoundaries[\s\S]*?terminal\.write\(chunk, done\)[\s\S]*?markTerminalRevisionApplied\(outputAuthorityId, completedRevision\)/u,
+  'live output applied ACK 必须等对应 Host output 边界的 xterm write callback 完成。'
+);
+assert.match(
+  webviewSource,
+  /terminal\.resize\(terminalEvent\.cols, terminalEvent\.rows\)[\s\S]*?done\(\);[\s\S]*?markTerminalRevisionApplied\(detail\.authorityId, terminalEvent\.revision\)/u,
+  'resize/scrollback applied ACK 必须在前序 write 后实际应用控制事件。'
 );
 
 console.log('execution output sequence tests passed');

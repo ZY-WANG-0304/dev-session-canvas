@@ -236,6 +236,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     const hello = await sendRuntimeSupervisorRequest(socket, messages, 'hello');
     assert.equal(hello.capabilities?.terminalSessionStreamV1, true);
     assert.equal(hello.capabilities?.terminalProjectionSnapshotV1, true);
+    assert.equal(hello.capabilities?.terminalAppliedRevisionAckV1, true);
 
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
     const gapMarker = `attach-gap-marker-${Date.now()}`;
@@ -393,6 +394,69 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     );
     assert.equal(scrollbackEvent.payload.event.revision, resizeEvent.payload.event.revision + 1);
 
+    const appliedAck = await sendRuntimeSupervisorRequest(socket, messages, 'ackSessionRevision', {
+      sessionId: 'attach-gap-terminal',
+      authorityId: attachGapSnapshot.terminalAuthorityId,
+      consumerId: 'panel',
+      revision: scrollbackEvent.payload.event.revision
+    });
+    assert.deepEqual(appliedAck, {
+      sessionId: 'attach-gap-terminal',
+      authorityId: attachGapSnapshot.terminalAuthorityId,
+      consumerId: 'panel',
+      appliedRevision: scrollbackEvent.payload.event.revision
+    });
+    assert.equal(
+      (await sendRuntimeSupervisorRequest(socket, messages, 'ackSessionRevision', {
+        sessionId: 'attach-gap-terminal',
+        authorityId: attachGapSnapshot.terminalAuthorityId,
+        consumerId: 'panel',
+        revision: scrollbackEvent.payload.event.revision
+      })).appliedRevision,
+      scrollbackEvent.payload.event.revision,
+      'duplicate applied ACK should be idempotent.'
+    );
+    assert.equal(
+      (await sendRuntimeSupervisorErrorRequest(socket, messages, 'ackSessionRevision', {
+        sessionId: 'attach-gap-terminal',
+        authorityId: attachGapSnapshot.terminalAuthorityId,
+        consumerId: 'panel',
+        revision: resizeEvent.payload.event.revision
+      })).error.code,
+      'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_REVISION_INVALID',
+      'applied ACK must reject revision regression.'
+    );
+    assert.equal(
+      (await sendRuntimeSupervisorRequest(socket, messages, 'ackSessionRevision', {
+        sessionId: 'attach-gap-terminal',
+        authorityId: attachGapSnapshot.terminalAuthorityId,
+        consumerId: 'editor',
+        revision: resizeEvent.payload.event.revision
+      })).appliedRevision,
+      resizeEvent.payload.event.revision,
+      'each Host surface must keep an independent monotonic applied watermark on the shared socket.'
+    );
+    assert.equal(
+      (await sendRuntimeSupervisorErrorRequest(socket, messages, 'ackSessionRevision', {
+        sessionId: 'attach-gap-terminal',
+        authorityId: attachGapSnapshot.terminalAuthorityId,
+        consumerId: 'panel',
+        revision: scrollbackEvent.payload.event.revision + 1000
+      })).error.code,
+      'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_REVISION_INVALID',
+      'applied ACK must reject a revision the authority has not produced.'
+    );
+    assert.equal(
+      (await sendRuntimeSupervisorErrorRequest(socket, messages, 'ackSessionRevision', {
+        sessionId: 'attach-gap-terminal',
+        authorityId: 'wrong-authority',
+        consumerId: 'panel',
+        revision: scrollbackEvent.payload.event.revision
+      })).error.code,
+      'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_AUTHORITY_MISMATCH',
+      'applied ACK must reject another authority.'
+    );
+
     const marker = `runtime-final-marker-${Date.now()}`;
     const scriptPath = path.join(tempDir, 'runtime-final-output.js');
     await writeFile(scriptPath, `process.stdout.write(${JSON.stringify(`${marker}\r\n`)});\n`, 'utf8');
@@ -449,7 +513,10 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
 
     const storedSession = await waitForRuntimeSupervisorRegistrySession(
       registryPath,
-      'immediate-exit-terminal'
+      'immediate-exit-terminal',
+      (session) =>
+        session.live === false &&
+        session.serializedTerminalState?.data?.includes(marker) === true
     );
     assertTerminalStreamSnapshot(storedSession, 'registry snapshot');
     assert.equal(
@@ -971,6 +1038,23 @@ async function sendRuntimeSupervisorRequest(socket, messages, method, params) {
   );
   assert.equal(response.ok, true, response.error?.message);
   return response.result;
+}
+
+async function sendRuntimeSupervisorErrorRequest(socket, messages, method, params) {
+  const id = `runtime-supervisor-test-${++runtimeSupervisorRequestSequence}`;
+  socket.write(`${JSON.stringify({
+    type: 'request',
+    id,
+    method,
+    params
+  })}\n`);
+  const response = await waitForRuntimeSupervisorMessage(
+    messages,
+    (message) => message.type === 'response' && message.id === id,
+    `${method} error response`
+  );
+  assert.equal(response.ok, false, `${method} should reject invalid params.`);
+  return response;
 }
 
 async function waitForRuntimeSupervisorMessage(messages, predicate, label, timeoutMs = 5000) {

@@ -173,6 +173,7 @@ export type WebviewClipboardTextSource =
 export type PendingExecutionLaunch = 'start' | 'resume';
 export type RuntimePersistenceMode = 'snapshot-only' | 'live-runtime';
 export type RuntimeAttachmentState = 'attached-live' | 'reattaching' | 'history-restored';
+export type RuntimeTerminalProjectionMode = 'terminal-stream-v1' | 'legacy-read-only';
 export type RuntimeHostBackendKind = 'systemd-user' | 'legacy-detached';
 export type RuntimePersistenceGuarantee = 'strong' | 'best-effort';
 export type TerminalNodeStatus =
@@ -222,6 +223,7 @@ export interface ExecutionSessionMetadata {
   outputSequence?: number;
   persistenceMode: RuntimePersistenceMode;
   attachmentState: RuntimeAttachmentState;
+  terminalProjectionMode?: RuntimeTerminalProjectionMode;
   runtimeBackend?: RuntimeHostBackendKind;
   runtimeGuarantee?: RuntimePersistenceGuarantee;
   runtimeStoragePath?: string;
@@ -878,6 +880,16 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         requestId?: string;
         executionSessionId?: string;
         minOutputSequence?: number;
+      };
+    }
+  | {
+      type: 'webview/executionTerminalApplied';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        revision: number;
       };
     }
   | {
@@ -1704,6 +1716,34 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         ...(value.type === 'webview/attachExecutionSession' && minOutputSequence !== undefined
           ? { minOutputSequence }
           : {})
+      }
+    };
+  }
+
+  if (value.type === 'webview/executionTerminalApplied') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const revision = normalizeNonNegativeInteger(payload?.revision);
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      typeof payload.executionSessionId !== 'string' ||
+      payload.executionSessionId.length === 0 ||
+      typeof payload.authorityId !== 'string' ||
+      payload.authorityId.length === 0 ||
+      revision === undefined
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/executionTerminalApplied',
+      payload: {
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        executionSessionId: payload.executionSessionId,
+        authorityId: payload.authorityId,
+        revision
       }
     };
   }

@@ -14749,6 +14749,34 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} renders an old Supervisor session as a read-only transcript`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const state = createLiveExecutionNodeState(executionKind);
+    const metadata = state.nodes[0].metadata[executionKind];
+    metadata.terminalProjectionMode = 'legacy-read-only';
+    metadata.recentOutput = 'LEGACY-READ-ONLY-TAIL\nsecond line';
+
+    await openHarness(page);
+    await bootstrap(page, state);
+    await waitForExecutionTerminalReady(page, nodeId);
+
+    const node = nodeById(page, nodeId);
+    await expect(node.locator('[data-terminal-projection-mode="legacy-read-only"]')).toBeVisible();
+    await expect(node.locator('.terminal-overlay')).toContainText('旧版运行时 - 只读');
+    const transcript = node.locator('.terminal-legacy-transcript');
+    await expect(transcript).toContainText('LEGACY-READ-ONLY-TAIL');
+    await expect(transcript).toHaveCSS('overflow-y', 'auto');
+    await expect(transcript).toHaveCSS('pointer-events', 'auto');
+
+    await clearPostedMessages(page);
+    await performTestDomAction(page, {
+      kind: 'sendExecutionInput',
+      nodeId,
+      data: 'must-not-send'
+    });
+    expect(await readPostedMessagesByType(page, 'webview/executionInput')).toHaveLength(0);
+  });
+
   test(`${executionKind} requests only one attach snapshot for an already-live mounted node`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
 
@@ -15402,12 +15430,26 @@ for (const executionKind of ['agent', 'terminal']) {
       outputSequence: terminalStream.revision,
       terminalStream
     });
-    await settleWebview(page, 4);
-
-    const terminalRows = nodeById(page, nodeId).locator('.xterm-rows');
-    await expect(terminalRows).toContainText('CHECKPOINT-CONTENT');
-    await expect(terminalRows).toContainText('JOURNAL-AFTER-RESIZE');
-    await expect(terminalRows).not.toContainText('RAW-TAIL-MUST-NOT-HYDRATE');
+    const snapshotAppliedAcks = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
+      (messages) => messages.some((message) => message.payload.revision === terminalStream.revision)
+    );
+    const snapshotAppliedAck = snapshotAppliedAcks.find(
+      (message) => message.payload.revision === terminalStream.revision
+    );
+    expect(snapshotAppliedAck.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      authorityId,
+      revision: 5
+    });
+    const snapshotProbe = await readProbeNode(page, nodeId);
+    const snapshotVisibleText = snapshotProbe?.terminalVisibleLines?.join('\n') ?? '';
+    expect(snapshotVisibleText).toContain('CHECKPOINT-CONTENT');
+    expect(snapshotVisibleText).toContain('JOURNAL-AFTER-RESIZE');
+    expect(snapshotVisibleText).not.toContain('RAW-TAIL-MUST-NOT-HYDRATE');
 
     await clearPostedMessages(page);
     await dispatchExecutionOutput(page, {
@@ -15445,9 +15487,35 @@ for (const executionKind of ['agent', 'terminal']) {
       terminalRevision: 9,
       persisted: true
     });
+    await dispatchExecutionTerminalEvent(page, {
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      authorityId,
+      event: {
+        type: 'scrollback',
+        revision: 10,
+        createdAtMs: 201,
+        scrollback: 1800
+      }
+    });
 
-    await expect(terminalRows).toContainText('LIVE-AFTER-RESIZE-REVISION-9');
-    const visibleText = (await terminalRows.textContent()) ?? '';
+    const liveAppliedAcks = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
+      (messages) => messages.some((message) => message.payload.revision === 10)
+    );
+    const liveAppliedAck = liveAppliedAcks.find((message) => message.payload.revision === 10);
+    expect(liveAppliedAck.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      authorityId,
+      revision: 10
+    });
+    const liveProbe = await readProbeNode(page, nodeId);
+    const visibleText = liveProbe?.terminalVisibleLines?.join('\n') ?? '';
+    expect(visibleText).toContain('LIVE-AFTER-RESIZE-REVISION-9');
     expect(visibleText.indexOf('LIVE-REVISION-6')).toBeLessThan(visibleText.indexOf('LIVE-REVISION-7'));
     expect(visibleText.indexOf('LIVE-REVISION-7')).toBeLessThan(
       visibleText.indexOf('LIVE-AFTER-RESIZE-REVISION-9')
