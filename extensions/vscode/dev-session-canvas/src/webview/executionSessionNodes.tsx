@@ -246,11 +246,14 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           }
         },
         onSnapshotApplied: (detail) => {
+          const hasSerializedRestore = Boolean(
+            detail.terminalStream?.checkpoint.serializedState ?? detail.serializedTerminalState
+          );
           snapshotRestoreRef.current.hasAppliedSnapshot = true;
-          snapshotRestoreRef.current.suppressShrinkFitUntilMs = detail.serializedTerminalState
+          snapshotRestoreRef.current.suppressShrinkFitUntilMs = hasSerializedRestore
             ? Date.now() + EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS
             : 0;
-          if (detail.serializedTerminalState) {
+          if (hasSerializedRestore) {
             scheduleDeferredShrinkFit(EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS);
           } else {
             cancelDeferredShrinkFit();
@@ -812,11 +815,14 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           }
         },
         onSnapshotApplied: (detail) => {
+          const hasSerializedRestore = Boolean(
+            detail.terminalStream?.checkpoint.serializedState ?? detail.serializedTerminalState
+          );
           snapshotRestoreRef.current.hasAppliedSnapshot = true;
-          snapshotRestoreRef.current.suppressShrinkFitUntilMs = detail.serializedTerminalState
+          snapshotRestoreRef.current.suppressShrinkFitUntilMs = hasSerializedRestore
             ? Date.now() + EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS
             : 0;
-          if (detail.serializedTerminalState) {
+          if (hasSerializedRestore) {
             scheduleDeferredShrinkFit(EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS);
           } else {
             cancelDeferredShrinkFit();

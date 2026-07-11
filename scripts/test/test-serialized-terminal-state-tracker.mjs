@@ -45,18 +45,22 @@ try {
   tracker.write('before-resize\r\n', {
     outputSequence: 4
   });
-  tracker.resize(50, 12);
-  state = await tracker.flush();
-  assert.match(state.data, /before-resize/u, 'resize should drain pending writes before changing dimensions.');
-  assert.equal(state.outputSequence, 4, 'resize should preserve the latest output sequence after draining writes.');
-
-  tracker.write('before-scrollback\r\n', {
+  tracker.resize(50, 12, {
     outputSequence: 5
   });
-  await tracker.setScrollback(2000);
+  state = await tracker.flush();
+  assert.match(state.data, /before-resize/u, 'resize should drain pending writes before changing dimensions.');
+  assert.equal(state.outputSequence, 5, 'resize should advance the shared terminal revision after draining writes.');
+
+  tracker.write('before-scrollback\r\n', {
+    outputSequence: 6
+  });
+  await tracker.setScrollback(2000, {
+    outputSequence: 7
+  });
   state = await tracker.flush();
   assert.match(state.data, /before-scrollback/u, 'setScrollback should drain pending writes before rebuilding.');
-  assert.equal(state.outputSequence, 5, 'setScrollback should preserve the latest output sequence after rebuilding.');
+  assert.equal(state.outputSequence, 7, 'setScrollback should advance the shared terminal revision after rebuilding.');
   tracker.dispose();
 
   const normalized = normalizeSerializedTerminalState({

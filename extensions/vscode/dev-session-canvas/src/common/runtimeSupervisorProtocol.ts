@@ -9,6 +9,7 @@ import type {
   AgentNodeStatus
 } from './protocol';
 import type { SerializedTerminalState } from './serializedTerminalState';
+import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
 
 export interface RuntimeSupervisorPaths {
@@ -27,6 +28,9 @@ export interface RuntimeSupervisorHelloResult {
   pid: number;
   runtimeBackend: RuntimeHostBackendKind;
   runtimeGuarantee: RuntimePersistenceGuarantee;
+  capabilities?: {
+    terminalSessionStreamV1?: true;
+  };
 }
 
 export interface RuntimeSupervisorSessionSnapshot {
@@ -45,6 +49,9 @@ export interface RuntimeSupervisorSessionSnapshot {
   output: string;
   outputSequence?: number;
   serializedTerminalState?: SerializedTerminalState;
+  terminalAuthorityId?: string;
+  terminalRevision?: number;
+  terminalStream?: TerminalStreamAttachPayload;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;
@@ -91,7 +98,10 @@ export const RUNTIME_SUPERVISOR_ERROR_CODES = {
   launcherMissingSupervisorScript: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_LAUNCHER_MISSING_SUPERVISOR_SCRIPT',
   launcherMissingStorageDir: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_LAUNCHER_MISSING_STORAGE_DIR',
   systemdBackendMissingPaths: 'DEV_SESSION_CANVAS_RUNTIME_SYSTEMD_BACKEND_MISSING_PATHS',
-  systemdCommandFailed: 'DEV_SESSION_CANVAS_RUNTIME_SYSTEMD_COMMAND_FAILED'
+  systemdCommandFailed: 'DEV_SESSION_CANVAS_RUNTIME_SYSTEMD_COMMAND_FAILED',
+  terminalAuthorityMismatch: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_AUTHORITY_MISMATCH',
+  terminalRevisionInvalid: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_REVISION_INVALID',
+  terminalJournalUnavailable: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_JOURNAL_UNAVAILABLE'
 } as const;
 
 export type RuntimeSupervisorErrorCode =
@@ -130,7 +140,11 @@ export type RuntimeSupervisorMessageId =
   | 'clientConnectionClosed'
   | 'clientReadyTimeout'
   | 'systemdBackendMissingPaths'
-  | 'systemdCommandFailed';
+  | 'systemdCommandFailed'
+  | 'terminalAuthorityMismatch'
+  | 'terminalRevisionInvalid'
+  | 'terminalJournalUnavailable'
+  | 'terminalJournalPersistenceFailed';
 
 export interface RuntimeSupervisorMessageDescriptor {
   id: RuntimeSupervisorMessageId;
@@ -148,10 +162,24 @@ export interface RuntimeSupervisorCreateSessionParams {
   resumeSessionId?: string;
   resumeStoragePath?: string;
   launchSpec: SerializedExecutionSessionLaunchSpec;
+  deferSubscription?: boolean;
 }
 
 export interface RuntimeSupervisorAttachSessionParams {
   sessionId: string;
+  deferSubscription?: boolean;
+}
+
+export interface RuntimeSupervisorSubscribeSessionParams {
+  sessionId: string;
+  authorityId: string;
+  afterRevision: number;
+}
+
+export interface RuntimeSupervisorSubscribeSessionResult {
+  sessionId: string;
+  authorityId: string;
+  revision: number;
 }
 
 export interface RuntimeSupervisorWriteInputParams {
@@ -199,6 +227,12 @@ export type RuntimeSupervisorRequest =
   | {
       type: 'request';
       id: string;
+      method: 'subscribeSession';
+      params: RuntimeSupervisorSubscribeSessionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
       method: 'writeInput';
       params: RuntimeSupervisorWriteInputParams;
     }
@@ -235,6 +269,7 @@ export type RuntimeSupervisorResponse =
       result:
         | RuntimeSupervisorHelloResult
         | RuntimeSupervisorSessionSnapshot
+        | RuntimeSupervisorSubscribeSessionResult
         | {
             ok: true;
           };
@@ -255,6 +290,18 @@ export type RuntimeSupervisorEvent =
         kind: ExecutionNodeKind;
         chunk: string;
         outputSequence?: number;
+        terminalAuthorityId?: string;
+        terminalRevision?: number;
+      };
+    }
+  | {
+      type: 'event';
+      event: 'sessionTerminalEvent';
+      payload: {
+        sessionId: string;
+        kind: ExecutionNodeKind;
+        authorityId: string;
+        event: TerminalStreamEvent;
       };
     }
   | {
@@ -270,6 +317,9 @@ export type RuntimeSupervisorMessage =
 
 export interface RuntimeSupervisorClientEventHandlers {
   onSessionOutput?: (event: Extract<RuntimeSupervisorEvent, { event: 'sessionOutput' }>['payload']) => void;
+  onSessionTerminalEvent?: (
+    event: Extract<RuntimeSupervisorEvent, { event: 'sessionTerminalEvent' }>['payload']
+  ) => void;
   onSessionState?: (snapshot: RuntimeSupervisorSessionSnapshot) => void;
 }
 
@@ -464,6 +514,14 @@ export function formatRuntimeSupervisorMessageDescriptor(
       return 'The systemd-user backend is missing unit or controlDir paths.';
     case 'systemdCommandFailed':
       return `${params.command ?? 'systemctl --user'} failed${params.detail ? `: ${params.detail}` : '.'}`;
+    case 'terminalAuthorityMismatch':
+      return `Runtime terminal authority mismatch for session ${params.sessionId ?? '<unknown>'}.`;
+    case 'terminalRevisionInvalid':
+      return `Runtime terminal revision ${params.revision ?? '<unknown>'} is invalid for session ${params.sessionId ?? '<unknown>'}.`;
+    case 'terminalJournalUnavailable':
+      return `Runtime terminal journal is unavailable for session ${params.sessionId ?? '<unknown>'}.`;
+    case 'terminalJournalPersistenceFailed':
+      return `Runtime terminal journal persistence failed for session ${params.sessionId ?? '<unknown>'}.`;
     default:
       return 'Runtime supervisor operation failed.';
   }
@@ -544,6 +602,10 @@ function isRuntimeSupervisorMessageId(value: string): value is RuntimeSupervisor
     case 'clientReadyTimeout':
     case 'systemdBackendMissingPaths':
     case 'systemdCommandFailed':
+    case 'terminalAuthorityMismatch':
+    case 'terminalRevisionInvalid':
+    case 'terminalJournalUnavailable':
+    case 'terminalJournalPersistenceFailed':
       return true;
     default:
       return false;

@@ -15,9 +15,9 @@
 
 系统当前由三个协同运行时组成：
 
-- `Extension Host`：权威状态所在位置，负责命令、Webview 生命周期、workspace trust、持久化、Agent / Terminal 启停和恢复。
+- `Extension Host`：workspace 绑定画布状态与节点到会话映射的权威位置，负责命令、Webview 生命周期、workspace trust、持久化以及 Agent / Terminal 编排。
 - `Webview`：负责画布渲染、节点交互、内嵌终端前端和局部 UI 状态。
-- `Runtime Supervisor`：仅在 `live-runtime` 持久化模式下参与；负责在 VSCode 生命周期之外托管执行会话，并把状态重新接回宿主。
+- `Runtime Supervisor`：仅在 `live-runtime` 持久化模式下参与；负责在 VSCode 生命周期之外托管执行会话，并作为该会话 terminal event、revision、checkpoint 与 journal 的唯一运行时权威。
 
 主路径可以概括为：
 
@@ -39,11 +39,12 @@ CanvasPanelManager
   -> executionSessionBridge / agentCliResolver
   -> runtimeSupervisorClient（可选）
   -> runtimeSupervisorMain
-  -> 输出与生命周期事件回流到 Host
-  -> Host 同步到 Webview 与持久化快照
+  -> supervisor 按 authority + revision 持久化 output / resize / scrollback journal
+  -> checkpoint + 连续 journal / live event 回流到 Host
+  -> Host 校验、调度并投影到 Webview
 ```
 
-这意味着当前项目不是“前端自己维护数据的 Web 白板”，也不是“独立桌面 app”。它的核心架构前提始终是：**VSCode 宿主掌握 workspace 绑定状态，Webview 负责呈现与交互，长生命周期执行能力按需下沉到 supervisor。**
+这意味着当前项目不是“前端自己维护数据的 Web 白板”，也不是“独立桌面 app”。它的核心架构前提始终是：**VSCode 宿主掌握 workspace 绑定状态，Webview 负责呈现与交互；`live-runtime` 会话的进程与终端历史权威下沉到生命周期更长的 supervisor。**
 
 ## 2. 当前范围与非目标
 
@@ -138,6 +139,7 @@ docs/                           根目录正式文档知识库
   - `RuntimeSupervisorSessionSnapshot`
   - `RuntimeSupervisorRequest` / `RuntimeSupervisorEvent`
 - `serializedTerminalState.ts`
+- `terminalSessionStream.ts`
 - `runtimeSupervisorPaths.ts`
 - `extensionStoragePaths.ts`
 - `executionTerminalLinks.ts`
@@ -187,7 +189,7 @@ docs/                           根目录正式文档知识库
 
 - 持有宿主权威状态，并把它同步到一个或两个 Webview surface。
 - 决定哪些状态进入 `workspaceState` / `storageUri`，哪些只留在 Webview 本地。
-- 启动和停止 Agent / Terminal，会话输出入桥、状态同步、重连和 supervisor 协作。
+- 启动和停止 Agent / Terminal，校验并调度会话输出、同步节点状态、重连和协调 supervisor；Host 不为 `live-runtime` 补造 revision 或终端历史。
 - 对 workspace trust、配置、恢复模式和远程宿主差异做最终裁决。
 
 架构不变量：
@@ -320,19 +322,25 @@ docs/                           根目录正式文档知识库
 
 - `runtimeSupervisorMain.ts`
   - supervisor server
-  - 会话注册表、socket server、输出广播、空闲退出
+  - 会话注册表、socket server、terminal revision、输出广播、空闲退出
+- `terminalSessionJournal.ts`
+  - 每会话完整分段 journal、checksum chain、原子 manifest 与崩溃尾部恢复
 - `runtimeSupervisorLauncher.ts`
 
 这里主要负责：
 
 - 在宿主之外维持执行会话存活。
-- 通过 `runtimeSupervisorProtocol.ts` 提供 create / attach / write / resize / stop / delete 等请求。
-- 持久化最小会话注册表，并在宿主重连时回放当前状态。
+- 通过 `runtimeSupervisorProtocol.ts` 提供 create / attach / subscribe / write / resize / scrollback / stop / delete 等请求。
+- 为每个新会话分配稳定 authority，按同一连续 revision 记录 output、resize 与 scrollback。
+- 完整保留分段 journal；checkpoint 只作为恢复加速缓存，不删除旧 journal segment。
+- 以静态 checkpoint+journal 和延迟订阅的两阶段切点补齐 Host attach 间隙，再切换到 live event。
 
 架构不变量：
 
 - supervisor 不依赖 `vscode` 或 Webview。
 - supervisor 只知道执行会话和协议，不知道 React Flow 节点、侧栏结构或具体 UI 细节。
+- `live-runtime` terminal revision 只能由 supervisor 在实际记录事件时推进；Host/Webview 只能验证和投影。
+- journal 损坏或持久化失败必须 fail closed，不能用任意 raw tail 或净化 transcript 冒充可继续交互的终端状态。
 - `live-runtime` 是执行持久化增强层，不是所有执行路径的前提；系统必须在没有 supervisor 的情况下仍可运行。
 
 ### `tests/` 与 `scripts/`
@@ -429,6 +437,7 @@ docs/                           根目录正式文档知识库
 ### 6.1 状态权威边界
 
 - workspace 绑定画布状态由宿主持有，当前中心在 `CanvasPanelManager`。
+- `live-runtime` 会话的 terminal event 历史、authority 与 revision 由 Runtime Supervisor 持有；Host snapshot 只是缓存或投影，不是跨 Reload Window 的恢复事实。
 - Webview 的 `setState()` / `getState()` 只负责局部 UI 恢复，不承担完整业务恢复。
 - `CanvasPrototypeState` 与终端序列化快照必须能独立于具体 Webview 进程存在。
 
@@ -442,7 +451,7 @@ docs/                           根目录正式文档知识库
 
 - 真实执行进程通过 `ExecutionSessionProcess` 抽象接入。
 - `agent` 和 `terminal` 都属于执行型节点，但 UI 呈现不同、生命周期规则不同。
-- supervisor 负责“会话继续活着”，宿主负责“把会话映射回画布对象并表达给用户”。
+- supervisor 负责“会话继续活着”以及 `live-runtime` 终端历史连续，宿主负责“把会话映射回画布对象并表达给用户”。
 
 ### 6.4 信任与安全边界
 
@@ -460,7 +469,7 @@ docs/                           根目录正式文档知识库
 
 ### 恢复与持久化
 
-当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者保证状态快照与 UI 恢复，后者额外保证执行会话跨 VSCode 生命周期的尽力连续性。所有恢复相关设计都应先判断自己是在改哪一层。
+当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、完整 terminal journal 和 checkpoint cache。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。
 
 ### Remote / Local 拓扑
 
@@ -488,6 +497,7 @@ docs/                           根目录正式文档知识库
 - 改节点模型、消息类型、状态字段、跨边界载荷：
   - `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
   - `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts`
+  - `extensions/vscode/dev-session-canvas/src/common/terminalSessionStream.ts`
 - 改画布 UI、节点交互、标题/内容编辑、缩放与聚焦：
   - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`
   - `extensions/vscode/dev-session-canvas/src/webview/canvasNodeChrome.tsx`
@@ -499,6 +509,7 @@ docs/                           根目录正式文档知识库
   - `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts`
   - `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts`
+  - `extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts`
 - 改 CLI 解析、shell 路径、运行时后端选择：
   - `extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts`

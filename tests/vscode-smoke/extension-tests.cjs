@@ -10036,22 +10036,72 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
       return Boolean(
         currentNode?.metadata?.terminal?.liveSession &&
           currentNode.metadata.terminal.attachmentState === 'attached-live' &&
-          currentNode.metadata.terminal.runtimeSessionId === runtimeSessionId &&
-          typeof currentNode.metadata.terminal.serializedTerminalState?.data === 'string' &&
-          currentNode.metadata.terminal.serializedTerminalState.data.includes(earliestMarker) &&
-          currentNode.metadata.terminal.serializedTerminalState.data.includes(latestMarker)
+          currentNode.metadata.terminal.runtimeSessionId === runtimeSessionId
       );
     }, 20000);
 
     terminalNode = findNodeById(snapshot, terminalNodeId);
-    const serializedData = terminalNode.metadata.terminal.serializedTerminalState?.data ?? '';
-    assert.ok(
-      serializedData.includes(earliestMarker),
-      'Reloaded live-runtime terminal should keep the earliest line allowed by the updated scrollback.'
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'attached-live');
+
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    let terminalProbe = await waitForWebviewProbe(
+      (currentProbe) =>
+        readProbeTerminalVisibleLines(currentProbe, terminalNodeId).some((line) => line.includes(latestMarker)),
+      20000
     );
     assert.ok(
-      serializedData.includes(latestMarker),
-      'Reloaded live-runtime terminal should keep the latest line after scrollback reconfiguration.'
+      readProbeTerminalVisibleLines(terminalProbe, terminalNodeId).some((line) => line.includes(latestMarker)),
+      'Reloaded live-runtime terminal should render the latest journaled line.'
+    );
+
+    await performWebviewDomAction({
+      kind: 'scrollTerminalViewport',
+      nodeId: terminalNodeId,
+      lines: -10000
+    });
+    terminalProbe = await waitForWebviewProbe(
+      (currentProbe) =>
+        readProbeTerminalVisibleLines(currentProbe, terminalNodeId).some((line) => line.includes(earliestMarker)),
+      20000
+    );
+    assert.ok(
+      readProbeTerminalVisibleLines(terminalProbe, terminalNodeId).some((line) => line.includes(earliestMarker)),
+      'Reloaded live-runtime terminal should render the earliest line allowed by the updated scrollback.'
+    );
+
+    await clearHostMessages();
+    await requestExecutionSnapshot('terminal', terminalNodeId, 'editor');
+    const hostMessages = await waitForHostMessages(
+      (messages) =>
+        messages.some((message) => {
+          if (
+            message.type !== 'host/executionSnapshot' ||
+            message.payload.kind !== 'terminal' ||
+            message.payload.nodeId !== terminalNodeId ||
+            message.payload.executionSessionId !== runtimeSessionId
+          ) {
+            return false;
+          }
+          const streamText = readTerminalStreamProjectionText(message.payload.terminalStream);
+          return streamText.includes(earliestMarker) && streamText.includes(latestMarker);
+        }),
+      10000
+    );
+    const executionSnapshot = hostMessages.find(
+      (message) =>
+        message.type === 'host/executionSnapshot' &&
+        message.payload.kind === 'terminal' &&
+        message.payload.nodeId === terminalNodeId &&
+        message.payload.executionSessionId === runtimeSessionId &&
+        readTerminalStreamProjectionText(message.payload.terminalStream).includes(earliestMarker) &&
+        readTerminalStreamProjectionText(message.payload.terminalStream).includes(latestMarker)
+    );
+    assert.ok(executionSnapshot, 'Expected reload-time checkpoint and journal events to retain all marker lines.');
+    assert.strictEqual(
+      executionSnapshot.payload.terminalStream.revision,
+      executionSnapshot.payload.outputSequence,
+      'Expected the Host projection revision to match the Supervisor terminal stream revision.'
     );
 
     await ensureTerminalStopped(terminalNodeId);
@@ -12785,6 +12835,21 @@ function hasRenderedNodeSize(probe, nodeId, targetSize, tolerance = 8) {
 function readProbeTerminalVisibleLines(probe, nodeId) {
   const node = probe.nodes.find((currentNode) => currentNode.nodeId === nodeId);
   return Array.isArray(node?.terminalVisibleLines) ? node.terminalVisibleLines : [];
+}
+
+function readTerminalStreamProjectionText(terminalStream) {
+  if (!terminalStream || typeof terminalStream !== 'object') {
+    return '';
+  }
+
+  const checkpointData = terminalStream.checkpoint?.serializedState?.data;
+  const eventData = Array.isArray(terminalStream.events)
+    ? terminalStream.events
+        .filter((event) => event?.type === 'output' && typeof event.data === 'string')
+        .map((event) => event.data)
+        .join('')
+    : '';
+  return `${typeof checkpointData === 'string' ? checkpointData : ''}${eventData}`;
 }
 
 function readTerminalViewportMarkerLines(visibleLines, marker) {

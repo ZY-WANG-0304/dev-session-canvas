@@ -1,4 +1,5 @@
 import type { SerializedTerminalState } from './serializedTerminalState';
+import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
@@ -1213,6 +1214,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         liveSession: boolean;
         outputSequence?: number;
         serializedTerminalState?: SerializedTerminalState;
+        terminalStream?: TerminalStreamAttachPayload;
       };
     }
   | {
@@ -1224,6 +1226,19 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         chunk: string;
         persisted?: boolean;
         outputSequence?: number;
+        terminalAuthorityId?: string;
+        terminalStartRevision?: number;
+        terminalRevision?: number;
+      };
+    }
+  | {
+      type: 'host/executionTerminalEvent';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        event: TerminalStreamEvent;
       };
     }
   | {

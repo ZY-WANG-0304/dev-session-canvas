@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import net from 'node:net';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -104,8 +104,18 @@ try {
   );
   assert.match(
     supervisorSource,
-    /private async createSession\([\s\S]*return this\.toFreshSnapshot\(session\);[\s\S]*private async attachSession\([\s\S]*return this\.toFreshSnapshot\(session\);/u,
+    /private async createSession\([\s\S]*await this\.toFreshSnapshot\(session\)[\s\S]*private async attachSession\([\s\S]*return this\.toFreshSnapshot\(session\);/u,
     'runtime supervisor create/attach snapshot 必须先 flush headless terminal，不能发布 stale serializedTerminalState。'
+  );
+  assert.match(
+    supervisorSource,
+    /const checkpointCols = session\.cols;[\s\S]*const checkpointRows = session\.rows;[\s\S]*const checkpointScrollback = session\.scrollback;[\s\S]*await session\.terminalStateTracker\.flush\(\)/u,
+    'checkpoint 必须在 tracker flush 前固定 cols、rows 与 scrollback，避免把较早 revision 的 state 与较新几何混合。'
+  );
+  assert.match(
+    supervisorSource,
+    /deferSocketSubscription\([\s\S]*deferredSubscriptionRevisions[\s\S]*releaseTerminalJournalMemoryThroughCheckpoint/u,
+    'deferred attach 必须 pin 静态 revision，避免 checkpoint 刷新提前释放 attach gap 事件。'
   );
   assert.match(
     supervisorSource,
@@ -119,8 +129,8 @@ try {
   );
   assert.match(
     supervisorSource,
-    /session\.outputSequence \+= 1;[\s\S]*session\.terminalStateTracker\.write\(chunk, \{[\s\S]*outputSequence: session\.outputSequence/u,
-    'runtime supervisor 写入 terminal state 前必须先递增并标记 outputSequence。'
+    /terminalEvent = session\.terminalJournal\?\.appendOutput\(chunk\);[\s\S]*session\.outputSequence = terminalEvent\?\.revision[\s\S]*session\.terminalStateTracker\.write\(chunk, \{[\s\S]*outputSequence: session\.outputSequence[\s\S]*this\.emitSessionOutput\(session, chunk, terminalEvent\)/u,
+    'runtime supervisor 必须先由 journal 分配 revision，再按同一 revision 更新 tracker 和广播 output。'
   );
   assert.match(
     supervisorSource,
@@ -129,8 +139,13 @@ try {
   );
   assert.match(
     supervisorSource,
-    /initialState: snapshot\.serializedTerminalState,[\s\S]*initialOutput: snapshot\.output,[\s\S]*initialOutputSequence: normalizeRuntimeSupervisorOutputSequence\(snapshot\.outputSequence\)/u,
-    'runtime supervisor registry 恢复必须把 raw output sequence 传入 terminal state tracker，用于拒绝 stale serialized state。'
+    /TerminalSessionJournal\.open\([\s\S]*const allEvents = await terminalJournal\.readAllEvents\(\);[\s\S]*for \(const event of allEvents\)[\s\S]*terminalCheckpoint = normalizeTerminalStreamCheckpoint\(\{/u,
+    '带 authority 的 registry 恢复必须从完整 journal 校验并重放，不能从 raw tail 猜测终端状态。'
+  );
+  assert.match(
+    supervisorSource,
+    /initialState: recoveredAuthorityId \? undefined : snapshot\.serializedTerminalState,[\s\S]*initialOutput: recoveredAuthorityId \? undefined : snapshot\.output/u,
+    'authority journal 恢复失败时必须拒绝 serialized/raw tail fallback。'
   );
   assert.match(
     supervisorSource,
@@ -143,7 +158,8 @@ try {
     'runtime supervisor 不应再保留 Claude 挂起恢复或 suspend 文案识别链路。'
   );
 
-  await assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supervisorOutfile, tempDir);
+  const runtimeEvidence = await assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supervisorOutfile, tempDir);
+  await assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, tempDir, runtimeEvidence.marker);
 
   console.log('runtimeSupervisorProtocol tests passed');
 } finally {
@@ -202,6 +218,116 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       }
     });
 
+    const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
+    const gapMarker = `attach-gap-marker-${Date.now()}`;
+    await writeFile(
+      echoScriptPath,
+      `process.stdin.setEncoding('utf8');\nprocess.stdin.once('data', () => process.stdout.write(${JSON.stringify(`${gapMarker}\r\n`)}));\nsetInterval(() => undefined, 1000);\n`,
+      'utf8'
+    );
+    const attachGapSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'terminal',
+      sessionId: 'attach-gap-terminal',
+      displayLabel: 'Node',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [echoScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    assertTerminalStreamSnapshot(attachGapSnapshot, 'attach-gap create snapshot');
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'attach-gap-terminal',
+      data: 'trigger\n'
+    });
+    await waitForRuntimeSupervisorRegistrySession(
+      registryPath,
+      'attach-gap-terminal',
+      (session) => session.terminalStream?.checkpoint?.revision > attachGapSnapshot.terminalRevision
+    );
+    const subscribeResult = await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId: 'attach-gap-terminal',
+      authorityId: attachGapSnapshot.terminalAuthorityId,
+      afterRevision: attachGapSnapshot.terminalRevision
+    });
+    const replayedGapEvent = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionTerminalEvent' &&
+        message.payload?.sessionId === 'attach-gap-terminal' &&
+        message.payload.event?.type === 'output' &&
+        message.payload.event.data.includes(gapMarker),
+      'attach-gap replay event'
+    );
+    assert.equal(replayedGapEvent.payload.authorityId, attachGapSnapshot.terminalAuthorityId);
+    assert.ok(subscribeResult.revision >= replayedGapEvent.payload.event.revision);
+    await delay(50);
+    const replayedTerminalEvents = [
+      replayedGapEvent,
+      ...messages.filter(
+        (message) =>
+          message.type === 'event' &&
+          message.event === 'sessionTerminalEvent' &&
+          message.payload?.sessionId === 'attach-gap-terminal' &&
+          message.payload.event.revision <= subscribeResult.revision
+      )
+    ].sort((left, right) => left.payload.event.revision - right.payload.event.revision);
+    assert.deepEqual(
+      replayedTerminalEvents.map((message) => message.payload.event.revision),
+      Array.from(
+        { length: subscribeResult.revision - attachGapSnapshot.terminalRevision },
+        (_value, index) => attachGapSnapshot.terminalRevision + index + 1
+      ),
+      'subscribe must replay every revision in the attach gap exactly once and in order.'
+    );
+    assert.equal(
+      replayedTerminalEvents.filter(
+        (message) =>
+          message.payload.event.type === 'output' &&
+          message.payload.event.data.includes(gapMarker)
+      ).length,
+      1,
+      'output produced between attach and subscribe must be replayed exactly once.'
+    );
+
+    await sendRuntimeSupervisorRequest(socket, messages, 'resizeSession', {
+      sessionId: 'attach-gap-terminal',
+      cols: 101,
+      rows: 33
+    });
+    const resizeEvent = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionTerminalEvent' &&
+        message.payload?.sessionId === 'attach-gap-terminal' &&
+        message.payload.event?.type === 'resize',
+      'terminal resize event'
+    );
+    assert.equal(resizeEvent.payload.event.revision, subscribeResult.revision + 1);
+    await sendRuntimeSupervisorRequest(socket, messages, 'updateSessionScrollback', {
+      sessionId: 'attach-gap-terminal',
+      scrollback: 2000
+    });
+    const scrollbackEvent = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionTerminalEvent' &&
+        message.payload?.sessionId === 'attach-gap-terminal' &&
+        message.payload.event?.type === 'scrollback',
+      'terminal scrollback event'
+    );
+    assert.equal(scrollbackEvent.payload.event.revision, resizeEvent.payload.event.revision + 1);
+
     const marker = `runtime-final-marker-${Date.now()}`;
     const scriptPath = path.join(tempDir, 'runtime-final-output.js');
     await writeFile(scriptPath, `process.stdout.write(${JSON.stringify(`${marker}\r\n`)});\n`, 'utf8');
@@ -231,6 +357,8 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
         message.payload.live === false,
       'final sessionState'
     );
+    assertTerminalStreamSnapshot(finalState.payload, 'final sessionState');
+    assert.equal(finalState.payload.terminalRevision, finalState.payload.outputSequence);
     assert.equal(
       finalState.payload.serializedTerminalState?.outputSequence,
       finalState.payload.outputSequence,
@@ -258,6 +386,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       registryPath,
       'immediate-exit-terminal'
     );
+    assertTerminalStreamSnapshot(storedSession, 'registry snapshot');
     assert.equal(
       storedSession.serializedTerminalState?.outputSequence,
       storedSession.outputSequence,
@@ -275,6 +404,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       },
       'registry snapshot should persist the stable exit message descriptor.'
     );
+    return { marker };
   } finally {
     socket?.destroy();
     supervisor.kill();
@@ -283,6 +413,149 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       setTimeout(resolve, 1000);
     });
   }
+}
+
+function assertTerminalStreamSnapshot(snapshot, label) {
+  assert.equal(snapshot.terminalStream?.version, 1, `${label} should carry terminal stream v1.`);
+  assert.equal(snapshot.terminalStream?.sessionId, snapshot.sessionId);
+  assert.equal(snapshot.terminalStream?.authorityId, snapshot.terminalAuthorityId);
+  assert.equal(snapshot.terminalStream?.revision, snapshot.terminalRevision);
+  assert.equal(snapshot.terminalStream?.checkpoint?.sessionId, snapshot.sessionId);
+  assert.equal(snapshot.terminalStream?.checkpoint?.authorityId, snapshot.terminalAuthorityId);
+  assert.ok(snapshot.terminalStream.checkpoint.revision <= snapshot.terminalStream.revision);
+  assert.equal(
+    snapshot.terminalStream.checkpoint.serializedState.outputSequence,
+    snapshot.terminalStream.checkpoint.revision
+  );
+  let expectedRevision = snapshot.terminalStream.checkpoint.revision + 1;
+  for (const event of snapshot.terminalStream.events) {
+    assert.equal(event.revision, expectedRevision, `${label} terminal journal must be contiguous.`);
+    expectedRevision += 1;
+  }
+  assert.equal(expectedRevision, snapshot.terminalStream.revision + 1);
+}
+
+async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, tempDir, marker) {
+  const storageDir = path.join(tempDir, 'runtime-storage');
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-supervisor-restart-${process.pid}-${Date.now()}`
+      : path.join(storageDir, 'supervisor.sock');
+  const registryPath = path.join(storageDir, 'registry.json');
+  const registry = JSON.parse(await readFile(registryPath, 'utf8'));
+  const storedSession = registry.sessions.find((candidate) => candidate.sessionId === 'immediate-exit-terminal');
+  assert.ok(storedSession?.terminalAuthorityId, 'restart fixture should retain its terminal authority.');
+  delete storedSession.terminalStream;
+  delete storedSession.serializedTerminalState;
+  await writeFile(registryPath, JSON.stringify(registry, null, 2), 'utf8');
+
+  const firstRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+  try {
+    const rebuiltSnapshot = await sendRuntimeSupervisorRequest(
+      firstRestart.socket,
+      firstRestart.messages,
+      'attachSession',
+      {
+        sessionId: 'immediate-exit-terminal',
+        deferSubscription: true
+      }
+    );
+    assertTerminalStreamSnapshot(rebuiltSnapshot, 'journal-only restart snapshot');
+    assert.match(
+      rebuiltSnapshot.terminalStream.checkpoint.serializedState.data,
+      new RegExp(marker, 'u'),
+      'a missing checkpoint cache must rebuild from the complete journal.'
+    );
+  } finally {
+    await closeRuntimeSupervisorForTest(firstRestart);
+  }
+
+  const journalRoot = path.join(storageDir, 'terminal-journals');
+  const journalDirectories = await readdir(journalRoot);
+  let journalSegmentPath;
+  for (const directory of journalDirectories) {
+    const sessionDirectory = path.join(journalRoot, directory);
+    try {
+      const manifest = JSON.parse(await readFile(path.join(sessionDirectory, 'manifest.json'), 'utf8'));
+      if (manifest.sessionId === 'immediate-exit-terminal') {
+        journalSegmentPath = path.join(sessionDirectory, manifest.segments[0].file);
+        break;
+      }
+    } catch {
+      // Ignore unrelated or incomplete test directories.
+    }
+  }
+  assert.ok(journalSegmentPath, 'restart fixture journal segment should exist.');
+  const journalData = await readFile(journalSegmentPath, 'utf8');
+  assert.match(journalData, new RegExp(marker, 'u'));
+  await writeFile(journalSegmentPath, journalData.replace(marker, 'x'.repeat(marker.length)), 'utf8');
+
+  const corruptedRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+  try {
+    const failedClosedSnapshot = await sendRuntimeSupervisorRequest(
+      corruptedRestart.socket,
+      corruptedRestart.messages,
+      'attachSession',
+      {
+        sessionId: 'immediate-exit-terminal',
+        deferSubscription: true
+      }
+    );
+    assert.equal(failedClosedSnapshot.terminalStream, undefined);
+    assert.equal(failedClosedSnapshot.terminalAuthorityId, undefined);
+    assert.equal(failedClosedSnapshot.output, '');
+    assert.doesNotMatch(failedClosedSnapshot.serializedTerminalState?.data ?? '', new RegExp(marker, 'u'));
+    assert.equal(failedClosedSnapshot.lastExitMessageDescriptor?.id, 'terminalJournalPersistenceFailed');
+  } finally {
+    await closeRuntimeSupervisorForTest(corruptedRestart);
+  }
+}
+
+async function launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath) {
+  const supervisor = spawn(
+    process.execPath,
+    [supervisorOutfile, '--storage-dir', storageDir, '--socket-path', socketPath],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        NODE_PATH: path.resolve('node_modules')
+      },
+      stdio: ['ignore', 'ignore', 'pipe']
+    }
+  );
+  const stderrChunks = [];
+  supervisor.stderr.on('data', (chunk) => {
+    stderrChunks.push(Buffer.from(chunk).toString('utf8'));
+  });
+  const socket = await connectRuntimeSupervisorSocket(socketPath, supervisor, stderrChunks);
+  socket.setEncoding('utf8');
+  const messages = [];
+  let buffer = '';
+  socket.on('data', (chunk) => {
+    buffer += chunk;
+    while (true) {
+      const newlineIndex = buffer.indexOf('\n');
+      if (newlineIndex < 0) {
+        break;
+      }
+      const line = buffer.slice(0, newlineIndex).trim();
+      buffer = buffer.slice(newlineIndex + 1);
+      if (line) {
+        messages.push(JSON.parse(line));
+      }
+    }
+  });
+  return { supervisor, socket, messages };
+}
+
+async function closeRuntimeSupervisorForTest(runtime) {
+  runtime.socket.destroy();
+  runtime.supervisor.kill();
+  await new Promise((resolve) => {
+    runtime.supervisor.once('close', resolve);
+    setTimeout(resolve, 1000);
+  });
 }
 
 async function connectRuntimeSupervisorSocket(socketPath, supervisor, stderrChunks) {
@@ -342,13 +615,13 @@ async function waitForRuntimeSupervisorMessage(messages, predicate, label) {
   throw new Error(`Timed out waiting for ${label}.`);
 }
 
-async function waitForRuntimeSupervisorRegistrySession(registryPath, sessionId) {
+async function waitForRuntimeSupervisorRegistrySession(registryPath, sessionId, predicate = () => true) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     try {
       const registry = JSON.parse(await readFile(registryPath, 'utf8'));
       const session = registry.sessions?.find((candidate) => candidate.sessionId === sessionId);
-      if (session) {
+      if (session && predicate(session)) {
         return session;
       }
     } catch {

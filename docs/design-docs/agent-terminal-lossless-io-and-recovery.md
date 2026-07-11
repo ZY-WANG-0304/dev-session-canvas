@@ -1,6 +1,6 @@
 ---
 title: Agent / Terminal 无损输入输出与恢复
-decision_status: 比较中
+decision_status: 已选定
 validation_status: 验证中
 domains:
   - VSCode 集成域
@@ -30,7 +30,7 @@ updated_at: 2026-07-11
 
 2026-06-15 合入的 PR #152 为了解决多 Agent 输出期间的输入卡顿，引入了更严格的 Host/Webview 输出让步、Webview backlog snapshot reset、延迟持久化、snapshot hydrate 调度和 `outputSequence` 边界。后续 PR #176、#203、#229、#236 又分别补充 Host 输出调度、公平性、新鲜度和旧 supervisor 信任边界。2026-07-06 至 2026-07-07，分支 `agent-node-fork-launch-intent` 还追加了四个未合入提交，尝试用 checkpoint + delta 和 degraded transcript 收口恢复问题。
 
-这条演进解决过真实性能问题，但没有形成稳定的内容模型。当前 `origin/main` 仍可能在没有可信 serialized terminal state 时把最后 6000 字符 raw tail 写入空 xterm；未合入方案则先禁止这条 fallback，导致旧 live runtime 大面积空屏，再用净化 transcript 止血。本文先记录问题诊断，不提前选择正式替代方案。
+这条演进解决过真实性能问题，但没有形成稳定的内容模型。基线 `origin/main@5355e6a` 仍可能在没有可信 serialized terminal state 时把最后 6000 字符 raw tail 写入空 xterm；未合入方案则先禁止这条 fallback，导致旧 live runtime 大面积空屏，再用净化 transcript 止血。本文同时保留历史诊断，并记录后续选定和实现的第一阶段替代方案。
 
 ## 2. 问题定义
 
@@ -263,9 +263,9 @@ Terminal 继续以 xterm state 为主；Agent 同时保留 provider PTY 和独�
 
 待验证点：Codex / Claude Code 可用结构化接口、双投影一致性、是否符合当前节点内 CLI 主交互产品边界。
 
-### 9.4 当前首选验证路线（尚未选定）
+### 9.4 已选定的第一阶段路线
 
-第一轮受控验证以“持久执行权威维护 terminal checkpoint + 无损 journal”为首选路线。这里的 journal 是按 session 保序记录的 output 与 resize 事件序列，不是最近 6000 字符 tail；checkpoint 是同一权威 headless xterm 在明确 revision 上原子生成的终端投影。首选路线如下：
+第一轮受控验证以“持久执行权威维护 terminal checkpoint + 无损 journal”为首选路线。这里的 journal 是按 session 保序记录的 output、resize 与 scrollback 事件序列，不是最近 6000 字符 tail；checkpoint 是同一权威 headless xterm 在明确 revision 上原子生成的终端投影。首选路线如下：
 
 ```text
 Runtime Supervisor / persistent backend
@@ -290,9 +290,43 @@ Webview xterm
 
 attach 必须在同一 authority 内完成原子切点：返回 checkpoint 与历史事件时，新的 live output 要么已经包含在截止 revision `R` 内，要么从 `R + 1` 开始进入 live stream，不能落在两者之间。Host/Webview 活着时仍走无损 live 增量，不因已有 checkpoint 清空 backlog；只有 Webview 或 Host 已经重建、旧投影不存在时，才使用 checkpoint 创建新投影。
 
-journal 不能因为达到内存阈值直接丢弃。实现可以把它转存到磁盘，并在新的 checkpoint 已原子提交、且产品承诺范围内的 scrollback/content 已被覆盖后做显式 compact。需要通过实验比较它与“从会话起点保留完整 journal”的恢复耗时、存储量、崩溃一致性和升级复杂度，验证通过后才能把本节升级为正式方案。
+journal 不能因为达到内存阈值直接丢弃。第一阶段完整保留从 session 创建开始的 journal，checkpoint 只作为恢复加速缓存；本阶段不做 compact。后续只有在新的 checkpoint 已原子提交、产品承诺范围内的 scrollback/content 已被覆盖、上一代恢复数据仍可回退且受控验证通过后，才能另行设计 compact。
 
-## 10. 候选方案必须满足的不变量
+## 10. 正式方案
+
+### 10.1 适用范围
+
+本阶段覆盖 `live-runtime` Agent / Terminal 的 supervisor 输出权威、完整事件 journal、checkpoint cache 和 Host 重新附着。local PTY 仍由 Extension Host 持有，其生命周期与恢复承诺不在本阶段改写。输入调度继续遵守“唯一输入节点优先且不丢其他节点内容”的硬性边界；本阶段不会用 checkpoint 替换既有 live Webview backlog。
+
+### 10.2 唯一 authority 与 revision
+
+`extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts` 为每个新 live-runtime session 创建稳定 `authorityId`。同一 session 的 output、resize 与 scrollback 变化都由 supervisor 按一个连续 revision 序列记录；只有 supervisor 在实际接收事件时能推进 revision。`CanvasPanelManager` 与 Webview 只能验证、转发、排队和回报 applied revision，不得再用 metadata floor、`minOutputSequence` 或无数据 `markOutputSequence()` 提高 supervisor revision。
+
+新协议字段保持可选，以便识别旧 supervisor。缺少 authority/journal capability 的旧会话继续走明确的 legacy/历史恢复路径，但不能把 6000 字符 tail 升级成新 checkpoint，也不能为它补造过去的 journal。
+
+### 10.3 完整、分段、可校验 journal
+
+`extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts` 在 supervisor storage 下为每个 session 建立独立目录、原子 manifest 和 NDJSON segment。journal record 至少包含 session、authority、revision、事件类型、事件数据、前一 record checksum 与当前 checksum；事件类型覆盖 output、resize 和 scrollback。segment 可以轮转，但第一阶段不得删除或截断已经完成的 segment，只有用户显式删除 session 时才能删除整份 journal。
+
+append 在内存中同步分配 revision 并进入单 writer 队列，磁盘写入按序批处理，避免在 PTY output callback 中做每 chunk `fsync`。registry 写入、final session state 与 supervisor 正常退出边界必须先 flush journal；写盘失败必须保留错误并让后续 flush fail closed，不能静默继续声称内容已持久化。读取时按 manifest、segment 字节数、连续 revision 与 checksum chain 校验；损坏记录不能被跳过后继续伪装成完整历史。
+
+### 10.4 checkpoint 只是 cache
+
+`SerializedTerminalStateTracker` 仍在 supervisor 内消费与 journal 相同顺序的事件。supervisor 在明确 revision 上生成包含 cols、rows、scrollback、format 与 serialized state 的 checkpoint，并把它写入 supervisor registry。checkpoint 不删除任何 journal segment，也不改变 journal 的权威地位。
+
+checkpoint 正常时，attach 返回 checkpoint `C`、journal `C+1...R` 和 target revision `R`。checkpoint 缺失、格式不兼容或校验失败时，supervisor 从 journal 起点重建 headless xterm；不能回退到任意 raw tail。checkpoint 是否能在后续阶段接管旧 journal，必须另行验证和决策。
+
+### 10.5 原子 attach 与 live 切换
+
+新 Host 创建或重新附着 session 时先请求静态 attach payload，并要求 supervisor 暂缓该 socket 的 live subscription。Host 建立 runtime binding、保存 authority 并把 checkpoint+journal 交给新 Webview 投影后，再以 `authorityId + afterRevision` 订阅。supervisor 在同一个事件循环切点内读取 `afterRevision+1...R2`、注册 live subscription、按 revision 发送补偿事件，然后才允许后续 live event 继续发送。这样 output 不会落在 attach response 与 Host binding 之间。
+
+Webview 只在新投影 attach 时 reset 并 hydrate checkpoint；随后按序应用 output/resize/scrollback event。已有 live xterm 的 backlog 不因 checkpoint 存在而清空。authority 不匹配、revision gap、重复跨 session 数据或 checkpoint+journal 不连续时必须 fail closed 并重新 attach，不能写 raw tail 或 sanitized transcript 冒充终端状态。
+
+### 10.6 阶段退出条件
+
+本阶段完成必须证明：journal segment 轮转后逐 record 校验通过；checkpoint 缺失时完整 journal 能重建相同 xterm；Host attach 间隙产生的 output 被补偿且只显示一次；Reload Window 期间 Agent 输出连续；Host 不再推进 supervisor revision；旧 supervisor 被明确识别；10 个并发 Agent 的 journal 写入不会破坏当前输入节点响应。compact、永久 transcript 和完整生命周期 retention 不属于本阶段完成条件。
+
+## 11. 正式方案必须满足的不变量
 
 无论最终选择哪条路线，都必须满足：
 
@@ -307,7 +341,7 @@ journal 不能因为达到内存阈值直接丢弃。实现可以把它转存到
 9. 旧 supervisor / 旧 snapshot 的升级行为必须用户可解释，且不能伪造 live 或完整恢复；Agent 与 local Terminal 的恢复承诺分别定义。
 10. 所有队列、日志和持久化预算按节点数做总量验证，不能用达到上限后丢内容作为容量策略。
 
-## 11. 验证方法
+## 12. 验证方法
 
 设计选择前应先建立可重复失败基线：
 
@@ -323,9 +357,9 @@ journal 不能因为达到内存阈值直接丢弃。实现可以把它转存到
 
 自动化不能只断言“某个 marker 最终出现”；还要断言未重复、未缺失、顺序正确、旧内容未被未经验证的 snapshot 覆盖、每个 controller 在有界时间内推进。
 
-## 12. 当前结论
+## 13. 当前结论
 
-当前已确认：
+历史诊断已确认：
 
 - 输入性能目标只需要提升唯一输入节点的调度优先级，不需要也不允许用丢弃其他节点内容换取响应速度。
 - live 增量 output 必须保序、无损并最终交付；snapshot replacement 不再是可接受的稳态性能策略。
@@ -335,13 +369,21 @@ journal 不能因为达到内存阈值直接丢弃。实现可以把它转存到
 - PR #203 证明 PR #152 的第一版预算调度缺少跨 controller 公平性。
 - PR #229 / #236 逐步拒绝 stale 或伪造 state，但没有给旧会话补上权威恢复源。
 - 2026-07-06 至 2026-07-07 的 checkpoint/delta 方向包含正确的不变量雏形，但现有实现没有迁移闭环、单一 authority 和完整宿主级验证；degraded transcript 只是止血，不是终端恢复。
-- 当前 `origin/main` 仍保留 raw tail hydrate fallback，问题尚未正式解决。
+- 基线 `origin/main@5355e6a` 仍保留 raw tail hydrate fallback；它是本分支要替换的基线行为，不是新方案的事实源。
 
-当前尚未确认：
+2026-07-11 已完成用户指定的前三项实现：
 
-- 持久执行权威最终保存完整 output journal、checkpoint + 无损 delta，还是二者组合。
-- checkpoint/log 的具体格式、持久化频率、ACK/重放协议与总量预算。
-- local Terminal 在不跨 Host 存活时应承诺的独立恢复语义。
-- Agent 是否在 PTY 之外增加正式结构化内容投影。
+- Runtime Supervisor 为新 `live-runtime` session 分配稳定 `authorityId`，并为 output、resize、scrollback 统一分配连续 revision。Host 对 authority session 不再使用 metadata floor 或 Webview `minOutputSequence` 推进 revision。
+- `terminalSessionJournal.ts` 以每 session 独立目录、原子 manifest、分段 NDJSON 和 checksum chain 完整保存所有事件。checkpoint 释放的只是已覆盖事件的内存副本；磁盘 segment 只在显式删除 session 时删除。
+- supervisor registry 保存 checkpoint cache；checkpoint 缺失时从 journal 起点重建，journal checksum/revision 损坏时拒绝 raw-tail fallback，并进入明确错误态。checkpoint 超过当前 serialized-state 格式上限时保留上一 checkpoint 与其后的完整事件，不 compact journal。
+- create/attach 使用静态 payload 与 `subscribeSession(afterRevision)` 两阶段切换。deferred attach revision 在订阅完成前被 pin，避免并发 checkpoint 刷新提前释放补偿区间；同一 socket 的旧订阅会先撤销。
+- Host/Webview 以 authority 和 revision range 校验 coalesced output，在 resize/scrollback 前 flush 旧 output；gap 或 authority 变化会 fail closed 并重新 attach。Webview 已删除 backlog 阈值触发的 snapshot replacement，健康 live backlog 不再被 checkpoint 清空。
 
-在这些问题完成比较和受控验证前，本文保持 `decision_status: 比较中`，不得把任一候选写入既有正式方案。
+当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；checkpoint geometry 与 tracker flush 使用同一切点；final/registry checkpoint 覆盖 final revision；Webview checkpoint+journal 顺序 hydrate、live revision gap 恢复、健康/结束态 snapshot 不替换既有 backlog；真实 `trusted` Reload Window 与 `real-reopen` 均通过。
+
+以下仍未写成已完成结论：
+
+- Host 为 Webview recreate 缓存的 `terminalStream.events` 只会在收到新的 supervisor lifecycle snapshot 时换成较新 checkpoint；纯输出、长时间无生命周期变化的会话仍可能让这份 Host 内存缓存持续增长。磁盘 journal 与 supervisor 内存已受 checkpoint 控制，但 Host 还需要专门的 checkpoint refresh/ACK 协议。
+- 旧 supervisor 没有 authority/journal 时仍只具备 legacy 保证；显式只读降级、升级迁移和旧 raw-tail UI 的最终退出策略尚未完成。
+- 10 个并发 Agent 的总量/输入延迟基准、alternate screen、OSC、CJK/emoji 边界与长期 retention 仍需单独验证；不能用当前定向测试代替这些容量结论。
+- local PTY 的独立恢复语义、journal compact、永久 transcript 与 Agent 结构化内容投影不属于本次前三项实现。
