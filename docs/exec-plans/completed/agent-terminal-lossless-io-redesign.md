@@ -2,13 +2,13 @@
 
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘`。
 
-本计划遵循仓库根目录的 `docs/PLANS.md`。历史故障定位、恢复表示比较和核心实现已经完成，当前阶段收口迁移验证与剩余终端语义边界；尚未验证的真实旧版本升级、终端控制序列和长期保留策略不得写成正式结论。
+本计划遵循仓库根目录的 `docs/PLANS.md`。历史故障定位、恢复表示比较、核心实现、真实旧版本迁移和终端控制序列边界均已完成并形成可重复证据；长期 journal 保留、local PTY 独立恢复、永久 transcript 与 Agent 结构化投影作为后续技术债单独登记，不由本计划冒充完成。
 
 ## 目标与全局图景
 
 这次工作要重新建立 Agent / Terminal 输入输出内容的清晰边界。用户最终应能同时运行多个执行节点，持续看到完整、顺序正确且不过度滞后的当前内容；切换画布可见性、重开 Webview、重连 live runtime 或会话结束时，不应因为显示重建而缺行、回退到旧画面、解析残缺 ANSI 控制序列，或让后台节点永久拿不到最终输出。输入、控制消息和当前节点真实回显也不应被其他节点的输出洪峰淹没。
 
-第一阶段已经先完成历史研究，回答 PR #152 引入了哪些内容表示和调度机制、后续 PR #176、#203、#229、#236 分别证明了哪些假设不成立，以及基线实现中哪些事实源、派生状态和恢复缓存被混用。研究结论已经沉淀为可追溯的设计文档；后续阶段据此实现 Supervisor 唯一 authority、checkpoint 加无损 journal、唯一输入节点优先调度，并继续补齐旧 Supervisor 退役、applied-revision ACK 与周期 Host cache 收敛。
+第一阶段先完成历史研究，回答 PR #152 引入了哪些内容表示和调度机制、后续 PR #176、#203、#229、#236 分别证明了哪些假设不成立，以及基线实现中哪些事实源、派生状态和恢复缓存被混用。后续阶段据此实现 Supervisor 唯一 authority、checkpoint 加无损 journal、唯一输入节点优先调度，并补齐旧 Supervisor 退役、applied-revision ACK、周期 Host cache 收敛、真实旧二进制迁移与 ANSI/OSC/CJK/emoji 分片恢复验证。
 
 ## 进度
 
@@ -23,7 +23,7 @@
 - [x] (2026-07-10 23:59 +0800) 与用户确认三条产品和架构边界：输入优化只提升唯一输入节点的优先级；live 增量不得丢弃或由 snapshot replacement 替代；可后台运行的 Agent 不能以会随 Reload Window 重建的 Host snapshot 作为恢复权威。
 - [x] (2026-07-11 00:19 +0800) 重新 fetch `origin/main`，确认最新基线仍为 `5355e6a`，从该提交创建主题分支 `agent-terminal-lossless-io-redesign` 和独立 worktree，保留此前 worktree 的未提交文档。
 - [x] (2026-07-11 00:20 +0800) 在新分支创建并登记 `docs/design-docs/agent-terminal-lossless-io-and-recovery.md`，同步三条已确认边界，并把 supervisor checkpoint + 无损 journal 标为首选验证路线而非已选定结论。
-- [ ] 建立当前主线的无损输出、任意 tail 截断和 Host 离线恢复失败基线。
+- [x] (2026-07-11) 建立当前主线的无损输出、任意 tail 截断和 Host 离线恢复失败基线，并用 headless xterm、历史 diff 与 live-runtime 重开回归固定 revision 缺口和 raw-tail 非恢复语义。
 - [x] (2026-07-11) 用户选定先实现 supervisor 唯一 authority、完整 output/resize journal，以及不 compact 旧 journal 的 checkpoint cache；同步把原子 attach/live 切点写入正式设计。
 - [x] (2026-07-11 08:40 +0800) 实现 supervisor 唯一 authority、output/resize/scrollback 共享 revision、完整分段 checksum journal、registry checkpoint cache 与 journal-only 重建。
 - [x] (2026-07-11 09:10 +0800) 实现 defer attach + subscribe 两阶段协议；补上 attach revision pin、同 socket 旧订阅撤销、间隙 replay 与 Host/Webview authority/gap 自动重附着。
@@ -41,7 +41,15 @@
 - [x] (2026-07-11) 当前工作树通过 typecheck、build、7 组定向协议/调度/序列测试和 9 个 Webview 无损/旧 Supervisor/ACK/gap/replay 用例；`trusted` 复跑越过目标 scrollback reload 场景，随后在既有 fake-provider 并发 start 的 session 文件竞态失败，artifact 已保留并与内容链路结论分开记录。
 - [x] (2026-07-11) 修复 trusted 测试 setup 的 auto-start/manual-start 竞态：等待自动启动进入 live 后先停止会话，再进入手动 start 基线；修复后完整 `trusted` 通过，产品运行时逻辑不变。
 - [x] (2026-07-11 18:33 +0800) 复查并补齐旧 attach 失败、类型不符或 operation token 忽略后的 settled 退役检查；随后 typecheck、build、7 组定向测试、9 个 Webview 回归和完整 `trusted` 再次全部通过。
-- [ ] 完成完整 `npm test`，并把已知 Marketplace/Webview 环境基线失败与本次回归分开记录；10-Agent 容量基准已经完成。
+- [x] (2026-07-11 19:35 +0800) 新增固定 `origin/main@5355e6a` 的真实旧 Supervisor 迁移 smoke：旧二进制实际持有 Agent/Terminal PTY，当前 Host 只读附着并拒绝写入，最后一个会话结束后旧进程自然退役，下一次创建切换到当前 Supervisor。
+- [x] (2026-07-11 19:40 +0800) 增加 ANSI/CSI、cursor addressing、OSC title/OSC 8、alternate screen、resize/scrollback、CJK 与 emoji 跨 event 恢复回归；真实 PTY 又把 `中文🚀` 的 UTF-8 bytes 拆到四次写入，最终 journal、projection 与 checkpoint 均无 `U+FFFD`。
+- [x] (2026-07-11 19:45 +0800) 完整默认 VS Code smoke 全部通过，包括 trusted、restricted、多 root、双窗口共享 runtime、systemd user/fallback、Remote SSH real reopen 与新增 legacy-supervisor-upgrade。
+- [x] (2026-07-11 19:52 +0800) 完成 `npm test` 审计并区分基线：原样命令在 Marketplace VS Code fixture 的 Unix IPC 长路径停止，固定 `origin/main@5355e6a` 同路径复现；改用短临时目录后命中既有中英文 locale fixture 漂移。按原命令顺序继续的终端链路测试全部通过；陈旧 Webview 静态扫描、缺 `vscode.l10n` mock 与完整 Webview 既有失败单独登记，不写成本分支回归。
+- [x] (2026-07-11 20:02 +0800) 完整 `npm run test:webview` 初轮审计为 329/340 通过；新增 legacy transcript、无损 backlog、checkpoint+journal、gap、ANSI/OSC/CJK/emoji、批量 replay、10-Agent 与 xterm 交互回归全部通过。失败集中在既有截图、右键启动/布局菜单、帮助文案、Claude Ctrl-Z 与 launch preset 断言漂移，artifact 保存在 `.debug/playwright/results/`。
+- [x] (2026-07-11 20:04 +0800) 将 strict delete 的旧 client 退役检查收敛到所有 RPC settled 路径，补齐 missing-session 幂等删除边界；最终 typecheck、build、journal/protocol/sequence/protocol-message 定向测试与真实旧 Supervisor smoke 通过。
+- [x] (2026-07-11) rebase 到最新 `origin/main@d7baadf`，无冲突吸收 PR #254 的 Agent Resume/恢复语义；rebase 后 typecheck、build、journal/protocol/sequence、execution-context、l10n、smoke-runner、VSIX、Activity Bar 与 Sidebar history 测试通过。
+- [x] (2026-07-11) rebase 后完整 Webview 为 331/341 通过；10 项非终端失败在独立 `origin/main@d7baadf` worktree 定向运行时逐项复现，当前分支新增终端用例全部通过。
+- [x] (2026-07-11 20:53 +0800) rebase 后最终 `npm run test:smoke` 全部通过，覆盖 trusted/restricted、真实旧 Supervisor、local/multi-root/two-window reopen、systemd user/fallback 与 Remote SSH；首次完整运行仅在高负载并跑时出现一次 `systemd-user-real-reopen` Webview ready 20 秒超时，随后该场景定向复跑和第二次完整复跑均通过，按场景级启动抖动记录而未改动产品语义。
 
 ## 意外与发现
 
@@ -90,8 +98,8 @@
 - 观察：Supervisor checkpoint 本身已经足够新，慢点在 Host 投影缓存和 Webview replay 粒度。Host 在纯 output 期间持续向旧 `terminalStream.events` 追加，Webview 又在每个 output revision 后 `setTimeout(0)`，数千 revision 被放大为数秒空屏。
   证据：现场 Supervisor checkpoint 后通常只有 0–2 个 event；实现只读 projection refresh 和目标上限 256 Ki 个 UTF-16 code unit 的连续 output batching 后，4000 个 event、276,000 个 replay 字符的 Webview 回归在一次 snapshot write 中约 112 ms 完成。
 
-- 观察：已有 6-controller 用例只检查最终 marker，不能作为 10-Agent 容量或无损证据；逐行基准显示输入路径已经较快，但大规模 xterm replay 的墙钟完成时间远长于 Supervisor journal 写入。
-  证据：最终 10-Agent 验证样本中，Supervisor 九路后台输出约 286.67ms 完成，而 Webview 对 864,020 字符、36,001 行的逐行解析约 14.79s 完成；输入 dispatch/ACK/优先回显分别约 14.6ms/21.8ms/204.9ms。全部 xterm buffer 逐行一致，没有缺失、重复或乱序。
+- 观察：已有 6-controller 用例只检查最终 marker，不能作为 10-Agent 容量或无损证据；逐行基准显示输入路径已经较快，但 Webview xterm 解析仍是容量链路里比 Supervisor journal 写入更重的阶段。
+  证据：rebase 到最终目标基线后的 10-Agent 样本中，Supervisor 九路后台输出约 406.92ms 完成，Webview 对 864,020 字符、36,001 行的逐行解析约 2.03s 完成；输入 dispatch/ACK/优先回显分别约 8.6ms/13.9ms/189.4ms。全部 xterm buffer 逐行一致，没有缺失、重复或乱序。
 
 - 观察：以固定输入时间窗限制 Webview 每帧只处理一个 controller，并不能证明持续键入时后台有界公平；如果输入时间不断刷新，非输入 controller 可以一直达不到普通 drain 路径。
   证据：新纯逻辑回归连续刷新输入优先级，并验证 9 个等待超过 480ms 的后台 controller 按排队年龄逐个获得公平 slot。Host 对应回归验证 9 个超过 750ms 的后台 entry 在连续输入窗口内逐轮释放。
@@ -113,6 +121,15 @@
 
 - 观察：trusted 的 `verifyLiveRuntimeResumeExitClassification` 曾存在独立 fixture 竞态。节点创建后的自动 start 与测试手动 start 几乎同时发生，被 operation token 忽略的进程仍会写同一个 fake-provider `last-session`，而后续基线恢复只恢复 metadata、不恢复该文件。
   证据：失败诊断同时记录 92x28 与 66x21 两次 `execution/startRequested`；有效 metadata 为 `8f8e...`，磁盘 `last-session` 为另一进程写入的 `4af6...`，resume 因而以 code 21 失败。测试 setup 现在等待 Agent/Terminal 自动启动完成并停止后才执行手动 start；完整 `trusted` 随后通过，目标终端节点的 220 行 scrollback 与 revision 始终完整。
+
+- 观察：真实旧 Supervisor 的 `deleteSession` 会先广播终态、再返回同一 socket 上的 delete RPC；生命周期 handler 若在终态到达时立即 dispose client，会中断仍在途的删除响应。
+  证据：第一版真实迁移 smoke 中旧 PTY 和 registry session 已删除，但画布节点仍保留，Host 收到 `clientDisconnected`。`RuntimeSupervisorClient.hasPendingRequests()` 现在阻止 in-flight 期间退役，strict delete 在成功、missing-session 和异常后的 settled 边界统一重新检查；真实旧二进制 smoke 随后完整通过。
+
+- 观察：真实 PTY 的 UTF-8 解码边界和 Webview 的 JavaScript 字符串/event 边界需要分别验证。
+  证据：Supervisor fixture 把 `中文🚀` 的 UTF-8 bytes 拆到四次 `stdout.write()`，形成至少三个 output revision；Webview fixture又把 CSI、OSC、CJK 与 emoji surrogate pair 拆到相邻 journal event。两层最终都无 `U+FFFD`、缺失和重复。
+
+- 观察：当前一键测试首先受仓库基线环境与 fixture 漂移阻断，而不是本分支终端断言失败。
+  证据：原样 `npm test` 在深层 `TMPDIR` 创建 VS Code IPC socket 时以 `listen EINVAL` 停止，同一命令在临时分支基线 `5355e6a` worktree 复现；改用 `/tmp` 短路径后，Marketplace fixture 等待中文按钮，但实际英文 probe 为 `Publish custom template`、`Install`、`View details`。继续审计又确认 `theme-color-tokens` / `canvas-templates` 仍扫描已拆分的 `main.tsx`，`canvas-node-groups` mock 缺少 `vscode.l10n`；rebase 后完整 Webview 为 331/341 通过，10 项失败在独立最新 `origin/main@d7baadf` worktree 全部复现，新增终端链路回归全部通过。这些问题与本轮终端代码路径分开登记。
 
 ## 决策记录
 
@@ -184,19 +201,27 @@
   理由：无 Webview attach 时不会产生 ACK，而 Host 仍需要控制 `terminalStream.events` 增长。权威 checkpoint 加 RPC 期间连续 live tail 可以安全替换恢复缓存，不影响已经排入 Host/Webview 的 live delivery；失败时保留旧缓存即可重试。
   日期/作者：2026-07-11 / Codex
 
+- 决策：旧 Supervisor 迁移验收固定使用分支起点 `origin/main@5355e6a` 的真实源码构建产物，不用删 capability 的当前进程冒充旧版本。
+  理由：只有真实旧实现才能暴露协议消息顺序、idle shutdown、registry 格式和 PTY 所有权差异；固定 ref 让 smoke 可重复，也避免未来 `origin/main` 前移后测试语义漂移。
+  日期/作者：2026-07-11 / Codex
+
+- 决策：完整 `npm test` 的已复现基线失败作为测试基础设施技术债登记，不在终端内容重构 PR 内顺手修改 Marketplace locale、Webview 静态扫描或 l10n mock。
+  理由：这些失败在固定 `origin/main` 或本轮未改动区域可复现，修复会扩大 PR 范围；本轮通过逐项继续审计、完整 smoke、定向 Webview 与协议测试证明终端链路，且不把一键命令写成清洁通过。
+  日期/作者：2026-07-11 / Codex
+
 ## 结果与复盘
 
 本轮已完成用户指定的前三项实现。新 `live-runtime` session 的 terminal revision 只由 Runtime Supervisor 在 journal append 时分配；磁盘完整保存 output、resize、scrollback，checkpoint 只是同 authority 上的恢复缓存。Supervisor 重启时会校验 manifest、segment 字节、连续 revision 与 checksum chain；checkpoint 缺失则从 journal 起点重建，journal 损坏则拒绝 raw-tail fallback。
 
 Host 与 Webview 已改为 authority projection：Host coalescing 保留 revision 起止范围，控制事件前强制 flush；Webview 新建投影时依次 hydrate checkpoint 和 journal，健康 live backlog 不被 snapshot 替换。旧 snapshot-reset 阈值、deferred output budget、timeout/retry 与 stale-output drop 已删除。attach gap、checkpoint 刷新竞争和 Host/Webview revision gap 均有自动化覆盖。
 
-当前证据包括类型检查、构建、journal/protocol/sequence/tracker/scheduler/localization 单测、无损 backlog/新投影/checkpoint+journal/gap 定向 Webview 用例、10-Agent Supervisor/Webview 容量基准与 real-reopen smoke。容量基准逐行核对 36,001 行，并记录 journal/registry/checkpoint 体积、Supervisor CPU、Chromium Task/Script CPU、输入 ACK/回显和后台完成时间。旧 Supervisor Agent/Terminal 只读投影、ACK 完成点和周期 refresh fake timer 也已自动化覆盖。
+当前证据包括类型检查、构建、journal/protocol/sequence/tracker/scheduler/localization 单测、无损 backlog/新投影/checkpoint+journal/gap 定向 Webview 用例、10-Agent Supervisor/Webview 容量基准和完整 VS Code smoke。容量基准逐行核对 36,001 行，并记录 journal/registry/checkpoint 体积、Supervisor CPU、Chromium Task/Script CPU、输入 ACK/回显和后台完成时间。旧 Supervisor Agent/Terminal 只读投影、ACK 完成点和周期 refresh fake timer 均有自动化覆盖；新增 smoke 还从 `origin/main@5355e6a` 构建真实旧 Supervisor，验证实际 PTY、只读降级、禁写、idle 退役与当前进程接管。
 
 Pane Gallery 新投影恢复问题已收口：Host 在健康 authority attach 前拉取 Supervisor 最新 checkpoint，RPC 期间到达的 Host 尾部事件按 revision 合并；Webview 连续 output 以 256 Ki 个 UTF-16 code unit 为批次目标上限回放（单个 event 不拆分），resize/scrollback 保持顺序边界；新激活主 Pane hydrate 排在旧输入节点之前。该实现不改变 live subscription，不把 Host 变成 authority，也不丢弃任何 journal event。
 
 旧 Supervisor 迁移、applied ACK 与周期 cache 收敛也已实现。旧会话不再接受可交互输入或新建请求；ACK 按 Webview surface 和 Supervisor consumer 独立单调；无 attach 的 Host cache 在 checkpoint 落后时按 10–12 秒错峰刷新，并在所有生命周期边界清理。ACK 暂不用于删除磁盘 journal，周期刷新也不触碰已经排队的 live delivery。
 
-本 ExecPlan 仍保持 active：完整 `npm test` 继续受已登记的 Marketplace/Webview 环境基线失败阻断，但当前完整 `trusted` 和 `real-reopen` smoke 均已通过。真实旧版本 Supervisor 二进制升级、ANSI/CJK/emoji 边界、长期 retention 与 compact 仍未完成，不能由协议 mock、当前 10-Agent 样本或 applied ACK 的消费证据替代。
+本 ExecPlan 的阶段目标已经完成。完整默认 VS Code smoke 通过；真实旧版本 Supervisor 二进制升级和 ANSI/OSC/CJK/emoji 边界均已补齐。原样 `npm test` 仍被已在 `origin/main` 复现的 Marketplace IPC 长路径、locale fixture 和其他陈旧测试基线阻断，因此本计划只把审计与归因写成完成，不声称一键命令清洁通过。长期 retention/compact、local PTY 独立恢复、永久 transcript 与 Agent 结构化投影不属于本阶段，已进入技术债追踪。
 
 ## 上下文与定向
 
@@ -254,6 +279,8 @@ Webview applied ACK 从真实 xterm 完成 callback 发出，Host 与 Supervisor
 
     DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs
     DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen node scripts/smoke/run-vscode-smoke.mjs
+    DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=legacy-supervisor-upgrade node scripts/smoke/run-vscode-smoke.mjs
+    npm run test:smoke
 
 最终收口运行 `npm test`。如果 smoke 因 Electron sandbox 或环境能力失败，必须保留 artifact 并区分环境失败与内容断言失败；不能用较低层单测替代真实重开结果。
 
@@ -272,11 +299,11 @@ Webview applied ACK 从真实 xterm 完成 callback 发出，Host 与 Supervisor
 
 设计研究阶段的验收不是编译通过，而是证据闭环：每个问题都能指向 PR/commit、代码路径、现场诊断或回归测试；每个归因都标明是否真正进入 `main`；当前数据流中的每份内容表示都有生产者、消费者、顺序边界和失败降级说明。该部分已经完成。
 
-进入实现后，至少需要自动化覆盖：多节点持续输出下唯一输入节点的输入、ACK 与真实回显优先；逐字节核对所有 controller 无缺失、无重复且有界公平推进；hidden/visible 切换；Webview recreate；Host 完全退出期间 persistent Agent 持续输出并在重连后完整补齐；local PTY 和 live runtime reattach；输出后立即 exit；旧 supervisor 无序号 tail；ANSI 控制序列跨 chunk/跨边界；checkpoint/log 与 raw stream 的连续性；最终输出、exit banner 和 scrollback 完整性。当前新 authority 的 checkpoint/journal、hidden backlog、gap、Reload Window、real reopen、final checkpoint、旧 Supervisor 只读降级、applied ACK、周期 cache refresh 与 10-Agent 总量/输入/公平基准已覆盖，完整 `trusted` 也已复跑通过；真实旧版本二进制迁移和专门的 ANSI/CJK 边界仍未完成。
+进入实现后，至少需要自动化覆盖：多节点持续输出下唯一输入节点的输入、ACK 与真实回显优先；逐字节核对所有 controller 无缺失、无重复且有界公平推进；hidden/visible 切换；Webview recreate；Host 完全退出期间 persistent Agent 持续输出并在重连后完整补齐；local PTY 和 live runtime reattach；输出后立即 exit；旧 supervisor 无序号 tail；ANSI 控制序列跨 chunk/跨边界；checkpoint/log 与 raw stream 的连续性；最终输出、exit banner 和 scrollback 完整性。这些阶段验收项现已覆盖：新 authority 的 checkpoint/journal、hidden backlog、gap、Reload Window、real reopen、final checkpoint、真实旧 Supervisor 只读退役、applied ACK、周期 cache refresh、ANSI/OSC/CJK/emoji 分片与 10-Agent 总量/输入/公平基准均有自动化证据，完整默认 smoke 通过。完整 `npm test` 的非终端基线失败按固定 main 对照记录，不改变上述验收结论。
 
 ## 幂等性与恢复
 
-历史查询和文档更新可重复执行。当前使用独立 worktree，不修改原 `dev-session-canvas6` 中的未提交文件。journal 测试全部使用临时目录；同一 session 只有显式 delete 才移除 journal。stale manifest 只在完整 checksum tail 可验证时修复，最后不完整 record 只截断到上一条完整换行；中间损坏保持 fail closed。旧 tail 不会被猜测性升级成新 authority checkpoint。
+历史查询和文档更新可重复执行。本分支与实现均位于当前 `dev-session-canvas6` worktree；journal 测试全部使用临时目录，同一 session 只有显式 delete 才移除 journal。stale manifest 只在完整 checksum tail 可验证时修复，最后不完整 record 只截断到上一条完整换行；中间损坏保持 fail closed。旧 tail 不会被猜测性升级成新 authority checkpoint。真实旧 Supervisor fixture 每次从固定 Git ref 重新物化到 `.debug/`，可安全覆盖重跑。
 
 ## 证据与备注
 
@@ -296,4 +323,4 @@ PR #152 的 `docs/exec-plans/active/execution-input-responsiveness.md` 记录了
 
 ---
 
-最后更新说明：2026-07-10 建立第一轮历史诊断并根据用户确认，将无损 live 增量、唯一输入节点优先级和 Host 非后台 Agent 恢复权威写为硬性边界。2026-07-11 从最新 `origin/main` 新建 `agent-terminal-lossless-io-redesign`，选定并实现 supervisor 唯一 authority、完整非压缩 journal、checkpoint cache 和两阶段 attach；针对 Pane Gallery 主画板空白，又完成按 attach 的权威 checkpoint refresh、无损 Host tail 合并、Webview 批量 replay 和激活投影优先级，随后补齐可重复 10-Agent 容量基准与持续输入下的有界公平调度。本次更新继续完成旧 Supervisor 只读退役、按 consumer 分水位的 applied ACK 与 10–12 秒错峰 Host cache 收敛；修复 trusted 测试 setup 的 fake-provider 并发 start 竞态后，完整 `trusted` 已通过。ExecPlan 继续保留完整测试基线、真实旧二进制迁移和终端边界收口，避免把尚未完成的范围写成结论。
+最后更新说明：2026-07-10 建立第一轮历史诊断并根据用户确认，将无损 live 增量、唯一输入节点优先级和 Host 非后台 Agent 恢复权威写为硬性边界。2026-07-11 从最新 `origin/main` 新建 `agent-terminal-lossless-io-redesign`，选定并实现 supervisor 唯一 authority、完整非压缩 journal、checkpoint cache 和两阶段 attach；针对 Pane Gallery 主画板空白，又完成按 attach 的权威 checkpoint refresh、无损 Host tail 合并、Webview 批量 replay 和激活投影优先级，随后补齐可重复 10-Agent 容量基准与持续输入下的有界公平调度。最终收口完成旧 Supervisor 只读退役、按 consumer 分水位的 applied ACK、10–12 秒错峰 Host cache 收敛、固定历史 ref 的真实旧二进制迁移和 ANSI/OSC/CJK/emoji 分片恢复验证；分支已 rebase 到 `origin/main@d7baadf`，完整 Webview 的 10 项非终端失败在该目标基线逐项复现，`npm test` 基线缺口已归因并登记技术债，因此计划归档为完成。

@@ -461,6 +461,7 @@ export interface WebviewProbeNodeSnapshot {
   renderedHeight: number;
   overlayTitle?: string;
   overlayMessage?: string;
+  terminalLegacyTranscript?: string;
   titleInputValue?: string;
   bodyValue?: string;
   terminalSelectionText?: string;
@@ -2961,6 +2962,7 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     Number.isFinite(value.renderedHeight) &&
     (value.overlayTitle === undefined || typeof value.overlayTitle === 'string') &&
     (value.overlayMessage === undefined || typeof value.overlayMessage === 'string') &&
+    (value.terminalLegacyTranscript === undefined || typeof value.terminalLegacyTranscript === 'string') &&
     (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
     (value.bodyValue === undefined || typeof value.bodyValue === 'string') &&
     (value.terminalSelectionText === undefined || typeof value.terminalSelectionText === 'string') &&

@@ -88,6 +88,10 @@ export class RuntimeSupervisorClient {
     return this.helloResult?.capabilities?.terminalAppliedRevisionAckV1 === true;
   }
 
+  public hasPendingRequests(): boolean {
+    return this.pendingRequests.size > 0;
+  }
+
   public async createSession(
     params: RuntimeSupervisorCreateSessionParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {

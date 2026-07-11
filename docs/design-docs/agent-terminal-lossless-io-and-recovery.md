@@ -1,7 +1,7 @@
 ---
 title: Agent / Terminal 无损输入输出与恢复
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 协作对象域
@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/agent-terminal-lossless-io-redesign.md
+  - docs/exec-plans/completed/agent-terminal-lossless-io-redesign.md
   - docs/exec-plans/active/execution-input-responsiveness.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
 updated_at: 2026-07-11
@@ -340,7 +340,7 @@ Webview 为每个待 drain controller 保存首次排队时间，并用 `kind + 
 
 这里的“有界”指 scheduler 在 controller 可写时的 admission bound，而不是承诺 xterm parser、浏览器主线程或操作系统在任意负载下都有固定墙钟完成时间。持续输入不能让可写后台 controller 永久饥饿；若 xterm 自身的上一个 write 尚未完成，调度器保留内容和年龄，并在 write 可继续后重试。
 
-仓库提供 `npm run benchmark:agent-terminal-io` 作为可重复 10-Agent 容量基准。最终 Linux headless 验证样本中，Supervisor 对 10 个 PTY Agent 写入 828,019 个字符：输入 RPC 30.59ms、真实回显 31.04ms、九路后台输出 286.67ms 完成，journal 为 1,004,496 bytes、registry 为 1,946,165 bytes、checkpoint 共 864,160 字符；Supervisor 在 988.53ms 基准区间消耗约 1,250ms CPU（约 126.45%，可使用多核）。同次 Webview 样本逐行核对 864,020 个字符、36,001 行，无缺失、重复或乱序：输入 dispatch 14.6ms、ACK 21.8ms、优先回显 204.9ms、全部后台完成 14.79s，Chromium main-thread Task/Script CPU 分别约 1,043.83ms/510.27ms。该样本用于回归比较和容量守门，不是跨机器产品 SLA；自动化使用更宽的 150ms dispatch、250ms ACK、500ms 优先回显和 45s 全量完成阈值吸收 runner 差异。
+仓库提供 `npm run benchmark:agent-terminal-io` 作为可重复 10-Agent 容量基准。rebase 到最终目标基线后的 Linux headless 样本中，Supervisor 对 10 个 PTY Agent 写入 828,019 个字符：输入 RPC 9.98ms、真实回显 19.98ms、九路后台输出 406.92ms 完成，journal 为 1,001,848 bytes、registry 为 1,946,165 bytes、checkpoint 共 864,160 字符；Supervisor 在 865.44ms 基准区间消耗约 1,170ms CPU（约 135.19%，可使用多核）。同轮完整 Webview 样本逐行核对 864,020 个字符、36,001 行，无缺失、重复或乱序：输入 dispatch 8.6ms、ACK 13.9ms、优先回显 189.4ms、全部后台完成 2.03s，Chromium main-thread Task/Script CPU 分别约 1,507.43ms/432.15ms。该样本用于回归比较和容量守门，不是跨机器产品 SLA；自动化使用更宽的 150ms dispatch、250ms ACK、500ms 优先回显和 45s 全量完成阈值吸收 runner 差异。
 
 ### 10.8 旧 Supervisor 的只读退役迁移
 
@@ -389,7 +389,7 @@ Host 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 
 
 ## 12. 验证方法
 
-设计选择前应先建立可重复失败基线：
+本阶段使用以下可重复基线与回归矩阵验证正式方案：
 
 - 用真实 headless xterm 证明从 ANSI/UTF 边界中间截断的 6000 字符 tail 不能恢复原画面。
 - 用当前 `origin/main` 复现 replacement snapshot 不可信时，Webview/Host 已先清空待处理 output。
@@ -403,7 +403,7 @@ Host 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 
 
 自动化不能只断言“某个 marker 最终出现”；还要断言未重复、未缺失、顺序正确、旧内容未被未经验证的 snapshot 覆盖、每个 controller 在有界时间内推进。
 
-## 13. 当前结论
+## 13. 实施与验证结论
 
 历史诊断已确认：
 
@@ -431,11 +431,15 @@ Host 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 
 - Webview 只在 xterm write callback、前序 write 后的 resize/scrollback 或完整 snapshot replay 完成时发送 `webview/executionTerminalApplied`。Host 按 surface 校验，Supervisor 按同 socket 内的 `consumerId=panel|editor` 分水位记录；ACK 不推进 authority revision，也不删除 journal。
 - Host 以 10–12 秒确定性错峰周期检查健康 authority cache；只有 checkpoint 落后时请求权威 snapshot，并与 RPC 期间连续 live tail 无损合并。attach、周期和并发刷新复用同一 in-flight，所有 session/Host 生命周期边界都会清 timer。
 
-当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；projection refresh 不撤销 live subscription；checkpoint geometry 与 tracker flush 使用同一切点；final/registry checkpoint 覆盖 final revision；旧 Supervisor Agent/Terminal 只读降级；Host/Supervisor ACK 单调性；周期 refresh 去重、错峰、stale timer 与 dispose 后不重调度；Webview checkpoint+journal 顺序 hydrate 并在完成点 ACK、4000 个连续 output event 批量回放后尾部完整、live revision gap 恢复、健康/结束态 snapshot 不替换既有 backlog；Pane Gallery 新主画板 hydrate 先于旧输入节点；10-Agent Supervisor/Webview 基准逐行验证无损、保序、输入优先和后台有界公平。`real-reopen` 与当前完整 `trusted` 均已通过。`trusted` 复跑期间暴露的 fake-provider auto-start/manual-start 竞态已经通过等待自动启动完成、停止会话后再进入手动 start 基线修复；该修复只同步测试 setup，不改变产品运行时语义。用户使用最新 Supervisor 手动复测缩略图切换主画板，未再发现输出延迟补全、显示不完整或其他新问题。
+当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；projection refresh 不撤销 live subscription；checkpoint geometry 与 tracker flush 使用同一切点；final/registry checkpoint 覆盖 final revision；旧 Supervisor Agent/Terminal 只读降级；Host/Supervisor ACK 单调性；周期 refresh 去重、错峰、stale timer 与 dispose 后不重调度；Webview checkpoint+journal 顺序 hydrate 并在完成点 ACK、4000 个连续 output event 批量回放后尾部完整、live revision gap 恢复、健康/结束态 snapshot 不替换既有 backlog；Pane Gallery 新主画板 hydrate 先于旧输入节点；10-Agent Supervisor/Webview 基准逐行验证无损、保序、输入优先和后台有界公平。完整 VS Code smoke 已通过 trusted、restricted、多 root、双窗口共享 runtime、systemd user/fallback、Remote SSH real reopen 等全部默认场景。
 
-以下仍未写成已完成结论：
+真实迁移 smoke 会从固定基线 `origin/main@5355e6a` 物化扩展源码并重新构建旧 Supervisor，而不是伪造 capability。旧进程实际持有 Agent 与 Terminal PTY；当前 Host 重建后只显示去控制序列的只读 transcript，Webview 和 Host 两层均拒绝 input/resize，同一旧进程拒绝新 session。停止或删除最后的旧会话后，Host 等待 in-flight RPC settled 再释放 client，旧进程在 30 秒 idle 窗口后自然退出；下一次创建连接到声明 `terminalSessionStreamV1` 的当前 Supervisor。该 smoke 还发现旧 Supervisor 会先广播 delete 终态、再返回 delete RPC；如果终态处理立即 dispose client，会出现 PTY 已删除但画布节点删除失败。当前实现以 `RuntimeSupervisorClient.hasPendingRequests()` 保护退役，并在 strict delete 的所有 settled 路径重新检查。
+
+终端边界回归分别覆盖 CSI/ANSI、cursor addressing、BEL 结尾 OSC title、ST 结尾 OSC 8、alternate screen、resize、scrollback、CJK 和 emoji 分片。Webview 在 revision 20 完成后 ACK，最终 buffer 无控制残片、`U+FFFD`、缺失或重复，raw tail 不参与 hydrate；真实 PTY fixture 又把 `中文🚀` 的 UTF-8 bytes 拆成四次写入和多个 Supervisor revision，journal、projection 与 checkpoint 均恢复为同一文本。`trusted` 复跑期间暴露的 fake-provider auto-start/manual-start 竞态已经通过等待自动启动完成、停止会话后再进入手动 start 基线修复；该修复只同步测试 setup，不改变产品运行时语义。用户使用最新 Supervisor 手动复测缩略图切换主画板，未再发现输出延迟补全、显示不完整或其他新问题。
+
+以下属于后续阶段，不由本阶段的“已验证”状态代替：
 
 - applied ACK 当前只提供消费证据，完整磁盘 journal 仍不 compact；长期 retention、跨代回退和受 ACK 约束的删除策略需要另行设计。
-- 旧 Supervisor 的 capability 分流、只读 UI、禁写与 client 退役已有自动化覆盖，但仍缺一条真实旧版本二进制持有 PTY、升级扩展并等待自然退出的端到端 smoke。
-- alternate screen、OSC、CJK/emoji 边界与长期 retention 仍需单独验证；10-Agent 当前样本不能替代这些终端语义和长时间容量结论。
+- 当前真实旧 Supervisor 升级 smoke 运行在 Linux/Unix socket 路径；其他平台仍由 capability 与协议回归覆盖，不能把这条 Linux 证据写成全平台真实旧二进制矩阵。
+- 当前 ANSI/OSC/CJK/emoji fixture 已覆盖分片和恢复边界；10-Agent 当前样本仍不能替代长时间容量、持续磁盘增长与 retention 结论。
 - local PTY 的独立恢复语义、journal compact、永久 transcript 与 Agent 结构化内容投影不属于本阶段实现。

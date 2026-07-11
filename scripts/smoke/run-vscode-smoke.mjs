@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 
 import {
+  buildHistoricalRuntimeSupervisorFixture,
   ensureVSCodeExecutable,
   installVSCodeExtensions,
   launchPreparedVSCodeScenario,
@@ -32,6 +33,7 @@ const fakeSystemdShimPath = path.join(
   'fake-systemd',
   'systemctl.cjs'
 );
+const legacySupervisorBaselineRef = '5355e6a';
 const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER);
 
 const scenarios = [
@@ -98,6 +100,10 @@ async function main() {
     console.log(`${scenario.description} passed.`);
   }
 
+  if (shouldRunScenario('legacy-supervisor-upgrade')) {
+    await runLegacySupervisorUpgradeScenario();
+  }
+
   if (shouldRunScenario('real-reopen')) {
     await runRealWindowReopenScenario();
   }
@@ -120,6 +126,56 @@ async function main() {
     await runRemoteSSHRealReopenScenario();
   }
   console.log('VS Code smoke test passed.');
+}
+
+async function runLegacySupervisorUpgradeScenario() {
+  if (process.platform === 'win32') {
+    console.log('Legacy Supervisor upgrade smoke skipped on Windows because it validates Unix socket retirement.');
+    return;
+  }
+
+  const scenarioName = 'legacy-supervisor-upgrade';
+  const runtime = await prepareRuntime({
+    projectRoot,
+    debugRoot: path.join(smokeDebugRoot, scenarioName),
+    runtimeDirName: `dsc-vscode-smoke-runtime-${scenarioName}`,
+    extensionTestsEnv: {
+      DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenarioName,
+      DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+      DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
+      PATH: smokeFixturesPath
+    }
+  });
+  const smokeHostRoot = await prepareMainSmokeHostExtension({
+    projectRoot,
+    targetRoot: path.join(runtime.debugRoot, 'smoke-host')
+  });
+  const legacySupervisorScript = await buildHistoricalRuntimeSupervisorFixture({
+    projectRoot,
+    ref: legacySupervisorBaselineRef,
+    sourceRoot: path.join(runtime.debugRoot, 'legacy-supervisor-source'),
+    outfile: path.join(smokeHostRoot, 'dist', `runtime-supervisor-${legacySupervisorBaselineRef}.js`)
+  });
+
+  await launchPreparedVSCodeScenario({
+    projectRoot,
+    runtime,
+    workspacePath: projectRoot,
+    extensionDevelopmentPath: smokeHostRoot,
+    extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'legacy-supervisor-upgrade-tests.cjs'),
+    disableExtensions: false,
+    disableWorkspaceTrust: true,
+    extensionTestsEnv: {
+      DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenarioName,
+      DEV_SESSION_CANVAS_LEGACY_SUPERVISOR_REF: legacySupervisorBaselineRef,
+      DEV_SESSION_CANVAS_LEGACY_SUPERVISOR_SCRIPT: legacySupervisorScript,
+      DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+      DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
+      PATH: smokeFixturesPath
+    }
+  });
+
+  console.log(`Legacy Supervisor upgrade smoke (${legacySupervisorBaselineRef}) passed.`);
 }
 
 async function runRealWindowReopenScenario() {
