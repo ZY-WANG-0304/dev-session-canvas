@@ -15523,6 +15523,138 @@ for (const executionKind of ['agent', 'terminal']) {
     expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
   });
 
+  test(`${executionKind} applies one authority revision once when output arrives before its covering snapshot`, async ({ page }) => {
+    test.setTimeout(60_000);
+    const nodeId = `${executionKind}-zoom`;
+    const previousSessionId = `${executionKind}-previous-projection-session`;
+    const previousAuthorityId = `${executionKind}-previous-projection-authority`;
+    const nextSessionId = `${executionKind}-next-projection-session`;
+    const nextAuthorityId = `${executionKind}-next-projection-authority`;
+    const marker = 'ONE-AUTHORITY-REVISION-MUST-RENDER-ONCE';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+    const previousStream = await createTerminalStreamPayload({
+      sessionId: previousSessionId,
+      authorityId: previousAuthorityId,
+      checkpointOutput: 'PREVIOUS-PROJECTION\r\n',
+      checkpointRevision: 1,
+      checkpointCols: readyTerminal.terminalCols,
+      checkpointRows: readyTerminal.terminalRows
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      executionSessionId: previousSessionId,
+      outputSequence: previousStream.revision,
+      terminalStream: previousStream
+    });
+    await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
+      (messages) => messages.some((message) => message.payload.authorityId === previousAuthorityId)
+    );
+
+    await clearPostedMessages(page);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get: () => true
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${marker}\r\n`,
+      executionSessionId: nextSessionId,
+      outputSequence: 1,
+      terminalAuthorityId: nextAuthorityId,
+      terminalStartRevision: 1,
+      terminalRevision: 1,
+      persisted: true
+    });
+    const coveringStream = await createTerminalStreamPayload({
+      sessionId: nextSessionId,
+      authorityId: nextAuthorityId,
+      checkpointOutput: `${marker}\r\n`,
+      checkpointRevision: 1,
+      checkpointCols: readyTerminal.terminalCols,
+      checkpointRows: readyTerminal.terminalRows
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      executionSessionId: nextSessionId,
+      outputSequence: coveringStream.revision,
+      terminalStream: coveringStream
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get: () => false
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.payload.executionSessionId === nextSessionId &&
+            message.payload.authorityId === nextAuthorityId &&
+            message.payload.revision === 1
+        )
+    );
+    await settleWebview(page, 8);
+    const visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((visibleText.match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
+  });
+
+  test(`${executionKind} preserves identical text emitted by two distinct authority revisions`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const executionSessionId = `${executionKind}-repeated-text-session`;
+    const authorityId = `${executionKind}-repeated-text-authority`;
+    const marker = 'DISTINCT-REVISIONS-MAY-HAVE-IDENTICAL-TEXT';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+    const terminalStream = await createTerminalStreamPayload({
+      sessionId: executionSessionId,
+      authorityId,
+      checkpointOutput: 'REPEATED-TEXT-CHECKPOINT\r\n',
+      checkpointRevision: 1,
+      checkpointCols: readyTerminal.terminalCols,
+      checkpointRows: readyTerminal.terminalRows,
+      events: [
+        { type: 'output', revision: 2, data: `${marker}\r\n` },
+        { type: 'output', revision: 3, data: `${marker}\r\n` }
+      ]
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      executionSessionId,
+      outputSequence: terminalStream.revision,
+      terminalStream
+    });
+    await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
+      (messages) => messages.some((message) => message.payload.revision === 3)
+    );
+    await settleWebview(page, 4);
+
+    const visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((visibleText.match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(2);
+  });
+
   test(`${executionKind} fails closed on a revision gap and rejects malformed recovery payloads`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const executionSessionId = `${executionKind}-terminal-gap-session`;

@@ -107,8 +107,8 @@ try {
   const supervisorSource = await readFile(path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts'), 'utf8');
   assert.match(
     supervisorSource,
-    /private async deleteSession\([\s\S]*?session\.live = false;[\s\S]*?await this\.emitFreshSessionState\(session\);[\s\S]*?this\.sessions\.delete\(params\.sessionId\);/u,
-    'deleteSession 必须先向所有订阅窗口广播 fresh 非 live 终态，再删除共享 backend session。'
+    /private async deleteSession\([\s\S]*?terminalMutationAdmissionOpen = false;[\s\S]*?await this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*?payload:[\s\S]*?await this\.createFreshSnapshot\(session\)[\s\S]*?this\.sessions\.delete\(params\.sessionId\);/u,
+    'deleteSession 必须先关闭 mutation admission，并在串行链路收敛 fresh 非 live 终态后再删除共享 backend session。'
   );
   assert.match(
     supervisorSource,
@@ -132,8 +132,8 @@ try {
   );
   assert.match(
     supervisorSource,
-    /private async finalizeSession\([\s\S]*await this\.emitFreshSessionState\(session\);[\s\S]*private async emitFreshSessionState\([\s\S]*payload: await this\.toFreshSnapshot\(session\)/u,
-    'runtime supervisor final sessionState 必须先 flush headless terminal，避免输出后立即退出时丢失 serializedTerminalState。'
+    /private async finalizeSession\([\s\S]*this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*payload: await this\.createFreshSnapshot\(session\)/u,
+    'runtime supervisor final sessionState 必须在串行边界内 flush headless terminal，避免输出后立即退出时丢失 serializedTerminalState。'
   );
   assert.match(
     supervisorSource,
@@ -456,6 +456,208 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_AUTHORITY_MISMATCH',
       'applied ACK must reject another authority.'
     );
+
+    const revisionOrderScriptPath = path.join(tempDir, 'runtime-terminal-revision-order.js');
+    const revisionOrderPrimeMarker = 'REVISION-ORDER-PRIME-END';
+    const revisionOrderAfterMarker = 'REVISION-ORDER-AFTER-SCROLLBACK';
+    await writeFile(
+      revisionOrderScriptPath,
+      `process.stdin.setEncoding('utf8');
+process.stdin.on('data', (data) => {
+  if (data.includes('prime')) {
+    process.stdout.write('p'.repeat(2 * 1024 * 1024));
+    process.stdout.write(${JSON.stringify(`${revisionOrderPrimeMarker}\r\n`)});
+    return;
+  }
+  if (data.includes('after')) {
+    process.stdout.write(${JSON.stringify(`${revisionOrderAfterMarker}\r\n`)});
+  }
+});
+setInterval(() => undefined, 1000);
+`,
+      'utf8'
+    );
+    const revisionOrderSessionId = 'terminal-revision-publication-order';
+    const revisionOrderSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'terminal',
+      sessionId: revisionOrderSessionId,
+      displayLabel: 'Revision publication order fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [revisionOrderScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId: revisionOrderSessionId,
+      authorityId: revisionOrderSnapshot.terminalAuthorityId,
+      afterRevision: revisionOrderSnapshot.terminalRevision
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: revisionOrderSessionId,
+      data: 'prime\n'
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      revisionOrderSessionId,
+      revisionOrderPrimeMarker,
+      'revision order tracker backlog',
+      10000
+    );
+
+    const updateScrollbackPromise = sendRuntimeSupervisorRequest(socket, messages, 'updateSessionScrollback', {
+      sessionId: revisionOrderSessionId,
+      scrollback: 2400
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: revisionOrderSessionId,
+      data: 'after\n'
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      revisionOrderSessionId,
+      revisionOrderAfterMarker,
+      'output emitted while scrollback tracker update is pending',
+      10000
+    );
+    await updateScrollbackPromise;
+    await delay(50);
+    const revisionOrderEvents = messages.filter(
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionTerminalEvent' &&
+        message.payload?.sessionId === revisionOrderSessionId
+    );
+    const orderedScrollbackIndex = revisionOrderEvents.findIndex(
+      (message) => message.payload.event.type === 'scrollback' && message.payload.event.scrollback === 2400
+    );
+    const orderedOutputIndex = revisionOrderEvents.findIndex(
+      (message) =>
+        message.payload.event.type === 'output' &&
+        message.payload.event.data.includes(revisionOrderAfterMarker)
+    );
+    assert.ok(orderedScrollbackIndex >= 0, 'Expected the requested scrollback revision to be published.');
+    assert.ok(orderedOutputIndex >= 0, 'Expected output produced during the scrollback update to be published.');
+    assert.ok(
+      revisionOrderEvents[orderedScrollbackIndex].payload.event.revision <
+        revisionOrderEvents[orderedOutputIndex].payload.event.revision,
+      'The journal must assign the scrollback revision before later output.'
+    );
+    const publishedScrollbackBeforeLaterOutput = orderedScrollbackIndex < orderedOutputIndex;
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: revisionOrderSessionId
+    });
+
+    const finalizationRaceScriptPath = path.join(tempDir, 'runtime-terminal-finalization-race.js');
+    const finalizationRaceMarker = 'FINALIZATION-RACE-END';
+    await writeFile(
+      finalizationRaceScriptPath,
+      `process.stdin.setEncoding('utf8');
+process.stdin.once('data', () => {
+  process.stdout.write('f'.repeat(2 * 1024 * 1024));
+  process.stdout.write(${JSON.stringify(`${finalizationRaceMarker}\r\n`)});
+  setTimeout(() => process.exit(0), 5);
+});
+setInterval(() => undefined, 1000);
+`,
+      'utf8'
+    );
+    const finalizationRaceSessionId = 'terminal-finalization-resize-race';
+    const finalizationRaceSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'terminal',
+      sessionId: finalizationRaceSessionId,
+      displayLabel: 'Finalization resize race fixture',
+      launchMode: 'start',
+      scrollback: 100000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [finalizationRaceScriptPath],
+        cwd: tempDir,
+        cols: 96,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId: finalizationRaceSessionId,
+      authorityId: finalizationRaceSnapshot.terminalAuthorityId,
+      afterRevision: finalizationRaceSnapshot.terminalRevision
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: finalizationRaceSessionId,
+      data: 'exit\n'
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      finalizationRaceSessionId,
+      finalizationRaceMarker,
+      'finalization race output',
+      10000
+    );
+    await delay(25);
+    const finalizingResizeResponse = await sendRuntimeSupervisorRawRequest(
+      socket,
+      messages,
+      'resizeSession',
+      {
+        sessionId: finalizationRaceSessionId,
+        cols: 77,
+        rows: 19
+      }
+    );
+    await delay(3000);
+    const finalizationRaceStates = messages.filter(
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === finalizationRaceSessionId &&
+        message.payload.live === false
+    );
+    const finalizationRaceState = finalizationRaceStates.find(
+      (message) =>
+        message.payload.terminalStream?.revision === message.payload.terminalRevision &&
+        message.payload.serializedTerminalState?.outputSequence === message.payload.terminalRevision
+    );
+    assert.deepEqual(
+      {
+        publishedScrollbackBeforeLaterOutput,
+        finalizingResizeRejected:
+          finalizingResizeResponse.ok === false &&
+          finalizingResizeResponse.error?.code === 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_LIVE',
+        completeFinalStatePublished: finalizationRaceState !== undefined
+      },
+      {
+        publishedScrollbackBeforeLaterOutput: true,
+        finalizingResizeRejected: true,
+        completeFinalStatePublished: true
+      },
+      'Supervisor must publish terminal revisions in journal order and reject mutations before one complete final state.'
+    );
+    assertTerminalStreamSnapshot(finalizationRaceState.payload, 'finalization resize race final snapshot');
+    assert.equal(
+      finalizationRaceState.payload.terminalStream.revision,
+      finalizationRaceState.payload.terminalRevision
+    );
+    assert.equal(
+      finalizationRaceState.payload.serializedTerminalState?.outputSequence,
+      finalizationRaceState.payload.terminalRevision
+    );
+    assert.match(
+      finalizationRaceState.payload.serializedTerminalState?.data ?? '',
+      new RegExp(finalizationRaceMarker, 'u')
+    );
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: finalizationRaceSessionId
+    });
 
     const unicodeScriptPath = path.join(tempDir, 'runtime-split-utf8-output.js');
     await writeFile(
@@ -1104,6 +1306,12 @@ async function connectRuntimeSupervisorSocket(socketPath, supervisor, stderrChun
 }
 
 async function sendRuntimeSupervisorRequest(socket, messages, method, params) {
+  const response = await sendRuntimeSupervisorRawRequest(socket, messages, method, params);
+  assert.equal(response.ok, true, response.error?.message);
+  return response.result;
+}
+
+async function sendRuntimeSupervisorRawRequest(socket, messages, method, params) {
   const id = `runtime-supervisor-test-${++runtimeSupervisorRequestSequence}`;
   socket.write(`${JSON.stringify({
     type: 'request',
@@ -1116,8 +1324,7 @@ async function sendRuntimeSupervisorRequest(socket, messages, method, params) {
     (message) => message.type === 'response' && message.id === id,
     `${method} response`
   );
-  assert.equal(response.ok, true, response.error?.message);
-  return response.result;
+  return response;
 }
 
 async function sendRuntimeSupervisorErrorRequest(socket, messages, method, params) {

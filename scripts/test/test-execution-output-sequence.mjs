@@ -15,7 +15,7 @@ assert.match(
 );
 assert.match(
   supervisorSource,
-  /private resizeSession\([\s\S]*?appendResize\(params\.cols, params\.rows\)[\s\S]*?outputSequence: terminalEvent\?\.revision[\s\S]*?private async updateSessionScrollback\([\s\S]*?appendScrollback\(scrollback\)[\s\S]*?outputSequence: terminalEvent\?\.revision/u,
+  /private async resizeSession\([\s\S]*?appendResize\(params\.cols, params\.rows\)[\s\S]*?outputSequence: terminalEvent\?\.revision[\s\S]*?private async updateSessionScrollback\([\s\S]*?appendScrollback\(scrollback\)[\s\S]*?outputSequence: terminalEvent\?\.revision/u,
   'output、resize 与 scrollback 必须共用 supervisor journal revision。'
 );
 assert.match(
@@ -82,6 +82,26 @@ assert.match(
   managerSource,
   /deleteRuntimeSupervisorSessionStrict[\s\S]*?finally \{[\s\S]*?retireLegacyRuntimeSupervisorClientIfUnused/u,
   '严格删除 RPC 的所有完成路径都必须在请求 settled 后重新检查旧 Supervisor 退役。'
+);
+assert.match(
+  managerSource,
+  /const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream\(snapshot\);[\s\S]*?options\.historyOnUnavailable && !completedTerminalStream[\s\S]*?applyCompletedRuntimeSupervisorSnapshot/u,
+  'Host 重连到已结束但 terminal stream 完整的 Supervisor session 时必须先持久化权威终态，不能降级为 history tail。'
+);
+assert.match(
+  managerSource,
+  /private async subscribeRuntimeSupervisorTerminalStream\([\s\S]*?if \(!snapshot\.live\) \{\s*return;\s*\}/u,
+  'Host 完成离线终态收敛后不得再订阅已删除的 Supervisor session。'
+);
+assert.match(
+  managerSource,
+  /runtime-supervisor-completed-snapshot'[\s\S]*?requireRootLocalDurability: true[\s\S]*?deleteRuntimeSupervisorSessionStrict/u,
+  'completed stream 必须在主快照和实际 root-local 加载源都 durable 后才能删除 Supervisor journal。'
+);
+assert.match(
+  managerSource,
+  /STORAGE_KEYS\.canvasState,[\s\S]*?stripExecutionTerminalRecoveryPayloadsFromCanvasState\(normalizedWorkspaceState\)/u,
+  '大体积 terminal recovery payload 只写磁盘快照，不得复制进 workspaceState。'
 );
 assert.match(
   managerSource,

@@ -238,6 +238,7 @@ export interface ExecutionSessionMetadata {
   lastCols?: number;
   lastRows?: number;
   serializedTerminalState?: SerializedTerminalState;
+  terminalStream?: TerminalStreamAttachPayload;
   attentionPending: boolean;
 }
 
