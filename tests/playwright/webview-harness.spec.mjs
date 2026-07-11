@@ -14775,9 +14775,7 @@ for (const executionKind of ['agent', 'terminal']) {
 
     await openHarness(page);
     await bootstrap(page, state);
-    for (const nodeId of nodeIds) {
-      await waitForExecutionTerminalReady(page, nodeId);
-    }
+    await waitForExecutionTerminalsReady(page, nodeIds);
     await clearPostedMessages(page);
 
     await performTestDomAction(page, {
@@ -14790,19 +14788,27 @@ for (const executionKind of ['agent', 'terminal']) {
       data: `SNAPSHOT-${'x'.repeat(40 * 1024)}\r\n`
     };
 
-    for (const nodeId of nodeIds) {
-      await dispatchExecutionSnapshot(page, {
-        nodeId,
-        kind: executionKind,
-        output: '',
-        cols: 96,
-        rows: 28,
-        liveSession: true,
-        executionSessionId: `${nodeId}-session`,
-        outputSequence: 1,
-        serializedTerminalState: snapshot
-      });
-    }
+    await page.evaluate(
+      ({ nextNodeIds, kind, serializedTerminalState }) => {
+        for (const nodeId of nextNodeIds) {
+          window.__devSessionCanvasHarness.dispatchHostMessage({
+            type: 'host/executionSnapshot',
+            payload: {
+              nodeId,
+              kind,
+              output: '',
+              cols: 96,
+              rows: 28,
+              liveSession: true,
+              executionSessionId: `${nodeId}-session`,
+              outputSequence: 1,
+              serializedTerminalState
+            }
+          });
+        }
+      },
+      { nextNodeIds: nodeIds, kind: executionKind, serializedTerminalState: snapshot }
+    );
 
     const startedDiagnostics = await waitForPostedMessagesByTypeMatch(
       page,
@@ -14827,6 +14833,7 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 test('pane gallery prioritizes the newly activated main terminal over stale input priority', async ({ page }) => {
+  test.setTimeout(60_000);
   const state = createPaneGalleryCanvasState();
   const frontendNodeId = 'workspace-root-frontend-terminal';
   const backendNodeId = 'workspace-root-backend-terminal';
@@ -14967,9 +14974,7 @@ test('agent output drain reaches every live node when many nodes have pending ba
     }
   });
   await bootstrap(page, state);
-  for (const nodeId of nodeIds) {
-    await waitForExecutionTerminalReady(page, nodeId);
-  }
+  await waitForExecutionTerminalsReady(page, nodeIds);
 
   await page.evaluate((events) => {
     for (const payload of events) {
@@ -14989,7 +14994,242 @@ test('agent output drain reaches every live node when many nodes have pending ba
   }
 });
 
+test('10-agent live output capacity benchmark stays lossless and keeps input responsive', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const agentCount = 10;
+  const backgroundLineCount = 4000;
+  const state = createMultiLiveExecutionNodeState('agent', agentCount);
+  state.nodes.forEach((node, index) => {
+    node.position = {
+      x: 120 + (index % 5) * 620,
+      y: 140 + Math.floor(index / 5) * 500
+    };
+  });
+  const nodeIds = state.nodes.map((node) => node.id);
+  const inputNodeId = nodeIds.at(-1);
+  const backgroundNodeIds = nodeIds.slice(0, -1);
+  const expectedLinesByNode = new Map();
+  const backgroundPayloads = backgroundNodeIds.map((nodeId, nodeIndex) => {
+    const prefix = `AG${String(nodeIndex + 1).padStart(2, '0')}`;
+    const lines = Array.from({ length: backgroundLineCount }, (_value, lineIndex) =>
+      `${prefix}-${String(lineIndex).padStart(4, '0')}-xxxxxxxxxxxx`
+    );
+    expectedLinesByNode.set(nodeId, lines);
+    return {
+      nodeId,
+      kind: 'agent',
+      chunk: `${lines.join('\r\n')}\r\n`,
+      executionSessionId: `capacity-benchmark-session-${nodeIndex + 1}`,
+      outputSequence: 1,
+      persisted: true
+    };
+  });
+  const priorityMarker = 'AG10-PRIORITY-ECHO';
+  const priorityPayload = {
+    nodeId: inputNodeId,
+    kind: 'agent',
+    chunk: `${priorityMarker}\r\n`,
+    executionSessionId: 'capacity-benchmark-session-10',
+    outputSequence: 1,
+    persisted: true
+  };
+  expectedLinesByNode.set(inputNodeId, [priorityMarker]);
+
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.45
+      }
+    }
+  });
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({ terminalScrollback: backgroundLineCount + 500 })
+  );
+  await waitForExecutionTerminalsReady(page, nodeIds);
+  await clearPostedMessages(page);
+  const performanceSession = await page.context().newCDPSession(page);
+  await performanceSession.send('Performance.enable');
+  const performanceBefore = await performanceSession.send('Performance.getMetrics');
+
+  const floodStartedAt = await page.evaluate((payloads) => {
+    const startedAt = performance.now();
+    for (const payload of payloads) {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionOutput',
+        payload
+      });
+    }
+    return startedAt;
+  }, backgroundPayloads);
+  // Let background controllers enter the xterm write path before measuring input.
+  await settleWebview(page, 2);
+
+  const inputDispatch = await page.evaluate(
+    ({ nodeId, echoPayload }) =>
+      new Promise((resolve, reject) => {
+        const requestId = `capacity-benchmark-input-${Date.now()}`;
+        const startedAt = performance.now();
+        const timeout = window.setTimeout(() => {
+          window.removeEventListener('dev-session-canvas:harness-post-message', onPostedMessage);
+          reject(new Error('Timed out waiting for the benchmark execution input message.'));
+        }, 5000);
+        const onPostedMessage = (event) => {
+          const message = event.detail;
+          if (message?.type !== 'webview/executionInput' || message.payload?.nodeId !== nodeId) {
+            return;
+          }
+
+          window.clearTimeout(timeout);
+          window.removeEventListener('dev-session-canvas:harness-post-message', onPostedMessage);
+          const inputPostedAt = performance.now();
+          window.__devSessionCanvasHarness.dispatchHostMessage({
+            type: 'host/executionOutput',
+            payload: echoPayload
+          });
+          window.setTimeout(() => {
+            const hostReceivedEpochMs = Date.now();
+            window.__devSessionCanvasHarness.dispatchHostMessage({
+              type: 'host/executionInputAck',
+              payload: {
+                nodeId,
+                kind: 'agent',
+                sequence: message.payload.sequence,
+                webviewEpochMs: message.payload.webviewEpochMs,
+                webviewPerformanceNowMs: message.payload.webviewPerformanceNowMs,
+                hostReceivedEpochMs,
+                hostAckEpochMs: hostReceivedEpochMs,
+                hostAckPostEpochMs: Date.now(),
+                queueDelayMs: 0,
+                controllerCount: 10,
+                pendingControllerCount: 9,
+                queuedWriteCount: 9,
+                pendingOutputLength: 0
+              }
+            });
+          }, 12);
+          resolve({
+            inputDispatchMs: inputPostedAt - startedAt,
+            inputPostedAt
+          });
+        };
+
+        window.addEventListener('dev-session-canvas:harness-post-message', onPostedMessage);
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/testDomAction',
+          payload: {
+            requestId,
+            action: {
+              kind: 'sendExecutionInput',
+              nodeId,
+              data: 'p'
+            }
+          }
+        });
+      }),
+    { nodeId: inputNodeId, echoPayload: priorityPayload }
+  );
+
+  const ackDiagnostics = await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionPerformanceDiagnostic',
+    (messages) => messages.some(
+      (message) =>
+        message.payload.source === 'webview-input-ack' &&
+        message.payload.nodeId === inputNodeId
+    )
+  );
+  const ackDiagnostic = ackDiagnostics.find(
+    (message) =>
+      message.payload.source === 'webview-input-ack' &&
+      message.payload.nodeId === inputNodeId
+  );
+
+  const completionMsByNode = new Map();
+  const completionDeadline = Date.now() + 45_000;
+  while (completionMsByNode.size < nodeIds.length && Date.now() < completionDeadline) {
+    const snapshot = await requestWebviewProbe(page, 0);
+    const now = await page.evaluate(() => performance.now());
+    for (const nodeId of nodeIds) {
+      if (completionMsByNode.has(nodeId)) {
+        continue;
+      }
+      const probeNode = snapshot.nodes.find((node) => node.nodeId === nodeId);
+      const finalLine = expectedLinesByNode.get(nodeId).at(-1);
+      if (probeNode?.terminalVisibleLines?.some((line) => line.includes(finalLine))) {
+        completionMsByNode.set(nodeId, now - floodStartedAt);
+      }
+    }
+    if (completionMsByNode.size < nodeIds.length) {
+      await page.waitForTimeout(20);
+    }
+  }
+
+  expect(completionMsByNode.size).toBe(nodeIds.length);
+  const performanceAfter = await performanceSession.send('Performance.getMetrics');
+  await performanceSession.detach();
+  const metricDeltaMs = (name) => {
+    const before = performanceBefore.metrics.find((metric) => metric.name === name)?.value ?? 0;
+    const after = performanceAfter.metrics.find((metric) => metric.name === name)?.value ?? before;
+    return Math.max(0, after - before) * 1000;
+  };
+  for (const nodeId of nodeIds) {
+    await performTestDomAction(page, {
+      kind: 'assertExecutionTerminalBuffer',
+      nodeId,
+      expectedLines: expectedLinesByNode.get(nodeId)
+    });
+  }
+
+  const priorityCompletionMs = completionMsByNode.get(inputNodeId);
+  const priorityEchoLatencyMs = priorityCompletionMs - (inputDispatch.inputPostedAt - floodStartedAt);
+  const backgroundCompletionMs = backgroundNodeIds.map((nodeId) => completionMsByNode.get(nodeId));
+  const maxBackgroundCompletionMs = Math.max(...backgroundCompletionMs);
+  const minBackgroundCompletionMs = Math.min(...backgroundCompletionMs);
+  const totalCharacters = backgroundPayloads.reduce((total, payload) => total + payload.chunk.length, 0) +
+    priorityPayload.chunk.length;
+  const mainThreadLagDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
+  const maxMainThreadLagMs = Math.max(
+    0,
+    ...mainThreadLagDiagnostics
+      .filter((message) => message.payload.source === 'webview-main-thread-lag')
+      .map((message) => message.payload.durationMs ?? 0)
+  );
+  const metrics = {
+    agentCount,
+    backgroundLineCount,
+    totalCharacters,
+    inputDispatchMs: Math.round(inputDispatch.inputDispatchMs * 100) / 100,
+    inputAckRoundTripMs: ackDiagnostic?.payload.durationMs,
+    priorityEchoLatencyMs: Math.round(priorityEchoLatencyMs * 100) / 100,
+    maxBackgroundCompletionMs: Math.round(maxBackgroundCompletionMs * 100) / 100,
+    backgroundCompletionSpreadMs: Math.round((maxBackgroundCompletionMs - minBackgroundCompletionMs) * 100) / 100,
+    maxMainThreadLagMs,
+    webviewTaskCpuMs: Math.round(metricDeltaMs('TaskDuration') * 100) / 100,
+    webviewScriptCpuMs: Math.round(metricDeltaMs('ScriptDuration') * 100) / 100
+  };
+  metrics.webviewTaskCpuUtilizationPercent =
+    Math.round((metrics.webviewTaskCpuMs / Math.max(1, metrics.maxBackgroundCompletionMs)) * 10_000) / 100;
+  await testInfo.attach('10-agent-capacity-benchmark.json', {
+    body: JSON.stringify(metrics, null, 2),
+    contentType: 'application/json'
+  });
+  console.log(`[10-agent-capacity] ${JSON.stringify(metrics)}`);
+
+  expect(metrics.inputDispatchMs).toBeLessThan(150);
+  expect(metrics.inputAckRoundTripMs).toBeLessThan(250);
+  expect(metrics.priorityEchoLatencyMs).toBeLessThan(500);
+  expect(priorityCompletionMs).toBeLessThan(minBackgroundCompletionMs);
+  expect(metrics.backgroundCompletionSpreadMs).toBeLessThan(5000);
+  expect(metrics.maxMainThreadLagMs).toBeLessThan(1000);
+  expect(metrics.maxBackgroundCompletionMs).toBeLessThan(45_000);
+});
+
 test('agent attention final output is not starved behind flooded nodes', async ({ page }) => {
+  test.setTimeout(90_000);
   const state = createMultiLiveExecutionNodeState('agent', 6);
   const nodeIds = state.nodes.map((node) => node.id);
   const floodNodeIds = nodeIds.slice(0, 2);
@@ -15032,9 +15272,7 @@ test('agent attention final output is not starved behind flooded nodes', async (
     }
   });
   await bootstrap(page, state);
-  for (const nodeId of nodeIds) {
-    await waitForExecutionTerminalReady(page, nodeId);
-  }
+  await waitForExecutionTerminalsReady(page, nodeIds);
 
   await page.evaluate(
     ({ floodPayloads, finalPayloads }) => {
@@ -15076,6 +15314,7 @@ test('agent attention final output is not starved behind flooded nodes', async (
 
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} keeps a large live backlog lossless without requesting snapshot replacement`, async ({ page }) => {
+    test.setTimeout(60_000);
     const nodeId = `${executionKind}-zoom`;
     const executionSessionId = `${executionKind}-lossless-backlog-session`;
     const firstMarker = 'LOSSLESS-BACKLOG-FIRST-MARKER';
@@ -16335,7 +16574,7 @@ async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20, time
   return matchedNode;
 }
 
-async function waitForExecutionTerminalReady(page, nodeId) {
+async function waitForExecutionTerminalReady(page, nodeId, timeout = 15_000) {
   let readyNode = null;
 
   await expect
@@ -16349,10 +16588,25 @@ async function waitForExecutionTerminalReady(page, nodeId) {
         cols: readyNode.terminalCols,
         rows: readyNode.terminalRows
       });
-    })
+    }, { timeout })
     .toMatch(/"cols":\d+,"rows":\d+/);
 
   return readyNode;
+}
+
+async function waitForExecutionTerminalsReady(page, nodeIds, timeout = 15_000) {
+  let readyNodes = [];
+  await expect
+    .poll(async () => {
+      const snapshot = await requestWebviewProbe(page, 20);
+      readyNodes = snapshot.nodes.filter((node) => nodeIds.includes(node.nodeId));
+      return nodeIds.filter((nodeId) => {
+        const probeNode = readyNodes.find((node) => node.nodeId === nodeId);
+        return !probeNode?.terminalCols || !probeNode?.terminalRows;
+      });
+    }, { timeout })
+    .toEqual([]);
+  return readyNodes;
 }
 
 async function scrollTerminalViewport(page, nodeId, deltaY, predicate, maxAttempts = 4) {
@@ -16840,7 +17094,7 @@ async function expectSelectionRange(locator, expectedStart, expectedEnd) {
     });
 }
 
-async function performTestDomAction(page, action) {
+async function performTestDomAction(page, action, timeout = 15_000) {
   const requestId = `playwright-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   await page.evaluate(
@@ -16876,7 +17130,7 @@ async function performTestDomAction(page, action) {
 
         return result.payload.ok ? 'ok' : result.payload.errorMessage ?? 'error';
       }, requestId);
-    })
+    }, { timeout })
     .toBe('ok');
 }
 

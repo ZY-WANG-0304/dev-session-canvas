@@ -1608,4 +1608,24 @@ assert.equal(
   '文本双击 offset 必须是安全整数，避免测试协议传入非确定性坐标。'
 );
 
+assert.equal(
+  isWebviewDomAction({
+    kind: 'assertExecutionTerminalBuffer',
+    nodeId: 'agent-1',
+    expectedLines: ['line-1', 'line-2']
+  }),
+  true,
+  '10-Agent 无损基准应能逐行断言 test-only xterm buffer。'
+);
+
+assert.equal(
+  isWebviewDomAction({
+    kind: 'assertExecutionTerminalBuffer',
+    nodeId: 'agent-1',
+    expectedLines: ['line-1', 2]
+  }),
+  false,
+  'xterm buffer 断言必须拒绝非字符串行。'
+);
+
 console.log('protocol webview message tests passed');

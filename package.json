@@ -36,6 +36,7 @@
     "test:execution-session-bridge": "node scripts/test/test-execution-session-bridge.mjs",
     "test:execution-output-scheduler": "node scripts/test/test-execution-output-scheduler.mjs",
     "test:execution-output-sequence": "node scripts/test/test-execution-output-sequence.mjs",
+    "benchmark:agent-terminal-io": "npm run test:runtime-supervisor-protocol && npm run build && node scripts/test/run-playwright-webview.mjs --grep \"10-agent live output capacity benchmark\"",
     "test:attention-protocol": "node --no-warnings --experimental-transform-types packages/attention-protocol/tests/attention-protocol.test.mts",
     "prepare:debug-main-only-extension": "node scripts/shared/prepare-debug-main-only-extension.mjs",
     "test:debug-launch-config": "node scripts/test/test-debug-launch-config.mjs",

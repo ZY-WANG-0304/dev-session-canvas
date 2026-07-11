@@ -94,6 +94,7 @@ import type {
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
 import type { ExecutionImagePasteData } from '../common/executionTerminalClipboard';
+import { selectExecutionTerminalDrainEntries } from '../common/executionOutputScheduler';
 import { normalizeExecutionTerminalWordSeparators } from '../common/executionTerminalLinks';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import { normalizeTerminalStreamAttachPayload } from '../common/terminalSessionStream';
@@ -430,6 +431,8 @@ const EXECUTION_TERMINAL_DRAIN_MAX_CHARS_PER_CONTROLLER = 16 * 1024;
 const EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CONTROLLERS_PER_FRAME = 1;
 const EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_FRAME = 4 * 1024;
 const EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_CONTROLLER = 4 * 1024;
+const EXECUTION_TERMINAL_INPUT_FAIRNESS_MAX_CHARS_PER_FRAME = 4 * 1024;
+const EXECUTION_TERMINAL_INPUT_NON_PRIORITY_MAX_DEFER_MS = 480;
 const EXECUTION_TERMINAL_LAG_RECOVERY_DRAIN_MAX_CHARS_PER_FRAME = 8 * 1024;
 const EXECUTION_TERMINAL_INPUT_OUTPUT_YIELD_MS = 240;
 const EXECUTION_TERMINAL_LAG_RECOVERY_WINDOW_MS = 2000;
@@ -446,6 +449,7 @@ let nextExecutionInputSequence = 1;
 const pendingExecutionInputAcks = new Map<number, PendingExecutionInputAck>();
 let lastExecutionInputAtMs = Number.NEGATIVE_INFINITY;
 let lastExecutionInputNodeId: string | undefined;
+let lastExecutionInputKind: ExecutionNodeKind | undefined;
 let lastExecutionMainThreadLagAtMs = Number.NEGATIVE_INFINITY;
 let lastExecutionVisibilityRestoredAtMs = Number.NEGATIVE_INFINITY;
 
@@ -563,6 +567,7 @@ function reportExecutionInputDispatch(
   const metadata = createExecutionInputDispatchMetadata();
   lastExecutionInputAtMs = metadata.webviewPerformanceNowMs;
   lastExecutionInputNodeId = nodeId;
+  lastExecutionInputKind = kind;
   pendingExecutionInputAcks.set(metadata.sequence, {
     nodeId,
     kind,
@@ -820,6 +825,7 @@ function startExecutionMainThreadLagMonitor(): void {
 registerRuntimeDiagnosticListeners();
 startExecutionMainThreadLagMonitor();
 const pendingExecutionTerminalDrains = new Set<ExecutionTerminalController>();
+const pendingExecutionTerminalDrainQueuedAtMs = new Map<ExecutionTerminalController, number>();
 let executionTerminalDrainFrame: number | undefined;
 let executionTerminalDrainTimer: number | undefined;
 interface PendingExecutionTerminalSnapshotWrite {
@@ -6853,7 +6859,24 @@ function takeNextExecutionTerminalSnapshotWrite(): PendingExecutionTerminalSnaps
 
 function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController): void {
   pendingExecutionTerminalDrains.add(controller);
+  if (!pendingExecutionTerminalDrainQueuedAtMs.has(controller)) {
+    pendingExecutionTerminalDrainQueuedAtMs.set(controller, readPerformanceNow());
+  }
   scheduleExecutionTerminalDrainPump();
+}
+
+function removePendingExecutionTerminalDrain(controller: ExecutionTerminalController): void {
+  pendingExecutionTerminalDrains.delete(controller);
+  pendingExecutionTerminalDrainQueuedAtMs.delete(controller);
+}
+
+function requeueExecutionTerminalDrain(
+  controller: ExecutionTerminalController,
+  queuedAtMs: number,
+  resetAge: boolean
+): void {
+  pendingExecutionTerminalDrains.add(controller);
+  pendingExecutionTerminalDrainQueuedAtMs.set(controller, resetAge ? readPerformanceNow() : queuedAtMs);
 }
 
 function scheduleExecutionTerminalDrainPump(delayMs = 0): void {
@@ -6910,7 +6933,7 @@ function drainExecutionTerminalOutput(): void {
   const maxControllersThisFrame = shouldThrottleForInput
     ? EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CONTROLLERS_PER_FRAME
     : EXECUTION_TERMINAL_DRAIN_MAX_CONTROLLERS_PER_FRAME;
-  const maxCharsThisFrame = shouldThrottleForInput
+  const baseMaxCharsThisFrame = shouldThrottleForInput
     ? EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_FRAME
     : shouldThrottleForLagRecovery
       ? EXECUTION_TERMINAL_LAG_RECOVERY_DRAIN_MAX_CHARS_PER_FRAME
@@ -6923,60 +6946,85 @@ function drainExecutionTerminalOutput(): void {
   let flushedControllerCount = 0;
   let characters = 0;
   let pendingOutputLength = 0;
-  let processedControllerCount = 0;
   let queuedWriteBlockedControllerCount = 0;
-  const deferredControllers: ExecutionTerminalController[] = [];
-  const queuedWriteBlockedControllers: ExecutionTerminalController[] = [];
-  const processedControllersWithRemainingOutput: ExecutionTerminalController[] = [];
-  const orderedControllers = lastExecutionInputNodeId
-    ? [...controllers].sort((left, right) => {
-        if (left.nodeId === lastExecutionInputNodeId && right.nodeId !== lastExecutionInputNodeId) {
-          return -1;
-        }
-        if (right.nodeId === lastExecutionInputNodeId && left.nodeId !== lastExecutionInputNodeId) {
-          return 1;
-        }
-        return 0;
-      })
-    : controllers;
-  for (const currentController of orderedControllers) {
+  const eligibleEntries: Array<{
+    key: string;
+    kind: ExecutionNodeKind;
+    nodeId: string;
+    queuedAtMs: number;
+    controller: ExecutionTerminalController;
+  }> = [];
+  const queuedWriteBlockedEntries: typeof eligibleEntries = [];
+  for (const currentController of controllers) {
     const pendingLength = currentController.getPendingOutputLength();
     pendingOutputLength += pendingLength;
     if (pendingLength <= 0 || currentController.isOutputDrainBlocked()) {
+      pendingExecutionTerminalDrainQueuedAtMs.delete(currentController);
       continue;
     }
+    const queuedAtMs = pendingExecutionTerminalDrainQueuedAtMs.get(currentController) ?? now;
+    const entry = {
+      key: `${currentController.kind}:${currentController.nodeId}`,
+      kind: currentController.kind,
+      nodeId: currentController.nodeId,
+      queuedAtMs,
+      controller: currentController
+    };
     if (currentController.getQueuedWriteCount() >= EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER) {
       queuedWriteBlockedControllerCount += 1;
-      queuedWriteBlockedControllers.push(currentController);
+      queuedWriteBlockedEntries.push(entry);
       continue;
     }
-    if (processedControllerCount >= maxControllersThisFrame) {
-      deferredControllers.push(currentController);
-      continue;
+    eligibleEntries.push(entry);
+  }
+
+  const inputPriority =
+    shouldThrottleForInput && lastExecutionInputNodeId && lastExecutionInputKind
+      ? {
+          kind: lastExecutionInputKind,
+          nodeId: lastExecutionInputNodeId,
+          receivedAtMs: lastExecutionInputAtMs
+        }
+      : undefined;
+  const selected = selectExecutionTerminalDrainEntries(eligibleEntries, now, inputPriority, {
+    maxControllersPerDrain: maxControllersThisFrame,
+    nonPriorityMaxDeferMs: EXECUTION_TERMINAL_INPUT_NON_PRIORITY_MAX_DEFER_MS
+  });
+  const maxCharsThisFrame =
+    baseMaxCharsThisFrame +
+    (selected.reason === 'input-priority-fairness'
+      ? EXECUTION_TERMINAL_INPUT_FAIRNESS_MAX_CHARS_PER_FRAME
+      : 0);
+  const selectedControllers = new Set(selected.entries.map((entry) => entry.controller));
+
+  for (const entry of eligibleEntries) {
+    if (!selectedControllers.has(entry.controller)) {
+      requeueExecutionTerminalDrain(entry.controller, entry.queuedAtMs, false);
     }
+  }
+  for (const entry of queuedWriteBlockedEntries) {
+    requeueExecutionTerminalDrain(entry.controller, entry.queuedAtMs, false);
+  }
+
+  for (const entry of selected.entries) {
+    const currentController = entry.controller;
 
     const remainingFrameBudget = Math.max(0, maxCharsThisFrame - characters);
     if (remainingFrameBudget <= 0) {
-      deferredControllers.push(currentController);
+      requeueExecutionTerminalDrain(currentController, entry.queuedAtMs, false);
       continue;
     }
 
-    processedControllerCount += 1;
     const flushedCharacters = currentController.flushPendingOutput(Math.min(maxCharsPerController, remainingFrameBudget));
     if (flushedCharacters > 0) {
       characters += flushedCharacters;
       flushedControllerCount += 1;
     }
     if (currentController.getPendingOutputLength() > 0 && !currentController.isOutputDrainBlocked()) {
-      processedControllersWithRemainingOutput.push(currentController);
+      requeueExecutionTerminalDrain(currentController, entry.queuedAtMs, flushedCharacters > 0);
+    } else {
+      pendingExecutionTerminalDrainQueuedAtMs.delete(currentController);
     }
-  }
-  for (const controller of [
-    ...deferredControllers,
-    ...queuedWriteBlockedControllers,
-    ...processedControllersWithRemainingOutput
-  ]) {
-    pendingExecutionTerminalDrains.add(controller);
   }
   if (pendingExecutionTerminalDrains.size > 0) {
     scheduleExecutionTerminalDrainPump(flushedControllerCount === 0 && queuedWriteBlockedControllerCount > 0 ? 16 : 0);
@@ -6990,7 +7038,7 @@ function drainExecutionTerminalOutput(): void {
       pendingControllerCount: pendingExecutionTerminalDrains.size,
       pendingOutputLength,
       characters,
-      reason: shouldThrottleForInput ? 'input-throttle' : shouldThrottleForLagRecovery ? 'lag-recovery' : undefined
+      reason: shouldThrottleForInput ? selected.reason : shouldThrottleForLagRecovery ? 'lag-recovery' : undefined
     },
     {
       minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_DRAIN_MIN_DURATION_MS,
@@ -7188,7 +7236,7 @@ function createExecutionTerminalController(
         pendingOutput = '';
         pendingPersistBarrier = false;
         pendingExitMessage = undefined;
-        pendingExecutionTerminalDrains.delete(controller);
+        removePendingExecutionTerminalDrain(controller);
         writeGeneration += 1;
         lastAppliedSnapshotSequence = 0;
       }
@@ -7328,7 +7376,7 @@ function createExecutionTerminalController(
       }
       if (pendingPersistBarrier || pendingOutput.length === 0) {
         flushDeferredExitIfReady();
-        pendingExecutionTerminalDrains.delete(controller);
+        removePendingExecutionTerminalDrain(controller);
         return;
       }
 
@@ -7457,7 +7505,7 @@ function createExecutionTerminalController(
       writeGeneration += 1;
       queuedWriteCount = 0;
       writeChain = Promise.resolve();
-      pendingExecutionTerminalDrains.delete(controller);
+      removePendingExecutionTerminalDrain(controller);
     }
   };
 
@@ -7998,6 +8046,33 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
+      case 'assertExecutionTerminalBuffer': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        if (!entry) {
+          throw new Error(`Execution terminal ${action.nodeId} is not mounted.`);
+        }
+
+        const actualLines: string[] = [];
+        for (let index = 0; index < entry.terminal.buffer.active.length; index += 1) {
+          const line = entry.terminal.buffer.active.getLine(index)?.translateToString(true) ?? '';
+          if (line.length > 0) {
+            actualLines.push(line);
+          }
+        }
+        if (actualLines.length !== action.expectedLines.length) {
+          throw new Error(
+            `Execution terminal ${action.nodeId} has ${actualLines.length} non-empty lines; expected ${action.expectedLines.length}.`
+          );
+        }
+        const mismatchIndex = actualLines.findIndex((line, index) => line !== action.expectedLines[index]);
+        if (mismatchIndex >= 0) {
+          throw new Error(
+            `Execution terminal ${action.nodeId} differs at line ${mismatchIndex + 1}: ` +
+            `expected ${JSON.stringify(action.expectedLines[mismatchIndex])}, received ${JSON.stringify(actualLines[mismatchIndex])}.`
+          );
+        }
+        break;
+      }
       case 'dropExecutionResources': {
         const nodeRoot = queryNodeRoot(action.nodeId);
         const dropTarget = nodeRoot.querySelector<HTMLElement>('.terminal-frame');
@@ -8423,8 +8498,21 @@ function dispatchSyntheticMouseDoubleClick(target: Element, point?: { x: number;
 
 function waitForDomActionFlush(): Promise<void> {
   return new Promise((resolve) => {
+    let finished = false;
+    let fallbackTimer: number | undefined;
+    const finish = (): void => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      if (fallbackTimer !== undefined) {
+        window.clearTimeout(fallbackTimer);
+      }
+      resolve();
+    };
+    fallbackTimer = window.setTimeout(finish, 100);
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => resolve());
+      window.requestAnimationFrame(finish);
     });
   });
 }

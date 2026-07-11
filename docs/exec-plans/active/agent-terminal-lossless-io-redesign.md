@@ -35,9 +35,10 @@
 - [x] (2026-07-11 13:13 +0800) Webview 对连续 journal output 做目标上限 256 Ki 个 UTF-16 code unit 的批量回放（单个 event 不拆分）；新激活主 Pane hydrate 优先于旧输入节点，并补充 4000-event 完整尾部与 Pane Gallery 激活顺序回归。
 - [x] (2026-07-11 13:29 +0800) 重新执行完整 `trusted` VS Code smoke 并通过，覆盖 live runtime Reload Window 后从最新行滚动回首行；前一次同场景滚动动作未生效，但原样复跑未复现，未据此改变无损恢复语义。
 - [x] (2026-07-11 14:21 +0800) 用户使用最新 Supervisor 手动复测 Pane Gallery 缩略图切换主画板场景，未再发现输出延迟补全、显示不完整或其他新问题。
-- [ ] 实现唯一输入节点优先且所有 controller 无损、有序、有界公平的 live 调度。
+- [x] (2026-07-11 16:00 +0800) 建立 `npm run benchmark:agent-terminal-io`：Supervisor 启动 10 个真实 PTY Agent 并记录 journal/registry/checkpoint、CPU、输入 RPC/回显和全量完成时间；Webview 挂载 10 个真实 xterm，逐行核对 864,020 字符、36,001 行，并记录输入 dispatch/ACK、优先回显、后台完成和 Chromium Task/Script CPU。
+- [x] (2026-07-11 16:19 +0800) 实现唯一输入节点优先且所有 controller 无损、有序、有界公平的 live 调度：Host 持续输入期间逐轮释放超时后台节点；Webview 按 controller 排队年龄在 480ms 后追加独立公平 slot/预算，服务后重新计龄，阻塞或未选中内容保留原年龄。
 - [ ] 把旧 supervisor 显式只读降级/迁移、applied-revision ACK、无 attach 时的周期性 Host cache 收敛与长期内存预算收口；新 authority session 的连续重新附着和按投影 attach 刷新已完成。
-- [ ] 完成 10 Agent 容量基准和完整 `npm test`，并把已知 Webview 环境基线失败与本次回归分开记录。
+- [ ] 完成完整 `npm test`，并把已知 Marketplace/Webview 环境基线失败与本次回归分开记录；10-Agent 容量基准已经完成。
 
 ## 意外与发现
 
@@ -85,6 +86,12 @@
 
 - 观察：Supervisor checkpoint 本身已经足够新，慢点在 Host 投影缓存和 Webview replay 粒度。Host 在纯 output 期间持续向旧 `terminalStream.events` 追加，Webview 又在每个 output revision 后 `setTimeout(0)`，数千 revision 被放大为数秒空屏。
   证据：现场 Supervisor checkpoint 后通常只有 0–2 个 event；实现只读 projection refresh 和目标上限 256 Ki 个 UTF-16 code unit 的连续 output batching 后，4000 个 event、276,000 个 replay 字符的 Webview 回归在一次 snapshot write 中约 112 ms 完成。
+
+- 观察：已有 6-controller 用例只检查最终 marker，不能作为 10-Agent 容量或无损证据；逐行基准显示输入路径已经较快，但大规模 xterm replay 的墙钟完成时间远长于 Supervisor journal 写入。
+  证据：最终 10-Agent 验证样本中，Supervisor 九路后台输出约 375.4ms 完成，而 Webview 对 864,020 字符、36,001 行的逐行解析约 14.79s 完成；输入 dispatch/ACK/优先回显分别约 14.6ms/21.8ms/204.9ms。全部 xterm buffer 逐行一致，没有缺失、重复或乱序。
+
+- 观察：以固定输入时间窗限制 Webview 每帧只处理一个 controller，并不能证明持续键入时后台有界公平；如果输入时间不断刷新，非输入 controller 可以一直达不到普通 drain 路径。
+  证据：新纯逻辑回归连续刷新输入优先级，并验证 9 个等待超过 480ms 的后台 controller 按排队年龄逐个获得公平 slot。Host 对应回归验证 9 个超过 750ms 的后台 entry 在连续输入窗口内逐轮释放。
 
 - 观察：完整仓库/Webview 基线当前包含多项与本轮终端内容链路无关的既有失败，不能只概括为最初观察到的三项。
   证据：`npm test` 先后被 Marketplace E2E 中只接受中文按钮而实际 probe 为英文、已拆分源码仍扫描 `main.tsx` 的静态正则、缺少 `vscode.l10n` mock 等基线问题中断。一次完整 Webview 运行结果为 319/334 通过；其中两个同 session snapshot-redraw 用例和一个要求 final snapshot 丢弃 live backlog 的用例与新不变量冲突，已改为新 projection/无损 final backlog 语义并定向通过。其余截图、右键菜单、帮助文案、Ctrl-Z 与拖拽失败均不在本轮代码改动区域，产物保存在 `.debug/playwright/results/`。
@@ -143,13 +150,17 @@
   理由：事件边界不是 output 字节语义边界，每 revision 一个宏任务只制造恢复延迟；主 Pane 是用户当前选择的显示投影，但不能改写“最近输入节点”的业务语义或丢弃后台内容。
   日期/作者：2026-07-11 / Codex
 
+- 决策：Webview 用每-controller 首次排队时间实现持续输入下的公平释放；输入节点保留首个 4 Ki 字符预算，最老后台等待 480ms 后获得额外 4 Ki 独立预算。Host 保留 300ms 输入窗口和 750ms 后台最大 defer，每轮最多额外释放一个最老节点。
+  理由：单纯不断刷新输入窗口会造成后台永久饥饿；直接轮转又会削弱当前输入节点手感。独立公平预算同时保持输入节点第一顺位和后台 admission 上界，不需要删除、替换或重排任何节点内容。
+  日期/作者：2026-07-11 / Codex
+
 ## 结果与复盘
 
 本轮已完成用户指定的前三项实现。新 `live-runtime` session 的 terminal revision 只由 Runtime Supervisor 在 journal append 时分配；磁盘完整保存 output、resize、scrollback，checkpoint 只是同 authority 上的恢复缓存。Supervisor 重启时会校验 manifest、segment 字节、连续 revision 与 checksum chain；checkpoint 缺失则从 journal 起点重建，journal 损坏则拒绝 raw-tail fallback。
 
 Host 与 Webview 已改为 authority projection：Host coalescing 保留 revision 起止范围，控制事件前强制 flush；Webview 新建投影时依次 hydrate checkpoint 和 journal，健康 live backlog 不被 snapshot 替换。旧 snapshot-reset 阈值、deferred output budget、timeout/retry 与 stale-output drop 已删除。attach gap、checkpoint 刷新竞争和 Host/Webview revision gap 均有自动化覆盖。
 
-当前证据包括类型检查、journal/protocol/sequence/tracker/scheduler/localization 单测、10 个无损 backlog/新投影/checkpoint+journal/gap 定向 Webview 用例、完整 trusted smoke 与 real-reopen smoke。完整 `npm test` 受上述仓库基线失败阻断，10 Agent 容量基准和旧 supervisor 显式迁移仍未完成，因此本 ExecPlan 保持 active；不能把新 authority 路径已通过误写成所有旧会话和长期容量都已验证。
+当前证据包括类型检查、journal/protocol/sequence/tracker/scheduler/localization 单测、无损 backlog/新投影/checkpoint+journal/gap 定向 Webview 用例、10-Agent Supervisor/Webview 容量基准、完整 trusted smoke 与 real-reopen smoke。容量基准逐行核对 36,001 行，并记录 journal/registry/checkpoint 体积、Supervisor CPU、Chromium Task/Script CPU、输入 ACK/回显和后台完成时间。完整 `npm test` 仍受上述仓库基线失败阻断，旧 supervisor 显式迁移也未完成，因此本 ExecPlan 保持 active；不能把新 authority 路径已通过误写成所有旧会话和长期容量都已验证。
 
 Pane Gallery 新投影恢复问题已收口：Host 在健康 authority attach 前拉取 Supervisor 最新 checkpoint，RPC 期间到达的 Host 尾部事件按 revision 合并；Webview 连续 output 以 256 Ki 个 UTF-16 code unit 为批次目标上限回放（单个 event 不拆分），resize/scrollback 保持顺序边界；新激活主 Pane hydrate 排在旧输入节点之前。该实现不改变 live subscription，不把 Host 变成 authority，也不丢弃任何 journal event。
 
@@ -227,7 +238,7 @@ PR #152 在 2026-06-15 合入 `main`。它在 Webview backlog 过大时丢弃尚
 
 设计研究阶段的验收不是编译通过，而是证据闭环：每个问题都能指向 PR/commit、代码路径、现场诊断或回归测试；每个归因都标明是否真正进入 `main`；当前数据流中的每份内容表示都有生产者、消费者、顺序边界和失败降级说明。该部分已经完成。
 
-进入实现后，至少需要自动化覆盖：多节点持续输出下唯一输入节点的输入、ACK 与真实回显优先；逐字节核对所有 controller 无缺失、无重复且有界公平推进；hidden/visible 切换；Webview recreate；Host 完全退出期间 persistent Agent 持续输出并在重连后完整补齐；local PTY 和 live runtime reattach；输出后立即 exit；旧 supervisor 无序号 tail；ANSI 控制序列跨 chunk/跨边界；checkpoint/log 与 raw stream 的连续性；最终输出、exit banner 和 scrollback 完整性。当前新 authority 的 checkpoint/journal、hidden backlog、gap、Reload Window、real reopen 与 final checkpoint 已覆盖；旧 supervisor、10 Agent 总量和专门的 ANSI/CJK 边界仍未完成。
+进入实现后，至少需要自动化覆盖：多节点持续输出下唯一输入节点的输入、ACK 与真实回显优先；逐字节核对所有 controller 无缺失、无重复且有界公平推进；hidden/visible 切换；Webview recreate；Host 完全退出期间 persistent Agent 持续输出并在重连后完整补齐；local PTY 和 live runtime reattach；输出后立即 exit；旧 supervisor 无序号 tail；ANSI 控制序列跨 chunk/跨边界；checkpoint/log 与 raw stream 的连续性；最终输出、exit banner 和 scrollback 完整性。当前新 authority 的 checkpoint/journal、hidden backlog、gap、Reload Window、real reopen、final checkpoint 与 10-Agent 总量/输入/公平基准已覆盖；旧 supervisor 和专门的 ANSI/CJK 边界仍未完成。
 
 ## 幂等性与恢复
 
@@ -251,4 +262,4 @@ PR #152 的 `docs/exec-plans/active/execution-input-responsiveness.md` 记录了
 
 ---
 
-最后更新说明：2026-07-10 建立第一轮历史诊断并根据用户确认，将无损 live 增量、唯一输入节点优先级和 Host 非后台 Agent 恢复权威写为硬性边界。2026-07-11 从最新 `origin/main` 新建 `agent-terminal-lossless-io-redesign`，选定并实现 supervisor 唯一 authority、完整非压缩 journal、checkpoint cache 和两阶段 attach；trusted 与 real-reopen 已通过。针对 Pane Gallery 主画板空白，又完成按 attach 的权威 checkpoint refresh、无损 Host tail 合并、Webview 批量 replay 和激活投影优先级。ExecPlan 继续保留旧 supervisor 迁移、周期性 cache/ACK 与容量验证，避免把尚未完成的范围写成结论。
+最后更新说明：2026-07-10 建立第一轮历史诊断并根据用户确认，将无损 live 增量、唯一输入节点优先级和 Host 非后台 Agent 恢复权威写为硬性边界。2026-07-11 从最新 `origin/main` 新建 `agent-terminal-lossless-io-redesign`，选定并实现 supervisor 唯一 authority、完整非压缩 journal、checkpoint cache 和两阶段 attach；trusted 与 real-reopen 已通过。针对 Pane Gallery 主画板空白，又完成按 attach 的权威 checkpoint refresh、无损 Host tail 合并、Webview 批量 replay 和激活投影优先级；随后补齐可重复 10-Agent 容量基准与持续输入下的有界公平调度。ExecPlan 继续保留旧 supervisor 迁移、周期性 cache/ACK、终端边界和完整测试基线收口，避免把尚未完成的范围写成结论。

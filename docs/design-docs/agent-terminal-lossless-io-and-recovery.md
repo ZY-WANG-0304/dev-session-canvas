@@ -332,7 +332,17 @@ Webview hydrate checkpoint 后，连续 output events 可以通过直接拼接 p
 
 用户从缩略图切换到主画板时，新激活 root 下的执行节点获得独立 snapshot hydrate 优先级，高于历史 `lastExecutionInputNodeId`；该优先级不改写最近输入节点语义，也不抢占已经开始的 hydrate。其他 controller 继续按原队列推进，不允许因主 Pane 优先而丢内容。
 
-### 10.7 阶段退出条件
+### 10.7 唯一输入节点优先与有界公平 live 调度
+
+Host 收到 `webview/executionInput` 后，立即记录唯一的 `kind + nodeId + receivedAtMs` 输入优先级；输入 ACK 直接返回，不进入 output scheduler。300ms 输入窗口内，Host 优先发布该节点已经排队的真实回显；其他节点持续等待达到 750ms 后，每个 16ms flush 至少释放一个最老节点。相邻 output 仍只在同 session、同 authority 且 revision 连续时合并，生命周期边界继续走 immediate flush，因此优先级不会改写、跳过或清空内容。
+
+Webview 为每个待 drain controller 保存首次排队时间，并用 `kind + nodeId` 识别最近 240ms 内唯一输入节点。普通输入帧先给该节点一个 controller slot 和最多 4 Ki 个 UTF-16 code unit；若连续输入让窗口长期不关闭，最老后台 controller 等待达到 480ms 后获得一个额外 slot 和最多 4 Ki 的独立预算。后台 controller 获得服务后重新计龄；未选中、xterm write 尚未完成或暂时被 persist barrier 阻塞的 controller 保留原排队年龄。每个 controller 同时最多排队一个 xterm write，单 session 内仍从 `pendingOutput` 头部切片，因此跨节点公平不会变成节点内重排。
+
+这里的“有界”指 scheduler 在 controller 可写时的 admission bound，而不是承诺 xterm parser、浏览器主线程或操作系统在任意负载下都有固定墙钟完成时间。持续输入不能让可写后台 controller 永久饥饿；若 xterm 自身的上一个 write 尚未完成，调度器保留内容和年龄，并在 write 可继续后重试。
+
+仓库提供 `npm run benchmark:agent-terminal-io` 作为可重复 10-Agent 容量基准。最终 Linux headless 验证样本中，Supervisor 对 10 个 PTY Agent 写入 828,019 个字符：输入 RPC 10.57ms、真实回显 21.33ms、九路后台输出 375.4ms 完成，journal 为 1,002,179 bytes、registry 为 1,946,165 bytes、checkpoint 共 864,160 字符；Supervisor 在 919.17ms 基准区间消耗约 1,360ms CPU（约 148.0%，可使用多核）。同次 Webview 样本逐行核对 864,020 个字符、36,001 行，无缺失、重复或乱序：输入 dispatch 14.6ms、ACK 21.8ms、优先回显 204.9ms、全部后台完成 14.79s，Chromium main-thread Task/Script CPU 分别约 1,043.83ms/510.27ms。该样本用于回归比较和容量守门，不是跨机器产品 SLA；自动化使用更宽的 150ms dispatch、250ms ACK、500ms 优先回显和 45s 全量完成阈值吸收 runner 差异。
+
+### 10.8 阶段退出条件
 
 本阶段完成必须证明：journal segment 轮转后逐 record 校验通过；checkpoint 缺失时完整 journal 能重建相同 xterm；Host attach 间隙产生的 output 被补偿且只显示一次；Reload Window 期间 Agent 输出连续；Host 不再推进 supervisor revision；旧 supervisor 被明确识别；10 个并发 Agent 的 journal 写入不会破坏当前输入节点响应。compact、永久 transcript 和完整生命周期 retention 不属于本阶段完成条件。
 
@@ -390,12 +400,13 @@ Webview hydrate checkpoint 后，连续 output events 可以通过直接拼接 p
 - Host/Webview 以 authority 和 revision range 校验 coalesced output，在 resize/scrollback 前 flush 旧 output；gap 或 authority 变化会 fail closed 并重新 attach。Webview 已删除 backlog 阈值触发的 snapshot replacement，健康 live backlog 不再被 checkpoint 清空。
 - 健康 authority 的新 Webview 投影 attach 前会通过只读 `getSessionSnapshot` 刷新 Supervisor checkpoint；刷新期间到达 Host 的 live 尾部按连续 revision 无损合并。该方法受 `terminalProjectionSnapshotV1` capability 保护，不改变当前 subscription。
 - Webview 将连续 output journal events 合并为目标上限 256 Ki 个 UTF-16 code unit 的 xterm write（单个 event 不拆分），resize/scrollback 保持批次边界；Pane Gallery 新激活主 Pane 的 hydrate 优先于旧输入节点。诊断已覆盖 checkpoint/replay 字符数、事件数和 revision 区间。
+- Host 与 Webview 均按 `kind + nodeId` 维护唯一输入优先级；Host 对超时后台输出逐轮放行，Webview 用每-controller 排队年龄和额外公平预算保证持续输入期间的有界推进。节点内 output 始终从队首切片，未选中内容不会被清空。
 
-当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；projection refresh 不撤销 live subscription；checkpoint geometry 与 tracker flush 使用同一切点；final/registry checkpoint 覆盖 final revision；Webview checkpoint+journal 顺序 hydrate、4000 个连续 output event 批量回放后尾部完整、live revision gap 恢复、健康/结束态 snapshot 不替换既有 backlog；Pane Gallery 新主画板 hydrate 先于旧输入节点；真实 `trusted` Reload Window 与 `real-reopen` 均通过。用户随后使用最新 Supervisor 手动复测缩略图切换主画板，未再发现输出延迟补全、显示不完整或其他新问题。
+当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；projection refresh 不撤销 live subscription；checkpoint geometry 与 tracker flush 使用同一切点；final/registry checkpoint 覆盖 final revision；Webview checkpoint+journal 顺序 hydrate、4000 个连续 output event 批量回放后尾部完整、live revision gap 恢复、健康/结束态 snapshot 不替换既有 backlog；Pane Gallery 新主画板 hydrate 先于旧输入节点；10-Agent Supervisor/Webview 基准逐行验证无损、保序、输入优先和后台有界公平；真实 `trusted` Reload Window 与 `real-reopen` 均通过。用户随后使用最新 Supervisor 手动复测缩略图切换主画板，未再发现输出延迟补全、显示不完整或其他新问题。
 
 以下仍未写成已完成结论：
 
 - Host 已在新投影 attach 前主动刷新 checkpoint，因此 Pane Gallery/Webview recreate 不再必然携带旧 checkpoint 后的全部历史事件；但纯输出、长期没有新 attach 的会话仍会让 Host 缓存增长。周期性 refresh、applied-revision ACK 与长期内存预算尚未完成。
 - 旧 supervisor 没有 authority/journal 时仍只具备 legacy 保证；显式只读降级、升级迁移和旧 raw-tail UI 的最终退出策略尚未完成。
-- 10 个并发 Agent 的总量/输入延迟基准、alternate screen、OSC、CJK/emoji 边界与长期 retention 仍需单独验证；不能用当前定向测试代替这些容量结论。
+- alternate screen、OSC、CJK/emoji 边界与长期 retention 仍需单独验证；10-Agent 当前样本不能替代这些终端语义和长时间容量结论。
 - local PTY 的独立恢复语义、journal compact、永久 transcript 与 Agent 结构化内容投影不属于本次前三项实现。
