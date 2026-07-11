@@ -3,6 +3,7 @@ import type { Terminal } from '@xterm/xterm';
 
 import type { ExecutionNodeKind } from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
+import type { TerminalStreamAttachPayload, TerminalStreamEvent } from '../common/terminalSessionStream';
 import type { ExecutionTerminalNativeInteractionsHandle } from './executionTerminalNativeInteractions';
 
 export type ExecutionHostEvent =
@@ -18,6 +19,7 @@ export type ExecutionHostEvent =
       executionSessionId?: string;
       outputSequence?: number;
       serializedTerminalState?: SerializedTerminalState;
+      terminalStream?: TerminalStreamAttachPayload;
     }
   | {
       type: 'output';
@@ -27,6 +29,17 @@ export type ExecutionHostEvent =
       executionSessionId?: string;
       persisted?: boolean;
       outputSequence?: number;
+      terminalAuthorityId?: string;
+      terminalStartRevision?: number;
+      terminalRevision?: number;
+    }
+  | {
+      type: 'terminal-event';
+      nodeId: string;
+      kind: ExecutionNodeKind;
+      executionSessionId: string;
+      authorityId: string;
+      event: TerminalStreamEvent;
     }
   | {
       type: 'exit';
@@ -42,9 +55,16 @@ export interface ExecutionTerminalController {
   requestAttachSnapshot(): void;
   enqueueOutput(
     chunk: string,
-    options?: { persisted?: boolean; outputSequence?: number; executionSessionId?: string }
+    options?: {
+      persisted?: boolean;
+      outputSequence?: number;
+      executionSessionId?: string;
+      terminalAuthorityId?: string;
+      terminalStartRevision?: number;
+      terminalRevision?: number;
+    }
   ): void;
-  resetBacklogForSnapshot(reason: string): void;
+  applyTerminalEvent(detail: Extract<ExecutionHostEvent, { type: 'terminal-event' }>): void;
   showExit(message: string): void;
   refreshVisibleRows(): void;
   flushPendingOutput(maxCharacters?: number): number;

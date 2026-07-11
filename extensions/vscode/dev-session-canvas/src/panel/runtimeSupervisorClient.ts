@@ -17,6 +17,8 @@ import type {
   RuntimeSupervisorResizeSessionParams,
   RuntimeSupervisorSessionSnapshot,
   RuntimeSupervisorStopSessionParams,
+  RuntimeSupervisorSubscribeSessionParams,
+  RuntimeSupervisorSubscribeSessionResult,
   RuntimeSupervisorUpdateSessionScrollbackParams,
   RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
@@ -80,6 +82,12 @@ export class RuntimeSupervisorClient {
     return this.request('attachSession', params);
   }
 
+  public async subscribeSession(
+    params: RuntimeSupervisorSubscribeSessionParams
+  ): Promise<RuntimeSupervisorSubscribeSessionResult> {
+    return this.request('subscribeSession', params);
+  }
+
   public async writeInput(params: RuntimeSupervisorWriteInputParams): Promise<void> {
     await this.request('writeInput', params);
   }
@@ -118,6 +126,7 @@ export class RuntimeSupervisorClient {
     method:
       | 'createSession'
       | 'attachSession'
+      | 'subscribeSession'
       | 'writeInput'
       | 'resizeSession'
       | 'updateSessionScrollback'
@@ -126,6 +135,7 @@ export class RuntimeSupervisorClient {
     params:
       | RuntimeSupervisorCreateSessionParams
       | RuntimeSupervisorAttachSessionParams
+      | RuntimeSupervisorSubscribeSessionParams
       | RuntimeSupervisorWriteInputParams
       | RuntimeSupervisorResizeSessionParams
       | RuntimeSupervisorUpdateSessionScrollbackParams
@@ -291,6 +301,11 @@ export class RuntimeSupervisorClient {
   private handleEvent(message: RuntimeSupervisorEvent): void {
     if (message.event === 'sessionOutput') {
       this.options.onSessionOutput?.(message.payload);
+      return;
+    }
+
+    if (message.event === 'sessionTerminalEvent') {
+      this.options.onSessionTerminalEvent?.(message.payload);
       return;
     }
 

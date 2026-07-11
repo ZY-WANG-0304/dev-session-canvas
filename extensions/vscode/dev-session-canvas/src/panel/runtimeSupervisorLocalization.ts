@@ -155,6 +155,10 @@ export function localizeRuntimeSupervisorMessageDescriptor(
             detail: params.detail
           })
         : vscode.l10n.t('{command} failed.', { command: params.command ?? 'systemctl --user' });
+    case 'terminalJournalPersistenceFailed':
+      return vscode.l10n.t('Runtime terminal journal persistence failed for session {sessionId}.', {
+        sessionId: params.sessionId ?? vscode.l10n.t('<unknown>')
+      });
     default:
       return fallback ?? formatRuntimeSupervisorMessageDescriptor(descriptor);
   }

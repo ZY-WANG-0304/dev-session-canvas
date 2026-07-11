@@ -970,6 +970,7 @@
   "<unknown>": "<未知>",
   "Runtime session {sessionId} was not found.": "未找到 runtime session {sessionId}。",
   "Runtime session {sessionId} is not live.": "Runtime session {sessionId} 当前不处于 live 状态。",
+  "Runtime terminal journal persistence failed for session {sessionId}.": "Runtime terminal session {sessionId} 的 journal 持久化失败。",
   "Agent session deleted.": "Agent 会话已删除。",
   "Terminal session deleted.": "Terminal 会话已删除。",
   "The session supervisor did not retain the original live runtime. Only history results were restored.": "会话监督器未保留原 live runtime，已仅恢复历史结果。",
