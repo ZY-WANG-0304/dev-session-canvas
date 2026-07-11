@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import net from 'node:net';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,6 +10,7 @@ import esbuild from 'esbuild';
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-runtime-supervisor-protocol-'));
 let runtimeSupervisorRequestSequence = 0;
+let linuxClockTicksPerSecond;
 
 try {
   const protocolOutfile = path.join(tempDir, 'runtimeSupervisorProtocol.cjs');
@@ -172,7 +173,9 @@ try {
 
   const runtimeEvidence = await assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supervisorOutfile, tempDir);
   await assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, tempDir, runtimeEvidence.marker);
+  const capacityMetrics = await assertTenAgentRuntimeCapacity(supervisorOutfile, tempDir);
 
+  console.log(`[10-agent-supervisor-capacity] ${JSON.stringify(capacityMetrics)}`);
   console.log('runtimeSupervisorProtocol tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
@@ -353,7 +356,28 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
         message.payload.event?.type === 'resize',
       'terminal resize event'
     );
-    assert.equal(resizeEvent.payload.event.revision, refreshLiveEvent.payload.event.revision + 1);
+    const eventsBeforeResize = messages
+      .filter(
+        (message) =>
+          message.type === 'event' &&
+          message.event === 'sessionTerminalEvent' &&
+          message.payload?.sessionId === 'attach-gap-terminal' &&
+          message.payload.event.revision > refreshLiveEvent.payload.event.revision &&
+          message.payload.event.revision < resizeEvent.payload.event.revision
+      )
+      .sort((left, right) => left.payload.event.revision - right.payload.event.revision);
+    assert.ok(
+      eventsBeforeResize.every((message) => message.payload.event.type === 'output'),
+      'PTY command echo may use a separate revision, but only output may precede the requested resize.'
+    );
+    assert.deepEqual(
+      [refreshLiveEvent, ...eventsBeforeResize, resizeEvent].map((message) => message.payload.event.revision),
+      Array.from(
+        { length: resizeEvent.payload.event.revision - refreshLiveEvent.payload.event.revision + 1 },
+        (_value, index) => refreshLiveEvent.payload.event.revision + index
+      ),
+      'projection refresh output and the following resize must remain revision-contiguous.'
+    );
     await sendRuntimeSupervisorRequest(socket, messages, 'updateSessionScrollback', {
       sessionId: 'attach-gap-terminal',
       scrollback: 2000
@@ -531,6 +555,259 @@ function assertTerminalProjectionMergePreservesConcurrentLiveTail(mergeProjectio
   assert.equal(mergeProjection(fresh, gappedCurrent), undefined);
 }
 
+async function assertTenAgentRuntimeCapacity(supervisorOutfile, tempDir) {
+  const agentCount = 10;
+  const backgroundLineCount = 4000;
+  const storageDir = path.join(tempDir, 'runtime-capacity-storage');
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-supervisor-capacity-${process.pid}-${Date.now()}`
+      : path.join(storageDir, 'supervisor.sock');
+  const registryPath = path.join(storageDir, 'registry.json');
+  const providerPath = path.join(tempDir, 'runtime-capacity-provider.js');
+  await writeFile(
+    providerPath,
+    `const readline = require('node:readline');
+const prefix = process.argv[2];
+const reader = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+reader.on('line', (line) => {
+  const floodMatch = /^flood (\\d+)$/.exec(line.trim());
+  if (floodMatch) {
+    const count = Number(floodMatch[1]);
+    for (let index = 0; index < count; index += 1) {
+      process.stdout.write(prefix + '-' + String(index).padStart(4, '0') + '-xxxxxxxxxxxx\\n');
+    }
+    return;
+  }
+  if (line.startsWith('ping ')) {
+    process.stdout.write(line.slice(5) + '\\n');
+  }
+});
+setInterval(() => undefined, 1000);
+`,
+    'utf8'
+  );
+
+  const runtime = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+  const sessionRecords = [];
+  try {
+    const hello = await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'hello');
+    assert.equal(hello.capabilities?.terminalSessionStreamV1, true);
+
+    for (let index = 0; index < agentCount; index += 1) {
+      const number = String(index + 1).padStart(2, '0');
+      const sessionId = `capacity-agent-${number}`;
+      const linePrefix = `AG${number}`;
+      const snapshot = await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'createSession', {
+        kind: 'agent',
+        sessionId,
+        displayLabel: `Capacity Agent ${number}`,
+        launchMode: 'start',
+        scrollback: backgroundLineCount + 500,
+        deferSubscription: true,
+        launchSpec: {
+          file: process.execPath,
+          args: [providerPath, linePrefix],
+          cwd: tempDir,
+          cols: 96,
+          rows: 28,
+          env: process.env,
+          terminalName: 'xterm-256color'
+        }
+      });
+      assertTerminalStreamSnapshot(snapshot, `${sessionId} create snapshot`);
+      await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'subscribeSession', {
+        sessionId,
+        authorityId: snapshot.terminalAuthorityId,
+        afterRevision: snapshot.terminalRevision
+      });
+      sessionRecords.push({ sessionId, linePrefix });
+    }
+
+    runtime.messages.length = 0;
+    const backgroundSessions = sessionRecords.slice(0, -1);
+    const inputSession = sessionRecords.at(-1);
+    const floodStartedAt = performance.now();
+    const supervisorCpuStartedAt = await readProcessCpuTimeMs(runtime.supervisor.pid);
+    await Promise.all(
+      backgroundSessions.map((session) =>
+        sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'writeInput', {
+          sessionId: session.sessionId,
+          data: `flood ${backgroundLineCount}\n`
+        })
+      )
+    );
+
+    const priorityMarker = `${inputSession.linePrefix}-PRIORITY-ECHO`;
+    const inputStartedAt = performance.now();
+    await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'writeInput', {
+      sessionId: inputSession.sessionId,
+      data: `ping ${priorityMarker}\n`
+    });
+    const inputWriteResponseMs = performance.now() - inputStartedAt;
+    const priorityOutput = await waitForRuntimeSupervisorOutput(
+      runtime.messages,
+      inputSession.sessionId,
+      priorityMarker,
+      '10-agent priority echo event',
+      10_000
+    );
+    const inputEchoMs = performance.now() - inputStartedAt;
+
+    await Promise.all(
+      backgroundSessions.map(async (session) => {
+        const finalMarker = `${session.linePrefix}-${String(backgroundLineCount - 1).padStart(4, '0')}-xxxxxxxxxxxx`;
+        await waitForRuntimeSupervisorOutput(
+          runtime.messages,
+          session.sessionId,
+          finalMarker,
+          `${session.sessionId} final capacity event`,
+          20_000
+        );
+      })
+    );
+    const allOutputCompleteMs = performance.now() - floodStartedAt;
+    await delay(50);
+
+    for (const session of backgroundSessions) {
+      const events = runtime.messages
+        .filter(
+          (message) =>
+            message.type === 'event' &&
+            message.event === 'sessionTerminalEvent' &&
+            message.payload?.sessionId === session.sessionId &&
+            message.payload.event?.type === 'output'
+        )
+        .sort((left, right) => left.payload.event.revision - right.payload.event.revision);
+      const actualLines = events
+        .map((message) => message.payload.event.data)
+        .join('')
+        .replaceAll('\r', '')
+        .split('\n')
+        .filter((line) => line.startsWith(`${session.linePrefix}-`));
+      const expectedLines = Array.from(
+        { length: backgroundLineCount },
+        (_value, lineIndex) => `${session.linePrefix}-${String(lineIndex).padStart(4, '0')}-xxxxxxxxxxxx`
+      );
+      assert.deepEqual(actualLines, expectedLines, `${session.sessionId} output must remain lossless and ordered.`);
+    }
+    assert.match(priorityOutput, new RegExp(priorityMarker, 'u'));
+
+    const snapshots = [];
+    for (const session of sessionRecords) {
+      const snapshot = await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'getSessionSnapshot', {
+        sessionId: session.sessionId
+      });
+      assertTerminalStreamSnapshot(snapshot, `${session.sessionId} capacity snapshot`);
+      if (session !== inputSession) {
+        assert.match(snapshot.serializedTerminalState?.data ?? '', new RegExp(`${session.linePrefix}-0000-`, 'u'));
+        assert.match(
+          snapshot.serializedTerminalState?.data ?? '',
+          new RegExp(`${session.linePrefix}-${String(backgroundLineCount - 1).padStart(4, '0')}-`, 'u')
+        );
+      } else {
+        assert.match(snapshot.serializedTerminalState?.data ?? '', new RegExp(priorityMarker, 'u'));
+      }
+      snapshots.push(snapshot);
+    }
+
+    await Promise.all(
+      snapshots.map((snapshot) =>
+        waitForRuntimeSupervisorRegistrySession(
+          registryPath,
+          snapshot.sessionId,
+          (stored) => stored.terminalRevision >= snapshot.terminalRevision
+        )
+      )
+    );
+    const journalBytes = await directoryByteSize(path.join(storageDir, 'terminal-journals'));
+    const registryBytes = (await stat(registryPath)).size;
+    const checkpointCharacters = snapshots.reduce(
+      (total, snapshot) => total + (snapshot.serializedTerminalState?.data.length ?? 0),
+      0
+    );
+    const benchmarkElapsedMs = performance.now() - floodStartedAt;
+    const supervisorCpuEndedAt = await readProcessCpuTimeMs(runtime.supervisor.pid);
+    const supervisorCpuMs =
+      supervisorCpuStartedAt !== undefined && supervisorCpuEndedAt !== undefined
+        ? Math.max(0, supervisorCpuEndedAt - supervisorCpuStartedAt)
+        : undefined;
+    const totalCharacters = backgroundSessions.length * backgroundLineCount * 23 + priorityMarker.length + 1;
+    const metrics = {
+      agentCount,
+      backgroundLineCount,
+      totalCharacters,
+      inputWriteResponseMs: Math.round(inputWriteResponseMs * 100) / 100,
+      inputEchoMs: Math.round(inputEchoMs * 100) / 100,
+      allOutputCompleteMs: Math.round(allOutputCompleteMs * 100) / 100,
+      journalBytes,
+      registryBytes,
+      checkpointCharacters,
+      totalRevisions: snapshots.reduce((total, snapshot) => total + (snapshot.terminalRevision ?? 0), 0),
+      benchmarkElapsedMs: Math.round(benchmarkElapsedMs * 100) / 100,
+      ...(supervisorCpuMs !== undefined
+        ? {
+            supervisorCpuMs: Math.round(supervisorCpuMs * 100) / 100,
+            supervisorCpuUtilizationPercent:
+              Math.round((supervisorCpuMs / Math.max(1, benchmarkElapsedMs)) * 10_000) / 100
+          }
+        : {})
+    };
+
+    assert.ok(metrics.inputWriteResponseMs < 500, `10-agent input RPC took ${metrics.inputWriteResponseMs}ms.`);
+    assert.ok(metrics.inputEchoMs < 1000, `10-agent input echo took ${metrics.inputEchoMs}ms.`);
+    assert.ok(metrics.allOutputCompleteMs < 20_000, `10-agent output took ${metrics.allOutputCompleteMs}ms.`);
+    assert.ok(metrics.journalBytes > 0);
+    assert.ok(metrics.registryBytes > 0);
+    return metrics;
+  } finally {
+    await Promise.allSettled(
+      sessionRecords.map((session) =>
+        sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'stopSession', {
+          sessionId: session.sessionId
+        })
+      )
+    );
+    await closeRuntimeSupervisorForTest(runtime);
+  }
+}
+
+async function directoryByteSize(directoryPath) {
+  let entries;
+  try {
+    entries = await readdir(directoryPath, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+
+  let total = 0;
+  for (const entry of entries) {
+    const entryPath = path.join(directoryPath, entry.name);
+    total += entry.isDirectory() ? await directoryByteSize(entryPath) : (await stat(entryPath)).size;
+  }
+  return total;
+}
+
+async function readProcessCpuTimeMs(processId) {
+  if (process.platform !== 'linux' || !Number.isInteger(processId) || processId <= 0) {
+    return undefined;
+  }
+
+  if (linuxClockTicksPerSecond === undefined) {
+    const result = spawnSync('getconf', ['CLK_TCK'], { encoding: 'utf8' });
+    const parsed = Number.parseInt(result.stdout?.trim() ?? '', 10);
+    linuxClockTicksPerSecond = Number.isFinite(parsed) && parsed > 0 ? parsed : 100;
+  }
+  const processStat = await readFile(`/proc/${processId}/stat`, 'utf8');
+  const fields = processStat.slice(processStat.lastIndexOf(') ') + 2).trim().split(/\s+/u);
+  const userTicks = Number.parseInt(fields[11] ?? '', 10);
+  const systemTicks = Number.parseInt(fields[12] ?? '', 10);
+  if (!Number.isFinite(userTicks) || !Number.isFinite(systemTicks)) {
+    return undefined;
+  }
+  return ((userTicks + systemTicks) * 1000) / linuxClockTicksPerSecond;
+}
+
 async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, tempDir, marker) {
   const storageDir = path.join(tempDir, 'runtime-storage');
   const socketPath =
@@ -696,8 +973,8 @@ async function sendRuntimeSupervisorRequest(socket, messages, method, params) {
   return response.result;
 }
 
-async function waitForRuntimeSupervisorMessage(messages, predicate, label) {
-  const deadline = Date.now() + 5000;
+async function waitForRuntimeSupervisorMessage(messages, predicate, label, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const index = messages.findIndex(predicate);
     if (index >= 0) {
@@ -705,6 +982,29 @@ async function waitForRuntimeSupervisorMessage(messages, predicate, label) {
       return message;
     }
 
+    await delay(10);
+  }
+
+  throw new Error(`Timed out waiting for ${label}.`);
+}
+
+async function waitForRuntimeSupervisorOutput(messages, sessionId, marker, label, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const output = messages
+      .filter(
+        (message) =>
+          message.type === 'event' &&
+          message.event === 'sessionTerminalEvent' &&
+          message.payload?.sessionId === sessionId &&
+          message.payload.event?.type === 'output'
+      )
+      .sort((left, right) => left.payload.event.revision - right.payload.event.revision)
+      .map((message) => message.payload.event.data)
+      .join('');
+    if (output.includes(marker)) {
+      return output;
+    }
     await delay(10);
   }
 

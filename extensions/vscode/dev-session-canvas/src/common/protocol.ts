@@ -622,6 +622,12 @@ export type WebviewDomAction =
       delayMs?: number;
     }
   | {
+      kind: 'assertExecutionTerminalBuffer';
+      nodeId: string;
+      expectedLines: string[];
+      delayMs?: number;
+    }
+  | {
       kind: 'dropExecutionResources';
       nodeId: string;
       source: 'resourceUrls' | 'codeFiles' | 'uriList';
@@ -2734,6 +2740,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
 
   if (value.kind === 'sendExecutionInput') {
     return typeof value.data === 'string';
+  }
+
+  if (value.kind === 'assertExecutionTerminalBuffer') {
+    return Array.isArray(value.expectedLines) && value.expectedLines.every((line) => typeof line === 'string');
   }
 
   if (value.kind === 'dropExecutionResources') {
