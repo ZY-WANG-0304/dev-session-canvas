@@ -457,6 +457,86 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       'applied ACK must reject another authority.'
     );
 
+    const unicodeScriptPath = path.join(tempDir, 'runtime-split-utf8-output.js');
+    await writeFile(
+      unicodeScriptPath,
+      `const chunks = [
+  Buffer.concat([Buffer.from('PTY-BYTES:'), Buffer.from([0xe4, 0xb8])]),
+  Buffer.from([0xad, 0xe6]),
+  Buffer.from([0x96, 0x87, 0xf0, 0x9f]),
+  Buffer.concat([Buffer.from([0x9a, 0x80]), Buffer.from(':END\\r\\n')])
+];
+process.stdin.once('data', async () => {
+  for (const chunk of chunks) {
+    process.stdout.write(chunk);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+});
+setInterval(() => undefined, 1000);
+`,
+      'utf8'
+    );
+    const unicodeSessionId = 'split-utf8-terminal';
+    const unicodeSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'terminal',
+      sessionId: unicodeSessionId,
+      displayLabel: 'Unicode boundary fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [unicodeScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId: unicodeSessionId,
+      authorityId: unicodeSnapshot.terminalAuthorityId,
+      afterRevision: unicodeSnapshot.terminalRevision
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: unicodeSessionId,
+      data: 'emit\n'
+    });
+    const unicodeOutput = await waitForRuntimeSupervisorOutput(
+      messages,
+      unicodeSessionId,
+      'PTY-BYTES:中文🚀:END',
+      'split UTF-8 PTY output',
+      5000
+    );
+    assert.match(unicodeOutput, /PTY-BYTES:中文🚀:END/u);
+    assert.doesNotMatch(unicodeOutput, /\ufffd/u, 'split UTF-8 PTY bytes must not become replacement characters.');
+    const unicodeOutputEvents = messages.filter(
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionTerminalEvent' &&
+        message.payload?.sessionId === unicodeSessionId &&
+        message.payload.event?.type === 'output' &&
+        message.payload.event.data.includes('emit') === false
+    );
+    assert.ok(unicodeOutputEvents.length >= 3, 'PTY byte fixture must cross multiple Supervisor output revisions.');
+    assert.equal(
+      unicodeOutputEvents.some((message) => message.payload.event.data.includes('PTY-BYTES:中文🚀:END')),
+      false,
+      'The exact Unicode marker should be reconstructed across journal events, not arrive as one chunk.'
+    );
+    const unicodeProjection = await sendRuntimeSupervisorRequest(socket, messages, 'getSessionSnapshot', {
+      sessionId: unicodeSessionId
+    });
+    assertTerminalStreamSnapshot(unicodeProjection, 'split UTF-8 projection snapshot');
+    assert.match(unicodeProjection.output, /PTY-BYTES:中文🚀:END/u);
+    assert.match(unicodeProjection.serializedTerminalState?.data ?? '', /PTY-BYTES:中文🚀:END/u);
+    assert.doesNotMatch(unicodeProjection.serializedTerminalState?.data ?? '', /\ufffd/u);
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: unicodeSessionId
+    });
+
     const marker = `runtime-final-marker-${Date.now()}`;
     const scriptPath = path.join(tempDir, 'runtime-final-output.js');
     await writeFile(scriptPath, `process.stdout.write(${JSON.stringify(`${marker}\r\n`)});\n`, 'utf8');

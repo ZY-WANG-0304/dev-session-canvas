@@ -75,6 +75,16 @@ assert.match(
 );
 assert.match(
   managerSource,
+  /retireLegacyRuntimeSupervisorClientIfUnused[\s\S]*?client\.hasPendingRequests\(\)/u,
+  '旧 Supervisor client 有未完成 RPC 时不得退役，避免终态事件抢先中断 stop/delete 响应。'
+);
+assert.match(
+  managerSource,
+  /deleteRuntimeSupervisorSessionStrict[\s\S]*?finally \{[\s\S]*?retireLegacyRuntimeSupervisorClientIfUnused/u,
+  '严格删除 RPC 的所有完成路径都必须在请求 settled 后重新检查旧 Supervisor 退役。'
+);
+assert.match(
+  managerSource,
   /finally \{\s*options\.onSettled\?\.\(\);\s*\}[\s\S]*?onSettled: \(\) => this\.retireLegacyRuntimeSupervisorClientIfUnused/u,
   '旧 Supervisor attach 无论成功、失败或被忽略，都必须在 settled 边界重新检查 client 退役条件。'
 );

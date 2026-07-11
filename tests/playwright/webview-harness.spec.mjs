@@ -15621,6 +15621,97 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 }
 
+test('terminal restores split ANSI OSC CJK and emoji journal boundaries without raw-tail fallback', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  const executionSessionId = 'terminal-split-control-stream-session';
+  const authorityId = 'terminal-split-control-stream-authority';
+  const events = [
+    { type: 'output', revision: 2, data: '\u001b[31' },
+    { type: 'output', revision: 3, data: 'mANSI-SPLIT-COMPLETE\u001b[0m\r\n' },
+    { type: 'output', revision: 4, data: 'CURSOR-OLD\r\n\u001b[1' },
+    { type: 'output', revision: 5, data: 'A\rCURSOR-NEW\u001b[K\r\n' },
+    { type: 'resize', revision: 6 },
+    { type: 'output', revision: 7, data: '中文恢' },
+    { type: 'output', revision: 8, data: '复完整 ' },
+    { type: 'output', revision: 9, data: '\ud83d' },
+    { type: 'output', revision: 10, data: '\ude80\r\n' },
+    { type: 'scrollback', revision: 11, scrollback: 1600 },
+    { type: 'output', revision: 12, data: '\u001b]2;OSC-TITLE-' },
+    { type: 'output', revision: 13, data: 'HIDDEN\u0007' },
+    { type: 'output', revision: 14, data: '\u001b]8;;https://example.com/boundary\u001b' },
+    { type: 'output', revision: 15, data: '\\OSC-LINK' },
+    { type: 'output', revision: 16, data: '\u001b]8;;\u001b\\\r\n' },
+    { type: 'output', revision: 17, data: '\u001b[?104' },
+    { type: 'output', revision: 18, data: '9hALT-SCREEN-ONLY\r\n' },
+    { type: 'output', revision: 19, data: '\u001b[?1049lAFTER-ALT-SCREEN\r\n' },
+    { type: 'output', revision: 20, data: 'BOUNDARY-FINAL-MARKER\r\n' }
+  ];
+
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+  events[4].cols = readyTerminal.terminalCols;
+  events[4].rows = readyTerminal.terminalRows;
+  const terminalStream = await createTerminalStreamPayload({
+    sessionId: executionSessionId,
+    authorityId,
+    checkpointOutput: 'BOUNDARY-CHECKPOINT\r\n',
+    checkpointRevision: 1,
+    checkpointCols: readyTerminal.terminalCols,
+    checkpointRows: readyTerminal.terminalRows,
+    checkpointScrollback: 1600,
+    events
+  });
+
+  await clearPostedMessages(page);
+  await dispatchExecutionSnapshot(page, {
+    nodeId,
+    kind: 'terminal',
+    output: '6;2H RAW-TAIL-MUST-NOT-HYDRATE \u001b[31',
+    cols: readyTerminal.terminalCols,
+    rows: readyTerminal.terminalRows,
+    executionSessionId,
+    outputSequence: terminalStream.revision,
+    terminalStream
+  });
+
+  const appliedMessages = await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionTerminalApplied',
+    (messages) => messages.some((message) => message.payload.revision === terminalStream.revision)
+  );
+  const finalApplied = appliedMessages.find((message) => message.payload.revision === terminalStream.revision);
+  expect(finalApplied.payload).toMatchObject({
+    nodeId,
+    kind: 'terminal',
+    executionSessionId,
+    authorityId,
+    revision: 20
+  });
+
+  const probe = await readProbeNode(page, nodeId, 0);
+  const visibleText = probe.terminalVisibleLines.join('\n');
+  expect(visibleText).toContain('BOUNDARY-CHECKPOINT');
+  expect(visibleText).toContain('ANSI-SPLIT-COMPLETE');
+  expect(visibleText).toContain('CURSOR-NEW');
+  expect(visibleText).toContain('中文恢复完整 🚀');
+  expect(visibleText).toContain('OSC-LINK');
+  expect(visibleText).toContain('AFTER-ALT-SCREEN');
+  expect(visibleText).toContain('BOUNDARY-FINAL-MARKER');
+  expect(visibleText).not.toContain('CURSOR-OLD');
+  expect(visibleText).not.toContain('OSC-TITLE-HIDDEN');
+  expect(visibleText).not.toContain('https://example.com/boundary');
+  expect(visibleText).not.toContain('ALT-SCREEN-ONLY');
+  expect(visibleText).not.toContain('RAW-TAIL-MUST-NOT-HYDRATE');
+  expect(visibleText).not.toContain('\u001b');
+  expect(visibleText).not.toContain('\ufffd');
+  expect((visibleText.match(/ANSI-SPLIT-COMPLETE/gu) ?? [])).toHaveLength(1);
+  expect((visibleText.match(/中文恢复完整 🚀/gu) ?? [])).toHaveLength(1);
+  expect((visibleText.match(/BOUNDARY-FINAL-MARKER/gu) ?? [])).toHaveLength(1);
+  expect(probe.terminalBufferType).toBe('normal');
+  expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
+});
+
 test('terminal batches thousands of contiguous journal events without losing the tail', async ({ page }) => {
   const nodeId = 'terminal-zoom';
   const executionSessionId = 'terminal-large-journal-session';

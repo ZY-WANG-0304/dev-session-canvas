@@ -7978,6 +7978,7 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     renderedHeight: footprint.height,
     overlayTitle: readProbeTextOrUndefined(element.querySelector('.terminal-overlay strong')),
     overlayMessage: readProbeTextOrUndefined(element.querySelector('.terminal-overlay span')),
+    terminalLegacyTranscript: readProbeTextOrUndefined(element.querySelector('.terminal-legacy-transcript')),
     titleInputValue: readProbeFieldValue(element, 'title'),
     bodyValue: readProbeFieldValue(element, 'body'),
     ...readProbeExecutionTerminalState(nodeId)

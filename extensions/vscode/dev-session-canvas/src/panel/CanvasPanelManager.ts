@@ -9740,7 +9740,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const clientKey = this.buildRuntimeSupervisorClientKey(backend);
     const client = this.runtimeSupervisorClients.get(clientKey);
-    if (!client || client.supportsTerminalSessionStream() || (expectedClient && client !== expectedClient)) {
+    if (
+      !client ||
+      client.supportsTerminalSessionStream() ||
+      client.hasPendingRequests() ||
+      (expectedClient && client !== expectedClient)
+    ) {
       return;
     }
 
@@ -10345,10 +10350,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session: PersistedLiveRuntimeSession,
     options: { allowRestart: boolean }
   ): Promise<void> {
+    const backend = this.getRuntimeHostBackend(session.backendKind, session.runtimeStoragePath);
+    let client: RuntimeSupervisorClient | undefined;
     try {
-      const client = await this.getRuntimeSupervisorClientForKind(session.backendKind, {
+      client = await this.getRuntimeSupervisorClientForBackend(backend, {
         allowRestart: options.allowRestart
-      }, session.runtimeStoragePath);
+      });
       await client.deleteSession({
         sessionId: session.sessionId
       });
@@ -10357,6 +10364,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
       throw error;
+    } finally {
+      if (client) {
+        this.retireLegacyRuntimeSupervisorClientIfUnused(backend, client);
+      }
     }
   }
 
