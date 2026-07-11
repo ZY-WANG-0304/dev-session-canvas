@@ -2,7 +2,7 @@
 
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘`。
 
-本计划遵循仓库根目录的 `docs/PLANS.md`。历史故障定位、恢复表示比较、核心实现、真实旧版本迁移和终端控制序列边界均已完成并形成可重复证据；长期 journal 保留、local PTY 独立恢复、永久 transcript 与 Agent 结构化投影作为后续技术债单独登记，不由本计划冒充完成。
+本计划遵循仓库根目录的 `docs/PLANS.md`。历史故障定位、恢复表示比较、核心实现、真实旧版本迁移和终端控制序列边界已经形成第一轮证据；PR #255 review 又确认 revision 发布、finalization 与 completed projection 仍有三个确定性缺口，并提出一个需要按 revision 身份独立证明的 Webview 重复显示风险，因此本计划于 2026-07-12 从 completed 重新转为 active。四条 review blocker 已通过确定性回归、实现和真实生命周期 smoke 闭环，计划重新归档；长期 journal 保留、local PTY 独立恢复、永久 transcript 与 Agent 结构化投影仍作为后续技术债单独登记，不由本轮 review follow-up 冒充完成。
 
 ## 目标与全局图景
 
@@ -50,8 +50,35 @@
 - [x] (2026-07-11) rebase 到最新 `origin/main@d7baadf`，无冲突吸收 PR #254 的 Agent Resume/恢复语义；rebase 后 typecheck、build、journal/protocol/sequence、execution-context、l10n、smoke-runner、VSIX、Activity Bar 与 Sidebar history 测试通过。
 - [x] (2026-07-11) rebase 后完整 Webview 为 331/341 通过；10 项非终端失败在独立 `origin/main@d7baadf` worktree 定向运行时逐项复现，当前分支新增终端用例全部通过。
 - [x] (2026-07-11 20:53 +0800) rebase 后最终 `npm run test:smoke` 全部通过，覆盖 trusted/restricted、真实旧 Supervisor、local/multi-root/two-window reopen、systemd user/fallback 与 Remote SSH；首次完整运行仅在高负载并跑时出现一次 `systemd-user-real-reopen` Webview ready 20 秒超时，随后该场景定向复跑和第二次完整复跑均通过，按场景级启动抖动记录而未改动产品语义。
+- [x] (2026-07-12 00:23 +0800) 读取 PR #255 最新 review，确认 scrollback/output 发布乱序、exit/resize 非完整终态和 completed session 丢失唯一完整 stream 三条为确定性 blocker；Webview 重复 marker 只证明存在可疑代码路径，尚需以 `sessionId + authorityId + revision` 排除上游真实重复输出。
+- [x] (2026-07-12 00:23 +0800) 将设计验证状态降回“验证中”，并把本计划从 completed 移回 active；同步确认 PR head `0febdda` 与远端一致、`origin/main@d7baadf` 未前移。
+- [x] (2026-07-12) 为四条 review 建立确定性回归；Webview 正反例分别证明同一 authority revision 只应用一次，以及两个连续 revision 的相同文本必须保留两次，不使用字符串或 marker 去重。
+- [x] (2026-07-12) 串行化 Supervisor 的 terminal mutation/publication、finalization 与 delete：output、resize、scrollback 共用 session operation chain；exit 同步关闭 admission，等待已接受操作后只发布 fresh final state。
+- [x] (2026-07-12) 为 completed session 持久化最后一个合法 checkpoint 加连续 journal suffix；主磁盘 snapshot 与实际 root-local 加载源写入成功后，Host 才解绑 runtime 并删除 Supervisor journal。
+- [x] (2026-07-12 02:10 +0800) 完成 typecheck、build、定向协议/Webview、大于 5 MiB completed reload、真实 Host 离线 completed、10-Agent benchmark 和完整 smoke；设计恢复“已验证”并重新归档计划。
 
 ## 意外与发现
+
+- 观察：PR #255 review 的第二条不能仅凭 marker 出现两次判定 Webview 重复写入；相同文本可能来自两个合法的连续 PTY event。
+  证据：当前事件身份已经包含 `sessionId + authorityId + revision`。只有证明 journal 里 marker 对应一个 revision，而 snapshot 与增量把同一 revision 应用了两次，才能把它定性为无损投影 bug；两个不同 revision 的相同 marker 必须保留两次。
+
+- 观察：第一条和第三条共享同一个根因：journal revision 分配、tracker 异步操作、事件广播和 final snapshot 没有经过同一条 session 级串行边界。
+  证据：`updateSessionScrollback()` 在 append revision 后等待 `setScrollback()` 才广播，期间 `onData` 可广播下一 revision；`finalizeSession()` 又在 fresh tracker flush 前先设置 `live=false`，而 `resizeSession()` 仍接受非 live session。
+
+- 观察：Supervisor 在 oversized final serialized state 无法形成新 checkpoint 时，仍能提供“最后一个合法 checkpoint + 后续完整 journal events”；原缺口发生在 Host completed 路径忽略 `snapshot.terminalStream` 后删除 runtime session。
+  证据：`toFreshSnapshot()` 只有在 checkpoint 通过 5 MiB normalizer 时才替换旧 checkpoint，`buildTerminalStreamAttachPayload()` 仍从旧 checkpoint 拼接 journal suffix；修复后 Host 只有在 stream 的 session、authority、terminal revision 与 output sequence 全部一致时才接收并持久化它。
+
+- 观察：Host 完全离线期间结束的 authority session 原本会在重连时被 `historyOnUnavailable` 提前降级，虽然 Supervisor 已返回完整的非 live terminal stream。
+  证据：真实 reopen 新增第三个 Terminal，在 Host 退出后的 3 秒空窗内输出 marker 并退出；修复前该 snapshot 走 recent-tail `history-restored`，修复后优先执行 completed durable 收敛，重开后完整 stream 可投影且 Supervisor session 已清理。
+
+- 观察：completed stream 的 durable barrier 不能只等待主 snapshot；root-local snapshot 是多 root 与 fallback 恢复的实际候选加载源，也必须同步成功。
+  证据：completed 写入现在要求主磁盘 snapshot 和 root-local 写入都成功；任一失败会恢复内存 state、root-local cache 与 overlay，并保留 Supervisor binding/journal。大体积 stream 使用 `workspaceStateMode: 'skip'`，避免再复制到容量更小且不是权威加载源的 `workspaceState`。
+
+- 观察：大于 5 MiB 的 completed smoke 若不恢复场景前 state，会把巨大 terminal stream 留给后续 trusted 用例并改变调试快照跨进程序列化时序。
+  证据：第一次完整 smoke 的 history-restored resume 断言观察到 Agent 已从 resumable 合法推进到 waiting-input；oversized 场景在 `finally` 恢复 baseline 后，原严格断言和完整 smoke 均通过，无需放宽产品验收。
+
+- 观察：本轮完整 `npm run test:webview` 不能记为通过；定向终端回归与全量套件基线必须分开陈述。
+  证据：首个失败是 expected 仍保留旧英文命令行、actual 已是仓库当前中文参数校验文案的陈旧截图（3488 pixels，约 1%）；一个 canvas edge 用例在全量中超过 30 秒但单独通过。跳过截图后，机器高负载又让前两项分别约 33.7/34.5 秒触发统一 30 秒超时。本轮相关 10 项、edge 单跑、10-Agent benchmark 和完整 VS Code smoke 均通过，artifact 保存在 `.debug/playwright/results/`。
 
 - 观察：PR #152 不是一个局部终端显示修复，而是一次横跨 24 个文件、约 6,000 行增删的多问题收口。
   证据：PR #152 同时新增或大改 `CanvasPanelManager.ts`、`main.tsx`、协议、serialized terminal tracker、runtime supervisor 协议、终端链接 helper、诊断和近千行 Playwright 覆盖；PR 正文同时声明输入响应、持久化、snapshot reset、序号与链接解析目标。
@@ -132,6 +159,26 @@
   证据：原样 `npm test` 在深层 `TMPDIR` 创建 VS Code IPC socket 时以 `listen EINVAL` 停止，同一命令在临时分支基线 `5355e6a` worktree 复现；改用 `/tmp` 短路径后，Marketplace fixture 等待中文按钮，但实际英文 probe 为 `Publish custom template`、`Install`、`View details`。继续审计又确认 `theme-color-tokens` / `canvas-templates` 仍扫描已拆分的 `main.tsx`，`canvas-node-groups` mock 缺少 `vscode.l10n`；rebase 后完整 Webview 为 331/341 通过，10 项失败在独立最新 `origin/main@d7baadf` worktree 全部复现，新增终端链路回归全部通过。这些问题与本轮终端代码路径分开登记。
 
 ## 决策记录
+
+- 决策：PR #255 review follow-up 继续使用已选定的 Supervisor authority 方案，但把计划与设计验证状态重新打开，不因此前 smoke 通过而降低 blocker 标准。
+  理由：review 已给出可直接证明的无损与终态反例；决策方向没有变化，但实现验证结论已经失效，必须先恢复活文档的真实状态。
+  日期/作者：2026-07-12 / Codex
+
+- 决策：Webview 重复内容不得按字符串去重；先以 authority revision 建立正反例，再决定是否修改 projection generation。
+  理由：终端合法地允许连续输出相同文本。字符串去重会把真实内容丢掉，违反本设计的首要边界。
+  日期/作者：2026-07-12 / Codex
+
+- 决策：Supervisor 的 output、resize、scrollback、exit finalization 与 delete 共用 session 级 terminal operation chain；exit/delete 先同步关闭 mutation admission，再等待已经接受的操作收敛。
+  理由：只串行 journal append 不能约束异步 tracker 与广播完成顺序；delete 若绕过同一边界，也可能在已接受 output 尚未形成 fresh checkpoint 时提前移除 journal。统一 chain 才能保证对外 revision 单调和唯一完整终态。
+  日期/作者：2026-07-12 / Codex
+
+- 决策：合法的 completed authority stream 优先于 `historyOnUnavailable` recent-tail fallback；只有 session、authority、terminal revision 和 output sequence 四项一致才可进入持久化。
+  理由：`live=false` 只描述生命周期，不能把 Supervisor 已证明连续的最终 stream 降级成不完整历史；四项一致校验则阻止把陈旧或跨 authority payload 误写成完成态事实源。
+  日期/作者：2026-07-12 / Codex
+
+- 决策：completed handoff 的 durable barrier 由主磁盘 snapshot 与实际 root-local 加载源共同构成；大体积 terminal stream 不复制到 `workspaceState`。
+  理由：删除 Supervisor journal 前必须保证下一次 Host 真正会选择的磁盘候选已落盘。`workspaceState` 既有容量风险，又不是这条恢复链的完整性权威；写入失败时回滚内存/cache 并保留 runtime，才能继续重试而不是先破坏唯一完整来源。
+  日期/作者：2026-07-12 / Codex
 
 - 决策：把本轮工作定义为“内容链路重构”，而不是继续调整 backlog 阈值或 scheduler 常量。
   理由：现有故障横跨表示、所有权、新鲜度、排序、调度和恢复；单点调参已经在历史上多次把瓶颈或错误转移到下一层，不能回答内容何时完整、谁是事实源。
@@ -221,7 +268,11 @@ Pane Gallery 新投影恢复问题已收口：Host 在健康 authority attach �
 
 旧 Supervisor 迁移、applied ACK 与周期 cache 收敛也已实现。旧会话不再接受可交互输入或新建请求；ACK 按 Webview surface 和 Supervisor consumer 独立单调；无 attach 的 Host cache 在 checkpoint 落后时按 10–12 秒错峰刷新，并在所有生命周期边界清理。ACK 暂不用于删除磁盘 journal，周期刷新也不触碰已经排队的 live delivery。
 
-本 ExecPlan 的阶段目标已经完成。完整默认 VS Code smoke 通过；真实旧版本 Supervisor 二进制升级和 ANSI/OSC/CJK/emoji 边界均已补齐。原样 `npm test` 仍被已在 `origin/main` 复现的 Marketplace IPC 长路径、locale fixture 和其他陈旧测试基线阻断，因此本计划只把审计与归因写成完成，不声称一键命令清洁通过。长期 retention/compact、local PTY 独立恢复、永久 transcript 与 Agent 结构化投影不属于本阶段，已进入技术债追踪。
+PR #255 review follow-up 已闭环。Supervisor 现在用同一 session operation chain 串行 output、resize、scrollback、finalization 与 delete，并在 exit/delete 边界同步关闭新 mutation admission；对外只会看到严格单调 revision 和覆盖所有已接受操作的唯一 fresh 非 live state。Webview 用 revision 身份对 snapshot 前增量做覆盖对账：同一 revision 只应用一次，而两个不同 revision 即使输出相同 marker 也完整保留两次，没有任何文本去重。
+
+completed authority stream 现在作为节点 metadata 的恢复 payload 持久化。Host 只接受 session、authority、terminal revision 与 output sequence 全部一致的最终 stream；主磁盘 snapshot 和 root-local 加载源共同完成 durable barrier 后，才解绑 runtime 并删除 Supervisor journal。大体积 payload 不写入 `workspaceState`，Webview bootstrap/stateUpdated 也会剥离恢复数据；Host 离线期间结束的真实 Terminal 在重开后能从完整 final stream 恢复并清理 Supervisor session。
+
+本轮 typecheck、build、journal/protocol/sequence/tracker/scheduler/bridge/diagnostics 定向测试、10 项 Webview 终端用例、10-Agent benchmark 和完整默认 VS Code smoke 均通过。最新 Webview benchmark 样本的 input dispatch、ACK、优先回显和最慢后台完成分别为 11.2ms、30ms、210.2ms、22.9092s，均在门槛内。完整 `npm run test:webview` 因陈旧截图基线和当前机器高负载下的统一 30 秒超时未完成，不能写成通过；相关用例与超时 edge 用例单跑通过，artifact 已保留。原样 `npm test` 的既有 Marketplace/fixture 缺口继续由已有技术债追踪；长期 retention/compact、local PTY 独立恢复、永久 transcript 与 Agent 结构化投影不扩大到本次 follow-up。
 
 ## 上下文与定向
 
@@ -253,6 +304,12 @@ PR #152 在 2026-06-15 合入 `main`。它在 Webview backlog 过大时丢弃尚
 
 覆盖 hidden/visible、Webview recreate、Reload Window、关闭并重开 VS Code、Agent 在 Host 离线期间持续输出、会话立即退出、旧 supervisor 升级以及多节点 flood。只有在 trusted、real-reopen 和 Webview 自动化都证明内容完整与输入响应达标后，才删除 `minOutputSequence` 无数据推进、raw tail hydrate 和旧 snapshot reset 代码。最后同步 `ARCHITECTURE.md`、相关正式设计文档和技术债追踪。
 
+### 里程碑六：关闭 PR #255 review 的 revision 与 completed 边界
+
+先用协议测试强制 scrollback tracker 停顿并在其间产生 output，证明修复前消费者会看到 `N+1` 先于 `N`；再让 exit、resize 与 tracker flush 竞争，证明修复前会发布不完整非 live snapshot。Supervisor 修复必须建立 session 级 mutation/publication chain，并在进程退出时同步关闭新 mutation admission，等待已接受操作收敛后只发布 fresh final state。
+
+Webview 用例不按 marker 文本猜测重复，而是构造一个 revision 同时出现在先到增量和后到 snapshot 中，断言最终只应用一次；另用两个连续 revision 输出同一 marker，断言两次都保留。completed 用例使用合法的 100000 scrollback 和 70000 行输出制造超过 5 MiB 的 serialized state，要求 Host 在删除 Supervisor session 前持久化旧 checkpoint 加完整 journal suffix，Reload Window 后仍能看到首、中、末标记且不退化到 recent tail。
+
 ## 工作计划
 
 里程碑一的历史失败证据与里程碑二的恢复表示比较已经完成；实现没有在旧协议上继续叠加 freshness 字段，而是建立 Supervisor authority 与连续 journal。现有失败基线使用真实 headless xterm fixture 和 supervisor attach 纯逻辑测试；容量实验同时记录每 session 与 10 session 总量，避免只证明单节点上限。
@@ -262,6 +319,8 @@ PR #152 在 2026-06-15 合入 `main`。它在 Webview backlog 过大时丢弃尚
 实现期间保留旧协议读取能力，但新旧 session 必须通过明确的 protocol/version 或 capability 分流。旧路径只在独立只读文本投影中显示经过控制序列剥离的最近 tail，不补写 revision、不伪造 checkpoint，也不把文本注入可继续交互的 xterm。旧 Supervisor 上不再创建新 session；旧 live session 全部结束后释放 client，让旧进程空闲退出，再由下一次连接启动新版本。
 
 Webview applied ACK 从真实 xterm 完成 callback 发出，Host 与 Supervisor 分别校验 session/authority/revision 单调性。Host 的周期 cache refresh 复用现有 projection refresh in-flight，并在 session replacement、delete 和 Host dispose 时清理 timer；测试必须覆盖 refresh RPC 期间 live tail、无 attach 长输出、失败保留、旧 capability 缺失和 stale timer。
+
+PR #255 follow-up 先修改 Supervisor：为每个 session 增加串行 terminal operation 边界，output、resize、scrollback 的 revision append 与广播必须按 admission 顺序发布；exit 先同步设置 finalizing gate，再等待已进入队列的操作，生成 fresh final snapshot。随后修改 Webview controller，把“观察到新 session output”与“已应用新 session snapshot”分离，按 authority revision 对账 pre-snapshot backlog。最后修改 Host 与共享 metadata/protocol，使 completed terminal stream 在 durable state 写入成功后才允许删除 Supervisor journal，并让无 live session 的 `postExecutionSnapshot()` 仍能发送该 stream。
 
 ## 具体步骤
 
@@ -299,7 +358,7 @@ Webview applied ACK 从真实 xterm 完成 callback 发出，Host 与 Supervisor
 
 设计研究阶段的验收不是编译通过，而是证据闭环：每个问题都能指向 PR/commit、代码路径、现场诊断或回归测试；每个归因都标明是否真正进入 `main`；当前数据流中的每份内容表示都有生产者、消费者、顺序边界和失败降级说明。该部分已经完成。
 
-进入实现后，至少需要自动化覆盖：多节点持续输出下唯一输入节点的输入、ACK 与真实回显优先；逐字节核对所有 controller 无缺失、无重复且有界公平推进；hidden/visible 切换；Webview recreate；Host 完全退出期间 persistent Agent 持续输出并在重连后完整补齐；local PTY 和 live runtime reattach；输出后立即 exit；旧 supervisor 无序号 tail；ANSI 控制序列跨 chunk/跨边界；checkpoint/log 与 raw stream 的连续性；最终输出、exit banner 和 scrollback 完整性。这些阶段验收项现已覆盖：新 authority 的 checkpoint/journal、hidden backlog、gap、Reload Window、real reopen、final checkpoint、真实旧 Supervisor 只读退役、applied ACK、周期 cache refresh、ANSI/OSC/CJK/emoji 分片与 10-Agent 总量/输入/公平基准均有自动化证据，完整默认 smoke 通过。完整 `npm test` 的非终端基线失败按固定 main 对照记录，不改变上述验收结论。
+进入实现后，至少需要自动化覆盖：多节点持续输出下唯一输入节点的输入、ACK 与真实回显优先；逐字节核对所有 controller 无缺失、无重复且有界公平推进；hidden/visible 切换；Webview recreate；Host 完全退出期间 persistent Agent 持续输出并在重连后完整补齐；local PTY 和 live runtime reattach；输出后立即 exit；旧 supervisor 无序号 tail；ANSI 控制序列跨 chunk/跨边界；checkpoint/log 与 raw stream 的连续性；最终输出、exit banner 和 scrollback 完整性。review follow-up 新增并通过了：scrollback/output 对外 revision 严格单调；exit 后 resize 被拒绝且唯一非 live snapshot 的 checkpoint/revision 完整；同一 revision 的 snapshot+增量只应用一次而两个相同文本 revision 保留两次；超过 5 MiB 的 completed terminal 在 Host reload 后仍完整恢复；真实 Host 离线空窗内结束的 Terminal 在重开后仍保留完整 final stream。完整 `npm test` 的非终端基线失败继续按固定 main 对照记录，不改变本轮新增验收结论。
 
 ## 幂等性与恢复
 
@@ -323,4 +382,4 @@ PR #152 的 `docs/exec-plans/active/execution-input-responsiveness.md` 记录了
 
 ---
 
-最后更新说明：2026-07-10 建立第一轮历史诊断并根据用户确认，将无损 live 增量、唯一输入节点优先级和 Host 非后台 Agent 恢复权威写为硬性边界。2026-07-11 从最新 `origin/main` 新建 `agent-terminal-lossless-io-redesign`，选定并实现 supervisor 唯一 authority、完整非压缩 journal、checkpoint cache 和两阶段 attach；针对 Pane Gallery 主画板空白，又完成按 attach 的权威 checkpoint refresh、无损 Host tail 合并、Webview 批量 replay 和激活投影优先级，随后补齐可重复 10-Agent 容量基准与持续输入下的有界公平调度。最终收口完成旧 Supervisor 只读退役、按 consumer 分水位的 applied ACK、10–12 秒错峰 Host cache 收敛、固定历史 ref 的真实旧二进制迁移和 ANSI/OSC/CJK/emoji 分片恢复验证；分支已 rebase 到 `origin/main@d7baadf`，完整 Webview 的 10 项非终端失败在该目标基线逐项复现，`npm test` 基线缺口已归因并登记技术债，因此计划归档为完成。
+最后更新说明：2026-07-10 至 2026-07-11 完成历史诊断、Supervisor authority、完整 journal/checkpoint、无损调度、新投影恢复、旧 Supervisor 退役、applied ACK、周期 cache、10-Agent 基准和真实生命周期第一轮收口。2026-07-12 根据 PR #255 review 重新打开计划，随后完成 session 级 mutation/publication/finalization/delete 串行化、按 authority revision 对账 Webview snapshot 前增量、completed terminal stream durable handoff、大于 5 MiB reload 与 Host 离线 completed 真实恢复。完整 smoke 与相关定向验证通过；全量 Webview 的陈旧截图和高负载超时如实保留，不冒充清洁通过，计划重新归档。

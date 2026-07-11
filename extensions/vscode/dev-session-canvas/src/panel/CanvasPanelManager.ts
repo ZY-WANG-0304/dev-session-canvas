@@ -6346,7 +6346,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
       await this.context.workspaceState.update(
         STORAGE_KEYS.canvasState,
-        stripSerializedTerminalStateFromCanvasState(normalizedWorkspaceState)
+        stripExecutionTerminalRecoveryPayloadsFromCanvasState(normalizedWorkspaceState)
       );
       await this.context.workspaceState.update(STORAGE_KEYS.canvasLastSurface, snapshotWithMetadata.activeSurface);
       await this.context.workspaceState.update(STORAGE_KEYS.canvasDefaultSurface, snapshotWithMetadata.defaultSurface);
@@ -6690,8 +6690,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       mode?: CanvasStatePersistMode;
       workspaceStateMode?: CanvasWorkspaceStatePersistMode;
       reason?: string;
+      requireRootLocalDurability?: boolean;
     } = {}
-  ): void {
+  ): Promise<void> {
     const startedAt = Date.now();
     const mode = options.mode ?? 'immediate';
     const workspaceStateMode =
@@ -6735,6 +6736,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               rootPath: rootState.rootPath,
               message: formatUnknownError(error)
             });
+            if (options.requireRootLocalDurability) {
+              throw error;
+            }
           }
         }
       }
@@ -6750,10 +6754,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             rootPath,
             message: formatUnknownError(error)
           });
+          if (options.requireRootLocalDurability) {
+            throw error;
+          }
         }
       }
     }
-    void this.queuePersistedCanvasSnapshotWrite({
+    const operation = this.queuePersistedCanvasSnapshotWrite({
       version: 1,
       state: this.state,
       multiRootOverlay: overlayToPersist,
@@ -6763,12 +6770,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       workspaceStateMode,
       reason,
       rootLocalStates: rootLocalStatesToPersist
-    }).catch(() => undefined);
+    });
+    void operation.catch(() => undefined);
     this.recordStatePersistPerformance('persist-state', startedAt, this.state, undefined, {
       mode,
       workspaceStateMode,
       coalescedCount: 0
     });
+    return operation;
   }
 
   private reconcileCanvasFileArtifacts(
@@ -6811,7 +6820,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private prepareCanvasStateForWebview(webview: vscode.Webview | undefined): CanvasPrototypeState {
     const state = this.hydrateNoteMarkdownRecoverableDraftsForWebview(this.state);
     const stateWithImageResources = this.hydrateNoteMarkdownImageResourceBasesForWebview(state, webview);
-    return stripSerializedTerminalStateFromCanvasState(stateWithImageResources);
+    return stripExecutionTerminalRecoveryPayloadsFromCanvasState(stateWithImageResources);
   }
 
   private postMessage(message: HostToWebviewMessage, surface?: CanvasSurfaceLocation): void {
@@ -10056,7 +10065,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         runtimeStoragePath,
         normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? snapshot.runtimeBackend
       );
-      this.applyRuntimeSupervisorSnapshot(nodeId, kind, snapshot, {
+      await this.applyRuntimeSupervisorSnapshot(nodeId, kind, snapshot, {
         postSnapshot: true,
         historyOnUnavailable: true,
         terminalProjectionMode
@@ -10099,6 +10108,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     snapshot: RuntimeSupervisorSessionSnapshot,
     runtimeStoragePath: string | undefined
   ): Promise<void> {
+    if (!snapshot.live) {
+      return;
+    }
     const terminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
     if (
       !terminalStream ||
@@ -10866,7 +10878,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (wasLive && !snapshot.live) {
       this.flushExecutionOutputImmediately(binding.kind, binding.nodeId);
     }
-    this.applyRuntimeSupervisorSnapshot(binding.nodeId, binding.kind, snapshot, {
+    await this.applyRuntimeSupervisorSnapshot(binding.nodeId, binding.kind, snapshot, {
       postSnapshot: false,
       historyOnUnavailable: false
     });
@@ -10944,7 +10956,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private applyRuntimeSupervisorSnapshot(
+  private async applyRuntimeSupervisorSnapshot(
     nodeId: string,
     kind: ExecutionNodeKind,
     snapshot: RuntimeSupervisorSessionSnapshot,
@@ -10953,7 +10965,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       historyOnUnavailable: boolean;
       terminalProjectionMode?: RuntimeTerminalProjectionMode;
     }
-  ): void {
+  ): Promise<void> {
     const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
     if (snapshot.live) {
       const existingNode = this.requireNode(nodeId, kind);
@@ -11035,6 +11047,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastCols: session.cols,
           lastRows: session.rows,
           serializedTerminalState: sessionSerializedTerminalState,
+          terminalStream: undefined,
           lastExitCode: snapshot.lastExitCode,
           lastExitSignal: snapshot.lastExitSignal,
           lastExitMessage: snapshotExitMessage,
@@ -11062,7 +11075,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.persistState({ reason: 'runtime-supervisor-live-snapshot' });
       this.postState('host/stateUpdated');
       if (options.postSnapshot) {
-        this.postExecutionSnapshot(kind, nodeId, {
+        void this.postExecutionSnapshot(kind, nodeId, {
           executionSessionId: session.sessionId
         });
       }
@@ -11070,35 +11083,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    if (options.historyOnUnavailable) {
+    const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream(snapshot);
+    if (options.historyOnUnavailable && !completedTerminalStream) {
       this.markExecutionNodeAsHistoryRestored(nodeId, kind, snapshotExitMessage, snapshot);
       return;
     }
 
-    this.applyCompletedRuntimeSupervisorSnapshot(nodeId, kind, snapshot);
+    await this.applyCompletedRuntimeSupervisorSnapshot(nodeId, kind, snapshot);
   }
 
-  private applyCompletedRuntimeSupervisorSnapshot(
+  private async applyCompletedRuntimeSupervisorSnapshot(
     nodeId: string,
     kind: ExecutionNodeKind,
     snapshot: RuntimeSupervisorSessionSnapshot
-  ): void {
+  ): Promise<void> {
     const existingNode = this.requireNode(nodeId, kind);
     const currentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : ensureTerminalMetadata(existingNode);
-    this.unbindRuntimeSession(
-      snapshot.sessionId,
-      currentMetadata.runtimeStoragePath,
-      kind,
-      normalizeRuntimeHostBackendKind(currentMetadata.runtimeBackend) ?? snapshot.runtimeBackend
-    );
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
-    this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId);
-    this.disposeManagedExecutionSession(existingSession);
-    this.getExecutionSessions(kind).delete(nodeId);
-    if (kind === 'agent') {
-      void this.disposeAgentFileActivitySession(nodeId);
+    const requiresAuthoritativeTerminalStream =
+      existingSession?.owner === 'supervisor' &&
+      existingSession.terminalProjectionMode === 'terminal-stream-v1';
+    const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream(snapshot);
+    if (requiresAuthoritativeTerminalStream && !completedTerminalStream) {
+      throw new Error(`Runtime session ${snapshot.sessionId} ended without a complete terminal stream.`);
     }
-    const outputSequence = maxExecutionOutputSequence(
+    const runtimeStoragePath = this.getPersistedRuntimeStoragePath(currentMetadata);
+    const runtimeBackend =
+      normalizeRuntimeHostBackendKind(currentMetadata.runtimeBackend) ?? snapshot.runtimeBackend;
+    const outputSequence = completedTerminalStream?.revision ?? maxExecutionOutputSequence(
       snapshot.outputSequence,
       existingSession?.outputSequence,
       currentMetadata.outputSequence
@@ -11109,6 +11121,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       (existingSession?.terminalStateTrusted === false
         ? undefined
         : cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, outputSequence));
+    const stateBeforeCompleted = this.state;
+    const rootLocalStatesBeforeCompleted = this.lastLoadedRootLocalStates;
+    const multiRootOverlayBeforeCompleted = this.multiRootOverlay;
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: snapshot.lifecycle,
       summary:
@@ -11135,6 +11150,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastCols: snapshot.cols,
         lastRows: snapshot.rows,
         serializedTerminalState,
+        terminalStream: completedTerminalStream,
         ...(kind === 'agent'
           ? {
               lifecycle: snapshot.lifecycle as AgentNodeStatus,
@@ -11156,8 +11172,48 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             })
       })
     });
-    this.persistState({ reason: 'runtime-supervisor-completed-snapshot' });
+    try {
+      await this.persistState({
+        reason: 'runtime-supervisor-completed-snapshot',
+        workspaceStateMode: 'skip',
+        requireRootLocalDurability: true
+      });
+    } catch (error) {
+      this.state = stateBeforeCompleted;
+      this.lastLoadedRootLocalStates = rootLocalStatesBeforeCompleted;
+      this.multiRootOverlay = multiRootOverlayBeforeCompleted;
+      throw error;
+    }
+    this.unbindRuntimeSession(
+      snapshot.sessionId,
+      currentMetadata.runtimeStoragePath,
+      kind,
+      runtimeBackend
+    );
+    this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId);
+    this.disposeManagedExecutionSession(existingSession);
+    this.getExecutionSessions(kind).delete(nodeId);
+    if (kind === 'agent') {
+      void this.disposeAgentFileActivitySession(nodeId);
+    }
     this.postState('host/stateUpdated');
+    try {
+      await this.deleteRuntimeSupervisorSessionStrict(
+        {
+          backendKind: runtimeBackend,
+          sessionId: snapshot.sessionId,
+          runtimeStoragePath
+        },
+        { allowRestart: false }
+      );
+    } catch (error) {
+      this.recordDiagnosticEvent('runtime/completedSessionCleanupFailed', {
+        kind,
+        nodeId,
+        sessionId: snapshot.sessionId,
+        message: formatUnknownError(error)
+      });
+    }
   }
 
   private markExecutionNodeAsHistoryRestored(
@@ -13920,6 +13976,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastCols: normalizedCols,
         lastRows: normalizedRows,
         serializedTerminalState: undefined,
+        terminalStream: undefined,
         preSuspendLifecycle: undefined,
         lastSuspendReason: undefined,
         lastSuspendMessage: undefined,
@@ -14017,7 +14074,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimeBackend: backend.kind,
       runtimeGuarantee: backend.guarantee
     });
-    this.applyRuntimeSupervisorSnapshot(nodeId, 'agent', snapshot, {
+    await this.applyRuntimeSupervisorSnapshot(nodeId, 'agent', snapshot, {
       postSnapshot: true,
       historyOnUnavailable: true
     });
@@ -14085,7 +14142,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastExitMessage: undefined,
         lastRuntimeError: undefined,
         outputSequence: undefined,
-        serializedTerminalState: undefined
+        serializedTerminalState: undefined,
+        terminalStream: undefined
       })
     });
     this.persistState({ reason: 'terminal-supervisor-launching' });
@@ -14148,7 +14206,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimeBackend: backend.kind,
       runtimeGuarantee: backend.guarantee
     });
-    this.applyRuntimeSupervisorSnapshot(nodeId, 'terminal', snapshot, {
+    await this.applyRuntimeSupervisorSnapshot(nodeId, 'terminal', snapshot, {
       postSnapshot: true,
       historyOnUnavailable: true
     });
@@ -14436,6 +14494,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             lastCols: normalizedCols,
             lastRows: normalizedRows,
             serializedTerminalState: undefined,
+            terminalStream: undefined,
             lastBackendLabel: cliSpec.label,
             lastLaunchCommandLine: displayLaunchCommandLine,
             lastRuntimeError: message
@@ -14750,6 +14809,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastCols: normalizedCols,
           lastRows: normalizedRows,
           serializedTerminalState: undefined,
+          terminalStream: undefined,
           preSuspendLifecycle: undefined,
           lastSuspendReason: undefined,
           lastSuspendMessage: undefined,
@@ -14806,6 +14866,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastCols: normalizedCols,
           lastRows: normalizedRows,
           serializedTerminalState: undefined,
+          terminalStream: undefined,
           lastBackendLabel: cliSpec.label
         })
       });
@@ -15637,7 +15698,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             lastCols: normalizedCols,
             lastRows: normalizedRows,
             lastRuntimeError: message,
-            serializedTerminalState: undefined
+            serializedTerminalState: undefined,
+            terminalStream: undefined
           })
         });
         this.persistState();
@@ -15875,7 +15937,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastExitCode: undefined,
           lastExitSignal: undefined,
           lastExitMessage: undefined,
-          serializedTerminalState: undefined
+          serializedTerminalState: undefined,
+          terminalStream: undefined
         })
       });
       this.persistState();
@@ -15926,7 +15989,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastExitMessage: message,
           lastCols: normalizedCols,
           lastRows: normalizedRows,
-          serializedTerminalState: undefined
+          serializedTerminalState: undefined,
+          terminalStream: undefined
         })
       });
       this.persistState();
@@ -18284,7 +18348,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         session.terminalStateTracker.markOutputSequence(session.outputSequence);
       }
     }
-    const executionSessionId = session?.sessionId;
     const serializedTerminalState = session?.terminalStateTrusted
       ? await session.terminalStateTracker.flush().catch(() => session.terminalStateTracker.getSerializedState())
       : undefined;
@@ -18297,6 +18360,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : node
           ? ensureTerminalMetadata(node)
           : undefined;
+    const persistedTerminalStream = normalizeTerminalStreamAttachPayload(metadata?.terminalStream);
+    const terminalStream =
+      session?.owner === 'supervisor' && session.terminalStreamHealthy
+        ? cloneTerminalStreamAttachPayload(session.terminalStream)
+        : cloneTerminalStreamAttachPayload(persistedTerminalStream);
+    const executionSessionId = session?.sessionId ?? terminalStream?.sessionId;
     const outputSequence = session?.outputSequence ?? metadata?.outputSequence;
     const freshSerializedTerminalState =
       session?.terminalStateTrusted === false
@@ -18320,10 +18389,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         liveSession: Boolean(session),
         outputSequence,
         serializedTerminalState: legacyReadOnly ? undefined : freshSerializedTerminalState,
-        terminalStream:
-          session?.owner === 'supervisor' && session.terminalStreamHealthy
-            ? cloneTerminalStreamAttachPayload(session.terminalStream)
-            : undefined
+        terminalStream
       }
     });
     this.recordDiagnosticEvent('execution/snapshotPosted', {
@@ -24918,6 +24984,35 @@ function normalizeExecutionOutputSequence(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
+function getCompleteRuntimeSupervisorTerminalStream(
+  snapshot: RuntimeSupervisorSessionSnapshot
+): TerminalStreamAttachPayload | undefined {
+  const snapshotOutputSequence = normalizeExecutionOutputSequence(snapshot.outputSequence);
+  const snapshotTerminalRevision = normalizeExecutionOutputSequence(snapshot.terminalRevision);
+  const terminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
+  if (
+    !terminalStream ||
+    terminalStream.sessionId !== snapshot.sessionId ||
+    terminalStream.authorityId !== snapshot.terminalAuthorityId ||
+    terminalStream.revision !== snapshotTerminalRevision ||
+    terminalStream.revision !== snapshotOutputSequence
+  ) {
+    return undefined;
+  }
+  return cloneTerminalStreamAttachPayload(terminalStream);
+}
+
+function normalizePersistedExecutionTerminalStream(
+  value: unknown,
+  outputSequence: number | undefined
+): TerminalStreamAttachPayload | undefined {
+  const terminalStream = normalizeTerminalStreamAttachPayload(value);
+  if (!terminalStream || (outputSequence !== undefined && terminalStream.revision !== outputSequence)) {
+    return undefined;
+  }
+  return cloneTerminalStreamAttachPayload(terminalStream);
+}
+
 function maxExecutionOutputSequence(...values: unknown[]): number | undefined {
   return values.reduce<number | undefined>((currentMax, value) => {
     const normalized = normalizeExecutionOutputSequence(value);
@@ -25203,6 +25298,10 @@ function normalizeMetadata(
           normalizeSerializedTerminalState(agent.serializedTerminalState),
           normalizeExecutionOutputSequence(agent.outputSequence)
         ),
+        terminalStream: normalizePersistedExecutionTerminalStream(
+          agent.terminalStream,
+          normalizeExecutionOutputSequence(agent.outputSequence)
+        ),
         lastBackendLabel:
           typeof agent.lastBackendLabel === 'string'
             ? agent.lastBackendLabel
@@ -25300,6 +25399,10 @@ function normalizeMetadata(
         attentionPending: terminal.attentionPending === true,
         serializedTerminalState: cloneFreshSerializedTerminalState(
           normalizeSerializedTerminalState(terminal.serializedTerminalState),
+          normalizeExecutionOutputSequence(terminal.outputSequence)
+        ),
+        terminalStream: normalizePersistedExecutionTerminalStream(
+          terminal.terminalStream,
           normalizeExecutionOutputSequence(terminal.outputSequence)
         )
       }
@@ -26586,7 +26689,9 @@ function buildExecutionMetadataPatch(
     : buildTerminalMetadataPatch(state, nodeId, patch as Partial<TerminalNodeMetadata>);
 }
 
-function stripSerializedTerminalStateFromCanvasState(state: CanvasPrototypeState): CanvasPrototypeState {
+function stripExecutionTerminalRecoveryPayloadsFromCanvasState(
+  state: CanvasPrototypeState
+): CanvasPrototypeState {
   return {
     ...state,
     nodes: state.nodes.map((node) => ({
@@ -26598,7 +26703,8 @@ function stripSerializedTerminalStateFromCanvasState(state: CanvasPrototypeState
                 ...node.metadata,
                 agent: {
                   ...node.metadata.agent,
-                  serializedTerminalState: undefined
+                  serializedTerminalState: undefined,
+                  terminalStream: undefined
                 }
               }
             : node.metadata
@@ -26608,7 +26714,8 @@ function stripSerializedTerminalStateFromCanvasState(state: CanvasPrototypeState
                   ...node.metadata,
                   terminal: {
                     ...node.metadata.terminal,
-                    serializedTerminalState: undefined
+                    serializedTerminalState: undefined,
+                    terminalStream: undefined
                   }
                 }
               : node.metadata

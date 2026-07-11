@@ -471,6 +471,9 @@ async function runPreparedLocalRealWindowReopenScenario(options) {
     }
   });
 
+  // Keep the Host fully closed while the dedicated completed-session fixture exits.
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+
   await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
     phase: 'verify',
     artifactDir: runtime.artifactsDir,
@@ -571,6 +574,7 @@ async function runRemoteSSHRealReopenScenario() {
       stateFile: stateFilePath
     });
     await launchPreparedVSCodeScenario(sharedOptions);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
       phase: 'verify',

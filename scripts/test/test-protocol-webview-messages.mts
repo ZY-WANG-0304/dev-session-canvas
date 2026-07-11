@@ -762,7 +762,7 @@ assert.match(
 );
 assert.match(
   webviewSource,
-  /persisted: message\.payload\.persisted[\s\S]*let pendingPersistBarrier = false[\s\S]*outputOptions\?\.persisted === false[\s\S]*pendingPersistBarrier = true[\s\S]*outputOptions\?\.persisted === true[\s\S]*pendingPersistBarrier = false[\s\S]*disposed \|\| pendingPersistBarrier \|\| pendingOutput\.length === 0/u,
+  /persisted: message\.payload\.persisted[\s\S]*let pendingPersistBarrier = false[\s\S]*outputOptions\?\.persisted === false[\s\S]*pendingPersistBarrier = true[\s\S]*outputOptions\?\.persisted === true[\s\S]*pendingPersistBarrier = false[\s\S]*disposed \|\| pendingPersistBarrier \|\| pendingProjectionBarrier \|\| pendingOutput\.length === 0/u,
   'Expected the Webview to buffer first unpersisted output until the Host confirms the latest execution state was persisted.'
 );
 assert.match(
