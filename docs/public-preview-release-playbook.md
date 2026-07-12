@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、发布前复核、安装/升级说明、验证记录、发布命令与回退口径；当前目标版本为 `0.24.0`。当前版本范围收口为“相对已发布 `0.23.0` 的新里程碑更新：`Agent` / `Terminal` 无损输入输出与 Supervisor 权威恢复、停止后 Agent 的 `Resume / 恢复` 语义，以及 multi-root 画板按分组 / root / workspace 清空边界”。它不是对外宣传页，而是发布当天的执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、发布前复核、安装/升级说明、验证记录、发布命令与回退口径；当前已发布版本为 `0.24.0`。当前版本范围是“相对 `0.23.0` 的新里程碑更新：`Agent` / `Terminal` 无损输入输出与 Supervisor 权威恢复、停止后 Agent 的 `Resume / 恢复` 语义，以及 multi-root 画板按分组 / root / workspace 清空边界”。它不是对外宣传页，而是 release-day 执行与复核手册。
 
 ## 当前发布素材
 
@@ -43,7 +43,7 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前目标版本为 `0.24.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+1. 当前已发布版本为 `0.24.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
 2. 首次安装与从 `0.23.0` 升级到 `0.24.0` 的目标仍是通过当前宿主配置的公开扩展市场常规安装 / 升级完成。Open VSX 侧应继续同版本公开发布；官方 VS Code 的 `Visual Studio Marketplace` 仍是目标主路径，但当前 public gallery 仍不可见时允许延期补发，不阻塞本轮 `0.24.0` 以 GitHub Release assets + Open VSX verified 完成。对外宣称 VSM 安装路径前仍必须先完成 release-day visibility check，确认主扩展与 notifier 均公开可见。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
 4. UI 语言跟随 VS Code locale；本版本不新增扩展自己的语言设置，也不会翻译用户内容、路径、终端输出、provider 原始输出或市场模板数据。
@@ -164,9 +164,17 @@
 
 直接在当前工作树运行的 `npm run test:vsix-smoke` 前两次没有清洁通过。第一次运行完成打包与 payload 内容守卫后，在严格 `90000` 行 completed terminal 场景中只观察到 `DSC_COMPLETED_STREAM_89960`，缺少最后 `40` 行并在 `verifyCompletedLiveRuntimeRetainsOversizedTerminalStream` 超时；按技术债处置规则原样完整复跑后，第二次在更早的 `verifyExplorerResourceExecutionNodeCreation` 中因 Terminal 持续停留在 `stopping` 而超时。两次都由测试宿主以 code `1` 退出。随后不带 skip 的隔离 clean-checkout 对同一最终 working-tree 内容获得一次完整 code `0` packaged-payload 结果，严格断言、行数与 timeout 全程未放宽。该通过样本满足分支内 packaged 工件验证，但与前两次失败共同证明 90000 行尾部风险具有间歇性，不能据此撤销技术债或把极端 completed stream 升级为已验证保证。
 
-以上分支内验证只能证明当前 working tree 的 repo-local 状态，不能替代发布准备 MR 合入后的最终 `main` release ref 验证。最终 tag / publish 前必须在 clean `main` ref 上重跑双 VSIX 打包、clean-checkout、packaged-payload smoke 与 `publish/v0.24.0` dry-run；当前可记录为发布准备分支已获得一次隔离 packaged-payload 清洁结果，但仍不能提前把最终 release ref 的发布门禁记为已通过。
+以上是发布准备分支当时的 repo-local 证据，不能替代 MR 合入后的最终 `main` release ref 验证；因此 release-day 要求在 clean `main` ref 上重跑双 VSIX 打包、clean-checkout、packaged-payload smoke 与 `publish/v0.24.0` dry-run。该最终门禁的实际结果见下方发布后复核。
 
 残余风险基线：Visual Studio Marketplace public gallery 当前仍不可见；Supervisor journal 尚无长期 retention / compact 与跨版本回退保证；local PTY 不具备跨 Host 恢复；旧 Supervisor session 升级期间只读；#255 记录的 90000 行 PTY 偶发短读尚未形成稳定根因；完整 Webview suite 在当前主线仍受陈旧截图与统一 timeout 干扰。最终验证必须如实区分通过的定向用例、完整 smoke 与未通过或未执行的全量门禁。
+
+### 0.24.0 发布后复核
+
+截至 `2026-07-13`，`0.24.0` 已从最终 `main` release ref `3361158733f9814660789d02b4493e74e416d829` 完成 GitHub Release assets + Open VSX 兜底发布。GitHub Actions run `29199871383` 的 prepare、Open VSX、Visual Studio Marketplace 与 finalize 四个 job 均成功结束；正式 `v0.24.0` tag 指向同一 ref，远端与本地 `publish/v0.24.0` 临时 tag 已删除。最终 release manifest 状态为 `complete-with-deferred-visual-studio`，Open VSX 主扩展与 notifier `0.24.0` 均为 verified，Visual Studio Marketplace 双扩展因 `VSID Concurrency` 限流记录为 `publish-failed` / deferred，public gallery 独立复核仍为 `count=0` / `TotalCount=0`。
+
+正式 GitHub Release assets 为主扩展 `dev-session-canvas-0.24.0.vsix`（`117` files，`3,908,820 bytes`，`sha256=9110ae5920773d202b56483f9c4a1408bdeb36ed53947eda2e8f8db33ecca602`）、notifier `dev-session-canvas-notifier-0.24.0.vsix`（`14` files，`158,807 bytes`，`sha256=b13395fe6081cf91775e34c08e981b636d1deeef75be0fddce4ee049747e4484`）与 `release-manifest-0.24.0.json`。最终 release ref 已重新通过双 VSIX、README ref `3361158733f9814660789d02b4493e74e416d829`、不跳过的 clean-checkout、VS Code `1.128.0` packaged-payload smoke 和 `publish/v0.24.0 --dry-run --package-only`；该通过样本仍不撤销 90000 行间歇性短读技术债。
+
+发布后独立复核发现，Release notes 生成器原先只写入 manifest 通用风险，没有传播 CHANGELOG 的 `已知边界与验证说明`。外部 `v0.24.0` Release notes 已手工补齐 journal/local PTY、90000 行短读、packaged smoke 与全量 Webview suite 边界；本次 post-release 收口让后续 release ref 的生成器同步传播该 subsection，并由发布 workflow 测试夹具防止再次遗漏。由于 `v0.24.0` release ref 不可变，同版本 VSM 补发仍会执行该 ref 内的旧生成器，补发完成后必须再次复核并按需恢复外部 Release notes 的版本特定风险。
 
 ## 发布命令
 

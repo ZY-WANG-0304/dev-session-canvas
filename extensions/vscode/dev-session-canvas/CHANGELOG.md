@@ -30,7 +30,7 @@
 
 - Supervisor journal 当前没有长期 retention / compact 策略或跨版本回退保证；local PTY 仍不能跨 Extension Host 生命周期继续运行，旧 Supervisor session 的迁移期能力也仍限定为只读查看、停止和删除
 - 严格 90000 行 completed terminal 压测已间歇性出现两次尾部未收齐样本（分别停在 89861 与 89960），其间也有完整通过样本；当前尚未定位 PTY、bridge、journal、finalization 或测试宿主中的具体根因，因此极端单次 PTY 大输出的最终尾部完整性仍处于验证中
-- 当前发布准备直接执行 packaged-payload smoke 时曾分别命中上述 89960 行短读与更早的 Terminal `stopping` timeout；随后隔离 clean-checkout 对同一 working-tree 内容获得一次完整通过。该 clean 样本不撤销间歇性风险，最终发布 ref 仍必须重新获得清洁结果
+- 发布准备直接执行 packaged-payload smoke 时曾分别命中上述 89960 行短读与更早的 Terminal `stopping` timeout；随后隔离 clean-checkout 对同一 working-tree 内容获得一次完整通过，最终 `main` release ref 又完整通过同一严格 suite。通过样本不撤销间歇性风险
 - 完整 Webview suite 仍受陈旧截图和统一 timeout 基线干扰；本轮只把实际通过的定向用例与完整 VS Code smoke 记为通过，不宣称全量 UI 回归已清洁完成
 
 ### 回退建议
