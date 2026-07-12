@@ -56,24 +56,31 @@ export class RuntimeSupervisorClient {
       }, RUNTIME_SUPERVISOR_ERROR_CODES.clientDisposed);
     }
 
-    if (this.socket && !this.socket.destroyed) {
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    if (this.socket && !this.socket.destroyed && this.helloResult) {
       return;
     }
 
-    if (!this.connectPromise) {
-      this.connectPromise = this.connectWithRestart(options.allowRestart !== false);
-      this.connectPromise.finally(() => {
-        this.connectPromise = undefined;
-      });
-    }
-
-    return this.connectPromise;
+    const connectPromise = this.connectWithRestart(options.allowRestart !== false);
+    this.connectPromise = connectPromise;
+    void connectPromise.then(
+      () => this.clearConnectPromise(connectPromise),
+      () => this.clearConnectPromise(connectPromise)
+    );
+    return connectPromise;
   }
 
   public async hello(): Promise<RuntimeSupervisorHelloResult> {
-    const result = await this.request<RuntimeSupervisorHelloResult>('hello');
-    this.helloResult = result;
-    return result;
+    await this.ensureConnected();
+    if (!this.helloResult) {
+      throw createRuntimeSupervisorProtocolError({
+        id: 'clientNotConnected'
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.clientNotConnected);
+    }
+    return this.helloResult;
   }
 
   public supportsTerminalProjectionSnapshot(): boolean {
@@ -155,9 +162,6 @@ export class RuntimeSupervisorClient {
   }
 
   private async request<T>(
-    method: 'hello'
-  ): Promise<T>;
-  private async request<T>(
     method:
       | 'createSession'
       | 'attachSession'
@@ -183,6 +187,10 @@ export class RuntimeSupervisorClient {
   ): Promise<T>;
   private async request<T>(method: string, params?: unknown): Promise<T> {
     await this.ensureConnected();
+    return this.requestOnConnectedSocket(method, params);
+  }
+
+  private requestOnConnectedSocket<T>(method: string, params?: unknown): Promise<T> {
     const socket = this.socket;
     if (!socket || socket.destroyed) {
       throw createRuntimeSupervisorProtocolError({
@@ -218,8 +226,10 @@ export class RuntimeSupervisorClient {
 
   private async connectWithRestart(allowRestart: boolean): Promise<void> {
     try {
-      await this.connectSocket();
-      await this.hello();
+      if (!this.socket || this.socket.destroyed) {
+        await this.connectSocket();
+      }
+      await this.performHelloHandshake();
       return;
     } catch (error) {
       if (!allowRestart || !isSupervisorSocketStartupError(error)) {
@@ -375,8 +385,10 @@ export class RuntimeSupervisorClient {
 
     while (Date.now() < deadline) {
       try {
-        await this.connectSocket();
-        await this.hello();
+        if (!this.socket || this.socket.destroyed) {
+          await this.connectSocket();
+        }
+        await this.performHelloHandshake();
         return;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -388,6 +400,16 @@ export class RuntimeSupervisorClient {
     throw lastError ?? createRuntimeSupervisorProtocolError({
       id: 'clientReadyTimeout'
     }, RUNTIME_SUPERVISOR_ERROR_CODES.clientReadyTimeout);
+  }
+
+  private async performHelloHandshake(): Promise<void> {
+    this.helloResult = await this.requestOnConnectedSocket<RuntimeSupervisorHelloResult>('hello');
+  }
+
+  private clearConnectPromise(connectPromise: Promise<void>): void {
+    if (this.connectPromise === connectPromise) {
+      this.connectPromise = undefined;
+    }
   }
 }
 
