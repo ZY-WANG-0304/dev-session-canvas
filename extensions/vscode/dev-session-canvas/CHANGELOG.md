@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.24.0 - Lossless Execution Recovery and Scoped Canvas Reset Update
+
+相对 `0.23.0`，`0.24.0` 是新的公开 `Preview` 里程碑更新，重点重构 `Agent` / `Terminal` 的无损输入输出与恢复链路，明确停止后 Agent 的 `Resume / 恢复` 语义，并补齐 multi-root workspace 下按当前分组、当前 root 或整个 workspace 清空画板的受控入口。它保留 `0.23.0` 的英文默认 / 简体中文本地化、模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
+
+### 本版本聚焦
+
+- 版本号从 `0.23.0` bump 到 `0.24.0`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- `Agent` / `Terminal` 输出链路不再通过 backlog snapshot replacement 或增量丢弃换取输入响应；当前输入节点保持最高优先级，其他执行节点通过有界公平调度继续无损推进，相同文本只要来自不同 revision / sequence 就会完整保留
+- 开启 runtime persistence 且由当前 Runtime Supervisor 托管的 session 现在使用连续 revision、分段 checksum journal 与 checkpoint cache 作为恢复权威；Reload Window、Extension Host 离线期间继续输出或完成、以及大体量 completed stream 均可从最新合法 checkpoint 和连续 journal suffix 恢复
+- Supervisor attach 与 live output 采用原子切点，并通过 applied-revision ACK、authority / revision 对账、durable handoff 和 session operation chain 收口 output、resize、scrollback、终态与删除顺序；authority mismatch、非法 revision 或 journal 不可用时 fail closed 并给出本地化诊断
+- 旧版 Supervisor 中仍在运行的 session 会进入显式 legacy-read-only 迁移状态：保留查看、停止和删除，但禁止继续输入、resize 或新建 session；最后一个旧 session 结束后由当前 Supervisor 自然接管
+- 停止后的 Agent 标题栏动作从 `Restart / 重启` 改为 `Resume / 恢复`，准确表达 provider 原会话恢复语义；Terminal 仍保留 `Restart / 重启`，继续表示启动新的 shell 进程
+- multi-root 全局重置现在会清空每个 root-local 画布内容和运行会话，同时保留系统 workspace-root section；画布右键菜单可按当前 root、当前普通分组或整个 workspace 清空，所有路径都先确认，清空普通分组时保留目标分组框
+- `main.tsx` 的 React Flow、执行节点、Note Markdown、Pane Gallery、File / Note 节点与通用节点 chrome 已拆入领域模块；该项是行为保持重构，不改变 Host/Webview 协议、持久化格式、node type key 或既有交互契约
+- 不改变扩展身份、最低 VS Code 版本、notifier 自动安装关系、通知协议、Open VSX 同版本同步策略、Visual Studio Marketplace deferred 完成门禁、模板市场服务版本线或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.23.0` 升级到 `0.24.0` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 侧应作为补充渠道同步发布并作为本轮 marketplace 完成门禁
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 若升级时仍有旧版 Supervisor 托管的运行会话，这些会话只读保留到停止或删除；为避免输入被拒绝，建议先让重要任务完成或停止，再升级并 Reload Window
+- runtime persistence 的跨 Host 恢复能力仍取决于配置与后端可用性；local PTY 不因此获得跨 Host 生命周期继续运行的承诺，Preview 版本之间也不承诺回退兼容
+- 若此前显式配置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.24.0` 后会继续沿用该明确选择
+- 模板市场仍是 Preview 能力；生产服务版本、插件 SemVer 和模板包版本继续分开管理
+
+### 已知边界与验证说明
+
+- Supervisor journal 当前没有长期 retention / compact 策略或跨版本回退保证；local PTY 仍不能跨 Extension Host 生命周期继续运行，旧 Supervisor session 的迁移期能力也仍限定为只读查看、停止和删除
+- 严格 90000 行 completed terminal 压测已间歇性出现两次尾部未收齐样本（分别停在 89861 与 89960），其间也有完整通过样本；当前尚未定位 PTY、bridge、journal、finalization 或测试宿主中的具体根因，因此极端单次 PTY 大输出的最终尾部完整性仍处于验证中
+- 当前发布准备直接执行 packaged-payload smoke 时曾分别命中上述 89960 行短读与更早的 Terminal `stopping` timeout；随后隔离 clean-checkout 对同一 working-tree 内容获得一次完整通过。该 clean 样本不撤销间歇性风险，最终发布 ref 仍必须重新获得清洁结果
+- 完整 Webview suite 仍受陈旧截图和统一 timeout 基线干扰；本轮只把实际通过的定向用例与完整 VS Code smoke 记为通过，不宣称全量 UI 回归已清洁完成
+
+### 回退建议
+
+- 若 `0.24.0` 阻塞当前工作流，建议先停止重要运行会话，再禁用或卸载扩展，并优先等待后续 `0.24.x` 修复版本；Supervisor journal 暂不提供跨版本回退保证
+
 ## 0.23.0 - Notifier Localization and Smoke Stability Update
 
 相对 `0.22.0`，`0.23.0` 是新的公开 `Preview` 里程碑更新，重点收口 `Dev Session Canvas Notifier` 的英文默认版与简体中文本地化、真实 VS Code notifier locale smoke，以及 VS Code smoke 宿主稳定性。它保留 `0.22.0` 的主画布本地化、模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
