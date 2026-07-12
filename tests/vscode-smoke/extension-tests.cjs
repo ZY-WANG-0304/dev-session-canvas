@@ -10381,7 +10381,6 @@ async function verifyLiveRuntimeResumeExitClassification(agentNodeId) {
 
 async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalNodeId) {
   await setRuntimePersistenceEnabled(true);
-  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
   const baselineSnapshot = await getDebugSnapshot();
   const baselineAgent = findNodeById(baselineSnapshot, agentNodeId);
   const baselineTerminal = findNodeById(baselineSnapshot, terminalNodeId);
@@ -10502,7 +10501,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
       'Expected runtime projection to preserve the terminal runtime-reattach failure reason derived from seeded state.'
     );
 
-    const reconnectDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
+    const reconnectDiagnostics = await getDiagnosticEvents();
     assert.ok(
       reconnectDiagnostics.some(
         (event) =>

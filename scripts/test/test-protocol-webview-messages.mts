@@ -222,6 +222,7 @@ const terminalStreamMessages: HostToWebviewMessage[] = [
       executionSessionId: terminalStream.sessionId,
       chunk: 'live',
       persisted: true,
+      outputStartSequence: 4,
       outputSequence: 5,
       terminalAuthorityId: terminalStream.authorityId,
       terminalStartRevision: 4,

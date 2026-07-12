@@ -15615,6 +15615,64 @@ for (const executionKind of ['agent', 'terminal']) {
     expect((visibleText.match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
   });
 
+  test(`${executionKind} applies one local output sequence once when output arrives before its covering snapshot`, async ({ page }) => {
+    test.setTimeout(60_000);
+    const nodeId = `${executionKind}-zoom`;
+    const nextSessionId = `${executionKind}-next-local-session`;
+    const marker = 'ONE-LOCAL-OUTPUT-SEQUENCE-MUST-RENDER-ONCE';
+    const repeatedMarker = 'DISTINCT-LOCAL-SEQUENCES-MAY-HAVE-IDENTICAL-TEXT';
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${marker}\r\n`,
+      executionSessionId: nextSessionId,
+      outputStartSequence: 1,
+      outputSequence: 1,
+      persisted: true
+    });
+    const coveringState = await createSerializedTerminalStateFromOutput(`${marker}\r\n`);
+    coveringState.outputSequence = 1;
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      executionSessionId: nextSessionId,
+      outputSequence: 1,
+      serializedTerminalState: coveringState
+    });
+    const terminalRows = nodeById(page, nodeId).locator('.xterm-rows');
+    await expect(terminalRows).toContainText(marker, { timeout: 40_000 });
+    let visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((visibleText.match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${repeatedMarker}\r\n`,
+      executionSessionId: nextSessionId,
+      outputStartSequence: 2,
+      outputSequence: 2,
+      persisted: true
+    });
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${repeatedMarker}\r\n`,
+      executionSessionId: nextSessionId,
+      outputStartSequence: 3,
+      outputSequence: 3,
+      persisted: true
+    });
+    await settleWebview(page, 8);
+
+    visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((visibleText.match(new RegExp(repeatedMarker, 'gu')) ?? [])).toHaveLength(2);
+  });
+
   test(`${executionKind} preserves identical text emitted by two distinct authority revisions`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const executionSessionId = `${executionKind}-repeated-text-session`;
@@ -17079,6 +17137,7 @@ async function dispatchExecutionOutput(
     chunk,
     executionSessionId,
     persisted,
+    outputStartSequence,
     outputSequence,
     terminalAuthorityId,
     terminalStartRevision,
@@ -17098,6 +17157,7 @@ async function dispatchExecutionOutput(
       chunk,
       executionSessionId,
       persisted,
+      outputStartSequence,
       outputSequence,
       terminalAuthorityId,
       terminalStartRevision,

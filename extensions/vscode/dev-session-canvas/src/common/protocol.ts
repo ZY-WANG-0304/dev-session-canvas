@@ -1250,6 +1250,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         executionSessionId?: string;
         chunk: string;
         persisted?: boolean;
+        outputStartSequence?: number;
         outputSequence?: number;
         terminalAuthorityId?: string;
         terminalStartRevision?: number;
