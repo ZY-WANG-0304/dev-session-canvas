@@ -14,6 +14,7 @@ let linuxClockTicksPerSecond;
 
 try {
   const protocolOutfile = path.join(tempDir, 'runtimeSupervisorProtocol.cjs');
+  const clientOutfile = path.join(tempDir, 'runtimeSupervisorClient.cjs');
   const terminalSessionStreamOutfile = path.join(tempDir, 'terminalSessionStream.cjs');
   const supervisorOutfile = path.join(tempDir, 'runtimeSupervisorMain.cjs');
   await Promise.all([
@@ -22,6 +23,14 @@ try {
       bundle: true,
       format: 'cjs',
       outfile: protocolOutfile,
+      platform: 'node',
+      target: 'node18'
+    }),
+    esbuild.build({
+      entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts')],
+      bundle: true,
+      format: 'cjs',
+      outfile: clientOutfile,
       platform: 'node',
       target: 'node18'
     }),
@@ -52,8 +61,10 @@ try {
     getRuntimeSupervisorErrorDescriptor,
     serializeRuntimeSupervisorError
   } = require(protocolOutfile);
+  const { RuntimeSupervisorClient } = require(clientOutfile);
   const { mergeTerminalStreamProjectionWithLiveTail } = require(terminalSessionStreamOutfile);
 
+  await assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir);
   assertTerminalProjectionMergePreservesConcurrentLiveTail(mergeTerminalStreamProjectionWithLiveTail);
 
   const spawnError = new Error('spawn /missing/codex ENOENT');
@@ -179,6 +190,144 @@ try {
   console.log('runtimeSupervisorProtocol tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir) {
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-client-${process.pid}-${Date.now()}`
+      : path.join(tempDir, 'runtime-client.sock');
+  const sockets = new Set();
+  let connectionCount = 0;
+  let helloRequestCount = 0;
+  let releaseHello;
+  let markHelloRequestReceived;
+  const helloGate = new Promise((resolve) => {
+    releaseHello = resolve;
+  });
+  const helloRequestReceived = new Promise((resolve) => {
+    markHelloRequestReceived = resolve;
+  });
+  const server = net.createServer((socket) => {
+    connectionCount += 1;
+    sockets.add(socket);
+    socket.setEncoding('utf8');
+    socket.on('close', () => sockets.delete(socket));
+    let buffer = '';
+    socket.on('data', (chunk) => {
+      buffer += chunk;
+      while (true) {
+        const newlineIndex = buffer.indexOf('\n');
+        if (newlineIndex < 0) {
+          return;
+        }
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line) {
+          continue;
+        }
+        const message = JSON.parse(line);
+        if (message.type !== 'request' || message.method !== 'hello') {
+          continue;
+        }
+        helloRequestCount += 1;
+        markHelloRequestReceived();
+        void helloGate.then(() => {
+          if (socket.destroyed) {
+            return;
+          }
+          socket.write(`${JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: {
+              serverVersion: 1,
+              pid: process.pid,
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              capabilities: {
+                terminalSessionStreamV1: true,
+                terminalProjectionSnapshotV1: true,
+                terminalAppliedRevisionAckV1: true
+              }
+            }
+          })}\n`);
+        });
+      }
+    });
+  });
+
+  await new Promise((resolve, reject) => {
+    const handleError = (error) => {
+      server.removeListener('listening', handleListening);
+      reject(error);
+    };
+    const handleListening = () => {
+      server.removeListener('error', handleError);
+      resolve();
+    };
+    server.once('error', handleError);
+    server.once('listening', handleListening);
+    server.listen(socketPath);
+  });
+
+  const client = new RuntimeSupervisorClient({
+    backend: {
+      kind: 'legacy-detached',
+      guarantee: 'best-effort',
+      label: 'Test Supervisor',
+      paths: {
+        storageDir: tempDir,
+        socketPath,
+        registryPath: path.join(tempDir, 'runtime-client-registry.json'),
+        socketLocation: process.platform === 'win32' ? 'named-pipe' : 'storage'
+      },
+      startSupervisor: async () => assert.fail('The connected test client must not restart the Supervisor.')
+    },
+    supervisorScriptPath: '/unused/runtimeSupervisorMain.js',
+    supervisorLauncherScriptPath: '/unused/runtimeSupervisorLauncher.js'
+  });
+  let firstEnsure;
+  let secondEnsure;
+  try {
+    firstEnsure = client.ensureConnected({ allowRestart: false });
+    await waitForPromise(helloRequestReceived, 2000, 'RuntimeSupervisorClient hello request');
+
+    let secondResolved = false;
+    secondEnsure = client.ensureConnected({ allowRestart: false }).then(() => {
+      secondResolved = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(
+      secondResolved,
+      false,
+      'Concurrent ensureConnected() must wait until the existing hello handshake publishes capabilities.'
+    );
+
+    releaseHello();
+    await waitForPromise(
+      Promise.all([firstEnsure, secondEnsure]),
+      2000,
+      'concurrent RuntimeSupervisorClient readiness'
+    );
+    assert.equal(client.supportsTerminalSessionStream(), true);
+    assert.equal(client.supportsTerminalProjectionSnapshot(), true);
+    assert.equal(client.supportsTerminalAppliedRevisionAck(), true);
+    assert.equal(connectionCount, 1, 'Concurrent readiness callers must share one socket connection.');
+    assert.equal(helloRequestCount, 1, 'Concurrent readiness callers must share one hello handshake.');
+  } finally {
+    releaseHello();
+    await waitForPromise(
+      Promise.allSettled([firstEnsure, secondEnsure].filter(Boolean)),
+      2000,
+      'RuntimeSupervisorClient readiness cleanup'
+    );
+    client.dispose();
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    await new Promise((resolve) => server.close(resolve));
+  }
 }
 
 async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supervisorOutfile, tempDir) {
@@ -1404,5 +1553,23 @@ async function waitForRuntimeSupervisorRegistrySession(registryPath, sessionId, 
 function delay(timeoutMs) {
   return new Promise((resolve) => {
     setTimeout(resolve, timeoutMs);
+  });
+}
+
+function waitForPromise(promise, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Timed out waiting for ${label}.`));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
   });
 }

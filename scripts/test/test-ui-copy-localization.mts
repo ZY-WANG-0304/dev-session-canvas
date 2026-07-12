@@ -54,6 +54,10 @@ const runtimeSupervisorSourceFiles = [
   'extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts',
   'extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorLocalization.ts'
 ];
+const runtimeSupervisorLocalizationSource = readFileSync(
+  path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorLocalization.ts'),
+  'utf8'
+);
 const sharedPresentationSources = sharedPresentationSourceFiles.map((filePath) => ({
   filePath,
   source: readFileSync(path.join(process.cwd(), filePath), 'utf8')
@@ -167,6 +171,19 @@ for (const source of hostRuntimeSourceStrings) {
   assert.ok(
     runtimeChineseBundle[source]?.trim(),
     `Expected zh-cn runtime l10n bundle translation to be non-empty: ${source}`
+  );
+}
+
+for (const descriptorId of [
+  'terminalAuthorityMismatch',
+  'terminalRevisionInvalid',
+  'terminalJournalUnavailable',
+  'terminalJournalPersistenceFailed'
+]) {
+  assert.match(
+    runtimeSupervisorLocalizationSource,
+    new RegExp(`case '${descriptorId}':\\s*return vscode\\.l10n\\.t\\(`, 'u'),
+    `Expected controlled runtime supervisor descriptor ${descriptorId} to localize at the Host boundary.`
   );
 }
 
