@@ -1,9 +1,10 @@
 import os from 'os';
 import path from 'path';
-import { spawn, spawnSync } from 'child_process';
+import { execFile, spawn, spawnSync } from 'child_process';
 import { existsSync, statSync } from 'fs';
 import { promises as fs } from 'fs';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+import esbuild from 'esbuild';
 
 const BLOCKED_VSCODE_ENV_PREFIXES = ['VSCODE_'];
 const BLOCKED_VSCODE_ENV_KEYS = new Set(['ELECTRON_RUN_AS_NODE']);
@@ -219,6 +220,59 @@ export async function prepareMainSmokeHostExtension(options) {
   return smokeHostRoot;
 }
 
+export async function buildHistoricalRuntimeSupervisorFixture(options) {
+  const sourceRoot = options.sourceRoot;
+  const extensionRoot = path.join('extensions', 'vscode', 'dev-session-canvas');
+  const sourcePrefix = path.join(extensionRoot, 'src');
+  await fs.rm(sourceRoot, { recursive: true, force: true });
+  await fs.mkdir(sourceRoot, { recursive: true });
+
+  const listedFiles = await execFileText(
+    'git',
+    ['ls-tree', '-r', '--name-only', options.ref, '--', sourcePrefix],
+    { cwd: options.projectRoot }
+  );
+  const sourceFiles = listedFiles
+    .split(/\r?\n/u)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (sourceFiles.length === 0) {
+    throw new Error(`Historical Supervisor source is unavailable at ${options.ref}.`);
+  }
+
+  for (const repositoryPath of sourceFiles) {
+    const relativePath = path.relative(extensionRoot, repositoryPath);
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      throw new Error(`Historical Supervisor source escaped the extension root: ${repositoryPath}`);
+    }
+    const targetPath = path.join(sourceRoot, relativePath);
+    const contents = await execFileText(
+      'git',
+      ['show', `${options.ref}:${repositoryPath}`],
+      { cwd: options.projectRoot }
+    );
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, contents, 'utf8');
+  }
+
+  await fs.mkdir(path.dirname(options.outfile), { recursive: true });
+  await esbuild.build({
+    entryPoints: [path.join(sourceRoot, 'src', 'supervisor', 'runtimeSupervisorMain.ts')],
+    bundle: true,
+    external: ['node-pty'],
+    format: 'cjs',
+    outfile: options.outfile,
+    platform: 'node',
+    target: 'node18',
+    sourcemap: false,
+    banner: {
+      js: `// Historical runtime supervisor fixture built from ${options.ref}.`
+    }
+  });
+
+  return options.outfile;
+}
+
 export async function stageSmokeTestSuite(options) {
   const sourceRoot = path.join(options.projectRoot, STAGED_SMOKE_TESTS_ROOT);
   const targetRoot = path.join(options.targetRoot, STAGED_SMOKE_TESTS_ROOT);
@@ -247,6 +301,28 @@ export async function copyPathRecursive(sourcePath, targetPath) {
     recursive: true,
     dereference: true,
     force: true
+  });
+}
+
+function execFileText(file, args, options) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      file,
+      args,
+      {
+        ...options,
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          const detail = stderr.trim();
+          reject(new Error(detail ? `${error.message}: ${detail}` : error.message));
+          return;
+        }
+        resolve(stdout);
+      }
+    );
   });
 }
 

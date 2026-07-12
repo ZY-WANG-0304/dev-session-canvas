@@ -155,6 +155,23 @@ export function localizeRuntimeSupervisorMessageDescriptor(
             detail: params.detail
           })
         : vscode.l10n.t('{command} failed.', { command: params.command ?? 'systemctl --user' });
+    case 'terminalAuthorityMismatch':
+      return vscode.l10n.t('Runtime terminal authority mismatch for session {sessionId}.', {
+        sessionId: params.sessionId ?? vscode.l10n.t('<unknown>')
+      });
+    case 'terminalRevisionInvalid':
+      return vscode.l10n.t('Runtime terminal revision {revision} is invalid for session {sessionId}.', {
+        revision: params.revision ?? vscode.l10n.t('<unknown>'),
+        sessionId: params.sessionId ?? vscode.l10n.t('<unknown>')
+      });
+    case 'terminalJournalUnavailable':
+      return vscode.l10n.t('Runtime terminal journal is unavailable for session {sessionId}.', {
+        sessionId: params.sessionId ?? vscode.l10n.t('<unknown>')
+      });
+    case 'terminalJournalPersistenceFailed':
+      return vscode.l10n.t('Runtime terminal journal persistence failed for session {sessionId}.', {
+        sessionId: params.sessionId ?? vscode.l10n.t('<unknown>')
+      });
     default:
       return fallback ?? formatRuntimeSupervisorMessageDescriptor(descriptor);
   }

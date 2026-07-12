@@ -94,8 +94,13 @@ import type {
   ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
 import type { ExecutionImagePasteData } from '../common/executionTerminalClipboard';
+import { selectExecutionTerminalDrainEntries } from '../common/executionOutputScheduler';
 import { normalizeExecutionTerminalWordSeparators } from '../common/executionTerminalLinks';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
+import {
+  normalizeTerminalStreamAttachPayload,
+  type TerminalStreamAttachPayload
+} from '../common/terminalSessionStream';
 import {
   estimatedCanvasNodeFootprint,
   isCanvasNodeKind,
@@ -429,30 +434,26 @@ const EXECUTION_TERMINAL_DRAIN_MAX_CHARS_PER_CONTROLLER = 16 * 1024;
 const EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CONTROLLERS_PER_FRAME = 1;
 const EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_FRAME = 4 * 1024;
 const EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_CONTROLLER = 4 * 1024;
+const EXECUTION_TERMINAL_INPUT_FAIRNESS_MAX_CHARS_PER_FRAME = 4 * 1024;
+const EXECUTION_TERMINAL_INPUT_NON_PRIORITY_MAX_DEFER_MS = 480;
 const EXECUTION_TERMINAL_LAG_RECOVERY_DRAIN_MAX_CHARS_PER_FRAME = 8 * 1024;
 const EXECUTION_TERMINAL_INPUT_OUTPUT_YIELD_MS = 240;
 const EXECUTION_TERMINAL_LAG_RECOVERY_WINDOW_MS = 2000;
 const EXECUTION_TERMINAL_VISIBILITY_RESTORE_RECOVERY_MS = 3000;
 const EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER = 1;
-const EXECUTION_TERMINAL_HARD_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 1024 * 1024;
-const EXECUTION_TERMINAL_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 512 * 1024;
-const EXECUTION_TERMINAL_HIDDEN_SNAPSHOT_RESET_BACKLOG_THRESHOLD = 128 * 1024;
-const EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS = 2000;
-const EXECUTION_TERMINAL_SNAPSHOT_RESET_REQUEST_COOLDOWN_MS = 1000;
-const EXECUTION_TERMINAL_SNAPSHOT_RESET_TIMEOUT_MS = 1500;
-const EXECUTION_TERMINAL_SNAPSHOT_RESET_DEFERRED_OUTPUT_BUDGET = 256 * 1024;
-const EXECUTION_TERMINAL_SNAPSHOT_RESET_DEFERRED_OUTPUT_DIAGNOSTIC_STEP = 128 * 1024;
 const EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS = 32;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS = 96;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS = 480;
+const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 256 * 1024;
+const EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS = 40;
 const EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS = 500;
 const EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS = 120;
 const executionPerformanceDiagnosticSamples: ExecutionPerformanceDiagnosticPayload[] = [];
 let nextExecutionInputSequence = 1;
-let nextExecutionSnapshotResetRequestSequence = 1;
 const pendingExecutionInputAcks = new Map<number, PendingExecutionInputAck>();
 let lastExecutionInputAtMs = Number.NEGATIVE_INFINITY;
 let lastExecutionInputNodeId: string | undefined;
+let lastExecutionInputKind: ExecutionNodeKind | undefined;
 let lastExecutionMainThreadLagAtMs = Number.NEGATIVE_INFINITY;
 let lastExecutionVisibilityRestoredAtMs = Number.NEGATIVE_INFINITY;
 
@@ -570,6 +571,7 @@ function reportExecutionInputDispatch(
   const metadata = createExecutionInputDispatchMetadata();
   lastExecutionInputAtMs = metadata.webviewPerformanceNowMs;
   lastExecutionInputNodeId = nodeId;
+  lastExecutionInputKind = kind;
   pendingExecutionInputAcks.set(metadata.sequence, {
     nodeId,
     kind,
@@ -686,6 +688,21 @@ function normalizeExecutionPerformanceDiagnosticForWebview(
     requestId: payload.requestId,
     executionSessionId: payload.executionSessionId,
     characters: normalizeDiagnosticInteger(payload.characters),
+    ...(payload.checkpointCharacters !== undefined
+      ? { checkpointCharacters: normalizeDiagnosticInteger(payload.checkpointCharacters) }
+      : {}),
+    ...(payload.replayEventCount !== undefined
+      ? { replayEventCount: normalizeDiagnosticInteger(payload.replayEventCount) }
+      : {}),
+    ...(payload.replayOutputCharacters !== undefined
+      ? { replayOutputCharacters: normalizeDiagnosticInteger(payload.replayOutputCharacters) }
+      : {}),
+    ...(payload.checkpointRevision !== undefined
+      ? { checkpointRevision: normalizeDiagnosticInteger(payload.checkpointRevision) }
+      : {}),
+    ...(payload.targetRevision !== undefined
+      ? { targetRevision: normalizeDiagnosticInteger(payload.targetRevision) }
+      : {}),
     bytes: normalizeDiagnosticInteger(payload.bytes),
     controllerCount: normalizeDiagnosticInteger(payload.controllerCount),
     flushedControllerCount: normalizeDiagnosticInteger(payload.flushedControllerCount),
@@ -812,17 +829,21 @@ function startExecutionMainThreadLagMonitor(): void {
 registerRuntimeDiagnosticListeners();
 startExecutionMainThreadLagMonitor();
 const pendingExecutionTerminalDrains = new Set<ExecutionTerminalController>();
+const pendingExecutionTerminalDrainQueuedAtMs = new Map<ExecutionTerminalController, number>();
 let executionTerminalDrainFrame: number | undefined;
 let executionTerminalDrainTimer: number | undefined;
 interface PendingExecutionTerminalSnapshotWrite {
   nodeId: string;
   kind: ExecutionNodeKind;
   queuedAtMs: number;
+  activationPriorityGeneration?: number;
   run: (done: () => void) => void;
   cancel: () => void;
   finishQueue?: () => void;
 }
 const pendingExecutionTerminalSnapshotWrites: PendingExecutionTerminalSnapshotWrite[] = [];
+const pendingExecutionTerminalActivationPriorities = new Map<string, number>();
+let executionTerminalActivationPriorityGeneration = 0;
 let executionTerminalSnapshotWriteFrame: number | undefined;
 let executionTerminalSnapshotWriteTimer: number | undefined;
 let executionTerminalSnapshotWriteInFlight = false;
@@ -1325,7 +1346,8 @@ function App(): JSX.Element {
           requestId: message.payload.requestId,
           executionSessionId: message.payload.executionSessionId,
           outputSequence: message.payload.outputSequence,
-          serializedTerminalState: message.payload.serializedTerminalState
+          serializedTerminalState: message.payload.serializedTerminalState,
+          terminalStream: message.payload.terminalStream
         });
         break;
       case 'host/executionOutput':
@@ -1336,7 +1358,21 @@ function App(): JSX.Element {
           chunk: message.payload.chunk,
           executionSessionId: message.payload.executionSessionId,
           persisted: message.payload.persisted,
-          outputSequence: message.payload.outputSequence
+          outputStartSequence: message.payload.outputStartSequence,
+          outputSequence: message.payload.outputSequence,
+          terminalAuthorityId: message.payload.terminalAuthorityId,
+          terminalStartRevision: message.payload.terminalStartRevision,
+          terminalRevision: message.payload.terminalRevision
+        });
+        break;
+      case 'host/executionTerminalEvent':
+        executionTerminalRegistry.get(message.payload.nodeId)?.controller.applyTerminalEvent({
+          type: 'terminal-event',
+          nodeId: message.payload.nodeId,
+          kind: message.payload.kind,
+          executionSessionId: message.payload.executionSessionId,
+          authorityId: message.payload.authorityId,
+          event: message.payload.event
         });
         break;
       case 'host/executionInputAck':
@@ -4138,6 +4174,14 @@ function App(): JSX.Element {
       activeRootGroupId !== currentActiveRootGroupId;
     if (enteringThumbnailLayout || switchingThumbnailMainPane) {
       clearCanvasTransientInteractionState();
+      const activeRootModel = paneGalleryRootModels.find((model) => model.rootGroup.id === activeRootGroupId);
+      prioritizeExecutionTerminalSnapshots(
+        activeRootModel?.nodes.flatMap((node) =>
+          node.data.kind === 'agent' || node.data.kind === 'terminal'
+            ? [{ nodeId: node.id, kind: node.data.kind }]
+            : []
+        ) ?? []
+      );
     }
 
     const lastOverviewLayout =
@@ -6590,10 +6634,13 @@ function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type
   try {
     controller?.enqueueOutput(detail.chunk, {
       persisted: detail.persisted,
+      outputStartSequence: detail.outputStartSequence,
       outputSequence: detail.outputSequence,
-      executionSessionId: detail.executionSessionId
+      executionSessionId: detail.executionSessionId,
+      terminalAuthorityId: detail.terminalAuthorityId,
+      terminalStartRevision: detail.terminalStartRevision,
+      terminalRevision: detail.terminalRevision
     });
-    maybeResetExecutionTerminalBacklogFromSnapshot(controller, detail);
     reportExecutionPerformanceDiagnostic(
       {
         source: 'webview-output-enqueue',
@@ -6629,50 +6676,17 @@ function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type
   }
 }
 
-function maybeResetExecutionTerminalBacklogFromSnapshot(
-  controller: ExecutionTerminalController | undefined,
-  detail: Extract<ExecutionHostEvent, { type: 'output' }>
-): void {
-  if (!controller || detail.persisted === false || detail.outputSequence === undefined) {
-    return;
-  }
-
-  const now = readPerformanceNow();
-  const pendingOutputLength = controller.getPendingOutputLength();
-  if (pendingOutputLength >= EXECUTION_TERMINAL_HARD_SNAPSHOT_RESET_BACKLOG_THRESHOLD) {
-    controller.resetBacklogForSnapshot('hard-backlog-snapshot-reset');
-    return;
-  }
-
-  const recentLagOrRestore =
-    now - lastExecutionMainThreadLagAtMs < EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS ||
-    now - lastExecutionVisibilityRestoredAtMs < EXECUTION_TERMINAL_VISIBILITY_RESTORE_RECOVERY_MS ||
-    document.hidden;
-  if (!recentLagOrRestore) {
-    return;
-  }
-
-  const resetThreshold = document.hidden
-    ? EXECUTION_TERMINAL_HIDDEN_SNAPSHOT_RESET_BACKLOG_THRESHOLD
-    : EXECUTION_TERMINAL_SNAPSHOT_RESET_BACKLOG_THRESHOLD;
-  if (pendingOutputLength < resetThreshold) {
-    return;
-  }
-
-  controller.resetBacklogForSnapshot(
-    document.hidden
-      ? 'hidden-backlog-snapshot-reset'
-      : now - lastExecutionMainThreadLagAtMs < EXECUTION_TERMINAL_SNAPSHOT_RESET_AFTER_LAG_MS
-        ? 'lag-backlog-snapshot-reset'
-        : 'visibility-backlog-snapshot-reset'
-  );
-}
-
 function routeExecutionTerminalExit(detail: Extract<ExecutionHostEvent, { type: 'exit' }>): void {
   executionTerminalRegistry.get(detail.nodeId)?.controller.showExit(detail.message);
 }
 
 function scheduleExecutionTerminalSnapshotWrite(entry: PendingExecutionTerminalSnapshotWrite): void {
+  const activationPriorityKey = buildExecutionTerminalSnapshotPriorityKey(entry.nodeId, entry.kind);
+  const activationPriorityGeneration = pendingExecutionTerminalActivationPriorities.get(activationPriorityKey);
+  if (activationPriorityGeneration !== undefined) {
+    entry.activationPriorityGeneration = activationPriorityGeneration;
+    pendingExecutionTerminalActivationPriorities.delete(activationPriorityKey);
+  }
   pendingExecutionTerminalSnapshotWrites.push(entry);
   const now = readPerformanceNow();
   const recentInput = now - lastExecutionInputAtMs < EXECUTION_TERMINAL_INPUT_OUTPUT_YIELD_MS;
@@ -6689,9 +6703,41 @@ function scheduleExecutionTerminalSnapshotWrite(entry: PendingExecutionTerminalS
       force: true
     }
   );
+  const hasActivationPriority = isCurrentExecutionTerminalActivationPriority(entry);
+  if (hasActivationPriority && executionTerminalSnapshotWriteTimer !== undefined) {
+    window.clearTimeout(executionTerminalSnapshotWriteTimer);
+    executionTerminalSnapshotWriteTimer = undefined;
+  }
   scheduleExecutionTerminalSnapshotWritePump(
-    recentInput ? EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS : EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS
+    hasActivationPriority
+      ? 0
+      : recentInput
+        ? EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS
+        : EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS
   );
+}
+
+function buildExecutionTerminalSnapshotPriorityKey(nodeId: string, kind: ExecutionNodeKind): string {
+  return `${kind}:${nodeId}`;
+}
+
+function prioritizeExecutionTerminalSnapshots(
+  entries: readonly { nodeId: string; kind: ExecutionNodeKind }[]
+): void {
+  executionTerminalActivationPriorityGeneration += 1;
+  pendingExecutionTerminalActivationPriorities.clear();
+  for (const entry of entries) {
+    pendingExecutionTerminalActivationPriorities.set(
+      buildExecutionTerminalSnapshotPriorityKey(entry.nodeId, entry.kind),
+      executionTerminalActivationPriorityGeneration
+    );
+  }
+}
+
+function isCurrentExecutionTerminalActivationPriority(
+  entry: PendingExecutionTerminalSnapshotWrite
+): boolean {
+  return entry.activationPriorityGeneration === executionTerminalActivationPriorityGeneration;
 }
 
 function scheduleExecutionTerminalSnapshotWritePump(delayMs = 0): void {
@@ -6740,7 +6786,11 @@ function drainExecutionTerminalSnapshotWrites(): void {
     (oldestAgeMs, entry) => Math.max(oldestAgeMs, now - entry.queuedAtMs),
     0
   );
+  const hasActivationPriority = pendingExecutionTerminalSnapshotWrites.some(
+    isCurrentExecutionTerminalActivationPriority
+  );
   if (
+    !hasActivationPriority &&
     inputAgeMs >= 0 &&
     inputAgeMs < EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS &&
     oldestSnapshotQueuedAgeMs < EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS
@@ -6805,14 +6855,34 @@ function takeNextExecutionTerminalSnapshotWrite(): PendingExecutionTerminalSnaps
     lastExecutionInputNodeId === undefined
       ? -1
       : pendingExecutionTerminalSnapshotWrites.findIndex((entry) => entry.nodeId === lastExecutionInputNodeId);
-  const index = inputNodeIndex >= 0 ? inputNodeIndex : 0;
+  const activationPriorityIndex = pendingExecutionTerminalSnapshotWrites.findIndex(
+    isCurrentExecutionTerminalActivationPriority
+  );
+  const index = activationPriorityIndex >= 0 ? activationPriorityIndex : inputNodeIndex >= 0 ? inputNodeIndex : 0;
   const [entry] = pendingExecutionTerminalSnapshotWrites.splice(index, 1);
   return entry;
 }
 
 function scheduleExecutionTerminalDrain(controller: ExecutionTerminalController): void {
   pendingExecutionTerminalDrains.add(controller);
+  if (!pendingExecutionTerminalDrainQueuedAtMs.has(controller)) {
+    pendingExecutionTerminalDrainQueuedAtMs.set(controller, readPerformanceNow());
+  }
   scheduleExecutionTerminalDrainPump();
+}
+
+function removePendingExecutionTerminalDrain(controller: ExecutionTerminalController): void {
+  pendingExecutionTerminalDrains.delete(controller);
+  pendingExecutionTerminalDrainQueuedAtMs.delete(controller);
+}
+
+function requeueExecutionTerminalDrain(
+  controller: ExecutionTerminalController,
+  queuedAtMs: number,
+  resetAge: boolean
+): void {
+  pendingExecutionTerminalDrains.add(controller);
+  pendingExecutionTerminalDrainQueuedAtMs.set(controller, resetAge ? readPerformanceNow() : queuedAtMs);
 }
 
 function scheduleExecutionTerminalDrainPump(delayMs = 0): void {
@@ -6869,7 +6939,7 @@ function drainExecutionTerminalOutput(): void {
   const maxControllersThisFrame = shouldThrottleForInput
     ? EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CONTROLLERS_PER_FRAME
     : EXECUTION_TERMINAL_DRAIN_MAX_CONTROLLERS_PER_FRAME;
-  const maxCharsThisFrame = shouldThrottleForInput
+  const baseMaxCharsThisFrame = shouldThrottleForInput
     ? EXECUTION_TERMINAL_INPUT_DRAIN_MAX_CHARS_PER_FRAME
     : shouldThrottleForLagRecovery
       ? EXECUTION_TERMINAL_LAG_RECOVERY_DRAIN_MAX_CHARS_PER_FRAME
@@ -6882,60 +6952,85 @@ function drainExecutionTerminalOutput(): void {
   let flushedControllerCount = 0;
   let characters = 0;
   let pendingOutputLength = 0;
-  let processedControllerCount = 0;
   let queuedWriteBlockedControllerCount = 0;
-  const deferredControllers: ExecutionTerminalController[] = [];
-  const queuedWriteBlockedControllers: ExecutionTerminalController[] = [];
-  const processedControllersWithRemainingOutput: ExecutionTerminalController[] = [];
-  const orderedControllers = lastExecutionInputNodeId
-    ? [...controllers].sort((left, right) => {
-        if (left.nodeId === lastExecutionInputNodeId && right.nodeId !== lastExecutionInputNodeId) {
-          return -1;
-        }
-        if (right.nodeId === lastExecutionInputNodeId && left.nodeId !== lastExecutionInputNodeId) {
-          return 1;
-        }
-        return 0;
-      })
-    : controllers;
-  for (const currentController of orderedControllers) {
+  const eligibleEntries: Array<{
+    key: string;
+    kind: ExecutionNodeKind;
+    nodeId: string;
+    queuedAtMs: number;
+    controller: ExecutionTerminalController;
+  }> = [];
+  const queuedWriteBlockedEntries: typeof eligibleEntries = [];
+  for (const currentController of controllers) {
     const pendingLength = currentController.getPendingOutputLength();
     pendingOutputLength += pendingLength;
     if (pendingLength <= 0 || currentController.isOutputDrainBlocked()) {
+      pendingExecutionTerminalDrainQueuedAtMs.delete(currentController);
       continue;
     }
+    const queuedAtMs = pendingExecutionTerminalDrainQueuedAtMs.get(currentController) ?? now;
+    const entry = {
+      key: `${currentController.kind}:${currentController.nodeId}`,
+      kind: currentController.kind,
+      nodeId: currentController.nodeId,
+      queuedAtMs,
+      controller: currentController
+    };
     if (currentController.getQueuedWriteCount() >= EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER) {
       queuedWriteBlockedControllerCount += 1;
-      queuedWriteBlockedControllers.push(currentController);
+      queuedWriteBlockedEntries.push(entry);
       continue;
     }
-    if (processedControllerCount >= maxControllersThisFrame) {
-      deferredControllers.push(currentController);
-      continue;
+    eligibleEntries.push(entry);
+  }
+
+  const inputPriority =
+    shouldThrottleForInput && lastExecutionInputNodeId && lastExecutionInputKind
+      ? {
+          kind: lastExecutionInputKind,
+          nodeId: lastExecutionInputNodeId,
+          receivedAtMs: lastExecutionInputAtMs
+        }
+      : undefined;
+  const selected = selectExecutionTerminalDrainEntries(eligibleEntries, now, inputPriority, {
+    maxControllersPerDrain: maxControllersThisFrame,
+    nonPriorityMaxDeferMs: EXECUTION_TERMINAL_INPUT_NON_PRIORITY_MAX_DEFER_MS
+  });
+  const maxCharsThisFrame =
+    baseMaxCharsThisFrame +
+    (selected.reason === 'input-priority-fairness'
+      ? EXECUTION_TERMINAL_INPUT_FAIRNESS_MAX_CHARS_PER_FRAME
+      : 0);
+  const selectedControllers = new Set(selected.entries.map((entry) => entry.controller));
+
+  for (const entry of eligibleEntries) {
+    if (!selectedControllers.has(entry.controller)) {
+      requeueExecutionTerminalDrain(entry.controller, entry.queuedAtMs, false);
     }
+  }
+  for (const entry of queuedWriteBlockedEntries) {
+    requeueExecutionTerminalDrain(entry.controller, entry.queuedAtMs, false);
+  }
+
+  for (const entry of selected.entries) {
+    const currentController = entry.controller;
 
     const remainingFrameBudget = Math.max(0, maxCharsThisFrame - characters);
     if (remainingFrameBudget <= 0) {
-      deferredControllers.push(currentController);
+      requeueExecutionTerminalDrain(currentController, entry.queuedAtMs, false);
       continue;
     }
 
-    processedControllerCount += 1;
     const flushedCharacters = currentController.flushPendingOutput(Math.min(maxCharsPerController, remainingFrameBudget));
     if (flushedCharacters > 0) {
       characters += flushedCharacters;
       flushedControllerCount += 1;
     }
     if (currentController.getPendingOutputLength() > 0 && !currentController.isOutputDrainBlocked()) {
-      processedControllersWithRemainingOutput.push(currentController);
+      requeueExecutionTerminalDrain(currentController, entry.queuedAtMs, flushedCharacters > 0);
+    } else {
+      pendingExecutionTerminalDrainQueuedAtMs.delete(currentController);
     }
-  }
-  for (const controller of [
-    ...deferredControllers,
-    ...queuedWriteBlockedControllers,
-    ...processedControllersWithRemainingOutput
-  ]) {
-    pendingExecutionTerminalDrains.add(controller);
   }
   if (pendingExecutionTerminalDrains.size > 0) {
     scheduleExecutionTerminalDrainPump(flushedControllerCount === 0 && queuedWriteBlockedControllerCount > 0 ? 16 : 0);
@@ -6949,7 +7044,7 @@ function drainExecutionTerminalOutput(): void {
       pendingControllerCount: pendingExecutionTerminalDrains.size,
       pendingOutputLength,
       characters,
-      reason: shouldThrottleForInput ? 'input-throttle' : shouldThrottleForLagRecovery ? 'lag-recovery' : undefined
+      reason: shouldThrottleForInput ? selected.reason : shouldThrottleForLagRecovery ? 'lag-recovery' : undefined
     },
     {
       minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_DRAIN_MIN_DURATION_MS,
@@ -6983,34 +7078,44 @@ function createExecutionTerminalController(
   let writeGeneration = 0;
   let queuedWriteCount = 0;
   let writeChain: Promise<void> = Promise.resolve();
-  let snapshotResetRequestedAtMs = Number.NEGATIVE_INFINITY;
-  let snapshotResetTimeout: number | undefined;
-  let snapshotResetRequestPending = false;
-  let pendingSnapshotResetRequestId: string | undefined;
   let currentExecutionSessionId: string | undefined;
-  let pendingSnapshotResetExecutionSessionId: string | undefined;
-  let pendingSnapshotResetAfterSequence: number | undefined;
-  let pendingSnapshotOutputQueue: Array<{
-    chunk: string;
-    persisted?: boolean;
+  let projectedExecutionSessionId: string | undefined;
+  let currentLocalOutputSequence = 0;
+  let currentTerminalAuthorityId: string | undefined;
+  let currentTerminalRevision = 0;
+  let pendingOutputBoundaries: Array<{
+    remainingCharacters: number;
+    outputStartSequence?: number;
     outputSequence?: number;
-    executionSessionId?: string;
+    terminalAuthorityId?: string;
+    terminalStartRevision?: number;
+    terminalRevision?: number;
   }> = [];
-  let pendingSnapshotOutputLength = 0;
-  let pendingSnapshotLastDeferredDiagnosticAtMs = Number.NEGATIVE_INFINITY;
-  let pendingSnapshotLastDeferredDiagnosticLength = 0;
-  let lastAppliedSnapshotSequence = 0;
+  let appliedTerminalAuthorityId: string | undefined;
+  let appliedTerminalRevision = 0;
+  let lastAcknowledgedTerminalRevision = 0;
+  let pendingTerminalAppliedAckRevision: number | undefined;
+  let terminalAppliedAckTimer: number | undefined;
+  let hasAppliedSnapshot = false;
+  let pendingProjectionBarrier = false;
+  let projectionRecoveryRequested = false;
+  let projectionRecoveryEpoch = 0;
 
   const normalizeOutputSequence = (value: number | undefined): number | undefined =>
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
 
   const queueTerminalWrite = (
-    writer: (done: () => void, markStarted?: () => void) => void,
+    writer: (done: (applied?: boolean) => void, markStarted?: () => void) => void,
     detail?: {
       reason: string;
       characters?: number;
+      checkpointCharacters?: number;
+      replayEventCount?: number;
+      replayOutputCharacters?: number;
+      checkpointRevision?: number;
+      targetRevision?: number;
     },
-    onComplete?: () => void
+    onComplete?: (applied: boolean) => void
   ): void => {
     const generation = writeGeneration;
     queuedWriteCount += 1;
@@ -7021,7 +7126,7 @@ function createExecutionTerminalController(
           new Promise<void>((resolve) => {
             if (disposed || generation !== writeGeneration) {
               queuedWriteCount = Math.max(0, queuedWriteCount - 1);
-              onComplete?.();
+              onComplete?.(false);
               resolve();
               return;
             }
@@ -7030,7 +7135,7 @@ function createExecutionTerminalController(
             const markStarted = (): void => {
               startedAt = readPerformanceNow();
             };
-            writer(() => {
+            writer((applied = true) => {
               queuedWriteCount = Math.max(0, queuedWriteCount - 1);
               reportExecutionPerformanceDiagnostic(
                 {
@@ -7040,6 +7145,11 @@ function createExecutionTerminalController(
                   reason: detail?.reason,
                   durationMs: readPerformanceNow() - startedAt,
                   characters: detail?.characters,
+                  checkpointCharacters: detail?.checkpointCharacters,
+                  replayEventCount: detail?.replayEventCount,
+                  replayOutputCharacters: detail?.replayOutputCharacters,
+                  checkpointRevision: detail?.checkpointRevision,
+                  targetRevision: detail?.targetRevision,
                   queuedWriteCount,
                   bufferLength: terminal.buffer.active.length
                 },
@@ -7048,11 +7158,135 @@ function createExecutionTerminalController(
                   minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
                 }
               );
-              onComplete?.();
+              onComplete?.(applied);
               resolve();
             }, markStarted);
           })
       );
+  };
+
+  const cancelTerminalAppliedAckTimer = (): void => {
+    if (terminalAppliedAckTimer !== undefined) {
+      window.clearTimeout(terminalAppliedAckTimer);
+      terminalAppliedAckTimer = undefined;
+    }
+  };
+
+  const resetTerminalAppliedRevision = (): void => {
+    cancelTerminalAppliedAckTimer();
+    appliedTerminalAuthorityId = undefined;
+    appliedTerminalRevision = 0;
+    lastAcknowledgedTerminalRevision = 0;
+    pendingTerminalAppliedAckRevision = undefined;
+  };
+
+  const beginExecutionSessionGeneration = (executionSessionId: string): void => {
+    pendingOutput = '';
+    pendingOutputBoundaries = [];
+    pendingPersistBarrier = false;
+    pendingProjectionBarrier = false;
+    pendingExitMessage = undefined;
+    removePendingExecutionTerminalDrain(controller);
+    writeGeneration += 1;
+    currentExecutionSessionId = executionSessionId;
+    currentLocalOutputSequence = 0;
+    currentTerminalAuthorityId = undefined;
+    currentTerminalRevision = 0;
+    hasAppliedSnapshot = false;
+    projectionRecoveryRequested = false;
+    projectionRecoveryEpoch += 1;
+    resetTerminalAppliedRevision();
+  };
+
+  const discardPendingOutputCoveredBySequence = (
+    coveredSequence: number,
+    selectRange: (boundary: (typeof pendingOutputBoundaries)[number]) =>
+      | { startSequence: number; endSequence: number }
+      | undefined
+  ): boolean => {
+    let coveredCharacters = 0;
+    while (pendingOutputBoundaries.length > 0) {
+      const range = selectRange(pendingOutputBoundaries[0]);
+      if (!range || range.endSequence > coveredSequence) {
+        break;
+      }
+      coveredCharacters += pendingOutputBoundaries[0].remainingCharacters;
+      pendingOutputBoundaries.shift();
+    }
+    if (coveredCharacters > 0) {
+      pendingOutput = pendingOutput.slice(coveredCharacters);
+    }
+
+    const nextBoundary = pendingOutputBoundaries[0];
+    const nextRange = nextBoundary ? selectRange(nextBoundary) : undefined;
+    const hasAmbiguousSequenceRange =
+      nextRange !== undefined &&
+      nextRange.startSequence <= coveredSequence &&
+      coveredSequence < nextRange.endSequence;
+    const hasUntrackedPendingOutput =
+      pendingOutput.length > 0 && (pendingOutputBoundaries.length === 0 || nextRange === undefined);
+    return !hasAmbiguousSequenceRange && !hasUntrackedPendingOutput;
+  };
+
+  const flushTerminalAppliedAck = (): void => {
+    cancelTerminalAppliedAckTimer();
+    const revision = pendingTerminalAppliedAckRevision;
+    pendingTerminalAppliedAckRevision = undefined;
+    if (
+      revision === undefined ||
+      !currentExecutionSessionId ||
+      !appliedTerminalAuthorityId ||
+      appliedTerminalAuthorityId !== currentTerminalAuthorityId ||
+      revision <= lastAcknowledgedTerminalRevision ||
+      revision > appliedTerminalRevision
+    ) {
+      return;
+    }
+
+    lastAcknowledgedTerminalRevision = revision;
+    postMessage({
+      type: 'webview/executionTerminalApplied',
+      payload: {
+        nodeId,
+        kind,
+        executionSessionId: currentExecutionSessionId,
+        authorityId: appliedTerminalAuthorityId,
+        revision
+      }
+    });
+  };
+
+  const markTerminalRevisionApplied = (
+    authorityId: string,
+    revision: number,
+    options: { immediate?: boolean } = {}
+  ): void => {
+    if (disposed || authorityId !== currentTerminalAuthorityId || revision > currentTerminalRevision) {
+      return;
+    }
+    if (appliedTerminalAuthorityId !== authorityId) {
+      cancelTerminalAppliedAckTimer();
+      appliedTerminalAuthorityId = authorityId;
+      appliedTerminalRevision = 0;
+      lastAcknowledgedTerminalRevision = 0;
+      pendingTerminalAppliedAckRevision = undefined;
+    }
+    if (revision < appliedTerminalRevision) {
+      return;
+    }
+
+    appliedTerminalRevision = revision;
+    pendingTerminalAppliedAckRevision = Math.max(pendingTerminalAppliedAckRevision ?? 0, revision);
+    if (options.immediate) {
+      flushTerminalAppliedAck();
+      return;
+    }
+    if (terminalAppliedAckTimer === undefined) {
+      terminalAppliedAckTimer = window.setTimeout(
+        flushTerminalAppliedAck,
+        EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS
+      );
+    }
   };
 
   const queueExitWrite = (message: string): void => {
@@ -7066,6 +7300,11 @@ function createExecutionTerminalController(
   };
 
   const postAttachSnapshotRequest = (): void => {
+    if (projectionRecoveryRequested) {
+      return;
+    }
+    projectionRecoveryRequested = true;
+    projectionRecoveryEpoch += 1;
     postMessage({
       type: 'webview/attachExecutionSession',
       payload: {
@@ -7073,190 +7312,24 @@ function createExecutionTerminalController(
         kind,
         ...(currentExecutionSessionId !== undefined
           ? { executionSessionId: currentExecutionSessionId }
-          : {}),
-        ...(lastAppliedSnapshotSequence > 0
-          ? { minOutputSequence: lastAppliedSnapshotSequence }
           : {})
       }
     });
   };
 
   const flushDeferredExitIfReady = (): void => {
-    if (pendingPersistBarrier || pendingOutput.length > 0 || pendingExitMessage === undefined) {
+    if (
+      pendingPersistBarrier ||
+      pendingProjectionBarrier ||
+      pendingOutput.length > 0 ||
+      pendingExitMessage === undefined
+    ) {
       return;
     }
 
     const message = pendingExitMessage;
     pendingExitMessage = undefined;
     queueExitWrite(message);
-  };
-
-  const clearSnapshotResetTimeout = (): void => {
-    if (snapshotResetTimeout !== undefined) {
-      window.clearTimeout(snapshotResetTimeout);
-      snapshotResetTimeout = undefined;
-    }
-  };
-
-  const clearPendingSnapshotResetState = (): void => {
-    clearSnapshotResetTimeout();
-    pendingSnapshotResetAfterSequence = undefined;
-    pendingSnapshotResetRequestId = undefined;
-    pendingSnapshotResetExecutionSessionId = undefined;
-    snapshotResetRequestPending = false;
-    pendingSnapshotOutputQueue = [];
-    pendingSnapshotOutputLength = 0;
-    pendingSnapshotLastDeferredDiagnosticAtMs = Number.NEGATIVE_INFINITY;
-    pendingSnapshotLastDeferredDiagnosticLength = 0;
-  };
-
-  const requestSnapshotForReset = (reason: string, options?: { force?: boolean }): boolean => {
-    if (pendingSnapshotResetAfterSequence === undefined) {
-      return false;
-    }
-
-    const now = readPerformanceNow();
-    const shouldRequestSnapshot =
-      options?.force === true ||
-      !snapshotResetRequestPending ||
-      now - snapshotResetRequestedAtMs >= EXECUTION_TERMINAL_SNAPSHOT_RESET_REQUEST_COOLDOWN_MS;
-    if (!shouldRequestSnapshot) {
-      return false;
-    }
-
-    const requestId = `snapshot-reset-${nextExecutionSnapshotResetRequestSequence++}`;
-    pendingSnapshotResetRequestId = requestId;
-    snapshotResetRequestedAtMs = now;
-    snapshotResetRequestPending = true;
-    clearSnapshotResetTimeout();
-    snapshotResetTimeout = window.setTimeout(() => {
-      snapshotResetTimeout = undefined;
-      if (disposed || pendingSnapshotResetAfterSequence === undefined) {
-        return;
-      }
-      const requestAgeMs = Math.max(0, readPerformanceNow() - snapshotResetRequestedAtMs);
-      reportExecutionPerformanceDiagnostic(
-        {
-          source: 'webview-output-snapshot-reset',
-          nodeId,
-          kind,
-          reason: 'snapshot-reset-timeout',
-          requestId: pendingSnapshotResetRequestId,
-          executionSessionId: pendingSnapshotResetExecutionSessionId,
-          sequence: pendingSnapshotResetAfterSequence,
-          durationMs: requestAgeMs,
-          pendingOutputLength: pendingSnapshotOutputLength,
-          success: false
-        },
-        {
-          force: true
-        }
-      );
-      requestSnapshotForReset('snapshot-reset-timeout-retry', { force: true });
-    }, EXECUTION_TERMINAL_SNAPSHOT_RESET_TIMEOUT_MS);
-    postMessage({
-      type: 'webview/attachExecutionSession',
-      payload: {
-        nodeId,
-        kind,
-        requestId,
-        ...(pendingSnapshotResetExecutionSessionId !== undefined
-          ? { executionSessionId: pendingSnapshotResetExecutionSessionId }
-          : {}),
-        minOutputSequence: pendingSnapshotResetAfterSequence
-      }
-    });
-    reportExecutionPerformanceDiagnostic(
-      {
-        source: 'webview-output-snapshot-reset',
-        nodeId,
-        kind,
-        reason,
-        requestId,
-        executionSessionId: pendingSnapshotResetExecutionSessionId,
-        sequence: pendingSnapshotResetAfterSequence,
-        pendingOutputLength: pendingSnapshotOutputLength,
-        success: true
-      },
-      {
-        force: true
-      }
-    );
-    return true;
-  };
-
-  const reportDeferredSnapshotOutputIfNeeded = (outputSequence: number | undefined, chunkLength: number): void => {
-    const now = readPerformanceNow();
-    if (
-      pendingSnapshotOutputLength - pendingSnapshotLastDeferredDiagnosticLength <
-        EXECUTION_TERMINAL_SNAPSHOT_RESET_DEFERRED_OUTPUT_DIAGNOSTIC_STEP &&
-      now - pendingSnapshotLastDeferredDiagnosticAtMs < 1000
-    ) {
-      return;
-    }
-
-    pendingSnapshotLastDeferredDiagnosticAtMs = now;
-    pendingSnapshotLastDeferredDiagnosticLength = pendingSnapshotOutputLength;
-    reportExecutionPerformanceDiagnostic(
-      {
-        source: 'webview-output-snapshot-reset',
-        nodeId,
-        kind,
-        reason: 'output-deferred-until-snapshot-reset',
-        requestId: pendingSnapshotResetRequestId,
-        executionSessionId: pendingSnapshotResetExecutionSessionId,
-        sequence: outputSequence,
-        characters: chunkLength,
-        pendingOutputLength: pendingSnapshotOutputLength,
-        pendingControllerCount: pendingSnapshotOutputQueue.length,
-        success: true
-      },
-      {
-        force: true
-      }
-    );
-  };
-
-  const compactDeferredSnapshotOutputForBudget = (latestOutputSequence: number | undefined): void => {
-    if (pendingSnapshotOutputLength <= EXECUTION_TERMINAL_SNAPSHOT_RESET_DEFERRED_OUTPUT_BUDGET) {
-      return;
-    }
-
-    const droppedCharacters = pendingSnapshotOutputLength;
-    const latestQueuedSequence = pendingSnapshotOutputQueue.reduce<number | undefined>((latest, entry) => {
-      const entrySequence = normalizeOutputSequence(entry.outputSequence);
-      if (entrySequence === undefined) {
-        return latest;
-      }
-      return latest === undefined ? entrySequence : Math.max(latest, entrySequence);
-    }, latestOutputSequence);
-    if (latestQueuedSequence !== undefined) {
-      pendingSnapshotResetAfterSequence =
-        pendingSnapshotResetAfterSequence === undefined
-          ? latestQueuedSequence
-          : Math.max(pendingSnapshotResetAfterSequence, latestQueuedSequence);
-    }
-    pendingSnapshotOutputQueue = [];
-    pendingSnapshotOutputLength = 0;
-    pendingSnapshotLastDeferredDiagnosticLength = 0;
-    reportExecutionPerformanceDiagnostic(
-      {
-        source: 'webview-output-snapshot-reset',
-        nodeId,
-        kind,
-        reason: 'deferred-output-budget-reset',
-        requestId: pendingSnapshotResetRequestId,
-        executionSessionId: pendingSnapshotResetExecutionSessionId,
-        sequence: pendingSnapshotResetAfterSequence,
-        characters: droppedCharacters,
-        pendingOutputLength: droppedCharacters,
-        success: true
-      },
-      {
-        force: true
-      }
-    );
-    requestSnapshotForReset('deferred-output-budget-reset-requested');
   };
 
   const controller: ExecutionTerminalController = {
@@ -7266,160 +7339,132 @@ function createExecutionTerminalController(
       if (disposed) {
         return;
       }
-
-      if (
-        pendingSnapshotResetAfterSequence === undefined &&
-        typeof detail.requestId === 'string' &&
-        detail.requestId.startsWith('snapshot-reset-')
-      ) {
-        reportExecutionPerformanceDiagnostic(
-          {
-            source: 'webview-output-snapshot-reset',
-            nodeId,
-            kind,
-            reason: 'stale-snapshot-reset-ignored',
-            requestId: detail.requestId,
-            executionSessionId: detail.executionSessionId,
-            sequence: normalizeOutputSequence(detail.outputSequence),
-            success: false
-          },
-          {
-            force: true
-          }
-        );
-        return;
-      }
-
       const snapshotSequence = normalizeOutputSequence(detail.outputSequence);
-      const hasPendingSnapshotReset = pendingSnapshotResetAfterSequence !== undefined;
-      const snapshotRequestMismatch =
-        hasPendingSnapshotReset &&
-        pendingSnapshotResetRequestId !== undefined &&
-        detail.requestId !== undefined &&
-        detail.requestId !== pendingSnapshotResetRequestId;
-      if (snapshotRequestMismatch) {
-        reportExecutionPerformanceDiagnostic(
-          {
-            source: 'webview-output-snapshot-reset',
-            nodeId,
-            kind,
-            reason: 'stale-snapshot-reset-ignored',
-            requestId: detail.requestId,
-            executionSessionId: detail.executionSessionId ?? pendingSnapshotResetExecutionSessionId,
-            sequence: snapshotSequence,
-            success: false
-          },
-          {
-            force: true
-          }
-        );
-        return;
-      }
-
-      const resetSessionChanged =
-        pendingSnapshotResetExecutionSessionId !== undefined &&
+      const terminalStream = normalizeTerminalStreamAttachPayload(detail.terminalStream);
+      const hasTerminalStreamField = detail.terminalStream !== undefined;
+      const hasValidTerminalStream =
+        terminalStream !== undefined &&
         detail.executionSessionId !== undefined &&
-        detail.executionSessionId !== pendingSnapshotResetExecutionSessionId;
-      if (
-        pendingSnapshotResetAfterSequence !== undefined &&
-        !resetSessionChanged &&
-        snapshotSequence !== undefined &&
-        snapshotSequence < pendingSnapshotResetAfterSequence
-      ) {
-        reportExecutionPerformanceDiagnostic(
-          {
-            source: 'webview-output-snapshot-reset',
-            nodeId,
-            kind,
-            reason: 'stale-snapshot-reset-ignored',
-            requestId: detail.requestId ?? pendingSnapshotResetRequestId,
-            executionSessionId: detail.executionSessionId ?? pendingSnapshotResetExecutionSessionId,
-            sequence: snapshotSequence,
-            success: false
-          },
-          {
-            force: true
-          }
-        );
+        terminalStream.sessionId === detail.executionSessionId &&
+        (snapshotSequence === undefined || terminalStream.revision === snapshotSequence);
+      if (hasTerminalStreamField && !hasValidTerminalStream) {
+        // A malformed authoritative payload must not fall back to a raw tail.
         return;
       }
 
-      if (hasPendingSnapshotReset && !resetSessionChanged && snapshotSequence === undefined) {
-        reportExecutionPerformanceDiagnostic(
-          {
-            source: 'webview-output-snapshot-reset',
-            nodeId,
-            kind,
-            reason: detail.liveSession ? 'snapshot-reset-unsequenced-snapshot' : 'snapshot-reset-session-ended-snapshot',
-            requestId: detail.requestId ?? pendingSnapshotResetRequestId,
-            executionSessionId: detail.executionSessionId ?? pendingSnapshotResetExecutionSessionId,
-            sequence: pendingSnapshotResetAfterSequence,
-            pendingOutputLength: pendingSnapshotOutputLength,
-            success: detail.liveSession === false
-          },
-          {
-            force: true
-          }
-        );
-        if (detail.liveSession) {
+      const sessionChanged =
+        currentExecutionSessionId !== undefined &&
+        detail.executionSessionId !== undefined &&
+        detail.executionSessionId !== currentExecutionSessionId;
+      const projectionTransitionPending = currentExecutionSessionId !== projectedExecutionSessionId;
+      if (sessionChanged && projectionTransitionPending) {
+        // A newer output generation already selected another session; this snapshot is stale.
+        return;
+      }
+      if (sessionChanged && detail.executionSessionId !== undefined) {
+        beginExecutionSessionGeneration(detail.executionSessionId);
+      }
+      const projectionSessionChanged =
+        detail.executionSessionId !== undefined &&
+        detail.executionSessionId !== projectedExecutionSessionId;
+      const isProjectionRecovery =
+        hasAppliedSnapshot && !projectionSessionChanged && projectionRecoveryRequested;
+      if (hasAppliedSnapshot && !projectionSessionChanged && !isProjectionRecovery) {
+        // Snapshots create projections; they do not replace a healthy live backlog.
+        return;
+      }
+      if (isProjectionRecovery) {
+        if (
+          (currentTerminalAuthorityId !== undefined && !terminalStream) ||
+          (
+            terminalStream !== undefined &&
+            terminalStream.authorityId === currentTerminalAuthorityId &&
+            terminalStream.revision < currentTerminalRevision
+          )
+        ) {
           return;
         }
       }
 
-      const outputsAfterSnapshotReset =
-        !hasPendingSnapshotReset || resetSessionChanged || snapshotSequence === undefined
-          ? []
-          : pendingSnapshotOutputQueue.filter((entry) => {
-              const outputSequence = normalizeOutputSequence(entry.outputSequence);
-              return outputSequence !== undefined && outputSequence > snapshotSequence;
-            });
-      const requestId = detail.requestId ?? pendingSnapshotResetRequestId;
-      const appliedPendingLength = pendingSnapshotOutputLength;
-      const snapshotResetApplied =
-        hasPendingSnapshotReset && !resetSessionChanged && snapshotSequence !== undefined;
-      if (hasPendingSnapshotReset && resetSessionChanged) {
-        reportExecutionPerformanceDiagnostic(
-          {
-            source: 'webview-output-snapshot-reset',
-            nodeId,
-            kind,
-            reason: 'snapshot-reset-session-changed',
-            requestId,
-            executionSessionId: detail.executionSessionId ?? pendingSnapshotResetExecutionSessionId,
-            sequence: snapshotSequence ?? pendingSnapshotResetAfterSequence,
-            pendingOutputLength: appliedPendingLength,
-            success: true
-          },
-          {
-            force: true
-          }
-        );
-      }
-      clearPendingSnapshotResetState();
-      if (detail.executionSessionId !== undefined && detail.executionSessionId !== currentExecutionSessionId) {
-        lastAppliedSnapshotSequence = 0;
+      if (currentExecutionSessionId === undefined && detail.executionSessionId !== undefined) {
+        beginExecutionSessionGeneration(detail.executionSessionId);
       }
       currentExecutionSessionId = detail.executionSessionId ?? currentExecutionSessionId;
-      lastAppliedSnapshotSequence = Math.max(lastAppliedSnapshotSequence, snapshotSequence ?? lastAppliedSnapshotSequence);
-      pendingOutput = '';
-      pendingPersistBarrier = false;
-      pendingExitMessage = undefined;
-      pendingExecutionTerminalDrains.delete(controller);
-      writeGeneration += 1;
+      if (terminalStream) {
+        if (currentTerminalAuthorityId !== terminalStream.authorityId) {
+          resetTerminalAppliedRevision();
+          pendingOutput = '';
+          pendingOutputBoundaries = [];
+        }
+        currentTerminalAuthorityId = terminalStream.authorityId;
+        const pendingOutputCanBeReconciled = discardPendingOutputCoveredBySequence(
+          terminalStream.revision,
+          (boundary) =>
+            boundary.terminalAuthorityId === terminalStream.authorityId &&
+            boundary.terminalStartRevision !== undefined &&
+            boundary.terminalRevision !== undefined
+              ? {
+                  startSequence: boundary.terminalStartRevision,
+                  endSequence: boundary.terminalRevision
+                }
+              : undefined
+        );
+        const snapshotCoversObservedRevision = terminalStream.revision >= currentTerminalRevision;
+        pendingProjectionBarrier = !pendingOutputCanBeReconciled || !snapshotCoversObservedRevision;
+        currentTerminalRevision = Math.max(currentTerminalRevision, terminalStream.revision);
+        if (pendingProjectionBarrier) {
+          postAttachSnapshotRequest();
+        }
+      } else if (projectionSessionChanged || !hasAppliedSnapshot || isProjectionRecovery) {
+        currentTerminalAuthorityId = undefined;
+        currentTerminalRevision = 0;
+        const pendingOutputCanBeReconciled =
+          snapshotSequence !== undefined
+            ? discardPendingOutputCoveredBySequence(snapshotSequence, (boundary) =>
+                boundary.terminalAuthorityId === undefined &&
+                boundary.outputStartSequence !== undefined &&
+                boundary.outputSequence !== undefined
+                  ? {
+                      startSequence: boundary.outputStartSequence,
+                      endSequence: boundary.outputSequence
+                    }
+                  : undefined
+              )
+            : pendingOutput.length === 0;
+        pendingProjectionBarrier = !pendingOutputCanBeReconciled;
+        if (pendingProjectionBarrier) {
+          postAttachSnapshotRequest();
+        }
+        if (snapshotSequence !== undefined) {
+          currentLocalOutputSequence = Math.max(currentLocalOutputSequence, snapshotSequence);
+        }
+      }
+      hasAppliedSnapshot = true;
+      projectedExecutionSessionId = detail.executionSessionId ?? projectedExecutionSessionId;
+      const recoveryEpoch = projectionRecoveryEpoch;
       options?.onContentWillChange?.('snapshot');
       options?.onSnapshotApplied?.(detail);
+      const checkpointCharacters =
+        terminalStream?.checkpoint.serializedState.data.length ??
+        detail.serializedTerminalState?.data.length ??
+        detail.output.length;
+      const replayEventCount = terminalStream?.events.length;
+      const replayOutputCharacters = terminalStream?.events.reduce(
+        (total, event) => total + (event.type === 'output' ? event.data.length : 0),
+        0
+      );
       queueTerminalWrite(
         (done, markStarted) => {
           const snapshotWriteGeneration = writeGeneration;
           let finished = false;
-          const finishSnapshotWrite = (snapshotDone?: () => void): void => {
+          const finishSnapshotWrite = (snapshotDone?: () => void, applied = true): void => {
             if (finished) {
               snapshotDone?.();
               return;
             }
             finished = true;
             snapshotDone?.();
-            done();
+            done(applied);
           };
           scheduleExecutionTerminalSnapshotWrite({
             nodeId,
@@ -7427,52 +7472,47 @@ function createExecutionTerminalController(
             queuedAtMs: readPerformanceNow(),
             run: (snapshotDone) => {
               if (disposed || snapshotWriteGeneration !== writeGeneration) {
-                finishSnapshotWrite(snapshotDone);
+                finishSnapshotWrite(snapshotDone, false);
                 return;
               }
               markStarted?.();
               const releaseSnapshotRestoreDiagnosticsSuppression =
                 options?.beginSnapshotRestoreDiagnosticsSuppression?.();
               restoreExecutionTerminalSnapshot(terminal, detail, () => {
+                if (projectionRecoveryEpoch === recoveryEpoch) {
+                  projectionRecoveryRequested = false;
+                  if (pendingProjectionBarrier) {
+                    postAttachSnapshotRequest();
+                  }
+                }
                 releaseSnapshotRestoreDiagnosticsSuppression?.();
                 finishSnapshotWrite(snapshotDone);
               });
             },
-            cancel: finishSnapshotWrite
+            cancel: () => finishSnapshotWrite(undefined, false)
           });
         },
         {
           reason: 'snapshot',
-          characters: detail.serializedTerminalState?.data.length ?? detail.output.length
+          characters: checkpointCharacters + (replayOutputCharacters ?? 0),
+          checkpointCharacters,
+          replayEventCount,
+          replayOutputCharacters,
+          checkpointRevision: terminalStream?.checkpoint.revision,
+          targetRevision: terminalStream?.revision
+        },
+        (applied) => {
+          if (applied && terminalStream) {
+            markTerminalRevisionApplied(terminalStream.authorityId, terminalStream.revision, {
+              immediate: true
+            });
+          }
         }
       );
-      if (snapshotResetApplied) {
-        reportExecutionPerformanceDiagnostic(
-          {
-            source: 'webview-output-snapshot-reset',
-            nodeId,
-            kind,
-            reason: 'snapshot-reset-applied',
-            requestId,
-            executionSessionId: currentExecutionSessionId,
-            sequence: snapshotSequence,
-            characters: detail.serializedTerminalState?.data.length ?? detail.output.length,
-            pendingOutputLength: appliedPendingLength,
-            pendingControllerCount: outputsAfterSnapshotReset.length,
-            success: true
-          },
-          {
-            force: true
-          }
-        );
+      if (pendingOutput.length > 0 && !pendingPersistBarrier && !pendingProjectionBarrier) {
+        scheduleExecutionTerminalDrain(controller);
       }
-      for (const output of outputsAfterSnapshotReset) {
-        controller.enqueueOutput(output.chunk, {
-          persisted: output.persisted,
-          outputSequence: output.outputSequence,
-          executionSessionId: output.executionSessionId
-        });
-      }
+      flushDeferredExitIfReady();
     },
     requestAttachSnapshot() {
       if (disposed) {
@@ -7487,60 +7527,13 @@ function createExecutionTerminalController(
       }
 
       const outputSequence = normalizeOutputSequence(outputOptions?.outputSequence);
+      const declaredOutputStartSequence = normalizeOutputSequence(outputOptions?.outputStartSequence);
+      const terminalStartRevision = normalizeOutputSequence(outputOptions?.terminalStartRevision);
+      const terminalRevision = normalizeOutputSequence(outputOptions?.terminalRevision);
+      const terminalAuthorityId = outputOptions?.terminalAuthorityId;
       const outputExecutionSessionId = outputOptions?.executionSessionId;
       if (outputExecutionSessionId !== undefined && currentExecutionSessionId !== outputExecutionSessionId) {
-        if (currentExecutionSessionId !== undefined) {
-          clearPendingSnapshotResetState();
-          lastAppliedSnapshotSequence = 0;
-        }
-        currentExecutionSessionId = outputExecutionSessionId;
-      }
-      const resetSessionMatches =
-        pendingSnapshotResetExecutionSessionId === undefined ||
-        outputExecutionSessionId === undefined ||
-        outputExecutionSessionId === pendingSnapshotResetExecutionSessionId;
-      if (
-        pendingSnapshotResetAfterSequence !== undefined &&
-        resetSessionMatches &&
-        (outputSequence === undefined || outputSequence <= pendingSnapshotResetAfterSequence)
-      ) {
-        reportExecutionPerformanceDiagnostic(
-          {
-            source: 'webview-output-snapshot-reset',
-            nodeId,
-            kind,
-            reason: 'stale-output-after-reset-dropped',
-            requestId: pendingSnapshotResetRequestId,
-            executionSessionId: outputExecutionSessionId ?? pendingSnapshotResetExecutionSessionId,
-            sequence: outputSequence,
-            characters: chunk.length,
-            success: true
-          },
-          {
-            force: true
-          }
-        );
-        return;
-      }
-      if (pendingSnapshotResetAfterSequence !== undefined && resetSessionMatches) {
-        pendingSnapshotOutputQueue.push({
-          chunk,
-          persisted: outputOptions?.persisted,
-          outputSequence,
-          executionSessionId: outputExecutionSessionId
-        });
-        pendingSnapshotOutputLength += chunk.length;
-        reportDeferredSnapshotOutputIfNeeded(outputSequence, chunk.length);
-        compactDeferredSnapshotOutputForBudget(outputSequence);
-        return;
-      }
-      if (outputSequence !== undefined) {
-        lastAppliedSnapshotSequence = Math.max(lastAppliedSnapshotSequence, outputSequence);
-      }
-
-      if (chunk) {
-        pendingOutput += chunk;
-        options?.onContentWillChange?.('output');
+        beginExecutionSessionGeneration(outputExecutionSessionId);
       }
       if (outputOptions?.persisted === false) {
         pendingPersistBarrier = true;
@@ -7548,76 +7541,145 @@ function createExecutionTerminalController(
       if (outputOptions?.persisted === true) {
         pendingPersistBarrier = false;
       }
-      if (pendingPersistBarrier || pendingOutput.length === 0) {
+      const outputStartSequence =
+        declaredOutputStartSequence ??
+        (outputSequence !== undefined ? currentLocalOutputSequence + 1 : undefined);
+      if (terminalAuthorityId) {
+        if (currentTerminalAuthorityId && currentTerminalAuthorityId !== terminalAuthorityId) {
+          postAttachSnapshotRequest();
+          return;
+        }
+        if (!currentTerminalAuthorityId) {
+          currentTerminalAuthorityId = terminalAuthorityId;
+        }
+        if (
+          terminalStartRevision === undefined ||
+          terminalRevision === undefined ||
+          terminalStartRevision > terminalRevision
+        ) {
+          postAttachSnapshotRequest();
+          return;
+        }
+        if (terminalRevision <= currentTerminalRevision) {
+          return;
+        }
+        if (terminalStartRevision !== currentTerminalRevision + 1) {
+          postAttachSnapshotRequest();
+          return;
+        }
+        currentTerminalRevision = terminalRevision;
+      } else if (outputSequence !== undefined) {
+        if (outputSequence <= currentLocalOutputSequence) {
+          if (chunk) {
+            return;
+          }
+        } else {
+          if (
+            outputStartSequence === undefined ||
+            outputStartSequence !== currentLocalOutputSequence + 1 ||
+            outputStartSequence > outputSequence
+          ) {
+            postAttachSnapshotRequest();
+            return;
+          }
+          currentLocalOutputSequence = outputSequence;
+        }
+      }
+      if (chunk) {
+        pendingOutput += chunk;
+        const hasValidOutputSequenceRange =
+          outputStartSequence !== undefined &&
+          outputSequence !== undefined &&
+          outputStartSequence <= outputSequence;
+        pendingOutputBoundaries.push({
+          remainingCharacters: chunk.length,
+          ...(hasValidOutputSequenceRange
+            ? {
+                outputStartSequence,
+                outputSequence
+              }
+            : {}),
+          terminalAuthorityId,
+          terminalStartRevision,
+          terminalRevision
+        });
+        options?.onContentWillChange?.('output');
+      }
+      if (
+        terminalAuthorityId &&
+        (!hasAppliedSnapshot || projectedExecutionSessionId !== currentExecutionSessionId)
+      ) {
+        pendingProjectionBarrier = true;
+        postAttachSnapshotRequest();
+      }
+      if (pendingPersistBarrier || pendingProjectionBarrier || pendingOutput.length === 0) {
         flushDeferredExitIfReady();
-        pendingExecutionTerminalDrains.delete(controller);
+        removePendingExecutionTerminalDrain(controller);
         return;
       }
 
       scheduleExecutionTerminalDrain(controller);
     },
-    resetBacklogForSnapshot(reason) {
-      if (disposed || pendingPersistBarrier || pendingOutput.length === 0 || pendingSnapshotResetAfterSequence !== undefined) {
+    applyTerminalEvent(detail) {
+      if (disposed || detail.executionSessionId !== currentExecutionSessionId) {
+        return;
+      }
+      if (currentTerminalAuthorityId !== detail.authorityId) {
+        postAttachSnapshotRequest();
+        return;
+      }
+      if (detail.event.revision <= currentTerminalRevision) {
+        return;
+      }
+      if (detail.event.revision !== currentTerminalRevision + 1) {
+        postAttachSnapshotRequest();
         return;
       }
 
-      const droppedCharacters = pendingOutput.length;
-      const resetAfterSequence = lastAppliedSnapshotSequence;
-      pendingOutput = '';
-      pendingExitMessage = undefined;
-      pendingSnapshotResetAfterSequence = resetAfterSequence;
-      pendingSnapshotResetExecutionSessionId = currentExecutionSessionId;
-      pendingSnapshotOutputQueue = [];
-      pendingSnapshotOutputLength = 0;
-      pendingSnapshotLastDeferredDiagnosticAtMs = Number.NEGATIVE_INFINITY;
-      pendingSnapshotLastDeferredDiagnosticLength = 0;
-      pendingExecutionTerminalDrains.delete(controller);
-      const requestedSnapshot = requestSnapshotForReset('snapshot-reset-requested', { force: true });
-      reportExecutionPerformanceDiagnostic(
-        {
-          source: 'webview-output-snapshot-reset',
-          nodeId,
-          kind,
-          reason,
-          requestId: pendingSnapshotResetRequestId,
-          executionSessionId: pendingSnapshotResetExecutionSessionId,
-          sequence: resetAfterSequence,
-          characters: droppedCharacters,
-          pendingOutputLength: droppedCharacters,
-          success: requestedSnapshot
-        },
-        {
-          force: true
+      if (!hasAppliedSnapshot || projectedExecutionSessionId !== currentExecutionSessionId) {
+        currentTerminalRevision = detail.event.revision;
+        pendingProjectionBarrier = true;
+        postAttachSnapshotRequest();
+        return;
+      }
+
+      if (pendingOutput.length > 0 && !pendingPersistBarrier && !pendingProjectionBarrier) {
+        controller.flushPendingOutput();
+      }
+      if (detail.event.type === 'output') {
+        controller.enqueueOutput(detail.event.data, {
+          executionSessionId: detail.executionSessionId,
+          terminalAuthorityId: detail.authorityId,
+          terminalStartRevision: detail.event.revision,
+          terminalRevision: detail.event.revision,
+          outputSequence: detail.event.revision,
+          persisted: true
+        });
+        return;
+      }
+      currentTerminalRevision = detail.event.revision;
+      const terminalEvent = detail.event;
+      queueTerminalWrite((done) => {
+        if (terminalEvent.type === 'resize') {
+          terminal.resize(terminalEvent.cols, terminalEvent.rows);
+        } else {
+          terminal.options.scrollback = terminalEvent.scrollback;
         }
-      );
+        done();
+      }, {
+        reason: terminalEvent.type
+      }, (applied) => {
+        if (applied) {
+          markTerminalRevisionApplied(detail.authorityId, terminalEvent.revision);
+        }
+      });
     },
     showExit(message) {
       if (disposed) {
         return;
       }
 
-      if (pendingSnapshotResetAfterSequence !== undefined) {
-        reportExecutionPerformanceDiagnostic(
-          {
-            source: 'webview-output-snapshot-reset',
-            nodeId,
-            kind,
-            reason: 'snapshot-reset-session-ended',
-            requestId: pendingSnapshotResetRequestId,
-            executionSessionId: pendingSnapshotResetExecutionSessionId,
-            sequence: pendingSnapshotResetAfterSequence,
-            pendingOutputLength: pendingSnapshotOutputLength,
-            pendingControllerCount: pendingSnapshotOutputQueue.length,
-            success: true
-          },
-          {
-            force: true
-          }
-        );
-        clearPendingSnapshotResetState();
-      }
-
-      if (pendingPersistBarrier) {
+      if (pendingPersistBarrier || pendingProjectionBarrier) {
         pendingExitMessage = message;
         return;
       }
@@ -7634,7 +7696,7 @@ function createExecutionTerminalController(
         return;
       }
 
-      if (pendingOutput.length > 0 && !pendingPersistBarrier) {
+      if (pendingOutput.length > 0 && !pendingPersistBarrier && !pendingProjectionBarrier) {
         scheduleExecutionTerminalDrain(controller);
       }
       if (terminal.rows > 0) {
@@ -7642,7 +7704,7 @@ function createExecutionTerminalController(
       }
     },
     flushPendingOutput(maxCharacters) {
-      if (disposed || pendingPersistBarrier || pendingOutput.length === 0) {
+      if (disposed || pendingPersistBarrier || pendingProjectionBarrier || pendingOutput.length === 0) {
         return 0;
       }
 
@@ -7652,6 +7714,19 @@ function createExecutionTerminalController(
           : pendingOutput.length;
       const chunk = pendingOutput.slice(0, chunkLength);
       pendingOutput = pendingOutput.slice(chunkLength);
+      let remainingRevisionCharacters = chunk.length;
+      let completedRevision: number | undefined;
+      while (remainingRevisionCharacters > 0 && pendingOutputBoundaries.length > 0) {
+        const boundary = pendingOutputBoundaries[0];
+        const consumedCharacters = Math.min(remainingRevisionCharacters, boundary.remainingCharacters);
+        boundary.remainingCharacters -= consumedCharacters;
+        remainingRevisionCharacters -= consumedCharacters;
+        if (boundary.remainingCharacters === 0) {
+          completedRevision = boundary.terminalRevision;
+          pendingOutputBoundaries.shift();
+        }
+      }
+      const outputAuthorityId = currentTerminalAuthorityId;
       // Keep the host message callback lightweight by deferring real terminal writes
       // to a batched drain step. xterm will continue to apply its own async parser queue.
       queueTerminalWrite((done) => {
@@ -7659,6 +7734,10 @@ function createExecutionTerminalController(
       }, {
         reason: 'output',
         characters: chunk.length
+      }, (applied) => {
+        if (applied && outputAuthorityId && completedRevision !== undefined) {
+          markTerminalRevisionApplied(outputAuthorityId, completedRevision);
+        }
       });
       flushDeferredExitIfReady();
       return chunk.length;
@@ -7670,12 +7749,14 @@ function createExecutionTerminalController(
       return queuedWriteCount;
     },
     isOutputDrainBlocked() {
-      return pendingPersistBarrier;
+      return pendingPersistBarrier || pendingProjectionBarrier;
     },
     dispose() {
       disposed = true;
       pendingOutput = '';
+      pendingOutputBoundaries = [];
       pendingPersistBarrier = false;
+      pendingProjectionBarrier = false;
       pendingExitMessage = undefined;
       for (let index = pendingExecutionTerminalSnapshotWrites.length - 1; index >= 0; index -= 1) {
         const snapshotWrite = pendingExecutionTerminalSnapshotWrites[index];
@@ -7689,11 +7770,12 @@ function createExecutionTerminalController(
         snapshotWrite.cancel();
         snapshotWrite.finishQueue?.();
       }
-      clearPendingSnapshotResetState();
       writeGeneration += 1;
+      cancelTerminalAppliedAckTimer();
+      pendingTerminalAppliedAckRevision = undefined;
       queuedWriteCount = 0;
       writeChain = Promise.resolve();
-      pendingExecutionTerminalDrains.delete(controller);
+      removePendingExecutionTerminalDrain(controller);
     }
   };
 
@@ -7705,21 +7787,75 @@ function restoreExecutionTerminalSnapshot(
   detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>,
   onRestored?: () => void
 ): void {
-  const restoreCols = detail.cols > 1 ? detail.cols : terminal.cols;
-  const restoreRows = detail.rows > 0 ? detail.rows : terminal.rows;
-
-  if (restoreCols > 1 && restoreRows > 0 && (terminal.cols !== restoreCols || terminal.rows !== restoreRows)) {
-    terminal.resize(restoreCols, restoreRows);
-  }
-
-  terminal.reset();
   const finishRestore = (): void => {
     window.requestAnimationFrame(() => {
       if (terminal.rows > 0) {
         terminal.refresh(0, terminal.rows - 1);
       }
     });
+    onRestored?.();
   };
+
+  if (detail.terminalStream !== undefined) {
+    const terminalStream = normalizeTerminalStreamAttachPayload(detail.terminalStream);
+    if (
+      !terminalStream ||
+      detail.executionSessionId === undefined ||
+      terminalStream.sessionId !== detail.executionSessionId
+    ) {
+      // Fail closed: raw output is not a valid fallback for a rejected authority payload.
+      onRestored?.();
+      return;
+    }
+
+    const { checkpoint, events } = terminalStream;
+    terminal.options.scrollback = checkpoint.scrollback;
+    if (terminal.cols !== checkpoint.cols || terminal.rows !== checkpoint.rows) {
+      terminal.resize(checkpoint.cols, checkpoint.rows);
+    }
+    terminal.reset();
+
+    const applyEvent = (startIndex: number): void => {
+      let index = startIndex;
+      while (index < events.length) {
+        const event = events[index];
+        if (event.type === 'output') {
+          let outputBatch = '';
+          while (index < events.length) {
+            const outputEvent = events[index];
+            if (outputEvent.type !== 'output') {
+              break;
+            }
+            if (
+              outputBatch.length > 0 &&
+              outputBatch.length + outputEvent.data.length > EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS
+            ) {
+              break;
+            }
+            outputBatch += outputEvent.data;
+            index += 1;
+          }
+          // Resize/options changes must run after xterm leaves its parser callback.
+          terminal.write(outputBatch, () => window.setTimeout(() => applyEvent(index), 0));
+          return;
+        }
+        if (event.type === 'resize') {
+          terminal.resize(event.cols, event.rows);
+        } else {
+          terminal.options.scrollback = event.scrollback;
+        }
+        index += 1;
+      }
+      finishRestore();
+    };
+
+    if (checkpoint.serializedState.data) {
+      terminal.write(checkpoint.serializedState.data, () => applyEvent(0));
+    } else {
+      applyEvent(0);
+    }
+    return;
+  }
 
   const snapshotOutputSequence = normalizeTerminalSnapshotOutputSequence(detail.outputSequence);
   const serializedTerminalStateOutputSequence = normalizeTerminalSnapshotOutputSequence(
@@ -7734,10 +7870,16 @@ function restoreExecutionTerminalSnapshot(
       ? detail.serializedTerminalState
       : undefined;
 
+  const restoreCols = detail.cols > 1 ? detail.cols : terminal.cols;
+  const restoreRows = detail.rows > 0 ? detail.rows : terminal.rows;
+  if (restoreCols > 1 && restoreRows > 0 && (terminal.cols !== restoreCols || terminal.rows !== restoreRows)) {
+    terminal.resize(restoreCols, restoreRows);
+  }
+  terminal.reset();
+
   if (serializedTerminalState) {
     terminal.write(serializedTerminalState.data, () => {
       finishRestore();
-      onRestored?.();
     });
     return;
   }
@@ -7745,13 +7887,11 @@ function restoreExecutionTerminalSnapshot(
   if (detail.output) {
     terminal.write(detail.output, () => {
       finishRestore();
-      onRestored?.();
     });
     return;
   }
 
   finishRestore();
-  onRestored?.();
 }
 
 function normalizeTerminalSnapshotOutputSequence(value: number | undefined): number | undefined {
@@ -7974,6 +8114,7 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     renderedHeight: footprint.height,
     overlayTitle: readProbeTextOrUndefined(element.querySelector('.terminal-overlay strong')),
     overlayMessage: readProbeTextOrUndefined(element.querySelector('.terminal-overlay span')),
+    terminalLegacyTranscript: readProbeTextOrUndefined(element.querySelector('.terminal-legacy-transcript')),
     titleInputValue: readProbeFieldValue(element, 'title'),
     bodyValue: readProbeFieldValue(element, 'body'),
     ...readProbeExecutionTerminalState(nodeId)
@@ -8174,6 +8315,33 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
 
         entry.terminal.input(action.data);
         await waitForDomActionFlush();
+        break;
+      }
+      case 'assertExecutionTerminalBuffer': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        if (!entry) {
+          throw new Error(`Execution terminal ${action.nodeId} is not mounted.`);
+        }
+
+        const actualLines: string[] = [];
+        for (let index = 0; index < entry.terminal.buffer.active.length; index += 1) {
+          const line = entry.terminal.buffer.active.getLine(index)?.translateToString(true) ?? '';
+          if (line.length > 0) {
+            actualLines.push(line);
+          }
+        }
+        if (actualLines.length !== action.expectedLines.length) {
+          throw new Error(
+            `Execution terminal ${action.nodeId} has ${actualLines.length} non-empty lines; expected ${action.expectedLines.length}.`
+          );
+        }
+        const mismatchIndex = actualLines.findIndex((line, index) => line !== action.expectedLines[index]);
+        if (mismatchIndex >= 0) {
+          throw new Error(
+            `Execution terminal ${action.nodeId} differs at line ${mismatchIndex + 1}: ` +
+            `expected ${JSON.stringify(action.expectedLines[mismatchIndex])}, received ${JSON.stringify(actualLines[mismatchIndex])}.`
+          );
+        }
         break;
       }
       case 'dropExecutionResources': {
@@ -8601,8 +8769,21 @@ function dispatchSyntheticMouseDoubleClick(target: Element, point?: { x: number;
 
 function waitForDomActionFlush(): Promise<void> {
   return new Promise((resolve) => {
+    let finished = false;
+    let fallbackTimer: number | undefined;
+    const finish = (): void => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      if (fallbackTimer !== undefined) {
+        window.clearTimeout(fallbackTimer);
+      }
+      resolve();
+    };
+    fallbackTimer = window.setTimeout(finish, 100);
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => resolve());
+      window.requestAnimationFrame(finish);
     });
   });
 }

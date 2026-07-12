@@ -1,4 +1,5 @@
 import type { SerializedTerminalState } from './serializedTerminalState';
+import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
@@ -172,6 +173,7 @@ export type WebviewClipboardTextSource =
 export type PendingExecutionLaunch = 'start' | 'resume';
 export type RuntimePersistenceMode = 'snapshot-only' | 'live-runtime';
 export type RuntimeAttachmentState = 'attached-live' | 'reattaching' | 'history-restored';
+export type RuntimeTerminalProjectionMode = 'terminal-stream-v1' | 'legacy-read-only';
 export type RuntimeHostBackendKind = 'systemd-user' | 'legacy-detached';
 export type RuntimePersistenceGuarantee = 'strong' | 'best-effort';
 export type TerminalNodeStatus =
@@ -221,6 +223,7 @@ export interface ExecutionSessionMetadata {
   outputSequence?: number;
   persistenceMode: RuntimePersistenceMode;
   attachmentState: RuntimeAttachmentState;
+  terminalProjectionMode?: RuntimeTerminalProjectionMode;
   runtimeBackend?: RuntimeHostBackendKind;
   runtimeGuarantee?: RuntimePersistenceGuarantee;
   runtimeStoragePath?: string;
@@ -235,6 +238,7 @@ export interface ExecutionSessionMetadata {
   lastCols?: number;
   lastRows?: number;
   serializedTerminalState?: SerializedTerminalState;
+  terminalStream?: TerminalStreamAttachPayload;
   attentionPending: boolean;
 }
 
@@ -458,6 +462,7 @@ export interface WebviewProbeNodeSnapshot {
   renderedHeight: number;
   overlayTitle?: string;
   overlayMessage?: string;
+  terminalLegacyTranscript?: string;
   titleInputValue?: string;
   bodyValue?: string;
   terminalSelectionText?: string;
@@ -555,6 +560,11 @@ export interface ExecutionPerformanceDiagnosticPayload {
   requestId?: string;
   executionSessionId?: string;
   characters?: number;
+  checkpointCharacters?: number;
+  replayEventCount?: number;
+  replayOutputCharacters?: number;
+  checkpointRevision?: number;
+  targetRevision?: number;
   bytes?: number;
   controllerCount?: number;
   flushedControllerCount?: number;
@@ -613,6 +623,12 @@ export type WebviewDomAction =
       kind: 'sendExecutionInput';
       nodeId: string;
       data: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'assertExecutionTerminalBuffer';
+      nodeId: string;
+      expectedLines: string[];
       delayMs?: number;
     }
   | {
@@ -866,6 +882,16 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         requestId?: string;
         executionSessionId?: string;
         minOutputSequence?: number;
+      };
+    }
+  | {
+      type: 'webview/executionTerminalApplied';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        revision: number;
       };
     }
   | {
@@ -1213,6 +1239,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         liveSession: boolean;
         outputSequence?: number;
         serializedTerminalState?: SerializedTerminalState;
+        terminalStream?: TerminalStreamAttachPayload;
       };
     }
   | {
@@ -1223,7 +1250,21 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         executionSessionId?: string;
         chunk: string;
         persisted?: boolean;
+        outputStartSequence?: number;
         outputSequence?: number;
+        terminalAuthorityId?: string;
+        terminalStartRevision?: number;
+        terminalRevision?: number;
+      };
+    }
+  | {
+      type: 'host/executionTerminalEvent';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        event: TerminalStreamEvent;
       };
     }
   | {
@@ -1678,6 +1719,34 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         ...(value.type === 'webview/attachExecutionSession' && minOutputSequence !== undefined
           ? { minOutputSequence }
           : {})
+      }
+    };
+  }
+
+  if (value.type === 'webview/executionTerminalApplied') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const revision = normalizeNonNegativeInteger(payload?.revision);
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      typeof payload.executionSessionId !== 'string' ||
+      payload.executionSessionId.length === 0 ||
+      typeof payload.authorityId !== 'string' ||
+      payload.authorityId.length === 0 ||
+      revision === undefined
+    ) {
+      return null;
+    }
+
+    return {
+      type: 'webview/executionTerminalApplied',
+      payload: {
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        executionSessionId: payload.executionSessionId,
+        authorityId: payload.authorityId,
+        revision
       }
     };
   }
@@ -2518,6 +2587,21 @@ function normalizeExecutionPerformanceDiagnosticPayload(
     requestId: typeof value.requestId === 'string' ? value.requestId : undefined,
     executionSessionId: typeof value.executionSessionId === 'string' ? value.executionSessionId : undefined,
     characters: normalizeNonNegativeInteger(value.characters),
+    ...(value.checkpointCharacters !== undefined
+      ? { checkpointCharacters: normalizeNonNegativeInteger(value.checkpointCharacters) }
+      : {}),
+    ...(value.replayEventCount !== undefined
+      ? { replayEventCount: normalizeNonNegativeInteger(value.replayEventCount) }
+      : {}),
+    ...(value.replayOutputCharacters !== undefined
+      ? { replayOutputCharacters: normalizeNonNegativeInteger(value.replayOutputCharacters) }
+      : {}),
+    ...(value.checkpointRevision !== undefined
+      ? { checkpointRevision: normalizeNonNegativeInteger(value.checkpointRevision) }
+      : {}),
+    ...(value.targetRevision !== undefined
+      ? { targetRevision: normalizeNonNegativeInteger(value.targetRevision) }
+      : {}),
     bytes: normalizeNonNegativeInteger(value.bytes),
     controllerCount: normalizeNonNegativeInteger(value.controllerCount),
     flushedControllerCount: normalizeNonNegativeInteger(value.flushedControllerCount),
@@ -2701,6 +2785,10 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
     return typeof value.data === 'string';
   }
 
+  if (value.kind === 'assertExecutionTerminalBuffer') {
+    return Array.isArray(value.expectedLines) && value.expectedLines.every((line) => typeof line === 'string');
+  }
+
   if (value.kind === 'dropExecutionResources') {
     return (
       (value.source === 'resourceUrls' || value.source === 'codeFiles' || value.source === 'uriList') &&
@@ -2876,6 +2964,7 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     Number.isFinite(value.renderedHeight) &&
     (value.overlayTitle === undefined || typeof value.overlayTitle === 'string') &&
     (value.overlayMessage === undefined || typeof value.overlayMessage === 'string') &&
+    (value.terminalLegacyTranscript === undefined || typeof value.terminalLegacyTranscript === 'string') &&
     (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
     (value.bodyValue === undefined || typeof value.bodyValue === 'string') &&
     (value.terminalSelectionText === undefined || typeof value.terminalSelectionText === 'string') &&

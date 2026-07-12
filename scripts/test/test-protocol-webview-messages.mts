@@ -6,7 +6,8 @@ import {
   extractWebviewMessageLifecycle,
   isWebviewDomAction,
   normalizeCanvasMultiRootPresentationMode,
-  parseWebviewMessage
+  parseWebviewMessage,
+  type HostToWebviewMessage
 } from '../../extensions/vscode/dev-session-canvas/src/common/protocol.ts';
 
 assert.equal(
@@ -107,7 +108,7 @@ assert.deepEqual(
     payload: {
       nodeId: 'agent-1',
       kind: 'agent',
-      requestId: 'snapshot-reset-1',
+      requestId: 'attach-1',
       executionSessionId: 'agent-session-1',
       minOutputSequence: 42
     }
@@ -117,13 +118,134 @@ assert.deepEqual(
     payload: {
       nodeId: 'agent-1',
       kind: 'agent',
-      requestId: 'snapshot-reset-1',
+      requestId: 'attach-1',
       executionSessionId: 'agent-session-1',
       minOutputSequence: 42
     }
   },
-  'execution snapshot reset 复用 attachExecutionSession 请求刷新 Host 侧权威快照，并保留 requestId、session 与最小 outputSequence 供 Host 对齐。'
+  'legacy attach 请求继续保留 requestId、session 与 minOutputSequence；新 authority revision 不由该字段推进。'
 );
+const terminalAppliedMessage = {
+  type: 'webview/executionTerminalApplied' as const,
+  payload: {
+    nodeId: 'agent-1',
+    kind: 'agent' as const,
+    executionSessionId: 'agent-session-1',
+    authorityId: 'terminal-authority-1',
+    revision: 42
+  }
+};
+assert.deepEqual(
+  parseWebviewMessage(terminalAppliedMessage),
+  terminalAppliedMessage,
+  'applied revision ACK 必须保留 session、authority 与非负整数 revision。'
+);
+assert.equal(
+  parseWebviewMessage({
+    ...terminalAppliedMessage,
+    payload: {
+      ...terminalAppliedMessage.payload,
+      revision: 42.5
+    }
+  }),
+  null,
+  'applied revision ACK 不接受小数 revision。'
+);
+assert.equal(
+  parseWebviewMessage({
+    ...terminalAppliedMessage,
+    payload: {
+      ...terminalAppliedMessage.payload,
+      authorityId: ''
+    }
+  }),
+  null,
+  'applied revision ACK 必须携带非空 authority。'
+);
+
+const terminalStream = {
+  version: 1 as const,
+  sessionId: 'agent-session-1',
+  authorityId: 'terminal-authority-1',
+  revision: 3,
+  checkpoint: {
+    version: 1 as const,
+    sessionId: 'agent-session-1',
+    authorityId: 'terminal-authority-1',
+    revision: 1,
+    cols: 80,
+    rows: 24,
+    scrollback: 1000,
+    createdAtMs: 100,
+    serializedState: {
+      format: 'xterm-serialize-v1' as const,
+      data: 'checkpoint',
+      outputSequence: 1
+    }
+  },
+  events: [
+    {
+      type: 'output' as const,
+      revision: 2,
+      createdAtMs: 101,
+      data: 'delta'
+    },
+    {
+      type: 'resize' as const,
+      revision: 3,
+      createdAtMs: 102,
+      cols: 100,
+      rows: 30
+    }
+  ]
+};
+const terminalStreamMessages: HostToWebviewMessage[] = [
+  {
+    type: 'host/executionSnapshot',
+    payload: {
+      nodeId: 'agent-1',
+      kind: 'agent',
+      executionSessionId: terminalStream.sessionId,
+      output: '',
+      cols: 100,
+      rows: 30,
+      liveSession: true,
+      outputSequence: terminalStream.revision,
+      terminalStream
+    }
+  },
+  {
+    type: 'host/executionOutput',
+    payload: {
+      nodeId: 'agent-1',
+      kind: 'agent',
+      executionSessionId: terminalStream.sessionId,
+      chunk: 'live',
+      persisted: true,
+      outputStartSequence: 4,
+      outputSequence: 5,
+      terminalAuthorityId: terminalStream.authorityId,
+      terminalStartRevision: 4,
+      terminalRevision: 5
+    }
+  },
+  {
+    type: 'host/executionTerminalEvent',
+    payload: {
+      nodeId: 'agent-1',
+      kind: 'agent',
+      executionSessionId: terminalStream.sessionId,
+      authorityId: terminalStream.authorityId,
+      event: {
+        type: 'scrollback',
+        revision: 6,
+        createdAtMs: 103,
+        scrollback: 2000
+      }
+    }
+  }
+];
+assert.equal(terminalStreamMessages.length, 3, 'Host protocol should type checkpoint, output range and terminal events.');
 
 const lifecycleMessage = {
   type: 'webview/bootstrapAck',
@@ -641,7 +763,7 @@ assert.match(
 );
 assert.match(
   webviewSource,
-  /persisted: message\.payload\.persisted[\s\S]*let pendingPersistBarrier = false[\s\S]*outputOptions\?\.persisted === false[\s\S]*pendingPersistBarrier = true[\s\S]*outputOptions\?\.persisted === true[\s\S]*pendingPersistBarrier = false[\s\S]*disposed \|\| pendingPersistBarrier \|\| pendingOutput\.length === 0/u,
+  /persisted: message\.payload\.persisted[\s\S]*let pendingPersistBarrier = false[\s\S]*outputOptions\?\.persisted === false[\s\S]*pendingPersistBarrier = true[\s\S]*outputOptions\?\.persisted === true[\s\S]*pendingPersistBarrier = false[\s\S]*disposed \|\| pendingPersistBarrier \|\| pendingProjectionBarrier \|\| pendingOutput\.length === 0/u,
   'Expected the Webview to buffer first unpersisted output until the Host confirms the latest execution state was persisted.'
 );
 assert.match(
@@ -905,6 +1027,11 @@ const executionPerformanceDiagnosticMessage = {
     hostAckPostEpochMs: 1781111111044,
     queueDelayMs: 42,
     characters: 4096,
+    checkpointCharacters: 2048,
+    replayEventCount: 128,
+    replayOutputCharacters: 2048,
+    checkpointRevision: 64,
+    targetRevision: 192,
     bytes: 4096,
     queuedWriteCount: 2,
     bufferLength: 1000,
@@ -1517,6 +1644,26 @@ assert.equal(
   }),
   false,
   '文本双击 offset 必须是安全整数，避免测试协议传入非确定性坐标。'
+);
+
+assert.equal(
+  isWebviewDomAction({
+    kind: 'assertExecutionTerminalBuffer',
+    nodeId: 'agent-1',
+    expectedLines: ['line-1', 'line-2']
+  }),
+  true,
+  '10-Agent 无损基准应能逐行断言 test-only xterm buffer。'
+);
+
+assert.equal(
+  isWebviewDomAction({
+    kind: 'assertExecutionTerminalBuffer',
+    nodeId: 'agent-1',
+    expectedLines: ['line-1', 2]
+  }),
+  false,
+  'xterm buffer 断言必须拒绝非字符串行。'
 );
 
 console.log('protocol webview message tests passed');
