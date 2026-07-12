@@ -6215,10 +6215,12 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
-  test(`${executionKind} multiline links do not reuse stale previous-path cache after snapshot redraw`, async ({
+  test(`${executionKind} multiline links do not reuse stale previous-path cache in a new projection`, async ({
     page
   }) => {
     const nodeId = `${executionKind}-zoom`;
+    const firstExecutionSessionId = `${executionKind}-link-projection-first`;
+    const secondExecutionSessionId = `${executionKind}-link-projection-second`;
     const firstPathLineText = 'link-target.ts';
     const secondPathLineText = 'other-link-target.ts';
     const lineNumberLinkText = '2:8';
@@ -6236,7 +6238,8 @@ for (const executionKind of ['agent', 'terminal']) {
       output: `${firstPathLineText}\r\n${resultLineText}\r\n`,
       cols: 96,
       rows: 28,
-      liveSession: true
+      liveSession: true,
+      executionSessionId: firstExecutionSessionId
     });
     await settleWebview(page, 4);
     await clearPostedMessages(page);
@@ -6266,7 +6269,8 @@ for (const executionKind of ['agent', 'terminal']) {
       output: `${secondPathLineText}\r\n${resultLineText}\r\n`,
       cols: 96,
       rows: 28,
-      liveSession: true
+      liveSession: true,
+      executionSessionId: secondExecutionSessionId
     });
     await settleWebview(page, 4);
 
@@ -14678,23 +14682,37 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
-  test(`${executionKind} applies the final snapshot before rendering the exit banner`, async ({ page }) => {
+  test(`${executionKind} final snapshot does not replace an existing live backlog`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
-    const staleBufferedLine = 'STALE-BUFFERED-LINE';
-    const finalUsageLine = 'Token usage: input=18 output=52 total=70';
-    const finalResumeLine = 'To continue this session, run: codex resume session-final-456';
+    const executionSessionId = `${executionKind}-final-backlog-session`;
+    const liveBufferedLine = 'LIVE-BUFFERED-LINE-MUST-NOT-BE-DROPPED';
+    const replacementOnlyLine = 'FINAL-SNAPSHOT-MUST-NOT-REPLACE-LIVE-BACKLOG';
     const exitMessage = executionKind === 'agent' ? '已停止 Codex CLI 会话。' : '终端会话已结束。';
-    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
-      `FINAL-PROMPT\r\n${finalUsageLine}\r\n${finalResumeLine}\r\n`
+    const initialSerializedTerminalState = await createSerializedTerminalStateFromOutput('INITIAL-PROMPT\r\n');
+    const replacementSerializedTerminalState = await createSerializedTerminalStateFromOutput(
+      `${replacementOnlyLine}\r\n`
     );
 
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
     await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: 96,
+      rows: 28,
+      liveSession: true,
+      executionSessionId,
+      outputSequence: 0,
+      serializedTerminalState: initialSerializedTerminalState
+    });
     await dispatchExecutionOutput(page, {
       nodeId,
       kind: executionKind,
-      chunk: `${staleBufferedLine}\r\n`
+      chunk: `${liveBufferedLine}\r\n`,
+      executionSessionId,
+      outputSequence: 1
     });
     await dispatchExecutionSnapshot(page, {
       nodeId,
@@ -14703,7 +14721,9 @@ for (const executionKind of ['agent', 'terminal']) {
       cols: 96,
       rows: 28,
       liveSession: false,
-      serializedTerminalState
+      executionSessionId,
+      outputSequence: 1,
+      serializedTerminalState: replacementSerializedTerminalState
     });
     await dispatchExecutionExit(page, {
       nodeId,
@@ -14714,23 +14734,49 @@ for (const executionKind of ['agent', 'terminal']) {
     const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
       const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
       return (
-        visibleLines.some((line) => line.includes(finalUsageLine)) &&
-        visibleLines.some((line) => line.includes(finalResumeLine)) &&
+        visibleLines.some((line) => line.includes(liveBufferedLine)) &&
         visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
-        !visibleLines.some((line) => line.includes(staleBufferedLine))
+        !visibleLines.some((line) => line.includes(replacementOnlyLine))
       );
     });
 
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(finalUsageLine))).toBe(true);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(finalResumeLine))).toBe(true);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(liveBufferedLine))).toBe(true);
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
       true
     );
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBufferedLine))).toBe(false);
+    expect(probeNode.terminalVisibleLines.some((line) => line.includes(replacementOnlyLine))).toBe(false);
   });
 }
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} renders an old Supervisor session as a read-only transcript`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const state = createLiveExecutionNodeState(executionKind);
+    const metadata = state.nodes[0].metadata[executionKind];
+    metadata.terminalProjectionMode = 'legacy-read-only';
+    metadata.recentOutput = 'LEGACY-READ-ONLY-TAIL\nsecond line';
+
+    await openHarness(page);
+    await bootstrap(page, state);
+    await waitForExecutionTerminalReady(page, nodeId);
+
+    const node = nodeById(page, nodeId);
+    await expect(node.locator('[data-terminal-projection-mode="legacy-read-only"]')).toBeVisible();
+    await expect(node.locator('.terminal-overlay')).toContainText('旧版运行时 - 只读');
+    const transcript = node.locator('.terminal-legacy-transcript');
+    await expect(transcript).toContainText('LEGACY-READ-ONLY-TAIL');
+    await expect(transcript).toHaveCSS('overflow-y', 'auto');
+    await expect(transcript).toHaveCSS('pointer-events', 'auto');
+
+    await clearPostedMessages(page);
+    await performTestDomAction(page, {
+      kind: 'sendExecutionInput',
+      nodeId,
+      data: 'must-not-send'
+    });
+    expect(await readPostedMessagesByType(page, 'webview/executionInput')).toHaveLength(0);
+  });
+
   test(`${executionKind} requests only one attach snapshot for an already-live mounted node`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
 
@@ -14757,9 +14803,7 @@ for (const executionKind of ['agent', 'terminal']) {
 
     await openHarness(page);
     await bootstrap(page, state);
-    for (const nodeId of nodeIds) {
-      await waitForExecutionTerminalReady(page, nodeId);
-    }
+    await waitForExecutionTerminalsReady(page, nodeIds);
     await clearPostedMessages(page);
 
     await performTestDomAction(page, {
@@ -14772,19 +14816,27 @@ for (const executionKind of ['agent', 'terminal']) {
       data: `SNAPSHOT-${'x'.repeat(40 * 1024)}\r\n`
     };
 
-    for (const nodeId of nodeIds) {
-      await dispatchExecutionSnapshot(page, {
-        nodeId,
-        kind: executionKind,
-        output: '',
-        cols: 96,
-        rows: 28,
-        liveSession: true,
-        executionSessionId: `${nodeId}-session`,
-        outputSequence: 1,
-        serializedTerminalState: snapshot
-      });
-    }
+    await page.evaluate(
+      ({ nextNodeIds, kind, serializedTerminalState }) => {
+        for (const nodeId of nextNodeIds) {
+          window.__devSessionCanvasHarness.dispatchHostMessage({
+            type: 'host/executionSnapshot',
+            payload: {
+              nodeId,
+              kind,
+              output: '',
+              cols: 96,
+              rows: 28,
+              liveSession: true,
+              executionSessionId: `${nodeId}-session`,
+              outputSequence: 1,
+              serializedTerminalState
+            }
+          });
+        }
+      },
+      { nextNodeIds: nodeIds, kind: executionKind, serializedTerminalState: snapshot }
+    );
 
     const startedDiagnostics = await waitForPostedMessagesByTypeMatch(
       page,
@@ -14807,6 +14859,120 @@ for (const executionKind of ['agent', 'terminal']) {
     expect(startedNodeIds[0]).toBe(inputNodeId);
   });
 }
+
+test('pane gallery prioritizes the newly activated main terminal over stale input priority', async ({ page }) => {
+  test.setTimeout(60_000);
+  const state = createPaneGalleryCanvasState();
+  const frontendNodeId = 'workspace-root-frontend-terminal';
+  const backendNodeId = 'workspace-root-backend-terminal';
+  for (const node of state.nodes) {
+    if (node.kind !== 'terminal') {
+      continue;
+    }
+    node.status = 'live';
+    node.metadata.terminal.liveSession = true;
+    node.metadata.terminal.lifecycle = 'live';
+  }
+
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'topThumbnails',
+        activeRootGroupId: 'workspace-root-frontend',
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'topThumbnails'
+      }
+    }
+  });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await waitForExecutionTerminalReady(page, frontendNodeId);
+  await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/attachExecutionSession',
+    (messages) => [frontendNodeId, backendNodeId].every((nodeId) =>
+      messages.some((message) => message.payload.nodeId === nodeId)
+    )
+  );
+
+  const backendThumbnail = page.locator(
+    '.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]'
+  );
+
+  await page.evaluate((nodeId) => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/testDomAction',
+      payload: {
+        requestId: 'pane-gallery-stale-input-priority',
+        action: {
+          kind: 'sendExecutionInput',
+          nodeId,
+          data: 'i'
+        }
+      }
+    });
+  }, frontendNodeId);
+  await waitForPostedMessageByType(page, 'webview/executionInput');
+  await clearPostedMessages(page);
+  await backendThumbnail.dblclick();
+  const mainPane = page.locator('.pane-gallery-root-pane-main');
+  await expect(mainPane).toHaveAttribute('data-pane-gallery-root-id', 'workspace-root-backend');
+  await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/attachExecutionSession',
+    (messages) => [frontendNodeId, backendNodeId].every((nodeId) =>
+      messages.some((message) => message.payload.nodeId === nodeId)
+    )
+  );
+  await clearPostedMessages(page);
+
+  const snapshot = {
+    format: 'xterm-serialize-v1',
+    data: `${'x'.repeat(40 * 1024)}\r\nPANE-SNAPSHOT\r\n`,
+    outputSequence: 2
+  };
+  for (const nodeId of [frontendNodeId, backendNodeId]) {
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: 'terminal',
+      output: '',
+      executionSessionId: `${nodeId}-session`,
+      outputSequence: 2,
+      serializedTerminalState: snapshot
+    });
+  }
+
+  const startedDiagnostics = await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionPerformanceDiagnostic',
+    (messages) =>
+      messages.filter(
+        (message) =>
+          message.payload.source === 'webview-snapshot-restore-queue' &&
+          message.payload.reason === 'started'
+      ).length >= 2
+  );
+  const startedNodeIds = startedDiagnostics
+    .filter(
+      (message) =>
+        message.payload.source === 'webview-snapshot-restore-queue' &&
+        message.payload.reason === 'started'
+    )
+    .map((message) => message.payload.nodeId);
+
+  expect(startedNodeIds[0]).toBe(backendNodeId);
+  await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionPerformanceDiagnostic',
+    (messages) => messages.some(
+      (message) =>
+        message.payload.source === 'webview-terminal-write' &&
+        message.payload.reason === 'snapshot' &&
+        message.payload.nodeId === backendNodeId
+    )
+  );
+  const mainProbe = await readProbeNode(page, backendNodeId, 0);
+  expect(mainProbe.terminalVisibleLines.some((line) => line.includes('PANE-SNAPSHOT'))).toBe(true);
+});
 
 test('agent output drain reaches every live node when many nodes have pending backlog', async ({ page }) => {
   const state = createMultiLiveExecutionNodeState('agent', 6);
@@ -14836,9 +15002,7 @@ test('agent output drain reaches every live node when many nodes have pending ba
     }
   });
   await bootstrap(page, state);
-  for (const nodeId of nodeIds) {
-    await waitForExecutionTerminalReady(page, nodeId);
-  }
+  await waitForExecutionTerminalsReady(page, nodeIds);
 
   await page.evaluate((events) => {
     for (const payload of events) {
@@ -14858,7 +15022,242 @@ test('agent output drain reaches every live node when many nodes have pending ba
   }
 });
 
+test('10-agent live output capacity benchmark stays lossless and keeps input responsive', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const agentCount = 10;
+  const backgroundLineCount = 4000;
+  const state = createMultiLiveExecutionNodeState('agent', agentCount);
+  state.nodes.forEach((node, index) => {
+    node.position = {
+      x: 120 + (index % 5) * 620,
+      y: 140 + Math.floor(index / 5) * 500
+    };
+  });
+  const nodeIds = state.nodes.map((node) => node.id);
+  const inputNodeId = nodeIds.at(-1);
+  const backgroundNodeIds = nodeIds.slice(0, -1);
+  const expectedLinesByNode = new Map();
+  const backgroundPayloads = backgroundNodeIds.map((nodeId, nodeIndex) => {
+    const prefix = `AG${String(nodeIndex + 1).padStart(2, '0')}`;
+    const lines = Array.from({ length: backgroundLineCount }, (_value, lineIndex) =>
+      `${prefix}-${String(lineIndex).padStart(4, '0')}-xxxxxxxxxxxx`
+    );
+    expectedLinesByNode.set(nodeId, lines);
+    return {
+      nodeId,
+      kind: 'agent',
+      chunk: `${lines.join('\r\n')}\r\n`,
+      executionSessionId: `capacity-benchmark-session-${nodeIndex + 1}`,
+      outputSequence: 1,
+      persisted: true
+    };
+  });
+  const priorityMarker = 'AG10-PRIORITY-ECHO';
+  const priorityPayload = {
+    nodeId: inputNodeId,
+    kind: 'agent',
+    chunk: `${priorityMarker}\r\n`,
+    executionSessionId: 'capacity-benchmark-session-10',
+    outputSequence: 1,
+    persisted: true
+  };
+  expectedLinesByNode.set(inputNodeId, [priorityMarker]);
+
+  await openHarness(page, {
+    persistedState: {
+      viewport: {
+        x: 0,
+        y: 0,
+        zoom: 0.45
+      }
+    }
+  });
+  await bootstrap(
+    page,
+    state,
+    createRuntimeContext({ terminalScrollback: backgroundLineCount + 500 })
+  );
+  await waitForExecutionTerminalsReady(page, nodeIds);
+  await clearPostedMessages(page);
+  const performanceSession = await page.context().newCDPSession(page);
+  await performanceSession.send('Performance.enable');
+  const performanceBefore = await performanceSession.send('Performance.getMetrics');
+
+  const floodStartedAt = await page.evaluate((payloads) => {
+    const startedAt = performance.now();
+    for (const payload of payloads) {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionOutput',
+        payload
+      });
+    }
+    return startedAt;
+  }, backgroundPayloads);
+  // Let background controllers enter the xterm write path before measuring input.
+  await settleWebview(page, 2);
+
+  const inputDispatch = await page.evaluate(
+    ({ nodeId, echoPayload }) =>
+      new Promise((resolve, reject) => {
+        const requestId = `capacity-benchmark-input-${Date.now()}`;
+        const startedAt = performance.now();
+        const timeout = window.setTimeout(() => {
+          window.removeEventListener('dev-session-canvas:harness-post-message', onPostedMessage);
+          reject(new Error('Timed out waiting for the benchmark execution input message.'));
+        }, 5000);
+        const onPostedMessage = (event) => {
+          const message = event.detail;
+          if (message?.type !== 'webview/executionInput' || message.payload?.nodeId !== nodeId) {
+            return;
+          }
+
+          window.clearTimeout(timeout);
+          window.removeEventListener('dev-session-canvas:harness-post-message', onPostedMessage);
+          const inputPostedAt = performance.now();
+          window.__devSessionCanvasHarness.dispatchHostMessage({
+            type: 'host/executionOutput',
+            payload: echoPayload
+          });
+          window.setTimeout(() => {
+            const hostReceivedEpochMs = Date.now();
+            window.__devSessionCanvasHarness.dispatchHostMessage({
+              type: 'host/executionInputAck',
+              payload: {
+                nodeId,
+                kind: 'agent',
+                sequence: message.payload.sequence,
+                webviewEpochMs: message.payload.webviewEpochMs,
+                webviewPerformanceNowMs: message.payload.webviewPerformanceNowMs,
+                hostReceivedEpochMs,
+                hostAckEpochMs: hostReceivedEpochMs,
+                hostAckPostEpochMs: Date.now(),
+                queueDelayMs: 0,
+                controllerCount: 10,
+                pendingControllerCount: 9,
+                queuedWriteCount: 9,
+                pendingOutputLength: 0
+              }
+            });
+          }, 12);
+          resolve({
+            inputDispatchMs: inputPostedAt - startedAt,
+            inputPostedAt
+          });
+        };
+
+        window.addEventListener('dev-session-canvas:harness-post-message', onPostedMessage);
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/testDomAction',
+          payload: {
+            requestId,
+            action: {
+              kind: 'sendExecutionInput',
+              nodeId,
+              data: 'p'
+            }
+          }
+        });
+      }),
+    { nodeId: inputNodeId, echoPayload: priorityPayload }
+  );
+
+  const ackDiagnostics = await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionPerformanceDiagnostic',
+    (messages) => messages.some(
+      (message) =>
+        message.payload.source === 'webview-input-ack' &&
+        message.payload.nodeId === inputNodeId
+    )
+  );
+  const ackDiagnostic = ackDiagnostics.find(
+    (message) =>
+      message.payload.source === 'webview-input-ack' &&
+      message.payload.nodeId === inputNodeId
+  );
+
+  const completionMsByNode = new Map();
+  const completionDeadline = Date.now() + 45_000;
+  while (completionMsByNode.size < nodeIds.length && Date.now() < completionDeadline) {
+    const snapshot = await requestWebviewProbe(page, 0);
+    const now = await page.evaluate(() => performance.now());
+    for (const nodeId of nodeIds) {
+      if (completionMsByNode.has(nodeId)) {
+        continue;
+      }
+      const probeNode = snapshot.nodes.find((node) => node.nodeId === nodeId);
+      const finalLine = expectedLinesByNode.get(nodeId).at(-1);
+      if (probeNode?.terminalVisibleLines?.some((line) => line.includes(finalLine))) {
+        completionMsByNode.set(nodeId, now - floodStartedAt);
+      }
+    }
+    if (completionMsByNode.size < nodeIds.length) {
+      await page.waitForTimeout(20);
+    }
+  }
+
+  expect(completionMsByNode.size).toBe(nodeIds.length);
+  const performanceAfter = await performanceSession.send('Performance.getMetrics');
+  await performanceSession.detach();
+  const metricDeltaMs = (name) => {
+    const before = performanceBefore.metrics.find((metric) => metric.name === name)?.value ?? 0;
+    const after = performanceAfter.metrics.find((metric) => metric.name === name)?.value ?? before;
+    return Math.max(0, after - before) * 1000;
+  };
+  for (const nodeId of nodeIds) {
+    await performTestDomAction(page, {
+      kind: 'assertExecutionTerminalBuffer',
+      nodeId,
+      expectedLines: expectedLinesByNode.get(nodeId)
+    });
+  }
+
+  const priorityCompletionMs = completionMsByNode.get(inputNodeId);
+  const priorityEchoLatencyMs = priorityCompletionMs - (inputDispatch.inputPostedAt - floodStartedAt);
+  const backgroundCompletionMs = backgroundNodeIds.map((nodeId) => completionMsByNode.get(nodeId));
+  const maxBackgroundCompletionMs = Math.max(...backgroundCompletionMs);
+  const minBackgroundCompletionMs = Math.min(...backgroundCompletionMs);
+  const totalCharacters = backgroundPayloads.reduce((total, payload) => total + payload.chunk.length, 0) +
+    priorityPayload.chunk.length;
+  const mainThreadLagDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
+  const maxMainThreadLagMs = Math.max(
+    0,
+    ...mainThreadLagDiagnostics
+      .filter((message) => message.payload.source === 'webview-main-thread-lag')
+      .map((message) => message.payload.durationMs ?? 0)
+  );
+  const metrics = {
+    agentCount,
+    backgroundLineCount,
+    totalCharacters,
+    inputDispatchMs: Math.round(inputDispatch.inputDispatchMs * 100) / 100,
+    inputAckRoundTripMs: ackDiagnostic?.payload.durationMs,
+    priorityEchoLatencyMs: Math.round(priorityEchoLatencyMs * 100) / 100,
+    maxBackgroundCompletionMs: Math.round(maxBackgroundCompletionMs * 100) / 100,
+    backgroundCompletionSpreadMs: Math.round((maxBackgroundCompletionMs - minBackgroundCompletionMs) * 100) / 100,
+    maxMainThreadLagMs,
+    webviewTaskCpuMs: Math.round(metricDeltaMs('TaskDuration') * 100) / 100,
+    webviewScriptCpuMs: Math.round(metricDeltaMs('ScriptDuration') * 100) / 100
+  };
+  metrics.webviewTaskCpuUtilizationPercent =
+    Math.round((metrics.webviewTaskCpuMs / Math.max(1, metrics.maxBackgroundCompletionMs)) * 10_000) / 100;
+  await testInfo.attach('10-agent-capacity-benchmark.json', {
+    body: JSON.stringify(metrics, null, 2),
+    contentType: 'application/json'
+  });
+  console.log(`[10-agent-capacity] ${JSON.stringify(metrics)}`);
+
+  expect(metrics.inputDispatchMs).toBeLessThan(150);
+  expect(metrics.inputAckRoundTripMs).toBeLessThan(250);
+  expect(metrics.priorityEchoLatencyMs).toBeLessThan(500);
+  expect(priorityCompletionMs).toBeLessThan(minBackgroundCompletionMs);
+  expect(metrics.backgroundCompletionSpreadMs).toBeLessThan(5000);
+  expect(metrics.maxMainThreadLagMs).toBeLessThan(1000);
+  expect(metrics.maxBackgroundCompletionMs).toBeLessThan(45_000);
+});
+
 test('agent attention final output is not starved behind flooded nodes', async ({ page }) => {
+  test.setTimeout(90_000);
   const state = createMultiLiveExecutionNodeState('agent', 6);
   const nodeIds = state.nodes.map((node) => node.id);
   const floodNodeIds = nodeIds.slice(0, 2);
@@ -14901,9 +15300,7 @@ test('agent attention final output is not starved behind flooded nodes', async (
     }
   });
   await bootstrap(page, state);
-  for (const nodeId of nodeIds) {
-    await waitForExecutionTerminalReady(page, nodeId);
-  }
+  await waitForExecutionTerminalsReady(page, nodeIds);
 
   await page.evaluate(
     ({ floodPayloads, finalPayloads }) => {
@@ -14944,14 +15341,19 @@ test('agent attention final output is not starved behind flooded nodes', async (
 });
 
 for (const executionKind of ['agent', 'terminal']) {
-  test(`${executionKind} requests snapshot reset instead of replaying a huge restored backlog`, async ({ page }) => {
+  test(`${executionKind} keeps a large live backlog lossless without requesting snapshot replacement`, async ({ page }) => {
+    test.setTimeout(60_000);
     const nodeId = `${executionKind}-zoom`;
-    const staleBacklogLine = 'STALE-BACKLOG-SHOULD-NOT-REPLAY';
-    const freshSnapshotLine = 'FRESH-SNAPSHOT-AFTER-BACKLOG-RESET';
-    const freshLiveLine = 'LIVE-AFTER-SNAPSHOT-RESET';
-    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
-    const serializedTerminalState = await createSerializedTerminalStateFromOutput(`${freshSnapshotLine}\r\n`);
-    const executionSessionId = `${executionKind}-session-reset`;
+    const executionSessionId = `${executionKind}-lossless-backlog-session`;
+    const firstMarker = 'LOSSLESS-BACKLOG-FIRST-MARKER';
+    const finalMarker = 'LOSSLESS-BACKLOG-FINAL-MARKER';
+    const largeBacklog = [
+      firstMarker,
+      ...Array.from({ length: 150 }, (_value, index) => {
+        return `LOSSLESS-BACKLOG-${String(index).padStart(4, '0')}-${'x'.repeat(1024)}`;
+      }),
+      finalMarker
+    ].join('\r\n') + '\r\n';
 
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
@@ -14960,109 +15362,11 @@ for (const executionKind of ['agent', 'terminal']) {
       nodeId,
       kind: executionKind,
       output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
       executionSessionId,
       outputSequence: 0,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+      serializedTerminalState: await createSerializedTerminalStateFromOutput('LOSSLESS-INITIAL\r\n')
     });
-    await dispatchVisibilityRestored(page);
-    await page.evaluate(() => {
-      window.__devSessionCanvasHarness.clearPostedMessages();
-    });
-    await dispatchExecutionOutput(page, {
-      nodeId,
-      kind: executionKind,
-      chunk: hugeBacklog,
-      executionSessionId,
-      outputSequence: 1
-    });
-
-    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
-    expect(attachRequest.payload).toMatchObject({
-      nodeId,
-      kind: executionKind,
-      executionSessionId,
-      minOutputSequence: 1
-    });
-    expect(attachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
-
-    await dispatchExecutionOutput(page, {
-      nodeId,
-      kind: executionKind,
-      chunk: `${freshLiveLine}\r\n`,
-      executionSessionId,
-      outputSequence: 2
-    });
-    await dispatchExecutionSnapshot(page, {
-      nodeId,
-      kind: executionKind,
-      requestId: attachRequest.payload.requestId,
-      executionSessionId,
-      output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
-      outputSequence: 1,
-      serializedTerminalState
-    });
-
-    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
-      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
-      return (
-        visibleLines.some((line) => line.includes(freshSnapshotLine)) &&
-        visibleLines.some((line) => line.includes(freshLiveLine)) &&
-        !visibleLines.some((line) => line.includes(staleBacklogLine))
-      );
-    });
-
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshSnapshotLine))).toBe(true);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshLiveLine))).toBe(true);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
-
-    const snapshotResetDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
-    expect(
-      snapshotResetDiagnostics.some(
-        (message) =>
-          message.payload.source === 'webview-output-snapshot-reset' &&
-          message.payload.nodeId === nodeId &&
-          message.payload.requestId === attachRequest.payload.requestId &&
-          message.payload.reason === 'visibility-backlog-snapshot-reset' &&
-          message.payload.characters >= hugeBacklog.length
-      )
-    ).toBe(true);
-    expect(
-      snapshotResetDiagnostics.some(
-        (message) =>
-          message.payload.source === 'webview-output-snapshot-reset' &&
-          message.payload.nodeId === nodeId &&
-          message.payload.requestId === attachRequest.payload.requestId &&
-          message.payload.reason === 'snapshot-reset-applied'
-      )
-    ).toBe(true);
-  });
-
-  test(`${executionKind} requests hidden snapshot reset before visible backlog threshold`, async ({ page }) => {
-    const nodeId = `${executionKind}-zoom`;
-    const hiddenBacklogLine = 'HIDDEN-BACKLOG-SHOULD-RESET-EARLY';
-    const hiddenBacklog = `${hiddenBacklogLine}\r\n${'h'.repeat(160 * 1024)}`;
-    const executionSessionId = `${executionKind}-session-hidden-reset`;
-
-    await openHarness(page);
-    await bootstrap(page, createLiveExecutionNodeState(executionKind));
-    await waitForExecutionTerminalReady(page, nodeId);
-    await dispatchExecutionSnapshot(page, {
-      nodeId,
-      kind: executionKind,
-      output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
-      executionSessionId,
-      outputSequence: 0,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
-    });
+    await clearPostedMessages(page);
     await page.evaluate(() => {
       Object.defineProperty(document, 'hidden', {
         configurable: true,
@@ -15070,47 +15374,13 @@ for (const executionKind of ['agent', 'terminal']) {
       });
       document.dispatchEvent(new Event('visibilitychange'));
     });
-    await clearPostedMessages(page);
-
     await dispatchExecutionOutput(page, {
       nodeId,
       kind: executionKind,
-      chunk: hiddenBacklog,
+      chunk: largeBacklog,
       executionSessionId,
       outputSequence: 1
     });
-
-    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
-    expect(attachRequest.payload).toMatchObject({
-      nodeId,
-      kind: executionKind,
-      executionSessionId,
-      minOutputSequence: 1
-    });
-    expect(attachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
-
-    const resetDiagnostics = await waitForPostedMessagesByTypeMatch(
-      page,
-      'webview/executionPerformanceDiagnostic',
-      (messages) =>
-        messages.some(
-          (message) =>
-            message.payload.source === 'webview-output-snapshot-reset' &&
-            message.payload.nodeId === nodeId &&
-            message.payload.requestId === attachRequest.payload.requestId &&
-            message.payload.reason === 'hidden-backlog-snapshot-reset'
-        )
-    );
-    const resetDiagnostic = resetDiagnostics.find(
-      (message) =>
-        message.payload.source === 'webview-output-snapshot-reset' &&
-        message.payload.nodeId === nodeId &&
-        message.payload.requestId === attachRequest.payload.requestId &&
-        message.payload.reason === 'hidden-backlog-snapshot-reset'
-    );
-    expect(resetDiagnostic.payload.characters).toBeGreaterThanOrEqual(hiddenBacklog.length);
-    expect(resetDiagnostic.payload.sequence).toBe(1);
-
     await page.evaluate(() => {
       Object.defineProperty(document, 'hidden', {
         configurable: true,
@@ -15118,428 +15388,587 @@ for (const executionKind of ['agent', 'terminal']) {
       });
       document.dispatchEvent(new Event('visibilitychange'));
     });
+
+    const terminalRows = nodeById(page, nodeId).locator('.xterm-rows');
+    await settleWebview(page, 36);
+    await expect(terminalRows).toContainText(finalMarker, { timeout: 8000 });
+    const attachRequests = await readPostedMessagesByType(page, 'webview/attachExecutionSession');
+    expect(attachRequests).toHaveLength(0);
   });
 
-  test(`${executionKind} keeps snapshot reset deferred output bounded while waiting for Host snapshot`, async ({ page }) => {
+  test(`${executionKind} hydrates checkpoint and journal before applying ordered live terminal events`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
-    const staleBacklogLine = 'STALE-BACKLOG-BUDGET-SHOULD-NOT-REPLAY';
-    const freshSnapshotLine = 'FRESH-SNAPSHOT-AFTER-BUDGET-RESET';
-    const freshTailLine = 'LIVE-TAIL-AFTER-BUDGET-RESET';
-    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
-    const executionSessionId = `${executionKind}-session-budget-reset`;
-    const serializedTerminalState = await createSerializedTerminalStateFromOutput(`${freshSnapshotLine}\r\n`);
+    const executionSessionId = `${executionKind}-terminal-stream-session`;
+    const authorityId = `${executionKind}-terminal-authority`;
 
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
-    await waitForExecutionTerminalReady(page, nodeId);
-    await dispatchExecutionSnapshot(page, {
-      nodeId,
-      kind: executionKind,
-      output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
-      executionSessionId,
-      outputSequence: 0,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
-    });
-    await dispatchVisibilityRestored(page);
-    await page.evaluate(() => {
-      window.__devSessionCanvasHarness.clearPostedMessages();
-    });
-
-    await dispatchExecutionOutput(page, {
-      nodeId,
-      kind: executionKind,
-      chunk: hugeBacklog,
-      executionSessionId,
-      outputSequence: 1
-    });
-    const firstAttachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
-    expect(firstAttachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
-    expect(firstAttachRequest.payload).toMatchObject({
-      nodeId,
-      kind: executionKind,
-      executionSessionId,
-      minOutputSequence: 1
-    });
-
-    for (let index = 0; index < 5; index += 1) {
-      await dispatchExecutionOutput(page, {
-        nodeId,
-        kind: executionKind,
-        chunk: `DEFERRED-BULK-${index}-${'y'.repeat(70 * 1024)}\r\n`,
-        executionSessionId,
-        outputSequence: index + 2
-      });
-    }
-
-    const resetDiagnostics = await waitForPostedMessagesByTypeMatch(
-      page,
-      'webview/executionPerformanceDiagnostic',
-      (messages) =>
-        messages.some(
-          (message) =>
-            message.payload.source === 'webview-output-snapshot-reset' &&
-            message.payload.nodeId === nodeId &&
-            message.payload.reason === 'deferred-output-budget-reset'
-        )
-    );
-    const budgetDiagnostic = resetDiagnostics.find(
-      (message) =>
-        message.payload.source === 'webview-output-snapshot-reset' &&
-        message.payload.nodeId === nodeId &&
-        message.payload.reason === 'deferred-output-budget-reset'
-    );
-    expect(budgetDiagnostic.payload.pendingOutputLength).toBeGreaterThan(256 * 1024);
-
-    const attachRequests = await waitForPostedMessagesByTypeMatch(
-      page,
-      'webview/attachExecutionSession',
-      (messages) => messages.length >= 2
-    );
-    const latestAttachRequest = attachRequests.at(-1);
-    expect(latestAttachRequest.payload.requestId).toMatch(/^snapshot-reset-/u);
-    expect(latestAttachRequest.payload.requestId).not.toBe(firstAttachRequest.payload.requestId);
-    expect(latestAttachRequest.payload).toMatchObject({
-      nodeId,
-      kind: executionKind,
-      executionSessionId,
-      minOutputSequence: 5
-    });
-
-    await dispatchExecutionOutput(page, {
-      nodeId,
-      kind: executionKind,
-      chunk: `${freshTailLine}\r\n`,
-      executionSessionId,
-      outputSequence: 8
+    const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+    const checkpointCols = readyTerminal.terminalCols;
+    const checkpointRows = readyTerminal.terminalRows;
+    const terminalStream = await createTerminalStreamPayload({
+      sessionId: executionSessionId,
+      authorityId,
+      checkpointOutput: 'CHECKPOINT-CONTENT\r\n',
+      checkpointRevision: 1,
+      checkpointCols,
+      checkpointRows,
+      events: [
+        { type: 'output', revision: 2, data: 'JOURNAL-BEFORE-RESIZE\r\n' },
+        { type: 'resize', revision: 3, cols: checkpointCols, rows: checkpointRows },
+        { type: 'scrollback', revision: 4, scrollback: 1800 },
+        { type: 'output', revision: 5, data: 'JOURNAL-AFTER-RESIZE\r\n' }
+      ]
     });
     await dispatchExecutionSnapshot(page, {
       nodeId,
       kind: executionKind,
-      requestId: latestAttachRequest.payload.requestId,
+      output: 'RAW-TAIL-MUST-NOT-HYDRATE\r\n',
+      cols: checkpointCols,
+      rows: checkpointRows,
       executionSessionId,
-      output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
+      outputSequence: terminalStream.revision,
+      terminalStream
+    });
+    const snapshotAppliedAcks = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
+      (messages) => messages.some((message) => message.payload.revision === terminalStream.revision)
+    );
+    const snapshotAppliedAck = snapshotAppliedAcks.find(
+      (message) => message.payload.revision === terminalStream.revision
+    );
+    expect(snapshotAppliedAck.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      authorityId,
+      revision: 5
+    });
+    const snapshotProbe = await readProbeNode(page, nodeId);
+    const snapshotVisibleText = snapshotProbe?.terminalVisibleLines?.join('\n') ?? '';
+    expect(snapshotVisibleText).toContain('CHECKPOINT-CONTENT');
+    expect(snapshotVisibleText).toContain('JOURNAL-AFTER-RESIZE');
+    expect(snapshotVisibleText).not.toContain('RAW-TAIL-MUST-NOT-HYDRATE');
+
+    await clearPostedMessages(page);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'LIVE-REVISION-6\r\nLIVE-REVISION-7\r\n',
+      executionSessionId,
       outputSequence: 7,
-      serializedTerminalState
+      terminalAuthorityId: authorityId,
+      terminalStartRevision: 6,
+      terminalRevision: 7,
+      persisted: true
+    });
+    await dispatchExecutionTerminalEvent(page, {
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      authorityId,
+      event: {
+        type: 'resize',
+        revision: 8,
+        createdAtMs: 200,
+        cols: checkpointCols,
+        rows: checkpointRows
+      }
+    });
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'LIVE-AFTER-RESIZE-REVISION-9\r\n',
+      executionSessionId,
+      outputSequence: 9,
+      terminalAuthorityId: authorityId,
+      terminalStartRevision: 9,
+      terminalRevision: 9,
+      persisted: true
+    });
+    await dispatchExecutionTerminalEvent(page, {
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      authorityId,
+      event: {
+        type: 'scrollback',
+        revision: 10,
+        createdAtMs: 201,
+        scrollback: 1800
+      }
     });
 
-    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
-      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
-      return (
-        visibleLines.some((line) => line.includes(freshSnapshotLine)) &&
-        visibleLines.some((line) => line.includes(freshTailLine)) &&
-        !visibleLines.some((line) => line.includes(staleBacklogLine)) &&
-        !visibleLines.some((line) => line.includes('DEFERRED-BULK-'))
-      );
+    const liveAppliedAcks = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
+      (messages) => messages.some((message) => message.payload.revision === 10)
+    );
+    const liveAppliedAck = liveAppliedAcks.find((message) => message.payload.revision === 10);
+    expect(liveAppliedAck.payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId,
+      authorityId,
+      revision: 10
     });
-
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshSnapshotLine))).toBe(true);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshTailLine))).toBe(true);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes('DEFERRED-BULK-'))).toBe(false);
+    const liveProbe = await readProbeNode(page, nodeId);
+    const visibleText = liveProbe?.terminalVisibleLines?.join('\n') ?? '';
+    expect(visibleText).toContain('LIVE-AFTER-RESIZE-REVISION-9');
+    expect(visibleText.indexOf('LIVE-REVISION-6')).toBeLessThan(visibleText.indexOf('LIVE-REVISION-7'));
+    expect(visibleText.indexOf('LIVE-REVISION-7')).toBeLessThan(
+      visibleText.indexOf('LIVE-AFTER-RESIZE-REVISION-9')
+    );
+    expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
   });
 
-  test(`${executionKind} ignores unsequenced live snapshot reset responses until a sequenced snapshot arrives`, async ({
-    page
-  }) => {
+  test(`${executionKind} applies one authority revision once when output arrives before its covering snapshot`, async ({ page }) => {
+    test.setTimeout(60_000);
     const nodeId = `${executionKind}-zoom`;
-    const staleBacklogLine = 'STALE-BACKLOG-UNSEQUENCED-LIVE-SHOULD-NOT-REPLAY';
-    const unsequencedSnapshotLine = 'UNSEQUENCED-LIVE-SNAPSHOT-SHOULD-NOT-APPLY';
-    const freshSnapshotLine = 'FRESH-SNAPSHOT-AFTER-UNSEQUENCED-LIVE';
-    const deferredLiveLine = 'DEFERRED-LIVE-AFTER-UNSEQUENCED-LIVE';
-    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
-    const executionSessionId = `${executionKind}-session-unsequenced-live-reset`;
+    const previousSessionId = `${executionKind}-previous-projection-session`;
+    const previousAuthorityId = `${executionKind}-previous-projection-authority`;
+    const nextSessionId = `${executionKind}-next-projection-session`;
+    const nextAuthorityId = `${executionKind}-next-projection-authority`;
+    const marker = 'ONE-AUTHORITY-REVISION-MUST-RENDER-ONCE';
 
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
-    await waitForExecutionTerminalReady(page, nodeId);
+    const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+    const previousStream = await createTerminalStreamPayload({
+      sessionId: previousSessionId,
+      authorityId: previousAuthorityId,
+      checkpointOutput: 'PREVIOUS-PROJECTION\r\n',
+      checkpointRevision: 1,
+      checkpointCols: readyTerminal.terminalCols,
+      checkpointRows: readyTerminal.terminalRows
+    });
     await dispatchExecutionSnapshot(page, {
       nodeId,
       kind: executionKind,
       output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
-      executionSessionId,
-      outputSequence: 0,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+      executionSessionId: previousSessionId,
+      outputSequence: previousStream.revision,
+      terminalStream: previousStream
     });
-    await dispatchVisibilityRestored(page);
-    await clearPostedMessages(page);
-
-    await dispatchExecutionOutput(page, {
-      nodeId,
-      kind: executionKind,
-      chunk: hugeBacklog,
-      executionSessionId,
-      outputSequence: 1
-    });
-    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
-    await dispatchExecutionOutput(page, {
-      nodeId,
-      kind: executionKind,
-      chunk: `${deferredLiveLine}\r\n`,
-      executionSessionId,
-      outputSequence: 2
-    });
-
-    await dispatchExecutionSnapshot(page, {
-      nodeId,
-      kind: executionKind,
-      requestId: attachRequest.payload.requestId,
-      executionSessionId,
-      output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${unsequencedSnapshotLine}\r\n`)
-    });
-    const unsequencedDiagnostics = await waitForPostedMessagesByTypeMatch(
+    await waitForPostedMessagesByTypeMatch(
       page,
-      'webview/executionPerformanceDiagnostic',
+      'webview/executionTerminalApplied',
+      (messages) => messages.some((message) => message.payload.authorityId === previousAuthorityId)
+    );
+
+    await clearPostedMessages(page);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get: () => true
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${marker}\r\n`,
+      executionSessionId: nextSessionId,
+      outputSequence: 1,
+      terminalAuthorityId: nextAuthorityId,
+      terminalStartRevision: 1,
+      terminalRevision: 1,
+      persisted: true
+    });
+    const coveringStream = await createTerminalStreamPayload({
+      sessionId: nextSessionId,
+      authorityId: nextAuthorityId,
+      checkpointOutput: `${marker}\r\n`,
+      checkpointRevision: 1,
+      checkpointCols: readyTerminal.terminalCols,
+      checkpointRows: readyTerminal.terminalRows
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      executionSessionId: nextSessionId,
+      outputSequence: coveringStream.revision,
+      terminalStream: coveringStream
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get: () => false
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
       (messages) =>
         messages.some(
           (message) =>
-            message.payload.source === 'webview-output-snapshot-reset' &&
-            message.payload.nodeId === nodeId &&
-            message.payload.requestId === attachRequest.payload.requestId &&
-            message.payload.reason === 'snapshot-reset-unsequenced-snapshot'
+            message.payload.executionSessionId === nextSessionId &&
+            message.payload.authorityId === nextAuthorityId &&
+            message.payload.revision === 1
         )
     );
-    expect(
-      unsequencedDiagnostics.some(
-        (message) =>
-          message.payload.source === 'webview-output-snapshot-reset' &&
-          message.payload.nodeId === nodeId &&
-          message.payload.requestId === attachRequest.payload.requestId &&
-          message.payload.reason === 'snapshot-reset-applied'
-      )
-    ).toBe(false);
-    await settleWebview(page, 4);
-    const ignoredProbe = await readProbeNode(page, nodeId, 20);
-    expect(ignoredProbe.terminalVisibleLines.some((line) => line.includes(unsequencedSnapshotLine))).toBe(false);
-    expect(ignoredProbe.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(false);
-
-    await dispatchExecutionSnapshot(page, {
-      nodeId,
-      kind: executionKind,
-      requestId: attachRequest.payload.requestId,
-      executionSessionId,
-      output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
-      outputSequence: 1,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${freshSnapshotLine}\r\n`)
-    });
-
-    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
-      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
-      return (
-        visibleLines.some((line) => line.includes(freshSnapshotLine)) &&
-        visibleLines.some((line) => line.includes(deferredLiveLine)) &&
-        !visibleLines.some((line) => line.includes(unsequencedSnapshotLine)) &&
-        !visibleLines.some((line) => line.includes(staleBacklogLine))
-      );
-    });
-
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(freshSnapshotLine))).toBe(true);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(true);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(unsequencedSnapshotLine))).toBe(false);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+    await settleWebview(page, 8);
+    const visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((visibleText.match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
   });
 
-  test(`${executionKind} accepts unsequenced ended snapshot reset without replaying deferred live output`, async ({
-    page
-  }) => {
+  test(`${executionKind} applies one local output sequence once when output arrives before its covering snapshot`, async ({ page }) => {
+    test.setTimeout(60_000);
     const nodeId = `${executionKind}-zoom`;
-    const staleBacklogLine = 'STALE-BACKLOG-ENDED-SNAPSHOT-SHOULD-NOT-REPLAY';
-    const deferredLiveLine = 'DEFERRED-LIVE-AFTER-ENDED-SNAPSHOT-SHOULD-NOT-REPLAY';
-    const finalSnapshotLine = 'FINAL-UNSEQUENCED-ENDED-SNAPSHOT';
-    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
-    const executionSessionId = `${executionKind}-session-ended-snapshot-reset`;
+    const nextSessionId = `${executionKind}-next-local-session`;
+    const marker = 'ONE-LOCAL-OUTPUT-SEQUENCE-MUST-RENDER-ONCE';
+    const repeatedMarker = 'DISTINCT-LOCAL-SEQUENCES-MAY-HAVE-IDENTICAL-TEXT';
 
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
     await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: `${marker}\r\n`,
+      executionSessionId: nextSessionId,
+      outputStartSequence: 1,
+      outputSequence: 1,
+      persisted: true
+    });
+    const coveringState = await createSerializedTerminalStateFromOutput(`${marker}\r\n`);
+    coveringState.outputSequence = 1;
     await dispatchExecutionSnapshot(page, {
       nodeId,
       kind: executionKind,
       output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
-      executionSessionId,
-      outputSequence: 0,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
+      executionSessionId: nextSessionId,
+      outputSequence: 1,
+      serializedTerminalState: coveringState
     });
-    await dispatchVisibilityRestored(page);
-    await clearPostedMessages(page);
+    const terminalRows = nodeById(page, nodeId).locator('.xterm-rows');
+    await expect(terminalRows).toContainText(marker, { timeout: 40_000 });
+    let visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((visibleText.match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
 
     await dispatchExecutionOutput(page, {
       nodeId,
       kind: executionKind,
-      chunk: hugeBacklog,
-      executionSessionId,
-      outputSequence: 1
+      chunk: `${repeatedMarker}\r\n`,
+      executionSessionId: nextSessionId,
+      outputStartSequence: 2,
+      outputSequence: 2,
+      persisted: true
     });
-    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
     await dispatchExecutionOutput(page, {
       nodeId,
       kind: executionKind,
-      chunk: `${deferredLiveLine}\r\n`,
-      executionSessionId,
-      outputSequence: 2
+      chunk: `${repeatedMarker}\r\n`,
+      executionSessionId: nextSessionId,
+      outputStartSequence: 3,
+      outputSequence: 3,
+      persisted: true
     });
+    await settleWebview(page, 8);
 
-    await dispatchExecutionSnapshot(page, {
-      nodeId,
-      kind: executionKind,
-      requestId: attachRequest.payload.requestId,
-      executionSessionId,
-      output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: false,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${finalSnapshotLine}\r\n`)
-    });
-
-    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
-      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
-      return (
-        visibleLines.some((line) => line.includes(finalSnapshotLine)) &&
-        !visibleLines.some((line) => line.includes(deferredLiveLine)) &&
-        !visibleLines.some((line) => line.includes(staleBacklogLine))
-      );
-    });
-
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(finalSnapshotLine))).toBe(true);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(false);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
-
-    const resetDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
-    expect(
-      resetDiagnostics.some(
-        (message) =>
-          message.payload.source === 'webview-output-snapshot-reset' &&
-          message.payload.nodeId === nodeId &&
-          message.payload.requestId === attachRequest.payload.requestId &&
-          message.payload.reason === 'snapshot-reset-session-ended-snapshot'
-      )
-    ).toBe(true);
-    expect(
-      resetDiagnostics.some(
-        (message) =>
-          message.payload.source === 'webview-output-snapshot-reset' &&
-          message.payload.nodeId === nodeId &&
-          message.payload.requestId === attachRequest.payload.requestId &&
-          message.payload.reason === 'snapshot-reset-applied'
-      )
-    ).toBe(false);
+    visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((visibleText.match(new RegExp(repeatedMarker, 'gu')) ?? [])).toHaveLength(2);
   });
 
-  test(`${executionKind} clears pending snapshot reset when the session exits`, async ({ page }) => {
+  test(`${executionKind} preserves identical text emitted by two distinct authority revisions`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
-    const staleBacklogLine = 'STALE-BACKLOG-EXIT-SHOULD-NOT-REPLAY';
-    const deferredLiveLine = 'DEFERRED-LIVE-AFTER-EXIT-SHOULD-NOT-REPLAY';
-    const lateSnapshotLine = 'LATE-SNAPSHOT-AFTER-EXIT-SHOULD-NOT-APPLY';
-    const exitMessage = 'Exited after snapshot reset';
-    const hugeBacklog = `${staleBacklogLine}\r\n${'x'.repeat(560 * 1024)}`;
-    const executionSessionId = `${executionKind}-session-exit-reset`;
+    const executionSessionId = `${executionKind}-repeated-text-session`;
+    const authorityId = `${executionKind}-repeated-text-authority`;
+    const marker = 'DISTINCT-REVISIONS-MAY-HAVE-IDENTICAL-TEXT';
 
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
-    await waitForExecutionTerminalReady(page, nodeId);
-    await dispatchExecutionSnapshot(page, {
-      nodeId,
-      kind: executionKind,
-      output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: true,
-      executionSessionId,
-      outputSequence: 0,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput('INITIAL-SNAPSHOT\r\n')
-    });
-    await dispatchVisibilityRestored(page);
-    await clearPostedMessages(page);
-
-    await dispatchExecutionOutput(page, {
-      nodeId,
-      kind: executionKind,
-      chunk: hugeBacklog,
-      executionSessionId,
-      outputSequence: 1
-    });
-    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
-    await dispatchExecutionOutput(page, {
-      nodeId,
-      kind: executionKind,
-      chunk: `${deferredLiveLine}\r\n`,
-      executionSessionId,
-      outputSequence: 2
-    });
-    await dispatchExecutionExit(page, {
-      nodeId,
-      kind: executionKind,
-      message: exitMessage
+    const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+    const terminalStream = await createTerminalStreamPayload({
+      sessionId: executionSessionId,
+      authorityId,
+      checkpointOutput: 'REPEATED-TEXT-CHECKPOINT\r\n',
+      checkpointRevision: 1,
+      checkpointCols: readyTerminal.terminalCols,
+      checkpointRows: readyTerminal.terminalRows,
+      events: [
+        { type: 'output', revision: 2, data: `${marker}\r\n` },
+        { type: 'output', revision: 3, data: `${marker}\r\n` }
+      ]
     });
     await dispatchExecutionSnapshot(page, {
       nodeId,
       kind: executionKind,
-      requestId: attachRequest.payload.requestId,
-      executionSessionId,
       output: '',
-      cols: 96,
-      rows: 28,
-      liveSession: false,
-      outputSequence: 1,
-      serializedTerminalState: await createSerializedTerminalStateFromOutput(`${lateSnapshotLine}\r\n`)
+      executionSessionId,
+      outputSequence: terminalStream.revision,
+      terminalStream
     });
-
-    const probeNode = await waitForProbeNodeMatch(page, nodeId, (nextProbeNode) => {
-      const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
-      return (
-        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
-        !visibleLines.some((line) => line.includes(deferredLiveLine)) &&
-        !visibleLines.some((line) => line.includes(lateSnapshotLine)) &&
-        !visibleLines.some((line) => line.includes(staleBacklogLine))
-      );
-    });
-
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
-      true
+    await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
+      (messages) => messages.some((message) => message.payload.revision === 3)
     );
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(deferredLiveLine))).toBe(false);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(lateSnapshotLine))).toBe(false);
-    expect(probeNode.terminalVisibleLines.some((line) => line.includes(staleBacklogLine))).toBe(false);
+    await settleWebview(page, 4);
 
-    const resetDiagnostics = await readPostedMessagesByType(page, 'webview/executionPerformanceDiagnostic');
-    expect(
-      resetDiagnostics.some(
-        (message) =>
-          message.payload.source === 'webview-output-snapshot-reset' &&
-          message.payload.nodeId === nodeId &&
-          message.payload.requestId === attachRequest.payload.requestId &&
-          message.payload.reason === 'snapshot-reset-session-ended'
-      )
-    ).toBe(true);
-    expect(
-      resetDiagnostics.some(
-        (message) =>
-          message.payload.source === 'webview-output-snapshot-reset' &&
-          message.payload.nodeId === nodeId &&
-          message.payload.requestId === attachRequest.payload.requestId &&
-          message.payload.reason === 'stale-snapshot-reset-ignored'
-      )
-    ).toBe(true);
+    const visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((visibleText.match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(2);
+  });
+
+  test(`${executionKind} fails closed on a revision gap and rejects malformed recovery payloads`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const executionSessionId = `${executionKind}-terminal-gap-session`;
+    const authorityId = `${executionKind}-terminal-gap-authority`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+    const checkpointCols = readyTerminal.terminalCols;
+    const checkpointRows = readyTerminal.terminalRows;
+    const initialStream = await createTerminalStreamPayload({
+      sessionId: executionSessionId,
+      authorityId,
+      checkpointOutput: 'HEALTHY-CP\r\n',
+      checkpointRevision: 1,
+      checkpointCols,
+      checkpointRows
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      executionSessionId,
+      outputSequence: 1,
+      terminalStream: initialStream
+    });
+    await settleWebview(page, 4);
+    const terminalRows = nodeById(page, nodeId).locator('.xterm-rows');
+    await expect(terminalRows).toContainText('HEALTHY-CP');
+    await clearPostedMessages(page);
+
+    await dispatchExecutionOutput(page, {
+      nodeId,
+      kind: executionKind,
+      chunk: 'GAPPED-LIVE-OUTPUT-MUST-NOT-WRITE\r\n',
+      executionSessionId,
+      outputSequence: 3,
+      terminalAuthorityId: authorityId,
+      terminalStartRevision: 3,
+      terminalRevision: 3,
+      persisted: true
+    });
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    expect(attachRequest.payload).toMatchObject({ nodeId, kind: executionKind, executionSessionId });
+
+    const malformedStream = await createTerminalStreamPayload({
+      sessionId: executionSessionId,
+      authorityId,
+      checkpointOutput: 'MALFORMED-CHECKPOINT-MUST-NOT-WRITE\r\n',
+      checkpointRevision: 2,
+      checkpointCols,
+      checkpointRows
+    });
+    malformedStream.checkpoint.serializedState.outputSequence = 99;
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: 'RAW-FALLBACK-MUST-NOT-WRITE\r\n',
+      executionSessionId,
+      outputSequence: 2,
+      terminalStream: malformedStream
+    });
+    await settleWebview(page, 4);
+    const failedClosedText = (await terminalRows.textContent()) ?? '';
+    expect(failedClosedText).toContain('HEALTHY-CP');
+    expect(failedClosedText).not.toContain('GAPPED-LIVE-OUTPUT-MUST-NOT-WRITE');
+    expect(failedClosedText).not.toContain('MALFORMED-CHECKPOINT-MUST-NOT-WRITE');
+    expect(failedClosedText).not.toContain('RAW-FALLBACK-MUST-NOT-WRITE');
+
+    const recoveredStream = await createTerminalStreamPayload({
+      sessionId: executionSessionId,
+      authorityId: `${authorityId}-recovered`,
+      checkpointOutput: 'RECOVERY-CHECKPOINT\r\n',
+      checkpointRevision: 1,
+      checkpointCols,
+      checkpointRows,
+      events: [
+        { type: 'output', revision: 2, data: 'RECOVERED-REVISION-2\r\n' },
+        { type: 'output', revision: 3, data: 'RECOVERED-REVISION-3\r\n' }
+      ]
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: 'RAW-RECOVERY-TAIL-MUST-NOT-WRITE\r\n',
+      executionSessionId,
+      outputSequence: 3,
+      terminalStream: recoveredStream
+    });
+    await expect(terminalRows).toContainText('RECOVERED-REVISION-3');
+    const recoveredText = (await terminalRows.textContent()) ?? '';
+    expect(recoveredText).toContain('RECOVERY-CHECKPOINT');
+    expect(recoveredText).toContain('RECOVERED-REVISION-2');
+    expect(recoveredText).toContain('RECOVERED-REVISION-3');
+    expect(recoveredText).not.toContain('RAW-RECOVERY-TAIL-MUST-NOT-WRITE');
   });
 }
+
+test('terminal restores split ANSI OSC CJK and emoji journal boundaries without raw-tail fallback', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  const executionSessionId = 'terminal-split-control-stream-session';
+  const authorityId = 'terminal-split-control-stream-authority';
+  const events = [
+    { type: 'output', revision: 2, data: '\u001b[31' },
+    { type: 'output', revision: 3, data: 'mANSI-SPLIT-COMPLETE\u001b[0m\r\n' },
+    { type: 'output', revision: 4, data: 'CURSOR-OLD\r\n\u001b[1' },
+    { type: 'output', revision: 5, data: 'A\rCURSOR-NEW\u001b[K\r\n' },
+    { type: 'resize', revision: 6 },
+    { type: 'output', revision: 7, data: '中文恢' },
+    { type: 'output', revision: 8, data: '复完整 ' },
+    { type: 'output', revision: 9, data: '\ud83d' },
+    { type: 'output', revision: 10, data: '\ude80\r\n' },
+    { type: 'scrollback', revision: 11, scrollback: 1600 },
+    { type: 'output', revision: 12, data: '\u001b]2;OSC-TITLE-' },
+    { type: 'output', revision: 13, data: 'HIDDEN\u0007' },
+    { type: 'output', revision: 14, data: '\u001b]8;;https://example.com/boundary\u001b' },
+    { type: 'output', revision: 15, data: '\\OSC-LINK' },
+    { type: 'output', revision: 16, data: '\u001b]8;;\u001b\\\r\n' },
+    { type: 'output', revision: 17, data: '\u001b[?104' },
+    { type: 'output', revision: 18, data: '9hALT-SCREEN-ONLY\r\n' },
+    { type: 'output', revision: 19, data: '\u001b[?1049lAFTER-ALT-SCREEN\r\n' },
+    { type: 'output', revision: 20, data: 'BOUNDARY-FINAL-MARKER\r\n' }
+  ];
+
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+  events[4].cols = readyTerminal.terminalCols;
+  events[4].rows = readyTerminal.terminalRows;
+  const terminalStream = await createTerminalStreamPayload({
+    sessionId: executionSessionId,
+    authorityId,
+    checkpointOutput: 'BOUNDARY-CHECKPOINT\r\n',
+    checkpointRevision: 1,
+    checkpointCols: readyTerminal.terminalCols,
+    checkpointRows: readyTerminal.terminalRows,
+    checkpointScrollback: 1600,
+    events
+  });
+
+  await clearPostedMessages(page);
+  await dispatchExecutionSnapshot(page, {
+    nodeId,
+    kind: 'terminal',
+    output: '6;2H RAW-TAIL-MUST-NOT-HYDRATE \u001b[31',
+    cols: readyTerminal.terminalCols,
+    rows: readyTerminal.terminalRows,
+    executionSessionId,
+    outputSequence: terminalStream.revision,
+    terminalStream
+  });
+
+  const appliedMessages = await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionTerminalApplied',
+    (messages) => messages.some((message) => message.payload.revision === terminalStream.revision)
+  );
+  const finalApplied = appliedMessages.find((message) => message.payload.revision === terminalStream.revision);
+  expect(finalApplied.payload).toMatchObject({
+    nodeId,
+    kind: 'terminal',
+    executionSessionId,
+    authorityId,
+    revision: 20
+  });
+
+  const probe = await readProbeNode(page, nodeId, 0);
+  const visibleText = probe.terminalVisibleLines.join('\n');
+  expect(visibleText).toContain('BOUNDARY-CHECKPOINT');
+  expect(visibleText).toContain('ANSI-SPLIT-COMPLETE');
+  expect(visibleText).toContain('CURSOR-NEW');
+  expect(visibleText).toContain('中文恢复完整 🚀');
+  expect(visibleText).toContain('OSC-LINK');
+  expect(visibleText).toContain('AFTER-ALT-SCREEN');
+  expect(visibleText).toContain('BOUNDARY-FINAL-MARKER');
+  expect(visibleText).not.toContain('CURSOR-OLD');
+  expect(visibleText).not.toContain('OSC-TITLE-HIDDEN');
+  expect(visibleText).not.toContain('https://example.com/boundary');
+  expect(visibleText).not.toContain('ALT-SCREEN-ONLY');
+  expect(visibleText).not.toContain('RAW-TAIL-MUST-NOT-HYDRATE');
+  expect(visibleText).not.toContain('\u001b');
+  expect(visibleText).not.toContain('\ufffd');
+  expect((visibleText.match(/ANSI-SPLIT-COMPLETE/gu) ?? [])).toHaveLength(1);
+  expect((visibleText.match(/中文恢复完整 🚀/gu) ?? [])).toHaveLength(1);
+  expect((visibleText.match(/BOUNDARY-FINAL-MARKER/gu) ?? [])).toHaveLength(1);
+  expect(probe.terminalBufferType).toBe('normal');
+  expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
+});
+
+test('terminal batches thousands of contiguous journal events without losing the tail', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  const executionSessionId = 'terminal-large-journal-session';
+  const authorityId = 'terminal-large-journal-authority';
+  const eventCount = 4000;
+  const events = Array.from({ length: eventCount }, (_value, index) => ({
+    type: 'output',
+    revision: index + 2,
+    data: `JOURNAL-EVENT-${String(index).padStart(4, '0')}-${'x'.repeat(48)}\r\n`
+  }));
+  const replayOutputCharacters = events.reduce((total, event) => total + event.data.length, 0);
+
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  const readyTerminal = await waitForExecutionTerminalReady(page, nodeId);
+  const terminalStream = await createTerminalStreamPayload({
+    sessionId: executionSessionId,
+    authorityId,
+    checkpointOutput: 'LARGE-JOURNAL-CHECKPOINT\r\n',
+    checkpointRevision: 1,
+    checkpointCols: readyTerminal.terminalCols,
+    checkpointRows: readyTerminal.terminalRows,
+    checkpointScrollback: eventCount + 100,
+    events
+  });
+  await clearPostedMessages(page);
+  await dispatchExecutionSnapshot(page, {
+    nodeId,
+    kind: 'terminal',
+    output: '',
+    executionSessionId,
+    outputSequence: terminalStream.revision,
+    terminalStream
+  });
+
+  const diagnostics = await waitForPostedMessagesByTypeMatch(
+    page,
+    'webview/executionPerformanceDiagnostic',
+    (messages) =>
+      messages.some(
+        (message) =>
+          message.payload.source === 'webview-terminal-write' &&
+          message.payload.reason === 'snapshot' &&
+          message.payload.replayEventCount === eventCount
+      )
+  );
+  const snapshotDiagnostic = diagnostics.find(
+    (message) =>
+      message.payload.source === 'webview-terminal-write' &&
+      message.payload.reason === 'snapshot' &&
+      message.payload.replayEventCount === eventCount
+  );
+  expect(snapshotDiagnostic?.payload).toMatchObject({
+    replayEventCount: eventCount,
+    replayOutputCharacters,
+    checkpointRevision: 1,
+    targetRevision: eventCount + 1
+  });
+  expect(snapshotDiagnostic?.payload.checkpointCharacters).toBeGreaterThan(0);
+  expect(snapshotDiagnostic?.payload.characters).toBe(
+    snapshotDiagnostic.payload.checkpointCharacters + replayOutputCharacters
+  );
+  const finalMarker = `JOURNAL-EVENT-${String(eventCount - 1).padStart(4, '0')}`;
+  const finalProbe = await readProbeNode(page, nodeId, 0);
+  expect(finalProbe.terminalVisibleLines.some((line) => line.includes(finalMarker))).toBe(true);
+  expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
+});
 
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} xterm selection stays aligned under zoomed React Flow`, async ({ page }) => {
@@ -16476,7 +16905,7 @@ async function readLastOpenedExecutionLink(page, nodeId) {
   }, nodeId);
 }
 
-async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20) {
+async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20, timeout = 5000) {
   let matchedNode = null;
 
   await expect
@@ -16488,13 +16917,13 @@ async function waitForProbeNodeMatch(page, nodeId, predicate, delayMs = 20) {
 
       matchedNode = probeNode;
       return 'matched';
-    })
+    }, { timeout })
     .toBe('matched');
 
   return matchedNode;
 }
 
-async function waitForExecutionTerminalReady(page, nodeId) {
+async function waitForExecutionTerminalReady(page, nodeId, timeout = 15_000) {
   let readyNode = null;
 
   await expect
@@ -16508,10 +16937,25 @@ async function waitForExecutionTerminalReady(page, nodeId) {
         cols: readyNode.terminalCols,
         rows: readyNode.terminalRows
       });
-    })
+    }, { timeout })
     .toMatch(/"cols":\d+,"rows":\d+/);
 
   return readyNode;
+}
+
+async function waitForExecutionTerminalsReady(page, nodeIds, timeout = 15_000) {
+  let readyNodes = [];
+  await expect
+    .poll(async () => {
+      const snapshot = await requestWebviewProbe(page, 20);
+      readyNodes = snapshot.nodes.filter((node) => nodeIds.includes(node.nodeId));
+      return nodeIds.filter((nodeId) => {
+        const probeNode = readyNodes.find((node) => node.nodeId === nodeId);
+        return !probeNode?.terminalCols || !probeNode?.terminalRows;
+      });
+    }, { timeout })
+    .toEqual([]);
+  return readyNodes;
 }
 
 async function scrollTerminalViewport(page, nodeId, deltaY, predicate, maxAttempts = 4) {
@@ -16658,7 +17102,8 @@ async function dispatchExecutionSnapshot(
     requestId,
     executionSessionId,
     outputSequence,
-    serializedTerminalState
+    serializedTerminalState,
+    terminalStream
   }
 ) {
   await page.evaluate(
@@ -16678,12 +17123,27 @@ async function dispatchExecutionSnapshot(
       requestId,
       executionSessionId,
       outputSequence,
-      serializedTerminalState
+      serializedTerminalState,
+      terminalStream
     }
   );
 }
 
-async function dispatchExecutionOutput(page, { nodeId, kind, chunk, executionSessionId, persisted, outputSequence }) {
+async function dispatchExecutionOutput(
+  page,
+  {
+    nodeId,
+    kind,
+    chunk,
+    executionSessionId,
+    persisted,
+    outputStartSequence,
+    outputSequence,
+    terminalAuthorityId,
+    terminalStartRevision,
+    terminalRevision
+  }
+) {
   await page.evaluate(
     (payload) => {
       window.__devSessionCanvasHarness.dispatchHostMessage({
@@ -16697,7 +17157,29 @@ async function dispatchExecutionOutput(page, { nodeId, kind, chunk, executionSes
       chunk,
       executionSessionId,
       persisted,
-      outputSequence
+      outputStartSequence,
+      outputSequence,
+      terminalAuthorityId,
+      terminalStartRevision,
+      terminalRevision
+    }
+  );
+}
+
+async function dispatchExecutionTerminalEvent(page, { nodeId, kind, executionSessionId, authorityId, event }) {
+  await page.evaluate(
+    (payload) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionTerminalEvent',
+        payload
+      });
+    },
+    {
+      nodeId,
+      kind,
+      executionSessionId,
+      authorityId,
+      event
     }
   );
 }
@@ -16744,6 +17226,46 @@ async function createSerializedTerminalStateFromOutput(output, cols = 96, rows =
   terminal.dispose();
   serializeAddon.dispose();
   return serializedTerminalState;
+}
+
+async function createTerminalStreamPayload({
+  sessionId,
+  authorityId,
+  checkpointOutput,
+  checkpointRevision = 1,
+  checkpointCols = 96,
+  checkpointRows = 28,
+  checkpointScrollback = 1000,
+  events = []
+}) {
+  const serializedState = await createSerializedTerminalStateFromOutput(
+    checkpointOutput,
+    checkpointCols,
+    checkpointRows,
+    checkpointScrollback
+  );
+  serializedState.outputSequence = checkpointRevision;
+  return {
+    version: 1,
+    sessionId,
+    authorityId,
+    revision: events.at(-1)?.revision ?? checkpointRevision,
+    checkpoint: {
+      version: 1,
+      sessionId,
+      authorityId,
+      revision: checkpointRevision,
+      cols: checkpointCols,
+      rows: checkpointRows,
+      scrollback: checkpointScrollback,
+      createdAtMs: 100,
+      serializedState
+    },
+    events: events.map((event, index) => ({
+      createdAtMs: 101 + index,
+      ...event
+    }))
+  };
 }
 
 function createFullscreenSerializedFixture(cols = 96, rows = 28) {
@@ -16923,7 +17445,7 @@ async function expectSelectionRange(locator, expectedStart, expectedEnd) {
     });
 }
 
-async function performTestDomAction(page, action) {
+async function performTestDomAction(page, action, timeout = 15_000) {
   const requestId = `playwright-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   await page.evaluate(
@@ -16959,7 +17481,7 @@ async function performTestDomAction(page, action) {
 
         return result.payload.ok ? 'ok' : result.payload.errorMessage ?? 'error';
       }, requestId);
-    })
+    }, { timeout })
     .toBe('ok');
 }
 

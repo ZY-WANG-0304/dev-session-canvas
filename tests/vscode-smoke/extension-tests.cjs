@@ -1183,6 +1183,7 @@ async function runTrustedSmoke() {
   let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
+  await verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReconnectFallbackToResume(
     runtimePersistenceNodes.agentNode.id,
     runtimePersistenceNodes.terminalNode.id
@@ -9752,6 +9753,10 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
 
   try {
     await clearHostMessages();
+    // Fresh execution nodes auto-start after their terminal sizes are known. Wait for
+    // that launch before replacing it with the explicitly-sized persistence session.
+    await waitForAgentLive(agentNodeId);
+    await waitForTerminalLive(terminalNodeId);
     await ensureAgentStopped(agentNodeId);
     await ensureTerminalStopped(terminalNodeId);
 
@@ -10036,22 +10041,82 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
       return Boolean(
         currentNode?.metadata?.terminal?.liveSession &&
           currentNode.metadata.terminal.attachmentState === 'attached-live' &&
-          currentNode.metadata.terminal.runtimeSessionId === runtimeSessionId &&
-          typeof currentNode.metadata.terminal.serializedTerminalState?.data === 'string' &&
-          currentNode.metadata.terminal.serializedTerminalState.data.includes(earliestMarker) &&
-          currentNode.metadata.terminal.serializedTerminalState.data.includes(latestMarker)
+          currentNode.metadata.terminal.runtimeSessionId === runtimeSessionId
       );
     }, 20000);
 
     terminalNode = findNodeById(snapshot, terminalNodeId);
-    const serializedData = terminalNode.metadata.terminal.serializedTerminalState?.data ?? '';
-    assert.ok(
-      serializedData.includes(earliestMarker),
-      'Reloaded live-runtime terminal should keep the earliest line allowed by the updated scrollback.'
+    assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
+    assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'attached-live');
+
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    let terminalProbe = await waitForWebviewProbe(
+      (currentProbe) =>
+        readProbeTerminalVisibleLines(currentProbe, terminalNodeId).some((line) => line.includes(latestMarker)),
+      20000
     );
     assert.ok(
-      serializedData.includes(latestMarker),
-      'Reloaded live-runtime terminal should keep the latest line after scrollback reconfiguration.'
+      readProbeTerminalVisibleLines(terminalProbe, terminalNodeId).some((line) => line.includes(latestMarker)),
+      'Reloaded live-runtime terminal should render the latest journaled line.'
+    );
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await performWebviewDomAction({
+        kind: 'scrollTerminalViewport',
+        nodeId: terminalNodeId,
+        lines: -10000
+      });
+      try {
+        terminalProbe = await waitForWebviewProbe(
+          (currentProbe) =>
+            readProbeTerminalVisibleLines(currentProbe, terminalNodeId).some((line) => line.includes(earliestMarker)),
+          attempt === 2 ? 20000 : 3000
+        );
+        break;
+      } catch (error) {
+        if (attempt === 2) {
+          throw error;
+        }
+        // A trailing shell prompt can restore follow mode after the marker is visible.
+      }
+    }
+    assert.ok(
+      readProbeTerminalVisibleLines(terminalProbe, terminalNodeId).some((line) => line.includes(earliestMarker)),
+      'Reloaded live-runtime terminal should render the earliest line allowed by the updated scrollback.'
+    );
+
+    await clearHostMessages();
+    await requestExecutionSnapshot('terminal', terminalNodeId, 'editor');
+    const hostMessages = await waitForHostMessages(
+      (messages) =>
+        messages.some((message) => {
+          if (
+            message.type !== 'host/executionSnapshot' ||
+            message.payload.kind !== 'terminal' ||
+            message.payload.nodeId !== terminalNodeId ||
+            message.payload.executionSessionId !== runtimeSessionId
+          ) {
+            return false;
+          }
+          const streamText = readTerminalStreamProjectionText(message.payload.terminalStream);
+          return streamText.includes(earliestMarker) && streamText.includes(latestMarker);
+        }),
+      10000
+    );
+    const executionSnapshot = hostMessages.find(
+      (message) =>
+        message.type === 'host/executionSnapshot' &&
+        message.payload.kind === 'terminal' &&
+        message.payload.nodeId === terminalNodeId &&
+        message.payload.executionSessionId === runtimeSessionId &&
+        readTerminalStreamProjectionText(message.payload.terminalStream).includes(earliestMarker) &&
+        readTerminalStreamProjectionText(message.payload.terminalStream).includes(latestMarker)
+    );
+    assert.ok(executionSnapshot, 'Expected reload-time checkpoint and journal events to retain all marker lines.');
+    assert.strictEqual(
+      executionSnapshot.payload.terminalStream.revision,
+      executionSnapshot.payload.outputSequence,
+      'Expected the Host projection revision to match the Supervisor terminal stream revision.'
     );
 
     await ensureTerminalStopped(terminalNodeId);
@@ -10068,6 +10133,164 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
         ),
       20000
     );
+  }
+}
+
+async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminalNodeId) {
+  const baselineSnapshot = await getDebugSnapshot();
+  const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
+  const originalScrollback = terminalConfiguration.get('scrollback', 1000);
+  const configuredScrollback = 100000;
+  const lineCount = 90000;
+  const markerPrefix = 'DSC_COMPLETED_STREAM';
+  const earliestMarker = `${markerPrefix}_00001_`;
+  const middleMarker = `${markerPrefix}_45000_`;
+  const latestMarker = `${markerPrefix}_90000_`;
+
+  await setRuntimePersistenceEnabled(true);
+  await clearHostMessages();
+  await setTerminalIntegratedScrollback(configuredScrollback);
+
+  try {
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === configuredScrollback
+        ),
+      20000
+    );
+    await ensureTerminalStopped(terminalNodeId);
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/startExecutionSession',
+        payload: {
+          nodeId: terminalNodeId,
+          kind: 'terminal',
+          cols: 96,
+          rows: 28
+        }
+      },
+      'editor'
+    );
+    let snapshot = await waitForSnapshot((currentSnapshot) => {
+      const node = currentSnapshot.state.nodes.find((candidate) => candidate.id === terminalNodeId);
+      return Boolean(
+        node?.metadata?.terminal?.liveSession &&
+          node.metadata.terminal.persistenceMode === 'live-runtime' &&
+          node.metadata.terminal.runtimeSessionId
+      );
+    }, 20000);
+    const runtimeSessionId = findNodeById(snapshot, terminalNodeId).metadata.terminal.runtimeSessionId;
+    assert.ok(runtimeSessionId);
+
+    await dispatchWebviewMessage(
+      {
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: terminalNodeId,
+          kind: 'terminal',
+          data:
+            `i=1; while [ "$i" -le ${lineCount} ]; do ` +
+            `printf '${markerPrefix}_%05d_%032d\\r\\n' "$i" 0; ` +
+            'i=$((i+1)); done; exit\r'
+        }
+      },
+      'editor'
+    );
+
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const node = currentSnapshot.state.nodes.find((candidate) => candidate.id === terminalNodeId);
+      const serializedData = node?.metadata?.terminal?.serializedTerminalState?.data;
+      return Boolean(
+        node &&
+          !node.metadata?.terminal?.liveSession &&
+          node.status === 'closed' &&
+          typeof serializedData === 'string' &&
+          serializedData.length > 5 * 1024 * 1024 &&
+          serializedData.includes(earliestMarker) &&
+          serializedData.includes(middleMarker) &&
+          serializedData.includes(latestMarker)
+      );
+    }, 120000);
+    const completedNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(
+      completedNode.metadata.terminal.serializedTerminalState.data.length > 5 * 1024 * 1024,
+      'The fixture must exceed the persisted serialized terminal state normalization limit.'
+    );
+    await waitForRuntimeSupervisorState(
+      (runtimeState) =>
+        !listRuntimeSupervisorSessions(runtimeState).some(
+          (session) => session.sessionId === runtimeSessionId
+        ),
+      20000
+    );
+
+    snapshot = await reloadPersistedState();
+    const reloadedNode = findNodeById(snapshot, terminalNodeId);
+    assert.strictEqual(reloadedNode.metadata.terminal.liveSession, false);
+    assert.strictEqual(reloadedNode.status, 'closed');
+    assert.strictEqual(
+      reloadedNode.metadata.terminal.serializedTerminalState,
+      undefined,
+      'Reload normalization should reject the oversized monolithic serialized state.'
+    );
+    assert.ok(
+      reloadedNode.metadata.terminal.terminalStream,
+      'Completed history must retain checkpoint plus journal after the oversized serialized state is rejected.'
+    );
+
+    await clearHostMessages();
+    await requestExecutionSnapshot('terminal', terminalNodeId, 'editor');
+    const hostMessages = await waitForHostMessages(
+      (messages) =>
+        messages.some((message) => {
+          if (
+            message.type !== 'host/executionSnapshot' ||
+            message.payload.kind !== 'terminal' ||
+            message.payload.nodeId !== terminalNodeId ||
+            message.payload.liveSession !== false
+          ) {
+            return false;
+          }
+          const streamText = readTerminalStreamProjectionText(message.payload.terminalStream);
+          return (
+            streamText.includes(earliestMarker) &&
+            streamText.includes(middleMarker) &&
+            streamText.includes(latestMarker)
+          );
+        }),
+      30000
+    );
+    const completedSnapshot = hostMessages.find(
+      (message) =>
+        message.type === 'host/executionSnapshot' &&
+        message.payload.kind === 'terminal' &&
+        message.payload.nodeId === terminalNodeId &&
+        message.payload.liveSession === false &&
+        readTerminalStreamProjectionText(message.payload.terminalStream).includes(earliestMarker) &&
+        readTerminalStreamProjectionText(message.payload.terminalStream).includes(middleMarker) &&
+        readTerminalStreamProjectionText(message.payload.terminalStream).includes(latestMarker)
+    );
+    assert.ok(completedSnapshot, 'Reloaded completed terminal must expose the full terminal stream projection.');
+  } finally {
+    await clearHostMessages();
+    await setRuntimePersistenceEnabled(false);
+    await setTerminalIntegratedScrollback(originalScrollback);
+    await waitForHostMessages(
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.type === 'host/stateUpdated' &&
+            message.payload.runtime?.terminalScrollback === originalScrollback
+      ),
+      20000
+    );
+    await setPersistedState(baselineSnapshot.state);
   }
 }
 
@@ -10158,7 +10381,6 @@ async function verifyLiveRuntimeResumeExitClassification(agentNodeId) {
 
 async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalNodeId) {
   await setRuntimePersistenceEnabled(true);
-  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
   const baselineSnapshot = await getDebugSnapshot();
   const baselineAgent = findNodeById(baselineSnapshot, agentNodeId);
   const baselineTerminal = findNodeById(baselineSnapshot, terminalNodeId);
@@ -10279,7 +10501,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
       'Expected runtime projection to preserve the terminal runtime-reattach failure reason derived from seeded state.'
     );
 
-    const reconnectDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
+    const reconnectDiagnostics = await getDiagnosticEvents();
     assert.ok(
       reconnectDiagnostics.some(
         (event) =>
@@ -12785,6 +13007,21 @@ function hasRenderedNodeSize(probe, nodeId, targetSize, tolerance = 8) {
 function readProbeTerminalVisibleLines(probe, nodeId) {
   const node = probe.nodes.find((currentNode) => currentNode.nodeId === nodeId);
   return Array.isArray(node?.terminalVisibleLines) ? node.terminalVisibleLines : [];
+}
+
+function readTerminalStreamProjectionText(terminalStream) {
+  if (!terminalStream || typeof terminalStream !== 'object') {
+    return '';
+  }
+
+  const checkpointData = terminalStream.checkpoint?.serializedState?.data;
+  const eventData = Array.isArray(terminalStream.events)
+    ? terminalStream.events
+        .filter((event) => event?.type === 'output' && typeof event.data === 'string')
+        .map((event) => event.data)
+        .join('')
+    : '';
+  return `${typeof checkpointData === 'string' ? checkpointData : ''}${eventData}`;
 }
 
 function readTerminalViewportMarkerLines(visibleLines, marker) {

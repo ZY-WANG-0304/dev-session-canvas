@@ -25,6 +25,17 @@ export interface ExecutionOutputSchedulerSelectionOptions {
   nonPriorityMaxDeferMs: number;
 }
 
+export type ExecutionTerminalDrainSelectionReason =
+  | 'drain'
+  | 'input-priority'
+  | 'input-priority-fairness'
+  | 'input-background';
+
+export interface ExecutionTerminalDrainSelectionOptions {
+  maxControllersPerDrain: number;
+  nonPriorityMaxDeferMs: number;
+}
+
 export function selectExecutionOutputSchedulerEntries<T extends ExecutionOutputSchedulerEntryLike>(
   entries: readonly T[],
   now: number,
@@ -73,5 +84,53 @@ export function selectExecutionOutputSchedulerEntries<T extends ExecutionOutputS
   return {
     entries: [],
     reason: 'input-window-deferred'
+  };
+}
+
+export function selectExecutionTerminalDrainEntries<T extends ExecutionOutputSchedulerEntryLike>(
+  entries: readonly T[],
+  now: number,
+  inputPriority: ExecutionOutputInputPriorityLike | undefined,
+  options: ExecutionTerminalDrainSelectionOptions
+): { entries: T[]; reason: ExecutionTerminalDrainSelectionReason } {
+  const sortedEntries = entries.slice().sort((left, right) => left.queuedAtMs - right.queuedAtMs);
+  const maxControllersPerDrain = Math.max(0, Math.floor(options.maxControllersPerDrain));
+  if (maxControllersPerDrain <= 0 || sortedEntries.length === 0) {
+    return { entries: [], reason: 'drain' };
+  }
+
+  if (!inputPriority) {
+    return {
+      entries: sortedEntries.slice(0, maxControllersPerDrain),
+      reason: 'drain'
+    };
+  }
+
+  const priorityEntry = sortedEntries.find(
+    (entry) => entry.kind === inputPriority.kind && entry.nodeId === inputPriority.nodeId
+  );
+  if (!priorityEntry) {
+    return {
+      entries: sortedEntries.slice(0, maxControllersPerDrain),
+      reason: 'input-background'
+    };
+  }
+
+  const deferredEntries = sortedEntries.filter((entry) => entry !== priorityEntry);
+  const expiredDeferredEntry = deferredEntries.find(
+    (entry) => now - entry.queuedAtMs >= options.nonPriorityMaxDeferMs
+  );
+  if (!expiredDeferredEntry) {
+    return {
+      entries: [priorityEntry],
+      reason: 'input-priority'
+    };
+  }
+
+  // Continuous typing can keep the input window open indefinitely. Reserve one
+  // additional controller slot once the oldest background drain reaches its bound.
+  return {
+    entries: [priorityEntry, expiredDeferredEntry],
+    reason: 'input-priority-fairness'
   };
 }

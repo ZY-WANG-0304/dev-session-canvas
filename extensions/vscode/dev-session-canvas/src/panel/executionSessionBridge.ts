@@ -31,6 +31,7 @@ export interface ExecutionSessionProcess {
   resize(cols: number, rows: number): void;
   kill(): void;
   onData(listener: (chunk: string) => void): DisposableLike;
+  /** node-pty fires exit only after its output stream closes and all data events have drained. */
   onExit(listener: (event: ExecutionSessionExitEvent) => void): DisposableLike;
 }
 

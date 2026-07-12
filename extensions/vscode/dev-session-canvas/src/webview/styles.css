@@ -2261,6 +2261,30 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
+.terminal-frame.is-legacy-read-only .terminal-overlay {
+  inset: 12px;
+  max-width: none;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.terminal-legacy-transcript {
+  min-height: 0;
+  margin: 4px 0 0;
+  padding: 10px 0 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-terminal-foreground);
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  line-height: 1.35;
+  pointer-events: auto;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .object-body {
   display: flex;
   flex: 1;

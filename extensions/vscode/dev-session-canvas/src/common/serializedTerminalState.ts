@@ -155,7 +155,7 @@ export class SerializedTerminalStateTracker {
     this.cachedStateDirty = false;
   }
 
-  public resize(cols: number, rows: number): void {
+  public resize(cols: number, rows: number, options: { outputSequence?: number } = {}): void {
     if (this.disposed) {
       return;
     }
@@ -165,6 +165,7 @@ export class SerializedTerminalStateTracker {
     this.enqueueOperation(async () => {
       await this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence);
       this.terminal.resize(cols, rows);
+      this.applyOutputSequence(options.outputSequence);
       this.refreshCachedState();
     });
   }
@@ -173,7 +174,7 @@ export class SerializedTerminalStateTracker {
     return this.scrollback;
   }
 
-  public async setScrollback(scrollback: number): Promise<void> {
+  public async setScrollback(scrollback: number, options: { outputSequence?: number } = {}): Promise<void> {
     if (this.disposed) {
       await this.operationChain;
       return;
@@ -183,7 +184,12 @@ export class SerializedTerminalStateTracker {
     if (normalizedScrollback === this.scrollback) {
       this.clearPendingWriteDrainTimer();
       const pendingWriteBatch = this.takePendingWriteBatch();
-      this.enqueueOperation(() => this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence));
+      this.enqueueOperation(async () => {
+        await this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence);
+        if (this.applyOutputSequence(options.outputSequence)) {
+          this.refreshCachedState();
+        }
+      });
       await this.operationChain;
       return;
     }
@@ -197,6 +203,8 @@ export class SerializedTerminalStateTracker {
       const rows = this.terminal.rows;
       this.replaceRuntime(cols, rows, normalizedScrollback);
       await this.hydrateSerializedState(currentState);
+      this.applyOutputSequence(options.outputSequence);
+      this.refreshCachedState();
     });
 
     await this.operationChain;
