@@ -33,15 +33,20 @@ assert.match(
   /terminalProjectionMode === 'legacy-read-only' \|\|[\s\S]*?canPreserveTerminalStream \|\|[\s\S]*?freshSnapshotState === undefined && session\.terminalStateTrusted/u,
   '同一 authority 的 sessionState 必须保留现有 Host live queue，不能因 fresh checkpoint 到达而替换并丢弃 pending output。'
 );
-assert.match(
+assert.doesNotMatch(
   managerSource,
-  /options\.minOutputSequence > session\.outputSequence[\s\S]*?!\(session\.owner === 'supervisor' && session\.terminalStreamHealthy\)[\s\S]*?session\.outputSequence = options\.minOutputSequence/u,
-  'Host 不得用 Webview minOutputSequence 推进 authoritative supervisor revision。'
+  /session\.outputSequence = options\.minOutputSequence|markOutputSequence\(session\.outputSequence\)/u,
+  'Host 不得用 Webview minOutputSequence 无数据推进任何 terminal 内容 sequence。'
 );
 assert.match(
   managerSource,
   /pendingTerminalStartRevision = session\.outputSequence;[\s\S]*?pendingTerminalEndRevision = session\.outputSequence[\s\S]*?terminalStartRevision: session\.pendingTerminalStartRevision[\s\S]*?terminalRevision: session\.pendingTerminalEndRevision/u,
   'Host 合并相邻 output 时必须保留 authoritative revision 起止范围。'
+);
+assert.match(
+  managerSource,
+  /pendingOutputStartSequence = session\.outputSequence;[\s\S]*?pendingOutputEndSequence = session\.outputSequence[\s\S]*?outputStartSequence: session\.pendingOutputStartSequence[\s\S]*?outputSequence: session\.pendingOutputEndSequence/u,
+  'Host 必须为 local 与 authority output 都保留连续 sequence 起止范围。'
 );
 assert.match(
   managerSource,
@@ -130,8 +135,8 @@ assert.match(
 );
 assert.match(
   protocolSource,
-  /terminalAuthorityId\?: string;\s*terminalStartRevision\?: number;\s*terminalRevision\?: number;/u,
-  'Host/Webview output 协议必须携带 authority 与连续 revision range。'
+  /outputStartSequence\?: number;\s*outputSequence\?: number;\s*terminalAuthorityId\?: string;\s*terminalStartRevision\?: number;\s*terminalRevision\?: number;/u,
+  'Host/Webview output 协议必须同时携带通用 sequence range 与 authority revision range。'
 );
 assert.match(
   webviewSource,
@@ -165,8 +170,18 @@ assert.match(
 );
 assert.match(
   webviewSource,
-  /pendingOutputRevisionBoundaries[\s\S]*?terminal\.write\(chunk, done\)[\s\S]*?markTerminalRevisionApplied\(outputAuthorityId, completedRevision\)/u,
+  /pendingOutputBoundaries[\s\S]*?terminal\.write\(chunk, done\)[\s\S]*?markTerminalRevisionApplied\(outputAuthorityId, completedRevision\)/u,
   'live output applied ACK 必须等对应 Host output 边界的 xterm write callback 完成。'
+);
+assert.match(
+  webviewSource,
+  /discardPendingOutputCoveredBySequence\(snapshotSequence,[\s\S]*?boundary\.outputStartSequence[\s\S]*?boundary\.outputSequence/u,
+  'Webview 必须按 local snapshot 覆盖 sequence 对账 pending output。'
+);
+assert.match(
+  webviewSource,
+  /outputStartSequence !== currentLocalOutputSequence \+ 1[\s\S]*?postAttachSnapshotRequest\(\);[\s\S]*?currentLocalOutputSequence = outputSequence/u,
+  'Webview 必须拒绝 local output sequence gap，并请求新的权威 Host snapshot。'
 );
 assert.match(
   webviewSource,

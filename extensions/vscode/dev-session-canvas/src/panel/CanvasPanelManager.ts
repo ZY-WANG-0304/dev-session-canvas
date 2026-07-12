@@ -473,6 +473,8 @@ interface ManagedExecutionSessionBase {
   syncDueAtMs: number | undefined;
   lifecycleTimer: NodeJS.Timeout | undefined;
   pendingOutput: string;
+  pendingOutputStartSequence?: number;
+  pendingOutputEndSequence?: number;
   pendingTerminalAuthorityId?: string;
   pendingTerminalStartRevision?: number;
   pendingTerminalEndRevision?: number;
@@ -828,6 +830,7 @@ interface ScheduledExecutionOutputPost {
   nodeId: string;
   chunk: string;
   persisted: boolean;
+  outputStartSequence?: number;
   outputSequence?: number;
   executionSessionId?: string;
   terminalAuthorityId?: string;
@@ -839,6 +842,8 @@ interface ScheduledExecutionOutputPost {
 
 interface PendingExecutionOutput {
   chunk: string;
+  outputStartSequence?: number;
+  outputSequence?: number;
   terminalAuthorityId?: string;
   terminalStartRevision?: number;
   terminalRevision?: number;
@@ -17726,11 +17731,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    if (session.owner === 'supervisor' && session.terminalStreamHealthy && session.terminalAuthorityId) {
-      if (!session.pendingOutput) {
+    if (!session.pendingOutput) {
+      session.pendingOutputStartSequence = session.outputSequence;
+      if (session.owner === 'supervisor' && session.terminalStreamHealthy && session.terminalAuthorityId) {
         session.pendingTerminalAuthorityId = session.terminalAuthorityId;
         session.pendingTerminalStartRevision = session.outputSequence;
       }
+    }
+    session.pendingOutputEndSequence = session.outputSequence;
+    if (session.owner === 'supervisor' && session.terminalStreamHealthy && session.terminalAuthorityId) {
       session.pendingTerminalEndRevision = session.outputSequence;
     }
     session.pendingOutput += chunk;
@@ -17814,11 +17823,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const pendingOutput: PendingExecutionOutput = {
       chunk: session.pendingOutput,
+      outputStartSequence: session.pendingOutputStartSequence,
+      outputSequence: session.pendingOutputEndSequence,
       terminalAuthorityId: session.pendingTerminalAuthorityId,
       terminalStartRevision: session.pendingTerminalStartRevision,
       terminalRevision: session.pendingTerminalEndRevision
     };
     session.pendingOutput = '';
+    session.pendingOutputStartSequence = undefined;
+    session.pendingOutputEndSequence = undefined;
     session.pendingTerminalAuthorityId = undefined;
     session.pendingTerminalStartRevision = undefined;
     session.pendingTerminalEndRevision = undefined;
@@ -17838,12 +17851,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const persistBarrier = this.getCanvasStatePersistBarrierBeforeExecutionOutput(kind, nodeId);
     const session = this.getExecutionSessions(kind).get(nodeId);
-    const outputSequence = session?.outputSequence;
+    const outputSequence = pendingOutput.outputSequence;
     const executionSessionId = session?.sessionId;
     const persisted = persistBarrier === undefined;
     if (options.immediate === true || !persisted) {
       this.postExecutionOutputMessage(kind, nodeId, chunk, {
         persisted,
+        outputStartSequence: pendingOutput.outputStartSequence,
         outputSequence,
         executionSessionId,
         terminalAuthorityId: pendingOutput.terminalAuthorityId,
@@ -17857,6 +17871,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         chunk,
         persisted: true,
+        outputStartSequence: pendingOutput.outputStartSequence,
         outputSequence,
         executionSessionId,
         terminalAuthorityId: pendingOutput.terminalAuthorityId,
@@ -17907,6 +17922,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private scheduleExecutionOutputPost(entry: ScheduledExecutionOutputPost): void {
     const existing = this.scheduledExecutionOutputPosts.get(entry.key);
     if (existing) {
+      const sameExecutionSession = existing.executionSessionId === entry.executionSessionId;
+      const hasOutputSequenceRange =
+        existing.outputStartSequence !== undefined || entry.outputStartSequence !== undefined;
+      const canMergeOutputSequenceRange =
+        existing.outputStartSequence !== undefined &&
+        existing.outputSequence !== undefined &&
+        entry.outputStartSequence === existing.outputSequence + 1;
       const hasTerminalRevisionRange =
         existing.terminalAuthorityId !== undefined || entry.terminalAuthorityId !== undefined;
       const canMergeTerminalRevisionRange =
@@ -17914,7 +17936,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         existing.terminalAuthorityId === entry.terminalAuthorityId &&
         existing.terminalRevision !== undefined &&
         entry.terminalStartRevision === existing.terminalRevision + 1;
-      if (hasTerminalRevisionRange && !canMergeTerminalRevisionRange) {
+      if (
+        !sameExecutionSession ||
+        (hasOutputSequenceRange && !canMergeOutputSequenceRange) ||
+        (hasTerminalRevisionRange && !canMergeTerminalRevisionRange)
+      ) {
         this.scheduledExecutionOutputPosts.delete(entry.key);
         this.postScheduledExecutionOutput(existing);
         this.scheduledExecutionOutputPosts.set(entry.key, entry);
@@ -18087,6 +18113,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.postExecutionOutputMessage(entry.kind, entry.nodeId, entry.chunk, {
       persisted: entry.persisted,
+      outputStartSequence: entry.outputStartSequence,
       outputSequence: entry.outputSequence,
       executionSessionId: entry.executionSessionId,
       terminalAuthorityId: entry.terminalAuthorityId,
@@ -18102,6 +18129,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     chunk: string,
     options: {
       persisted: boolean;
+      outputStartSequence?: number;
       outputSequence?: number;
       executionSessionId?: string;
       terminalAuthorityId?: string;
@@ -18118,6 +18146,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         executionSessionId: options.executionSessionId,
         chunk,
         persisted: options.persisted,
+        outputStartSequence: options.outputStartSequence,
         outputSequence: options.outputSequence,
         terminalAuthorityId: options.terminalAuthorityId,
         terminalStartRevision: options.terminalStartRevision,
@@ -18335,19 +18364,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options: ExecutionSnapshotAttachOptions = {}
   ): Promise<void> {
     const session = this.getExecutionSessions(kind).get(nodeId);
-    if (
-      session &&
-      options.executionSessionId !== undefined &&
-      options.executionSessionId === session.sessionId &&
-      options.minOutputSequence !== undefined &&
-      options.minOutputSequence > session.outputSequence &&
-      !(session.owner === 'supervisor' && session.terminalStreamHealthy)
-    ) {
-      session.outputSequence = options.minOutputSequence;
-      if (session.terminalStateTrusted) {
-        session.terminalStateTracker.markOutputSequence(session.outputSequence);
-      }
-    }
     const serializedTerminalState = session?.terminalStateTrusted
       ? await session.terminalStateTracker.flush().catch(() => session.terminalStateTracker.getSerializedState())
       : undefined;

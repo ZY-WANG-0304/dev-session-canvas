@@ -76,7 +76,7 @@ updated_at: 2026-07-12
 | PTY raw output | `node-pty` 或 runtime supervisor | Host/supervisor tracker、输出队列 | 按单一生产路径观察到的终端字节流 | 被截断后不能从任意位置重放成终端状态 |
 | `ManagedExecutionSession.buffer` / supervisor `output` | Host / supervisor | snapshot fallback、摘要、诊断 | 最近约 6000 字符 | 不保证从 ANSI 序列边界开始，也不保留完整 scrollback |
 | `SerializedTerminalState` | Host / supervisor 的 headless xterm tracker | 持久化、snapshot、Webview hydrate | authority checkpoint 内可证明覆盖到特定 revision 的终端投影 | 单独脱离 session、authority、revision 后不能自证覆盖范围 |
-| Host output scheduler entry | `CanvasPanelManager` | Webview message bridge | 合并后准备投递的增量 output，并保留 authority revision range | 不是持久化日志；完整恢复仍依赖 Supervisor journal |
+| Host output scheduler entry | `CanvasPanelManager` | Webview message bridge | 合并后准备投递的增量 output，并保留通用 output sequence range；authority 路径同时保留 revision range | 不是持久化日志；完整恢复仍依赖 Supervisor journal |
 | Webview `pendingOutput` | `host/executionOutput` 消费端 | xterm drain | Webview 已收到但尚未写入 xterm 的无损增量 | Webview dispose 后不再存在；新投影必须从 authority 恢复 |
 | Webview live xterm buffer | 用户当前可见 Webview | 用户 | 当前实例真实显示内容 | Webview dispose 后不再存在，也不是宿主持久化真源 |
 | sanitized transcript | 未合入提交 `0bcb3b0` | degraded xterm 显示 | 可读的最近纯文本片段 | 不是终端状态，不能承接后续 TUI cursor/mode 语义 |
@@ -296,7 +296,7 @@ journal 不能因为达到内存阈值直接丢弃。第一阶段完整保留从
 
 ### 10.1 适用范围
 
-本阶段覆盖 `live-runtime` Agent / Terminal 的 supervisor 输出权威、完整事件 journal、checkpoint cache 和 Host 重新附着。local PTY 仍由 Extension Host 持有，其生命周期与恢复承诺不在本阶段改写。输入调度继续遵守“唯一输入节点优先且不丢其他节点内容”的硬性边界；本阶段不会用 checkpoint 替换既有 live Webview backlog。
+本阶段覆盖 `live-runtime` Agent / Terminal 的 supervisor 输出权威、完整事件 journal、checkpoint cache 和 Host 重新附着，也覆盖 Host-owned local PTY 在同一 Extension Host 生命周期内的 snapshot/output 对账。local PTY 仍由 Extension Host 持有，其跨 Host 生命周期与独立恢复承诺不在本阶段改写。输入调度继续遵守“唯一输入节点优先且不丢其他节点内容”的硬性边界；本阶段不会用 checkpoint 替换既有 live Webview backlog。
 
 ### 10.2 唯一 authority 与 revision
 
@@ -305,6 +305,8 @@ journal 不能因为达到内存阈值直接丢弃。第一阶段完整保留从
 每个 session 的 output、resize、scrollback、finalization 与 delete 共用一条 `terminalOperationChain`。revision 分配、tracker mutation 和对外 publication 必须在同一串行操作中完成，不能只保证 journal append 顺序。PTY exit 会同步关闭 `terminalMutationAdmissionOpen`，等待此前已接受操作收敛并生成 fresh checkpoint 后，才发布唯一的非 live snapshot；exit 后 resize 被拒绝。delete 同样先关闭 admission，等待已有 finalization 或已接受 output，再基于 fresh 非 live state 删除 journal/session。`node-pty` bridge 的契约是 `onExit` 只在 output stream 关闭且全部 data event 排空后触发；若底层 provider 不满足该契约，不能把竞态猜测性隐藏在 revision 修账中。
 
 新协议字段保持可选，以便识别旧 supervisor。缺少 authority/journal capability 的旧会话继续走明确的 legacy/历史恢复路径，但不能把 6000 字符 tail 升级成新 checkpoint，也不能为它补造过去的 journal。
+
+Host-owned local PTY 没有 Supervisor `authorityId`，但仍需要可对账的传输身份。Host 只在实际接收 local output 时推进该 `executionSessionId` 内的 `outputSequence`；每个 Host-to-Webview output 携带连续的 `outputStartSequence..outputSequence`。这条 sequence 只证明当前 Host 生命周期内的 output/snapshot 覆盖关系，不等同于可跨 Host 生命周期恢复的 authority revision。Host 不再接受 Webview `minOutputSequence` 后无数据推进 `session.outputSequence`，也不再调用 `markOutputSequence()` 为未消费字节补造 freshness。
 
 ### 10.3 完整、分段、可校验 journal
 
@@ -325,6 +327,8 @@ checkpoint 正常时，attach 返回 checkpoint `C`、journal `C+1...R` 和 targ
 Webview 只在新投影 attach 时 reset 并 hydrate checkpoint；随后按序应用 output/resize/scrollback event。已有 live xterm 的 backlog 不因 checkpoint 存在而清空。controller 分开记录“当前观察到的 session/authority”和“已经完成 snapshot 投影的 session/authority”：新 session 的 output 先于 snapshot 到达时，它只能作为带 revision 起止边界的待对账增量保留。后续 snapshot 覆盖到的 revision 从 pending 边界移除，未覆盖的连续 suffix 继续应用；若一个合并 chunk 横跨 snapshot revision 且没有字符级边界可证明覆盖关系，则建立 projection barrier 并重新请求权威恢复，不猜测裁剪字符。
 
 重复判断只使用 `(sessionId, authorityId, revision)`，不比较文本、marker 或 chunk 内容。同一 revision 先以 live 增量到达、随后又包含在 checkpoint 时只应用一次；两个连续 revision 即使包含完全相同的字符串，也必须按两条合法历史全部显示。authority 不匹配、revision gap、重复跨 session 数据或 checkpoint+journal 不连续时必须 fail closed 并重新 attach，不能写 raw tail、sanitized transcript 或内容去重结果冒充终端状态。
+
+local Agent / Terminal 使用同一条覆盖原则，但身份是 `(executionSessionId, outputSequence)`。Host scheduler 只合并同一 execution session 且通用 sequence range 连续的 output；snapshot 以自身 `outputSequence` 声明覆盖截止点。Webview 为每个 pending chunk 保存字符数和 `outputStartSequence..outputSequence`：先到 output 若已被后到 snapshot 覆盖，就从 pending 中移除；snapshot 未覆盖的完整连续 suffix 继续写入。一个合并 range 横跨 snapshot 截止点、range 缺失或 local sequence 出现 gap 时，Webview 建立 projection barrier 并请求新 snapshot，不按字符猜测裁剪。两个不同 local sequence 即使文本完全相同也必须各显示一次。
 
 ### 10.6 新显示投影的 checkpoint 刷新与回放调度
 
@@ -388,7 +392,7 @@ Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Ho
 
 1. live 路径不得丢弃尚未消费的增量 output；允许延迟和字节等价 coalescing，不允许以 snapshot、raw tail 或 transcript 替代。
 2. 唯一处于输入状态的节点获得最高调度优先级；其他 session 仍保持单会话顺序、无损交付和跨会话有界公平。
-3. `sessionId + authorityId + revision` 唯一标识一条输出历史；同一身份只应用一次，不同 revision 即使文本相同也必须全部保留。revision 只能由 authority 在实际接收 terminal event 时推进。
+3. persistent 路径以 `sessionId + authorityId + revision` 唯一标识输出历史；local 路径以 `executionSessionId + outputSequence` 标识同一 Host 生命周期内的 output。相同身份只应用一次，不同 revision/sequence 即使文本相同也必须全部保留；两种序号都只能在实际接收 terminal event/output 时推进。
 4. 可跨 VS Code 生命周期运行的 Agent authority 必须长于 Extension Host；Host/Webview snapshot 只能是缓存或投影，不能证明后台输出完整。
 5. Reload Window 后，新 Host 必须从持久执行权威恢复连续历史；Host 离线期间产生的 output 不能形成 gap、重复或跨 session 混入。
 6. checkpoint 自身记录覆盖 revision、尺寸、格式和生成 authority；消费者不能补写 freshness，checkpoint 也不能用于清空 live backlog。
@@ -408,6 +412,7 @@ Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Ho
 - 用多 controller 压力证明唯一输入节点的输入、ACK 和真实回显优先，同时逐字节核对所有后台节点最终 output 无缺失、无重复且顺序正确。
 - 在 Host 完全退出期间让 persistent Agent 持续输出，重建 Host/Webview 后核对离线区间和重连区间形成一条连续 revision 历史。
 - 用 output 后立即 exit 验证 final checkpoint 覆盖 final revision。
+- 分别对 local Agent / Terminal 构造不携带 authority 字段的 output-before-snapshot，验证覆盖 sequence 只显示一次，并验证两个不同 sequence 的相同文本保留两次。
 - 用旧 supervisor registry 验证升级后不会伪造 checkpoint，并明确用户可见降级。
 - 用真实 VS Code `trusted` 与 `real-reopen` smoke 覆盖 local PTY、live runtime、Webview recreate、Reload Window 和窗口重开。
 - 在至少 10 个并发 Agent、每节点高输出、较大 `terminal.integrated.scrollback` 下记录 Host/Webview CPU、输入 ACK、输出延迟、snapshot/registry 字节数和持久化耗时。
@@ -450,9 +455,14 @@ Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Ho
 - completed snapshot 只有在 session、authority、terminal revision 与 output sequence 全部一致时才作为权威 stream 持久化。主磁盘与 root-local durable barrier 成功后才解绑并删除 Supervisor journal；失败会回滚 Host 内存/cache，保留唯一完整来源。
 - trusted smoke 用 100000 scrollback 与 70000 行输出生成大于 5 MiB 的 completed serialized state，normalizer 丢弃 oversized monolithic state 后仍从旧 checkpoint 加完整 journal suffix 恢复首、中、末 marker。real-reopen 的第三个 Terminal 在 Host 完全退出后的 3 秒空窗内输出并结束，重开后完整 final stream 可投影、runtime binding 已清除且 Supervisor session 已删除。
 
-当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；projection refresh 不撤销 live subscription；checkpoint geometry 与 tracker flush 使用同一切点；terminal mutation/publication/finalization/delete 严格串行；final/registry checkpoint 覆盖 final revision；completed stream durable handoff 与 Host 离线结束恢复；旧 Supervisor Agent/Terminal 只读降级；Host/Supervisor ACK 单调性；周期 refresh 去重、错峰、stale timer 与 dispose 后不重调度；Webview checkpoint+journal 顺序 hydrate 并在完成点 ACK、4000 个连续 output event 批量回放后尾部完整、snapshot 前增量按 revision 无重复对账、相同文本的不同 revision 无损保留、live revision gap 恢复、健康/结束态 snapshot 不替换既有 backlog；Pane Gallery 新主画板 hydrate 先于旧输入节点；10-Agent Supervisor/Webview 基准逐行验证无损、保序、输入优先和后台有界公平。完整 VS Code smoke 已通过 trusted、restricted、多 root、双窗口共享 runtime、systemd user/fallback、Remote SSH real reopen 等全部默认场景。
+同日最新复核继续补齐 local 与测试基础设施边界：
 
-本轮相关 10 个 Webview 终端用例和曾在全量中超时的 canvas edge 用例单独运行均通过。完整 `npm run test:webview` 没有清洁完成：首个失败为仓库当前中文参数校验文案与陈旧英文截图之间的 3488 pixels（约 1%）差异；跳过该截图后，当前机器高负载让前两项分别约 33.7/34.5 秒超过统一 30 秒 timeout。artifact 保存在 `.debug/playwright/results/`。这不改变定向终端证据和完整 VS Code smoke 结论，但不能把全量 Webview 写成通过；既有基线问题继续由 `docs/exec-plans/tech-debt-tracker.md` 的测试基础设施条目追踪，不重复登记新技术债。
+- Host 为 local 与 authority output 统一发布 `outputStartSequence..outputSequence`，scheduler 只合并同 execution session 的连续范围。Webview 用 `(executionSessionId, outputSequence)` 对账 local snapshot 前增量；local Agent/Terminal 正例均证明同一 sequence 最终只显示一次，反例均证明 sequence 2、3 的相同文本显示两次。`minOutputSequence` 无数据推进路径已经删除。
+- mandatory trusted smoke 的 diagnostics ring 固定最多 2000 条，长度达到上限后不再是增量游标。fallback 用例改为在整个 ring 中按场景专属的 `event kind + nodeId + resumeSessionId` 查询目标事件，不再 `.slice(ring.length)`，也不清空其他 trusted 验证仍需使用的诊断。reviewer 原样命令随后完整通过。
+
+当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；projection refresh 不撤销 live subscription；checkpoint geometry 与 tracker flush 使用同一切点；terminal mutation/publication/finalization/delete 严格串行；final/registry checkpoint 覆盖 final revision；completed stream durable handoff 与 Host 离线结束恢复；旧 Supervisor Agent/Terminal 只读降级；Host/Supervisor ACK 单调性；周期 refresh 去重、错峰、stale timer 与 dispose 后不重调度；Webview checkpoint+journal 顺序 hydrate 并在完成点 ACK、4000 个连续 output event 批量回放后尾部完整、authority 与 local snapshot 前增量均按身份无重复对账、相同文本的不同 revision/sequence 无损保留、live revision/sequence gap 恢复、健康/结束态 snapshot 不替换既有 backlog；Pane Gallery 新主画板 hydrate 先于旧输入节点；10-Agent Supervisor/Webview 基准逐行验证无损、保序、输入优先和后台有界公平。完整 VS Code smoke 已通过 trusted、restricted、多 root、双窗口共享 runtime、systemd user/fallback、Remote SSH real reopen 等全部默认场景。
+
+本轮相关 12 个 Webview 终端用例和曾在全量中超时的 canvas edge 用例单独运行均通过。完整 `npm run test:webview` 没有清洁完成：首个失败为仓库当前中文参数校验文案与陈旧英文截图之间的 3488 pixels（约 1%）差异；跳过该截图后，当前机器高负载让前两项分别约 33.7/34.5 秒超过统一 30 秒 timeout。artifact 保存在 `.debug/playwright/results/`。这不改变定向终端证据和完整 VS Code smoke 结论，但不能把全量 Webview 写成通过；既有基线问题继续由 `docs/exec-plans/tech-debt-tracker.md` 的测试基础设施条目追踪，不重复登记新技术债。
 
 真实迁移 smoke 会从固定基线 `origin/main@5355e6a` 物化扩展源码并重新构建旧 Supervisor，而不是伪造 capability。旧进程实际持有 Agent 与 Terminal PTY；当前 Host 重建后只显示去控制序列的只读 transcript，Webview 和 Host 两层均拒绝 input/resize，同一旧进程拒绝新 session。停止或删除最后的旧会话后，Host 等待 in-flight RPC settled 再释放 client，旧进程在 30 秒 idle 窗口后自然退出；下一次创建连接到声明 `terminalSessionStreamV1` 的当前 Supervisor。该 smoke 还发现旧 Supervisor 会先广播 delete 终态、再返回 delete RPC；如果终态处理立即 dispose client，会出现 PTY 已删除但画布节点删除失败。当前实现以 `RuntimeSupervisorClient.hasPendingRequests()` 保护退役，并在 strict delete 的所有 settled 路径重新检查。
 
@@ -463,6 +473,6 @@ Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Ho
 - applied ACK 当前只提供消费证据，完整磁盘 journal 仍不 compact；长期 retention、跨代回退和受 ACK 约束的删除策略需要另行设计。
 - 当前真实旧 Supervisor 升级 smoke 运行在 Linux/Unix socket 路径；其他平台仍由 capability 与协议回归覆盖，不能把这条 Linux 证据写成全平台真实旧二进制矩阵。
 - 当前 ANSI/OSC/CJK/emoji fixture 已覆盖分片和恢复边界；10-Agent 当前样本仍不能替代长时间容量、持续磁盘增长与 retention 结论。
-- local PTY 的独立恢复语义、journal compact、永久 transcript 与 Agent 结构化内容投影不属于本阶段实现。
+- local PTY 跨 Host 生命周期的独立恢复语义、journal compact、永久 transcript 与 Agent 结构化内容投影不属于本阶段实现。
 
-本设计最后于 2026-07-12 根据 PR #255 review 证据更新：新增 terminal operation/finalization/delete 串行边界、Webview 按 revision 对账和 completed stream durable handoff，并在定向验证与完整 VS Code smoke 通过后恢复为“已验证”。
+本设计最后于 2026-07-12 根据 PR #255 两轮 review 证据更新：新增 terminal operation/finalization/delete 串行边界、authority/local snapshot 前增量对账、completed stream durable handoff 和有界 diagnostics 查询修复，并在定向验证与 reviewer 原样 trusted smoke 通过后恢复为“已验证”。

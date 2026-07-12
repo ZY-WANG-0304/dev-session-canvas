@@ -1,8 +1,10 @@
 # 重构 Agent / Terminal 无损输入输出与恢复链路
 
+状态：已完成（2026-07-12）。
+
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘`。
 
-本计划遵循仓库根目录的 `docs/PLANS.md`。历史故障定位、恢复表示比较、核心实现、真实旧版本迁移和终端控制序列边界已经形成第一轮证据；PR #255 review 又确认 revision 发布、finalization 与 completed projection 仍有三个确定性缺口，并提出一个需要按 revision 身份独立证明的 Webview 重复显示风险，因此本计划于 2026-07-12 从 completed 重新转为 active。四条 review blocker 已通过确定性回归、实现和真实生命周期 smoke 闭环，计划重新归档；长期 journal 保留、local PTY 独立恢复、永久 transcript 与 Agent 结构化投影仍作为后续技术债单独登记，不由本轮 review follow-up 冒充完成。
+本计划遵循仓库根目录的 `docs/PLANS.md`。历史故障定位、恢复表示比较、核心实现、真实旧版本迁移和终端控制序列边界已经形成第一轮证据；PR #255 第一轮 review 的四条 blocker 已完成。2026-07-12 对最新 head 的复核又确认 local PTY 无 authority 路径仍缺 snapshot/output 覆盖边界，且超大 completed smoke 会填满 diagnostics ring、使后续 mandatory trusted 断言的长度游标失效。两项已分别通过 local sequence range 和按唯一关联键查询有界 ring 关闭，reviewer 原样 trusted smoke 通过。长期 journal 保留、local PTY 跨 Host 恢复、永久 transcript 与 Agent 结构化投影仍作为后续技术债单独登记。
 
 ## 目标与全局图景
 
@@ -56,8 +58,19 @@
 - [x] (2026-07-12) 串行化 Supervisor 的 terminal mutation/publication、finalization 与 delete：output、resize、scrollback 共用 session operation chain；exit 同步关闭 admission，等待已接受操作后只发布 fresh final state。
 - [x] (2026-07-12) 为 completed session 持久化最后一个合法 checkpoint 加连续 journal suffix；主磁盘 snapshot 与实际 root-local 加载源写入成功后，Host 才解绑 runtime 并删除 Supervisor journal。
 - [x] (2026-07-12 02:10 +0800) 完成 typecheck、build、定向协议/Webview、大于 5 MiB completed reload、真实 Host 离线 completed、10-Agent benchmark 和完整 smoke；设计恢复“已验证”并重新归档计划。
+- [x] (2026-07-12 08:19 +0800) 读取 PR #255 最新 head `9d7cee9` 的复核意见，确认三个上一轮 Supervisor/completed blocker 已关闭；local PTY output-before-snapshot 重复与 diagnostics ring 长度游标失效是两个新的确定性 blocker。
+- [x] (2026-07-12 08:19 +0800) 将设计验证状态重新降为“验证中”，计划移回 active；确认本地与远端 PR head 一致、`origin/main@d7baadf` 未前移且工作区原本干净。
+- [x] (2026-07-12 09:05 +0800) 为不携带 authority/revision 的 local Agent 与 Terminal 建立 output-before-snapshot 正反例；Host 发布通用连续 `outputStartSequence..outputSequence`，Webview 按 local sequence 对账 snapshot 覆盖范围且不做文本去重。
+- [x] (2026-07-12 09:24 +0800) 把 fallback trusted smoke 改为按场景专属 `event kind + nodeId + resumeSessionId` 查询完整 diagnostics ring，不再把固定为 2000 的 ring 长度当增量游标；首次“清空 ring”方案会破坏末尾整轮诊断验证，已由完整 smoke 证据否决并撤回。
+- [x] (2026-07-12 09:30 +0800) typecheck、build、sequence/protocol 定向测试、12 个 Webview 无损用例和 reviewer 原样完整 `trusted` smoke 通过；设计恢复“已验证”，计划重新归档。
 
 ## 意外与发现
+
+- 观察：local PTY 的 `outputSequence` 可以作为同一 Host 生命周期内的 snapshot/output 覆盖边界，但不能被写成 Supervisor authority revision，也不能据此承诺跨 Host 恢复。
+  证据：local output 没有 `terminalAuthorityId` 或 terminal revision；修复为 Host 每次实际收到 output 才推进 sequence，并为合并消息保留 `outputStartSequence..outputSequence`。Agent/Terminal 的 output-before-snapshot 回归都只携带 local sequence，覆盖 snapshot 后 marker 各出现一次；sequence 2、3 的相同文本各出现一次。
+
+- 观察：固定容量 diagnostics ring 的 `.length` 不是增量游标；ring 满后新事件只会淘汰头部，长度恒定为 2000。
+  证据：超大 completed 场景后，目标 fallback 事件实际存在于 ring，但 `.slice(2000)` 恒为空。场景前清空 ring 虽能让局部断言通过，却删除了末尾 `verifyTrustedDiagnostics` 所需的整轮 `execution/exited` 等证据；最终按场景专属 `event kind + nodeId + resumeSessionId` 查询完整 ring，局部与整轮断言同时通过。
 
 - 观察：PR #255 review 的第二条不能仅凭 marker 出现两次判定 Webview 重复写入；相同文本可能来自两个合法的连续 PTY event。
   证据：当前事件身份已经包含 `sessionId + authorityId + revision`。只有证明 journal 里 marker 对应一个 revision，而 snapshot 与增量把同一 revision 应用了两次，才能把它定性为无损投影 bug；两个不同 revision 的相同 marker 必须保留两次。
@@ -159,6 +172,14 @@
   证据：原样 `npm test` 在深层 `TMPDIR` 创建 VS Code IPC socket 时以 `listen EINVAL` 停止，同一命令在临时分支基线 `5355e6a` worktree 复现；改用 `/tmp` 短路径后，Marketplace fixture 等待中文按钮，但实际英文 probe 为 `Publish custom template`、`Install`、`View details`。继续审计又确认 `theme-color-tokens` / `canvas-templates` 仍扫描已拆分的 `main.tsx`，`canvas-node-groups` mock 缺少 `vscode.l10n`；rebase 后完整 Webview 为 331/341 通过，10 项失败在独立最新 `origin/main@d7baadf` worktree 全部复现，新增终端链路回归全部通过。这些问题与本轮终端代码路径分开登记。
 
 ## 决策记录
+
+- 决策：Host-owned local PTY 为每个实际 output 分配 `executionSessionId` 内连续 sequence，Host-to-Webview 合并消息显式携带 `outputStartSequence..outputSequence`；Webview 用该范围与 snapshot `outputSequence` 对账，不把 local sequence 升级为持久 authority。
+  理由：local 路径没有 Supervisor authority/revision，仍必须区分“snapshot 已覆盖同一增量”和“两个合法事件文本恰好相同”。连续范围可以证明 pending chunk 的覆盖边界；文本去重会丢内容，无数据推进 sequence 则会伪造覆盖。
+  日期/作者：2026-07-12 / Codex
+
+- 决策：trusted fallback diagnostics 直接按场景专属的 `event kind + nodeId + resumeSessionId` 查询整个有界 ring，不以 ring 长度切片，也不清空共享诊断。
+  理由：固定容量 ring 满后长度不再变化，不能代表插入位置；目标事件已有唯一业务关联键。清空共享 ring 会破坏后续整轮诊断验收，而给测试接口新增无限日志或游标会超出当前 blocker 所需范围。
+  日期/作者：2026-07-12 / Codex
 
 - 决策：PR #255 review follow-up 继续使用已选定的 Supervisor authority 方案，但把计划与设计验证状态重新打开，不因此前 smoke 通过而降低 blocker 标准。
   理由：review 已给出可直接证明的无损与终态反例；决策方向没有变化，但实现验证结论已经失效，必须先恢复活文档的真实状态。
@@ -270,9 +291,13 @@ Pane Gallery 新投影恢复问题已收口：Host 在健康 authority attach �
 
 PR #255 review follow-up 已闭环。Supervisor 现在用同一 session operation chain 串行 output、resize、scrollback、finalization 与 delete，并在 exit/delete 边界同步关闭新 mutation admission；对外只会看到严格单调 revision 和覆盖所有已接受操作的唯一 fresh 非 live state。Webview 用 revision 身份对 snapshot 前增量做覆盖对账：同一 revision 只应用一次，而两个不同 revision 即使输出相同 marker 也完整保留两次，没有任何文本去重。
 
+最新复核指出的 local 路径也已闭环。Host 为 local 与 authority output 统一携带 `outputStartSequence..outputSequence`，只合并同 execution session 的连续范围；Webview 对没有 authority 字段的 local Agent/Terminal 按 `(executionSessionId, outputSequence)` 清除 snapshot 已覆盖的 pending output，并在 gap 或不可证明的跨界范围上 fail closed 请求 snapshot。`minOutputSequence` 无数据推进与 `markOutputSequence()` 修账路径已经删除。两个 local 正例都证明 output 先到、覆盖 snapshot 后只显示一次；两个反例都证明不同 sequence 的相同文本保留两次。
+
 completed authority stream 现在作为节点 metadata 的恢复 payload 持久化。Host 只接受 session、authority、terminal revision 与 output sequence 全部一致的最终 stream；主磁盘 snapshot 和 root-local 加载源共同完成 durable barrier 后，才解绑 runtime 并删除 Supervisor journal。大体积 payload 不写入 `workspaceState`，Webview bootstrap/stateUpdated 也会剥离恢复数据；Host 离线期间结束的真实 Terminal 在重开后能从完整 final stream 恢复并清理 Supervisor session。
 
-本轮 typecheck、build、journal/protocol/sequence/tracker/scheduler/bridge/diagnostics 定向测试、10 项 Webview 终端用例、10-Agent benchmark 和完整默认 VS Code smoke 均通过。最新 Webview benchmark 样本的 input dispatch、ACK、优先回显和最慢后台完成分别为 11.2ms、30ms、210.2ms、22.9092s，均在门槛内。完整 `npm run test:webview` 因陈旧截图基线和当前机器高负载下的统一 30 秒超时未完成，不能写成通过；相关用例与超时 edge 用例单跑通过，artifact 已保留。原样 `npm test` 的既有 Marketplace/fixture 缺口继续由已有技术债追踪；长期 retention/compact、local PTY 独立恢复、永久 transcript 与 Agent 结构化投影不扩大到本次 follow-up。
+mandatory trusted smoke 的 diagnostics 断言不再把固定容量 ring 的 `.length` 当游标。fallback 场景在完整 ring 中按场景专属的 `event kind + nodeId + resumeSessionId` 查找目标事件，既不受 2000 条上限影响，也不清空后续整轮诊断验证需要的历史。Reviewer 原样命令 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 完整通过。
+
+本轮 typecheck、build、journal/protocol/sequence/tracker/scheduler/bridge/diagnostics 定向测试、12 项 Webview 终端用例、10-Agent benchmark 和完整默认 VS Code smoke 均通过。最新 Webview benchmark 样本的 input dispatch、ACK、优先回显和最慢后台完成分别为 11.2ms、30ms、210.2ms、22.9092s，均在门槛内。完整 `npm run test:webview` 因陈旧截图基线和当前机器高负载下的统一 30 秒超时未完成，不能写成通过；相关用例与超时 edge 用例单跑通过，artifact 已保留。原样 `npm test` 的既有 Marketplace/fixture 缺口继续由已有技术债追踪；长期 retention/compact、local PTY 跨 Host 独立恢复、永久 transcript 与 Agent 结构化投影不扩大到本次 follow-up。
 
 ## 上下文与定向
 
@@ -322,6 +347,8 @@ Webview applied ACK 从真实 xterm 完成 callback 发出，Host 与 Supervisor
 
 PR #255 follow-up 先修改 Supervisor：为每个 session 增加串行 terminal operation 边界，output、resize、scrollback 的 revision append 与广播必须按 admission 顺序发布；exit 先同步设置 finalizing gate，再等待已进入队列的操作，生成 fresh final snapshot。随后修改 Webview controller，把“观察到新 session output”与“已应用新 session snapshot”分离，按 authority revision 对账 pre-snapshot backlog。最后修改 Host 与共享 metadata/protocol，使 completed terminal stream 在 durable state 写入成功后才允许删除 Supervisor journal，并让无 live session 的 `postExecutionSnapshot()` 仍能发送该 stream。
 
+最新 local follow-up 不为 Host-owned PTY 伪造 Supervisor authority，而是在现有 `executionSessionId + outputSequence` 上补齐合并范围。Host 每次实际 output 推进 sequence，scheduler 只合并连续 `outputStartSequence..outputSequence`；Webview 复用字符边界队列分别对账 local sequence 与 authority revision。trusted diagnostics 用独有业务 marker 查询有界 ring，不再使用长度游标或破坏共享证据的清空操作。
+
 ## 具体步骤
 
 历史证据已经收集完毕。实现阶段从仓库根目录运行以下定向验证，新增测试名称应在实现时写回本节：
@@ -358,7 +385,7 @@ PR #255 follow-up 先修改 Supervisor：为每个 session 增加串行 terminal
 
 设计研究阶段的验收不是编译通过，而是证据闭环：每个问题都能指向 PR/commit、代码路径、现场诊断或回归测试；每个归因都标明是否真正进入 `main`；当前数据流中的每份内容表示都有生产者、消费者、顺序边界和失败降级说明。该部分已经完成。
 
-进入实现后，至少需要自动化覆盖：多节点持续输出下唯一输入节点的输入、ACK 与真实回显优先；逐字节核对所有 controller 无缺失、无重复且有界公平推进；hidden/visible 切换；Webview recreate；Host 完全退出期间 persistent Agent 持续输出并在重连后完整补齐；local PTY 和 live runtime reattach；输出后立即 exit；旧 supervisor 无序号 tail；ANSI 控制序列跨 chunk/跨边界；checkpoint/log 与 raw stream 的连续性；最终输出、exit banner 和 scrollback 完整性。review follow-up 新增并通过了：scrollback/output 对外 revision 严格单调；exit 后 resize 被拒绝且唯一非 live snapshot 的 checkpoint/revision 完整；同一 revision 的 snapshot+增量只应用一次而两个相同文本 revision 保留两次；超过 5 MiB 的 completed terminal 在 Host reload 后仍完整恢复；真实 Host 离线空窗内结束的 Terminal 在重开后仍保留完整 final stream。完整 `npm test` 的非终端基线失败继续按固定 main 对照记录，不改变本轮新增验收结论。
+进入实现后，至少需要自动化覆盖：多节点持续输出下唯一输入节点的输入、ACK 与真实回显优先；逐字节核对所有 controller 无缺失、无重复且有界公平推进；hidden/visible 切换；Webview recreate；Host 完全退出期间 persistent Agent 持续输出并在重连后完整补齐；local PTY 和 live runtime reattach；输出后立即 exit；旧 supervisor 无序号 tail；ANSI 控制序列跨 chunk/跨边界；checkpoint/log 与 raw stream 的连续性；最终输出、exit banner 和 scrollback 完整性。review follow-up 新增并通过了：scrollback/output 对外 revision 严格单调；exit 后 resize 被拒绝且唯一非 live snapshot 的 checkpoint/revision 完整；同一 authority revision 的 snapshot+增量只应用一次而两个相同文本 revision 保留两次；不携带 authority 的 local Agent/Terminal 以 sequence 对账 snapshot 覆盖且不同 sequence 的相同文本保留两次；超过 5 MiB 的 completed terminal 在 Host reload 后仍完整恢复；真实 Host 离线空窗内结束的 Terminal 在重开后仍保留完整 final stream；diagnostics ring 满后 trusted fallback 断言仍能按唯一关联键命中。完整 `npm test` 的非终端基线失败继续按固定 main 对照记录，不改变本轮新增验收结论。
 
 ## 幂等性与恢复
 
@@ -378,8 +405,8 @@ PR #152 的 `docs/exec-plans/active/execution-input-responsiveness.md` 记录了
 
 ## 接口与依赖
 
-第一阶段新增 `terminalSessionStreamV1` capability、`sessionId + authorityId + revision` 事件模型、`deferSubscription`、`subscribeSession(afterRevision)` 与 `sessionTerminalEvent`。Pane Gallery 现场修复新增 `terminalProjectionSnapshotV1` 和只读 `getSessionSnapshot(sessionId)`；它不修改 socket subscription。本阶段继续新增 `webview/executionTerminalApplied`、`terminalAppliedRevisionAckV1` 与 Supervisor `ackSessionRevision`，ACK 用 `consumerId: 'panel' | 'editor'` 区分同一 socket 上的两个 surface；旧 session 使用显式 `legacy-read-only` 投影模式。`host/executionOutput` 为 authority output 携带 revision range，resize/scrollback 通过 `host/executionTerminalEvent` 保序投影。共享结构定义在 `terminalSessionStream.ts`、`protocol.ts` 与 `runtimeSupervisorProtocol.ts`；周期调度 helper 定义在 `terminalProjectionRefreshScheduler.ts`；Host 和 Webview 不隐式补造 revision。
+第一阶段新增 `terminalSessionStreamV1` capability、`sessionId + authorityId + revision` 事件模型、`deferSubscription`、`subscribeSession(afterRevision)` 与 `sessionTerminalEvent`。Pane Gallery 现场修复新增 `terminalProjectionSnapshotV1` 和只读 `getSessionSnapshot(sessionId)`；它不修改 socket subscription。本阶段继续新增 `webview/executionTerminalApplied`、`terminalAppliedRevisionAckV1` 与 Supervisor `ackSessionRevision`，ACK 用 `consumerId: 'panel' | 'editor'` 区分同一 socket 上的两个 surface；旧 session 使用显式 `legacy-read-only` 投影模式。`host/executionOutput` 为所有 output 携带 `outputStartSequence..outputSequence`，authority output 另外携带 terminal revision range；resize/scrollback 通过 `host/executionTerminalEvent` 保序投影。共享结构定义在 `terminalSessionStream.ts`、`protocol.ts` 与 `runtimeSupervisorProtocol.ts`；周期调度 helper 定义在 `terminalProjectionRefreshScheduler.ts`；Host 和 Webview 不隐式补造 revision/sequence。
 
 ---
 
-最后更新说明：2026-07-10 至 2026-07-11 完成历史诊断、Supervisor authority、完整 journal/checkpoint、无损调度、新投影恢复、旧 Supervisor 退役、applied ACK、周期 cache、10-Agent 基准和真实生命周期第一轮收口。2026-07-12 根据 PR #255 review 重新打开计划，随后完成 session 级 mutation/publication/finalization/delete 串行化、按 authority revision 对账 Webview snapshot 前增量、completed terminal stream durable handoff、大于 5 MiB reload 与 Host 离线 completed 真实恢复。完整 smoke 与相关定向验证通过；全量 Webview 的陈旧截图和高负载超时如实保留，不冒充清洁通过，计划重新归档。
+最后更新说明：2026-07-10 至 2026-07-11 完成历史诊断、Supervisor authority、完整 journal/checkpoint、无损调度、新投影恢复、旧 Supervisor 退役、applied ACK、周期 cache、10-Agent 基准和真实生命周期第一轮收口。2026-07-12 根据 PR #255 两轮 review 重新打开计划，随后完成 session 级 mutation/publication/finalization/delete 串行化、authority/local snapshot 前增量对账、completed terminal stream durable handoff、大于 5 MiB reload、Host 离线 completed 真实恢复和 diagnostics ring 测试边界修复。Reviewer 原样 trusted smoke 与相关定向验证通过；全量 Webview 的陈旧截图和高负载超时如实保留，不冒充清洁通过，计划重新归档。

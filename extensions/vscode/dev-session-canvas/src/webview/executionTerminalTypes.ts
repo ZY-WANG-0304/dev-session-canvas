@@ -28,6 +28,7 @@ export type ExecutionHostEvent =
       chunk: string;
       executionSessionId?: string;
       persisted?: boolean;
+      outputStartSequence?: number;
       outputSequence?: number;
       terminalAuthorityId?: string;
       terminalStartRevision?: number;
@@ -57,6 +58,7 @@ export interface ExecutionTerminalController {
     chunk: string,
     options?: {
       persisted?: boolean;
+      outputStartSequence?: number;
       outputSequence?: number;
       executionSessionId?: string;
       terminalAuthorityId?: string;

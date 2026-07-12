@@ -1358,6 +1358,7 @@ function App(): JSX.Element {
           chunk: message.payload.chunk,
           executionSessionId: message.payload.executionSessionId,
           persisted: message.payload.persisted,
+          outputStartSequence: message.payload.outputStartSequence,
           outputSequence: message.payload.outputSequence,
           terminalAuthorityId: message.payload.terminalAuthorityId,
           terminalStartRevision: message.payload.terminalStartRevision,
@@ -6633,6 +6634,7 @@ function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type
   try {
     controller?.enqueueOutput(detail.chunk, {
       persisted: detail.persisted,
+      outputStartSequence: detail.outputStartSequence,
       outputSequence: detail.outputSequence,
       executionSessionId: detail.executionSessionId,
       terminalAuthorityId: detail.terminalAuthorityId,
@@ -7078,13 +7080,16 @@ function createExecutionTerminalController(
   let writeChain: Promise<void> = Promise.resolve();
   let currentExecutionSessionId: string | undefined;
   let projectedExecutionSessionId: string | undefined;
-  let lastAppliedSnapshotSequence = 0;
+  let currentLocalOutputSequence = 0;
   let currentTerminalAuthorityId: string | undefined;
   let currentTerminalRevision = 0;
-  let pendingOutputRevisionBoundaries: Array<{
+  let pendingOutputBoundaries: Array<{
     remainingCharacters: number;
-    startRevision: number;
-    revision: number;
+    outputStartSequence?: number;
+    outputSequence?: number;
+    terminalAuthorityId?: string;
+    terminalStartRevision?: number;
+    terminalRevision?: number;
   }> = [];
   let appliedTerminalAuthorityId: string | undefined;
   let appliedTerminalRevision = 0;
@@ -7093,8 +7098,8 @@ function createExecutionTerminalController(
   let terminalAppliedAckTimer: number | undefined;
   let hasAppliedSnapshot = false;
   let pendingProjectionBarrier = false;
-  let terminalStreamRecoveryRequested = false;
-  let terminalStreamRecoveryEpoch = 0;
+  let projectionRecoveryRequested = false;
+  let projectionRecoveryEpoch = 0;
 
   const normalizeOutputSequence = (value: number | undefined): number | undefined =>
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
@@ -7177,43 +7182,50 @@ function createExecutionTerminalController(
 
   const beginExecutionSessionGeneration = (executionSessionId: string): void => {
     pendingOutput = '';
-    pendingOutputRevisionBoundaries = [];
+    pendingOutputBoundaries = [];
     pendingPersistBarrier = false;
     pendingProjectionBarrier = false;
     pendingExitMessage = undefined;
     removePendingExecutionTerminalDrain(controller);
     writeGeneration += 1;
     currentExecutionSessionId = executionSessionId;
-    lastAppliedSnapshotSequence = 0;
+    currentLocalOutputSequence = 0;
     currentTerminalAuthorityId = undefined;
     currentTerminalRevision = 0;
     hasAppliedSnapshot = false;
-    terminalStreamRecoveryRequested = false;
-    terminalStreamRecoveryEpoch += 1;
+    projectionRecoveryRequested = false;
+    projectionRecoveryEpoch += 1;
     resetTerminalAppliedRevision();
   };
 
-  const discardPendingOutputCoveredBySnapshot = (terminalStream: TerminalStreamAttachPayload): boolean => {
+  const discardPendingOutputCoveredBySequence = (
+    coveredSequence: number,
+    selectRange: (boundary: (typeof pendingOutputBoundaries)[number]) =>
+      | { startSequence: number; endSequence: number }
+      | undefined
+  ): boolean => {
     let coveredCharacters = 0;
-    while (
-      pendingOutputRevisionBoundaries.length > 0 &&
-      pendingOutputRevisionBoundaries[0].revision <= terminalStream.revision
-    ) {
-      coveredCharacters += pendingOutputRevisionBoundaries[0].remainingCharacters;
-      pendingOutputRevisionBoundaries.shift();
+    while (pendingOutputBoundaries.length > 0) {
+      const range = selectRange(pendingOutputBoundaries[0]);
+      if (!range || range.endSequence > coveredSequence) {
+        break;
+      }
+      coveredCharacters += pendingOutputBoundaries[0].remainingCharacters;
+      pendingOutputBoundaries.shift();
     }
     if (coveredCharacters > 0) {
       pendingOutput = pendingOutput.slice(coveredCharacters);
     }
 
-    const nextBoundary = pendingOutputRevisionBoundaries[0];
-    const hasAmbiguousRevisionRange =
-      nextBoundary !== undefined &&
-      nextBoundary.startRevision <= terminalStream.revision &&
-      terminalStream.revision < nextBoundary.revision;
+    const nextBoundary = pendingOutputBoundaries[0];
+    const nextRange = nextBoundary ? selectRange(nextBoundary) : undefined;
+    const hasAmbiguousSequenceRange =
+      nextRange !== undefined &&
+      nextRange.startSequence <= coveredSequence &&
+      coveredSequence < nextRange.endSequence;
     const hasUntrackedPendingOutput =
-      pendingOutput.length > 0 && pendingOutputRevisionBoundaries.length === 0;
-    return !hasAmbiguousRevisionRange && !hasUntrackedPendingOutput;
+      pendingOutput.length > 0 && (pendingOutputBoundaries.length === 0 || nextRange === undefined);
+    return !hasAmbiguousSequenceRange && !hasUntrackedPendingOutput;
   };
 
   const flushTerminalAppliedAck = (): void => {
@@ -7288,13 +7300,11 @@ function createExecutionTerminalController(
   };
 
   const postAttachSnapshotRequest = (): void => {
-    if (currentTerminalAuthorityId !== undefined) {
-      if (terminalStreamRecoveryRequested) {
-        return;
-      }
-      terminalStreamRecoveryRequested = true;
-      terminalStreamRecoveryEpoch += 1;
+    if (projectionRecoveryRequested) {
+      return;
     }
+    projectionRecoveryRequested = true;
+    projectionRecoveryEpoch += 1;
     postMessage({
       type: 'webview/attachExecutionSession',
       payload: {
@@ -7302,9 +7312,6 @@ function createExecutionTerminalController(
         kind,
         ...(currentExecutionSessionId !== undefined
           ? { executionSessionId: currentExecutionSessionId }
-          : {}),
-        ...(currentTerminalAuthorityId === undefined && lastAppliedSnapshotSequence > 0
-          ? { minOutputSequence: lastAppliedSnapshotSequence }
           : {})
       }
     });
@@ -7360,16 +7367,17 @@ function createExecutionTerminalController(
       const projectionSessionChanged =
         detail.executionSessionId !== undefined &&
         detail.executionSessionId !== projectedExecutionSessionId;
-      const isTerminalStreamRecovery =
-        hasAppliedSnapshot && !projectionSessionChanged && terminalStreamRecoveryRequested;
-      if (hasAppliedSnapshot && !projectionSessionChanged && !isTerminalStreamRecovery) {
+      const isProjectionRecovery =
+        hasAppliedSnapshot && !projectionSessionChanged && projectionRecoveryRequested;
+      if (hasAppliedSnapshot && !projectionSessionChanged && !isProjectionRecovery) {
         // Snapshots create projections; they do not replace a healthy live backlog.
         return;
       }
-      if (isTerminalStreamRecovery) {
+      if (isProjectionRecovery) {
         if (
-          !terminalStream ||
+          (currentTerminalAuthorityId !== undefined && !terminalStream) ||
           (
+            terminalStream !== undefined &&
             terminalStream.authorityId === currentTerminalAuthorityId &&
             terminalStream.revision < currentTerminalRevision
           )
@@ -7386,25 +7394,54 @@ function createExecutionTerminalController(
         if (currentTerminalAuthorityId !== terminalStream.authorityId) {
           resetTerminalAppliedRevision();
           pendingOutput = '';
-          pendingOutputRevisionBoundaries = [];
+          pendingOutputBoundaries = [];
         }
         currentTerminalAuthorityId = terminalStream.authorityId;
-        const pendingOutputCanBeReconciled = discardPendingOutputCoveredBySnapshot(terminalStream);
+        const pendingOutputCanBeReconciled = discardPendingOutputCoveredBySequence(
+          terminalStream.revision,
+          (boundary) =>
+            boundary.terminalAuthorityId === terminalStream.authorityId &&
+            boundary.terminalStartRevision !== undefined &&
+            boundary.terminalRevision !== undefined
+              ? {
+                  startSequence: boundary.terminalStartRevision,
+                  endSequence: boundary.terminalRevision
+                }
+              : undefined
+        );
         const snapshotCoversObservedRevision = terminalStream.revision >= currentTerminalRevision;
         pendingProjectionBarrier = !pendingOutputCanBeReconciled || !snapshotCoversObservedRevision;
         currentTerminalRevision = Math.max(currentTerminalRevision, terminalStream.revision);
         if (pendingProjectionBarrier) {
           postAttachSnapshotRequest();
         }
-      } else if (projectionSessionChanged || !hasAppliedSnapshot) {
+      } else if (projectionSessionChanged || !hasAppliedSnapshot || isProjectionRecovery) {
         currentTerminalAuthorityId = undefined;
         currentTerminalRevision = 0;
-        pendingProjectionBarrier = false;
+        const pendingOutputCanBeReconciled =
+          snapshotSequence !== undefined
+            ? discardPendingOutputCoveredBySequence(snapshotSequence, (boundary) =>
+                boundary.terminalAuthorityId === undefined &&
+                boundary.outputStartSequence !== undefined &&
+                boundary.outputSequence !== undefined
+                  ? {
+                      startSequence: boundary.outputStartSequence,
+                      endSequence: boundary.outputSequence
+                    }
+                  : undefined
+              )
+            : pendingOutput.length === 0;
+        pendingProjectionBarrier = !pendingOutputCanBeReconciled;
+        if (pendingProjectionBarrier) {
+          postAttachSnapshotRequest();
+        }
+        if (snapshotSequence !== undefined) {
+          currentLocalOutputSequence = Math.max(currentLocalOutputSequence, snapshotSequence);
+        }
       }
-      lastAppliedSnapshotSequence = Math.max(lastAppliedSnapshotSequence, snapshotSequence ?? lastAppliedSnapshotSequence);
       hasAppliedSnapshot = true;
       projectedExecutionSessionId = detail.executionSessionId ?? projectedExecutionSessionId;
-      const recoveryEpoch = terminalStreamRecoveryEpoch;
+      const recoveryEpoch = projectionRecoveryEpoch;
       options?.onContentWillChange?.('snapshot');
       options?.onSnapshotApplied?.(detail);
       const checkpointCharacters =
@@ -7442,8 +7479,11 @@ function createExecutionTerminalController(
               const releaseSnapshotRestoreDiagnosticsSuppression =
                 options?.beginSnapshotRestoreDiagnosticsSuppression?.();
               restoreExecutionTerminalSnapshot(terminal, detail, () => {
-                if (terminalStreamRecoveryEpoch === recoveryEpoch) {
-                  terminalStreamRecoveryRequested = false;
+                if (projectionRecoveryEpoch === recoveryEpoch) {
+                  projectionRecoveryRequested = false;
+                  if (pendingProjectionBarrier) {
+                    postAttachSnapshotRequest();
+                  }
                 }
                 releaseSnapshotRestoreDiagnosticsSuppression?.();
                 finishSnapshotWrite(snapshotDone);
@@ -7487,6 +7527,7 @@ function createExecutionTerminalController(
       }
 
       const outputSequence = normalizeOutputSequence(outputOptions?.outputSequence);
+      const declaredOutputStartSequence = normalizeOutputSequence(outputOptions?.outputStartSequence);
       const terminalStartRevision = normalizeOutputSequence(outputOptions?.terminalStartRevision);
       const terminalRevision = normalizeOutputSequence(outputOptions?.terminalRevision);
       const terminalAuthorityId = outputOptions?.terminalAuthorityId;
@@ -7494,6 +7535,15 @@ function createExecutionTerminalController(
       if (outputExecutionSessionId !== undefined && currentExecutionSessionId !== outputExecutionSessionId) {
         beginExecutionSessionGeneration(outputExecutionSessionId);
       }
+      if (outputOptions?.persisted === false) {
+        pendingPersistBarrier = true;
+      }
+      if (outputOptions?.persisted === true) {
+        pendingPersistBarrier = false;
+      }
+      const outputStartSequence =
+        declaredOutputStartSequence ??
+        (outputSequence !== undefined ? currentLocalOutputSequence + 1 : undefined);
       if (terminalAuthorityId) {
         if (currentTerminalAuthorityId && currentTerminalAuthorityId !== terminalAuthorityId) {
           postAttachSnapshotRequest();
@@ -7518,27 +7568,42 @@ function createExecutionTerminalController(
           return;
         }
         currentTerminalRevision = terminalRevision;
+      } else if (outputSequence !== undefined) {
+        if (outputSequence <= currentLocalOutputSequence) {
+          if (chunk) {
+            return;
+          }
+        } else {
+          if (
+            outputStartSequence === undefined ||
+            outputStartSequence !== currentLocalOutputSequence + 1 ||
+            outputStartSequence > outputSequence
+          ) {
+            postAttachSnapshotRequest();
+            return;
+          }
+          currentLocalOutputSequence = outputSequence;
+        }
       }
-      if (outputSequence !== undefined) {
-        lastAppliedSnapshotSequence = Math.max(lastAppliedSnapshotSequence, outputSequence);
-      }
-
       if (chunk) {
         pendingOutput += chunk;
-        if (terminalAuthorityId && terminalRevision !== undefined) {
-          pendingOutputRevisionBoundaries.push({
-            remainingCharacters: chunk.length,
-            startRevision: terminalStartRevision ?? terminalRevision,
-            revision: terminalRevision
-          });
-        }
+        const hasValidOutputSequenceRange =
+          outputStartSequence !== undefined &&
+          outputSequence !== undefined &&
+          outputStartSequence <= outputSequence;
+        pendingOutputBoundaries.push({
+          remainingCharacters: chunk.length,
+          ...(hasValidOutputSequenceRange
+            ? {
+                outputStartSequence,
+                outputSequence
+              }
+            : {}),
+          terminalAuthorityId,
+          terminalStartRevision,
+          terminalRevision
+        });
         options?.onContentWillChange?.('output');
-      }
-      if (outputOptions?.persisted === false) {
-        pendingPersistBarrier = true;
-      }
-      if (outputOptions?.persisted === true) {
-        pendingPersistBarrier = false;
       }
       if (
         terminalAuthorityId &&
@@ -7651,14 +7716,14 @@ function createExecutionTerminalController(
       pendingOutput = pendingOutput.slice(chunkLength);
       let remainingRevisionCharacters = chunk.length;
       let completedRevision: number | undefined;
-      while (remainingRevisionCharacters > 0 && pendingOutputRevisionBoundaries.length > 0) {
-        const boundary = pendingOutputRevisionBoundaries[0];
+      while (remainingRevisionCharacters > 0 && pendingOutputBoundaries.length > 0) {
+        const boundary = pendingOutputBoundaries[0];
         const consumedCharacters = Math.min(remainingRevisionCharacters, boundary.remainingCharacters);
         boundary.remainingCharacters -= consumedCharacters;
         remainingRevisionCharacters -= consumedCharacters;
         if (boundary.remainingCharacters === 0) {
-          completedRevision = boundary.revision;
-          pendingOutputRevisionBoundaries.shift();
+          completedRevision = boundary.terminalRevision;
+          pendingOutputBoundaries.shift();
         }
       }
       const outputAuthorityId = currentTerminalAuthorityId;
@@ -7689,7 +7754,7 @@ function createExecutionTerminalController(
     dispose() {
       disposed = true;
       pendingOutput = '';
-      pendingOutputRevisionBoundaries = [];
+      pendingOutputBoundaries = [];
       pendingPersistBarrier = false;
       pendingProjectionBarrier = false;
       pendingExitMessage = undefined;
