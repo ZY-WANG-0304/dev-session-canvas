@@ -1,6 +1,6 @@
 # Notifier 公开 Preview 发布执行手册
 
-本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前目标版本为 `0.24.0`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
+本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前已发布版本为 `0.24.0`，publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
 
 当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。本轮 `0.24.0` 需要保持两侧 manifest / changelog / 产物名同版本；notifier 本轮不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
 
@@ -127,5 +127,6 @@ workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起�
 - `0.24.0` 发布准备分支已同步 notifier manifest、notifier changelog 与本手册中的目标版本；notifier 本轮继续随主扩展对齐版本，但不引入新的通知投递行为。notifier production build、typecheck、source test、`npm run test:notifier-smoke` 和覆盖英文 / 简体中文真实宿主的 `npm run test:notifier-locale-smoke` 均已通过，`npm audit --omit=dev` 返回 `found 0 vulnerabilities`。
 - 当前分支内 notifier 产物为 `dev-session-canvas-notifier-0.24.0.vsix`（`14` files，`155.08 KB` / `158,806 bytes`，`sha256=876ea4294babb8159aa6da3dde4dfe9faa663afeba4a442257199d6be078c551`），file list 包含英文默认、简体中文 manifest 与 `l10n/bundle.l10n.zh-cn.json`；打包日志打印 `VSCE README doc ref: f6bbd3041d57bc654b70810577406120a8909d09`。该 ref 来自 dirty 发布准备 working tree，只是分支内证据。
 - 直接执行的聚合 `npm run test:vsix-smoke` 前两次均以 code `1` 退出：第一次在主扩展 `90000` 行 completed terminal 场景只收到 `89960` 行，原样复跑则在 explorer resource Terminal 停留 `stopping` 时命中统一 timeout。两次失败都不指向 notifier companion / locale 断言；随后不带 skip 的隔离 clean-checkout 对同一最终 working-tree 内容完整跑通聚合 packaged suite 并以 code `0` 结束。该通过样本可作为分支内 packaged-payload 证据，但不撤销主扩展的间歇性风险，最终 clean `main` ref 仍必须重新跑通聚合 VSIX smoke。
-- 最终发布日仍需在发布准备 MR 合入后的 clean `main` ref 上重跑完整 gate 与 `publish/v0.24.0` dry-run；当前发布准备 working tree 生成的 notifier VSIX 只能作为分支内证据，不能直接当作 Release asset。
+- 发布准备阶段要求在 MR 合入后的 clean `main` ref 上重跑完整 gate 与 `publish/v0.24.0` dry-run，且不把准备分支 working tree 生成的 notifier VSIX 直接当作 Release asset；该要求已由下方最终发布事实收口。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 development host 或 packaged payload 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 staged smoke 直接当成这条结论的自动化证据。
+- `0.24.0` 已从最终 `main` ref `3361158733f9814660789d02b4493e74e416d829` 完成 GitHub Release assets + Open VSX 兜底发布；Actions run `29199871383` 成功结束，正式 `v0.24.0` 指向同一 ref，临时 `publish/v0.24.0` 已删除。最终 notifier asset 为 `158,807 bytes`，`sha256=b13395fe6081cf91775e34c08e981b636d1deeef75be0fddce4ee049747e4484`；Open VSX notifier `0.24.0` 为 verified，Visual Studio Marketplace notifier 因 `VSID Concurrency` 记录为 `publish-failed` / deferred，public gallery 仍不可见。

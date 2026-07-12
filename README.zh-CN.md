@@ -18,7 +18,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段；当前发布准备目标是 `0.24.0`，在发布准备分支完成 review、合并并正式发布之前，最新已发布基线仍是通过 GitHub Releases 发布并在 Open VSX 验证通过的 `0.23.0` Preview 里程碑。Visual Studio Marketplace 仍需等 public gallery 同时暴露主扩展与 notifier 后再解除 deferred。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段；当前已发布版本是 `0.24.0`，可通过 GitHub Release assets 与已验证的 Open VSX 获取。Visual Studio Marketplace 仍需等 public gallery 同时暴露主扩展与 notifier 后再解除 deferred。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif)
 
@@ -80,7 +80,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前发布准备目标是 `0.24.0`，范围包括 `Agent` / `Terminal` 无损输入输出与 Supervisor 权威恢复、停止后 Agent 的 `Resume / 恢复` 语义，以及 multi-root 画板分范围清空；在本发布准备分支完成 review、合并并正式发布前，最新已发布基线仍是 `0.23.0`。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前已发布里程碑是 `0.24.0`，范围包括 `Agent` / `Terminal` 无损输入输出与 Supervisor 权威恢复、停止后 Agent 的 `Resume / 恢复` 语义，以及 multi-root 画板分范围清空。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
@@ -88,7 +88,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
 - 公开发布主渠道目标仍以 `Visual Studio Marketplace` 为主，`Open VSX` 作为同版本补充渠道；`0.24.0` release-day 完成门禁继续允许在 Visual Studio Marketplace 仍不可见时，依赖 GitHub Release assets 加已验证的 Open VSX 完成本轮发布，并把 VSM 记录为 deferred channel。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.24.0` 发布准备分支负责完成 repo-local 版本 / 打包一致性、构建、审计、VSIX 打包、runtime supervisor / 无损输出回归、定向 Webview、smoke 和 packaged-payload 验证；最终 release-day 仍需在干净最终 `main` ref 上重跑 publish dry-run、渠道可见性检查，以及发布包 / 执行终端定向复核。Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.24.0` 已完成 repo-local 构建、审计、VSIX 打包、runtime supervisor / 无损输出回归、定向 Webview、smoke、最终 clean `main` packaged-payload 与 publish dry-run 验证。Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
