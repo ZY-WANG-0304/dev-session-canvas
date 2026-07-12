@@ -10,17 +10,18 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.23.0 版本亮点
+## 0.24.0 版本亮点
 
-当前公开的 `0.23.0` 版本是新的 Preview 里程碑，聚焦 Dev Session Canvas Notifier 本地化与发布 smoke 稳定性。它保留 `0.22.0` 的主画布本地化、模板市场 Preview、notifier 自动安装关系、GitHub Release assets + Open VSX verified 完成门禁，以及 Visual Studio Marketplace deferred 口径。
+当前公开的 `0.24.0` 版本是新的 Preview 里程碑，聚焦 `Agent` / `Terminal` 无损输入输出与恢复、停止后 Agent 的 `Resume / 恢复` 语义，以及 multi-root workspace 中受控的分范围清空画板能力。它保留 `0.23.0` 的英文默认 / 简体中文本地化、模板市场 Preview、notifier 自动安装关系、GitHub Release assets + Open VSX verified 完成门禁，以及 Visual Studio Marketplace deferred 口径。
 
-- Notifier companion 现在为 manifest、命令、视图、设置、sidebar、工作台提示、手动测试通知、action label 和 callback 文案提供英文默认与简体中文本地化，并通过 VS Code locale 资源切换
-- Notifier sidebar 的 `Overview` / `Notes`、平台指引和 Agent 配置说明会随 locale 切换；backend 名称、路径、配置片段、诊断事实和用户环境数据保持原样
-- Notifier Marketplace 包现在包含 `package.nls.json`、`package.nls.zh-cn.json`、`l10n/bundle.l10n.zh-cn.json` 以及仅保留在仓库内的中文 listing 对应版
-- 新增真实 VS Code notifier locale smoke：英文与简体中文 Extension Development Host 会分别验证 notifier manifest 文案、已打开 sidebar HTML、手动测试通知、工作台提示、action label 和 callback 提示
-- Notifier companion smoke 现在把主扩展和 notifier 作为两条真实 development extension 加载，保留各自的 `ExtensionContext`、manifest、`package.nls*` 与 `l10n` 资源
-- Linux VS Code smoke 增加 headless 稳定性参数；终端 viewport 恢复断言改为比较 marker lines，避免受终端 padding 影响
-- 扩展 ID、最低 VS Code 版本、通知协议、后端选择、点击回跳语义、notifier 自动安装关系、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线和 Preview 支持边界均保持不变
+- 执行输出不再为了改善输入延迟而丢弃增量或替换 backlog snapshot：当前输入节点保持最高优先级，其他后台节点通过有界公平调度继续推进，不同 revision / sequence 即使文本相同也会完整保留
+- 开启持久化后，当前 Runtime Supervisor 的连续 revision、带 checksum 的 journal 与 checkpoint cache 成为恢复权威，覆盖 Reload Window、Extension Host 离线期间继续输出或完成，以及大体量 completed stream
+- 原子 attach/live 切点、revision ACK、durable handoff 和串行 session operation 共同约束 output、resize、scrollback、终态与删除顺序；authority、revision 或 journal 异常时 fail closed 并给出本地化诊断
+- 仍由旧版 Supervisor 托管的 session 会进入显式 legacy 只读迁移状态：可以查看、停止或删除，但在旧 runtime 退役前不接受 input、resize 或新 session
+- 停止后的 Agent 现在显示 `新建 | 恢复`，准确表达 provider 原会话恢复语义；Terminal 继续显示 `重启`，表示启动新的 shell 进程
+- multi-root 全局重置会清空所有 root-local 画布与运行会话，同时保留系统 workspace-root section；画布右键菜单也可只清空当前 root、当前普通分组或整个 workspace，所有路径都先确认
+- 主 Webview 已拆分为 React Flow、执行节点、Note、Pane Gallery、文件节点与通用 chrome 等领域模块，不改变 Host/Webview 协议、持久化数据、node type key 或既有交互契约
+- 扩展 ID、最低 VS Code 版本、通知行为、notifier 自动安装关系、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线和 Preview 支持边界均保持不变
 
 ## 核心功能
 
@@ -40,6 +41,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 可把多根 workspace 切到窗格画廊，用动态 / 宫格全览和顶部 / 右侧缩略图模式巡检多个 root
 - 全局 fit view 与 MiniMap 会理解完整画布空间，包括节点、用户分组和 workspace-root section
 - 可从右键菜单一次性整理画布布局，同时保留分组和 workspace root 边界
+- 可从画布右键菜单清空当前普通分组、当前 workspace root 或整个 workspace，并在执行前明确确认作用域
 - `Restricted Mode` 下保留画布浏览，执行入口自动禁用
 - 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
 - 在侧栏查看 `节点` 与 `会话历史` 列表，支持快速定位当前画布节点并从历史恢复或分叉新 `Agent` 节点
@@ -61,6 +63,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - `Remote SSH` 主路径已验证可用，且仍是当前验证最充分的推荐环境
 - Linux、macOS 本地工作区的 `Preview` 主路径已完成功能可用性验证
 - Windows 本地工作区的 `Preview` 主路径已完成功能可用性验证；当前已知限制是使用 `Codex` 时执行节点内历史暂时无法向上翻页
+- 严格 90,000 行 completed terminal 压测已间歇性出现最终尾部未收齐，期间也有完整通过样本；单次极端大输出的最终尾部完整性仍在验证中
 - 侧栏 `会话历史` 只显示能明确确认属于当前 workspace 的记录；缺少工作目录信息的旧会话会被保守跳过
 - `Restricted Mode` 允许打开画布，但禁用 `Agent` / `Terminal` 等执行入口
 - `Virtual Workspace` 暂不支持
@@ -77,12 +80,14 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.22.0` 升级到 `0.23.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
+- 首次安装与从 `0.23.0` 升级到 `0.24.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
 - UI 语言跟随 VS Code locale。本版本不新增扩展自己的语言设置，也不会翻译用户内容、终端输出、provider 输出或市场模板数据
+- 若升级时仍有旧版 Runtime Supervisor 托管的运行会话，建议先让重要任务完成或停止再 Reload Window；这些旧 session 在停止或删除前会保留为只读，随后由当前 Supervisor 接管
+- Supervisor 支持的跨 Host 恢复仍取决于 `runtimePersistence.enabled` 与后端可用性；local PTY 不因此获得跨 Host 生命周期保证，Preview 版本之间也不承诺 runtime journal 的回退兼容
 - 生产模板市场可能以空目录启动。生产环境不会把代码内 seed 模板暴露为正式内容；真实模板必须通过发布流程或受控运维流程入库
 - 窗格画廊只改变多根呈现；单根 workspace 继续显示普通画布，`rootGroups` 仍是默认多根模式和保守回退路径
 - 布局整理是一次性显式操作，不提供撤销、不持续自动重排，也不跨普通分组或跨 root 搬移节点
-- 若你此前显式设置过 `devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.23.0` 后会继续沿用该明确选择
+- 若你此前显式设置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.24.0` 后会继续沿用该明确选择
 - 截图粘贴文件是扩展存储中的临时附件，不是 workspace 文件；它们会保留一段时间以便 Agent 上下文复用，之后由后台 TTL 维护任务清理
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
@@ -117,7 +122,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续更高的 `0.23.x` 修复版本，而非尝试手动降级
+- 优先等待后续更高的 `0.24.x` 修复版本，而非尝试手动降级；切换版本前先停止重要会话，因为 Supervisor journal 不承诺跨版本回退兼容
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 
