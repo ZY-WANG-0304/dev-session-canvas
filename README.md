@@ -18,7 +18,7 @@ English | [简体中文](README.zh-CN.md)
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase. The current release-prep target is `0.24.0`, with the last published baseline now `0.23.0` through GitHub Releases and verified Open VSX until the release-prep branch is reviewed, merged, and published. Visual Studio Marketplace remains deferred until the public gallery exposes both the main extension and notifier. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase. The current published version is `0.24.0`, available through GitHub Release assets and verified Open VSX. Visual Studio Marketplace remains deferred until the public gallery exposes both the main extension and notifier. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif)
 
@@ -95,7 +95,7 @@ This README keeps the comparison user-facing and brief. The full technical check
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current release-prep target is `0.24.0`, covering lossless `Agent` / `Terminal` I/O and Supervisor-authoritative recovery, explicit Agent `Resume` semantics, and scope-aware multi-root canvas clearing. The last already published baseline remains `0.23.0` until this release-prep branch is reviewed, merged, and published. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current published milestone is `0.24.0`, covering lossless `Agent` / `Terminal` I/O and Supervisor-authoritative recovery, explicit Agent `Resume` semantics, and scope-aware multi-root canvas clearing. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
@@ -103,7 +103,7 @@ Explicit conclusions:
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
 - The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; for the `0.24.0` release-day gate, GitHub Release assets plus verified Open VSX publication remain the allowed completion path while Visual Studio Marketplace visibility is still recorded as deferred.
-- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.24.0` release-prep branch is responsible for repo-local version/package, build, audit, packaging, runtime-supervisor / lossless-output regression, targeted Webview, smoke, and packaged-payload validation; the final release-day pass still needs the clean final `main` ref, publish dry-run, channel visibility checks, and targeted packaging / execution smoke. Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.24.0` release completed repo-local build, audit, packaging, runtime-supervisor / lossless-output regression, targeted Webview, smoke, final clean-`main` packaged-payload validation, and publish dry-run checks. Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:

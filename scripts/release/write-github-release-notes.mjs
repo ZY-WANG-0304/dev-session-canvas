@@ -74,6 +74,7 @@ function buildReleaseNotes({ changelog, manifest: manifestPath, version }) {
   const section = extractVersionSection(changelogText, version);
   const title = extractVersionTitle(section, version);
   const highlights = extractSubsection(section, '本版本聚焦') || fallbackHighlights(section);
+  const knownBoundaries = extractSubsection(section, '已知边界与验证说明');
   const install = extractSubsection(section, '安装与升级');
   const rollback = extractSubsection(section, '回退建议');
   const manifest = readManifest(manifestPath);
@@ -94,6 +95,7 @@ function buildReleaseNotes({ changelog, manifest: manifestPath, version }) {
     '',
     '## 残余风险',
     '',
+    ...(knownBoundaries ? [normalizeBlock(knownBoundaries)] : []),
     ...formatResidualRisks(manifest),
   ];
 

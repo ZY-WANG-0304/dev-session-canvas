@@ -234,8 +234,33 @@ assert.equal(
 const notesTempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-release-notes-'));
 try {
   const currentVersion = JSON.parse(await readFile('extensions/vscode/dev-session-canvas/package.json', 'utf8')).version;
+  const notesChangelogPath = path.join(notesTempDir, 'CHANGELOG.md');
   const notesManifestPath = path.join(notesTempDir, 'manifest.json');
   const notesOutputPath = path.join(notesTempDir, 'notes.md');
+  await writeFile(
+    notesChangelogPath,
+    `# Changelog
+
+## ${currentVersion} - Release Notes Fixture
+
+### 本版本聚焦
+
+- fixture highlight
+
+### 安装与升级
+
+- fixture install guidance
+
+### 已知边界与验证说明
+
+- fixture version-specific residual risk
+
+### 回退建议
+
+- fixture rollback guidance
+`,
+    'utf8'
+  );
   await writeFile(
     notesManifestPath,
     `${JSON.stringify(
@@ -299,6 +324,8 @@ try {
       'scripts/release/write-github-release-notes.mjs',
       '--version',
       currentVersion,
+      '--changelog',
+      notesChangelogPath,
       '--manifest',
       notesManifestPath,
       '--output',
@@ -311,6 +338,7 @@ try {
   assert.match(notes, /## 版本亮点/u);
   assert.match(notes, /## 渠道状态/u);
   assert.match(notes, /## 残余风险/u);
+  assert.match(notes, /fixture version-specific residual risk/u);
   assert.match(notes, /Visual Studio Marketplace（deferred）/u);
   assert.match(notes, /Visual Studio Marketplace\/main=publish-failed/u);
   assert.match(notes, /Visual Studio Marketplace\/main=publish-failed\(deferred\)/u);

@@ -13,7 +13,7 @@ related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
   - docs/exec-plans/active/publish-tag-release-flow.md
   - docs/exec-plans/completed/github-release-assets-flow.md
-updated_at: 2026-07-12
+updated_at: 2026-07-13
 ---
 
 # 公开平台发布准备
@@ -71,6 +71,8 @@ updated_at: 2026-07-12
 > 2026-07-12 验证补充：`release-0-24-0` 已完成版本号、CHANGELOG、Marketplace / README 文案、发布手册与正式设计发布记录同步。repo-local 验证已通过版本 / 文本一致性、manifest / publish / VSIX 脚本守卫、主扩展与 notifier build / typecheck、runtime supervisor / terminal journal / execution bridge / output scheduler / serialized tracker / Webview lifecycle 与 protocol / multi-root / UI copy / canvas execution context / Agent presets / layout / notifier source / 生产部署等定向回归、Resume / Restart / Ctrl-Z `8 passed`、checkpoint / journal / revision / Unicode / 4000 events `12 passed`、`864,020` 字符 I/O benchmark、完整 `npm run test:smoke`、notifier companion 与英中 locale smoke，以及 0-vulnerability production audit。当前主扩展 VSIX 为 `dev-session-canvas-0.24.0.vsix`（`117` files，`3.73 MB` / `3,908,819 bytes`，当前产物 `sha256=41003900bf5a6ac80f578d4c2d07345dd9d0f03fbad717353aec2986f55259da`），notifier VSIX 为 `dev-session-canvas-notifier-0.24.0.vsix`（`14` files，`155.08 KB` / `158,806 bytes`，`sha256=876ea4294babb8159aa6da3dde4dfe9faa663afeba4a442257199d6be078c551`）；两者 dirty-working-tree 打包日志及 clean-checkout 主扩展打包均使用 `VSCE README doc ref: f6bbd3041d57bc654b70810577406120a8909d09`。带 `--skip-vsix-smoke` 的隔离命令已通过安装、审计、README ref 与打包；最终文案同步后，不带 skip 的 `npm run validate:clean-checkout:vsix -- --source working-tree` 也完成相同隔离守卫，并在真实 VS Code `1.128.0` packaged host 中输出 `VSIX packaged-payload smoke passed`、以 code `0` 结束。
 >
 > 同轮直接执行的 `npm run test:vsix-smoke` 前两次没有清洁通过：首次在 `verifyCompletedLiveRuntimeRetainsOversizedTerminalStream` 中只观察到 `89960/90000` 行，原样完整复跑则在 `verifyExplorerResourceExecutionNodeCreation` 中因 Terminal 持续 `stopping` 命中统一 timeout；两次宿主测试均以 code `1` 退出。随后隔离 clean-checkout 的同一严格 packaged suite 完整通过，形成一个 clean packaged-payload 样本，但前两次失败仍分别命中已登记的 90000 行间歇性终态短读与统一 timeout 干扰，不能被通过样本抹除。最终 publish / tag 前仍需在发布准备 MR 合入后的 clean `main` release ref 上重跑双 VSIX、clean-checkout、packaged-payload smoke 与 `publish/v0.24.0` dry-run；极端 completed stream 的设计验证状态继续保持“验证中”，直到完成分层诊断与重复压力。
+
+> 2026-07-13 发布后复核：`0.24.0` 已从最终 `main` ref `3361158733f9814660789d02b4493e74e416d829` 通过 Actions run `29199871383` 完成 GitHub Release assets + Open VSX 兜底发布。正式 `v0.24.0` 指向同一 ref，临时 `publish/v0.24.0` 已删除；最终 manifest 为 `complete-with-deferred-visual-studio`，Open VSX 主扩展与 notifier 均 verified，Visual Studio Marketplace 双扩展因 `VSID Concurrency` 记录为 `publish-failed` / deferred，public gallery 仍为 `count=0` / `TotalCount=0`。正式主扩展 / notifier assets 的 SHA-256 分别为 `9110ae5920773d202b56483f9c4a1408bdeb36ed53947eda2e8f8db33ecca602` 与 `b13395fe6081cf91775e34c08e981b636d1deeef75be0fddce4ee049747e4484`；最终 release ref 的 clean-checkout packaged-payload smoke 已以 code `0` 通过，但 90000 行间歇性短读风险仍未关闭。发布后还确认 Release notes 生成器未自动传播 CHANGELOG 的版本特定已知边界；外部 notes 已手工补齐，本次 post-release 收口为后续 release ref 修复生成器并增加回归测试。由于 `v0.24.0` release ref 保持不可变，同版本 VSM 补发后仍必须重新复核外部 notes，不能假设后续主线修复会改变旧 ref 的执行内容。
 
 
 > 2026-06-08 流程更新：后续发布输入改为由临时 tag `publish/vX.Y.Z` 固定。该 tag 只表示 publish intent，发布成功并验证双市场主扩展 / notifier 四个目标后，由发布脚本创建正式 `vX.Y.Z` tag 并删除临时 `publish/` tag。release manifest 记录 VSIX sha256、README doc ref、marketplace 验证结果和 tag 状态，但不写回代码库，只作为 GitHub Actions artifact / GitHub Release asset 保存。
