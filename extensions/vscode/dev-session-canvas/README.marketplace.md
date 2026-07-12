@@ -10,17 +10,18 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.23.0 Highlights
+## 0.24.0 Highlights
 
-The public `0.23.0` release is a Preview milestone for Dev Session Canvas Notifier localization and release-smoke stability. It keeps the `0.22.0` main-canvas localization, Template Marketplace Preview, notifier auto-install relationship, GitHub Release assets plus verified Open VSX completion gate, and Visual Studio Marketplace deferred stance.
+The public `0.24.0` release is a Preview milestone for lossless `Agent` / `Terminal` I/O and recovery, explicit Agent `Resume` semantics, and safely scoped canvas clearing in multi-root workspaces. It keeps the `0.23.0` English-default / Simplified Chinese localization, Template Marketplace Preview, notifier auto-install relationship, GitHub Release assets plus verified Open VSX completion gate, and Visual Studio Marketplace deferred stance.
 
-- The notifier companion now uses English-default manifest, command, view, setting, sidebar, workbench prompt, manual test-notification, action-label, and callback text, with Simplified Chinese localization included through VS Code locale resources
-- Notifier sidebar sections now localize `Overview`, `Notes`, platform guidance, and Agent configuration copy while leaving backend names, paths, configuration snippets, diagnostic facts, and user environment data unchanged
-- The notifier Marketplace package now includes `package.nls.json`, `package.nls.zh-cn.json`, `l10n/bundle.l10n.zh-cn.json`, and the repository-only Simplified Chinese listing counterpart
-- A real VS Code notifier locale smoke launches English and Simplified Chinese Extension Development Hosts and checks notifier manifest text, opened sidebar HTML, manual test notifications, workbench prompts, action labels, and callback prompts
-- Notifier companion smoke now loads the main extension and notifier as two real development extensions, keeping each extension's own `ExtensionContext`, manifest, `package.nls*`, and `l10n` resources intact
-- Linux VS Code smoke runs with additional headless stability flags, and terminal viewport restore assertions now compare marker lines instead of incidental terminal padding
-- The extension ID, VS Code minimum version, notification protocol, backend selection, click callback semantics, notifier auto-install relationship, Open VSX gate, Visual Studio Marketplace deferred stance, Template Marketplace service version line, and Preview support matrix stay unchanged
+- Execution output is no longer discarded or replaced to improve input latency: the active input node keeps top priority while bounded-fair scheduling continues every background node without losing distinct revisions or sequences
+- Persistent sessions use the current Runtime Supervisor's continuous revisions, checksummed journal, and checkpoint cache as the recovery authority, including Reload Window, output produced while the Extension Host is offline, and large completed streams
+- Atomic attach/live cutovers, revision acknowledgements, durable handoff, and serialized session operations keep output, resize, scrollback, finalization, and deletion ordered; invalid authority, revision, or journal state fails closed with localized diagnostics
+- Sessions still owned by an older Supervisor enter an explicit legacy read-only migration state: they remain visible and can be stopped or deleted, while input, resize, and new sessions wait until the old runtime drains
+- A stopped Agent now offers `New | Resume`, matching provider resume semantics; Terminal nodes keep `Restart` because they start a new shell process
+- Multi-root reset clears every root-local canvas and running session while preserving system workspace-root sections; the canvas context menu can instead clear the current root, current ordinary group, or the entire workspace, always after confirmation
+- The main Webview was split into focused React Flow, execution, Note, Pane Gallery, file-node, and shared-chrome modules without changing Host/Webview protocols, persisted data, node type keys, or existing interaction contracts
+- The extension ID, VS Code minimum version, notification behavior, notifier auto-install relationship, Open VSX gate, Visual Studio Marketplace deferred stance, Template Marketplace service version line, and Preview support matrix stay unchanged
 
 ## Core Capabilities
 
@@ -40,6 +41,7 @@ The public `0.23.0` release is a Preview milestone for Dev Session Canvas Notifi
 - Switch multi-root workspaces into an optional Pane Gallery with dynamic / grid overviews and top / side thumbnail modes
 - Use fit view and the MiniMap across the full canvas space, including nodes, user groups, and workspace-root sections
 - Arrange the canvas layout once from the context menu while preserving group and workspace-root boundaries
+- Clear the current ordinary group, workspace root, or entire workspace from the canvas context menu with explicit scope-aware confirmation
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
 - Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
 - View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore or fork a new `Agent` node from history
@@ -61,6 +63,7 @@ The public `0.23.0` release is a Preview milestone for Dev Session Canvas Notifi
 - The `Remote SSH` main path is validated and usable, and it remains the best-validated recommended environment
 - Linux and macOS local workspaces now have functional validation for the `Preview` main path
 - Windows local workspaces now have functional validation for the `Preview` main path, with one explicit known limitation: when using `Codex`, embedded session history still cannot page upward
+- A strict 90,000-line completed-terminal stress case has intermittently stopped short at the final tail even though other full runs pass; final-tail completeness for one extreme output burst remains under validation
 - The sidebar `Session History` list only shows records that can be explicitly attributed to the current workspace; older sessions without working-directory metadata are skipped conservatively
 - `Restricted Mode` allows the canvas to open, but disables execution entry points such as `Agent` and `Terminal`
 - `Virtual Workspace` is not supported yet
@@ -77,12 +80,14 @@ The public `0.23.0` release is a Preview milestone for Dev Session Canvas Notifi
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.22.0` to `0.23.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- First-time installs and upgrades from `0.23.0` to `0.24.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
 - UI language follows the VS Code locale. This release does not add an extension-specific language setting and does not translate user-owned content, terminal output, provider output, or marketplace template data
+- If an older Runtime Supervisor still owns running sessions during upgrade, let important work finish or stop it before reloading. Those sessions remain visible but read-only until they are stopped or deleted, after which the current Supervisor takes over
+- Supervisor-backed cross-Host recovery still depends on `runtimePersistence.enabled` and backend availability. Local PTYs do not gain a cross-Host lifetime guarantee, and Preview releases do not promise rollback compatibility for runtime journals
 - The production Template Marketplace may start with an empty catalog. Production does not expose code-only seed templates; real templates must be published through the marketplace or a controlled operations flow
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
 - Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
-- If you previously set `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.23.0` preserves that explicit choice
+- If you previously set `devSessionCanvas.runtimePersistence.enabled`, `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.24.0` preserves that explicit choice
 - Image paste files are temporary extension-storage attachments, not workspace files. They are retained long enough for Agent context reuse and then cleaned by the background TTL maintenance task
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
@@ -119,7 +124,7 @@ The public `0.23.0` release is a Preview milestone for Dev Session Canvas Notifi
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.23.x` fix release rather than trying to downgrade manually
+- Prefer waiting for a later `0.24.x` fix release rather than trying to downgrade manually; stop important sessions before changing versions because Supervisor journals do not promise cross-version rollback compatibility
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 
