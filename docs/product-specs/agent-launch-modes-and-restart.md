@@ -32,7 +32,7 @@
 6. 若通过命令面板或侧栏“创建节点”入口创建 Agent，先选对象/provider，再进入带输入框的第二步 Quick Input；列表第一项是 `使用自定义命令创建`，下方是 `默认 / Resume / YOLO / 沙盒` 模式项。页面打开时默认高亮 `默认`；选择某个模式会替换输入框并保持该模式高亮，用户手动编辑后才切回 `使用自定义命令创建`。
 7. 即使当前 workspace 未受信任，右键菜单和命令面板里的 Agent / Terminal 创建入口也仍然保持可见；只有在用户真正尝试创建时，扩展才弹出宿主 modal，解释为什么当前不能创建执行型节点。
 8. Agent 停止后，只有在节点仍持有可信的原会话恢复上下文时，标题栏才显示并列的 `新建 | 恢复` 按钮；否则直接退化成单个 `启动` 按钮。这里的“恢复”始终指当前节点前面停止的那条会话，而不是 provider 最近一次全局会话；`新建` 则沿用该节点的新会话启动配置。
-9. 对已经持有可信 Codex 或 Claude Code session id 的 Agent 节点，用户可以在节点标题栏点击 `分叉`；扩展会创建一个同 provider 的新 Agent 节点并立即用 provider 原生 fork 语义启动：Codex 使用 `codex fork <session-id>`，Claude Code 使用 `claude --resume <session-id> --fork-session`。旧节点保持不变，新节点通过标题弱提示来源，并自动用一条标注为 `fork` 的普通可编辑 `user` 边连接来源；这条边不引入正式父子分支树或机器可读 lineage。
+9. 对已经持有可信 Codex 或 Claude Code session id 的 Agent 节点，用户可以在节点标题栏点击 `分叉`；扩展会创建一个同 provider 的新 Agent 节点并立即用 provider 原生 fork 语义启动：Codex 使用 `codex fork <session-id>`，Claude Code 使用 `claude --resume <session-id> --fork-session`。旧节点保持不变，新节点通过标题弱提示来源，并自动用一条标注为 `fork` 的普通可编辑 `user` 边连接来源；这条边不引入正式父子分支树或机器可读 lineage。新节点按可配置的向上 / 向下 / 向右方向展开，默认向上；同一来源连续 Fork 的新节点在视觉上处于同一层级，并在初始落位时避开画面上已有节点。
 
 ## 4. 在范围内
 
@@ -79,6 +79,10 @@
   - 当前节点 `分叉` 和当前节点 `恢复` 共享同一条启动意图继承规则；例如从 `YOLO` Codex 节点分叉时，新分叉命令应包含 `fork --yolo ... <session-id>`，而不是只使用或合并当前 Default args。
   - Codex 当前节点分叉命令生成必须只信任当前节点的显式 session id 和节点启动意图；Default args 不参与当前节点分叉。历史分叉仍会使用当前 Default args 中合法的非会话目标配置，并拒绝 `fork` / `resume`、`--last`、`--all`、`--include-non-interactive` 或旧 positional target。
   - 旧节点保持不变，用户仍可继续在旧节点对话；新节点通过标题弱提示来源，并自动创建一条普通可编辑 `user` 边，边标签默认为 `fork`；这条边不表示正式父子边、分支树或强持久化分支关系。
+  - 当前节点 Fork 的画布展开方向可配置为向上、向下或向右，默认向上；方向采用 window scope，每次 Fork 时读取，修改后无需 reload，只影响之后的新 Fork，不移动既有节点或改写既有连线。
+  - 同一来源、同一方向下连续 Fork 时，新节点必须处于同一视觉层级：向上 / 向下时共享纵向层级并横向分布，向右时共享横向层级并纵向分布。
+  - Fork 的方向化候选不能绕过画布通用避碰：新节点初始外框不得覆盖目标 root-local 画布中已有节点，连线锚点也应与创建方向一致。
+  - 历史会话列表中的 Fork 没有画布来源节点，不应用方向设置，继续按视口附近的通用避碰规则落位。
   - 新分叉节点和普通 Agent 节点一样在标题栏显示状态胶囊；窄节点下沿用 PR121 的局部压缩规则：标题栏整体仍保持一行主结构，只有可压缩的动作按钮自身按内容收缩或内部换行，不让整组动作区换行打散布局，也不通过隐藏状态来腾空间。当前 Agent 节点接近最小宽度时，标题栏右上角所有动作按钮统一切换为按钮内部两行显示，避免短中文文案因为浏览器 `min-content` 宽度保护而永远看不到可见换行。
 - 自定义启动输入约束：
   - 输入不能为空。
@@ -130,6 +134,7 @@
 - `恢复` 按钮是否可执行 `Resume`
 - `分叉` 按钮是否可执行 provider 原生 fork；Codex 依赖可信 `codex-session-id` 并执行 `codex fork <session-id>`，Claude Code 依赖可信 `claude-session-id` 并执行 `claude --resume <session-id> --fork-session`
 - 用户本次选择的是 `新建`、`恢复` 还是 `分叉`
+- 当前配置的 Fork 展开方向：`up | down | right`，缺省为 `up`
 - Agent 节点副标题是否显示本节点最近一次实际启动指令；当副标题被截断时，hover 需要显示完整指令
 - Agent 节点标题与副标题在宽节点上是否仍保持固定可读宽度上限，而不是随节点尺寸无限拉长
 
@@ -158,6 +163,9 @@
 - 对持有可信 `codex-session-id` 的 Codex Agent 或可信 `claude-session-id` 的 Claude Code Agent，标题栏提供 `分叉` 动作；点击后创建同 provider 的新 Agent 节点并立即启动，Codex 启动命令包含 `fork <session-id>`，Claude Code 启动命令包含 `--resume <session-id> --fork-session`，原节点状态不变化。
 - Codex 当前节点 `分叉` 启动命令不会合并 Default args；合法启动时最终命令只以当前节点可信 session id 作为分叉目标，并继承当前节点启动意图。历史分叉若遇到 Default args 中包含 `--last`、`--all`、`--include-non-interactive` 或旧 session id，扩展会先报错要求用户修正 Default args。
 - 新分叉节点标题弱提示来源，例如以当前节点标题加 `分叉` 后缀表达；画布自动创建来源 Agent 指向新 Agent 的普通可编辑 `user` 边，并默认显示 `fork` 标签，但不新增正式父子边，也不要求用户区分哪个节点是“主分支”。
+- 默认配置下，新分叉节点位于来源节点上方；选择向下或向右后，下一次 Fork 无需 reload 即按对应方向落位，既有 Fork 节点和既有边保持不动。
+- 同一来源连续 Fork 三次时，三个新节点在配置方向上保持同一层级并互不重叠；若首选槽位已有其他类型节点，Fork 仍留在同一层级并选择最近的无碰撞位置。
+- 新建 `fork` 边的锚点与展开方向一致：向上为来源 `top` 到目标 `bottom`，向下为来源 `bottom` 到目标 `top`，向右为来源 `right` 到目标 `left`。
 - 新分叉节点标题栏继续显示状态胶囊，并在 `启动/停止`、`删除` 等动作旁保持和普通 Agent 节点一致的状态反馈；窄宽度时应采用 PR121 式的按钮级压缩/内部换行，标题栏 action cluster 本身保持 inline，不应整组换行破坏布局，也不应隐藏状态。当前 Agent 节点接近最小宽度时，右上角所有动作按钮都应实际呈现为按钮内部两行，而不是只声明允许换行。
 - 缺少可信 session id、provider 与 resume strategy 不匹配，或其他未支持 provider 的 Agent 不会误触发分叉启动。
 - 通过右键创建 `Codex` / `Claude Code` Agent 时，若 CLI 未安装或命令无法解析，节点会进入明确错误态，同时自动弹出和侧栏概览命令行相同的 CLI 选择/安装 Quick Input，用户不需要再去侧栏手动寻找修复入口。

@@ -161,6 +161,21 @@ import {
 } from '../common/canvasMultiRootComposition';
 import { arrangeCanvasLayout } from '../common/canvasLayoutArrangement';
 import {
+  CANVAS_NODE_PLACEMENT_PADDING as NODE_PLACEMENT_PADDING,
+  CANVAS_NODE_PLACEMENT_STEP_X as NODE_PLACEMENT_STEP_X,
+  CANVAS_NODE_PLACEMENT_STEP_Y as NODE_PLACEMENT_STEP_Y,
+  buildNearbyPlacementCandidates,
+  canvasPlacementRectsOverlap,
+  createCanvasPlacementRect,
+  normalizeCanvasForkPlacementDirection,
+  resolveForkEdgeAnchors,
+  resolveForkLayerNodePosition,
+  resolveNearbyNonOverlappingNodePosition,
+  snapCanvasPosition,
+  type CanvasForkPlacementDirection,
+  type CanvasNodePlacementPreference
+} from '../common/canvasNodePlacement';
+import {
   buildAgentBranchCommandLine as buildAgentProviderBranchCommandLine,
   buildFreshAgentCommandLine,
   buildAgentHistoryResumeCommandLine,
@@ -330,10 +345,6 @@ export type { CanvasSurfaceLocation };
 
 const DEFAULT_TERMINAL_COLS = 96;
 const DEFAULT_TERMINAL_ROWS = 28;
-const NODE_PLACEMENT_PADDING = 40;
-const NODE_PLACEMENT_STEP_X = 120;
-const NODE_PLACEMENT_STEP_Y = 96;
-const NODE_PLACEMENT_SEARCH_RADIUS = 8;
 const DEFAULT_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 360, height: 240 };
 const MINIMUM_CANVAS_GROUP_SIZE: CanvasNodeFootprint = { width: 180, height: 96 };
 const CANVAS_GROUP_PADDING = 24;
@@ -446,7 +457,14 @@ interface CreateNodeOptions {
   cwdOverride?: string;
   targetGroupId?: string;
   titleOverride?: string;
+  placementStrategy?: CreateNodePlacementStrategy;
 }
+
+type CreateNodePlacementStrategy = {
+  kind: 'fork-layer';
+  sourceNodeId: string;
+  direction: CanvasForkPlacementDirection;
+};
 
 export interface WorkspaceRootCanvasRemovalImpact {
   nodeCount: number;
@@ -737,8 +755,6 @@ interface CanvasHostDiagnosticsDumpResult {
   webviewLifecycleStatus: CanvasWebviewLifecycleHealthStatus;
   webviewLifecyclePanelRestoreLikelyAffected: boolean;
 }
-
-type NodePlacementPreference = 'left-up' | 'right-down';
 
 interface CanvasFileFilterState {
   includeGlobs: string[];
@@ -3350,24 +3366,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return { branched: false, errorMessage: message };
     }
 
-    const sourceSize = sourceNode.size ?? estimatedCanvasNodeFootprint('agent');
-    const preferredPosition = {
-      x: sourceNode.position.x + sourceSize.width + 48,
-      y: sourceNode.position.y
-    };
-    const createdNode = this.applyCreateNode('agent', preferredPosition, {
+    const forkDirection = normalizeCanvasForkPlacementDirection(
+      getConfigurationValue<unknown>('canvasForkPlacementDirection', 'up')
+    );
+    const createdNode = this.applyCreateNode('agent', undefined, {
       agentProvider: metadata.provider,
       agentLaunchPreset: 'custom',
       agentCustomLaunchCommand: branchCommandLine,
       agentSkipFreshLaunchDefaultArgsValidation: true,
       titleOverride: formatForkTitle(sourceNode.title),
-      cwdOverride: metadata.cwd
+      cwdOverride: metadata.cwd,
+      placementStrategy: {
+        kind: 'fork-layer',
+        sourceNodeId: sourceNode.id,
+        direction: forkDirection
+      }
     });
     if (!createdNode) {
       return { branched: false };
     }
 
-    this.state = createBranchAgentUserEdge(this.state, sourceNode, createdNode);
+    this.state = createBranchAgentUserEdge(this.state, sourceNode, createdNode, forkDirection);
     this.persistState();
     this.postState('host/stateUpdated');
 
@@ -18541,6 +18560,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ? denamespaceCanvasObjectId(targetRootPath ?? '', targetGroup.id) ?? targetGroup.id
         : undefined
       : options?.targetGroupId;
+    const placementStrategyForCreate = options?.placementStrategy
+      ? {
+          ...options.placementStrategy,
+          sourceNodeId: targetRootGroup
+            ? denamespaceCanvasObjectId(targetRootPath ?? '', options.placementStrategy.sourceNodeId) ??
+              options.placementStrategy.sourceNodeId
+            : options.placementStrategy.sourceNodeId
+        }
+      : undefined;
     const nextState = createNextState(
       createState,
       kind,
@@ -18549,7 +18577,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentCustomLaunchCommand,
       preferredPositionInTargetRoot,
       targetGroupIdForCreate,
-      resolvedCwdOverride
+      resolvedCwdOverride,
+      placementStrategyForCreate
     );
     const composedNextState = targetRootGroup
       ? this.namespaceWorkspaceRootLocalCreateState(nextState, targetRootGroup)
@@ -19547,15 +19576,26 @@ function createNextState(
   agentCustomLaunchCommand?: string,
   preferredPosition?: CanvasNodePosition,
   targetGroupId?: string,
-  cwdOverride?: string
+  cwdOverride?: string,
+  placementStrategy?: CreateNodePlacementStrategy
 ): CanvasPrototypeState {
   const nextIndex = readNextNodeSequence(previousState.nodes);
   const nextNode = createNode(kind, nextIndex, agentProvider, agentLaunchPreset, agentCustomLaunchCommand);
-  const resolvedPosition = resolveNewNodePosition(
-    filterPlacementCollisionNodesForGroup(previousState.nodes, targetGroupId),
-    kind,
-    preferredPosition ?? nextNode.position
-  );
+  const forkSourceNode = placementStrategy?.kind === 'fork-layer'
+    ? previousState.nodes.find((node) => node.id === placementStrategy.sourceNodeId)
+    : undefined;
+  const resolvedPosition = forkSourceNode && placementStrategy?.kind === 'fork-layer'
+    ? resolveForkLayerNodePosition({
+        occupiedNodes: previousState.nodes,
+        sourceNode: forkSourceNode,
+        targetSize: nextNode.size,
+        direction: placementStrategy.direction
+      })
+    : resolveNewNodePosition(
+        previousState.nodes,
+        kind,
+        preferredPosition ?? nextNode.position
+      );
   const validTargetGroupId = resolveValidTargetGroupId(previousState.groups ?? [], targetGroupId);
   const createdNodeBase = {
     ...nextNode,
@@ -19687,161 +19727,13 @@ function resolveNewNodePosition(
   existingNodes: CanvasNodeSummary[],
   kind: CanvasNodeKind,
   anchor: CanvasNodePosition,
-  preference: NodePlacementPreference = 'right-down'
+  preference: CanvasNodePlacementPreference = 'right-down'
 ): CanvasNodePosition {
-  const normalizedAnchor = snapCanvasPosition(anchor);
-
-  for (const candidate of buildPlacementCandidates(normalizedAnchor, preference)) {
-    if (!doesPlacementCollide(existingNodes, kind, candidate)) {
-      return candidate;
-    }
-  }
-
-  return fallbackPlacementPosition(existingNodes, kind, normalizedAnchor, preference);
-}
-
-function filterPlacementCollisionNodesForGroup(
-  nodes: readonly CanvasNodeSummary[],
-  targetGroupId?: string
-): CanvasNodeSummary[] {
-  if (!targetGroupId) {
-    return [...nodes];
-  }
-
-  return nodes.filter((node) => node.groupId === targetGroupId);
-}
-
-function buildPlacementCandidates(
-  anchor: CanvasNodePosition,
-  preference: NodePlacementPreference
-): CanvasNodePosition[] {
-  const offsets: Array<{ dx: number; dy: number; distance: number; backwardBias: number }> = [];
-
-  for (let dx = -NODE_PLACEMENT_SEARCH_RADIUS; dx <= NODE_PLACEMENT_SEARCH_RADIUS; dx += 1) {
-    for (let dy = -NODE_PLACEMENT_SEARCH_RADIUS; dy <= NODE_PLACEMENT_SEARCH_RADIUS; dy += 1) {
-      offsets.push({
-        dx,
-        dy,
-        distance: Math.abs(dx) + Math.abs(dy),
-        backwardBias: (dx < 0 ? 1 : 0) + (dy < 0 ? 1 : 0)
-      });
-    }
-  }
-
-  offsets.sort((left, right) => {
-    const leftHorizontalRank = resolvePlacementAxisRank(left.dx, preference === 'left-up' ? 'negative' : 'positive');
-    const rightHorizontalRank = resolvePlacementAxisRank(right.dx, preference === 'left-up' ? 'negative' : 'positive');
-    const leftVerticalRank = resolvePlacementAxisRank(left.dy, preference === 'left-up' ? 'negative' : 'positive');
-    const rightVerticalRank = resolvePlacementAxisRank(right.dy, preference === 'left-up' ? 'negative' : 'positive');
-    const leftPreferenceRank = leftHorizontalRank + leftVerticalRank;
-    const rightPreferenceRank = rightHorizontalRank + rightVerticalRank;
-
-    if (leftPreferenceRank !== rightPreferenceRank) {
-      return leftPreferenceRank - rightPreferenceRank;
-    }
-
-    if (leftHorizontalRank !== rightHorizontalRank) {
-      return leftHorizontalRank - rightHorizontalRank;
-    }
-
-    if (leftVerticalRank !== rightVerticalRank) {
-      return leftVerticalRank - rightVerticalRank;
-    }
-
-    if (left.distance !== right.distance) {
-      return left.distance - right.distance;
-    }
-
-    if (left.backwardBias !== right.backwardBias) {
-      return left.backwardBias - right.backwardBias;
-    }
-
-    if (Math.abs(left.dy) !== Math.abs(right.dy)) {
-      return Math.abs(left.dy) - Math.abs(right.dy);
-    }
-
-    if (Math.abs(left.dx) !== Math.abs(right.dx)) {
-      return Math.abs(left.dx) - Math.abs(right.dx);
-    }
-
-    if (left.dy !== right.dy) {
-      return left.dy - right.dy;
-    }
-
-    return left.dx - right.dx;
-  });
-
-  return offsets.map(({ dx, dy }) =>
-    snapCanvasPosition({
-      x: anchor.x + dx * NODE_PLACEMENT_STEP_X,
-      y: anchor.y + dy * NODE_PLACEMENT_STEP_Y
-    })
-  );
-}
-
-function resolvePlacementAxisRank(value: number, preferredSign: 'negative' | 'positive'): number {
-  if (value === 0) {
-    return 1;
-  }
-
-  const matchesPreferred = preferredSign === 'negative' ? value < 0 : value > 0;
-  return matchesPreferred ? 0 : 2;
-}
-
-function doesPlacementCollide(
-  existingNodes: CanvasNodeSummary[],
-  nextKind: CanvasNodeKind,
-  nextPosition: CanvasNodePosition
-): boolean {
-  const nextRect = createPlacementRect(nextPosition, estimatedCanvasNodeFootprint(nextKind));
-
-  return existingNodes.some((node) =>
-    placementRectsOverlap(nextRect, createPlacementRect(node.position, node.size))
-  );
-}
-
-function fallbackPlacementPosition(
-  existingNodes: CanvasNodeSummary[],
-  kind: CanvasNodeKind,
-  normalizedAnchor: CanvasNodePosition,
-  preference: NodePlacementPreference
-): CanvasNodePosition {
-  if (existingNodes.length === 0) {
-    return normalizedAnchor;
-  }
-
-  const bounds = existingNodes.reduce(
-    (current, node) => {
-      const rect = createPlacementRect(node.position, node.size);
-      return {
-        maxRight: Math.max(current.maxRight, rect.right),
-        minLeft: Math.min(current.minLeft, rect.left),
-        minTop: Math.min(current.minTop, rect.top),
-        maxBottom: Math.max(current.maxBottom, rect.bottom)
-      };
-    },
-    {
-      maxRight: Number.NEGATIVE_INFINITY,
-      minLeft: Number.POSITIVE_INFINITY,
-      minTop: Number.POSITIVE_INFINITY,
-      maxBottom: Number.NEGATIVE_INFINITY
-    }
-  );
-  const nextFootprint = estimatedCanvasNodeFootprint(kind);
-
-  if (preference === 'left-up') {
-    return snapCanvasPosition({
-      x: bounds.minLeft - nextFootprint.width - NODE_PLACEMENT_PADDING,
-      y: Math.min(
-        bounds.minTop - nextFootprint.height - NODE_PLACEMENT_PADDING,
-        normalizedAnchor.y - Math.round(nextFootprint.height / 3)
-      )
-    });
-  }
-
-  return snapCanvasPosition({
-    x: bounds.maxRight + NODE_PLACEMENT_PADDING,
-    y: Math.max(bounds.maxBottom - Math.round(nextFootprint.height / 2), normalizedAnchor.y)
+  return resolveNearbyNonOverlappingNodePosition({
+    occupiedNodes: existingNodes,
+    targetSize: estimatedCanvasNodeFootprint(kind),
+    anchor,
+    preference
   });
 }
 
@@ -20164,7 +20056,7 @@ function resolveTemplatePlacementTopLeft(
   centeredTopLeft: CanvasNodePosition
 ): CanvasNodePosition {
   const normalizedAnchor = snapCanvasPosition(centeredTopLeft);
-  for (const candidate of buildPlacementCandidates(normalizedAnchor, 'right-down')) {
+  for (const candidate of buildNearbyPlacementCandidates(normalizedAnchor, 'right-down')) {
     if (!doesTemplatePlacementCollide(existingNodes, templateNodes, candidate)) {
       return candidate;
     }
@@ -20180,8 +20072,8 @@ function doesTemplatePlacementCollide(
 ): boolean {
   const templateRects = buildTemplatePlacementRects(templateNodes, placedTopLeft);
   return existingNodes.some((node) => {
-    const existingRect = createPlacementRect(node.position, node.size);
-    return templateRects.some((templateRect) => placementRectsOverlap(templateRect, existingRect));
+    const existingRect = createCanvasPlacementRect(node.position, node.size);
+    return templateRects.some((templateRect) => canvasPlacementRectsOverlap(templateRect, existingRect));
   });
 }
 
@@ -20191,7 +20083,7 @@ function buildTemplatePlacementRects(
 ): Array<{ left: number; top: number; right: number; bottom: number }> {
   const bounds = measureCanvasTemplateBounds(templateNodes);
   return templateNodes.map((node) =>
-    createPlacementRect(
+    createCanvasPlacementRect(
       {
         x: placedTopLeft.x + (node.position.x - bounds.origin.x),
         y: placedTopLeft.y + (node.position.y - bounds.origin.y)
@@ -20212,7 +20104,7 @@ function fallbackTemplatePlacementTopLeft(
 
   const bounds = existingNodes.reduce(
     (current, node) => {
-      const rect = createPlacementRect(node.position, node.size);
+      const rect = createCanvasPlacementRect(node.position, node.size);
       return {
         maxRight: Math.max(current.maxRight, rect.right),
         maxBottom: Math.max(current.maxBottom, rect.bottom)
@@ -20229,43 +20121,6 @@ function fallbackTemplatePlacementTopLeft(
     x: bounds.maxRight + NODE_PLACEMENT_PADDING,
     y: Math.max(bounds.maxBottom - Math.round(templateBounds.height / 2), normalizedAnchor.y)
   });
-}
-
-function snapCanvasPosition(position: CanvasNodePosition): CanvasNodePosition {
-  return {
-    x: snapCanvasCoordinate(position.x),
-    y: snapCanvasCoordinate(position.y)
-  };
-}
-
-function snapCanvasCoordinate(value: number): number {
-  return Math.round(value / 20) * 20;
-}
-
-function createPlacementRect(position: CanvasNodePosition, footprint: CanvasNodeFootprint): {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-} {
-  return {
-    left: position.x,
-    top: position.y,
-    right: position.x + footprint.width,
-    bottom: position.y + footprint.height
-  };
-}
-
-function placementRectsOverlap(
-  left: { left: number; top: number; right: number; bottom: number },
-  right: { left: number; top: number; right: number; bottom: number }
-): boolean {
-  return (
-    left.left < right.right + NODE_PLACEMENT_PADDING &&
-    left.right > right.left - NODE_PLACEMENT_PADDING &&
-    left.top < right.bottom + NODE_PLACEMENT_PADDING &&
-    left.bottom > right.top - NODE_PLACEMENT_PADDING
-  );
 }
 
 function moveNode(
@@ -23127,7 +22982,7 @@ function resolveAutomaticArtifactPosition(
   kind: CanvasNodeKind,
   anchor: CanvasNodePosition,
   existingNode?: CanvasNodeSummary,
-  preference: NodePlacementPreference = 'right-down'
+  preference: CanvasNodePlacementPreference = 'right-down'
 ): CanvasNodePosition {
   const existingPosition = existingNode?.position;
   if (existingPosition) {
@@ -23141,7 +22996,7 @@ function resolveFileReferencePlacementAnchor(
   reference: CanvasFileReferenceSummary,
   agentNodesById: Map<string, CanvasNodeSummary>,
   singleOwnerFileCounts: Map<string, number>,
-  preference: NodePlacementPreference
+  preference: CanvasNodePlacementPreference
 ): CanvasNodePosition {
   const baseAnchor = resolveFileReferenceAnchor(reference, agentNodesById, 'file', preference);
   if (reference.owners.length !== 1) {
@@ -23166,7 +23021,7 @@ function resolveFileReferenceAnchor(
   reference: CanvasFileReferenceSummary,
   agentNodesById: Map<string, CanvasNodeSummary>,
   kind: 'file' | 'file-list',
-  preference: NodePlacementPreference = 'right-down'
+  preference: CanvasNodePlacementPreference = 'right-down'
 ): CanvasNodePosition {
   const ownerNodes = reference.owners
     .map((owner) => agentNodesById.get(owner.nodeId))
@@ -23192,7 +23047,7 @@ function resolveFileReferenceAnchor(
   });
 }
 
-function resolveFileReferencePlacementPreference(reference: CanvasFileReferenceSummary): NodePlacementPreference {
+function resolveFileReferencePlacementPreference(reference: CanvasFileReferenceSummary): CanvasNodePlacementPreference {
   return mergeAccessModes(reference.owners.map((owner) => owner.accessMode)) === 'read' ? 'left-up' : 'right-down';
 }
 
@@ -23200,7 +23055,7 @@ function doesPlacementRespectPreference(
   position: CanvasNodePosition,
   kind: CanvasNodeKind,
   anchor: CanvasNodePosition,
-  preference: NodePlacementPreference
+  preference: CanvasNodePlacementPreference
 ): boolean {
   const footprint = estimatedCanvasNodeFootprint(kind);
   const centerX = position.x + footprint.width / 2;
@@ -23412,9 +23267,10 @@ function createUserCanvasEdge(
 function createBranchAgentUserEdge(
   previousState: CanvasPrototypeState,
   sourceNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>,
-  targetNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>
+  targetNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>,
+  direction: CanvasForkPlacementDirection = 'right'
 ): CanvasPrototypeState {
-  const anchors = resolveHorizontalCanvasEdgeAnchors(sourceNode, targetNode);
+  const anchors = resolveForkEdgeAnchors(direction);
   return createUserCanvasEdge(previousState, {
     id: `edge-${randomUUID()}`,
     sourceNodeId: sourceNode.id,

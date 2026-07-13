@@ -1656,9 +1656,13 @@ async function verifyCodexAgentBranchFromCurrentNode() {
   const sourceSessionId = '019dbfb8-cffa-70b0-9c97-000000001234';
   const sourceNodeId = 'codex-branch-source-node';
   const previousCodexCommandEnv = process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND;
+  const originalForkPlacementDirection = vscode.workspace
+    .getConfiguration()
+    .inspect('devSessionCanvas.canvas.forkPlacementDirection');
   let branchNodeId;
 
   try {
+    await setForkPlacementDirection('up');
     process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND = path.join(
       __dirname,
       'fixtures',
@@ -1745,6 +1749,10 @@ async function verifyCodexAgentBranchFromCurrentNode() {
     );
     assert.ok(branchNode, 'Expected Fork to create a Codex Agent node with codex fork command.');
     branchNodeId = branchNode.id;
+    assert.ok(
+      branchNode.position.y + branchNode.size.height < sourceNode.position.y,
+      'Expected the default Fork direction to place the Codex child above its source.'
+    );
 
     const branchEdgeSnapshot = await waitForSnapshot((currentSnapshot) => {
       return currentSnapshot.state.edges.some(
@@ -1765,8 +1773,8 @@ async function verifyCodexAgentBranchFromCurrentNode() {
     );
     assert.ok(branchEdge, 'Expected Fork to create a user edge from source Codex Agent to Forked Agent.');
     assert.strictEqual(branchEdge.arrowMode, 'forward');
-    assert.strictEqual(branchEdge.sourceAnchor, 'right');
-    assert.strictEqual(branchEdge.targetAnchor, 'left');
+    assert.strictEqual(branchEdge.sourceAnchor, 'top');
+    assert.strictEqual(branchEdge.targetAnchor, 'bottom');
     assert.strictEqual(branchEdge.label, 'fork');
 
     const branchEdgeProbe = await waitForWebviewProbeOnSurface(
@@ -1820,6 +1828,7 @@ async function verifyCodexAgentBranchFromCurrentNode() {
     const startedBranchNode = findNodeById(startedSnapshot, branchNode.id);
     assert.strictEqual(startedBranchNode.metadata.agent.provider, 'codex');
   } finally {
+    await restoreForkPlacementDirection(originalForkPlacementDirection);
     if (previousCodexCommandEnv === undefined) {
       delete process.env.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND;
     } else {
@@ -1840,9 +1849,13 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
   const sourceSessionId = 'claude-branch-source-session-123';
   const sourceNodeId = 'claude-branch-source-node';
   const previousClaudeCommandEnv = process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
+  const originalForkPlacementDirection = vscode.workspace
+    .getConfiguration()
+    .inspect('devSessionCanvas.canvas.forkPlacementDirection');
   let branchNodeId;
 
   try {
+    await setForkPlacementDirection('right');
     process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND = path.join(
       __dirname,
       'fixtures',
@@ -1930,6 +1943,10 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
     );
     assert.ok(branchNode, 'Expected Fork to create a Claude Agent node with fork-session command.');
     branchNodeId = branchNode.id;
+    assert.ok(
+      branchNode.position.x > sourceNode.position.x + sourceNode.size.width,
+      'Expected the updated Fork direction to place the Claude child to the right without reloading.'
+    );
 
     const branchEdgeSnapshot = await waitForSnapshot((currentSnapshot) => {
       return currentSnapshot.state.edges.some(
@@ -2029,6 +2046,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
       'Expected Fork auto-start to avoid racing a second start request.'
     );
   } finally {
+    await restoreForkPlacementDirection(originalForkPlacementDirection);
     if (previousClaudeCommandEnv === undefined) {
       delete process.env.DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND;
     } else {
@@ -11873,6 +11891,31 @@ async function setDefaultAgentProvider(provider) {
   await vscode.workspace
     .getConfiguration()
     .update('devSessionCanvas.agent.defaultProvider', provider, vscode.ConfigurationTarget.Global);
+}
+
+async function setForkPlacementDirection(direction) {
+  const target = hasWorkspaceSettingsTarget()
+    ? vscode.ConfigurationTarget.Workspace
+    : vscode.ConfigurationTarget.Global;
+  await vscode.workspace
+    .getConfiguration()
+    .update('devSessionCanvas.canvas.forkPlacementDirection', direction, target);
+}
+
+async function restoreForkPlacementDirection(inspection) {
+  const configuration = vscode.workspace.getConfiguration();
+  await configuration.update(
+    'devSessionCanvas.canvas.forkPlacementDirection',
+    inspection?.globalValue,
+    vscode.ConfigurationTarget.Global
+  );
+  if (hasWorkspaceSettingsTarget()) {
+    await configuration.update(
+      'devSessionCanvas.canvas.forkPlacementDirection',
+      getWorkspaceScopedConfigurationValue(inspection),
+      vscode.ConfigurationTarget.Workspace
+    );
+  }
 }
 
 function normalizeTerminalShellSelection(value) {

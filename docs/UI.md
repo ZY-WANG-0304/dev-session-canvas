@@ -1,5 +1,5 @@
 ---
-version: 2026-07-03
+version: 2026-07-13
 name: DevSessionCanvas UI
 description: DevSessionCanvas 的跨功能 UI design-system 基线。本文只记录 UI token、组件表面语言和通用 Do / Don't；产品判断、功能规格、具体设计方案和前端实现检查清单分别进入对应正式文档。
 colors:
@@ -217,7 +217,8 @@ components:
 - 画布、节点、侧栏 section 和浮层都应保持紧凑工具型密度。
 - 画布空白的产品原则见 `docs/PRODUCT_SENSE.md`；design-system 不为空白区域预设说明块、统计卡或品牌装饰。
 - 角落 widget 只用于空间导航、定位或短时反馈；非空间动作优先离开画布。
-- 具体对象落位、空画布、上下文菜单与角落控件规则由 `docs/design-docs/canvas-feedback-polish.md` 和 `docs/design-docs/canvas-navigation-and-workbench-polish.md` 定义。
+- 系统生成节点的初始落位不得与目标 root-local 画布中已有节点重叠；这是创建时规则，不阻止用户之后手工拖拽形成重叠，也不自动重排旧节点。关系专属的方向或层级规则必须建立在同一避碰契约之上。
+- 具体对象落位、空画布、上下文菜单与角落控件规则由 `docs/design-docs/canvas-feedback-polish.md`、`docs/design-docs/canvas-navigation-and-workbench-polish.md` 和 `docs/design-docs/canvas-fork-placement-and-generated-node-collision.md` 定义。
 
 ## Elevation & Depth
 
@@ -358,6 +359,7 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 
 - 使用 VSCode token 和当前主题作为所有 surface 的默认来源。
 - 通过标题栏、边框、状态胶囊和少量图标表达对象类型与状态；对象类型颜色与状态颜色必须分层使用。
+- 让系统生成节点先通过统一碰撞检测再进入宿主权威状态，关系专属布局只负责候选顺序，不绕过通用避碰。
 - 当交互取舍会改变用户心智时，同步更新对应 `docs/design-docs/` 文档。
 
 ### Don't
