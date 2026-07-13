@@ -352,7 +352,10 @@ try {
       size: { width: 560, height: 430 },
       groupId: 'fork-layer-group'
     })],
-    groups: [group('fork-layer-group', { x: 0, y: 0 }, { width: 1000, height: 1000 })]
+    groups: [
+      group('fork-layer-group', { x: 0, y: 0 }, { width: 1000, height: 1000 }),
+      group('fork-layer-blocker', { x: 0, y: -324 }, { width: 1000, height: 300 })
+    ]
   });
   for (let index = 0; index < 3; index += 1) {
     forkLayerState = createNextState(
@@ -377,6 +380,13 @@ try {
     forkLayerSourcePosition,
     'Growing the inherited group for Fork children must not move the source node.'
   );
+  const repairedForkLayerGroup = forkLayerState.groups.find((candidate) => candidate.id === 'fork-layer-group');
+  const displacedForkLayerBlocker = forkLayerState.groups.find((candidate) => candidate.id === 'fork-layer-blocker');
+  assert.ok(
+    !rectsOverlapForTest(rectForTestGroup(repairedForkLayerGroup), rectForTestGroup(displacedForkLayerBlocker)),
+    'Pinned Fork groups should remain legal by displacing the conflicting sibling.'
+  );
+  assert.notDeepStrictEqual(displacedForkLayerBlocker.position, { x: 0, y: -324 });
   assert.strictEqual(new Set(forkLayerChildren.map((candidate) => candidate.position.y)).size, 1);
   for (let leftIndex = 0; leftIndex < forkLayerChildren.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < forkLayerChildren.length; rightIndex += 1) {
@@ -404,6 +414,48 @@ try {
     undefined,
     'Users should still be able to drag an inherited Fork child out of its ordinary group.'
   );
+
+  const nestedForkSourcePosition = { x: 320, y: 500 };
+  const nestedForkState = createNextState(
+    state({
+      nodes: [agent('nested-fork-source', nestedForkSourcePosition, {
+        size: { width: 560, height: 430 },
+        groupId: 'nested-fork-group'
+      })],
+      groups: [
+        group('nested-fork-parent', { x: 0, y: 0 }, { width: 1200, height: 1200 }),
+        group('nested-fork-group', { x: 100, y: 100 }, { width: 1000, height: 1000 }, {
+          parentGroupId: 'nested-fork-parent'
+        }),
+        group('nested-parent-blocker', { x: 0, y: -324 }, { width: 1200, height: 300 })
+      ]
+    }),
+    'agent',
+    'codex',
+    'default',
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { kind: 'fork-layer', sourceNodeId: 'nested-fork-source', direction: 'up' }
+  );
+  assert.strictEqual(
+    nestedForkState.nodes.at(-1).groupId,
+    'nested-fork-group',
+    'Nested Fork children should inherit the source direct group.'
+  );
+  assert.deepStrictEqual(
+    nestedForkState.nodes.find((candidate) => candidate.id === 'nested-fork-source').position,
+    nestedForkSourcePosition,
+    'Repairing an expanded ancestor chain must not move the nested Fork source.'
+  );
+  const repairedNestedForkParent = nestedForkState.groups.find((candidate) => candidate.id === 'nested-fork-parent');
+  const displacedNestedParentBlocker = nestedForkState.groups.find((candidate) => candidate.id === 'nested-parent-blocker');
+  assert.ok(
+    !rectsOverlapForTest(rectForTestGroup(repairedNestedForkParent), rectForTestGroup(displacedNestedParentBlocker)),
+    'Pinned Fork ancestor chains should displace conflicting root-level siblings.'
+  );
+  assert.notDeepStrictEqual(displacedNestedParentBlocker.position, { x: 0, y: -324 });
 
   const forwardParentTemplateApply = applyCanvasTemplateToState(
     state(),

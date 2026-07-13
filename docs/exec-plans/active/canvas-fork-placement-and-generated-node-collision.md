@@ -24,6 +24,8 @@
 - [x] (2026-07-13 12:25 +0800) 里程碑 3 自动化部分：manifest、本地化、纯几何、group、multi-root composition、布局、typecheck、build、完整 trusted VSCode smoke 和 Fork Webview 定向回归通过。
 - [x] (2026-07-13 19:24 +0800) PR #261 review 收口：用失败回归复现普通 group 内 Fork 丢失归属和向右槽距网格不对称，分别通过继承来源直接 `groupId` 与预先向上归一槽距修复；同步自动文件动态 footprint 技术债与文档边界。
 - [x] (2026-07-13 19:33 +0800) review 修复验证：纯几何、group、multi-root composition、布局、manifest、本地化、typecheck、build、完整 trusted VSCode smoke 与 Fork Webview 3 项定向回归均通过。
+- [x] (2026-07-13 19:58 +0800) PR #261 第二轮 review 修复：复现来源 group 扩张与同级 group 冲突时来源 y 从 400 移到 552；Fork 最终化改为 pin 来源直接 group 与祖先链，并补直接同级冲突及嵌套祖先冲突回归。
+- [x] (2026-07-13 20:06 +0800) 第二轮修复验证：纯几何、group、multi-root composition、布局、manifest、本地化、typecheck、build、完整 trusted smoke 和 Fork Webview 3 项回归通过；Webview 首轮出现一次按钮已可见/可用/稳定后的 click timeout，隔离原样复跑与完整 3 项复跑均通过。
 - [ ] 里程碑 3 人工与专项部分：在 panel / editor 两种承载面验收 80 units 层间距和边标签，并补 multi-root 当前节点 Fork 的专项宿主断言。
 - [ ] 完成后把本计划移入 `docs/exec-plans/completed/`，并检查 `docs/exec-plans/tech-debt-tracker.md` 是否需要登记残余债务。
 
@@ -61,6 +63,12 @@
 
 - 观察：自动文件节点虽然复用共享 predicate，但选位阶段仍传 `estimatedCanvasNodeFootprint('file')` 的 220 x 84；真实 minimal footprint 在随后物化时才根据路径文本计算，`icon-path` 宽度最高 480。
   证据：`resolveAutomaticArtifactPosition()` 仍调用按 kind 估算的 `resolveNewNodePosition()`，而 `resolveAutomaticFileNodeSize()` 在选位之后才调用 `estimateAutomaticFileNodeFootprint()`。这条路径不能写成已经使用最终初始尺寸。
+
+- 观察：让 Fork 子节点继承直接 group 只能保证 group membership，不能单独保证来源坐标稳定；无 pinning 的 sibling repair 仍可能选择平移扩张后的来源 group。
+  证据：来源 group `(0, 0, 1000 x 1000)`、来源 Agent `(220, 400, 560 x 430)`、上方 sibling group `(0, -324, 1000 x 300)` 初始合法且保留 24 units 间距；一次向上 Fork 后旧实现把来源 Agent 移到 `(220, 552)`。嵌套 group 中，外层扩容与 root-level sibling 冲突也存在同类祖先平移风险。
+
+- 观察：第二轮修复后的 Fork Webview 定向 suite 首轮出现一次 `locator.click()` timeout，但日志已确认按钮可见、可用且稳定；未改代码的隔离原样复跑和随后完整 3 项复跑均通过。
+  证据：失败停在浏览器点击动作而非消息或布局断言；同一用例隔离复跑 1/1 通过，完整 `--grep "Fork|fork|分叉"` 再跑 3/3 通过。当前把它记录为本地 harness 抖动，不写成产品回归或清洁首跑。
 
 ## 决策记录
 
@@ -112,11 +120,17 @@
   理由：review 已把代码问题定为非阻塞；本 PR 保留统一 predicate 的真实成果，但明确 220 x 84 估算与最高 480 minimal 宽度之间的边界。
   日期/作者：2026-07-13 / Codex + PR #261 review
 
+- 决策：Fork 创建调用 group geometry finalization 时，pin 来源直接 group 及其完整祖先链；pin 只禁止 repair 平移，仍允许外框扩张容纳新节点。
+  理由：只 pin 直接 group 无法保护嵌套祖先，祖先被平移仍会改变来源 Agent 的绝对坐标；完整链 pinning 能让冲突修复移动其它 sibling，同时保持直接与嵌套来源子树稳定。
+  日期/作者：2026-07-13 / Codex + PR #261 第二轮 review
+
 ## 结果与复盘
 
 实现已经把同层 Fork 落位收口到共享纯几何模块，不新增父子 metadata：固定层级线提供深度约束，单轴中心向外搜索提供同层分布，目标 root-local state 的已有节点集合提供占用信息。设置在每次当前节点 Fork 时读取，支持 `up | down | right`、默认 `up`；新边分别写入 `top -> bottom`、`bottom -> top`、`right -> left`，历史会话 Fork 保持通用邻近避碰。
 
 普通创建不再按 `groupId` 缩小碰撞集合；模板与自动文件节点复用同一矩形 / padding 语义。PR #261 review 后，普通 group 内 Fork 会继承来源直接 `groupId`，扩张 group 时来源位置保持不变；向右槽距先归一到网格安全倍数，默认三子节点顺序为中心、最近正槽、最近负槽。纯几何、宿主状态、配置、本地化、类型、构建、完整 trusted VSCode smoke 和 Webview Fork 定向回归已经通过。已知 `test:canvas-templates` 失败可在 `origin/main` 复现，来自与本功能无关的 Webview 源码字符串断言。
+
+第二轮 review 证明“继承 group”本身还不足以兑现来源位置稳定：扩张 group 与 sibling 冲突时，repair 会移动整个来源子树。最终实现把来源直接 group 与祖先链传为 `pinnedGroupIds`；直接同级 blocker 与嵌套祖先 blocker fixture 均证明 repair 改为移动其它冲突对象，来源 Agent 绝对坐标不变。
 
 自动文件节点目前只复用统一 predicate，尚未把随后算出的动态 minimal footprint 回传到选位阶段；长路径下真实宽度可能从估算的 220 增长到 480。该问题已扩充到 `docs/exec-plans/tech-debt-tracker.md`，本计划不再把这条路径写成完整满足真实初始外框无重叠。
 
@@ -228,6 +242,7 @@ DevSessionCanvas 是 VSCode workspace extension。Extension Host 中的 `CanvasP
 - 当中心槽位有 Agent、Terminal、Note、File 或 File List 时，新 Fork 留在同层并选择最近空槽位。
 - 普通创建、历史恢复 / Fork、Explorer Note 和模板簇不覆盖目标 root 中创建前已存在的节点；新生成自动文件节点使用同一 predicate 做 best-effort 避碰，但动态 minimal footprint 可能大于选位估算，不作为完整保证。
 - 来源位于普通 group 时，Fork 子节点继承来源直接 `groupId`，group 扩张不移动来源；用户把子节点拖出 group 后仍解除分组。
+- 来源 group 或嵌套祖先扩张后与同级 group 冲突时，来源直接 group 到祖先链保持 pinned，来源 Agent 坐标不变，冲突由其它 sibling 位移消解。
 - 默认 Agent 向右连续 Fork 三次时，网格化 top 顺序保持中心、最近正槽、最近负槽，不因 470 原始槽距的逐候选取整跳过负一槽。
 - 创建到普通 group 时，即使障碍节点的 groupId 不同，也不会发生节点矩形重叠；group 最终状态仍合法。
 - multi-root 下只在来源所在 root-local 画布避碰，不跨 root 错误比较，也不把节点放到其他 root。
@@ -276,6 +291,8 @@ DevSessionCanvas 是 VSCode workspace extension。Extension Host 中的 `CanvasP
 
 PR #261 review 回归先在旧实现稳定失败：向右位置为 `200, 680, -740`，普通 group Fork 子节点未继承 `groupId`。修复后向右顺序为 `200, 680, -280`，group fixture 同时证明子节点继承、来源坐标不变、同层互不重叠和手工移出仍成立；上述完整自动化矩阵再次通过。
 
+第二轮 review fixture 在未 pin 的最终化上得到来源 `(220, 552)`，而非原始 `(220, 400)`。加入来源 group 祖先链 pinning后，直接同级冲突与嵌套祖先冲突用例均通过；完整矩阵、trusted smoke 与最终 Fork Webview 3/3 复跑通过。Webview 在最终通过前出现过一次已稳定按钮的 click timeout，隔离和完整复跑结果均已如实保留。
+
 本次修订说明（2026-07-13 11:52 +0800）：首次创建计划，原因是用户要求先设计 Fork 定向展开、同层子节点和跨功能生成节点避碰；计划明确停在设计阶段，没有授权实现。
 
 本次修订说明（2026-07-13 12:01 +0800）：用户确认历史会话 Fork 与设置生效两项边界，因此把设计状态收口为 `已选定 / 未验证`，同步产品规格、进度、决策记录和复盘；仍未开始实现。
@@ -283,6 +300,8 @@ PR #261 review 回归先在旧实现稳定失败：向右位置为 `200, 680, -7
 本次修订说明（2026-07-13 12:27 +0800）：用户以“继续”授权后完成共享几何、配置、宿主接线与主要自动化回归；记录模板测试的 main 基线失败，并把设计状态更新为 `已选定 / 验证中`。计划保留 active，等待人工承载面验收和 multi-root 当前节点 Fork 专项断言。
 
 本次修订说明（2026-07-13 19:26 +0800）：处理 PR #261 首轮 review；增加普通 group 继承/来源稳定/手工移出与向右确切槽序回归，修复两个 blocker，并把自动文件动态 footprint 从“完整满足”修正为 best-effort 及既有技术债边界。
+
+本次修订说明（2026-07-13 19:58 +0800）：处理 PR #261 第二轮 review；确认无 pinning 的 sibling repair 仍会移动来源子树，改为在 Fork 最终化时 pin 来源直接 group 与祖先链，并增加直接和嵌套冲突 fixture。
 
 ## 接口与依赖
 

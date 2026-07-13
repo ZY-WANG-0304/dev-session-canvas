@@ -144,6 +144,8 @@ Fork 先根据来源节点矩形、目标节点预期尺寸和配置方向计算
 
 若来源 Agent 属于普通 group，新 Fork 节点继承来源节点的直接 `groupId`。`finalizeCanvasGroupState()` 可以扩张 group 外框容纳新节点，但不能移动来源节点来换取合法化；同源连续 Fork 仍必须保持同层。创建完成后这只是普通可编辑分组关系，用户可以沿用既有拖拽语义把 Fork 节点移出 group。
 
+为保证这一点，Fork 创建进入 group geometry repair 时，把来源直接 group 及其普通祖先链作为 pinned groups。group 自身和祖先外框仍可向外扩张以容纳后代，但 sibling overlap repair 不能平移这些 pinned 子树，只能移动发生冲突的其它同级对象。这样直接 group 上方已有 sibling 时不会下移来源 Agent，嵌套 group 的外层扩容与 root-level sibling 冲突时也不会通过平移祖先改变来源坐标。
+
 ### 8.3 Fork 连线方向
 
 新建 `fork` 边的锚点和创建时使用的方向一致：
@@ -191,7 +193,7 @@ Fork 先根据来源节点矩形、目标节点预期尺寸和配置方向计算
   缓解：候选数量按已有节点数扩展，并保留基于该层投影边界的确定性 fallback；fallback 仍必须经过最终碰撞断言。
 
 - 风险：来源节点靠近普通 group 边缘时，向上 Fork 可能扩张 group，继而触发 group 几何修复。
-  缓解：保留现有“创建对象位置优先、group 做最小合法化修复”语义；验证最终状态而不只验证创建前候选。若实测 group 扩张造成大范围位移，再单独比较“限制在 group 内搜索”与“允许扩张”方案，当前不预先改变 group 法则。
+  缓解：Fork 子节点继承来源直接 group，并在最终化时 pin 该 group 及祖先链；外框可以扩张，但冲突修复移动其它 sibling，不移动来源子树。验证同时覆盖直接同级冲突与嵌套祖先冲突，而不只验证创建前候选。
 
 - 风险：同层定义使用 top / left 对齐；用户 resize 某个既有 Fork 节点后，底边或中心可能不再齐平。
   缓解：创建时 Agent 使用同一默认尺寸，因此初始视觉层级稳定；用户后续 resize 属于显式手工布局，不触发自动回排。
@@ -215,6 +217,7 @@ Fork 先根据来源节点矩形、目标节点预期尺寸和配置方向计算
 - 同一来源连续生成三个 Fork 节点时，`up/down` 三者 top 相同，`right` 三者 left 相同，且两两不重叠。
 - 默认 Agent 连续三个 `right` Fork 的 top 顺序精确为中心 `200`、最近正槽 `680`、最近负槽 `-280`，证明网格吸附没有破坏中心向外顺序。
 - 来源 Agent 位于普通 group 时，连续 Fork 子节点继承同一 `groupId`，来源位置不变；把任一子节点拖出 group 后仍按既有语义解除分组。
+- 来源 group 上方存在只保留 24 units 间距的同级 group 时，向上 Fork 扩张来源 group 后只能移动 blocker，来源 Agent 坐标仍不变；嵌套来源 group 触发祖先外框扩张与 root-level sibling 冲突时同样成立。
 - 层级线中心槽位被普通 Agent、Note、自动 File 节点占据时，新 Fork 仍留在同层并跳到最近空槽位。
 - 近邻候选被超大节点阻挡时，同层 fallback 不重叠且结果确定。
 - 普通创建到某个 group 时，也不会与目标 root 中其他 groupId 的已有节点重叠。
@@ -256,5 +259,7 @@ VSCode smoke 应验证：
 `npm run test:canvas-templates` 仍被仓库当前 `origin/main` 已存在的源码字符串断言阻塞：测试要求 `main.tsx` 包含 `data-node-action-id="create-missing-associated-markdown-file"`，但基线源码本身不包含该字符串；本功能未修改对应 Webview 源码。模板摆放调用已完成共享矩形 / 碰撞 helper 迁移，但该测试命令不能作为本轮通过证据。
 
 PR #261 首轮 review 发现并已用回归锁定两项实现偏差：普通 group 内 Fork 未继承 `groupId`，以及向右 470 units 原始槽距逐候选吸附后破坏正负对称。实现现已分别通过继承来源直接 group 与把槽距预先向上归一到网格倍数修复；相关纯几何和宿主状态测试通过。自动文件节点真实初始尺寸晚于选位确定的问题按上述技术债边界保留，不写成已完成能力。
+
+第二轮复审进一步发现：仅继承 `groupId` 仍不足以保护来源坐标；当扩张后的来源 group 与同级 group 冲突，无 pinning 的 repair 会平移整个来源子树。实现现已在 Fork 最终化时 pin 来源直接 group 与祖先链，并增加直接同级冲突和嵌套祖先冲突 fixture；两种情况下来源 Agent 坐标均保持不变。
 
 panel / editor 两种承载面的 80 flow units 层间距与 `fork` 标签视觉检查，以及 multi-root 当前节点 Fork 的专项宿主断言仍待补。因此当前 `validation_status` 为 `验证中`，ExecPlan 继续保留在 active 目录，不把自动化证据扩大表述为完整视觉验证。
