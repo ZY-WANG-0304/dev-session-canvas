@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.2
+
+- 与主扩展 `0.24.2` 对齐：本轮主扩展为 persistent Runtime Supervisor 增加可证明安全的 journal compact 与双代恢复，收口跨 Node 终态门禁，并增加当前 Agent 节点的 Fork 定向展开和生成节点创建时避碰；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致；通知协议、后端选择、点击回跳语义和本地化边界均保持不变。
+
 ## 0.24.1
 
 - 与主扩展 `0.24.1` 对齐：本轮主扩展是 `0.24.x` Preview 线内的紧急修复，解决升级后旧 Runtime Supervisor 会话被强制只读、同时新会话等待旧进程排空的问题；notifier companion 不引入新的通知投递行为变更。
