@@ -605,6 +605,27 @@
           "scope": "window",
           "markdownDescription": "%configuration.canvas.defaultSurface.description%"
         },
+        "devSessionCanvas.canvas.forkPlacementDirection": {
+          "type": "string",
+          "enum": [
+            "up",
+            "down",
+            "right"
+          ],
+          "enumItemLabels": [
+            "%configuration.canvas.forkPlacementDirection.up.label%",
+            "%configuration.canvas.forkPlacementDirection.down.label%",
+            "%configuration.canvas.forkPlacementDirection.right.label%"
+          ],
+          "default": "up",
+          "scope": "window",
+          "markdownDescription": "%configuration.canvas.forkPlacementDirection.description%",
+          "markdownEnumDescriptions": [
+            "%configuration.canvas.forkPlacementDirection.up.description%",
+            "%configuration.canvas.forkPlacementDirection.down.description%",
+            "%configuration.canvas.forkPlacementDirection.right.description%"
+          ]
+        },
         "devSessionCanvas.canvas.overviewMode": {
           "type": "string",
           "enum": [

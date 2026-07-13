@@ -74,6 +74,14 @@ try {
                 ViewColumn: { One: 1, Beside: -2 },
                 commands: { executeCommand: async () => undefined, registerCommand: () => new Disposable() },
                 env: { appName: 'VS Code Test', remoteName: undefined, shell: '/bin/bash' },
+                l10n: {
+                  t: (message, args) => typeof args === 'object' && args
+                    ? Object.entries(args).reduce(
+                        (value, [key, arg]) => value.split('{' + key + '}').join(String(arg)),
+                        message
+                      )
+                    : message
+                },
                 window: {
                   showInformationMessage: async () => undefined,
                   showWarningMessage: async () => undefined,
@@ -318,6 +326,55 @@ try {
   assert.strictEqual(manuallyCreatedMember.groupId, 'group-parent');
   assert.ok(rectContainsRectForTest(rectForTestGroup(expandedCreationTarget), rectForTestNode(manuallyCreatedMember)));
   assertMemberInsetsForTest(expandedCreationTarget, [manuallyCreatedMember]);
+
+  const createdAcrossGroupBoundary = createNextState(
+    state({
+      nodes: [note('cross-group-blocker', { x: 130, y: 156 }, { groupId: 'another-group' })],
+      groups: [group('group-parent', { x: 120, y: 120 }, { width: 360, height: 240 })]
+    }),
+    'note',
+    'codex',
+    'default',
+    undefined,
+    { x: 130, y: 156 },
+    'group-parent'
+  );
+  const crossGroupCreatedNode = createdAcrossGroupBoundary.nodes.at(-1);
+  const crossGroupBlocker = createdAcrossGroupBoundary.nodes.find((candidate) => candidate.id === 'cross-group-blocker');
+  assert.ok(
+    !rectsOverlapForTest(rectForTestNode(crossGroupCreatedNode), rectForTestNode(crossGroupBlocker)),
+    'Generated nodes must avoid existing nodes even when their group ids differ.'
+  );
+
+  let forkLayerState = state({
+    nodes: [agent('fork-layer-source', { x: 200, y: 200 }, { size: { width: 560, height: 430 } })]
+  });
+  for (let index = 0; index < 3; index += 1) {
+    forkLayerState = createNextState(
+      forkLayerState,
+      'agent',
+      'codex',
+      'default',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { kind: 'fork-layer', sourceNodeId: 'fork-layer-source', direction: 'up' }
+    );
+  }
+  const forkLayerChildren = forkLayerState.nodes.filter((candidate) => candidate.id !== 'fork-layer-source');
+  assert.strictEqual(new Set(forkLayerChildren.map((candidate) => candidate.position.y)).size, 1);
+  for (let leftIndex = 0; leftIndex < forkLayerChildren.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < forkLayerChildren.length; rightIndex += 1) {
+      assert.ok(
+        !rectsOverlapForTest(
+          rectForTestNode(forkLayerChildren[leftIndex]),
+          rectForTestNode(forkLayerChildren[rightIndex])
+        ),
+        'Fork children created from one source should share a layer without overlapping.'
+      );
+    }
+  }
 
   const forwardParentTemplateApply = applyCanvasTemplateToState(
     state(),
@@ -903,6 +960,22 @@ try {
   assert.strictEqual(branchEdge.sourceAnchor, 'right');
   assert.strictEqual(branchEdge.targetAnchor, 'left');
   assert.strictEqual(branchEdge.label, 'fork');
+  const upwardBranchEdge = createBranchAgentUserEdge(
+    branchEdgeState,
+    branchEdgeState.nodes.find((candidate) => candidate.id === 'fork-source-agent'),
+    branchEdgeState.nodes.find((candidate) => candidate.id === 'fork-target-agent'),
+    'up'
+  ).edges.at(-1);
+  assert.strictEqual(upwardBranchEdge.sourceAnchor, 'top');
+  assert.strictEqual(upwardBranchEdge.targetAnchor, 'bottom');
+  const downwardBranchEdge = createBranchAgentUserEdge(
+    branchEdgeState,
+    branchEdgeState.nodes.find((candidate) => candidate.id === 'fork-source-agent'),
+    branchEdgeState.nodes.find((candidate) => candidate.id === 'fork-target-agent'),
+    'down'
+  ).edges.at(-1);
+  assert.strictEqual(downwardBranchEdge.sourceAnchor, 'bottom');
+  assert.strictEqual(downwardBranchEdge.targetAnchor, 'top');
   const workspaceRootEdgeState = {
     ...workspaceRootState,
     nodes: [
