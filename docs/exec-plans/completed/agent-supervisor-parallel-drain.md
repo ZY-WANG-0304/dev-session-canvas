@@ -19,6 +19,7 @@
 - [x] (2026-07-13 19:20+08:00) 同步当前架构、设计、产品规格与验证证据；既有测试基础设施条目已覆盖本轮无关 locale drift，不重复登记产品技术债。
 - [x] (2026-07-13 19:30+08:00) 完成本计划并移入 `docs/exec-plans/completed/`。
 - [x] (2026-07-13 20:40+08:00) 处理 PR #258 review：按 storage generation 退役支持 stream capability 的旧路径 client，并在会话完成后清理兼容提示；补真实升级与 Agent/Terminal Webview 回归。
+- [x] (2026-07-13 22:55+08:00) 处理 PR #258 第二轮 review：移除会被 Webview fit 覆盖的瞬时尺寸断言，改用节点 resize 后的稳定 Webview cols/rows 与 Supervisor 对账，并连续两次跑完整升级 smoke。
 
 ## 意外与发现
 
@@ -38,6 +39,8 @@
   证据：PR #258 review 从 `retireLegacyRuntimeSupervisorClientIfUnused()` 与 Supervisor `connections.size === 0` 的退出条件直接证明；升级 smoke 现同时启动“无 stream capability 的历史进程”和“支持 stream capability 的旧 storage 进程”，并验证二者排空后都退出。
 - 观察：完成态 metadata 若保留 `legacy-interactive`，Webview 会在已经没有 PTY 的 history/stopped overlay 上继续建议用户 resize。
   证据：`applyCompletedRuntimeSupervisorSnapshot()` 原先只清 runtime identity，未清 `terminalProjectionMode`；Agent/Terminal Webview 回归现验证 `liveSession: false` 时兼容提示不存在。
+- 观察：直接向 Host 注入 `resizeExecutionSession(41x11)` 只能证明一个瞬时请求；真实 Webview 的后续 fit 会稳定收敛到 `41x12`，把中间值硬编码为最终值会让 smoke 在退役验收前稳定超时。
+  证据：PR #258 第二轮 review 连续两次观察到 Agent marker 已进入旧 PTY、最终尺寸为 `41x12`，但旧 predicate 仍等待 `41x11`。修复后的测试先通过 `webview/resizeNode` 改变节点尺寸，再从真实 Webview probe 读取最终 cols/rows，并等待旧 Supervisor 与之相等。
 
 ## 决策记录
 
@@ -59,6 +62,9 @@
 - 决策：completed / history 状态清除 `terminalProjectionMode`，Webview 仍以 `liveSession` 作为兼容提示的防御条件。
   理由：兼容提示提供的是对真实 PTY 的 resize 重绘操作；PTY 不再存活时继续显示会给出无效建议，双层约束还能兼容已经持久化的陈旧 metadata。
   日期/作者：2026-07-13 / Codex（PR #258 review follow-up）
+- 决策：升级 smoke 的 resize 验收以 Webview 最终 fit geometry 为事实源，不断言 Host 注入的瞬时尺寸。
+  理由：用户实际通过拖动节点触发的是“节点尺寸持久化 -> Webview fit -> resizeExecutionSession -> Supervisor PTY resize”链路；只有最终 Webview 与 Supervisor geometry 一致才能稳定证明这条兜底操作成立。
+  日期/作者：2026-07-13 / Codex（PR #258 第二轮 review follow-up）
 
 ## 结果与复盘
 
@@ -69,6 +75,8 @@
 真实 Linux 升级 smoke 使用 `origin/main@5355e6a` 构建的旧 Supervisor 证明：旧 Agent / Terminal 继续接收 Webview 与 Host 输入并响应 resize；旧会话尚未排空时，新 Terminal 已由不同 PID、storage 与 socket 的当前 Supervisor 启动；新 session 不进入旧 registry；旧进程退出后当前会话仍可用。路径测试另外证明 Windows named pipe 和 systemd unit 身份随 generation 隔离，但真实旧二进制迁移尚未形成 macOS / Windows 自动化矩阵，因此设计验证状态继续保持“验证中”。
 
 PR #258 review follow-up 又补齐两个边界：旧 storage 中即使运行的是支持 `terminalSessionStreamV1` 的 Supervisor，也会在最后一个会话结束且 RPC settled 后释放 client 并自然退出；旧会话完成或降级为 history 后会清除 live projection mode，Agent / Terminal 均不再显示已经无法执行的 resize 重绘提示。真实升级 smoke 与 4 个定向 Webview 用例已经覆盖这两条行为。
+
+第二轮 review 发现原升级 smoke 把 `41x11` Host 注入值误当作 Webview 最终 geometry，导致 reviewer 环境连续两次在后半段退役验收前失败。测试现改为改变真实节点尺寸、等待 Webview fit 后读取 probe geometry，再与旧 Supervisor snapshot 对账；修复后原样完整 smoke 连跑两次均通过，两次都执行到支持 stream capability 的旧 storage client 退役、两个旧 PID 退出和 current-generation 会话继续输入输出。
 
 本轮没有新增产品技术债。`runtime-supervisor-protocol` 的一次时序失败与 `smoke-storage-slot` 的 locale fixture 失败均被如实保留；后者由现有测试基础设施技术债覆盖，且因为在目标场景完成前失败，不能算作 storage-slot 验证通过。
 
@@ -106,7 +114,7 @@ Runtime Supervisor 是独立于 VS Code Extension Host 的进程，持有 Agent 
     npm run test:ui-copy-localization
     npm run typecheck
     npm run build
-    DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=legacy-supervisor-upgrade npm run test:smoke
+    DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=legacy-supervisor-upgrade npm run test:smoke  # 稳定 resize 证据修复后连续 2 次通过
     git diff --check
 
 如果完整 smoke wrapper 不支持单场景参数，则运行仓库现有 legacy upgrade smoke 入口，或运行 `npm run test:smoke` 完整集合。每次测试失败都先保留失败阶段和关键诊断，再按同一命令重试；不通过删除用户数据或回退无关改动规避失败。
@@ -160,4 +168,4 @@ generation path 是纯确定性函数，重复升级或 Reload Window 不会生�
 
 不新增外部依赖。在 `runtimeSupervisorPaths.ts` 中必须导出稳定 generation 常量与 base path helper。在 `protocol.ts` 中 `RuntimeTerminalProjectionMode` 必须表达 `terminal-stream-v1 | legacy-interactive`；状态读取必须继续接受历史字符串 `legacy-read-only` 并归一化。`CanvasPanelManager` 的现有 `RuntimeSupervisorClient` map 和 `runtimeSessionBindings` 继续作为多实例路由，不引入第二套 session registry 或全局 broker。
 
-计划修订记录：2026-07-13 创建计划，记录用户确认的并行 drain 与旧会话降级交互策略，并把现有多 client 基础作为实现起点。2026-07-13 完成实现后补入真实旧二进制、路径、Webview、协议与相邻 smoke 证据，明确协议测试的单次时序波动、storage-slot locale fixture 阻断和跨平台真实迁移矩阵边界，并将计划归档。2026-07-13 根据 PR #258 review 补充“capability 不等于 generation”的退役边界、完成态提示清理及对应真实升级/Webview 证据。
+计划修订记录：2026-07-13 创建计划，记录用户确认的并行 drain 与旧会话降级交互策略，并把现有多 client 基础作为实现起点。2026-07-13 完成实现后补入真实旧二进制、路径、Webview、协议与相邻 smoke 证据，明确协议测试的单次时序波动、storage-slot locale fixture 阻断和跨平台真实迁移矩阵边界，并将计划归档。2026-07-13 根据 PR #258 review 补充“capability 不等于 generation”的退役边界、完成态提示清理及对应真实升级/Webview 证据；第二轮 review 后改用稳定 Webview geometry 对账替代瞬时 Host resize 值，并记录完整 smoke 连续两次通过。

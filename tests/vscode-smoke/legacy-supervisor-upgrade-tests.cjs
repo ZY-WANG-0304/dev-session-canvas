@@ -187,6 +187,10 @@ async function run() {
     });
     assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_AGENT_NODE_ID), LEGACY_AGENT_MARKER);
     assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID), LEGACY_TERMINAL_MARKER);
+    const legacyAgentProbeBeforeResize = findProbeNodeById(probe, LEGACY_AGENT_NODE_ID);
+    const legacyTerminalProbeBeforeResize = findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID);
+    assert.ok(legacyAgentProbeBeforeResize.terminalCols && legacyAgentProbeBeforeResize.terminalRows);
+    assert.ok(legacyTerminalProbeBeforeResize.terminalCols && legacyTerminalProbeBeforeResize.terminalRows);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction({
@@ -216,43 +220,81 @@ async function run() {
         data: `printf '${LEGACY_HOST_TERMINAL_INPUT_MARKER}\\n'\r`
       }
     });
+    const legacyAgentNodeBeforeResize = findNodeById(snapshot, LEGACY_AGENT_NODE_ID);
+    const legacyTerminalNodeBeforeResize = findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID);
+    const resizedLegacyAgentNodeSize = { width: 680, height: 520 };
+    const resizedLegacyTerminalNodeSize = { width: 700, height: 540 };
     await dispatchWebviewMessage({
-      type: 'webview/resizeExecutionSession',
+      type: 'webview/resizeNode',
       payload: {
         nodeId: LEGACY_AGENT_NODE_ID,
-        kind: 'agent',
-        cols: 41,
-        rows: 11
+        position: legacyAgentNodeBeforeResize.position,
+        size: resizedLegacyAgentNodeSize
       }
     });
     await dispatchWebviewMessage({
-      type: 'webview/resizeExecutionSession',
+      type: 'webview/resizeNode',
       payload: {
         nodeId: LEGACY_TERMINAL_NODE_ID,
-        kind: 'terminal',
-        cols: 43,
-        rows: 12
+        position: legacyTerminalNodeBeforeResize.position,
+        size: resizedLegacyTerminalNodeSize
       }
     });
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const agentNode = findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID);
+      const terminalNode = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID);
+      return Boolean(
+        agentNode?.size?.width === resizedLegacyAgentNodeSize.width &&
+          agentNode.size.height === resizedLegacyAgentNodeSize.height &&
+          terminalNode?.size?.width === resizedLegacyTerminalNodeSize.width &&
+          terminalNode.size.height === resizedLegacyTerminalNodeSize.height
+      );
+    }, 20000);
+    const resizedLegacyProbe = await waitForWebviewProbe((currentProbe) => {
+      const agentNode = findOptionalProbeNodeById(currentProbe, LEGACY_AGENT_NODE_ID);
+      const terminalNode = findOptionalProbeNodeById(currentProbe, LEGACY_TERMINAL_NODE_ID);
+      return Boolean(
+        agentNode?.terminalCols &&
+          agentNode.terminalRows &&
+          terminalNode?.terminalCols &&
+          terminalNode.terminalRows &&
+          (agentNode.terminalCols !== legacyAgentProbeBeforeResize.terminalCols ||
+            agentNode.terminalRows !== legacyAgentProbeBeforeResize.terminalRows) &&
+          (terminalNode.terminalCols !== legacyTerminalProbeBeforeResize.terminalCols ||
+            terminalNode.terminalRows !== legacyTerminalProbeBeforeResize.terminalRows)
+      );
+    });
+    const resizedLegacyAgentProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_AGENT_NODE_ID);
+    const resizedLegacyTerminalProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_TERMINAL_NODE_ID);
     const agentAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
       supervisorPaths,
       legacyAgentSessionId,
       (session) =>
-        session.output?.includes(LEGACY_HOST_AGENT_INPUT_MARKER) && session.cols === 41 && session.rows === 11,
+        session.output?.includes(LEGACY_HOST_AGENT_INPUT_MARKER) &&
+        session.cols === resizedLegacyAgentProbe.terminalCols &&
+        session.rows === resizedLegacyAgentProbe.terminalRows,
       20000
     );
     const terminalAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
       supervisorPaths,
       legacyTerminalSessionId,
       (session) =>
-        session.output?.includes(LEGACY_HOST_TERMINAL_INPUT_MARKER) && session.cols === 43 && session.rows === 12,
+        session.output?.includes(LEGACY_HOST_TERMINAL_INPUT_MARKER) &&
+        session.cols === resizedLegacyTerminalProbe.terminalCols &&
+        session.rows === resizedLegacyTerminalProbe.terminalRows,
       20000
     );
     assert.ok(agentAfterCompatibilityOperations.output.includes(LEGACY_HOST_AGENT_INPUT_MARKER));
     assert.ok(terminalAfterCompatibilityOperations.output.includes(LEGACY_WEBVIEW_INPUT_MARKER));
     assert.ok(terminalAfterCompatibilityOperations.output.includes(LEGACY_HOST_TERMINAL_INPUT_MARKER));
-    assert.deepStrictEqual([agentAfterCompatibilityOperations.cols, agentAfterCompatibilityOperations.rows], [41, 11]);
-    assert.deepStrictEqual([terminalAfterCompatibilityOperations.cols, terminalAfterCompatibilityOperations.rows], [43, 12]);
+    assert.deepStrictEqual(
+      [agentAfterCompatibilityOperations.cols, agentAfterCompatibilityOperations.rows],
+      [resizedLegacyAgentProbe.terminalCols, resizedLegacyAgentProbe.terminalRows]
+    );
+    assert.deepStrictEqual(
+      [terminalAfterCompatibilityOperations.cols, terminalAfterCompatibilityOperations.rows],
+      [resizedLegacyTerminalProbe.terminalCols, resizedLegacyTerminalProbe.terminalRows]
+    );
 
     const nodeIdsBeforeCurrentCreate = new Set(snapshot.state.nodes.map((node) => node.id));
     await dispatchWebviewMessage({
