@@ -9736,10 +9736,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     expectedClient?: RuntimeSupervisorClient
   ): void {
     const runtimeStoragePath = this.getRuntimeStoragePathFromBackend(backend);
-    const hasAttachedLegacySession = [...this.agentSessions.values(), ...this.terminalSessions.values()].some(
+    const currentGenerationRuntimeStoragePath = this.resolveRuntimeStoragePath(
+      this.getRuntimeHostBaseStoragePath()
+    );
+    if (runtimeStoragePath === currentGenerationRuntimeStoragePath) {
+      return;
+    }
+
+    const hasAttachedPreviousGenerationSession = [
+      ...this.agentSessions.values(),
+      ...this.terminalSessions.values()
+    ].some(
       (session) =>
         session.owner === 'supervisor' &&
-        session.terminalProjectionMode === 'legacy-interactive' &&
         session.runtimeBackend === backend.kind &&
         this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
     );
@@ -9756,7 +9765,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.resolveRuntimeStoragePath(this.getPersistedRuntimeStoragePath(metadata)) === runtimeStoragePath
       );
     });
-    if (hasAttachedLegacySession || hasPendingKnownSession) {
+    if (hasAttachedPreviousGenerationSession || hasPendingKnownSession) {
       return;
     }
 
@@ -9764,7 +9773,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const client = this.runtimeSupervisorClients.get(clientKey);
     if (
       !client ||
-      client.supportsTerminalSessionStream() ||
       client.hasPendingRequests() ||
       (expectedClient && client !== expectedClient)
     ) {
@@ -11144,6 +11152,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
         persistenceMode: 'snapshot-only',
         attachmentState: 'history-restored',
+        terminalProjectionMode: undefined,
         runtimeBackend: undefined,
         runtimeGuarantee: undefined,
         runtimeStoragePath: undefined,
@@ -11276,6 +11285,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
         persistenceMode: 'live-runtime',
         attachmentState: 'history-restored',
+        terminalProjectionMode: undefined,
         runtimeBackend: snapshot?.runtimeBackend ?? currentMetadata.runtimeBackend,
         runtimeGuarantee: snapshot?.runtimeGuarantee ?? currentMetadata.runtimeGuarantee,
         runtimeStoragePath: currentMetadata.runtimeStoragePath,

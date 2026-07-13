@@ -14781,6 +14781,26 @@ for (const executionKind of ['agent', 'terminal']) {
     });
   });
 
+  test(`${executionKind} hides the old runtime compatibility notice after the session ends`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const state = createLiveExecutionNodeState(executionKind);
+    const nodeState = state.nodes[0];
+    const metadata = nodeState.metadata[executionKind];
+    metadata.terminalProjectionMode = 'legacy-interactive';
+    metadata.liveSession = false;
+    metadata.persistenceMode = 'snapshot-only';
+    metadata.attachmentState = 'history-restored';
+    metadata.lifecycle = executionKind === 'agent' ? 'completed' : 'closed';
+    nodeState.status = metadata.lifecycle;
+
+    await openHarness(page);
+    await bootstrap(page, state);
+
+    const node = nodeById(page, nodeId);
+    await expect(node.locator('.terminal-overlay')).toBeVisible();
+    await expect(node.locator('.terminal-legacy-compatibility-notice')).toHaveCount(0);
+  });
+
   test(`${executionKind} requests only one attach snapshot for an already-live mounted node`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
 

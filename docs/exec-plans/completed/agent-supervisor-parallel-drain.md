@@ -18,6 +18,7 @@
 - [x] (2026-07-13 18:45+08:00) 补齐路径、Host 输出、Webview 与协议回归，并完成定向与相邻 smoke 验证。
 - [x] (2026-07-13 19:20+08:00) 同步当前架构、设计、产品规格与验证证据；既有测试基础设施条目已覆盖本轮无关 locale drift，不重复登记产品技术债。
 - [x] (2026-07-13 19:30+08:00) 完成本计划并移入 `docs/exec-plans/completed/`。
+- [x] (2026-07-13 20:40+08:00) 处理 PR #258 review：按 storage generation 退役支持 stream capability 的旧路径 client，并在会话完成后清理兼容提示；补真实升级与 Agent/Terminal Webview 回归。
 
 ## 意外与发现
 
@@ -33,6 +34,10 @@
   证据：第二次运行完整通过并输出 10-Agent capacity 结果；本计划不把单次通过改写成稳定性结论。
 - 观察：`npm run test:smoke-storage-slot` 在 locale 文案断言处提前失败，未执行完 storage-slot 场景。
   证据：测试期待中文 `/root-local live runtime 缺少 runtimeStoragePath/`，真实 Host 返回英文 `Root-local live runtime is missing runtimeStoragePath, so history results were restored to avoid connecting to the wrong supervisor.`；这属于 `docs/exec-plans/tech-debt-tracker.md` 已登记的一键测试与 locale fixture 漂移，不在本功能内顺手改写。
+- 观察：已发布 `0.24.0` 的 Supervisor 已支持 `terminalSessionStreamV1`，但其会话仍位于旧 extension storage；如果用 capability 保护旧 client 不释放，最后一个会话结束后 Host 连接会持续阻止旧进程 idle shutdown。
+  证据：PR #258 review 从 `retireLegacyRuntimeSupervisorClientIfUnused()` 与 Supervisor `connections.size === 0` 的退出条件直接证明；升级 smoke 现同时启动“无 stream capability 的历史进程”和“支持 stream capability 的旧 storage 进程”，并验证二者排空后都退出。
+- 观察：完成态 metadata 若保留 `legacy-interactive`，Webview 会在已经没有 PTY 的 history/stopped overlay 上继续建议用户 resize。
+  证据：`applyCompletedRuntimeSupervisorSnapshot()` 原先只清 runtime identity，未清 `terminalProjectionMode`；Agent/Terminal Webview 回归现验证 `liveSession: false` 时兼容提示不存在。
 
 ## 决策记录
 
@@ -48,6 +53,12 @@
 - 决策：旧值 `legacy-read-only` 在状态归一化时升级为 `legacy-interactive`。
   理由：已经安装过 `0.24.0` 的 workspace 可能持久化旧枚举值；修复版本必须恢复这些节点的交互能力，而不是只对新 attach 生效。
   日期/作者：2026-07-13 / Codex
+- 决策：用 storage generation 判断 client 是否需要排空退役，capability 只决定单个会话的投影协议。
+  理由：协议能力和进程代际不是同一维度；`0.24.0` 已有新 capability，但仍使用修复前的旧 storage namespace。
+  日期/作者：2026-07-13 / Codex（PR #258 review follow-up）
+- 决策：completed / history 状态清除 `terminalProjectionMode`，Webview 仍以 `liveSession` 作为兼容提示的防御条件。
+  理由：兼容提示提供的是对真实 PTY 的 resize 重绘操作；PTY 不再存活时继续显示会给出无效建议，双层约束还能兼容已经持久化的陈旧 metadata。
+  日期/作者：2026-07-13 / Codex（PR #258 review follow-up）
 
 ## 结果与复盘
 
@@ -56,6 +67,8 @@
 旧会话现在归一化为 `legacy-interactive`。Host 与 Webview 不再拦截 input / resize，旧进程的后续 output 继续投影到 xterm；兼容提示不遮挡终端。初始 raw tail 仍明确是不完整、非权威的兼容投影，实现没有为它伪造 checkpoint、journal、authority 或 applied-revision ACK。已经由 `0.24.0` 持久化为 `legacy-read-only` 的节点也会在读取时升级为新模式。
 
 真实 Linux 升级 smoke 使用 `origin/main@5355e6a` 构建的旧 Supervisor 证明：旧 Agent / Terminal 继续接收 Webview 与 Host 输入并响应 resize；旧会话尚未排空时，新 Terminal 已由不同 PID、storage 与 socket 的当前 Supervisor 启动；新 session 不进入旧 registry；旧进程退出后当前会话仍可用。路径测试另外证明 Windows named pipe 和 systemd unit 身份随 generation 隔离，但真实旧二进制迁移尚未形成 macOS / Windows 自动化矩阵，因此设计验证状态继续保持“验证中”。
+
+PR #258 review follow-up 又补齐两个边界：旧 storage 中即使运行的是支持 `terminalSessionStreamV1` 的 Supervisor，也会在最后一个会话结束且 RPC settled 后释放 client 并自然退出；旧会话完成或降级为 history 后会清除 live projection mode，Agent / Terminal 均不再显示已经无法执行的 resize 重绘提示。真实升级 smoke 与 4 个定向 Webview 用例已经覆盖这两条行为。
 
 本轮没有新增产品技术债。`runtime-supervisor-protocol` 的一次时序失败与 `smoke-storage-slot` 的 locale fixture 失败均被如实保留；后者由现有测试基础设施技术债覆盖，且因为在目标场景完成前失败，不能算作 storage-slot 验证通过。
 
@@ -132,7 +145,7 @@ generation path 是纯确定性函数，重复升级或 Reload Window 不会生�
     npm run test:serialized-terminal-state-tracker
     npm run typecheck
     npm run build
-    npm run test:webview -- --grep "keeps an old Supervisor session interactive"  # 2 passed
+    npm run test:webview -- --grep "compatibility notice"  # 4 passed
     DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=legacy-supervisor-upgrade npm run test:smoke
     DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=real-reopen,two-window-shared-runtime,systemd-user-real-reopen,systemd-fallback-real-reopen npm run test:smoke
     npm run test:runtime-supervisor-protocol  # 首次时序断言失败，未改代码复跑通过
@@ -147,4 +160,4 @@ generation path 是纯确定性函数，重复升级或 Reload Window 不会生�
 
 不新增外部依赖。在 `runtimeSupervisorPaths.ts` 中必须导出稳定 generation 常量与 base path helper。在 `protocol.ts` 中 `RuntimeTerminalProjectionMode` 必须表达 `terminal-stream-v1 | legacy-interactive`；状态读取必须继续接受历史字符串 `legacy-read-only` 并归一化。`CanvasPanelManager` 的现有 `RuntimeSupervisorClient` map 和 `runtimeSessionBindings` 继续作为多实例路由，不引入第二套 session registry 或全局 broker。
 
-计划修订记录：2026-07-13 创建计划，记录用户确认的并行 drain 与旧会话降级交互策略，并把现有多 client 基础作为实现起点。2026-07-13 完成实现后补入真实旧二进制、路径、Webview、协议与相邻 smoke 证据，明确协议测试的单次时序波动、storage-slot locale fixture 阻断和跨平台真实迁移矩阵边界，并将计划归档。
+计划修订记录：2026-07-13 创建计划，记录用户确认的并行 drain 与旧会话降级交互策略，并把现有多 client 基础作为实现起点。2026-07-13 完成实现后补入真实旧二进制、路径、Webview、协议与相邻 smoke 证据，明确协议测试的单次时序波动、storage-slot locale fixture 阻断和跨平台真实迁移矩阵边界，并将计划归档。2026-07-13 根据 PR #258 review 补充“capability 不等于 generation”的退役边界、完成态提示清理及对应真实升级/Webview 证据。
