@@ -1563,6 +1563,36 @@ async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, temp
     await closeRuntimeSupervisorForTest(registryCacheRestart);
   }
 
+  const registryBeforeAuthorityMismatch = JSON.parse(await readFile(registryPath, 'utf8'));
+  const authorityMismatchRegistry = JSON.parse(JSON.stringify(registryBeforeAuthorityMismatch));
+  const authorityMismatchSession = authorityMismatchRegistry.sessions.find(
+    (candidate) => candidate.sessionId === 'immediate-exit-terminal'
+  );
+  assert.ok(authorityMismatchSession?.terminalAuthorityId);
+  authorityMismatchSession.terminalAuthorityId = `${authorityMismatchSession.terminalAuthorityId}-registry-mismatch`;
+  await writeFile(registryPath, JSON.stringify(authorityMismatchRegistry, null, 2), 'utf8');
+
+  const authorityMismatchRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+  try {
+    const failedClosedSnapshot = await sendRuntimeSupervisorRequest(
+      authorityMismatchRestart.socket,
+      authorityMismatchRestart.messages,
+      'attachSession',
+      {
+        sessionId: 'immediate-exit-terminal',
+        deferSubscription: true
+      }
+    );
+    assert.equal(failedClosedSnapshot.terminalStream, undefined);
+    assert.equal(failedClosedSnapshot.terminalAuthorityId, undefined);
+    assert.equal(failedClosedSnapshot.output, '');
+    assert.doesNotMatch(failedClosedSnapshot.serializedTerminalState?.data ?? '', new RegExp(marker, 'u'));
+    assert.equal(failedClosedSnapshot.lastExitMessageDescriptor?.id, 'terminalJournalPersistenceFailed');
+  } finally {
+    await closeRuntimeSupervisorForTest(authorityMismatchRestart);
+    await writeFile(registryPath, JSON.stringify(registryBeforeAuthorityMismatch, null, 2), 'utf8');
+  }
+
   const journalRoot = path.join(storageDir, 'terminal-journals');
   const journalDirectories = await readdir(journalRoot);
   let journalSegmentPath;

@@ -1790,6 +1790,7 @@ class RuntimeSupervisorServer {
         terminalJournal = await TerminalSessionJournal.open({
           storageDir: this.paths.storageDir,
           sessionId: snapshot.sessionId,
+          authorityId: recoveredAuthorityId,
           checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
         });
         recoveredAuthorityId = terminalJournal.getAuthorityId();
