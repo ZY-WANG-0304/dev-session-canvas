@@ -7,6 +7,10 @@ const [supervisorSource, managerSource, protocolSource, webviewSource] = await P
   readFile('extensions/vscode/dev-session-canvas/src/common/protocol.ts', 'utf8'),
   readFile('extensions/vscode/dev-session-canvas/src/webview/main.tsx', 'utf8')
 ]);
+const previousGenerationClientRetirementSource = managerSource.match(
+  /private retireLegacyRuntimeSupervisorClientIfUnused\([\s\S]*?\n  \}\n\n  private async getRuntimeSupervisorClientForBackend/u
+)?.[0];
+assert.ok(previousGenerationClientRetirementSource, '应能定位旧 generation Supervisor client 退役实现。');
 
 assert.match(
   supervisorSource,
@@ -30,7 +34,7 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /terminalProjectionMode === 'legacy-read-only' \|\|[\s\S]*?canPreserveTerminalStream \|\|[\s\S]*?freshSnapshotState === undefined && session\.terminalStateTrusted/u,
+  /terminalProjectionMode === 'legacy-interactive' \|\|[\s\S]*?canPreserveTerminalStream \|\|[\s\S]*?freshSnapshotState === undefined && session\.terminalStateTrusted/u,
   '同一 authority 的 sessionState 必须保留现有 Host live queue，不能因 fresh checkpoint 到达而替换并丢弃 pending output。'
 );
 assert.doesNotMatch(
@@ -65,7 +69,7 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /supportsTerminalSessionStream\(\)[\s\S]*?deferSubscription: true[\s\S]*?terminalProjectionMode: terminalStreamSupported \? 'terminal-stream-v1' : 'legacy-read-only'/u,
+  /supportsTerminalSessionStream\(\)[\s\S]*?deferSubscription: true[\s\S]*?terminalProjectionMode: terminalStreamSupported \? 'terminal-stream-v1' : 'legacy-interactive'/u,
   '旧 Supervisor attach 必须按 capability 分流，不能发送未知的 deferred stream 协议。'
 );
 assert.match(
@@ -75,13 +79,18 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /legacySupervisorCreateRejected[\s\S]*?retireLegacyRuntimeSupervisorClientIfUnused/u,
-  '旧 Supervisor 必须拒绝创建新 session，并在没有旧 live session 时进入安全退役。'
+  /getRuntimeHostBaseStoragePath\(runtimeStoragePath\?: string\)[\s\S]*?resolveCurrentRuntimeSupervisorBaseStoragePath\(this\.getExtensionStoragePath\(\)\)/u,
+  '新 session 必须默认使用 current-generation storage，而显式旧 runtimeStoragePath 继续路由旧 Supervisor。'
 );
 assert.match(
-  managerSource,
-  /retireLegacyRuntimeSupervisorClientIfUnused[\s\S]*?client\.hasPendingRequests\(\)/u,
-  '旧 Supervisor client 有未完成 RPC 时不得退役，避免终态事件抢先中断 stop/delete 响应。'
+  previousGenerationClientRetirementSource,
+  /currentGenerationRuntimeStoragePath[\s\S]*?runtimeStoragePath === currentGenerationRuntimeStoragePath[\s\S]*?hasAttachedPreviousGenerationSession[\s\S]*?client\.hasPendingRequests\(\)/u,
+  '退役必须按 storage generation 判定，并等待旧路径会话与 RPC 全部结束。'
+);
+assert.doesNotMatch(
+  previousGenerationClientRetirementSource,
+  /supportsTerminalSessionStream\(\)/u,
+  '旧 storage client 即使支持 terminal stream capability，也必须在最后一个会话结束后释放连接。'
 );
 assert.match(
   managerSource,
@@ -105,6 +114,11 @@ assert.match(
 );
 assert.match(
   managerSource,
+  /private async applyCompletedRuntimeSupervisorSnapshot\([\s\S]*?attachmentState: 'history-restored',[\s\S]*?terminalProjectionMode: undefined/u,
+  'Supervisor session 完成后必须清除 live projection mode，避免历史节点继续显示交互兼容提示。'
+);
+assert.match(
+  managerSource,
   /STORAGE_KEYS\.canvasState,[\s\S]*?stripExecutionTerminalRecoveryPayloadsFromCanvasState\(normalizedWorkspaceState\)/u,
   '大体积 terminal recovery payload 只写磁盘快照，不得复制进 workspaceState。'
 );
@@ -115,8 +129,13 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /const legacyReadOnly = session\.terminalProjectionMode === 'legacy-read-only';[\s\S]*?if \(!legacyReadOnly\) \{[\s\S]*?this\.queueExecutionOutput/u,
-  '旧 Supervisor raw output 只能更新只读 tail，不能进入可交互 xterm output 队列。'
+  /postState: session\.terminalProjectionMode === 'legacy-interactive'[\s\S]*?this\.queueExecutionOutput\(kind, nodeId, chunk\)/u,
+  '旧 Supervisor output 必须进入兼容 xterm 队列，同时持续同步降级状态摘要。'
+);
+assert.doesNotMatch(
+  managerSource,
+  /reason: 'legacy-supervisor-read-only'|terminalProjectionMode === 'legacy-read-only'\) \{\s*return;/u,
+  '旧 Supervisor 的 input 与 resize 不得再被 Host 预先拦截。'
 );
 assert.match(
   managerSource,

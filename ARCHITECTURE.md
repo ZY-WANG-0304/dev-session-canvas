@@ -17,7 +17,7 @@
 
 - `Extension Host`：workspace 绑定画布状态与节点到会话映射的权威位置，负责命令、Webview 生命周期、workspace trust、持久化以及 Agent / Terminal 编排。
 - `Webview`：负责画布渲染、节点交互、内嵌终端前端和局部 UI 状态。
-- `Runtime Supervisor`：仅在 `live-runtime` 持久化模式下参与；负责在 VSCode 生命周期之外托管执行会话，并作为该会话 terminal event、revision、checkpoint 与 journal 的唯一运行时权威。
+- `Runtime Supervisor`：仅在 `live-runtime` 持久化模式下参与；负责在 VSCode 生命周期之外托管执行会话，并作为该会话 terminal event、revision、checkpoint 与 journal 的唯一运行时权威。正常运行时新会话使用当前协议代 Supervisor；扩展升级的退役窗口允许旧、新 Supervisor 按独立 storage / control endpoint 并行存在，每个会话始终只绑定其中一个进程。
 
 主路径可以概括为：
 
@@ -37,7 +37,7 @@
 ```text
 CanvasPanelManager
   -> executionSessionBridge / agentCliResolver
-  -> runtimeSupervisorClient（可选）
+  -> runtimeSupervisorClient（可选；升级退役窗口可按 runtimeStoragePath 路由多个实例）
   -> runtimeSupervisorMain
   -> supervisor 按 authority + revision 持久化 output / resize / scrollback journal
   -> checkpoint + 连续 journal / live event 回流到 Host
@@ -200,7 +200,7 @@ docs/                           根目录正式文档知识库
 - `CanvasPanelManager` 是当前 workspace 绑定画布状态的唯一权威入口；Webview 不应成为节点图和执行会话映射的唯一来源。
 - `editor` 与 `panel` 只是同一逻辑画布的两种宿主承载面，而不是两套独立状态。
 - `executionSessionBridge.ts` 是 `node-pty` 接入边界；其余层不应直接加载或控制 `node-pty`。
-- `runtimeSupervisorClient.ts` 只通过协议与 socket 和 supervisor 通信，不应假设与 supervisor 共享内存或共享对象实例。
+- `runtimeSupervisorClient.ts` 只通过协议与 socket 和 supervisor 通信，不应假设与 supervisor 共享内存或共享对象实例；`CanvasPanelManager` 必须按 backend 与 runtime storage identity 管理 client，不能把一个 workspace 强制收敛为永远只有一个 Supervisor 进程。
 - trust、配置和恢复模式判断必须在宿主侧生效，不能只靠 Webview 隐藏按钮。
 
 ### `extensions/vscode/dev-session-canvas/src/sidebar/`
@@ -344,7 +344,8 @@ docs/                           根目录正式文档知识库
 - supervisor 不依赖 `vscode` 或 Webview。
 - supervisor 只知道执行会话和协议，不知道 React Flow 节点、侧栏结构或具体 UI 细节。
 - `live-runtime` terminal revision 只能由 supervisor 在实际记录事件时推进；Host/Webview 只能验证和投影。
-- 缺少 `terminalSessionStreamV1` capability 的旧 Supervisor 只能继续承载既有只读会话；Host 不向它发送新协议 RPC，不创建新会话，并在最后一个已知旧会话结束或最后一条旧 attach 引用失效后释放 client 等待 idle shutdown。
+- 缺少 `terminalSessionStreamV1` capability 的旧 Supervisor 只继续承载既有 `legacy-interactive` 会话；Host 允许这些真实旧 PTY 继续 output、input、resize、stop 与 delete，但不向旧进程发送新协议 RPC，也不把 raw tail 冒充完整 checkpoint / journal。新会话始终进入当前 generation 的独立 storage / socket / systemd unit；最后一个已知旧会话结束或最后一条旧 attach 引用失效后，Host 释放旧 client 等待 idle shutdown。
+- Supervisor client 是否属于待排空旧代由 storage generation 判定，而不是由 capability 判定；位于旧 storage 但已经支持 `terminalSessionStreamV1` 的已发布 Supervisor 同样必须在最后一个绑定会话结束、in-flight RPC settled 后释放连接。
 - journal 损坏或持久化失败必须 fail closed，不能用任意 raw tail 或净化 transcript 冒充可继续交互的终端状态。
 - `live-runtime` 是执行持久化增强层，不是所有执行路径的前提；系统必须在没有 supervisor 的情况下仍可运行。
 

@@ -1041,6 +1041,5 @@
   "No Canvas group was found to clear.": "未找到要清空的画布分组。",
   "No Canvas scope was found to clear.": "未找到要清空的画布范围。",
   "The Canvas group was cleared, so the install command was not sent.": "画布分组已清空，因此未发送安装命令。",
-  "The existing runtime supervisor is an older version. Its running sessions remain read-only until they end; stop them and retry after the supervisor exits.": "当前 runtime supervisor 版本较旧。其运行中会话在结束前保持只读；请先停止这些会话，并在 supervisor 退出后重试。",
-  "This session is running in an older runtime supervisor and is read-only. Stop it or let it finish, then start a new session.": "该会话运行在旧版 runtime supervisor 中，当前为只读。请停止或等待它结束，再启动新会话。"
+  "The current runtime namespace is occupied by an incompatible supervisor. Existing legacy sessions can continue in compatibility mode, but this new session could not start.": "当前运行时命名空间被不兼容的 supervisor 占用。既有旧会话可以继续以兼容模式运行，但本次新会话无法启动。"
 }

@@ -22,7 +22,7 @@
 | `docs/product-specs/canvas-core-collaboration-mvp.md` | 画布核心协作 MVP 主路径与验收口径 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/vscode-canvas-runtime-architecture.md`、`docs/design-docs/canvas-surface-placement.md` | 2026-07-03 |
 | `docs/product-specs/canvas-sidebar-controls.md` | 画布外层控件极简化与侧栏承载范围 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-sidebar-controls.md` | 2026-05-10 |
 | `docs/product-specs/canvas-sidebar-node-and-session-lists.md` | 画布侧栏节点列表与历史会话列表 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-sidebar-node-and-session-lists.md` | 2026-07-01 |
-| `docs/product-specs/runtime-persistence-modes.md` | `Agent` / `Terminal` 在关闭画布、关闭 VSCode 与重新打开后的两档运行时持久化模式 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/runtime-persistence-and-session-supervisor.md` | 2026-04-08 |
+| `docs/product-specs/runtime-persistence-modes.md` | `Agent` / `Terminal` 在关闭画布、关闭 VSCode 与重新打开后的两档运行时持久化模式 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/runtime-persistence-and-session-supervisor.md`、`docs/design-docs/agent-terminal-lossless-io-and-recovery.md` | 2026-07-13 |
 | `docs/product-specs/canvas-template-feature.md` | Canvas 模板功能：默认模板机制、内置模板、自定义模板保存与分享、multi-root 单 root 应用/重置、模板管理 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/design-docs/canvas-template-feature.md` | 2026-07-01 |
 | `docs/product-specs/template-marketplace.md` | 模板市场：社区驱动的模板发现、发布、安装平台，含 Web 端、统计排名、版本管理与治理后台 | 草案 | `docs/PRODUCT_SENSE.md`、`ARCHITECTURE.md`、`docs/product-specs/canvas-template-feature.md`、`docs/design-docs/template-marketplace.md`、`docs/marketplace/UI.md` | 2026-06-24 |
 

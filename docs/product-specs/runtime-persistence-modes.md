@@ -28,6 +28,10 @@
    - 若节点处于 `live-runtime` 模式且带有可附着的持久化会话身份，系统先显示 `重连中`。
    - 若之前的真实进程仍活着，节点会重新附着到原会话，并切回真实生命周期状态。
    - 若真实进程不再存在、已自然结束、监督器不可达，或重新附着失败，节点会进入 `历史恢复`，明确告诉用户这是恢复的历史状态，而不是仍在运行的同一进程。
+6. 当扩展升级且旧版 Supervisor 仍持有 live 会话时：
+   - 旧会话继续由旧 Supervisor 承载，允许降级 output、input、resize、stop 与 delete；界面明确提示旧协议不能证明完整终端历史。
+   - 升级后新建的 Agent / Terminal 立即由当前协议代 Supervisor 承载，不等待旧会话结束。
+   - 最后一个旧会话结束后，旧 Supervisor 自然退出；当前 Supervisor 和新会话不受影响。
 
 ## 4. 在范围内
 
@@ -101,6 +105,8 @@
 - 多个执行节点同时高输出且用户只在一个节点输入时，当前输入节点优先响应；其他节点可以延后显示，但系统不得为了输入性能丢弃尚未消费的增量内容。
 - 当 `Agent` 没有 provider 原生显式 session identity 时，系统不得使用“最近一次会话”推断来伪装自动恢复；此时节点应退化为 `interrupted` 或历史态。
 - 当用户关闭运行时持久化开关时，下一次关闭 VSCode 后，不再对真实 `Agent` / `Terminal` 进程跨编辑器生命周期存活做承诺。
+- 当旧版 Supervisor 会话在升级时仍然运行，用户可以继续输入并通过 resize 触发 TUI 重绘；系统不会把旧 raw tail 冒充完整 checkpoint，也不会因为旧会话存在而阻止当前版本创建新 Agent / Terminal。
+- 新旧 Supervisor 并行期间，input、resize、stop、delete 和 output 必须按节点持久化的 runtime storage / session identity 路由，不能把一个 generation 的操作发给另一个 generation。
 - 对没有被明确记为 blocker 或外部平台边界的组合，第一版应尽量做到完整实现；当前已确认的本地 workspace / Remote SSH 与 `Agent` / `Terminal` 四种组合都不应被故意拆成“先做一半、另一半留后面”。
 
 ## 8. 开放问题
