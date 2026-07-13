@@ -18,7 +18,7 @@ English | [简体中文](README.zh-CN.md)
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product has entered the public `Preview` phase. The current published version is `0.24.0`, available through GitHub Release assets and verified Open VSX. Visual Studio Marketplace remains deferred until the public gallery exposes both the main extension and notifier. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
+The product has entered the public `Preview` phase. The current release-prep target is `0.24.1`; the last published baseline remains `0.24.0`, available through GitHub Release assets and verified Open VSX until this release-prep branch is reviewed, merged, and published. Visual Studio Marketplace remains deferred until the public gallery exposes both the main extension and notifier. It is aimed at advanced users who accept early limitations and can prepare their local CLI runtime environment themselves.
 
 ![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif)
 
@@ -95,15 +95,15 @@ This README keeps the comparison user-facing and brief. The full technical check
 
 ## Project Status
 
-The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current published milestone is `0.24.0`, covering lossless `Agent` / `Terminal` I/O and Supervisor-authoritative recovery, explicit Agent `Resume` semantics, and scope-aware multi-root canvas clearing. The external version remains explicitly `Preview`, with no stable-release commitment.
+The project has completed its first round of research, design, and MVP validation, and is now in the public `Preview` phase. The current release-prep target is the `0.24.1` urgent patch: sessions owned by an older Runtime Supervisor remain interactive while new sessions start immediately in an isolated current generation. The last published baseline remains `0.24.0` until this release-prep branch is reviewed, merged, and published. The external version remains explicitly `Preview`, with no stable-release commitment.
 
 Explicit conclusions:
 
 - The current version is `Preview`, not a stable release.
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
-- The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; for the `0.24.0` release-day gate, GitHub Release assets plus verified Open VSX publication remain the allowed completion path while Visual Studio Marketplace visibility is still recorded as deferred.
-- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.24.0` release completed repo-local build, audit, packaging, runtime-supervisor / lossless-output regression, targeted Webview, smoke, final clean-`main` packaged-payload validation, and publish dry-run checks. Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
+- The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; for the `0.24.1` release-day gate, GitHub Release assets plus verified Open VSX publication remain the allowed completion path while Visual Studio Marketplace visibility is still recorded as deferred.
+- The main path already has public `Preview` validation evidence across Linux, macOS, Windows local workspaces, and `Remote SSH`. The `0.24.1` release-prep branch is responsible for version/package consistency, build, audit, packaging, older-Supervisor upgrade regression, packaged-payload smoke, and publish dry-run evidence; final release-day validation still requires the clean merged `main` ref. Windows still keeps one explicit known limitation: when using `Codex`, embedded session history cannot page upward yet.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
 Related entry points:
@@ -114,10 +114,10 @@ Related entry points:
 
 ## Preview Distribution
 
-Public distribution is intended to happen through public extension registries. Official VS Code is still intended to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. During `0.24.0`, GitHub Release assets remain the release-day artifact mirror and manual-install fallback, and Open VSX is the required marketplace completion gate; Visual Studio Marketplace publication is still attempted, but if public visibility remains unavailable it is treated as a deferred channel rather than a release blocker. `.vsix` files are otherwise kept as build artifacts and release-verification inputs rather than ordinary distribution files.
+Public distribution is intended to happen through public extension registries. Official VS Code is still intended to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. During `0.24.1`, GitHub Release assets remain the release-day artifact mirror and manual-install fallback, and Open VSX is the required marketplace completion gate; Visual Studio Marketplace publication is still attempted, but if public visibility remains unavailable it is treated as a deferred channel rather than a release blocker. `.vsix` files are otherwise kept as build artifacts and release-verification inputs rather than ordinary distribution files.
 
 - Public `Preview` users should install through the extension registry configured by their host rather than by manually distributing a `.vsix`
-- `Visual Studio Marketplace` remains the intended official VS Code installation path, but it must not be announced as available until both the main extension and notifier are publicly visible there; for `0.24.0`, a deferred VSM state does not block completion through GitHub Release assets plus verified Open VSX
+- `Visual Studio Marketplace` remains the intended official VS Code installation path, but it must not be announced as available until both the main extension and notifier are publicly visible there; for `0.24.1`, a deferred VSM state does not block completion through GitHub Release assets plus verified Open VSX
 - `Open VSX` does not change the official VS Code Marketplace path and does not expand the compatibility-support matrix by itself
 
 ## Desktop Notification Companion (Auto-Installed)
@@ -152,7 +152,7 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 
 - The product is still in `Preview` and should not be treated as a stable production tool.
 - `Virtual Workspace` is not supported.
-- The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring. `0.23.0` completed through GitHub Release assets plus verified Open VSX while Visual Studio Marketplace visibility remains deferred; `0.24.0` keeps the same release-day completion gate unless VSM visibility recovers; future release-day publication still requires manual execution and review.
+- The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring. `0.24.0` completed through GitHub Release assets plus verified Open VSX while Visual Studio Marketplace visibility remains deferred; `0.24.1` keeps the same release-day completion gate unless VSM visibility recovers; future release-day publication still requires manual execution and review.
 - Runtime Supervisor journals currently have no long-term retention / compaction policy or cross-version rollback guarantee. Local PTYs still do not survive Extension Host lifecycle boundaries; stronger recovery applies only when runtime persistence and its backend are available.
 - A strict 90,000-line completed-terminal stress case has intermittently stopped short at the final tail even though other full runs pass. Until the PTY / bridge / journal / finalization boundary is isolated, do not treat one extreme output burst as having a verified final-tail completeness guarantee.
 - Template Marketplace remains a Preview capability. It may require network access to `https://dscanvas.dev`, GitHub authentication for write actions, and production catalog data created through the marketplace or a controlled operations flow.
