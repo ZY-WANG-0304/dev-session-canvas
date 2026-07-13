@@ -23,6 +23,7 @@ import {
 } from '../common/protocol';
 import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
 import {
+  SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
   SerializedTerminalStateTracker,
   type SerializedTerminalState
 } from '../common/serializedTerminalState';
@@ -62,7 +63,11 @@ import {
   type RuntimeSupervisorUpdateSessionScrollbackParams,
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
-import { TerminalSessionJournal } from './terminalSessionJournal';
+import {
+  resolveTerminalJournalSessionDirectory,
+  TerminalSessionJournal,
+  type TerminalJournalRecoveryCandidate
+} from './terminalSessionJournal';
 import {
   createExecutionSessionProcess,
   type DisposableLike,
@@ -80,6 +85,7 @@ import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPre
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
 const TERMINAL_LIVE_DELAY_MS = 160;
 const OUTPUT_TAIL_LIMIT = 6000;
+const TERMINAL_CHECKPOINT_VALIDATION_RETRY_DELAY_MS = 30_000;
 const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
@@ -118,6 +124,7 @@ interface SupervisorSession {
   terminalJournal?: TerminalSessionJournal;
   terminalJournalError?: Error;
   terminalCheckpoint?: TerminalStreamCheckpoint;
+  terminalCheckpointValidationAttemptAtMs?: number;
   terminalStateTracker: SerializedTerminalStateTracker;
   terminalOperationChain: Promise<void>;
   terminalMutationAdmissionOpen: boolean;
@@ -138,6 +145,15 @@ interface SupervisorSession {
   outputSubscription?: DisposableLike;
   exitSubscription?: DisposableLike;
   lifecycleTimer?: NodeJS.Timeout;
+}
+
+interface RestoredTerminalJournalCandidate {
+  terminalStateTracker: SerializedTerminalStateTracker;
+  terminalCheckpoint: TerminalStreamCheckpoint;
+  cols: number;
+  rows: number;
+  scrollback: number;
+  output: string;
 }
 
 type SupervisorSubscriptionMode = 'legacy' | 'terminal-stream-v1';
@@ -371,7 +387,8 @@ class RuntimeSupervisorServer {
       sessionId,
       initialCols: params.launchSpec.cols,
       initialRows: params.launchSpec.rows,
-      initialScrollback: scrollback
+      initialScrollback: scrollback,
+      checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
     });
     let process: ExecutionSessionProcess;
     try {
@@ -636,6 +653,7 @@ class RuntimeSupervisorServer {
       appliedRevision: revision
     };
     socketAcks?.set(consumerKey, result);
+    this.releaseTerminalJournalMemoryThroughCheckpoint(session);
     return result;
   }
 
@@ -786,7 +804,7 @@ class RuntimeSupervisorServer {
         event: 'sessionState',
         payload: session.terminalJournalError
           ? this.toSnapshot(session)
-          : await this.createFreshSnapshot(session)
+          : await this.createFreshSnapshot(session, 'never')
       };
       this.broadcastToSessionSubscribers(session.sessionId, message);
       this.schedulePersist();
@@ -794,7 +812,14 @@ class RuntimeSupervisorServer {
     this.disposeSession(session, {
       terminateProcess: false
     });
-    await session.terminalJournal?.delete();
+    if (session.terminalJournal) {
+      await session.terminalJournal.delete();
+    } else if (session.terminalAuthorityId) {
+      await fs.promises.rm(
+        resolveTerminalJournalSessionDirectory(this.paths.storageDir, session.sessionId),
+        { recursive: true, force: true }
+      );
+    }
     this.clearSessionSubscriptions(params.sessionId);
     this.sessions.delete(params.sessionId);
     this.schedulePersist();
@@ -964,7 +989,7 @@ class RuntimeSupervisorServer {
       const message: RuntimeSupervisorEvent = {
         type: 'event',
         event: 'sessionState',
-        payload: await this.createFreshSnapshot(session)
+        payload: await this.createFreshSnapshot(session, 'never')
       };
       this.broadcastToSessionSubscribers(session.sessionId, message);
       this.schedulePersist();
@@ -1294,11 +1319,21 @@ class RuntimeSupervisorServer {
     }, AGENT_WAITING_INPUT_POLL_INTERVAL_MS);
   }
 
-  private toFreshSnapshot(session: SupervisorSession): Promise<RuntimeSupervisorSessionSnapshot> {
-    return this.enqueueTerminalOperation(session, () => this.createFreshSnapshot(session));
+  private toFreshSnapshot(
+    session: SupervisorSession,
+    checkpointValidation: 'always' | 'if-compaction-due' | 'never' = 'always',
+    includeTerminalProjection = true
+  ): Promise<RuntimeSupervisorSessionSnapshot> {
+    return this.enqueueTerminalOperation(session, () =>
+      this.createFreshSnapshot(session, checkpointValidation, includeTerminalProjection)
+    );
   }
 
-  private async createFreshSnapshot(session: SupervisorSession): Promise<RuntimeSupervisorSessionSnapshot> {
+  private async createFreshSnapshot(
+    session: SupervisorSession,
+    checkpointValidation: 'always' | 'if-compaction-due' | 'never' = 'always',
+    includeTerminalProjection = true
+  ): Promise<RuntimeSupervisorSessionSnapshot> {
     if (session.terminalJournalError && session.live) {
       throw session.terminalJournalError;
     }
@@ -1307,16 +1342,35 @@ class RuntimeSupervisorServer {
     const checkpointCols = session.cols;
     const checkpointRows = session.rows;
     const checkpointScrollback = session.scrollback;
-    const serializedTerminalState = await session.terminalStateTracker.flush().catch(() => undefined);
+    const journal = session.terminalJournal;
+    const journalRevision = journal?.getRevision();
+    const now = Date.now();
+    const compactionDue =
+      session.live && journalRevision !== undefined && journal?.shouldCommitCheckpoint(journalRevision);
+    const validationRetryReady =
+      session.terminalCheckpointValidationAttemptAtMs === undefined ||
+      now - session.terminalCheckpointValidationAttemptAtMs >= TERMINAL_CHECKPOINT_VALIDATION_RETRY_DELAY_MS;
+    const shouldValidateCheckpoint =
+      checkpointValidation === 'always' ||
+      Boolean(checkpointValidation === 'if-compaction-due' && compactionDue && validationRetryReady);
+    if (checkpointValidation === 'if-compaction-due' && shouldValidateCheckpoint) {
+      session.terminalCheckpointValidationAttemptAtMs = now;
+    }
+    const validatedCheckpoint = shouldValidateCheckpoint
+      ? await session.terminalStateTracker.flushValidatedCheckpoint().catch(() => undefined)
+      : undefined;
+    const serializedTerminalState = validatedCheckpoint?.eligible
+      ? validatedCheckpoint.state
+      : session.terminalCheckpoint?.serializedState;
     if (
-      serializedTerminalState &&
-      session.terminalJournal &&
+      validatedCheckpoint?.eligible &&
+      journal &&
       session.terminalAuthorityId &&
       !session.terminalJournalError
     ) {
-      await session.terminalJournal.flush();
-      const checkpointRevision = normalizeTerminalStreamRevision(serializedTerminalState.outputSequence);
-      if (checkpointRevision !== undefined && checkpointRevision <= session.terminalJournal.getRevision()) {
+      await journal.flush();
+      const checkpointRevision = normalizeTerminalStreamRevision(validatedCheckpoint.state.outputSequence);
+      if (checkpointRevision !== undefined && checkpointRevision === journal.getRevision()) {
         const checkpoint = normalizeTerminalStreamCheckpoint({
           version: TERMINAL_SESSION_STREAM_VERSION,
           sessionId: session.sessionId,
@@ -1326,15 +1380,26 @@ class RuntimeSupervisorServer {
           rows: checkpointRows,
           scrollback: checkpointScrollback,
           createdAtMs: Date.now(),
-          serializedState: serializedTerminalState
+          serializedState: validatedCheckpoint.state
         });
         if (checkpoint) {
+          if (session.live && journal.shouldCommitCheckpoint(checkpoint.revision)) {
+            const commitResult = await journal.commitCheckpoint(checkpoint, {
+              retainAfterRevision: this.getTerminalJournalRetentionRevision(session)
+            });
+            if (commitResult.committed) {
+              session.terminalCheckpointValidationAttemptAtMs = undefined;
+            }
+          }
           session.terminalCheckpoint = checkpoint;
           this.releaseTerminalJournalMemoryThroughCheckpoint(session);
         }
       }
     }
-    return this.toSnapshot(session, serializedTerminalState);
+    if (journal && !session.terminalJournalError) {
+      await journal.flush();
+    }
+    return this.toSnapshot(session, serializedTerminalState, includeTerminalProjection);
   }
 
   private getFreshSerializedTerminalState(
@@ -1351,9 +1416,14 @@ class RuntimeSupervisorServer {
 
   private toSnapshot(
     session: SupervisorSession,
-    serializedTerminalState = session.terminalStateTracker.getSerializedState()
+    serializedTerminalState = session.terminalJournal
+      ? session.terminalCheckpoint?.serializedState
+      : session.terminalStateTracker.getSerializedState(),
+    includeTerminalProjection = true
   ): RuntimeSupervisorSessionSnapshot {
-    const terminalStream = this.buildTerminalStreamAttachPayload(session);
+    const terminalStream = includeTerminalProjection
+      ? this.buildTerminalStreamAttachPayload(session)
+      : undefined;
     return {
       sessionId: session.sessionId,
       kind: session.kind,
@@ -1369,7 +1439,9 @@ class RuntimeSupervisorServer {
       scrollback: session.scrollback,
       output: session.output,
       outputSequence: session.outputSequence,
-      serializedTerminalState: this.getFreshSerializedTerminalState(session, serializedTerminalState),
+      serializedTerminalState: includeTerminalProjection
+        ? this.getFreshSerializedTerminalState(session, serializedTerminalState)
+        : undefined,
       terminalAuthorityId: session.terminalJournalError ? undefined : session.terminalAuthorityId,
       terminalRevision: session.terminalJournalError ? undefined : session.terminalJournal?.getRevision(),
       terminalStream,
@@ -1500,14 +1572,37 @@ class RuntimeSupervisorServer {
       return;
     }
 
-    let releaseRevision = checkpoint.revision;
+    const retentionRevision = this.getTerminalJournalRetentionRevision(session);
+    const releaseRevision = retentionRevision === undefined
+      ? checkpoint.revision
+      : Math.min(checkpoint.revision, retentionRevision);
+    journal.releaseMemoryThrough(releaseRevision);
+  }
+
+  private getTerminalJournalRetentionRevision(session: SupervisorSession): number | undefined {
+    let retentionRevision: number | undefined;
+    const retainAfter = (revision: number): void => {
+      retentionRevision = retentionRevision === undefined
+        ? revision
+        : Math.min(retentionRevision, revision);
+    };
     for (const deferredRevisions of this.deferredSubscriptionRevisions.values()) {
       const deferredRevision = deferredRevisions.get(session.sessionId);
       if (deferredRevision !== undefined) {
-        releaseRevision = Math.min(releaseRevision, deferredRevision);
+        retainAfter(deferredRevision);
       }
     }
-    journal.releaseMemoryThrough(releaseRevision);
+    for (const appliedRevisions of this.appliedRevisionAcks.values()) {
+      for (const appliedRevision of appliedRevisions.values()) {
+        if (
+          appliedRevision.sessionId === session.sessionId &&
+          appliedRevision.authorityId === session.terminalAuthorityId
+        ) {
+          retainAfter(appliedRevision.appliedRevision);
+        }
+      }
+    }
+    return retentionRevision;
   }
 
   private broadcastToSessionSubscribers(sessionId: string, message: RuntimeSupervisorEvent): void {
@@ -1541,12 +1636,15 @@ class RuntimeSupervisorServer {
   }
 
   private cleanupSocket(socket: net.Socket): void {
-    const deferredSessionIds = Array.from(this.deferredSubscriptionRevisions.get(socket)?.keys() ?? []);
+    const affectedSessionIds = new Set(this.deferredSubscriptionRevisions.get(socket)?.keys() ?? []);
+    for (const appliedRevision of this.appliedRevisionAcks.get(socket)?.values() ?? []) {
+      affectedSessionIds.add(appliedRevision.sessionId);
+    }
     this.connections.delete(socket);
     this.subscriptions.delete(socket);
     this.deferredSubscriptionRevisions.delete(socket);
     this.appliedRevisionAcks.delete(socket);
-    for (const sessionId of deferredSessionIds) {
+    for (const sessionId of affectedSessionIds) {
       const session = this.sessions.get(sessionId);
       if (session) {
         this.releaseTerminalJournalMemoryThroughCheckpoint(session);
@@ -1601,7 +1699,11 @@ class RuntimeSupervisorServer {
       sessionEntries.map(async (session) => {
         let snapshot: RuntimeSupervisorSessionSnapshot;
         try {
-          snapshot = await this.toFreshSnapshot(session);
+          snapshot = await this.toFreshSnapshot(
+            session,
+            session.terminalAuthorityId ? 'if-compaction-due' : 'always',
+            !session.terminalAuthorityId
+          );
         } catch (error) {
           if (!session.terminalJournal) {
             throw error;
@@ -1609,7 +1711,12 @@ class RuntimeSupervisorServer {
           this.failSessionForTerminalJournal(session, error);
           snapshot = this.toSnapshot(session);
         }
-        return this.sessions.get(session.sessionId) === session ? snapshot : undefined;
+        if (this.sessions.get(session.sessionId) !== session) {
+          return undefined;
+        }
+        return session.terminalJournalError && session.terminalAuthorityId
+          ? { ...snapshot, terminalAuthorityId: session.terminalAuthorityId }
+          : snapshot;
       })
     );
     const registry: SupervisorRegistry = {
@@ -1668,7 +1775,7 @@ class RuntimeSupervisorServer {
     const scrollback = normalizeTerminalScrollback(snapshot.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
 
     const normalizedTerminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
-    const recoveredAuthorityId = normalizedTerminalStream?.authorityId ?? snapshot.terminalAuthorityId?.trim();
+    let recoveredAuthorityId = snapshot.terminalAuthorityId?.trim() || normalizedTerminalStream?.authorityId;
     let terminalJournal: TerminalSessionJournal | undefined;
     let terminalJournalError: Error | undefined;
     let terminalStateTracker: SerializedTerminalStateTracker | undefined;
@@ -1683,85 +1790,40 @@ class RuntimeSupervisorServer {
         terminalJournal = await TerminalSessionJournal.open({
           storageDir: this.paths.storageDir,
           sessionId: snapshot.sessionId,
-          authorityId: recoveredAuthorityId
-        });
-        const checkpoint =
-          normalizedTerminalStream?.sessionId === snapshot.sessionId &&
-          normalizedTerminalStream.authorityId === recoveredAuthorityId &&
-          normalizedTerminalStream.checkpoint.revision <= terminalJournal.getRevision()
-            ? normalizedTerminalStream.checkpoint
-            : undefined;
-        const initialTerminalState = terminalJournal.getInitialTerminalState();
-        terminalStateTracker = checkpoint
-          ? new SerializedTerminalStateTracker(checkpoint.cols, checkpoint.rows, {
-              scrollback: checkpoint.scrollback,
-              initialState: checkpoint.serializedState,
-              initialOutputSequence: checkpoint.revision
-            })
-          : new SerializedTerminalStateTracker(initialTerminalState.cols, initialTerminalState.rows, {
-              scrollback: initialTerminalState.scrollback,
-              initialOutputSequence: 0
-            });
-        const fallbackCheckpoint =
-          checkpoint ??
-          normalizeTerminalStreamCheckpoint({
-            version: TERMINAL_SESSION_STREAM_VERSION,
-            sessionId: snapshot.sessionId,
-            authorityId: recoveredAuthorityId,
-            revision: 0,
-            cols: initialTerminalState.cols,
-            rows: initialTerminalState.rows,
-            scrollback: initialTerminalState.scrollback,
-            createdAtMs: Date.now(),
-            serializedState: terminalStateTracker.getSerializedState()
-          });
-        if (!fallbackCheckpoint) {
-          throw new Error(`Could not create a fallback terminal checkpoint for session ${snapshot.sessionId}.`);
-        }
-        recoveredCols = checkpoint?.cols ?? initialTerminalState.cols;
-        recoveredRows = checkpoint?.rows ?? initialTerminalState.rows;
-        recoveredScrollback = checkpoint?.scrollback ?? initialTerminalState.scrollback;
-        const allEvents = await terminalJournal.readAllEvents();
-        recoveredOutput = appendOutputTail(
-          '',
-          allEvents.map((event) => event.type === 'output' ? event.data : '').join('')
-        );
-        for (const event of allEvents) {
-          if (event.revision <= (checkpoint?.revision ?? 0)) {
-            continue;
-          }
-          if (event.type === 'output') {
-            terminalStateTracker.write(event.data, {
-              outputSequence: event.revision
-            });
-            continue;
-          }
-          if (event.type === 'resize') {
-            recoveredCols = event.cols;
-            recoveredRows = event.rows;
-            terminalStateTracker.resize(event.cols, event.rows, {
-              outputSequence: event.revision
-            });
-            continue;
-          }
-          recoveredScrollback = event.scrollback;
-          await terminalStateTracker.setScrollback(event.scrollback, {
-            outputSequence: event.revision
-          });
-        }
-        const recoveredState = await terminalStateTracker.flush();
-        recoveredOutputSequence = terminalJournal.getRevision();
-        terminalCheckpoint = normalizeTerminalStreamCheckpoint({
-          version: TERMINAL_SESSION_STREAM_VERSION,
-          sessionId: snapshot.sessionId,
           authorityId: recoveredAuthorityId,
-          revision: recoveredOutputSequence,
-          cols: recoveredCols,
-          rows: recoveredRows,
-          scrollback: recoveredScrollback,
-          createdAtMs: Date.now(),
-          serializedState: recoveredState
-        }) ?? fallbackCheckpoint;
+          checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
+        });
+        recoveredAuthorityId = terminalJournal.getAuthorityId();
+        const initialTerminalState = terminalJournal.getInitialTerminalState();
+        const recoveryCandidates = await terminalJournal.getRecoveryCandidates();
+        let restoredCandidate: RestoredTerminalJournalCandidate | undefined;
+        let lastCandidateError: Error | undefined;
+        for (const candidate of recoveryCandidates) {
+          try {
+            restoredCandidate = await this.restoreTerminalJournalCandidate(
+              snapshot.sessionId,
+              recoveredAuthorityId,
+              terminalJournal.getRevision(),
+              initialTerminalState,
+              candidate
+            );
+            break;
+          } catch (error) {
+            lastCandidateError = error instanceof Error ? error : new Error(String(error));
+          }
+        }
+        if (!restoredCandidate) {
+          throw lastCandidateError ?? new Error(
+            `No trusted terminal journal recovery candidate is available for session ${snapshot.sessionId}.`
+          );
+        }
+        terminalStateTracker = restoredCandidate.terminalStateTracker;
+        terminalCheckpoint = restoredCandidate.terminalCheckpoint;
+        recoveredCols = restoredCandidate.cols;
+        recoveredRows = restoredCandidate.rows;
+        recoveredScrollback = restoredCandidate.scrollback;
+        recoveredOutput = restoredCandidate.output;
+        recoveredOutputSequence = terminalJournal.getRevision();
         terminalJournal.releaseMemoryThrough(terminalCheckpoint.revision);
       } catch (error) {
         terminalJournalError = error instanceof Error ? error : new Error(String(error));
@@ -1817,7 +1879,7 @@ class RuntimeSupervisorServer {
       scrollback: recoveredScrollback,
       output: recoveredOutput,
       outputSequence: recoveredOutputSequence,
-      terminalAuthorityId: terminalJournal?.getAuthorityId(),
+      terminalAuthorityId: terminalJournal?.getAuthorityId() ?? recoveredAuthorityId,
       terminalJournal,
       terminalJournalError,
       terminalCheckpoint,
@@ -1830,6 +1892,126 @@ class RuntimeSupervisorServer {
       exitSubscription: undefined,
       lifecycleTimer: undefined
     };
+  }
+
+  private async restoreTerminalJournalCandidate(
+    sessionId: string,
+    authorityId: string,
+    journalRevision: number,
+    initialTerminalState: { cols: number; rows: number; scrollback: number },
+    candidate: TerminalJournalRecoveryCandidate
+  ): Promise<RestoredTerminalJournalCandidate> {
+    const checkpoint = candidate.checkpoint
+      ? normalizeTerminalStreamCheckpoint(candidate.checkpoint)
+      : undefined;
+    if (
+      candidate.checkpoint &&
+      (
+        !checkpoint ||
+        checkpoint.sessionId !== sessionId ||
+        checkpoint.authorityId !== authorityId ||
+        checkpoint.revision > journalRevision
+      )
+    ) {
+      throw new Error(`Invalid ${candidate.source} terminal checkpoint for session ${sessionId}.`);
+    }
+
+    const terminalStateTracker = checkpoint
+      ? new SerializedTerminalStateTracker(checkpoint.cols, checkpoint.rows, {
+          scrollback: checkpoint.scrollback,
+          initialState: checkpoint.serializedState,
+          initialOutputSequence: checkpoint.revision
+        })
+      : new SerializedTerminalStateTracker(initialTerminalState.cols, initialTerminalState.rows, {
+          scrollback: initialTerminalState.scrollback,
+          initialOutputSequence: 0
+        });
+    const baseCheckpoint = checkpoint ?? normalizeTerminalStreamCheckpoint({
+      version: TERMINAL_SESSION_STREAM_VERSION,
+      sessionId,
+      authorityId,
+      revision: 0,
+      cols: initialTerminalState.cols,
+      rows: initialTerminalState.rows,
+      scrollback: initialTerminalState.scrollback,
+      createdAtMs: Date.now(),
+      serializedState: terminalStateTracker.getSerializedState()
+    });
+    if (!baseCheckpoint) {
+      terminalStateTracker.dispose();
+      throw new Error(`Could not create a genesis terminal checkpoint for session ${sessionId}.`);
+    }
+
+    let cols = baseCheckpoint.cols;
+    let rows = baseCheckpoint.rows;
+    let scrollback = baseCheckpoint.scrollback;
+    let expectedRevision = baseCheckpoint.revision + 1;
+    let output = candidate.outputTail;
+    try {
+      for (const event of candidate.events) {
+        if (event.revision !== expectedRevision || event.revision > journalRevision) {
+          throw new Error(
+            `Terminal journal ${candidate.source} recovery has a revision gap at ${expectedRevision}.`
+          );
+        }
+        expectedRevision += 1;
+        if (event.type === 'output') {
+          output = appendOutputTail(output, event.data);
+          terminalStateTracker.write(event.data, {
+            outputSequence: event.revision
+          });
+          continue;
+        }
+        if (event.type === 'resize') {
+          cols = event.cols;
+          rows = event.rows;
+          terminalStateTracker.resize(event.cols, event.rows, {
+            outputSequence: event.revision
+          });
+          continue;
+        }
+        scrollback = event.scrollback;
+        await terminalStateTracker.setScrollback(event.scrollback, {
+          outputSequence: event.revision
+        });
+      }
+      if (expectedRevision !== journalRevision + 1) {
+        throw new Error(
+          `Terminal journal ${candidate.source} recovery stops before revision ${journalRevision}.`
+        );
+      }
+
+      const validation = await terminalStateTracker.flushValidatedCheckpoint();
+      let trustedCheckpoint = baseCheckpoint;
+      if (validation.eligible) {
+        const headCheckpoint = normalizeTerminalStreamCheckpoint({
+          version: TERMINAL_SESSION_STREAM_VERSION,
+          sessionId,
+          authorityId,
+          revision: journalRevision,
+          cols,
+          rows,
+          scrollback,
+          createdAtMs: Date.now(),
+          serializedState: validation.state
+        });
+        if (!headCheckpoint) {
+          throw new Error(`Could not validate recovered terminal head for session ${sessionId}.`);
+        }
+        trustedCheckpoint = headCheckpoint;
+      }
+      return {
+        terminalStateTracker,
+        terminalCheckpoint: trustedCheckpoint,
+        cols,
+        rows,
+        scrollback,
+        output
+      };
+    } catch (error) {
+      terminalStateTracker.dispose();
+      throw error;
+    }
   }
 
   private scheduleIdleShutdownIfNeeded(): void {
