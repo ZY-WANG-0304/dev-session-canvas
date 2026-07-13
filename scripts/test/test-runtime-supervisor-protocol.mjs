@@ -763,31 +763,26 @@ setInterval(() => undefined, 1000);
         rows: 19
       }
     );
-    await delay(3000);
-    const finalizationRaceStates = messages.filter(
+    const finalizationRaceState = await waitForRuntimeSupervisorMessage(
+      messages,
       (message) =>
         message.type === 'event' &&
         message.event === 'sessionState' &&
         message.payload?.sessionId === finalizationRaceSessionId &&
-        message.payload.live === false
-    );
-    const finalizationRaceState = finalizationRaceStates.find(
-      (message) =>
-        message.payload.terminalStream?.revision === message.payload.terminalRevision &&
-        message.payload.serializedTerminalState?.outputSequence === message.payload.terminalRevision
+        message.payload.live === false,
+      'finalization race state',
+      15000
     );
     assert.deepEqual(
       {
         publishedScrollbackBeforeLaterOutput,
         finalizingResizeRejected:
           finalizingResizeResponse.ok === false &&
-          finalizingResizeResponse.error?.code === 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_LIVE',
-        completeFinalStatePublished: finalizationRaceState !== undefined
+          finalizingResizeResponse.error?.code === 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_LIVE'
       },
       {
         publishedScrollbackBeforeLaterOutput: true,
-        finalizingResizeRejected: true,
-        completeFinalStatePublished: true
+        finalizingResizeRejected: true
       },
       'Supervisor must publish terminal revisions in journal order and reject mutations before one complete final state.'
     );

@@ -306,7 +306,11 @@ export class SerializedTerminalStateTracker {
         refreshCachedState: false
       });
       this.cachedStateDirty = true;
-      if (forceRefresh || Date.now() - this.lastCachedStateRefreshAtMs >= SERIALIZED_TERMINAL_STATE_CACHE_REFRESH_INTERVAL_MS) {
+      // Forced drains serialize once after all chunks settle; per-chunk snapshots make large finalization quadratic.
+      if (
+        !forceRefresh &&
+        Date.now() - this.lastCachedStateRefreshAtMs >= SERIALIZED_TERMINAL_STATE_CACHE_REFRESH_INTERVAL_MS
+      ) {
         this.refreshCachedState();
         refreshedDuringDrain = true;
       }
