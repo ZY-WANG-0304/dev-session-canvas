@@ -137,7 +137,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         agentMetadata.pendingLaunch === 'resume');
     const canResumeOriginalSession = canResumeAgentFromMetadataForWebview(agentMetadata);
     const reattaching = displayStatus === 'reattaching';
-    const legacyInteractive = agentMetadata.terminalProjectionMode === 'legacy-interactive';
+    const legacyInteractive =
+      agentMetadata.liveSession && agentMetadata.terminalProjectionMode === 'legacy-interactive';
     const attentionPending = agentMetadata.attentionPending === true;
     const attentionFlashing =
       attentionPending && strongTerminalAttentionReminderShowsTitleBar(data.strongTerminalAttentionReminderMode);
@@ -733,7 +734,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     const lifecycle = terminalMetadata.lifecycle;
     const displayStatus = data.status;
     const reattaching = displayStatus === 'reattaching';
-    const legacyInteractive = terminalMetadata.terminalProjectionMode === 'legacy-interactive';
+    const legacyInteractive =
+      terminalMetadata.liveSession && terminalMetadata.terminalProjectionMode === 'legacy-interactive';
     const attentionPending = terminalMetadata.attentionPending === true;
     const attentionFlashing =
       attentionPending && strongTerminalAttentionReminderShowsTitleBar(data.strongTerminalAttentionReminderMode);

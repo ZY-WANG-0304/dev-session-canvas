@@ -345,6 +345,7 @@ docs/                           根目录正式文档知识库
 - supervisor 只知道执行会话和协议，不知道 React Flow 节点、侧栏结构或具体 UI 细节。
 - `live-runtime` terminal revision 只能由 supervisor 在实际记录事件时推进；Host/Webview 只能验证和投影。
 - 缺少 `terminalSessionStreamV1` capability 的旧 Supervisor 只继续承载既有 `legacy-interactive` 会话；Host 允许这些真实旧 PTY 继续 output、input、resize、stop 与 delete，但不向旧进程发送新协议 RPC，也不把 raw tail 冒充完整 checkpoint / journal。新会话始终进入当前 generation 的独立 storage / socket / systemd unit；最后一个已知旧会话结束或最后一条旧 attach 引用失效后，Host 释放旧 client 等待 idle shutdown。
+- Supervisor client 是否属于待排空旧代由 storage generation 判定，而不是由 capability 判定；位于旧 storage 但已经支持 `terminalSessionStreamV1` 的已发布 Supervisor 同样必须在最后一个绑定会话结束、in-flight RPC settled 后释放连接。
 - journal 损坏或持久化失败必须 fail closed，不能用任意 raw tail 或净化 transcript 冒充可继续交互的终端状态。
 - `live-runtime` 是执行持久化增强层，不是所有执行路径的前提；系统必须在没有 supervisor 的情况下仍可运行。
 

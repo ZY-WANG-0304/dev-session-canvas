@@ -7,6 +7,10 @@ const [supervisorSource, managerSource, protocolSource, webviewSource] = await P
   readFile('extensions/vscode/dev-session-canvas/src/common/protocol.ts', 'utf8'),
   readFile('extensions/vscode/dev-session-canvas/src/webview/main.tsx', 'utf8')
 ]);
+const previousGenerationClientRetirementSource = managerSource.match(
+  /private retireLegacyRuntimeSupervisorClientIfUnused\([\s\S]*?\n  \}\n\n  private async getRuntimeSupervisorClientForBackend/u
+)?.[0];
+assert.ok(previousGenerationClientRetirementSource, '应能定位旧 generation Supervisor client 退役实现。');
 
 assert.match(
   supervisorSource,
@@ -79,9 +83,14 @@ assert.match(
   '新 session 必须默认使用 current-generation storage，而显式旧 runtimeStoragePath 继续路由旧 Supervisor。'
 );
 assert.match(
-  managerSource,
-  /retireLegacyRuntimeSupervisorClientIfUnused[\s\S]*?client\.hasPendingRequests\(\)/u,
-  '旧 Supervisor client 有未完成 RPC 时不得退役，避免终态事件抢先中断 stop/delete 响应。'
+  previousGenerationClientRetirementSource,
+  /currentGenerationRuntimeStoragePath[\s\S]*?runtimeStoragePath === currentGenerationRuntimeStoragePath[\s\S]*?hasAttachedPreviousGenerationSession[\s\S]*?client\.hasPendingRequests\(\)/u,
+  '退役必须按 storage generation 判定，并等待旧路径会话与 RPC 全部结束。'
+);
+assert.doesNotMatch(
+  previousGenerationClientRetirementSource,
+  /supportsTerminalSessionStream\(\)/u,
+  '旧 storage client 即使支持 terminal stream capability，也必须在最后一个会话结束后释放连接。'
 );
 assert.match(
   managerSource,
@@ -102,6 +111,11 @@ assert.match(
   managerSource,
   /runtime-supervisor-completed-snapshot'[\s\S]*?requireRootLocalDurability: true[\s\S]*?deleteRuntimeSupervisorSessionStrict/u,
   'completed stream 必须在主快照和实际 root-local 加载源都 durable 后才能删除 Supervisor journal。'
+);
+assert.match(
+  managerSource,
+  /private async applyCompletedRuntimeSupervisorSnapshot\([\s\S]*?attachmentState: 'history-restored',[\s\S]*?terminalProjectionMode: undefined/u,
+  'Supervisor session 完成后必须清除 live projection mode，避免历史节点继续显示交互兼容提示。'
 );
 assert.match(
   managerSource,

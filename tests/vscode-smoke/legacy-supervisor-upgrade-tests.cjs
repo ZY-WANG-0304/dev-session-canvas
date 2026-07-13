@@ -25,8 +25,10 @@ const COMMAND_IDS = {
 };
 const LEGACY_AGENT_NODE_ID = 'legacy-upgrade-agent';
 const LEGACY_TERMINAL_NODE_ID = 'legacy-upgrade-terminal';
+const PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID = 'previous-generation-stream-terminal';
 const LEGACY_AGENT_MARKER = 'LEGACY_UPGRADE_AGENT_READY';
 const LEGACY_TERMINAL_MARKER = 'LEGACY_UPGRADE_TERMINAL_READY';
+const PREVIOUS_GENERATION_STREAM_MARKER = 'PREVIOUS_GENERATION_STREAM_READY';
 const LEGACY_WEBVIEW_INPUT_MARKER = 'LEGACY_WEBVIEW_INPUT_REACHED_PTY';
 const LEGACY_HOST_AGENT_INPUT_MARKER = 'LEGACY_HOST_AGENT_INPUT_REACHED_PTY';
 const LEGACY_HOST_TERMINAL_INPUT_MARKER = 'LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY';
@@ -51,10 +53,14 @@ async function run() {
   const configuration = vscode.workspace.getConfiguration();
   const previousRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
   let legacySupervisorProcess;
+  let previousGenerationStreamSupervisorProcess;
   let supervisorPaths;
+  let previousGenerationStreamSupervisorPaths;
   let currentSupervisorPaths;
   let legacyAgentSessionId;
   let legacyTerminalSessionId;
+  let previousGenerationStreamTerminalSessionId;
+  let previousGenerationStreamRuntimeStoragePath;
   let currentTerminalSessionId;
 
   try {
@@ -71,7 +77,12 @@ async function run() {
     supervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
       path.join(runtimeStoragePath, 'runtime-supervisor')
     );
+    previousGenerationStreamRuntimeStoragePath = path.join(runtimeStoragePath, 'previous-generation-stream');
+    previousGenerationStreamSupervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
+      path.join(previousGenerationStreamRuntimeStoragePath, 'runtime-supervisor')
+    );
     await fs.rm(supervisorPaths.storageDir, { recursive: true, force: true });
+    await fs.rm(previousGenerationStreamSupervisorPaths.storageDir, { recursive: true, force: true });
 
     legacySupervisorProcess = startLegacyRuntimeSupervisor(
       legacySupervisorScript,
@@ -83,10 +94,27 @@ async function run() {
     assert.strictEqual(legacyHello.pid, legacySupervisorProcess.pid);
     assert.strictEqual(legacyHello.capabilities, undefined);
 
+    previousGenerationStreamSupervisorProcess = startLegacyRuntimeSupervisor(
+      path.join(extension.extensionPath, 'dist', 'runtime-supervisor.js'),
+      extension.extensionPath,
+      previousGenerationStreamSupervisorPaths.storageDir
+    );
+    const previousGenerationStreamHello = await waitForRuntimeSupervisorReady(
+      previousGenerationStreamSupervisorPaths,
+      20000
+    );
+    assert.strictEqual(previousGenerationStreamHello.pid, previousGenerationStreamSupervisorProcess.pid);
+    assert.strictEqual(previousGenerationStreamHello.capabilities?.terminalSessionStreamV1, true);
+
     const legacyAgentSnapshot = await createLegacyAgentSession(supervisorPaths);
     const legacyTerminalSnapshot = await createLegacyTerminalSession(supervisorPaths);
     legacyAgentSessionId = legacyAgentSnapshot.sessionId;
     legacyTerminalSessionId = legacyTerminalSnapshot.sessionId;
+    const previousGenerationStreamTerminalSnapshot = await createLegacyTerminalSession(
+      previousGenerationStreamSupervisorPaths,
+      PREVIOUS_GENERATION_STREAM_MARKER
+    );
+    previousGenerationStreamTerminalSessionId = previousGenerationStreamTerminalSnapshot.sessionId;
     await waitForRuntimeSupervisorOutput(
       supervisorPaths,
       legacyAgentSessionId,
@@ -99,13 +127,21 @@ async function run() {
       LEGACY_TERMINAL_MARKER,
       20000
     );
+    await waitForRuntimeSupervisorOutput(
+      previousGenerationStreamSupervisorPaths,
+      previousGenerationStreamTerminalSessionId,
+      PREVIOUS_GENERATION_STREAM_MARKER,
+      20000
+    );
     await waitForRegistrySessions(supervisorPaths.registryPath, [legacyAgentSessionId, legacyTerminalSessionId]);
 
     await setPersistedState(
       createLegacyRuntimeState({
         runtimeStoragePath,
         agentSnapshot: legacyAgentSnapshot,
-        terminalSnapshot: legacyTerminalSnapshot
+        terminalSnapshot: legacyTerminalSnapshot,
+        previousGenerationStreamRuntimeStoragePath,
+        previousGenerationStreamTerminalSnapshot
       })
     );
     await simulateRuntimeReload();
@@ -115,6 +151,10 @@ async function run() {
     let snapshot = await waitForSnapshot((currentSnapshot) => {
       const agentNode = findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID);
       const terminalNode = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID);
+      const previousGenerationStreamNode = findOptionalNodeById(
+        currentSnapshot,
+        PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID
+      );
       return Boolean(
         agentNode?.metadata?.agent?.liveSession &&
           agentNode.metadata.agent.attachmentState === 'attached-live' &&
@@ -123,11 +163,19 @@ async function run() {
           terminalNode?.metadata?.terminal?.liveSession &&
           terminalNode.metadata.terminal.attachmentState === 'attached-live' &&
           terminalNode.metadata.terminal.terminalProjectionMode === 'legacy-interactive' &&
-          terminalNode.metadata.terminal.recentOutput?.includes(LEGACY_TERMINAL_MARKER)
+          terminalNode.metadata.terminal.recentOutput?.includes(LEGACY_TERMINAL_MARKER) &&
+          previousGenerationStreamNode?.metadata?.terminal?.liveSession &&
+          previousGenerationStreamNode.metadata.terminal.attachmentState === 'attached-live' &&
+          previousGenerationStreamNode.metadata.terminal.terminalProjectionMode === 'terminal-stream-v1' &&
+          previousGenerationStreamNode.metadata.terminal.recentOutput?.includes(PREVIOUS_GENERATION_STREAM_MARKER)
       );
     }, 30000);
     assertLegacyInteractiveNode(findNodeById(snapshot, LEGACY_AGENT_NODE_ID), 'agent', LEGACY_AGENT_MARKER);
     assertLegacyInteractiveNode(findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID), 'terminal', LEGACY_TERMINAL_MARKER);
+    assert.strictEqual(
+      findNodeById(snapshot, PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID).metadata.terminal.runtimeStoragePath,
+      previousGenerationStreamRuntimeStoragePath
+    );
 
     const probe = await waitForWebviewProbe((currentProbe) => {
       const agentNode = findOptionalProbeNodeById(currentProbe, LEGACY_AGENT_NODE_ID);
@@ -270,6 +318,22 @@ async function run() {
       20000
     );
 
+    await clearDiagnosticEvents();
+    await performWebviewDomAction({
+      kind: 'clickNodeActionButton',
+      nodeId: PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID,
+      action: 'stop'
+    });
+    const completedPreviousGenerationStreamSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const node = findOptionalNodeById(currentSnapshot, PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID);
+      return Boolean(node && node.metadata?.terminal?.liveSession === false && node.status !== 'live');
+    }, 30000);
+    assert.strictEqual(
+      findNodeById(completedPreviousGenerationStreamSnapshot, PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID)
+        .metadata.terminal.terminalProjectionMode,
+      undefined
+    );
+
     await performWebviewDomAction({
       kind: 'clickNodeActionButton',
       nodeId: LEGACY_TERMINAL_NODE_ID,
@@ -290,13 +354,26 @@ async function run() {
       30000
     );
     await waitForDiagnosticEvent(
-      (event) => event.kind === 'runtime/legacySupervisorClientRetired',
+      (event) =>
+        event.kind === 'runtime/legacySupervisorClientRetired' &&
+        path.normalize(event.detail?.runtimeStoragePath) === path.normalize(previousGenerationStreamRuntimeStoragePath),
+      20000
+    );
+    await waitForDiagnosticEvent(
+      (event) =>
+        event.kind === 'runtime/legacySupervisorClientRetired' &&
+        path.normalize(event.detail?.runtimeStoragePath) === path.normalize(runtimeStoragePath),
       20000
     );
 
-    const legacyExit = await waitForChildProcessExit(legacySupervisorProcess, 45000);
+    const [legacyExit, previousGenerationStreamExit] = await Promise.all([
+      waitForChildProcessExit(legacySupervisorProcess, 45000),
+      waitForChildProcessExit(previousGenerationStreamSupervisorProcess, 45000)
+    ]);
     assert.deepStrictEqual(legacyExit, { code: 0, signal: null });
+    assert.deepStrictEqual(previousGenerationStreamExit, { code: 0, signal: null });
     legacySupervisorProcess = undefined;
+    previousGenerationStreamSupervisorProcess = undefined;
 
     await performWebviewDomAction({
       kind: 'sendExecutionInput',
@@ -329,13 +406,25 @@ async function run() {
         sessionId: currentTerminalSessionId
       }).catch(() => undefined);
     }
+    if (previousGenerationStreamSupervisorPaths && previousGenerationStreamTerminalSessionId) {
+      await sendRuntimeSupervisorRequest(previousGenerationStreamSupervisorPaths, 'deleteSession', {
+        sessionId: previousGenerationStreamTerminalSessionId
+      }).catch(() => undefined);
+    }
     await stopProcess(legacySupervisorProcess);
+    await stopProcess(previousGenerationStreamSupervisorProcess);
     await vscode.commands.executeCommand(COMMAND_IDS.testResetState).catch(() => undefined);
     await setRuntimePersistenceEnabled(previousRuntimePersistenceEnabled).catch(() => undefined);
   }
 }
 
-function createLegacyRuntimeState({ runtimeStoragePath, agentSnapshot, terminalSnapshot }) {
+function createLegacyRuntimeState({
+  runtimeStoragePath,
+  agentSnapshot,
+  terminalSnapshot,
+  previousGenerationStreamRuntimeStoragePath,
+  previousGenerationStreamTerminalSnapshot
+}) {
   const workspaceRoot = getWorkspaceRoot();
   return {
     version: 1,
@@ -401,6 +490,34 @@ function createLegacyRuntimeState({ runtimeStoragePath, agentSnapshot, terminalS
             lastRows: terminalSnapshot.rows
           }
         }
+      },
+      {
+        id: PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID,
+        kind: 'terminal',
+        title: 'Previous Generation Stream Terminal',
+        status: 'reattaching',
+        summary: 'Reattaching previous-generation stream Terminal runtime.',
+        position: { x: 1360, y: 100 },
+        size: { width: 560, height: 430 },
+        metadata: {
+          terminal: {
+            backend: 'node-pty',
+            lifecycle: previousGenerationStreamTerminalSnapshot.lifecycle,
+            shellPath: resolveShellPath(),
+            cwd: workspaceRoot,
+            persistenceMode: 'live-runtime',
+            attachmentState: 'reattaching',
+            runtimeBackend: 'legacy-detached',
+            runtimeGuarantee: 'best-effort',
+            liveSession: false,
+            runtimeSessionId: previousGenerationStreamTerminalSnapshot.sessionId,
+            runtimeStoragePath: previousGenerationStreamRuntimeStoragePath,
+            recentOutput: '',
+            outputSequence: previousGenerationStreamTerminalSnapshot.outputSequence,
+            lastCols: previousGenerationStreamTerminalSnapshot.cols,
+            lastRows: previousGenerationStreamTerminalSnapshot.rows
+          }
+        }
       }
     ]
   };
@@ -463,7 +580,7 @@ async function createLegacyAgentSession(supervisorPaths) {
   return snapshot;
 }
 
-async function createLegacyTerminalSession(supervisorPaths) {
+async function createLegacyTerminalSession(supervisorPaths, marker = LEGACY_TERMINAL_MARKER) {
   const snapshot = await sendRuntimeSupervisorRequest(supervisorPaths, 'createSession', {
     kind: 'terminal',
     displayLabel: resolveShellPath(),
@@ -481,7 +598,7 @@ async function createLegacyTerminalSession(supervisorPaths) {
   });
   await sendRuntimeSupervisorRequest(supervisorPaths, 'writeInput', {
     sessionId: snapshot.sessionId,
-    data: `printf '\\033[31m${LEGACY_TERMINAL_MARKER}\\033[0m\\n'\r`
+    data: `printf '\\033[31m${marker}\\033[0m\\n'\r`
   });
   return snapshot;
 }
