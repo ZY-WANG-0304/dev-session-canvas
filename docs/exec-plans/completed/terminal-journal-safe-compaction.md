@@ -20,8 +20,10 @@
 - [x] (2026-07-13 01:20 +0800) 修复复核发现的 post-compaction fallback 破坏与 cursor-blink eligibility 假阳性，并新增三代损坏、profile 迁移继续 append 和 DECSET 12 回归。
 - [x] (2026-07-13 01:52 +0800) 完成真实验证：底层故障注入、协议、六个 Webview 定向用例、10-Agent 容量、typecheck、build、按 metadata-only registry 契约修正后的 `trusted`，以及两阶段 `real-reopen` 均通过。
 - [x] (2026-07-13 01:52 +0800) 同步正式设计、索引和技术债，并把本计划移入 `completed`；本阶段 compact 验收通过，但正式设计的总体状态以后续主线 final-state 风险证据为准。
-- [x] (2026-07-13 18:10 +0800) rebase 到 `origin/main@51dd07e`，保留 PR #258 新旧 Supervisor 并行 drain 语义；主线新增的 90000 行间歇性短读继续阻止总体“已验证”，Node 25 final-state 测试则由新的 checkpoint+journal finalization 语义收口并连续三次通过。
+- [x] (2026-07-13 18:10 +0800) rebase 到 `origin/main@51dd07e`，保留 PR #258 新旧 Supervisor 并行 drain 语义；主线新增的 90000 行间歇性短读继续阻止总体“已验证”，当时 Node 25.6.0 的 final-state 协议测试在本分支连续三次通过。
 - [x] (2026-07-13 22:24 +0800) 创建 PR 前再次 rebase 到 `origin/main@494130b`；六组终端核心测试、typecheck、build、`legacy-supervisor-upgrade`、严格 `trusted` 与两阶段 `real-reopen` 均在最终基线上通过。
+- [x] (2026-07-13 23:54 +0800) 根据 PR #263 review rebase 到 `origin/main@9dff56f`，合入 #262 的 forced drain 末尾单次 serialize、15 秒事件驱动 final-state 门禁和第三次 `89877/90000` 短读证据；同时让恢复以 registry authority 校验 journal manifest，并补 mismatch fail-closed 回归。
+- [x] (2026-07-14 00:12 +0800) 在 `origin/main@9dff56f` 上重跑六组核心测试、typecheck、build、Supervisor 容量和 legacy 升级 smoke；`trusted` 与 `real-reopen` 各有一次非内容性时序误报，保留 artifact 并登记技术债后原样复跑通过。
 
 ## 意外与发现
 
@@ -49,8 +51,11 @@
 - 观察：空字符串是合法的 revision 0 genesis checkpoint，不能据此判定 checkpoint 缺失。
   证据：`real-reopen` 首次复跑时，离线期间结束的 Terminal 已有空 genesis checkpoint 和四条完整 journal events，但测试 helper 因 `!serializedState.data` 返回空投影而超时；改为检查 data 类型并继续拼接 events 后，两阶段窗口重开 smoke 通过。
 
-- 观察：本分支验证完成后，主线发布准备又第二次观察到 90000 行 completed stream 尾部短读，并记录 Node 25 final-state 协议失败；两者在 rebase 后的结论不同。
-  证据：`origin/main@51dd07e` 记录 packaged-payload smoke 停在第 89960 行，这项风险仍未定位。Node 25 的失败则来自 exit 后等待多 MB semantic checkpoint；本分支改为最后 eligible checkpoint 加完整 suffix 后，Node 25.6.0 的协议测试连续三次通过。
+- 观察：主线继续补充了第三次 90000 行 completed stream 尾部短读，并证明此前的 final-state 协议失败不是 Node 25 专属问题。
+  证据：`origin/main@9dff56f` 记录 trusted smoke 停在第 89877 行；独立协议诊断则确认 Node 22/25 都可能在固定 3 秒等待内失败，但完整 final state 会在约 3.69 秒或 8.88 秒到达。#262 把 forced multi-chunk drain 收敛为末尾单次 serialize，并改用 15 秒事件驱动完整 revision 门禁；本分支 rebase 后同时保留该优化与 checkpoint version/cache invalidation。
+
+- 观察：恢复时若不把 registry authority 传给 `TerminalSessionJournal.open()`，manifest 中的另一 authority 会静默覆盖 registry lookup。
+  证据：PR #263 review 把 registry 中既有 session 的 `terminalAuthorityId` 改成不同值后，旧实现仍返回 journal stream 且 authority 随之改变。修复后同一负向 fixture 进入 `terminalJournalPersistenceFailed`，不发布 stream、raw output 或 serialized marker。
 
 ## 决策记录
 
@@ -98,9 +103,13 @@
   理由：PR #258 是本分支基线之后已经合入的产品语义；90000 行短读已出现第二个样本，属于更新且更强的风险证据。
   日期/作者：2026-07-13 / Codex
 
+- 决策：metadata-only registry 中的 authority lookup 是 journal 恢复绑定，不是可由 manifest 覆盖的提示值。
+  理由：session identity 由 `sessionId + authorityId` 共同定义；两者不一致时继续恢复会把同名 session 静默改绑到另一条内容历史，必须 fail closed。
+  日期/作者：2026-07-13 / Codex
+
 ## 结果与复盘
 
-实现已经覆盖 eligibility、manifest v2、原子 compact、current/previous/genesis 恢复、Supervisor 接入和 metadata-only registry，并在 rebase 后与 PR #258 的新旧 Supervisor 并行 drain 共存。底层故障注入、协议、六个 Webview 定向用例、typecheck、build、10-Agent 容量、`trusted`、两阶段 `real-reopen` 与 legacy Supervisor upgrade smoke 均通过；复核又修复了 cursor-blink 假阳性、post-compaction fallback 破坏和空 genesis checkpoint 的测试误判。无法证明 eligibility、超过 256 KiB 或 producer profile 无兼容 fallback 时，系统按设计停止 compact并继续无损增长 journal。第 4–6 步目标已经完成，Node 25 final-state 时序问题也由 suffix finalization 收口；但 completed stream 的 90000 行间歇性短读仍未定位，因此正式设计总体保持“验证中”，相关风险继续由技术债追踪。
+实现已经覆盖 eligibility、manifest v2、原子 compact、current/previous/genesis 恢复、Supervisor 接入和 metadata-only registry，并在 rebase 后与 PR #258 的新旧 Supervisor 并行 drain、#262 的 forced-drain/final-state 门禁共存。底层故障注入、协议、六个 Webview 定向用例、typecheck、build、10-Agent 容量、`trusted`、两阶段 `real-reopen` 与 legacy Supervisor upgrade smoke 均通过；复核又修复了 cursor-blink 假阳性、post-compaction fallback 破坏、空 genesis checkpoint 的测试误判和 registry/journal authority 静默改绑。无法证明 eligibility、超过 256 KiB 或 producer profile 无兼容 fallback 时，系统按设计停止 compact并继续无损增长 journal。第 4–6 步目标已经完成，final-state 协议门禁已按跨 Node 证据收口；但 completed stream 的 90000 行间歇性短读已出现三个样本且仍未定位，因此正式设计总体保持“验证中”，相关风险继续由技术债追踪。
 
 ## 上下文与定向
 
@@ -175,6 +184,9 @@ Webview定向覆盖 checkpoint+journal hydrate、split controls、gap fail close
     npm run test:serialized-terminal-state-tracker  # passed
     npm run test:terminal-session-journal           # passed
     npm run test:runtime-supervisor-protocol        # passed
+    npm run test:runtime-supervisor-paths           # passed
+    npm run test:execution-output-sequence          # passed
+    npm run test:protocol-webview-messages          # passed
     npm run typecheck                               # passed
     npm run build                                   # passed
     npm run benchmark:agent-terminal-io             # passed
@@ -185,7 +197,11 @@ rebase 后最近一次 Supervisor 10-Agent 样本：input RPC 10.18ms，echo 20.
 
 独立 `real-reopen` 首次 verify 因测试 helper 拒绝空 genesis checkpoint 而超时；最终 snapshot 中 live Agent/Terminal 已 attached-live 且包含离线 marker，completed Terminal 的完整 events 也包含 final marker。helper 改为接受空 checkpoint data 后，setup/verify 两阶段退出码均为 0，真实窗口重开 smoke 通过。
 
-rebase 到 `origin/main@51dd07e` 后，Node 25.6.0 的 Supervisor 协议连续三次通过，`trusted`、`real-reopen` 与 `legacy-supervisor-upgrade` smoke 均以 code 0 完成；创建 PR 前又 rebase 到 `origin/main@494130b`，并重新通过六组核心测试、typecheck、build 与上述三组 smoke。其中 `trusted` 继续保留严格 90000 行断言。单次严格通过不能关闭主线已经记录的两次间歇性短读，因此该风险仍留在正式设计和技术债中。
+rebase 到 `origin/main@51dd07e` 后，Node 25.6.0 的 Supervisor 协议连续三次通过，`trusted`、`real-reopen` 与 `legacy-supervisor-upgrade` smoke 均以 code 0 完成；创建 PR 前又 rebase 到 `origin/main@494130b`，并重新通过六组核心测试、typecheck、build 与上述三组 smoke。其中 `trusted` 继续保留严格 90000 行断言。这些通过样本不能关闭已经记录的 `89861`、`89960` 与 `89877` 三次间歇性短读，因此该风险仍留在正式设计和技术债中。
+
+PR #263 review 在 `origin/main@9dff56f` 上再次通过上述六组核心测试、typecheck、build 和 `legacy-supervisor-upgrade` smoke；authority mismatch 负向 fixture 证明 registry 与 journal authority 不一致时不发布 stream、raw output 或 serialized marker。最终 Supervisor 容量样本为 input response 10.34ms、echo 20.13ms，registry 65,295 bytes。
+
+该基线的首次 `trusted` 运行在 seeded history-restored Agent 已合法推进到 `resuming` 时，被只接受 `resume-ready/history-restored` 的瞬时断言误报；artifact 中严格 90000 行全部到达，原样复跑通过。首次 `real-reopen` verify 则在等待 editor Canvas ready 时命中 20 秒超时，runtime artifact 中 pending operation 为 0，Agent/Terminal authority、revision 和 output 均正常；原样重跑 setup/verify 通过。两项均按仓库 review 规则登记为 smoke harness 技术债，不放宽任何内容、revision 或 authority 断言。
 
 ## 接口与依赖
 
@@ -198,4 +214,4 @@ rebase 到 `origin/main@51dd07e` 后，Node 25.6.0 的 Supervisor 协议连续�
 
 `flushValidatedCheckpoint()` 返回 state或明确拒绝 reason；journal只持久化 caller已验证的 checkpoint。generation manifest保存 `serializedState.format` 作为当前 codec id，并为未来 codec保留 profile字段，但本阶段不新增网络、原生依赖或完整 xterm私有快照格式。
 
-计划变更说明：2026-07-12 创建；同日根据用户判断从“先实现完整 xterm-checkpoint-v2”收敛为“保守 eligibility + codec 无关 generation”，因为无法证明时保留 journal比维护一套可能遗漏状态的私有 snapshot codec更符合无损目标。2026-07-13 根据实现与复核更新全部活文档章节，补入 exact profile、256 KiB上限、metadata-only registry、segment fsync/full verify、old previous保留、`no-usable-fallback`继续 append、cursor-blink反例和当前验证证据；同日修正 `trusted` 的旧 registry 契约与 `real-reopen` 对空 genesis checkpoint 的误判并归档本计划。随后 rebase 到 `origin/main@51dd07e`，合并 PR #258 的并行 drain 语义与发布阶段新增风险证据；Node 25 final-state 时序问题随 suffix finalization 收口，90000 行间歇性短读继续使正式设计总体保持“验证中”。创建 PR 前再次 rebase 到 `origin/main@494130b` 并复跑核心测试和三组 smoke，未引入新的冲突或验证结论变化。
+计划变更说明：2026-07-12 创建；同日根据用户判断从“先实现完整 xterm-checkpoint-v2”收敛为“保守 eligibility + codec 无关 generation”，因为无法证明时保留 journal比维护一套可能遗漏状态的私有 snapshot codec更符合无损目标。2026-07-13 根据实现与复核更新全部活文档章节，补入 exact profile、256 KiB上限、metadata-only registry、segment fsync/full verify、old previous保留、`no-usable-fallback`继续 append、cursor-blink反例和当前验证证据；同日修正 `trusted` 的旧 registry 契约与 `real-reopen` 对空 genesis checkpoint 的误判并归档本计划。随后 rebase 到 `origin/main@51dd07e`，合并 PR #258 的并行 drain 语义与发布阶段新增风险证据；后续诊断证明 final-state 固定 3 秒门禁的失败不是 Node 25 专属，#262 用 forced drain 末尾单次 serialize 和 15 秒事件驱动不变量等待收口。创建 PR 前再次 rebase 到 `origin/main@494130b` 并复跑核心测试和三组 smoke。2026-07-14 根据 PR #263 review rebase 到 `origin/main@9dff56f`，保留 #262 语义、第三次 90000 行短读证据与本分支 checkpoint cache invalidation，并补齐 registry/journal authority 绑定、负向回归和最终基线验证。
