@@ -16,6 +16,8 @@ try {
   const protocolOutfile = path.join(tempDir, 'runtimeSupervisorProtocol.cjs');
   const clientOutfile = path.join(tempDir, 'runtimeSupervisorClient.cjs');
   const terminalSessionStreamOutfile = path.join(tempDir, 'terminalSessionStream.cjs');
+  const terminalSessionJournalOutfile = path.join(tempDir, 'terminalSessionJournal.cjs');
+  const serializedTerminalStateOutfile = path.join(tempDir, 'serializedTerminalState.cjs');
   const supervisorOutfile = path.join(tempDir, 'runtimeSupervisorMain.cjs');
   await Promise.all([
     esbuild.build({
@@ -43,6 +45,22 @@ try {
       target: 'node18'
     }),
     esbuild.build({
+      entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts')],
+      bundle: true,
+      format: 'cjs',
+      outfile: terminalSessionJournalOutfile,
+      platform: 'node',
+      target: 'node18'
+    }),
+    esbuild.build({
+      entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts')],
+      bundle: true,
+      format: 'cjs',
+      outfile: serializedTerminalStateOutfile,
+      platform: 'node',
+      target: 'node18'
+    }),
+    esbuild.build({
       entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts')],
       bundle: true,
       format: 'cjs',
@@ -63,6 +81,14 @@ try {
   } = require(protocolOutfile);
   const { RuntimeSupervisorClient } = require(clientOutfile);
   const { mergeTerminalStreamProjectionWithLiveTail } = require(terminalSessionStreamOutfile);
+  const {
+    TerminalSessionJournal,
+    resolveTerminalJournalSessionDirectory
+  } = require(terminalSessionJournalOutfile);
+  const {
+    SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
+    SerializedTerminalStateTracker
+  } = require(serializedTerminalStateOutfile);
 
   await assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir);
   assertTerminalProjectionMergePreservesConcurrentLiveTail(mergeTerminalStreamProjectionWithLiveTail);
@@ -116,9 +142,13 @@ try {
   );
 
   const supervisorSource = await readFile(path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts'), 'utf8');
+  const terminalJournalSource = await readFile(
+    path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts'),
+    'utf8'
+  );
   assert.match(
     supervisorSource,
-    /private async deleteSession\([\s\S]*?terminalMutationAdmissionOpen = false;[\s\S]*?await this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*?payload:[\s\S]*?await this\.createFreshSnapshot\(session\)[\s\S]*?this\.sessions\.delete\(params\.sessionId\);/u,
+    /private async deleteSession\([\s\S]*?terminalMutationAdmissionOpen = false;[\s\S]*?await this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*?payload:[\s\S]*?await this\.createFreshSnapshot\(session, 'never'\)[\s\S]*?this\.sessions\.delete\(params\.sessionId\);/u,
     'deleteSession 必须先关闭 mutation admission，并在串行链路收敛 fresh 非 live 终态后再删除共享 backend session。'
   );
   assert.match(
@@ -133,8 +163,13 @@ try {
   );
   assert.match(
     supervisorSource,
-    /const checkpointCols = session\.cols;[\s\S]*const checkpointRows = session\.rows;[\s\S]*const checkpointScrollback = session\.scrollback;[\s\S]*await session\.terminalStateTracker\.flush\(\)/u,
-    'checkpoint 必须在 tracker flush 前固定 cols、rows 与 scrollback，避免把较早 revision 的 state 与较新几何混合。'
+    /const checkpointCols = session\.cols;[\s\S]*const checkpointRows = session\.rows;[\s\S]*const checkpointScrollback = session\.scrollback;[\s\S]*await session\.terminalStateTracker\.flushValidatedCheckpoint\(\)/u,
+    'checkpoint 必须在固定 cols、rows 与 scrollback 后通过无损 eligibility 验证，不能把 parser carry 当作可压缩状态。'
+  );
+  assert.match(
+    supervisorSource,
+    /journal\.commitCheckpoint\(checkpoint, \{[\s\S]*?retainAfterRevision: this\.getTerminalJournalRetentionRevision\(session\)[\s\S]*?\}\)/u,
+    'validated checkpoint 持久化必须携带 retention floor，deferred attach 与 applied ACK 只能收紧删除边界。'
   );
   assert.match(
     supervisorSource,
@@ -143,13 +178,13 @@ try {
   );
   assert.match(
     supervisorSource,
-    /private async finalizeSession\([\s\S]*this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*payload: await this\.createFreshSnapshot\(session\)/u,
-    'runtime supervisor final sessionState 必须在串行边界内 flush headless terminal，避免输出后立即退出时丢失 serializedTerminalState。'
+    /private async finalizeSession\([\s\S]*this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*payload: await this\.createFreshSnapshot\(session, 'never'\)/u,
+    'runtime supervisor final sessionState 必须在串行边界内发布 checkpoint+journal suffix，且 exit 后不再启动昂贵 compact。'
   );
   assert.match(
     supervisorSource,
-    /private async persistRegistry\([\s\S]*await Promise\.all\([\s\S]*this\.toFreshSnapshot\(session\)[\s\S]*sessions: snapshots\.filter/u,
-    'runtime supervisor registry 持久化必须使用 fresh snapshot，避免把 stale cached serializedTerminalState 写入 registry。'
+    /private async persistRegistry\([\s\S]*await Promise\.all\([\s\S]*this\.toFreshSnapshot\([\s\S]*session\.terminalAuthorityId \? 'if-compaction-due' : 'always',[\s\S]*!session\.terminalAuthorityId[\s\S]*sessions: snapshots\.filter/u,
+    'authority registry 只持久化 journal metadata，不应每 120ms 内联克隆完整 terminal suffix。'
   );
   assert.match(
     supervisorSource,
@@ -163,8 +198,13 @@ try {
   );
   assert.match(
     supervisorSource,
-    /TerminalSessionJournal\.open\([\s\S]*const allEvents = await terminalJournal\.readAllEvents\(\);[\s\S]*for \(const event of allEvents\)[\s\S]*terminalCheckpoint = normalizeTerminalStreamCheckpoint\(\{/u,
-    '带 authority 的 registry 恢复必须从完整 journal 校验并重放，不能从 raw tail 猜测终端状态。'
+    /TerminalSessionJournal\.open\([\s\S]*const recoveryCandidates = await terminalJournal\.getRecoveryCandidates\(\);[\s\S]*for \(const candidate of recoveryCandidates\)[\s\S]*restoreTerminalJournalCandidate\([\s\S]*?candidate[\s\S]*?break;/u,
+    '带 authority 的 registry 恢复必须按 journal 提供的候选链逐个验证，不能从 registry checkpoint 或 raw tail 猜测状态。'
+  );
+  assert.match(
+    terminalJournalSource,
+    /\{ source: 'current', reference:[\s\S]*\{ source: 'previous', reference:[\s\S]*candidates\.push\(\{[\s\S]*source: 'genesis'/u,
+    'journal recovery candidates 必须按 current、previous、genesis 的保守顺序提供。'
   );
   assert.match(
     supervisorSource,
@@ -184,6 +224,14 @@ try {
 
   const runtimeEvidence = await assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supervisorOutfile, tempDir);
   await assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, tempDir, runtimeEvidence.marker);
+  await assertRuntimeSupervisorV2CheckpointFallback(
+    supervisorOutfile,
+    tempDir,
+    TerminalSessionJournal,
+    resolveTerminalJournalSessionDirectory,
+    SerializedTerminalStateTracker,
+    SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
+  );
   const capacityMetrics = await assertTenAgentRuntimeCapacity(supervisorOutfile, tempDir);
 
   console.log(`[10-agent-supervisor-capacity] ${JSON.stringify(capacityMetrics)}`);
@@ -419,7 +467,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     await waitForRuntimeSupervisorRegistrySession(
       registryPath,
       'attach-gap-terminal',
-      (session) => session.terminalStream?.checkpoint?.revision > attachGapSnapshot.terminalRevision
+      (session) => session.terminalRevision > attachGapSnapshot.terminalRevision
     );
     const subscribeResult = await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
       sessionId: 'attach-gap-terminal',
@@ -769,7 +817,13 @@ setInterval(() => undefined, 1000);
         message.type === 'event' &&
         message.event === 'sessionState' &&
         message.payload?.sessionId === finalizationRaceSessionId &&
-        message.payload.live === false,
+        message.payload.live === false &&
+        message.payload.terminalStream?.revision === message.payload.terminalRevision &&
+        message.payload.terminalStream.events
+          .filter((event) => event.type === 'output')
+          .map((event) => event.data)
+          .join('')
+          .includes(finalizationRaceMarker),
       'finalization race state',
       15000
     );
@@ -792,11 +846,15 @@ setInterval(() => undefined, 1000);
       finalizationRaceState.payload.terminalRevision
     );
     assert.equal(
-      finalizationRaceState.payload.serializedTerminalState?.outputSequence,
-      finalizationRaceState.payload.terminalRevision
+      finalizationRaceState.payload.serializedTerminalState,
+      undefined,
+      'finalization should not block on a multi-megabyte semantic checkpoint validation.'
     );
     assert.match(
-      finalizationRaceState.payload.serializedTerminalState?.data ?? '',
+      finalizationRaceState.payload.terminalStream.events
+        .filter((event) => event.type === 'output')
+        .map((event) => event.data)
+        .join(''),
       new RegExp(finalizationRaceMarker, 'u')
     );
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
@@ -883,6 +941,120 @@ setInterval(() => undefined, 1000);
       sessionId: unicodeSessionId
     });
 
+    const unsafeCheckpointScriptPath = path.join(tempDir, 'runtime-unsafe-checkpoint.js');
+    const safeCheckpointMarker = `SAFE-CHECKPOINT-${Date.now()}`;
+    const unsafeSplitPrefix = `UNSAFE-SPLIT-${Date.now()}:`;
+    await writeFile(
+      unsafeCheckpointScriptPath,
+      `const readline = require('node:readline');
+const reader = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+reader.on('line', (line) => {
+  if (line === 'safe') {
+    process.stdout.write(${JSON.stringify(`${safeCheckpointMarker}\r\n`)});
+    return;
+  }
+  if (line === 'split') {
+    process.stdout.write(${JSON.stringify(`${unsafeSplitPrefix}\u001b[31`)});
+  }
+});
+setInterval(() => undefined, 1000);
+`,
+      'utf8'
+    );
+    const unsafeCheckpointSessionId = 'unsafe-split-csi-checkpoint';
+    const unsafeCheckpointInitial = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'terminal',
+      sessionId: unsafeCheckpointSessionId,
+      displayLabel: 'Unsafe split CSI checkpoint fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [unsafeCheckpointScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId: unsafeCheckpointSessionId,
+      authorityId: unsafeCheckpointInitial.terminalAuthorityId,
+      afterRevision: unsafeCheckpointInitial.terminalRevision
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: unsafeCheckpointSessionId,
+      data: 'safe\n'
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      unsafeCheckpointSessionId,
+      safeCheckpointMarker,
+      'safe checkpoint fixture output',
+      5000
+    );
+    const safeCheckpointSnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: unsafeCheckpointSessionId }
+    );
+    assertTerminalStreamSnapshot(safeCheckpointSnapshot, 'safe checkpoint fixture snapshot');
+    assert.equal(
+      safeCheckpointSnapshot.serializedTerminalState?.outputSequence,
+      safeCheckpointSnapshot.terminalRevision
+    );
+    assert.match(
+      safeCheckpointSnapshot.serializedTerminalState?.data ?? '',
+      new RegExp(safeCheckpointMarker, 'u')
+    );
+
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: unsafeCheckpointSessionId,
+      data: 'split\n'
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      unsafeCheckpointSessionId,
+      `${unsafeSplitPrefix}\u001b[31`,
+      'unsafe split CSI output',
+      5000
+    );
+    const unsafeCheckpointSnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: unsafeCheckpointSessionId }
+    );
+    assertTerminalStreamSnapshot(unsafeCheckpointSnapshot, 'unsafe split CSI snapshot');
+    assert.equal(
+      unsafeCheckpointSnapshot.serializedTerminalState,
+      undefined,
+      'an unsafe parser head must not be published as serializedTerminalState.'
+    );
+    assert.equal(
+      unsafeCheckpointSnapshot.terminalStream.checkpoint.revision,
+      safeCheckpointSnapshot.terminalStream.checkpoint.revision,
+      'an unsafe parser head must retain the last trusted checkpoint.'
+    );
+    assert.ok(
+      unsafeCheckpointSnapshot.terminalStream.revision >
+        unsafeCheckpointSnapshot.terminalStream.checkpoint.revision
+    );
+    assert.ok(
+      unsafeCheckpointSnapshot.terminalStream.events
+        .filter((event) => event.type === 'output')
+        .map((event) => event.data)
+        .join('')
+        .includes(`${unsafeSplitPrefix}\u001b[31`),
+      'the split CSI must remain losslessly available in the journal suffix.'
+    );
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: unsafeCheckpointSessionId
+    });
+
     const marker = `runtime-final-marker-${Date.now()}`;
     const scriptPath = path.join(tempDir, 'runtime-final-output.js');
     await writeFile(scriptPath, `process.stdout.write(${JSON.stringify(`${marker}\r\n`)});\n`, 'utf8');
@@ -915,14 +1087,17 @@ setInterval(() => undefined, 1000);
     assertTerminalStreamSnapshot(finalState.payload, 'final sessionState');
     assert.equal(finalState.payload.terminalRevision, finalState.payload.outputSequence);
     assert.equal(
-      finalState.payload.serializedTerminalState?.outputSequence,
-      finalState.payload.outputSequence,
-      'final sessionState should carry a serialized terminal state fresh to the final output sequence.'
+      finalState.payload.serializedTerminalState,
+      undefined,
+      'finalization should publish the journal suffix instead of starting a new checkpoint validation after exit.'
     );
     assert.match(
-      finalState.payload.serializedTerminalState?.data ?? '',
+      finalState.payload.terminalStream.events
+        .filter((event) => event.type === 'output')
+        .map((event) => event.data)
+        .join(''),
       new RegExp(marker, 'u'),
-      'final sessionState serialized terminal state should include output written immediately before exit.'
+      'final sessionState journal suffix should include output written immediately before exit.'
     );
     assert.equal(
       finalState.payload.lastExitMessage,
@@ -940,21 +1115,11 @@ setInterval(() => undefined, 1000);
     const storedSession = await waitForRuntimeSupervisorRegistrySession(
       registryPath,
       'immediate-exit-terminal',
-      (session) =>
-        session.live === false &&
-        session.serializedTerminalState?.data?.includes(marker) === true
+      (session) => session.live === false && session.terminalRevision === session.outputSequence
     );
-    assertTerminalStreamSnapshot(storedSession, 'registry snapshot');
-    assert.equal(
-      storedSession.serializedTerminalState?.outputSequence,
-      storedSession.outputSequence,
-      'registry snapshot should carry a serialized terminal state fresh to the final output sequence.'
-    );
-    assert.match(
-      storedSession.serializedTerminalState?.data ?? '',
-      new RegExp(marker, 'u'),
-      'registry serialized terminal state should include output written immediately before exit.'
-    );
+    assert.equal(storedSession.terminalStream, undefined);
+    assert.equal(storedSession.serializedTerminalState, undefined);
+    assert.ok(storedSession.terminalAuthorityId, 'registry should retain the journal authority lookup key.');
     assert.deepEqual(
       storedSession.lastExitMessageDescriptor,
       {
@@ -1336,6 +1501,98 @@ async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, temp
     await closeRuntimeSupervisorForTest(firstRestart);
   }
 
+  const untrustedRegistryMarker = `UNTRUSTED-REGISTRY-CHECKPOINT-${Date.now()}`;
+  const registryWithUntrustedCache = JSON.parse(await readFile(registryPath, 'utf8'));
+  const cachedSession = registryWithUntrustedCache.sessions.find(
+    (candidate) => candidate.sessionId === 'immediate-exit-terminal'
+  );
+  assert.ok(cachedSession?.terminalAuthorityId);
+  assert.ok(Number.isSafeInteger(cachedSession.terminalRevision));
+  const untrustedSerializedState = {
+    format: 'xterm-serialize-v1',
+    data: untrustedRegistryMarker,
+    outputSequence: cachedSession.terminalRevision
+  };
+  cachedSession.output = untrustedRegistryMarker;
+  cachedSession.outputSequence = cachedSession.terminalRevision;
+  cachedSession.serializedTerminalState = untrustedSerializedState;
+  cachedSession.terminalStream = {
+    version: 1,
+    sessionId: cachedSession.sessionId,
+    authorityId: cachedSession.terminalAuthorityId,
+    revision: cachedSession.terminalRevision,
+    checkpoint: {
+      version: 1,
+      sessionId: cachedSession.sessionId,
+      authorityId: cachedSession.terminalAuthorityId,
+      revision: cachedSession.terminalRevision,
+      cols: cachedSession.cols,
+      rows: cachedSession.rows,
+      scrollback: cachedSession.scrollback,
+      createdAtMs: Date.now(),
+      serializedState: untrustedSerializedState
+    },
+    events: []
+  };
+  await writeFile(registryPath, JSON.stringify(registryWithUntrustedCache, null, 2), 'utf8');
+
+  const registryCacheRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+  try {
+    const journalAuthoritySnapshot = await sendRuntimeSupervisorRequest(
+      registryCacheRestart.socket,
+      registryCacheRestart.messages,
+      'attachSession',
+      {
+        sessionId: 'immediate-exit-terminal',
+        deferSubscription: true
+      }
+    );
+    assertTerminalStreamSnapshot(journalAuthoritySnapshot, 'untrusted registry cache restart snapshot');
+    assert.match(journalAuthoritySnapshot.terminalStream.checkpoint.serializedState.data, new RegExp(marker, 'u'));
+    assert.doesNotMatch(
+      journalAuthoritySnapshot.terminalStream.checkpoint.serializedState.data,
+      new RegExp(untrustedRegistryMarker, 'u'),
+      'a registry checkpoint must never override a journal authority.'
+    );
+    assert.doesNotMatch(
+      journalAuthoritySnapshot.output,
+      new RegExp(untrustedRegistryMarker, 'u'),
+      'a registry raw tail must never override a journal authority.'
+    );
+  } finally {
+    await closeRuntimeSupervisorForTest(registryCacheRestart);
+  }
+
+  const registryBeforeAuthorityMismatch = JSON.parse(await readFile(registryPath, 'utf8'));
+  const authorityMismatchRegistry = JSON.parse(JSON.stringify(registryBeforeAuthorityMismatch));
+  const authorityMismatchSession = authorityMismatchRegistry.sessions.find(
+    (candidate) => candidate.sessionId === 'immediate-exit-terminal'
+  );
+  assert.ok(authorityMismatchSession?.terminalAuthorityId);
+  authorityMismatchSession.terminalAuthorityId = `${authorityMismatchSession.terminalAuthorityId}-registry-mismatch`;
+  await writeFile(registryPath, JSON.stringify(authorityMismatchRegistry, null, 2), 'utf8');
+
+  const authorityMismatchRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+  try {
+    const failedClosedSnapshot = await sendRuntimeSupervisorRequest(
+      authorityMismatchRestart.socket,
+      authorityMismatchRestart.messages,
+      'attachSession',
+      {
+        sessionId: 'immediate-exit-terminal',
+        deferSubscription: true
+      }
+    );
+    assert.equal(failedClosedSnapshot.terminalStream, undefined);
+    assert.equal(failedClosedSnapshot.terminalAuthorityId, undefined);
+    assert.equal(failedClosedSnapshot.output, '');
+    assert.doesNotMatch(failedClosedSnapshot.serializedTerminalState?.data ?? '', new RegExp(marker, 'u'));
+    assert.equal(failedClosedSnapshot.lastExitMessageDescriptor?.id, 'terminalJournalPersistenceFailed');
+  } finally {
+    await closeRuntimeSupervisorForTest(authorityMismatchRestart);
+    await writeFile(registryPath, JSON.stringify(registryBeforeAuthorityMismatch, null, 2), 'utf8');
+  }
+
   const journalRoot = path.join(storageDir, 'terminal-journals');
   const journalDirectories = await readdir(journalRoot);
   let journalSegmentPath;
@@ -1374,6 +1631,202 @@ async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, temp
     assert.equal(failedClosedSnapshot.lastExitMessageDescriptor?.id, 'terminalJournalPersistenceFailed');
   } finally {
     await closeRuntimeSupervisorForTest(corruptedRestart);
+  }
+}
+
+async function assertRuntimeSupervisorV2CheckpointFallback(
+  supervisorOutfile,
+  tempDir,
+  TerminalSessionJournal,
+  resolveTerminalJournalSessionDirectory,
+  SerializedTerminalStateTracker,
+  checkpointProfiles
+) {
+  const storageDir = path.join(tempDir, 'runtime-v2-checkpoint-fallback-storage');
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-supervisor-v2-fallback-${process.pid}-${Date.now()}`
+      : path.join(storageDir, 'supervisor.sock');
+  const registryPath = path.join(storageDir, 'registry.json');
+  const sessionId = 'v2-checkpoint-fallback-terminal';
+  const authorityId = 'v2-checkpoint-fallback-authority';
+  const previousMarker = `V2-PREVIOUS-${Date.now()}`;
+  const currentMarker = `V2-CURRENT-${Date.now()}`;
+  const registryMarker = `V2-UNTRUSTED-REGISTRY-${Date.now()}`;
+  const journal = await TerminalSessionJournal.create({
+    storageDir,
+    sessionId,
+    authorityId,
+    initialCols: 80,
+    initialRows: 24,
+    initialScrollback: 1000,
+    segmentMaxBytes: 1,
+    flushDelayMs: 60_000,
+    compactionMinBytes: 0,
+    checkpointProfiles
+  });
+  const tracker = new SerializedTerminalStateTracker(80, 24, {
+    scrollback: 1000,
+    initialOutputSequence: 0
+  });
+
+  const appendAndCommitCheckpoint = async (data, retainAfterRevision) => {
+    const event = journal.appendOutput(data);
+    tracker.write(data, { outputSequence: event.revision });
+    const validation = await tracker.flushValidatedCheckpoint();
+    assert.equal(validation.eligible, true, `fixture checkpoint ${event.revision} should be eligible.`);
+    const checkpoint = {
+      version: 1,
+      sessionId,
+      authorityId,
+      revision: event.revision,
+      cols: 80,
+      rows: 24,
+      scrollback: 1000,
+      createdAtMs: Date.now(),
+      serializedState: validation.state
+    };
+    const result = await journal.commitCheckpoint(checkpoint, {
+      force: true,
+      ...(retainAfterRevision === undefined ? {} : { retainAfterRevision })
+    });
+    assert.equal(result.committed, true);
+    return checkpoint;
+  };
+
+  try {
+    await appendAndCommitCheckpoint(`${previousMarker}\r\n`);
+    await appendAndCommitCheckpoint(`${currentMarker}\r\n`, 1);
+    await journal.flush();
+    assert.equal(
+      journal.getRetainedStartRevision(),
+      2,
+      'the v2 fixture must remove genesis so two invalid generations cannot silently replay from revision 1.'
+    );
+
+    const sessionDirectory = resolveTerminalJournalSessionDirectory(storageDir, sessionId);
+    const manifest = JSON.parse(await readFile(path.join(sessionDirectory, 'manifest.json'), 'utf8'));
+    assert.equal(manifest.version, 2);
+    assert.ok(manifest.currentCheckpoint?.file);
+    assert.ok(manifest.previousCheckpoint?.file);
+
+    await writeFile(
+      registryPath,
+      JSON.stringify(
+        {
+          version: 1,
+          sessions: [
+            {
+              sessionId,
+              kind: 'terminal',
+              live: false,
+              lifecycle: 'exited',
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              shellPath: process.execPath,
+              cwd: tempDir,
+              cols: 80,
+              rows: 24,
+              scrollback: 1000,
+              output: registryMarker,
+              outputSequence: 2,
+              serializedTerminalState: {
+                format: 'xterm-serialize-v1',
+                data: registryMarker,
+                outputSequence: 2
+              },
+              terminalAuthorityId: authorityId,
+              terminalRevision: 2,
+              displayLabel: 'V2 checkpoint fallback fixture',
+              launchMode: 'start',
+              lastExitMessage: 'Terminal session ended.',
+              lastExitMessageDescriptor: {
+                id: 'terminalSessionEnded'
+              }
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+
+    await writeFile(
+      path.join(sessionDirectory, manifest.currentCheckpoint.file),
+      '{"corrupt":true}\n',
+      'utf8'
+    );
+    const previousFallbackRuntime = await launchRuntimeSupervisorForTest(
+      supervisorOutfile,
+      storageDir,
+      socketPath
+    );
+    try {
+      const snapshot = await sendRuntimeSupervisorRequest(
+        previousFallbackRuntime.socket,
+        previousFallbackRuntime.messages,
+        'attachSession',
+        {
+          sessionId,
+          deferSubscription: true
+        }
+      );
+      assertTerminalStreamSnapshot(snapshot, 'v2 previous-checkpoint fallback snapshot');
+      assert.equal(snapshot.terminalRevision, 2);
+      assert.match(snapshot.terminalStream.checkpoint.serializedState.data, new RegExp(previousMarker, 'u'));
+      assert.match(snapshot.terminalStream.checkpoint.serializedState.data, new RegExp(currentMarker, 'u'));
+      assert.doesNotMatch(snapshot.terminalStream.checkpoint.serializedState.data, new RegExp(registryMarker, 'u'));
+      assert.match(snapshot.output, new RegExp(previousMarker, 'u'));
+      assert.match(snapshot.output, new RegExp(currentMarker, 'u'));
+      assert.doesNotMatch(
+        snapshot.output,
+        new RegExp(registryMarker, 'u'),
+        'recent raw output is advisory journal metadata and must not fall back to the registry tail.'
+      );
+    } finally {
+      await closeRuntimeSupervisorForTest(previousFallbackRuntime);
+    }
+
+    await writeFile(
+      path.join(sessionDirectory, manifest.previousCheckpoint.file),
+      '{"corrupt":true}\n',
+      'utf8'
+    );
+    const failedClosedRuntime = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+    try {
+      const snapshot = await sendRuntimeSupervisorRequest(
+        failedClosedRuntime.socket,
+        failedClosedRuntime.messages,
+        'attachSession',
+        {
+          sessionId,
+          deferSubscription: true
+        }
+      );
+      assert.equal(snapshot.terminalStream, undefined);
+      assert.equal(snapshot.terminalAuthorityId, undefined);
+      assert.equal(snapshot.output, '');
+      assert.doesNotMatch(snapshot.serializedTerminalState?.data ?? '', new RegExp(previousMarker, 'u'));
+      assert.doesNotMatch(snapshot.serializedTerminalState?.data ?? '', new RegExp(currentMarker, 'u'));
+      assert.doesNotMatch(snapshot.serializedTerminalState?.data ?? '', new RegExp(registryMarker, 'u'));
+      assert.equal(snapshot.lastExitMessageDescriptor?.id, 'terminalJournalPersistenceFailed');
+      await sendRuntimeSupervisorRequest(
+        failedClosedRuntime.socket,
+        failedClosedRuntime.messages,
+        'deleteSession',
+        { sessionId }
+      );
+      await assert.rejects(
+        stat(sessionDirectory),
+        (error) => error?.code === 'ENOENT',
+        'deleting a fail-closed session must remove its otherwise orphaned journal directory.'
+      );
+    } finally {
+      await closeRuntimeSupervisorForTest(failedClosedRuntime);
+    }
+  } finally {
+    tracker.dispose();
   }
 }
 

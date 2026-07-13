@@ -10029,25 +10029,27 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
           session.scrollback === configuredScrollback &&
           typeof session.output === 'string' &&
           session.output.includes(latestMarker) &&
-          session.serializedTerminalState?.outputSequence === session.outputSequence &&
-          typeof session.serializedTerminalState?.data === 'string' &&
-          session.serializedTerminalState.data.includes(earliestMarker) &&
-          session.serializedTerminalState.data.includes(latestMarker)
+          typeof session.terminalAuthorityId === 'string' &&
+          session.terminalAuthorityId.length > 0 &&
+          Number.isSafeInteger(session.terminalRevision) &&
+          session.terminalRevision === session.outputSequence &&
+          session.serializedTerminalState === undefined &&
+          session.terminalStream === undefined
       );
     }, 20000);
-    assert.ok(
-      listRuntimeSupervisorSessions(runtimeState).some(
-        (session) =>
-          session.sessionId === runtimeSessionId &&
-          session.scrollback === configuredScrollback &&
-          typeof session.output === 'string' &&
-          session.output.includes(latestMarker) &&
-          session.serializedTerminalState?.outputSequence === session.outputSequence &&
-          typeof session.serializedTerminalState?.data === 'string' &&
-          session.serializedTerminalState.data.includes(earliestMarker) &&
-          session.serializedTerminalState.data.includes(latestMarker)
-      ),
-      'Expected runtime supervisor snapshots to retain the updated terminal scrollback history.'
+    const persistedRuntimeSession = listRuntimeSupervisorSessions(runtimeState).find(
+      (session) => session.sessionId === runtimeSessionId
+    );
+    assert.ok(persistedRuntimeSession, 'Expected the live runtime session in the supervisor registry.');
+    assert.strictEqual(
+      persistedRuntimeSession.serializedTerminalState,
+      undefined,
+      'Journal-backed registry entries must not persist a serialized terminal projection.'
+    );
+    assert.strictEqual(
+      persistedRuntimeSession.terminalStream,
+      undefined,
+      'Journal-backed registry entries must not duplicate the terminal journal suffix.'
     );
 
     snapshot = await simulateRuntimeReload();
@@ -10223,22 +10225,33 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
 
     snapshot = await waitForSnapshot((currentSnapshot) => {
       const node = currentSnapshot.state.nodes.find((candidate) => candidate.id === terminalNodeId);
-      const serializedData = node?.metadata?.terminal?.serializedTerminalState?.data;
+      if (!node || node.metadata?.terminal?.liveSession || node.status !== 'closed') {
+        return false;
+      }
+      const terminalStream = node.metadata.terminal.terminalStream;
+      const streamText = readTerminalStreamProjectionText(terminalStream);
       return Boolean(
-        node &&
-          !node.metadata?.terminal?.liveSession &&
-          node.status === 'closed' &&
-          typeof serializedData === 'string' &&
-          serializedData.length > 5 * 1024 * 1024 &&
-          serializedData.includes(earliestMarker) &&
-          serializedData.includes(middleMarker) &&
-          serializedData.includes(latestMarker)
+        terminalStream &&
+          node.metadata.terminal.serializedTerminalState === undefined &&
+          terminalStream.checkpoint.revision < terminalStream.revision &&
+          streamText.length > 5 * 1024 * 1024 &&
+          streamText.includes(earliestMarker) &&
+          streamText.includes(middleMarker) &&
+          streamText.includes(latestMarker)
       );
     }, 120000);
     const completedNode = findNodeById(snapshot, terminalNodeId);
+    const completedStreamText = readTerminalStreamProjectionText(
+      completedNode.metadata.terminal.terminalStream
+    );
     assert.ok(
-      completedNode.metadata.terminal.serializedTerminalState.data.length > 5 * 1024 * 1024,
-      'The fixture must exceed the persisted serialized terminal state normalization limit.'
+      completedStreamText.length > 5 * 1024 * 1024,
+      'The fixture must exceed the validated checkpoint size limit and remain journal-backed.'
+    );
+    assert.strictEqual(
+      completedNode.metadata.terminal.serializedTerminalState,
+      undefined,
+      'An oversized unsafe head must not publish a misleading fresh serialized terminal state.'
     );
     await waitForRuntimeSupervisorState(
       (runtimeState) =>
@@ -10255,11 +10268,11 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
     assert.strictEqual(
       reloadedNode.metadata.terminal.serializedTerminalState,
       undefined,
-      'Reload normalization should reject the oversized monolithic serialized state.'
+      'Reload must preserve the journal-backed projection without inventing a monolithic serialized state.'
     );
     assert.ok(
       reloadedNode.metadata.terminal.terminalStream,
-      'Completed history must retain checkpoint plus journal after the oversized serialized state is rejected.'
+      'Completed history must retain the trusted checkpoint plus its full journal suffix.'
     );
 
     await clearHostMessages();

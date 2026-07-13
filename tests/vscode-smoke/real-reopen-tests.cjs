@@ -590,7 +590,10 @@ function findExpectedCompletedTerminalNode(snapshot, expected) {
 }
 
 function readTerminalStreamProjectionText(terminalStream) {
-  if (!terminalStream?.checkpoint?.serializedState?.data || !Array.isArray(terminalStream.events)) {
+  if (
+    typeof terminalStream?.checkpoint?.serializedState?.data !== 'string' ||
+    !Array.isArray(terminalStream.events)
+  ) {
     return '';
   }
   return terminalStream.checkpoint.serializedState.data + terminalStream.events
