@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.24.1 - Parallel Supervisor Drain Hotfix
+
+相对 `0.24.0`，`0.24.1` 是同一公开 `Preview` 线内的紧急修复，解决升级后旧 Runtime Supervisor 会话被强制只读、同时新会话等待旧进程排空的问题。它让不同 storage generation 的 Supervisor 并行存在：旧进程继续承载已有 PTY，新建会话立即进入当前 generation；不迁移 PTY 所有权，也不把旧 runtime 的 raw output tail 冒充当前版本的无损 checkpoint 或 journal。
+
+### 本版本聚焦
+
+- 版本号从 `0.24.0` bump 到 `0.24.1`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- 当前 Supervisor generation 使用独立 storage namespace，并隔离 registry、Unix socket / Windows named pipe 与 systemd user unit；旧 Supervisor 尚未排空时，新 Agent / Terminal 也能立即由当前 generation 创建
+- 旧 Supervisor 托管的运行会话从 `legacy-read-only` 收口为 `legacy-interactive`：继续显示真实输出并允许 input、resize、stop 与 delete；历史持久化的只读 projection 会自动归一化
+- 节点保留持久化的 `runtimeStoragePath` 作为旧会话路由，新会话默认进入 `terminal-stream-v1` generation；不同 generation 之间不迁移 PTY、registry 或 journal 权威
+- 旧 client 按 storage generation 判断，并在最后一个旧会话结束且 RPC settled 后释放；completed / history 状态会清理迁移 projection，避免陈旧提示继续覆盖普通历史节点
+- 迁移提示改为不阻塞交互的兼容说明；若旧终端画面异常，可拖动节点边缘触发真实 terminal resize / redraw，新建节点仍使用当前 runtime
+- 不改变 `0.24.0` 的无损输出协议、Agent `Resume / 恢复`、multi-root 分范围清空、扩展身份、通知行为、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 紧急修复，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.24.0` 升级到 `0.24.1` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 应同步发布并验证同版本，GitHub Release assets 继续作为手动安装兜底
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 从 `0.24.0` 或更早版本升级后，旧 Supervisor 托管的会话不再阻塞新会话，也不再被强制只读；让旧会话自然完成、停止或删除即可，当前 generation 会并行承载新会话
+- 若旧会话画面在升级后显示异常，先拖动节点边缘触发 resize / redraw；旧 Supervisor 只有 raw tail 时仍不承诺补齐升级前已经缺失的历史输出
+- runtime persistence 的跨 Host 恢复仍取决于配置与后端可用性；local PTY 不获得跨 Host 生命周期保证，Preview 版本之间也不承诺 runtime journal 回退兼容
+- 若此前显式配置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled` 或 `devSessionCanvas.canvas.multiRootPresentationMode`，升级到 `0.24.1` 后会继续沿用该明确选择
+
+### 已知边界与验证说明
+
+- 真实旧二进制迁移 smoke 当前覆盖 Linux / Unix socket；Windows named pipe 与 systemd user unit 的 generation 隔离由路径测试覆盖，不应写成已完成全平台真实升级矩阵
+- 旧 Supervisor 的 raw output tail 仍可能不完整；本修复恢复真实 PTY 的继续交互并提供 redraw 兜底，但不补造旧历史，也不把旧 tail 提升为无损恢复权威
+- `0.24.0` 已登记的严格 90000 行 completed terminal 间歇性尾部短读风险仍未关闭；本修复不改变该极端输出边界
+- `npm run test:smoke-storage-slot` 在实现 MR 中被既有中英文 locale fixture 漂移提前阻断；除非发布准备阶段获得新的通过证据，否则不能宣称该场景通过
+
+### 回退建议
+
+- 若 `0.24.1` 阻塞当前工作流，建议先停止重要运行会话，再禁用或卸载扩展；优先等待后续更高的 `0.24.x` 修复版本，Supervisor journal 暂不提供跨版本回退保证
+
 ## 0.24.0 - Lossless Execution Recovery and Scoped Canvas Reset Update
 
 相对 `0.23.0`，`0.24.0` 是新的公开 `Preview` 里程碑更新，重点重构 `Agent` / `Terminal` 的无损输入输出与恢复链路，明确停止后 Agent 的 `Resume / 恢复` 语义，并补齐 multi-root workspace 下按当前分组、当前 root 或整个 workspace 清空画板的受控入口。它保留 `0.23.0` 的英文默认 / 简体中文本地化、模板市场 Preview、GitHub Release assets + Open VSX 完成门禁和 Visual Studio Marketplace deferred 口径。
