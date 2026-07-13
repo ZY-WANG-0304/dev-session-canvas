@@ -18,6 +18,9 @@ const SHORT_FALLBACK_SOCKET_DIGEST_LENGTH = 16;
 const SYSTEMD_STATE_SUBDIR = path.posix.join('dsc', 'rh');
 const SYSTEMD_HOME_SUBDIR = path.posix.join('.dsc', 'rh');
 const SYSTEMD_USER_SERVICE_PREFIX = 'dev-session-canvas-runtime-supervisor-';
+const RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR = 'runtime-supervisor-generations';
+
+export const CURRENT_RUNTIME_SUPERVISOR_GENERATION = 'terminal-stream-v1';
 
 type PathModuleLike = typeof path.posix | typeof path.win32;
 
@@ -27,6 +30,14 @@ export interface RuntimeSupervisorPathResolutionOptions {
   tmpDir?: string;
   userId?: number | string;
   homeDir?: string;
+}
+
+export function resolveCurrentRuntimeSupervisorBaseStoragePath(baseStorageDir: string): string {
+  return path.join(
+    baseStorageDir,
+    RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR,
+    CURRENT_RUNTIME_SUPERVISOR_GENERATION
+  );
 }
 
 export function resolveRuntimeSupervisorPaths(

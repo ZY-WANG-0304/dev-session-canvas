@@ -14749,32 +14749,36 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
-  test(`${executionKind} renders an old Supervisor session as a read-only transcript`, async ({ page }) => {
+  test(`${executionKind} keeps an old Supervisor session interactive with a compatibility notice`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const state = createLiveExecutionNodeState(executionKind);
     const metadata = state.nodes[0].metadata[executionKind];
-    metadata.terminalProjectionMode = 'legacy-read-only';
-    metadata.recentOutput = 'LEGACY-READ-ONLY-TAIL\nsecond line';
+    metadata.terminalProjectionMode = 'legacy-interactive';
 
     await openHarness(page);
     await bootstrap(page, state);
     await waitForExecutionTerminalReady(page, nodeId);
 
     const node = nodeById(page, nodeId);
-    await expect(node.locator('[data-terminal-projection-mode="legacy-read-only"]')).toBeVisible();
-    await expect(node.locator('.terminal-overlay')).toContainText('旧版运行时 - 只读');
-    const transcript = node.locator('.terminal-legacy-transcript');
-    await expect(transcript).toContainText('LEGACY-READ-ONLY-TAIL');
-    await expect(transcript).toHaveCSS('overflow-y', 'auto');
-    await expect(transcript).toHaveCSS('pointer-events', 'auto');
+    await expect(node.locator('[data-terminal-projection-mode="legacy-interactive"]')).toBeVisible();
+    await expect(node.locator('.terminal-legacy-compatibility-notice')).toContainText('当前节点是在旧版运行时中启动的');
+    await expect(node.locator('.terminal-legacy-compatibility-notice')).toContainText('拖动节点边缘调整大小');
+    await expect(node.locator('.terminal-legacy-compatibility-notice')).toContainText('新建节点将由新版运行时启动');
+    await expect(node.locator('.terminal-legacy-compatibility-notice')).toHaveCSS('pointer-events', 'none');
 
     await clearPostedMessages(page);
     await performTestDomAction(page, {
       kind: 'sendExecutionInput',
       nodeId,
-      data: 'must-not-send'
+      data: 'legacy-input-still-routes'
     });
-    expect(await readPostedMessagesByType(page, 'webview/executionInput')).toHaveLength(0);
+    const inputMessages = await readPostedMessagesByType(page, 'webview/executionInput');
+    expect(inputMessages).toHaveLength(1);
+    expect(inputMessages[0].payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      data: 'legacy-input-still-routes'
+    });
   });
 
   test(`${executionKind} requests only one attach snapshot for an already-live mounted node`, async ({ page }) => {

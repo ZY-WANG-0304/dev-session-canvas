@@ -27,9 +27,10 @@ const LEGACY_AGENT_NODE_ID = 'legacy-upgrade-agent';
 const LEGACY_TERMINAL_NODE_ID = 'legacy-upgrade-terminal';
 const LEGACY_AGENT_MARKER = 'LEGACY_UPGRADE_AGENT_READY';
 const LEGACY_TERMINAL_MARKER = 'LEGACY_UPGRADE_TERMINAL_READY';
-const WEBVIEW_BLOCKED_INPUT_MARKER = 'LEGACY_WEBVIEW_INPUT_MUST_NOT_REACH_PTY';
-const HOST_BLOCKED_AGENT_INPUT_MARKER = 'LEGACY_HOST_AGENT_INPUT_MUST_NOT_REACH_PTY';
-const HOST_BLOCKED_TERMINAL_INPUT_MARKER = 'LEGACY_HOST_TERMINAL_INPUT_MUST_NOT_REACH_PTY';
+const LEGACY_WEBVIEW_INPUT_MARKER = 'LEGACY_WEBVIEW_INPUT_REACHED_PTY';
+const LEGACY_HOST_AGENT_INPUT_MARKER = 'LEGACY_HOST_AGENT_INPUT_REACHED_PTY';
+const LEGACY_HOST_TERMINAL_INPUT_MARKER = 'LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY';
+const CURRENT_TERMINAL_INPUT_MARKER = 'CURRENT_TERMINAL_INPUT_REACHED_PTY';
 const SHORT_FALLBACK_SOCKET_DIGEST_LENGTH = 16;
 
 module.exports = {
@@ -51,8 +52,10 @@ async function run() {
   const previousRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
   let legacySupervisorProcess;
   let supervisorPaths;
+  let currentSupervisorPaths;
   let legacyAgentSessionId;
   let legacyTerminalSessionId;
+  let currentTerminalSessionId;
 
   try {
     await setRuntimePersistenceEnabled(true);
@@ -115,55 +118,46 @@ async function run() {
       return Boolean(
         agentNode?.metadata?.agent?.liveSession &&
           agentNode.metadata.agent.attachmentState === 'attached-live' &&
-          agentNode.metadata.agent.terminalProjectionMode === 'legacy-read-only' &&
+          agentNode.metadata.agent.terminalProjectionMode === 'legacy-interactive' &&
           agentNode.metadata.agent.recentOutput?.includes(LEGACY_AGENT_MARKER) &&
           terminalNode?.metadata?.terminal?.liveSession &&
           terminalNode.metadata.terminal.attachmentState === 'attached-live' &&
-          terminalNode.metadata.terminal.terminalProjectionMode === 'legacy-read-only' &&
+          terminalNode.metadata.terminal.terminalProjectionMode === 'legacy-interactive' &&
           terminalNode.metadata.terminal.recentOutput?.includes(LEGACY_TERMINAL_MARKER)
       );
     }, 30000);
-    assertLegacyReadOnlyNode(findNodeById(snapshot, LEGACY_AGENT_NODE_ID), 'agent', LEGACY_AGENT_MARKER);
-    assertLegacyReadOnlyNode(findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID), 'terminal', LEGACY_TERMINAL_MARKER);
+    assertLegacyInteractiveNode(findNodeById(snapshot, LEGACY_AGENT_NODE_ID), 'agent', LEGACY_AGENT_MARKER);
+    assertLegacyInteractiveNode(findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID), 'terminal', LEGACY_TERMINAL_MARKER);
 
     const probe = await waitForWebviewProbe((currentProbe) => {
       const agentNode = findOptionalProbeNodeById(currentProbe, LEGACY_AGENT_NODE_ID);
       const terminalNode = findOptionalProbeNodeById(currentProbe, LEGACY_TERMINAL_NODE_ID);
       return Boolean(
-        agentNode?.terminalLegacyTranscript?.includes(LEGACY_AGENT_MARKER) &&
-          terminalNode?.terminalLegacyTranscript?.includes(LEGACY_TERMINAL_MARKER)
+        agentNode?.terminalVisibleLines?.join('\n').includes(LEGACY_AGENT_MARKER) &&
+          terminalNode?.terminalVisibleLines?.join('\n').includes(LEGACY_TERMINAL_MARKER)
       );
     });
-    assertLegacyTranscript(findProbeNodeById(probe, LEGACY_AGENT_NODE_ID), LEGACY_AGENT_MARKER);
-    assertLegacyTranscript(findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID), LEGACY_TERMINAL_MARKER);
+    assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_AGENT_NODE_ID), LEGACY_AGENT_MARKER);
+    assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID), LEGACY_TERMINAL_MARKER);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction({
       kind: 'sendExecutionInput',
       nodeId: LEGACY_TERMINAL_NODE_ID,
-      data: `${WEBVIEW_BLOCKED_INPUT_MARKER}\r`
+      data: `printf '${LEGACY_WEBVIEW_INPUT_MARKER}\\n'\r`
     });
-    await sleep(300);
-    assert.strictEqual(
-      (await getDiagnosticEvents()).some(
-        (event) => event.kind === 'execution/inputRejected' && event.detail?.preview?.includes(WEBVIEW_BLOCKED_INPUT_MARKER)
-      ),
-      false,
-      'The read-only Webview must stop terminal input before it reaches the Host.'
+    await waitForRuntimeSupervisorOutput(
+      supervisorPaths,
+      legacyTerminalSessionId,
+      LEGACY_WEBVIEW_INPUT_MARKER,
+      20000
     );
-
-    const agentBeforeBlockedOperations = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', {
-      sessionId: legacyAgentSessionId
-    });
-    const terminalBeforeBlockedOperations = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', {
-      sessionId: legacyTerminalSessionId
-    });
     await dispatchWebviewMessage({
       type: 'webview/executionInput',
       payload: {
         nodeId: LEGACY_AGENT_NODE_ID,
         kind: 'agent',
-        data: `${HOST_BLOCKED_AGENT_INPUT_MARKER}\r`
+        data: `${LEGACY_HOST_AGENT_INPUT_MARKER}\r`
       }
     });
     await dispatchWebviewMessage({
@@ -171,7 +165,7 @@ async function run() {
       payload: {
         nodeId: LEGACY_TERMINAL_NODE_ID,
         kind: 'terminal',
-        data: `${HOST_BLOCKED_TERMINAL_INPUT_MARKER}\r`
+        data: `printf '${LEGACY_HOST_TERMINAL_INPUT_MARKER}\\n'\r`
       }
     });
     await dispatchWebviewMessage({
@@ -192,35 +186,27 @@ async function run() {
         rows: 12
       }
     });
-    await sleep(500);
+    const agentAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
+      supervisorPaths,
+      legacyAgentSessionId,
+      (session) =>
+        session.output?.includes(LEGACY_HOST_AGENT_INPUT_MARKER) && session.cols === 41 && session.rows === 11,
+      20000
+    );
+    const terminalAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
+      supervisorPaths,
+      legacyTerminalSessionId,
+      (session) =>
+        session.output?.includes(LEGACY_HOST_TERMINAL_INPUT_MARKER) && session.cols === 43 && session.rows === 12,
+      20000
+    );
+    assert.ok(agentAfterCompatibilityOperations.output.includes(LEGACY_HOST_AGENT_INPUT_MARKER));
+    assert.ok(terminalAfterCompatibilityOperations.output.includes(LEGACY_WEBVIEW_INPUT_MARKER));
+    assert.ok(terminalAfterCompatibilityOperations.output.includes(LEGACY_HOST_TERMINAL_INPUT_MARKER));
+    assert.deepStrictEqual([agentAfterCompatibilityOperations.cols, agentAfterCompatibilityOperations.rows], [41, 11]);
+    assert.deepStrictEqual([terminalAfterCompatibilityOperations.cols, terminalAfterCompatibilityOperations.rows], [43, 12]);
 
-    const agentAfterBlockedOperations = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', {
-      sessionId: legacyAgentSessionId
-    });
-    const terminalAfterBlockedOperations = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', {
-      sessionId: legacyTerminalSessionId
-    });
-    assert.strictEqual(agentAfterBlockedOperations.output.includes(HOST_BLOCKED_AGENT_INPUT_MARKER), false);
-    assert.strictEqual(terminalAfterBlockedOperations.output.includes(HOST_BLOCKED_TERMINAL_INPUT_MARKER), false);
-    assert.strictEqual(terminalAfterBlockedOperations.output.includes(WEBVIEW_BLOCKED_INPUT_MARKER), false);
-    assert.deepStrictEqual(
-      [agentAfterBlockedOperations.cols, agentAfterBlockedOperations.rows],
-      [agentBeforeBlockedOperations.cols, agentBeforeBlockedOperations.rows]
-    );
-    assert.deepStrictEqual(
-      [terminalAfterBlockedOperations.cols, terminalAfterBlockedOperations.rows],
-      [terminalBeforeBlockedOperations.cols, terminalBeforeBlockedOperations.rows]
-    );
-    const blockedDiagnostics = await getDiagnosticEvents();
-    assert.strictEqual(
-      blockedDiagnostics.filter(
-        (event) =>
-          event.kind === 'execution/inputRejected' && event.detail?.reason === 'legacy-supervisor-read-only'
-      ).length,
-      2
-    );
-
-    const nodeIdsBeforeRejectedCreate = new Set(snapshot.state.nodes.map((node) => node.id));
+    const nodeIdsBeforeCurrentCreate = new Set(snapshot.state.nodes.map((node) => node.id));
     await dispatchWebviewMessage({
       type: 'webview/createDemoNode',
       payload: {
@@ -229,36 +215,58 @@ async function run() {
       }
     });
     snapshot = await waitForSnapshot(
-      (currentSnapshot) => currentSnapshot.state.nodes.some((node) => !nodeIdsBeforeRejectedCreate.has(node.id)),
+      (currentSnapshot) => currentSnapshot.state.nodes.some((node) => !nodeIdsBeforeCurrentCreate.has(node.id)),
       20000
     );
-    const rejectedCreateNode = snapshot.state.nodes.find((node) => !nodeIdsBeforeRejectedCreate.has(node.id));
-    assert.ok(rejectedCreateNode);
+    const currentTerminalNode = snapshot.state.nodes.find((node) => !nodeIdsBeforeCurrentCreate.has(node.id));
+    assert.ok(currentTerminalNode);
     await dispatchWebviewMessage({
       type: 'webview/startExecutionSession',
       payload: {
-        nodeId: rejectedCreateNode.id,
+        nodeId: currentTerminalNode.id,
         kind: 'terminal',
         cols: 92,
         rows: 28
       }
     });
-    await waitForDiagnosticEvent(
-      (event) =>
-        event.kind === 'runtime/legacySupervisorCreateRejected' && event.detail?.nodeId === rejectedCreateNode.id,
-      20000
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const node = findOptionalNodeById(currentSnapshot, currentTerminalNode.id);
+      return Boolean(
+        node?.metadata?.terminal?.liveSession &&
+          node.metadata.terminal.attachmentState === 'attached-live' &&
+          node.metadata.terminal.terminalProjectionMode === 'terminal-stream-v1' &&
+          node.metadata.terminal.runtimeStoragePath &&
+          node.metadata.terminal.runtimeSessionId
+      );
+    }, 30000);
+    const currentTerminalMetadata = findNodeById(snapshot, currentTerminalNode.id).metadata.terminal;
+    currentTerminalSessionId = currentTerminalMetadata.runtimeSessionId;
+    assert.ok(currentTerminalSessionId);
+    assert.notStrictEqual(path.normalize(currentTerminalMetadata.runtimeStoragePath), path.normalize(runtimeStoragePath));
+    assert.ok(currentTerminalMetadata.runtimeStoragePath.includes('runtime-supervisor-generations'));
+    currentSupervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
+      path.join(currentTerminalMetadata.runtimeStoragePath, 'runtime-supervisor')
     );
+    const currentHello = await waitForRuntimeSupervisorReady(currentSupervisorPaths, 20000);
+    assert.strictEqual(currentHello.capabilities?.terminalSessionStreamV1, true);
+    assert.strictEqual(currentHello.capabilities?.terminalProjectionSnapshotV1, true);
+    assert.notStrictEqual(currentHello.pid, legacyHello.pid);
+    await waitForRegistrySessions(currentSupervisorPaths.registryPath, [currentTerminalSessionId]);
+
     const legacyRegistry = await readRegistry(supervisorPaths.registryPath);
     assert.deepStrictEqual(
       new Set(legacyRegistry.sessions.map((session) => session.sessionId)),
       new Set([legacyAgentSessionId, legacyTerminalSessionId])
     );
-    await dispatchWebviewMessage({
-      type: 'webview/deleteNode',
-      payload: { nodeId: rejectedCreateNode.id }
+    await performWebviewDomAction({
+      kind: 'sendExecutionInput',
+      nodeId: currentTerminalNode.id,
+      data: `printf '${CURRENT_TERMINAL_INPUT_MARKER}\\n'\r`
     });
-    await waitForSnapshot(
-      (currentSnapshot) => !findOptionalNodeById(currentSnapshot, rejectedCreateNode.id),
+    await waitForRuntimeSupervisorOutput(
+      currentSupervisorPaths,
+      currentTerminalSessionId,
+      CURRENT_TERMINAL_INPUT_MARKER,
       20000
     );
 
@@ -290,42 +298,17 @@ async function run() {
     assert.deepStrictEqual(legacyExit, { code: 0, signal: null });
     legacySupervisorProcess = undefined;
 
-    snapshot = await getDebugSnapshot();
-    const nodeIdsBeforeCurrentCreate = new Set(snapshot.state.nodes.map((node) => node.id));
-    await dispatchWebviewMessage({
-      type: 'webview/createDemoNode',
-      payload: {
-        kind: 'terminal',
-        preferredPosition: { x: 520, y: 520 }
-      }
+    await performWebviewDomAction({
+      kind: 'sendExecutionInput',
+      nodeId: currentTerminalNode.id,
+      data: `printf 'CURRENT_AFTER_LEGACY_EXIT\\n'\r`
     });
-    snapshot = await waitForSnapshot(
-      (currentSnapshot) => currentSnapshot.state.nodes.some((node) => !nodeIdsBeforeCurrentCreate.has(node.id)),
+    await waitForRuntimeSupervisorOutput(
+      currentSupervisorPaths,
+      currentTerminalSessionId,
+      'CURRENT_AFTER_LEGACY_EXIT',
       20000
     );
-    const currentTerminalNode = snapshot.state.nodes.find((node) => !nodeIdsBeforeCurrentCreate.has(node.id));
-    assert.ok(currentTerminalNode);
-    await dispatchWebviewMessage({
-      type: 'webview/startExecutionSession',
-      payload: {
-        nodeId: currentTerminalNode.id,
-        kind: 'terminal',
-        cols: 92,
-        rows: 28
-      }
-    });
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const node = findOptionalNodeById(currentSnapshot, currentTerminalNode.id);
-      return Boolean(
-        node?.metadata?.terminal?.liveSession &&
-          node.metadata.terminal.attachmentState === 'attached-live' &&
-          node.metadata.terminal.terminalProjectionMode === 'terminal-stream-v1'
-      );
-    }, 30000);
-    const currentHello = await waitForRuntimeSupervisorReady(supervisorPaths, 20000);
-    assert.strictEqual(currentHello.capabilities?.terminalSessionStreamV1, true);
-    assert.strictEqual(currentHello.capabilities?.terminalProjectionSnapshotV1, true);
-    assert.notStrictEqual(currentHello.pid, legacyHello.pid);
 
     await dispatchWebviewMessage({
       type: 'webview/deleteNode',
@@ -340,6 +323,11 @@ async function run() {
       for (const sessionId of [legacyAgentSessionId, legacyTerminalSessionId].filter(Boolean)) {
         await sendRuntimeSupervisorRequest(supervisorPaths, 'deleteSession', { sessionId }).catch(() => undefined);
       }
+    }
+    if (currentSupervisorPaths && currentTerminalSessionId) {
+      await sendRuntimeSupervisorRequest(currentSupervisorPaths, 'deleteSession', {
+        sessionId: currentTerminalSessionId
+      }).catch(() => undefined);
     }
     await stopProcess(legacySupervisorProcess);
     await vscode.commands.executeCommand(COMMAND_IDS.testResetState).catch(() => undefined);
@@ -498,9 +486,9 @@ async function createLegacyTerminalSession(supervisorPaths) {
   return snapshot;
 }
 
-function assertLegacyReadOnlyNode(node, kind, marker) {
+function assertLegacyInteractiveNode(node, kind, marker) {
   const metadata = node.metadata?.[kind];
-  assert.strictEqual(metadata?.terminalProjectionMode, 'legacy-read-only');
+  assert.strictEqual(metadata?.terminalProjectionMode, 'legacy-interactive');
   assert.strictEqual(metadata?.liveSession, true);
   assert.strictEqual(metadata?.attachmentState, 'attached-live');
   assert.ok(metadata?.recentOutput?.includes(marker));
@@ -508,10 +496,8 @@ function assertLegacyReadOnlyNode(node, kind, marker) {
   assert.strictEqual(metadata?.terminalStream, undefined);
 }
 
-function assertLegacyTranscript(node, marker) {
-  assert.ok(node.terminalLegacyTranscript?.includes(marker));
-  assert.strictEqual(node.terminalLegacyTranscript?.includes('\u001b'), false);
-  assert.strictEqual(node.terminalVisibleLines?.join('\n').includes(marker), false);
+function assertLegacyInteractiveProjection(node, marker) {
+  assert.ok(node.terminalVisibleLines?.join('\n').includes(marker));
 }
 
 async function waitForRuntimeSupervisorReady(supervisorPaths, timeoutMs) {
@@ -539,6 +525,19 @@ async function waitForRuntimeSupervisorOutput(supervisorPaths, sessionId, marker
     await sleep(100);
   }
   assert.fail(`Timed out waiting for ${marker}. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
+}
+
+async function waitForRuntimeSupervisorSession(supervisorPaths, sessionId, predicate, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastSnapshot;
+  while (Date.now() < deadline) {
+    lastSnapshot = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', { sessionId });
+    if (predicate(lastSnapshot)) {
+      return lastSnapshot;
+    }
+    await sleep(100);
+  }
+  assert.fail(`Timed out waiting for runtime session state. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
 }
 
 async function sendRuntimeSupervisorRequest(supervisorPaths, method, params) {

@@ -137,7 +137,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         agentMetadata.pendingLaunch === 'resume');
     const canResumeOriginalSession = canResumeAgentFromMetadataForWebview(agentMetadata);
     const reattaching = displayStatus === 'reattaching';
-    const legacyReadOnly = agentMetadata.terminalProjectionMode === 'legacy-read-only';
+    const legacyInteractive = agentMetadata.terminalProjectionMode === 'legacy-interactive';
     const attentionPending = agentMetadata.attentionPending === true;
     const attentionFlashing =
       attentionPending && strongTerminalAttentionReminderShowsTitleBar(data.strongTerminalAttentionReminderMode);
@@ -174,8 +174,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     });
     const attachSnapshotRequestedRef = useRef(false);
     const terminalFlagsRef = useRef({
-      blockCtrlZInput: provider === 'claude',
-      readOnly: legacyReadOnly
+      blockCtrlZInput: provider === 'claude'
     });
     const executionPathContextRef = useRef({
       shellPath: agentMetadata.shellPath,
@@ -191,10 +190,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
     useEffect(() => {
       terminalFlagsRef.current = {
-        blockCtrlZInput: provider === 'claude',
-        readOnly: legacyReadOnly
+        blockCtrlZInput: provider === 'claude'
       };
-    }, [legacyReadOnly, provider]);
+    }, [provider]);
 
     useEffect(() => {
       executionPathContextRef.current = {
@@ -389,9 +387,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           return;
         }
 
-        if (!terminalFlagsRef.current.readOnly) {
-          data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
-        }
+        data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
       }
 
       window.requestAnimationFrame(fitTerminal);
@@ -407,10 +403,6 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
       const dataDisposable = terminal.onData((input) => {
         nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
-        if (terminalFlagsRef.current.readOnly) {
-          data.onShowTransientError?.(deps.t('execution.error.legacySupervisorReadOnly'));
-          return;
-        }
         if (terminalFlagsRef.current.blockCtrlZInput && containsTerminalSuspendInput(input)) {
           data.onShowTransientError?.(deps.t('execution.error.claudeCtrlZUnsupported'));
           return;
@@ -665,7 +657,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         <div className="session-body">
           <div
             ref={frameRef}
-            className={`terminal-frame nowheel nodrag nopan ${agentMetadata.liveSession ? 'is-live' : 'is-idle'} ${legacyReadOnly ? 'is-legacy-read-only' : ''}`}
+            className={`terminal-frame nowheel nodrag nopan ${agentMetadata.liveSession ? 'is-live' : 'is-idle'} ${legacyInteractive ? 'is-legacy-interactive' : ''}`}
             data-terminal-projection-mode={agentMetadata.terminalProjectionMode}
             data-node-interactive="true"
             {...canvasOverviewInertProps(overviewInteractionsDisabled)}
@@ -682,12 +674,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           >
             <div ref={viewportRef} className="terminal-viewport" />
             <deps.NodeOverviewTitle title={data.title} status={displayStatus} />
-            {legacyReadOnly || !agentMetadata.liveSession ? (
+            {legacyInteractive ? (
+              <div className="terminal-legacy-compatibility-notice" role="status">
+                <strong>{deps.t('execution.notice.legacySupervisorInteractive')}</strong>
+                <span>{deps.t('execution.notice.legacySupervisorInteractiveDetail')}</span>
+              </div>
+            ) : null}
+            {!agentMetadata.liveSession ? (
               <div className="terminal-overlay">
                 <strong>
-                  {legacyReadOnly
-                    ? deps.t('execution.overlay.legacySupervisorReadOnly')
-                    : executionBlocked
+                  {executionBlocked
                       ? deps.t('execution.overlay.restrictedMode')
                       : reattaching
                         ? deps.t('agent.overlay.reattaching')
@@ -702,9 +698,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
                         : deps.t('agent.overlay.notStarted')}
                 </strong>
                 <span>
-                  {legacyReadOnly
-                    ? deps.t('execution.overlay.legacySupervisorReadOnlyDetail')
-                    : executionBlocked
+                  {executionBlocked
                       ? deps.t('agent.overlay.restricted')
                       : reattaching
                         ? data.summary
@@ -718,9 +712,6 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
                         ? agentMetadata.lastExitMessage
                         : data.summary}
                 </span>
-                {legacyReadOnly && agentMetadata.recentOutput ? (
-                  <pre className="terminal-legacy-transcript">{agentMetadata.recentOutput}</pre>
-                ) : null}
               </div>
             ) : null}
           </div>
@@ -742,7 +733,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     const lifecycle = terminalMetadata.lifecycle;
     const displayStatus = data.status;
     const reattaching = displayStatus === 'reattaching';
-    const legacyReadOnly = terminalMetadata.terminalProjectionMode === 'legacy-read-only';
+    const legacyInteractive = terminalMetadata.terminalProjectionMode === 'legacy-interactive';
     const attentionPending = terminalMetadata.attentionPending === true;
     const attentionFlashing =
       attentionPending && strongTerminalAttentionReminderShowsTitleBar(data.strongTerminalAttentionReminderMode);
@@ -770,7 +761,6 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       suppressShrinkFitUntilMs: 0
     });
     const attachSnapshotRequestedRef = useRef(false);
-    const legacyReadOnlyRef = useRef(legacyReadOnly);
     const resizeFrameRef = useRef<number | undefined>(undefined);
     const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
 
@@ -791,10 +781,6 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         cwd: terminalMetadata.cwd
       };
     }, [terminalMetadata.cwd, terminalMetadata.shellPath]);
-
-    useEffect(() => {
-      legacyReadOnlyRef.current = legacyReadOnly;
-    }, [legacyReadOnly]);
 
     useEffect(() => {
       const frame = frameRef.current;
@@ -978,9 +964,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           return;
         }
 
-        if (!legacyReadOnlyRef.current) {
-          data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
-        }
+        data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
       }
 
       window.requestAnimationFrame(fitTerminal);
@@ -996,10 +980,6 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
       const dataDisposable = terminal.onData((input) => {
         nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
-        if (legacyReadOnlyRef.current) {
-          data.onShowTransientError?.(deps.t('execution.error.legacySupervisorReadOnly'));
-          return;
-        }
         deps.reportExecutionInputDispatch(id, 'terminal', input, (metadata) =>
           data.onExecutionInput?.(id, 'terminal', input, metadata)
         );
@@ -1158,7 +1138,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         <div className="session-body terminal-session-body">
           <div
             ref={frameRef}
-            className={`terminal-frame nowheel nodrag nopan ${terminalMetadata.liveSession ? 'is-live' : 'is-idle'} ${legacyReadOnly ? 'is-legacy-read-only' : ''}`}
+            className={`terminal-frame nowheel nodrag nopan ${terminalMetadata.liveSession ? 'is-live' : 'is-idle'} ${legacyInteractive ? 'is-legacy-interactive' : ''}`}
             data-terminal-projection-mode={terminalMetadata.terminalProjectionMode}
             data-node-interactive="true"
             {...canvasOverviewInertProps(overviewInteractionsDisabled)}
@@ -1175,12 +1155,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           >
             <div ref={viewportRef} className="terminal-viewport" />
             <deps.NodeOverviewTitle title={data.title} status={displayStatus} />
-            {legacyReadOnly || !terminalMetadata.liveSession ? (
+            {legacyInteractive ? (
+              <div className="terminal-legacy-compatibility-notice" role="status">
+                <strong>{deps.t('execution.notice.legacySupervisorInteractive')}</strong>
+                <span>{deps.t('execution.notice.legacySupervisorInteractiveDetail')}</span>
+              </div>
+            ) : null}
+            {!terminalMetadata.liveSession ? (
               <div className="terminal-overlay">
                 <strong>
-                  {legacyReadOnly
-                    ? deps.t('execution.overlay.legacySupervisorReadOnly')
-                    : executionBlocked
+                  {executionBlocked
                     ? deps.t('execution.overlay.restrictedMode')
                     : reattaching
                       ? deps.t('terminal.overlay.reattaching')
@@ -1193,9 +1177,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
                       : deps.t('terminal.overlay.notStarted')}
                 </strong>
                 <span>
-                  {legacyReadOnly
-                    ? deps.t('execution.overlay.legacySupervisorReadOnlyDetail')
-                    : executionBlocked
+                  {executionBlocked
                     ? deps.t('terminal.overlay.restricted')
                     : reattaching
                       ? data.summary
@@ -1207,9 +1189,6 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
                       ? terminalMetadata.lastExitMessage
                       : data.summary}
                 </span>
-                {legacyReadOnly && terminalMetadata.recentOutput ? (
-                  <pre className="terminal-legacy-transcript">{terminalMetadata.recentOutput}</pre>
-                ) : null}
               </div>
             ) : null}
           </div>
