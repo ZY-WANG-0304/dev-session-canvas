@@ -276,6 +276,7 @@ import {
   type RuntimeSupervisorEvent,
   type RuntimeSupervisorSessionSnapshot
 } from '../common/runtimeSupervisorProtocol';
+import { resolveCurrentRuntimeSupervisorBaseStoragePath } from '../common/runtimeSupervisorPaths';
 import {
   localizeRuntimeSupervisorError,
   localizeRuntimeSupervisorSnapshotExitMessage
@@ -9569,7 +9570,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getRuntimeHostBaseStoragePath(runtimeStoragePath?: string): string {
-    return this.resolveRuntimeStoragePath(runtimeStoragePath);
+    if (runtimeStoragePath) {
+      return this.resolveRuntimeStoragePath(runtimeStoragePath);
+    }
+
+    return resolveCurrentRuntimeSupervisorBaseStoragePath(this.getExtensionStoragePath());
   }
 
   private getRuntimeSupervisorScriptPath(): string {
@@ -9673,7 +9678,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private collectRuntimeSupervisorStoragePathsForTest(
     backendKind: RuntimeHostBackendKind
   ): string[] {
-    const storagePaths = new Set<string>([this.getExtensionStoragePath()]);
+    const storagePaths = new Set<string>([
+      this.getExtensionStoragePath(),
+      this.getRuntimeHostBaseStoragePath()
+    ]);
     for (const node of this.state.nodes) {
       if (node.kind === 'agent') {
         const metadata = ensureAgentMetadata(node);
@@ -9731,7 +9739,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const hasAttachedLegacySession = [...this.agentSessions.values(), ...this.terminalSessions.values()].some(
       (session) =>
         session.owner === 'supervisor' &&
-        session.terminalProjectionMode === 'legacy-read-only' &&
+        session.terminalProjectionMode === 'legacy-interactive' &&
         session.runtimeBackend === backend.kind &&
         this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
     );
@@ -10020,7 +10028,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               sessionId
             }
       ),
-      terminalProjectionMode: terminalStreamSupported ? 'terminal-stream-v1' : 'legacy-read-only'
+      terminalProjectionMode: terminalStreamSupported ? 'terminal-stream-v1' : 'legacy-interactive'
     };
   }
 
@@ -10617,7 +10625,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session?.owner === 'supervisor' &&
       session.terminalProjectionMode === terminalProjectionMode &&
       (
-        terminalProjectionMode === 'legacy-read-only' ||
+        terminalProjectionMode === 'legacy-interactive' ||
         canPreserveTerminalStream ||
         (freshSnapshotState === undefined && session.terminalStateTrusted)
       ) &&
@@ -10843,13 +10851,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(nodeId, session, chunk);
     }
-    const legacyReadOnly = session.terminalProjectionMode === 'legacy-read-only';
     this.queueExecutionStateSync(kind, nodeId, EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS, {
-      postState: legacyReadOnly
+      postState: session.terminalProjectionMode === 'legacy-interactive'
     });
-    if (!legacyReadOnly) {
-      this.queueExecutionOutput(kind, nodeId, chunk);
-    }
+    this.queueExecutionOutput(kind, nodeId, chunk);
     this.recordExecutionPerformanceDiagnostics({
       timestamp: new Date().toISOString(),
       source: 'host-output-chunk',
@@ -10923,7 +10928,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       if (
         previousSession?.owner === 'supervisor' &&
-        previousSession.terminalProjectionMode === 'legacy-read-only'
+        previousSession.terminalProjectionMode === 'legacy-interactive'
       ) {
         this.retireLegacyRuntimeSupervisorClientIfUnused(
           this.getRuntimeHostBackend(runtimeBackend, runtimeStoragePath)
@@ -13936,7 +13941,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.retireLegacyRuntimeSupervisorClientIfUnused(backend, client);
       throw new Error(
         vscode.l10n.t(
-          'The existing runtime supervisor is an older version. Its running sessions remain read-only until they end; stop them and retry after the supervisor exits.'
+          'The current runtime namespace is occupied by an incompatible supervisor. Existing legacy sessions can continue in compatibility mode, but this new session could not start.'
         )
       );
     }
@@ -14109,7 +14114,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.retireLegacyRuntimeSupervisorClientIfUnused(backend, client);
       throw new Error(
         vscode.l10n.t(
-          'The existing runtime supervisor is an older version. Its running sessions remain read-only until they end; stop them and retry after the supervisor exits.'
+          'The current runtime namespace is occupied by an incompatible supervisor. Existing legacy sessions can continue in compatibility mode, but this new session could not start.'
         )
       );
     }
@@ -16523,23 +16528,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return false;
     }
 
-    if (session.owner === 'supervisor' && session.terminalProjectionMode === 'legacy-read-only') {
-      this.recordDiagnosticEvent('execution/inputRejected', {
-        ...inputDetail,
-        sessionId: session.sessionId,
-        reason: 'legacy-supervisor-read-only'
-      });
-      this.postMessage({
-        type: 'host/error',
-        payload: {
-          message: vscode.l10n.t(
-            'This session is running in an older runtime supervisor and is read-only. Stop it or let it finish, then start a new session.'
-          )
-        }
-      });
-      return false;
-    }
-
     if (kind === 'agent' && session.agentProvider === 'claude' && containsTerminalSuspendInput(data)) {
       this.recordDiagnosticEvent('execution/inputRejected', {
         ...inputDetail,
@@ -17153,10 +17141,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    if (session.owner === 'supervisor' && session.terminalProjectionMode === 'legacy-read-only') {
-      return;
-    }
-
     if (session.cols === normalizedCols && session.rows === normalizedRows) {
       return;
     }
@@ -17678,12 +17662,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             // Best effort only during dispose paths.
           })
           .finally(() => {
-            if (session.terminalProjectionMode === 'legacy-read-only') {
+            if (session.terminalProjectionMode === 'legacy-interactive') {
               this.retireLegacyRuntimeSupervisorClientIfUnused(backend);
             }
           });
         this.trackRuntimeSupervisorOperation(operation);
-      } else if (session.terminalProjectionMode === 'legacy-read-only') {
+      } else if (session.terminalProjectionMode === 'legacy-interactive') {
         this.retireLegacyRuntimeSupervisorClientIfUnused(backend);
       }
       return;
@@ -18388,10 +18372,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ? undefined
         : cloneFreshSerializedTerminalState(serializedTerminalState, outputSequence) ??
           cloneFreshSerializedTerminalState(metadata?.serializedTerminalState, outputSequence);
-    const legacyReadOnly =
-      (session?.owner === 'supervisor' && session.terminalProjectionMode === 'legacy-read-only') ||
-      metadata?.terminalProjectionMode === 'legacy-read-only';
-
     this.postMessage({
       type: 'host/executionSnapshot',
       payload: {
@@ -18399,12 +18379,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         kind,
         requestId: options.requestId,
         executionSessionId,
-        output: legacyReadOnly ? '' : session?.buffer ?? metadata?.recentOutput ?? '',
+        output: session?.buffer ?? metadata?.recentOutput ?? '',
         cols: session?.cols ?? metadata?.lastCols ?? DEFAULT_TERMINAL_COLS,
         rows: session?.rows ?? metadata?.lastRows ?? DEFAULT_TERMINAL_ROWS,
         liveSession: Boolean(session),
         outputSequence,
-        serializedTerminalState: legacyReadOnly ? undefined : freshSerializedTerminalState,
+        serializedTerminalState: freshSerializedTerminalState,
         terminalStream
       }
     });
@@ -24993,7 +24973,11 @@ function normalizeRuntimeAttachmentState(
 }
 
 function normalizeRuntimeTerminalProjectionMode(value: unknown): RuntimeTerminalProjectionMode | undefined {
-  return value === 'terminal-stream-v1' || value === 'legacy-read-only' ? value : undefined;
+  if (value === 'legacy-read-only') {
+    return 'legacy-interactive';
+  }
+
+  return value === 'terminal-stream-v1' || value === 'legacy-interactive' ? value : undefined;
 }
 
 function normalizeExecutionOutputSequence(value: unknown): number | undefined {

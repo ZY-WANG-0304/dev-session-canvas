@@ -30,7 +30,7 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /terminalProjectionMode === 'legacy-read-only' \|\|[\s\S]*?canPreserveTerminalStream \|\|[\s\S]*?freshSnapshotState === undefined && session\.terminalStateTrusted/u,
+  /terminalProjectionMode === 'legacy-interactive' \|\|[\s\S]*?canPreserveTerminalStream \|\|[\s\S]*?freshSnapshotState === undefined && session\.terminalStateTrusted/u,
   '同一 authority 的 sessionState 必须保留现有 Host live queue，不能因 fresh checkpoint 到达而替换并丢弃 pending output。'
 );
 assert.doesNotMatch(
@@ -65,7 +65,7 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /supportsTerminalSessionStream\(\)[\s\S]*?deferSubscription: true[\s\S]*?terminalProjectionMode: terminalStreamSupported \? 'terminal-stream-v1' : 'legacy-read-only'/u,
+  /supportsTerminalSessionStream\(\)[\s\S]*?deferSubscription: true[\s\S]*?terminalProjectionMode: terminalStreamSupported \? 'terminal-stream-v1' : 'legacy-interactive'/u,
   '旧 Supervisor attach 必须按 capability 分流，不能发送未知的 deferred stream 协议。'
 );
 assert.match(
@@ -75,8 +75,8 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /legacySupervisorCreateRejected[\s\S]*?retireLegacyRuntimeSupervisorClientIfUnused/u,
-  '旧 Supervisor 必须拒绝创建新 session，并在没有旧 live session 时进入安全退役。'
+  /getRuntimeHostBaseStoragePath\(runtimeStoragePath\?: string\)[\s\S]*?resolveCurrentRuntimeSupervisorBaseStoragePath\(this\.getExtensionStoragePath\(\)\)/u,
+  '新 session 必须默认使用 current-generation storage，而显式旧 runtimeStoragePath 继续路由旧 Supervisor。'
 );
 assert.match(
   managerSource,
@@ -115,8 +115,13 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /const legacyReadOnly = session\.terminalProjectionMode === 'legacy-read-only';[\s\S]*?if \(!legacyReadOnly\) \{[\s\S]*?this\.queueExecutionOutput/u,
-  '旧 Supervisor raw output 只能更新只读 tail，不能进入可交互 xterm output 队列。'
+  /postState: session\.terminalProjectionMode === 'legacy-interactive'[\s\S]*?this\.queueExecutionOutput\(kind, nodeId, chunk\)/u,
+  '旧 Supervisor output 必须进入兼容 xterm 队列，同时持续同步降级状态摘要。'
+);
+assert.doesNotMatch(
+  managerSource,
+  /reason: 'legacy-supervisor-read-only'|terminalProjectionMode === 'legacy-read-only'\) \{\s*return;/u,
+  '旧 Supervisor 的 input 与 resize 不得再被 Host 预先拦截。'
 );
 assert.match(
   managerSource,

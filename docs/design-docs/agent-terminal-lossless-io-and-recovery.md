@@ -17,9 +17,10 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/completed/agent-terminal-lossless-io-redesign.md
+  - docs/exec-plans/completed/agent-supervisor-parallel-drain.md
   - docs/exec-plans/active/execution-input-responsiveness.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-07-12
+updated_at: 2026-07-13
 ---
 
 # Agent / Terminal 无损输入输出与恢复
@@ -350,15 +351,15 @@ Webview 为每个待 drain controller 保存首次排队时间，并用 `kind + 
 
 仓库提供 `npm run benchmark:agent-terminal-io` 作为可重复 10-Agent 容量基准。rebase 到最终目标基线后的 Linux headless 样本中，Supervisor 对 10 个 PTY Agent 写入 828,019 个字符：输入 RPC 9.98ms、真实回显 19.98ms、九路后台输出 406.92ms 完成，journal 为 1,001,848 bytes、registry 为 1,946,165 bytes、checkpoint 共 864,160 字符；Supervisor 在 865.44ms 基准区间消耗约 1,170ms CPU（约 135.19%，可使用多核）。同轮完整 Webview 样本逐行核对 864,020 个字符、36,001 行，无缺失、重复或乱序：输入 dispatch 8.6ms、ACK 13.9ms、优先回显 189.4ms、全部后台完成 2.03s，Chromium main-thread Task/Script CPU 分别约 1,507.43ms/432.15ms。该样本用于回归比较和容量守门，不是跨机器产品 SLA；自动化使用更宽的 150ms dispatch、250ms ACK、500ms 优先回显和 45s 全量完成阈值吸收 runner 差异。
 
-### 10.8 旧 Supervisor 的只读退役迁移
+### 10.8 旧 Supervisor 的并行交互退役迁移
 
-运行中的旧 Supervisor 已持有 PTY master，当前协议和 `node-pty` 都不能把该所有权无损转交给新进程。新 Host 因此不得为了升级协议而强杀旧 Supervisor，也不得把旧进程返回的 raw tail 或缺少 authority 证明的 serialized state 盖成新 checkpoint。`RuntimeSupervisorClient` 在 `hello` 后以 `terminalSessionStreamV1` capability 显式分流；缺少 capability 的既有 live session 只能进入 `legacy-read-only` 投影。
+运行中的旧 Supervisor 已持有 PTY master，当前协议和 `node-pty` 都不能把该所有权无损转交给新进程。新 Host 因此不得为了升级协议而强杀旧 Supervisor，也不得把旧进程返回的 raw tail 或缺少 authority 证明的 serialized state 盖成新 checkpoint。`RuntimeSupervisorClient` 在 `hello` 后以 `terminalSessionStreamV1` capability 显式分流；缺少 capability 的既有 live session 进入 `legacy-interactive` 兼容投影。
 
-`legacy-read-only` 会话保留 Supervisor 进程和 stop/delete 生命周期控制，但禁止终端 input、resize 和 raw output 进入可交互 xterm。Host 只把经过控制序列剥离的最近 tail 作为明确标注的只读文本展示，并持续说明它不等于完整终端历史。新 Host attach 旧会话时不发送 `deferSubscription`、`subscribeSession`、`getSessionSnapshot` 或 applied-revision ACK 等旧 Supervisor 未声明的 RPC；旧 live output 只更新只读 tail、摘要和生命周期，不参与新 authority revision。
+`legacy-interactive` 会话保留旧 Supervisor 进程及其 output、input、resize、stop、delete 能力。Host 可以把旧进程返回的 raw tail 和后续 live output 投影到兼容 xterm，但必须明确提示历史可能从 ANSI 控制序列中间开始，不得把它声明为完整 checkpoint；用户 resize 节点时仍把新尺寸发送给旧 PTY，使 Codex / Claude Code 等 TUI 有机会按真实终端尺寸重绘。新 Host attach 旧会话时不发送 `deferSubscription`、`subscribeSession`、`getSessionSnapshot` 或 applied-revision ACK 等旧 Supervisor 未声明的 RPC；旧 live output 不参与新 authority revision，也不写入当前协议的 checkpoint / journal。
 
 Supervisor 版本判断只能发生在连接握手完整就绪之后。`RuntimeSupervisorClient` 的 socket connected 只证明传输建立，不证明 `hello` capability 已可读；同一 client 的并发 `ensureConnected()` 必须共享并等待包含 hello 的 readiness promise。初始 handshake 使用已连接 socket 的内部 request，不能通过公开 request 再进入 `ensureConnected()` 形成自等待。只有 hello 响应解析并保存 `helloResult` 后，调用方才可读取 `terminalSessionStreamV1` 等 capability 并决定当前进程是否为 legacy。
 
-同一旧 Supervisor 上禁止创建新的 Agent / Terminal session，避免迁移窗口继续产生无法恢复的会话。最后一个已知旧 live session 停止或自然结束后，Host 释放对应 client 连接；旧会话 attach 失败、类型不符或被并发 operation token 忽略时，也必须在 attach settled 后重新检查是否已经没有已附着或仍在 reattach 的旧会话，避免一条失效引用永久阻止旧进程 idle shutdown。旧 Supervisor 在没有其他 live session 时按自身 idle shutdown 正常退出，后续创建动作连接不到旧 socket 时才启动当前版本 Supervisor。若旧进程仍持有其他未映射 live session，它不会被强制退出，新建动作继续明确失败并要求先处理旧会话。这是一条保进程、不伪造历史的退役迁移，不承诺把已经丢失的旧历史补回。
+旧 Supervisor 不再创建新的 Agent / Terminal session，避免迁移窗口继续产生无法恢复的旧协议会话；这项限制只作用于旧进程，不再阻塞整个 workspace。`runtimeSupervisorPaths.ts` 为当前协议代提供稳定且独立的 generation storage namespace，由此派生不同的 registry、socket / named pipe 和 systemd-user unit。`CanvasPanelManager` 用节点持久化的 `runtimeStoragePath` 把旧会话路由到旧 client，新建会话则默认路由到 current-generation client，因此两代 Supervisor 可以同时存在。最后一个已知旧 live session 停止或自然结束后，Host 释放旧 client，让旧进程按自身 idle shutdown 正常退出；当前 Supervisor 与新会话不受影响。这是一条保进程、允许降级交互、不伪造历史的并行 drain 迁移，不承诺把已经丢失的旧历史补回。
 
 ### 10.9 Webview applied-revision ACK
 
@@ -447,7 +448,7 @@ Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Ho
 - 健康 authority 的新 Webview 投影 attach 前会通过只读 `getSessionSnapshot` 刷新 Supervisor checkpoint；刷新期间到达 Host 的 live 尾部按连续 revision 无损合并。该方法受 `terminalProjectionSnapshotV1` capability 保护，不改变当前 subscription。
 - Webview 将连续 output journal events 合并为目标上限 256 Ki 个 UTF-16 code unit 的 xterm write（单个 event 不拆分），resize/scrollback 保持批次边界；Pane Gallery 新激活主 Pane 的 hydrate 优先于旧输入节点。诊断已覆盖 checkpoint/replay 字符数、事件数和 revision 区间。
 - Host 与 Webview 均按 `kind + nodeId` 维护唯一输入优先级；Host 对超时后台输出逐轮放行，Webview 用每-controller 排队年龄和额外公平预算保证持续输入期间的有界推进。节点内 output 始终从队首切片，未选中内容不会被清空。
-- 缺少 `terminalSessionStreamV1` 的旧 Supervisor 会话显式进入 `legacy-read-only`：只读展示去控制序列后的 tail，禁止 input/resize 和新 session 创建；最后一个已知旧会话退出后释放 client，让旧进程按 idle shutdown 退役。
+- 缺少 `terminalSessionStreamV1` 的旧 Supervisor 会话显式进入 `legacy-interactive`：旧进程继续承载既有 PTY 的 output、input、resize、stop 与 delete，Host 不把 raw tail 冒充完整 checkpoint / journal；新 session 则进入当前 generation 的独立 Supervisor。最后一个已知旧会话退出后释放旧 client，让旧进程按 idle shutdown 退役。
 - Webview 只在 xterm write callback、前序 write 后的 resize/scrollback 或完整 snapshot replay 完成时发送 `webview/executionTerminalApplied`。Host 按 surface 校验，Supervisor 按同 socket 内的 `consumerId=panel|editor` 分水位记录；ACK 不推进 authority revision，也不删除 journal。
 - Host 以 10–12 秒确定性错峰周期检查健康 authority cache；只有 checkpoint 落后时请求权威 snapshot，并与 RPC 期间连续 live tail 无损合并。attach、周期和并发刷新复用同一 in-flight，所有 session/Host 生命周期边界都会清 timer。
 
@@ -468,13 +469,13 @@ Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Ho
 - `RuntimeSupervisorClient.ensureConnected()` 的完成语义现在包含 hello/capability ready。并发调用共享同一 readiness promise；初始 hello 通过已连接 socket 的内部 request 发出，不通过公开 request 递归进入 `ensureConnected()`。真实 client + socket gate 回归在 hello pending 时断言第二个调用不 resolve，释放后断言一条连接、一次 hello 和三项 capability 同时可见。
 - `terminalAuthorityMismatch`、`terminalRevisionInvalid`、`terminalJournalUnavailable` 与已有 `terminalJournalPersistenceFailed` 一样在 Host 边界由 `vscode.l10n` 翻译；zh-CN bundle 与 descriptor coverage 已补齐。90000 行 completed 终态的间歇性截断已再次观察并进入技术债追踪，严格 smoke assertion 保持不变。
 
-当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；projection refresh 不撤销 live subscription；checkpoint geometry 与 tracker flush 使用同一切点；terminal mutation/publication/finalization/delete 严格串行；final/registry checkpoint 覆盖 final revision；completed stream durable handoff 与 Host 离线结束恢复；旧 Supervisor Agent/Terminal 只读降级；并发 client 调用只在 hello capability ready 后完成；Host/Supervisor ACK 单调性；周期 refresh 去重、错峰、stale timer 与 dispose 后不重调度；Webview checkpoint+journal 顺序 hydrate 并在完成点 ACK、4000 个连续 output event 批量回放后尾部完整、authority 与 local snapshot 前增量均按身份无重复对账、相同文本的不同 revision/sequence 无损保留、live revision/sequence gap 恢复、健康/结束态 snapshot 不替换既有 backlog；Pane Gallery 新主画板 hydrate 先于旧输入节点；10-Agent Supervisor/Webview 基准逐行验证无损、保序、输入优先和后台有界公平。完整 VS Code smoke 已通过 trusted、restricted、多 root、双窗口共享 runtime、systemd user/fallback、Remote SSH real reopen 等全部默认场景。
+当前自动化已证明：segment 轮转、完整重开、stale manifest 修复、最后不完整 record 截断、checksum 损坏 fail closed；checkpoint 缺失后的全 journal 重建；attach 间隙事件无缺失且只发送一次；projection refresh 不撤销 live subscription；checkpoint geometry 与 tracker flush 使用同一切点；terminal mutation/publication/finalization/delete 严格串行；final/registry checkpoint 覆盖 final revision；completed stream durable handoff 与 Host 离线结束恢复；旧 Supervisor Agent/Terminal 保持降级交互且与当前 Supervisor 并行 drain；并发 client 调用只在 hello capability ready 后完成；Host/Supervisor ACK 单调性；周期 refresh 去重、错峰、stale timer 与 dispose 后不重调度；Webview checkpoint+journal 顺序 hydrate 并在完成点 ACK、4000 个连续 output event 批量回放后尾部完整、authority 与 local snapshot 前增量均按身份无重复对账、相同文本的不同 revision/sequence 无损保留、live revision/sequence gap 恢复、健康/结束态 snapshot 不替换既有 backlog；Pane Gallery 新主画板 hydrate 先于旧输入节点；10-Agent Supervisor/Webview 基准逐行验证无损、保序、输入优先和后台有界公平。完整 VS Code smoke 已通过 trusted、restricted、多 root、双窗口共享 runtime、systemd user/fallback、Remote SSH real reopen 等全部默认场景。
 
 本轮相关 12 个 Webview 终端用例和曾在全量中超时的 canvas edge 用例单独运行均通过。完整 `npm run test:webview` 没有清洁完成：首个失败为仓库当前中文参数校验文案与陈旧英文截图之间的 3488 pixels（约 1%）差异；跳过该截图后，当前机器高负载让前两项分别约 33.7/34.5 秒超过统一 30 秒 timeout。artifact 保存在 `.debug/playwright/results/`。这不改变定向终端证据和完整 VS Code smoke 结论，但不能把全量 Webview 写成通过；既有基线问题继续由 `docs/exec-plans/tech-debt-tracker.md` 的测试基础设施条目追踪，不重复登记新技术债。
 
 `0.24.0` 发布准备又补充了 packaged-payload 证据：第一次 `npm run test:vsix-smoke` 在严格 completed stream 场景只收到 89960/90000 行并超时；原样完整复跑则在更早的 explorer resource 场景因 Terminal 持续 `stopping` 命中统一 timeout，尚未到达 90000 行断言。两次运行都完成 VSIX 打包与 payload 内容守卫，但宿主测试均以 code 1 退出。最终文案同步后，不带 skip 的隔离 clean-checkout 对同一 working-tree 内容重新安装、打包并在真实 VS Code 1.128.0 packaged host 中完整跑通同一严格 suite，以 code 0 结束。当前因此同时保留“两次直接失败 + 一次隔离通过”的证据；清洁样本证明工件可通过门禁，但不能否定间歇性短读，也不能替代最终 release ref 的重复验证。
 
-真实迁移 smoke 会从固定基线 `origin/main@5355e6a` 物化扩展源码并重新构建旧 Supervisor，而不是伪造 capability。旧进程实际持有 Agent 与 Terminal PTY；当前 Host 重建后只显示去控制序列的只读 transcript，Webview 和 Host 两层均拒绝 input/resize，同一旧进程拒绝新 session。停止或删除最后的旧会话后，Host 等待 in-flight RPC settled 再释放 client，旧进程在 30 秒 idle 窗口后自然退出；下一次创建连接到声明 `terminalSessionStreamV1` 的当前 Supervisor。该 smoke 还发现旧 Supervisor 会先广播 delete 终态、再返回 delete RPC；如果终态处理立即 dispose client，会出现 PTY 已删除但画布节点删除失败。当前实现以 `RuntimeSupervisorClient.hasPendingRequests()` 保护退役，并在 strict delete 的所有 settled 路径重新检查。
+真实迁移 smoke 从固定基线 `origin/main@5355e6a` 物化扩展源码并重新构建旧 Supervisor，而不是伪造 capability。旧进程实际持有 Agent 与 Terminal PTY；当前 Host 重建后允许 Webview 与 Host 输入到达旧 PTY，节点 resize 会更新旧进程记录的 cols/rows，后续 output 继续进入 xterm，但初始 raw tail 仍只作为不完整兼容投影。旧会话仍运行时，新 Terminal 已在不同 storage、socket 和 PID 的 current-generation Supervisor 中启动，且不会进入旧 registry。停止或删除最后的旧会话后，Host 等待 in-flight RPC settled 再释放 client，旧进程在 30 秒 idle 窗口后自然退出；当前会话仍可继续 input 与 output。该 smoke 还覆盖旧 Supervisor 先广播 delete 终态、再返回 delete RPC 的时序；实现继续以 `RuntimeSupervisorClient.hasPendingRequests()` 保护退役，并在 strict delete 的所有 settled 路径重新检查。
 
 终端边界回归分别覆盖 CSI/ANSI、cursor addressing、BEL 结尾 OSC title、ST 结尾 OSC 8、alternate screen、resize、scrollback、CJK 和 emoji 分片。Webview 在 revision 20 完成后 ACK，最终 buffer 无控制残片、`U+FFFD`、缺失或重复，raw tail 不参与 hydrate；真实 PTY fixture 又把 `中文🚀` 的 UTF-8 bytes 拆成四次写入和多个 Supervisor revision，journal、projection 与 checkpoint 均恢复为同一文本。`trusted` 复跑期间暴露的 fake-provider auto-start/manual-start 竞态已经通过等待自动启动完成、停止会话后再进入手动 start 基线修复；该修复只同步测试 setup，不改变产品运行时语义。用户使用最新 Supervisor 手动复测缩略图切换主画板，未再发现输出延迟补全、显示不完整或其他新问题。
 
@@ -486,4 +487,4 @@ Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Ho
 - 90000 行 completed 终态已间歇性出现 89861 与 89960 两次尾部截断；标准严格场景也有通过样本，但重复压力与原始 PTY/bridge/journal/finalization 分层诊断尚未完成，不能把极端 completed stream 的最终内容保证写成已验证。
 - local PTY 跨 Host 生命周期的独立恢复语义、journal compact、永久 transcript 与 Agent 结构化内容投影不属于本阶段实现。
 
-本设计最后于 2026-07-12 根据 PR #255 三轮 review 与 `0.24.0` 发布准备证据更新：terminal operation/finalization/delete 串行边界、authority/local snapshot 前增量对账、completed stream durable handoff、有界 diagnostics 查询和 hello/capability readiness 修复均已落地，定向验证、10-Agent 基准、完整 VS Code smoke 与一次隔离 packaged-payload smoke 也有通过证据；但 90000 行终态尾部截断已间歇性出现两次，单个后续通过样本不足以关闭风险。方案继续保持“已选定”，验证状态保持“验证中”；只有完成分层诊断、重复压力并在最终 release ref 获得严格 packaged smoke 清洁结果后，才能重新升级为“已验证”。
+本设计最后于 2026-07-13 根据并行 drain 修复更新：current-generation storage namespace、旧会话 `legacy-interactive`、新旧 client 精确路由和真实旧二进制迁移 smoke 已落地；Linux 真实迁移证明两代 Supervisor 可同时运行、旧 PTY 可继续 input/resize、新 session 可立即启动且互不误路由。Windows named pipe 与 systemd unit 的 generation 隔离由路径回归覆盖，但真实旧二进制迁移 smoke 仍只运行在 Linux/Unix socket 路径。此前 90000 行终态尾部截断也已间歇性出现两次，单个后续通过样本不足以关闭风险。方案继续保持“已选定”，验证状态保持“验证中”；只有完成分层诊断、重复压力并在最终 release ref 获得严格 packaged smoke 清洁结果后，才能重新升级为“已验证”。
