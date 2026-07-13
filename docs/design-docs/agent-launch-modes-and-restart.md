@@ -16,7 +16,7 @@ related_specs:
   - docs/product-specs/canvas-navigation-and-workbench-polish.md
 related_plans:
   - docs/exec-plans/active/agent-launch-modes-and-restart.md
-updated_at: 2026-07-11
+updated_at: 2026-07-13
 ---
 
 # Agent 启动方式与会话恢复交互设计
@@ -126,7 +126,7 @@ updated_at: 2026-07-11
 - 宿主创建一个同 provider 的新 Agent 节点，启动预设为 `custom`，完整命令使用当前 provider 命令路径和原生 fork 参数：Codex 使用 `fork <session-id>`，Claude Code 使用 `--resume <session-id> --fork-session`。
 - 新节点立即启动；旧节点不停止、不改 metadata、不改变用户对“哪个是主分支”的自由理解。
 - 新节点标题只做弱提示，例如从原标题派生 `分叉` 后缀；画布不新增正式分支树。
-- 宿主在分叉新节点创建成功后，自动从原 Agent 节点创建一条指向新 Agent 节点的普通 `user` 边，锚点复用现有水平连边规则，箭头方向为原节点到新节点，边标签默认为 `fork`；这条边只是可编辑/可删除的视觉连接，不作为机器可读 branch lineage。
+- 宿主在分叉新节点创建成功后，自动从原 Agent 节点创建一条指向新 Agent 节点的普通 `user` 边，箭头方向为原节点到新节点，边标签默认为 `fork`；这条边只是可编辑/可删除的视觉连接，不作为机器可读 branch lineage。新节点按照 window scope 设置向上、向下或向右展开，默认向上；同一来源的多个新节点保持在同一层级线上，边锚点随方向选择。方向化展开与生成节点统一避碰的详细契约和验证状态见 `docs/design-docs/canvas-fork-placement-and-generated-node-collision.md`。
 - 新节点右上角标题栏和普通 Agent 节点一样常驻显示状态胶囊；窄节点下沿用 PR121 的按钮级压缩策略保护标题、状态和用户动作可读性：标题栏 action cluster 保持 inline，只有可压缩按钮自身按内容收缩或内部换行，不通过整组动作区换行或隐藏状态来腾空间。由于标题栏动作多为两个中文字符，单纯设置 `white-space: normal` 会被 `min-content` 宽度保护而不一定可见换行；实现应在 Agent 接近最小宽度时给整组标题栏动作一个统一紧凑密度状态，使右上角所有动作按钮文本都实际在按钮内部两行显示。
 
 选择原因：
