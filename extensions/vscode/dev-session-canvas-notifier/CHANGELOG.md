@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.1
+
+- 与主扩展 `0.24.1` 对齐：本轮主扩展是 `0.24.x` Preview 线内的紧急修复，解决升级后旧 Runtime Supervisor 会话被强制只读、同时新会话等待旧进程排空的问题；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致；通知协议、后端选择、点击回跳语义和本地化边界均保持不变。
+
 ## 0.24.0
 
 - 与主扩展 `0.24.0` 对齐：本轮主扩展是新的公开 `Preview` 里程碑，聚焦 `Agent` / `Terminal` 无损输入输出与 Supervisor 权威恢复、停止后 Agent 的 `Resume / 恢复` 语义，以及 multi-root 画板按分组 / root / workspace 清空边界；notifier companion 不引入新的通知投递行为变更。

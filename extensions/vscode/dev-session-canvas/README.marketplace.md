@@ -10,17 +10,16 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.24.0 Highlights
+## 0.24.1 Highlights
 
-The public `0.24.0` release is a Preview milestone for lossless `Agent` / `Terminal` I/O and recovery, explicit Agent `Resume` semantics, and safely scoped canvas clearing in multi-root workspaces. It keeps the `0.23.0` English-default / Simplified Chinese localization, Template Marketplace Preview, notifier auto-install relationship, GitHub Release assets plus verified Open VSX completion gate, and Visual Studio Marketplace deferred stance.
+The public `0.24.1` release is an urgent Preview hotfix for Runtime Supervisor upgrades. It fixes `0.24.0` behavior that made sessions owned by an older Supervisor read-only and delayed new sessions until that process drained. It keeps the `0.24.0` lossless I/O protocol, Agent `Resume`, scoped multi-root clearing, localization, Template Marketplace Preview, notifier relationship, GitHub Release assets plus verified Open VSX completion gate, and Visual Studio Marketplace deferred stance.
 
-- Execution output is no longer discarded or replaced to improve input latency: the active input node keeps top priority while bounded-fair scheduling continues every background node without losing distinct revisions or sequences
-- Persistent sessions use the current Runtime Supervisor's continuous revisions, checksummed journal, and checkpoint cache as the recovery authority, including Reload Window, output produced while the Extension Host is offline, and large completed streams
-- Atomic attach/live cutovers, revision acknowledgements, durable handoff, and serialized session operations keep output, resize, scrollback, finalization, and deletion ordered; invalid authority, revision, or journal state fails closed with localized diagnostics
-- Sessions still owned by an older Supervisor enter an explicit legacy read-only migration state: they remain visible and can be stopped or deleted, while input, resize, and new sessions wait until the old runtime drains
-- A stopped Agent now offers `New | Resume`, matching provider resume semantics; Terminal nodes keep `Restart` because they start a new shell process
-- Multi-root reset clears every root-local canvas and running session while preserving system workspace-root sections; the canvas context menu can instead clear the current root, current ordinary group, or the entire workspace, always after confirmation
-- The main Webview was split into focused React Flow, execution, Note, Pane Gallery, file-node, and shared-chrome modules without changing Host/Webview protocols, persisted data, node type keys, or existing interaction contracts
+- Supervisor generations now use isolated storage namespaces, registries, Unix sockets / Windows named pipes, and systemd user units, so an older runtime can drain without blocking the current runtime
+- Sessions keep their persisted `runtimeStoragePath` and continue through the Supervisor that owns their real PTY; new Agent and Terminal sessions start immediately in the current `terminal-stream-v1` generation
+- Older sessions remain interactive: output, input, resize, stop, and delete continue to work, and persisted legacy read-only projections are normalized automatically
+- PTY ownership is never migrated between generations. An older runtime's raw output tail is not promoted into a current lossless checkpoint or journal, so the recovery authority stays explicit
+- Older clients are released after their last session finishes and pending RPC work settles; completed and history nodes clear migration-only projection state instead of keeping stale compatibility UI
+- The migration notice no longer blocks the terminal. If an older terminal looks visually stale, resizing the node triggers a real terminal resize and redraw while new nodes continue on the current runtime
 - The extension ID, VS Code minimum version, notification behavior, notifier auto-install relationship, Open VSX gate, Visual Studio Marketplace deferred stance, Template Marketplace service version line, and Preview support matrix stay unchanged
 
 ## Core Capabilities
@@ -63,6 +62,7 @@ The public `0.24.0` release is a Preview milestone for lossless `Agent` / `Termi
 - The `Remote SSH` main path is validated and usable, and it remains the best-validated recommended environment
 - Linux and macOS local workspaces now have functional validation for the `Preview` main path
 - Windows local workspaces now have functional validation for the `Preview` main path, with one explicit known limitation: when using `Codex`, embedded session history still cannot page upward
+- Real older-binary upgrade smoke currently covers Linux / Unix sockets. Windows named-pipe and systemd generation isolation have path-level coverage, not a complete cross-platform real-upgrade matrix
 - A strict 90,000-line completed-terminal stress case has intermittently stopped short at the final tail even though other full runs pass; final-tail completeness for one extreme output burst remains under validation
 - The sidebar `Session History` list only shows records that can be explicitly attributed to the current workspace; older sessions without working-directory metadata are skipped conservatively
 - `Restricted Mode` allows the canvas to open, but disables execution entry points such as `Agent` and `Terminal`
@@ -80,14 +80,14 @@ The public `0.24.0` release is a Preview milestone for lossless `Agent` / `Termi
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.23.0` to `0.24.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- First-time installs and upgrades from `0.24.0` to `0.24.1` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
 - UI language follows the VS Code locale. This release does not add an extension-specific language setting and does not translate user-owned content, terminal output, provider output, or marketplace template data
-- If an older Runtime Supervisor still owns running sessions during upgrade, let important work finish or stop it before reloading. Those sessions remain visible but read-only until they are stopped or deleted, after which the current Supervisor takes over
+- If an older Runtime Supervisor still owns running sessions during upgrade, those sessions continue through their original runtime with output, input, resize, stop, and delete available. New sessions can start immediately on the current generation; older sessions do not migrate PTY ownership and may need a node resize to redraw stale terminal pixels
 - Supervisor-backed cross-Host recovery still depends on `runtimePersistence.enabled` and backend availability. Local PTYs do not gain a cross-Host lifetime guarantee, and Preview releases do not promise rollback compatibility for runtime journals
 - The production Template Marketplace may start with an empty catalog. Production does not expose code-only seed templates; real templates must be published through the marketplace or a controlled operations flow
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
 - Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
-- If you previously set `devSessionCanvas.runtimePersistence.enabled`, `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.24.0` preserves that explicit choice
+- If you previously set `devSessionCanvas.runtimePersistence.enabled`, `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, or `devSessionCanvas.canvas.multiRootPresentationMode`, upgrading to `0.24.1` preserves that explicit choice
 - Image paste files are temporary extension-storage attachments, not workspace files. They are retained long enough for Agent context reuse and then cleaned by the background TTL maintenance task
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
