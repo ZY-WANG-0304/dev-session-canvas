@@ -2,7 +2,7 @@
   "name": "dev-session-canvas-notifier",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.24.0",
+  "version": "0.24.1",
   "publisher": "devsessioncanvas",
   "license": "Apache-2.0",
   "repository": {
