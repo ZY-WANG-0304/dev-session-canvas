@@ -217,7 +217,7 @@ components:
 - 画布、节点、侧栏 section 和浮层都应保持紧凑工具型密度。
 - 画布空白的产品原则见 `docs/PRODUCT_SENSE.md`；design-system 不为空白区域预设说明块、统计卡或品牌装饰。
 - 角落 widget 只用于空间导航、定位或短时反馈；非空间动作优先离开画布。
-- 系统生成节点的初始落位不得与目标 root-local 画布中已有节点重叠；这是创建时规则，不阻止用户之后手工拖拽形成重叠，也不自动重排旧节点。关系专属的方向或层级规则必须建立在同一避碰契约之上。
+- 系统生成节点应基于候选阶段宿主可得的 footprint 避开目标 root-local 画布中已有节点；这是创建时规则，不阻止用户之后手工拖拽形成重叠，也不自动重排旧节点。关系专属的方向或层级规则必须建立在同一避碰契约之上；若动态节点的真实初始尺寸在选位后才确定，必须把精度边界写入专项设计与技术债，不能包装成完整无重叠保证。
 - 具体对象落位、空画布、上下文菜单与角落控件规则由 `docs/design-docs/canvas-feedback-polish.md`、`docs/design-docs/canvas-navigation-and-workbench-polish.md` 和 `docs/design-docs/canvas-fork-placement-and-generated-node-collision.md` 定义。
 
 ## Elevation & Depth

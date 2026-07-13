@@ -3376,6 +3376,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       agentSkipFreshLaunchDefaultArgsValidation: true,
       titleOverride: formatForkTitle(sourceNode.title),
       cwdOverride: metadata.cwd,
+      targetGroupId: sourceNode.groupId,
       placementStrategy: {
         kind: 'fork-layer',
         sourceNodeId: sourceNode.id,
@@ -19596,7 +19597,10 @@ function createNextState(
         kind,
         preferredPosition ?? nextNode.position
       );
-  const validTargetGroupId = resolveValidTargetGroupId(previousState.groups ?? [], targetGroupId);
+  const placementTargetGroupId = placementStrategy?.kind === 'fork-layer'
+    ? forkSourceNode?.groupId
+    : targetGroupId;
+  const validTargetGroupId = resolveValidTargetGroupId(previousState.groups ?? [], placementTargetGroupId);
   const createdNodeBase = {
     ...nextNode,
     position: resolvedPosition,

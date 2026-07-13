@@ -81,6 +81,11 @@ for (const direction of ['up', 'down', 'right'] as const) {
   }
   if (direction === 'right') {
     assert.equal(new Set(children.map((child) => child.position.x)).size, 1);
+    assert.deepEqual(
+      children.map((child) => child.position.y),
+      [200, 680, -280],
+      '向右 Fork 应按中心、最近正槽、最近负槽的顺序展开。'
+    );
   } else {
     assert.equal(new Set(children.map((child) => child.position.y)).size, 1);
   }

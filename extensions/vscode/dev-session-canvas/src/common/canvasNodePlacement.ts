@@ -183,9 +183,11 @@ export function resolveForkLayerNodePosition(options: {
     direction,
     options.layerGap ?? CANVAS_FORK_LAYER_GAP
   );
-  const slotStep = direction === 'right'
-    ? options.targetSize.height + padding
-    : options.targetSize.width + padding;
+  const slotStep = snapCanvasCoordinateUp(
+    direction === 'right'
+      ? options.targetSize.height + padding
+      : options.targetSize.width + padding
+  );
   const localSlotCount = options.occupiedNodes.length + 1;
 
   for (let slot = 0; slot <= localSlotCount; slot += 1) {

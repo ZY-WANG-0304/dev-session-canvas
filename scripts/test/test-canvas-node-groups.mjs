@@ -346,8 +346,13 @@ try {
     'Generated nodes must avoid existing nodes even when their group ids differ.'
   );
 
+  const forkLayerSourcePosition = { x: 220, y: 400 };
   let forkLayerState = state({
-    nodes: [agent('fork-layer-source', { x: 200, y: 200 }, { size: { width: 560, height: 430 } })]
+    nodes: [agent('fork-layer-source', forkLayerSourcePosition, {
+      size: { width: 560, height: 430 },
+      groupId: 'fork-layer-group'
+    })],
+    groups: [group('fork-layer-group', { x: 0, y: 0 }, { width: 1000, height: 1000 })]
   });
   for (let index = 0; index < 3; index += 1) {
     forkLayerState = createNextState(
@@ -363,6 +368,15 @@ try {
     );
   }
   const forkLayerChildren = forkLayerState.nodes.filter((candidate) => candidate.id !== 'fork-layer-source');
+  assert.ok(
+    forkLayerChildren.every((candidate) => candidate.groupId === 'fork-layer-group'),
+    'Fork children should inherit the source ordinary group.'
+  );
+  assert.deepStrictEqual(
+    forkLayerState.nodes.find((candidate) => candidate.id === 'fork-layer-source').position,
+    forkLayerSourcePosition,
+    'Growing the inherited group for Fork children must not move the source node.'
+  );
   assert.strictEqual(new Set(forkLayerChildren.map((candidate) => candidate.position.y)).size, 1);
   for (let leftIndex = 0; leftIndex < forkLayerChildren.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < forkLayerChildren.length; rightIndex += 1) {
@@ -375,6 +389,21 @@ try {
       );
     }
   }
+  const expandedForkLayerGroup = forkLayerState.groups.find((candidate) => candidate.id === 'fork-layer-group');
+  const movedForkChild = forkLayerChildren[0];
+  const movedForkChildState = moveNode(
+    forkLayerState,
+    movedForkChild.id,
+    {
+      x: expandedForkLayerGroup.position.x + expandedForkLayerGroup.size.width + 500,
+      y: expandedForkLayerGroup.position.y
+    }
+  );
+  assert.strictEqual(
+    movedForkChildState.nodes.find((candidate) => candidate.id === movedForkChild.id).groupId,
+    undefined,
+    'Users should still be able to drag an inherited Fork child out of its ordinary group.'
+  );
 
   const forwardParentTemplateApply = applyCanvasTemplateToState(
     state(),
