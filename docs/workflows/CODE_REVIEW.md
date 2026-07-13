@@ -50,9 +50,9 @@ Review 总结顺序固定为：
 - 不把未确认内容写成已确认事实。
 - 不把个人偏好或更“优雅”的方案写成必须修复的问题。
 - 不要求 worker 顺手解决与当前 MR 无直接关系的历史问题。
-- reviewer 默认通过 comment 提出问题，由 worker 负责修复、登记技术债并更新 MR。
+- reviewer 默认通过 comment 提出问题，由 worker 负责修复、登记技术债并更新 MR；reviewer 不直接代 worker 补技术债文档或替 worker 完成实现收口。
 - reviewer 必须基于最新的 MR head 复审，不能跳过 worker 的新增提交直接给出可合并结论。
-- 在仓库默认工作流里，当 reviewer 确认最新 head 未发现新的确定性 blocker 后，由 reviewer 执行合并；但 reviewer 不直接代 worker 补技术债文档或替 worker 完成实现收口。
+- 在仓库默认工作流里，当 reviewer 确认最新 head 未发现新的确定性 blocker 后, 给出可以合并的结论。
 
 ## 与仓库文档的关系
 
