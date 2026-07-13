@@ -319,6 +319,8 @@ append 在内存中同步分配 revision 并进入单 writer 队列，磁盘写�
 
 `SerializedTerminalStateTracker` 仍在 supervisor 内消费与 journal 相同顺序的事件。supervisor 在明确 revision 上生成包含 cols、rows、scrollback、format 与 serialized state 的 checkpoint，并把它写入 supervisor registry。checkpoint 不删除任何 journal segment，也不改变 journal 的权威地位。
 
+`SerializedTerminalStateTracker.flush()` 的强制 drain 会继续把积压 output 按 32 KiB 小块让给 headless xterm，避免单次同步写入长期占用事件循环；但中间块不再反复执行全量 terminal serialize。强制 drain 必须先完成全部 pending write 和 `outputSequence` 推进，再只生成一次最终 cache。普通、无人等待的后台 drain 仍可按缓存刷新周期生成中间 cache，保证长流输出不会永久只保留旧 checkpoint。该边界只消除重复计算，不改变 final state 必须覆盖 final revision、marker 和终端几何的正确性要求。
+
 checkpoint 正常时，attach 返回 checkpoint `C`、journal `C+1...R` 和 target revision `R`。checkpoint 缺失、格式不兼容或校验失败时，supervisor 从 journal 起点重建 headless xterm；不能回退到任意 raw tail。checkpoint 是否能在后续阶段接管旧 journal，必须另行验证和决策。
 
 ### 10.5 原子 attach 与 live 切换
@@ -455,9 +457,10 @@ Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Ho
 2026-07-12 的 PR #255 review follow-up 又补齐以下边界：
 
 - Supervisor 把 output、resize、scrollback 的 revision 分配、tracker mutation 与 publication 放入同一 session chain；exit/delete 同步关闭 mutation admission，等待已接受操作后生成 fresh final state。协议回归通过受控 tracker stall 证明消费者不会再看到 revision `N+1` 先于 `N`，也不会在 exit 后接受 resize 或发布缺少 final output 的非 live snapshot。
+- 2026-07-13 的跨 Node 复核推翻了“Node 25 专属失败”的初始归因：Node `25.6.0` 与 `22.23.1` 都能在原测试中通过或失败。原用例收到 2 MiB 尾标记后固定等待 3 秒；诊断样本中的完整 final state 分别在约 3.69 秒和 8.88 秒到达，且 `terminalStream.revision`、`terminalRevision`、serialized `outputSequence` 完全一致，marker 也完整。进一步回归证明旧实现对 96 KiB 强制 flush 执行 5 次全量 serialize。当前 tracker 改为强制 drain 落定后只 serialize 一次，协议测试改为在 15 秒总上限内事件驱动等待满足完整 revision 不变量的 final state，而不是用固定 sleep 猜测完成时间；15 秒只是失败保护，不是产品 SLA。修改后 Node 25 与 Node 22 各连续三次通过协议门禁，tracker 单次 serialize 回归也通过。
 - Webview 按 `(sessionId, authorityId, revision)` 对 snapshot 前增量做覆盖对账。正例证明同一 revision 先以 output 到达、后被 snapshot 覆盖时最终只显示一次；反例证明两个连续 revision 输出相同 marker 时最终显示两次。实现没有文本去重。
 - completed snapshot 只有在 session、authority、terminal revision 与 output sequence 全部一致时才作为权威 stream 持久化。主磁盘与 root-local durable barrier 成功后才解绑并删除 Supervisor journal；失败会回滚 Host 内存/cache，保留唯一完整来源。
-- trusted smoke 用 100000 scrollback 与 90000 行输出生成大于 5 MiB 的 completed serialized state，normalizer 丢弃 oversized monolithic state 后仍从旧 checkpoint 加完整 journal suffix 恢复首、中、末 marker。PR review 曾在 Terminal 已 `closed` 时只观察到第 89861 行，紧接着原样复跑和三次裸 `node-pty` 对照均收到 90000/90000；`0.24.0` 发布准备的 packaged-payload smoke 又独立停在第 89960 行，而同日较早的完整 `npm run test:smoke` 严格场景通过。第二次样本确认该风险能够间歇性复现，但仍未定位具体缺口层；当前继续保持严格 90000 行 assertion，并要求后续采集原始 journal/PTY/bridge/finalization 顺序。real-reopen 的第三个 Terminal 在 Host 完全退出后的 3 秒空窗内输出并结束，重开后完整 final stream 可投影、runtime binding 已清除且 Supervisor session 已删除。
+- trusted smoke 用 100000 scrollback 与 90000 行输出生成大于 5 MiB 的 completed serialized state，normalizer 丢弃 oversized monolithic state 后仍从旧 checkpoint 加完整 journal suffix 恢复首、中、末 marker。PR review 曾在 Terminal 已 `closed` 时只观察到第 89861 行，紧接着原样复跑和三次裸 `node-pty` 对照均收到 90000/90000；`0.24.0` 发布准备的 packaged-payload smoke 又独立停在第 89960 行，而同日较早的完整 `npm run test:smoke` 严格场景通过。2026-07-13 收口 final-state 协议门禁时，trusted smoke 再次在 Terminal 已 `closed`、stream revision 与 output sequence 同为 `21761` 的状态下停在第 89877 行。三个样本确认该风险能够间歇性复现，但仍未定位具体缺口层；当前继续保持严格 90000 行 assertion，并要求后续采集原始 journal/PTY/bridge/finalization 顺序。real-reopen 的第三个 Terminal 在 Host 完全退出后的 3 秒空窗内输出并结束，重开后完整 final stream 可投影、runtime binding 已清除且 Supervisor session 已删除。
 
 同日最新复核继续补齐 local 与测试基础设施边界：
 
@@ -484,7 +487,7 @@ Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Ho
 - applied ACK 当前只提供消费证据，完整磁盘 journal 仍不 compact；长期 retention、跨代回退和受 ACK 约束的删除策略需要另行设计。
 - 当前真实旧 Supervisor 升级 smoke 运行在 Linux/Unix socket 路径；其他平台仍由 capability 与协议回归覆盖，不能把这条 Linux 证据写成全平台真实旧二进制矩阵。
 - 当前 ANSI/OSC/CJK/emoji fixture 已覆盖分片和恢复边界；10-Agent 当前样本仍不能替代长时间容量、持续磁盘增长与 retention 结论。
-- 90000 行 completed 终态已间歇性出现 89861 与 89960 两次尾部截断；标准严格场景也有通过样本，但重复压力与原始 PTY/bridge/journal/finalization 分层诊断尚未完成，不能把极端 completed stream 的最终内容保证写成已验证。
+- 90000 行 completed 终态已间歇性出现 89861、89960 与 89877 三次尾部截断；标准严格场景也有通过样本，但重复压力与原始 PTY/bridge/journal/finalization 分层诊断尚未完成，不能把极端 completed stream 的最终内容保证写成已验证。
 - local PTY 跨 Host 生命周期的独立恢复语义、journal compact、永久 transcript 与 Agent 结构化内容投影不属于本阶段实现。
 
-本设计最后于 2026-07-13 根据并行 drain 修复更新：current-generation storage namespace、旧会话 `legacy-interactive`、新旧 client 精确路由和真实旧二进制迁移 smoke 已落地；Linux 真实迁移证明两代 Supervisor 可同时运行、旧 PTY 可继续 input/resize、新 session 可立即启动且互不误路由。Windows named pipe 与 systemd unit 的 generation 隔离由路径回归覆盖，但真实旧二进制迁移 smoke 仍只运行在 Linux/Unix socket 路径。此前 90000 行终态尾部截断也已间歇性出现两次，单个后续通过样本不足以关闭风险。方案继续保持“已选定”，验证状态保持“验证中”；只有完成分层诊断、重复压力并在最终 release ref 获得严格 packaged smoke 清洁结果后，才能重新升级为“已验证”。
+本设计最后于 2026-07-13 根据并行 drain 修复和 final-state 协议门禁收口更新：current-generation storage namespace、旧会话 `legacy-interactive`、新旧 client 精确路由和真实旧二进制迁移 smoke 已落地；Linux 真实迁移证明两代 Supervisor 可同时运行、旧 PTY 可继续 input/resize、新 session 可立即启动且互不误路由。Windows named pipe 与 systemd unit 的 generation 隔离由路径回归覆盖，但真实旧二进制迁移 smoke 仍只运行在 Linux/Unix socket 路径。90000 行终态尾部截断已间歇性出现三次，单个后续通过样本不足以关闭风险。方案继续保持“已选定”，验证状态保持“验证中”；只有完成分层诊断、重复压力并在最终 release ref 获得严格 packaged smoke 清洁结果后，才能重新升级为“已验证”。

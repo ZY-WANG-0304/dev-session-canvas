@@ -42,6 +42,30 @@ try {
   assert.match(state.data, /line-199/u, 'flush should include batched multi-chunk writes.');
   assert.equal(state.outputSequence, 3, 'flush should tag serialized terminal state with the latest output sequence.');
 
+  const forcedFlushTracker = new SerializedTerminalStateTracker(40, 8, {
+    scrollback: 5000
+  });
+  const forcedFlushSerializeAddon = forcedFlushTracker.serializeAddon;
+  assert.ok(forcedFlushSerializeAddon, 'tracker tests should be able to observe the internal serialize boundary.');
+  const originalForcedFlushSerialize = forcedFlushSerializeAddon.serialize.bind(forcedFlushSerializeAddon);
+  let forcedFlushSerializeCount = 0;
+  forcedFlushSerializeAddon.serialize = (...args) => {
+    forcedFlushSerializeCount += 1;
+    return originalForcedFlushSerialize(...args);
+  };
+  forcedFlushTracker.write(`${'f'.repeat(96 * 1024)}FORCED-FLUSH-END\r\n`, {
+    outputSequence: 4
+  });
+  const forcedFlushState = await forcedFlushTracker.flush();
+  assert.equal(
+    forcedFlushSerializeCount,
+    1,
+    'a forced multi-chunk drain should serialize once after all pending writes and metadata settle.'
+  );
+  assert.match(forcedFlushState.data, /FORCED-FLUSH-END/u);
+  assert.equal(forcedFlushState.outputSequence, 4);
+  forcedFlushTracker.dispose();
+
   tracker.write('before-resize\r\n', {
     outputSequence: 4
   });
