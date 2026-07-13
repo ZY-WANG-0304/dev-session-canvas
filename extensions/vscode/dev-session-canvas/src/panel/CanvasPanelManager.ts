@@ -19614,7 +19614,18 @@ function createNextState(
     nodes: [...previousState.nodes, createdNode]
   };
 
-  return finalizeCanvasGroupState(nextState);
+  return finalizeCanvasGroupState(
+    nextState,
+    placementStrategy?.kind === 'fork-layer' && validTargetGroupId
+      ? {
+          pinnedGroupIds: resolveGroupAncestorChain(
+            previousState.groups ?? [],
+            validTargetGroupId,
+            undefined
+          )
+        }
+      : {}
+  );
 }
 
 function defaultSummaryForKind(kind: CanvasNodeKind): string {
