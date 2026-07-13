@@ -25,11 +25,14 @@ const COMMAND_IDS = {
 };
 const LEGACY_AGENT_NODE_ID = 'legacy-upgrade-agent';
 const LEGACY_TERMINAL_NODE_ID = 'legacy-upgrade-terminal';
+const PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID = 'previous-generation-stream-terminal';
 const LEGACY_AGENT_MARKER = 'LEGACY_UPGRADE_AGENT_READY';
 const LEGACY_TERMINAL_MARKER = 'LEGACY_UPGRADE_TERMINAL_READY';
-const WEBVIEW_BLOCKED_INPUT_MARKER = 'LEGACY_WEBVIEW_INPUT_MUST_NOT_REACH_PTY';
-const HOST_BLOCKED_AGENT_INPUT_MARKER = 'LEGACY_HOST_AGENT_INPUT_MUST_NOT_REACH_PTY';
-const HOST_BLOCKED_TERMINAL_INPUT_MARKER = 'LEGACY_HOST_TERMINAL_INPUT_MUST_NOT_REACH_PTY';
+const PREVIOUS_GENERATION_STREAM_MARKER = 'PREVIOUS_GENERATION_STREAM_READY';
+const LEGACY_WEBVIEW_INPUT_MARKER = 'LEGACY_WEBVIEW_INPUT_REACHED_PTY';
+const LEGACY_HOST_AGENT_INPUT_MARKER = 'LEGACY_HOST_AGENT_INPUT_REACHED_PTY';
+const LEGACY_HOST_TERMINAL_INPUT_MARKER = 'LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY';
+const CURRENT_TERMINAL_INPUT_MARKER = 'CURRENT_TERMINAL_INPUT_REACHED_PTY';
 const SHORT_FALLBACK_SOCKET_DIGEST_LENGTH = 16;
 
 module.exports = {
@@ -50,9 +53,15 @@ async function run() {
   const configuration = vscode.workspace.getConfiguration();
   const previousRuntimePersistenceEnabled = configuration.get('devSessionCanvas.runtimePersistence.enabled', false);
   let legacySupervisorProcess;
+  let previousGenerationStreamSupervisorProcess;
   let supervisorPaths;
+  let previousGenerationStreamSupervisorPaths;
+  let currentSupervisorPaths;
   let legacyAgentSessionId;
   let legacyTerminalSessionId;
+  let previousGenerationStreamTerminalSessionId;
+  let previousGenerationStreamRuntimeStoragePath;
+  let currentTerminalSessionId;
 
   try {
     await setRuntimePersistenceEnabled(true);
@@ -68,7 +77,12 @@ async function run() {
     supervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
       path.join(runtimeStoragePath, 'runtime-supervisor')
     );
+    previousGenerationStreamRuntimeStoragePath = path.join(runtimeStoragePath, 'previous-generation-stream');
+    previousGenerationStreamSupervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
+      path.join(previousGenerationStreamRuntimeStoragePath, 'runtime-supervisor')
+    );
     await fs.rm(supervisorPaths.storageDir, { recursive: true, force: true });
+    await fs.rm(previousGenerationStreamSupervisorPaths.storageDir, { recursive: true, force: true });
 
     legacySupervisorProcess = startLegacyRuntimeSupervisor(
       legacySupervisorScript,
@@ -80,10 +94,27 @@ async function run() {
     assert.strictEqual(legacyHello.pid, legacySupervisorProcess.pid);
     assert.strictEqual(legacyHello.capabilities, undefined);
 
+    previousGenerationStreamSupervisorProcess = startLegacyRuntimeSupervisor(
+      path.join(extension.extensionPath, 'dist', 'runtime-supervisor.js'),
+      extension.extensionPath,
+      previousGenerationStreamSupervisorPaths.storageDir
+    );
+    const previousGenerationStreamHello = await waitForRuntimeSupervisorReady(
+      previousGenerationStreamSupervisorPaths,
+      20000
+    );
+    assert.strictEqual(previousGenerationStreamHello.pid, previousGenerationStreamSupervisorProcess.pid);
+    assert.strictEqual(previousGenerationStreamHello.capabilities?.terminalSessionStreamV1, true);
+
     const legacyAgentSnapshot = await createLegacyAgentSession(supervisorPaths);
     const legacyTerminalSnapshot = await createLegacyTerminalSession(supervisorPaths);
     legacyAgentSessionId = legacyAgentSnapshot.sessionId;
     legacyTerminalSessionId = legacyTerminalSnapshot.sessionId;
+    const previousGenerationStreamTerminalSnapshot = await createLegacyTerminalSession(
+      previousGenerationStreamSupervisorPaths,
+      PREVIOUS_GENERATION_STREAM_MARKER
+    );
+    previousGenerationStreamTerminalSessionId = previousGenerationStreamTerminalSnapshot.sessionId;
     await waitForRuntimeSupervisorOutput(
       supervisorPaths,
       legacyAgentSessionId,
@@ -96,13 +127,21 @@ async function run() {
       LEGACY_TERMINAL_MARKER,
       20000
     );
+    await waitForRuntimeSupervisorOutput(
+      previousGenerationStreamSupervisorPaths,
+      previousGenerationStreamTerminalSessionId,
+      PREVIOUS_GENERATION_STREAM_MARKER,
+      20000
+    );
     await waitForRegistrySessions(supervisorPaths.registryPath, [legacyAgentSessionId, legacyTerminalSessionId]);
 
     await setPersistedState(
       createLegacyRuntimeState({
         runtimeStoragePath,
         agentSnapshot: legacyAgentSnapshot,
-        terminalSnapshot: legacyTerminalSnapshot
+        terminalSnapshot: legacyTerminalSnapshot,
+        previousGenerationStreamRuntimeStoragePath,
+        previousGenerationStreamTerminalSnapshot
       })
     );
     await simulateRuntimeReload();
@@ -112,58 +151,65 @@ async function run() {
     let snapshot = await waitForSnapshot((currentSnapshot) => {
       const agentNode = findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID);
       const terminalNode = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID);
+      const previousGenerationStreamNode = findOptionalNodeById(
+        currentSnapshot,
+        PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID
+      );
       return Boolean(
         agentNode?.metadata?.agent?.liveSession &&
           agentNode.metadata.agent.attachmentState === 'attached-live' &&
-          agentNode.metadata.agent.terminalProjectionMode === 'legacy-read-only' &&
+          agentNode.metadata.agent.terminalProjectionMode === 'legacy-interactive' &&
           agentNode.metadata.agent.recentOutput?.includes(LEGACY_AGENT_MARKER) &&
           terminalNode?.metadata?.terminal?.liveSession &&
           terminalNode.metadata.terminal.attachmentState === 'attached-live' &&
-          terminalNode.metadata.terminal.terminalProjectionMode === 'legacy-read-only' &&
-          terminalNode.metadata.terminal.recentOutput?.includes(LEGACY_TERMINAL_MARKER)
+          terminalNode.metadata.terminal.terminalProjectionMode === 'legacy-interactive' &&
+          terminalNode.metadata.terminal.recentOutput?.includes(LEGACY_TERMINAL_MARKER) &&
+          previousGenerationStreamNode?.metadata?.terminal?.liveSession &&
+          previousGenerationStreamNode.metadata.terminal.attachmentState === 'attached-live' &&
+          previousGenerationStreamNode.metadata.terminal.terminalProjectionMode === 'terminal-stream-v1' &&
+          previousGenerationStreamNode.metadata.terminal.recentOutput?.includes(PREVIOUS_GENERATION_STREAM_MARKER)
       );
     }, 30000);
-    assertLegacyReadOnlyNode(findNodeById(snapshot, LEGACY_AGENT_NODE_ID), 'agent', LEGACY_AGENT_MARKER);
-    assertLegacyReadOnlyNode(findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID), 'terminal', LEGACY_TERMINAL_MARKER);
+    assertLegacyInteractiveNode(findNodeById(snapshot, LEGACY_AGENT_NODE_ID), 'agent', LEGACY_AGENT_MARKER);
+    assertLegacyInteractiveNode(findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID), 'terminal', LEGACY_TERMINAL_MARKER);
+    assert.strictEqual(
+      findNodeById(snapshot, PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID).metadata.terminal.runtimeStoragePath,
+      previousGenerationStreamRuntimeStoragePath
+    );
 
     const probe = await waitForWebviewProbe((currentProbe) => {
       const agentNode = findOptionalProbeNodeById(currentProbe, LEGACY_AGENT_NODE_ID);
       const terminalNode = findOptionalProbeNodeById(currentProbe, LEGACY_TERMINAL_NODE_ID);
       return Boolean(
-        agentNode?.terminalLegacyTranscript?.includes(LEGACY_AGENT_MARKER) &&
-          terminalNode?.terminalLegacyTranscript?.includes(LEGACY_TERMINAL_MARKER)
+        agentNode?.terminalVisibleLines?.join('\n').includes(LEGACY_AGENT_MARKER) &&
+          terminalNode?.terminalVisibleLines?.join('\n').includes(LEGACY_TERMINAL_MARKER)
       );
     });
-    assertLegacyTranscript(findProbeNodeById(probe, LEGACY_AGENT_NODE_ID), LEGACY_AGENT_MARKER);
-    assertLegacyTranscript(findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID), LEGACY_TERMINAL_MARKER);
+    assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_AGENT_NODE_ID), LEGACY_AGENT_MARKER);
+    assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID), LEGACY_TERMINAL_MARKER);
+    const legacyAgentProbeBeforeResize = findProbeNodeById(probe, LEGACY_AGENT_NODE_ID);
+    const legacyTerminalProbeBeforeResize = findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID);
+    assert.ok(legacyAgentProbeBeforeResize.terminalCols && legacyAgentProbeBeforeResize.terminalRows);
+    assert.ok(legacyTerminalProbeBeforeResize.terminalCols && legacyTerminalProbeBeforeResize.terminalRows);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction({
       kind: 'sendExecutionInput',
       nodeId: LEGACY_TERMINAL_NODE_ID,
-      data: `${WEBVIEW_BLOCKED_INPUT_MARKER}\r`
+      data: `printf '${LEGACY_WEBVIEW_INPUT_MARKER}\\n'\r`
     });
-    await sleep(300);
-    assert.strictEqual(
-      (await getDiagnosticEvents()).some(
-        (event) => event.kind === 'execution/inputRejected' && event.detail?.preview?.includes(WEBVIEW_BLOCKED_INPUT_MARKER)
-      ),
-      false,
-      'The read-only Webview must stop terminal input before it reaches the Host.'
+    await waitForRuntimeSupervisorOutput(
+      supervisorPaths,
+      legacyTerminalSessionId,
+      LEGACY_WEBVIEW_INPUT_MARKER,
+      20000
     );
-
-    const agentBeforeBlockedOperations = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', {
-      sessionId: legacyAgentSessionId
-    });
-    const terminalBeforeBlockedOperations = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', {
-      sessionId: legacyTerminalSessionId
-    });
     await dispatchWebviewMessage({
       type: 'webview/executionInput',
       payload: {
         nodeId: LEGACY_AGENT_NODE_ID,
         kind: 'agent',
-        data: `${HOST_BLOCKED_AGENT_INPUT_MARKER}\r`
+        data: `${LEGACY_HOST_AGENT_INPUT_MARKER}\r`
       }
     });
     await dispatchWebviewMessage({
@@ -171,132 +217,91 @@ async function run() {
       payload: {
         nodeId: LEGACY_TERMINAL_NODE_ID,
         kind: 'terminal',
-        data: `${HOST_BLOCKED_TERMINAL_INPUT_MARKER}\r`
+        data: `printf '${LEGACY_HOST_TERMINAL_INPUT_MARKER}\\n'\r`
       }
     });
+    const legacyAgentNodeBeforeResize = findNodeById(snapshot, LEGACY_AGENT_NODE_ID);
+    const legacyTerminalNodeBeforeResize = findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID);
+    const resizedLegacyAgentNodeSize = { width: 680, height: 520 };
+    const resizedLegacyTerminalNodeSize = { width: 700, height: 540 };
     await dispatchWebviewMessage({
-      type: 'webview/resizeExecutionSession',
+      type: 'webview/resizeNode',
       payload: {
         nodeId: LEGACY_AGENT_NODE_ID,
-        kind: 'agent',
-        cols: 41,
-        rows: 11
+        position: legacyAgentNodeBeforeResize.position,
+        size: resizedLegacyAgentNodeSize
       }
     });
     await dispatchWebviewMessage({
-      type: 'webview/resizeExecutionSession',
+      type: 'webview/resizeNode',
       payload: {
         nodeId: LEGACY_TERMINAL_NODE_ID,
-        kind: 'terminal',
-        cols: 43,
-        rows: 12
+        position: legacyTerminalNodeBeforeResize.position,
+        size: resizedLegacyTerminalNodeSize
       }
     });
-    await sleep(500);
-
-    const agentAfterBlockedOperations = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', {
-      sessionId: legacyAgentSessionId
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const agentNode = findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID);
+      const terminalNode = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID);
+      return Boolean(
+        agentNode?.size?.width === resizedLegacyAgentNodeSize.width &&
+          agentNode.size.height === resizedLegacyAgentNodeSize.height &&
+          terminalNode?.size?.width === resizedLegacyTerminalNodeSize.width &&
+          terminalNode.size.height === resizedLegacyTerminalNodeSize.height
+      );
+    }, 20000);
+    const resizedLegacyProbe = await waitForWebviewProbe((currentProbe) => {
+      const agentNode = findOptionalProbeNodeById(currentProbe, LEGACY_AGENT_NODE_ID);
+      const terminalNode = findOptionalProbeNodeById(currentProbe, LEGACY_TERMINAL_NODE_ID);
+      return Boolean(
+        agentNode?.terminalCols &&
+          agentNode.terminalRows &&
+          terminalNode?.terminalCols &&
+          terminalNode.terminalRows &&
+          (agentNode.terminalCols !== legacyAgentProbeBeforeResize.terminalCols ||
+            agentNode.terminalRows !== legacyAgentProbeBeforeResize.terminalRows) &&
+          (terminalNode.terminalCols !== legacyTerminalProbeBeforeResize.terminalCols ||
+            terminalNode.terminalRows !== legacyTerminalProbeBeforeResize.terminalRows)
+      );
     });
-    const terminalAfterBlockedOperations = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', {
-      sessionId: legacyTerminalSessionId
-    });
-    assert.strictEqual(agentAfterBlockedOperations.output.includes(HOST_BLOCKED_AGENT_INPUT_MARKER), false);
-    assert.strictEqual(terminalAfterBlockedOperations.output.includes(HOST_BLOCKED_TERMINAL_INPUT_MARKER), false);
-    assert.strictEqual(terminalAfterBlockedOperations.output.includes(WEBVIEW_BLOCKED_INPUT_MARKER), false);
+    const resizedLegacyAgentProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_AGENT_NODE_ID);
+    const resizedLegacyTerminalProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_TERMINAL_NODE_ID);
+    const agentAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
+      supervisorPaths,
+      legacyAgentSessionId,
+      (session) =>
+        session.output?.includes(LEGACY_HOST_AGENT_INPUT_MARKER) &&
+        session.cols === resizedLegacyAgentProbe.terminalCols &&
+        session.rows === resizedLegacyAgentProbe.terminalRows,
+      20000
+    );
+    const terminalAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
+      supervisorPaths,
+      legacyTerminalSessionId,
+      (session) =>
+        session.output?.includes(LEGACY_HOST_TERMINAL_INPUT_MARKER) &&
+        session.cols === resizedLegacyTerminalProbe.terminalCols &&
+        session.rows === resizedLegacyTerminalProbe.terminalRows,
+      20000
+    );
+    assert.ok(agentAfterCompatibilityOperations.output.includes(LEGACY_HOST_AGENT_INPUT_MARKER));
+    assert.ok(terminalAfterCompatibilityOperations.output.includes(LEGACY_WEBVIEW_INPUT_MARKER));
+    assert.ok(terminalAfterCompatibilityOperations.output.includes(LEGACY_HOST_TERMINAL_INPUT_MARKER));
     assert.deepStrictEqual(
-      [agentAfterBlockedOperations.cols, agentAfterBlockedOperations.rows],
-      [agentBeforeBlockedOperations.cols, agentBeforeBlockedOperations.rows]
+      [agentAfterCompatibilityOperations.cols, agentAfterCompatibilityOperations.rows],
+      [resizedLegacyAgentProbe.terminalCols, resizedLegacyAgentProbe.terminalRows]
     );
     assert.deepStrictEqual(
-      [terminalAfterBlockedOperations.cols, terminalAfterBlockedOperations.rows],
-      [terminalBeforeBlockedOperations.cols, terminalBeforeBlockedOperations.rows]
-    );
-    const blockedDiagnostics = await getDiagnosticEvents();
-    assert.strictEqual(
-      blockedDiagnostics.filter(
-        (event) =>
-          event.kind === 'execution/inputRejected' && event.detail?.reason === 'legacy-supervisor-read-only'
-      ).length,
-      2
+      [terminalAfterCompatibilityOperations.cols, terminalAfterCompatibilityOperations.rows],
+      [resizedLegacyTerminalProbe.terminalCols, resizedLegacyTerminalProbe.terminalRows]
     );
 
-    const nodeIdsBeforeRejectedCreate = new Set(snapshot.state.nodes.map((node) => node.id));
-    await dispatchWebviewMessage({
-      type: 'webview/createDemoNode',
-      payload: {
-        kind: 'terminal',
-        preferredPosition: { x: 1180, y: 120 }
-      }
-    });
-    snapshot = await waitForSnapshot(
-      (currentSnapshot) => currentSnapshot.state.nodes.some((node) => !nodeIdsBeforeRejectedCreate.has(node.id)),
-      20000
-    );
-    const rejectedCreateNode = snapshot.state.nodes.find((node) => !nodeIdsBeforeRejectedCreate.has(node.id));
-    assert.ok(rejectedCreateNode);
-    await dispatchWebviewMessage({
-      type: 'webview/startExecutionSession',
-      payload: {
-        nodeId: rejectedCreateNode.id,
-        kind: 'terminal',
-        cols: 92,
-        rows: 28
-      }
-    });
-    await waitForDiagnosticEvent(
-      (event) =>
-        event.kind === 'runtime/legacySupervisorCreateRejected' && event.detail?.nodeId === rejectedCreateNode.id,
-      20000
-    );
-    const legacyRegistry = await readRegistry(supervisorPaths.registryPath);
-    assert.deepStrictEqual(
-      new Set(legacyRegistry.sessions.map((session) => session.sessionId)),
-      new Set([legacyAgentSessionId, legacyTerminalSessionId])
-    );
-    await dispatchWebviewMessage({
-      type: 'webview/deleteNode',
-      payload: { nodeId: rejectedCreateNode.id }
-    });
-    await waitForSnapshot(
-      (currentSnapshot) => !findOptionalNodeById(currentSnapshot, rejectedCreateNode.id),
-      20000
-    );
-
-    await performWebviewDomAction({
-      kind: 'clickNodeActionButton',
-      nodeId: LEGACY_TERMINAL_NODE_ID,
-      action: 'stop'
-    });
-    await waitForSnapshot((currentSnapshot) => {
-      const node = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID);
-      return Boolean(node && node.metadata?.terminal?.liveSession === false && node.status !== 'live');
-    }, 30000);
-
-    await performWebviewDomAction({
-      kind: 'clickNodeActionButton',
-      nodeId: LEGACY_AGENT_NODE_ID,
-      action: 'delete'
-    });
-    await waitForSnapshot(
-      (currentSnapshot) => !findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID),
-      30000
-    );
-    await waitForDiagnosticEvent(
-      (event) => event.kind === 'runtime/legacySupervisorClientRetired',
-      20000
-    );
-
-    const legacyExit = await waitForChildProcessExit(legacySupervisorProcess, 45000);
-    assert.deepStrictEqual(legacyExit, { code: 0, signal: null });
-    legacySupervisorProcess = undefined;
-
-    snapshot = await getDebugSnapshot();
     const nodeIdsBeforeCurrentCreate = new Set(snapshot.state.nodes.map((node) => node.id));
     await dispatchWebviewMessage({
       type: 'webview/createDemoNode',
       payload: {
         kind: 'terminal',
-        preferredPosition: { x: 520, y: 520 }
+        preferredPosition: { x: 1180, y: 120 }
       }
     });
     snapshot = await waitForSnapshot(
@@ -319,13 +324,110 @@ async function run() {
       return Boolean(
         node?.metadata?.terminal?.liveSession &&
           node.metadata.terminal.attachmentState === 'attached-live' &&
-          node.metadata.terminal.terminalProjectionMode === 'terminal-stream-v1'
+          node.metadata.terminal.terminalProjectionMode === 'terminal-stream-v1' &&
+          node.metadata.terminal.runtimeStoragePath &&
+          node.metadata.terminal.runtimeSessionId
       );
     }, 30000);
-    const currentHello = await waitForRuntimeSupervisorReady(supervisorPaths, 20000);
+    const currentTerminalMetadata = findNodeById(snapshot, currentTerminalNode.id).metadata.terminal;
+    currentTerminalSessionId = currentTerminalMetadata.runtimeSessionId;
+    assert.ok(currentTerminalSessionId);
+    assert.notStrictEqual(path.normalize(currentTerminalMetadata.runtimeStoragePath), path.normalize(runtimeStoragePath));
+    assert.ok(currentTerminalMetadata.runtimeStoragePath.includes('runtime-supervisor-generations'));
+    currentSupervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
+      path.join(currentTerminalMetadata.runtimeStoragePath, 'runtime-supervisor')
+    );
+    const currentHello = await waitForRuntimeSupervisorReady(currentSupervisorPaths, 20000);
     assert.strictEqual(currentHello.capabilities?.terminalSessionStreamV1, true);
     assert.strictEqual(currentHello.capabilities?.terminalProjectionSnapshotV1, true);
     assert.notStrictEqual(currentHello.pid, legacyHello.pid);
+    await waitForRegistrySessions(currentSupervisorPaths.registryPath, [currentTerminalSessionId]);
+
+    const legacyRegistry = await readRegistry(supervisorPaths.registryPath);
+    assert.deepStrictEqual(
+      new Set(legacyRegistry.sessions.map((session) => session.sessionId)),
+      new Set([legacyAgentSessionId, legacyTerminalSessionId])
+    );
+    await performWebviewDomAction({
+      kind: 'sendExecutionInput',
+      nodeId: currentTerminalNode.id,
+      data: `printf '${CURRENT_TERMINAL_INPUT_MARKER}\\n'\r`
+    });
+    await waitForRuntimeSupervisorOutput(
+      currentSupervisorPaths,
+      currentTerminalSessionId,
+      CURRENT_TERMINAL_INPUT_MARKER,
+      20000
+    );
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction({
+      kind: 'clickNodeActionButton',
+      nodeId: PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID,
+      action: 'stop'
+    });
+    const completedPreviousGenerationStreamSnapshot = await waitForSnapshot((currentSnapshot) => {
+      const node = findOptionalNodeById(currentSnapshot, PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID);
+      return Boolean(node && node.metadata?.terminal?.liveSession === false && node.status !== 'live');
+    }, 30000);
+    assert.strictEqual(
+      findNodeById(completedPreviousGenerationStreamSnapshot, PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID)
+        .metadata.terminal.terminalProjectionMode,
+      undefined
+    );
+
+    await performWebviewDomAction({
+      kind: 'clickNodeActionButton',
+      nodeId: LEGACY_TERMINAL_NODE_ID,
+      action: 'stop'
+    });
+    await waitForSnapshot((currentSnapshot) => {
+      const node = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID);
+      return Boolean(node && node.metadata?.terminal?.liveSession === false && node.status !== 'live');
+    }, 30000);
+
+    await performWebviewDomAction({
+      kind: 'clickNodeActionButton',
+      nodeId: LEGACY_AGENT_NODE_ID,
+      action: 'delete'
+    });
+    await waitForSnapshot(
+      (currentSnapshot) => !findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID),
+      30000
+    );
+    await waitForDiagnosticEvent(
+      (event) =>
+        event.kind === 'runtime/legacySupervisorClientRetired' &&
+        path.normalize(event.detail?.runtimeStoragePath) === path.normalize(previousGenerationStreamRuntimeStoragePath),
+      20000
+    );
+    await waitForDiagnosticEvent(
+      (event) =>
+        event.kind === 'runtime/legacySupervisorClientRetired' &&
+        path.normalize(event.detail?.runtimeStoragePath) === path.normalize(runtimeStoragePath),
+      20000
+    );
+
+    const [legacyExit, previousGenerationStreamExit] = await Promise.all([
+      waitForChildProcessExit(legacySupervisorProcess, 45000),
+      waitForChildProcessExit(previousGenerationStreamSupervisorProcess, 45000)
+    ]);
+    assert.deepStrictEqual(legacyExit, { code: 0, signal: null });
+    assert.deepStrictEqual(previousGenerationStreamExit, { code: 0, signal: null });
+    legacySupervisorProcess = undefined;
+    previousGenerationStreamSupervisorProcess = undefined;
+
+    await performWebviewDomAction({
+      kind: 'sendExecutionInput',
+      nodeId: currentTerminalNode.id,
+      data: `printf 'CURRENT_AFTER_LEGACY_EXIT\\n'\r`
+    });
+    await waitForRuntimeSupervisorOutput(
+      currentSupervisorPaths,
+      currentTerminalSessionId,
+      'CURRENT_AFTER_LEGACY_EXIT',
+      20000
+    );
 
     await dispatchWebviewMessage({
       type: 'webview/deleteNode',
@@ -341,13 +443,30 @@ async function run() {
         await sendRuntimeSupervisorRequest(supervisorPaths, 'deleteSession', { sessionId }).catch(() => undefined);
       }
     }
+    if (currentSupervisorPaths && currentTerminalSessionId) {
+      await sendRuntimeSupervisorRequest(currentSupervisorPaths, 'deleteSession', {
+        sessionId: currentTerminalSessionId
+      }).catch(() => undefined);
+    }
+    if (previousGenerationStreamSupervisorPaths && previousGenerationStreamTerminalSessionId) {
+      await sendRuntimeSupervisorRequest(previousGenerationStreamSupervisorPaths, 'deleteSession', {
+        sessionId: previousGenerationStreamTerminalSessionId
+      }).catch(() => undefined);
+    }
     await stopProcess(legacySupervisorProcess);
+    await stopProcess(previousGenerationStreamSupervisorProcess);
     await vscode.commands.executeCommand(COMMAND_IDS.testResetState).catch(() => undefined);
     await setRuntimePersistenceEnabled(previousRuntimePersistenceEnabled).catch(() => undefined);
   }
 }
 
-function createLegacyRuntimeState({ runtimeStoragePath, agentSnapshot, terminalSnapshot }) {
+function createLegacyRuntimeState({
+  runtimeStoragePath,
+  agentSnapshot,
+  terminalSnapshot,
+  previousGenerationStreamRuntimeStoragePath,
+  previousGenerationStreamTerminalSnapshot
+}) {
   const workspaceRoot = getWorkspaceRoot();
   return {
     version: 1,
@@ -413,6 +532,34 @@ function createLegacyRuntimeState({ runtimeStoragePath, agentSnapshot, terminalS
             lastRows: terminalSnapshot.rows
           }
         }
+      },
+      {
+        id: PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID,
+        kind: 'terminal',
+        title: 'Previous Generation Stream Terminal',
+        status: 'reattaching',
+        summary: 'Reattaching previous-generation stream Terminal runtime.',
+        position: { x: 1360, y: 100 },
+        size: { width: 560, height: 430 },
+        metadata: {
+          terminal: {
+            backend: 'node-pty',
+            lifecycle: previousGenerationStreamTerminalSnapshot.lifecycle,
+            shellPath: resolveShellPath(),
+            cwd: workspaceRoot,
+            persistenceMode: 'live-runtime',
+            attachmentState: 'reattaching',
+            runtimeBackend: 'legacy-detached',
+            runtimeGuarantee: 'best-effort',
+            liveSession: false,
+            runtimeSessionId: previousGenerationStreamTerminalSnapshot.sessionId,
+            runtimeStoragePath: previousGenerationStreamRuntimeStoragePath,
+            recentOutput: '',
+            outputSequence: previousGenerationStreamTerminalSnapshot.outputSequence,
+            lastCols: previousGenerationStreamTerminalSnapshot.cols,
+            lastRows: previousGenerationStreamTerminalSnapshot.rows
+          }
+        }
       }
     ]
   };
@@ -475,7 +622,7 @@ async function createLegacyAgentSession(supervisorPaths) {
   return snapshot;
 }
 
-async function createLegacyTerminalSession(supervisorPaths) {
+async function createLegacyTerminalSession(supervisorPaths, marker = LEGACY_TERMINAL_MARKER) {
   const snapshot = await sendRuntimeSupervisorRequest(supervisorPaths, 'createSession', {
     kind: 'terminal',
     displayLabel: resolveShellPath(),
@@ -493,14 +640,14 @@ async function createLegacyTerminalSession(supervisorPaths) {
   });
   await sendRuntimeSupervisorRequest(supervisorPaths, 'writeInput', {
     sessionId: snapshot.sessionId,
-    data: `printf '\\033[31m${LEGACY_TERMINAL_MARKER}\\033[0m\\n'\r`
+    data: `printf '\\033[31m${marker}\\033[0m\\n'\r`
   });
   return snapshot;
 }
 
-function assertLegacyReadOnlyNode(node, kind, marker) {
+function assertLegacyInteractiveNode(node, kind, marker) {
   const metadata = node.metadata?.[kind];
-  assert.strictEqual(metadata?.terminalProjectionMode, 'legacy-read-only');
+  assert.strictEqual(metadata?.terminalProjectionMode, 'legacy-interactive');
   assert.strictEqual(metadata?.liveSession, true);
   assert.strictEqual(metadata?.attachmentState, 'attached-live');
   assert.ok(metadata?.recentOutput?.includes(marker));
@@ -508,10 +655,8 @@ function assertLegacyReadOnlyNode(node, kind, marker) {
   assert.strictEqual(metadata?.terminalStream, undefined);
 }
 
-function assertLegacyTranscript(node, marker) {
-  assert.ok(node.terminalLegacyTranscript?.includes(marker));
-  assert.strictEqual(node.terminalLegacyTranscript?.includes('\u001b'), false);
-  assert.strictEqual(node.terminalVisibleLines?.join('\n').includes(marker), false);
+function assertLegacyInteractiveProjection(node, marker) {
+  assert.ok(node.terminalVisibleLines?.join('\n').includes(marker));
 }
 
 async function waitForRuntimeSupervisorReady(supervisorPaths, timeoutMs) {
@@ -539,6 +684,19 @@ async function waitForRuntimeSupervisorOutput(supervisorPaths, sessionId, marker
     await sleep(100);
   }
   assert.fail(`Timed out waiting for ${marker}. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
+}
+
+async function waitForRuntimeSupervisorSession(supervisorPaths, sessionId, predicate, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastSnapshot;
+  while (Date.now() < deadline) {
+    lastSnapshot = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', { sessionId });
+    if (predicate(lastSnapshot)) {
+      return lastSnapshot;
+    }
+    await sleep(100);
+  }
+  assert.fail(`Timed out waiting for runtime session state. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
 }
 
 async function sendRuntimeSupervisorRequest(supervisorPaths, method, params) {
