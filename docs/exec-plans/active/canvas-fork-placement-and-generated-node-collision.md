@@ -8,7 +8,7 @@
 
 完成实现后，用户从当前 Agent 节点点击 `分叉`，新节点会按 VSCode 设置统一向上、向下或向右展开，默认向上。同一个来源节点连续 Fork 多次时，新节点会在同一条层级线上横向或纵向排列，而不是沿对角线逐步漂移。方向连线也会从对应边缘出发，例如向上时使用来源节点顶部到新节点底部的连线锚点。
 
-与此同时，普通创建、Fork、历史恢复 / 历史 Fork、Explorer 资源创建、模板应用和自动文件活动等系统生成路径会共享一条创建时规则：新节点在进入宿主权威状态前必须避开目标 root-local 画布中已有节点。用户仍可在创建后自由拖拽或 resize 节点，本功能不会把画布变成持续自动布局系统。
+与此同时，普通创建、Fork、历史恢复 / 历史 Fork、Explorer 资源创建、模板应用和自动文件活动等系统生成路径共享同一创建时碰撞 predicate。最终 footprint 在候选阶段已知的路径会避开目标 root-local 画布中已有节点；自动文件节点仍先按 220 x 84 默认 footprint 选位，再按 minimal 文本确定最高 480 的真实宽度，因此只获得 best-effort 避碰，精确尺寸接线已登记为技术债。用户仍可在创建后自由拖拽或 resize 节点，本功能不会把画布变成持续自动布局系统。
 
 用户可通过连续 Fork、切换 `devSessionCanvas.canvas.forkPlacementDirection` 和在新节点首选位置预先放置障碍节点，直接观察这项能力。自动化测试还要证明三种方向、同层排列、跨 groupId 避碰、multi-root 作用域和既有 provider-native Fork 行为同时成立。
 
@@ -22,6 +22,8 @@
 - [x] (2026-07-13 12:12 +0800) 里程碑 1：抽取 `canvasNodePlacement.ts` 共享纯几何模块，用快速测试锁定通用避碰、三种 Fork 方向、固定层级线和同层 fallback。
 - [x] (2026-07-13 12:18 +0800) 里程碑 2：接入 window scope 配置、当前节点 Fork 方向、方向化连线锚点，以及普通创建、模板和自动文件节点共用的碰撞几何；普通创建碰撞集合扩大为目标 root-local state 的全部节点。
 - [x] (2026-07-13 12:25 +0800) 里程碑 3 自动化部分：manifest、本地化、纯几何、group、multi-root composition、布局、typecheck、build、完整 trusted VSCode smoke 和 Fork Webview 定向回归通过。
+- [x] (2026-07-13 19:24 +0800) PR #261 review 收口：用失败回归复现普通 group 内 Fork 丢失归属和向右槽距网格不对称，分别通过继承来源直接 `groupId` 与预先向上归一槽距修复；同步自动文件动态 footprint 技术债与文档边界。
+- [x] (2026-07-13 19:33 +0800) review 修复验证：纯几何、group、multi-root composition、布局、manifest、本地化、typecheck、build、完整 trusted VSCode smoke 与 Fork Webview 3 项定向回归均通过。
 - [ ] 里程碑 3 人工与专项部分：在 panel / editor 两种承载面验收 80 units 层间距和边标签，并补 multi-root 当前节点 Fork 的专项宿主断言。
 - [ ] 完成后把本计划移入 `docs/exec-plans/completed/`，并检查 `docs/exec-plans/tech-debt-tracker.md` 是否需要登记残余债务。
 
@@ -50,6 +52,15 @@
 
 - 观察：`npm run test:canvas-templates` 的失败来自当前 `origin/main` 已存在的源码字符串断言，不是本轮共享碰撞迁移。
   证据：`scripts/test/test-canvas-templates.mjs:1188` 要求 `main.tsx` 包含 `data-node-action-id="create-missing-associated-markdown-file"`；`git show origin/main:extensions/vscode/dev-session-canvas/src/webview/main.tsx` 同样不包含该字符串，本轮也未修改 `main.tsx`。
+
+- 观察：Fork 创建若不继承来源普通 group，`finalizeCanvasGroupState()` 会把未分组的新节点当作 group 外障碍并移动整个来源 group，直接扰动来源坐标和后续层级线。
+  证据：review fixture 使用 1000 x 1000 group 与 `(220, 400)` 来源 Agent 稳定复现来源移动和三子节点不同层；新增回归在未修复代码上首先失败于子节点 `groupId`，修复后同时证明来源位置不变、三个子节点同层且可手工拖出 group。
+
+- 观察：原始槽距不能在每个正负候选生成后再独立吸附网格，否则非网格倍数会产生不对称的实际间距。
+  证据：默认 Agent 向右的原始槽距为 `430 + 40 = 470`；旧实现得到 top `200, 680, -740`。把槽距先向上归一为 480 后，回归得到 `200, 680, -280`。
+
+- 观察：自动文件节点虽然复用共享 predicate，但选位阶段仍传 `estimatedCanvasNodeFootprint('file')` 的 220 x 84；真实 minimal footprint 在随后物化时才根据路径文本计算，`icon-path` 宽度最高 480。
+  证据：`resolveAutomaticArtifactPosition()` 仍调用按 kind 估算的 `resolveNewNodePosition()`，而 `resolveAutomaticFileNodeSize()` 在选位之后才调用 `estimateAutomaticFileNodeFootprint()`。这条路径不能写成已经使用最终初始尺寸。
 
 ## 决策记录
 
@@ -89,11 +100,25 @@
   理由：自动化证据已经覆盖核心行为，但 panel / editor 人工视觉验收和 multi-root 当前节点 Fork 专项宿主断言尚未完成，不能写成完整验证。
   日期/作者：2026-07-13 / Codex
 
+- 决策：Fork 节点继承来源节点的直接普通 group；group 外框为容纳新节点扩张时保持来源坐标不动，之后仍允许用户手工拖出。
+  理由：普通 group 是当前节点的直接空间上下文；若新节点留在根级，group repair 会移动来源并破坏同层不变量。继承归属既避免扰动，也不引入新的强父子关系。
+  日期/作者：2026-07-13 / Codex + PR #261 review
+
+- 决策：槽距先向上归一到 20 units 网格安全倍数，再生成正负候选。
+  理由：保证候选吸附后仍对称且至少保留 40 units padding；默认向右 Agent 的 470 原始槽距因此使用 480。
+  日期/作者：2026-07-13 / Codex + PR #261 review
+
+- 决策：自动文件节点的动态 footprint 精度不在当前 review 中顺带修复，扩充既有尺寸估算技术债并修正文档完成态。
+  理由：review 已把代码问题定为非阻塞；本 PR 保留统一 predicate 的真实成果，但明确 220 x 84 估算与最高 480 minimal 宽度之间的边界。
+  日期/作者：2026-07-13 / Codex + PR #261 review
+
 ## 结果与复盘
 
 实现已经把同层 Fork 落位收口到共享纯几何模块，不新增父子 metadata：固定层级线提供深度约束，单轴中心向外搜索提供同层分布，目标 root-local state 的已有节点集合提供占用信息。设置在每次当前节点 Fork 时读取，支持 `up | down | right`、默认 `up`；新边分别写入 `top -> bottom`、`bottom -> top`、`right -> left`，历史会话 Fork 保持通用邻近避碰。
 
-普通创建不再按 `groupId` 缩小碰撞集合；模板与自动文件节点复用同一矩形 / padding 语义。纯几何、宿主状态、配置、本地化、类型、构建、完整 trusted VSCode smoke 和 Webview Fork 定向回归已经通过。已知 `test:canvas-templates` 失败可在 `origin/main` 复现，来自与本功能无关的 Webview 源码字符串断言。
+普通创建不再按 `groupId` 缩小碰撞集合；模板与自动文件节点复用同一矩形 / padding 语义。PR #261 review 后，普通 group 内 Fork 会继承来源直接 `groupId`，扩张 group 时来源位置保持不变；向右槽距先归一到网格安全倍数，默认三子节点顺序为中心、最近正槽、最近负槽。纯几何、宿主状态、配置、本地化、类型、构建、完整 trusted VSCode smoke 和 Webview Fork 定向回归已经通过。已知 `test:canvas-templates` 失败可在 `origin/main` 复现，来自与本功能无关的 Webview 源码字符串断言。
+
+自动文件节点目前只复用统一 predicate，尚未把随后算出的动态 minimal footprint 回传到选位阶段；长路径下真实宽度可能从估算的 220 增长到 480。该问题已扩充到 `docs/exec-plans/tech-debt-tracker.md`，本计划不再把这条路径写成完整满足真实初始外框无重叠。
 
 剩余工作是人工检查 panel / editor 中 80 units 层间距和 `fork` 标签，以及为 multi-root 当前节点 Fork 增加专项宿主断言。因这两项尚未完成，正式设计状态为 `验证中`，计划不归档。
 
@@ -132,7 +157,7 @@ DevSessionCanvas 是 VSCode workspace extension。Extension Host 中的 `CanvasP
 
 新增 `extensions/vscode/dev-session-canvas/src/common/canvasNodePlacement.ts`，把节点矩形、碰撞安全间距、普通二维邻近候选、Fork 固定层级线候选和 fallback 写成无 `vscode` / DOM / React 依赖的纯函数。迁移时先保持普通创建和模板的当前可观察结果，再新增 Fork 单轴策略，避免在同一个改动里同时改变所有候选排序。
 
-新模块应接受显式 `CanvasNodeFootprint`，不能只接受 node kind 后内部重新估算。这样普通新建可以传默认 footprint，已有节点使用持久化真实 size，模板使用模板节点 size，未来其他生成器也不会被迫假装所有节点都还是默认尺寸。
+新模块接受显式 `CanvasNodeFootprint`，不在纯几何内部按 node kind 重新估算。普通新建传默认且实际物化使用的 footprint，已有节点使用持久化 size，模板使用模板节点 size。`CanvasPanelManager.resolveNewNodePosition()` 仍是按 kind 估算的适配层；自动文件生成器尚未把已经可计算的动态 minimal footprint 传过该边界，按技术债后续修复。
 
 新增 `scripts/test/test-canvas-node-placement.mts` 并注册 `npm run test:canvas-node-placement`。测试直接构造矩形，不启动 VSCode，覆盖三种方向、同层坐标、中心向外顺序、障碍跳过、超大障碍 fallback、统一 padding 和确定性。里程碑完成时，纯测试通过，`CanvasPanelManager` 仍可暂未接入新 Fork 行为。
 
@@ -142,7 +167,7 @@ DevSessionCanvas 是 VSCode workspace extension。Extension Host 中的 `CanvasP
 
 在 `CanvasPanelManager.branchAgentSession()` 中读取并规范化方向，根据来源节点真实 size 与新 Agent 默认 footprint 调用 Fork 层级规划器。把最终方向传给 `createBranchAgentUserEdge()`，分别写入 `top -> bottom`、`bottom -> top`、`right -> left`。不要改变命令构造、可信 session id、pending launch、自动启动或 focus 流程。
 
-普通单节点创建继续使用视口锚点二维邻近策略，但 `createNextState()` 的 occupied nodes 改成目标 root-local state 的全部已有节点，移除或停用 `filterPlacementCollisionNodesForGroup()`。Explorer Markdown Note、历史恢复 / Fork 本来就通过 `applyCreateNode()`，应自然继承统一规则。自动文件活动节点接入同一个碰撞 predicate；已有自动节点仍保留原位置。模板继续保持内部相对坐标，只把外部碰撞判定迁到共享模块。
+普通单节点创建继续使用视口锚点二维邻近策略，但 `createNextState()` 的 occupied nodes 改成目标 root-local state 的全部已有节点，移除或停用 `filterPlacementCollisionNodesForGroup()`。Explorer Markdown Note、历史恢复 / Fork 本来就通过 `applyCreateNode()`，应自然继承统一规则。自动文件活动节点接入同一个碰撞 predicate；已有自动节点仍保留原位置，但新自动文件节点的动态真实 footprint 仍是已登记精度边界。模板继续保持内部相对坐标，只把外部碰撞判定迁到共享模块。
 
 每条路径完成后都要检查 `finalizeCanvasGroupState()` 之后的最终状态；如果 group 扩张 / 修复会让新节点重新与已有节点重叠，不能只在前置候选阶段宣称不变量成立。优先修正候选作用域或最终化顺序，不要为 Fork 引入 Webview 侧二次挪动。
 
@@ -201,7 +226,9 @@ DevSessionCanvas 是 VSCode workspace extension。Extension Host 中的 `CanvasP
 - 设置为 `down` 后，下一次 Fork 位于下方且边为 `bottom -> top`；设置为 `right` 后位于右侧且边为 `right -> left`。
 - 修改设置无需 reload，且既有节点坐标与边锚点保持不变。
 - 当中心槽位有 Agent、Terminal、Note、File 或 File List 时，新 Fork 留在同层并选择最近空槽位。
-- 普通创建、历史恢复 / Fork、Explorer Note、模板簇和新生成的自动文件节点不覆盖目标 root 中创建前已存在的节点。
+- 普通创建、历史恢复 / Fork、Explorer Note 和模板簇不覆盖目标 root 中创建前已存在的节点；新生成自动文件节点使用同一 predicate 做 best-effort 避碰，但动态 minimal footprint 可能大于选位估算，不作为完整保证。
+- 来源位于普通 group 时，Fork 子节点继承来源直接 `groupId`，group 扩张不移动来源；用户把子节点拖出 group 后仍解除分组。
+- 默认 Agent 向右连续 Fork 三次时，网格化 top 顺序保持中心、最近正槽、最近负槽，不因 470 原始槽距的逐候选取整跳过负一槽。
 - 创建到普通 group 时，即使障碍节点的 groupId 不同，也不会发生节点矩形重叠；group 最终状态仍合法。
 - multi-root 下只在来源所在 root-local 画布避碰，不跨 root 错误比较，也不把节点放到其他 root。
 - 用户创建后手工拖动节点到重叠位置仍然允许，后续不会被后台自动拉开。
@@ -247,11 +274,15 @@ DevSessionCanvas 是 VSCode workspace extension。Extension Host 中的 `CanvasP
 
 上述命令均通过。`npm run test:canvas-templates` 在 `scripts/test/test-canvas-templates.mjs:1188` 失败，因为它要求当前 main 与 `origin/main` 均不存在的 `data-node-action-id="create-missing-associated-markdown-file"` 源码字符串；该失败作为基线缺口记录，不冒充本轮通过项。
 
+PR #261 review 回归先在旧实现稳定失败：向右位置为 `200, 680, -740`，普通 group Fork 子节点未继承 `groupId`。修复后向右顺序为 `200, 680, -280`，group fixture 同时证明子节点继承、来源坐标不变、同层互不重叠和手工移出仍成立；上述完整自动化矩阵再次通过。
+
 本次修订说明（2026-07-13 11:52 +0800）：首次创建计划，原因是用户要求先设计 Fork 定向展开、同层子节点和跨功能生成节点避碰；计划明确停在设计阶段，没有授权实现。
 
 本次修订说明（2026-07-13 12:01 +0800）：用户确认历史会话 Fork 与设置生效两项边界，因此把设计状态收口为 `已选定 / 未验证`，同步产品规格、进度、决策记录和复盘；仍未开始实现。
 
 本次修订说明（2026-07-13 12:27 +0800）：用户以“继续”授权后完成共享几何、配置、宿主接线与主要自动化回归；记录模板测试的 main 基线失败，并把设计状态更新为 `已选定 / 验证中`。计划保留 active，等待人工承载面验收和 multi-root 当前节点 Fork 专项断言。
+
+本次修订说明（2026-07-13 19:26 +0800）：处理 PR #261 首轮 review；增加普通 group 继承/来源稳定/手工移出与向右确切槽序回归，修复两个 blocker，并把自动文件动态 footprint 从“完整满足”修正为 best-effort 及既有技术债边界。
 
 ## 接口与依赖
 
