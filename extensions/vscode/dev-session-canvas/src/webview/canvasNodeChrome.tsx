@@ -277,6 +277,7 @@ export function createCanvasNodeChrome(deps: CanvasNodeChromeDependencies): Canv
         }
 
         data.onResizeNode?.(id, nextDraft.position, nextDraft.size);
+        data.onResizeNodeEnd?.();
       };
 
       const handlePointerMove = (event: PointerEvent): void => {

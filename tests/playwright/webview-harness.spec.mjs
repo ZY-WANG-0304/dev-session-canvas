@@ -4531,6 +4531,119 @@ test('Claude Agent Ctrl-Z block is scoped away from Terminal and Codex Agent inp
   await expect(page.locator('[data-toast-kind="error"]')).toHaveCount(0);
 });
 
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} sends one final terminal resize after a continuous node resize gesture`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page, {
+      persistedState: {
+        viewport: { x: 0, y: 0, zoom: 1 }
+      }
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const snapshotTerminal = await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: snapshotTerminal.terminalCols,
+      rows: snapshotTerminal.terminalRows,
+      liveSession: true
+    });
+
+    const node = nodeById(page, nodeId);
+    await settleWebview(page, 4);
+    await page.waitForTimeout(300);
+    const stableTerminal = await waitForExecutionTerminalReady(page, nodeId);
+
+    await node.locator('.terminal-frame').click({ position: { x: 12, y: 12 } });
+    const handle = node.locator('[data-node-resize-direction="bottom-right"]');
+    await expect(handle).toBeVisible();
+    const handleBox = await handle.boundingBox();
+    expect(handleBox).not.toBeNull();
+    await clearPostedMessages(page);
+
+    const handleCenter = {
+      x: handleBox.x + handleBox.width / 2,
+      y: handleBox.y + handleBox.height / 2
+    };
+    await page.mouse.move(handleCenter.x, handleCenter.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(0);
+    await clearPostedMessages(page);
+
+    await page.mouse.down();
+    await page.mouse.move(handleCenter.x + 180, handleCenter.y + 110, { steps: 18 });
+    await settleWebview(page, 4);
+    await page.waitForTimeout(250);
+
+    expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(0);
+    const duringGestureTerminal = await waitForExecutionTerminalReady(page, nodeId);
+    expect({ cols: duringGestureTerminal.terminalCols, rows: duringGestureTerminal.terminalRows }).toEqual({
+      cols: stableTerminal.terminalCols,
+      rows: stableTerminal.terminalRows
+    });
+
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).length)
+      .toBe(1);
+
+    const resizeMessages = await readPostedMessagesByType(page, 'webview/resizeExecutionSession');
+    expect(resizeMessages[0].payload).toMatchObject({ nodeId, kind: executionKind });
+    expect(
+      resizeMessages[0].payload.cols !== stableTerminal.terminalCols ||
+        resizeMessages[0].payload.rows !== stableTerminal.terminalRows
+    ).toBe(true);
+    expect(await readPostedMessagesByType(page, 'webview/resizeNode')).toHaveLength(1);
+
+    await page.waitForTimeout(350);
+    expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(1);
+  });
+
+  test(`${executionKind} node movement does not resize the provider terminal`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page, {
+      persistedState: {
+        viewport: { x: 0, y: 0, zoom: 1 }
+      }
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const initialTerminal = await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: initialTerminal.terminalCols,
+      rows: initialTerminal.terminalRows,
+      liveSession: true
+    });
+
+    const node = nodeById(page, nodeId);
+    await settleWebview(page, 4);
+    await page.waitForTimeout(300);
+    await clearPostedMessages(page);
+
+    const dragSurface = node.locator('.window-title-subtitle');
+    const dragBox = await dragSurface.boundingBox();
+    expect(dragBox).not.toBeNull();
+    await page.mouse.move(dragBox.x + dragBox.width / 2, dragBox.y + dragBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(dragBox.x + dragBox.width / 2 + 120, dragBox.y + dragBox.height / 2 + 70, {
+      steps: 12
+    });
+    await page.mouse.up();
+
+    const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+    expect(moveMessage.payload.id).toBe(nodeId);
+    await page.waitForTimeout(300);
+    expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(0);
+  });
+}
+
 test('suspended Claude Agent legacy state no longer exposes restore actions', async ({ page }) => {
   const state = createLiveExecutionNodeState('agent');
   const agentNode = state.nodes[0];
