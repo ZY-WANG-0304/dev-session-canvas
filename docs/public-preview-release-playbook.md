@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、发布前复核、安装/升级说明、验证记录、发布命令与回退口径；当前发布准备目标为 `0.24.2`，上一已发布版本为 `0.24.1`。本轮范围是“相对 `0.24.1` 为 persistent Runtime Supervisor 增加保守安全的 journal compact 与双代恢复，收口跨 Node 终态门禁，并增加当前 Agent 节点 Fork 定向落位与生成节点创建时避碰”。它不是对外宣传页，而是 release-day 执行与复核手册。
+本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、发布前复核、安装/升级说明、验证记录、发布命令与回退口径；最新已发布版本为 `0.24.2`，上一已发布版本为 `0.24.1`。本轮范围是“相对 `0.24.1` 为 persistent Runtime Supervisor 增加保守安全的 journal compact 与双代恢复，收口跨 Node 终态门禁，并增加当前 Agent 节点 Fork 定向落位与生成节点创建时避碰”。它不是对外宣传页，而是 release-day 执行与复核手册。
 
 ## 当前发布素材
 
@@ -43,8 +43,8 @@
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前发布准备目标为 `0.24.2`，上一已发布版本为 `0.24.1`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.24.1` 升级到 `0.24.2` 的目标仍是通过当前宿主配置的公开扩展市场常规安装 / 升级完成。Open VSX 侧应继续同版本公开发布；官方 VS Code 的 `Visual Studio Marketplace` 仍是目标主路径，但当前 public gallery 仍不可见时允许延期补发，不阻塞本轮 `0.24.2` 以 GitHub Release assets + Open VSX verified 完成。对外宣称 VSM 安装路径前仍必须先完成 release-day visibility check，确认主扩展与 notifier 均公开可见。
+1. 最新已发布版本为 `0.24.2`，上一已发布版本为 `0.24.1`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.24.1` 升级到 `0.24.2` 的目标仍是通过当前宿主配置的公开扩展市场常规安装 / 升级完成。Open VSX 已完成同版本公开发布并验证；官方 VS Code 的 `Visual Studio Marketplace` 仍是目标主路径，但当前 public gallery 仍不可见，因此延期补发且不影响本轮 `0.24.2` 已通过 GitHub Release assets + Open VSX verified 完成。对外宣称 VSM 安装路径前仍必须先完成 visibility check，确认主扩展与 notifier 均公开可见。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
 4. UI 语言跟随 VS Code locale；本版本不新增扩展自己的语言设置，也不会翻译用户内容、路径、终端输出、provider 原始输出或市场模板数据。
 5. 停止后的 Agent 通过 `Resume / 恢复` 继续 provider 原会话，`New / 新建` 才启动新会话；Terminal 的 `Restart / 重启` 继续启动新的 shell 进程。当前 Agent 恢复 / 分叉仍只继承节点自身最近一次实际启动命令或长期启动偏好，不合并当前 Default args。
@@ -140,9 +140,9 @@
 
 ## 当前验证备注
 
-截至 `2026-07-14`，上一轮 `0.24.1` 已从最终 `main` release ref `51dd07ed95f0e26db184cd4ce14decd5ce2721f7` 完成 GitHub Release assets + Open VSX 兜底发布；正式 `v0.24.1` 指向同一 ref，`publish/v0.24.1` 已删除。最终 manifest 为 `complete-with-deferred-visual-studio`，Open VSX 双扩展 `0.24.1` 均 verified，Visual Studio Marketplace 双扩展记录为 `publish-failed` / deferred，2026-07-14 public gallery 独立复核仍为 `count=0` / `TotalCount=0`，因此不得对外宣称 VSM 已可用。完整发布事实见下方 `0.24.1 发布后复核`。
+截至 `2026-07-14`，`0.24.2` 已从最终 `main` release ref `c1e13b754d6a1f7be85d14b5d908967d464e1c6a` 完成 GitHub Release assets + Open VSX 兜底发布；正式 `v0.24.2` 指向同一 ref，`publish/v0.24.2` 已删除。最终 manifest 为 `complete-with-deferred-visual-studio`，Open VSX 双扩展 `0.24.2` 均 verified，Visual Studio Marketplace 双扩展记录为 `publish-failed` / deferred，2026-07-14 public gallery 独立复核仍为 `count=0` / `TotalCount=0`，因此不得对外宣称 VSM 已可用。完整发布事实见下方 `0.24.2 发布后复核`。
 
-`0.24.2` 发布输入只包含 `v0.24.1` 之后已合入 `main` 的 #261 Fork 定向展开与生成节点避碰、#262 Runtime Supervisor 跨 Node 终态门禁收口，以及 #263 无损 journal 安全 compact。三项合并提交及其已确认设计边界共同构成本轮输入，不纳入未合并分支 head。本发布准备分支只处理版本号、CHANGELOG、Marketplace / README 文案、发布手册和发布验证；最终 release ref 以发布准备 MR 合入 `main` 后的 commit 为准。
+`0.24.2` 发布输入只包含 `v0.24.1` 之后已合入 `main` 的 #261 Fork 定向展开与生成节点避碰、#262 Runtime Supervisor 跨 Node 终态门禁收口，以及 #263 无损 journal 安全 compact。三项合并提交及其已确认设计边界共同构成本轮输入，不纳入未合并分支 head；版本号、CHANGELOG、Marketplace / README 文案和发布手册由 #264 收口，最终 release ref 为 `c1e13b754d6a1f7be85d14b5d908967d464e1c6a`。
 
 本轮发布准备分支已完成以下 repo-local 同步：
 
@@ -157,12 +157,24 @@
 - 构建与定向回归：主扩展与 notifier build / typecheck、notifier source、canvas node placement / groups / multi-root composition / layout / UI copy、serialized tracker / terminal journal / Runtime Supervisor protocol / paths / output sequence / Webview protocol 均通过；10-Agent Supervisor 样本处理 `828,019` 字符，input response `19.58ms`、echo `30.58ms`、registry `65,295 bytes`
 - Webview 定向回归：计划覆盖的 Fork / journal / revision / Unicode / 4000 events 共 16 项均获得通过证据，但聚合命令两次都在 `Agent Fork action posts...` 的按钮 stable 等待处超时；该项隔离运行 `1 passed`，排除该项后的其余聚合 `15 passed`。失败快照证明按钮已可见、enabled 且文案正确，不把这两次 flaky 写成聚合清洁通过；问题已登记到技术债
 - 真实宿主 smoke：notifier companion 与英文 / 简体中文 locale 均通过；`legacy-supervisor-upgrade` 首次在 input/output、节点尺寸和 terminal probe 已可见后等待 resize cols/rows 收敛超时，原样完整复跑使用旧二进制 `5355e6a` 通过；严格 `trusted`（含 90000 行断言）和两阶段 `real-reopen` 均一次通过
-- 当前候选主扩展 VSIX 为 `dev-session-canvas-0.24.2.vsix`（`117` files，`3,925,963 bytes`，`sha256=f57db4d29706c123ee8cb59e591c3bdca24a84830cb6f71c3768e05dc54e704c`）；notifier VSIX 为 `dev-session-canvas-notifier-0.24.2.vsix`（`14` files，`159,017 bytes`，`sha256=3e9a56d38586195032baf4d9117f0fea0923fe44006d29d375896aab0c609163`）。两者包含英文默认、简体中文 NLS / l10n bundle，dirty-working-tree 打包日志使用 `VSCE README doc ref: fc427c6ed38c97c25f183e95216d35b19b1bc311`，只作为候选分支证据
+- 发布准备候选主扩展 VSIX 为 `dev-session-canvas-0.24.2.vsix`（`117` files，`3,925,963 bytes`，`sha256=f57db4d29706c123ee8cb59e591c3bdca24a84830cb6f71c3768e05dc54e704c`）；notifier VSIX 为 `dev-session-canvas-notifier-0.24.2.vsix`（`14` files，`159,017 bytes`，`sha256=3e9a56d38586195032baf4d9117f0fea0923fe44006d29d375896aab0c609163`）。两者包含英文默认、简体中文 NLS / l10n bundle，dirty-working-tree 打包日志使用 `VSCE README doc ref: fc427c6ed38c97c25f183e95216d35b19b1bc311`，只作为候选分支证据
 - `npm run validate:clean-checkout:vsix -- --source working-tree` 完整通过隔离 `npm ci`、`651` packages 的 0-vulnerability audit、`117`-file 主扩展打包与 VS Code `1.128.0` packaged host，最终输出 `VSIX packaged-payload smoke passed`
 - 隔离临时 clone 在 Node `22.23.1` 上以临时 ref `3e5dc0417efe12a14cb8cc27bff90a32c07da242` 执行 `release:publish-tag -- --trigger-tag publish/v0.24.2 --dry-run --package-only --skip-origin-main-check` 通过，正确规划两个 `0.24.2` VSIX 与 `release-manifest-0.24.2.json` 并停在 package-only 阶段；临时 ref 与本地 tag 已随临时目录删除，不得推送或冒充最终 release ref
-- 最终 publish / tag 前仍必须在发布准备 MR 合入后的 clean `main` ref 上重跑完整 gate；准备分支 working tree 生成的 VSIX、临时 commit 或本地 tag 只作为候选证据，不得直接作为 Release assets 或最终 release ref
+- 准备分支 working tree 生成的 VSIX、临时 commit 或本地 tag 只作为候选证据，没有直接作为 Release assets 或最终 release ref；最终 publish / tag 已在 #264 合入后的 clean `main` ref `c1e13b754d6a1f7be85d14b5d908967d464e1c6a` 上重跑完整 gate
 
-残余风险基线：Visual Studio Marketplace public gallery 当前仍不可见；真实旧二进制迁移 smoke 只覆盖 Linux / Unix socket，Windows named pipe 与 systemd generation 隔离只有路径级测试；旧 Supervisor raw tail 仍可能不完整；unsafe / oversized checkpoint 会继续增长 journal，当前无固定磁盘上限、完整长期 retention 策略或跨版本回退保证；local PTY 不具备跨 Host 恢复；90000 行 PTY 偶发短读已有三个样本且尚未关闭；Fork panel / editor 人工视觉验收与自动 File 真实 footprint 精度仍未收口；`trusted` / `real-reopen` 各有一项已登记 smoke harness 时序技术债。最终验证必须如实区分定向测试、真实升级 smoke、packaged-payload smoke 与未通过或未执行的门禁。
+残余风险基线：Visual Studio Marketplace public gallery 当前仍不可见；真实旧二进制迁移 smoke 只覆盖 Linux / Unix socket，Windows named pipe 与 systemd generation 隔离只有路径级测试；旧 Supervisor raw tail 仍可能不完整；unsafe / oversized checkpoint 会继续增长 journal，当前无固定磁盘上限、完整长期 retention 策略或跨版本回退保证；local PTY 不具备跨 Host 恢复；90000 行 PTY 偶发短读已有三个样本且尚未关闭；Fork panel / editor 人工视觉验收与自动 File 真实 footprint 精度仍未收口；`trusted` / `real-reopen` 各有一项已登记 smoke harness 时序技术债。发布后复核仍必须如实区分定向测试、真实升级 smoke、packaged-payload smoke 与未通过或未执行的门禁。
+
+### 0.24.2 发布后复核
+
+截至 `2026-07-14`，Actions run [`29309330723`](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/29309330723) 已从最终 `main` release ref `c1e13b754d6a1f7be85d14b5d908967d464e1c6a` 成功完成发布。正式 `v0.24.2` tag 指向同一 ref，远端已删除 `publish/v0.24.2` 临时 tag；对应 [GitHub Release](https://github.com/ZY-WANG-0304/dev-session-canvas/releases/tag/v0.24.2) 不是 draft 或 prerelease。最终 release manifest 状态为 `complete-with-deferred-visual-studio`，两个 artifact 条目的 `packagingDocRef` / `readmeDocRef` 均为最终 release ref，`githubRelease.status=assets-uploaded`，`tags.triggerTagStatus=deleted`。
+
+正式 GitHub Release assets 为主扩展 `dev-session-canvas-0.24.2.vsix`（`3,925,962 bytes`，`sha256=8e5c125987b51eb815ac80bd138583f178100528653f8558ece0919b51673ac5`）、notifier `dev-session-canvas-notifier-0.24.2.vsix`（`159,016 bytes`，`sha256=304f1917ffd17f4096b7391f62a3f02508de50c26315ff573e785b5fa5ba7bba`）与 `release-manifest-0.24.2.json`（`3,104 bytes`，`sha256=3b05f15c8a8dbb3923cc28bb8386324c66d7b338836adb5aabfcc208caec3c75`）。这些最终工件与上方发布准备分支生成的候选 VSIX 大小和 SHA 不同，不得混用。
+
+Open VSX API 已分别确认主扩展与 notifier 均为 `version=0.24.2`、`verified=true`。Visual Studio Marketplace 双扩展在最终 manifest 中均为 `publish-failed` / deferred；2026-07-14 对 `devsessioncanvas.dev-session-canvas` 与 `devsessioncanvas.dev-session-canvas-notifier` 的 public gallery 独立查询均为 `count=0`、`TotalCount=0`。后续 Open VSX 文件级请求曾遇到代理 / TLS timeout，但不覆盖 workflow、最终 manifest 与此前成功 API 查询形成的已验证事实。
+
+最终 `main` 上的 `npm ci` 安装 `651` packages 且报告 `0 vulnerabilities`；发布、manifest、VSIX、双市场和 production deploy workflow 守卫，主扩展 / notifier typecheck 与 build、notifier source、Fork / placement / groups / multi-root / layout / UI copy、journal / serialized tracker / Supervisor protocol / paths / output 回归均通过。10-Agent 样本处理 `828,019` 字符，input response 为 `10.67ms`、echo 为 `20.9ms`。推送临时 tag 前，最终 ref 的 package-only dry-run 已通过；`npm run validate:clean-checkout:vsix -- --ref c1e13b7` 随后完成独立 `npm ci`、`117`-file VSIX 和 VS Code `1.128.0` packaged-payload smoke，最终 code 为 `0`。
+
+本次成功 run 同时对仍以 Node.js 20 为目标的 `actions/checkout@v4`、`actions/setup-node@v4`、`actions/upload-artifact@v4` 与 `actions/download-artifact@v4` 发出强制改用 Node.js 24 的 deprecation annotation；该 annotation 没有改变本次 run 的 `success` 结论，后续升级 action 版本与发布 workflow 回归已登记到 `docs/exec-plans/tech-debt-tracker.md`。
 
 ### 0.24.1 发布后复核
 
