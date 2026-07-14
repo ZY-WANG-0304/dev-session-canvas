@@ -4642,6 +4642,81 @@ for (const executionKind of ['agent', 'terminal']) {
     await page.waitForTimeout(300);
     expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(0);
   });
+
+  test(`${executionKind} node movement preserves a pending terminal resize`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page, {
+      persistedState: {
+        viewport: { x: 0, y: 0, zoom: 1 }
+      }
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+
+    const node = nodeById(page, nodeId);
+    const viewport = node.locator('.terminal-viewport');
+    await viewport.evaluate((element) => {
+      element.style.flex = '0 0 450px';
+      element.style.width = '450px';
+    });
+    await settleWebview(page, 4);
+    const stableTerminal = await readProbeNode(page, nodeId);
+    expect(stableTerminal).not.toBeNull();
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: stableTerminal.terminalCols,
+      rows: stableTerminal.terminalRows,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+
+    const dragSurface = node.locator('.window-title-subtitle');
+    const dragBox = await dragSurface.boundingBox();
+    expect(dragBox).not.toBeNull();
+    const dragStart = {
+      x: dragBox.x + dragBox.width / 2,
+      y: dragBox.y + dragBox.height / 2
+    };
+    await page.mouse.move(dragStart.x, dragStart.y);
+    await clearPostedMessages(page);
+
+    await viewport.evaluate(async (element) => {
+      element.style.flex = '0 0 380px';
+      element.style.width = '380px';
+      for (let frame = 0; frame < 3; frame += 1) {
+        await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+      }
+    });
+    await page.mouse.down();
+    expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(0);
+    await page.mouse.move(dragStart.x + 80, dragStart.y + 45, { steps: 2 });
+    await page.mouse.up();
+
+    const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+    expect(moveMessage.payload.id).toBe(nodeId);
+    const pendingTerminal = await readProbeNode(page, nodeId);
+    expect(pendingTerminal).not.toBeNull();
+    expect({ cols: pendingTerminal.terminalCols, rows: pendingTerminal.terminalRows }).not.toEqual({
+      cols: stableTerminal.terminalCols,
+      rows: stableTerminal.terminalRows
+    });
+    await expect
+      .poll(async () => (await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).length)
+      .toBe(1);
+    const resizeMessages = await readPostedMessagesByType(page, 'webview/resizeExecutionSession');
+    expect(resizeMessages[0].payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      cols: pendingTerminal.terminalCols,
+      rows: pendingTerminal.terminalRows
+    });
+
+    await page.waitForTimeout(350);
+    expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(1);
+  });
 }
 
 test('suspended Claude Agent legacy state no longer exposes restore actions', async ({ page }) => {
@@ -16225,20 +16300,33 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
-  test(`${executionKind} snapshot restore eventually refits to the current smaller container`, async ({ page }) => {
+  test(`${executionKind} snapshot restore still refits after node movement during the shrink grace`, async ({
+    page
+  }) => {
     const nodeId = `${executionKind}-zoom`;
 
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
-    const readyProbe = await waitForExecutionTerminalReady(page, nodeId);
+    await waitForExecutionTerminalReady(page, nodeId);
+    await settleWebview(page, 4);
+    await page.waitForTimeout(200);
+    const readyProbe = await readProbeNode(page, nodeId);
+    expect(readyProbe).not.toBeNull();
     const restoreCols = readyProbe.terminalCols + 12;
     const restoreRows = readyProbe.terminalRows + 6;
-    const fixture = createFullscreenSerializedFixture(restoreCols, restoreRows);
-    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
-      fixture.output,
-      restoreCols,
-      restoreRows
-    );
+    const serializedTerminalState = {
+      format: 'xterm-serialize-v1',
+      data: ''
+    };
+    const node = nodeById(page, nodeId);
+    const dragSurface = node.locator('.window-title-subtitle');
+    const dragBox = await dragSurface.boundingBox();
+    expect(dragBox).not.toBeNull();
+    const dragStart = {
+      x: dragBox.x + dragBox.width / 2,
+      y: dragBox.y + dragBox.height / 2
+    };
+    await page.mouse.move(dragStart.x, dragStart.y);
 
     await dispatchExecutionSnapshot(page, {
       nodeId,
@@ -16257,6 +16345,14 @@ for (const executionKind of ['agent', 'terminal']) {
     );
     expect(oversizedProbe.terminalCols).toBe(restoreCols);
     expect(oversizedProbe.terminalRows).toBe(restoreRows);
+    expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(0);
+    await clearPostedMessages(page);
+
+    await page.mouse.down();
+    await page.mouse.move(dragStart.x + 80, dragStart.y + 45, { steps: 2 });
+    await page.mouse.up();
+    const moveMessage = await waitForPostedMessageByType(page, 'webview/moveNode');
+    expect(moveMessage.payload.id).toBe(nodeId);
 
     await expect
       .poll(
@@ -16279,6 +16375,17 @@ for (const executionKind of ['agent', 'terminal']) {
           rows: readyProbe.terminalRows
         })
       );
+    await expect
+      .poll(async () => (await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).length)
+      .toBe(1);
+    const resizeMessages = await readPostedMessagesByType(page, 'webview/resizeExecutionSession');
+    expect(resizeMessages).toHaveLength(1);
+    expect(resizeMessages[0].payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      cols: readyProbe.terminalCols,
+      rows: readyProbe.terminalRows
+    });
   });
 }
 
