@@ -15,7 +15,7 @@
 - Preview 支持边界：`docs/support.md`
 - 安全口径：`docs/SECURITY.md`
 - 发布判断与背景：`docs/design-docs/public-marketplace-release-readiness.md`
-- 当前更新依据：`docs/design-docs/agent-terminal-lossless-io-and-recovery.md`、`docs/design-docs/canvas-fork-placement-and-generated-node-collision.md`、`docs/design-docs/execution-lifecycle-and-recovery.md`、`docs/design-docs/agent-launch-modes-and-restart.md`、`docs/product-specs/runtime-persistence-modes.md`、`docs/product-specs/canvas-fork-placement-and-generated-node-collision.md`、`docs/UI.md`、`docs/FRONTEND.md`
+- 当前更新依据：`docs/design-docs/agent-terminal-lossless-io-and-recovery.md`、`docs/design-docs/canvas-fork-placement-and-generated-node-collision.md`、`docs/design-docs/execution-lifecycle-and-recovery.md`、`docs/design-docs/agent-launch-modes-and-restart.md`、`docs/product-specs/runtime-persistence-modes.md`、`docs/product-specs/agent-launch-modes-and-restart.md`、`docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/UI.md`、`docs/FRONTEND.md`
 - 模板市场产品与设计依据：`docs/product-specs/template-marketplace.md`、`docs/design-docs/template-marketplace.md`、`docs/workflows/SERVICE_DEPLOY.md`
 
 ## Marketplace listing 定稿口径
