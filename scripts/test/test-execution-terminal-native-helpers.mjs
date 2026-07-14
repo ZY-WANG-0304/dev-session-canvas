@@ -365,14 +365,44 @@ try {
   );
   assert.deepEqual(exactOpenResult, {
     opened: true,
-    openerKind: 'showTextDocument',
+    openerKind: 'vscode.open',
     targetUri: '/workspace/foo'
   });
-  const exactOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  const exactOpenCalls = vscodeStub.__getExecutedCommands();
   assert.equal(exactOpenCalls.length, 1);
-  assert.equal(exactOpenCalls[0].document.uri.fsPath, '/workspace/foo');
-  assert.equal(exactOpenCalls[0].options.selection.start.line, 9);
-  assert.equal(exactOpenCalls[0].options.selection.start.character, 0);
+  assert.equal(exactOpenCalls[0].command, 'vscode.open');
+  assert.equal(exactOpenCalls[0].args[0].fsPath, '/workspace/foo');
+  assert.equal(exactOpenCalls[0].args[1].selection.start.line, 9);
+  assert.equal(exactOpenCalls[0].args[1].selection.start.character, 0);
+
+  vscodeStub.__reset();
+  vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
+  vscodeStub.__setFiles([{ path: '/workspace/images/preview.png', type: 'file' }]);
+  const mediaOpenResult = await openExecutionTerminalLink(
+    {
+      linkKind: 'file',
+      text: 'images/preview.png',
+      path: 'images/preview.png',
+      bufferStartLine: 14,
+      source: 'detected'
+    },
+    createContext('/bin/bash', '/workspace', 'posix')
+  );
+  assert.deepEqual(mediaOpenResult, {
+    opened: true,
+    openerKind: 'vscode.open',
+    targetUri: '/workspace/images/preview.png'
+  });
+  const mediaOpenCalls = vscodeStub.__getExecutedCommands();
+  assert.equal(mediaOpenCalls.length, 1);
+  assert.equal(mediaOpenCalls[0].command, 'vscode.open');
+  assert.equal(mediaOpenCalls[0].args[0].fsPath, '/workspace/images/preview.png');
+  assert.deepEqual(mediaOpenCalls[0].args[1], {
+    preview: false,
+    preserveFocus: false,
+    selection: undefined
+  });
+  assert.deepEqual(vscodeStub.__getShowTextDocumentCalls(), []);
 
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
@@ -415,13 +445,13 @@ try {
   );
   assert.deepEqual(partialOpenResult, {
     opened: true,
-    openerKind: 'showTextDocument',
+    openerKind: 'vscode.open',
     targetUri: '/workspace/README.md'
   });
-  const partialOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  const partialOpenCalls = vscodeStub.__getExecutedCommands();
   assert.equal(partialOpenCalls.length, 1);
-  assert.equal(partialOpenCalls[0].document.uri.fsPath, '/workspace/README.md');
-  assert.deepEqual(vscodeStub.__getExecutedCommands(), []);
+  assert.equal(partialOpenCalls[0].command, 'vscode.open');
+  assert.equal(partialOpenCalls[0].args[0].fsPath, '/workspace/README.md');
 
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
@@ -515,12 +545,13 @@ try {
   );
   assert.deepEqual(multiRootQualifiedSearchResult, {
     opened: true,
-    openerKind: 'showTextDocument',
+    openerKind: 'vscode.open',
     targetUri: '/workspace-b/src/index.ts'
   });
-  const multiRootQualifiedSearchCalls = vscodeStub.__getShowTextDocumentCalls();
-  assert.equal(multiRootQualifiedSearchCalls[0].document.uri.fsPath, '/workspace-b/src/index.ts');
-  assert.equal(multiRootQualifiedSearchCalls[0].options.selection.start.line, 7);
+  const multiRootQualifiedSearchCalls = vscodeStub.__getExecutedCommands();
+  assert.equal(multiRootQualifiedSearchCalls[0].command, 'vscode.open');
+  assert.equal(multiRootQualifiedSearchCalls[0].args[0].fsPath, '/workspace-b/src/index.ts');
+  assert.equal(multiRootQualifiedSearchCalls[0].args[1].selection.start.line, 7);
 
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([
@@ -773,12 +804,13 @@ try {
   );
   assert.deepEqual(staleResolvedIdIgnoredOpenResult, {
     opened: true,
-    openerKind: 'showTextDocument',
+    openerKind: 'vscode.open',
     targetUri: '/workspace/current-target.ts'
   });
-  const staleResolvedIdIgnoredOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  const staleResolvedIdIgnoredOpenCalls = vscodeStub.__getExecutedCommands();
   assert.equal(staleResolvedIdIgnoredOpenCalls.length, 1);
-  assert.equal(staleResolvedIdIgnoredOpenCalls[0].document.uri.fsPath, '/workspace/current-target.ts');
+  assert.equal(staleResolvedIdIgnoredOpenCalls[0].command, 'vscode.open');
+  assert.equal(staleResolvedIdIgnoredOpenCalls[0].args[0].fsPath, '/workspace/current-target.ts');
 
   vscodeStub.__reset();
   vscodeStub.__setWorkspaceFolders([{ name: 'workspace', path: '/workspace' }]);
@@ -800,12 +832,13 @@ try {
   );
   assert.deepEqual(validResolvedIdIgnoredOpenResult, {
     opened: true,
-    openerKind: 'showTextDocument',
+    openerKind: 'vscode.open',
     targetUri: '/workspace/current-target.ts'
   });
-  const validResolvedIdIgnoredOpenCalls = vscodeStub.__getShowTextDocumentCalls();
+  const validResolvedIdIgnoredOpenCalls = vscodeStub.__getExecutedCommands();
   assert.equal(validResolvedIdIgnoredOpenCalls.length, 1);
-  assert.equal(validResolvedIdIgnoredOpenCalls[0].document.uri.fsPath, '/workspace/current-target.ts');
+  assert.equal(validResolvedIdIgnoredOpenCalls[0].command, 'vscode.open');
+  assert.equal(validResolvedIdIgnoredOpenCalls[0].args[0].fsPath, '/workspace/current-target.ts');
 
   vscodeStub.__reset();
   await vscodeStub.workspace

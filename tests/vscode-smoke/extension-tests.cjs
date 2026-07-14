@@ -7606,6 +7606,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
   const droppedFilePath = path.join(scratchDir, 'drop target file.txt');
   const ignoredFilePath = path.join(scratchDir, 'ignored-second.txt');
   const linkTargetPath = path.join(scratchDir, 'link-target.ts');
+  const mediaLinkTargetPath = path.join(scratchDir, 'link-target.png');
 
   await fs.mkdir(scratchDir, { recursive: true });
   await fs.writeFile(droppedFilePath, 'drop target\n', 'utf8');
@@ -7614,6 +7615,13 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     linkTargetPath,
     ['export const one = 1;', 'export const two = 2;', 'export const three = 3;'].join('\n') + '\n',
     'utf8'
+  );
+  await fs.writeFile(
+    mediaLinkTargetPath,
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    )
   );
 
   let browserSmokeServer;
@@ -7750,6 +7758,58 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     assert.strictEqual(activeEditor.document.uri.fsPath, linkTargetPath);
     assert.strictEqual(activeEditor.selection.active.line, 1);
     assert.strictEqual(activeEditor.selection.active.character, 7);
+
+    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    const mediaFileLinkText = path
+      .relative(workspaceFolder.uri.fsPath, mediaLinkTargetPath)
+      .split(path.sep)
+      .join('/');
+    await performWebviewDomAction(
+      {
+        kind: 'sendExecutionInput',
+        nodeId: terminalNodeId,
+        data: `printf '%s\\n' '${mediaFileLinkText}'\r`
+      },
+      'editor',
+      10000
+    );
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
+      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(mediaFileLinkText));
+    }, 20000);
+    terminalNode = findNodeById(snapshot, terminalNodeId);
+    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(mediaFileLinkText));
+
+    await clearDiagnosticEvents();
+    await performWebviewDomAction(
+      {
+        kind: 'activateExecutionLink',
+        nodeId: terminalNodeId,
+        text: mediaFileLinkText
+      },
+      'editor',
+      10000
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'execution/linkOpened' &&
+            event.detail?.kind === 'terminal' &&
+            event.detail?.nodeId === terminalNodeId &&
+            event.detail?.text === mediaFileLinkText &&
+            event.detail?.openerKind === 'vscode.open' &&
+            event.detail?.targetUri === vscode.Uri.file(mediaLinkTargetPath).toString()
+        ),
+      10000
+    );
+    const mediaTab = await waitForActiveTab(
+      (tab) => tab.input?.uri?.fsPath === mediaLinkTargetPath,
+      10000
+    );
+    assert.strictEqual(mediaTab.input.uri.fsPath, mediaLinkTargetPath);
 
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
@@ -12842,6 +12902,31 @@ async function waitForActiveEditor(predicate, timeoutMs = 8000) {
               line: editor.selection.active.line,
               character: editor.selection.active.character
             }
+          }
+        : null
+    )}`
+  );
+}
+
+async function waitForActiveTab(predicate, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+
+  while (Date.now() < deadline) {
+    if (tab && predicate(tab)) {
+      return tab;
+    }
+
+    await sleep(100);
+    tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+  }
+
+  assert.fail(
+    `Timed out while waiting for active tab. Last tab: ${JSON.stringify(
+      tab
+        ? {
+            label: tab.label,
+            uri: tab.input?.uri?.toString()
           }
         : null
     )}`

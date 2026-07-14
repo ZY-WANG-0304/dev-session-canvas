@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/active/execution-terminal-native-link-parity.md
   - docs/exec-plans/completed/execution-node-terminal-native-interactions.md
   - docs/exec-plans/completed/execution-node-link-parity-and-extensions.md
-updated_at: 2026-06-24
+updated_at: 2026-07-14
 ---
 
 # 执行节点的 VSCode 原生 Terminal 交互对齐
@@ -188,7 +188,7 @@ updated_at: 2026-06-24
 - 激活修饰键继续遵循 `editor.multiCursorModifier`，行为与原生 Terminal 一致。
 - hover 文案和文案中的修饰键描述，应对齐原生 Terminal，而不是继续使用仓库自定义命名；但 `workbench.hover.delay` 不作为 Host -> Webview 运行时协议的一部分透传。
 - low-confidence 的 `word/search link` 不应在普通 hover 下默认显示下划线；只有按住激活修饰键时，才像原生 Terminal 一样临时强调为可点击状态。
-- 文件打开：`showTextDocument` 语义与原生 `openEditor` 对齐，包含 line / column selection。
+- 文件打开：Host 使用 `vscode.open` 交给 VS Code editor service 选择文本、图片、视频或其它已注册编辑器，并传入 line / column selection；不得先调用 `workspace.openTextDocument` 把所有文件强制解释成文本。打开失败时，`CanvasPanelManager` 必须在 `execution/linkOpenRejected` 诊断事件中保留错误信息，避免把 opener 异常静默降级成无原因的点击无响应。
 - workspace 内目录：`revealInExplorer`。
 - workspace 外目录：新窗口打开目录。
 - search：先 exact-open，再 `workbench.action.quickOpen`。
@@ -235,3 +235,9 @@ updated_at: 2026-06-24
 
 1. `scripts/test/test-execution-terminal-native-helpers.mjs` 覆盖 multi-root 下 `workspace-b/src/index.ts` 这类 root-qualified file link：即使当前执行节点 cwd 在 `workspace-a`，Host 也会把搜索限定到 `workspace-b`，并按 `src/index.ts` 打开目标文件。
 2. 同一脚本覆盖 root-qualified word/search exact-open 保留 `#line`/`:line` 定位，以及不带 root 前缀的多根相对路径只优先检索当前 cwd 所属 root，不再跨 sibling roots 做全局 exact fallback。
+
+2026-07-14 追加验证：
+
+1. `scripts/test/test-execution-terminal-native-helpers.mjs` 新增 PNG 文件回归，验证普通文件统一通过 `vscode.open` 打开，媒体文件不再进入 `workspace.openTextDocument`；原有文本、search 与 multi-root 用例继续验证 selection 会传给通用 opener。
+2. `tests/vscode-smoke/extension-tests.cjs` 新增真实 PNG 链接激活回归，验证 Host 记录 `execution/linkOpened`、`openerKind=vscode.open`，且 VS Code 活动 tab 的 URI 与目标 PNG 一致。
+3. `npm run test:execution-terminal-native-helpers`、`npm run typecheck`、`npm run build` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过。
