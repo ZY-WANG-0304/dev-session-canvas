@@ -54,6 +54,8 @@ Panel 宽高、sidebar、字体度量或其他非节点手势几何变化没有�
 
 drag stop 下一帧释放门禁并调用 `executionSessionNodes.tsx` 中的 `fitTerminal()` 做一次 reconciliation：先读取最终容器的 proposed dimensions，只有字符尺寸确实不同才调用 `FitAddon.fit()`，再把结果交给 150ms reporter 去重。对普通纯移动，proposed dimensions 与当前字符网格相同，因此不会 fit，也不会通知 PTY；若移动前已有合法 pending resize 或 snapshot shrink fit，则 reconciliation 保证它最终提交。`main.tsx` 仍对本次移动的 Agent/Terminal（包含多选共同移动节点）安排一次本地 xterm refresh；refresh 只重画当前 buffer，用于清理浏览器 canvas/WebGL 合成后可能残留的旧像素，不会触发 PTY `SIGWINCH`，因而不会要求 Codex/Claude 自己重绘。
 
+movement gate 的生命周期不能只依赖 React Flow 的 `onNodeDragStop`。`main.tsx` 同时记录本轮所有画布移动节点和其中已注册的执行终端；`pointercancel`、lost pointer capture、窗口 blur、document hidden、鼠标离开窗口，以及第二个触点进入导致的多指 abort 都进入同一个幂等 abort。abort 会对 active terminal 调用 `endNodeMovement()`、清除未提交的位置草稿并安排本地 refresh/reconciliation；它只恢复 Host 权威位置，不发送 `webview/moveNode`。如果 React Flow 之后又交付迟到的 drag stop，aborted 标记会消费该 stop，避免把已取消草稿误提交给 Host。
+
 ## 4. 与既有设计的关系
 
 本方案延续 `canvas-node-surface-and-resize.md` 的既有结论：pointer move 中的节点几何只是 Webview 本地草稿，只有最终位置和尺寸进入宿主权威状态。新增约束是：对执行节点而言，PTY 字符网格也不能把本地草稿误当作逐帧权威变化。
@@ -66,6 +68,7 @@ drag stop 下一帧释放门禁并调用 `executionSessionNodes.tsx` 中的 `fit
 - 风险：150ms settle 可能让外部容器 resize 后的 PTY 尺寸短暂落后。缓解方式是本地 xterm 可先适应稳定容器，只有 provider 通知延后；窗口足够短，并且每次只保留末值。
 - 风险：React 状态收口与 DOM 尺寸提交可能跨 animation frame。缓解方式是通过明确的 `onResizeNodeEnd` finalize 信号，在最终草稿移除后的 frame 才读取容器并 fit。
 - 风险：位置拖动可能与 settle window 或 serialized restore grace 交错。movement gate 不取消移动前工作，并在 drag stop 后重新测量；尺寸 reporter 去重保证纯移动仍为零 PTY resize。
+- 风险：依赖库在窗口失焦、丢失 mouseup 或多指 abort 时可能不调用 `onNodeDragStop`。独立窗口/指针生命周期监听负责幂等 abort，迟到 stop 只消费取消标记，不提交移动。
 - 风险：本地 refresh 只能修复 renderer 陈旧像素，不能修复 provider buffer 本身已经被错误 resize 的内容。核心预防仍是阻止中间 PTY resize，而不是依赖 refresh 掩盖问题。
 
 ## 6. 验证口径
@@ -74,8 +77,10 @@ Playwright 必须对 Agent 与 Terminal 各执行一次多步 resize：指针移
 
 交错回归还必须覆盖两类节点：外部几何变化已经完成本地 fit、但 150ms pending 尺寸尚未提交时立即移动节点，最终必须恰好提交一次该稳定末值；serialized snapshot 的 shrink-fit grace 内移动节点，延迟 refit 与最终尺寸上报也必须继续完成。这两类场景共同证明 movement gate 只隔离移动噪音，不丢失移动前的真实尺寸工作。
 
+取消回归必须对 Agent 与 Terminal 先用真实 mouse drag 触发 movement-active，再只派发 `pointercancel` 而不依赖 React Flow stop。随后改变容器宽度时，本地 xterm 与 PTY resize 必须恢复；即使迟到的 `mouseup` 最终到达，也不得发送 `webview/moveNode`，节点渲染位置应回到 Host 权威值。
+
 类型检查、构建和 resize 聚焦 Webview 回归必须通过；完整 Webview 回归用于同时识别相关回归与当前主线无关失败，不能用更新无关快照/期待来掩盖失败。可运行时补 trusted VS Code smoke，确认最终尺寸仍能进入 Host/Supervisor。真实宿主人工观察应满足：慢速或来回拖动执行节点外框时，Codex/Claude 不再逐帧重绘；松手后只针对最终宽高重排一次；只移动节点位置时 provider 不重绘。
 
 ## 7. 当前验证状态
 
-实现与自动化验证已完成：Agent/Terminal 的连续 resize 与稳定纯移动 4 条回归通过，pending resize 与移动交错 2 条、serialized snapshot shrink grace 与移动交错 2 条均通过，resize 聚焦套件 17/17 通过，类型检查与构建通过。初始 PR head 的 trusted VS Code smoke 通过；完整 Webview 套件 343/353 通过，10 条失败为当前主线既有截图、文案、菜单/default-args 期待漂移或一次就绪超时，本轮新增及后续 terminal journal/restore/zoom 用例全部通过。由于尚未在真实 Codex/Claude 进程上人工观察来回 resize，仍保持 `validation_status: 验证中`，完成记录见 `docs/exec-plans/completed/execution-terminal-resize-coalescing.md`。
+实现与自动化验证已完成：Agent/Terminal 的连续 resize、稳定纯移动、pending resize 交错、serialized snapshot shrink grace 交错和异常取消路径均已覆盖，新增 abort 回归 2/2 通过，类型检查与构建通过。更新后的 resize 聚焦首轮 17/19，两个失败分别停在无关连线/文件节点用例的 harness 等待阶段，隔离原样复跑均通过；相关 execution 用例合并运行 9/10，唯一失败为首条 Agent 用例等待 RAF 超时，隔离复跑通过。初始 PR head 的 trusted VS Code smoke 通过；完整 Webview 套件 343/353 通过，10 条失败为当前主线既有截图、文案、菜单/default-args 期待漂移或一次就绪超时。由于尚未在真实 Codex/Claude 进程上人工观察来回 resize，仍保持 `validation_status: 验证中`，完成记录见 `docs/exec-plans/completed/execution-terminal-resize-coalescing.md`。
