@@ -4717,6 +4717,101 @@ for (const executionKind of ['agent', 'terminal']) {
     await page.waitForTimeout(350);
     expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(1);
   });
+
+  test(`${executionKind} movement abort releases the terminal resize gate`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page, {
+      persistedState: {
+        viewport: { x: 0, y: 0, zoom: 1 }
+      }
+    });
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+
+    const node = nodeById(page, nodeId);
+    const viewport = node.locator('.terminal-viewport');
+    await viewport.evaluate((element) => {
+      element.style.flex = '0 0 450px';
+      element.style.width = '450px';
+    });
+    await settleWebview(page, 4);
+    const stableTerminal = await readProbeNode(page, nodeId);
+    expect(stableTerminal).not.toBeNull();
+    await dispatchExecutionSnapshot(page, {
+      nodeId,
+      kind: executionKind,
+      output: '',
+      cols: stableTerminal.terminalCols,
+      rows: stableTerminal.terminalRows,
+      liveSession: true
+    });
+    await settleWebview(page, 4);
+    await clearPostedMessages(page);
+
+    const dragSurface = node.locator('.window-title-subtitle');
+    const dragBox = await dragSurface.boundingBox();
+    expect(dragBox).not.toBeNull();
+    const readNodeTransform = () =>
+      node.evaluate((element) => element.closest('.react-flow__node')?.getAttribute('style') ?? null);
+    const stableNodeTransform = await readNodeTransform();
+    const dragStart = {
+      x: dragBox.x + dragBox.width / 2,
+      y: dragBox.y + dragBox.height / 2
+    };
+    await page.mouse.move(dragStart.x, dragStart.y);
+    await page.mouse.down();
+    await page.mouse.move(dragStart.x + 80, dragStart.y + 45, { steps: 2 });
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new PointerEvent('pointercancel', {
+          bubbles: true,
+          pointerId: 1,
+          pointerType: 'mouse'
+        })
+      );
+    });
+    await settleWebview(page, 2);
+    await page.mouse.move(dragStart.x + 110, dragStart.y + 65, { steps: 2 });
+
+    await viewport.evaluate((element) => {
+      element.style.flex = '0 0 300px';
+      element.style.width = '300px';
+    });
+    let resizedTerminal = null;
+    await expect
+      .poll(async () => {
+        resizedTerminal = await readProbeNode(page, nodeId);
+        if (!resizedTerminal) {
+          return null;
+        }
+        return JSON.stringify({
+          cols: resizedTerminal.terminalCols,
+          rows: resizedTerminal.terminalRows
+        });
+      })
+      .not.toBe(
+        JSON.stringify({
+          cols: stableTerminal.terminalCols,
+          rows: stableTerminal.terminalRows
+        })
+      );
+    await expect
+      .poll(async () => (await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).length)
+      .toBe(1);
+
+    const resizeMessages = await readPostedMessagesByType(page, 'webview/resizeExecutionSession');
+    expect(resizeMessages[0].payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      cols: resizedTerminal.terminalCols,
+      rows: resizedTerminal.terminalRows
+    });
+    await page.mouse.up();
+    await settleWebview(page, 2);
+    expect(await readPostedMessagesByType(page, 'webview/moveNode')).toHaveLength(0);
+    await expect.poll(readNodeTransform).toBe(stableNodeTransform);
+  });
 }
 
 test('suspended Claude Agent legacy state no longer exposes restore actions', async ({ page }) => {
