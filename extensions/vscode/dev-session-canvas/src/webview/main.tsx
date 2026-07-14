@@ -408,6 +408,41 @@ if (!injectedWebviewLifecycleIdentity) {
 }
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionTerminalRegistry: ExecutionTerminalRegistry = new Map();
+const activeExecutionTerminalMovementNodeIds = new Set<string>();
+
+function beginExecutionTerminalNodeMovement(nodeIds: Iterable<string>): void {
+  for (const nodeId of new Set(nodeIds)) {
+    const entry = executionTerminalRegistry.get(nodeId);
+    if (!entry) {
+      continue;
+    }
+    activeExecutionTerminalMovementNodeIds.add(nodeId);
+    entry.beginNodeMovement();
+  }
+}
+
+function scheduleExecutionTerminalRefresh(nodeIds: Iterable<string>): void {
+  const uniqueNodeIds = Array.from(new Set(nodeIds));
+  if (uniqueNodeIds.length === 0) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    for (const nodeId of uniqueNodeIds) {
+      executionTerminalRegistry.get(nodeId)?.controller.refreshVisibleRows();
+    }
+  });
+}
+
+function finishExecutionTerminalNodeMovement(movedNodeIds: Iterable<string>): void {
+  // Entries keep the movement gate through the next ResizeObserver delivery, then release it on the next frame.
+  for (const nodeId of activeExecutionTerminalMovementNodeIds) {
+    executionTerminalRegistry.get(nodeId)?.endNodeMovement();
+  }
+  activeExecutionTerminalMovementNodeIds.clear();
+  scheduleExecutionTerminalRefresh(movedNodeIds);
+}
+
 const pendingExecutionFileLinkResolutionRequests = new Map<
   string,
   {
@@ -3470,6 +3505,14 @@ function App(): JSX.Element {
     });
   };
 
+  const handleNodeDragStart: NodeDragHandler = (_event, node, draggedNodes) => {
+    beginExecutionTerminalNodeMovement([
+      node.id,
+      ...draggedNodes.map((draggedNode) => draggedNode.id),
+      ...nodes.filter((candidate) => candidate.selected).map((candidate) => candidate.id)
+    ]);
+  };
+
   const handleNodeDragStop: NodeDragHandler = (event, node, draggedNodes) => {
     const pointerPosition = reactFlowRef.current?.screenToFlowPosition({
       x: event.clientX,
@@ -3519,6 +3562,7 @@ function App(): JSX.Element {
         selectedMoves: selectedMoves.length > 0 ? selectedMoves : undefined
       }
     });
+    finishExecutionTerminalNodeMovement([node.id, ...selectedMoves.map((move) => move.id)]);
   };
 
   const isCanvasNodeInPaneGalleryRoot = (nodeId: string, rootGroupId: string): boolean => {
@@ -4229,6 +4273,22 @@ function App(): JSX.Element {
     normalizedPaneGalleryLayout,
     activePaneGalleryRootId ? paneGalleryState?.mainViewports?.[activePaneGalleryRootId] !== undefined : false
   ]);
+  const handlePaneGalleryNodeDragStart = (
+    rootGroupId: string,
+    _event: React.MouseEvent,
+    node: CanvasFlowNode,
+    draggedNodes: CanvasFlowNode[]
+  ): void => {
+    bindPaneGallerySurface(rootGroupId);
+    beginExecutionTerminalNodeMovement([
+      node.id,
+      ...draggedNodes.map((draggedNode) => draggedNode.id),
+      ...nodes
+        .filter((candidate) => candidate.selected && isCanvasNodeInPaneGalleryRoot(candidate.id, rootGroupId))
+        .map((candidate) => candidate.id)
+    ]);
+  };
+
   const handlePaneGalleryNodeDragStop = (
     rootGroupId: string,
     event: React.MouseEvent,
@@ -4291,6 +4351,7 @@ function App(): JSX.Element {
         selectedMoves: selectedMoves.length > 0 ? selectedMoves : undefined
       }
     });
+    finishExecutionTerminalNodeMovement([node.id, ...selectedMoves.map((move) => move.id)]);
   };
   return (
     <div
@@ -4333,6 +4394,7 @@ function App(): JSX.Element {
             onFitPane={fitPaneGalleryRoot}
             onSavePaneViewport={savePaneGalleryViewport}
             onNodesChange={handleNodesChange}
+            onNodeDragStart={handlePaneGalleryNodeDragStart}
             onNodeDragStop={handlePaneGalleryNodeDragStop}
             onConnect={handleConnect}
             onEdgeClick={handleEdgeClick}
@@ -4390,6 +4452,7 @@ function App(): JSX.Element {
             strokeWidth: 2
           }}
           onNodeClick={handleNodeClick}
+          onNodeDragStart={handleNodeDragStart}
           onNodeDragStop={handleNodeDragStop}
           multiSelectionKeyCode={null}
           selectNodesOnDrag={false}

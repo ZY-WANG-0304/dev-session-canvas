@@ -239,6 +239,12 @@ export interface PaneGalleryProps {
   ) => boolean;
   onSavePaneViewport: (rootGroupId: string, viewport: Viewport, viewportRole?: PaneGalleryViewportRole) => void;
   onNodesChange: (changes: any[]) => void;
+  onNodeDragStart: (
+    rootGroupId: string,
+    event: React.MouseEvent,
+    node: CanvasFlowNode,
+    draggedNodes: CanvasFlowNode[]
+  ) => void;
   onNodeDragStop: (
     rootGroupId: string,
     event: React.MouseEvent,
@@ -900,6 +906,11 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
                   bindSurface();
                   props.onNodeClick(event, node);
                 }
+              : undefined
+          }
+          onNodeDragStart={
+            interactive
+              ? (event, node, draggedNodes) => props.onNodeDragStart(rootGroupId, event, node, draggedNodes)
               : undefined
           }
           onNodeDragStop={
