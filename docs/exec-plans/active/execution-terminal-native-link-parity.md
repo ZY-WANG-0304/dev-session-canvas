@@ -33,6 +33,7 @@
 - [x] (2026-05-22 17:30 +0800) 按 hotfix 要求先补性能回归并记录修复前基线：fallback-only 负缓存测试在修复前 agent / terminal 都产生 36 次 live-output 后台 resolve request；随后限制 live output 只刷新高置信负缓存，并增加输出 invalidation 最小间隔。
 - [x] (2026-06-10 18:40 +0800) 根据二次宿主诊断继续降载：styled span 不再直接伪装成 `detected`，而是必须通过共享 path plausibility gate 后以 `styled` source 发送；`detected` / `styled` 在 Webview 与 Host 双侧都执行同一准入防线，并补协议、纯函数与 Host helper 回归。
 - [x] (2026-06-11 20:35 +0800) 根据第四次宿主诊断改为交互优先：file-link provider 只暴露轻量 pending link，Host resolve 改为点击时 `interactive` 触发；高置信负缓存后台刷新标记为 `background`，Host 增加 resolve cache / in-flight dedupe / 背景请求节流，并把诊断 schema 提升到 v3。
+- [x] (2026-07-14 18:32 +0800) 修复执行链接无法打开 PNG / GIF / MP4 等媒体文件：普通文件统一交给 `vscode.open`，保留文本 selection；同步正式设计索引、command rejection 诊断语义、PNG custom editor smoke 与 GIF / MP4 未分别执行真实 fixture 的验证边界。
 
 ## 意外与发现
 
@@ -92,6 +93,12 @@
 
 - 观察：2026-06-11 复核第三次宿主诊断时，input write 相比原始版本仍改善，但 file-link resolve 已成为新的主瓶颈；207 次请求累计 613.7s，p90 13.0s，max 33.3s，慢请求主要是 `build/plan`、`Dashboard/配置页/状态按钮很多不会按预期工作`、`@earendil-works/pi-coding-agent` 等非文件候选。该 dump 仍显示 `filteredCandidateCount = 0` 且没有 `source: styled`，因此后续诊断需要 schema/version 标记来区分“未安装最新构建”和“规则仍不够窄”。
   证据：用户提供的 `/home/users/ziyang01.wang-al/projects/dsc-test-02/.debug/current-host-diagnostics/2026-06-10T16-23-08-709Z/summary.json` 与 `execution-file-link-resolve-diagnostics.json`；同一 dump 的 host input p50 为 20ms、p90 为 118ms，但 file-link resolve p50 为 116ms、p90 为 13027ms、p95 为 17160ms、max 为 33345ms。
+
+- 观察：`workspace.openTextDocument` 会把所有普通文件强制解释成文本，导致 PNG、GIF、MP4 已解析成功却在打开阶段 rejection；改用 `vscode.open` 后，VS Code 会按已注册 custom editor 选择图片或视频预览，同时继续接受文本 selection。
+  证据：2026-07-14 的现场诊断中三类媒体均 `resolvedCount = 1`，但旧实现记录 `execution/linkOpenRejected`；新增 trusted Host smoke 确认 PNG 打开为 `TabInputCustom` 且 `viewType=imagePreview.previewEditor`。
+
+- 观察：`vscode.open` 的命令返回契约不能报告 editor model 的最终加载结果。命令 rejection 可由 Host 捕获并写入 `execution/linkOpenRejected.detail.error`；若 editor service 内部显示错误占位页，命令仍正常 resolve，当前应记录 `execution/linkOpened`。缓存目标在 resolve 后被删除或移动时也可能进入后一条路径。
+  证据：2026-07-14 review 的真实 Host 探针确认不存在文件会打开 “file was not found” 占位页且命令正常 resolve；本轮 smoke 另外注入精确 command rejection，锁定可观察错误边界。
 
 ## 决策记录
 
@@ -155,6 +162,10 @@
   理由：第四次真实 dump 显示 file-link 请求已从 207 降到 7，输入 p90 约 79ms，但候选已明显偏少；继续收紧会损害链接体验，且单次 `stat` 仍可能抖到秒级。昂贵的文件验证必须被用户意图、缓存和预算约束，而不是由 xterm provider 枚举触发。
   日期/作者：2026-06-11 / Codex
 
+- 决策：普通文件统一使用 `vscode.open`，由 VS Code editor service 选择文本或 custom editor；`execution/linkOpened` 表示 opener 命令已受理，`execution/linkOpenRejected` 只表示命令 rejection。本轮不为缓存目标增加激活前重复 `stat`。
+  理由：通用 opener 才能覆盖图片、GIF、视频等二进制文件，同时保留文本 selection。公开命令契约无法观察 editor 内部加载结果；重复 `stat` 会增加交互路径 I/O，并且用户已经能从 VS Code 错误占位页看到 stale target，因此当前保持 command-based 口径并把边界写清。
+  日期/作者：2026-07-14 / Codex
+
 ## 结果与复盘
 
 当前实现已经补齐本轮 review 指出的确定性 parity 缺口：search exact-open / Quick Access 会保留 `contextLine` 的 `line[:column]` 信息；原生同类的唯一 partial basename hit 只保留在 search opener 阶段，不再让 local fallback 共享并误把 plain word 升级成 file link；multiline/file resolve cache 会在终端内容变化时失效，避免同槽位 redraw 复用旧目标；wrapper / trailing punctuation 不再被仓库私有 refine 提升成 file link。对应的 helper 单测与 Playwright / targeted regression 已持续补齐。
@@ -171,6 +182,8 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 
 同日第四轮诊断后转向交互机制：最新 dump 证明 hotfix 已把 file-link resolve 从 207 次 / 613.7s 降到 7 次 / 2.93s，输入 p50 17ms、p90 79ms，但候选也被压到只剩少量明确路径，继续静态收紧会牺牲链接可发现性。实现上，`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 的 file / multiline / styled / hardwrap provider 现在只返回 pending file link；点击 pending link 时才调用 Host resolve，成功后立即打开 file，失败后降级 search。`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 和协议增加 `priority` 字段；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 记录 priority / cache 诊断，维护 30s resolve cache、in-flight dedupe、同节点串行和背景请求节流，`resolvedId` 也保存真实 resolved target，打开时优先复用已解析结果。`extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 在单次 candidate group 内复用 `stat` / workspace fallback promise，避免重复路径重复 filesystem probe。新增 / 更新测试覆盖 priority 协议、重复 stat 去重、fallback hover 不 eager resolve、fallback 点击才 interactive resolve、既有高置信 negative refresh 和 link activation 回归；已通过 `npm run typecheck`、`npm run test:execution-terminal-links`、`npm run test:execution-terminal-native-helpers`、`npm run test:protocol-webview-messages`、`npm run build` 和定向 `npm run test:webview -- --grep "link activation posts parsed file and URL targets|styled hard-wrapped file fragments resolve as one link|reuses file link resolution while live output continues|refreshes negative file link cache while live output continues|does not eagerly resolve fallback-only text during hover or live output|resolves fallback file links only on activation|keeps unresolved file link fallback stable while live output continues"`。
 
+2026-07-14 的媒体 opener 修复把普通文件从 `workspace.openTextDocument` 切换为 `vscode.open`。文本 exact-open 与 multi-root search 继续传递 line / column selection；图片、GIF、视频由 VS Code 已注册 custom editor 接管。trusted Host smoke 直接验证 PNG 使用 `imagePreview.previewEditor`，并注入一次 command rejection 验证 `execution/linkOpenRejected.detail.error`；GIF / MP4 虽走同一路径且有 VS Code 1.128 内置 media-preview 注册，但尚未分别执行真实 Host fixture。诊断结论只覆盖 opener 命令是否 resolve/reject，不覆盖 editor service 内部显示错误占位页的加载结果。
+
 ## 上下文与定向
 
 这次改动横跨四个主要区域。
@@ -179,7 +192,7 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 
 第二块是共享 parser / link model，主要位于 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts`。这里定义了当前仓库自己的 `ExecutionTerminalOpenLink`、`ExecutionTerminalFileLinkCandidate`、path suffix parser、单行 path parser 与 fallback matcher。若本轮按原生 Terminal 对齐，这里的职责会从“定义产品规则”收缩为“承载等价 parser / 类型适配”。
 
-第三块是 Host 侧 resolver 与 opener，位于 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 和 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`。这里当前负责 file path sanitize、cwd resolve、workspace fallback、search quickOpen fallback 和 `vscode.open` / `showTextDocument` / `revealInExplorer` 等打开动作。若要对齐原生 Terminal，需要把 exact-open、search、allowed scheme 与 file/uri opener 语义重新对齐。
+第三块是 Host 侧 resolver 与 opener，位于 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 和 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`。这里当前负责 file path sanitize、cwd resolve、workspace fallback、search quickOpen fallback 和 `vscode.open` / `revealInExplorer` 等打开动作。普通文件统一交给 `vscode.open`，让 editor service 在文本与 custom editor 之间选择；Host 只能观察 opener 命令是否 reject，不能观察 editor 内部加载结果。若要对齐原生 Terminal，需要继续保持 exact-open、search、allowed scheme 与 file/uri opener 语义一致。
 
 第四块是 line-scoped cwd tracker，位于 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts`。这是当前仓库没有 command detection capability 时最接近原生行级 cwd 的输入来源。后续 multiline / local / search opener 如需对齐原生 Terminal，都应优先消费这里的 `buffer line -> cwd`，而不是回退到节点级 cwd。
 
@@ -265,7 +278,8 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 3. 当前已知“过多链接”样例在执行节点中不再比原生 Terminal 注册更多 file-like link。
 4. `word/search link`、`search exact-open` 与 `Quick Access fallback` 语义与原生一致。
 5. hover 文案和修饰键与原生一致；如果实现了 allowed scheme 提示，则未放行 scheme 不会直接打开。
-6. `npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过。
+6. 普通文件通过 `vscode.open` 后，文本 selection 仍生效，PNG 由 `imagePreview.previewEditor` custom editor 接管；精确 command rejection 会进入 `execution/linkOpenRejected.detail.error`。GIF / MP4 若未分别执行真实 fixture，必须继续把这项边界留在计划与正式设计中。
+7. `npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过。
 
 ## 幂等性与恢复
 
@@ -279,6 +293,8 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
     VSCode upstream：显式 hyperlink + multiline/local/uri/word detector 顺序，search opener 先 exact-open 后 Quick Access。
 
 后续在这里追加最短必要的测试输出，证明“multiline 恢复可点击”和“误判数量收敛到原生结果”。
+
+2026-07-14 媒体 opener 的最短 Host 证据是：PNG link 激活后活动 tab 为 `TabInputCustom`、`viewType=imagePreview.previewEditor`；注入的 `vscode.open` rejection 文本原样出现在 `execution/linkOpenRejected.detail.error`。GIF / MP4 使用相同 opener，但当前没有各自的真实 fixture 证据。
 
 ## 接口与依赖
 
@@ -308,3 +324,5 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 本次更新说明：2026-05-19 追加 Codex / Claude TUI 硬换行链接第一阶段实现与验证记录；该能力属于原生 parity 之外的受控适配层，因此同步记录强锚点规则、误判边界和真实 TUI 手动验证缺口。
 
 本次更新说明：2026-05-19 追加 grouped hover underline overlay 决策；该方案避免把 hard-wrap link range 扩成连续跨行范围，同时解决用户手测发现的“可点击但视觉下划线不像同一个链接”的问题。
+
+本次更新说明：2026-07-14 同步媒体文件通用 opener 修复、command-based opened/rejected 诊断边界与 PNG custom editor / command rejection 验证；同时显式保留 GIF / MP4 尚未分别执行真实 Host fixture 的缺口，以修复 PR #266 review 指出的活文档漂移。

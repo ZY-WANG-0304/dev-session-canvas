@@ -7806,13 +7806,59 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       10000
     );
     const mediaTab = await waitForActiveTab(
-      (tab) => tab.input?.uri?.fsPath === mediaLinkTargetPath,
+      (tab) =>
+        tab.input instanceof vscode.TabInputCustom &&
+        tab.input.viewType === 'imagePreview.previewEditor' &&
+        tab.input.uri.fsPath === mediaLinkTargetPath,
       10000
     );
+    assert.ok(mediaTab.input instanceof vscode.TabInputCustom);
+    assert.strictEqual(mediaTab.input.viewType, 'imagePreview.previewEditor');
     assert.strictEqual(mediaTab.input.uri.fsPath, mediaLinkTargetPath);
 
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+
+    const expectedOpenRejection = 'Synthetic execution link opener rejection';
+    const originalExecuteCommand = vscode.commands.executeCommand;
+    vscode.commands.executeCommand = async (command, ...args) => {
+      if (command === 'vscode.open' && args[0]?.fsPath === mediaLinkTargetPath) {
+        throw new Error(expectedOpenRejection);
+      }
+
+      return originalExecuteCommand(command, ...args);
+    };
+    assert.notStrictEqual(
+      vscode.commands.executeCommand,
+      originalExecuteCommand,
+      'Failed to intercept vscode.commands.executeCommand.'
+    );
+    try {
+      await clearDiagnosticEvents();
+      await performWebviewDomAction(
+        {
+          kind: 'activateExecutionLink',
+          nodeId: terminalNodeId,
+          text: mediaFileLinkText
+        },
+        'editor',
+        10000
+      );
+      await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/linkOpenRejected' &&
+              event.detail?.kind === 'terminal' &&
+              event.detail?.nodeId === terminalNodeId &&
+              event.detail?.text === mediaFileLinkText &&
+              event.detail?.error === expectedOpenRejection
+          ),
+        10000
+      );
+    } finally {
+      vscode.commands.executeCommand = originalExecuteCommand;
+    }
 
     const cwdScopedFileLinkText = 'link-target.ts:3:1';
     await performWebviewDomAction(
