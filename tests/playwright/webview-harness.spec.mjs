@@ -4814,6 +4814,149 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 }
 
+test.describe('execution terminal multi-touch movement abort', () => {
+  test.use({ hasTouch: true });
+
+  for (const executionKind of ['agent', 'terminal']) {
+    test(`${executionKind} second touch cannot reopen the aborted terminal resize gate`, async ({ page }) => {
+      test.setTimeout(60_000);
+      const nodeId = `${executionKind}-zoom`;
+
+      await openHarness(page, {
+        persistedState: {
+          viewport: { x: 0, y: 0, zoom: 1 }
+        }
+      });
+      await bootstrap(page, createLiveExecutionNodeState(executionKind));
+      await waitForExecutionTerminalReady(page, nodeId);
+
+      const node = nodeById(page, nodeId);
+      const viewport = node.locator('.terminal-viewport');
+      await viewport.evaluate((element) => {
+        element.style.flex = '0 0 450px';
+        element.style.width = '450px';
+      });
+      await settleWebview(page, 4);
+      const stableTerminal = await readProbeNode(page, nodeId);
+      expect(stableTerminal).not.toBeNull();
+      await dispatchExecutionSnapshot(page, {
+        nodeId,
+        kind: executionKind,
+        output: '',
+        cols: stableTerminal.terminalCols,
+        rows: stableTerminal.terminalRows,
+        liveSession: true
+      });
+      await settleWebview(page, 4);
+      await clearPostedMessages(page);
+
+      const dragSurface = node.locator('.window-title-subtitle');
+      const dragBox = await dragSurface.boundingBox();
+      expect(dragBox).not.toBeNull();
+      const readNodeTransform = () =>
+        node.evaluate((element) => element.closest('.react-flow__node')?.getAttribute('style') ?? null);
+      const stableNodeTransform = await readNodeTransform();
+      const firstTouch = {
+        identifier: 1,
+        clientX: dragBox.x + dragBox.width / 2,
+        clientY: dragBox.y + dragBox.height / 2
+      };
+      const movedFirstTouch = {
+        ...firstTouch,
+        clientX: firstTouch.clientX + 35,
+        clientY: firstTouch.clientY + 25
+      };
+      const secondTouch = {
+        identifier: 2,
+        clientX: firstTouch.clientX + 8,
+        clientY: firstTouch.clientY + 8
+      };
+      const dispatchTouch = (type, touches, changedTouches) =>
+        dragSurface.evaluate(
+          (element, payload) => {
+            const createTouch = (contact) =>
+              new Touch({
+                identifier: contact.identifier,
+                target: element,
+                clientX: contact.clientX,
+                clientY: contact.clientY,
+                pageX: contact.clientX,
+                pageY: contact.clientY,
+                screenX: contact.clientX,
+                screenY: contact.clientY,
+                radiusX: 1,
+                radiusY: 1,
+                rotationAngle: 0,
+                force: 0.5
+              });
+            const activeTouches = payload.touches.map(createTouch);
+            element.dispatchEvent(
+              new TouchEvent(payload.type, {
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+                touches: activeTouches,
+                targetTouches: activeTouches,
+                changedTouches: payload.changedTouches.map(createTouch)
+              })
+            );
+          },
+          { type, touches, changedTouches }
+        );
+
+      await dispatchTouch('touchstart', [firstTouch], [firstTouch]);
+      await dispatchTouch('touchmove', [movedFirstTouch], [movedFirstTouch]);
+      await dispatchTouch('touchstart', [movedFirstTouch, secondTouch], [secondTouch]);
+      await dispatchTouch(
+        'touchmove',
+        [
+          { ...movedFirstTouch, clientX: movedFirstTouch.clientX + 10 },
+          { ...secondTouch, clientX: secondTouch.clientX + 10 }
+        ],
+        [movedFirstTouch, secondTouch]
+      );
+      await dispatchTouch('touchcancel', [], [movedFirstTouch, secondTouch]);
+      await settleWebview(page, 3);
+
+      await viewport.evaluate((element) => {
+        element.style.flex = '0 0 300px';
+        element.style.width = '300px';
+      });
+      let resizedTerminal = null;
+      await expect
+        .poll(async () => {
+          resizedTerminal = await readProbeNode(page, nodeId);
+          if (!resizedTerminal) {
+            return null;
+          }
+          return JSON.stringify({
+            cols: resizedTerminal.terminalCols,
+            rows: resizedTerminal.terminalRows
+          });
+        })
+        .not.toBe(
+          JSON.stringify({
+            cols: stableTerminal.terminalCols,
+            rows: stableTerminal.terminalRows
+          })
+        );
+      await expect
+        .poll(async () => (await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).length)
+        .toBe(1);
+
+      const resizeMessages = await readPostedMessagesByType(page, 'webview/resizeExecutionSession');
+      expect(resizeMessages[0].payload).toMatchObject({
+        nodeId,
+        kind: executionKind,
+        cols: resizedTerminal.terminalCols,
+        rows: resizedTerminal.terminalRows
+      });
+      expect(await readPostedMessagesByType(page, 'webview/moveNode')).toHaveLength(0);
+      await expect.poll(readNodeTransform).toBe(stableNodeTransform);
+    });
+  }
+});
+
 test('suspended Claude Agent legacy state no longer exposes restore actions', async ({ page }) => {
   const state = createLiveExecutionNodeState('agent');
   const agentNode = state.nodes[0];

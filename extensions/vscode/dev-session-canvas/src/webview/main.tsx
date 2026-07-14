@@ -412,8 +412,12 @@ const activeExecutionTerminalMovementNodeIds = new Set<string>();
 const activeCanvasNodeMovementNodeIds = new Set<string>();
 const abortedCanvasNodeMovementNodeIds = new Set<string>();
 let executionTerminalMovementWasAborted = false;
+let executionTerminalTouchAbortSequenceActive = false;
 
 function beginExecutionTerminalNodeMovement(nodeIds: Iterable<string>): void {
+  if (executionTerminalTouchAbortSequenceActive) {
+    return;
+  }
   if (activeCanvasNodeMovementNodeIds.size === 0) {
     executionTerminalMovementWasAborted = false;
     abortedCanvasNodeMovementNodeIds.clear();
@@ -1559,6 +1563,7 @@ function App(): JSX.Element {
   };
 
   useEffect(() => {
+    let touchAbortFinalizeQueued = false;
     const abortActiveNodeMovement = (): void => {
       const abortedNodeIds = abortExecutionTerminalNodeMovement();
       if (abortedNodeIds.length === 0) {
@@ -1596,9 +1601,29 @@ function App(): JSX.Element {
       }
     };
     const handleTouchStart = (event: TouchEvent): void => {
-      if (event.touches.length > 1) {
-        abortActiveNodeMovement();
+      if (event.touches.length <= 1) {
+        return;
       }
+
+      executionTerminalTouchAbortSequenceActive = true;
+      if (touchAbortFinalizeQueued) {
+        return;
+      }
+      touchAbortFinalizeQueued = true;
+      window.queueMicrotask(() => {
+        touchAbortFinalizeQueued = false;
+        if (executionTerminalTouchAbortSequenceActive) {
+          abortActiveNodeMovement();
+        }
+      });
+    };
+    const handleTouchSequenceEnd = (event: TouchEvent): void => {
+      if (event.touches.length !== 0) {
+        return;
+      }
+      window.queueMicrotask(() => {
+        executionTerminalTouchAbortSequenceActive = false;
+      });
     };
 
     window.addEventListener('focus', handleFocus);
@@ -1607,6 +1632,8 @@ function App(): JSX.Element {
     window.addEventListener('lostpointercapture', handlePointerLifecycleAbort, true);
     window.addEventListener('mouseout', handleWindowMouseOut);
     window.addEventListener('touchstart', handleTouchStart, true);
+    window.addEventListener('touchend', handleTouchSequenceEnd, true);
+    window.addEventListener('touchcancel', handleTouchSequenceEnd, true);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
@@ -1616,7 +1643,10 @@ function App(): JSX.Element {
       window.removeEventListener('lostpointercapture', handlePointerLifecycleAbort, true);
       window.removeEventListener('mouseout', handleWindowMouseOut);
       window.removeEventListener('touchstart', handleTouchStart, true);
+      window.removeEventListener('touchend', handleTouchSequenceEnd, true);
+      window.removeEventListener('touchcancel', handleTouchSequenceEnd, true);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      executionTerminalTouchAbortSequenceActive = false;
       abortExecutionTerminalNodeMovement();
     };
   }, []);
