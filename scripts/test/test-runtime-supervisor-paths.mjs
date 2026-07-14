@@ -45,10 +45,10 @@ try {
   const extensionStorageDir = '/tmp/dev-session-canvas/workspace-storage';
   const currentGenerationBase = resolveCurrentRuntimeSupervisorBaseStoragePath(extensionStorageDir);
   const currentGenerationStorageDir = posixPath.join(currentGenerationBase, 'runtime-supervisor');
-  assert.equal(CURRENT_RUNTIME_SUPERVISOR_GENERATION, 'terminal-stream-v1');
+  assert.equal(CURRENT_RUNTIME_SUPERVISOR_GENERATION, 'agent-provider-lifecycle-v1');
   assert.equal(
     currentGenerationBase,
-    posixPath.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-stream-v1')
+    posixPath.join(extensionStorageDir, 'runtime-supervisor-generations', 'agent-provider-lifecycle-v1')
   );
   const currentGenerationPaths = resolveRuntimeSupervisorPathsFromStorageDir(currentGenerationStorageDir, {
     platform: 'linux',

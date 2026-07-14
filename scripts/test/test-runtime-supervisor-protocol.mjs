@@ -311,7 +311,9 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
               capabilities: {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
-                terminalAppliedRevisionAckV1: true
+                terminalAppliedRevisionAckV1: true,
+                agentSubmissionIntentV1: true,
+                agentProviderLifecycleV1: true
               }
             }
           })}\n`);
@@ -376,6 +378,8 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
     assert.equal(client.supportsTerminalSessionStream(), true);
     assert.equal(client.supportsTerminalProjectionSnapshot(), true);
     assert.equal(client.supportsTerminalAppliedRevisionAck(), true);
+    assert.equal(client.supportsAgentSubmissionIntent(), true);
+    assert.equal(client.supportsAgentProviderLifecycle(), true);
     assert.equal(connectionCount, 1, 'Concurrent readiness callers must share one socket connection.');
     assert.equal(helloRequestCount, 1, 'Concurrent readiness callers must share one hello handshake.');
   } finally {
@@ -499,6 +503,69 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     assert.equal(hello.capabilities?.terminalProjectionSnapshotV1, true);
     assert.equal(hello.capabilities?.terminalProjectionCheckpointV1, true);
     assert.equal(hello.capabilities?.terminalAppliedRevisionAckV1, true);
+    assert.equal(hello.capabilities?.agentSubmissionIntentV1, true);
+    assert.equal(hello.capabilities?.agentProviderLifecycleV1, true);
+
+    const lifecycleHookPath = path.resolve(
+      'extensions/vscode/dev-session-canvas/scripts/runtime/agent-lifecycle-hook.cjs'
+    );
+    const lifecycleAgentScriptPath = path.join(tempDir, 'runtime-agent-lifecycle.js');
+    await writeFile(
+      lifecycleAgentScriptPath,
+      `const { spawn } = require('node:child_process');\nprocess.stdin.resume();\nprocess.stdin.once('data', () => {\n  setTimeout(() => {\n    const payload = JSON.stringify({ type: 'agent-turn-complete', 'thread-id': 'thread-runtime-1', 'turn-id': 'turn-runtime-1' });\n    spawn(process.execPath, [${JSON.stringify(lifecycleHookPath)}, 'codex', payload], { env: process.env, stdio: 'ignore' });\n  }, 2300);\n});\nsetInterval(() => undefined, 1000);\n`,
+      'utf8'
+    );
+    const lifecycleAgentSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'agent',
+      sessionId: 'provider-lifecycle-agent',
+      displayLabel: 'Codex',
+      launchMode: 'start',
+      scrollback: 1000,
+      provider: 'codex',
+      providerLifecycleEnabled: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [lifecycleAgentScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    assert.equal(lifecycleAgentSnapshot.providerLifecycleEnabled, true);
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'provider-lifecycle-agent',
+      data: '\r',
+      intent: 'submit'
+    });
+    await delay(1900);
+    const stillRunningSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'getSessionSnapshot', {
+      sessionId: 'provider-lifecycle-agent'
+    });
+    assert.equal(
+      stillRunningSnapshot.lifecycle,
+      'running',
+      'A lifecycle-enabled Agent must not enter waiting-input through the 1600ms hard fallback.'
+    );
+    assert.equal(stillRunningSnapshot.agentActivitySource, 'submission-intent');
+    const completedLifecycleSnapshot = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === 'provider-lifecycle-agent' &&
+        message.payload.lifecycle === 'waiting-input' &&
+        message.payload.providerTurnId === 'turn-runtime-1',
+      'provider lifecycle completion',
+      4000
+    );
+    assert.equal(completedLifecycleSnapshot.payload.providerSessionId, 'thread-runtime-1');
+    assert.equal(completedLifecycleSnapshot.payload.agentActivitySource, 'provider-lifecycle');
+    assert.equal(completedLifecycleSnapshot.payload.lastTurnOutcome, 'completed');
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: 'provider-lifecycle-agent'
+    });
 
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
     const gapMarker = `attach-gap-marker-${Date.now()}`;

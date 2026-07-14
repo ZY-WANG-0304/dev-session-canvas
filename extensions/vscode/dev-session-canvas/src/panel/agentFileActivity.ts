@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import type { AgentProviderKind, CanvasFileActivityAccessMode } from '../common/protocol';
@@ -17,8 +18,9 @@ export interface AgentFileActivityEvent {
 }
 
 export interface AgentFileActivitySession {
-  extraArgs: string[];
-  extraEnv: NodeJS.ProcessEnv;
+  configureLaunch(args: string[], env: NodeJS.ProcessEnv, cwd: string): string[];
+  isProviderLifecycleEnabled(): boolean;
+  getProviderLifecycleFallbackReason(): string | undefined;
   start(onEvent: (event: AgentFileActivityEvent) => void): void;
   dispose(): Promise<void>;
 }
@@ -28,6 +30,7 @@ interface AgentFileActivitySessionParams {
   command: string;
   extensionRootPath: string;
   storageRootPath: string;
+  fileActivityEnabled: boolean;
 }
 
 interface ParsedAgentFileActivityEvent {
@@ -42,7 +45,8 @@ export function createAgentFileActivitySession(
   if (looksLikeFakeAgentProviderCommand(params.command)) {
     return createNdjsonFileActivitySession({
       mode: 'fake-provider',
-      storageRootPath: params.storageRootPath
+      storageRootPath: params.storageRootPath,
+      fileActivityEnabled: params.fileActivityEnabled
     });
   }
 
@@ -50,16 +54,12 @@ export function createAgentFileActivitySession(
     return createNdjsonFileActivitySession({
       mode: 'claude',
       storageRootPath: params.storageRootPath,
-      extensionRootPath: params.extensionRootPath
+      extensionRootPath: params.extensionRootPath,
+      fileActivityEnabled: params.fileActivityEnabled
     });
   }
 
-  return {
-    extraArgs: [],
-    extraEnv: {},
-    start: () => {},
-    dispose: async () => {}
-  };
+  return createCodexRuntimeIntegrationSession(params);
 }
 
 export function looksLikeFakeAgentProviderCommand(command: string): boolean {
@@ -71,58 +71,58 @@ function createNdjsonFileActivitySession(params: {
   mode: 'claude' | 'fake-provider';
   storageRootPath: string;
   extensionRootPath?: string;
+  fileActivityEnabled: boolean;
 }): AgentFileActivitySession {
   const sessionRootPath = path.join(params.storageRootPath, randomUUID());
   fs.mkdirSync(sessionRootPath, { recursive: true });
   const eventStreamPath = path.join(sessionRootPath, 'events.ndjson');
   fs.writeFileSync(eventStreamPath, '', 'utf8');
 
-  const disposer = new NdjsonFileActivityWatcher(eventStreamPath);
-  const extraArgs: string[] = [];
-  const extraEnv: NodeJS.ProcessEnv = {};
-
-  if (params.mode === 'fake-provider') {
-    extraEnv[FAKE_AGENT_PROVIDER_FILE_EVENTS_ENV_KEY] = eventStreamPath;
-  }
-
-  if (params.mode === 'claude') {
-    const extensionRootPath = params.extensionRootPath;
-    if (!extensionRootPath) {
-      throw new Error('Claude 文件活动会话缺少 extension root。');
-    }
-
-    const hookScriptPath = path.join(extensionRootPath, 'scripts', 'runtime', 'claude-file-event-hook.cjs');
-    const settingsPath = path.join(sessionRootPath, 'claude-file-activity-settings.json');
-    const hookCommand = `${shellQuote(process.execPath)} ${shellQuote(hookScriptPath)}`;
-    const settings = {
-      hooks: {
-        PostToolUse: [
-          {
-            matcher: 'Read|Edit|MultiEdit|Write',
-            hooks: [
-              {
-                type: 'command',
-                command: hookCommand
-              }
-            ]
-          }
-        ]
-      }
-    };
-
-    fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
-    extraArgs.push('--settings', settingsPath);
-    extraEnv[AGENT_FILE_EVENT_STREAM_ENV_KEY] = eventStreamPath;
-  }
+  const disposer = params.fileActivityEnabled
+    ? new NdjsonFileActivityWatcher(eventStreamPath)
+    : undefined;
+  let lifecycleEnabled = false;
+  let lifecycleFallbackReason: string | undefined;
 
   return {
-    extraArgs,
-    extraEnv,
+    configureLaunch(args, env, cwd) {
+      if (params.mode === 'fake-provider') {
+        if (params.fileActivityEnabled) {
+          env[FAKE_AGENT_PROVIDER_FILE_EVENTS_ENV_KEY] = eventStreamPath;
+        }
+        lifecycleEnabled = false;
+        lifecycleFallbackReason = 'fake-provider';
+        return [...args];
+      }
+
+      const extensionRootPath = params.extensionRootPath;
+      if (!extensionRootPath) {
+        lifecycleEnabled = false;
+        lifecycleFallbackReason = 'missing-extension-root';
+        return [...args];
+      }
+
+      const mergedSettings = prepareClaudeGeneratedSettings({
+        args,
+        cwd,
+        extensionRootPath,
+        sessionRootPath,
+        includeFileActivityHook: params.fileActivityEnabled
+      });
+      lifecycleEnabled = mergedSettings.lifecycleEnabled;
+      lifecycleFallbackReason = mergedSettings.fallbackReason;
+      if (params.fileActivityEnabled && mergedSettings.lifecycleEnabled) {
+        env[AGENT_FILE_EVENT_STREAM_ENV_KEY] = eventStreamPath;
+      }
+      return mergedSettings.args;
+    },
+    isProviderLifecycleEnabled: () => lifecycleEnabled,
+    getProviderLifecycleFallbackReason: () => lifecycleFallbackReason,
     start(onEvent) {
-      disposer.start(onEvent);
+      disposer?.start(onEvent);
     },
     async dispose() {
-      await disposer.dispose();
+      await disposer?.dispose();
       try {
         fs.rmSync(sessionRootPath, { recursive: true, force: true });
       } catch {
@@ -130,6 +130,277 @@ function createNdjsonFileActivitySession(params: {
       }
     }
   };
+}
+
+function createCodexRuntimeIntegrationSession(
+  params: AgentFileActivitySessionParams
+): AgentFileActivitySession {
+  let lifecycleEnabled = false;
+  let lifecycleFallbackReason: string | undefined;
+
+  return {
+    configureLaunch(args, env) {
+      const conflictReason = findCodexNotifyConflict(args, env);
+      if (conflictReason) {
+        lifecycleEnabled = false;
+        lifecycleFallbackReason = conflictReason;
+        return [...args];
+      }
+
+      const hookScriptPath = path.join(
+        params.extensionRootPath,
+        'scripts',
+        'runtime',
+        'agent-lifecycle-hook.cjs'
+      );
+      const notifyCommand = JSON.stringify([process.execPath, hookScriptPath, 'codex']);
+      lifecycleEnabled = true;
+      lifecycleFallbackReason = undefined;
+      return ['-c', `notify=${notifyCommand}`, ...args];
+    },
+    isProviderLifecycleEnabled: () => lifecycleEnabled,
+    getProviderLifecycleFallbackReason: () => lifecycleFallbackReason,
+    start: () => {},
+    dispose: async () => {}
+  };
+}
+
+function prepareClaudeGeneratedSettings(params: {
+  args: string[];
+  cwd: string;
+  extensionRootPath: string;
+  sessionRootPath: string;
+  includeFileActivityHook: boolean;
+}): { args: string[]; lifecycleEnabled: boolean; fallbackReason?: string } {
+  const extracted = extractClaudeAdditionalSettings(params.args);
+  if (!extracted.ok) {
+    return {
+      args: [...params.args],
+      lifecycleEnabled: false,
+      fallbackReason: extracted.reason
+    };
+  }
+
+  const baseSettings = extracted.value
+    ? readClaudeAdditionalSettings(extracted.value, params.cwd)
+    : {};
+  if (!baseSettings || (baseSettings.hooks !== undefined && !isRecord(baseSettings.hooks))) {
+    return {
+      args: [...params.args],
+      lifecycleEnabled: false,
+      fallbackReason: 'claude-additional-settings-unreadable'
+    };
+  }
+  const baseHooks = baseSettings.hooks as Record<string, unknown> | undefined;
+  const generatedHookNames = [
+    'UserPromptSubmit',
+    'Stop',
+    'StopFailure',
+    ...(params.includeFileActivityHook ? ['PostToolUse'] : [])
+  ];
+  if (generatedHookNames.some((name) => baseHooks?.[name] !== undefined && !Array.isArray(baseHooks[name]))) {
+    return {
+      args: [...params.args],
+      lifecycleEnabled: false,
+      fallbackReason: 'claude-additional-settings-hooks-invalid'
+    };
+  }
+
+  const lifecycleHookScriptPath = path.join(
+    params.extensionRootPath,
+    'scripts',
+    'runtime',
+    'agent-lifecycle-hook.cjs'
+  );
+  const lifecycleHookCommand = (eventName: string): string =>
+    `${shellQuote(process.execPath)} ${shellQuote(lifecycleHookScriptPath)} claude ${eventName}`;
+  const hooks = { ...baseHooks };
+  hooks.UserPromptSubmit = appendClaudeCommandHook(
+    hooks.UserPromptSubmit,
+    lifecycleHookCommand('UserPromptSubmit')
+  );
+  hooks.Stop = appendClaudeCommandHook(hooks.Stop, lifecycleHookCommand('Stop'));
+  hooks.StopFailure = appendClaudeCommandHook(
+    hooks.StopFailure,
+    lifecycleHookCommand('StopFailure')
+  );
+
+  if (params.includeFileActivityHook) {
+    const fileHookScriptPath = path.join(
+      params.extensionRootPath,
+      'scripts',
+      'runtime',
+      'claude-file-event-hook.cjs'
+    );
+    hooks.PostToolUse = appendClaudeCommandHook(
+      hooks.PostToolUse,
+      `${shellQuote(process.execPath)} ${shellQuote(fileHookScriptPath)}`,
+      'Read|Edit|MultiEdit|Write'
+    );
+  }
+
+  const settingsPath = path.join(params.sessionRootPath, 'claude-runtime-settings.json');
+  fs.writeFileSync(
+    settingsPath,
+    `${JSON.stringify({ ...baseSettings, hooks }, null, 2)}\n`,
+    'utf8'
+  );
+  return {
+    args: [...extracted.argsWithoutSettings, '--settings', settingsPath],
+    lifecycleEnabled: true
+  };
+}
+
+function appendClaudeCommandHook(
+  existing: unknown,
+  command: string,
+  matcher?: string
+): unknown[] {
+  const existingHooks = Array.isArray(existing) ? [...existing] : [];
+  return [
+    ...existingHooks,
+    {
+      ...(matcher ? { matcher } : {}),
+      hooks: [
+        {
+          type: 'command',
+          command
+        }
+      ]
+    }
+  ];
+}
+
+function extractClaudeAdditionalSettings(args: readonly string[]):
+  | { ok: true; argsWithoutSettings: string[]; value?: string }
+  | { ok: false; reason: string } {
+  const argsWithoutSettings: string[] = [];
+  let value: string | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (token === '--settings') {
+      const next = args[index + 1];
+      if (!next) {
+        return { ok: false, reason: 'claude-settings-value-missing' };
+      }
+      value = next;
+      index += 1;
+      continue;
+    }
+    if (token.startsWith('--settings=')) {
+      const inlineValue = token.slice('--settings='.length);
+      if (!inlineValue) {
+        return { ok: false, reason: 'claude-settings-value-missing' };
+      }
+      value = inlineValue;
+      continue;
+    }
+    argsWithoutSettings.push(token);
+  }
+
+  return { ok: true, argsWithoutSettings, value };
+}
+
+function readClaudeAdditionalSettings(value: string, cwd: string): Record<string, unknown> | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = trimmed.startsWith('{')
+      ? JSON.parse(trimmed)
+      : JSON.parse(fs.readFileSync(path.resolve(cwd, trimmed), 'utf8'));
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function findCodexNotifyConflict(args: readonly string[], env: NodeJS.ProcessEnv): string | undefined {
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (token === '-c' || token === '--config') {
+      if (isCodexNotifyOverride(args[index + 1])) {
+        return 'codex-cli-notify-conflict';
+      }
+      index += 1;
+      continue;
+    }
+    if (
+      (token.startsWith('-c') && isCodexNotifyOverride(token.slice(2))) ||
+      (token.startsWith('--config=') && isCodexNotifyOverride(token.slice('--config='.length)))
+    ) {
+      return 'codex-cli-notify-conflict';
+    }
+  }
+
+  const codexHome = resolveCodexHome(env);
+  if (!codexHome) {
+    return 'codex-home-unavailable';
+  }
+  const candidatePaths = [path.join(codexHome, 'config.toml')];
+  const profile = extractCodexProfile(args);
+  if (profile) {
+    if (!isSafeCodexProfileName(profile)) {
+      return 'codex-profile-unreadable';
+    }
+    candidatePaths.push(path.join(codexHome, `${profile}.config.toml`));
+  }
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      const content = fs.readFileSync(candidatePath, 'utf8');
+      if (/^\s*notify\s*=/mu.test(content)) {
+        return 'codex-user-notify-conflict';
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        return 'codex-config-unreadable';
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function isCodexNotifyOverride(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  const separatorIndex = value.indexOf('=');
+  return separatorIndex >= 0 && value.slice(0, separatorIndex).trim() === 'notify';
+}
+
+function extractCodexProfile(args: readonly string[]): string | undefined {
+  let profile: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (token === '-p' || token === '--profile') {
+      profile = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (token.startsWith('--profile=')) {
+      profile = token.slice('--profile='.length);
+    }
+  }
+  return profile?.trim() || undefined;
+}
+
+function isSafeCodexProfileName(value: string): boolean {
+  return value.length <= 128 && !value.includes('/') && !value.includes('\\') && value !== '.' && value !== '..';
+}
+
+function resolveCodexHome(env: NodeJS.ProcessEnv): string | undefined {
+  const configured = env.CODEX_HOME?.trim();
+  if (configured) {
+    return path.resolve(configured);
+  }
+  const home = env.HOME?.trim() || env.USERPROFILE?.trim();
+  const resolvedHome = home || os.homedir();
+  return resolvedHome ? path.join(path.resolve(resolvedHome), '.codex') : undefined;
 }
 
 class NdjsonFileActivityWatcher {
@@ -285,11 +556,33 @@ function parseAgentFileActivityEvent(line: string): ParsedAgentFileActivityEvent
 }
 
 function shellQuote(value: string): string {
+  if (process.platform === 'win32') {
+    return quoteWindowsCommandArgument(value);
+  }
   if (value.length === 0) {
     return "''";
   }
 
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function quoteWindowsCommandArgument(value: string): string {
+  let result = '"';
+  let backslashCount = 0;
+  for (const character of value) {
+    if (character === '\\') {
+      backslashCount += 1;
+      continue;
+    }
+    if (character === '"') {
+      result += `${'\\'.repeat(backslashCount * 2 + 1)}"`;
+      backslashCount = 0;
+      continue;
+    }
+    result += `${'\\'.repeat(backslashCount)}${character}`;
+    backslashCount = 0;
+  }
+  return `${result}${'\\'.repeat(backslashCount * 2)}"`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

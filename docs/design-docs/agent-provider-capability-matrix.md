@@ -21,7 +21,8 @@ related_specs:
   - docs/product-specs/agent-terminal-clipboard-shortcuts.md
 related_plans:
   - docs/exec-plans/active/agent-screenshot-paste-input.md
-updated_at: 2026-07-11
+  - docs/exec-plans/completed/agent-provider-lifecycle-events.md
+updated_at: 2026-07-15
 ---
 
 # Agent Provider 能力对照表
@@ -130,7 +131,7 @@ updated_at: 2026-07-11
 | CLI cwd | 支持：使用节点 cwd / workspace cwd，不切到扩展私有目录 | 支持：使用节点 cwd / workspace cwd，不切到扩展私有目录 | 必须确认 provider 能在 repo cwd 直接运行，并继承用户现有认证 / 配置上下文 |
 | Shell env / PATH 继承 | 支持：复用 Agent execution env 与 resolver cache | 支持：复用 Agent execution env 与 resolver cache | 必须复用 `shellEnvironmentResolver` / `agentCliResolver` 路线，避免 resolver 找到但 spawn 失败 |
 | 图片输入 / Agent 截图粘贴 | 支持：Codex 官方支持 `--image/-i`、交互 composer 图片粘贴和图片文件上下文；当前画布以保存临时图片文件并回填 shell-safe 路径文本的跨 provider bridge 接入，自动化覆盖 Webview/Host 路径注入，不伪造 provider 原生附件 chip | 支持：Claude Code 官方支持拖放图片、图片剪贴板粘贴和图片路径输入；当前画布同样以临时图片路径 bridge 接入，不伪造 `[Image #N]` chip | 必须明确 provider 是否支持本地图片文件路径作为 prompt 上下文；若只支持 GUI 附件、私有 chip 或不可从 PTY 文本引用图片，则不能默认复用截图粘贴，必须新增 provider adapter 或禁用该能力 |
-| 运行态 `running` / `waiting-input` | 支持：当前以 PTY / attention signal / quiet period 启发式为主 | 支持：当前以 PTY / attention signal / quiet period 启发式为主 | 若 provider 有结构化事件，应优先接入；没有则只能作为 fallback 启发式 |
+| 运行态 `running` / `waiting-input` | 支持：明确提交进入 `running`，direct-TUI `notify(agent-turn-complete)` 进入 `waiting-input`；自定义 notify 冲突与旧 Supervisor 才使用 PTY 启发式 fallback | 支持：`UserPromptSubmit(session_id, prompt_id)` 进入 `running`，同 identity 的 `Stop/StopFailure` 进入 `waiting-input`；adapter 不可用与旧 Supervisor 才使用 PTY 启发式 fallback | 必须优先提供带 session/turn identity 的 provider lifecycle；没有则只能显式标为 `heuristic / best-effort` |
 | Stop 行为 | 支持：先单次 `Ctrl-C` graceful stop，等待 Codex resume hint / token usage，超时后 force kill | 支持：不发送普通 `Ctrl-C` 收尾，沿用直接终止信号路径 | 必须定义 provider-specific stop，不要假设所有 CLI 都能用同一种 Ctrl-C 语义 |
 | `Ctrl-Z` / job control | 普通输入路径，不走 Claude 专属阻断 | 支持阻断：Webview / Host / runtime supervisor 拒绝 Claude Agent `Ctrl-Z`，提示停止、恢复或分叉 | 必须评估 direct-spawn CLI 是否支持 shell job table；不支持时不得承诺 `fg` 恢复 |
 | 显式 session resume 命令 | `codex resume <session-id>` | `claude --resume <session-id>` | 必须有 provider 原生显式 session id 恢复入口；否则不能进入正式自动恢复 / 历史恢复主路径 |
@@ -146,13 +147,13 @@ updated_at: 2026-07-11
 | Provider 图标 | 支持：`images/provider-codex-openai.svg`，缺失时 fallback SVG | 支持：`images/provider-claude-code-anthropic.svg`，缺失时 fallback SVG | 必须补图标资产或明确 fallback，保持 sidebar / history 一致 |
 | 终端 attention signal | 支持：BEL / OSC 9 / OSC 777 统一解析 | 支持：BEL / OSC 9 / OSC 777 统一解析 | 所有 PTY provider 默认继承；若 provider 有结构化通知，应优先接入但不能破坏通用 signal |
 | Agent 异常退出提醒 | 支持：已运行后非用户主动非 0 退出可触发 `agentAbnormalExit` | 支持：已运行后非用户主动非 0 退出可触发 `agentAbnormalExit` | 新 provider 默认可复用，但需确认启动失败、用户停止、正常退出不触发 |
-| 输出文本异常提醒 | 部分支持：默认关闭；用户设置 `agentAbnormalOutputTextNotifications=codex` 且启用 `codexAbnormalOutputText` 后识别高置信 Codex 最终失败文本 | 不支持：没有真实输出样本或结构化 StopFailure 前，不做 Claude 文本正则 | 不应复制 Codex 正则；应优先结构化错误事件，没有证据就不支持 |
-| Provider 结构化通知事件 | 不支持：当前未直接接入 Codex app-server / protocol 事件 | 不支持：当前未直接接入 Claude hooks notification 事件到 attention | 若 provider 提供结构化 turn complete / approval / input request，应作为新增能力单独设计和验证 |
+| 输出文本异常提醒 | 部分支持：默认关闭；用户设置 `agentAbnormalOutputTextNotifications=codex` 且启用 `codexAbnormalOutputText` 后识别高置信 Codex 最终失败文本 | 不支持文本正则：单轮失败改由结构化 `StopFailure` 记录错误并触发 attention | 不应复制 Codex 正则；应优先结构化错误事件，没有证据就不支持 |
+| Provider 结构化 lifecycle / notification 事件 | 部分支持：已接 direct-TUI `notify(agent-turn-complete)`；未接 app-server approval/input-request 事件 | 部分支持：已接 `UserPromptSubmit`、`Stop`、`StopFailure`；未接 `Notification` approval/idle 等其他事件 | turn start/complete/failure 必须携带 session/turn identity；approval/input request 等新语义应单独设计，不得复用回合结束状态 |
 | 文件活动 | 不支持：adapter 当前 no-op，未确认 Codex 结构化文件事件接口 | 支持：通过临时 `claude --settings <file>` hooks 监听 `Read` / `Edit` / `Write`，写入 session 事件流 | 必须有 provider 原生结构化文件事件；不得从 PTY 文本推断文件活动 |
 | Runtime supervisor / live-runtime | 支持：本地 PTY 与 runtime supervisor 两条路径都传递 provider、resumeStrategy、session id | 支持：本地 PTY 与 runtime supervisor 两条路径都传递 provider、resumeStrategy、session id | 必须让 supervisor 创建、输出、停止、resume hint 解析与 snapshot 序列化都认识该 provider |
 | Restricted Mode | 支持受限：可浏览历史和画布，不能创建 / 恢复 / 分叉执行节点 | 支持受限：可浏览历史和画布，不能创建 / 恢复 / 分叉执行节点 | 新 provider 不得绕过 `workspace.isTrusted` 执行限制 |
 | Virtual Workspace | 不支持 | 不支持 | 除非整体产品边界改变，否则新 provider 也不应声明支持 Virtual Workspace |
-| 当前主要技术债 | session id 与历史依赖 `~/.codex/sessions` 私有文件和时间窗匹配；Windows Codex 执行节点内历史不能向上翻页 | 会话历史依赖 `~/.claude/projects` 私有 transcript；文件活动依赖 Claude hooks 临时 settings 注入 | 新 provider 的私有文件、hook、protocol 假设必须登记退出条件 |
+| 当前主要技术债 | session id 与历史依赖 `~/.codex/sessions` 私有文件和时间窗匹配；用户自定义 notify 冲突时 lifecycle 退回启发式；notifier ACK 时序不是官方保证；Windows Codex 执行节点内历史不能向上翻页 | 会话历史依赖 `~/.claude/projects` 私有 transcript；文件活动/lifecycle 依赖 Claude hooks 临时 settings 注入；Stop 被其他 hook block 后可能短暂低估运行态 | 新 provider 的私有文件、hook、protocol 和 callback 时序假设必须登记退出条件 |
 
 ### 7.3 最小接入门槛
 
@@ -221,4 +222,5 @@ updated_at: 2026-07-11
 
 - 2026-06-19：本文首次整理当前 `Codex` / `Claude Code` provider 能力矩阵。能力事实来自当前设计文档与代码路径复核；本次为文档整理，不新增运行时代码。
 - 2026-06-25：补充图片输入 / Agent 截图粘贴能力。Codex 与 Claude Code 均有官方图片输入或图片路径入口；当前画布选择保存临时图片并回填路径文本作为跨 provider bridge，验证记录见 `docs/exec-plans/active/agent-screenshot-paste-input.md` 和 `docs/design-docs/execution-terminal-clipboard-shortcuts.md`。
+- 2026-07-15：补充 provider lifecycle 能力。Codex direct-TUI notify、Claude `UserPromptSubmit/Stop/StopFailure`、identity 校验、旧 Supervisor fallback 和 StopFailure attention 已通过聚焦测试与 trusted VS Code smoke；详细边界见 `docs/design-docs/agent-running-state-detection.md`。
 - 当前整体状态保持 `验证中`：`Codex` session id / history 仍依赖私有文件和启发式匹配，`Claude Code` history 仍依赖私有 transcript，provider 级真实 fork 仍建议在安装对应 CLI 的 Development Host 中人工确认。
