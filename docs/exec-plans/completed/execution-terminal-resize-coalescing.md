@@ -28,7 +28,7 @@ React Flow 不保证所有 mouse/touch 终止路径都调用 `onNodeDragStop`，
 
 ### 里程碑五：关闭 multi-touch capture/target 重开竞态
 
-第二个 `touchstart` 会先经过 window capture，再进入 React Flow/d3 的 target listener；如果 capture 同步 abort 后立即清空状态，target 阶段的第二次 `onNodeDragStart` 会把 gate 重新打开。Webview 必须把当前完整 touch sequence 标记为 lockout，在事件传播后的 microtask finalize，并拒绝同一序列后续 begin；只有全部触点结束后才允许新手势重置。完成标志是 `hasTouch: true` 的 Agent/Terminal 双指回归都在第二触点落到 draggable surface 后恢复 resize、保持零 move 并恢复 Host 位置。
+第二个 `touchstart` 会先经过 window capture，再进入 React Flow/d3 的 target listener；如果 capture 同步 abort 后立即清空状态，同一 `NodeWrapper` target 阶段的第二次 `onNodeDragStart` 会把 gate 重新打开。Webview 必须在当前支持的单 wrapper / 单 draggable surface 场景中把 touch sequence 标记为 lockout，在事件传播后的 microtask finalize，并拒绝同一 surface 的后续 begin；只有全部触点结束后才允许新手势重置。完成标志是 `hasTouch: true` 的 Agent/Terminal 双指回归都在第二触点落到同一节点 draggable surface 后恢复 resize、保持零 move 并恢复 Host 位置。多个独立 `NodeWrapper` / 多节点并发触控不属于本里程碑的支持与验收范围。
 
 ## 进度
 
@@ -45,8 +45,9 @@ React Flow 不保证所有 mouse/touch 终止路径都调用 `onNodeDragStop`，
 - [x] (2026-07-14 21:10 +0800) 复核第二轮 PR blocker，确认 React Flow 异常终止可能跳过 `onNodeDragStop`，使 movement gate 永久锁住。
 - [x] (2026-07-14 21:25 +0800) 增加幂等 abort/finalize、取消草稿回滚和迟到 stop 抑制；Agent/Terminal pointercancel 回归修复前 0/2、修复后 2/2，类型检查通过。
 - [x] (2026-07-14 21:36 +0800) 完成更新后聚焦验证；新增相关功能断言全部通过，负载下多条无关/既有用例等待超时均已隔离原样复跑通过，并同步正式设计与验证证据。
-- [x] (2026-07-14 22:05 +0800) 复核第三轮 PR blocker，确认同步 capture abort 被同一 `touchstart` 的 target drag-start 重开，根因是 abort 状态只覆盖回调而没有覆盖完整触摸序列。
+- [x] (2026-07-14 22:05 +0800) 复核第三轮 PR blocker，确认同步 capture abort 被同一 `touchstart` 的 target drag-start 重开，根因是 abort 状态只覆盖回调而没有覆盖同一 `NodeWrapper` 的完整触摸序列。
 - [x] (2026-07-14 22:15 +0800) 增加 touch-sequence lockout、传播后 finalize 与全触点结束后解锁；Agent/Terminal `hasTouch: true` 第二触点回归 2/2 通过。
+- [x] (2026-07-14 23:27 +0800) 根据产品范围确认收口第四轮 review follow-up：明确当前 multi-touch 只支持单 `NodeWrapper` / 单 draggable surface，跨 wrapper / 多节点并发触控不承诺 stop disposition 或位置提交语义，未来有明确需求时再独立设计与验收。
 
 ## 意外与发现
 
@@ -73,6 +74,9 @@ React Flow 不保证所有 mouse/touch 终止路径都调用 `onNodeDragStop`，
 
 - 观察：同步 multi-touch capture abort 会被同一个 `touchstart` 的 target listener 重新打开，单次幂等 abort 不能代表整个触摸序列已经结束。
   证据：window capture 先清空 active 集合，随后 React Flow 以默认 `nodeDragThreshold === 0` 同步调用第二次 `onNodeDragStart`；旧 `beginExecutionTerminalNodeMovement()` 因集合为空而清除 aborted 标记并再次调用 `beginNodeMovement()`。后续双指 move 设置 `abortDrag.current`，d3 end 在依赖源码 `:2812` 提前 return，形成永久 gate。
+
+- 观察：多个触点落在不同 `NodeWrapper` 时，依赖会建立独立 drag lifecycle，而当前全局 abort latch 没有按 node、surface 或 gesture generation 隔离 stop disposition。
+  证据：跨 wrapper 双触点且不发送 multi-touch move 时，第二个 wrapper 可先正常交付 stop 并消费全局 abort marker，随后第一个 wrapper 的迟到 stop 可能进入正常位置提交路径。产品方已确认多节点并发触控不属于当前支持与验收范围，因此本轮记录边界但不扩张实现。
 
 ## 决策记录
 
@@ -109,12 +113,16 @@ React Flow 不保证所有 mouse/touch 终止路径都调用 `onNodeDragStop`，
   日期/作者：2026-07-14 / Codex
 
 - 决策：第二触点出现时先设置全局 touch-sequence lockout，并把 abort finalize 放入当前事件之后的 microtask；`beginExecutionTerminalNodeMovement()` 在 lockout 内直接返回，`touchend/touchcancel` 只有在全部触点归零后才异步解锁。
-  理由：capture 阶段不能阻止依赖 target listener 执行，但可以在其执行前锁住应用 begin；microtask finalize 能收口第一触点已经打开的 gate，又不会被同事件重新 begin 取消。解锁延后到全部触点结束，保证一个物理手势只有一个取消结论。
+  理由：capture 阶段不能阻止依赖 target listener 执行，但可以在其执行前锁住应用 begin；microtask finalize 能收口同一 `NodeWrapper` 第一触点已经打开的 gate，又不会被同一 surface 的 target begin 取消。解锁延后到全部触点结束，保证当前支持的单 wrapper 取消场景有一个稳定结论。
+  日期/作者：2026-07-14 / Codex
+
+- 决策：当前 multi-touch 防护与验收只覆盖单 `NodeWrapper` / 单 draggable surface；多个独立 wrapper、跨 Pane Gallery surface 或多节点并发触控不承诺 stop disposition、位置回滚与 Host 位置提交语义。
+  理由：产品方已明确触屏多节点并发交互不在当前产品范围。为未确认需求增加按 node/surface/generation 隔离的拖拽状态机会扩大本次终端 resize 修复；若未来出现明确用户需求，应先单独定义多节点取消和权威位置语义，再实现并增加双节点、双抬起顺序与跨 pane 回归。
   日期/作者：2026-07-14 / Codex
 
 ## 结果与复盘
 
-实现已完成，并达到六条核心自动化验收：Agent/Terminal 在 resize 手势阶段均为零 PTY resize，pointer-up 后均只提交一条最终尺寸；稳定纯位置移动均只产生 `webview/moveNode`，不产生 `webview/resizeExecutionSession`；移动前已有 150ms pending resize 时，移动后均恰好提交一次稳定末值；serialized snapshot shrink grace 与移动交错时，延迟 refit 与最终上报均继续完成；mouse/pointer 异常取消后 gate 释放且不提交位置草稿；multi-touch 的第二次 target drag-start 不能越过 touch lockout。普通外部几何变化通过 trailing reporter 合并并按最后已提交尺寸去重，最终 fit、drag stop 和 abort 都使用 non-destructive xterm refresh/reconciliation 收口本地画面。
+实现已完成，并达到六条核心自动化验收：Agent/Terminal 在 resize 手势阶段均为零 PTY resize，pointer-up 后均只提交一条最终尺寸；稳定纯位置移动均只产生 `webview/moveNode`，不产生 `webview/resizeExecutionSession`；移动前已有 150ms pending resize 时，移动后均恰好提交一次稳定末值；serialized snapshot shrink grace 与移动交错时，延迟 refit 与最终上报均继续完成；mouse/pointer 异常取消后 gate 释放且不提交位置草稿；同一 `NodeWrapper` 的 multi-touch 第二次 target drag-start 不能越过 touch lockout。普通外部几何变化通过 trailing reporter 合并并按最后已提交尺寸去重，最终 fit、drag stop 和 abort 都使用 non-destructive xterm refresh/reconciliation 收口本地画面。跨 wrapper / 多节点并发触控没有纳入实现或验收，后续只有在产品需求明确后才单独推进。
 
 更新后验证结果为：`npm run typecheck` 与 `npm run build` 通过；`hasTouch: true` 第二触点回归 2/2、与既有 pointercancel abort 合并回归 4/4、正常纯移动与 pending resize 合并回归 4/4 通过。`resize` 聚焦首轮 17/19，两个失败分别停在无关连线/文件节点用例的 harness 等待阶段，隔离原样复跑均通过；10 条相关 execution 回归合并运行 9/10，唯一失败为首条 Agent resize 用例等待 RAF 超时，隔离复跑通过；最终稳定纯移动复跑 1/2，Agent 用例在全局 30 秒处超时，隔离复跑通过。初始 PR head 的完整 Webview 343/353 通过，10 条失败均为当前主线既有截图、文案、菜单/default-args 预期漂移或一次就绪超时；trusted VS Code smoke 通过。失败证据保存在 `.debug/playwright/results/`，没有更新无关截图或测试期待来掩盖它们。
 
@@ -134,7 +142,7 @@ React Flow 不保证所有 mouse/touch 终止路径都调用 `onNodeDragStop`，
 
 然后在 `executionSessionNodes.tsx` 增加共用的尺寸报告协调逻辑。每个执行节点用 ref 读取最新手势状态，并暴露一个“最终确定尺寸”的 ref 回调。`ResizeObserver` 在手势中直接忽略；非手势变化安排 `requestAnimationFrame` fit，再把有效尺寸交给 150ms trailing coordinator。最终收尾回调取消普通 pending 提交，在 DOM 更新后的 animation frame 中 fit，立即去重上报，并在下一帧 refresh。卸载时取消所有 frame/timer。
 
-接着在 `main.tsx` 和 `executionTerminalTypes.ts` 增加 registry 级移动边界。普通画布和 Pane Gallery 的 drag start 都把主节点、React Flow 返回的 dragged nodes 与本地补齐的多选节点进入 movement-active；drag stop 释放抑制、调用去重 reconciliation，并做本地 refresh。pointer/window/visibility abort 使用同一结束路径，额外清除位置草稿并抑制迟到 stop；multi-touch 则先锁住完整序列、传播后 finalize、全触点结束后解锁。移动期间不因 observer 噪音调用 fitAddon 或发送 resize；移动前已经形成的真实尺寸工作继续保留。
+接着在 `main.tsx` 和 `executionTerminalTypes.ts` 增加 registry 级移动边界。普通画布和 Pane Gallery 的 drag start 都把主节点、React Flow 返回的 dragged nodes 与本地补齐的多选节点进入 movement-active；drag stop 释放抑制、调用去重 reconciliation，并做本地 refresh。pointer/window/visibility abort 使用同一结束路径，额外清除位置草稿并抑制迟到 stop；当前支持的同一 `NodeWrapper` multi-touch 场景则先锁住序列、传播后 finalize、全触点结束后解锁。移动期间不因 observer 噪音调用 fitAddon 或发送 resize；移动前已经形成的真实尺寸工作继续保留。
 
 最后在 `tests/playwright/webview-harness.spec.mjs` 用真实 resize handle 指针操作覆盖 Agent/Terminal：移动阶段检查零 resize 消息，pointer-up 后检查只有一个最终消息，等待超过 settle window 后数量仍为一。再覆盖稳定纯移动只产生 move 消息、150ms pending resize 与移动交错后恰好提交一次、serialized snapshot shrink grace 内移动后仍能 refit 和上报、pointercancel 后恢复 resize 且零 move 消息，以及 `hasTouch: true` 的第二触点重开竞态。完成自动化验证后更新本文档和正式设计状态。
 
@@ -153,7 +161,7 @@ React Flow 不保证所有 mouse/touch 终止路径都调用 `onNodeDragStop`，
 
 ## 验证与验收
 
-自动化验收必须同时覆盖 Agent 和 Terminal。节点处于 live execution fixture 且 attach snapshot 已应用后，连续拖动右下 resize handle 至少经过十个中间位置；mouse/pointer 尚未释放时，posted messages 中没有 `webview/resizeExecutionSession`；释放后最终只出现一条该节点/类型的 resize 消息，且最终 `cols/rows` 与开始值不同；等待至少 300ms 后仍只有一条。稳定基线的纯节点移动必须观察到 `webview/moveNode`，同时没有 `webview/resizeExecutionSession`。若移动前已有 150ms pending resize，移动结束后必须恰好上报一次该末值；若移动与 serialized snapshot shrink grace 交错，延迟 refit 与最终尺寸上报必须继续完成。mouse 异常取消回归必须在不依赖正常 stop 的情况下释放 gate、恢复后续 resize，并证明迟到 mouseup 不发送 move 消息且节点位置回到 Host 值。multi-touch 回归必须让第二触点落在 draggable surface，双指 cancel 后满足同一组尺寸、move 和位置断言。
+自动化验收必须同时覆盖 Agent 和 Terminal。节点处于 live execution fixture 且 attach snapshot 已应用后，连续拖动右下 resize handle 至少经过十个中间位置；mouse/pointer 尚未释放时，posted messages 中没有 `webview/resizeExecutionSession`；释放后最终只出现一条该节点/类型的 resize 消息，且最终 `cols/rows` 与开始值不同；等待至少 300ms 后仍只有一条。稳定基线的纯节点移动必须观察到 `webview/moveNode`，同时没有 `webview/resizeExecutionSession`。若移动前已有 150ms pending resize，移动结束后必须恰好上报一次该末值；若移动与 serialized snapshot shrink grace 交错，延迟 refit 与最终尺寸上报必须继续完成。mouse 异常取消回归必须在不依赖正常 stop 的情况下释放 gate、恢复后续 resize，并证明迟到 mouseup 不发送 move 消息且节点位置回到 Host 值。multi-touch 回归只覆盖单 `NodeWrapper` / 单 draggable surface：第二触点落在同一节点 surface，双指 cancel 后满足同一组尺寸、move 和位置断言；跨 wrapper、跨 pane 和多节点并发触控不属于当前验收。
 
 类型检查与构建必须通过。完整 Webview 测试应通过；若存在与本补丁无关的既有失败，要保存失败名称与证据并明确区分。可运行时，trusted VS Code smoke 应证明 Host/Supervisor 的正常执行会话路径没有被破坏。人工复现可在正在输出的 Claude/Codex 节点上缓慢、来回 resize：外框实时变化，手势中 TUI 不随每帧重排，松手后按最终宽高重排一次；单纯拖动节点位置不应让 TUI 自己重绘。
 
@@ -192,6 +200,6 @@ React Flow 不保证所有 mouse/touch 终止路径都调用 `onNodeDragStop`，
 
 在 `executionSessionNodes.tsx` 中，协调器接收一个 `(cols, rows) => void` 提交函数，提供 trailing `schedule`、立即 `flush`、snapshot 基线 `acknowledge` 与 `dispose` 行为；只提交正尺寸，并与最后已提交或 Host snapshot 已确认的值去重。Agent/Terminal 的最终 fit 回调通过 ref 连接到传给 `NodeResizeAffordance` 的包装 `onResizeNodeEnd`，但继续调用原始全局 `data.onResizeNodeEnd`，不能破坏 auto-pan 清理。
 
-`executionTerminalTypes.ts` 的 registry entry 提供 `beginNodeMovement()` 与 `endNodeMovement()`。`main.tsx` 在普通画布和 Pane Gallery 的 drag start/stop 调用它们，并在 pointercancel、lostpointercapture、blur、mouseout、visibility hidden 上调用幂等 abort。多指 touchstart 设置 module-level sequence lockout 并在 microtask abort，touchend/touchcancel 仅在 `touches.length === 0` 后异步解锁。本地 refresh helper 接受只读 node id 集合并在 animation frame 中调用 controller 的 `refreshVisibleRows()`；正常 stop 与各种 abort 都通过 `endNodeMovement()` reconciliation。
+`executionTerminalTypes.ts` 的 registry entry 提供 `beginNodeMovement()` 与 `endNodeMovement()`。`main.tsx` 在普通画布和 Pane Gallery 的 drag start/stop 调用它们，并在 pointercancel、lostpointercapture、blur、mouseout、visibility hidden 上调用幂等 abort。多指 touchstart 设置 module-level sequence lockout 并在 microtask abort，touchend/touchcancel 仅在 `touches.length === 0` 后异步解锁；这套状态只承诺同一 `NodeWrapper` / 单 draggable surface 的取消路径，不提供跨 wrapper 的 stop disposition 隔离。本地 refresh helper 接受只读 node id 集合并在 animation frame 中调用 controller 的 `refreshVisibleRows()`；正常 stop 与各种 abort 都通过 `endNodeMovement()` reconciliation。
 
-计划更新说明（2026-07-14）：创建时写入现场证据、正式实现边界、150ms settle 决策和端到端验收口径；首次完成时补记 callback-wrapper 实现调整、纯移动 observer 发现、registry 抑制方案、完整验证证据与主线无关失败，并移入 completed；首次 PR review 后补齐必需的里程碑章节，记录 movement gate 吞掉移动前 pending/deferred work 的竞态、reconciliation 决策与交错验收；第二次 review 后新增异常终止里程碑、独立 abort 生命周期和取消回归；第三次 review 后新增 capture/target 竞态里程碑、touch-sequence lockout 与 hasTouch 双指回归。
+计划更新说明（2026-07-14）：创建时写入现场证据、正式实现边界、150ms settle 决策和端到端验收口径；首次完成时补记 callback-wrapper 实现调整、纯移动 observer 发现、registry 抑制方案、完整验证证据与主线无关失败，并移入 completed；首次 PR review 后补齐必需的里程碑章节，记录 movement gate 吞掉移动前 pending/deferred work 的竞态、reconciliation 决策与交错验收；第二次 review 后新增异常终止里程碑、独立 abort 生命周期和取消回归；第三次 review 后新增 capture/target 竞态里程碑、touch-sequence lockout 与 hasTouch 双指回归；第四次 review follow-up 根据已确认产品范围，把 multi-touch 验收收窄到单 wrapper / 单 surface，并显式记录跨节点并发触控为未支持边界。
