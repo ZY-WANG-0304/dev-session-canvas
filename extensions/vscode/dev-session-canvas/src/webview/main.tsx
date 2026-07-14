@@ -408,6 +408,79 @@ if (!injectedWebviewLifecycleIdentity) {
 }
 const rootElement = document.querySelector<HTMLDivElement>('#app');
 const executionTerminalRegistry: ExecutionTerminalRegistry = new Map();
+const activeExecutionTerminalMovementNodeIds = new Set<string>();
+const activeCanvasNodeMovementNodeIds = new Set<string>();
+const abortedCanvasNodeMovementNodeIds = new Set<string>();
+let executionTerminalMovementWasAborted = false;
+let executionTerminalTouchAbortSequenceActive = false;
+
+function beginExecutionTerminalNodeMovement(nodeIds: Iterable<string>): void {
+  if (executionTerminalTouchAbortSequenceActive) {
+    return;
+  }
+  if (activeCanvasNodeMovementNodeIds.size === 0) {
+    executionTerminalMovementWasAborted = false;
+    abortedCanvasNodeMovementNodeIds.clear();
+  }
+  for (const nodeId of new Set(nodeIds)) {
+    activeCanvasNodeMovementNodeIds.add(nodeId);
+    const entry = executionTerminalRegistry.get(nodeId);
+    if (!entry) {
+      continue;
+    }
+    activeExecutionTerminalMovementNodeIds.add(nodeId);
+    entry.beginNodeMovement();
+  }
+}
+
+function scheduleExecutionTerminalRefresh(nodeIds: Iterable<string>): void {
+  const uniqueNodeIds = Array.from(new Set(nodeIds));
+  if (uniqueNodeIds.length === 0) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    for (const nodeId of uniqueNodeIds) {
+      executionTerminalRegistry.get(nodeId)?.controller.refreshVisibleRows();
+    }
+  });
+}
+
+function finishExecutionTerminalNodeMovement(movedNodeIds: Iterable<string>): void {
+  // Entries keep the movement gate through the next ResizeObserver delivery, then release it on the next frame.
+  for (const nodeId of activeExecutionTerminalMovementNodeIds) {
+    executionTerminalRegistry.get(nodeId)?.endNodeMovement();
+  }
+  activeExecutionTerminalMovementNodeIds.clear();
+  activeCanvasNodeMovementNodeIds.clear();
+  scheduleExecutionTerminalRefresh(movedNodeIds);
+}
+
+function abortExecutionTerminalNodeMovement(): readonly string[] {
+  const abortedNodeIds = Array.from(activeCanvasNodeMovementNodeIds);
+  if (abortedNodeIds.length === 0) {
+    return abortedNodeIds;
+  }
+
+  executionTerminalMovementWasAborted = true;
+  abortedCanvasNodeMovementNodeIds.clear();
+  for (const nodeId of abortedNodeIds) {
+    abortedCanvasNodeMovementNodeIds.add(nodeId);
+  }
+  finishExecutionTerminalNodeMovement(abortedNodeIds);
+  return abortedNodeIds;
+}
+
+function consumeExecutionTerminalNodeMovementAbort(): readonly string[] | undefined {
+  if (!executionTerminalMovementWasAborted) {
+    return undefined;
+  }
+  const abortedNodeIds = Array.from(abortedCanvasNodeMovementNodeIds);
+  executionTerminalMovementWasAborted = false;
+  abortedCanvasNodeMovementNodeIds.clear();
+  return abortedNodeIds;
+}
+
 const pendingExecutionFileLinkResolutionRequests = new Map<
   string,
   {
@@ -1476,15 +1549,40 @@ function App(): JSX.Element {
     };
   }, []);
 
+  const discardNodeLayoutDrafts = (nodeIds: readonly string[]): void => {
+    if (nodeIds.length === 0) {
+      return;
+    }
+    setNodeLayoutDrafts((current) => {
+      const next = { ...current };
+      for (const nodeId of nodeIds) {
+        delete next[nodeId];
+      }
+      return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
+    });
+  };
+
   useEffect(() => {
+    let touchAbortFinalizeQueued = false;
+    const abortActiveNodeMovement = (): void => {
+      const abortedNodeIds = abortExecutionTerminalNodeMovement();
+      if (abortedNodeIds.length === 0) {
+        return;
+      }
+      discardNodeLayoutDrafts(abortedNodeIds);
+    };
     const handleFocus = (): void => {
       setDocumentHasFocus(true);
     };
     const handleBlur = (): void => {
       setDocumentHasFocus(false);
+      abortActiveNodeMovement();
     };
     const handleVisibilityChange = (): void => {
       setDocumentHasFocus(document.hasFocus());
+      if (document.hidden) {
+        abortActiveNodeMovement();
+      }
       if (!document.hidden && pendingExecutionTerminalDrains.size > 0) {
         lastExecutionVisibilityRestoredAtMs = readPerformanceNow();
         scheduleExecutionTerminalDrainPump();
@@ -1494,15 +1592,62 @@ function App(): JSX.Element {
         scheduleExecutionTerminalSnapshotWritePump();
       }
     };
+    const handlePointerLifecycleAbort = (): void => {
+      abortActiveNodeMovement();
+    };
+    const handleWindowMouseOut = (event: MouseEvent): void => {
+      if (event.relatedTarget === null) {
+        abortActiveNodeMovement();
+      }
+    };
+    const handleTouchStart = (event: TouchEvent): void => {
+      if (event.touches.length <= 1) {
+        return;
+      }
+
+      executionTerminalTouchAbortSequenceActive = true;
+      if (touchAbortFinalizeQueued) {
+        return;
+      }
+      touchAbortFinalizeQueued = true;
+      window.queueMicrotask(() => {
+        touchAbortFinalizeQueued = false;
+        if (executionTerminalTouchAbortSequenceActive) {
+          abortActiveNodeMovement();
+        }
+      });
+    };
+    const handleTouchSequenceEnd = (event: TouchEvent): void => {
+      if (event.touches.length !== 0) {
+        return;
+      }
+      window.queueMicrotask(() => {
+        executionTerminalTouchAbortSequenceActive = false;
+      });
+    };
 
     window.addEventListener('focus', handleFocus);
     window.addEventListener('blur', handleBlur);
+    window.addEventListener('pointercancel', handlePointerLifecycleAbort, true);
+    window.addEventListener('lostpointercapture', handlePointerLifecycleAbort, true);
+    window.addEventListener('mouseout', handleWindowMouseOut);
+    window.addEventListener('touchstart', handleTouchStart, true);
+    window.addEventListener('touchend', handleTouchSequenceEnd, true);
+    window.addEventListener('touchcancel', handleTouchSequenceEnd, true);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('pointercancel', handlePointerLifecycleAbort, true);
+      window.removeEventListener('lostpointercapture', handlePointerLifecycleAbort, true);
+      window.removeEventListener('mouseout', handleWindowMouseOut);
+      window.removeEventListener('touchstart', handleTouchStart, true);
+      window.removeEventListener('touchend', handleTouchSequenceEnd, true);
+      window.removeEventListener('touchcancel', handleTouchSequenceEnd, true);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      executionTerminalTouchAbortSequenceActive = false;
+      abortExecutionTerminalNodeMovement();
     };
   }, []);
 
@@ -3470,7 +3615,20 @@ function App(): JSX.Element {
     });
   };
 
+  const handleNodeDragStart: NodeDragHandler = (_event, node, draggedNodes) => {
+    beginExecutionTerminalNodeMovement([
+      node.id,
+      ...draggedNodes.map((draggedNode) => draggedNode.id),
+      ...nodes.filter((candidate) => candidate.selected).map((candidate) => candidate.id)
+    ]);
+  };
+
   const handleNodeDragStop: NodeDragHandler = (event, node, draggedNodes) => {
+    const abortedNodeIds = consumeExecutionTerminalNodeMovementAbort();
+    if (abortedNodeIds) {
+      discardNodeLayoutDrafts(abortedNodeIds);
+      return;
+    }
     const pointerPosition = reactFlowRef.current?.screenToFlowPosition({
       x: event.clientX,
       y: event.clientY
@@ -3519,6 +3677,7 @@ function App(): JSX.Element {
         selectedMoves: selectedMoves.length > 0 ? selectedMoves : undefined
       }
     });
+    finishExecutionTerminalNodeMovement([node.id, ...selectedMoves.map((move) => move.id)]);
   };
 
   const isCanvasNodeInPaneGalleryRoot = (nodeId: string, rootGroupId: string): boolean => {
@@ -4229,12 +4388,33 @@ function App(): JSX.Element {
     normalizedPaneGalleryLayout,
     activePaneGalleryRootId ? paneGalleryState?.mainViewports?.[activePaneGalleryRootId] !== undefined : false
   ]);
+  const handlePaneGalleryNodeDragStart = (
+    rootGroupId: string,
+    _event: React.MouseEvent,
+    node: CanvasFlowNode,
+    draggedNodes: CanvasFlowNode[]
+  ): void => {
+    bindPaneGallerySurface(rootGroupId);
+    beginExecutionTerminalNodeMovement([
+      node.id,
+      ...draggedNodes.map((draggedNode) => draggedNode.id),
+      ...nodes
+        .filter((candidate) => candidate.selected && isCanvasNodeInPaneGalleryRoot(candidate.id, rootGroupId))
+        .map((candidate) => candidate.id)
+    ]);
+  };
+
   const handlePaneGalleryNodeDragStop = (
     rootGroupId: string,
     event: React.MouseEvent,
     node: CanvasFlowNode,
     draggedNodes: CanvasFlowNode[]
   ): void => {
+    const abortedNodeIds = consumeExecutionTerminalNodeMovementAbort();
+    if (abortedNodeIds) {
+      discardNodeLayoutDrafts(abortedNodeIds);
+      return;
+    }
     bindPaneGallerySurface(rootGroupId);
     const paneFlow = paneGalleryFlowRefs.current[rootGroupId];
     const pointerPosition = paneFlow?.screenToFlowPosition({
@@ -4291,6 +4471,7 @@ function App(): JSX.Element {
         selectedMoves: selectedMoves.length > 0 ? selectedMoves : undefined
       }
     });
+    finishExecutionTerminalNodeMovement([node.id, ...selectedMoves.map((move) => move.id)]);
   };
   return (
     <div
@@ -4333,6 +4514,7 @@ function App(): JSX.Element {
             onFitPane={fitPaneGalleryRoot}
             onSavePaneViewport={savePaneGalleryViewport}
             onNodesChange={handleNodesChange}
+            onNodeDragStart={handlePaneGalleryNodeDragStart}
             onNodeDragStop={handlePaneGalleryNodeDragStop}
             onConnect={handleConnect}
             onEdgeClick={handleEdgeClick}
@@ -4390,6 +4572,7 @@ function App(): JSX.Element {
             strokeWidth: 2
           }}
           onNodeClick={handleNodeClick}
+          onNodeDragStart={handleNodeDragStart}
           onNodeDragStop={handleNodeDragStop}
           multiSelectionKeyCode={null}
           selectNodesOnDrag={false}

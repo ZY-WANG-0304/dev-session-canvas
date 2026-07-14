@@ -83,6 +83,8 @@ export interface ExecutionTerminalRegistryEntry {
   fitAddon: FitAddon;
   controller: ExecutionTerminalController;
   nativeInteractions: ExecutionTerminalNativeInteractionsHandle;
+  beginNodeMovement: () => void;
+  endNodeMovement: () => void;
 }
 
 export type ExecutionTerminalRegistry = Map<string, ExecutionTerminalRegistryEntry>;
