@@ -34,11 +34,12 @@
 - [x] (2026-06-10 18:40 +0800) 根据二次宿主诊断继续降载：styled span 不再直接伪装成 `detected`，而是必须通过共享 path plausibility gate 后以 `styled` source 发送；`detected` / `styled` 在 Webview 与 Host 双侧都执行同一准入防线，并补协议、纯函数与 Host helper 回归。
 - [x] (2026-06-11 20:35 +0800) 根据第四次宿主诊断改为交互优先：file-link provider 只暴露轻量 pending link，Host resolve 改为点击时 `interactive` 触发；高置信负缓存后台刷新标记为 `background`，Host 增加 resolve cache / in-flight dedupe / 背景请求节流，并把诊断 schema 提升到 v3。
 - [x] (2026-07-14 18:32 +0800) 修复执行链接无法打开 PNG / GIF / MP4 等媒体文件：普通文件统一交给 `vscode.open`，保留文本 selection；同步正式设计索引、command rejection 诊断语义、PNG custom editor smoke 与 GIF / MP4 未分别执行真实 fixture 的验证边界。
+- [x] (2026-07-14 21:15 +0800) 根据 PR #266 follow-up 把“上下文与定向”“工作计划”“具体步骤”“证据与备注”从 2026-04-30 的起始基线更新为当前实现，明确 hard-wrap / multiline / file / URL / word provider 与 multiline detector 已落地，不再把已完成工作写成待办。
 
 ## 意外与发现
 
-- 观察：当前仓库的 Webview provider 顺序是显式 hyperlink + `file -> url -> search`，而不是 VSCode 原生 Terminal 的 `multiline -> local -> uri -> word` 顺序。
-  证据：`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 中当前只注册 `createFileLinkProvider()`、`createUrlLinkProvider()` 与 `createSearchLinkProvider()`。
+- 观察：2026-04-30 开始本计划时，仓库的 Webview provider 顺序是显式 hyperlink + `file -> url -> search`，而不是 VSCode 原生 Terminal 的 `multiline -> local -> uri -> word` 顺序。
+  证据：当时版本的 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 只注册 `createFileLinkProvider()`、`createUrlLinkProvider()` 与 `createSearchLinkProvider()`；当前实现状态见后文“上下文与定向”和“证据与备注”。
 
 - 观察：当前仓库虽然已经有 line-scoped cwd tracker，但它服务的是自定义 file resolver，而不是原生 detector 顺序本身。
   证据：`extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts` 负责维护 `buffer line -> cwd`，`extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 在 `resolveExecutionLinkCwd()` 中消费它。
@@ -46,13 +47,13 @@
 - 观察：VSCode upstream 当前确实把显式 hyperlink、multiline、本地文件、URI 和 word/search 分成多组 detector / opener，并且 search opener 先 exact-open 再 Quick Access fallback。
   证据：2026-04-30 对照 `terminalLinkManager.ts`、`terminalMultiLineLinkDetector.ts`、`terminalLocalLinkDetector.ts`、`terminalUriLinkDetector.ts`、`terminalWordLinkDetector.ts` 与 `terminalLinkOpeners.ts`。
 
-- 观察：VSCode upstream 的显式 hyperlink 还包含 `terminal.integrated.allowedLinkSchemes` 的放行逻辑，而当前仓库没有这层检查。
-  证据：`terminalLinkManager.ts` 的显式 hyperlink `activate` 路径会在打开前检查 scheme 是否在 allowed list 中。
+- 观察：VSCode upstream 的显式 hyperlink 包含 `terminal.integrated.allowedLinkSchemes` 的放行逻辑，而 2026-04-30 的仓库起始版本没有这层检查。
+  证据：`terminalLinkManager.ts` 的显式 hyperlink `activate` 路径会在打开前检查 scheme 是否在 allowed list 中；当前 Host 已由 `ensureExecutionTerminalUrlSchemeAllowed(...)` 承担这一路径。
 
 - 观察：VSCode 原生 Terminal 的 search link 属于 low-confidence link，hover 时不会像 file / url 一样弹 tooltip；当前仓库此前把 search hover 也当成普通高置信 link 展示，属于真实交互偏差。
   证据：2026-04-30 对照 `terminalLink.ts`，其 `_isHighConfidenceLink` 为 false 时不会调度 hover widget。
 
-- 观察：`npm run test:webview` 当前只剩一个既有的 baseline screenshot diff（`canvas-shell-baseline`，385 px 差异），其余 91 条全部通过；本轮 link 相关 case 全部通过。
+- 观察：2026-05-01 运行 `npm run test:webview` 时只剩一个既有的 baseline screenshot diff（`canvas-shell-baseline`，385 px 差异），其余 91 条全部通过；当时本轮 link 相关 case 全部通过。
   证据：2026-05-01 本地运行 `npm run test:webview`，失败点位于 `tests/playwright/webview-harness.spec.mjs:276` 的截图基线断言，而新增 / 既有 link case 均为绿色。
 
 - 观察：2026-05-01 记录过的 `verifyRealWebviewProbe()` 提前失败已不再重现；当前 head 的 trusted smoke 可以继续跑到 execution terminal native link 路径。当前覆盖拆成两层：更早的 trusted smoke 步骤会先验证未知消息是否既进入 `host/error`，也真实渲染到 editor surface Webview toast；`verifyRealWebviewProbe()` 本身则只保留 “editor surface ready + 真实 Webview 基线渲染” 断言，避免把多类语义绑在同一个 helper 里。
@@ -184,17 +185,19 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 
 2026-07-14 的媒体 opener 修复把普通文件从 `workspace.openTextDocument` 切换为 `vscode.open`。文本 exact-open 与 multi-root search 继续传递 line / column selection；图片、GIF、视频由 VS Code 已注册 custom editor 接管。trusted Host smoke 直接验证 PNG 使用 `imagePreview.previewEditor`，并注入一次 command rejection 验证 `execution/linkOpenRejected.detail.error`；GIF / MP4 虽走同一路径且有 VS Code 1.128 内置 media-preview 注册，但尚未分别执行真实 Host fixture。诊断结论只覆盖 opener 命令是否 resolve/reject，不覆盖 editor service 内部显示错误占位页的加载结果。
 
+同日 PR follow-up 复核了计划与当前代码的自一致性：2026-04-30 开始时缺失的 multiline detector 已完成，Webview 当前通过显式 hyperlink handler 和 hard-wrap、multiline、file、URL、word 五类 provider 承载链接交互。计划后半部已改为描述当前实现和后续维护动作，不再把这部分历史起点误写成未完成状态。
+
 ## 上下文与定向
 
 这次改动横跨四个主要区域。
 
-第一块是 Webview 侧入口，位于 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`。这里现在直接注册了 file、url、search 三个 xterm link provider，并使用自定义 tooltip 和自定义 file candidate refine 逻辑。若要对齐原生 Terminal，这里是 detector 顺序、hover 行为、显式 hyperlink 和测试入口的第一落点。
+第一块是 Webview 侧入口，位于 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`。`setupExecutionTerminalNativeInteractions(...)` 先通过 `terminal.options.linkHandler` 承载显式 hyperlink，再依次注册 hard-wrap、multiline、file/local、URL、word/search 五类 xterm link provider，并统一管理 tooltip、低置信装饰和 hard-wrap hover overlay。这里是 detector 顺序、hover 行为、显式 hyperlink 和测试入口的主要落点。
 
-第二块是共享 parser / link model，主要位于 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts`。这里定义了当前仓库自己的 `ExecutionTerminalOpenLink`、`ExecutionTerminalFileLinkCandidate`、path suffix parser、单行 path parser 与 fallback matcher。若本轮按原生 Terminal 对齐，这里的职责会从“定义产品规则”收缩为“承载等价 parser / 类型适配”。
+第二块是共享 parser / link model，主要位于 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts`。这里定义 `ExecutionTerminalOpenLink`、`ExecutionTerminalFileLinkCandidate`、path suffix parser、单行 path parser 与 fallback matcher，当前职责是承载 Webview / Host 共同使用的原生同类 parser、协议类型和受控适配规则；后续修改必须继续区分“原生 parity”与 TUI hard-wrap 等仓库适配层。
 
 第三块是 Host 侧 resolver 与 opener，位于 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 和 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`。这里当前负责 file path sanitize、cwd resolve、workspace fallback、search quickOpen fallback 和 `vscode.open` / `revealInExplorer` 等打开动作。普通文件统一交给 `vscode.open`，让 editor service 在文本与 custom editor 之间选择；Host 只能观察 opener 命令是否 reject，不能观察 editor 内部加载结果。若要对齐原生 Terminal，需要继续保持 exact-open、search、allowed scheme 与 file/uri opener 语义一致。
 
-第四块是 line-scoped cwd tracker，位于 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts`。这是当前仓库没有 command detection capability 时最接近原生行级 cwd 的输入来源。后续 multiline / local / search opener 如需对齐原生 Terminal，都应优先消费这里的 `buffer line -> cwd`，而不是回退到节点级 cwd。
+第四块是 line-scoped cwd tracker，位于 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts`。这是当前仓库没有 command detection capability 时最接近原生行级 cwd 的输入来源；multiline、local 与 search opener 当前都应优先消费这里的 `buffer line -> cwd`，只有缺少行级记录时才回退到节点级 cwd。
 
 作为实现 oracle，需要持续参考 VSCode upstream 这几个文件的当前行为：
 
@@ -209,15 +212,15 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 
 ## 工作计划
 
-先收口 parser 与 detector 顺序。`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 不能继续把 file、url、search 当成三条仓库私有逻辑独立维护，而应显式映射到原生 Terminal 的 detector 顺序：显式 hyperlink、multiline、本地路径、URI、word/search。这里优先做的是把“当前有哪些文本会成为 link”这件事对齐，而不是先追求 hover 细节。
+核心 parser 与 detector 顺序已经完成收口。`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 当前以显式 hyperlink handler 开始，再按 hard-wrap 受控适配、multiline、本地路径、URI、word/search 的顺序注册 provider。后续工作是在 VSCode upstream 行为变化或现场诊断暴露偏差时维护这一映射，而不是重新实现 multiline detector。
 
-然后收口共享 link model。`extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 当前混合了承载协议类型、仓库私有 path parser 和自定义 fallback matcher 三类职责。实现时应把“消息与类型”保留下来，把“解析规则”替换成原生等价逻辑；如果发现某些 parser 更适合迁回 Webview / Host 层，也可以拆分，但最终要让读代码的人能直接看出“这些规则对应的是原生 Terminal 的哪一类 detector”。
+共享 link model 已保留消息类型、路径后缀解析和原生同类 fallback matcher，并将 hard-wrap、styled 等适配来源显式化。后续调整 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 时，应继续删除无法追溯到原生行为或已记录适配需求的 heuristics，并让规则能明确映射到对应 detector。
 
-接着改 Host opener。`extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 当前已经有 prepare / resolve / open 分层，这是可以保留的；但 `resolveExecutionFileLink()`、`openExecutionTerminalSearchLink()` 与 URL opener 里的 scheme 处理，需要重新对齐原生 exact-open、Quick Access fallback、`file://` 特化和 allowed scheme 语义。若新增配置读取或提示逻辑，优先放在 Host，避免把安全判断留在 Webview。
+Host opener 已保留 prepare / resolve / open 分层，并覆盖 exact-open、Quick Access fallback、`file://` 特化、allowed scheme 与通用文件 opener。后续维护 `resolveExecutionFileLink()`、`openExecutionTerminalSearchLink()` 和 URL opener 时，安全检查继续留在 Host，且不得破坏文本 selection、媒体 custom editor 或 command-based opened/rejected 诊断口径。
 
-随后补 multiline 与 styled fallback。当前执行节点完全没有 multiline detector，这会直接导致 ripgrep / eslint / diff 输出与原生体验分叉。实现时应新增等价的 multiline detector，并补上 local detector 在普通 parser miss 后的 styled segment fallback，而不是继续扩张当前的 CJK refine。
+Multiline detector、local fallback 与 styled / hard-wrap 受控适配均已落地，并由 ripgrep / eslint、git diff、TUI hard-wrap 和误拼接负例覆盖。后续若出现漏判或误判，应先核对 upstream detector 与现有适配边界，再修改对应 provider；不得重新依靠泛化 CJK refine 扩张高置信 file link。
 
-最后补测试。Playwright 要明确覆盖“当前已知误判样例与原生结果一致”“multiline 可点击”“word/search 优先级与 open 行为一致”；真实 VSCode smoke 要至少覆盖一条跨行文件打开和一条 search Quick Access fallback。若 allowed scheme 提示做成可测路径，也要补一条宿主级验证。
+测试当前覆盖已知误判、multiline 点击、word/search 优先级、exact-open、Quick Access fallback、文本 selection、PNG custom editor 与 opener command rejection。后续每次调整 detector 或 opener 都要更新对应纯函数、Playwright 或真实 Host smoke，并把尚未直接覆盖的媒体或平台边界留在本计划。
 
 ## 具体步骤
 
@@ -227,23 +230,24 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
        docs/design-docs/index.md
        docs/exec-plans/active/execution-terminal-native-link-parity.md
 
-2. 在 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 中重构 detector 注册顺序：
+2. 在 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 中维护当前 detector / provider 注册顺序：
 
        显式 hyperlink
+       hard-wrap 受控适配
        multiline detector
        local detector
        uri detector
        word/search detector
 
-   若现有文件过于拥挤，可把 detector 适配层拆到新的 `extensions/vscode/dev-session-canvas/src/webview/` 或 `extensions/vscode/dev-session-canvas/src/common/` 模块，但必须在计划和设计文档中同步更新落点。
+   这套顺序已经落地。若后续文件继续膨胀，可把 detector 适配层拆到新的 `extensions/vscode/dev-session-canvas/src/webview/` 或 `extensions/vscode/dev-session-canvas/src/common/` 模块，但必须在计划和设计文档中同步更新落点。
 
-3. 在 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 中整理共享类型与 parser：
+3. 在 `extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts` 中持续维护共享类型与 parser：
 
        保留协议类型和后续 Host / Webview 都需要消费的纯数据结构；
-       用原生等价逻辑替换当前仓库私有 parser；
+       保持解析规则可追溯到原生等价逻辑或已记录的受控适配；
        删除或降级不再属于正式产品语义的自定义 heuristics。
 
-4. 在 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 中对齐 opener 与 search 语义：
+4. 在 `extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts` 中维持已经对齐的 opener 与 search 语义：
 
        文件 / 目录 opener
        file:// URI 特化
@@ -253,7 +257,7 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 
 5. 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中仅保留上下文装配、缓存与消息转发，不把新的产品规则重新写散到 manager 中。
 
-6. 在 `tests/playwright/webview-harness.spec.mjs` 与 `tests/vscode-smoke/extension-tests.cjs` 中新增或更新回归。至少添加：
+6. 在 `tests/playwright/webview-harness.spec.mjs` 与 `tests/vscode-smoke/extension-tests.cjs` 中维护并按新回归扩展现有覆盖：
 
        multiline 路径
        误判样例
@@ -287,12 +291,17 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 
 ## 证据与备注
 
-当前开始阶段最关键的证据是：
+2026-04-30 开始阶段的历史基线是：
 
-    当前仓库：显式 hyperlink + file/url/search provider，缺 multiline detector。
+    当时仓库：显式 hyperlink + file/url/search provider，缺 multiline detector。
     VSCode upstream：显式 hyperlink + multiline/local/uri/word detector 顺序，search opener 先 exact-open 后 Quick Access。
 
-后续在这里追加最短必要的测试输出，证明“multiline 恢复可点击”和“误判数量收敛到原生结果”。
+截至 2026-07-14，当前实现已经变为：
+
+    显式 hyperlink handler + hard-wrap/multiline/file/URL/word provider。
+    Multiline、local/styled fallback、word/search exact-open 与 Quick Access fallback 均已有自动化覆盖。
+
+后续在这里继续追加最短必要的测试输出，证明新增 parity 调整没有让 multiline、provider 顺序或误判控制回归。
 
 2026-07-14 媒体 opener 的最短 Host 证据是：PNG link 激活后活动 tab 为 `TabInputCustom`、`viewType=imagePreview.previewEditor`；注入的 `vscode.open` rejection 文本原样出现在 `execution/linkOpenRejected.detail.error`。GIF / MP4 使用相同 opener，但当前没有各自的真实 fixture 证据。
 
@@ -326,3 +335,5 @@ PR review 后补齐 output throttle trailing refresh：当第二次 live output 
 本次更新说明：2026-05-19 追加 grouped hover underline overlay 决策；该方案避免把 hard-wrap link range 扩成连续跨行范围，同时解决用户手测发现的“可点击但视觉下划线不像同一个链接”的问题。
 
 本次更新说明：2026-07-14 同步媒体文件通用 opener 修复、command-based opened/rejected 诊断边界与 PNG custom editor / command rejection 验证；同时显式保留 GIF / MP4 尚未分别执行真实 Host fixture 的缺口，以修复 PR #266 review 指出的活文档漂移。
+
+本次更新说明：2026-07-14 根据 PR #266 补充 follow-up，把上下文、工作计划、具体步骤和证据中的 2026-04-30 起始描述改为当前实现；缺少 multiline detector 现在只作为历史基线保留，不再呈现为待办。
