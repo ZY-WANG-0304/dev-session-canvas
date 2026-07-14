@@ -51,7 +51,6 @@ export type ExecutionTerminalHostOpenerKind =
   | 'simpleBrowser.api.open'
   | 'vscode.open'
   | 'vscode.env.openExternal'
-  | 'showTextDocument'
   | 'revealInExplorer'
   | 'vscode.openFolder'
   | 'workbench.action.quickOpen';
@@ -589,15 +588,14 @@ export async function openResolvedExecutionTerminalLink(
     };
   }
 
-  const document = await vscode.workspace.openTextDocument(resolved.uri);
-  await vscode.window.showTextDocument(document, {
+  await vscode.commands.executeCommand('vscode.open', resolved.uri, {
     preview: false,
     preserveFocus: false,
     selection: resolved.selection
   });
   return {
     opened: true,
-    openerKind: 'showTextDocument',
+    openerKind: 'vscode.open',
     targetUri: resolved.uri.toString()
   };
 }

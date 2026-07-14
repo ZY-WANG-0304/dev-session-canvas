@@ -8127,16 +8127,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ? this.resolvedExecutionFileLinks.get(link.resolvedId)
         : undefined;
     let openResult: OpenExecutionTerminalLinkResult;
+    let openError: unknown;
     if (cached && (cached.nodeId !== nodeId || cached.kind !== kind)) {
       openResult = { opened: false };
     } else if (cached?.resolved) {
-      openResult = await openResolvedExecutionTerminalLink(cached.resolved).catch(
-        (): OpenExecutionTerminalLinkResult => ({ opened: false })
-      );
+      try {
+        openResult = await openResolvedExecutionTerminalLink(cached.resolved);
+      } catch (error) {
+        openError = error;
+        openResult = { opened: false };
+      }
     } else {
-      openResult = await openExecutionTerminalLink(link, context).catch(
-        (): OpenExecutionTerminalLinkResult => ({ opened: false })
-      );
+      try {
+        openResult = await openExecutionTerminalLink(link, context);
+      } catch (error) {
+        openError = error;
+        openResult = { opened: false };
+      }
     }
 
     this.recordDiagnosticEvent(openResult.opened ? 'execution/linkOpened' : 'execution/linkOpenRejected', {
@@ -8146,6 +8153,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       text: link.text,
       openerKind: openResult.openerKind ?? null,
       targetUri: openResult.targetUri ?? null,
+      error: openError instanceof Error ? openError.message : openError === undefined ? null : String(openError),
       shellPath: context.shellPath ?? null,
       cwd: context.cwd
     });
