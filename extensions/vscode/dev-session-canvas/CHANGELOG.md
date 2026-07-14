@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.24.2 - Safe Journal Compaction and Directed Fork Placement Update
+
+相对 `0.24.1`，`0.24.2` 是同一公开 `Preview` 线内的持续迭代补丁，重点为持久执行会话补齐可证明安全的 journal compact 与双代恢复，为当前 Agent 节点增加可配置的 Fork 展开方向和统一的生成节点创建时避碰，并收口 Runtime Supervisor 跨 Node 终态门禁。它保留 `0.24.1` 的新旧 Supervisor 并行排空、旧会话交互能力和明确的恢复权威边界。
+
+### 本版本聚焦
+
+- 版本号从 `0.24.1` bump 到 `0.24.2`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- persistent Runtime Supervisor 只在 checkpoint 位于安全 parser / decoder 边界、通过 source / restored terminal 语义指纹比较、未命中不安全 OSC / operation error 且 serialized state 不超过 256 KiB 时授予 compact 资格；无法证明安全时保留完整 journal，不用容量目标换取内容完整性
+- journal manifest 升级为兼容 v1 的双代 generation：持久化 immutable checkpoint、current / previous 引用、retained checksum anchor 与连续 segment；第一份合格 checkpoint 不删除 prefix，后续只回收已被 previous 覆盖、且不越过 deferred attach / applied ACK retention floor 的完整 segment
+- 恢复顺序固定为 current、previous、genesis；current 损坏时可从 previous 加连续 journal suffix 恢复，genesis 已删除且两代都不可用时停止 compact 并继续 append，不重置成一条不完整的新链
+- journal-backed registry 收敛为 metadata-only lookup；registry authority 与 journal manifest 不一致时 fail closed，不发布 stream、raw output 或 serialized marker
+- Runtime Supervisor 强制 drain 在全部写入与 output sequence 落定后只执行一次全量 serialize；final-state 协议测试改为在 15 秒失败上限内事件驱动等待完整 revision 不变量，替代固定 3 秒窗口，并已在 Node 22 / 25 上验证
+- 新增 window scope 设置 `devSessionCanvas.canvas.forkPlacementDirection`，支持 `up | down | right`、默认 `up`，修改后立即作用于后续当前节点 Fork，不重排既有节点或连线；历史会话 Fork 继续使用通用邻近避碰
+- 当前节点连续 Fork 使用固定层级线和单轴中心向外候选，方向化连线锚点保持父子层级可读；来源位于普通 group 时，子节点继承直接 group，最终化固定来源 group 祖先链，避免冲突修复平移来源 Agent
+- 普通创建、当前节点 Fork、历史入口、模板与自动文件节点复用 root-local 矩形碰撞 predicate；该规则只保证创建时按候选阶段可得 footprint 避开已有节点，不限制用户后续手工重叠
+- 不改变扩展身份、最低 VS Code 版本、provider Fork / Resume 命令、notifier 通知行为、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.24.1` 升级到 `0.24.2` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 应同步发布并验证同版本，GitHub Release assets 继续作为手动安装兜底
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 升级不会迁移正在运行会话的 PTY 所有权；旧 generation session 继续由原 runtime 提供 output、input、resize、stop 与 delete，新 session 立即进入当前 generation
+- `devSessionCanvas.canvas.forkPlacementDirection` 默认向上；可切换为向下或向右，设置只影响修改后的当前节点 Fork，不会重新排列既有 Fork 或历史会话入口创建的节点
+- persistent journal compact 只在安全资格成立时发生；local PTY 仍不获得跨 Host 生命周期保证，Preview 版本之间也不承诺 runtime journal 回退兼容
+- 若此前显式配置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled`、`devSessionCanvas.canvas.multiRootPresentationMode` 或 `devSessionCanvas.canvas.forkPlacementDirection`，升级到 `0.24.2` 后会继续沿用该明确选择
+
+### 已知边界与验证说明
+
+- 无法证明 checkpoint 安全、serialized state 超过 256 KiB、producer profile 缺少兼容 fallback 或恢复代均不可用时，系统会保守停止 compact 并继续增长 journal；本版本不承诺固定磁盘上限、完整长期 retention 策略或跨版本回退兼容
+- 严格 90000 行 completed terminal 已出现 `89861`、`89960`、`89877` 三次间歇性尾部短读样本，仍未定位发生在 PTY、bridge、journal、finalization 或测试宿主层；本轮终态门禁修复不关闭该独立风险
+- Fork 定向布局的纯几何、宿主、VS Code smoke 与 Webview 定向回归已通过，但 panel / editor 两种承载面的 80 flow units 层间距与 `fork` 标签仍待人工视觉验收
+- 自动 File 节点仍先以 220 x 84 的估算 footprint 选位，minimal `icon-path` 真实宽度最高可到 480；该路径复用统一碰撞算法，但不宣称真实初始外框已完整满足无重叠保证
+- `trusted` 与 `real-reopen` 在 journal compact 合入前验证中各出现一次非内容性 smoke harness 时序误报，原样复跑通过且 artifact 中 authority、revision、output 正常；通过样本不撤销已登记的 harness 技术债
+
+### 回退建议
+
+- 若 `0.24.2` 阻塞当前工作流，建议先停止重要运行会话，再禁用或卸载扩展；优先等待后续更高的 `0.24.x` 修复版本，Supervisor journal 暂不提供跨版本回退保证
+
 ## 0.24.1 - Parallel Supervisor Drain Hotfix
 
 相对 `0.24.0`，`0.24.1` 是同一公开 `Preview` 线内的紧急修复，解决升级后旧 Runtime Supervisor 会话被强制只读、同时新会话等待旧进程排空的问题。它让不同 storage generation 的 Supervisor 并行存在：旧进程继续承载已有 PTY，新建会话立即进入当前 generation；不迁移 PTY 所有权，也不把旧 runtime 的 raw output tail 冒充当前版本的无损 checkpoint 或 journal。
