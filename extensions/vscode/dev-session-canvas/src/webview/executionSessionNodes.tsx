@@ -41,6 +41,7 @@ import type {
 import type { WebviewI18nKey } from './i18n/webviewI18n';
 
 const EXECUTION_TERMINAL_RESTORE_SHRINK_FIT_GRACE_MS = 1000;
+const EXECUTION_TERMINAL_RESIZE_SETTLE_MS = 150;
 const AGENT_TITLE_ACTION_COMPACT_WIDTH = 440;
 
 type EmbeddedTerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]>;
@@ -61,6 +62,94 @@ interface ExecutionNodeActionButtonProps {
     'type' | 'className' | 'children' | 'onClick' | 'onFocus' | 'disabled'
   > &
     Record<`data-${string}`, string | number | boolean | undefined>;
+}
+
+interface ExecutionTerminalDimensions {
+  cols: number;
+  rows: number;
+}
+
+interface ExecutionTerminalResizeReporter {
+  schedule: (dimensions: ExecutionTerminalDimensions) => void;
+  flush: (dimensions?: ExecutionTerminalDimensions) => void;
+  acknowledge: (dimensions: ExecutionTerminalDimensions) => void;
+  cancelPending: () => void;
+  dispose: () => void;
+}
+
+function createExecutionTerminalResizeReporter(
+  report: (dimensions: ExecutionTerminalDimensions) => void
+): ExecutionTerminalResizeReporter {
+  let pendingDimensions: ExecutionTerminalDimensions | undefined;
+  let lastReportedDimensions: ExecutionTerminalDimensions | undefined;
+  let settleTimer: number | undefined;
+  let disposed = false;
+
+  const wasLastReported = (dimensions: ExecutionTerminalDimensions): boolean =>
+    lastReportedDimensions?.cols === dimensions.cols && lastReportedDimensions.rows === dimensions.rows;
+
+  const cancelPending = (): void => {
+    pendingDimensions = undefined;
+    if (settleTimer !== undefined) {
+      window.clearTimeout(settleTimer);
+      settleTimer = undefined;
+    }
+  };
+
+  const commit = (dimensions: ExecutionTerminalDimensions | undefined): void => {
+    if (
+      disposed ||
+      !dimensions ||
+      dimensions.cols <= 0 ||
+      dimensions.rows <= 0 ||
+      wasLastReported(dimensions)
+    ) {
+      return;
+    }
+
+    lastReportedDimensions = dimensions;
+    report(dimensions);
+  };
+
+  return {
+    schedule: (dimensions) => {
+      if (disposed) {
+        return;
+      }
+      if (wasLastReported(dimensions)) {
+        cancelPending();
+        return;
+      }
+
+      pendingDimensions = dimensions;
+      if (settleTimer !== undefined) {
+        window.clearTimeout(settleTimer);
+      }
+      settleTimer = window.setTimeout(() => {
+        settleTimer = undefined;
+        const dimensionsToCommit = pendingDimensions;
+        pendingDimensions = undefined;
+        commit(dimensionsToCommit);
+      }, EXECUTION_TERMINAL_RESIZE_SETTLE_MS);
+    },
+    flush: (dimensions) => {
+      const dimensionsToCommit = dimensions ?? pendingDimensions;
+      cancelPending();
+      commit(dimensionsToCommit);
+    },
+    acknowledge: (dimensions) => {
+      if (disposed || dimensions.cols <= 0 || dimensions.rows <= 0) {
+        return;
+      }
+      cancelPending();
+      lastReportedDimensions = dimensions;
+    },
+    cancelPending,
+    dispose: () => {
+      disposed = true;
+      cancelPending();
+    }
+  };
 }
 
 export interface ExecutionSessionNodeDependencies {
@@ -162,7 +251,14 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     const frameRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const resizeFrameRef = useRef<number | undefined>(undefined);
+    const refreshFrameRef = useRef<number | undefined>(undefined);
     const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
+    const nodeResizeActiveRef = useRef(false);
+    const nodeMovementActiveRef = useRef(false);
+    const nodeMovementReleaseFrameRef = useRef<number | undefined>(undefined);
+    const finalResizePendingRef = useRef(false);
+    const cancelTerminalResizeRef = useRef<(() => void) | undefined>(undefined);
+    const finalizeTerminalResizeRef = useRef<(() => void) | undefined>(undefined);
     const autoLaunchRef = useRef<string | null>(null);
     const zoomRef = useRef(zoom);
     const terminalSizeRef = useRef({
@@ -227,12 +323,18 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           if (resizeFrameRef.current) {
             window.cancelAnimationFrame(resizeFrameRef.current);
           }
-          resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+          resizeFrameRef.current = window.requestAnimationFrame(() => {
+            resizeFrameRef.current = undefined;
+            fitTerminal();
+          });
         }, Math.max(0, delayMs));
       }
 
       const terminal = new Terminal(deps.createEmbeddedTerminalOptions());
       const fitAddon = new FitAddon();
+      const resizeReporter = createExecutionTerminalResizeReporter(({ cols, rows }) => {
+        data.onResizeExecution?.(id, 'agent', cols, rows);
+      });
       let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
       const controller = deps.createExecutionTerminalController(id, 'agent', terminal, {
         onContentWillChange: (reason) => {
@@ -248,6 +350,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           }
         },
         onSnapshotApplied: (detail) => {
+          resizeReporter.acknowledge({ cols: detail.cols, rows: detail.rows });
           const hasSerializedRestore = Boolean(
             detail.terminalStream?.checkpoint.serializedState ?? detail.serializedTerminalState
           );
@@ -293,7 +396,24 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         terminal,
         fitAddon,
         controller,
-        nativeInteractions
+        nativeInteractions,
+        beginNodeMovement: () => {
+          if (nodeMovementReleaseFrameRef.current !== undefined) {
+            window.cancelAnimationFrame(nodeMovementReleaseFrameRef.current);
+            nodeMovementReleaseFrameRef.current = undefined;
+          }
+          nodeMovementActiveRef.current = true;
+        },
+        endNodeMovement: () => {
+          if (nodeMovementReleaseFrameRef.current !== undefined) {
+            window.cancelAnimationFrame(nodeMovementReleaseFrameRef.current);
+          }
+          nodeMovementReleaseFrameRef.current = window.requestAnimationFrame(() => {
+            nodeMovementReleaseFrameRef.current = undefined;
+            nodeMovementActiveRef.current = false;
+            fitTerminal();
+          });
+        }
       });
 
       const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
@@ -353,7 +473,33 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       terminalElement?.addEventListener('contextmenu', handleContextMenu);
       terminalElement?.addEventListener('auxclick', handleAuxClick);
 
-      function fitTerminal(): void {
+      function scheduleTerminalRefresh(): void {
+        if (refreshFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(refreshFrameRef.current);
+        }
+        refreshFrameRef.current = window.requestAnimationFrame(() => {
+          refreshFrameRef.current = undefined;
+          if (terminal.rows > 0) {
+            terminal.refresh(0, terminal.rows - 1);
+          }
+        });
+      }
+
+      function fitTerminal(options: {
+        reportMode?: 'settled' | 'immediate';
+        allowShrinkDuringRestore?: boolean;
+        refreshAfterFit?: boolean;
+      } = {}): void {
+        if (options.reportMode !== 'immediate') {
+          if (nodeResizeActiveRef.current) {
+            resizeReporter.cancelPending();
+            return;
+          }
+          if (nodeMovementActiveRef.current) {
+            return;
+          }
+        }
+
         const proposedDimensions = fitAddon.proposeDimensions();
         if (!proposedDimensions) {
           return;
@@ -361,6 +507,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
         const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
         const shouldDeferShrinkFit =
+          options.allowShrinkDuringRestore !== true &&
           hasAppliedSnapshot &&
           Date.now() < suppressShrinkFitUntilMs &&
           (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
@@ -388,17 +535,60 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           return;
         }
 
-        data.onResizeExecution?.(id, 'agent', terminal.cols, terminal.rows);
+        const dimensions = { cols: terminal.cols, rows: terminal.rows };
+        if (options.reportMode === 'immediate') {
+          resizeReporter.flush(dimensions);
+        } else {
+          resizeReporter.schedule(dimensions);
+        }
+        if (options.refreshAfterFit) {
+          scheduleTerminalRefresh();
+        }
       }
 
-      window.requestAnimationFrame(fitTerminal);
+      resizeFrameRef.current = window.requestAnimationFrame(() => {
+        resizeFrameRef.current = undefined;
+        fitTerminal();
+      });
+
+      cancelTerminalResizeRef.current = () => {
+        resizeReporter.cancelPending();
+        cancelDeferredShrinkFit();
+        if (resizeFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(resizeFrameRef.current);
+          resizeFrameRef.current = undefined;
+        }
+      };
+      finalizeTerminalResizeRef.current = () => {
+        finalResizePendingRef.current = true;
+        cancelTerminalResizeRef.current?.();
+        resizeFrameRef.current = window.requestAnimationFrame(() => {
+          resizeFrameRef.current = undefined;
+          fitTerminal({
+            reportMode: 'immediate',
+            allowShrinkDuringRestore: true,
+            refreshAfterFit: true
+          });
+          finalResizePendingRef.current = false;
+        });
+      };
 
       const resizeObserver = new ResizeObserver(() => {
-        if (resizeFrameRef.current) {
+        if (nodeResizeActiveRef.current || finalResizePendingRef.current) {
+          resizeReporter.cancelPending();
+          return;
+        }
+        if (nodeMovementActiveRef.current) {
+          return;
+        }
+        if (resizeFrameRef.current !== undefined) {
           window.cancelAnimationFrame(resizeFrameRef.current);
         }
 
-        resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+        resizeFrameRef.current = window.requestAnimationFrame(() => {
+          resizeFrameRef.current = undefined;
+          fitTerminal();
+        });
       });
       resizeObserver.observe(container);
 
@@ -444,8 +634,19 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           selectionService._getMouseEventScrollAmount = originalGetMouseEventScrollAmount;
         }
         cancelDeferredShrinkFit();
-        if (resizeFrameRef.current) {
+        resizeReporter.dispose();
+        cancelTerminalResizeRef.current = undefined;
+        finalizeTerminalResizeRef.current = undefined;
+        nodeMovementActiveRef.current = false;
+        finalResizePendingRef.current = false;
+        if (resizeFrameRef.current !== undefined) {
           window.cancelAnimationFrame(resizeFrameRef.current);
+        }
+        if (refreshFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(refreshFrameRef.current);
+        }
+        if (nodeMovementReleaseFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(nodeMovementReleaseFrameRef.current);
         }
         controller.dispose();
         nativeInteractions?.dispose();
@@ -514,6 +715,21 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     const titleActionChromeDensity =
       data.size.width <= AGENT_TITLE_ACTION_COMPACT_WIDTH ? 'compact-actions' : 'regular';
     const actionDisabled = executionBlocked || reattaching;
+    const resizeAffordanceData: CanvasNodeData = {
+      ...data,
+      onDraftNodeLayout: (nodeId, draft) => {
+        nodeResizeActiveRef.current = Boolean(draft?.position && draft.size);
+        if (nodeResizeActiveRef.current) {
+          cancelTerminalResizeRef.current?.();
+        }
+        data.onDraftNodeLayout?.(nodeId, draft);
+      },
+      onResizeNodeEnd: () => {
+        nodeResizeActiveRef.current = false;
+        data.onResizeNodeEnd?.();
+        finalizeTerminalResizeRef.current?.();
+      }
+    };
 
     return (
       <CanvasNodeInteractionBoundary
@@ -532,7 +748,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           }
         }}
       >
-        <deps.NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
+        <deps.NodeResizeAffordance id={id} data={resizeAffordanceData} position={{ x: xPos, y: yPos }} zoom={zoom} />
         <deps.NodeHandles selected={data.selected} />
         <div
           className={chromeClassName}
@@ -764,7 +980,14 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     });
     const attachSnapshotRequestedRef = useRef(false);
     const resizeFrameRef = useRef<number | undefined>(undefined);
+    const refreshFrameRef = useRef<number | undefined>(undefined);
     const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
+    const nodeResizeActiveRef = useRef(false);
+    const nodeMovementActiveRef = useRef(false);
+    const nodeMovementReleaseFrameRef = useRef<number | undefined>(undefined);
+    const finalResizePendingRef = useRef(false);
+    const cancelTerminalResizeRef = useRef<(() => void) | undefined>(undefined);
+    const finalizeTerminalResizeRef = useRef<(() => void) | undefined>(undefined);
 
     useEffect(() => {
       terminalSizeRef.current = {
@@ -805,12 +1028,18 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           if (resizeFrameRef.current) {
             window.cancelAnimationFrame(resizeFrameRef.current);
           }
-          resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+          resizeFrameRef.current = window.requestAnimationFrame(() => {
+            resizeFrameRef.current = undefined;
+            fitTerminal();
+          });
         }, Math.max(0, delayMs));
       }
 
       const terminal = new Terminal(deps.createEmbeddedTerminalOptions());
       const fitAddon = new FitAddon();
+      const resizeReporter = createExecutionTerminalResizeReporter(({ cols, rows }) => {
+        data.onResizeExecution?.(id, 'terminal', cols, rows);
+      });
       let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
       const controller = deps.createExecutionTerminalController(id, 'terminal', terminal, {
         onContentWillChange: (reason) => {
@@ -826,6 +1055,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           }
         },
         onSnapshotApplied: (detail) => {
+          resizeReporter.acknowledge({ cols: detail.cols, rows: detail.rows });
           const hasSerializedRestore = Boolean(
             detail.terminalStream?.checkpoint.serializedState ?? detail.serializedTerminalState
           );
@@ -871,7 +1101,24 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         terminal,
         fitAddon,
         controller,
-        nativeInteractions
+        nativeInteractions,
+        beginNodeMovement: () => {
+          if (nodeMovementReleaseFrameRef.current !== undefined) {
+            window.cancelAnimationFrame(nodeMovementReleaseFrameRef.current);
+            nodeMovementReleaseFrameRef.current = undefined;
+          }
+          nodeMovementActiveRef.current = true;
+        },
+        endNodeMovement: () => {
+          if (nodeMovementReleaseFrameRef.current !== undefined) {
+            window.cancelAnimationFrame(nodeMovementReleaseFrameRef.current);
+          }
+          nodeMovementReleaseFrameRef.current = window.requestAnimationFrame(() => {
+            nodeMovementReleaseFrameRef.current = undefined;
+            nodeMovementActiveRef.current = false;
+            fitTerminal();
+          });
+        }
       });
 
       const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
@@ -931,7 +1178,33 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       terminalElement?.addEventListener('contextmenu', handleContextMenu);
       terminalElement?.addEventListener('auxclick', handleAuxClick);
 
-      function fitTerminal(): void {
+      function scheduleTerminalRefresh(): void {
+        if (refreshFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(refreshFrameRef.current);
+        }
+        refreshFrameRef.current = window.requestAnimationFrame(() => {
+          refreshFrameRef.current = undefined;
+          if (terminal.rows > 0) {
+            terminal.refresh(0, terminal.rows - 1);
+          }
+        });
+      }
+
+      function fitTerminal(options: {
+        reportMode?: 'settled' | 'immediate';
+        allowShrinkDuringRestore?: boolean;
+        refreshAfterFit?: boolean;
+      } = {}): void {
+        if (options.reportMode !== 'immediate') {
+          if (nodeResizeActiveRef.current) {
+            resizeReporter.cancelPending();
+            return;
+          }
+          if (nodeMovementActiveRef.current) {
+            return;
+          }
+        }
+
         const proposedDimensions = fitAddon.proposeDimensions();
         if (!proposedDimensions) {
           return;
@@ -939,6 +1212,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
         const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
         const shouldDeferShrinkFit =
+          options.allowShrinkDuringRestore !== true &&
           hasAppliedSnapshot &&
           Date.now() < suppressShrinkFitUntilMs &&
           (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
@@ -966,17 +1240,60 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           return;
         }
 
-        data.onResizeExecution?.(id, 'terminal', terminal.cols, terminal.rows);
+        const dimensions = { cols: terminal.cols, rows: terminal.rows };
+        if (options.reportMode === 'immediate') {
+          resizeReporter.flush(dimensions);
+        } else {
+          resizeReporter.schedule(dimensions);
+        }
+        if (options.refreshAfterFit) {
+          scheduleTerminalRefresh();
+        }
       }
 
-      window.requestAnimationFrame(fitTerminal);
+      resizeFrameRef.current = window.requestAnimationFrame(() => {
+        resizeFrameRef.current = undefined;
+        fitTerminal();
+      });
+
+      cancelTerminalResizeRef.current = () => {
+        resizeReporter.cancelPending();
+        cancelDeferredShrinkFit();
+        if (resizeFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(resizeFrameRef.current);
+          resizeFrameRef.current = undefined;
+        }
+      };
+      finalizeTerminalResizeRef.current = () => {
+        finalResizePendingRef.current = true;
+        cancelTerminalResizeRef.current?.();
+        resizeFrameRef.current = window.requestAnimationFrame(() => {
+          resizeFrameRef.current = undefined;
+          fitTerminal({
+            reportMode: 'immediate',
+            allowShrinkDuringRestore: true,
+            refreshAfterFit: true
+          });
+          finalResizePendingRef.current = false;
+        });
+      };
 
       const resizeObserver = new ResizeObserver(() => {
-        if (resizeFrameRef.current) {
+        if (nodeResizeActiveRef.current || finalResizePendingRef.current) {
+          resizeReporter.cancelPending();
+          return;
+        }
+        if (nodeMovementActiveRef.current) {
+          return;
+        }
+        if (resizeFrameRef.current !== undefined) {
           window.cancelAnimationFrame(resizeFrameRef.current);
         }
 
-        resizeFrameRef.current = window.requestAnimationFrame(fitTerminal);
+        resizeFrameRef.current = window.requestAnimationFrame(() => {
+          resizeFrameRef.current = undefined;
+          fitTerminal();
+        });
       });
       resizeObserver.observe(container);
 
@@ -1018,8 +1335,19 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           selectionService._getMouseEventScrollAmount = originalGetMouseEventScrollAmount;
         }
         cancelDeferredShrinkFit();
-        if (resizeFrameRef.current) {
+        resizeReporter.dispose();
+        cancelTerminalResizeRef.current = undefined;
+        finalizeTerminalResizeRef.current = undefined;
+        nodeMovementActiveRef.current = false;
+        finalResizePendingRef.current = false;
+        if (resizeFrameRef.current !== undefined) {
           window.cancelAnimationFrame(resizeFrameRef.current);
+        }
+        if (refreshFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(refreshFrameRef.current);
+        }
+        if (nodeMovementReleaseFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(nodeMovementReleaseFrameRef.current);
         }
         controller.dispose();
         nativeInteractions?.dispose();
@@ -1070,6 +1398,22 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       };
     }, [executionBlocked, id, terminalMetadata.liveSession, terminalMetadata.pendingLaunch]);
 
+    const resizeAffordanceData: CanvasNodeData = {
+      ...data,
+      onDraftNodeLayout: (nodeId, draft) => {
+        nodeResizeActiveRef.current = Boolean(draft?.position && draft.size);
+        if (nodeResizeActiveRef.current) {
+          cancelTerminalResizeRef.current?.();
+        }
+        data.onDraftNodeLayout?.(nodeId, draft);
+      },
+      onResizeNodeEnd: () => {
+        nodeResizeActiveRef.current = false;
+        data.onResizeNodeEnd?.();
+        finalizeTerminalResizeRef.current?.();
+      }
+    };
+
     return (
       <CanvasNodeInteractionBoundary
         nodeId={id}
@@ -1087,7 +1431,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           }
         }}
       >
-        <deps.NodeResizeAffordance id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />
+        <deps.NodeResizeAffordance id={id} data={resizeAffordanceData} position={{ x: xPos, y: yPos }} zoom={zoom} />
         <deps.NodeHandles selected={data.selected} />
         <div
           className={chromeClassName}

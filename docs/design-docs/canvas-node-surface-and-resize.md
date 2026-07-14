@@ -113,6 +113,7 @@ updated_at: 2026-05-24
 - 四类节点统一支持 resize。2026-05-24 起，Webview 不再直接使用 React Flow 内置的 `NodeResizer`，改为在 `extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中用自定义 `NodeResizeAffordance` 渲染 8 向 resize 控制点；这样可以在鼠标接近画布可视区域边缘时复用画布自动平移控制器，并把视口平移折算进本次 resize 草稿。
 - 节点尺寸定义为宿主权威状态的一部分，字段为 `size.width` 与 `size.height`。
 - Webview 在 resize 过程中只维护本地草稿，结束后通过 `webview/resizeNode` 把最终位置与尺寸发回宿主；resize 左侧或上侧控制点时会同步改变节点 `position`。
+- 对 Agent / Terminal，Webview 本地 resize 草稿也不得逐帧改写 PTY 字符网格；手势期冻结现有 xterm `cols/rows`，结束后只提交最终稳定尺寸。普通布局抖动、纯位置拖动与本地 redraw 的详细边界见 `docs/design-docs/execution-terminal-resize-coalescing.md`。
 - 宿主在加载旧状态时补默认尺寸，在创建新节点和避碰时优先使用节点实际尺寸。
 - `Task` / `Note` 继续保留节点内编辑，但改成窗口化内容面：
   - 头部继续使用窗口标题栏。
