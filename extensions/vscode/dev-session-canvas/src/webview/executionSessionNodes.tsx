@@ -403,7 +403,6 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             nodeMovementReleaseFrameRef.current = undefined;
           }
           nodeMovementActiveRef.current = true;
-          cancelTerminalResizeRef.current?.();
         },
         endNodeMovement: () => {
           if (nodeMovementReleaseFrameRef.current !== undefined) {
@@ -412,6 +411,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           nodeMovementReleaseFrameRef.current = window.requestAnimationFrame(() => {
             nodeMovementReleaseFrameRef.current = undefined;
             nodeMovementActiveRef.current = false;
+            fitTerminal();
           });
         }
       });
@@ -490,12 +490,14 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         allowShrinkDuringRestore?: boolean;
         refreshAfterFit?: boolean;
       } = {}): void {
-        if (
-          (nodeResizeActiveRef.current || nodeMovementActiveRef.current) &&
-          options.reportMode !== 'immediate'
-        ) {
-          resizeReporter.cancelPending();
-          return;
+        if (options.reportMode !== 'immediate') {
+          if (nodeResizeActiveRef.current) {
+            resizeReporter.cancelPending();
+            return;
+          }
+          if (nodeMovementActiveRef.current) {
+            return;
+          }
         }
 
         const proposedDimensions = fitAddon.proposeDimensions();
@@ -572,8 +574,11 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       };
 
       const resizeObserver = new ResizeObserver(() => {
-        if (nodeResizeActiveRef.current || nodeMovementActiveRef.current || finalResizePendingRef.current) {
+        if (nodeResizeActiveRef.current || finalResizePendingRef.current) {
           resizeReporter.cancelPending();
+          return;
+        }
+        if (nodeMovementActiveRef.current) {
           return;
         }
         if (resizeFrameRef.current !== undefined) {
@@ -1103,7 +1108,6 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             nodeMovementReleaseFrameRef.current = undefined;
           }
           nodeMovementActiveRef.current = true;
-          cancelTerminalResizeRef.current?.();
         },
         endNodeMovement: () => {
           if (nodeMovementReleaseFrameRef.current !== undefined) {
@@ -1112,6 +1116,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           nodeMovementReleaseFrameRef.current = window.requestAnimationFrame(() => {
             nodeMovementReleaseFrameRef.current = undefined;
             nodeMovementActiveRef.current = false;
+            fitTerminal();
           });
         }
       });
@@ -1190,12 +1195,14 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         allowShrinkDuringRestore?: boolean;
         refreshAfterFit?: boolean;
       } = {}): void {
-        if (
-          (nodeResizeActiveRef.current || nodeMovementActiveRef.current) &&
-          options.reportMode !== 'immediate'
-        ) {
-          resizeReporter.cancelPending();
-          return;
+        if (options.reportMode !== 'immediate') {
+          if (nodeResizeActiveRef.current) {
+            resizeReporter.cancelPending();
+            return;
+          }
+          if (nodeMovementActiveRef.current) {
+            return;
+          }
         }
 
         const proposedDimensions = fitAddon.proposeDimensions();
@@ -1272,8 +1279,11 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       };
 
       const resizeObserver = new ResizeObserver(() => {
-        if (nodeResizeActiveRef.current || nodeMovementActiveRef.current || finalResizePendingRef.current) {
+        if (nodeResizeActiveRef.current || finalResizePendingRef.current) {
           resizeReporter.cancelPending();
+          return;
+        }
+        if (nodeMovementActiveRef.current) {
           return;
         }
         if (resizeFrameRef.current !== undefined) {

@@ -32,7 +32,7 @@ Agent 与 Terminal 节点同时存在两种“尺寸”：画布节点的像素�
 
 本轮不改变 terminal journal 中 resize 作为有序事件的语义，不修改 Host/Supervisor 的 PTY 能力，不阻止 Codex/Claude 在一次真实最终 resize 后正常重排，也不承诺消除 provider 自身输出的所有 ANSI 重绘帧。
 
-## 3. 已选定方案
+## 3. 正式方案
 
 ### 3.1 自定义 resize 手势期间冻结字符网格
 
@@ -46,9 +46,13 @@ Panel 宽高、sidebar、字体度量或其他非节点手势几何变化没有�
 
 这个时间窗只是 Webview 的流量整形，不改变 Host/Supervisor 收到后对 resize 的有序处理。明确的节点 resize finalize 不等待 settle window，以免给用户增加松手后的可见延迟。
 
-### 3.3 纯位置拖动只做本地 refresh
+已经完成本地 fit、但仍处于 settle window 内的 pending 尺寸属于合法工作，后续节点移动不能清除它。移动开始前已排队的 fit frame，以及 serialized snapshot restore 的延迟 shrink fit 也遵守同一规则：movement gate 可以阻止移动期间新产生的 observer 噪音，但不能销毁更早形成的真实尺寸工作。
 
-节点位置变化不改变 `.terminal-viewport` 的逻辑像素尺寸，因此不应 fit xterm，也不应发送 `webview/resizeExecutionSession`。浏览器仍可能在 React Flow 拖动/选中布局期间发出 `ResizeObserver` 通知，所以普通画布与 Pane Gallery 都在 drag start 通过 terminal registry 显式进入 movement-active，忽略这段时间的 fit/上报；drag stop 下一帧才释放，并对本次移动的 Agent/Terminal（包含多选共同移动节点）安排一次本地 xterm refresh。该动作只重画当前 buffer，用于清理浏览器 canvas/WebGL 合成后可能残留的旧像素，不会触发 PTY `SIGWINCH`，因而不会要求 Codex/Claude 自己重绘。
+### 3.3 纯位置拖动使用门禁、去重 reconciliation 与本地 refresh
+
+节点位置变化不改变 `.terminal-viewport` 的逻辑像素尺寸，因此纯移动不应发送 `webview/resizeExecutionSession`。浏览器仍可能在 React Flow 拖动/选中布局期间发出 `ResizeObserver` 通知，所以普通画布与 Pane Gallery 都在 drag start 通过 terminal registry 显式进入 movement-active，忽略这段时间新产生的 observer fit/上报，但保留移动前的 pending/deferred 工作。
+
+drag stop 下一帧释放门禁并调用 `executionSessionNodes.tsx` 中的 `fitTerminal()` 做一次 reconciliation：先读取最终容器的 proposed dimensions，只有字符尺寸确实不同才调用 `FitAddon.fit()`，再把结果交给 150ms reporter 去重。对普通纯移动，proposed dimensions 与当前字符网格相同，因此不会 fit，也不会通知 PTY；若移动前已有合法 pending resize 或 snapshot shrink fit，则 reconciliation 保证它最终提交。`main.tsx` 仍对本次移动的 Agent/Terminal（包含多选共同移动节点）安排一次本地 xterm refresh；refresh 只重画当前 buffer，用于清理浏览器 canvas/WebGL 合成后可能残留的旧像素，不会触发 PTY `SIGWINCH`，因而不会要求 Codex/Claude 自己重绘。
 
 ## 4. 与既有设计的关系
 
@@ -61,14 +65,17 @@ Panel 宽高、sidebar、字体度量或其他非节点手势几何变化没有�
 - 取舍：resize 手势期间字符网格不会填满每一帧外框。这样牺牲短暂的“内容实时铺满”，换取 provider 不被迫连续全屏重排；外框仍实时响应，松手后内容立即对齐最终尺寸。
 - 风险：150ms settle 可能让外部容器 resize 后的 PTY 尺寸短暂落后。缓解方式是本地 xterm 可先适应稳定容器，只有 provider 通知延后；窗口足够短，并且每次只保留末值。
 - 风险：React 状态收口与 DOM 尺寸提交可能跨 animation frame。缓解方式是通过明确的 `onResizeNodeEnd` finalize 信号，在最终草稿移除后的 frame 才读取容器并 fit。
+- 风险：位置拖动可能与 settle window 或 serialized restore grace 交错。movement gate 不取消移动前工作，并在 drag stop 后重新测量；尺寸 reporter 去重保证纯移动仍为零 PTY resize。
 - 风险：本地 refresh 只能修复 renderer 陈旧像素，不能修复 provider buffer 本身已经被错误 resize 的内容。核心预防仍是阻止中间 PTY resize，而不是依赖 refresh 掩盖问题。
 
 ## 6. 验证口径
 
-Playwright 必须对 Agent 与 Terminal 各执行一次多步 resize：指针移动但未释放期间没有 `webview/resizeExecutionSession`；释放后只有一条最终 resize；等待超过两倍 settle window 后仍只有一条；最终尺寸与起始尺寸不同。纯节点移动必须产生 `webview/moveNode` 且不产生执行会话 resize。
+Playwright 必须对 Agent 与 Terminal 各执行一次多步 resize：指针移动但未释放期间没有 `webview/resizeExecutionSession`；释放后只有一条最终 resize；等待超过两倍 settle window 后仍只有一条；最终尺寸与起始尺寸不同。稳定基线上的纯节点移动必须产生 `webview/moveNode` 且不产生执行会话 resize。
+
+交错回归还必须覆盖两类节点：外部几何变化已经完成本地 fit、但 150ms pending 尺寸尚未提交时立即移动节点，最终必须恰好提交一次该稳定末值；serialized snapshot 的 shrink-fit grace 内移动节点，延迟 refit 与最终尺寸上报也必须继续完成。这两类场景共同证明 movement gate 只隔离移动噪音，不丢失移动前的真实尺寸工作。
 
 类型检查、构建和 resize 聚焦 Webview 回归必须通过；完整 Webview 回归用于同时识别相关回归与当前主线无关失败，不能用更新无关快照/期待来掩盖失败。可运行时补 trusted VS Code smoke，确认最终尺寸仍能进入 Host/Supervisor。真实宿主人工观察应满足：慢速或来回拖动执行节点外框时，Codex/Claude 不再逐帧重绘；松手后只针对最终宽高重排一次；只移动节点位置时 provider 不重绘。
 
 ## 7. 当前验证状态
 
-实现与自动化验证已完成：Agent/Terminal 的连续 resize 与纯移动 4 条回归通过，resize 聚焦套件 15/15 通过，trusted VS Code smoke 通过；完整 Webview 套件 343/353 通过，10 条失败为当前主线既有截图、文案、菜单/default-args 期待漂移或一次就绪超时，本轮新增及后续 terminal journal/restore/zoom 用例全部通过。由于尚未在真实 Codex/Claude 进程上人工观察来回 resize，仍保持 `validation_status: 验证中`，完成记录见 `docs/exec-plans/completed/execution-terminal-resize-coalescing.md`。
+实现与自动化验证已完成：Agent/Terminal 的连续 resize 与稳定纯移动 4 条回归通过，pending resize 与移动交错 2 条、serialized snapshot shrink grace 与移动交错 2 条均通过，resize 聚焦套件 17/17 通过，类型检查与构建通过。初始 PR head 的 trusted VS Code smoke 通过；完整 Webview 套件 343/353 通过，10 条失败为当前主线既有截图、文案、菜单/default-args 期待漂移或一次就绪超时，本轮新增及后续 terminal journal/restore/zoom 用例全部通过。由于尚未在真实 Codex/Claude 进程上人工观察来回 resize，仍保持 `validation_status: 验证中`，完成记录见 `docs/exec-plans/completed/execution-terminal-resize-coalescing.md`。
