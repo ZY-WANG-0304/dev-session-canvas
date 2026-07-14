@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
-exec "${SCRIPT_DIR}/fake-claude-provider" "$@"
+DEV_SESSION_CANVAS_FAKE_CLAUDE_LIFECYCLE_HOOKS=1 exec "${SCRIPT_DIR}/fake-claude-provider" "$@"

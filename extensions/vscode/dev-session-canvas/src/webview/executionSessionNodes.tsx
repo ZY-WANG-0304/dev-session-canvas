@@ -11,6 +11,7 @@ import type {
   WebviewNodeActionId
 } from '../common/protocol';
 import { strongTerminalAttentionReminderShowsTitleBar } from '../common/protocol';
+import { createAgentInputIntentTracker } from '../common/agentInputIntent';
 import {
   buildFreshAgentCommandLine,
   formatCommandLine,
@@ -277,6 +278,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       shellPath: agentMetadata.shellPath,
       cwd: agentMetadata.cwd
     });
+    const inputIntentTrackerRef = useRef(createAgentInputIntentTracker());
 
     useEffect(() => {
       terminalSizeRef.current = {
@@ -387,6 +389,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         onPasteImage: (nodeId, kind, image) => data.onPasteExecutionImage?.(nodeId, kind, image),
         onCopyOsc52Text: (nodeId, _kind, text) =>
           data.onCopyTextToClipboard?.(text, 'execution-osc52', nodeId),
+        onKeyEvent: (event) => inputIntentTrackerRef.current.recordKeyEvent(event),
         onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
         resolveFileLinks: deps.resolveExecutionTerminalFileLinks
       });
@@ -598,8 +601,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           data.onShowTransientError?.(deps.t('execution.error.claudeCtrlZUnsupported'));
           return;
         }
+        const intent = inputIntentTrackerRef.current.classifyData(input);
         deps.reportExecutionInputDispatch(id, 'agent', input, (metadata) =>
-          data.onExecutionInput?.(id, 'agent', input, metadata)
+          data.onExecutionInput?.(id, 'agent', input, { ...metadata, intent })
         );
       });
       const selectionDisposable = terminal.onSelectionChange(() => {

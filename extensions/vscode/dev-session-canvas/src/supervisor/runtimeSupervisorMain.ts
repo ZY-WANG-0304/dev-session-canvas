@@ -4,6 +4,15 @@ import * as net from 'net';
 import * as path from 'path';
 
 import {
+  applyAgentProviderLifecycleEvent,
+  confirmAgentInterrupt,
+  createAgentProviderLifecycleState,
+  recordAgentInterruptRequest,
+  recordCodexSubmission,
+  type AgentProviderLifecycleEvent,
+  type AgentProviderLifecycleState
+} from '../common/agentProviderLifecycle';
+import {
   AGENT_WAITING_INPUT_POLL_INTERVAL_MS,
   createAgentActivityHeuristicState,
   evaluateAgentWaitingInputTransition,
@@ -13,6 +22,7 @@ import {
 } from '../common/agentActivityHeuristics';
 import {
   type AgentNodeStatus,
+  type AgentInputIntent,
   type AgentProviderKind,
   type AgentResumeStrategy,
   type ExecutionNodeKind,
@@ -88,6 +98,10 @@ import {
   locateCodexSessionId
 } from '../common/codexSessionIdLocator';
 import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPresets';
+import {
+  createAgentProviderLifecycleSession,
+  type AgentProviderLifecycleSession
+} from '../panel/agentProviderLifecycleServer';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
 const TERMINAL_LIVE_DELAY_MS = 160;
@@ -155,6 +169,8 @@ interface SupervisorSession {
   lastExitMessageDescriptor?: RuntimeSupervisorMessageDescriptor;
   stopRequested: boolean;
   agentActivity?: AgentActivityHeuristicState;
+  agentProviderLifecycle?: AgentProviderLifecycleState;
+  agentProviderLifecycleSession?: AgentProviderLifecycleSession;
   process?: ExecutionSessionProcess;
   outputSubscription?: DisposableLike;
   exitSubscription?: DisposableLike;
@@ -293,7 +309,9 @@ class RuntimeSupervisorServer {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
                 terminalProjectionCheckpointV1: true,
-                terminalAppliedRevisionAckV1: true
+                terminalAppliedRevisionAckV1: true,
+                agentSubmissionIntentV1: true,
+                agentProviderLifecycleV1: true
               }
             }
           });
@@ -426,10 +444,39 @@ class RuntimeSupervisorServer {
       initialScrollback: scrollback,
       checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
     });
+    let resolveLifecycleOwnerReady: () => void = () => {};
+    const lifecycleOwnerReady = new Promise<void>((resolve) => {
+      resolveLifecycleOwnerReady = resolve;
+    });
+    let providerLifecycleSession: AgentProviderLifecycleSession | undefined;
+    if (
+      params.kind === 'agent' &&
+      params.providerLifecycleEnabled === true &&
+      (params.provider === 'codex' || params.provider === 'claude')
+    ) {
+      try {
+        providerLifecycleSession = await createAgentProviderLifecycleSession({
+          provider: params.provider,
+          runtimeSessionId: sessionId,
+          onEvent: async (event) => {
+            await lifecycleOwnerReady;
+            this.handleAgentProviderLifecycleEvent(sessionId, event);
+          },
+          onRejected: (reason) => {
+            console.warn(`Rejected Agent lifecycle callback for ${sessionId}: ${reason}`);
+          }
+        });
+        Object.assign(launchSpec.env, providerLifecycleSession.extraEnv);
+      } catch (error) {
+        console.warn(`Agent lifecycle callback server unavailable for ${sessionId}:`, error);
+      }
+    }
     let process: ExecutionSessionProcess;
     try {
       process = createExecutionSessionProcess(launchSpec);
     } catch (error) {
+      resolveLifecycleOwnerReady();
+      await providerLifecycleSession?.dispose();
       await terminalJournal.delete();
       throw createExecutionSpawnProtocolError(error, launchSpec.file, launchSpec.cwd);
     }
@@ -491,9 +538,15 @@ class RuntimeSupervisorServer {
       resumeStoragePath: params.resumeStoragePath,
       stopRequested: false,
       agentActivity: params.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
+      agentProviderLifecycle:
+        params.kind === 'agent' && params.provider
+          ? createAgentProviderLifecycleState(params.provider, Boolean(providerLifecycleSession))
+          : undefined,
+      agentProviderLifecycleSession: providerLifecycleSession,
       process
     };
     this.sessions.set(sessionId, session);
+    resolveLifecycleOwnerReady();
     if (params.deferSubscription !== true) {
       this.subscribeSocket(socket, sessionId, 'legacy');
     }
@@ -744,12 +797,31 @@ class RuntimeSupervisorServer {
     }
 
     if (session.kind === 'agent') {
-      const submittedInstruction = isAgentInstructionSubmission(params.data);
+      const submittedInstruction = isAgentInstructionSubmission(params.data, params.intent);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      if (submittedInstruction) {
+      const providerLifecycle = session.agentProviderLifecycle;
+      const lifecycleEnabled = providerLifecycle?.lifecycleEnabled === true;
+      if (lifecycleEnabled && params.intent === 'interrupt' && providerLifecycle) {
+        const interruptResult = recordAgentInterruptRequest(providerLifecycle);
+        if (interruptResult.accepted) {
+          resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
+          this.queueAgentWaitingInput(session.sessionId);
+        }
+      } else if (
+        submittedInstruction &&
+        lifecycleEnabled &&
+        session.provider === 'codex' &&
+        providerLifecycle
+      ) {
+        recordCodexSubmission(providerLifecycle);
+        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
+        session.lifecycle = 'running';
+        session.resumePhaseActive = false;
+        this.emitSessionState(session);
+      } else if (submittedInstruction && !lifecycleEnabled) {
         resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
         session.lifecycle = 'running';
         session.resumePhaseActive = false;
@@ -1004,6 +1076,8 @@ class RuntimeSupervisorServer {
       session.exitSubscription?.dispose();
       session.outputSubscription = undefined;
       session.exitSubscription = undefined;
+      void session.agentProviderLifecycleSession?.dispose();
+      session.agentProviderLifecycleSession = undefined;
       session.process = undefined;
       session.live = false;
 
@@ -1349,9 +1423,54 @@ class RuntimeSupervisorServer {
     return session.agentActivity;
   }
 
+  private handleAgentProviderLifecycleEvent(
+    sessionId: string,
+    event: AgentProviderLifecycleEvent
+  ): void {
+    const session = this.sessions.get(sessionId);
+    if (
+      !session ||
+      session.kind !== 'agent' ||
+      !session.live ||
+      !session.agentProviderLifecycle
+    ) {
+      return;
+    }
+
+    const result = applyAgentProviderLifecycleEvent(session.agentProviderLifecycle, event);
+    if (!result.accepted) {
+      console.warn(
+        `Ignored Agent lifecycle event for ${sessionId}: ${result.reason} (${event.provider}/${event.kind})`
+      );
+      return;
+    }
+    if (!result.changed || !result.lifecycle) {
+      return;
+    }
+
+    if (session.lifecycleTimer) {
+      clearTimeout(session.lifecycleTimer);
+      session.lifecycleTimer = undefined;
+    }
+    session.lifecycle = result.lifecycle;
+    if (result.lifecycle === 'running') {
+      session.resumePhaseActive = false;
+    } else {
+      void this.maybeDiscoverAgentResumeSessionIdFromFiles(sessionId, 'waiting-input');
+    }
+    this.emitSessionState(session);
+  }
+
   private queueAgentWaitingInput(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.kind !== 'agent') {
+      return;
+    }
+    if (
+      session.agentProviderLifecycle?.lifecycleEnabled === true &&
+      session.lifecycle === 'running' &&
+      !session.agentProviderLifecycle.interruptRequested
+    ) {
       return;
     }
 
@@ -1373,6 +1492,15 @@ class RuntimeSupervisorServer {
       const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current));
       if (evaluation.shouldTransition) {
         current.lifecycleTimer = undefined;
+        if (
+          current.agentProviderLifecycle?.lifecycleEnabled === true &&
+          current.lifecycle === 'running'
+        ) {
+          const interruptResult = confirmAgentInterrupt(current.agentProviderLifecycle);
+          if (!interruptResult.accepted) {
+            return;
+          }
+        }
         if (current.lifecycle === 'resuming') {
           current.resumePhaseActive = false;
         }
@@ -1578,10 +1706,19 @@ class RuntimeSupervisorServer {
       resumeStrategy: session.resumeStrategy,
       resumeSessionId: session.resumeSessionId,
       resumeStoragePath: session.resumeStoragePath,
+      agentActivitySource: session.agentProviderLifecycle?.activitySource,
+      agentActivityAuthority: session.agentProviderLifecycle?.activityAuthority,
+      providerLifecycleEnabled: session.agentProviderLifecycle?.lifecycleEnabled,
+      providerSessionId: session.agentProviderLifecycle?.providerSessionId,
+      providerTurnId:
+        session.agentProviderLifecycle?.activeProviderTurnId ??
+        session.agentProviderLifecycle?.lastProviderTurnId,
+      lastTurnOutcome: session.agentProviderLifecycle?.lastTurnOutcome,
+      lastTurnError: session.agentProviderLifecycle?.lastTurnError,
       lastExitCode: session.lastExitCode,
       lastExitSignal: session.lastExitSignal,
       lastExitMessage: session.lastExitMessage,
-      lastExitMessageDescriptor: session.lastExitMessageDescriptor,
+      lastExitMessageDescriptor: session.lastExitMessageDescriptor
     };
   }
 
@@ -1791,6 +1928,8 @@ class RuntimeSupervisorServer {
     session.exitSubscription?.dispose();
     session.outputSubscription = undefined;
     session.exitSubscription = undefined;
+    void session.agentProviderLifecycleSession?.dispose();
+    session.agentProviderLifecycleSession = undefined;
 
     if (options.terminateProcess) {
       session.process?.kill();
@@ -1981,6 +2120,19 @@ class RuntimeSupervisorServer {
       initialOutput: snapshot.serializedTerminalState ? undefined : snapshot.output,
       initialOutputSequence: recoveredOutputSequence
     });
+    const recoveredProviderLifecycle =
+      snapshot.kind === 'agent' && snapshot.provider
+        ? {
+            ...createAgentProviderLifecycleState(snapshot.provider, false),
+            activitySource: snapshot.agentActivitySource ?? 'heuristic',
+            activityAuthority: snapshot.agentActivityAuthority ?? 'best-effort',
+            providerSessionId: snapshot.providerSessionId,
+            activeProviderTurnId: snapshot.providerTurnId,
+            lastProviderTurnId: snapshot.providerTurnId,
+            lastTurnOutcome: snapshot.lastTurnOutcome,
+            lastTurnError: snapshot.lastTurnError
+          }
+        : undefined;
 
     return {
       ...snapshot,
@@ -1999,6 +2151,7 @@ class RuntimeSupervisorServer {
       lastExitMessageDescriptor,
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
+      agentProviderLifecycle: recoveredProviderLifecycle,
       cols: snapshot.cols,
       rows: snapshot.rows,
       scrollback,
@@ -2199,8 +2352,8 @@ function isAgentLifecycleAwaitingInteractiveState(
   return status === 'starting' || status === 'resuming' || status === 'running';
 }
 
-function isAgentInstructionSubmission(data: string): boolean {
-  return /[\r\n]/.test(data);
+function isAgentInstructionSubmission(data: string, intent?: AgentInputIntent): boolean {
+  return intent === 'submit' || (intent === undefined && /[\r\n]/.test(data));
 }
 
 function containsTerminalSuspendInput(data: string): boolean {

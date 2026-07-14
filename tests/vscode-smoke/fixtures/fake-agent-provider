@@ -2,6 +2,8 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+
 mode="start"
 if [[ "${1-}" == "resume" ]]; then
   mode="resume"
@@ -20,8 +22,32 @@ file_event_stream="${DEV_SESSION_CANVAS_FAKE_AGENT_FILE_EVENT_STREAM_PATH:-}"
 claude_resume_requires_interaction="${DEV_SESSION_CANVAS_FAKE_CLAUDE_HINT_REQUIRES_INTERACTION:-1}"
 claude_stop_requires_double_interrupt="${DEV_SESSION_CANVAS_FAKE_CLAUDE_STOP_REQUIRES_DOUBLE_INTERRUPT:-0}"
 claude_exit_prompt_on_first_interrupt="${DEV_SESSION_CANVAS_FAKE_CLAUDE_EXIT_PROMPT_ON_FIRST_INTERRUPT:-0}"
+claude_lifecycle_hooks="${DEV_SESSION_CANVAS_FAKE_CLAUDE_LIFECYCLE_HOOKS:-0}"
+claude_lifecycle_settings=""
+claude_cli_session_id=""
+claude_prompt_sequence=0
+claude_active_prompt_id=""
 claude_session_confirmed=0
 claude_interrupt_count=0
+
+if [[ "$flavor" == "claude" && "$claude_lifecycle_hooks" == "1" ]]; then
+  for ((argument_index = 1; argument_index <= $#; argument_index += 1)); do
+    argument="${!argument_index}"
+    if [[ "$argument" == "--settings" ]]; then
+      value_index=$((argument_index + 1))
+      claude_lifecycle_settings="${!value_index-}"
+      argument_index=$value_index
+    elif [[ "$argument" == --settings=* ]]; then
+      claude_lifecycle_settings="${argument#--settings=}"
+    elif [[ "$argument" == "--session-id" ]]; then
+      value_index=$((argument_index + 1))
+      claude_cli_session_id="${!value_index-}"
+      argument_index=$value_index
+    elif [[ "$argument" == --session-id=* ]]; then
+      claude_cli_session_id="${argument#--session-id=}"
+    fi
+  done
+fi
 
 prefix="[fake-agent]"
 if [[ "$flavor" == "codex" ]]; then
@@ -79,7 +105,7 @@ if [[ "$mode" == "resume" ]]; then
     fi
   fi
 else
-  session_id="${DEV_SESSION_CANVAS_FAKE_PROVIDER_SESSION_ID:-$(default_session_id)}"
+  session_id="${DEV_SESSION_CANVAS_FAKE_PROVIDER_SESSION_ID:-${claude_cli_session_id:-$(default_session_id)}}"
   if [[ -n "$session_file" ]]; then
     printf '%s\n' "$session_id" > "$session_file"
   fi
@@ -92,6 +118,40 @@ fi
 
 print_prompt() {
   printf '> '
+}
+
+emit_claude_lifecycle_hook() {
+  local event_name="$1"
+  local prompt_id="$2"
+  local error_message="${3-}"
+
+  if [[
+    "$flavor" != "claude" ||
+    "$claude_lifecycle_hooks" != "1" ||
+    -z "$claude_lifecycle_settings" ||
+    -z "$prompt_id"
+  ]]; then
+    return
+  fi
+
+  "${SCRIPT_DIR}/fake-claude-hook-runner.cjs" \
+    "$claude_lifecycle_settings" \
+    "$event_name" \
+    "$session_id" \
+    "$prompt_id" \
+    "$error_message"
+}
+
+start_claude_turn() {
+  claude_prompt_sequence=$((claude_prompt_sequence + 1))
+  claude_active_prompt_id="prompt-${claude_prompt_sequence}"
+  emit_claude_lifecycle_hook "UserPromptSubmit" "$claude_active_prompt_id"
+}
+
+complete_claude_turn() {
+  emit_claude_lifecycle_hook "Stop" "$claude_active_prompt_id"
+  claude_active_prompt_id=""
+  print_prompt
 }
 
 normalize_event_path() {
@@ -167,6 +227,7 @@ while IFS= read -r line; do
 
   if [[ "$flavor" == "claude" ]]; then
     claude_session_confirmed=1
+    start_claude_turn
   fi
 
   if [[ "$line" == exit\ * ]]; then
@@ -175,13 +236,22 @@ while IFS= read -r line; do
     exit "$exit_code"
   fi
 
+  if [[ "$line" == failturn\ * ]]; then
+    error_message="${line#failturn }"
+    echo "${prefix} turn failed: ${error_message}"
+    emit_claude_lifecycle_hook "StopFailure" "$claude_active_prompt_id" "$error_message"
+    claude_active_prompt_id=""
+    print_prompt
+    continue
+  fi
+
   if [[ "$line" == burst\ * ]]; then
     burst_count="${line#burst }"
     if [[ "$burst_count" =~ ^[0-9]+$ ]]; then
       for ((i = 1; i <= burst_count; i += 1)); do
         printf '%s burst %03d\n' "$prefix" "$i"
       done
-      print_prompt
+      complete_claude_turn
       continue
     fi
   fi
@@ -190,7 +260,7 @@ while IFS= read -r line; do
     file_path="${line#read }"
     emit_file_event "read" "$file_path"
     echo "${prefix} read ${file_path}"
-    print_prompt
+    complete_claude_turn
     continue
   fi
 
@@ -204,7 +274,7 @@ while IFS= read -r line; do
     file_path="${line#write }"
     emit_file_event "write" "$file_path"
     echo "${prefix} write ${file_path}"
-    print_prompt
+    complete_claude_turn
     continue
   fi
 
@@ -212,7 +282,7 @@ while IFS= read -r line; do
     file_path="${line#readwrite }"
     emit_file_event "read-write" "$file_path"
     echo "${prefix} readwrite ${file_path}"
-    print_prompt
+    complete_claude_turn
     continue
   fi
 
@@ -221,7 +291,7 @@ while IFS= read -r line; do
     echo "${prefix} sleeping ${sleep_seconds}s"
     sleep "$sleep_seconds"
     echo "${prefix} woke after ${sleep_seconds}s"
-    print_prompt
+    complete_claude_turn
     continue
   fi
 
@@ -235,7 +305,7 @@ while IFS= read -r line; do
         sleep 0.55
       done
       printf '\r%s slowspin done %03d\n' "$prefix" "$spin_count"
-      print_prompt
+      complete_claude_turn
       continue
     fi
   fi
@@ -248,19 +318,19 @@ while IFS= read -r line; do
     echo "若问今晚谁最忙"
     sleep 0.12
     echo "Code Worker 一边写诗一边扛"
-    print_prompt
+    complete_claude_turn
     continue
   fi
 
   if [[ "$line" == clear-demo ]]; then
     printf '\033[2J\033[H'
-    print_prompt
+    complete_claude_turn
     continue
   fi
 
   if [[ "$line" == raw\ * ]]; then
     printf '%s\n' "${line#raw }"
-    print_prompt
+    complete_claude_turn
     continue
   fi
 
@@ -268,7 +338,7 @@ while IFS= read -r line; do
     notify_message="${line#notify }"
     printf '\033]9;%s\007' "$notify_message"
     printf '%s notified %s\n' "$prefix" "$notify_message"
-    print_prompt
+    complete_claude_turn
     continue
   fi
 
@@ -276,10 +346,10 @@ while IFS= read -r line; do
     bell_message="${line#bell }"
     printf '\007'
     printf '%s belled %s\n' "$prefix" "$bell_message"
-    print_prompt
+    complete_claude_turn
     continue
   fi
 
   echo "${prefix} ${line}"
-  print_prompt
+  complete_claude_turn
 done

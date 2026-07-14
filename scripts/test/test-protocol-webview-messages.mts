@@ -71,6 +71,7 @@ assert.deepEqual(
       nodeId: 'agent-1',
       kind: 'agent',
       data: 'hello\r',
+      intent: 'submit',
       sequence: 7,
       webviewEpochMs: 1781111111111,
       webviewPerformanceNowMs: 123.45
@@ -82,12 +83,21 @@ assert.deepEqual(
       nodeId: 'agent-1',
       kind: 'agent',
       data: 'hello\r',
+      intent: 'submit',
       sequence: 7,
       webviewEpochMs: 1781111111111,
       webviewPerformanceNowMs: 123.45
     }
   },
   'execution input diagnostic metadata 应随输入消息保留。'
+);
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/executionInput',
+    payload: { nodeId: 'agent-1', kind: 'agent', data: '\r', intent: 'invalid' }
+  })?.payload.intent,
+  undefined,
+  '未知 input intent 必须按旧消息处理，不能伪造 submit。'
 );
 assert.equal(
   parseWebviewMessage({
