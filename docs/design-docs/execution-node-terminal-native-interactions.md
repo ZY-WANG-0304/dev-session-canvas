@@ -188,7 +188,7 @@ updated_at: 2026-07-14
 - 激活修饰键继续遵循 `editor.multiCursorModifier`，行为与原生 Terminal 一致。
 - hover 文案和文案中的修饰键描述，应对齐原生 Terminal，而不是继续使用仓库自定义命名；但 `workbench.hover.delay` 不作为 Host -> Webview 运行时协议的一部分透传。
 - low-confidence 的 `word/search link` 不应在普通 hover 下默认显示下划线；只有按住激活修饰键时，才像原生 Terminal 一样临时强调为可点击状态。
-- 文件打开：Host 使用 `vscode.open` 交给 VS Code editor service 选择文本、图片、视频或其它已注册编辑器，并传入 line / column selection；不得先调用 `workspace.openTextDocument` 把所有文件强制解释成文本。打开失败时，`CanvasPanelManager` 必须在 `execution/linkOpenRejected` 诊断事件中保留错误信息，避免把 opener 异常静默降级成无原因的点击无响应。
+- 文件打开：Host 使用 `vscode.open` 交给 VS Code editor service 选择文本、图片、视频或其它已注册编辑器，并传入 line / column selection；不得先调用 `workspace.openTextDocument` 把所有文件强制解释成文本。`vscode.open` 命令 resolve 只表示 opener 命令已受理，不表示 editor model 已成功加载；只有命令本身 rejection 时，`CanvasPanelManager` 才记录 `execution/linkOpenRejected` 及其错误信息。若 editor service 内部消化加载错误并显示错误占位页，当前仍记录 `execution/linkOpened`。已解析目标在缓存期间被删除或移动也遵循这一 command-based 口径，本轮不在激活前重复 `stat`。
 - workspace 内目录：`revealInExplorer`。
 - workspace 外目录：新窗口打开目录。
 - search：先 exact-open，再 `workbench.action.quickOpen`。
@@ -239,5 +239,7 @@ updated_at: 2026-07-14
 2026-07-14 追加验证：
 
 1. `scripts/test/test-execution-terminal-native-helpers.mjs` 新增 PNG 文件回归，验证普通文件统一通过 `vscode.open` 打开，媒体文件不再进入 `workspace.openTextDocument`；原有文本、search 与 multi-root 用例继续验证 selection 会传给通用 opener。
-2. `tests/vscode-smoke/extension-tests.cjs` 新增真实 PNG 链接激活回归，验证 Host 记录 `execution/linkOpened`、`openerKind=vscode.open`，且 VS Code 活动 tab 的 URI 与目标 PNG 一致。
-3. `npm run test:execution-terminal-native-helpers`、`npm run typecheck`、`npm run build` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过。
+2. `tests/vscode-smoke/extension-tests.cjs` 新增真实 PNG 链接激活回归，验证 Host 记录 `execution/linkOpened`、`openerKind=vscode.open`，且 VS Code 活动 tab 是 `TabInputCustom`、`viewType=imagePreview.previewEditor`、URI 与目标 PNG 一致。
+3. 同一 smoke 注入一次精确的 `vscode.open` command rejection，验证 `execution/linkOpenRejected.detail.error` 保留原始错误文本；该断言不把 editor service 内部显示的错误占位页误算成 command rejection。
+4. GIF 与 MP4 使用同一通用 opener，且 VS Code 1.128 内置 `media-preview` 分别注册了 GIF image preview 与 MP4 video preview；本轮真实 Host fixture 只直接覆盖 PNG，尚未分别生成 GIF / MP4 fixture。
+5. `npm run test:execution-terminal-native-helpers`、`npm run typecheck`、`npm run build` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 通过。
