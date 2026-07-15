@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.24.3 - Media Link Opening and Stable Terminal Resize Update
+
+相对 `0.24.2`，`0.24.3` 是同一公开 `Preview` 线内的修复更新，解决执行节点中的图片、视频等媒体文件链接无法交给 VS Code 原生编辑器打开的问题，并把 Agent / Terminal 节点拖拽缩放期间的连续 PTY resize 收口为稳定最终尺寸，减少 Codex / Claude TUI 因逐帧重排产生的重复全屏重绘和画面叠字。它保留 `0.24.2` 的安全 journal compact、跨 Node 终态门禁、Fork 定向落位和生成节点创建时避碰能力。
+
+### 本版本聚焦
+
+- 版本号从 `0.24.2` bump 到 `0.24.3`，主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布
+- execution file link 不再一律通过 `workspace.openTextDocument` 读取；Host 统一调用 VS Code `vscode.open` editor service，让 PNG、GIF、MP4 等二进制媒体由已注册的 image / video custom editor 接管
+- 文本文件链接继续传递 line / column selection；`execution/linkOpenRejected` 保留 opener command rejection 的错误信息，便于区分路径解析成功后由 VS Code 拒绝打开的情况
+- Agent / Terminal 节点 resize 手势期间只实时更新节点外框，冻结 xterm 字符网格；pointer-up 后按最终容器执行一次 fit、Host 尺寸提交和本地 refresh，不再把每一帧草稿尺寸发送给 PTY
+- 非手势容器几何变化使用 150ms trailing window 合并末值，并与 Host snapshot / 最近已提交尺寸去重；稳定的纯位置拖动只修复本地 renderer，不要求 provider 重绘
+- 普通画布、Pane Gallery 与多选拖动共享 execution movement gate；移动前已形成的 pending resize、fit frame 或 serialized snapshot shrink-fit 会在门禁解除后继续收口，不因移动而丢弃真实最终尺寸
+- `pointercancel`、lost pointer capture、窗口 blur / 离开和 document hidden 走幂等异常终止路径，释放 terminal gate、回滚未提交的位置草稿并 reconciliation；同一节点第二触点会锁定当前 touch sequence，避免多指竞态永久冻结 resize
+- 不改变扩展身份、最低 VS Code 版本、执行链接解析规则、provider 命令契约、runtime journal 格式、notifier 通知行为、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线或 Preview 支持边界
+
+### 安装与升级
+
+- 当前公开 `Preview` 修复更新，扩展 ID 为 `devsessioncanvas.dev-session-canvas`
+- 首次安装与从 `0.24.2` 升级到 `0.24.3` 的目标仍是通过当前宿主配置的公开扩展市场获取；Open VSX 应同步发布并验证同版本，GitHub Release assets 继续作为手动安装兜底
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`
+- 升级不迁移正在运行会话的 PTY 所有权，也不改变 persistent journal authority；旧 generation session 继续由原 runtime 承载，新 session 进入当前 generation
+- 本版本不新增用户设置；现有 `devSessionCanvas.canvas.linkOpenMode`、runtime persistence、通知、multi-root 与 Fork placement 明确配置会继续沿用
+
+### 已知边界与验证说明
+
+- PNG 已通过真实 VS Code Host smoke 确认由 `imagePreview.previewEditor` 接管；GIF 与 MP4 使用同一通用 opener，且 VS Code `1.128.0` 内置对应 custom editor，但本轮未分别用真实 GIF / MP4 fixture 执行宿主 smoke
+- `vscode.open` resolve 表示 editor service 已受理命令，不保证目标 model 最终加载成功；目标随后被删除、移动或 editor 内部加载失败时，VS Code 可显示错误占位页，而诊断仍记录 `execution/linkOpened`
+- resize 合并已有 Webview 定向回归与 trusted Host smoke，证明中间尺寸不发送给 PTY 且最终尺寸可进入 Host / Supervisor；尚未在真实 Codex / Claude 进程上完成人工往返拖拽并复核 provider journal，因此设计状态仍为“验证中”
+- 多个触点分别落在不同节点、跨 Pane Gallery surface 或多节点并发触控不属于当前支持与验收范围；一次真实最终尺寸变化仍会触发 provider 正常重排，本版本不承诺消除 provider 自身产生的全部 ANSI 重绘帧
+- `0.24.2` 已登记的 unsafe / oversized journal 继续增长、无固定磁盘上限、90000 行 completed terminal 间歇性尾部短读、Fork 视觉验收与自动 File footprint 精度边界均未因本修复关闭
+
+### 回退建议
+
+- 若 `0.24.3` 阻塞当前工作流，建议先停止重要运行会话，再禁用或卸载扩展；优先等待后续更高的 `0.24.x` 修复版本，Supervisor journal 暂不提供跨版本回退保证
+
 ## 0.24.2 - Safe Journal Compaction and Directed Fork Placement Update
 
 相对 `0.24.1`，`0.24.2` 是同一公开 `Preview` 线内的持续迭代补丁，重点为持久执行会话补齐可证明安全的 journal compact 与双代恢复，为当前 Agent 节点增加可配置的 Fork 展开方向和统一的生成节点创建时避碰，并收口 Runtime Supervisor 跨 Node 终态门禁。它保留 `0.24.1` 的新旧 Supervisor 并行排空、旧会话交互能力和明确的恢复权威边界。
