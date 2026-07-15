@@ -75,16 +75,16 @@
 
 | 时间 | 画面与操作 | 字幕 | 录制来源 |
 |---|---|---|---|
-| `0-5s` | `rootGroups` fit view 全景。四个 root 一次看全；`Contract Review`、`Component Audit` 正在运行，`E2E Tests` 为 `live` 且测试正在执行，`UI Builder` 输入已准备。 | `四个工程，同时在推进。` | Take A，单宽屏主画面 |
+| `0-5s` | `rootGroups` fit view 全景。四个 root 一次看全；`Contract Review`、`Component Audit` 正在运行，`E2E Tests` 为 `live` 且测试正在执行，`UI Builder` 输入已准备。 | `一个工作区，同时推进多项任务。` | Take A，单宽屏主画面 |
 | `5-13s` | 平滑聚焦 `storefront`，提交预置任务。`UI Builder` 明确进入 running；不打开文件、不展示 diff。 | 无 | Take A，单宽屏主画面 |
 | `13-19s` | 回到四 root 全景。`payments-api / Contract Review` 进入 `waiting-input + attention`，其他执行继续推进。镜头暂不处理 attention，让观众先看到真实并行状态。 | 无 | Take A，单宽屏主画面 |
-| `19-26s` | Take A 缩到左侧；同一状态的 Take B 从右侧进入。背景切换为静态四 root 拓扑图，两个模式标签出现。 | `同一个工作区，两种查看方式。` | 后期双宽屏合成 |
+| `19-26s` | Take A 缩到左侧；同一状态的 Take B 从右侧进入。背景切换为静态四 root 拓扑图，两个模式标签出现。 | `两种视图模式，按需选择。` | 后期双宽屏合成 |
 | `26-35s` | 左侧保持 `rootGroups` 全景，右侧保持 `paneGallery / dynamic` 四 pane。两侧 root 顺序、标题和状态严格对应；attention 在两种视角里都真实可见。 | 无；保留模式标签 | 后期双宽屏合成 |
 | `35-38s` | 左侧宽屏退出，右侧 `paneGallery` 无透视变形地扩展为单宽屏主画面。模式标签退场；低噪声背景与外部字幕带继续保留。 | 无 | 后期转场到 Take B |
 | `38-44s` | 点击左下角 `eye` 进入 `sideThumbnails`。双击带 attention 的 `payments-api` 缩略图，使 `Contract Review` 成为主画板；此时只切换 active root，attention 仍保留。 | `发现需要关注的会话，立即聚焦。` | Take B，单宽屏主画面 |
 | `44-50s` | 点击主画板中的 `Contract Review`，真实认领并解除 attention；输入并提交 `Use full jitter. Cap at 3 attempts.`，Agent 随后从 waiting-input 恢复 running。 | 无 | Take B，单宽屏主画面 |
 | `50-55s` | 双击 `release-tools` 缩略图。主画板中的 `E2E Tests` 显示真实命令结束与简短 pass summary；输出必须来自 Terminal 进程，不能后期贴字。 | 无 | Take B，单宽屏主画面 |
-| `55-60s` | 点击 `globe` 返回 `dynamic` 四 pane 全览。四个 root 仍在视野中，状态已收敛；最后 1.5 秒淡入产品名。 | `每个 Agent，都在视野里。` | Take B，单宽屏主画面 + 产品落版 |
+| `55-60s` | 点击 `globe` 返回 `dynamic` 四 pane 全览。四个 root 仍在视野中，状态已收敛；最后 1.5 秒淡入产品名。 | `既能统览全局，也能从容聚焦。` | Take B，单宽屏主画面 + 产品落版 |
 
 ## 字幕与模式标签
 
@@ -94,10 +94,10 @@
 
 | 用途 | 中文版 | 英文版 |
 |---|---|---|
-| 开场 | `四个工程，同时在推进。` | `Four projects, moving in parallel.` |
-| 双形态比较 | `同一个工作区，两种查看方式。` | `One workspace. Two working views.` |
+| 开场 | `一个工作区，同时推进多项任务。` | `One workspace.`<br>`Multiple tasks moving in parallel.` |
+| 双形态比较 | `两种视图模式，按需选择。` | `Two view modes. Choose as needed.` |
 | attention 聚焦 | `发现需要关注的会话，立即聚焦。` | `Spot the session that needs you.`<br>`Focus instantly.` |
-| 收尾 | `每个 Agent，都在视野里。` | `Every agent stays in view.` |
+| 收尾 | `既能统览全局，也能从容聚焦。` | `See the whole picture.`<br>`Focus with ease.` |
 | 左侧模式标签 | `组合画布` | `Root Groups` |
 | 右侧模式标签 | `窗格画廊` | `Pane Gallery` |
 
@@ -108,7 +108,7 @@
 - 中文每屏只显示一句、只占一行，含标点不超过 16 个全角字符；英文最多两行，每行不超过 34 个字符。
 - `1920x1200` MP4/PNG 的字幕字号不小于 `80px`；`1440x900` GIF 的字幕字号不小于 `60px`。字重为 600，行高为 1.2-1.3。
 - 模式标签不是字幕：`1920x1200` 不小于 `40px`，`1440x900` 不小于 `30px`，只显示模式名，不追加节点数、running 数或 attention 数。
-- attention 英文字幕固定断成两行：第一行 `Spot the session that needs you.`，第二行 `Focus instantly.`，不能交给导出器自动换行。
+- 英文开场固定断为 `One workspace.` 与 `Multiple tasks moving in parallel.` 两行；attention 固定断为 `Spot the session that needs you.` 与 `Focus instantly.` 两行；收尾固定断为 `See the whole picture.` 与 `Focus with ease.` 两行。双形态字幕保持单行，不能交给导出器自动换行。
 - 每句视频字幕完整停留至少 `2.6s`；淡入淡出各不超过 `180ms`。GIF 中承载完整句子的静态帧至少停留 `2.2s`。
 - 不使用逐字打字、全大写英文、状态计数器、滚动字幕或同时出现两句主字幕。
 - 字幕与背景的对比度至少达到 `4.5:1`。默认使用 `Noto Sans CJK SC`；导出前必须验证字体已实际加载，不能静默回退到窄字形或缺字字体。
@@ -132,7 +132,7 @@ GIF 不从 MP4 均匀抽帧，也不使用未经审阅的原始截图。以下�
 |---|---|---|---|---|
 | 1 | `overview-start` | 四 root 开场；`UI Builder` 输入已准备 | 无 | `0.8s` |
 | 2 | `all-running` | `UI Builder` 已提交，三个 Agent running，Terminal `live` 且测试正在执行 | 无 | `0.7s` |
-| 3 | `attention-arrives` | `Contract Review` attention 在两种形态中同时可见 | `同一个工作区，两种查看方式。` | `2.2s` |
+| 3 | `attention-arrives` | `Contract Review` attention 在两种形态中同时可见 | `两种视图模式，按需选择。` | `2.2s` |
 | 4 | `mode-compare` | 两个模式标签与完整四 root 对比稳定可读 | 无 | `0.7s` |
 | 5 | `attention-focused` | 左侧保持全景，右侧 `sideThumbnails` 聚焦 `payments-api`，尚未点击 Agent | `发现需要关注的会话，立即聚焦。` | `2.4s` |
 | 6 | `decision-submitted` | Agent 已在点击时清除 attention；决策提交后恢复 running | 无 | `0.8s` |
@@ -145,7 +145,7 @@ GIF 不从 MP4 均匀抽帧，也不使用未经审阅的原始截图。以下�
 
 - PNG 不再复制 GIF 最后一帧。
 - 默认 Hero 为显式审阅通过的 `attention-arrives` 双宽屏合成帧：左侧 `组合画布`、右侧 `窗格画廊`，四个 root 对应一致，`payments-api` attention 明确可见。
-- Hero 主句使用“同一个工作区，两种查看方式。”及其英文版本；不叠加“发现需要关注的会话，立即聚焦。”，避免一张静态图同时承担两个叙事动作。
+- Hero 主句使用“两种视图模式，按需选择。”及其英文版本；不叠加“发现需要关注的会话，立即聚焦。”，避免一张静态图同时承担两个叙事动作。
 - `all-in-view` 仍是 GIF 最后一帧，但它不是 PNG 的默认来源。只有人工评审明确更换 Hero frame ID 后，PNG 才能切换到另一张合成帧。
 - PNG 必须从合成母版单独导出，不能从 GIF 解码回取，以免继承 GIF 调色板和抖动损失。
 
