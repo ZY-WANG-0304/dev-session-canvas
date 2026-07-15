@@ -1,8 +1,8 @@
 # Notifier 公开 Preview 发布执行手册
 
-本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前发布准备目标为 `0.24.2`，上一已发布版本为 `0.24.1`；publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
+本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。最新已发布版本为 `0.24.2`，上一已发布版本为 `0.24.1`；publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
 
-当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。本轮 `0.24.2` 需要保持两侧 manifest / changelog / 产物名同版本；notifier 本轮不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
+当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。本轮 `0.24.2` 已保持两侧 manifest / changelog / 产物名同版本；notifier 本轮不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
 
 ## 当前发布素材
 
@@ -123,8 +123,9 @@ workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起�
 - notifier 子包现在已经显式提供 `npm run -w extensions/vscode/dev-session-canvas-notifier package:vsix`，可直接从仓库根目录执行；真正产物文件名以当前 notifier manifest 版本为准，而不是手册里预设的常量。
 - notifier 的打包脚本现已固定打印 `VSCE README doc ref`；即使当前 `README.marketplace.md` 没有相对链接，也会显式输出“当前没有需要重写的相对链接”，便于 release-day 复核“最终发布 ref 已参与打包校验”。
 - notifier 现在与主扩展一样使用英文默认 + 简体中文本地化资源；发布前必须确认 VSIX file list 包含 `package.nls.json`、`package.nls.zh-cn.json` 与 `l10n/bundle.l10n.zh-cn.json`，并运行 `npm run test:notifier-locale-smoke` 覆盖真实英文 / 简体中文宿主文案。
+- `0.24.2` 已由成功的 Actions run [`29309330723`](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/29309330723) 从最终 `main` release ref `c1e13b754d6a1f7be85d14b5d908967d464e1c6a` 发布；正式 `v0.24.2` 指向同一 ref，`publish/v0.24.2` 已删除。最终 notifier GitHub Release asset 为 `159,016 bytes`，`sha256=304f1917ffd17f4096b7391f62a3f02508de50c26315ff573e785b5fa5ba7bba`；最终 manifest 中 notifier artifact 的 `packagingDocRef` / `readmeDocRef` 均为该 release ref。Open VSX notifier 为 `version=0.24.2`、`verified=true`，Visual Studio Marketplace notifier 记录为 `publish-failed` / deferred，2026-07-14 public gallery 独立复核为 `count=0` / `TotalCount=0`。
 - `0.24.1` 已从最终 `main` release ref `51dd07ed95f0e26db184cd4ce14decd5ce2721f7` 完成 GitHub Release assets + Open VSX 兜底发布；正式 `v0.24.1` 指向同一 ref，`publish/v0.24.1` 已删除。最终 notifier asset 为 `158,897 bytes`，`sha256=874488c00ec9eb80f01c1b7b2b69ba78b94fd371a902b67f057159e88aa10a88`；Open VSX notifier `0.24.1` 为 verified，Visual Studio Marketplace notifier 记录为 `publish-failed` / deferred，2026-07-14 public gallery 复核仍不可见。
-- `0.24.2` 发布准备分支已同步 notifier manifest、notifier changelog 与本手册中的目标版本；notifier 本轮继续随主扩展对齐版本，但不引入新的通知投递行为。production build、typecheck、source、companion smoke、英文 / 简体中文 locale smoke、VSIX file-list 守卫与 `651` packages 的 0-vulnerability audit 均已通过。
-- 当前候选 `dev-session-canvas-notifier-0.24.2.vsix` 包含 `14` files、`159,017 bytes`，`sha256=3e9a56d38586195032baf4d9117f0fea0923fe44006d29d375896aab0c609163`；file list 包含默认 / 简体中文 NLS 与 l10n bundle，dirty-working-tree 打包日志使用 `VSCE README doc ref: fc427c6ed38c97c25f183e95216d35b19b1bc311`。Node `22.23.1` 隔离 package-only dry-run 已正确规划 notifier 与主扩展两个 `0.24.2` VSIX 和 release manifest；这些候选工件、临时 ref 与本地 tag 都不是最终 Release assets。
-- 发布准备阶段要求在 MR 合入后的 clean `main` ref 上重跑完整 gate 与 `publish/v0.24.2` dry-run，且不把准备分支 working tree 生成的 notifier VSIX 直接当作 Release asset。
+- `0.24.2` 发布准备分支已同步 notifier manifest、notifier changelog 与本手册中的目标版本；notifier 本轮继续随主扩展对齐版本，但不引入新的通知投递行为。准备阶段与最终 `main` ref 上的 production build、typecheck、source、companion smoke、英文 / 简体中文 locale smoke、VSIX file-list 守卫与 `651` packages 的 0-vulnerability audit 均已通过。
+- 发布准备候选 `dev-session-canvas-notifier-0.24.2.vsix` 包含 `14` files、`159,017 bytes`，`sha256=3e9a56d38586195032baf4d9117f0fea0923fe44006d29d375896aab0c609163`；file list 包含默认 / 简体中文 NLS 与 l10n bundle，dirty-working-tree 打包日志使用 `VSCE README doc ref: fc427c6ed38c97c25f183e95216d35b19b1bc311`。Node `22.23.1` 隔离 package-only dry-run 已正确规划 notifier 与主扩展两个 `0.24.2` VSIX 和 release manifest；这些候选工件、临时 ref 与本地 tag 都不是最终 Release assets。
+- #264 合入后已在 clean `main` ref 上重跑完整 gate 与 `publish/v0.24.2` package-only dry-run，最终发布没有把准备分支 working tree 生成的 notifier VSIX 直接当作 Release asset；正式资产因此比候选资产少 `1 byte`，并使用上方单独记录的最终 SHA-256。
 - 仍需单独记住的一点是：repo-local staged smoke / VSIX smoke 会为了装配 development host 或 packaged payload 临时移除 `extensionDependencies` / `extensionPack`，因此“真实安装时是否自动补齐依赖”必须通过上面的 clean profile 安装步骤复核，不能把 staged smoke 直接当成这条结论的自动化证据。
