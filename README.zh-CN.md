@@ -18,7 +18,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段；当前发布准备目标是 `0.24.2`，在发布准备分支完成 review、合并并正式发布之前，最新已发布基线是可通过 GitHub Release assets 与已验证 Open VSX 获取的 `0.24.1`。Visual Studio Marketplace 仍需等 public gallery 同时暴露主扩展与 notifier 后再解除 deferred。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段；当前发布准备目标是 `0.24.3`，在发布准备分支完成 review、合并并正式发布之前，最新已发布基线是可通过 GitHub Release assets 与已验证 Open VSX 获取的 `0.24.2`。Visual Studio Marketplace 仍需等 public gallery 同时暴露主扩展与 notifier 后再解除 deferred。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
 ![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif)
 
@@ -47,7 +47,8 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - `Agent` 与嵌入式 `Terminal` 的跨平台 shell 环境继承与可诊断启动路径
 - File Explorer 右键入口，可从 workspace 内目录或文件创建绑定 cwd 的 `Terminal` 或 `Agent` 节点
 - 执行终端复制粘贴快捷键，按本机平台保留复制、粘贴与 `Ctrl+C` 打断语义，并支持 live `Agent` 节点截图粘贴
-- 执行终端链接识别覆盖原生风格 URL、文件路径、多行行号输出、高置信 TUI 硬换行 URL / 带样式文件片段、运行中输出的文件链接缓存刷新，以及点击时 fallback 搜索
+- 执行终端链接识别覆盖原生风格 URL、文件路径、多行行号输出、高置信 TUI 硬换行 URL / 带样式文件片段、运行中输出的文件链接缓存刷新、点击时 fallback 搜索，以及文本 / 媒体目标的 VS Code 原生打开路径
+- Agent / Terminal 稳定 resize 提交：实时预览节点外框、合并 PTY 字符网格变化，并避免纯位置移动触发 provider 重绘
 - 当前输入节点优先、后台节点有界公平推进的无损输出调度，以及持久化执行会话的 Supervisor checkpoint + journal 权威恢复、保守安全 compact 与 current / previous 双代回退
 - 侧栏与命令面板中的 `Codex` / `Claude Code` CLI 选择、配置文件打开入口，以及停止后节点的 `新建` / `恢复` 动作分流
 - Codex / Claude Code Agent 可从可信 session id `分叉` 出新 Agent 节点，用 provider 原生 fork 语义启动，并可为当前节点 Fork 配置向上 / 向下 / 向右落位
@@ -80,15 +81,15 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前发布准备目标是 `0.24.2`：为 persistent Supervisor journal 增加保守安全 compact 与回退恢复，为当前节点 Agent Fork 增加定向落位，让系统生成节点复用创建时避碰，并让终态协议门禁不再依赖固定等待；在本发布准备分支完成 review、合并并正式发布前，最新已发布基线仍是 `0.24.1`。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。当前发布准备目标是 `0.24.3`：媒体文件链接交给 VS Code 已注册编辑器打开，Agent / Terminal resize 手势只提交稳定最终 PTY 尺寸，纯位置移动不再触发 provider 重绘；在本发布准备分支完成 review、合并并正式发布前，最新已发布基线仍是 `0.24.2`。对外版本口径维持 `Preview`，不提供稳定正式版承诺。
 
 明确结论：
 
 - 版本定位为 `Preview`，尚未达到稳定正式版。
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
-- 公开发布主渠道目标仍以 `Visual Studio Marketplace` 为主，`Open VSX` 作为同版本补充渠道；`0.24.2` release-day 完成门禁继续允许在 Visual Studio Marketplace 仍不可见时，依赖 GitHub Release assets 加已验证的 Open VSX 完成本轮发布，并把 VSM 记录为 deferred channel。
-- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.24.2` 发布准备分支负责完成版本 / 打包一致性、构建、审计、双 VSIX、journal / Fork / 终态定向回归、packaged-payload smoke 与 publish dry-run 证据，最终 release-day 仍需在合并后的干净 `main` ref 上复核。Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
+- 公开发布主渠道目标仍以 `Visual Studio Marketplace` 为主，`Open VSX` 作为同版本补充渠道；`0.24.3` release-day 完成门禁继续允许在 Visual Studio Marketplace 仍不可见时，依赖 GitHub Release assets 加已验证的 Open VSX 完成本轮发布，并把 VSM 记录为 deferred channel。
+- Linux、macOS、Windows 本地工作区以及 `Remote SSH` 主路径已有公开 `Preview` 验证证据；`0.24.3` 发布准备分支负责完成版本 / 打包一致性、构建、审计、双 VSIX、媒体链接 / resize 定向回归、packaged-payload smoke 与 publish dry-run 证据，最终 release-day 仍需在合并后的干净 `main` ref 上复核。Windows 下使用 `Codex` 时仍保留“执行节点内历史无法向上翻页”的已知限制。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
 相关入口：
@@ -99,10 +100,10 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## Preview 分发
 
-对外分发目标是通过公开扩展市场发布；官方 VS Code 仍计划以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。`0.24.2` 中，GitHub Release assets 继续作为 release-day 工件镜像和手动安装兜底入口，Open VSX 是当前必须验证通过的 marketplace 完成门禁；Visual Studio Marketplace 仍会尝试发布，但 public visibility 若仍不可用，则作为 deferred channel 记录而不阻塞本轮完成。除此之外，`.vsix` 仍仅保留为构建工件和发布验证输入。
+对外分发目标是通过公开扩展市场发布；官方 VS Code 仍计划以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。`0.24.3` 中，GitHub Release assets 继续作为 release-day 工件镜像和手动安装兜底入口，Open VSX 是当前必须验证通过的 marketplace 完成门禁；Visual Studio Marketplace 仍会尝试发布，但 public visibility 若仍不可用，则作为 deferred channel 记录而不阻塞本轮完成。除此之外，`.vsix` 仍仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过当前宿主配置的扩展市场安装，而非手动分发 `.vsix`
-- `Visual Studio Marketplace` 仍是官方 VS Code 安装主路径目标，但只有在主扩展和 notifier 均公开可见后才对外宣称可用；`0.24.2` 可在 VSM deferred 的状态下，通过 GitHub Release assets 加已验证的 Open VSX 完成本轮发布
+- `Visual Studio Marketplace` 仍是官方 VS Code 安装主路径目标，但只有在主扩展和 notifier 均公开可见后才对外宣称可用；`0.24.3` 可在 VSM deferred 的状态下，通过 GitHub Release assets 加已验证的 Open VSX 完成本轮发布
 - `Open VSX` 不改变当前 VS Code 官方市场主路径，也不额外承诺所有兼容宿主的完整支持矩阵
 
 ## 桌面通知 companion（自动安装）
@@ -137,9 +138,11 @@ npm run build
 
 - 仍处于 `Preview`，不应按稳定生产工具看待。
 - 不支持 `Virtual Workspace`。
-- 公开 `Preview` 的分发主路径目标仍是 `Visual Studio Marketplace`，并补充 `Open VSX` 同版本发布；`0.24.1` 已在 Visual Studio Marketplace 可见性 deferred 时依赖 GitHub Release assets 加 Open VSX verified 完成；`0.24.2` 沿用同一完成门禁，后续 release-day 仍需手工执行与复核。
+- 公开 `Preview` 的分发主路径目标仍是 `Visual Studio Marketplace`，并补充 `Open VSX` 同版本发布；`0.24.2` 已在 Visual Studio Marketplace 可见性 deferred 时依赖 GitHub Release assets 加 Open VSX verified 完成；`0.24.3` 沿用同一完成门禁，后续 release-day 仍需手工执行与复核。
 - 合格的 persistent Runtime Supervisor journal 可以使用 current / previous 双代回退进行安全 compact，但不安全或过大的 checkpoint 会有意保留完整 journal；当前仍不承诺固定磁盘上限、完整长期 retention 策略或跨版本回退。local PTY 仍不能跨 Extension Host 生命周期继续运行，更强恢复只在 runtime persistence 及其后端可用时成立。
 - 当前节点 Fork 定向落位已有自动化几何与交互覆盖，但 panel / editor 两种承载面的层间距与 `fork` 标签仍待最终人工视觉验收；自动 File 节点仍按可能小于真实路径标签宽度的估算 footprint 选位。
+- PNG 执行链接已有真实 VS Code Host 覆盖，GIF / MP4 走同一原生 opener 但尚无各自的真实宿主 fixture；`vscode.open` resolve 只确认 editor service 已受理，不保证目标 model 最终加载成功。
+- resize 合并已有 Webview 回归与 trusted Host smoke 证据，但仍需在真实 Codex / Claude TUI 进程上人工复核 journal；不同节点或跨 Pane Gallery surface 的多指触控当前不受支持。
 - 严格 90,000 行 completed terminal 压测已间歇性出现最终尾部未收齐，期间也有完整通过样本。在 PTY / bridge / journal / finalization 边界完成定位前，不能把单次极端大输出的最终尾部完整性写成已验证保证。
 - 模板市场仍是 Preview 能力，可能需要访问 `https://dscanvas.dev`、在写操作中完成 GitHub 认证，并依赖通过市场发布流程或受控运维流程写入的生产目录数据。
 - `Remote SSH` 主路径已验证可用，且仍是验证最充分的推荐路径；Linux、macOS、Windows 本地主路径也已完成功能可用性验证，但 Windows 下使用 `Codex` 时仍存在执行节点内历史无法向上翻页的已知问题。

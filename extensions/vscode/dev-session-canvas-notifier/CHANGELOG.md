@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.3
+
+- 与主扩展 `0.24.3` 对齐：本轮主扩展修复 execution 媒体文件链接的原生编辑器打开路径，并把 Agent / Terminal 节点 resize 收口为稳定最终尺寸；notifier companion 不引入新的通知投递行为变更。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展的发布输入一致；通知协议、后端选择、点击回跳语义和本地化边界均保持不变。
+
 ## 0.24.2
 
 - 与主扩展 `0.24.2` 对齐：本轮主扩展为 persistent Runtime Supervisor 增加可证明安全的 journal compact 与双代恢复，收口跨 Node 终态门禁，并增加当前 Agent 节点的 Fork 定向展开和生成节点创建时避碰；notifier companion 不引入新的通知投递行为变更。
