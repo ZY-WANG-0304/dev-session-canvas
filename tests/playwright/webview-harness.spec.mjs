@@ -1396,6 +1396,96 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
   expect(topRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
 });
 
+test('pane gallery keeps root headers above canvas content when side thumbnails move to the bottom', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 520 });
+  const state = createPaneGalleryCanvasState({ rootCount: 16 });
+
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'sideThumbnails',
+        activeRootGroupId: state.groups[0].id,
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails'
+      }
+    }
+  });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await expect(page.locator('.pane-gallery-thumbnail-layout-sideThumbnails')).toBeVisible();
+
+  const rail = page.locator('.pane-gallery-thumbnail-rail-sideThumbnails');
+  await expect
+    .poll(() => rail.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(0);
+  const verticalScrollTop = await rail.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
+  });
+  expect(verticalScrollTop).toBeGreaterThan(0);
+
+  await page.setViewportSize({ width: 800, height: 520 });
+  await expect
+    .poll(() =>
+      page.locator('.pane-gallery-thumbnail-layout-sideThumbnails').evaluate((layout) => {
+        const main = layout.querySelector('.pane-gallery-root-pane-main');
+        const rail = layout.querySelector('.pane-gallery-thumbnail-rail-sideThumbnails');
+        return main instanceof HTMLElement && rail instanceof HTMLElement
+          ? rail.getBoundingClientRect().top >= main.getBoundingClientRect().bottom - 1
+          : false;
+      })
+    )
+    .toBe(true);
+
+  const metrics = await rail.evaluate((element) => {
+    const railRect = element.getBoundingClientRect();
+    const entries = [...element.querySelectorAll(
+      '.pane-gallery-root-pane-thumbnail, .pane-gallery-root-pane-active-placeholder'
+    )];
+    return {
+      railTop: railRect.top,
+      entries: entries.map((entry) => {
+        const header = entry.querySelector('.pane-gallery-root-header');
+        const flowShell = entry.querySelector('.pane-gallery-root-flow-shell');
+        const paneRect = entry.getBoundingClientRect();
+        const headerRect = header instanceof HTMLElement ? header.getBoundingClientRect() : null;
+        const headerHitTarget = headerRect
+          ? document.elementFromPoint(headerRect.left + Math.min(10, headerRect.width / 2), headerRect.top + headerRect.height / 2)
+          : null;
+        return {
+          visible: paneRect.right > railRect.left + 1 && paneRect.left < railRect.right - 1,
+          paneLeft: paneRect.left,
+          paneTop: paneRect.top,
+          headerLeft: headerRect?.left ?? null,
+          headerTop: headerRect?.top ?? null,
+          headerBottom: headerRect?.bottom ?? null,
+          headerWidth: headerRect?.width ?? null,
+          paneWidth: paneRect.width,
+          headerZIndex: header instanceof HTMLElement ? getComputedStyle(header).zIndex : null,
+          flowShellZIndex: flowShell instanceof HTMLElement ? getComputedStyle(flowShell).zIndex : null,
+          headerOwnsHitPoint: header instanceof HTMLElement && headerHitTarget instanceof Element
+            ? headerHitTarget.closest('.pane-gallery-root-header') === header
+            : false
+        };
+      })
+    };
+  });
+
+  expect(metrics.entries).toHaveLength(16);
+  const visibleEntries = metrics.entries.filter((entry) => entry.visible);
+  expect(visibleEntries.length).toBeGreaterThan(1);
+  for (const entry of visibleEntries) {
+    expect(entry.headerLeft).toBeLessThanOrEqual(entry.paneLeft + 2);
+    expect(entry.headerTop).toBeGreaterThanOrEqual(metrics.railTop - 1);
+    expect(entry.headerTop).toBeGreaterThanOrEqual(entry.paneTop - 1);
+    expect(entry.headerBottom).toBeGreaterThan(metrics.railTop);
+    expect(entry.headerWidth).toBeLessThan(entry.paneWidth - 1);
+    expect(entry.headerOwnsHitPoint).toBe(true);
+    if (entry.flowShellZIndex !== null) {
+      expect(Number(entry.headerZIndex)).toBeGreaterThan(Number(entry.flowShellZIndex));
+    }
+  }
+});
+
 test('pane gallery thumbnail rail follows workspace root order after switching active root', async ({ page }) => {
   const state = createPaneGalleryCanvasState({ rootCount: 4 });
   const groupsById = new Map(state.groups.map((group) => [group.id, group]));
