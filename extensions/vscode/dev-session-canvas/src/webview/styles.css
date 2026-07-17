@@ -3833,7 +3833,6 @@ body {
   left: 0;
   z-index: 5;
   display: grid;
-  width: fit-content;
   max-width: min(360px, 68%);
   min-width: 0;
   box-sizing: border-box;
@@ -3927,6 +3926,7 @@ body {
 .pane-gallery-root-flow-shell {
   position: absolute;
   inset: 0;
+  z-index: 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -4064,7 +4064,6 @@ body {
   .canvas-shell.is-pane-gallery {
     --pane-gallery-pane-min-width: min(420px, calc(100vw - 4px));
     --pane-gallery-pane-min-height: 340px;
-    --pane-gallery-bottom-thumbnail-header-height: 24px;
     --pane-gallery-thumbnail-size: 132px;
   }
 
@@ -4085,38 +4084,5 @@ body {
     height: 100%;
     margin-block: 0;
     margin-inline: auto;
-  }
-
-  .pane-gallery-thumbnail-rail-sideThumbnails
-    :is(.pane-gallery-root-pane-thumbnail, .pane-gallery-root-pane-active-placeholder)::before {
-    content: "";
-    position: absolute;
-    top: calc(var(--pane-gallery-bottom-thumbnail-header-height) - 1px);
-    right: 0;
-    left: 0;
-    z-index: 4;
-    border-top-width: 1px;
-    border-top-style: solid;
-    border-top-color: var(--pane-gallery-root-header-border-color, var(--vscode-panel-border));
-    pointer-events: none;
-  }
-
-  .pane-gallery-thumbnail-rail-sideThumbnails
-    :is(.pane-gallery-root-pane-thumbnail, .pane-gallery-root-pane-active-placeholder)
-    .pane-gallery-root-header {
-    align-content: center;
-    min-height: var(--pane-gallery-bottom-thumbnail-header-height);
-  }
-
-  .pane-gallery-thumbnail-rail-sideThumbnails
-    .pane-gallery-root-pane-thumbnail
-    .pane-gallery-root-flow-shell {
-    top: var(--pane-gallery-bottom-thumbnail-header-height);
-  }
-
-  .pane-gallery-thumbnail-rail-sideThumbnails
-    .pane-gallery-root-pane-active-placeholder
-    .pane-gallery-active-placeholder-body {
-    padding-top: calc(24px + var(--pane-gallery-bottom-thumbnail-header-height));
   }
 }
