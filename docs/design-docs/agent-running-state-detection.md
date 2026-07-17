@@ -18,7 +18,7 @@ related_plans:
   - docs/exec-plans/completed/claude-agent-ctrl-z-containment.md
   - docs/exec-plans/completed/agent-provider-lifecycle-events.md
   - docs/exec-plans/completed/agent-lifecycle-adapter-hardening.md
-updated_at: 2026-07-15
+updated_at: 2026-07-17
 ---
 
 # Agent 运行态判定与等待输入信号设计
@@ -47,6 +47,7 @@ updated_at: 2026-07-15
 4. UI 和诊断如何区分“节点当前状态值”和“这个状态值的判定权威性”。
 5. direct-TUI 只有 completion callback 时，如何避免把升级菜单等非 prompt Enter 冒充成 Codex turn start。
 6. lifecycle hook 在实际 extension root 缺失时，如何在 provider 启动前 fail closed，而不是声明一条无法送达的权威事件路径。
+7. Claude 启动模式主动禁用 hooks 时，如何保留用户选择并避免误报 lifecycle capability。
 
 ## 3. 目标
 
@@ -188,6 +189,7 @@ updated_at: 2026-07-15
 - `StopFailure` 不把整个仍存活的 Agent 节点改成 `error`；它另外写入 failed turn outcome、错误摘要，并触发 attention/notification。
 - Esc 中断实验没有产生 `Stop` 或 `StopFailure`，因此 Esc 必须由 Webview 的明确 `interrupt` 意图单独 arm，再由中断后的 prompt/idle 信号确认；不能伪造 API failure。
 - Claude Code 2.1.209 实验确认重复 `--settings A --settings B` 时只有 B 的 hook 生效。`UserPromptSubmit`、`Stop`、`StopFailure`、已有 `PostToolUse` 文件活动 hook 与用户 additional settings 必须合并到同一份生成 settings，不能靠追加第二个参数组合。
+- `--safe-mode` 会禁用 hooks，`--bare` 会跳过 hooks；任一 flag 出现在默认参数或自定义启动命令时，adapter 必须保留原始 argv，不生成 lifecycle settings，不声明 lifecycle enabled，并分别记录 `claude-hooks-disabled-by-safe-mode` 或 `claude-hooks-disabled-by-bare` 后回退启发式。
 - 一个 Stop hook 可以 block 当前停止并让 Claude 继续，同一 `prompt_id` 稍后还会收到第二个 Stop。选择 `Stop -> waiting-input` 会在此窗口短暂低估运行态，这是用户确认接受的限制。
 
 ### 7.4 数据模型结论
@@ -209,13 +211,13 @@ Codex 提交时还记录 owner 的提交时间；notifier 在构造 callback 时
 
 callback 使用回环地址上的同步 request/ACK，而不是共享无认证 NDJSON 文件。hook 传输失败不能阻断 provider 自身，但对应会话必须显式保持或退化为 fallback，不能假装已经获得 provider 事件。
 
-adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认当前 extension root 中的 `scripts/runtime/agent-lifecycle-hook.cjs` 确实存在。缺失时不得注入必然失败的命令，也不得把 lifecycle 标成 enabled；会话记录明确 fallback reason 并沿用 PTY 启发式。main-only debug staging 应复制完整 `scripts/runtime`，与 trusted smoke 和正式 package 的运行时文件边界保持一致。preflight 是安装损坏、staging 漂移和其他缺文件场景的最后防线，不能替代正确打包。
+adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认当前 launch mode 允许 callback，且 extension root 中的 `scripts/runtime/agent-lifecycle-hook.cjs` 确实存在。Claude `--safe-mode` / `--bare` 或 hook 文件缺失时，不得注入必然失效的命令，也不得把 lifecycle 标成 enabled；会话保留原始参数、记录明确 fallback reason 并沿用 PTY 启发式。main-only debug staging 应复制完整 `scripts/runtime`，与 trusted smoke 和正式 package 的运行时文件边界保持一致。preflight 是 hooks-disabled 模式、安装损坏、staging 漂移和其他 adapter 不可用场景的最后防线，不能替代正确打包。
 
 新 Supervisor hello 通过 `agentSubmissionIntentV1` 与 `agentProviderLifecycleV1` capability 声明新语义，并使用新的 generation storage。已有会话继续按 metadata 中的旧 storage path 连接旧 Supervisor，不迁移、不重启 PTY；旧代会话自然 drain。
 
 ### 7.6 fallback 的保留范围
 
-组合启发式仍同时存在于本地 PTY 与 runtime supervisor 路径，但只服务于旧 Supervisor、Codex 自定义 `notify` 冲突、Claude settings 无法安全合并等 lifecycle adapter 不可用场景。新建且 lifecycle-enabled 的普通运行回合不得再由 prompt、OSC/BEL 或 1600ms hard fallback 结束；只有 Webview 明确 arm 的 Esc interrupt 可以在中断后的 prompt/quiet 证据下受限确认。
+组合启发式仍同时存在于本地 PTY 与 runtime supervisor 路径，但只服务于旧 Supervisor、Codex 自定义 `notify` 冲突、Claude settings 无法安全合并、Claude `--safe-mode` / `--bare` 主动禁用 hooks 等 lifecycle adapter 不可用场景。新建且 lifecycle-enabled 的普通运行回合不得再由 prompt、OSC/BEL 或 1600ms hard fallback 结束；只有 Webview 明确 arm 的 Esc interrupt 可以在中断后的 prompt/quiet 证据下受限确认。
 
 fallback 的具体规则是：
 
@@ -252,6 +254,7 @@ fallback 的具体规则是：
 7. Claude `StopFailure` 后节点保持可交互的 `waiting-input`，同时保存 failed outcome/error 并产生 attention；普通 Stop 不制造失败。
 8. main-only staging 同时包含 lifecycle 与 file-activity runtime hook；任一运行路径缺少 lifecycle hook 时必须在启动前回退，不得产生 Claude hook error 或留下等待不存在 callback 的 Codex `running`。
 9. Codex 输入测试覆盖“方向键 + Enter”的升级菜单序列不进入 `running`，以及可见文本/IME/粘贴后 submit 正常进入 `running`；Host 与 Supervisor owner 必须共享同一判定函数。
+10. Claude launch integration 测试覆盖 `--safe-mode` 与 `--bare`：原始 argv 不被改写、不注入文件活动 env、lifecycle capability 为 disabled，且 fallback reason 可诊断。
 
 ## 9. 当前验证状态
 
@@ -276,4 +279,5 @@ fallback 的具体规则是：
 - 2026-07-15 已完成 provider lifecycle 正式实现并通过聚焦测试、类型检查、构建和 trusted VS Code smoke。smoke 中 hook-capable 假 Claude 的 3 秒静默回合在 2 秒检查点仍为 `running`，随后只由 `Stop` 进入 `waiting-input`；`StopFailure` 进入 `waiting-input` 的同时保存 failed/error 并触发 attention；异常进程退出通知仍然有效。
 - 2026-07-15 已验证 Supervisor lifecycle callback 延迟到 2300ms 时，1600ms 检查点仍保持 `running`，callback 到达后才进入 `waiting-input`；旧 generation capability gate、错误 nonce/process epoch/runtime session、stale prompt/thread 和重复 completion 也均有自动化回归。
 - 2026-07-15 的真实 main-only Host diagnostics 暴露两个回归：staged extension 漏复制 lifecycle hook，且 Codex 启动升级菜单的方向键 + Enter 被当成 prompt submit。本轮已让 main-only staging 复制完整 runtime scripts，在 adapter 启动前增加缺 hook fallback，并用共享 submission candidate 阻止控制序列/方向键后的纯 Enter 进入 `running`。debug staging、provider lifecycle、Supervisor protocol、typecheck、build、正式 VSIX 文件列表和 trusted VSCode smoke 全部通过，详细证据见 `docs/exec-plans/completed/agent-lifecycle-adapter-hardening.md`。
+- 2026-07-17 的 PR review 发现 Claude `--safe-mode` / `--bare` 会合法禁用 hooks，但 launch integration 仍声明 lifecycle enabled。当前实现已在 settings 合并前识别两种模式，保留原始 argv 并以明确原因回退 heuristic；聚焦测试覆盖两种 flag、capability gate 与文件活动 env 不注入。
 - 当前文档恢复为 `已验证`。保留风险包括 Codex 自定义 `notify` 冲突时必须 fallback、Claude Stop continuation 的短暂状态失真、Codex notifier ACK 顺序仍是实机约束，以及 completion-only direct TUI 无法完美识别“输入后完全删除”或不产生 provider turn 的本地 slash command；这些边界均已登记在技术债 tracker。
