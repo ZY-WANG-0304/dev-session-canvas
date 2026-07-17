@@ -512,7 +512,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     const lifecycleAgentScriptPath = path.join(tempDir, 'runtime-agent-lifecycle.js');
     await writeFile(
       lifecycleAgentScriptPath,
-      `const { spawn } = require('node:child_process');\nprocess.stdin.resume();\nprocess.stdin.once('data', () => {\n  setTimeout(() => {\n    const payload = JSON.stringify({ type: 'agent-turn-complete', 'thread-id': 'thread-runtime-1', 'turn-id': 'turn-runtime-1' });\n    spawn(process.execPath, [${JSON.stringify(lifecycleHookPath)}, 'codex', payload], { env: process.env, stdio: 'ignore' });\n  }, 2300);\n});\nsetInterval(() => undefined, 1000);\n`,
+      `const { spawn } = require('node:child_process');\nlet sawEditableInput = false;\nlet callbackScheduled = false;\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (data) => {\n  if (/real prompt/u.test(data)) sawEditableInput = true;\n  if (!sawEditableInput || callbackScheduled || !/[\\r\\n]/u.test(data)) return;\n  callbackScheduled = true;\n  setTimeout(() => {\n    const payload = JSON.stringify({ type: 'agent-turn-complete', 'thread-id': 'thread-runtime-1', 'turn-id': 'turn-runtime-1' });\n    spawn(process.execPath, [${JSON.stringify(lifecycleHookPath)}, 'codex', payload], { env: process.env, stdio: 'ignore' });\n  }, 2300);\n});\nsetInterval(() => undefined, 1000);\n`,
       'utf8'
     );
     const lifecycleAgentSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
@@ -534,6 +534,29 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       }
     });
     assert.equal(lifecycleAgentSnapshot.providerLifecycleEnabled, true);
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'provider-lifecycle-agent',
+      data: '\u001b[A',
+      intent: 'text'
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'provider-lifecycle-agent',
+      data: '\r',
+      intent: 'submit'
+    });
+    const menuSubmitSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'getSessionSnapshot', {
+      sessionId: 'provider-lifecycle-agent'
+    });
+    assert.notEqual(
+      menuSubmitSnapshot.agentActivitySource,
+      'submission-intent',
+      'A navigation-only Codex menu submit must not start an Agent turn.'
+    );
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'provider-lifecycle-agent',
+      data: 'real prompt',
+      intent: 'text'
+    });
     await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
       sessionId: 'provider-lifecycle-agent',
       data: '\r',

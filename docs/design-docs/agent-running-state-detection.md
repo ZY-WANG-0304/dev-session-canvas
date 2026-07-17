@@ -17,6 +17,7 @@ related_plans:
   - docs/exec-plans/completed/agent-running-state-detection.md
   - docs/exec-plans/completed/claude-agent-ctrl-z-containment.md
   - docs/exec-plans/completed/agent-provider-lifecycle-events.md
+  - docs/exec-plans/completed/agent-lifecycle-adapter-hardening.md
 updated_at: 2026-07-15
 ---
 
@@ -44,6 +45,8 @@ updated_at: 2026-07-15
 2. 当 provider 提供多种信号面时，宿主应该优先相信哪一层。
 3. 当 provider 缺少权威事件时，哪些退化路线仍然值得保留，哪些不应被误写成正式能力。
 4. UI 和诊断如何区分“节点当前状态值”和“这个状态值的判定权威性”。
+5. direct-TUI 只有 completion callback 时，如何避免把升级菜单等非 prompt Enter 冒充成 Codex turn start。
+6. lifecycle hook 在实际 extension root 缺失时，如何在 provider 启动前 fail closed，而不是声明一条无法送达的权威事件路径。
 
 ## 3. 目标
 
@@ -172,7 +175,7 @@ updated_at: 2026-07-15
 `Codex`
 
 - 当前正式实现继续使用 interactive CLI PTY，不采用 app-server，也不接入 Codex `UserPromptSubmit`。
-- Webview 识别用户明确提交意图后进入 `running`；单纯“数据中出现 CR/LF”只保留为旧 Webview/Host/Supervisor 的兼容兜底。
+- Webview 识别用户明确提交意图后进入 `running`；单纯“数据中出现 CR/LF”只保留为旧 Webview/Host/Supervisor 的兼容兜底。由于启动升级菜单和 provider 本地选择菜单也会产生 Enter，`submit` 还必须消费同一进程内已观察到的可编辑输入候选：方向键、终端控制响应、空白和编辑换行不能建立候选，可见非空文本或粘贴可以建立候选，submit 与 interrupt 会清空候选。该规则不解析 Codex 屏幕文案，也不把候选伪装成 provider turn identity。
 - 结束信号使用 Codex direct-TUI `notify` 的 `agent-turn-complete`。回调必须携带并校验 `thread-id + turn-id`，同时由扩展注入 runtime session、process epoch 与 callback nonce，成功送达拥有 PTY 的 Host/Supervisor并得到 ACK 后才允许结束本轮。
 - 本机 Codex CLI 0.144.1 实验确认：同一会话及 resume 后 `thread-id` 稳定，每轮 `turn-id` 唯一；一次 5 秒 notifier 实验中，TUI 保持 Working，notifier 退出后才恢复 prompt。该顺序是实验事实，不是官方兼容性承诺。
 - 如果用户已配置自定义 `notify`，本轮不静默覆盖，改用旧启发式 fallback。后续如 Codex 提供多 notifier 或 effective-config 接口，再单独设计可靠链式方案。
@@ -206,6 +209,8 @@ Codex 提交时还记录 owner 的提交时间；notifier 在构造 callback 时
 
 callback 使用回环地址上的同步 request/ACK，而不是共享无认证 NDJSON 文件。hook 传输失败不能阻断 provider 自身，但对应会话必须显式保持或退化为 fallback，不能假装已经获得 provider 事件。
 
+adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认当前 extension root 中的 `scripts/runtime/agent-lifecycle-hook.cjs` 确实存在。缺失时不得注入必然失败的命令，也不得把 lifecycle 标成 enabled；会话记录明确 fallback reason 并沿用 PTY 启发式。main-only debug staging 应复制完整 `scripts/runtime`，与 trusted smoke 和正式 package 的运行时文件边界保持一致。preflight 是安装损坏、staging 漂移和其他缺文件场景的最后防线，不能替代正确打包。
+
 新 Supervisor hello 通过 `agentSubmissionIntentV1` 与 `agentProviderLifecycleV1` capability 声明新语义，并使用新的 generation storage。已有会话继续按 metadata 中的旧 storage path 连接旧 Supervisor，不迁移、不重启 PTY；旧代会话自然 drain。
 
 ### 7.6 fallback 的保留范围
@@ -215,6 +220,7 @@ callback 使用回环地址上的同步 request/ACK，而不是共享无认证 N
 fallback 的具体规则是：
 
 - 旧协议缺少输入意图时，只有输入里出现 `\r` 或 `\n` 才把 `Agent` 切到 `running`；新 Webview 使用显式 `submit/text/paste/interrupt` 意图，编辑换行、IME 与多行粘贴不再冒充提交。
+- Codex 即使收到显式 `submit`，也只有在当前提交候选已由可见非空输入建立时才进入 `running`；启动菜单中的纯导航与 Enter 仍原样转发给 PTY，但不改变 Agent lifecycle。Claude 的 turn start 继续只来自 `UserPromptSubmit` hook，不复用这条 Codex 派生规则。
 - `waiting-input` 不再只靠单一 quiet timeout，而是综合以下线索判断：
   - prompt-like 尾部输出；
   - `OSC 9` / `OSC 777` 通知；
@@ -244,6 +250,8 @@ fallback 的具体规则是：
 5. 输入意图测试覆盖 Enter/Return/NumpadEnter、virtual keyboard 的独立 CR/LF/CRLF、Shift+Enter/Ctrl+J、多行/括号粘贴、IME composition 和 Esc；粘贴或编辑换行不能把 Agent 误切到 `running`。
 6. identity 测试覆盖旧 process epoch、错误 nonce、不同 provider session、上一 prompt 的延迟 Stop 和重复 Stop；这些事件不能结束当前回合。
 7. Claude `StopFailure` 后节点保持可交互的 `waiting-input`，同时保存 failed outcome/error 并产生 attention；普通 Stop 不制造失败。
+8. main-only staging 同时包含 lifecycle 与 file-activity runtime hook；任一运行路径缺少 lifecycle hook 时必须在启动前回退，不得产生 Claude hook error 或留下等待不存在 callback 的 Codex `running`。
+9. Codex 输入测试覆盖“方向键 + Enter”的升级菜单序列不进入 `running`，以及可见文本/IME/粘贴后 submit 正常进入 `running`；Host 与 Supervisor owner 必须共享同一判定函数。
 
 ## 9. 当前验证状态
 
@@ -267,4 +275,5 @@ fallback 的具体规则是：
   - `npm run test`
 - 2026-07-15 已完成 provider lifecycle 正式实现并通过聚焦测试、类型检查、构建和 trusted VS Code smoke。smoke 中 hook-capable 假 Claude 的 3 秒静默回合在 2 秒检查点仍为 `running`，随后只由 `Stop` 进入 `waiting-input`；`StopFailure` 进入 `waiting-input` 的同时保存 failed/error 并触发 attention；异常进程退出通知仍然有效。
 - 2026-07-15 已验证 Supervisor lifecycle callback 延迟到 2300ms 时，1600ms 检查点仍保持 `running`，callback 到达后才进入 `waiting-input`；旧 generation capability gate、错误 nonce/process epoch/runtime session、stale prompt/thread 和重复 completion 也均有自动化回归。
-- 当前文档升级为 `已验证`。保留风险不是主路径缺实现，而是 Codex 自定义 `notify` 冲突时必须 fallback、Claude Stop continuation 的短暂状态失真，以及 Codex notifier ACK 顺序仍是实机约束而非官方兼容性承诺。
+- 2026-07-15 的真实 main-only Host diagnostics 暴露两个回归：staged extension 漏复制 lifecycle hook，且 Codex 启动升级菜单的方向键 + Enter 被当成 prompt submit。本轮已让 main-only staging 复制完整 runtime scripts，在 adapter 启动前增加缺 hook fallback，并用共享 submission candidate 阻止控制序列/方向键后的纯 Enter 进入 `running`。debug staging、provider lifecycle、Supervisor protocol、typecheck、build、正式 VSIX 文件列表和 trusted VSCode smoke 全部通过，详细证据见 `docs/exec-plans/completed/agent-lifecycle-adapter-hardening.md`。
+- 当前文档恢复为 `已验证`。保留风险包括 Codex 自定义 `notify` 冲突时必须 fallback、Claude Stop continuation 的短暂状态失真、Codex notifier ACK 顺序仍是实机约束，以及 completion-only direct TUI 无法完美识别“输入后完全删除”或不产生 provider turn 的本地 slash command；这些边界均已登记在技术债 tracker。

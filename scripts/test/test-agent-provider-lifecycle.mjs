@@ -26,6 +26,7 @@ try {
   const { classifyAgentInputData, createAgentInputIntentTracker } = require(inputOutfile);
   const {
     applyAgentProviderLifecycleEvent,
+    consumeCodexInstructionSubmission,
     createAgentProviderLifecycleState,
     recordCodexSubmission
   } = require(lifecycleOutfile);
@@ -35,6 +36,7 @@ try {
   assertInputIntent(classifyAgentInputData, createAgentInputIntentTracker);
   assertLifecycleIdentity(
     applyAgentProviderLifecycleEvent,
+    consumeCodexInstructionSubmission,
     createAgentProviderLifecycleState,
     recordCodexSubmission
   );
@@ -87,6 +89,7 @@ function assertInputIntent(classifyAgentInputData, createAgentInputIntentTracker
 
 function assertLifecycleIdentity(
   applyAgentProviderLifecycleEvent,
+  consumeCodexInstructionSubmission,
   createAgentProviderLifecycleState,
   recordCodexSubmission
 ) {
@@ -125,6 +128,55 @@ function assertLifecycleIdentity(
   );
 
   const codex = createAgentProviderLifecycleState('codex', true);
+  assert.equal(consumeCodexInstructionSubmission(codex, '\u001b[A', 'text'), false);
+  assert.equal(consumeCodexInstructionSubmission(codex, '\u001bOP', 'text'), false);
+  assert.equal(consumeCodexInstructionSubmission(codex, '\u001bx', 'text'), false);
+  assert.equal(
+    consumeCodexInstructionSubmission(codex, '\u001b]10;rgb:cccc/cccc/cccc\u001b\\', 'text'),
+    false
+  );
+  assert.equal(
+    consumeCodexInstructionSubmission(codex, '\r', 'submit'),
+    false,
+    'Navigation-only menus must not arm a Codex instruction submission.'
+  );
+  assert.equal(consumeCodexInstructionSubmission(codex, 'real prompt', 'text'), false);
+  assert.equal(
+    consumeCodexInstructionSubmission(codex, '\r', 'text'),
+    false,
+    'An editing newline must not consume the submission candidate.'
+  );
+  assert.equal(consumeCodexInstructionSubmission(codex, '\r', 'submit'), true);
+  assert.equal(consumeCodexInstructionSubmission(codex, '\r', 'submit'), false);
+  assert.equal(
+    consumeCodexInstructionSubmission(codex, '\u001b[200~pasted prompt\u001b[201~', 'paste'),
+    false
+  );
+  assert.equal(
+    consumeCodexInstructionSubmission(codex, '\r', 'submit'),
+    true,
+    'Bracketed paste must arm a later explicit submission.'
+  );
+  assert.equal(consumeCodexInstructionSubmission(codex, '\u4f60\u597d', 'text'), false);
+  assert.equal(
+    consumeCodexInstructionSubmission(codex, '\r', 'submit'),
+    true,
+    'Committed IME text must arm a later explicit submission.'
+  );
+  assert.equal(consumeCodexInstructionSubmission(codex, 'draft', 'text'), false);
+  assert.equal(consumeCodexInstructionSubmission(codex, '\u001b', 'interrupt'), false);
+  assert.equal(
+    consumeCodexInstructionSubmission(codex, '\r', 'submit'),
+    false,
+    'Interrupt must clear an unsubmitted Codex prompt candidate.'
+  );
+  assert.equal(
+    consumeCodexInstructionSubmission(codex, 'legacy prompt\r'),
+    true,
+    'Legacy clients may send editable text and CR in one chunk.'
+  );
+  assert.equal(consumeCodexInstructionSubmission(codex, '   ', 'text'), false);
+  assert.equal(consumeCodexInstructionSubmission(codex, '\r', 'submit'), false);
   assert.equal(recordCodexSubmission(codex).lifecycle, 'running');
   const completed = {
     provider: 'codex',
@@ -214,6 +266,8 @@ async function assertCallbackTransport(createAgentProviderLifecycleSession) {
 
 async function assertLaunchIntegration(createAgentFileActivitySession) {
   const storageRootPath = path.join(tempDir, 'runtime-integrations');
+  const extensionRootWithoutLifecycleHook = path.join(tempDir, 'extension-without-lifecycle-hook');
+  await mkdir(extensionRootWithoutLifecycleHook, { recursive: true });
   const userSettingsA = path.join(tempDir, 'claude-a.json');
   const userSettingsB = path.join(tempDir, 'claude-b.json');
   await writeFile(userSettingsA, JSON.stringify({ marker: 'A' }), 'utf8');
@@ -263,6 +317,21 @@ async function assertLaunchIntegration(createAgentFileActivitySession) {
   assert.equal(invalidClaude.isProviderLifecycleEnabled(), false);
   await invalidClaude.dispose();
 
+  const missingHookClaude = createAgentFileActivitySession({
+    provider: 'claude',
+    command: 'claude',
+    extensionRootPath: extensionRootWithoutLifecycleHook,
+    storageRootPath,
+    fileActivityEnabled: false
+  });
+  assert.deepEqual(missingHookClaude.configureLaunch(['--permission-mode', 'plan'], {}, tempDir), [
+    '--permission-mode',
+    'plan'
+  ]);
+  assert.equal(missingHookClaude.isProviderLifecycleEnabled(), false);
+  assert.equal(missingHookClaude.getProviderLifecycleFallbackReason(), 'agent-lifecycle-hook-missing');
+  await missingHookClaude.dispose();
+
   const codexHome = path.join(tempDir, 'codex-home');
   await mkdir(codexHome, { recursive: true });
   const codex = createAgentFileActivitySession({
@@ -276,6 +345,20 @@ async function assertLaunchIntegration(createAgentFileActivitySession) {
   assert.equal(codex.isProviderLifecycleEnabled(), true);
   assert.equal(codexArgs[0], '-c');
   assert.match(codexArgs[1], /^notify=\[/u);
+
+  const missingHookCodex = createAgentFileActivitySession({
+    provider: 'codex',
+    command: 'codex',
+    extensionRootPath: extensionRootWithoutLifecycleHook,
+    storageRootPath,
+    fileActivityEnabled: false
+  });
+  assert.deepEqual(
+    missingHookCodex.configureLaunch(['--search'], { CODEX_HOME: path.join(tempDir, 'empty') }, tempDir),
+    ['--search']
+  );
+  assert.equal(missingHookCodex.isProviderLifecycleEnabled(), false);
+  assert.equal(missingHookCodex.getProviderLifecycleFallbackReason(), 'agent-lifecycle-hook-missing');
 
   await writeFile(path.join(codexHome, 'config.toml'), 'notify = ["custom-notifier"]\n', 'utf8');
   const conflictingCodex = createAgentFileActivitySession({

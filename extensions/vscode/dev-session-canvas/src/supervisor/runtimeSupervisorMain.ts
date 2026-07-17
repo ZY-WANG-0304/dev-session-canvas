@@ -6,6 +6,7 @@ import * as path from 'path';
 import {
   applyAgentProviderLifecycleEvent,
   confirmAgentInterrupt,
+  consumeCodexInstructionSubmission,
   createAgentProviderLifecycleState,
   recordAgentInterruptRequest,
   recordCodexSubmission,
@@ -797,12 +798,15 @@ class RuntimeSupervisorServer {
     }
 
     if (session.kind === 'agent') {
-      const submittedInstruction = isAgentInstructionSubmission(params.data, params.intent);
+      const providerLifecycle = session.agentProviderLifecycle;
+      const submittedInstruction =
+        session.provider === 'codex' && providerLifecycle
+          ? consumeCodexInstructionSubmission(providerLifecycle, params.data, params.intent)
+          : isAgentInstructionSubmission(params.data, params.intent);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      const providerLifecycle = session.agentProviderLifecycle;
       const lifecycleEnabled = providerLifecycle?.lifecycleEnabled === true;
       if (lifecycleEnabled && params.intent === 'interrupt' && providerLifecycle) {
         const interruptResult = recordAgentInterruptRequest(providerLifecycle);

@@ -7,6 +7,11 @@ import type { AgentProviderKind, CanvasFileActivityAccessMode } from '../common/
 
 const AGENT_FILE_EVENT_STREAM_ENV_KEY = 'DEV_SESSION_CANVAS_AGENT_FILE_EVENT_STREAM_PATH';
 const FAKE_AGENT_PROVIDER_FILE_EVENTS_ENV_KEY = 'DEV_SESSION_CANVAS_FAKE_AGENT_FILE_EVENT_STREAM_PATH';
+const AGENT_LIFECYCLE_HOOK_RELATIVE_PATH = path.join(
+  'scripts',
+  'runtime',
+  'agent-lifecycle-hook.cjs'
+);
 const FILE_ACTIVITY_DRAIN_MAX_WAIT_MS = 1000;
 const FILE_ACTIVITY_DRAIN_POLL_INTERVAL_MS = 50;
 const FILE_ACTIVITY_DRAIN_SETTLE_WINDOW_MS = 200;
@@ -149,10 +154,13 @@ function createCodexRuntimeIntegrationSession(
 
       const hookScriptPath = path.join(
         params.extensionRootPath,
-        'scripts',
-        'runtime',
-        'agent-lifecycle-hook.cjs'
+        AGENT_LIFECYCLE_HOOK_RELATIVE_PATH
       );
+      if (!isRegularFile(hookScriptPath)) {
+        lifecycleEnabled = false;
+        lifecycleFallbackReason = 'agent-lifecycle-hook-missing';
+        return [...args];
+      }
       const notifyCommand = JSON.stringify([process.execPath, hookScriptPath, 'codex']);
       lifecycleEnabled = true;
       lifecycleFallbackReason = undefined;
@@ -208,10 +216,15 @@ function prepareClaudeGeneratedSettings(params: {
 
   const lifecycleHookScriptPath = path.join(
     params.extensionRootPath,
-    'scripts',
-    'runtime',
-    'agent-lifecycle-hook.cjs'
+    AGENT_LIFECYCLE_HOOK_RELATIVE_PATH
   );
+  if (!isRegularFile(lifecycleHookScriptPath)) {
+    return {
+      args: [...params.args],
+      lifecycleEnabled: false,
+      fallbackReason: 'agent-lifecycle-hook-missing'
+    };
+  }
   const lifecycleHookCommand = (eventName: string): string =>
     `${shellQuote(process.execPath)} ${shellQuote(lifecycleHookScriptPath)} claude ${eventName}`;
   const hooks = { ...baseHooks };
@@ -249,6 +262,14 @@ function prepareClaudeGeneratedSettings(params: {
     args: [...extracted.argsWithoutSettings, '--settings', settingsPath],
     lifecycleEnabled: true
   };
+}
+
+function isRegularFile(targetPath: string): boolean {
+  try {
+    return fs.statSync(targetPath).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function appendClaudeCommandHook(
