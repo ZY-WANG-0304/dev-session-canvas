@@ -1419,11 +1419,22 @@ test('pane gallery narrow side thumbnails keep root headers visible in the botto
     return main instanceof HTMLElement && rail instanceof HTMLElement
       ? {
           mainRight: main.getBoundingClientRect().right,
-          railLeft: rail.getBoundingClientRect().left
+          railLeft: rail.getBoundingClientRect().left,
+          headers: [...layout.querySelectorAll('.pane-gallery-root-header')].map((header) => {
+            const pane = header.closest('.pane-gallery-root-pane');
+            return {
+              pane: pane instanceof HTMLElement ? pane.getBoundingClientRect().toJSON() : null,
+              header: header instanceof HTMLElement ? header.getBoundingClientRect().toJSON() : null
+            };
+          })
         }
       : null;
   });
   expect(wideLayout?.railLeft).toBeGreaterThanOrEqual((wideLayout?.mainRight ?? 0) - 1);
+  for (const entry of wideLayout?.headers ?? []) {
+    expect(entry.header?.left).toBeLessThanOrEqual((entry.pane?.left ?? 0) + 2);
+    expect(entry.header?.width).toBeLessThan((entry.pane?.width ?? 0) - 1);
+  }
 
   await page.setViewportSize({ width: 800, height: 720 });
   await expect
@@ -1457,7 +1468,9 @@ test('pane gallery narrow side thumbnails keep root headers visible in the botto
         flowShell: rect(entry.querySelector('.pane-gallery-root-flow-shell')),
         headerDisplay: entry.querySelector('.pane-gallery-root-header') instanceof HTMLElement
           ? getComputedStyle(entry.querySelector('.pane-gallery-root-header')).display
-          : null
+          : null,
+        separatorContent: getComputedStyle(entry, '::before').content,
+        separatorBorderWidth: getComputedStyle(entry, '::before').borderTopWidth
       }))
     };
   });
@@ -1469,7 +1482,10 @@ test('pane gallery narrow side thumbnails keep root headers visible in the botto
     expect(entry.header?.height).toBeGreaterThanOrEqual(24);
     expect(entry.header?.top).toBeGreaterThanOrEqual((entry.pane?.top ?? 0) - 1);
     expect(entry.header?.bottom).toBeLessThanOrEqual((entry.pane?.bottom ?? 0) + 1);
-    expect(entry.header?.width).toBeGreaterThanOrEqual((entry.pane?.width ?? 0) - 1);
+    expect(entry.header?.left).toBeLessThanOrEqual((entry.pane?.left ?? 0) + 2);
+    expect(entry.header?.width).toBeLessThan((entry.pane?.width ?? 0) - 1);
+    expect(entry.separatorContent).not.toBe('none');
+    expect(entry.separatorBorderWidth).toBe('1px');
     if (entry.flowShell) {
       expect(entry.flowShell.top).toBeGreaterThanOrEqual((entry.header?.bottom ?? 0) - 1);
     }
