@@ -180,6 +180,15 @@ function prepareClaudeGeneratedSettings(params: {
   sessionRootPath: string;
   includeFileActivityHook: boolean;
 }): { args: string[]; lifecycleEnabled: boolean; fallbackReason?: string } {
+  const hooksDisabledReason = findClaudeHooksDisabledReason(params.args);
+  if (hooksDisabledReason) {
+    return {
+      args: [...params.args],
+      lifecycleEnabled: false,
+      fallbackReason: hooksDisabledReason
+    };
+  }
+
   const extracted = extractClaudeAdditionalSettings(params.args);
   if (!extracted.ok) {
     return {
@@ -262,6 +271,16 @@ function prepareClaudeGeneratedSettings(params: {
     args: [...extracted.argsWithoutSettings, '--settings', settingsPath],
     lifecycleEnabled: true
   };
+}
+
+function findClaudeHooksDisabledReason(args: readonly string[]): string | undefined {
+  if (args.includes('--safe-mode')) {
+    return 'claude-hooks-disabled-by-safe-mode';
+  }
+  if (args.includes('--bare')) {
+    return 'claude-hooks-disabled-by-bare';
+  }
+  return undefined;
 }
 
 function isRegularFile(targetPath: string): boolean {

@@ -303,6 +303,34 @@ async function assertLaunchIntegration(createAgentFileActivitySession) {
   assert.ok(claudeEnv.DEV_SESSION_CANVAS_AGENT_FILE_EVENT_STREAM_PATH);
   await claude.dispose();
 
+  for (const [flag, fallbackReason] of [
+    ['--safe-mode', 'claude-hooks-disabled-by-safe-mode'],
+    ['--bare', 'claude-hooks-disabled-by-bare']
+  ]) {
+    const hooksDisabledClaude = createAgentFileActivitySession({
+      provider: 'claude',
+      command: 'claude',
+      extensionRootPath: extensionRoot,
+      storageRootPath,
+      fileActivityEnabled: true
+    });
+    const originalArgs = [flag, '--settings', userSettingsA];
+    const hooksDisabledEnv = {};
+    assert.deepEqual(
+      hooksDisabledClaude.configureLaunch(originalArgs, hooksDisabledEnv, tempDir),
+      originalArgs,
+      `${flag} must preserve the Claude launch arguments instead of injecting hooks.`
+    );
+    assert.equal(hooksDisabledClaude.isProviderLifecycleEnabled(), false);
+    assert.equal(hooksDisabledClaude.getProviderLifecycleFallbackReason(), fallbackReason);
+    assert.equal(
+      hooksDisabledEnv.DEV_SESSION_CANVAS_AGENT_FILE_EVENT_STREAM_PATH,
+      undefined,
+      `${flag} must not advertise a file activity hook that Claude will skip.`
+    );
+    await hooksDisabledClaude.dispose();
+  }
+
   const invalidClaude = createAgentFileActivitySession({
     provider: 'claude',
     command: 'claude',

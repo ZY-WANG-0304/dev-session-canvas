@@ -87,7 +87,7 @@ Codex 提交判定由 `agentProviderLifecycle.ts` 的共享 candidate 函数统�
 
 ## 验证与验收
 
-自动化必须证明以下行为：main-only staged root 同时包含两个 runtime hook；缺 lifecycle hook 的临时 extension root 不会向 Codex 注入 `notify`，也不会向 Claude 生成 lifecycle settings，且 fallback reason 可诊断；方向键控制序列后直接 submit 不会调用 Codex `recordCodexSubmission`；可见文本、IME 产出的文本、普通或 bracketed paste 后 submit 会进入 `running`；编辑换行不提交；legacy `text + CR` 单 chunk 仍兼容。
+自动化必须证明以下行为：main-only staged root 同时包含两个 runtime hook；缺 lifecycle hook 的临时 extension root 不会向 Codex 注入 `notify`，也不会向 Claude 生成 lifecycle settings，且 fallback reason 可诊断；Claude `--safe-mode` / `--bare` 保留原始 argv、关闭 lifecycle capability 与文件活动 hook env，并返回对应 fallback reason；方向键控制序列后直接 submit 不会调用 Codex `recordCodexSubmission`；可见文本、IME 产出的文本、普通或 bracketed paste 后 submit 会进入 `running`；编辑换行不提交；legacy `text + CR` 单 chunk 仍兼容。
 
 Supervisor 协议测试必须先发送模拟升级菜单的控制输入和 Enter，确认状态来源没有变成 `submission-intent`，再发送实际文本和 submit，确认超过 1600ms 仍为 `running`，最后由带 `thread-id + turn-id` 的 hook callback 进入 `waiting-input`。
 
@@ -115,3 +115,5 @@ staging 准备和测试目录创建本来就是先删除再重建，可安全重
 计划修订说明：2026-07-15 完成共享 Codex submission candidate 及 Host/Supervisor 接线；协议测试已复现并阻止升级菜单 Enter 冒充 turn start，开始运行完整静态与 smoke 验证。
 
 计划修订说明：2026-07-15 所有验证通过，完成设计、技术债和结果收口，并将计划移入 completed。
+
+计划修订说明：2026-07-17 根据 PR blocker 补充 Claude hooks-disabled launch mode preflight；`--safe-mode` / `--bare` 现在显式回退 heuristic，并纳入聚焦测试与正式设计边界。
