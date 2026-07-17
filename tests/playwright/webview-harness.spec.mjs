@@ -1396,6 +1396,86 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
   expect(topRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
 });
 
+test('pane gallery narrow side thumbnails keep root headers visible in the bottom rail', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 720 });
+  const state = createPaneGalleryCanvasState({ rootCount: 3 });
+
+  await openHarness(page, {
+    persistedState: {
+      paneGallery: {
+        layout: 'sideThumbnails',
+        activeRootGroupId: state.groups[0].id,
+        lastOverviewLayout: 'dynamic',
+        lastThumbnailLayout: 'sideThumbnails'
+      }
+    }
+  });
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  await expect(page.locator('.pane-gallery-thumbnail-layout-sideThumbnails')).toBeVisible();
+
+  const wideLayout = await page.locator('.pane-gallery-thumbnail-layout-sideThumbnails').evaluate((layout) => {
+    const main = layout.querySelector('.pane-gallery-root-pane-main');
+    const rail = layout.querySelector('.pane-gallery-thumbnail-rail-sideThumbnails');
+    return main instanceof HTMLElement && rail instanceof HTMLElement
+      ? {
+          mainRight: main.getBoundingClientRect().right,
+          railLeft: rail.getBoundingClientRect().left
+        }
+      : null;
+  });
+  expect(wideLayout?.railLeft).toBeGreaterThanOrEqual((wideLayout?.mainRight ?? 0) - 1);
+
+  await page.setViewportSize({ width: 800, height: 720 });
+  await expect
+    .poll(() =>
+      page.locator('.pane-gallery-thumbnail-layout-sideThumbnails').evaluate((layout) => {
+        const main = layout.querySelector('.pane-gallery-root-pane-main');
+        const rail = layout.querySelector('.pane-gallery-thumbnail-rail-sideThumbnails');
+        return main instanceof HTMLElement && rail instanceof HTMLElement
+          ? rail.getBoundingClientRect().top >= main.getBoundingClientRect().bottom - 1
+          : false;
+      })
+    )
+    .toBe(true);
+
+  const metrics = await page.locator('.pane-gallery-thumbnail-layout-sideThumbnails').evaluate((layout) => {
+    const main = layout.querySelector('.pane-gallery-root-pane-main');
+    const rail = layout.querySelector('.pane-gallery-thumbnail-rail-sideThumbnails');
+    const railEntries = [...layout.querySelectorAll(
+      '.pane-gallery-root-pane-thumbnail, .pane-gallery-root-pane-active-placeholder'
+    )];
+    const rect = (element) => element instanceof HTMLElement
+      ? element.getBoundingClientRect().toJSON()
+      : null;
+    return {
+      layout: rect(layout),
+      main: rect(main),
+      rail: rect(rail),
+      railEntries: railEntries.map((entry) => ({
+        pane: rect(entry),
+        header: rect(entry.querySelector('.pane-gallery-root-header')),
+        flowShell: rect(entry.querySelector('.pane-gallery-root-flow-shell')),
+        headerDisplay: entry.querySelector('.pane-gallery-root-header') instanceof HTMLElement
+          ? getComputedStyle(entry.querySelector('.pane-gallery-root-header')).display
+          : null
+      }))
+    };
+  });
+
+  expect(metrics.rail?.y).toBeGreaterThanOrEqual((metrics.main?.y ?? 0) + (metrics.main?.height ?? 0) - 1);
+  expect(metrics.railEntries).toHaveLength(3);
+  for (const entry of metrics.railEntries) {
+    expect(entry.headerDisplay).not.toBe('none');
+    expect(entry.header?.height).toBeGreaterThanOrEqual(24);
+    expect(entry.header?.top).toBeGreaterThanOrEqual((entry.pane?.top ?? 0) - 1);
+    expect(entry.header?.bottom).toBeLessThanOrEqual((entry.pane?.bottom ?? 0) + 1);
+    expect(entry.header?.width).toBeGreaterThanOrEqual((entry.pane?.width ?? 0) - 1);
+    if (entry.flowShell) {
+      expect(entry.flowShell.top).toBeGreaterThanOrEqual((entry.header?.bottom ?? 0) - 1);
+    }
+  }
+});
+
 test('pane gallery thumbnail rail follows workspace root order after switching active root', async ({ page }) => {
   const state = createPaneGalleryCanvasState({ rootCount: 4 });
   const groupsById = new Map(state.groups.map((group) => [group.id, group]));

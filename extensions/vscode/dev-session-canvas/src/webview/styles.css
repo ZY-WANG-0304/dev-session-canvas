@@ -4063,6 +4063,7 @@ body {
   .canvas-shell.is-pane-gallery {
     --pane-gallery-pane-min-width: min(420px, calc(100vw - 4px));
     --pane-gallery-pane-min-height: 340px;
+    --pane-gallery-bottom-thumbnail-header-height: 24px;
     --pane-gallery-thumbnail-size: 132px;
   }
 
@@ -4083,5 +4084,27 @@ body {
     height: 100%;
     margin-block: 0;
     margin-inline: auto;
+  }
+
+  .pane-gallery-thumbnail-rail-sideThumbnails
+    :is(.pane-gallery-root-pane-thumbnail, .pane-gallery-root-pane-active-placeholder)
+    .pane-gallery-root-header {
+    right: 0;
+    align-content: center;
+    max-width: none;
+    min-height: var(--pane-gallery-bottom-thumbnail-header-height);
+    border-right: 0;
+  }
+
+  .pane-gallery-thumbnail-rail-sideThumbnails
+    .pane-gallery-root-pane-thumbnail
+    .pane-gallery-root-flow-shell {
+    top: var(--pane-gallery-bottom-thumbnail-header-height);
+  }
+
+  .pane-gallery-thumbnail-rail-sideThumbnails
+    .pane-gallery-root-pane-active-placeholder
+    .pane-gallery-active-placeholder-body {
+    padding-top: calc(24px + var(--pane-gallery-bottom-thumbnail-header-height));
   }
 }
