@@ -20,7 +20,7 @@ related_plans:
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
   - docs/exec-plans/completed/canvas-add-folder-root-placement.md
   - docs/exec-plans/completed/sidebar-workspace-worktree-actions.md
-updated_at: 2026-07-07
+updated_at: 2026-07-17
 ---
 
 # 画布多根 workspace 组合视图设计
@@ -94,6 +94,8 @@ root-local 状态使用扩展 global storage 按 root 绝对路径稳定分桶�
 
 `devSessionCanvas.canvas.multiRootPresentationMode = "paneGallery"` 时，Webview 不再把所有 root 放进同一张无限画布，而是渲染 `PaneGallery`。这个组件包含四种局部布局状态：`dynamic`、`grid`、`topThumbnails` 和 `sideThumbnails`。`dynamic` 是默认的弹性全览布局，用 CSS grid/flex 在当前 `editor` / `panel` 可用宽高中按 root 数量和容器比例分配窗格；不同窗格可以有不同尺寸，但应尽量铺满画布区域。`grid` 使用更规则的宫格排列，便于用户稳定比较多个 root。`dynamic` 与 `grid` 下，每个 root 都是可交互子画板，视觉和行为应尽量接近当前主线的单一画板，并保留左下角画板控制按钮；除子画板自身的画板内边界外，pane 之间只用最简单的 VSCode 原生 border line 区分。`topThumbnails` 和 `sideThumbnails` 则保留一个 active root 主画板，主画板的画布体验与当前主线单一画板一致并保留左下角画板控制按钮；其他 root 显示为顶部或右侧的不可交互画板缩略图。`paneGallery` 不再提供整条顶部 toolbar，也不提供常驻 filter roots 搜索框，但保留主线画布右上角的使用提示入口；模式切换入口不放在右上角，而是进入每个可交互画板左下角控制按钮区域。全览模式下入口显示 `eye`，点击后把当前 root 作为 thumbnail 模式主画板，并进入上次选择的 `topThumbnails` 或 `sideThumbnails`，首次默认 `sideThumbnails`；thumbnail 模式下入口显示 `globe`，点击后返回上次选择的 `dynamic` 或 `grid`，首次默认 `dynamic`。hover 菜单始终在右侧展示 `dynamic`、`grid`、`topThumbnails`、`sideThumbnails` 四个具体模式，不因当前粗状态而裁剪；其中动态、宫格、顶部缩略图和右侧缩略图分别使用 `layout` / `table` / `split-vertical` / `split-horizontal` 图标，菜单视觉与左下角画板控制按钮一致。
 
+当 `sideThumbnails` 因 Webview 可用宽度不足而把右侧 rail 退化到底部时，横向缩略图和 active-root 占位必须在自身内部顶部保留完整的 `24px` root 标题栏，并让真实缩略画板内容从标题栏下方开始。该标题栏横向占满对应 root 槽位，继续使用 VSCode chrome / border token 和原有 root 名称、tooltip、attention / running 反馈；它仍属于缩略图内部，不增加外部标题卡片。这个窄宽度规则只修正底部 rail 的标题可见性，不改变宽屏右侧 rail、主画板、缩略图顺序或双击切换语义。
+
 `dynamic` 与 `grid` 中每个可交互 root pane 使用独立 overview viewport，而不是共享 `rootGroups` 的全局 viewport，也不复用缩略图模式主画板的 viewport。pane 首次挂载、root 内容变化或 pane 尺寸显著变化时，默认对该 root 子图执行 fit-to-pane：计算 root 内节点、分组、连线相关 bounds，用 pane 内容区尺寸和内边距得出目标 viewport。这里的 fit 与主线单一画板的全局 fit view 语义保持一致，不额外限制缩放比例；概览模式也必须按该 pane 自己的 zoom 与主线 overview threshold 判断，不能因为进入 paneGallery 或其他 pane 缩小就让所有 pane 都处于概览状态。用户在 `dynamic` / `grid` 中 pan/zoom 后只更新该 root 的 overview viewport；用户在 `topThumbnails` / `sideThumbnails` 的 active root 主画板中 pan/zoom 后只更新该 root 的 main viewport。缩略图本身始终使用真实画板的 fit view，不写入 viewport 记忆。这些 viewport 都只进入 Webview local state，并按 root id 与 presentation mode 校验恢复；它们不写入 root-local state，也不写入 multi-root overlay。
 
 root 数量很多时，`paneGallery` 不采用“所有 root 永远同屏”的硬约束。`dynamic` / `grid` 先按最小可交互 pane 尺寸决定当前列数和行数；当 root 数量超过同屏容量时，gallery 变成可滚动容器，并应使用虚拟化或按可见区挂载重型 pane，避免一次性运行过多 React Flow / xterm surface。可见 root pane 保持可交互；离屏 root 只保留轻量排序、状态摘要和定位数据。由于本轮明确暂不提供 filter roots，第一版规模处理依靠滚动、稳定排序、缩略图模式和后续可补的快速跳转入口，而不是常驻搜索框。顶部缩略图 rail 内的缩略图画板在未横向溢出时横向居中，右侧缩略图 rail 内的缩略图画板在未纵向溢出时纵向居中；一旦 rail 内容溢出，必须用兼容旧 Chromium 的外层滚动容器与内层 track 居中结构或等价实现退回 start 对齐，不能依赖 `safe center` 作为可达性的关键路径，保证滚动起点能看到第一张 root 槽位，滚动终点能看到最后一张 root 槽位。
@@ -150,6 +152,8 @@ root-local global storage 与旧 workspace storage 并存，用户可能有迁�
 清空画板验证必须覆盖 multi-root 下的 product boundary：命令和右键 workspace 级确认文案说明会清空每个 root 并保留 root section；清空后当前 composed state 不再有普通节点、用户分组、root 内连线或文件活动记录，但仍有每个当前 workspace folder 的 `role === "workspace-root"` 分组；root-local snapshot 被写为空，后续重载不会恢复旧节点；执行节点对应 live runtime 被终止；workspace folder、磁盘目录、git worktree 和 root section overlay 位置不被删除。右键 scoped 清空还必须覆盖：root section / `paneGallery` root pane 默认只清空当前 root；普通用户分组默认只清空该分组内容并保留分组框；二级菜单的 workspace 选项才触发全局清空；所有 scoped 清空都先经过 modal，取消不变更 state。定向自动化至少覆盖静态源码断言、`npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:ui-copy-localization`、`npm run test:canvas-multi-root-composition` 和 `git diff --check`；真实 VS Code multi-root smoke 可作为后续补充验证。
 
 ## 9. 当前验证状态
+
+2026-07-17 补充：`sideThumbnails` 在窄于 `900px` 时继续把右侧 rail 退化到底部，但底部每个缩略图与 active-root 占位现在保留完整 `24px` 横向 root 标题栏，真实缩略画板从标题栏下方开始，避免标题区域与缩略内容叠放后难以辨认。新增 `800px` 宽 Webview Playwright 回归，验证 rail 位于主画板下方、三个 root 槽位的标题栏均完整占宽且高度不小于 `24px`、真实缩略画板不覆盖标题栏；宽屏右侧 rail 行为保持不变。
 
 2026-07-07 补充：全局“清空画板”在 multi-root workspace 下收口为“清空每个当前 workspace root 的 root-local 内容，但保留系统 root section 和 overlay root 位置”。Host 侧不再把 multi-root `resetState()` 直接替换成无 group 的空状态，而是先清理当前 composed state 中所有节点对应的运行时和草稿，再写入空 root-local snapshot，并保留每个 workspace-root group；确认弹窗改为多根专用文案，明确动作影响所有 root 且保留系统 root section。本轮进一步补齐右键“清空画板”的 scoped 入口：root / paneGallery root pane 默认清空当前 root，普通用户分组默认清空该分组内容并保留分组框，二级菜单才提供清空整个 workspace，所有路径均由 Host modal 确认后执行。本轮补充静态回归与文档同步，验证命令见本次提交记录。
 
