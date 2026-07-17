@@ -1396,9 +1396,9 @@ test('pane gallery overflowing thumbnail rails keep first and last roots reachab
   expect(topRailMetrics.end.lastOffset).toBeGreaterThanOrEqual(-1);
 });
 
-test('pane gallery narrow side thumbnails keep root headers visible in the bottom rail', async ({ page }) => {
-  await page.setViewportSize({ width: 1000, height: 720 });
-  const state = createPaneGalleryCanvasState({ rootCount: 3 });
+test('pane gallery keeps root headers above canvas content when side thumbnails move to the bottom', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 520 });
+  const state = createPaneGalleryCanvasState({ rootCount: 16 });
 
   await openHarness(page, {
     persistedState: {
@@ -1413,30 +1413,17 @@ test('pane gallery narrow side thumbnails keep root headers visible in the botto
   await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
   await expect(page.locator('.pane-gallery-thumbnail-layout-sideThumbnails')).toBeVisible();
 
-  const wideLayout = await page.locator('.pane-gallery-thumbnail-layout-sideThumbnails').evaluate((layout) => {
-    const main = layout.querySelector('.pane-gallery-root-pane-main');
-    const rail = layout.querySelector('.pane-gallery-thumbnail-rail-sideThumbnails');
-    return main instanceof HTMLElement && rail instanceof HTMLElement
-      ? {
-          mainRight: main.getBoundingClientRect().right,
-          railLeft: rail.getBoundingClientRect().left,
-          headers: [...layout.querySelectorAll('.pane-gallery-root-header')].map((header) => {
-            const pane = header.closest('.pane-gallery-root-pane');
-            return {
-              pane: pane instanceof HTMLElement ? pane.getBoundingClientRect().toJSON() : null,
-              header: header instanceof HTMLElement ? header.getBoundingClientRect().toJSON() : null
-            };
-          })
-        }
-      : null;
+  const rail = page.locator('.pane-gallery-thumbnail-rail-sideThumbnails');
+  await expect
+    .poll(() => rail.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(0);
+  const verticalScrollTop = await rail.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
   });
-  expect(wideLayout?.railLeft).toBeGreaterThanOrEqual((wideLayout?.mainRight ?? 0) - 1);
-  for (const entry of wideLayout?.headers ?? []) {
-    expect(entry.header?.left).toBeLessThanOrEqual((entry.pane?.left ?? 0) + 2);
-    expect(entry.header?.width).toBeLessThan((entry.pane?.width ?? 0) - 1);
-  }
+  expect(verticalScrollTop).toBeGreaterThan(0);
 
-  await page.setViewportSize({ width: 800, height: 720 });
+  await page.setViewportSize({ width: 800, height: 520 });
   await expect
     .poll(() =>
       page.locator('.pane-gallery-thumbnail-layout-sideThumbnails').evaluate((layout) => {
@@ -1449,45 +1436,52 @@ test('pane gallery narrow side thumbnails keep root headers visible in the botto
     )
     .toBe(true);
 
-  const metrics = await page.locator('.pane-gallery-thumbnail-layout-sideThumbnails').evaluate((layout) => {
-    const main = layout.querySelector('.pane-gallery-root-pane-main');
-    const rail = layout.querySelector('.pane-gallery-thumbnail-rail-sideThumbnails');
-    const railEntries = [...layout.querySelectorAll(
+  const metrics = await rail.evaluate((element) => {
+    const railRect = element.getBoundingClientRect();
+    const entries = [...element.querySelectorAll(
       '.pane-gallery-root-pane-thumbnail, .pane-gallery-root-pane-active-placeholder'
     )];
-    const rect = (element) => element instanceof HTMLElement
-      ? element.getBoundingClientRect().toJSON()
-      : null;
     return {
-      layout: rect(layout),
-      main: rect(main),
-      rail: rect(rail),
-      railEntries: railEntries.map((entry) => ({
-        pane: rect(entry),
-        header: rect(entry.querySelector('.pane-gallery-root-header')),
-        flowShell: rect(entry.querySelector('.pane-gallery-root-flow-shell')),
-        headerDisplay: entry.querySelector('.pane-gallery-root-header') instanceof HTMLElement
-          ? getComputedStyle(entry.querySelector('.pane-gallery-root-header')).display
-          : null,
-        separatorContent: getComputedStyle(entry, '::before').content,
-        separatorBorderWidth: getComputedStyle(entry, '::before').borderTopWidth
-      }))
+      railTop: railRect.top,
+      entries: entries.map((entry) => {
+        const header = entry.querySelector('.pane-gallery-root-header');
+        const flowShell = entry.querySelector('.pane-gallery-root-flow-shell');
+        const paneRect = entry.getBoundingClientRect();
+        const headerRect = header instanceof HTMLElement ? header.getBoundingClientRect() : null;
+        const headerHitTarget = headerRect
+          ? document.elementFromPoint(headerRect.left + Math.min(10, headerRect.width / 2), headerRect.top + headerRect.height / 2)
+          : null;
+        return {
+          visible: paneRect.right > railRect.left + 1 && paneRect.left < railRect.right - 1,
+          paneLeft: paneRect.left,
+          paneTop: paneRect.top,
+          headerLeft: headerRect?.left ?? null,
+          headerTop: headerRect?.top ?? null,
+          headerBottom: headerRect?.bottom ?? null,
+          headerWidth: headerRect?.width ?? null,
+          paneWidth: paneRect.width,
+          headerZIndex: header instanceof HTMLElement ? getComputedStyle(header).zIndex : null,
+          flowShellZIndex: flowShell instanceof HTMLElement ? getComputedStyle(flowShell).zIndex : null,
+          headerOwnsHitPoint: header instanceof HTMLElement && headerHitTarget instanceof Element
+            ? headerHitTarget.closest('.pane-gallery-root-header') === header
+            : false
+        };
+      })
     };
   });
 
-  expect(metrics.rail?.y).toBeGreaterThanOrEqual((metrics.main?.y ?? 0) + (metrics.main?.height ?? 0) - 1);
-  expect(metrics.railEntries).toHaveLength(3);
-  for (const entry of metrics.railEntries) {
-    expect(entry.headerDisplay).not.toBe('none');
-    expect(entry.header?.height).toBeGreaterThanOrEqual(24);
-    expect(entry.header?.top).toBeGreaterThanOrEqual((entry.pane?.top ?? 0) - 1);
-    expect(entry.header?.bottom).toBeLessThanOrEqual((entry.pane?.bottom ?? 0) + 1);
-    expect(entry.header?.left).toBeLessThanOrEqual((entry.pane?.left ?? 0) + 2);
-    expect(entry.header?.width).toBeLessThan((entry.pane?.width ?? 0) - 1);
-    expect(entry.separatorContent).not.toBe('none');
-    expect(entry.separatorBorderWidth).toBe('1px');
-    if (entry.flowShell) {
-      expect(entry.flowShell.top).toBeGreaterThanOrEqual((entry.header?.bottom ?? 0) - 1);
+  expect(metrics.entries).toHaveLength(16);
+  const visibleEntries = metrics.entries.filter((entry) => entry.visible);
+  expect(visibleEntries.length).toBeGreaterThan(1);
+  for (const entry of visibleEntries) {
+    expect(entry.headerLeft).toBeLessThanOrEqual(entry.paneLeft + 2);
+    expect(entry.headerTop).toBeGreaterThanOrEqual(metrics.railTop - 1);
+    expect(entry.headerTop).toBeGreaterThanOrEqual(entry.paneTop - 1);
+    expect(entry.headerBottom).toBeGreaterThan(metrics.railTop);
+    expect(entry.headerWidth).toBeLessThan(entry.paneWidth - 1);
+    expect(entry.headerOwnsHitPoint).toBe(true);
+    if (entry.flowShellZIndex !== null) {
+      expect(Number(entry.headerZIndex)).toBeGreaterThan(Number(entry.flowShellZIndex));
     }
   }
 });
