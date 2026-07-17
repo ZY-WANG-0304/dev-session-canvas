@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import {
   applyAgentProviderLifecycleEvent,
   confirmAgentInterrupt,
+  consumeCodexInstructionSubmission,
   createAgentProviderLifecycleState,
   recordAgentInterruptRequest,
   recordCodexSubmission,
@@ -17374,12 +17375,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (kind === 'agent') {
-      const submittedInstruction = isAgentInstructionSubmission(data, diagnosticMetadata.intent);
+      const providerLifecycle = session.agentProviderLifecycle;
+      const submittedInstruction =
+        session.agentProvider === 'codex' && providerLifecycle
+          ? consumeCodexInstructionSubmission(
+              providerLifecycle,
+              data,
+              diagnosticMetadata.intent
+            )
+          : isAgentInstructionSubmission(data, diagnosticMetadata.intent);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      const providerLifecycle = session.agentProviderLifecycle;
       const lifecycleEnabled = providerLifecycle?.lifecycleEnabled === true;
       if (lifecycleEnabled && diagnosticMetadata.intent === 'interrupt' && providerLifecycle) {
         const interruptResult = recordAgentInterruptRequest(providerLifecycle);

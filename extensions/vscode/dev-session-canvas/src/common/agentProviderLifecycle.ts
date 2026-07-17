@@ -1,9 +1,11 @@
 import type {
   AgentActivityAuthority,
   AgentActivitySource,
+  AgentInputIntent,
   AgentProviderKind,
   AgentTurnOutcome
 } from './protocol';
+import { stripTerminalControlSequences } from './agentActivityHeuristics';
 
 const MAX_TRACKED_COMPLETED_TURNS = 32;
 
@@ -45,6 +47,7 @@ export interface AgentProviderLifecycleState {
   lastTurnError?: string;
   turnActive: boolean;
   interruptRequested: boolean;
+  codexSubmissionCandidateArmed: boolean;
   completedProviderTurnIds: string[];
 }
 
@@ -74,8 +77,37 @@ export function createAgentProviderLifecycleState(
     activityAuthority: 'best-effort',
     turnActive: false,
     interruptRequested: false,
+    codexSubmissionCandidateArmed: false,
     completedProviderTurnIds: []
   };
+}
+
+export function consumeCodexInstructionSubmission(
+  state: AgentProviderLifecycleState,
+  data: string,
+  intent?: AgentInputIntent
+): boolean {
+  if (state.provider !== 'codex') {
+    return false;
+  }
+
+  if (intent === 'interrupt') {
+    state.codexSubmissionCandidateArmed = false;
+    return false;
+  }
+
+  if (containsEditablePromptInput(data)) {
+    state.codexSubmissionCandidateArmed = true;
+  }
+
+  const submitted = intent === 'submit' || (intent === undefined && /[\r\n]/u.test(data));
+  if (!submitted) {
+    return false;
+  }
+
+  const accepted = state.codexSubmissionCandidateArmed;
+  state.codexSubmissionCandidateArmed = false;
+  return accepted;
 }
 
 export function recordCodexSubmission(
@@ -90,6 +122,7 @@ export function recordCodexSubmission(
   state.activitySource = 'submission-intent';
   state.activityAuthority = 'derived';
   state.interruptRequested = false;
+  state.codexSubmissionCandidateArmed = false;
   state.activeProviderTurnId = undefined;
   state.activeTurnStartedAtMs = submittedAtMs;
   state.lastTurnOutcome = undefined;
@@ -106,9 +139,18 @@ export function recordAgentInterruptRequest(
 
   const changed = !state.interruptRequested;
   state.interruptRequested = true;
+  state.codexSubmissionCandidateArmed = false;
   state.activitySource = 'submission-intent';
   state.activityAuthority = 'derived';
   return accepted(changed);
+}
+
+function containsEditablePromptInput(data: string): boolean {
+  const withoutSs3Controls = data.replace(/\u001bO[\u0020-\u007e]/gu, '');
+  const visibleInput = stripTerminalControlSequences(withoutSs3Controls)
+    .replace(/\u001b[\u0020-\u007e]/gu, '')
+    .replace(/[\u0000-\u001f\u007f]/gu, '');
+  return /\S/u.test(visibleInput);
 }
 
 export function confirmAgentInterrupt(
