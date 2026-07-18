@@ -20,7 +20,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 产品已进入公开 `Preview` 阶段；当前发布准备目标是 `0.24.3`，在发布准备分支完成 review、合并并正式发布之前，最新已发布基线是可通过 GitHub Release assets 与已验证 Open VSX 获取的 `0.24.2`。Visual Studio Marketplace 仍需等 public gallery 同时暴露主扩展与 notifier 后再解除 deferred。面向愿意接受早期限制、并能自行准备本地 CLI 运行环境的高级用户。
 
-![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif)
+![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.zh-CN.gif)
 
 ## 适合谁
 

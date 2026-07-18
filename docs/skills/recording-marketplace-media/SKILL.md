@@ -38,7 +38,7 @@ description: Use when the user asks to record raw Marketplace preview source vid
 
 ```text
 阅读当前场景
-  -> start
+  -> start [--scenario]
   -> 在录制外准备和定位
   -> record-start
   -> 用原生输入完成场景动作
@@ -46,17 +46,17 @@ description: Use when the user asks to record raw Marketplace preview source vid
   -> record-stop
   -> 在录制外截图、检查和记录
   -> 重复下一场景或下一条 take
-  -> stop
+  -> close
 ```
 
 1. 完整阅读 `docs/marketplace-media-scenario.md`，只从中提取本次要录制的源画面、动作、状态和原始分辨率；不要把其中的后期剪辑说明写回本 Skill。
-2. 运行 `node scripts/media/recording-session.mjs start` 启动环境，也可使用兼容入口 `npm run generate:marketplace-media -- start`。
+2. 运行 `node scripts/media/recording-session.mjs start` 启动环境；四 root 剧本使用 `start --scenario four-root-attention`。也可使用兼容入口 `npm run generate:marketplace-media -- start`。
 3. 等待 session 文件出现并确认真实画布已加载。场景初始化、Settings 配置、坐标定位和试操作必须发生在录制外。
 4. 运行 `record-start`，只录用户实际会看到的操作及必要的短暂状态稳定过程。
 5. 通过 `click`、`key`、`paste` 等原生输入完成本场景操作，并继续录到剧本要求的可见结果与必要稳定时间完整结束。确认这个 clip 的叙事单元已经录制完成后，再运行 `record-stop`。
-6. 在录制停止后使用 `screenshot`、`state` 或 `gif-frame` 检查画面；发现问题时重录当前 clip，不在后期伪造产品状态。
+6. 在录制停止后使用 `screenshot`、`state` 或 `checkpoint <frame-id> --take <take>` 检查并记录画面；发现问题时重录当前 clip，不在后期伪造产品状态。
 7. 同一剧本需要多条 take 时，分别录制完整分辨率源素材，并记录它们对应的 presentation mode、场景和稳定状态点。
-8. 所有 clip 录制完毕后再执行 `stop`。执行前必须阅读“当前工具限制”，确认旧导出副作用不会覆盖不应替换的正式资产。
+8. 所有 clip 录制完毕后执行 `close`（或 `npm run recording:close`），只关闭宿主并保留源素材。只有明确要运行历史单宽屏导出时才使用 `stop`。
 
 ## 命令参考
 
@@ -64,17 +64,23 @@ description: Use when the user asks to record raw Marketplace preview source vid
 
 | 命令 | 录制用途 |
 |---|---|
-| `start` | 启动 Xvfb、窗口管理器和真实 VS Code Extension Development Host |
+| `start [--scenario four-root-attention]` | 启动 Xvfb、窗口管理器和真实 VS Code Extension Development Host；正式四 root 场景会归档旧证据、准备 disposable workspace，并从系统 PATH 启动已登录的真实 Codex / Claude Code |
 | `screenshot` | 抓取当前宿主截图，用于录制外观察与审阅 |
 | `locate <selector>` | 通过 CDP 定位 workbench DOM 元素，返回屏幕坐标 JSON |
 | `click <x> <y> [--right] [--double]` | 发送原生鼠标点击 |
+| `move <x> <y>` | 发送原生鼠标移动；用于在抓帧前移开鼠标，不产生点击 |
 | `key <combo>` | 发送原生按键，例如 Return、Escape、Ctrl+A、Shift+Insert |
 | `paste <text>` | 通过 X11 clipboard 粘贴文本 |
 | `state` | 读取画布节点/边状态，只用于录制外观察 |
-| `record-start` | 开始一个原始 MP4 scene clip |
+| `set-mode rootGroups\|paneGallery` | 在录制片段外热切 multi-root presentation mode，并同步 session metadata |
+| `trigger <name>` | 触发当前 scenario 的外部 deterministic fixture 收口文件；可见结果仍必须经真实进程与产品 UI 进入宿主，不能用于生成 Agent 输出 |
+| `record-start [--take <take> --scene <label>]` | 开始原始 MP4 scene clip；带标签时写入 `sources/<take>/<label>.mp4` 和 clip metadata |
+| `record-sequence --take <take> --scene <label> --actions <json>` | 在一条 scene 内按受限 JSON 顺序执行 wait/click/paste/key/move 原生输入并自动停止，适合消除多次 CLI 调用之间的空白；仍然只能驱动真实宿主 UI |
 | `record-stop` | 在当前场景动作、可见结果和必要稳定时间都录制完成后，停止 scene clip |
+| `checkpoint <frame-id> --take <take>` | 抓取带 take、状态、宿主几何和 DOM 摘要的原始 PNG/JSON checkpoint |
 | `gif-frame <label>` | 以历史命令名抓取一张原始 PNG checkpoint；本 Skill 不决定它是否进入 GIF |
-| `stop` | 停止录制宿主；当前实现还会触发旧媒体导出副作用 |
+| `close` | 停止录制宿主，不导出或覆盖正式媒体资产 |
+| `stop` | 兼容历史单宽屏流程；停止宿主并触发旧媒体导出副作用 |
 | `command <cmd> [json_args]` | 仅限旧测试宿主；真实录制环境拒绝 |
 | `dispatch <json>` | 仅限旧测试宿主；真实录制环境拒绝 |
 
@@ -84,11 +90,14 @@ description: Use when the user asks to record raw Marketplace preview source vid
 
 ### 真实环境优先
 
+正式 `four-root-attention` 场景不允许把 `provider-bin` 或 fake provider 放到 PATH 前面。录制器保留隔离 VS Code profile，并只引用现有 Codex / Claude 配置位置；不能把认证内容复制进仓库、session metadata 或日志。真实 CLI 的首次登录、信任、升级提示和启动等待都应在 `record-start` 之前处理，剧本任务本身必须在正式 clip 内通过原生输入提交。
+
 - `start` 启动的是非测试模式的 VS Code Extension Development Host，应尽量保持与真实用户环境一致。
 - 除场景初始化外，录制过程不要用 `command`、`dispatch` 或直接改状态来绕过 UI。
 - VS Code 原生确认框、Quick Input 和右键菜单都应作为真实交互录入视频；使用 `click`、`key`、`paste` 完成。
 - `locate`、`screenshot`、`state` 只用于观察和定位，不应替代用户操作。
 - deterministic provider wrapper 可以稳定 provider 输出，但这是录制边界；必须在 PR 或验证说明中披露，不能写成真实在线 CLI 输出。
+- `trigger` 只能控制外部 deterministic fixture 的完成时机，不能直接写 Webview state；Agent、Terminal、attention 与 running 仍须通过真实 PTY / OSC 信号和产品 UI 呈现。fixture 可以由真实 Agent 启动，但 trigger 不能代替 Agent 提交任务或生成其汇总文本。
 - `record-start` 应覆盖当前 clip 的完整叙事单元；完成输入动作后继续录制，直到剧本要求的可见结果和必要稳定时间完整结束，再执行 `record-stop`。
 
 ### 定位元素坐标
@@ -153,13 +162,18 @@ description: Use when the user asks to record raw Marketplace preview source vid
 
 ## 当前工具限制
 
-`scripts/media/recording-session.mjs` 目前把“停止录制”和“旧媒体导出”耦合在同一个 `stop` 命令里。`stop` 除了关闭 Extension Host、窗口管理器和 Xvfb，还会拼接现有 clips、合成旧单宽屏 GIF，并把最后一张原始 GIF frame 复制为正式 PNG。
+`close` 是录制工作的默认终止命令：它关闭 Extension Host、窗口管理器和 Xvfb，但不导出或覆盖正式媒体资产。执行前若仍有活动 clip，会要求先运行 `record-stop`，避免丢失 clip metadata。
 
-这些导出行为不是本 Skill 的职责，也不代表当前剧本的剪辑方案。使用 `stop` 前必须确认允许覆盖主扩展现有 Marketplace 资产；如果任务只授权捕获原始素材而不允许替换资产，应先停止并补充一个无导出副作用的录制终止命令，而不是静默运行 `stop`。
+`record-start` 会让 ffmpeg 通过独立 `-progress` 文件报告编码进度，只有 `frame >= 1` 后才返回并允许后续原生输入；15 秒内没有首帧或 ffmpeg 提前退出时会停止当前进程并明确失败。`record-stop` 成功 probe 后清理 progress 文件。这个握手消除了“固定等待结束但 x11grab 尚未产出首帧”的竞争，但正式 clip 停止后仍必须抽帧或生成 contact sheet，确认目标点击、完整布局动画和可见结果都实际进入 MP4，不能只依据结尾 screenshot 判断。
+
+`stop` 只为历史单宽屏流程保留。它仍会拼接旧 clips、合成旧 GIF，并把最后一张历史 GIF frame 复制为正式 PNG；这些行为不是本 Skill 的职责，也不代表当前剧本的剪辑方案。除非任务明确授权运行旧导出，否则不要使用 `stop`。
 
 ## 原始录制产物
 
 - `.debug/marketplace-media/clips/clip-NNN.mp4`：分段原始视频。
+- `.debug/marketplace-media/sources/<take>/<scene>.mp4`：带 take 与 scene 标签的原始视频。
+- `.debug/marketplace-media/checkpoints/<take>/<frame-id>.png`：原始宿主 checkpoint。
+- `.debug/marketplace-media/checkpoints/<take>/<frame-id>.json`：take、状态、几何与 DOM 摘要 metadata。
 - `.debug/marketplace-media/screenshots/`：录制外观察截图。
 - `.debug/marketplace-media/gif-storyboard/frames/`：由历史 `gif-frame` 命令抓取的原始 checkpoint；目录名不赋予它最终 GIF 语义。
 - `.debug/marketplace-media/recording-session.json`：当前录制 session 与进程信息。
