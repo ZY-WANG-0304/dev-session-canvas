@@ -6,9 +6,9 @@
 
 Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，画布是这个工作台的主要交互载体。你可以把 `Agent`、`Terminal` 与 `Note` 节点放在同一视图中，同时管理多个开发执行会话，而不必在聊天面板、终端标签和编辑器之间来回切换。当前为公开 `Preview` 版本。
 
-![Dev Session Canvas 主画布概览](images/marketplace/canvas-overview.png)
+![Dev Session Canvas 主画布概览](images/marketplace/canvas-overview.zh-CN.png)
 
-<video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
+<video src="images/marketplace/canvas-overview.zh-CN.mp4" controls muted loop playsinline></video>
 
 ## 0.24.3 版本亮点
 

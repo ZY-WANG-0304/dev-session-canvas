@@ -22,6 +22,7 @@ claude_stop_requires_double_interrupt="${DEV_SESSION_CANVAS_FAKE_CLAUDE_STOP_REQ
 claude_exit_prompt_on_first_interrupt="${DEV_SESSION_CANVAS_FAKE_CLAUDE_EXIT_PROMPT_ON_FIRST_INTERRUPT:-0}"
 claude_session_confirmed=0
 claude_interrupt_count=0
+media_trigger_dir="${DEV_SESSION_CANVAS_FAKE_MEDIA_TRIGGER_DIR:-}"
 
 prefix="[fake-agent]"
 if [[ "$flavor" == "codex" ]]; then
@@ -92,6 +93,33 @@ fi
 
 print_prompt() {
   printf '> '
+}
+
+wait_for_media_trigger() {
+  local trigger_name="$1"
+  local trigger_path
+  local attempts=0
+  local frames=('-' '\\' '|' '/')
+  local frame_index
+
+  if [[ -z "$media_trigger_dir" ]]; then
+    echo "${prefix} missing media trigger directory"
+    return 1
+  fi
+  trigger_path="${media_trigger_dir%/}/${trigger_name}"
+  while [[ ! -f "$trigger_path" ]]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+    if ((attempts % 5 == 0)); then
+      frame_index=$(((attempts / 5 - 1) % ${#frames[@]}))
+      printf '\r%s %s working on %s' "$prefix" "${frames[$frame_index]}" "$trigger_name"
+    fi
+    if [[ "$attempts" -ge 36000 ]]; then
+      echo "${prefix} timed out waiting for ${trigger_name}"
+      return 1
+    fi
+  done
+  printf '\r\033[2K'
 }
 
 normalize_event_path() {
@@ -254,6 +282,40 @@ while IFS= read -r line; do
 
   if [[ "$line" == clear-demo ]]; then
     printf '\033[2J\033[H'
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == "Review the checkout retry contract." ]]; then
+    echo "Reviewing retry semantics and failure budgets..."
+    wait_for_media_trigger "contract-attention"
+    attention_question="Choose the retry policy: equal or full jitter, and how many attempts?"
+    printf '\033]9;%s\007' "$attention_question"
+    echo "$attention_question"
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == "Audit checkout components." ]]; then
+    echo "Auditing checkout states across the component library..."
+    wait_for_media_trigger "component-complete"
+    echo "Component audit complete: retry states align across 18 components."
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == "Implement the checkout retry states. Reuse the existing design-system components." ]]; then
+    echo "Implementing checkout retry states with existing components..."
+    wait_for_media_trigger "ui-builder-complete"
+    echo "Checkout retry states complete: idle, retrying, recovered, and failed."
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == "Use full jitter. Cap at 3 attempts." ]]; then
+    echo "Applying full jitter with a three-attempt cap..."
+    wait_for_media_trigger "contract-complete"
+    echo "Retry contract approved: full jitter, maximum 3 attempts."
     print_prompt
     continue
   fi
