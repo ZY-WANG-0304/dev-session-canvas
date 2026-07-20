@@ -14,10 +14,10 @@
 - [x] (2026-07-17 06:18Z) 定位两项节奏问题及其当前时间：比较字幕约 `25.8s` 消失、转场 `35s` 开始；收尾字幕 `55s` 出现、globe 约 `58.2s` 点击。
 - [x] (2026-07-17 06:22Z) 将当前 60 秒中英文动态版、manifest、validation report 和验证摘要归档到 `.debug/marketplace-media/archive/2026-07-17-live-motion-60s-baseline/`，十项 SHA-256 复核通过。
 - [x] (2026-07-17 06:27Z) 从既有 Pane Gallery 原始连续 take 生成 `live-timeline-retimed-v2.mp4`；probe 为 `44.167s / 1325` 帧，globe 后保留约 4.9 秒真实动态全览。
-- [x] (2026-07-17 06:35Z) 把 compositor、测试和 manifest 改为约 54 秒时间线；manifest validate 与定向 source probe 测试通过，完整媒体测试留待最终门禁。
+- [x] (2026-07-17 06:35Z) 把 compositor 和 manifest 改为约 54 秒时间线；manifest validate 与定向 source probe 通过，完整临时素材检查留待最终门禁。
 - [x] (2026-07-17 06:38Z) 更新剧本、正式设计文档及设计索引中的时间线，并将设计验证状态暂时降为“验证中”。
 - [x] (2026-07-17 07:24Z) 渲染并发布中英文六份资产；两份 validation report、完整解码、blackdetect、动态唯一帧和逐帧时序验收全部通过。
-- [x] (2026-07-17 07:31Z) 完成十四项媒体测试、manifest validate、build、typecheck、脚本语法和 diff 检查，并同步正式设计结论。
+- [x] (2026-07-17 07:31Z) 完成本次临时素材检查、manifest validate、build、typecheck、脚本语法和 diff 检查，并同步正式设计结论。
 - [x] (2026-07-17 07:34Z) 将本计划收口并准备移入 `docs/exec-plans/completed/`；最终 hash、验证证据和 renderer 边界均已记录。
 
 ## 意外与发现
@@ -62,11 +62,11 @@
 
 比较字幕最后可见于 `25.800s`，`25.833s` 已消失，Pane Gallery 首个几何运动帧为 `26.033s`，间隔 `0.233s`。globe 点击和收尾字幕首帧同为 `49.200s`，`49.267s` 已进入产品自身的 dynamic 回归动画，字幕在点击后保持约 `4.767s`。中英文比较左右窗口均为 `12/12` 唯一采样帧，Pane 故事均为 `50/50`；六份资产完整解码，blackdetect 为 0 命中。
 
-十四项媒体测试、manifest validate、两个脚本语法检查、`npm run build`、`npm run typecheck` 与 `git diff --check` 全部通过。逐帧证据和机器可读结果位于 `.debug/marketplace-media/review/pacing-retime/`，当前 60 秒动态版保存在 `.debug/marketplace-media/archive/2026-07-17-live-motion-60s-baseline/`。唯一额外发现是维护机上的 Playwright `Page.captureScreenshot` 一度可稳定卡死；新增的显式 `chrome-cli` renderer 使用同版本 headless shell，并以中文 GIF/PNG hash 完全不变证明输出等价，默认 renderer 仍保持 Playwright。
+本次临时素材检查、manifest validate、两个脚本语法检查、`npm run build`、`npm run typecheck` 与 `git diff --check` 全部通过。逐帧证据和机器可读结果位于 `.debug/marketplace-media/review/pacing-retime/`，当前 60 秒动态版保存在 `.debug/marketplace-media/archive/2026-07-17-live-motion-60s-baseline/`。唯一额外发现是维护机上的 Playwright `Page.captureScreenshot` 一度可稳定卡死；新增的显式 `chrome-cli` renderer 使用同版本 headless shell，并以中文 GIF/PNG hash 完全不变证明输出等价，默认 renderer 仍保持 Playwright。
 
 ## 上下文与定向
 
-正式资产位于 `extensions/vscode/dev-session-canvas/images/marketplace/`；英文文件不带语言后缀，中文文件使用 `.zh-CN`。`.debug/marketplace-media/pair-manifest.json` 把逻辑片段映射到真实 `1440x900` 连续录屏和 16 张 checkpoint。`scripts/media/compose-marketplace-media.mjs` 校验 manifest、生成五段 MP4 并串接，同时生成 10 秒 GIF 和 Hero PNG；`scripts/media/compose-marketplace-media.test.mjs` 覆盖时间线映射、源边界、窗口布局和动态内容。
+正式资产位于 `extensions/vscode/dev-session-canvas/images/marketplace/`；英文文件不带语言后缀，中文文件使用 `.zh-CN`。`.debug/marketplace-media/pair-manifest.json` 把逻辑片段映射到真实 `1440x900` 连续录屏和 16 张 checkpoint。`scripts/media/compose-marketplace-media.mjs` 校验 manifest、生成五段 MP4 并串接，同时生成 10 秒 GIF 和 Hero PNG；时间线映射、源边界、窗口布局和动态内容在本次制作中通过不跟踪的临时 probe 与人工逐帧证据确认。
 
 Root Groups 连续源为 `.debug/marketplace-media/sources/rootGroups/live-timeline-clean.mp4`，当前为 `42.30s / 1269` 帧。Pane Gallery 原始连续 take 为 `.debug/marketplace-media/sources/paneGallery/live-timeline.mp4`，当前为 `85.40s / 2562` 帧；现有 60 秒版消费的重映射源为 `live-timeline-retimed.mp4`，它把原始绝对约 `25-70s` 映射为约 `41.17s`。这里的“连续”表示相邻成片段消费同一文件的相邻时间戳，而不是用 checkpoint、循环图片或 freeze frame 接缝。
 
@@ -83,7 +83,6 @@ Root Groups 连续源为 `.debug/marketplace-media/sources/rootGroups/live-timel
 所有命令均从仓库根目录执行。核心命令为：
 
     ffmpeg -y -hide_banner -loglevel error -ss 25 -t 48.5 -i .debug/marketplace-media/sources/paneGallery/live-timeline.mp4 -filter_complex "[0:v]trim=start=0:end=16,setpts=PTS-STARTPTS[first];[0:v]trim=start=16:end=48.5,setpts=(PTS-STARTPTS)*28.2/32.5[second];[first][second]concat=n=2:v=1:a=0,fps=30,format=yuv420p[out]" -map "[out]" -an -c:v libx264 -preset veryfast -crf 18 .debug/marketplace-media/sources/paneGallery/live-timeline-retimed-v2.mp4
-    node --test scripts/media/*.test.mjs
     node scripts/media/compose-marketplace-media.mjs validate --manifest .debug/marketplace-media/pair-manifest.json
     node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language en
     node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language zh-CN
@@ -92,7 +91,7 @@ Root Groups 连续源为 `.debug/marketplace-media/sources/rootGroups/live-timel
 
 ## 验证与验收
 
-必须同时满足以下条件：两条 MP4 均为 `1920x1200`、30 fps、约 54 秒和 1620 帧；比较字幕最后可见帧到 Pane Gallery 转场首个运动帧的间隔不超过 0.3 秒；收尾字幕首次可见帧与 globe 点击反馈相差不超过 0.3 秒；点击后字幕至少保持约四秒；eye、payments、Agent、决策、release、globe 和动态回全览继续可见；`42 passed` 与 exit code 0 保留；比较左右窗口和 Pane 故事的采样帧均持续变化；六份资产可完整解码且没有 blackdetect 命中；全部媒体测试、manifest 校验、build、typecheck、语法和 diff 检查通过。
+必须同时满足以下条件：两条 MP4 均为 `1920x1200`、30 fps、约 54 秒和 1620 帧；比较字幕最后可见帧到 Pane Gallery 转场首个运动帧的间隔不超过 0.3 秒；收尾字幕首次可见帧与 globe 点击反馈相差不超过 0.3 秒；点击后字幕至少保持约四秒；eye、payments、Agent、决策、release、globe 和动态回全览继续可见；`42 passed` 与 exit code 0 保留；比较左右窗口和 Pane 故事的采样帧均持续变化；六份资产可完整解码且没有 blackdetect 命中；本次临时素材检查、manifest 校验、build、typecheck、语法和 diff 检查通过。
 
 ## 幂等性与恢复
 

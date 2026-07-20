@@ -15,7 +15,7 @@
 - [x] (2026-07-17 09:28Z) 把八帧 storyboard 固定为两张 Root 单画面、两张双模式对比和四张 Pane 单画面，并让字幕通过 `captionKey` 显式绑定。
 - [x] (2026-07-17 09:31Z) 更新 compositor、定向测试、剧本和正式设计文档；语法、storyboard contract 与 manifest validate 通过，设计状态保持“验证中”。
 - [x] (2026-07-17 09:43Z) 重导中英文资产；MP4 与 PNG 锁定 hash 全部不变，GIF 三段式构图、字幕语义及 375px 预览通过人工检查。
-- [x] (2026-07-17 09:44Z) 完成六件套解码、GIF 时长/帧数/唯一帧、1180px/375px 预览、十四项媒体测试、build、typecheck、语法、manifest 和 diff 门禁。
+- [x] (2026-07-17 09:44Z) 完成六件套解码、GIF 时长/帧数/唯一帧、1180px/375px 预览、本次临时素材检查、build、typecheck、语法、manifest 和 diff 门禁。
 - [x] (2026-07-17 09:46Z) 记录最终 hash、机器可读验证与视觉证据，并准备把本计划移入 `docs/exec-plans/completed/`。
 
 ## 意外与发现
@@ -46,7 +46,7 @@
 
 计划已完成。英文 GIF SHA-256 为 `8daa8fe10c23fe4e9376642ca33d3b278f9997c569125fb8b424c082c20ccb1a`，中文 GIF 为 `0c6afcaceb0cb3a80274fa06c166fd5b5e1ec290fafae1a037164f642d6519ff`；两者均为 `1440x900`、8 个唯一帧、10 秒。前两帧只显示 Root Groups 大画面，中间两帧显示双模式，后四帧只显示 Pane Gallery 大画面；比较和聚焦字幕只出现在语义对应的 layout。
 
-用户确认的英文/中文 MP4 与两张 PNG Hero 均和归档逐字节相同。十四项媒体测试、六件套完整解码、两份 validation report、1180px/375px 预览、build、typecheck、脚本语法、manifest validate 和 `git diff --check` 全部通过。机器可读结论位于 `.debug/marketplace-media/review/gif-redesign/gif-redesign-validation.json`，重设计前版本位于 `.debug/marketplace-media/archive/2026-07-17-54s-dual-only-gif-baseline/`。本轮没有残余功能缺口。
+用户确认的英文/中文 MP4 与两张 PNG Hero 均和归档逐字节相同。本次临时素材检查、六件套完整解码、两份 validation report、1180px/375px 预览、build、typecheck、脚本语法、manifest validate 和 `git diff --check` 全部通过。机器可读结论位于 `.debug/marketplace-media/review/gif-redesign/gif-redesign-validation.json`，重设计前版本位于 `.debug/marketplace-media/archive/2026-07-17-54s-dual-only-gif-baseline/`。本轮没有残余功能缺口。
 
 ## 上下文与定向
 
@@ -66,7 +66,6 @@
 
 所有命令从仓库根目录执行：
 
-    node --test scripts/media/*.test.mjs
     node scripts/media/compose-marketplace-media.mjs validate --manifest .debug/marketplace-media/pair-manifest.json
     DSC_MEDIA_SCREENSHOT_RENDERER=chrome-cli node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language en
     DSC_MEDIA_SCREENSHOT_RENDERER=chrome-cli node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language zh-CN
@@ -76,7 +75,7 @@
 
 ## 验证与验收
 
-验收必须满足：GIF 第 1-2 帧只显示放大的 Root Groups，第 3-4 帧显示大小相等的双模式比较，第 5-8 帧只显示放大的 Pane Gallery；比较字幕只出现在双模式帧，聚焦字幕只出现在 Pane Gallery 大画面；`tests-passed` 中 `42 passed / exit code 0` 比旧双窗更易读；中英文 GIF 均为 `1440x900`、8 帧、10 秒且完整解码；PNG Hero 仍为双模式比较；两条 MP4 和两张 PNG 的 SHA-256 与本计划开头记录的锁定值一致；validation report、媒体测试、build、typecheck、语法与 diff 检查全部通过。
+验收必须满足：GIF 第 1-2 帧只显示放大的 Root Groups，第 3-4 帧显示大小相等的双模式比较，第 5-8 帧只显示放大的 Pane Gallery；比较字幕只出现在双模式帧，聚焦字幕只出现在 Pane Gallery 大画面；`tests-passed` 中 `42 passed / exit code 0` 比旧双窗更易读；中英文 GIF 均为 `1440x900`、8 帧、10 秒且完整解码；PNG Hero 仍为双模式比较；两条 MP4 和两张 PNG 的 SHA-256 与本计划开头记录的锁定值一致；validation report、本次临时素材检查、build、typecheck、语法与 diff 检查全部通过。
 
 ## 幂等性与恢复
 

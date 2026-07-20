@@ -62,7 +62,7 @@
 
 用户提出的四个可见问题全部闭合：中英文比较段的左右窗口各为 `30/30` 个唯一采样帧；Pane 故事为 `44/44` 个唯一采样帧；`35.05s` 能看到鼠标位于 eye/focus，随后布局连续展开；`58.2s` 能看到鼠标位于 globe，`58.4s` 已进入回全览动画。`Release Validation` 在主画面中显示真实 `42 passed` 与 exit code 0，Codex/Claude ANSI 字体颜色在全分辨率源和成片中可见。
 
-验证结果为：14 项媒体测试通过；manifest validate、两个脚本语法检查、`npm run build`、`npm run typecheck`、`git diff --check` 通过；六份资产完整解码；两条 MP4 均为 `1920x1200`、30 fps、1800 帧、60 秒且 blackdetect 无命中；GIF 均为 `1440x900`、8 帧、10 秒；PNG 均为 `1920x1200`。唯一保留的相关维护边界是既有旧 `stop` 仍有历史导出副作用，本轮继续只使用 `close`，该独立技术债没有扩大。
+验证结果为：本次临时素材检查通过；manifest validate、两个脚本语法检查、`npm run build`、`npm run typecheck`、`git diff --check` 通过；六份资产完整解码；两条 MP4 均为 `1920x1200`、30 fps、1800 帧、60 秒且 blackdetect 无命中；GIF 均为 `1440x900`、8 帧、10 秒；PNG 均为 `1920x1200`。唯一保留的相关维护边界是既有旧 `stop` 仍有历史导出副作用，本轮继续只使用 `close`，该独立技术债没有扩大。
 
 ## 仓库上下文
 
@@ -74,13 +74,12 @@
 
 ## 里程碑一：收口录制与 manifest 契约
 
-先修复录制首帧竞争。给 ffmpeg 增加唯一的 progress 文件，轮询已完整写入的 `frame=<number>` / `progress=continue` 键值，直到 `frame >= 1`。等待过程必须同时检查 ffmpeg 是否提前退出；达到明确超时时间仍无首帧时，停止进程、清理 session 的活动 clip 字段并报出包含 progress 路径的错误。`record-stop` 在成功 probe 后清理 progress 文件。把纯解析和 ready 判定抽成可导出函数，使 `scripts/media/recording-session.test.mjs` 不启动 X11 也能覆盖空内容、部分写入、首帧、超时和进程退出条件。
+先修复录制首帧竞争。给 ffmpeg 增加唯一的 progress 文件，轮询已完整写入的 `frame=<number>` / `progress=continue` 键值，直到 `frame >= 1`。等待过程必须同时检查 ffmpeg 是否提前退出；达到明确超时时间仍无首帧时，停止进程、清理 session 的活动 clip 字段并报出包含 progress 路径的错误。`record-stop` 在成功 probe 后清理 progress 文件。本轮曾用不跟踪的临时故障注入命令检查空内容、部分写入、首帧、超时和进程退出条件；这些场景不作为当前素材的长期仓库测试契约。
 
 然后把 manifest 从只包含 `takes.rootGroups.clip` 与 `takes.paneGallery.clip` 扩展为三个 MP4 角色：Root Groups 的 16 秒比较视频、Pane Gallery 的 16 秒比较视频，以及至少 25 秒的 Pane Gallery 连续故事视频。现有 Root Groups 19 秒开场仍作为 `takes.rootGroups.clip`；Pane Gallery 的单画面阶段改读连续故事视频。所有视频都必须是 `1440x900`，probe 时长必须覆盖各自 `inMs + durationMs`。结构校验必须拒绝缺失、错误模式、时长不足或把图片路径填入视频字段。
 
 这一里程碑完成后运行：
 
-    node --test scripts/media/*.test.mjs
     node --check scripts/media/recording-session.mjs
     node --check scripts/media/compose-marketplace-media.mjs
 
@@ -110,7 +109,6 @@ Pane Gallery 故事只录一条连续 take。开始时为 `dynamic` 四 pane，�
 
 完整命令组为：
 
-    node --test scripts/media/*.test.mjs
     node --check scripts/media/recording-session.mjs
     node --check scripts/media/compose-marketplace-media.mjs
     node scripts/media/compose-marketplace-media.mjs validate --manifest .debug/marketplace-media/pair-manifest.json

@@ -58,6 +58,7 @@
 - VS Code 主题：Default Dark Modern；Peacock 颜色关闭。
 - Surface：底部 Panel 最大化，扩展 activity bar 与 sidebar 保持可见。
 - Workspace：只使用上述四个 root；每个 root 只保留一个真实 Agent 节点，不出现 Terminal 节点。
+- Workspace 物理路径：正式录制固定使用 `/tmp/dev-session-canvas-marketplace-media/four-root-attention/workspace/` 下的中性 disposable root；公开画面不得出现维护者用户名、home 目录或仓库 worktree 绝对路径。
 - 文件活动：关闭展示，不允许文件节点、文件列表节点或编辑器画面进入录制区域。
 - Provider 启动：正式录制前可以依次启动四个真实 Codex / Claude Agent 并处理首次信任、登录或升级提示，但不能提前提交剧本任务；正式 clip 从四个输入提示都已就绪的 fit view 开始。
 - 彩色 TUI：录制子进程固定声明 `TERM=xterm-256color` 与 `COLORTERM=truecolor`，并移除继承的 `NO_COLOR`；Codex 与 Claude 的原生 ANSI 强调色必须在源画面中可见。
@@ -201,6 +202,7 @@ GIF 不从 MP4 均匀抽帧，也不使用未经审阅的原始截图。八张 f
 - GIF 最后一帧的产品标识使用 `extensions/vscode/dev-session-canvas/images/dev-session-canvas-icon.svg`；禁止另画近似图标或继续使用 `DSC` 占位字标。
 - 中英文分别检查字幕字体、断行、停留时长和安全区；375px 预览下仍能完整读完主字幕。
 - 最终素材无 notification toast、鼠标遮挡、调试 overlay、录制工具窗口或未经说明的测试控制 UI。
+- 最终六份公开资产不得出现维护者用户名、`/home/users`、当前仓库绝对路径、认证路径或其他本机环境标识；该项每次制作通过临时帧检查和人工审阅确认，不固化为长期素材测试脚本。
 
 ## 明确不拍
 

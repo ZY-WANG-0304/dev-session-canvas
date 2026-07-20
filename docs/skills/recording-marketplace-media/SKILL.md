@@ -64,7 +64,7 @@ description: Use when the user asks to record raw Marketplace preview source vid
 
 | 命令 | 录制用途 |
 |---|---|
-| `start [--scenario four-root-attention]` | 启动 Xvfb、窗口管理器和真实 VS Code Extension Development Host；正式四 root 场景会归档旧证据、准备 disposable workspace，并从系统 PATH 启动已登录的真实 Codex / Claude Code |
+| `start [--scenario four-root-attention]` | 启动 Xvfb、窗口管理器和真实 VS Code Extension Development Host；正式四 root 场景会归档旧证据、在 `/tmp/dev-session-canvas-marketplace-media/four-root-attention/` 准备不含个人标识的 disposable workspace，并从系统 PATH 启动已登录的真实 Codex / Claude Code |
 | `screenshot` | 抓取当前宿主截图，用于录制外观察与审阅 |
 | `locate <selector>` | 通过 CDP 定位 workbench DOM 元素，返回屏幕坐标 JSON |
 | `click <x> <y> [--right] [--double]` | 发送原生鼠标点击 |
@@ -149,6 +149,7 @@ description: Use when the user asks to record raw Marketplace preview source vid
 - 不得为了录制在产品代码中增加自动确认、伪状态、伪 split view 或其他媒体专用行为。
 - Terminal 输出、Agent 状态、attention、running 和 root 内容都必须来自真实运行时像素，不能后期贴图后再冒充录制源。
 - 每条 take 必须记录实际窗口尺寸、主题、workspace、presentation mode、开始/结束时间和原始 clip 路径。
+- 正式公开媒体的 workspace 必须位于中性 `/tmp` 路径；开始录制前读取 session metadata，确认 `workspaceFile` 和全部 `workspaceFolders[].path` 不包含用户名、home 目录或仓库 worktree 路径。
 
 ## 多 Take 录制
 
