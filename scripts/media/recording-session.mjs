@@ -74,6 +74,11 @@ const SIDEBAR_OPEN_CANVAS_WORKBENCH_SELECTORS = [
   '.sidebar .monaco-list-row:has-text("打开画布")'
 ];
 const FOUR_ROOT_SCENARIO = 'four-root-attention';
+const FOUR_ROOT_SCENARIO_ROOT = path.join(
+  '/tmp',
+  'dev-session-canvas-marketplace-media',
+  FOUR_ROOT_SCENARIO
+);
 export const CODEX_RECORDING_COMMAND = [
   'codex',
   `-c 'check_for_update_on_startup=false'`,
@@ -1580,7 +1585,7 @@ async function clearActiveRecordingEvidence() {
 }
 
 async function prepareFourRootScenario(runtime, providerPreflight) {
-  const scenarioRoot = path.join(debugRoot, 'scenario', FOUR_ROOT_SCENARIO);
+  const scenarioRoot = FOUR_ROOT_SCENARIO_ROOT;
   const workspaceRoot = path.join(scenarioRoot, 'workspace');
   const triggerDir = path.join(scenarioRoot, 'triggers');
   const roots = [];

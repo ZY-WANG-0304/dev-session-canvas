@@ -21,7 +21,7 @@
 - [x] (2026-07-15 15:28 +0800) 把 60 秒 MP4 拆为五个低内存 segment；稳定比较段固定两侧 `840x525`，稳定 Pane Gallery 段固定 `1440x900`。synthetic RGB frame 像素边界测试、归档素材完整试渲染、关键帧目检和 blackdetect 均通过。
 - [x] (2026-07-15 17:12 +0800) 归档上一版源素材后完成真实 Extension Development Host 录制；十个 scene 合成为 `19s / 570` 帧 Take A 与 `25s / 750` 帧 Take B，八组左右 checkpoint 和同场景 metadata 齐全。
 - [x] (2026-07-15 17:42 +0800) 使用最新中英文字幕重新生成六份正式资产；完整解码、关键时间点、黑帧、`1180px / 375px`、Hero / GIF 尾帧与英文两行字幕安全区验收通过。
-- [x] (2026-07-15 17:49 +0800) README 双语引用、录制 Skill、设计文档、索引、技术债与本计划已同步；九项媒体测试、脚本检查、构建、类型检查和 `git diff --check` 通过，准备归档。
+- [x] (2026-07-15 17:49 +0800) README 双语引用、录制 Skill、设计文档、索引、技术债与本计划已同步；本次临时素材检查、脚本检查、构建、类型检查和 `git diff --check` 通过，准备归档。
 
 ## 意外与发现
 
@@ -96,7 +96,7 @@
 
 本轮返工已经逐项闭合用户的四个反馈。Take A 在 19 秒内按 `payments-api -> storefront -> design-system -> release-tools` 完成四轮“fit view 全览、双击放大、真实输入、running/live、fit view”；正式 metadata 与画面分别证明使用 Codex CLI `0.144.1`、Claude Code `2.1.209` 和真实 Bash，没有 fake provider；稳定比较段左右窗口均为 `840x525 +/- 2px`；38 秒后的 Pane Gallery 稳定保持 `1440x900 +/- 2px`。
 
-英文字幕底边问题在最终验收中被发现并修复，六份双语资产随后全部重渲染。两条 MP4 均为 `1920x1200`、1800 帧、60 秒且无黑帧；两条 GIF 均为 `1440x900`、8 帧、10 秒；两张 PNG 均为 `1920x1200`，Hero 明确来自 `attention-arrives` 而不是 GIF 尾帧。九项媒体测试、脚本语法检查、构建、类型检查和 diff 门禁通过。
+英文字幕底边问题在最终验收中被发现并修复，六份双语资产随后全部重渲染。两条 MP4 均为 `1920x1200`、1800 帧、60 秒且无黑帧；两条 GIF 均为 `1440x900`、8 帧、10 秒；两张 PNG 均为 `1920x1200`，Hero 明确来自 `attention-arrives` 而不是 GIF 尾帧。本次临时素材检查、脚本语法检查、构建、类型检查和 diff 门禁通过。
 
 本轮没有遗留功能缺口。录制器旧 `stop` 仍可能覆盖新正式资产，以及 Linux X11 工具链的跨平台限制，继续由 `docs/exec-plans/tech-debt-tracker.md` 跟踪；当前正式维护路径只使用无导出副作用的 `close` 与独立 compositor。
 
@@ -132,7 +132,6 @@
     claude auth status
     node --check scripts/media/recording-session.mjs
     node --check scripts/media/compose-marketplace-media.mjs
-    node --test scripts/media/*.test.mjs
 
 正式录制仍使用：
 

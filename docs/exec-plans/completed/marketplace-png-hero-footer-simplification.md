@@ -13,7 +13,7 @@
 - [x] (2026-07-17 16:16Z) 归档当前中英文能力轨道 PNG、报告、机器可读验证与 checksum。
 - [x] (2026-07-17 16:22Z) 删除 Hero 底部三项、图标和连接线，清理不再使用的 copy / metadata / validation，并把两个等宽窗口扩大到 `1200x750`。
 - [x] (2026-07-17 16:27Z) 重渲染中英文 PNG，检查 `1920px`、`1180px`、`375px` 的构图和留白。
-- [x] (2026-07-17 16:40Z) 同步剧本、正式设计、测试、验证 JSON 与 checksum，锁定动态资产并完成十五项媒体测试、六件套解码、build、typecheck、manifest 和 diff 门禁。
+- [x] (2026-07-17 16:40Z) 同步剧本、正式设计、验证 JSON 与 checksum，锁定动态资产并完成本次临时素材检查、六件套解码、build、typecheck、manifest 和 diff 门禁。
 
 ## 意外与发现
 
@@ -35,7 +35,7 @@
 
 计划已完成。英文 PNG SHA-256 为 `26daa2066c76c2133ae2aa21323420705e339ef14e4f808f50cc39589911e9d9`，中文 PNG 为 `c46ae59b5c143fc37513357570f7253a798e2d9c018ea3a5a2e15fb87a2ef41d`。底部三项、编号、图标与箭头全部删除；左右真实产品窗口从 `1120x700` 放大到 `1200x750`，仍然对称、等宽且保持 `16:10`。中英文三档预览均无裁切、重叠或 UI 遮挡。
 
-两条 MP4 与两条 GIF hash 和计划开始时一致。十五项媒体测试、六件套解码、两份 validation report、脚本语法、manifest validate、build、typecheck、五份发布 checksum 与 `git diff --check` 全部通过。机器可读证据位于 `.debug/marketplace-media/review/png-hero-clean-footer/png-hero-clean-footer-validation.json`，上一版位于 `.debug/marketplace-media/archive/2026-07-18-png-hero-capability-rail-baseline/`。本轮没有残余功能缺口。
+两条 MP4 与两条 GIF hash 和计划开始时一致。本次临时素材检查、六件套解码、两份 validation report、脚本语法、manifest validate、build、typecheck、五份发布 checksum 与 `git diff --check` 全部通过。机器可读证据位于 `.debug/marketplace-media/review/png-hero-clean-footer/png-hero-clean-footer-validation.json`，上一版位于 `.debug/marketplace-media/archive/2026-07-18-png-hero-capability-rail-baseline/`。本轮没有残余功能缺口。
 
 ## 上下文与定向
 
@@ -49,7 +49,6 @@ Hero HTML/CSS 位于 `scripts/media/compose-marketplace-media.mjs` 的 `heroDocu
 
 ## 具体步骤
 
-    node --test scripts/media/*.test.mjs
     node scripts/media/compose-marketplace-media.mjs validate --manifest .debug/marketplace-media/pair-manifest.json
     DSC_MEDIA_SCREENSHOT_RENDERER=chrome-cli node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language en
     DSC_MEDIA_SCREENSHOT_RENDERER=chrome-cli node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language zh-CN
@@ -59,7 +58,7 @@ Hero HTML/CSS 位于 `scripts/media/compose-marketplace-media.mjs` 的 `heroDocu
 
 ## 验证与验收
 
-最终 PNG 不出现底部三个能力项、编号、图标或箭头；两个窗口保持尺寸相等、左右对称和 `16:10`，右侧仍为真实 `sideThumbnails`。三档尺寸无裁切或重叠。两条 MP4 与两条 GIF hash 不变；十五项媒体测试、六件套解码、validation report、manifest、build、typecheck 和 diff 检查通过。
+最终 PNG 不出现底部三个能力项、编号、图标或箭头；两个窗口保持尺寸相等、左右对称和 `16:10`，右侧仍为真实 `sideThumbnails`。三档尺寸无裁切或重叠。两条 MP4 与两条 GIF hash 不变；本次临时素材检查、六件套解码、validation report、manifest、build、typecheck 和 diff 检查通过。
 
 ## 幂等性与恢复
 

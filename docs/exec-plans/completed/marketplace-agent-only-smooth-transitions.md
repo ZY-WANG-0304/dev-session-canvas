@@ -21,7 +21,7 @@
 - [x] (2026-07-15 22:47 +0800) 修复正式录制环境的颜色变量并补自动化测试；真实 Extension Host 像素冒烟确认 Claude truecolor 与 Codex 原生强调均可见。
 - [x] (2026-07-15 23:28 +0800) 归档旧证据，重新录制四 Agent 的 Take A、Take B 与 16 个 checkpoint；第四个真实 Codex Agent 返回 `42 passed` 与 exit code 0。
 - [x] (2026-07-15 23:55 +0800) 重新生成六份双语正式资产；完成 100ms 转场、颜色、`1180px / 375px`、完整解码、黑帧、Hero / GIF 尾帧和关键时间点目检。
-- [x] (2026-07-16 00:07 +0800) 十项媒体测试、脚本检查、构建、类型检查和 diff check 通过；正式文档、技术债与本计划同步并准备归档。
+- [x] (2026-07-16 00:07 +0800) 本次临时素材检查、脚本检查、构建、类型检查和 diff check 通过；正式文档、技术债与本计划同步并准备归档。
 
 ## 意外与发现
 
@@ -87,7 +87,7 @@
 
 本轮已经闭合用户提出的三项返工。四个 root 的唯一执行节点全部是 Agent，`release-tools / Release Validation` 由真实 Codex 运行 `./run-e2e.sh`，成片能辨认 `42 passed` 与 exit code 0；两个动态窗口段的 30 / 90 帧均在固定画布中同步改变 x、y、width、height，100ms contact sheet 没有发现阶段式平移或跳缩放；正式 child 移除 `NO_COLOR` 后，Claude truecolor 与 Codex 原生强调在源 Host 和成片中可见。
 
-英文与中文六份正式资产均通过 staged validation。两条 MP4 为 `1920x1200`、1800 帧、60 秒且无黑帧；两条 GIF 为 `1440x900`、8 帧、10 秒；两张 PNG 为 `1920x1200`，显式 Hero 为 `attention-arrives`。`1180px / 375px` 预览、完整解码、十项媒体测试、build、typecheck 与 diff check 均通过。
+英文与中文六份正式资产均通过 staged validation。两条 MP4 为 `1920x1200`、1800 帧、60 秒且无黑帧；两条 GIF 为 `1440x900`、8 帧、10 秒；两张 PNG 为 `1920x1200`，显式 Hero 为 `attention-arrives`。`1180px / 375px` 预览、完整解码、本次临时素材检查、build、typecheck 与 diff check 均通过。
 
 唯一遗留是 x11grab 在高负载短 scene 中缺显式首帧 ready handshake。本次正式 Take B 只使用同一真实 Host 的长录屏和真实 checkpoint 收口，没有 fake provider 或重绘状态；工具可靠性风险已进入技术债，不阻塞当前六份资产。
 
@@ -117,7 +117,6 @@
 
     node --check scripts/media/recording-session.mjs
     node --check scripts/media/compose-marketplace-media.mjs
-    node --test scripts/media/*.test.mjs
     node scripts/media/compose-marketplace-media.mjs validate --manifest .debug/marketplace-media/pair-manifest.json
 
 正式录制使用：

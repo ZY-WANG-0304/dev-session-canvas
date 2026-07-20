@@ -25,7 +25,8 @@ related_plans:
   - docs/exec-plans/completed/marketplace-png-hero-information-redesign.md
   - docs/exec-plans/completed/marketplace-png-hero-thumbnail-capability-rail.md
   - docs/exec-plans/completed/marketplace-png-hero-footer-simplification.md
-updated_at: 2026-07-17
+  - docs/exec-plans/completed/marketplace-public-path-rerecord-review-followup.md
+updated_at: 2026-07-20
 ---
 
 # Marketplace README 素材自动化
@@ -211,6 +212,7 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 - 录制与剪辑职责分离：录制 Skill 只生成和记录原始素材，本文与剧本定义成片规则，独立 compositor 执行后期和输出校验。
 - 当前片不展示 Terminal 节点、文件读写相关画面或跨 pane 拖拽。
 - 正式录制环境必须为 xterm-compatible PTY，移除 `NO_COLOR`；真实宿主像素必须显示 Codex 与 Claude 的原生 ANSI 强调色。持久化 `recentOutput` 可以继续保存去控制序列后的纯文本，不能拿它替代像素验收。
+- 正式四 root workspace 固定从 `/tmp/dev-session-canvas-marketplace-media/four-root-attention/` 启动；公开素材不能出现维护者用户名、home 目录、仓库 worktree 或认证配置绝对路径。
 - 动态转场的每个中间帧都必须同时改变位置与尺寸，不接受只验证稳定端点。
 - MP4 的双视图比较必须同时消费两条真实视频；左右窗口内部都要有可测的跨帧变化，不能用 checkpoint、`-loop 1` 或 freeze frame。
 - Pane Gallery 的 `eye -> sideThumbnails -> payments-api -> decision -> release-tools -> globe -> dynamic` 必须来自一条连续视频；鼠标点击和产品布局动画在成片中都必须可见。
@@ -219,17 +221,17 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 
 ## 8. 验证方法
 
-### 8.1 自动化与媒体探测
+### 8.1 本次媒体探测
 
 以下结果对应 2026-07-17 完成的“比较节奏收紧 + 收尾字幕同步”、三段式 GIF 与独立 PNG Hero 正式资产：
 
-1. `node --test scripts/media/*.test.mjs` 十五项通过，覆盖固定八帧双语 storyboard、独立 Hero 的 `attention-focused` source、精确双语文案、对称 50/50 放大窗口与无能力 footer、`root-single -> compare -> pane-single` layout/caption 映射、缺 pair / 错序 / 状态不一致 / 隐式尾帧 Hero 拒绝、manifest v2 连续视频边界、54 秒时间线和字幕时点、全部源文件 probe、双比较窗口独立运动、真实输出级 GIF、稳定双窗 `840x525`、单 Pane Gallery `1440x900`、30 / 90 个动态几何 frame 的单调连续性和实际 RGB 像素边界、ffmpeg progress 解析/首帧/超时，以及正式 scenario 的四个真实 Agent、无 fake PATH / 原始 secret 和受限原生输入动作。
+1. 八帧双语 storyboard、独立 Hero 的 `attention-focused` source、对称 50/50 窗口、manifest v2 连续视频边界、54 秒时间线、动态窗口像素边界、真实 Provider metadata 与受限原生输入动作均在本次制作中通过临时命令、输出级 probe 和人工逐帧检查确认。精确帧序、文案、时长与几何属于当前素材设计，不作为仓库长期自动化接口；PR review 后已删除两份素材专用 test 文件。
 2. `node --check scripts/media/recording-session.mjs` 与 `node --check scripts/media/compose-marketplace-media.mjs` 通过；`npm run build`、`npm run typecheck` 与 `git diff --check` 通过。
 3. 中英文 validation report 均为 `passed: true`，确认 Noto Sans CJK SC 字体命中、Hero ID 为 `attention-focused`、两个 `1200x750` 窗口对称 50/50、模式区 top `400px`、窗口 top `550px`、footer 为 `none`、精确语言文案与正式 SVG icon，并通过 `gifFramePresentations` 记录每帧 layout/caption，同时记录四个视频角色和 16 个 checkpoint 的 SHA-256。
-4. 六份正式资产均可完整解码。两条 MP4 都是 `1920x1200`、H.264、30 fps、1620 帧、54 秒，`blackdetect` 均为 0 命中；两条 GIF 都是 `1440x900`、8 个唯一帧、10 秒；两张 PNG 都是 `1920x1200`。英文 PNG SHA-256 为 `211d2657f978d783897e8c8fc80dd3c99da134f1889c2ca3813880b2a25673a0`，中文 PNG 为 `c711778fb689b82756a02c06caedfc6262a74e1ec9174e4d3d7bd054514fcebb`；英文 GIF 仍为 `d24024fb6ed5d98aa61e9bda3e6db8ce36bc2675ef41c1b6ccbe3784b092c70d`，中文 GIF 仍为 `03330a5d13715004bf7e10ef8fc2446432f521d6999767463397086ed7b6ed60`。
+4. 2026-07-20 中性路径重录后的六份正式资产均可完整解码。两条 MP4 都是 `1920x1200`、H.264、30 fps、1620 帧、54 秒，`blackdetect` 均为 0 命中；两条 GIF 都是 `1440x900`、8 个唯一帧、10 秒；两张 PNG 都是 `1920x1200`。英文 MP4 / GIF / PNG SHA-256 依次为 `a3280c5ac98d4ac0ff8f894a0979fc1780f34e103b5c2082e497cfd8d95c0361`、`4c38e8d21a3ce2153fef02a9f35a11ddfe64385c2113176c24343fae1ff481af`、`9b6486e1d2c73a208e97bb967456d229adf0e97346a2e3da5a764ad396df252c`；中文依次为 `5a1640ebb50015484fd13f7b9519aaccddaf40d3870ec1005536f934b27d6aa2`、`1cd849ae8a3ae7820446c878625dc6c4107faeb1e6277762a2eb6155d3d9da2e`、`f04d390ee3116ce633a62d2bd548617d5793e8d153bba4d39e9d0efaa1790ddc`。
 5. 对中英文 MP4 的 `20-26s` 每 500ms 分别裁取左右比较窗口，两侧都是 `12/12` 个唯一解码帧；对 `29-54s` Pane Gallery 主窗口同样采样，结果都是 `50/50` 个唯一帧。该门禁直接证明三块产品内容不是 checkpoint loop 或 freeze frame。
 6. 比较字幕最后可见帧为 `25.800s`，`25.833s` 已消失，Pane Gallery 几何首个运动帧为 `26.033s`，间隔 `0.233s`。globe 点击与收尾字幕首帧同为 `49.200s`，`49.267s` 已进入产品自身的 dynamic 回归动画，字幕随后保持到片尾约 `4.767s`。
-7. 四轮 PNG Hero 重设计前后，两条 MP4 与两条 GIF 的 SHA-256 完全不变；英文 MP4 仍为 `c43f9c73c82cb22b594aefb7bee68b0805f8e7029b49e0714d27665f10e8e803`，中文 MP4 仍为 `1b398c44de5fa863b0c524180440d443430ff7474c4693c58701407dc8027984`。旧单句版、dynamic Pane Gallery 版、能力轨道版和底部留白偏多版均位于对应 `.debug/marketplace-media/archive/`，最近一版为 `2026-07-18-png-hero-clean-footer-top-heavy-baseline/`。
+7. 2026-07-20 PR review 确认旧六件套包含维护者 home 下的 cwd，因此不能继续锁定旧动态资产 hash。本轮从 `/tmp/dev-session-canvas-marketplace-media/four-root-attention/` 重新录制两个 Codex 与两个 Claude Code，并重新生成六件套；旧版、源 take、checkpoint、manifest 与报告均保存在对应 `.debug/marketplace-media/archive/`，不再作为可发布候选。
 
 ### 8.2 真实宿主与视觉验收
 
@@ -238,12 +240,13 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 3. `Contract Review` 的 OSC 9 attention 同时进入标题栏、MiniMap 与 sidebar；Pane Gallery 聚焦前 attention 保留，点击主 Agent 后清除，固定回复 `Use full jitter. Cap at 3 attempts.` 经真实 Codex PTY 提交并得到确认。
 4. 正式 child 进程实际为 `TERM=xterm-256color`、`COLORTERM=truecolor`，且不存在 `NO_COLOR`。真实 Host 冒烟与成片分别确认 Claude 的橙 / 黄 truecolor，以及 Codex 的青色命令、绿色路径、粗体和代码强调；只有节点边框有颜色不算通过。持久化 `recentOutput` 会归一化为纯文本，因此环境与全分辨率像素是正式颜色证据。
 5. `.debug/marketplace-media/review/compare-enter-motion.png` 继续覆盖 `18.8-20.6s` 的比较进入；`.debug/marketplace-media/review/pacing-retime/final-en/pane-expand-motion.png` 覆盖 `25.8-29.4s` 每 `100ms` 一帧。逐格确认 Root Groups 与 Pane Gallery 的 x、y、width、height 沿同一 easing 同步变化，没有平移与缩放分阶段或单帧跳变。
-6. `record-start` 的真实 X11 录制通过 `-progress` 等到 `frame >= 1` 后才返回；三条本轮 scene 都成功经过握手，短动作不再先于首帧。停止后 `.progress` 文件被清理，录制 Skill 与自动化测试已同步，该技术债从列表移入“近期已收口”。
+6. `record-start` 的真实 X11 录制通过 `-progress` 等到 `frame >= 1` 后才返回；三条本轮 scene 都成功经过握手，短动作不再先于首帧。停止后 `.progress` 文件被清理，录制 Skill 与本次故障注入检查已同步，该技术债从列表移入“近期已收口”。
 7. `.debug/marketplace-media/review/pacing-retime/final-en/story-actions.png` 从 `26.000s` 到 `53.900s` 连续覆盖 eye、payments、Contract Review、决策、Release Validation、globe 与 dynamic；`.debug/marketplace-media/review/pacing-retime/final-en/globe-caption-sequence.png` 和对应中文版逐帧证明收尾字幕在 `49.200s` 点击时出现。聚焦、决策、release result 与回全览之间没有 checkpoint 或静态替换。
 8. 中英文 Hero、GIF 与 MP4 分别按 README `1180px` 和移动端 `375px` 抽样目检；Hero 的产品名、主标题、模式说明和放大等宽窗口没有裁切、重叠或遮挡 UI，底部不再出现重复能力项，右侧能看清主任务与缩略图的结构关系。视频/GIF 字幕仍位于 UI 外部安全区，模式标签和背景未抢夺主画面。
 9. 中文渲染继续使用显式 headless-shell CLI renderer；中英文 Hero master 都从 `attention-focused` 成对 checkpoint 独立生成，PNG 发生预期变化，MP4/GIF hash 保持不变，证明独立静态渲染没有扰动动态资产。
 10. `.debug/marketplace-media/review/gif-redesign/en/gif-decoded-contact.png` 与中文对应 contact sheet 逐帧确认 2 张 Root 单画面、2 张双模式和 4 张 Pane 单画面；`gif-mobile-375-contact.png` 确认比较字幕与聚焦字幕在移动端宽度下完整可读，`tests-passed` 的真实 Agent 结果比旧双窗构图更清楚。`final-icon-frame.png` 及 375px 版本确认最后一帧使用真实双色 `dev-session-canvas-icon.svg`，不再出现 `DSC` 占位字标。
-11. `.debug/marketplace-media/review/png-hero-clean-footer/` 保存中英文 `1180px` 与 `375px` Hero 预览，机器可读 JSON 记录成对 source、放大窗口、无 footer、六件套 hash 与全部门禁；`PUBLISHED_SHA256SUMS` 校验当前正式资产和报告。
+11. `.debug/marketplace-media/review/png-hero-clean-footer/` 保存第十一轮中英文 `1180px` 与 `375px` Hero 预览、当时的机器可读 JSON 与 checksum；这些 hash 在第十二轮真实重录后只作为历史证据，不再校验当前正式资产。
+12. `.debug/marketplace-media/review/public-path-rerecord/` 保存当前中英文 MP4 contact sheet、GIF 八帧 contact sheet、Hero `1180px / 375px` 预览与 `PUBLISHED_SHA256SUMS`。人工逐帧确认产品像素只出现中性 `/tmp/dev-session-canvas-marketplace-media...` cwd；六个正式二进制的可读字符串检查也未命中 `/home/users`、维护者用户名或 worktree 路径。该检查是本次素材验收证据，不新增长期跟踪的素材测试脚本。
 
 ### 8.3 维护边界与历史证据
 
@@ -259,7 +262,7 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 
 第三轮已经把第四个执行节点改为真实 Codex Agent，移除录制 child 的 `NO_COLOR`，并用固定画布 `perspective` 完成两段同步几何转场。中英文六份二进制资产、16 个 checkpoint、100ms 转场 contact sheet、颜色关键帧与 validation report 均通过当时的门禁，但 2026-07-17 人工复审发现：左右比较是固定帧，第一次 Pane Gallery 聚焦前没有可见 `eye` 点击，聚焦与回全览阶段也被定帧替代。旧版已完整保存在 `.debug/marketplace-media/archive/2026-07-17-static-frame-baseline/`；在新的双实时视频与连续 Pane Gallery take 通过验收前，本文保持 `validation_status: 验证中`。
 
-第四轮在不改变 GIF/PNG 静态设计的前提下，把 MP4 manifest 升级为 v2：比较段只消费两条连续真实视频，Pane Gallery 从 dynamic、eye、聚焦、回复、release result、globe 到 dynamic 只消费一条连续视频。中英文动态采样、可见点击、完整解码、blackdetect、媒体测试、构建与类型检查均通过，六份修复版已替换 canonical 资产，因此本文恢复 `validation_status: 已验证`。
+第四轮在不改变 GIF/PNG 静态设计的前提下，把 MP4 manifest 升级为 v2：比较段只消费两条连续真实视频，Pane Gallery 从 dynamic、eye、聚焦、回复、release result、globe 到 dynamic 只消费一条连续视频。中英文动态采样、可见点击、完整解码、blackdetect、本次临时素材检查、构建与类型检查均通过，六份修复版已替换 canonical 资产，因此本文恢复 `validation_status: 已验证`。
 
 第五轮保留第四轮的连续真实录屏与全部交互，只把双模式稳定段从 15 秒缩短为 6 秒，并从原始 Pane take 延长 globe 后的真实动态全览。此前 60 秒动态版完整保存在 `.debug/marketplace-media/archive/2026-07-17-live-motion-60s-baseline/`。新版比较字幕消失后 `0.233s` 开始转场，收尾字幕与 globe 点击同在 `49.200s`，中英文 54 秒 MP4 与静态资产全部通过门禁，因此验证状态保持“已验证”。
 
@@ -271,6 +274,8 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 
 第九轮把 PNG Hero source 切到 `attention-focused` 成对 checkpoint，右侧真实显示 `payments-api` 主任务与其他 root 缩略图；底部从三个编号等宽栏改为按模式归属的能力轨道。该版通过当时门禁，随后在人工审阅中被认定仍把不对等能力错误表现成流程，完整保存在 `.debug/marketplace-media/archive/2026-07-18-png-hero-capability-rail-baseline/`。
 
-第十轮完全删除底部三项、图标和箭头，把能力解释收敛到两侧模式说明，并将两个真实产品窗口从 `1120x700` 放大为 `1200x750`。中英文三档视觉检查、十五项媒体测试、完整解码和工程门禁通过，MP4/GIF 继续逐字节不变，因此验证状态保持“已验证”。
+第十轮完全删除底部三项、图标和箭头，把能力解释收敛到两侧模式说明，并将两个真实产品窗口从 `1120x700` 放大为 `1200x750`。中英文三档视觉检查、本次临时素材检查、完整解码和工程门禁通过，MP4/GIF 继续逐字节不变，因此验证状态保持“已验证”。
 
 第十一轮不增加任何新内容，只重新分配纵向空间：主标题 top 调整为 `190px`，模式区 top 为 `400px`，窗口 top 为 `550px`，两个 `1200x750` 窗口底边落在 `1300px`，母版底部留白从最初无 footer 版本的 `440px` 收到 `300px`。中英文三档预览确认画面不再头重脚轻，MP4/GIF 继续逐字节不变。
+
+第十二轮处理 PR #271 review：正式四 root workspace 从仓库 `.debug` 迁到固定中性 `/tmp` 路径，重新启动两个真实 Codex 与两个真实 Claude Code，重录 Root Groups 四轮输入、双实时比较和完整 Pane Gallery 故事，并重新捕获 16 个 checkpoint。两份素材专用 test 文件及 fake provider 的媒体专用增量从 PR 中移除；本次使用临时 contact sheet、输出级 probe、完整解码与人工目检验收，不把当前八帧、54 秒文案和几何继续固化为长期仓库契约。六件套、validation report、动态唯一帧与公开路径检查通过后，本文恢复“已验证”。

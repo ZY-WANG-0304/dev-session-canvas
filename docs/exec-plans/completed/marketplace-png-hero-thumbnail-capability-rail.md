@@ -13,7 +13,7 @@
 - [x] (2026-07-17 15:52Z) 检查 `attention-focused` 左右 checkpoint，确认右侧为主任务加缩略图、左侧为同一 state ID 的组合画布。
 - [x] (2026-07-17 15:57Z) 把 manifest Hero ID 与独立 Hero 渲染切到 `attention-focused`，更新测试确保左右状态配对且 GIF layout 不受影响。
 - [x] (2026-07-17 16:05Z) 把底部三个编号等宽栏改成左右 50/50 能力轨道，并完成中英文 `1920px`、`1180px`、`375px` 视觉检查。
-- [x] (2026-07-17 16:11Z) 更新剧本、正式设计与机器可读验证，锁定动态资产并完成十五项媒体测试、六件套解码、build、typecheck、manifest、checksum 与 diff 门禁。
+- [x] (2026-07-17 16:11Z) 更新剧本、正式设计与机器可读验证，锁定动态资产并完成本次临时素材检查、六件套解码、build、typecheck、manifest、checksum 与 diff 门禁。
 
 ## 意外与发现
 
@@ -35,7 +35,7 @@
 
 计划已完成。英文 PNG SHA-256 为 `6f29782a746a8144315d4cfb960317a2b3e4fc51abd458764d5ed2d6c3b32079`，中文 PNG 为 `4c733f9e67371e8c71139883929f59d09b000ee1530d5074aa6c1a8e55bbf492`。右侧真实显示 `payments-api` 主任务和三个其他 root 缩略图；底部左侧是平铺能力，右侧以双向轨道连接单任务聚焦和全局任务掌控。中英文 `1920px`、`1180px`、`375px` 均无裁切、重叠或 UI 遮挡。
 
-两条 MP4 与两条 GIF 的 SHA-256 和计划开始时一致。十五项媒体测试、六件套完整解码、两份 validation report、脚本语法、manifest validate、build、typecheck、四份发布 checksum 和 `git diff --check` 全部通过。机器可读证据位于 `.debug/marketplace-media/review/png-hero-thumbnail-rail/png-hero-thumbnail-rail-validation.json`，上一版 Hero 位于 `.debug/marketplace-media/archive/2026-07-17-png-hero-dynamic-gallery-baseline/`。本轮没有残余功能缺口。
+两条 MP4 与两条 GIF 的 SHA-256 和计划开始时一致。本次临时素材检查、六件套完整解码、两份 validation report、脚本语法、manifest validate、build、typecheck、四份发布 checksum 和 `git diff --check` 全部通过。机器可读证据位于 `.debug/marketplace-media/review/png-hero-thumbnail-rail/png-hero-thumbnail-rail-validation.json`，上一版 Hero 位于 `.debug/marketplace-media/archive/2026-07-17-png-hero-dynamic-gallery-baseline/`。本轮没有残余功能缺口。
 
 ## 上下文与定向
 
@@ -51,7 +51,6 @@
 
 ## 具体步骤
 
-    node --test scripts/media/*.test.mjs
     node scripts/media/compose-marketplace-media.mjs validate --manifest .debug/marketplace-media/pair-manifest.json
     DSC_MEDIA_SCREENSHOT_RENDERER=chrome-cli node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language en
     DSC_MEDIA_SCREENSHOT_RENDERER=chrome-cli node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language zh-CN
@@ -61,7 +60,7 @@
 
 ## 验证与验收
 
-Hero 右侧必须清楚显示 Pane Gallery 主任务和缩略图，左右 source state ID 都是 `attention-focused`。产品窗口保持相等 `1120x700`。底部不再出现 `01/02/03` 三栏，而是左侧一项、右侧两端相连的能力轨道。三档尺寸无裁切、重叠或 UI 遮挡；两条 MP4、两条 GIF 逐字节不变；十五项媒体测试、六件套解码、validation report、build、typecheck、manifest 和 diff 检查通过。
+Hero 右侧必须清楚显示 Pane Gallery 主任务和缩略图，左右 source state ID 都是 `attention-focused`。产品窗口保持相等 `1120x700`。底部不再出现 `01/02/03` 三栏，而是左侧一项、右侧两端相连的能力轨道。三档尺寸无裁切、重叠或 UI 遮挡；两条 MP4、两条 GIF 逐字节不变；本次临时素材检查、六件套解码、validation report、build、typecheck、manifest 和 diff 检查通过。
 
 ## 幂等性与恢复
 

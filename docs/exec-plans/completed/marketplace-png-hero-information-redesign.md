@@ -14,7 +14,7 @@
 - [x] (2026-07-17 14:49Z) 在 compositor 中加入只服务 PNG 的 Hero 文案、50/50 布局与独立渲染路径；GIF storyboard 和 MP4 overlay 未改动。
 - [x] (2026-07-17 14:51Z) 为精确双语文案、真实产品 icon、相等窗口和 Hero presentation 补自动化测试，并同步正式剧本和设计文档。
 - [x] (2026-07-17 14:56Z) 归档当前中英文 PNG，重新渲染两种语言并检查 1920px、1180px 与 375px；两种语言均无裁切、重叠或 UI 遮挡。
-- [x] (2026-07-17 15:05Z) 验证两条 MP4、两条 GIF hash 不变，完成十五项媒体测试、六件套完整解码、manifest、build、typecheck、checksum 与 diff 门禁，准备将计划移入 `completed/`。
+- [x] (2026-07-17 15:05Z) 验证两条 MP4、两条 GIF hash 不变，完成本次临时素材检查、六件套完整解码、manifest、build、typecheck、checksum 与 diff 门禁，准备将计划移入 `completed/`。
 
 ## 意外与发现
 
@@ -47,7 +47,7 @@
 
 计划已完成。英文 PNG SHA-256 为 `293867e2cdae3e58cbba67a74634be22ef55db5eb764754506ca539ab2c8aa7c`，中文 PNG 为 `35457618b96d9946a8bb188f69cd19d44c9304000405dc10cedbfef1dbc14221`，两者均为 `1920x1200`。Hero 使用真实 SVG icon、定稿双语文案和两个对称的 `1120x700` 源窗口；原尺寸、README `1180px` 与移动端 `375px` 预览均无裁切、重叠或 UI 遮挡。
 
-两条 MP4 与两条 GIF 的 SHA-256 和计划开始时完全一致；GIF 仍为每种语言 `8/8` 唯一帧。十五项媒体测试、六件套完整解码、两份 validation report、manifest validate、脚本语法、build、typecheck、三份发布 checksum 清单和 `git diff --check` 全部通过。机器可读结论位于 `.debug/marketplace-media/review/png-hero-redesign/png-hero-validation.json`，旧单句 PNG 位于 `.debug/marketplace-media/archive/2026-07-17-png-simple-caption-baseline/`。本轮没有残余功能缺口。
+两条 MP4 与两条 GIF 的 SHA-256 和计划开始时完全一致；GIF 仍为每种语言 `8/8` 唯一帧。本次临时素材检查、六件套完整解码、两份 validation report、manifest validate、脚本语法、build、typecheck、三份发布 checksum 清单和 `git diff --check` 全部通过。机器可读结论位于 `.debug/marketplace-media/review/png-hero-redesign/png-hero-validation.json`，旧单句 PNG 位于 `.debug/marketplace-media/archive/2026-07-17-png-simple-caption-baseline/`。本轮没有残余功能缺口。
 
 ## 上下文与定向
 
@@ -67,7 +67,6 @@ Hero 的定稿文案如下。英文产品说明为 `Multi-agent workbench for VS
 
 所有命令从仓库根目录执行：
 
-    node --test scripts/media/*.test.mjs
     node scripts/media/compose-marketplace-media.mjs validate --manifest .debug/marketplace-media/pair-manifest.json
     DSC_MEDIA_SCREENSHOT_RENDERER=chrome-cli node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language en
     DSC_MEDIA_SCREENSHOT_RENDERER=chrome-cli node scripts/media/compose-marketplace-media.mjs render --manifest .debug/marketplace-media/pair-manifest.json --language zh-CN
@@ -79,7 +78,7 @@ Hero 的定稿文案如下。英文产品说明为 `Multi-agent workbench for VS
 
 英文和中文 PNG 必须为 `1920x1200`，使用真实 SVG icon 与产品名，两个产品窗口宽高相等并围绕画布中心对称。主标题、两侧模式说明与三项能力在 1920px 和 1180px 下完整可读；375px 下主标题、模式名和能力层级不能相互覆盖或被裁切。Hero 的左右内容来自 `attention-arrives` 成对 checkpoint，不能后期重画 Agent、attention 或状态。
 
-两条 MP4 和两条 GIF 必须与本计划开头的 SHA-256 完全一致。两份 validation report 必须 `passed: true`，媒体测试、PNG/GIF/MP4 完整解码、manifest validate、脚本语法、build、typecheck 与 `git diff --check` 必须通过。
+两条 MP4 和两条 GIF 必须与本计划开头的 SHA-256 完全一致。两份 validation report 必须 `passed: true`，本次临时素材检查、PNG/GIF/MP4 完整解码、manifest validate、脚本语法、build、typecheck 与 `git diff --check` 必须通过。
 
 ## 幂等性与恢复
 

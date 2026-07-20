@@ -118,7 +118,6 @@
 
     node --check scripts/media/recording-session.mjs
     node --check scripts/media/compose-marketplace-media.mjs
-    node --test scripts/media/*.test.mjs
     npm run build
     npm run typecheck
     git diff --check
