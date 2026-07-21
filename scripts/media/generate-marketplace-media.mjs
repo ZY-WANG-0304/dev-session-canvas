@@ -32,11 +32,14 @@ console.log(`Marketplace 预览物料录制现在是交互式流程。
 
 可以通过这个兼容入口转发录制子命令：
 
-  npm run generate:marketplace-media -- start
-  npm run generate:marketplace-media -- record-start
-  npm run generate:marketplace-media -- gif-frame <label>
+  npm run generate:marketplace-media -- start --scenario four-root-attention
+  npm run generate:marketplace-media -- record-start --take rootGroups --scene <label>
   npm run generate:marketplace-media -- record-stop
-  npm run generate:marketplace-media -- stop
+  npm run generate:marketplace-media -- checkpoint <frame-id> --take rootGroups
+  npm run generate:marketplace-media -- close
+
+历史 stop 子命令仍会运行旧单宽屏导出；当前正式媒体只由
+scripts/media/compose-marketplace-media.mjs 读取 pair manifest 后生成。
 
 完整步骤见 docs/skills/recording-marketplace-media/SKILL.md 和
 docs/marketplace-media-scenario.md。
