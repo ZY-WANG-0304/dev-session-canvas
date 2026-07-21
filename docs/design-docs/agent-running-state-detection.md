@@ -19,6 +19,7 @@ related_plans:
   - docs/exec-plans/completed/agent-provider-lifecycle-events.md
   - docs/exec-plans/completed/agent-lifecycle-adapter-hardening.md
   - docs/exec-plans/completed/agent-provider-signals-as-enhancements.md
+  - docs/exec-plans/completed/agent-pty-spinner-and-quiet-fallback.md
 updated_at: 2026-07-21
 ---
 
@@ -79,7 +80,7 @@ updated_at: 2026-07-21
 - 它观察到的是字符流节奏，不是回合边界。
 - provider UI 自刷新、延迟 flush、等待审批、后台工具执行或输出节流时，都会让推断漂移。
 - 同一个 provider 升级版本后，屏幕输出模式一变，状态判定就可能失真。
-- 但在继续使用 interactive PTY 且 callback 可被禁用的约束下，它必须作为持续可用的基础方案；实现应依赖 prompt/notification 等正向证据，不能让普通 `running` 仅因 1600ms 没有输出就结束。
+- 但在继续使用 interactive PTY 且 callback 可被禁用的约束下，它必须作为持续可用的基础方案；实现以提交、PTY 活动和实测 quiet fallback 为主，不解析 prompt glyph，也不把 generic OSC/BEL 当成回合完成。
 
 ### 5.2 利用 shell integration / prompt boundary
 
@@ -145,7 +146,7 @@ updated_at: 2026-07-21
   当前缓解：把“生命周期状态值”和“信号来源/权威性”拆开建模，防止因为不同模式的粒度差异而污染用户可见语义。
 
 - 风险：provider 增强事件和 PTY heuristic 可能先后给出同一结论，或者 heuristic 先给出较弱结论。
-  当前缓解：基础 heuristic 始终可运行；provider 事件收到时可以纠正或升级来源/identity/outcome，重复事件幂等，旧 session/turn 事件由 identity 与时间保护拒绝。普通 `running` 不允许 1600ms hard fallback 单独结束，降低弱证据抢先误判的概率。
+  当前缓解：基础 heuristic 始终可运行；provider 事件收到时可以纠正或升级来源/identity/outcome，重复事件幂等，旧 session/turn 事件由 identity 与时间保护拒绝。quiet fallback 标为 `heuristic / best-effort` 并保留 turn correlation；同回合底部活动可纠正回 `running`，provider authoritative completion 则不能被普通终端重绘推翻。
 
 - 风险：Codex `notify` 是单一 argv 数组配置，扩展通过 CLI override 安装 notifier 时会覆盖用户已有 notifier。
   当前缓解：本轮检测到用户级/profile/CLI `notify` 冲突时不覆盖，基础 heuristic 保持不变并记录增强信号未配置的诊断。官方当前没有公开可追加多个 notifier 或读取 effective config 的稳定接口，因此不能把“自动链式保留所有配置层”写成已确认能力。
@@ -167,11 +168,12 @@ updated_at: 2026-07-21
 `Agent` 运行态不再采用“provider callback 可用时关闭 heuristic”的排他优先级，而采用持续基础判定加正向增强：
 
 1. Webview/owner 识别真实可编辑内容后的明确 submit，进入 `running`，来源为 `submission-intent / derived`。
-2. PTY 输出持续记录 prompt、notification、bell、spinner 与 quiet。prompt/notification 等正向等待输入证据可以进入 `waiting-input`，来源为 `heuristic / best-effort`。
-3. Codex completion notify 或 Claude lifecycle hook 到达时，可以立即确认或纠正对应状态，并把来源升级为 `provider-lifecycle / authoritative`，同时补充 provider identity、outcome/error。
-4. callback 没有到达不构成证据，不能关闭步骤 1/2，也不能让会话卡在某个状态。
+2. PTY 任意输出刷新 quiet 时钟；headless terminal 持续观察当前屏幕最下方非空内容区域，连续跨帧变化作为强 `running` 证据。该证据不匹配 provider 文案或 glyph，并抑制用户输入后 600ms 内的 composer 回显。
+3. 从有效 submit 或最近 PTY 输出开始连续 5000ms 无输出、且没有近期强底部活动时，进入 `waiting-input`，来源为 `heuristic / best-effort`。该弱结论保留当前 turn correlation，后续同回合底部活动可纠正回 `running`。
+4. Codex completion notify 或 Claude lifecycle hook 到达时，可以立即确认或纠正对应状态，并把来源升级为 `provider-lifecycle / authoritative`，同时补充 provider identity、outcome/error。
+5. callback 没有到达不构成证据，不能关闭步骤 1-3，也不能让会话卡在某个状态。
 
-普通 `running` 不允许只凭 1600ms quiet 进入 `waiting-input`。该 hard fallback 只服务于启动、恢复和用户已明确 arm 的 interrupt recovery；这避免恢复原始误判，同时承认 plain PTY 在既无可识别 prompt、也无 callback/signal 时可能暂时高估运行态。
+5000ms 来自 2026-07-21 的真实 PTY 实验，不是 provider 协议保证。Codex CLI 0.144.5 与 Claude Code 2.1.209 各执行 6s/15s 静默 Bash 工具回合，另各执行一次“已启动 TUI 内提交”的 6s 回合：最慢 active PTY gap 为 Claude 460.5ms，最慢 submit-to-strong-running 为 119.4ms；5000ms 提供约 10.8 倍观测余量。3s 虽有约 6.5 倍余量，但对样本外调度停顿更敏感；8s/15s 会无必要地增加 callback 缺失时的完成延迟。该阈值仍需随 provider TUI、平台和调度行为变化复测。
 
 ### 7.3 provider 级结论
 
@@ -225,16 +227,15 @@ adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认�
 
 - 旧协议缺少输入意图时，只有输入里出现 `\r` 或 `\n` 才把 `Agent` 切到 `running`；新 Webview 使用显式 `submit/text/paste/interrupt` 意图，编辑换行、IME 与多行粘贴不再冒充提交。
 - Codex 与 Claude 即使收到显式 `submit`，也只有在当前提交候选已由可见非空输入建立时才进入 `running`；启动菜单中的纯导航与 Enter 仍原样转发给 PTY，但不改变 Agent lifecycle。Claude `UserPromptSubmit` 是增强确认，不再是唯一 turn start。
-- `waiting-input` 不再只靠单一 quiet timeout，而是综合以下线索判断：
-  - prompt-like 尾部输出；
-  - `OSC 9` / `OSC 777` 通知；
-  - bell；
-  - 仅在启动、恢复或明确 interrupt recovery 中允许的长静默 hard fallback。
+- prompt glyph 不参与 lifecycle 判定；`>`、`›`、`❯` 等输出只和其他 PTY 输出一样刷新 quiet 时钟。generic `OSC 9` / `OSC 777` 与 bell 继续服务 attention，但不结束 turn。
+- 有效 submit 立即建立 quiet 起点；之后任意 PTY 输出重置起点，因此完全静默和中途停止输出两种路径都能在 5000ms 后 fallback。
+- headless terminal 为每个已解析输出 batch 记录当前屏幕最下方非空内容区域的字符与样式变化版本。连续两次、间隔不超过 1000ms 的变化构成强 running 证据；只移动 cursor 不算屏幕活动，用户输入后的 600ms 回显窗口不建立强证据。
+- quiet fallback 保留 provider turn correlation。只有 `heuristic / best-effort waiting-input` 可以被后续底部活动纠正为 `running`；provider callback 已确认的 `authoritative waiting-input` 和已确认 interrupt 不能被重开。
 - 普通换行本身不再被当成“当前回合已完成”的直接信号；因为长任务可能先输出一整行文本，再在静默期内继续执行。
 - Claude Code 的 `Ctrl-Z` / `fg` 文案不再参与运行态或生命周期判定。当前 Claude Agent 是 direct-spawn provider CLI，没有普通 shell job table；如果把 provider 输出的 suspend 文案当作权威状态，会制造页面仍在更新、恢复后输入无效等伪挂起问题。新的输入路径在 Webview、宿主与 runtime supervisor 三层阻断 Claude Agent `Ctrl-Z`，并把后续处理引导到停止、恢复或分叉。
-- 普通 `running` 不使用 1600ms hard fallback；若最近输出呈现 spinner 或 redraw 特征，prompt/notification 之外的 recovery 同样必须等待。`starting`、`resuming` 与明确 interrupt 仍可在受控 quiet 后使用 hard fallback。
+- local Host 与当前 Supervisor 使用同一个 5000ms evaluator、底部活动 reducer 和可纠正 lifecycle reducer；旧 generation Supervisor 不迁移，继续执行其已有逻辑并自然 drain。
 
-这一版仍然属于 `heuristic` / `best-effort`，只是把误判窗口从“固定静默时间”收紧为“多信号综合判断”。
+这一版仍然属于 `heuristic` / `best-effort`：它用实测 quiet 阈值、底部活动与可纠正语义降低误判，但不能把 plain PTY 提升成 provider 权威事件。
 
 
 ### 7.7 Webview 状态呈现
@@ -257,7 +258,8 @@ adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认�
 8. main-only staging 同时包含 lifecycle 与 file-activity runtime hook；任一运行路径缺少 lifecycle hook 时不得产生 hook error，且 callback 缺失不能阻断基础状态流转。
 9. Codex/Claude 输入测试覆盖“方向键 + Enter”的菜单序列不进入 `running`，以及可见文本/IME/粘贴后 submit 正常进入 `running`；Host 与 Supervisor owner 必须共享同一判定函数。
 10. Claude launch integration 测试覆盖 `--safe-mode`、`--bare`、`CLAUDE_CODE_SAFE_MODE=1` 与 `CLAUDE_CODE_SIMPLE=1`：原始 argv/env 不被改写、不注入文件活动 env、增强 capability 为 disabled，且 reason 可诊断。
-11. callback configured 但永不到达时，普通静默运行超过 1600ms 仍为 `running`，随后 provider prompt 可以由 heuristic 进入 `waiting-input`；callback 先到或后到都应正确增强 identity/outcome，不能污染下一 turn。
+11. callback configured 但永不到达时，无输出回合从 submit 起、已有输出回合从最后输出起，在 5000ms 后进入 `heuristic / best-effort waiting-input`；prompt glyph、OSC/BEL 都不能提前结束回合。
+12. 底部持续活动在超过 5000ms 的回合中保持 `running`；quiet fallback 后恢复的连续底部活动可纠正回 `running`，用户 composer 回显和 provider authoritative completion 后的终端 chrome 都不能误触发纠正。
 
 ## 9. 当前验证状态
 
@@ -285,4 +287,5 @@ adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认�
 - 2026-07-17 的 PR review 发现 Claude `--safe-mode` / `--bare` 会合法禁用 hooks，但 launch integration 仍声明 lifecycle enabled。当前实现已在 settings 合并前识别两种模式，保留原始 argv 并以明确原因回退 heuristic；聚焦测试覆盖两种 flag、capability gate 与文件活动 env 不注入。
 - 2026-07-21 的后续 review 证明继承 `CLAUDE_CODE_SAFE_MODE=1` / `CLAUDE_CODE_SIMPLE=1` 也会跳过 hooks，而静态 argv preflight 仍会误报 lifecycle enabled。用户据此确认 notify/hooks 只作为辅助增强信号；基础提交与 heuristic 必须始终工作，普通 `running` 不再接受 1600ms 无条件 hard fallback。
 - 2026-07-21 已完成增强信号收口：Host 与 Supervisor 不再用 `lifecycleEnabled` gate 基础提交/PTY heuristic；callback configured 但永不送达的 Supervisor fixture 会在 1600ms 后保持 `running`，随后由 prompt 进入 `heuristic / best-effort` 的 `waiting-input`；provider callback 先到或后到仍可升级 identity/outcome。Claude safe/simple argv/env preflight、上一回合延迟 start/Stop 事件对、共享 candidate、类型检查、构建、package 文件列表和 trusted VS Code smoke 均已通过，详细证据见 `docs/exec-plans/completed/agent-provider-signals-as-enhancements.md`。
-- 当前文档为 `已验证`。保留风险包括 plain PTY 在既无可识别 prompt、也无 callback/signal 时可能高估 running；Claude Stop continuation 的短暂状态失真；Codex notifier ACK 顺序与 completion-only submission candidate 仍是实机/派生约束。这些边界已同步到技术债 tracker。
+- 2026-07-21 用户根据真实 Codex TUI 确认 prompt glyph 不能作为 lifecycle 判断特征，并确认底部活动 spinner 是强 running 证据、PTY 连续 Nms 无输出可作为 waiting fallback；六组真实 PTY 实验选定 N=5000ms，最大 active gap 460.5ms。
+- 2026-07-21 已完成新版 PTY 主线并验证：prompt glyph 与 generic OSC/BEL 不再结束 turn；底部非空内容区域连续变化是强 running 证据；5s quiet 产生可纠正的 best-effort waiting，provider authoritative completion 不会被终端 chrome 重开。聚焦测试、Supervisor 协议与 10 Agent 压测、typecheck、build、debug launch 和 trusted VS Code Host smoke 全部通过，详细证据见 `docs/exec-plans/completed/agent-pty-spinner-and-quiet-fallback.md`。

@@ -132,7 +132,7 @@ updated_at: 2026-07-21
 | CLI cwd | 支持：使用节点 cwd / workspace cwd，不切到扩展私有目录 | 支持：使用节点 cwd / workspace cwd，不切到扩展私有目录 | 必须确认 provider 能在 repo cwd 直接运行，并继承用户现有认证 / 配置上下文 |
 | Shell env / PATH 继承 | 支持：复用 Agent execution env 与 resolver cache | 支持：复用 Agent execution env 与 resolver cache | 必须复用 `shellEnvironmentResolver` / `agentCliResolver` 路线，避免 resolver 找到但 spawn 失败 |
 | 图片输入 / Agent 截图粘贴 | 支持：Codex 官方支持 `--image/-i`、交互 composer 图片粘贴和图片文件上下文；当前画布以保存临时图片文件并回填 shell-safe 路径文本的跨 provider bridge 接入，自动化覆盖 Webview/Host 路径注入，不伪造 provider 原生附件 chip | 支持：Claude Code 官方支持拖放图片、图片剪贴板粘贴和图片路径输入；当前画布同样以临时图片路径 bridge 接入，不伪造 `[Image #N]` chip | 必须明确 provider 是否支持本地图片文件路径作为 prompt 上下文；若只支持 GUI 附件、私有 chip 或不可从 PTY 文本引用图片，则不能默认复用截图粘贴，必须新增 provider adapter 或禁用该能力 |
-| 运行态 `running` / `waiting-input` | 支持：可编辑输入候选后的明确提交进入 `running`，PTY prompt/notification heuristic 进入 `waiting-input`；direct-TUI `notify(agent-turn-complete)` 只作为带 identity 的完成增强 | 支持：与 Codex 共用明确提交和 PTY heuristic；`UserPromptSubmit`、同 identity 的 `Stop/StopFailure` 只作为开始/完成/失败增强，hooks 禁用不关闭基础状态机 | 必须先提供不依赖可选 callback 的基础判定；provider lifecycle 只允许作为正向增强并携带 session/turn identity |
+| 运行态 `running` / `waiting-input` | 支持：可编辑输入候选后的明确提交进入 `running`；底部活动是强运行证据，PTY quiet 5000ms 进入可纠正的 best-effort waiting；不解析 prompt glyph；direct-TUI `notify(agent-turn-complete)` 只作为带 identity 的完成增强 | 支持：与 Codex 共用提交、底部活动和 quiet fallback；`UserPromptSubmit`、同 identity 的 `Stop/StopFailure` 只作为开始/完成/失败增强，hooks 禁用不关闭基础状态机 | 必须先提供不依赖可选 callback 的基础判定；provider lifecycle 只允许作为正向增强并携带 session/turn identity；弱 waiting 必须可纠正，authoritative completion 不得被终端 chrome 重开 |
 | Stop 行为 | 支持：先单次 `Ctrl-C` graceful stop，等待 Codex resume hint / token usage，超时后 force kill | 支持：不发送普通 `Ctrl-C` 收尾，沿用直接终止信号路径 | 必须定义 provider-specific stop，不要假设所有 CLI 都能用同一种 Ctrl-C 语义 |
 | `Ctrl-Z` / job control | 普通输入路径，不走 Claude 专属阻断 | 支持阻断：Webview / Host / runtime supervisor 拒绝 Claude Agent `Ctrl-Z`，提示停止、恢复或分叉 | 必须评估 direct-spawn CLI 是否支持 shell job table；不支持时不得承诺 `fg` 恢复 |
 | 显式 session resume 命令 | `codex resume <session-id>` | `claude --resume <session-id>` | 必须有 provider 原生显式 session id 恢复入口；否则不能进入正式自动恢复 / 历史恢复主路径 |
@@ -154,7 +154,7 @@ updated_at: 2026-07-21
 | Runtime supervisor / live-runtime | 支持：本地 PTY 与 runtime supervisor 两条路径都传递 provider、resumeStrategy、session id | 支持：本地 PTY 与 runtime supervisor 两条路径都传递 provider、resumeStrategy、session id | 必须让 supervisor 创建、输出、停止、resume hint 解析与 snapshot 序列化都认识该 provider |
 | Restricted Mode | 支持受限：可浏览历史和画布，不能创建 / 恢复 / 分叉执行节点 | 支持受限：可浏览历史和画布，不能创建 / 恢复 / 分叉执行节点 | 新 provider 不得绕过 `workspace.isTrusted` 执行限制 |
 | Virtual Workspace | 不支持 | 不支持 | 除非整体产品边界改变，否则新 provider 也不应声明支持 Virtual Workspace |
-| 当前主要技术债 | session id 与历史依赖 `~/.codex/sessions` 私有文件和时间窗匹配；用户自定义 notify 时失去完成增强；notifier ACK 时序不是官方保证；plain PTY 无 prompt/callback 时可能高估 running；Windows Codex 执行节点内历史不能向上翻页 | 会话历史依赖 `~/.claude/projects` 私有 transcript；文件活动/lifecycle 增强依赖 Claude hooks 临时 settings 注入；Stop 被其他 hook block 后可能短暂低估运行态；plain PTY 无 prompt/callback 时可能高估 running | 新 provider 的私有文件、hook、protocol、callback 缺失和 PTY heuristic 边界必须登记退出条件 |
+| 当前主要技术债 | session id 与历史依赖 `~/.codex/sessions` 私有文件和时间窗匹配；用户自定义 notify 时失去完成增强；notifier ACK 时序不是官方保证；5000ms quiet 是有限 Linux 样本的经验值，静态无动画长回合仍可能误判；Windows Codex 执行节点内历史不能向上翻页 | 会话历史依赖 `~/.claude/projects` 私有 transcript；文件活动/lifecycle 增强依赖 Claude hooks 临时 settings 注入；Stop 被其他 hook block 后可能短暂低估运行态；5000ms quiet 是有限 Linux 样本的经验值，静态无动画长回合仍可能误判 | 新 provider 的私有文件、hook、protocol、callback 缺失和 PTY heuristic 边界必须登记退出条件，并通过真实 PTY cadence 实验校准 quiet policy |
 
 ### 7.3 最小接入门槛
 
@@ -226,4 +226,5 @@ updated_at: 2026-07-21
 - 2026-07-15：补充 provider lifecycle 能力。Codex direct-TUI notify、Claude `UserPromptSubmit/Stop/StopFailure`、identity 校验、旧 Supervisor fallback 和 StopFailure attention 已通过聚焦测试与 trusted VS Code smoke；详细边界见 `docs/design-docs/agent-running-state-detection.md`。
 - 2026-07-17：补充 Claude hooks-disabled launch mode 边界。`--safe-mode` / `--bare` 会保留原始 argv 并显式关闭 lifecycle capability，使 Host/Supervisor 回退 `heuristic / best-effort`；两种 flag 已有聚焦回归。
 - 2026-07-21：根据后续 review 与用户决策，把 Codex notify / Claude hooks 从排他主路径改为辅助增强。明确提交与 PTY 正向证据始终构成基础状态机；callback 配置不再关闭 heuristic，普通 running 不使用 1600ms 无条件 hard fallback；Claude safe/simple env preflight 纳入验证。
+- 2026-07-21：删除 prompt glyph 与 generic OSC/BEL completion；Codex 0.144.5 / Claude 2.1.209 真实 PTY 实验测得最大 active gap 460.5ms，基础 fallback 取 5000ms。底部非空内容区域连续变化可保持或纠正 `running`，provider authoritative completion 不可被终端 chrome 重开。
 - 当前整体状态保持 `验证中`：`Codex` session id / history 仍依赖私有文件和启发式匹配，`Claude Code` history 仍依赖私有 transcript，provider 级真实 fork 仍建议在安装对应 CLI 的 Development Host 中人工确认。

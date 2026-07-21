@@ -8,6 +8,8 @@ import {
   confirmAgentInterrupt,
   consumeAgentInstructionSubmission,
   createAgentProviderLifecycleState,
+  isAgentHeuristicWaitingInputRecoverable,
+  recordAgentHeuristicRunning,
   recordAgentHeuristicWaitingInput,
   recordAgentInterruptRequest,
   recordAgentSubmission,
@@ -18,6 +20,8 @@ import {
   AGENT_WAITING_INPUT_POLL_INTERVAL_MS,
   createAgentActivityHeuristicState,
   evaluateAgentWaitingInputTransition,
+  recordAgentBottomScreenActivity,
+  recordAgentInputHeuristics,
   recordAgentOutputHeuristics,
   resetAgentActivityHeuristics,
   type AgentActivityHeuristicState
@@ -799,6 +803,8 @@ class RuntimeSupervisorServer {
     }
 
     if (session.kind === 'agent') {
+      const inputAtMs = Date.now();
+      recordAgentInputHeuristics(this.ensureAgentActivityState(session), inputAtMs);
       const providerLifecycle = session.agentProviderLifecycle;
       const submittedInstruction = providerLifecycle
         ? consumeAgentInstructionSubmission(providerLifecycle, params.data, params.intent)
@@ -814,17 +820,26 @@ class RuntimeSupervisorServer {
       ) {
         const interruptResult = recordAgentInterruptRequest(providerLifecycle);
         if (interruptResult.accepted) {
-          resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
+          resetAgentActivityHeuristics(
+            this.ensureAgentActivityState(session),
+            session.output,
+            inputAtMs
+          );
           this.queueAgentWaitingInput(session.sessionId);
         }
       } else if (submittedInstruction) {
         if (providerLifecycle) {
           recordAgentSubmission(providerLifecycle);
         }
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
+        resetAgentActivityHeuristics(
+          this.ensureAgentActivityState(session),
+          session.output,
+          inputAtMs
+        );
         session.lifecycle = 'running';
         session.resumePhaseActive = false;
         this.emitSessionState(session);
+        this.queueAgentWaitingInput(session.sessionId);
       }
     } else if (session.lifecycle === 'launching') {
       session.lifecycle = 'live';
@@ -995,11 +1010,7 @@ class RuntimeSupervisorServer {
           });
         }
         if (session.kind === 'agent') {
-          if (
-            session.lifecycle === 'starting' ||
-            session.lifecycle === 'resuming' ||
-            session.lifecycle === 'running'
-          ) {
+          if (shouldRecordSupervisorAgentOutputHeuristics(session)) {
             recordAgentOutputHeuristics(this.ensureAgentActivityState(session), chunk, session.output, session.provider);
             this.queueAgentWaitingInput(session.sessionId);
           }
@@ -1463,11 +1474,15 @@ class RuntimeSupervisorServer {
 
   private queueAgentWaitingInput(sessionId: string): void {
     const session = this.sessions.get(sessionId);
-    if (!session || session.kind !== 'agent') {
+    if (
+      !session ||
+      session.kind !== 'agent' ||
+      !shouldEvaluateSupervisorAgentInteractiveState(session)
+    ) {
       return;
     }
     if (session.lifecycleTimer) {
-      clearTimeout(session.lifecycleTimer);
+      return;
     }
 
     session.lifecycleTimer = setTimeout(() => {
@@ -1475,22 +1490,43 @@ class RuntimeSupervisorServer {
       if (
         !current ||
         current.kind !== 'agent' ||
-        !current.live ||
-        !isAgentLifecycleAwaitingInteractiveState(current.lifecycle)
+        !current.live
       ) {
         return;
+      }
+      current.lifecycleTimer = undefined;
+      if (!shouldEvaluateSupervisorAgentInteractiveState(current)) {
+        return;
+      }
+
+      const now = Date.now();
+      const bottomActivity = recordAgentBottomScreenActivity(
+        this.ensureAgentActivityState(current),
+        current.terminalStateTracker.getBottomScreenActivityToken(),
+        now
+      );
+      if (current.lifecycle === 'waiting-input' && bottomActivity.strongRunningEvidence) {
+        const recovery = current.agentProviderLifecycle
+          ? recordAgentHeuristicRunning(current.agentProviderLifecycle)
+          : undefined;
+        if (recovery?.accepted) {
+          current.lifecycle = 'running';
+          current.resumePhaseActive = false;
+          this.emitSessionState(current);
+          this.queueAgentWaitingInput(sessionId);
+          return;
+        }
       }
 
       const interruptRequested = current.agentProviderLifecycle?.interruptRequested === true;
       const evaluation = evaluateAgentWaitingInputTransition(
         this.ensureAgentActivityState(current),
-        Date.now(),
-        {
-          allowHardFallback: current.lifecycle !== 'running' || interruptRequested
-        }
+        now
       );
       if (evaluation.shouldTransition) {
-        current.lifecycleTimer = undefined;
+        if (current.lifecycle === 'waiting-input') {
+          return;
+        }
         if (current.agentProviderLifecycle) {
           const transitionResult = interruptRequested
             ? confirmAgentInterrupt(current.agentProviderLifecycle)
@@ -1513,7 +1549,6 @@ class RuntimeSupervisorServer {
         return;
       }
 
-      current.lifecycleTimer = undefined;
     }, AGENT_WAITING_INPUT_POLL_INTERVAL_MS);
   }
 
@@ -2348,6 +2383,18 @@ function isAgentLifecycleAwaitingInteractiveState(
   status: AgentNodeStatus | TerminalNodeStatus
 ): boolean {
   return status === 'starting' || status === 'resuming' || status === 'running';
+}
+
+function shouldEvaluateSupervisorAgentInteractiveState(session: SupervisorSession): boolean {
+  return (
+    isAgentLifecycleAwaitingInteractiveState(session.lifecycle) ||
+    (session.lifecycle === 'waiting-input' &&
+      isAgentHeuristicWaitingInputRecoverable(session.agentProviderLifecycle))
+  );
+}
+
+function shouldRecordSupervisorAgentOutputHeuristics(session: SupervisorSession): boolean {
+  return shouldEvaluateSupervisorAgentInteractiveState(session);
 }
 
 function isAgentInstructionSubmission(data: string, intent?: AgentInputIntent): boolean {

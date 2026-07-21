@@ -7,6 +7,8 @@ import {
   confirmAgentInterrupt,
   consumeAgentInstructionSubmission,
   createAgentProviderLifecycleState,
+  isAgentHeuristicWaitingInputRecoverable,
+  recordAgentHeuristicRunning,
   recordAgentHeuristicWaitingInput,
   recordAgentInterruptRequest,
   recordAgentSubmission,
@@ -25,6 +27,8 @@ import {
   AGENT_WAITING_INPUT_POLL_INTERVAL_MS,
   createAgentActivityHeuristicState,
   evaluateAgentWaitingInputTransition,
+  recordAgentBottomScreenActivity,
+  recordAgentInputHeuristics,
   recordAgentOutputHeuristics,
   resetAgentAbnormalStreamInterruptionHeuristics,
   resetAgentActivityHeuristics,
@@ -14380,36 +14384,65 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     chunk: string
   ): void {
     this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(nodeId, session, chunk);
-    if (isAgentLifecycleAwaitingInteractiveState(session.lifecycleStatus)) {
+    if (shouldEvaluateAgentInteractiveState(session)) {
       this.scheduleAgentInteractiveStateEvaluation(nodeId);
     }
   }
 
   private scheduleAgentInteractiveStateEvaluation(nodeId: string): void {
     const session = this.getExecutionSessions('agent').get(nodeId);
-    if (!session || !isAgentLifecycleAwaitingInteractiveState(session.lifecycleStatus)) {
+    if (!session || !shouldEvaluateAgentInteractiveState(session)) {
       return;
     }
     if (session.lifecycleTimer) {
-      clearTimeout(session.lifecycleTimer);
+      return;
     }
 
     session.lifecycleTimer = setTimeout(() => {
       const current = this.getExecutionSessions('agent').get(nodeId);
-      if (!current || !isAgentLifecycleAwaitingInteractiveState(current.lifecycleStatus)) {
+      if (!current) {
         return;
+      }
+      current.lifecycleTimer = undefined;
+      if (!shouldEvaluateAgentInteractiveState(current)) {
+        return;
+      }
+
+      const now = Date.now();
+      const bottomActivity = recordAgentBottomScreenActivity(
+        this.ensureAgentActivityState(current),
+        current.terminalStateTracker.getBottomScreenActivityToken(),
+        now
+      );
+      if (current.lifecycleStatus === 'waiting-input' && bottomActivity.strongRunningEvidence) {
+        const recovery = current.agentProviderLifecycle
+          ? recordAgentHeuristicRunning(current.agentProviderLifecycle)
+          : undefined;
+        if (recovery?.accepted) {
+          current.lifecycleStatus = 'running';
+          current.resumePhaseActive = false;
+          this.recordDiagnosticEvent('agent/runningHeuristicRecovered', {
+            nodeId,
+            reason: 'bottom-screen-activity'
+          });
+          this.flushLiveExecutionState('agent', nodeId, {
+            persistMode: 'immediate',
+            persistReason: 'agent-running-heuristic-recovered'
+          });
+          this.scheduleAgentInteractiveStateEvaluation(nodeId);
+          return;
+        }
       }
 
       const interruptRequested = current.agentProviderLifecycle?.interruptRequested === true;
       const evaluation = evaluateAgentWaitingInputTransition(
         this.ensureAgentActivityState(current),
-        Date.now(),
-        {
-          allowHardFallback: current.lifecycleStatus !== 'running' || interruptRequested
-        }
+        now
       );
       if (evaluation.shouldTransition) {
-        current.lifecycleTimer = undefined;
+        if (current.lifecycleStatus === 'waiting-input') {
+          return;
+        }
         if (current.agentProviderLifecycle) {
           const transitionResult = interruptRequested
             ? confirmAgentInterrupt(current.agentProviderLifecycle)
@@ -14439,7 +14472,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
 
-      current.lifecycleTimer = undefined;
     }, AGENT_WAITING_INPUT_POLL_INTERVAL_MS);
   }
 
@@ -17375,6 +17407,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (kind === 'agent') {
+      const inputAtMs = Date.now();
+      recordAgentInputHeuristics(this.ensureAgentActivityState(session), inputAtMs);
       const providerLifecycle = session.agentProviderLifecycle;
       const submittedInstruction = providerLifecycle
         ? consumeAgentInstructionSubmission(providerLifecycle, data, diagnosticMetadata.intent)
@@ -17390,16 +17424,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ) {
         const interruptResult = recordAgentInterruptRequest(providerLifecycle);
         if (interruptResult.accepted && session.owner === 'local') {
-          resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.buffer);
+          resetAgentActivityHeuristics(
+            this.ensureAgentActivityState(session),
+            session.buffer,
+            inputAtMs
+          );
           this.scheduleAgentInteractiveStateEvaluation(nodeId);
         }
       } else if (submittedInstruction) {
         if (providerLifecycle) {
           recordAgentSubmission(providerLifecycle);
         }
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.buffer);
+        resetAgentActivityHeuristics(
+          this.ensureAgentActivityState(session),
+          session.buffer,
+          inputAtMs
+        );
         session.lifecycleStatus = 'running';
         session.resumePhaseActive = false;
+        if (session.owner === 'local') {
+          this.scheduleAgentInteractiveStateEvaluation(nodeId);
+        }
         this.queueExecutionStateSync('agent', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS, {
           postState: true
         });
@@ -28225,6 +28270,14 @@ function isAgentLifecycleAwaitingInteractiveState(
 
 function shouldRecordAgentOutputHeuristics(status: AgentNodeStatus | TerminalNodeStatus): boolean {
   return isAgentLifecycleAwaitingInteractiveState(status) || status === 'waiting-input';
+}
+
+function shouldEvaluateAgentInteractiveState(session: ManagedExecutionSession): boolean {
+  return (
+    isAgentLifecycleAwaitingInteractiveState(session.lifecycleStatus) ||
+    (session.lifecycleStatus === 'waiting-input' &&
+      isAgentHeuristicWaitingInputRecoverable(session.agentProviderLifecycle))
+  );
 }
 
 function isAgentInstructionSubmission(data: string, intent?: AgentInputIntent): boolean {

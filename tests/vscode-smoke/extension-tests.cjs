@@ -7324,7 +7324,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       assert.strictEqual(
         findNodeById(snapshot, claudeAgent.id).status,
         'running',
-        'Expected an ordinary Claude turn to remain running beyond the 1600ms PTY quiet fallback.'
+        'Expected an ordinary Claude turn to remain running while its silent task is still active.'
       );
       snapshot = await waitForSnapshot((currentSnapshot) => {
         const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);

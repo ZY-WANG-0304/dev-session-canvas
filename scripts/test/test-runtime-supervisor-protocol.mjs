@@ -593,7 +593,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     const missingSignalAgentScriptPath = path.join(tempDir, 'runtime-agent-missing-provider-signal.js');
     await writeFile(
       missingSignalAgentScriptPath,
-      `let turnScheduled = false;\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (data) => {\n  if (turnScheduled || !/[\\r\\n]/u.test(data)) return;\n  turnScheduled = true;\n  process.stdout.write('working\\r\\n');\n  setTimeout(() => process.stdout.write('> '), 2300);\n});\nsetInterval(() => undefined, 1000);\n`,
+      `let turnScheduled = false;\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (data) => {\n  if (turnScheduled || !/[\\r\\n]/u.test(data)) return;\n  turnScheduled = true;\n  process.stdout.write('working\\r\\n');\n  setTimeout(() => process.stdout.write('> '), 2300);\n  setTimeout(() => {\n    let frame = 0;\n    const timer = setInterval(() => {\n      process.stdout.write('\\rspinner-frame-' + (frame % 2));\n      frame += 1;\n      if (frame >= 12) clearInterval(timer);\n    }, 120);\n  }, 8000);\n});\nsetInterval(() => undefined, 1000);\n`,
       'utf8'
     );
     const missingSignalAgentSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
@@ -638,6 +638,18 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       'Configured callbacks must not gate the primary quiet-time policy.'
     );
     assert.equal(missingSignalRunningSnapshot.agentActivitySource, 'submission-intent');
+    await delay(800);
+    const promptGlyphSnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: 'provider-signal-missing-agent' }
+    );
+    assert.equal(
+      promptGlyphSnapshot.lifecycle,
+      'running',
+      'A prompt glyph must be treated as ordinary PTY output, not completion evidence.'
+    );
     const heuristicCompletionSnapshot = await waitForRuntimeSupervisorMessage(
       messages,
       (message) =>
@@ -647,9 +659,21 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
         message.payload.lifecycle === 'waiting-input' &&
         message.payload.agentActivitySource === 'heuristic',
       'provider-signal-missing heuristic completion',
-      4000
+      6000
     );
     assert.equal(heuristicCompletionSnapshot.payload.agentActivityAuthority, 'best-effort');
+    const heuristicRecoverySnapshot = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === 'provider-signal-missing-agent' &&
+        message.payload.lifecycle === 'running' &&
+        message.payload.agentActivitySource === 'heuristic',
+      'provider-signal-missing bottom activity recovery',
+      4000
+    );
+    assert.equal(heuristicRecoverySnapshot.payload.agentActivityAuthority, 'best-effort');
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
       sessionId: 'provider-signal-missing-agent'
     });

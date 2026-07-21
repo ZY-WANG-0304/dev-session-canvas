@@ -133,6 +133,27 @@ export function recordAgentHeuristicWaitingInput(
   return accepted(changed, 'waiting-input');
 }
 
+export function isAgentHeuristicWaitingInputRecoverable(
+  state: AgentProviderLifecycleState | undefined
+): boolean {
+  return (
+    state?.turnActive === true &&
+    state.interruptRequested === false &&
+    state.activitySource === 'heuristic' &&
+    state.activityAuthority === 'best-effort'
+  );
+}
+
+export function recordAgentHeuristicRunning(
+  state: AgentProviderLifecycleState
+): AgentProviderLifecycleApplyResult {
+  if (!isAgentHeuristicWaitingInputRecoverable(state)) {
+    return rejected('no-active-turn');
+  }
+
+  return accepted(true, 'running');
+}
+
 export function recordAgentInterruptRequest(
   state: AgentProviderLifecycleState
 ): AgentProviderLifecycleApplyResult {
