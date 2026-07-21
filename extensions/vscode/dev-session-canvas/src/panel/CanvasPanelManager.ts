@@ -14394,6 +14394,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!session || !shouldEvaluateAgentInteractiveState(session)) {
       return;
     }
+    session.terminalStateTracker.enableBottomScreenActivityTracking();
     if (session.lifecycleTimer) {
       return;
     }

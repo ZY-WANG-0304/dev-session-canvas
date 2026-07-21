@@ -229,7 +229,7 @@ adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认�
 - Codex 与 Claude 即使收到显式 `submit`，也只有在当前提交候选已由可见非空输入建立时才进入 `running`；启动菜单中的纯导航与 Enter 仍原样转发给 PTY，但不改变 Agent lifecycle。Claude `UserPromptSubmit` 是增强确认，不再是唯一 turn start。
 - prompt glyph 不参与 lifecycle 判定；`>`、`›`、`❯` 等输出只和其他 PTY 输出一样刷新 quiet 时钟。generic `OSC 9` / `OSC 777` 与 bell 继续服务 attention，但不结束 turn。
 - 有效 submit 立即建立 quiet 起点；之后任意 PTY 输出重置起点，因此完全静默和中途停止输出两种路径都能在 5000ms 后 fallback。
-- headless terminal 为每个已解析输出 batch 记录当前屏幕最下方非空内容区域的字符与样式变化版本。连续两次、间隔不超过 1000ms 的变化构成强 running 证据；只移动 cursor 不算屏幕活动，用户输入后的 600ms 回显窗口不建立强证据。
+- Agent 会话的 headless terminal 选择性启用活动追踪，为每个已解析输出 batch 记录当前屏幕最下方非空内容区域的字符与样式变化版本；普通 Terminal 会话不承担这项开销。连续两次、间隔不超过 1000ms 的变化构成强 running 证据；只移动 cursor 不算屏幕活动，用户输入后的 600ms 回显窗口不建立强证据。
 - quiet fallback 保留 provider turn correlation。只有 `heuristic / best-effort waiting-input` 可以被后续底部活动纠正为 `running`；provider callback 已确认的 `authoritative waiting-input` 和已确认 interrupt 不能被重开。
 - 普通换行本身不再被当成“当前回合已完成”的直接信号；因为长任务可能先输出一整行文本，再在静默期内继续执行。
 - Claude Code 的 `Ctrl-Z` / `fg` 文案不再参与运行态或生命周期判定。当前 Claude Agent 是 direct-spawn provider CLI，没有普通 shell job table；如果把 provider 输出的 suspend 文案当作权威状态，会制造页面仍在更新、恢复后输入无效等伪挂起问题。新的输入路径在 Webview、宿主与 runtime supervisor 三层阻断 Claude Agent `Ctrl-Z`，并把后续处理引导到停止、恢复或分叉。

@@ -127,6 +127,7 @@ export class SerializedTerminalStateTracker {
   private readonly colorStateSubscription: { dispose(): void } | undefined;
   private colorStateTouched = false;
   private disposed = false;
+  private bottomScreenActivityTrackingEnabled = false;
   private bottomScreenSignature = '';
   private bottomScreenChangeVersion = 0;
   private cachedState: SerializedTerminalState = {
@@ -146,7 +147,6 @@ export class SerializedTerminalStateTracker {
         this.colorStateTouched = true;
       }
     });
-    this.refreshBottomScreenActivity();
     this.refreshCachedState();
 
     const normalizedInitialState = normalizeSerializedTerminalState(options.initialState);
@@ -278,6 +278,14 @@ export class SerializedTerminalStateTracker {
 
   public getBottomScreenActivityToken(): string {
     return `${this.bottomScreenChangeVersion}:${this.bottomScreenSignature}`;
+  }
+
+  public enableBottomScreenActivityTracking(): void {
+    if (this.bottomScreenActivityTrackingEnabled || this.disposed) {
+      return;
+    }
+    this.bottomScreenActivityTrackingEnabled = true;
+    this.refreshBottomScreenActivity();
   }
 
   private computeBottomScreenSignature(rowCount = 8): string {
@@ -496,7 +504,7 @@ export class SerializedTerminalStateTracker {
     if ((forceRefresh || refreshedDuringDrain) && this.cachedStateDirty) {
       this.refreshCachedState();
     }
-    if (hadData) {
+    if (hadData && this.bottomScreenActivityTrackingEnabled) {
       this.refreshBottomScreenActivity();
     }
   }
