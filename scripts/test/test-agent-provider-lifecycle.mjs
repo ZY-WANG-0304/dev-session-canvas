@@ -27,14 +27,19 @@ try {
   const require = createRequire(import.meta.url);
   const { classifyAgentInputData, createAgentInputIntentTracker } = require(inputOutfile);
   const {
+    AGENT_WAITING_INPUT_QUIET_FALLBACK_MS,
     createAgentActivityHeuristicState,
     evaluateAgentWaitingInputTransition,
+    recordAgentBottomScreenActivity,
+    recordAgentInputHeuristics,
     recordAgentOutputHeuristics
   } = require(heuristicOutfile);
   const {
     applyAgentProviderLifecycleEvent,
     consumeAgentInstructionSubmission,
     createAgentProviderLifecycleState,
+    isAgentHeuristicWaitingInputRecoverable,
+    recordAgentHeuristicRunning,
     recordAgentHeuristicWaitingInput,
     recordAgentSubmission
   } = require(lifecycleOutfile);
@@ -46,12 +51,17 @@ try {
     applyAgentProviderLifecycleEvent,
     consumeAgentInstructionSubmission,
     createAgentProviderLifecycleState,
+    isAgentHeuristicWaitingInputRecoverable,
+    recordAgentHeuristicRunning,
     recordAgentHeuristicWaitingInput,
     recordAgentSubmission
   );
   assertHeuristicEnhancementPolicy(
+    AGENT_WAITING_INPUT_QUIET_FALLBACK_MS,
     createAgentActivityHeuristicState,
     evaluateAgentWaitingInputTransition,
+    recordAgentBottomScreenActivity,
+    recordAgentInputHeuristics,
     recordAgentOutputHeuristics
   );
   await assertCallbackTransport(createAgentProviderLifecycleSession);
@@ -105,6 +115,8 @@ function assertLifecycleIdentity(
   applyAgentProviderLifecycleEvent,
   consumeAgentInstructionSubmission,
   createAgentProviderLifecycleState,
+  isAgentHeuristicWaitingInputRecoverable,
+  recordAgentHeuristicRunning,
   recordAgentHeuristicWaitingInput,
   recordAgentSubmission
 ) {
@@ -249,6 +261,8 @@ function assertLifecycleIdentity(
   assert.equal(recordAgentHeuristicWaitingInput(codex).lifecycle, 'waiting-input');
   assert.equal(codex.activitySource, 'heuristic');
   assert.equal(codex.turnActive, true, 'Heuristic completion must retain delayed callback correlation.');
+  assert.equal(isAgentHeuristicWaitingInputRecoverable(codex), true);
+  assert.equal(recordAgentHeuristicRunning(codex).lifecycle, 'running');
   const completed = {
     provider: 'codex',
     kind: 'turn-completed',
@@ -256,6 +270,12 @@ function assertLifecycleIdentity(
     providerTurnId: 'turn-1'
   };
   assert.equal(applyAgentProviderLifecycleEvent(codex, completed).lifecycle, 'waiting-input');
+  assert.equal(isAgentHeuristicWaitingInputRecoverable(codex), false);
+  assert.equal(
+    recordAgentHeuristicRunning(codex).accepted,
+    false,
+    'Terminal chrome must not reopen a provider-authoritative completion.'
+  );
   assert.equal(applyAgentProviderLifecycleEvent(codex, completed).reason, 'duplicate');
   recordAgentSubmission(codex);
   assert.equal(
@@ -274,28 +294,83 @@ function assertLifecycleIdentity(
 }
 
 function assertHeuristicEnhancementPolicy(
+  quietFallbackMs,
   createAgentActivityHeuristicState,
   evaluateAgentWaitingInputTransition,
+  recordAgentBottomScreenActivity,
+  recordAgentInputHeuristics,
   recordAgentOutputHeuristics
 ) {
-  const quietTurn = createAgentActivityHeuristicState();
-  recordAgentOutputHeuristics(quietTurn, 'working\r\n', 'working\r\n', 'claude', 100);
+  assert.equal(quietFallbackMs, 5000, 'The quiet fallback must match the experiment-backed policy.');
+
+  const silentFromSubmit = createAgentActivityHeuristicState();
+  silentFromSubmit.lastActivityAtMs = 100;
+  assert.deepEqual(evaluateAgentWaitingInputTransition(silentFromSubmit, 5099), {
+    shouldTransition: false,
+    shouldKeepPolling: true
+  });
   assert.equal(
-    evaluateAgentWaitingInputTransition(quietTurn, 1800).reason,
+    evaluateAgentWaitingInputTransition(silentFromSubmit, 5100).reason,
     'fallback',
-    'Hard fallback remains available to startup/resume/interrupt recovery callers.'
-  );
-  assert.deepEqual(
-    evaluateAgentWaitingInputTransition(quietTurn, 1800, { allowHardFallback: false }),
-    { shouldTransition: false, shouldKeepPolling: true },
-    'Ordinary running turns must not finish from quiet time alone.'
+    'A completely silent turn must fall back from its submission time.'
   );
 
-  recordAgentOutputHeuristics(quietTurn, '> ', 'working\r\n> ', 'claude', 2000);
+  const outputQuiet = createAgentActivityHeuristicState();
+  outputQuiet.lastActivityAtMs = 100;
+  recordAgentOutputHeuristics(outputQuiet, 'working\r\n', 'working\r\n', 'claude', 1000);
+  assert.deepEqual(evaluateAgentWaitingInputTransition(outputQuiet, 5999), {
+    shouldTransition: false,
+    shouldKeepPolling: true
+  });
+  assert.equal(evaluateAgentWaitingInputTransition(outputQuiet, 6000).reason, 'fallback');
+
+  const glyphIsOrdinaryOutput = createAgentActivityHeuristicState();
+  glyphIsOrdinaryOutput.lastActivityAtMs = 100;
+  recordAgentOutputHeuristics(glyphIsOrdinaryOutput, '> ', 'working\r\n> ', 'claude', 2000);
+  assert.deepEqual(
+    evaluateAgentWaitingInputTransition(glyphIsOrdinaryOutput, 2300),
+    { shouldTransition: false, shouldKeepPolling: true },
+    'A prompt glyph must not carry lifecycle meaning.'
+  );
+
+  const attentionIsOrdinaryOutput = createAgentActivityHeuristicState();
+  attentionIsOrdinaryOutput.lastActivityAtMs = 100;
+  recordAgentOutputHeuristics(
+    attentionIsOrdinaryOutput,
+    '\u001b]9;finished\u0007',
+    '\u001b]9;finished\u0007',
+    'codex',
+    2000
+  );
+  assert.deepEqual(
+    evaluateAgentWaitingInputTransition(attentionIsOrdinaryOutput, 2300),
+    { shouldTransition: false, shouldKeepPolling: true },
+    'Generic OSC/BEL attention must not finish a turn.'
+  );
+
+  const animatedBottom = createAgentActivityHeuristicState();
+  animatedBottom.lastActivityAtMs = 0;
+  assert.equal(recordAgentBottomScreenActivity(animatedBottom, 'frame-0', 4500).strongRunningEvidence, false);
+  assert.equal(recordAgentBottomScreenActivity(animatedBottom, 'frame-1', 4800).strongRunningEvidence, false);
+  assert.equal(recordAgentBottomScreenActivity(animatedBottom, 'frame-2', 4920).strongRunningEvidence, true);
+  assert.deepEqual(evaluateAgentWaitingInputTransition(animatedBottom, 5000), {
+    shouldTransition: false,
+    shouldKeepPolling: true
+  });
   assert.equal(
-    evaluateAgentWaitingInputTransition(quietTurn, 2300, { allowHardFallback: false }).reason,
-    'prompt',
-    'A positive PTY prompt remains a primary waiting-input signal.'
+    evaluateAgentWaitingInputTransition(animatedBottom, 6200).reason,
+    'fallback',
+    'A frozen bottom region must eventually lose its strong-running grace.'
+  );
+
+  const composerEcho = createAgentActivityHeuristicState();
+  recordAgentBottomScreenActivity(composerEcho, 'idle', 900);
+  recordAgentInputHeuristics(composerEcho, 1000);
+  assert.equal(recordAgentBottomScreenActivity(composerEcho, 'typed-a', 1100).strongRunningEvidence, false);
+  assert.equal(
+    recordAgentBottomScreenActivity(composerEcho, 'typed-ab', 1200).strongRunningEvidence,
+    false,
+    'Screen redraws close to user input must not be strong autonomous-running evidence.'
   );
 }
 

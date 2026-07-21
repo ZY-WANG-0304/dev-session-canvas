@@ -221,12 +221,12 @@ interface ExecutionAttentionSignal {
 
 ```typescript
 interface AgentActivityHeuristicState {
-  lastOutputAtMs?: number;
-  lastLineBoundaryAtMs?: number;
-  lastPromptAtMs?: number;
-  lastNotificationAtMs?: number;
-  lastBellAtMs?: number;
-  lastSpinnerAtMs?: number;
+  lastActivityAtMs?: number;
+  lastInputAtMs?: number;
+  bottomScreenSignature?: string;
+  bottomScreenChangeStreak: number;
+  lastBottomScreenChangeAtMs?: number;
+  lastStrongBottomActivityAtMs?: number;
   lastAbnormalStreamAtMs?: number;
   lastAbnormalStreamMessage?: string;
   lastAbnormalStreamSignature?: string;
@@ -236,8 +236,9 @@ interface AgentActivityHeuristicState {
 }
 ```
 
-- 记录各类事件的最后发生时间
-- 用于判断 Agent 是否在等待用户输入
+- `lastActivityAtMs` 从有效 submit 或最近 PTY 输出计时，连续 5000ms 无输出时才允许 best-effort waiting fallback
+- `lastInputAtMs` 用于抑制用户输入后的 composer 回显，避免把打字误当成自主运行活动
+- bottom screen 字段记录当前屏幕最下方非空内容区域的跨帧变化；连续变化是强 running 证据，单个 prompt glyph、OSC 或 BEL 不具有 lifecycle 语义
 - `oscCarryover`：跨 chunk 的 OSC 序列缓存
 - `lastAbnormalStreamScanLength` 与 `abnormalStreamCarryover`：仅在文本匹配开启时辅助扫描新增输出与跨 chunk 残片，避免重新扫描旧 buffer；live-runtime attach 时已有的 `snapshot.output` 也视为已扫描历史
 

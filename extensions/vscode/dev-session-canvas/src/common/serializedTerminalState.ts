@@ -127,6 +127,8 @@ export class SerializedTerminalStateTracker {
   private readonly colorStateSubscription: { dispose(): void } | undefined;
   private colorStateTouched = false;
   private disposed = false;
+  private bottomScreenSignature = '';
+  private bottomScreenChangeVersion = 0;
   private cachedState: SerializedTerminalState = {
     format: SERIALIZED_TERMINAL_STATE_FORMAT,
     data: ''
@@ -144,6 +146,7 @@ export class SerializedTerminalStateTracker {
         this.colorStateTouched = true;
       }
     });
+    this.refreshBottomScreenActivity();
     this.refreshCachedState();
 
     const normalizedInitialState = normalizeSerializedTerminalState(options.initialState);
@@ -269,6 +272,86 @@ export class SerializedTerminalStateTracker {
     };
   }
 
+  public getBottomScreenSignature(rowCount = 8): string {
+    return this.computeBottomScreenSignature(rowCount);
+  }
+
+  public getBottomScreenActivityToken(): string {
+    return `${this.bottomScreenChangeVersion}:${this.bottomScreenSignature}`;
+  }
+
+  private computeBottomScreenSignature(rowCount = 8): string {
+    const buffer = this.terminal.buffer.active;
+    const rows = Math.min(Math.max(1, Math.floor(rowCount)), this.terminal.rows);
+    const screenStart = buffer.baseY;
+    let contentBottom = screenStart;
+    // TUI content can occupy only part of the physical viewport, so anchor to its lowest visible row.
+    for (let row = screenStart + this.terminal.rows - 1; row >= screenStart; row -= 1) {
+      if ((buffer.getLine(row)?.translateToString(true) ?? '').length > 0) {
+        contentBottom = row;
+        break;
+      }
+    }
+    const start = Math.max(screenStart, contentBottom - rows + 1);
+    const signatureParts = [
+      `${this.terminal.cols}x${this.terminal.rows}:${rows}:${contentBottom - screenStart}`
+    ];
+
+    for (let row = start; row < start + rows; row += 1) {
+      const line = buffer.getLine(row);
+      if (!line) {
+        signatureParts.push('missing');
+        continue;
+      }
+      signatureParts.push(line.isWrapped ? 'wrapped' : 'line');
+      for (let column = 0; column < line.length; column += 1) {
+        const cell = line.getCell(column);
+        if (!cell) {
+          continue;
+        }
+        const chars = cell.getChars();
+        const styled =
+          cell.getFgColorMode() !== 0 ||
+          cell.getBgColorMode() !== 0 ||
+          cell.isBold() !== 0 ||
+          cell.isItalic() !== 0 ||
+          cell.isDim() !== 0 ||
+          cell.isUnderline() !== 0 ||
+          cell.isBlink() !== 0 ||
+          cell.isInverse() !== 0 ||
+          cell.isInvisible() !== 0 ||
+          cell.isStrikethrough() !== 0 ||
+          cell.isOverline() !== 0;
+        if (!chars && !styled) {
+          continue;
+        }
+        signatureParts.push(
+          JSON.stringify([
+            row - start,
+            column,
+            chars,
+            cell.getWidth(),
+            cell.getFgColorMode(),
+            cell.getFgColor(),
+            cell.getBgColorMode(),
+            cell.getBgColor(),
+            cell.isBold(),
+            cell.isItalic(),
+            cell.isDim(),
+            cell.isUnderline(),
+            cell.isBlink(),
+            cell.isInverse(),
+            cell.isInvisible(),
+            cell.isStrikethrough(),
+            cell.isOverline()
+          ])
+        );
+      }
+    }
+
+    return signatureParts.join('|');
+  }
+
   public async flush(): Promise<SerializedTerminalState> {
     if (this.disposed) {
       await this.operationChain;
@@ -386,6 +469,7 @@ export class SerializedTerminalStateTracker {
     forceRefresh: boolean,
     outputSequence?: number
   ): Promise<void> {
+    const hadData = data.length > 0;
     let remainingData = data;
     let refreshedDuringDrain = false;
     while (remainingData && !this.disposed) {
@@ -412,6 +496,19 @@ export class SerializedTerminalStateTracker {
     if ((forceRefresh || refreshedDuringDrain) && this.cachedStateDirty) {
       this.refreshCachedState();
     }
+    if (hadData) {
+      this.refreshBottomScreenActivity();
+    }
+  }
+
+  private refreshBottomScreenActivity(): void {
+    const signature = this.computeBottomScreenSignature();
+    if (signature === this.bottomScreenSignature) {
+      return;
+    }
+    // The version preserves intermediate frame changes even if a later poll sees the same final cells.
+    this.bottomScreenSignature = signature;
+    this.bottomScreenChangeVersion += 1;
   }
 
   private applyOutputSequence(outputSequence: number | undefined): boolean {
