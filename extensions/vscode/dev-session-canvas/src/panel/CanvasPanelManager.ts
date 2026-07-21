@@ -5,10 +5,11 @@ import * as vscode from 'vscode';
 import {
   applyAgentProviderLifecycleEvent,
   confirmAgentInterrupt,
-  consumeCodexInstructionSubmission,
+  consumeAgentInstructionSubmission,
   createAgentProviderLifecycleState,
+  recordAgentHeuristicWaitingInput,
   recordAgentInterruptRequest,
-  recordCodexSubmission,
+  recordAgentSubmission,
   type AgentProviderLifecycleEvent,
   type AgentProviderLifecycleState
 } from '../common/agentProviderLifecycle';
@@ -13553,13 +13554,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    if (session.lifecycleTimer) {
+    if (result.lifecycle === 'waiting-input' && session.lifecycleTimer) {
       clearTimeout(session.lifecycleTimer);
       session.lifecycleTimer = undefined;
     }
     session.lifecycleStatus = result.lifecycle;
     if (result.lifecycle === 'running') {
       session.resumePhaseActive = false;
+      this.scheduleAgentInteractiveStateEvaluation(nodeId);
     } else {
       void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, session, 'waiting-input');
     }
@@ -14388,14 +14390,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!session || !isAgentLifecycleAwaitingInteractiveState(session.lifecycleStatus)) {
       return;
     }
-    if (
-      session.agentProviderLifecycle?.lifecycleEnabled === true &&
-      session.lifecycleStatus === 'running' &&
-      !session.agentProviderLifecycle.interruptRequested
-    ) {
-      return;
-    }
-
     if (session.lifecycleTimer) {
       clearTimeout(session.lifecycleTimer);
     }
@@ -14406,15 +14400,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
 
-      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current));
+      const interruptRequested = current.agentProviderLifecycle?.interruptRequested === true;
+      const evaluation = evaluateAgentWaitingInputTransition(
+        this.ensureAgentActivityState(current),
+        Date.now(),
+        {
+          allowHardFallback: current.lifecycleStatus !== 'running' || interruptRequested
+        }
+      );
       if (evaluation.shouldTransition) {
         current.lifecycleTimer = undefined;
-        if (
-          current.agentProviderLifecycle?.lifecycleEnabled === true &&
-          current.lifecycleStatus === 'running'
-        ) {
-          const interruptResult = confirmAgentInterrupt(current.agentProviderLifecycle);
-          if (!interruptResult.accepted) {
+        if (current.agentProviderLifecycle) {
+          const transitionResult = interruptRequested
+            ? confirmAgentInterrupt(current.agentProviderLifecycle)
+            : recordAgentHeuristicWaitingInput(current.agentProviderLifecycle);
+          if (interruptRequested && !transitionResult.accepted) {
             return;
           }
         }
@@ -17376,39 +17376,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (kind === 'agent') {
       const providerLifecycle = session.agentProviderLifecycle;
-      const submittedInstruction =
-        session.agentProvider === 'codex' && providerLifecycle
-          ? consumeCodexInstructionSubmission(
-              providerLifecycle,
-              data,
-              diagnosticMetadata.intent
-            )
-          : isAgentInstructionSubmission(data, diagnosticMetadata.intent);
+      const submittedInstruction = providerLifecycle
+        ? consumeAgentInstructionSubmission(providerLifecycle, data, diagnosticMetadata.intent)
+        : isAgentInstructionSubmission(data, diagnosticMetadata.intent);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      const lifecycleEnabled = providerLifecycle?.lifecycleEnabled === true;
-      if (lifecycleEnabled && diagnosticMetadata.intent === 'interrupt' && providerLifecycle) {
+      if (
+        diagnosticMetadata.intent === 'interrupt' &&
+        providerLifecycle &&
+        session.lifecycleStatus === 'running'
+      ) {
         const interruptResult = recordAgentInterruptRequest(providerLifecycle);
         if (interruptResult.accepted && session.owner === 'local') {
           resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.buffer);
           this.scheduleAgentInteractiveStateEvaluation(nodeId);
         }
-      } else if (
-        submittedInstruction &&
-        lifecycleEnabled &&
-        session.agentProvider === 'codex' &&
-        providerLifecycle
-      ) {
-        recordCodexSubmission(providerLifecycle);
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.buffer);
-        session.lifecycleStatus = 'running';
-        session.resumePhaseActive = false;
-        this.queueExecutionStateSync('agent', nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS, {
-          postState: true
-        });
-      } else if (submittedInstruction && !lifecycleEnabled) {
+      } else if (submittedInstruction) {
+        if (providerLifecycle) {
+          recordAgentSubmission(providerLifecycle);
+        }
         resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.buffer);
         session.lifecycleStatus = 'running';
         session.resumePhaseActive = false;

@@ -117,3 +117,5 @@ staging 准备和测试目录创建本来就是先删除再重建，可安全重
 计划修订说明：2026-07-15 所有验证通过，完成设计、技术债和结果收口，并将计划移入 completed。
 
 计划修订说明：2026-07-17 根据 PR blocker 补充 Claude hooks-disabled launch mode preflight；`--safe-mode` / `--bare` 现在显式回退 heuristic，并纳入聚焦测试与正式设计边界。
+
+后续决策说明：2026-07-21 用户确认 notify/hooks 只作为辅助增强信号，废止本文“lifecycle-enabled 普通回合关闭 heuristic”的排他结论。本文保留当时 diagnostics 与 staging/candidate 修复历史；新口径由 `docs/exec-plans/completed/agent-provider-signals-as-enhancements.md` 收口。

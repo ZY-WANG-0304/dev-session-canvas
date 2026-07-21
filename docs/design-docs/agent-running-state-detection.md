@@ -18,7 +18,8 @@ related_plans:
   - docs/exec-plans/completed/claude-agent-ctrl-z-containment.md
   - docs/exec-plans/completed/agent-provider-lifecycle-events.md
   - docs/exec-plans/completed/agent-lifecycle-adapter-hardening.md
-updated_at: 2026-07-17
+  - docs/exec-plans/completed/agent-provider-signals-as-enhancements.md
+updated_at: 2026-07-21
 ---
 
 # Agent 运行态判定与等待输入信号设计
@@ -35,7 +36,7 @@ updated_at: 2026-07-17
 - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 与 `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts` 都只要发现输入包含回车或换行，就把状态切到 `running`。
 - 两条路径随后都调用 `extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts`：prompt-like 输出静默 220ms、OSC/BEL 静默 260ms，或者无条件 hard fallback 静默 1600ms 后，把 `running` 退回 `waiting-input`。
 
-这套旧方案能缓解“只要一有输入就一直是 running”的明显错误，但它实际观察到的是“PTY 最近发生了什么”，不是“provider 自己认定当前回合处在什么阶段”。当前正式实现已为新建 Codex/Claude 会话接入 provider lifecycle side-channel；PTY 启发式只保留给旧 Supervisor 和明确无法安装 adapter 的会话。
+这套旧方案能缓解“只要一有输入就一直是 running”的明显错误，但它实际观察到的是“PTY 最近发生了什么”，不是“provider 自己认定当前回合处在什么阶段”。当前分支已为 Codex/Claude 接入 provider lifecycle side-channel，但真实 review 继续证明 notify/hooks 会受用户配置、启动 flag、继承环境与 hook block 影响，不能作为基础状态机是否工作的 capability gate。正式方案因此收口为“提交与 PTY 证据构成持续可用的基础判定，provider callback 只提供正向增强”。
 
 ## 2. 问题定义
 
@@ -51,8 +52,8 @@ updated_at: 2026-07-17
 
 ## 3. 目标
 
-- 为 `Agent` 的 `running` / `waiting-input` 定义一条成熟、可扩展的判定优先级。
-- 优先采用 provider 官方公开的 machine-readable turn/session 信号，而不是继续长期依赖 PTY 静默推断。
+- 为 `Agent` 的 `running` / `waiting-input` 定义一套成熟、可扩展的基础判定与增强信号组合。
+- 在保留交互式 PTY 的前提下，让基础状态判定不依赖可选 callback 是否成功安装或送达。
 - 让不同 provider 的差异可以被显式建模，而不是再被压成一套脆弱的统一启发式。
 - 为宿主与 UI 增加“状态来源/权威性”概念，避免把 best-effort 结果伪装成权威事实。
 
@@ -73,11 +74,12 @@ updated_at: 2026-07-17
 - 一段静默后切回 `waiting-input`。
 - 不需要 provider 额外能力。
 
-不选为长期方案的原因：
+当前定位：
 
 - 它观察到的是字符流节奏，不是回合边界。
 - provider UI 自刷新、延迟 flush、等待审批、后台工具执行或输出节流时，都会让推断漂移。
 - 同一个 provider 升级版本后，屏幕输出模式一变，状态判定就可能失真。
+- 但在继续使用 interactive PTY 且 callback 可被禁用的约束下，它必须作为持续可用的基础方案；实现应依赖 prompt/notification 等正向证据，不能让普通 `running` 仅因 1600ms 没有输出就结束。
 
 ### 5.2 利用 shell integration / prompt boundary
 
@@ -105,8 +107,8 @@ updated_at: 2026-07-17
 
 当前判断：
 
-- 这是长期正式方案。
-- 只要 provider 已公开稳定事件面，就不应继续把 PTY 文本推断当主路径。
+- app-server 等不可由用户配置关闭的完整结构化执行面仍是长期可选路线，但不属于当前 interactive PTY 实现。
+- 当前 direct-TUI notify 只作为完成增强信号；收到时可以立即确认，未收到时不能关闭基础 heuristic 或推导 provider 仍在运行。
 
 已知证据：
 
@@ -122,8 +124,8 @@ updated_at: 2026-07-17
 
 当前判断：
 
-- 这是次优但成熟的正式方案。
-- 当 provider 没有统一 app-server，但有 SDK/headless/hook 能力时，应优先利用这些接口。
+- SDK/headless stream 若未来成为执行面，可以重新设计为完整主路径；当前注入 interactive TTY 的 hooks 只作为辅助增强。
+- callback 到达是高置信正向证据，配置成功或 callback 缺失都不是状态证据。
 
 已知证据：
 
@@ -142,11 +144,11 @@ updated_at: 2026-07-17
 - 风险：同一 provider 不同运行模式下，状态信号粒度可能不一致。
   当前缓解：把“生命周期状态值”和“信号来源/权威性”拆开建模，防止因为不同模式的粒度差异而污染用户可见语义。
 
-- 风险：如果没有明确信号优先级，新的 provider 事件和旧的 PTY 启发式可能互相打架。
-  当前缓解：正式优先级固定为“provider 原生事件 > provider 结构化输出/hooks/SDK > shell integration > PTY 启发式”，低优先级只能在高优先级缺失时生效。
+- 风险：provider 增强事件和 PTY heuristic 可能先后给出同一结论，或者 heuristic 先给出较弱结论。
+  当前缓解：基础 heuristic 始终可运行；provider 事件收到时可以纠正或升级来源/identity/outcome，重复事件幂等，旧 session/turn 事件由 identity 与时间保护拒绝。普通 `running` 不允许 1600ms hard fallback 单独结束，降低弱证据抢先误判的概率。
 
 - 风险：Codex `notify` 是单一 argv 数组配置，扩展通过 CLI override 安装 notifier 时会覆盖用户已有 notifier。
-  当前缓解：本轮检测到用户级/profile/CLI `notify` 冲突时不覆盖，保留启发式 fallback 并记录诊断。官方当前没有公开可追加多个 notifier 或读取 effective config 的稳定接口，因此不能把“自动链式保留所有配置层”写成已确认能力。
+  当前缓解：本轮检测到用户级/profile/CLI `notify` 冲突时不覆盖，基础 heuristic 保持不变并记录增强信号未配置的诊断。官方当前没有公开可追加多个 notifier 或读取 effective config 的稳定接口，因此不能把“自动链式保留所有配置层”写成已确认能力。
 
 - 风险：Claude `Stop` hook 可以被另一个 Stop hook 阻止，收到 Stop 不代表 provider 不会继续当前 prompt。
   当前缓解：产品仍按已确认口径将 `Stop` 投影为 `waiting-input`，但保留相同 `prompt_id` 的后续 Stop 幂等处理，并把这一短暂失真记录为已知限制，不能称为不可逆完成事件。
@@ -160,16 +162,16 @@ updated_at: 2026-07-17
 
 这两个状态的定义不依赖实现方式；实现是否成熟，只影响“这些状态值是如何被判出来的”。
 
-### 7.2 正式判定优先级
+### 7.2 基础判定与增强信号
 
-`Agent` 运行态判定的正式优先级如下：
+`Agent` 运行态不再采用“provider callback 可用时关闭 heuristic”的排他优先级，而采用持续基础判定加正向增强：
 
-1. provider 原生结构化 turn/session 事件。
-2. provider 官方公开的结构化输出、SDK message stream 或 hooks。
-3. shell integration / prompt boundary，仅用于辅助判定 shell 侧活动。
-4. PTY 输入与输出静默启发式。
+1. Webview/owner 识别真实可编辑内容后的明确 submit，进入 `running`，来源为 `submission-intent / derived`。
+2. PTY 输出持续记录 prompt、notification、bell、spinner 与 quiet。prompt/notification 等正向等待输入证据可以进入 `waiting-input`，来源为 `heuristic / best-effort`。
+3. Codex completion notify 或 Claude lifecycle hook 到达时，可以立即确认或纠正对应状态，并把来源升级为 `provider-lifecycle / authoritative`，同时补充 provider identity、outcome/error。
+4. callback 没有到达不构成证据，不能关闭步骤 1/2，也不能让会话卡在某个状态。
 
-只有当前两层都不可用时，才允许使用后两层。
+普通 `running` 不允许只凭 1600ms quiet 进入 `waiting-input`。该 hard fallback 只服务于启动、恢复和用户已明确 arm 的 interrupt recovery；这避免恢复原始误判，同时承认 plain PTY 在既无可识别 prompt、也无 callback/signal 时可能暂时高估运行态。
 
 ### 7.3 provider 级结论
 
@@ -177,19 +179,19 @@ updated_at: 2026-07-17
 
 - 当前正式实现继续使用 interactive CLI PTY，不采用 app-server，也不接入 Codex `UserPromptSubmit`。
 - Webview 识别用户明确提交意图后进入 `running`；单纯“数据中出现 CR/LF”只保留为旧 Webview/Host/Supervisor 的兼容兜底。由于启动升级菜单和 provider 本地选择菜单也会产生 Enter，`submit` 还必须消费同一进程内已观察到的可编辑输入候选：方向键、终端控制响应、空白和编辑换行不能建立候选，可见非空文本或粘贴可以建立候选，submit 与 interrupt 会清空候选。该规则不解析 Codex 屏幕文案，也不把候选伪装成 provider turn identity。
-- 结束信号使用 Codex direct-TUI `notify` 的 `agent-turn-complete`。回调必须携带并校验 `thread-id + turn-id`，同时由扩展注入 runtime session、process epoch 与 callback nonce，成功送达拥有 PTY 的 Host/Supervisor并得到 ACK 后才允许结束本轮。
+- Codex direct-TUI `notify(agent-turn-complete)` 是辅助完成信号。回调必须携带并校验 `thread-id + turn-id`，同时由扩展注入 runtime session、process epoch 与 callback nonce；成功送达拥有 PTY 的 Host/Supervisor 后可以立即结束本轮并升级 metadata，但 callback 缺失不关闭基础 heuristic。
 - 本机 Codex CLI 0.144.1 实验确认：同一会话及 resume 后 `thread-id` 稳定，每轮 `turn-id` 唯一；一次 5 秒 notifier 实验中，TUI 保持 Working，notifier 退出后才恢复 prompt。该顺序是实验事实，不是官方兼容性承诺。
-- 如果用户已配置自定义 `notify`，本轮不静默覆盖，改用旧启发式 fallback。后续如 Codex 提供多 notifier 或 effective-config 接口，再单独设计可靠链式方案。
+- 如果用户已配置自定义 `notify`，本轮不静默覆盖，只失去 provider 增强信号；基础提交与 heuristic 语义保持不变。后续如 Codex 提供多 notifier 或 effective-config 接口，再单独设计可靠链式方案。
 - app-server 的 `turn/started`、`turn/completed` 和 `thread/status/changed` 仍是未来可选路线，但明确不属于本轮实现。
 
 `Claude Code`
 
-- interactive TTY 保持为执行与显示通道，同时用 hooks 补充 lifecycle side-channel。
-- `UserPromptSubmit(session_id, prompt_id)` 进入 `running`；同 identity 的 `Stop` 或 `StopFailure` 进入 `waiting-input`。
+- interactive TTY 保持为执行与显示通道，明确提交与 PTY heuristic 构成基础状态机，hooks 只补充 lifecycle side-channel。
+- Claude 与 Codex 共用“可编辑输入 candidate + 明确 submit”进入 `running` 的基础规则；`UserPromptSubmit(session_id, prompt_id)` 可以确认/纠正 `running` 并补 provider identity，同 identity 的 `Stop` 或 `StopFailure` 可以提前确认 `waiting-input`。
 - `StopFailure` 不把整个仍存活的 Agent 节点改成 `error`；它另外写入 failed turn outcome、错误摘要，并触发 attention/notification。
 - Esc 中断实验没有产生 `Stop` 或 `StopFailure`，因此 Esc 必须由 Webview 的明确 `interrupt` 意图单独 arm，再由中断后的 prompt/idle 信号确认；不能伪造 API failure。
 - Claude Code 2.1.209 实验确认重复 `--settings A --settings B` 时只有 B 的 hook 生效。`UserPromptSubmit`、`Stop`、`StopFailure`、已有 `PostToolUse` 文件活动 hook 与用户 additional settings 必须合并到同一份生成 settings，不能靠追加第二个参数组合。
-- `--safe-mode` 会禁用 hooks，`--bare` 会跳过 hooks；任一 flag 出现在默认参数或自定义启动命令时，adapter 必须保留原始 argv，不生成 lifecycle settings，不声明 lifecycle enabled，并分别记录 `claude-hooks-disabled-by-safe-mode` 或 `claude-hooks-disabled-by-bare` 后回退启发式。
+- `--safe-mode` 会禁用 hooks，`--bare` 会跳过 hooks；继承环境中的 `CLAUDE_CODE_SAFE_MODE=1` / `CLAUDE_CODE_SIMPLE=1` 具有相同效果。命中任一已验证模式时，adapter 必须保留原始 argv/env，不生成 lifecycle settings，不声明增强 callback configured，并记录可诊断原因；基础状态机不受影响。
 - 一个 Stop hook 可以 block 当前停止并让 Claude 继续，同一 `prompt_id` 稍后还会收到第二个 Stop。选择 `Stop -> waiting-input` 会在此窗口短暂低估运行态，这是用户确认接受的限制。
 
 ### 7.4 数据模型结论
@@ -197,7 +199,7 @@ updated_at: 2026-07-17
 本轮实现中，节点 metadata 至少新增以下信息：
 
 - `activitySource`：当前状态由什么来源驱动。本轮实现使用 `provider-lifecycle`、`submission-intent` 与 `heuristic`。
-- `activityAuthority`：当前来源是 `authoritative`、`derived` 还是 `best-effort`；Codex 提交进入 running 属于 `submission-intent / derived`，provider 完成回调属于 `provider-lifecycle / authoritative`。
+- `activityAuthority`：当前来源是 `authoritative`、`derived` 还是 `best-effort`；两种 provider 的提交进入 running 都属于 `submission-intent / derived`，provider callback 对它实际报告的事件属于 `provider-lifecycle / authoritative`，但这种权威性不代表 callback 配置是排他的全局主方案。
 - provider session/turn identity：用于诊断当前状态对应的真实 provider 回合，不能用累计 prompt 文本代替。
 - last turn outcome/error：普通完成、单轮失败和中断相互独立；单轮失败不得复用进程退出字段。
 
@@ -209,28 +211,28 @@ Provider callback 由拥有真实 PTY 的运行时处理：本地会话由 Exten
 
 Codex 提交时还记录 owner 的提交时间；notifier 在构造 callback 时记录同机 `observedAtMs`。如果 completion 的观察时间早于当前提交时间，即使它带着尚未见过的 `turn-id`，也按上一轮延迟事件拒绝。这个时间保护与 `turn-id` 去重共同使用；它依然依赖 direct TUI 实测的“notifier ACK 后才恢复下一轮输入”顺序，因此该边界必须保留为已验证实现约束，不能泛化为 Codex 官方时序保证。
 
-callback 使用回环地址上的同步 request/ACK，而不是共享无认证 NDJSON 文件。hook 传输失败不能阻断 provider 自身，但对应会话必须显式保持或退化为 fallback，不能假装已经获得 provider 事件。
+callback 使用回环地址上的同步 request/ACK，而不是共享无认证 NDJSON 文件。hook 传输失败不能阻断 provider 自身，也不能改变基础 heuristic 是否启用；它只意味着本轮没有获得对应增强事件。
 
-adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认当前 launch mode 允许 callback，且 extension root 中的 `scripts/runtime/agent-lifecycle-hook.cjs` 确实存在。Claude `--safe-mode` / `--bare` 或 hook 文件缺失时，不得注入必然失效的命令，也不得把 lifecycle 标成 enabled；会话保留原始参数、记录明确 fallback reason 并沿用 PTY 启发式。main-only debug staging 应复制完整 `scripts/runtime`，与 trusted smoke 和正式 package 的运行时文件边界保持一致。preflight 是 hooks-disabled 模式、安装损坏、staging 漂移和其他 adapter 不可用场景的最后防线，不能替代正确打包。
+adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认当前 launch mode/env 允许 callback，且 extension root 中的 `scripts/runtime/agent-lifecycle-hook.cjs` 确实存在。Claude hooks-disabled 模式或 hook 文件缺失时，不得注入必然失效的命令，也不得把增强 callback 标成 configured；会话保留原始参数/环境并记录明确 reason。main-only debug staging 应复制完整 `scripts/runtime`，与 trusted smoke 和正式 package 的运行时文件边界保持一致。preflight 用于避免错误和改善诊断，不再承担基础状态机 failover。
 
 新 Supervisor hello 通过 `agentSubmissionIntentV1` 与 `agentProviderLifecycleV1` capability 声明新语义，并使用新的 generation storage。已有会话继续按 metadata 中的旧 storage path 连接旧 Supervisor，不迁移、不重启 PTY；旧代会话自然 drain。
 
-### 7.6 fallback 的保留范围
+### 7.6 基础 heuristic 的保留范围
 
-组合启发式仍同时存在于本地 PTY 与 runtime supervisor 路径，但只服务于旧 Supervisor、Codex 自定义 `notify` 冲突、Claude settings 无法安全合并、Claude `--safe-mode` / `--bare` 主动禁用 hooks 等 lifecycle adapter 不可用场景。新建且 lifecycle-enabled 的普通运行回合不得再由 prompt、OSC/BEL 或 1600ms hard fallback 结束；只有 Webview 明确 arm 的 Esc interrupt 可以在中断后的 prompt/quiet 证据下受限确认。
+组合 heuristic 始终同时运行于本地 PTY 与 runtime supervisor 路径，不再只服务于旧 Supervisor或 adapter 不可用场景。provider callback configured 与否不影响调度；区别只在于 callback 到达时可以更早确认并升级 metadata。
 
-fallback 的具体规则是：
+基础 heuristic 的具体规则是：
 
 - 旧协议缺少输入意图时，只有输入里出现 `\r` 或 `\n` 才把 `Agent` 切到 `running`；新 Webview 使用显式 `submit/text/paste/interrupt` 意图，编辑换行、IME 与多行粘贴不再冒充提交。
-- Codex 即使收到显式 `submit`，也只有在当前提交候选已由可见非空输入建立时才进入 `running`；启动菜单中的纯导航与 Enter 仍原样转发给 PTY，但不改变 Agent lifecycle。Claude 的 turn start 继续只来自 `UserPromptSubmit` hook，不复用这条 Codex 派生规则。
+- Codex 与 Claude 即使收到显式 `submit`，也只有在当前提交候选已由可见非空输入建立时才进入 `running`；启动菜单中的纯导航与 Enter 仍原样转发给 PTY，但不改变 Agent lifecycle。Claude `UserPromptSubmit` 是增强确认，不再是唯一 turn start。
 - `waiting-input` 不再只靠单一 quiet timeout，而是综合以下线索判断：
   - prompt-like 尾部输出；
   - `OSC 9` / `OSC 777` 通知；
   - bell；
-  - 长静默 hard fallback。
+  - 仅在启动、恢复或明确 interrupt recovery 中允许的长静默 hard fallback。
 - 普通换行本身不再被当成“当前回合已完成”的直接信号；因为长任务可能先输出一整行文本，再在静默期内继续执行。
 - Claude Code 的 `Ctrl-Z` / `fg` 文案不再参与运行态或生命周期判定。当前 Claude Agent 是 direct-spawn provider CLI，没有普通 shell job table；如果把 provider 输出的 suspend 文案当作权威状态，会制造页面仍在更新、恢复后输入无效等伪挂起问题。新的输入路径在 Webview、宿主与 runtime supervisor 三层阻断 Claude Agent `Ctrl-Z`，并把后续处理引导到停止、恢复或分叉。
-- 若最近输出呈现 spinner 或 redraw 特征，例如 `\r` 覆写、退格或光标移动控制序列，则会延长回退窗口，避免 Agent 仍在工作时被过早判回 `waiting-input`。
+- 普通 `running` 不使用 1600ms hard fallback；若最近输出呈现 spinner 或 redraw 特征，prompt/notification 之外的 recovery 同样必须等待。`starting`、`resuming` 与明确 interrupt 仍可在受控 quiet 后使用 hard fallback。
 
 这一版仍然属于 `heuristic` / `best-effort`，只是把误判窗口从“固定静默时间”收紧为“多信号综合判断”。
 
@@ -245,16 +247,17 @@ fallback 的具体规则是：
 
 至少需要完成以下验证：
 
-1. 对接入官方事件面的 provider，自动化测试能证明 `turn start -> running`、`turn complete -> waiting-input` 的状态迁移。
-2. 当 provider 原生事件与 PTY 启发式冲突时，自动化测试能证明前者优先。
-3. 当 provider 仅有结构化输出或 hooks 时，自动化测试能证明节点仍可稳定落到 `running` / `waiting-input`，且 metadata 会标明来源。
-4. 当 provider 没有任何正式接口时，节点仍可通过 fallback 工作，但诊断中能明确看到其为 best-effort。
+1. 对接入 callback 增强面的 provider，自动化测试能证明提交/PTY 基础路径独立完成 `running -> waiting-input`，callback 到达时可以更早确认并补 identity/outcome。
+2. 当 provider callback 与 PTY heuristic 先后到达时，自动化测试能证明状态幂等、来源可升级，旧 session/turn 事件不能污染下一回合。
+3. 当 provider hooks 配置成功但实际不送达时，自动化测试能证明节点仍可稳定落到 `running` / `waiting-input`，且 metadata 会标明 heuristic 来源。
+4. 当 provider 没有任何 callback 接口时，节点仍可通过基础 heuristic 工作，并在诊断中明确标为 best-effort。
 5. 输入意图测试覆盖 Enter/Return/NumpadEnter、virtual keyboard 的独立 CR/LF/CRLF、Shift+Enter/Ctrl+J、多行/括号粘贴、IME composition 和 Esc；粘贴或编辑换行不能把 Agent 误切到 `running`。
-6. identity 测试覆盖旧 process epoch、错误 nonce、不同 provider session、上一 prompt 的延迟 Stop 和重复 Stop；这些事件不能结束当前回合。
+6. identity 测试覆盖旧 process epoch、错误 nonce、不同 provider session、上一 prompt 的延迟 start/Stop 事件对和重复 Stop；这些事件不能认领或结束当前回合。
 7. Claude `StopFailure` 后节点保持可交互的 `waiting-input`，同时保存 failed outcome/error 并产生 attention；普通 Stop 不制造失败。
-8. main-only staging 同时包含 lifecycle 与 file-activity runtime hook；任一运行路径缺少 lifecycle hook 时必须在启动前回退，不得产生 Claude hook error 或留下等待不存在 callback 的 Codex `running`。
-9. Codex 输入测试覆盖“方向键 + Enter”的升级菜单序列不进入 `running`，以及可见文本/IME/粘贴后 submit 正常进入 `running`；Host 与 Supervisor owner 必须共享同一判定函数。
-10. Claude launch integration 测试覆盖 `--safe-mode` 与 `--bare`：原始 argv 不被改写、不注入文件活动 env、lifecycle capability 为 disabled，且 fallback reason 可诊断。
+8. main-only staging 同时包含 lifecycle 与 file-activity runtime hook；任一运行路径缺少 lifecycle hook 时不得产生 hook error，且 callback 缺失不能阻断基础状态流转。
+9. Codex/Claude 输入测试覆盖“方向键 + Enter”的菜单序列不进入 `running`，以及可见文本/IME/粘贴后 submit 正常进入 `running`；Host 与 Supervisor owner 必须共享同一判定函数。
+10. Claude launch integration 测试覆盖 `--safe-mode`、`--bare`、`CLAUDE_CODE_SAFE_MODE=1` 与 `CLAUDE_CODE_SIMPLE=1`：原始 argv/env 不被改写、不注入文件活动 env、增强 capability 为 disabled，且 reason 可诊断。
+11. callback configured 但永不到达时，普通静默运行超过 1600ms 仍为 `running`，随后 provider prompt 可以由 heuristic 进入 `waiting-input`；callback 先到或后到都应正确增强 identity/outcome，不能污染下一 turn。
 
 ## 9. 当前验证状态
 
@@ -280,4 +283,6 @@ fallback 的具体规则是：
 - 2026-07-15 已验证 Supervisor lifecycle callback 延迟到 2300ms 时，1600ms 检查点仍保持 `running`，callback 到达后才进入 `waiting-input`；旧 generation capability gate、错误 nonce/process epoch/runtime session、stale prompt/thread 和重复 completion 也均有自动化回归。
 - 2026-07-15 的真实 main-only Host diagnostics 暴露两个回归：staged extension 漏复制 lifecycle hook，且 Codex 启动升级菜单的方向键 + Enter 被当成 prompt submit。本轮已让 main-only staging 复制完整 runtime scripts，在 adapter 启动前增加缺 hook fallback，并用共享 submission candidate 阻止控制序列/方向键后的纯 Enter 进入 `running`。debug staging、provider lifecycle、Supervisor protocol、typecheck、build、正式 VSIX 文件列表和 trusted VSCode smoke 全部通过，详细证据见 `docs/exec-plans/completed/agent-lifecycle-adapter-hardening.md`。
 - 2026-07-17 的 PR review 发现 Claude `--safe-mode` / `--bare` 会合法禁用 hooks，但 launch integration 仍声明 lifecycle enabled。当前实现已在 settings 合并前识别两种模式，保留原始 argv 并以明确原因回退 heuristic；聚焦测试覆盖两种 flag、capability gate 与文件活动 env 不注入。
-- 当前文档恢复为 `已验证`。保留风险包括 Codex 自定义 `notify` 冲突时必须 fallback、Claude Stop continuation 的短暂状态失真、Codex notifier ACK 顺序仍是实机约束，以及 completion-only direct TUI 无法完美识别“输入后完全删除”或不产生 provider turn 的本地 slash command；这些边界均已登记在技术债 tracker。
+- 2026-07-21 的后续 review 证明继承 `CLAUDE_CODE_SAFE_MODE=1` / `CLAUDE_CODE_SIMPLE=1` 也会跳过 hooks，而静态 argv preflight 仍会误报 lifecycle enabled。用户据此确认 notify/hooks 只作为辅助增强信号；基础提交与 heuristic 必须始终工作，普通 `running` 不再接受 1600ms 无条件 hard fallback。
+- 2026-07-21 已完成增强信号收口：Host 与 Supervisor 不再用 `lifecycleEnabled` gate 基础提交/PTY heuristic；callback configured 但永不送达的 Supervisor fixture 会在 1600ms 后保持 `running`，随后由 prompt 进入 `heuristic / best-effort` 的 `waiting-input`；provider callback 先到或后到仍可升级 identity/outcome。Claude safe/simple argv/env preflight、上一回合延迟 start/Stop 事件对、共享 candidate、类型检查、构建、package 文件列表和 trusted VS Code smoke 均已通过，详细证据见 `docs/exec-plans/completed/agent-provider-signals-as-enhancements.md`。
+- 当前文档为 `已验证`。保留风险包括 plain PTY 在既无可识别 prompt、也无 callback/signal 时可能高估 running；Claude Stop continuation 的短暂状态失真；Codex notifier ACK 顺序与 completion-only submission candidate 仍是实机/派生约束。这些边界已同步到技术债 tracker。

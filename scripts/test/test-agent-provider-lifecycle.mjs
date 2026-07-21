@@ -12,11 +12,13 @@ const extensionRoot = path.resolve('extensions/vscode/dev-session-canvas');
 
 try {
   const inputOutfile = path.join(tempDir, 'agentInputIntent.cjs');
+  const heuristicOutfile = path.join(tempDir, 'agentActivityHeuristics.cjs');
   const lifecycleOutfile = path.join(tempDir, 'agentProviderLifecycle.cjs');
   const serverOutfile = path.join(tempDir, 'agentProviderLifecycleServer.cjs');
   const runtimeIntegrationOutfile = path.join(tempDir, 'agentFileActivity.cjs');
   await Promise.all([
     bundle('extensions/vscode/dev-session-canvas/src/common/agentInputIntent.ts', inputOutfile),
+    bundle('extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts', heuristicOutfile),
     bundle('extensions/vscode/dev-session-canvas/src/common/agentProviderLifecycle.ts', lifecycleOutfile),
     bundle('extensions/vscode/dev-session-canvas/src/panel/agentProviderLifecycleServer.ts', serverOutfile),
     bundle('extensions/vscode/dev-session-canvas/src/panel/agentFileActivity.ts', runtimeIntegrationOutfile)
@@ -25,10 +27,16 @@ try {
   const require = createRequire(import.meta.url);
   const { classifyAgentInputData, createAgentInputIntentTracker } = require(inputOutfile);
   const {
+    createAgentActivityHeuristicState,
+    evaluateAgentWaitingInputTransition,
+    recordAgentOutputHeuristics
+  } = require(heuristicOutfile);
+  const {
     applyAgentProviderLifecycleEvent,
-    consumeCodexInstructionSubmission,
+    consumeAgentInstructionSubmission,
     createAgentProviderLifecycleState,
-    recordCodexSubmission
+    recordAgentHeuristicWaitingInput,
+    recordAgentSubmission
   } = require(lifecycleOutfile);
   const { createAgentProviderLifecycleSession } = require(serverOutfile);
   const { createAgentFileActivitySession } = require(runtimeIntegrationOutfile);
@@ -36,9 +44,15 @@ try {
   assertInputIntent(classifyAgentInputData, createAgentInputIntentTracker);
   assertLifecycleIdentity(
     applyAgentProviderLifecycleEvent,
-    consumeCodexInstructionSubmission,
+    consumeAgentInstructionSubmission,
     createAgentProviderLifecycleState,
-    recordCodexSubmission
+    recordAgentHeuristicWaitingInput,
+    recordAgentSubmission
+  );
+  assertHeuristicEnhancementPolicy(
+    createAgentActivityHeuristicState,
+    evaluateAgentWaitingInputTransition,
+    recordAgentOutputHeuristics
   );
   await assertCallbackTransport(createAgentProviderLifecycleSession);
   await assertLaunchIntegration(createAgentFileActivitySession);
@@ -89,10 +103,37 @@ function assertInputIntent(classifyAgentInputData, createAgentInputIntentTracker
 
 function assertLifecycleIdentity(
   applyAgentProviderLifecycleEvent,
-  consumeCodexInstructionSubmission,
+  consumeAgentInstructionSubmission,
   createAgentProviderLifecycleState,
-  recordCodexSubmission
+  recordAgentHeuristicWaitingInput,
+  recordAgentSubmission
 ) {
+  const claudeSubmission = createAgentProviderLifecycleState('claude', true);
+  assert.equal(consumeAgentInstructionSubmission(claudeSubmission, '\u001b[A', 'text'), false);
+  assert.equal(consumeAgentInstructionSubmission(claudeSubmission, '\r', 'submit'), false);
+  assert.equal(consumeAgentInstructionSubmission(claudeSubmission, 'real prompt', 'text'), false);
+  assert.equal(consumeAgentInstructionSubmission(claudeSubmission, '\r', 'submit'), true);
+  assert.equal(recordAgentSubmission(claudeSubmission).lifecycle, 'running');
+  assert.equal(claudeSubmission.activitySource, 'submission-intent');
+  assert.equal(
+    applyAgentProviderLifecycleEvent(
+      claudeSubmission,
+      claudeEvent('turn-started', 'submission-session', 'submission-prompt')
+    ).lifecycle,
+    'running'
+  );
+  assert.equal(recordAgentHeuristicWaitingInput(claudeSubmission).lifecycle, 'waiting-input');
+  assert.equal(claudeSubmission.activitySource, 'heuristic');
+  assert.equal(
+    applyAgentProviderLifecycleEvent(
+      claudeSubmission,
+      claudeEvent('turn-completed', 'submission-session', 'submission-prompt')
+    ).lifecycle,
+    'waiting-input'
+  );
+  assert.equal(claudeSubmission.activitySource, 'provider-lifecycle');
+  assert.equal(claudeSubmission.lastTurnOutcome, 'completed');
+
   const claude = createAgentProviderLifecycleState('claude', true);
   assert.deepEqual(
     applyAgentProviderLifecycleEvent(claude, claudeEvent('turn-started', 'session-a', 'prompt-1')),
@@ -127,57 +168,87 @@ function assertLifecycleIdentity(
     'provider-session-mismatch'
   );
 
-  const codex = createAgentProviderLifecycleState('codex', true);
-  assert.equal(consumeCodexInstructionSubmission(codex, '\u001b[A', 'text'), false);
-  assert.equal(consumeCodexInstructionSubmission(codex, '\u001bOP', 'text'), false);
-  assert.equal(consumeCodexInstructionSubmission(codex, '\u001bx', 'text'), false);
+  const delayedClaude = createAgentProviderLifecycleState('claude', true);
+  recordAgentSubmission(delayedClaude, 2_000);
   assert.equal(
-    consumeCodexInstructionSubmission(codex, '\u001b]10;rgb:cccc/cccc/cccc\u001b\\', 'text'),
+    applyAgentProviderLifecycleEvent(delayedClaude, {
+      ...claudeEvent('turn-started', 'delayed-session', 'previous-prompt'),
+      observedAtMs: 1_900
+    }).reason,
+    'stale-turn',
+    'A delayed previous UserPromptSubmit must not claim the current derived turn.'
+  );
+  assert.equal(delayedClaude.activeProviderTurnId, undefined);
+  assert.equal(
+    applyAgentProviderLifecycleEvent(delayedClaude, {
+      ...claudeEvent('turn-started', 'delayed-session', 'current-prompt'),
+      observedAtMs: 2_100
+    }).lifecycle,
+    'running'
+  );
+  assert.equal(
+    applyAgentProviderLifecycleEvent(
+      delayedClaude,
+      claudeEvent('turn-completed', 'delayed-session', 'previous-prompt')
+    ).reason,
+    'stale-turn',
+    'A delayed previous Stop must not finish the current turn.'
+  );
+
+  const codex = createAgentProviderLifecycleState('codex', true);
+  assert.equal(consumeAgentInstructionSubmission(codex, '\u001b[A', 'text'), false);
+  assert.equal(consumeAgentInstructionSubmission(codex, '\u001bOP', 'text'), false);
+  assert.equal(consumeAgentInstructionSubmission(codex, '\u001bx', 'text'), false);
+  assert.equal(
+    consumeAgentInstructionSubmission(codex, '\u001b]10;rgb:cccc/cccc/cccc\u001b\\', 'text'),
     false
   );
   assert.equal(
-    consumeCodexInstructionSubmission(codex, '\r', 'submit'),
+    consumeAgentInstructionSubmission(codex, '\r', 'submit'),
     false,
     'Navigation-only menus must not arm a Codex instruction submission.'
   );
-  assert.equal(consumeCodexInstructionSubmission(codex, 'real prompt', 'text'), false);
+  assert.equal(consumeAgentInstructionSubmission(codex, 'real prompt', 'text'), false);
   assert.equal(
-    consumeCodexInstructionSubmission(codex, '\r', 'text'),
+    consumeAgentInstructionSubmission(codex, '\r', 'text'),
     false,
     'An editing newline must not consume the submission candidate.'
   );
-  assert.equal(consumeCodexInstructionSubmission(codex, '\r', 'submit'), true);
-  assert.equal(consumeCodexInstructionSubmission(codex, '\r', 'submit'), false);
+  assert.equal(consumeAgentInstructionSubmission(codex, '\r', 'submit'), true);
+  assert.equal(consumeAgentInstructionSubmission(codex, '\r', 'submit'), false);
   assert.equal(
-    consumeCodexInstructionSubmission(codex, '\u001b[200~pasted prompt\u001b[201~', 'paste'),
+    consumeAgentInstructionSubmission(codex, '\u001b[200~pasted prompt\u001b[201~', 'paste'),
     false
   );
   assert.equal(
-    consumeCodexInstructionSubmission(codex, '\r', 'submit'),
+    consumeAgentInstructionSubmission(codex, '\r', 'submit'),
     true,
     'Bracketed paste must arm a later explicit submission.'
   );
-  assert.equal(consumeCodexInstructionSubmission(codex, '\u4f60\u597d', 'text'), false);
+  assert.equal(consumeAgentInstructionSubmission(codex, '\u4f60\u597d', 'text'), false);
   assert.equal(
-    consumeCodexInstructionSubmission(codex, '\r', 'submit'),
+    consumeAgentInstructionSubmission(codex, '\r', 'submit'),
     true,
     'Committed IME text must arm a later explicit submission.'
   );
-  assert.equal(consumeCodexInstructionSubmission(codex, 'draft', 'text'), false);
-  assert.equal(consumeCodexInstructionSubmission(codex, '\u001b', 'interrupt'), false);
+  assert.equal(consumeAgentInstructionSubmission(codex, 'draft', 'text'), false);
+  assert.equal(consumeAgentInstructionSubmission(codex, '\u001b', 'interrupt'), false);
   assert.equal(
-    consumeCodexInstructionSubmission(codex, '\r', 'submit'),
+    consumeAgentInstructionSubmission(codex, '\r', 'submit'),
     false,
     'Interrupt must clear an unsubmitted Codex prompt candidate.'
   );
   assert.equal(
-    consumeCodexInstructionSubmission(codex, 'legacy prompt\r'),
+    consumeAgentInstructionSubmission(codex, 'legacy prompt\r'),
     true,
     'Legacy clients may send editable text and CR in one chunk.'
   );
-  assert.equal(consumeCodexInstructionSubmission(codex, '   ', 'text'), false);
-  assert.equal(consumeCodexInstructionSubmission(codex, '\r', 'submit'), false);
-  assert.equal(recordCodexSubmission(codex).lifecycle, 'running');
+  assert.equal(consumeAgentInstructionSubmission(codex, '   ', 'text'), false);
+  assert.equal(consumeAgentInstructionSubmission(codex, '\r', 'submit'), false);
+  assert.equal(recordAgentSubmission(codex).lifecycle, 'running');
+  assert.equal(recordAgentHeuristicWaitingInput(codex).lifecycle, 'waiting-input');
+  assert.equal(codex.activitySource, 'heuristic');
+  assert.equal(codex.turnActive, true, 'Heuristic completion must retain delayed callback correlation.');
   const completed = {
     provider: 'codex',
     kind: 'turn-completed',
@@ -186,7 +257,7 @@ function assertLifecycleIdentity(
   };
   assert.equal(applyAgentProviderLifecycleEvent(codex, completed).lifecycle, 'waiting-input');
   assert.equal(applyAgentProviderLifecycleEvent(codex, completed).reason, 'duplicate');
-  recordCodexSubmission(codex);
+  recordAgentSubmission(codex);
   assert.equal(
     applyAgentProviderLifecycleEvent(codex, {
       ...completed,
@@ -199,6 +270,32 @@ function assertLifecycleIdentity(
   assert.equal(
     applyAgentProviderLifecycleEvent(codex, { ...completed, providerSessionId: 'thread-b', providerTurnId: 'turn-2' }).reason,
     'provider-session-mismatch'
+  );
+}
+
+function assertHeuristicEnhancementPolicy(
+  createAgentActivityHeuristicState,
+  evaluateAgentWaitingInputTransition,
+  recordAgentOutputHeuristics
+) {
+  const quietTurn = createAgentActivityHeuristicState();
+  recordAgentOutputHeuristics(quietTurn, 'working\r\n', 'working\r\n', 'claude', 100);
+  assert.equal(
+    evaluateAgentWaitingInputTransition(quietTurn, 1800).reason,
+    'fallback',
+    'Hard fallback remains available to startup/resume/interrupt recovery callers.'
+  );
+  assert.deepEqual(
+    evaluateAgentWaitingInputTransition(quietTurn, 1800, { allowHardFallback: false }),
+    { shouldTransition: false, shouldKeepPolling: true },
+    'Ordinary running turns must not finish from quiet time alone.'
+  );
+
+  recordAgentOutputHeuristics(quietTurn, '> ', 'working\r\n> ', 'claude', 2000);
+  assert.equal(
+    evaluateAgentWaitingInputTransition(quietTurn, 2300, { allowHardFallback: false }).reason,
+    'prompt',
+    'A positive PTY prompt remains a primary waiting-input signal.'
   );
 }
 
@@ -330,6 +427,47 @@ async function assertLaunchIntegration(createAgentFileActivitySession) {
     );
     await hooksDisabledClaude.dispose();
   }
+
+  for (const [envKey, fallbackReason] of [
+    ['CLAUDE_CODE_SAFE_MODE', 'claude-hooks-disabled-by-safe-mode-env'],
+    ['CLAUDE_CODE_SIMPLE', 'claude-hooks-disabled-by-simple-mode-env']
+  ]) {
+    const hooksDisabledClaude = createAgentFileActivitySession({
+      provider: 'claude',
+      command: 'claude',
+      extensionRootPath: extensionRoot,
+      storageRootPath,
+      fileActivityEnabled: true
+    });
+    const originalArgs = ['--permission-mode', 'plan'];
+    const hooksDisabledEnv = { [envKey]: '1' };
+    assert.deepEqual(
+      hooksDisabledClaude.configureLaunch(originalArgs, hooksDisabledEnv, tempDir),
+      originalArgs,
+      `${envKey}=1 must preserve argv instead of injecting hooks.`
+    );
+    assert.equal(hooksDisabledClaude.isProviderLifecycleEnabled(), false);
+    assert.equal(hooksDisabledClaude.getProviderLifecycleFallbackReason(), fallbackReason);
+    assert.equal(hooksDisabledEnv.DEV_SESSION_CANVAS_AGENT_FILE_EVENT_STREAM_PATH, undefined);
+    assert.equal(hooksDisabledEnv[envKey], '1', `${envKey} must remain inherited by Claude.`);
+    await hooksDisabledClaude.dispose();
+  }
+
+  const inactiveHooksEnvClaude = createAgentFileActivitySession({
+    provider: 'claude',
+    command: 'claude',
+    extensionRootPath: extensionRoot,
+    storageRootPath,
+    fileActivityEnabled: false
+  });
+  const inactiveHooksEnvArgs = inactiveHooksEnvClaude.configureLaunch(
+    [],
+    { CLAUDE_CODE_SAFE_MODE: '0', CLAUDE_CODE_SIMPLE: '' },
+    tempDir
+  );
+  assert.equal(inactiveHooksEnvClaude.isProviderLifecycleEnabled(), true);
+  assert.equal(inactiveHooksEnvArgs.at(-2), '--settings');
+  await inactiveHooksEnvClaude.dispose();
 
   const invalidClaude = createAgentFileActivitySession({
     provider: 'claude',

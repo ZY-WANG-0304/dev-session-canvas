@@ -6,10 +6,11 @@ import * as path from 'path';
 import {
   applyAgentProviderLifecycleEvent,
   confirmAgentInterrupt,
-  consumeCodexInstructionSubmission,
+  consumeAgentInstructionSubmission,
   createAgentProviderLifecycleState,
+  recordAgentHeuristicWaitingInput,
   recordAgentInterruptRequest,
-  recordCodexSubmission,
+  recordAgentSubmission,
   type AgentProviderLifecycleEvent,
   type AgentProviderLifecycleState
 } from '../common/agentProviderLifecycle';
@@ -799,33 +800,27 @@ class RuntimeSupervisorServer {
 
     if (session.kind === 'agent') {
       const providerLifecycle = session.agentProviderLifecycle;
-      const submittedInstruction =
-        session.provider === 'codex' && providerLifecycle
-          ? consumeCodexInstructionSubmission(providerLifecycle, params.data, params.intent)
-          : isAgentInstructionSubmission(params.data, params.intent);
+      const submittedInstruction = providerLifecycle
+        ? consumeAgentInstructionSubmission(providerLifecycle, params.data, params.intent)
+        : isAgentInstructionSubmission(params.data, params.intent);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      const lifecycleEnabled = providerLifecycle?.lifecycleEnabled === true;
-      if (lifecycleEnabled && params.intent === 'interrupt' && providerLifecycle) {
+      if (
+        params.intent === 'interrupt' &&
+        providerLifecycle &&
+        session.lifecycle === 'running'
+      ) {
         const interruptResult = recordAgentInterruptRequest(providerLifecycle);
         if (interruptResult.accepted) {
           resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
           this.queueAgentWaitingInput(session.sessionId);
         }
-      } else if (
-        submittedInstruction &&
-        lifecycleEnabled &&
-        session.provider === 'codex' &&
-        providerLifecycle
-      ) {
-        recordCodexSubmission(providerLifecycle);
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
-        session.lifecycle = 'running';
-        session.resumePhaseActive = false;
-        this.emitSessionState(session);
-      } else if (submittedInstruction && !lifecycleEnabled) {
+      } else if (submittedInstruction) {
+        if (providerLifecycle) {
+          recordAgentSubmission(providerLifecycle);
+        }
         resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
         session.lifecycle = 'running';
         session.resumePhaseActive = false;
@@ -1452,13 +1447,14 @@ class RuntimeSupervisorServer {
       return;
     }
 
-    if (session.lifecycleTimer) {
+    if (result.lifecycle === 'waiting-input' && session.lifecycleTimer) {
       clearTimeout(session.lifecycleTimer);
       session.lifecycleTimer = undefined;
     }
     session.lifecycle = result.lifecycle;
     if (result.lifecycle === 'running') {
       session.resumePhaseActive = false;
+      this.queueAgentWaitingInput(sessionId);
     } else {
       void this.maybeDiscoverAgentResumeSessionIdFromFiles(sessionId, 'waiting-input');
     }
@@ -1470,14 +1466,6 @@ class RuntimeSupervisorServer {
     if (!session || session.kind !== 'agent') {
       return;
     }
-    if (
-      session.agentProviderLifecycle?.lifecycleEnabled === true &&
-      session.lifecycle === 'running' &&
-      !session.agentProviderLifecycle.interruptRequested
-    ) {
-      return;
-    }
-
     if (session.lifecycleTimer) {
       clearTimeout(session.lifecycleTimer);
     }
@@ -1493,15 +1481,21 @@ class RuntimeSupervisorServer {
         return;
       }
 
-      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current));
+      const interruptRequested = current.agentProviderLifecycle?.interruptRequested === true;
+      const evaluation = evaluateAgentWaitingInputTransition(
+        this.ensureAgentActivityState(current),
+        Date.now(),
+        {
+          allowHardFallback: current.lifecycle !== 'running' || interruptRequested
+        }
+      );
       if (evaluation.shouldTransition) {
         current.lifecycleTimer = undefined;
-        if (
-          current.agentProviderLifecycle?.lifecycleEnabled === true &&
-          current.lifecycle === 'running'
-        ) {
-          const interruptResult = confirmAgentInterrupt(current.agentProviderLifecycle);
-          if (!interruptResult.accepted) {
+        if (current.agentProviderLifecycle) {
+          const transitionResult = interruptRequested
+            ? confirmAgentInterrupt(current.agentProviderLifecycle)
+            : recordAgentHeuristicWaitingInput(current.agentProviderLifecycle);
+          if (interruptRequested && !transitionResult.accepted) {
             return;
           }
         }
