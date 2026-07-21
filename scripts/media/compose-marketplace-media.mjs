@@ -90,7 +90,7 @@ export const MARKETPLACE_COPY = Object.freeze({
     compare: ['两种视图模式，按需选择。'],
     focus: ['发现需要关注的会话，立即聚焦。'],
     closing: ['既能统览全局，也能从容聚焦。'],
-    leftMode: '组合画布',
+    leftMode: '目录分组',
     rightMode: '窗格画廊'
   }
 });
