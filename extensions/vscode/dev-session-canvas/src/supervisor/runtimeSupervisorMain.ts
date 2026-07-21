@@ -1481,6 +1481,7 @@ class RuntimeSupervisorServer {
     ) {
       return;
     }
+    session.terminalStateTracker.enableBottomScreenActivityTracking();
     if (session.lifecycleTimer) {
       return;
     }

@@ -38,6 +38,9 @@ quiet fallback 得到的是可纠正的弱结论：同一回合后续重新输�
 - 观察：固定 120ms 采样可能与 120ms 两帧动画相位锁定，单看采样时最终字符会漏掉中间变化。
   证据：Supervisor fixture 首次使用 120ms 交替帧时复现；terminal tracker 现为每个已解析 output batch 维护单调 change version，轮询读取版本而不是只比较采样瞬间字符。
 
+- 观察：若 bottom activity 签名默认对所有 `SerializedTerminalStateTracker` 生效，普通 Terminal 的极端输出也会承担逐 batch 屏幕扫描，破坏既有洪峰性能边界。
+  证据：rebase 后首次 trusted smoke 在 9 万行 Terminal fixture 中超时，并出现 ptyHost heartbeat 告警；将追踪改为 Agent evaluator 显式 opt-in 后，同一 smoke 通过。Supervisor 容量回归中 CPU 从约 1320ms 降至 900ms，output complete 从约 272ms 降至 149ms。
+
 ## 决策记录
 
 - 决策：完全删除 prompt glyph lifecycle 特征；prompt 输出只按普通 PTY 输出刷新 quiet 时钟。
@@ -66,7 +69,7 @@ quiet fallback 得到的是可纠正的弱结论：同一回合后续重新输�
 
 ## 结果与复盘
 
-本计划完成。Agent 普通回合完全删除 prompt glyph、generic OSC/BEL 和 raw chunk spinner 的 completion 语义；有效 submit 或最近 PTY 输出启动 5000ms quiet clock。`SerializedTerminalStateTracker` 不做额外 serialize/flush，而是在现有 16ms parsed-output batch 后维护当前屏幕最下方非空内容区域的字符/样式签名和单调 change version，既能观察 Codex 的样式动画，也能避免固定采样与 spinner 同频时漏掉中间帧。
+本计划完成。Agent 普通回合完全删除 prompt glyph、generic OSC/BEL 和 raw chunk spinner 的 completion 语义；有效 submit 或最近 PTY 输出启动 5000ms quiet clock。Agent 会话选择性启用 `SerializedTerminalStateTracker` 活动追踪，不做额外 serialize/flush，而是在现有 16ms parsed-output batch 后维护当前屏幕最下方非空内容区域的字符/样式签名和单调 change version，既能观察 Codex 的样式动画，也能避免固定采样与 spinner 同频时漏掉中间帧；普通 Terminal 会话不承担这项扫描开销。
 
 quiet fallback 进入 `heuristic / best-effort waiting-input` 并保留 turn correlation。后续连续底部活动可以在约两个 polling tick 内恢复 `running`；用户输入后 600ms 的 composer 回显不累计强证据，provider authoritative completion 和已确认 interrupt 因 turn 不再 recoverable 而不会被重开。Host 与 Supervisor 共用相同 reducer；旧 Supervisor wire protocol 与 generation 不变，已有会话继续自然 drain。
 

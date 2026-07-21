@@ -39,6 +39,12 @@ try {
   assert.match(state.data, /alpha/u);
   assert.match(state.data, /beta/u);
 
+  assert.equal(
+    tracker.getBottomScreenActivityToken(),
+    '0:',
+    'Ordinary terminal trackers must not pay for Agent-only screen activity tracking.'
+  );
+  tracker.enableBottomScreenActivityTracking();
   const initialBottomSignature = tracker.getBottomScreenSignature();
   const initialBottomActivityToken = tracker.getBottomScreenActivityToken();
   tracker.write('\u001b[2D');
