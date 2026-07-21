@@ -99,13 +99,13 @@
 | `7-11s` | 双击放大 `storefront / UI Builder`，在真实 Claude Code 输入区提交固定任务，看到 `running` 后点击 fit view 回到全览。 | 无 | Take A，单宽屏主画面 |
 | `11-15s` | 双击放大 `design-system / Component Audit`，在真实 Claude Code 输入区提交固定任务，看到 `running` 后点击 fit view 回到全览。 | 无 | Take A，单宽屏主画面 |
 | `15-19s` | 双击放大 `release-tools / Release Validation`，在真实 Codex 输入区提交固定任务，看到 `running` 后点击 fit view 回到全览。Agent 在后台执行 `./run-e2e.sh`；`Contract Review` 随后以真实 OSC 9 显示 attention。 | 无 | Take A，单宽屏主画面 |
-| `19-20s` | Take A 缩到左侧；同一状态的 Take B 从右侧进入。两侧连续视频同时播放，背景切换为静态四 root 拓扑图，两个模式标签出现。 | `两种视图模式，按需选择。` | 两条真实连续视频的后期双宽屏合成 |
-| `20-26s` | 左侧保持 `rootGroups` 全景，右侧保持 `paneGallery / dynamic` 四 pane。两侧 root 顺序、标题和状态严格对应，attention 与 TUI 动效持续播放，不得定帧；字幕约在 `25.8s` 消失，`26s` 立即进入下一转场。 | `两种视图模式，按需选择。`，结束后不再空等 | 两条真实连续视频的后期双宽屏合成 |
-| `26-29s` | 鼠标清楚点击左下角 `eye` 进入 `sideThumbnails`；左侧宽屏同步退出，右侧 `paneGallery` 无透视变形地扩展为单宽屏主画面，模式标签退场。 | 无 | 后期转场到连续 Take B |
+| `19-20s` | Take A 缩到左侧；同一状态的 Take B 从右侧进入。两侧连续视频同时播放，背景切换为静态四 root 拓扑图，两个模式标签与顶部项目品牌条淡入。 | `两种视图模式，按需选择。` | 两条真实连续视频的后期双宽屏合成 |
+| `20-26s` | 左侧保持 `rootGroups` 全景，右侧保持 `paneGallery / dynamic` 四 pane。两侧 root 顺序、标题和状态严格对应，attention 与 TUI 动效持续播放，不得定帧；顶部品牌条保持可见，字幕约在 `25.8s` 消失，`26s` 立即进入下一转场。 | `两种视图模式，按需选择。`，结束后不再空等 | 两条真实连续视频的后期双宽屏合成 |
+| `26-29s` | 鼠标清楚点击左下角 `eye` 进入 `sideThumbnails`；左侧宽屏同步退出，右侧 `paneGallery` 无透视变形地扩展为单宽屏主画面，模式标签与顶部品牌条同步退场。 | 无 | 后期转场到连续 Take B |
 | `29-35s` | 双击带 attention 的 `payments-api` 缩略图，使 `Contract Review` 成为主画板；此时只切换 active root，attention 仍保留。 | `发现需要关注的会话，立即聚焦。` | Take B，单宽屏主画面 |
 | `35-41s` | 点击主画板中的 `Contract Review`，真实认领并解除 attention；输入并提交 `Use full jitter. Cap at 3 attempts.`，Agent 随后从 waiting-input 恢复 running。 | 无 | Take B，单宽屏主画面 |
 | `41-49.2s` | 双击 `release-tools` 缩略图。主画板中的 `Release Validation` 显示 Codex 真实执行脚本后的简短 pass summary 与 exit code 0；输出必须来自 Agent TUI，不能后期贴字或换成 Terminal 节点。 | 无 | Take B，单宽屏主画面 |
-| `49.2-54s` | 点击 `globe` 返回 `dynamic` 四 pane 全览；收尾字幕与点击同步出现，并在产品自身回全览动画和动态全览期间保持可读。四个 root 仍在视野中，状态已收敛；最后 1.5 秒淡入产品名。 | `既能统览全局，也能从容聚焦。` | Take B，单宽屏主画面 + 产品落版 |
+| `49.2-54s` | 点击 `globe` 返回 `dynamic` 四 pane 全览；收尾字幕与点击同步出现，并在产品自身回全览动画和动态全览期间保持可读。四个 root 仍在视野中，状态已收敛；最后 1.5 秒在顶部安全区淡入项目图标、名称和 GitHub 地址。 | `既能统览全局，也能从容聚焦。` | Take B，单宽屏主画面 + 产品落版 |
 
 ## 字幕与模式标签
 
@@ -121,6 +121,8 @@
 | 收尾 | `既能统览全局，也能从容聚焦。` | `See the whole picture.`<br>`Focus with ease.` |
 | 左侧模式标签 | `组合画布` | `Root Groups` |
 | 右侧模式标签 | `窗格画廊` | `Pane Gallery` |
+
+产品落版固定使用仓库 `dev-session-canvas-icon.svg`、名称 `DevSessionCanvas` 与地址 `github.com/ZY-WANG-0304/dev-session-canvas`；地址不做语言本地化，也不进入主字幕区域。MP4 在双窗对比段与最后 1.5 秒显示横向品牌条；GIF 八帧都在左上安全区显示紧凑品牌角标。
 
 ### 可读性硬约束
 
@@ -148,7 +150,7 @@
 
 ## GIF Storyboard
 
-GIF 不从 MP4 均匀抽帧，也不使用未经审阅的原始截图。八张 frame 使用三种明确构图：先以 Root Groups 单画面建立全局工作现场，中间用双宽屏解释两种模式，最后以 Pane Gallery 单画面讲聚焦、决策和验证。每张 frame 仍保留同状态的左右 checkpoint 来源，但单模式 frame 只选择与当前叙事对应的一侧，不把另一侧缩小塞入画面。
+GIF 不从 MP4 均匀抽帧，也不使用未经审阅的原始截图。八张 frame 使用三种明确构图：先以 Root Groups 单画面建立全局工作现场，中间用双宽屏解释两种模式，最后以 Pane Gallery 单画面讲聚焦、决策和验证。每张 frame 仍保留同状态的左右 checkpoint 来源，但单模式 frame 只选择与当前叙事对应的一侧，不把另一侧缩小塞入画面。项目图标、名称和 GitHub 地址组成的紧凑品牌角标固定在左上 UI 框外安全区，八帧位置与尺寸保持一致。
 
 | 顺序 | Frame ID | 构图 | 内容 | 字幕 | 停留 |
 |---|---|---|---|---|---|
@@ -159,7 +161,7 @@ GIF 不从 MP4 均匀抽帧，也不使用未经审阅的原始截图。八张 f
 | 5 | `attention-focused` | Pane Gallery 单画面 | `sideThumbnails` 放大展示并聚焦 `payments-api`，尚未点击 Agent；该帧的成对 checkpoint 同时作为 PNG Hero 的真实产品画面来源 | `发现需要关注的会话，立即聚焦。` | `2.4s` |
 | 6 | `decision-submitted` | Pane Gallery 单画面 | Agent 已在点击时清除 attention；决策提交后恢复 running | 无 | `0.8s` |
 | 7 | `tests-passed` | Pane Gallery 单画面 | 放大展示真实 `Release Validation` Agent pass summary 与 exit code 0 | 无 | `0.8s` |
-| 8 | `all-in-view` | Pane Gallery 单画面 | `dynamic` 四 pane 收尾；使用仓库 `dev-session-canvas-icon.svg` 与 `DevSessionCanvas` 产品名落版，不再使用临时 `DSC` 文字方框 | 无 | `1.6s` |
+| 8 | `all-in-view` | Pane Gallery 单画面 | `dynamic` 四 pane 收尾；左上固定品牌角标继续保留，不额外重复底部大号落版 | 无 | `1.6s` |
 
 目标总时长为 `10.0s`。如果文件体积超限，优先减少颜色或轻量缩短非字幕帧；不能删除 `attention-arrives`、`attention-focused` 或把字幕帧压到最低停留时间以下。
 
@@ -167,7 +169,7 @@ GIF 不从 MP4 均匀抽帧，也不使用未经审阅的原始截图。八张 f
 
 - PNG 不复制 GIF 最后一帧，也不直接缩放任一 GIF frame。它使用 `attention-focused` 的同一对真实 checkpoint 独立合成静态 Hero；`all-in-view` 仍只负责 GIF 收尾。
 - 左右产品窗口严格保持 50/50：母版中各为 `1200x750`，模式说明 top 为 `400px`，窗口 top 为 `550px`，底部保留 `300px` 背景留白；左侧 `组合画布`、右侧 `窗格画廊`，四个 root 对应一致，`payments-api` attention 明确可见。右侧必须展示 `payments-api` 主任务和其他 root 的 `sideThumbnails`，不能退回 `dynamic` 四 pane 全览。左右同屏仍是后期比较，不暗示产品原生同时打开两种模式。
-- Hero 使用仓库 `dev-session-canvas-icon.svg`、`DevSessionCanvas` 产品名和说明 `VS Code 多 Agent 协作工作台` / `Multi-agent workbench for VS Code`。
+- Hero 左上品牌组使用仓库 `dev-session-canvas-icon.svg`、`DevSessionCanvas` 产品名与 GitHub 地址，右上保留说明 `VS Code 多 Agent 协作工作台` / `Multi-agent workbench for VS Code`。
 - Hero 中文主标题为 `所有 Agent，跨根目录汇聚于一张画布。`，英文为 `Every agent. Every root. One canvas.`。这里必须使用 root / 根目录，不能把一个 folder 写成 workspace 或 repository。
 - 组合画布说明为 `各根目录的会话，平铺在同一张画布中。` / `Sessions from every root, tiled together on one canvas.`。
 - 窗格画廊说明为 `兼顾单任务聚焦与全局任务掌控。` / `Focus on one task while staying in control of the rest.`；不使用会暗示自动质量检测的“质检”。
@@ -199,7 +201,8 @@ GIF 不从 MP4 均匀抽帧，也不使用未经审阅的原始截图。八张 f
 - 两段主窗口转场逐帧连续，位置和尺寸沿同一 easing 同时变化；任一单帧缩放跳变都必须返工。
 - GIF 的八张 frame 均有左右 checkpoint 来源记录；PNG metadata 记录显式 Hero frame ID，而不是“last frame”。
 - GIF 第 1-2 帧只显示 Root Groups 大画面，第 3-4 帧显示双模式，第 5-8 帧只显示 Pane Gallery 大画面；Pane Gallery 聚焦字幕不得继续覆盖双窗对比构图。
-- GIF 最后一帧的产品标识使用 `extensions/vscode/dev-session-canvas/images/dev-session-canvas-icon.svg`；禁止另画近似图标或继续使用 `DSC` 占位字标。
+- GIF 八帧左上固定品牌角标使用 `extensions/vscode/dev-session-canvas/images/dev-session-canvas-icon.svg`、`DevSessionCanvas` 与固定 GitHub 地址；禁止另画近似图标、继续使用 `DSC` 占位字标或在最后一帧重复第二套大号落版。
+- MP4 顶部品牌条、GIF 左上固定角标与 PNG 左上品牌组都必须同时包含项目图标、名称和 GitHub 地址；三者分别适配各自安全区，不能遮挡真实产品像素。MP4 品牌条在 `19-26s` 双窗对比中保持可见，进入 Pane Gallery 单窗时随模式标签平滑淡出，并在最后 1.5 秒重新淡入。
 - 中英文分别检查字幕字体、断行、停留时长和安全区；375px 预览下仍能完整读完主字幕。
 - 最终素材无 notification toast、鼠标遮挡、调试 overlay、录制工具窗口或未经说明的测试控制 UI。
 - 最终六份公开资产不得出现维护者用户名、`/home/users`、当前仓库绝对路径、认证路径或其他本机环境标识；该项每次制作通过临时帧检查和人工审阅确认，不固化为长期素材测试脚本。

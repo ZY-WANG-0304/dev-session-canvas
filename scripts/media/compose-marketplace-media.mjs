@@ -14,6 +14,9 @@ export const GIF_SIZE = Object.freeze({ width: 1440, height: 900 });
 export const SOURCE_SIZE = Object.freeze({ width: 1440, height: 900 });
 export const HERO_FRAME_ID = 'attention-focused';
 export const PRODUCT_ICON_RELATIVE_PATH = 'extensions/vscode/dev-session-canvas/images/dev-session-canvas-icon.svg';
+export const PRODUCT_NAME = 'DevSessionCanvas';
+export const PROJECT_GITHUB_URL = 'https://github.com/ZY-WANG-0304/dev-session-canvas';
+export const PROJECT_GITHUB_DISPLAY = 'github.com/ZY-WANG-0304/dev-session-canvas';
 
 export const STORYBOARD = Object.freeze([
   { id: 'overview-start', durationMs: 800, layout: 'root-single' },
@@ -307,8 +310,8 @@ export async function renderMarketplaceMedia({ manifest, manifestPath, language,
       });
     }
     await renderTransparentOverlay(browser, {
-      outputPath: path.join(overlayDir, 'product.png'),
-      productLockup: true,
+      outputPath: path.join(overlayDir, 'video-product.png'),
+      productLockup: 'video',
       productIconDataUrl,
       language
     });
@@ -386,6 +389,7 @@ export async function renderMarketplaceMedia({ manifest, manifestPath, language,
           path: PRODUCT_ICON_RELATIVE_PATH,
           sha256: await sha256File(PRODUCT_ICON_PATH)
         },
+        brand: resolveBrandIdentity(),
         sourceManifest: path.resolve(manifestPath),
         output: final,
         renderedAt: new Date().toISOString()
@@ -531,6 +535,8 @@ function resolveChromeCliExecutable() {
 async function renderVideo({ resolved, overlayDir, language, outputPath }) {
   const backgroundMaster = path.join(overlayDir, 'background.png');
   const background = path.join(overlayDir, 'background-mp4.png');
+  const productMaster = path.join(overlayDir, 'video-product.png');
+  const product = path.join(overlayDir, 'video-product-mp4.png');
   const timeline = resolveVideoTimelineSources(resolved);
 
   runCommand('ffmpeg', [
@@ -539,6 +545,13 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
     '-vf', `scale=${MP4_SIZE.width}:${MP4_SIZE.height}:flags=lanczos`,
     '-frames:v', '1', background
   ], 'MP4 background preparation failed', 30000);
+
+  runCommand('ffmpeg', [
+    '-y', '-hide_banner', '-loglevel', 'error',
+    '-i', productMaster,
+    '-vf', `scale=${MP4_SIZE.width}:${MP4_SIZE.height}:flags=lanczos,format=rgba`,
+    '-frames:v', '1', product
+  ], 'MP4 product lockup preparation failed', 30000);
 
   const textDir = path.join(overlayDir, 'video-text');
   await fs.mkdir(textDir, { recursive: true });
@@ -549,10 +562,8 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
   }
   textFiles.leftMode = path.join(textDir, 'left-mode.txt');
   textFiles.rightMode = path.join(textDir, 'right-mode.txt');
-  textFiles.product = path.join(textDir, 'product.txt');
   await fs.writeFile(textFiles.leftMode, `${MARKETPLACE_COPY[language].leftMode}\n`, 'utf8');
   await fs.writeFile(textFiles.rightMode, `${MARKETPLACE_COPY[language].rightMode}\n`, 'utf8');
-  await fs.writeFile(textFiles.product, 'DevSessionCanvas\n', 'utf8');
 
   const single = scaleRect(SINGLE_WINDOW, MP4_SIZE.width / MASTER_SIZE.width);
   const dualLeft = scaleRect(DUAL_LEFT_WINDOW, MP4_SIZE.width / MASTER_SIZE.width);
@@ -597,7 +608,8 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
     inputs: [
       ...loopedImageInput(background, COMPARE_ENTER_DURATION_SECONDS),
       ...videoInput(timeline.compareEnter.left.path, timeline.compareEnter.left.inMs),
-      ...videoInput(timeline.compareEnter.right.path, timeline.compareEnter.right.inMs)
+      ...videoInput(timeline.compareEnter.right.path, timeline.compareEnter.right.inMs),
+      ...loopedImageInput(product, COMPARE_ENTER_DURATION_SECONDS)
     ],
     filter: [
       buildCompareEnterLayoutFilter(),
@@ -623,14 +635,16 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
       }),
       drawTextFilter({
         input: 'withLabels',
-        output: 'out',
+        output: 'withCaption',
         textFile: textFiles.compare,
         fontSize: 80,
         x: '(w-text_w)/2',
         y: 1015,
         enable: 'gte(t,0.2)',
         alpha: 'clip((t-0.2)/0.25,0,1)'
-      })
+      }),
+      '[3:v]fps=30,format=rgba,fade=t=in:st=0:d=0.2:alpha=1[brand]',
+      '[withCaption][brand]overlay=0:0:shortest=1[out]'
     ].join(';'),
     outputPath: segments.compareEnter
   });
@@ -640,7 +654,8 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
     inputs: [
       ...loopedImageInput(background, COMPARE_STABLE_DURATION_SECONDS),
       ...videoInput(timeline.compareStable.left.path, timeline.compareStable.left.inMs),
-      ...videoInput(timeline.compareStable.right.path, timeline.compareStable.right.inMs)
+      ...videoInput(timeline.compareStable.right.path, timeline.compareStable.right.inMs),
+      ...loopedImageInput(product, COMPARE_STABLE_DURATION_SECONDS)
     ],
     filter: [
       buildStableCompareLayoutFilter(),
@@ -662,13 +677,15 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
       }),
       drawTextFilter({
         input: 'withLabels',
-        output: 'out',
+        output: 'withCaption',
         textFile: textFiles.compare,
         fontSize: 80,
         x: '(w-text_w)/2',
         y: 1015,
         enable: `lte(t,${VIDEO_CAPTION_TIMELINE.compareStableEndSeconds})`
-      })
+      }),
+      '[3:v]fps=30,format=rgba[brand]',
+      '[withCaption][brand]overlay=0:0:shortest=1[out]'
     ].join(';'),
     outputPath: segments.compareStable
   });
@@ -678,7 +695,8 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
     inputs: [
       ...videoInput(timeline.paneExpand.pane.path, timeline.paneExpand.pane.inMs),
       ...loopedImageInput(background, PANE_EXPAND_DURATION_SECONDS),
-      ...videoInput(timeline.paneExpand.left.path, timeline.paneExpand.left.inMs)
+      ...videoInput(timeline.paneExpand.left.path, timeline.paneExpand.left.inMs),
+      ...loopedImageInput(product, PANE_EXPAND_DURATION_SECONDS)
     ],
     filter: [
       '[0:v]setpts=PTS-STARTPTS[paneSource]',
@@ -695,14 +713,16 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
       }),
       drawTextFilter({
         input: 'withLeftLabel',
-        output: 'out',
+        output: 'withLabels',
         textFile: textFiles.rightMode,
         fontSize: 40,
         x: `${dualRight.x}+(${dualRight.width}-text_w)/2`,
         y: 203,
         enable: 'between(t,0,0.8)',
         alpha: '1-clip(t/0.65,0,1)'
-      })
+      }),
+      '[3:v]fps=30,format=rgba,fade=t=out:st=0:d=0.65:alpha=1[brand]',
+      '[withLabels][brand]overlay=0:0:shortest=1[out]'
     ].join(';'),
     outputPath: segments.paneExpand
   });
@@ -714,7 +734,8 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
         timeline.paneStable.pane.path,
         timeline.paneStable.pane.inMs
       ),
-      ...loopedImageInput(background, PANE_STABLE_DURATION_SECONDS)
+      ...loopedImageInput(background, PANE_STABLE_DURATION_SECONDS),
+      ...loopedImageInput(product, PANE_STABLE_DURATION_SECONDS)
     ],
     filter: [
       buildStableSingleLayoutFilter({ backgroundInput: '1:v', paneInput: '0:v' }),
@@ -737,15 +758,8 @@ async function renderVideo({ resolved, overlayDir, language, outputPath }) {
         y: language === 'en' ? 972 : 1020,
         enable: `between(t,${VIDEO_CAPTION_TIMELINE.closingStartSeconds},${VIDEO_CAPTION_TIMELINE.closingEndSeconds})`
       }),
-      drawTextFilter({
-        input: 'withClosing',
-        output: 'out',
-        textFile: textFiles.product,
-        fontSize: 44,
-        x: '(w-text_w)/2',
-        y: 8,
-        enable: `between(t,${VIDEO_CAPTION_TIMELINE.productStartSeconds},${VIDEO_CAPTION_TIMELINE.productEndSeconds})`
-      })
+      `[2:v]fps=30,format=rgba,fade=t=in:st=${VIDEO_CAPTION_TIMELINE.productStartSeconds}:d=0.2:alpha=1[brand]`,
+      `[withClosing][brand]overlay=0:0:shortest=1:enable='between(t,${VIDEO_CAPTION_TIMELINE.productStartSeconds},${VIDEO_CAPTION_TIMELINE.productEndSeconds})'[out]`
     ].join(';'),
     outputPath: segments.paneStable
   });
@@ -1164,6 +1178,7 @@ async function buildValidationReport({ manifest, manifestPath, language, resolve
       path: PRODUCT_ICON_RELATIVE_PATH,
       sha256: await sha256File(PRODUCT_ICON_PATH)
     },
+    brand: resolveBrandIdentity(),
     videoSourceHashes: await Promise.all([
       ['takeA', resolved.takes.rootGroups.clip],
       ['rootComparison', resolved.comparisonClips.rootGroups],
@@ -1189,7 +1204,12 @@ async function buildValidationReport({ manifest, manifestPath, language, resolve
 }
 
 function storyboardFramePresentations() {
-  return STORYBOARD.map(({ id, layout, captionKey }) => ({ id, layout, captionKey }));
+  return STORYBOARD.map(({ id, layout, captionKey }) => ({
+    id,
+    layout,
+    captionKey,
+    productLockup: 'persistent'
+  }));
 }
 
 function validateTake(errors, take, field, expectedMode, minimumDurationMs) {
@@ -1332,7 +1352,7 @@ function overlayDocument({ captionLines, modeLabels, productLockup, productIconD
     content.push(`<div class="caption ${language === 'en' ? 'english' : 'chinese'}">${captionLines.map(escapeHtml).join('<br>')}</div>`);
   }
   if (productLockup) {
-    content.push(productLockupMarkup(productIconDataUrl));
+    content.push(productLockupMarkup(productIconDataUrl, productLockup));
   }
   return htmlDocument(`<main class="transparent-layer">${content.join('')}</main>`, `${baseCss()}${overlayCss()}`);
 }
@@ -1350,7 +1370,10 @@ function heroDocument({ language, leftDataUrl, rightDataUrl, productIconDataUrl 
       <header class="hero-brand">
         <div class="hero-brand-lockup">
           <img class="hero-brand-icon" src="${productIconDataUrl}" alt="">
-          <span>DevSessionCanvas</span>
+          <div class="hero-brand-copy">
+            <span class="hero-brand-name">${PRODUCT_NAME}</span>
+            <span class="hero-brand-url">${PROJECT_GITHUB_DISPLAY}</span>
+          </div>
         </div>
         <div class="hero-descriptor">${escapeHtml(copy.descriptor)}</div>
       </header>
@@ -1376,9 +1399,7 @@ function storyboardDocument({ frame, language, leftDataUrl, rightDataUrl, produc
   const caption = captionKey
     ? `<div class="caption ${language === 'en' ? 'english' : 'chinese'}">${MARKETPLACE_COPY[language][captionKey].map(escapeHtml).join('<br>')}</div>`
     : '';
-  const product = presentation.productLockup
-    ? productLockupMarkup(productIconDataUrl)
-    : '';
+  const product = productLockupMarkup(productIconDataUrl, 'gif');
   return htmlDocument(`
     <main class="background">
       ${backgroundInnerMarkup()}
@@ -1404,15 +1425,25 @@ export function resolveHeroPresentation(language) {
     },
     modeTop: HERO_MODE_TOP,
     footerLayout: 'none',
+    brand: resolveBrandIdentity(),
     copy: HERO_COPY[language]
   };
 }
 
-function productLockupMarkup(productIconDataUrl) {
+function resolveBrandIdentity() {
+  return {
+    productName: PRODUCT_NAME,
+    projectUrl: PROJECT_GITHUB_URL,
+    projectUrlDisplay: PROJECT_GITHUB_DISPLAY
+  };
+}
+
+function productLockupMarkup(productIconDataUrl, placement) {
   if (!productIconDataUrl) {
     throw new Error('Product lockup requires the Dev Session Canvas icon');
   }
-  return `<div class="product-lockup"><img class="product-icon" src="${productIconDataUrl}" alt=""><span>DevSessionCanvas</span></div>`;
+  const placementClass = placement === 'video' ? ' video' : ' gif';
+  return `<div class="product-lockup${placementClass}"><img class="product-icon" src="${productIconDataUrl}" alt=""><span class="product-name">${PRODUCT_NAME}</span><span class="product-divider" aria-hidden="true"></span><span class="product-url">${PROJECT_GITHUB_DISPLAY}</span></div>`;
 }
 
 export function resolveStoryboardPresentation(frameId) {
@@ -1423,7 +1454,7 @@ export function resolveStoryboardPresentation(frameId) {
   return {
     layout: specification.layout,
     captionKey: specification.captionKey,
-    productLockup: frameId === 'all-in-view'
+    productLockup: 'persistent'
   };
 }
 
@@ -1506,16 +1537,32 @@ function overlayCss() {
     .mode-label.single.pane::before { background: #5b94c7; }
     .caption { position: absolute; left: 180px; right: 180px; bottom: 82px; min-height: 178px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 106px; font-weight: 600; line-height: 1.24; letter-spacing: -.025em; color: #f5faf9; text-shadow: 0 2px 18px rgba(0, 0, 0, .75); }
     .caption.english { letter-spacing: -.035em; }
-    .product-lockup { position: absolute; left: 0; right: 0; bottom: 74px; display: flex; align-items: center; justify-content: center; gap: 20px; color: #eff8f6; font-size: 70px; line-height: 1; font-weight: 600; letter-spacing: -.035em; }
+    .product-lockup { position: absolute; left: 0; right: 0; bottom: 74px; display: flex; align-items: center; justify-content: center; gap: 24px; color: #eff8f6; line-height: 1; }
     .product-icon { display: block; width: 72px; height: 72px; object-fit: contain; }
+    .product-name { font-size: 64px; font-weight: 600; letter-spacing: -.035em; }
+    .product-divider { width: 1px; height: 44px; background: rgba(142, 183, 180, .38); }
+    .product-url { color: #9cb3b1; font-size: 34px; font-weight: 400; letter-spacing: -.01em; }
+    .product-lockup.video { top: 10px; bottom: auto; height: 64px; gap: 18px; }
+    .product-lockup.video .product-icon { width: 52px; height: 52px; }
+    .product-lockup.video .product-name { font-size: 48px; }
+    .product-lockup.video .product-divider { height: 36px; }
+    .product-lockup.video .product-url { font-size: 29px; }
+    .product-lockup.gif { top: 12px; bottom: auto; left: 80px; right: auto; height: 56px; justify-content: flex-start; gap: 12px; }
+    .product-lockup.gif .product-icon { width: 40px; height: 40px; }
+    .product-lockup.gif .product-name { font-size: 34px; }
+    .product-lockup.gif .product-divider { height: 28px; }
+    .product-lockup.gif .product-url { font-size: 21px; }
   `;
 }
 
 function heroCss() {
   return `
-    .hero-brand { position: absolute; left: 120px; right: 120px; top: 58px; height: 58px; display: flex; align-items: center; justify-content: space-between; }
-    .hero-brand-lockup { display: flex; align-items: center; gap: 18px; color: #eff8f6; font-size: 42px; line-height: 1; font-weight: 600; letter-spacing: -.03em; }
-    .hero-brand-icon { display: block; width: 56px; height: 56px; object-fit: contain; }
+    .hero-brand { position: absolute; left: 120px; right: 120px; top: 48px; height: 82px; display: flex; align-items: center; justify-content: space-between; }
+    .hero-brand-lockup { display: flex; align-items: center; gap: 20px; color: #eff8f6; }
+    .hero-brand-icon { display: block; width: 64px; height: 64px; object-fit: contain; }
+    .hero-brand-copy { display: flex; flex-direction: column; gap: 9px; }
+    .hero-brand-name { font-size: 42px; line-height: 1; font-weight: 600; letter-spacing: -.03em; }
+    .hero-brand-url { color: #8fa9a6; font-size: 27px; line-height: 1; font-weight: 400; letter-spacing: -.005em; }
     .hero-descriptor { color: #94aaa8; font-size: 28px; line-height: 1; font-weight: 400; letter-spacing: .01em; }
     .hero-headline { position: absolute; left: 120px; right: 120px; top: 190px; margin: 0; color: #f2f8f7; font-size: 84px; line-height: 1.08; font-weight: 600; letter-spacing: -.04em; }
     .hero.chinese .hero-headline { font-size: 80px; letter-spacing: -.02em; }

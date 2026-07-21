@@ -26,7 +26,7 @@ related_plans:
   - docs/exec-plans/completed/marketplace-png-hero-thumbnail-capability-rail.md
   - docs/exec-plans/completed/marketplace-png-hero-footer-simplification.md
   - docs/exec-plans/completed/marketplace-public-path-rerecord-review-followup.md
-updated_at: 2026-07-20
+updated_at: 2026-07-21
 ---
 
 # Marketplace README 素材自动化
@@ -158,14 +158,15 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 
 ### 7.4 MP4、GIF 与 PNG 规则
 
-- MP4 使用一条约 54 秒的编辑时间线。单宽屏主画面保留真实交互细节与外部字幕带；中段双宽屏来自 Take A / Take B 的同状态录制源。
-- GIF 不从完整 MP4 均匀抽帧，也不直接拼未经审阅的原始 checkpoint。它由剧本列出的八张三段式 storyboard frame 组成：前两张只选择 Root Groups checkpoint，中间两张合成左右 checkpoint，后四张只选择 Pane Gallery checkpoint；每张 frame 都记录左右 checkpoint 来源、layout、语言、字幕和停留时间。
+- MP4 使用一条约 54 秒的编辑时间线。单宽屏主画面保留真实交互细节与外部字幕带；中段双宽屏来自 Take A / Take B 的同状态录制源。顶部横向项目落版在 `19-26s` 双窗对比中保持可见，进入 Pane Gallery 单窗时随模式标签平滑淡出，并在最后 1.5 秒重新淡入；落版包含正式 icon、产品名和 GitHub 地址，始终与底部字幕错开。
+- GIF 不从完整 MP4 均匀抽帧，也不直接拼未经审阅的原始 checkpoint。它由剧本列出的八张三段式 storyboard frame 组成：前两张只选择 Root Groups checkpoint，中间两张合成左右 checkpoint，后四张只选择 Pane Gallery checkpoint；每张 frame 都记录左右 checkpoint 来源、layout、语言、字幕和停留时间。八帧左上 UI 框外固定显示同一紧凑品牌角标，最后一帧不重复第二套大号落版。
 - PNG 从合成母版单独导出，不能从 GIF 解码回取，也不能直接缩放任一 GIF storyboard frame。默认 Hero frame ID 是 `attention-focused`，只复用该 ID 下同一状态的成对真实 checkpoint；Hero HTML/CSS 与 GIF frame 分开渲染。
-- PNG 的两个产品窗口严格 50/50，在母版中分别为 `1200x750`，模式说明 top 为 `400px`，窗口 top 为 `550px`，底部只保留 `300px` 低对比背景；左右显示组合画布与窗格画廊，右侧使用真实 `sideThumbnails` 状态。Hero 使用真实 SVG icon、产品名、产品说明、价值主标题和两种模式说明；不再增加底部能力条、图标或箭头，这些后期元素只能放在 UI 框外。
+- PNG 的两个产品窗口严格 50/50，在母版中分别为 `1200x750`，模式说明 top 为 `400px`，窗口 top 为 `550px`，底部只保留 `300px` 低对比背景；左右显示组合画布与窗格画廊，右侧使用真实 `sideThumbnails` 状态。Hero 左上品牌组使用真实 SVG icon、产品名和 GitHub 地址，右上保留产品说明，下方保持价值主标题和两种模式说明；不再增加底部能力条、图标或箭头，这些后期元素只能放在 UI 框外。
 - Hero 文案必须使用 root / 根目录，不能把一个 folder 等同于 VS Code workspace，也不能假设它是 Git repository。组合画布表达各 root 会话在一张平铺画布中；窗格画廊表达单任务聚焦与全局任务掌控之间的平衡，不使用“质检”。精确中英文以剧本为准。
 - PNG 不再要求等于 GIF 最后一帧。GIF 最后一帧为 `all-in-view`；只有人工评审显式变更 Hero frame ID 后，PNG 才能选择其他成对 checkpoint。
-- GIF `all-in-view` 的产品落版必须直接嵌入仓库 `extensions/vscode/dev-session-canvas/images/dev-session-canvas-icon.svg`，并在 validation report 中记录其路径与 SHA-256；不使用临时 `DSC` 文字方框或后期重画近似 icon。
-- 导出日志或 metadata 必须记录 PNG 使用的 Hero frame ID、50/50 窗口规格和精确双语 presentation，不能只依赖帧排序推断。
+- GIF 每个 storyboard frame 的固定品牌角标都必须直接嵌入仓库 `extensions/vscode/dev-session-canvas/images/dev-session-canvas-icon.svg`，同时显示 `DevSessionCanvas` 与 `github.com/ZY-WANG-0304/dev-session-canvas`；不使用临时 `DSC` 文字方框、后期重画近似 icon 或最后一帧重复落版。
+- MP4、GIF 与 PNG 的地址统一显示为 `github.com/ZY-WANG-0304/dev-session-canvas`，metadata 同时记录完整 `https://` URL；地址不本地化，不作为主字幕，也不通过全程水印遮挡产品像素。
+- 导出日志或 metadata 必须记录 PNG 使用的 Hero frame ID、50/50 窗口规格、精确双语 presentation、产品名与 GitHub 地址，不能只依赖帧排序推断。
 - 正式素材中不出现文件活动、文件节点、源码、diff、模板操作或节点创建教学。
 
 ### 7.5 资产路径与语言版本
@@ -247,6 +248,7 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 10. `.debug/marketplace-media/review/gif-redesign/en/gif-decoded-contact.png` 与中文对应 contact sheet 逐帧确认 2 张 Root 单画面、2 张双模式和 4 张 Pane 单画面；`gif-mobile-375-contact.png` 确认比较字幕与聚焦字幕在移动端宽度下完整可读，`tests-passed` 的真实 Agent 结果比旧双窗构图更清楚。`final-icon-frame.png` 及 375px 版本确认最后一帧使用真实双色 `dev-session-canvas-icon.svg`，不再出现 `DSC` 占位字标。
 11. `.debug/marketplace-media/review/png-hero-clean-footer/` 保存第十一轮中英文 `1180px` 与 `375px` Hero 预览、当时的机器可读 JSON 与 checksum；这些 hash 在第十二轮真实重录后只作为历史证据，不再校验当前正式资产。
 12. `.debug/marketplace-media/review/public-path-rerecord/` 保存当前中英文 MP4 contact sheet、GIF 八帧 contact sheet、Hero `1180px / 375px` 预览与 `PUBLISHED_SHA256SUMS`。人工逐帧确认产品像素只出现中性 `/tmp/dev-session-canvas-marketplace-media...` cwd；六个正式二进制的可读字符串检查也未命中 `/home/users`、维护者用户名或 worktree 路径。该检查是本次素材验收证据，不新增长期跟踪的素材测试脚本。
+13. `.debug/marketplace-media/review/github-branding-candidate/` 保存第十三轮的中英文 Hero `1180px / 375px`、GIF 八帧与首尾全分辨率帧、MP4 双窗品牌条 `1180px` 预览及进入/退出关键帧。两个 compositor validation report 均为 `passed: true`，并为八个 GIF presentation 记录 `productLockup: persistent`；六件套完整解码、MP4 blackdetect 0 命中、公开路径扫描、`npm run build`、`npm run typecheck` 与 `git diff --check` 均通过。用户于 2026-07-21 完成视觉确认，因此 `validation_status` 恢复为“已验证”。
 
 ### 8.3 维护边界与历史证据
 
@@ -279,3 +281,5 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 第十一轮不增加任何新内容，只重新分配纵向空间：主标题 top 调整为 `190px`，模式区 top 为 `400px`，窗口 top 为 `550px`，两个 `1200x750` 窗口底边落在 `1300px`，母版底部留白从最初无 footer 版本的 `440px` 收到 `300px`。中英文三档预览确认画面不再头重脚轻，MP4/GIF 继续逐字节不变。
 
 第十二轮处理 PR #271 review：正式四 root workspace 从仓库 `.debug` 迁到固定中性 `/tmp` 路径，重新启动两个真实 Codex 与两个真实 Claude Code，重录 Root Groups 四轮输入、双实时比较和完整 Pane Gallery 故事，并重新捕获 16 个 checkpoint。两份素材专用 test 文件及 fake provider 的媒体专用增量从 PR 中移除；本次使用临时 contact sheet、输出级 probe、完整解码与人工目检验收，不把当前八帧、54 秒文案和几何继续固化为长期仓库契约。六件套、validation report、动态唯一帧与公开路径检查通过后，本文恢复“已验证”。
+
+第十三轮按用户要求补充项目 GitHub 地址和统一品牌身份：PNG 在左上品牌组中组合 icon、名称和地址；GIF 八帧都在左上安全区保留固定紧凑角标，最后一帧不重复第二套大号落版；MP4 顶部横向品牌条覆盖 `19-26s` 双窗对比、随 Pane Gallery 扩展平滑淡出，并在最后 1.5 秒重新淡入，避免覆盖底部字幕和真实产品像素。中英文六件套、临时视觉证据和工程门禁通过后由用户确认，本文恢复“已验证”。
