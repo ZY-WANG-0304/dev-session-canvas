@@ -288,6 +288,12 @@ export class SerializedTerminalStateTracker {
     this.refreshBottomScreenActivity();
   }
 
+  public disableBottomScreenActivityTracking(): void {
+    this.bottomScreenActivityTrackingEnabled = false;
+    this.bottomScreenSignature = '';
+    this.bottomScreenChangeVersion = 0;
+  }
+
   private computeBottomScreenSignature(rowCount = 8): string {
     const buffer = this.terminal.buffer.active;
     const rows = Math.min(Math.max(1, Math.floor(rowCount)), this.terminal.rows);

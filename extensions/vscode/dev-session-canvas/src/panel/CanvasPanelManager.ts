@@ -32,6 +32,7 @@ import {
   recordAgentOutputHeuristics,
   resetAgentAbnormalStreamInterruptionHeuristics,
   resetAgentActivityHeuristics,
+  resetAgentBottomScreenActivityHeuristics,
   stripTerminalControlSequences,
   normalizeAgentAbnormalStreamInterruptionSignature,
   type AgentActivityHeuristicState
@@ -13558,6 +13559,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    session.terminalStateTracker.disableBottomScreenActivityTracking();
+    resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
     if (result.lifecycle === 'waiting-input' && session.lifecycleTimer) {
       clearTimeout(session.lifecycleTimer);
       session.lifecycleTimer = undefined;
@@ -14394,7 +14397,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!session || !shouldEvaluateAgentInteractiveState(session)) {
       return;
     }
-    session.terminalStateTracker.enableBottomScreenActivityTracking();
+    if (
+      session.lifecycleStatus === 'waiting-input' &&
+      isAgentHeuristicWaitingInputRecoverable(session.agentProviderLifecycle)
+    ) {
+      session.terminalStateTracker.enableBottomScreenActivityTracking();
+    } else {
+      session.terminalStateTracker.disableBottomScreenActivityTracking();
+    }
     if (session.lifecycleTimer) {
       return;
     }
@@ -14410,16 +14420,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
 
       const now = Date.now();
-      const bottomActivity = recordAgentBottomScreenActivity(
-        this.ensureAgentActivityState(current),
-        current.terminalStateTracker.getBottomScreenActivityToken(),
-        now
-      );
-      if (current.lifecycleStatus === 'waiting-input' && bottomActivity.strongRunningEvidence) {
-        const recovery = current.agentProviderLifecycle
-          ? recordAgentHeuristicRunning(current.agentProviderLifecycle)
-          : undefined;
+      if (current.lifecycleStatus === 'waiting-input') {
+        const bottomActivity = recordAgentBottomScreenActivity(
+          this.ensureAgentActivityState(current),
+          current.terminalStateTracker.getBottomScreenActivityToken(),
+          now
+        );
+        const recovery =
+          bottomActivity.strongRunningEvidence && current.agentProviderLifecycle
+            ? recordAgentHeuristicRunning(current.agentProviderLifecycle)
+            : undefined;
         if (recovery?.accepted) {
+          current.terminalStateTracker.disableBottomScreenActivityTracking();
+          resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(current));
           current.lifecycleStatus = 'running';
           current.resumePhaseActive = false;
           this.recordDiagnosticEvent('agent/runningHeuristicRecovered', {
@@ -14456,6 +14469,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           current.resumePhaseActive = false;
         }
         current.lifecycleStatus = 'waiting-input';
+        resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(current));
+        if (isAgentHeuristicWaitingInputRecoverable(current.agentProviderLifecycle)) {
+          current.terminalStateTracker.enableBottomScreenActivityTracking();
+          recordAgentBottomScreenActivity(
+            this.ensureAgentActivityState(current),
+            current.terminalStateTracker.getBottomScreenActivityToken(),
+            now
+          );
+        } else {
+          current.terminalStateTracker.disableBottomScreenActivityTracking();
+        }
         void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, current, 'waiting-input');
         this.flushLiveExecutionState('agent', nodeId, {
           persistMode: 'immediate',
@@ -17425,6 +17449,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ) {
         const interruptResult = recordAgentInterruptRequest(providerLifecycle);
         if (interruptResult.accepted && session.owner === 'local') {
+          session.terminalStateTracker.disableBottomScreenActivityTracking();
           resetAgentActivityHeuristics(
             this.ensureAgentActivityState(session),
             session.buffer,
@@ -17436,6 +17461,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         if (providerLifecycle) {
           recordAgentSubmission(providerLifecycle);
         }
+        session.terminalStateTracker.disableBottomScreenActivityTracking();
         resetAgentActivityHeuristics(
           this.ensureAgentActivityState(session),
           session.buffer,

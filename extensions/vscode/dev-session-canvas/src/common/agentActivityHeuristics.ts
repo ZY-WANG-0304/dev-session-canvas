@@ -7,7 +7,6 @@ export interface AgentActivityHeuristicState {
   bottomScreenSignature?: string;
   bottomScreenChangeStreak: number;
   lastBottomScreenChangeAtMs?: number;
-  lastStrongBottomActivityAtMs?: number;
   lastAbnormalStreamAtMs?: number;
   lastAbnormalStreamMessage?: string;
   lastAbnormalStreamSignature?: string;
@@ -41,7 +40,6 @@ export const AGENT_WAITING_INPUT_QUIET_FALLBACK_MS = 5000;
 
 const AGENT_BOTTOM_ACTIVITY_INPUT_ECHO_SUPPRESSION_MS = 600;
 const AGENT_BOTTOM_ACTIVITY_SEQUENCE_GAP_MS = 1000;
-const AGENT_BOTTOM_ACTIVITY_GRACE_MS = 1200;
 const AGENT_BOTTOM_ACTIVITY_REQUIRED_CHANGES = 2;
 const ABNORMAL_STREAM_TAIL_LIMIT = 1200;
 const ABNORMAL_STREAM_CARRYOVER_LIMIT = 320;
@@ -80,13 +78,18 @@ export function resetAgentActivityHeuristics(
 ): AgentActivityHeuristicState {
   state.lastActivityAtMs = activityStartedAtMs;
   state.lastInputAtMs = activityStartedAtMs;
-  state.bottomScreenSignature = undefined;
-  state.bottomScreenChangeStreak = 0;
-  state.lastBottomScreenChangeAtMs = undefined;
-  state.lastStrongBottomActivityAtMs = undefined;
+  resetAgentBottomScreenActivityHeuristics(state);
   resetAgentAbnormalStreamInterruptionHeuristics(state, currentBuffer);
   state.oscCarryover = '';
   return state;
+}
+
+export function resetAgentBottomScreenActivityHeuristics(
+  state: AgentActivityHeuristicState
+): void {
+  state.bottomScreenSignature = undefined;
+  state.bottomScreenChangeStreak = 0;
+  state.lastBottomScreenChangeAtMs = undefined;
 }
 
 export function recordAgentInputHeuristics(
@@ -143,9 +146,6 @@ export function recordAgentBottomScreenActivity(
   state.lastBottomScreenChangeAtMs = now;
   const strongRunningEvidence =
     state.bottomScreenChangeStreak >= AGENT_BOTTOM_ACTIVITY_REQUIRED_CHANGES;
-  if (strongRunningEvidence) {
-    state.lastStrongBottomActivityAtMs = now;
-  }
 
   return {
     changed: true,
@@ -356,10 +356,7 @@ export function evaluateAgentWaitingInputTransition(
   }
 
   const quietMs = now - state.lastActivityAtMs;
-  const bottomActivityRecentlyStrong =
-    typeof state.lastStrongBottomActivityAtMs === 'number' &&
-    now - state.lastStrongBottomActivityAtMs < AGENT_BOTTOM_ACTIVITY_GRACE_MS;
-  if (!bottomActivityRecentlyStrong && quietMs >= AGENT_WAITING_INPUT_QUIET_FALLBACK_MS) {
+  if (quietMs >= AGENT_WAITING_INPUT_QUIET_FALLBACK_MS) {
     return {
       shouldTransition: true,
       shouldKeepPolling: false,

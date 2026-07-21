@@ -20,7 +20,7 @@ related_plans:
   - docs/exec-plans/completed/agent-lifecycle-adapter-hardening.md
   - docs/exec-plans/completed/agent-provider-signals-as-enhancements.md
   - docs/exec-plans/completed/agent-pty-spinner-and-quiet-fallback.md
-updated_at: 2026-07-21
+updated_at: 2026-07-22
 ---
 
 # Agent 运行态判定与等待输入信号设计
@@ -168,10 +168,11 @@ updated_at: 2026-07-21
 `Agent` 运行态不再采用“provider callback 可用时关闭 heuristic”的排他优先级，而采用持续基础判定加正向增强：
 
 1. Webview/owner 识别真实可编辑内容后的明确 submit，进入 `running`，来源为 `submission-intent / derived`。
-2. PTY 任意输出刷新 quiet 时钟；headless terminal 持续观察当前屏幕最下方非空内容区域，连续跨帧变化作为强 `running` 证据。该证据不匹配 provider 文案或 glyph，并抑制用户输入后 600ms 内的 composer 回显。
-3. 从有效 submit 或最近 PTY 输出开始连续 5000ms 无输出、且没有近期强底部活动时，进入 `waiting-input`，来源为 `heuristic / best-effort`。该弱结论保留当前 turn correlation，后续同回合底部活动可纠正回 `running`。
-4. Codex completion notify 或 Claude lifecycle hook 到达时，可以立即确认或纠正对应状态，并把来源升级为 `provider-lifecycle / authoritative`，同时补充 provider identity、outcome/error。
-5. callback 没有到达不构成证据，不能关闭步骤 1-3，也不能让会话卡在某个状态。
+2. PTY 任意输出刷新 quiet 时钟并使当前回合保持 `running`；正常 `running` 阶段不扫描 headless terminal 屏幕，也不需要 spinner 做二次确认。
+3. 从有效 submit 或最近 PTY 输出开始连续 5000ms 无输出时，进入 `waiting-input`，来源为 `heuristic / best-effort`。该弱结论保留当前 turn correlation。
+4. 只有进入可纠正的弱 `waiting-input` 后，才追踪当前屏幕最下方非空内容区域；连续跨帧变化可以把同一回合纠正回 `running`。该恢复证据不匹配 provider 文案或 glyph，并抑制用户输入后 600ms 内的 composer 回显。
+5. Codex completion notify 或 Claude lifecycle hook 到达时，可以立即确认或纠正对应状态，并把来源升级为 `provider-lifecycle / authoritative`，同时补充 provider identity、outcome/error。
+6. callback 没有到达不构成证据，不能关闭步骤 1-4，也不能让会话卡在某个状态。
 
 5000ms 来自 2026-07-21 的真实 PTY 实验，不是 provider 协议保证。Codex CLI 0.144.5 与 Claude Code 2.1.209 各执行 6s/15s 静默 Bash 工具回合，另各执行一次“已启动 TUI 内提交”的 6s 回合：最慢 active PTY gap 为 Claude 460.5ms，最慢 submit-to-strong-running 为 119.4ms；5000ms 提供约 10.8 倍观测余量。3s 虽有约 6.5 倍余量，但对样本外调度停顿更敏感；8s/15s 会无必要地增加 callback 缺失时的完成延迟。该阈值仍需随 provider TUI、平台和调度行为变化复测。
 
@@ -229,7 +230,7 @@ adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认�
 - Codex 与 Claude 即使收到显式 `submit`，也只有在当前提交候选已由可见非空输入建立时才进入 `running`；启动菜单中的纯导航与 Enter 仍原样转发给 PTY，但不改变 Agent lifecycle。Claude `UserPromptSubmit` 是增强确认，不再是唯一 turn start。
 - prompt glyph 不参与 lifecycle 判定；`>`、`›`、`❯` 等输出只和其他 PTY 输出一样刷新 quiet 时钟。generic `OSC 9` / `OSC 777` 与 bell 继续服务 attention，但不结束 turn。
 - 有效 submit 立即建立 quiet 起点；之后任意 PTY 输出重置起点，因此完全静默和中途停止输出两种路径都能在 5000ms 后 fallback。
-- Agent 会话的 headless terminal 选择性启用活动追踪，为每个已解析输出 batch 记录当前屏幕最下方非空内容区域的字符与样式变化版本；普通 Terminal 会话不承担这项开销。连续两次、间隔不超过 1000ms 的变化构成强 running 证据；只移动 cursor 不算屏幕活动，用户输入后的 600ms 回显窗口不建立强证据。
+- 只有进入可纠正的 `heuristic / best-effort waiting-input` 后，Agent 会话的 headless terminal 才启用活动追踪，为每个已解析输出 batch 记录当前屏幕最下方非空内容区域的字符与样式变化版本；正常 `running` Agent 与普通 Terminal 都不承担这项扫描。连续两次、间隔不超过 1000ms 的变化构成恢复 `running` 的证据；只移动 cursor 不算屏幕活动，用户输入后的 600ms 回显窗口不建立恢复证据。
 - quiet fallback 保留 provider turn correlation。只有 `heuristic / best-effort waiting-input` 可以被后续底部活动纠正为 `running`；provider callback 已确认的 `authoritative waiting-input` 和已确认 interrupt 不能被重开。
 - 普通换行本身不再被当成“当前回合已完成”的直接信号；因为长任务可能先输出一整行文本，再在静默期内继续执行。
 - Claude Code 的 `Ctrl-Z` / `fg` 文案不再参与运行态或生命周期判定。当前 Claude Agent 是 direct-spawn provider CLI，没有普通 shell job table；如果把 provider 输出的 suspend 文案当作权威状态，会制造页面仍在更新、恢复后输入无效等伪挂起问题。新的输入路径在 Webview、宿主与 runtime supervisor 三层阻断 Claude Agent `Ctrl-Z`，并把后续处理引导到停止、恢复或分叉。
@@ -259,7 +260,7 @@ adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认�
 9. Codex/Claude 输入测试覆盖“方向键 + Enter”的菜单序列不进入 `running`，以及可见文本/IME/粘贴后 submit 正常进入 `running`；Host 与 Supervisor owner 必须共享同一判定函数。
 10. Claude launch integration 测试覆盖 `--safe-mode`、`--bare`、`CLAUDE_CODE_SAFE_MODE=1` 与 `CLAUDE_CODE_SIMPLE=1`：原始 argv/env 不被改写、不注入文件活动 env、增强 capability 为 disabled，且 reason 可诊断。
 11. callback configured 但永不到达时，无输出回合从 submit 起、已有输出回合从最后输出起，在 5000ms 后进入 `heuristic / best-effort waiting-input`；prompt glyph、OSC/BEL 都不能提前结束回合。
-12. 底部持续活动在超过 5000ms 的回合中保持 `running`；quiet fallback 后恢复的连续底部活动可纠正回 `running`，用户 composer 回显和 provider authoritative completion 后的终端 chrome 都不能误触发纠正。
+12. 正常 `running` 阶段不启用 bottom-screen tracking，持续 PTY 输出只通过刷新 quiet 时钟保持 `running`；quiet fallback 后才启用追踪，恢复的连续底部活动可纠正回 `running`，用户 composer 回显和 provider authoritative completion 后的终端 chrome 都不能误触发纠正。
 
 ## 9. 当前验证状态
 
@@ -287,5 +288,6 @@ adapter 在构造 Codex `notify` 或 Claude lifecycle hooks 前，必须确认�
 - 2026-07-17 的 PR review 发现 Claude `--safe-mode` / `--bare` 会合法禁用 hooks，但 launch integration 仍声明 lifecycle enabled。当前实现已在 settings 合并前识别两种模式，保留原始 argv 并以明确原因回退 heuristic；聚焦测试覆盖两种 flag、capability gate 与文件活动 env 不注入。
 - 2026-07-21 的后续 review 证明继承 `CLAUDE_CODE_SAFE_MODE=1` / `CLAUDE_CODE_SIMPLE=1` 也会跳过 hooks，而静态 argv preflight 仍会误报 lifecycle enabled。用户据此确认 notify/hooks 只作为辅助增强信号；基础提交与 heuristic 必须始终工作，普通 `running` 不再接受 1600ms 无条件 hard fallback。
 - 2026-07-21 已完成增强信号收口：Host 与 Supervisor 不再用 `lifecycleEnabled` gate 基础提交/PTY heuristic；callback configured 但永不送达的 Supervisor fixture 会在 1600ms 后保持 `running`，随后由 prompt 进入 `heuristic / best-effort` 的 `waiting-input`；provider callback 先到或后到仍可升级 identity/outcome。Claude safe/simple argv/env preflight、上一回合延迟 start/Stop 事件对、共享 candidate、类型检查、构建、package 文件列表和 trusted VS Code smoke 均已通过，详细证据见 `docs/exec-plans/completed/agent-provider-signals-as-enhancements.md`。
-- 2026-07-21 用户根据真实 Codex TUI 确认 prompt glyph 不能作为 lifecycle 判断特征，并确认底部活动 spinner 是强 running 证据、PTY 连续 Nms 无输出可作为 waiting fallback；六组真实 PTY 实验选定 N=5000ms，最大 active gap 460.5ms。
-- 2026-07-21 已完成新版 PTY 主线并验证：prompt glyph 与 generic OSC/BEL 不再结束 turn；底部非空内容区域连续变化是强 running 证据；5s quiet 产生可纠正的 best-effort waiting，provider authoritative completion 不会被终端 chrome 重开。聚焦测试、Supervisor 协议与 10 Agent 压测、typecheck、build、debug launch 和 trusted VS Code Host smoke 全部通过，详细证据见 `docs/exec-plans/completed/agent-pty-spinner-and-quiet-fallback.md`。
+- 2026-07-21 用户根据真实 Codex TUI 确认 prompt glyph 不能作为 lifecycle 判断特征，并确认底部活动 spinner 是强 running 证据、PTY 连续 Nms 无输出可作为 waiting fallback；六组真实 PTY 实验选定 N=5000ms，最大 active gap 460.5ms。2026-07-22 后续复核将 spinner 证据的实际使用范围收窄到弱 waiting 恢复。
+- 2026-07-21 已完成新版 PTY 主线并验证：prompt glyph 与 generic OSC/BEL 不再结束 turn；5s quiet 产生可纠正的 best-effort waiting，之后底部非空内容区域连续变化可以恢复 `running`；provider authoritative completion 不会被终端 chrome 重开。聚焦测试、Supervisor 协议与 10 Agent 压测、typecheck、build、debug launch 和 trusted VS Code Host smoke 全部通过，详细证据见 `docs/exec-plans/completed/agent-pty-spinner-and-quiet-fallback.md`。
+- 2026-07-22 根据用户复核进一步收窄屏幕扫描：正常 `running` 已有 PTY 输出刷新 quiet 时钟，不再逐 batch 维护 bottom-screen signature；只有 5s quiet 产生可纠正的 best-effort waiting 后才临时启用追踪，恢复、新 submit、interrupt 确认或 provider lifecycle 事件都会关闭并清空追踪状态。聚焦测试、typecheck、build 和 trusted VS Code smoke 已重新通过。

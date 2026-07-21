@@ -160,15 +160,11 @@
 
 ### 4.4 Agent 等待输入检测
 
-- 基于启发式规则检测 Agent 是否在等待用户输入：
-  - 检测终端提示符模式 (`>`, `›`, `❯`, `≫`, `»`)
-  - 检测通知信号 (BEL, OSC 9, OSC 777)
-  - 检测输出静默时间窗口
-  - 排除 spinner 动画干扰
-- 转换原因分类：
-  - `prompt`：检测到提示符
-  - `notification`：检测到通知信号
-  - `fallback`：超时兜底机制
+- 用户提交有效输入后进入 `running`；任意 PTY 输出刷新 quiet 时钟，正常运行阶段不扫描终端底部区域。
+- 从有效 submit 或最近输出开始连续 5000ms 无输出时，以 `fallback` 原因进入可纠正的 `heuristic / best-effort waiting-input`。
+- 只有处于该弱等待态时才追踪终端最下方非空内容区域；连续变化可以纠正回 `running`，新 submit、interrupt 确认或 provider lifecycle 事件会关闭追踪。
+- prompt glyph、BEL、OSC 9 与 OSC 777 不参与 lifecycle 判定；BEL/OSC 只保留 attention signal 语义。
+- Codex notify 与 Claude hooks 是携带 session/turn identity 的辅助增强；缺失或失败不关闭上述基础状态机。
 
 ### 4.5 通知状态管理
 
@@ -226,7 +222,6 @@ interface AgentActivityHeuristicState {
   bottomScreenSignature?: string;
   bottomScreenChangeStreak: number;
   lastBottomScreenChangeAtMs?: number;
-  lastStrongBottomActivityAtMs?: number;
   lastAbnormalStreamAtMs?: number;
   lastAbnormalStreamMessage?: string;
   lastAbnormalStreamSignature?: string;
@@ -238,7 +233,7 @@ interface AgentActivityHeuristicState {
 
 - `lastActivityAtMs` 从有效 submit 或最近 PTY 输出计时，连续 5000ms 无输出时才允许 best-effort waiting fallback
 - `lastInputAtMs` 用于抑制用户输入后的 composer 回显，避免把打字误当成自主运行活动
-- bottom screen 字段记录当前屏幕最下方非空内容区域的跨帧变化；连续变化是强 running 证据，单个 prompt glyph、OSC 或 BEL 不具有 lifecycle 语义
+- bottom screen 字段只在可纠正的弱 `waiting-input` 中记录当前屏幕最下方非空内容区域的跨帧变化；连续变化是恢复 `running` 的证据，正常 `running` 和普通 Terminal 不启用扫描，单个 prompt glyph、OSC 或 BEL 不具有 lifecycle 语义
 - `oscCarryover`：跨 chunk 的 OSC 序列缓存
 - `lastAbnormalStreamScanLength` 与 `abnormalStreamCarryover`：仅在文本匹配开启时辅助扫描新增输出与跨 chunk 残片，避免重新扫描旧 buffer；live-runtime attach 时已有的 `snapshot.output` 也视为已扫描历史
 
