@@ -187,13 +187,13 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 
 `scripts/media/compose-marketplace-media.mjs` 是独立后期入口：
 
-- `validate --manifest <path>` 严格校验 manifest v2 的固定八帧顺序、左右 take / state ID、逐帧时长、Hero ID、四个视频角色、源文件存在性、`1440x900` 几何和可用时长；Root Groups 的开场/比较必须引用同一文件的相邻时间戳，Pane Gallery 的比较/故事也必须在同一连续文件上于 16 秒边界衔接。
+- `validate --manifest <path>` 严格校验 manifest v2 的固定八帧顺序、左右 take / state ID、逐帧时长、Hero ID、四个视频角色、源文件存在性、`1440x900` 几何和可用时长；Root Groups 的开场/比较必须引用同一文件的相邻时间戳，Pane Gallery 的比较/故事也必须在同一连续文件上于 7 秒边界衔接。
 - `render --manifest <path> --language en|zh-CN` 使用 Playwright 渲染 `2560x1600` 逻辑母版、静态 storyboard frame 与独立 Hero master，再由 ffmpeg 把 Take A、双实时视频比较进入、双实时视频比较稳定、连续 Pane Gallery 扩展和连续 Pane Gallery 故事拆成五段后合成 54 秒 MP4，按显式时长生成 10 秒 GIF，并把 Hero master 单独缩放为 PNG。
 - `STORYBOARD` 为每张 GIF frame 显式记录 `root-single | compare | pane-single` layout 与可选 `captionKey`。`attention-arrives` 固定为 compare；`attention-focused` 在 GIF 中固定为 pane-single，同时向独立 PNG Hero 提供同状态成对 checkpoint。Hero 的 50/50 构图不能反向改变 GIF layout。
 - 默认截图 renderer 是 Playwright `Page.captureScreenshot`。如果维护机上的该 CDP 调用卡死，可显式设置 `DSC_MEDIA_SCREENSHOT_RENDERER=chrome-cli`；备选路径仍先在 Playwright 页面中加载并验证 Noto 字体，再使用同版本 Playwright Chromium headless shell 捕获同一 HTML，并强制检查 `2560x1600` 几何。不能退回完整 Chromium CLI，因为它会为 headless window 预留非页面高度。
 - 每种语言在 `.debug/marketplace-media/composite/<language>/` 保留 validation report、render metadata、来源 hash、字体命中和中间 frame；只有 staged MP4 / GIF / PNG 全部通过检查后，才逐文件原子替换正式资产。
 
-2026-07-17 的动态返工已经完成。当前 scenario metadata 使用 `providerMode: real-system-cli`，记录 Codex CLI `0.144.5` 与 Claude Code `2.1.209` 均已认证。Root Groups 正式源 `.debug/marketplace-media/sources/rootGroups/live-timeline-clean.mp4` 为 `42.30s / 1269` 帧，新时间线连续消费 `0-19s` 开场与 `19-29s` 比较/退出。Pane Gallery 原始单 take 为 `85.40s / 2562` 帧；本轮从同一原片的绝对约 `25-73.5s` 生成 `.debug/marketplace-media/sources/paneGallery/live-timeline-retimed-v2.mp4`，probe 为 `44.167s / 1325` 帧。manifest 连续消费新源 `9-16s` 比较与 `16-44s` 扩展/故事，globe 后仍保留真实动态全览，不使用定帧补尾。GIF/PNG 继续使用上一版已验收的 16 个真实 checkpoint。此前 60 秒动态版完整保存在 `.debug/marketplace-media/archive/2026-07-17-live-motion-60s-baseline/`，更早的静态帧版保存在 `.debug/marketplace-media/archive/2026-07-17-static-frame-baseline/`；两者都有 SHA-256 清单。
+2026-07-20 中性路径重录后的当前 scenario metadata 使用 `providerMode: real-system-cli`，记录 Codex CLI `0.144.5` 与 Claude Code `2.1.209` 均已认证。Root Groups 正式源 `.debug/marketplace-media/sources/rootGroups/live-timeline-clean.mp4` 为 `29.000s / 870` 帧，manifest 连续消费 `0-19s` 开场与 `19-29s` 比较/退出。Pane Gallery 正式源 `.debug/marketplace-media/sources/paneGallery/live-timeline-retimed-v2.mp4` 为 `38.000s / 1140` 帧，manifest 连续消费 `0-7s` 比较与 `7-35s` 扩展/故事；globe 后仍保留真实动态全览，不使用定帧补尾。GIF/PNG 使用本轮重新捕获并验收的 16 个真实 checkpoint。此前 `42.30s / 1269` 帧 Root Groups 源、`44.167s / 1325` 帧 Pane Gallery 源和 60 秒动态版都只属于 2026-07-17 历史阶段；相关证据保存在 `.debug/marketplace-media/archive/2026-07-17-live-motion-60s-baseline/`，更早的静态帧版保存在 `.debug/marketplace-media/archive/2026-07-17-static-frame-baseline/`。
 
 同日的 GIF 复审把原先“八帧全部双窗”改为显式三段式 layout。前两帧使用 `root-single`，中间两帧使用 `compare`，后四帧使用 `pane-single`；`attention-focused` 的聚焦字幕只覆盖 Pane Gallery 大画面，后来独立 PNG Hero 复用它的成对 checkpoint，但保持自己的 50/50 构图。重设计前的 54 秒六件套保存在 `.debug/marketplace-media/archive/2026-07-17-54s-dual-only-gif-baseline/`。
 
@@ -224,15 +224,15 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 
 ### 8.1 本次媒体探测
 
-以下结果对应 2026-07-17 完成的“比较节奏收紧 + 收尾字幕同步”、三段式 GIF 与独立 PNG Hero 正式资产：
+以下结果汇总当前 2026-07-21 品牌版本的正式资产与其继承的逐轮验证证据；标为历史基线的 hash 和源 probe 不作为当前发布候选：
 
 1. 八帧双语 storyboard、独立 Hero 的 `attention-focused` source、对称 50/50 窗口、manifest v2 连续视频边界、54 秒时间线、动态窗口像素边界、真实 Provider metadata 与受限原生输入动作均在本次制作中通过临时命令、输出级 probe 和人工逐帧检查确认。精确帧序、文案、时长与几何属于当前素材设计，不作为仓库长期自动化接口；PR review 后已删除两份素材专用 test 文件。
 2. `node --check scripts/media/recording-session.mjs` 与 `node --check scripts/media/compose-marketplace-media.mjs` 通过；`npm run build`、`npm run typecheck` 与 `git diff --check` 通过。
-3. 中英文 validation report 均为 `passed: true`，确认 Noto Sans CJK SC 字体命中、Hero ID 为 `attention-focused`、两个 `1200x750` 窗口对称 50/50、模式区 top `400px`、窗口 top `550px`、footer 为 `none`、精确语言文案与正式 SVG icon，并通过 `gifFramePresentations` 记录每帧 layout/caption，同时记录四个视频角色和 16 个 checkpoint 的 SHA-256。
-4. 2026-07-20 中性路径重录后的六份正式资产均可完整解码。两条 MP4 都是 `1920x1200`、H.264、30 fps、1620 帧、54 秒，`blackdetect` 均为 0 命中；两条 GIF 都是 `1440x900`、8 个唯一帧、10 秒；两张 PNG 都是 `1920x1200`。英文 MP4 / GIF / PNG SHA-256 依次为 `a3280c5ac98d4ac0ff8f894a0979fc1780f34e103b5c2082e497cfd8d95c0361`、`4c38e8d21a3ce2153fef02a9f35a11ddfe64385c2113176c24343fae1ff481af`、`9b6486e1d2c73a208e97bb967456d229adf0e97346a2e3da5a764ad396df252c`；中文依次为 `5a1640ebb50015484fd13f7b9519aaccddaf40d3870ec1005536f934b27d6aa2`、`1cd849ae8a3ae7820446c878625dc6c4107faeb1e6277762a2eb6155d3d9da2e`、`f04d390ee3116ce633a62d2bd548617d5793e8d153bba4d39e9d0efaa1790ddc`。
+3. 中英文 validation report 均为 `passed: true`，确认 Noto Sans CJK SC 字体命中、Hero ID 为 `attention-focused`、两个 `1200x750` 窗口对称 50/50、模式区 top `400px`、窗口 top `550px`、footer 为 `none`、精确语言文案、正式 SVG icon 与完整 GitHub 品牌身份；`gifFramePresentations` 为八帧记录 layout/caption 和 `productLockup: persistent`，报告同时记录四个视频角色与 16 个 checkpoint 的 SHA-256。
+4. 2026-07-21 增加品牌层并把 `rootGroups` 中文名统一为“目录分组”后的六份当前正式资产均可完整解码。两条 MP4 都是 `1920x1200`、H.264、30 fps、1620 帧、54 秒，`blackdetect` 均为 0 命中；两条 GIF 都是 `1440x900`、8 个唯一帧、10 秒；两张 PNG 都是 `1920x1200`。英文 MP4 / GIF / PNG SHA-256 依次为 `ce9516176c0701fab2223b48f79f90cb9edf26b690e19fb24cd7b85753a7e62e`、`65f45aadf31d40a72971cc989f260579a74f419a088cb9d61cb14b5056778209`、`bc3efab232e6bc4887f90db28e4f98eee1690ea7b17a4a62f425cb782ab1ae5d`；中文依次为 `fbb00906b2fd7e074c7ac61a072f3237adeb94fe569ba37075bd41331c1d1d87`、`69b51b7280d7e59dfd10fbd67d1098bd52ff1291b8c2a70dc44f27e4aa85fd7a`、`63a20744484f046e3dae1727498222874350658fe723b618feda7a75eba4ddbf`。
 5. 对中英文 MP4 的 `20-26s` 每 500ms 分别裁取左右比较窗口，两侧都是 `12/12` 个唯一解码帧；对 `29-54s` Pane Gallery 主窗口同样采样，结果都是 `50/50` 个唯一帧。该门禁直接证明三块产品内容不是 checkpoint loop 或 freeze frame。
 6. 比较字幕最后可见帧为 `25.800s`，`25.833s` 已消失，Pane Gallery 几何首个运动帧为 `26.033s`，间隔 `0.233s`。globe 点击与收尾字幕首帧同为 `49.200s`，`49.267s` 已进入产品自身的 dynamic 回归动画，字幕随后保持到片尾约 `4.767s`。
-7. 2026-07-20 PR review 确认旧六件套包含维护者 home 下的 cwd，因此不能继续锁定旧动态资产 hash。本轮从 `/tmp/dev-session-canvas-marketplace-media/four-root-attention/` 重新录制两个 Codex 与两个 Claude Code，并重新生成六件套；旧版、源 take、checkpoint、manifest 与报告均保存在对应 `.debug/marketplace-media/archive/`，不再作为可发布候选。
+7. 2026-07-20 PR review 确认更早六件套包含维护者 home 下的 cwd，因此不能继续锁定该版动态资产 hash。中性路径重录从 `/tmp/dev-session-canvas-marketplace-media/four-root-attention/` 启动两个 Codex 与两个 Claude Code，并重新生成源 take、checkpoint 与六件套；2026-07-21 又在同一真实录制源上增加品牌层并统一“目录分组”中文名。各旧版均保存在对应 `.debug/marketplace-media/archive/`，只作为历史证据，不再作为当前发布候选。
 
 ### 8.2 真实宿主与视觉验收
 
