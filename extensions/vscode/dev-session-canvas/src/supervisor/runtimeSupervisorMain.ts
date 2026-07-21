@@ -24,6 +24,7 @@ import {
   recordAgentInputHeuristics,
   recordAgentOutputHeuristics,
   resetAgentActivityHeuristics,
+  resetAgentBottomScreenActivityHeuristics,
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
@@ -820,6 +821,7 @@ class RuntimeSupervisorServer {
       ) {
         const interruptResult = recordAgentInterruptRequest(providerLifecycle);
         if (interruptResult.accepted) {
+          session.terminalStateTracker.disableBottomScreenActivityTracking();
           resetAgentActivityHeuristics(
             this.ensureAgentActivityState(session),
             session.output,
@@ -831,6 +833,7 @@ class RuntimeSupervisorServer {
         if (providerLifecycle) {
           recordAgentSubmission(providerLifecycle);
         }
+        session.terminalStateTracker.disableBottomScreenActivityTracking();
         resetAgentActivityHeuristics(
           this.ensureAgentActivityState(session),
           session.output,
@@ -1458,6 +1461,8 @@ class RuntimeSupervisorServer {
       return;
     }
 
+    session.terminalStateTracker.disableBottomScreenActivityTracking();
+    resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
     if (result.lifecycle === 'waiting-input' && session.lifecycleTimer) {
       clearTimeout(session.lifecycleTimer);
       session.lifecycleTimer = undefined;
@@ -1481,7 +1486,14 @@ class RuntimeSupervisorServer {
     ) {
       return;
     }
-    session.terminalStateTracker.enableBottomScreenActivityTracking();
+    if (
+      session.lifecycle === 'waiting-input' &&
+      isAgentHeuristicWaitingInputRecoverable(session.agentProviderLifecycle)
+    ) {
+      session.terminalStateTracker.enableBottomScreenActivityTracking();
+    } else {
+      session.terminalStateTracker.disableBottomScreenActivityTracking();
+    }
     if (session.lifecycleTimer) {
       return;
     }
@@ -1501,16 +1513,19 @@ class RuntimeSupervisorServer {
       }
 
       const now = Date.now();
-      const bottomActivity = recordAgentBottomScreenActivity(
-        this.ensureAgentActivityState(current),
-        current.terminalStateTracker.getBottomScreenActivityToken(),
-        now
-      );
-      if (current.lifecycle === 'waiting-input' && bottomActivity.strongRunningEvidence) {
-        const recovery = current.agentProviderLifecycle
-          ? recordAgentHeuristicRunning(current.agentProviderLifecycle)
-          : undefined;
+      if (current.lifecycle === 'waiting-input') {
+        const bottomActivity = recordAgentBottomScreenActivity(
+          this.ensureAgentActivityState(current),
+          current.terminalStateTracker.getBottomScreenActivityToken(),
+          now
+        );
+        const recovery =
+          bottomActivity.strongRunningEvidence && current.agentProviderLifecycle
+            ? recordAgentHeuristicRunning(current.agentProviderLifecycle)
+            : undefined;
         if (recovery?.accepted) {
+          current.terminalStateTracker.disableBottomScreenActivityTracking();
+          resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(current));
           current.lifecycle = 'running';
           current.resumePhaseActive = false;
           this.emitSessionState(current);
@@ -1540,6 +1555,17 @@ class RuntimeSupervisorServer {
           current.resumePhaseActive = false;
         }
         current.lifecycle = 'waiting-input';
+        resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(current));
+        if (isAgentHeuristicWaitingInputRecoverable(current.agentProviderLifecycle)) {
+          current.terminalStateTracker.enableBottomScreenActivityTracking();
+          recordAgentBottomScreenActivity(
+            this.ensureAgentActivityState(current),
+            current.terminalStateTracker.getBottomScreenActivityToken(),
+            now
+          );
+        } else {
+          current.terminalStateTracker.disableBottomScreenActivityTracking();
+        }
         void this.maybeDiscoverAgentResumeSessionIdFromFiles(sessionId, 'waiting-input');
         this.emitSessionState(current);
         return;

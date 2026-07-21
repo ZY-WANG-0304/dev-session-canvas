@@ -353,14 +353,10 @@ function assertHeuristicEnhancementPolicy(
   assert.equal(recordAgentBottomScreenActivity(animatedBottom, 'frame-0', 4500).strongRunningEvidence, false);
   assert.equal(recordAgentBottomScreenActivity(animatedBottom, 'frame-1', 4800).strongRunningEvidence, false);
   assert.equal(recordAgentBottomScreenActivity(animatedBottom, 'frame-2', 4920).strongRunningEvidence, true);
-  assert.deepEqual(evaluateAgentWaitingInputTransition(animatedBottom, 5000), {
-    shouldTransition: false,
-    shouldKeepPolling: true
-  });
   assert.equal(
-    evaluateAgentWaitingInputTransition(animatedBottom, 6200).reason,
+    evaluateAgentWaitingInputTransition(animatedBottom, 5000).reason,
     'fallback',
-    'A frozen bottom region must eventually lose its strong-running grace.'
+    'Bottom activity is recovery evidence after weak waiting, not a second gate on the quiet fallback.'
   );
 
   const composerEcho = createAgentActivityHeuristicState();

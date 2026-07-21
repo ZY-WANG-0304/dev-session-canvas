@@ -67,6 +67,19 @@ try {
     redBottomSignature,
     'Style-only spinner frames must change the bottom-screen signature.'
   );
+  tracker.disableBottomScreenActivityTracking();
+  assert.equal(
+    tracker.getBottomScreenActivityToken(),
+    '0:',
+    'Disabling weak-waiting recovery must discard the tracked screen state.'
+  );
+  tracker.write('\bY');
+  await tracker.flush();
+  assert.equal(
+    tracker.getBottomScreenActivityToken(),
+    '0:',
+    'Running output must not update the bottom-screen token while tracking is disabled.'
+  );
 
   tracker.write(`${Array.from({ length: 200 }, (_, index) => `line-${String(index).padStart(3, '0')}`).join('\r\n')}\r\n`, {
     outputSequence: 3

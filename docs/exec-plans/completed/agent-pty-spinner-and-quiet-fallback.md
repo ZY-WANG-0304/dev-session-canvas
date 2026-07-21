@@ -4,7 +4,7 @@
 
 ## 目标与全局图景
 
-完成后，Agent 普通回合不再解析 `>`、`›`、`❯` 等 prompt glyph 来结束 `running`。用户提交有效输入后进入 `running`；终端当前屏幕底部持续变化的 spinner/progress 是强运行证据；若 PTY 连续 N 毫秒没有任何输出且底部没有活动 spinner，基础状态机才以 `heuristic / best-effort` 进入 `waiting-input`。N 必须由本轮受控和真实 PTY 实验选定，不能沿用没有依据的 1600ms。
+完成后，Agent 普通回合不再解析 `>`、`›`、`❯` 等 prompt glyph 来结束 `running`。用户提交有效输入后进入 `running`，任意 PTY 输出刷新 quiet 时钟；若 PTY 连续 N 毫秒没有任何输出，基础状态机以 `heuristic / best-effort` 进入 `waiting-input`。只有这项弱结论成立后才扫描终端底部活动，用于发现同一回合重新运行并纠正状态。N 必须由本轮受控和真实 PTY 实验选定，不能沿用没有依据的 1600ms。
 
 quiet fallback 得到的是可纠正的弱结论：同一回合后续重新输出或出现底部活动 spinner 时，应恢复 `running`。Codex notify 与 Claude hooks 继续只作为辅助增强信号；provider completion 可以更早进入带 identity/outcome 的 `waiting-input`，callback 缺失不关闭基础状态机。不引入 Codex app-server，不扩展 Claude hook 类型。
 
@@ -17,6 +17,7 @@ quiet fallback 得到的是可纠正的弱结论：同一回合后续重新输�
 - [x] (2026-07-21 13:15 CST) 实现 Host/Supervisor 共用的底部活动判断、quiet fallback 与 heuristic waiting 自纠正。
 - [x] (2026-07-21 19:54 CST) 更新纯逻辑、Supervisor、Host smoke、正式设计和技术债。
 - [x] (2026-07-21 19:54 CST) 完成实现验证；归档计划，提交、rebase、推送并更新 PR #269 作为交付收尾动作继续执行。
+- [x] (2026-07-22 00:45 CST) 按用户复核把 bottom-screen tracking 从所有 Agent `running` 轮询收窄到仅在可纠正的弱 `waiting-input` 中启用，并重新完成聚焦测试、类型检查、构建和 trusted smoke。
 
 ## 意外与发现
 
@@ -40,6 +41,9 @@ quiet fallback 得到的是可纠正的弱结论：同一回合后续重新输�
 
 - 观察：若 bottom activity 签名默认对所有 `SerializedTerminalStateTracker` 生效，普通 Terminal 的极端输出也会承担逐 batch 屏幕扫描，破坏既有洪峰性能边界。
   证据：rebase 后首次 trusted smoke 在 9 万行 Terminal fixture 中超时，并出现 ptyHost heartbeat 告警；将追踪改为 Agent evaluator 显式 opt-in 后，同一 smoke 通过。Supervisor 容量回归中 CPU 从约 1320ms 降至 900ms，output complete 从约 272ms 降至 149ms。
+
+- 观察：即使只对 Agent opt-in，正常 `running` 阶段的 bottom-screen 扫描仍然冗余。
+  证据：任何 PTY 输出都会先刷新 `lastActivityAtMs`，使 5000ms quiet 条件不成立；持续输出已经足以保持 `running`，无需再计算 screen signature 证明同一件事。bottom activity 的独立价值只存在于 fallback 已经产生弱 `waiting-input` 之后，用于纠错恢复。
 
 ## 决策记录
 
@@ -67,9 +71,13 @@ quiet fallback 得到的是可纠正的弱结论：同一回合后续重新输�
   理由：避免用户在 heuristic waiting composer 中打字时误恢复 `running`，同时覆盖实测 460.5ms 最大活动 gap。真正 submit 会通过 submission intent 直接进入 `running`，不依赖这条恢复路径。
   日期/作者：2026-07-21 / Codex。
 
+- 决策：正常 `running` 不启用 bottom-screen tracking；只有 5000ms quiet 进入可纠正的 `heuristic / best-effort waiting-input` 后才启用，并在恢复、新 submit、interrupt 确认或 provider lifecycle 事件后关闭。
+  理由：running 中任意输出已经刷新 quiet 时钟，屏幕扫描不会提供额外判定信息；延后启用可以让普通 Terminal 和正常运行 Agent 都不承担逐 batch 屏幕扫描。
+  日期/作者：2026-07-22 / 用户确认，Codex 记录。
+
 ## 结果与复盘
 
-本计划完成。Agent 普通回合完全删除 prompt glyph、generic OSC/BEL 和 raw chunk spinner 的 completion 语义；有效 submit 或最近 PTY 输出启动 5000ms quiet clock。Agent 会话选择性启用 `SerializedTerminalStateTracker` 活动追踪，不做额外 serialize/flush，而是在现有 16ms parsed-output batch 后维护当前屏幕最下方非空内容区域的字符/样式签名和单调 change version，既能观察 Codex 的样式动画，也能避免固定采样与 spinner 同频时漏掉中间帧；普通 Terminal 会话不承担这项扫描开销。
+本计划完成。Agent 普通回合完全删除 prompt glyph、generic OSC/BEL 和 raw chunk spinner 的 completion 语义；有效 submit 或最近 PTY 输出启动 5000ms quiet clock。正常 `running` 不启用 `SerializedTerminalStateTracker` 活动追踪；只有 quiet fallback 已进入可纠正的弱 `waiting-input` 后，才在现有 16ms parsed-output batch 后维护当前屏幕最下方非空内容区域的字符/样式签名和单调 change version。这样既能在弱等待后观察 Codex 的样式动画、避免固定采样与 spinner 同频时漏掉中间帧，也让普通 Terminal 和正常运行 Agent 都不承担屏幕扫描开销。
 
 quiet fallback 进入 `heuristic / best-effort waiting-input` 并保留 turn correlation。后续连续底部活动可以在约两个 polling tick 内恢复 `running`；用户输入后 600ms 的 composer 回显不累计强证据，provider authoritative completion 和已确认 interrupt 因 turn 不再 recoverable 而不会被重开。Host 与 Supervisor 共用相同 reducer；旧 Supervisor wire protocol 与 generation 不变，已有会话继续自然 drain。
 
@@ -91,7 +99,7 @@ N 选择为 5000ms：六组真实 PTY 样本的最大 active gap 为 460.5ms，5
 
 先为实验建立最小 PTY trace：记录每个输出 chunk 的单调时间、可见底部行、spinner 活动与回合完成时间。受控 fixture 覆盖无输出、固定间隔 spinner、spinner 暂停恢复和 callback 缺失；真实 Codex/Claude 只运行少量明确任务，用于确认 TUI frame cadence 与回合内最大静默，不把单次样本包装成平台保证。比较 3s、5s、8s、15s 等候选，选择能覆盖样本和必要安全余量、同时保持合理完成延迟的 N。
 
-随后扩展共享终端 tracker 或增加共享 screen activity helper，读取 active buffer 底部若干行并识别跨帧变化。强 running 证据必须是底部活动的时间序列，不是单个 glyph。将 submit 时间写入 heuristic activity；任意 PTY 输出刷新 quiet 时钟；活动 spinner 阻止 fallback；quiet 达到 N 后进入可纠正的 best-effort waiting。
+随后扩展共享终端 tracker 或增加共享 screen activity helper，读取 active buffer 底部若干行并识别跨帧变化。将 submit 时间写入 heuristic activity，任意 PTY 输出刷新 quiet 时钟；quiet 达到 N 后先进入可纠正的 best-effort waiting，再临时启用 screen activity tracking，以底部活动时间序列而不是单个 glyph 作为恢复 `running` 的证据。
 
 Host 与 Supervisor 接入同一 reducer。删除 prompt/notification completion 与旧断言；新增 callback missing、完全静默、长静默、spinner 活动、spinner 冻结、fallback 后恢复输出、provider completion 后 chrome 不重开等回归。最后同步设计、能力矩阵与技术债，执行完整验证并更新 PR。
 
@@ -109,7 +117,7 @@ Host 与 Supervisor 接入同一 reducer。删除 prompt/notification completion
 
 ## 验证与验收
 
-自动化必须证明 prompt glyph、OSC 和 BEL 都不会单独结束普通 running；底部活动 spinner 在超过 N 的回合中持续保持 running；无任何输出或输出停止且无活动 spinner 时在 N 后进入 heuristic waiting；fallback 之后重新输出会恢复 running；provider completion 可以提前结束并且后续终端 chrome 不会推翻 authoritative waiting。
+自动化必须证明 prompt glyph、OSC 和 BEL 都不会单独结束普通 running；正常 running 不启用屏幕追踪，持续 PTY 输出通过刷新 quiet 时钟保持 running；无任何输出或输出停止时在 N 后进入 heuristic waiting；fallback 之后才启用 bottom activity tracking，连续变化会恢复 running；provider completion 可以提前结束并且后续终端 chrome 不会推翻 authoritative waiting。
 
 N 的实验验收必须记录候选值、样本最大输出间隔、spinner frame cadence、completion detection latency 和已知反例。若真实样本不足以证明单一跨 provider 值，应选择 provider-specific policy 或明确保守默认，不得伪装成普适常量。
 
@@ -123,6 +131,6 @@ N 的实验验收必须记录候选值、样本最大输出间隔、spinner fram
 
 ## 接口与依赖
 
-不新增外部 runtime 依赖。优先复用 `@xterm/headless` 和现有 `SerializedTerminalStateTracker`，但共享 bottom activity API 必须是只读、低开销并可在 local/Supervisor 两条路径使用。`evaluateAgentWaitingInputTransition()` 的最终接口应接收实验确定的 quiet policy 和当前 bottom activity，而不是读取 provider 文案。callback envelope、identity 校验和 Supervisor wire capability 保持兼容。
+不新增外部 runtime 依赖。优先复用 `@xterm/headless` 和现有 `SerializedTerminalStateTracker`，但共享 bottom activity API 必须可显式启停、只读、低开销并可在 local/Supervisor 两条路径使用。`evaluateAgentWaitingInputTransition()` 只评估实验确定的 quiet policy，不读取 bottom activity 或 provider 文案；bottom reducer 独立服务于弱 waiting 恢复。callback envelope、identity 校验和 Supervisor wire capability 保持兼容。
 
-计划修订说明：2026-07-21 创建计划，记录用户确认删除 prompt glyph、使用 bottom spinner 强运行证据和实验选择 quiet fallback N 的方案；同日补齐六组 PTY 实验、5000ms 决策、screen activity 相位锁定发现、实现与完整验证，并归档。
+计划修订说明：2026-07-21 创建计划，记录用户确认删除 prompt glyph、使用 bottom spinner 强运行证据和实验选择 quiet fallback N 的方案；同日补齐六组 PTY 实验、5000ms 决策、screen activity 相位锁定发现、实现与完整验证，并归档。2026-07-22 根据用户对持续输出路径的复核，把 screen tracking 从正常 running 二次验证进一步收窄为仅服务弱 waiting 恢复，并重新通过聚焦测试、类型检查、构建与 trusted smoke。
