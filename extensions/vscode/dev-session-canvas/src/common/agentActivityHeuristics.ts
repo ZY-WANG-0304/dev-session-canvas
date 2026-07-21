@@ -37,6 +37,10 @@ export interface AgentWaitingInputEvaluation {
   reason?: AgentWaitingInputTransitionReason;
 }
 
+export interface AgentWaitingInputEvaluationOptions {
+  allowHardFallback?: boolean;
+}
+
 export const AGENT_WAITING_INPUT_POLL_INTERVAL_MS = 120;
 
 const AGENT_WAITING_INPUT_PROMPT_QUIET_MS = 220;
@@ -316,7 +320,8 @@ function isCodexFinalErrorLine(line: string): boolean {
 
 export function evaluateAgentWaitingInputTransition(
   state: AgentActivityHeuristicState,
-  now: number = Date.now()
+  now: number = Date.now(),
+  options: AgentWaitingInputEvaluationOptions = {}
 ): AgentWaitingInputEvaluation {
   if (typeof state.lastOutputAtMs !== 'number') {
     return {
@@ -352,7 +357,11 @@ export function evaluateAgentWaitingInputTransition(
 
   // A plain newline is not enough to conclude that an agent turn finished.
   // Long-running tasks may print one full line and then continue working.
-  if (!spinnerRecentlyActive && quietMs >= AGENT_WAITING_INPUT_HARD_FALLBACK_MS) {
+  if (
+    options.allowHardFallback !== false &&
+    !spinnerRecentlyActive &&
+    quietMs >= AGENT_WAITING_INPUT_HARD_FALLBACK_MS
+  ) {
     return {
       shouldTransition: true,
       shouldKeepPolling: false,

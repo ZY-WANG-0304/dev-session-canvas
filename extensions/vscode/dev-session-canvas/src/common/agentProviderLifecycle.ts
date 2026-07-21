@@ -47,7 +47,7 @@ export interface AgentProviderLifecycleState {
   lastTurnError?: string;
   turnActive: boolean;
   interruptRequested: boolean;
-  codexSubmissionCandidateArmed: boolean;
+  submissionCandidateArmed: boolean;
   completedProviderTurnIds: string[];
 }
 
@@ -77,27 +77,23 @@ export function createAgentProviderLifecycleState(
     activityAuthority: 'best-effort',
     turnActive: false,
     interruptRequested: false,
-    codexSubmissionCandidateArmed: false,
+    submissionCandidateArmed: false,
     completedProviderTurnIds: []
   };
 }
 
-export function consumeCodexInstructionSubmission(
+export function consumeAgentInstructionSubmission(
   state: AgentProviderLifecycleState,
   data: string,
   intent?: AgentInputIntent
 ): boolean {
-  if (state.provider !== 'codex') {
-    return false;
-  }
-
   if (intent === 'interrupt') {
-    state.codexSubmissionCandidateArmed = false;
+    state.submissionCandidateArmed = false;
     return false;
   }
 
   if (containsEditablePromptInput(data)) {
-    state.codexSubmissionCandidateArmed = true;
+    state.submissionCandidateArmed = true;
   }
 
   const submitted = intent === 'submit' || (intent === undefined && /[\r\n]/u.test(data));
@@ -105,29 +101,36 @@ export function consumeCodexInstructionSubmission(
     return false;
   }
 
-  const accepted = state.codexSubmissionCandidateArmed;
-  state.codexSubmissionCandidateArmed = false;
+  const accepted = state.submissionCandidateArmed;
+  state.submissionCandidateArmed = false;
   return accepted;
 }
 
-export function recordCodexSubmission(
+export function recordAgentSubmission(
   state: AgentProviderLifecycleState,
   submittedAtMs = Date.now()
 ): AgentProviderLifecycleApplyResult {
-  if (state.provider !== 'codex') {
-    return rejected('provider-mismatch');
-  }
-
   state.turnActive = true;
   state.activitySource = 'submission-intent';
   state.activityAuthority = 'derived';
   state.interruptRequested = false;
-  state.codexSubmissionCandidateArmed = false;
+  state.submissionCandidateArmed = false;
   state.activeProviderTurnId = undefined;
   state.activeTurnStartedAtMs = submittedAtMs;
   state.lastTurnOutcome = undefined;
   state.lastTurnError = undefined;
   return accepted(true, 'running');
+}
+
+export function recordAgentHeuristicWaitingInput(
+  state: AgentProviderLifecycleState
+): AgentProviderLifecycleApplyResult {
+  const changed = state.activitySource !== 'heuristic' || state.activityAuthority !== 'best-effort';
+  state.activitySource = 'heuristic';
+  state.activityAuthority = 'best-effort';
+  // Retain turn correlation so a delayed provider callback can still upgrade
+  // the best-effort completion before the next submission replaces it.
+  return accepted(changed, 'waiting-input');
 }
 
 export function recordAgentInterruptRequest(
@@ -139,7 +142,7 @@ export function recordAgentInterruptRequest(
 
   const changed = !state.interruptRequested;
   state.interruptRequested = true;
-  state.codexSubmissionCandidateArmed = false;
+  state.submissionCandidateArmed = false;
   state.activitySource = 'submission-intent';
   state.activityAuthority = 'derived';
   return accepted(changed);
@@ -185,6 +188,14 @@ export function applyAgentProviderLifecycleEvent(
   }
 
   if (event.provider === 'claude' && event.kind === 'turn-started') {
+    if (
+      event.observedAtMs !== undefined &&
+      state.activeTurnStartedAtMs !== undefined &&
+      event.observedAtMs < state.activeTurnStartedAtMs
+    ) {
+      return rejected('stale-turn');
+    }
+
     markProviderLifecycleSource(state);
     state.providerSessionId = event.providerSessionId;
     const changed =

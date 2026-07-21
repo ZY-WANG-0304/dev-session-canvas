@@ -109,6 +109,7 @@ function createNdjsonFileActivitySession(params: {
 
       const mergedSettings = prepareClaudeGeneratedSettings({
         args,
+        env,
         cwd,
         extensionRootPath,
         sessionRootPath,
@@ -175,12 +176,13 @@ function createCodexRuntimeIntegrationSession(
 
 function prepareClaudeGeneratedSettings(params: {
   args: string[];
+  env: NodeJS.ProcessEnv;
   cwd: string;
   extensionRootPath: string;
   sessionRootPath: string;
   includeFileActivityHook: boolean;
 }): { args: string[]; lifecycleEnabled: boolean; fallbackReason?: string } {
-  const hooksDisabledReason = findClaudeHooksDisabledReason(params.args);
+  const hooksDisabledReason = findClaudeHooksDisabledReason(params.args, params.env);
   if (hooksDisabledReason) {
     return {
       args: [...params.args],
@@ -273,12 +275,21 @@ function prepareClaudeGeneratedSettings(params: {
   };
 }
 
-function findClaudeHooksDisabledReason(args: readonly string[]): string | undefined {
+function findClaudeHooksDisabledReason(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv
+): string | undefined {
   if (args.includes('--safe-mode')) {
     return 'claude-hooks-disabled-by-safe-mode';
   }
   if (args.includes('--bare')) {
     return 'claude-hooks-disabled-by-bare';
+  }
+  if (env.CLAUDE_CODE_SAFE_MODE === '1') {
+    return 'claude-hooks-disabled-by-safe-mode-env';
+  }
+  if (env.CLAUDE_CODE_SIMPLE === '1') {
+    return 'claude-hooks-disabled-by-simple-mode-env';
   }
   return undefined;
 }

@@ -569,7 +569,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     assert.equal(
       stillRunningSnapshot.lifecycle,
       'running',
-      'A lifecycle-enabled Agent must not enter waiting-input through the 1600ms hard fallback.'
+      'An ordinary running Agent must not enter waiting-input through the 1600ms hard fallback.'
     );
     assert.equal(stillRunningSnapshot.agentActivitySource, 'submission-intent');
     const completedLifecycleSnapshot = await waitForRuntimeSupervisorMessage(
@@ -588,6 +588,70 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     assert.equal(completedLifecycleSnapshot.payload.lastTurnOutcome, 'completed');
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
       sessionId: 'provider-lifecycle-agent'
+    });
+
+    const missingSignalAgentScriptPath = path.join(tempDir, 'runtime-agent-missing-provider-signal.js');
+    await writeFile(
+      missingSignalAgentScriptPath,
+      `let turnScheduled = false;\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (data) => {\n  if (turnScheduled || !/[\\r\\n]/u.test(data)) return;\n  turnScheduled = true;\n  process.stdout.write('working\\r\\n');\n  setTimeout(() => process.stdout.write('> '), 2300);\n});\nsetInterval(() => undefined, 1000);\n`,
+      'utf8'
+    );
+    const missingSignalAgentSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'agent',
+      sessionId: 'provider-signal-missing-agent',
+      displayLabel: 'Claude Code',
+      launchMode: 'start',
+      scrollback: 1000,
+      provider: 'claude',
+      providerLifecycleEnabled: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [missingSignalAgentScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    assert.equal(missingSignalAgentSnapshot.providerLifecycleEnabled, true);
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'provider-signal-missing-agent',
+      data: 'silent prompt',
+      intent: 'text'
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'provider-signal-missing-agent',
+      data: '\r',
+      intent: 'submit'
+    });
+    await delay(1900);
+    const missingSignalRunningSnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: 'provider-signal-missing-agent' }
+    );
+    assert.equal(
+      missingSignalRunningSnapshot.lifecycle,
+      'running',
+      'Configured callbacks must not gate the primary quiet-time policy.'
+    );
+    assert.equal(missingSignalRunningSnapshot.agentActivitySource, 'submission-intent');
+    const heuristicCompletionSnapshot = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === 'provider-signal-missing-agent' &&
+        message.payload.lifecycle === 'waiting-input' &&
+        message.payload.agentActivitySource === 'heuristic',
+      'provider-signal-missing heuristic completion',
+      4000
+    );
+    assert.equal(heuristicCompletionSnapshot.payload.agentActivityAuthority, 'best-effort');
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: 'provider-signal-missing-agent'
     });
 
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');

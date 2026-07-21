@@ -181,3 +181,5 @@ trusted smoke 的 lifecycle-enabled 假 Claude 先运行 `sleep 3`；在 2000ms 
 Provider callback 的共享 event 必须包含 provider、provider session ID 和 provider turn ID。transport envelope 必须包含 runtime session ID、process epoch 和 callback nonce。运行时脚本只使用 Node 内置 `net`/`process`/`JSON`，不新增网络服务或第三方 runtime 依赖。
 
 变更说明：2026-07-14 创建计划，记录已完成的 Codex/Claude 受控实验、用户确认的 provider 映射、callback identity 不变量、Claude settings 合并约束和 Codex notify 冲突回退策略。2026-07-15 更新实现进度，补充 completion 时间保护与 Supervisor 2300ms callback 回归证据；同日完成实现与验证，记录 hook-capable smoke 替身、StopFailure 端到端证据、全量测试的无关 Marketplace 缺口和最终残余风险。
+
+后续决策说明：2026-07-21 用户根据 hooks-disabled review 将 notify/hooks 从排他 lifecycle 主路径调整为辅助增强信号。本文保留 2026-07-15 的实现历史；当前正式方案与后续实现以 `docs/design-docs/agent-running-state-detection.md` 和 `docs/exec-plans/completed/agent-provider-signals-as-enhancements.md` 为准。
