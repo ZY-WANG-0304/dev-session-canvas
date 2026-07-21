@@ -66,7 +66,7 @@
 - Attention 呈现：把 `devSessionCanvas.notifications.attentionSignalBridge` 设为 `none`，避免 workbench/system toast；把 `devSessionCanvas.notifications.strongTerminalAttentionReminder` 设为 `both`，保留产品内标题栏与 MiniMap 提醒。
 - 通知：除上述产品内 attention 表达外，不保留 VS Code notification toast。
 
-### Take A：组合画布
+### Take A：目录分组
 
 把 `devSessionCanvas.canvas.multiRootPresentationMode` 设为 `rootGroups`，录制一条完整的 `1440x900` 宽屏源素材。开场执行 fit view；随后严格按 `payments-api`、`storefront`、`design-system`、`release-tools` 的顺序重复以下动作：双击节点放大、点击真实 Agent 输入区、粘贴并提交固定任务、清楚展示 `running`，再点击 fit view 回到四 root 全景。完成一个完整循环后才能开始下一个节点，不能只通过鼠标选中小节点直接输入，也不能用录制前预置的 running 状态代替可见提交。
 
@@ -119,7 +119,7 @@
 | 双形态比较 | `两种视图模式，按需选择。` | `Two view modes. Choose as needed.` |
 | attention 聚焦 | `发现需要关注的会话，立即聚焦。` | `Spot the session that needs you.`<br>`Focus instantly.` |
 | 收尾 | `既能统览全局，也能从容聚焦。` | `See the whole picture.`<br>`Focus with ease.` |
-| 左侧模式标签 | `组合画布` | `Root Groups` |
+| 左侧模式标签 | `目录分组` | `Root Groups` |
 | 右侧模式标签 | `窗格画廊` | `Pane Gallery` |
 
 产品落版固定使用仓库 `dev-session-canvas-icon.svg`、名称 `DevSessionCanvas` 与地址 `github.com/ZY-WANG-0304/dev-session-canvas`；地址不做语言本地化，也不进入主字幕区域。MP4 在双窗对比段与最后 1.5 秒显示横向品牌条；GIF 八帧都在左上安全区显示紧凑品牌角标。
@@ -168,10 +168,10 @@ GIF 不从 MP4 均匀抽帧，也不使用未经审阅的原始截图。八张 f
 ## PNG Hero
 
 - PNG 不复制 GIF 最后一帧，也不直接缩放任一 GIF frame。它使用 `attention-focused` 的同一对真实 checkpoint 独立合成静态 Hero；`all-in-view` 仍只负责 GIF 收尾。
-- 左右产品窗口严格保持 50/50：母版中各为 `1200x750`，模式说明 top 为 `400px`，窗口 top 为 `550px`，底部保留 `300px` 背景留白；左侧 `组合画布`、右侧 `窗格画廊`，四个 root 对应一致，`payments-api` attention 明确可见。右侧必须展示 `payments-api` 主任务和其他 root 的 `sideThumbnails`，不能退回 `dynamic` 四 pane 全览。左右同屏仍是后期比较，不暗示产品原生同时打开两种模式。
+- 左右产品窗口严格保持 50/50：母版中各为 `1200x750`，模式说明 top 为 `400px`，窗口 top 为 `550px`，底部保留 `300px` 背景留白；左侧 `目录分组`、右侧 `窗格画廊`，四个 root 对应一致，`payments-api` attention 明确可见。右侧必须展示 `payments-api` 主任务和其他 root 的 `sideThumbnails`，不能退回 `dynamic` 四 pane 全览。左右同屏仍是后期比较，不暗示产品原生同时打开两种模式。
 - Hero 左上品牌组使用仓库 `dev-session-canvas-icon.svg`、`DevSessionCanvas` 产品名与 GitHub 地址，右上保留说明 `VS Code 多 Agent 协作工作台` / `Multi-agent workbench for VS Code`。
 - Hero 中文主标题为 `所有 Agent，跨根目录汇聚于一张画布。`，英文为 `Every agent. Every root. One canvas.`。这里必须使用 root / 根目录，不能把一个 folder 写成 workspace 或 repository。
-- 组合画布说明为 `各根目录的会话，平铺在同一张画布中。` / `Sessions from every root, tiled together on one canvas.`。
+- 目录分组说明为 `各根目录的会话，平铺在同一张画布中。` / `Sessions from every root, tiled together on one canvas.`。
 - 窗格画廊说明为 `兼顾单任务聚焦与全局任务掌控。` / `Focus on one task while staying in control of the rest.`；不使用会暗示自动质量检测的“质检”。
 - Hero 底部不再重复列出三项能力，也不使用编号、图标、箭头、卡片或流程轨道。平铺、聚焦与全局掌控的含义只由左右模式说明承担，释放的空间用于放大真实产品画面和保留克制留白。
 - Hero 品牌、主标题、模式说明和能力标签均位于真实 UI 框之外，不遮挡 Agent、attention、root 标签或输入区；必须分别检查 `1920px`、`1180px` 与 `375px` 缩放结果。

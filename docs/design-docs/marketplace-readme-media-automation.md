@@ -161,8 +161,8 @@ MP4 与 PNG 目标导出为 `1920x1200`，GIF 目标导出为 `1440x900`。MP4/G
 - MP4 使用一条约 54 秒的编辑时间线。单宽屏主画面保留真实交互细节与外部字幕带；中段双宽屏来自 Take A / Take B 的同状态录制源。顶部横向项目落版在 `19-26s` 双窗对比中保持可见，进入 Pane Gallery 单窗时随模式标签平滑淡出，并在最后 1.5 秒重新淡入；落版包含正式 icon、产品名和 GitHub 地址，始终与底部字幕错开。
 - GIF 不从完整 MP4 均匀抽帧，也不直接拼未经审阅的原始 checkpoint。它由剧本列出的八张三段式 storyboard frame 组成：前两张只选择 Root Groups checkpoint，中间两张合成左右 checkpoint，后四张只选择 Pane Gallery checkpoint；每张 frame 都记录左右 checkpoint 来源、layout、语言、字幕和停留时间。八帧左上 UI 框外固定显示同一紧凑品牌角标，最后一帧不重复第二套大号落版。
 - PNG 从合成母版单独导出，不能从 GIF 解码回取，也不能直接缩放任一 GIF storyboard frame。默认 Hero frame ID 是 `attention-focused`，只复用该 ID 下同一状态的成对真实 checkpoint；Hero HTML/CSS 与 GIF frame 分开渲染。
-- PNG 的两个产品窗口严格 50/50，在母版中分别为 `1200x750`，模式说明 top 为 `400px`，窗口 top 为 `550px`，底部只保留 `300px` 低对比背景；左右显示组合画布与窗格画廊，右侧使用真实 `sideThumbnails` 状态。Hero 左上品牌组使用真实 SVG icon、产品名和 GitHub 地址，右上保留产品说明，下方保持价值主标题和两种模式说明；不再增加底部能力条、图标或箭头，这些后期元素只能放在 UI 框外。
-- Hero 文案必须使用 root / 根目录，不能把一个 folder 等同于 VS Code workspace，也不能假设它是 Git repository。组合画布表达各 root 会话在一张平铺画布中；窗格画廊表达单任务聚焦与全局任务掌控之间的平衡，不使用“质检”。精确中英文以剧本为准。
+- PNG 的两个产品窗口严格 50/50，在母版中分别为 `1200x750`，模式说明 top 为 `400px`，窗口 top 为 `550px`，底部只保留 `300px` 低对比背景；左右显示目录分组与窗格画廊，右侧使用真实 `sideThumbnails` 状态。Hero 左上品牌组使用真实 SVG icon、产品名和 GitHub 地址，右上保留产品说明，下方保持价值主标题和两种模式说明；不再增加底部能力条、图标或箭头，这些后期元素只能放在 UI 框外。
+- Hero 文案必须使用 root / 根目录，不能把一个 folder 等同于 VS Code workspace，也不能假设它是 Git repository。目录分组表达各 root 会话在一张平铺画布中；窗格画廊表达单任务聚焦与全局任务掌控之间的平衡，不使用“质检”。精确中英文以剧本为准。
 - PNG 不再要求等于 GIF 最后一帧。GIF 最后一帧为 `all-in-view`；只有人工评审显式变更 Hero frame ID 后，PNG 才能选择其他成对 checkpoint。
 - GIF 每个 storyboard frame 的固定品牌角标都必须直接嵌入仓库 `extensions/vscode/dev-session-canvas/images/dev-session-canvas-icon.svg`，同时显示 `DevSessionCanvas` 与 `github.com/ZY-WANG-0304/dev-session-canvas`；不使用临时 `DSC` 文字方框、后期重画近似 icon 或最后一帧重复落版。
 - MP4、GIF 与 PNG 的地址统一显示为 `github.com/ZY-WANG-0304/dev-session-canvas`，metadata 同时记录完整 `https://` URL；地址不本地化，不作为主字幕，也不通过全程水印遮挡产品像素。
