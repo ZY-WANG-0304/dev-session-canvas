@@ -54,6 +54,7 @@ import {
   type RuntimeSupervisorMessageDescriptor,
   type RuntimeSupervisorMessage,
   type RuntimeSupervisorPaths,
+  type RuntimeSupervisorRecoveryState,
   type RuntimeSupervisorRequest,
   type RuntimeSupervisorResizeSessionParams,
   type RuntimeSupervisorSessionSnapshot,
@@ -90,6 +91,8 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
+const TEST_RECOVERY_GATE_PATH_ENV = 'DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_RECOVERY_GATE_PATH';
+const TEST_RECOVERY_GATE_POLL_INTERVAL_MS = 50;
 
 function normalizeRuntimeSupervisorOutputSequence(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
@@ -172,6 +175,13 @@ class RuntimeSupervisorServer {
   private persistRegistryError: Error | undefined;
   private idleShutdownTimer: NodeJS.Timeout | undefined;
   private server: net.Server | undefined;
+  private recoveryComplete = true;
+  private recoveryFailureCount = 0;
+  private readonly pendingRecoverySessionIds = new Set<string>();
+  private recoveryState: RuntimeSupervisorRecoveryState = {
+    phase: 'ready',
+    pendingSessionCount: 0
+  };
 
   public constructor(
     private readonly paths: RuntimeSupervisorPaths,
@@ -182,9 +192,22 @@ class RuntimeSupervisorServer {
   public async start(): Promise<void> {
     fs.mkdirSync(this.paths.storageDir, { recursive: true });
     ensureSocketDirectoryReady(this.paths);
-    await this.loadRegistry();
+    const recoveredSnapshots = this.readRegistrySnapshots();
+    for (const snapshot of recoveredSnapshots) {
+      this.pendingRecoverySessionIds.add(snapshot.sessionId);
+    }
+    this.recoveryComplete = this.pendingRecoverySessionIds.size === 0;
+    this.recoveryState = {
+      phase: this.recoveryComplete ? 'ready' : 'recovering',
+      pendingSessionCount: this.pendingRecoverySessionIds.size
+    };
     await this.listen();
-    this.scheduleIdleShutdownIfNeeded();
+    if (this.recoveryComplete) {
+      this.scheduleIdleShutdownIfNeeded();
+      return;
+    }
+
+    void this.recoverRegistryInBackground(recoveredSnapshots);
   }
 
   private async listen(): Promise<void> {
@@ -263,6 +286,7 @@ class RuntimeSupervisorServer {
               pid: process.pid,
               runtimeBackend: this.runtimeBackend,
               runtimeGuarantee: this.runtimeGuarantee,
+              recovery: this.recoveryState,
               capabilities: {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
@@ -365,7 +389,6 @@ class RuntimeSupervisorServer {
         }
       }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionAlreadyExists);
     }
-
     const lifecycle: AgentNodeStatus | TerminalNodeStatus =
       params.kind === 'agent'
         ? params.launchMode === 'resume'
@@ -395,8 +418,19 @@ class RuntimeSupervisorServer {
       process = createExecutionSessionProcess(launchSpec);
     } catch (error) {
       await terminalJournal.delete();
-      throw error;
+      throw createExecutionSpawnProtocolError(error, launchSpec.file, launchSpec.cwd);
     }
+    if (this.sessions.has(sessionId)) {
+      process.kill();
+      await terminalJournal.delete();
+      throw createRuntimeSupervisorProtocolError({
+        id: 'sessionAlreadyExists',
+        params: {
+          sessionId
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionAlreadyExists);
+    }
+    this.claimRecoveredSessionIdForCreate(sessionId);
     const terminalStateTracker = new SerializedTerminalStateTracker(params.launchSpec.cols, params.launchSpec.rows, {
       scrollback,
       initialOutputSequence: 0
@@ -1741,20 +1775,76 @@ class RuntimeSupervisorServer {
     this.persistRegistryError = undefined;
   }
 
-  private async loadRegistry(): Promise<void> {
+  private readRegistrySnapshots(): RuntimeSupervisorSessionSnapshot[] {
     if (!fs.existsSync(this.paths.registryPath)) {
-      return;
+      return [];
     }
 
-    let registry: SupervisorRegistry;
     try {
-      registry = JSON.parse(fs.readFileSync(this.paths.registryPath, 'utf8')) as SupervisorRegistry;
+      const registry = JSON.parse(fs.readFileSync(this.paths.registryPath, 'utf8')) as SupervisorRegistry;
+      return Array.isArray(registry.sessions) ? registry.sessions : [];
     } catch {
+      return [];
+    }
+  }
+
+  private async recoverRegistryInBackground(snapshots: RuntimeSupervisorSessionSnapshot[]): Promise<void> {
+    try {
+      await waitForTestRecoveryGate();
+      for (const snapshot of snapshots) {
+        if (!this.pendingRecoverySessionIds.has(snapshot.sessionId)) {
+          continue;
+        }
+
+        let recoveredSession: SupervisorSession | undefined;
+        try {
+          recoveredSession = await this.normalizeRecoveredSession(snapshot);
+          if (recoveredSession.terminalJournalError) {
+            this.recoveryFailureCount += 1;
+          }
+          if (this.pendingRecoverySessionIds.delete(snapshot.sessionId) && !this.sessions.has(snapshot.sessionId)) {
+            this.sessions.set(snapshot.sessionId, recoveredSession);
+          } else {
+            recoveredSession.terminalStateTracker.dispose();
+          }
+        } catch (error) {
+          this.pendingRecoverySessionIds.delete(snapshot.sessionId);
+          this.recoveryFailureCount += 1;
+          console.error(`Failed to recover runtime session ${snapshot.sessionId}:`, error);
+        } finally {
+          this.publishRecoveryState();
+        }
+      }
+    } finally {
+      this.pendingRecoverySessionIds.clear();
+      this.recoveryComplete = true;
+      this.publishRecoveryState();
+      this.schedulePersist();
+      this.scheduleIdleShutdownIfNeeded();
+    }
+  }
+
+  private claimRecoveredSessionIdForCreate(sessionId: string): void {
+    if (!this.pendingRecoverySessionIds.delete(sessionId)) {
       return;
     }
 
-    for (const rawSession of registry.sessions ?? []) {
-      this.sessions.set(rawSession.sessionId, await this.normalizeRecoveredSession(rawSession));
+    this.publishRecoveryState();
+  }
+
+  private publishRecoveryState(): void {
+    this.recoveryState = {
+      phase: this.recoveryComplete ? 'ready' : 'recovering',
+      pendingSessionCount: this.pendingRecoverySessionIds.size,
+      ...(this.recoveryFailureCount > 0 ? { failureCount: this.recoveryFailureCount } : {})
+    };
+    const message: RuntimeSupervisorEvent = {
+      type: 'event',
+      event: 'recoveryState',
+      payload: this.recoveryState
+    };
+    for (const socket of this.connections) {
+      this.writeMessage(socket, message);
     }
   }
 
@@ -2015,7 +2105,11 @@ class RuntimeSupervisorServer {
   }
 
   private scheduleIdleShutdownIfNeeded(): void {
-    if (this.connections.size > 0 || Array.from(this.sessions.values()).some((session) => session.live)) {
+    if (
+      !this.recoveryComplete ||
+      this.connections.size > 0 ||
+      Array.from(this.sessions.values()).some((session) => session.live)
+    ) {
       this.clearIdleShutdownTimer();
       return;
     }
@@ -2222,6 +2316,46 @@ function createErrorResponse(
       descriptor
     }
   };
+}
+
+function createExecutionSpawnProtocolError(error: unknown, file: string, cwd: string): Error {
+  const cause = error instanceof Error ? error : new Error(String(error));
+  const errno = readErrorCode(cause);
+  return createRuntimeSupervisorProtocolError({
+    id: 'executionSpawnFailed',
+    params: {
+      file,
+      cwd,
+      detail: cause.message
+    }
+  }, RUNTIME_SUPERVISOR_ERROR_CODES.executionSpawnFailed, {
+    origin: 'execution-spawn',
+    errno,
+    file,
+    cwd
+  });
+}
+
+async function waitForTestRecoveryGate(): Promise<void> {
+  const gatePath = process.env[TEST_RECOVERY_GATE_PATH_ENV]?.trim();
+  if (!gatePath) {
+    return;
+  }
+
+  while (fs.existsSync(gatePath)) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, TEST_RECOVERY_GATE_POLL_INTERVAL_MS);
+    });
+  }
+}
+
+function readErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) {
+    return undefined;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && code.trim() ? code.trim() : undefined;
 }
 
 function ensureSocketDirectoryReady(paths: RuntimeSupervisorPaths): void {

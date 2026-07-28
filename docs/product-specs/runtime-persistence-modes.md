@@ -26,6 +26,7 @@
    - 若运行时持久化已关闭，系统不承诺真实进程继续存在；退出前会先刷盘最后状态与恢复信息，并在合理超时内结束现有 `Agent` / `Terminal` 进程。
 5. 用户重新打开 VSCode 后：
    - 若节点处于 `live-runtime` 模式且带有可附着的持久化会话身份，系统先显示 `重连中`。
+   - 若 Supervisor 正在恢复历史 journal，系统明确显示非阻塞的“恢复中”；这不阻止用户创建新的 `Agent` 或 `Terminal`。
    - 若之前的真实进程仍活着，节点会重新附着到原会话，并切回真实生命周期状态。
    - 若真实进程不再存在、已自然结束、监督器不可达，或重新附着失败，节点会进入 `历史恢复`，明确告诉用户这是恢复的历史状态，而不是仍在运行的同一进程。
 6. 当扩展升级且旧版 Supervisor 仍持有 live 会话时：
@@ -96,6 +97,8 @@
 - 当系统选中 `systemd-user` backend 时，关闭 VSCode 或断开 Remote SSH 后，真实 `Agent` / `Terminal` 进程仍可继续存在；重新打开 VSCode 后，系统会优先重新附着到原会话，而不是只恢复一个静态快照。
 - 在 Linux 本地或 Remote SSH workspace 中，如果 `systemd-user` backend 不可用，系统会自动降级到 `legacy-detached`，并把 guarantee 标成 `best-effort`，而不是继续把它伪装成强保证。
 - 当运行时持久化开关开启且节点带有持久化 live 会话身份时，VSCode 重开后节点先显示 `重连中`；只有在重新附着成功后，才恢复为 `运行中`、`等待输入`、`live` 等真实生命周期状态。
+- 当 Supervisor 在重开后恢复历史 journal 时，用户能看到“恢复中”而不是命令或 shell 配置错误；恢复中的旧历史不得阻止用户创建新的 `Agent` 或 `Terminal`。
+- 当 Unix socket 缺失、Supervisor 就绪超时与 PTY spawn 失败发生时，界面必须分别解释为 runtime 连接/恢复问题、runtime 启动超时和外部 executable 问题；不得把任意 `ENOENT` 统一显示为 Codex 或 shell 缺失。
 - 当系统无法重新附着到 live runtime 时，`Terminal` 会明确进入 `历史恢复`；`Agent` 则会先检查是否已持有 provider 原生显式 session identity，若有则自动降级到 provider resume，否则才进入 `历史恢复` 或 `interrupted`。
 - 当运行时持久化开关关闭时，关闭 VSCode 后系统会在刷盘最后状态后结束现有 `Agent` / `Terminal` 进程；重新打开时，系统至少恢复节点、标题、位置、尺寸、最后状态、最近输出摘要和恢复入口。
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。

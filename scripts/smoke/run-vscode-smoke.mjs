@@ -122,6 +122,9 @@ async function main() {
   if (shouldRunScenario('systemd-fallback-real-reopen')) {
     await runSystemdFallbackRealWindowReopenScenario();
   }
+  if (shouldRunScenario('runtime-supervisor-reboot-recovery')) {
+    await runRuntimeSupervisorRebootRecoveryScenario();
+  }
   if (shouldRunScenario('remote-ssh-real-reopen')) {
     await runRemoteSSHRealReopenScenario();
   }
@@ -395,6 +398,56 @@ async function runSystemdFallbackRealWindowReopenScenario() {
       DEV_SESSION_CANVAS_FAKE_SYSTEMD_MODE: 'fail-start'
     }
   });
+}
+
+async function runRuntimeSupervisorRebootRecoveryScenario() {
+  if (process.platform === 'win32') {
+    console.log('Runtime Supervisor reboot recovery smoke skipped on Windows because it validates a Unix socket reset.');
+    return;
+  }
+
+  const scenarioName = 'runtime-supervisor-reboot-recovery';
+  const runtime = await prepareRuntime({
+    projectRoot,
+    debugRoot: path.join(smokeDebugRoot, scenarioName),
+    // Keep this short so the Supervisor uses this isolated XDG runtime directory for its socket.
+    runtimeDirName: `dsc-rr-${process.pid}`,
+    userSettings: {
+      'security.workspace.trust.enabled': false
+    },
+    extensionTestsEnv: {
+      DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenarioName,
+      DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE: 'legacy-detached',
+      DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+      DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
+      PATH: smokeFixturesPath
+    }
+  });
+  const smokeHostRoot = await prepareMainSmokeHostExtension({
+    projectRoot,
+    targetRoot: path.join(runtime.debugRoot, 'smoke-host')
+  });
+  const recoveryGatePath = path.join(runtime.artifactsDir, 'runtime-supervisor-recovery.gate');
+
+  await launchPreparedVSCodeScenario({
+    projectRoot,
+    runtime,
+    workspacePath: projectRoot,
+    extensionDevelopmentPath: smokeHostRoot,
+    extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'runtime-supervisor-reboot-recovery-tests.cjs'),
+    disableExtensions: false,
+    disableWorkspaceTrust: true,
+    extensionTestsEnv: {
+      DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenarioName,
+      DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE: 'legacy-detached',
+      DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_RECOVERY_GATE_PATH: recoveryGatePath,
+      DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+      DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
+      PATH: smokeFixturesPath
+    }
+  });
+
+  console.log('Runtime Supervisor reboot recovery smoke passed.');
 }
 
 async function runLocalRealWindowReopenScenario(options) {
