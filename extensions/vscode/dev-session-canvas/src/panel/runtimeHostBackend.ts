@@ -215,11 +215,12 @@ function normalizeSystemdCommandError(args: string[], error: unknown): Error {
   }, RUNTIME_SUPERVISOR_ERROR_CODES.systemdCommandFailed);
 }
 
-function renderSystemdUserUnit(params: {
+export function renderSystemdUserUnit(params: {
   unitName: string;
   backend: RuntimeHostBackendDescriptor;
   supervisorScriptPath: string;
 }): string {
+  const workingDirectory = serializeSystemdWorkingDirectory(params.backend.paths.storageDir);
   const executablePath = resolveSupervisorExecPath();
   const execArgs = [
     executablePath,
@@ -251,7 +252,7 @@ function renderSystemdUserUnit(params: {
     ...Object.entries(SUPERVISOR_PROCESS_ENV).map(
       ([key, value]) => `Environment=${quoteSystemdExecArg(`${key}=${value}`)}`
     ),
-    `WorkingDirectory=${quoteSystemdExecArg(params.backend.paths.storageDir)}`,
+    `WorkingDirectory=${workingDirectory}`,
     `ExecStart=${execArgs.map((value) => quoteSystemdExecArg(value)).join(' ')}`,
     'Restart=on-failure',
     'RestartSec=1',
@@ -260,6 +261,16 @@ function renderSystemdUserUnit(params: {
     'WantedBy=default.target',
     ''
   ].join('\n');
+}
+
+function serializeSystemdWorkingDirectory(value: string): string {
+  if (!path.isAbsolute(value) || /[\r\n\0]/.test(value)) {
+    throw new Error('systemd WorkingDirectory must be an absolute single-line path.');
+  }
+
+  // WorkingDirectory is a unit directive value, not an ExecStart argv token. systemd treats
+  // surrounding double quotes literally here, so only escape its percent specifier syntax.
+  return value.replace(/%/g, '%%');
 }
 
 function quoteSystemdExecArg(value: string): string {
