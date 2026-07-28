@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.24.4 - Supervisor Reboot Recovery and Multi-root Preview Refresh
+
+Relative to `0.24.3`, `0.24.4` is a public `Preview` patch release. It keeps a Runtime Supervisor control plane available while prior journal history is recovering after a host or runtime restart, separates Supervisor transport failures from missing executable errors, fixes the Pane Gallery bottom-thumbnail header, and refreshes the public multi-root Preview media in English and Simplified Chinese. It does not revive PTYs that were terminated by a restart.
+
+### Highlights
+
+- The Supervisor now listens before it hydrates old registry and journal state. Its health response exposes a temporary `recovering` phase, so new `Agent` and `Terminal` sessions can start while historical sessions restore in the background.
+- A persisted node that receives `sessionNotFound` during this recovery phase remains `reattaching`; when the same runtime namespace becomes ready, the Host retries the attach under its existing operation token. A recovered `live: false` snapshot still resolves honestly as history rather than a revived process.
+- Socket missing/refused and Supervisor readiness failures are now distinguished from PTY spawn failures. Only a spawn-side `ENOENT` is presented as a missing Agent command or shell; the Linux `systemd --user` unit also writes `WorkingDirectory=` using its required unquoted absolute path.
+- Pane Gallery bottom thumbnails again keep their root title bar visible, and the Marketplace listing now carries the reviewed Root Groups / Pane Gallery story in separate English and Simplified Chinese PNG, MP4, and GIF assets.
+- The extension ID, minimum VS Code version, provider command contract, journal format, notifier behavior, auto-install relationship, Marketplace channel gate, Template Marketplace service version line, and Preview support boundary remain unchanged.
+
+### Installation and Upgrade
+
+- This is a public `Preview` patch for `devsessioncanvas.dev-session-canvas`.
+- Install or upgrade from `0.24.3` through the extension registry configured by the host. Open VSX should publish and verify the same version; GitHub Release assets remain the manual-install fallback while Visual Studio Marketplace remains deferred.
+- If restart recovery is in progress, existing persisted nodes can briefly show a recovery state. New sessions are not globally blocked; sessions whose prior PTY ended are restored only as history.
+- Existing explicit settings, including runtime persistence, notifications, link opening, multi-root presentation, and fork placement, retain their configured values.
+
+### Known Boundaries
+
+- The restart recovery evidence is a repeatable Host-level fault model. It does not claim that a physical device restart or a long Remote SSH disconnect can keep an old local PTY alive, and the existing real-environment follow-up remains open.
+- The existing Preview limits remain: unsafe or oversized journals retain their full history, no fixed disk cap or cross-version journal rollback is promised, the 90,000-line completed-terminal tail issue remains under investigation, and Visual Studio Marketplace availability is still not an established installation path.
+
+### Rollback Guidance
+
+- If `0.24.4` blocks a workflow, stop important sessions, disable or uninstall the extension, and prefer a later `0.24.x` fix over a manual downgrade. Preview releases do not promise cross-version Runtime Supervisor journal compatibility.
+
 ## 0.24.3 - Media Link Opening and Stable Terminal Resize Update
 
 相对 `0.24.2`，`0.24.3` 是同一公开 `Preview` 线内的修复更新，解决执行节点中的图片、视频等媒体文件链接无法交给 VS Code 原生编辑器打开的问题，并把 Agent / Terminal 节点拖拽缩放期间的连续 PTY resize 收口为稳定最终尺寸，减少 Codex / Claude TUI 因逐帧重排产生的重复全屏重绘和画面叠字。它保留 `0.24.2` 的安全 journal compact、跨 Node 终态门禁、Fork 定向落位和生成节点创建时避碰能力。
