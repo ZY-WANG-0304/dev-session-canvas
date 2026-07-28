@@ -308,10 +308,9 @@ export class RuntimeSupervisorClient {
         this.options.onDisconnected?.(error);
       }
     });
-    socket.on('error', (error) => {
-      if (!this.disposed) {
-        this.options.onDisconnected?.(error);
-      }
+    socket.on('error', () => {
+      // Report the disconnect only after close clears the stale socket reference.
+      socket.destroy();
     });
   }
 

@@ -10115,6 +10115,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     attachSession: () => Promise<RuntimeSupervisorSessionAttachResult>,
     options: {
       allowAttachedTerminalStreamRecovery?: boolean;
+      shouldDeferSessionNotFoundWhileRecovering?: () => boolean;
       onSettled?: () => void;
     } = {}
   ): Promise<void> {
@@ -10166,6 +10167,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } catch (error) {
       if (!this.isExecutionSessionOperationCurrent(kind, nodeId, operationToken)) {
         this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
+        return;
+      }
+
+      if (
+        this.isMissingRuntimeSupervisorSessionError(error) &&
+        options.shouldDeferSessionNotFoundWhileRecovering?.()
+      ) {
+        this.recordDiagnosticEvent('runtime/sessionAttachDeferredForRecovery', {
+          kind,
+          nodeId,
+          runtimeSessionId
+        });
         return;
       }
 
@@ -10326,6 +10339,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             runtimeSessionId,
             () => this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId),
             {
+              shouldDeferSessionNotFoundWhileRecovering: () =>
+                client.getRecoveryState()?.phase === 'recovering',
               onSettled: () => this.retireLegacyRuntimeSupervisorClientIfUnused(
                 this.getRuntimeHostBackend(backendKind, runtimeStoragePath),
                 client
@@ -11019,12 +11034,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     error?: Error
   ): void {
     this.clearRuntimeSupervisorRecoveryState(backendKind, runtimeStoragePath);
+    const shouldReconnect = this.getLiveRuntimeReconnectBlockReason() === undefined;
+    let reconnectScheduled = false;
     for (const [nodeId, session] of this.agentSessions.entries()) {
       if (
         session.owner === 'supervisor' &&
         session.runtimeBackend === backendKind &&
         this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
       ) {
+        if (shouldReconnect) {
+          this.markExecutionNodeAsReattaching(nodeId, 'agent', error?.message);
+          reconnectScheduled = true;
+          continue;
+        }
         if (this.maybeFallbackAgentLiveRuntimeToResume(nodeId, error?.message)) {
           continue;
         }
@@ -11038,8 +11060,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         session.runtimeBackend === backendKind &&
         this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
       ) {
+        if (shouldReconnect) {
+          this.markExecutionNodeAsReattaching(nodeId, 'terminal', error?.message);
+          reconnectScheduled = true;
+          continue;
+        }
         this.markExecutionNodeAsHistoryRestored(nodeId, 'terminal', error?.message);
       }
+    }
+
+    if (reconnectScheduled) {
+      this.scheduleRestoreLiveRuntimeSessions();
     }
   }
 
@@ -11062,6 +11093,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         failureCount: state.failureCount ?? 0
       });
       this.postRuntimeRecoveryStateIfVisible();
+      if (previous?.phase === 'recovering') {
+        this.scheduleRestoreLiveRuntimeSessions();
+      }
       return;
     }
 
@@ -11363,6 +11397,52 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         message: formatUnknownError(error)
       });
     }
+  }
+
+  private markExecutionNodeAsReattaching(
+    nodeId: string,
+    kind: ExecutionNodeKind,
+    reason?: string
+  ): void {
+    const existingNode = this.requireNode(nodeId, kind);
+    const currentMetadata = kind === 'agent' ? ensureAgentMetadata(existingNode) : ensureTerminalMetadata(existingNode);
+    const existingSession = this.getExecutionSessions(kind).get(nodeId);
+    this.invalidateExecutionSessionOperation(kind, nodeId);
+    this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId);
+    this.disposeManagedExecutionSession(existingSession);
+    this.getExecutionSessions(kind).delete(nodeId);
+    if (kind === 'agent') {
+      void this.disposeAgentFileActivitySession(nodeId);
+    }
+
+    this.state = updateExecutionNode(this.state, nodeId, kind, {
+      status: 'reattaching',
+      summary:
+        reason?.trim() ||
+        (kind === 'agent'
+          ? vscode.l10n.t('Reconnecting to the original Agent live runtime.')
+          : vscode.l10n.t('Reconnecting to the original Terminal live runtime.')),
+      metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        persistenceMode: 'live-runtime',
+        attachmentState: 'reattaching',
+        terminalProjectionMode: undefined,
+        runtimeStoragePath: currentMetadata.runtimeStoragePath,
+        liveSession: false,
+        runtimeSessionId: currentMetadata.runtimeSessionId,
+        lastRuntimeError: reason,
+        ...(kind === 'agent'
+          ? {
+              lifecycle: currentMetadata.lifecycle as AgentNodeStatus,
+              provider: ensureAgentMetadata(existingNode).provider
+            }
+          : {
+              lifecycle: currentMetadata.lifecycle as TerminalNodeStatus,
+              shellPath: ensureTerminalMetadata(existingNode).shellPath
+            })
+      })
+    });
+    this.persistState({ reason: 'runtime-supervisor-disconnected' });
+    this.postState('host/stateUpdated');
   }
 
   private markExecutionNodeAsHistoryRestored(
@@ -16313,6 +16393,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }),
         {
           allowAttachedTerminalStreamRecovery: true,
+          shouldDeferSessionNotFoundWhileRecovering: () =>
+            attachClient?.getRecoveryState()?.phase === 'recovering',
           onSettled: () => {
             if (attachClient) {
               this.retireLegacyRuntimeSupervisorClientIfUnused(backend, attachClient);
@@ -16348,6 +16430,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId);
         }),
         {
+          shouldDeferSessionNotFoundWhileRecovering: () =>
+            attachClient?.getRecoveryState()?.phase === 'recovering',
           onSettled: () => {
             if (attachClient) {
               this.retireLegacyRuntimeSupervisorClientIfUnused(backend, attachClient);
