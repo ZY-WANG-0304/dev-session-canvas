@@ -1117,6 +1117,22 @@ function normalizeRuntimeContext(
         }
       ).strongTerminalAttentionReminderEnabled
     : undefined;
+  const runtimeRecovery =
+    runtimeContext?.runtimeRecovery &&
+    Number.isInteger(runtimeContext.runtimeRecovery.pendingSessionCount) &&
+    runtimeContext.runtimeRecovery.pendingSessionCount >= 0 &&
+    Number.isInteger(runtimeContext.runtimeRecovery.namespaceCount) &&
+    runtimeContext.runtimeRecovery.namespaceCount > 0
+      ? {
+          pendingSessionCount: runtimeContext.runtimeRecovery.pendingSessionCount,
+          namespaceCount: runtimeContext.runtimeRecovery.namespaceCount,
+          ...(typeof runtimeContext.runtimeRecovery.failureCount === 'number' &&
+          Number.isInteger(runtimeContext.runtimeRecovery.failureCount) &&
+          runtimeContext.runtimeRecovery.failureCount > 0
+            ? { failureCount: runtimeContext.runtimeRecovery.failureCount }
+            : {})
+        }
+      : undefined;
 
   return {
     workspaceTrusted: runtimeContext?.workspaceTrusted ?? false,
@@ -1148,7 +1164,8 @@ function normalizeRuntimeContext(
     filePathDisplayMode: runtimeContext?.filePathDisplayMode === 'relative-path' ? 'relative-path' : 'basename',
     fileIconFontFaces,
     workspaceFolders,
-    noteMarkdownImageWorkspaceRoots
+    noteMarkdownImageWorkspaceRoots,
+    runtimeRecovery
   };
 }
 
@@ -1223,7 +1240,8 @@ function App(): JSX.Element {
     filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
     fileIconFontFaces: latestRuntimeContext.fileIconFontFaces,
     workspaceFolders: latestRuntimeContext.workspaceFolders,
-    noteMarkdownImageWorkspaceRoots: latestRuntimeContext.noteMarkdownImageWorkspaceRoots
+    noteMarkdownImageWorkspaceRoots: latestRuntimeContext.noteMarkdownImageWorkspaceRoots,
+    runtimeRecovery: latestRuntimeContext.runtimeRecovery
   });
   const [localUiState, setLocalUiState] = useState<LocalUiState>(() => ({
     selectedNodeId: initialPersistedState.selectedNodeId,
@@ -1930,6 +1948,7 @@ function App(): JSX.Element {
   }, [hostState]);
 
   const workspaceTrusted = runtimeContext.workspaceTrusted;
+  const runtimeRecovery = runtimeContext.runtimeRecovery;
   const creatableKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 
   const closePaneContextMenu = (): void => {
@@ -4486,6 +4505,11 @@ function App(): JSX.Element {
       onDragOver={handleCanvasDragOver}
       onDrop={handleCanvasDrop}
     >
+      {runtimeRecovery ? (
+        <div className="runtime-recovery-indicator" role="status">
+          {t('runtime.recovery.inProgress', { count: runtimeRecovery.pendingSessionCount })}
+        </div>
+      ) : null}
       <CanvasOverviewInteractionContext.Provider value={isPaneGalleryPresentation ? false : canvasOverviewMode}>
         <CanvasExecutionHelpPanel help={EXECUTION_NODE_HELP_TIPS} />
         {isPaneGalleryPresentation ? (

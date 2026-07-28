@@ -76,7 +76,9 @@ try {
     createRuntimeSupervisorError,
     createRuntimeSupervisorProtocolError,
     formatRuntimeSupervisorMessageDescriptor,
+    getRuntimeSupervisorErrorDetails,
     getRuntimeSupervisorErrorDescriptor,
+    isRuntimeSupervisorExecutionSpawnError,
     serializeRuntimeSupervisorError
   } = require(protocolOutfile);
   const { RuntimeSupervisorClient } = require(clientOutfile);
@@ -91,6 +93,7 @@ try {
   } = require(serializedTerminalStateOutfile);
 
   await assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir);
+  await assertRuntimeSupervisorClientClassifiesStartupFailures(RuntimeSupervisorClient, tempDir);
   assertTerminalProjectionMergePreservesConcurrentLiveTail(mergeTerminalStreamProjectionWithLiveTail);
 
   const spawnError = new Error('spawn /missing/codex ENOENT');
@@ -104,6 +107,7 @@ try {
   const restoredError = createRuntimeSupervisorError(payload);
   assert.equal(restoredError.message, 'spawn /missing/codex ENOENT');
   assert.equal(restoredError.code, 'ENOENT');
+  assert.deepEqual(getRuntimeSupervisorErrorDetails(restoredError), { origin: 'protocol' });
 
   const genericPayload = serializeRuntimeSupervisorError(new Error('generic failure'));
   assert.deepEqual(genericPayload, {
@@ -125,12 +129,43 @@ try {
   assert.deepEqual(typedPayload, {
     message: 'Runtime session missing-session was not found.',
     code: 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND',
-    descriptor: sessionNotFoundDescriptor
+    descriptor: sessionNotFoundDescriptor,
+    details: {
+      origin: 'protocol'
+    }
   });
   const restoredTypedError = createRuntimeSupervisorError(typedPayload);
   assert.equal(restoredTypedError.message, 'Runtime session missing-session was not found.');
   assert.equal(restoredTypedError.code, 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND');
   assert.deepEqual(getRuntimeSupervisorErrorDescriptor(restoredTypedError), sessionNotFoundDescriptor);
+  assert.deepEqual(getRuntimeSupervisorErrorDetails(restoredTypedError), { origin: 'protocol' });
+  const executionSpawnError = createRuntimeSupervisorProtocolError(
+    {
+      id: 'executionSpawnFailed',
+      params: {
+        file: '/missing/codex',
+        cwd: '/workspace',
+        detail: 'spawn /missing/codex ENOENT'
+      }
+    },
+    'DEV_SESSION_CANVAS_RUNTIME_EXECUTION_SPAWN_FAILED',
+    {
+      origin: 'execution-spawn',
+      errno: 'ENOENT',
+      file: '/missing/codex',
+      cwd: '/workspace'
+    }
+  );
+  const executionSpawnPayload = serializeRuntimeSupervisorError(executionSpawnError);
+  assert.deepEqual(executionSpawnPayload.details, {
+    origin: 'execution-spawn',
+    errno: 'ENOENT',
+    file: '/missing/codex',
+    cwd: '/workspace'
+  });
+  const restoredExecutionSpawnError = createRuntimeSupervisorError(executionSpawnPayload);
+  assert.equal(isRuntimeSupervisorExecutionSpawnError(restoredExecutionSpawnError), true);
+  assert.equal(getRuntimeSupervisorErrorDetails(restoredExecutionSpawnError)?.errno, 'ENOENT');
   assert.equal(
     formatRuntimeSupervisorMessageDescriptor({
       id: 'agentSessionStopped',
@@ -375,6 +410,55 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
       socket.destroy();
     }
     await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+async function assertRuntimeSupervisorClientClassifiesStartupFailures(RuntimeSupervisorClient, tempDir) {
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-client-missing-${process.pid}-${Date.now()}`
+      : path.join(tempDir, `runtime-client-missing-${Date.now()}.sock`);
+  const client = new RuntimeSupervisorClient({
+    backend: {
+      kind: 'legacy-detached',
+      guarantee: 'best-effort',
+      label: 'Missing Test Supervisor',
+      paths: {
+        storageDir: tempDir,
+        socketPath,
+        registryPath: path.join(tempDir, 'runtime-client-missing-registry.json'),
+        socketLocation: process.platform === 'win32' ? 'named-pipe' : 'storage'
+      },
+      startSupervisor: async () => undefined
+    },
+    supervisorScriptPath: '/unused/runtimeSupervisorMain.js',
+    supervisorLauncherScriptPath: '/unused/runtimeSupervisorLauncher.js',
+    startupTimeoutMs: 120
+  });
+
+  try {
+    await assert.rejects(
+      client.ensureConnected({ allowRestart: false }),
+      (error) => {
+        assert.equal(error.code, 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_SOCKET_UNAVAILABLE');
+        assert.deepEqual(error.details, {
+          origin: 'transport',
+          errno: 'ENOENT'
+        });
+        return true;
+      }
+    );
+    await assert.rejects(
+      client.ensureConnected(),
+      (error) => {
+        assert.equal(error.code, 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_READY_TIMEOUT');
+        assert.equal(error.details?.origin, 'readiness');
+        assert.equal(error.details?.errno, 'ENOENT');
+        return true;
+      }
+    );
+  } finally {
+    client.dispose();
   }
 }
 
@@ -1482,14 +1566,10 @@ async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, temp
 
   const firstRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
   try {
-    const rebuiltSnapshot = await sendRuntimeSupervisorRequest(
+    const rebuiltSnapshot = await attachRecoveredRuntimeSupervisorSession(
       firstRestart.socket,
       firstRestart.messages,
-      'attachSession',
-      {
-        sessionId: 'immediate-exit-terminal',
-        deferSubscription: true
-      }
+      'immediate-exit-terminal'
     );
     assertTerminalStreamSnapshot(rebuiltSnapshot, 'journal-only restart snapshot');
     assert.match(
@@ -1538,14 +1618,10 @@ async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, temp
 
   const registryCacheRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
   try {
-    const journalAuthoritySnapshot = await sendRuntimeSupervisorRequest(
+    const journalAuthoritySnapshot = await attachRecoveredRuntimeSupervisorSession(
       registryCacheRestart.socket,
       registryCacheRestart.messages,
-      'attachSession',
-      {
-        sessionId: 'immediate-exit-terminal',
-        deferSubscription: true
-      }
+      'immediate-exit-terminal'
     );
     assertTerminalStreamSnapshot(journalAuthoritySnapshot, 'untrusted registry cache restart snapshot');
     assert.match(journalAuthoritySnapshot.terminalStream.checkpoint.serializedState.data, new RegExp(marker, 'u'));
@@ -1574,14 +1650,10 @@ async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, temp
 
   const authorityMismatchRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
   try {
-    const failedClosedSnapshot = await sendRuntimeSupervisorRequest(
+    const failedClosedSnapshot = await attachRecoveredRuntimeSupervisorSession(
       authorityMismatchRestart.socket,
       authorityMismatchRestart.messages,
-      'attachSession',
-      {
-        sessionId: 'immediate-exit-terminal',
-        deferSubscription: true
-      }
+      'immediate-exit-terminal'
     );
     assert.equal(failedClosedSnapshot.terminalStream, undefined);
     assert.equal(failedClosedSnapshot.terminalAuthorityId, undefined);
@@ -1615,14 +1687,10 @@ async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, temp
 
   const corruptedRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
   try {
-    const failedClosedSnapshot = await sendRuntimeSupervisorRequest(
+    const failedClosedSnapshot = await attachRecoveredRuntimeSupervisorSession(
       corruptedRestart.socket,
       corruptedRestart.messages,
-      'attachSession',
-      {
-        sessionId: 'immediate-exit-terminal',
-        deferSubscription: true
-      }
+      'immediate-exit-terminal'
     );
     assert.equal(failedClosedSnapshot.terminalStream, undefined);
     assert.equal(failedClosedSnapshot.terminalAuthorityId, undefined);
@@ -1763,14 +1831,10 @@ async function assertRuntimeSupervisorV2CheckpointFallback(
       socketPath
     );
     try {
-      const snapshot = await sendRuntimeSupervisorRequest(
+      const snapshot = await attachRecoveredRuntimeSupervisorSession(
         previousFallbackRuntime.socket,
         previousFallbackRuntime.messages,
-        'attachSession',
-        {
-          sessionId,
-          deferSubscription: true
-        }
+        sessionId
       );
       assertTerminalStreamSnapshot(snapshot, 'v2 previous-checkpoint fallback snapshot');
       assert.equal(snapshot.terminalRevision, 2);
@@ -1795,14 +1859,10 @@ async function assertRuntimeSupervisorV2CheckpointFallback(
     );
     const failedClosedRuntime = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
     try {
-      const snapshot = await sendRuntimeSupervisorRequest(
+      const snapshot = await attachRecoveredRuntimeSupervisorSession(
         failedClosedRuntime.socket,
         failedClosedRuntime.messages,
-        'attachSession',
-        {
-          sessionId,
-          deferSubscription: true
-        }
+        sessionId
       );
       assert.equal(snapshot.terminalStream, undefined);
       assert.equal(snapshot.terminalAuthorityId, undefined);
@@ -1906,6 +1966,26 @@ async function sendRuntimeSupervisorRequest(socket, messages, method, params) {
   const response = await sendRuntimeSupervisorRawRequest(socket, messages, method, params);
   assert.equal(response.ok, true, response.error?.message);
   return response.result;
+}
+
+async function attachRecoveredRuntimeSupervisorSession(socket, messages, sessionId) {
+  const deadline = Date.now() + 5000;
+  let lastResponse;
+  while (Date.now() < deadline) {
+    lastResponse = await sendRuntimeSupervisorRawRequest(socket, messages, 'attachSession', {
+      sessionId,
+      deferSubscription: true
+    });
+    if (lastResponse.ok) {
+      return lastResponse.result;
+    }
+    if (lastResponse.error?.descriptor?.id !== 'sessionNotFound') {
+      assert.fail(lastResponse.error?.message ?? 'Recovered session attach failed.');
+    }
+    await delay(20);
+  }
+
+  assert.fail(`Timed out waiting for recovered runtime session ${sessionId}: ${JSON.stringify(lastResponse)}`);
 }
 
 async function sendRuntimeSupervisorRawRequest(socket, messages, method, params) {

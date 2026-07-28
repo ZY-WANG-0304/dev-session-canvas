@@ -287,8 +287,11 @@ import {
 import {
   serializeExecutionSessionLaunchSpec,
   RUNTIME_SUPERVISOR_ERROR_CODES,
+  getRuntimeSupervisorErrorDetails,
+  isRuntimeSupervisorExecutionSpawnError,
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorEvent,
+  type RuntimeSupervisorRecoveryState,
   type RuntimeSupervisorSessionSnapshot
 } from '../common/runtimeSupervisorProtocol';
 import { resolveCurrentRuntimeSupervisorBaseStoragePath } from '../common/runtimeSupervisorPaths';
@@ -1061,6 +1064,12 @@ interface ConnectedRuntimeSupervisorClient {
   fallbackReason?: string;
 }
 
+interface RuntimeSupervisorRecoveryNamespaceState {
+  backendKind: RuntimeHostBackendKind;
+  runtimeStoragePath: string;
+  state: RuntimeSupervisorRecoveryState;
+}
+
 interface RuntimeSupervisorSessionAttachResult {
   snapshot: RuntimeSupervisorSessionSnapshot;
   terminalProjectionMode: RuntimeTerminalProjectionMode;
@@ -1262,6 +1271,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     | undefined;
   private readonly runtimeSupervisorClients = new Map<string, RuntimeSupervisorClient>();
+  private readonly runtimeSupervisorRecoveryStates = new Map<string, RuntimeSupervisorRecoveryNamespaceState>();
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
   // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
@@ -6960,7 +6970,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
       filePathDisplayMode: fileConfiguration.pathDisplayMode,
       fileIconFontFaces: [],
-      noteMarkdownImageWorkspaceRoots: this.getNoteMarkdownImageWorkspaceRoots(webview)
+      noteMarkdownImageWorkspaceRoots: this.getNoteMarkdownImageWorkspaceRoots(webview),
+      runtimeRecovery: this.getRuntimeRecoveryStatusForWebview()
+    };
+  }
+
+  private getRuntimeRecoveryStatusForWebview(): CanvasRuntimeContext['runtimeRecovery'] {
+    const recoveringNamespaces = Array.from(this.runtimeSupervisorRecoveryStates.values()).filter(
+      (entry) => entry.state.phase === 'recovering'
+    );
+    if (recoveringNamespaces.length === 0) {
+      return undefined;
+    }
+
+    const pendingSessionCount = recoveringNamespaces.reduce(
+      (total, entry) => total + entry.state.pendingSessionCount,
+      0
+    );
+    const failureCount = recoveringNamespaces.reduce(
+      (total, entry) => total + (entry.state.failureCount ?? 0),
+      0
+    );
+    return {
+      pendingSessionCount,
+      namespaceCount: recoveringNamespaces.length,
+      ...(failureCount > 0 ? { failureCount } : {})
     };
   }
 
@@ -9841,6 +9875,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             });
           });
         },
+        onRecoveryState: (state) =>
+          this.handleRuntimeSupervisorRecoveryState(backend.kind, runtimeStoragePath, state),
         onDisconnected: (error) =>
           this.handleRuntimeSupervisorDisconnected(backend.kind, runtimeStoragePath, error)
       });
@@ -9848,6 +9884,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     await client.ensureConnected(options);
+    const recoveryState = client.getRecoveryState();
+    if (recoveryState) {
+      this.handleRuntimeSupervisorRecoveryState(backend.kind, runtimeStoragePath, recoveryState);
+    }
     return client;
   }
 
@@ -10978,6 +11018,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     runtimeStoragePath: string,
     error?: Error
   ): void {
+    this.clearRuntimeSupervisorRecoveryState(backendKind, runtimeStoragePath);
     for (const [nodeId, session] of this.agentSessions.entries()) {
       if (
         session.owner === 'supervisor' &&
@@ -10999,6 +11040,67 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ) {
         this.markExecutionNodeAsHistoryRestored(nodeId, 'terminal', error?.message);
       }
+    }
+  }
+
+  private handleRuntimeSupervisorRecoveryState(
+    backendKind: RuntimeHostBackendKind,
+    runtimeStoragePath: string,
+    state: RuntimeSupervisorRecoveryState
+  ): void {
+    const normalizedRuntimeStoragePath = this.resolveRuntimeStoragePath(runtimeStoragePath);
+    const key = `${backendKind}:${normalizedRuntimeStoragePath}`;
+    const previous = this.runtimeSupervisorRecoveryStates.get(key)?.state;
+    if (state.phase === 'ready') {
+      if (!this.runtimeSupervisorRecoveryStates.delete(key)) {
+        return;
+      }
+      this.recordDiagnosticEvent('runtime/recoveryReady', {
+        runtimeBackend: backendKind,
+        runtimeStoragePath: normalizedRuntimeStoragePath,
+        pendingSessionCount: state.pendingSessionCount,
+        failureCount: state.failureCount ?? 0
+      });
+      this.postRuntimeRecoveryStateIfVisible();
+      return;
+    }
+
+    this.runtimeSupervisorRecoveryStates.set(key, {
+      backendKind,
+      runtimeStoragePath: normalizedRuntimeStoragePath,
+      state
+    });
+    if (!previous || previous.phase !== 'recovering') {
+      this.recordDiagnosticEvent('runtime/recoveryStarted', {
+        runtimeBackend: backendKind,
+        runtimeStoragePath: normalizedRuntimeStoragePath,
+        pendingSessionCount: state.pendingSessionCount
+      });
+    }
+    if ((state.failureCount ?? 0) > (previous?.failureCount ?? 0)) {
+      this.recordDiagnosticEvent('runtime/recoveryFailed', {
+        runtimeBackend: backendKind,
+        runtimeStoragePath: normalizedRuntimeStoragePath,
+        pendingSessionCount: state.pendingSessionCount,
+        failureCount: state.failureCount
+      });
+    }
+    this.postRuntimeRecoveryStateIfVisible();
+  }
+
+  private clearRuntimeSupervisorRecoveryState(
+    backendKind: RuntimeHostBackendKind,
+    runtimeStoragePath: string
+  ): void {
+    const key = `${backendKind}:${this.resolveRuntimeStoragePath(runtimeStoragePath)}`;
+    if (this.runtimeSupervisorRecoveryStates.delete(key)) {
+      this.postRuntimeRecoveryStateIfVisible();
+    }
+  }
+
+  private postRuntimeRecoveryStateIfVisible(): void {
+    if (this.activeSurface && this.isInteractiveSurface(this.activeSurface)) {
+      this.postState('host/stateUpdated');
     }
   }
 
@@ -14578,7 +14680,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resumeContext,
         fileActivitySession
       );
-      const process = createExecutionSessionProcess(launchSpec);
+      const process = createExecutionSessionProcessWithSource(launchSpec);
 
       const session: LocalExecutionSession = {
         sessionId,
@@ -15766,7 +15868,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const executionEnv = await this.resolveExecutionEnvironment('terminal', cwd);
 
     try {
-      const process = createExecutionSessionProcess(
+      const process = createExecutionSessionProcessWithSource(
         this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows, executionEnv)
       );
 
@@ -27102,6 +27204,63 @@ function summarizeAgentSessionOutput(output: string, status: AgentNodeStatus, la
   return lastLine.length > 140 ? `${lastLine.slice(0, 140)}...` : lastLine;
 }
 
+interface LocalExecutionSpawnErrorDetails {
+  origin: 'execution-spawn';
+  errno?: string;
+  file: string;
+  cwd: string;
+}
+
+type LocalExecutionSpawnError = Error & {
+  executionSpawnDetails?: LocalExecutionSpawnErrorDetails;
+};
+
+function createExecutionSessionProcessWithSource(spec: ExecutionSessionLaunchSpec): ExecutionSessionProcess {
+  try {
+    return createExecutionSessionProcess(spec);
+  } catch (error) {
+    const spawnError: LocalExecutionSpawnError = error instanceof Error
+      ? error as LocalExecutionSpawnError
+      : new Error(String(error)) as LocalExecutionSpawnError;
+    spawnError.executionSpawnDetails = {
+      origin: 'execution-spawn',
+      errno: readErrorCode(error),
+      file: spec.file,
+      cwd: spec.cwd
+    };
+    throw spawnError;
+  }
+}
+
+function isExecutionSpawnEnoent(error: unknown): boolean {
+  const supervisorDetails = getRuntimeSupervisorErrorDetails(error);
+  if (isRuntimeSupervisorExecutionSpawnError(error)) {
+    return supervisorDetails?.errno === 'ENOENT';
+  }
+
+  return isRecord(error) && isLocalExecutionSpawnErrorDetails(error.executionSpawnDetails) &&
+    error.executionSpawnDetails.errno === 'ENOENT';
+}
+
+function isLocalExecutionSpawnErrorDetails(value: unknown): value is LocalExecutionSpawnErrorDetails {
+  return (
+    isRecord(value) &&
+    value.origin === 'execution-spawn' &&
+    typeof value.file === 'string' &&
+    typeof value.cwd === 'string' &&
+    (value.errno === undefined || typeof value.errno === 'string')
+  );
+}
+
+function readErrorCode(error: unknown): string | undefined {
+  if (!isRecord(error) || typeof error.code !== 'string') {
+    return undefined;
+  }
+
+  const code = error.code.trim();
+  return code || undefined;
+}
+
 function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): string {
   if (isAgentCliResolutionError(error)) {
     return localizeAgentCliResolutionErrorMessage(error);
@@ -27118,12 +27277,7 @@ function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): str
     return vscode.l10n.t('Missing node-pty runtime dependency. Run npm install in the repository root, then try again.');
   }
 
-  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
-  if (runtimeSupervisorMessage) {
-    return runtimeSupervisorMessage;
-  }
-
-  if (isRecord(error) && error.code === 'ENOENT') {
+  if (isExecutionSpawnEnoent(error)) {
     const suffix =
       process.platform === 'win32'
         ? vscode.l10n.t(
@@ -27146,6 +27300,11 @@ function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): str
     });
   }
 
+  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
+  if (runtimeSupervisorMessage) {
+    return runtimeSupervisorMessage;
+  }
+
   if (error instanceof Error && error.message) {
     return vscode.l10n.t('Failed to start {label}: {message}', { label: spec.label, message: error.message });
   }
@@ -27154,7 +27313,7 @@ function describeAgentSessionSpawnError(spec: AgentCliSpec, error: unknown): str
 }
 
 function isAgentCliCommandNotFoundLaunchError(error: unknown): boolean {
-  return isAgentCliResolutionError(error) || (isRecord(error) && error.code === 'ENOENT');
+  return isAgentCliResolutionError(error) || isExecutionSpawnEnoent(error);
 }
 
 function describeAgentResumeSpawnError(spec: AgentCliSpec, error: unknown): string {
@@ -27173,12 +27332,7 @@ function describeAgentResumeSpawnError(spec: AgentCliSpec, error: unknown): stri
     return vscode.l10n.t('Missing node-pty runtime dependency. Run npm install in the repository root, then try again.');
   }
 
-  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
-  if (runtimeSupervisorMessage) {
-    return runtimeSupervisorMessage;
-  }
-
-  if (isRecord(error) && error.code === 'ENOENT') {
+  if (isExecutionSpawnEnoent(error)) {
     const suffix =
       process.platform === 'win32'
         ? vscode.l10n.t(
@@ -27199,6 +27353,11 @@ function describeAgentResumeSpawnError(spec: AgentCliSpec, error: unknown): stri
       command: commandLabel,
       suffix
     });
+  }
+
+  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
+  if (runtimeSupervisorMessage) {
+    return runtimeSupervisorMessage;
   }
 
   if (error instanceof Error && error.message) {
@@ -27346,16 +27505,16 @@ function describeEmbeddedTerminalSpawnError(shellPath: string, error: unknown): 
     return vscode.l10n.t('Missing node-pty runtime dependency. Run npm install in the repository root, then try again.');
   }
 
-  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
-  if (runtimeSupervisorMessage) {
-    return runtimeSupervisorMessage;
-  }
-
-  if (isRecord(error) && error.code === 'ENOENT') {
+  if (isExecutionSpawnEnoent(error)) {
     return vscode.l10n.t(
       'Could not find the shell or command required to start the embedded Terminal: {shell}. Check the Terminal shell path setting, or confirm that node-pty can load on the current platform.',
       { shell: shellPath }
     );
+  }
+
+  const runtimeSupervisorMessage = localizeRuntimeSupervisorError(error);
+  if (runtimeSupervisorMessage) {
+    return runtimeSupervisorMessage;
   }
 
   if (error instanceof Error && error.message) {
