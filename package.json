@@ -139,18 +139,18 @@
     "@types/react-dom": "^18.3.1",
     "@types/vscode": "1.80.0",
     "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.9.1",
+    "@vscode/vsce": "^3.9.2",
     "cheerio": "1.0.0-rc.12",
     "esbuild": "^0.25.12",
     "jszip": "^3.10.1",
     "typescript": "5.0.4",
-    "@cloudflare/workers-types": "^4.20260509.1",
+    "@cloudflare/workers-types": "^5.20260722.1",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.24",
     "tailwindcss": "^3.4.17",
     "vite": "^7.3.5",
     "vitest": "^3.2.6",
-    "wrangler": "^4.104.0"
+    "wrangler": "^4.114.0"
   }
 }
