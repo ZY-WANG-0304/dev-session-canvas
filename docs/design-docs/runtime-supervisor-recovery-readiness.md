@@ -57,6 +57,8 @@ updated_at: 2026-07-28
 
 `CanvasPanelManager` 维护 backend + runtime storage path 维度的临时恢复状态，并用短时、非阻塞的 Host-to-Webview 状态投影给画布。旧节点维持 `reattaching` 或 `history-restored` 的真实语义；新建节点不因同 namespace 的旧 journal 恢复被禁用。UI 使用现有 VS Code status token 的紧凑状态呈现，不把全局恢复进度做成画布中心的大卡片。
 
+对已持久化的 `reattaching` 节点，若 attach 返回 `sessionNotFound` 且该 client 明确处于 `recovering`，Host 保持 `reattaching`，不触发 Agent resume 或历史降级。相同 backend/storage namespace 发出 `ready` 时，Host 重新调度 attach；既有 operation token 保证早先 attach 的异步结果不能覆盖这次重试。client 只在 socket `close` 已清理失效引用后通知 Host 断线，避免对仍指向旧 socket 的 client 发起重连。
+
 registry 恢复和新 session 创建必须共享同一提交协调。恢复 worker 在合并旧 session 前检查该 sessionId 是否已经由当前进程创建；不得覆盖新 session，也不得把新 session 的运行状态回写成历史态。Supervisor idle shutdown 只能在 recovery 已结束、没有 live session、没有连接且没有待恢复任务时启动。
 
 错误按来源而非字符串 errno 分类：`RuntimeSupervisorClient` 的 Unix socket missing/refused 和 ready timeout 是 transport/readiness 错误；`runtimeSupervisorMain` 中 `createExecutionSessionProcess()` 的异常是 execution-spawn 错误，附带 file、cwd 与 errno；只有后一类的 `ENOENT` 才能由 Agent/Terminal 显示“命令或 shell 不存在”。其他错误由 `runtimeSupervisorLocalization.ts` 显示 Supervisor 恢复或连接失败说明。
@@ -71,15 +73,16 @@ registry 恢复和新 session 创建必须共享同一提交协调。恢复 work
 4. socket `ENOENT`、Supervisor ready timeout 与 PTY `ENOENT` 必须具有不同的结构化代码和用户文案。
 5. recovery phase 是 runtime namespace 的临时事实，不进入画布持久化状态。
 6. 任何 journal 恢复失败都不得通过删除历史、关闭控制 socket 或静默改写节点状态来掩盖。
+7. recovery phase 为 `recovering` 的 `sessionNotFound` 表示尚未 hydrate，不得当作永远不存在；只有在 `ready` 后的实际快照或失败才能收口节点状态。
 
 ## 验证方法
 
-新增 VS Code smoke 使用真实 Supervisor、fake Codex 与真实 PTY：持久化旧 session 后 `SIGKILL` Supervisor，并删除测试专属 runtime socket；Host test reload 后观察 `recovering`，在 gate 未释放时创建新 Agent/Terminal，验证两者可 live 并输出 marker；释放 gate 后验证 `ready`。测试必须同时断言没有 command/shell-not-found 文案。
+新增 VS Code smoke 使用真实 Supervisor、fake Codex 与真实 PTY：持久化仍 live 的旧 Terminal 后 `SIGKILL` Supervisor，并删除测试专属 runtime socket；Host test reload 后观察 `recovering`，在 gate 未释放时断言旧 Terminal 保持 `reattaching`，同时创建新 Agent/Terminal 并验证两者可 live、输出 marker；释放 gate 后验证 `ready`，并确认旧 Terminal 经重试消费 recovered `live: false` snapshot，收口为 `snapshot-only` 历史态。测试必须同时断言没有 command/shell-not-found 文案。
 
 unit/fixture 层验证 systemd unit 的 `WorkingDirectory` 不含引号，并让 fake systemd 以真实 systemd 的目录 directive 规则拒绝引号路径。真实 Linux/Remote SSH 手动验证仍用于证明 production systemd 的 service lifecycle。
 
 ## 验证证据
 
-2026-07-28 已完成 scoped 自动化验证：`npm run typecheck`、`npm run test:runtime-supervisor-protocol`、`npm run test:runtime-host-backend`、`npm run test:terminal-session-journal` 与 `npm run test:ui-copy-localization` 均通过；`runtime-supervisor-reboot-recovery` smoke 使用真实 Supervisor、fake Codex 和真实 PTY，验证 `SIGKILL +` 隔离 socket 删除 + Host reload 后，`hello` 在 recovery gate 持有时返回 `recovering`，新的 Agent 与 Terminal 均可进入 live 并输出 marker，释放 gate 后返回 `ready` 且 registry 保留旧、新 session。`systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` smoke 也均通过。
+2026-07-28 已完成 scoped 自动化验证：`npm run typecheck`、`npm run test:runtime-supervisor-protocol`、`npm run test:runtime-host-backend`、`npm run test:terminal-session-journal` 与 `npm run test:ui-copy-localization` 均通过；`runtime-supervisor-reboot-recovery` smoke 使用真实 Supervisor、fake Codex 和真实 PTY，验证 `SIGKILL +` 隔离 socket 删除 + Host reload 后，`hello` 在 recovery gate 持有时返回 `recovering`，旧 live Terminal 保持 `reattaching`，新的 Agent 与 Terminal 均可进入 live 并输出 marker；释放 gate 后返回 `ready`，Host 重试 attach 并将 recovered `live: false` snapshot 正确收口为历史态，同时 registry 保留新 live session。`systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` smoke 也均通过。
 
 此状态只确认本设计所定义的可重复 Host 级故障模型及定向自动化；真实 Linux / Remote SSH 的长断开人工验收仍沿用既有技术债，不因此被宣称完成。

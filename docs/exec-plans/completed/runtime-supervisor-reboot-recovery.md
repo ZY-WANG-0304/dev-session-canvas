@@ -19,6 +19,7 @@
 - [x] (2026-07-28 10:28 UTC) 修复 systemd unit 的 `WorkingDirectory` 序列化，并扩展 fake systemd fixture 检查真实 systemd 的目录 directive 语义。
 - [x] (2026-07-28 10:28 UTC) 让 Supervisor 先监听并返回 recovery phase，再异步恢复 registry/journal；恢复任务不会覆盖恢复期间创建的新 session。
 - [x] (2026-07-28 10:28 UTC) 将 recovery phase 投影到 Host/Webview 的非阻塞状态，完成分层自动化验证，并同步本计划与设计文档。现有“真实 Linux / Remote SSH 长断开”技术债保持原有登记，不因本轮模拟回归被误写为已验证。
+- [x] (2026-07-28 12:07 UTC) 处理 PR #272 的 P1：恢复中 `sessionNotFound` 不得提前把 `reattaching` 节点降级；收到同 namespace 的 `ready` 后必须受 operation token 保护地重试 attach，并用旧 live Terminal 的 recovery-gate smoke 覆盖。
 
 ## 意外与发现
 
@@ -36,6 +37,9 @@
 
 - 观察：过长的 smoke `XDG_RUNTIME_DIR` 会使 Unix socket 解析回退到共享 `/tmp` 路径。
   证据：新增删除范围断言首次拒绝 `/tmp/<digest>.sock`；将该场景的 runtime 目录改为带 runner PID 的短路径后，socket 回到隔离 `XDG_RUNTIME_DIR`，断言与 smoke 均通过。
+
+- 观察：Host 在 Supervisor 已监听但 journal 尚未 hydrate 时，仍会立即对 `reattaching` 节点执行 attach；该请求得到 `sessionNotFound` 后会直接落入历史恢复，且 `ready` 事件未安排二次 attach。
+  证据：PR #272 review 在 `restoreLiveRuntimeSessions()`、`attachPersistedRuntimeSession()` 与 `handleRuntimeSupervisorRecoveryState()` 的直接控制流中确认此路径；原 smoke 让旧 Terminal 在故障注入前退出，未覆盖该状态窗口。
 
 ## 决策记录
 
@@ -55,9 +59,15 @@
   理由：设备重启已经终止 legacy Supervisor 原有 PTY。正确目标是解释旧状态、保持新工作可用，而非伪造旧进程连续性。
   日期/作者：2026-07-28 / Codex 与用户
 
+- 决策：当 attach 因 `sessionNotFound` 失败且已连接 Supervisor 明确处于 `recovering` 时，Host 保持节点 `reattaching`，不执行 Agent resume 或历史降级；同 namespace 收到 `ready` 后重新调度 attach。若恢复后的 snapshot 明确 `live: false`，才按历史恢复语义收口。
+  理由：该错误在恢复窗口表示“尚未 hydrate”，而不是“永远不存在”。同时不把 Supervisor 已被杀死后的历史 snapshot 伪装成真实 live PTY。
+  日期/作者：2026-07-28 / Codex 与 PR #272 review
+
 ## 结果与复盘
 
-已完成用户指定的 `4 -> 3 -> 1 -> 2` 顺序。重启等价 smoke 不重启设备：它只对隔离 runtime 的 Supervisor 发送 `SIGKILL`、删除该测试 namespace 的 Unix socket、执行 Host test reload。旧已退出 Terminal 的 durable journal 让新 Supervisor 在 recovery gate 持有时报告 `recovering`；由第一个新 Agent 的 Host 侧创建操作启动替换 Supervisor，随后新的 Terminal 也在同一恢复窗口内进入 live。两个新会话均输出 marker，Host 也把带有待恢复数量的 `runtimeRecovery` 投影给 Webview；释放 gate 后 `hello` 变为 `ready`，registry 同时保留旧、新 session。
+PR #272 的 P1 已完成。旧结论中的“故障注入前已退出 Terminal”不能证明 Host 在 recovery gate 期间对原本 live 的 `reattaching` 节点不会提前降级；smoke 现保留旧 Terminal live，恢复 gate 持有时断言它保持 `reattaching`，释放 gate 后断言它消费 recovered snapshot 并收口为 `snapshot-only` 的历史态。该 follow-up 只处理这个状态机时序，不改变“被杀 Supervisor 的旧 PTY 不能伪造为 live”的正式边界。
+
+Host 仅在已连接 Supervisor 明确报告 `recovering` 时延迟 `sessionNotFound` 的失败处理。`ready` 事件会重新调度 attach；每次 attach 都使用既有 operation token，因此先前的异步结果不会覆盖新调度的结果。Runtime Supervisor client 也只会在 socket `close` 清理旧引用后通知 Host 重连，避免对仍持有失效 socket 的 client 提前请求 attach。
 
 系统现在把 socket 缺失/refused、Supervisor startup timeout、协议错误和 PTY spawn 错误编码为不同来源；只有明确的 `execution-spawn` `ENOENT` 才进入 Codex/shell 缺失文案。systemd unit 的 `WorkingDirectory=` 使用验证后的无引号绝对路径，`ExecStart=`/`Environment=` 仍使用命令参数引号。
 
@@ -76,7 +86,7 @@
                                                             # 通过
     git diff --check                                        # 通过
 
-没有为本轮新增技术债：真实 Linux / Remote SSH 长断开与真实物理设备重启的生命周期覆盖仍受现有技术债条目约束；它们不是这条隔离、可重复的 Host 级回归的替代品。
+本计划没有引入新的待跟踪技术债。真实 Linux / Remote SSH 长断开与真实物理设备重启的生命周期覆盖仍受既有技术债条目约束；它们不是这条隔离、可重复的 Host 级回归的替代品。
 
 ## 上下文与定向
 
@@ -129,7 +139,7 @@ Host 保存每个 backend/storage namespace 的临时 recovery phase 并投影�
 
 单元层必须证明：systemd unit 的 `WorkingDirectory` 是无引号绝对路径；client 对 socket missing 和 ready timeout 返回 transport/recovery 错误；Supervisor 对 PTY spawn `ENOENT` 返回 execution-spawn 错误，而不是 socket 错误。
 
-宿主 smoke 必须按顺序观察：旧 runtime 有持久化 marker；Supervisor 被突然杀死且 socket 被移除；Host reload 后 hello 能在恢复工作进行时返回 `recovering`；测试在 gate 未释放前创建 Agent 与 Terminal，两者均变成 live 并输出 marker；释放 gate 后 phase 变成 `ready`；诊断没有把 transport 错误显示为 Codex/bash 缺失。旧节点若已失去真实进程，必须仅显示历史恢复，不能冒充 live。
+宿主 smoke 必须按顺序观察：旧 runtime 有持久化 marker；Supervisor 被突然杀死且 socket 被移除；Host reload 后 hello 能在恢复工作进行时返回 `recovering`；恢复 gate 未释放时，原本 live 的旧节点仍为 `reattaching`，不得提前进入 Agent resume 或历史恢复；测试同时创建 Agent 与 Terminal，两者均变成 live 并输出 marker；释放 gate 后 phase 变成 `ready`，Host 对仍 pending 的节点重试 attach；恢复后的 snapshot 若明确 `live: false` 才显示历史恢复；诊断没有把 transport 错误显示为 Codex/bash 缺失。
 
 手动验证可在 Linux 或 Remote SSH workspace 中创建几个执行节点、关闭 VS Code/重启远端用户会话后再打开画布。预期先出现恢复中提示，随后旧节点进入可解释状态；立即新建 Agent/Terminal 能够启动。若 systemd 不可用，应显示实际 fallback/transport 错误，而不是 executable 配置建议。
 
@@ -160,3 +170,5 @@ Host 保存每个 backend/storage namespace 的临时 recovery phase 并投影�
 2026-07-28：创建本计划，记录用户指定的实施顺序、现场根因、无真实设备重启的宿主 smoke 方案，以及先 listen 后异步恢复的正式方向。
 
 2026-07-28：完成四个里程碑并归档。首轮 smoke 发现已退出 journal session 不会自行触发 Host reconnect，随后将第一个新 Agent 创建设为真实 Host 侧启动触发，保留并验证了“hello 在恢复中可用”和“两类新会话均可用”的验收语义。
+
+2026-07-28：PR #272 review 发现 recovery gate 下旧 live 节点首次 attach 的 P1。计划重新激活，增加保留 `reattaching`、`ready` 后重试和旧 live Terminal smoke 验收；不把 killed Supervisor 的历史 snapshot 写成实际仍 live 的 PTY。

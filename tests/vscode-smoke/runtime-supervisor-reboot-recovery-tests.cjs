@@ -22,6 +22,7 @@ const COMMAND_IDS = {
   testResetState: 'devSessionCanvas.__test.resetState'
 };
 const OLD_TERMINAL_MARKER = 'REBOOT_RECOVERY_OLD_TERMINAL';
+const OLD_TERMINAL_PID_PREFIX = 'REBOOT_RECOVERY_OLD_TERMINAL_PID=';
 const NEW_AGENT_MARKER = 'REBOOT_RECOVERY_NEW_AGENT';
 const NEW_TERMINAL_MARKER = 'REBOOT_RECOVERY_NEW_TERMINAL';
 const SHORT_FALLBACK_SOCKET_DIGEST_LENGTH = 16;
@@ -47,6 +48,7 @@ async function run() {
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
 
   let oldTerminal;
+  let oldTerminalProcessId;
   let newAgent;
   let newTerminal;
   try {
@@ -58,7 +60,7 @@ async function run() {
       payload: {
         nodeId: oldTerminal.id,
         kind: 'terminal',
-        data: `echo ${OLD_TERMINAL_MARKER}\r`
+        data: `echo ${OLD_TERMINAL_MARKER}; echo ${OLD_TERMINAL_PID_PREFIX}$$\r`
       }
     });
     const oldLiveNode = await waitForNode(
@@ -70,16 +72,7 @@ async function run() {
     const oldRuntimeStoragePath = oldLiveNode.metadata.terminal.runtimeStoragePath;
     assert.ok(oldRuntimeSessionId, 'The old Terminal must have a persisted Runtime Supervisor session id.');
     assert.ok(oldRuntimeStoragePath, 'The old Terminal must have a runtime storage path.');
-
-    await dispatchWebviewMessage({
-      type: 'webview/executionInput',
-      payload: {
-        nodeId: oldTerminal.id,
-        kind: 'terminal',
-        data: 'exit\r'
-      }
-    });
-    await waitForNode((node) => node.status === 'closed', 20000, oldTerminal.id);
+    oldTerminalProcessId = parseTerminalProcessId(oldLiveNode.metadata.terminal.recentOutput);
     await waitForRegistrySession(oldRuntimeSessionId, 20000);
 
     const supervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
@@ -96,15 +89,19 @@ async function run() {
     await fs.rm(supervisorPaths.socketPath, { force: true });
 
     await vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload);
-    // The exited old session has no reattach operation to start the replacement process.
-    // Starting a new Agent is therefore also the Host-level trigger that recreates it.
     await vscode.commands.executeCommand(COMMAND_IDS.testClearHostMessages);
+    // A new Host-side create is the deterministic trigger that recreates the killed Supervisor.
     newAgent = await createNode('agent', 'codex');
     await startExecution('agent', newAgent.id, 'codex');
     const recoveringHello = await waitForRecoveryPhase(supervisorPaths.socketPath, 'recovering', 20000);
     assert.ok(
       recoveringHello.recovery.pendingSessionCount >= 1,
       `Expected old journal recovery to report pending sessions: ${JSON.stringify(recoveringHello)}`
+    );
+    await waitForNode(
+      (node) => node.status === 'reattaching' && node.metadata?.terminal?.attachmentState === 'reattaching',
+      20000,
+      oldTerminal.id
     );
 
     newTerminal = await createNode('terminal');
@@ -158,9 +155,16 @@ async function run() {
 
     await fs.rm(recoveryGatePath, { force: true });
     await waitForRecoveryPhase(supervisorPaths.socketPath, 'ready', 30000);
+    await waitForNode(
+      (node) =>
+        node.metadata?.terminal?.attachmentState === 'history-restored' &&
+        node.metadata.terminal.persistenceMode === 'snapshot-only' &&
+        node.metadata.terminal.recentOutput?.includes(OLD_TERMINAL_MARKER),
+      30000,
+      oldTerminal.id
+    );
     await waitForRegistrySessions(
       [
-        oldRuntimeSessionId,
         newAgentLive.metadata.agent.runtimeSessionId,
         newTerminalLive.metadata.terminal.runtimeSessionId
       ],
@@ -168,8 +172,30 @@ async function run() {
     );
   } finally {
     await fs.rm(recoveryGatePath, { force: true });
+    stopProcessIfRunning(oldTerminalProcessId);
     await vscode.commands.executeCommand(COMMAND_IDS.testResetState).catch(() => undefined);
     await setRuntimePersistenceEnabled(false).catch(() => undefined);
+  }
+}
+
+function parseTerminalProcessId(output) {
+  const match = new RegExp(`${OLD_TERMINAL_PID_PREFIX}(\\d+)`).exec(output ?? '');
+  assert.ok(match, `Expected old Terminal output to include its shell pid: ${output ?? '<empty>'}`);
+  const pid = Number(match[1]);
+  assert.ok(Number.isInteger(pid) && pid > 0, `Expected a valid old Terminal shell pid: ${match[1]}`);
+  return pid;
+}
+
+function stopProcessIfRunning(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return;
+  }
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch (error) {
+    if (error?.code !== 'ESRCH') {
+      throw error;
+    }
   }
 }
 
