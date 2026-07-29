@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.4
+
+- Aligns with the `0.24.4` main-extension patch: Supervisor restart recovery now remains available while historical journals hydrate, error attribution is more accurate, Pane Gallery bottom-thumbnail titles are visible again, the public multi-root Preview media is refreshed, and audited dependencies are updated. The notifier companion itself adds no notification-delivery behavior, protocol, backend-selection, click-return, or localization change.
+- Keeps the companion auto-install relationship and version-alignment policy, so both extensions continue to share one release input.
+
 ## 0.24.3
 
 - 与主扩展 `0.24.3` 对齐：本轮主扩展修复 execution 媒体文件链接的原生编辑器打开路径，并把 Agent / Terminal 节点 resize 收口为稳定最终尺寸；notifier companion 不引入新的通知投递行为变更。
