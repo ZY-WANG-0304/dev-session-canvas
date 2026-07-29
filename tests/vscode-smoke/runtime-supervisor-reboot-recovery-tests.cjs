@@ -23,16 +23,25 @@ const COMMAND_IDS = {
 };
 const OLD_TERMINAL_MARKER = 'REBOOT_RECOVERY_OLD_TERMINAL';
 const OLD_TERMINAL_PID_PREFIX = 'REBOOT_RECOVERY_OLD_TERMINAL_PID=';
+const OLD_AGENT_MARKER = 'REBOOT_RECOVERY_OLD_AGENT_SNAPSHOT';
+const OLD_AGENT_BURST_COUNT = 512;
 const NEW_AGENT_MARKER = 'REBOOT_RECOVERY_NEW_AGENT';
 const NEW_TERMINAL_MARKER = 'REBOOT_RECOVERY_NEW_TERMINAL';
 const SHORT_FALLBACK_SOCKET_DIGEST_LENGTH = 16;
 const recoveryGatePath = process.env.DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_RECOVERY_GATE_PATH;
+const recoveryJournalByteBudget = Number(
+  process.env.DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_MAX_RECOVERY_JOURNAL_BYTES
+);
 
 module.exports = { run };
 
 async function run() {
   assert.notStrictEqual(process.platform, 'win32', 'This smoke validates a Unix socket reset.');
   assert.ok(recoveryGatePath, 'Missing test-only Runtime Supervisor recovery gate path.');
+  assert.ok(
+    Number.isSafeInteger(recoveryJournalByteBudget) && recoveryJournalByteBudget > 0,
+    'Missing a positive test-only Runtime Supervisor recovery Journal byte budget.'
+  );
   await fs.rm(recoveryGatePath, { force: true });
 
   const extension = await activateVisibleExtension(vscode, EXTENSION_ID);
@@ -47,11 +56,59 @@ async function run() {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
 
+  let oldAgent;
+  let oldAgentProcessId;
   let oldTerminal;
   let oldTerminalProcessId;
   let newAgent;
   let newTerminal;
   try {
+    oldAgent = await createNode('agent', 'codex');
+    await startExecution('agent', oldAgent.id, 'codex');
+    await waitForNode((node) => isAttachedLiveAgent(node), 20000, oldAgent.id);
+    const oldAgentReadyNode = await waitForNode(
+      (node) => node.metadata?.agent?.recentOutput?.includes('[fake-agent] ready pid='),
+      20000,
+      oldAgent.id
+    );
+    oldAgentProcessId = parseAgentProcessId(oldAgentReadyNode.metadata.agent.recentOutput);
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: oldAgent.id,
+        kind: 'agent',
+        data: `raw ${OLD_AGENT_MARKER}\r`
+      }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: oldAgent.id,
+        kind: 'agent',
+        data: `burst ${OLD_AGENT_BURST_COUNT}\r`
+      }
+    });
+    const oldAgentLiveNode = await waitForNode(
+      (node) =>
+        node.metadata?.agent?.recentOutput?.includes(`[fake-agent] burst ${String(OLD_AGENT_BURST_COUNT).padStart(3, '0')}`) &&
+        node.metadata.agent.resumeSupported === true &&
+        Boolean(node.metadata.agent.resumeSessionId) &&
+        Boolean(node.metadata.agent.resumeStoragePath),
+      30000,
+      oldAgent.id
+    );
+    const oldAgentRuntimeSessionId = oldAgentLiveNode.metadata.agent.runtimeSessionId;
+    const oldAgentRuntimeStoragePath = oldAgentLiveNode.metadata.agent.runtimeStoragePath;
+    assert.ok(oldAgentRuntimeSessionId, 'The old Agent must have a persisted Runtime Supervisor session id.');
+    assert.ok(oldAgentRuntimeStoragePath, 'The old Agent must have a runtime storage path.');
+    await waitForRegistrySession(oldAgentRuntimeSessionId, 20000);
+    await waitForJournalBytes(
+      path.join(oldAgentRuntimeStoragePath, 'runtime-supervisor'),
+      oldAgentRuntimeSessionId,
+      recoveryJournalByteBudget,
+      30000
+    );
+
     oldTerminal = await createNode('terminal');
     await startExecution('terminal', oldTerminal.id);
     await waitForNode((node) => isAttachedLiveTerminal(node), 20000, oldTerminal.id);
@@ -154,7 +211,39 @@ async function run() {
     );
 
     await fs.rm(recoveryGatePath, { force: true });
-    await waitForRecoveryPhase(supervisorPaths.socketPath, 'ready', 30000);
+    const readyHello = await waitForRecoveryPhase(supervisorPaths.socketPath, 'ready', 30000);
+    assert.strictEqual(
+      readyHello.recovery.failureCount ?? 0,
+      0,
+      `Dead-PTY recovery must not hydrate the over-budget V1 Journal: ${JSON.stringify(readyHello)}`
+    );
+    await waitForNode(
+      (node) =>
+        node.status === 'resume-ready' &&
+        node.metadata?.agent?.lifecycle === 'resume-ready' &&
+        node.metadata.agent.attachmentState === 'history-restored' &&
+        node.metadata.agent.liveSession === false &&
+        node.metadata.agent.pendingLaunch === undefined &&
+        node.metadata.agent.resumeSupported === true &&
+        Boolean(node.metadata.agent.resumeSessionId) &&
+        Boolean(node.metadata.agent.resumeStoragePath) &&
+        node.metadata.agent.serializedTerminalState?.data.includes(OLD_AGENT_MARKER),
+      30000,
+      oldAgent.id
+    );
+    await delay(750);
+    const oldAgentBeforeExplicitResume = await getNode(oldAgent.id);
+    assert.strictEqual(
+      oldAgentBeforeExplicitResume.status,
+      'resume-ready',
+      `The dead Agent PTY must not auto-start a replacement resume process: ${JSON.stringify(oldAgentBeforeExplicitResume)}`
+    );
+    assert.strictEqual(oldAgentBeforeExplicitResume.metadata.agent.liveSession, false);
+    assert.strictEqual(oldAgentBeforeExplicitResume.metadata.agent.pendingLaunch, undefined);
+    assert.ok(
+      !oldAgentBeforeExplicitResume.metadata.agent.recentOutput?.includes('[fake-agent] resumed session'),
+      'No provider resume output may appear before the user explicitly requests Resume.'
+    );
     await waitForNode(
       (node) =>
         node.metadata?.terminal?.attachmentState === 'history-restored' &&
@@ -170,8 +259,18 @@ async function run() {
       ],
       30000
     );
+
+    await startExecution('agent', oldAgent.id, 'codex', true);
+    await waitForNode(
+      (node) =>
+        isAttachedLiveAgent(node) &&
+        node.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session'),
+      30000,
+      oldAgent.id
+    );
   } finally {
     await fs.rm(recoveryGatePath, { force: true });
+    stopProcessIfRunning(oldAgentProcessId);
     stopProcessIfRunning(oldTerminalProcessId);
     await vscode.commands.executeCommand(COMMAND_IDS.testResetState).catch(() => undefined);
     await setRuntimePersistenceEnabled(false).catch(() => undefined);
@@ -183,6 +282,14 @@ function parseTerminalProcessId(output) {
   assert.ok(match, `Expected old Terminal output to include its shell pid: ${output ?? '<empty>'}`);
   const pid = Number(match[1]);
   assert.ok(Number.isInteger(pid) && pid > 0, `Expected a valid old Terminal shell pid: ${match[1]}`);
+  return pid;
+}
+
+function parseAgentProcessId(output) {
+  const match = /\[fake-agent\] ready pid=(\d+)/u.exec(output ?? '');
+  assert.ok(match, `Expected old Agent output to include its provider pid: ${output ?? '<empty>'}`);
+  const pid = Number(match[1]);
+  assert.ok(Number.isInteger(pid) && pid > 0, `Expected a valid old Agent pid: ${match[1]}`);
   return pid;
 }
 
@@ -207,14 +314,15 @@ async function createNode(kind, provider) {
   return node;
 }
 
-async function startExecution(kind, nodeId, provider) {
+async function startExecution(kind, nodeId, provider, resumeRequested = false) {
   return vscode.commands.executeCommand(
     COMMAND_IDS.testStartExecutionSession,
     kind,
     nodeId,
     92,
     28,
-    provider
+    provider,
+    resumeRequested
   );
 }
 
@@ -242,6 +350,13 @@ async function waitForNode(predicate, timeoutMs, nodeId) {
   assert.fail(`Timed out waiting for ${nodeId}. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
 }
 
+async function getNode(nodeId) {
+  const snapshot = await vscode.commands.executeCommand(COMMAND_IDS.testGetDebugState);
+  const node = snapshot?.state?.nodes?.find((candidate) => candidate.id === nodeId);
+  assert.ok(node, `Expected ${nodeId} to remain in the canvas state.`);
+  return node;
+}
+
 function isAttachedLiveAgent(node) {
   return Boolean(
     node.metadata?.agent?.liveSession &&
@@ -260,6 +375,39 @@ function isAttachedLiveTerminal(node) {
 
 async function waitForRegistrySession(sessionId, timeoutMs) {
   return waitForRegistrySessions([sessionId], timeoutMs);
+}
+
+async function waitForJournalBytes(storageDir, sessionId, minimumBytes, timeoutMs) {
+  const sessionDirectory = path.join(
+    storageDir,
+    'terminal-journals',
+    createHash('sha256').update(sessionId).digest('hex').slice(0, 32)
+  );
+  const deadline = Date.now() + timeoutMs;
+  let lastManifest;
+  let lastBytes = 0;
+  while (Date.now() < deadline) {
+    try {
+      lastManifest = JSON.parse(await fs.readFile(path.join(sessionDirectory, 'manifest.json'), 'utf8'));
+      const segmentBytes = await Promise.all(
+        (lastManifest.segments ?? []).map(async (segment) => {
+          const stats = await fs.stat(path.join(sessionDirectory, segment.file));
+          return stats.size;
+        })
+      );
+      lastBytes = segmentBytes.reduce((total, bytes) => total + bytes, 0);
+      if (lastManifest.version === 1 && lastBytes > minimumBytes) {
+        return;
+      }
+    } catch {
+      // The Supervisor may still be flushing the synthetic fixture Journal.
+    }
+    await delay(100);
+  }
+  assert.fail(
+    `Timed out waiting for an over-budget V1 Journal for ${sessionId}. ` +
+      `Last manifest: ${JSON.stringify(lastManifest)} bytes=${lastBytes}`
+  );
 }
 
 async function waitForRegistrySessions(sessionIds, timeoutMs) {

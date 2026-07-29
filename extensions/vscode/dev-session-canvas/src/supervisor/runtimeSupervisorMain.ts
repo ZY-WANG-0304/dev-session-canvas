@@ -65,9 +65,9 @@ import {
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
 import {
+  readTerminalSessionJournalMetadata,
   resolveTerminalJournalSessionDirectory,
-  TerminalSessionJournal,
-  type TerminalJournalRecoveryCandidate
+  TerminalSessionJournal
 } from './terminalSessionJournal';
 import {
   createExecutionSessionProcess,
@@ -125,6 +125,8 @@ interface SupervisorSession {
   outputSequence: number;
   terminalAuthorityId?: string;
   terminalJournal?: TerminalSessionJournal;
+  /** A restarted Supervisor cannot own the original PTY, so never project replayed Journal output. */
+  recoveredFromDeadPty?: boolean;
   terminalJournalError?: Error;
   terminalCheckpoint?: TerminalStreamCheckpoint;
   terminalCheckpointValidationAttemptAtMs?: number;
@@ -148,15 +150,6 @@ interface SupervisorSession {
   outputSubscription?: DisposableLike;
   exitSubscription?: DisposableLike;
   lifecycleTimer?: NodeJS.Timeout;
-}
-
-interface RestoredTerminalJournalCandidate {
-  terminalStateTracker: SerializedTerminalStateTracker;
-  terminalCheckpoint: TerminalStreamCheckpoint;
-  cols: number;
-  rows: number;
-  scrollback: number;
-  output: string;
 }
 
 type SupervisorSubscriptionMode = 'legacy' | 'terminal-stream-v1';
@@ -1455,7 +1448,8 @@ class RuntimeSupervisorServer {
       : session.terminalStateTracker.getSerializedState(),
     includeTerminalProjection = true
   ): RuntimeSupervisorSessionSnapshot {
-    const terminalStream = includeTerminalProjection
+    const includeRecoveredTerminalProjection = includeTerminalProjection && !session.recoveredFromDeadPty;
+    const terminalStream = includeRecoveredTerminalProjection
       ? this.buildTerminalStreamAttachPayload(session)
       : undefined;
     return {
@@ -1473,7 +1467,7 @@ class RuntimeSupervisorServer {
       scrollback: session.scrollback,
       output: session.output,
       outputSequence: session.outputSequence,
-      serializedTerminalState: includeTerminalProjection
+      serializedTerminalState: includeRecoveredTerminalProjection
         ? this.getFreshSerializedTerminalState(session, serializedTerminalState)
         : undefined,
       terminalAuthorityId: session.terminalJournalError ? undefined : session.terminalAuthorityId,
@@ -1493,7 +1487,7 @@ class RuntimeSupervisorServer {
   }
 
   private buildTerminalStreamAttachPayload(session: SupervisorSession): TerminalStreamAttachPayload | undefined {
-    if (session.terminalJournalError) {
+    if (session.recoveredFromDeadPty || session.terminalJournalError) {
       return undefined;
     }
     const journal = session.terminalJournal;
@@ -1865,87 +1859,28 @@ class RuntimeSupervisorServer {
     const scrollback = normalizeTerminalScrollback(snapshot.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
 
     const normalizedTerminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
-    let recoveredAuthorityId = snapshot.terminalAuthorityId?.trim() || normalizedTerminalStream?.authorityId;
-    let terminalJournal: TerminalSessionJournal | undefined;
-    let terminalJournalError: Error | undefined;
-    let terminalStateTracker: SerializedTerminalStateTracker | undefined;
-    let terminalCheckpoint: TerminalStreamCheckpoint | undefined;
+    const recoveredAuthorityId = snapshot.terminalAuthorityId?.trim() || normalizedTerminalStream?.authorityId;
     let recoveredOutputSequence = normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence);
-    let recoveredOutput = snapshot.output;
-    let recoveredCols = snapshot.cols;
-    let recoveredRows = snapshot.rows;
-    let recoveredScrollback = scrollback;
     if (recoveredAuthorityId) {
       try {
-        terminalJournal = await TerminalSessionJournal.open({
-          storageDir: this.paths.storageDir,
-          sessionId: snapshot.sessionId,
-          authorityId: recoveredAuthorityId,
-          checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
-        });
-        recoveredAuthorityId = terminalJournal.getAuthorityId();
-        const initialTerminalState = terminalJournal.getInitialTerminalState();
-        const recoveryCandidates = await terminalJournal.getRecoveryCandidates();
-        let restoredCandidate: RestoredTerminalJournalCandidate | undefined;
-        let lastCandidateError: Error | undefined;
-        for (const candidate of recoveryCandidates) {
-          try {
-            restoredCandidate = await this.restoreTerminalJournalCandidate(
-              snapshot.sessionId,
-              recoveredAuthorityId,
-              terminalJournal.getRevision(),
-              initialTerminalState,
-              candidate
-            );
-            break;
-          } catch (error) {
-            lastCandidateError = error instanceof Error ? error : new Error(String(error));
-          }
-        }
-        if (!restoredCandidate) {
-          throw lastCandidateError ?? new Error(
-            `No trusted terminal journal recovery candidate is available for session ${snapshot.sessionId}.`
-          );
-        }
-        terminalStateTracker = restoredCandidate.terminalStateTracker;
-        terminalCheckpoint = restoredCandidate.terminalCheckpoint;
-        recoveredCols = restoredCandidate.cols;
-        recoveredRows = restoredCandidate.rows;
-        recoveredScrollback = restoredCandidate.scrollback;
-        recoveredOutput = restoredCandidate.output;
-        recoveredOutputSequence = terminalJournal.getRevision();
-        terminalJournal.releaseMemoryThrough(terminalCheckpoint.revision);
+        const metadata = await readTerminalSessionJournalMetadata(
+          this.paths.storageDir,
+          snapshot.sessionId,
+          recoveredAuthorityId
+        );
+        recoveredOutputSequence = Math.max(recoveredOutputSequence, metadata.lastRevision);
       } catch (error) {
-        terminalJournalError = error instanceof Error ? error : new Error(String(error));
-        console.error(`Failed to recover terminal journal for session ${snapshot.sessionId}:`, terminalJournalError);
-        terminalJournal = undefined;
-        terminalStateTracker?.dispose();
-        terminalStateTracker = undefined;
-        recoveredOutput = '';
-        recoveredOutputSequence = 0;
-        lifecycle = 'error';
-        lastExitMessageDescriptor = {
-          id: 'terminalJournalPersistenceFailed',
-          params: {
-            sessionId: snapshot.sessionId
-          }
-        };
-        lastExitMessage = formatRuntimeSupervisorMessageDescriptor(lastExitMessageDescriptor);
+        // The original PTY is already gone. Retain the saved canvas projection even when the
+        // optional raw Journal cannot be indexed; never turn this into a transcript replay.
+        console.error(`Failed to inspect terminal journal metadata for session ${snapshot.sessionId}:`, error);
       }
     }
-    if (!terminalJournal || !terminalCheckpoint) {
-      terminalStateTracker = new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
-        scrollback,
-        initialState: recoveredAuthorityId ? undefined : snapshot.serializedTerminalState,
-        initialOutput: recoveredAuthorityId ? undefined : snapshot.output,
-        initialOutputSequence: recoveredAuthorityId
-          ? 0
-          : normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence)
-      });
-    }
-    if (!terminalStateTracker) {
-      throw new Error(`Could not restore terminal state tracker for session ${snapshot.sessionId}.`);
-    }
+    const terminalStateTracker = new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
+      scrollback,
+      initialState: snapshot.serializedTerminalState,
+      initialOutput: snapshot.serializedTerminalState ? undefined : snapshot.output,
+      initialOutputSequence: recoveredOutputSequence
+    });
 
     return {
       ...snapshot,
@@ -1964,15 +1899,13 @@ class RuntimeSupervisorServer {
       lastExitMessageDescriptor,
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
-      cols: recoveredCols,
-      rows: recoveredRows,
-      scrollback: recoveredScrollback,
-      output: recoveredOutput,
+      cols: snapshot.cols,
+      rows: snapshot.rows,
+      scrollback,
+      output: snapshot.output,
       outputSequence: recoveredOutputSequence,
-      terminalAuthorityId: terminalJournal?.getAuthorityId() ?? recoveredAuthorityId,
-      terminalJournal,
-      terminalJournalError,
-      terminalCheckpoint,
+      terminalAuthorityId: recoveredAuthorityId,
+      recoveredFromDeadPty: true,
       terminalStateTracker,
       terminalOperationChain: Promise.resolve(),
       terminalMutationAdmissionOpen: false,
@@ -1982,126 +1915,6 @@ class RuntimeSupervisorServer {
       exitSubscription: undefined,
       lifecycleTimer: undefined
     };
-  }
-
-  private async restoreTerminalJournalCandidate(
-    sessionId: string,
-    authorityId: string,
-    journalRevision: number,
-    initialTerminalState: { cols: number; rows: number; scrollback: number },
-    candidate: TerminalJournalRecoveryCandidate
-  ): Promise<RestoredTerminalJournalCandidate> {
-    const checkpoint = candidate.checkpoint
-      ? normalizeTerminalStreamCheckpoint(candidate.checkpoint)
-      : undefined;
-    if (
-      candidate.checkpoint &&
-      (
-        !checkpoint ||
-        checkpoint.sessionId !== sessionId ||
-        checkpoint.authorityId !== authorityId ||
-        checkpoint.revision > journalRevision
-      )
-    ) {
-      throw new Error(`Invalid ${candidate.source} terminal checkpoint for session ${sessionId}.`);
-    }
-
-    const terminalStateTracker = checkpoint
-      ? new SerializedTerminalStateTracker(checkpoint.cols, checkpoint.rows, {
-          scrollback: checkpoint.scrollback,
-          initialState: checkpoint.serializedState,
-          initialOutputSequence: checkpoint.revision
-        })
-      : new SerializedTerminalStateTracker(initialTerminalState.cols, initialTerminalState.rows, {
-          scrollback: initialTerminalState.scrollback,
-          initialOutputSequence: 0
-        });
-    const baseCheckpoint = checkpoint ?? normalizeTerminalStreamCheckpoint({
-      version: TERMINAL_SESSION_STREAM_VERSION,
-      sessionId,
-      authorityId,
-      revision: 0,
-      cols: initialTerminalState.cols,
-      rows: initialTerminalState.rows,
-      scrollback: initialTerminalState.scrollback,
-      createdAtMs: Date.now(),
-      serializedState: terminalStateTracker.getSerializedState()
-    });
-    if (!baseCheckpoint) {
-      terminalStateTracker.dispose();
-      throw new Error(`Could not create a genesis terminal checkpoint for session ${sessionId}.`);
-    }
-
-    let cols = baseCheckpoint.cols;
-    let rows = baseCheckpoint.rows;
-    let scrollback = baseCheckpoint.scrollback;
-    let expectedRevision = baseCheckpoint.revision + 1;
-    let output = candidate.outputTail;
-    try {
-      for (const event of candidate.events) {
-        if (event.revision !== expectedRevision || event.revision > journalRevision) {
-          throw new Error(
-            `Terminal journal ${candidate.source} recovery has a revision gap at ${expectedRevision}.`
-          );
-        }
-        expectedRevision += 1;
-        if (event.type === 'output') {
-          output = appendOutputTail(output, event.data);
-          terminalStateTracker.write(event.data, {
-            outputSequence: event.revision
-          });
-          continue;
-        }
-        if (event.type === 'resize') {
-          cols = event.cols;
-          rows = event.rows;
-          terminalStateTracker.resize(event.cols, event.rows, {
-            outputSequence: event.revision
-          });
-          continue;
-        }
-        scrollback = event.scrollback;
-        await terminalStateTracker.setScrollback(event.scrollback, {
-          outputSequence: event.revision
-        });
-      }
-      if (expectedRevision !== journalRevision + 1) {
-        throw new Error(
-          `Terminal journal ${candidate.source} recovery stops before revision ${journalRevision}.`
-        );
-      }
-
-      const validation = await terminalStateTracker.flushValidatedCheckpoint();
-      let trustedCheckpoint = baseCheckpoint;
-      if (validation.eligible) {
-        const headCheckpoint = normalizeTerminalStreamCheckpoint({
-          version: TERMINAL_SESSION_STREAM_VERSION,
-          sessionId,
-          authorityId,
-          revision: journalRevision,
-          cols,
-          rows,
-          scrollback,
-          createdAtMs: Date.now(),
-          serializedState: validation.state
-        });
-        if (!headCheckpoint) {
-          throw new Error(`Could not validate recovered terminal head for session ${sessionId}.`);
-        }
-        trustedCheckpoint = headCheckpoint;
-      }
-      return {
-        terminalStateTracker,
-        terminalCheckpoint: trustedCheckpoint,
-        cols,
-        rows,
-        scrollback,
-        output
-      };
-    } catch (error) {
-      terminalStateTracker.dispose();
-      throw error;
-    }
   }
 
   private scheduleIdleShutdownIfNeeded(): void {
