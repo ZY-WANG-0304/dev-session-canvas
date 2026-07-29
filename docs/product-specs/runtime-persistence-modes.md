@@ -26,7 +26,7 @@
    - 若运行时持久化已关闭，系统不承诺真实进程继续存在；退出前会先刷盘最后状态与恢复信息，并在合理超时内结束现有 `Agent` / `Terminal` 进程。
 5. 用户重新打开 VSCode 后：
    - 若节点处于 `live-runtime` 模式且带有可附着的持久化会话身份，系统先显示 `重连中`。
-   - 若 Supervisor 正在恢复历史 journal，系统明确显示非阻塞的“恢复中”；这不阻止用户创建新的 `Agent` 或 `Terminal`。
+   - 若 Supervisor 正在处理旧 registry / Journal metadata，系统明确显示非阻塞的“恢复中”；这不阻止用户创建新的 `Agent` 或 `Terminal`，也不在启动期回放完整 Journal。
    - 若之前的真实进程仍活着，节点会重新附着到原会话，并切回真实生命周期状态。
    - 若真实进程不再存在、已自然结束、监督器不可达，或重新附着失败，节点会进入 `历史恢复`，明确告诉用户这是恢复的历史状态，而不是仍在运行的同一进程。
 6. 当扩展升级且旧版 Supervisor 仍持有 live 会话时：
@@ -88,7 +88,7 @@
 - 最近退出信息
 - `Agent` 的 provider 显式恢复身份与恢复失败原因
 - 关闭前的最后已知状态
-- `live-runtime` 会话的输出恢复权威属于生命周期长于 Extension Host 的 runtime backend；Host/Webview snapshot 只能作为缓存或显示投影，不能独立声明后台输出完整
+- `live-runtime` 会话的输出恢复权威属于生命周期长于 Extension Host 的 runtime backend；Host/Webview snapshot 只能作为缓存或显示投影，不能独立声明后台输出完整。若该 backend / PTY 已死亡，持久化 `serializedTerminalState` 则成为 Window reload 的有界显示来源，明确不承诺完整后台 transcript
 - runtime backend 提供稳定会话身份和连续输出位置，使新 Host 能恢复关闭期间产生的内容并无缝接到重新附着后的 live output
 
 ## 7. 验收标准
@@ -97,11 +97,12 @@
 - 当系统选中 `systemd-user` backend 时，关闭 VSCode 或断开 Remote SSH 后，真实 `Agent` / `Terminal` 进程仍可继续存在；重新打开 VSCode 后，系统会优先重新附着到原会话，而不是只恢复一个静态快照。
 - 在 Linux 本地或 Remote SSH workspace 中，如果 `systemd-user` backend 不可用，系统会自动降级到 `legacy-detached`，并把 guarantee 标成 `best-effort`，而不是继续把它伪装成强保证。
 - 当运行时持久化开关开启且节点带有持久化 live 会话身份时，VSCode 重开后节点先显示 `重连中`；只有在重新附着成功后，才恢复为 `运行中`、`等待输入`、`live` 等真实生命周期状态。
-- 当 Supervisor 在重开后恢复历史 journal 时，用户能看到“恢复中”而不是命令或 shell 配置错误；恢复中的旧历史不得阻止用户创建新的 `Agent` 或 `Terminal`。
+- 当 Supervisor 在重开后处理旧 registry / Journal metadata 时，用户能看到“恢复中”而不是命令或 shell 配置错误；恢复中的旧历史不得阻止用户创建新的 `Agent` 或 `Terminal`，也不得在启动期全量读取 Journal event。
 - 当 Unix socket 缺失、Supervisor 就绪超时与 PTY spawn 失败发生时，界面必须分别解释为 runtime 连接/恢复问题、runtime 启动超时和外部 executable 问题；不得把任意 `ENOENT` 统一显示为 Codex 或 shell 缺失。
-- 当系统无法重新附着到 live runtime 时，`Terminal` 会明确进入 `历史恢复`；`Agent` 则会先检查是否已持有 provider 原生显式 session identity，若有则自动降级到 provider resume，否则才进入 `历史恢复` 或 `interrupted`。
+- 当系统无法重新附着到已死亡的 live runtime 时，`Terminal` 会明确进入 `历史恢复` 并显示最后保存的有界终端快照；`Agent` 若持有 provider 原生显式 session identity 则进入 `resume-ready` 并提供 Resume 按钮，只有用户点击后才启动新的 provider resume 进程，否则进入 `历史恢复` 或 `interrupted`。
 - 当运行时持久化开关关闭时，关闭 VSCode 后系统会在刷盘最后状态后结束现有 `Agent` / `Terminal` 进程；重新打开时，系统至少恢复节点、标题、位置、尺寸、最后状态、最近输出摘要和恢复入口。
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。
+- 当 PTY 已死亡时，Window reload 仍显示最后持久化的终端屏幕和配置 scrollback；完整 Journal 不会被删除，但不会为启动或状态恢复无界回放。完整历史若在后续提供，必须显式请求、分页并受容量预算保护。
 - 当节点处于 `live-runtime` 时，系统会把当前 runtime backend 与 guarantee 写入日志与诊断信息；节点默认 UI 只保留与当前操作直接相关的状态，不直接暴露 `systemd-user / best-effort` 这类调试字段。
 - 当 `Agent` 在 `live-runtime` 模式下于 VSCode 关闭期间继续执行时，用户下次打开 VSCode 后能看到关闭期间新增的执行结果。
 - 当用户执行 Reload Window，或关闭 VSCode 后等待 `Agent` 继续输出再重新打开时，重新附着后的节点内容与 runtime backend 观察到的输出顺序一致，不因 Host/Webview 重建而缺失、重复或从任意 ANSI 控制序列中间开始。

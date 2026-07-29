@@ -20,7 +20,8 @@ related_plans:
   - docs/exec-plans/completed/agent-running-state-detection.md
   - docs/exec-plans/completed/execution-lifecycle-recovery-and-autostart.md
   - docs/exec-plans/completed/claude-agent-ctrl-z-containment.md
-updated_at: 2026-07-11
+  - docs/exec-plans/completed/runtime-supervisor-dead-pty-bounded-recovery.md
+updated_at: 2026-07-30
 ---
 
 # 执行节点生命周期、恢复与自动启动设计
@@ -32,7 +33,7 @@ updated_at: 2026-07-11
 这条路线适合验证“会不会跑”，但已经不足以支撑 `功能体验.md` 当前明确提出的三件事：
 
 1. `Agent` 运行状态需要和真实 CLI 语义更接近，而不是只剩“没开 / 在跑”。
-2. 扩展重载后，`Agent` 应优先尝试 provider 自身的 resume，而不是一律标成中断。
+2. 原 live runtime 已死亡后，`Agent` 应提供 provider 自身的显式 Resume 入口，而不是一律标成中断或在后台启动新进程。
 3. 新建 `Agent` / `Terminal` 节点后应直接进入打开流程，不再要求用户手动点启动。
 
 同时，新的产品判断也已经明确：`Agent` 与 `Terminal` 可以有不同的状态，`Agent` 不必被正式定义成“特殊 Terminal”。当前实现仍然可以用 PTY 适配器承载 provider CLI，但这只是实现策略，不是产品定义。
@@ -44,13 +45,13 @@ updated_at: 2026-07-11
 1. `Agent` 与 `Terminal` 的正式生命周期应该如何拆分，才能既保留共通执行能力，又不再把两者硬压成同一状态机。
 2. 哪些恢复能力可以被正式承诺，哪些只能明确写成 best-effort。
 3. “创建即打开”应该如何落地，才能避免节点尚未测得尺寸时就抢先拉起进程。
-4. `Agent` 的自动恢复应该建立在什么样的 provider 身份上，才能不把“最近一次会话”误写成“当前节点自己的会话”。
+4. `Agent` 的显式恢复应该建立在什么样的 provider 身份上，才能不把“最近一次会话”误写成“当前节点自己的会话”。
 
 ## 3. 目标
 
 - 为 `Agent` 与 `Terminal` 定义两套可解释、可持久化、可测试的生命周期状态。
 - 让 `Agent` 的状态反馈更接近真实 CLI 交互，而不是继续退化成布尔执行态。
-- 为 `Agent` 提供 best-effort resume 路径，并在扩展重载后自动尝试恢复。
+- 为 `Agent` 提供 best-effort resume 路径；原 live runtime 已死亡后等待用户明确点击 Resume。
 - 让新建执行节点直接进入启动或恢复流程，而不是要求用户额外点一次“启动”。
 - 保持“宿主权威状态 + Webview 投影”的总体架构不变。
 
@@ -138,19 +139,19 @@ updated_at: 2026-07-11
 恢复边界明确如下：
 
 - `Terminal`：同一扩展进程内跨 surface 可重附着；扩展重载后不承诺完整活动态恢复，只显式标记为 `interrupted`。
-- `Agent`：若节点带有 `live-runtime` 身份，则扩展重载后先尝试 reattach 原 live runtime；只有在 reattach 不可用且节点仍持有 provider 原生显式 session identity 时，才降级到 provider resume；若 provider 不支持或上下文缺失，则分别落到 `resume-failed`、`interrupted` 或历史态。
+- `Agent`：若节点带有 `live-runtime` 身份，则扩展重载后先尝试 reattach 原 live runtime；只有在 reattach 已确认不可用且节点仍持有 provider 原生显式 session identity 时，才降级到 `resume-ready` 并提供 Resume 按钮。只有用户点击该按钮才启动新的 provider resume 进程；若 provider 不支持或上下文缺失，则分别落到 `resume-failed`、`interrupted` 或历史态。
 
 当问题变成“关闭整个 VSCode 后重新打开”时，本文件里的生命周期状态还需要叠加运行时持久化文档定义的附着态语义。第一版的用户可见规则是：
 
 - 只要节点带着 `live-runtime` 的会话身份重新进入恢复流程，且系统尚未确认 live runtime 仍存在，主状态标签显示 `重连中`。
 - 若重新附着成功，再切回本文件定义的真实生命周期状态。
-- 若无法重新附着，`Terminal` 显示 `历史恢复`；`Agent` 则先检查是否存在可用 provider resume 上下文，若有则转成 `resume-ready` 并继续自动恢复，否则才显示 `历史恢复`。
+- 若无法重新附着，`Terminal` 显示 `历史恢复`；`Agent` 则先检查是否存在可用 provider resume 上下文，若有则转成 `resume-ready` 并等待用户点击 Resume，否则才显示 `历史恢复`。
 
 自动启动边界明确如下：
 
 - 新建 `Agent` / `Terminal` 节点时，宿主只写入“待启动意图”，不立即同步拉起进程。
 - 节点在 Webview 中完成尺寸测量后，由统一的启动消息把待启动意图转成真正的 fresh start 或 resume。
-- 已持久化的待恢复 `Agent` 节点也使用同一条机制进入自动恢复。
+- 已持久化的待恢复 `Agent` 节点只使用该机制恢复按钮可用性；不得写入自动 resume 的待启动意图。
 
 对 `Agent` 的 provider 启动上下文与恢复身份，还需要补充以下硬约束：
 
@@ -185,8 +186,8 @@ updated_at: 2026-07-11
 1. `Agent` 与 `Terminal` 在 UI 上能展示不同的生命周期状态，而不是都退化为“运行中 / 未运行”。
 2. 新建执行节点后，无需手动点启动按钮，节点会自动进入 fresh start。
 3. 扩展重载后，live 的 `Terminal` 节点被标记为 `interrupted`。
-4. 扩展重载后，live 的 `Agent` 节点只有在具备可信恢复上下文时，才会自动进入 `resuming` 并尽量恢复。
-5. 恢复失败时，`Agent` 节点进入 `resume-failed` 并显示明确失败原因。
+4. 扩展重载后，live 的 `Agent` 节点只有在具备可信恢复上下文时才进入 `resume-ready`；在用户点击 Resume 前不得启动新的 provider 进程。
+5. 用户点击 Resume 后，`Agent` 节点进入 `resuming`；恢复失败时进入 `resume-failed` 并显示明确失败原因。
 6. Claude Agent 在同一 live 会话中按 `Ctrl-Z` 时不应把 `\u001a` 写入 provider PTY；Webview 显示明确错误提示，宿主和 runtime supervisor 也拒绝该输入。普通 Terminal 与非 Claude Agent 不受这条 Claude 专属阻断规则影响。
 7. 旧 `suspended` Agent snapshot 仍可渲染，但不再出现“恢复”或“恢复中”入口；用户只能停止后重启。
 8. `npm run typecheck`、`npm run build`、`npm run test:smoke` 与 `npm run test:webview` 通过。
@@ -196,7 +197,8 @@ updated_at: 2026-07-11
 - 2026-04-08 已完成代码落地，并通过 `npm run typecheck`、`npm run build`、`npm run test:smoke` 与 `npm run test:webview`。
 - smoke test 已覆盖：差异化状态集、创建即自动启动、`Agent` 恢复、`Terminal` 在扩展重载后的 `interrupted`、surface cutover、停止竞态和失败路径。
 - `Claude Code` 的 session id / resume CLI 能力已在本机 `--help` 输出层面确认。
-- 2026-04-12 已重新收口 `Agent` 的启动上下文与恢复身份：自动恢复必须建立在 provider 原生显式 session identity 上，不能再以隔离 provider home 或 `resume --last` 作为正式口径。
+- 2026-04-12 已重新收口 `Agent` 的启动上下文与恢复身份：恢复必须建立在 provider 原生显式 session identity 上，不能再以隔离 provider home 或 `resume --last` 作为正式口径。
 - 2026-06-10 曾尝试把 Claude Code `Ctrl-Z` 文案收口为 `suspended` 与前台恢复动作；2026-06-11 根据用户真实观察撤销该结论。撤销原因是 direct-spawn Claude Agent 没有普通 shell job table，`SIGCONT` 或 provider 文案都不足以承诺等价于 `fg` 的可交互恢复。
 - 2026-06-11 当前收口方向改为阻断 Claude Agent `Ctrl-Z`：Webview 不发送该输入，宿主与 runtime supervisor 也拒绝写入，并移除恢复协议与 UI 入口。`suspended` 仅作为旧 snapshot 兼容状态保留。
 - 当前文档仍保持“验证中”，因为新的显式 session identity 约束尚未完成代码落地与真实 provider 验证，而 `Codex` 的标准 session identity 获取接口也尚未确认；Claude Agent `Ctrl-Z` 阻断已补局部自动化，仍建议在 MR 阶段做真实 Claude Code 手动验收。
+- 2026-07-30 已明确：Supervisor / 设备重启后旧 PTY 已死亡时，`resume-ready` 只表示可由用户启动一个新的 provider resume 进程，不表示原进程仍存活，也不得通过 `pendingLaunch: 'resume'` 自动触发。对应宿主 smoke 覆盖“等待 Resume 前无新进程、点击后才恢复”的状态边界。

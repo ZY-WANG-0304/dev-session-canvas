@@ -27,6 +27,9 @@ const DEFAULT_TERMINAL_JOURNAL_SEGMENT_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_TERMINAL_JOURNAL_FLUSH_DELAY_MS = 16;
 const DEFAULT_TERMINAL_JOURNAL_COMPACTION_MIN_BYTES = 16 * 1024 * 1024;
 const TERMINAL_JOURNAL_RECENT_OUTPUT_LIMIT = 6000;
+const MAX_TERMINAL_JOURNAL_METADATA_MANIFEST_BYTES = 1024 * 1024;
+const MAX_TERMINAL_JOURNAL_METADATA_SEGMENT_COUNT = 8192;
+const TEST_RECOVERY_MAX_JOURNAL_BYTES_ENV = 'DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_MAX_RECOVERY_JOURNAL_BYTES';
 
 interface TerminalJournalSegmentManifest {
   file: string;
@@ -72,6 +75,21 @@ export interface TerminalJournalManifestV2 extends TerminalJournalManifestBase {
 }
 
 export type TerminalJournalManifest = TerminalJournalManifestV1 | TerminalJournalManifestV2;
+
+/**
+ * A bounded startup-time description of a persisted terminal Journal. It deliberately excludes
+ * terminal events and checkpoint payloads so a dead PTY cannot trigger a transcript replay.
+ */
+export interface TerminalSessionJournalMetadata {
+  sessionId: string;
+  authorityId: string;
+  version: 1 | 2;
+  lastRevision: number;
+  retainedStartRevision: number;
+  segmentCount: number;
+  segmentBytes: number;
+  manifestBytes: number;
+}
 
 interface TerminalJournalCheckpointEnvelope {
   version: typeof TERMINAL_JOURNAL_CHECKPOINT_ENVELOPE_VERSION;
@@ -953,6 +971,8 @@ async function scanTerminalJournalSegments(
   retainedPreviousChecksum: string,
   allowIncompleteTail: boolean
 ): Promise<ScannedTerminalJournal> {
+  const testRecoveryByteBudget = readTestRecoveryJournalByteBudget();
+  let scannedBytes = 0;
   const events: TerminalStreamEvent[] = [];
   const segments: ScannedTerminalJournalSegment[] = [];
   const baseRevision = retainedStartRevision - 1;
@@ -982,6 +1002,13 @@ async function scanTerminalJournalSegments(
         path: segmentPath,
         retainedBytes
       };
+    }
+
+    scannedBytes += retainedBuffer.length;
+    if (testRecoveryByteBudget !== undefined && scannedBytes > testRecoveryByteBudget) {
+      throw new Error(
+        `Test recovery journal byte budget exceeded for session ${sessionId}: ${scannedBytes} > ${testRecoveryByteBudget}.`
+      );
     }
 
     const data = retainedBuffer.toString('utf8');
@@ -1031,6 +1058,16 @@ async function scanTerminalJournalSegments(
     checksums,
     incompleteTail
   };
+}
+
+function readTestRecoveryJournalByteBudget(): number | undefined {
+  const rawValue = process.env[TEST_RECOVERY_MAX_JOURNAL_BYTES_ENV]?.trim();
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function validateManifestPrefix(manifest: TerminalJournalManifest, scanned: ScannedTerminalJournal): void {
@@ -1123,6 +1160,59 @@ async function writeTerminalJournalManifest(
 export function resolveTerminalJournalSessionDirectory(storageDir: string, sessionId: string): string {
   const directoryName = createHash('sha256').update(sessionId).digest('hex').slice(0, 32);
   return path.join(storageDir, TERMINAL_JOURNAL_ROOT_DIRECTORY, directoryName);
+}
+
+/**
+ * Reads only the manifest plus filesystem metadata. Recovery uses this to retain an audit trail
+ * for a dead PTY without parsing or retaining its unbounded event stream.
+ */
+export async function readTerminalSessionJournalMetadata(
+  storageDir: string,
+  sessionId: string,
+  expectedAuthorityId?: string
+): Promise<TerminalSessionJournalMetadata> {
+  const sessionDirectory = resolveTerminalJournalSessionDirectory(storageDir, sessionId);
+  const manifestPath = path.join(sessionDirectory, TERMINAL_JOURNAL_MANIFEST_FILE);
+  const manifestStats = await fs.promises.stat(manifestPath);
+  if (manifestStats.size > MAX_TERMINAL_JOURNAL_METADATA_MANIFEST_BYTES) {
+    throw new Error(
+      `Terminal journal manifest exceeds the ${MAX_TERMINAL_JOURNAL_METADATA_MANIFEST_BYTES}-byte recovery metadata budget for session ${sessionId}.`
+    );
+  }
+
+  const manifest = normalizeManifest(JSON.parse(await fs.promises.readFile(manifestPath, 'utf8')));
+  if (!manifest || manifest.sessionId !== sessionId) {
+    throw new Error(`Invalid terminal journal manifest for session ${sessionId}.`);
+  }
+  if (expectedAuthorityId && manifest.authorityId !== expectedAuthorityId) {
+    throw new Error(`Terminal journal authority mismatch for session ${sessionId}.`);
+  }
+  if (manifest.segments.length > MAX_TERMINAL_JOURNAL_METADATA_SEGMENT_COUNT) {
+    throw new Error(
+      `Terminal journal segment count exceeds the ${MAX_TERMINAL_JOURNAL_METADATA_SEGMENT_COUNT}-segment recovery metadata budget for session ${sessionId}.`
+    );
+  }
+
+  let segmentBytes = 0;
+  for (const segment of manifest.segments) {
+    const stats = await fs.promises.stat(path.join(sessionDirectory, segment.file));
+    if (!stats.isFile()) {
+      throw new Error(`Terminal journal segment ${segment.file} is not a regular file.`);
+    }
+    segmentBytes += stats.size;
+  }
+
+  return {
+    sessionId: manifest.sessionId,
+    authorityId: manifest.authorityId,
+    version: manifest.version,
+    lastRevision: manifest.lastRevision,
+    retainedStartRevision:
+      manifest.version === TERMINAL_JOURNAL_MANIFEST_VERSION_V2 ? manifest.retainedStartRevision : 1,
+    segmentCount: manifest.segments.length,
+    segmentBytes,
+    manifestBytes: manifestStats.size
+  };
 }
 
 function createStoredTerminalJournalRecord(

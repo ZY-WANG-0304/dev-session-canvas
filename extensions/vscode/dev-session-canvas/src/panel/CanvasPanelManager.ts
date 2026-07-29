@@ -11267,6 +11267,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream(snapshot);
     if (options.historyOnUnavailable && !completedTerminalStream) {
+      if (kind === 'agent' && this.maybeFallbackAgentLiveRuntimeToResume(nodeId, snapshotExitMessage)) {
+        return;
+      }
       this.markExecutionNodeAsHistoryRestored(nodeId, kind, snapshotExitMessage, snapshot);
       return;
     }
@@ -11571,7 +11574,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.state = updateAgentNode(this.state, nodeId, {
       status: 'resume-ready',
-      summary: vscode.l10n.t('The original Agent live runtime disconnected. A resumable session will be used instead.'),
+      summary: vscode.l10n.t('The original Agent live runtime ended. Select Resume to start a new process with its saved session.'),
       metadata: buildAgentMetadataPatch(this.state, nodeId, {
         lifecycle: 'resume-ready',
         provider: metadata.provider,
@@ -11587,7 +11590,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         runtimeGuarantee: metadata.runtimeGuarantee,
         liveSession: false,
         runtimeSessionId: undefined,
-        pendingLaunch: 'resume',
+        pendingLaunch: undefined,
         shellPath: metadata.shellPath,
         cwd: metadata.cwd,
         recentOutput: metadata.recentOutput,
@@ -25762,7 +25765,7 @@ function reconcileAgentNodesInArray(
         ...node,
         status: canResume ? 'resume-ready' : 'interrupted',
         summary: canResume
-          ? vscode.l10n.t('Detected a resumable Agent session and waiting to resume.')
+          ? vscode.l10n.t('Detected a resumable Agent session. Select Resume to start a new process.')
           : vscode.l10n.t('The previous Agent session was not restored after extension reload. It can be restarted.'),
         metadata: {
           ...node.metadata,
@@ -25770,7 +25773,7 @@ function reconcileAgentNodesInArray(
             ...metadata,
             lifecycle: canResume ? 'resume-ready' : 'interrupted',
             liveSession: false,
-            pendingLaunch: canResume ? 'resume' : undefined
+            pendingLaunch: undefined
           }
         }
       };
@@ -25781,13 +25784,14 @@ function reconcileAgentNodesInArray(
         return {
           ...node,
           status: 'resume-ready',
-          summary: vscode.l10n.t('Detected a resumable Agent session and waiting to resume.'),
+          summary: vscode.l10n.t('Detected a resumable Agent session. Select Resume to start a new process.'),
           metadata: {
             ...node.metadata,
             agent: {
               ...metadata,
               lifecycle: 'resume-ready',
-              liveSession: false
+              liveSession: false,
+              pendingLaunch: undefined
             }
           }
         };

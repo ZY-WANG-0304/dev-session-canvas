@@ -52,6 +52,7 @@ try {
   const require = createRequire(import.meta.url);
   const {
     TerminalSessionJournal,
+    readTerminalSessionJournalMetadata,
     resolveTerminalJournalSessionDirectory,
     verifyTerminalSessionJournal
   } = require(outfile);
@@ -86,6 +87,24 @@ try {
   assert.equal(verified.events.length, 4);
   assert.deepEqual(verified.events.map((event) => event.type), ['output', 'resize', 'scrollback', 'output']);
   assert.ok(verified.manifest.segments.length >= 2, 'small test segments should force rotation.');
+
+  const recoveryMetadata = await readTerminalSessionJournalMetadata(storageDir, sessionId, authorityId);
+  assert.deepEqual(
+    recoveryMetadata,
+    {
+      sessionId,
+      authorityId,
+      version: 1,
+      lastRevision: 4,
+      retainedStartRevision: 1,
+      segmentCount: verified.manifest.segments.length,
+      segmentBytes: verified.manifest.segments.reduce((total, segment) => total + segment.bytes, 0),
+      manifestBytes: (await fs.promises.stat(
+        path.join(resolveTerminalJournalSessionDirectory(storageDir, sessionId), 'manifest.json')
+      )).size
+    },
+    'recovery metadata must describe a V1 Journal without exposing parsed events.'
+  );
 
   journal.releaseMemoryThrough(2);
   assert.deepEqual(
