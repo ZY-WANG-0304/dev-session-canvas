@@ -11267,6 +11267,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream(snapshot);
     if (options.historyOnUnavailable && !completedTerminalStream) {
+      if (kind === 'agent' && this.maybeFallbackAgentLiveRuntimeToResume(nodeId, snapshotExitMessage)) {
+        return;
+      }
       this.markExecutionNodeAsHistoryRestored(nodeId, kind, snapshotExitMessage, snapshot);
       return;
     }
@@ -11461,6 +11464,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       normalizeRuntimeHostBackendKind(currentMetadata.runtimeBackend) ?? snapshot?.runtimeBackend
     );
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
+    const existingSessionTerminalState = existingSession
+      ? getFreshExecutionSessionSerializedTerminalState(existingSession)
+      : undefined;
     this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId);
     this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
@@ -11479,28 +11485,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       (kind === 'agent'
         ? vscode.l10n.t('Could not reattach to the original Agent live runtime, so history results were restored.')
         : vscode.l10n.t('Could not reattach to the original Terminal live runtime, so history results were restored.'));
-    const outputSequence = maxExecutionOutputSequence(
+    const serializedTerminalState =
+      existingSessionTerminalState ??
+      cloneFreshSerializedTerminalState(snapshot?.serializedTerminalState, snapshot?.outputSequence) ??
+      cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, currentMetadata.outputSequence);
+    // A serialized screen is valid only with the sequence that produced it. A later Journal
+    // revision can be useful metadata, but cannot replace that paired display sequence.
+    const outputSequence = serializedTerminalState?.outputSequence ?? maxExecutionOutputSequence(
       snapshot?.outputSequence,
       existingSession?.outputSequence,
       currentMetadata.outputSequence
     );
-    const serializedTerminalState =
-      cloneFreshSerializedTerminalState(snapshot?.serializedTerminalState, outputSequence) ??
-      (existingSession?.terminalStateTrusted === false
-        ? undefined
-        : cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, outputSequence));
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: 'history-restored',
       summary,
       metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
-        persistenceMode: 'live-runtime',
+        persistenceMode: 'snapshot-only',
         attachmentState: 'history-restored',
         terminalProjectionMode: undefined,
-        runtimeBackend: snapshot?.runtimeBackend ?? currentMetadata.runtimeBackend,
-        runtimeGuarantee: snapshot?.runtimeGuarantee ?? currentMetadata.runtimeGuarantee,
-        runtimeStoragePath: currentMetadata.runtimeStoragePath,
+        runtimeBackend: undefined,
+        runtimeGuarantee: undefined,
+        runtimeStoragePath: undefined,
         liveSession: false,
-        runtimeSessionId,
+        runtimeSessionId: undefined,
         lastRuntimeError: reason,
         recentOutput:
           snapshot?.output !== undefined
@@ -11571,7 +11578,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.state = updateAgentNode(this.state, nodeId, {
       status: 'resume-ready',
-      summary: vscode.l10n.t('The original Agent live runtime disconnected. A resumable session will be used instead.'),
+      summary: vscode.l10n.t('The original Agent live runtime ended. Select Resume to start a new process with its saved session.'),
       metadata: buildAgentMetadataPatch(this.state, nodeId, {
         lifecycle: 'resume-ready',
         provider: metadata.provider,
@@ -11587,7 +11594,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         runtimeGuarantee: metadata.runtimeGuarantee,
         liveSession: false,
         runtimeSessionId: undefined,
-        pendingLaunch: 'resume',
+        pendingLaunch: undefined,
         shellPath: metadata.shellPath,
         cwd: metadata.cwd,
         recentOutput: metadata.recentOutput,
@@ -25762,7 +25769,7 @@ function reconcileAgentNodesInArray(
         ...node,
         status: canResume ? 'resume-ready' : 'interrupted',
         summary: canResume
-          ? vscode.l10n.t('Detected a resumable Agent session and waiting to resume.')
+          ? vscode.l10n.t('Detected a resumable Agent session. Select Resume to start a new process.')
           : vscode.l10n.t('The previous Agent session was not restored after extension reload. It can be restarted.'),
         metadata: {
           ...node.metadata,
@@ -25770,7 +25777,7 @@ function reconcileAgentNodesInArray(
             ...metadata,
             lifecycle: canResume ? 'resume-ready' : 'interrupted',
             liveSession: false,
-            pendingLaunch: canResume ? 'resume' : undefined
+            pendingLaunch: undefined
           }
         }
       };
@@ -25781,13 +25788,14 @@ function reconcileAgentNodesInArray(
         return {
           ...node,
           status: 'resume-ready',
-          summary: vscode.l10n.t('Detected a resumable Agent session and waiting to resume.'),
+          summary: vscode.l10n.t('Detected a resumable Agent session. Select Resume to start a new process.'),
           metadata: {
             ...node.metadata,
             agent: {
               ...metadata,
               lifecycle: 'resume-ready',
-              liveSession: false
+              liveSession: false,
+              pendingLaunch: undefined
             }
           }
         };
