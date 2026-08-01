@@ -441,6 +441,8 @@ async function runRuntimeSupervisorRebootRecoveryScenario() {
       DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenarioName,
       DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE: 'legacy-detached',
       DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_RECOVERY_GATE_PATH: recoveryGatePath,
+      // Scales the production OOM shape down to a deterministic smoke failure before Node exhausts its heap.
+      DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_MAX_RECOVERY_JOURNAL_BYTES: '4096',
       DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
       DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
       PATH: smokeFixturesPath
