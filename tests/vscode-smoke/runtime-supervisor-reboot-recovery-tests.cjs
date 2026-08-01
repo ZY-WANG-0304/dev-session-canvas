@@ -16,6 +16,7 @@ const COMMAND_IDS = {
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
+  testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
   testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   testCreateNode: 'devSessionCanvas.__test.createNode',
   testStartExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
@@ -23,6 +24,7 @@ const COMMAND_IDS = {
 };
 const OLD_TERMINAL_MARKER = 'REBOOT_RECOVERY_OLD_TERMINAL';
 const OLD_TERMINAL_PID_PREFIX = 'REBOOT_RECOVERY_OLD_TERMINAL_PID=';
+const JOURNAL_ONLY_LATE_OUTPUT_MARKER = 'REBOOT_RECOVERY_JOURNAL_ONLY_LATE_OUTPUT';
 const OLD_AGENT_MARKER = 'REBOOT_RECOVERY_OLD_AGENT_SNAPSHOT';
 const OLD_AGENT_BURST_COUNT = 512;
 const NEW_AGENT_MARKER = 'REBOOT_RECOVERY_NEW_AGENT';
@@ -99,8 +101,15 @@ async function run() {
     );
     const oldAgentRuntimeSessionId = oldAgentLiveNode.metadata.agent.runtimeSessionId;
     const oldAgentRuntimeStoragePath = oldAgentLiveNode.metadata.agent.runtimeStoragePath;
+    const oldAgentOutputSequence = oldAgentLiveNode.metadata.agent.outputSequence;
+    const oldAgentSerializedState = createSerializedTerminalStateFixture(OLD_AGENT_MARKER, oldAgentOutputSequence);
+    const oldAgentResumeSessionId = oldAgentLiveNode.metadata.agent.resumeSessionId;
+    const oldAgentResumeStoragePath = oldAgentLiveNode.metadata.agent.resumeStoragePath;
     assert.ok(oldAgentRuntimeSessionId, 'The old Agent must have a persisted Runtime Supervisor session id.');
     assert.ok(oldAgentRuntimeStoragePath, 'The old Agent must have a runtime storage path.');
+    assert.ok(oldAgentResumeSessionId, 'The old Agent must have a resumable provider session id.');
+    assert.ok(oldAgentResumeStoragePath, 'The old Agent must have a resumable provider storage path.');
+    await synchronizeFakeProviderSession(oldAgentResumeStoragePath, oldAgentResumeSessionId);
     await waitForRegistrySession(oldAgentRuntimeSessionId, 20000);
     await waitForJournalBytes(
       path.join(oldAgentRuntimeStoragePath, 'runtime-supervisor'),
@@ -131,6 +140,11 @@ async function run() {
     assert.ok(oldRuntimeStoragePath, 'The old Terminal must have a runtime storage path.');
     oldTerminalProcessId = parseTerminalProcessId(oldLiveNode.metadata.terminal.recentOutput);
     await waitForRegistrySession(oldRuntimeSessionId, 20000);
+    const oldTerminalOutputSequence = oldLiveNode.metadata.terminal.outputSequence;
+    const oldTerminalSerializedState = createSerializedTerminalStateFixture(
+      OLD_TERMINAL_MARKER,
+      oldTerminalOutputSequence
+    );
 
     const supervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
       path.join(oldRuntimeStoragePath, 'runtime-supervisor')
@@ -144,8 +158,36 @@ async function run() {
     process.kill(helloBeforeReboot.pid, 'SIGKILL');
     await waitForProcessExit(helloBeforeReboot.pid, 10000);
     await fs.rm(supervisorPaths.socketPath, { force: true });
+    const journalMutation = await appendJournalOnlyV1Output(
+      path.join(oldRuntimeStoragePath, 'runtime-supervisor'),
+      oldRuntimeSessionId,
+      `${JOURNAL_ONLY_LATE_OUTPUT_MARKER}\r\n`
+    );
+    assert.ok(
+      journalMutation.lastRevision > oldTerminalOutputSequence,
+      'The Journal fixture must be newer than the Host-persisted Terminal screen snapshot.'
+    );
 
-    await vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload);
+    const reloadedSnapshot = await vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload);
+    const seededHistoryState = JSON.parse(JSON.stringify(reloadedSnapshot.state));
+    const seededAgent = seededHistoryState.nodes.find((node) => node.id === oldAgent.id);
+    const seededTerminal = seededHistoryState.nodes.find((node) => node.id === oldTerminal.id);
+    assert.ok(seededAgent?.metadata?.agent, 'The Host reload must retain the old Agent metadata to seed its screen snapshot.');
+    assert.ok(seededTerminal?.metadata?.terminal, 'The Host reload must retain the old Terminal metadata to seed its screen snapshot.');
+    seededAgent.metadata.agent.outputSequence = oldAgentOutputSequence;
+    seededAgent.metadata.agent.serializedTerminalState = oldAgentSerializedState;
+    seededTerminal.metadata.terminal.outputSequence = oldTerminalOutputSequence;
+    seededTerminal.metadata.terminal.serializedTerminalState = oldTerminalSerializedState;
+    const seededHistorySnapshot = await vscode.commands.executeCommand(
+      COMMAND_IDS.testSetPersistedState,
+      seededHistoryState
+    );
+    const seededHistoryTerminal = seededHistorySnapshot.state.nodes.find((node) => node.id === oldTerminal.id);
+    assert.deepStrictEqual(
+      seededHistoryTerminal?.metadata?.terminal?.serializedTerminalState,
+      oldTerminalSerializedState,
+      'The fixture must retain a Host-persisted Terminal screen paired with the pre-reboot sequence.'
+    );
     await vscode.commands.executeCommand(COMMAND_IDS.testClearHostMessages);
     // A new Host-side create is the deterministic trigger that recreates the killed Supervisor.
     newAgent = await createNode('agent', 'codex');
@@ -244,13 +286,21 @@ async function run() {
       !oldAgentBeforeExplicitResume.metadata.agent.recentOutput?.includes('[fake-agent] resumed session'),
       'No provider resume output may appear before the user explicitly requests Resume.'
     );
-    await waitForNode(
+    const oldTerminalHistoryNode = await waitForNode(
       (node) =>
         node.metadata?.terminal?.attachmentState === 'history-restored' &&
         node.metadata.terminal.persistenceMode === 'snapshot-only' &&
-        node.metadata.terminal.recentOutput?.includes(OLD_TERMINAL_MARKER),
+        node.metadata.terminal.recentOutput?.includes(OLD_TERMINAL_MARKER) &&
+        node.metadata.terminal.outputSequence === oldTerminalOutputSequence &&
+        node.metadata.terminal.serializedTerminalState?.outputSequence === oldTerminalOutputSequence &&
+        node.metadata.terminal.serializedTerminalState?.data.includes(OLD_TERMINAL_MARKER),
       30000,
       oldTerminal.id
+    );
+    assert.deepStrictEqual(
+      oldTerminalHistoryNode.metadata.terminal.serializedTerminalState,
+      oldTerminalSerializedState,
+      'A Journal revision that the Host never rendered must not invalidate its saved Terminal screen.'
     );
     await waitForRegistrySessions(
       [
@@ -407,6 +457,83 @@ async function waitForJournalBytes(storageDir, sessionId, minimumBytes, timeoutM
   assert.fail(
     `Timed out waiting for an over-budget V1 Journal for ${sessionId}. ` +
       `Last manifest: ${JSON.stringify(lastManifest)} bytes=${lastBytes}`
+  );
+}
+
+async function appendJournalOnlyV1Output(storageDir, sessionId, data) {
+  const sessionDirectory = path.join(
+    storageDir,
+    'terminal-journals',
+    createHash('sha256').update(sessionId).digest('hex').slice(0, 32)
+  );
+  const manifestPath = path.join(sessionDirectory, 'manifest.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  assert.strictEqual(manifest.version, 1, 'The late-output fixture intentionally covers legacy V1 Journal recovery.');
+  const segment = manifest.segments?.at(-1);
+  assert.ok(segment?.file, 'The V1 Journal fixture must have a writable tail segment.');
+
+  const revision = manifest.lastRevision + 1;
+  const recordWithoutChecksum = {
+    version: 1,
+    sessionId,
+    authorityId: manifest.authorityId,
+    previousChecksum: manifest.lastChecksum,
+    type: 'output',
+    revision,
+    createdAtMs: Date.now(),
+    data
+  };
+  const record = {
+    ...recordWithoutChecksum,
+    checksum: checksumJson(recordWithoutChecksum)
+  };
+  const line = `${JSON.stringify(record)}\n`;
+  await fs.appendFile(path.join(sessionDirectory, segment.file), line, 'utf8');
+
+  segment.endRevision = revision;
+  segment.recordCount += 1;
+  segment.bytes += Buffer.byteLength(line, 'utf8');
+  manifest.lastRevision = revision;
+  manifest.lastChecksum = record.checksum;
+  manifest.checksum = checksumV1Manifest(manifest);
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return { lastRevision: revision };
+}
+
+function checksumV1Manifest(manifest) {
+  return checksumJson({
+    version: 1,
+    sessionId: manifest.sessionId,
+    authorityId: manifest.authorityId,
+    createdAtMs: manifest.createdAtMs,
+    initialCols: manifest.initialCols,
+    initialRows: manifest.initialRows,
+    initialScrollback: manifest.initialScrollback,
+    lastRevision: manifest.lastRevision,
+    lastChecksum: manifest.lastChecksum,
+    segments: manifest.segments
+  });
+}
+
+function checksumJson(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function createSerializedTerminalStateFixture(marker, outputSequence) {
+  return {
+    format: 'xterm-serialize-v1',
+    data: `${marker}\r\n${marker} retained Host screen\r\n`,
+    outputSequence
+  };
+}
+
+async function synchronizeFakeProviderSession(storagePath, sessionId) {
+  const sessionFile = path.join(storagePath, 'last-session');
+  await fs.writeFile(sessionFile, `${sessionId}\n`, 'utf8');
+  assert.strictEqual(
+    (await fs.readFile(sessionFile, 'utf8')).trim(),
+    sessionId,
+    'The isolated fake provider must retain the same session id as the saved Agent resume metadata.'
   );
 }
 

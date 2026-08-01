@@ -206,8 +206,13 @@ try {
   );
   assert.match(
     supervisorSource,
-    /readTerminalSessionJournalMetadata\([\s\S]*recoveredOutputSequence = Math\.max\(recoveredOutputSequence, metadata\.lastRevision\)[\s\S]*recoveredFromDeadPty: true/u,
-    '重启后的 Supervisor 必须只读取有界 Journal metadata，并标记原 PTY 已死亡。'
+    /const recoveredOutputSequence = normalizeRuntimeSupervisorOutputSequence\(snapshot\.outputSequence\);[\s\S]*await readTerminalSessionJournalMetadata\([\s\S]*recoveredFromDeadPty: true/u,
+    '重启后的 Supervisor 必须只读取有界 Journal metadata，保留已保存的显示序列并标记原 PTY 已死亡。'
+  );
+  assert.doesNotMatch(
+    supervisorSource,
+    /recoveredOutputSequence = Math\.max\([\s\S]*metadata\.lastRevision/u,
+    'Journal manifest revision 不能被当作死亡 PTY 的显示序列。'
   );
   assert.doesNotMatch(
     supervisorSource,

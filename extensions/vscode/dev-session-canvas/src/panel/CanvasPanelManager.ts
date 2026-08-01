@@ -11464,6 +11464,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       normalizeRuntimeHostBackendKind(currentMetadata.runtimeBackend) ?? snapshot?.runtimeBackend
     );
     const existingSession = this.getExecutionSessions(kind).get(nodeId);
+    const existingSessionTerminalState = existingSession
+      ? getFreshExecutionSessionSerializedTerminalState(existingSession)
+      : undefined;
     this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId);
     this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
@@ -11482,28 +11485,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       (kind === 'agent'
         ? vscode.l10n.t('Could not reattach to the original Agent live runtime, so history results were restored.')
         : vscode.l10n.t('Could not reattach to the original Terminal live runtime, so history results were restored.'));
-    const outputSequence = maxExecutionOutputSequence(
+    const serializedTerminalState =
+      existingSessionTerminalState ??
+      cloneFreshSerializedTerminalState(snapshot?.serializedTerminalState, snapshot?.outputSequence) ??
+      cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, currentMetadata.outputSequence);
+    // A serialized screen is valid only with the sequence that produced it. A later Journal
+    // revision can be useful metadata, but cannot replace that paired display sequence.
+    const outputSequence = serializedTerminalState?.outputSequence ?? maxExecutionOutputSequence(
       snapshot?.outputSequence,
       existingSession?.outputSequence,
       currentMetadata.outputSequence
     );
-    const serializedTerminalState =
-      cloneFreshSerializedTerminalState(snapshot?.serializedTerminalState, outputSequence) ??
-      (existingSession?.terminalStateTrusted === false
-        ? undefined
-        : cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, outputSequence));
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: 'history-restored',
       summary,
       metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
-        persistenceMode: 'live-runtime',
+        persistenceMode: 'snapshot-only',
         attachmentState: 'history-restored',
         terminalProjectionMode: undefined,
-        runtimeBackend: snapshot?.runtimeBackend ?? currentMetadata.runtimeBackend,
-        runtimeGuarantee: snapshot?.runtimeGuarantee ?? currentMetadata.runtimeGuarantee,
-        runtimeStoragePath: currentMetadata.runtimeStoragePath,
+        runtimeBackend: undefined,
+        runtimeGuarantee: undefined,
+        runtimeStoragePath: undefined,
         liveSession: false,
-        runtimeSessionId,
+        runtimeSessionId: undefined,
         lastRuntimeError: reason,
         recentOutput:
           snapshot?.output !== undefined

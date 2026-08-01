@@ -1860,15 +1860,16 @@ class RuntimeSupervisorServer {
 
     const normalizedTerminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
     const recoveredAuthorityId = snapshot.terminalAuthorityId?.trim() || normalizedTerminalStream?.authorityId;
-    let recoveredOutputSequence = normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence);
+    const recoveredOutputSequence = normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence);
     if (recoveredAuthorityId) {
       try {
-        const metadata = await readTerminalSessionJournalMetadata(
+        // Manifest revision is Journal audit metadata, not the sequence of the saved display
+        // projection. Keep validating the Journal without breaking the screen/sequence pair.
+        await readTerminalSessionJournalMetadata(
           this.paths.storageDir,
           snapshot.sessionId,
           recoveredAuthorityId
         );
-        recoveredOutputSequence = Math.max(recoveredOutputSequence, metadata.lastRevision);
       } catch (error) {
         // The original PTY is already gone. Retain the saved canvas projection even when the
         // optional raw Journal cannot be indexed; never turn this into a transcript replay.

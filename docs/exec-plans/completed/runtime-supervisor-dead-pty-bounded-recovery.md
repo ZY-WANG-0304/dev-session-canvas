@@ -17,6 +17,7 @@
 - [x] (2026-07-29 17:10Z) 改造 Supervisor registry recovery：已死亡 PTY 只读取有界 Journal metadata 与画板快照，不调用 `open()` 或 hydrate 原始 Journal。
 - [x] (2026-07-29 17:10Z) 改造 Host 的死亡 PTY 状态收口：Agent 只进入 `resume-ready` 并等待用户点击 Resume，Terminal 进入历史快照状态；旧 `pendingLaunch: 'resume'` 兼容状态会在加载时清除。
 - [x] (2026-07-30 01:24 CST) 运行分层测试、更新设计/规格/计划；已登记仍未收口的按需 Journal 浏览容量边界，并将本计划移入 `docs/exec-plans/completed/`。
+- [x] (2026-08-01 09:21Z) 处理 review P1：死亡 PTY 的 Journal manifest revision 不再提升显示序列；Host 保持 `serializedTerminalState` 与其原始 `outputSequence` 的原子配对，并将最终历史态收口为 `snapshot-only`。
 
 ## 意外与发现
 
@@ -32,6 +33,9 @@
 - 观察：以真实 heap OOM 作为回归断言既慢又不稳定；4 KiB 的 test-only Journal scan budget 配合 512 行 fake provider 输出，可稳定按同一条全量读取控制流得到 `recovery.failureCount: 1`。
   证据：修复前运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=runtime-supervisor-reboot-recovery npm run test:smoke` 退出 1，断言显示 `failureCount: 1`；修复后同命令退出 0。
 
+- 观察：Journal 可以先于 Host 持久化收到一个有效 event；此时 manifest `lastRevision` 大于 Host 最后渲染的屏幕序列，并不表示 Host 已经显示该 event。
+  证据：review P1 smoke 在杀死旧 Supervisor 后直接向隔离 V1 Journal 追加一个 checksum 正确的 output record。旧逻辑把 Terminal 的 `outputSequence` 从 Host 保存值抬高到 manifest revision，随后因序列不匹配删除 `serializedTerminalState`；修复后该 smoke 通过并保留完整原屏幕。
+
 ## 决策记录
 
 - 决策：先增加宿主 smoke，再修改生产恢复逻辑；测试使用合成 V1 Journal，不复制或删除用户现场的 4.1 GB Journal。
@@ -46,11 +50,17 @@
   理由：删除或只保留摘要会破坏 Window reload 的已见内容；启动期全量回放又会造成 OOM。
   日期/作者：2026-07-30 / Codex 与用户
 
+- 决策：将 `serializedTerminalState` 和生成它的 `outputSequence` 作为不可拆分的显示投影对。死亡 PTY 恢复时，Supervisor 继续读取有界 manifest，但绝不使用 `lastRevision` 改写该显示序列；Host 选择任一可信序列化屏幕后，节点序列必须取该屏幕自身的值。
+  理由：Journal 有可能包含 Host 尚未渲染或尚未持久化的 event。把它的 revision 与旧屏幕混合，会让 freshness 检查错误地丢弃用户最后已见的完整画面。
+  日期/作者：2026-08-01 / Codex 与用户
+
 ## 结果与复盘
 
 已完成。修复前，新增的真实 VS Code 宿主 smoke 使用 512 行 fake Agent 输出形成超过 4 KiB 的 V1 Journal；旧实现会在 Supervisor restart 时走 `TerminalSessionJournal.open()` 的全量扫描路径，受控预算稳定收口为 `recovery.failureCount: 1`，而不是等待真实 OOM。修复后，同一场景的 `hello.recovery.failureCount` 为 `0`：Supervisor 只读取 manifest 与 segment `stat` metadata，旧 Agent 保持 `resume-ready`、`pendingLaunch` 为空且点击 Resume 前没有新 provider 输出；旧 Agent/Terminal 都保留 Host 已持久化的 `serializedTerminalState`，同时在 recovery gate 期间创建的新 Agent/Terminal 均保持 live。明确点击 Resume 后才观察到新的 fake provider resume PTY。
 
 本轮实际通过 `npm run typecheck`、`npm run test:terminal-session-journal`、`npm run test:runtime-supervisor-protocol`、`npm run test:ui-copy-localization`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=runtime-supervisor-reboot-recovery npm run test:smoke`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=systemd-user-real-reopen npm run test:smoke` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=systemd-fallback-real-reopen npm run test:smoke`。真实设备/Remote SSH 的长期断开人工验收不包含在本轮；完整 Journal 的按需查看、分页与容量预算也没有实现，已更新既有 Journal 容量技术债，不能把原始 segment 留存表述为“已能浏览完整历史”。
+
+2026-08-01 的 P1 补充修复确认了显示投影的另一条边界：死 PTY 的 V1 Journal manifest 可以领先 Host 已保存的屏幕。新的 host-level smoke 在隔离 storage 中制造 `lastRevision > Host outputSequence`，并先验证旧实现会丢弃屏幕快照；修复后旧 Terminal 进入 `snapshot-only`、保持原 `serializedTerminalState` 和其序列，新建 Agent/Terminal 仍 live，旧 Agent 在用户点击 Resume 前不启动并在点击后成功启动。实际通过 `npm run typecheck`、`npm run test:runtime-supervisor-protocol`、`npm run test:terminal-session-journal` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=runtime-supervisor-reboot-recovery npm run test:smoke`。
 
 ## 上下文与定向
 
@@ -62,7 +72,7 @@
 
 `tests/vscode-smoke/runtime-supervisor-reboot-recovery-tests.cjs` 与 `scripts/smoke/run-vscode-smoke.mjs` 已提供真实 Supervisor、真实 PTY、fake provider、SIGKILL、测试专属 socket 和 Host reload 的隔离模型。新回归应在这条模型中构造自己的 Journal fixture；不得重启真实设备，亦不得触碰 workspace 之外的 runtime 或 Journal 路径。
 
-实现完成后，`normalizeRecoveredSession()` 不再打开或回放 Journal；它只调用 `readTerminalSessionJournalMetadata()`，并把结果作为诊断 metadata。死亡 PTY 的恢复 session 标记为 `recoveredFromDeadPty`，其 Supervisor snapshot 不再包含 terminal stream 或 serialized projection，因此不会覆盖 Host 已保存的完整有界画面。
+实现完成后，`normalizeRecoveredSession()` 不再打开或回放 Journal；它只调用 `readTerminalSessionJournalMetadata()` 进行有界 manifest preflight，但 `lastRevision` 只能保留 Journal 审计意义，不能提升已保存显示的 `outputSequence`。死亡 PTY 的恢复 session 标记为 `recoveredFromDeadPty`，其 Supervisor snapshot 不再包含 terminal stream 或 serialized projection，因此不会覆盖 Host 已保存的完整有界画面。`markExecutionNodeAsHistoryRestored()` 选择可信屏幕时必须一并选择它自身的序列；没有屏幕时才可退回多个 metadata 序列的最大值。
 
 ## 工作计划
 
@@ -115,3 +125,5 @@
 初始现场：`0f89e9b8-3347-48ae-a6f6-bd0c08f746b6` 是 V1 Journal，`lastRevision` 为 6,251,740、segmentCount 为 1,046，约 4.1 GB。2026-07-29 的 systemd journal 记录 Node V8 在约 4 GB heap abort；`Restart=on-failure` 随后重启 Supervisor。默认 systemd `KillMode=control-group` 会同时终止 unit cgroup 中的 PTY 子进程，因此旧 PTY 在该事故中确实死亡。
 
 2026-07-30：本计划完成，原因是受控回归已先稳定复现全量 hydrate 失败，并在修复后通过分层单测、协议测试和三条真实 VS Code smoke。计划从 active 归档到 completed；按需、分页且有预算的完整 Journal 浏览保留在既有技术债中，避免将本轮启动期 metadata preflight 误写成历史浏览实现。
+
+2026-08-01 修订：记录 review P1 的“Journal revision 领先 Host 屏幕”场景、原子投影决策与隔离 host-level smoke 证据，避免后续把 Journal 审计 revision 再次当成显示序列。
