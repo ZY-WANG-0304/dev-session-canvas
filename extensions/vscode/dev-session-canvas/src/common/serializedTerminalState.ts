@@ -137,8 +137,12 @@ export class SerializedTerminalStateTracker {
     const runtime = this.createRuntime(cols, rows, this.scrollback);
     this.terminal = runtime.terminal;
     this.serializeAddon = runtime.serializeAddon;
-    this.colorStateSubscription = subscribeToTerminalColorRequests(this.terminal, () => {
-      this.colorStateTouched = true;
+    this.colorStateSubscription = subscribeToTerminalColorRequests(this.terminal, (event) => {
+      // xterm reports OSC color queries separately from mutations. Only mutations
+      // make the renderer palette impossible to prove from serialized terminal data.
+      if (terminalColorEventMayChangeRendererState(event)) {
+        this.colorStateTouched = true;
+      }
     });
     this.refreshCachedState();
 
@@ -622,7 +626,7 @@ function readXtermRuntime(terminal: HeadlessTerminal): XtermRuntime | undefined 
 
 function subscribeToTerminalColorRequests(
   terminal: HeadlessTerminal,
-  listener: () => void
+  listener: (event: unknown) => void
 ): { dispose(): void } | undefined {
   const core = asRecord(asRecord(terminal)?._core);
   const input = asRecord(core?._inputHandler);
@@ -633,6 +637,16 @@ function subscribeToTerminalColorRequests(
   return subscription && typeof subscription.dispose === 'function'
     ? subscription as { dispose(): void }
     : undefined;
+}
+
+function terminalColorEventMayChangeRendererState(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length === 0) {
+    return true;
+  }
+
+  // @xterm/xterm 6 emits ColorRequestType.REPORT as numeric value 0. Do not
+  // trust an unrecognised private event shape to be a harmless query.
+  return value.some((request) => asRecord(request)?.type !== 0);
 }
 
 function inspectCheckpointBoundary(

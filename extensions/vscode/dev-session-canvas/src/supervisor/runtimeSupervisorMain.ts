@@ -25,12 +25,15 @@ import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/run
 import {
   SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
   SerializedTerminalStateTracker,
+  type SerializedTerminalCheckpointRejectionReason,
+  type SerializedTerminalCheckpointValidationResult,
   type SerializedTerminalState
 } from '../common/serializedTerminalState';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   TERMINAL_SESSION_STREAM_VERSION,
   buildTerminalStreamAttachPayload,
+  cloneTerminalStreamCheckpoint,
   normalizeTerminalStreamAttachPayload,
   normalizeTerminalStreamCheckpoint,
   normalizeTerminalStreamRevision,
@@ -50,6 +53,7 @@ import {
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorDeleteSessionParams,
   type RuntimeSupervisorEvent,
+  type RuntimeSupervisorGetTerminalProjectionCheckpointParams,
   type RuntimeSupervisorGetSessionSnapshotParams,
   type RuntimeSupervisorMessageDescriptor,
   type RuntimeSupervisorMessage,
@@ -61,6 +65,8 @@ import {
   type RuntimeSupervisorStopSessionParams,
   type RuntimeSupervisorSubscribeSessionParams,
   type RuntimeSupervisorSubscribeSessionResult,
+  type RuntimeSupervisorTerminalCheckpointDiagnostics,
+  type RuntimeSupervisorTerminalProjectionCheckpoint,
   type RuntimeSupervisorUpdateSessionScrollbackParams,
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
@@ -130,6 +136,9 @@ interface SupervisorSession {
   terminalJournalError?: Error;
   terminalCheckpoint?: TerminalStreamCheckpoint;
   terminalCheckpointValidationAttemptAtMs?: number;
+  terminalCheckpointLastRejectionReason?: SerializedTerminalCheckpointRejectionReason;
+  terminalCheckpointConsecutiveRejectionCount: number;
+  terminalCheckpointRejectionStartedAtMs?: number;
   terminalStateTracker: SerializedTerminalStateTracker;
   terminalOperationChain: Promise<void>;
   terminalMutationAdmissionOpen: boolean;
@@ -283,6 +292,7 @@ class RuntimeSupervisorServer {
               capabilities: {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
+                terminalProjectionCheckpointV1: true,
                 terminalAppliedRevisionAckV1: true
               }
             }
@@ -315,6 +325,16 @@ class RuntimeSupervisorServer {
             id: request.id,
             ok: true,
             result: snapshot
+          });
+          return;
+        }
+        case 'getTerminalProjectionCheckpoint': {
+          const checkpoint = await this.getTerminalProjectionCheckpoint(request.params);
+          this.writeMessage(socket, {
+            type: 'response',
+            id: request.id,
+            ok: true,
+            result: checkpoint
           });
           return;
         }
@@ -459,6 +479,7 @@ class RuntimeSupervisorServer {
       terminalAuthorityId: terminalJournal.getAuthorityId(),
       terminalJournal,
       terminalCheckpoint,
+      terminalCheckpointConsecutiveRejectionCount: 0,
       terminalStateTracker,
       terminalOperationChain: Promise.resolve(),
       terminalMutationAdmissionOpen: true,
@@ -546,6 +567,30 @@ class RuntimeSupervisorServer {
     params: RuntimeSupervisorGetSessionSnapshotParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     return this.toFreshSnapshot(this.requireSession(params.sessionId));
+  }
+
+  private getTerminalProjectionCheckpoint(
+    params: RuntimeSupervisorGetTerminalProjectionCheckpointParams
+  ): Promise<RuntimeSupervisorTerminalProjectionCheckpoint> {
+    const session = this.requireSession(params.sessionId);
+    return this.enqueueTerminalOperation(session, async () => {
+      await this.createFreshSnapshot(session, 'always', false);
+      const journal = session.terminalJournal;
+      const checkpoint = session.terminalCheckpoint;
+      if (session.terminalJournalError || !journal || !session.terminalAuthorityId || !checkpoint) {
+        throw createRuntimeSupervisorProtocolError({
+          id: 'terminalJournalUnavailable',
+          params: { sessionId: params.sessionId }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalJournalUnavailable);
+      }
+      return {
+        sessionId: session.sessionId,
+        authorityId: session.terminalAuthorityId,
+        revision: journal.getRevision(),
+        checkpoint: cloneTerminalStreamCheckpoint(checkpoint),
+        terminalCheckpointDiagnostics: this.getTerminalCheckpointDiagnostics(session)
+      };
+    });
   }
 
   private subscribeSession(
@@ -1383,9 +1428,15 @@ class RuntimeSupervisorServer {
     if (checkpointValidation === 'if-compaction-due' && shouldValidateCheckpoint) {
       session.terminalCheckpointValidationAttemptAtMs = now;
     }
-    const validatedCheckpoint = shouldValidateCheckpoint
-      ? await session.terminalStateTracker.flushValidatedCheckpoint().catch(() => undefined)
-      : undefined;
+    let validatedCheckpoint: SerializedTerminalCheckpointValidationResult | undefined;
+    if (shouldValidateCheckpoint) {
+      try {
+        validatedCheckpoint = await session.terminalStateTracker.flushValidatedCheckpoint();
+      } catch {
+        validatedCheckpoint = { eligible: false, reason: 'validation-failed' };
+      }
+      this.recordTerminalCheckpointValidation(session, validatedCheckpoint);
+    }
     const serializedTerminalState = validatedCheckpoint?.eligible
       ? validatedCheckpoint.state
       : session.terminalCheckpoint?.serializedState;
@@ -1441,6 +1492,53 @@ class RuntimeSupervisorServer {
       : undefined;
   }
 
+  private recordTerminalCheckpointValidation(
+    session: SupervisorSession,
+    result: SerializedTerminalCheckpointValidationResult
+  ): void {
+    if (result.eligible) {
+      session.terminalCheckpointLastRejectionReason = undefined;
+      session.terminalCheckpointConsecutiveRejectionCount = 0;
+      session.terminalCheckpointRejectionStartedAtMs = undefined;
+      return;
+    }
+
+    session.terminalCheckpointLastRejectionReason = result.reason;
+    session.terminalCheckpointConsecutiveRejectionCount += 1;
+    session.terminalCheckpointRejectionStartedAtMs ??= Date.now();
+  }
+
+  private getTerminalCheckpointDiagnostics(
+    session: SupervisorSession,
+    terminalStream?: TerminalStreamAttachPayload
+  ): RuntimeSupervisorTerminalCheckpointDiagnostics | undefined {
+    if (!session.terminalJournal && !session.terminalCheckpoint) {
+      return undefined;
+    }
+
+    const snapshotEventBytes = terminalStream
+      ? terminalStream.events.reduce((total, event) => total + Buffer.byteLength(JSON.stringify(event), 'utf8'), 0)
+      : undefined;
+    return {
+      ...(session.terminalCheckpointLastRejectionReason
+        ? { lastRejectionReason: session.terminalCheckpointLastRejectionReason }
+        : {}),
+      consecutiveRejectionCount: session.terminalCheckpointConsecutiveRejectionCount,
+      ...(session.terminalCheckpointRejectionStartedAtMs !== undefined
+        ? { rejectionStartedAtMs: session.terminalCheckpointRejectionStartedAtMs }
+        : {}),
+      ...(session.terminalCheckpoint?.createdAtMs !== undefined
+        ? { checkpointCreatedAtMs: session.terminalCheckpoint.createdAtMs }
+        : {}),
+      ...(terminalStream
+        ? {
+            snapshotEventCount: terminalStream.events.length,
+            snapshotEventBytes
+          }
+        : {})
+    };
+  }
+
   private toSnapshot(
     session: SupervisorSession,
     serializedTerminalState = session.terminalJournal
@@ -1473,6 +1571,7 @@ class RuntimeSupervisorServer {
       terminalAuthorityId: session.terminalJournalError ? undefined : session.terminalAuthorityId,
       terminalRevision: session.terminalJournalError ? undefined : session.terminalJournal?.getRevision(),
       terminalStream,
+      terminalCheckpointDiagnostics: this.getTerminalCheckpointDiagnostics(session, terminalStream),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
       provider: session.provider,
@@ -1907,6 +2006,7 @@ class RuntimeSupervisorServer {
       outputSequence: recoveredOutputSequence,
       terminalAuthorityId: recoveredAuthorityId,
       recoveredFromDeadPty: true,
+      terminalCheckpointConsecutiveRejectionCount: 0,
       terminalStateTracker,
       terminalOperationChain: Promise.resolve(),
       terminalMutationAdmissionOpen: false,

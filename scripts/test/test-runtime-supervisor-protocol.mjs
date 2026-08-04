@@ -497,6 +497,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     const hello = await sendRuntimeSupervisorRequest(socket, messages, 'hello');
     assert.equal(hello.capabilities?.terminalSessionStreamV1, true);
     assert.equal(hello.capabilities?.terminalProjectionSnapshotV1, true);
+    assert.equal(hello.capabilities?.terminalProjectionCheckpointV1, true);
     assert.equal(hello.capabilities?.terminalAppliedRevisionAckV1, true);
 
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
@@ -1115,8 +1116,142 @@ setInterval(() => undefined, 1000);
         .includes(`${unsafeSplitPrefix}\u001b[31`),
       'the split CSI must remain losslessly available in the journal suffix.'
     );
+    assert.equal(
+      unsafeCheckpointSnapshot.terminalCheckpointDiagnostics?.lastRejectionReason,
+      'parser-not-ground',
+      'a rejected checkpoint must expose the fail-closed reason without terminal content.'
+    );
+    assert.ok(
+      unsafeCheckpointSnapshot.terminalCheckpointDiagnostics?.consecutiveRejectionCount >= 1,
+      'a rejected checkpoint must expose its rejection streak.'
+    );
+    assert.equal(
+      unsafeCheckpointSnapshot.terminalCheckpointDiagnostics?.snapshotEventCount,
+      unsafeCheckpointSnapshot.terminalStream.events.length,
+      'snapshot diagnostics must report replay scale without copying event content into diagnostics.'
+    );
+    assert.ok(unsafeCheckpointSnapshot.terminalCheckpointDiagnostics?.snapshotEventBytes > 0);
+    const unsafeBoundedCheckpoint = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getTerminalProjectionCheckpoint',
+      { sessionId: unsafeCheckpointSessionId }
+    );
+    assert.equal(
+      unsafeBoundedCheckpoint.terminalStream,
+      undefined,
+      'a rejected checkpoint refresh must remain bounded and omit the journal suffix.'
+    );
+    assert.equal(unsafeBoundedCheckpoint.terminalCheckpointDiagnostics?.lastRejectionReason, 'parser-not-ground');
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
       sessionId: unsafeCheckpointSessionId
+    });
+
+    const codexColorQueryMarker = `CODEX-COLOR-QUERY-${Date.now()}`;
+    const codexColorQueryFollowUpMarker = `CODEX-COLOR-FOLLOW-UP-${Date.now()}`;
+    const codexColorQueryScriptPath = path.join(tempDir, 'codex-color-query-checkpoint.js');
+    await writeFile(
+      codexColorQueryScriptPath,
+      `const readline = require('node:readline');
+const reader = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+reader.on('line', (line) => {
+  if (line === 'emit-query') {
+    process.stdout.write(${JSON.stringify(`\u001b]10;?\u001b\\\u001b]11;?\u001b\\${codexColorQueryMarker}\\r\\n`)});
+    return;
+  }
+  if (line === 'follow-up') {
+    process.stdout.write(${JSON.stringify(`${codexColorQueryFollowUpMarker}\\r\\n`)});
+  }
+});
+setInterval(() => undefined, 1000);
+`,
+      'utf8'
+    );
+    const codexColorQuerySessionId = 'codex-color-query-checkpoint';
+    const codexColorQueryInitial = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'agent',
+      sessionId: codexColorQuerySessionId,
+      displayLabel: 'Codex color query checkpoint fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [codexColorQueryScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId: codexColorQuerySessionId,
+      authorityId: codexColorQueryInitial.terminalAuthorityId,
+      afterRevision: codexColorQueryInitial.terminalRevision
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: codexColorQuerySessionId,
+      data: 'emit-query\n'
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      codexColorQuerySessionId,
+      codexColorQueryMarker,
+      'Codex color-query output',
+      5000
+    );
+    const codexColorQuerySnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: codexColorQuerySessionId }
+    );
+    assertTerminalStreamSnapshot(codexColorQuerySnapshot, 'Codex color-query checkpoint snapshot');
+    assert.ok(codexColorQuerySnapshot.serializedTerminalState, 'Codex OSC 10/11 REPORT queries must publish a fresh checkpoint.');
+    assert.ok(
+      codexColorQuerySnapshot.terminalStream.checkpoint.revision > 0,
+      'Codex OSC 10/11 REPORT queries must advance the initial checkpoint.'
+    );
+    assert.ok(
+      codexColorQuerySnapshot.terminalStream.events.length < codexColorQuerySnapshot.terminalStream.revision,
+      'a fresh checkpoint must prevent a complete journal suffix from being replayed.'
+    );
+    assert.equal(codexColorQuerySnapshot.terminalCheckpointDiagnostics?.consecutiveRejectionCount, 0);
+    const boundedCheckpoint = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getTerminalProjectionCheckpoint',
+      { sessionId: codexColorQuerySessionId }
+    );
+    assert.equal(boundedCheckpoint.terminalStream, undefined, 'bounded refresh must not return the journal suffix.');
+    assert.equal(boundedCheckpoint.checkpoint.revision, codexColorQuerySnapshot.terminalStream.checkpoint.revision);
+    assert.equal(boundedCheckpoint.terminalCheckpointDiagnostics?.consecutiveRejectionCount, 0);
+
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: codexColorQuerySessionId,
+      data: 'follow-up\n'
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      codexColorQuerySessionId,
+      codexColorQueryFollowUpMarker,
+      'Codex color-query follow-up output',
+      5000
+    );
+    const codexColorQueryFollowUpSnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: codexColorQuerySessionId }
+    );
+    assert.ok(
+      codexColorQueryFollowUpSnapshot.terminalStream.checkpoint.revision >=
+        codexColorQuerySnapshot.terminalStream.checkpoint.revision,
+      'later normal output must retain or advance the trusted checkpoint.'
+    );
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: codexColorQuerySessionId
     });
 
     const marker = `runtime-final-marker-${Date.now()}`;

@@ -8,8 +8,15 @@ import type {
   TerminalNodeStatus,
   AgentNodeStatus
 } from './protocol';
-import type { SerializedTerminalState } from './serializedTerminalState';
-import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
+import type {
+  SerializedTerminalCheckpointRejectionReason,
+  SerializedTerminalState
+} from './serializedTerminalState';
+import type {
+  TerminalStreamAttachPayload,
+  TerminalStreamCheckpoint,
+  TerminalStreamEvent
+} from './terminalSessionStream';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
 
 export interface RuntimeSupervisorPaths {
@@ -33,8 +40,28 @@ export interface RuntimeSupervisorHelloResult {
   capabilities?: {
     terminalSessionStreamV1?: true;
     terminalProjectionSnapshotV1?: true;
+    terminalProjectionCheckpointV1?: true;
     terminalAppliedRevisionAckV1?: true;
   };
+}
+
+/** Safe checkpoint health metadata; terminal output and user input are never included. */
+export interface RuntimeSupervisorTerminalCheckpointDiagnostics {
+  lastRejectionReason?: SerializedTerminalCheckpointRejectionReason;
+  consecutiveRejectionCount: number;
+  rejectionStartedAtMs?: number;
+  checkpointCreatedAtMs?: number;
+  snapshotEventCount?: number;
+  snapshotEventBytes?: number;
+}
+
+/** A bounded checkpoint refresh result for a Host that already has a live stream. */
+export interface RuntimeSupervisorTerminalProjectionCheckpoint {
+  sessionId: string;
+  authorityId: string;
+  revision: number;
+  checkpoint: TerminalStreamCheckpoint;
+  terminalCheckpointDiagnostics?: RuntimeSupervisorTerminalCheckpointDiagnostics;
 }
 
 export interface RuntimeSupervisorRecoveryState {
@@ -62,6 +89,7 @@ export interface RuntimeSupervisorSessionSnapshot {
   terminalAuthorityId?: string;
   terminalRevision?: number;
   terminalStream?: TerminalStreamAttachPayload;
+  terminalCheckpointDiagnostics?: RuntimeSupervisorTerminalCheckpointDiagnostics;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;
@@ -205,6 +233,10 @@ export interface RuntimeSupervisorGetSessionSnapshotParams {
   sessionId: string;
 }
 
+export interface RuntimeSupervisorGetTerminalProjectionCheckpointParams {
+  sessionId: string;
+}
+
 export interface RuntimeSupervisorSubscribeSessionParams {
   sessionId: string;
   authorityId: string;
@@ -282,6 +314,12 @@ export type RuntimeSupervisorRequest =
   | {
       type: 'request';
       id: string;
+      method: 'getTerminalProjectionCheckpoint';
+      params: RuntimeSupervisorGetTerminalProjectionCheckpointParams;
+    }
+  | {
+      type: 'request';
+      id: string;
       method: 'subscribeSession';
       params: RuntimeSupervisorSubscribeSessionParams;
     }
@@ -330,6 +368,7 @@ export type RuntimeSupervisorResponse =
       result:
         | RuntimeSupervisorHelloResult
         | RuntimeSupervisorSessionSnapshot
+        | RuntimeSupervisorTerminalProjectionCheckpoint
         | RuntimeSupervisorSubscribeSessionResult
         | RuntimeSupervisorAckSessionRevisionResult
         | {

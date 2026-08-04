@@ -557,6 +557,10 @@ export interface ExecutionPerformanceDiagnosticPayload {
   hostAckEpochMs?: number;
   hostAckPostEpochMs?: number;
   queueDelayMs?: number;
+  inputQueueDelayMs?: number;
+  pendingInputRpcCount?: number;
+  inFlightInputRpcCount?: number;
+  pendingControlRpcCount?: number;
   requestId?: string;
   executionSessionId?: string;
   characters?: number;
@@ -2584,6 +2588,18 @@ function normalizeExecutionPerformanceDiagnosticPayload(
     hostAckEpochMs: normalizeNonNegativeFiniteNumber(value.hostAckEpochMs),
     hostAckPostEpochMs: normalizeNonNegativeFiniteNumber(value.hostAckPostEpochMs),
     queueDelayMs: normalizeNonNegativeFiniteNumber(value.queueDelayMs),
+    ...(value.inputQueueDelayMs !== undefined
+      ? { inputQueueDelayMs: normalizeNonNegativeFiniteNumber(value.inputQueueDelayMs) }
+      : {}),
+    ...(value.pendingInputRpcCount !== undefined
+      ? { pendingInputRpcCount: normalizeNonNegativeInteger(value.pendingInputRpcCount) }
+      : {}),
+    ...(value.inFlightInputRpcCount !== undefined
+      ? { inFlightInputRpcCount: normalizeNonNegativeInteger(value.inFlightInputRpcCount) }
+      : {}),
+    ...(value.pendingControlRpcCount !== undefined
+      ? { pendingControlRpcCount: normalizeNonNegativeInteger(value.pendingControlRpcCount) }
+      : {}),
     requestId: typeof value.requestId === 'string' ? value.requestId : undefined,
     executionSessionId: typeof value.executionSessionId === 'string' ? value.executionSessionId : undefined,
     characters: normalizeNonNegativeInteger(value.characters),

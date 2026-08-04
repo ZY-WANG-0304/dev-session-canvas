@@ -21,7 +21,8 @@ related_plans:
   - docs/exec-plans/completed/terminal-journal-safe-compaction.md
   - docs/exec-plans/active/execution-input-responsiveness.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-07-13
+  - docs/exec-plans/completed/terminal-checkpoint-input-responsiveness.md
+updated_at: 2026-08-04
 ---
 
 # Agent / Terminal 无损输入输出与恢复
@@ -422,6 +423,18 @@ deferred attach revision 在 `subscribeSession(afterRevision)` 完成前收紧 r
 
 候选重放到 head 后如果新 head 暂时不具备 eligibility，Supervisor 保留候选的可信 base checkpoint 加完整 suffix，并且不发布误导性的 fresh `serializedTerminalState`；这不是切换到更旧候选的理由。current/previous checkpoint 都不可用但 revision 1 起的完整 journal仍在时，从 genesis重建；prefix 已经删除且两代均不可用时 fail closed。双代回退保护 checkpoint 文件损坏、format/profile 不兼容与 compact 提交崩溃，不承诺抵抗共享 suffix 自身的位腐坏；suffix checksum失败时所有候选都拒绝恢复，不回退到陈旧 revision，也不使用 registry raw tail。
 
+### 10.16 颜色查询、拒绝诊断与输入隔离
+
+`SerializedTerminalStateTracker` 必须区分 xterm 的颜色事件语义。OSC 10/11/12 等只查询颜色、并在 xterm `onColor` payload 中明确标为 `REPORT` 的事件没有修改终端或 renderer 状态，不能污染 checkpoint eligibility；Codex 启动握手中的 `OSC 10;?` 与 `OSC 11;?` 属于该类。`SET`、`RESTORE`、混合事件、空事件或版本变动后无法识别的 payload 仍被视为外部颜色状态可能变化，并 sticky 地以 `color-state` 拒绝 checkpoint。该保守规则不改变 parser carry、OSC 8、状态大小、hydrate/fingerprint 不匹配等现有 fail-closed 门禁，也绝不把 journal output 伪装为 checkpoint。
+
+某个包含更多 Codex 私有控制序列的复合启动 fixture 在移除颜色误判后仍会以 `parser-not-ground` 被 xterm serialize/hydrate verifier 拒绝；这证明颜色查询不是放宽其他资格门禁的理由。该状态继续 journal-backed，并以独立 rejection reason 进入诊断，而不是被错误地称为 `color-state` 或用伪造 checkpoint 掩盖。
+
+Supervisor 在 `runtimeSupervisorMain.ts` 中为每个 session 记录最近 checkpoint 拒绝 reason、连续拒绝数和该连续区间起点；合格 checkpoint 才清除 streak。`RuntimeSupervisorSessionSnapshot` 仅以可选、无终端正文的诊断字段公开这些信息，并包含 checkpoint 年龄和当前 attach payload 的 event 数/UTF-8 字节数。Host 将这些数字、refresh 耗时和 Supervisor client pending control RPC 数记录到 `runtime/terminalProjection*` diagnostics。它们用于定位拒绝后 journal 增长与输入阻塞，不能作为 authority revision、资格或内容覆盖的替代证明。
+
+健康、已连续订阅 `terminal-stream-v1` 的 Host 已经拥有 authority 追加的连续 tail，因此不再每个 refresh interval 调用 `getSessionSnapshot()`。这条 RPC 仅用于新 Webview 投影 attach、已检测到 gap/authority 变化的恢复，或明确的生命周期收口。checkpoint 被保守拒绝时 journal 继续完整保留、live events 继续按序发出；系统既不截断 event，也不伪造 checkpoint，只消除不必要的全 suffix 复制。这样拒绝不会演变成无界 snapshot 与输入共享 socket 的周期竞争。
+
+`CanvasPanelManager` 对每个 `(kind, nodeId, session)` 使用严格 FIFO 输入链，最多一个 `RuntimeSupervisorClient.writeInput()` 在途。队列不合并也不丢弃字符，因此 Enter、Ctrl-C、方向键和快速键盘 repeat 都保留精确顺序；节点之间可并行，唯一当前输入节点仍由既有输出 scheduler 获得优先级。诊断分别记录本输入的排队时间、完成耗时、节点内 queued/in-flight 数和 client 全局 pending RPC；这些计数不包含输入正文。
+
 ## 11. 正式方案必须满足的不变量
 
 无论最终选择哪条路线，都必须满足：
@@ -438,6 +451,7 @@ deferred attach revision 在 `subscribeSession(afterRevision)` 完成前收紧 r
 10. applied-revision 只能在终端操作真正完成后单调推进，不能被 Host/Supervisor 当作 authority revision 或内容覆盖的替代声明。
 11. Host cache 只能由同 authority 的权威 checkpoint 和连续 live tail 收敛；周期刷新失败必须保留旧健康缓存，不能按内存阈值丢事件。
 12. 所有队列、日志和持久化预算按节点数做总量验证，不能用达到上限后丢内容作为容量策略。
+13. 纯终端查询不能被误判为不可序列化副作用；真正副作用和未知状态必须继续 fail closed，且它们不能把健康 live session 推入无界 full replay 或阻塞输入。
 
 ## 12. 验证方法
 
@@ -533,4 +547,4 @@ PR #255 相关 12 个 Webview 终端用例和曾在全量中超时的 canvas edg
 - 90000 行 completed 终态已间歇性出现 89861、89960 与 89877 三次尾部截断；标准严格场景也有通过样本，但重复压力与原始 PTY/bridge/journal/finalization 分层诊断尚未完成，不能把极端 completed stream 的最终内容保证写成已验证。
 - local PTY 跨 Host 生命周期的独立恢复语义、永久 transcript 与 Agent 结构化内容投影不属于本阶段实现。
 
-本设计最后于 2026-07-14 根据并行 drain、final-state 协议门禁、里程碑 4–6 与 PR #263 authority review 更新：current-generation storage namespace、旧会话 `legacy-interactive`、新旧 client 精确路由和真实旧二进制迁移 smoke 已落地；同时补入保守 eligibility、codec 无关 generation、双代/隐式 genesis 回退、metadata-only registry、registry/manifest authority 绑定、完整 journal transaction 与无可用 fallback 时继续增长的规则。Linux 真实迁移证明两代 Supervisor 可同时运行，定向 compact 测试、容量基准、`trusted` 和两阶段 `real-reopen` 也已通过；但真实旧二进制迁移 smoke 仍只运行在 Linux/Unix socket 路径，90000 行终态尾部截断已间歇性出现三次。方案继续保持“已选定”，验证状态保持“验证中”；只有完成 final-state 分层诊断、重复压力并在最终 release ref 获得严格 packaged smoke 清洁结果后，才能重新升级为“已验证”。
+本设计最后于 2026-08-04 增补 checkpoint 拒绝输入响应边界：Codex 的 OSC 10/11 `REPORT` 查询不再被误判为颜色副作用；SET/RESTORE 与未知颜色事件仍 fail closed；checkpoint 拒绝的原因、年龄与 payload 规模进入无内容诊断；健康 live stream 不再周期复制完整 journal suffix，并以每节点单在途 FIFO 隔离输入。实现与定向压力验证完成前，方案继续保持“已选定”，验证状态保持“验证中”。

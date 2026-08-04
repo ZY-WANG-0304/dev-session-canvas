@@ -15,6 +15,7 @@ import type {
   RuntimeSupervisorCreateSessionParams,
   RuntimeSupervisorDeleteSessionParams,
   RuntimeSupervisorEvent,
+  RuntimeSupervisorGetTerminalProjectionCheckpointParams,
   RuntimeSupervisorGetSessionSnapshotParams,
   RuntimeSupervisorHelloResult,
   RuntimeSupervisorMessage,
@@ -24,6 +25,7 @@ import type {
   RuntimeSupervisorStopSessionParams,
   RuntimeSupervisorSubscribeSessionParams,
   RuntimeSupervisorSubscribeSessionResult,
+  RuntimeSupervisorTerminalProjectionCheckpoint,
   RuntimeSupervisorUpdateSessionScrollbackParams,
   RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
@@ -93,6 +95,10 @@ export class RuntimeSupervisorClient {
     return this.helloResult?.capabilities?.terminalProjectionSnapshotV1 === true;
   }
 
+  public supportsTerminalProjectionCheckpoint(): boolean {
+    return this.helloResult?.capabilities?.terminalProjectionCheckpointV1 === true;
+  }
+
   public supportsTerminalSessionStream(): boolean {
     return this.helloResult?.capabilities?.terminalSessionStreamV1 === true;
   }
@@ -107,6 +113,10 @@ export class RuntimeSupervisorClient {
 
   public hasPendingRequests(): boolean {
     return this.pendingRequests.size > 0;
+  }
+
+  public getPendingRequestCount(): number {
+    return this.pendingRequests.size;
   }
 
   public async createSession(
@@ -125,6 +135,12 @@ export class RuntimeSupervisorClient {
     params: RuntimeSupervisorGetSessionSnapshotParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     return this.request('getSessionSnapshot', params);
+  }
+
+  public async getTerminalProjectionCheckpoint(
+    params: RuntimeSupervisorGetTerminalProjectionCheckpointParams
+  ): Promise<RuntimeSupervisorTerminalProjectionCheckpoint> {
+    return this.request('getTerminalProjectionCheckpoint', params);
   }
 
   public async subscribeSession(
@@ -176,6 +192,7 @@ export class RuntimeSupervisorClient {
       | 'createSession'
       | 'attachSession'
       | 'getSessionSnapshot'
+      | 'getTerminalProjectionCheckpoint'
       | 'subscribeSession'
       | 'ackSessionRevision'
       | 'writeInput'
@@ -187,6 +204,7 @@ export class RuntimeSupervisorClient {
       | RuntimeSupervisorCreateSessionParams
       | RuntimeSupervisorAttachSessionParams
       | RuntimeSupervisorGetSessionSnapshotParams
+      | RuntimeSupervisorGetTerminalProjectionCheckpointParams
       | RuntimeSupervisorSubscribeSessionParams
       | RuntimeSupervisorAckSessionRevisionParams
       | RuntimeSupervisorWriteInputParams
