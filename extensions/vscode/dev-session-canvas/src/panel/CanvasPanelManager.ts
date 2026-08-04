@@ -207,10 +207,12 @@ import {
   type SerializedTerminalState
 } from '../common/serializedTerminalState';
 import { selectExecutionOutputSchedulerEntries } from '../common/executionOutputScheduler';
+import { ExecutionInputQueue } from '../common/executionInputQueue';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   cloneTerminalStreamAttachPayload,
   cloneTerminalStreamEvent,
+  buildTerminalStreamAttachPayload,
   mergeTerminalStreamProjectionWithLiveTail,
   normalizeTerminalStreamAttachPayload,
   type TerminalStreamAttachPayload,
@@ -494,6 +496,7 @@ interface ManagedExecutionSessionBase {
   syncTimer: NodeJS.Timeout | undefined;
   syncDueAtMs: number | undefined;
   lifecycleTimer: NodeJS.Timeout | undefined;
+  inputQueue: ExecutionInputQueue;
   pendingOutput: string;
   pendingOutputStartSequence?: number;
   pendingOutputEndSequence?: number;
@@ -842,6 +845,9 @@ interface ExecutionInputDiagnosticMetadata {
   webviewPerformanceNowMs?: number;
   hostReceivedEpochMs?: number;
   queueDelayMs?: number;
+  inputQueuedAtMs?: number;
+  pendingInputRpcCount?: number;
+  inFlightInputRpcCount?: number;
 }
 
 interface ScheduledExecutionOutputPost {
@@ -1256,6 +1262,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   >();
   private readonly pendingRuntimeSupervisorOperations = new Set<Promise<unknown>>();
   private readonly pendingTerminalProjectionRefreshes = new Map<string, Promise<void>>();
+  private readonly pendingTerminalProjectionCheckpointRefreshes = new Map<string, Promise<void>>();
   private readonly terminalProjectionRefreshScheduler = new TerminalProjectionRefreshScheduler({
     intervalMs: EXECUTION_TERMINAL_PROJECTION_CACHE_REFRESH_INTERVAL_MS,
     spreadMs: EXECUTION_TERMINAL_PROJECTION_CACHE_REFRESH_SPREAD_MS
@@ -2938,6 +2945,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       syncTimer: undefined,
       syncDueAtMs: undefined,
       lifecycleTimer: undefined,
+      inputQueue: new ExecutionInputQueue(),
       pendingOutput: '',
       outputSequence: 0,
       terminalStateTrusted: true,
@@ -10689,6 +10697,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       syncTimer: undefined,
       syncDueAtMs: undefined,
       lifecycleTimer: undefined,
+      inputQueue: new ExecutionInputQueue(),
       pendingOutput: '',
       outputSequence: sessionOutputSequence,
       terminalStateTrusted: canTrustSupervisorTerminalState,
@@ -14911,6 +14920,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         syncTimer: undefined,
         syncDueAtMs: undefined,
         lifecycleTimer: undefined,
+        inputQueue: new ExecutionInputQueue(),
         pendingOutput: '',
         outputSequence: 0,
         terminalStateTrusted: true,
@@ -16101,6 +16111,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         syncTimer: undefined,
         syncDueAtMs: undefined,
         lifecycleTimer: undefined,
+        inputQueue: new ExecutionInputQueue(),
         pendingOutput: '',
         outputSequence: 0,
         terminalStateTrusted: true,
@@ -16629,7 +16640,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const currentStream = normalizeTerminalStreamAttachPayload(currentSession.terminalStream);
         if (currentStream && currentStream.checkpoint.revision < currentStream.revision) {
           try {
-            await this.refreshExecutionTerminalProjection(kind, nodeId, currentSession);
+            await this.refreshExecutionTerminalProjectionCheckpoint(kind, nodeId, currentSession);
           } catch (error) {
             this.recordDiagnosticEvent('runtime/terminalProjectionPeriodicRefreshFailed', {
               kind,
@@ -16670,6 +16681,158 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return refresh;
   }
 
+  private refreshExecutionTerminalProjectionCheckpoint(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    expectedSession: SupervisorExecutionSession
+  ): Promise<void> {
+    const refreshKey = this.getTerminalProjectionRefreshKey(kind, nodeId, expectedSession.runtimeSessionId);
+    const pendingRefresh = this.pendingTerminalProjectionCheckpointRefreshes.get(refreshKey);
+    if (pendingRefresh) {
+      return pendingRefresh;
+    }
+
+    const refresh = this.performExecutionTerminalProjectionCheckpointRefresh(kind, nodeId, expectedSession).finally(() => {
+      if (this.pendingTerminalProjectionCheckpointRefreshes.get(refreshKey) === refresh) {
+        this.pendingTerminalProjectionCheckpointRefreshes.delete(refreshKey);
+      }
+    });
+    this.pendingTerminalProjectionCheckpointRefreshes.set(refreshKey, refresh);
+    return refresh;
+  }
+
+  private async performExecutionTerminalProjectionCheckpointRefresh(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    expectedSession: SupervisorExecutionSession
+  ): Promise<void> {
+    const backendKind = normalizeRuntimeHostBackendKind(expectedSession.runtimeBackend) ?? 'legacy-detached';
+    const client = await this.getRuntimeSupervisorClientForKind(
+      backendKind,
+      {},
+      expectedSession.runtimeStoragePath
+    );
+    if (!client.supportsTerminalProjectionCheckpoint()) {
+      this.recordDiagnosticEvent('runtime/terminalProjectionRefreshSkipped', {
+        kind,
+        nodeId,
+        sessionId: expectedSession.runtimeSessionId,
+        reason: 'unsupported-bounded-checkpoint-refresh'
+      });
+      return;
+    }
+
+    const refreshStartedAtMs = Date.now();
+    const refreshedCheckpoint = await client.getTerminalProjectionCheckpoint({
+      sessionId: expectedSession.runtimeSessionId
+    });
+    const refreshDurationMs = Date.now() - refreshStartedAtMs;
+    const currentSession = this.getExecutionSessions(kind).get(nodeId);
+    if (
+      currentSession !== expectedSession ||
+      currentSession.owner !== 'supervisor' ||
+      !currentSession.terminalStreamHealthy
+    ) {
+      return;
+    }
+
+    const currentStream = normalizeTerminalStreamAttachPayload(currentSession.terminalStream);
+    const checkpointDiagnostics = refreshedCheckpoint.terminalCheckpointDiagnostics;
+    const diagnosticDetail = {
+      checkpointAgeMs:
+        checkpointDiagnostics?.checkpointCreatedAtMs === undefined
+          ? undefined
+          : Math.max(0, Date.now() - checkpointDiagnostics.checkpointCreatedAtMs),
+      checkpointRejectionReason: checkpointDiagnostics?.lastRejectionReason,
+      consecutiveCheckpointRejectionCount: checkpointDiagnostics?.consecutiveRejectionCount,
+      checkpointRejectionStartedAtMs: checkpointDiagnostics?.rejectionStartedAtMs,
+      refreshDurationMs,
+      pendingControlRpcCount: client.getPendingRequestCount()
+    };
+    if (
+      !currentStream ||
+      currentStream.sessionId !== currentSession.runtimeSessionId ||
+      currentStream.authorityId !== currentSession.terminalAuthorityId ||
+      refreshedCheckpoint.sessionId !== currentSession.runtimeSessionId ||
+      refreshedCheckpoint.authorityId !== currentSession.terminalAuthorityId ||
+      refreshedCheckpoint.checkpoint.sessionId !== currentSession.runtimeSessionId ||
+      refreshedCheckpoint.checkpoint.authorityId !== currentSession.terminalAuthorityId ||
+      refreshedCheckpoint.checkpoint.revision > refreshedCheckpoint.revision
+    ) {
+      this.recordDiagnosticEvent('runtime/terminalProjectionRefreshRejected', {
+        kind,
+        nodeId,
+        sessionId: currentSession.runtimeSessionId,
+        reason: 'invalid-bounded-checkpoint-refresh',
+        ...diagnosticDetail
+      });
+      return;
+    }
+
+    if (refreshedCheckpoint.checkpoint.revision <= currentStream.checkpoint.revision) {
+      this.recordDiagnosticEvent('runtime/terminalProjectionRefreshSkipped', {
+        kind,
+        nodeId,
+        sessionId: currentSession.runtimeSessionId,
+        reason: 'checkpoint-not-advanced',
+        checkpointRevision: currentStream.checkpoint.revision,
+        revision: currentStream.revision,
+        ...diagnosticDetail
+      });
+      return;
+    }
+
+    if (currentStream.revision < refreshedCheckpoint.revision) {
+      this.recordDiagnosticEvent('runtime/terminalProjectionRefreshRejected', {
+        kind,
+        nodeId,
+        sessionId: currentSession.runtimeSessionId,
+        reason: 'live-stream-behind-checkpoint-refresh',
+        checkpointRevision: refreshedCheckpoint.checkpoint.revision,
+        checkpointTargetRevision: refreshedCheckpoint.revision,
+        currentRevision: currentStream.revision,
+        ...diagnosticDetail
+      });
+      return;
+    }
+
+    const refreshedStream = buildTerminalStreamAttachPayload({
+      sessionId: currentStream.sessionId,
+      authorityId: currentStream.authorityId,
+      revision: currentStream.revision,
+      checkpoint: refreshedCheckpoint.checkpoint,
+      events: currentStream.events.filter((event) => event.revision > refreshedCheckpoint.checkpoint.revision)
+    });
+    if (!refreshedStream) {
+      this.recordDiagnosticEvent('runtime/terminalProjectionRefreshRejected', {
+        kind,
+        nodeId,
+        sessionId: currentSession.runtimeSessionId,
+        reason: 'non-contiguous-bounded-checkpoint-tail',
+        checkpointRevision: refreshedCheckpoint.checkpoint.revision,
+        currentRevision: currentStream.revision,
+        ...diagnosticDetail
+      });
+      return;
+    }
+
+    const previousCheckpointRevision = currentStream.checkpoint.revision;
+    currentSession.terminalStream = cloneTerminalStreamAttachPayload(refreshedStream);
+    currentSession.terminalAuthorityId = refreshedStream.authorityId;
+    currentSession.outputSequence = refreshedStream.revision;
+    this.recordDiagnosticEvent('runtime/terminalProjectionRefreshed', {
+      kind,
+      nodeId,
+      sessionId: currentSession.runtimeSessionId,
+      refreshMode: 'bounded-checkpoint',
+      previousCheckpointRevision,
+      checkpointRevision: refreshedStream.checkpoint.revision,
+      revision: refreshedStream.revision,
+      replayEventCount: refreshedStream.events.length,
+      ...diagnosticDetail
+    });
+  }
+
   private async performExecutionTerminalProjectionRefresh(
     kind: ExecutionNodeKind,
     nodeId: string,
@@ -16691,9 +16854,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    const refreshStartedAtMs = Date.now();
     const snapshot = await client.getSessionSnapshot({
       sessionId: expectedSession.runtimeSessionId
     });
+    const refreshDurationMs = Date.now() - refreshStartedAtMs;
     const freshStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
     const currentSession = this.getExecutionSessions(kind).get(nodeId);
     if (
@@ -16744,6 +16909,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const mergedStream = mergeResult.payload;
     const previousCheckpointRevision = currentStream.checkpoint.revision;
+    const checkpointDiagnostics = snapshot.terminalCheckpointDiagnostics;
     currentSession.terminalStream = cloneTerminalStreamAttachPayload(mergedStream);
     currentSession.terminalAuthorityId = mergedStream.authorityId;
     currentSession.outputSequence = mergedStream.revision;
@@ -16751,10 +16917,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       kind,
       nodeId,
       sessionId: currentSession.runtimeSessionId,
+      refreshMode: 'full-attach-payload',
       previousCheckpointRevision,
       checkpointRevision: mergedStream.checkpoint.revision,
       revision: mergedStream.revision,
       replayEventCount: mergedStream.events.length,
+      replayEventBytes: checkpointDiagnostics?.snapshotEventBytes,
+      checkpointRejectionReason: checkpointDiagnostics?.lastRejectionReason,
+      consecutiveCheckpointRejectionCount: checkpointDiagnostics?.consecutiveRejectionCount,
+      checkpointAgeMs:
+        checkpointDiagnostics?.checkpointCreatedAtMs === undefined
+          ? undefined
+          : Math.max(0, Date.now() - checkpointDiagnostics.checkpointCreatedAtMs),
+      refreshDurationMs,
+      pendingControlRpcCount: client.getPendingRequestCount(),
       preservedHostTailEventCount: mergeResult.preservedLiveTailEventCount
     });
   }
@@ -16841,7 +17017,50 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.trackRuntimeSupervisorOperation(operation);
   }
 
-  private async writeExecutionInput(
+  private writeExecutionInput(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    data: string,
+    diagnosticMetadata: ExecutionInputDiagnosticMetadata = {}
+  ): Promise<boolean> {
+    const session = this.getExecutionSessions(kind).get(nodeId);
+    if (!session) {
+      return this.writeExecutionInputNow(kind, nodeId, data, diagnosticMetadata);
+    }
+
+    const inputQueuedAtMs = Date.now();
+    const queuedInputRpcCount = session.inputQueue.getPendingCount() + 1;
+    this.recordDiagnosticEvent('execution/inputQueued', {
+      kind,
+      nodeId,
+      sessionId: session.sessionId,
+      bytes: Buffer.byteLength(data, 'utf8'),
+      queuedInputRpcCount,
+      inFlightInputRpcCount: session.inputQueue.getInFlightCount()
+    });
+
+    return session.inputQueue.enqueue(async (queueState) => {
+      if (this.getExecutionSessions(kind).get(nodeId) !== session) {
+        this.recordDiagnosticEvent('execution/inputRejected', {
+          kind,
+          nodeId,
+          sessionId: session.sessionId,
+          bytes: Buffer.byteLength(data, 'utf8'),
+          reason: 'session-replaced-before-input-write'
+        });
+        return false;
+      }
+
+      return this.writeExecutionInputNow(kind, nodeId, data, {
+        ...diagnosticMetadata,
+        inputQueuedAtMs,
+        pendingInputRpcCount: queueState.pendingCount,
+        inFlightInputRpcCount: queueState.inFlightCount
+      });
+    });
+  }
+
+  private async writeExecutionInputNow(
     kind: ExecutionNodeKind,
     nodeId: string,
     data: string,
@@ -16932,6 +17151,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.lineContextTracker.recordInput(data);
     }
     const writeStartedAt = Date.now();
+    const inputQueueDelayMs = diagnosticMetadata.inputQueuedAtMs === undefined
+      ? undefined
+      : Math.max(0, writeStartedAt - diagnosticMetadata.inputQueuedAtMs);
+    let pendingControlRpcCount: number | undefined;
+    this.recordDiagnosticEvent('execution/inputWriteStarted', {
+      ...inputDetail,
+      sessionId: session.sessionId,
+      inputQueueDelayMs,
+      pendingInputRpcCount: diagnosticMetadata.pendingInputRpcCount,
+      inFlightInputRpcCount: diagnosticMetadata.inFlightInputRpcCount
+    });
     let inputWriteSucceeded = false;
     try {
       if (session.owner === 'local') {
@@ -16942,12 +17172,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           backendKind,
           {},
           session.runtimeStoragePath
-        ).then((client) =>
-          client.writeInput({
+        ).then((client) => {
+          pendingControlRpcCount = client.getPendingRequestCount() + 1;
+          return client.writeInput({
             sessionId: session.runtimeSessionId,
             data
-          })
-        );
+          });
+        });
         this.trackRuntimeSupervisorOperation(operation.catch(() => undefined));
         await operation;
       }
@@ -16969,6 +17200,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         webviewEpochMs: diagnosticMetadata.webviewEpochMs,
         hostReceivedEpochMs: diagnosticMetadata.hostReceivedEpochMs,
         queueDelayMs: diagnosticMetadata.queueDelayMs,
+        inputQueueDelayMs,
+        pendingInputRpcCount: diagnosticMetadata.pendingInputRpcCount,
+        inFlightInputRpcCount: diagnosticMetadata.inFlightInputRpcCount,
+        pendingControlRpcCount,
         characters: data.length,
         bytes: inputDetail.bytes,
         success: false,
@@ -17000,6 +17235,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           webviewEpochMs: diagnosticMetadata.webviewEpochMs,
           hostReceivedEpochMs: diagnosticMetadata.hostReceivedEpochMs,
           queueDelayMs: diagnosticMetadata.queueDelayMs,
+          inputQueueDelayMs,
+          pendingInputRpcCount: diagnosticMetadata.pendingInputRpcCount,
+          inFlightInputRpcCount: diagnosticMetadata.inFlightInputRpcCount,
+          pendingControlRpcCount,
           characters: data.length,
           bytes: inputDetail.bytes,
           success: true
@@ -17009,7 +17248,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.recordDiagnosticEvent('execution/inputWritten', {
       ...inputDetail,
-      sessionId: session.sessionId
+      sessionId: session.sessionId,
+      inputQueueDelayMs,
+      pendingInputRpcCount: diagnosticMetadata.pendingInputRpcCount,
+      inFlightInputRpcCount: diagnosticMetadata.inFlightInputRpcCount,
+      pendingControlRpcCount
     });
     return true;
   }
