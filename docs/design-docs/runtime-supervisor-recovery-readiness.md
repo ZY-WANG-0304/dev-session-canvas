@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/runtime-supervisor-reboot-recovery.md
   - docs/exec-plans/completed/runtime-supervisor-dead-pty-bounded-recovery.md
-updated_at: 2026-08-01
+updated_at: 2026-08-04
 ---
 
 # Supervisor 重启恢复可用性与错误归因
@@ -36,7 +36,7 @@ updated_at: 2026-08-01
 
 - Supervisor 重启后先提供可连接、可查询的控制面，再恢复旧 journal。
 - 恢复旧历史期间仍可创建新的 Agent 和 Terminal。
-- 用户能看到非阻塞的“正在恢复历史”状态；旧进程已经消失时只显示历史恢复。
+- 用户能通过 VS Code 的非阻塞进度通知看到“正在恢复历史”、已完成会话数与剩余会话数；旧进程已经消失时只显示历史恢复。
 - socket、readiness 和 PTY spawn 三种错误保持可区分且本地化准确。
 - `systemd-user` 主路径生成可被真实 systemd 启动的 unit。
 - PTY 已死亡时，用有界画面快照恢复 Window reload 的可见内容，不回放任意大小的 Journal。
@@ -63,7 +63,7 @@ updated_at: 2026-08-01
 
 `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts` 的 `RuntimeSupervisorHelloResult` 增加可选 recovery 字段。旧 Supervisor 不带该字段时，Host 不伪造 ready，而按既有 capability 降级处理。恢复状态仅属于当前 Supervisor namespace，不能写入 `CanvasPrototypeState` 的持久化对象图。
 
-`CanvasPanelManager` 维护 backend + runtime storage path 维度的临时恢复状态，并用短时、非阻塞的 Host-to-Webview 状态投影给画布。旧节点维持 `reattaching` 或 `history-restored` 的真实语义；新建节点不因同 namespace 的旧 journal 恢复被禁用。UI 使用现有 VS Code status token 的紧凑状态呈现，不把全局恢复进度做成画布中心的大卡片。
+`CanvasPanelManager` 维护 backend + runtime storage path 维度的临时恢复状态，并用 `vscode.window.withProgress({ location: vscode.ProgressLocation.Notification })` 呈现一次不可取消的 VS Code 进度通知。通知保持旋转状态，每次 Supervisor recovery event 都把汇总后的已完成会话数与剩余会话数写入消息；已完成的 namespace 会保留在当前通知批次的完成计数中，直到所有 namespace 都从 `recovering` 离开才关闭。恢复状态仍会触发必要的 Webview state sync，让旧节点维持 `reattaching` 或 `history-restored` 的真实语义；但 `CanvasRuntimeContext` 不再携带 recovery 字段，画板左上角不再渲染全局恢复提示。新建节点不因同 namespace 的旧 journal 恢复被禁用。
 
 `CanvasPanelManager` 在确认 Supervisor 已重启并返回 non-live snapshot 时，对 Terminal 使用 `history-restored`，保留已有 `serializedTerminalState`。`serializedTerminalState` 与其 `outputSequence` 是不可拆分的显示投影对：Host 先选择可信的现有 session、Supervisor snapshot 或持久化 Host 画面，并使用该画面自身的序列；只有不存在任何有效画面时，才可使用多个来源的最高序列作为无画面的 metadata。最终历史态为 `snapshot-only`，并清除已死亡 runtime 的 backend、storage 和 session 绑定。对带有 provider session identity 的 Agent，使用 `resume-ready` 和现有 Resume 按钮，但绝不设置会被 Webview 自动执行的 `pendingLaunch: 'resume'`；只有用户点击 Resume 才调用 provider CLI 启动新的 resume PTY。没有明确 identity 的 Agent 不得猜测最近会话。正常 Host 或 Window reload 而 Supervisor/PTY 仍存活时，既有 `reattaching -> attached-live` 路径不受该规则影响。
 
@@ -88,7 +88,7 @@ registry 恢复和新 session 创建必须共享同一提交协调。恢复 work
 
 ## 验证方法
 
-新增 VS Code smoke 使用真实 Supervisor、fake Codex 与真实 PTY：持久化仍 live 的旧 Agent/Terminal，并在隔离 storage 合成超过恢复预算的 V1 Journal 后 `SIGKILL` Supervisor，并删除测试专属 runtime socket；Host test reload 后观察 `recovering`，在 gate 未释放时断言旧节点保持 `reattaching`，同时创建新 Agent/Terminal 并验证两者可 live、输出 marker；释放 gate 后验证 `ready`。修复前 smoke 必须以受控的 Journal 全量读取预算失败；修复后必须断言只做 metadata preflight、旧 Agent `resume-ready` 且未启动新 provider、旧节点保留 serialized snapshot。测试必须同时断言没有 command/shell-not-found 文案。
+新增 VS Code smoke 使用真实 Supervisor、fake Codex 与真实 PTY：持久化仍 live 的旧 Agent/Terminal，并在隔离 storage 合成超过恢复预算的 V1 Journal 后 `SIGKILL` Supervisor，并删除测试专属 runtime socket；Host test reload 后观察 `recovering`，在 gate 未释放时断言旧节点保持 `reattaching`，同时创建新 Agent/Terminal 并验证两者可 live、输出 marker；释放 gate 后验证 `ready`。smoke 检查 Host 记录的进度通知生命周期，断言恢复期已显示通知并报告已完成/剩余会话数、`ready` 后通知关闭，同时确认 Host 不再向 Canvas Webview 投影 `runtimeRecovery`；本地化源码测试额外断言实现调用不可取消的 `withProgress(Notification)`。修复前 smoke 必须以受控的 Journal 全量读取预算失败；修复后必须断言只做 metadata preflight、旧 Agent `resume-ready` 且未启动新 provider、旧节点保留 serialized snapshot。测试必须同时断言没有 command/shell-not-found 文案。
 
 同一 smoke 还在旧 Supervisor 已终止、Host 尚未收到该输出的前提下，直接向隔离 V1 Journal 追加一个校验正确的 output event，使 manifest `lastRevision` 高于 Host 持久化的 Terminal 屏幕序列。恢复后断言旧 Terminal 为 `snapshot-only`，且 `serializedTerminalState`、节点 `outputSequence` 与追加前 Host 屏幕的原序列完全一致；此夹具只写 smoke runner 的 storage，不读取、修改或删除用户 Journal。
 
@@ -101,5 +101,7 @@ unit/fixture 层验证 systemd unit 的 `WorkingDirectory` 不含引号，并让
 2026-07-30 的现场 OOM 证明上述验证不足以覆盖死亡 PTY 的超大 V1 Journal：此前 smoke 的 recovery gate 只验证 Host 状态机时序，并没有验证 Supervisor 不会读入全部历史。新增有界恢复 smoke 已先在旧实现上稳定得到 `recovery.failureCount: 1`，随后在修复后通过：`npm run typecheck`、`npm run test:runtime-supervisor-protocol`、`npm run test:terminal-session-journal`、`npm run test:ui-copy-localization`、`runtime-supervisor-reboot-recovery`、`systemd-user-real-reopen` 与 `systemd-fallback-real-reopen` smoke 全部通过。前者还断言旧 Agent 在显式 Resume 前不启动新的 provider、旧节点显示持久化快照且新节点可 live；因此当前自动化范围恢复为“已验证”。
 
 2026-08-01 的 review P1 回归先在旧实现稳定复现：向隔离 Terminal Journal 追加 Host 未渲染的 V1 event 后，manifest revision 从已保存显示序列推进，恢复节点的 `outputSequence` 被抬高而 `serializedTerminalState` 被清空。修复后通过 `npm run typecheck`、`npm run test:runtime-supervisor-protocol`、`npm run test:terminal-session-journal` 和 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=runtime-supervisor-reboot-recovery npm run test:smoke`；smoke 断言 Terminal 完整保留原有屏幕/序列，旧 Agent 仍无自动 resume，点击 Resume 后才成功创建新的 fake provider PTY。
+
+2026-08-04 将全局恢复提示从画布左上角迁移至 VS Code progress notification 后，通过 `npm run typecheck`、`npm run test:ui-copy-localization`、`npm run test:protocol-webview-messages`、`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=runtime-supervisor-reboot-recovery npm run test:smoke` 和 `git diff --check`。smoke 覆盖恢复通知的显示、已完成/剩余会话数更新和 ready 后关闭，以及 Canvas Webview 不再接收 recovery 投影；本地化测试覆盖 `withProgress(Notification)`、不可取消选项和移除旧画布样式的源码约束。
 
 此状态只确认本设计所定义的可重复 Host 级故障模型及定向自动化；真实 Linux / Remote SSH 的长断开人工验收仍沿用既有技术债，不因此被宣称完成。

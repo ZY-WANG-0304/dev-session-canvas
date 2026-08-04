@@ -415,13 +415,6 @@ export interface CanvasRuntimeWorkspaceFolder {
   path: string;
 }
 
-/** Ephemeral Supervisor status for the active Host; this is never persisted in the canvas graph. */
-export interface CanvasRuntimeRecoveryStatus {
-  pendingSessionCount: number;
-  namespaceCount: number;
-  failureCount?: number;
-}
-
 export interface CanvasRuntimeContext {
   workspaceTrusted: boolean;
   surfaceLocation: CanvasSurfaceLocation;
@@ -442,7 +435,6 @@ export interface CanvasRuntimeContext {
   filePathDisplayMode: CanvasFilePathDisplayMode;
   fileIconFontFaces: CanvasFileIconFontFace[];
   noteMarkdownImageWorkspaceRoots?: NoteMarkdownImageWorkspaceRoot[];
-  runtimeRecovery?: CanvasRuntimeRecoveryStatus;
 }
 
 export interface CanvasTemplateMenuEntry {
