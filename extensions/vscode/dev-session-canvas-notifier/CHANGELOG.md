@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.5
+
+- 与主扩展 `0.24.5` 对齐：本轮主扩展将已死亡 PTY 的恢复收口为有界历史快照和显式 Agent `Resume`，并修复 checkpoint 拒绝时健康 live stream 与终端输入互相竞争的问题；notifier companion 不引入新的通知投递行为、协议、后端选择、点击回跳或本地化变化。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展共享同一发布输入。
+
 ## 0.24.4
 
 - Aligns with the `0.24.4` main-extension patch: Supervisor restart recovery now remains available while historical journals hydrate, error attribution is more accurate, Pane Gallery bottom-thumbnail titles are visible again, the public multi-root Preview media is refreshed, and audited dependencies are updated. The notifier companion itself adds no notification-delivery behavior, protocol, backend-selection, click-return, or localization change.
