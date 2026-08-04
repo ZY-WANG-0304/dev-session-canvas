@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.24.5 - Bounded Recovery and Responsive Terminal Input
+
+Relative to `0.24.4`, `0.24.5` is a public `Preview` patch release focused on recovery safety and terminal-input responsiveness. It restores sessions whose prior PTY has ended from bounded metadata and the last persisted terminal display rather than replaying an unbounded journal at startup, makes Agent resume an explicit user action, and prevents healthy live streams from periodically competing with typed input for a full journal projection.
+
+### Highlights
+
+- When a Runtime Supervisor or its host restarts and an older PTY is known to be dead, recovery reads bounded journal metadata only. The previous terminal display remains an honest history snapshot; an Agent with a trusted provider session identity becomes `resume-ready` and starts a new provider resume process only after the user selects `Resume`.
+- A journal manifest revision can no longer be mixed with an older persisted terminal screen. The screen and its output sequence remain an atomic display projection, so recovery does not discard the last visible terminal state merely because the journal advanced after the Host persisted it.
+- Recovery progress now uses a non-cancellable VS Code progress notification with completed and remaining-session counts. It does not block creating new `Agent` or `Terminal` sessions, and it does not add a second global canvas banner.
+- Codex-style OSC 10/11 color queries no longer prevent an eligible terminal checkpoint. Actual color changes, resets, and unrecognized color events remain fail-closed; sessions that cannot prove a safe checkpoint retain their journal.
+- A healthy Host that already receives a continuous live terminal stream no longer periodically requests a complete journal projection. Per-node typed input is sent through a strict FIFO with one write RPC in flight, preserving control-byte order without allowing repeated input to build unbounded concurrent requests.
+- The extension ID, minimum VS Code version, provider command contract, journal format, notifier behavior, auto-install relationship, Marketplace channel gate, Template Marketplace service version line, and Preview support boundary remain unchanged.
+
+### Installation and Upgrade
+
+- This is a public `Preview` patch for `devsessioncanvas.dev-session-canvas`.
+- Install or upgrade from `0.24.4` through the extension registry configured by the host. Open VSX should publish and verify the same version; GitHub Release assets remain the manual-install fallback while Visual Studio Marketplace remains deferred.
+- Existing explicit settings, including runtime persistence, notifications, link opening, multi-root presentation, and fork placement, retain their configured values.
+- During recovery, an ended local PTY is not revived. The last persisted terminal screen is a bounded historical display; choose `Resume` only when you want an eligible Agent to start a new provider resume process.
+
+### Known Boundaries
+
+- The restart-recovery evidence is a repeatable Host-level fault model. It does not claim that a physical device restart or a long Remote SSH disconnect can keep an old local PTY alive, and the existing real-environment follow-up remains open.
+- A complete journal is neither replayed at startup nor exposed as a completed history browser: future full-history access must be explicit, paged, and capacity-bounded. Unsafe or oversized journals retain their complete data; no fixed disk cap or cross-version journal rollback is promised.
+- A new projection attach or a detected live-stream gap can still retrieve authoritative journal content. The steady-state optimization does not truncate recovery data, and compound terminal control sequences that cannot safely serialize remain journal-backed.
+- The existing 90,000-line completed-terminal tail issue and Visual Studio Marketplace availability limitation remain under investigation.
+
+### Rollback Guidance
+
+- If `0.24.5` blocks a workflow, stop important sessions, disable or uninstall the extension, and prefer a later `0.24.x` fix over a manual downgrade. Preview releases do not promise cross-version Runtime Supervisor journal compatibility.
+
 ## 0.24.4 - Supervisor Reboot Recovery and Multi-root Preview Refresh
 
 Relative to `0.24.3`, `0.24.4` is a public `Preview` patch release. It keeps a Runtime Supervisor control plane available while prior journal history is recovering after a host or runtime restart, separates Supervisor transport failures from missing executable errors, fixes the Pane Gallery bottom-thumbnail header, refreshes the public multi-root Preview media in English and Simplified Chinese, and updates audited runtime and release-toolchain dependencies. It does not revive PTYs that were terminated by a restart.
