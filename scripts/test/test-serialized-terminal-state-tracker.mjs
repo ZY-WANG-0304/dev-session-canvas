@@ -324,6 +324,21 @@ try {
   }, 'OSC 8 metadata that xterm-serialize-v1 cannot preserve must reject compaction.');
   osc8Tracker.dispose();
 
+  // Codex asks for the default colors at startup. A REPORT is not a palette mutation.
+  const codexStartupColorQueryTracker = new SerializedTerminalStateTracker(40, 5);
+  codexStartupColorQueryTracker.write(
+    '\u001b]10;?\u001b\\\u001b]11;?\u001b\\',
+    { outputSequence: 1 }
+  );
+  checkpoint = await codexStartupColorQueryTracker.flushValidatedCheckpoint();
+  assert.equal(checkpoint.eligible, true, 'Codex OSC 10/11 REPORT queries must not reject checkpoints.');
+  codexStartupColorQueryTracker.write('post-query output\r\n', {
+    outputSequence: 2
+  });
+  checkpoint = await codexStartupColorQueryTracker.flushValidatedCheckpoint();
+  assert.equal(checkpoint.eligible, true, 'a later safe boundary must remain eligible after color queries.');
+  codexStartupColorQueryTracker.dispose();
+
   const colorStateTracker = new SerializedTerminalStateTracker(40, 5);
   colorStateTracker.write('\u001b]10;#ff0000\u0007');
   checkpoint = await colorStateTracker.flushValidatedCheckpoint();
