@@ -28,6 +28,14 @@ const webviewMainSource = readFileSync(
   path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/webview/main.tsx'),
   'utf8'
 );
+const webviewStylesSource = readFileSync(
+  path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/webview/styles.css'),
+  'utf8'
+);
+const canvasPanelManagerSource = readFileSync(
+  path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts'),
+  'utf8'
+);
 const templateMarketplacePanelSource = readFileSync(
   path.join(process.cwd(), 'extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts'),
   'utf8'
@@ -132,6 +140,49 @@ for (const finding of findUnexpectedWebviewMainChineseLines(webviewMainSource)) 
     `Unexpected hard-coded Chinese in main Webview source at line ${finding.lineNumber}: ${finding.line}`
   );
 }
+
+assert.match(
+  canvasPanelManagerSource,
+  /vscode\.window\s*\.withProgress\(/u,
+  'Expected Runtime Supervisor recovery to use the VS Code progress API.'
+);
+assert.match(
+  canvasPanelManagerSource,
+  /vscode\.ProgressLocation\.Notification/u,
+  'Expected Runtime Supervisor recovery progress to appear in the VS Code notification area.'
+);
+assert.match(
+  canvasPanelManagerSource,
+  /cancellable:\s*false/u,
+  'Expected Runtime Supervisor recovery progress to remain non-cancellable.'
+);
+const recoveryProgressMessage =
+  '{completed} session(s) completed, {pending} saved session(s) remaining. New sessions are ready to start.';
+assert.match(
+  canvasPanelManagerSource,
+  /completed:\s*summary\.completedSessionCount/u,
+  'Expected recovery progress to report the completed-session count.'
+);
+assert.match(
+  canvasPanelManagerSource,
+  /pending:\s*summary\.pendingSessionCount/u,
+  'Expected recovery progress to report the remaining saved-session count.'
+);
+assert.equal(
+  runtimeChineseBundle[recoveryProgressMessage],
+  '已完成 {completed} 个会话，还剩 {pending} 个已保存会话；新会话可立即启动。',
+  'Expected the recovery progress message to localize completed and remaining counts.'
+);
+assert.doesNotMatch(
+  webviewMainSource,
+  /runtimeRecovery|runtime-recovery-indicator/u,
+  'Expected Runtime Supervisor recovery to stay out of the Canvas Webview.'
+);
+assert.doesNotMatch(
+  webviewStylesSource,
+  /runtime-recovery-indicator/u,
+  'Expected the Canvas recovery indicator style to be removed.'
+);
 
 for (const finding of findUnexpectedTemplateMarketplacePanelChineseLines(templateMarketplacePanelSource)) {
   assert.fail(
