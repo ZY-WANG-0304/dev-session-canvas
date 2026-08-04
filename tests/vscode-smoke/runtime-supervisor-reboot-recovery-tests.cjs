@@ -14,6 +14,8 @@ const COMMAND_IDS = {
   testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
   testGetHostMessages: 'devSessionCanvas.__test.getHostMessages',
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
+  testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
+  testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
@@ -189,6 +191,7 @@ async function run() {
       'The fixture must retain a Host-persisted Terminal screen paired with the pre-reboot sequence.'
     );
     await vscode.commands.executeCommand(COMMAND_IDS.testClearHostMessages);
+    await vscode.commands.executeCommand(COMMAND_IDS.testClearDiagnosticEvents);
     // A new Host-side create is the deterministic trigger that recreates the killed Supervisor.
     newAgent = await createNode('agent', 'codex');
     await startExecution('agent', newAgent.id, 'codex');
@@ -239,13 +242,33 @@ async function run() {
     );
 
     const messagesDuringRecovery = await vscode.commands.executeCommand(COMMAND_IDS.testGetHostMessages);
+    const recoveryProgressEvents = await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'runtime/recoveryProgressNotificationShown' &&
+            event.detail?.pendingSessionCount >= 1
+        ) &&
+        events.some(
+          (event) =>
+            event.kind === 'runtime/recoveryProgressNotificationUpdated' &&
+            event.detail?.pendingSessionCount >= 1
+        ),
+      'Expected the recovery progress notification lifecycle to report the remaining-session count.'
+    );
     assert.ok(
-      messagesDuringRecovery.some(
-        (message) =>
-          message.type === 'host/stateUpdated' &&
-          message.payload?.runtime?.runtimeRecovery?.pendingSessionCount >= 1
+      recoveryProgressEvents.some(
+        (event) =>
+          event.kind === 'runtime/recoveryProgressNotificationUpdated' &&
+          Number.isInteger(event.detail?.pendingSessionCount)
       ),
-      `Expected Host to project the nonblocking recovery state: ${JSON.stringify(messagesDuringRecovery)}`
+      `Expected recovery progress updates to include the remaining-session count: ${JSON.stringify(recoveryProgressEvents)}`
+    );
+    assert.ok(
+      !messagesDuringRecovery.some(
+        (message) => message.type === 'host/stateUpdated' && Object.hasOwn(message.payload?.runtime ?? {}, 'runtimeRecovery')
+      ),
+      `Recovery state must no longer be projected into the Canvas Webview: ${JSON.stringify(messagesDuringRecovery)}`
     );
     assert.ok(
       !JSON.stringify(messagesDuringRecovery).includes('Could not find'),
@@ -258,6 +281,20 @@ async function run() {
       readyHello.recovery.failureCount ?? 0,
       0,
       `Dead-PTY recovery must not hydrate the over-budget V1 Journal: ${JSON.stringify(readyHello)}`
+    );
+    await waitForDiagnosticEvents(
+      (events) =>
+        events.some(
+          (event) =>
+            event.kind === 'runtime/recoveryProgressNotificationUpdated' &&
+            event.detail?.completedSessionCount >= 1 &&
+            Number.isInteger(event.detail?.pendingSessionCount)
+        ),
+      'Expected the recovery progress notification to report completed and remaining session counts.'
+    );
+    await waitForDiagnosticEvents(
+      (events) => events.some((event) => event.kind === 'runtime/recoveryProgressNotificationClosed'),
+      'Expected the VS Code recovery progress notification to close once all recovery namespaces are ready.'
     );
     await waitForNode(
       (node) =>
@@ -405,6 +442,25 @@ async function getNode(nodeId) {
   const node = snapshot?.state?.nodes?.find((candidate) => candidate.id === nodeId);
   assert.ok(node, `Expected ${nodeId} to remain in the canvas state.`);
   return node;
+}
+
+async function getDiagnosticEvents() {
+  return vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents);
+}
+
+async function waitForDiagnosticEvents(predicate, assertionMessage, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let events = await getDiagnosticEvents();
+
+  while (Date.now() < deadline) {
+    if (predicate(events)) {
+      return events;
+    }
+    await delay(100);
+    events = await getDiagnosticEvents();
+  }
+
+  assert.fail(`${assertionMessage} Diagnostic events: ${JSON.stringify(events)}`);
 }
 
 function isAttachedLiveAgent(node) {

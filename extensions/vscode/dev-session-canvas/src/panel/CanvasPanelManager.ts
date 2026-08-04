@@ -1068,6 +1068,20 @@ interface RuntimeSupervisorRecoveryNamespaceState {
   backendKind: RuntimeHostBackendKind;
   runtimeStoragePath: string;
   state: RuntimeSupervisorRecoveryState;
+  initialPendingSessionCount: number;
+}
+
+interface RuntimeSupervisorRecoverySummary {
+  completedSessionCount: number;
+  pendingSessionCount: number;
+  namespaceCount: number;
+  failureCount: number;
+}
+
+interface RuntimeSupervisorRecoveryProgressNotification {
+  complete: () => void;
+  completedSessionCount: number;
+  progress?: vscode.Progress<{ message?: string }>;
 }
 
 interface RuntimeSupervisorSessionAttachResult {
@@ -1272,6 +1286,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     | undefined;
   private readonly runtimeSupervisorClients = new Map<string, RuntimeSupervisorClient>();
   private readonly runtimeSupervisorRecoveryStates = new Map<string, RuntimeSupervisorRecoveryNamespaceState>();
+  private runtimeSupervisorRecoveryProgressNotification: RuntimeSupervisorRecoveryProgressNotification | undefined;
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
   // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
@@ -1337,6 +1352,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
         this.terminalProjectionRefreshScheduler.dispose();
         this.scheduledExecutionOutputPosts.clear();
+        this.closeRuntimeSupervisorRecoveryProgressNotification();
       }
     });
 
@@ -6970,12 +6986,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
       filePathDisplayMode: fileConfiguration.pathDisplayMode,
       fileIconFontFaces: [],
-      noteMarkdownImageWorkspaceRoots: this.getNoteMarkdownImageWorkspaceRoots(webview),
-      runtimeRecovery: this.getRuntimeRecoveryStatusForWebview()
+      noteMarkdownImageWorkspaceRoots: this.getNoteMarkdownImageWorkspaceRoots(webview)
     };
   }
 
-  private getRuntimeRecoveryStatusForWebview(): CanvasRuntimeContext['runtimeRecovery'] {
+  private getRuntimeSupervisorRecoverySummary(): RuntimeSupervisorRecoverySummary | undefined {
     const recoveringNamespaces = Array.from(this.runtimeSupervisorRecoveryStates.values()).filter(
       (entry) => entry.state.phase === 'recovering'
     );
@@ -6992,9 +7007,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       0
     );
     return {
+      completedSessionCount:
+        (this.runtimeSupervisorRecoveryProgressNotification?.completedSessionCount ?? 0) +
+        recoveringNamespaces.reduce(
+          (total, entry) => total + Math.max(0, entry.initialPendingSessionCount - entry.state.pendingSessionCount),
+          0
+        ),
       pendingSessionCount,
       namespaceCount: recoveringNamespaces.length,
-      ...(failureCount > 0 ? { failureCount } : {})
+      failureCount
     };
   }
 
@@ -11081,10 +11102,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): void {
     const normalizedRuntimeStoragePath = this.resolveRuntimeStoragePath(runtimeStoragePath);
     const key = `${backendKind}:${normalizedRuntimeStoragePath}`;
-    const previous = this.runtimeSupervisorRecoveryStates.get(key)?.state;
+    const previousEntry = this.runtimeSupervisorRecoveryStates.get(key);
+    const previous = previousEntry?.state;
     if (state.phase === 'ready') {
       if (!this.runtimeSupervisorRecoveryStates.delete(key)) {
         return;
+      }
+      const notification = this.runtimeSupervisorRecoveryProgressNotification;
+      if (notification && previousEntry) {
+        notification.completedSessionCount += Math.max(
+          0,
+          previousEntry.initialPendingSessionCount - state.pendingSessionCount
+        );
       }
       this.recordDiagnosticEvent('runtime/recoveryReady', {
         runtimeBackend: backendKind,
@@ -11092,7 +11121,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         pendingSessionCount: state.pendingSessionCount,
         failureCount: state.failureCount ?? 0
       });
-      this.postRuntimeRecoveryStateIfVisible();
+      this.updateRuntimeSupervisorRecoveryPresentation();
       if (previous?.phase === 'recovering') {
         this.scheduleRestoreLiveRuntimeSessions();
       }
@@ -11102,7 +11131,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.runtimeSupervisorRecoveryStates.set(key, {
       backendKind,
       runtimeStoragePath: normalizedRuntimeStoragePath,
-      state
+      state,
+      initialPendingSessionCount: Math.max(
+        previousEntry?.initialPendingSessionCount ?? 0,
+        state.pendingSessionCount
+      )
     });
     if (!previous || previous.phase !== 'recovering') {
       this.recordDiagnosticEvent('runtime/recoveryStarted', {
@@ -11119,7 +11152,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         failureCount: state.failureCount
       });
     }
-    this.postRuntimeRecoveryStateIfVisible();
+    this.updateRuntimeSupervisorRecoveryPresentation();
   }
 
   private clearRuntimeSupervisorRecoveryState(
@@ -11128,14 +11161,99 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): void {
     const key = `${backendKind}:${this.resolveRuntimeStoragePath(runtimeStoragePath)}`;
     if (this.runtimeSupervisorRecoveryStates.delete(key)) {
-      this.postRuntimeRecoveryStateIfVisible();
+      this.updateRuntimeSupervisorRecoveryPresentation();
     }
   }
 
-  private postRuntimeRecoveryStateIfVisible(): void {
+  private updateRuntimeSupervisorRecoveryPresentation(): void {
+    this.updateRuntimeSupervisorRecoveryProgressNotification();
     if (this.activeSurface && this.isInteractiveSurface(this.activeSurface)) {
       this.postState('host/stateUpdated');
     }
+  }
+
+  private updateRuntimeSupervisorRecoveryProgressNotification(): void {
+    const summary = this.getRuntimeSupervisorRecoverySummary();
+    if (!summary) {
+      this.closeRuntimeSupervisorRecoveryProgressNotification();
+      return;
+    }
+
+    const current = this.runtimeSupervisorRecoveryProgressNotification;
+    if (current) {
+      this.reportRuntimeSupervisorRecoveryProgressNotification(current, summary);
+      return;
+    }
+
+    let complete!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    const notification: RuntimeSupervisorRecoveryProgressNotification = {
+      complete,
+      completedSessionCount: 0
+    };
+    this.runtimeSupervisorRecoveryProgressNotification = notification;
+    this.recordDiagnosticEvent('runtime/recoveryProgressNotificationShown', { ...summary });
+
+    void vscode.window
+      .withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: vscode.l10n.t('Restoring saved sessions'),
+          cancellable: false
+        },
+        async (progress) => {
+          notification.progress = progress;
+          if (this.runtimeSupervisorRecoveryProgressNotification === notification) {
+            this.reportRuntimeSupervisorRecoveryProgressNotification(notification, summary);
+          }
+          await completion;
+        }
+      )
+      .then(
+        () => {
+          if (this.runtimeSupervisorRecoveryProgressNotification === notification) {
+            this.runtimeSupervisorRecoveryProgressNotification = undefined;
+          }
+        },
+        () => {
+          if (this.runtimeSupervisorRecoveryProgressNotification === notification) {
+            this.runtimeSupervisorRecoveryProgressNotification = undefined;
+          }
+        }
+      );
+  }
+
+  private reportRuntimeSupervisorRecoveryProgressNotification(
+    notification: RuntimeSupervisorRecoveryProgressNotification,
+    summary: RuntimeSupervisorRecoverySummary
+  ): void {
+    if (!notification.progress) {
+      return;
+    }
+
+    notification.progress.report({
+      message: vscode.l10n.t(
+        '{completed} session(s) completed, {pending} saved session(s) remaining. New sessions are ready to start.',
+        {
+          completed: summary.completedSessionCount,
+          pending: summary.pendingSessionCount
+        }
+      )
+    });
+    this.recordDiagnosticEvent('runtime/recoveryProgressNotificationUpdated', { ...summary });
+  }
+
+  private closeRuntimeSupervisorRecoveryProgressNotification(): void {
+    const notification = this.runtimeSupervisorRecoveryProgressNotification;
+    if (!notification) {
+      return;
+    }
+
+    this.runtimeSupervisorRecoveryProgressNotification = undefined;
+    notification.complete();
+    this.recordDiagnosticEvent('runtime/recoveryProgressNotificationClosed');
   }
 
   private async applyRuntimeSupervisorSnapshot(
