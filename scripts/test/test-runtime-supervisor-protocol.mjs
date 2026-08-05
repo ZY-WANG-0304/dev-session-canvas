@@ -504,96 +504,16 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     assert.equal(hello.capabilities?.terminalProjectionCheckpointV1, true);
     assert.equal(hello.capabilities?.terminalAppliedRevisionAckV1, true);
     assert.equal(hello.capabilities?.agentSubmissionIntentV1, true);
-    assert.equal(hello.capabilities?.agentProviderLifecycleV1, true);
-
-    const lifecycleHookPath = path.resolve(
-      'extensions/vscode/dev-session-canvas/scripts/runtime/agent-lifecycle-hook.cjs'
-    );
-    const lifecycleAgentScriptPath = path.join(tempDir, 'runtime-agent-lifecycle.js');
-    await writeFile(
-      lifecycleAgentScriptPath,
-      `const { spawn } = require('node:child_process');\nlet sawEditableInput = false;\nlet callbackScheduled = false;\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (data) => {\n  if (/real prompt/u.test(data)) sawEditableInput = true;\n  if (!sawEditableInput || callbackScheduled || !/[\\r\\n]/u.test(data)) return;\n  callbackScheduled = true;\n  setTimeout(() => {\n    const payload = JSON.stringify({ type: 'agent-turn-complete', 'thread-id': 'thread-runtime-1', 'turn-id': 'turn-runtime-1' });\n    spawn(process.execPath, [${JSON.stringify(lifecycleHookPath)}, 'codex', payload], { env: process.env, stdio: 'ignore' });\n  }, 2300);\n});\nsetInterval(() => undefined, 1000);\n`,
-      'utf8'
-    );
-    const lifecycleAgentSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
-      kind: 'agent',
-      sessionId: 'provider-lifecycle-agent',
-      displayLabel: 'Codex',
-      launchMode: 'start',
-      scrollback: 1000,
-      provider: 'codex',
-      providerLifecycleEnabled: true,
-      launchSpec: {
-        file: process.execPath,
-        args: [lifecycleAgentScriptPath],
-        cwd: tempDir,
-        cols: 80,
-        rows: 24,
-        env: process.env,
-        terminalName: 'xterm-256color'
-      }
-    });
-    assert.equal(lifecycleAgentSnapshot.providerLifecycleEnabled, true);
-    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
-      sessionId: 'provider-lifecycle-agent',
-      data: '\u001b[A',
-      intent: 'text'
-    });
-    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
-      sessionId: 'provider-lifecycle-agent',
-      data: '\r',
-      intent: 'submit'
-    });
-    const menuSubmitSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'getSessionSnapshot', {
-      sessionId: 'provider-lifecycle-agent'
-    });
-    assert.notEqual(
-      menuSubmitSnapshot.agentActivitySource,
-      'submission-intent',
-      'A navigation-only Codex menu submit must not start an Agent turn.'
-    );
-    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
-      sessionId: 'provider-lifecycle-agent',
-      data: 'real prompt',
-      intent: 'text'
-    });
-    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
-      sessionId: 'provider-lifecycle-agent',
-      data: '\r',
-      intent: 'submit'
-    });
-    await delay(1900);
-    const stillRunningSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'getSessionSnapshot', {
-      sessionId: 'provider-lifecycle-agent'
-    });
     assert.equal(
-      stillRunningSnapshot.lifecycle,
-      'running',
-      'An ordinary running Agent must not enter waiting-input through the 1600ms hard fallback.'
+      hello.capabilities?.agentProviderLifecycleV1,
+      undefined,
+      'New Supervisors must not advertise a callback lifecycle transport.'
     );
-    assert.equal(stillRunningSnapshot.agentActivitySource, 'submission-intent');
-    const completedLifecycleSnapshot = await waitForRuntimeSupervisorMessage(
-      messages,
-      (message) =>
-        message.type === 'event' &&
-        message.event === 'sessionState' &&
-        message.payload?.sessionId === 'provider-lifecycle-agent' &&
-        message.payload.lifecycle === 'waiting-input' &&
-        message.payload.providerTurnId === 'turn-runtime-1',
-      'provider lifecycle completion',
-      4000
-    );
-    assert.equal(completedLifecycleSnapshot.payload.providerSessionId, 'thread-runtime-1');
-    assert.equal(completedLifecycleSnapshot.payload.agentActivitySource, 'provider-lifecycle');
-    assert.equal(completedLifecycleSnapshot.payload.lastTurnOutcome, 'completed');
-    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
-      sessionId: 'provider-lifecycle-agent'
-    });
 
     const missingSignalAgentScriptPath = path.join(tempDir, 'runtime-agent-missing-provider-signal.js');
     await writeFile(
       missingSignalAgentScriptPath,
-      `let turnScheduled = false;\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (data) => {\n  if (turnScheduled || !/[\\r\\n]/u.test(data)) return;\n  turnScheduled = true;\n  process.stdout.write('working\\r\\n');\n  setTimeout(() => process.stdout.write('> '), 2300);\n  setTimeout(() => {\n    let frame = 0;\n    const timer = setInterval(() => {\n      process.stdout.write('\\rspinner-frame-' + (frame % 2));\n      frame += 1;\n      if (frame >= 12) clearInterval(timer);\n    }, 120);\n  }, 8000);\n});\nsetInterval(() => undefined, 1000);\n`,
+      `let turnScheduled = false;\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (data) => {\n  if (turnScheduled || !/[\\r\\n]/u.test(data)) return;\n  turnScheduled = true;\n  process.stdout.write('working\\r\\n');\n  setTimeout(() => process.stdout.write('> '), 2300);\n  setTimeout(() => {\n    process.stdout.write('\\u001b]0;⠂ Claude Code\\u0007');\n    setTimeout(() => process.stdout.write('\\u001b]0;⠐ Claude Code\\u0007'), 120);\n  }, 8000);\n});\nsetInterval(() => undefined, 1000);\n`,
       'utf8'
     );
     const missingSignalAgentSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
@@ -603,7 +523,6 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       launchMode: 'start',
       scrollback: 1000,
       provider: 'claude',
-      providerLifecycleEnabled: true,
       launchSpec: {
         file: process.execPath,
         args: [missingSignalAgentScriptPath],
@@ -614,7 +533,6 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
         terminalName: 'xterm-256color'
       }
     });
-    assert.equal(missingSignalAgentSnapshot.providerLifecycleEnabled, true);
     await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
       sessionId: 'provider-signal-missing-agent',
       data: 'silent prompt',
@@ -635,7 +553,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     assert.equal(
       missingSignalRunningSnapshot.lifecycle,
       'running',
-      'Configured callbacks must not gate the primary quiet-time policy.'
+      'The non-invasive submit path must not enter waiting-input before the quiet fallback.'
     );
     assert.equal(missingSignalRunningSnapshot.agentActivitySource, 'submission-intent');
     await delay(800);
@@ -669,8 +587,8 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
         message.event === 'sessionState' &&
         message.payload?.sessionId === 'provider-signal-missing-agent' &&
         message.payload.lifecycle === 'running' &&
-        message.payload.agentActivitySource === 'heuristic',
-      'provider-signal-missing bottom activity recovery',
+        message.payload.agentActivitySource === 'terminal-title',
+      'terminal-title waiting recovery',
       4000
     );
     assert.equal(heuristicRecoverySnapshot.payload.agentActivityAuthority, 'best-effort');

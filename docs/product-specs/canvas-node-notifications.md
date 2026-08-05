@@ -162,9 +162,10 @@
 
 - 用户提交有效输入后进入 `running`；任意 PTY 输出刷新 quiet 时钟，正常运行阶段不扫描终端底部区域。
 - 从有效 submit 或最近输出开始连续 5000ms 无输出时，以 `fallback` 原因进入可纠正的 `heuristic / best-effort waiting-input`。
+- 同一回合已经由有效 submit 建立 active turn 后，识别到 BEL、OSC 9 或 OSC 777 也可以立即进入可纠正的 `attention / best-effort waiting-input`；该判断不受 `enabledAttentionSignals` allow-list 或外部通知 bridge 开关影响。
 - 只有处于该弱等待态时才追踪终端最下方非空内容区域；连续变化可以纠正回 `running`，新 submit、interrupt 确认或 provider lifecycle 事件会关闭追踪。
-- prompt glyph、BEL、OSC 9 与 OSC 777 不参与 lifecycle 判定；BEL/OSC 只保留 attention signal 语义。
-- Codex notify 与 Claude hooks 是携带 session/turn identity 的辅助增强；缺失或失败不关闭上述基础状态机。
+- prompt glyph 不参与 lifecycle 判定；BEL/OSC 只提供 `attention / best-effort waiting-input` 候选，不确认 completed/failed，也不能在进程终态或 confirmed interrupt 后重开回合。title/bottom activity 仍可将弱 waiting 恢复为 `running`。
+- `attentionPending`、`enabledAttentionSignals` 与通知 bridge 只控制产品提醒表现；Codex notify 与 Claude hooks 不属于当前状态判断路径，缺失或失败不关闭上述基础状态机。
 
 ### 4.5 通知状态管理
 
@@ -231,9 +232,9 @@ interface AgentActivityHeuristicState {
 }
 ```
 
-- `lastActivityAtMs` 从有效 submit 或最近 PTY 输出计时，连续 5000ms 无输出时才允许 best-effort waiting fallback
+- `lastActivityAtMs` 从有效 submit 或最近 PTY 输出计时，连续 5000ms 无输出时允许 `heuristic / best-effort` waiting fallback；attention 所在的 PTY chunk 也刷新该时钟
 - `lastInputAtMs` 用于抑制用户输入后的 composer 回显，避免把打字误当成自主运行活动
-- bottom screen 字段只在可纠正的弱 `waiting-input` 中记录当前屏幕最下方非空内容区域的跨帧变化；连续变化是恢复 `running` 的证据，正常 `running` 和普通 Terminal 不启用扫描，单个 prompt glyph、OSC 或 BEL 不具有 lifecycle 语义
+- bottom screen 字段只在可纠正的弱 `waiting-input` 中记录当前屏幕最下方非空内容区域的跨帧变化；连续变化是恢复 `running` 的证据，正常 `running` 和普通 Terminal 不启用扫描，单个 prompt glyph 不具有 lifecycle 语义，OSC/BEL 可产生 attention 弱 waiting 但不具备权威完成语义
 - `oscCarryover`：跨 chunk 的 OSC 序列缓存
 - `lastAbnormalStreamScanLength` 与 `abnormalStreamCarryover`：仅在文本匹配开启时辅助扫描新增输出与跨 chunk 残片，避免重新扫描旧 buffer；live-runtime attach 时已有的 `snapshot.output` 也视为已扫描历史
 
@@ -283,6 +284,7 @@ type CanvasAgentAbnormalOutputTextNotificationMode = 'off' | 'codex';
 - [x] 配置 `attentionSignalBridge` 为 `system` 但 companion 不可用时，会自动回退到 VS Code 工作台消息
 - [x] 强提醒模式的四种配置 (`none`、`titleBar`、`minimap`、`both`) 都能正确控制节点标题栏闪烁和 Minimap 尺寸脉冲
 - [x] Agent 等待输入检测能正确识别提示符、通知信号和超时情况
+- [ ] Agent 等待输入检测覆盖 active turn 收到 BEL/OSC 9/OSC 777 后进入 `attention / best-effort waiting-input`，以及 title/bottom activity 恢复 `running` 的路径
 - [x] 左键点击节点本体后，通知状态自动清除
 - [x] 点击 VS Code 工作台通知中的"查看节点"按钮后，画布只居中对应节点，不选中节点且不清除通知状态
 - [x] 点击支持回调的系统桌面通知后，画布只居中对应节点，不选中节点且不清除通知状态

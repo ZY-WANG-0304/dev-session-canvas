@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,19 +7,16 @@ import path from 'node:path';
 import esbuild from 'esbuild';
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-agent-provider-lifecycle-'));
-const extensionRoot = path.resolve('extensions/vscode/dev-session-canvas');
 
 try {
   const inputOutfile = path.join(tempDir, 'agentInputIntent.cjs');
   const heuristicOutfile = path.join(tempDir, 'agentActivityHeuristics.cjs');
   const lifecycleOutfile = path.join(tempDir, 'agentProviderLifecycle.cjs');
-  const serverOutfile = path.join(tempDir, 'agentProviderLifecycleServer.cjs');
   const runtimeIntegrationOutfile = path.join(tempDir, 'agentFileActivity.cjs');
   await Promise.all([
     bundle('extensions/vscode/dev-session-canvas/src/common/agentInputIntent.ts', inputOutfile),
     bundle('extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts', heuristicOutfile),
     bundle('extensions/vscode/dev-session-canvas/src/common/agentProviderLifecycle.ts', lifecycleOutfile),
-    bundle('extensions/vscode/dev-session-canvas/src/panel/agentProviderLifecycleServer.ts', serverOutfile),
     bundle('extensions/vscode/dev-session-canvas/src/panel/agentFileActivity.ts', runtimeIntegrationOutfile)
   ]);
 
@@ -41,9 +37,9 @@ try {
     isAgentHeuristicWaitingInputRecoverable,
     recordAgentHeuristicRunning,
     recordAgentHeuristicWaitingInput,
+    recordAgentAttentionWaitingInput,
     recordAgentSubmission
   } = require(lifecycleOutfile);
-  const { createAgentProviderLifecycleSession } = require(serverOutfile);
   const { createAgentFileActivitySession } = require(runtimeIntegrationOutfile);
 
   assertInputIntent(classifyAgentInputData, createAgentInputIntentTracker);
@@ -52,6 +48,7 @@ try {
     consumeAgentInstructionSubmission,
     createAgentProviderLifecycleState,
     isAgentHeuristicWaitingInputRecoverable,
+    recordAgentAttentionWaitingInput,
     recordAgentHeuristicRunning,
     recordAgentHeuristicWaitingInput,
     recordAgentSubmission
@@ -64,7 +61,6 @@ try {
     recordAgentInputHeuristics,
     recordAgentOutputHeuristics
   );
-  await assertCallbackTransport(createAgentProviderLifecycleSession);
   await assertLaunchIntegration(createAgentFileActivitySession);
 
   console.log('agent provider lifecycle tests passed');
@@ -116,6 +112,7 @@ function assertLifecycleIdentity(
   consumeAgentInstructionSubmission,
   createAgentProviderLifecycleState,
   isAgentHeuristicWaitingInputRecoverable,
+  recordAgentAttentionWaitingInput,
   recordAgentHeuristicRunning,
   recordAgentHeuristicWaitingInput,
   recordAgentSubmission
@@ -291,6 +288,23 @@ function assertLifecycleIdentity(
     applyAgentProviderLifecycleEvent(codex, { ...completed, providerSessionId: 'thread-b', providerTurnId: 'turn-2' }).reason,
     'provider-session-mismatch'
   );
+
+  const nonInvasiveTurn = createAgentProviderLifecycleState('codex', false);
+  recordAgentSubmission(nonInvasiveTurn, 100);
+  assert.equal(recordAgentAttentionWaitingInput(nonInvasiveTurn).lifecycle, 'waiting-input');
+  assert.equal(nonInvasiveTurn.activitySource, 'attention');
+  assert.equal(isAgentHeuristicWaitingInputRecoverable(nonInvasiveTurn), true);
+  assert.equal(recordAgentHeuristicRunning(nonInvasiveTurn, 'terminal-title').lifecycle, 'running');
+  assert.equal(nonInvasiveTurn.activitySource, 'terminal-title');
+
+  const interruptedTurn = createAgentProviderLifecycleState('claude', false);
+  recordAgentSubmission(interruptedTurn, 100);
+  interruptedTurn.interruptRequested = true;
+  assert.equal(
+    recordAgentAttentionWaitingInput(interruptedTurn).accepted,
+    false,
+    'Attention must not reopen or reclassify a confirmed interrupt.'
+  );
 }
 
 function assertHeuristicEnhancementPolicy(
@@ -370,273 +384,101 @@ function assertHeuristicEnhancementPolicy(
   );
 }
 
-async function assertCallbackTransport(createAgentProviderLifecycleSession) {
-  const observed = [];
-  const rejected = [];
-  let delayNextAck = true;
-  const session = await createAgentProviderLifecycleSession({
-    provider: 'claude',
-    runtimeSessionId: 'runtime-session-1',
-    onEvent: async (event) => {
-      if (delayNextAck) {
-        delayNextAck = false;
-        await new Promise((resolve) => setTimeout(resolve, 80));
-      }
-      observed.push(event);
-    },
-    onRejected: (reason) => rejected.push(reason)
-  });
-  const hookPath = path.join(extensionRoot, 'scripts', 'runtime', 'agent-lifecycle-hook.cjs');
-  const hookEnv = { ...process.env, ...session.extraEnv };
-  const ackStartedAt = Date.now();
-  await runHook(hookPath, ['claude', 'UserPromptSubmit'], hookEnv, {
-    session_id: 'claude-session-1',
-    prompt_id: 'prompt-1'
-  });
-  assert.ok(Date.now() - ackStartedAt >= 60, 'The hook must wait until the owner handler ACKs the event.');
-  await runHook(hookPath, ['claude', 'StopFailure'], hookEnv, {
-    session_id: 'claude-session-1',
-    prompt_id: 'prompt-1',
-    error: { message: 'overloaded', status_code: 529 }
-  });
-  assert.deepEqual(observed.map(({ observedAtMs: _observedAtMs, ...event }) => event), [
-    claudeEvent('turn-started', 'claude-session-1', 'prompt-1'),
-    {
-      ...claudeEvent('turn-failed', 'claude-session-1', 'prompt-1'),
-      error: '{"message":"overloaded","status_code":529}'
-    }
-  ]);
-
-  await runHook(
-    hookPath,
-    ['claude', 'Stop'],
-    { ...hookEnv, DEV_SESSION_CANVAS_AGENT_LIFECYCLE_CALLBACK_NONCE: 'wrong-nonce' },
-    { session_id: 'claude-session-1', prompt_id: 'prompt-1' }
-  );
-  assert.ok(rejected.includes('identity-mismatch'));
-  assert.equal(observed.length, 2);
-  await runHook(
-    hookPath,
-    ['claude', 'Stop'],
-    { ...hookEnv, DEV_SESSION_CANVAS_AGENT_LIFECYCLE_PROCESS_EPOCH: 'stale-process' },
-    { session_id: 'claude-session-1', prompt_id: 'prompt-1' }
-  );
-  await runHook(
-    hookPath,
-    ['claude', 'Stop'],
-    { ...hookEnv, DEV_SESSION_CANVAS_AGENT_LIFECYCLE_RUNTIME_SESSION_ID: 'stale-runtime' },
-    { session_id: 'claude-session-1', prompt_id: 'prompt-1' }
-  );
-  assert.equal(rejected.filter((reason) => reason === 'identity-mismatch').length, 3);
-  assert.equal(observed.length, 2);
-  await session.dispose();
-}
-
 async function assertLaunchIntegration(createAgentFileActivitySession) {
   const storageRootPath = path.join(tempDir, 'runtime-integrations');
-  const extensionRootWithoutLifecycleHook = path.join(tempDir, 'extension-without-lifecycle-hook');
-  await mkdir(extensionRootWithoutLifecycleHook, { recursive: true });
-  const userSettingsA = path.join(tempDir, 'claude-a.json');
-  const userSettingsB = path.join(tempDir, 'claude-b.json');
-  await writeFile(userSettingsA, JSON.stringify({ marker: 'A' }), 'utf8');
-  await writeFile(
-    userSettingsB,
-    JSON.stringify({ marker: 'B', hooks: { Stop: [{ hooks: [{ type: 'command', command: 'user-stop' }] }] } }),
-    'utf8'
-  );
+  for (const provider of ['codex', 'claude']) {
+    const session = createAgentFileActivitySession({
+      provider,
+      command: provider,
+      extensionRootPath: path.join(tempDir, 'unused-extension-root'),
+      storageRootPath,
+      fileActivityEnabled: false
+    });
+    const args = ['--settings', 'user-settings.json', '--safe-mode'];
+    const env = { CLAUDE_CODE_SAFE_MODE: '1', CODEX_HOME: path.join(tempDir, 'codex-home') };
+    assert.deepEqual(
+      session.configureLaunch(args, env, tempDir),
+      args,
+      `${provider} argv must remain byte-for-byte unchanged when file activity is disabled.`
+    );
+    assert.deepEqual(
+      env,
+      { CLAUDE_CODE_SAFE_MODE: '1', CODEX_HOME: path.join(tempDir, 'codex-home') },
+      `${provider} environment must remain unchanged.`
+    );
+    await session.dispose();
+  }
 
-  const claude = createAgentFileActivitySession({
-    provider: 'claude',
-    command: 'claude',
-    extensionRootPath: extensionRoot,
+  const fake = createAgentFileActivitySession({
+    provider: 'codex',
+    command: 'fake-codex-provider',
+    extensionRootPath: path.join(tempDir, 'unused-extension-root'),
     storageRootPath,
     fileActivityEnabled: true
   });
-  const claudeEnv = {};
-  const claudeArgs = claude.configureLaunch(
-    ['--settings', userSettingsA, '--settings', userSettingsB],
-    claudeEnv,
+  const fakeEnv = {};
+  assert.deepEqual(fake.configureLaunch(['resume', 'session-1'], fakeEnv, tempDir), ['resume', 'session-1']);
+  assert.equal(typeof fakeEnv.DEV_SESSION_CANVAS_FAKE_AGENT_FILE_EVENT_STREAM_PATH, 'string');
+  await fake.dispose();
+
+  const source = await readFile('extensions/vscode/dev-session-canvas/src/panel/agentFileActivity.ts', 'utf8');
+  assert.doesNotMatch(source, /notify=/u, 'Agent launch integration must not inject Codex notify.');
+  assert.doesNotMatch(source, /UserPromptSubmit|StopFailure/u, 'Agent launch integration must not inject lifecycle hooks.');
+  assert.doesNotMatch(source, /claude-runtime-settings/u, 'Agent launch integration must not create lifecycle settings.');
+
+  const userSettingsPath = path.join(tempDir, 'claude-file-activity-user-settings.json');
+  await writeFile(userSettingsPath, JSON.stringify({ marker: 'user-settings' }), 'utf8');
+  const claudeFileActivity = createAgentFileActivitySession({
+    provider: 'claude',
+    command: 'claude',
+    extensionRootPath: path.resolve('extensions/vscode/dev-session-canvas'),
+    storageRootPath,
+    fileActivityEnabled: true
+  });
+  const claudeFileActivityEnv = {};
+  const claudeFileActivityArgs = claudeFileActivity.configureLaunch(
+    ['--settings', userSettingsPath],
+    claudeFileActivityEnv,
     tempDir
   );
-  assert.equal(claude.isProviderLifecycleEnabled(), true);
-  assert.equal(claudeArgs.filter((arg) => arg === '--settings').length, 1);
-  const generatedSettingsPath = claudeArgs.at(-1);
-  const generatedSettings = JSON.parse(await readFile(generatedSettingsPath, 'utf8'));
-  assert.equal(generatedSettings.marker, 'B', 'Claude repeated settings must preserve the effective last settings.');
-  assert.equal(generatedSettings.hooks.Stop[0].hooks[0].command, 'user-stop');
-  assert.equal(generatedSettings.hooks.Stop.length, 2);
-  assert.equal(generatedSettings.hooks.UserPromptSubmit.length, 1);
-  assert.equal(generatedSettings.hooks.StopFailure.length, 1);
+  const generatedSettings = JSON.parse(await readFile(claudeFileActivityArgs.at(-1), 'utf8'));
+  assert.equal(generatedSettings.marker, 'user-settings');
   assert.equal(generatedSettings.hooks.PostToolUse.length, 1);
-  assert.ok(claudeEnv.DEV_SESSION_CANVAS_AGENT_FILE_EVENT_STREAM_PATH);
-  await claude.dispose();
+  assert.equal(generatedSettings.hooks.UserPromptSubmit, undefined);
+  assert.equal(generatedSettings.hooks.Stop, undefined);
+  assert.equal(generatedSettings.hooks.StopFailure, undefined);
+  assert.equal(typeof claudeFileActivityEnv.DEV_SESSION_CANVAS_AGENT_FILE_EVENT_STREAM_PATH, 'string');
+  await claudeFileActivity.dispose();
 
-  for (const [flag, fallbackReason] of [
-    ['--safe-mode', 'claude-hooks-disabled-by-safe-mode'],
-    ['--bare', 'claude-hooks-disabled-by-bare']
-  ]) {
-    const hooksDisabledClaude = createAgentFileActivitySession({
-      provider: 'claude',
-      command: 'claude',
-      extensionRootPath: extensionRoot,
-      storageRootPath,
-      fileActivityEnabled: true
-    });
-    const originalArgs = [flag, '--settings', userSettingsA];
-    const hooksDisabledEnv = {};
-    assert.deepEqual(
-      hooksDisabledClaude.configureLaunch(originalArgs, hooksDisabledEnv, tempDir),
-      originalArgs,
-      `${flag} must preserve the Claude launch arguments instead of injecting hooks.`
-    );
-    assert.equal(hooksDisabledClaude.isProviderLifecycleEnabled(), false);
-    assert.equal(hooksDisabledClaude.getProviderLifecycleFallbackReason(), fallbackReason);
-    assert.equal(
-      hooksDisabledEnv.DEV_SESSION_CANVAS_AGENT_FILE_EVENT_STREAM_PATH,
-      undefined,
-      `${flag} must not advertise a file activity hook that Claude will skip.`
-    );
-    await hooksDisabledClaude.dispose();
-  }
-
-  for (const [envKey, fallbackReason] of [
-    ['CLAUDE_CODE_SAFE_MODE', 'claude-hooks-disabled-by-safe-mode-env'],
-    ['CLAUDE_CODE_SIMPLE', 'claude-hooks-disabled-by-simple-mode-env']
-  ]) {
-    const hooksDisabledClaude = createAgentFileActivitySession({
-      provider: 'claude',
-      command: 'claude',
-      extensionRootPath: extensionRoot,
-      storageRootPath,
-      fileActivityEnabled: true
-    });
-    const originalArgs = ['--permission-mode', 'plan'];
-    const hooksDisabledEnv = { [envKey]: '1' };
-    assert.deepEqual(
-      hooksDisabledClaude.configureLaunch(originalArgs, hooksDisabledEnv, tempDir),
-      originalArgs,
-      `${envKey}=1 must preserve argv instead of injecting hooks.`
-    );
-    assert.equal(hooksDisabledClaude.isProviderLifecycleEnabled(), false);
-    assert.equal(hooksDisabledClaude.getProviderLifecycleFallbackReason(), fallbackReason);
-    assert.equal(hooksDisabledEnv.DEV_SESSION_CANVAS_AGENT_FILE_EVENT_STREAM_PATH, undefined);
-    assert.equal(hooksDisabledEnv[envKey], '1', `${envKey} must remain inherited by Claude.`);
-    await hooksDisabledClaude.dispose();
-  }
-
-  const inactiveHooksEnvClaude = createAgentFileActivitySession({
+  const claudeSafeFileActivity = createAgentFileActivitySession({
     provider: 'claude',
     command: 'claude',
-    extensionRootPath: extensionRoot,
+    extensionRootPath: path.resolve('extensions/vscode/dev-session-canvas'),
     storageRootPath,
-    fileActivityEnabled: false
+    fileActivityEnabled: true
   });
-  const inactiveHooksEnvArgs = inactiveHooksEnvClaude.configureLaunch(
-    [],
-    { CLAUDE_CODE_SAFE_MODE: '0', CLAUDE_CODE_SIMPLE: '' },
-    tempDir
-  );
-  assert.equal(inactiveHooksEnvClaude.isProviderLifecycleEnabled(), true);
-  assert.equal(inactiveHooksEnvArgs.at(-2), '--settings');
-  await inactiveHooksEnvClaude.dispose();
-
-  const invalidClaude = createAgentFileActivitySession({
-    provider: 'claude',
-    command: 'claude',
-    extensionRootPath: extensionRoot,
-    storageRootPath,
-    fileActivityEnabled: false
-  });
+  const claudeSafeFileActivityEnv = { CLAUDE_CODE_SAFE_MODE: '1' };
   assert.deepEqual(
-    invalidClaude.configureLaunch(['--settings', 'missing.json'], {}, tempDir),
-    ['--settings', 'missing.json']
+    claudeSafeFileActivity.configureLaunch(['resume', 'session-1'], claudeSafeFileActivityEnv, tempDir),
+    ['resume', 'session-1'],
+    'File-activity settings must not be injected when Claude disables hooks through its environment.'
   );
-  assert.equal(invalidClaude.isProviderLifecycleEnabled(), false);
-  await invalidClaude.dispose();
+  assert.deepEqual(claudeSafeFileActivityEnv, { CLAUDE_CODE_SAFE_MODE: '1' });
+  await claudeSafeFileActivity.dispose();
 
-  const missingHookClaude = createAgentFileActivitySession({
-    provider: 'claude',
-    command: 'claude',
-    extensionRootPath: extensionRootWithoutLifecycleHook,
-    storageRootPath,
-    fileActivityEnabled: false
-  });
-  assert.deepEqual(missingHookClaude.configureLaunch(['--permission-mode', 'plan'], {}, tempDir), [
-    '--permission-mode',
-    'plan'
+  const [panelSource, supervisorSource] = await Promise.all([
+    readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8'),
+    readFile('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts', 'utf8')
   ]);
-  assert.equal(missingHookClaude.isProviderLifecycleEnabled(), false);
-  assert.equal(missingHookClaude.getProviderLifecycleFallbackReason(), 'agent-lifecycle-hook-missing');
-  await missingHookClaude.dispose();
-
-  const codexHome = path.join(tempDir, 'codex-home');
-  await mkdir(codexHome, { recursive: true });
-  const codex = createAgentFileActivitySession({
-    provider: 'codex',
-    command: 'codex',
-    extensionRootPath: extensionRoot,
-    storageRootPath,
-    fileActivityEnabled: false
-  });
-  const codexArgs = codex.configureLaunch([], { CODEX_HOME: codexHome }, tempDir);
-  assert.equal(codex.isProviderLifecycleEnabled(), true);
-  assert.equal(codexArgs[0], '-c');
-  assert.match(codexArgs[1], /^notify=\[/u);
-
-  const missingHookCodex = createAgentFileActivitySession({
-    provider: 'codex',
-    command: 'codex',
-    extensionRootPath: extensionRootWithoutLifecycleHook,
-    storageRootPath,
-    fileActivityEnabled: false
-  });
-  assert.deepEqual(
-    missingHookCodex.configureLaunch(['--search'], { CODEX_HOME: path.join(tempDir, 'empty') }, tempDir),
-    ['--search']
+  assert.doesNotMatch(panelSource, /createAgentProviderLifecycleSession/u);
+  assert.doesNotMatch(supervisorSource, /createAgentProviderLifecycleSession/u);
+  assert.match(
+    panelSource,
+    /recordAgentOutputHeuristics\(\s*state,\s*chunk,\s*session\.buffer,\s*providerForAbnormalTextNotifications,\s*undefined,\s*session\.agentProvider\s*\)/u,
+    'Local title activity must retain the Agent provider even when abnormal-output text notifications are disabled.'
   );
-  assert.equal(missingHookCodex.isProviderLifecycleEnabled(), false);
-  assert.equal(missingHookCodex.getProviderLifecycleFallbackReason(), 'agent-lifecycle-hook-missing');
-
-  await writeFile(path.join(codexHome, 'config.toml'), 'notify = ["custom-notifier"]\n', 'utf8');
-  const conflictingCodex = createAgentFileActivitySession({
-    provider: 'codex',
-    command: 'codex',
-    extensionRootPath: extensionRoot,
-    storageRootPath,
-    fileActivityEnabled: false
-  });
-  assert.deepEqual(conflictingCodex.configureLaunch(['--search'], { CODEX_HOME: codexHome }, tempDir), ['--search']);
-  assert.equal(conflictingCodex.isProviderLifecycleEnabled(), false);
-  assert.equal(conflictingCodex.getProviderLifecycleFallbackReason(), 'codex-user-notify-conflict');
-  const cliConflict = createAgentFileActivitySession({
-    provider: 'codex',
-    command: 'codex',
-    extensionRootPath: extensionRoot,
-    storageRootPath,
-    fileActivityEnabled: false
-  });
-  assert.deepEqual(
-    cliConflict.configureLaunch(['-c', 'notify=["cli-notifier"]'], { CODEX_HOME: path.join(tempDir, 'empty') }, tempDir),
-    ['-c', 'notify=["cli-notifier"]']
-  );
-  assert.equal(cliConflict.getProviderLifecycleFallbackReason(), 'codex-cli-notify-conflict');
 }
 
 function claudeEvent(kind, providerSessionId, providerTurnId) {
   return { provider: 'claude', kind, providerSessionId, providerTurnId };
-}
-
-function runHook(hookPath, args, env, payload) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [hookPath, ...args], { env, stdio: ['pipe', 'ignore', 'ignore'] });
-    child.once('error', reject);
-    child.once('exit', (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`Lifecycle hook exited with ${code}.`));
-      }
-    });
-    child.stdin.end(`${JSON.stringify(payload)}\n`);
-  });
 }

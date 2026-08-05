@@ -4,16 +4,15 @@ import * as net from 'net';
 import * as path from 'path';
 
 import {
-  applyAgentProviderLifecycleEvent,
   confirmAgentInterrupt,
   consumeAgentInstructionSubmission,
   createAgentProviderLifecycleState,
   isAgentHeuristicWaitingInputRecoverable,
+  recordAgentAttentionWaitingInput,
   recordAgentHeuristicRunning,
   recordAgentHeuristicWaitingInput,
   recordAgentInterruptRequest,
   recordAgentSubmission,
-  type AgentProviderLifecycleEvent,
   type AgentProviderLifecycleState
 } from '../common/agentProviderLifecycle';
 import {
@@ -29,6 +28,7 @@ import {
 } from '../common/agentActivityHeuristics';
 import {
   type AgentNodeStatus,
+  type AgentActivitySource,
   type AgentInputIntent,
   type AgentProviderKind,
   type AgentResumeStrategy,
@@ -105,10 +105,6 @@ import {
   locateCodexSessionId
 } from '../common/codexSessionIdLocator';
 import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPresets';
-import {
-  createAgentProviderLifecycleSession,
-  type AgentProviderLifecycleSession
-} from '../panel/agentProviderLifecycleServer';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
 const TERMINAL_LIVE_DELAY_MS = 160;
@@ -177,7 +173,6 @@ interface SupervisorSession {
   stopRequested: boolean;
   agentActivity?: AgentActivityHeuristicState;
   agentProviderLifecycle?: AgentProviderLifecycleState;
-  agentProviderLifecycleSession?: AgentProviderLifecycleSession;
   process?: ExecutionSessionProcess;
   outputSubscription?: DisposableLike;
   exitSubscription?: DisposableLike;
@@ -317,8 +312,7 @@ class RuntimeSupervisorServer {
                 terminalProjectionSnapshotV1: true,
                 terminalProjectionCheckpointV1: true,
                 terminalAppliedRevisionAckV1: true,
-                agentSubmissionIntentV1: true,
-                agentProviderLifecycleV1: true
+                agentSubmissionIntentV1: true
               }
             }
           });
@@ -451,39 +445,10 @@ class RuntimeSupervisorServer {
       initialScrollback: scrollback,
       checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
     });
-    let resolveLifecycleOwnerReady: () => void = () => {};
-    const lifecycleOwnerReady = new Promise<void>((resolve) => {
-      resolveLifecycleOwnerReady = resolve;
-    });
-    let providerLifecycleSession: AgentProviderLifecycleSession | undefined;
-    if (
-      params.kind === 'agent' &&
-      params.providerLifecycleEnabled === true &&
-      (params.provider === 'codex' || params.provider === 'claude')
-    ) {
-      try {
-        providerLifecycleSession = await createAgentProviderLifecycleSession({
-          provider: params.provider,
-          runtimeSessionId: sessionId,
-          onEvent: async (event) => {
-            await lifecycleOwnerReady;
-            this.handleAgentProviderLifecycleEvent(sessionId, event);
-          },
-          onRejected: (reason) => {
-            console.warn(`Rejected Agent lifecycle callback for ${sessionId}: ${reason}`);
-          }
-        });
-        Object.assign(launchSpec.env, providerLifecycleSession.extraEnv);
-      } catch (error) {
-        console.warn(`Agent lifecycle callback server unavailable for ${sessionId}:`, error);
-      }
-    }
     let process: ExecutionSessionProcess;
     try {
       process = createExecutionSessionProcess(launchSpec);
     } catch (error) {
-      resolveLifecycleOwnerReady();
-      await providerLifecycleSession?.dispose();
       await terminalJournal.delete();
       throw createExecutionSpawnProtocolError(error, launchSpec.file, launchSpec.cwd);
     }
@@ -547,13 +512,11 @@ class RuntimeSupervisorServer {
       agentActivity: params.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
       agentProviderLifecycle:
         params.kind === 'agent' && params.provider
-          ? createAgentProviderLifecycleState(params.provider, Boolean(providerLifecycleSession))
+          ? createAgentProviderLifecycleState(params.provider, false)
           : undefined,
-      agentProviderLifecycleSession: providerLifecycleSession,
       process
     };
     this.sessions.set(sessionId, session);
-    resolveLifecycleOwnerReady();
     if (params.deferSubscription !== true) {
       this.subscribeSocket(socket, sessionId, 'legacy');
     }
@@ -1014,7 +977,13 @@ class RuntimeSupervisorServer {
         }
         if (session.kind === 'agent') {
           if (shouldRecordSupervisorAgentOutputHeuristics(session)) {
-            recordAgentOutputHeuristics(this.ensureAgentActivityState(session), chunk, session.output, session.provider);
+            const snapshot = recordAgentOutputHeuristics(
+              this.ensureAgentActivityState(session),
+              chunk,
+              session.output,
+              session.provider
+            );
+            this.applySupervisorAgentOutputActivityEvidence(session, snapshot);
             this.queueAgentWaitingInput(session.sessionId);
           }
         } else if (session.lifecycle === 'launching') {
@@ -1089,8 +1058,6 @@ class RuntimeSupervisorServer {
       session.exitSubscription?.dispose();
       session.outputSubscription = undefined;
       session.exitSubscription = undefined;
-      void session.agentProviderLifecycleSession?.dispose();
-      session.agentProviderLifecycleSession = undefined;
       session.process = undefined;
       session.live = false;
 
@@ -1436,44 +1403,44 @@ class RuntimeSupervisorServer {
     return session.agentActivity;
   }
 
-  private handleAgentProviderLifecycleEvent(
-    sessionId: string,
-    event: AgentProviderLifecycleEvent
+  private applySupervisorAgentOutputActivityEvidence(
+    session: SupervisorSession,
+    snapshot: ReturnType<typeof recordAgentOutputHeuristics>
   ): void {
-    const session = this.sessions.get(sessionId);
-    if (
-      !session ||
-      session.kind !== 'agent' ||
-      !session.live ||
-      !session.agentProviderLifecycle
-    ) {
+    if (!session.agentProviderLifecycle) {
       return;
     }
 
-    const result = applyAgentProviderLifecycleEvent(session.agentProviderLifecycle, event);
-    if (!result.accepted) {
-      console.warn(
-        `Ignored Agent lifecycle event for ${sessionId}: ${result.reason} (${event.provider}/${event.kind})`
-      );
-      return;
+    let transition: 'running' | 'waiting-input' | undefined;
+    if (snapshot.sawAttentionSignal) {
+      const result = recordAgentAttentionWaitingInput(session.agentProviderLifecycle);
+      if (result.accepted && result.changed && result.lifecycle) {
+        transition = result.lifecycle;
+      }
     }
-    if (!result.changed || !result.lifecycle) {
+    if (snapshot.sawTerminalTitleActivity) {
+      const result = recordAgentHeuristicRunning(session.agentProviderLifecycle, 'terminal-title');
+      if (result.accepted && result.changed && result.lifecycle) {
+        transition = result.lifecycle;
+      }
+    }
+    if (!transition) {
       return;
     }
 
-    session.terminalStateTracker.disableBottomScreenActivityTracking();
-    resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
-    if (result.lifecycle === 'waiting-input' && session.lifecycleTimer) {
-      clearTimeout(session.lifecycleTimer);
-      session.lifecycleTimer = undefined;
-    }
-    session.lifecycle = result.lifecycle;
-    if (result.lifecycle === 'running') {
+    if (transition === 'running') {
+      session.terminalStateTracker.disableBottomScreenActivityTracking();
+      resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
       session.resumePhaseActive = false;
-      this.queueAgentWaitingInput(sessionId);
     } else {
-      void this.maybeDiscoverAgentResumeSessionIdFromFiles(sessionId, 'waiting-input');
+      resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
+      session.terminalStateTracker.enableBottomScreenActivityTracking();
+      recordAgentBottomScreenActivity(
+        this.ensureAgentActivityState(session),
+        session.terminalStateTracker.getBottomScreenActivityToken()
+      );
     }
+    session.lifecycle = transition;
     this.emitSessionState(session);
   }
 
@@ -1988,9 +1955,6 @@ class RuntimeSupervisorServer {
     session.exitSubscription?.dispose();
     session.outputSubscription = undefined;
     session.exitSubscription = undefined;
-    void session.agentProviderLifecycleSession?.dispose();
-    session.agentProviderLifecycleSession = undefined;
-
     if (options.terminateProcess) {
       session.process?.kill();
     }
@@ -2184,7 +2148,7 @@ class RuntimeSupervisorServer {
       snapshot.kind === 'agent' && snapshot.provider
         ? {
             ...createAgentProviderLifecycleState(snapshot.provider, false),
-            activitySource: snapshot.agentActivitySource ?? 'heuristic',
+            activitySource: normalizeAgentActivitySource(snapshot.agentActivitySource) ?? 'heuristic',
             activityAuthority: snapshot.agentActivityAuthority ?? 'best-effort',
             providerSessionId: snapshot.providerSessionId,
             activeProviderTurnId: snapshot.providerTurnId,
@@ -2404,6 +2368,16 @@ function normalizeRecoveredAgentLifecycle(status: AgentNodeStatus): AgentNodeSta
 
 function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
   return status === 'starting' || status === 'resuming';
+}
+
+function normalizeAgentActivitySource(value: unknown): AgentActivitySource | undefined {
+  return value === 'provider-lifecycle' ||
+    value === 'submission-intent' ||
+    value === 'terminal-title' ||
+    value === 'attention' ||
+    value === 'heuristic'
+    ? value
+    : undefined;
 }
 
 function isAgentLifecycleAwaitingInteractiveState(

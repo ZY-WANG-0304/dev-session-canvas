@@ -3,16 +3,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
-  applyAgentProviderLifecycleEvent,
   confirmAgentInterrupt,
   consumeAgentInstructionSubmission,
   createAgentProviderLifecycleState,
   isAgentHeuristicWaitingInputRecoverable,
+  recordAgentAttentionWaitingInput,
   recordAgentHeuristicRunning,
   recordAgentHeuristicWaitingInput,
   recordAgentInterruptRequest,
   recordAgentSubmission,
-  type AgentProviderLifecycleEvent,
   type AgentProviderLifecycleState
 } from '../common/agentProviderLifecycle';
 import {
@@ -73,6 +72,7 @@ import {
 import {
   type AgentNodeStatus,
   type AgentNodeMetadata,
+  type AgentActivitySource,
   type AgentInputIntent,
   type AgentLaunchDefaultsByProvider,
   type AgentLaunchPresetKind,
@@ -357,10 +357,6 @@ import {
   type AgentFileActivityEvent,
   type AgentFileActivitySession
 } from './agentFileActivity';
-import {
-  createAgentProviderLifecycleSession,
-  type AgentProviderLifecycleSession
-} from './agentProviderLifecycleServer';
 import type {
   ConfiguredTerminalShell,
   InspectedConfiguredTerminalShell,
@@ -539,7 +535,6 @@ interface ManagedExecutionSessionBase {
   agentResume?: AgentResumeContext;
   agentActivity?: AgentActivityHeuristicState;
   agentProviderLifecycle?: AgentProviderLifecycleState;
-  agentProviderLifecycleSession?: AgentProviderLifecycleSession;
   attentionSignalState?: ExecutionAttentionNotificationState;
   preSuspendLifecycleStatus?: AgentNodeStatus;
   lastSuspendReason?: 'claude-ctrl-z';
@@ -10864,8 +10859,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     session.terminalStateTracker.dispose();
     session.lineContextTracker.dispose();
-    void session.agentProviderLifecycleSession?.dispose();
-    session.agentProviderLifecycleSession = undefined;
   }
 
   private handleRuntimeSupervisorOutput(
@@ -13525,68 +13518,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return session.agentActivity;
   }
 
-  private handleLocalAgentProviderLifecycleEvent(
-    nodeId: string,
-    sessionId: string,
-    event: AgentProviderLifecycleEvent
-  ): void {
-    const session = this.getExecutionSessions('agent').get(nodeId);
-    if (
-      !session ||
-      session.owner !== 'local' ||
-      session.sessionId !== sessionId ||
-      !session.agentProviderLifecycle
-    ) {
-      return;
-    }
-
-    const result = applyAgentProviderLifecycleEvent(session.agentProviderLifecycle, event);
-    this.recordDiagnosticEvent(
-      result.accepted
-        ? 'agent/providerLifecycleEventAccepted'
-        : 'agent/providerLifecycleEventRejected',
-      {
-        nodeId,
-        sessionId,
-        provider: event.provider,
-        event: event.kind,
-        providerSessionId: event.providerSessionId,
-        providerTurnId: event.providerTurnId,
-        reason: result.reason
-      }
-    );
-    if (!result.accepted || !result.changed || !result.lifecycle) {
-      return;
-    }
-
-    session.terminalStateTracker.disableBottomScreenActivityTracking();
-    resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
-    if (result.lifecycle === 'waiting-input' && session.lifecycleTimer) {
-      clearTimeout(session.lifecycleTimer);
-      session.lifecycleTimer = undefined;
-    }
-    session.lifecycleStatus = result.lifecycle;
-    if (result.lifecycle === 'running') {
-      session.resumePhaseActive = false;
-      this.scheduleAgentInteractiveStateEvaluation(nodeId);
-    } else {
-      void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, session, 'waiting-input');
-    }
-    this.flushLiveExecutionState('agent', nodeId, {
-      persistMode: 'immediate',
-      persistReason: 'agent-provider-lifecycle',
-      postState: true
-    });
-    if (session.agentProviderLifecycle.lastTurnOutcome === 'failed') {
-      void this.markAndNotifyAgentTurnFailure(
-        nodeId,
-        session,
-        session.agentProviderLifecycle.lastProviderTurnId,
-        session.agentProviderLifecycle.lastTurnError
-      );
-    }
-  }
-
   private createExecutionAttentionNotificationState(): ExecutionAttentionNotificationState {
     return {
       ...createExecutionAttentionSignalState()
@@ -14338,12 +14269,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session: ManagedExecutionSession,
     chunk: string
   ): void {
-    const providerForTextNotifications =
+    const providerForAbnormalTextNotifications =
       this.agentAbnormalOutputTextNotificationMode === 'codex' && session.agentProvider === 'codex'
         ? session.agentProvider
         : undefined;
     const state = this.ensureAgentActivityState(session);
-    const snapshot = recordAgentOutputHeuristics(state, chunk, session.buffer, providerForTextNotifications);
+    const snapshot = recordAgentOutputHeuristics(
+      state,
+      chunk,
+      session.buffer,
+      providerForAbnormalTextNotifications,
+      undefined,
+      session.agentProvider
+    );
+    this.applyLocalAgentOutputActivityEvidence(nodeId, session, snapshot);
     if (snapshot.sawAbnormalStreamInterruption && snapshot.abnormalStreamInterruptionMessage) {
       void this.markAndNotifyAgentAbnormalStreamInterruption(
         nodeId,
@@ -14352,6 +14291,62 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
     }
     this.syncAgentExecutionStateForInjectedOutput(nodeId, session);
+  }
+
+  private applyLocalAgentOutputActivityEvidence(
+    nodeId: string,
+    session: ManagedExecutionSession,
+    snapshot: ReturnType<typeof recordAgentOutputHeuristics>
+  ): void {
+    if (session.owner !== 'local' || !session.agentProviderLifecycle) {
+      return;
+    }
+
+    let transition: 'running' | 'waiting-input' | undefined;
+    let reason: 'attention' | 'terminal-title' | undefined;
+    if (snapshot.sawAttentionSignal) {
+      const result = recordAgentAttentionWaitingInput(session.agentProviderLifecycle);
+      if (result.accepted && result.changed && result.lifecycle) {
+        transition = result.lifecycle;
+        reason = 'attention';
+      }
+    }
+    if (snapshot.sawTerminalTitleActivity) {
+      const result = recordAgentHeuristicRunning(session.agentProviderLifecycle, 'terminal-title');
+      if (result.accepted && result.changed && result.lifecycle) {
+        transition = result.lifecycle;
+        reason = 'terminal-title';
+      }
+    }
+    if (!transition) {
+      return;
+    }
+
+    if (transition === 'running') {
+      session.terminalStateTracker.disableBottomScreenActivityTracking();
+      resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
+      session.resumePhaseActive = false;
+      this.recordDiagnosticEvent('agent/runningHeuristicRecovered', {
+        nodeId,
+        reason
+      });
+    } else {
+      resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
+      session.terminalStateTracker.enableBottomScreenActivityTracking();
+      recordAgentBottomScreenActivity(
+        this.ensureAgentActivityState(session),
+        session.terminalStateTracker.getBottomScreenActivityToken()
+      );
+      this.recordDiagnosticEvent('agent/waitingInputHeuristicMatched', {
+        nodeId,
+        reason
+      });
+    }
+    session.lifecycleStatus = transition;
+    this.flushLiveExecutionState('agent', nodeId, {
+      persistMode: 'immediate',
+      persistReason: transition === 'running' ? 'agent-running-title-recovered' : 'agent-waiting-input-attention'
+    });
   }
 
   private syncAgentExecutionStateForInjectedOutput(
@@ -14640,8 +14635,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resumeStrategy: resumeContext.strategy,
         resumeSessionId: resumeContext.sessionId,
         resumeStoragePath: resumeContext.storagePath,
-        providerLifecycleEnabled:
-          client.supportsAgentProviderLifecycle() && fileActivitySession.isProviderLifecycleEnabled(),
         deferSubscription: true,
         launchSpec: serializeExecutionSessionLaunchSpec(launchSpec)
       });
@@ -15119,11 +15112,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const executionEnv = await this.resolveExecutionEnvironment('agent', cwd);
     await this.disposeAgentFileActivitySession(nodeId);
     let pendingFileActivitySession: AgentFileActivitySession | undefined;
-    let pendingProviderLifecycleSession: AgentProviderLifecycleSession | undefined;
-    let resolveLifecycleOwnerReady: () => void = () => {};
-    const lifecycleOwnerReady = new Promise<void>((resolve) => {
-      resolveLifecycleOwnerReady = resolve;
-    });
 
     try {
       cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand, cwd);
@@ -15140,42 +15128,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resumeContext,
         fileActivitySession
       );
-      if (fileActivitySession.isProviderLifecycleEnabled()) {
-        try {
-          pendingProviderLifecycleSession = await createAgentProviderLifecycleSession({
-            provider,
-            runtimeSessionId: sessionId,
-            onEvent: async (event) => {
-              await lifecycleOwnerReady;
-              this.handleLocalAgentProviderLifecycleEvent(nodeId, sessionId, event);
-            },
-            onRejected: (reason) => {
-              this.recordDiagnosticEvent('agent/providerLifecycleCallbackRejected', {
-                nodeId,
-                sessionId,
-                provider,
-                reason
-              });
-            }
-          });
-          Object.assign(launchSpec.env, pendingProviderLifecycleSession.extraEnv);
-        } catch (error) {
-          this.recordDiagnosticEvent('agent/providerLifecycleUnavailable', {
-            nodeId,
-            sessionId,
-            provider,
-            reason: 'callback-server-unavailable',
-            message: formatUnknownError(error)
-          });
-        }
-      } else {
-        this.recordDiagnosticEvent('agent/providerLifecycleUnavailable', {
-          nodeId,
-          sessionId,
-          provider,
-          reason: fileActivitySession.getProviderLifecycleFallbackReason() ?? 'launch-integration-unavailable'
-        });
-      }
       const process = createExecutionSessionProcessWithSource(launchSpec);
 
       const session: LocalExecutionSession = {
@@ -15214,17 +15166,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         agentProvider: provider,
         agentResume: resumeContext,
         agentActivity: createAgentActivityHeuristicState(),
-        agentProviderLifecycle: createAgentProviderLifecycleState(
-          provider,
-          Boolean(pendingProviderLifecycleSession)
-        ),
-        agentProviderLifecycleSession: pendingProviderLifecycleSession,
+        agentProviderLifecycle: createAgentProviderLifecycleState(provider, false),
         attentionSignalState: this.createExecutionAttentionNotificationState(),
         outputSubscription: undefined,
         exitSubscription: undefined
       };
       activeSessions.set(nodeId, session);
-      resolveLifecycleOwnerReady();
       this.bindAgentFileActivitySession(nodeId, fileActivitySession);
 
       const handleSessionChunk = (text: string): void => {
@@ -15492,8 +15439,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, session, 'startup');
     } catch (error) {
-      resolveLifecycleOwnerReady();
-      await pendingProviderLifecycleSession?.dispose();
       await pendingFileActivitySession?.dispose();
       await this.disposeAgentFileActivitySession(nodeId);
       const message =
@@ -26078,6 +26023,8 @@ function normalizeMetadata(
         activitySource:
           agent.activitySource === 'provider-lifecycle' ||
           agent.activitySource === 'submission-intent' ||
+          agent.activitySource === 'terminal-title' ||
+          agent.activitySource === 'attention' ||
           agent.activitySource === 'heuristic'
             ? agent.activitySource
             : undefined,
@@ -28284,6 +28231,15 @@ function normalizeOptionalAgentLifecycle(value: unknown): AgentNodeStatus | unde
   return undefined;
 }
 
+function normalizeAgentActivitySource(value: unknown): AgentActivitySource | undefined {
+  return value === 'provider-lifecycle' ||
+    value === 'submission-intent' ||
+    value === 'terminal-title' ||
+    value === 'attention' ||
+    value === 'heuristic'
+    ? value
+    : undefined;
+}
 
 function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
   return status === 'starting' || status === 'resuming';
@@ -28318,11 +28274,9 @@ function createAgentProviderLifecycleStateFromSnapshot(
     return undefined;
   }
 
-  const state = createAgentProviderLifecycleState(
-    snapshot.provider,
-    snapshot.providerLifecycleEnabled === true
-  );
-  state.activitySource = snapshot.agentActivitySource ?? 'heuristic';
+  // Restored snapshots retain historical metadata, but never recreate a provider callback.
+  const state = createAgentProviderLifecycleState(snapshot.provider, false);
+  state.activitySource = normalizeAgentActivitySource(snapshot.agentActivitySource) ?? 'heuristic';
   state.activityAuthority = snapshot.agentActivityAuthority ?? 'best-effort';
   state.providerSessionId = snapshot.providerSessionId;
   state.turnActive = snapshot.lifecycle === 'running';

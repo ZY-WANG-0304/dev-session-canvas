@@ -1,5 +1,12 @@
 import type { AgentProviderKind } from './protocol';
 import { parseExecutionAttentionSignals } from './executionAttentionSignals';
+import {
+  createAgentTerminalTitleActivityState,
+  recordAgentTerminalTitleActivity,
+  resetAgentTerminalTitleActivityState,
+  parseAgentTerminalTitles,
+  type AgentTerminalTitleActivityState
+} from './agentTerminalTitleActivity';
 
 export interface AgentActivityHeuristicState {
   lastActivityAtMs?: number;
@@ -13,6 +20,7 @@ export interface AgentActivityHeuristicState {
   lastAbnormalStreamScanLength?: number;
   abnormalStreamCarryover?: string;
   oscCarryover: string;
+  terminalTitleActivity: AgentTerminalTitleActivityState;
 }
 
 export type AgentWaitingInputTransitionReason = 'fallback';
@@ -20,6 +28,8 @@ export type AgentWaitingInputTransitionReason = 'fallback';
 export interface AgentOutputHeuristicSnapshot {
   sawBell: boolean;
   sawNotification: boolean;
+  sawAttentionSignal: boolean;
+  sawTerminalTitleActivity: boolean;
   sawAbnormalStreamInterruption: boolean;
   abnormalStreamInterruptionMessage?: string;
 }
@@ -67,7 +77,8 @@ interface AgentAbnormalStreamTailLine {
 export function createAgentActivityHeuristicState(): AgentActivityHeuristicState {
   return {
     bottomScreenChangeStreak: 0,
-    oscCarryover: ''
+    oscCarryover: '',
+    terminalTitleActivity: createAgentTerminalTitleActivityState()
   };
 }
 
@@ -81,6 +92,7 @@ export function resetAgentActivityHeuristics(
   resetAgentBottomScreenActivityHeuristics(state);
   resetAgentAbnormalStreamInterruptionHeuristics(state, currentBuffer);
   state.oscCarryover = '';
+  resetAgentTerminalTitleActivityState(state.terminalTitleActivity);
   return state;
 }
 
@@ -173,13 +185,22 @@ export function recordAgentOutputHeuristics(
   chunk: string,
   buffer: string,
   provider?: AgentProviderKind,
-  now: number = Date.now()
+  now: number = Date.now(),
+  titleProvider: AgentProviderKind | undefined = provider
 ): AgentOutputHeuristicSnapshot {
   state.lastActivityAtMs = now;
   const strippedBuffer = stripTerminalControlSequences(buffer).replace(/\r/g, '');
 
   const attentionSignals = parseExecutionAttentionSignals(chunk, state.oscCarryover);
   state.oscCarryover = attentionSignals.carryover;
+  const titleSignals = parseAgentTerminalTitles(chunk, state.terminalTitleActivity.carryover);
+  state.terminalTitleActivity.carryover = titleSignals.carryover;
+  const sawTerminalTitleActivity = recordAgentTerminalTitleActivity(
+    state.terminalTitleActivity,
+    titleProvider,
+    titleSignals.titles,
+    now
+  );
   const strippedChunk = stripTerminalControlSequences(chunk);
   const normalizedChunk = strippedChunk.replace(/\r/g, '');
 
@@ -221,6 +242,8 @@ export function recordAgentOutputHeuristics(
   return {
     sawBell: attentionSignals.bellCount > 0,
     sawNotification: attentionSignals.notificationCount > 0,
+    sawAttentionSignal: attentionSignals.signals.some((signal) => signal.presentation === 'notify'),
+    sawTerminalTitleActivity,
     sawAbnormalStreamInterruption,
     abnormalStreamInterruptionMessage
   };

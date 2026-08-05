@@ -133,25 +133,42 @@ export function recordAgentHeuristicWaitingInput(
   return accepted(changed, 'waiting-input');
 }
 
+export function recordAgentAttentionWaitingInput(
+  state: AgentProviderLifecycleState
+): AgentProviderLifecycleApplyResult {
+  if (!state.turnActive || state.interruptRequested) {
+    return rejected('no-active-turn');
+  }
+
+  const changed = state.activitySource !== 'attention' || state.activityAuthority !== 'best-effort';
+  state.activitySource = 'attention';
+  state.activityAuthority = 'best-effort';
+  return accepted(changed, 'waiting-input');
+}
+
 export function isAgentHeuristicWaitingInputRecoverable(
   state: AgentProviderLifecycleState | undefined
 ): boolean {
   return (
     state?.turnActive === true &&
     state.interruptRequested === false &&
-    state.activitySource === 'heuristic' &&
+    (state.activitySource === 'heuristic' || state.activitySource === 'attention') &&
     state.activityAuthority === 'best-effort'
   );
 }
 
 export function recordAgentHeuristicRunning(
-  state: AgentProviderLifecycleState
+  state: AgentProviderLifecycleState,
+  source: Extract<AgentActivitySource, 'heuristic' | 'terminal-title'> = 'heuristic'
 ): AgentProviderLifecycleApplyResult {
   if (!isAgentHeuristicWaitingInputRecoverable(state)) {
     return rejected('no-active-turn');
   }
 
-  return accepted(true, 'running');
+  const changed = state.activitySource !== source || state.activityAuthority !== 'best-effort';
+  state.activitySource = source;
+  state.activityAuthority = 'best-effort';
+  return accepted(changed, 'running');
 }
 
 export function recordAgentInterruptRequest(
