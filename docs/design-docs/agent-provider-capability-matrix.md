@@ -21,9 +21,10 @@ related_specs:
   - docs/product-specs/agent-terminal-clipboard-shortcuts.md
 related_plans:
   - docs/exec-plans/active/agent-screenshot-paste-input.md
+  - docs/exec-plans/active/agent-terminal-title-activity-signals.md
   - docs/exec-plans/completed/agent-provider-lifecycle-events.md
   - docs/exec-plans/completed/agent-provider-signals-as-enhancements.md
-updated_at: 2026-07-22
+updated_at: 2026-08-05
 ---
 
 # Agent Provider 能力对照表
@@ -132,7 +133,7 @@ updated_at: 2026-07-22
 | CLI cwd | 支持：使用节点 cwd / workspace cwd，不切到扩展私有目录 | 支持：使用节点 cwd / workspace cwd，不切到扩展私有目录 | 必须确认 provider 能在 repo cwd 直接运行，并继承用户现有认证 / 配置上下文 |
 | Shell env / PATH 继承 | 支持：复用 Agent execution env 与 resolver cache | 支持：复用 Agent execution env 与 resolver cache | 必须复用 `shellEnvironmentResolver` / `agentCliResolver` 路线，避免 resolver 找到但 spawn 失败 |
 | 图片输入 / Agent 截图粘贴 | 支持：Codex 官方支持 `--image/-i`、交互 composer 图片粘贴和图片文件上下文；当前画布以保存临时图片文件并回填 shell-safe 路径文本的跨 provider bridge 接入，自动化覆盖 Webview/Host 路径注入，不伪造 provider 原生附件 chip | 支持：Claude Code 官方支持拖放图片、图片剪贴板粘贴和图片路径输入；当前画布同样以临时图片路径 bridge 接入，不伪造 `[Image #N]` chip | 必须明确 provider 是否支持本地图片文件路径作为 prompt 上下文；若只支持 GUI 附件、私有 chip 或不可从 PTY 文本引用图片，则不能默认复用截图粘贴，必须新增 provider adapter 或禁用该能力 |
-| 运行态 `running` / `waiting-input` | 支持：可编辑输入候选后的明确提交进入 `running`；任意 PTY 输出刷新 quiet 时钟，quiet 5000ms 进入可纠正的 best-effort waiting，之后才扫描底部活动用于恢复；不解析 prompt glyph；direct-TUI `notify(agent-turn-complete)` 只作为带 identity 的完成增强 | 支持：与 Codex 共用提交、quiet fallback 和弱等待恢复；`UserPromptSubmit`、同 identity 的 `Stop/StopFailure` 只作为开始/完成/失败增强，hooks 禁用不关闭基础状态机 | 必须先提供不依赖可选 callback 的基础判定；正常 running 不扫描屏幕；provider lifecycle 只允许作为正向增强并携带 session/turn identity；弱 waiting 必须可纠正，authoritative completion 不得被终端 chrome 重开 |
+| 运行态 `running` / `waiting-input` | 支持：可编辑输入候选后的明确提交进入 `running`；任意 PTY 输出或已知 title frame 刷新 quiet 时钟，quiet 5000ms 进入 `heuristic / best-effort waiting`，active turn 收到 BEL/OSC attention 可进入 `attention / best-effort waiting`，之后 title/bottom activity 可恢复；title、attention 与 quiet 按观察时间经共享幂等 reducer 处理；不解析 prompt glyph，不安装或读取 `notify` 作为状态事实 | 支持：与 Codex 共用提交、quiet fallback、attention weak waiting 和 title/bottom 恢复；不注入或消费 `UserPromptSubmit` / `Stop` / `StopFailure` hooks；Claude terminal bell 仅作 `attention / best-effort`，不能确认完成 | 必须不修改 provider 配置；正常 running 不扫描屏幕；attention 只在 active turn 内产生弱 waiting，不能创建或确认完成；title/bottom 才能恢复 running；实现必须覆盖 `title -> quiet`、`quiet -> title`、`attention -> title` 与重复事件幂等；未来 structured transport 必须另行证明不改配置 |
 | Stop 行为 | 支持：先单次 `Ctrl-C` graceful stop，等待 Codex resume hint / token usage，超时后 force kill | 支持：不发送普通 `Ctrl-C` 收尾，沿用直接终止信号路径 | 必须定义 provider-specific stop，不要假设所有 CLI 都能用同一种 Ctrl-C 语义 |
 | `Ctrl-Z` / job control | 普通输入路径，不走 Claude 专属阻断 | 支持阻断：Webview / Host / runtime supervisor 拒绝 Claude Agent `Ctrl-Z`，提示停止、恢复或分叉 | 必须评估 direct-spawn CLI 是否支持 shell job table；不支持时不得承诺 `fg` 恢复 |
 | 显式 session resume 命令 | `codex resume <session-id>` | `claude --resume <session-id>` | 必须有 provider 原生显式 session id 恢复入口；否则不能进入正式自动恢复 / 历史恢复主路径 |
@@ -146,15 +147,15 @@ updated_at: 2026-07-22
 | 历史标题来源 | 支持：读取第一条真实 user instruction，跳过已知 synthetic 前缀，失败回退 provider + 短 session id | 支持：读取第一条真实 user instruction，跳过已知 synthetic 前缀，失败回退 provider + 短 session id | 必须定义标题提取和 synthetic 输入过滤，不能把注入上下文当用户标题 |
 | 侧栏节点列表展示 | 支持：显示 cwdLabel、provider、状态、attention | 支持：显示 cwdLabel、provider、状态、attention | 新 provider 必须提供 display label 和 provider 图标 / fallback 图标 |
 | Provider 图标 | 支持：`images/provider-codex-openai.svg`，缺失时 fallback SVG | 支持：`images/provider-claude-code-anthropic.svg`，缺失时 fallback SVG | 必须补图标资产或明确 fallback，保持 sidebar / history 一致 |
-| 终端 attention signal | 支持：BEL / OSC 9 / OSC 777 统一解析 | 支持：BEL / OSC 9 / OSC 777 统一解析 | 所有 PTY provider 默认继承；若 provider 有结构化通知，应优先接入但不能破坏通用 signal |
+| 终端 attention signal | 支持：统一解析 BEL / OSC 9 / OSC 777；已确认 Codex TUI 使用 OSC 9 或 BEL 投递完成/审批/elicitation 等提醒，宿主只把通用 transport 视为需注意，不推导 lifecycle | 支持：统一解析 BEL / OSC 9 / OSC 777；已确认终端 bell notification，OSC 777 仅作为通用兼容 transport，不外推为 Claude 必发 | 所有 PTY provider 默认继承；attention reducer 与 running/waiting reducer 分离；若 provider 有结构化通知，应优先接入但不能破坏通用 signal |
 | Agent 异常退出提醒 | 支持：已运行后非用户主动非 0 退出可触发 `agentAbnormalExit` | 支持：已运行后非用户主动非 0 退出可触发 `agentAbnormalExit` | 新 provider 默认可复用，但需确认启动失败、用户停止、正常退出不触发 |
 | 输出文本异常提醒 | 部分支持：默认关闭；用户设置 `agentAbnormalOutputTextNotifications=codex` 且启用 `codexAbnormalOutputText` 后识别高置信 Codex 最终失败文本 | 不支持文本正则：单轮失败改由结构化 `StopFailure` 记录错误并触发 attention | 不应复制 Codex 正则；应优先结构化错误事件，没有证据就不支持 |
-| Provider 结构化 lifecycle / notification 事件 | 部分支持：已接 direct-TUI `notify(agent-turn-complete)` 辅助增强；未接 app-server approval/input-request 事件 | 部分支持：已接 `UserPromptSubmit`、`Stop`、`StopFailure` 辅助增强；未接 `Notification` approval/idle 等其他事件 | callback 配置不得 gate 基础状态机；turn start/complete/failure 必须携带 session/turn identity，approval/input request 等新语义应单独设计 |
+| Provider 结构化 lifecycle / notification 事件 | 历史实验：曾验证 direct-TUI `notify(agent-turn-complete)` 带有 identity，但新会话不安装、不读取、不依赖；app-server 未接入 | 历史实验：曾验证 `UserPromptSubmit`、`Stop`、`StopFailure` identity，但新会话不注入、不消费 hooks；SDK/stream transport 未接入 | 任何结构化 transport 必须先证明不改写用户 provider 配置；hook/notify 不得进入当前状态主路径 |
 | 文件活动 | 不支持：adapter 当前 no-op，未确认 Codex 结构化文件事件接口 | 支持：通过临时 `claude --settings <file>` hooks 监听 `Read` / `Edit` / `Write`，写入 session 事件流 | 必须有 provider 原生结构化文件事件；不得从 PTY 文本推断文件活动 |
 | Runtime supervisor / live-runtime | 支持：本地 PTY 与 runtime supervisor 两条路径都传递 provider、resumeStrategy、session id | 支持：本地 PTY 与 runtime supervisor 两条路径都传递 provider、resumeStrategy、session id | 必须让 supervisor 创建、输出、停止、resume hint 解析与 snapshot 序列化都认识该 provider |
 | Restricted Mode | 支持受限：可浏览历史和画布，不能创建 / 恢复 / 分叉执行节点 | 支持受限：可浏览历史和画布，不能创建 / 恢复 / 分叉执行节点 | 新 provider 不得绕过 `workspace.isTrusted` 执行限制 |
 | Virtual Workspace | 不支持 | 不支持 | 除非整体产品边界改变，否则新 provider 也不应声明支持 Virtual Workspace |
-| 当前主要技术债 | session id 与历史依赖 `~/.codex/sessions` 私有文件和时间窗匹配；用户自定义 notify 时失去完成增强；notifier ACK 时序不是官方保证；5000ms quiet 是有限 Linux 样本的经验值，静态无动画长回合仍可能误判；Windows Codex 执行节点内历史不能向上翻页 | 会话历史依赖 `~/.claude/projects` 私有 transcript；文件活动/lifecycle 增强依赖 Claude hooks 临时 settings 注入；Stop 被其他 hook block 后可能短暂低估运行态；5000ms quiet 是有限 Linux 样本的经验值，静态无动画长回合仍可能误判 | 新 provider 的私有文件、hook、protocol、callback 缺失和 PTY heuristic 边界必须登记退出条件，并通过真实 PTY cadence 实验校准 quiet policy |
+| 当前主要技术债 | session id 与历史依赖 `~/.codex/sessions` 私有文件和时间窗匹配；title profile 随 CLI 版本变化；5000ms quiet 是有限 Linux 样本的经验值，静态无动画长回合仍可能误判；Windows Codex 执行节点内历史不能向上翻页 | 会话历史依赖 `~/.claude/projects` 私有 transcript；title profile 在失焦或版本变化时可能漏报；文件活动 hook 与 lifecycle 状态判断必须保持独立；5000ms quiet 是有限 Linux 样本的经验值，静态无动画长回合仍可能误判 | 新 provider 的私有文件、title protocol、callback 缺失和 PTY heuristic 边界必须登记退出条件，并通过真实 PTY cadence 实验校准 quiet policy |
 
 ### 7.3 最小接入门槛
 
@@ -228,4 +229,7 @@ updated_at: 2026-07-22
 - 2026-07-21：根据后续 review 与用户决策，把 Codex notify / Claude hooks 从排他主路径改为辅助增强。明确提交与 PTY 正向证据始终构成基础状态机；callback 配置不再关闭 heuristic，普通 running 不使用 1600ms 无条件 hard fallback；Claude safe/simple env preflight 纳入验证。
 - 2026-07-21：删除 prompt glyph 与 generic OSC/BEL completion；Codex 0.144.5 / Claude 2.1.209 真实 PTY 实验测得最大 active gap 460.5ms，基础 fallback 取 5000ms。底部非空内容区域连续变化可在弱 waiting 后纠正回 `running`，provider authoritative completion 不可被终端 chrome 重开。
 - 2026-07-22：进一步把 bottom-screen tracking 收窄到 5s quiet 后的可纠正弱等待态；正常 `running` 只用 PTY 输出刷新 quiet 时钟，不逐 batch 扫描屏幕，普通 Terminal 同样不承担该开销。
+- 2026-08-04：用户明确放弃会改写 Codex/Claude provider 配置的 notify/hooks 状态路径。能力矩阵将其降为历史实验资料；新会话运行态只依赖 submit、PTY、title activity 与 best-effort fallback。Claude 文件活动 hook 仍是独立能力，不得重新用于 lifecycle 状态判断。
+- 2026-08-04：补充 quiet fallback 与连续两帧已知 title spinner 的顺序无关语义：两者共享观察时间与 `lastActivityAtMs`，`title -> quiet` 在真实静默达到阈值时仍可弱等待，`quiet -> title` 可恢复同一回合 `running`，重复事件不产生额外状态写入。
+- 2026-08-05：补充 Attention Signals 的弱 waiting 语义：active turn 收到 BEL/OSC 9/OSC 777 可进入 `attention / best-effort waiting-input`，title/bottom activity 可恢复 running；allow-list 只控制 `attentionPending`/通知，不改变该 lifecycle evidence，异常输出与异常退出仍沿用既有 attention/error 规则。
 - 当前整体状态保持 `验证中`：`Codex` session id / history 仍依赖私有文件和启发式匹配，`Claude Code` history 仍依赖私有 transcript，provider 级真实 fork 仍建议在安装对应 CLI 的 Development Host 中人工确认。

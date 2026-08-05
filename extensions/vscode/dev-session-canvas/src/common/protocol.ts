@@ -201,7 +201,12 @@ export type AgentNodeStatus =
 export type AgentRuntimeKind = 'pty-cli';
 export type AgentResumeStrategy = 'none' | 'claude-session-id' | 'codex-session-id' | 'fake-provider';
 export type AgentInputIntent = 'submit' | 'text' | 'paste' | 'interrupt' | 'unknown';
-export type AgentActivitySource = 'provider-lifecycle' | 'submission-intent' | 'heuristic';
+export type AgentActivitySource =
+  | 'provider-lifecycle'
+  | 'submission-intent'
+  | 'terminal-title'
+  | 'attention'
+  | 'heuristic';
 export type AgentActivityAuthority = 'authoritative' | 'derived' | 'best-effort';
 export type AgentTurnOutcome = 'completed' | 'failed' | 'interrupted';
 export type ExecutionTerminalClipboardDiagnosticSource =
