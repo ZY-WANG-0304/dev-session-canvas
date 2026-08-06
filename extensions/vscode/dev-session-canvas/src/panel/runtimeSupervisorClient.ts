@@ -111,6 +111,14 @@ export class RuntimeSupervisorClient {
     return this.helloResult?.recovery;
   }
 
+  public supportsAgentSubmissionIntent(): boolean {
+    return this.helloResult?.capabilities?.agentSubmissionIntentV1 === true;
+  }
+
+  public supportsAgentProviderLifecycle(): boolean {
+    return this.helloResult?.capabilities?.agentProviderLifecycleV1 === true;
+  }
+
   public hasPendingRequests(): boolean {
     return this.pendingRequests.size > 0;
   }

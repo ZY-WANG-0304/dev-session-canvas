@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/execution-node-notification-research.md
   - docs/exec-plans/completed/execution-attention-indicator-and-acknowledgement.md
-updated_at: 2026-06-17
+updated_at: 2026-08-05
 ---
 
 # 执行节点通知与注意力信号设计
@@ -27,7 +27,7 @@ updated_at: 2026-06-17
 当前仓库已经同时出现了两类“提醒用户注意”的机制，但它们还没有被正式分层：
 
 - VSCode 工作台通知：`extensions/vscode/dev-session-canvas/src/extension.ts` 与 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 已经使用 `vscode.window.showInformationMessage` 和 `showWarningMessage` 处理重置确认、功能未启用提示与 reload 提示。
-- 终端 attention signal：`extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts` 已把 `OSC 9`、`OSC 777` 与 `BEL` 解析为启发式信号，并用于把 `Agent` 从 `running` 回退到 `waiting-input`。
+- 终端 attention signal：`extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts` 已把 `OSC 9`、`OSC 777` 与 `BEL` 解析为启发式信号；在已提交 active turn 内，它们可以把 `Agent` 标为 `attention / best-effort waiting-input`。
 
 这说明仓库已经接触到“通知 UI”与“通知协议”两条链路，但目前仍缺一个正式设计回答以下问题：
 
@@ -379,13 +379,13 @@ updated_at: 2026-06-17
 
 这是本轮方案的硬约束：
 
-- `recordAgentOutputHeuristics()` 的语义不变
-- `evaluateAgentWaitingInputTransition()` 的语义不变
-- `BEL / OSC 9 / OSC 777` 仍继续作为 `Agent` `waiting-input` 的启发式输入
+- `recordAgentOutputHeuristics()` 继续负责解析底层终端信号和刷新 PTY activity；active turn 内的 BEL/OSC 可作为 `attention / best-effort waiting-input` 输入
+- `evaluateAgentWaitingInputTransition()` 继续只产生可纠正的 best-effort 结果，不产生 provider authoritative completion
+- `BEL / OSC 9 / OSC 777` 仍继续作为 `Agent` `waiting-input` 的启发式输入；无 active turn、进程终态或 confirmed interrupt 时不得创建/重开回合
 - 新增通知桥接失败、被抑制或被关闭，都不能反向影响 lifecycle 状态推进
 - `enabledAttentionSignals` 当前控制候选 signal 到产品 attention 的入口，不直接关闭 `recordAgentOutputHeuristics()` 对底层终端信号的观察；如果未来要让该配置也影响 `waiting-input`，必须另行记录设计决策
 
-换句话说，通知桥接是旁路，不是状态机输入裁决层。
+换句话说，产品通知桥接是旁路；原始 attention signal observation 可以进入状态机的弱 waiting 输入，但 `attentionPending`、allow-list 和 bridge 的产品配置不裁决 lifecycle。
 
 #### 7.7.6 通知类型与文案
 
@@ -448,7 +448,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
 - 解析层仍把 `OSC 9` 记入 attention signal 统计，保持与现有启发式兼容
 - 但当 `OSC 9` payload 呈现为 `4;...` 进度形态时，通知桥接层不把它弹成 VSCode 通知，节点内 icon/闪烁也不点亮
 
-这样可以避免“进度更新被误弹成用户通知”，同时不破坏现有 heuristics 的输入口径
+这样可以避免“进度更新被误弹成用户通知”，同时不破坏现有 heuristics 的输入口径；`OSC 9;4` 不产生 attention 弱 waiting。
 
 #### 7.7.10 诊断事件
 
@@ -556,6 +556,7 @@ Ghostty 文档中 `OSC 9 ; 4` 属于进度状态，而不是普通桌面通知�
 - 2026-06-10 新增 `devSessionCanvas.notifications.enabledAttentionSignals`，把候选 signal 是否生成画布 attention 从外部 bridge 目标中拆出；已通过单元测试覆盖 normalization / allow-list 过滤，并通过 VS Code smoke 扩展 attention 场景覆盖禁用 BEL 不生成节点 attention、重新启用 BEL 后恢复节点 attention 与工作台桥接，同时覆盖禁用 `agentAbnormalExit` / `codexAbnormalOutputText` 后不生成节点 attention 或外部通知。
 - 2026-06-10 修正 Codex 异常输出通知抑制规则：方块标记且位于输出尾部的 `Internal server error` / stream-disconnected 样式作为可直接提醒的 Codex 最终错误文本；`Reconnecting... n/m` 与树形缩进的 stream-disconnected 属于 retry / reconnect 暂态输出，即使重复出现也不提醒。
 - 2026-06-17 修正 Codex TUI footer 兼容：方块最终错误行后紧跟 `›继续` 这类无空格输入提示，以及 `gpt-5.4 xhigh · ~/ZeroInput` 这类模型 / cwd footer 时，仍视为输出尾部最终失败；历史 buffer 仍只在 reload / attach 后标记为已扫描，不补发 stale 通知。
+- 2026-08-05：根据 Agent 运行态方案更新 Attention Signals 边界：active turn 内的 BEL/OSC 9/OSC 777 可作为 `attention / best-effort waiting-input`，而 `attentionPending`、allow-list 和通知 bridge 仍只控制产品提醒；`OSC 9;4` 进度信号不进入弱 waiting。
 - 当前文档继续保持 `验证中`，因为本轮尚未在真实 Ghostty / kitty / iTerm2 / tmux 场景里做手工协议验证；但仓库内已完成 VS Code 宿主级自动化验证，覆盖配置开关、冷却抑制、attention signal allow-list、节点内提醒、显式点击确认，以及工作台通知后居中节点但不确认提醒。
 
 ## 10. 外部依据

@@ -145,6 +145,32 @@ try {
   ]);
   assert.equal(carryState.carryover, '');
 
+  const lifecycleAttentionState = createAgentActivityHeuristicState();
+  const lifecycleAttentionSnapshot = recordAgentOutputHeuristics(
+    lifecycleAttentionState,
+    '\u0007\u001b]9;Need approval\u0007\u001b]777;notify;Review result\u001b\\',
+    '',
+    'codex',
+    100
+  );
+  assert.equal(
+    lifecycleAttentionSnapshot.sawAttentionSignal,
+    true,
+    'BEL, OSC 9, and OSC 777 should remain lifecycle evidence even when product notifications are filtered.'
+  );
+  const ignoredProgressSnapshot = recordAgentOutputHeuristics(
+    createAgentActivityHeuristicState(),
+    '\u001b]9;4;1;25\u0007',
+    '',
+    'codex',
+    100
+  );
+  assert.equal(
+    ignoredProgressSnapshot.sawAttentionSignal,
+    false,
+    'OSC 9 progress transport must remain excluded from both product attention and weak waiting evidence.'
+  );
+
   const codexStreamInterruption = extractAgentAbnormalStreamInterruptionMessage(
     'Read README.md\n■ stream disconnected before completion: stream closed before response.completed\n'
   );

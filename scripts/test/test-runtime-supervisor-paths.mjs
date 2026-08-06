@@ -45,10 +45,16 @@ try {
   const extensionStorageDir = '/tmp/dev-session-canvas/workspace-storage';
   const currentGenerationBase = resolveCurrentRuntimeSupervisorBaseStoragePath(extensionStorageDir);
   const currentGenerationStorageDir = posixPath.join(currentGenerationBase, 'runtime-supervisor');
-  assert.equal(CURRENT_RUNTIME_SUPERVISOR_GENERATION, 'terminal-stream-v1');
+  const legacyGenerationStorageDir = posixPath.join(
+    extensionStorageDir,
+    'runtime-supervisor-generations',
+    'terminal-stream-v1',
+    'runtime-supervisor'
+  );
+  assert.equal(CURRENT_RUNTIME_SUPERVISOR_GENERATION, 'agent-provider-lifecycle-v1');
   assert.equal(
     currentGenerationBase,
-    posixPath.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-stream-v1')
+    posixPath.join(extensionStorageDir, 'runtime-supervisor-generations', 'agent-provider-lifecycle-v1')
   );
   const currentGenerationPaths = resolveRuntimeSupervisorPathsFromStorageDir(currentGenerationStorageDir, {
     platform: 'linux',
@@ -58,6 +64,14 @@ try {
   });
   assert.notEqual(currentGenerationPaths.storageDir, shortPaths.storageDir);
   assert.notEqual(currentGenerationPaths.socketPath, shortPaths.socketPath);
+  const legacyGenerationPaths = resolveRuntimeSupervisorPathsFromStorageDir(legacyGenerationStorageDir, {
+    platform: 'linux',
+    env: {},
+    tmpDir: '/tmp',
+    userId: 1000
+  });
+  assert.notEqual(currentGenerationPaths.storageDir, legacyGenerationPaths.storageDir);
+  assert.notEqual(currentGenerationPaths.socketPath, legacyGenerationPaths.socketPath);
 
   const longStorageDir =
     '/home/users/example/.vscode-server/data/User/workspaceStorage/' +
@@ -152,13 +166,24 @@ try {
     resolveCurrentRuntimeSupervisorBaseStoragePath(posixPath.dirname(longStorageDir)),
     'runtime-supervisor'
   );
+  const legacySystemdStorageDir = posixPath.join(
+    posixPath.dirname(longStorageDir),
+    'runtime-supervisor-generations',
+    'terminal-stream-v1',
+    'runtime-supervisor'
+  );
   const currentSystemdPaths = resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(currentSystemdStorageDir, {
     platform: 'linux',
     env: {},
     homeDir: '/home/users/example'
   });
-  assert.notEqual(currentSystemdPaths.socketPath, systemdPaths.socketPath);
-  assert.notEqual(currentSystemdPaths.unitName, systemdPaths.unitName);
+  const legacySystemdPaths = resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(legacySystemdStorageDir, {
+    platform: 'linux',
+    env: {},
+    homeDir: '/home/users/example'
+  });
+  assert.notEqual(currentSystemdPaths.socketPath, legacySystemdPaths.socketPath);
+  assert.notEqual(currentSystemdPaths.unitName, legacySystemdPaths.unitName);
 
   const xdgSystemdPaths = resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(longStorageDir, {
     platform: 'linux',

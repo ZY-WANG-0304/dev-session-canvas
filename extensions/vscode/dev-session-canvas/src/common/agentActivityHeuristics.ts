@@ -1,34 +1,42 @@
 import type { AgentProviderKind } from './protocol';
 import { parseExecutionAttentionSignals } from './executionAttentionSignals';
+import {
+  createAgentTerminalTitleActivityState,
+  recordAgentTerminalTitleActivity,
+  resetAgentTerminalTitleActivityState,
+  parseAgentTerminalTitles,
+  type AgentTerminalTitleActivityState
+} from './agentTerminalTitleActivity';
 
 export interface AgentActivityHeuristicState {
-  lastOutputAtMs?: number;
-  lastLineBoundaryAtMs?: number;
-  lastPromptAtMs?: number;
-  lastNotificationAtMs?: number;
-  lastBellAtMs?: number;
-  lastSpinnerAtMs?: number;
+  lastActivityAtMs?: number;
+  lastInputAtMs?: number;
+  bottomScreenSignature?: string;
+  bottomScreenChangeStreak: number;
+  lastBottomScreenChangeAtMs?: number;
   lastAbnormalStreamAtMs?: number;
   lastAbnormalStreamMessage?: string;
   lastAbnormalStreamSignature?: string;
   lastAbnormalStreamScanLength?: number;
   abnormalStreamCarryover?: string;
   oscCarryover: string;
+  terminalTitleActivity: AgentTerminalTitleActivityState;
 }
 
-export type AgentWaitingInputTransitionReason =
-  | 'prompt'
-  | 'notification'
-  | 'fallback';
+export type AgentWaitingInputTransitionReason = 'fallback';
 
 export interface AgentOutputHeuristicSnapshot {
   sawBell: boolean;
   sawNotification: boolean;
-  sawPrompt: boolean;
-  sawSpinner: boolean;
-  sawLineBoundary: boolean;
+  sawAttentionSignal: boolean;
+  sawTerminalTitleActivity: boolean;
   sawAbnormalStreamInterruption: boolean;
   abnormalStreamInterruptionMessage?: string;
+}
+
+export interface AgentBottomScreenActivitySnapshot {
+  changed: boolean;
+  strongRunningEvidence: boolean;
 }
 
 export interface AgentWaitingInputEvaluation {
@@ -38,18 +46,13 @@ export interface AgentWaitingInputEvaluation {
 }
 
 export const AGENT_WAITING_INPUT_POLL_INTERVAL_MS = 120;
+export const AGENT_WAITING_INPUT_QUIET_FALLBACK_MS = 5000;
 
-const AGENT_WAITING_INPUT_PROMPT_QUIET_MS = 220;
-const AGENT_WAITING_INPUT_NOTIFICATION_QUIET_MS = 260;
-const AGENT_WAITING_INPUT_HARD_FALLBACK_MS = 1600;
-const AGENT_WAITING_INPUT_SPINNER_GRACE_MS = 900;
-const PROMPT_TAIL_LIMIT = 256;
+const AGENT_BOTTOM_ACTIVITY_INPUT_ECHO_SUPPRESSION_MS = 600;
+const AGENT_BOTTOM_ACTIVITY_SEQUENCE_GAP_MS = 1000;
+const AGENT_BOTTOM_ACTIVITY_REQUIRED_CHANGES = 2;
 const ABNORMAL_STREAM_TAIL_LIMIT = 1200;
 const ABNORMAL_STREAM_CARRYOVER_LIMIT = 320;
-
-const AGENT_SPINNER_REDRAW_PATTERN = /(?:\r(?!\n)|\u0008|\u001b\[[0-9;?]*[ABCDGHJKfhlmnrsu])/u;
-const AGENT_SPINNER_GLYPH_PATTERN = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]/u;
-const AGENT_PROMPT_PATTERN = /(?:^|\n)\s{0,4}(?:>|›|❯|≫|»)\s*$/u;
 
 interface AgentAbnormalStreamInterruptionMatch {
   message: string;
@@ -73,23 +76,93 @@ interface AgentAbnormalStreamTailLine {
 
 export function createAgentActivityHeuristicState(): AgentActivityHeuristicState {
   return {
-    oscCarryover: ''
+    bottomScreenChangeStreak: 0,
+    oscCarryover: '',
+    terminalTitleActivity: createAgentTerminalTitleActivityState()
   };
 }
 
 export function resetAgentActivityHeuristics(
   state: AgentActivityHeuristicState,
-  currentBuffer?: string
+  currentBuffer?: string,
+  activityStartedAtMs?: number
 ): AgentActivityHeuristicState {
-  state.lastOutputAtMs = undefined;
-  state.lastLineBoundaryAtMs = undefined;
-  state.lastPromptAtMs = undefined;
-  state.lastNotificationAtMs = undefined;
-  state.lastBellAtMs = undefined;
-  state.lastSpinnerAtMs = undefined;
+  state.lastActivityAtMs = activityStartedAtMs;
+  state.lastInputAtMs = activityStartedAtMs;
+  resetAgentBottomScreenActivityHeuristics(state);
   resetAgentAbnormalStreamInterruptionHeuristics(state, currentBuffer);
   state.oscCarryover = '';
+  resetAgentTerminalTitleActivityState(state.terminalTitleActivity);
   return state;
+}
+
+export function resetAgentBottomScreenActivityHeuristics(
+  state: AgentActivityHeuristicState
+): void {
+  state.bottomScreenSignature = undefined;
+  state.bottomScreenChangeStreak = 0;
+  state.lastBottomScreenChangeAtMs = undefined;
+}
+
+export function recordAgentInputHeuristics(
+  state: AgentActivityHeuristicState,
+  now: number = Date.now()
+): void {
+  state.lastInputAtMs = now;
+}
+
+export function recordAgentBottomScreenActivity(
+  state: AgentActivityHeuristicState,
+  signature: string,
+  now: number = Date.now()
+): AgentBottomScreenActivitySnapshot {
+  if (state.bottomScreenSignature === undefined) {
+    state.bottomScreenSignature = signature;
+    return {
+      changed: false,
+      strongRunningEvidence: false
+    };
+  }
+
+  if (state.bottomScreenSignature === signature) {
+    if (
+      typeof state.lastBottomScreenChangeAtMs === 'number' &&
+      now - state.lastBottomScreenChangeAtMs > AGENT_BOTTOM_ACTIVITY_SEQUENCE_GAP_MS
+    ) {
+      state.bottomScreenChangeStreak = 0;
+    }
+    return {
+      changed: false,
+      strongRunningEvidence: false
+    };
+  }
+
+  state.bottomScreenSignature = signature;
+  if (
+    typeof state.lastInputAtMs === 'number' &&
+    now - state.lastInputAtMs <= AGENT_BOTTOM_ACTIVITY_INPUT_ECHO_SUPPRESSION_MS
+  ) {
+    state.bottomScreenChangeStreak = 0;
+    state.lastBottomScreenChangeAtMs = undefined;
+    return {
+      changed: true,
+      strongRunningEvidence: false
+    };
+  }
+
+  state.bottomScreenChangeStreak =
+    typeof state.lastBottomScreenChangeAtMs === 'number' &&
+    now - state.lastBottomScreenChangeAtMs <= AGENT_BOTTOM_ACTIVITY_SEQUENCE_GAP_MS
+      ? state.bottomScreenChangeStreak + 1
+      : 1;
+  state.lastBottomScreenChangeAtMs = now;
+  const strongRunningEvidence =
+    state.bottomScreenChangeStreak >= AGENT_BOTTOM_ACTIVITY_REQUIRED_CHANGES;
+
+  return {
+    changed: true,
+    strongRunningEvidence
+  };
 }
 
 export function resetAgentAbnormalStreamInterruptionHeuristics(
@@ -112,43 +185,24 @@ export function recordAgentOutputHeuristics(
   chunk: string,
   buffer: string,
   provider?: AgentProviderKind,
-  now: number = Date.now()
+  now: number = Date.now(),
+  titleProvider: AgentProviderKind | undefined = provider
 ): AgentOutputHeuristicSnapshot {
-  state.lastOutputAtMs = now;
+  state.lastActivityAtMs = now;
   const strippedBuffer = stripTerminalControlSequences(buffer).replace(/\r/g, '');
 
   const attentionSignals = parseExecutionAttentionSignals(chunk, state.oscCarryover);
   state.oscCarryover = attentionSignals.carryover;
-  if (attentionSignals.notificationCount > 0) {
-    state.lastNotificationAtMs = now;
-  }
-  if (attentionSignals.bellCount > 0) {
-    state.lastBellAtMs = now;
-  }
-
+  const titleSignals = parseAgentTerminalTitles(chunk, state.terminalTitleActivity.carryover);
+  state.terminalTitleActivity.carryover = titleSignals.carryover;
+  const sawTerminalTitleActivity = recordAgentTerminalTitleActivity(
+    state.terminalTitleActivity,
+    titleProvider,
+    titleSignals.titles,
+    now
+  );
   const strippedChunk = stripTerminalControlSequences(chunk);
   const normalizedChunk = strippedChunk.replace(/\r/g, '');
-  const sawSpinner =
-    AGENT_SPINNER_REDRAW_PATTERN.test(chunk) || AGENT_SPINNER_GLYPH_PATTERN.test(normalizedChunk);
-  if (sawSpinner) {
-    state.lastSpinnerAtMs = now;
-  }
-
-  const sawLineBoundary = /(?:\r?\n)\s*$/.test(normalizedChunk);
-  const hasVisibleChunkContent = normalizedChunk.trim().length > 0;
-  if (sawLineBoundary) {
-    state.lastLineBoundaryAtMs = now;
-  } else if (hasVisibleChunkContent && !sawSpinner) {
-    state.lastLineBoundaryAtMs = undefined;
-  }
-
-  const promptTail = strippedBuffer.slice(-PROMPT_TAIL_LIMIT);
-  const sawPrompt = AGENT_PROMPT_PATTERN.test(promptTail);
-  if (sawPrompt) {
-    state.lastPromptAtMs = now;
-  } else if (hasVisibleChunkContent) {
-    state.lastPromptAtMs = undefined;
-  }
 
   const abnormalStreamScanStart = state.lastAbnormalStreamScanLength ?? 0;
   const abnormalStreamNewOutput =
@@ -188,9 +242,8 @@ export function recordAgentOutputHeuristics(
   return {
     sawBell: attentionSignals.bellCount > 0,
     sawNotification: attentionSignals.notificationCount > 0,
-    sawPrompt,
-    sawSpinner,
-    sawLineBoundary,
+    sawAttentionSignal: attentionSignals.signals.some((signal) => signal.presentation === 'notify'),
+    sawTerminalTitleActivity,
     sawAbnormalStreamInterruption,
     abnormalStreamInterruptionMessage
   };
@@ -318,41 +371,15 @@ export function evaluateAgentWaitingInputTransition(
   state: AgentActivityHeuristicState,
   now: number = Date.now()
 ): AgentWaitingInputEvaluation {
-  if (typeof state.lastOutputAtMs !== 'number') {
+  if (typeof state.lastActivityAtMs !== 'number') {
     return {
       shouldTransition: false,
       shouldKeepPolling: false
     };
   }
 
-  const quietMs = now - state.lastOutputAtMs;
-  const spinnerRecentlyActive =
-    typeof state.lastSpinnerAtMs === 'number' &&
-    now - state.lastSpinnerAtMs < AGENT_WAITING_INPUT_SPINNER_GRACE_MS;
-
-  if (typeof state.lastPromptAtMs === 'number' && quietMs >= AGENT_WAITING_INPUT_PROMPT_QUIET_MS) {
-    return {
-      shouldTransition: true,
-      shouldKeepPolling: false,
-      reason: 'prompt'
-    };
-  }
-
-  if (
-    !spinnerRecentlyActive &&
-    (typeof state.lastNotificationAtMs === 'number' || typeof state.lastBellAtMs === 'number') &&
-    quietMs >= AGENT_WAITING_INPUT_NOTIFICATION_QUIET_MS
-  ) {
-    return {
-      shouldTransition: true,
-      shouldKeepPolling: false,
-      reason: 'notification'
-    };
-  }
-
-  // A plain newline is not enough to conclude that an agent turn finished.
-  // Long-running tasks may print one full line and then continue working.
-  if (!spinnerRecentlyActive && quietMs >= AGENT_WAITING_INPUT_HARD_FALLBACK_MS) {
+  const quietMs = now - state.lastActivityAtMs;
+  if (quietMs >= AGENT_WAITING_INPUT_QUIET_FALLBACK_MS) {
     return {
       shouldTransition: true,
       shouldKeepPolling: false,

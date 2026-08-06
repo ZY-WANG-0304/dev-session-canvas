@@ -108,6 +108,7 @@ assert.equal(preparedManifest.main, sourceManifest.main);
 assert.equal('extensionDependencies' in preparedManifest, false);
 assert.equal('extensionPack' in preparedManifest, false);
 await access(path.join(preparedOutputDir, 'scripts', 'runtime', 'claude-file-event-hook.cjs'));
+await access(path.join(preparedOutputDir, 'scripts', 'runtime', 'agent-lifecycle-hook.cjs'));
 
 await rm(preparedOutputDir, { recursive: true, force: true });
 

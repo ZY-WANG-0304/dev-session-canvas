@@ -1,5 +1,9 @@
 import type {
   AgentProviderKind,
+  AgentInputIntent,
+  AgentActivityAuthority,
+  AgentActivitySource,
+  AgentTurnOutcome,
   AgentResumeStrategy,
   ExecutionNodeKind,
   PendingExecutionLaunch,
@@ -42,6 +46,8 @@ export interface RuntimeSupervisorHelloResult {
     terminalProjectionSnapshotV1?: true;
     terminalProjectionCheckpointV1?: true;
     terminalAppliedRevisionAckV1?: true;
+    agentSubmissionIntentV1?: true;
+    agentProviderLifecycleV1?: true;
   };
 }
 
@@ -96,6 +102,13 @@ export interface RuntimeSupervisorSessionSnapshot {
   resumeStrategy?: AgentResumeStrategy;
   resumeSessionId?: string;
   resumeStoragePath?: string;
+  agentActivitySource?: AgentActivitySource;
+  agentActivityAuthority?: AgentActivityAuthority;
+  providerLifecycleEnabled?: boolean;
+  providerSessionId?: string;
+  providerTurnId?: string;
+  lastTurnOutcome?: AgentTurnOutcome;
+  lastTurnError?: string;
   lastExitCode?: number;
   lastExitSignal?: string;
   lastExitMessage?: string;
@@ -220,6 +233,7 @@ export interface RuntimeSupervisorCreateSessionParams {
   resumeStrategy?: AgentResumeStrategy;
   resumeSessionId?: string;
   resumeStoragePath?: string;
+  providerLifecycleEnabled?: boolean;
   launchSpec: SerializedExecutionSessionLaunchSpec;
   deferSubscription?: boolean;
 }
@@ -266,6 +280,7 @@ export interface RuntimeSupervisorAckSessionRevisionResult {
 export interface RuntimeSupervisorWriteInputParams {
   sessionId: string;
   data: string;
+  intent?: AgentInputIntent;
 }
 
 export interface RuntimeSupervisorResizeSessionParams {

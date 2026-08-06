@@ -39,6 +39,48 @@ try {
   assert.match(state.data, /alpha/u);
   assert.match(state.data, /beta/u);
 
+  assert.equal(
+    tracker.getBottomScreenActivityToken(),
+    '0:',
+    'Ordinary terminal trackers must not pay for Agent-only screen activity tracking.'
+  );
+  tracker.enableBottomScreenActivityTracking();
+  const initialBottomSignature = tracker.getBottomScreenSignature();
+  const initialBottomActivityToken = tracker.getBottomScreenActivityToken();
+  tracker.write('\u001b[2D');
+  await tracker.flush();
+  assert.equal(
+    tracker.getBottomScreenSignature(),
+    initialBottomSignature,
+    'Cursor-only movement must not look like bottom-screen activity.'
+  );
+  assert.equal(tracker.getBottomScreenActivityToken(), initialBottomActivityToken);
+  tracker.write('\u001b[31mX\u001b[0m');
+  await tracker.flush();
+  const redBottomSignature = tracker.getBottomScreenSignature();
+  assert.notEqual(redBottomSignature, initialBottomSignature);
+  assert.notEqual(tracker.getBottomScreenActivityToken(), initialBottomActivityToken);
+  tracker.write('\b\u001b[32mX\u001b[0m');
+  await tracker.flush();
+  assert.notEqual(
+    tracker.getBottomScreenSignature(),
+    redBottomSignature,
+    'Style-only spinner frames must change the bottom-screen signature.'
+  );
+  tracker.disableBottomScreenActivityTracking();
+  assert.equal(
+    tracker.getBottomScreenActivityToken(),
+    '0:',
+    'Disabling weak-waiting recovery must discard the tracked screen state.'
+  );
+  tracker.write('\bY');
+  await tracker.flush();
+  assert.equal(
+    tracker.getBottomScreenActivityToken(),
+    '0:',
+    'Running output must not update the bottom-screen token while tracking is disabled.'
+  );
+
   tracker.write(`${Array.from({ length: 200 }, (_, index) => `line-${String(index).padStart(3, '0')}`).join('\r\n')}\r\n`, {
     outputSequence: 3
   });
