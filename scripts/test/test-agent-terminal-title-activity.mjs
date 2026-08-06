@@ -49,6 +49,15 @@ try {
   const splitTitle = parseAgentTerminalTitles('\u001b]0;⠋ Co');
   assert.notEqual(splitTitle.carryover, '');
   assert.deepEqual(parseAgentTerminalTitles('dex\u0007', splitTitle.carryover).titles, ['⠋ Codex']);
+  const splitOscIntroducer = parseAgentTerminalTitles('\u001b');
+  assert.equal(splitOscIntroducer.carryover, '\u001b');
+  assert.deepEqual(
+    parseAgentTerminalTitles(']0;⠋ Codex\u0007', splitOscIntroducer.carryover).titles,
+    ['⠋ Codex']
+  );
+  const splitStringTerminator = parseAgentTerminalTitles('\u001b]2;⠐ Claude\u001b');
+  assert.notEqual(splitStringTerminator.carryover, '');
+  assert.deepEqual(parseAgentTerminalTitles('\\', splitStringTerminator.carryover).titles, ['⠐ Claude']);
 
   const codexTitleState = createAgentTerminalTitleActivityState();
   assert.equal(recordAgentTerminalTitleActivity(codexTitleState, 'codex', ['⠋ Codex'], 100), false);
@@ -82,6 +91,26 @@ try {
     300
   );
   assert.equal(secondTitle.sawTerminalTitleActivity, true);
+  const chunkedTitleState = createAgentActivityHeuristicState();
+  assert.equal(
+    recordAgentOutputHeuristics(chunkedTitleState, '\u001b', '', 'claude', 200).sawTerminalTitleActivity,
+    false
+  );
+  assert.equal(
+    recordAgentOutputHeuristics(chunkedTitleState, ']0;⠂ Claude\u0007', '', 'claude', 210)
+      .sawTerminalTitleActivity,
+    false
+  );
+  assert.equal(
+    recordAgentOutputHeuristics(chunkedTitleState, '\u001b', '', 'claude', 220).sawTerminalTitleActivity,
+    false
+  );
+  assert.equal(
+    recordAgentOutputHeuristics(chunkedTitleState, ']0;⠐ Claude\u0007', '', 'claude', 230)
+      .sawTerminalTitleActivity,
+    true,
+    'Two title frames split after ESC must still form activity evidence.'
+  );
   const titleWithoutAbnormalTextProvider = recordAgentOutputHeuristics(
     createAgentActivityHeuristicState(),
     '\u001b]0;⠋ Codex\u0007\u001b]0;⠙ Codex\u0007',

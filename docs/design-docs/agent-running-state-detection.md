@@ -21,7 +21,7 @@ related_plans:
   - docs/exec-plans/completed/agent-provider-signals-as-enhancements.md
   - docs/exec-plans/completed/agent-pty-spinner-and-quiet-fallback.md
   - docs/exec-plans/active/agent-terminal-title-activity-signals.md
-updated_at: 2026-08-05
+updated_at: 2026-08-06
 ---
 
 # Agent 运行态判定与等待输入信号设计
@@ -246,9 +246,11 @@ Codex 与 Claude Code 已经支持的 attention signal 继续接入同一条 PTY
 
 未来若采用 Codex app-server、Claude SDK/stream-json 或其他正式结构化 transport，必须先单独设计其进程 ownership、用户可见模式、session/turn identity、恢复和权限边界。只有该 transport 不改写用户 provider 配置、且可在 Host/Supervisor 两条路径一致运行时，才能重新引入 `provider-lifecycle / authoritative`。
 
-当前 Supervisor storage generation 与旧会话连接策略保持不变；新 Supervisor 不再声明 `agentProviderLifecycleV1` callback capability，但协议仍可读取旧 snapshot 中的历史 lifecycle 字段。title parser state 不进入 snapshot、journal 或恢复格式；旧代会话按原 metadata 自然 drain，不迁移、不重启 PTY。
+当前 Supervisor generation 已在此前的 provider lifecycle 工作中从 `terminal-stream-v1` 切换到 `agent-provider-lifecycle-v1`；这是实际的 storage、socket 和 systemd unit namespace 切换，不是本次 title 工作中的 rebase 产物。新会话经 `resolveCurrentRuntimeSupervisorBaseStoragePath()` 进入当前 generation；新 Supervisor 不再声明 `agentProviderLifecycleV1` callback capability，但协议仍可读取旧 snapshot 中的历史 lifecycle 字段。
 
-terminal-title enhancement 只扩展 current generation 内可安全忽略的 `activitySource` 值，parser state 不写入 session snapshot、journal 或恢复格式，因此本项不单独创建新的 Supervisor generation。若实现验证发现旧 Host 收到 `terminal-title` 会拒绝整份 snapshot，而不只是 fail closed 地忽略未知 source，必须改为新增 capability/generation 后才能交付。
+旧会话的 restore、attach、stop 与 diagnostics 始终采用已持久化的 `runtimeStoragePath`，因此仍会连接其原来的 `terminal-stream-v1` namespace，并在原 PTY 不迁移、不重启的情况下自然 drain。缺失该路径的旧 live-runtime metadata 必须降级到历史结果，不能猜测或改连当前 generation。`scripts/test/test-runtime-supervisor-paths.mjs` 显式断言两代 storage/socket 路径不同；`CanvasPanelManager.ts` 也只在没有既有路径的新会话上选择当前 generation。
+
+terminal-title enhancement 只扩展当前 generation 内可安全忽略的 `activitySource` 值，parser state 不写入 session snapshot、journal 或恢复格式，因此本项不会在既有 `agent-provider-lifecycle-v1` 之上再创建新的 Supervisor generation。若实现验证发现旧 Host 收到 `terminal-title` 会拒绝整份 snapshot，而不只是 fail closed 地忽略未知 source，必须改为新增 capability/generation 后才能交付。
 
 ### 7.7 基础 heuristic 的保留范围
 
@@ -265,7 +267,7 @@ terminal-title enhancement 只扩展 current generation 内可安全忽略的 `a
 - quiet fallback 保留本地 turn correlation。只有 `heuristic / best-effort waiting-input` 可以被后续 title 或底部活动纠正为 `running`；没有当前回合 identity 的 hook/notify 不得制造 authoritative waiting，也不能推翻已确认 interrupt 或进程终态。
 - 普通换行本身不再被当成“当前回合已完成”的直接信号；因为长任务可能先输出一整行文本，再在静默期内继续执行。
 - Claude Code 的 `Ctrl-Z` / `fg` 文案不再参与运行态或生命周期判定。当前 Claude Agent 是 direct-spawn provider CLI，没有普通 shell job table；如果把 provider 输出的 suspend 文案当作权威状态，会制造页面仍在更新、恢复后输入无效等伪挂起问题。新的输入路径在 Webview、宿主与 runtime supervisor 三层阻断 Claude Agent `Ctrl-Z`，并把后续处理引导到停止、恢复或分叉。
-- local Host 与当前 Supervisor 使用同一个 5000ms evaluator、title profile、底部活动 reducer 和可纠正 lifecycle reducer；旧 generation Supervisor 不迁移，继续执行其已有逻辑并自然 drain。
+- local Host 与当前 Supervisor 使用同一个 5000ms evaluator、title profile、底部活动 reducer 和可纠正 lifecycle reducer；既有 `terminal-stream-v1` generation Supervisor 按已持久化的 `runtimeStoragePath` 不迁移地继续服务既有会话，直至自然 drain。
 
 这一版仍然属于 `heuristic` / `best-effort`：它用实测 quiet 阈值、底部活动与可纠正语义降低误判，但不能把 plain PTY 提升成 provider 权威事件。
 
@@ -329,3 +331,4 @@ terminal-title enhancement 只扩展 current generation 内可安全忽略的 `a
 - 2026-08-04：用户确认 5000ms quiet fallback 与同一回合连续两帧已知 title spinner 的先后顺序可以互换。两者改为共享 `lastActivityAtMs` 的顺序无关、幂等 reducer：`title -> quiet` 在后续真实静默达到阈值时仍可弱等待，`quiet -> title` 可恢复 `running`，最终结果不依赖 timer/parser 调度顺序。
 - 2026-08-05：补充 Codex/Claude 已支持的 Attention Signals 边界。active turn 收到 BEL、OSC 9 或 OSC 777 时可进入 `attention / best-effort waiting-input`，同时继续进入 `attentionPending`/通知链路；Codex 高置信异常输出与已运行后的异常退出仍按既有 attention/error 规则处理。Attention 不具备 completed/failed 权威性，也不能在终态后重开回合。
 - 2026-08-05：已实现 `agentTerminalTitleActivity.ts` 的 OSC 0/2 增量 parser、Codex/Claude profile 与 2500ms 两帧确认；Host 和 Supervisor 都在 active turn 内消费同一份 title/attention evidence。新 Agent 会话不再启动 callback server、注入 Codex `notify` 或 Claude lifecycle hooks，Supervisor 也不再声明 lifecycle callback capability。本地 Host 将 title provider 与可选 Codex 异常文本提醒 provider 分开传递，因此关闭异常文本提醒不会关闭 Codex/Claude title profile。`npm run test:agent-terminal-title-activity`、`npm run test:agent-provider-lifecycle`、`npm run test:execution-attention-signals`、`npm run test:runtime-supervisor-protocol`、`npm run typecheck`、`npm run build` 与 `git diff --check` 已通过；真实 Codex/Claude CLI smoke 仍待当前安装版本执行。
+- 2026-08-06：PR review 发现增量 title parser 不能丢弃合法的 PTY 分块边界。本轮保留 `ESC | ]` 的 OSC introducer 与 `ESC | \` 的 String Terminator carryover，并补充两帧 Claude title 的端到端回归；同时更正 Supervisor generation 事实：当前 `agent-provider-lifecycle-v1` 已替换旧 `terminal-stream-v1`，旧会话依持久化 `runtimeStoragePath` 继续连接旧 namespace 并自然 drain，本 title 工作不额外创建 generation。`npm run test:agent-terminal-title-activity`、`npm run test:runtime-supervisor-paths`、`npm run test:agent-provider-lifecycle`、`npm run test:execution-attention-signals`、`npm run test:runtime-supervisor-protocol`、`npm run typecheck`、`npm run build` 与 `git diff --check` 已通过；真实 Codex/Claude CLI / Extension Development Host smoke 仍待执行。

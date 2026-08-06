@@ -18,6 +18,7 @@
 - [x] (2026-08-05) 根据用户决策允许 active turn 内的 BEL/OSC 9/OSC 777 作为 `attention / best-effort waiting-input` evidence，并保持 allow-list/通知 bridge 与 lifecycle 解耦。
 - [x] (2026-08-05) 实现增量 OSC 0/2 title parser、Codex/Claude provider profile 与 `terminal-title` / `attention` activity source。
 - [x] (2026-08-05) 在 local PTY 与 live-runtime Supervisor 接入弱等待恢复，移除新会话 lifecycle callback/notify 注入，并补齐纯逻辑、启动不侵入性与 Supervisor 回归。
+- [x] (2026-08-06) 修复 `ESC | ]` OSC introducer 与 `ESC | \` String Terminator 的合法 PTY 分块 carryover，并补齐两帧 title activity 回归与 generation 路径隔离覆盖。
 - [ ] 在当前安装的 Codex 与 Claude Code 上执行真实 CLI / Extension Development Host smoke；记录版本和仅含 frame 的证据。
 
 ## 意外与发现
@@ -28,8 +29,8 @@
 - 观察：Codex 与 Claude Code 都使用 OSC 0 设置标题，但 activity frame、刷新速度和是否在失焦时暂停不同；OSC 0/2 是标题通道，不是通用的“Agent working”协议。
   证据：Codex `0.146.0` 的 title spinner 为十个 Braille frame、100ms 一帧，条件为 MCP startup 或 `is_task_running()`；Claude Code `2.1.209` 仅在 `busy` 时轮换 `⠂/⠐`，idle/waiting 保持 `✳`。
 
-- 观察：当前 Runtime Supervisor 可以停止声明 `agentProviderLifecycleV1`，而现有 snapshot 对 `activitySource` 的新增值仍保持可读取；无需创建 storage generation。
-  证据：`npm run test:runtime-supervisor-protocol` 通过 title recovery fixture、journal recovery 与 10-Agent capacity regression。
+- 观察：当前 Runtime Supervisor 已在此前 provider lifecycle 工作中从 `terminal-stream-v1` 切换到 `agent-provider-lifecycle-v1`。terminal-title work 可以停止声明 `agentProviderLifecycleV1`，且现有 snapshot 对 `activitySource` 的新增值仍保持可读取，但不需要在当前 generation 之上再次创建 storage generation。
+  证据：`extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts` 声明当前 generation；`scripts/test/test-runtime-supervisor-paths.mjs` 断言两代 storage/socket 路径隔离，`npm run test:runtime-supervisor-protocol` 覆盖 title recovery fixture、journal recovery 与 10-Agent capacity regression。
 
 ## 决策记录
 
@@ -49,8 +50,8 @@
   理由：两帧能过滤单个静态 Braille 字符和无关 title，同时覆盖 Codex 100ms 与 Claude Code 960ms 的当前实测 cadence；title 可能含项目路径、会话名或用户文本，不能成为状态存储或诊断内容。
   日期/作者：2026-07-30 / Codex。
 
-- 决策：不为本项单独创建 Runtime Supervisor storage generation。新字段是可安全忽略的 activity-source 枚举扩展，parser state 只保存在活进程内；旧 Supervisor 继续输出既有三种 source，新 Host 对未知 source 仍 fail closed。
-  理由：这不改变 PTY ownership、journal、session identity 或恢复格式。若实施时发现旧 Host 对新 source 会拒绝整份 snapshot，再升级为显式 capability/generation 方案。
+- 决策：不为 terminal-title work 在现有 `agent-provider-lifecycle-v1` 之上单独创建 Runtime Supervisor storage generation。新字段是可安全忽略的 activity-source 枚举扩展，parser state 只保存在活进程内；旧 Supervisor 继续输出既有三种 source，新 Host 对未知 source 仍 fail closed。此前已经发生的 `terminal-stream-v1` 到 `agent-provider-lifecycle-v1` 切换仍然有效：旧会话通过持久化 `runtimeStoragePath` 访问旧 namespace，自然 drain，无迁移或 PTY 重启。
+  理由：terminal-title 本身不改变 PTY ownership、journal、session identity 或恢复格式，但 generation 名称会影响 storage、socket 与 systemd unit namespace。若实施时发现旧 Host 对新 source 会拒绝整份 snapshot，再升级为显式 capability/generation 方案。
   日期/作者：2026-07-30 / Codex。
 
 - 决策：quiet fallback 与连续两帧已知 title activity 由共享 reducer 按观察时间处理，先后顺序无关且重复事件幂等。
@@ -63,7 +64,7 @@
 
 ## 结果与复盘
 
-设计与代码实现已完成，正式方案已同步到 `docs/design-docs/agent-running-state-detection.md`。`agentTerminalTitleActivity.ts` 只在内存解析 OSC 0/2，`agentActivityHeuristics.ts` 交付 title/attention evidence，Host 与 Supervisor 用共享 lifecycle reducer 写入弱等待边界；新会话不再注入 Codex notify 或 Claude lifecycle hooks。2026-08-05 已通过 `npm run typecheck`、`npm run test:agent-provider-lifecycle`、`npm run test:agent-terminal-title-activity`、`npm run test:execution-attention-signals`、`npm run test:runtime-supervisor-protocol`、`npm run build` 与 `git diff --check`，其中 Supervisor 的 10-Agent capacity regression 一并通过。`npm run test:canvas-execution-context` 在当前工作树的静态源码扫描中把 Agent session fork 代码判为 multi-root fork，因此在进入本项路径前失败；本项没有修改该无关断言。真实 Codex/Claude CLI 与 Extension Development Host smoke 尚未在当前环境执行，因此 validation status 保持“验证中”，本计划继续保留 active。
+设计与代码实现已完成，正式方案已同步到 `docs/design-docs/agent-running-state-detection.md`。`agentTerminalTitleActivity.ts` 只在内存解析 OSC 0/2，`agentActivityHeuristics.ts` 交付 title/attention evidence，Host 与 Supervisor 用共享 lifecycle reducer 写入弱等待边界；新会话不再注入 Codex notify 或 Claude lifecycle hooks。当前 `agent-provider-lifecycle-v1` 是此前已发生的 Supervisor generation 升级；旧 `terminal-stream-v1` 会话通过持久化 `runtimeStoragePath` 保持连接旧 storage/socket/systemd-unit namespace，直到自然 drain，terminal-title 不再额外创建 generation。2026-08-05 与 2026-08-06 已通过 `npm run test:agent-terminal-title-activity`、`npm run test:runtime-supervisor-paths`、`npm run test:agent-provider-lifecycle`、`npm run test:execution-attention-signals`、`npm run test:runtime-supervisor-protocol`、`npm run typecheck`、`npm run build` 与 `git diff --check`，其中 Supervisor 的 10-Agent capacity regression 一并通过。`npm run test:canvas-execution-context` 本轮仍在进入 title 路径前失败：静态源码扫描把已有 Agent session fork 代码判为 multi-root fork；本项未修改该断言相关代码。真实 Codex/Claude CLI 与 Extension Development Host smoke 尚未在当前环境执行，因此 validation status 保持“验证中”，本计划继续保留 active。
 
 ## 上下文与定向
 
@@ -123,3 +124,5 @@ parser state 是每个 PTY process epoch 的内存状态，spawn、attach、subm
 本次修订说明：2026-08-05 根据用户确认，active turn 内的 BEL、OSC 9、OSC 777 可以作为 `attention / best-effort waiting-input` evidence；allow-list 仅控制产品提醒，title/bottom activity 仍可恢复 running，异常退出/异常输出不进入该弱 waiting 路径。
 
 本次修订说明：2026-08-05 已实施 parser、双 profile、共享 reducer 和 Host/Supervisor 接线。自动化覆盖 OSC 0/2 的 BEL/ST/C1/跨 chunk/有界 payload、Codex/Claude 两帧 profile、attention 与 OSC 9;4 边界、非侵入 lifecycle 启动，以及 Supervisor 的 quiet -> title 恢复；真实 CLI smoke 仍是唯一未完成验证项。
+
+本次修订说明：2026-08-06 根据 PR review 修复了合法 PTY chunk 在 `ESC | ]`（OSC introducer）和 `ESC | \`（ST）处分割时 parser 丢失状态的问题，并以两帧 Claude title 的端到端回归防止 waiting-input 无法恢复。同步更正 generation 描述：`agent-provider-lifecycle-v1` 是此前既有升级；旧 `terminal-stream-v1` 会话由持久化 `runtimeStoragePath` 保持路由并自然 drain，terminal-title 不创建额外 generation。`test:agent-terminal-title-activity`、`test:runtime-supervisor-paths`、lifecycle/attention/protocol 回归、typecheck、build 与 diff 检查均已通过；真实 CLI / Extension Development Host smoke 仍待执行。

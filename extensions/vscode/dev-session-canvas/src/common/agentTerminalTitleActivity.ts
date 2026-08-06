@@ -45,6 +45,11 @@ export function parseAgentTerminalTitles(
     const sequenceStart = index;
     const oscStartLength = getOscStartLength(source, index);
     if (oscStartLength === 0) {
+      if (source[index] === '\u001b' && index + 1 === source.length) {
+        // The OSC introducer may be split as ESC | ].
+        carryover = source.slice(index);
+        break;
+      }
       index += 1;
       continue;
     }
@@ -78,6 +83,10 @@ export function parseAgentTerminalTitles(
         break;
       }
       if (current === '\u001b') {
+        if (source[index + 1] === undefined) {
+          // Keep a split ST (ESC | \) with its OSC payload for the next chunk.
+          break;
+        }
         if (source[index + 1] === '\\') {
           payloadEnd = index;
           index += 2;
