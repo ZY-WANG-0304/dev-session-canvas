@@ -27,6 +27,10 @@ import {
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
+  normalizeExecutionTerminalTitle,
+  parseExecutionTerminalTitles
+} from '../common/executionTerminalTitle';
+import {
   type AgentNodeStatus,
   type AgentActivitySource,
   type AgentInputIntent,
@@ -145,6 +149,8 @@ interface SupervisorSession {
   rows: number;
   scrollback: number;
   output: string;
+  terminalTitle?: string;
+  terminalTitleCarryover?: string;
   outputSequence: number;
   terminalAuthorityId?: string;
   terminalJournal?: TerminalSessionJournal;
@@ -923,6 +929,8 @@ class RuntimeSupervisorServer {
         });
       }
       session.live = false;
+      session.terminalTitle = undefined;
+      session.terminalTitleCarryover = undefined;
       const message: RuntimeSupervisorEvent = {
         type: 'event',
         event: 'sessionState',
@@ -966,6 +974,7 @@ class RuntimeSupervisorServer {
         }
         session.outputSequence = terminalEvent?.revision ?? session.outputSequence + 1;
         session.output = appendOutputTail(session.output, chunk);
+        updateSupervisorTerminalTitle(session, chunk);
         session.terminalStateTracker.write(chunk, {
           outputSequence: session.outputSequence
         });
@@ -1023,6 +1032,8 @@ class RuntimeSupervisorServer {
     const normalizedError = error instanceof Error ? error : new Error(String(error));
     session.terminalJournalError = normalizedError;
     console.error(`Terminal journal failed for session ${session.sessionId}:`, normalizedError);
+    session.terminalTitle = undefined;
+    session.terminalTitleCarryover = undefined;
     session.live = false;
     session.lifecycle = 'error';
     setSessionLastExitMessage(session, {
@@ -1060,6 +1071,8 @@ class RuntimeSupervisorServer {
       session.exitSubscription = undefined;
       session.process = undefined;
       session.live = false;
+      session.terminalTitle = undefined;
+      session.terminalTitleCarryover = undefined;
 
       if (session.kind === 'agent') {
         this.finalizeAgentResumeSessionIdFromOutput(session);
@@ -1719,6 +1732,8 @@ class RuntimeSupervisorServer {
       rows: session.rows,
       scrollback: session.scrollback,
       output: session.output,
+      // Live snapshots must distinguish a known empty title from legacy snapshots that omit it.
+      terminalTitle: session.live ? session.terminalTitle ?? null : undefined,
       outputSequence: session.outputSequence,
       serializedTerminalState: includeRecoveredTerminalProjection
         ? this.getFreshSerializedTerminalState(session, serializedTerminalState)
@@ -2180,6 +2195,7 @@ class RuntimeSupervisorServer {
       rows: snapshot.rows,
       scrollback,
       output: snapshot.output,
+      terminalTitle: snapshot.live ? snapshot.terminalTitle ?? undefined : undefined,
       outputSequence: recoveredOutputSequence,
       terminalAuthorityId: recoveredAuthorityId,
       recoveredFromDeadPty: true,
@@ -2234,6 +2250,17 @@ class RuntimeSupervisorServer {
 function appendOutputTail(existing: string, chunk: string): string {
   const combined = `${existing}${chunk}`;
   return combined.length > OUTPUT_TAIL_LIMIT ? combined.slice(-OUTPUT_TAIL_LIMIT) : combined;
+}
+
+function updateSupervisorTerminalTitle(session: SupervisorSession, chunk: string): void {
+  const parsed = parseExecutionTerminalTitles(chunk, session.terminalTitleCarryover);
+  session.terminalTitleCarryover = parsed.carryover;
+  for (const rawTitle of parsed.titles) {
+    const terminalTitle = normalizeExecutionTerminalTitle(rawTitle);
+    if (session.terminalTitle !== terminalTitle) {
+      session.terminalTitle = terminalTitle;
+    }
+  }
 }
 
 function normalizeSignal(signal: string | undefined): string | undefined {

@@ -15,6 +15,7 @@ export type ExecutionHostEvent =
       cols: number;
       rows: number;
       liveSession: boolean;
+      terminalTitle?: string | null;
       requestId?: string;
       executionSessionId?: string;
       outputSequence?: number;
@@ -26,6 +27,7 @@ export type ExecutionHostEvent =
       nodeId: string;
       kind: ExecutionNodeKind;
       chunk: string;
+      terminalTitle?: string | null;
       executionSessionId?: string;
       persisted?: boolean;
       outputStartSequence?: number;

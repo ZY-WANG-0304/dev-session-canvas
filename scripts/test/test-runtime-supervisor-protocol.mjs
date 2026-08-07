@@ -533,6 +533,11 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
         terminalName: 'xterm-256color'
       }
     });
+    assert.equal(
+      missingSignalAgentSnapshot.terminalTitle,
+      null,
+      'A live Supervisor snapshot must explicitly represent a known empty terminal title.'
+    );
     await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
       sessionId: 'provider-signal-missing-agent',
       data: 'silent prompt',
@@ -592,6 +597,11 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       4000
     );
     assert.equal(heuristicRecoverySnapshot.payload.agentActivityAuthority, 'best-effort');
+    assert.equal(
+      heuristicRecoverySnapshot.payload.terminalTitle,
+      '⠐ Claude Code',
+      'A live Supervisor snapshot must retain the current OSC 0/2 title for reattach.'
+    );
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
       sessionId: 'provider-signal-missing-agent'
     });
@@ -1381,6 +1391,11 @@ setInterval(() => undefined, 1000);
     );
     assertTerminalStreamSnapshot(finalState.payload, 'final sessionState');
     assert.equal(finalState.payload.terminalRevision, finalState.payload.outputSequence);
+    assert.equal(
+      finalState.payload.terminalTitle,
+      undefined,
+      'A completed Supervisor snapshot must not retain the previous terminal title.'
+    );
     assert.equal(
       finalState.payload.serializedTerminalState,
       undefined,

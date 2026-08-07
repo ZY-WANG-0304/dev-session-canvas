@@ -37,6 +37,10 @@ import {
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
+  normalizeExecutionTerminalTitle,
+  parseExecutionTerminalTitles
+} from '../common/executionTerminalTitle';
+import {
   createExecutionAttentionSignalState,
   filterEnabledExecutionAttentionSignals,
   isExecutionAttentionSignalEnabled,
@@ -507,6 +511,8 @@ interface ManagedExecutionSessionBase {
   cols: number;
   rows: number;
   buffer: string;
+  terminalTitle?: string;
+  terminalTitleCarryover?: string;
   terminalStateTracker: SerializedTerminalStateTracker;
   lineContextTracker: ExecutionTerminalLineContextTracker;
   stopRequested: boolean;
@@ -874,6 +880,7 @@ interface ScheduledExecutionOutputPost {
   kind: ExecutionNodeKind;
   nodeId: string;
   chunk: string;
+  terminalTitle?: string;
   persisted: boolean;
   outputStartSequence?: number;
   outputSequence?: number;
@@ -887,6 +894,7 @@ interface ScheduledExecutionOutputPost {
 
 interface PendingExecutionOutput {
   chunk: string;
+  terminalTitle?: string;
   outputStartSequence?: number;
   outputSequence?: number;
   terminalAuthorityId?: string;
@@ -3502,6 +3510,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               : [];
         for (const injectedChunk of injectedChunks) {
           syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, injectedChunk);
+          updateExecutionTerminalTitle(syntheticSession, injectedChunk);
           this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(
             params.nodeId,
             syntheticSession,
@@ -10694,6 +10703,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       cols: snapshot.cols,
       rows: snapshot.rows,
       buffer: snapshot.output,
+      terminalTitle: snapshot.live ? snapshot.terminalTitle ?? undefined : undefined,
       terminalStateTracker: new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
         scrollback: snapshot.scrollback,
         // Legacy supervisors only have a raw output tail; it may start mid-ANSI and must not become trusted state.
@@ -10791,6 +10801,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.runtimeSessionId = snapshot.sessionId;
     session.shellPath = snapshot.shellPath;
     session.cwd = snapshot.cwd;
+    // Older Supervisors omit this field. Do not let that erase a title received from output.
+    if (!snapshot.live) {
+      session.terminalTitle = undefined;
+    } else if (snapshot.terminalTitle !== undefined) {
+      session.terminalTitle = snapshot.terminalTitle ?? undefined;
+    }
     session.displayLabel = snapshot.displayLabel;
     session.lifecycleStatus = snapshot.lifecycle;
     session.launchMode = snapshot.launchMode;
@@ -10983,6 +10999,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     startedAt: number
   ): void {
     session.buffer = appendTerminalBuffer(session.buffer, chunk);
+    updateExecutionTerminalTitle(session, chunk);
     if (session.terminalStateTrusted) {
       session.terminalStateTracker.write(chunk, {
         outputSequence: session.outputSequence
@@ -11380,6 +11397,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastRuntimeError: undefined,
           shellPath: session.shellPath,
           cwd: session.cwd,
+          terminalTitle: session.terminalTitle,
           outputSequence: session.outputSequence,
           recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(sessionBuffer)) || undefined,
           lastCols: session.cols,
@@ -11505,6 +11523,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         shellPath: snapshot.shellPath,
         cwd: snapshot.cwd,
         recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || currentMetadata.recentOutput,
+        terminalTitle: undefined,
         outputSequence,
         lastExitCode: snapshot.lastExitCode,
         lastExitSignal: snapshot.lastExitSignal,
@@ -11691,6 +11710,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         liveSession: false,
         runtimeSessionId: undefined,
         lastRuntimeError: reason,
+        terminalTitle: undefined,
         recentOutput:
           snapshot?.output !== undefined
             ? extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || currentMetadata.recentOutput
@@ -11786,6 +11806,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         pendingLaunch: undefined,
         shellPath: metadata.shellPath,
         cwd: metadata.cwd,
+        terminalTitle: undefined,
         recentOutput: metadata.recentOutput,
         lastExitCode: metadata.lastExitCode,
         lastExitSignal: metadata.lastExitSignal,
@@ -14563,6 +14584,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         pendingLaunch: undefined,
         shellPath: cliSpec.command,
         cwd,
+        terminalTitle: undefined,
         lastExitCode: undefined,
         lastExitSignal: undefined,
         lastExitMessage: undefined,
@@ -14733,6 +14755,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastCols: normalizedCols,
         lastRows: normalizedRows,
         recentOutput: undefined,
+        terminalTitle: undefined,
         lastExitCode: undefined,
         lastExitSignal: undefined,
         lastExitMessage: undefined,
@@ -14829,7 +14852,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           metadata: buildAgentMetadataPatch(this.state, nodeId, {
             lifecycle: 'idle',
             pendingLaunch: undefined,
-            liveSession: false
+            liveSession: false,
+            terminalTitle: undefined
           })
         });
         this.persistState();
@@ -14894,6 +14918,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lifecycle: 'error',
           liveSession: false,
           pendingLaunch: undefined,
+          terminalTitle: undefined,
           lastExitMessage: cwdUnavailableMessage,
           lastRuntimeError: cwdUnavailableMessage
         })
@@ -14940,6 +14965,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             lifecycle: 'error',
             liveSession: false,
             pendingLaunch: undefined,
+            terminalTitle: undefined,
             lastExitMessage: message,
             lastRuntimeError: message
           })
@@ -14998,6 +15024,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             lifecycle: 'resume-failed',
             liveSession: false,
             pendingLaunch: undefined,
+            terminalTitle: undefined,
             lastResumeError: message,
             lastExitMessage: message,
             lastRuntimeError: message
@@ -15086,6 +15113,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             runtimeSessionId: undefined,
             shellPath: cliSpec.command,
             cwd,
+            terminalTitle: undefined,
             lastExitMessage: message,
             lastCols: normalizedCols,
             lastRows: normalizedRows,
@@ -15188,6 +15216,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         activeSession.outputSequence += 1;
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
+        updateExecutionTerminalTitle(activeSession, text);
         activeSession.terminalStateTracker.write(text, {
           outputSequence: activeSession.outputSequence
         });
@@ -15292,6 +15321,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             shellPath: activeSession.shellPath,
             cwd: activeSession.cwd,
             recentOutput: recentOutput || undefined,
+            terminalTitle: undefined,
             outputSequence: activeSession.outputSequence,
             lastExitCode: exitCode,
             lastExitSignal: signal ?? undefined,
@@ -15410,6 +15440,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           shellPath: cliSpec.command,
           cwd,
           recentOutput: undefined,
+          terminalTitle: undefined,
           outputSequence: undefined,
           lastExitCode: undefined,
           lastExitSignal: undefined,
@@ -15477,6 +15508,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           pendingLaunch: undefined,
           shellPath: cliSpec.command,
           cwd,
+          terminalTitle: undefined,
           lastExitMessage: message,
           lastCols: normalizedCols,
           lastRows: normalizedRows,
@@ -16180,7 +16212,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           metadata: buildTerminalMetadataPatch(this.state, nodeId, {
             lifecycle: 'idle',
             pendingLaunch: undefined,
-            liveSession: false
+            liveSession: false,
+            terminalTitle: undefined
           })
         });
         this.persistState();
@@ -16257,6 +16290,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lifecycle: 'error',
           liveSession: false,
           pendingLaunch: undefined,
+          terminalTitle: undefined,
           lastExitMessage: cwdUnavailableMessage,
           lastRuntimeError: cwdUnavailableMessage
         })
@@ -16387,6 +16421,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         activeSession.outputSequence += 1;
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
+        updateExecutionTerminalTitle(activeSession, text);
         activeSession.terminalStateTracker.write(text, {
           outputSequence: activeSession.outputSequence
         });
@@ -16475,6 +16510,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             shellPath: activeSession.shellPath,
             cwd: activeSession.cwd,
             recentOutput: recentOutput || undefined,
+            terminalTitle: undefined,
             outputSequence: activeSession.outputSequence,
             lastExitCode: exitCode,
             lastExitSignal: signal ?? undefined,
@@ -16548,6 +16584,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           lastCols: normalizedCols,
           lastRows: normalizedRows,
           recentOutput: undefined,
+          terminalTitle: undefined,
           outputSequence: undefined,
           lastExitCode: undefined,
           lastExitSignal: undefined,
@@ -16601,6 +16638,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           pendingLaunch: undefined,
           shellPath,
           cwd,
+          terminalTitle: undefined,
           lastExitMessage: message,
           lastCols: normalizedCols,
           lastRows: normalizedRows,
@@ -18683,6 +18721,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const pendingOutput: PendingExecutionOutput = {
       chunk: session.pendingOutput,
+      terminalTitle: session.terminalTitle,
       outputStartSequence: session.pendingOutputStartSequence,
       outputSequence: session.pendingOutputEndSequence,
       terminalAuthorityId: session.pendingTerminalAuthorityId,
@@ -18717,6 +18756,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (options.immediate === true || !persisted) {
       this.postExecutionOutputMessage(kind, nodeId, chunk, {
         persisted,
+        terminalTitle: pendingOutput.terminalTitle,
         outputStartSequence: pendingOutput.outputStartSequence,
         outputSequence,
         executionSessionId,
@@ -18731,6 +18771,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId,
         chunk,
         persisted: true,
+        terminalTitle: pendingOutput.terminalTitle,
         outputStartSequence: pendingOutput.outputStartSequence,
         outputSequence,
         executionSessionId,
@@ -18767,6 +18808,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             kind,
             executionSessionId,
             chunk: '',
+            terminalTitle: pendingOutput.terminalTitle ?? null,
             persisted: true,
             outputSequence
           }
@@ -18809,6 +18851,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       existing.chunk += entry.chunk;
       existing.persisted = existing.persisted && entry.persisted;
+      existing.terminalTitle = entry.terminalTitle;
       existing.outputSequence = entry.outputSequence;
       existing.executionSessionId = entry.executionSessionId;
       existing.terminalRevision = entry.terminalRevision;
@@ -18973,6 +19016,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     this.postExecutionOutputMessage(entry.kind, entry.nodeId, entry.chunk, {
       persisted: entry.persisted,
+      terminalTitle: entry.terminalTitle,
       outputStartSequence: entry.outputStartSequence,
       outputSequence: entry.outputSequence,
       executionSessionId: entry.executionSessionId,
@@ -18989,6 +19033,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     chunk: string,
     options: {
       persisted: boolean;
+      terminalTitle?: string | null;
       outputStartSequence?: number;
       outputSequence?: number;
       executionSessionId?: string;
@@ -19005,6 +19050,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         kind,
         executionSessionId: options.executionSessionId,
         chunk,
+        // Message serialization can drop undefined, so use null to propagate a title clear.
+        terminalTitle: options.terminalTitle ?? null,
         persisted: options.persisted,
         outputStartSequence: options.outputStartSequence,
         outputSequence: options.outputSequence,
@@ -19182,6 +19229,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         shellPath: session.shellPath,
         cwd: session.cwd,
         recentOutput: recentOutput || undefined,
+        terminalTitle: session.terminalTitle,
         outputSequence: session.outputSequence,
         lastCols: session.cols,
         lastRows: session.rows,
@@ -19267,6 +19315,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         cols: session?.cols ?? metadata?.lastCols ?? DEFAULT_TERMINAL_COLS,
         rows: session?.rows ?? metadata?.lastRows ?? DEFAULT_TERMINAL_ROWS,
         liveSession: Boolean(session),
+        // Unlike a missing legacy field, null is a confirmed title clear for this snapshot.
+        terminalTitle: session ? session.terminalTitle ?? null : metadata?.terminalTitle ?? null,
         outputSequence,
         serializedTerminalState: freshSerializedTerminalState,
         terminalStream
@@ -25991,6 +26041,12 @@ function normalizeMetadata(
             : typeof agent.lastResponse === 'string'
               ? trimStoredTerminalText(agent.lastResponse)
               : undefined,
+        terminalTitle:
+          liveSession || agent.attachmentState === 'reattaching'
+            ? typeof agent.terminalTitle === 'string'
+              ? normalizeExecutionTerminalTitle(agent.terminalTitle)
+              : undefined
+            : undefined,
         outputSequence: normalizeExecutionOutputSequence(agent.outputSequence),
         lastExitCode:
           typeof agent.lastExitCode === 'number'
@@ -26141,6 +26197,12 @@ function normalizeMetadata(
         recentOutput:
           typeof terminal.recentOutput === 'string'
             ? trimStoredTerminalText(terminal.recentOutput)
+            : undefined,
+        terminalTitle:
+          liveSession || terminal.attachmentState === 'reattaching'
+            ? typeof terminal.terminalTitle === 'string'
+              ? normalizeExecutionTerminalTitle(terminal.terminalTitle)
+              : undefined
             : undefined,
         outputSequence: normalizeExecutionOutputSequence(terminal.outputSequence),
         lastExitCode:
@@ -26391,6 +26453,7 @@ function reconcileAgentNodesInArray(
             shellPath: liveSession.shellPath,
             cwd: liveSession.cwd,
             recentOutput: recentOutput || metadata.recentOutput,
+            terminalTitle: liveSession.terminalTitle,
             outputSequence: liveSession.outputSequence,
             lastCols: liveSession.cols,
             lastRows: liveSession.rows,
@@ -26577,6 +26640,7 @@ function reconcileTerminalNodesInArray(
             shellPath: liveSession.shellPath,
             cwd: liveSession.cwd,
             recentOutput: recentOutput || metadata.recentOutput,
+            terminalTitle: liveSession.terminalTitle,
             outputSequence: liveSession.outputSequence,
             lastCols: liveSession.cols,
             lastRows: liveSession.rows,
@@ -27890,6 +27954,17 @@ function trimStoredNodeText(value: string): string {
 
 function appendTerminalBuffer(existing: string, nextChunk: string): string {
   return trimStoredTerminalText(`${existing}${nextChunk}`);
+}
+
+function updateExecutionTerminalTitle(session: ManagedExecutionSession, chunk: string): void {
+  const parsed = parseExecutionTerminalTitles(chunk, session.terminalTitleCarryover);
+  session.terminalTitleCarryover = parsed.carryover;
+  for (const rawTitle of parsed.titles) {
+    const terminalTitle = normalizeExecutionTerminalTitle(rawTitle);
+    if (session.terminalTitle !== terminalTitle) {
+      session.terminalTitle = terminalTitle;
+    }
+  }
 }
 
 function extractRecentTerminalOutput(value: string): string {

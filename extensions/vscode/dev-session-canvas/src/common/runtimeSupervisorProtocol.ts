@@ -90,6 +90,8 @@ export interface RuntimeSupervisorSessionSnapshot {
   rows: number;
   scrollback: number;
   output: string;
+  /** Current title; null confirms that this live PTY has cleared it. */
+  terminalTitle?: string | null;
   outputSequence?: number;
   serializedTerminalState?: SerializedTerminalState;
   terminalAuthorityId?: string;
