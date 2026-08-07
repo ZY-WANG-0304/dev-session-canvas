@@ -17662,6 +17662,97 @@ async function reconnectEdgeEndpointToAnchor(page, { edgeId, handleType, targetN
   await settleWebview(page, 3);
 }
 
+test('Agent and Terminal render PTY terminal titles in their header context', async ({ page }) => {
+  const agentState = createLiveExecutionNodeState('agent');
+  const terminalState = createLiveExecutionNodeState('terminal');
+  const agent = agentState.nodes[0];
+  const terminal = terminalState.nodes[0];
+  agent.metadata.agent.lastLaunchCommandLine = 'codex --full-auto';
+  terminal.position = { x: 760, y: 140 };
+
+  await openHarness(page);
+  await bootstrap(page, {
+    ...agentState,
+    nodes: [agent, terminal]
+  });
+  await waitForExecutionTerminalsReady(page, ['agent-zoom', 'terminal-zoom']);
+
+  const agentNode = nodeById(page, 'agent-zoom');
+  const terminalNode = nodeById(page, 'terminal-zoom');
+  await expect(agentNode.locator('.window-title-subtitle')).toHaveText('codex --full-auto');
+  await expect(terminalNode.locator('.window-title-subtitle')).toHaveText('/bin/bash');
+  await expect(agentNode.locator('.window-title-context')).toHaveText('workspace/');
+  await expect(terminalNode.locator('.window-title-context')).toHaveText('workspace/');
+
+  await dispatchExecutionSnapshot(page, {
+    nodeId: 'agent-zoom',
+    kind: 'agent',
+    output: '',
+    executionSessionId: 'agent-title-session-1',
+    terminalTitle: 'Reviewing architecture'
+  });
+  await dispatchExecutionSnapshot(page, {
+    nodeId: 'terminal-zoom',
+    kind: 'terminal',
+    output: '',
+    executionSessionId: 'terminal-title-session-1',
+    terminalTitle: 'api-service: /workspace'
+  });
+
+  await expect(agentNode.locator('.window-title-subtitle')).toHaveText('codex --full-auto');
+  await expect(terminalNode.locator('.window-title-subtitle')).toHaveText('/bin/bash');
+  await expect(agentNode.locator('.window-title-context')).toHaveText('Reviewing architecture · workspace/');
+  await expect(terminalNode.locator('.window-title-context')).toHaveText('api-service: /workspace · workspace/');
+  await expect(agentNode.locator('input[data-probe-field="title"]')).toHaveValue('Zoom Agent');
+  await expect(terminalNode.locator('input[data-probe-field="title"]')).toHaveValue('Zoom Terminal');
+
+  await dispatchExecutionSnapshot(page, {
+    nodeId: 'agent-zoom',
+    kind: 'agent',
+    output: '',
+    executionSessionId: 'agent-title-session-2',
+    terminalTitle: 'New Agent session'
+  });
+  await dispatchExecutionOutput(page, {
+    nodeId: 'agent-zoom',
+    kind: 'agent',
+    chunk: '',
+    executionSessionId: 'agent-title-session-1',
+    terminalTitle: 'Stale Agent title'
+  });
+  await expect(agentNode.locator('.window-title-subtitle')).toHaveText('codex --full-auto');
+  await expect(agentNode.locator('.window-title-context')).toHaveText('New Agent session · workspace/');
+
+  // Older Hosts can omit title from a lifecycle snapshot. That is not an OSC clear.
+  await dispatchExecutionSnapshot(page, {
+    nodeId: 'agent-zoom',
+    kind: 'agent',
+    output: '',
+    executionSessionId: 'agent-title-session-2'
+  });
+  await expect(agentNode.locator('.window-title-subtitle')).toHaveText('codex --full-auto');
+  await expect(agentNode.locator('.window-title-context')).toHaveText('New Agent session · workspace/');
+
+  await dispatchExecutionOutput(page, {
+    nodeId: 'agent-zoom',
+    kind: 'agent',
+    chunk: '',
+    executionSessionId: 'agent-title-session-2',
+    terminalTitle: null
+  });
+  await dispatchExecutionOutput(page, {
+    nodeId: 'terminal-zoom',
+    kind: 'terminal',
+    chunk: '',
+    executionSessionId: 'terminal-title-session-1',
+    terminalTitle: null
+  });
+  await expect(agentNode.locator('.window-title-subtitle')).toHaveText('codex --full-auto');
+  await expect(terminalNode.locator('.window-title-subtitle')).toHaveText('/bin/bash');
+  await expect(agentNode.locator('.window-title-context')).toHaveText('workspace/');
+  await expect(terminalNode.locator('.window-title-context')).toHaveText('workspace/');
+});
+
 async function dispatchExecutionSnapshot(
   page,
   {
@@ -17673,6 +17764,7 @@ async function dispatchExecutionSnapshot(
     liveSession = true,
     requestId,
     executionSessionId,
+    terminalTitle,
     outputSequence,
     serializedTerminalState,
     terminalStream
@@ -17694,6 +17786,7 @@ async function dispatchExecutionSnapshot(
       liveSession,
       requestId,
       executionSessionId,
+      terminalTitle,
       outputSequence,
       serializedTerminalState,
       terminalStream
@@ -17708,6 +17801,7 @@ async function dispatchExecutionOutput(
     kind,
     chunk,
     executionSessionId,
+    terminalTitle,
     persisted,
     outputStartSequence,
     outputSequence,
@@ -17728,6 +17822,7 @@ async function dispatchExecutionOutput(
       kind,
       chunk,
       executionSessionId,
+      terminalTitle,
       persisted,
       outputStartSequence,
       outputSequence,

@@ -271,6 +271,12 @@ interface PendingExecutionInputAck {
   bytes: number;
 }
 
+interface ExecutionTerminalTitleProjection {
+  executionSessionId?: string;
+  title?: string;
+  ended?: boolean;
+}
+
 type EmbeddedTerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]>;
 type EmbeddedTerminalTheme = NonNullable<EmbeddedTerminalOptions['theme']>;
 type WorkbenchThemeKind = 'light' | 'dark' | 'hcDark' | 'hcLight';
@@ -1200,8 +1206,32 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
   };
 }
 
+function terminalTitleProjectionsFromState(
+  state: CanvasPrototypeState
+): Record<string, ExecutionTerminalTitleProjection> {
+  return Object.fromEntries(
+    state.nodes.flatMap((node) => {
+      if (node.kind !== 'agent' && node.kind !== 'terminal') {
+        return [];
+      }
+      const metadata = node.kind === 'agent' ? node.metadata?.agent : node.metadata?.terminal;
+      if (!metadata) {
+        return [];
+      }
+      return [[node.id, {
+        executionSessionId: metadata.runtimeSessionId,
+        title: metadata.liveSession ? metadata.terminalTitle : undefined,
+        ended: !metadata.liveSession
+      }]];
+    })
+  );
+}
+
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
+  const [executionTerminalTitles, setExecutionTerminalTitles] = useState<
+    Record<string, ExecutionTerminalTitleProjection>
+  >({});
   const [templateMenuEntries, setTemplateMenuEntries] = useState<CanvasTemplateMenuEntry[]>([]);
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
     workspaceTrusted: false,
@@ -1338,6 +1368,9 @@ function App(): JSX.Element {
           latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
           latestRuntimeContext = normalizedRuntime;
           setHostState(normalizedState);
+          if (message.type === 'host/bootstrap') {
+            setExecutionTerminalTitles(terminalTitleProjectionsFromState(normalizedState));
+          }
           setRuntimeContext(normalizedRuntime);
           setNodeLayoutDrafts((current) => {
             // Host layout wins after a move/resize has been submitted.
@@ -1407,6 +1440,29 @@ function App(): JSX.Element {
         requestGroupFocus(message.payload.groupId);
         break;
       case 'host/executionSnapshot':
+        setExecutionTerminalTitles((current) => {
+          const existing = current[message.payload.nodeId];
+          const sessionChanged =
+            existing?.executionSessionId !== undefined &&
+            message.payload.executionSessionId !== undefined &&
+            existing.executionSessionId !== message.payload.executionSessionId;
+          // A missing snapshot field is compatible with older Hosts/Supervisors, not a title clear.
+          const title = !message.payload.liveSession
+            ? undefined
+            : message.payload.terminalTitle !== undefined
+              ? message.payload.terminalTitle ?? undefined
+              : sessionChanged
+                ? undefined
+                : existing?.title;
+          return {
+            ...current,
+            [message.payload.nodeId]: {
+              executionSessionId: message.payload.executionSessionId ?? existing?.executionSessionId,
+              title,
+              ended: !message.payload.liveSession
+            }
+          };
+        });
         routeExecutionTerminalSnapshot({
           type: 'snapshot',
           nodeId: message.payload.nodeId,
@@ -1415,6 +1471,7 @@ function App(): JSX.Element {
           cols: message.payload.cols,
           rows: message.payload.rows,
           liveSession: message.payload.liveSession,
+          terminalTitle: message.payload.terminalTitle,
           requestId: message.payload.requestId,
           executionSessionId: message.payload.executionSessionId,
           outputSequence: message.payload.outputSequence,
@@ -1423,11 +1480,33 @@ function App(): JSX.Element {
         });
         break;
       case 'host/executionOutput':
+        if (message.payload.terminalTitle !== undefined) {
+          setExecutionTerminalTitles((current) => {
+            const existing = current[message.payload.nodeId];
+            if (
+              existing?.ended ||
+              (existing?.executionSessionId !== undefined &&
+                (!message.payload.executionSessionId ||
+                  existing.executionSessionId !== message.payload.executionSessionId))
+            ) {
+              return current;
+            }
+            return {
+              ...current,
+              [message.payload.nodeId]: {
+                executionSessionId:
+                  message.payload.executionSessionId ?? existing?.executionSessionId,
+                title: message.payload.terminalTitle ?? undefined
+              }
+            };
+          });
+        }
         queueExecutionTerminalOutput({
           type: 'output',
           nodeId: message.payload.nodeId,
           kind: message.payload.kind,
           chunk: message.payload.chunk,
+          terminalTitle: message.payload.terminalTitle,
           executionSessionId: message.payload.executionSessionId,
           persisted: message.payload.persisted,
           outputStartSequence: message.payload.outputStartSequence,
@@ -1451,6 +1530,16 @@ function App(): JSX.Element {
         handleExecutionInputAck(message.payload);
         break;
       case 'host/executionExit':
+        setExecutionTerminalTitles((current) => {
+          const existing = current[message.payload.nodeId];
+          return {
+            ...current,
+            [message.payload.nodeId]: {
+              executionSessionId: existing?.executionSessionId,
+              ended: true
+            }
+          };
+        });
         routeExecutionTerminalExit({
           type: 'exit',
           nodeId: message.payload.nodeId,
@@ -2795,6 +2884,7 @@ function App(): JSX.Element {
 
   const baseNodes = toFlowNodes({
     nodes: hostState?.nodes ?? [],
+    terminalTitles: executionTerminalTitles,
     selectedNodeId: localUiState.selectedNodeId,
     selectedNodeIds: localUiState.selectedNodeIds,
     documentHasFocus,
@@ -6098,6 +6188,7 @@ const CanvasContextMenu = React.forwardRef<
 
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
+  terminalTitles: Record<string, ExecutionTerminalTitleProjection>;
   selectedNodeId: string | undefined;
   selectedNodeIds: readonly string[] | undefined;
   documentHasFocus: boolean;
@@ -6232,6 +6323,7 @@ function toFlowNodes(params: {
         title: node.title,
         status: node.status,
         summary: node.summary,
+        terminalTitle: params.terminalTitles[node.id]?.title,
         selected: selectedNodeIds.has(node.id),
         documentHasFocus: params.documentHasFocus,
         workspaceTrusted: params.workspaceTrusted,
