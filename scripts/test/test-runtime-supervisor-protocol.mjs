@@ -606,6 +606,77 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       sessionId: 'provider-signal-missing-agent'
     });
 
+    const titleQueryMarker = `TITLE-QUERY-REPLY-${Date.now()}`;
+    const titleQueryScriptPath = path.join(tempDir, 'runtime-title-query.js');
+    await writeFile(
+      titleQueryScriptPath,
+      `process.stdin.setEncoding('utf8');
+if (process.stdin.isTTY) process.stdin.setRawMode(true);
+process.stdin.resume();
+let received = '';
+let receivedFirstTitle = false;
+process.stdin.on('data', (chunk) => {
+  received += chunk;
+  if (!receivedFirstTitle && received.includes(${JSON.stringify('\u001b]lFirst title\u001b\\')})) {
+    receivedFirstTitle = true;
+    process.stdout.write(${JSON.stringify('\u001b]2;\u0007\u001b[21t')});
+    return;
+  }
+  if (receivedFirstTitle && received.includes(${JSON.stringify('\u001b]l\u001b\\')})) {
+    process.stdout.write(${JSON.stringify(`${titleQueryMarker}\\r\\n`)});
+  }
+});
+process.stdout.write(${JSON.stringify('\u001b]2;First title\u0007\u001b[2')});
+setTimeout(() => process.stdout.write('1t'), 20);
+setInterval(() => undefined, 1000);
+`,
+      'utf8'
+    );
+    const titleQuerySessionId = 'terminal-title-query';
+    const titleQueryInitial = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'terminal',
+      sessionId: titleQuerySessionId,
+      displayLabel: 'Terminal title query fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [titleQueryScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId: titleQuerySessionId,
+      authorityId: titleQueryInitial.terminalAuthorityId,
+      afterRevision: titleQueryInitial.terminalRevision
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      titleQuerySessionId,
+      titleQueryMarker,
+      'CSI 21 t title-query reply',
+      5000
+    );
+    const titleQuerySnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: titleQuerySessionId }
+    );
+    assert.equal(
+      titleQuerySnapshot.terminalTitle,
+      null,
+      'An OSC clear before CSI 21 t must produce an empty report and clear the live title.'
+    );
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: titleQuerySessionId
+    });
+
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
     const gapMarker = `attach-gap-marker-${Date.now()}`;
     await writeFile(

@@ -29,8 +29,10 @@ try {
   } = require(titleOutfile);
   const {
     EXECUTION_TERMINAL_TITLE_MAX_LENGTH,
+    formatExecutionTerminalTitleReport,
     normalizeExecutionTerminalTitle,
-    parseExecutionTerminalTitles
+    parseExecutionTerminalTitles,
+    processExecutionTerminalTitleControls
   } = require(executionTitleOutfile);
   const {
     AGENT_WAITING_INPUT_QUIET_FALLBACK_MS,
@@ -54,6 +56,13 @@ try {
   assert.equal(parseAgentTerminalTitles(`\u001b]0;${'x'.repeat(600)}`).carryover, '');
   assert.deepEqual(parseExecutionTerminalTitles('\u001b]0;Terminal\u0007').titles, ['Terminal']);
   assert.deepEqual(parseExecutionTerminalTitles('\u001b]2;\u0007').titles, ['']);
+  assert.deepEqual(parseExecutionTerminalTitles('\u001b[21t').events, [{ kind: 'query-title' }]);
+  assert.deepEqual(parseExecutionTerminalTitles('\u009b21t').events, [{ kind: 'query-title' }]);
+  assert.deepEqual(parseExecutionTerminalTitles('\u001b[20t').events, []);
+  assert.deepEqual(
+    parseExecutionTerminalTitles('\u001b]2;unterminated\u001b[21t').events,
+    [{ kind: 'query-title' }]
+  );
   assert.equal(normalizeExecutionTerminalTitle('  Build\n API  '), 'Build API');
   assert.equal(normalizeExecutionTerminalTitle(''), undefined);
   assert.equal(normalizeExecutionTerminalTitle('\u0000\u0007'), undefined);
@@ -74,6 +83,24 @@ try {
   const splitStringTerminator = parseAgentTerminalTitles('\u001b]2;⠐ Claude\u001b');
   assert.notEqual(splitStringTerminator.carryover, '');
   assert.deepEqual(parseAgentTerminalTitles('\\', splitStringTerminator.carryover).titles, ['⠐ Claude']);
+  const splitTitleQuery = parseExecutionTerminalTitles('\u001b[2');
+  assert.equal(splitTitleQuery.carryover, '\u001b[2');
+  assert.deepEqual(
+    parseExecutionTerminalTitles('1t', splitTitleQuery.carryover).events,
+    [{ kind: 'query-title' }]
+  );
+
+  const orderedTitleControls = processExecutionTerminalTitleControls(
+    '\u001b]2;First title\u0007\u001b[21t\u001b]2;\u0007\u001b[21t',
+    undefined
+  );
+  assert.equal(orderedTitleControls.terminalTitle, undefined);
+  assert.deepEqual(orderedTitleControls.titleQueries, ['First title', undefined]);
+  assert.equal(formatExecutionTerminalTitleReport('Build\n API'), '\u001b]lBuild API\u001b\\');
+  assert.equal(formatExecutionTerminalTitleReport(undefined), '\u001b]l\u001b\\');
+  const queryBeforeSet = processExecutionTerminalTitleControls('\u001b[21t\u001b]2;Next title\u0007', 'Prior title');
+  assert.deepEqual(queryBeforeSet.titleQueries, ['Prior title']);
+  assert.equal(queryBeforeSet.terminalTitle, 'Next title');
 
   const codexTitleState = createAgentTerminalTitleActivityState();
   assert.equal(recordAgentTerminalTitleActivity(codexTitleState, 'codex', ['⠋ Codex'], 100), false);

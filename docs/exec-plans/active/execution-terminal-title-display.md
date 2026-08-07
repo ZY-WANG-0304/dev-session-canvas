@@ -4,7 +4,7 @@
 
 ## 目标与全局图景
 
-完成后，`Agent` 和 `Terminal` 节点的标题栏最上方上下文行默认显示 cwd/root；PTY 中进程主动设置 terminal title 后，该行显示 `{terminal title} · {root}`。例如 shell 可以显示当前目录，Codex/Claude Code 可以显示自己的工作提示。启动命令或 shell 路径仍留在静态副标题，用户可编辑的节点标题不受影响；title 未设置、被清空或会话结束后，上下文行只显示 `{root}`。
+完成后，`Agent` 和 `Terminal` 节点的标题栏最上方上下文行默认显示 cwd/root；PTY 中进程主动设置 terminal title 后，该行显示 `{terminal title} · {root}`。例如 shell 可以显示当前目录，Codex/Claude Code 可以显示自己的工作提示。启动命令或 shell 路径仍留在静态副标题，用户可编辑的节点标题不受影响；title 未设置、被清空或会话结束后，上下文行只显示 `{root}`。运行在 PTY 中的 TUI 还可通过 `CSI 21 t` 读取该会话当前 title，并收到 `OSC l` 规范回包。
 
 用户可通过在嵌入式 Terminal 输入 `printf '\033]2;Build API\a'`，或让 Agent CLI 自行更新 title，直接看到标题栏上下文行变为 `Build API · {root}`；在 Webview 重建或 live-runtime 重新附着后，仍会看到当前 title。节点的可编辑名字和静态副标题不会被此功能改写。
 
@@ -18,6 +18,7 @@
 - [x] (2026-08-06) 运行 typecheck、定向自动化、构建和 diff 检查；把验证结果与剩余人工验证回写本文和设计文档。
 - [x] (2026-08-06) 修复 live snapshot 对缺失 title 与确认清空未区分、可能覆盖 Codex Agent 已显示 title 的问题；补 Host/Supervisor/Webview 回归。
 - [x] (2026-08-07) 按已确认的视觉语义，将 title 从动态副标题迁到节点标题栏最上方上下文行；保留静态副标题，默认只显示 `{root}`，并更新定向回归与文档。
+- [x] (2026-08-07) 支持 xterm `CSI 21 t` title 查询：在 Local Host / Supervisor PTY owner 处理分片请求，按事件顺序回写 `OSC l`，并覆盖空 title 与无 Webview 的 Supervisor 路径。
 - [ ] 在真实 Extension Development Host 中执行 Terminal OSC 2 设置/清空、Agent spinner、Webview reload 和 live-runtime reattach 手动 smoke。
 
 ## 意外与发现
@@ -30,6 +31,12 @@
 
 - 观察：输出协议已用 `null` 表示 title 清空，快照协议却把缺字段和清空都表现为 `undefined`；Webview 无法区分旧 Supervisor 不带字段与当前 PTY 明确清空，从而可能在 Agent lifecycle live snapshot 到达时丢掉已展示的 title。
   证据：`CanvasPanelManager.ts` 的 `postExecutionOutputMessage()` 与 `postExecutionSnapshot()`，以及 `webview/main.tsx` 的 `host/executionSnapshot` 分支。
+
+- 观察：仓库使用的 xterm.js 6 声明了 `windowOptions.getWinTitle` 对 `CSI 21 t` 的支持，但所有 Window Operations 默认关闭，且 title 查询标记为“没有默认实现”；当前嵌入式 Terminal options 没有该配置。
+  证据：`node_modules/@xterm/xterm/typings/xterm.d.ts` 的 `IWindowOptions.getWinTitle` 注释，以及 `src/webview/main.tsx` 的 `createEmbeddedTerminalOptions()`。
+
+- 观察：新增真实 Supervisor PTY fixture 首次使完整回归中的既有 attach-gap 订阅竞态断言失败一次；未改变 attach-gap 逻辑、立即复跑后通过，title 查询 fixture 本身在两次运行都完成了回包验证。
+  证据：首次 `npm run test:runtime-supervisor-protocol` 在 `scripts/test/test-runtime-supervisor-protocol.mjs:730` 失败；同命令复跑通过并打印 `runtimeSupervisorProtocol tests passed`。
 
 ## 决策记录
 
@@ -57,13 +64,19 @@
   理由：`Terminal`、Agent 名称、启动命令和 shell 路径都不是 PTY 设定的 terminal title；把 cwd 伪造成 title 会产生 `{root} · {root}` 的重复信息。上下文行本来就用于路径上下文，适合承载这条短时运行信息，而静态副标题继续承载启动来源。
   日期/作者：2026-08-07 / 用户确认，Codex 记录
 
+- 决策：仅支持 xterm `CSI 21 t` 查询当前 window title，并在 Local Host / Runtime Supervisor 的 PTY owner 处以 `OSC l <title> ST` 回包；不依赖可见 Webview xterm，也不启用其他 Window Operations 或 `CSI 20 t` icon label。
+  理由：title 已是 Host/Supervisor 保有的 per-session 权威值，在该边界回包可覆盖 Webview 隐藏和 reattach；xterm.js 默认出于安全原因禁用窗口操作，且没有可直接启用的 title 查询实现。严格范围避免意外开放窗口控制或泄露 cwd/root、节点名等非 title 信息。
+  日期/作者：2026-08-07 / 用户请求，Codex 记录
+
 ## 结果与复盘
 
-title 的 transport、三态 snapshot、展示位置调整与定向自动化验证均已完成。计划保持 active，直到真实 VS Code 宿主 smoke 有证据后再移入 completed。
+title 的 transport、三态 snapshot、展示位置调整、`CSI 21 t` 查询回包与定向自动化验证均已完成。计划保持 active，直到真实 VS Code 宿主 smoke 有证据后再移入 completed。
 
 2026-08-06 已通过：`npm run typecheck`、`npm run test:agent-terminal-title-activity`、`npm run test:runtime-supervisor-protocol`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "PTY terminal titles"`、`npm run build` 与 `git diff --check`。parser 覆盖 OSC 0/2、BEL/ST/C1 ST、分片、控制字符、空 title 与 160 code-point 上限；Supervisor 定向回归确认 live snapshot 传回 title、已知空 live title 传为 `null`、finished snapshot 不保留它；当时 Webview 回归确认动态副标题、静态 fallback、稳定节点标题、旧会话 output 不覆盖新会话，以及同一会话缺字段 snapshot 不清空既有 title。展示位置调整后的验证结果见下一段。
 
 2026-08-07 已通过：`npm run typecheck`、`npm run test:agent-terminal-title-activity`、`npm run test:runtime-supervisor-protocol`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "header context"`、其内部执行的 `npm run build`，以及 `git diff --check`。Webview 用例确认 Agent 与 Terminal 的静态副标题保持启动命令 / shell 路径，初始与显式清空时 context row 只显示 `workspace/`，收到 title 时显示 `{terminal title} · workspace/`，同一会话缺 title 字段的 snapshot 保持已有 title，旧 session output 不能覆盖新 session title，节点可编辑名称不变。
+
+2026-08-07 已通过：`npm run test:agent-terminal-title-activity`、`npm run test:runtime-supervisor-protocol`、`npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "header context"`（含 `npm run build`）和 `git diff --check`。新增 parser 回归覆盖 `CSI 21 t` 的 7-bit/C1/分片、排除 `CSI 20 t`、损坏 OSC 后继续检测 query、设置/清空与 query 的事件顺序，以及规范 `OSC l` 报告；Supervisor 的真实 node-pty fixture 在没有 Webview 时确认先收到 title 报告、清空后收到空报告。Supervisor 全量回归第一次在既有 attach-gap 并发断言处时序失败，未修改该逻辑的复跑完整通过；该风险保留在“意外与发现”。
 
 尚未运行真实 Extension Development Host smoke，因此尚未声明各 shell、各 VS Code 主题、远程 workspace 或真实 provider title 行为都已验证。建议按“具体步骤”中的命令完成 Terminal 设置/清空，再观察真实 Agent 的 spinner、reload 与 reattach。
 
@@ -85,7 +98,9 @@ title 的 transport、三态 snapshot、展示位置调整与定向自动化验�
 
 第三步在 Webview 维护每个 execution session 的最新 title，接收 output 或 snapshot 时按 session id 更新它，并将其传入 `toFlowNodes()`。`ChromeTitleEditor` 的 `subtitle` 固定为原有 launch command/shell path；它的 context row 对两类节点都使用 cwd 标签助手，title 存在时显示 `{terminal title} · {root}`，否则显示 `{root}`，并将完整组合放在 tooltip 中。终端控制序列仍由 xterm 正常消费；Webview 不自行解析或反向上报 title。
 
-第四步补测试：通用 parser 覆盖 OSC 0/2 的 BEL、ST、C1 ST、跨 chunk、无效控制字符、清空和字符上限；Supervisor protocol 测试覆盖 snapshot title 和 live 空 title 的 `null` 表示；Playwright Webview 测试覆盖 Agent/Terminal 固定静态副标题、默认 `{root}` 上下文、动态 `{terminal title} · {root}`、同 session 缺字段 snapshot 保持 title、显式 `null` 清空为 `{root}` 与稳定节点名不变。定向测试还要证明 title 没有成为 terminal journal event 或 per-frame `host/stateUpdated`。
+补充查询步骤：扩展共享 title parser，使其在保持 OSC 0/2 兼容 API 的同时按序报告精确的 `CSI 21 t` 请求，支持 7-bit 与 C1 introducer 和跨 chunk。处理 title event 时更新 current title；处理 query event 时立即将 `OSC l` 报告写到同一 PTY。Local Host 仅回写 local session，Supervisor 在 raw PTY owner 中回写，转发 Supervisor output 的 Host 只更新投影而绝不第二次回写。
+
+第四步补测试：通用 parser 覆盖 OSC 0/2 的 BEL、ST、C1 ST、跨 chunk、无效控制字符、清空和字符上限，以及 `CSI 21 t` 的 7-bit/C1/分片、事件顺序、空报告和非目标查询不触发；Supervisor protocol 测试覆盖真实 PTY 收到 title 回包、snapshot title 和 live 空 title 的 `null` 表示；Playwright Webview 测试覆盖 Agent/Terminal 固定静态副标题、默认 `{root}` 上下文、动态 `{terminal title} · {root}`、同 session 缺字段 snapshot 保持 title、显式 `null` 清空为 `{root}` 与稳定节点名不变。定向测试还要证明 title 没有成为 terminal journal event 或 per-frame `host/stateUpdated`。
 
 ## 具体步骤
 
@@ -103,7 +118,7 @@ title 的 transport、三态 snapshot、展示位置调整与定向自动化验�
 
 ## 验证与验收
 
-验收以可观察行为为准：两类节点标题栏的 context row 初始显示 `{root}`；Terminal 的 OSC 2 title 使它显示 `{terminal title} · {root}`，清空后回到 `{root}`；Agent provider title 产生同样效果。启动命令或 shell 路径的静态副标题、两类节点的输入框值仍保持原值。Webview 重建、snapshot attach 和 Supervisor snapshot 后会回显当前 title。Agent title activity 的两帧 profile、waiting/running reducer 与 attention 逻辑必须保持原有通过结果。
+验收以可观察行为为准：两类节点标题栏的 context row 初始显示 `{root}`；Terminal 的 OSC 2 title 使它显示 `{terminal title} · {root}`，清空后回到 `{root}`；Agent provider title 产生同样效果。PTY 内 TUI 在设置 title 后写 `CSI 21 t` 必须收到 `OSC l <title> ST`，清空后查询必须收到空 `OSC l ST`；Webview 隐藏时由 Supervisor 直接拥有的 PTY 也必须得到同样回包。启动命令或 shell 路径的静态副标题、两类节点的输入框值仍保持原值。Webview 重建、snapshot attach 和 Supervisor snapshot 后会回显当前 title。Agent title activity 的两帧 profile、waiting/running reducer 与 attention 逻辑必须保持原有通过结果。
 
 安全与性能验收：非法/过长 title 不越过 parser 限制；title 不出现在 output journal、recent output 或 diagnostics；连续 spinner title 不触发逐帧 state persistence。Automated tests、`npm run typecheck`、`npm run build` 和 `git diff --check` 均需成功。
 
@@ -130,6 +145,12 @@ title 的 transport、三态 snapshot、展示位置调整与定向自动化验�
 
     export function parseExecutionTerminalTitles(chunk: string, previousCarryover?: string): ParsedExecutionTerminalTitles;
     export function normalizeExecutionTerminalTitle(title: string): string | undefined;
+    export function processExecutionTerminalTitleControls(
+      chunk: string,
+      previousTerminalTitle: string | undefined,
+      previousCarryover?: string
+    ): ProcessedExecutionTerminalTitleControls;
+    export function formatExecutionTerminalTitleReport(terminalTitle: string | undefined): string;
 
 在 `ExecutionSessionMetadata` 与 `RuntimeSupervisorSessionSnapshot` 中添加 optional `terminalTitle?: string`。在 `HostToWebviewMessage` 的 `host/executionSnapshot` 和 `host/executionOutput` payload 中添加同名 optional 字段；它的语义始终是“此消息结束时该 session 的规范化 title”，不是屏幕输出或用户节点名。
 
@@ -142,3 +163,7 @@ title 的 transport、三态 snapshot、展示位置调整与定向自动化验�
 本次修订说明：2026-08-07 用户确认 title 应放在截图所示的节点标题栏顶部上下文行，而非副标题或终端内容区。默认不合成 terminal title；上下文行无 title 时显示 `{root}`，有 title 时显示 `{terminal title} · {root}`。静态副标题恢复为 Agent 启动命令与 Terminal shell 路径。
 
 本次修订说明：2026-08-07 已完成上下文行展示实现与定向自动化验证；真实 Extension Development Host smoke 仍是唯一未完成项。
+
+本次修订说明：2026-08-07 用户要求支持 TUI 查询 title。计划新增 `CSI 21 t` / `OSC l` 查询回包范围；实现和验证结果待补充。
+
+本次修订说明：2026-08-07 已完成 `CSI 21 t` / `OSC l` 解析、Local Host/Supervisor PTY 回包、真实 Supervisor fixture、Webview/build/diff 自动化验证；真实 Extension Development Host smoke 仍是唯一未完成项。
