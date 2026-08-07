@@ -1,6 +1,17 @@
 export interface ParsedExecutionTerminalTitles {
   carryover: string;
   titles: string[];
+  events: ExecutionTerminalTitleEvent[];
+}
+
+export type ExecutionTerminalTitleEvent =
+  | { kind: 'set-title'; title: string }
+  | { kind: 'query-title' };
+
+export interface ProcessedExecutionTerminalTitleControls {
+  carryover: string;
+  terminalTitle?: string;
+  titleQueries: Array<string | undefined>;
 }
 
 export const EXECUTION_TERMINAL_TITLE_MAX_LENGTH = 160;
@@ -15,6 +26,7 @@ export function parseExecutionTerminalTitles(
 ): ParsedExecutionTerminalTitles {
   const source = `${previousCarryover}${chunk}`;
   const titles: string[] = [];
+  const events: ExecutionTerminalTitleEvent[] = [];
   let carryover = '';
   let index = 0;
 
@@ -23,11 +35,29 @@ export function parseExecutionTerminalTitles(
     const oscStartLength = getOscStartLength(source, index);
     if (oscStartLength === 0) {
       if (source[index] === '\u001b' && index + 1 === source.length) {
-        // The OSC introducer may be split as ESC | ].
+        // An OSC or CSI introducer may be split after ESC.
         carryover = source.slice(index);
         break;
       }
-      index += 1;
+      const csiStartLength = getCsiStartLength(source, index);
+      if (csiStartLength === 0) {
+        index += 1;
+        continue;
+      }
+
+      const queryStart = index + csiStartLength;
+      const queryCandidate = source.slice(queryStart, queryStart + 3);
+      if (queryCandidate === '21t') {
+        events.push({ kind: 'query-title' });
+        index = queryStart + 3;
+        continue;
+      }
+      const remainingCandidate = source.slice(queryStart);
+      if ('21t'.startsWith(remainingCandidate)) {
+        carryover = source.slice(sequenceStart);
+        break;
+      }
+      index = queryStart;
       continue;
     }
     index += oscStartLength;
@@ -81,7 +111,8 @@ export function parseExecutionTerminalTitles(
     }
 
     if (invalid) {
-      index = Math.max(index + 1, sequenceStart + oscStartLength);
+      // Reconsider the invalid control introducer as a possible next sequence.
+      index = Math.max(index, sequenceStart + oscStartLength);
       continue;
     }
     if (!terminated) {
@@ -92,13 +123,44 @@ export function parseExecutionTerminalTitles(
     const title = source.slice(payloadStart, payloadEnd);
     if (title.length <= TITLE_CARRYOVER_LIMIT) {
       titles.push(title);
+      events.push({ kind: 'set-title', title });
     }
   }
 
   return {
     carryover: trimCarryover(carryover),
-    titles
+    titles,
+    events
   };
+}
+
+export function processExecutionTerminalTitleControls(
+  chunk: string,
+  previousTerminalTitle: string | undefined,
+  previousCarryover = ''
+): ProcessedExecutionTerminalTitleControls {
+  const parsed = parseExecutionTerminalTitles(chunk, previousCarryover);
+  let terminalTitle = previousTerminalTitle;
+  const titleQueries: Array<string | undefined> = [];
+
+  for (const event of parsed.events) {
+    if (event.kind === 'set-title') {
+      terminalTitle = normalizeExecutionTerminalTitle(event.title);
+    } else {
+      titleQueries.push(terminalTitle);
+    }
+  }
+
+  return {
+    carryover: parsed.carryover,
+    terminalTitle,
+    titleQueries
+  };
+}
+
+export function formatExecutionTerminalTitleReport(terminalTitle: string | undefined): string {
+  const normalizedTitle = normalizeExecutionTerminalTitle(terminalTitle ?? '');
+  return `\u001b]l${normalizedTitle ?? ''}\u001b\\`;
 }
 
 export function normalizeExecutionTerminalTitle(title: string): string | undefined {
@@ -118,6 +180,13 @@ function getOscStartLength(source: string, index: number): number {
     return 2;
   }
   return source[index] === '\u009d' ? 1 : 0;
+}
+
+function getCsiStartLength(source: string, index: number): number {
+  if (source[index] === '\u001b' && source[index + 1] === '[') {
+    return 2;
+  }
+  return source[index] === '\u009b' ? 1 : 0;
 }
 
 function isAsciiDigit(value: string | undefined): boolean {

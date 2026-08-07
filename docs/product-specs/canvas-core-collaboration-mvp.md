@@ -39,6 +39,7 @@
   - 笔记
 - 对象的基础状态展示，例如标题、类型、位置、最近状态摘要
 - `Agent` / `Terminal` 的节点标题栏最上方上下文行始终显示 cwd/root；PTY 进程通过 OSC 0 / OSC 2 设置非空 terminal title 时，该行显示 `{terminal title} · {root}`。它不覆盖用户可编辑的节点标题或启动命令 / shell 路径的静态副标题；未设置、清空或会话结束后只保留 `{root}`
+- PTY 内 TUI 可通过 xterm `CSI 21 t` 查询当前 terminal title，并在同一 PTY 输入方向收到 `OSC l <title> ST`；仅返回已设置的 title，不返回 cwd/root、节点名、启动命令或历史 title，未设置时返回空报告
 - Agent 对象的最小真实 backend 主路径：
   - 用户可选择 `Codex` 或 `Claude Code`
   - 用户新建 Agent 节点后，节点会按当前 provider 自动进入启动流程；若运行时持久化已开启且 live runtime 仍可重新附着，则优先 reattach 原会话；只有在扩展重载前已持有带可信绑定来源的 provider 原生显式 session identity，且 live runtime 不可重新附着时，节点才会自动走 provider resume

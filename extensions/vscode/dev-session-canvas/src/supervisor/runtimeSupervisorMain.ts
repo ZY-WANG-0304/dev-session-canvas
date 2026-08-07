@@ -27,8 +27,8 @@ import {
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
-  normalizeExecutionTerminalTitle,
-  parseExecutionTerminalTitles
+  formatExecutionTerminalTitleReport,
+  processExecutionTerminalTitleControls
 } from '../common/executionTerminalTitle';
 import {
   type AgentNodeStatus,
@@ -974,7 +974,14 @@ class RuntimeSupervisorServer {
         }
         session.outputSequence = terminalEvent?.revision ?? session.outputSequence + 1;
         session.output = appendOutputTail(session.output, chunk);
-        updateSupervisorTerminalTitle(session, chunk);
+        const titleReports = updateSupervisorTerminalTitle(session, chunk);
+        for (const report of titleReports) {
+          try {
+            session.process?.write(report);
+          } catch {
+            // The process may exit between its output query and the reply.
+          }
+        }
         session.terminalStateTracker.write(chunk, {
           outputSequence: session.outputSequence
         });
@@ -2252,15 +2259,15 @@ function appendOutputTail(existing: string, chunk: string): string {
   return combined.length > OUTPUT_TAIL_LIMIT ? combined.slice(-OUTPUT_TAIL_LIMIT) : combined;
 }
 
-function updateSupervisorTerminalTitle(session: SupervisorSession, chunk: string): void {
-  const parsed = parseExecutionTerminalTitles(chunk, session.terminalTitleCarryover);
-  session.terminalTitleCarryover = parsed.carryover;
-  for (const rawTitle of parsed.titles) {
-    const terminalTitle = normalizeExecutionTerminalTitle(rawTitle);
-    if (session.terminalTitle !== terminalTitle) {
-      session.terminalTitle = terminalTitle;
-    }
-  }
+function updateSupervisorTerminalTitle(session: SupervisorSession, chunk: string): string[] {
+  const processed = processExecutionTerminalTitleControls(
+    chunk,
+    session.terminalTitle,
+    session.terminalTitleCarryover
+  );
+  session.terminalTitleCarryover = processed.carryover;
+  session.terminalTitle = processed.terminalTitle;
+  return processed.titleQueries.map((terminalTitle) => formatExecutionTerminalTitleReport(terminalTitle));
 }
 
 function normalizeSignal(signal: string | undefined): string | undefined {

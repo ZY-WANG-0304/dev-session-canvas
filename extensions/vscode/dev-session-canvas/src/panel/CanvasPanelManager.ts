@@ -37,8 +37,9 @@ import {
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
+  formatExecutionTerminalTitleReport,
   normalizeExecutionTerminalTitle,
-  parseExecutionTerminalTitles
+  processExecutionTerminalTitleControls
 } from '../common/executionTerminalTitle';
 import {
   createExecutionAttentionSignalState,
@@ -15206,7 +15207,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const startedAt = Date.now();
         const sessionMap = this.getExecutionSessions('agent');
         const activeSession = sessionMap.get(nodeId);
-        if (!activeSession) {
+        if (!activeSession || activeSession.owner !== 'local') {
           return;
         }
 
@@ -15216,7 +15217,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         activeSession.outputSequence += 1;
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
-        updateExecutionTerminalTitle(activeSession, text);
+        updateExecutionTerminalTitle(activeSession, text, (report) => {
+          try {
+            activeSession.process.write(report);
+          } catch {
+            // The process may exit between its output query and the reply.
+          }
+        });
         activeSession.terminalStateTracker.write(text, {
           outputSequence: activeSession.outputSequence
         });
@@ -16411,7 +16418,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const handleTerminalChunk = (text: string): void => {
         const startedAt = Date.now();
         const activeSession = this.terminalSessions.get(nodeId);
-        if (!activeSession) {
+        if (!activeSession || activeSession.owner !== 'local') {
           return;
         }
 
@@ -16421,7 +16428,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
         activeSession.outputSequence += 1;
         activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
-        updateExecutionTerminalTitle(activeSession, text);
+        updateExecutionTerminalTitle(activeSession, text, (report) => {
+          try {
+            activeSession.process.write(report);
+          } catch {
+            // The process may exit between its output query and the reply.
+          }
+        });
         activeSession.terminalStateTracker.write(text, {
           outputSequence: activeSession.outputSequence
         });
@@ -27956,14 +27969,20 @@ function appendTerminalBuffer(existing: string, nextChunk: string): string {
   return trimStoredTerminalText(`${existing}${nextChunk}`);
 }
 
-function updateExecutionTerminalTitle(session: ManagedExecutionSession, chunk: string): void {
-  const parsed = parseExecutionTerminalTitles(chunk, session.terminalTitleCarryover);
-  session.terminalTitleCarryover = parsed.carryover;
-  for (const rawTitle of parsed.titles) {
-    const terminalTitle = normalizeExecutionTerminalTitle(rawTitle);
-    if (session.terminalTitle !== terminalTitle) {
-      session.terminalTitle = terminalTitle;
-    }
+function updateExecutionTerminalTitle(
+  session: ManagedExecutionSession,
+  chunk: string,
+  onTitleQuery?: (report: string) => void
+): void {
+  const processed = processExecutionTerminalTitleControls(
+    chunk,
+    session.terminalTitle,
+    session.terminalTitleCarryover
+  );
+  session.terminalTitleCarryover = processed.carryover;
+  session.terminalTitle = processed.terminalTitle;
+  for (const terminalTitle of processed.titleQueries) {
+    onTitleQuery?.(formatExecutionTerminalTitleReport(terminalTitle));
   }
 }
 
