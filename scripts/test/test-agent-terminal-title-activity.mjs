@@ -32,7 +32,8 @@ try {
     formatExecutionTerminalTitleReport,
     normalizeExecutionTerminalTitle,
     parseExecutionTerminalTitles,
-    processExecutionTerminalTitleControls
+    processExecutionTerminalTitleControls,
+    redactExecutionTerminalTitleOutput
   } = require(executionTitleOutfile);
   const {
     AGENT_WAITING_INPUT_QUIET_FALLBACK_MS,
@@ -101,6 +102,27 @@ try {
   const queryBeforeSet = processExecutionTerminalTitleControls('\u001b[21t\u001b]2;Next title\u0007', 'Prior title');
   assert.deepEqual(queryBeforeSet.titleQueries, ['Prior title']);
   assert.equal(queryBeforeSet.terminalTitle, 'Next title');
+
+  const redactedTitleOutput = redactExecutionTerminalTitleOutput(
+    'before\u001b]2;Sensitive title\u0007\u001b[21tafter'
+  );
+  assert.equal(redactedTitleOutput.output, 'before\u0000\u001b[21tafter');
+  assert.equal(redactedTitleOutput.output.includes('Sensitive title'), false);
+  const splitRedactedTitleStart = redactExecutionTerminalTitleOutput('before\u001b]2;Sensitive ');
+  assert.equal(splitRedactedTitleStart.output, 'before\u0000');
+  const splitRedactedTitleEnd = redactExecutionTerminalTitleOutput(
+    'title\u0007after',
+    splitRedactedTitleStart.state
+  );
+  assert.equal(splitRedactedTitleEnd.output, '\u0000after');
+  assert.equal(splitRedactedTitleEnd.output.includes('Sensitive title'), false);
+  const oversizedRedactedTitle = redactExecutionTerminalTitleOutput(`\u001b]2;${'x'.repeat(600)}`);
+  assert.equal(oversizedRedactedTitle.output, '\u0000');
+  const oversizedRedactedTitleEnd = redactExecutionTerminalTitleOutput(
+    'still-sensitive\u0007visible',
+    oversizedRedactedTitle.state
+  );
+  assert.equal(oversizedRedactedTitleEnd.output, '\u0000visible');
 
   const codexTitleState = createAgentTerminalTitleActivityState();
   assert.equal(recordAgentTerminalTitleActivity(codexTitleState, 'codex', ['⠋ Codex'], 100), false);
