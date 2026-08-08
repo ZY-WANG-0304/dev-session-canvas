@@ -124,6 +124,36 @@ try {
   );
   assert.equal(oversizedRedactedTitleEnd.output, '\u0000visible');
 
+  const splitRedactedControlChunks = ['\u001b', ']', '2', ';', 'Sensitive title', '\u0007', '\u001b[21t'];
+  let splitRedactedControlTitle;
+  let splitRedactedControlCarryover = '';
+  let splitRedactedControlState;
+  let splitRedactedControlOutput = '';
+  let splitRedactedControlQueries = [];
+  for (const chunk of splitRedactedControlChunks) {
+    const processed = processExecutionTerminalTitleControls(
+      chunk,
+      splitRedactedControlTitle,
+      splitRedactedControlCarryover,
+      splitRedactedControlState
+    );
+    assert.notEqual(
+      processed.terminalOutput,
+      '',
+      'Every non-empty PTY chunk, including a split OSC 0/2 introducer, must remain journalable.'
+    );
+    assert.equal(processed.terminalOutput.includes('Sensitive title'), false);
+    splitRedactedControlTitle = processed.terminalTitle;
+    splitRedactedControlCarryover = processed.carryover;
+    splitRedactedControlState = processed.redactionState;
+    splitRedactedControlOutput += processed.terminalOutput;
+    splitRedactedControlQueries = splitRedactedControlQueries.concat(processed.titleQueries);
+  }
+  assert.equal(splitRedactedControlTitle, 'Sensitive title');
+  assert.deepEqual(splitRedactedControlQueries, ['Sensitive title']);
+  assert.equal(splitRedactedControlOutput.includes('Sensitive title'), false);
+  assert.match(splitRedactedControlOutput, /\u001b\[21t/u);
+
   const codexTitleState = createAgentTerminalTitleActivityState();
   assert.equal(recordAgentTerminalTitleActivity(codexTitleState, 'codex', ['⠋ Codex'], 100), false);
   assert.equal(recordAgentTerminalTitleActivity(codexTitleState, 'codex', ['⠋ Codex'], 150), false);
