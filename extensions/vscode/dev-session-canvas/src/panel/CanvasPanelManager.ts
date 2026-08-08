@@ -39,7 +39,8 @@ import {
 import {
   formatExecutionTerminalTitleReport,
   normalizeExecutionTerminalTitle,
-  processExecutionTerminalTitleControls
+  processExecutionTerminalTitleControls,
+  type ExecutionTerminalTitleRedactionState
 } from '../common/executionTerminalTitle';
 import {
   createExecutionAttentionSignalState,
@@ -514,6 +515,7 @@ interface ManagedExecutionSessionBase {
   buffer: string;
   terminalTitle?: string;
   terminalTitleCarryover?: string;
+  terminalTitleRedactionState?: ExecutionTerminalTitleRedactionState;
   terminalStateTracker: SerializedTerminalStateTracker;
   lineContextTracker: ExecutionTerminalLineContextTracker;
   stopRequested: boolean;
@@ -3510,8 +3512,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               ? [params.injectAgentOutputChunk]
               : [];
         for (const injectedChunk of injectedChunks) {
-          syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, injectedChunk);
-          updateExecutionTerminalTitle(syntheticSession, injectedChunk);
+          const titleUpdate = updateExecutionTerminalTitle(syntheticSession, injectedChunk);
+          syntheticSession.buffer = appendTerminalBuffer(syntheticSession.buffer, titleUpdate.terminalOutput);
           this.recordAgentOutputHeuristicsAndNotifyAbnormalStream(
             params.nodeId,
             syntheticSession,
@@ -10901,7 +10903,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } else {
       session.outputSequence += 1;
     }
-    this.applyRuntimeSupervisorOutputChunk(binding.kind, binding.nodeId, session, event.chunk, Date.now());
+    this.applyRuntimeSupervisorOutputChunk(
+      binding.kind,
+      binding.nodeId,
+      session,
+      event.chunk,
+      Date.now(),
+      event.terminalTitle
+    );
   }
 
   private handleRuntimeSupervisorTerminalEvent(
@@ -10963,7 +10972,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.outputSequence = event.revision;
       session.terminalStream.revision = event.revision;
       session.terminalStream.events.push(event);
-      this.applyRuntimeSupervisorOutputChunk(binding.kind, binding.nodeId, session, event.data, Date.now());
+      this.applyRuntimeSupervisorOutputChunk(
+        binding.kind,
+        binding.nodeId,
+        session,
+        event.data,
+        Date.now(),
+        payload.terminalTitle
+      );
       return;
     }
 
@@ -10997,16 +11013,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     session: SupervisorExecutionSession,
     chunk: string,
-    startedAt: number
+    startedAt: number,
+    terminalTitle?: string | null
   ): void {
-    session.buffer = appendTerminalBuffer(session.buffer, chunk);
-    updateExecutionTerminalTitle(session, chunk);
+    const titleUpdate = updateExecutionTerminalTitle(session, chunk);
+    if (terminalTitle !== undefined) {
+      session.terminalTitle = terminalTitle === null
+        ? undefined
+        : normalizeExecutionTerminalTitle(terminalTitle);
+    }
+    const terminalOutput = titleUpdate.terminalOutput;
+    session.buffer = appendTerminalBuffer(session.buffer, terminalOutput);
     if (session.terminalStateTrusted) {
-      session.terminalStateTracker.write(chunk, {
+      session.terminalStateTracker.write(terminalOutput, {
         outputSequence: session.outputSequence
       });
     }
-    session.lineContextTracker.write(chunk);
+    session.lineContextTracker.write(terminalOutput);
     void this.bridgeExecutionAttentionSignals(kind, nodeId, session, chunk);
     if (kind === 'agent') {
       this.maybeSyncAgentResumeContextFromOutput(nodeId, session, {
@@ -11018,7 +11041,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.queueExecutionStateSync(kind, nodeId, EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS, {
       postState: session.terminalProjectionMode === 'legacy-interactive'
     });
-    this.queueExecutionOutput(kind, nodeId, chunk);
+    this.queueExecutionOutput(kind, nodeId, terminalOutput);
     this.recordExecutionPerformanceDiagnostics({
       timestamp: new Date().toISOString(),
       source: 'host-output-chunk',
@@ -15216,18 +15239,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
 
         activeSession.outputSequence += 1;
-        activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
-        updateExecutionTerminalTitle(activeSession, text, (report) => {
+        const titleUpdate = updateExecutionTerminalTitle(activeSession, text, (report) => {
           try {
             activeSession.process.write(report);
           } catch {
             // The process may exit between its output query and the reply.
           }
         });
-        activeSession.terminalStateTracker.write(text, {
+        const terminalOutput = titleUpdate.terminalOutput;
+        activeSession.buffer = appendTerminalBuffer(activeSession.buffer, terminalOutput);
+        activeSession.terminalStateTracker.write(terminalOutput, {
           outputSequence: activeSession.outputSequence
         });
-        activeSession.lineContextTracker.write(text);
+        activeSession.lineContextTracker.write(terminalOutput);
         void this.bridgeExecutionAttentionSignals('agent', nodeId, activeSession, text);
         this.maybeSyncAgentResumeContextFromOutput(nodeId, activeSession, {
           allowOverwriteExisting: activeSession.stopRequested,
@@ -15237,7 +15261,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.recordAgentOutputActivity(nodeId, activeSession, text);
         }
         this.queueExecutionStateSync('agent', nodeId);
-        this.queueExecutionOutput('agent', nodeId, text);
+        this.queueExecutionOutput('agent', nodeId, terminalOutput);
         this.recordExecutionPerformanceDiagnostics({
           timestamp: new Date().toISOString(),
           source: 'host-output-chunk',
@@ -16427,24 +16451,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
 
         activeSession.outputSequence += 1;
-        activeSession.buffer = appendTerminalBuffer(activeSession.buffer, text);
-        updateExecutionTerminalTitle(activeSession, text, (report) => {
+        const titleUpdate = updateExecutionTerminalTitle(activeSession, text, (report) => {
           try {
             activeSession.process.write(report);
           } catch {
             // The process may exit between its output query and the reply.
           }
         });
-        activeSession.terminalStateTracker.write(text, {
+        const terminalOutput = titleUpdate.terminalOutput;
+        activeSession.buffer = appendTerminalBuffer(activeSession.buffer, terminalOutput);
+        activeSession.terminalStateTracker.write(terminalOutput, {
           outputSequence: activeSession.outputSequence
         });
-        activeSession.lineContextTracker.write(text);
+        activeSession.lineContextTracker.write(terminalOutput);
         void this.bridgeExecutionAttentionSignals('terminal', nodeId, activeSession, text);
         if (activeSession.lifecycleStatus === 'launching') {
           activeSession.lifecycleStatus = 'live';
         }
         this.queueExecutionStateSync('terminal', nodeId);
-        this.queueExecutionOutput('terminal', nodeId, text);
+        this.queueExecutionOutput('terminal', nodeId, terminalOutput);
         this.recordExecutionPerformanceDiagnostics({
           timestamp: new Date().toISOString(),
           source: 'host-output-chunk',
@@ -27973,17 +27998,23 @@ function updateExecutionTerminalTitle(
   session: ManagedExecutionSession,
   chunk: string,
   onTitleQuery?: (report: string) => void
-): void {
+): { terminalOutput: string; titleUpdated: boolean } {
   const processed = processExecutionTerminalTitleControls(
     chunk,
     session.terminalTitle,
-    session.terminalTitleCarryover
+    session.terminalTitleCarryover,
+    session.terminalTitleRedactionState
   );
   session.terminalTitleCarryover = processed.carryover;
+  session.terminalTitleRedactionState = processed.redactionState;
   session.terminalTitle = processed.terminalTitle;
   for (const terminalTitle of processed.titleQueries) {
     onTitleQuery?.(formatExecutionTerminalTitleReport(terminalTitle));
   }
+  return {
+    terminalOutput: processed.terminalOutput,
+    titleUpdated: processed.titleUpdated
+  };
 }
 
 function extractRecentTerminalOutput(value: string): string {
