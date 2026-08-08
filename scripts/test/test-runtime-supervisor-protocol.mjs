@@ -626,8 +626,10 @@ process.stdin.on('data', (chunk) => {
     process.stdout.write(${JSON.stringify(`${titleQueryMarker}\\r\\n`)});
   }
 });
-process.stdout.write(${JSON.stringify('\u001b]2;First title\u0007\u001b[2')});
-setTimeout(() => process.stdout.write('1t'), 20);
+const titleQueryChunks = ${JSON.stringify(['\u001b', ']', '2', ';', 'First title', '\u0007', '\u001b', '[', '2', '1', 't'])};
+titleQueryChunks.forEach((chunk, index) => {
+  setTimeout(() => process.stdout.write(chunk), index * 20);
+});
 setInterval(() => undefined, 1000);
 `,
       'utf8'
@@ -672,6 +674,11 @@ setInterval(() => undefined, 1000);
       titleQuerySnapshot.terminalTitle,
       null,
       'An OSC clear before CSI 21 t must produce an empty report and clear the live title.'
+    );
+    assert.notEqual(
+      titleQuerySnapshot.lifecycle,
+      'error',
+      'An OSC title introducer split across PTY chunks must not fail the live session journal.'
     );
     assert.equal(
       titleQuerySnapshot.output.includes('First title'),

@@ -76,7 +76,7 @@ parser 的 title 先经过 `normalizeExecutionTerminalTitle()`：移除控制字
 
 `ExecutionSessionMetadata.terminalTitle`、`RuntimeSupervisorSessionSnapshot.terminalTitle` 和本地/远端执行 session 内存字段只表示当前 live PTY 的最后一个规范化 title。它不等于 `CanvasNodeSummary.title`，不参与节点 overview/title input、recent output、terminal journal event、diagnostic event、attention notification 或 Agent provider lifecycle metadata。
 
-在任何 output buffer、terminal journal、checkpoint、recent-output 或 Webview terminal 投影之前，共享 parser 会从已识别的 OSC 0/2 中删除完整控制序列及 payload。每个被删除的原始 PTY chunk 在安全输出中的原位置放入一个不可见 NUL 占位符，以保持 terminal-stream 的非空 event 与 revision 连续；NUL 会被终端模拟器忽略，并在面向人的 output 摘要前移除。分片 title payload 只在 live 内存中有界保存；超过上限后仅保留“继续丢弃至终止符”的状态，不能让后续 payload 回流到 durable output。只有当前规范化 title 继续按既有 live snapshot 三态规则短暂保存。
+在任何 output buffer、terminal journal、checkpoint、recent-output 或 Webview terminal 投影之前，共享 parser 会从已识别的 OSC 0/2 中删除完整控制序列及 payload。每个非空 raw PTY chunk 的安全输出都必须非空：已经识别的 title 与正在丢弃的 payload 由不可见 NUL 替代，`ESC`、`ESC ]`、`ESC ] 2` 等尚未能判定类型的分片 introducer 也暂时以 NUL 占位，直到后续 chunk 通过有界 carryover 完成解析。这个不变量保持 terminal-stream event、journal record 与 revision 连续；NUL 会被终端模拟器忽略，并在面向人的 output 摘要前移除。分片 title payload 只在 live 内存中有界保存；超过上限后仅保留“继续丢弃至终止符”的状态，不能让后续 payload 回流到 durable output。只有当前规范化 title 继续按既有 live snapshot 三态规则短暂保存。
 
 `CanvasPanelManager.ts` 在 Local PTY chunk 和 Supervisor output chunk 进入 output scheduler 前更新当前值。`runtimeSupervisorMain.ts` 在自己的 raw PTY owner 处做同样处理，并让 `toSnapshot()`/恢复路径保留它。title 仅在 session 仍存在时随常规 live-state sync 写入 metadata；新启动、停止、进程退出、删除和不再 live 的 history state 都清为 undefined。旧持久化 state/snapshot 没有这个 optional 字段时必须正常降级。
 
@@ -110,7 +110,7 @@ PTY 内的 TUI 将 `ESC [ 21 t`（C1 形式 `CSI 21 t` 也接受）写到输出�
 
 ## 8. 验证方法
 
-自动化覆盖 parser 的 OSC 0/2 各种终止与分片方式、值规范化/上限/清空、持久化前 title payload 删除、`CSI 21 t` 的 7-bit/C1 与分片请求、设置/查询顺序、空 title 的 `OSC l ST` 回包、Host/Supervisor snapshot 对当前 title 的往返、Host/Webview output message，以及两种节点固定的静态副标题、默认 `{root}` 上下文与动态 `{terminal title} · {root}` 上下文选择。Supervisor 的真实 PTY fixture 必须证明 TUI 收到回包，且 live terminal-stream suffix、recent-output 与落盘 journal 都不含测试 title 文本。现有 Agent title activity、Supervisor protocol 与 Webview 回归必须保持通过。
+自动化覆盖 parser 的 OSC 0/2 各种终止与分片方式、值规范化/上限/清空、每个非空 split introducer chunk 的非空安全输出、持久化前 title payload 删除、`CSI 21 t` 的 7-bit/C1 与分片请求、设置/查询顺序、空 title 的 `OSC l ST` 回包、Host/Supervisor snapshot 对当前 title 的往返、Host/Webview output message，以及两种节点固定的静态副标题、默认 `{root}` 上下文与动态 `{terminal title} · {root}` 上下文选择。Supervisor 的真实 PTY fixture 必须以分时输出的分片 OSC 2 证明 session 不会进入 error、TUI 收到回包，且 live terminal-stream suffix、recent-output 与落盘 journal 都不含测试 title 文本。现有 Agent title activity、Supervisor protocol 与 Webview 回归必须保持通过。
 
 人工验证：在 Terminal 节点输入 `printf '\033]2;Build API\a'` 后检查标题栏最上方上下文行变为 `Build API · {root}`，再用空 payload 清除并确认只保留 `{root}`；在 Codex/Claude Code Agent 执行会工作数秒的任务时，检查 provider title 更新但节点名和标题栏静态副标题不变。分别在 panel/editor、Webview reload 和 live-runtime reattach 后检查当前 title 仍一致。未在当前环境人工覆盖的平台应保留“验证中”状态。
 
@@ -128,8 +128,12 @@ PTY 内的 TUI 将 `ESC [ 21 t`（C1 形式 `CSI 21 t` 也接受）写到输出�
 
 2026-08-08 根据 PR #280 review 修复 Supervisor 在解析前把原始 OSC 0/2 写入 journal 的确定性泄露。已通过 `npm run typecheck`、`npm run test:agent-terminal-title-activity`、`npm run test:runtime-supervisor-protocol`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "header context"`（含 `npm run build`）与 `git diff --check`；新增真实 node-pty fixture 断言 title 文本不出现在 live terminal-stream suffix、Supervisor output tail 或已 flush 的 segment 文件，同时保留普通 marker 输出与 title query 回包。
 
+2026-08-08 follow-up 根据 PR #280 后续评论修复分片 OSC introducer 的空 journal record。`npm run test:agent-terminal-title-activity` 逐片覆盖 `ESC`、`]`、`2`、`;`、payload、BEL 与 `CSI 21 t`，确认每个非空 raw chunk 生成非空安全 output，title 仍被解析且不进入输出；`npm run test:runtime-supervisor-protocol` 的真实 node-pty fixture 以 20ms 间隔发送相同分片，确认 session 不会进入 `error`，title 查询/清空、正常 marker、stream suffix、recent-output 与落盘 journal 的边界保持正确。另已通过 `npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:webview -- --grep "header context"`（含 `npm run build`）与 `git diff --check`。该 Supervisor 全量回归首次运行在未改动的 attach-gap 并发断言处出现一次时序失败，原样复跑通过；本功能的分片 fixture 在两次运行均通过。
+
 尚未执行真实 Extension Development Host 中的 Terminal OSC 设置/清空、真实 Agent spinner、Webview reload 和 live-runtime reattach，因此本文的 `validation_status` 保持“验证中”。
 
 本次修订说明：2026-08-07 用户要求支持 TUI 查询当前 terminal title。选用 xterm Window Operations `CSI 21 t` 与 `OSC l` 报告；由于 xterm.js 6 默认禁用该类操作且 `getWinTitle` 没有默认实现，查询由 Local Host / Supervisor 的 PTY owner 显式提供，而不依赖可见 Webview。
 
 本次修订说明：2026-08-08 根据 PR #280 的确定性 journal 留存 blocker，在 shared output 边界删除 OSC 0/2 payload，并用不可见 NUL 保持 stream revision 对齐；live title 仍只通过非持久 event 投影和 snapshot 三态传递。
+
+本次修订说明：2026-08-08 根据 PR #280 后续 review，将 NUL 的不变量扩展到尚未完成分类的 OSC 分片 introducer，避免合法 raw PTY chunk 生成空 journal record，并补齐真实 Supervisor 分时分片验证。

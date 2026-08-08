@@ -200,10 +200,11 @@ export function redactExecutionTerminalTitleOutput(
     index = discarded.index;
     if (discarded.status === 'incomplete') {
       carryover = discarded.carryover;
-      return {
+      return finalizeRedactedTerminalTitleOutput(
         output,
-        state: createTerminalTitleRedactionState(carryover, true)
-      };
+        chunk,
+        createTerminalTitleRedactionState(carryover, true)
+      );
     }
     discardingTitlePayload = false;
     outputStart = index;
@@ -246,10 +247,11 @@ export function redactExecutionTerminalTitleOutput(
     index = consumed.index;
     if (consumed.status === 'incomplete') {
       if (consumed.discardingTitlePayload) {
-        return {
+        return finalizeRedactedTerminalTitleOutput(
           output,
-          state: createTerminalTitleRedactionState(consumed.carryover, true)
-        };
+          chunk,
+          createTerminalTitleRedactionState(consumed.carryover, true)
+        );
       }
       carryover = source.slice(sequenceStart);
       break;
@@ -260,10 +262,11 @@ export function redactExecutionTerminalTitleOutput(
   if (!carryover) {
     output += source.slice(outputStart);
   }
-  return {
+  return finalizeRedactedTerminalTitleOutput(
     output,
-    state: createTerminalTitleRedactionState(carryover, discardingTitlePayload)
-  };
+    chunk,
+    createTerminalTitleRedactionState(carryover, discardingTitlePayload)
+  );
 }
 
 export function formatExecutionTerminalTitleReport(terminalTitle: string | undefined): string {
@@ -363,6 +366,19 @@ function createTerminalTitleRedactionState(
   return {
     carryover,
     discardingTitlePayload: discardingTitlePayload || undefined
+  };
+}
+
+function finalizeRedactedTerminalTitleOutput(
+  output: string,
+  chunk: string,
+  state: ExecutionTerminalTitleRedactionState | undefined
+): { output: string; state?: ExecutionTerminalTitleRedactionState } {
+  return {
+    // node-pty may split an OSC introducer at any byte boundary. The journal requires a record
+    // for every raw chunk, so retain an invisible marker until the sequence can be classified.
+    output: output || (chunk ? REDACTED_TERMINAL_TITLE_MARKER : ''),
+    state
   };
 }
 
