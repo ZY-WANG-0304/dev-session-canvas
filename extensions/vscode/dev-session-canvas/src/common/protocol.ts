@@ -241,6 +241,8 @@ export interface ExecutionSessionMetadata {
   lastRuntimeError?: string;
   pendingLaunch?: PendingExecutionLaunch;
   recentOutput?: string;
+  /** The current PTY-provided OSC 0/2 title, separate from the user node title. */
+  terminalTitle?: string;
   lastExitCode?: number;
   lastExitSignal?: string;
   lastExitMessage?: string;
@@ -1257,6 +1259,8 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         cols: number;
         rows: number;
         liveSession: boolean;
+        /** The current title; null explicitly clears it, while absence preserves an existing live projection. */
+        terminalTitle?: string | null;
         outputSequence?: number;
         serializedTerminalState?: SerializedTerminalState;
         terminalStream?: TerminalStreamAttachPayload;
@@ -1269,6 +1273,8 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         kind: ExecutionNodeKind;
         executionSessionId?: string;
         chunk: string;
+        /** The current title after this output batch; null explicitly clears the prior title. */
+        terminalTitle?: string | null;
         persisted?: boolean;
         outputStartSequence?: number;
         outputSequence?: number;
