@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, type ComponentType } from 'react';
+import React, { useEffect, useRef, useState, type ComponentType } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import { useViewport, type NodeProps } from 'reactflow';
@@ -8,6 +8,8 @@ import type {
   AgentProviderKind,
   CanvasRuntimeContext,
   ExecutionNodeKind,
+  ExecutionProjectionPriority,
+  ExecutionProjectionState,
   WebviewNodeActionId
 } from '../common/protocol';
 import { strongTerminalAttentionReminderShowsTitleBar } from '../common/protocol';
@@ -164,6 +166,10 @@ export interface ExecutionSessionNodeDependencies {
     kind: ExecutionNodeKind,
     terminal: Terminal,
     options?: {
+      needsProjection?: boolean;
+      initialProjectionPriority?: ExecutionProjectionPriority;
+      sendTerminalAppliedAck?: boolean;
+      onProjectionStateChange?: (state: ExecutionProjectionState) => void;
       onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
       onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
       beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
@@ -215,6 +221,29 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     if (!agentMetadata) {
       return <deps.CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
     }
+
+    // Canonical-only legacy archives are upgraded by the Host before the
+    // first chunk, so they must enter the same restoring/input gate now.
+    const hasArchiveProjection = agentMetadata.terminalHistoryArchive !== undefined;
+    const archiveProjectionIdentity = agentMetadata.terminalHistoryArchive
+      ? `${agentMetadata.terminalHistoryArchive.archiveId}:${agentMetadata.terminalHistoryArchive.projectionCodec ?? ''}:${agentMetadata.terminalHistoryArchive.projectionSha256 ?? ''}`
+      : undefined;
+    // A live Supervisor session can be replaced while the node remains live.
+    // Track its identity separately so the existing controller is reattached
+    // instead of remaining bound to the cancelled projection generation.
+    const liveProjectionIdentity = agentMetadata.liveSession
+      ? `${agentMetadata.supervisorInstanceId ?? ''}:${agentMetadata.runtimeSessionId ?? ''}:${agentMetadata.terminalProjectionMode ?? ''}`
+      : undefined;
+    const needsProjection =
+      (agentMetadata.liveSession && agentMetadata.terminalProjectionMode === 'terminal-stream-v1') ||
+      hasArchiveProjection;
+    const initialProjectionState: ExecutionProjectionState = needsProjection ? 'queued' : 'ready';
+    const [projectionState, setProjectionState] = useState<ExecutionProjectionState>(initialProjectionState);
+    const projectionStateRef = useRef(projectionState);
+    projectionStateRef.current = projectionState;
+    const selectedRef = useRef(data.selected);
+    selectedRef.current = data.selected;
+    const projectionVisibleRef = useRef(false);
 
     const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
     const provider = agentMetadata.provider ?? 'codex';
@@ -273,6 +302,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       suppressShrinkFitUntilMs: 0
     });
     const attachSnapshotRequestedRef = useRef(false);
+    const previousNeedsProjectionRef = useRef(needsProjection);
+    const previousArchiveProjectionIdentityRef = useRef(archiveProjectionIdentity);
+    const previousLiveProjectionIdentityRef = useRef(liveProjectionIdentity);
     const terminalFlagsRef = useRef({
       blockCtrlZInput: provider === 'claude'
     });
@@ -341,6 +373,13 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
       const controller = deps.createExecutionTerminalController(id, 'agent', terminal, {
+        needsProjection,
+        sendTerminalAppliedAck: !hasArchiveProjection,
+        initialProjectionPriority: data.selected ? 'selected' : 'background',
+        onProjectionStateChange: (state) => {
+          projectionStateRef.current = state;
+          setProjectionState(state);
+        },
         onContentWillChange: (reason) => {
           if (reason !== 'snapshot') {
             nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
@@ -382,13 +421,24 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             executionPathContextRef.current.shellPath,
             executionPathContextRef.current.cwd
           ),
-        onDropResource: (nodeId, kind, resource) => data.onDropExecutionResource?.(nodeId, kind, resource),
+        onDropResource: (nodeId, kind, resource) => {
+          if (controller.canAcceptInput()) {
+            data.onDropExecutionResource?.(nodeId, kind, resource);
+          }
+        },
         onOpenLink: (nodeId, kind, link) => data.onOpenExecutionLink?.(nodeId, kind, link),
         onCopySelection: (nodeId, kind, text, clearSelectionAfterCopy) =>
           data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
-        onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
-          data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
-        onPasteImage: (nodeId, kind, image) => data.onPasteExecutionImage?.(nodeId, kind, image),
+        onRequestPaste: (nodeId, kind, bracketedPasteMode) => {
+          if (controller.canAcceptInput()) {
+            data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode);
+          }
+        },
+        onPasteImage: (nodeId, kind, image) => {
+          if (controller.canAcceptInput()) {
+            data.onPasteExecutionImage?.(nodeId, kind, image);
+          }
+        },
         onCopyOsc52Text: (nodeId, _kind, text) =>
           data.onCopyTextToClipboard?.(text, 'execution-osc52', nodeId),
         onKeyEvent: (event) => inputIntentTrackerRef.current.recordKeyEvent(event),
@@ -420,6 +470,20 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           });
         }
       });
+
+      const projectionVisibilityObserver = typeof IntersectionObserver === 'function'
+        ? new IntersectionObserver(([entry]) => {
+            projectionVisibleRef.current = entry?.isIntersecting === true;
+            const nextPriority: ExecutionProjectionPriority = selectedRef.current
+              ? 'selected'
+              : projectionVisibleRef.current
+                ? 'visible'
+                : 'background';
+            controller.setProjectionPriority(nextPriority);
+          }, { threshold: 0.01 })
+        : undefined;
+      projectionVisibilityObserver?.observe(frame);
+      controller.setProjectionPriority(selectedRef.current ? 'selected' : 'background');
 
       const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
       const mouseService = internalCore?._mouseService;
@@ -599,13 +663,22 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
       const dataDisposable = terminal.onData((input) => {
         nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+        const intent = inputIntentTrackerRef.current.classifyData(input);
+        if (!controller.canAcceptInput()) {
+          inputIntentTrackerRef.current.reset();
+          return;
+        }
         if (terminalFlagsRef.current.blockCtrlZInput && containsTerminalSuspendInput(input)) {
           data.onShowTransientError?.(deps.t('execution.error.claudeCtrlZUnsupported'));
           return;
         }
-        const intent = inputIntentTrackerRef.current.classifyData(input);
         deps.reportExecutionInputDispatch(id, 'agent', input, (metadata) =>
-          data.onExecutionInput?.(id, 'agent', input, { ...metadata, intent })
+          data.onExecutionInput?.(id, 'agent', input, {
+            ...metadata,
+            intent,
+            controllerGeneration: controller.controllerGeneration,
+            projectionId: controller.getProjectionIdentity()?.projectionId
+          })
         );
       });
       const selectionDisposable = terminal.onSelectionChange(() => {
@@ -621,13 +694,14 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
 
       attachSnapshotRequestedRef.current = true;
-      controller.requestAttachSnapshot();
+      controller.requestAttachSnapshot({ needsProjection });
 
       return () => {
         dataDisposable.dispose();
         selectionDisposable.dispose();
         resizeDisposable.dispose();
         resizeObserver.disconnect();
+        projectionVisibilityObserver?.disconnect();
         terminalElement?.removeEventListener('contextmenu', handleContextMenu);
         terminalElement?.removeEventListener('auxclick', handleAuxClick);
         if (mouseService && originalGetCoords) {
@@ -656,20 +730,84 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         }
         controller.dispose();
         nativeInteractions?.dispose();
-        deps.executionTerminalRegistry.delete(id);
+        if (deps.executionTerminalRegistry.get(id)?.controller === controller) {
+          deps.executionTerminalRegistry.delete(id);
+        }
         terminal.dispose();
       };
     }, [id]);
 
     useEffect(() => {
-      if (agentMetadata.liveSession && !attachSnapshotRequestedRef.current) {
-        attachSnapshotRequestedRef.current = true;
-        deps.executionTerminalRegistry.get(id)?.controller.requestAttachSnapshot();
+      const controller = deps.executionTerminalRegistry.get(id)?.controller;
+      if (controller) {
+        controller.setProjectionPriority(
+          data.selected ? 'selected' : projectionVisibleRef.current ? 'visible' : 'background'
+        );
       }
-      if (!agentMetadata.liveSession) {
+    }, [data.selected, id]);
+
+    useEffect(() => {
+      deps.executionTerminalRegistry
+        .get(id)
+        ?.controller.setTerminalAppliedAckEnabled(!hasArchiveProjection);
+    }, [hasArchiveProjection, id]);
+
+    useEffect(() => {
+      const projectionModeChanged = previousNeedsProjectionRef.current !== needsProjection;
+      previousNeedsProjectionRef.current = needsProjection;
+      const archiveProjectionChanged =
+        previousArchiveProjectionIdentityRef.current !== archiveProjectionIdentity;
+      previousArchiveProjectionIdentityRef.current = archiveProjectionIdentity;
+      const liveProjectionChanged =
+        previousLiveProjectionIdentityRef.current !== liveProjectionIdentity;
+      previousLiveProjectionIdentityRef.current = liveProjectionIdentity;
+      const controller = deps.executionTerminalRegistry.get(id)?.controller;
+      const projectionIdentity = controller?.getProjectionIdentity();
+      const readyProjectionAlreadyRendered =
+        !agentMetadata.liveSession &&
+        controller?.getProjectionState() === 'ready' &&
+        projectionIdentity?.executionSessionId === agentMetadata.terminalHistoryArchive?.sessionId;
+      const liveProjectionNeedsAttach =
+        liveProjectionChanged &&
+        !readyProjectionAlreadyRendered;
+      const projectionResetRequired =
+        projectionModeChanged ||
+        (archiveProjectionChanged && !readyProjectionAlreadyRendered) ||
+        liveProjectionNeedsAttach;
+      if (
+        projectionResetRequired &&
+        controller &&
+        needsProjection
+      ) {
+        // Gate input immediately when a new projection identity replaces a
+        // ready controller, and clear any older recovery latch before attach.
+        // The Host may already have retired the old source record, so this
+        // exact controller cancellation is intentionally idempotent.
+        controller.cancelProjection('retry');
+      }
+      if (
+        (agentMetadata.liveSession || hasArchiveProjection) &&
+        (
+          !attachSnapshotRequestedRef.current ||
+          projectionResetRequired
+        )
+      ) {
+        attachSnapshotRequestedRef.current = true;
+        controller?.requestAttachSnapshot({ needsProjection });
+      }
+      if (!agentMetadata.liveSession && !hasArchiveProjection) {
         attachSnapshotRequestedRef.current = false;
       }
-    }, [agentMetadata.liveSession, id]);
+    }, [
+      agentMetadata.liveSession,
+      agentMetadata.runtimeSessionId,
+      agentMetadata.supervisorInstanceId,
+      hasArchiveProjection,
+      archiveProjectionIdentity,
+      liveProjectionIdentity,
+      id,
+      needsProjection
+    ]);
 
     const startAgent = (resume = resumeRequested): void => {
       data.onSelectNode?.(id);
@@ -696,6 +834,12 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     const branchAgent = (): void => {
       data.onSelectNode?.(id);
       data.onBranchAgentSession?.(id);
+    };
+
+    const retryProjection = (): void => {
+      const controller = deps.executionTerminalRegistry.get(id)?.controller;
+      controller?.cancelProjection('retry');
+      controller?.requestAttachSnapshot({ needsProjection: true });
     };
 
     useEffect(() => {
@@ -882,6 +1026,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             ref={frameRef}
             className={`terminal-frame nowheel nodrag nopan ${agentMetadata.liveSession ? 'is-live' : 'is-idle'} ${legacyInteractive ? 'is-legacy-interactive' : ''}`}
             data-terminal-projection-mode={agentMetadata.terminalProjectionMode}
+            data-execution-projection-state={projectionState}
+            data-controller-generation={deps.executionTerminalRegistry.get(id)?.controller.controllerGeneration}
             data-node-interactive="true"
             {...canvasOverviewInertProps(overviewInteractionsDisabled)}
             onMouseDown={(event) => {
@@ -897,6 +1043,18 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           >
             <div ref={viewportRef} className="terminal-viewport" />
             <deps.NodeOverviewTitle title={data.title} status={displayStatus} />
+            {projectionState === 'queued' || projectionState === 'restoring' ? (
+              <div className="terminal-projection-status is-restoring" role="status">
+                {deps.t('execution.projection.restoring')}
+              </div>
+            ) : projectionState === 'failed' ? (
+              <div className="terminal-projection-status is-failed" role="status">
+                <span>{deps.t('execution.projection.failed')}</span>
+                <button type="button" onClick={retryProjection} className="nodrag nopan">
+                  {deps.t('execution.projection.retry')}
+                </button>
+              </div>
+            ) : null}
             {legacyInteractive ? (
               <div className="terminal-legacy-compatibility-notice" role="status">
                 <strong>{deps.t('execution.notice.legacySupervisorInteractive')}</strong>
@@ -951,6 +1109,28 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       return <deps.CompactCanvasCardNodeContent id={id} data={data} position={{ x: xPos, y: yPos }} zoom={zoom} />;
     }
 
+    const hasArchiveProjection = terminalMetadata.terminalHistoryArchive !== undefined;
+    const archiveProjectionIdentity = terminalMetadata.terminalHistoryArchive
+      ? `${terminalMetadata.terminalHistoryArchive.archiveId}:${terminalMetadata.terminalHistoryArchive.projectionCodec ?? ''}:${terminalMetadata.terminalHistoryArchive.projectionSha256 ?? ''}`
+      : undefined;
+    // A live Supervisor session can be replaced while the node remains live.
+    // Track its identity separately so the existing controller is reattached
+    // instead of remaining bound to the cancelled projection generation.
+    const liveProjectionIdentity = terminalMetadata.liveSession
+      ? `${terminalMetadata.supervisorInstanceId ?? ''}:${terminalMetadata.runtimeSessionId ?? ''}:${terminalMetadata.terminalProjectionMode ?? ''}`
+      : undefined;
+    const needsProjection =
+      (terminalMetadata.liveSession && terminalMetadata.terminalProjectionMode === 'terminal-stream-v1') ||
+      hasArchiveProjection;
+
+    const initialProjectionState: ExecutionProjectionState = needsProjection ? 'queued' : 'ready';
+    const [projectionState, setProjectionState] = useState<ExecutionProjectionState>(initialProjectionState);
+    const projectionStateRef = useRef(projectionState);
+    projectionStateRef.current = projectionState;
+    const selectedRef = useRef(data.selected);
+    selectedRef.current = data.selected;
+    const projectionVisibleRef = useRef(false);
+
     const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
     const cwdLabel = formatExecutionCwdLabel(
       terminalMetadata.cwd,
@@ -993,6 +1173,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       suppressShrinkFitUntilMs: 0
     });
     const attachSnapshotRequestedRef = useRef(false);
+    const previousNeedsProjectionRef = useRef(needsProjection);
+    const previousArchiveProjectionIdentityRef = useRef(archiveProjectionIdentity);
+    const previousLiveProjectionIdentityRef = useRef(liveProjectionIdentity);
     const resizeFrameRef = useRef<number | undefined>(undefined);
     const refreshFrameRef = useRef<number | undefined>(undefined);
     const deferredShrinkFitTimerRef = useRef<number | undefined>(undefined);
@@ -1056,6 +1239,13 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
       const controller = deps.createExecutionTerminalController(id, 'terminal', terminal, {
+        needsProjection,
+        sendTerminalAppliedAck: !hasArchiveProjection,
+        initialProjectionPriority: data.selected ? 'selected' : 'background',
+        onProjectionStateChange: (state) => {
+          projectionStateRef.current = state;
+          setProjectionState(state);
+        },
         onContentWillChange: (reason) => {
           if (reason !== 'snapshot') {
             nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
@@ -1097,13 +1287,24 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             executionPathContextRef.current.shellPath,
             executionPathContextRef.current.cwd
           ),
-        onDropResource: (nodeId, kind, resource) => data.onDropExecutionResource?.(nodeId, kind, resource),
+        onDropResource: (nodeId, kind, resource) => {
+          if (controller.canAcceptInput()) {
+            data.onDropExecutionResource?.(nodeId, kind, resource);
+          }
+        },
         onOpenLink: (nodeId, kind, link) => data.onOpenExecutionLink?.(nodeId, kind, link),
         onCopySelection: (nodeId, kind, text, clearSelectionAfterCopy) =>
           data.onCopyExecutionSelection?.(nodeId, kind, text, clearSelectionAfterCopy),
-        onRequestPaste: (nodeId, kind, bracketedPasteMode) =>
-          data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode),
-        onPasteImage: (nodeId, kind, image) => data.onPasteExecutionImage?.(nodeId, kind, image),
+        onRequestPaste: (nodeId, kind, bracketedPasteMode) => {
+          if (controller.canAcceptInput()) {
+            data.onRequestExecutionPaste?.(nodeId, kind, bracketedPasteMode);
+          }
+        },
+        onPasteImage: (nodeId, kind, image) => {
+          if (controller.canAcceptInput()) {
+            data.onPasteExecutionImage?.(nodeId, kind, image);
+          }
+        },
         onCopyOsc52Text: (nodeId, _kind, text) =>
           data.onCopyTextToClipboard?.(text, 'execution-osc52', nodeId),
         onClipboardDiagnostic: (payload) => data.onExecutionClipboardDiagnostic?.(payload),
@@ -1134,6 +1335,20 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           });
         }
       });
+
+      const projectionVisibilityObserver = typeof IntersectionObserver === 'function'
+        ? new IntersectionObserver(([entry]) => {
+            projectionVisibleRef.current = entry?.isIntersecting === true;
+            const nextPriority: ExecutionProjectionPriority = selectedRef.current
+              ? 'selected'
+              : projectionVisibleRef.current
+                ? 'visible'
+                : 'background';
+            controller.setProjectionPriority(nextPriority);
+          }, { threshold: 0.01 })
+        : undefined;
+      projectionVisibilityObserver?.observe(frame);
+      controller.setProjectionPriority(selectedRef.current ? 'selected' : 'background');
 
       const internalCore = (terminal as unknown as { _core?: XtermCoreWithMouseInternals })._core;
       const mouseService = internalCore?._mouseService;
@@ -1313,8 +1528,15 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
       const dataDisposable = terminal.onData((input) => {
         nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
+        if (!controller.canAcceptInput()) {
+          return;
+        }
         deps.reportExecutionInputDispatch(id, 'terminal', input, (metadata) =>
-          data.onExecutionInput?.(id, 'terminal', input, metadata)
+          data.onExecutionInput?.(id, 'terminal', input, {
+            ...metadata,
+            controllerGeneration: controller.controllerGeneration,
+            projectionId: controller.getProjectionIdentity()?.projectionId
+          })
         );
       });
       const selectionDisposable = terminal.onSelectionChange(() => {
@@ -1330,13 +1552,14 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
 
       attachSnapshotRequestedRef.current = true;
-      controller.requestAttachSnapshot();
+      controller.requestAttachSnapshot({ needsProjection });
 
       return () => {
         dataDisposable.dispose();
         selectionDisposable.dispose();
         resizeDisposable.dispose();
         resizeObserver.disconnect();
+        projectionVisibilityObserver?.disconnect();
         terminalElement?.removeEventListener('contextmenu', handleContextMenu);
         terminalElement?.removeEventListener('auxclick', handleAuxClick);
         if (mouseService && originalGetCoords) {
@@ -1365,20 +1588,84 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         }
         controller.dispose();
         nativeInteractions?.dispose();
-        deps.executionTerminalRegistry.delete(id);
+        if (deps.executionTerminalRegistry.get(id)?.controller === controller) {
+          deps.executionTerminalRegistry.delete(id);
+        }
         terminal.dispose();
       };
     }, [id]);
 
     useEffect(() => {
-      if (terminalMetadata.liveSession && !attachSnapshotRequestedRef.current) {
-        attachSnapshotRequestedRef.current = true;
-        deps.executionTerminalRegistry.get(id)?.controller.requestAttachSnapshot();
+      const controller = deps.executionTerminalRegistry.get(id)?.controller;
+      if (controller) {
+        controller.setProjectionPriority(
+          data.selected ? 'selected' : projectionVisibleRef.current ? 'visible' : 'background'
+        );
       }
-      if (!terminalMetadata.liveSession) {
+    }, [data.selected, id]);
+
+    useEffect(() => {
+      deps.executionTerminalRegistry
+        .get(id)
+        ?.controller.setTerminalAppliedAckEnabled(!hasArchiveProjection);
+    }, [hasArchiveProjection, id]);
+
+    useEffect(() => {
+      const projectionModeChanged = previousNeedsProjectionRef.current !== needsProjection;
+      previousNeedsProjectionRef.current = needsProjection;
+      const archiveProjectionChanged =
+        previousArchiveProjectionIdentityRef.current !== archiveProjectionIdentity;
+      previousArchiveProjectionIdentityRef.current = archiveProjectionIdentity;
+      const liveProjectionChanged =
+        previousLiveProjectionIdentityRef.current !== liveProjectionIdentity;
+      previousLiveProjectionIdentityRef.current = liveProjectionIdentity;
+      const controller = deps.executionTerminalRegistry.get(id)?.controller;
+      const projectionIdentity = controller?.getProjectionIdentity();
+      const readyProjectionAlreadyRendered =
+        !terminalMetadata.liveSession &&
+        controller?.getProjectionState() === 'ready' &&
+        projectionIdentity?.executionSessionId === terminalMetadata.terminalHistoryArchive?.sessionId;
+      const liveProjectionNeedsAttach =
+        liveProjectionChanged &&
+        !readyProjectionAlreadyRendered;
+      const projectionResetRequired =
+        projectionModeChanged ||
+        (archiveProjectionChanged && !readyProjectionAlreadyRendered) ||
+        liveProjectionNeedsAttach;
+      if (
+        projectionResetRequired &&
+        controller &&
+        needsProjection
+      ) {
+        // Gate input immediately when a new projection identity replaces a
+        // ready controller, and clear any older recovery latch before attach.
+        // The Host may already have retired the old source record, so this
+        // exact controller cancellation is intentionally idempotent.
+        controller.cancelProjection('retry');
+      }
+      if (
+        (terminalMetadata.liveSession || hasArchiveProjection) &&
+        (
+          !attachSnapshotRequestedRef.current ||
+          projectionResetRequired
+        )
+      ) {
+        attachSnapshotRequestedRef.current = true;
+        controller?.requestAttachSnapshot({ needsProjection });
+      }
+      if (!terminalMetadata.liveSession && !hasArchiveProjection) {
         attachSnapshotRequestedRef.current = false;
       }
-    }, [id, terminalMetadata.liveSession]);
+    }, [
+      id,
+      terminalMetadata.liveSession,
+      terminalMetadata.runtimeSessionId,
+      terminalMetadata.supervisorInstanceId,
+      hasArchiveProjection,
+      archiveProjectionIdentity,
+      liveProjectionIdentity,
+      needsProjection
+    ]);
 
     const startTerminal = (): void => {
       data.onSelectNode?.(id);
@@ -1393,6 +1680,12 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     const deleteTerminal = (): void => {
       data.onSelectNode?.(id);
       data.onDeleteNode?.(id);
+    };
+
+    const retryProjection = (): void => {
+      const controller = deps.executionTerminalRegistry.get(id)?.controller;
+      controller?.cancelProjection('retry');
+      controller?.requestAttachSnapshot({ needsProjection: true });
     };
 
     useEffect(() => {
@@ -1503,6 +1796,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             ref={frameRef}
             className={`terminal-frame nowheel nodrag nopan ${terminalMetadata.liveSession ? 'is-live' : 'is-idle'} ${legacyInteractive ? 'is-legacy-interactive' : ''}`}
             data-terminal-projection-mode={terminalMetadata.terminalProjectionMode}
+            data-execution-projection-state={projectionState}
+            data-controller-generation={deps.executionTerminalRegistry.get(id)?.controller.controllerGeneration}
             data-node-interactive="true"
             {...canvasOverviewInertProps(overviewInteractionsDisabled)}
             onMouseDown={(event) => {
@@ -1518,6 +1813,18 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           >
             <div ref={viewportRef} className="terminal-viewport" />
             <deps.NodeOverviewTitle title={data.title} status={displayStatus} />
+            {projectionState === 'queued' || projectionState === 'restoring' ? (
+              <div className="terminal-projection-status is-restoring" role="status">
+                {deps.t('execution.projection.restoring')}
+              </div>
+            ) : projectionState === 'failed' ? (
+              <div className="terminal-projection-status is-failed" role="status">
+                <span>{deps.t('execution.projection.failed')}</span>
+                <button type="button" onClick={retryProjection} className="nodrag nopan">
+                  {deps.t('execution.projection.retry')}
+                </button>
+              </div>
+            ) : null}
             {legacyInteractive ? (
               <div className="terminal-legacy-compatibility-notice" role="status">
                 <strong>{deps.t('execution.notice.legacySupervisorInteractive')}</strong>

@@ -1,6 +1,6 @@
 ---
 title: Supervisor 重启恢复可用性与错误归因
-decision_status: 已选定
+decision_status: 已废弃
 validation_status: 已验证
 domains:
   - VSCode 集成域
@@ -17,10 +17,13 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/runtime-supervisor-reboot-recovery.md
   - docs/exec-plans/completed/runtime-supervisor-dead-pty-bounded-recovery.md
-updated_at: 2026-08-04
+  - docs/exec-plans/completed/runtime-recovery-projection-isolation.md
+updated_at: 2026-08-11
 ---
 
 # Supervisor 重启恢复可用性与错误归因
+
+> 取代说明（2026-08-11）：本文保留 PR #272 / #276 的历史问题、实现和验证证据，但其中“恢复旧 registry session”“namespace `recovering -> ready`”“全局恢复进度”和“dead PTY 必须提供有界 screen snapshot”的正式结论已被 [运行时控制面、显示投影与恢复隔离](./runtime-control-and-projection-isolation.md) 取代。当前正式语义是：新 Supervisor 无法取得旧 PTY authority，因此启动后立即服务新会话，不恢复旧 runtime namespace；Agent 依靠可信 provider identity 等待用户显式 Resume，Terminal 提供 Restart/history，screen snapshot/recent output 仅为可选增强。本文以下内容应按历史设计记录阅读，不作为新实现依据。
 
 ## 背景
 

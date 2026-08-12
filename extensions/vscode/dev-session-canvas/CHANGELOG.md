@@ -1,30 +1,32 @@
 # Changelog
 
-## 0.24.5 - Bounded Recovery and Responsive Terminal Input
+## 0.24.5 - Runtime Recovery and Responsive Terminal Input
 
-Relative to `0.24.4`, `0.24.5` is a public `Preview` patch release focused on recovery safety and terminal-input responsiveness. It restores sessions whose prior PTY has ended from bounded metadata and the last persisted terminal display rather than replaying an unbounded journal at startup, makes Agent resume an explicit user action, and prevents healthy live streams from periodically competing with typed input for a full journal projection.
+Relative to `0.24.4`, `0.24.5` is a public `Preview` patch release focused on separating Runtime Supervisor restart from Window Reload and keeping terminal input responsive. A replacement Supervisor starts with an empty namespace instead of scanning an old registry or journal. A reload that reconnects to the same healthy Supervisor restores each surface and node from its complete retained terminal projection in bounded chunks.
 
 ### Highlights
 
-- When a Runtime Supervisor or its host restarts and an older PTY is known to be dead, recovery reads bounded journal metadata only. The previous terminal display remains an honest history snapshot; an Agent with a trusted provider session identity becomes `resume-ready` and starts a new provider resume process only after the user selects `Resume`.
-- A journal manifest revision can no longer be mixed with an older persisted terminal screen. The screen and its output sequence remain an atomic display projection, so recovery does not discard the last visible terminal state merely because the journal advanced after the Host persisted it.
-- Recovery progress now uses a non-cancellable VS Code progress notification with completed and remaining-session counts. It does not block creating new `Agent` or `Terminal` sessions, and it does not add a second global canvas banner.
-- Codex-style OSC 10/11 color queries no longer prevent an eligible terminal checkpoint. Actual color changes, resets, and unrecognized color events remain fail-closed; sessions that cannot prove a safe checkpoint retain their journal.
-- A healthy Host that already receives a continuous live terminal stream no longer periodically requests a complete journal projection. Per-node typed input is sent through a strict FIFO with one write RPC in flight, preserving control-byte order without allowing repeated input to build unbounded concurrent requests.
-- The extension ID, minimum VS Code version, provider command contract, journal format, notifier behavior, auto-install relationship, Marketplace channel gate, Template Marketplace service version line, and Preview support boundary remain unchanged.
+- A replacement Supervisor does not scan or open the prior runtime registry/journal and does not publish a canvas-wide hydration notification. New sessions can start immediately in its empty namespace.
+- A dead Agent with a trusted provider session id becomes `resume-ready` and starts a new PTY only after the user selects `Resume`. A dead Terminal offers existing durable history when available and `Restart`; a screen snapshot or recent-output hint is optional, not guaranteed.
+- Window Reload against the same live Supervisor restores complete retained history independently for each `(surface, node)`. Bounded bulk chunks appear as they arrive, the selected node receives priority, and background nodes remain fairly scheduled without a canvas-wide barrier.
+- Per-node input stays FIFO, but the queue releases its next item after the previous request is written to its fixed socket rather than waiting for that response. Every response remains independently observed, diagnosed, and reported.
+- The Supervisor writes accepted input to the PTY and sends its small response before publishing compact lifecycle. Bulk projection connections carry terminal stream events and do not drive shared lifecycle state.
+- During upgrade, sessions genuinely still owned by an older Supervisor continue output, input, resize, stop, and delete through that original runtime while the current generation serves new sessions.
+- Codex-style OSC 10/11 color queries no longer prevent an eligible terminal checkpoint. Actual color changes, resets, and unrecognized color events remain fail-closed; eligible current/previous checkpoint generations can safely compact complete journal prefixes.
+- The extension ID, minimum VS Code version, provider command contract, journal format, desktop-notifier behavior, auto-install relationship, Marketplace channel gate, Template Marketplace service version line, and Preview support boundary remain unchanged.
 
 ### Installation and Upgrade
 
 - This is a public `Preview` patch for `devsessioncanvas.dev-session-canvas`.
 - Install or upgrade from `0.24.4` through the extension registry configured by the host. Open VSX should publish and verify the same version; GitHub Release assets remain the manual-install fallback while Visual Studio Marketplace remains deferred.
 - Existing explicit settings, including runtime persistence, notifications, link opening, multi-root presentation, and fork placement, retain their configured values.
-- During recovery, an ended local PTY is not revived. The last persisted terminal screen is a bounded historical display; choose `Resume` only when you want an eligible Agent to start a new provider resume process.
+- A Supervisor restart does not revive an ended local PTY or recover its old runtime namespace. Choose `Resume` only when you want an eligible Agent to start a new PTY; use `Restart` for a Terminal. Existing durable history remains available when present.
 
 ### Known Boundaries
 
-- The restart-recovery evidence is a repeatable Host-level fault model. It does not claim that a physical device restart or a long Remote SSH disconnect can keep an old local PTY alive, and the existing real-environment follow-up remains open.
-- A complete journal is neither replayed at startup nor exposed as a completed history browser: future full-history access must be explicit, paged, and capacity-bounded. Unsafe or oversized journals retain their complete data; no fixed disk cap or cross-version journal rollback is promised.
-- A new projection attach or a detected live-stream gap can still retrieve authoritative journal content. The steady-state optimization does not truncate recovery data, and compound terminal control sequences that cannot safely serialize remain journal-backed.
+- Runtime-restart evidence is a repeatable Host-level fault model covering Host startup, the explicit Agent Resume action, and Terminal history state; it does not click real Resume/Restart buttons or claim that a physical device restart or long Remote SSH disconnect keeps an old local PTY alive.
+- A replacement Supervisor intentionally ignores the old runtime namespace. A screen snapshot and recent output are optional context only; Agent resumability depends on a trusted provider session id, while Terminal history depends on durable history already handed off to the Host.
+- Window Reload restores the complete retained projection for a session still owned by the same Supervisor, but the product does not expose the underlying journal as a general completed-history browser. Unsafe or oversized journals retain the required prefix; no fixed disk cap or cross-version journal rollback is promised.
 - The existing 90,000-line completed-terminal tail issue and Visual Studio Marketplace availability limitation remain under investigation.
 
 ### Rollback Guidance

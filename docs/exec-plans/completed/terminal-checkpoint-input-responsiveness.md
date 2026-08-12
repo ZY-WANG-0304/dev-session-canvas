@@ -2,6 +2,8 @@
 
 本 `ExecPlan` 是活文档。随着工作推进，必须持续更新 `进度`、`意外与发现`、`决策记录` 和 `结果与复盘`。本文件遵守 `docs/PLANS.md`：它应让不了解此前诊断的协作者能够从当前工作树完成、验证并安全重试本项工作。
 
+> 2026-08-11 后续结论：OSC query修复、健康stream不周期full refresh和输入保序意图继续有效；response-gated per-node FIFO仍会让下一输入等待同socket上的完整RPC response，且当lifecycle event携带full snapshot时，PTY write之前仍可被大journal阻塞。后续实现改为per-node FIFO在固定socket dispatch后释放、每条response独立观察，并以response-before-compact-lifecycle和control/projection隔离收口；详见 `docs/exec-plans/completed/runtime-recovery-projection-isolation.md`。
+
 ## 目标与全局图景
 
 本计划修复一个已经在 `guiagentfactory / Agent 1 Fork` 诊断中确认的 P0 路径：Codex 启动时只查询默认前景/背景色的 OSC 10/11 序列，被误认为颜色已经改变，因而 session 的 checkpoint 永久停留在 revision 0。健康的 live Host 每十秒向 Supervisor 请求一次投影刷新；当 checkpoint 为 0 时该请求会携带整个 journal suffix，与用户输入共用同一 socket，导致 `writeInput` 排队数秒。

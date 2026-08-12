@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { createHash } from 'crypto';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { SerializeAddon } from '@xterm/addon-serialize';
@@ -15198,6 +15199,141 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} blocks input while a bulk projection is restoring and enables it only after ready`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const executionSessionId = `${executionKind}-restoring-input-session`;
+    const authorityId = `${executionKind}-restoring-input-authority`;
+    const projectionId = `${executionKind}-restoring-input-projection`;
+    const state = createLiveExecutionNodeState(executionKind);
+    const metadata = state.nodes[0].metadata[executionKind];
+    metadata.persistenceMode = 'live-runtime';
+    metadata.attachmentState = 'attached-live';
+    metadata.runtimeBackend = 'legacy-detached';
+    metadata.supervisorInstanceId = `${executionKind}-restoring-input-supervisor`;
+    metadata.runtimeSessionId = executionSessionId;
+    metadata.terminalProjectionMode = 'terminal-stream-v1';
+
+    await openHarness(page);
+    await bootstrap(page, state);
+    const terminal = await waitForExecutionTerminalReady(page, nodeId);
+    const attachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    const controllerGeneration = attachRequest.payload.controllerGeneration;
+    const node = nodeById(page, nodeId);
+    const projectionFrame = node.locator('[data-execution-projection-state]');
+    await expect(projectionFrame).toHaveAttribute('data-execution-projection-state', 'queued');
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'sendExecutionInput',
+      nodeId,
+      data: 'blocked-during-restore'
+    });
+    expect(await readPostedMessagesByType(page, 'webview/executionInput')).toHaveLength(0);
+
+    const identity = {
+      nodeId,
+      kind: executionKind,
+      controllerGeneration,
+      projectionId,
+      executionSessionId,
+      authorityId,
+      initialTargetRevision: 0
+    };
+    await page.evaluate(
+      ({ nextIdentity, cols, rows }) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionProjectionState',
+          payload: {
+            ...nextIdentity,
+            state: 'restoring',
+            checkpoint: {
+              version: 1,
+              sessionId: nextIdentity.executionSessionId,
+              authorityId: nextIdentity.authorityId,
+              revision: 0,
+              cols,
+              rows,
+              scrollback: 1000,
+              createdAtMs: 1,
+              serializedState: {
+                format: 'xterm-serialize-v1',
+                viewportY: 0,
+                outputSequence: 0
+              }
+            }
+          }
+        });
+      },
+      { nextIdentity: identity, cols: terminal.terminalCols, rows: terminal.terminalRows }
+    );
+    await expect(projectionFrame).toHaveAttribute('data-execution-projection-state', 'restoring');
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'sendExecutionInput',
+      nodeId,
+      data: 'still-blocked-while-chunks-apply'
+    });
+    expect(await readPostedMessagesByType(page, 'webview/executionInput')).toHaveLength(0);
+
+    const checkpointChunk = {
+      kind: 'checkpoint',
+      dataOffset: 0,
+      data: 'RESTORED-BEFORE-INPUT\r\n',
+      complete: true
+    };
+    const serializedChunk = JSON.stringify(checkpointChunk);
+    await page.evaluate(
+      ({ nextIdentity, chunk, payloadBytes, chunkChecksum }) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionProjectionChunk',
+          payload: {
+            ...nextIdentity,
+            sequence: 1,
+            payloadBytes,
+            chunkChecksum,
+            chunk,
+            done: false
+          }
+        });
+      },
+      {
+        nextIdentity: identity,
+        chunk: checkpointChunk,
+        payloadBytes: Buffer.byteLength(serializedChunk, 'utf8'),
+        chunkChecksum: createHash('sha256').update(serializedChunk, 'utf8').digest('hex')
+      }
+    );
+    await waitForPostedMessageByType(page, 'webview/executionProjectionChunkApplied');
+    await page.evaluate((nextIdentity) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionProjectionState',
+        payload: {
+          ...nextIdentity,
+          state: 'ready',
+          readyRevision: 0
+        }
+      });
+    }, identity);
+    await expect(projectionFrame).toHaveAttribute('data-execution-projection-state', 'ready');
+    await clearPostedMessages(page);
+
+    await performTestDomAction(page, {
+      kind: 'sendExecutionInput',
+      nodeId,
+      data: 'accepted-after-ready'
+    });
+    const inputMessages = await readPostedMessagesByType(page, 'webview/executionInput');
+    expect(inputMessages).toHaveLength(1);
+    expect(inputMessages[0].payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      data: 'accepted-after-ready',
+      controllerGeneration,
+      projectionId
+    });
+  });
+
   test(`${executionKind} final snapshot does not replace an existing live backlog`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const executionSessionId = `${executionKind}-final-backlog-session`;
@@ -16061,6 +16197,197 @@ for (const executionKind of ['agent', 'terminal']) {
       visibleText.indexOf('LIVE-AFTER-RESIZE-REVISION-9')
     );
     expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
+  });
+
+  test(`${executionKind} re-enables live applied ACKs when an archived node starts a new session`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const archivedSessionId = `${executionKind}-archived-session`;
+    const liveSessionId = `${executionKind}-resumed-live-session`;
+    const liveAuthorityId = `${executionKind}-resumed-live-authority`;
+    const archiveSha = 'a'.repeat(64);
+    const archivedState = createLiveExecutionNodeState(executionKind);
+    const archivedNode = archivedState.nodes[0];
+    const archivedMetadata = archivedNode.metadata[executionKind];
+    archivedNode.status = executionKind === 'agent' ? 'completed' : 'closed';
+    archivedMetadata.liveSession = false;
+    archivedMetadata.lifecycle = archivedNode.status;
+    archivedMetadata.persistenceMode = 'snapshot-only';
+    archivedMetadata.attachmentState = 'history-restored';
+    archivedMetadata.runtimeSessionId = archivedSessionId;
+    archivedMetadata.terminalProjectionMode = undefined;
+    archivedMetadata.terminalHistoryArchive = {
+      version: 1,
+      archiveId: `sha256-${archiveSha}`,
+      codec: 'terminal-stream-attach-json-v1',
+      sessionId: archivedSessionId,
+      authorityId: `${executionKind}-archived-authority`,
+      finalRevision: 1,
+      byteLength: 1,
+      sha256: archiveSha
+    };
+
+    await openHarness(page);
+    await bootstrap(page, archivedState);
+    const terminal = await waitForExecutionTerminalReady(page, nodeId);
+    await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    await clearPostedMessages(page);
+
+    const liveState = createLiveExecutionNodeState(executionKind);
+    const liveMetadata = liveState.nodes[0].metadata[executionKind];
+    liveMetadata.persistenceMode = 'live-runtime';
+    liveMetadata.attachmentState = 'attached-live';
+    liveMetadata.runtimeBackend = 'legacy-detached';
+    liveMetadata.supervisorInstanceId = `${executionKind}-resumed-supervisor`;
+    liveMetadata.runtimeSessionId = liveSessionId;
+    liveMetadata.terminalProjectionMode = 'terminal-stream-v1';
+    await updateHostState(page, liveState);
+    const liveAttachRequest = await waitForPostedMessageByType(page, 'webview/attachExecutionSession');
+    await settleWebview(page, 2);
+    const controllerGeneration = liveAttachRequest.payload.controllerGeneration;
+    const projectionId = `${executionKind}-resumed-live-projection`;
+    const serializedCheckpoint = await createSerializedTerminalStateFromOutput(
+      'RESUMED-LIVE-CHECKPOINT\r\n',
+      terminal.terminalCols,
+      terminal.terminalRows
+    );
+    serializedCheckpoint.outputSequence = 1;
+    const checkpointData = serializedCheckpoint.data;
+    const { data: _checkpointData, ...checkpointMetadata } = serializedCheckpoint;
+    const projectionIdentity = {
+      nodeId,
+      kind: executionKind,
+      controllerGeneration,
+      projectionId,
+      executionSessionId: liveSessionId,
+      authorityId: liveAuthorityId,
+      initialTargetRevision: 2
+    };
+
+    await page.evaluate(
+      ({ identity, cols, rows, serializedState }) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({
+          type: 'host/executionProjectionState',
+          payload: {
+            ...identity,
+            state: 'restoring',
+            checkpoint: {
+              version: 1,
+              sessionId: identity.executionSessionId,
+              authorityId: identity.authorityId,
+              revision: 1,
+              cols,
+              rows,
+              scrollback: 1000,
+              createdAtMs: 100,
+              serializedState
+            }
+          }
+        });
+      },
+      {
+        identity: projectionIdentity,
+        cols: terminal.terminalCols,
+        rows: terminal.terminalRows,
+        serializedState: checkpointMetadata
+      }
+    );
+
+    const projectionChunks = [
+      {
+        kind: 'checkpoint',
+        dataOffset: 0,
+        data: checkpointData,
+        complete: true
+      },
+      {
+        kind: 'output',
+        revision: 2,
+        createdAtMs: 101,
+        dataOffset: 0,
+        data: 'RESUMED-LIVE-OUTPUT\r\n',
+        complete: true
+      }
+    ];
+    for (const [index, chunk] of projectionChunks.entries()) {
+      const serializedChunk = JSON.stringify(chunk);
+      await page.evaluate(
+        ({ identity, sequence, payloadBytes, chunkChecksum, nextChunk }) => {
+          window.__devSessionCanvasHarness.dispatchHostMessage({
+            type: 'host/executionProjectionChunk',
+            payload: {
+              ...identity,
+              sequence,
+              payloadBytes,
+              chunkChecksum,
+              chunk: nextChunk,
+              done: false
+            }
+          });
+        },
+        {
+          identity: projectionIdentity,
+          sequence: index + 1,
+          payloadBytes: Buffer.byteLength(serializedChunk, 'utf8'),
+          chunkChecksum: createHash('sha256').update(serializedChunk, 'utf8').digest('hex'),
+          nextChunk: chunk
+        }
+      );
+      await waitForPostedMessagesByTypeMatch(
+        page,
+        'webview/executionProjectionChunkApplied',
+        (messages) => messages.some((message) => message.payload.sequence === index + 1)
+      );
+    }
+
+    await page.evaluate((identity) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({
+        type: 'host/executionProjectionState',
+        payload: {
+          ...identity,
+          state: 'ready',
+          readyRevision: 2
+        }
+      });
+    }, projectionIdentity);
+    await expect(nodeById(page, nodeId).locator('[data-execution-projection-state]')).toHaveAttribute(
+      'data-execution-projection-state',
+      'ready'
+    );
+    await clearPostedMessages(page);
+
+    await dispatchExecutionTerminalEvent(page, {
+      nodeId,
+      kind: executionKind,
+      executionSessionId: liveSessionId,
+      authorityId: liveAuthorityId,
+      event: {
+        type: 'output',
+        revision: 3,
+        createdAtMs: 102,
+        data: 'RESUMED-LIVE-AFTER-READY\r\n'
+      }
+    });
+
+    const appliedMessages = await waitForPostedMessagesByTypeMatch(
+      page,
+      'webview/executionTerminalApplied',
+      (messages) =>
+        messages.some(
+          (message) =>
+            message.payload.executionSessionId === liveSessionId &&
+            message.payload.authorityId === liveAuthorityId &&
+            message.payload.revision === 3
+        )
+    );
+    expect(appliedMessages.at(-1).payload).toMatchObject({
+      nodeId,
+      kind: executionKind,
+      executionSessionId: liveSessionId,
+      authorityId: liveAuthorityId,
+      revision: 3,
+      controllerGeneration,
+      projectionId
+    });
   });
 
   test(`${executionKind} applies one authority revision once when output arrives before its covering snapshot`, async ({ page }) => {

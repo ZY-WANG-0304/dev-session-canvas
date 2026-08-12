@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import net from 'node:net';
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -66,6 +67,9 @@ try {
   const { RuntimeSupervisorClient } = require(clientOutfile);
   const { mergeTerminalStreamProjectionWithLiveTail } = require(terminalSessionStreamOutfile);
   await assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir);
+  await assertRuntimeSupervisorClientRejectsNativeIdentityViolations(RuntimeSupervisorClient, tempDir);
+  await assertRuntimeSupervisorClientPinsExistingSessionRequests(RuntimeSupervisorClient, tempDir);
+  await assertRuntimeSupervisorProjectionClientUsesIndependentSocket(RuntimeSupervisorClient, tempDir);
   await assertRuntimeSupervisorClientClassifiesStartupFailures(RuntimeSupervisorClient, tempDir);
   assertTerminalProjectionMergePreservesConcurrentLiveTail(mergeTerminalStreamProjectionWithLiveTail);
 
@@ -156,7 +160,7 @@ try {
   );
   assert.match(
     supervisorSource,
-    /private async deleteSession\([\s\S]*?terminalMutationAdmissionOpen = false;[\s\S]*?await this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*?payload:[\s\S]*?await this\.createFreshSnapshot\(session, 'never'\)[\s\S]*?this\.sessions\.delete\(params\.sessionId\);/u,
+    /private async deleteSession\([\s\S]*?terminalMutationAdmissionOpen = false;[\s\S]*?await this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*?payload:[\s\S]*?await this\.createFreshSnapshot\(session, 'never', false\)[\s\S]*?this\.sessions\.delete\(params\.sessionId\);/u,
     'deleteSession 必须先关闭 mutation admission，并在串行链路收敛 fresh 非 live 终态后再删除共享 backend session。'
   );
   assert.match(
@@ -166,8 +170,28 @@ try {
   );
   assert.match(
     supervisorSource,
+    /type SupervisorSubscriptionMode =[\s\S]*'terminal-stream-v1'[\s\S]*'terminal-stream-with-state-v1'[\s\S]*private subscribeSessionAtSettledRevision\([\s\S]*subscribeSocket\(socket, params\.sessionId, 'terminal-stream-with-state-v1'\)/u,
+    '兼容 subscribeSession 必须显式保留 lifecycle，而 bulk live-tail subscription 只能承载 terminal event。'
+  );
+  assert.match(
+    supervisorSource,
+    /private broadcastToSessionSubscribers\([\s\S]*message\.event === 'sessionState' && mode === 'terminal-stream-v1'/u,
+    'bulk terminal-stream socket 不得重复接收 control socket 已消费的 compact sessionState。'
+  );
+  assert.match(
+    supervisorSource,
     /private async createSession\([\s\S]*await this\.toFreshSnapshot\(session\)[\s\S]*private async attachSession\([\s\S]*return this\.toFreshSnapshot\(session\);/u,
     'runtime supervisor create/attach snapshot 必须先 flush headless terminal，不能发布 stale serializedTerminalState。'
+  );
+  assert.match(
+    supervisorSource,
+    /const lifecycle: AgentNodeStatus \| TerminalNodeStatus =[\s\S]*?params\.kind === 'agent'[\s\S]*?: 'live';/u,
+    'Terminal PTY spawn 成功后，fresh create 的 compact response 必须直接发布 live，不能依赖可能早于 response 的 output/timer event。'
+  );
+  assert.match(
+    supervisorSource,
+    /process = createExecutionSessionProcess\(launchSpec\);[\s\S]*?catch \(error\) \{[\s\S]*?throw createExecutionSpawnProtocolError[\s\S]*?this\.sessions\.set\(sessionId, session\);/u,
+    'Supervisor 必须在 PTY spawn 成功返回后才注册 live session；同步 spawn rejection 不得留下可 attach 的 session。'
   );
   assert.match(
     supervisorSource,
@@ -186,13 +210,21 @@ try {
   );
   assert.match(
     supervisorSource,
-    /private async finalizeSession\([\s\S]*this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*payload: await this\.createFreshSnapshot\(session, 'never'\)/u,
-    'runtime supervisor final sessionState 必须在串行边界内发布 checkpoint+journal suffix，且 exit 后不再启动昂贵 compact。'
+    /private async finalizeSession\([\s\S]*this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*payload: await this\.createFreshSnapshot\(session, 'never', false\)/u,
+    'runtime supervisor final sessionState 必须在串行边界内收敛，但不能把完整 projection 回灌 control socket。'
   );
   assert.match(
     supervisorSource,
-    /private async persistRegistry\([\s\S]*await Promise\.all\([\s\S]*this\.toFreshSnapshot\([\s\S]*session\.terminalAuthorityId \? 'if-compaction-due' : 'always',[\s\S]*!session\.terminalAuthorityId[\s\S]*sessions: snapshots\.filter/u,
-    'authority registry 只持久化 journal metadata，不应每 120ms 内联克隆完整 terminal suffix。'
+    /private async persistRegistry\([\s\S]*await Promise\.all\([\s\S]*this\.enqueueTerminalOperation\(session[\s\S]*this\.toSnapshot\(session, undefined, false\)[\s\S]*sessions: snapshots\.filter/u,
+    'authority registry 应通过串行轻量 descriptor 持久化，不应每 120ms 内联克隆完整 terminal suffix。'
+  );
+  const persistRegistryBody = supervisorSource.match(
+    /private async persistRegistry[\s\S]*?(?=\n  private |\n  public |\n\}\s*$)/u
+  )?.[0] ?? '';
+  assert.doesNotMatch(
+    persistRegistryBody,
+    /toFreshSnapshot\(/u,
+    'persistRegistry 不应触发完整 terminal snapshot flush/序列化。'
   );
   assert.match(
     supervisorSource,
@@ -204,35 +236,125 @@ try {
     /private getFreshSerializedTerminalState\([\s\S]*serializedTerminalState\?\.outputSequence[\s\S]*stateOutputSequence === session\.outputSequence[\s\S]*serializedTerminalState[\s\S]*undefined/u,
     'runtime supervisor snapshot 只能携带 outputSequence 对齐的 serializedTerminalState。'
   );
+  assert.doesNotMatch(
+    supervisorSource,
+    /readRegistrySnapshots|recoverRegistryInBackground|normalizeRecoveredSession|readTerminalSessionJournalMetadata/u,
+    '新 Supervisor 启动不得读取 registry 或扫描旧 Journal 来恢复已经失去 authority 的 PTY。'
+  );
+  assert.doesNotMatch(
+    supervisorSource,
+    /event: 'recoveryState'|recovery: this\.recoveryState/u,
+    '新 Supervisor 不得发布 namespace recovery barrier 或 recoveryState 进度。'
+  );
   assert.match(
     supervisorSource,
-    /const recoveredOutputSequence = normalizeRuntimeSupervisorOutputSequence\(snapshot\.outputSequence\);[\s\S]*await readTerminalSessionJournalMetadata\([\s\S]*recoveredFromDeadPty: true/u,
-    '重启后的 Supervisor 必须只读取有界 Journal metadata，保留已保存的显示序列并标记原 PTY 已死亡。'
+    /private readonly supervisorInstanceId = randomUUID\(\);[\s\S]*supervisorInstanceId: this\.supervisorInstanceId[\s\S]*supervisorInstanceIdentityV1: true/u,
+    '每个 Supervisor 进程必须生成稳定于该进程的 instance identity，并通过 hello capability 发布。'
+  );
+  const projectionOpenStart = supervisorSource.indexOf('  private openTerminalProjection(');
+  const projectionReadStart = supervisorSource.indexOf('  private async readTerminalProjection(', projectionOpenStart);
+  const projectionSubscribeStart = supervisorSource.indexOf('  private subscribeSession(', projectionOpenStart);
+  assert.ok(
+    projectionOpenStart >= 0 &&
+      projectionReadStart > projectionOpenStart &&
+      projectionSubscribeStart > projectionReadStart
+  );
+  assert.doesNotMatch(
+    supervisorSource.slice(projectionOpenStart, projectionReadStart),
+    /getEventsAfter|buildTerminalStreamAttachPayload/u,
+    'bulk open must pull one pinned event at a time without materializing the journal suffix.'
+  );
+  const projectionAttachStart = supervisorSource.indexOf('  private async attachSession(');
+  const projectionAttachEnd = supervisorSource.indexOf(
+    '  private async activateControlSubscriptionWithCatchUp(',
+    projectionAttachStart
+  );
+  const projectionAttachSource = supervisorSource.slice(projectionAttachStart, projectionAttachEnd);
+  const metadataProjectionAttachSource = projectionAttachSource.slice(
+    0,
+    projectionAttachSource.indexOf(
+      '    if (params.deferSubscription === true && session.terminalJournal'
+    )
+  );
+  assert.doesNotMatch(
+    projectionAttachSource,
+    /pinProjection/u,
+    'metadata attach must remain lazy and must not pin queued background-node history.'
+  );
+  assert.match(
+    projectionAttachSource,
+    /terminalProjectionMode === 'stream-v1'[\s\S]*terminalProjectionTargetRevision/u,
+    'metadata attach must return compact control state while omitting projection data.'
+  );
+  assert.doesNotMatch(
+    metadataProjectionAttachSource,
+    /subscribeSocket/u,
+    'metadata attach must not activate control delivery before its response is written.'
+  );
+  assert.match(
+    supervisorSource,
+    /case 'createSession':[\s\S]*?this\.writeMessage\(socket,[\s\S]*?await this\.activateControlSubscriptionWithCatchUp\(socket, snapshot\.sessionId\);[\s\S]*?case 'attachSession':[\s\S]*?this\.writeMessage\(socket,[\s\S]*?await this\.activateControlSubscriptionWithCatchUp\(socket, snapshot\.sessionId\);/u,
+    'metadata create/attach must publish the RPC response before activating control delivery.'
+  );
+  assert.match(
+    supervisorSource,
+    /private async activateControlSubscriptionWithCatchUp\([\s\S]*enqueueTerminalOperation\(session[\s\S]*subscribeSocket\(socket, sessionId, 'control-only'\)[\s\S]*event: 'sessionState'[\s\S]*toSnapshot\(session, undefined, false\)/u,
+    'post-response control activation must immediately send one serialized compact state catch-up.'
+  );
+  assert.match(
+    supervisorSource,
+    /stateRevision: 0[\s\S]*advanceSessionStateRevision\(session\)[\s\S]*stateRevision: session\.stateRevision/u,
+    'Supervisor compact snapshots must expose a monotonic mutation revision so unchanged catch-up can be discarded.'
+  );
+  assert.match(
+    supervisorSource.slice(projectionOpenStart, projectionSubscribeStart),
+    /createFreshSnapshot\(session, 'always', false\)[\s\S]*journal\.pinProjection\(checkpoint, targetRevision\)/u,
+    'bulk open must choose and pin its fresh checkpoint/target atomically when scheduled.'
+  );
+  assert.match(
+    supervisorSource,
+    /private async readTerminalProjection\([\s\S]*enqueueTerminalOperation\(session[\s\S]*this\.writeMessage\(socket, \{[\s\S]*requestId/u,
+    'follow projection reads must be serialized with terminal operations and write the caught-up response inside that boundary.'
+  );
+  assert.match(
+    supervisorSource,
+    /if \(stream\.follow\)[\s\S]*const headRevision = journal\.getRevision\(\)[\s\S]*stream\.pin\.extendTargetRevision\(headRevision\)[\s\S]*stream\.targetRevision = headRevision[\s\S]*barrier\.targetRevision = headRevision[\s\S]*subscribeSocket\(socket, stream\.sessionId, 'terminal-stream-v1'\)[\s\S]*releaseTerminalProjectionStream/u,
+    'live follow projections must extend their credit-bounded target to the settled journal head before subscribing to live events.'
+  );
+  assert.match(
+    supervisorSource,
+    /targetRevision: headRevision[\s\S]*payloadBytes: 0[\s\S]*done: true[\s\S]*live/u,
+    'a follow projection may report ready only after the dynamically extended target reaches a settled journal head.'
   );
   assert.doesNotMatch(
     supervisorSource,
-    /recoveredOutputSequence = Math\.max\([\s\S]*metadata\.lastRevision/u,
-    'Journal manifest revision 不能被当作死亡 PTY 的显示序列。'
+    /handoffFollowProjectionToLiveTail|yieldRuntimeSupervisorTurn|TERMINAL_PROJECTION_TAIL_REPLAY/u,
+    'follow backlog must not bypass read credit through a separate unacknowledged replay loop.'
   );
-  assert.doesNotMatch(
+  assert.match(
     supervisorSource,
-    /TerminalSessionJournal\.open\(|getRecoveryCandidates\(|restoreTerminalJournalCandidate/u,
-    '死亡 PTY 的 registry 恢复不得打开、解析或回放完整 Journal。'
+    /terminalProjectionStreamV1: true[\s\S]*terminalProjectionFollowV1: true[\s\S]*private cleanupSocket\([\s\S]*releaseTerminalProjectionStream[\s\S]*terminalProjectionTailBarriers/u,
+    'Supervisor must advertise projection streaming and release active streams/tail barriers on socket close.'
+  );
+  assert.match(
+    terminalJournalSource,
+    /pinProjection\([\s\S]*projectionPins\.set[\s\S]*readEvent:[\s\S]*this\.events\[revision - firstRevision\][\s\S]*getPinnedProjectionRetentionRevision/u,
+    'projection pins must provide O(1) revision reads without cloning a complete suffix.'
+  );
+  assert.match(
+    terminalJournalSource,
+    /extendTargetRevision\([\s\S]*pinnedTargetRevision[\s\S]*this\.lastRevision/u,
+    'projection pins must support monotonic target extension while retaining the original checkpoint.'
+  );
+  assert.match(
+    terminalJournalSource,
+    /releaseMemoryThrough\([\s\S]*getPinnedProjectionRetentionRevision[\s\S]*Math\.min\(revision, pinnedRevision\)[\s\S]*commitCheckpointOnWriteChain\([\s\S]*getPinnedProjectionRetentionRevision/u,
+    'active projection pins must constrain both memory release and journal compaction.'
   );
   assert.match(
     terminalJournalSource,
     /\{ source: 'current', reference:[\s\S]*\{ source: 'previous', reference:[\s\S]*candidates\.push\(\{[\s\S]*source: 'genesis'/u,
     'journal recovery candidates 必须按 current、previous、genesis 的保守顺序提供。'
-  );
-  assert.match(
-    supervisorSource,
-    /initialState: snapshot\.serializedTerminalState,[\s\S]*initialOutput: snapshot\.serializedTerminalState \? undefined : snapshot\.output/u,
-    '死亡 PTY 恢复只能初始化有界保存快照或最近输出，不能按 authority 回放 Journal。'
-  );
-  assert.match(
-    supervisorSource,
-    /includeRecoveredTerminalProjection = includeTerminalProjection && !session\.recoveredFromDeadPty/u,
-    '死亡 PTY 的 Supervisor snapshot 不得覆盖 Host 已保存的完整 terminal projection。'
   );
   assert.match(
     supervisorSource,
@@ -246,7 +368,9 @@ try {
   );
 
   const runtimeEvidence = await assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supervisorOutfile, tempDir);
-  await assertRuntimeSupervisorRestartUsesSavedSnapshot(supervisorOutfile, tempDir, runtimeEvidence.marker);
+  await assertRuntimeSupervisorRestartStartsEmpty(supervisorOutfile, tempDir, runtimeEvidence);
+  await assertRuntimeSupervisorRejectedSpawnIsNotRegistered(supervisorOutfile, tempDir);
+  await assertRuntimeSupervisorFollowProjection(supervisorOutfile, tempDir);
   const capacityMetrics = await assertTenAgentRuntimeCapacity(supervisorOutfile, tempDir);
 
   console.log(`[10-agent-supervisor-capacity] ${JSON.stringify(capacityMetrics)}`);
@@ -263,6 +387,9 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
   const sockets = new Set();
   let connectionCount = 0;
   let helloRequestCount = 0;
+  const legacySessionEvents = [];
+  const responseConsumerReadySessionIds = new Set();
+  const responseHandoffObservations = [];
   let releaseHello;
   let markHelloRequestReceived;
   const helloGate = new Promise((resolve) => {
@@ -290,7 +417,63 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
           continue;
         }
         const message = JSON.parse(line);
-        if (message.type !== 'request' || message.method !== 'hello') {
+        if (message.type !== 'request') {
+          continue;
+        }
+        if (message.method === 'createSession' || message.method === 'attachSession') {
+          const sessionId = message.params.sessionId;
+          socket.write(`${JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: {
+              sessionId
+            }
+          })}\n${JSON.stringify({
+            type: 'event',
+            event: 'sessionState',
+            payload: {
+              sessionId
+            }
+          })}\n`);
+          continue;
+        }
+        if (message.method === 'getSessionSnapshot') {
+          socket.write(`${JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: {
+              sessionId: message.params.sessionId
+            }
+          })}\n${JSON.stringify({
+            type: 'event',
+            event: 'sessionState',
+            payload: {
+              sessionId: message.params.sessionId
+            }
+          })}\n`);
+          continue;
+        }
+        if (message.method === 'writeInput') {
+          const sessionId = message.params.sessionId;
+          socket.write(`${JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: {
+              ok: true
+            }
+          })}\n${JSON.stringify({
+            type: 'event',
+            event: 'sessionState',
+            payload: {
+              sessionId
+            }
+          })}\n`);
+          continue;
+        }
+        if (message.method !== 'hello') {
           continue;
         }
         helloRequestCount += 1;
@@ -350,7 +533,16 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
       startSupervisor: async () => assert.fail('The connected test client must not restart the Supervisor.')
     },
     supervisorScriptPath: '/unused/runtimeSupervisorMain.js',
-    supervisorLauncherScriptPath: '/unused/runtimeSupervisorLauncher.js'
+    supervisorLauncherScriptPath: '/unused/runtimeSupervisorLauncher.js',
+    onSessionState: (snapshot) => {
+      legacySessionEvents.push(snapshot);
+      if (snapshot.sessionId.startsWith('response-handoff-')) {
+        responseHandoffObservations.push({
+          sessionId: snapshot.sessionId,
+          consumerReady: responseConsumerReadySessionIds.has(snapshot.sessionId)
+        });
+      }
+    }
   });
   let firstEnsure;
   let secondEnsure;
@@ -362,7 +554,7 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
     secondEnsure = client.ensureConnected({ allowRestart: false }).then(() => {
       secondResolved = true;
     });
-    await new Promise((resolve) => setImmediate(resolve));
+    await delay(10);
     assert.equal(
       secondResolved,
       false,
@@ -380,8 +572,79 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
     assert.equal(client.supportsTerminalAppliedRevisionAck(), true);
     assert.equal(client.supportsAgentSubmissionIntent(), true);
     assert.equal(client.supportsAgentProviderLifecycle(), true);
+    assert.equal(client.supportsSupervisorInstanceIdentity(), false);
+    assert.equal(client.supportsTerminalProjectionStream(), false);
+    assert.equal(client.getSupervisorInstanceId(), `legacy-pid:${process.pid}`);
+    assert.equal((await client.hello()).supervisorInstanceId, `legacy-pid:${process.pid}`);
+    const legacySnapshot = await client.getSessionSnapshot({ sessionId: 'legacy-session' });
+    assert.equal(legacySnapshot.supervisorInstanceId, `legacy-pid:${process.pid}`);
+    assert.equal(legacySessionEvents.length, 1);
+    assert.equal(legacySessionEvents[0].supervisorInstanceId, `legacy-pid:${process.pid}`);
+
+    for (const method of ['createSession', 'attachSession']) {
+      const sessionId = `response-handoff-${method}`;
+      const snapshot = method === 'createSession'
+        ? await client.createSession({
+            kind: 'terminal',
+            sessionId,
+            displayLabel: 'Response handoff fixture',
+            launchMode: 'start',
+            scrollback: 1000,
+            deferSubscription: true,
+            terminalProjectionMode: 'stream-v1',
+            launchSpec: {
+              file: process.execPath,
+              args: [],
+              cwd: tempDir,
+              cols: 80,
+              rows: 24,
+              env: {},
+              terminalName: 'xterm-256color'
+            }
+          })
+        : await client.attachSession({
+            sessionId,
+            deferSubscription: true,
+            terminalProjectionMode: 'stream-v1'
+          });
+      responseConsumerReadySessionIds.add(snapshot.sessionId);
+      assert.equal(
+        responseHandoffObservations.some((observation) => observation.sessionId === sessionId),
+        false,
+        `${method} catch-up must not run inside the parser turn that resolves its response.`
+      );
+      await delay(10);
+      assert.deepEqual(
+        responseHandoffObservations.find((observation) => observation.sessionId === sessionId),
+        { sessionId, consumerReady: true },
+        `${method} catch-up must run only after the response consumer can install its binding.`
+      );
+    }
+    const inputSessionId = 'response-handoff-writeInput';
+    await client.writeInput({
+      sessionId: inputSessionId,
+      data: '\r',
+      intent: 'submit'
+    });
+    responseConsumerReadySessionIds.add(inputSessionId);
+    assert.equal(
+      responseHandoffObservations.some((observation) => observation.sessionId === inputSessionId),
+      false,
+      'writeInput lifecycle must not run inside the parser turn that resolves its response.'
+    );
+    await delay(10);
+    assert.deepEqual(
+      responseHandoffObservations.find((observation) => observation.sessionId === inputSessionId),
+      { sessionId: inputSessionId, consumerReady: true },
+      'writeInput lifecycle must run only after the response consumer can release its input operation.'
+    );
     assert.equal(connectionCount, 1, 'Concurrent readiness callers must share one socket connection.');
     assert.equal(helloRequestCount, 1, 'Concurrent readiness callers must share one hello handshake.');
+    await assert.rejects(
+      client.createTerminalProjectionClient(),
+      /does not support terminal projection streams/u
+    );
+    assert.equal(connectionCount, 1, 'A legacy Supervisor must not receive a speculative bulk connection.');
   } finally {
     releaseHello();
     await waitForPromise(
@@ -389,6 +652,644 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
       2000,
       'RuntimeSupervisorClient readiness cleanup'
     );
+    client.dispose();
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+async function assertRuntimeSupervisorClientRejectsNativeIdentityViolations(
+  RuntimeSupervisorClient,
+  tempDir
+) {
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-client-identity-${process.pid}-${Date.now()}`
+      : path.join(tempDir, `runtime-client-identity-${Date.now()}.sock`);
+  const nativeInstanceId = `native-instance-${process.pid}`;
+  const sockets = new Set();
+  let activeSocket;
+  let scenario = 'hello-missing';
+
+  const server = net.createServer((socket) => {
+    activeSocket = socket;
+    sockets.add(socket);
+    socket.setEncoding('utf8');
+    socket.on('close', () => sockets.delete(socket));
+    let buffer = '';
+    socket.on('data', (chunk) => {
+      buffer += chunk;
+      while (true) {
+        const newlineIndex = buffer.indexOf('\n');
+        if (newlineIndex < 0) {
+          return;
+        }
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line) {
+          continue;
+        }
+
+        const message = JSON.parse(line);
+        if (message.type !== 'request') {
+          continue;
+        }
+
+        if (message.method === 'hello') {
+          socket.write(`${JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: {
+              serverVersion: 1,
+              pid: process.pid,
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              capabilities: {
+                supervisorInstanceIdentityV1: true
+              },
+              ...(scenario === 'hello-missing' ? {} : { supervisorInstanceId: nativeInstanceId })
+            }
+          })}\n`);
+          continue;
+        }
+
+        if (message.method === 'resizeSession') {
+          socket.write(`${JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: {
+              ok: true,
+              ...(scenario === 'result-missing' ? {} : { supervisorInstanceId: nativeInstanceId })
+            }
+          })}\n`);
+          continue;
+        }
+
+        if (message.method === 'getSessionSnapshot') {
+          socket.write(`${JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: {
+              sessionId: message.params.sessionId,
+              supervisorInstanceId:
+                scenario === 'result-mismatch' ? `${nativeInstanceId}-other` : nativeInstanceId
+            }
+          })}\n`);
+        }
+      }
+    });
+  });
+
+  await new Promise((resolve, reject) => {
+    const handleError = (error) => {
+      server.removeListener('listening', handleListening);
+      reject(error);
+    };
+    const handleListening = () => {
+      server.removeListener('error', handleError);
+      resolve();
+    };
+    server.once('error', handleError);
+    server.once('listening', handleListening);
+    server.listen(socketPath);
+  });
+
+  const assertIdentityProtocolError = (error) => {
+    assert.equal(error?.code, 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_PARSE_ERROR');
+    assert.equal(error?.descriptor?.id, 'parseError');
+    assert.equal(error?.details?.origin, 'protocol');
+    assert.match(error?.message ?? '', /supervisor instance identity/u);
+    return true;
+  };
+
+  const runViolationScenario = async (name, action, handlers = {}) => {
+    scenario = name;
+    activeSocket = undefined;
+    let resolveDisconnected;
+    const disconnected = new Promise((resolve) => {
+      resolveDisconnected = resolve;
+    });
+    const client = new RuntimeSupervisorClient({
+      backend: {
+        kind: 'legacy-detached',
+        guarantee: 'best-effort',
+        label: 'Identity Test Supervisor',
+        paths: {
+          storageDir: tempDir,
+          socketPath,
+          registryPath: path.join(tempDir, 'runtime-client-identity-registry.json'),
+          socketLocation: process.platform === 'win32' ? 'named-pipe' : 'storage'
+        },
+        startSupervisor: async () => assert.fail('Identity protocol violations must not restart the Supervisor.')
+      },
+      supervisorScriptPath: '/unused/runtimeSupervisorMain.js',
+      supervisorLauncherScriptPath: '/unused/runtimeSupervisorLauncher.js',
+      ...handlers,
+      onDisconnected: (error) => resolveDisconnected(error)
+    });
+
+    try {
+      await action(client, () => activeSocket);
+      const disconnectedError = await waitForPromise(
+        disconnected,
+        2000,
+        `${name} protocol disconnect`
+      );
+      assertIdentityProtocolError(disconnectedError);
+    } finally {
+      client.dispose();
+    }
+  };
+
+  try {
+    await runViolationScenario('hello-missing', async (client) => {
+      await assert.rejects(
+        client.ensureConnected({ allowRestart: false }),
+        assertIdentityProtocolError
+      );
+    });
+
+    await runViolationScenario('result-missing', async (client) => {
+      await client.ensureConnected({ allowRestart: false });
+      assert.equal(client.getSupervisorInstanceId(), nativeInstanceId);
+      await assert.rejects(
+        client.resizeSession({ sessionId: 'native-session', cols: 80, rows: 24 }),
+        assertIdentityProtocolError
+      );
+    });
+
+    await runViolationScenario('result-mismatch', async (client) => {
+      await client.ensureConnected({ allowRestart: false });
+      await assert.rejects(
+        client.getSessionSnapshot({ sessionId: 'native-session' }),
+        assertIdentityProtocolError
+      );
+    });
+
+    let outputEventCount = 0;
+    await runViolationScenario(
+      'event-missing',
+      async (client, getSocket) => {
+        await client.ensureConnected({ allowRestart: false });
+        getSocket().write(`${JSON.stringify({
+          type: 'event',
+          event: 'sessionOutput',
+          payload: {
+            sessionId: 'native-session',
+            kind: 'terminal',
+            chunk: 'must-not-be-delivered'
+          }
+        })}\n`);
+      },
+      {
+        onSessionOutput: () => {
+          outputEventCount += 1;
+        }
+      }
+    );
+    assert.equal(outputEventCount, 0, 'Missing native event identity must not reach Host handlers.');
+
+    let stateEventCount = 0;
+    await runViolationScenario(
+      'event-mismatch',
+      async (client, getSocket) => {
+        await client.ensureConnected({ allowRestart: false });
+        getSocket().write(`${JSON.stringify({
+          type: 'event',
+          event: 'sessionState',
+          payload: {
+            sessionId: 'native-session',
+            supervisorInstanceId: `${nativeInstanceId}-other`
+          }
+        })}\n`);
+      },
+      {
+        onSessionState: () => {
+          stateEventCount += 1;
+        }
+      }
+    );
+    assert.equal(stateEventCount, 0, 'Mismatched native event identity must not reach Host handlers.');
+  } finally {
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+async function assertRuntimeSupervisorClientPinsExistingSessionRequests(
+  RuntimeSupervisorClient,
+  tempDir
+) {
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-client-admission-${process.pid}-${Date.now()}`
+      : path.join(tempDir, `runtime-client-admission-${Date.now()}.sock`);
+  const originalInstanceId = `request-admission-original-${process.pid}`;
+  const replacementInstanceId = `request-admission-replacement-${process.pid}`;
+  const sockets = new Set();
+  const receivedSessionMethods = [];
+  const connectionOrder = [];
+  let connectionCount = 0;
+  let advertisedInstanceId = originalInstanceId;
+  let supervisorStartCount = 0;
+  let serverClosed = false;
+
+  const server = net.createServer((socket) => {
+    connectionCount += 1;
+    if (connectionCount > 1) {
+      connectionOrder.push('replacement-connected');
+    }
+    sockets.add(socket);
+    socket.setEncoding('utf8');
+    socket.on('close', () => sockets.delete(socket));
+    let buffer = '';
+    socket.on('data', (chunk) => {
+      buffer += chunk;
+      while (true) {
+        const newlineIndex = buffer.indexOf('\n');
+        if (newlineIndex < 0) {
+          return;
+        }
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line) {
+          continue;
+        }
+
+        const message = JSON.parse(line);
+        if (message.type !== 'request') {
+          continue;
+        }
+        if (message.method === 'hello') {
+          socket.write(`${JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: {
+              serverVersion: 1,
+              pid: process.pid,
+              supervisorInstanceId: advertisedInstanceId,
+              runtimeBackend: 'legacy-detached',
+              runtimeGuarantee: 'best-effort',
+              capabilities: {
+                supervisorInstanceIdentityV1: true
+              }
+            }
+          })}\n`);
+          continue;
+        }
+
+        receivedSessionMethods.push(message.method);
+        socket.write(`${JSON.stringify({
+          type: 'response',
+          id: message.id,
+          ok: true,
+          result: {
+            ok: true,
+            supervisorInstanceId: advertisedInstanceId
+          }
+        })}\n`);
+      }
+    });
+  });
+
+  await new Promise((resolve, reject) => {
+    const handleError = (error) => {
+      server.removeListener('listening', handleListening);
+      reject(error);
+    };
+    const handleListening = () => {
+      server.removeListener('error', handleError);
+      resolve();
+    };
+    server.once('error', handleError);
+    server.once('listening', handleListening);
+    server.listen(socketPath);
+  });
+
+  let resolveInitialDisconnect;
+  const initialDisconnect = new Promise((resolve) => {
+    resolveInitialDisconnect = resolve;
+  });
+  const client = new RuntimeSupervisorClient({
+    backend: {
+      kind: 'legacy-detached',
+      guarantee: 'best-effort',
+      label: 'Request Admission Test Supervisor',
+      paths: {
+        storageDir: tempDir,
+        socketPath,
+        registryPath: path.join(tempDir, 'runtime-client-admission-registry.json'),
+        socketLocation: process.platform === 'win32' ? 'named-pipe' : 'storage'
+      },
+      startSupervisor: async () => {
+        supervisorStartCount += 1;
+      }
+    },
+    supervisorScriptPath: '/unused/runtimeSupervisorMain.js',
+    supervisorLauncherScriptPath: '/unused/runtimeSupervisorLauncher.js',
+    startupTimeoutMs: 120,
+    onDisconnected: (error, supervisorInstanceId) => {
+      connectionOrder.push(`disconnected:${supervisorInstanceId ?? '<missing>'}`);
+      resolveInitialDisconnect({ error, supervisorInstanceId });
+    }
+  });
+
+  try {
+    await client.ensureConnected({ allowRestart: false });
+    assert.equal(client.getSupervisorInstanceId(), originalInstanceId);
+    const staleAdmission = client.captureExistingSessionRequestAdmission({
+      allowRestart: false,
+      expectedSupervisorInstanceId: originalInstanceId
+    });
+
+    advertisedInstanceId = replacementInstanceId;
+    await assert.rejects(
+      client.stopSession({ sessionId: 'force-old-generation-close' }),
+      (error) => {
+        assert.equal(error?.code, 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_PARSE_ERROR');
+        return true;
+      }
+    );
+    receivedSessionMethods.length = 0;
+    await client.ensureConnected({ allowRestart: false });
+    const disconnected = await waitForPromise(
+      initialDisconnect,
+      2000,
+      'original request-admission socket disconnect'
+    );
+    assert.equal(disconnected.supervisorInstanceId, originalInstanceId);
+    assert.equal(disconnected.error?.details?.origin, 'protocol');
+    assert.deepEqual(
+      connectionOrder,
+      [`disconnected:${originalInstanceId}`, 'replacement-connected'],
+      'A replacement socket must attach only after the old generation publishes its disconnect.'
+    );
+    assert.equal(client.getSupervisorInstanceId(), replacementInstanceId);
+
+    await assert.rejects(
+      client.stopSession({ sessionId: 'stale-session' }, staleAdmission),
+      (error) => {
+        assert.equal(error?.code, 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_CLIENT_DISCONNECTED');
+        assert.equal(error?.details?.origin, 'protocol');
+        return true;
+      }
+    );
+    assert.equal(client.getSupervisorInstanceId(), replacementInstanceId);
+    assert.deepEqual(
+      receivedSessionMethods,
+      [],
+      'A request admitted for the old instance must not be written to a replacement socket generation.'
+    );
+    assert.equal(supervisorStartCount, 0, 'Existing-session admission must not launch a Supervisor.');
+
+    const disconnectedAdmission = client.captureExistingSessionRequestAdmission({
+      allowRestart: false,
+      expectedSupervisorInstanceId: replacementInstanceId
+    });
+    const serverClose = new Promise((resolve) => server.close(resolve));
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    await serverClose;
+    serverClosed = true;
+    const disconnectDeadline = Date.now() + 2000;
+    while (client.getSupervisorInstanceId() !== undefined && Date.now() < disconnectDeadline) {
+      await delay(5);
+    }
+    assert.equal(client.getSupervisorInstanceId(), undefined);
+    await assert.rejects(
+      client.stopSession({ sessionId: 'disconnected-session' }, disconnectedAdmission),
+      (error) => {
+        assert.equal(error?.code, 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_CLIENT_NOT_CONNECTED');
+        return true;
+      }
+    );
+    assert.equal(
+      supervisorStartCount,
+      0,
+      'A token admitted before disconnect must fail without starting a replacement Supervisor.'
+    );
+  } finally {
+    client.dispose();
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    if (!serverClosed) {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }
+}
+
+async function assertRuntimeSupervisorProjectionClientUsesIndependentSocket(
+  RuntimeSupervisorClient,
+  tempDir
+) {
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-client-projection-${process.pid}-${Date.now()}`
+      : path.join(tempDir, `runtime-client-projection-${Date.now()}.sock`);
+  const supervisorInstanceId = `projection-instance-${process.pid}`;
+  const sockets = new Set();
+  const requestConnections = [];
+  let connectionCount = 0;
+  let supervisorStartCount = 0;
+  let controlDisconnectCount = 0;
+  let bulkDisconnectCount = 0;
+  const bulkTerminalEvents = [];
+
+  const server = net.createServer((socket) => {
+    const connectionId = ++connectionCount;
+    sockets.add(socket);
+    socket.setEncoding('utf8');
+    socket.on('close', () => sockets.delete(socket));
+    let buffer = '';
+    socket.on('data', (data) => {
+      buffer += data;
+      while (true) {
+        const newlineIndex = buffer.indexOf('\n');
+        if (newlineIndex < 0) {
+          return;
+        }
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line) {
+          continue;
+        }
+        const message = JSON.parse(line);
+        if (message.type !== 'request') {
+          continue;
+        }
+        requestConnections.push({ method: message.method, connectionId });
+        let result;
+        if (message.method === 'hello') {
+          result = {
+            serverVersion: 1,
+            pid: process.pid,
+            supervisorInstanceId,
+            runtimeBackend: 'legacy-detached',
+            runtimeGuarantee: 'best-effort',
+            capabilities: {
+              supervisorInstanceIdentityV1: true,
+              terminalProjectionStreamV1: true,
+              terminalProjectionFollowV1: true
+            }
+          };
+        } else if (message.method === 'openTerminalProjection') {
+          result = {
+            supervisorInstanceId,
+            projectionId: 'projection-client-test',
+            sessionId: message.params.sessionId,
+            authorityId: message.params.authorityId,
+            targetRevision: message.params.targetRevision,
+            follow: message.params.follow === true,
+            checkpoint: {}
+          };
+        } else if (message.method === 'readTerminalProjection') {
+          const chunk = {
+            kind: 'checkpoint',
+            dataOffset: 0,
+            data: '',
+            complete: true
+          };
+          result = {
+            supervisorInstanceId,
+            projectionId: message.params.projectionId,
+            sessionId: 'projection-session',
+            authorityId: 'projection-authority',
+            targetRevision: 0,
+            payloadBytes: Buffer.byteLength(JSON.stringify(chunk), 'utf8'),
+            chunkChecksum: createHash('sha256').update(JSON.stringify(chunk), 'utf8').digest('hex'),
+            chunk,
+            done: true
+          };
+        } else {
+          result = {
+            supervisorInstanceId,
+            projectionId: message.params.projectionId,
+            cancelled: true
+          };
+        }
+        let response = `${JSON.stringify({
+          type: 'response',
+          id: message.id,
+          ok: true,
+          result
+        })}\n`;
+        if (message.method === 'readTerminalProjection') {
+          response += `${JSON.stringify({
+            type: 'event',
+            event: 'sessionTerminalEvent',
+            payload: {
+              supervisorInstanceId,
+              sessionId: 'projection-session',
+              kind: 'terminal',
+              authorityId: 'projection-authority',
+              event: {
+                type: 'output',
+                revision: 1,
+                createdAtMs: Date.now(),
+                data: 'bulk-live-event'
+              }
+            }
+          })}\n`;
+        }
+        socket.write(response);
+      }
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(socketPath, resolve);
+  });
+
+  const client = new RuntimeSupervisorClient({
+    backend: {
+      kind: 'legacy-detached',
+      guarantee: 'best-effort',
+      label: 'Projection Client Test Supervisor',
+      paths: {
+        storageDir: tempDir,
+        socketPath,
+        registryPath: path.join(tempDir, 'runtime-client-projection-registry.json'),
+        socketLocation: process.platform === 'win32' ? 'named-pipe' : 'storage'
+      },
+      startSupervisor: async () => {
+        supervisorStartCount += 1;
+      }
+    },
+    supervisorScriptPath: '/unused/runtimeSupervisorMain.js',
+    supervisorLauncherScriptPath: '/unused/runtimeSupervisorLauncher.js',
+    onDisconnected: () => {
+      controlDisconnectCount += 1;
+    }
+  });
+
+  let bulkClient;
+  try {
+    await client.ensureConnected({ allowRestart: false });
+    bulkClient = await client.createTerminalProjectionClient({
+      onSessionTerminalEvent: (event) => bulkTerminalEvents.push(event),
+      onBulkDisconnected: () => {
+        bulkDisconnectCount += 1;
+      }
+    });
+    assert.equal(connectionCount, 2, 'Projection transfer must use a second socket.');
+    assert.equal(bulkClient.getSupervisorInstanceId(), supervisorInstanceId);
+    const opened = await bulkClient.open({
+      sessionId: 'projection-session',
+      authorityId: 'projection-authority',
+      targetRevision: 0
+    });
+    assert.equal(opened.supervisorInstanceId, supervisorInstanceId);
+    assert.equal((await bulkClient.read({
+      projectionId: opened.projectionId,
+      creditBytes: 256
+    })).supervisorInstanceId, supervisorInstanceId);
+    assert.equal(
+      bulkTerminalEvents.length,
+      0,
+      'Bulk event callbacks must run after the caught-up read() continuation.'
+    );
+    await delay(10);
+    assert.equal(bulkTerminalEvents.length, 1);
+    assert.equal((await bulkClient.cancel({
+      projectionId: opened.projectionId
+    })).supervisorInstanceId, supervisorInstanceId);
+    assert.deepEqual(
+      requestConnections
+        .filter(({ method }) => method !== 'hello')
+        .map(({ connectionId }) => connectionId),
+      [2, 2, 2],
+      'Projection RPCs must stay on the bulk socket.'
+    );
+
+    const bulkSocket = [...sockets][1];
+    bulkSocket?.destroy();
+    const bulkDisconnectDeadline = Date.now() + 2000;
+    while (bulkDisconnectCount === 0 && Date.now() < bulkDisconnectDeadline) {
+      await delay(5);
+    }
+    assert.equal(bulkDisconnectCount, 1, 'Bulk disconnect callback must be scoped to the projection transport.');
+    bulkClient.dispose();
+    bulkClient = undefined;
+    const bulkCloseDeadline = Date.now() + 2000;
+    while (sockets.size !== 1 && Date.now() < bulkCloseDeadline) {
+      await delay(5);
+    }
+    assert.equal(sockets.size, 1, 'Closing bulk transport must leave the control socket connected.');
+    assert.equal(controlDisconnectCount, 0, 'Bulk disconnect must not notify the control client.');
+    assert.equal((await client.hello()).supervisorInstanceId, supervisorInstanceId);
+    assert.equal(supervisorStartCount, 0);
+  } finally {
+    bulkClient?.dispose();
     client.dispose();
     for (const socket of sockets) {
       socket.destroy();
@@ -499,6 +1400,17 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     });
 
     const hello = await sendRuntimeSupervisorRequest(socket, messages, 'hello');
+    assert.equal(typeof hello.supervisorInstanceId, 'string');
+    assert.ok(hello.supervisorInstanceId.length > 0);
+    assert.equal(hello.capabilities?.supervisorInstanceIdentityV1, true);
+    const repeatedHello = await sendRuntimeSupervisorRequest(socket, messages, 'hello');
+    assert.equal(
+      repeatedHello.supervisorInstanceId,
+      hello.supervisorInstanceId,
+      '同一 Supervisor 进程的 instance identity 必须稳定。'
+    );
+    assert.equal(hello.recovery, undefined, '新 Supervisor 不再发布 namespace recovery barrier。');
+    assert.equal(hello.capabilities?.terminalProjectionStreamV1, true);
     assert.equal(hello.capabilities?.terminalSessionStreamV1, true);
     assert.equal(hello.capabilities?.terminalProjectionSnapshotV1, true);
     assert.equal(hello.capabilities?.terminalProjectionCheckpointV1, true);
@@ -533,6 +1445,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
         terminalName: 'xterm-256color'
       }
     });
+    assert.equal(missingSignalAgentSnapshot.supervisorInstanceId, hello.supervisorInstanceId);
     assert.equal(
       missingSignalAgentSnapshot.terminalTitle,
       null,
@@ -738,6 +1651,7 @@ setInterval(() => undefined, 1000);
       }
     });
     assertTerminalStreamSnapshot(attachGapSnapshot, 'attach-gap create snapshot');
+    assert.equal(attachGapSnapshot.supervisorInstanceId, hello.supervisorInstanceId);
     await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
       sessionId: 'attach-gap-terminal',
       data: 'trigger\n'
@@ -745,7 +1659,10 @@ setInterval(() => undefined, 1000);
     await waitForRuntimeSupervisorRegistrySession(
       registryPath,
       'attach-gap-terminal',
-      (session) => session.terminalRevision > attachGapSnapshot.terminalRevision
+      (session) =>
+        session.terminalRevision > attachGapSnapshot.terminalRevision &&
+        typeof session.output === 'string' &&
+        session.output.includes(gapMarker)
     );
     const subscribeResult = await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
       sessionId: 'attach-gap-terminal',
@@ -763,6 +1680,7 @@ setInterval(() => undefined, 1000);
       'attach-gap replay event'
     );
     assert.equal(replayedGapEvent.payload.authorityId, attachGapSnapshot.terminalAuthorityId);
+    assert.equal(replayedGapEvent.payload.supervisorInstanceId, hello.supervisorInstanceId);
     assert.ok(subscribeResult.revision >= replayedGapEvent.payload.event.revision);
     await delay(50);
     const replayedTerminalEvents = [
@@ -792,6 +1710,21 @@ setInterval(() => undefined, 1000);
       1,
       'output produced between attach and subscribe must be replayed exactly once.'
     );
+    const subscribeCatchUpState = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === 'attach-gap-terminal' &&
+        message.payload.terminalRevision === subscribeResult.revision,
+      'attach-gap compact state catch-up'
+    );
+    assert.equal(subscribeCatchUpState.payload.terminalProjectionIncluded, false);
+    assert.equal(subscribeCatchUpState.payload.terminalStream, undefined);
+    assert.equal(subscribeCatchUpState.payload.serializedTerminalState, undefined);
+    assert.equal(subscribeCatchUpState.payload.terminalRevision, subscribeResult.revision);
+    assert.equal(subscribeCatchUpState.payload.supervisorInstanceId, hello.supervisorInstanceId);
+    assert.equal(subscribeResult.supervisorInstanceId, hello.supervisorInstanceId);
 
     const refreshLiveMarker = `projection-refresh-live-marker-${Date.now()}`;
     const projectionSnapshotPromise = sendRuntimeSupervisorRequest(
@@ -876,6 +1809,7 @@ setInterval(() => undefined, 1000);
       revision: scrollbackEvent.payload.event.revision
     });
     assert.deepEqual(appliedAck, {
+      supervisorInstanceId: hello.supervisorInstanceId,
       sessionId: 'attach-gap-terminal',
       authorityId: attachGapSnapshot.terminalAuthorityId,
       consumerId: 'panel',
@@ -1096,12 +2030,7 @@ setInterval(() => undefined, 1000);
         message.event === 'sessionState' &&
         message.payload?.sessionId === finalizationRaceSessionId &&
         message.payload.live === false &&
-        message.payload.terminalStream?.revision === message.payload.terminalRevision &&
-        message.payload.terminalStream.events
-          .filter((event) => event.type === 'output')
-          .map((event) => event.data)
-          .join('')
-          .includes(finalizationRaceMarker),
+        message.payload.terminalProjectionIncluded === false,
       'finalization race state',
       15000
     );
@@ -1118,21 +2047,24 @@ setInterval(() => undefined, 1000);
       },
       'Supervisor must publish terminal revisions in journal order and reject mutations before one complete final state.'
     );
-    assertTerminalStreamSnapshot(finalizationRaceState.payload, 'finalization resize race final snapshot');
-    assert.equal(
-      finalizationRaceState.payload.terminalStream.revision,
-      finalizationRaceState.payload.terminalRevision
-    );
+    assert.equal(finalizationRaceState.payload.terminalStream, undefined);
     assert.equal(
       finalizationRaceState.payload.serializedTerminalState,
       undefined,
-      'finalization should not block on a multi-megabyte semantic checkpoint validation.'
+      'finalization control state must remain projection-free.'
     );
+    const finalizationRaceProjection = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: finalizationRaceSessionId }
+    );
+    assertTerminalStreamSnapshot(finalizationRaceProjection, 'explicit finalization race projection');
     assert.match(
-      finalizationRaceState.payload.terminalStream.events
+      `${finalizationRaceProjection.terminalStream.checkpoint.serializedState.data}${finalizationRaceProjection.terminalStream.events
         .filter((event) => event.type === 'output')
         .map((event) => event.data)
-        .join(''),
+        .join('')}`,
       new RegExp(finalizationRaceMarker, 'u')
     );
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
@@ -1222,17 +2154,30 @@ setInterval(() => undefined, 1000);
     const unsafeCheckpointScriptPath = path.join(tempDir, 'runtime-unsafe-checkpoint.js');
     const safeCheckpointMarker = `SAFE-CHECKPOINT-${Date.now()}`;
     const unsafeSplitPrefix = `UNSAFE-SPLIT-${Date.now()}:`;
+    const safeCheckpointPayload = `${Array.from(
+      { length: 220 },
+      (_value, index) => `SAFE-BULK-${String(index).padStart(4, '0')}-中文-🧭\r\n`
+    ).join('')}${safeCheckpointMarker}\r\n`;
+    const unsafeSuffixPayload = `${Array.from(
+      { length: 240 },
+      (_value, index) => `SUFFIX-BULK-${String(index).padStart(4, '0')}-恢复-🚀\r\n`
+    ).join('')}${unsafeSplitPrefix}\u001b[31`;
+    const projectionLiveMarker = `PROJECTION-LIVE-${Date.now()}`;
     await writeFile(
       unsafeCheckpointScriptPath,
       `const readline = require('node:readline');
 const reader = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 reader.on('line', (line) => {
   if (line === 'safe') {
-    process.stdout.write(${JSON.stringify(`${safeCheckpointMarker}\r\n`)});
+    process.stdout.write(${JSON.stringify(safeCheckpointPayload)});
     return;
   }
   if (line === 'split') {
-    process.stdout.write(${JSON.stringify(`${unsafeSplitPrefix}\u001b[31`)});
+    process.stdout.write(${JSON.stringify(unsafeSuffixPayload)});
+    return;
+  }
+  if (line === 'live') {
+    process.stdout.write(${JSON.stringify(`m${projectionLiveMarker}\r\n`)});
   }
 });
 setInterval(() => undefined, 1000);
@@ -1356,6 +2301,321 @@ setInterval(() => undefined, 1000);
       'a rejected checkpoint refresh must remain bounded and omit the journal suffix.'
     );
     assert.equal(unsafeBoundedCheckpoint.terminalCheckpointDiagnostics?.lastRejectionReason, 'parser-not-ground');
+
+    const projectionAttach = await sendRuntimeSupervisorRequest(socket, messages, 'attachSession', {
+      sessionId: unsafeCheckpointSessionId,
+      deferSubscription: true,
+      terminalProjectionMode: 'stream-v1'
+    });
+    assert.equal(projectionAttach.supervisorInstanceId, hello.supervisorInstanceId);
+    assert.equal(projectionAttach.terminalProjectionIncluded, false);
+    assert.equal(projectionAttach.terminalStream, undefined);
+    assert.equal(projectionAttach.serializedTerminalState, undefined);
+    assert.equal(projectionAttach.terminalAuthorityId, unsafeCheckpointSnapshot.terminalAuthorityId);
+    assert.equal(
+      projectionAttach.terminalProjectionTargetRevision,
+      unsafeCheckpointSnapshot.terminalStream.revision,
+      'metadata attach may report its compact revision observation without serializing history.'
+    );
+
+    await sendRuntimeSupervisorRequest(socket, messages, 'resizeSession', {
+      sessionId: unsafeCheckpointSessionId,
+      cols: 86,
+      rows: 30
+    });
+
+    const bulkRuntime = await connectRuntimeSupervisorMessageSocket(
+      socketPath,
+      supervisor,
+      stderrChunks
+    );
+    let replacementBulkRuntime;
+    try {
+      const bulkHello = await sendRuntimeSupervisorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'hello'
+      );
+      assert.equal(bulkHello.supervisorInstanceId, hello.supervisorInstanceId);
+      assert.equal(bulkHello.capabilities?.terminalProjectionStreamV1, true);
+      const openedProjection = await sendRuntimeSupervisorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'openTerminalProjection',
+        {
+          sessionId: unsafeCheckpointSessionId
+        }
+      );
+      assert.equal(openedProjection.supervisorInstanceId, hello.supervisorInstanceId);
+      assert.equal(
+        openedProjection.targetRevision,
+        projectionAttach.terminalProjectionTargetRevision + 1,
+        'bulk open must choose a fresh target after admission instead of reusing the metadata observation.'
+      );
+      assert.equal(
+        openedProjection.checkpoint.revision,
+        unsafeCheckpointSnapshot.terminalStream.checkpoint.revision
+      );
+      assert.equal('data' in openedProjection.checkpoint.serializedState, false);
+      const siblingProjection = await sendRuntimeSupervisorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'openTerminalProjection',
+        {
+          sessionId: unsafeCheckpointSessionId,
+          authorityId: openedProjection.authorityId
+        }
+      );
+      assert.notEqual(siblingProjection.projectionId, openedProjection.projectionId);
+      assert.equal(siblingProjection.targetRevision, openedProjection.targetRevision);
+      assert.equal((await sendRuntimeSupervisorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'readTerminalProjection',
+        { projectionId: siblingProjection.projectionId, creditBytes: 256 }
+      )).done, false);
+
+      const resizeControlStartedAt = performance.now();
+      await sendRuntimeSupervisorRequest(socket, messages, 'resizeSession', {
+        sessionId: unsafeCheckpointSessionId,
+        cols: 87,
+        rows: 31
+      });
+      assert.ok(performance.now() - resizeControlStartedAt < 500);
+      const restoringControlState = await waitForRuntimeSupervisorMessage(
+        messages,
+        (message) =>
+          message.type === 'event' &&
+          message.event === 'sessionState' &&
+          message.payload?.sessionId === unsafeCheckpointSessionId &&
+          message.payload.cols === 87 &&
+          message.payload.rows === 31,
+        'control-only lifecycle/state during bulk projection'
+      );
+      assert.equal(restoringControlState.payload.terminalProjectionIncluded, false);
+      assert.equal(restoringControlState.payload.terminalStream, undefined);
+      assert.equal(restoringControlState.payload.serializedTerminalState, undefined);
+
+      await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+        sessionId: unsafeCheckpointSessionId,
+        data: 'live\n'
+      });
+      const streamedProjection = await readTerminalProjectionInChunks(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        openedProjection,
+        hello.supervisorInstanceId,
+        256
+      );
+      assert.ok(streamedProjection.readCount > 20, 'large projection must require many credit pulls.');
+      assert.equal(
+        streamedProjection.checkpointData,
+        unsafeCheckpointSnapshot.terminalStream.checkpoint.serializedState.data
+      );
+      assert.deepEqual(
+        streamedProjection.events.slice(0, -1),
+        unsafeCheckpointSnapshot.terminalStream.events
+      );
+      assert.deepEqual(
+        {
+          ...streamedProjection.events.at(-1),
+          createdAtMs: '<normalized>'
+        },
+        {
+          type: 'resize',
+          revision: openedProjection.targetRevision,
+          createdAtMs: '<normalized>',
+          cols: 86,
+          rows: 30
+        },
+        'the projection must include the revision created after metadata attach and before bulk open.'
+      );
+      assert.match(streamedProjection.checkpointData, /SAFE-BULK-0000-中文-🧭/u);
+      assert.match(streamedProjection.checkpointData, /SAFE-BULK-0110-中文-🧭/u);
+      assert.match(streamedProjection.checkpointData, /SAFE-BULK-0219-中文-🧭/u);
+      const streamedSuffix = streamedProjection.events
+        .filter((event) => event.type === 'output')
+        .map((event) => event.data)
+        .join('');
+      assert.match(streamedSuffix, /SUFFIX-BULK-0000-恢复-🚀/u);
+      assert.match(streamedSuffix, /SUFFIX-BULK-0120-恢复-🚀/u);
+      assert.match(streamedSuffix, /SUFFIX-BULK-0239-恢复-🚀/u);
+      assert.doesNotMatch(`${streamedProjection.checkpointData}${streamedSuffix}`, /\ufffd/u);
+      assert.doesNotMatch(
+        `${streamedProjection.checkpointData}${streamedSuffix}`,
+        new RegExp(projectionLiveMarker, 'u'),
+        'output after the bulk-open target must not leak into the fixed projection.'
+      );
+      await sendRuntimeSupervisorErrorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'readTerminalProjection',
+        { projectionId: openedProjection.projectionId, creditBytes: 256 }
+      );
+      assert.equal((await sendRuntimeSupervisorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'cancelTerminalProjection',
+        { projectionId: siblingProjection.projectionId }
+      )).cancelled, true, 'cancelling one multiplexed projection must leave its sibling intact.');
+
+      const liveTailMessageStart = messages.length;
+      const subscribeAfterProjection = await sendRuntimeSupervisorRequest(
+        socket,
+        messages,
+        'subscribeSession',
+        {
+          sessionId: unsafeCheckpointSessionId,
+          authorityId: openedProjection.authorityId,
+          afterRevision: openedProjection.targetRevision
+        }
+      );
+      assert.ok(subscribeAfterProjection.revision > openedProjection.targetRevision);
+      await waitForRuntimeSupervisorOutput(
+        messages,
+        unsafeCheckpointSessionId,
+        projectionLiveMarker,
+        'projection live tail after fixed target',
+        5000
+      );
+      const liveTailEvents = messages.slice(liveTailMessageStart).filter(
+        (message) =>
+          message.type === 'event' &&
+          message.event === 'sessionTerminalEvent' &&
+          message.payload?.sessionId === unsafeCheckpointSessionId &&
+          message.payload.event?.revision > openedProjection.targetRevision
+      );
+      assert.ok(liveTailEvents.length > 0);
+      assert.deepEqual(
+        liveTailEvents.map((message) => message.payload.event.revision),
+        Array.from(
+          { length: liveTailEvents.at(-1).payload.event.revision - openedProjection.targetRevision },
+          (_value, index) => openedProjection.targetRevision + index + 1
+        ),
+        'the deferred live tail must remain revision-contiguous after bulk completion.'
+      );
+      await sendRuntimeSupervisorRequest(socket, messages, 'resizeSession', {
+        sessionId: unsafeCheckpointSessionId,
+        cols: 88,
+        rows: 32
+      });
+      await waitForRuntimeSupervisorMessage(
+        messages,
+        (message) =>
+          message.type === 'event' &&
+          message.event === 'sessionTerminalEvent' &&
+          message.payload?.sessionId === unsafeCheckpointSessionId &&
+          message.payload.event?.type === 'resize' &&
+          message.payload.event.cols === 88 &&
+          message.payload.event.rows === 32,
+        'compatibility terminal stream resize event'
+      );
+      await waitForRuntimeSupervisorMessage(
+        messages,
+        (message) =>
+          message.type === 'event' &&
+          message.event === 'sessionState' &&
+          message.payload?.sessionId === unsafeCheckpointSessionId &&
+          message.payload.cols === 88 &&
+          message.payload.rows === 32,
+        'compatibility terminal stream lifecycle state'
+      );
+      const cancelAttach = await sendRuntimeSupervisorRequest(socket, messages, 'attachSession', {
+        sessionId: unsafeCheckpointSessionId,
+        deferSubscription: true,
+        terminalProjectionMode: 'stream-v1'
+      });
+      const cancelProjection = await sendRuntimeSupervisorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'openTerminalProjection',
+        {
+          sessionId: unsafeCheckpointSessionId,
+          authorityId: cancelAttach.terminalAuthorityId
+        }
+      );
+      await sendRuntimeSupervisorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'readTerminalProjection',
+        { projectionId: cancelProjection.projectionId, creditBytes: 256 }
+      );
+      const cancelled = await sendRuntimeSupervisorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'cancelTerminalProjection',
+        { projectionId: cancelProjection.projectionId }
+      );
+      assert.deepEqual(cancelled, {
+        supervisorInstanceId: hello.supervisorInstanceId,
+        projectionId: cancelProjection.projectionId,
+        cancelled: true
+      });
+      await sendRuntimeSupervisorErrorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'readTerminalProjection',
+        { projectionId: cancelProjection.projectionId, creditBytes: 256 }
+      );
+
+      const closeAttach = await sendRuntimeSupervisorRequest(socket, messages, 'attachSession', {
+        sessionId: unsafeCheckpointSessionId,
+        deferSubscription: true,
+        terminalProjectionMode: 'stream-v1'
+      });
+      await sendRuntimeSupervisorRequest(
+        bulkRuntime.socket,
+        bulkRuntime.messages,
+        'openTerminalProjection',
+        {
+          sessionId: unsafeCheckpointSessionId,
+          authorityId: closeAttach.terminalAuthorityId
+        }
+      );
+      bulkRuntime.socket.destroy();
+      await delay(50);
+
+      replacementBulkRuntime = await connectRuntimeSupervisorMessageSocket(
+        socketPath,
+        supervisor,
+        stderrChunks
+      );
+      const replacementBulkHello = await sendRuntimeSupervisorRequest(
+        replacementBulkRuntime.socket,
+        replacementBulkRuntime.messages,
+        'hello'
+      );
+      assert.equal(replacementBulkHello.supervisorInstanceId, hello.supervisorInstanceId);
+      const replacementAttach = await sendRuntimeSupervisorRequest(socket, messages, 'attachSession', {
+        sessionId: unsafeCheckpointSessionId,
+        deferSubscription: true,
+        terminalProjectionMode: 'stream-v1'
+      });
+      const replacementProjection = await sendRuntimeSupervisorRequest(
+        replacementBulkRuntime.socket,
+        replacementBulkRuntime.messages,
+        'openTerminalProjection',
+        {
+          sessionId: unsafeCheckpointSessionId,
+          authorityId: replacementAttach.terminalAuthorityId
+        }
+      );
+      assert.equal((await sendRuntimeSupervisorRequest(
+        replacementBulkRuntime.socket,
+        replacementBulkRuntime.messages,
+        'cancelTerminalProjection',
+        { projectionId: replacementProjection.projectionId }
+      )).cancelled, true, 'bulk socket close must release the prior projection pin.');
+
+      const monolithicAttach = await sendRuntimeSupervisorRequest(socket, messages, 'attachSession', {
+        sessionId: unsafeCheckpointSessionId
+      });
+      assertTerminalStreamSnapshot(monolithicAttach, 'legacy monolithic attach after bulk projection');
+    } finally {
+      bulkRuntime.socket.destroy();
+      replacementBulkRuntime?.socket.destroy();
+    }
+
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
       sessionId: unsafeCheckpointSessionId
     });
@@ -1476,6 +2736,8 @@ setInterval(() => undefined, 1000);
       displayLabel: 'Node',
       launchMode: 'start',
       scrollback: 1000,
+      deferSubscription: true,
+      terminalProjectionMode: 'stream-v1',
       launchSpec: {
         file: process.execPath,
         args: [scriptPath],
@@ -1496,7 +2758,9 @@ setInterval(() => undefined, 1000);
         message.payload.live === false,
       'final sessionState'
     );
-    assertTerminalStreamSnapshot(finalState.payload, 'final sessionState');
+    assert.equal(finalState.payload.supervisorInstanceId, hello.supervisorInstanceId);
+    assert.equal(finalState.payload.terminalProjectionIncluded, false);
+    assert.equal(finalState.payload.terminalStream, undefined);
     assert.equal(finalState.payload.terminalRevision, finalState.payload.outputSequence);
     assert.equal(
       finalState.payload.terminalTitle,
@@ -1506,15 +2770,22 @@ setInterval(() => undefined, 1000);
     assert.equal(
       finalState.payload.serializedTerminalState,
       undefined,
-      'finalization should publish the journal suffix instead of starting a new checkpoint validation after exit.'
+      'finalization control state must not carry terminal projection data.'
     );
+    const explicitFinalProjection = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: 'immediate-exit-terminal' }
+    );
+    assertTerminalStreamSnapshot(explicitFinalProjection, 'explicit final projection');
     assert.match(
-      finalState.payload.terminalStream.events
+      `${explicitFinalProjection.terminalStream.checkpoint.serializedState.data}${explicitFinalProjection.terminalStream.events
         .filter((event) => event.type === 'output')
         .map((event) => event.data)
-        .join(''),
+        .join('')}`,
       new RegExp(marker, 'u'),
-      'final sessionState journal suffix should include output written immediately before exit.'
+      'an explicit projection should include output written immediately before exit.'
     );
     assert.equal(
       finalState.payload.lastExitMessage,
@@ -1544,7 +2815,7 @@ setInterval(() => undefined, 1000);
       },
       'registry snapshot should persist the stable exit message descriptor.'
     );
-    return { marker };
+    return { marker, supervisorInstanceId: hello.supervisorInstanceId };
   } finally {
     socket?.destroy();
     supervisor.kill();
@@ -1883,7 +3154,7 @@ async function readProcessCpuTimeMs(processId) {
   return ((userTicks + systemTicks) * 1000) / linuxClockTicksPerSecond;
 }
 
-async function assertRuntimeSupervisorRestartUsesSavedSnapshot(supervisorOutfile, tempDir, marker) {
+async function assertRuntimeSupervisorRestartStartsEmpty(supervisorOutfile, tempDir, evidence) {
   const storageDir = path.join(tempDir, 'runtime-storage');
   const socketPath =
     process.platform === 'win32'
@@ -1892,60 +3163,699 @@ async function assertRuntimeSupervisorRestartUsesSavedSnapshot(supervisorOutfile
   const registryPath = path.join(storageDir, 'registry.json');
   const registry = JSON.parse(await readFile(registryPath, 'utf8'));
   const storedSession = registry.sessions.find((candidate) => candidate.sessionId === 'immediate-exit-terminal');
-  assert.ok(storedSession?.terminalAuthorityId, 'restart fixture should retain its terminal authority for metadata lookup.');
-  delete storedSession.terminalStream;
-  delete storedSession.serializedTerminalState;
-  await writeFile(registryPath, JSON.stringify(registry, null, 2), 'utf8');
+  assert.ok(storedSession?.terminalAuthorityId, 'restart fixture should retain the old authority descriptor.');
+  assert.match(storedSession.output, new RegExp(evidence.marker, 'u'));
+  assert.ok((await readdir(path.join(storageDir, 'terminal-journals'))).length > 0);
 
-  const attachAndAssertSavedSnapshot = async (label) => {
-    const runtime = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
-    try {
-      const hello = await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'hello');
-      const snapshot = await attachRecoveredRuntimeSupervisorSession(
-        runtime.socket,
-        runtime.messages,
-        'immediate-exit-terminal'
+  const runtime = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+  try {
+    const hello = await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'hello');
+    assert.equal(hello.capabilities?.supervisorInstanceIdentityV1, true);
+    assert.notEqual(
+      hello.supervisorInstanceId,
+      evidence.supervisorInstanceId,
+      'Supervisor restart 必须生成新的 instance identity。'
+    );
+    assert.equal(hello.recovery, undefined);
+
+    const attachResponse = await sendRuntimeSupervisorRawRequest(
+      runtime.socket,
+      runtime.messages,
+      'attachSession',
+      { sessionId: 'immediate-exit-terminal', deferSubscription: true }
+    );
+    assert.equal(attachResponse.ok, false, '新 Supervisor 不得恢复旧 registry session。');
+    assert.equal(attachResponse.error?.descriptor?.id, 'sessionNotFound');
+    assert.equal(
+      runtime.messages.some((message) => message.type === 'event' && message.event === 'recoveryState'),
+      false,
+      '新 Supervisor 启动不得发布 recoveryState。'
+    );
+
+    const controlScriptPath = path.join(tempDir, 'runtime-post-restart-control.js');
+    await writeFile(controlScriptPath, 'process.stdin.resume();\nsetInterval(() => undefined, 1000);\n', 'utf8');
+    const snapshot = await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'createSession', {
+      kind: 'terminal',
+      sessionId: 'post-restart-control-terminal',
+      displayLabel: 'Node',
+      launchMode: 'start',
+      scrollback: 1000,
+      launchSpec: {
+        file: process.execPath,
+        args: [controlScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    assert.equal(snapshot.supervisorInstanceId, hello.supervisorInstanceId);
+    const resizeResult = await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'resizeSession', {
+      sessionId: snapshot.sessionId,
+      cols: 81,
+      rows: 25
+    });
+    assert.equal(resizeResult.supervisorInstanceId, hello.supervisorInstanceId);
+    const stopResult = await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'stopSession', {
+      sessionId: snapshot.sessionId
+    });
+    assert.equal(stopResult.supervisorInstanceId, hello.supervisorInstanceId);
+  } finally {
+    await closeRuntimeSupervisorForTest(runtime);
+  }
+}
+
+async function assertRuntimeSupervisorRejectedSpawnIsNotRegistered(supervisorOutfile, tempDir) {
+  const fakeNodeModulesRoot = path.join(tempDir, 'rejecting-node-pty-modules');
+  const fakeNodePtyDirectory = path.join(fakeNodeModulesRoot, 'node-pty');
+  await mkdir(fakeNodePtyDirectory, { recursive: true });
+  await writeFile(
+    path.join(fakeNodePtyDirectory, 'index.js'),
+    `module.exports = {
+  spawn() {
+    const error = new Error('deterministic node-pty spawn rejection');
+    error.code = 'ENOENT';
+    throw error;
+  }
+};
+`,
+    'utf8'
+  );
+
+  const storageDir = path.join(tempDir, 'runtime-rejected-spawn-storage');
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-rejected-spawn-${process.pid}-${Date.now()}`
+      : path.join(storageDir, 'supervisor.sock');
+  const runtime = await launchRuntimeSupervisorForTest(
+    supervisorOutfile,
+    storageDir,
+    socketPath,
+    fakeNodeModulesRoot
+  );
+  try {
+    await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'hello');
+    const sessionId = 'rejected-spawn-terminal';
+    const failedCreate = await sendRuntimeSupervisorErrorRequest(
+      runtime.socket,
+      runtime.messages,
+      'createSession',
+      {
+        kind: 'terminal',
+        sessionId,
+        displayLabel: 'Rejected spawn fixture',
+        launchMode: 'start',
+        scrollback: 1000,
+        deferSubscription: true,
+        terminalProjectionMode: 'stream-v1',
+        launchSpec: {
+          file: process.execPath,
+          args: [],
+          cwd: tempDir,
+          cols: 80,
+          rows: 24,
+          env: process.env,
+          terminalName: 'xterm-256color'
+        }
+      }
+    );
+    assert.equal(failedCreate.error?.descriptor?.id, 'executionSpawnFailed');
+    assert.equal(failedCreate.error?.details?.origin, 'execution-spawn');
+    assert.equal(failedCreate.error?.details?.errno, 'ENOENT');
+    const missingSession = await sendRuntimeSupervisorErrorRequest(
+      runtime.socket,
+      runtime.messages,
+      'getSessionSnapshot',
+      { sessionId }
+    );
+    assert.equal(
+      missingSession.error?.descriptor?.id,
+      'sessionNotFound',
+      'A synchronously rejected PTY spawn must not register a live Supervisor session.'
+    );
+  } finally {
+    await closeRuntimeSupervisorForTest(runtime);
+  }
+}
+
+async function assertRuntimeSupervisorFollowProjection(supervisorOutfile, tempDir) {
+  const storageDir = path.join(tempDir, 'runtime-follow-storage');
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-follow-${process.pid}-${Date.now()}`
+      : path.join(storageDir, 'supervisor.sock');
+  const scriptPath = path.join(tempDir, 'runtime-follow-fixture.js');
+  const initialMarker = `FOLLOW-INITIAL-${Date.now()}`;
+  const tailMarker = `FOLLOW-TAIL-${Date.now()}`;
+  const afterLiveMarker = `FOLLOW-AFTER-LIVE-${Date.now()}`;
+  const secondTailMarker = `FOLLOW-SECOND-${Date.now()}`;
+  const inputOrderAgentSessionId = 'input-response-order-agent';
+  const initialPayload = `${Array.from(
+    { length: 100 },
+    (_value, index) => `INITIAL-${String(index).padStart(4, '0')}-中文-🧭\\r\\n`
+  ).join('')}${initialMarker}\\r\\n`;
+  const tailPayload = `${Array.from(
+    { length: 420 },
+    (_value, index) => `TAIL-${String(index).padStart(4, '0')}-恢复-🚀-${'x'.repeat(72)}\\r\\n`
+  ).join('')}${tailMarker}\\r\\n`;
+  const secondTailPayload = `${Array.from(
+    { length: 180 },
+    (_value, index) => `SECOND-${String(index).padStart(4, '0')}-多面-🌊\\r\\n`
+  ).join('')}${secondTailMarker}\\r\\n`;
+  await writeFile(
+    scriptPath,
+    `const readline = require('node:readline');
+const reader = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+reader.on('line', (line) => {
+  if (line === 'initial') process.stdout.write(${JSON.stringify(initialPayload)});
+  if (line === 'tail') process.stdout.write(${JSON.stringify(tailPayload)});
+  if (line === 'after') process.stdout.write(${JSON.stringify(`m${afterLiveMarker}\\r\\n`)});
+  if (line === 'second') process.stdout.write(${JSON.stringify(secondTailPayload)});
+});
+setInterval(() => undefined, 1000);
+`,
+    'utf8'
+  );
+
+  const controlRuntime = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+  const stderrChunks = [];
+  let bulkRuntime;
+  let replacementBulkRuntime;
+  try {
+    const hello = await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'hello');
+    await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'createSession', {
+      kind: 'agent',
+      sessionId: inputOrderAgentSessionId,
+      displayLabel: 'Input response order fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      provider: 'codex',
+      deferSubscription: true,
+      terminalProjectionMode: 'stream-v1',
+      launchSpec: {
+        file: process.execPath,
+        args: [scriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await waitForRuntimeSupervisorMessage(
+      controlRuntime.messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === inputOrderAgentSessionId,
+      'input response order control catch-up'
+    );
+    const inputOrderStart = controlRuntime.receivedMessages.length;
+    await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'writeInput', {
+      sessionId: inputOrderAgentSessionId,
+      data: 'ignored\r',
+      intent: 'submit'
+    });
+    const inputLifecycleState = await waitForRuntimeSupervisorMessage(
+      controlRuntime.messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === inputOrderAgentSessionId &&
+        message.payload.lifecycle === 'running',
+      'post-input compact lifecycle state'
+    );
+    const inputOrderMessages = controlRuntime.receivedMessages.slice(inputOrderStart);
+    const inputResponseIndex = inputOrderMessages.findIndex(
+      (message) => message.type === 'response' && message.ok === true && message.result?.ok === true
+    );
+    const inputLifecycleIndex = inputOrderMessages.indexOf(inputLifecycleState);
+    assert.ok(
+      inputResponseIndex >= 0 && inputResponseIndex < inputLifecycleIndex,
+      'writeInput must put its compact response on the wire before the lifecycle event it triggers.'
+    );
+    assert.equal(inputLifecycleState.payload.terminalProjectionIncluded, false);
+    assert.equal(inputLifecycleState.payload.terminalStream, undefined);
+    assert.equal(inputLifecycleState.payload.serializedTerminalState, undefined);
+    assert.ok(inputLifecycleState.payload.stateRevision > 0);
+    await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'deleteSession', {
+      sessionId: inputOrderAgentSessionId
+    });
+
+    const session = await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'createSession', {
+      kind: 'terminal',
+      sessionId: 'follow-credit-terminal',
+      displayLabel: 'Follow credit fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      terminalProjectionMode: 'stream-v1',
+      launchSpec: {
+        file: process.execPath,
+        args: [scriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    assert.equal(
+      session.lifecycle,
+      'live',
+      'A successfully spawned fresh Terminal must be live in its compact create response.'
+    );
+    assert.equal(session.terminalProjectionIncluded, false);
+    assert.equal(session.terminalStream, undefined);
+    assert.equal(session.supervisorInstanceId, hello.supervisorInstanceId);
+    const createCatchUpState = await waitForRuntimeSupervisorMessage(
+      controlRuntime.messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === session.sessionId,
+      'metadata create compact state catch-up'
+    );
+    assert.equal(createCatchUpState.payload.terminalProjectionIncluded, false);
+    assert.equal(createCatchUpState.payload.terminalStream, undefined);
+    assert.equal(createCatchUpState.payload.serializedTerminalState, undefined);
+    assert.equal(
+      createCatchUpState.payload.stateRevision,
+      session.stateRevision,
+      'an unchanged response/catch-up pair must carry the same compact state revision.'
+    );
+    const createResponseIndex = controlRuntime.receivedMessages.findIndex(
+      (message) =>
+        message.type === 'response' &&
+        message.ok === true &&
+        message.result?.sessionId === session.sessionId
+    );
+    const createCatchUpIndex = controlRuntime.receivedMessages.indexOf(createCatchUpState);
+    assert.ok(
+      createResponseIndex >= 0 && createResponseIndex < createCatchUpIndex,
+      'metadata create must write its response before activating compact control state delivery.'
+    );
+
+    await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'writeInput', {
+      sessionId: session.sessionId,
+      data: 'initial\n'
+    });
+    let metadataSnapshot;
+    const metadataDeadline = Date.now() + 5000;
+    while (Date.now() < metadataDeadline) {
+      metadataSnapshot = await sendRuntimeSupervisorRequest(
+        controlRuntime.socket,
+        controlRuntime.messages,
+        'attachSession',
+        {
+          sessionId: session.sessionId,
+          deferSubscription: true,
+          terminalProjectionMode: 'stream-v1'
+        }
       );
-      assert.equal(hello.recovery?.failureCount ?? 0, 0, `${label} must not fail Journal recovery.`);
-      assert.equal(snapshot.live, false, `${label} must not pretend that a dead PTY is live.`);
-      assert.equal(snapshot.terminalStream, undefined, `${label} must not replay a terminal stream.`);
-      assert.equal(snapshot.serializedTerminalState, undefined, `${label} must preserve the Host-saved projection.`);
-      assert.match(snapshot.output, new RegExp(marker, 'u'), `${label} must retain the bounded registry tail.`);
-      return snapshot;
-    } finally {
-      await closeRuntimeSupervisorForTest(runtime);
-    }
-  };
-
-  await attachAndAssertSavedSnapshot('metadata-only restart snapshot');
-
-  const journalRoot = path.join(storageDir, 'terminal-journals');
-  const journalDirectories = await readdir(journalRoot);
-  let journalManifestPath;
-  let journalSegmentPath;
-  for (const directory of journalDirectories) {
-    const sessionDirectory = path.join(journalRoot, directory);
-    try {
-      const manifest = JSON.parse(await readFile(path.join(sessionDirectory, 'manifest.json'), 'utf8'));
-      if (manifest.sessionId === 'immediate-exit-terminal') {
-        journalManifestPath = path.join(sessionDirectory, 'manifest.json');
-        journalSegmentPath = path.join(sessionDirectory, manifest.segments[0].file);
+      if (metadataSnapshot.output.includes(initialMarker)) {
         break;
       }
-    } catch {
-      // Ignore unrelated or incomplete test directories.
+      await delay(20);
+    }
+    assert.match(metadataSnapshot?.output ?? '', new RegExp(initialMarker, 'u'));
+    const controlEventStart = controlRuntime.receivedMessages?.length ?? controlRuntime.messages.length;
+
+    bulkRuntime = await connectRuntimeSupervisorMessageSocket(
+      socketPath,
+      controlRuntime.supervisor,
+      stderrChunks
+    );
+    const bulkHello = await sendRuntimeSupervisorRequest(bulkRuntime.socket, bulkRuntime.messages, 'hello');
+    assert.equal(bulkHello.supervisorInstanceId, hello.supervisorInstanceId);
+    const opened = await sendRuntimeSupervisorRequest(
+      bulkRuntime.socket,
+      bulkRuntime.messages,
+      'openTerminalProjection',
+      {
+        sessionId: session.sessionId,
+        authorityId: metadataSnapshot.terminalAuthorityId,
+        follow: true
+      }
+    );
+    assert.equal(opened.follow, true);
+
+    await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'writeInput', {
+      sessionId: session.sessionId,
+      data: 'tail\n'
+    });
+    await waitForRuntimeSupervisorSnapshotOutput(
+      controlRuntime,
+      session.sessionId,
+      tailMarker,
+      'tail output before follow projection drain'
+    );
+    const tailProjection = await readFollowTerminalProjectionInChunks(
+      bulkRuntime.socket,
+      bulkRuntime.messages,
+      opened,
+      hello.supervisorInstanceId,
+      256
+    );
+    assert.ok(tailProjection.readCount > 20, 'follow projection must remain credit bounded.');
+    assert.ok(
+      tailProjection.liveResult.targetRevision > opened.targetRevision,
+      'a follow projection must extend its target when output arrives after open but before catch-up.'
+    );
+    assert.match(tailProjection.output, new RegExp(initialMarker, 'u'));
+    assert.match(
+      tailProjection.output,
+      new RegExp(tailMarker, 'u'),
+      'post-open backlog must remain inside the credit-bounded projection before ready.'
+    );
+    assert.equal(
+      (controlRuntime.receivedMessages ?? controlRuntime.messages)
+        .slice(controlEventStart)
+        .some((message) =>
+          message.type === 'event' &&
+          message.event === 'sessionTerminalEvent' &&
+          message.payload?.sessionId === session.sessionId
+        ),
+      false,
+      'control-only socket must not receive the long R+1..T tail during restore.'
+    );
+    const caughtUpResponseIndex = bulkRuntime.receivedMessages.findIndex(
+      (message) =>
+        message.type === 'response' &&
+        message.ok === true &&
+        message.result?.projectionId === opened.projectionId &&
+        message.result?.done === true &&
+        message.result?.live === true
+    );
+    assert.ok(caughtUpResponseIndex >= 0);
+    assert.equal(
+      bulkRuntime.receivedMessages.slice(0, caughtUpResponseIndex + 1).some(
+        (message) =>
+          message.type === 'event' &&
+          message.event === 'sessionTerminalEvent' &&
+          message.payload?.sessionId === session.sessionId &&
+          message.payload.event?.type === 'output' &&
+          message.payload.event.data.includes(tailMarker)
+      ),
+      false,
+      'post-open backlog must not be replayed as an uncredited live terminal event.'
+    );
+
+    await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'writeInput', {
+      sessionId: session.sessionId,
+      data: 'after\n'
+    });
+    const afterLiveEvent = await waitForReceivedTerminalMarker(
+      bulkRuntime.receivedMessages,
+      session.sessionId,
+      afterLiveMarker
+    );
+    assert.ok(
+      caughtUpResponseIndex < afterLiveEvent.index,
+      'caught-up response must be written before the first live terminal event.'
+    );
+
+    const lifecycleIsolationStart = bulkRuntime.receivedMessages.length;
+    await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'resizeSession', {
+      sessionId: session.sessionId,
+      cols: 91,
+      rows: 33
+    });
+    await waitForRuntimeSupervisorMessage(
+      controlRuntime.messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === session.sessionId &&
+        message.payload.cols === 91 &&
+        message.payload.rows === 33,
+      'control lifecycle after bulk follow handoff'
+    );
+    await waitForRuntimeSupervisorMessage(
+      bulkRuntime.messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionTerminalEvent' &&
+        message.payload?.sessionId === session.sessionId &&
+        message.payload.event?.type === 'resize' &&
+        message.payload.event.cols === 91 &&
+        message.payload.event.rows === 33,
+      'bulk terminal event after follow handoff'
+    );
+    assert.equal(
+      bulkRuntime.receivedMessages.slice(lifecycleIsolationStart).some(
+        (message) =>
+          message.type === 'event' &&
+          message.event === 'sessionState' &&
+          message.payload?.sessionId === session.sessionId
+      ),
+      false,
+      'a caught-up bulk socket must not parse duplicate compact lifecycle snapshots.'
+    );
+
+    const secondOpened = await sendRuntimeSupervisorRequest(
+      bulkRuntime.socket,
+      bulkRuntime.messages,
+      'openTerminalProjection',
+      {
+        sessionId: session.sessionId,
+        authorityId: opened.authorityId,
+        follow: true
+      }
+    );
+    await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'writeInput', {
+      sessionId: session.sessionId,
+      data: 'second\n'
+    });
+    await waitForRuntimeSupervisorSnapshotOutput(
+      controlRuntime,
+      session.sessionId,
+      secondTailMarker,
+      'second tail output before follow projection drain'
+    );
+    const secondProjection = await readFollowTerminalProjectionInChunks(
+      bulkRuntime.socket,
+      bulkRuntime.messages,
+      secondOpened,
+      hello.supervisorInstanceId,
+      256
+    );
+    assert.equal(secondProjection.liveResult.live, true);
+    assert.ok(
+      secondProjection.liveResult.targetRevision > secondOpened.targetRevision,
+      'each follow projection must extend independently to output written after its open boundary.'
+    );
+    assert.match(
+      secondProjection.output,
+      new RegExp(secondTailMarker, 'u'),
+      'the second post-open tail must be delivered by credit-bounded projection chunks.'
+    );
+
+    const fixedOpened = await sendRuntimeSupervisorRequest(
+      bulkRuntime.socket,
+      bulkRuntime.messages,
+      'openTerminalProjection',
+      {
+        sessionId: session.sessionId,
+        authorityId: opened.authorityId,
+        follow: false
+      }
+    );
+    assert.equal(fixedOpened.follow, false);
+    const fixedProjection = await readTerminalProjectionInChunks(
+      bulkRuntime.socket,
+      bulkRuntime.messages,
+      fixedOpened,
+      hello.supervisorInstanceId,
+      256
+    );
+    assert.ok(fixedProjection.readCount > 0);
+
+    const disconnectOpened = await sendRuntimeSupervisorRequest(
+      bulkRuntime.socket,
+      bulkRuntime.messages,
+      'openTerminalProjection',
+      {
+        sessionId: session.sessionId,
+        authorityId: opened.authorityId,
+        follow: true
+      }
+    );
+    await sendRuntimeSupervisorRequest(
+      bulkRuntime.socket,
+      bulkRuntime.messages,
+      'readTerminalProjection',
+      { projectionId: disconnectOpened.projectionId, creditBytes: 256 }
+    );
+    bulkRuntime.socket.destroy();
+    await delay(80);
+    const controlAfterBulkClose = await sendRuntimeSupervisorRequest(
+      controlRuntime.socket,
+      controlRuntime.messages,
+      'getSessionSnapshot',
+      { sessionId: session.sessionId }
+    );
+    assert.equal(controlAfterBulkClose.supervisorInstanceId, hello.supervisorInstanceId);
+
+    replacementBulkRuntime = await connectRuntimeSupervisorMessageSocket(
+      socketPath,
+      controlRuntime.supervisor,
+      stderrChunks
+    );
+    const replacementHello = await sendRuntimeSupervisorRequest(
+      replacementBulkRuntime.socket,
+      replacementBulkRuntime.messages,
+      'hello'
+    );
+    assert.equal(replacementHello.supervisorInstanceId, hello.supervisorInstanceId);
+    const replacementProjection = await sendRuntimeSupervisorRequest(
+      replacementBulkRuntime.socket,
+      replacementBulkRuntime.messages,
+      'openTerminalProjection',
+      {
+        sessionId: session.sessionId,
+        authorityId: opened.authorityId,
+        follow: false
+      }
+    );
+    assert.equal(replacementProjection.authorityId, opened.authorityId);
+    await sendRuntimeSupervisorRequest(
+      replacementBulkRuntime.socket,
+      replacementBulkRuntime.messages,
+      'cancelTerminalProjection',
+      { projectionId: replacementProjection.projectionId }
+    );
+    await sendRuntimeSupervisorRequest(controlRuntime.socket, controlRuntime.messages, 'deleteSession', {
+      sessionId: session.sessionId
+    });
+  } finally {
+    bulkRuntime?.socket.destroy();
+    replacementBulkRuntime?.socket.destroy();
+    await closeRuntimeSupervisorForTest(controlRuntime);
+  }
+}
+
+async function readFollowTerminalProjectionInChunks(
+  socket,
+  messages,
+  openedProjection,
+  supervisorInstanceId,
+  creditBytes
+) {
+  let checkpointData = '';
+  let checkpointComplete = false;
+  let currentOutputData = '';
+  let currentOutputRevision;
+  let expectedRevision = openedProjection.checkpoint.revision + 1;
+  let targetRevision = openedProjection.targetRevision;
+  let output = '';
+  let readCount = 0;
+  while (readCount < 100000) {
+    const result = await sendRuntimeSupervisorRequest(socket, messages, 'readTerminalProjection', {
+      projectionId: openedProjection.projectionId,
+      creditBytes
+    });
+    readCount += 1;
+    assert.equal(result.supervisorInstanceId, supervisorInstanceId);
+    assert.equal(result.projectionId, openedProjection.projectionId);
+    assert.equal(result.sessionId, openedProjection.sessionId);
+    assert.equal(result.authorityId, openedProjection.authorityId);
+    assert.ok(result.targetRevision >= targetRevision);
+    targetRevision = result.targetRevision;
+    if (result.live === true) {
+      assert.equal(result.done, true);
+      assert.equal(result.chunk, undefined);
+      assert.equal(result.payloadBytes, 0);
+      assert.equal(expectedRevision, result.targetRevision + 1);
+      return { readCount, output, liveResult: result, checkpointData };
+    }
+
+    assert.equal(result.done, false);
+    assert.ok(result.chunk);
+    assert.equal(result.payloadBytes, Buffer.byteLength(JSON.stringify(result.chunk), 'utf8'));
+    assert.equal(
+      result.chunkChecksum,
+      createHash('sha256').update(JSON.stringify(result.chunk), 'utf8').digest('hex')
+    );
+    assert.ok(result.payloadBytes <= creditBytes);
+    const chunk = result.chunk;
+    if (chunk.kind === 'checkpoint') {
+      assert.equal(checkpointComplete, false);
+      assert.equal(chunk.dataOffset, checkpointData.length);
+      checkpointData += chunk.data;
+      checkpointComplete = chunk.complete;
+      output += chunk.data;
+    } else if (chunk.kind === 'output') {
+      assert.equal(checkpointComplete, true);
+      if (currentOutputRevision === undefined) {
+        assert.equal(chunk.revision, expectedRevision);
+        assert.equal(chunk.dataOffset, 0);
+        currentOutputRevision = chunk.revision;
+      }
+      assert.equal(chunk.revision, currentOutputRevision);
+      assert.equal(chunk.dataOffset, currentOutputData.length);
+      currentOutputData += chunk.data;
+      output += chunk.data;
+      if (chunk.complete) {
+        currentOutputRevision = undefined;
+        currentOutputData = '';
+        expectedRevision += 1;
+      }
+    } else {
+      assert.equal(checkpointComplete, true);
+      assert.equal(currentOutputRevision, undefined);
+      assert.equal(chunk.revision, expectedRevision);
+      expectedRevision += 1;
     }
   }
-  assert.ok(journalManifestPath && journalSegmentPath, 'restart fixture Journal should exist on disk.');
-  const originalManifest = await readFile(journalManifestPath, 'utf8');
-  const originalSegment = await readFile(journalSegmentPath, 'utf8');
-  assert.match(originalSegment, new RegExp(marker, 'u'));
-  await writeFile(journalSegmentPath, originalSegment.replace(marker, 'x'.repeat(marker.length)), 'utf8');
-  await attachAndAssertSavedSnapshot('corrupt-segment metadata-only restart snapshot');
+  assert.fail('Follow terminal projection did not catch up within 100,000 credit pulls.');
+}
 
-  await writeFile(journalManifestPath, '{"invalid":true}\n', 'utf8');
-  await attachAndAssertSavedSnapshot('invalid-manifest metadata-only restart snapshot');
-  await writeFile(journalManifestPath, originalManifest, 'utf8');
+async function waitForRuntimeSupervisorSnapshotOutput(
+  runtime,
+  sessionId,
+  marker,
+  label,
+  timeoutMs = 5000
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const snapshot = await sendRuntimeSupervisorRequest(
+      runtime.socket,
+      runtime.messages,
+      'attachSession',
+      {
+        sessionId,
+        deferSubscription: true,
+        terminalProjectionMode: 'stream-v1'
+      }
+    );
+    if (snapshot.output.includes(marker)) {
+      return snapshot;
+    }
+    await delay(20);
+  }
+  assert.fail(`Timed out waiting for ${label}.`);
+}
+
+async function waitForReceivedTerminalMarker(receivedMessages, sessionId, marker, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const index = receivedMessages.findIndex(
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionTerminalEvent' &&
+        message.payload?.sessionId === sessionId &&
+        message.payload.event?.type === 'output' &&
+        message.payload.event.data.includes(marker)
+    );
+    if (index >= 0) {
+      return { index, message: receivedMessages[index] };
+    }
+    await delay(10);
+  }
+  throw new Error(`Timed out waiting for bulk live marker ${marker}.`);
 }
 
 async function readTerminalJournalContent(storageDir, sessionId) {
@@ -1969,7 +3879,12 @@ async function readTerminalJournalContent(storageDir, sessionId) {
   assert.fail(`Expected terminal Journal for ${sessionId}.`);
 }
 
-async function launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath) {
+async function launchRuntimeSupervisorForTest(
+  supervisorOutfile,
+  storageDir,
+  socketPath,
+  nodePath = path.resolve('node_modules')
+) {
   const supervisor = spawn(
     process.execPath,
     [supervisorOutfile, '--storage-dir', storageDir, '--socket-path', socketPath],
@@ -1977,7 +3892,7 @@ async function launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, soc
       cwd: process.cwd(),
       env: {
         ...process.env,
-        NODE_PATH: path.resolve('node_modules')
+        NODE_PATH: nodePath
       },
       stdio: ['ignore', 'ignore', 'pipe']
     }
@@ -1989,6 +3904,7 @@ async function launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, soc
   const socket = await connectRuntimeSupervisorSocket(socketPath, supervisor, stderrChunks);
   socket.setEncoding('utf8');
   const messages = [];
+  const receivedMessages = [];
   let buffer = '';
   socket.on('data', (chunk) => {
     buffer += chunk;
@@ -2000,11 +3916,141 @@ async function launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, soc
       const line = buffer.slice(0, newlineIndex).trim();
       buffer = buffer.slice(newlineIndex + 1);
       if (line) {
-        messages.push(JSON.parse(line));
+        const message = JSON.parse(line);
+        messages.push(message);
+        receivedMessages.push(message);
       }
     }
   });
-  return { supervisor, socket, messages };
+  return { supervisor, socket, messages, receivedMessages };
+}
+
+async function connectRuntimeSupervisorMessageSocket(socketPath, supervisor, stderrChunks) {
+  const socket = await connectRuntimeSupervisorSocket(socketPath, supervisor, stderrChunks);
+  socket.setEncoding('utf8');
+  const messages = [];
+  const receivedMessages = [];
+  let buffer = '';
+  socket.on('data', (chunk) => {
+    buffer += chunk;
+    while (true) {
+      const newlineIndex = buffer.indexOf('\n');
+      if (newlineIndex < 0) {
+        return;
+      }
+      const line = buffer.slice(0, newlineIndex).trim();
+      buffer = buffer.slice(newlineIndex + 1);
+      if (line) {
+        const message = JSON.parse(line);
+        messages.push(message);
+        receivedMessages.push(message);
+      }
+    }
+  });
+  return { socket, messages, receivedMessages };
+}
+
+async function readTerminalProjectionInChunks(
+  socket,
+  messages,
+  openedProjection,
+  supervisorInstanceId,
+  creditBytes
+) {
+  let checkpointData = '';
+  let checkpointComplete = false;
+  let currentOutputEvent;
+  let expectedRevision = openedProjection.checkpoint.revision + 1;
+  const events = [];
+  let readCount = 0;
+  while (readCount < 10000) {
+    const result = await sendRuntimeSupervisorRequest(socket, messages, 'readTerminalProjection', {
+      projectionId: openedProjection.projectionId,
+      creditBytes
+    });
+    readCount += 1;
+    assert.equal(result.supervisorInstanceId, supervisorInstanceId);
+    assert.equal(result.projectionId, openedProjection.projectionId);
+    assert.equal(result.sessionId, openedProjection.sessionId);
+    assert.equal(result.authorityId, openedProjection.authorityId);
+    assert.equal(result.targetRevision, openedProjection.targetRevision);
+    assert.ok(result.chunk, 'each projection pull must make progress with one chunk.');
+    assert.equal(result.payloadBytes, Buffer.byteLength(JSON.stringify(result.chunk), 'utf8'));
+    assert.equal(
+      result.chunkChecksum,
+      createHash('sha256').update(JSON.stringify(result.chunk), 'utf8').digest('hex')
+    );
+    assert.ok(result.payloadBytes <= creditBytes);
+
+    const chunk = result.chunk;
+    if (chunk.kind === 'checkpoint') {
+      assert.equal(checkpointComplete, false, 'checkpoint chunks must precede journal events.');
+      assert.equal(chunk.dataOffset, checkpointData.length);
+      assert.equal(
+        chunk.dataOffset === 0 || !splitsUtf16PairForTest(checkpointData + chunk.data, chunk.dataOffset),
+        true
+      );
+      checkpointData += chunk.data;
+      checkpointComplete = chunk.complete;
+    } else if (chunk.kind === 'output') {
+      assert.equal(checkpointComplete, true, 'journal output must follow the complete checkpoint.');
+      if (!currentOutputEvent) {
+        assert.equal(chunk.revision, expectedRevision);
+        assert.equal(chunk.dataOffset, 0);
+        currentOutputEvent = {
+          type: 'output',
+          revision: chunk.revision,
+          createdAtMs: chunk.createdAtMs,
+          data: ''
+        };
+      }
+      assert.equal(chunk.revision, currentOutputEvent.revision);
+      assert.equal(chunk.createdAtMs, currentOutputEvent.createdAtMs);
+      assert.equal(chunk.dataOffset, currentOutputEvent.data.length);
+      currentOutputEvent.data += chunk.data;
+      if (chunk.complete) {
+        events.push(currentOutputEvent);
+        currentOutputEvent = undefined;
+        expectedRevision += 1;
+      }
+    } else {
+      assert.equal(checkpointComplete, true, 'journal metadata must follow the complete checkpoint.');
+      assert.equal(currentOutputEvent, undefined, 'an output event cannot be interleaved with metadata.');
+      assert.equal(chunk.revision, expectedRevision);
+      events.push(chunk.kind === 'resize'
+        ? {
+            type: 'resize',
+            revision: chunk.revision,
+            createdAtMs: chunk.createdAtMs,
+            cols: chunk.cols,
+            rows: chunk.rows
+          }
+        : {
+            type: 'scrollback',
+            revision: chunk.revision,
+            createdAtMs: chunk.createdAtMs,
+            scrollback: chunk.scrollback
+          });
+      expectedRevision += 1;
+    }
+
+    if (result.done) {
+      assert.equal(checkpointComplete, true);
+      assert.equal(currentOutputEvent, undefined);
+      assert.equal(expectedRevision, openedProjection.targetRevision + 1);
+      return { checkpointData, events, readCount };
+    }
+  }
+  assert.fail('Terminal projection did not complete within 10,000 credit pulls.');
+}
+
+function splitsUtf16PairForTest(data, offset) {
+  if (offset <= 0 || offset >= data.length) {
+    return false;
+  }
+  const previous = data.charCodeAt(offset - 1);
+  const next = data.charCodeAt(offset);
+  return previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff;
 }
 
 async function closeRuntimeSupervisorForTest(runtime) {
@@ -2045,26 +4091,6 @@ async function sendRuntimeSupervisorRequest(socket, messages, method, params) {
   const response = await sendRuntimeSupervisorRawRequest(socket, messages, method, params);
   assert.equal(response.ok, true, response.error?.message);
   return response.result;
-}
-
-async function attachRecoveredRuntimeSupervisorSession(socket, messages, sessionId) {
-  const deadline = Date.now() + 5000;
-  let lastResponse;
-  while (Date.now() < deadline) {
-    lastResponse = await sendRuntimeSupervisorRawRequest(socket, messages, 'attachSession', {
-      sessionId,
-      deferSubscription: true
-    });
-    if (lastResponse.ok) {
-      return lastResponse.result;
-    }
-    if (lastResponse.error?.descriptor?.id !== 'sessionNotFound') {
-      assert.fail(lastResponse.error?.message ?? 'Recovered session attach failed.');
-    }
-    await delay(20);
-  }
-
-  assert.fail(`Timed out waiting for recovered runtime session ${sessionId}: ${JSON.stringify(lastResponse)}`);
 }
 
 async function sendRuntimeSupervisorRawRequest(socket, messages, method, params) {

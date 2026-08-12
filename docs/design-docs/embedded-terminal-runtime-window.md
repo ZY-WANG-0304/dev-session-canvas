@@ -19,10 +19,13 @@ related_plans:
   - docs/exec-plans/active/runtime-terminal-state-restore.md
   - docs/exec-plans/completed/terminal-output-flood-input-responsiveness.md
   - docs/exec-plans/active/execution-input-responsiveness.md
-updated_at: 2026-07-02
+  - docs/exec-plans/completed/runtime-recovery-projection-isolation.md
+updated_at: 2026-08-12
 ---
 
 # Terminal 节点嵌入式会话窗口设计
+
+> 2026-08-12 收口说明：本文关于本地 PTY、xterm 原生交互、resize、链接与 live output 背压的结论继续有效；其中 Host monolithic snapshot、旧 registry/raw-tail fallback、全局 restore queue 和旧 input completion 边界只记录当时实现，不再代表当前 Supervisor 路径。Supervisor restart 的空 namespace、同 instance Window Reload 的 surface-local bulk projection、fixed-socket input dispatch、control/lifecycle 隔离与 completed history archive/ref 以 [运行时控制面、显示投影与恢复隔离](./runtime-control-and-projection-isolation.md) 和 [Agent / Terminal 无损输入输出与恢复](./agent-terminal-lossless-io-and-recovery.md) 为准。
 
 ## 1. 背景
 

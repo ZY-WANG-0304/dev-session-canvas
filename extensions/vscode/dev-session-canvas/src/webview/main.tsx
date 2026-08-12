@@ -48,6 +48,12 @@ import type {
   CanvasPrototypeState,
   CanvasTemplateMenuEntry,
   ExecutionNodeKind,
+  ExecutionProjectionCheckpointDescriptor,
+  ExecutionProjectionChunkEnvelope,
+  ExecutionProjectionIdentity,
+  ExecutionProjectionPriority,
+  ExecutionProjectionState,
+  HostExecutionProjectionStatePayload,
   FileListNodeEntrySummary,
   HostToWebviewMessage,
   WebviewDomAction,
@@ -525,6 +531,8 @@ const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS = 96;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS = 480;
 const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 256 * 1024;
 const EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS = 40;
+const EXECUTION_TERMINAL_PROJECTION_CREDIT_BYTES = 32 * 1024;
+const EXECUTION_TERMINAL_PROJECTION_MIN_CREDIT_BYTES = 256;
 const EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS = 500;
 const EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS = 120;
 const executionPerformanceDiagnosticSamples: ExecutionPerformanceDiagnosticPayload[] = [];
@@ -535,6 +543,14 @@ let lastExecutionInputNodeId: string | undefined;
 let lastExecutionInputKind: ExecutionNodeKind | undefined;
 let lastExecutionMainThreadLagAtMs = Number.NEGATIVE_INFINITY;
 let lastExecutionVisibilityRestoredAtMs = Number.NEGATIVE_INFINITY;
+
+function createExecutionControllerGeneration(): string {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  if (typeof randomUuid === 'function') {
+    return randomUuid.call(globalThis.crypto);
+  }
+  return `controller-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
 
 type WebviewRuntimeDiagnosticPayload = Extract<
   WebviewToHostMessage,
@@ -800,6 +816,10 @@ function normalizeExecutionPerformanceDiagnosticForWebview(
 function handleExecutionInputAck(payload: {
   nodeId: string;
   kind: ExecutionNodeKind;
+  accepted?: boolean;
+  rejectionReason?: string;
+  controllerGeneration?: string;
+  projectionId?: string;
   sequence?: number;
   webviewEpochMs?: number;
   webviewPerformanceNowMs?: number;
@@ -812,6 +832,19 @@ function handleExecutionInputAck(payload: {
   queuedWriteCount?: number;
   pendingOutputLength?: number;
 }): void {
+  const controller = executionTerminalRegistry.get(payload.nodeId)?.controller;
+  if (payload.controllerGeneration !== undefined || payload.projectionId !== undefined) {
+    if (
+      !controller ||
+      controller.kind !== payload.kind ||
+      (payload.controllerGeneration !== undefined &&
+        controller.controllerGeneration !== payload.controllerGeneration) ||
+      (payload.projectionId !== undefined &&
+        controller.getProjectionIdentity()?.projectionId !== payload.projectionId)
+    ) {
+      return;
+    }
+  }
   const pending = typeof payload.sequence === 'number' ? pendingExecutionInputAcks.get(payload.sequence) : undefined;
   if (typeof payload.sequence === 'number') {
     pendingExecutionInputAcks.delete(payload.sequence);
@@ -837,7 +870,7 @@ function handleExecutionInputAck(payload: {
       pendingControllerCount: payload.pendingControllerCount,
       queuedWriteCount: payload.queuedWriteCount,
       pendingOutputLength: payload.pendingOutputLength,
-      success: true
+      success: payload.accepted !== false
     },
     {
       minDurationMs: 8
@@ -1439,6 +1472,28 @@ function App(): JSX.Element {
       case 'host/focusGroup':
         requestGroupFocus(message.payload.groupId);
         break;
+      case 'host/executionProjectionState': {
+        const entry = executionTerminalRegistry.get(message.payload.nodeId);
+        if (
+          entry &&
+          entry.controller.kind === message.payload.kind &&
+          entry.controller.controllerGeneration === message.payload.controllerGeneration
+        ) {
+          entry.controller.beginProjection(message.payload);
+        }
+        break;
+      }
+      case 'host/executionProjectionChunk': {
+        const entry = executionTerminalRegistry.get(message.payload.nodeId);
+        if (
+          entry &&
+          entry.controller.kind === message.payload.kind &&
+          entry.controller.controllerGeneration === message.payload.controllerGeneration
+        ) {
+          entry.controller.applyProjectionChunk(message.payload);
+        }
+        break;
+      }
       case 'host/executionSnapshot':
         setExecutionTerminalTitles((current) => {
           const existing = current[message.payload.nodeId];
@@ -1467,6 +1522,8 @@ function App(): JSX.Element {
           type: 'snapshot',
           nodeId: message.payload.nodeId,
           kind: message.payload.kind,
+          controllerGeneration: message.payload.controllerGeneration,
+          projectionId: message.payload.projectionId,
           output: message.payload.output,
           cols: message.payload.cols,
           rows: message.payload.rows,
@@ -1505,6 +1562,8 @@ function App(): JSX.Element {
           type: 'output',
           nodeId: message.payload.nodeId,
           kind: message.payload.kind,
+          controllerGeneration: message.payload.controllerGeneration,
+          projectionId: message.payload.projectionId,
           chunk: message.payload.chunk,
           terminalTitle: message.payload.terminalTitle,
           executionSessionId: message.payload.executionSessionId,
@@ -1521,6 +1580,8 @@ function App(): JSX.Element {
           type: 'terminal-event',
           nodeId: message.payload.nodeId,
           kind: message.payload.kind,
+          controllerGeneration: message.payload.controllerGeneration,
+          projectionId: message.payload.projectionId,
           executionSessionId: message.payload.executionSessionId,
           authorityId: message.payload.authorityId,
           event: message.payload.event
@@ -2975,11 +3036,18 @@ function App(): JSX.Element {
         type: 'webview/branchAgentSession',
         payload: { nodeId }
       }),
-    onAttachExecution: (nodeId, kind) =>
+    onAttachExecution: (nodeId, kind) => {
+      const controller = executionTerminalRegistry.get(nodeId)?.controller;
       postMessage({
         type: 'webview/attachExecutionSession',
-        payload: { nodeId, kind }
-      }),
+        payload: {
+          nodeId,
+          kind,
+          controllerGeneration: controller?.controllerGeneration,
+          priority: controller?.getProjectionPriority()
+        }
+      });
+    },
     onExecutionInput: (nodeId, kind, data, metadata) =>
       postMessage({
         type: 'webview/executionInput',
@@ -2992,7 +3060,9 @@ function App(): JSX.Element {
             ? {
                 sequence: metadata.sequence,
                 webviewEpochMs: metadata.webviewEpochMs,
-                webviewPerformanceNowMs: metadata.webviewPerformanceNowMs
+                webviewPerformanceNowMs: metadata.webviewPerformanceNowMs,
+                controllerGeneration: metadata.controllerGeneration,
+                projectionId: metadata.projectionId
               }
             : {})
         }
@@ -6908,6 +6978,8 @@ function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type
   const controller = executionTerminalRegistry.get(detail.nodeId)?.controller;
   try {
     controller?.enqueueOutput(detail.chunk, {
+      controllerGeneration: detail.controllerGeneration,
+      projectionId: detail.projectionId,
       persisted: detail.persisted,
       outputStartSequence: detail.outputStartSequence,
       outputSequence: detail.outputSequence,
@@ -7341,11 +7413,87 @@ function createExecutionTerminalController(
   kind: ExecutionNodeKind,
   terminal: Terminal,
   options?: {
+    needsProjection?: boolean;
+    initialProjectionPriority?: ExecutionProjectionPriority;
+    /** Completed archive projections have no Supervisor consumer to ACK. */
+    sendTerminalAppliedAck?: boolean;
+    onProjectionStateChange?: (state: ExecutionProjectionState) => void;
     onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
     beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
   }
 ): ExecutionTerminalController {
+  const controllerGeneration = createExecutionControllerGeneration();
+  let projectionState: ExecutionProjectionState = options?.needsProjection ? 'queued' : 'ready';
+  let projectionPriority: ExecutionProjectionPriority = options?.initialProjectionPriority ?? 'background';
+  let projectionIdentity: ExecutionProjectionIdentity | undefined;
+  let projectionCheckpoint: ExecutionProjectionCheckpointDescriptor | undefined;
+  let projectionCheckpointComplete = false;
+  let projectionExpectedSequence: number | undefined;
+  let projectionCheckpointOffset = 0;
+  let projectionOutputRevision: number | undefined;
+  let projectionOutputOffset = 0;
+  let projectionNextRevision = 0;
+  let projectionTargetRevision = 0;
+  let projectionCreditInFlight = false;
+  let projectionChunkWriteInFlight = false;
+  let projectionReadyRevision = 0;
+  let legacyProjectionPending = Boolean(options?.needsProjection);
+  let sendTerminalAppliedAck = options?.sendTerminalAppliedAck !== false;
+  options?.onProjectionStateChange?.(projectionState);
+
+  const setProjectionState = (next: ExecutionProjectionState): void => {
+    // Do not let an asynchronous clipboard response cross a projection reset.
+    if (next !== 'ready') {
+      clearPendingExecutionPasteRequestsForNode(nodeId, kind);
+    }
+    if (projectionState === next) {
+      return;
+    }
+    projectionState = next;
+    options?.onProjectionStateChange?.(next);
+  };
+
+  const postProjectionCredit = (): void => {
+    const identity = projectionIdentity;
+    if (disposed || !identity || projectionCreditInFlight || projectionState !== 'restoring') {
+      return;
+    }
+    projectionCreditInFlight = true;
+    postMessage({
+      type: 'webview/requestExecutionProjectionCredit',
+      payload: {
+        ...identity,
+        creditBytes: Math.max(
+          EXECUTION_TERMINAL_PROJECTION_MIN_CREDIT_BYTES,
+          EXECUTION_TERMINAL_PROJECTION_CREDIT_BYTES
+        )
+      }
+    });
+  };
+
+  const projectionIdentityMatches = (
+    candidate: Partial<ExecutionProjectionIdentity> | undefined,
+    requireFull = true
+  ): boolean => {
+    if (!candidate || candidate.nodeId !== nodeId || candidate.kind !== kind) {
+      return false;
+    }
+    if (candidate.controllerGeneration !== controllerGeneration) {
+      return false;
+    }
+    if (!requireFull) {
+      return true;
+    }
+    return (
+      projectionIdentity !== undefined &&
+      candidate.projectionId === projectionIdentity.projectionId &&
+      candidate.executionSessionId === projectionIdentity.executionSessionId &&
+      candidate.authorityId === projectionIdentity.authorityId &&
+      candidate.initialTargetRevision === projectionIdentity.initialTargetRevision
+    );
+  };
+
   let pendingOutput = '';
   let pendingPersistBarrier = false;
   let pendingExitMessage: string | undefined;
@@ -7467,6 +7615,7 @@ function createExecutionTerminalController(
     currentLocalOutputSequence = 0;
     currentTerminalAuthorityId = undefined;
     currentTerminalRevision = 0;
+    projectionCheckpointComplete = false;
     hasAppliedSnapshot = false;
     projectionRecoveryRequested = false;
     projectionRecoveryEpoch += 1;
@@ -7505,6 +7654,10 @@ function createExecutionTerminalController(
 
   const flushTerminalAppliedAck = (): void => {
     cancelTerminalAppliedAckTimer();
+    if (!sendTerminalAppliedAck) {
+      pendingTerminalAppliedAckRevision = undefined;
+      return;
+    }
     const revision = pendingTerminalAppliedAckRevision;
     pendingTerminalAppliedAckRevision = undefined;
     if (
@@ -7526,7 +7679,11 @@ function createExecutionTerminalController(
         kind,
         executionSessionId: currentExecutionSessionId,
         authorityId: appliedTerminalAuthorityId,
-        revision
+        revision,
+        controllerGeneration,
+        ...(projectionIdentity?.projectionId !== undefined
+          ? { projectionId: projectionIdentity.projectionId }
+          : {})
       }
     });
   };
@@ -7574,17 +7731,43 @@ function createExecutionTerminalController(
     });
   };
 
-  const postAttachSnapshotRequest = (): void => {
+  const postAttachSnapshotRequest = (requestOptions?: { needsProjection?: boolean }): void => {
     if (projectionRecoveryRequested) {
       return;
     }
     projectionRecoveryRequested = true;
     projectionRecoveryEpoch += 1;
+    // Every attach starts behind a projection barrier. Legacy supervisors clear
+    // it when their monolithic snapshot arrives; bulk supervisors clear it only
+    // after the credit-driven stream reaches the live tail.
+    const shouldGateProjection =
+      options?.needsProjection === true || requestOptions?.needsProjection === true;
+    if (shouldGateProjection) {
+      setProjectionState('queued');
+      legacyProjectionPending = true;
+    } else if (requestOptions?.needsProjection === false && projectionIdentity !== undefined) {
+      // A controller can outlive a metadata mode transition (bulk -> legacy).
+      // Drop the old bulk identity before accepting the monolithic snapshot.
+      projectionIdentity = undefined;
+      projectionCheckpoint = undefined;
+      projectionCheckpointComplete = false;
+      projectionExpectedSequence = undefined;
+      projectionCheckpointOffset = 0;
+      projectionOutputRevision = undefined;
+      projectionOutputOffset = 0;
+      projectionNextRevision = 0;
+      projectionCreditInFlight = false;
+      projectionChunkWriteInFlight = false;
+      legacyProjectionPending = true;
+      setProjectionState('restoring');
+    }
     postMessage({
       type: 'webview/attachExecutionSession',
       payload: {
         nodeId,
         kind,
+        controllerGeneration,
+        priority: projectionPriority,
         ...(currentExecutionSessionId !== undefined
           ? { executionSessionId: currentExecutionSessionId }
           : {})
@@ -7610,9 +7793,22 @@ function createExecutionTerminalController(
   const controller: ExecutionTerminalController = {
     nodeId,
     kind,
+    controllerGeneration,
     applySnapshot(detail) {
       if (disposed) {
         return;
+      }
+      if (
+        detail.controllerGeneration !== undefined &&
+        detail.controllerGeneration !== controllerGeneration
+      ) {
+        return;
+      }
+      if (detail.projectionId !== undefined && projectionIdentity?.projectionId !== detail.projectionId) {
+        return;
+      }
+      if (legacyProjectionPending && projectionState === 'queued') {
+        setProjectionState('restoring');
       }
       const snapshotSequence = normalizeOutputSequence(detail.outputSequence);
       const terminalStream = normalizeTerminalStreamAttachPayload(detail.terminalStream);
@@ -7777,6 +7973,10 @@ function createExecutionTerminalController(
           targetRevision: terminalStream?.revision
         },
         (applied) => {
+          if (applied && legacyProjectionPending && projectionIdentity === undefined) {
+            legacyProjectionPending = false;
+            setProjectionState('ready');
+          }
           if (applied && terminalStream) {
             markTerminalRevisionApplied(terminalStream.authorityId, terminalStream.revision, {
               immediate: true
@@ -7789,15 +7989,362 @@ function createExecutionTerminalController(
       }
       flushDeferredExitIfReady();
     },
-    requestAttachSnapshot() {
+    getProjectionState() {
+      return projectionState;
+    },
+    canAcceptInput() {
+      return !disposed && projectionState === 'ready';
+    },
+    setProjectionPriority(priority) {
+      if (projectionPriority === priority) {
+        return;
+      }
+      projectionPriority = priority;
+      postMessage({
+        type: 'webview/executionProjectionPriority',
+        payload: {
+          nodeId,
+          kind,
+          controllerGeneration,
+          priority
+        }
+      });
+    },
+    getProjectionPriority() {
+      return projectionPriority;
+    },
+    setTerminalAppliedAckEnabled(enabled) {
+      if (sendTerminalAppliedAck === enabled) {
+        return;
+      }
+      sendTerminalAppliedAck = enabled;
+      if (!enabled) {
+        cancelTerminalAppliedAckTimer();
+        pendingTerminalAppliedAckRevision = undefined;
+      }
+    },
+    getProjectionIdentity() {
+      return projectionIdentity;
+    },
+    beginProjection(detail) {
+      if (disposed || detail.nodeId !== nodeId || detail.kind !== kind) {
+        return;
+      }
+      if (detail.controllerGeneration !== controllerGeneration) {
+        return;
+      }
+      if (detail.state === 'queued') {
+        if (detail.priority !== undefined) {
+          projectionPriority = detail.priority;
+        }
+        setProjectionState('queued');
+        return;
+      }
+      if (detail.state === 'failed') {
+        this.failProjection(detail);
+        return;
+      }
+      if (detail.state === 'ready') {
+        this.completeProjection(detail, detail.readyRevision);
+        return;
+      }
+      if (projectionState === 'restoring' && projectionIdentityMatches(detail)) {
+        return;
+      }
+      if (!projectionIdentityMatches(detail)) {
+        projectionIdentity = {
+          nodeId: detail.nodeId,
+          kind: detail.kind,
+          controllerGeneration: detail.controllerGeneration,
+          projectionId: detail.projectionId,
+          executionSessionId: detail.executionSessionId,
+          authorityId: detail.authorityId,
+          initialTargetRevision: detail.initialTargetRevision
+        };
+      }
+      if (!projectionIdentityMatches(detail)) {
+        return;
+      }
+      projectionCheckpoint = detail.checkpoint;
+      projectionCheckpointComplete = false;
+      projectionExpectedSequence = undefined;
+      projectionCheckpointOffset = 0;
+      projectionOutputRevision = undefined;
+      projectionOutputOffset = 0;
+      projectionNextRevision = (detail.checkpoint?.revision ?? -1) + 1;
+      projectionTargetRevision = detail.initialTargetRevision;
+      projectionReadyRevision = 0;
+      projectionCreditInFlight = false;
+      projectionChunkWriteInFlight = false;
+      legacyProjectionPending = false;
+      pendingOutput = '';
+      pendingOutputBoundaries = [];
+      pendingPersistBarrier = false;
+      pendingProjectionBarrier = true;
+      pendingExitMessage = undefined;
+      removePendingExecutionTerminalDrain(controller);
+      writeGeneration += 1;
+      resetTerminalAppliedRevision();
+      currentExecutionSessionId = detail.executionSessionId;
+      projectedExecutionSessionId = undefined;
+      currentTerminalAuthorityId = detail.authorityId;
+      currentTerminalRevision = Math.max(0, projectionNextRevision - 1);
+      currentLocalOutputSequence = projectionNextRevision;
+      hasAppliedSnapshot = false;
+      terminal.reset();
+      if (detail.checkpoint) {
+        terminal.options.scrollback = detail.checkpoint.scrollback;
+        if (terminal.cols !== detail.checkpoint.cols || terminal.rows !== detail.checkpoint.rows) {
+          terminal.resize(detail.checkpoint.cols, detail.checkpoint.rows);
+        }
+      }
+      setProjectionState('restoring');
+      postProjectionCredit();
+    },
+    applyProjectionChunk(detail) {
+      if (
+        disposed ||
+        projectionState !== 'restoring' ||
+        projectionChunkWriteInFlight ||
+        !projectionIdentityMatches(detail) ||
+        typeof detail.chunkChecksum !== 'string' ||
+        !/^[a-f0-9]{64}$/u.test(detail.chunkChecksum)
+      ) {
+        return;
+      }
+      if (
+        projectionExpectedSequence !== undefined &&
+        detail.sequence !== projectionExpectedSequence + 1
+      ) {
+        this.failProjection(detail);
+        return;
+      }
+      if (
+        (projectionExpectedSequence === undefined && detail.sequence !== 1) ||
+        !Number.isSafeInteger(detail.payloadBytes) ||
+        detail.payloadBytes !== estimateUtf8ByteLength(JSON.stringify(detail.chunk)) ||
+        typeof detail.done !== 'boolean'
+      ) {
+        this.failProjection(detail);
+        return;
+      }
+      const chunk = detail.chunk;
+      if (detail.payloadBytes <= 0 || detail.payloadBytes > 1024 * 1024) {
+        this.failProjection(detail);
+        return;
+      }
+      let appliedRevision: number | undefined;
+      if (chunk.kind === 'checkpoint') {
+        if (
+          projectionCheckpointComplete ||
+          projectionOutputRevision !== undefined ||
+          chunk.dataOffset !== projectionCheckpointOffset ||
+          (chunk.data.length === 0 && !chunk.complete)
+        ) {
+          this.failProjection(detail);
+          return;
+        }
+        projectionCheckpointOffset += chunk.data.length;
+        if (chunk.complete) {
+          projectionCheckpointComplete = true;
+        }
+      } else if (chunk.kind === 'output') {
+        if (!projectionCheckpointComplete) {
+          this.failProjection(detail);
+          return;
+        }
+        if (projectionOutputRevision === undefined) {
+          if (chunk.revision !== projectionNextRevision || chunk.dataOffset !== 0) {
+            this.failProjection(detail);
+            return;
+          }
+          projectionOutputRevision = chunk.revision;
+          projectionOutputOffset = 0;
+        }
+        if (
+          chunk.revision !== projectionOutputRevision ||
+          chunk.dataOffset !== projectionOutputOffset ||
+          (chunk.data.length === 0 && !chunk.complete)
+        ) {
+          this.failProjection(detail);
+          return;
+        }
+        projectionOutputOffset += chunk.data.length;
+        if (chunk.complete) {
+          appliedRevision = chunk.revision;
+          projectionNextRevision = chunk.revision + 1;
+          projectionOutputRevision = undefined;
+          projectionOutputOffset = 0;
+        }
+      } else {
+        if (!projectionCheckpointComplete || projectionOutputRevision !== undefined || chunk.revision !== projectionNextRevision) {
+          this.failProjection(detail);
+          return;
+        }
+        appliedRevision = chunk.revision;
+        projectionNextRevision = chunk.revision + 1;
+      }
+      projectionExpectedSequence = detail.sequence;
+      projectionChunkWriteInFlight = true;
+      options?.onContentWillChange?.(chunk.kind === 'output' || chunk.kind === 'checkpoint' ? 'snapshot' : 'output');
+      const writeData = chunk.kind === 'checkpoint' || chunk.kind === 'output' ? chunk.data : undefined;
+      const projectionRevision = appliedRevision;
+      queueTerminalWrite(
+        (done) => {
+          if (writeData !== undefined) {
+            terminal.write(writeData, done);
+            return;
+          }
+          if (chunk.kind === 'resize') {
+            terminal.resize(chunk.cols, chunk.rows);
+          } else if (chunk.kind === 'scrollback') {
+            terminal.options.scrollback = chunk.scrollback;
+          }
+          done();
+        },
+        {
+          reason: `projection-${chunk.kind}`,
+          characters: writeData?.length ?? 0,
+          checkpointCharacters: chunk.kind === 'checkpoint' ? writeData?.length : undefined,
+          checkpointRevision: projectionCheckpoint?.revision,
+          targetRevision: projectionTargetRevision
+        },
+        (applied) => {
+          projectionChunkWriteInFlight = false;
+          projectionCreditInFlight = false;
+          if (!applied || disposed || projectionState !== 'restoring') {
+            return;
+          }
+          if (projectionRevision !== undefined) {
+            currentTerminalRevision = Math.max(currentTerminalRevision, projectionRevision);
+            markTerminalRevisionApplied(detail.authorityId, projectionRevision);
+          }
+          postMessage({
+            type: 'webview/executionProjectionChunkApplied',
+            payload: {
+              ...detail,
+              sequence: detail.sequence,
+              payloadBytes: detail.payloadBytes,
+              // Grant the same bounded pull budget for every acknowledged
+              // chunk; the Host validates this value before scheduling the
+              // next read, so payload size cannot create an unbounded window.
+              creditBytes: Math.max(
+                EXECUTION_TERMINAL_PROJECTION_MIN_CREDIT_BYTES,
+                EXECUTION_TERMINAL_PROJECTION_CREDIT_BYTES
+              ),
+              ...(projectionRevision !== undefined ? { appliedRevision: projectionRevision } : {})
+            }
+          });
+          postProjectionCredit();
+        }
+      );
+    },
+    completeProjection(identity, readyRevision) {
+      if (
+        disposed ||
+        projectionState !== 'restoring' ||
+        !projectionIdentityMatches(identity) ||
+        !projectionCheckpointComplete ||
+        projectionOutputRevision !== undefined ||
+        readyRevision < projectionTargetRevision ||
+        readyRevision < projectionNextRevision - 1
+      ) {
+        return;
+      }
+      projectionReadyRevision = readyRevision;
+      currentTerminalRevision = Math.max(currentTerminalRevision, readyRevision);
+      markTerminalRevisionApplied(identity.authorityId, readyRevision, { immediate: true });
+      projectionCreditInFlight = false;
+      projectionChunkWriteInFlight = false;
+      pendingProjectionBarrier = false;
+      projectedExecutionSessionId = currentExecutionSessionId;
+      hasAppliedSnapshot = true;
+      legacyProjectionPending = false;
+      projectionRecoveryRequested = false;
+      setProjectionState('ready');
+      if (pendingOutput.length > 0 && !pendingPersistBarrier) {
+        scheduleExecutionTerminalDrain(controller);
+      }
+      flushDeferredExitIfReady();
+    },
+    failProjection(identity) {
+      if (
+        disposed ||
+        identity.nodeId !== nodeId ||
+        identity.kind !== kind ||
+        identity.controllerGeneration !== controllerGeneration ||
+        (projectionIdentity?.projectionId !== undefined &&
+          identity.projectionId !== undefined &&
+          projectionIdentity.projectionId !== identity.projectionId)
+      ) {
+        return;
+      }
+      projectionCreditInFlight = false;
+      projectionChunkWriteInFlight = false;
+      pendingProjectionBarrier = false;
+      setProjectionState('failed');
+      projectionRecoveryRequested = false;
+      options?.onContentWillChange?.('output');
+    },
+    cancelProjection(reason = 'user') {
+      const identity = projectionIdentity;
+      // A queued/opening projection has no server projection id yet. The
+      // controller generation is still enough for Host to retire that job.
+      if (
+        !disposed &&
+        (identity !== undefined || projectionState !== 'ready' || projectionRecoveryRequested)
+      ) {
+        postMessage({
+          type: 'webview/cancelExecutionProjection',
+          payload: {
+            nodeId,
+            kind,
+            controllerGeneration,
+            ...(identity
+              ? {
+                  projectionId: identity.projectionId,
+                  executionSessionId: identity.executionSessionId,
+                  authorityId: identity.authorityId,
+                  initialTargetRevision: identity.initialTargetRevision
+                }
+              : {}),
+            reason
+          }
+        });
+      }
+      projectionCreditInFlight = false;
+      projectionChunkWriteInFlight = false;
+      if (reason === 'retry') {
+        projectionRecoveryRequested = false;
+        projectionIdentity = undefined;
+        projectionCheckpoint = undefined;
+        projectionCheckpointComplete = false;
+        legacyProjectionPending = true;
+        setProjectionState('queued');
+      }
+    },
+    requestAttachSnapshot(requestOptions) {
       if (disposed) {
         return;
       }
 
-      postAttachSnapshotRequest();
+      postAttachSnapshotRequest(requestOptions);
     },
     enqueueOutput(chunk, outputOptions) {
       if (disposed) {
+        return;
+      }
+
+      if (
+        outputOptions?.controllerGeneration !== undefined &&
+        outputOptions.controllerGeneration !== controllerGeneration
+      ) {
+        return;
+      }
+      if (
+        outputOptions?.projectionId !== undefined &&
+        projectionIdentity?.projectionId !== outputOptions.projectionId
+      ) {
         return;
       }
 
@@ -7896,7 +8443,14 @@ function createExecutionTerminalController(
       scheduleExecutionTerminalDrain(controller);
     },
     applyTerminalEvent(detail) {
-      if (disposed || detail.executionSessionId !== currentExecutionSessionId) {
+      if (
+        disposed ||
+        (detail.controllerGeneration !== undefined &&
+          detail.controllerGeneration !== controllerGeneration) ||
+        (detail.projectionId !== undefined &&
+          projectionIdentity?.projectionId !== detail.projectionId) ||
+        detail.executionSessionId !== currentExecutionSessionId
+      ) {
         return;
       }
       if (currentTerminalAuthorityId !== detail.authorityId) {
@@ -8027,6 +8581,7 @@ function createExecutionTerminalController(
       return pendingPersistBarrier || pendingProjectionBarrier;
     },
     dispose() {
+      this.cancelProjection('dispose');
       disposed = true;
       pendingOutput = '';
       pendingOutputBoundaries = [];
@@ -9560,7 +10115,11 @@ function routeExecutionPasteText(
   }
 
   clearPendingExecutionPasteRequest(requestId, nodeId, kind);
-  executionTerminalRegistry.get(nodeId)?.terminal.paste(text);
+  const entry = executionTerminalRegistry.get(nodeId);
+  if (!entry || !entry.controller.canAcceptInput()) {
+    return;
+  }
+  entry.terminal.paste(text);
 }
 
 function clearPendingExecutionPasteRequest(
@@ -9574,6 +10133,17 @@ function clearPendingExecutionPasteRequest(
   }
 
   pendingExecutionPasteRequests.delete(requestId);
+}
+
+function clearPendingExecutionPasteRequestsForNode(
+  nodeId: string,
+  kind: ExecutionNodeKind
+): void {
+  for (const [requestId, pendingRequest] of pendingExecutionPasteRequests.entries()) {
+    if (pendingRequest.nodeId === nodeId && pendingRequest.kind === kind) {
+      pendingExecutionPasteRequests.delete(requestId);
+    }
+  }
 }
 
 function clearPendingExecutionPasteRequests(): void {
