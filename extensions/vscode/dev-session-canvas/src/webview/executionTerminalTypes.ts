@@ -1,7 +1,14 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
-import type { ExecutionNodeKind } from '../common/protocol';
+import type {
+  ExecutionNodeKind,
+  ExecutionProjectionChunkEnvelope,
+  ExecutionProjectionIdentity,
+  ExecutionProjectionPriority,
+  ExecutionProjectionState,
+  HostExecutionProjectionStatePayload
+} from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from '../common/terminalSessionStream';
 import type { ExecutionTerminalNativeInteractionsHandle } from './executionTerminalNativeInteractions';
@@ -11,6 +18,8 @@ export type ExecutionHostEvent =
       type: 'snapshot';
       nodeId: string;
       kind: ExecutionNodeKind;
+      controllerGeneration?: string;
+      projectionId?: string;
       output: string;
       cols: number;
       rows: number;
@@ -26,6 +35,8 @@ export type ExecutionHostEvent =
       type: 'output';
       nodeId: string;
       kind: ExecutionNodeKind;
+      controllerGeneration?: string;
+      projectionId?: string;
       chunk: string;
       terminalTitle?: string | null;
       executionSessionId?: string;
@@ -40,6 +51,8 @@ export type ExecutionHostEvent =
       type: 'terminal-event';
       nodeId: string;
       kind: ExecutionNodeKind;
+      controllerGeneration?: string;
+      projectionId?: string;
       executionSessionId: string;
       authorityId: string;
       event: TerminalStreamEvent;
@@ -49,16 +62,38 @@ export type ExecutionHostEvent =
       nodeId: string;
       kind: ExecutionNodeKind;
       message: string;
+    }
+  | {
+      type: 'projection-state';
+      payload: HostExecutionProjectionStatePayload;
+    }
+  | {
+      type: 'projection-chunk';
+      payload: ExecutionProjectionChunkEnvelope;
     };
 
 export interface ExecutionTerminalController {
   nodeId: string;
   kind: ExecutionNodeKind;
+  controllerGeneration: string;
   applySnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void;
-  requestAttachSnapshot(): void;
+  requestAttachSnapshot(options?: { needsProjection?: boolean }): void;
+  getProjectionState(): ExecutionProjectionState;
+  canAcceptInput(): boolean;
+  setProjectionPriority(priority: ExecutionProjectionPriority): void;
+  getProjectionPriority(): ExecutionProjectionPriority;
+  setTerminalAppliedAckEnabled(enabled: boolean): void;
+  getProjectionIdentity(): ExecutionProjectionIdentity | undefined;
+  beginProjection(detail: HostExecutionProjectionStatePayload): void;
+  applyProjectionChunk(detail: ExecutionProjectionChunkEnvelope): void;
+  completeProjection(identity: ExecutionProjectionIdentity, readyRevision: number): void;
+  failProjection(identity: Partial<ExecutionProjectionIdentity> & { error?: string }): void;
+  cancelProjection(reason?: 'dispose' | 'retry' | 'stale' | 'user'): void;
   enqueueOutput(
     chunk: string,
     options?: {
+      controllerGeneration?: string;
+      projectionId?: string;
       persisted?: boolean;
       outputStartSequence?: number;
       outputSequence?: number;

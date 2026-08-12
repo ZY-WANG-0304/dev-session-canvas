@@ -186,6 +186,18 @@ export interface TerminalJournalCheckpointCommitResult {
   reason?: 'below-threshold' | 'not-newer' | 'no-usable-fallback';
 }
 
+export interface TerminalSessionJournalProjectionPin {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly authorityId: string;
+  readonly checkpoint: TerminalStreamCheckpoint;
+  readonly targetRevision: number;
+  /** Extend a still-open projection to a newer journal head without replacing its checkpoint. */
+  extendTargetRevision(targetRevision: number): void;
+  readEvent(revision: number): TerminalStreamEvent | undefined;
+  release(): void;
+}
+
 export class TerminalSessionJournal {
   private readonly sessionDirectory: string;
   private readonly manifestPath: string;
@@ -210,6 +222,7 @@ export class TerminalSessionJournal {
   private startNewSegmentOnAppend: boolean;
   private manifestWriteSequence = 0;
   private checkpointCommitInProgress = false;
+  private readonly projectionPins = new Map<string, number>();
 
   private constructor(
     private readonly storageDir: string,
@@ -523,6 +536,105 @@ export class TerminalSessionJournal {
     }) as TerminalStreamScrollbackEvent;
   }
 
+  public pinProjection(
+    checkpoint: TerminalStreamCheckpoint,
+    targetRevision: number
+  ): TerminalSessionJournalProjectionPin {
+    const normalizedCheckpoint = normalizeTerminalStreamCheckpoint(checkpoint);
+    if (
+      !normalizedCheckpoint ||
+      normalizedCheckpoint.sessionId !== this.sessionId ||
+      normalizedCheckpoint.authorityId !== this.authorityId
+    ) {
+      throw new Error(`Invalid terminal projection checkpoint for session ${this.sessionId}.`);
+    }
+    if (
+      !Number.isSafeInteger(targetRevision) ||
+      targetRevision < normalizedCheckpoint.revision ||
+      targetRevision > this.lastRevision
+    ) {
+      throw new Error(`Invalid terminal projection target revision ${targetRevision}.`);
+    }
+
+    const firstRequiredRevision = normalizedCheckpoint.revision + 1;
+    const firstRetainedRevision = this.events[0]?.revision ?? this.lastRevision + 1;
+    if (firstRequiredRevision <= targetRevision && firstRequiredRevision < firstRetainedRevision) {
+      throw new Error(
+        `Terminal projection events before revision ${firstRetainedRevision} are not retained in memory.`
+      );
+    }
+
+    const id = randomUUID();
+    const checkpointCopy = cloneTerminalStreamCheckpoint(normalizedCheckpoint);
+    let pinnedTargetRevision = targetRevision;
+    this.projectionPins.set(id, normalizedCheckpoint.revision);
+    let released = false;
+    return Object.freeze({
+      id,
+      sessionId: this.sessionId,
+      authorityId: this.authorityId,
+      checkpoint: checkpointCopy,
+      get targetRevision(): number {
+        return pinnedTargetRevision;
+      },
+      extendTargetRevision: (nextTargetRevision: number): void => {
+        if (released || !this.projectionPins.has(id)) {
+          throw new Error(`Terminal projection ${id} is no longer pinned.`);
+        }
+        if (
+          !Number.isSafeInteger(nextTargetRevision) ||
+          nextTargetRevision < pinnedTargetRevision ||
+          nextTargetRevision > this.lastRevision
+        ) {
+          throw new Error(`Invalid terminal projection target revision ${nextTargetRevision}.`);
+        }
+        const firstRequiredRevision = normalizedCheckpoint.revision + 1;
+        const firstRetainedRevision = this.events[0]?.revision ?? this.lastRevision + 1;
+        if (firstRequiredRevision <= nextTargetRevision && firstRequiredRevision < firstRetainedRevision) {
+          throw new Error(
+            `Terminal projection events before revision ${firstRetainedRevision} are not retained in memory.`
+          );
+        }
+        pinnedTargetRevision = nextTargetRevision;
+      },
+      readEvent: (revision: number): TerminalStreamEvent | undefined => {
+        if (released || !this.projectionPins.has(id)) {
+          throw new Error(`Terminal projection ${id} is no longer pinned.`);
+        }
+        if (
+          !Number.isSafeInteger(revision) ||
+          revision <= normalizedCheckpoint.revision ||
+          revision > pinnedTargetRevision
+        ) {
+          throw new Error(`Invalid terminal projection event revision ${revision}.`);
+        }
+        const firstRevision = this.events[0]?.revision ?? this.lastRevision + 1;
+        const event = this.events[revision - firstRevision];
+        if (!event || event.revision !== revision) {
+          throw new Error(`Terminal projection event revision ${revision} is not retained in memory.`);
+        }
+        return cloneTerminalStreamEvent(event);
+      },
+      release: (): void => {
+        if (released) {
+          return;
+        }
+        released = true;
+        this.projectionPins.delete(id);
+      }
+    });
+  }
+
+  public getPinnedProjectionRetentionRevision(): number | undefined {
+    let retentionRevision: number | undefined;
+    for (const revision of this.projectionPins.values()) {
+      retentionRevision = retentionRevision === undefined
+        ? revision
+        : Math.min(retentionRevision, revision);
+    }
+    return retentionRevision;
+  }
+
   public getEventsAfter(revision: number): TerminalStreamEvent[] {
     if (!Number.isSafeInteger(revision) || revision < 0 || revision > this.lastRevision) {
       throw new Error(`Invalid terminal journal revision ${revision}.`);
@@ -540,8 +652,10 @@ export class TerminalSessionJournal {
     if (!Number.isSafeInteger(revision) || revision < 0) {
       return;
     }
+    const pinnedRevision = this.getPinnedProjectionRetentionRevision();
+    const releaseRevision = pinnedRevision === undefined ? revision : Math.min(revision, pinnedRevision);
     let removeCount = 0;
-    while (removeCount < this.events.length && this.events[removeCount].revision <= revision) {
+    while (removeCount < this.events.length && this.events[removeCount].revision <= releaseRevision) {
       removeCount += 1;
     }
     if (removeCount > 0) {
@@ -567,6 +681,7 @@ export class TerminalSessionJournal {
   }
 
   public async delete(): Promise<void> {
+    this.projectionPins.clear();
     this.clearFlushTimer();
     await this.flush().catch(() => undefined);
     await fs.promises.rm(this.sessionDirectory, { recursive: true, force: true });
@@ -642,7 +757,13 @@ export class TerminalSessionJournal {
 
   private getCheckpointPromotionBytes(revision: number, retainAfterRevision?: number): number {
     const coveredRevision = this.currentCheckpoint?.revision ?? revision;
-    const removableThrough = Math.min(coveredRevision, retainAfterRevision ?? coveredRevision);
+    const pinnedRevision = this.getPinnedProjectionRetentionRevision();
+    const retentionRevision = retainAfterRevision === undefined
+      ? pinnedRevision
+      : pinnedRevision === undefined
+        ? retainAfterRevision
+        : Math.min(retainAfterRevision, pinnedRevision);
+    const removableThrough = Math.min(coveredRevision, retentionRevision ?? coveredRevision);
     return this.segments.reduce(
       (total, segment) => total + (segment.endRevision <= removableThrough ? segment.bytes : 0),
       0
@@ -724,8 +845,14 @@ export class TerminalSessionJournal {
       checkpoint
     );
 
+    const pinnedRevision = this.getPinnedProjectionRetentionRevision();
+    const retentionRevision = options.retainAfterRevision === undefined
+      ? pinnedRevision
+      : pinnedRevision === undefined
+        ? options.retainAfterRevision
+        : Math.min(options.retainAfterRevision, pinnedRevision);
     const removalLimit = previousCheckpoint
-      ? Math.min(previousCheckpoint.revision, options.retainAfterRevision ?? previousCheckpoint.revision)
+      ? Math.min(previousCheckpoint.revision, retentionRevision ?? previousCheckpoint.revision)
       : -1;
     let removeCount = 0;
     while (

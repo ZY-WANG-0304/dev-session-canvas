@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as path from 'path';
@@ -33,7 +33,6 @@ import {
 } from '../common/executionTerminalTitle';
 import {
   type AgentNodeStatus,
-  type AgentActivitySource,
   type AgentInputIntent,
   type AgentProviderKind,
   type AgentResumeStrategy,
@@ -56,7 +55,6 @@ import {
   TERMINAL_SESSION_STREAM_VERSION,
   buildTerminalStreamAttachPayload,
   cloneTerminalStreamCheckpoint,
-  normalizeTerminalStreamAttachPayload,
   normalizeTerminalStreamCheckpoint,
   normalizeTerminalStreamRevision,
   type TerminalStreamAttachPayload,
@@ -65,6 +63,8 @@ import {
 } from '../common/terminalSessionStream';
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
+  RUNTIME_SUPERVISOR_TERMINAL_PROJECTION_MAX_CREDIT_BYTES,
+  RUNTIME_SUPERVISOR_TERMINAL_PROJECTION_MIN_CREDIT_BYTES,
   deserializeExecutionSessionLaunchSpec,
   createRuntimeSupervisorProtocolError,
   formatRuntimeSupervisorMessageDescriptor,
@@ -72,6 +72,8 @@ import {
   type RuntimeSupervisorAttachSessionParams,
   type RuntimeSupervisorAckSessionRevisionParams,
   type RuntimeSupervisorAckSessionRevisionResult,
+  type RuntimeSupervisorCancelTerminalProjectionParams,
+  type RuntimeSupervisorCancelTerminalProjectionResult,
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorDeleteSessionParams,
   type RuntimeSupervisorEvent,
@@ -79,8 +81,11 @@ import {
   type RuntimeSupervisorGetSessionSnapshotParams,
   type RuntimeSupervisorMessageDescriptor,
   type RuntimeSupervisorMessage,
+  type RuntimeSupervisorOpenTerminalProjectionParams,
+  type RuntimeSupervisorOpenTerminalProjectionResult,
   type RuntimeSupervisorPaths,
-  type RuntimeSupervisorRecoveryState,
+  type RuntimeSupervisorReadTerminalProjectionParams,
+  type RuntimeSupervisorReadTerminalProjectionResult,
   type RuntimeSupervisorRequest,
   type RuntimeSupervisorResizeSessionParams,
   type RuntimeSupervisorSessionSnapshot,
@@ -88,14 +93,15 @@ import {
   type RuntimeSupervisorSubscribeSessionParams,
   type RuntimeSupervisorSubscribeSessionResult,
   type RuntimeSupervisorTerminalCheckpointDiagnostics,
+  type RuntimeSupervisorTerminalProjectionChunk,
   type RuntimeSupervisorTerminalProjectionCheckpoint,
   type RuntimeSupervisorUpdateSessionScrollbackParams,
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
 import {
-  readTerminalSessionJournalMetadata,
   resolveTerminalJournalSessionDirectory,
-  TerminalSessionJournal
+  TerminalSessionJournal,
+  type TerminalSessionJournalProjectionPin
 } from './terminalSessionJournal';
 import {
   createExecutionSessionProcess,
@@ -112,19 +118,12 @@ import {
 import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPresets';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
-const TERMINAL_LIVE_DELAY_MS = 160;
 const OUTPUT_TAIL_LIMIT = 6000;
 const TERMINAL_CHECKPOINT_VALIDATION_RETRY_DELAY_MS = 30_000;
 const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
-const TEST_RECOVERY_GATE_PATH_ENV = 'DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_RECOVERY_GATE_PATH';
-const TEST_RECOVERY_GATE_POLL_INTERVAL_MS = 50;
-
-function normalizeRuntimeSupervisorOutputSequence(value: unknown): number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
-}
 
 function normalizeRuntimeSupervisorOptionalOutputSequence(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
@@ -137,6 +136,7 @@ interface SupervisorRegistry {
 
 interface SupervisorSession {
   sessionId: string;
+  stateRevision: number;
   kind: ExecutionNodeKind;
   live: boolean;
   startedAtMs: number;
@@ -156,8 +156,6 @@ interface SupervisorSession {
   outputSequence: number;
   terminalAuthorityId?: string;
   terminalJournal?: TerminalSessionJournal;
-  /** A restarted Supervisor cannot own the original PTY, so never project replayed Journal output. */
-  recoveredFromDeadPty?: boolean;
   terminalJournalError?: Error;
   terminalCheckpoint?: TerminalStreamCheckpoint;
   terminalCheckpointValidationAttemptAtMs?: number;
@@ -187,9 +185,44 @@ interface SupervisorSession {
   lifecycleTimer?: NodeJS.Timeout;
 }
 
-type SupervisorSubscriptionMode = 'legacy' | 'terminal-stream-v1';
+type SupervisorSubscriptionMode =
+  | 'legacy'
+  | 'control-only'
+  | 'terminal-stream-v1'
+  | 'terminal-stream-with-state-v1';
+
+function isTerminalStreamSubscription(mode: SupervisorSubscriptionMode): boolean {
+  return mode === 'terminal-stream-v1' || mode === 'terminal-stream-with-state-v1';
+}
+
+interface SupervisorTerminalProjectionIdentity {
+  sessionId: string;
+  authorityId: string;
+  targetRevision: number;
+}
+
+interface SupervisorTerminalProjectionStream extends SupervisorTerminalProjectionIdentity {
+  projectionId: string;
+  pin: TerminalSessionJournalProjectionPin;
+  follow: boolean;
+  checkpointComplete: boolean;
+  checkpointDataOffset: number;
+  nextRevision: number;
+  currentEvent?: TerminalStreamEvent;
+  eventDataOffset: number;
+}
+
+interface SupervisorTerminalProjectionTailBarrier extends SupervisorTerminalProjectionIdentity {
+  projectionId: string;
+}
+
+interface LocatedTerminalProjectionTailBarrier {
+  barriers: Map<string, SupervisorTerminalProjectionTailBarrier>;
+  barrier: SupervisorTerminalProjectionTailBarrier;
+}
 
 class RuntimeSupervisorServer {
+  private readonly supervisorInstanceId = randomUUID();
   private readonly sessions = new Map<string, SupervisorSession>();
   private readonly connections = new Set<net.Socket>();
   private readonly subscriptions = new Map<net.Socket, Map<string, SupervisorSubscriptionMode>>();
@@ -198,18 +231,19 @@ class RuntimeSupervisorServer {
     net.Socket,
     Map<string, RuntimeSupervisorAckSessionRevisionResult>
   >();
+  private readonly terminalProjectionStreams = new Map<
+    net.Socket,
+    Map<string, SupervisorTerminalProjectionStream>
+  >();
+  private readonly terminalProjectionTailBarriers = new Map<
+    net.Socket,
+    Map<string, SupervisorTerminalProjectionTailBarrier>
+  >();
   private persistTimer: NodeJS.Timeout | undefined;
   private persistRegistryChain: Promise<void> = Promise.resolve();
   private persistRegistryError: Error | undefined;
   private idleShutdownTimer: NodeJS.Timeout | undefined;
   private server: net.Server | undefined;
-  private recoveryComplete = true;
-  private recoveryFailureCount = 0;
-  private readonly pendingRecoverySessionIds = new Set<string>();
-  private recoveryState: RuntimeSupervisorRecoveryState = {
-    phase: 'ready',
-    pendingSessionCount: 0
-  };
 
   public constructor(
     private readonly paths: RuntimeSupervisorPaths,
@@ -220,22 +254,8 @@ class RuntimeSupervisorServer {
   public async start(): Promise<void> {
     fs.mkdirSync(this.paths.storageDir, { recursive: true });
     ensureSocketDirectoryReady(this.paths);
-    const recoveredSnapshots = this.readRegistrySnapshots();
-    for (const snapshot of recoveredSnapshots) {
-      this.pendingRecoverySessionIds.add(snapshot.sessionId);
-    }
-    this.recoveryComplete = this.pendingRecoverySessionIds.size === 0;
-    this.recoveryState = {
-      phase: this.recoveryComplete ? 'ready' : 'recovering',
-      pendingSessionCount: this.pendingRecoverySessionIds.size
-    };
     await this.listen();
-    if (this.recoveryComplete) {
-      this.scheduleIdleShutdownIfNeeded();
-      return;
-    }
-
-    void this.recoverRegistryInBackground(recoveredSnapshots);
+    this.scheduleIdleShutdownIfNeeded();
   }
 
   private async listen(): Promise<void> {
@@ -248,6 +268,8 @@ class RuntimeSupervisorServer {
       this.subscriptions.set(socket, new Map());
       this.deferredSubscriptionRevisions.set(socket, new Map());
       this.appliedRevisionAcks.set(socket, new Map());
+      this.terminalProjectionStreams.set(socket, new Map());
+      this.terminalProjectionTailBarriers.set(socket, new Map());
       this.clearIdleShutdownTimer();
       socket.setEncoding('utf8');
       let buffer = '';
@@ -312,15 +334,18 @@ class RuntimeSupervisorServer {
             result: {
               serverVersion: 1,
               pid: process.pid,
+              supervisorInstanceId: this.supervisorInstanceId,
               runtimeBackend: this.runtimeBackend,
               runtimeGuarantee: this.runtimeGuarantee,
-              recovery: this.recoveryState,
               capabilities: {
+                terminalProjectionStreamV1: true,
+                terminalProjectionFollowV1: true,
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
                 terminalProjectionCheckpointV1: true,
                 terminalAppliedRevisionAckV1: true,
-                agentSubmissionIntentV1: true
+                agentSubmissionIntentV1: true,
+                supervisorInstanceIdentityV1: true
               }
             }
           });
@@ -333,6 +358,12 @@ class RuntimeSupervisorServer {
             ok: true,
             result: snapshot
           });
+          if (
+            request.params.deferSubscription === true &&
+            request.params.terminalProjectionMode === 'stream-v1'
+          ) {
+            await this.activateControlSubscriptionWithCatchUp(socket, snapshot.sessionId);
+          }
           return;
         }
         case 'attachSession': {
@@ -343,6 +374,12 @@ class RuntimeSupervisorServer {
             ok: true,
             result: snapshot
           });
+          if (
+            request.params.deferSubscription === true &&
+            request.params.terminalProjectionMode === 'stream-v1'
+          ) {
+            await this.activateControlSubscriptionWithCatchUp(socket, snapshot.sessionId);
+          }
           return;
         }
         case 'getSessionSnapshot': {
@@ -385,10 +422,14 @@ class RuntimeSupervisorServer {
           });
           return;
         }
-        case 'writeInput':
-          this.writeInput(request.params);
+        case 'writeInput': {
+          const lifecycleSession = this.writeInput(request.params);
           this.writeOkResponse(socket, request.id);
+          if (lifecycleSession) {
+            this.emitSessionState(lifecycleSession);
+          }
           return;
+        }
         case 'resizeSession':
           await this.resizeSession(request.params);
           this.writeOkResponse(socket, request.id);
@@ -405,6 +446,30 @@ class RuntimeSupervisorServer {
           await this.deleteSession(request.params);
           this.writeOkResponse(socket, request.id);
           return;
+        case 'openTerminalProjection': {
+          const result = await this.openTerminalProjection(socket, request.params);
+          this.writeMessage(socket, {
+            type: 'response',
+            id: request.id,
+            ok: true,
+            result
+          });
+          return;
+        }
+        case 'readTerminalProjection': {
+          await this.readTerminalProjection(socket, request.id, request.params);
+          return;
+        }
+        case 'cancelTerminalProjection': {
+          const result = this.cancelTerminalProjection(socket, request.params);
+          this.writeMessage(socket, {
+            type: 'response',
+            id: request.id,
+            ok: true,
+            result
+          });
+          return;
+        }
       }
     } catch (error) {
       this.writeMessage(socket, {
@@ -434,7 +499,7 @@ class RuntimeSupervisorServer {
         ? params.launchMode === 'resume'
           ? 'resuming'
           : 'starting'
-        : 'launching';
+        : 'live';
     const launchSpec = deserializeExecutionSessionLaunchSpec(params.launchSpec);
     const explicitClaudeSessionFlag =
       params.kind === 'agent' && params.provider === 'claude' && params.launchMode === 'start'
@@ -470,7 +535,6 @@ class RuntimeSupervisorServer {
         }
       }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionAlreadyExists);
     }
-    this.claimRecoveredSessionIdForCreate(sessionId);
     const terminalStateTracker = new SerializedTerminalStateTracker(params.launchSpec.cols, params.launchSpec.rows, {
       scrollback,
       initialOutputSequence: 0
@@ -489,6 +553,7 @@ class RuntimeSupervisorServer {
     };
     const session: SupervisorSession = {
       sessionId,
+      stateRevision: 0,
       kind: params.kind,
       live: true,
       startedAtMs,
@@ -530,19 +595,6 @@ class RuntimeSupervisorServer {
     }
     this.bindSessionProcess(session);
 
-    if (session.kind === 'terminal') {
-      session.lifecycleTimer = setTimeout(() => {
-        const current = this.sessions.get(session.sessionId);
-        if (!current || !current.live || current.lifecycle !== 'launching') {
-          return;
-        }
-
-        current.lifecycleTimer = undefined;
-        current.lifecycle = 'live';
-        this.emitSessionState(current);
-      }, TERMINAL_LIVE_DELAY_MS);
-    }
-
     if (
       session.kind === 'agent' &&
       session.launchMode === 'start' &&
@@ -559,7 +611,14 @@ class RuntimeSupervisorServer {
     }
 
     this.schedulePersist();
-    const snapshot = await this.toFreshSnapshot(session);
+    const metadataOnlyProjection =
+      params.deferSubscription === true && params.terminalProjectionMode === 'stream-v1';
+    const snapshot = metadataOnlyProjection
+      ? await this.toFreshSnapshot(session, 'never', false)
+      : await this.toFreshSnapshot(session);
+    if (metadataOnlyProjection) {
+      return snapshot;
+    }
     if (params.deferSubscription === true && snapshot.terminalStream) {
       this.deferSocketSubscription(socket, sessionId, snapshot.terminalStream.revision);
     }
@@ -580,6 +639,27 @@ class RuntimeSupervisorServer {
       }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound);
     }
 
+    if (params.deferSubscription === true && params.terminalProjectionMode === 'stream-v1') {
+      return this.enqueueTerminalOperation(session, () => {
+        const snapshot = this.toSnapshot(session, undefined, false);
+        const journal = session.terminalJournal;
+        const authorityId = session.terminalAuthorityId;
+        if (
+          session.terminalJournalError ||
+          !journal ||
+          !authorityId
+        ) {
+          return snapshot;
+        }
+
+        const observedRevision = journal.getRevision();
+        return {
+          ...snapshot,
+          terminalProjectionTargetRevision: observedRevision
+        };
+      });
+    }
+
     if (params.deferSubscription === true && session.terminalJournal && session.terminalCheckpoint) {
       this.subscriptions.get(socket)?.delete(params.sessionId);
       const snapshot = await this.toFreshSnapshot(session);
@@ -592,6 +672,32 @@ class RuntimeSupervisorServer {
     this.clearDeferredSubscription(socket, params.sessionId);
     this.subscribeSocket(socket, params.sessionId, 'legacy');
     return this.toFreshSnapshot(session);
+  }
+
+  private async activateControlSubscriptionWithCatchUp(
+    socket: net.Socket,
+    sessionId: string
+  ): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || socket.destroyed) {
+      return;
+    }
+
+    await this.enqueueTerminalOperation(session, () => {
+      if (this.sessions.get(sessionId) !== session || socket.destroyed) {
+        return;
+      }
+      this.clearDeferredSubscription(socket, sessionId);
+      const subscriptionMode = this.subscriptions.get(socket)?.get(sessionId);
+      if (!subscriptionMode || !isTerminalStreamSubscription(subscriptionMode)) {
+        this.subscribeSocket(socket, sessionId, 'control-only');
+      }
+      this.writeMessage(socket, {
+        type: 'event',
+        event: 'sessionState',
+        payload: this.toSnapshot(session, undefined, false)
+      });
+    });
   }
 
   private getSessionSnapshot(
@@ -615,6 +721,7 @@ class RuntimeSupervisorServer {
         }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalJournalUnavailable);
       }
       return {
+        supervisorInstanceId: this.supervisorInstanceId,
         sessionId: session.sessionId,
         authorityId: session.terminalAuthorityId,
         revision: journal.getRevision(),
@@ -622,6 +729,329 @@ class RuntimeSupervisorServer {
         terminalCheckpointDiagnostics: this.getTerminalCheckpointDiagnostics(session)
       };
     });
+  }
+
+  private openTerminalProjection(
+    socket: net.Socket,
+    params: RuntimeSupervisorOpenTerminalProjectionParams
+  ): Promise<RuntimeSupervisorOpenTerminalProjectionResult> {
+    const session = this.requireSession(params.sessionId);
+    return this.enqueueTerminalOperation(session, async () => {
+      const journal = session.terminalJournal;
+      const authorityId = session.terminalAuthorityId;
+      let checkpoint = session.terminalCheckpoint;
+      if (
+        session.terminalJournalError ||
+        !journal ||
+        !authorityId ||
+        !checkpoint ||
+        checkpoint.sessionId !== session.sessionId ||
+        checkpoint.authorityId !== authorityId
+      ) {
+        // Reuse the last eligible checkpoint on the hot path. A full tracker
+        // validation/serialization is only needed before the first usable
+        // projection (or after a journal authority changes).
+        await this.createFreshSnapshot(session, 'always', false);
+        checkpoint = session.terminalCheckpoint;
+      }
+      if (session.terminalJournalError || !journal || !authorityId || !checkpoint) {
+        throw createRuntimeSupervisorProtocolError({
+          id: 'terminalJournalUnavailable',
+          params: { sessionId: params.sessionId }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalJournalUnavailable);
+      }
+      if (params.authorityId !== undefined && params.authorityId !== authorityId) {
+        throw createRuntimeSupervisorProtocolError({
+          id: 'terminalAuthorityMismatch',
+          params: { sessionId: params.sessionId }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalAuthorityMismatch);
+      }
+
+      const targetRevision = journal.getRevision();
+      const follow = params.follow === true;
+      const expectedTargetRevision = params.targetRevision === undefined
+        ? undefined
+        : normalizeTerminalStreamRevision(params.targetRevision);
+      if (
+        params.targetRevision !== undefined &&
+        (expectedTargetRevision === undefined || expectedTargetRevision !== targetRevision)
+      ) {
+        throw createRuntimeSupervisorProtocolError({
+          id: 'terminalRevisionInvalid',
+          params: {
+            sessionId: params.sessionId,
+            revision: String(params.targetRevision)
+          }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
+      }
+
+      let pin: TerminalSessionJournalProjectionPin | undefined;
+      let projectionId: string | undefined;
+      try {
+        try {
+          pin = journal.pinProjection(checkpoint, targetRevision);
+        } catch (error) {
+          // A retained checkpoint can become too old after compaction. Refresh
+          // once and retry so projection admission remains bounded without
+          // paying the full validation cost for every surface.
+          await this.createFreshSnapshot(session, 'always', false);
+          checkpoint = session.terminalCheckpoint;
+          if (!checkpoint) {
+            throw error;
+          }
+          pin = journal.pinProjection(checkpoint, targetRevision);
+        }
+        const streams = this.terminalProjectionStreams.get(socket);
+        const tailBarriers = this.terminalProjectionTailBarriers.get(socket);
+        if (socket.destroyed || !streams || !tailBarriers) {
+          throw createRuntimeSupervisorProtocolError({
+            id: 'clientDisconnected'
+          }, RUNTIME_SUPERVISOR_ERROR_CODES.clientDisconnected);
+        }
+
+        projectionId = randomUUID();
+        const stream: SupervisorTerminalProjectionStream = {
+          projectionId,
+          sessionId: params.sessionId,
+          authorityId,
+          targetRevision,
+          pin,
+          follow,
+          checkpointComplete: false,
+          checkpointDataOffset: 0,
+          nextRevision: pin.checkpoint.revision + 1,
+          eventDataOffset: 0
+        };
+        streams.set(projectionId, stream);
+        tailBarriers.set(projectionId, {
+          projectionId,
+          sessionId: params.sessionId,
+          authorityId,
+          targetRevision
+        });
+        const { data: _checkpointData, ...serializedState } = pin.checkpoint.serializedState;
+        return {
+          supervisorInstanceId: this.supervisorInstanceId,
+          projectionId,
+          sessionId: params.sessionId,
+          authorityId,
+          targetRevision,
+          follow,
+          checkpoint: {
+            version: pin.checkpoint.version,
+            sessionId: pin.checkpoint.sessionId,
+            authorityId: pin.checkpoint.authorityId,
+            revision: pin.checkpoint.revision,
+            cols: pin.checkpoint.cols,
+            rows: pin.checkpoint.rows,
+            scrollback: pin.checkpoint.scrollback,
+            createdAtMs: pin.checkpoint.createdAtMs,
+            serializedState
+          }
+        };
+      } catch (error) {
+        pin?.release();
+        if (projectionId) {
+          this.terminalProjectionStreams.get(socket)?.delete(projectionId);
+          this.terminalProjectionTailBarriers.get(socket)?.delete(projectionId);
+        }
+        throw error;
+      }
+    });
+  }
+
+  private async readTerminalProjection(
+    socket: net.Socket,
+    requestId: string,
+    params: RuntimeSupervisorReadTerminalProjectionParams
+  ): Promise<void> {
+    const creditBytes = params.creditBytes;
+    if (
+      !Number.isSafeInteger(creditBytes) ||
+      creditBytes < RUNTIME_SUPERVISOR_TERMINAL_PROJECTION_MIN_CREDIT_BYTES ||
+      creditBytes > RUNTIME_SUPERVISOR_TERMINAL_PROJECTION_MAX_CREDIT_BYTES
+    ) {
+      throw new Error(
+        `Terminal projection credit must be between ${RUNTIME_SUPERVISOR_TERMINAL_PROJECTION_MIN_CREDIT_BYTES} and ${RUNTIME_SUPERVISOR_TERMINAL_PROJECTION_MAX_CREDIT_BYTES} bytes.`
+      );
+    }
+
+    const initialStream = this.terminalProjectionStreams.get(socket)?.get(params.projectionId);
+    if (!initialStream) {
+      throw new Error(`Terminal projection ${params.projectionId} is not open on this connection.`);
+    }
+
+    const session = this.requireSession(initialStream.sessionId);
+    await this.enqueueTerminalOperation(session, async () => {
+      const stream = this.terminalProjectionStreams.get(socket)?.get(params.projectionId);
+      if (!stream) {
+        throw new Error(`Terminal projection ${params.projectionId} is no longer open on this connection.`);
+      }
+      const result = this.readTerminalProjectionAtSettledRevision(socket, session, stream, creditBytes);
+      // Keep this write inside the session operation. A transition to the live
+      // subscription must publish this response before any later PTY event.
+      this.writeMessage(socket, {
+        type: 'response',
+        id: requestId,
+        ok: true,
+        result
+      });
+    });
+  }
+
+  private readTerminalProjectionAtSettledRevision(
+    socket: net.Socket,
+    session: SupervisorSession,
+    stream: SupervisorTerminalProjectionStream,
+    creditBytes: number
+  ): RuntimeSupervisorReadTerminalProjectionResult {
+    const journal = session.terminalJournal;
+    if (session.terminalJournalError || !journal || session.terminalAuthorityId !== stream.authorityId) {
+      throw createRuntimeSupervisorProtocolError({
+        id: 'terminalJournalUnavailable',
+        params: { sessionId: stream.sessionId }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalJournalUnavailable);
+    }
+
+    if (stream.checkpointComplete && stream.nextRevision > stream.targetRevision) {
+      if (stream.follow) {
+        const headRevision = journal.getRevision();
+        if (stream.nextRevision <= headRevision) {
+          // Every revision observed before the atomic live subscription stays
+          // on the same credit/ACK projection path. Ready therefore means the
+          // Webview has applied the complete settled backlog, not only the
+          // fixed open-time cut.
+          stream.pin.extendTargetRevision(headRevision);
+          stream.targetRevision = headRevision;
+          const barrier = this.terminalProjectionTailBarriers.get(socket)?.get(stream.projectionId);
+          if (!barrier) {
+            throw new Error(`Terminal projection ${stream.projectionId} live-tail barrier is unavailable.`);
+          }
+          barrier.targetRevision = headRevision;
+        } else {
+          const live = session.live;
+          if (live) {
+            this.subscribeSocket(socket, stream.sessionId, 'terminal-stream-v1');
+          }
+          const result: RuntimeSupervisorReadTerminalProjectionResult = {
+            supervisorInstanceId: this.supervisorInstanceId,
+            projectionId: stream.projectionId,
+            sessionId: stream.sessionId,
+            authorityId: stream.authorityId,
+            targetRevision: headRevision,
+            payloadBytes: 0,
+            done: true,
+            live
+          };
+          this.releaseTerminalProjectionStream(socket, stream.projectionId);
+          return result;
+        }
+      }
+    }
+
+    let chunk: RuntimeSupervisorTerminalProjectionChunk;
+    let payloadBytes: number;
+    if (!stream.checkpointComplete) {
+      const result = sliceTerminalProjectionDataChunk(
+        stream.pin.checkpoint.serializedState.data,
+        stream.checkpointDataOffset,
+        creditBytes,
+        (data, complete) => ({
+          kind: 'checkpoint',
+          dataOffset: stream.checkpointDataOffset,
+          data,
+          complete
+        })
+      );
+      chunk = result.chunk;
+      payloadBytes = result.payloadBytes;
+      stream.checkpointDataOffset = result.nextOffset;
+      stream.checkpointComplete = chunk.complete;
+    } else {
+      const event = stream.currentEvent ?? stream.pin.readEvent(stream.nextRevision);
+      if (!event) {
+        throw new Error(`Terminal projection event ${stream.nextRevision} is unavailable.`);
+      }
+      stream.currentEvent = event;
+      if (event.type === 'output') {
+        const result = sliceTerminalProjectionDataChunk(
+          event.data,
+          stream.eventDataOffset,
+          creditBytes,
+          (data, complete) => ({
+            kind: 'output',
+            revision: event.revision,
+            createdAtMs: event.createdAtMs,
+            dataOffset: stream.eventDataOffset,
+            data,
+            complete
+          })
+        );
+        chunk = result.chunk;
+        payloadBytes = result.payloadBytes;
+        stream.eventDataOffset = result.nextOffset;
+        if (chunk.complete) {
+          stream.currentEvent = undefined;
+          stream.eventDataOffset = 0;
+          stream.nextRevision += 1;
+        }
+      } else if (event.type === 'resize') {
+        chunk = {
+          kind: 'resize',
+          revision: event.revision,
+          createdAtMs: event.createdAtMs,
+          cols: event.cols,
+          rows: event.rows,
+          complete: true
+        };
+        payloadBytes = terminalProjectionChunkPayloadBytes(chunk);
+        stream.currentEvent = undefined;
+        stream.nextRevision += 1;
+      } else {
+        chunk = {
+          kind: 'scrollback',
+          revision: event.revision,
+          createdAtMs: event.createdAtMs,
+          scrollback: event.scrollback,
+          complete: true
+        };
+        payloadBytes = terminalProjectionChunkPayloadBytes(chunk);
+        stream.currentEvent = undefined;
+        stream.nextRevision += 1;
+      }
+      if (payloadBytes > creditBytes) {
+        throw new Error(`Terminal projection metadata exceeds the supplied ${creditBytes}-byte credit.`);
+      }
+    }
+
+    const done = !stream.follow && stream.checkpointComplete && stream.nextRevision > stream.targetRevision;
+    const result: RuntimeSupervisorReadTerminalProjectionResult = {
+      supervisorInstanceId: this.supervisorInstanceId,
+      projectionId: stream.projectionId,
+      sessionId: stream.sessionId,
+      authorityId: stream.authorityId,
+      targetRevision: stream.targetRevision,
+      payloadBytes,
+      chunkChecksum: terminalProjectionChunkChecksum(chunk),
+      chunk,
+      done
+    };
+    if (done) {
+      this.releaseTerminalProjectionStream(socket, stream.projectionId);
+    }
+    return result;
+  }
+
+  private cancelTerminalProjection(
+    socket: net.Socket,
+    params: RuntimeSupervisorCancelTerminalProjectionParams
+  ): RuntimeSupervisorCancelTerminalProjectionResult {
+    const cancelled = this.releaseTerminalProjectionStream(socket, params.projectionId);
+    return {
+      supervisorInstanceId: this.supervisorInstanceId,
+      projectionId: params.projectionId,
+      cancelled
+    };
   }
 
   private subscribeSession(
@@ -676,20 +1106,32 @@ class RuntimeSupervisorServer {
         }
       }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
     }
+    const projectionBarrier = params.projectionId === undefined
+      ? undefined
+      : this.requireTerminalProjectionTailBarrier(params.projectionId, {
+          sessionId: params.sessionId,
+          authorityId: params.authorityId,
+          targetRevision: afterRevision
+        });
 
     const replayEvents = journal.getEventsAfter(afterRevision);
-    this.subscribeSocket(socket, params.sessionId, 'terminal-stream-v1');
+    // The compatibility subscribe RPC shares one socket for terminal events
+    // and lifecycle. Bulk follow sockets use terminal-stream-v1 and must not
+    // receive compact state snapshots duplicated from the control socket.
+    this.subscribeSocket(socket, params.sessionId, 'terminal-stream-with-state-v1');
     for (const event of replayEvents) {
       this.writeTerminalStreamEvent(socket, session, event);
     }
     this.writeMessage(socket, {
       type: 'event',
       event: 'sessionState',
-      payload: this.toSnapshot(session)
+      payload: this.toSnapshot(session, undefined, false)
     });
     this.clearDeferredSubscription(socket, params.sessionId);
+    projectionBarrier?.barriers.delete(projectionBarrier.barrier.projectionId);
     this.releaseTerminalJournalMemoryThroughCheckpoint(session);
     return {
+      supervisorInstanceId: this.supervisorInstanceId,
       sessionId: session.sessionId,
       authorityId: session.terminalAuthorityId,
       revision: journal.getRevision()
@@ -750,6 +1192,7 @@ class RuntimeSupervisorServer {
     }
 
     const result: RuntimeSupervisorAckSessionRevisionResult = {
+      supervisorInstanceId: this.supervisorInstanceId,
       sessionId: params.sessionId,
       authorityId: params.authorityId,
       consumerId,
@@ -760,7 +1203,7 @@ class RuntimeSupervisorServer {
     return result;
   }
 
-  private writeInput(params: RuntimeSupervisorWriteInputParams): void {
+  private writeInput(params: RuntimeSupervisorWriteInputParams): SupervisorSession | undefined {
     const session = this.requireLiveSession(params.sessionId);
     if (session.kind === 'agent' && session.provider === 'claude' && containsTerminalSuspendInput(params.data)) {
       throw createRuntimeSupervisorProtocolError({
@@ -773,6 +1216,9 @@ class RuntimeSupervisorServer {
         id: 'claudeCodeSuspended'
       }, RUNTIME_SUPERVISOR_ERROR_CODES.claudeSuspended);
     }
+
+    this.assertTerminalMutationAdmissionOpen(session);
+    session.process?.write(params.data);
 
     if (session.kind === 'agent') {
       const inputAtMs = Date.now();
@@ -812,15 +1258,14 @@ class RuntimeSupervisorServer {
         );
         session.lifecycle = 'running';
         session.resumePhaseActive = false;
-        this.emitSessionState(session);
         this.queueAgentWaitingInput(session.sessionId);
+        return session;
       }
     } else if (session.lifecycle === 'launching') {
       session.lifecycle = 'live';
-      this.emitSessionState(session);
+      return session;
     }
-
-    session.process?.write(params.data);
+    return undefined;
   }
 
   private async resizeSession(params: RuntimeSupervisorResizeSessionParams): Promise<void> {
@@ -934,12 +1379,13 @@ class RuntimeSupervisorServer {
       session.terminalTitle = undefined;
       session.terminalTitleCarryover = undefined;
       session.terminalTitleRedactionState = undefined;
+      this.advanceSessionStateRevision(session);
       const message: RuntimeSupervisorEvent = {
         type: 'event',
         event: 'sessionState',
         payload: session.terminalJournalError
-          ? this.toSnapshot(session)
-          : await this.createFreshSnapshot(session, 'never')
+          ? this.toSnapshot(session, undefined, false)
+          : await this.createFreshSnapshot(session, 'never', false)
       };
       this.broadcastToSessionSubscribers(session.sessionId, message);
       this.schedulePersist();
@@ -947,6 +1393,7 @@ class RuntimeSupervisorServer {
     this.disposeSession(session, {
       terminateProcess: false
     });
+    this.clearSessionSubscriptions(params.sessionId);
     if (session.terminalJournal) {
       await session.terminalJournal.delete();
     } else if (session.terminalAuthorityId) {
@@ -955,7 +1402,6 @@ class RuntimeSupervisorServer {
         { recursive: true, force: true }
       );
     }
-    this.clearSessionSubscriptions(params.sessionId);
     this.sessions.delete(params.sessionId);
     this.schedulePersist();
     this.scheduleIdleShutdownIfNeeded();
@@ -978,6 +1424,7 @@ class RuntimeSupervisorServer {
           throw error;
         }
         session.outputSequence = terminalEvent?.revision ?? session.outputSequence + 1;
+        this.advanceSessionStateRevision(session);
         session.output = appendOutputTail(session.output, terminalOutput);
         for (const report of titleUpdate.titleReports) {
           try {
@@ -1143,10 +1590,11 @@ class RuntimeSupervisorServer {
 
       session.lastExitCode = exitCode;
       session.lastExitSignal = normalizeSignal(signal);
+      this.advanceSessionStateRevision(session);
       const message: RuntimeSupervisorEvent = {
         type: 'event',
         event: 'sessionState',
-        payload: await this.createFreshSnapshot(session, 'never')
+        payload: await this.createFreshSnapshot(session, 'never', false)
       };
       this.broadcastToSessionSubscribers(session.sessionId, message);
       this.schedulePersist();
@@ -1364,6 +1812,7 @@ class RuntimeSupervisorServer {
       type: 'event',
       event: 'sessionOutput',
       payload: {
+        supervisorInstanceId: this.supervisorInstanceId,
         sessionId: session.sessionId,
         kind: session.kind,
         chunk,
@@ -1378,7 +1827,10 @@ class RuntimeSupervisorServer {
       if (!mode || socket.destroyed) {
         continue;
       }
-      if (mode === 'terminal-stream-v1' && terminalEvent) {
+      if (mode === 'control-only') {
+        continue;
+      }
+      if (isTerminalStreamSubscription(mode) && terminalEvent) {
         this.writeTerminalStreamEvent(socket, session, terminalEvent, terminalTitle);
       } else {
         this.writeMessage(socket, legacyMessage);
@@ -1388,7 +1840,8 @@ class RuntimeSupervisorServer {
 
   private emitTerminalStreamEvent(session: SupervisorSession, event: TerminalStreamEvent): void {
     for (const [socket, subscriptions] of this.subscriptions.entries()) {
-      if (subscriptions.get(session.sessionId) !== 'terminal-stream-v1' || socket.destroyed) {
+      const mode = subscriptions.get(session.sessionId);
+      if (!mode || !isTerminalStreamSubscription(mode) || socket.destroyed) {
         continue;
       }
       this.writeTerminalStreamEvent(socket, session, event);
@@ -1405,6 +1858,7 @@ class RuntimeSupervisorServer {
       type: 'event',
       event: 'sessionTerminalEvent',
       payload: {
+        supervisorInstanceId: this.supervisorInstanceId,
         sessionId: session.sessionId,
         kind: session.kind,
         authorityId: session.terminalAuthorityId ?? '',
@@ -1415,20 +1869,22 @@ class RuntimeSupervisorServer {
   }
 
   private emitSessionState(session: SupervisorSession): void {
+    this.advanceSessionStateRevision(session);
     const message: RuntimeSupervisorEvent = {
       type: 'event',
       event: 'sessionState',
-      payload: this.toSnapshot(session)
+      payload: this.toSnapshot(session, undefined, false)
     };
     this.broadcastToSessionSubscribers(session.sessionId, message);
     this.schedulePersist();
   }
 
   private async emitFreshSessionState(session: SupervisorSession): Promise<void> {
+    this.advanceSessionStateRevision(session);
     const message: RuntimeSupervisorEvent = {
       type: 'event',
       event: 'sessionState',
-      payload: await this.toFreshSnapshot(session)
+      payload: await this.toFreshSnapshot(session, 'always', false)
     };
     this.broadcastToSessionSubscribers(session.sessionId, message);
     this.schedulePersist();
@@ -1740,11 +2196,12 @@ class RuntimeSupervisorServer {
       : session.terminalStateTracker.getSerializedState(),
     includeTerminalProjection = true
   ): RuntimeSupervisorSessionSnapshot {
-    const includeRecoveredTerminalProjection = includeTerminalProjection && !session.recoveredFromDeadPty;
-    const terminalStream = includeRecoveredTerminalProjection
+    const terminalStream = includeTerminalProjection
       ? this.buildTerminalStreamAttachPayload(session)
       : undefined;
     return {
+      supervisorInstanceId: this.supervisorInstanceId,
+      stateRevision: session.stateRevision,
       sessionId: session.sessionId,
       kind: session.kind,
       live: session.live,
@@ -1761,11 +2218,12 @@ class RuntimeSupervisorServer {
       // Live snapshots must distinguish a known empty title from legacy snapshots that omit it.
       terminalTitle: session.live ? session.terminalTitle ?? null : undefined,
       outputSequence: session.outputSequence,
-      serializedTerminalState: includeRecoveredTerminalProjection
+      serializedTerminalState: includeTerminalProjection
         ? this.getFreshSerializedTerminalState(session, serializedTerminalState)
         : undefined,
       terminalAuthorityId: session.terminalJournalError ? undefined : session.terminalAuthorityId,
       terminalRevision: session.terminalJournalError ? undefined : session.terminalJournal?.getRevision(),
+      terminalProjectionIncluded: includeTerminalProjection,
       terminalStream,
       terminalCheckpointDiagnostics: this.getTerminalCheckpointDiagnostics(session, terminalStream),
       displayLabel: session.displayLabel,
@@ -1790,8 +2248,12 @@ class RuntimeSupervisorServer {
     };
   }
 
+  private advanceSessionStateRevision(session: SupervisorSession): void {
+    session.stateRevision = Math.min(Number.MAX_SAFE_INTEGER, session.stateRevision + 1);
+  }
+
   private buildTerminalStreamAttachPayload(session: SupervisorSession): TerminalStreamAttachPayload | undefined {
-    if (session.recoveredFromDeadPty || session.terminalJournalError) {
+    if (session.terminalJournalError) {
       return undefined;
     }
     const journal = session.terminalJournal;
@@ -1873,7 +2335,7 @@ class RuntimeSupervisorServer {
   }
 
   private deferSocketSubscription(socket: net.Socket, sessionId: string, revision: number): void {
-    this.subscriptions.get(socket)?.delete(sessionId);
+    this.subscribeSocket(socket, sessionId, 'control-only');
     this.deferredSubscriptionRevisions.get(socket)?.set(sessionId, revision);
   }
 
@@ -1881,7 +2343,82 @@ class RuntimeSupervisorServer {
     this.deferredSubscriptionRevisions.get(socket)?.delete(sessionId);
   }
 
+  private releaseTerminalProjectionStream(
+    socket: net.Socket,
+    projectionId: string,
+    options: { releaseTailBarrier?: boolean } = {}
+  ): boolean {
+    const streams = this.terminalProjectionStreams.get(socket);
+    const stream = streams?.get(projectionId);
+    const tailBarriers = this.terminalProjectionTailBarriers.get(socket);
+    const tailBarrier = tailBarriers?.get(projectionId);
+    if (!stream && !tailBarrier) {
+      return false;
+    }
+    if (stream) {
+      streams?.delete(projectionId);
+      stream.pin.release();
+    }
+    if (options.releaseTailBarrier !== false) {
+      tailBarriers?.delete(projectionId);
+    }
+    const session = this.sessions.get(stream?.sessionId ?? tailBarrier?.sessionId ?? '');
+    if (session) {
+      this.releaseTerminalJournalMemoryThroughCheckpoint(session);
+    }
+    return true;
+  }
+
+  private clearTerminalProjectionTailBarriers(sessionId: string): void {
+    for (const barriers of this.terminalProjectionTailBarriers.values()) {
+      for (const [projectionId, barrier] of barriers) {
+        if (barrier.sessionId === sessionId) {
+          barriers.delete(projectionId);
+        }
+      }
+    }
+  }
+
+  private requireTerminalProjectionTailBarrier(
+    projectionId: string,
+    expected: SupervisorTerminalProjectionIdentity
+  ): LocatedTerminalProjectionTailBarrier {
+    for (const barriers of this.terminalProjectionTailBarriers.values()) {
+      const barrier = barriers.get(projectionId);
+      if (!barrier) {
+        continue;
+      }
+      if (
+        barrier.sessionId !== expected.sessionId ||
+        barrier.authorityId !== expected.authorityId ||
+        barrier.targetRevision !== expected.targetRevision
+      ) {
+        break;
+      }
+      return { barriers, barrier };
+    }
+    throw createRuntimeSupervisorProtocolError({
+      id: 'terminalRevisionInvalid',
+      params: {
+        sessionId: expected.sessionId,
+        revision: String(expected.targetRevision)
+      }
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
+  }
+
+  private clearSessionTerminalProjections(sessionId: string): void {
+    for (const [socket, streams] of this.terminalProjectionStreams) {
+      for (const [projectionId, stream] of streams) {
+        if (stream.sessionId === sessionId) {
+          this.releaseTerminalProjectionStream(socket, projectionId);
+        }
+      }
+    }
+    this.clearTerminalProjectionTailBarriers(sessionId);
+  }
+
   private clearSessionSubscriptions(sessionId: string): void {
+    this.clearSessionTerminalProjections(sessionId);
     for (const subscriptions of this.subscriptions.values()) {
       subscriptions.delete(sessionId);
     }
@@ -1918,10 +2455,24 @@ class RuntimeSupervisorServer {
         ? revision
         : Math.min(retentionRevision, revision);
     };
+    const pinnedProjectionRevision = session.terminalJournal?.getPinnedProjectionRetentionRevision();
+    if (pinnedProjectionRevision !== undefined) {
+      retainAfter(pinnedProjectionRevision);
+    }
     for (const deferredRevisions of this.deferredSubscriptionRevisions.values()) {
       const deferredRevision = deferredRevisions.get(session.sessionId);
       if (deferredRevision !== undefined) {
         retainAfter(deferredRevision);
+      }
+    }
+    for (const barriers of this.terminalProjectionTailBarriers.values()) {
+      for (const barrier of barriers.values()) {
+        if (
+          barrier.sessionId === session.sessionId &&
+          barrier.authorityId === session.terminalAuthorityId
+        ) {
+          retainAfter(barrier.targetRevision);
+        }
       }
     }
     for (const appliedRevisions of this.appliedRevisionAcks.values()) {
@@ -1940,7 +2491,12 @@ class RuntimeSupervisorServer {
   private broadcastToSessionSubscribers(sessionId: string, message: RuntimeSupervisorEvent): void {
     const payload = `${JSON.stringify(message)}\n`;
     for (const [socket, subscriptions] of this.subscriptions.entries()) {
-      if (!subscriptions.has(sessionId) || socket.destroyed) {
+      const mode = subscriptions.get(sessionId);
+      if (
+        !mode ||
+        socket.destroyed ||
+        (message.event === 'sessionState' && mode === 'terminal-stream-v1')
+      ) {
         continue;
       }
 
@@ -1962,6 +2518,7 @@ class RuntimeSupervisorServer {
       id,
       ok: true,
       result: {
+        supervisorInstanceId: this.supervisorInstanceId,
         ok: true
       }
     });
@@ -1972,10 +2529,20 @@ class RuntimeSupervisorServer {
     for (const appliedRevision of this.appliedRevisionAcks.get(socket)?.values() ?? []) {
       affectedSessionIds.add(appliedRevision.sessionId);
     }
+    for (const [projectionId, stream] of this.terminalProjectionStreams.get(socket) ?? []) {
+      affectedSessionIds.add(stream.sessionId);
+      this.releaseTerminalProjectionStream(socket, projectionId);
+    }
+    for (const [projectionId, barrier] of this.terminalProjectionTailBarriers.get(socket) ?? []) {
+      affectedSessionIds.add(barrier.sessionId);
+      this.releaseTerminalProjectionStream(socket, projectionId);
+    }
     this.connections.delete(socket);
     this.subscriptions.delete(socket);
     this.deferredSubscriptionRevisions.delete(socket);
     this.appliedRevisionAcks.delete(socket);
+    this.terminalProjectionStreams.delete(socket);
+    this.terminalProjectionTailBarriers.delete(socket);
     for (const sessionId of affectedSessionIds) {
       const session = this.sessions.get(sessionId);
       if (session) {
@@ -2030,17 +2597,18 @@ class RuntimeSupervisorServer {
       sessionEntries.map(async (session) => {
         let snapshot: RuntimeSupervisorSessionSnapshot;
         try {
-          snapshot = await this.toFreshSnapshot(
-            session,
-            session.terminalAuthorityId ? 'if-compaction-due' : 'always',
-            !session.terminalAuthorityId
+          // The registry is a compact diagnostic/control descriptor. A new
+          // Supervisor never rehydrates PTY authority from it, so do not flush
+          // or serialize the terminal tracker/journal on every 120 ms persist.
+          snapshot = await this.enqueueTerminalOperation(session, () =>
+            this.toSnapshot(session, undefined, false)
           );
         } catch (error) {
           if (!session.terminalJournal) {
             throw error;
           }
           this.failSessionForTerminalJournal(session, error);
-          snapshot = this.toSnapshot(session);
+          snapshot = this.toSnapshot(session, undefined, false);
         }
         if (this.sessions.get(session.sessionId) !== session) {
           return undefined;
@@ -2072,174 +2640,8 @@ class RuntimeSupervisorServer {
     this.persistRegistryError = undefined;
   }
 
-  private readRegistrySnapshots(): RuntimeSupervisorSessionSnapshot[] {
-    if (!fs.existsSync(this.paths.registryPath)) {
-      return [];
-    }
-
-    try {
-      const registry = JSON.parse(fs.readFileSync(this.paths.registryPath, 'utf8')) as SupervisorRegistry;
-      return Array.isArray(registry.sessions) ? registry.sessions : [];
-    } catch {
-      return [];
-    }
-  }
-
-  private async recoverRegistryInBackground(snapshots: RuntimeSupervisorSessionSnapshot[]): Promise<void> {
-    try {
-      await waitForTestRecoveryGate();
-      for (const snapshot of snapshots) {
-        if (!this.pendingRecoverySessionIds.has(snapshot.sessionId)) {
-          continue;
-        }
-
-        let recoveredSession: SupervisorSession | undefined;
-        try {
-          recoveredSession = await this.normalizeRecoveredSession(snapshot);
-          if (recoveredSession.terminalJournalError) {
-            this.recoveryFailureCount += 1;
-          }
-          if (this.pendingRecoverySessionIds.delete(snapshot.sessionId) && !this.sessions.has(snapshot.sessionId)) {
-            this.sessions.set(snapshot.sessionId, recoveredSession);
-          } else {
-            recoveredSession.terminalStateTracker.dispose();
-          }
-        } catch (error) {
-          this.pendingRecoverySessionIds.delete(snapshot.sessionId);
-          this.recoveryFailureCount += 1;
-          console.error(`Failed to recover runtime session ${snapshot.sessionId}:`, error);
-        } finally {
-          this.publishRecoveryState();
-        }
-      }
-    } finally {
-      this.pendingRecoverySessionIds.clear();
-      this.recoveryComplete = true;
-      this.publishRecoveryState();
-      this.schedulePersist();
-      this.scheduleIdleShutdownIfNeeded();
-    }
-  }
-
-  private claimRecoveredSessionIdForCreate(sessionId: string): void {
-    if (!this.pendingRecoverySessionIds.delete(sessionId)) {
-      return;
-    }
-
-    this.publishRecoveryState();
-  }
-
-  private publishRecoveryState(): void {
-    this.recoveryState = {
-      phase: this.recoveryComplete ? 'ready' : 'recovering',
-      pendingSessionCount: this.pendingRecoverySessionIds.size,
-      ...(this.recoveryFailureCount > 0 ? { failureCount: this.recoveryFailureCount } : {})
-    };
-    const message: RuntimeSupervisorEvent = {
-      type: 'event',
-      event: 'recoveryState',
-      payload: this.recoveryState
-    };
-    for (const socket of this.connections) {
-      this.writeMessage(socket, message);
-    }
-  }
-
-  private async normalizeRecoveredSession(snapshot: RuntimeSupervisorSessionSnapshot): Promise<SupervisorSession> {
-    let lifecycle =
-      snapshot.kind === 'agent'
-        ? normalizeRecoveredAgentLifecycle(snapshot.lifecycle as AgentNodeStatus)
-        : normalizeRecoveredTerminalLifecycle(snapshot.lifecycle as TerminalNodeStatus);
-    const recoveryDescriptor: RuntimeSupervisorMessageDescriptor = {
-      id: 'recoveredHistoryOnly'
-    };
-    let lastExitMessageDescriptor = snapshot.lastExitMessageDescriptor ?? (
-      snapshot.lastExitMessage ? undefined : recoveryDescriptor
-    );
-    let lastExitMessage =
-      snapshot.lastExitMessage ||
-      formatRuntimeSupervisorMessageDescriptor(recoveryDescriptor);
-    const scrollback = normalizeTerminalScrollback(snapshot.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
-
-    const normalizedTerminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
-    const recoveredAuthorityId = snapshot.terminalAuthorityId?.trim() || normalizedTerminalStream?.authorityId;
-    const recoveredOutputSequence = normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence);
-    if (recoveredAuthorityId) {
-      try {
-        // Manifest revision is Journal audit metadata, not the sequence of the saved display
-        // projection. Keep validating the Journal without breaking the screen/sequence pair.
-        await readTerminalSessionJournalMetadata(
-          this.paths.storageDir,
-          snapshot.sessionId,
-          recoveredAuthorityId
-        );
-      } catch (error) {
-        // The original PTY is already gone. Retain the saved canvas projection even when the
-        // optional raw Journal cannot be indexed; never turn this into a transcript replay.
-        console.error(`Failed to inspect terminal journal metadata for session ${snapshot.sessionId}:`, error);
-      }
-    }
-    const terminalStateTracker = new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
-      scrollback,
-      initialState: snapshot.serializedTerminalState,
-      initialOutput: snapshot.serializedTerminalState ? undefined : snapshot.output,
-      initialOutputSequence: recoveredOutputSequence
-    });
-    const recoveredProviderLifecycle =
-      snapshot.kind === 'agent' && snapshot.provider
-        ? {
-            ...createAgentProviderLifecycleState(snapshot.provider, false),
-            activitySource: normalizeAgentActivitySource(snapshot.agentActivitySource) ?? 'heuristic',
-            activityAuthority: snapshot.agentActivityAuthority ?? 'best-effort',
-            providerSessionId: snapshot.providerSessionId,
-            activeProviderTurnId: snapshot.providerTurnId,
-            lastProviderTurnId: snapshot.providerTurnId,
-            lastTurnOutcome: snapshot.lastTurnOutcome,
-            lastTurnError: snapshot.lastTurnError
-          }
-        : undefined;
-
-    return {
-      ...snapshot,
-      live: false,
-      startedAtMs: Date.now(),
-      lifecycle,
-      runtimeBackend: normalizeRuntimeHostBackend(snapshot.runtimeBackend),
-      runtimeGuarantee: normalizeRuntimePersistenceGuarantee(snapshot.runtimeGuarantee),
-      resumePhaseActive:
-        typeof snapshot.resumePhaseActive === 'boolean'
-          ? snapshot.resumePhaseActive
-          : snapshot.kind === 'agent' &&
-            snapshot.launchMode === 'resume' &&
-            isAgentResumePhaseActive(snapshot.lifecycle as AgentNodeStatus),
-      lastExitMessage,
-      lastExitMessageDescriptor,
-      stopRequested: false,
-      agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
-      agentProviderLifecycle: recoveredProviderLifecycle,
-      cols: snapshot.cols,
-      rows: snapshot.rows,
-      scrollback,
-      output: snapshot.output,
-      terminalTitle: snapshot.live ? snapshot.terminalTitle ?? undefined : undefined,
-      outputSequence: recoveredOutputSequence,
-      terminalAuthorityId: recoveredAuthorityId,
-      recoveredFromDeadPty: true,
-      terminalCheckpointConsecutiveRejectionCount: 0,
-      terminalStateTracker,
-      terminalOperationChain: Promise.resolve(),
-      terminalMutationAdmissionOpen: false,
-      finalizationPromise: undefined,
-      process: undefined,
-      outputSubscription: undefined,
-      exitSubscription: undefined,
-      lifecycleTimer: undefined
-    };
-  }
-
   private scheduleIdleShutdownIfNeeded(): void {
     if (
-      !this.recoveryComplete ||
       this.connections.size > 0 ||
       Array.from(this.sessions.values()).some((session) => session.live)
     ) {
@@ -2271,6 +2673,88 @@ class RuntimeSupervisorServer {
       this.idleShutdownTimer = undefined;
     }
   }
+}
+
+function sliceTerminalProjectionDataChunk(
+  data: string,
+  dataOffset: number,
+  creditBytes: number,
+  createChunk: (data: string, complete: boolean) => RuntimeSupervisorTerminalProjectionChunk
+): {
+  chunk: RuntimeSupervisorTerminalProjectionChunk;
+  payloadBytes: number;
+  nextOffset: number;
+} {
+  if (
+    !Number.isSafeInteger(dataOffset) ||
+    dataOffset < 0 ||
+    dataOffset > data.length ||
+    splitsUtf16SurrogatePair(data, dataOffset)
+  ) {
+    throw new Error(`Invalid terminal projection data offset ${dataOffset}.`);
+  }
+
+  if (dataOffset === data.length) {
+    const chunk = createChunk('', true);
+    const payloadBytes = terminalProjectionChunkPayloadBytes(chunk);
+    if (payloadBytes > creditBytes) {
+      throw new Error(`Terminal projection metadata exceeds the supplied ${creditBytes}-byte credit.`);
+    }
+    return { chunk, payloadBytes, nextOffset: dataOffset };
+  }
+
+  const maxCodeUnits = Math.min(data.length - dataOffset, creditBytes);
+  let lower = 1;
+  let upper = maxCodeUnits;
+  let best:
+    | {
+        chunk: RuntimeSupervisorTerminalProjectionChunk;
+        payloadBytes: number;
+        nextOffset: number;
+      }
+    | undefined;
+  while (lower <= upper) {
+    const candidateUnits = Math.floor((lower + upper) / 2);
+    let nextOffset = dataOffset + candidateUnits;
+    if (splitsUtf16SurrogatePair(data, nextOffset)) {
+      nextOffset -= 1;
+    }
+    if (nextOffset <= dataOffset) {
+      lower = candidateUnits + 1;
+      continue;
+    }
+
+    const chunk = createChunk(data.slice(dataOffset, nextOffset), nextOffset === data.length);
+    const payloadBytes = terminalProjectionChunkPayloadBytes(chunk);
+    if (payloadBytes <= creditBytes) {
+      best = { chunk, payloadBytes, nextOffset };
+      lower = candidateUnits + 1;
+    } else {
+      upper = candidateUnits - 1;
+    }
+  }
+
+  if (!best) {
+    throw new Error(`Terminal projection credit ${creditBytes} cannot fit one Unicode code point.`);
+  }
+  return best;
+}
+
+function splitsUtf16SurrogatePair(data: string, offset: number): boolean {
+  if (offset <= 0 || offset >= data.length) {
+    return false;
+  }
+  const previous = data.charCodeAt(offset - 1);
+  const next = data.charCodeAt(offset);
+  return previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff;
+}
+
+function terminalProjectionChunkPayloadBytes(chunk: RuntimeSupervisorTerminalProjectionChunk): number {
+  return Buffer.byteLength(JSON.stringify(chunk), 'utf8');
+}
+
+function terminalProjectionChunkChecksum(chunk: RuntimeSupervisorTerminalProjectionChunk): string {
+  return createHash('sha256').update(JSON.stringify(chunk), 'utf8').digest('hex');
 }
 
 function appendOutputTail(existing: string, chunk: string): string {
@@ -2412,36 +2896,6 @@ function describeTerminalExit(
   };
 }
 
-function normalizeRecoveredAgentLifecycle(status: AgentNodeStatus): AgentNodeStatus {
-  if (
-    status === 'starting' ||
-    status === 'running' ||
-    status === 'waiting-input' ||
-    status === 'resuming' ||
-    status === 'suspended' ||
-    status === 'stopping'
-  ) {
-    return 'stopped';
-  }
-
-  return status;
-}
-
-
-function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
-  return status === 'starting' || status === 'resuming';
-}
-
-function normalizeAgentActivitySource(value: unknown): AgentActivitySource | undefined {
-  return value === 'provider-lifecycle' ||
-    value === 'submission-intent' ||
-    value === 'terminal-title' ||
-    value === 'attention' ||
-    value === 'heuristic'
-    ? value
-    : undefined;
-}
-
 function isAgentLifecycleAwaitingInteractiveState(
   status: AgentNodeStatus | TerminalNodeStatus
 ): boolean {
@@ -2466,14 +2920,6 @@ function isAgentInstructionSubmission(data: string, intent?: AgentInputIntent): 
 
 function containsTerminalSuspendInput(data: string): boolean {
   return data.includes('\u001a');
-}
-
-function normalizeRecoveredTerminalLifecycle(status: TerminalNodeStatus): TerminalNodeStatus {
-  if (status === 'launching' || status === 'live' || status === 'stopping') {
-    return 'closed';
-  }
-
-  return status;
 }
 
 function createErrorResponse(
@@ -2509,19 +2955,6 @@ function createExecutionSpawnProtocolError(error: unknown, file: string, cwd: st
     file,
     cwd
   });
-}
-
-async function waitForTestRecoveryGate(): Promise<void> {
-  const gatePath = process.env[TEST_RECOVERY_GATE_PATH_ENV]?.trim();
-  if (!gatePath) {
-    return;
-  }
-
-  while (fs.existsSync(gatePath)) {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, TEST_RECOVERY_GATE_POLL_INTERVAL_MS);
-    });
-  }
 }
 
 function readErrorCode(error: unknown): string | undefined {

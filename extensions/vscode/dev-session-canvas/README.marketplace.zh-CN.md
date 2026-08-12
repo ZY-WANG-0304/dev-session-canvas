@@ -12,14 +12,16 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 ## 0.24.5 版本亮点
 
-当前公开的 `0.24.5` 继续迭代 `0.24.x` Preview 线，聚焦有界恢复与终端输入响应。若 Runtime Supervisor 或 Host 重启时旧 PTY 已结束，画布会把最后持久化的终端画面作为历史恢复，而不是在启动期回放完整 journal；具备可信 provider session identity 的 Agent 只提供显式 `Resume`，不会静默启动新的 provider 进程。健康的 live stream 也不再周期性用完整 journal projection 与用户输入竞争。
+当前公开的 `0.24.5` 继续迭代 `0.24.x` Preview 线，把 Runtime Supervisor 重启与 Window Reload 明确拆开，并改善终端输入响应。新的 Supervisor 从空 namespace 启动，不扫描旧 registry/journal；Window Reload 若连接到同一健康 Supervisor，则按 surface、按节点分块恢复完整 retained projection，并边接收边显示。
 
-- 已死亡 PTY 的恢复只读取有界 journal metadata，并让持久化终端画面和它自身的 output sequence 成对保留，较新的 journal revision 不会再导致用户最后看见的画面被丢弃
-- 带可信 provider session identity 的 Agent 会进入 `resume-ready`；只有用户点击 `Resume` 后才会启动新的 provider resume 进程。PTY 已结束的 Terminal 保持如实的历史快照
-- 恢复进度通过 VS Code 不可取消的进度通知展示已完成与剩余会话数；恢复期间仍可创建新的 `Agent` 与 `Terminal`
-- Codex 风格的 OSC 10/11 颜色查询不再让原本安全的 checkpoint 失去资格；真正的颜色修改、重置与未知事件仍 fail-closed。连续健康的 live stream 不再周期性请求完整 journal projection
-- 每个节点的终端输入使用严格 FIFO，并且同一时刻只保留一个 write RPC，既保持输入顺序，也避免快速输入堆积为大量并发请求
-- 扩展 ID、最低 VS Code 版本、provider 命令、journal 格式、通知行为、notifier 自动安装关系、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线和 Preview 支持边界均保持不变
+- Supervisor 重启后，带可信 provider session id 的 Agent 会进入 `resume-ready`，只有用户点击 `Resume` 后才创建新 PTY；Terminal 提供已有 durable history（若存在）与 `Restart`。screen snapshot 或 recent output 只是可选提示，不作保证
+- 重启不会 hydrate 旧 runtime namespace，也不会发布整画布 hydrate 通知；新会话可立即创建
+- Window Reload 为每个 surface 和节点建立独立、有界的 bulk projection；选中节点优先，后台节点仍有界推进，一个 restoring 节点不会阻塞 ready 节点、Note 或新建节点
+- 节点输入保持严格 FIFO，但上一请求写入固定 socket 后即可派发下一项，不等待上一条 response；每条 response 仍独立观察、诊断和报错
+- Supervisor 先把输入写入 PTY、再返回小型 response、最后发布 compact lifecycle；bulk 连接只传 terminal stream event，不驱动共享 lifecycle
+- 升级窗口中，仍由旧 Supervisor 真正持有的会话可以继续 output、input、resize、stop 与 delete，当前 generation 同时服务新会话
+- Codex 风格的 OSC 10/11 颜色查询不再让原本安全的 checkpoint 失去资格；真正的颜色修改、重置与未知事件仍 fail-closed，安全的 current / previous checkpoint generation 可以 compact 完整 journal prefix
+- 扩展 ID、最低 VS Code 版本、provider 命令、journal 格式、桌面 notifier 行为、notifier 自动安装关系、Open VSX 完成门禁、Visual Studio Marketplace deferred 口径、模板市场服务版本线和 Preview 支持边界均保持不变
 
 ## 核心功能
 
@@ -29,7 +31,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 通过嵌入式终端运行 `Terminal` 节点
 - 通过 VS Code 已注册编辑器打开识别出的文本和媒体文件链接，并为文本目标保留行列定位
 - 拖动缩放 Agent / Terminal 节点时实时预览外框，只把稳定最终字符网格尺寸提交给底层 PTY
-- 在不阻塞新会话的前提下恢复旧 Supervisor journal 历史，并区分恢复 transport 错误与缺少 executable 的错误
+- Window Reload 时重连同一存活 Supervisor，按 surface、按节点分块恢复 retained history；旧 PTY 已消失时保持如实的 restart 语义
 - 让 `Agent` 与嵌入式 `Terminal` 继承受控 shell 环境，并在诊断信息中暴露当前解析路径
 - 可把支持的截图直接粘贴到 live `Agent` 节点中，以临时图片文件路径作为上下文，并保留用户手动提交提示词的节奏
 - 通过 File Explorer 右键菜单，从 workspace 内目录或文件创建绑定 cwd 的 `Terminal` 或 `Agent` 节点
@@ -65,9 +67,9 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - Linux、macOS 本地工作区的 `Preview` 主路径已完成功能可用性验证
 - Windows 本地工作区的 `Preview` 主路径已完成功能可用性验证；当前已知限制是使用 `Codex` 时执行节点内历史暂时无法向上翻页
 - 真实旧二进制升级 smoke 当前覆盖 Linux / Unix socket；Windows named pipe 与 systemd generation 隔离只有路径级覆盖，不能视为完整跨平台真实升级矩阵
-- 重启恢复已有可重复的 Host 级 smoke 覆盖；它不承诺物理设备重启或长时间 Remote SSH 断开后旧 PTY 仍然存活
+- Runtime 重启处理已有可重复 Host 级 smoke，覆盖 Host 启动、Agent 显式 Resume action 与 Terminal history 状态；该 smoke 未点击真实 Resume/Restart 按钮，也不承诺物理设备重启或长时间 Remote SSH 断开后旧 PTY 仍然存活
 - 严格 90,000 行 completed terminal 压测已间歇性出现最终尾部未收齐，期间也有完整通过样本；单次极端大输出的最终尾部完整性仍在验证中
-- journal compact 有意保持保守：不安全或过大的 checkpoint 会保留完整 journal，因此本版本不承诺固定磁盘上限、完整长期 retention 策略或跨版本 journal 回退兼容
+- journal compact 有意保持保守：不安全或过大的 checkpoint 会保留 current / previous 安全证明仍需要的 journal prefix，因此本版本不承诺固定磁盘上限、完整长期 retention 策略或跨版本 journal 回退兼容
 - Fork 定向落位已有自动化几何与交互覆盖，但 panel / editor 两种承载面的层间距与 `fork` 标签仍待最终人工视觉验收
 - PNG 链接打开已有真实 VS Code Host 覆盖；GIF 与 MP4 走同一通用 opener 且 VS Code 已注册对应编辑器，但尚无各自的真实宿主 fixture。`vscode.open` resolve 只表示 editor service 已受理请求，不保证目标 model 最终加载成功
 - resize 合并已有 Webview 回归与 trusted Host smoke，但仍待使用真实 Codex / Claude TUI 进程人工复核 journal；不同节点或跨 Pane Gallery surface 的多指触控不属于当前支持范围
@@ -89,9 +91,10 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
 - 首次安装与从 `0.24.4` 升级到 `0.24.5` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
 - UI 语言跟随 VS Code locale。本版本不新增扩展自己的语言设置，也不会翻译用户内容、终端输出、provider 输出或市场模板数据
-- 若升级时仍有旧版 Runtime Supervisor 托管的运行会话，这些会话会继续通过原 runtime 提供 output、input、resize、stop 与 delete；新会话可立即进入当前 generation。旧会话不会迁移 PTY 所有权，终端画面陈旧时可拖动节点边缘触发重绘
-- Supervisor 支持的跨 Host 恢复仍取决于 `runtimePersistence.enabled` 与后端可用性；合格的 persistent journal 现在可以通过 current / previous generation 安全 compact，local PTY 不因此获得跨 Host 生命周期保证，不安全 checkpoint 会保留完整 journal，Preview 版本之间也不承诺 runtime journal 的回退兼容
-- Supervisor 重启期间会先报告历史 hydrate 状态而不阻塞新会话；它不承诺旧 local PTY 在重启后继续存活，恢复为 non-live 的会话仍属于历史
+- 若升级时仍有旧版 Runtime Supervisor 托管的运行会话，这些会话会继续通过原 runtime 提供 output、input、resize、stop 与 delete，同时当前 generation 可立即服务新会话。旧会话不会迁移 PTY 所有权，终端画面陈旧时可拖动节点边缘触发重绘
+- Supervisor 持久化仍取决于 `runtimePersistence.enabled` 与后端可用性；合格的 live journal 可以通过 current / previous generation 安全 compact 完整 prefix，不安全 checkpoint 会保留所需 prefix，local PTY 不因此获得跨 Host 生命周期保证，Preview 版本之间也不承诺 runtime journal 的回退兼容
+- 替代 Supervisor 从空 namespace 启动，不扫描或打开旧 registry/journal。可信 Agent resume id 只启用显式 `Resume` 并创建新 PTY；Terminal 提供已有 durable history（若存在）与 `Restart`。系统不发布整画布 hydrate 通知，screen/recent output 只是可选提示
+- Window Reload 若仍连接同一 live Supervisor，则为每个 surface 和节点通过有界 bulk stream 恢复完整 retained history，收到 chunk 即显示。输入和 compact lifecycle 留在 control：FIFO 在固定 socket dispatch 后推进，每条 response 独立完成，response 先于 lifecycle，bulk 不发布共享 lifecycle
 - 当前节点 Agent Fork 默认使用 `devSessionCanvas.canvas.forkPlacementDirection = up`；可改为 `down` 或 `right`，该设置只影响之后的当前节点 Fork，不重排既有 Fork 或会话历史入口的落位
 - 生产模板市场可能以空目录启动。生产环境不会把代码内 seed 模板暴露为正式内容；真实模板必须通过发布流程或受控运维流程入库
 - 窗格画廊只改变多根呈现；单根 workspace 继续显示普通画布，`rootGroups` 仍是默认多根模式和保守回退路径

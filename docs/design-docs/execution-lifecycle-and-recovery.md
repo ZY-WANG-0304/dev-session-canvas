@@ -21,7 +21,8 @@ related_plans:
   - docs/exec-plans/completed/execution-lifecycle-recovery-and-autostart.md
   - docs/exec-plans/completed/claude-agent-ctrl-z-containment.md
   - docs/exec-plans/completed/runtime-supervisor-dead-pty-bounded-recovery.md
-updated_at: 2026-07-30
+  - docs/exec-plans/completed/runtime-recovery-projection-isolation.md
+updated_at: 2026-08-12
 ---
 
 # 执行节点生命周期、恢复与自动启动设计
@@ -57,7 +58,7 @@ updated_at: 2026-07-30
 
 ## 4. 非目标
 
-- 不在本轮承诺跨扩展重载恢复 `Terminal` 的完整活动 buffer。
+- 不在本文件重复定义 live-runtime 的跨 Host 投影协议；同一 Supervisor instance 的 Window Reload 必须重新附着原 authority 并按 surface 恢复完整 retained projection，具体边界由 [运行时控制面、显示投影与恢复隔离](./runtime-control-and-projection-isolation.md) 负责。snapshot-only PTY 随 Host 死亡后的最低历史承诺仍是独立边界。
 - 不在本轮把 `Agent` 做成完整的多 Agent orchestrator。
 - 不在本轮为 `Agent` 引入完全脱离现有 PTY 适配器的全新 backend；当前只把边界设计成可演进，而不是一步到位重写实现。
 - 不在本轮处理“关闭 VSCode 后真实 `Agent` / `Terminal` 进程仍继续存在”的运行时持久化；该主题由 [docs/design-docs/runtime-persistence-and-session-supervisor.md](./runtime-persistence-and-session-supervisor.md) 单独收口。
@@ -119,7 +120,7 @@ updated_at: 2026-07-30
 - `stopping`：用户已请求停止，正在等待进程退出。
 - `closed`：终端正常结束或被用户停止。
 - `error`：启动失败或异常退出。
-- `interrupted`：扩展重载后，原有活动会话已丢失且无法恢复。
+- `interrupted`：原有活动会话已经确认失去 authority 且没有可用历史/重启收口；同一 Supervisor instance 的普通 Window Reload 不进入该状态。
 
 `Agent`：
 
@@ -128,7 +129,7 @@ updated_at: 2026-07-30
 - `waiting-input`：CLI 已进入可继续交互的等待态。
 - `running`：CLI 正在处理输入或持续输出。
 - `resuming`：正在恢复之前的 provider 会话。
-- `resume-ready`：扩展重载后存在可恢复上下文，但尚未完成恢复。
+- `resume-ready`：原 PTY authority 已确认死亡，但仍持有可信 provider 原生 session identity，等待用户显式启动新的 resume 进程；同一 Supervisor instance 的普通 Window Reload 不进入该状态。
 - `resume-failed`：恢复尝试失败，节点保留失败原因与恢复上下文。
 - `suspended`：历史兼容状态。旧版本可能把 Claude Code `Ctrl-Z` 文案写成该状态；当前 direct-spawn Claude Agent 不再把 suspend 文案当成生命周期权威信号，也不提供前台恢复动作。若读到旧 `suspended`，UI 只允许停止后重启。
 - `stopping`：用户已请求停止。
@@ -138,14 +139,17 @@ updated_at: 2026-07-30
 
 恢复边界明确如下：
 
-- `Terminal`：同一扩展进程内跨 surface 可重附着；扩展重载后不承诺完整活动态恢复，只显式标记为 `interrupted`。
-- `Agent`：若节点带有 `live-runtime` 身份，则扩展重载后先尝试 reattach 原 live runtime；只有在 reattach 已确认不可用且节点仍持有 provider 原生显式 session identity 时，才降级到 `resume-ready` 并提供 Resume 按钮。只有用户点击该按钮才启动新的 provider resume 进程；若 provider 不支持或上下文缺失，则分别落到 `resume-failed`、`interrupted` 或历史态。
+- `Agent` / `Terminal` 的 `live-runtime` descriptor若与当前 Supervisor instance一致，Window Reload只重建Host/Webview attachment与surface-local projection：Host重新附着同一authority，Webview按credit/chunk/ACK恢复retained history并在stable-head handoff后接回live。真实lifecycle保持不变，不能降级成`interrupted`或`resume-ready`。
+- Supervisor instance已经变化或旧socket明确不可达时，原PTY authority才视为死亡。`Terminal`进入closed/history并提供Restart；`Agent`只有在持有provider原生显式session identity时才进入`resume-ready`，否则进入历史态或`interrupted`。Resume只由用户点击后创建新的provider PTY，不是对旧进程的重新附着。
+- snapshot-only PTY随Host退出而死亡时也按dead-instance结果收口，但它不具备live-runtime的same-instance reattach保证。
 
 当问题变成“关闭整个 VSCode 后重新打开”时，本文件里的生命周期状态还需要叠加运行时持久化文档定义的附着态语义。第一版的用户可见规则是：
 
-- 只要节点带着 `live-runtime` 的会话身份重新进入恢复流程，且系统尚未确认 live runtime 仍存在，主状态标签显示 `重连中`。
+- 只有节点保存的 Supervisor instance identity 与当前进程相同，或 legacy 节点的一次兼容探测尚未得到结果时，才进入 `重连中`；instance 已变化时旧 PTY authority 已丢失，不能等待 namespace 恢复。
 - 若重新附着成功，再切回本文件定义的真实生命周期状态。
-- 若无法重新附着，`Terminal` 显示 `历史恢复`；`Agent` 则先检查是否存在可用 provider resume 上下文，若有则转成 `resume-ready` 并等待用户点击 Resume，否则才显示 `历史恢复`。
+- 若无法重新附着，`Terminal` 显示 closed/history 并提供 Restart；`Agent` 则先检查是否存在可用 provider resume 上下文，若有则转成 `resume-ready` 并等待用户点击 Resume，否则显示历史态或 `interrupted`。screen snapshot/recent output 只帮助回忆，缺失不影响动作可用性。
+
+生命周期、runtime attachment 与 Webview display projection 是正交状态。同一个健康 Agent 可以同时是 `waiting-input`、`attached-live`，并在刚重建的 panel surface 上处于 `projectionState=restoring`；这不表示 runtime 待恢复。projection state 只存在于每个 `(surface,node,generation)` 的 Webview controller，不持久化到节点状态。当前 surface 的节点在 `queued/restoring` 期间显示 `Restoring`，禁止且不缓存普通输入；bulk open 的 initial target 与 pin 随 journal head 单调扩展，所有 backlog 都经过 credit/chunk/ACK，只有追平一次 session operation 中观察到的稳定 head、原子注册 live subscription 并收到 `done/live` 后，才恢复真实 lifecycle 标签和输入。其他 ready 节点、Note、新建节点与 Stop/Kill 紧急控制不受这条局部门禁影响。完整时序见 [运行时控制面、显示投影与恢复隔离](./runtime-control-and-projection-isolation.md)。
 
 自动启动边界明确如下：
 
@@ -185,8 +189,8 @@ updated_at: 2026-07-30
 
 1. `Agent` 与 `Terminal` 在 UI 上能展示不同的生命周期状态，而不是都退化为“运行中 / 未运行”。
 2. 新建执行节点后，无需手动点启动按钮，节点会自动进入 fresh start。
-3. 扩展重载后，live 的 `Terminal` 节点被标记为 `interrupted`。
-4. 扩展重载后，live 的 `Agent` 节点只有在具备可信恢复上下文时才进入 `resume-ready`；在用户点击 Resume 前不得启动新的 provider 进程。
+3. Window Reload后若Supervisor instance相同，live `Agent` / `Terminal`重新附着原authority；节点保持真实lifecycle，每个新surface只经历`queued/restoring/ready`，不进入`interrupted`或`resume-ready`。
+4. Supervisor instance变化或旧socket明确不可达后，`Terminal`进入closed/history并提供Restart；`Agent`只有具备可信provider session identity时才进入`resume-ready`，且用户点击Resume前不得启动新的provider进程。
 5. 用户点击 Resume 后，`Agent` 节点进入 `resuming`；恢复失败时进入 `resume-failed` 并显示明确失败原因。
 6. Claude Agent 在同一 live 会话中按 `Ctrl-Z` 时不应把 `\u001a` 写入 provider PTY；Webview 显示明确错误提示，宿主和 runtime supervisor 也拒绝该输入。普通 Terminal 与非 Claude Agent 不受这条 Claude 专属阻断规则影响。
 7. 旧 `suspended` Agent snapshot 仍可渲染，但不再出现“恢复”或“恢复中”入口；用户只能停止后重启。
@@ -195,10 +199,10 @@ updated_at: 2026-07-30
 ## 9. 当前验证状态
 
 - 2026-04-08 已完成代码落地，并通过 `npm run typecheck`、`npm run build`、`npm run test:smoke` 与 `npm run test:webview`。
-- smoke test 已覆盖：差异化状态集、创建即自动启动、`Agent` 恢复、`Terminal` 在扩展重载后的 `interrupted`、surface cutover、停止竞态和失败路径。
+- 2026-04-08 smoke曾覆盖当时的snapshot-only/旧实现语义，包括`Terminal`在Host重载后进入`interrupted`；该历史结果不再定义当前live-runtime Window Reload行为。
 - `Claude Code` 的 session id / resume CLI 能力已在本机 `--help` 输出层面确认。
 - 2026-04-12 已重新收口 `Agent` 的启动上下文与恢复身份：恢复必须建立在 provider 原生显式 session identity 上，不能再以隔离 provider home 或 `resume --last` 作为正式口径。
 - 2026-06-10 曾尝试把 Claude Code `Ctrl-Z` 文案收口为 `suspended` 与前台恢复动作；2026-06-11 根据用户真实观察撤销该结论。撤销原因是 direct-spawn Claude Agent 没有普通 shell job table，`SIGCONT` 或 provider 文案都不足以承诺等价于 `fg` 的可交互恢复。
 - 2026-06-11 当前收口方向改为阻断 Claude Agent `Ctrl-Z`：Webview 不发送该输入，宿主与 runtime supervisor 也拒绝写入，并移除恢复协议与 UI 入口。`suspended` 仅作为旧 snapshot 兼容状态保留。
-- 当前文档仍保持“验证中”，因为新的显式 session identity 约束尚未完成代码落地与真实 provider 验证，而 `Codex` 的标准 session identity 获取接口也尚未确认；Claude Agent `Ctrl-Z` 阻断已补局部自动化，仍建议在 MR 阶段做真实 Claude Code 手动验收。
-- 2026-07-30 已明确：Supervisor / 设备重启后旧 PTY 已死亡时，`resume-ready` 只表示可由用户启动一个新的 provider resume 进程，不表示原进程仍存活，也不得通过 `pendingLaunch: 'resume'` 自动触发。对应宿主 smoke 覆盖“等待 Resume 前无新进程、点击后才恢复”的状态边界。
+- 当前文档仍保持“验证中”，因为跨 provider 与真实交互验证尚未闭环：`Codex` 的标准 session identity 获取接口仍未确认，当前 reboot smoke 也没有点击真实 Resume/Restart；Claude Agent `Ctrl-Z` 阻断已补局部自动化，仍建议在 MR 阶段做真实 Claude Code 手动验收。
+- 2026-08-12 已明确区分两条路径：same-instance Window Reload重新附着原authority并恢复surface projection；dead-instance才把Agent收口到显式`resume-ready`、Terminal收口到closed/history + Restart。当前`runtime-supervisor-reboot-recovery`真实宿主smoke只证明Host可启动、Agent展示Resume action且没有自动spawn、Terminal保留history状态；它没有点击真实Resume/Restart按钮。按钮点击后的新进程/失败状态仍由既有定向生命周期测试覆盖，不能把该reboot smoke写成真实点击证据。

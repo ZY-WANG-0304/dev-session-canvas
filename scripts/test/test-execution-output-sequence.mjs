@@ -14,7 +14,7 @@ assert.ok(previousGenerationClientRetirementSource, '应能定位旧 generation 
 
 assert.match(
   supervisorSource,
-  /terminalEvent = session\.terminalJournal\?\.appendOutput\(chunk\);[\s\S]*?session\.outputSequence = terminalEvent\?\.revision[\s\S]*?session\.terminalStateTracker\.write\(chunk,[\s\S]*?outputSequence: session\.outputSequence[\s\S]*?this\.emitSessionOutput\(session, chunk, terminalEvent\)/u,
+  /terminalEvent = session\.terminalJournal\?\.appendOutput\(terminalOutput\);[\s\S]*?session\.outputSequence = terminalEvent\?\.revision[\s\S]*?session\.terminalStateTracker\.write\(terminalOutput,[\s\S]*?outputSequence: session\.outputSequence[\s\S]*?this\.emitSessionOutput\(\s*session,\s*terminalOutput,\s*terminalEvent/u,
   'runtime supervisor 必须先由 journal 分配 output revision，再更新 tracker 和广播。'
 );
 assert.match(
@@ -29,7 +29,7 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /terminalAuthorityId: hasAuthoritativeTerminalStream \? terminalStream\.authorityId : undefined,[\s\S]*?terminalStreamHealthy: hasAuthoritativeTerminalStream[\s\S]*?terminalStateTrusted: canTrustSupervisorTerminalState/u,
+  /terminalAuthorityId: hasAuthoritativeTerminalStream[\s\S]*?terminalStreamHealthy: hasAuthoritativeTerminalStream[\s\S]*?terminalStateTrusted: canTrustSupervisorTerminalState/u,
   'Host 必须把 authority stream 与 legacy Host tracker 的信任状态分开。'
 );
 assert.match(
@@ -69,7 +69,7 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /supportsTerminalSessionStream\(\)[\s\S]*?deferSubscription: true[\s\S]*?terminalProjectionMode: terminalStreamSupported \? 'terminal-stream-v1' : 'legacy-interactive'/u,
+  /private async requestRuntimeSupervisorSessionAttach\([\s\S]*?supportsTerminalProjectionStream\(\)[\s\S]*?supportsTerminalProjectionFollow\(\)[\s\S]*?deferSubscription: true[\s\S]*?terminalProjectionMode: 'stream-v1'[\s\S]*?terminalStreamSupported[\s\S]*?deferSubscription: true/u,
   '旧 Supervisor attach 必须按 capability 分流，不能发送未知的 deferred stream 协议。'
 );
 assert.match(
@@ -99,8 +99,8 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream\(snapshot\);[\s\S]*?options\.historyOnUnavailable && !completedTerminalStream[\s\S]*?applyCompletedRuntimeSupervisorSnapshot/u,
-  'Host 重连到已结束但 terminal stream 完整的 Supervisor session 时必须先持久化权威终态，不能降级为 history tail。'
+  /const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream\(\s*snapshot,[\s\S]*?options\.historyOnUnavailable &&\s*!completedTerminalStream &&\s*!options\.completedTerminalHistoryArchive[\s\S]*?applyCompletedRuntimeSupervisorSnapshot/u,
+  'Host 重连到已结束但 terminal stream 或流式 archive 完整的 Supervisor session 时必须先持久化权威终态，不能降级为 history tail。'
 );
 assert.match(
   managerSource,
@@ -129,7 +129,7 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /postState: session\.terminalProjectionMode === 'legacy-interactive'[\s\S]*?this\.queueExecutionOutput\(kind, nodeId, chunk\)/u,
+  /postState: session\.terminalProjectionMode === 'legacy-interactive'[\s\S]*?this\.queueExecutionOutput\(kind, nodeId, terminalOutput\)/u,
   '旧 Supervisor output 必须进入兼容 xterm 队列，同时持续同步降级状态摘要。'
 );
 assert.doesNotMatch(

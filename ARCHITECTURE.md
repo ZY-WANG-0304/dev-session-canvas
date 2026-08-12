@@ -140,6 +140,8 @@ docs/                           根目录正式文档知识库
   - `RuntimeSupervisorRequest` / `RuntimeSupervisorEvent`
 - `serializedTerminalState.ts`
 - `terminalSessionStream.ts`
+- `terminalProjectionAssembler.ts`
+- `terminalHistoryArchive.ts`
 - `terminalProjectionRefreshScheduler.ts`
 - `runtimeSupervisorPaths.ts`
 - `extensionStoragePaths.ts`
@@ -148,7 +150,7 @@ docs/                           根目录正式文档知识库
 
 这里主要负责：
 
-- 定义节点模型、消息协议、终端快照格式、周期投影刷新调度和 supervisor 协议。
+- 定义节点模型、消息协议、终端快照格式、projection chunk 校验、completed history archive descriptor、周期投影刷新调度和 supervisor 协议。
 - 放置宿主与前端都会用到的纯逻辑和纯数据工具。
 - 统一当前系统对“节点”“执行会话”“恢复快照”“终端链接”的命名。
 
@@ -179,6 +181,10 @@ docs/                           根目录正式文档知识库
   - 定义 `ExecutionSessionProcess`
 - `runtimeSupervisorClient.ts`
   - 宿主与 supervisor 的 socket 客户端
+- `executionProjectionCoordinator.ts`
+  - Host 侧 surface-local projection scheduler、credit/ACK、取消、generation replacement 与 stale lifecycle 过滤
+- `CompletedTerminalHistoryArchiveStore.ts`
+  - immutable content-addressed completed terminal history blob 的 durable write/read
 - `runtimeHostBackend.ts`
   - 选择 `systemd-user` 或 `legacy-detached` 后端，并负责启动 supervisor
 - `executionTerminalNativeHelpers.ts`
@@ -191,8 +197,10 @@ docs/                           根目录正式文档知识库
 - 持有宿主权威状态，并把它同步到一个或两个 Webview surface。
 - 决定哪些状态进入 `workspaceState` / `storageUri`，哪些只留在 Webview 本地。
 - 启动和停止 Agent / Terminal，校验并调度会话输出、同步节点状态、重连和协调 supervisor；Host 不为 `live-runtime` 补造 revision 或终端历史。
-- 在 Webview xterm 真正完成终端操作后按 surface 校验 applied-revision，并把 panel/editor 两个消费水位分别转发给 supervisor。
+- 将小型 control attach/lifecycle RPC 与独立 bulk projection socket 分开；bulk 只在 surface 调度准入后建立 pin，按 credit、chunk ACK 和 controller generation 推进投影。
+- 在 Webview xterm 真正完成终端操作后按 surface 校验 applied-revision，并把 panel/editor 两个消费水位分别转发给 supervisor；`queued/restoring` 输入在 Host 与 Webview 两侧 fail closed。
 - 对健康 authority session 的 Host 恢复缓存执行 capability-gated、确定性错峰的周期刷新；刷新失败或生命周期变化时保留旧健康缓存并清理 stale timer。
+- 对 completed terminal history 先写 immutable archive，再在 Canvas durable barrier 后清理 inline payload；常规 Canvas state 只保存轻量 descriptor。
 - 对 workspace trust、配置、恢复模式和远程宿主差异做最终裁决。
 
 架构不变量：
@@ -201,6 +209,8 @@ docs/                           根目录正式文档知识库
 - `editor` 与 `panel` 只是同一逻辑画布的两种宿主承载面，而不是两套独立状态。
 - `executionSessionBridge.ts` 是 `node-pty` 接入边界；其余层不应直接加载或控制 `node-pty`。
 - `runtimeSupervisorClient.ts` 只通过协议与 socket 和 supervisor 通信，不应假设与 supervisor 共享内存或共享对象实例；`CanvasPanelManager` 必须按 backend 与 runtime storage identity 管理 client，不能把一个 workspace 强制收敛为永远只有一个 Supervisor 进程。
+- control socket 只承载 lifecycle、输入和小型控制 RPC；bulk projection 使用独立连接，不能因大历史传输阻塞健康输入或控制事件。
+- projection 是 `(surface, node, controller generation)` 的临时消费状态，不进入 `CanvasPrototypeState`、workspace snapshot 或 Supervisor registry；lifecycle/attachment 与 projection phase 必须保持正交。
 - trust、配置和恢复模式判断必须在宿主侧生效，不能只靠 Webview 隐藏按钮。
 
 ### `extensions/vscode/dev-session-canvas/src/sidebar/`
@@ -325,7 +335,7 @@ docs/                           根目录正式文档知识库
 
 - `runtimeSupervisorMain.ts`
   - supervisor server
-  - 会话注册表、socket server、terminal revision、输出广播、空闲退出
+  - 会话注册表、control/bulk socket server、terminal revision、输出广播、projection pin、空闲退出
 - `terminalSessionJournal.ts`
   - 每会话完整分段 journal、checksum chain、原子 manifest 与崩溃尾部恢复
 - `runtimeSupervisorLauncher.ts`
@@ -333,10 +343,10 @@ docs/                           根目录正式文档知识库
 这里主要负责：
 
 - 在宿主之外维持执行会话存活。
-- 通过 `runtimeSupervisorProtocol.ts` 提供 create / attach / get snapshot / subscribe / applied-revision ACK / write / resize / scrollback / stop / delete 等请求。
+- 通过 `runtimeSupervisorProtocol.ts` 提供 create / metadata-only attach / get snapshot / subscribe / applied-revision ACK / write / resize / scrollback / stop / delete，以及 open/read/cancel terminal projection 等请求。
 - 为每个新会话分配稳定 authority，按同一连续 revision 记录 output、resize 与 scrollback。
-- 完整保留分段 journal；checkpoint 只作为恢复加速缓存，不删除旧 journal segment。
-- 以静态 checkpoint+journal 和延迟订阅的两阶段切点补齐 Host attach 间隙，再切换到 live event。
+- journal 使用完整 segment 与 current / previous checkpoint generation；合格 checkpoint 在 retention floor 约束下可以安全 compact 并删除完整 prefix segment，无法证明安全或缺少可用 fallback 时继续保留所需 prefix。
+- control attach 只返回 compact lifecycle/authority metadata；bulk open 原子选择 checkpoint、initial target revision 和 server-side pin。checkpoint与所有post-open backlog都以有界chunk、credit/backpressure和Webview ACK传输；target/pin随journal head单调扩展，追平一次session operation观察到的稳定head后才原子注册live subscription并返回`done/live`。
 - 按 `socket + session + consumerId` 分别保存 panel/editor 的 applied-revision 水位；该水位不推进 authority revision，也不触发 journal compact。
 
 架构不变量：
@@ -344,9 +354,11 @@ docs/                           根目录正式文档知识库
 - supervisor 不依赖 `vscode` 或 Webview。
 - supervisor 只知道执行会话和协议，不知道 React Flow 节点、侧栏结构或具体 UI 细节。
 - `live-runtime` terminal revision 只能由 supervisor 在实际记录事件时推进；Host/Webview 只能验证和投影。
+- 新 Supervisor 不扫描旧 registry/journal，不恢复旧进程或 dead PTY；instance identity 改变时 Host 只保留 Agent resume identity，Terminal 进入 history/Restart 语义。
+- projection 必须由Host校验session、authority、projection和Supervisor identity，并验证chunk checksum、payload bytes与revision连续性。live follow的open target只是initial下界，后续target只能单调扩展；`done/live`必须对应已经由Webview ACK的最终target和同一session operation内的stable-head handoff。dead/completed fixed projection则必须精确达到不可增长的final target；任一不完整、回退或身份不一致都fail closed。
 - 缺少 `terminalSessionStreamV1` capability 的旧 Supervisor 只继续承载既有 `legacy-interactive` 会话；Host 允许这些真实旧 PTY 继续 output、input、resize、stop 与 delete，但不向旧进程发送新协议 RPC，也不把 raw tail 冒充完整 checkpoint / journal。新会话始终进入当前 generation 的独立 storage / socket / systemd unit；最后一个已知旧会话结束或最后一条旧 attach 引用失效后，Host 释放旧 client 等待 idle shutdown。
 - Supervisor client 是否属于待排空旧代由 storage generation 判定，而不是由 capability 判定；位于旧 storage 但已经支持 `terminalSessionStreamV1` 的已发布 Supervisor 同样必须在最后一个绑定会话结束、in-flight RPC settled 后释放连接。
-- journal 损坏或持久化失败必须 fail closed，不能用任意 raw tail 或净化 transcript 冒充可继续交互的终端状态。
+- journal 损坏或持久化失败必须 fail closed，不能用任意 raw tail 或净化 transcript 冒充可继续交互的终端状态；projection pin/credit/ACK 失败也不能把 stale chunk 写入新 Webview。
 - `live-runtime` 是执行持久化增强层，不是所有执行路径的前提；系统必须在没有 supervisor 的情况下仍可运行。
 
 ### `tests/` 与 `scripts/`
@@ -444,6 +456,9 @@ docs/                           根目录正式文档知识库
 
 - workspace 绑定画布状态由宿主持有，当前中心在 `CanvasPanelManager`。
 - `live-runtime` 会话的 terminal event 历史、authority 与 revision 由 Runtime Supervisor 持有；Host snapshot 只是缓存或投影，不是跨 Reload Window 的恢复事实。
+- completed terminal history 的完整 archive 由 `CompletedTerminalHistoryArchiveStore` 持有；Canvas state 只保存经过校验的 immutable descriptor，旧 inline stream 采用先归档、后删 inline 的延迟迁移。
+- legacy inline history 迁移窗口内，constructor、surface claim 和普通 Canvas persist 只合并待写请求，不触碰大 blob；COW archive/reference 两阶段写入显式绕过该门禁，settle 后 flush 最新状态。
+- Extension storage slot 迁移对 completed archive 使用 content-addressed union：保留 target-only blob，复制 source-only blob，已存在路径逐字节校验；冲突 fail-closed，禁止先删除或覆盖 target archive。
 - Webview 的 `setState()` / `getState()` 只负责局部 UI 恢复，不承担完整业务恢复。
 - `CanvasPrototypeState` 与终端序列化快照必须能独立于具体 Webview 进程存在。
 
@@ -476,7 +491,11 @@ docs/                           根目录正式文档知识库
 
 ### 恢复与持久化
 
-当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、完整 terminal journal 和 checkpoint cache。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。Host 的 `terminalStream` 只是恢复缓存：新投影 attach 前和无 attach 的 10–12 秒错峰周期内可通过只读 snapshot RPC 收敛，并把 RPC 期间的连续 live tail 无损合并；任何失败都保留旧健康缓存，不能按大小丢弃事件。
+当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 Supervisor 额外维护跨 VSCode 生命周期的执行会话、authority、完整 terminal journal 和 checkpoint。Reload Window 后的新 Host 必须重新 attach 同一个 Supervisor instance，不能用重建前 Host snapshot 推断离线期间的输出；健康会话的 Webview projection 通过独立 bulk socket 按节点和 surface 分块恢复，收到 chunk 即显示。open时的target只作为initial target，恢复期间增长的head继续走同一credit/chunk/ACK路径；追平stable head并原子接上live后才`ready`。`queued/restoring`只限制该surface的普通输入，不改变共享lifecycle。
+
+Supervisor restart 不进入旧 registry/journal 的全量恢复流程。instance 不同意味着旧 PTY authority 不可重附着：Agent 仅保留 provider、resume strategy 和 `resumeSessionId`，由用户显式 Resume 创建新 PTY；Terminal 进入 closed/history 并提供 Restart/history。若 reload attach 发现同一Supervisor内已经结束的bulk session，Host仍可读取其final fixed projection，但新completed finalizer必须先取得全局archive-store admission（当前上限1），未admit时不open、不持pin；admitted reader把chunk直接流式写入canonical和projection sidecar临时文件并增量校验，archive与Canvas ref都durable后才删除dead session。读取或提交失败则释放reader/pin/admission、保留可重试的reattaching状态和Supervisor journal，不伪造终端历史。
+
+completed archive 是content-addressed immutable blob，使用临时文件、fsync和atomic rename；canonical与`projection.ndjson` sidecar都由新finalizer直接流式生成，完成路径不得组装完整`TerminalStream`、full `Buffer`或通过`readFile`复核。主Canvas snapshot、普通`host/stateUpdated`和Note/create持久化只携带descriptor。旧snapshot的inline stream及canonical-only archive迁移继续采用既有异步delayed copy-on-write/materialization：archive校验和Canvas durable barrier都成功后才删除inline，任何失败都保留旧副本。迁移窗口内普通persist不得重新stringify inline payload。跨storage slot迁移时archive目录只能做不覆盖union，并对同路径内容执行校验；projection状态不进入Canvas state、workspace snapshot或Supervisor registry。截至2026-08-12，production completed bulk handoff已由`CanvasPanelManager`直接调用archive store的流式writer：全局admission上限1先于lazy projection `open`，fixed chunks直接写canonical/sidecar staging并增量校验、hash、fsync和atomic commit，不再经过通用assembler或完整payload。纯Node回归已覆盖legacy writer字节级parity、admission顺序、failure cleanup和40 MiB bounded-memory gate；流式sidecar在canonical已存在时的独占发布当前依赖同一archive root内的hard link，尚需补充不支持hard link的filesystem兼容策略与跨平台验证。
 
 ### Remote / Local 拓扑
 
