@@ -1,4 +1,5 @@
 const assert = require('assert');
+const { createHash } = require('crypto');
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const http = require('http');
@@ -1183,7 +1184,7 @@ async function runTrustedSmoke() {
   let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
-  await verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(runtimePersistenceNodes.terminalNode.id);
+  await verifyCompletedLiveRuntimeArchivesOversizedTerminalStream(runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReconnectFallbackToResume(
     runtimePersistenceNodes.agentNode.id,
     runtimePersistenceNodes.terminalNode.id
@@ -8627,9 +8628,32 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   let terminalNode = findNodeById(snapshot, terminalNodeId);
 
   assert.strictEqual(agentNode.status, 'resume-ready');
-  assert.strictEqual(agentNode.metadata.agent.pendingLaunch, 'resume');
+  assert.strictEqual(agentNode.metadata.agent.lifecycle, 'resume-ready');
+  assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+  assert.strictEqual(agentNode.metadata.agent.pendingLaunch, undefined);
+  assert.strictEqual(agentNode.metadata.agent.runtimeSessionId, undefined);
+  assert.strictEqual(agentNode.metadata.agent.supervisorInstanceId, undefined);
   assert.strictEqual(terminalNode.status, 'interrupted');
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
+
+  await sleep(500);
+  agentNode = findNodeById(await getDebugSnapshot(), agentNodeId);
+  assert.strictEqual(agentNode.status, 'resume-ready');
+  assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+  assert.strictEqual(agentNode.metadata.agent.pendingLaunch, undefined);
+  assert.ok(
+    !agentNode.metadata.agent.recentOutput?.includes('[fake-agent] resumed session'),
+    'Runtime reload must not resume the provider before an explicit user request.'
+  );
+
+  await startExecutionSessionForTest({
+    kind: 'agent',
+    nodeId: agentNodeId,
+    cols: 90,
+    rows: 28,
+    provider: 'codex',
+    resumeRequested: true
+  });
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
@@ -10351,7 +10375,7 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
   }
 }
 
-async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminalNodeId) {
+async function verifyCompletedLiveRuntimeArchivesOversizedTerminalStream(terminalNodeId) {
   const baselineSnapshot = await getDebugSnapshot();
   const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
   const originalScrollback = terminalConfiguration.get('scrollback', 1000);
@@ -10423,30 +10447,34 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
       if (!node || node.metadata?.terminal?.liveSession || node.status !== 'closed') {
         return false;
       }
-      const terminalStream = node.metadata.terminal.terminalStream;
-      const streamText = readTerminalStreamProjectionText(terminalStream);
+      const archive = node.metadata.terminal.terminalHistoryArchive;
       return Boolean(
-        terminalStream &&
+        archive &&
+          archive.sessionId === runtimeSessionId &&
+          archive.byteLength > 5 * 1024 * 1024 &&
+          node.metadata.terminal.terminalStream === undefined &&
           node.metadata.terminal.serializedTerminalState === undefined &&
-          terminalStream.checkpoint.revision < terminalStream.revision &&
-          streamText.length > 5 * 1024 * 1024 &&
-          streamText.includes(earliestMarker) &&
-          streamText.includes(middleMarker) &&
-          streamText.includes(latestMarker)
+          node.metadata.terminal.recentOutput?.includes(latestMarker)
       );
     }, 120000);
     const completedNode = findNodeById(snapshot, terminalNodeId);
-    const completedStreamText = readTerminalStreamProjectionText(
-      completedNode.metadata.terminal.terminalStream
+    const completedArchive = assertTerminalHistoryArchiveDescriptor(
+      completedNode.metadata.terminal.terminalHistoryArchive,
+      runtimeSessionId
     );
     assert.ok(
-      completedStreamText.length > 5 * 1024 * 1024,
-      'The fixture must exceed the validated checkpoint size limit and remain journal-backed.'
+      completedArchive.byteLength > 5 * 1024 * 1024,
+      'The fixture must exceed the old inline checkpoint size limit before it is archived.'
     );
     assert.strictEqual(
       completedNode.metadata.terminal.serializedTerminalState,
       undefined,
-      'An oversized unsafe head must not publish a misleading fresh serialized terminal state.'
+      'Completed history metadata must not retain a monolithic serialized terminal state.'
+    );
+    assert.strictEqual(
+      completedNode.metadata.terminal.terminalStream,
+      undefined,
+      'Completed history metadata must only retain the lightweight archive descriptor.'
     );
     await waitForRuntimeSupervisorState(
       (runtimeState) =>
@@ -10456,6 +10484,49 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
       20000
     );
 
+    const flushResult = await vscode.commands.executeCommand(COMMAND_IDS.testFlushPersistedState);
+    assert.ok(flushResult?.exists, 'Completed history finalization must persist canvas-state.json.');
+    assert.ok(flushResult.snapshotPath, 'Completed history finalization must expose the canvas snapshot path.');
+    assert.ok(flushResult.snapshot?.state, 'Completed history finalization must expose the persisted Canvas state.');
+    const persistedCompletedNode = findNodeById(flushResult.snapshot, terminalNodeId);
+    assert.deepStrictEqual(
+      persistedCompletedNode.metadata.terminal.terminalHistoryArchive,
+      completedArchive,
+      'canvas-state.json must retain the immutable archive descriptor.'
+    );
+    assert.strictEqual(
+      persistedCompletedNode.metadata.terminal.terminalStream,
+      undefined,
+      'canvas-state.json must not inline the completed terminal stream.'
+    );
+    assert.strictEqual(
+      persistedCompletedNode.metadata.terminal.serializedTerminalState,
+      undefined,
+      'canvas-state.json must not inline a completed serialized terminal state.'
+    );
+
+    const archived = await readCompletedTerminalHistoryArchive(
+      flushResult.snapshotPath,
+      completedArchive
+    );
+    const archivedStreamText = readTerminalStreamProjectionText(archived.payload);
+    assert.ok(
+      archivedStreamText.includes(earliestMarker) &&
+        archivedStreamText.includes(middleMarker) &&
+        archivedStreamText.includes(latestMarker),
+      'The independent completed-history blob must retain the first, middle, and final marker.'
+    );
+    const persistedCanvasBytes = await fs.readFile(flushResult.snapshotPath);
+    assert.ok(
+      persistedCanvasBytes.byteLength < archived.bytes.byteLength,
+      'canvas-state.json must stay smaller than the independently archived oversized history.'
+    );
+    const persistedCanvasText = persistedCanvasBytes.toString('utf8');
+    assert.ok(
+      !persistedCanvasText.includes(earliestMarker) && !persistedCanvasText.includes(middleMarker),
+      'canvas-state.json must not contain the archived history payload.'
+    );
+
     snapshot = await reloadPersistedState();
     const reloadedNode = findNodeById(snapshot, terminalNodeId);
     assert.strictEqual(reloadedNode.metadata.terminal.liveSession, false);
@@ -10463,11 +10534,17 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
     assert.strictEqual(
       reloadedNode.metadata.terminal.serializedTerminalState,
       undefined,
-      'Reload must preserve the journal-backed projection without inventing a monolithic serialized state.'
+      'Reload must preserve the archive reference without inventing a monolithic serialized state.'
     );
-    assert.ok(
+    assert.strictEqual(
       reloadedNode.metadata.terminal.terminalStream,
-      'Completed history must retain the trusted checkpoint plus its full journal suffix.'
+      undefined,
+      'Reload must not hydrate completed history into Canvas state.'
+    );
+    assert.deepStrictEqual(
+      reloadedNode.metadata.terminal.terminalHistoryArchive,
+      completedArchive,
+      'Reload must retain the lightweight completed-history archive descriptor.'
     );
 
     await clearHostMessages();
@@ -10502,7 +10579,10 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
         readTerminalStreamProjectionText(message.payload.terminalStream).includes(middleMarker) &&
         readTerminalStreamProjectionText(message.payload.terminalStream).includes(latestMarker)
     );
-    assert.ok(completedSnapshot, 'Reloaded completed terminal must expose the full terminal stream projection.');
+    assert.ok(
+      completedSnapshot,
+      'An on-demand Webview snapshot must hydrate the archived first, middle, and final marker.'
+    );
   } finally {
     await clearHostMessages();
     await setRuntimePersistenceEnabled(false);
@@ -10614,6 +10694,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
 
   const fakeStorageDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-runtime-fallback-'));
   const fallbackSessionId = '44444444-4444-4444-8444-444444444444';
+  const missingRuntimeAgentHistory = '[fake-agent] missing runtime history only';
 
   try {
     await fs.writeFile(path.join(fakeStorageDir, 'last-session'), `${fallbackSessionId}\n`, 'utf8');
@@ -10622,6 +10703,9 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
     const noteNode = findNodeByKind(currentSnapshot, 'note');
     const agentNode = findNodeById(currentSnapshot, agentNodeId);
     const terminalNode = findNodeById(currentSnapshot, terminalNodeId);
+    const runtimeSessionIdsBeforeFallback = new Set(
+      listRuntimeSupervisorSessions(await getRuntimeSupervisorState()).map((session) => session.sessionId)
+    );
 
     let snapshot = await setPersistedState({
       version: 1,
@@ -10643,13 +10727,15 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
               runtimeBackend: 'legacy-detached',
               runtimeGuarantee: 'best-effort',
               runtimeSessionId: 'missing-agent-runtime-session',
+              supervisorInstanceId: undefined,
               resumeSupported: false,
               resumeStrategy: 'fake-provider',
               resumeSessionId: fallbackSessionId,
               resumeStoragePath: fakeStorageDir,
               pendingLaunch: undefined,
               lastRuntimeError: undefined,
-              lastResumeError: undefined
+              lastResumeError: undefined,
+              recentOutput: missingRuntimeAgentHistory
             }
           }
         },
@@ -10668,6 +10754,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
               runtimeBackend: 'legacy-detached',
               runtimeGuarantee: 'best-effort',
               runtimeSessionId: 'missing-terminal-runtime-session',
+              supervisorInstanceId: undefined,
               pendingLaunch: undefined,
               lastRuntimeError: undefined
             }
@@ -10681,36 +10768,38 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
       const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
       const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
       return Boolean(
-        currentAgent?.metadata?.agent?.liveSession &&
-          currentAgent.status === 'waiting-input' &&
-          currentAgent.metadata?.agent?.attachmentState === 'attached-live' &&
-          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session') &&
+        currentAgent?.status === 'resume-ready' &&
+          currentAgent.metadata?.agent?.lifecycle === 'resume-ready' &&
+          currentAgent.metadata.agent.liveSession === false &&
+          currentAgent.metadata.agent.attachmentState === 'history-restored' &&
+          currentAgent.metadata.agent.runtimeSessionId === undefined &&
+          currentAgent.metadata.agent.supervisorInstanceId === undefined &&
+          currentAgent.metadata.agent.pendingLaunch === undefined &&
           currentTerminal?.status === 'history-restored' &&
+          currentTerminal.metadata?.terminal?.lifecycle === 'closed' &&
           currentTerminal.metadata?.terminal?.attachmentState === 'history-restored' &&
-          currentTerminal.metadata?.terminal?.liveSession === false
+          currentTerminal.metadata.terminal.liveSession === false &&
+          currentTerminal.metadata.terminal.runtimeSessionId === undefined &&
+          currentTerminal.metadata.terminal.supervisorInstanceId === undefined
       );
     }, 20000);
 
-    const restoredAgent = findNodeById(snapshot, agentNodeId);
+    let restoredAgent = findNodeById(snapshot, agentNodeId);
     const restoredTerminal = findNodeById(snapshot, terminalNodeId);
     assert.strictEqual(
       restoredAgent.metadata.agent.persistenceMode,
       'live-runtime',
       'Expected runtime projection to retain the live-runtime persistence mode from the seeded persisted agent state.'
     );
-    assert.ok(
-      restoredAgent.metadata.agent.runtimeSessionId,
-      'Expected runtime reconciliation to replace the missing live runtime with a resumed runtime session id.'
-    );
+    assert.strictEqual(restoredAgent.metadata.agent.runtimeSessionId, undefined);
+    assert.strictEqual(restoredAgent.metadata.agent.supervisorInstanceId, undefined);
+    assert.strictEqual(restoredAgent.metadata.agent.pendingLaunch, undefined);
     assert.strictEqual(
       restoredAgent.metadata.agent.resumeSupported,
       true,
       'Expected runtime reconciliation to upgrade the seeded fallback agent into a resume-supported state.'
     );
-    assert.ok(
-      restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'),
-      'Expected runtime projection to append resumed-session output after reconciling the seeded fallback agent state.'
-    );
+    assert.strictEqual(restoredAgent.metadata.agent.recentOutput, missingRuntimeAgentHistory);
     assert.strictEqual(
       restoredTerminal.metadata.terminal.liveSession,
       false,
@@ -10726,6 +10815,9 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
       /runtime session/i,
       'Expected runtime projection to preserve the terminal runtime-reattach failure reason derived from seeded state.'
     );
+    assert.strictEqual(restoredTerminal.metadata.terminal.runtimeSessionId, undefined);
+    assert.strictEqual(restoredTerminal.metadata.terminal.supervisorInstanceId, undefined);
+    assert.strictEqual(restoredTerminal.metadata.terminal.pendingLaunch, undefined);
 
     const reconnectDiagnostics = await getDiagnosticEvents();
     assert.ok(
@@ -10736,6 +10828,40 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
           event.detail?.resumeSessionId === fallbackSessionId
       )
     );
+
+    await sleep(500);
+    restoredAgent = findNodeById(await getDebugSnapshot(), agentNodeId);
+    assert.strictEqual(restoredAgent.status, 'resume-ready');
+    assert.strictEqual(restoredAgent.metadata.agent.liveSession, false);
+    assert.strictEqual(restoredAgent.metadata.agent.pendingLaunch, undefined);
+    assert.strictEqual(restoredAgent.metadata.agent.recentOutput, missingRuntimeAgentHistory);
+    assert.deepStrictEqual(
+      new Set(listRuntimeSupervisorSessions(await getRuntimeSupervisorState()).map((session) => session.sessionId)),
+      runtimeSessionIdsBeforeFallback,
+      'A missing runtime session must not create a replacement provider PTY before explicit Resume.'
+    );
+
+    await startExecutionSessionForTest({
+      kind: 'agent',
+      nodeId: agentNodeId,
+      cols: 92,
+      rows: 28,
+      provider: 'codex',
+      resumeRequested: true
+    });
+    snapshot = await waitForSnapshot((currentState) => {
+      const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
+      return Boolean(
+        currentAgent?.metadata?.agent?.liveSession &&
+          currentAgent.status === 'waiting-input' &&
+          currentAgent.metadata.agent.attachmentState === 'attached-live' &&
+          currentAgent.metadata.agent.runtimeSessionId &&
+          currentAgent.metadata.agent.supervisorInstanceId &&
+          currentAgent.metadata.agent.recentOutput?.includes('[fake-agent] resumed session')
+      );
+    }, 20000);
+    restoredAgent = findNodeById(snapshot, agentNodeId);
+    assert.notStrictEqual(restoredAgent.metadata.agent.runtimeSessionId, 'missing-agent-runtime-session');
 
     await ensureAgentStopped(agentNodeId);
     shouldRestoreBaseline = true;
@@ -10782,6 +10908,7 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
 
   const fakeStorageDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-session-canvas-history-resume-'));
   const fallbackSessionId = '55555555-5555-4555-8555-555555555555';
+  const historyResumeMarker = '[fake-agent] history restored before explicit resume';
 
   try {
     await fs.writeFile(path.join(fakeStorageDir, 'last-session'), `${fallbackSessionId}\n`, 'utf8');
@@ -10811,13 +10938,15 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
               runtimeBackend: 'legacy-detached',
               runtimeGuarantee: 'best-effort',
               runtimeSessionId: undefined,
+              supervisorInstanceId: undefined,
               resumeSupported: false,
               resumeStrategy: 'fake-provider',
               resumeSessionId: fallbackSessionId,
               resumeStoragePath: fakeStorageDir,
-              pendingLaunch: 'resume',
+              pendingLaunch: undefined,
               lastRuntimeError: 'Runtime session old-runtime-session was not found.',
-              lastResumeError: undefined
+              lastResumeError: undefined,
+              recentOutput: historyResumeMarker
             }
           }
         },
@@ -10827,15 +10956,34 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     });
 
     let restoredAgent = findNodeById(snapshot, agentNodeId);
-    assert.ok(
-      restoredAgent.status === 'resume-ready' || restoredAgent.status === 'history-restored',
-      `Expected runtime reconciliation to keep the seeded history-restored agent resumable, got ${restoredAgent.status}.`
-    );
+    assert.strictEqual(restoredAgent.status, 'resume-ready');
+    assert.strictEqual(restoredAgent.metadata.agent.lifecycle, 'resume-ready');
+    assert.strictEqual(restoredAgent.metadata.agent.liveSession, false);
+    assert.strictEqual(restoredAgent.metadata.agent.pendingLaunch, undefined);
+    assert.strictEqual(restoredAgent.metadata.agent.runtimeSessionId, undefined);
+    assert.strictEqual(restoredAgent.metadata.agent.supervisorInstanceId, undefined);
     assert.strictEqual(
       restoredAgent.metadata.agent.resumeSupported,
       true,
       'Expected runtime projection to ignore stale persisted resumeSupported=false metadata when resume context is still valid.'
     );
+    assert.strictEqual(restoredAgent.metadata.agent.recentOutput, historyResumeMarker);
+
+    await sleep(500);
+    restoredAgent = findNodeById(await getDebugSnapshot(), agentNodeId);
+    assert.strictEqual(restoredAgent.status, 'resume-ready');
+    assert.strictEqual(restoredAgent.metadata.agent.liveSession, false);
+    assert.strictEqual(restoredAgent.metadata.agent.pendingLaunch, undefined);
+    assert.strictEqual(restoredAgent.metadata.agent.recentOutput, historyResumeMarker);
+
+    await startExecutionSessionForTest({
+      kind: 'agent',
+      nodeId: agentNodeId,
+      cols: 92,
+      rows: 28,
+      provider: 'codex',
+      resumeRequested: true
+    });
 
     snapshot = await waitForSnapshot((currentState) => {
       const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
@@ -13298,6 +13446,44 @@ function readTerminalStreamProjectionText(terminalStream) {
         .join('')
     : '';
   return `${typeof checkpointData === 'string' ? checkpointData : ''}${eventData}`;
+}
+
+function assertTerminalHistoryArchiveDescriptor(descriptor, expectedSessionId) {
+  assert.ok(descriptor && typeof descriptor === 'object', 'Missing completed terminal history archive descriptor.');
+  assert.strictEqual(descriptor.version, 1);
+  assert.strictEqual(descriptor.codec, 'terminal-stream-attach-json-v1');
+  assert.strictEqual(descriptor.sessionId, expectedSessionId);
+  assert.match(descriptor.authorityId, /\S/u);
+  assert.ok(Number.isSafeInteger(descriptor.finalRevision) && descriptor.finalRevision >= 0);
+  assert.ok(Number.isSafeInteger(descriptor.byteLength) && descriptor.byteLength > 0);
+  assert.match(descriptor.sha256, /^[a-f0-9]{64}$/u);
+  assert.strictEqual(descriptor.archiveId, `sha256-${descriptor.sha256}`);
+  assert.ok(Buffer.byteLength(JSON.stringify(descriptor), 'utf8') < 1024, 'Archive descriptor must stay lightweight.');
+  return descriptor;
+}
+
+async function readCompletedTerminalHistoryArchive(snapshotPath, descriptor) {
+  const archivePath = path.join(
+    path.dirname(snapshotPath),
+    'completed-terminal-history',
+    `v${descriptor.version}`,
+    'blobs',
+    descriptor.sha256.slice(0, 2),
+    descriptor.archiveId,
+    'payload.json'
+  );
+  const bytes = await fs.readFile(archivePath);
+  assert.strictEqual(bytes.byteLength, descriptor.byteLength, 'Completed history blob byte length mismatch.');
+  assert.strictEqual(
+    createHash('sha256').update(bytes).digest('hex'),
+    descriptor.sha256,
+    'Completed history blob checksum mismatch.'
+  );
+  const payload = JSON.parse(bytes.toString('utf8'));
+  assert.strictEqual(payload.sessionId, descriptor.sessionId);
+  assert.strictEqual(payload.authorityId, descriptor.authorityId);
+  assert.strictEqual(payload.revision, descriptor.finalRevision);
+  return { archivePath, bytes, payload };
 }
 
 function readTerminalViewportMarkerLines(visibleLines, marker) {

@@ -1,5 +1,6 @@
 import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
+import type { CompletedTerminalHistoryArchiveDescriptor } from './terminalHistoryArchive';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
@@ -10,6 +11,119 @@ import type {
 } from './executionTerminalLinks';
 import type { NoteContentSource } from './noteMarkdownFileAssociation';
 import type { ExecutionImagePasteMimeType } from './executionTerminalClipboard';
+
+/** Surface-local state of a terminal history projection. */
+export type ExecutionProjectionState = 'queued' | 'restoring' | 'ready' | 'failed';
+export type ExecutionProjectionPriority = 'selected' | 'visible' | 'background';
+
+/** Identity carried by every bulk projection message.
+ *
+ * `controllerGeneration` is deliberately opaque and is regenerated on every
+ * Webview xterm mount. It prevents a late chunk from an unmounted controller
+ * from being applied to a replacement controller for the same node.
+ */
+export interface ExecutionProjectionIdentity {
+  nodeId: string;
+  kind: ExecutionNodeKind;
+  controllerGeneration: string;
+  projectionId: string;
+  executionSessionId: string;
+  authorityId: string;
+  initialTargetRevision: number;
+}
+
+export interface ExecutionProjectionCheckpointDescriptor {
+  version: number;
+  sessionId: string;
+  authorityId: string;
+  revision: number;
+  cols: number;
+  rows: number;
+  scrollback: number;
+  createdAtMs: number;
+  serializedState: Omit<SerializedTerminalState, 'data'>;
+}
+
+/** A single bounded unit emitted by the Supervisor projection reader. */
+export type ExecutionProjectionChunk =
+  | {
+      kind: 'checkpoint';
+      dataOffset: number;
+      data: string;
+      complete: boolean;
+    }
+  | {
+      kind: 'output';
+      revision: number;
+      createdAtMs: number;
+      dataOffset: number;
+      data: string;
+      complete: boolean;
+    }
+  | {
+      kind: 'resize';
+      revision: number;
+      createdAtMs: number;
+      cols: number;
+      rows: number;
+      complete: true;
+    }
+  | {
+      kind: 'scrollback';
+      revision: number;
+      createdAtMs: number;
+      scrollback: number;
+      complete: true;
+    };
+
+export interface ExecutionProjectionChunkEnvelope extends ExecutionProjectionIdentity {
+  sequence: number;
+  payloadBytes: number;
+  chunkChecksum: string;
+  chunk: ExecutionProjectionChunk;
+  done: boolean;
+}
+
+export interface ExecutionProjectionNodeIdentity {
+  nodeId: string;
+  kind: ExecutionNodeKind;
+  controllerGeneration: string;
+}
+
+/**
+ * Cancellation can arrive before a bulk projection has been opened. Keep the
+ * node/controller identity mandatory and retain the full identity when one is
+ * available for compatibility with older message consumers.
+ */
+export type ExecutionProjectionCancelPayload =
+  | (ExecutionProjectionNodeIdentity & {
+      reason?: 'dispose' | 'retry' | 'stale' | 'user';
+    })
+  | (ExecutionProjectionIdentity & {
+      reason?: 'dispose' | 'retry' | 'stale' | 'user';
+    });
+
+export type HostExecutionProjectionStatePayload =
+  | (ExecutionProjectionNodeIdentity & {
+      state: 'queued';
+      priority?: ExecutionProjectionPriority;
+    })
+  | (ExecutionProjectionIdentity & {
+      state: 'restoring';
+      checkpoint?: ExecutionProjectionCheckpointDescriptor;
+    })
+  | (ExecutionProjectionIdentity & {
+      state: 'ready';
+      readyRevision: number;
+    })
+  | (ExecutionProjectionNodeIdentity & {
+      state: 'failed';
+      projectionId?: string;
+      executionSessionId?: string;
+      authorityId?: string;
+      initialTargetRevision?: number;
+      error?: string;
+    });
 
 export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
@@ -236,6 +350,8 @@ export interface ExecutionSessionMetadata {
   runtimeBackend?: RuntimeHostBackendKind;
   runtimeGuarantee?: RuntimePersistenceGuarantee;
   runtimeStoragePath?: string;
+  /** Identifies the Supervisor process that owns the live PTY authority. */
+  supervisorInstanceId?: string;
   liveSession: boolean;
   runtimeSessionId?: string;
   lastRuntimeError?: string;
@@ -250,6 +366,7 @@ export interface ExecutionSessionMetadata {
   lastRows?: number;
   serializedTerminalState?: SerializedTerminalState;
   terminalStream?: TerminalStreamAttachPayload;
+  terminalHistoryArchive?: CompletedTerminalHistoryArchiveDescriptor;
   attentionPending: boolean;
 }
 
@@ -900,10 +1017,41 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        /** Fresh opaque identity for the mounted Webview controller. */
+        controllerGeneration?: string;
+        priority?: ExecutionProjectionPriority;
         requestId?: string;
         executionSessionId?: string;
         minOutputSequence?: number;
       };
+    }
+  | {
+      type: 'webview/executionProjectionPriority';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        controllerGeneration: string;
+        priority: ExecutionProjectionPriority;
+      };
+    }
+  | {
+      type: 'webview/requestExecutionProjectionCredit';
+      payload: ExecutionProjectionIdentity & {
+        creditBytes: number;
+      };
+    }
+  | {
+      type: 'webview/executionProjectionChunkApplied';
+      payload: ExecutionProjectionIdentity & {
+        sequence: number;
+        payloadBytes: number;
+        creditBytes: number;
+        appliedRevision?: number;
+      };
+    }
+  | {
+      type: 'webview/cancelExecutionProjection';
+      payload: ExecutionProjectionCancelPayload;
     }
   | {
       type: 'webview/executionTerminalApplied';
@@ -913,6 +1061,8 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         executionSessionId: string;
         authorityId: string;
         revision: number;
+        controllerGeneration?: string;
+        projectionId?: string;
       };
     }
   | {
@@ -925,6 +1075,8 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         sequence?: number;
         webviewEpochMs?: number;
         webviewPerformanceNowMs?: number;
+        controllerGeneration?: string;
+        projectionId?: string;
       };
     }
   | {
@@ -1235,6 +1387,15 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        /** False means the Host rejected the input before it reached the PTY. */
+        accepted?: boolean;
+        rejectionReason?:
+          | 'projection-not-ready'
+          | 'stale-controller'
+          | 'session-unavailable'
+          | 'write-failed';
+        controllerGeneration?: string;
+        projectionId?: string;
         sequence?: number;
         webviewEpochMs?: number;
         webviewPerformanceNowMs?: number;
@@ -1249,10 +1410,20 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'host/executionProjectionState';
+      payload: HostExecutionProjectionStatePayload;
+    }
+  | {
+      type: 'host/executionProjectionChunk';
+      payload: ExecutionProjectionChunkEnvelope;
+    }
+  | {
       type: 'host/executionSnapshot';
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        controllerGeneration?: string;
+        projectionId?: string;
         requestId?: string;
         executionSessionId?: string;
         output: string;
@@ -1271,6 +1442,8 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        controllerGeneration?: string;
+        projectionId?: string;
         executionSessionId?: string;
         chunk: string;
         /** The current title after this output batch; null explicitly clears the prior title. */
@@ -1288,6 +1461,8 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
       payload: {
         nodeId: string;
         kind: ExecutionNodeKind;
+        controllerGeneration?: string;
+        projectionId?: string;
         executionSessionId: string;
         authorityId: string;
         event: TerminalStreamEvent;
@@ -1448,6 +1623,85 @@ export function isAgentLaunchPresetKind(value: unknown): value is AgentLaunchPre
 
 export function isExecutionNodeKind(value: unknown): value is ExecutionNodeKind {
   return value === 'agent' || value === 'terminal';
+}
+
+export function isExecutionProjectionPriority(value: unknown): value is ExecutionProjectionPriority {
+  return value === 'selected' || value === 'visible' || value === 'background';
+}
+
+function parseExecutionProjectionIdentity(
+  payload: Record<string, unknown> | null
+): ExecutionProjectionIdentity | null {
+  const initialTargetRevision = normalizeNonNegativeInteger(payload?.initialTargetRevision);
+  if (
+    !payload ||
+    typeof payload.nodeId !== 'string' ||
+    payload.nodeId.length === 0 ||
+    !isExecutionNodeKind(payload.kind) ||
+    typeof payload.controllerGeneration !== 'string' ||
+    payload.controllerGeneration.length === 0 ||
+    typeof payload.projectionId !== 'string' ||
+    payload.projectionId.length === 0 ||
+    typeof payload.executionSessionId !== 'string' ||
+    payload.executionSessionId.length === 0 ||
+    typeof payload.authorityId !== 'string' ||
+    payload.authorityId.length === 0 ||
+    initialTargetRevision === undefined
+  ) {
+    return null;
+  }
+
+  return {
+    nodeId: payload.nodeId,
+    kind: payload.kind,
+    controllerGeneration: payload.controllerGeneration,
+    projectionId: payload.projectionId,
+    executionSessionId: payload.executionSessionId,
+    authorityId: payload.authorityId,
+    initialTargetRevision
+  };
+}
+
+function parseExecutionProjectionNodeIdentity(
+  payload: Record<string, unknown> | null
+): ExecutionProjectionNodeIdentity | null {
+  if (
+    !payload ||
+    typeof payload.nodeId !== 'string' ||
+    payload.nodeId.length === 0 ||
+    !isExecutionNodeKind(payload.kind) ||
+    typeof payload.controllerGeneration !== 'string' ||
+    payload.controllerGeneration.length === 0
+  ) {
+    return null;
+  }
+
+  return {
+    nodeId: payload.nodeId,
+    kind: payload.kind,
+    controllerGeneration: payload.controllerGeneration
+  };
+}
+
+function parseExecutionProjectionCancelPayload(
+  payload: Record<string, unknown> | null
+): ExecutionProjectionCancelPayload | null {
+  const nodeIdentity = parseExecutionProjectionNodeIdentity(payload);
+  if (!nodeIdentity) {
+    return null;
+  }
+
+  const hasFullIdentityField = [
+    'projectionId',
+    'executionSessionId',
+    'authorityId',
+    'initialTargetRevision'
+  ].some((field) => payload?.[field] !== undefined);
+  if (!hasFullIdentityField) {
+    return nodeIdentity;
+  }
+
+  return parseExecutionProjectionIdentity(payload);
 }
 
 export function isWebviewClipboardTextSource(value: unknown): value is WebviewClipboardTextSource {
@@ -1717,6 +1971,104 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/executionProjectionPriority') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (
+      !payload ||
+      typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) ||
+      typeof payload.controllerGeneration !== 'string' ||
+      payload.controllerGeneration.length === 0 ||
+      !isExecutionProjectionPriority(payload.priority)
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      payload: {
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        controllerGeneration: payload.controllerGeneration,
+        priority: payload.priority
+      }
+    };
+  }
+
+  if (value.type === 'webview/cancelExecutionProjection') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const identity = parseExecutionProjectionCancelPayload(payload);
+    if (!identity) {
+      return null;
+    }
+    const reason = payload?.reason;
+    if (
+      reason !== undefined &&
+      reason !== 'dispose' &&
+      reason !== 'retry' &&
+      reason !== 'stale' &&
+      reason !== 'user'
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      payload: {
+        ...identity,
+        ...(reason !== undefined ? { reason } : {})
+      }
+    };
+  }
+
+  if (
+    value.type === 'webview/requestExecutionProjectionCredit' ||
+    value.type === 'webview/executionProjectionChunkApplied'
+  ) {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    const identity = parseExecutionProjectionIdentity(payload);
+    if (!identity) {
+      return null;
+    }
+    if (value.type === 'webview/requestExecutionProjectionCredit') {
+      const creditBytes = normalizeNonNegativeInteger(payload?.creditBytes);
+      if (creditBytes === undefined || creditBytes <= 0) {
+        return null;
+      }
+      return {
+        type: value.type,
+        payload: {
+          ...identity,
+          creditBytes
+        }
+      };
+    }
+    if (value.type === 'webview/executionProjectionChunkApplied') {
+      const sequence = normalizeNonNegativeInteger(payload?.sequence);
+      const payloadBytes = normalizeNonNegativeInteger(payload?.payloadBytes);
+      const creditBytes = normalizeNonNegativeInteger(payload?.creditBytes);
+      const appliedRevision = normalizeNonNegativeInteger(payload?.appliedRevision);
+      if (
+        sequence === undefined ||
+        payloadBytes === undefined ||
+        payloadBytes <= 0 ||
+        creditBytes === undefined ||
+        creditBytes <= 0
+      ) {
+        return null;
+      }
+      return {
+        type: value.type,
+        payload: {
+          ...identity,
+          sequence,
+          payloadBytes,
+          creditBytes,
+          ...(appliedRevision !== undefined ? { appliedRevision } : {})
+        }
+      };
+    }
+    return null;
+  }
+
   if (
     value.type === 'webview/attachExecutionSession' ||
     value.type === 'webview/stopExecutionSession'
@@ -1736,6 +2088,15 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       payload: {
         nodeId: payload.nodeId,
         kind: payload.kind,
+        ...(value.type === 'webview/attachExecutionSession' &&
+        typeof payload.controllerGeneration === 'string' &&
+        payload.controllerGeneration.length > 0
+          ? { controllerGeneration: payload.controllerGeneration }
+          : {}),
+        ...(value.type === 'webview/attachExecutionSession' &&
+        isExecutionProjectionPriority(payload.priority)
+          ? { priority: payload.priority }
+          : {}),
         ...(value.type === 'webview/attachExecutionSession' && typeof payload.requestId === 'string'
           ? { requestId: payload.requestId }
           : {}),
@@ -1772,7 +2133,13 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         kind: payload.kind,
         executionSessionId: payload.executionSessionId,
         authorityId: payload.authorityId,
-        revision
+        revision,
+        ...(typeof payload.controllerGeneration === 'string' && payload.controllerGeneration.length > 0
+          ? { controllerGeneration: payload.controllerGeneration }
+          : {}),
+        ...(typeof payload.projectionId === 'string' && payload.projectionId.length > 0
+          ? { projectionId: payload.projectionId }
+          : {})
       }
     };
   }
@@ -1868,7 +2235,13 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         ...(isAgentInputIntent(payload.intent) ? { intent: payload.intent } : {}),
         sequence: normalizeNonNegativeInteger(payload.sequence),
         webviewEpochMs: normalizeNonNegativeFiniteNumber(payload.webviewEpochMs),
-        webviewPerformanceNowMs: normalizeNonNegativeFiniteNumber(payload.webviewPerformanceNowMs)
+        webviewPerformanceNowMs: normalizeNonNegativeFiniteNumber(payload.webviewPerformanceNowMs),
+        ...(typeof payload.controllerGeneration === 'string' && payload.controllerGeneration.length > 0
+          ? { controllerGeneration: payload.controllerGeneration }
+          : {}),
+        ...(typeof payload.projectionId === 'string' && payload.projectionId.length > 0
+          ? { projectionId: payload.projectionId }
+          : {})
       }
     };
   }

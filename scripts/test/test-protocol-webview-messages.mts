@@ -112,6 +112,96 @@ assert.equal(
   undefined,
   'execution input sequence 必须是非负整数。'
 );
+const projectionIdentity = {
+  nodeId: 'agent-1',
+  kind: 'agent' as const,
+  controllerGeneration: 'controller-generation-1',
+  projectionId: 'projection-1',
+  executionSessionId: 'agent-session-1',
+  authorityId: 'terminal-authority-1',
+  initialTargetRevision: 4
+};
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/executionProjectionPriority',
+    payload: {
+      nodeId: projectionIdentity.nodeId,
+      kind: projectionIdentity.kind,
+      controllerGeneration: projectionIdentity.controllerGeneration,
+      priority: 'selected'
+    }
+  }),
+  {
+    type: 'webview/executionProjectionPriority',
+    payload: {
+      nodeId: projectionIdentity.nodeId,
+      kind: projectionIdentity.kind,
+      controllerGeneration: projectionIdentity.controllerGeneration,
+      priority: 'selected'
+    }
+  }
+);
+const projectionChunkAppliedMessage = {
+  type: 'webview/executionProjectionChunkApplied' as const,
+  payload: {
+    ...projectionIdentity,
+    sequence: 0,
+    payloadBytes: 128,
+    creditBytes: 256,
+    appliedRevision: 1
+  }
+};
+assert.deepEqual(parseWebviewMessage(projectionChunkAppliedMessage), projectionChunkAppliedMessage);
+assert.equal(
+  parseWebviewMessage({
+    ...projectionChunkAppliedMessage,
+    payload: { ...projectionChunkAppliedMessage.payload, payloadBytes: 0 }
+  }),
+  null,
+  'projection ACK 不接受 zero-byte chunk。'
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/requestExecutionProjectionCredit',
+    payload: { ...projectionIdentity, creditBytes: 32768 }
+  }),
+  {
+    type: 'webview/requestExecutionProjectionCredit',
+    payload: { ...projectionIdentity, creditBytes: 32768 }
+  }
+);
+assert.deepEqual(
+  parseWebviewMessage({
+    type: 'webview/cancelExecutionProjection',
+    payload: { ...projectionIdentity, reason: 'retry' }
+  }),
+  {
+    type: 'webview/cancelExecutionProjection',
+    payload: { ...projectionIdentity, reason: 'retry' }
+  }
+);
+const queuedProjectionCancelMessage = {
+  type: 'webview/cancelExecutionProjection' as const,
+  payload: {
+    nodeId: projectionIdentity.nodeId,
+    kind: projectionIdentity.kind,
+    controllerGeneration: projectionIdentity.controllerGeneration,
+    reason: 'dispose' as const
+  }
+};
+assert.deepEqual(
+  parseWebviewMessage(queuedProjectionCancelMessage),
+  queuedProjectionCancelMessage,
+  'queued projection cancellation must not require a server projection id.'
+);
+assert.equal(
+  parseWebviewMessage({
+    ...queuedProjectionCancelMessage,
+    payload: { ...queuedProjectionCancelMessage.payload, controllerGeneration: '' }
+  }),
+  null,
+  'queued projection cancellation must still be bound to a non-empty controller generation.'
+);
 assert.deepEqual(
   parseWebviewMessage({
     type: 'webview/attachExecutionSession',
@@ -555,6 +645,10 @@ assert.match(
 
 const panelManagerSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8');
 const webviewSource = await readFile('extensions/vscode/dev-session-canvas/src/webview/main.tsx', 'utf8');
+const executionSessionNodesSource = await readFile(
+  'extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx',
+  'utf8'
+);
 assert.match(
   panelManagerSource,
   /isCurrentWebviewMessage\(sourceSurface, sourceWebview, lifecycle, parsedMessage\.type/u,
@@ -612,8 +706,203 @@ assert.match(
 );
 assert.match(
   panelManagerSource,
-  /queueExecutionStateSync\([\s\S]*options: \{ postState\?: boolean \} = \{\}[\s\S]*postState: options\.postState === true/u,
-  'Expected routine live execution state syncs to persist without forcing Webview state renders.'
+  /queueExecutionStateSync\([\s\S]*options: \{ postState\?: boolean \} = \{\}[\s\S]*pendingExecutionStateSyncs[\s\S]*coalesceExecutionStateSyncRequest\([\s\S]*flushQueuedExecutionStateSyncs[\s\S]*flushLiveExecutionStateBatch/u,
+  'Expected routine output and lifecycle syncs to share one manager-level Canvas flush.'
+);
+assert.match(
+  panelManagerSource,
+  /snapshotStateRevision[\s\S]*snapshot\.terminalProjectionIncluded === false[\s\S]*snapshotStateRevision <= existingSession\.supervisorStateRevision[\s\S]*return;/u,
+  'Expected unchanged compact response/catch-up snapshots to be rejected by monotonic state revision.'
+);
+assert.match(
+  panelManagerSource,
+  /canPreserveExplicitlyOmittedTerminalProjection[\s\S]*snapshot\.terminalProjectionIncluded === false[\s\S]*snapshot\.terminalAuthorityId === session\.terminalAuthorityId[\s\S]*supervisorKnownTerminalRevision/u,
+  'Expected compact Supervisor state updates to preserve the attached session while recording a separate known head revision.'
+);
+assert.match(
+  panelManagerSource,
+  /session\.supervisorKnownTerminalRevision = Math\.max\([\s\S]*snapshot\.terminalRevision[\s\S]*\);[\s\S]*const terminalStream = normalizeTerminalStreamAttachPayload/u,
+  'Expected compact Supervisor state to advance only the known head, not the live-event consume cursor.'
+);
+assert.match(
+  panelManagerSource,
+  /isCompactTerminalProjection[\s\S]*const consumedTerminalRevision = isCompactTerminalProjection[\s\S]*observedTerminalRevision: consumedTerminalRevision/u,
+  'Expected a newly created compact session to start its live-event cursor at the Host floor rather than the Supervisor head.'
+);
+assert.doesNotMatch(
+  panelManagerSource,
+  /snapshotTerminalRevision <= session\.outputSequence/u,
+  'Compact state must not require the Supervisor head to be at or below the Host cursor before preserving the session.'
+);
+assert.match(
+  panelManagerSource,
+  /getCompleteRuntimeSupervisorTerminalStream\([\s\S]*snapshot\.terminalProjectionIncluded === false[\s\S]*normalizeTerminalStreamAttachPayload\(currentTerminalStream\)/u,
+  'Expected a compact terminal final state to reuse the complete in-memory stream received before it.'
+);
+assert.match(
+  panelManagerSource,
+  /const preserveInlineTerminalHistory =\s*\n\s*persistenceMode !== 'live-runtime' && !liveSession;/u,
+  'Expected an inline history copy to remain available while an archive reference is being durably migrated.'
+);
+assert.doesNotMatch(
+  panelManagerSource,
+  /metadata\.persistenceMode === 'live-runtime'[\s\S]*normalizeCompletedTerminalHistoryArchiveDescriptor\(metadata\.terminalHistoryArchive\)\n\s*\)\s*\{\n\s*return \[\];/u,
+  'Archive migration must not skip a reference-plus-inline recovery record before the inline copy is removed.'
+);
+assert.doesNotMatch(
+  panelManagerSource,
+  /handleRuntimeSupervisorRecoveryState|updateRuntimeSupervisorRecoveryProgressNotification|recoveryProgressNotificationShown/u,
+  'Expected dead-PTY namespace recovery and its global progress notification to be absent from the Host.'
+);
+assert.match(
+  panelManagerSource,
+  /restoreLiveRuntimeSessions\([\s\S]*getRuntimeSupervisorClientForKind\([\s\S]*\{ allowRestart: false \}[\s\S]*runtime\/supervisorInstanceMismatch/u,
+  'Expected persisted runtime restore to connect without starting a replacement Supervisor and classify instance mismatches locally.'
+);
+assert.match(
+  panelManagerSource,
+  /handleProjectionCoordinatorState[\s\S]*record\.appliedRevision = Math\.max\([\s\S]*record\.checkpoint\.revision/u,
+  'Expected the Host surface revision to include the pinned checkpoint before the first projection ACK.'
+);
+assert.match(
+  panelManagerSource,
+  /awaitingChunkAck[\s\S]*appliedRevision[\s\S]*payload\.controllerGeneration !== record\.attemptId[\s\S]*payload\.initialTargetRevision !== record\.initialTargetRevision/u,
+  'Expected projection ACKs to be bound to the exact Host chunk and controller attempt.'
+);
+assert.match(
+  panelManagerSource,
+  /onTargetAdvanced:[\s\S]*handleProjectionCoordinatorTargetAdvanced[\s\S]*record\.latestTargetRevision = targetRevision;/u,
+  'Expected every validated follow-target advance to update the surface watermark before the next chunk.'
+);
+assert.match(
+  panelManagerSource,
+  /classifyExecutionProjectionLiveEvent\(\{[\s\S]*ready: record\.phase === 'ready'[\s\S]*latestTargetRevision: record\.latestTargetRevision[\s\S]*lastLiveRevision: record\.lastLiveRevision/u,
+  'Expected shared-socket events to use the surface-local ready barrier and final follow target.'
+);
+assert.match(
+  panelManagerSource,
+  /handleProjectionCoordinatorReady[\s\S]*targetBarrierRevision = record\.latestTargetRevision \?\? readyRevision/u,
+  'Expected the ready handoff to use the final monotonic follow target while retaining the initial target as protocol identity.'
+);
+assert.match(
+  panelManagerSource,
+  /record\.projectionAppliedRevision = Math\.max[\s\S]*projectionJob\?\.appliedRevision \?\? 0[\s\S]*pending\.appliedRevision \?\? 0/u,
+  'Expected projection ACKs to use the projection-contiguous revision floor instead of a newer live-tail revision.'
+);
+assert.match(
+  panelManagerSource,
+  /handleProjectionCoordinatorReady[\s\S]*record\.phase = 'ready'[\s\S]*this\.postProjectionState\(record, 'ready'\)/u,
+  'Expected both live and dead fixed projections to become ready without a post-finalization control subscribe.'
+);
+assert.match(
+  panelManagerSource,
+  /decision\.action === 'ignore'[\s\S]*continue;[\s\S]*decision\.action === 'gap'[\s\S]*handleProjectionCoordinatorFailure[\s\S]*postProjectionLiveEvent/u,
+  'Expected restoring observations and duplicates to be ignored while ready live-tail gaps fail closed.'
+);
+assert.doesNotMatch(
+  panelManagerSource,
+  /pendingLiveEvents|queuePendingProjectionLiveEvent|flushPendingProjectionLiveEvents/u,
+  'A restoring surface must not retain a second live-event backlog beside its credit-driven follow stream.'
+);
+assert.match(
+  panelManagerSource,
+  /latestArchiveProjectionAttachRequests[\s\S]*arePendingArchiveProjectionAttachRequestsEquivalent[\s\S]*getSurfaceMessageWebview\(request\.surface\) === request\.webview/u,
+  'Expected legacy archive materialization callbacks to be scoped to the newest controller, lifecycle, and Webview identity.'
+);
+assert.match(
+  panelManagerSource,
+  /scheduleCanonicalArchiveProjectionAttach[\s\S]*completedTerminalHistoryArchiveStore\.ensureProjectionSidecar\(descriptor\)/u,
+  'Expected canonical-only archive refs to gain a sidecar through a deduplicated read/write upgrade instead of a monolithic snapshot.'
+);
+assert.match(
+  panelManagerSource,
+  /transitionCompletedExecutionProjectionsToArchive[\s\S]*isSurfaceExecutionProjectionCompleteForArchive[\s\S]*enqueueArchivedExecutionProjection/u,
+  'Expected a bulk session death to hand restoring surfaces to the durable archive with the same controller generation.'
+);
+assert.match(
+  panelManagerSource,
+  /scheduleRuntimeRestoreBatchStatePost[\s\S]*setImmediate[\s\S]*runtimeRestoreBatchStateDirty/u,
+  'Expected runtime restore to publish per-tick state updates without holding a global Promise.all barrier.'
+);
+assert.match(
+  webviewSource,
+  /completeProjection\(identity, readyRevision\)[\s\S]*projectionRecoveryRequested = false[\s\S]*setProjectionState\('ready'\)/u,
+  'Expected a completed projection to clear the recovery latch before reopening live recovery.'
+);
+assert.match(
+  protocolSource,
+  /export type ExecutionProjectionCancelPayload[\s\S]*ExecutionProjectionNodeIdentity[\s\S]*ExecutionProjectionIdentity/u,
+  'Expected projection cancellation to accept node/controller identity before a projection id exists while retaining full identity compatibility.'
+);
+assert.match(
+  webviewSource,
+  /cancelProjection\(reason = 'user'\)[\s\S]*projectionState !== 'ready'[\s\S]*projectionRecoveryRequested[\s\S]*controllerGeneration/u,
+  'Expected queued and opening controllers to cancel by node/controller generation without waiting for a projection id.'
+);
+assert.match(
+  panelManagerSource,
+  /latestArchiveProjectionAttachRequests[\s\S]*pendingRequest\.controllerGeneration === parsedMessage\.payload\.controllerGeneration[\s\S]*getJob\(/u,
+  'Expected a queued archive materialization cancel to retire the pending callback and only cancel an exact coordinator generation.'
+);
+assert.match(
+  webviewSource,
+  /dispose\(\)\s*\{\s*this\.cancelProjection\('dispose'\)/u,
+  'Expected controller disposal to cancel queued projections before their server projection id is assigned.'
+);
+assert.match(
+  webviewSource,
+  /projectionExpectedSequence === undefined && detail\.sequence !== 1[\s\S]*detail\.payloadBytes !== estimateUtf8ByteLength\(JSON\.stringify\(detail\.chunk\)\)/u,
+  'Expected Webview projection chunks to validate the first cursor and declared UTF-8 payload size.'
+);
+assert.match(
+  executionSessionNodesSource,
+  /archiveProjectionIdentity[\s\S]*archiveProjectionChanged[\s\S]*requestAttachSnapshot\(\{ needsProjection \}\)/u,
+  'Expected an asynchronously upgraded archive sidecar descriptor to retrigger the current controller attach.'
+);
+assert.match(
+  executionSessionNodesSource,
+  /liveProjectionIdentity[\s\S]*liveProjectionChanged[\s\S]*cancelProjection\('retry'\)[\s\S]*requestAttachSnapshot\(\{ needsProjection \}\)/u,
+  'Expected a replaced live session to reset a stale restoring controller before requesting its new projection.'
+);
+assert.match(
+  executionSessionNodesSource,
+  /setTerminalAppliedAckEnabled\(!hasArchiveProjection\)/u,
+  'Expected a controller reused by Resume or Restart to re-enable live terminal applied ACKs after leaving an archive projection.'
+);
+assert.match(
+  webviewSource,
+  /setTerminalAppliedAckEnabled\(enabled\)[\s\S]*sendTerminalAppliedAck = enabled[\s\S]*cancelTerminalAppliedAckTimer/u,
+  'Expected terminal applied-ACK policy to be mutable without rebuilding the xterm controller.'
+);
+assert.doesNotMatch(
+  executionSessionNodesSource,
+  /liveProjectionAlreadyRendered[\s\S]*executionSessionId === (?:agentMetadata|terminalMetadata)\.runtimeSessionId/u,
+  'Expected Supervisor or transport identity replacement to reattach even when the runtime session id is reused.'
+);
+assert.doesNotMatch(
+  executionSessionNodesSource,
+  /projectionResetRequired &&[\s\S]{0,160}getProjectionState\(\) !== 'ready'/u,
+  'Expected a replaced live identity to gate input immediately even when the previous projection was ready.'
+);
+assert.match(
+  panelManagerSource,
+  /handleProjectionChunkApplied\([\s\S]*?payload\.controllerGeneration !== record\.attemptId[\s\S]*?payload\.projectionId !== record\.supervisorProjectionId[\s\S]*?return;[\s\S]*?const pending = record\.awaitingChunkAck/u,
+  'Expected a late ACK from a retired projection identity to be ignored before it can fail a same-generation archive replacement.'
+);
+assert.match(
+  panelManagerSource,
+  /case 'webview\/cancelExecutionProjection':[\s\S]*?cancelledProjectionId !== undefined[\s\S]*?cancelledProjectionId !== record\.supervisorProjectionId[\s\S]*?return;[\s\S]*?cancelSurfaceExecutionProjection/u,
+  'Expected a late cancel from a retired projection id to preserve a same-generation replacement.'
+);
+assert.match(
+  panelManagerSource,
+  /pendingRequest\.controllerGeneration === parsedMessage\.payload\.controllerGeneration &&[\s\S]*?cancelledProjectionId === undefined/u,
+  'Expected only an identity-free queued cancel to remove pending archive materialization.'
+);
+assert.match(
+  webviewSource,
+  /clearPendingExecutionPasteRequestsForNode\(nodeId, kind\)/u,
+  'Expected projection resets to discard asynchronous clipboard requests for that node.'
 );
 assert.match(
   panelManagerSource,

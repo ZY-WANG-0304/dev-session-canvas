@@ -4,6 +4,7 @@ import {
 } from './serializedTerminalState';
 
 export const TERMINAL_SESSION_STREAM_VERSION = 1 as const;
+const TERMINAL_STREAM_NORMALIZATION_EVENT_BATCH_SIZE = 512;
 
 export type TerminalStreamRevision = number;
 
@@ -57,6 +58,14 @@ export interface TerminalStreamAttachPayload {
 export interface TerminalStreamProjectionMergeResult {
   payload: TerminalStreamAttachPayload;
   preservedLiveTailEventCount: number;
+}
+
+interface TerminalStreamAttachPayloadNormalizationContext {
+  sessionId: string;
+  authorityId: string;
+  revision: TerminalStreamRevision;
+  checkpoint: TerminalStreamCheckpoint;
+  rawEvents: unknown[];
 }
 
 export function normalizeTerminalStreamRevision(value: unknown): TerminalStreamRevision | undefined {
@@ -155,44 +164,112 @@ export function normalizeTerminalStreamCheckpoint(value: unknown): TerminalStrea
 }
 
 export function normalizeTerminalStreamAttachPayload(value: unknown): TerminalStreamAttachPayload | undefined {
-  if (!isRecord(value) || value.version !== TERMINAL_SESSION_STREAM_VERSION) {
+  const context = createTerminalStreamAttachPayloadNormalizationContext(value);
+  if (!context) {
     return undefined;
   }
-
-  const sessionId = normalizeIdentity(value.sessionId);
-  const authorityId = normalizeIdentity(value.authorityId);
-  const revision = normalizeTerminalStreamRevision(value.revision);
-  const checkpoint = normalizeTerminalStreamCheckpoint(value.checkpoint);
-  if (!sessionId || !authorityId || revision === undefined || !checkpoint) {
-    return undefined;
-  }
-  if (checkpoint.sessionId !== sessionId || checkpoint.authorityId !== authorityId || checkpoint.revision > revision) {
-    return undefined;
-  }
-
-  const rawEvents = Array.isArray(value.events) ? value.events : [];
   const events: TerminalStreamEvent[] = [];
-  let expectedRevision = checkpoint.revision + 1;
-  for (const rawEvent of rawEvents) {
+  let expectedRevision = context.checkpoint.revision + 1;
+  for (const rawEvent of context.rawEvents) {
     const event = normalizeTerminalStreamEvent(rawEvent);
-    if (!event || event.revision !== expectedRevision || event.revision > revision) {
+    if (!event || event.revision !== expectedRevision || event.revision > context.revision) {
       return undefined;
     }
     events.push(event);
     expectedRevision += 1;
   }
-  if (expectedRevision !== revision + 1) {
+  if (expectedRevision !== context.revision + 1) {
     return undefined;
   }
 
   return {
     version: TERMINAL_SESSION_STREAM_VERSION,
+    sessionId: context.sessionId,
+    authorityId: context.authorityId,
+    revision: context.revision,
+    checkpoint: context.checkpoint,
+    events
+  };
+}
+
+/**
+ * Validates and clones large event arrays in bounded turns. Archive migration
+ * uses this path so thousands of small records cannot monopolize the Host.
+ */
+export async function normalizeTerminalStreamAttachPayloadAsync(
+  value: unknown
+): Promise<TerminalStreamAttachPayload | undefined> {
+  const context = createTerminalStreamAttachPayloadNormalizationContext(value);
+  if (!context) {
+    return undefined;
+  }
+  const events: TerminalStreamEvent[] = [];
+  let expectedRevision = context.checkpoint.revision + 1;
+  for (let index = 0; index < context.rawEvents.length; index += 1) {
+    const event = normalizeTerminalStreamEvent(context.rawEvents[index]);
+    if (!event || event.revision !== expectedRevision || event.revision > context.revision) {
+      return undefined;
+    }
+    events.push(event);
+    expectedRevision += 1;
+    if (
+      (index + 1) % TERMINAL_STREAM_NORMALIZATION_EVENT_BATCH_SIZE === 0 &&
+      index + 1 < context.rawEvents.length
+    ) {
+      await yieldTerminalStreamNormalization();
+    }
+  }
+  if (expectedRevision !== context.revision + 1) {
+    return undefined;
+  }
+  return {
+    version: TERMINAL_SESSION_STREAM_VERSION,
+    sessionId: context.sessionId,
+    authorityId: context.authorityId,
+    revision: context.revision,
+    checkpoint: context.checkpoint,
+    events
+  };
+}
+
+function createTerminalStreamAttachPayloadNormalizationContext(
+  value: unknown
+): TerminalStreamAttachPayloadNormalizationContext | undefined {
+  if (!isRecord(value) || value.version !== TERMINAL_SESSION_STREAM_VERSION) {
+    return undefined;
+  }
+  const sessionId = normalizeIdentity(value.sessionId);
+  const authorityId = normalizeIdentity(value.authorityId);
+  const revision = normalizeTerminalStreamRevision(value.revision);
+  const checkpoint = normalizeTerminalStreamCheckpoint(value.checkpoint);
+  if (
+    !sessionId ||
+    !authorityId ||
+    revision === undefined ||
+    !checkpoint ||
+    checkpoint.sessionId !== sessionId ||
+    checkpoint.authorityId !== authorityId ||
+    checkpoint.revision > revision
+  ) {
+    return undefined;
+  }
+  return {
     sessionId,
     authorityId,
     revision,
     checkpoint,
-    events
+    rawEvents: Array.isArray(value.events) ? value.events : []
   };
+}
+
+function yieldTerminalStreamNormalization(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof setImmediate === 'function') {
+      setImmediate(resolve);
+      return;
+    }
+    setTimeout(resolve, 0);
+  });
 }
 
 export function cloneTerminalStreamEvent(event: TerminalStreamEvent): TerminalStreamEvent {

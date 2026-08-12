@@ -84,6 +84,8 @@ export interface ExecutionInputDispatchMetadata {
   sequence: number;
   webviewEpochMs: number;
   webviewPerformanceNowMs: number;
+  controllerGeneration?: string;
+  projectionId?: string;
 }
 
 export interface CanvasNodeData {

@@ -2260,6 +2260,57 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
+.terminal-projection-status {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 20px);
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 74%, var(--vscode-focusBorder) 26%);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, var(--vscode-sideBar-background) 10%);
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  line-height: 1.25;
+  pointer-events: none;
+}
+
+.terminal-projection-status.is-restoring::before {
+  width: 7px;
+  height: 7px;
+  border: 1px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  content: '';
+  animation: terminal-projection-spin 700ms linear infinite;
+}
+
+.terminal-projection-status.is-failed {
+  border-color: color-mix(in srgb, var(--vscode-editorError-foreground) 56%, var(--vscode-panel-border));
+  color: var(--vscode-editorError-foreground);
+  pointer-events: auto;
+}
+
+.terminal-projection-status button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+@keyframes terminal-projection-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .terminal-legacy-compatibility-notice {
   position: absolute;
   top: 10px;

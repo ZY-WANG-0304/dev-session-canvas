@@ -102,6 +102,9 @@ function assertInputIntent(classifyAgentInputData, createAgentInputIntentTracker
   assert.equal(classifyAgentInputData('\u001b'), 'text');
 
   const tracker = createAgentInputIntentTracker();
+  tracker.recordKeyEvent({ type: 'keydown', key: 'Escape', code: 'Escape' });
+  tracker.reset();
+  assert.equal(tracker.classifyData('\r'), 'submit', 'Reset should discard a stale DOM key event.');
   tracker.recordKeyEvent(plainEnter);
   assert.equal(tracker.classifyData('\r'), 'submit');
   assert.equal(tracker.classifyData('x'), 'text', 'Key intent must be consumed by exactly one onData event.');

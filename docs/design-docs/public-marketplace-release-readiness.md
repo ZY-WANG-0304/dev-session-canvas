@@ -13,7 +13,8 @@ related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
   - docs/exec-plans/active/publish-tag-release-flow.md
   - docs/exec-plans/completed/github-release-assets-flow.md
-updated_at: 2026-08-04
+  - docs/exec-plans/completed/runtime-recovery-projection-isolation.md
+updated_at: 2026-08-12
 ---
 
 # 公开平台发布准备
@@ -112,11 +113,11 @@ updated_at: 2026-08-04
 
 > 2026-07-29 发布后复核：`0.24.4` 已从最终 `main` release ref `83f88a7cfde3f9ab5a145323b86eadf13aed74de` 完成发布；正式 `v0.24.4` 指向同一 ref，`publish/v0.24.4` 已删除。GitHub Release assets 已上传，Open VSX 主扩展与 notifier 均为 `verified`，Visual Studio Marketplace 双扩展仍为 `publish-failed` / deferred。该渠道状态是下一轮输入的事实，不得表述为 VSM 已恢复。
 >
-> 2026-08-04 `0.24.5` 发布准备决策：相对 `v0.24.4` 的输入只接受已合入 `main` 的 #276 已死亡 PTY 有界恢复和显式 Agent Resume、#277 VS Code 恢复进度通知，以及 #278 checkpoint 拒绝时的健康 live-stream 投影隔离与节点内输入 FIFO。选择 `0.24.5` 而不是 `0.25.0` 符合 `docs/workflows/VERSION.md`：三项均修复 `0.24.x` 已有的 Runtime Supervisor 恢复和终端输入响应行为，不改变扩展身份、provider 命令契约、journal 格式、通知协议、服务 API 主版本或稳定支持承诺。`0.24.5` 继续保持 Preview 定位、主扩展 / notifier 同版本、最终 `main` ref 发布、GitHub Release assets + Open VSX verified 完成门禁，以及 VSM deferred 约束。
+> 2026-08-12 `0.24.5` 发布准备决策：相对 `v0.24.4` 继续修正 #276--#278 的 Runtime Supervisor 恢复和终端输入路径。保留可信 Agent resume identity、显式 Resume、OSC query checkpoint 资格与输入保序意图；取代旧 namespace hydrate、全局 hydrate 通知和 response-gated FIFO，并增加同 instance Window Reload 的 surface-local bulk projection、completed history archive/ref 与 control/lifecycle 隔离。选择 `0.24.5` 而不是 `0.25.0` 仍符合 `docs/workflows/VERSION.md`：本轮修复 `0.24.x` 既有行为，不改变扩展身份、provider 命令契约、服务 API 主版本或稳定支持承诺。`0.24.5` 继续保持 Preview 定位、主扩展 / notifier 同版本、最终 `main` ref 发布、GitHub Release assets + Open VSX verified 完成门禁，以及 VSM deferred 约束。
 >
-> 本轮对外说明必须保留以下边界：已死亡 local PTY 不会复活；启动期只读有界 journal metadata，最后持久化 terminal screen 与它自身的 output sequence 必须原子配对；Agent `resume-ready` 只允许用户点击 `Resume` 后创建新 provider 进程。健康 live stream 的周期完整 projection 被移除，但新投影 attach 和 stream gap 仍会获取权威 journal 内容；完整 history 浏览尚未实现。OSC 10/11 query 的 checkpoint 误判已修复，但颜色 SET / RESTORE / 未知 payload 与无法无损 serialize 的复合控制序列仍 fail-closed。物理设备重启、长时间 Remote SSH 断开、固定磁盘上限、跨版本 journal 回退、90,000 行短读、Fork 视觉验收、媒体 opener / resize 边界和 VSM deferred 均继续保留。
+> 本轮对外说明必须保留以下边界：Supervisor instance 改变时旧 local PTY 不会复活，新 Supervisor 以空 namespace 启动，不扫描或打开旧 registry/journal，也不发布整画布 hydrate 通知。Agent `resume-ready` 只在可信 provider session id 存在且用户点击 `Resume` 后创建新 PTY；Terminal 只提供已有 durable history（若存在）与 `Restart`；screen snapshot / recent output 只是可选帮助。同 instance Window Reload 才按 surface / 节点分块恢复完整 retained projection 并边接收边显示；input FIFO 在固定 socket dispatch 后释放，每条 response 独立完成，Supervisor response 先于 compact lifecycle，bulk 不驱动共享 lifecycle。升级窗口中旧 Supervisor 真实持有的 live session 可以并行 drain。OSC 10/11 query 的 checkpoint 误判已修复，但颜色 SET / RESTORE / 未知 payload 与无法无损 serialize 的复合控制序列仍 fail-closed。物理设备重启、长时间 Remote SSH 断开、通用 journal 浏览、固定磁盘上限、跨版本 journal 回退、90,000 行短读、Fork 视觉验收、媒体 opener / resize 边界和 VSM deferred 均继续保留。
 >
-> 合入前的功能实现证据见两份已完成 ExecPlan：死 PTY 路径已通过 `npm run typecheck`、`npm run test:terminal-session-journal`、`npm run test:runtime-supervisor-protocol`、`npm run test:ui-copy-localization` 和 `runtime-supervisor-reboot-recovery` / 两条 systemd VS Code smoke；checkpoint / 输入路径已通过 serialized tracker、Supervisor protocol、execution input queue、Webview protocol、output sequence / scheduler、typecheck、build 与差异检查。`0.24.5` 的候选 VSIX、clean-checkout、package-only dry-run、GitHub Release assets、Open VSX 与 VSM 状态仍必须在发布准备 MR 合入后的干净 `main` ref 上重新生成和确认，不能预先写成发布完成。
+> 当前功能证据见 `runtime-recovery-projection-isolation` ExecPlan：archive / assembler / coordinator、Supervisor protocol、execution input queue、Webview protocol、output sequence / scheduler、terminal journal、provider lifecycle、UI copy、typecheck 与 build 已通过；真实 `runtime-supervisor-reboot-recovery` smoke 只验证 Host 启动、Agent 显式 Resume action 与 Terminal history 状态，没有点击真实 Resume/Restart 按钮，`real-reopen` smoke 验证新 Webview 完整 projection 与继续输入。双 surface GUI、90,000 行真实 GUI、Host/Webview event-loop lag、候选 VSIX、clean-checkout、package-only dry-run、GitHub Release assets、Open VSX 与 VSM 状态仍必须在发布准备 MR 合入后的干净 `main` ref 上生成和确认，不能预先写成发布完成。
 
 
 > 2026-06-08 流程更新：后续发布输入改为由临时 tag `publish/vX.Y.Z` 固定。该 tag 只表示 publish intent，发布成功并验证双市场主扩展 / notifier 四个目标后，由发布脚本创建正式 `vX.Y.Z` tag 并删除临时 `publish/` tag。release manifest 记录 VSIX sha256、README doc ref、marketplace 验证结果和 tag 状态，但不写回代码库，只作为 GitHub Actions artifact / GitHub Release asset 保存。

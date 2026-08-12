@@ -16,9 +16,9 @@ const COMMAND_IDS = {
   testClearHostMessages: 'devSessionCanvas.__test.clearHostMessages',
   testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
+  testCaptureWebviewProbe: 'devSessionCanvas.__test.captureWebviewProbe',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
-  testSetPersistedState: 'devSessionCanvas.__test.setPersistedState',
   testSimulateRuntimeReload: 'devSessionCanvas.__test.simulateRuntimeReload',
   testCreateNode: 'devSessionCanvas.__test.createNode',
   testStartExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
@@ -26,27 +26,16 @@ const COMMAND_IDS = {
 };
 const OLD_TERMINAL_MARKER = 'REBOOT_RECOVERY_OLD_TERMINAL';
 const OLD_TERMINAL_PID_PREFIX = 'REBOOT_RECOVERY_OLD_TERMINAL_PID=';
-const JOURNAL_ONLY_LATE_OUTPUT_MARKER = 'REBOOT_RECOVERY_JOURNAL_ONLY_LATE_OUTPUT';
 const OLD_AGENT_MARKER = 'REBOOT_RECOVERY_OLD_AGENT_SNAPSHOT';
 const OLD_AGENT_BURST_COUNT = 512;
 const NEW_AGENT_MARKER = 'REBOOT_RECOVERY_NEW_AGENT';
 const NEW_TERMINAL_MARKER = 'REBOOT_RECOVERY_NEW_TERMINAL';
 const SHORT_FALLBACK_SOCKET_DIGEST_LENGTH = 16;
-const recoveryGatePath = process.env.DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_RECOVERY_GATE_PATH;
-const recoveryJournalByteBudget = Number(
-  process.env.DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_MAX_RECOVERY_JOURNAL_BYTES
-);
 
 module.exports = { run };
 
 async function run() {
   assert.notStrictEqual(process.platform, 'win32', 'This smoke validates a Unix socket reset.');
-  assert.ok(recoveryGatePath, 'Missing test-only Runtime Supervisor recovery gate path.');
-  assert.ok(
-    Number.isSafeInteger(recoveryJournalByteBudget) && recoveryJournalByteBudget > 0,
-    'Missing a positive test-only Runtime Supervisor recovery Journal byte budget.'
-  );
-  await fs.rm(recoveryGatePath, { force: true });
 
   const extension = await activateVisibleExtension(vscode, EXTENSION_ID);
   assert.ok(extension, 'Expected the Dev Session Canvas extension to activate.');
@@ -70,12 +59,12 @@ async function run() {
     oldAgent = await createNode('agent', 'codex');
     await startExecution('agent', oldAgent.id, 'codex');
     await waitForNode((node) => isAttachedLiveAgent(node), 20000, oldAgent.id);
-    const oldAgentReadyNode = await waitForNode(
-      (node) => node.metadata?.agent?.recentOutput?.includes('[fake-agent] ready pid='),
-      20000,
-      oldAgent.id
+    const oldAgentReadyTranscript = await waitForTerminalTranscript(
+      oldAgent.id,
+      (transcript) => transcript.includes('[fake-agent] ready pid='),
+      20000
     );
-    oldAgentProcessId = parseAgentProcessId(oldAgentReadyNode.metadata.agent.recentOutput);
+    oldAgentProcessId = parseAgentProcessId(oldAgentReadyTranscript);
     await dispatchWebviewMessage({
       type: 'webview/executionInput',
       payload: {
@@ -92,10 +81,14 @@ async function run() {
         data: `burst ${OLD_AGENT_BURST_COUNT}\r`
       }
     });
+    await waitForTerminalTranscript(
+      oldAgent.id,
+      (transcript) => transcript.includes(`[fake-agent] burst ${String(OLD_AGENT_BURST_COUNT).padStart(3, '0')}`),
+      30000
+    );
     const oldAgentLiveNode = await waitForNode(
       (node) =>
-        node.metadata?.agent?.recentOutput?.includes(`[fake-agent] burst ${String(OLD_AGENT_BURST_COUNT).padStart(3, '0')}`) &&
-        node.metadata.agent.resumeSupported === true &&
+        node.metadata?.agent?.resumeSupported === true &&
         Boolean(node.metadata.agent.resumeSessionId) &&
         Boolean(node.metadata.agent.resumeStoragePath),
       30000,
@@ -103,22 +96,16 @@ async function run() {
     );
     const oldAgentRuntimeSessionId = oldAgentLiveNode.metadata.agent.runtimeSessionId;
     const oldAgentRuntimeStoragePath = oldAgentLiveNode.metadata.agent.runtimeStoragePath;
-    const oldAgentOutputSequence = oldAgentLiveNode.metadata.agent.outputSequence;
-    const oldAgentSerializedState = createSerializedTerminalStateFixture(OLD_AGENT_MARKER, oldAgentOutputSequence);
+    const oldAgentSupervisorInstanceId = oldAgentLiveNode.metadata.agent.supervisorInstanceId;
     const oldAgentResumeSessionId = oldAgentLiveNode.metadata.agent.resumeSessionId;
     const oldAgentResumeStoragePath = oldAgentLiveNode.metadata.agent.resumeStoragePath;
     assert.ok(oldAgentRuntimeSessionId, 'The old Agent must have a persisted Runtime Supervisor session id.');
     assert.ok(oldAgentRuntimeStoragePath, 'The old Agent must have a runtime storage path.');
+    assert.ok(oldAgentSupervisorInstanceId, 'The old Agent must persist its Supervisor instance identity.');
     assert.ok(oldAgentResumeSessionId, 'The old Agent must have a resumable provider session id.');
     assert.ok(oldAgentResumeStoragePath, 'The old Agent must have a resumable provider storage path.');
     await synchronizeFakeProviderSession(oldAgentResumeStoragePath, oldAgentResumeSessionId);
     await waitForRegistrySession(oldAgentRuntimeSessionId, 20000);
-    await waitForJournalBytes(
-      path.join(oldAgentRuntimeStoragePath, 'runtime-supervisor'),
-      oldAgentRuntimeSessionId,
-      recoveryJournalByteBudget,
-      30000
-    );
 
     oldTerminal = await createNode('terminal');
     await startExecution('terminal', oldTerminal.id);
@@ -131,22 +118,20 @@ async function run() {
         data: `echo ${OLD_TERMINAL_MARKER}; echo ${OLD_TERMINAL_PID_PREFIX}$$\r`
       }
     });
-    const oldLiveNode = await waitForNode(
-      (node) => node.metadata?.terminal?.recentOutput?.includes(OLD_TERMINAL_MARKER),
-      20000,
-      oldTerminal.id
+    const oldTerminalTranscript = await waitForTerminalTranscript(
+      oldTerminal.id,
+      (transcript) => transcript.includes(OLD_TERMINAL_MARKER),
+      20000
     );
+    const oldLiveNode = await getNode(oldTerminal.id);
     const oldRuntimeSessionId = oldLiveNode.metadata.terminal.runtimeSessionId;
     const oldRuntimeStoragePath = oldLiveNode.metadata.terminal.runtimeStoragePath;
+    const oldTerminalSupervisorInstanceId = oldLiveNode.metadata.terminal.supervisorInstanceId;
     assert.ok(oldRuntimeSessionId, 'The old Terminal must have a persisted Runtime Supervisor session id.');
     assert.ok(oldRuntimeStoragePath, 'The old Terminal must have a runtime storage path.');
-    oldTerminalProcessId = parseTerminalProcessId(oldLiveNode.metadata.terminal.recentOutput);
+    assert.ok(oldTerminalSupervisorInstanceId, 'The old Terminal must persist its Supervisor instance identity.');
+    oldTerminalProcessId = parseTerminalProcessId(oldTerminalTranscript);
     await waitForRegistrySession(oldRuntimeSessionId, 20000);
-    const oldTerminalOutputSequence = oldLiveNode.metadata.terminal.outputSequence;
-    const oldTerminalSerializedState = createSerializedTerminalStateFixture(
-      OLD_TERMINAL_MARKER,
-      oldTerminalOutputSequence
-    );
 
     const supervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
       path.join(oldRuntimeStoragePath, 'runtime-supervisor')
@@ -154,65 +139,81 @@ async function run() {
     assertIsolatedSupervisorSocketPath(supervisorPaths.socketPath, oldRuntimeStoragePath);
     const helloBeforeReboot = await sendRuntimeSupervisorRequest(supervisorPaths.socketPath, 'hello');
     assert.ok(Number.isInteger(helloBeforeReboot?.pid), 'Expected the old Supervisor hello response to expose its pid.');
+    assert.strictEqual(helloBeforeReboot.capabilities?.supervisorInstanceIdentityV1, true);
+    assert.strictEqual(helloBeforeReboot.supervisorInstanceId, oldAgentSupervisorInstanceId);
+    assert.strictEqual(helloBeforeReboot.supervisorInstanceId, oldTerminalSupervisorInstanceId);
+    assert.strictEqual(helloBeforeReboot.recovery, undefined, 'A current Supervisor must not publish a recovery barrier.');
 
-    // This is the host-level reboot model: retain durable data, but lose the isolated volatile socket.
-    await fs.writeFile(recoveryGatePath, 'hold journal recovery\n', 'utf8');
+    // A Supervisor restart loses the PTY authority even though its old registry and journals remain on disk.
     process.kill(helloBeforeReboot.pid, 'SIGKILL');
     await waitForProcessExit(helloBeforeReboot.pid, 10000);
     await fs.rm(supervisorPaths.socketPath, { force: true });
-    const journalMutation = await appendJournalOnlyV1Output(
-      path.join(oldRuntimeStoragePath, 'runtime-supervisor'),
-      oldRuntimeSessionId,
-      `${JOURNAL_ONLY_LATE_OUTPUT_MARKER}\r\n`
-    );
-    assert.ok(
-      journalMutation.lastRevision > oldTerminalOutputSequence,
-      'The Journal fixture must be newer than the Host-persisted Terminal screen snapshot.'
-    );
-
-    const reloadedSnapshot = await vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload);
-    const seededHistoryState = JSON.parse(JSON.stringify(reloadedSnapshot.state));
-    const seededAgent = seededHistoryState.nodes.find((node) => node.id === oldAgent.id);
-    const seededTerminal = seededHistoryState.nodes.find((node) => node.id === oldTerminal.id);
-    assert.ok(seededAgent?.metadata?.agent, 'The Host reload must retain the old Agent metadata to seed its screen snapshot.');
-    assert.ok(seededTerminal?.metadata?.terminal, 'The Host reload must retain the old Terminal metadata to seed its screen snapshot.');
-    seededAgent.metadata.agent.outputSequence = oldAgentOutputSequence;
-    seededAgent.metadata.agent.serializedTerminalState = oldAgentSerializedState;
-    seededTerminal.metadata.terminal.outputSequence = oldTerminalOutputSequence;
-    seededTerminal.metadata.terminal.serializedTerminalState = oldTerminalSerializedState;
-    const seededHistorySnapshot = await vscode.commands.executeCommand(
-      COMMAND_IDS.testSetPersistedState,
-      seededHistoryState
-    );
-    const seededHistoryTerminal = seededHistorySnapshot.state.nodes.find((node) => node.id === oldTerminal.id);
-    assert.deepStrictEqual(
-      seededHistoryTerminal?.metadata?.terminal?.serializedTerminalState,
-      oldTerminalSerializedState,
-      'The fixture must retain a Host-persisted Terminal screen paired with the pre-reboot sequence.'
-    );
     await vscode.commands.executeCommand(COMMAND_IDS.testClearHostMessages);
     await vscode.commands.executeCommand(COMMAND_IDS.testClearDiagnosticEvents);
-    // A new Host-side create is the deterministic trigger that recreates the killed Supervisor.
-    newAgent = await createNode('agent', 'codex');
-    await startExecution('agent', newAgent.id, 'codex');
-    const recoveringHello = await waitForRecoveryPhase(supervisorPaths.socketPath, 'recovering', 20000);
-    assert.ok(
-      recoveringHello.recovery.pendingSessionCount >= 1,
-      `Expected old journal recovery to report pending sessions: ${JSON.stringify(recoveringHello)}`
-    );
+    await vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload);
+
     await waitForNode(
-      (node) => node.status === 'reattaching' && node.metadata?.terminal?.attachmentState === 'reattaching',
-      20000,
+      (node) =>
+        node.status === 'resume-ready' &&
+        node.metadata?.agent?.lifecycle === 'resume-ready' &&
+        node.metadata.agent.attachmentState === 'history-restored' &&
+        node.metadata.agent.liveSession === false &&
+        node.metadata.agent.pendingLaunch === undefined &&
+        node.metadata.agent.resumeSupported === true &&
+        Boolean(node.metadata.agent.resumeSessionId) &&
+        Boolean(node.metadata.agent.resumeStoragePath) &&
+        node.metadata.agent.runtimeSessionId === undefined &&
+        node.metadata.agent.supervisorInstanceId === undefined,
+      30000,
+      oldAgent.id
+    );
+    const oldTerminalHistoryNode = await waitForNode(
+      (node) =>
+        node.status === 'history-restored' &&
+        node.metadata?.terminal?.lifecycle === 'closed' &&
+        node.metadata.terminal.attachmentState === 'history-restored' &&
+        node.metadata.terminal.persistenceMode === 'snapshot-only' &&
+        node.metadata.terminal.liveSession === false &&
+        node.metadata.terminal.runtimeSessionId === undefined &&
+        node.metadata.terminal.supervisorInstanceId === undefined,
+      30000,
       oldTerminal.id
     );
+    assert.strictEqual(oldTerminalHistoryNode.metadata.terminal.pendingLaunch, undefined);
+
+    await assert.rejects(
+      sendRuntimeSupervisorRequest(supervisorPaths.socketPath, 'hello'),
+      (error) => error?.code === 'ENOENT' || error?.code === 'ECONNREFUSED',
+      'Classifying dead PTYs must not start a replacement Supervisor.'
+    );
+    await delay(750);
+    const oldAgentBeforeExplicitResume = await getNode(oldAgent.id);
+    assert.strictEqual(
+      oldAgentBeforeExplicitResume.status,
+      'resume-ready',
+      `The dead Agent PTY must not auto-start a replacement resume process: ${JSON.stringify(oldAgentBeforeExplicitResume)}`
+    );
+    assert.strictEqual(oldAgentBeforeExplicitResume.metadata.agent.liveSession, false);
+    assert.strictEqual(oldAgentBeforeExplicitResume.metadata.agent.pendingLaunch, undefined);
+    const oldAgentBeforeExplicitResumeTranscript = await readTerminalTranscript(oldAgent.id);
+    assert.ok(
+      !oldAgentBeforeExplicitResumeTranscript.includes('[fake-agent] resumed session'),
+      'No provider resume output may appear before the user explicitly requests Resume.'
+    );
+
+    // This explicit create starts a replacement Supervisor with an empty runtime namespace.
+    newAgent = await createNode('agent', 'codex');
+    await startExecution('agent', newAgent.id, 'codex');
+    const newAgentLive = await waitForNode((node) => isAttachedLiveAgent(node), 20000, newAgent.id);
+    const helloAfterReboot = await sendRuntimeSupervisorRequest(supervisorPaths.socketPath, 'hello');
+    assert.notStrictEqual(helloAfterReboot.supervisorInstanceId, helloBeforeReboot.supervisorInstanceId);
+    assert.strictEqual(helloAfterReboot.recovery, undefined, 'A replacement Supervisor must not recover old journals.');
+    assert.strictEqual(newAgentLive.metadata.agent.supervisorInstanceId, helloAfterReboot.supervisorInstanceId);
 
     newTerminal = await createNode('terminal');
     await startExecution('terminal', newTerminal.id);
-
-    const newAgentLive = await waitForNode((node) => isAttachedLiveAgent(node), 20000, newAgent.id);
     const newTerminalLive = await waitForNode((node) => isAttachedLiveTerminal(node), 20000, newTerminal.id);
-    assert.ok(newAgentLive.metadata.agent.runtimeSessionId, 'Expected a new Agent session during journal recovery.');
-    assert.ok(newTerminalLive.metadata.terminal.runtimeSessionId, 'Expected a new Terminal session during journal recovery.');
+    assert.strictEqual(newTerminalLive.metadata.terminal.supervisorInstanceId, helloAfterReboot.supervisorInstanceId);
 
     await dispatchWebviewMessage({
       type: 'webview/executionInput',
@@ -230,133 +231,57 @@ async function run() {
         data: `echo ${NEW_TERMINAL_MARKER}\r`
       }
     });
-    await waitForNode(
-      (node) => node.metadata?.agent?.recentOutput?.includes(NEW_AGENT_MARKER),
-      20000,
-      newAgent.id
+    await waitForTerminalTranscript(
+      newAgent.id,
+      (transcript) => transcript.includes(NEW_AGENT_MARKER),
+      20000
     );
-    await waitForNode(
-      (node) => node.metadata?.terminal?.recentOutput?.includes(NEW_TERMINAL_MARKER),
-      20000,
-      newTerminal.id
-    );
-
-    const messagesDuringRecovery = await vscode.commands.executeCommand(COMMAND_IDS.testGetHostMessages);
-    const recoveryProgressEvents = await waitForDiagnosticEvents(
-      (events) =>
-        events.some(
-          (event) =>
-            event.kind === 'runtime/recoveryProgressNotificationShown' &&
-            event.detail?.pendingSessionCount >= 1
-        ) &&
-        events.some(
-          (event) =>
-            event.kind === 'runtime/recoveryProgressNotificationUpdated' &&
-            event.detail?.pendingSessionCount >= 1
-        ),
-      'Expected the recovery progress notification lifecycle to report the remaining-session count.'
-    );
-    assert.ok(
-      recoveryProgressEvents.some(
-        (event) =>
-          event.kind === 'runtime/recoveryProgressNotificationUpdated' &&
-          Number.isInteger(event.detail?.pendingSessionCount)
-      ),
-      `Expected recovery progress updates to include the remaining-session count: ${JSON.stringify(recoveryProgressEvents)}`
-    );
-    assert.ok(
-      !messagesDuringRecovery.some(
-        (message) => message.type === 'host/stateUpdated' && Object.hasOwn(message.payload?.runtime ?? {}, 'runtimeRecovery')
-      ),
-      `Recovery state must no longer be projected into the Canvas Webview: ${JSON.stringify(messagesDuringRecovery)}`
-    );
-    assert.ok(
-      !JSON.stringify(messagesDuringRecovery).includes('Could not find'),
-      `Supervisor recovery must not be rendered as a missing executable: ${JSON.stringify(messagesDuringRecovery)}`
+    await waitForTerminalTranscript(
+      newTerminal.id,
+      (transcript) => transcript.includes(NEW_TERMINAL_MARKER),
+      20000
     );
 
-    await fs.rm(recoveryGatePath, { force: true });
-    const readyHello = await waitForRecoveryPhase(supervisorPaths.socketPath, 'ready', 30000);
-    assert.strictEqual(
-      readyHello.recovery.failureCount ?? 0,
-      0,
-      `Dead-PTY recovery must not hydrate the over-budget V1 Journal: ${JSON.stringify(readyHello)}`
-    );
-    await waitForDiagnosticEvents(
-      (events) =>
-        events.some(
-          (event) =>
-            event.kind === 'runtime/recoveryProgressNotificationUpdated' &&
-            event.detail?.completedSessionCount >= 1 &&
-            Number.isInteger(event.detail?.pendingSessionCount)
-        ),
-      'Expected the recovery progress notification to report completed and remaining session counts.'
-    );
-    await waitForDiagnosticEvents(
-      (events) => events.some((event) => event.kind === 'runtime/recoveryProgressNotificationClosed'),
-      'Expected the VS Code recovery progress notification to close once all recovery namespaces are ready.'
-    );
-    await waitForNode(
-      (node) =>
-        node.status === 'resume-ready' &&
-        node.metadata?.agent?.lifecycle === 'resume-ready' &&
-        node.metadata.agent.attachmentState === 'history-restored' &&
-        node.metadata.agent.liveSession === false &&
-        node.metadata.agent.pendingLaunch === undefined &&
-        node.metadata.agent.resumeSupported === true &&
-        Boolean(node.metadata.agent.resumeSessionId) &&
-        Boolean(node.metadata.agent.resumeStoragePath) &&
-        node.metadata.agent.serializedTerminalState?.data.includes(OLD_AGENT_MARKER),
-      30000,
-      oldAgent.id
-    );
-    await delay(750);
-    const oldAgentBeforeExplicitResume = await getNode(oldAgent.id);
-    assert.strictEqual(
-      oldAgentBeforeExplicitResume.status,
-      'resume-ready',
-      `The dead Agent PTY must not auto-start a replacement resume process: ${JSON.stringify(oldAgentBeforeExplicitResume)}`
-    );
-    assert.strictEqual(oldAgentBeforeExplicitResume.metadata.agent.liveSession, false);
-    assert.strictEqual(oldAgentBeforeExplicitResume.metadata.agent.pendingLaunch, undefined);
-    assert.ok(
-      !oldAgentBeforeExplicitResume.metadata.agent.recentOutput?.includes('[fake-agent] resumed session'),
-      'No provider resume output may appear before the user explicitly requests Resume.'
-    );
-    const oldTerminalHistoryNode = await waitForNode(
-      (node) =>
-        node.metadata?.terminal?.attachmentState === 'history-restored' &&
-        node.metadata.terminal.persistenceMode === 'snapshot-only' &&
-        node.metadata.terminal.recentOutput?.includes(OLD_TERMINAL_MARKER) &&
-        node.metadata.terminal.outputSequence === oldTerminalOutputSequence &&
-        node.metadata.terminal.serializedTerminalState?.outputSequence === oldTerminalOutputSequence &&
-        node.metadata.terminal.serializedTerminalState?.data.includes(OLD_TERMINAL_MARKER),
-      30000,
-      oldTerminal.id
-    );
-    assert.deepStrictEqual(
-      oldTerminalHistoryNode.metadata.terminal.serializedTerminalState,
-      oldTerminalSerializedState,
-      'A Journal revision that the Host never rendered must not invalidate its saved Terminal screen.'
-    );
-    await waitForRegistrySessions(
+    const replacementRuntimeState = await waitForRegistrySessions(
       [
         newAgentLive.metadata.agent.runtimeSessionId,
         newTerminalLive.metadata.terminal.runtimeSessionId
       ],
       30000
     );
+    const replacementSessionIds = replacementRuntimeState.registries['legacy-detached'].registry.sessions.map(
+      (session) => session.sessionId
+    );
+    assert.strictEqual(replacementSessionIds.includes(oldAgentRuntimeSessionId), false);
+    assert.strictEqual(replacementSessionIds.includes(oldRuntimeSessionId), false);
+
+    const messagesAfterReboot = await vscode.commands.executeCommand(COMMAND_IDS.testGetHostMessages);
+    const diagnosticEventsAfterReboot = await getDiagnosticEvents();
+    assert.ok(
+      diagnosticEventsAfterReboot.every((event) => !event.kind?.startsWith('runtime/recovery')),
+      `Supervisor restart must not publish recovery progress: ${JSON.stringify(diagnosticEventsAfterReboot)}`
+    );
+    assert.ok(
+      !messagesAfterReboot.some(
+        (message) => message.type === 'host/stateUpdated' && Object.hasOwn(message.payload?.runtime ?? {}, 'runtimeRecovery')
+      ),
+      `Supervisor restart state must not expose a recovery barrier: ${JSON.stringify(messagesAfterReboot)}`
+    );
 
     await startExecution('agent', oldAgent.id, 'codex', true);
-    await waitForNode(
-      (node) =>
-        isAttachedLiveAgent(node) &&
-        node.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session'),
+    const resumedAgent = await waitForNode(
+      (node) => isAttachedLiveAgent(node),
       30000,
       oldAgent.id
     );
+    await waitForTerminalTranscript(
+      oldAgent.id,
+      (transcript) => transcript.includes('[fake-agent] resumed session'),
+      30000
+    );
+    assert.strictEqual(resumedAgent.metadata.agent.supervisorInstanceId, helloAfterReboot.supervisorInstanceId);
+    assert.notStrictEqual(resumedAgent.metadata.agent.runtimeSessionId, oldAgentRuntimeSessionId);
   } finally {
-    await fs.rm(recoveryGatePath, { force: true });
     stopProcessIfRunning(oldAgentProcessId);
     stopProcessIfRunning(oldTerminalProcessId);
     await vscode.commands.executeCommand(COMMAND_IDS.testResetState).catch(() => undefined);
@@ -414,7 +339,50 @@ async function startExecution(kind, nodeId, provider, resumeRequested = false) {
 }
 
 async function dispatchWebviewMessage(message) {
-  return vscode.commands.executeCommand(COMMAND_IDS.testDispatchWebviewMessage, message, 'panel');
+  let currentMessage = message;
+  if (message?.type === 'webview/executionInput') {
+    const identity = await waitForReadyProjectionIdentity(
+      message.payload.nodeId,
+      message.payload.kind,
+      20000
+    );
+    currentMessage = {
+      ...message,
+      payload: {
+        ...message.payload,
+        controllerGeneration: identity.controllerGeneration,
+        projectionId: identity.projectionId
+      }
+    };
+  }
+  return vscode.commands.executeCommand(COMMAND_IDS.testDispatchWebviewMessage, currentMessage, 'panel');
+}
+
+async function waitForReadyProjectionIdentity(nodeId, kind, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastProjectionMessages = [];
+  while (Date.now() < deadline) {
+    const messages = await vscode.commands.executeCommand(COMMAND_IDS.testGetHostMessages);
+    lastProjectionMessages = messages.filter(
+      (message) =>
+        message.type === 'host/executionProjectionState' &&
+        message.payload?.nodeId === nodeId &&
+        message.payload?.kind === kind
+    );
+    const ready = [...lastProjectionMessages].reverse().find(
+      (message) =>
+        message.payload.state === 'ready' &&
+        typeof message.payload.controllerGeneration === 'string' &&
+        typeof message.payload.projectionId === 'string'
+    );
+    if (ready) {
+      return ready.payload;
+    }
+    await delay(100);
+  }
+  assert.fail(
+    `Timed out waiting for ready projection ${kind}:${nodeId}. Last projection messages: ${JSON.stringify(lastProjectionMessages)}`
+  );
 }
 
 async function setRuntimePersistenceEnabled(enabled) {
@@ -448,19 +416,28 @@ async function getDiagnosticEvents() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents);
 }
 
-async function waitForDiagnosticEvents(predicate, assertionMessage, timeoutMs = 8000) {
-  const deadline = Date.now() + timeoutMs;
-  let events = await getDiagnosticEvents();
+async function readTerminalTranscript(nodeId) {
+  const probe = await vscode.commands.executeCommand(
+    COMMAND_IDS.testCaptureWebviewProbe,
+    'panel',
+    5000,
+    0
+  );
+  const node = probe?.nodes?.find((candidate) => candidate.nodeId === nodeId);
+  return Array.isArray(node?.terminalVisibleLines) ? node.terminalVisibleLines.join('\n') : '';
+}
 
+async function waitForTerminalTranscript(nodeId, predicate, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastTranscript = '';
   while (Date.now() < deadline) {
-    if (predicate(events)) {
-      return events;
+    lastTranscript = await readTerminalTranscript(nodeId);
+    if (predicate(lastTranscript)) {
+      return lastTranscript;
     }
     await delay(100);
-    events = await getDiagnosticEvents();
   }
-
-  assert.fail(`${assertionMessage} Diagnostic events: ${JSON.stringify(events)}`);
+  assert.fail(`Timed out waiting for terminal transcript ${nodeId}. Last transcript: ${lastTranscript}`);
 }
 
 function isAttachedLiveAgent(node) {
@@ -481,106 +458,6 @@ function isAttachedLiveTerminal(node) {
 
 async function waitForRegistrySession(sessionId, timeoutMs) {
   return waitForRegistrySessions([sessionId], timeoutMs);
-}
-
-async function waitForJournalBytes(storageDir, sessionId, minimumBytes, timeoutMs) {
-  const sessionDirectory = path.join(
-    storageDir,
-    'terminal-journals',
-    createHash('sha256').update(sessionId).digest('hex').slice(0, 32)
-  );
-  const deadline = Date.now() + timeoutMs;
-  let lastManifest;
-  let lastBytes = 0;
-  while (Date.now() < deadline) {
-    try {
-      lastManifest = JSON.parse(await fs.readFile(path.join(sessionDirectory, 'manifest.json'), 'utf8'));
-      const segmentBytes = await Promise.all(
-        (lastManifest.segments ?? []).map(async (segment) => {
-          const stats = await fs.stat(path.join(sessionDirectory, segment.file));
-          return stats.size;
-        })
-      );
-      lastBytes = segmentBytes.reduce((total, bytes) => total + bytes, 0);
-      if (lastManifest.version === 1 && lastBytes > minimumBytes) {
-        return;
-      }
-    } catch {
-      // The Supervisor may still be flushing the synthetic fixture Journal.
-    }
-    await delay(100);
-  }
-  assert.fail(
-    `Timed out waiting for an over-budget V1 Journal for ${sessionId}. ` +
-      `Last manifest: ${JSON.stringify(lastManifest)} bytes=${lastBytes}`
-  );
-}
-
-async function appendJournalOnlyV1Output(storageDir, sessionId, data) {
-  const sessionDirectory = path.join(
-    storageDir,
-    'terminal-journals',
-    createHash('sha256').update(sessionId).digest('hex').slice(0, 32)
-  );
-  const manifestPath = path.join(sessionDirectory, 'manifest.json');
-  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
-  assert.strictEqual(manifest.version, 1, 'The late-output fixture intentionally covers legacy V1 Journal recovery.');
-  const segment = manifest.segments?.at(-1);
-  assert.ok(segment?.file, 'The V1 Journal fixture must have a writable tail segment.');
-
-  const revision = manifest.lastRevision + 1;
-  const recordWithoutChecksum = {
-    version: 1,
-    sessionId,
-    authorityId: manifest.authorityId,
-    previousChecksum: manifest.lastChecksum,
-    type: 'output',
-    revision,
-    createdAtMs: Date.now(),
-    data
-  };
-  const record = {
-    ...recordWithoutChecksum,
-    checksum: checksumJson(recordWithoutChecksum)
-  };
-  const line = `${JSON.stringify(record)}\n`;
-  await fs.appendFile(path.join(sessionDirectory, segment.file), line, 'utf8');
-
-  segment.endRevision = revision;
-  segment.recordCount += 1;
-  segment.bytes += Buffer.byteLength(line, 'utf8');
-  manifest.lastRevision = revision;
-  manifest.lastChecksum = record.checksum;
-  manifest.checksum = checksumV1Manifest(manifest);
-  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-  return { lastRevision: revision };
-}
-
-function checksumV1Manifest(manifest) {
-  return checksumJson({
-    version: 1,
-    sessionId: manifest.sessionId,
-    authorityId: manifest.authorityId,
-    createdAtMs: manifest.createdAtMs,
-    initialCols: manifest.initialCols,
-    initialRows: manifest.initialRows,
-    initialScrollback: manifest.initialScrollback,
-    lastRevision: manifest.lastRevision,
-    lastChecksum: manifest.lastChecksum,
-    segments: manifest.segments
-  });
-}
-
-function checksumJson(value) {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
-}
-
-function createSerializedTerminalStateFixture(marker, outputSequence) {
-  return {
-    format: 'xterm-serialize-v1',
-    data: `${marker}\r\n${marker} retained Host screen\r\n`,
-    outputSequence
-  };
 }
 
 async function synchronizeFakeProviderSession(storagePath, sessionId) {
@@ -618,23 +495,6 @@ async function waitForProcessExit(pid, timeoutMs) {
     await delay(50);
   }
   assert.fail(`Timed out waiting for Supervisor pid ${pid} to exit.`);
-}
-
-async function waitForRecoveryPhase(socketPath, expectedPhase, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  let lastHello;
-  while (Date.now() < deadline) {
-    try {
-      lastHello = await sendRuntimeSupervisorRequest(socketPath, 'hello');
-      if (lastHello?.recovery?.phase === expectedPhase) {
-        return lastHello;
-      }
-    } catch {
-      // The Host is still re-establishing the Supervisor after its volatile socket was removed.
-    }
-    await delay(100);
-  }
-  assert.fail(`Timed out waiting for recovery phase ${expectedPhase}. Last hello: ${JSON.stringify(lastHello)}`);
 }
 
 async function sendRuntimeSupervisorRequest(socketPath, method, params) {
