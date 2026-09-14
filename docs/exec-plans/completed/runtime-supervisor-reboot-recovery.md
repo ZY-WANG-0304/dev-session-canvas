@@ -4,6 +4,8 @@
 
 本文遵循 `docs/PLANS.md`。它覆盖一次跨 Extension Host、Runtime Supervisor、Webview 和 VS Code smoke 的可靠性改造；所有实现和验证结论都必须回写本文。
 
+> 2026-08-11 后续结论：本计划保留 listen-first、systemd unit修复和错误来源分类的历史成果；“异步恢复旧registry/journal、namespace `recovering -> ready`、全局恢复进度和ready后整批重试attach”已被 `docs/design-docs/runtime-control-and-projection-isolation.md` 取代。新Supervisor无法取得旧PTY authority，因此不再恢复旧runtime namespace。
+
 ## 目标与全局图景
 
 用户在远端 Linux 或本地 Linux 会话重启后重新打开画布时，旧 Supervisor 的 Unix socket 可能随 `XDG_RUNTIME_DIR` 消失。完成本计划后，系统不会把该连接错误误报成“找不到 Codex”或“找不到 bash”。Supervisor 必须先接受连接并报告“正在恢复历史”，再异步恢复旧 journal；用户在这段时间创建新的 Agent 或 Terminal 仍然可以启动。用户能在画布看到非阻塞的恢复中状态，旧会话则继续按实际结果显示重连或历史恢复。

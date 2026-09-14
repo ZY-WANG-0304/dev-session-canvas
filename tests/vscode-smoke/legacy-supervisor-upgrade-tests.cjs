@@ -26,6 +26,8 @@ const COMMAND_IDS = {
 const LEGACY_AGENT_NODE_ID = 'legacy-upgrade-agent';
 const LEGACY_TERMINAL_NODE_ID = 'legacy-upgrade-terminal';
 const PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID = 'previous-generation-stream-terminal';
+const INSTANCE_MISMATCH_TERMINAL_NODE_ID = 'instance-mismatch-terminal';
+const STALE_SUPERVISOR_INSTANCE_ID = 'stale-supervisor-instance-for-upgrade-smoke';
 const LEGACY_AGENT_MARKER = 'LEGACY_UPGRADE_AGENT_READY';
 const LEGACY_TERMINAL_MARKER = 'LEGACY_UPGRADE_TERMINAL_READY';
 const PREVIOUS_GENERATION_STREAM_MARKER = 'PREVIOUS_GENERATION_STREAM_READY';
@@ -105,6 +107,10 @@ async function run() {
     );
     assert.strictEqual(previousGenerationStreamHello.pid, previousGenerationStreamSupervisorProcess.pid);
     assert.strictEqual(previousGenerationStreamHello.capabilities?.terminalSessionStreamV1, true);
+    assert.strictEqual(previousGenerationStreamHello.capabilities?.supervisorInstanceIdentityV1, true);
+    assert.ok(previousGenerationStreamHello.supervisorInstanceId);
+    const legacySupervisorInstanceId = `legacy-pid:${legacyHello.pid}`;
+    const previousGenerationStreamSupervisorInstanceId = previousGenerationStreamHello.supervisorInstanceId;
 
     const legacyAgentSnapshot = await createLegacyAgentSession(supervisorPaths);
     const legacyTerminalSnapshot = await createLegacyTerminalSession(supervisorPaths);
@@ -135,6 +141,7 @@ async function run() {
     );
     await waitForRegistrySessions(supervisorPaths.registryPath, [legacyAgentSessionId, legacyTerminalSessionId]);
 
+    await clearDiagnosticEvents();
     await setPersistedState(
       createLegacyRuntimeState({
         runtimeStoragePath,
@@ -144,7 +151,6 @@ async function run() {
         previousGenerationStreamTerminalSnapshot
       })
     );
-    await simulateRuntimeReload();
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
 
@@ -155,19 +161,32 @@ async function run() {
         currentSnapshot,
         PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID
       );
+      const instanceMismatchNode = findOptionalNodeById(
+        currentSnapshot,
+        INSTANCE_MISMATCH_TERMINAL_NODE_ID
+      );
       return Boolean(
         agentNode?.metadata?.agent?.liveSession &&
           agentNode.metadata.agent.attachmentState === 'attached-live' &&
+          agentNode.metadata.agent.supervisorInstanceId === legacySupervisorInstanceId &&
           agentNode.metadata.agent.terminalProjectionMode === 'legacy-interactive' &&
           agentNode.metadata.agent.recentOutput?.includes(LEGACY_AGENT_MARKER) &&
           terminalNode?.metadata?.terminal?.liveSession &&
           terminalNode.metadata.terminal.attachmentState === 'attached-live' &&
+          terminalNode.metadata.terminal.supervisorInstanceId === legacySupervisorInstanceId &&
           terminalNode.metadata.terminal.terminalProjectionMode === 'legacy-interactive' &&
           terminalNode.metadata.terminal.recentOutput?.includes(LEGACY_TERMINAL_MARKER) &&
           previousGenerationStreamNode?.metadata?.terminal?.liveSession &&
           previousGenerationStreamNode.metadata.terminal.attachmentState === 'attached-live' &&
+          previousGenerationStreamNode.metadata.terminal.supervisorInstanceId ===
+            previousGenerationStreamSupervisorInstanceId &&
           previousGenerationStreamNode.metadata.terminal.terminalProjectionMode === 'terminal-stream-v1' &&
-          previousGenerationStreamNode.metadata.terminal.recentOutput?.includes(PREVIOUS_GENERATION_STREAM_MARKER)
+          previousGenerationStreamNode.metadata.terminal.recentOutput?.includes(PREVIOUS_GENERATION_STREAM_MARKER) &&
+          instanceMismatchNode?.status === 'history-restored' &&
+          instanceMismatchNode.metadata?.terminal?.lifecycle === 'closed' &&
+          instanceMismatchNode.metadata.terminal.attachmentState === 'history-restored' &&
+          instanceMismatchNode.metadata.terminal.runtimeSessionId === undefined &&
+          instanceMismatchNode.metadata.terminal.supervisorInstanceId === undefined
       );
     }, 30000);
     assertLegacyInteractiveNode(findNodeById(snapshot, LEGACY_AGENT_NODE_ID), 'agent', LEGACY_AGENT_MARKER);
@@ -176,6 +195,50 @@ async function run() {
       findNodeById(snapshot, PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID).metadata.terminal.runtimeStoragePath,
       previousGenerationStreamRuntimeStoragePath
     );
+
+    const identityDiagnosticsAfterCompatibilityAttach = await getDiagnosticEvents();
+    assertLegacySupervisorIdentityDiagnostics(identityDiagnosticsAfterCompatibilityAttach, {
+      legacySupervisorInstanceId,
+      legacyAgentSessionId,
+      legacyTerminalSessionId,
+      previousGenerationStreamSupervisorInstanceId,
+      previousGenerationStreamTerminalSessionId
+    });
+
+    await simulateRuntimeReload();
+    snapshot = await waitForSnapshot((currentSnapshot) => {
+      const agentMetadata = findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID)?.metadata?.agent;
+      const terminalMetadata = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID)?.metadata?.terminal;
+      const previousGenerationStreamMetadata = findOptionalNodeById(
+        currentSnapshot,
+        PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID
+      )?.metadata?.terminal;
+      const instanceMismatchMetadata = findOptionalNodeById(
+        currentSnapshot,
+        INSTANCE_MISMATCH_TERMINAL_NODE_ID
+      )?.metadata?.terminal;
+      return Boolean(
+        agentMetadata?.liveSession &&
+          agentMetadata.attachmentState === 'attached-live' &&
+          agentMetadata.supervisorInstanceId === legacySupervisorInstanceId &&
+          terminalMetadata?.liveSession &&
+          terminalMetadata.attachmentState === 'attached-live' &&
+          terminalMetadata.supervisorInstanceId === legacySupervisorInstanceId &&
+          previousGenerationStreamMetadata?.liveSession &&
+          previousGenerationStreamMetadata.attachmentState === 'attached-live' &&
+          previousGenerationStreamMetadata.supervisorInstanceId === previousGenerationStreamSupervisorInstanceId &&
+          instanceMismatchMetadata?.attachmentState === 'history-restored' &&
+          instanceMismatchMetadata.runtimeSessionId === undefined &&
+          instanceMismatchMetadata.supervisorInstanceId === undefined
+      );
+    }, 30000);
+    assertLegacySupervisorIdentityDiagnostics(await getDiagnosticEvents(), {
+      legacySupervisorInstanceId,
+      legacyAgentSessionId,
+      legacyTerminalSessionId,
+      previousGenerationStreamSupervisorInstanceId,
+      previousGenerationStreamTerminalSessionId
+    });
 
     const probe = await waitForWebviewProbe((currentProbe) => {
       const agentNode = findOptionalProbeNodeById(currentProbe, LEGACY_AGENT_NODE_ID);
@@ -560,9 +623,98 @@ function createLegacyRuntimeState({
             lastRows: previousGenerationStreamTerminalSnapshot.rows
           }
         }
+      },
+      {
+        id: INSTANCE_MISMATCH_TERMINAL_NODE_ID,
+        kind: 'terminal',
+        title: 'Stale Supervisor Instance Terminal',
+        status: 'reattaching',
+        summary: 'Rejecting a stale Supervisor instance before runtime attach.',
+        position: { x: 2000, y: 100 },
+        size: { width: 560, height: 430 },
+        metadata: {
+          terminal: {
+            backend: 'node-pty',
+            lifecycle: previousGenerationStreamTerminalSnapshot.lifecycle,
+            shellPath: resolveShellPath(),
+            cwd: workspaceRoot,
+            persistenceMode: 'live-runtime',
+            attachmentState: 'reattaching',
+            runtimeBackend: 'legacy-detached',
+            runtimeGuarantee: 'best-effort',
+            liveSession: false,
+            runtimeSessionId: previousGenerationStreamTerminalSnapshot.sessionId,
+            runtimeStoragePath: previousGenerationStreamRuntimeStoragePath,
+            supervisorInstanceId: STALE_SUPERVISOR_INSTANCE_ID,
+            recentOutput: '',
+            outputSequence: previousGenerationStreamTerminalSnapshot.outputSequence,
+            lastCols: previousGenerationStreamTerminalSnapshot.cols,
+            lastRows: previousGenerationStreamTerminalSnapshot.rows
+          }
+        }
       }
     ]
   };
+}
+
+function assertLegacySupervisorIdentityDiagnostics(
+  events,
+  {
+    legacySupervisorInstanceId,
+    legacyAgentSessionId,
+    legacyTerminalSessionId,
+    previousGenerationStreamSupervisorInstanceId,
+    previousGenerationStreamTerminalSessionId
+  }
+) {
+  const probeEvents = events.filter((event) => event.kind === 'runtime/legacySupervisorInstanceProbe');
+  assert.strictEqual(
+    probeEvents.length,
+    3,
+    `Each identity-less persisted node must probe exactly once: ${JSON.stringify(probeEvents)}`
+  );
+
+  const expectedProbes = new Map([
+    [LEGACY_AGENT_NODE_ID, {
+      kind: 'agent',
+      runtimeSessionId: legacyAgentSessionId,
+      currentSupervisorInstanceId: legacySupervisorInstanceId
+    }],
+    [LEGACY_TERMINAL_NODE_ID, {
+      kind: 'terminal',
+      runtimeSessionId: legacyTerminalSessionId,
+      currentSupervisorInstanceId: legacySupervisorInstanceId
+    }],
+    [PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID, {
+      kind: 'terminal',
+      runtimeSessionId: previousGenerationStreamTerminalSessionId,
+      currentSupervisorInstanceId: previousGenerationStreamSupervisorInstanceId
+    }]
+  ]);
+  for (const [nodeId, expected] of expectedProbes) {
+    const matchingEvents = probeEvents.filter((event) => event.detail?.nodeId === nodeId);
+    assert.strictEqual(matchingEvents.length, 1, `Expected one legacy identity probe for ${nodeId}.`);
+    assert.strictEqual(matchingEvents[0].detail.kind, expected.kind);
+    assert.strictEqual(matchingEvents[0].detail.runtimeSessionId, expected.runtimeSessionId);
+    assert.strictEqual(
+      matchingEvents[0].detail.currentSupervisorInstanceId,
+      expected.currentSupervisorInstanceId
+    );
+  }
+
+  const mismatchEvents = events.filter((event) => event.kind === 'runtime/supervisorInstanceMismatch');
+  assert.strictEqual(
+    mismatchEvents.length,
+    1,
+    `A stale persisted identity must be rejected exactly once: ${JSON.stringify(mismatchEvents)}`
+  );
+  assert.deepStrictEqual(mismatchEvents[0].detail, {
+    kind: 'terminal',
+    nodeId: INSTANCE_MISMATCH_TERMINAL_NODE_ID,
+    runtimeSessionId: previousGenerationStreamTerminalSessionId,
+    persistedSupervisorInstanceId: STALE_SUPERVISOR_INSTANCE_ID,
+    currentSupervisorInstanceId: previousGenerationStreamSupervisorInstanceId
+  });
 }
 
 function startLegacyRuntimeSupervisor(scriptPath, extensionPath, storageDir) {

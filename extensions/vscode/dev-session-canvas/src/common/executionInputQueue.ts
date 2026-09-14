@@ -3,7 +3,9 @@ export interface ExecutionInputQueueState {
   inFlightCount: number;
 }
 
-/** Preserves terminal control-byte order while bounding a session to one RPC write. */
+export type ReleaseExecutionInput = () => void;
+
+/** Preserves terminal control-byte dispatch order without response-gating later input. */
 export class ExecutionInputQueue {
   private chain: Promise<void> = Promise.resolve();
   private pendingCount = 0;
@@ -17,23 +19,42 @@ export class ExecutionInputQueue {
     return this.inFlightCount;
   }
 
-  public enqueue<T>(operation: (state: ExecutionInputQueueState) => Promise<T> | T): Promise<T> {
+  public enqueue<T>(
+    operation: (
+      state: ExecutionInputQueueState,
+      release: ReleaseExecutionInput
+    ) => Promise<T> | T
+  ): Promise<T> {
     this.pendingCount += 1;
-    const result = this.chain.then(async () => {
+    const previous = this.chain;
+    let releaseAdmission!: () => void;
+    const admission = new Promise<void>((resolve) => {
+      releaseAdmission = resolve;
+    });
+    let released = false;
+    const release = (): void => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.inFlightCount = Math.max(0, this.inFlightCount - 1);
+      releaseAdmission();
+    };
+    const result = previous.then(async () => {
       this.pendingCount = Math.max(0, this.pendingCount - 1);
       this.inFlightCount += 1;
       try {
         return await operation({
           pendingCount: this.pendingCount,
           inFlightCount: this.inFlightCount
-        });
+        }, release);
       } finally {
-        this.inFlightCount = Math.max(0, this.inFlightCount - 1);
+        release();
       }
     });
-    this.chain = result.then(
-      () => undefined,
-      () => undefined
+    this.chain = previous.then(
+      () => admission,
+      () => admission
     );
     return result;
   }

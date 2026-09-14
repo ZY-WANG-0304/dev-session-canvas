@@ -18,6 +18,8 @@ export interface AgentInputKeyEventLike {
 export interface AgentInputIntentTracker {
   recordKeyEvent(event: AgentInputKeyEventLike): void;
   classifyData(data: string): AgentInputIntent;
+  /** Discard a key event when its corresponding PTY data was gated locally. */
+  reset(): void;
 }
 
 export function createAgentInputIntentTracker(): AgentInputIntentTracker {
@@ -33,6 +35,9 @@ export function createAgentInputIntentTracker(): AgentInputIntentTracker {
       const keyEvent = pendingKeyEvent;
       pendingKeyEvent = undefined;
       return classifyAgentInputData(data, keyEvent);
+    },
+    reset() {
+      pendingKeyEvent = undefined;
     }
   };
 }

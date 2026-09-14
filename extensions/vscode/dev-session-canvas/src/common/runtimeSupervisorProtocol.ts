@@ -37,17 +37,22 @@ export interface RuntimeSupervisorPaths {
 export interface RuntimeSupervisorHelloResult {
   serverVersion: 1;
   pid: number;
+  /** Unique to one Supervisor process lifetime. Omitted by legacy Supervisors. */
+  supervisorInstanceId?: string;
   runtimeBackend: RuntimeHostBackendKind;
   runtimeGuarantee: RuntimePersistenceGuarantee;
-  /** Omitted by older Supervisors that predate asynchronous journal recovery. */
+  /** Legacy recovery barrier retained only for compatibility with older Supervisors. */
   recovery?: RuntimeSupervisorRecoveryState;
   capabilities?: {
+    terminalProjectionStreamV1?: true;
+    terminalProjectionFollowV1?: true;
     terminalSessionStreamV1?: true;
     terminalProjectionSnapshotV1?: true;
     terminalProjectionCheckpointV1?: true;
     terminalAppliedRevisionAckV1?: true;
     agentSubmissionIntentV1?: true;
     agentProviderLifecycleV1?: true;
+    supervisorInstanceIdentityV1?: true;
   };
 }
 
@@ -63,6 +68,7 @@ export interface RuntimeSupervisorTerminalCheckpointDiagnostics {
 
 /** A bounded checkpoint refresh result for a Host that already has a live stream. */
 export interface RuntimeSupervisorTerminalProjectionCheckpoint {
+  supervisorInstanceId?: string;
   sessionId: string;
   authorityId: string;
   revision: number;
@@ -77,6 +83,9 @@ export interface RuntimeSupervisorRecoveryState {
 }
 
 export interface RuntimeSupervisorSessionSnapshot {
+  supervisorInstanceId?: string;
+  /** Monotonic compact-state mutation revision within one Supervisor session. */
+  stateRevision?: number;
   sessionId: string;
   kind: ExecutionNodeKind;
   live: boolean;
@@ -96,6 +105,10 @@ export interface RuntimeSupervisorSessionSnapshot {
   serializedTerminalState?: SerializedTerminalState;
   terminalAuthorityId?: string;
   terminalRevision?: number;
+  /** Unpinned revision observation from metadata attach; bulk open selects the fixed history cut. */
+  terminalProjectionTargetRevision?: number;
+  /** False when this state update intentionally omits checkpoint and journal projection data. */
+  terminalProjectionIncluded?: boolean;
   terminalStream?: TerminalStreamAttachPayload;
   terminalCheckpointDiagnostics?: RuntimeSupervisorTerminalCheckpointDiagnostics;
   displayLabel: string;
@@ -238,11 +251,15 @@ export interface RuntimeSupervisorCreateSessionParams {
   providerLifecycleEnabled?: boolean;
   launchSpec: SerializedExecutionSessionLaunchSpec;
   deferSubscription?: boolean;
+  /** Returns compact control state; history is pulled over a later bulk projection. */
+  terminalProjectionMode?: 'stream-v1';
 }
 
 export interface RuntimeSupervisorAttachSessionParams {
   sessionId: string;
   deferSubscription?: boolean;
+  /** Opts into a metadata-only attach; history is pulled over a projection connection. */
+  terminalProjectionMode?: 'stream-v1';
 }
 
 export interface RuntimeSupervisorGetSessionSnapshotParams {
@@ -257,9 +274,12 @@ export interface RuntimeSupervisorSubscribeSessionParams {
   sessionId: string;
   authorityId: string;
   afterRevision: number;
+  /** Releases only the live-tail barrier created by this completed bulk projection. */
+  projectionId?: string;
 }
 
 export interface RuntimeSupervisorSubscribeSessionResult {
+  supervisorInstanceId?: string;
   sessionId: string;
   authorityId: string;
   revision: number;
@@ -273,6 +293,7 @@ export interface RuntimeSupervisorAckSessionRevisionParams {
 }
 
 export interface RuntimeSupervisorAckSessionRevisionResult {
+  supervisorInstanceId?: string;
   sessionId: string;
   authorityId: string;
   consumerId: 'editor' | 'panel';
@@ -302,6 +323,110 @@ export interface RuntimeSupervisorStopSessionParams {
 
 export interface RuntimeSupervisorDeleteSessionParams {
   sessionId: string;
+}
+
+export interface RuntimeSupervisorSessionControlResult {
+  supervisorInstanceId?: string;
+  ok: true;
+}
+
+export const RUNTIME_SUPERVISOR_TERMINAL_PROJECTION_MIN_CREDIT_BYTES = 256;
+export const RUNTIME_SUPERVISOR_TERMINAL_PROJECTION_MAX_CREDIT_BYTES = 64 * 1024;
+
+export interface RuntimeSupervisorOpenTerminalProjectionParams {
+  sessionId: string;
+  /** Optional optimistic checks; omit them to pin the freshest projection when scheduled. */
+  authorityId?: string;
+  targetRevision?: number;
+  /** Extend the credit-driven projection until an atomic live-tail subscription is settled. */
+  follow?: boolean;
+}
+
+export interface RuntimeSupervisorTerminalProjectionCheckpointDescriptor {
+  version: TerminalStreamCheckpoint['version'];
+  sessionId: string;
+  authorityId: string;
+  revision: number;
+  cols: number;
+  rows: number;
+  scrollback: number;
+  createdAtMs: number;
+  serializedState: Omit<SerializedTerminalState, 'data'>;
+}
+
+export interface RuntimeSupervisorOpenTerminalProjectionResult {
+  supervisorInstanceId?: string;
+  projectionId: string;
+  sessionId: string;
+  authorityId: string;
+  targetRevision: number;
+  follow: boolean;
+  checkpoint: RuntimeSupervisorTerminalProjectionCheckpointDescriptor;
+}
+
+export interface RuntimeSupervisorReadTerminalProjectionParams {
+  projectionId: string;
+  /** Payload-byte credit for this pull. The server never carries unused credit into the next pull. */
+  creditBytes: number;
+}
+
+export type RuntimeSupervisorTerminalProjectionChunk =
+  | {
+      kind: 'checkpoint';
+      /** UTF-16 code-unit offset in the checkpoint data string. */
+      dataOffset: number;
+      data: string;
+      complete: boolean;
+    }
+  | {
+      kind: 'output';
+      revision: number;
+      createdAtMs: number;
+      /** UTF-16 code-unit offset in this output event's data string. */
+      dataOffset: number;
+      data: string;
+      complete: boolean;
+    }
+  | {
+      kind: 'resize';
+      revision: number;
+      createdAtMs: number;
+      cols: number;
+      rows: number;
+      complete: true;
+    }
+  | {
+      kind: 'scrollback';
+      revision: number;
+      createdAtMs: number;
+      scrollback: number;
+      complete: true;
+    };
+
+export interface RuntimeSupervisorReadTerminalProjectionResult {
+  supervisorInstanceId?: string;
+  projectionId: string;
+  sessionId: string;
+  authorityId: string;
+  targetRevision: number;
+  /** UTF-8 bytes of JSON.stringify(chunk), excluding the RPC response envelope. */
+  payloadBytes: number;
+  /** SHA-256 of the exact UTF-8 JSON.stringify(chunk) payload. */
+  chunkChecksum?: string;
+  chunk?: RuntimeSupervisorTerminalProjectionChunk;
+  done: boolean;
+  /** True only for the no-payload response that atomically attaches the live tail. */
+  live?: boolean;
+}
+
+export interface RuntimeSupervisorCancelTerminalProjectionParams {
+  projectionId: string;
+}
+
+export interface RuntimeSupervisorCancelTerminalProjectionResult {
+  supervisorInstanceId?: string;
+  projectionId: string;
+  cancelled: boolean;
 }
 
 export type RuntimeSupervisorRequest =
@@ -375,6 +500,24 @@ export type RuntimeSupervisorRequest =
       id: string;
       method: 'deleteSession';
       params: RuntimeSupervisorDeleteSessionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'openTerminalProjection';
+      params: RuntimeSupervisorOpenTerminalProjectionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'readTerminalProjection';
+      params: RuntimeSupervisorReadTerminalProjectionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'cancelTerminalProjection';
+      params: RuntimeSupervisorCancelTerminalProjectionParams;
     };
 
 export type RuntimeSupervisorResponse =
@@ -388,9 +531,10 @@ export type RuntimeSupervisorResponse =
         | RuntimeSupervisorTerminalProjectionCheckpoint
         | RuntimeSupervisorSubscribeSessionResult
         | RuntimeSupervisorAckSessionRevisionResult
-        | {
-            ok: true;
-          };
+        | RuntimeSupervisorOpenTerminalProjectionResult
+        | RuntimeSupervisorReadTerminalProjectionResult
+        | RuntimeSupervisorCancelTerminalProjectionResult
+        | RuntimeSupervisorSessionControlResult;
     }
   | {
       type: 'response';
@@ -404,6 +548,7 @@ export type RuntimeSupervisorEvent =
       type: 'event';
       event: 'sessionOutput';
       payload: {
+        supervisorInstanceId?: string;
         sessionId: string;
         kind: ExecutionNodeKind;
         chunk: string;
@@ -418,6 +563,7 @@ export type RuntimeSupervisorEvent =
       type: 'event';
       event: 'sessionTerminalEvent';
       payload: {
+        supervisorInstanceId?: string;
         sessionId: string;
         kind: ExecutionNodeKind;
         authorityId: string;

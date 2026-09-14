@@ -4,6 +4,8 @@
 
 本文遵循 `docs/PLANS.md`。它覆盖一次跨 Runtime Supervisor、Extension Host、画布持久化状态和 VS Code 宿主 smoke 的恢复语义修正；所有实现与验证证据都必须回写本文。
 
+> 2026-08-11 后续结论：本计划的“Agent只在用户点击后显式Resume”和“dead PTY不回放任意大小Journal”继续有效；“必须恢复有界terminal screen/recent output”和后续必须提供Journal分页浏览的结论已被 `docs/design-docs/runtime-control-and-projection-isolation.md` 取代。可信provider Resume identity才是最低必要数据，画面与recent output仅为可选增强。
+
 ## 目标与全局图景
 
 当设备、远端用户会话或 `systemd-user` Supervisor 已经重启时，旧 PTY 已经死亡。用户重新打开画板后，应立即看到最后保存的、有界终端画面；`Agent` 节点提供明确的 `Resume` 按钮，由用户决定是否启动一个新的 provider resume 进程；`Terminal` 节点明确结束。Supervisor 启动不能回放任意大小的旧 Journal，也不能因历史恢复 OOM 杀死用户新建的 Agent 或 Terminal。
