@@ -4,8 +4,7 @@ import * as net from 'net';
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
   createRuntimeSupervisorError,
-  createRuntimeSupervisorProtocolError,
-  getRuntimeSupervisorErrorDetails
+  createRuntimeSupervisorProtocolError
 } from '../common/runtimeSupervisorProtocol';
 import type {
   RuntimeSupervisorAttachSessionParams,
@@ -15,17 +14,14 @@ import type {
   RuntimeSupervisorCreateSessionParams,
   RuntimeSupervisorDeleteSessionParams,
   RuntimeSupervisorEvent,
-  RuntimeSupervisorGetTerminalProjectionCheckpointParams,
   RuntimeSupervisorGetSessionSnapshotParams,
   RuntimeSupervisorHelloResult,
   RuntimeSupervisorMessage,
-  RuntimeSupervisorRecoveryState,
   RuntimeSupervisorResizeSessionParams,
   RuntimeSupervisorSessionSnapshot,
   RuntimeSupervisorStopSessionParams,
   RuntimeSupervisorSubscribeSessionParams,
   RuntimeSupervisorSubscribeSessionResult,
-  RuntimeSupervisorTerminalProjectionCheckpoint,
   RuntimeSupervisorUpdateSessionScrollbackParams,
   RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
@@ -41,11 +37,7 @@ export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientE
   supervisorScriptPath: string;
   supervisorLauncherScriptPath: string;
   onDisconnected?: (error?: Error) => void;
-  /** Overrides the five-second startup deadline for deterministic protocol tests. */
-  startupTimeoutMs?: number;
 }
-
-const DEFAULT_SUPERVISOR_STARTUP_TIMEOUT_MS = 5000;
 
 export class RuntimeSupervisorClient {
   private socket: net.Socket | undefined;
@@ -95,10 +87,6 @@ export class RuntimeSupervisorClient {
     return this.helloResult?.capabilities?.terminalProjectionSnapshotV1 === true;
   }
 
-  public supportsTerminalProjectionCheckpoint(): boolean {
-    return this.helloResult?.capabilities?.terminalProjectionCheckpointV1 === true;
-  }
-
   public supportsTerminalSessionStream(): boolean {
     return this.helloResult?.capabilities?.terminalSessionStreamV1 === true;
   }
@@ -107,24 +95,8 @@ export class RuntimeSupervisorClient {
     return this.helloResult?.capabilities?.terminalAppliedRevisionAckV1 === true;
   }
 
-  public getRecoveryState(): RuntimeSupervisorRecoveryState | undefined {
-    return this.helloResult?.recovery;
-  }
-
-  public supportsAgentSubmissionIntent(): boolean {
-    return this.helloResult?.capabilities?.agentSubmissionIntentV1 === true;
-  }
-
-  public supportsAgentProviderLifecycle(): boolean {
-    return this.helloResult?.capabilities?.agentProviderLifecycleV1 === true;
-  }
-
   public hasPendingRequests(): boolean {
     return this.pendingRequests.size > 0;
-  }
-
-  public getPendingRequestCount(): number {
-    return this.pendingRequests.size;
   }
 
   public async createSession(
@@ -143,12 +115,6 @@ export class RuntimeSupervisorClient {
     params: RuntimeSupervisorGetSessionSnapshotParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     return this.request('getSessionSnapshot', params);
-  }
-
-  public async getTerminalProjectionCheckpoint(
-    params: RuntimeSupervisorGetTerminalProjectionCheckpointParams
-  ): Promise<RuntimeSupervisorTerminalProjectionCheckpoint> {
-    return this.request('getTerminalProjectionCheckpoint', params);
   }
 
   public async subscribeSession(
@@ -200,7 +166,6 @@ export class RuntimeSupervisorClient {
       | 'createSession'
       | 'attachSession'
       | 'getSessionSnapshot'
-      | 'getTerminalProjectionCheckpoint'
       | 'subscribeSession'
       | 'ackSessionRevision'
       | 'writeInput'
@@ -212,7 +177,6 @@ export class RuntimeSupervisorClient {
       | RuntimeSupervisorCreateSessionParams
       | RuntimeSupervisorAttachSessionParams
       | RuntimeSupervisorGetSessionSnapshotParams
-      | RuntimeSupervisorGetTerminalProjectionCheckpointParams
       | RuntimeSupervisorSubscribeSessionParams
       | RuntimeSupervisorAckSessionRevisionParams
       | RuntimeSupervisorWriteInputParams
@@ -300,7 +264,7 @@ export class RuntimeSupervisorClient {
       const handleError = (error: Error & { code?: string }): void => {
         cleanup();
         socket.destroy();
-        reject(createSocketTransportError(error));
+        reject(error);
       };
 
       socket.once('connect', handleConnect);
@@ -322,9 +286,7 @@ export class RuntimeSupervisorClient {
         ? undefined
         : createRuntimeSupervisorProtocolError({
             id: 'clientConnectionClosed'
-          }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed, {
-            origin: 'transport'
-          });
+          }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed);
       this.socket = undefined;
       this.helloResult = undefined;
       this.rejectAllPending(error ?? createRuntimeSupervisorProtocolError({
@@ -334,9 +296,10 @@ export class RuntimeSupervisorClient {
         this.options.onDisconnected?.(error);
       }
     });
-    socket.on('error', () => {
-      // Report the disconnect only after close clears the stale socket reference.
-      socket.destroy();
+    socket.on('error', (error) => {
+      if (!this.disposed) {
+        this.options.onDisconnected?.(error);
+      }
     });
   }
 
@@ -399,14 +362,6 @@ export class RuntimeSupervisorClient {
 
     if (message.event === 'sessionState') {
       this.options.onSessionState?.(message.payload);
-      return;
-    }
-
-    if (message.event === 'recoveryState') {
-      this.helloResult = this.helloResult
-        ? { ...this.helloResult, recovery: message.payload }
-        : this.helloResult;
-      this.options.onRecoveryState?.(message.payload);
     }
   }
 
@@ -425,9 +380,8 @@ export class RuntimeSupervisorClient {
   }
 
   private async waitForSupervisorReady(): Promise<void> {
-    const timeoutMs = normalizeStartupTimeoutMs(this.options.startupTimeoutMs);
-    const deadline = Date.now() + timeoutMs;
-    let lastTransportError: Error | undefined;
+    const deadline = Date.now() + 5000;
+    let lastError: Error | undefined;
 
     while (Date.now() < deadline) {
       try {
@@ -437,32 +391,19 @@ export class RuntimeSupervisorClient {
         await this.performHelloHandshake();
         return;
       } catch (error) {
-        const normalizedError = error instanceof Error ? error : new Error(String(error));
-        if (!isSupervisorSocketStartupError(normalizedError)) {
-          throw normalizedError;
-        }
-        lastTransportError = normalizedError;
+        lastError = error instanceof Error ? error : new Error(String(error));
       }
 
       await delay(80);
     }
 
-    throw createRuntimeSupervisorProtocolError({
-      id: 'clientReadyTimeout',
-      params: {
-        ...(lastTransportError ? { lastError: lastTransportError.message } : {})
-      }
-    }, RUNTIME_SUPERVISOR_ERROR_CODES.clientReadyTimeout, {
-      origin: 'readiness',
-      errno: getRuntimeSupervisorErrorDetails(lastTransportError)?.errno
-    });
+    throw lastError ?? createRuntimeSupervisorProtocolError({
+      id: 'clientReadyTimeout'
+    }, RUNTIME_SUPERVISOR_ERROR_CODES.clientReadyTimeout);
   }
 
   private async performHelloHandshake(): Promise<void> {
     this.helloResult = await this.requestOnConnectedSocket<RuntimeSupervisorHelloResult>('hello');
-    if (this.helloResult.recovery) {
-      this.options.onRecoveryState?.(this.helloResult.recovery);
-    }
   }
 
   private clearConnectPromise(connectPromise: Promise<void>): void {
@@ -473,40 +414,12 @@ export class RuntimeSupervisorClient {
 }
 
 function isSupervisorSocketStartupError(error: unknown): boolean {
-  return getRuntimeSupervisorErrorDetails(error)?.origin === 'transport';
-}
-
-function normalizeStartupTimeoutMs(value: number | undefined): number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? Math.floor(value)
-    : DEFAULT_SUPERVISOR_STARTUP_TIMEOUT_MS;
-}
-
-function createSocketTransportError(error: Error & { code?: string }): Error {
-  const errno = typeof error.code === 'string' ? error.code : undefined;
-  if (errno === 'ENOENT') {
-    return createRuntimeSupervisorProtocolError({
-      id: 'clientSocketUnavailable'
-    }, RUNTIME_SUPERVISOR_ERROR_CODES.clientSocketUnavailable, {
-      origin: 'transport',
-      errno
-    });
-  }
-  if (errno === 'ECONNREFUSED') {
-    return createRuntimeSupervisorProtocolError({
-      id: 'clientSocketRefused'
-    }, RUNTIME_SUPERVISOR_ERROR_CODES.clientSocketRefused, {
-      origin: 'transport',
-      errno
-    });
+  if (!(error instanceof Error)) {
+    return false;
   }
 
-  return createRuntimeSupervisorProtocolError({
-    id: 'clientConnectionClosed'
-  }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed, {
-    origin: 'transport',
-    errno
-  });
+  const code = (error as Error & { code?: string }).code;
+  return code === 'ENOENT' || code === 'ECONNREFUSED';
 }
 
 function delay(ms: number): Promise<void> {

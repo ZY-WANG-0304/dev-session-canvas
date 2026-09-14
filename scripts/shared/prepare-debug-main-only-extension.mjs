@@ -12,7 +12,7 @@ const copiedEntries = [
   'package.nls.json',
   'package.nls.zh-cn.json',
   'l10n',
-  path.join('scripts', 'runtime')
+  path.join('scripts', 'runtime', 'claude-file-event-hook.cjs')
 ];
 
 async function pathExists(targetPath) {

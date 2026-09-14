@@ -7,7 +7,6 @@ import type {
   ExecutionTerminalOpenLink
 } from '../common/executionTerminalLinks';
 import type {
-  AgentInputIntent,
   AgentProviderKind,
   CanvasEdgeArrowMode,
   CanvasEdgeColor,
@@ -80,7 +79,6 @@ export interface CanvasSpatialBounds {
 }
 
 export interface ExecutionInputDispatchMetadata {
-  intent?: AgentInputIntent;
   sequence: number;
   webviewEpochMs: number;
   webviewPerformanceNowMs: number;

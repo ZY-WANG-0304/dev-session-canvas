@@ -56,7 +56,9 @@ async function handleStart(unitName) {
     .split('\n')
     .map((line) => line.trim())
     .find((line) => line.startsWith('WorkingDirectory='));
-  const workingDirectory = parseWorkingDirectoryDirective(workingDirectoryLine, unitName);
+  const workingDirectory = workingDirectoryLine
+    ? parseQuotedValue(workingDirectoryLine.slice('WorkingDirectory='.length))
+    : process.cwd();
   const environment = parseUnitEnvironment(unitContent);
   const execArgs = parseQuotedArgList(execStartLine.slice('ExecStart='.length));
   await appendLog({
@@ -130,19 +132,9 @@ function isProcessAlive(pid) {
   }
 }
 
-function parseWorkingDirectoryDirective(line, unitName) {
-  if (!line) {
-    return process.cwd();
-  }
-
-  const value = line.slice('WorkingDirectory='.length).trim();
-  if (value.includes('"') || !path.isAbsolute(value)) {
-    throw new Error(
-      `fake systemctl rejected ${unitName}: WorkingDirectory= path is not absolute: ${value || '<empty>'}`
-    );
-  }
-
-  return value.replace(/%%/g, '%');
+function parseQuotedValue(value) {
+  const [parsedValue] = parseQuotedArgList(value);
+  return parsedValue || value.trim();
 }
 
 function parseQuotedArgList(value) {

@@ -1,9 +1,5 @@
 import type {
   AgentProviderKind,
-  AgentInputIntent,
-  AgentActivityAuthority,
-  AgentActivitySource,
-  AgentTurnOutcome,
   AgentResumeStrategy,
   ExecutionNodeKind,
   PendingExecutionLaunch,
@@ -12,15 +8,8 @@ import type {
   TerminalNodeStatus,
   AgentNodeStatus
 } from './protocol';
-import type {
-  SerializedTerminalCheckpointRejectionReason,
-  SerializedTerminalState
-} from './serializedTerminalState';
-import type {
-  TerminalStreamAttachPayload,
-  TerminalStreamCheckpoint,
-  TerminalStreamEvent
-} from './terminalSessionStream';
+import type { SerializedTerminalState } from './serializedTerminalState';
+import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
 
 export interface RuntimeSupervisorPaths {
@@ -39,41 +28,11 @@ export interface RuntimeSupervisorHelloResult {
   pid: number;
   runtimeBackend: RuntimeHostBackendKind;
   runtimeGuarantee: RuntimePersistenceGuarantee;
-  /** Omitted by older Supervisors that predate asynchronous journal recovery. */
-  recovery?: RuntimeSupervisorRecoveryState;
   capabilities?: {
     terminalSessionStreamV1?: true;
     terminalProjectionSnapshotV1?: true;
-    terminalProjectionCheckpointV1?: true;
     terminalAppliedRevisionAckV1?: true;
-    agentSubmissionIntentV1?: true;
-    agentProviderLifecycleV1?: true;
   };
-}
-
-/** Safe checkpoint health metadata; terminal output and user input are never included. */
-export interface RuntimeSupervisorTerminalCheckpointDiagnostics {
-  lastRejectionReason?: SerializedTerminalCheckpointRejectionReason;
-  consecutiveRejectionCount: number;
-  rejectionStartedAtMs?: number;
-  checkpointCreatedAtMs?: number;
-  snapshotEventCount?: number;
-  snapshotEventBytes?: number;
-}
-
-/** A bounded checkpoint refresh result for a Host that already has a live stream. */
-export interface RuntimeSupervisorTerminalProjectionCheckpoint {
-  sessionId: string;
-  authorityId: string;
-  revision: number;
-  checkpoint: TerminalStreamCheckpoint;
-  terminalCheckpointDiagnostics?: RuntimeSupervisorTerminalCheckpointDiagnostics;
-}
-
-export interface RuntimeSupervisorRecoveryState {
-  phase: 'recovering' | 'ready';
-  pendingSessionCount: number;
-  failureCount?: number;
 }
 
 export interface RuntimeSupervisorSessionSnapshot {
@@ -95,20 +54,12 @@ export interface RuntimeSupervisorSessionSnapshot {
   terminalAuthorityId?: string;
   terminalRevision?: number;
   terminalStream?: TerminalStreamAttachPayload;
-  terminalCheckpointDiagnostics?: RuntimeSupervisorTerminalCheckpointDiagnostics;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;
   resumeStrategy?: AgentResumeStrategy;
   resumeSessionId?: string;
   resumeStoragePath?: string;
-  agentActivitySource?: AgentActivitySource;
-  agentActivityAuthority?: AgentActivityAuthority;
-  providerLifecycleEnabled?: boolean;
-  providerSessionId?: string;
-  providerTurnId?: string;
-  lastTurnOutcome?: AgentTurnOutcome;
-  lastTurnError?: string;
   lastExitCode?: number;
   lastExitSignal?: string;
   lastExitMessage?: string;
@@ -127,21 +78,6 @@ export interface RuntimeSupervisorErrorPayload {
   message: string;
   code?: string;
   descriptor?: RuntimeSupervisorMessageDescriptor;
-  details?: RuntimeSupervisorErrorDetails;
-}
-
-/** Identifies the layer that produced a Runtime Supervisor failure. */
-export type RuntimeSupervisorErrorOrigin = 'transport' | 'readiness' | 'protocol' | 'execution-spawn';
-
-/**
- * Structured error metadata is carried across the Host/Supervisor process boundary.
- * `file` and `cwd` are only populated for a real PTY process spawn attempt.
- */
-export interface RuntimeSupervisorErrorDetails {
-  origin: RuntimeSupervisorErrorOrigin;
-  errno?: string;
-  file?: string;
-  cwd?: string;
 }
 
 export const RUNTIME_SUPERVISOR_ERROR_CODES = {
@@ -160,10 +96,7 @@ export const RUNTIME_SUPERVISOR_ERROR_CODES = {
   clientDisconnected: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_CLIENT_DISCONNECTED',
   clientNotConnected: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_CLIENT_NOT_CONNECTED',
   clientConnectionClosed: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_CONNECTION_CLOSED',
-  clientSocketUnavailable: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_SOCKET_UNAVAILABLE',
-  clientSocketRefused: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_SOCKET_REFUSED',
   clientReadyTimeout: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_READY_TIMEOUT',
-  executionSpawnFailed: 'DEV_SESSION_CANVAS_RUNTIME_EXECUTION_SPAWN_FAILED',
   launcherMissingSupervisorScript: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_LAUNCHER_MISSING_SUPERVISOR_SCRIPT',
   launcherMissingStorageDir: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_LAUNCHER_MISSING_STORAGE_DIR',
   systemdBackendMissingPaths: 'DEV_SESSION_CANVAS_RUNTIME_SYSTEMD_BACKEND_MISSING_PATHS',
@@ -207,10 +140,7 @@ export type RuntimeSupervisorMessageId =
   | 'clientDisconnected'
   | 'clientNotConnected'
   | 'clientConnectionClosed'
-  | 'clientSocketUnavailable'
-  | 'clientSocketRefused'
   | 'clientReadyTimeout'
-  | 'executionSpawnFailed'
   | 'systemdBackendMissingPaths'
   | 'systemdCommandFailed'
   | 'terminalAuthorityMismatch'
@@ -233,7 +163,6 @@ export interface RuntimeSupervisorCreateSessionParams {
   resumeStrategy?: AgentResumeStrategy;
   resumeSessionId?: string;
   resumeStoragePath?: string;
-  providerLifecycleEnabled?: boolean;
   launchSpec: SerializedExecutionSessionLaunchSpec;
   deferSubscription?: boolean;
 }
@@ -244,10 +173,6 @@ export interface RuntimeSupervisorAttachSessionParams {
 }
 
 export interface RuntimeSupervisorGetSessionSnapshotParams {
-  sessionId: string;
-}
-
-export interface RuntimeSupervisorGetTerminalProjectionCheckpointParams {
   sessionId: string;
 }
 
@@ -280,7 +205,6 @@ export interface RuntimeSupervisorAckSessionRevisionResult {
 export interface RuntimeSupervisorWriteInputParams {
   sessionId: string;
   data: string;
-  intent?: AgentInputIntent;
 }
 
 export interface RuntimeSupervisorResizeSessionParams {
@@ -325,12 +249,6 @@ export type RuntimeSupervisorRequest =
       id: string;
       method: 'getSessionSnapshot';
       params: RuntimeSupervisorGetSessionSnapshotParams;
-    }
-  | {
-      type: 'request';
-      id: string;
-      method: 'getTerminalProjectionCheckpoint';
-      params: RuntimeSupervisorGetTerminalProjectionCheckpointParams;
     }
   | {
       type: 'request';
@@ -383,7 +301,6 @@ export type RuntimeSupervisorResponse =
       result:
         | RuntimeSupervisorHelloResult
         | RuntimeSupervisorSessionSnapshot
-        | RuntimeSupervisorTerminalProjectionCheckpoint
         | RuntimeSupervisorSubscribeSessionResult
         | RuntimeSupervisorAckSessionRevisionResult
         | {
@@ -424,11 +341,6 @@ export type RuntimeSupervisorEvent =
       type: 'event';
       event: 'sessionState';
       payload: RuntimeSupervisorSessionSnapshot;
-    }
-  | {
-      type: 'event';
-      event: 'recoveryState';
-      payload: RuntimeSupervisorRecoveryState;
     };
 
 export type RuntimeSupervisorMessage =
@@ -442,7 +354,6 @@ export interface RuntimeSupervisorClientEventHandlers {
     event: Extract<RuntimeSupervisorEvent, { event: 'sessionTerminalEvent' }>['payload']
   ) => void;
   onSessionState?: (snapshot: RuntimeSupervisorSessionSnapshot) => void;
-  onRecoveryState?: (state: RuntimeSupervisorRecoveryState) => void;
 }
 
 export interface SerializedExecutionSessionLaunchSpec {
@@ -496,40 +407,33 @@ export function serializeRuntimeSupervisorError(error: unknown): RuntimeSupervis
   const message = error instanceof Error ? error.message : String(error);
   const code = readRuntimeSupervisorErrorCode(error);
   const descriptor = getRuntimeSupervisorErrorDescriptor(error);
-  const details = getRuntimeSupervisorErrorDetails(error);
   return {
     message,
     ...(code ? { code } : {}),
-    ...(descriptor ? { descriptor } : {}),
-    ...(details ? { details } : {})
+    ...(descriptor ? { descriptor } : {})
   };
 }
 
-export type RuntimeSupervisorError = Error & {
-  code?: string;
-  descriptor?: RuntimeSupervisorMessageDescriptor;
-  details?: RuntimeSupervisorErrorDetails;
-};
-
-export function createRuntimeSupervisorError(payload: RuntimeSupervisorErrorPayload): RuntimeSupervisorError {
-  const error = new Error(payload.message) as RuntimeSupervisorError;
+export function createRuntimeSupervisorError(
+  payload: RuntimeSupervisorErrorPayload
+): Error & { code?: string; descriptor?: RuntimeSupervisorMessageDescriptor } {
+  const error = new Error(payload.message) as Error & {
+    code?: string;
+    descriptor?: RuntimeSupervisorMessageDescriptor;
+  };
   if (payload.code) {
     error.code = payload.code;
   }
   if (isRuntimeSupervisorMessageDescriptor(payload.descriptor)) {
     error.descriptor = payload.descriptor;
   }
-  error.details = isRuntimeSupervisorErrorDetails(payload.details)
-    ? payload.details
-    : { origin: 'protocol' };
   return error;
 }
 
 export class RuntimeSupervisorProtocolError extends Error {
   public constructor(
     public readonly descriptor: RuntimeSupervisorMessageDescriptor,
-    public readonly code?: RuntimeSupervisorErrorCode,
-    public readonly details: RuntimeSupervisorErrorDetails = { origin: 'protocol' }
+    public readonly code?: RuntimeSupervisorErrorCode
   ) {
     super(formatRuntimeSupervisorMessageDescriptor(descriptor));
     this.name = 'RuntimeSupervisorProtocolError';
@@ -538,10 +442,9 @@ export class RuntimeSupervisorProtocolError extends Error {
 
 export function createRuntimeSupervisorProtocolError(
   descriptor: RuntimeSupervisorMessageDescriptor,
-  code?: RuntimeSupervisorErrorCode,
-  details?: RuntimeSupervisorErrorDetails
+  code?: RuntimeSupervisorErrorCode
 ): RuntimeSupervisorProtocolError {
-  return new RuntimeSupervisorProtocolError(descriptor, code, details);
+  return new RuntimeSupervisorProtocolError(descriptor, code);
 }
 
 export function getRuntimeSupervisorErrorDescriptor(
@@ -553,18 +456,6 @@ export function getRuntimeSupervisorErrorDescriptor(
 
   const descriptor = error.descriptor;
   return isRuntimeSupervisorMessageDescriptor(descriptor) ? descriptor : undefined;
-}
-
-export function getRuntimeSupervisorErrorDetails(error: unknown): RuntimeSupervisorErrorDetails | undefined {
-  if (!isRecord(error)) {
-    return undefined;
-  }
-
-  return isRuntimeSupervisorErrorDetails(error.details) ? error.details : undefined;
-}
-
-export function isRuntimeSupervisorExecutionSpawnError(error: unknown): boolean {
-  return getRuntimeSupervisorErrorDetails(error)?.origin === 'execution-spawn';
 }
 
 export function formatRuntimeSupervisorMessageDescriptor(
@@ -650,14 +541,8 @@ export function formatRuntimeSupervisorMessageDescriptor(
       return 'Could not connect to the runtime supervisor.';
     case 'clientConnectionClosed':
       return 'Runtime supervisor connection closed.';
-    case 'clientSocketUnavailable':
-      return 'Runtime supervisor socket is unavailable.';
-    case 'clientSocketRefused':
-      return 'Runtime supervisor socket refused the connection.';
     case 'clientReadyTimeout':
       return 'Timed out waiting for the runtime supervisor to start.';
-    case 'executionSpawnFailed':
-      return `Could not start runtime process ${params.file ?? '<unknown>'}${params.cwd ? ` in ${params.cwd}` : ''}${params.detail ? `: ${params.detail}` : '.'}`;
     case 'systemdBackendMissingPaths':
       return 'The systemd-user backend is missing unit or controlDir paths.';
     case 'systemdCommandFailed':
@@ -715,19 +600,6 @@ function isRuntimeSupervisorMessageParams(value: unknown): value is Record<strin
   return Object.values(value).every((entry) => typeof entry === 'string');
 }
 
-function isRuntimeSupervisorErrorDetails(value: unknown): value is RuntimeSupervisorErrorDetails {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  const origin = value.origin;
-  if (origin !== 'transport' && origin !== 'readiness' && origin !== 'protocol' && origin !== 'execution-spawn') {
-    return false;
-  }
-
-  return ['errno', 'file', 'cwd'].every((key) => value[key] === undefined || typeof value[key] === 'string');
-}
-
 function isRuntimeSupervisorMessageId(value: string): value is RuntimeSupervisorMessageId {
   switch (value) {
     case 'parseError':
@@ -760,10 +632,7 @@ function isRuntimeSupervisorMessageId(value: string): value is RuntimeSupervisor
     case 'clientDisconnected':
     case 'clientNotConnected':
     case 'clientConnectionClosed':
-    case 'clientSocketUnavailable':
-    case 'clientSocketRefused':
     case 'clientReadyTimeout':
-    case 'executionSpawnFailed':
     case 'systemdBackendMissingPaths':
     case 'systemdCommandFailed':
     case 'terminalAuthorityMismatch':

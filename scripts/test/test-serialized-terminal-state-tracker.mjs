@@ -39,48 +39,6 @@ try {
   assert.match(state.data, /alpha/u);
   assert.match(state.data, /beta/u);
 
-  assert.equal(
-    tracker.getBottomScreenActivityToken(),
-    '0:',
-    'Ordinary terminal trackers must not pay for Agent-only screen activity tracking.'
-  );
-  tracker.enableBottomScreenActivityTracking();
-  const initialBottomSignature = tracker.getBottomScreenSignature();
-  const initialBottomActivityToken = tracker.getBottomScreenActivityToken();
-  tracker.write('\u001b[2D');
-  await tracker.flush();
-  assert.equal(
-    tracker.getBottomScreenSignature(),
-    initialBottomSignature,
-    'Cursor-only movement must not look like bottom-screen activity.'
-  );
-  assert.equal(tracker.getBottomScreenActivityToken(), initialBottomActivityToken);
-  tracker.write('\u001b[31mX\u001b[0m');
-  await tracker.flush();
-  const redBottomSignature = tracker.getBottomScreenSignature();
-  assert.notEqual(redBottomSignature, initialBottomSignature);
-  assert.notEqual(tracker.getBottomScreenActivityToken(), initialBottomActivityToken);
-  tracker.write('\b\u001b[32mX\u001b[0m');
-  await tracker.flush();
-  assert.notEqual(
-    tracker.getBottomScreenSignature(),
-    redBottomSignature,
-    'Style-only spinner frames must change the bottom-screen signature.'
-  );
-  tracker.disableBottomScreenActivityTracking();
-  assert.equal(
-    tracker.getBottomScreenActivityToken(),
-    '0:',
-    'Disabling weak-waiting recovery must discard the tracked screen state.'
-  );
-  tracker.write('\bY');
-  await tracker.flush();
-  assert.equal(
-    tracker.getBottomScreenActivityToken(),
-    '0:',
-    'Running output must not update the bottom-screen token while tracking is disabled.'
-  );
-
   tracker.write(`${Array.from({ length: 200 }, (_, index) => `line-${String(index).padStart(3, '0')}`).join('\r\n')}\r\n`, {
     outputSequence: 3
   });
@@ -365,21 +323,6 @@ try {
     reason: 'osc8-state'
   }, 'OSC 8 metadata that xterm-serialize-v1 cannot preserve must reject compaction.');
   osc8Tracker.dispose();
-
-  // Codex asks for the default colors at startup. A REPORT is not a palette mutation.
-  const codexStartupColorQueryTracker = new SerializedTerminalStateTracker(40, 5);
-  codexStartupColorQueryTracker.write(
-    '\u001b]10;?\u001b\\\u001b]11;?\u001b\\',
-    { outputSequence: 1 }
-  );
-  checkpoint = await codexStartupColorQueryTracker.flushValidatedCheckpoint();
-  assert.equal(checkpoint.eligible, true, 'Codex OSC 10/11 REPORT queries must not reject checkpoints.');
-  codexStartupColorQueryTracker.write('post-query output\r\n', {
-    outputSequence: 2
-  });
-  checkpoint = await codexStartupColorQueryTracker.flushValidatedCheckpoint();
-  assert.equal(checkpoint.eligible, true, 'a later safe boundary must remain eligible after color queries.');
-  codexStartupColorQueryTracker.dispose();
 
   const colorStateTracker = new SerializedTerminalStateTracker(40, 5);
   colorStateTracker.write('\u001b]10;#ff0000\u0007');
