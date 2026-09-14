@@ -191,7 +191,7 @@ terminal title 是 PTY raw output 中的 `OSC 0`（同时设置 icon/title）或
 
 本仓库把 title 定位为 provider-specific 的正向活动增强，而不是新的主状态、完成信号或通用 PTY heuristic：
 
-1. 只在拥有 current PTY 的 Host/Supervisor raw chunk 层增量解析 OSC 0/2；必须同时支持 BEL、ST 与跨 chunk 终止，未完成 payload 有固定上限。原始 title 不进入节点 metadata、terminal journal、diagnostic detail、attention 文案或 Webview。
+1. 只在拥有 current PTY 的 Host/Supervisor raw chunk 层增量解析 OSC 0/2；必须同时支持 BEL、ST 与跨 chunk 终止，未完成 payload 有固定上限。title activity reducer 不读取或写入 raw title；title 文本的受限显示与 reattach 投影由 `docs/design-docs/execution-terminal-title-display.md` 另行定义，仍不得进入 terminal journal、diagnostic detail、attention 文案或 lifecycle metadata。
 2. Codex profile 只识别当前 `0.146.0` 已验证的十个 Braille activity frame；Claude Code profile 只识别当前 `2.1.209` busy 的 `⠂` / `⠐`。同一 profile 要在 2500ms 内见到两个不同 frame 才形成 `terminal-title activity`。这是版本化实现证据，不是 provider API 契约；title 配置关闭、改序、失焦暂停或未来改 frame 都只会使本增强缺席。
 3. 已经有有效 submit/结构化 start 的 `running` 回合只在内存中吸收该活动，不得每帧 persist 或 post state。title activity 不能从 `starting`、`resuming`、`live` 或 idle 单独创建一轮 `running`，因为 Codex 的 MCP startup 也会转动且 title 没有 turn identity。
 4. 已确认的 title activity 与 quiet fallback 由同一个幂等 reducer 处理，事件到达顺序无关：title 两帧先到时只维持当前回合的 `running`，随后在确实连续 5000ms 没有 PTY/title activity 时仍可进入弱 `waiting-input`；quiet fallback 先到时，之后同一回合的 title 两帧可以把弱 `waiting-input` 纠正回 `running`。两条路径都必须使用事件的观察时间和同一 `lastActivityAtMs`，避免 timer 与 PTY parser 调度顺序造成不同最终状态。恢复后的状态来源写为 `terminal-title / best-effort`，且不要求 spinner 可见于 xterm screen。

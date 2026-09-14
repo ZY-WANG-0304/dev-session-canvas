@@ -90,6 +90,8 @@ export interface RuntimeSupervisorSessionSnapshot {
   rows: number;
   scrollback: number;
   output: string;
+  /** Current title; null confirms that this live PTY has cleared it. */
+  terminalTitle?: string | null;
   outputSequence?: number;
   serializedTerminalState?: SerializedTerminalState;
   terminalAuthorityId?: string;
@@ -408,6 +410,8 @@ export type RuntimeSupervisorEvent =
         outputSequence?: number;
         terminalAuthorityId?: string;
         terminalRevision?: number;
+        /** Ephemeral title projection for a redacted OSC 0/2 output event. */
+        terminalTitle?: string | null;
       };
     }
   | {
@@ -418,6 +422,8 @@ export type RuntimeSupervisorEvent =
         kind: ExecutionNodeKind;
         authorityId: string;
         event: TerminalStreamEvent;
+        /** Present only for the live event that changed the current terminal title. */
+        terminalTitle?: string | null;
       };
     }
   | {

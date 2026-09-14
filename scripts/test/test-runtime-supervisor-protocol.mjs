@@ -196,8 +196,8 @@ try {
   );
   assert.match(
     supervisorSource,
-    /terminalEvent = session\.terminalJournal\?\.appendOutput\(chunk\);[\s\S]*session\.outputSequence = terminalEvent\?\.revision[\s\S]*session\.terminalStateTracker\.write\(chunk, \{[\s\S]*outputSequence: session\.outputSequence[\s\S]*this\.emitSessionOutput\(session, chunk, terminalEvent\)/u,
-    'runtime supervisor 必须先由 journal 分配 revision，再按同一 revision 更新 tracker 和广播 output。'
+    /const titleUpdate = updateSupervisorTerminalTitle\(session, chunk\);[\s\S]*const terminalOutput = titleUpdate\.terminalOutput;[\s\S]*terminalEvent = session\.terminalJournal\?\.appendOutput\(terminalOutput\);[\s\S]*session\.outputSequence = terminalEvent\?\.revision[\s\S]*session\.terminalStateTracker\.write\(terminalOutput, \{[\s\S]*outputSequence: session\.outputSequence[\s\S]*this\.emitSessionOutput\([\s\S]*terminalOutput,[\s\S]*terminalEvent/u,
+    'runtime supervisor 必须在 journal 前移除 title payload，并由 journal 为安全输出分配同一 revision。'
   );
   assert.match(
     supervisorSource,
@@ -533,6 +533,11 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
         terminalName: 'xterm-256color'
       }
     });
+    assert.equal(
+      missingSignalAgentSnapshot.terminalTitle,
+      null,
+      'A live Supervisor snapshot must explicitly represent a known empty terminal title.'
+    );
     await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
       sessionId: 'provider-signal-missing-agent',
       data: 'silent prompt',
@@ -592,8 +597,120 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       4000
     );
     assert.equal(heuristicRecoverySnapshot.payload.agentActivityAuthority, 'best-effort');
+    assert.equal(
+      heuristicRecoverySnapshot.payload.terminalTitle,
+      '⠐ Claude Code',
+      'A live Supervisor snapshot must retain the current OSC 0/2 title for reattach.'
+    );
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
       sessionId: 'provider-signal-missing-agent'
+    });
+
+    const titleQueryMarker = `TITLE-QUERY-REPLY-${Date.now()}`;
+    const titleQueryScriptPath = path.join(tempDir, 'runtime-title-query.js');
+    await writeFile(
+      titleQueryScriptPath,
+      `process.stdin.setEncoding('utf8');
+if (process.stdin.isTTY) process.stdin.setRawMode(true);
+process.stdin.resume();
+let received = '';
+let receivedFirstTitle = false;
+process.stdin.on('data', (chunk) => {
+  received += chunk;
+  if (!receivedFirstTitle && received.includes(${JSON.stringify('\u001b]lFirst title\u001b\\')})) {
+    receivedFirstTitle = true;
+    process.stdout.write(${JSON.stringify('\u001b]2;\u0007\u001b[21t')});
+    return;
+  }
+  if (receivedFirstTitle && received.includes(${JSON.stringify('\u001b]l\u001b\\')})) {
+    process.stdout.write(${JSON.stringify(`${titleQueryMarker}\\r\\n`)});
+  }
+});
+const titleQueryChunks = ${JSON.stringify(['\u001b', ']', '2', ';', 'First title', '\u0007', '\u001b', '[', '2', '1', 't'])};
+titleQueryChunks.forEach((chunk, index) => {
+  setTimeout(() => process.stdout.write(chunk), index * 20);
+});
+setInterval(() => undefined, 1000);
+`,
+      'utf8'
+    );
+    const titleQuerySessionId = 'terminal-title-query';
+    const titleQueryInitial = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'terminal',
+      sessionId: titleQuerySessionId,
+      displayLabel: 'Terminal title query fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [titleQueryScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId: titleQuerySessionId,
+      authorityId: titleQueryInitial.terminalAuthorityId,
+      afterRevision: titleQueryInitial.terminalRevision
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      titleQuerySessionId,
+      titleQueryMarker,
+      'CSI 21 t title-query reply',
+      5000
+    );
+    const titleQuerySnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: titleQuerySessionId }
+    );
+    assert.equal(
+      titleQuerySnapshot.terminalTitle,
+      null,
+      'An OSC clear before CSI 21 t must produce an empty report and clear the live title.'
+    );
+    assert.notEqual(
+      titleQuerySnapshot.lifecycle,
+      'error',
+      'An OSC title introducer split across PTY chunks must not fail the live session journal.'
+    );
+    assert.equal(
+      titleQuerySnapshot.output.includes('First title'),
+      false,
+      'The Supervisor recent-output tail must not retain an OSC 0/2 title payload.'
+    );
+    assert.match(
+      titleQuerySnapshot.output,
+      new RegExp(titleQueryMarker, 'u'),
+      'Redacting OSC 0/2 must retain normal terminal output.'
+    );
+    assert.equal(
+      titleQuerySnapshot.terminalStream?.events
+        .filter((event) => event.type === 'output')
+        .some((event) => event.data.includes('First title')),
+      false,
+      'The live terminal-stream journal suffix must not retain an OSC 0/2 title payload.'
+    );
+    await delay(50);
+    const titleQueryJournalContent = await readTerminalJournalContent(storageDir, titleQuerySessionId);
+    assert.equal(
+      titleQueryJournalContent.includes('First title'),
+      false,
+      'The flushed terminal Journal must not persist an OSC 0/2 title payload.'
+    );
+    assert.match(
+      titleQueryJournalContent,
+      new RegExp(titleQueryMarker, 'u'),
+      'The flushed terminal Journal must retain regular terminal output around title controls.'
+    );
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: titleQuerySessionId
     });
 
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
@@ -1382,6 +1499,11 @@ setInterval(() => undefined, 1000);
     assertTerminalStreamSnapshot(finalState.payload, 'final sessionState');
     assert.equal(finalState.payload.terminalRevision, finalState.payload.outputSequence);
     assert.equal(
+      finalState.payload.terminalTitle,
+      undefined,
+      'A completed Supervisor snapshot must not retain the previous terminal title.'
+    );
+    assert.equal(
       finalState.payload.serializedTerminalState,
       undefined,
       'finalization should publish the journal suffix instead of starting a new checkpoint validation after exit.'
@@ -1824,6 +1946,27 @@ async function assertRuntimeSupervisorRestartUsesSavedSnapshot(supervisorOutfile
   await writeFile(journalManifestPath, '{"invalid":true}\n', 'utf8');
   await attachAndAssertSavedSnapshot('invalid-manifest metadata-only restart snapshot');
   await writeFile(journalManifestPath, originalManifest, 'utf8');
+}
+
+async function readTerminalJournalContent(storageDir, sessionId) {
+  const journalRoot = path.join(storageDir, 'terminal-journals');
+  const journalDirectories = await readdir(journalRoot);
+  for (const directory of journalDirectories) {
+    const sessionDirectory = path.join(journalRoot, directory);
+    try {
+      const manifest = JSON.parse(await readFile(path.join(sessionDirectory, 'manifest.json'), 'utf8'));
+      if (manifest.sessionId !== sessionId || !Array.isArray(manifest.segments)) {
+        continue;
+      }
+      const segments = await Promise.all(
+        manifest.segments.map((segment) => readFile(path.join(sessionDirectory, segment.file), 'utf8'))
+      );
+      return segments.join('');
+    } catch {
+      // Ignore unrelated Journal directories while the test process is still writing.
+    }
+  }
+  assert.fail(`Expected terminal Journal for ${sessionId}.`);
 }
 
 async function launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath) {

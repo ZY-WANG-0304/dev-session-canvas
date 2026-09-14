@@ -38,6 +38,8 @@
 - 可选辅助协作对象的当前支持能力：
   - 笔记
 - 对象的基础状态展示，例如标题、类型、位置、最近状态摘要
+- `Agent` / `Terminal` 的节点标题栏最上方上下文行始终显示 cwd/root；PTY 进程通过 OSC 0 / OSC 2 设置非空 terminal title 时，该行显示 `{terminal title} · {root}`。它不覆盖用户可编辑的节点标题或启动命令 / shell 路径的静态副标题；未设置、清空或会话结束后只保留 `{root}`
+- PTY 内 TUI 可通过 xterm `CSI 21 t` 查询当前 terminal title，并在同一 PTY 输入方向收到 `OSC l <title> ST`；仅返回已设置的 title，不返回 cwd/root、节点名、启动命令或历史 title，未设置时返回空报告
 - Agent 对象的最小真实 backend 主路径：
   - 用户可选择 `Codex` 或 `Claude Code`
   - 用户新建 Agent 节点后，节点会按当前 provider 自动进入启动流程；若运行时持久化已开启且 live runtime 仍可重新附着，则优先 reattach 原会话；只有在扩展重载前已持有带可信绑定来源的 provider 原生显式 session identity，且 live runtime 不可重新附着时，节点才会自动走 provider resume
@@ -53,6 +55,7 @@
   - 用户新建 `Terminal` 节点后，节点会自动进入启动流程并拉起嵌入式终端
   - 用户可直接在节点内使用嵌入式终端
   - 节点至少保留启动中、活动、停止中、关闭、失败和最近输出摘要
+  - 节点标题栏的上下文行以 `{terminal title} · {root}` 展示当前 terminal title 与 cwd/root；没有 live title 时只显示 `{root}`。该值不进入 Terminal 节点的用户标题或历史输出摘要
   - Webview 隐藏或重新显示后，仍可重新附着到当前活跃终端
 - Note 对象的最小真实编辑主路径：
   - 用户可在节点内编辑标题和正文
@@ -154,6 +157,7 @@
 - 用户在清空画板后会回到空画布，而不是看到自动生成的示例节点。
 - 用户可以删除核心执行对象；删除运行中的执行型对象时，会话会同步结束，且对象在 reload 后不会无声恢复。
 - 用户可以在多个 `Agent` 与终端同时存在时识别每个对象的基本状态，而不必逐个打开独立 panel 才理解当前情况。
+- 当 shell 或 Agent CLI 设置 terminal title 时，用户可在对应节点标题栏最上方的上下文行看到 `{terminal title} · {root}`；用户编辑的节点标题和静态副标题保持不变，title 未设置、清空或会话结束后上下文行只显示 `{root}`。
 - 运行中的 `Agent` 节点可以通过标题栏底部的低强度往返移动细线被扫视到；attention、非 `running` Agent 和 `Terminal` 节点不会显示这条 Agent running 细线。
 - `Agent` 与 `Terminal` 可以展示不同的状态集合；系统不把它们都压成同一套“未运行 / 运行中”语义。
 - 左下角缩放控件与基础导航区域不应被固定说明浮层遮挡。
