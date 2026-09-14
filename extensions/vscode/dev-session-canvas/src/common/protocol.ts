@@ -200,6 +200,15 @@ export type AgentNodeStatus =
   | 'interrupted';
 export type AgentRuntimeKind = 'pty-cli';
 export type AgentResumeStrategy = 'none' | 'claude-session-id' | 'codex-session-id' | 'fake-provider';
+export type AgentInputIntent = 'submit' | 'text' | 'paste' | 'interrupt' | 'unknown';
+export type AgentActivitySource =
+  | 'provider-lifecycle'
+  | 'submission-intent'
+  | 'terminal-title'
+  | 'attention'
+  | 'heuristic';
+export type AgentActivityAuthority = 'authoritative' | 'derived' | 'best-effort';
+export type AgentTurnOutcome = 'completed' | 'failed' | 'interrupted';
 export type ExecutionTerminalClipboardDiagnosticSource =
   | 'environment'
   | 'shortcut'
@@ -257,6 +266,12 @@ export interface AgentNodeMetadata extends ExecutionSessionMetadata {
   resumeStoragePath?: string;
   lastResumeError?: string;
   lastBackendLabel?: string;
+  activitySource?: AgentActivitySource;
+  activityAuthority?: AgentActivityAuthority;
+  providerSessionId?: string;
+  providerTurnId?: string;
+  lastTurnOutcome?: AgentTurnOutcome;
+  lastTurnError?: string;
   /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
   preSuspendLifecycle?: AgentNodeStatus;
   /** @deprecated Legacy Claude Ctrl-Z state metadata. New Claude Agent sessions block Ctrl-Z instead. */
@@ -904,6 +919,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         nodeId: string;
         kind: ExecutionNodeKind;
         data: string;
+        intent?: AgentInputIntent;
         sequence?: number;
         webviewEpochMs?: number;
         webviewPerformanceNowMs?: number;
@@ -1843,6 +1859,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         nodeId: payload.nodeId,
         kind: payload.kind,
         data: payload.data,
+        ...(isAgentInputIntent(payload.intent) ? { intent: payload.intent } : {}),
         sequence: normalizeNonNegativeInteger(payload.sequence),
         webviewEpochMs: normalizeNonNegativeFiniteNumber(payload.webviewEpochMs),
         webviewPerformanceNowMs: normalizeNonNegativeFiniteNumber(payload.webviewPerformanceNowMs)
@@ -2556,6 +2573,16 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
   }
 
   return null;
+}
+
+export function isAgentInputIntent(value: unknown): value is AgentInputIntent {
+  return (
+    value === 'submit' ||
+    value === 'text' ||
+    value === 'paste' ||
+    value === 'interrupt' ||
+    value === 'unknown'
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -4,15 +4,32 @@ import * as net from 'net';
 import * as path from 'path';
 
 import {
+  confirmAgentInterrupt,
+  consumeAgentInstructionSubmission,
+  createAgentProviderLifecycleState,
+  isAgentHeuristicWaitingInputRecoverable,
+  recordAgentAttentionWaitingInput,
+  recordAgentHeuristicRunning,
+  recordAgentHeuristicWaitingInput,
+  recordAgentInterruptRequest,
+  recordAgentSubmission,
+  type AgentProviderLifecycleState
+} from '../common/agentProviderLifecycle';
+import {
   AGENT_WAITING_INPUT_POLL_INTERVAL_MS,
   createAgentActivityHeuristicState,
   evaluateAgentWaitingInputTransition,
+  recordAgentBottomScreenActivity,
+  recordAgentInputHeuristics,
   recordAgentOutputHeuristics,
   resetAgentActivityHeuristics,
+  resetAgentBottomScreenActivityHeuristics,
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
   type AgentNodeStatus,
+  type AgentActivitySource,
+  type AgentInputIntent,
   type AgentProviderKind,
   type AgentResumeStrategy,
   type ExecutionNodeKind,
@@ -155,6 +172,7 @@ interface SupervisorSession {
   lastExitMessageDescriptor?: RuntimeSupervisorMessageDescriptor;
   stopRequested: boolean;
   agentActivity?: AgentActivityHeuristicState;
+  agentProviderLifecycle?: AgentProviderLifecycleState;
   process?: ExecutionSessionProcess;
   outputSubscription?: DisposableLike;
   exitSubscription?: DisposableLike;
@@ -293,7 +311,8 @@ class RuntimeSupervisorServer {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
                 terminalProjectionCheckpointV1: true,
-                terminalAppliedRevisionAckV1: true
+                terminalAppliedRevisionAckV1: true,
+                agentSubmissionIntentV1: true
               }
             }
           });
@@ -491,6 +510,10 @@ class RuntimeSupervisorServer {
       resumeStoragePath: params.resumeStoragePath,
       stopRequested: false,
       agentActivity: params.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
+      agentProviderLifecycle:
+        params.kind === 'agent' && params.provider
+          ? createAgentProviderLifecycleState(params.provider, false)
+          : undefined,
       process
     };
     this.sessions.set(sessionId, session);
@@ -744,16 +767,45 @@ class RuntimeSupervisorServer {
     }
 
     if (session.kind === 'agent') {
-      const submittedInstruction = isAgentInstructionSubmission(params.data);
+      const inputAtMs = Date.now();
+      recordAgentInputHeuristics(this.ensureAgentActivityState(session), inputAtMs);
+      const providerLifecycle = session.agentProviderLifecycle;
+      const submittedInstruction = providerLifecycle
+        ? consumeAgentInstructionSubmission(providerLifecycle, params.data, params.intent)
+        : isAgentInstructionSubmission(params.data, params.intent);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      if (submittedInstruction) {
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
+      if (
+        params.intent === 'interrupt' &&
+        providerLifecycle &&
+        session.lifecycle === 'running'
+      ) {
+        const interruptResult = recordAgentInterruptRequest(providerLifecycle);
+        if (interruptResult.accepted) {
+          session.terminalStateTracker.disableBottomScreenActivityTracking();
+          resetAgentActivityHeuristics(
+            this.ensureAgentActivityState(session),
+            session.output,
+            inputAtMs
+          );
+          this.queueAgentWaitingInput(session.sessionId);
+        }
+      } else if (submittedInstruction) {
+        if (providerLifecycle) {
+          recordAgentSubmission(providerLifecycle);
+        }
+        session.terminalStateTracker.disableBottomScreenActivityTracking();
+        resetAgentActivityHeuristics(
+          this.ensureAgentActivityState(session),
+          session.output,
+          inputAtMs
+        );
         session.lifecycle = 'running';
         session.resumePhaseActive = false;
         this.emitSessionState(session);
+        this.queueAgentWaitingInput(session.sessionId);
       }
     } else if (session.lifecycle === 'launching') {
       session.lifecycle = 'live';
@@ -924,12 +976,14 @@ class RuntimeSupervisorServer {
           });
         }
         if (session.kind === 'agent') {
-          if (
-            session.lifecycle === 'starting' ||
-            session.lifecycle === 'resuming' ||
-            session.lifecycle === 'running'
-          ) {
-            recordAgentOutputHeuristics(this.ensureAgentActivityState(session), chunk, session.output, session.provider);
+          if (shouldRecordSupervisorAgentOutputHeuristics(session)) {
+            const snapshot = recordAgentOutputHeuristics(
+              this.ensureAgentActivityState(session),
+              chunk,
+              session.output,
+              session.provider
+            );
+            this.applySupervisorAgentOutputActivityEvidence(session, snapshot);
             this.queueAgentWaitingInput(session.sessionId);
           }
         } else if (session.lifecycle === 'launching') {
@@ -1349,14 +1403,66 @@ class RuntimeSupervisorServer {
     return session.agentActivity;
   }
 
-  private queueAgentWaitingInput(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.kind !== 'agent') {
+  private applySupervisorAgentOutputActivityEvidence(
+    session: SupervisorSession,
+    snapshot: ReturnType<typeof recordAgentOutputHeuristics>
+  ): void {
+    if (!session.agentProviderLifecycle) {
       return;
     }
 
+    let transition: 'running' | 'waiting-input' | undefined;
+    if (snapshot.sawAttentionSignal) {
+      const result = recordAgentAttentionWaitingInput(session.agentProviderLifecycle);
+      if (result.accepted && result.changed && result.lifecycle) {
+        transition = result.lifecycle;
+      }
+    }
+    if (snapshot.sawTerminalTitleActivity) {
+      const result = recordAgentHeuristicRunning(session.agentProviderLifecycle, 'terminal-title');
+      if (result.accepted && result.changed && result.lifecycle) {
+        transition = result.lifecycle;
+      }
+    }
+    if (!transition) {
+      return;
+    }
+
+    if (transition === 'running') {
+      session.terminalStateTracker.disableBottomScreenActivityTracking();
+      resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
+      session.resumePhaseActive = false;
+    } else {
+      resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
+      session.terminalStateTracker.enableBottomScreenActivityTracking();
+      recordAgentBottomScreenActivity(
+        this.ensureAgentActivityState(session),
+        session.terminalStateTracker.getBottomScreenActivityToken()
+      );
+    }
+    session.lifecycle = transition;
+    this.emitSessionState(session);
+  }
+
+  private queueAgentWaitingInput(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (
+      !session ||
+      session.kind !== 'agent' ||
+      !shouldEvaluateSupervisorAgentInteractiveState(session)
+    ) {
+      return;
+    }
+    if (
+      session.lifecycle === 'waiting-input' &&
+      isAgentHeuristicWaitingInputRecoverable(session.agentProviderLifecycle)
+    ) {
+      session.terminalStateTracker.enableBottomScreenActivityTracking();
+    } else {
+      session.terminalStateTracker.disableBottomScreenActivityTracking();
+    }
     if (session.lifecycleTimer) {
-      clearTimeout(session.lifecycleTimer);
+      return;
     }
 
     session.lifecycleTimer = setTimeout(() => {
@@ -1364,19 +1470,69 @@ class RuntimeSupervisorServer {
       if (
         !current ||
         current.kind !== 'agent' ||
-        !current.live ||
-        !isAgentLifecycleAwaitingInteractiveState(current.lifecycle)
+        !current.live
       ) {
         return;
       }
+      current.lifecycleTimer = undefined;
+      if (!shouldEvaluateSupervisorAgentInteractiveState(current)) {
+        return;
+      }
 
-      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current));
+      const now = Date.now();
+      if (current.lifecycle === 'waiting-input') {
+        const bottomActivity = recordAgentBottomScreenActivity(
+          this.ensureAgentActivityState(current),
+          current.terminalStateTracker.getBottomScreenActivityToken(),
+          now
+        );
+        const recovery =
+          bottomActivity.strongRunningEvidence && current.agentProviderLifecycle
+            ? recordAgentHeuristicRunning(current.agentProviderLifecycle)
+            : undefined;
+        if (recovery?.accepted) {
+          current.terminalStateTracker.disableBottomScreenActivityTracking();
+          resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(current));
+          current.lifecycle = 'running';
+          current.resumePhaseActive = false;
+          this.emitSessionState(current);
+          this.queueAgentWaitingInput(sessionId);
+          return;
+        }
+      }
+
+      const interruptRequested = current.agentProviderLifecycle?.interruptRequested === true;
+      const evaluation = evaluateAgentWaitingInputTransition(
+        this.ensureAgentActivityState(current),
+        now
+      );
       if (evaluation.shouldTransition) {
-        current.lifecycleTimer = undefined;
+        if (current.lifecycle === 'waiting-input') {
+          return;
+        }
+        if (current.agentProviderLifecycle) {
+          const transitionResult = interruptRequested
+            ? confirmAgentInterrupt(current.agentProviderLifecycle)
+            : recordAgentHeuristicWaitingInput(current.agentProviderLifecycle);
+          if (interruptRequested && !transitionResult.accepted) {
+            return;
+          }
+        }
         if (current.lifecycle === 'resuming') {
           current.resumePhaseActive = false;
         }
         current.lifecycle = 'waiting-input';
+        resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(current));
+        if (isAgentHeuristicWaitingInputRecoverable(current.agentProviderLifecycle)) {
+          current.terminalStateTracker.enableBottomScreenActivityTracking();
+          recordAgentBottomScreenActivity(
+            this.ensureAgentActivityState(current),
+            current.terminalStateTracker.getBottomScreenActivityToken(),
+            now
+          );
+        } else {
+          current.terminalStateTracker.disableBottomScreenActivityTracking();
+        }
         void this.maybeDiscoverAgentResumeSessionIdFromFiles(sessionId, 'waiting-input');
         this.emitSessionState(current);
         return;
@@ -1387,7 +1543,6 @@ class RuntimeSupervisorServer {
         return;
       }
 
-      current.lifecycleTimer = undefined;
     }, AGENT_WAITING_INPUT_POLL_INTERVAL_MS);
   }
 
@@ -1578,10 +1733,19 @@ class RuntimeSupervisorServer {
       resumeStrategy: session.resumeStrategy,
       resumeSessionId: session.resumeSessionId,
       resumeStoragePath: session.resumeStoragePath,
+      agentActivitySource: session.agentProviderLifecycle?.activitySource,
+      agentActivityAuthority: session.agentProviderLifecycle?.activityAuthority,
+      providerLifecycleEnabled: session.agentProviderLifecycle?.lifecycleEnabled,
+      providerSessionId: session.agentProviderLifecycle?.providerSessionId,
+      providerTurnId:
+        session.agentProviderLifecycle?.activeProviderTurnId ??
+        session.agentProviderLifecycle?.lastProviderTurnId,
+      lastTurnOutcome: session.agentProviderLifecycle?.lastTurnOutcome,
+      lastTurnError: session.agentProviderLifecycle?.lastTurnError,
       lastExitCode: session.lastExitCode,
       lastExitSignal: session.lastExitSignal,
       lastExitMessage: session.lastExitMessage,
-      lastExitMessageDescriptor: session.lastExitMessageDescriptor,
+      lastExitMessageDescriptor: session.lastExitMessageDescriptor
     };
   }
 
@@ -1791,7 +1955,6 @@ class RuntimeSupervisorServer {
     session.exitSubscription?.dispose();
     session.outputSubscription = undefined;
     session.exitSubscription = undefined;
-
     if (options.terminateProcess) {
       session.process?.kill();
     }
@@ -1981,6 +2144,19 @@ class RuntimeSupervisorServer {
       initialOutput: snapshot.serializedTerminalState ? undefined : snapshot.output,
       initialOutputSequence: recoveredOutputSequence
     });
+    const recoveredProviderLifecycle =
+      snapshot.kind === 'agent' && snapshot.provider
+        ? {
+            ...createAgentProviderLifecycleState(snapshot.provider, false),
+            activitySource: normalizeAgentActivitySource(snapshot.agentActivitySource) ?? 'heuristic',
+            activityAuthority: snapshot.agentActivityAuthority ?? 'best-effort',
+            providerSessionId: snapshot.providerSessionId,
+            activeProviderTurnId: snapshot.providerTurnId,
+            lastProviderTurnId: snapshot.providerTurnId,
+            lastTurnOutcome: snapshot.lastTurnOutcome,
+            lastTurnError: snapshot.lastTurnError
+          }
+        : undefined;
 
     return {
       ...snapshot,
@@ -1999,6 +2175,7 @@ class RuntimeSupervisorServer {
       lastExitMessageDescriptor,
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
+      agentProviderLifecycle: recoveredProviderLifecycle,
       cols: snapshot.cols,
       rows: snapshot.rows,
       scrollback,
@@ -2193,14 +2370,36 @@ function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
   return status === 'starting' || status === 'resuming';
 }
 
+function normalizeAgentActivitySource(value: unknown): AgentActivitySource | undefined {
+  return value === 'provider-lifecycle' ||
+    value === 'submission-intent' ||
+    value === 'terminal-title' ||
+    value === 'attention' ||
+    value === 'heuristic'
+    ? value
+    : undefined;
+}
+
 function isAgentLifecycleAwaitingInteractiveState(
   status: AgentNodeStatus | TerminalNodeStatus
 ): boolean {
   return status === 'starting' || status === 'resuming' || status === 'running';
 }
 
-function isAgentInstructionSubmission(data: string): boolean {
-  return /[\r\n]/.test(data);
+function shouldEvaluateSupervisorAgentInteractiveState(session: SupervisorSession): boolean {
+  return (
+    isAgentLifecycleAwaitingInteractiveState(session.lifecycle) ||
+    (session.lifecycle === 'waiting-input' &&
+      isAgentHeuristicWaitingInputRecoverable(session.agentProviderLifecycle))
+  );
+}
+
+function shouldRecordSupervisorAgentOutputHeuristics(session: SupervisorSession): boolean {
+  return shouldEvaluateSupervisorAgentInteractiveState(session);
+}
+
+function isAgentInstructionSubmission(data: string, intent?: AgentInputIntent): boolean {
+  return intent === 'submit' || (intent === undefined && /[\r\n]/.test(data));
 }
 
 function containsTerminalSuspendInput(data: string): boolean {
